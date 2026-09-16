@@ -704,6 +704,52 @@ pages a definition had to take again because its predecessor gave them back. The
 corpus census is byte-identical across the change (1,967 words, 179,012 bytes),
 which is the point - this changes where tables live, not what is emitted.
 
+### What the registry's checks cost, and what one token gave back
+
+The denominator for everything below is one tier-1 definition of
+`( n -- n ) 1 + ;`, measured as the difference between a `tools/tier-census.f`
+run over 500 such definitions and one over a single definition, under
+`perf stat -e instructions:u`, which is deterministic here to one part in 10^9.
+On the region commit that is **5,805,240 user instructions per definition**.
+
+An engine built with every generation, state and owner-liveness test in
+`IR-ARENA` reduced to its bound check - unsound, built only to price them -
+compiles the same definition in 4,887,014 and the thirteen-file corpus in
+43,517,847,938 against 52,812,777,736. So the registry's checking, and the call
+frames the checking keeps alive, is **15.8 percent of a trivial definition and
+17.6 percent of the corpus**, and it is by a wide margin the largest remaining
+item in the floor.
+
+Counted over the same 500 definitions, per definition: 16,450 `RD@`, 2,905
+`LIVE-SLOT`, 316 `FROZEN-SLOT`, 1,717 readers opened, 817 free-slot scan steps
+and 37 arenas created. Each of the first three asked the same question twice -
+load the row's handle, shift its generation out, compare, then shift the state
+out of the presented token, load the row's state, compare - over two cells.
+
+Storing the reader token itself as the row's one identity cell makes every one
+of those a single indexed load and a single compare, with the mismatches told
+apart off the read path. It keeps every test and every error: 5,326,094
+instructions per definition (**-8.25 percent**), 47,763,870,582 over the corpus
+(**-9.56 percent**), the census byte-identical. That is half of what the
+unsound ablation showed; the other half is the owner-liveness probe that the
+handle resolutions still make and the call frames it keeps.
+
+### What growth by copy actually costs
+
+Counted the same way, with a counter in `IR-ARENA:GROW-TO`. Per trivial
+definition: 37 arenas created, 42 growth steps, **668 cells copied** and 4,638
+cells taken from the region by the doubling series. Over the thirteen-file
+corpus: 54,035 arenas, 100,925 growth steps, 4,353,335 cells copied.
+
+668 cells is about 1,300 load-store pairs against 5,805,240 instructions, so
+growth by copy is **under 0.05 percent of a definition**. The lane that was to
+replace it with a fixed slice per table therefore has no measured cost to
+remove, and a fixed slice has two prices: the sum of the self-build's per-table
+marks is 45,513 cells, so three modules would reserve about 1.1 MB per
+definition against the 37 KB the doubling series takes, and a word past a mark
+would be a hard refusal where today it grows. Both numbers are here so the
+decision is made on them.
+
 ### What this lane did not do, and why it is recorded here
 
 Borrowing the dialect's interner instead of cloning it into every module was

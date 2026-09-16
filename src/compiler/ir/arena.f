@@ -9,21 +9,26 @@
 \ pointer is public, and readers validate their nominal arena or view.
 \
 \ OWNERSHIP SHAPE. An arena is created against a live IR-CTX context and every
-\ cell it stores lives in spans bump-allocated from that context's mapping by
-\ IR-CTX:SCRATCH-TAKE. Growth takes a doubled span and copies; the abandoned
-\ smaller span stays in the mapping and dies with it - the accepted arena
-\ discipline, bounded by the committed ceiling. Whole-range release is the
-\ owning context's WITH-CONTEXT teardown: this file adds no MEM:RELEASE-BYTES
+\ cell it stores lives in spans bump-allocated from that context's scratch
+\ region by IR-CTX:SCRATCH-TAKE. Growth takes a doubled span and copies; the
+\ abandoned smaller span stays in the region and dies with the context's mark -
+\ the accepted arena discipline, bounded by the committed ceiling. Whole-range
+\ release is the owning context's teardown, which moves the region cursor back
+\ over every span this arena was given: this file adds no MEM:RELEASE-BYTES
 \ call site, the same constraint as context.f. FREEZE consumes the builder
 \ handle into an immutable view; ABORT consumes it without publishing.
 \
 \ STALE HANDLES. The same fail-closed generation discipline as IR-CTX: a
 \ handle packs a never-reused generation from this package's atomic counter
-\ with its registry slot. Resolution compares that slot's complete handle. The
-\ registry persists each arena's owner as the context serial - the only
-\ storable form, since handles are sealed nominals a raw cell cannot re-mint -
-\ and every resolution probes IR-CTX:SERIAL-LIVE? so an arena whose context
-\ tore down rejects with E-IR-ARENA-STALE before any pointer is touched.
+\ with its registry slot. A row stores ONE cell for its identity - the reader
+\ token, generation and state and slot together - so every resolution and every
+\ scoped read is one indexed load and one compare against the value the caller
+\ presented, instead of a generation read and a state read asked separately;
+\ TOKEN-REFUSE tells the mismatches apart, off the read path. The registry
+\ persists each arena's owner as the context serial - the only storable form,
+\ since handles are sealed nominals a raw cell cannot re-mint - and every
+\ resolution probes IR-CTX:SERIAL-LIVE? so an arena whose context tore down
+\ rejects with E-IR-ARENA-STALE before any pointer is touched.
 \ Registry slots are reclaimed eagerly on ABORT and lazily (dead owner) on the
 \ next creation; the capacity below bounds the live population with a named
 \ error. The linear-ownership work removes the whole mechanism.
@@ -100,20 +105,32 @@ SLOT-BITS STATE-BITS + constant RGEN-SHIFT
 here CELL 1- and CELL swap - CELL 1- and allot
 variable AGEN-CELL
 0 AGEN-CELL !
-create AHANDLES SLOT-MAX cells allot
+create ATOKENS SLOT-MAX cells allot
 create AOWNERS SLOT-MAX cells allot
 create ADATAS SLOT-MAX cells allot
 create ACOUNTS SLOT-MAX cells allot
 create ACAPS SLOT-MAX cells allot
 create ACEILS SLOT-MAX cells allot
-create ASTATES SLOT-MAX cells allot
 
-\ Registry rows are plain indexed loads. The hot ones - the stored handle, the
-\ owner serial, the state and the cell count - are spelled at each reader below
-\ instead of being called, because a public read runs all four and a call frame
-\ around a shift, an add and a load was most of what they cost.
+\ ONE CELL CARRIES A ROW'S WHOLE IDENTITY. A row was two cells - the complete
+\ handle and the state - and every reader asked them separately: load the
+\ handle, shift the generation out of it, compare; shift the state out of the
+\ presented token, load the row's state, compare. The two answer one question,
+\ "is this row still the one this value names, in the state it was named in",
+\ so the row stores that one answer: the reader token itself, generation and
+\ state and slot in the layout RD@ receives. Every hot read is then one indexed
+\ load and one compare, and the four ways it can be wrong are told apart off
+\ the read path by TOKEN-REFUSE.
+\
+\ A RETIRED ROW HOLDS ZERO, which is not a token any value can carry: a live
+\ row's generation is at least one, so its token is at least 1 << RGEN-SHIFT.
+\ That is what the free-slot scans read, and what makes slot zero safe to
+\ compare against a zero handle.
+: TOK ( n n n -- n ) {: g:n st:n slot:n :}
+   g RGEN-SHIFT lshift st SLOT-BITS lshift or slot or ;
+
 : AGEN@ ( n -- n )
-   cells AHANDLES + @ SLOT-BITS rshift ;
+   cells ATOKENS + @ RGEN-SHIFT rshift ;
 
 \ One observer owns optional private side storage; replacement is refused.
 defer RETIRE-OBSERVER ( n -- )
@@ -137,10 +154,15 @@ public
 
 private
 
-: AGEN! ( n n -- ) {: g:n slot:n :}
-   g 0= if slot RETIRE-OBSERVER then
-   g 0= if 0 else g SLOT-BITS lshift slot or then
-   slot cells AHANDLES + ! ;
+\ Retire a row: the observer gives its side storage back and the token goes to
+\ zero, which is what every liveness compare in this file then refuses.
+: ROW-RETIRE ( n -- ) {: slot:n :}
+   slot RETIRE-OBSERVER
+   0 slot cells ATOKENS + ! ;
+
+: ROW-STATE! ( n n -- ) {: st:n slot:n :}
+   slot cells ATOKENS + @ RGEN-SHIFT rshift st slot TOK
+   slot cells ATOKENS + ! ;
 
 : AOWNER@ ( n -- n )
    cells AOWNERS + @ ;
@@ -169,15 +191,9 @@ private
 : ACEIL! ( n n -- )
    cells ACEILS + ! ;
 
-: ASTATE@ ( n -- n )
-   cells ASTATES + @ ;
-
-: ASTATE! ( n n -- )
-   cells ASTATES + ! ;
-
 : SLOTS-CLEAR ( -- )
    SLOT-MAX 0 ?do
-      0 i AGEN!
+      i ROW-RETIRE
    loop ;
 SLOTS-CLEAR
 
@@ -185,13 +201,15 @@ SLOTS-CLEAR
 \ teardown. SWEEP below does the same thing for an owner that died without one,
 \ and that is late for a scoped reader: a reader resolves once and has no later
 \ probe, so between the context dying and somebody's next NEW its row would
-\ still read live over a mapping that is gone. Here the row is zeroed while the
-\ context is still tearing down, so the reader's next read is a dead generation.
-\ SWEEP stays as the backstop for any owner that dies without running teardown.
+\ still read live over storage the next compilation is about to be handed. Here
+\ the row is zeroed while the context is still tearing down - before the region
+\ cursor moves back over the spans it named - so the reader's next read is a
+\ dead token. SWEEP stays as the backstop for any owner that dies without
+\ running teardown.
 : RETIRE-OWNED ( n -- ) {: serial:n :}
    SLOT-MAX 0 ?do
-      i cells AHANDLES + @ 0<> if
-         i cells AOWNERS + @ serial = if 0 i AGEN! then
+      i cells ATOKENS + @ 0<> if
+         i cells AOWNERS + @ serial = if i ROW-RETIRE then
       then
    loop ;
 
@@ -223,16 +241,18 @@ INSTALL-RETIRE
 : PACK-HANDLE ( n n -- n )
    swap SLOT-BITS lshift or ;
 
-: FIND-A ( n -- n )
-   dup 0= if drop -1 exit then
-   dup SLOT-MASK and tuck cells AHANDLES + @ = if else drop -1 then ;
+: FIND-A ( n -- n ) {: h:n :}
+   h 0= if -1 exit then
+   h SLOT-MASK and {: slot:n :}
+   slot cells ATOKENS + @ RGEN-SHIFT rshift h SLOT-BITS rshift =
+   if slot else -1 then ;
 
 \ Resolve a builder handle to its registry slot and fail closed on a consumed
 \ handle, a dead owner and a published arena - in ONE definition, not a chain.
-\ A handle names its own slot, the row holds the complete handle, and the three
-\ registry reads are indexed loads, so the whole resolution is straight-line
+\ A handle names its own slot and the row's one token carries the generation
+\ and the state, so the whole resolution is one indexed load and straight-line
 \ code with one cross-package call for owner liveness. A slot whose context tore
-\ down is retired on touch, before its dangling data pointer can be read.
+\ down is retired on touch, before its dangling data offset can be read.
 \
 \ FROZEN-SLOT below is this word's twin for published views. THE TWO MUST KEEP
 \ THE SAME CHECKS IN THE SAME ORDER: consumed handle, then dead owner, then
@@ -240,33 +260,38 @@ INSTALL-RETIRE
 \ whose context is gone, reading a retired row to do it.
 : LIVE-SLOT ( IR-ARENA:arena -- n )
    ARENA>N dup 0= if E-IR-ARENA-STALE throw then
-   dup SLOT-MASK and tuck cells AHANDLES + @ <>
-   if E-IR-ARENA-STALE throw then
-   dup cells AOWNERS + @ IR-CTX:SERIAL-LIVE? 0= if
-      0 over AGEN! E-IR-ARENA-STALE throw
+   dup SLOT-MASK and {: h:n slot:n :}
+   slot cells ATOKENS + @ {: tk:n :}
+   tk RGEN-SHIFT rshift h SLOT-BITS rshift <> if E-IR-ARENA-STALE throw then
+   slot cells AOWNERS + @ IR-CTX:SERIAL-LIVE? 0= if
+      slot ROW-RETIRE E-IR-ARENA-STALE throw
    then
-   dup cells ASTATES + @ ST-LIVE <> if E-IR-ARENA-FROZEN throw then ;
+   tk SLOT-BITS rshift STATE-MASK and ST-LIVE <>
+   if E-IR-ARENA-FROZEN throw then
+   slot ;
 
 \ LIVE-SLOT's twin for a published view; see the order note there.
 : FROZEN-SLOT ( IR-ARENA:view -- n )
    VIEW>N dup 0= if E-IR-ARENA-STALE throw then
-   dup SLOT-MASK and tuck cells AHANDLES + @ <>
-   if E-IR-ARENA-STALE throw then
-   dup cells AOWNERS + @ IR-CTX:SERIAL-LIVE? 0= if
-      0 over AGEN! E-IR-ARENA-STALE throw
+   dup SLOT-MASK and {: h:n slot:n :}
+   slot cells ATOKENS + @ {: tk:n :}
+   tk RGEN-SHIFT rshift h SLOT-BITS rshift <> if E-IR-ARENA-STALE throw then
+   slot cells AOWNERS + @ IR-CTX:SERIAL-LIVE? 0= if
+      slot ROW-RETIRE E-IR-ARENA-STALE throw
    then
-   dup cells ASTATES + @ ST-FROZEN <> if E-IR-ARENA-STATE throw then ;
+   tk SLOT-BITS rshift STATE-MASK and ST-FROZEN <>
+   if E-IR-ARENA-STATE throw then
+   slot ;
 
 \ ---- cell access -------------------------------------------------------------
 \ Cells are eight-byte little-endian slots in the current data span, written
 \ with the canonical CDIGEST slot words like the context header.
 \
 \ READING THEM IS A NATIVE CELL LOAD ON THIS HOST, AND THE ALIGNMENT IS BY
-\ CONSTRUCTION. Every span comes from IR-CTX:SCRATCH-TAKE, which returns
-\ `chunk CHUNK-HDR-BYTES + off +`: a chunk is either the header mapping plus
-\ HDR-BYTES (HDR-SLOTS whole slots) or a fresh map-anon page, CHUNK-HDR-BYTES is
-\ three cells, and the cursor only ever advances by ALIGN8 steps - so a span
-\ address is always a multiple of CDIGEST:SLOT-BYTES and so is every cell in it.
+\ CONSTRUCTION. Every span comes from IR-CTX:SCRATCH-TAKE, which hands back the
+\ region's base plus the cursor: the base is a fresh mapping, so it is page
+\ aligned, and the cursor only ever advances by ALIGN8 steps - so a span address
+\ is always a multiple of CDIGEST:SLOT-BYTES and so is every cell in it.
 \ That leaves only the host: a canonical slot IS a native cell exactly on an
 \ eight-byte little-endian machine. NATIVE-CELLS? asks CDIGEST itself rather
 \ than re-deriving the answer - it writes one canonical slot and checks whether
@@ -342,27 +367,27 @@ NATIVE-PROBE CELL-VIEW @ $0123456789ABCDEF = constant NATIVE-CELLS?
    dup 1 < over CEIL-MAX > or if E-IR-ARENA-CEIL throw then
    drop ;
 
-\ Retire every slot whose owning context tore down; their storage is already
-\ unmapped and their generations can never resolve again.
+\ Retire every slot whose owning context tore down; the region cursor has
+\ already moved back over their storage and their generations can never resolve
+\ again.
 : SWEEP ( -- )
    SLOT-MAX 0 ?do
-      i cells AHANDLES + @ 0<> if
+      i cells ATOKENS + @ 0<> if
          i cells AOWNERS + @ IR-CTX:SERIAL-LIVE? 0= if
-            0 i AGEN!
+            i ROW-RETIRE
          then
       then
    loop ;
 
-\ THE SCANS READ AHANDLES AND NOT AGEN@. AGEN! writes a plain zero for a
-\ retired row and `g SLOT-BITS lshift slot or` with g at least one otherwise,
-\ so the stored word is zero exactly when the generation is - which is what
-\ RETIRE-OWNED above already reads. That makes each loop body a load and a
-\ compare instead of a call, and a scan over SLOT-MAX rows is what these words
-\ are.
+\ THE SCANS READ THE TOKEN AND NOT ITS GENERATION. A retired row's token is a
+\ plain zero and a live one's carries a generation of at least one, so the
+\ stored word is zero exactly when the row is free - which is what RETIRE-OWNED
+\ above already reads. That makes each loop body a load and a compare instead
+\ of a call, and a scan over SLOT-MAX rows is what these words are.
 : FIRST-FREE ( -- n )              \ -1 when every row is taken
    -1
    SLOT-MAX 0 ?do
-      i cells AHANDLES + @ 0= if drop i leave then
+      i cells ATOKENS + @ 0= if drop i leave then
    loop ;
 
 \ THE SWEEP IS THE FALLBACK, NOT THE PRELUDE. It reclaims rows whose owning
@@ -427,7 +452,7 @@ create SCOPE-SLOTS SLOT-MAX cells allot
 
 : SCOPE-POP ( -- )
    SCOPE-N @ 1- {: k:n :}
-   0 k cells SCOPE-SLOTS + @ AGEN!
+   k cells SCOPE-SLOTS + @ ROW-RETIRE
    k SCOPE-N ! ;
 
 public
@@ -470,8 +495,7 @@ public
    0 slot ACOUNT!
    cap0 slot ACAP!
    ceil slot ACEIL!
-   ST-LIVE slot ASTATE!
-   g slot AGEN!
+   g ST-LIVE slot TOK slot cells ATOKENS + !
    slot SCOPE-RECORD
    g slot PACK-HANDLE MINT-ARENA ;
 
@@ -597,7 +621,7 @@ public
    ARENA>N FIND-A {: slot:n :}
    slot 0 < if 0 0 <> exit then
    slot AOWNER@ IR-CTX:SERIAL-LIVE?
-   slot ASTATE@ ST-LIVE = and ;
+   slot cells ATOKENS + @ SLOT-BITS rshift STATE-MASK and ST-LIVE = and ;
 
 \ ---- freeze and abort --------------------------------------------------------
 \ FREEZE consumes the builder into an immutable view over the same storage:
@@ -605,15 +629,14 @@ public
 \ holding the old builder handle rejects with E-IR-ARENA-FROZEN.
 : FREEZE ( IR-ARENA:arena -- IR-ARENA:view )
    LIVE-SLOT {: slot:n :}
-   ST-FROZEN slot ASTATE!
+   ST-FROZEN slot ROW-STATE!
    slot AGEN@ slot PACK-HANDLE MINT-VIEW ;
 
 \ ABORT consumes the builder without publishing: the registry slot is retired
 \ at once, so the handle and every index it minted are stale; the
-\ abandoned spans die with the owning context's mapping.
+\ abandoned spans die with the owning context's mark.
 : ABORT ( IR-ARENA:arena -- )
-   LIVE-SLOT {: slot:n :}
-   0 slot AGEN! ;
+   LIVE-SLOT ROW-RETIRE ;
 
 \ RETIRE is ABORT's other half, for an arena that was published rather than
 \ abandoned: the registry slot is freed and every index the view minted goes
@@ -636,8 +659,7 @@ public
 \ E-IR-ARENA-OWNER and not stale data - the same refusal a handle from another
 \ context gets, for the same reason and through the same comparison.
 : RETIRE ( IR-ARENA:view -- )
-   FROZEN-SLOT {: slot:n :}
-   0 slot AGEN! ;
+   FROZEN-SLOT ROW-RETIRE ;
 
 \ ---- frozen readers ----------------------------------------------------------
 \ Equivalent to FROZEN-NTH followed by AT, resolving the frozen view once, and
@@ -681,41 +703,48 @@ public
 \ owning context's teardown all change the generation, and FREEZE changes the
 \ state, and each of those refuses with the error the handle would have given.
 \
+\ THE TOKEN IS THE ROW'S OWN CELL, so revalidating is one indexed load and one
+\ compare. A reader is opened by copying the row's token out, and a read is
+\ live exactly while that cell still holds it - which is the same test as
+\ "generation unchanged and state unchanged", asked once instead of twice, over
+\ one cell instead of two. The four ways it can be wrong are told apart by
+\ TOKEN-REFUSE, off the read path, with the errors the two tests gave.
+\
 \ WHY REVALIDATION AND NOT A SCOPING QUOTATION. A quotation scope would bound
 \ the reader's lifetime syntactically and, under the single-task compilation
 \ discipline, would be sound. It would also force every caller that walks a row
 \ into a nested body, and the dialect readers that need this most read fields
 \ from SEVERAL arenas inside one expression - the shape a scope cannot hold.
-\ Revalidation costs two loads and two compares, which is less than the handle
+\ Revalidation costs one load and one compare, which is less than the handle
 \ path pays for its owner probe alone; the chain of accessors was the expense,
 \ never the checking.
+
+\ The refusal a token mismatch takes. It is a separate word so the read path
+\ above it is a load and a compare, and it reproduces exactly the errors the
+\ separate generation and state tests gave, in their order: a row whose
+\ generation moved is stale, whatever its state now is, and a row at the right
+\ generation in the wrong state is that state's error.
+: TOKEN-REFUSE ( n -- ) {: t:n :}
+   t SLOT-MASK and cells ATOKENS + @ RGEN-SHIFT rshift
+   t RGEN-SHIFT rshift <> if E-IR-ARENA-STALE throw then
+   t SLOT-BITS rshift STATE-MASK and ST-LIVE =
+   if E-IR-ARENA-FROZEN throw then
+   E-IR-ARENA-STATE throw ;
+
 : OPEN ( IR-ARENA:view -- IR-ARENA:reader )
-   FROZEN-SLOT
-   dup cells AHANDLES + @ SLOT-BITS rshift RGEN-SHIFT lshift
-   ST-FROZEN SLOT-BITS lshift or
-   or MINT-READER ;
+   FROZEN-SLOT cells ATOKENS + @ MINT-READER ;
 
 : OPEN-LIVE ( IR-ARENA:arena -- IR-ARENA:reader )
-   LIVE-SLOT
-   dup cells AHANDLES + @ SLOT-BITS rshift RGEN-SHIFT lshift
-   ST-LIVE SLOT-BITS lshift or
-   or MINT-READER ;
+   LIVE-SLOT cells ATOKENS + @ MINT-READER ;
 
-\ Read one ordinal. Straight-line by construction: the generation, the state,
-\ the bound and the cell are four registry loads and no call, which is the whole
-\ point of having resolved once. RD-SIZE below repeats the two token checks
-\ rather than calling a shared one, for the same reason; THE TWO MUST KEEP THE
-\ SAME ORDER - generation before state, so a retired row never reports a state.
+\ Read one ordinal. Straight-line by construction: the token, the bound and the
+\ cell are three registry loads and no call, which is the whole point of having
+\ resolved once. RD-SIZE and RD-FIND below repeat the token compare rather than
+\ calling a shared one, for the same reason.
 : RD@ ( IR-ARENA:reader n -- n )
    {: r:IR-ARENA:reader k:n :}
    r READER>N dup SLOT-MASK and {: t:n slot:n :}
-   slot cells AHANDLES + @ SLOT-BITS rshift t RGEN-SHIFT rshift <>
-   if E-IR-ARENA-STALE throw then
-   t SLOT-BITS rshift STATE-MASK and {: want:n :}
-   slot cells ASTATES + @ want <> if
-      want ST-LIVE = if E-IR-ARENA-FROZEN throw then
-      E-IR-ARENA-STATE throw
-   then
+   slot cells ATOKENS + @ t <> if t TOKEN-REFUSE then
    k 0 < k slot cells ACOUNTS + @ >= or if E-IR-ARENA-BOUND throw then
    slot cells ADATAS + 0 ptr-field @
    NATIVE-CELLS? if k CDIGEST:SLOT-BYTES * + CELL-VIEW @ exit then
@@ -744,13 +773,7 @@ public
 : RD-FIND ( IR-ARENA:reader n n n n -- n )
    {: r:IR-ARENA:reader first:n stride:n count:n want:n :}
    r READER>N dup SLOT-MASK and {: t:n slot:n :}
-   slot cells AHANDLES + @ SLOT-BITS rshift t RGEN-SHIFT rshift <>
-   if E-IR-ARENA-STALE throw then
-   t SLOT-BITS rshift STATE-MASK and {: state:n :}
-   slot cells ASTATES + @ state <> if
-      state ST-LIVE = if E-IR-ARENA-FROZEN throw then
-      E-IR-ARENA-STATE throw
-   then
+   slot cells ATOKENS + @ t <> if t TOKEN-REFUSE then
    count 0 <= if -1 exit then
    first 0 < stride 1 < or if E-IR-ARENA-BOUND throw then
    slot cells ACOUNTS + @ {: used:n :}
@@ -775,13 +798,7 @@ public
 \ The readable count through the same token, checked the same way; see RD@.
 : RD-SIZE ( IR-ARENA:reader -- n )
    READER>N dup SLOT-MASK and {: t:n slot:n :}
-   slot cells AHANDLES + @ SLOT-BITS rshift t RGEN-SHIFT rshift <>
-   if E-IR-ARENA-STALE throw then
-   t SLOT-BITS rshift STATE-MASK and {: want:n :}
-   slot cells ASTATES + @ want <> if
-      want ST-LIVE = if E-IR-ARENA-FROZEN throw then
-      E-IR-ARENA-STATE throw
-   then
+   slot cells ATOKENS + @ t <> if t TOKEN-REFUSE then
    slot cells ACOUNTS + @ ;
 
 \ Frozen dialect readers may retain row facts. Refuse a live token before
@@ -809,7 +826,7 @@ public
 : CAPTURE-PREPARE ( -- )
    SWEEP
    SLOT-MAX 0 ?do
-      i AGEN@ 0<> if E-IR-ARENA-STATE throw then
+      i cells ATOKENS + @ 0<> if E-IR-ARENA-STATE throw then
       NULL-PTR i ADATA-FIELD !
    loop ;
 
