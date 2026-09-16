@@ -18,3 +18,12 @@ Evidence 2026-09-16 13:30: (3) stripped applications: test/gate-aot-positive.f f
 Evidence 2026-09-16 13:45: (1) full gate on F2 built from dab2c17e (5,832,896 bytes): 399 PASS, 1 FAIL = bootstrap-wide-memory-src (mirror parity of the folded emitters, lane in flight); the earlier load timeouts and proc-pty-tty-smoke passed. F1->F2 differed by 17,992 bytes beyond the baked path (host-dependent baked facts, dot habu-derive-baked-build-d5df4419); F3 on F2 pending for the fixpoint.
 
 Fixpoint 2026-09-16 13:47: F3 (built on F2) == F2 modulo the baked tree path; engine 5,832,896 bytes; self-build 101 s on a quiet machine (138 s this morning).
+
+Evidence 2026-09-16 14:21: portable require rows landed (97db883a). Engine
+/tmp/hazel-fH1 built from that head on fF3 (129s, 5,832,896 bytes, no build
+directory in strings); cold check green: pre-trust-defer, cold-runtime-test,
+build-fixpoint-test 208s, bootstrap-wide-memory-src, all rc 0. Opus audit of
+the six Sonnet commits filed as dots habu-rebase-only-the-35ab0076,
+habu-keep-the-recovery-1111544c, habu-mirror-the-boot-b94d5e54,
+habu-test-the-guarded-046a7404, habu-keep-failing-asserts-f5b1b376 (workers
+dispatched on f5b95c66); they gate the final full run.
