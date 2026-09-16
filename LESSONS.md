@@ -8659,3 +8659,14 @@ PHYSICALLY (EXISTING-PARENT walks up to the first path realpath accepts), so the
 loader named the symlink's target exactly as `cat src/...` would. A fixture that
 runs an engine outside a tree must make its own fresh directory - a shared temp
 root is somebody else's namespace.
+
+## 2026-09-16 - a nominal a defining word hands out must be declared public
+
+`create ... allot does> ( -- sem ) FFI:>CELL >SEM ;` certifies: a `does>` body
+is ordinary checked code, so a defining word can publish a nominal handle
+directly and its package needs no public address-to-handle crossing beside it -
+which is how `TASK:SEMAPHORE` keeps the semaphore record unreachable. The
+`DEFTYPE` must sit in the PUBLIC section even when only the package uses the
+converters, because the child's stored signature names the type and a private
+one does not resolve for a reader: the definition is refused as it is made,
+`s1:  -- sem : checker: bad stored signature` (measured).

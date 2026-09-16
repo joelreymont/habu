@@ -3,12 +3,20 @@
 s" lib/errors.f" required
 s" lib/memory.f" required
 s" lib/ffi-abi.f" required
+s" lib/type/deftype.f" required   \ DEFTYPE: the nominal semaphore handle
 s" lib/image-lifecycle.f" required
 s" lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
 require src/habu/task-abi.f
 require src/habu/stack-abi.f
 
 package TASK
+public
+
+\ The semaphore handle callers hold. A nominal cell, so a raw address - a
+\ TASK:FACILITY, say, which is the same machine shape - cannot reach TASK:WAIT.
+DEFTYPE SEM
+
+private
 
 $8 constant TASK-CELL
 $10000 constant TASK-MIN-STACK
@@ -17,6 +25,12 @@ $80 constant TASK-MUTEX-BYTES
 0 constant TASK-FACILITY-OWNER-OFF
 $8 constant TASK-FACILITY-MUTEX-OFF
 TASK-FACILITY-MUTEX-OFF TASK-MUTEX-BYTES + constant TASK-FACILITY-BYTES
+$20 constant TASK-SEM-BYTES              \ sem_t on an LP64 host
+$7FFFFFFF constant TASK-SEM-MAX          \ SEM_VALUE_MAX
+$04 constant TASK-EINTR
+0 constant TASK-SEM-GUARD-OFF
+$8 constant TASK-SEM-OBJ-OFF
+TASK-SEM-OBJ-OFF TASK-SEM-BYTES + constant TASK-SEMAPHORE-BYTES
 
 TASK-ABI:EMPTY constant TASK-EMPTY
 TASK-ABI:CONSTRUCTED constant TASK-CONSTRUCTED
@@ -222,6 +236,35 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
    TASK-SYMBOLS FFI:RESET
    mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
    FFI:ARGS FFI:REG-LENS 1 MUTEX-UNLOCK-XT @ ffi-call-bounded ;
+
+\ ---- unnamed POSIX semaphore bindings ----------------------------------------
+\ Declared rather than hand-staged: these four arrived after the FUNCTION:
+\ declarer, so package FFI owns their symbol resolution and their bounded
+\ staging and this module states only the C prototypes. The single pointer
+\ argument is always one sem_t the semaphore records below own, so every
+\ declaration fixes its extent at TASK-SEM-BYTES; the callee writes it.
+\
+\ sem_wait blocks inside the call. That is the point of this module - a waiting
+\ task needs no PAUSE loop - and it is safe because the argument tables the
+\ generated body stages sit in the calling task's own DATA region, so a blocked
+\ waiter holds nothing the signaller needs.
+PROCESS-SYMBOLS
+
+FUNCTION: SEM-INIT-CALL sem_init ( ptr u8 n n -- n )
+   0 TASK-SEM-BYTES WRITES-BYTES          \ sem_t; then pshared, then the count
+;FUNCTION
+
+FUNCTION: SEM-WAIT-CALL sem_wait ( ptr u8 -- n )
+   0 TASK-SEM-BYTES WRITES-BYTES
+;FUNCTION
+
+FUNCTION: SEM-POST-CALL sem_post ( ptr u8 -- n )
+   0 TASK-SEM-BYTES WRITES-BYTES
+;FUNCTION
+
+FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- n )
+   0 TASK-SEM-BYTES WRITES-BYTES
+;FUNCTION
 
 : TASK-RC0 ( n -- )
    dup 0 <> if E-TASK-THREAD throw then
@@ -532,6 +575,74 @@ TRUSTED: FACILITY ( -- )
    0 f FACILITY-OWNER!
    f FACILITY-MUTEX MUTEX-UNLOCK-CALL TASK-RC0 ;
 
+\ Shared counted-semaphore storage, one record per definition (see the
+\ address-kind note above). Unlike TASK and FACILITY this definer needs no
+\ TRUSTED:: the child's `does>` body converts the record address to the handle
+\ in checked code, so the only address a caller ever sees is already a SEM and
+\ the package publishes no raw-address-to-handle crossing at all.
+: SEMAPHORE ( -- )
+   TASK-ALIGN8
+   create TASK-SEMAPHORE-BYTES allot
+   does> ( -- sem ) FFI:>CELL >SEM ;
+
+\ A nominal cannot be retyped straight to a pointer (E-CAST-CLASS), so the
+\ handle crosses back through n and the module's existing raw-cell refinement.
+: SEM-REC ( sem -- ptr n )
+   SEM>N TASK-N>PTR ;
+
+: SEM-GUARD ( sem -- ptr n )
+   SEM-REC TASK-SEM-GUARD-OFF + ;
+
+\ The sem_t itself, as the byte span the declarations above name written.
+: SEM-OBJ ( sem -- ptr u8 )
+   SEM-REC BYTE-VIEW TASK-SEM-OBJ-OFF + ;
+
+\ Defence in depth under the type: the guard cell holds the record's OWN
+\ address exactly while the POSIX object behind it is live, so an uninitialized
+\ record and a destroyed one fail closed instead of entering sem_wait.
+: SEM-LIVE? ( sem -- bool ) {: s:sem :}
+   s SEM-GUARD atomic@ s SEM>N = ;
+
+: SEM-CHECK ( sem -- )
+   SEM-LIVE? 0= if E-TASK-SEM-STATE throw then ;
+
+\ Unnamed POSIX semaphores are a Linux facility: Darwin's sem_init is a
+\ deprecated ENOSYS stub, which is why SwiftForth opens named semaphores there
+\ (docs/tasking-models.md section 1).
+: SEM-HOST-CHECK ( -- )
+   HB-TARGET-LINUX? 0= if E-TASK-SEM-HOST throw then ;
+
+: SEM-COUNT-CHECK ( n -- ) {: value:n :}
+   value 0 < value TASK-SEM-MAX > or if E-TASK-SEM-COUNT throw then ;
+
+: SEM-INIT ( n sem -- ) {: value:n s:sem :}
+   SEM-HOST-CHECK
+   value SEM-COUNT-CHECK
+   s SEM-LIVE? if E-TASK-SEM-STATE throw then
+   s SEM-OBJ 0 value SEM-INIT-CALL TASK-RC0
+   s SEM>N s SEM-GUARD atomic! ;
+
+\ POSIX leaves destroying a semaphore that still has blocked waiters undefined,
+\ so the caller drains its waiters first. Destroying an inactive one is a no-op.
+: SEM-DESTROY ( sem -- ) {: s:sem :}
+   s SEM-LIVE? 0= if exit then
+   0 s SEM-GUARD atomic!
+   s SEM-OBJ SEM-DESTROY-CALL TASK-RC0 ;
+
+\ Blocks inside the host call, so a waiting task needs no PAUSE loop - and
+\ observes no TASK:HALT - until it is signalled. A signal interrupts the wait
+\ without consuming a count, so EINTR retries.
+: SEM-WAIT ( sem -- ) {: s:sem :}
+   begin
+      s SEM-CHECK
+      s SEM-OBJ SEM-WAIT-CALL 0= if exit then
+      FFI:ERRNO TASK-EINTR <> if E-TASK-THREAD throw then
+   again ;
+
+: SEM-SIGNAL ( sem -- ) {: s:sem :}
+   s SEM-CHECK
+   s SEM-OBJ SEM-POST-CALL TASK-RC0 ;
+
 public
 
 TASK-MIN-STACK constant MIN-STACK
@@ -587,6 +698,28 @@ TASK-MIN-STACK constant MIN-STACK
 
 : RELEASE ( ptr n -- )
    RELEASE ;
+
+\ Defines one counted semaphore, shared by every task:
+\    TASK:SEMAPHORE ITEMS       \ ITEMS ( -- TASK:sem )
+\    0 ITEMS TASK:SEMAPHORE-INIT
+: SEMAPHORE ( -- )
+   SEMAPHORE ;
+
+\ n is the initial count, 0..SEM_VALUE_MAX. Linux only.
+: SEMAPHORE-INIT ( n sem -- )
+   SEM-INIT ;
+
+\ Idempotent; the caller has already ended every waiter.
+: SEMAPHORE-DESTROY ( sem -- )
+   SEM-DESTROY ;
+
+\ Blocks until the count is positive, then decrements it.
+: WAIT ( sem -- )
+   SEM-WAIT ;
+
+\ Increments the count and wakes one waiter.
+: SIGNAL ( sem -- )
+   SEM-SIGNAL ;
 
 private
 

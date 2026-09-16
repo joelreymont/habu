@@ -60,6 +60,12 @@ TASK:FACILITY        ( -- )            \ define pthread mutex storage
 TASK:FACILITY-INIT   ( ptr a -- )
 TASK:GET             ( ptr a -- )
 TASK:RELEASE         ( ptr a -- )
+
+TASK:SEMAPHORE       ( -- )            \ define one counted semaphore
+TASK:SEMAPHORE-INIT  ( n TASK:sem -- ) \ n is the initial count
+TASK:SEMAPHORE-DESTROY ( TASK:sem -- )
+TASK:WAIT            ( TASK:sem -- )   \ block until positive, then decrement
+TASK:SIGNAL          ( TASK:sem -- )   \ increment and wake one waiter
 ```
 
 Use `TASK:KILL` for teardown. A task that loops must call `TASK:PAUSE` or block
@@ -76,6 +82,60 @@ Shared cells used across tasks must be 8-byte aligned. `atomic@`, `atomic!`,
 checked in `src/core/checker.f`. Unaligned atomic cells can fault on LSE
 hardware; align dictionary cells before sharing them.
 
+## Semaphores
+
+`TASK:SEMAPHORE` defines a counted semaphore over an unnamed POSIX semaphore,
+taking the SwiftForth word names and the VFX counted semantics
+([tasking-models.md](tasking-models.md) sections 1 and 3). It is the blocking
+primitive the facility and `TASK:PAUSE` do not provide: a task that waits for
+work calls `TASK:WAIT` and the kernel parks it, so no PAUSE loop burns a core.
+
+```forth
+TASK:SEMAPHORE ITEMS                  \ ITEMS ( -- TASK:sem )
+
+0 ITEMS TASK:SEMAPHORE-INIT           \ empty
+\ producer                            \ consumer, inside a task
+1 SLOT ! ITEMS TASK:SIGNAL             ITEMS TASK:WAIT SLOT @
+ITEMS TASK:SEMAPHORE-DESTROY
+```
+
+- The handle is `TASK:sem`, a nominal cell, and it is the only thing the
+  definition publishes: the child's `does>` body converts the record address to
+  the handle, so package TASK exposes no raw-address-to-handle crossing and
+  nothing outside it holds the record. The conversion costs no instructions.
+- The type is the first line of defence: a bare `( ptr a )` is refused at the
+  call site, so the record address a `TASK:FACILITY` also has cannot reach
+  `sem_wait`.
+- `TASK:SEMAPHORE-INIT` takes the initial count. A count below zero or above
+  `SEM_VALUE_MAX` is `E-TASK-SEM-COUNT`, and initializing a live semaphore again
+  is `E-TASK-SEM-STATE`.
+- Under the type, the record's first cell is a guard holding the record's OWN
+  address exactly while the POSIX object behind it is live. `TASK:WAIT` and
+  `TASK:SIGNAL` read that guard first, so a semaphore that was never
+  initialized and one that was destroyed both throw `E-TASK-SEM-STATE` instead
+  of entering `sem_wait` on memory POSIX does not define.
+- `TASK:SEMAPHORE-DESTROY` clears the guard before it destroys the object, and
+  destroying an inactive semaphore is a no-op. POSIX leaves destroying a
+  semaphore that still has blocked waiters undefined, so the owner signals its
+  waiters out first.
+- A waiting task is parked in the host call, so it observes no `TASK:HALT` until
+  something signals it. `TASK:KILL` on a task blocked in `TASK:WAIT` will not
+  return; signal the task, then kill it.
+- Unnamed POSIX semaphores are a Linux facility. Darwin's `sem_init` is a
+  deprecated `ENOSYS` stub - which is why SwiftForth opens NAMED semaphores
+  there - so `TASK:SEMAPHORE-INIT` throws `E-TASK-SEM-HOST` off Linux. That
+  branch is unexercised: the suite runs on Linux, so nothing here has ever
+  taken it. Darwin support means `sem_open`, not a fix to this guard.
+- A signal delivered while a task is parked interrupts `sem_wait` with `EINTR`
+  and consumes no count, so `TASK:WAIT` retries; any other failure is
+  `E-TASK-THREAD`.
+- `sem_init`, `sem_wait`, `sem_post` and `sem_destroy` are declared with
+  `FUNCTION:` over `PROCESS-SYMBOLS` in package TASK's private section, so
+  package FFI owns their symbol resolution and their bounded staging and this
+  module states only the prototypes and the `sem_t` extent. The pthread
+  bindings beside them still hand-stage through `TRUSTED:` and are retired by
+  `habu-ptx-m1-c-1df1d6e7`.
+
 ## Invariants
 
 - Tasks execute XTs only; they do not interpret source and do not compile.
@@ -89,6 +149,8 @@ hardware; align dictionary cells before sharing them.
 - `TASK:FACILITY` is owner-tracked pthread mutex storage, not a spin lock.
   `TASK:GET` is idempotent for the owning task; `TASK:RELEASE` is a no-op for a
   non-owner or an already-free facility.
+- A facility excludes, a semaphore counts. Hold a facility across shared updates;
+  wait on a semaphore for work to exist. Neither is a substitute for the other.
 
 ## Tests
 
@@ -104,7 +166,9 @@ bin/hb --load test/run-in-stack-smoke.f
 task-local `TASK:+USER` isolation via `TASK:HIS`, `TASK:SELF`, `TASK:HALT` /
 `TASK:KILL`, facility owner semantics, a five-task application-shaped repeated
 start/join soak, FFI from worker tasks, task-local FFI scratch isolation, the
-live-task compile guard, process-fatal worker `die`, and a contained worker
-`throw` beside a worker that completes and is joined.
+live-task compile guard, process-fatal worker `die`, a contained worker `throw`
+beside a worker that completes and is joined, a producer/consumer whose consumer
+blocks in `TASK:WAIT` without a PAUSE loop and reads 64 items in order, an
+initial count drawn without any signal, and every named semaphore failure.
 The full test suite includes these as `tasking-primitive-smoke` and
 `tasking-threads`.

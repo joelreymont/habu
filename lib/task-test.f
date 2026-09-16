@@ -36,6 +36,13 @@ TASK:MIN-STACK TASK:TASK APP-ACQ3
 TASK:MIN-STACK TASK:TASK APP-DET
 TASK:FACILITY TASK-LOCK
 TASK:FACILITY APP-LOCK
+TASK:MIN-STACK TASK:TASK SEM-CONSUMER
+TASK:MIN-STACK TASK:TASK SEM-TICKETER
+TASK:SEMAPHORE SEM-ITEMS
+TASK:SEMAPHORE SEM-SPACE
+TASK:SEMAPHORE SEM-TICKETS
+TASK:SEMAPHORE SEM-GATE
+TASK:SEMAPHORE SEM-COLD
 
 $4000 constant TASK-CAP
 60000 constant TASK-CAPTURE-MS       \ includes compiling lib/task.f in each child
@@ -46,6 +53,9 @@ $62 constant TASK-DIE-RC
 4 constant APP-ACQ-WANT
 APP-ITERS 10 * 5 + constant APP-FFI-WANT
 APP-ITERS 10 * 100 + constant APP-SHARED-WANT
+64 constant SEM-ITEM-N
+3 constant SEM-TICKET-N
+$80000000 constant SEM-OVER-MAX      \ SEM_VALUE_MAX + 1
 
 create TASK-OUT TASK-CAP allot
 create TASK-ERR TASK-CAP allot
@@ -66,6 +76,11 @@ variable APP-DET-DONE
 variable APP-SHARED
 variable APP-FFI-TOTAL
 variable APP-BAD
+variable SEM-SLOT
+variable SEM-GOT
+variable SEM-BAD
+variable SEM-DRAWN
+variable SEM-TICKET-DONE
 
 : TASK-WAIT-READY ( n -- ) {: want:n :}
    begin TASK-READY-CELL atomic@ want < while TASK:PAUSE repeat ;
@@ -301,6 +316,100 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    TASK-OK-CELL @ 2 T=
    WORKER-A TASK:KILL ;
 
+\ The consumer blocks inside TASK:WAIT - there is no PAUSE loop in this task -
+\ and the one-slot handshake makes every item it reads the one just written.
+: SEM-CONSUME ( -- )
+   SEM-ITEM-N 0 ?do
+      SEM-ITEMS TASK:WAIT
+      SEM-SLOT @ i 1 + <> if 1 SEM-BAD atomic-add drop then
+      1 SEM-GOT atomic-add drop
+      SEM-SPACE TASK:SIGNAL
+   loop ;
+
+: SEM-PRODUCE ( -- )
+   SEM-ITEM-N 0 ?do
+      SEM-SPACE TASK:WAIT
+      i 1 + SEM-SLOT !
+      SEM-ITEMS TASK:SIGNAL
+   loop ;
+
+: TASK-TEST-SEM-PIPE ( -- )
+   0 SEM-SLOT ! 0 SEM-GOT ! 0 SEM-BAD !
+   0 SEM-ITEMS TASK:SEMAPHORE-INIT
+   1 SEM-SPACE TASK:SEMAPHORE-INIT
+   ['] SEM-CONSUME SEM-CONSUMER TASK:ACTIVATE
+   SEM-PRODUCE
+   SEM-CONSUMER APP-WAIT-DONE
+   SEM-CONSUMER TASK:THROW@ 0 T=
+   SEM-GOT @ SEM-ITEM-N T=
+   SEM-BAD @ 0 T=
+   SEM-CONSUMER TASK:KILL
+   SEM-ITEMS TASK:SEMAPHORE-DESTROY
+   SEM-SPACE TASK:SEMAPHORE-DESTROY ;
+
+\ An initial count of SEM-TICKET-N is drawn without any signal; the draw after
+\ it blocks on an empty semaphore until the main task signals once.
+: SEM-DRAW ( -- )
+   SEM-TICKET-N 0 ?do
+      SEM-TICKETS TASK:WAIT
+      1 SEM-DRAWN atomic-add drop
+   loop
+   SEM-GATE TASK:WAIT
+   1 SEM-TICKET-DONE atomic-add drop ;
+
+: TASK-TEST-SEM-COUNT ( -- )
+   0 SEM-DRAWN ! 0 SEM-TICKET-DONE !
+   SEM-TICKET-N SEM-TICKETS TASK:SEMAPHORE-INIT
+   0 SEM-GATE TASK:SEMAPHORE-INIT
+   ['] SEM-DRAW SEM-TICKETER TASK:ACTIVATE
+   SEM-DRAWN SEM-TICKET-N APP-WAIT-CELL
+   SEM-TICKET-DONE @ 0 T=
+   SEM-GATE TASK:SIGNAL
+   SEM-TICKETER APP-WAIT-DONE
+   SEM-DRAWN @ SEM-TICKET-N T=
+   SEM-TICKET-DONE @ 1 T=
+   SEM-TICKETER TASK:THROW@ 0 T=
+   SEM-TICKETER TASK:KILL
+   SEM-TICKETS TASK:SEMAPHORE-DESTROY
+   SEM-GATE TASK:SEMAPHORE-DESTROY ;
+
+\ Every named semaphore failure: an uninitialized handle, a count outside
+\ 0..SEM_VALUE_MAX either way, a second init of a live semaphore, and a handle
+\ whose object has been destroyed. Destroying twice is the documented no-op.
+: TASK-TEST-SEM-NEGATIVE ( -- )
+   [: SEM-COLD TASK:WAIT ;] E-TASK-SEM-STATE TTHROWSQ
+   [: SEM-COLD TASK:SIGNAL ;] E-TASK-SEM-STATE TTHROWSQ
+   [: -1 SEM-COLD TASK:SEMAPHORE-INIT ;] E-TASK-SEM-COUNT TTHROWSQ
+   [: SEM-OVER-MAX SEM-COLD TASK:SEMAPHORE-INIT ;] E-TASK-SEM-COUNT TTHROWSQ
+   0 SEM-COLD TASK:SEMAPHORE-INIT
+   [: 0 SEM-COLD TASK:SEMAPHORE-INIT ;] E-TASK-SEM-STATE TTHROWSQ
+   SEM-COLD TASK:SEMAPHORE-DESTROY
+   SEM-COLD TASK:SEMAPHORE-DESTROY
+   [: SEM-COLD TASK:WAIT ;] E-TASK-SEM-STATE TTHROWSQ
+   [: SEM-COLD TASK:SIGNAL ;] E-TASK-SEM-STATE TTHROWSQ ;
+
+\ The handle is nominal, so the raw record address a TASK:FACILITY also has is
+\ refused before it can reach sem_wait - the guard cell is the second line.
+: TASK-TEST-SEM-TYPES ( -- )
+   s" TASK-SEM-OK ( TASK:sem -- ) TASK:WAIT"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-SEM-PTR ( ptr n -- ) TASK:WAIT"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-SEM-RAW ( n -- ) TASK:WAIT"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-SEM-OUT ( TASK:sem -- n ) TASK:WAIT"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-SIG-PTR ( ptr n -- ) TASK:SIGNAL"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-SEM-DEF ( -- TASK:sem ) SEM-COLD"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-SEM-DEF-PTR ( -- ptr n ) SEM-COLD"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-SEM-INIT-OK ( n TASK:sem -- ) TASK:SEMAPHORE-INIT"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-SEM-INIT-SWAP ( TASK:sem n -- ) TASK:SEMAPHORE-INIT"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : TASK-TEST-CALLBACK-TYPES ( -- )
    s" TASK-CB-GOOD ( [ -- ] ptr n -- ) TASK:ACTIVATE"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -323,6 +432,7 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    T-RESET
    TASK-TEST-CALLBACK-TYPES
    TASK-TEST-THROW-TYPES
+   TASK-TEST-SEM-TYPES
    0 TASK-COUNT !
    0 TASK-READY-CELL !
    0 TASK-SELF-A !
@@ -351,6 +461,9 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    TASK-TEST-WORKER-DIE
    TASK-TEST-WORKER-THROW
    TASK-TEST-THROW-CLEARED
+   TASK-TEST-SEM-PIPE
+   TASK-TEST-SEM-COUNT
+   TASK-TEST-SEM-NEGATIVE
    T-REPORT ;
 
 TASK-TEST-RUN
