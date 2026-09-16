@@ -8447,3 +8447,35 @@ went dead, the aggregate budget refusing first. When one constant bounds another
 across a load-order seam that forbids deriving it, state the inequality and gate
 it; test/aot-data-sites.f now asserts it under "the section budget admits a full
 code band" (2026-09-16).
+
+The engine self-build is not syscall-bound and never was. First profile of it
+(2026-09-16, 138.9 s for 5354 certified words, engine built from 55c370b3):
+`strace -c -f` counts 293,464 syscalls — 175,409 mprotect, 55,064 mmap, 54,589
+munmap — for 0.094 s of kernel time, 0.07% of the build. The narrow
+write-xor-execute bands (habu1.f PROT:LOPEN/LGROW/LCLOSE) already cost nothing
+worth measuring; do not open that file again looking for build time. The build
+is the compiler executing its own compiled code, and `perf record -F 2000` over
+one build attributes it: `IR-ARENA:RD@` 15.6%, `ptr-field` 9.3%, `(PROT-SPAN)`
+5.0%, `cell+` 3.6%, `IR-ARENA:RD-SIZE` 2.5%, 15.6% in target code freshly
+compiled into the window, and 22.3% of all samples inside engine-primitive
+bodies entered by a BL.
+
+Two defects in what tier 1 emits explain most of that, and they compound
+because the compiler is itself tier-1 output. First, 43,153 adjacent
+`ldr xN,[sp,#K]` / `str xN,[sp,#K]` pairs sit in the 2.23 MB baked region —
+15.4% of all baked code and 9.3% of every sample in the build; in 38,798 of
+them the loaded register is overwritten by the very next instruction, so both
+instructions are dead. They are 48 of the 202 instructions of `RD@`, the
+hottest word in the build. Reproduce in one run: under `1 set-tier`, a word
+whose locals stay live across a call (`{: a:n b:n :}`, then `b HELP {: c:n :}`,
+then a guarded `if ... throw then`) emits the whole live-local set as
+reload-then-store-back at each call and each join. `src/compiler/native/`
+regalloc.f MB-PLAN-STORES plans a P-STORE for a result already in slot k while
+MB-PLAN-LOADS1 plans a P-RELOAD for the operand in that same slot k, and
+spill.f materializes both; neither side asks whether source and destination
+slot are the same. Second, trivial engine primitives are called rather than
+inlined: `cell-view`'s entire body is one `ret` and calls to it still took 1.3%
+of the build, `ptr-field` (9 instructions) 9.3%, `cell+` (6 instructions) 3.6%.
+Measure a word's generated code before believing a source-level cost model —
+`XREF-START`/`XREF-CODE-BYTES` plus `objdump -b binary -m aarch64` disassembles
+any baked word straight out of a running engine.
