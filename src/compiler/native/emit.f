@@ -88,6 +88,10 @@ A64IR-OPCODE:FDSTORE   A64IR:ORD constant O-FDSTORE
 A64IR-OPCODE:TRAP      A64IR:ORD constant O-TRAP
 A64IR-OPCODE:FLAGI     A64IR:ORD constant O-FLAGI
 A64IR-OPCODE:CMPBRI    A64IR:ORD constant O-CMPBRI
+A64IR-OPCODE:RESERVE   A64IR:ORD constant O-RESERVE
+A64IR-OPCODE:RELEASE   A64IR:ORD constant O-RELEASE
+A64IR-OPCODE:LINKSAVE  A64IR:ORD constant O-LINKSAVE
+A64IR-OPCODE:LINKLOAD  A64IR:ORD constant O-LINKLOAD
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -132,6 +136,17 @@ variable EM-NCALL
 variable EM-TAIL                     \ branches out of the routine this emission wrote
 0 EM-TAIL !
 variable EM-LAST                     \ the form of the last operation it wrote
+\ WHETHER THIS FUNCTION'S FRAME IS ONE INSTRUCTION AT EACH END, decided HERE and
+\ not in the selector. AArch64 writes the base register back as part of a load
+\ or a store, and A64FRAME puts the link at the frame's base, so a frame that
+\ keeps only the link is taken and given back by the transfer itself. The
+\ decision waits for the emitter because the frame is not final until then: the
+\ spill fixpoint raises it every time the allocator takes another slot, and a
+\ frame that outgrows the nine-bit writeback field has to go back to the pair.
+\ By this pass the module is the one being written, so the size it carries is
+\ the size the instruction will hold.
+variable EM-FUSED                    \ nonzero when this function's frame is fused
+variable EM-FRAME                    \ ...and the bytes both of its ends move
 -1 EM-LAST !
 
 \ ---- where this routine will be written --------------------------------------
@@ -518,6 +533,17 @@ variable N-FUNS                        \ how many functions the emission holds
    {: id:IR-ID:ir-op-id :}
    A64EFF:LINK-GPR  A64EFF:SP-GPR  id SLOT-OFF  ENC-LDR ;
 
+\ The same two transfers with the frame move folded in. The offset is the whole
+\ frame and the transfer lands at its base, which is where A64FRAME puts the
+\ link, so one writeback does what the pair did. Neither reads the frame off
+\ the operation: the load end is a linkload, which carries the slot and not the
+\ size, so both take the size this function's shape was decided from.
+: WORD-LNKPUSH ( -- n )
+   A64EFF:LINK-GPR  A64EFF:SP-GPR  EM-FRAME @ negate  ENC-STRPRE ;
+
+: WORD-LNKPOP ( -- n )
+   A64EFF:LINK-GPR  A64EFF:SP-GPR  EM-FRAME @  ENC-LDRPOST ;
+
 \ ---- the condition a comparison is made under --------------------------------
 : COND-OF ( IR-ID:ir-op-id -- n )
    0 BND-COND @ ATTR-INT ;
@@ -715,11 +741,35 @@ variable N-FUNS                        \ how many functions the emission holds
    id 0 BND-DBYTES @ DZERO1
    id 0 BND-DBACK @ DZERO1 + ;
 
+\ The selector's prologue is a reserve opening the entry block with the link
+\ save right behind it; nothing else produces that pair. A reserve the spill
+\ pass inserted for a routine that only spills has no link save after it and
+\ stays two plain pointer moves.
+: FRAME-SHAPE! ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   0 EM-FUSED !  0 EM-FRAME !
+   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 2 < if exit then
+   bk 0 OP-AT {: r:IR-ID:ir-op-id :}
+   r SLOT-AT O-RESERVE <> if exit then
+   bk 1 OP-AT SLOT-AT O-LINKSAVE <> if exit then
+   r FRAME-SIZE {: size:n :}
+   size A64FRAME:FUSED? 0= if exit then
+   size EM-FRAME !  1 EM-FUSED ! ;
+
+\ The second half of a fused end writes nothing: its work is in the first.
+: FUSED-SILENT? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   EM-FUSED @ 0= if false exit then
+   id SLOT-AT {: k:n :}
+   k O-LINKSAVE = k O-RELEASE = or ;
+
 : OP-INSNS ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT INSNS-OF
    id home FALL-THRU? if 1- then
    id SELF-MOV? if 1- then
+   id FUSED-SILENT? if 1- then
    id DZERO-MOVES - ;
 
 : BLOCK-INSNS ( IR-ID:ir-block-id n -- n )
@@ -741,6 +791,7 @@ variable N-FUNS                        \ how many functions the emission holds
    {: id:IR-ID:ir-op-id :}
    id SLOT-AT INSNS-OF
    id SELF-MOV? if 1- then
+   id FUSED-SILENT? if 1- then
    id DZERO-MOVES -
    0= ;
 
@@ -1111,6 +1162,31 @@ variable CH-AT
    \ relocation map; the link is dead because this primitive exits the process.
    id  id TRAP-ADDR  PLACEMENT-CK -  INSN-BYTES /  N-INS @ -  BL-WORD  APPEND ;
 
+\ ---- the two ends of the frame ----------------------------------------------
+\ The fused end writes its instruction at the FIRST operation of its pair and
+\ nothing at the second, so the instruction keeps the position the operation
+\ that opens or closes the bracket had. An op that writes nothing gets no
+\ source-map row, for the reason an elided copy gets none.
+: PUT-RESERVE ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   EM-FUSED @ 0<> if id WORD-LNKPUSH APPEND exit then
+   id  id WORD-RESERVE  APPEND ;
+
+: PUT-LINKSAVE ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   EM-FUSED @ 0<> if exit then
+   id  id WORD-LNKSTR  APPEND ;
+
+: PUT-LINKLOAD ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   EM-FUSED @ 0<> if id WORD-LNKPOP APPEND exit then
+   id  id WORD-LNKLDR  APPEND ;
+
+: PUT-RELEASE ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   EM-FUSED @ 0<> if exit then
+   id  id WORD-RELEASE  APPEND ;
+
 \ An elided copy gets no source-map row, for the reason an elided branch gets none.
 : PUT-MOV ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
@@ -1149,8 +1225,8 @@ variable CH-AT
       mvn      OF id  id WORD-MVN  APPEND ENDOF
       store    OF id  id WORD-STORE  APPEND ENDOF
       load     OF id  id WORD-LOAD  APPEND ENDOF
-      reserve  OF id  id WORD-RESERVE  APPEND ENDOF
-      release  OF id  id WORD-RELEASE  APPEND ENDOF
+      reserve  OF id PUT-RESERVE ENDOF
+      release  OF id PUT-RELEASE ENDOF
       dtake    OF id PUT-DTAKE ENDOF
       dload    OF id  id WORD-DLOAD  APPEND ENDOF
       dstore   OF id  id WORD-DSTORE  APPEND ENDOF
@@ -1175,8 +1251,8 @@ variable CH-AT
       cmpbri   OF id home PUT-CMPBRI ENDOF
       call     OF id PUT-CALL ENDOF
       wordcall OF id PUT-WORD-CALL ENDOF
-      linksave OF id  id WORD-LNKSTR  APPEND ENDOF
-      linkload OF id  id WORD-LNKLDR  APPEND ENDOF
+      linksave OF id PUT-LINKSAVE ENDOF
+      linkload OF id PUT-LINKLOAD ENDOF
       ret      OF id  ENC-RET  APPEND ENDOF
       fadd     OF id  id TRIPLE ENC-FADD  APPEND ENDOF
       fsub     OF id  id TRIPLE ENC-FSUB  APPEND ENDOF
@@ -1427,6 +1503,7 @@ public
       dup i cells F-START + !
       i FUN-AT {: f:IR-ID:ir-fun-id :}
       f ORDER-BLOCKS
+      f FRAME-SHAPE!
       f over LAYOUT
       drop LAY-AT @
    loop
@@ -1436,6 +1513,7 @@ public
    N-FUNS @ 0 ?do
       i FUN-AT {: f:IR-ID:ir-fun-id :}
       f ORDER-BLOCKS
+      f FRAME-SHAPE!
       f  i cells F-START + @  LAYOUT
       i cells F-START + @ N-INS @ <> if E-A64EMIT-LAYOUT throw then
       f WALK
@@ -1498,6 +1576,8 @@ variable SCAN-K
    0 EM-IFACE !
    0 EM-NCALL !
    0 EM-TAIL !
+   0 EM-FUSED !
+   0 EM-FRAME !
    -1 EM-LAST !
    m BND-MODULE-CK
    c TARGET-CK

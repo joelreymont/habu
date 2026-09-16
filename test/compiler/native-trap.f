@@ -389,8 +389,8 @@ $1F constant REG-MASK
    loop ;
 
 \ And how many move the MACHINE stack pointer, which is what a routine's own
-\ frame costs: the reserve subtracts from it and the release adds back. Both
-\ name operand 31 as source and destination, where that operand is the stack
+\ frame costs: it is taken once and given back once. The ADD/SUB immediate form
+\ names operand 31 as source and destination, where that operand is the stack
 \ pointer rather than the zero register. A routine with no frame emits neither,
 \ so this counting zero is what "frameless" is as bytes.
 : SPMOVE-WORD? ( n -- bool )
@@ -399,10 +399,36 @@ $1F constant REG-MASK
    w REG-MASK and A64EFF:SP-GPR <> if false exit then
    w 5 rshift REG-MASK and A64EFF:SP-GPR = ;
 
+\ THE OTHER WAY THE POINTER MOVES, and the one a frame that keeps only the link
+\ register uses: AArch64 writes the base register back as part of the transfer,
+\ so `str x30,[sp,#-16]!` is the whole of taking the frame and `ldr x30,[sp],#16`
+\ the whole of giving it back. Counting only the ADD/SUB form would read such a
+\ routine as frameless, which is why the count asks for BOTH spellings: what the
+\ case below claims is that the pointer moves twice, not which instructions say
+\ so. Mode bits 11:10 are 00 for the plain unscaled access that moves nothing,
+\ 01 for post-index and 11 for pre-index, so a spill slot read off sp is not
+\ one of these.
+$FFE00000 constant WB-CLASS-MASK     \ the opcode bits of an unscaled 64-bit access
+$F8000000 constant WB-STORE-OP
+$F8400000 constant WB-LOAD-OP
+$00000C00 constant WB-MODE-MASK
+
+: WBMOVE-WORD? ( n -- bool )
+   {: w:n :}
+   w WB-CLASS-MASK and {: op:n :}
+   op WB-STORE-OP =  op WB-LOAD-OP =  or 0= if false exit then
+   w WB-MODE-MASK and 0= if false exit then
+   w 5 rshift REG-MASK and A64EFF:SP-GPR = ;
+
+: SPMOVE-ANY? ( n -- bool )
+   {: w:n :}
+   w SPMOVE-WORD? if true exit then
+   w WBMOVE-WORD? ;
+
 : SPMOVES-IN-EMISSION ( -- n )
    0
    CODE-INSNS 0 ?do
-      i CODE-WORD@ SPMOVE-WORD? if 1+ then
+      i CODE-WORD@ SPMOVE-ANY? if 1+ then
    loop ;
 
 \ ---- two routines, one target ------------------------------------------------
@@ -540,8 +566,9 @@ variable CHILD-RC
    EMISSION-CODE ;
 
 \ The same routine's calling sibling, which is the contrast that makes the case
-\ above say something: a body that calls and DOES come back reserves a frame and
-\ gives it back, so its emission moves the machine stack pointer exactly twice.
+\ above say something: a body that calls and DOES come back takes a frame and
+\ gives it back, so its emission moves the machine stack pointer exactly twice --
+\ in the two writeback transfers that save and restore the link register.
 \ `abs` is an external primitive, so this really is a call.
 : COMPILED-CALL-BYTES-CASE ( -- )
    s" : NTC ( n -- n ) abs 1 + ;" EV

@@ -40,8 +40,9 @@
 \ WHAT THE COUNTS MEAN. Bytes and instructions are the whole baked span
 \ (XREF-CODE-BYTES). `bl` counts branch-with-link instructions - every call the
 \ tier did not fold. `ldr-sp` and `str-sp` count 64-bit loads and stores whose
-\ base register is the stack pointer: the frame traffic a register allocator
-\ spends on spills, reloads and locals. `mov` counts register-to-register moves
+\ base register is the stack pointer, in BOTH the scaled and the unscaled
+\ spelling: the frame traffic a register allocator spends on spills, reloads and
+\ locals, plus the two transfers a writeback frame is made of. `mov` counts register-to-register moves
 \ (`orr xD,xzr,xS`), which is what a copy between two allocation classes costs
 \ once neither end lives in the frame - the register-level twin of the
 \ frame-slot copy that src/compiler/native/regalloc.f MB-IDENTITY-COPY? already
@@ -71,6 +72,13 @@ $94000000 constant BL-BITS
 $FFC00000 constant LS-MASK
 $F9400000 constant LDR-BITS        \ ldr xT,[xN,#imm12]
 $F9000000 constant STR-BITS        \ str xT,[xN,#imm12]
+\ The same two accesses in the unscaled signed field, which is where a frame
+\ that moves the pointer in the transfer itself is written: `str x30,[sp,#-16]!`
+\ and `ldr x30,[sp],#16`. Counting only the scaled form above would read such a
+\ frame as no frame traffic at all, so both spellings are one column.
+$FFE00000 constant LSU-MASK
+$F8400000 constant LDU-BITS        \ ldur/ldr xT,[xN],#imm9 / [xN,#imm9]!
+$F8000000 constant STU-BITS
 $3E0 constant RN-MASK              \ bits 9:5, the base register
 31 constant RN-SP                  \ x31 in a load/store base is sp
 $FFE0FFE0 constant MOV-MASK        \ orr xD,xzr,xS with both registers free
@@ -170,10 +178,14 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 : SP-BASED? ( n -- bool ) RN-MASK and 5 rshift RN-SP = ;
 
 : LDR-SP? ( n -- bool ) {: w :}
-   w LS-MASK and LDR-BITS = w SP-BASED? and ;
+   w SP-BASED? 0= if false exit then
+   w LS-MASK and LDR-BITS = if true exit then
+   w LSU-MASK and LDU-BITS = ;
 
 : STR-SP? ( n -- bool ) {: w :}
-   w LS-MASK and STR-BITS = w SP-BASED? and ;
+   w SP-BASED? 0= if false exit then
+   w LS-MASK and STR-BITS = if true exit then
+   w LSU-MASK and STU-BITS = ;
 
 : MOV? ( n -- bool ) MOV-MASK and MOV-BITS = ;
 

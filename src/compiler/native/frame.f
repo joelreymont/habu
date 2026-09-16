@@ -28,6 +28,25 @@ public
 : LINK-SLOT ( -- n )
    LINK-IX A64IR:SLOT-WIDTH * ;
 
+private
+
+\ AArch64 writes the base register back as part of a load or a store, and the
+\ link lives at LINK-SLOT, which is the frame's base. So a frame that keeps
+\ only the link register is taken and given back by the transfer itself: `str
+\ x30,[sp,#-frame]!` opens it and `ldr x30,[sp],#frame` closes it. The
+\ writeback offset is nine SIGNED bits of BYTES, so a wider frame still takes
+\ the reserve/release pair at each end -- measured 2026-09-16 over the engine's
+\ own image, 30 of 9,068 frames.
+$100 constant WRITEBACK-MAX          \ one past the widest offset the field holds
+
+public
+
+\ THE ONE PLACE THAT DECIDES IT. The selector emits the fused form from here and
+\ the register-allocation verifier expects it from here, so the two cannot
+\ disagree about which shape a routine's frame has.
+: FUSED? ( n -- bool )
+   WRITEBACK-MAX < ;
+
 \ Frame accesses below this offset are the prologue's; this and above are spills.
 : SPILL-BASE ( A64EFF:traits A64EFF:link -- n )
    PROLOGUE-SLOTS A64IR:SLOT-WIDTH * ;
