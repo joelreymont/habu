@@ -290,6 +290,45 @@ variable HELD-N
    s" and its buffer takes nothing more" T-LABEL
    MEM-OUT-N @ 0 T= ;
 
+\ ---- a close operation that throws still gives the row back -----------------
+\ A close that fails is how a device normally dies: TCP-CLOSE answers
+\ E-GENIO-IO when the descriptor is already gone. The caller has to hear it,
+\ and the row has to come back anyway -- held in CLOSING it would be neither
+\ live nor free for the life of the process, and the whole table would bleed a
+\ row per failed close.
+
+variable BAD-CLOSES
+variable BAD-DEV
+
+: BAD-CLOSE ( -- )
+   BAD-CLOSES @ 1+ BAD-CLOSES !
+   GENIO:E-IO throw ;
+
+: BAD-BUILD ( -- GENIO:device )
+   [: MEM-PUT ;] [: MEM-KEY ;] [: MEM-READY? ;] [: MEM-READ ;]
+   [: MEM-WRITE ;] [: MEM-ACCEPT ;] [: MEM-FLUSH ;] [: BAD-CLOSE ;]
+   MEM-MARK GENIO:DEVICE ;
+
+: CLOSE-BAD ( -- )
+   BAD-DEV @ GENIO:>DEVICE GENIO:CLOSE ;
+
+: T-CLOSE-THROWS ( -- )
+   MEM-RESET
+   0 BAD-CLOSES !
+   FILL-TABLE {: before:n :}
+   RELEASE-HELD
+   BAD-BUILD GENIO:DEVICE>N BAD-DEV !
+   s" a close operation's error reaches the caller" T-LABEL
+   [: CLOSE-BAD ;] GENIO:E-IO TTHROWSQ
+   s" and the close operation did run" T-LABEL
+   BAD-CLOSES @ 1 T=
+   s" the handle is dead afterwards" T-LABEL
+   [: CLOSE-BAD ;] GENIO:E-STATE TTHROWSQ
+   FILL-TABLE {: after:n :}
+   s" and the row came back: the whole table is available again" T-LABEL
+   after before T=
+   RELEASE-HELD ;
+
 \ ---- WITH-IO ----------------------------------------------------------------
 
 : BOOM ( -- )
@@ -447,8 +486,9 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER MY-SLOT drop
    COLLISIONS @ 0 T=
    s" and they really did build devices" T-LABEL
    BUILDS @ 0 > TTRUE
+   FILL-TABLE {: after:n :}
    s" and the table is back to the size it started at" T-LABEL
-   FILL-TABLE before T=
+   after before T=
    RELEASE-HELD ;
 
 \ ---- a REPL over a loopback TCP connection ----------------------------------
@@ -595,6 +635,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER MY-SLOT drop
    T-ROWS-RECLAIMED
    T-TABLE-FULL
    T-CLOSED-CURRENT
+   T-CLOSE-THROWS
    T-CONCURRENT-REGISTRY
    T-WITH-IO
    T-TASK-INHERITS

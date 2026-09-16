@@ -33,6 +33,10 @@ budget: open and close as many devices as the program needs. Closing bumps the
 row's generation, so a handle minted before the close is **refused with
 `E-GENIO-STATE`** by `GENIO:CLOSE`, `GENIO:OUTPUT!`, `GENIO:INPUT!` and
 `GENIO:WITH-IO` instead of being routed to whatever device took the row next.
+**A close operation that throws still gives the row back**, and its error is
+raised afterwards: a failed close is how a device normally dies — `TCP-CLOSE`
+answers `E-GENIO-IO` when the descriptor is already gone — and a server that
+lost connections badly must not lose a row each time.
 Re-registering a reused row re-declares the same engine cell, which the mark
 path answers from its index, so reclaiming a row does not move the cost into
 the declared-address table.

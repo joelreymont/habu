@@ -422,6 +422,24 @@ private
    INSTALL-TERMINAL
    IN-PTR @ LIVE-ROW ;
 
+\ ---- retiring a row ---------------------------------------------------------
+
+\ The close operation runs for the row CLOSE published in ACTIVE-CELL, which is
+\ how this reaches it with no local of its own: a quotation cannot reference
+\ one (docs/forth.md), and the operation has to run under `catch`.
+: RUN-CLOSE-OP ( -- )
+   ACTIVE-ROW OP-CLOSE @ execute ;
+
+\ Everything the row was, undone, ending with the release: the generation has
+\ to be visible before another task can take the row.
+: RETIRE-ROW ( n -- ) {: idx:n :}
+   0 idx ENGINE-ROW !
+   OUT-PTR @ idx = if 0 OUT-PTR ! then
+   IN-PTR @ idx = if 0 IN-PTR ! then
+   0 idx SLOT-STATE !
+   0 idx SLOT-FAULT !
+   idx RELEASE-ROW ;
+
 public
 
 \ EMIT and TYPE raise the funnel's guard for the same reason the funnel does:
@@ -510,20 +528,23 @@ public
 \ rather than routed to somebody else's connection. Closing the terminal is a
 \ no-op and never frees row 0. A device that was this task's current input or
 \ output leaves it on the terminal.
+\
+\ THE ROW IS RELEASED WHETHER THE OPERATION RETURNS OR THROWS, and the error
+\ is raised afterwards. A close that fails is the ordinary way a device dies --
+\ TCP-CLOSE answers E-GENIO-IO when the descriptor is already gone -- and the
+\ row must not be the casualty: held in CLOSING it would be neither live, so
+\ every handle refuses it, nor free, so no device could take it, for the life
+\ of the process. The caller still hears what went wrong; it simply no longer
+\ costs a row to hear it.
 : CLOSE ( device -- )
    ROW {: idx:n :}
    idx TERMINAL-ROW <> if idx CLAIM-CLOSE then
    ACTIVE-PTR @ {: prev:n :}
    idx ACTIVE-PTR !
-   idx OP-CLOSE @ execute
+   [: RUN-CLOSE-OP ;] catch {: code:n :}
    prev ACTIVE-PTR !
-   idx TERMINAL-ROW = if exit then
-   0 idx ENGINE-ROW !
-   OUT-PTR @ idx = if 0 OUT-PTR ! then
-   IN-PTR @ idx = if 0 IN-PTR ! then
-   0 idx SLOT-STATE !
-   0 idx SLOT-FAULT !
-   idx RELEASE-ROW ;
+   idx TERMINAL-ROW <> if idx RETIRE-ROW then
+   code 0 <> if code throw then ;
 
 private
 
