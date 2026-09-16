@@ -1,20 +1,31 @@
-\ Plant and verify canaries in the live return-stack band before APP-IMAGE:SAVE.
-\ The parent reads the saved DATA bytes and requires the entire band to be zero.
+\ Plant and verify canaries in the live return stack before APP-IMAGE:SAVE.
+\ The stack is a guarded mapping outside DATA (src/habu/stack-abi.f), so the
+\ parent proves the image carries neither canary and zero base cells.
+require lib/memory.f
+require src/habu/stack-abi.f
+require test/snapshot-writer-poison-canaries.f
 
 package SNAP-WRITER-POISON
 
-$5253544B4C4F0001 constant LO-CANARY   \ "RSTKLO" + 1
-$5253544B48490002 constant HI-CANARY   \ "RSTKHI" + 2
+\ The live return stack: the mapping the engine published in its base cell.
+: RETURN-STACK ( -- ptr u8 )
+   data-base STACK-ABI:RETURN-BASE-CELL + @ MEM-MAPPED>PTR ;
+
+\ The bottom slot is free at the top level (depth 0) and the top slot is never
+\ reached by a fixture this shallow. The planted values are the constants
+\ inverted, so the constants' own cells in DATA never match the parent's scan.
+: LO-SLOT ( -- ptr n ) RETURN-STACK CELL-VIEW ;
+: HI-SLOT ( -- ptr n ) RETURN-STACK STACK-ABI:RETURN-BYTES 8 - + CELL-VIEW ;
 
 : PLANT ( -- )
-   LO-CANARY data-base RSTK-OFF + !
-   HI-CANARY data-base RSTK-END 8 - + ! ;
+   LO-CANARY invert LO-SLOT !
+   HI-CANARY invert HI-SLOT ! ;
 
 : PROVE-PLANTED ( -- )
-   data-base RSTK-OFF + @ LO-CANARY <> if
+   LO-SLOT @ LO-CANARY invert <> if
       s" snapshot writer low return-stack poison failed" 70 die
    then
-   data-base RSTK-END 8 - + @ HI-CANARY <> if
+   HI-SLOT @ HI-CANARY invert <> if
       s" snapshot writer high return-stack poison failed" 70 die
    then ;
 

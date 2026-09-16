@@ -5,6 +5,8 @@ require lib/test.f
 require src/habu/address-cells.f
 require lib/fmt.f
 require lib/memory.f
+require src/habu/stack-abi.f
+require test/snapshot-writer-poison-canaries.f
 require lib/fs-mutate.f
 require lib/process-env.f
 require lib/engine-candidate.f
@@ -84,11 +86,25 @@ variable IMGU
    TRAILER-OFF {: tr:n :}
    tr tr SNAP-TRL-DATALEN + U64@ - ;
 
-: RSTK-ZERO? ( -- bool )
-   DATA-OFF RSTK-OFF + {: start:n :}
-   RSTK-END RSTK-OFF - 0 ?do
-      start i + U8@ 0<> if false unloop exit then
-   loop true ;
+\ The return and loop stacks are guarded mappings outside DATA, so the image
+\ carries no return-stack window at all: their base cells must be zero (each
+\ run maps its own), and the values the poison fixture planted in the live
+\ return stack (the canary constants inverted) must not appear anywhere in the
+\ persisted DATA payload.
+: STACK-BASES-ZERO? ( -- bool )
+   DATA-OFF STACK-ABI:RETURN-BASE-CELL + U64@ 0=
+   DATA-OFF STACK-ABI:LOOP-BASE-CELL + U64@ 0= and ;
+
+: DATA-LEN ( -- n )
+   TRAILER-OFF SNAP-TRL-DATALEN + U64@ ;
+
+: CANARIES-ABSENT? ( -- bool )
+   DATA-OFF DATA-LEN + 8 - DATA-OFF ?do
+      i U64@ {: v:n :}
+      v SNAP-WRITER-POISON:LO-CANARY invert = v SNAP-WRITER-POISON:HI-CANARY invert = or if
+         false unloop exit
+      then
+   8 +loop true ;
 
 \ ---- child snapshot build with rc + stderr capture ----
 : CAPTURE! ( result<pcap:captured,pcap:failed> -- )
@@ -315,8 +331,10 @@ variable BAND-WID
    RC @ 0 T=
    SNAP0$ EXISTS? TTRUE
    SNAP0$ LOAD-IMAGE
-   s" snapshot zeros the persisted return-stack window" T-LABEL
-   RSTK-ZERO? TTRUE
+   s" snapshot carries no return stack: base cells zero" T-LABEL
+   STACK-BASES-ZERO? TTRUE
+   s" the live return-stack canaries are absent from the image" T-LABEL
+   CANARIES-ABSENT? TTRUE
    WARM-CASE
    s" imgdump accepts the production snapshot" T-LABEL
    SNAP0$ ASSERT-SNAPSHOT
