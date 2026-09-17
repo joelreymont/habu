@@ -533,6 +533,15 @@ local-binding restriction.
   (`TK-ENUM`) from **bare variant names only** — it takes no arity token and no
   `VARIANT` keyword (either rejects, throw 7101). Optional `POLICY` and `DERIVE`
   headers must precede the first variant. Use `SUMTYPE` for payloads.
+- **A package-owned family's generated words are spelled `PKG-FAMILY:tail`, with
+  every hyphen in the family name doubled.** `SUMTYPE read-result` inside
+  `package TCP4` constructs through `TCP4-READ--RESULT:data`, and a `PRODUCT`
+  `captured` inside `package PCAP` unmakes through `PCAP-CAPTURED:UNMAKE`. The
+  qualifier is the generated name, not the owning package, so `SIGNAL-RESULT:signal`
+  and `SIGNAL:signal` are both `E-UNDEFINED`. External stack effects and `MATCH`
+  still name the family as `PKG:family` (`( -- TCP4:read-result )`,
+  `MATCH TCP4:read-result`), and a body inside the owning package writes the bare
+  family name in `MATCH`.
 - `DERIVE eq` / `DERIVE hash` on a public arity-0 family generates the
   corresponding operations; clauses follow the family name on `ENUM` and the
   arity on `SUMTYPE`/`PRODUCT`. Distinct features may use one or several clauses;

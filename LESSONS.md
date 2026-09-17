@@ -8922,3 +8922,42 @@ nothing to act on and the count that broke it was invisible. One stderr line -
 what filled up, the count it saw, the ceiling and how the ceiling was arrived at
 - is the whole fix, and `lib/ffi-abi.f`'s `REPORT-FULL` already had the shape to
 copy.
+
+## 2026-09-17 - a new package in a prefix file needs a stage host of its own
+
+- **A host engine cannot build a tree whose prefix file gained a package the host
+  does not carry: stage the layout change by itself first.** `src/habu/crash.f`
+  `EMIT-SIGNAL-HANDLER` names `SIGNAL-ABI:FD-CELL`, declared one commit earlier in
+  `src/habu/layout.f`. Building that tree with a host from before the declaration
+  failed inside the certify, not the compile: `certify: stage2-src rejected rc 70`,
+  `E-UNDEFINED habu: in emit-signal-handler: undefined word 'SIGNAL-ABI:FD-CELL'`,
+  then `build-fixpoint: failed: uncaught throw code -2805` (`E-BUILD-CERTIFY`). The
+  generated stage source rewinds onto the HOST's prefix and carries no copy of it,
+  so a name the host's prefix never registered is undefined there however plainly
+  the tree declares it. The repair is two builds, not a mirror: install an engine
+  from a commit that adds the layout declaration ALONE, then build the tree that
+  uses it with that engine. It is the stage-source twin of the host-side rule
+  under "a build's host-side layout is the host's, not the tree's"; `bin/` is
+  ignored, so a fresh `jj` workspace starts with no engine at all and seeds from
+  the repository root's.
+
+## 2026-09-17 - the engine's published cells belong to the main task
+
+- **A spawned task reads zero at every DATA cell `TASK-REGION-INIT` does not name,
+  and dereferencing a published POINTER read there is a NULL load, not a zero.**
+  `lib/task.f` `PREPARE` maps each task a fresh zeroed `TASK-REGION-BYTES` region
+  and copies only the cells it lists, so `data-base SIGNAL-ABI:FD-PTR-CELL + @`
+  answers the boot's address in the main task and `0` in a spawned one; measured,
+  `... 0 ptr-field @` on that zero segfaults the process through the engine's own
+  crash handler. Read such a cell ONCE where the boot wrote it and keep the value.
+- **A dictionary `variable` is process-wide and is how the kept value reaches a
+  task.** `PREPARE` copies `dbase@` into the new TCB, so the DP heap is one heap
+  for every task while the low region is per-task: measured, a value stored by a
+  spawned task in a `variable` is read back by the main task, and an address kept
+  in one before `TASK:ACTIVATE` is the only handle a task has on a word its own
+  region does not carry.
+- **glibc on aarch64 hands back `sa_flags` exactly as installed, so re-installing
+  the identical disposition and reading `oldact` is a real assertion.** Measured
+  against `SA_RESTART`: in, `$10000000`; out of `oldact`, `$10000000`, with the
+  padding after the int zero and `sa_restorer` untouched. That is how a test pins
+  a flag an install would otherwise accept silently, whatever bits it held.

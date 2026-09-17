@@ -751,6 +751,11 @@ SUITE tasking-threads
    lib/task-test.f
 ;SUITE
 
+\ Process signals on the engine's baked stub and a self-pipe.
+SUITE process-signals
+   lib/signal-test.f
+;SUITE
+
 \ The bounded queue: many producers and many consumers over one ring.
 SUITE bounded-queue
    lib/queue-test.f

@@ -1900,6 +1900,17 @@ timeout. The helpers reset argv/env state after the native spawn attempt;
 missing or invalid cwd paths throw `E-PROC-SPAWN`, while empty or over-capacity
 cwd strings throw `E-PROC-OUTPUT` before spawning.
 
+## Process signals
+
+`lib/signal.f` owns signal delivery in `SIGNAL`: the engine's baked
+async-signal-safe stub writes a raised signal's number to a self-pipe, and
+checked code answers it through `SIGNAL:WAIT` or through the descriptor
+`SIGNAL:FD` hands out. `INIT` runs in the main task, `CATCH` installs
+`SA_RESTART`, and
+`RELEASE` disarms and restores. See [process signals](signal.md) for the
+install-and-read pattern, which waits restart on `EINTR`, the `PIPE_BUF`
+invariant and the target-constant gaps.
+
 ## Tasking
 
 `lib/task.f` provides pthread-backed CPU tasks on macOS/aarch64 and

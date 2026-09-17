@@ -1325,3 +1325,15 @@ public
 -9259 constant E-STATEMENT    \ an empty statement text or prepared-statement name
 
 ;package
+
+\ Process signals on a self-pipe (package SIGNAL): -9280..-9289. The decade
+\ after CRYPTO.
+-9280 constant E-SIGNAL-FIRST
+-9289 constant E-SIGNAL-LAST
+-9280 constant E-SIGNAL-STATE     \ a word that needs the facility before INIT, or a second INIT without RELEASE
+-9281 constant E-SIGNAL-ABI       \ the published stub cells read zero: no baked stub, or not the main task
+-9282 constant E-SIGNAL-NUMBER    \ a signal number outside the range sigaction installs
+-9283 constant E-SIGNAL-INSTALL   \ sigaction refused the install or the restore
+-9284 constant E-SIGNAL-READ      \ the descriptor answered short of the four-byte number
+-9285 constant E-SIGNAL-POLL      \ poll refused the read end with an errno
+-9286 constant E-SIGNAL-CLOSE     \ closing an end of the self-pipe failed
