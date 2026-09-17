@@ -2,9 +2,10 @@
 \
 \ A suite hands an executable path to SPAWN-ON-PTY, types at the master with
 \ SEND / SEND-LINE / SEND-BYTE, and reads the child back through the waits
-\ below. lib/pty.f opens a pair for a device peer and lib/process-pty-io.f
-\ supervises a linear handle; this module is the third shape - a child engine on
-\ the other side of a terminal, read into one buffer a suite makes claims about.
+\ below. The pair itself comes from lib/pty.f, which every pty opener in the tree
+\ shares; lib/process-pty-io.f supervises a linear handle over one, and this
+\ module is the third shape - a child engine on the other side of a terminal,
+\ read into one buffer a suite makes claims about.
 \
 \ STORAGE CLASS. PROCESS-WIDE. The master, the child pid, the read buffer, the
 \ absence window, the wait deadline and the watch table are one set of cells, so
@@ -37,6 +38,7 @@ require lib/errors.f
 require lib/string.f
 require lib/type/deftype.f
 require lib/process.f
+require lib/pty.f
 
 package PTY-HARNESS
 public
@@ -47,25 +49,16 @@ $4E20 constant WAIT-BUDGET-MS      \ one wait or drain runs at most this long on
 
 private
 
-2 constant O-RDWR
-$20000 constant O-NOCTTY           \ the engine's portable O_NOCTTY bit (src/os/linux/sys.f OS-OPEN-FLAGS)
-O-RDWR O-NOCTTY or constant O-SLAVE   \ the slave must never become this process's controlling terminal
-$40045431 constant TIOCSPTLCK-LINUX
-$80045430 constant TIOCGPTN-LINUX
-$20007454 constant TIOCPTYGRANT-MACOS
-$20007452 constant TIOCPTYUNLK-MACOS
-$40807453 constant TIOCPTYGNAME-MACOS
 10 constant POLL-MS                \ one poll blocks at most this long
 $4000 constant BUF-CAP
 $200 constant TAIL-KEEP            \ bytes kept when a full buffer is compacted
-$80 constant NAME-CAP              \ slave path bytes + NUL (Darwin fills it, Linux builds it)
 $10 constant WATCH-CAP             \ registered never-seen needles
 $40 constant NEEDLE-CAP            \ bytes per needle
 $400 constant PATH-CAP             \ supervised executable path bytes
 10 constant LF
 
 create RBUF BUF-CAP allot
-create PTYNAME NAME-CAP allot
+create PTYNAME PTY:SLAVE-PATH-CAP allot
 create OUTB 1 allot                \ the one byte SEND-BYTE and SEND-LINE write
 create PATH-BUF PATH-CAP allot     \ the path the spawn transaction execs
 create NEEDLE WATCH-CAP NEEDLE-CAP * allot
@@ -73,12 +66,10 @@ create NEEDLE-LEN WATCH-CAP cells allot
 create NEEDLE-SEEN WATCH-CAP cells allot
 
 variable RN                        \ bytes in RBUF
-variable NAME-U                    \ slave path length under construction
 variable WEND                      \ end of the window an absence claim reads; -1 with no barrier
 variable MFD                       \ the master; -1 with no child
 variable SFD                       \ the slave, only between opening it and the spawn
 variable KID                       \ the pty child; -1 with no child
-variable PTYNUM
 variable DEADLINE                  \ absolute monotonic end of the wait in flight
 variable QUIET                     \ polls in a row that brought nothing
 variable PATH-U
@@ -127,66 +118,19 @@ variable WATCH-N
    -1 WEND ! ;
 
 
-: PATH-C ( n -- ) {: c:n :}
-   NAME-U @ NAME-CAP >= if E-PTY-CAPACITY throw then
-   c PTYNAME NAME-U @ + c!
-   NAME-U @ 1 + NAME-U ! ;
-
-
-: PATH+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 ?do a i + c@ PATH-C loop ;
-
-
-: PATH-U+ ( n -- ) {: v:n :}
-   v 10 >= if v 10 / recurse then
-   v 10 mod 48 + PATH-C ;
-
-
-: SLAVE-PATH! ( n -- ) {: num:n :}
-   0 NAME-U !
-   s" /dev/pts/" PATH+
-   num PATH-U+
-   0 PATH-C ;
-
-
-: OPEN-MASTER ( -- )
-   s" /dev/ptmx" >LEN PROC-PATHZ O-RDWR 0 open {: m:n :}
-   m 0 < if E-PTY-OPEN throw then
-   m MFD !
-   m >FD FD-CLOEXEC! ;
-
-
+\ The slave is opened here, never by PTY:OPEN: it must never become this
+\ process's controlling terminal, and it is the child's to hold from the spawn on.
 : OPEN-SLAVE ( -- )
-   PTYNAME O-SLAVE 0 open {: s:n :}
+   PTYNAME PTY:PTY-OPEN-FLAGS 0 open {: s:n :}
    s 0 < if E-PTY-OPEN throw then
    s SFD ! ;
 
 
-: IOCTL-CK ( n -- )
-   0 <> if E-PTY-IOCTL throw then ;
-
-
-: OPEN-PAIR-LINUX ( -- )
-   OPEN-MASTER
-   0 PTYNUM !
-   MFD @ TIOCSPTLCK-LINUX PTYNUM ioctl IOCTL-CK
-   MFD @ TIOCGPTN-LINUX PTYNUM ioctl IOCTL-CK
-   PTYNUM @ SLAVE-PATH!
-   OPEN-SLAVE ;
-
-
-: OPEN-PAIR-MACOS ( -- )
-   OPEN-MASTER
-   MFD @ TIOCPTYGRANT-MACOS NULL$ drop ioctl IOCTL-CK
-   MFD @ TIOCPTYUNLK-MACOS NULL$ drop ioctl IOCTL-CK
-   MFD @ TIOCPTYGNAME-MACOS PTYNAME ioctl IOCTL-CK
-   OPEN-SLAVE ;
-
-
 : OPEN-PAIR ( -- )
-   HB-TARGET-LINUX? if OPEN-PAIR-LINUX exit then
-   HB-TARGET-MACOS? if OPEN-PAIR-MACOS exit then
-   E-PROC-HOST throw ;
+   PTYNAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N {: m:n :}
+   m MFD !
+   m >FD FD-CLOEXEC!
+   OPEN-SLAVE ;
 
 
 : CLOSE-FD! ( ptr n -- ) {: slot:ptr :}

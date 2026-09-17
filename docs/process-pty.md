@@ -57,9 +57,12 @@ The PTY flow is target-specific but the parent contract is shared:
 4. spawn with the slave duplicated to fd 0, 1, and 2;
 5. parent drives the close-on-exec master with `POLL-IN` and `read`/`write`.
 
-macOS uses `/dev/ptmx` with `TIOCPTYGRANT`, `TIOCPTYUNLK`, and `TIOCPTYGNAME`.
-Linux uses `/dev/ptmx`, `TIOCSPTLCK`, `TIOCGPTN`, and `/dev/pts/<n>`. Linux
-gate hosts must provide `/dev/ptmx` and a mounted `/dev/pts`.
+Steps 1 and 2 are `PTY:OPEN`'s (`lib/pty.f`), the one opener in the tree: macOS
+uses `/dev/ptmx` with `TIOCPTYGRANT`, `TIOCPTYUNLK`, and `TIOCPTYGNAME`, Linux
+uses `/dev/ptmx`, `TIOCSPTLCK`, `TIOCGPTN`, and `/dev/pts/<n>`, and any other
+host is `E-PROC-HOST`. Step 3 stays with the caller, which opens the slave
+`O_RDWR | O_NOCTTY` at the moment it wants one. Linux gate hosts must provide
+`/dev/ptmx` and a mounted `/dev/pts`.
 
 The PTY gate is the native compatibility baseline for process capture, PTY
 startup, line editing, history, breakpoints, stepper recovery, Ctrl-C, Ctrl-D,

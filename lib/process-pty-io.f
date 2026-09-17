@@ -17,8 +17,8 @@
 \ supervised set: the target plus two lifecycle-helper processes that occupy the
 \ registry's `group` (pgrp) and `sup` slots and stay alive until teardown. A
 \ SPAWN-TTY is the second mode: the target's standard descriptors are the slave
-\ side of a fresh pseudo-terminal (Linux /dev/ptmx + TIOCSPTLCK/TIOCGPTN and
-\ /dev/pts/<n>; Darwin /dev/ptmx + TIOCPTYGRANT/TIOCPTYUNLK/TIOCPTYGNAME), so a
+\ side of a fresh pseudo-terminal, opened by PTY:OPEN, which owns the
+\ per-target unlock-and-name dance for the whole tree, so a
 \ child engine sees a terminal on fd 0, installs its line editor and recovers
 \ from a refused definition instead of stopping at it; the handle's `master`
 \ slot is the PTY master and `done` a duplicate of it for the write side. The
@@ -37,6 +37,7 @@
 require lib/process-pty-handle.f
 require lib/process-fork.f
 require lib/process-argv.f
+require lib/pty.f
 require lib/prelude.f
 
 package PROCESS-PTY
@@ -46,16 +47,7 @@ package PROCESS-PTY
 1 constant EPERM#                  \ "operation not permitted" (process exists, denied)
 $400 constant IO-PATH-CAP          \ maximum supervised executable path length + NUL
 $7F constant IO-EXEC-FAIL          \ child exit code when execve never replaces the image
-2 constant IO-O-RDWR               \ open(2) flags for the master
-$20000 constant IO-O-NOCTTY        \ the engine's portable O_NOCTTY bit (src/os/linux/sys.f OS-OPEN-FLAGS; native on Darwin)
-IO-O-RDWR IO-O-NOCTTY or constant IO-O-SLAVE   \ the slave must never become this process's controlling terminal
 0 constant F-DUPFD                 \ fcntl: duplicate to the lowest descriptor at or above the argument
-$40045431 constant TIOCSPTLCK-LINUX
-$80045430 constant TIOCGPTN-LINUX
-$20007454 constant TIOCPTYGRANT-MACOS
-$20007452 constant TIOCPTYUNLK-MACOS
-$40807453 constant TIOCPTYGNAME-MACOS
-$80 constant IO-PTY-NAME-CAP       \ slave path bytes + NUL (Darwin fills it; Linux builds /dev/pts/<n>)
 10 constant IO-LF
 
 \ Load-time scratch shared by the parent build path and by each forked child (a
@@ -65,8 +57,7 @@ create IO-ENVP 1 cells allot           \ single NULL slot: the empty child envir
 create IO-POLL 1 cells allot           \ one pollfd for AWAIT
 create IO-GOBYTE 1 allot               \ the one-byte release token written by LAUNCH
 create IO-GO SLOT-CAP cells allot       \ per-slot release-gate write end, indexed by slot
-create IO-PTY-NAME IO-PTY-NAME-CAP allot \ slave path (NUL-terminated)
-create IO-PTY-NUM 1 cells allot         \ TIOCGPTN answer
+create IO-PTY-NAME PTY:SLAVE-PATH-CAP allot \ slave path (NUL-terminated)
 create IO-LFBYTE 1 allot                \ the line terminator WRITE-LINE appends
 
 variable IO-PATH-LEN                    \ supervised path length (n)
@@ -196,52 +187,16 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
    PIPE-PAIR IO-DONE ! IO-SIN-R ! ;       \ stdin: owner writes done, child reads
 
 \ ---- the pseudo-terminal pair ----------------------------------------------
-: IO-PTY-DIGIT ( n -- )
-   48 + IO-PTY-NAME IO-PTY-NUM @ + c!  IO-PTY-NUM @ 1 + IO-PTY-NUM ! ;
-
-\ "/dev/pts/<n>" + NUL; IO-PTY-NUM is reused as the write cursor once the
-\ number has been read out of it. Up to six decimal digits; the kernel's pty
-\ limit is far below that.
-: IO-PTY-DIGITS ( n n -- ) {: n:n d:n :}          \ the digit of n at divisor d, once a digit has started or d is 1
-   n d / 10 mod {: k:n :}
-   k 0 <> d 1 = or IO-PTY-NUM @ 9 <> or if k IO-PTY-DIGIT then ;
-
-: IO-PTY-PATH! ( n -- ) {: n:n :}
-   n 1000000 >= if E-PROC-OUTPUT throw then
-   s" /dev/pts/" >LEN IO-PTY-NAME IO-PTY-NAME-CAP >LEN PROC-ZCOPY drop
-   9 IO-PTY-NUM !
-   n 100000 IO-PTY-DIGITS  n 10000 IO-PTY-DIGITS  n 1000 IO-PTY-DIGITS
-   n 100 IO-PTY-DIGITS  n 10 IO-PTY-DIGITS  n 1 IO-PTY-DIGITS
-   0 IO-PTY-NAME IO-PTY-NUM @ + c! ;
-
 : IO-OPEN-CK ( n -- n ) {: f:n :}
    f 0 < if E-PROC-OUTPUT throw then f ;
 
-: IO-IOCTL-CK ( n -- )
-   0 <> if E-PROC-OUTPUT throw then ;
-
-: IO-OPEN-PTY-LINUX ( -- )
-   s" /dev/ptmx" >LEN PROC-PATHZ IO-O-RDWR 0 open IO-OPEN-CK {: m:n :}
-   m >FD IO-MASTER !
-   0 IO-PTY-NUM !
-   m TIOCSPTLCK-LINUX IO-PTY-NUM ioctl IO-IOCTL-CK
-   m TIOCGPTN-LINUX IO-PTY-NUM ioctl IO-IOCTL-CK
-   IO-PTY-NUM @ IO-PTY-PATH!
-   IO-PTY-NAME IO-O-SLAVE 0 open IO-OPEN-CK >FD IO-SIN-R ! ;
-
-: IO-OPEN-PTY-MACOS ( -- )
-   s" /dev/ptmx" >LEN PROC-PATHZ IO-O-RDWR 0 open IO-OPEN-CK {: m:n :}
-   m >FD IO-MASTER !
-   m TIOCPTYGRANT-MACOS NULL$ drop ioctl IO-IOCTL-CK
-   m TIOCPTYUNLK-MACOS NULL$ drop ioctl IO-IOCTL-CK
-   m TIOCPTYGNAME-MACOS IO-PTY-NAME ioctl IO-IOCTL-CK
-   IO-PTY-NAME IO-O-SLAVE 0 open IO-OPEN-CK >FD IO-SIN-R ! ;
-
 \ master -> IO-MASTER (owner reads), a duplicate of it -> IO-DONE (owner
 \ writes), slave -> IO-SIN-R (the child's terminal); IO-SOUT-W stays unused.
+\ The slave is opened here rather than by PTY:OPEN, and with O_NOCTTY: a
+\ session-leading supervisor without a terminal would otherwise adopt it.
 : IO-MK-TTY ( -- )
-   HB-TARGET-LINUX? if IO-OPEN-PTY-LINUX else
-   HB-TARGET-MACOS? if IO-OPEN-PTY-MACOS else E-PROC-HOST throw then then
+   IO-PTY-NAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N >FD IO-MASTER !
+   IO-PTY-NAME PTY:PTY-OPEN-FLAGS 0 open IO-OPEN-CK >FD IO-SIN-R !
    IO-MASTER @ >FD FD>N F-DUPFD 3 fcntl IO-OPEN-CK >FD IO-DONE ! ;
 
 : IO-MK-HOLDS ( -- )

@@ -4,6 +4,7 @@ require lib/fs-mutate.f
 require lib/memory.f
 require lib/process-cwd.f
 require lib/engine-candidate.f
+require lib/pty.f
 
 package APP-IMAGE-TEST
 
@@ -190,36 +191,14 @@ variable REFUSE-U
 \ fd 0 must be a real terminal: startup failures used to enter REPL recovery
 \ before its source frame existed. Output uses a small pipe so the diagnostic
 \ remains byte-exact on Linux and macOS.
-create PTY-NAME 128 allot
-variable PTY-U
-variable PTY-NUM
+create PTY-NAME PTY:SLAVE-PATH-CAP allot
 
-: PTY-C, ( n -- )
-   PTY-NAME PTY-U @ + c! 1 PTY-U +! ;
-
-: PTY-U, ( n -- ) {: value:n :}
-   value 10 >= if value 10 / recurse then
-   value 10 mod 48 + PTY-C, ;
-
-\ Habu uses Darwin-style flags on both targets: O_RDWR | O_NOCTTY.
-$20002 constant PTY-OPEN-FLAGS
-
+\ The pair is lib/pty.f's on both targets; the slave is opened here, O_NOCTTY,
+\ because this process must not adopt the terminal it hands the child.
 : OPEN-PTY ( -- n n )
-   s" /dev/ptmx" FS-PATHZ PTY-OPEN-FLAGS 0 open {: master:n :}
-   master 0 >= TTRUE
+   PTY-NAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N {: master:n :}
    master >FD FD-CLOEXEC!
-   HB-TARGET-LINUX? if
-      0 PTY-NUM !
-      master $40045431 PTY-NUM ioctl 0 T=
-      master $80045430 PTY-NUM ioctl 0 T=
-      s" /dev/pts/" PTY-NAME swap BYTE-COPY
-      9 PTY-U ! PTY-NUM @ PTY-U, 0 PTY-C,
-   else
-      master $20007454 NULL-PTR ioctl 0 T=
-      master $20007452 NULL-PTR ioctl 0 T=
-      master $40807453 PTY-NAME ioctl 0 T=
-   then
-   PTY-NAME PTY-OPEN-FLAGS 0 open {: slave:n :}
+   PTY-NAME PTY:PTY-OPEN-FLAGS 0 open {: slave:n :}
    slave 0 >= TTRUE
    master slave ;
 

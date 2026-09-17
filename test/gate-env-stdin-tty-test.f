@@ -14,22 +14,18 @@
 
 require lib/test.f
 require test/gate-common.f
+require lib/pty.f
 
 package GATE-ENV-STDIN-TTY-TEST
 
-$40045431 constant LINUX-TIOCSPTLCK
-$80045430 constant LINUX-TIOCGPTN
-2 constant PTY-OPEN-RDWR
 2000 constant CHILD-TIMEOUT-MS
 10 constant OUTPUT-POLL-MS
 100 constant OUTPUT-MAX-POLLS
 4096 constant OUTPUT-CAP
 
-create PTY-NAME 128 allot
-create PTY-NUM 4 allot
+create PTY-NAME PTY:SLAVE-PATH-CAP allot
 create OUTPUT OUTPUT-CAP allot
 
-variable PTY-U
 variable MASTER-FD
 variable SLAVE-FD
 variable SESSION-PID
@@ -37,35 +33,14 @@ variable SESSION-RC
 variable OUTPUT-U
 variable OUTPUT-RD
 
-: PTY-NAME-C ( n -- ) {: c:n :}
-   c PTY-NAME PTY-U @ + c!
-   PTY-U @ 1+ PTY-U ! ;
-
-: PTY-NAME+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 begin dup u < while
-      dup a + c@ PTY-NAME-C
-      1+
-   repeat drop ;
-
-: PTY-NAME-U+ ( n -- ) {: n:n :}
-   n 10 >= if n 10 / recurse then
-   n 10 mod STR-ZERO + PTY-NAME-C ;
-
-: PTY-NAME-BUILD ( -- )
-   0 PTY-U !
-   s" /dev/pts/" PTY-NAME+
-   PTY-NUM @ PTY-NAME-U+
-   0 PTY-NAME-C ;
-
+\ The pair is lib/pty.f's; the slave is opened here, O_NOCTTY, because this
+\ worker must not adopt the terminal - only the setsid session below may, and
+\ it takes it with TIOCSCTTY rather than through an open.
 : OPEN-PTY ( -- )
-   s" /dev/ptmx" >LEN PROC-PATHZ PTY-OPEN-RDWR 0 open MASTER-FD !
+   PTY-NAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N MASTER-FD !
    MASTER-FD @ 2 <= if E-FS-OPEN throw then
    MASTER-FD @ >FD FD-CLOEXEC!
-   0 PTY-NUM !
-   MASTER-FD @ LINUX-TIOCSPTLCK PTY-NUM ioctl 0 <> if E-PROC-PTY-HANDLE throw then
-   MASTER-FD @ LINUX-TIOCGPTN PTY-NUM ioctl 0 <> if E-PROC-PTY-HANDLE throw then
-   PTY-NAME-BUILD
-   PTY-NAME PTY-OPEN-RDWR 0 open SLAVE-FD !
+   PTY-NAME PTY:PTY-OPEN-FLAGS 0 open SLAVE-FD !
    SLAVE-FD @ 2 <= if E-FS-OPEN throw then ;
 
 : SESSION-ARGV ( -- )

@@ -1268,10 +1268,17 @@ so two listings of one directory compare equal, and refuses a buffer that is
 too small with `E-FS-LIST-CAPACITY`. It reads through the raw directory-entry
 primitive and shares the record decoding with `WALK-FILES`.
 
-`lib/pty.f` (package `PTY`) opens a Linux pseudoterminal pair for a test peer:
-`OPEN` unlocks `/dev/ptmx`, writes the slave path (`/dev/pts/<n>`) into a
+`lib/pty.f` (package `PTY`) is the tree's one pseudoterminal-pair opener:
+`OPEN` unlocks `/dev/ptmx` — with `TIOCSPTLCK`/`TIOCGPTN` and `/dev/pts/<n>` on
+Linux, with `TIOCPTYGRANT`/`TIOCPTYUNLK`/`TIOCPTYGNAME` on macOS, and
+`E-PROC-HOST` on any other host — writes the slave path NUL-terminated into a
 caller buffer of at least `SLAVE-PATH-CAP` bytes and returns the master as a
-`PTY:master` nominal; a device driver under test opens the slave like any
+`PTY:master` nominal. The request numbers are private to the module; a caller
+that needs a pair calls `OPEN` and opens the slave itself with
+`PTY-OPEN-FLAGS` (`O_RDWR | O_NOCTTY`), so neither end becomes anyone's
+controlling terminal by accident. `lib/pty-harness.f`, `lib/process-pty-io.f`
+and the suites that need a terminal all open their pairs here. A device driver
+under test opens the slave like any
 serial device while the test drives the master with `WRITE`, `READ` (one chunk
 within a bound in milliseconds, zero when nothing arrived) and `CLOSE`. The
 pair keeps the terminal's defaults, so a line written at the master is echoed
