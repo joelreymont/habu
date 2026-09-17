@@ -1,0 +1,9 @@
+---
+title: Refuse ptr-field over a scalar pointee
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-09-17T19:56:10.890714+03:00"
+---
+
+Problem: the raw-storage rule (habu-refuse-a-ptr-5ad2734e, commit 1204d189) refuses ptr-field on a TVK-RAW base, but the base can be passed through a parameter first: 'create V 2 cells allot  : F ( ptr n -- ptr ptr u8 ) 0 ptr-field ;  : LAUNDER ( n -- n ) {: x:n :} x V ! V F @ c@ ;' certifies on the rule engine raw-rule-gen1 with no diagnostic (lib/tools conversion lane, 2026-09-17), because ptr-field on a base whose pointee is a scalar variable forges a free pointer pointee, the same reinterpretation the rule exists to stop; production uses of the shape: tools/lint/text.f:117 LINT-SLAB:BUF-FIELD over create SLAB (:173) and tools/build-fixpoint.f:222 BF-PTR-U8-FIELD. Acceptance: ptr-field admits only a base whose pointee is a nominal record type with a declared pointer field at that offset (the form src/core/structures.f PTR-FIELD: generates) or a declared pointer cell, and refuses a scalar or free pointee by name with the E-RAW-CELL-PTR family (a third MD- code naming ptr-field's base kind); the LAUNDER fixture and a ptr n parameter fixture rejected in test/compiler/raw-cell-pointer-refusals.f; the two production sites converted to declared forms; a census of ptr-field sites whose base is ptr n or ptr a measured on a rule engine before the rule lands. Files: src/core/checker.f (the ptr-field row's base check), src/core/render.f, tools/lint/text.f, tools/build-fixpoint.f, test/compiler/raw-cell-pointer-refusals.f, docs/effects.md. Verify: the fixtures; raw-rule-gen1 rebuilt with the rule; the affected suites; test/run.f. Depends: habu-convert-the-raw-8052992f. Ownership: checker. Parent: habu-refuse-a-ptr-5ad2734e. Claim: unassigned.
