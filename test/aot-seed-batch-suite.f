@@ -2,8 +2,8 @@
 \ habu-decide-arm-the-5234727b, USER RULING 2026-08-11: one dictionary surface for
 \ every boot mode).
 \
-\ WHAT IT LOCKS. The engine bakes its REPL, token stepper and breakpoint debugger
-\ as captured code (src/habu/stdin.f) and seeds them into the dictionary at boot.
+\ WHAT IT LOCKS. The engine bakes its REPL as captured code (src/habu/stdin.f)
+\ and seeds it into the dictionary at boot.
 \ That seed used to be armed at the interactive REPL entry and nowhere else, so a
 \ piped program and a `--load` tool run could not see a captured word: 115 names
 \ existed on a tty and did not exist in batch. The seed now runs at the end of the
@@ -29,9 +29,13 @@
 \   same engine; it lives there because that file is the tree's one cross-platform
 \   PTY driver and a third copy of the PTY plumbing would be worse than the split.
 \
-\   THE FIVE NAMES COME FROM FIVE CAPTURED FILES. One resolving name could be a
-\   fluke of one record; one name from each of repl.f, debug-watch.f, stepper.f,
-\   debug.f and the per-OS repl-term.f says the whole captured set arrived.
+\   THE NAMES COME ONE PER CAPTURED FILE. One resolving name could be a fluke of
+\   one record; one name from each file the capture reads - src/habu/repl.f and
+\   the per-OS repl-term.f - says the whole captured set arrived. The debugger
+\   trio left that set when it left the engine (88b97b26 and the stdin driver's
+\   own list), and it cannot come back here through a `require`: this suite
+\   counts SEEDED RECORDS, and a definition the child loads for itself is not
+\   one. A file added to the capture adds a name here.
 \
 \   THE NEGATIVE CONTROL IS NOT GARNISH. Without it, "the baked word answered"
 \   could be read as "this engine answers anything"; an absent spelling must still
@@ -157,20 +161,24 @@ create PROG-BUF FS-PATH-CAP allot   variable PROG-U
 \ that half; until it lands, interpret-level resolution is the whole contract and
 \ these cases state exactly it.
 
-: BAKED-ONE$ ( -- ptr u8 n )           \ debug-watch.f: the watch table is empty at boot
-   s" BPW-N@ ." ;
+\ repl.f: a batch boot edits no line, so the history ring's low slot is 0 - a
+\ baked word with a value the program cannot have set itself.
+: BAKED-ONE$ ( -- ptr u8 n )
+   s" HLO ." ;
 
-\ One name from each captured source, counted in the dictionary; five means every
-\ captured file's records arrived. Written as a definition so the walk compiles,
-\ with the baked spellings reaching the checker as STRING LITERALS - a checked
-\ body may not name them yet.
-: BAKED-FIVE$ ( -- ptr u8 n )
-   S\" : ASB-SEEN ( ptr u8 n -- n ) {: a:ptr u:n :} 0 0 begin dup ndict@ < while dup XREF-REC XREF-NAME$ a u STR= if swap 1+ swap then 1+ repeat drop ;\n: ASB-FIVE ( -- ) s\" HIST\" ASB-SEEN s\" BPW-N@\" ASB-SEEN + s\" STEPPING\" ASB-SEEN + s\" BP-NULL\" ASB-SEEN + s\" TTY?\" ASB-SEEN + . ;\nASB-FIVE" ;
+\ One name from each captured source, counted in the dictionary; two means every
+\ captured file's records arrived - HIST is repl.f's history ring and
+\ HBR-RAWMASK is the per-OS repl-term.f's own constant, so neither can stand in
+\ for the other. Written as a definition so the walk compiles, with the baked
+\ spellings reaching the checker as STRING LITERALS - a checked body may not
+\ name them yet.
+: BAKED-EACH$ ( -- ptr u8 n )
+   S\" : ASB-SEEN ( ptr u8 n -- n ) {: a:ptr u:n :} 0 0 begin dup ndict@ < while dup XREF-REC XREF-NAME$ a u STR= if swap 1+ swap then 1+ repeat drop ;\n: ASB-EACH ( -- ) s\" HIST\" ASB-SEEN s\" HBR-RAWMASK\" ASB-SEEN + . ;\nASB-EACH" ;
 
 \ The done-cell guard: one record per baked spelling after BOTH arrivals at
 \ "source exhausted".
 : ONE-RECORD$ ( -- ptr u8 n )
-   S\" : ASB-ONCE ( -- ) 0 0 begin dup ndict@ < while dup XREF-REC XREF-NAME$ s\" BPW-N@\" STR= if swap 1+ swap then 1+ repeat drop . ;\nASB-ONCE" ;
+   S\" : ASB-ONCE ( -- ) 0 0 begin dup ndict@ < while dup XREF-REC XREF-NAME$ s\" HLO\" STR= if swap 1+ swap then 1+ repeat drop . ;\nASB-ONCE" ;
 
 : ABSENT$ ( -- ptr u8 n )
    s" AOT-SEED-NO-SUCH-NAME ." ;
@@ -192,8 +200,8 @@ variable LOAD-SUM
    PROG$ RUN-PLAIN  READ-N 0 T= ;
 
 : CASE-WHOLE-CAPTURED-SET ( -- )
-   s" one name from each of the five captured sources is in the batch dictionary" T-LABEL
-   BAKED-FIVE$ RUN-STDIN  READ-N 5 T= ;
+   s" one name from each captured source is in the batch dictionary" T-LABEL
+   BAKED-EACH$ RUN-STDIN  READ-N 2 T= ;
 
 : CASE-ABSENT-STILL-FAILS ( -- )
    s" an absent spelling still exits 70 in batch (the cases above are not vacuous)" T-LABEL
