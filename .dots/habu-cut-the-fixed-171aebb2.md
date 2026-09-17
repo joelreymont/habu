@@ -1,6 +1,6 @@
 ---
 title: Cut the fixed per-word cost of tier 1 compilation
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-09-16T16:41:00.724414+03:00\""
