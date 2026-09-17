@@ -576,6 +576,15 @@ engine, and none of those forms are removed.
   `habu-accept-comments-inside-145f82eb` teaches the unified `ENUM` and
   `STRUCTURE` front ends to skip comments inside a body; this bullet goes when
   it lands.
+- **A `FIELD` holds a value, not a body.** A `PRODUCT` or `SUMTYPE` payload is
+  a type token: a letter parameter, a concrete cell type, `ptr T` or a closed
+  arity-0 family, so a quotation type (`[ a -- b ]`) is refused with
+  `E-TDECL-SYNTAX` (7109) at the declaration. A record that describes a
+  behaviour keeps its data fields and stores the quotation beside it, in a
+  `TYPED-BUFFER NAME [ a -- b ]` indexed the same way; the two are written and
+  read together by the words that own the table. The record itself is
+  multi-cell and so cannot be bound to a local either, which is why such a
+  table's accessors take an index, never the record.
 
 SwiftForth-style relocatable linked-list words (`@REL`, `!REL`, `,REL`,
 `>LINK`, `<LINK`, `CALLS`) are not part of Habu's checked surface. They encode
