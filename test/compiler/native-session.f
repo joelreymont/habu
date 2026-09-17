@@ -126,31 +126,28 @@ variable RC     variable EXITED
    S\" IR-CTX:SESSION-LIVE? . ZC1 . cr\n" SB-APPEND
    SB$ ;
 
-\ WHAT A LIVE SESSION COSTS THE PROCESS-WIDE REGISTRIES, counted through the real
-\ entry point: one-cell arenas are taken until the registry refuses, first with no
-\ session and then with one standing, and the difference is what the session
-\ holds. It is FOUR - the prototype interner's two arenas and the vocabulary
-\ table's two - because the module that registered that table is given back as
-\ soon as it has registered it. With that module still standing the difference
-\ was twenty-one of the sixty-four slots, held for the whole load by a module
-\ nothing reads again.
+\ WHAT A LIVE SESSION COSTS A DEFINITION'S ARENAS, counted through the real
+\ entry point: nothing at all. An arena was a row of a sixty-four slot registry
+\ and a live session held four of them, so what a definition could build was
+\ measured against what the session had taken. An arena is now a record in the
+\ owning context's own region, so a definition's context takes as many as it
+\ takes: this asks for a thousand of them in one context - fifty-eight modules'
+\ worth, and sixteen times what the whole registry held - with no session
+\ standing and then with one, and both answer the same number.
 : SLOTS-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" package ZSLOT\n" SB-APPEND
    S\" public\n" SB-APPEND
-   S\" variable N\n" SB-APPEND
-   S\" : TAKE1 ( IR-CTX:ctx n -- IR-CTX:ctx n ) 2dup IR-ARENA:NEW drop ;\n" SB-APPEND
-   S\" : FREE ( IR-CTX:ctx -- n )\n" SB-APPEND
-   S\"    0 N ! 1\n" SB-APPEND
-   S\"    begin [: TAKE1 ;] catch 0= while N @ 1+ N ! repeat\n" SB-APPEND
-   S\"    2drop N @ ;\n" SB-APPEND
-   S\" : COUNT ( -- n ) NABI:BINDING [: FREE ;] IR-CTX:WITH-CONTEXT ;\n" SB-APPEND
+   S\" 1000 constant WANT\n" SB-APPEND
+   S\" : TAKE-MANY ( IR-CTX:ctx -- n )\n" SB-APPEND
+   S\"    WANT 0 ?do dup 1 IR-ARENA:NEW drop loop drop WANT ;\n" SB-APPEND
+   S\" : COUNT ( -- n ) NABI:BINDING [: TAKE-MANY ;] IR-CTX:WITH-CONTEXT ;\n" SB-APPEND
    S\" ;package\n" SB-APPEND
-   S\" ZSLOT:COUNT\n" SB-APPEND
+   S\" ZSLOT:COUNT .\n" SB-APPEND
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZL1 ( -- n ) 1 ;\n" SB-APPEND
    S\" 0 set-tier\n" SB-APPEND
-   S\" ZSLOT:COUNT - . IR-CTX:SESSION-LIVE? . cr\n" SB-APPEND
+   S\" ZSLOT:COUNT . IR-CTX:SESSION-LIVE? . cr\n" SB-APPEND
    SB$ ;
 
 \ THE FLAGS GO OUT WITH THE SESSION. IMAGE-LIFECYCLE:PREPARE is one entry point
@@ -215,8 +212,8 @@ variable RC     variable EXITED
    s" a capture after a tier-1 definition gives the session back" T-LABEL
    CAPTURE-SRC$ EXEC  S\" 0\n1\n" ASSERT-OK
 
-   s" a live session holds four arena slots of the sixty-four" T-LABEL
-   SLOTS-SRC$ EXEC  S\" 4\n-1\n" ASSERT-OK
+   s" a live session costs a definition no arena capacity" T-LABEL
+   SLOTS-SRC$ EXEC  S\" 1000\n1000\n-1\n" ASSERT-OK
 
    s" a bare PREPARE leaves no claim on the arenas it unmapped" T-LABEL
    STANDDOWN-SRC$ EXEC  S\" 0\n0\n" ASSERT-OK

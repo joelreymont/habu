@@ -26,9 +26,10 @@
 \ A SPAN IS TAKEN AS AN OFFSET, because that is the form a record living inside
 \ the region may hold: a pointer names this process's mapping and a captured
 \ image must carry none, while an offset names a position. SCRATCH-OFFSET
-\ answers one, REGION-HOLDS? says whether the extent it names is still live,
-\ and EPOCH is the release counter a child stamps into a record so an offset
-\ reused by the next compilation cannot pass for the one it replaced.
+\ answers one, and EPOCH is the release counter a child stamps into a record so
+\ an offset reused by the next compilation cannot pass for the one it replaced.
+\ ONLY THE INNERMOST CONTEXT MAY TAKE, which is what keeps an offset's extent
+\ the taker's own; TOP-CK is where that is refused.
 \
 \ PERSISTED STATE. All per-context state lives in the context's own mapping as
 \ eight-byte little-endian slots written with the canonical CDIGEST slot words:
@@ -243,9 +244,9 @@ private
    off ;
 
 \ An offset is a position in the mapping; this is the only place that turns one
-\ into an address. It asks no question: every caller here holds an offset the
-\ cursor has already passed, and REGION-HOLDS? below is the test for an offset
-\ that came back from somewhere that may have outlived its extent.
+\ into an address. It asks no question, because every caller here holds an
+\ offset the cursor has already passed: a take answers one and the taker uses it
+\ inside the context that took it.
 : REGION-AT ( n -- ptr u8 )
    REGION-BASE @ + ;
 
@@ -284,6 +285,22 @@ private
 : RESOLVE ( IR-CTX:ctx -- ptr u8 )
    CTX>N FIND-SLOT
    dup 0 < if E-IR-CTX-STALE throw then
+   BASE-FIELD @ ;
+
+\ THE CURSOR IS A STACK, SO ONLY THE INNERMOST CONTEXT MAY TAKE FROM IT. A span
+\ taken for a context that a deeper live one encloses lies ABOVE that deeper
+\ context's mark, so the deeper context's release - not the owner's - is what
+\ takes the bytes back, and the owner would go on naming storage the next
+\ compilation has been handed. Every production take is by the context being
+\ compiled into, which is the innermost one; the mistake is refused where it is
+\ made rather than at the read that finds the bytes gone.
+: TOP-CK ( n -- )
+   DEPTH @ 1- <> if E-IR-CTX-NESTED throw then ;
+
+: RESOLVE-TOP ( IR-CTX:ctx -- ptr u8 )
+   CTX>N FIND-SLOT
+   dup 0 < if E-IR-CTX-STALE throw then
+   dup TOP-CK
    BASE-FIELD @ ;
 
 \ ---- binding wire codes: decode ----------------------------------------------
@@ -650,7 +667,7 @@ public
 : SCRATCH-OFFSET ( IR-CTX:ctx n -- n ) {: c:IR-CTX:ctx need:n :}
    need 1 < if E-IR-CTX-SIZE throw then
    need REGION-BYTES > if E-IR-CTX-SCRATCH throw then
-   c RESOLVE {: base:ptr :}
+   c RESOLVE-TOP {: base:ptr :}
    base HF-USED HDR@ CNT-OK {: used:n :}
    need REGION-ALLOT {: off:n :}
    used need ALIGN8 + base HF-USED HDR!
@@ -670,14 +687,6 @@ public
 \ The release epoch, to be stamped into a record stored at a region offset; see
 \ the account at REGION-EPOCH.
 : EPOCH ( -- n ) REGION-EPOCH @ ;
-
-\ Does the region still hold this span? An offset stops naming what it named
-\ the moment the context that took it leaves, and the bytes become the next
-\ compilation's, so a child holding an offset that may have outlived its extent
-\ asks this before it reads a record out of it.
-: REGION-HOLDS? ( n n -- bool ) {: off:n len:n :}
-   off 0 < len 0 < or if 0 0 <> exit then
-   off len + REGION-HERE @ <= ;
 
 \ ---- not-yet-landed module slots ---------------------------------------------
 private

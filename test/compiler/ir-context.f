@@ -269,30 +269,38 @@ $80000 constant TMAP-BYTES           \ independent allocation probe size
 
 \ ---- the offset interface ----------------------------------------------------
 \ A span taken as an OFFSET is a position in the region rather than an address,
-\ which is the form a record living inside the region may hold. The position is
-\ meaningful for exactly as long as the extent is: a context's release takes
-\ the cursor back below everything that context took, and REGION-HOLDS? is how
-\ the holder of such an offset finds that out.
-variable OFF-A
-
-: OFF-BODY ( IR-CTX:ctx -- bool bool )
+\ which is the form a record living inside the region may hold. Two takes step
+\ the cursor by the aligned size of the first, and two SIBLING contexts are
+\ handed the same position - which is the release, stated as a number.
+: OFF-BODY ( IR-CTX:ctx -- n n )
    {: c:IR-CTX:ctx :}
-   c 5 IR-CTX:SCRATCH-OFFSET OFF-A !
+   c 5 IR-CTX:SCRATCH-OFFSET {: a:n :}
    c 16 IR-CTX:SCRATCH-OFFSET {: b:n :}
-   b OFF-A @ - 8 =
-   OFF-A @ 24 IR-CTX:REGION-HOLDS? ;
+   a
+   b a - ;
+
+: OFF-FIRST ( IR-CTX:ctx -- n )
+   5 IR-CTX:SCRATCH-OFFSET ;
+
+: ENCLOSED-TAKE ( IR-CTX:ctx IR-CTX:ctx -- )
+   drop
+   8 IR-CTX:SCRATCH-TAKE 2drop ;
+
+: ENCLOSED-OUTER ( IR-CTX:ctx -- )
+   BND [: ENCLOSED-TAKE ;] IR-CTX:WITH-CONTEXT ;
+
+: ENCLOSED-RUN ( -- )
+   BND [: ENCLOSED-OUTER ;] IR-CTX:WITH-CONTEXT ;
 
 : OFF-CASES ( -- )
-   s" a scratch take answers a position the region holds" T-LABEL
+   s" a scratch take answers a position and the next one is aligned past it" T-LABEL
    BND [: OFF-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE
-   s" the region stops holding it when the context leaves" T-LABEL
-   OFF-A @ 24 IR-CTX:REGION-HOLDS? TFALSE
-   s" a span reaching past the cursor is not held" T-LABEL
-   0 IR-CTX:SCRATCH-LIMIT IR-CTX:REGION-HOLDS? TFALSE
-   s" a negative offset or length is not held" T-LABEL
-   -1 8 IR-CTX:REGION-HOLDS? TFALSE
-   0 -1 IR-CTX:REGION-HOLDS? TFALSE
+   8 T= 0 > TTRUE
+   s" two sibling contexts are handed the same position" T-LABEL
+   BND [: OFF-FIRST ;] IR-CTX:WITH-CONTEXT
+   BND [: OFF-FIRST ;] IR-CTX:WITH-CONTEXT T=
+   s" a take for a context a deeper one encloses is refused" T-LABEL
+   [: ENCLOSED-RUN ;] E-IR-CTX-NESTED TTHROWSQ
    s" the offset width and the region's limit are one number" T-LABEL
    1 IR-CTX:SCRATCH-OFFSET-BITS lshift IR-CTX:SCRATCH-LIMIT T= ;
 

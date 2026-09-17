@@ -803,26 +803,51 @@ create CBUF 32 allot
    c ca cr ck 32 32 MANY-ADD ;
 
 
-: CLONE-CONTEXT-INNER ( IR-CTX:ctx IR-CTX:ctx -- IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena )
-   {: dst:IR-CTX:ctx src:IR-CTX:ctx :}
-   src CLONE-SOURCE
-   {: pk:IR-ID:ir-module-key pa:IR-ARENA:arena pr:IR-ARENA:arena :}
-   dst IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
-   key dst key pa pr 64 512 IR-SYM:NEW-FROM ;
+\ A CLONE IS TAKEN BY THE CONTEXT IT BELONGS TO, AND THAT IS THE INNERMOST ONE.
+\ The region's cursor is a stack, so a clone taken for the OUTER context while
+\ an inner one is open would be released by the inner context's exit; that is
+\ E-IR-CTX-NESTED, refused where it is taken. The direction production uses is
+\ this one: a prototype built once in the enclosing context, copied into every
+\ inner context that compiles against it.
+: CLONE-CONTEXT-INNER ( IR-ARENA:arena IR-ARENA:arena IR-CTX:ctx -- )
+   {: pa:IR-ARENA:arena pr:IR-ARENA:arena c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   c key pa pr 64 512 IR-SYM:NEW-FROM
+   {: a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key 32 MANY-HITS
+   c a r key 32 32 MANY-ADD ;
 
 
 : CLONE-CONTEXT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   c BND [: CLONE-CONTEXT-INNER ;] IR-CTX:WITH-CONTEXT
-   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
-   c a r key 32 MANY-HITS
-   c a r key 32 32 MANY-ADD ;
+   c CLONE-SOURCE
+   {: pk:IR-ID:ir-module-key pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+   pa pr BND [: CLONE-CONTEXT-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+
+: CLONE-OUTWARD-INNER ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-CTX:ctx -- )
+   {: dst:IR-CTX:ctx pa:IR-ARENA:arena pr:IR-ARENA:arena c:IR-CTX:ctx :}
+   dst IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   dst key pa pr 64 512 IR-SYM:NEW-FROM 2drop ;
+
+
+: CLONE-OUTWARD-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c CLONE-SOURCE
+   {: pk:IR-ID:ir-module-key pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+   c pa pr BND [: CLONE-OUTWARD-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+
+: CLONE-OUTWARD ( -- )
+   BND [: CLONE-OUTWARD-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 
 : CLONE-SETUP-CASE ( -- )
    s" clone storage tracks occupancy and outlives prototype arena retirement" T-LABEL
    BND [: CLONE-SETUP-BODY ;] IR-CTX:WITH-CONTEXT
-   BND [: CLONE-CONTEXT-BODY ;] IR-CTX:WITH-CONTEXT ;
+   BND [: CLONE-CONTEXT-BODY ;] IR-CTX:WITH-CONTEXT
+   s" a clone taken for a context a deeper one encloses is refused" T-LABEL
+   [: CLONE-OUTWARD ;] E-IR-CTX-NESTED TTHROWSQ ;
 
 \ At four entries, the next miss would grow the index. Capacity refusal must
 \ precede that allocation and must leave no rejected spelling in the buckets.
@@ -851,7 +876,10 @@ create CBUF 32 allot
    4 128 E-IR-SYM-CAP BND [: INDEX-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT
    8 32 E-IR-SYM-BYTES BND [: INDEX-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ ---- retirement clears associations before reuse and context unmapping -------
+\ ---- an index is the arena's own, and dies with it ---------------------------
+\ The bucket index lives in the arena's own descriptor (IR-ARENA:SIDE-FIELD), so
+\ a fresh arena is born without one and an aborted arena's is unreachable
+\ through the handle that named it. Nothing has to be cleared on the way.
 : STALE-INTERN ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
    c a r key s" stale" IR-SYM:INTERN drop ;
@@ -893,16 +921,10 @@ create CBUF 32 allot
    BND [: STALE-BODY ;] IR-CTX:WITH-CONTEXT STALE-INTERN ;
 
 
-: OBSERVER-REPLACE ( -- )
-   [: drop ;] IR-ARENA:RETIRE-OBSERVER! ;
-
-
 : INDEX-LIFETIME-CASE ( -- )
-   s" retirement clears index pointers before slot reuse and context teardown" T-LABEL
+   s" an index belongs to its own arena and dies with it" T-LABEL
    BND [: REUSE-BODY ;] IR-CTX:WITH-CONTEXT
-   [: STALE-RUN ;] E-IR-ARENA-STALE TTHROWSQ
-   s" replacing the installed index retirement observer refuses" T-LABEL
-   [: OBSERVER-REPLACE ;] E-IR-ARENA-STATE TTHROWSQ ;
+   [: STALE-RUN ;] E-IR-ARENA-STALE TTHROWSQ ;
 
 \ Batch identity binding checks every ordinal before publishing, and opens
 \ the current table on each call rather than retaining a count across growth.

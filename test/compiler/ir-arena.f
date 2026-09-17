@@ -6,9 +6,9 @@
 \ leaves the arena usable, cross-owner rejection for indices and
 \ contexts, ABORT and FREEZE consuming the builder, fail-closed staleness
 \ after context teardown, whole-range release through the owning context
-\ (shown by reusing the registry across more contexts than it has slots and
-\ by two same-size full fills back to back), and checker fixtures proving
-\ the private cast window is sealed.
+\ (shown by running more contexts and more arenas than the deleted registry
+\ ever held, and by two same-size full fills back to back), and checker
+\ fixtures proving the private cast window is sealed.
 
 require lib/test.f
 require lib/image-lifecycle.f
@@ -20,7 +20,7 @@ package IR-ARENA-TEST
 private
 
 8 constant TSEED                     \ pins the pre-doubling seed capacity
-64 constant TSLOTS                   \ pins the arena registry capacity
+256 constant TMANY                   \ four times the capacity the deleted registry had
 2048 constant TBIG                   \ full-fill ceiling; its doubling chain fits one mapping
 $20000 constant TMAP-BYTES           \ pins the context mapping size
 
@@ -390,18 +390,14 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    s" a frozen view is dead after its context ends" T-LABEL
    [: ST-VIEW ;] E-IR-ARENA-STALE TTHROWSQ ;
 
-\ ---- resolution order: a consumed handle and a dead owner beat the state -----
-\ LIVE-SLOT and FROZEN-SLOT are twins and both ask their questions in one
-\ order: consumed handle, then dead owner, then state. The order is not
-\ cosmetic. Every case below leaves a registry row whose STATE would answer
-\ first and answer WRONG - a torn-down arena reported as merely frozen, a slot
-\ that now belongs to somebody else reported as a state mismatch - and each of
-\ those answers tells the caller its handle still names something.
-\
-\ FROZEN-SLOT's dead-owner half is not constructible from the public API: a
-\ published slot is only reachable through a view and a view's row is always
-\ ST-FROZEN, so the state test would pass either way and could not be caught
-\ jumping the queue. The consumed-handle case is what pins that twin's order.
+\ ---- resolution order: a dead record beats the state ------------------------
+\ LIVE-DESC and FROZEN-DESC are twins and both ask their questions in one
+\ order: the region's bound, then the record's identity, whose refusal reports
+\ a dead or replaced record before it reports a state. The order is not
+\ cosmetic. Every case below leaves a record whose STATE would answer first and
+\ answer WRONG - a torn-down arena reported as merely frozen, a record that was
+\ given back reported as a state mismatch - and each of those answers tells the
+\ caller its handle still names something.
 : OD-FROZEN-BODY ( IR-CTX:ctx -- IR-ARENA:arena )
    {: c:IR-CTX:ctx :}
    c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
@@ -427,9 +423,9 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 : OD-FROZEN-LIVE ( -- )
    BND [: OD-FROZEN-LIVE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ An aborted builder handle whose slot is taken again and frozen: the row is
-\ ST-FROZEN under a generation this handle never carried, so a state test that
-\ ran first would answer frozen for somebody else's arena.
+\ An aborted builder handle held while another arena is created and frozen: the
+\ handle names a record that was given back, and a state test that ran first
+\ would have to answer about a record nobody owns.
 : OD-REUSED-FROZEN-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 IR-ARENA:NEW {: old:IR-ARENA:arena :}
@@ -441,9 +437,9 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 : OD-REUSED-FROZEN ( -- )
    BND [: OD-REUSED-FROZEN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ A retired view whose slot is taken again by a live builder: the row is
-\ ST-LIVE, which is the one state FROZEN-SLOT rejects, so a state test that ran
-\ first would answer E-IR-ARENA-STATE instead of naming the consumed handle.
+\ A retired view held while a live arena is created: the view names a record
+\ that was given back, and a state test that ran first would answer
+\ E-IR-ARENA-STATE instead of naming the consumed handle.
 : OD-REUSED-LIVE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
@@ -461,9 +457,9 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    [: OD-FROZEN-DEAD ;] E-IR-ARENA-STALE TTHROWSQ
    s" the same frozen arena in a live context is still frozen" T-LABEL
    [: OD-FROZEN-LIVE ;] E-IR-ARENA-FROZEN TTHROWSQ
-   s" an aborted handle whose slot was reused and frozen is stale" T-LABEL
+   s" an aborted handle is stale even beside a live frozen arena" T-LABEL
    [: OD-REUSED-FROZEN ;] E-IR-ARENA-STALE TTHROWSQ
-   s" a retired view whose slot was reused live is stale, not a state" T-LABEL
+   s" a retired view is stale beside a live arena, not a state" T-LABEL
    [: OD-REUSED-LIVE ;] E-IR-ARENA-STALE TTHROWSQ ;
 
 \ ---- ordinal reads share bounds and handle lifetime -------------------------
@@ -724,27 +720,29 @@ variable FF-WANT
    s" the child-retirement vector is installed once" T-LABEL
    [: RD-DOUBLE-INSTALL ;] E-IR-CTX-STATE TTHROWSQ ;
 
-\ ---- registry capacity and whole-range release -------------------------------
-\ The one-past-capacity reject is caught inside the live context, so the
-\ context exits normally and its 64 arenas are reclaimed by that context's own
-\ teardown instead of lingering behind a throw-aborted registry slot.
-: SL-65TH ( IR-CTX:ctx -- IR-CTX:ctx )
-   dup 1 IR-ARENA:NEW drop ;
-
+\ ---- the region is the only capacity, and it comes back ----------------------
+\ An arena was a registry row and the registry held sixty-four, so a
+\ sixty-fifth was a named refusal and a chain of passes each building a module
+\ had to hand its rows back as it went. An arena is now a record in the owning
+\ context's region, so what bounds them is that region: this builds four times
+\ the old capacity inside one context, reads every one of them back through
+\ both a live handle and a frozen view, and then builds one more.
 : SL-BODY ( IR-CTX:ctx -- n )
    {: c:IR-CTX:ctx :}
-   TSLOTS 0 ?do
+   TMANY 0 ?do
       c 1 IR-ARENA:NEW {: a:IR-ARENA:arena :}
       c a i IR-ARENA:PUSH {: x:IR-ARENA:cell-id :}
       a x IR-ARENA:PEEK i T=
       a IR-ARENA:FREEZE x IR-ARENA:AT i T=
    loop
-   c [: SL-65TH ;] catch nip ;
+   c 1 IR-ARENA:NEW {: last:IR-ARENA:arena :}
+   c last 7 IR-ARENA:PUSH drop
+   last 0 IR-ARENA:READ ;
 
 : SL-CASE ( -- )
-   s" the registry fills to its capacity and rejects one more, named" T-LABEL
+   s" arenas far past the old registry capacity are ordinary" T-LABEL
    BND [: SL-BODY ;] IR-CTX:WITH-CONTEXT
-   E-IR-ARENA-SLOTS T= ;
+   7 T= ;
 
 : WR-ONE-BODY ( IR-CTX:ctx -- n )
    {: c:IR-CTX:ctx :}
@@ -763,8 +761,8 @@ variable FF-WANT
    a IR-ARENA:USED ;
 
 : WR-CASES ( -- )
-   s" teardown releases registry slots across more contexts than slots" T-LABEL
-   TSLOTS 2 * 0 ?do
+   s" teardown gives the region back across more contexts than arenas fit" T-LABEL
+   TMANY 0 ?do
       BND [: WR-ONE-BODY ;] IR-CTX:WITH-CONTEXT 1 T=
    loop
    s" a torn-down context releases its arenas' whole range" T-LABEL
@@ -977,15 +975,35 @@ $7FFFFFFFFFFFFFFF constant AS-MAX-N
    small IR-ARENA:USED 0 T= ;
 
 \ ---- the process holds no compiler session ------------------------------------
-\ The capacity cases below count the WHOLE arena registry, and that registry is
-\ process-wide: a tier-1 load opens the compiler's own session and keeps its
-\ interner and its vocabulary table in it until the image is captured, which is
-\ slots this file's arithmetic does not know about. Standing that session down is
-\ exactly what a capture does, and the compiler opens a fresh one for its next
-\ definition, so the registry these cases exhaust is one this file owns.
+\ The cases below run contexts at the bottom of the region, and a tier-1 load
+\ opens the compiler's own session and keeps its interner and its vocabulary
+\ table there until the image is captured. Standing that session down is exactly
+\ what a capture does, and the compiler opens a fresh one for its next
+\ definition, so the region these cases run in is one this file owns.
 : STAND-DOWN ( -- )
    IR-CTX:SESSION-LIVE? 0= if exit then
    IMAGE-LIFECYCLE:PREPARE ;
+
+\ ---- a handle presented when there is no region at all ------------------------
+\ A capture gives the region's mapping back, and the handles a captured image
+\ carries in its typed buffers outlive it. Resolving one then has no region to
+\ read: the answer is the arena's own refusal and not a read of an address that
+\ is gone, because the closed state points this package's resolution at a record
+\ that is all zeros. Nothing here can be reached through storage the image did
+\ not carry, which is what makes it the last case in the file.
+1 TYPED-BUFFER CAP-A IR-ARENA:arena
+
+: CAP-READ ( -- )
+   0 CAP-A @ IR-ARENA:USED drop ;
+
+: CAP-CASES ( -- )
+   DEAD-ARENA 0 CAP-A !
+   IR-ARENA:CAPTURE-PREPARE
+   IR-CTX:CAPTURE-PREPARE
+   s" a handle read with the region gone is stale, not a fault" T-LABEL
+   [: CAP-READ ;] E-IR-ARENA-STALE TTHROWSQ
+   s" and the next context opens the region again" T-LABEL
+   BND [: WR-ONE-BODY ;] IR-CTX:WITH-CONTEXT 1 T= ;
 
 public
 
@@ -998,6 +1016,7 @@ public
    SPAN-CASES
    SL-CASE
    WR-CASES
+   CAP-CASES
    CHECKER-CASES
    T-REPORT ;
 

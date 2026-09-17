@@ -80,12 +80,11 @@
 \ is appended: IR-OP:END-OP, IR-FUN:END-FUN and IR-FUN:END-BLOCK each validate
 \ their record whole against the schema, the windows and the ceilings.
 \
-\ CAPACITY. Fifteen arenas per module and IR-ARENA's sixty-four registry slots
-\ mean at most four modules - builders, frozen modules, or a mix - can be live
-\ at one time. ABORT frees its fifteen slots at once and IR-ARENA reclaims the
-\ slots of any module whose context tore down, so the limit is on modules alive
-\ together, not on modules built in sequence. Raising it is IR-ARENA's own
-\ capacity decision, not a side effect of this file.
+\ CAPACITY. An arena is a record and a span in the owning context's scratch
+\ region, so how many modules may be live together is bounded by that region and
+\ by nothing else. This file's own sixteen-slot registry bounds how many
+\ BUILDERS and frozen modules it can name at once, and a context's teardown is
+\ what reclaims those.
 
 require lib/prelude.f
 require lib/errors.f
@@ -238,12 +237,12 @@ CAST: ARENA>N ( IR-ARENA:arena -- n )
 
 \ ---- the table transaction ----------------------------------------------------
 \ Creating a builder is seventeen arena allocations followed by one publication,
-\ and it has to be all of them or none. WHO GIVES THE ARENAS BACK is
-\ IR-ARENA:SCOPE-RELEASE, not this file: the slot is the arena registry's
-\ resource, the seven packages that build these tables each take two or three
-\ slots of their own before handing them over, and a record kept here could only
-\ ever see the ones that were handed over. The account of that is at the arena
-\ scope itself.
+\ and it has to be all of them or none. NOTHING GIVES THE ARENAS BACK, because
+\ there is nothing to give back: an arena is a record and a span in the owning
+\ context's region, so the seventeen a failed creation took die with that
+\ context's mark exactly as a successful one's do. What a partial creation costs
+\ is region bytes a bump cursor will not reclaim before the mark - the price
+\ growth by copy already pays - and no shared resource at all.
 \
 \ WHAT THIS RECORD IS FOR is the other half: the table array. TAB! is the only
 \ word that puts an arena into a slot's table array, so it is the only place
@@ -288,8 +287,7 @@ TX-NONE TX-SLOT !
    major TX-MAJOR !
    minor TX-MINOR !
    slot TX-SLOT !
-   0 TX-N !
-   IR-ARENA:SCOPE-BEGIN ;
+   0 TX-N ! ;
 
 : TX-CLOSE ( -- )
    TX-NONE TX-SLOT !
@@ -327,12 +325,10 @@ private
 \ module would then carry whatever arena the previous holder of this slot left
 \ in that entry.
 : TX-ABANDON ( -- )
-   IR-ARENA:SCOPE-RELEASE
    TX-CLOSE ;
 
 : TX-COMMIT ( -- )
    TX-N @ TABLES# <> if TX-ABANDON E-IR-BUILD-STATE throw then
-   IR-ARENA:SCOPE-COMMIT
    TX-CLOSE ;
 
 : VIEW@ ( n n -- IR-ARENA:view )
@@ -756,11 +752,12 @@ variable PROTO-ON
    c slot FUN-TABLES
    c slot EDGE-TABLES ;
 
-\ Every table, or none. A component that refuses - the arena registry being
-\ full is the one that bit - releases the components already taken, in the
-\ reverse of the order they were taken, and the ORIGINAL refusal is what the
-\ caller is told: a caller that asked for a module it cannot have needs to know
-\ why, not that the unwind worked.
+\ Every table, or none. A component that refuses - a ceiling its own
+\ constructor will not accept, or a region with no room left - closes the
+\ transaction behind it and the ORIGINAL refusal is what the caller is told: a
+\ caller that asked for a module it cannot have needs to know why, not that the
+\ unwind worked. The tables already made need no unwinding: they are records in
+\ the owning context's region and go back with its mark.
 : TABLES-TRY ( -- )
    [: TABLES-BUILD ;] catch {: rc:n :}
    rc 0= if TX-COMMIT exit then
@@ -774,14 +771,13 @@ public
 \ is consumed here and becomes this module's committed ceilings. The module
 \ identity is minted from the context, so it counts against the context's own
 \ module ceiling; the generation is installed last, so a failure anywhere in
-\ table creation leaves no half-installed slot behind - and the tables that
-\ failure had already taken are given back before it is rethrown, so a builder
-\ nobody got costs the arena registry nothing.
+\ table creation leaves no half-installed slot behind, and a builder nobody got
+\ costs this registry nothing.
 \
 \ WHAT A FAILED CREATION DOES CONSUME, honestly: the module serial this context
-\ minted, which is never reused by design, and the scratch bytes each released
-\ table took from the mapping, which is a bump allocator with no free. Neither
-\ is a registry slot and neither stops the next builder.
+\ minted, which is never reused by design, and the region bytes each table it
+\ did make took from a bump cursor with no free. Neither is a registry slot and
+\ neither stops the next builder.
 : NEW-BUILDER ( IR-CTX:ctx ptr u8 n n n -- IR-BUILD:builder )
    {: c:IR-CTX:ctx p u:n major:n minor:n :}
    PLAN-OPEN-CK
@@ -1515,28 +1511,26 @@ public
    ST-ABORTED slot BSTATE! ;
 
 \ Give a PUBLISHED module up. It is ABORT's counterpart on the other side of the
-\ freeze: all seventeen tables are retired at once, which releases their registry
-\ slots and makes every view and index they minted stale, and the slot records
-\ that it was retired so a later use of the module handle is named rather than
-\ merely refused.
+\ freeze: all seventeen tables are retired at once, which makes every view,
+\ reader and index they minted stale, and the slot records that it was retired
+\ so a later use of the module handle is named rather than merely refused.
 \
 \ WHAT THIS IS FOR. A pass that rewrites a module reads the old one and writes a
 \ new one, and when it returns, the old module is dead: everything the new module
-\ needs has been copied into it and no reader of the old one remains. Without
-\ this word that module's seventeen slots stayed taken until the whole context
-\ tore down, so a chain of rewriting passes cost the SUM of every module it ever
-\ built. The registry holds sixty-four slots, so three chained builders plus the
-\ model and tape arenas is already the ceiling - which is how a routine that
-\ combined and then spilled ran out (E-IR-ARENA-SLOTS).
+\ needs has been copied into it and no reader of the old one remains. Saying so
+\ is what makes being wrong loud at the next read; it reclaims no storage,
+\ because an arena's storage is the owning context's region and comes back with
+\ that context's mark.
 \
 \ THE CALLER SAYS WHICH MODULE IS DEAD AND THE SEALS SAY WHETHER IT WAS RIGHT.
 \ This word cannot prove a module has no readers - liveness is the caller's fact,
-\ not the registry's - so it does not pretend to. What it guarantees is that
+\ not this registry's - so it does not pretend to. What it guarantees is that
 \ being wrong is LOUD: a read through this handle afterwards is
-\ E-IR-BUILD-RETIRED, and a read through any view or index the module already
-\ handed out is IR-ARENA's own E-IR-ARENA-OWNER, because the generation those
-\ indices carry no longer matches the slot. Retiring the wrong module therefore
-\ fails at the next read of it rather than returning something plausible.
+\ E-IR-BUILD-RETIRED, and a read through any view, reader or index the module
+\ already handed out is IR-ARENA's own E-IR-ARENA-STALE, because retiring an
+\ arena zeroes the identity cell of its descriptor and every one of those values
+\ is compared against it. Retiring the wrong module therefore fails at the next
+\ read of it rather than returning something plausible.
 \
 \ IT TAKES NO CONTEXT, for ABORT's reason: giving arenas back needs no allocator
 \ and publishes nothing, so it keeps the narrower signature.

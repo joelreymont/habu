@@ -27,7 +27,6 @@ package IR-BUILD-TEST
 private
 
 16 constant TSLOTS                   \ pins the builder registry capacity
-64 constant TARENA-SLOTS             \ pins the arena registry capacity
 17 constant TTABLES                  \ pins the tables one module is made of
 
 \ ---- bindings ----------------------------------------------------------------
@@ -618,12 +617,13 @@ create VW-BUF VW-CAP allot
    s" opening a block outside a function rejects" T-LABEL
    [: SG-BLOCK ;] E-IR-BUILD-STAGE TTHROWSQ ;
 
-\ ---- abort releases all provisional storage ----------------------------------
-\ Each module is fifteen arenas and the arena registry holds sixty-four slots,
-\ so four modules exhaust it. Building and abandoning TSLOTS modules in one
-\ context needs TSLOTS times fifteen slots in total: it can only pass if every
-\ ABORT gives its fifteen back at once. The last builder is the one past the
-\ builder registry's own capacity, which is a named refusal of its own.
+\ ---- abort ends a builder, and the registry it ends is this file's -----------
+\ Building and abandoning TSLOTS modules in one context is TSLOTS times
+\ seventeen arenas, far more than any one module needs and far more than the
+\ deleted arena registry could have held at once: they are records in the
+\ context's region and cost it nothing but bytes. The last builder is the one
+\ past the BUILDER registry's own capacity, which is a named refusal of its own
+\ and is what this case pins.
 : AB-CYCLE ( IR-CTX:ctx -- IR-CTX:ctx )
    dup MK IR-BUILD:ABORT ;
 
@@ -636,60 +636,47 @@ create VW-BUF VW-CAP allot
    c [: AB-CYCLE ;] catch nip ;
 
 : AB-RELEASE-CASE ( -- )
-   s" abort releases every arena a builder took, far past the registry" T-LABEL
+   s" sixteen builders abort in one context and the seventeenth is named" T-LABEL
    BND [: AB-RELEASE-BODY ;] IR-CTX:WITH-CONTEXT
-   E-IR-BUILD-SLOTS T= TSLOTS TTABLES * T=
-   s" the abandoned arenas far outnumber the arena registry" T-LABEL
-   TSLOTS TTABLES * TARENA-SLOTS > TTRUE ;
+   E-IR-BUILD-SLOTS T= TSLOTS TTABLES * T= ;
 
-\ ---- a builder that runs out part-way gives back what it took ----------------
-\ Three modules hold fifty-one of the arena registry's sixty-four slots, which
-\ leaves less than a fourth module needs, so a fourth runs out part-way through
-\ its tables. Everything it took before that used to stay taken: the builder is
-\ published last, so nothing existed that could ABORT them, and only the whole
-\ context tearing down would have reclaimed them. Measured on the old code, the
-\ context could not take ONE more one-cell arena afterwards; the thirteen the
-\ failed builder had taken were gone for good.
-\
-\ THE MEASUREMENT IS THE FREE SLOTS, TAKEN THROUGH THE REAL ENTRY. The count
-\ below asks the arena registry for one-cell arenas until it refuses, so what it
-\ answers is how many slots the failed NEW-BUILDER left behind. The expected
-\ number is the registry's capacity less what the three live modules hold, both
-\ of them pinned constants of this file rather than a number somebody wrote
-\ down: the whole of what the fourth took has to come back.
-variable PART-FREE
-
-: PART-ARENA ( IR-CTX:ctx n -- IR-CTX:ctx n )
-   2dup IR-ARENA:NEW drop ;
-
-: PART-COUNT-FREE ( IR-CTX:ctx -- n )
-   0 PART-FREE !
-   1
-   begin
-      [: PART-ARENA ;] catch 0=
-   while
-      PART-FREE @ 1+ PART-FREE !
-   repeat
-   2drop PART-FREE @ ;
+\ ---- a builder that runs out part-way leaves nothing behind -------------------
+\ A module's seventeen tables are made in order and a constructor can refuse
+\ one, so a creation can stop with nine tables made and eight to go. What used
+\ to be at stake was the arena registry: the nine held nine of sixty-four slots
+\ that only the whole context tearing down would reclaim, and the arena scope
+\ existed to give them back. An arena is now a record in the owning context's
+\ region, so there is no shared resource to leak and what has to hold is
+\ narrower: the refusal reaching the caller is the constructor's OWN, the
+\ transaction is closed behind it, and the next creation in the same context
+\ succeeds. The tenth table's ceiling is the one refused, so the failure lands
+\ well past the first table and well before the last.
+: PART-PLAN ( -- )
+   IR-BUILD:PLAN-BEGIN
+   16 256 IR-BUILD:PLAN-SYMBOLS
+   16 64 IR-BUILD:PLAN-TYPES
+   16 64 IR-BUILD:PLAN-ATTRS
+   8 IR-BUILD:PLAN-SOURCES
+   8 64 IR-BUILD:PLAN-SCHEMAS
+   0 16 128 IR-BUILD:PLAN-OPS
+   8 8 64 IR-BUILD:PLAN-FUNS ;
 
 : PART-MK ( IR-CTX:ctx -- IR-CTX:ctx )
-   dup MK drop ;
+   PART-PLAN
+   dup s" hir" 1 0 IR-BUILD:NEW-BUILDER drop ;
 
 : PART-BODY ( IR-CTX:ctx -- n n )
    {: c:IR-CTX:ctx :}
-   c MK drop
-   c MK drop
-   c MK drop
    c [: PART-MK ;] catch nip
-   c PART-COUNT-FREE ;
+   c MK {: b:IR-BUILD:builder :}
+   c b s" fresh" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL ;
 
+\ The next builder's first new spelling is ordinal one, because a builder
+\ interns its own dialect name as ordinal zero.
 : PART-CASE ( -- )
-   s" three modules leave the registry short of a fourth" T-LABEL
-   TARENA-SLOTS 3 TTABLES * - TTABLES < TTRUE
-   s" a builder that runs out of arenas gives back every one it took" T-LABEL
+   s" a creation that runs out part-way names its own refusal and leaves a usable context" T-LABEL
    BND [: PART-BODY ;] IR-CTX:WITH-CONTEXT
-   TARENA-SLOTS 3 TTABLES * - T=
-   E-IR-ARENA-SLOTS T= ;
+   1 T= E-IR-OP-CAP T= ;
 
 \ ---- retire releases a PUBLISHED module's storage -----------------------------
 \ The other side of the freeze, and the same measurement. ABORT above proves an
@@ -700,19 +687,16 @@ variable PART-FREE
 \ module to the end of the compilation - which is what ran the native chain out
 \ of arenas once a routine both combined and spilled.
 \
-\ Freezing and retiring TSLOTS modules in one context needs TSLOTS times
-\ seventeen arenas in total, which is far past the registry, so this can only
-\ pass if every RETIRE gives its whole seventeen back at once.
+\ Freezing and retiring RT-CYCLES modules in one context is RT-CYCLES times
+\ seventeen arenas, each of them a record in the context's own region.
 : RT-CYCLE ( IR-CTX:ctx -- IR-CTX:ctx )
    dup {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
    c b IR-BUILD:FREEZE IR-BUILD:RETIRE ;
 
-\ Eight cycles is what this measures, and the number is bounded from both ends
-\ rather than chosen: eight times seventeen arenas is well past the arena
-\ registry, so the case cannot pass unless the arenas come back, and eight is
-\ under the BUILDER registry's own capacity, which a retire does not refill -
-\ a retired slot records that it was retired, exactly as an aborted one does.
+\ Eight cycles, which is under the BUILDER registry's own capacity: a retire
+\ does not refill a builder slot - a retired slot records that it was retired,
+\ exactly as an aborted one does - so the count has to stay inside it.
 8 constant RT-CYCLES
 
 : RT-RELEASE-BODY ( IR-CTX:ctx -- n )
@@ -723,42 +707,13 @@ variable PART-FREE
    RT-CYCLES TTABLES * ;
 
 : RT-RELEASE-CASE ( -- )
-   s" retire releases every arena a published module held, far past the registry"
+   s" a published module can be frozen and retired over and over in one context"
    T-LABEL
    BND [: RT-RELEASE-BODY ;] IR-CTX:WITH-CONTEXT
    RT-CYCLES TTABLES * T=
-   s" the retired arenas far outnumber the arena registry" T-LABEL
-   RT-CYCLES TTABLES * TARENA-SLOTS > TTRUE
    s" and the cycles stay inside the builder registry, which retire does not refill"
    T-LABEL
    RT-CYCLES TSLOTS < TTRUE ;
-
-\ And the storage really comes back rather than merely being forgotten: a
-\ context that froze and retired eight modules has exactly as many free arena
-\ slots left as one that built nothing. This is the peak-pressure claim stated
-\ as a number - a chain that retires what it supersedes costs the modules LIVE
-\ at once, not the modules ever built.
-\
-\ THE TWO COUNTS RUN IN SEPARATE CONTEXTS BECAUSE COUNTING IS DESTRUCTIVE:
-\ PART-COUNT-FREE takes arenas until the registry refuses, so a context it has
-\ measured has nothing left to build with. One context is measured cold and the
-\ other after the cycles, and the two numbers are compared outside both.
-: RT-FREE-COLD ( IR-CTX:ctx -- n )
-   PART-COUNT-FREE ;
-
-: RT-FREE-AFTER ( IR-CTX:ctx -- n )
-   {: c:IR-CTX:ctx :}
-   RT-CYCLES 0 ?do
-      c RT-CYCLE drop
-   loop
-   c PART-COUNT-FREE ;
-
-: RT-FREE-CASE ( -- )
-   s" a context that retired eight modules has the free slots of one that built none"
-   T-LABEL
-   BND [: RT-FREE-COLD ;] IR-CTX:WITH-CONTEXT
-   BND [: RT-FREE-AFTER ;] IR-CTX:WITH-CONTEXT
-   T= ;
 
 \ A retired module answers with its OWN name. This is what makes retiring the
 \ wrong module a loud failure instead of a plausible answer: the next reader of
@@ -1606,14 +1561,12 @@ variable PART-FREE
    BND [: BS-REUSE ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- the process holds no compiler session -----------------------------------
-\ TARENA-SLOTS and TSLOTS pin the WHOLE arena and builder registries, and those
-\ registries are process-wide: a tier-1 load opens the compiler's own session
-\ and keeps its interner and its vocabulary table in them until the image is
-\ captured, which is four arenas this file's arithmetic does not know about (two
-\ for the interner, two for the table; the module that registered the table is
-\ given back as soon as it has). Standing that session down is exactly what a
-\ capture does, and the compiler opens a fresh one for its next definition, so
-\ the measurements below are taken against a registry this file owns.
+\ TSLOTS pins the WHOLE builder registry and that registry is process-wide: a
+\ tier-1 load opens the compiler's own session and keeps its interner and its
+\ vocabulary table alive until the image is captured. Standing that session down
+\ is exactly what a capture does, and the compiler opens a fresh one for its
+\ next definition, so the measurements below are taken against a registry and a
+\ region this file owns.
 : STAND-DOWN ( -- )
    IR-CTX:SESSION-LIVE? 0= if exit then
    IMAGE-LIFECYCLE:PREPARE ;
@@ -1653,7 +1606,6 @@ public
    CF-CEILING-CASE
    CF-CASE
    RT-RELEASE-CASE
-   RT-FREE-CASE
    RT-STALE-CASES
    STALE-CASES
    CHECKER-CASES

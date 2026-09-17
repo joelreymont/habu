@@ -296,11 +296,13 @@ private
    rr l OFF-LEN RC@ u <> if false exit then
    pr  pr rr l ROW-START  p u BYTES-EQ ;
 
-\ Buckets and their control record live in context scratch. Registry pointers
-\ are private and cleared by arena retirement before any owning span is unmapped.
+\ Buckets and their control record live in context scratch, and the pointer to
+\ that record lives in the arena's own descriptor - IR-ARENA:SIDE-FIELD, the one
+\ observer's cell. It is born empty with the arena and dies with it, so nothing
+\ here has to notice a retirement: the record and the cell naming it are spans
+\ of one region and go back together.
 \ Each bucket keeps the full hash for growth and ordinal+1 (zero means empty).
 \ Load stays at most one half; the insertion-ordered rows remain authoritative.
-create INDEXES IR-ARENA:REGISTRY-CAP cells allot
 8 constant INDEX-SEED
 0 constant IX-CAP
 1 constant IX-COUNT
@@ -310,28 +312,12 @@ create INDEXES IR-ARENA:REGISTRY-CAP cells allot
 0 constant BK-HASH
 1 constant BK-ORD
 
-: INDEX-FIELD ( n -- ptr ptr u8 )
-   cells INDEXES + 0 ptr-field ;
-
-
-: INDEX-CLEAR ( n -- )
-   NULL-PTR swap INDEX-FIELD ! ;
-
-
-: INDEXES-CLEAR ( -- )
-   IR-ARENA:REGISTRY-CAP 0 ?do i INDEX-CLEAR loop ;
-INDEXES-CLEAR
-
-: INDEX-INSTALL ( -- )
-   [: INDEX-CLEAR ;] IR-ARENA:RETIRE-OBSERVER! ;
-INDEX-INSTALL
-
 : BUCKETS-FIELD ( ptr u8 -- ptr ptr u8 )
    IX-BUCKETS ptr-field ;
 
 
 : INDEX@ ( IR-ARENA:reader -- ptr u8 )
-   IR-ARENA:REGISTRY-SLOT INDEX-FIELD @
+   IR-ARENA:SIDE-FIELD @
    dup NULL-PTR = if E-IR-SYM-STATE throw then ;
 
 
@@ -391,10 +377,9 @@ INDEX-INSTALL
 
 : INDEX-NEW ( IR-CTX:ctx IR-ARENA:reader -- )
    {: c:IR-CTX:ctx rr:IR-ARENA:reader :}
-   rr IR-ARENA:REGISTRY-SLOT {: slot:n :}
    c INDEX-SEED 0 INDEX-TAKE {: ix:ptr :}
    ix BUCKETS-FIELD @ INDEX-SEED BUCKETS-ZERO
-   ix slot INDEX-FIELD ! ;
+   ix rr IR-ARENA:SIDE-FIELD ! ;
 
 
 : BUCKETS-REHASH ( ptr u8 n ptr u8 n -- )
@@ -451,11 +436,10 @@ INDEX-INSTALL
 : INDEX-CLONE ( IR-CTX:ctx IR-ARENA:reader IR-ARENA:reader -- )
    {: c:IR-CTX:ctx rr:IR-ARENA:reader proto:IR-ARENA:reader :}
    proto INDEX-CK {: src:ptr :}
-   rr IR-ARENA:REGISTRY-SLOT {: slot:n :}
    src IX-CAP CDIGEST:SLOT@ {: cap:n :}
    c cap proto CNT INDEX-TAKE {: dst:ptr :}
    src BUCKETS-FIELD @ dst BUCKETS-FIELD @ cap BUCKETS-CLONE
-   dst slot INDEX-FIELD ! ;
+   dst rr IR-ARENA:SIDE-FIELD ! ;
 
 \ ---- creation ----------------------------------------------------------------
 : SYM-CAP-OK ( n -- )

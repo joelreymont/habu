@@ -53,8 +53,11 @@ public
 
 
 \ A pass rebinds all readers at the start of its run, including every input
-\ module switch. Tokens retain no pointer or count; every read still validates
-\ generation, state and bounds through the arena reader API.
+\ module switch. A token retains no pointer and no count - it names the arena's
+\ descriptor, the release epoch that descriptor was born in and the state it was
+\ opened against - so every read still validates identity, state and bounds
+\ through the arena reader API, and a token that outlived the context whose
+\ region holds that descriptor is refused rather than read.
 : VIEWS! ( IR-BUILD:module -- )
    {: m:IR-BUILD:module :}
    m IR-BUILD:FKEY 0 S-KEY !

@@ -352,6 +352,7 @@ public
 -6645 constant E-IR-CTX-CEILING   \ a context-creation serial ceiling outside the accepted range
 -6646 constant E-IR-CTX-SIZE      \ a scratch request of zero or negative bytes
 -6647 constant E-IR-CTX-STATE     \ persisted context state failed its consistency recheck
+-6648 constant E-IR-CTX-NESTED    \ scratch was taken for a context that a deeper live context encloses
 
 \ Compiler IR arena (package IR-ARENA): -6650..-6659
 -6650 constant E-IR-ARENA-STALE   \ an arena handle was used after abort, after retire, or after its context's teardown
@@ -361,8 +362,8 @@ public
 \ -6654 unassigned (arena rollback deleted 2026-08-05: no consumer)
 -6655 constant E-IR-ARENA-BOUND   \ an arena index at or past the readable cell count
 -6656 constant E-IR-ARENA-CEIL    \ an arena cell count outside the accepted range: a creation ceiling, or a reservation
--6657 constant E-IR-ARENA-SLOTS   \ the live-arena registry has no free slot
--6658 constant E-IR-ARENA-SERIALS \ arena generation serials reached their ceiling
+\ -6657 unassigned (arena registry slots deleted 2026-09-17: handles are region offsets)
+\ -6658 unassigned (arena generation deleted 2026-09-17: the region's release epoch stamps a descriptor)
 -6659 constant E-IR-ARENA-STATE   \ persisted arena state failed its consistency recheck
 
 \ Compiler source registry (package IR-SOURCE): -6660..-6669
