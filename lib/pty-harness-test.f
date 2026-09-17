@@ -8,6 +8,7 @@
 \
 \ Run: bin/hb --load lib/pty-harness-test.f
 require lib/test.f
+require lib/test/outcome.f
 require lib/string.f
 require lib/pty-harness.f
 
@@ -16,12 +17,15 @@ package PTY-HARNESS-TEST
 using PTY-HARNESS
 
 $400 constant FEED-LIMIT           \ chunks one fill loop may feed before giving up
+$1F4 constant WEDGE-MS             \ the wedge case's own budget, short enough to watch
+$BB8 constant WEDGE-SLACK-MS       \ what a loaded box may add to it before the claim fails
 
 create FILLER 64 allot
 variable HIT                       \ did the loop reach the case it was feeding for?
 
 : FILLER$ ( -- ptr u8 n )   FILLER 64 ;
 : MISSING$ ( -- ptr u8 n )  s" /nonexistent/hb-is-not-here" ;
+: WEDGE$ ( -- ptr u8 n )    s" /usr/bin/yes" ;   \ writes forever, exits never
 : MARK$ ( -- ptr u8 n )     s" edge-marker" ;
 : GONE$ ( -- ptr u8 n )     s" dropped-marker" ;
 : ABSENT$ ( -- ptr u8 n )   s" never-fed-marker" ;
@@ -189,7 +193,7 @@ variable HIT                       \ did the loop reach the case it was feeding 
    127 SEND-BYTE
    s" habu> " WAIT-FOR TTRUE
    4 SEND-BYTE
-   CHILD-PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+   REAP 0 T-OUTCOME-EXITED=
    CLOSE-MASTER ;
 
 
@@ -207,6 +211,24 @@ variable HIT                       \ did the loop reach the case it was feeding 
    STOP-CHILD ;
 
 
+\ A child that writes into the terminal faster than anyone empties it and never
+\ exits. Reaped by waiting alone, the parent sat in do_wait for 5 m 34 s with the
+\ child blocked in write() (dot habu-bound-the-pty-7771d0fb); the bounded reap
+\ kills it on the clock and answers the timeout outcome, which reds a case that
+\ wanted a clean exit. The elapsed claim is the one that says "instead of
+\ hanging": without the bound this case does not return at all.
+: CASE-WEDGE-REAP ( -- )
+   BUF-CLEAR
+   WEDGE$ SPAWN-ON-PTY
+   s" y" WAIT-FOR TTRUE                    \ the child is writing at the terminal
+   mono-ns {: t0:n :}
+   s" a child that never stops writing is reaped as a timeout" T-LABEL
+   WEDGE-MS REAP-WITHIN T-OUTCOME-TIMEOUT
+   s" and the reap returned on the clock, not on the child" T-LABEL
+   mono-ns t0 - PROC-NS-PER-MS / WEDGE-MS WEDGE-SLACK-MS + < TTRUE
+   CLOSE-MASTER ;
+
+
 : BODY ( -- )
    FILLER!
    CASE-APPEND
@@ -217,7 +239,8 @@ variable HIT                       \ did the loop reach the case it was feeding 
    CASE-KEEP-TAIL
    CASE-NO-WINDOW
    CASE-WATCH-REFUSALS
-   CASE-SPAWN-ABORT ;
+   CASE-SPAWN-ABORT
+   CASE-WEDGE-REAP ;
 
 
 : RUN ( -- )

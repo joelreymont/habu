@@ -61,6 +61,16 @@ variable PID
 : TCONTAINS ( ptr u8 n -- )
    IN-BUF? TTRUE ;
 
+\ Completion, in this file's own counters: the bounded reaps answer an outcome,
+\ and only a clean exit with this code passes. A reap that ran out of clock
+\ answers timeout, which reds here instead of hanging the run.
+: T-EXIT= ( outcome n -- ) {: want:n :}
+   MATCH outcome
+     exited OF want T= ENDOF
+     signaled OF drop 1 0 T= ENDOF
+     timeout OF 1 0 T= ENDOF
+   ;MATCH ;
+
 \ Every drain starts from an empty buffer: the bytes it swallows are the ones a
 \ later wait must not be answered by.
 : MFD-DRAIN ( -- )
@@ -130,7 +140,7 @@ variable PID
    IN-W @ close ;
 
 : CAPTURE-EXPECT-RC ( -- )
-   PID @ >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
+   PID @ >PID WAIT-BUDGET-MS WAIT-EXIT 0 T-EXIT= ;
 
 : CAPTURE-EXPECT-OUT ( -- )
    BUF-CLEAR
@@ -215,7 +225,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    SEED-TOKEN!
    OUT-R @ close
    ERR-R @ close
-   PID @ >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+   PID @ >PID WAIT-BUDGET-MS WAIT-EXIT 0 T-EXIT=
    SEEDNUM-U @ 0 > TTRUE ;
 
 : PTY-SEED-SURFACE ( -- )
@@ -654,7 +664,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 : PTY-STOP-HB ( -- )
    PTY-EDITOR-READY
    4 SEND-BYTE
-   CHILD-PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+   REAP 0 T-EXIT=
    CLOSE-MASTER ;
 
 : PTY-BASIC ( -- )

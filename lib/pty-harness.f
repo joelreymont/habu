@@ -18,6 +18,14 @@
 \ A ready descriptor that reads nothing is the far side's hang-up and is
 \ reported, never counted as quiet.
 \
+\ REAPING. A child on a terminal nobody reads blocks in write() once the
+\ terminal's buffer fills, so a reap that only waits waits for a child that is
+\ waiting for it: measured, 5 m 34 s in do_wait before a hand kill. REAP reads
+\ the master until the child hangs up, waits out what is left of the budget on
+\ the child's lifetime watch, and on expiry kills the child and names it with the
+\ bytes it left unread. PROC-WAIT-RC is still the unbounded wait for callers that
+\ want one.
+\
 \ CLAIMS. A full buffer keeps its tail, so a scan of BUF$ cannot answer a
 \ question about bytes a compaction dropped. Two shapes answer a negative claim
 \ honestly: WAIT-BARRIER closes a window at a marker the child printed PAST the
@@ -297,6 +305,103 @@ public
 
 : CLOSE-MASTER ( -- )
    MFD CLOSE-FD! ;
+
+
+private
+
+\ Read the master until the child hangs up or the clock runs out. A child that
+\ fills the terminal blocks in write() until someone reads it, so the wait that
+\ follows a reap has to be preceded by the reading, not the other way round.
+\ The deadline is absolute, so this overruns it by at most the poll in flight.
+: DRAIN-TO-HANGUP ( -- bool )
+   begin
+      WAIT-LEFT 0= if false exit then
+      MASTER-FD READ-STEP 0 < if true exit then
+   again ;
+
+
+\ One poll-authorised read of what is still queued at the master, and whether
+\ there may be more. The far side is gone by the time this runs, so a ready
+\ descriptor that reads nothing ends the count instead of blocking.
+: LEFTOVER-STEP ( n -- n bool )
+   MASTER-FD POLL-MS >MS POLL-IN COUNT>N 0 <= if false exit then
+   MASTER-FD READ-CHUNK dup 0 <= if drop false exit then
+   + true ;
+
+
+\ Bytes the child left at the master: what a blocked write was waiting for
+\ someone to take. Only meaningful once the child is dead.
+: LEFTOVER ( -- n )
+   0 begin LEFTOVER-STEP 0= if exit then again ;
+
+
+: KILL-REAP ( pid -- ) {: p:pid :}
+   p SIGKILL PROC-KILL-RAW drop
+   p PROC-WAIT-STATUS drop ;
+
+
+\ True once the watch reports the exit within ms. A signal that lands mid-wait
+\ restarts against the same deadline, so no signal storm shortens the budget.
+: WATCH-READY? ( fd n -- bool ) {: w:fd ms:n :}
+   w POLLIN PROC-PFD!
+   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART 0 > ;
+
+
+\ A child that has hung up is not yet a child that has exited: the terminal can
+\ close before the process does. Its lifetime watch answers that question inside
+\ the budget. A host that refuses a watch for a process that has ALREADY exited
+\ (macOS cannot register a dead one; test/proc-watch-smoke.f pins both arms)
+\ answers it the same way, because that is the case whose wait returns at once.
+: EXIT-READY? ( pid n -- bool ) {: p:pid ms:n :}
+   p PID>N proc-watch-open {: w:n :}
+   w 0 < if true exit then
+   w >FD ms WATCH-READY? {: ready:bool :}
+   w close
+   ready ;
+
+
+\ The expiry: name the child that did not exit, kill it, and answer the killed
+\ outcome, which reds a case that wanted a clean exit instead of hanging it.
+: KILL-EXPIRED ( pid n -- outcome ) {: p:pid ms:n :}
+   s" pty reap: no exit within ms " type ms .
+   s" pty reap: killed pid " type p PID>N .
+   p KILL-REAP
+   OUTCOME:TIMEOUT ;
+
+public
+
+\ Reap a child that is no longer writing to us, bounded by ms: the exit if it
+\ comes, the killed outcome if the budget runs out first. Never an unbounded
+\ wait - that is PROC-WAIT-RC's contract, not this one's.
+: WAIT-EXIT ( pid n -- outcome ) {: p:pid ms:n :}
+   p ms EXIT-READY? 0= if p ms KILL-EXPIRED exit then
+   p PROC-WAIT-OUTCOME ;
+
+private
+
+\ The wedge: the child still held the terminal when the clock ran out. Kill it
+\ first, so the count below ends, then name the bytes it left for a reader that
+\ never came.
+: WEDGE-OUTCOME ( n -- outcome ) {: ms:n :}
+   CHILD-PID ms KILL-EXPIRED
+   s" pty reap: bytes still unread at the master " type LEFTOVER .
+   -1 KID ! ;
+
+public
+
+\ Reap the pty child within ms. The master is read to the hang-up first, so the
+\ child is never blocked writing at a terminal nobody empties, and what is left
+\ of the budget waits out the exit itself.
+: REAP-WITHIN ( n -- outcome ) {: ms:n :}
+   CHILD-PID PID>N 0 <= if E-PTY-IO throw then
+   ms WAIT-OPEN
+   DRAIN-TO-HANGUP 0= if ms WEDGE-OUTCOME exit then
+   CHILD-PID WAIT-LEFT WAIT-EXIT
+   -1 KID ! ;
+
+
+: REAP ( -- outcome )
+   WAIT-BUDGET-MS REAP-WITHIN ;
 
 
 private

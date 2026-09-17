@@ -89,6 +89,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/pty-harness.f
 require lib/test.f
+require lib/test/outcome.f
 
 package AOT-DATA-SPAN-FORGE
 
@@ -191,10 +192,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" AOT data span guard: forged span prints the named boot die" T-LABEL
    s" hb: AOT data span out of range" WAIT-FOR TTRUE   \ its fd-2 die reaches the master
    s" AOT data span guard: forged span exits 82 (ENGINE-ERROR:AOT-SEED)" T-LABEL
-   CHILD-PID PROC-WAIT-RC MATCH result
-     ok  OF drop 1 0 T= ENDOF          \ unexpected clean exit -> fail
-     err OF 82 T= ENDOF                \ expected: exit code == 82
-   ;MATCH
+   REAP 82 T-OUTCOME-EXITED=
    CLOSE-MASTER ;
 
 \ The claim that the die did NOT fire is a watch, not a scan of the buffer: a
@@ -209,10 +207,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    fired NEVER-SEEN? TTRUE
    4 SEND-BYTE                       \ Ctrl-D: leave the REPL
    s" AOT data span guard: legal engine exits 0" T-LABEL
-   CHILD-PID PROC-WAIT-RC MATCH result
-     ok  OF 0 T= ENDOF
-     err OF drop 1 0 T= ENDOF
-   ;MATCH
+   REAP 0 T-OUTCOME-EXITED=
    CLOSE-MASTER ;
 
 \ --- the window's content, both halves ---------------------------------------
@@ -233,10 +228,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" habu> " WAIT-FOR TTRUE
    4 SEND-BYTE
    s" AOT window content: the engine still exits 0" T-LABEL
-   CHILD-PID PROC-WAIT-RC MATCH result
-     ok  OF 0 T= ENDOF
-     err OF drop 1 0 T= ENDOF
-   ;MATCH
+   REAP 0 T-OUTCOME-EXITED=
    CLOSE-MASTER ;
 
 : ASSERT-TRAP-DIES-NAMED ( -- )
@@ -244,10 +236,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" AOT declared cell: an uninstalled vector dies by name" T-LABEL
    s" defer: unset execution vector" WAIT-FOR TTRUE
    s" AOT declared cell: it exits 76 (EXEC-VECTOR-RC), not a fault" T-LABEL
-   CHILD-PID PROC-WAIT-RC MATCH result
-     ok  OF drop 1 0 T= ENDOF
-     err OF 76 T= ENDOF
-   ;MATCH
+   REAP 76 T-OUTCOME-EXITED=
    CLOSE-MASTER ;
 
 : REQUIRE-IMAGE ( -- )
@@ -292,10 +281,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" habu> " WAIT-FOR TTRUE
    4 SEND-BYTE
    s" AOT wide format: the over-64 KiB engine exits 0" T-LABEL
-   CHILD-PID PROC-WAIT-RC MATCH result
-     ok  OF 0 T= ENDOF
-     err OF drop 1 0 T= ENDOF
-   ;MATCH
+   REAP 0 T-OUTCOME-EXITED=
    CLOSE-MASTER ;
 
 : PROBE-BIG-WINDOW ( -- )
@@ -321,10 +307,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" habu> " WAIT-FOR TTRUE
    4 SEND-BYTE
    s" AOT out-of-line name: the engine exits 0, not the boot-run's not-found" T-LABEL
-   CHILD-PID PROC-WAIT-RC MATCH result
-     ok  OF 0 T= ENDOF
-     err OF drop 1 0 T= ENDOF
-   ;MATCH
+   REAP 0 T-OUTCOME-EXITED=
    CLOSE-MASTER ;
 
 : PROBE-EXT-NAME ( -- )
@@ -359,10 +342,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" habu> " WAIT-FOR TTRUE
    4 SEND-BYTE
    s" AOT pre-window: the engine exits 0" T-LABEL
-   CHILD-PID PROC-WAIT-RC MATCH result
-     ok  OF 0 T= ENDOF
-     err OF drop 1 0 T= ENDOF
-   ;MATCH
+   REAP 0 T-OUTCOME-EXITED=
    CLOSE-MASTER ;
 
 : PROBE-PREWINDOW ( -- )

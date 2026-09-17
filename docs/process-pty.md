@@ -76,6 +76,16 @@ publishes:
   slave on fds 0, 1 and 2, closes the slave and keeps the close-on-exec master;
   `CHILD-PID`, `MASTER-FD` and `CLOSE-MASTER` are the rest of that child's
   handle. A failed spawn throws what failed and leaves nothing open.
+- `REAP ( -- outcome )` reaps that child within `WAIT-BUDGET-MS`. It reads the
+  master to the hang-up first, because a child on a terminal nobody empties
+  blocks in write() until someone does, and then waits out what is left of the
+  budget on the child's lifetime watch. On expiry it kills the child and names
+  it -- the pid, the budget it overran and the bytes still unread at the master
+  -- and answers `OUTCOME:TIMEOUT`, so a case asserting a clean exit reds
+  instead of hanging. `REAP-WITHIN ( n -- outcome )` is the same with the
+  caller's own budget, and `WAIT-EXIT ( pid n -- outcome )` the same bound for a
+  child that is no longer writing to us, such as a suite's pipe children.
+  `PROC-WAIT-RC` keeps its unbounded contract for callers that want one.
 - `SEND` / `SEND-LINE` / `SEND-BYTE` type at the master; `WRITE-ALL`,
   `WRITE-BYTE` and `WRITE-LINE` write to any descriptor, so a suite's pipe
   children use the same buffer.
@@ -107,7 +117,9 @@ publishes:
 
 The state is process-wide: one child and one wait at a time, and `SPAWN-ON-PTY`
 refuses a second pair while one is open. `lib/pty-harness-test.f` drives the
-buffer, the search, the watches and the spawn's abort path directly.
+buffer, the search, the watches and the spawn's abort path directly, and forces
+the wedge the bounded reap exists for: a child that writes into the terminal
+forever and never exits is killed on the clock, not waited on.
 
 ## Supervised sessions (`lib/process-pty-io.f`)
 
