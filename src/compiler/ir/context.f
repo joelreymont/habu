@@ -23,6 +23,13 @@
 \ over every span the context took at once. So no read inside a context can
 \ reach storage that has been handed to anything else.
 \
+\ A SPAN IS TAKEN AS AN OFFSET, because that is the form a record living inside
+\ the region may hold: a pointer names this process's mapping and a captured
+\ image must carry none, while an offset names a position. SCRATCH-OFFSET
+\ answers one, REGION-HOLDS? says whether the extent it names is still live,
+\ and EPOCH is the release counter a child stamps into a record so an offset
+\ reused by the next compilation cannot pass for the one it replaced.
+\
 \ PERSISTED STATE. All per-context state lives in the context's own mapping as
 \ eight-byte little-endian slots written with the canonical CDIGEST slot words:
 \ the module-mint count and ceiling, scratch usage, the unbound module
@@ -71,7 +78,12 @@ DEPTH-MAX 1- constant SLOT-MASK
 \ sized to dominate the measured high-water of the whole engine self-build
 \ (2,885,144 bytes over every definition src/ contains, 2026-09-16) with room
 \ for a corpus far larger, and the cursor running past it is a named refusal.
-$4000000 constant REGION-BYTES        \ 64 MiB of reserved scratch address space
+\ The size is stated as a WIDTH because that is what a child packing an offset
+\ beside anything else has to know, and deriving the bytes from it is how the
+\ two can never disagree.
+26 constant OFFSET-BITS               \ the width of a region offset
+1 OFFSET-BITS lshift constant REGION-BYTES   \ 64 MiB of reserved scratch address space
+$7FFFFFFFF constant EPOCH-MAX         \ region release epoch ceiling
 
 \ Header slots inside the mapping, one CDIGEST slot each.
 0 constant HF-MINTED                 \ modules minted by this context
@@ -149,31 +161,93 @@ variable REGION-HERE
 : REGION-ALLOC-LEN ( -- NUM:alloc-byte-len )
    REGION-BYTES MEM:BYTES-ALLOC-LEN ;
 
+\ ---- the release epoch -------------------------------------------------------
+\ THE EPOCH COUNTS RELEASES, and that is the whole of it. A release hands the
+\ bytes above a mark to whatever compiles next, so an offset a child stored
+\ names one object before the release and another after it. A child that stamps
+\ this counter into the identity cell it keeps AT that offset can tell the two
+\ apart, because the stamp it reads back is the one the object was born with.
+\
+\ IT IS NEVER COMPARED AGAINST ITSELF. The test a child makes is "the stamp in
+\ my reference equals the stamp in the record it names", not "my stamp is the
+\ current epoch": a session-lived object is born once and read for the whole
+\ load, so its epoch is older than the counter by every definition since, and a
+\ comparison against the counter would refuse the one thing the session exists
+\ to hold.
+variable REGION-EPOCH
+0 REGION-EPOCH !
+
+: EPOCH-BUMP ( -- )
+   REGION-EPOCH @ dup EPOCH-MAX >= if E-IR-CTX-SERIALS throw then
+   1+ REGION-EPOCH ! ;
+
+\ ---- who is told where the region is -----------------------------------------
+\ A child that resolves offsets to addresses reads the base once per read of
+\ its own - millions of times in one compilation - so it keeps the base itself
+\ and this package PUSHES it when the mapping appears and when it goes. A call
+\ into here per read would cost more than every check such a child makes.
+\
+\ NULL IS THE CLOSED STATE, and it is announced rather than left to be noticed:
+\ a child told the mapping is gone can point its own resolution at storage that
+\ answers "nothing is here" instead of at an address that no longer exists.
+\
+\ ONE VECTOR, INSTALLED ONCE, for the reason RETIRE-CHILDREN! gives below.
+defer REBASE-CHILD ( ptr u8 -- )
+
+variable REBASE-SET
+0 REBASE-SET !
+
+: KEEP-BASE ( ptr u8 -- )
+   drop ;
+
+: REBASE-RESET ( -- )
+   [: KEEP-BASE ;] is REBASE-CHILD ;
+REBASE-RESET
+
+public
+
+: REGION-REBASE! ( [ ptr u8 -- ] -- )
+   REBASE-SET @ 0<> if E-IR-CTX-STATE throw then
+   1 REBASE-SET !
+   is REBASE-CHILD ;
+
+private
+
 \ Map the region on demand. The cursor is at zero whenever there is no mapping,
 \ because the only word that drops the mapping is the capture preparation below
 \ and it runs with no context open.
 : REGION-OPEN ( -- )
    REGION-BASE @ NULL-PTR = 0= if exit then
    REGION-ALLOC-LEN MEM:ALLOC-BYTES drop REGION-BASE !
-   0 REGION-HERE ! ;
+   0 REGION-HERE !
+   REGION-BASE @ REBASE-CHILD ;
 
 : REGION-CLOSE ( -- )
    REGION-BASE @ NULL-PTR = if exit then
    REGION-BASE @ REGION-ALLOC-LEN MEM:RELEASE-BYTES
    NULL-PTR REGION-BASE !
-   0 REGION-HERE ! ;
+   0 REGION-HERE !
+   NULL-PTR REBASE-CHILD ;
 
 : ALIGN8 ( n -- n ) 7 + 8 / 8 * ;
 
-\ Take `need` aligned bytes from the region cursor. The refusal comes before
-\ the cursor moves, so a region that is full stays exactly as usable as it was.
-: REGION-ALLOT ( n -- ptr u8 ) {: need:n :}
+\ Take `need` aligned bytes from the region cursor and answer WHERE they are.
+\ The refusal comes before the cursor moves, so a region that is full stays
+\ exactly as usable as it was.
+: REGION-ALLOT ( n -- n ) {: need:n :}
    REGION-OPEN
    need ALIGN8 {: step:n :}
    REGION-HERE @ {: off:n :}
    step REGION-BYTES off - > if E-IR-CTX-SCRATCH throw then
    off step + REGION-HERE !
-   REGION-BASE @ off + ;
+   off ;
+
+\ An offset is a position in the mapping; this is the only place that turns one
+\ into an address. It asks no question: every caller here holds an offset the
+\ cursor has already passed, and REGION-HOLDS? below is the test for an offset
+\ that came back from somewhere that may have outlived its extent.
+: REGION-AT ( n -- ptr u8 )
+   REGION-BASE @ + ;
 
 \ ---- generation serials ------------------------------------------------------
 : GEN-NEXT-N ( n -- n )
@@ -426,11 +500,17 @@ private
 \ caller. The slot and the storage come back together or neither does, and the
 \ storage a non-top retirement leaves behind is reclaimed by the release of
 \ whichever context IS the top, whose mark is below this one's.
+\
+\ A RELEASE IS ALSO AN EPOCH, and the two are one action: the bytes above this
+\ mark become the next compilation's at the same instant, so the counter that
+\ tells an offset into them apart from an offset into what comes next moves
+\ here and nowhere else.
 : CTX-RETIRE ( n -- ) {: at:n :}
    at cells HANDLES + @ RETIRE-CHILDREN
    0 at HANDLE!
    at DEPTH @ 1- = if
       at BASE-FIELD @ HF-MARK HDR@ REGION-HERE !
+      EPOCH-BUMP
       at DEPTH !
    then ;
 
@@ -473,7 +553,7 @@ private
    DEPTH @ TAKE-GEN {: at:n g:n :}
    REGION-OPEN
    REGION-HERE @ {: mark:n :}
-   HDR-BYTES REGION-ALLOT
+   HDR-BYTES REGION-ALLOT REGION-AT
    at mark CTX-INSTALL
    g at PACK-HANDLE at HANDLE!
    at 1+ DEPTH !
@@ -557,22 +637,47 @@ public
 \ ---- scratch -----------------------------------------------------------------
 public
 
-\ Every returned span stays at the same address, holding the same bytes, until
-\ the context that took it leaves - which is what makes an offset into it safe
-\ to hand from one pass to the next without any liveness stamp of its own.
-: SCRATCH-TAKE ( IR-CTX:ctx n -- ptr u8 n ) {: c:IR-CTX:ctx need:n :}
+\ Every returned span stays where it is, holding the same bytes, until the
+\ context that took it leaves - which is what makes an offset into it safe to
+\ hand from one pass to the next without any liveness stamp of its own.
+\
+\ THE OFFSET IS THE PRIMITIVE AND THE ADDRESS IS DERIVED. A record kept inside
+\ the region may hold an offset and may not hold a pointer: the pointer names a
+\ mapping this process took and a captured image must carry neither, while the
+\ offset names a position that means the same thing for as long as the extent
+\ does. So the take answers an offset and the address form is one addition on
+\ top of it, for the callers whose span never leaves their own hands.
+: SCRATCH-OFFSET ( IR-CTX:ctx n -- n ) {: c:IR-CTX:ctx need:n :}
    need 1 < if E-IR-CTX-SIZE throw then
    need REGION-BYTES > if E-IR-CTX-SCRATCH throw then
    c RESOLVE {: base:ptr :}
    base HF-USED HDR@ CNT-OK {: used:n :}
-   need REGION-ALLOT {: span:ptr :}
+   need REGION-ALLOT {: off:n :}
    used need ALIGN8 + base HF-USED HDR!
-   span need ;
+   off ;
+
+: SCRATCH-TAKE ( IR-CTX:ctx n -- ptr u8 n ) {: c:IR-CTX:ctx need:n :}
+   c need SCRATCH-OFFSET REGION-AT need ;
 
 : SCRATCH-USED ( IR-CTX:ctx -- n )
    RESOLVE HF-USED HDR@ CNT-OK ;
 
 : SCRATCH-LIMIT ( -- n ) REGION-BYTES ;
+
+\ How wide a region offset is, for a child that packs one beside other fields.
+: SCRATCH-OFFSET-BITS ( -- n ) OFFSET-BITS ;
+
+\ The release epoch, to be stamped into a record stored at a region offset; see
+\ the account at REGION-EPOCH.
+: EPOCH ( -- n ) REGION-EPOCH @ ;
+
+\ Does the region still hold this span? An offset stops naming what it named
+\ the moment the context that took it leaves, and the bytes become the next
+\ compilation's, so a child holding an offset that may have outlived its extent
+\ asks this before it reads a record out of it.
+: REGION-HOLDS? ( n n -- bool ) {: off:n len:n :}
+   off 0 < len 0 < or if 0 0 <> exit then
+   off len + REGION-HERE @ <= ;
 
 \ ---- not-yet-landed module slots ---------------------------------------------
 private

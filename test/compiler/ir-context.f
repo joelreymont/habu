@@ -267,6 +267,60 @@ $80000 constant TMAP-BYTES           \ independent allocation probe size
    s" a negative request rejects" T-LABEL
    [: SCR-NEG ;] E-IR-CTX-SIZE TTHROWSQ ;
 
+\ ---- the offset interface ----------------------------------------------------
+\ A span taken as an OFFSET is a position in the region rather than an address,
+\ which is the form a record living inside the region may hold. The position is
+\ meaningful for exactly as long as the extent is: a context's release takes
+\ the cursor back below everything that context took, and REGION-HOLDS? is how
+\ the holder of such an offset finds that out.
+variable OFF-A
+
+: OFF-BODY ( IR-CTX:ctx -- bool bool )
+   {: c:IR-CTX:ctx :}
+   c 5 IR-CTX:SCRATCH-OFFSET OFF-A !
+   c 16 IR-CTX:SCRATCH-OFFSET {: b:n :}
+   b OFF-A @ - 8 =
+   OFF-A @ 24 IR-CTX:REGION-HOLDS? ;
+
+: OFF-CASES ( -- )
+   s" a scratch take answers a position the region holds" T-LABEL
+   BND [: OFF-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE
+   s" the region stops holding it when the context leaves" T-LABEL
+   OFF-A @ 24 IR-CTX:REGION-HOLDS? TFALSE
+   s" a span reaching past the cursor is not held" T-LABEL
+   0 IR-CTX:SCRATCH-LIMIT IR-CTX:REGION-HOLDS? TFALSE
+   s" a negative offset or length is not held" T-LABEL
+   -1 8 IR-CTX:REGION-HOLDS? TFALSE
+   0 -1 IR-CTX:REGION-HOLDS? TFALSE
+   s" the offset width and the region's limit are one number" T-LABEL
+   1 IR-CTX:SCRATCH-OFFSET-BITS lshift IR-CTX:SCRATCH-LIMIT T= ;
+
+\ ---- the release epoch -------------------------------------------------------
+\ The counter moves when a release hands bytes back and at no other time, so
+\ two objects allotted at one offset on either side of a release carry
+\ different stamps and a stamp taken inside one context is still current
+\ everywhere inside it.
+variable EP-BEFORE
+
+: EP-BODY ( IR-CTX:ctx -- n )
+   drop
+   IR-CTX:EPOCH ;
+
+: EP-NESTED-BODY ( IR-CTX:ctx -- n )
+   drop
+   BND [: EP-BODY ;] IR-CTX:WITH-CONTEXT drop
+   IR-CTX:EPOCH ;
+
+: EP-CASES ( -- )
+   s" the epoch stands still inside a context and moves when it leaves" T-LABEL
+   IR-CTX:EPOCH EP-BEFORE !
+   BND [: EP-BODY ;] IR-CTX:WITH-CONTEXT EP-BEFORE @ T=
+   IR-CTX:EPOCH EP-BEFORE @ 1+ T=
+   s" a nested context's release moves it for the context outside it" T-LABEL
+   IR-CTX:EPOCH EP-BEFORE !
+   BND [: EP-NESTED-BODY ;] IR-CTX:WITH-CONTEXT EP-BEFORE @ 1+ T= ;
+
 \ ---- teardown releases every live child --------------------------------------
 : DIRTY-BODY ( IR-CTX:ctx -- )
    dup IR-CTX:NEW-MODULE 2drop
@@ -646,6 +700,8 @@ public
    s" the outer exit reclaims every retired slot" T-LABEL
    TDEPTH-MAX DEEP-RUN 0 T=
    ABANDON-CASES
+   OFF-CASES
+   EP-CASES
    CHECKER-CASES
    T-REPORT ;
 
