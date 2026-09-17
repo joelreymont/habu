@@ -153,6 +153,27 @@ TRUSTED: TRANSFER-CHECKER ( ptr u8 -- ) {: source:ptr :}
    owner 0= if s" native-build: target checker owner missing" 76 die then
    source owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ IMPORT-XT execute ;
 
+\ The window's target seam: the predicates of the engine doing the building
+\ choose which OS sources the window is given, and an unknown target is refused
+\ rather than defaulted.
+: NB-TARGET-CORE-FILES ( -- )
+   HB-TARGET-LINUX? if
+      s" src/os/linux/target.f" included
+      s" src/os/linux/layout.f" included
+      exit
+   then
+   HB-TARGET-MACOS? if
+      s" src/os/macos/target.f" included
+      s" src/os/macos/layout.f" included
+      exit
+   then
+   HB-TARGET-LINUX-X86-64? if
+      s" src/os/linux-x86-64/target.f" included
+      s" src/os/linux-x86-64/layout.f" included
+      exit
+   then
+   s" native-build: unknown target" 76 die ;
+
 \ The discarded build host remains callable through this compiled continuation,
 \ but none of its dictionary records or address declarations enters the window.
 TRUSTED: LOGICAL-RESET ( ptr u8 -- )
@@ -196,15 +217,7 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    s" src/core/enum-decl.f" included
    s" src/core/structures.f" included
    s" src/core/bytes.f" included
-   HB-TARGET-LINUX? if
-      s" src/os/linux/target.f" included
-      s" src/os/linux/layout.f" included
-   else HB-TARGET-MACOS? if
-      s" src/os/macos/target.f" included
-      s" src/os/macos/layout.f" included
-   else
-      s" native-build: unknown target" 76 die
-   then then
+   NB-TARGET-CORE-FILES
    s" src/habu/stack-abi.f" included
    s" src/habu/layout.f" included
    s" src/os/env-base.f" included

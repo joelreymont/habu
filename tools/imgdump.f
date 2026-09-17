@@ -16,6 +16,8 @@ require src/habu/code-span.f
    s" DATA-SIZE" XREF-FIND 0= if
       HB-TARGET-LINUX? if s" src/os/linux/layout.f" included exit then
       HB-TARGET-MACOS? if s" src/os/macos/layout.f" included exit then
+      HB-TARGET-LINUX-X86-64? if
+         s" src/os/linux-x86-64/layout.f" included exit then
       s" imgdump: unknown target" 74 die
    then ;
 
@@ -312,7 +314,10 @@ $04 constant ELF-CLASS-OFF
 $10 constant ELF-TYPE-OFF
 2  constant ELF-ET-EXEC       \ e_type: ET_EXEC, a fixed-base (non-PIE) image
 $12 constant ELF-MACHINE-OFF
-183 constant ELF-EM-AARCH64   \ e_machine: EM_AARCH64, the only machine hb bakes
+\ e_machine: EM_AARCH64. The entry-point-is-XREG-RBASE rule below is the ARM64
+\ startup's, so this stays the only machine admitted; an x86_64 image is refused
+\ by name until that startup exists (dot habu-cross-build-the-d25a959d).
+183 constant ELF-EM-AARCH64
 $18 constant ELF-ENTRY-OFF    \ e_entry: XREG-RBASE for a fixed-base image (see below)
 $40 constant ELF-EHDR-BYTES
 private

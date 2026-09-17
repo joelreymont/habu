@@ -32,6 +32,23 @@ variable LPROFH   variable LPROFDUMP   variable LPROFFIND   variable LPROFEDGE
 variable LPROFJSON   variable LPROFNUM   variable LPROFPCT   variable LPROFNAME
 variable LPROFQUAL   variable LPROFSYNC   variable LPROFROW
 private
+
+\ ---- the target this file's signal frame belongs to --------------------------
+\ Everything below reads a signal frame: the ucontext-to-mcontext offset, the
+\ mcontext PC and x0 slots, the sigaction frame and its sigset size, and the
+\ instructions that load them. Those are AArch64 and Darwin/Linux facts, and a
+\ third target matches none of them - reading them under another machine would
+\ attribute samples from a frame that is not there. Signal handlers are target
+\ ABI boundaries (docs/porting.md), so this file refuses a target whose frame it
+\ does not model, at load, rather than emitting the aarch64 one for it. The
+\ refusal is a die and not lib/errors.f's E-PLATFORM because this file loads
+\ inside the engine-build window, which has no lib/ in it.
+: PROF-TARGET-OK ( -- )
+   HB-TARGET-LINUX? if exit then
+   HB-TARGET-MACOS? if exit then
+   s" hb: this target's signal frame is not modelled" 76 die ;
+PROF-TARGET-OK
+
 \ ---- the band: PROF-STATE-BYTES of state cells, then one counter per dict record
 DATA-SIZE PROF-CNT-BYTES - constant PROF-BAND           \ band base, DATA-relative
 DATA-VA VA>N PROF-BAND + constant PROF-BAND-VA          \ absolute: DATA is MAP_FIXED at DATA-VA

@@ -454,9 +454,20 @@ HBB-INSTALL-CHILD-LINT
    s" src/os/macos/macho.f" HBB-KEY-FILE+
    s" src/os/macos/sign2.f" HBB-KEY-FILE+ ;
 
+\ The x86-64 seam carries no process-control or syscall emitters yet, so the
+\ key folds exactly the files that exist for it.
+: HBB-KEY-LINUX-X86-64-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
+   s" target:linux-x86-64" CONTENT-KEY:TEXT+
+   s" src/os/linux-x86-64/target.f" HBB-KEY-FILE+
+   s" src/os/linux-x86-64/layout.f" HBB-KEY-FILE+
+   s" src/os/linux-x86-64/sys.f" HBB-KEY-FILE+
+   s" src/os/linux-x86-64/elf.f" HBB-KEY-FILE+
+   s" src/os/linux-x86-64/sign.f" HBB-KEY-FILE+ ;
+
 : HBB-KEY-TARGET-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    HB-TARGET-LINUX? if HBB-KEY-LINUX-SOURCES exit then
    HB-TARGET-MACOS? if HBB-KEY-MACOS-SOURCES exit then
+   HB-TARGET-LINUX-X86-64? if HBB-KEY-LINUX-X86-64-SOURCES exit then
    s" hb-build: unknown target" HBB-BUILD-RC die ;
 
 : HBB-KEY-DRIVER-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
@@ -637,6 +648,7 @@ HBB-INSTALL-CHILD-LINT
 : HBB-TARGET-ABI$ ( -- ptr u8 n )
    HB-TARGET-LINUX? if s" linux-aarch64" exit then
    HB-TARGET-MACOS? if s" macos-aarch64" exit then
+   HB-TARGET-LINUX-X86-64? if s" linux-x86-64" exit then
    HBB-TARGET-UNKNOWN ;
 
 : HBB-ARTIFACT-KEY! ( -- )

@@ -68,9 +68,12 @@ TRUSTED: ENGINE-SELF-LINUX ( -- n )      \ /proc/self/exe -> EID-PATH; bytes or 
    EID-PROC-EXE EID-PATH EID-PATH-CAP readlink
    dup 0 < if drop 0 then ;
 
+\ Both Linux targets read /proc/self/exe; the caller turns a zero into
+\ E-ENGINE-PATH, which is also what an unknown target gets.
 : ENGINE-SELF-PATH ( -- n )              \ resolve self-exe into EID-PATH; bytes or 0
    HB-TARGET-MACOS? if ENGINE-SELF-MACOS exit then
    HB-TARGET-LINUX? if ENGINE-SELF-LINUX exit then
+   HB-TARGET-LINUX-X86-64? if ENGINE-SELF-LINUX exit then
    0 ;
 
 \ ---- checked public surface ------------------------------------------------

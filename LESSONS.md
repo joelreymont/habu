@@ -9106,3 +9106,29 @@ as an environment variable but is not what gets executed - so a suite using a
 word a compiler source only just gained fails with `E-UNDEFINED` in the child
 while the same file passes when loaded directly. Run the full gate from a tree
 whose own `bin/hb` is the new engine.
+
+## 2026-09-17 - a new word in a prefix seam file needs a bridging generation
+
+`src/os/<target>/target.f` is a PREFIX source, and the prefix is baked into the
+engine by `EMIT-AOT-SEED` rather than re-read at boot: appending garbage to
+`src/os/linux/target.f` does not disturb a running `bin/hb`, and a word added to
+it is invisible to that binary. So adding `HB-TARGET-LINUX-X86-64?` and using it
+in the same commit is not a one-step build. The host engine compiles
+`src/habu/habu2.f`, `tools/native-build-core.f` and every other build-path file
+against ITS OWN baked dictionary, so the first generation dies with
+`E-UNDEFINED` on the predicate its own sources introduce.
+
+The way through is one bridging generation: build an engine from a tree where
+ONLY the `target.f` files carry the new predicate (every other edit reverted),
+which bakes it; then build the real generations from the full tree with that
+engine as host. `native-build` reaches a fixpoint on the second of those, not
+the first, because the bridge engine's own bytes differ - so `cmp gen1 gen2`
+failing there is expected and `cmp gen2 gen3` is the check that matters. On the
+integration line the bridge is a commit of its own - the predicate alone, chained
+and integrated before the commit that uses it - so every landing still builds
+from the engine before it.
+
+The same shape applies to `src/compiler/target.f`: it is part of the baked
+compiler, so `require src/compiler/target.f` in a test is a registry no-op and
+the test measures the ENGINE's contract tables, never the edited file, until the
+engine is rebuilt.

@@ -102,6 +102,46 @@ public
       val i 16 * rshift ADDR-IMM-MASK and ADDR-RD-BITS lshift or
       p i 4 * + W32!
    loop ;
+
+\ ---- the same three questions for the x86-64 address site --------------------
+\ AArch64 spells a 64-bit literal as four move-wide instructions and patches
+\ four 16-bit fields; x86-64 spells it as ONE instruction, `mov r64, imm64`, and
+\ patches the whole value at once: REX.W (with B naming the high register bank),
+\ then B8+rd, then the eight immediate bytes. So the site is ten bytes wide and
+\ its patch is eight bytes at offset two, which is what MOVABS-BYTES,
+\ MOVABS-IMM-OFF and MOVABS-IMM-BYTES say, and what the model in
+\ formal/Common/Reloc.v is asked about.
+\
+\ REX.R and REX.X have nothing to name here - the form carries no ModRM and no
+\ SIB byte - so a prefix that sets either is some other instruction, not this
+\ site with spare bits. MOVABS-SITE? therefore admits exactly $48 and $49, and
+\ exactly the eight opcodes B8..BF, which is the same fail-closed reading the
+\ chain's scaffold compare makes: the register may vary, the shape may not.
+$FE constant MOVABS-REX-MASK
+$48 constant MOVABS-REX-W
+$F8 constant MOVABS-OP-MASK
+$B8 constant MOVABS-OP
+10 constant MOVABS-BYTES
+2 constant MOVABS-IMM-OFF
+8 constant MOVABS-IMM-BYTES
+
+: MOVABS-SITE? ( ptr u8 -- bool ) {: p:ptr :}
+   p c@ MOVABS-REX-MASK and MOVABS-REX-W =
+   p 1+ c@ MOVABS-OP-MASK and MOVABS-OP = and ;
+
+\ The immediate as one value, whatever register the instruction names.
+: MOVABSV ( ptr u8 -- n ) {: p:ptr :}
+   0
+   MOVABS-IMM-BYTES 0 ?do
+      p MOVABS-IMM-OFF + i + c@  i 8 * lshift  or
+   loop ;
+
+\ Re-encode a full 64-bit value into an existing site, keeping the prefix and
+\ the opcode - and so the destination register - exactly as they were.
+: SET-MOVABS ( ptr u8 n -- ) {: p:ptr val:n :}
+   MOVABS-IMM-BYTES 0 ?do
+      val i 8 * rshift $FF and  p MOVABS-IMM-OFF + i + c!
+   loop ;
 ;package
 
 package AOT-BUF

@@ -22,15 +22,25 @@ package NABI
 
 private
 
+\ The ABI field records the HOST PLATFORM IDENTITY (docs/porting.md), so each
+\ supported target answers with its own convention. That a host has no native
+\ backend loaded is a different question, asked later when a compilation
+\ resolves the contract, and it is not this word's to answer.
 : TARGET-ABI ( -- CTARGET:abi )
    HB-TARGET-LINUX? if CTARGET-ABI:AAPCS64-LINUX exit then
    HB-TARGET-MACOS? if CTARGET-ABI:AAPCS64-DARWIN exit then
+   HB-TARGET-LINUX-X86-64? if CTARGET-ABI:SYSV-AMD64 exit then
    E-CTGT-ABI throw ;
 
 public
 
 \ The host AArch64 binding. Overflow wraps, as ARM64's add, sub and mul do; a
 \ trapping unit is refused by the selector.
+\ The architecture is this module's own: every routine it builds below names
+\ A64EFF register sets. On a host whose ABI is not an AArch64 one - linux-x86-64
+\ answers sysv-amd64 above - CTARGET:CONTRACT refuses the pair with E-CTGT-ABI,
+\ which is the true statement: that ABI is not one this architecture runs. The
+\ x86-64 binding belongs to the x86-64 backend module, not to this file.
 : BINDING ( -- CBIND:binding )
    CTARGET-ARCH:AARCH64 TARGET-ABI CTARGET-ENDIAN:LITTLE
    CTARGET-PTR--WIDTH:BITS64

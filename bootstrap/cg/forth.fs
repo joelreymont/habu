@@ -2383,8 +2383,8 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ (batch REPL: `echo ': SQ DUP * ; 5 SQ .' | ./forth`). Clobbers x0-x5,x9,x11,x16.
 variable LTRAPH   variable LBPH
 variable LSRCRD   variable LSRCRDP   variable LSHBANG
-variable LPLINUXTARGET  variable LPMACOSTARGET
-variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
+variable LPLINUXTARGET  variable LPMACOSTARGET  variable LPX64TARGET
+variable LPLINUXLAYOUT  variable LPMACOSLAYOUT  variable LPX64LAYOUT
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
 variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPBYTES        variable LPFETCHABI     variable LPOWNERABI     variable LPCHECKER      variable LPRENDER
@@ -2635,16 +2635,19 @@ create ZBYTE 0 c,
 0 constant PFX-COMMON
 1 constant PFX-LINUX
 2 constant PFX-MACOS
+3 constant PFX-X64
 
 : PFX-TARGET-OK ( -- )
    HB-TARGET-LINUX? if exit then
    HB-TARGET-MACOS? if exit then
+   HB-TARGET-LINUX-X86-64? if exit then
    C-TARGET-UNKNOWN ;
 
 : PFX-LOAD? ( n -- bool )
    dup PFX-COMMON = if drop 0 0= exit then
    dup PFX-LINUX = if drop HB-TARGET-LINUX? exit then
-   PFX-MACOS = if HB-TARGET-MACOS? else 0 0= 0= then ;
+   dup PFX-MACOS = if drop HB-TARGET-MACOS? exit then
+   PFX-X64 = if HB-TARGET-LINUX-X86-64? else 0 0= 0= then ;
 
 : PFX-LOAD-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
    kind PFX-LOAD? if 12 var @ ADR,  LSRCRDP @ BL, then ;
@@ -2691,8 +2694,10 @@ create ZBYTE 0 c,
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-LOAD-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
+   PFX-X64    LPX64TARGET    s" src/os/linux-x86-64/target.f"  PFX-LOAD-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-LOAD-ROW
    PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-LOAD-ROW
+   PFX-X64    LPX64LAYOUT    s" src/os/linux-x86-64/layout.f"  PFX-LOAD-ROW
    PFX-COMMON LPSTACKABI     s" src/habu/stack-abi.f"   PFX-LOAD-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-LOAD-ROW
@@ -2819,8 +2824,10 @@ create ZBYTE 0 c,
    PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-PATH-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
+   PFX-X64    LPX64TARGET    s" src/os/linux-x86-64/target.f"  PFX-PATH-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PATH-ROW
    PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-PATH-ROW
+   PFX-X64    LPX64LAYOUT    s" src/os/linux-x86-64/layout.f"  PFX-PATH-ROW
    PFX-COMMON LPSTACKABI     s" src/habu/stack-abi.f"   PFX-PATH-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
@@ -3101,8 +3108,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-PROVIDE-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PROVIDE-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PROVIDE-ROW
+   PFX-X64    LPX64TARGET    s" src/os/linux-x86-64/target.f"  PFX-PROVIDE-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PROVIDE-ROW
    PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-PROVIDE-ROW
+   PFX-X64    LPX64LAYOUT    s" src/os/linux-x86-64/layout.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPSTACKABI     s" src/habu/stack-abi.f"   PFX-PROVIDE-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PROVIDE-ROW
@@ -7632,8 +7641,8 @@ variable P2SK
    LBL LSRCRD !  LBL LSRCRDP !  LBL LSHBANG ! ;
 
 : EMIT-LABEL-SOURCES ( -- )
-   LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
-   LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
+   LBL LPLINUXTARGET !  LBL LPMACOSTARGET !  LBL LPX64TARGET !
+   LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !  LBL LPX64LAYOUT !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
    LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNERABI !  LBL LPPRIMS !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !

@@ -34,13 +34,19 @@ package NATIVE-RUNTIME
    HB-TARGET-LINUX? if
       s" src/os/linux/target.f" provided
       s" src/os/linux/layout.f" provided
-   else HB-TARGET-MACOS? if
+      exit
+   then
+   HB-TARGET-MACOS? if
       s" src/os/macos/target.f" provided
       s" src/os/macos/layout.f" provided
-   else
-      s" native-runtime: unknown target" 76 die
-   then then
-;
+      exit
+   then
+   HB-TARGET-LINUX-X86-64? if
+      s" src/os/linux-x86-64/target.f" provided
+      s" src/os/linux-x86-64/layout.f" provided
+      exit
+   then
+   s" native-runtime: unknown target" 76 die ;
 
 ' PROVIDE-TARGET
 ;package
@@ -106,12 +112,17 @@ package NATIVE-RUNTIME
 : LOAD-REPL-TERM ( -- )
    HB-TARGET-LINUX? if
       s" src/os/linux/repl-term.f" required
-   else HB-TARGET-MACOS? if
+      exit
+   then
+   HB-TARGET-MACOS? if
       s" src/os/macos/repl-term.f" required
-   else
-      s" native-runtime: unknown target" 76 die
-   then then
-;
+      exit
+   then
+   HB-TARGET-LINUX-X86-64? if
+      s" src/os/linux-x86-64/repl-term.f" required
+      exit
+   then
+   s" native-runtime: unknown target" 76 die ;
 
 ' LOAD-REPL-TERM
 ;package

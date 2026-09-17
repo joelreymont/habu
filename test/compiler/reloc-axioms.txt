@@ -159,3 +159,12 @@ closed
 theorem Habu.Common.Reloc.dropping_the_chain_guard_corrupts_data
 type addr_walk [(true, (5, 0, 0, 0))] 0 1 7 = ([(true, (5, 0, 0, 0))], Some addrmap_rc) /\ addr_unguarded [(true, (5, 0, 0, 0))] 0 1 7 = [(true, (229, 0, 0, 0))]
 closed
+theorem Habu.Common.Reloc.movabs_value_of_put
+type forall m v, addr_ok v -> movabs_value (movabs_put m v) = v
+closed
+theorem Habu.Common.Reloc.movabs_out_of_band_untouched
+type forall m base len tgt, ~ in_band (movabs_value m) base len -> movabs_move m base len tgt = m
+closed
+theorem Habu.Common.Reloc.movabs_round_trip_identity
+type forall m wb len cb, movabs_ok m -> in_band (movabs_value m) wb len -> addr_ok (movabs_value m - wb + cb) -> movabs_move (movabs_move m wb len cb) cb len wb = m
+closed

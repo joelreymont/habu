@@ -319,6 +319,7 @@ $8000000000000000 constant INT-MIN
       a32     OF 2 ENDOF
       thumb2  OF 3 ENDOF
       c66x    OF 4 ENDOF
+      x86-64  OF 5 ENDOF
    ;MATCH ;
 
 : ABI-CODE ( CTARGET:abi -- n )
@@ -328,6 +329,7 @@ $8000000000000000 constant INT-MIN
       ptx-kernel     OF 2 ENDOF
       aapcs32       OF 3 ENDOF
       c6000-eabi    OF 4 ENDOF
+      sysv-amd64    OF 5 ENDOF
    ;MATCH ;
 
 : ENDN-CODE ( CTARGET:endian -- n )
@@ -389,6 +391,7 @@ $8000000000000000 constant INT-MIN
       2 of CTARGET-ARCH:A32 endof
       3 of CTARGET-ARCH:THUMB2 endof
       4 of CTARGET-ARCH:C66X endof
+      5 of CTARGET-ARCH:X86-64 endof
       E-IR-ATTR-STATE throw
    endcase ;
 
@@ -399,6 +402,7 @@ $8000000000000000 constant INT-MIN
       2 of CTARGET-ABI:PTX-KERNEL endof
       3 of CTARGET-ABI:AAPCS32 endof
       4 of CTARGET-ABI:C6000-EABI endof
+      5 of CTARGET-ABI:SYSV-AMD64 endof
       E-IR-ATTR-STATE throw
    endcase ;
 

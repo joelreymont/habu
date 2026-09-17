@@ -184,6 +184,7 @@ variable ML-NI
    s" src/compiler/native/compiler.f" ML-ENTRY+                \ the compiler and the JIT
    s" src/os/linux/repl-term.f" ML-ENTRY+                      \ the REPL terminal, linux
    s" src/os/macos/repl-term.f" ML-ENTRY+                      \ the REPL terminal, macos
+   s" src/os/linux-x86-64/repl-term.f" ML-ENTRY+               \ the REPL terminal, linux-x86-64
    s" src/habu/repl.f" ML-ENTRY+                               \ the REPL
    s" src/core/top-row.f" ML-ENTRY+ ;                          \ the top-level row tracker the REPL warns from
 

@@ -193,6 +193,7 @@ using BCG
 0 constant KIND-COMMON
 1 constant KIND-LINUX
 2 constant KIND-MACOS
+3 constant KIND-X64
 5 constant BUDGET-PARTS          \ refuse a prefix above BUDGET-TAKEN/BUDGET-PARTS
 4 constant BUDGET-TAKEN          \ of the arena: 80 percent
 
@@ -203,7 +204,8 @@ variable ROW-N
 
 variable LINE-P   variable KEPT
 variable TOK-I    variable DISAGREE
-variable PFX-LINUX-N   variable PFX-MACOS-N   variable PFX-RAW-N
+variable PFX-LINUX-N   variable PFX-MACOS-N   variable PFX-X64-N
+variable PFX-RAW-N
 
 : ROW-A ( n -- ptr u8 ) {: k:n :}
    ROW-PATH k ROW-PATH-CAP * + ;
@@ -299,6 +301,7 @@ variable PFX-LINUX-N   variable PFX-MACOS-N   variable PFX-RAW-N
    a u s" PFX-COMMON" LINT-STR=CI if KIND-COMMON exit then
    a u s" PFX-LINUX" LINT-STR=CI if KIND-LINUX exit then
    a u s" PFX-MACOS" LINT-STR=CI if KIND-MACOS exit then
+   a u s" PFX-X64" LINT-STR=CI if KIND-X64 exit then
    -1 ;
 
 : NAMES-ROW-WORD? ( n -- bool ) {: k:n :}
@@ -334,13 +337,20 @@ variable PFX-LINUX-N   variable PFX-MACOS-N   variable PFX-RAW-N
       1+
    repeat drop ;
 
+\ A target's prefix is its own rows plus the common ones, and nobody else's -
+\ stated as membership rather than as "not the other target", which stopped
+\ being the same question when a third target appeared.
+: ROW-FOR? ( n n -- bool ) {: kd:n target:n :}
+   kd KIND-COMMON = kd target = or ;
+
 : MEASURE-ROW ( n -- ) {: k:n :}
    k ROW$ LOAD
    SRC {: a:ptr u:n :}
    a u STRIPPED {: s:n :}
    k ROW-KIND@ {: kd:n :}
-   kd KIND-MACOS <> if s PFX-LINUX-N +!  u PFX-RAW-N +! then
-   kd KIND-LINUX <> if s PFX-MACOS-N +! then
+   kd KIND-LINUX ROW-FOR? if s PFX-LINUX-N +!  u PFX-RAW-N +! then
+   kd KIND-MACOS ROW-FOR? if s PFX-MACOS-N +! then
+   kd KIND-X64 ROW-FOR? if s PFX-X64-N +! then
    a u SCAN-SOURCE ;
 
 \ Both emitters must route the rows through the stripping entry. The Gforth
@@ -377,7 +387,7 @@ variable PFX-LINUX-N   variable PFX-MACOS-N   variable PFX-RAW-N
 public
 
 : TEST ( -- )
-   0 PFX-LINUX-N !  0 PFX-MACOS-N !  0 PFX-RAW-N !
+   0 PFX-LINUX-N !  0 PFX-MACOS-N !  0 PFX-X64-N !  0 PFX-RAW-N !
    0 0= 0= DISAGREE !
    s" src/habu/habu2.f" ROUTES-THROUGH-STRIP
    s" bootstrap/cg/forth.fs" ROUTES-THROUGH-STRIP
@@ -388,7 +398,8 @@ public
    DISAGREE @ 0= TTRUE
    PFX-LINUX-N @ PFX-RAW-N @ < TTRUE               \ the reader does remove something
    PFX-LINUX-N @ UNDER-BUDGET? TTRUE
-   PFX-MACOS-N @ UNDER-BUDGET? TTRUE ;
+   PFX-MACOS-N @ UNDER-BUDGET? TTRUE
+   PFX-X64-N @ UNDER-BUDGET? TTRUE ;
 
 ;package
 

@@ -39,7 +39,9 @@ create ERR CAP allot
 
 : TARGET$ ( -- ptr u8 n )
    HB-TARGET-LINUX? if s" linux-aarch64" exit then
-   s" macos-aarch64" ;
+   HB-TARGET-MACOS? if s" macos-aarch64" exit then
+   HB-TARGET-LINUX-X86-64? if s" linux-x86-64" exit then
+   s" nf-path-test: unknown target" 76 die ;
 
 : GFORTH$ ( -- ptr u8 n )
    s" GFORTH" GETENV dup 0= if 2drop s" gforth" then ;

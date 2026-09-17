@@ -1612,6 +1612,124 @@ Theorem dropping_the_chain_guard_corrupts_data :
 Proof. split; vm_compute; reflexivity. Qed.
 
 (* ------------------------------------------------------------------ *)
+(* The x86-64 address site: mov r64, imm64.                            *)
+(*                                                                    *)
+(* The same address literal, on the other machine.  AArch64 spells a   *)
+(* 64-bit value as four move-wide instructions and patches four        *)
+(* 16-bit fields; x86-64 spells it as ONE instruction - REX.W, then    *)
+(* B8+rd, then eight immediate bytes - and patches the whole value at  *)
+(* once.  So the site is ten bytes wide and its patch is eight bytes   *)
+(* at offset two: src/habu/aot-decl.f MOVABS-BYTES, MOVABS-IMM-OFF and *)
+(* MOVABS-IMM-BYTES, with MOVABSV the reader and SET-MOVABS the        *)
+(* writer.  What has to be true of that site is what was true of the   *)
+(* chain: a written value reads back, the instruction still names the  *)
+(* register it named, and canonicalize-then-rebase is the identity.    *)
+(*                                                                    *)
+(* MODEL GAP 5.  A site is modelled as its two-byte head - the REX     *)
+(* prefix and the opcode, which is where the destination register      *)
+(* lives - and its immediate as ONE value in [0, 2^64).  The shipped   *)
+(* reader and writer walk the eight immediate bytes little-endian,     *)
+(* `val i 8 * rshift $FF and` and back.  That is the same arithmetic   *)
+(* modelling MODEL GAP 2 already names for an instruction field: the   *)
+(* byte loop is the base-256 digit decomposition of the value this     *)
+(* model carries, and the head is untouched by it in both.  What is    *)
+(* NOT modelled here is the recognizer MOVABS-SITE?, which reads the   *)
+(* head's two bytes: test/x86-64-seam.f exercises that over the near   *)
+(* misses - a prefix with REX.R or REX.X set, and the other 64-bit     *)
+(* move opcodes - because a decode is a byte question, not an          *)
+(* arithmetic one.                                                     *)
+(* ------------------------------------------------------------------ *)
+
+Definition movabs_bytes : Z := 10.
+Definition movabs_imm_off : Z := 2.
+Definition movabs_imm_bytes : Z := 8.
+
+(* The ten bytes at one site: the head that names the register, and the
+   immediate the patch replaces. *)
+Definition movabs : Type := (Z * Z)%type.
+
+Definition movabs_head (m : movabs) : Z := fst m.
+Definition movabs_value (m : movabs) : Z := (snd m) mod addr_span.
+Definition movabs_put (m : movabs) (v : Z) : movabs := (fst m, v mod addr_span).
+
+(* A site whose immediate is a value the eight bytes can actually hold. *)
+Definition movabs_ok (m : movabs) : Prop := 0 <= snd m < addr_span.
+
+(* The ten bytes account for the head and the immediate and nothing else. *)
+Lemma movabs_is_head_plus_immediate :
+  movabs_bytes = movabs_imm_off + movabs_imm_bytes.
+Proof. reflexivity. Qed.
+
+Lemma addr_span_pos : 0 < addr_span.
+Proof. unfold addr_span; lia. Qed.
+
+Lemma movabs_value_bounds : forall m, addr_ok (movabs_value m).
+Proof.
+  intros m. unfold addr_ok, movabs_value.
+  apply Z.mod_pos_bound. apply addr_span_pos.
+Qed.
+
+(* The band rewrite, exactly as `addr_move` does it for the chain. *)
+Definition movabs_move (m : movabs) (base len tgt : Z) : movabs :=
+  if band_hit (movabs_value m) base len
+  then movabs_put m (movabs_value m - base + tgt)
+  else m.
+
+(* ---- what the site kind guarantees ----------------------------------- *)
+
+(* A value written into a site is the value the site then carries, whatever
+   the site held before. *)
+Theorem movabs_value_of_put : forall m v,
+  addr_ok v -> movabs_value (movabs_put m v) = v.
+Proof.
+  intros m v [Hlo Hhi]. unfold movabs_value, movabs_put. cbn.
+  rewrite Z.mod_mod by (unfold addr_span; lia).
+  apply Z.mod_small. lia.
+Qed.
+
+(* A site whose value the band does not hold is left exactly as it was, for
+   the other band's call to consider - the same rule the chain pass follows. *)
+Theorem movabs_out_of_band_untouched : forall m base len tgt,
+  ~ in_band (movabs_value m) base len -> movabs_move m base len tgt = m.
+Proof.
+  intros m base len tgt H. unfold movabs_move.
+  rewrite band_hit_false by exact H. reflexivity.
+Qed.
+
+(* THE ROUND TRIP, at one site: writer-side canonicalization composed with
+   loader-side rebase is the identity, head and immediate both.  `= m` is also
+   where the register is stated: the site that comes back is the site that went
+   in, REX prefix and opcode included, so a rewrite cannot have moved the
+   instruction's destination.  That SET-MOVABS touches only bytes two through
+   nine is the model gap above, and test/x86-64-seam.f is where it is measured. *)
+Theorem movabs_round_trip_identity : forall m wb len cb,
+  movabs_ok m ->
+  in_band (movabs_value m) wb len ->
+  addr_ok (movabs_value m - wb + cb) ->
+  movabs_move (movabs_move m wb len cb) cb len wb = m.
+Proof.
+  intros [h i] wb len cb Hok Hband Hcanon.
+  unfold movabs_ok in Hok. cbn in Hok.
+  assert (Hv : movabs_value (h, i) = i)
+    by (unfold movabs_value; cbn; apply Z.mod_small; lia).
+  rewrite Hv in Hband, Hcanon.
+  assert (Hstep : movabs_move (h, i) wb len cb = (h, i - wb + cb)).
+  { unfold movabs_move. rewrite Hv.
+    rewrite band_hit_true by exact Hband.
+    unfold movabs_put. cbn. f_equal.
+    destruct Hcanon as [Hlo Hhi]. apply Z.mod_small. lia. }
+  rewrite Hstep.
+  assert (Hv2 : movabs_value (h, i - wb + cb) = i - wb + cb)
+    by (unfold movabs_value; cbn; apply Z.mod_small;
+        destruct Hcanon as [Hlo Hhi]; lia).
+  unfold movabs_move. rewrite Hv2.
+  rewrite band_hit_true by (unfold in_band in *; lia).
+  unfold movabs_put. cbn. f_equal.
+  replace (i - wb + cb - cb + wb) with i by lia.
+  apply Z.mod_small. lia.
+Qed.
+
+(* ------------------------------------------------------------------ *)
 (* What every result above rests on.  Nothing: each reports closed under *)
 (* the global context, and test/compiler/reloc-proof.f reads this list   *)
 (* back and refuses an assumption twice over.                           *)
@@ -1660,3 +1778,6 @@ Print Assumptions skipping_the_last_movk_loses_the_top_field.
 Print Assumptions a_register_blind_guard_admits_mismatched_lanes.
 Print Assumptions any_mismatched_lane_is_refused.
 Print Assumptions dropping_the_chain_guard_corrupts_data.
+Print Assumptions movabs_value_of_put.
+Print Assumptions movabs_out_of_band_untouched.
+Print Assumptions movabs_round_trip_identity.

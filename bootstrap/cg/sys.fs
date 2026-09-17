@@ -6,10 +6,20 @@ require icode.fs
 
 s" HABU_TARGET" getenv
 2dup s" linux-aarch64" compare 0= constant HB-TARGET-LINUX?
-s" macos-aarch64" compare 0= constant HB-TARGET-MACOS?
+2dup s" macos-aarch64" compare 0= constant HB-TARGET-MACOS?
+s" linux-x86-64" compare 0= constant HB-TARGET-LINUX-X86-64?
 
-HB-TARGET-LINUX? HB-TARGET-MACOS? or 0= [IF]
+HB-TARGET-LINUX? HB-TARGET-MACOS? or HB-TARGET-LINUX-X86-64? or 0= [IF]
 .( unsupported HABU_TARGET ) cr bye
+[THEN]
+
+\ The third target is a NAME here and nothing more: every emitter in this
+\ directory writes ARM64 instructions, so the flag exists for forth.fs's
+\ prefix selector to resolve and the chain stops rather than emitting an
+\ aarch64 engine that claims to be an x86_64 one. Recovery for linux-x86-64
+\ is a cross-build from a working arm64 engine (docs/bootstrap.md).
+HB-TARGET-LINUX-X86-64? [IF]
+.( the gforth recovery chain emits ARM64 code; cross-build linux-x86-64 from a working arm64 engine ) cr bye
 [THEN]
 
 HB-TARGET-LINUX? [IF]

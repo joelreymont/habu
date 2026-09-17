@@ -14,6 +14,7 @@ if [[ -z "${HABU_TARGET:-}" ]]; then
   case "$(uname -s)-$(uname -m)" in
     Darwin-arm64|Darwin-aarch64) HABU_TARGET=macos-aarch64 ;;
     Linux-aarch64|Linux-arm64) HABU_TARGET=linux-aarch64 ;;
+    Linux-x86_64) HABU_TARGET=linux-x86-64 ;;
     *)
       printf 'unsupported bootstrap host %s-%s; set HABU_TARGET explicitly\n' "$(uname -s)" "$(uname -m)" >&2
       exit 64
@@ -40,6 +41,10 @@ case "$HABU_TARGET" in
     OS_PROCCONTROL=src/os/linux/proc-control.f
     OS_IMAGE=src/os/linux/elf.f
     OS_SIGN=src/os/linux/sign.f
+    ;;
+  linux-x86-64)
+    printf 'the gforth recovery chain emits ARM64 code; bring up linux-x86-64 by cross-building from a working arm64 engine (docs/bootstrap.md)\n' >&2
+    exit 64
     ;;
   *)
     printf 'unsupported HABU_TARGET=%s\n' "$HABU_TARGET" >&2

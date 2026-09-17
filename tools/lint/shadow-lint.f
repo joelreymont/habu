@@ -196,6 +196,11 @@ variable IN-DEFINITION
    s" src/os/image-bytes.f" LINT-FILE
    s" src/os/macos/macho.f" LINT-FILE   s" src/os/macos/sign2.f" LINT-FILE
    s" src/os/linux/elf.f"   LINT-FILE   s" src/os/linux/sign.f"  LINT-FILE
+   s" src/os/linux-x86-64/layout.f" LINT-FILE
+   s" src/os/linux-x86-64/sys.f" LINT-FILE
+   s" src/os/linux-x86-64/repl-term.f" LINT-FILE
+   s" src/os/linux-x86-64/elf.f" LINT-FILE
+   s" src/os/linux-x86-64/sign.f" LINT-FILE
    s" src/habu/habu1.f"     LINT-FILE   s" src/habu/prof.f"      LINT-FILE
    s" src/habu/regalloc.f"  LINT-FILE   s" src/habu/jit.f"       LINT-FILE
    s" src/habu/habu2.f"     LINT-FILE   s" src/habu/snap-lib.f"  LINT-FILE

@@ -29,6 +29,13 @@ package APP-IMAGE
       s" src/os/macos/sign2.f" required
       exit
    then
+   HB-TARGET-LINUX-X86-64? if
+      s" src/os/linux-x86-64/sys.f" required
+      s" src/os/image-bytes.f" required
+      s" src/os/linux-x86-64/elf.f" required
+      s" src/os/linux-x86-64/sign.f" required
+      exit
+   then
    s" app-image: unsupported target" 76 die ;
 
 ' LOAD-TARGET

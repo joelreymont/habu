@@ -55,6 +55,7 @@ ENUM arch DERIVE eq
    a32
    thumb2
    c66x
+   x86-64
 ;ENUM
 
 \ The calling and object convention. AAPCS32 base PCS covers both ARM and
@@ -65,6 +66,7 @@ ENUM abi DERIVE eq
    ptx-kernel
    aapcs32
    c6000-eabi
+   sysv-amd64
 ;ENUM
 
 \ Byte order of stored multi-byte values.
@@ -135,6 +137,13 @@ constant MASK-ARM32
 \ non-fused floating-point instructions do not satisfy that feature.
 BIT-BASE BIT-SIMD or constant MASK-C66X
 
+\ x86-64 baseline carries SSE2, and cores implement FMA, the half and bfloat
+\ formats and the full atomic set. The matrix unit is deliberately absent: AMX
+\ is a machine this compiler has no way to describe the operands of, so a
+\ contract claiming it would name a target no stage could answer for.
+BIT-BASE BIT-FP or BIT-SIMD or BIT-FP16 or BIT-BF16 or BIT-ATOMIC or
+constant MASK-X86-64
+
 : MK ( n -- CTARGET:features )
    CTARGET-FEATURES:MAKE ;
 
@@ -150,6 +159,7 @@ BIT-BASE BIT-SIMD or constant MASK-C66X
       a32     OF 2 ENDOF
       thumb2  OF 3 ENDOF
       c66x    OF 4 ENDOF
+      x86-64  OF 5 ENDOF
    ;MATCH ;
 
 : ABI-CODE ( CTARGET:abi -- n )
@@ -159,6 +169,7 @@ BIT-BASE BIT-SIMD or constant MASK-C66X
       ptx-kernel     OF 2 ENDOF
       aapcs32       OF 3 ENDOF
       c6000-eabi    OF 4 ENDOF
+      sysv-amd64    OF 5 ENDOF
    ;MATCH ;
 
 : ENDIAN-CODE ( CTARGET:endian -- n )
@@ -183,6 +194,7 @@ BIT-BASE BIT-SIMD or constant MASK-C66X
       aapcs32       OF a CTARGET-ARCH:A32 CTARGET-ARCH:EQ
                        a CTARGET-ARCH:THUMB2 CTARGET-ARCH:EQ or ENDOF
       c6000-eabi    OF a CTARGET-ARCH:C66X CTARGET-ARCH:EQ ENDOF
+      sysv-amd64    OF a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ ENDOF
    ;MATCH ;
 
 \ Is the ABI defined for big-endian storage? Darwin's arm64 ABI is little-endian
@@ -195,6 +207,7 @@ BIT-BASE BIT-SIMD or constant MASK-C66X
       ptx-kernel     OF false ENDOF
       aapcs32       OF true ENDOF
       c6000-eabi    OF true ENDOF
+      sysv-amd64    OF false ENDOF
    ;MATCH ;
 
 \ Is the ABI defined for 32-bit addresses? Both AArch64 ABIs named here are
@@ -207,6 +220,7 @@ BIT-BASE BIT-SIMD or constant MASK-C66X
       ptx-kernel     OF true ENDOF
       aapcs32       OF true ENDOF
       c6000-eabi    OF true ENDOF
+      sysv-amd64    OF false ENDOF
    ;MATCH ;
 
 : PTR64-OK? ( CTARGET:abi -- bool )
@@ -216,6 +230,7 @@ BIT-BASE BIT-SIMD or constant MASK-C66X
       ptx-kernel     OF true ENDOF
       aapcs32       OF false ENDOF
       c6000-eabi    OF false ENDOF
+      sysv-amd64    OF true ENDOF
    ;MATCH ;
 
 : MASK-N ( CTARGET:arch -- n )
@@ -225,6 +240,7 @@ BIT-BASE BIT-SIMD or constant MASK-C66X
       a32     OF MASK-ARM32 ENDOF
       thumb2  OF MASK-ARM32 ENDOF
       c66x    OF MASK-C66X ENDOF
+      x86-64  OF MASK-X86-64 ENDOF
    ;MATCH ;
 
 : ABI-CK ( CTARGET:arch CTARGET:abi -- )

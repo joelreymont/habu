@@ -124,6 +124,14 @@ The script defaults `HABU_TARGET` from the host (`macos-aarch64` or
 `linux-aarch64`). Set `HABU_TARGET` explicitly only when the host cannot be
 detected.
 
+`linux-x86-64` is a recognised target name here and not a recovery route:
+everything under `bootstrap/cg/` emits ARM64 instructions, so both the script
+and `bootstrap/cg/sys.fs` refuse that target by name rather than build an
+aarch64 engine under an x86_64 label. Recovery for `linux-x86-64` is a
+CROSS-BUILD from a working arm64 engine - the OS seam and image writer are
+ordinary Habu, so an arm64 engine can write the x86_64 image - and a native
+x86_64 recovery chain is later work (docs/x86-64.md).
+
 `tools/bootstrap.sh` does the whole recovery and installs exactly one file:
 `bin/hb`.
 

@@ -50,6 +50,8 @@ require src/habu/code-span.f
    s" DATA-SIZE" XREF-FIND 0= if
       HB-TARGET-LINUX? if s" src/os/linux/layout.f" included exit then
       HB-TARGET-MACOS? if s" src/os/macos/layout.f" included exit then
+      HB-TARGET-LINUX-X86-64? if
+         s" src/os/linux-x86-64/layout.f" included exit then
       s" engine-size: unknown target" 74 die
    then ;
 
@@ -111,6 +113,9 @@ $04 constant ELF-CLASS-OFF
 $10 constant ELF-TYPE-OFF
 2 constant ELF-ET-EXEC
 $12 constant ELF-MACHINE-OFF
+\ The size map reads an ARM64 engine: BAKED-ELF? admits that machine and no
+\ other, so an x86_64 image is refused by name rather than measured with the
+\ wrong startup in mind (dot habu-cross-build-the-d25a959d).
 183 constant ELF-EM-AARCH64
 $20 constant ELF-PHOFF-OFF
 $34 constant ELF-EHSIZE-OFF

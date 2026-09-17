@@ -1,8 +1,11 @@
 # Porting Habu
 
-The supported native targets are macOS/arm64 and Linux/aarch64. A new port adds
-one target seam and proves it with native refresh plus the port gate; it does not
-add host-language build logic or benchmark-runtime requirements.
+The supported native targets are macOS/arm64 and Linux/aarch64, with
+Linux/x86-64 declared: its seam directory, ELF64 writer and target contract
+exist and are exercised from an aarch64 host, and the files that EMIT
+instructions for it do not (see the seam row below). A new port adds one target
+seam and proves it with native refresh plus the port gate; it does not add
+host-language build logic or benchmark-runtime requirements.
 
 ## Target Source Seam
 
@@ -16,6 +19,20 @@ Each target owns these files under `src/os/<target>/`:
 - `repl-term.f` — terminal ioctl, raw-mode, and termios offsets for baked REPLs.
 - image builder and signer — `elf.f`/`sign.f` on Linux, `macho.f`/`sign2.f` on
   macOS.
+- process primitives — `proc-watch.f` and `proc-control.f`, the syscall
+  emitters the supervisor uses after fork.
+
+`src/os/linux-x86-64/` is the third seam and carries `target.f`, `layout.f`,
+`sys.f`, `elf.f`, `repl-term.f` and `sign.f` under the word names the other two
+use, so an image builder selects a seam instead of branching. What it does not
+carry is every file whose body emits an instruction: `SYS,`, the `OS-OPEN-RD`,
+`OS-OPEN-FLAGS` and `OS-MMAP-FLAGS` translators, the runtime-emit syscall
+stencils, `proc-watch.f` and `proc-control.f` all need package `X64ASM`
+(`src/arch/x86-64/asm.f`), so `sys.f` publishes the kernel's numbers and the
+flag values its callers pass and nothing more. Every source list that needs one
+of the missing files refuses that target by name rather than loading a partial
+seam: `tools/build-fixpoint.f` `BF-TARGET-NO-EMITTERS` and `tools/native-emit.f`
+say which piece is missing.
 
 The common engine layout lives in `src/habu/layout.f`. Startup argv/envp access is
 shared in `src/os/env-base.f`; `src/os/script-argv.f` owns the `bin/hb --load`
@@ -70,11 +87,31 @@ the syscall-number register and trap instruction are target-owned:
 
 - macOS/arm64 uses Darwin numbers and `svc #0x80`.
 - Linux/aarch64 uses Linux numbers and `svc #0`.
+- Linux/x86-64 uses the x86_64 numbers and `mov eax, imm32` then `syscall`.
+
+A target's numbers are chosen against the argument shapes the engine's
+primitives build, not against the kernel's most convenient spelling. The
+aarch64 engine loads `AT_FDCWD` and a flags register for access, unlink,
+rename, chmod, stat, lstat, open and mkdir, so both Linux seams name the *at*
+family - `faccessat`, `unlinkat`, `renameat`, `fchmodat`, `newfstatat`,
+`openat`, `mkdirat` - and `unlinkat` serves rmdir while `newfstatat` serves
+lstat, through their flag arguments.
+
+Two things about Linux/x86-64 are not settled by the numbers. Its syscall ABI
+passes arguments in rdi, rsi, rdx, r10, r8 and r9 rather than in the engine's
+x0..x5 order, so the mapping belongs to the x86_64 engine's primitives. And the
+error convention differs in POLARITY: the aarch64 seam reconciles Linux's
+`-errno` return into the carry flag with `cmp x0, #-4095`, where ARM sets C on
+NO borrow, while x86 sets CF on borrow. The trap sequence must be chosen
+against what `SYS-PUSH`'s `C-CS` consumers read, not transliterated.
 
 Signal handlers are target ABI boundaries. Crash and profiler handlers must use
 the target's `sigaction` frame, ucontext pointer, PC offset, `sigreturn`
 convention, and installed signal list. On Linux/aarch64, `rt_sigaction` also
-requires the sigset-size argument.
+requires the sigset-size argument. `src/habu/prof.f` models the two aarch64
+hosts' frames and refuses any other target at load rather than emitting an
+aarch64 frame for it; the x86_64 frame, where the trap decoding reads `RIP` and
+`RSP`, arrives with that engine's own primitives.
 
 ## Executable Images
 
@@ -93,7 +130,13 @@ ignored; they exist so the checker can enforce image-build ordering.
 
 - macOS uses Mach-O plus signing.
 - Linux uses ELF64 with executable `PT_LOAD` detection requiring read+execute
-  and not write.
+  and not write. Both Linux seams write the same four program headers, the same
+  `PROT-PAGE-MAX` boundary between the text and the read-write tail, and the
+  same dynamic table; what the architecture owns is `e_machine`
+  (`EM_AARCH64` 183, `EM_X86_64` 62), the interpreter the image names, and the
+  GOT relocation type (`R_AARCH64_GLOB_DAT`, `R_X86_64_GLOB_DAT` 6).
+  `test/x86-64-seam.f` writes an x86_64 image from an aarch64 engine and checks
+  those headers field by field.
 
 The deterministic re-link contract is unchanged across targets: headers are
 rebuilt from constants, code is copied from `[rbase, CODELEN)`, and native

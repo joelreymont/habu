@@ -988,6 +988,14 @@ SUITE tail-pure-fixtures
    tools/image-bytes-test.f
 ;SUITE
 
+\ The x86_64 seam is written and exercised from this aarch64 host: the ELF64
+\ writer, the mov r64, imm64 relocation site and the x86-64 target contract.
+\ Its own suite because it loads src/os/linux-x86-64/elf.f, which spells the
+\ same words as the host's image writer and cannot share a process with it.
+SUITE x86-64-seam
+   test/x86-64-seam.f
+;SUITE
+
 SUITE xml-byte-edits
    lib/xml-test.f
    lib/byte-edit-test.f

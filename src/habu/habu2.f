@@ -279,8 +279,8 @@ variable LADDSUBBIG   \ transfer immediate past the two-halves range: labeled rc
 36 constant ADDSUBBIG-MSG-LEN   \ byte length of "hb: transfer immediate out of range\n" (LADDSUBBIG)
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
-variable LPLINUXTARGET  variable LPMACOSTARGET
-variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
+variable LPLINUXTARGET  variable LPMACOSTARGET  variable LPX64TARGET
+variable LPLINUXLAYOUT  variable LPMACOSLAYOUT  variable LPX64LAYOUT
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
 variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPDYNAMIC      variable LPBYTES        variable LPFETCHABI     variable LPOWNERABI     variable LPCHECKER      variable LPRENDER
@@ -875,15 +875,18 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 0 constant PFX-COMMON
 1 constant PFX-LINUX
 2 constant PFX-MACOS
+3 constant PFX-X64
 
 : PFX-TARGET-OK ( -- )
    HB-TARGET-LINUX? if exit then
    HB-TARGET-MACOS? if exit then
+   HB-TARGET-LINUX-X86-64? if exit then
    C-TARGET-UNKNOWN ;
 
 : PFX-LOAD? ( n -- bool )
    case PFX-COMMON of 0 0= endof PFX-LINUX of HB-TARGET-LINUX? endof
       PFX-MACOS of HB-TARGET-MACOS? endof
+      PFX-X64 of HB-TARGET-LINUX-X86-64? endof
       0 0= 0= swap endcase ;
 
 : PFX-LOAD-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
@@ -960,8 +963,10 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-LOAD-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
+   PFX-X64    LPX64TARGET    s" src/os/linux-x86-64/target.f"  PFX-LOAD-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-LOAD-ROW
    PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-LOAD-ROW
+   PFX-X64    LPX64LAYOUT    s" src/os/linux-x86-64/layout.f"  PFX-LOAD-ROW
    PFX-COMMON LPSTACKABI     s" src/habu/stack-abi.f"   PFX-LOAD-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-LOAD-ROW
@@ -1100,8 +1105,10 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-PATH-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
+   PFX-X64    LPX64TARGET    s" src/os/linux-x86-64/target.f"  PFX-PATH-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PATH-ROW
    PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-PATH-ROW
+   PFX-X64    LPX64LAYOUT    s" src/os/linux-x86-64/layout.f"  PFX-PATH-ROW
    PFX-COMMON LPSTACKABI     s" src/habu/stack-abi.f"   PFX-PATH-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
@@ -1566,8 +1573,10 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-PROVIDE-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PROVIDE-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PROVIDE-ROW
+   PFX-X64    LPX64TARGET    s" src/os/linux-x86-64/target.f"  PFX-PROVIDE-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PROVIDE-ROW
    PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-PROVIDE-ROW
+   PFX-X64    LPX64LAYOUT    s" src/os/linux-x86-64/layout.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPSTACKABI     s" src/habu/stack-abi.f"   PFX-PROVIDE-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PROVIDE-ROW
@@ -9839,8 +9848,8 @@ package LABELS
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 
 : SOURCES ( -- )
-   LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
-   LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
+   LBL LPLINUXTARGET !  LBL LPMACOSTARGET !  LBL LPX64TARGET !
+   LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !  LBL LPX64LAYOUT !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
    LBL LPSTRUCTURES !  LBL LPBYTES ! LBL LPDYNAMIC !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNERABI !  LBL LPPRIMS !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !

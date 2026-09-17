@@ -43,13 +43,15 @@ s" HB@" s" -- ptr u8" TRUST
 
 : READ-REPL-TARGET ( -- )
    HB-TARGET-LINUX? IF
-      s" src/os/linux/repl-term.f" HFILE
-   ELSE HB-TARGET-MACOS? IF
-      s" src/os/macos/repl-term.f" HFILE
-   ELSE
-      HUNKNOWN-TARGET
+      s" src/os/linux/repl-term.f" HFILE  exit
    THEN
-   THEN ;
+   HB-TARGET-MACOS? IF
+      s" src/os/macos/repl-term.f" HFILE  exit
+   THEN
+   HB-TARGET-LINUX-X86-64? IF
+      s" src/os/linux-x86-64/repl-term.f" HFILE  exit
+   THEN
+   HUNKNOWN-TARGET ;
 
 : READ-REPL ( -- )
    here HB !  HMAX allot  0 HL !

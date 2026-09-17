@@ -33,6 +33,7 @@ require src/habu/fdio.f
    s" SYS," OBJIMG-WORD? if exit then
    HB-TARGET-LINUX? if s" src/os/linux/sys.f" included exit then
    HB-TARGET-MACOS? if s" src/os/macos/sys.f" included exit then
+   HB-TARGET-LINUX-X86-64? if s" src/os/linux-x86-64/sys.f" included exit then
    E-OBJ-SCHEMA throw ;
 
 : OBJIMG-LOAD-TARGET-IMAGE ( -- )
@@ -44,6 +45,11 @@ require src/habu/fdio.f
    HB-TARGET-MACOS? if
       s" src/os/macos/macho.f" included
       s" src/os/macos/sign2.f" included
+      exit
+   then
+   HB-TARGET-LINUX-X86-64? if
+      s" src/os/linux-x86-64/elf.f" included
+      s" src/os/linux-x86-64/sign.f" included
       exit
    then
    E-OBJ-SCHEMA throw ;

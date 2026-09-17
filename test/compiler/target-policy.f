@@ -14,7 +14,7 @@
 \    compare equal and digest equal, at every level including the binding.
 \
 \ 3. EVERY SEMANTIC FIELD CHANGES IDENTITY. The suite enumerates the ENTIRE legal
-\    domain - 484 target contracts, 60 numerical policies - and shows the digests
+\    domain - 516 target contracts, 60 numerical policies - and shows the digests
 \    are pairwise distinct, and that digest equality holds exactly where the
 \    structural comparison holds. Enumerating everything is what makes this a
 \    proof over the domain rather than a sample: it covers every field, every
@@ -36,13 +36,16 @@ private
 \ Target contracts: architecture x ABI x byte order x pointer width x every
 \ feature mask over the nine defined bits. A single flat index keeps the sweep to
 \ one loop; the projections below take it apart.
-5 constant ARCH#
-5 constant ABI#
+6 constant ARCH#
+6 constant ABI#
 2 constant END#
 2 constant PTR#
 $200 constant RAW#
 ARCH# ABI# * END# * PTR# * RAW# * constant COMBO#
-484 constant LEGAL-CONTRACTS
+\ 484 before the x86-64 row: SysV AMD64 admits one byte order and one pointer
+\ width, and MASK-X86-64 has five optional bits above the baseline, so it adds
+\ exactly 32 contracts.
+516 constant LEGAL-CONTRACTS
 
 \ Numerical policies: the full product of the five families.
 2 constant OVF#
@@ -118,15 +121,17 @@ variable N
    dup 0= if drop CTARGET-ARCH:AARCH64 exit then
    dup 1 = if drop CTARGET-ARCH:PTX exit then
    dup 2 = if drop CTARGET-ARCH:A32 exit then
-   3 = if CTARGET-ARCH:THUMB2 exit then
-   CTARGET-ARCH:C66X ;
+   dup 3 = if drop CTARGET-ARCH:THUMB2 exit then
+   4 = if CTARGET-ARCH:C66X exit then
+   CTARGET-ARCH:X86-64 ;
 
 : N>ABI ( n -- CTARGET:abi )
    dup 0= if drop CTARGET-ABI:AAPCS64-DARWIN exit then
    dup 1 = if drop CTARGET-ABI:AAPCS64-LINUX exit then
    dup 2 = if drop CTARGET-ABI:PTX-KERNEL exit then
-   3 = if CTARGET-ABI:AAPCS32 exit then
-   CTARGET-ABI:C6000-EABI ;
+   dup 3 = if drop CTARGET-ABI:AAPCS32 exit then
+   4 = if CTARGET-ABI:C6000-EABI exit then
+   CTARGET-ABI:SYSV-AMD64 ;
 
 : N>ENDIAN ( n -- CTARGET:endian )
    0= if CTARGET-ENDIAN:LITTLE exit then
@@ -173,20 +178,24 @@ variable N
 \ ---- this suite's own legality rules -----------------------------------------
 \ AAPCS32 covers two instruction states. Embedded ABIs require 32-bit
 \ pointers and support either data byte order; PTX permits either width.
+\ SysV AMD64 is one machine's one ABI: little-endian, 64-bit, x86-64 only.
 : OK-ABI? ( n n -- bool )
    {: arch:n abi:n :}
    arch 0= if abi 2 < exit then
    arch 1 = if abi 2 = exit then
    arch 4 = if abi 4 = exit then
+   arch 5 = if abi 5 = exit then
    abi 3 = ;
 
 : OK-ENDIAN? ( n n -- bool )
    {: abi:n endian:n :}
    endian 0= if true exit then
+   abi 5 = if false exit then
    abi 1 = abi 3 >= or ;
 
 : OK-PTR? ( n n -- bool )
    {: abi:n ptr:n :}
+   abi 5 = if ptr 1 = exit then
    abi 3 >= if ptr 0= exit then
    ptr 1 = if true exit then
    abi 2 = ;
@@ -475,8 +484,8 @@ variable N
    DIGEST$ REFLECT:FAMS 1 T=
    DIGEST$ REFLECT:FLDS 4 T=
    DIGEST$ REFLECT:WIDTH 4 T=
-   s" arch" s" CTARGET-ARCH" REFLECT:VARS 5 T=
-   s" abi" s" CTARGET-ABI" REFLECT:VARS 5 T=
+   s" arch" s" CTARGET-ARCH" REFLECT:VARS 6 T=
+   s" abi" s" CTARGET-ABI" REFLECT:VARS 6 T=
    s" endian" s" CTARGET-ENDIAN" REFLECT:VARS 2 T=
    s" ptr-width" s" CTARGET-PTR--WIDTH" REFLECT:VARS 2 T=
    s" overflow" s" CNUM-OVERFLOW" REFLECT:VARS 2 T=
