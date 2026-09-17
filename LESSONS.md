@@ -593,6 +593,31 @@ fits.
 
 ## Types, ADTs & Signatures
 
+- **Moving `variable` storage into a `TASK:+USER` row drops the parametric
+  pointer `variable` mints, so every caller that read the cell as a ROLE has to
+  convert at the call.** `variable` is a raw storage definer the checker knows,
+  so its accessor is `( -- ptr a )` and each use site instantiates `a`
+  independently — the same cell serves as `ptr fd` at one caller and `ptr pid`
+  at another. `TASK:+USER` generates ordinary checked source
+  (`: NAME ( -- ptr n ) data-base OFF + ;`), so its accessor is concretely
+  `ptr n`; declaring it `( -- ptr a )` is `E-NONPARAMETRIC-EFFECT` and no `CAST:`
+  can retype a pointee (a `( ptr n -- ptr fd )` cast is refused at its
+  declaration, throw 7130). Measured when `lib/process.f`'s capture slots moved:
+  six files outside the module — `lib/test/subject.f`, `test/gate-common-lib.f`,
+  `test/gate-pool-orphan-test.f`, `test/aot-prefix-literal.f`,
+  `tools/build-fixpoint.f` and the three `lib/process-*` layers — needed
+  `>FD` / `PID>N` / `>LEN` inserted or removed. Budget that cascade before
+  converting a module whose cells are read outside it (`lib/string.f`'s SB,
+  `lib/fmt.f`'s buffer and `lib/fs.f`'s slots under
+  `habu-make-the-shared-0c2bfbc6`), or ask for a parametric `TASK:+USER` first.
+- **A `TASK:+USER` row is ZEROED in every new task, so a module whose sentinel
+  is -1 must not read a slot before its own reset runs.** Dictionary cells were
+  zero only until the image's first use; a per-task row is zero again in every
+  task that starts. `lib/process.f` is safe because every entry point opens with
+  `PROC-CAPTURE-BEGIN` → `PROC-CAPTURE-RESET`, and the one cell read before that
+  (`PROC-REAP-PID`, inside the reset's own `PROC-REAP-DISARM`) is guarded by
+  `0 >`, which treats 0 and the -1 sentinel alike. Check that ordering when
+  converting; a zero descriptor slot is fd 0, not "closed".
 - **A zero-field STRUCTURE cannot be a product FIELD — the declaration
   fail-closes (`invalid field layout metadata`, throw 7127).** Nested
   payload-ENUM and multi-field STRUCTURE fields both work; an embedded proof

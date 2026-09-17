@@ -123,8 +123,8 @@ variable COMMAND-N
 : ACCEPT ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n name:ptr nameu:n :}
    mode modeu CASE-SETUP PRODUCER-ARGS
    ENGINE-CANDIDATE:PATH$ 0 s" prefix-literal: captured" CHILD 0= if exit then
-   OUT PROC-OUT-LEN @ LEN>N name nameu CONTAINS? TTRUE
-   OUT PROC-OUT-LEN @ LEN>N S\" window: 0\n" CONTAINS? TTRUE
+   OUT PROC-OUT-LEN @ name nameu CONTAINS? TTRUE
+   OUT PROC-OUT-LEN @ S\" window: 0\n" CONTAINS? TTRUE
    ART$ EXISTS? TTRUE
    READER-ARGS
    ENGINE-CANDIDATE:PATH$ 0 s" prefix-literal: baked" CHILD 0= if exit then

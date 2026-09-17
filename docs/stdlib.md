@@ -68,7 +68,7 @@ the caller holds a `TASK:FACILITY` across the whole sequence), **task-local**
 at once), or **caller-owned** (the caller supplies the storage). A new module
 declares its class in its header; [threads.md](threads.md) carries the table
 and the size of the band a `TASK:+USER` row comes from, which is 10488 bytes
-for the whole image with 9984 free once the libraries above have claimed
+for the whole image with 8816 free once the libraries above have claimed
 theirs.
 
 | module | class |
@@ -79,6 +79,9 @@ theirs.
 | `lib/json-write.f` | caller-owned |
 | `lib/json-read.f` | caller-owned |
 | `lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |
+| `lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` vector) |
+| `lib/process-command.f` | process-wide |
+| `lib/process-cwd.f` | process-wide |
 | `lib/net/tcp4.f` | task-local |
 | `lib/net/udp4.f` | task-local |
 | `lib/net/curl.f` | task-local |
@@ -1572,6 +1575,13 @@ streaming API.
 `lib/process.f` wraps native process primitives in checked contracts. Public
 wrappers accept counted paths/commands, own conversion to private `pathz`
 buffers, and never require LLM code to build C strings by hand.
+
+Its storage is **task-local**: the `pathz` buffer, the pollfd array and the
+per-call capture slots are one `TASK:+USER` row, so a task capturing a child and
+a task waiting in `POLL-IN` never meet in one pollfd slot. The row publishes its
+capture slots as `ptr n` cells, so a caller that stores or reads one converts the
+`fd`, `pid`, `rc` or `len` role at the call — `PROC-OUT-W @ >FD`, `pid PID>N
+PROC-PID !` — instead of the cell carrying it.
 
 ```forth
 PROC-WAIT-STATUS-RAW ( pid -- n )

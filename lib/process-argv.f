@@ -117,7 +117,7 @@ public
    pathu LEN>N 1 + PROC-PATHZ-CAP > if E-PROC-OUTPUT throw then ;
 
 : PROC-SPAWN-ARGV-CAPTURE ( ptr u8 ptr a -- ) {: pathz:ptr argv:ptr :}
-   pathz argv -1 >FD PROC-OUT-W @ PROC-ERR-W @ PROC-SPAWN-ARGV-RAW {: pid :}
+   pathz argv -1 >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD PROC-SPAWN-ARGV-RAW {: pid :}
    PROC-ARGV-RESET
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-CAPTURE-PID!
@@ -125,7 +125,7 @@ public
    PROC-ERR-W PROC-CLOSE-CELL ;
 
 : PROC-SPAWN-ARGV-STDIN-CAPTURE ( ptr u8 ptr a -- ) {: pathz:ptr argv:ptr :}
-   pathz argv PROC-IN-R @ PROC-OUT-W @ PROC-ERR-W @ PROC-SPAWN-ARGV-RAW {: pid :}
+   pathz argv PROC-IN-R @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD PROC-SPAWN-ARGV-RAW {: pid :}
    PROC-ARGV-RESET
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-CAPTURE-PID!

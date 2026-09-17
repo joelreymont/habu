@@ -206,8 +206,8 @@ variable GCR-LPID   variable GCR-RPID
    s" /bin/sh" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    GCR-HANG-MS >MS PROC-CAPTURE-BEGIN
    pathz argv PROC-SPAWN-ARGV-CAPTURE
-   PROC-PID @ PID>N GCR-PID-BUF !
-   PROC-REAP-PID @ PID>N GCR-PID-BUF 8 + !
+   PROC-PID @ GCR-PID-BUF !
+   PROC-REAP-PID @ GCR-PID-BUF 8 + !
    pp-wr FD>N GCR-PID-BUF 16 write drop
    pp-wr FD>N close
    GPO-IDLE
@@ -274,7 +274,7 @@ variable GCR-SAVED-FD
    GCR-SAVED-FD @ PROC-FORK:REAP-WATCH-FD !
    dw-rd FD>N close
    dw-wr FD>N close
-   PROC-REAP-PID @ PID>N 0 < ;
+   PROC-REAP-PID @ 0 < ;
 
 : GCR-CODE ( result<pcap:captured,pcap:failed> -- n )   \ completion code: 0 on a clean exit, else nonzero
    MATCH result
@@ -296,7 +296,7 @@ variable GCR-SAVED-FD
    dw-rd FD>N close
    dw-wr FD>N close
    r1 0 = r2 0 = and
-   PROC-REAP-PID @ PID>N 0 < ;
+   PROC-REAP-PID @ 0 < ;
 
 : GPO-MAIN ( -- )
    T-RESET

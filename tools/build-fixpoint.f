@@ -399,7 +399,7 @@ variable BF-CERT-PATH-U
 \ the child and is closed here, so it reads EOF at once and the drain below ends
 \ on stderr alone.
 : BF-SPAWN-OUTFD-CAPTURE ( ptr u8 ptr a ptr a n -- ) {: pathz:ptr argv:ptr envp:ptr outfd:n :}
-   pathz argv envp -1 >FD outfd >FD PROC-ERR-W @ PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
+   pathz argv envp -1 >FD outfd >FD PROC-ERR-W @ >FD PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
    PROC-ARGV-ENV-RESET
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-CAPTURE-PID!

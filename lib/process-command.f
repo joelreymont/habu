@@ -1,5 +1,10 @@
 \ process-command.f - checked command-owned process runner.
 \
+\ STORAGE CLASS. PROCESS-WIDE. The argument and environment tables, the command
+\ buffers and the 128K/32K/32K capture buffers are one set for the image, so one
+\ task at a time builds and runs a command, even though the lib/process.f row
+\ underneath it is per task. See docs/threads.md.
+\
 \ The module lives in `package PROC-CMD`. External callers use the qualified public
 \ command-builder API (PROC-CMD:RESET, PROC-CMD:ARG+, PROC-CMD:ENV+,
 \ PROC-CMD:ENV-ENTRY+, PROC-CMD:ENV-HERMETIC, PROC-CMD:IN!, PROC-CMD:CWD!, PROC-CMD:RUN-OUTCOME,

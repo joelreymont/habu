@@ -1411,6 +1411,11 @@ SUITE tcp4
    lib/net/tcp4-test.f
 ;SUITE
 
+\ The process row is per task: a capturing task and a polling task at once.
+SUITE process-tasks
+   lib/process-task-test.f
+;SUITE
+
 \ Generic text I/O devices: the engine's own text through a memory device, and
 \ a REPL over a loopback connection.
 SUITE genio

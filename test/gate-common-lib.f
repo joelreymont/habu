@@ -101,11 +101,11 @@ variable GE-EVAL-SRC-U
    then ;
 
 : GE-SPAWN-STDIN-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
-   pathz argv envp PROC-IN-R @ PROC-OUT-W @ PROC-ERR-W @
+   pathz argv envp PROC-IN-R @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
    PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
    PROC-ARGV-ENV-RESET
    pid PID>N 0 < if pid GE-SPAWN-FAIL. E-PROC-SPAWN PROC-THROW-CAPTURE then
-   pid PROC-PID !
+   pid PID>N PROC-PID !
    PROC-IN-R PROC-CLOSE-CELL
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
@@ -131,12 +131,12 @@ variable GE-EVAL-SRC-U
    PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
 
 : GE-SPAWN-FILE-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
-   pathz argv envp GE-INFD @ >FD PROC-OUT-W @ PROC-ERR-W @
+   pathz argv envp GE-INFD @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
    PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
    PROC-ARGV-ENV-RESET
    GE-INFD @ close
    pid PID>N 0 < if pid GE-SPAWN-FAIL. E-PROC-SPAWN PROC-THROW-CAPTURE then
-   pid PROC-PID !
+   pid PID>N PROC-PID !
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
@@ -462,8 +462,8 @@ variable GE-EVAL-SRC-U
 : GE-EVAL-REDIRECT! ( -- )
    GE-STDOUT-FD GE-EVAL-DUP-FD GE-EVAL-OUT-SAVE !
    GE-STDERR-FD GE-EVAL-DUP-FD GE-EVAL-ERR-SAVE !
-   PROC-OUT-W @ FD>N GE-STDOUT-FD GE-EVAL-DUP2!
-   PROC-ERR-W @ FD>N GE-STDERR-FD GE-EVAL-DUP2!
+   PROC-OUT-W @ GE-STDOUT-FD GE-EVAL-DUP2!
+   PROC-ERR-W @ GE-STDERR-FD GE-EVAL-DUP2!
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
@@ -489,8 +489,8 @@ TRUSTED: GE-EVAL-SOURCE-ACT ( -- )
 \ runner state; the capture machine no longer stores a (kind code) pair to
 \ forge, so the runner copy is the single synthesized-state home.
 : GE-EVAL-STORE-RC ( n -- ) {: rc:n :}
-   rc >RC PROC-RC !
-   PROC-OUT-LEN @ PROC-ERR-LEN @ rc OUTCOME:EXITED GE-STORE-OUTCOME ;
+   rc PROC-RC !
+   PROC-OUT-LEN @ >LEN PROC-ERR-LEN @ >LEN rc OUTCOME:EXITED GE-STORE-OUTCOME ;
 
 : GE-EVAL-DRAIN ( -- )
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-LOOP ;
@@ -524,7 +524,7 @@ TRUSTED: GE-EVAL-SOURCE-ACT ( -- )
    PROC-FORK:RAW {: pid:pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid PID>N 0= if GE-EVAL-FORK-CHILD then
-   pid PROC-PID !
+   pid PID>N PROC-PID !
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 

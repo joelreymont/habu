@@ -1,9 +1,18 @@
 \ process.f - checked process helpers.
 \
+\ STORAGE CLASS. TASK-LOCAL. The path staging buffer, the pollfd array and the
+\ per-call capture slots are one PROC-STORAGE-BYTES TASK:+USER row, so each task
+\ spawns, polls, drains and reaps through its own descriptors, lengths, deadline
+\ and wait status, and any number of tasks may run children at once. The byte
+\ spans the capture and POLL words take are caller-owned. The PROC-REAP-ARM
+\ vector is process-wide: it is one installed policy, not per-call state.
+\ See docs/threads.md.
+\
 \ Load after lib/errors.f.
 
 s" lib/errors.f" required
 s" lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switchover wave B)
+s" lib/task.f" required                  \ TASK:+USER carries the per-call row
 
 \ outcome - how a child process completed (switchover wave C): a clean exit
 \ carrying the exit code, a signal death carrying the signal, or a capture
@@ -59,25 +68,73 @@ $7F constant PROC-WAIT-TERM-MASK
 $FF constant PROC-WAIT-EXIT-MASK
 4096 constant PROC-STDIN-CHUNK-CAP
 
-create PROC-PATHZ-BUF PROC-PATHZ-CAP allot
-create PROC-PFD 24 allot
-create PROC-PROBE 1 allot
+-1 constant PROC-NO-FD                   \ a closed / never-opened descriptor cell
+-1 constant PROC-NO-PID                  \ no child, and no armed reaper
 
-variable PROC-PID
-variable PROC-RC
-variable PROC-OUT-R
-variable PROC-OUT-W
-variable PROC-ERR-R
-variable PROC-ERR-W
-variable PROC-IN-R
-variable PROC-IN-W
-variable PROC-OUT-LEN
-variable PROC-ERR-LEN
-variable PROC-IN-OFF
-variable PROC-DEADLINE
-variable PROC-RD
-variable PROC-STATUS
-variable PROC-TIMED-OUT                  \ bool: the capture hit its deadline (SIGKILL-reaped)
+\ --- the per-task row --------------------------------------------------------
+\ One TASK:+USER row, laid out like lib/net/tcp4.f's: a poll array shared by two
+\ tasks hands each of them the other's descriptor in slot 0, so a task capturing
+\ a child and a task in POLL-IN used to poll each other's pipes
+\ (dot habu-make-the-process-6e615161). Every cell below is per-call state of one
+\ spawn/capture, so the whole set moves together; a task that shares nothing
+\ shares no slot.
+\
+\ A fresh task's region is zeroed, so the row reads 0 before its first capture,
+\ exactly as the dictionary cells it replaces read 0 before the image's first
+\ one: every entry point resets the row through PROC-CAPTURE-RESET before any
+\ word reads a descriptor, and PROC-REAP-DISARM's `0 >` guard treats the zero
+\ and the PROC-NO-PID sentinel alike.
+3 constant PROC-PFD-SLOTS                \ stdout, stderr, stdin
+8 constant PROC-PFD-SLOT-BYTES           \ one struct pollfd: fd | events | revents
+0 constant PROC-PATHZ-OFF
+PROC-PATHZ-OFF PROC-PATHZ-CAP + constant PROC-PFD-OFF
+PROC-PFD-OFF PROC-PFD-SLOTS PROC-PFD-SLOT-BYTES * + constant PROC-PROBE-OFF
+PROC-PROBE-OFF 1 + 7 + $FFFFFFFFFFFFFFF8 and constant PROC-PID-OFF
+PROC-PID-OFF     1 cells + constant PROC-RC-OFF
+PROC-RC-OFF      1 cells + constant PROC-OUT-R-OFF
+PROC-OUT-R-OFF   1 cells + constant PROC-OUT-W-OFF
+PROC-OUT-W-OFF   1 cells + constant PROC-ERR-R-OFF
+PROC-ERR-R-OFF   1 cells + constant PROC-ERR-W-OFF
+PROC-ERR-W-OFF   1 cells + constant PROC-IN-R-OFF
+PROC-IN-R-OFF    1 cells + constant PROC-IN-W-OFF
+PROC-IN-W-OFF    1 cells + constant PROC-OUT-LEN-OFF
+PROC-OUT-LEN-OFF 1 cells + constant PROC-ERR-LEN-OFF
+PROC-ERR-LEN-OFF 1 cells + constant PROC-IN-OFF-OFF
+PROC-IN-OFF-OFF  1 cells + constant PROC-DEADLINE-OFF
+PROC-DEADLINE-OFF 1 cells + constant PROC-RD-OFF
+PROC-RD-OFF      1 cells + constant PROC-STATUS-OFF
+PROC-STATUS-OFF  1 cells + constant PROC-TIMED-OUT-OFF
+PROC-TIMED-OUT-OFF 1 cells + constant PROC-REAP-PID-OFF
+PROC-REAP-PID-OFF 1 cells + constant PROC-STORAGE-BYTES
+
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and PROC-STORAGE-BYTES TASK:+USER PROC-STORAGE drop
+
+: PROC-ROW ( -- ptr u8 ) PROC-STORAGE BYTE-VIEW ;
+
+: PROC-PATHZ-BUF ( -- ptr u8 ) PROC-ROW PROC-PATHZ-OFF + ;
+: PROC-PFD ( -- ptr u8 ) PROC-ROW PROC-PFD-OFF + ;
+: PROC-PROBE ( -- ptr u8 ) PROC-ROW PROC-PROBE-OFF + ;
+
+\ The capture slots. TASK:+USER publishes one `ptr n` row, so these are cells of
+\ n and the fd/pid/rc/len/off roles are converted where the value crosses into a
+\ word that names the role, not carried by the cell.
+: PROC-PID ( -- ptr n ) PROC-ROW PROC-PID-OFF + CELL-VIEW ;
+: PROC-RC ( -- ptr n ) PROC-ROW PROC-RC-OFF + CELL-VIEW ;
+: PROC-OUT-R ( -- ptr n ) PROC-ROW PROC-OUT-R-OFF + CELL-VIEW ;
+: PROC-OUT-W ( -- ptr n ) PROC-ROW PROC-OUT-W-OFF + CELL-VIEW ;
+: PROC-ERR-R ( -- ptr n ) PROC-ROW PROC-ERR-R-OFF + CELL-VIEW ;
+: PROC-ERR-W ( -- ptr n ) PROC-ROW PROC-ERR-W-OFF + CELL-VIEW ;
+: PROC-IN-R ( -- ptr n ) PROC-ROW PROC-IN-R-OFF + CELL-VIEW ;
+: PROC-IN-W ( -- ptr n ) PROC-ROW PROC-IN-W-OFF + CELL-VIEW ;
+: PROC-OUT-LEN ( -- ptr n ) PROC-ROW PROC-OUT-LEN-OFF + CELL-VIEW ;
+: PROC-ERR-LEN ( -- ptr n ) PROC-ROW PROC-ERR-LEN-OFF + CELL-VIEW ;
+: PROC-IN-OFF ( -- ptr n ) PROC-ROW PROC-IN-OFF-OFF + CELL-VIEW ;
+: PROC-DEADLINE ( -- ptr n ) PROC-ROW PROC-DEADLINE-OFF + CELL-VIEW ;
+: PROC-RD ( -- ptr n ) PROC-ROW PROC-RD-OFF + CELL-VIEW ;
+: PROC-STATUS ( -- ptr n ) PROC-ROW PROC-STATUS-OFF + CELL-VIEW ;
+: PROC-TIMED-OUT ( -- ptr n ) PROC-ROW PROC-TIMED-OUT-OFF + CELL-VIEW ;
+\ Capture-child death-reaper pid; see the PROC-REAP-ARM seam below.
+: PROC-REAP-PID ( -- ptr n ) PROC-ROW PROC-REAP-PID-OFF + CELL-VIEW ;
 
 : PROC-WAIT-STATUS-RAW ( pid -- n ) {: pid :}
    pid PID>N wait-status ;
@@ -157,7 +214,7 @@ variable PROC-TIMED-OUT                  \ bool: the capture hit its deadline (S
    r >FD w >FD ;
 
 : PROC-PFD-SLOT ( idx -- ptr n ) {: idx :}
-   idx IDX>N 8 * PROC-PFD + ;
+   idx IDX>N PROC-PFD-SLOT-BYTES * PROC-PFD + CELL-VIEW ;
 
 : PROC-PFD-AT! ( fd n idx -- ) {: fd events idx :}
    events 32 lshift  fd FD>N $FFFFFFFF and  or  idx PROC-PFD-SLOT ! ;
@@ -220,51 +277,53 @@ variable PROC-TIMED-OUT                  \ bool: the capture hit its deadline (S
 \ worker's worker-alive read end; lib/process-fork.f installs the live vector)
 \ arm a co-located reaper for the just-spawned capture child so the child's
 \ whole group dies with the arming process instead of orphan-lingering. The
-\ default vector arms nothing and returns the no-reaper pid sentinel (-1).
+\ default vector arms nothing and returns PROC-NO-PID.
 \ The reaper is a DIRECT child of this process; every capture-termination path
 \ disarms it (kill + wait by its specific pid), so no reaper outlives its
 \ capture and no wait(-1) caller ever sees a stray child.
-variable PROC-REAP-PID   -1 PROC-REAP-PID !
+\
+\ The vector itself is PROCESS-WIDE, unlike the row above: it is the one policy
+\ the image installs at load, not state a call leaves behind.
 defer PROC-REAP-ARM ( pid -- pid )
 : PROC-REAP-ARM-OFF ( pid -- pid )
-   drop -1 >PID ;
+   drop PROC-NO-PID >PID ;
 : PROC-REAP-ARM-DEFAULT ( -- )
    [: PROC-REAP-ARM-OFF ;] is PROC-REAP-ARM ;
 PROC-REAP-ARM-DEFAULT
 
 : PROC-CAPTURE-PID! ( pid -- ) {: pid:pid :}
-   pid PROC-PID !
-   pid PROC-REAP-ARM PROC-REAP-PID ! ;
+   pid PID>N PROC-PID !
+   pid PROC-REAP-ARM PID>N PROC-REAP-PID ! ;
 
 : PROC-REAP-DISARM ( -- )
-   PROC-REAP-PID @ dup PID>N 0 > if
-      dup SIGKILL PROC-KILL-RAW drop
+   PROC-REAP-PID @ dup 0 > if
+      >PID dup SIGKILL PROC-KILL-RAW drop
       PROC-WAIT-STATUS drop
-      -1 >PID PROC-REAP-PID !
+      PROC-NO-PID PROC-REAP-PID !
    else
       drop
    then ;
 
 : PROC-CAPTURE-RESET ( -- )
    PROC-REAP-DISARM
-   -1 >PID PROC-PID !
-   -1 >RC PROC-RC !
-   -1 >FD PROC-OUT-R !
-   -1 >FD PROC-OUT-W !
-   -1 >FD PROC-ERR-R !
-   -1 >FD PROC-ERR-W !
-   -1 >FD PROC-IN-R !
-   -1 >FD PROC-IN-W !
-   0 >LEN PROC-OUT-LEN !
-   0 >LEN PROC-ERR-LEN !
-   0 >OFF PROC-IN-OFF !
+   PROC-NO-PID PROC-PID !
+   -1 PROC-RC !
+   PROC-NO-FD PROC-OUT-R !
+   PROC-NO-FD PROC-OUT-W !
+   PROC-NO-FD PROC-ERR-R !
+   PROC-NO-FD PROC-ERR-W !
+   PROC-NO-FD PROC-IN-R !
+   PROC-NO-FD PROC-IN-W !
+   0 PROC-OUT-LEN !
+   0 PROC-ERR-LEN !
+   0 PROC-IN-OFF !
    0 PROC-STATUS !
-   0 0= 0= PROC-TIMED-OUT ! ;
+   0 PROC-TIMED-OUT ! ;
 
-: PROC-CLOSE-CELL ( ptr fd -- ) {: p:ptr :}
-   p @ dup FD>N 0 >= if
-      FD>N close
-      -1 >FD p !
+: PROC-CLOSE-CELL ( ptr n -- ) {: p:ptr :}
+   p @ dup 0 >= if
+      close
+      PROC-NO-FD p !
    else
       drop
    then ;
@@ -284,30 +343,30 @@ PROC-REAP-ARM-DEFAULT
    PROC-CLOSE-CAPTURE-FDS ;
 
 : PROC-REAP-CAPTURE ( -- )
-   PROC-PID @ dup PID>N 0 >= if
-      PROC-WAIT-STATUS dup PROC-STATUS !
-      PROC-STATUS>RC PROC-RC !
-      -1 >PID PROC-PID !
+   PROC-PID @ dup 0 >= if
+      >PID PROC-WAIT-STATUS dup PROC-STATUS !
+      PROC-STATUS>RC RC>N PROC-RC !
+      PROC-NO-PID PROC-PID !
    else
       drop
    then
    PROC-REAP-DISARM ;
 
 : PROC-REAP-CAPTURE-TIMEOUT ( -- )
-   PROC-PID @ dup PID>N 0 >= if
-      dup SIGKILL PROC-KILL-RAW drop
+   PROC-PID @ dup 0 >= if
+      >PID dup SIGKILL PROC-KILL-RAW drop
       PROC-WAIT-STATUS PROC-STATUS !
-      -1 >PID PROC-PID !
+      PROC-NO-PID PROC-PID !
    else
       drop
    then
    PROC-REAP-DISARM
-   0 0= PROC-TIMED-OUT !
-   OUTCOME:TIMEOUT PROC-OUTCOME>RC PROC-RC ! ;
+   1 PROC-TIMED-OUT !
+   OUTCOME:TIMEOUT PROC-OUTCOME>RC RC>N PROC-RC ! ;
 
 : PROC-KILL-CAPTURE ( -- )
-   PROC-PID @ dup PID>N 0 >= if
-      SIGKILL PROC-KILL-RAW drop
+   PROC-PID @ dup 0 >= if
+      >PID SIGKILL PROC-KILL-RAW drop
       PROC-REAP-CAPTURE
    else
       drop
@@ -318,14 +377,14 @@ PROC-REAP-ARM-DEFAULT
    PROC-CLOSE-ALL-CAPTURE-FDS
    code throw ;
 
-: PROC-OPEN-PIPE ( ptr fd ptr fd -- ) {: rp:ptr wp:ptr :}
+: PROC-OPEN-PIPE ( ptr n ptr n -- ) {: rp:ptr wp:ptr :}
    pipe {: r w rc :}
    rc 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then
-   r >FD rp !
-   w >FD wp ! ;
+   r rp !
+   w wp ! ;
 
-: PROC-CLOEXEC-CELL ( ptr fd -- ) {: p:ptr :}
-   p @ FD>N F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then ;
+: PROC-CLOEXEC-CELL ( ptr n -- ) {: p:ptr :}
+   p @ F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then ;
 
 : PROC-NONBLOCK! ( fd -- ) {: fd :}
    fd FD>N F-GETFL 0 fcntl {: flags :}
@@ -347,22 +406,22 @@ PROC-REAP-ARM-DEFAULT
    PROC-IN-R PROC-IN-W PROC-OPEN-PIPE
    PROC-IN-R PROC-CLOEXEC-CELL
    PROC-IN-W PROC-CLOEXEC-CELL
-   PROC-IN-W @ PROC-NOSIGPIPE!
-   PROC-IN-W @ PROC-NONBLOCK! ;
+   PROC-IN-W @ >FD PROC-NOSIGPIPE!
+   PROC-IN-W @ >FD PROC-NONBLOCK! ;
 
 : PROC-CAPTURE-DEADLINE! ( ms -- ) {: timeout :}
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then
-   timeout PROC-DEADLINE-AT >NS PROC-DEADLINE ! ;
+   timeout PROC-DEADLINE-AT PROC-DEADLINE ! ;
 
 : PROC-REMAINING-MS ( -- ms )
-   PROC-DEADLINE @ NS>N PROC-LEFT-MS ;
+   PROC-DEADLINE @ PROC-LEFT-MS ;
 
 : PROC-ARM-CAPTURE-PFD ( -- )
-   PROC-OUT-R @ POLLIN 0 >IDX PROC-PFD-AT!
-   PROC-ERR-R @ POLLIN 1 >IDX PROC-PFD-AT! ;
+   PROC-OUT-R @ >FD POLLIN 0 >IDX PROC-PFD-AT!
+   PROC-ERR-R @ >FD POLLIN 1 >IDX PROC-PFD-AT! ;
 
 : PROC-POLL-CAPTURE-RC ( n n -- n ) {: nfds ms :}
-   nfds ms PROC-DEADLINE @ NS>N PROC-POLL-RESTART ;
+   nfds ms PROC-DEADLINE @ PROC-POLL-RESTART ;
 
 : PROC-POLL-CAPTURE ( ms -- count ) {: ms :}
    PROC-ARM-CAPTURE-PFD
@@ -377,21 +436,21 @@ PROC-REAP-ARM-DEFAULT
    rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    rc >COUNT ;
 
-: PROC-READ-STREAM ( ptr fd ptr u8 len ptr len -- ) {: fdp:ptr buf:ptr cap lenp:ptr :}
-   lenp @ LEN>N 0 < if E-PROC-TRUNCATED PROC-THROW-CAPTURE then
-   lenp @ LEN>N cap LEN>N > if E-PROC-TRUNCATED PROC-THROW-CAPTURE then
-   cap LEN>N lenp @ LEN>N - 0 <= if E-PROC-TRUNCATED PROC-THROW-CAPTURE then
-   fdp @ FD>N buf lenp @ LEN>N + cap LEN>N lenp @ LEN>N - read PROC-RD !
+: PROC-READ-STREAM ( ptr n ptr u8 len ptr n -- ) {: fdp:ptr buf:ptr cap lenp:ptr :}
+   lenp @ 0 < if E-PROC-TRUNCATED PROC-THROW-CAPTURE then
+   lenp @ cap LEN>N > if E-PROC-TRUNCATED PROC-THROW-CAPTURE then
+   cap LEN>N lenp @ - 0 <= if E-PROC-TRUNCATED PROC-THROW-CAPTURE then
+   fdp @ buf lenp @ + cap LEN>N lenp @ - read PROC-RD !
    PROC-RD @ 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
-   PROC-RD @ cap LEN>N lenp @ LEN>N - > if E-PROC-OUTPUT PROC-THROW-CAPTURE then
+   PROC-RD @ cap LEN>N lenp @ - > if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    PROC-RD @ 0= if
       fdp PROC-CLOSE-CELL
    else
-      lenp @ LEN>N PROC-RD @ + >LEN lenp !
+      lenp @ PROC-RD @ + lenp !
    then ;
 
-: PROC-PROBE-FULL-STREAM ( ptr fd -- ) {: fdp:ptr :}
-   fdp @ FD>N PROC-PROBE 1 read PROC-RD !
+: PROC-PROBE-FULL-STREAM ( ptr n -- ) {: fdp:ptr :}
+   fdp @ PROC-PROBE 1 read PROC-RD !
    PROC-RD @ 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    PROC-RD @ 1 > if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    PROC-RD @ 0= if
@@ -400,8 +459,8 @@ PROC-REAP-ARM-DEFAULT
       E-PROC-TRUNCATED PROC-THROW-CAPTURE
    then ;
 
-: PROC-READ-OR-PROBE-STREAM ( ptr fd ptr u8 len ptr len -- ) {: fdp:ptr buf:ptr cap lenp:ptr :}
-   cap LEN>N lenp @ LEN>N - 0 <= if
+: PROC-READ-OR-PROBE-STREAM ( ptr n ptr u8 len ptr n -- ) {: fdp:ptr buf:ptr cap lenp:ptr :}
+   cap LEN>N lenp @ - 0 <= if
       fdp PROC-PROBE-FULL-STREAM
    else
       fdp buf cap lenp PROC-READ-STREAM
@@ -426,7 +485,7 @@ PROC-REAP-ARM-DEFAULT
    then ;
 
 : PROC-CLOSE-STDIN-DONE ( len -- ) {: inu :}
-   PROC-IN-OFF @ OFF>N inu LEN>N >= if PROC-IN-W PROC-CLOSE-CELL then ;
+   PROC-IN-OFF @ inu LEN>N >= if PROC-IN-W PROC-CLOSE-CELL then ;
 
 : PROC-BROKEN-STDIN? ( n -- bool ) {: events :}
    events POLLERR and 0= 0= if 0 0= exit then
@@ -435,24 +494,24 @@ PROC-REAP-ARM-DEFAULT
    0 0= 0= ;
 
 : PROC-WRITE-STDIN-ACTIVE ( ptr u8 len -- ) {: src:ptr inu :}
-   inu LEN>N PROC-IN-OFF @ OFF>N - >LEN PROC-STDIN-CHUNK {: chunk :}
-   PROC-IN-W @ FD>N src PROC-IN-OFF @ OFF>N + chunk LEN>N write {: wrote :}
+   inu LEN>N PROC-IN-OFF @ - >LEN PROC-STDIN-CHUNK {: chunk :}
+   PROC-IN-W @ src PROC-IN-OFF @ + chunk LEN>N write {: wrote :}
    wrote 0 < if PROC-IN-W PROC-CLOSE-CELL exit then
    wrote chunk LEN>N > if E-PROC-OUTPUT PROC-THROW-CAPTURE then
-   PROC-IN-OFF @ OFF>N wrote + >OFF PROC-IN-OFF !
+   PROC-IN-OFF @ wrote + PROC-IN-OFF !
    inu PROC-CLOSE-STDIN-DONE ;
 
 : PROC-WRITE-STDIN ( ptr u8 len -- ) {: src:ptr inu :}
-   PROC-IN-W @ FD>N 0 < if exit then
-   PROC-IN-OFF @ OFF>N inu LEN>N >= if PROC-IN-W PROC-CLOSE-CELL exit then
+   PROC-IN-W @ 0 < if exit then
+   PROC-IN-OFF @ inu LEN>N >= if PROC-IN-W PROC-CLOSE-CELL exit then
    src inu PROC-WRITE-STDIN-ACTIVE ;
 
 : PROC-ARM-IO-PFD ( -- )
    PROC-ARM-CAPTURE-PFD
-   PROC-IN-W @ FD>N 0 >= if
-      PROC-IN-W @ POLLOUT 2 >IDX PROC-PFD-AT!
+   PROC-IN-W @ 0 >= if
+      PROC-IN-W @ >FD POLLOUT 2 >IDX PROC-PFD-AT!
    else
-      -1 >FD 0 2 >IDX PROC-PFD-AT!
+      PROC-NO-FD >FD 0 2 >IDX PROC-PFD-AT!
    then ;
 
 : PROC-POLL-IO ( ms -- count ) {: ms :}
@@ -549,17 +608,17 @@ PROC-REAP-ARM-DEFAULT
    then ;
 
 : PROC-CAPTURE-RC@ ( -- result<pcap:captured,pcap:failed> )
-   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ PROC-CAPTURE>RESULT ;
+   PROC-OUT-LEN @ >LEN PROC-ERR-LEN @ >LEN PROC-RC @ >RC PROC-CAPTURE>RESULT ;
 
 \ The capture outcome is DERIVED, never stored: the machine keeps only the
 \ raw wait status plus the timed-out flag (both one cell), so no (kind code)
 \ pair state exists to drift from the truth.
 : PROC-CAPTURE-OUTCOME ( -- outcome )
-   PROC-TIMED-OUT @ if OUTCOME:TIMEOUT exit then
+   PROC-TIMED-OUT @ 0 <> if OUTCOME:TIMEOUT exit then
    PROC-STATUS @ PROC-STATUS>OUTCOME ;
 
 : PROC-CAPTURE-OUTCOME@ ( -- len len outcome )
-   PROC-OUT-LEN @ PROC-ERR-LEN @
+   PROC-OUT-LEN @ >LEN PROC-ERR-LEN @ >LEN
    PROC-CAPTURE-OUTCOME ;
 
 : PROC-CAPTURE-FINISH-RC ( -- result<pcap:captured,pcap:failed> )
@@ -572,7 +631,7 @@ PROC-REAP-ARM-DEFAULT
    PROC-CAPTURE-OUTCOME@ ;
 
 : PROC-SPAWN-CAPTURE ( ptr u8 -- )
-   -1 >FD PROC-OUT-W @ PROC-ERR-W @ PROC-SPAWN-RAW {: pid :}
+   PROC-NO-FD >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD PROC-SPAWN-RAW {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-CAPTURE-PID!
    PROC-OUT-W PROC-CLOSE-CELL

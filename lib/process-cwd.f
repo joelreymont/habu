@@ -1,5 +1,9 @@
 \ process-cwd.f - checked argv/env/cwd process helpers.
 \
+\ STORAGE CLASS. PROCESS-WIDE. The working-directory copy buffer is one buffer
+\ for the image, so one task at a time prepares a cwd child, even though the
+\ lib/process.f row underneath it is per task. See docs/threads.md.
+\
 \ The module lives in `package PROC-CWD`. External callers use the qualified public
 \ API (PROC-CWD:SPAWN-ARGV-ENV-CWD-RAW, PROC-CWD:CWDZ, PROC-CWD:ARGV-ENV-CWD-RESET,
 \ PROC-CWD:SPAWN-ARGV-ENV-CWD-IO, PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE,
@@ -47,7 +51,7 @@ private
 
 : PROC-SPAWN-ARGV-ENV-CWD-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}
-   pathz argv envp cwdz -1 >FD PROC-OUT-W @ PROC-ERR-W @
+   pathz argv envp cwdz -1 >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
    SPAWN-ARGV-ENV-CWD-RAW {: pid:pid :}
    ARGV-ENV-CWD-RESET
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
@@ -57,7 +61,7 @@ private
 
 : PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}
-   pathz argv envp cwdz PROC-IN-R @ PROC-OUT-W @ PROC-ERR-W @
+   pathz argv envp cwdz PROC-IN-R @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
    SPAWN-ARGV-ENV-CWD-RAW {: pid:pid :}
    ARGV-ENV-CWD-RESET
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
