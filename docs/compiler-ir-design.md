@@ -390,7 +390,11 @@ A frozen module is immutable and may be shared by later read-only passes. A pass
 
 The scratch allocator is one region with a cursor, marked when a context is entered and released as a whole when it leaves — Forth's `HERE` and `ALLOT` over a transient extent. Nothing inside a context is reclaimed before that release, so every span a pass takes keeps its address and its bytes for the whole compilation, and a context nested inside another may read the enclosing one's storage and never the reverse.
 
-Habu's linear type facilities should ultimately enforce builder and context ownership. During the earliest implementation, an explicit generation token and fail-closed lifecycle checks are acceptable, but the public API must already have the ownership shape above.
+A span is taken as an OFFSET into that region, not as an address: the offset is the form a record living inside the region may hold, because a pointer names one process's mapping and a captured image carries none. The cursor is a stack, so only the innermost live context may take from it — a span taken for a context that a deeper one encloses would be released by that deeper context's exit, and it is refused where it is taken.
+
+A handle to storage inside the region is therefore the offset of its own record, packed with the state it names and with the region's RELEASE EPOCH, a counter that moves whenever a release hands bytes back. The record's own first cell holds that same packed value, so a resolution is one load and one compare: a record given back reads as zero, a record whose bytes a later compilation was handed carries a later epoch, and a state crossing reads as that state's error. The epoch is never compared against the counter itself — a session-lived record is born once and read for a whole load — only against the stamp in the record the handle names.
+
+Habu's linear type facilities should ultimately enforce builder and context ownership. During the earliest implementation, that packed identity and its fail-closed lifecycle checks are acceptable, but the public API must already have the ownership shape above.
 
 ### 6.3 Tables
 

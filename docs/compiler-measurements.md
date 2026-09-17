@@ -795,6 +795,80 @@ clone has nowhere to go anyway: the prototype is a slice of the session region
 and a word's interner is a slice of the word's, and borrowing is what an offset
 into the session region already is.
 
+### What deleting the registry was worth, and what it cost
+
+The lane the subsections above asked for landed on 2026-09-17: the arena
+descriptor moved into the region, a handle became the region offset of that
+descriptor packed with its state and the region's release epoch, and the
+64-slot registry, the generation counter, the allocation scope and the
+retirement observer went with it.
+
+**The denominator moved first.** The 5,186,689 above was measured on 30df3a77;
+on 09263557, the tree this lane started from, the same trivial tier-1
+definition is **4,977,673** user instructions and the thirteen-file corpus is
+**50,738,237,045** over 2,123 words in 187,564 bytes — the corpus census grew
+by 156 words since section 1 was written, so the corpus figures are not
+comparable across that gap while the per-definition ones are. Against the
+4,887,014 the unsound ablation showed, the registry machinery still standing
+was therefore **1.8 percent** of a definition, not the 5.8 percent the dot was
+written against: three earlier lanes had already taken most of it.
+
+Every figure below is `perf stat -e instructions:u` on cpu8, the difference
+between a `tools/tier-census.f` run over 500 trivial definitions and one over a
+single definition, divided by 499. Load average 1.9 to 7.0 across the runs;
+instruction counts do not move with it.
+
+| engine | per trivial definition | against the base |
+|---|---:|---:|
+| 09263557, the base | 4,977,673 | — |
+| offsets, base held in a `PERSISTED-PTR-VARIABLE` | 5,870,493 | +17.9% |
+| the same, base in a marked bare cell | 5,268,343 | +5.8% |
+| the same, warm field reads spelled out | 5,086,133 | +2.2% |
+| the same, no per-resolution region-bound call | 4,963,087 | -0.3% |
+| landed (bound check also out of `LIVE?`) | **4,950,225** | **-0.55%** |
+
+Over the corpus the landed engine is **50,669,615,296** against 50,738,237,045,
+**-0.14 percent**, with the census byte-identical on both sides (md5
+`f84176888c0be2c8c21e36edb9e33c77`).
+
+**What the three repairs were.** Each was found with the in-binary sampler over
+2,000 trivial definitions, not guessed.
+
+1. `PTR-VARIABLE` and `PERSISTED-PTR-VARIABLE` are `create` plus `does>`, so
+   reading one is a call into the does> body which then calls `ptr-field`. The
+   region base is read on every arena read: the does> body alone was **8.9
+   percent** of the samples, 48 percent of them from `IR-ARENA:RD@` and 43 from
+   its resolution helper. The base now lives in a bare cell marked with
+   `ptr-cell-mark` — what the definer marks itself — and the reads spell out the
+   one `ptr-field` the definer would have reached anyway.
+2. The descriptor's field accessors (`D@`, `TOK-OFF`, `RBASE@`) were 101 samples
+   between them, all of them a call frame around an add and a load. The words
+   that run per read now spell their field reads out, exactly as `RD@` already
+   spelled out its registry loads.
+3. A region-bound test per handle resolution — `IR-CTX:REGION-HOLDS?`, which the
+   dot asked for — was 49 samples, **1.7 percent** of a definition, for a
+   question already answered: a descriptor in bytes the region has taken back
+   was zeroed by its owner's teardown before the cursor moved, bytes handed out
+   again carry a later epoch, and a span cannot be released while its owner
+   lives because a scratch take by a context a deeper one encloses is now
+   `E-IR-CTX-NESTED`. It is out of the read path and out of the tree.
+
+**What is structural rather than measured.** The slot ceiling is gone: a
+compilation may hold as many arenas as its region has bytes for, so
+`E-IR-ARENA-SLOTS` and the mid-word retirement pressure that named it are gone,
+and `IR-BUILD`'s "at most four modules live at once" is not a rule any more.
+`IR-ARENA` lost `REGISTRY-CAP`, `REGISTRY-SLOT`, `RETIRE-OBSERVER!` and the
+three `SCOPE-` words and gained one, `SIDE-FIELD`: the one observer's cell now
+lives in the descriptor, so `IR-SYM`'s bucket index is born empty with its arena
+and dies with it instead of being cleared through a retirement callback.
+
+**What is left, measured.** `IR-BUILD:FIND-B` is 65 of 2,852 samples, **2.3
+percent** of a trivial definition: a builder handle still carries only a
+generation, so every resolution scans up to sixteen registry rows and `USE` runs
+one per append. It is the same fix this lane made one layer down — pack the slot
+into the handle, or move the builder's record into the region — and it is now
+the largest registry cost in the compiler.
+
 ## 7. Where tier-0 compile time goes
 
 Measured 2026-09-16 with `tools/tier0-profile.f` and the in-binary sampling
