@@ -172,8 +172,8 @@ read the source to find out. There are three:
 
 | library | class | what the class is about |
 | --- | --- | --- |
-| `lib/string.f` | process-wide (SB) / caller-owned (`BUF-*`) | `SB-BUF` and `SB-LEN` are one builder for the image; `BUF-RESET`/`BUF-APPEND`/`BUF-APPEND-C`/`BUF-LEN@` take the caller's buffer, capacity and length cell |
-| `lib/fmt.f` | process-wide | one integer render buffer and the `POW10I`/`SB-FRAC` scratch cells, appending into string's SB |
+| `lib/string.f` | task-local (SB) / caller-owned (`BUF-*`) | `SB-BUF` and `SB-LEN` are the STRING-ABI band of the per-task region; `BUF-RESET`/`BUF-APPEND`/`BUF-APPEND-C`/`BUF-LEN@` take the caller's buffer, capacity and length cell, for when two tasks must share one |
+| `lib/fmt.f` | process-wide | one integer render buffer and the `POW10I`/`SB-FRAC` scratch cells for the image; they append into string's SB, which is task-local, so the builder is safe and the number is not |
 | `lib/fs.f` | process-wide | one descriptor, length, path and stat buffer per image, plus one walk stack; the data spans `READ-ALL`/`READ-LINK`/`WRITE-ALL` take are caller-owned |
 | `lib/json-write.f` | caller-owned | the caller declares the writer (`TYPED-VARIABLE W JSON-WRITE:writer`) and the bytes `JSON-WRITE:OPEN` binds it to; no module state |
 | `lib/json-read.f` | caller-owned | no module state; the caller allots `JR:STORAGE-BYTES` and owns the source span |
@@ -184,26 +184,39 @@ read the source to find out. There are three:
 | `lib/serial.f` | task-local | `$60` row: termios and per-call staging |
 | `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) | the input and output indices are per-task DATA cells `TASK-REGION-INIT` copies; the rows and their eight operations are shared |
 
-Three of these are about to change class, and until they do the workaround is
-the caller's: `lib/string.f`'s SB, `lib/fmt.f`'s number buffer and
-`lib/fs.f`'s per-call slots move to task-local storage under dot
-`habu-make-the-shared-0c2bfbc6`. `lib/json-write.f` is already caller-owned:
-the caller declares the writer and the bytes it writes into.
+`lib/fmt.f`'s number buffer and `lib/fs.f`'s per-call slots are the two rows
+still to change, under dot `habu-make-the-shared-0c2bfbc6`.
+
+### Which mechanism a task-local library uses
+
+Which of the two a library reaches for is forced, not preferred:
+
+- A module the ENGINE BAKES takes a **declared band** in `src/habu/layout.f`
+  and addresses it as `data-base <off> +`, the way `lib/ffi-abi.f` addresses
+  `FFI-BUF` and package `GENIO-ABI` its device cells. `lib/string.f` has no
+  choice: it sits below `lib/ffi-abi.f`, which requires it back, so `require
+  lib/task.f` there fails the engine build with an undefined `STR=` inside
+  ffi-abi's `TOK-IS?`. `lib/fmt.f` could take rows - it has no cycle, and an
+  engine built that way compiles - but `src/habu/habu2.f` requires it for
+  number text, so a require would pull pthread, mmap and the FFI staging
+  tables into the base image for 56 bytes of scratch - so fmt takes a band
+  too when it moves.
+- A module LOADED LATER takes **`TASK:+USER` rows** out of USER-BAND, the way
+  `lib/net/tcp4.f` does, and `lib/fs.f` will.
 
 ### The arena a task-local row comes from
 
-`TASK:+USER` hands out offsets from `TASK-USER-BASE` (`FFI:SCRATCH-END`,
-$41C8) up to `TASK-USER-END` (`APP-ENTRY:XT-CELL`, $43A0) — **472 bytes for
-the whole image**, not the run to `TXN-STATE-OFF` that `src/habu/layout.f`
-describes as free. The cells above the ceiling are the AOT capture window, the
-reserved evaluator-pointer band, `PROT`'s two cells and `src/habu/stack-abi.f`'s
-five, and nothing guards them: before the ceiling was corrected, a row reaching
-them stored into engine state and the process died at teardown.
+`TASK:+USER` hands out offsets from `USER-BAND:START` ($5300) up to
+`USER-BAND:END` — **10488 bytes for the whole image**. The band is one declared
+run of the per-task header with no engine cell inside it, which
+`src/habu/layout.f`'s DATA-CLAIMS assertion checks at engine build time, and
+the declared band directly above it is `STRING-ABI` (1032 bytes), which is not
+part of it.
 
-The libraries above claim 448 of those 472 bytes when one image loads them all,
-so **24 bytes are free**. A row that would cross the ceiling is `E-TASK-USER`
-at its definition. Budget accordingly, and do not assume a library can take a
-kilobyte-sized row.
+An image loading `genio`, `tcp4`, `udp4`, `curl` and `serial` together claims
+448 of those bytes, leaving **9984 free**. A row that would cross
+`USER-BAND:END` is `E-TASK-USER` at its definition, not a store into whatever
+lies above.
 
 ## Atomics
 

@@ -61,6 +61,8 @@ TASK:MIN-STACK TASK:TASK JOIN-CLEAN
 TASK:MIN-STACK TASK:TASK JOIN-BAD-CLEAN
 TASK:MIN-STACK TASK:TASK JOIN-HALT
 TASK:MIN-STACK TASK:TASK JOIN-IDLE
+TASK:MIN-STACK TASK:TASK BUILD-A
+TASK:MIN-STACK TASK:TASK BUILD-B
 
 $4000 constant TASK-CAP
 60000 constant TASK-CAPTURE-MS       \ includes compiling lib/task.f in each child
@@ -76,6 +78,10 @@ APP-ITERS 10 * 100 + constant APP-SHARED-WANT
 64 constant SEM-ITEM-N
 3 constant SEM-TICKET-N
 $80000000 constant SEM-OVER-MAX      \ SEM_VALUE_MAX + 1
+64 constant BUILD-ITERS
+16 constant BUILD-RUN
+97 constant BUILD-A-C
+98 constant BUILD-B-C
 $80 constant POOL-CAP                \ handles this fixture can hold; the pool is smaller
 
 POOL-CAP TYPED-BUFFER POOL-SEMS TASK:sem
@@ -119,6 +125,9 @@ variable MSG-REFUSE-SELF
 variable MSG-REFUSE-IDLE
 variable POOL-N
 variable POOL-RC
+variable BUILD-BAD
+variable BUILD-DONE
+variable BUILD-READY
 
 : TASK-WAIT-READY ( n -- ) {: want:n :}
    begin TASK-READY-CELL atomic@ want < while TASK:PAUSE repeat ;
@@ -360,6 +369,41 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
 
 : TASK-TEST-WORKER-DIE ( -- )
    TASK-DIE$ TASK-DIE-RC s" task died" TASK-EXPECT-FAIL ;
+
+\ SB IS TASK-LOCAL. It lives in the STRING-ABI band the layout declares, so
+\ each task builds in its own bytes with its own cursor. The two workers append
+\ different bytes, yielding between every append so the interleaving is real,
+\ and read the builder back each round: a shared builder shows up as another
+\ task's byte or a wrong length. Measured before the move, this shape found
+\ 265 of 400 rounds corrupt. lib/fmt.f's number buffer is still process-wide
+\ (dot habu-make-the-shared-0c2bfbc6), so nothing here renders a number.
+: BUILD-BAD+ ( -- )
+   1 BUILD-BAD atomic-add drop ;
+
+: BUILD-SB-ROUND ( n -- ) {: c :}
+   SB-RESET
+   BUILD-RUN 0 do c SB-APPEND-C TASK:PAUSE loop
+   SB$ {: a:ptr u :}
+   u BUILD-RUN <> if BUILD-BAD+ exit then
+   u 0 do a i + c@ c <> if BUILD-BAD+ unloop exit then loop ;
+
+: BUILD-WORK ( n -- ) {: c :}
+   1 BUILD-READY atomic-add drop
+   begin BUILD-READY atomic@ 2 < while TASK:PAUSE repeat
+   BUILD-ITERS 0 do c BUILD-SB-ROUND loop
+   1 BUILD-DONE atomic-add drop ;
+
+: BUILD-WORK-A ( -- ) BUILD-A-C BUILD-WORK ;
+: BUILD-WORK-B ( -- ) BUILD-B-C BUILD-WORK ;
+
+: TASK-TEST-BUILDERS ( -- )
+   0 BUILD-BAD !  0 BUILD-DONE !  0 BUILD-READY !
+   ['] BUILD-WORK-A BUILD-A TASK:ACTIVATE
+   ['] BUILD-WORK-B BUILD-B TASK:ACTIVATE
+   begin BUILD-DONE atomic@ 2 < while TASK:PAUSE repeat
+   BUILD-A TASK:KILL
+   BUILD-B TASK:KILL
+   BUILD-BAD @ 0 T= ;
 
 : TASK-EXPECT-SILENT-OK ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu TASK-RUN-STDIN 0 T-OUTCOME-EXITED= {: outu:len erru:len :}
@@ -859,6 +903,7 @@ variable JOIN-TWICE-RC
    TASK-TEST-LIVE-COMPILE-GUARD
    TASK-TEST-APP-SOAK
    TASK-TEST-USER-ARENA
+   TASK-TEST-BUILDERS
    TASK-TEST-WORKER-DIE
    TASK-TEST-WORKER-THROW
    TASK-TEST-THROW-CLEARED

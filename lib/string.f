@@ -1,13 +1,12 @@
 \ string.f - checked byte-string helpers.
 \
-\ STORAGE CLASS. The SB builder (SB-BUF, SB-LEN) is PROCESS-WIDE: one builder
-\ for the image, shared by every task, so two tasks between SB-RESET and SB$
-\ interleave their bytes. The BUF-* family (BUF-RESET, BUF-APPEND,
-\ BUF-APPEND-LEN, BUF-APPEND-C, BUF-LEN@) is CALLER-OWNED - the caller passes
-\ the buffer, its capacity and its length cell - and is the builder to reach
-\ for from a task. Everything else here is pure over the caller's spans.
-\ Moving SB to task-local storage is dot habu-make-the-shared-0c2bfbc6; see
-\ docs/threads.md.
+\ STORAGE CLASS. The SB builder (SB-BUF, SB-LEN) is TASK-LOCAL: it lives in the
+\ STRING-ABI band of the per-task DATA region, so each task's builder is its own
+\ and two tasks between SB-RESET and SB$ cannot see each other's bytes. The
+\ BUF-* family (BUF-RESET, BUF-APPEND, BUF-APPEND-LEN, BUF-APPEND-C, BUF-LEN@)
+\ is CALLER-OWNED - the caller passes the buffer, its capacity and its length
+\ cell - and remains the builder to reach for when two tasks must share one.
+\ Everything else here is pure over the caller's spans. See docs/threads.md.
 
 s" lib/errors.f" required
 s" lib/adt/option.f" required            \ option<n> for STR-PARSE-POS/NEG (switchover wave A)
@@ -26,12 +25,25 @@ s" lib/adt/option.f" required            \ option<n> for STR-PARSE-POS/NEG (swit
 10 constant STR-BASE
 19 constant STR-I64-DIGITS
 255 constant STR-BYTE-MAX
-1024 constant SB-CAP
+STRING-ABI:SB-BUF-BYTES constant SB-CAP
 $7FFFFFFFFFFFFFFF constant STR-MAX-I64
 STR-MAX-I64 negate 1 - constant STR-MIN-I64
 
-create SB-BUF SB-CAP allot
-variable SB-LEN
+\ SB is TASK-LOCAL: both accessors read `data-base`, which is the RUNNING
+\ task's data region, so each task builds in its own bytes with its own cursor.
+\ The offsets are STRING-ABI's, declared in src/habu/layout.f and asserted
+\ there against every other DATA claim, because this module cannot reach
+\ TASK:+USER: it is baked into the engine and sits below lib/ffi-abi.f, which
+\ requires it back, so `require lib/task.f` here fails the engine build with an
+\ undefined STR= inside ffi-abi's TOK-IS?. This is the same addressing
+\ lib/ffi-abi.f uses for FFI-BUF and package GENIO-ABI for its device cells.
+\ A region is a fresh zeroed mapping, so a new task's cursor starts at zero
+\ exactly as the old `variable` did.
+: SB-BUF ( -- ptr u8 )
+   data-base STRING-ABI:SB-BUF-OFF + BYTE-VIEW ;
+
+: SB-LEN ( -- ptr a )
+   data-base STRING-ABI:SB-LEN-OFF + ;
 
 : BUFFER: ( n -- )
    dup 0 < if E-STR-BOUNDS throw then
