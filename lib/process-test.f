@@ -396,10 +396,13 @@ create PT-DRAIN-BUF PT-CHUNK allot
    SIGKILL T-OUTCOME-SIGNALED= LEN>N 0 T= LEN>N 0 T=
    PROC-CAPTURE-OUTCOME SIGKILL T-OUTCOME-SIGNALED= ;
 
-\ A deliberately tiny deadline proves that capture reports a timeout.
+\ A deliberately tiny deadline proves that capture reports a timeout. The child
+\ is the one that never ends: the ok fixture finishes in about 9 ms on this host,
+\ so racing it against a 10 ms deadline was a claim about the engine's boot time
+\ and went red whenever the child won (gate AE, 2026-09-17).
 : PT-STARVED-CAPTURE ( -- )
    PROC-ARGV-RESET
-   PT-CAPTURE-OK >LEN PROC-ARGV+
+   PT-CAPTURE-HANG >LEN PROC-ARGV+
    s" bin/hb" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN 10 >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N drop drop drop ;
 
