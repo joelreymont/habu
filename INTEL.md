@@ -8,18 +8,18 @@ and rewrites the Landed section as each arm64 lane lands.
 
 ## State
 
-Updated 2026-09-17 23:30 by hazel. Integrated line head `e4d37b7b`; arm64
-engine `bin/hb` sha256 `7f70b47e77d945ba` (3,997,888 bytes). Commits above
-the integrated head are on the line and in their chains (AN..AR), integrated
-as each gate comes back green.
+Updated 2026-09-18 00:05 by hazel. Integrated line head `89173b3f`; arm64
+engine `bin/hb` sha256 `4b66cb2ab04ea441` (3,997,888 bytes). Commits above
+the integrated head are on the line and in their chains, integrated as each
+gate comes back green.
 
 | Dot | Work | Runs on | State |
 | --- | --- | --- | --- |
 | `habu-write-the-x86-fbaf3086` | `src/arch/x86-64/asm.f` encoder + byte tests | arm64 host (hazel) | landed 07a7e90c |
 | `habu-specify-the-engine-fcbcee25` | `src/habu/prims.f` primitive table + parity gate | arm64 host (hazel) | table landed fb4f2392; references + parity gate in progress |
-| `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract | arm64 host (hazel) | on the line d55021af + 5e05cbfd, chains AN/AO; the instruction emitters (SYS, and the process seam) follow as a second worker |
+| `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract | arm64 host (hazel) | seam landed d55021af + 5e05cbfd; the instruction emitters (`SYS,`, the stencils, the process words) in progress (worker 2) |
 | `habu-parameterise-the-alloc-7efbe7a1` | register-file description for regalloc/spill/prune | arm64 host (hazel) | landed 50ee6a3c |
-| `habu-bind-compiler-targets-ff970b99` | backend registry in `src/compiler/target.f` | arm64 host (hazel) | rows landed 0901e61c; pass dispatch on the line ddc1412d, chain AP |
+| `habu-bind-compiler-targets-ff970b99` | backend registry + pass dispatch | arm64 host (hazel) | landed 0901e61c + ddc1412d (closed) |
 | `habu-lower-hir-to-6bf80d33` | `x64ir.f`, `select-x64.f`, `emit-x64.f` | Intel agent | open; depends on the five above |
 | `habu-cross-build-the-d25a959d` | cross-build entry + device-peer gate | Intel agent | open |
 | `habu-port-the-ffi-676f745d` | SysV FFI, task entry, traps | Intel agent | open |
