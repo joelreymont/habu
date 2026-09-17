@@ -28,6 +28,7 @@ create PTYNAME 128 allot
 variable #FAIL
 variable #CASE
 variable RN
+variable WEND                      \ end of the window an absence claim reads; -1 with no barrier
 variable QUIET
 variable IN-R
 variable IN-W
@@ -70,8 +71,11 @@ variable PTYNUM
    #CASE @ 1 + #CASE !
    0= if T-FAIL then ;
 
+\ Clearing the buffer retires the barrier with it: the bytes a claim would have
+\ read are gone.
 : RCLR ( -- )
-   0 RN ! ;
+   0 RN !
+   -1 WEND ! ;
 
 \ A full buffer keeps its tail rather than dropping everything: a marker split
 \ across the compaction survives whole in what is kept, and every older byte has
@@ -79,7 +83,8 @@ variable PTYNUM
 : KEEP-TAIL! ( -- )
    RN @ PTY-RBUF-CAP PTY-KEEP-TAIL - < if exit then
    RBUF RN @ PTY-KEEP-TAIL - + RBUF PTY-KEEP-TAIL BYTE-COPY
-   PTY-KEEP-TAIL RN ! ;
+   PTY-KEEP-TAIL RN !
+   -1 WEND ! ;
 
 \ Append one read and report it, keeping room for the next one.
 : READ+ {: fd :} ( fd -- n )
@@ -115,6 +120,15 @@ variable PTYNUM
       ha na nu i MATCH-AT if 0 0= unloop exit then
    loop
    0 0= 0= ;
+
+\ Offset of the first occurrence at or after `from`, or -1. Where a barrier
+\ lands is what bounds the window an absence claim may read.
+: FIND-AT {: from a:ptr u :} ( n ptr u8 n -- n )
+   RN @ u - from < if -1 exit then
+   RN @ u - 1 + from ?do
+      RBUF a u i MATCH-AT if i unloop exit then
+   loop
+   -1 ;
 
 : TCONTAINS {: a:ptr u :} ( ptr u8 n -- )
    RBUF RN @ a u CONTAINS? TTRUE ;
@@ -185,17 +199,41 @@ variable PTYNUM
 : EXPECT ( ptr u8 n -- )
    EXPECT-WAIT? TTRUE ;
 
-: REJECT {: a:ptr u :} ( ptr u8 n -- )
-   RBUF RN @ a u CONTAINS? 0= TTRUE ;
+\ Wait for a marker and close an absence claim's window at its end. The marker
+\ has to be one the child prints PAST the point where the rejected text could
+\ have appeared; a failed wait leaves no window, so the claim behind it is
+\ refused as well.
+: BARRIER {: a:ptr u :} ( ptr u8 n -- )
+   a u EXPECT
+   0 a u FIND-AT dup 0 < if drop exit then
+   u + WEND ! ;
+
+\ The barrier for a claim about the line before it: the child prints the hex
+\ literal in decimal, so the answer's digits are in nothing the line editor
+\ echoed back and only the evaluation can satisfy the wait. The REPL reads the
+\ next line after finishing the one before it, so this answer proves that line
+\ is over -- diagnostics, trailer and all.
+: PROBE-BARRIER ( -- )
+   s" $BEEF ." SEND-LN
+   s" 48879" BARRIER ;
+
+\ An absence claim reads the window a barrier closed, never the whole buffer:
+\ RBUF[0,WEND) ends at a marker the child printed past the point where the
+\ rejected text would have been, so the claim reads the child's answer instead
+\ of a buffer that is merely still empty. With no barrier there is no window
+\ and the claim is refused, not granted.
+: REJECT? {: a:ptr u :} ( ptr u8 n -- bool )
+   WEND @ 0 < if false exit then
+   RBUF WEND @ a u CONTAINS? 0= ;
+
+: REJECT ( ptr u8 n -- )
+   REJECT? TTRUE ;
 
 : EXPECT-OK ( -- )
    s"  ok" EXPECT ;
 
 : EXPECT-PROMPT ( -- )
    s" habu> " EXPECT ;
-
-: REJECT-OK ( -- )
-   s"  ok" REJECT ;
 
 : CAPTURE-PIPES ( -- )
    PIPE-PAIR IN-W ! IN-R !
@@ -380,6 +418,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    s" E-UNDEFINED: frobnicate" EXPECT
    s" ?" EXPECT
    s" habu> " EXPECT
+   PROBE-BARRIER
    s"  ok" REJECT ;
 
 : PTY-SQUARE ( -- )
@@ -396,6 +435,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    s" SQ" STEP-LN
    s" hb: interpret stack underdepth: SQ" EXPECT
    s" habu> " EXPECT
+   PROBE-BARRIER
    s"  ok" REJECT
    s" 6 SQ ." STEP-LN
    s" 36" EXPECT
@@ -414,6 +454,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    3 SEND-C
    MFD-DRAIN
    s" habu> " EXPECT
+   PROBE-BARRIER
    s" garbage?" REJECT ;
 
 : PTY-EDIT-SEED ( -- )
@@ -477,7 +518,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 
 : PTY-BP-RUN-SQ-CLEARED ( -- )
    s" 6 SQB ." STEP-LN
-   s" 36" EXPECT
+   s" 36" BARRIER                     \ the answer, past where a hit would have printed
    s" habu-bp:" REJECT ;
 
 : PTY-BP-ONESHOT ( -- )
@@ -561,7 +602,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 
 : PTY-BPN-SKIP ( -- )
    s" 3 PB ." STEP-LN
-   s" 6" EXPECT
+   s" 6" BARRIER                      \ the answer, past where a hit would have printed
    s" habu-bp:" REJECT ;
 
 : PTY-BPN-FIRE ( -- )
@@ -690,6 +731,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    s" 99 throw" STEP-LN
    s" ?" EXPECT
    s" habu> " EXPECT
+   PROBE-BARRIER
    s"  ok" REJECT ;
 
 : PTY-THROW-AFTER ( -- )
@@ -712,6 +754,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    s" : PRDUP ( -- ) ;" STEP-LN
    s" duplicate definition: PRDUP" EXPECT
    s" habu> " EXPECT
+   PROBE-BARRIER
    s"  ok" REJECT ;
 
 : PTY-COMPILE-AFTER ( -- )
@@ -735,6 +778,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    s" package PRP public : PRFOO ( -- ) NOPEWORD ;" STEP-LN
    s" E-UNDEFINED: NOPEWORD" EXPECT
    s" habu> " EXPECT
+   PROBE-BARRIER
    s"  ok" REJECT ;
 
 : PTY-PKGSCOPE-FRESH ( -- )                        \ a dangling PRP would make this `package` nest-reject (no " ok")
@@ -751,11 +795,48 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    PTY-PKGSCOPE-FRESH
    PTY-PKGSCOPE-GLOBAL ;
 
+\ The barrier itself, against the live child. An absence claim over a buffer the
+\ child has not answered into is granted by the harness's own silence: a drain
+\ that returned on its first quiet poll leaves exactly that buffer. One leg has
+\ no barrier behind it and must be REFUSED; the other has one and must still
+\ catch the text when the child really printed it.
+: PTY-REJECT-UNBARRIERED ( -- )
+   s" frobnicate" STEP-LN
+   RCLR                               \ the child's answer is not in the buffer
+   s"  ok" REJECT? 0= TTRUE           \ so the claim is refused
+   PROBE-BARRIER
+   s"  ok" REJECT? TTRUE ;            \ and granted once a barrier closes the window
+
+: PTY-REJECT-CATCHES ( -- )
+   s" 5 ." STEP-LN                    \ a line that DOES print the trailer
+   PROBE-BARRIER
+   s"  ok" REJECT? 0= TTRUE ;         \ the window holds it, so the claim is refuted
+
+: PTY-REJECT-BARRIER ( -- )
+   PTY-REJECT-UNBARRIERED
+   PTY-REJECT-CATCHES ;
+
 : PTY-THROW-RECOVERY ( -- )
    PTY-THROW-LINE
    PTY-THROW-AFTER ;
 
+\ ^D becomes EOF only while the terminal is RAW, which it is only while the
+\ child sits in its line editor. A ^D that arrives while the line before it is
+\ still executing is taken by the restored canonical discipline as an
+\ empty-line EOF instead, never becomes a key, and leaves the child waiting for
+\ one that never comes -- with the harness waiting on its exit, that is a hang,
+\ not a failure. Only REDRAW prints the prompt and only after RAW-ON, so a
+\ prompt printed after the buffer was cleared is proof that the editor holds
+\ the terminal. The key that asks for one is DEL: in the editor it deletes
+\ nothing from an empty line and redraws, and in canonical mode it is VERASE
+\ over an empty buffer, so neither mode can act on it or read it as a signal.
+: PTY-EDITOR-READY ( -- )
+   RCLR
+   127 SEND-C
+   s" habu> " EXPECT ;
+
 : PTY-STOP-HB ( -- )
+   PTY-EDITOR-READY
    4 SEND-C
    PID @ >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    MFD @ close ;
@@ -789,7 +870,8 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    PTY-STEPPER
    PTY-THROW-RECOVERY
    PTY-COMPILE-RECOVERY
-   PTY-PKGSCOPE-RECOVERY ;
+   PTY-PKGSCOPE-RECOVERY
+   PTY-REJECT-BARRIER ;
 
 : PTY-HB ( -- )
    PTY-BASIC
