@@ -8,8 +8,8 @@ and rewrites the Landed section as each arm64 lane lands.
 
 ## State
 
-Updated 2026-09-17 18:55 by hazel. Integrated line head `2b97d449`; arm64
-engine `bin/hb` sha256 `2afd2c72d1283369` (3,932,352 bytes).
+Updated 2026-09-17 19:20 by hazel. Integrated line head `1a3cba18`; arm64
+engine `bin/hb` sha256 `343ef7705f0ea45a` (3,932,352 bytes).
 
 | Dot | Work | Runs on | State |
 | --- | --- | --- | --- |
@@ -17,7 +17,7 @@ engine `bin/hb` sha256 `2afd2c72d1283369` (3,932,352 bytes).
 | `habu-specify-the-engine-fcbcee25` | `src/habu/prims.f` primitive table + parity gate | arm64 host (hazel) | in progress |
 | `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract | arm64 host (hazel) | in progress |
 | `habu-parameterise-the-alloc-7efbe7a1` | register-file description for regalloc/spill/prune | arm64 host (hazel) | in progress |
-| `habu-bind-compiler-targets-ff970b99` | backend registry in `src/compiler/target.f` | arm64 host (hazel) | in progress |
+| `habu-bind-compiler-targets-ff970b99` | backend registry in `src/compiler/target.f` | arm64 host (hazel) | half landed 0901e61c (registry rows); pass dispatch in progress |
 | `habu-lower-hir-to-6bf80d33` | `x64ir.f`, `select-x64.f`, `emit-x64.f` | Intel agent | open; depends on the five above |
 | `habu-cross-build-the-d25a959d` | cross-build entry + device-peer gate | Intel agent | open |
 | `habu-port-the-ffi-676f745d` | SysV FFI, task entry, traps | Intel agent | open |
@@ -144,3 +144,31 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
 - Open decision for the lowering dot: `src/compiler/native/emit.f` is a
   fixed 4-byte word sink; the x86_64 emitter is either a byte-sized layout
   pass in emit.f or a separate emitter over `BUF` (see the lowering dot).
+
+### Target registry, rows (`habu-bind-compiler-targets-ff970b99` worker 1, line 0901e61c, engine 343ef770)
+
+- Package `CTARGET` (`src/compiler/target.f`) gained the backend registry:
+  `BACKEND-ROWS` (4), `REGISTER ( arch [ contract -- bool ] [ contract -- bool ] -- )`
+  (lowering acceptance, emission acceptance; a second claim of one arch is
+  `E-CTGT-REGISTERED`, a full table `E-CTGT-ROW`), `REGISTERED? ( arch -- bool )`,
+  `ROW ( arch -- n )` (throws `E-CTGT-UNLOADED`), `LOWERS?` and
+  `EMITS? ( contract -- bool )`. Rows are keyed by `ARCH-CODE`, because the
+  native-build window's dialect cannot fetch a nominal ENUM from a
+  `TYPED-BUFFER` (dot `habu-model-a-nominal-05d89f50`); quotation buffers work.
+- `src/arch/arm64/backend.f` (package `A64BACK`) registers aarch64 at load
+  with `SERVES?` = aarch64 + little + bits64 (the ABI is `abi.f`'s answer);
+  it is required by `a64ir.f` and `emit.f`, so the row exists exactly when
+  arm64 backend code is loaded. `A64IR:CHECK-TARGET` and `A64EMIT:TARGET-CK`
+  resolve through the registry: an arch with no module is `E-CTGT-UNLOADED`,
+  a loaded backend that declines the machine keeps its own refusal.
+- The x86_64 backend does the same: `src/arch/x86-64/backend.f` requiring
+  only `src/compiler/target.f`, registering the `x86-64` arch variant (which
+  the OS-seam lane adds to the contract tables) with its two predicates; its
+  `x64ir.f`/`emit-x64.f` require that file.
+- Tests: `test/compiler/target-registry.f` (`SUITE compiler-target-registry`);
+  `backend-boundary.f` now expects `E-CTGT-UNLOADED` for A32/THUMB2/C66X.
+- Worker 2 (in progress) adds the pass rows above `ir/build.f` (`NBACK`,
+  ten typed quotation rows indexed by `<arch> CTARGET:ROW`, refusing
+  defaults) so `compiler.f` names no backend; its report will list the exact
+  registration sequence a second backend performs. There is no `--target`
+  flag: the registry is the single resolution point.
