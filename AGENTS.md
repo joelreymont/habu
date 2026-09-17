@@ -60,7 +60,7 @@ belong in the language core.
 
 - Herdr forgets a pane's agent name when Herdr or the machine restarts. When a
   session starts with `HERDR_ENV=1`, look up your pane (`$HERDR_PANE_ID`) in
-  `herdr agent list`; if it has no `name`, take your name back before other
-  work: `herdr agent rename "$HERDR_PANE_ID" <name>`.
-- The session that owns Habu integration is `hazel`. Any other session restores
-  the name its own memory or its user gave it and never takes `hazel`.
+  `herdr agent list`; if it has no `name`, name yourself before other work:
+  `herdr agent rename "$HERDR_PANE_ID" <name>`.
+- Use the name your memory records for you. If it records none, pick any name
+  no live agent has and save it to memory so the next start restores it.
