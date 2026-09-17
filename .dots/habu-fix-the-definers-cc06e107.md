@@ -1,6 +1,6 @@
 ---
 title: Fix the definers that generate accessors over raw cells
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-17T18:44:23.876268+03:00"

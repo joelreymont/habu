@@ -8,12 +8,12 @@ and rewrites the Landed section as each arm64 lane lands.
 
 ## State
 
-Updated 2026-09-17 by hazel. Line head `dd3f5044`; arm64 engine `bin/hb`
-sha256 `c28d1c9314aefbd5` (3,932,352 bytes).
+Updated 2026-09-17 18:55 by hazel. Integrated line head `2b97d449`; arm64
+engine `bin/hb` sha256 `2afd2c72d1283369` (3,932,352 bytes).
 
 | Dot | Work | Runs on | State |
 | --- | --- | --- | --- |
-| `habu-write-the-x86-fbaf3086` | `src/arch/x86-64/asm.f` encoder + byte tests | arm64 host (hazel) | in progress |
+| `habu-write-the-x86-fbaf3086` | `src/arch/x86-64/asm.f` encoder + byte tests | arm64 host (hazel) | landed 07a7e90c |
 | `habu-specify-the-engine-fcbcee25` | `src/habu/prims.f` primitive table + parity gate | arm64 host (hazel) | in progress |
 | `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract | arm64 host (hazel) | in progress |
 | `habu-parameterise-the-alloc-7efbe7a1` | register-file description for regalloc/spill/prune | arm64 host (hazel) | in progress |
@@ -110,6 +110,37 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
 
 ## Landed
 
-Nothing yet. Hazel fills this section per lane with the package names, the
-entry points and operand types the lowering compiles against, the tests that
-pin them, and the sha256 of the arm64 engine that carries them.
+### Assembler (`habu-write-the-x86-fbaf3086`, line 07a7e90c, engine 2afd2c72)
+
+- `src/arch/x86-64/asm.f`, package `X64ASM`, 107 public `ENC-*` encoders.
+  Operand nominals: `r64 r32 r16 r8 imm8 imm32 imm64 condition rel mem`;
+  the sixteen `RAX`..`R15` words are `r64`, the sixteen `C-O`..`C-G` words
+  are `condition`; `r32`/`r16`/`r8` are made with the generated `>R32` casts
+  and `r8` 4..7 mean `spl bpl sil dil` (a REX is forced; the legacy high-byte
+  registers do not exist).
+- Memory operands are one packed cell built only by `MEM-AT ( r64 -- mem )`,
+  `MEM-OFF ( r64 n -- mem )`, `MEM-IDX ( r64 r64 n n -- mem )` (base, index,
+  scale 1/2/4/8, disp; index never rsp) and `MEM-RIP ( n -- mem )`; fields are
+  re-screened inside every encoder.
+- Every encoder takes a `lib/byte-buffer.f` `BUF` header as its LAST operand
+  and appends bytes; there is no instruction value. Operand order: destination
+  first, then sources; memory forms take the data register first (`-RR`,
+  `-RM`, `-MR`, `-RI8`, `-RI32`, `-RI64` suffixes).
+- Sizes are deterministic (the word chosen plus the displacement magnitude);
+  size an instruction by encoding it into a scratch buffer. `rel` is measured
+  from the END of the instruction; `ENC-JCC-REL8`/`ENC-JCC-REL32`,
+  `ENC-JMP-REL8`/`ENC-JMP-REL32`, `ENC-CALL-REL32` are separate words.
+- `ENC-MOV-RI64` is the one relocatable literal: 10 bytes, imm64 at
+  `MOV-RI64-IMM-OFF` (2). The OS-seam lane names the relocation site kind
+  `MOVABS` with that offset and width 8.
+- Refusals: `E-X64ASM-OPERAND` (-8830), screened before any byte is emitted.
+- Tests: `test/compiler/x86-64-asm.f` (152 byte-string cases from
+  `llvm-mc -triple=x86_64 -show-encoding`, each with its llvm-mc line; 27
+  runtime refusals; 11 checker refusals), `SUITE compiler-x86-64-asm`.
+  Doc: `docs/embedded-encoders.md`, section x86_64.
+- Deliberately absent until the selector asks: 32-bit ALU beyond
+  `ENC-XOR32-RR`, 8/16-bit ALU, memory-destination immediates, `lock`
+  prefixes, `nop`, the accumulator and `D1` short forms.
+- Open decision for the lowering dot: `src/compiler/native/emit.f` is a
+  fixed 4-byte word sink; the x86_64 emitter is either a byte-sized layout
+  pass in emit.f or a separate emitter over `BUF` (see the lowering dot).

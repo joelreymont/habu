@@ -1,6 +1,6 @@
 ---
 title: Convert the raw pointer cells in lib and tools
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-17T18:44:23.878382+03:00"
