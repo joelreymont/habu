@@ -7159,6 +7159,14 @@ and --no-lldbinit.
 - **internal-mark.f's seal covers bare interpret and tick only.** It has never
   blocked a compiled reference; any design assuming it does starts from a
   false premise (its own line 26 says so).
+- **…but it does decide whether a checked body can NAME an engine-internal
+  word, which is not the same claim.** Measured on two images of one tree that
+  differ only in whether the seal pass ran: `: X ( -- n ) TFAM-N @ ;` is
+  `E-UNDEFINED: TFAM-N` on the sealed engine and compiles on the unsealed one.
+  A name whose row is a trust-boundary primitive still refuses a checked caller
+  there, by its row and not its visibility — `USIGS` answers `E-CAP-TRUSTED`
+  instead. So a TRUSTED: wrapper in a whitebox test means one of two different
+  things, and only the first kind is the seal's doing.
 
 - **A rewind performed by an optimisation is still a rewind its own watermark
   must see.** The intern's hash-hit assigned the arena cursor directly, leaving

@@ -163,7 +163,27 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
       IMK-I @ 1 + IMK-I !
    REPEAT ;
 
+\ ---- the whitebox image ----------------------------------------------------
+\ THE ONE BUILD THAT ASKS FOR NO SEAL. A whitebox suite reaches inside the
+\ engine it tests - it reopens an engine package, names a pre-hook global, ticks
+\ an internal word - and this pass is what closes every one of those doors in the
+\ shipped image. Wrapping each probe in a TRUSTED: body does not reopen them
+\ either: the seal gates INTERPRET and TICK, so the refusal lands on the bare
+\ token whatever the body around it is.
+\
+\ So the honest whitebox host is an engine built without this pass, and the
+\ builder asks for one here, the way src/core/top-row.f takes HABU_TOP_TIER:
+\ test/whitebox-engine.f sets HABU_WHITEBOX_IMAGE=1 in the environment of the
+\ ONE tools/native-build.f run whose image the gate hands to whitebox suites,
+\ under its own content key and never over bin/hb. The variable is read at
+\ target-load time and nowhere else, so no shipped engine can be unsealed after
+\ the fact: an installed image carries the marks its build wrote, and
+\ test/internal-word-gate.f keeps pinning that the product's are there.
+: IMK-WHITEBOX? ( -- bool )
+   s" HABU_WHITEBOX_IMAGE" GETENV s" 1" CORE-STR= ;
+
 : IMK-PASS ( -- )
+   IMK-WHITEBOX? IF EXIT THEN
    CORE-PREFIX:FIRST-RECORD IMK-FIRST !
    IMK-WALK
    IMK-WALK-PACKAGES

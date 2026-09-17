@@ -4,11 +4,15 @@ require lib/test.f
 require lib/test/runner.f
 require test/gate-pool.f
 require test/cold-engine.f
+require test/whitebox-engine.f
 
 package STDLIB-GATE
 
 360000 constant SUITE-TIMEOUT-MS
 64 constant SUITE-USAGE-RC
+
+create WB-BUF FS-PATH-CAP allot
+variable WB-U
 
 : SUITE-USAGE ( -- )
    s" usage: bin/hb --load test/run.f" SUITE-USAGE-RC die ;
@@ -46,6 +50,22 @@ package STDLIB-GATE
 : SUITE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    s" bin/hb" SUITE-TIMEOUT-MS label labelu SUITE-RUN-ENV-ASYNC ;
 
+: WB-PATH$ ( -- ptr u8 n )
+   WB-BUF WB-U @ ;
+
+\ The whitebox engine, in the gate's own temp root: a private copy per gate run,
+\ so a suite that spawns it cannot reach - or overwrite - the shared keyed
+\ artifact, and the tree's bin/hb keeps its seal.
+: WB-ENSURE ( -- )
+   0 WB-U !
+   TEST:WHITEBOX-REGISTERED? 0= if exit then
+   s" hb-whitebox" WB-BUF GT-PATH WB-U !
+   WB-PATH$ WHITEBOX-ENGINE:PROVIDE ;
+
+: SUITE-WB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   WB-U @ 0 <= if E-FS-PATH throw then
+   WB-PATH$ SUITE-TIMEOUT-MS label labelu SUITE-RUN-ENV-ASYNC ;
+
 : SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu:n label:ptr labelu:n :}
    SUITE-ENV
    s" bin/hb" label labelu in inu SUITE-TIMEOUT-MS GT-POOL-START-STDIN ;
@@ -57,6 +77,7 @@ package STDLIB-GATE
    SUITE-CHECK-ARGS
    s" habu-native-suite" GT-START
    COLD-ENGINE:ENSURE
+   WB-ENSURE
    GT-POOL-RESET ;
 
 \ The pool drains softly between groups, so every registered suite runs
@@ -77,6 +98,7 @@ package STDLIB-GATE
    [: SUITE-HB ;] TEST:ARGS-BEGIN!
    [: SUITE-ARG+ ;] TEST:ARG+!
    [: SUITE-HB-RUN ;] TEST:RUNNER!
+   [: SUITE-WB-RUN ;] TEST:WHITEBOX-RUNNER!
    [: SUITE-HB-RUN-STDIN ;] TEST:STDIN-RUNNER! ;
 
 public

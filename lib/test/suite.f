@@ -20,6 +20,7 @@ $10000 constant ARG-CAP
 1 constant GROUP-SEQUENTIAL
 0 constant ITEM-FILE
 1 constant ITEM-STDIN
+2 constant ITEM-WHITEBOX
 
 create ITEM-NAMES ITEM-MAX NAME-CAP * allot
 create ITEM-NAME-US ITEM-MAX cells allot
@@ -50,6 +51,10 @@ defer ARGS-BEGIN ( -- )
 defer ARG+ ( ptr u8 n -- )
 defer RUNNER ( ptr u8 n -- )
 defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
+\ A whitebox item names the same kind of file as an ordinary one and differs in
+\ ONE thing: the engine it is handed to. The adapter owns that engine, so the
+\ kind picks a second runner here rather than carrying a path through the table.
+defer WHITEBOX-RUNNER ( ptr u8 n -- )
 
 : TRUE ( -- bool )
    0 0= ;
@@ -147,6 +152,7 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    a u s" GROUP"       STR=CI
    a u s" SUITE"       STR=CI or
    a u s" SUITE-STDIN" STR=CI or
+   a u s" WHITEBOX-SUITE" STR=CI or
    a u s" ;GROUP"      STR=CI or
    a u s" ;SUITE"      STR=CI or
    a u s" SEQ"         STR=CI or
@@ -260,6 +266,13 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    id ITEM-ARGS-FEED
    id ITEM-NAME$ RUNNER ;
 
+\ The whitebox engine is a second binary, not a second argument list: the item
+\ builds its argv exactly as a file item does and only the spawn differs.
+: ITEM-RUN-WHITEBOX ( n -- ) {: id:n :}
+   ARGS-BEGIN
+   id ITEM-ARGS-FEED
+   id ITEM-NAME$ WHITEBOX-RUNNER ;
+
 : ITEM-RUN-STDIN ( n -- ) {: id:n :}
    DRAIN
    ARGS-BEGIN
@@ -274,6 +287,7 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    case
       ITEM-FILE of id ITEM-RUN-FILE endof
       ITEM-STDIN of id ITEM-RUN-STDIN endof
+      ITEM-WHITEBOX of id ITEM-RUN-WHITEBOX endof
       E-TBL-FIELD throw
    endcase
    id SEQUENTIAL? if DRAIN then
@@ -315,11 +329,22 @@ public
 : STDIN-RUNNER! ( [ ptr u8 n ptr u8 n -- ] -- )
    is STDIN-RUNNER ;
 
+: WHITEBOX-RUNNER! ( [ ptr u8 n -- ] -- )
+   is WHITEBOX-RUNNER ;
+
 : ITEMS-REGISTERED ( -- n )
    ITEM-N @ ;
 
 : ITEMS-RUN ( -- n )
    ITEM-RAN @ ;
+
+\ Does any registered item need the whitebox engine? The adapter asks before the
+\ first fork, so a gate with no whitebox suite pays nothing for one.
+: WHITEBOX-REGISTERED? ( -- bool )
+   ITEM-N @ 0 ?do
+      i ITEM-KIND@ ITEM-WHITEBOX = if TRUE unloop exit then
+   loop
+   TRUE 0= ;
 
 : DEFAULTS ( -- )
    [: NOOP ;] SETUP!
@@ -328,7 +353,8 @@ public
    [: NOOP ;] ARGS-BEGIN!
    [: ARG-DROP ;] ARG+!
    [: RUN-MISSING ;] RUNNER!
-   [: STDIN-RUN-MISSING ;] STDIN-RUNNER! ;
+   [: STDIN-RUN-MISSING ;] STDIN-RUNNER!
+   [: RUN-MISSING ;] WHITEBOX-RUNNER! ;
 
 : RESET ( -- )
    0 ITEM-N !
@@ -348,6 +374,12 @@ public
 : SUITE ( -- )
    PARSE-NAME {: name:ptr nameu:n :}
    ITEM-FILE name nameu s" " ITEM-ADD ;
+
+\ A suite whose body reaches inside the engine: same registration as SUITE, run
+\ on the adapter's whitebox engine instead of the product one.
+: WHITEBOX-SUITE ( -- )
+   PARSE-NAME {: name:ptr nameu:n :}
+   ITEM-WHITEBOX name nameu s" " ITEM-ADD ;
 
 : SUITE-STDIN ( -- )
    PARSE-NAME {: name:ptr nameu:n :}

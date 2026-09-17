@@ -328,7 +328,19 @@ SUITE primitive-trust
    test/primitive-trust.f
 ;SUITE
 
-SUITE prim-owner-scope
+\ WHITEBOX-SUITE runs the file on the unsealed engine test/whitebox-engine.f
+\ builds once per gate, never on bin/hb. Declare one when the suite reaches
+\ inside the engine it tests - a reopened engine package, a pre-hook global, a
+\ ticked internal word - and say here which of those it needs.
+\ test/internal-word-gate.f and test/compiler/ir-id.f stay on the product engine
+\ on purpose: they pin the refusals this engine does not have.
+WHITEBOX-SUITE whitebox-engine
+   test/whitebox-engine-suite.f
+;SUITE
+
+\ PRIM: / PPRIM: / CLOSE-PRIVATE are sealed in the product image, which is why
+\ this suite drove its fixture through a from-source child window.
+WHITEBOX-SUITE prim-owner-scope
    test/prim-owner-scope.f
 ;SUITE
 
