@@ -1274,8 +1274,10 @@ INSTALL-GROW-NESTED
    ASSERT-OWNER-DEPTHS
    ASSERT-PRODUCTION-IDLE ;
 
-\ Test-only friend boundary for the installed generated-plan capacity hook.
-TRUSTED: RUN-CAPACITY-PREFLIGHT ( -- )
+\ Test-only friend boundary for the installed generated-plan capacity hook. A
+\ plain checked body since this suite became a WHITEBOX-SUITE: the hook's name
+\ carries its ordinary effect on an engine whose seal never ran.
+: RUN-CAPACITY-PREFLIGHT ( -- )
    s" GDNESTED:MAKE" CAPACITY-PREFLIGHT-N @ TYPE-DECL:TDECL-CAPACITY-PREFLIGHT-XT ;
 
 : CAPACITY-PREFLIGHT-CATCH ( n -- n )

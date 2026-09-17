@@ -54,8 +54,15 @@ variable #CASE
 
 \ --- boundary shims: the ENUM-DECL:ED-RUN entry, evaluate, and the sealed
 \ pre-hook registry / schema reflection words are reached at top level through
-\ named forwarders, TRUSTED: only where the name is engine-internal and a checked
-\ body cannot resolve it (the same idiom test/structure-decl-suite.f uses).
+\ named forwarders (the same idiom test/structure-decl-suite.f uses).
+\
+\ TRUSTED: ONLY WHERE THE ROW SAYS SO. This suite is a WHITEBOX-SUITE, so it
+\ runs on an engine whose seal never ran and the registry cells it reads have
+\ their ordinary checker effects: TFAMN@, SCHN@, SUMVN@ and the two save/restore
+\ blocks are plain checked definitions. What still needs a trusted body is what
+\ needed one on any engine - `evaluate` and `catch`, and the TFAM / SUMV / SCHEMA
+\ accessors whose rows are trust-boundary primitives, which refuse a checked
+\ caller by name (E-CAP-TRUSTED) rather than by visibility.
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: TRY ( ptr u8 n -- n ) ['] EV catch ;            \ evaluate under catch -> throw code
 TRUSTED: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
@@ -84,17 +91,17 @@ TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
 \ restored, event log reset).
 variable RB-TFAM  variable RB-STR  variable RB-PK  variable RB-SUMV
 variable RB-LAY   variable RB-SCH  variable RB-ROOT  variable RB-PFN  variable RB-PFC
-TRUSTED: REG-MARK ( -- )
+: REG-MARK ( -- )
    TFAM-N @ RB-TFAM !  TF-STR-U @ RB-STR !  TF-PK-N @ RB-PK !
    SUMV-N @ RB-SUMV !  LAY-N @ RB-LAY !  SCH-N @ RB-SCH !  SCH-ROOT-N @ RB-ROOT !
    PF-N @ RB-PFN !  PF-COMMIT-N @ RB-PFC ! ;
-TRUSTED: REG-RESTORE ( -- )
+: REG-RESTORE ( -- )
    RB-TFAM @ TFAM-N !  RB-STR @ TF-STR-U !  RB-PK @ TF-PK-N !
    RB-SUMV @ SUMV-N !  RB-LAY @ LAY-N !  RB-SCH @ SCH-N !  RB-ROOT @ SCH-ROOT-N !
    RB-PFN @ PF-N !  RB-PFC @ PF-COMMIT-N ! ;
-TRUSTED: TFAMN@ ( -- n ) TFAM-N @ ;
-TRUSTED: SCHN@ ( -- n ) SCH-N @ ;
-TRUSTED: SUMVN@ ( -- n ) SUMV-N @ ;
+: TFAMN@ ( -- n ) TFAM-N @ ;
+: SCHN@ ( -- n ) SCH-N @ ;
+: SUMVN@ ( -- n ) SUMV-N @ ;
 
 variable RC   variable FID   variable B   variable NODE   variable PFB   variable DEVB
 variable VS0  variable VID
