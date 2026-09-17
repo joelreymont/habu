@@ -61,7 +61,7 @@ $F2E00009 constant W-MOVK3
 require src/habu/primitive-registry.f
 require src/habu/task-abi.f
 require src/habu/code-span.f
-variable FP-A  variable FP-U
+PTR-VARIABLE FP-A  variable FP-U
 
 \ A primitive whose dictionary record is globally searchable but cannot be
 \ executed or ticked by ordinary source.  The sentinel lives only in this
@@ -70,7 +70,7 @@ variable FP-A  variable FP-U
 \ Every primitive body emitter has the same Habu effect. Keep that type when
 \ selecting a different emitter for each registry row.
 defer FP-EMIT ( -- )
-: FP-A@ ( -- ptr u8 ) FP-A 0 ptr-field @ ;
+: FP-A@ ( -- ptr u8 ) FP-A @ ;
 
 \ An engine helper is an engine-resident routine that guarded primitives reach
 \ by a direct branch (a shared span guard, a bounds loop). REGISTER records it as

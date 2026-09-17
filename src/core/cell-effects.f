@@ -31,7 +31,14 @@ TRUSTED: MULTI-ERR-BEGIN ( -- )
 \ Read finalized numeric call facts without exposing the unification graph.
 package CHECKER-CALLS
 
-create STATE 0 , 0 , 0 ,
+\ The header's first cell holds the row arena's address, so it is DECLARED
+\ storage and the two counts are allotted behind it (dot
+\ habu-refuse-a-ptr-5ad2734e). A `create`d cell is raw storage: fetching an
+\ address out of one is the launder the checker refuses, and `0 ptr-field` on it
+\ was exactly that. The counts are numbers, read through an explicit cell view of
+\ the declared head - the same record, the same compiled add-and-load, since both
+\ views are type-level only.
+PTR-VARIABLE STATE 0 , 0 ,
 
 \ The owner can record calls before this checked header is loaded. Transfer
 \ that allocation with its rows, then clear the retired header so capture has
@@ -39,19 +46,20 @@ create STATE 0 , 0 , 0 ,
 : INSTALL ( -- )
    CWIN-STATE {: prior:ptr :}
    prior STATE = if exit then
-   prior 0 ptr-field @ STATE 0 ptr-field !
-   prior CELL + @ STATE CELL + !
-   prior 2 CELL * + @ STATE 2 CELL * + !
-   NULL-PTR prior 0 ptr-field !
-   0 prior CELL + !  0 prior 2 CELL * + !
+   prior @ STATE !
+   prior CELL + BYTE-VIEW CELL-VIEW @ STATE CELL + BYTE-VIEW CELL-VIEW !
+   prior 2 CELL * + BYTE-VIEW CELL-VIEW @ STATE 2 CELL * + BYTE-VIEW CELL-VIEW !
+   NULL-PTR prior !
+   0 prior CELL + BYTE-VIEW CELL-VIEW !
+   0 prior 2 CELL * + BYTE-VIEW CELL-VIEW !
    [: STATE ;] is CWIN-STATE ;
 INSTALL
 
 : FIELD ( n n -- ptr n ) {: row:n field:n :}
-   STATE 0 ptr-field @ row 4 * field + CELL * + CELL-VIEW ;
+   STATE @ row 4 * field + CELL * + CELL-VIEW ;
 
 : FIND ( n n -- n n ) {: ord:n kind:n :}
-   STATE CELL + @ 0 ?do
+   STATE CELL + BYTE-VIEW CELL-VIEW @ 0 ?do
       i 0 FIELD @ ord = i 3 FIELD @ kind = and if
          i 1 FIELD @ i 2 FIELD @ unloop exit
       then

@@ -20,21 +20,18 @@ create LBUF 256 allot           \ line under edit
 create HIST 4096 allot          \ history ring: 16 slots x 256 ([len][bytes])
 variable LLEN  variable LPOS    \ line length, cursor
 variable HN  variable HV        \ history count, browse index
-variable HS                     \ history slot scratch
+PTR-VARIABLE HS                 \ history slot scratch: it holds a ring address
 variable DONE                   \ 0 editing, 1 accepted, 2 eof
 
 -1 constant KEY-EOF             \ KEY1's no-key answer; no byte collides with it
 
 defer REPL-READ ( -- ptr u8 n )
 
-: HS-FIELD ( -- ptr ptr u8 )
-   HS 0 ptr-field ;
-
 : HS@ ( -- ptr u8 )
-   HS-FIELD @ ;
+   HS @ ;
 
 : HS! ( ptr u8 -- )
-   HS-FIELD ! ;
+   HS ! ;
 
 : TIO32@ ( ptr u8 -- n ) {: a:ptr :}
    a c@  a 1 + c@ 8 lshift or

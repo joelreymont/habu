@@ -29,14 +29,13 @@ package FDIO
 variable WR                \ bytes the last write accepted
 variable OFF               \ bytes handed over so far
 variable FD
-variable A
+\ The span's address is a pointer, so its cell is declared storage rather than a
+\ plain cell (dot habu-refuse-a-ptr-5ad2734e).
+PTR-VARIABLE A
 variable U
 
-\ The span's address is a pointer, so it travels through a pointer field rather
-\ than a plain cell (docs/forth.md § ptr locals and cell access).
-: A-FIELD ( -- ptr ptr u8 ) A 0 ptr-field ;
-: A@ ( -- ptr u8 ) A-FIELD @ ;
-: A! ( ptr u8 -- ) A-FIELD ! ;
+: A@ ( -- ptr u8 ) A @ ;
+: A! ( ptr u8 -- ) A ! ;
 
 : LEFT ( -- n ) U @ OFF @ - ;
 : DST ( -- ptr u8 ) A@ OFF @ + ;

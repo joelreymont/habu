@@ -3907,7 +3907,7 @@ s" @" CHECKER-PACKAGE-PRIVATE s" field" 3 TK-CELL TFAM-DECL FIELD-FAM !
 $100 constant TFQ-CAP            \ folded qualifier bytes (CHECKER-PACKAGE-CAP)
 create TFQ-BUF TFQ-CAP allot
 variable TFQ-U
-variable TFQ-TA   variable TFQ-TU     \ qualified tail token
+PTR-VARIABLE TFQ-TA   variable TFQ-TU  \ qualified tail token
 variable TFQ-COLON
 
 : TFQ-FOLD-COPY ( ptr u8 n -- ) {: a:ptr u:n :}   \ folded qualifier -> TFQ-BUF
@@ -3950,7 +3950,7 @@ variable TFQ-COLON
 \ TFAM-RESOLVE may throw E-TFAM-AMBIG; a checked `catch` needs a stack-neutral
 \ quotation that cannot read locals, so buffer the (pkg,name) args and the
 \ (id,flag) result through cells and run the resolve as a `( -- )` quotation.
-variable TFSR-PA   variable TFSR-PU   variable TFSR-NA   variable TFSR-NU
+PTR-VARIABLE TFSR-PA   variable TFSR-PU   PTR-VARIABLE TFSR-NA   variable TFSR-NU
 variable TFSR-ID   variable TFSR-FLAG
 : TFSR-RUN ( -- )
    TFSR-PA @ TFSR-PU @ TFSR-NA @ TFSR-NU @ TFAM-RESOLVE

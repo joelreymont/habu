@@ -6471,7 +6471,7 @@ public
 \ refused by name instead of being wired in. A defence whose threat lives in
 \ another file cannot be justified by a fixture in this one; the layers that DO
 \ decide are each falsified by mutation on the real chain (deleting one reds
-\ SERIAL-NEXT, (LP2VEXEC), HS-FIELD and WATCH respectively), and test/aot-wid-suite.f
+\ SERIAL-NEXT, (LP2VEXEC), HS@ and WATCH respectively), and test/aot-wid-suite.f
 \ PROBE-BOOT-GATE holds the public-slot admit with a two-mode pair.
 \
 \ IT ASKS THE RECORD THE LOOKUP MATCHED, WHICH IS THE ONLY RECORD THAT ANSWERS.
@@ -9748,8 +9748,9 @@ package ENGINE-EMIT
       1+
    REPEAT drop
    RET, ;
-\ SRCA@ refines the raw source-buffer cell for the final byte copy.
-variable SRCA
+\ The source-buffer cursor holds an address, so its cell is declared storage
+\ (dot habu-refuse-a-ptr-5ad2734e).
+PTR-VARIABLE SRCA
 : SRCA@ ( -- ptr u8 )
    SRCA @ ;
 

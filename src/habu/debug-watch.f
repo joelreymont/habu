@@ -9,10 +9,11 @@
 
 8 constant BPW-MAX
 
-\ The table stores DATA pointers; its helpers refine one fixed DATA cell and
-\ print its raw address. Retirement: habu-builder-trust-rows-c5d41af6.
-create BPW-TAB BPW-MAX cells allot
-s" BPW-TAB" s" -- ptr ptr n" TRUST
+\ The table stores DATA pointers, so it is declared storage and needs no trust
+\ row of its own (dot habu-refuse-a-ptr-5ad2734e); its helpers refine one fixed
+\ DATA cell and print its raw address.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
+BPW-MAX TYPED-BUFFER BPW-TAB ptr n
 variable BPW-IDX
 variable BPW-LAST
 
@@ -25,7 +26,7 @@ TRUSTED: BPW-DATA-CELL ( n -- ptr n )
 : BPW-BASE! ( -- )
    DATAB BPWBASE-CELL + {: cell:ptr :}
    cell ptr-cell-mark
-   BPW-TAB cell ! ;
+   0 BPW-TAB cell ! ;
 
 : BPW-N@ ( -- n )
    DATAB BPWN-CELL + @ ;
@@ -34,7 +35,7 @@ TRUSTED: BPW-DATA-CELL ( n -- ptr n )
    DATAB BPWN-CELL + ! ;
 
 : BPW-SLOT ( n -- ptr ptr n )
-   BPW-TAB swap ptr-field ;
+   BPW-TAB ;
 
 : BPW-FIND ( ptr n -- n )
    {: addr:ptr :}

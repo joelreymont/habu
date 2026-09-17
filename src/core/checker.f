@@ -1289,7 +1289,7 @@ variable CALL-ARMED
 variable CALL-DIN   variable CALL-DOUT   variable CALL-HIT
 variable REC-ON
 defer CALL-FREEZE-XT ( -- )
-defer CWIN-STATE ( -- ptr n )
+defer CWIN-STATE ( -- ptr ptr n )
 
 \ The bootstrap call-window store, and the reason the cell has one: the scan
 \ records a row per call site through CWIN-STATE, and src/core/cell-effects.f --
@@ -1299,7 +1299,9 @@ defer CWIN-STATE ( -- ptr n )
 \ (layout.f NCOMP-DISPATCH), so the store exists from this file's own load. Same
 \ three cells cell-effects.f installs - arena pointer, live rows, capacity. Its
 \ INSTALL transfers that header and clears this one without copying the arena.
-create CWIN-BOOT 0 , 0 , 0 ,
+\ The arena pointer is DECLARED storage with the two counts allotted behind it,
+\ the same shape cell-effects.f uses (dot habu-refuse-a-ptr-5ad2734e).
+PTR-VARIABLE CWIN-BOOT 0 , 0 ,
 : CWIN-BOOT-DEFAULT ( -- ) [: CWIN-BOOT ;] is CWIN-STATE ;
 CWIN-BOOT-DEFAULT
 
@@ -1486,7 +1488,7 @@ variable CTN
 variable CT-STR-U
 variable CT-I
 variable CT-J
-variable CT-DST
+PTR-VARIABLE CT-DST
 
 : CT-ARENA-BOOT ( -- )          \ point every CT store at its boot buffer
    CT-NAME-A-BOOT CT-NAME-A-P !   CT-NAME-U-BOOT CT-NAME-U-P !
@@ -1506,14 +1508,11 @@ CT-ARENA-BOOT
 : CT-NAME-FIELD ( n -- ptr ptr u8 )
    cells CT-NAME-A + 0 ptr-field ;
 
-: CT-DST-FIELD ( -- ptr ptr u8 )
-   CT-DST 0 ptr-field ;
-
 : CT-DST@ ( -- ptr u8 )
-   CT-DST-FIELD @ ;
+   CT-DST @ ;
 
 : CT-DST! ( ptr u8 -- )
-   CT-DST-FIELD ! ;
+   CT-DST ! ;
 
 \ CT-GROW ( need -- ) : geometric grow of the record arrays to hold code `need`.
 \ The arrays hold pointers into CT-STR (unmoved here), so a plain cell copy needs
@@ -1925,7 +1924,7 @@ variable LAYOUT-INTRO
 \ inside that word's body and disarms. Its explicit trusted-only effect and
 \ record protection keep the arming boundary closed even when source-owner
 \ transfer supplies a user signature for this pre-hook definition.
-variable FIELD-PROJ-A   REG-PROTECT
+PTR-VARIABLE FIELD-PROJ-A   REG-PROTECT
 variable FIELD-PROJ-U   REG-PROTECT   0 FIELD-PROJ-U !   \ armed accessor word name span
 variable FIELD-PROJ-FID REG-PROTECT   \ committed field id (the authority: offset/type/role derive from it)
 variable FIELD-PROJ-OFF REG-PROTECT   \ baked byte offset (cross-checked against the committed offset)
@@ -1939,7 +1938,7 @@ TRUSTED: FIELD-PROJ-NAME$ ( -- ptr u8 n ) FIELD-PROJ-A @ FIELD-PROJ-U @ ;
 REG-PROTECT
 TRUSTED: FIELD-PROJ-SCHEMA ( -- n n ) FIELD-PROJ-FID @ FIELD-PROJ-OFF @ ;
 REG-PROTECT
-variable LBUF-PEND-A
+PTR-VARIABLE LBUF-PEND-A
 variable LBUF-PEND-U   0 LBUF-PEND-U !
 
 \ Linear guard (dot: "possibly-linear layout copies reject until TFAM 11"): a
@@ -2286,7 +2285,7 @@ variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
 variable THDROW  variable THRROW  variable THSET
 variable XROW  variable XRROW  variable XSET  variable DEADP
-variable DEADERR  variable DEADTA  variable DEADTU
+variable DEADERR  PTR-VARIABLE DEADTA  variable DEADTU
 
 : NEW ( -- )
    0 CALL-ARMED !  0 CALL-HIT !
@@ -2314,7 +2313,7 @@ variable CVLIVE  -1 CVLIVE !
 variable DPOS    -1 DPOS !
 variable VSIG   variable SGSEEN   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
-variable SGA  variable SGU
+PTR-VARIABLE SGA  variable SGU
 $1000 constant TOKBUF-INIT-CAP
 $10000 constant TOKBUF-GRAIN
 $7FFFFFFFFFFFFFFF constant TOKBUF-MAX-CAP
@@ -2384,19 +2383,16 @@ TRUSTED: TOKBUF-RC>PTR ( n -- ptr u8 ) ;
    0 FAILTU ! ;
 variable TOKIX  variable FAILIX  variable DVERD
 variable FAILB  variable FAILE
-variable TBASE  variable TBLEN  variable TI  variable TSTART
+PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
 variable JSON-DIAGS   0 JSON-DIAGS !
 
-\ TBASE holds the checked source base pointer (ptr u8); read it through a
-\ cell-indexed ptr-field view so byte access keeps its ptr u8 role.
-: TBASE-FIELD ( -- ptr ptr u8 )
-   TBASE 0 ptr-field ;
-
+\ TBASE holds the checked source base pointer, so its cell is declared storage
+\ (dot habu-refuse-a-ptr-5ad2734e) and a plain fetch keeps the ptr u8 role.
 : TBASE@ ( -- ptr u8 )
-   TBASE-FIELD @ ;
+   TBASE @ ;
 
 : TBASE! ( ptr u8 -- )
-   TBASE-FIELD ! ;
+   TBASE ! ;
 
 : TADDR ( n -- ptr u8 )
    TBASE@ swap + ;
@@ -3356,7 +3352,7 @@ variable NRES  variable NDI  variable NDH
 2 constant SGBAD-BAREPTR-KIND
 3 constant SGBAD-ARITY-KIND
 variable SGBAD
-variable SGBAD-A
+PTR-VARIABLE SGBAD-A
 variable SGBAD-U
 variable SGBAD-KIND
 variable SGBAD-AR-DECL   \ arity kind: the family's declared arity
@@ -3423,7 +3419,7 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
    -1 SGBAD-AR-DECL !
    -1 SGBAD-AR-GOT !
    0 SGBAD !
-   0 SGBAD-A !
+   NULL-PTR SGBAD-A !
    0 SGBAD-U !
    SGBAD-SYNTAX-KIND SGBAD-KIND ! ;
 
@@ -3573,35 +3569,26 @@ variable SIGSCOPE-U
    a u SIG-FAM? IF a u rot LOC-FAM-ANN EXIT THEN drop
    a u TOK-TYPE ;
 
-variable SB variable SL variable SI variable SS
-variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
-
-: SB-FIELD ( -- ptr ptr u8 )
-   SB 0 ptr-field ;
-
-: SS-FIELD ( -- ptr ptr u8 )
-   SS 0 ptr-field ;
-
-: PKA-FIELD ( -- ptr ptr u8 )
-   PKA 0 ptr-field ;
+PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
+PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
 
 : SB@ ( -- ptr u8 )
-   SB-FIELD @ ;
+   SB @ ;
 
 : SB! ( ptr u8 -- )
-   SB-FIELD ! ;
+   SB ! ;
 
 : SS@ ( -- ptr u8 )
-   SS-FIELD @ ;
+   SS @ ;
 
 : SS! ( ptr u8 -- )
-   SS-FIELD ! ;
+   SS ! ;
 
 : PKA@ ( -- ptr u8 )
-   PKA-FIELD @ ;
+   PKA @ ;
 
 : PKA! ( ptr u8 -- )
-   PKA-FIELD ! ;
+   PKA ! ;
 
 : PK! ( ptr u8 n -- )
    PKU !
@@ -4102,7 +4089,7 @@ variable LBI-BAD
    t MK-PTR swap MK-PUSH
    rest RECORDED-STEP ;
 
-variable FP
+PTR-VARIABLE FP
 \ user sigs: certified words recorded as effect records after the structural
 \ primitive-effect prefix. The renderer appends user records so later wins.
 \ The baked checker image stores canonical typed effect graphs for certified
@@ -4117,7 +4104,7 @@ $1002 constant USIGS-MAP-ANON
 0 constant USIGS-OFF-ZERO
 PERSISTED-PTR-VARIABLE USIGS-P   variable USIGS-CAP-U   variable UEND
 variable USIGS-USER-OFF
-variable USIGS-GROW-CAP   variable USIGS-GROW-NEXT
+variable USIGS-GROW-CAP   PTR-VARIABLE USIGS-GROW-NEXT
 variable CHK-CAND
 
 \ Per-symbol effect-record index state. The index itself lives in the symbol
@@ -4233,7 +4220,7 @@ TRUSTED: USIGS-RC>PTR ( n -- ptr u8 ) ;
    0 UEND !
    0 USIGS-HEAD !
    0 USIGS-GROW-CAP !
-   0 USIGS-GROW-NEXT ! ;
+   NULL-PTR USIGS-GROW-NEXT ! ;
 
 : USIGS-ALLOC-INIT ( -- )
    USIGS-INIT-CAP USIGS-ALLOC USIGS-P !
@@ -4284,7 +4271,7 @@ USIGS-RUNTIME-INIT
       cap USIGS-CAP-U !
    THEN
    0 USIGS-GROW-CAP !
-   0 USIGS-GROW-NEXT ! ;
+   NULL-PTR USIGS-GROW-NEXT ! ;
 
 \ USIGS-GROW ( n -- ) : geometric growth — at least double the current cap so
 \ regrowth copies the store O(log) times, not once per appended grain.
@@ -4440,7 +4427,7 @@ variable SYM-N
 variable SYM-STR-U
 variable SYM-PRIM-END
 variable SYM-I
-variable SYM-DST
+PTR-VARIABLE SYM-DST
 variable SYM-ID
 
 : SYMS ( -- ptr u8 ) SYMS-P @ ;
@@ -4458,14 +4445,11 @@ variable SYM-ID
 : SYM-NAME-A-FIELD ( n -- ptr ptr u8 )
    SYM-ROW SYM.NAME-A ;
 
-: SYM-DST-FIELD ( -- ptr ptr u8 )
-   SYM-DST 0 ptr-field ;
-
 : SYM-DST@ ( -- ptr u8 )
-   SYM-DST-FIELD @ ;
+   SYM-DST @ ;
 
 : SYM-DST! ( ptr u8 -- )
-   SYM-DST-FIELD ! ;
+   SYM-DST ! ;
 
 : SYM-PKG$ ( n -- ptr u8 n )
    dup SYM-PKG-A-FIELD @
@@ -5005,7 +4989,7 @@ variable EC-RVN
 create EI-AK EI-AK-CAP cells allot
 variable EI-AK-HW              \ E-I-AK-RESET clears only [0, EI-AK-HW), the span E-I-AK wrote
 
-variable FEP
+PTR-VARIABLE FEP
 variable FEP-OFF
 variable CHECKER-REC-SYM
 0 CHECKER-REC-SYM !
@@ -5711,7 +5695,7 @@ USIGS USX-BASE!
    UEND @ USX-HI @ <
    USIGS USX-BASE@ <> or IF 0 USX-GEN ! THEN ;
 
-variable USX-P                          \ index-owned cursor; FP belongs to the scans
+PTR-VARIABLE USX-P                          \ index-owned cursor; FP belongs to the scans
 variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its next link
 
 : USX-LINK ( n n -- ) {: off:n sym:n :}
@@ -6000,7 +5984,7 @@ variable RECMI   0 RECMI !
 \ own name is suppressed here; a foreign name — a raw TRUST row — counts as a
 \ reject and reports through BADSIG-XT (render.f). Either way no row exists,
 \ so later callers reject as undefined instead of trusting a malformed effect.
-variable NMA  variable NMU              \ current definition name (set by DO-TOK1)
+PTR-VARIABLE NMA  variable NMU              \ current definition name (set by DO-TOK1)
 variable MULTI-ERR      \ multi-error load mode active?
 variable MULTI-ERR-N    \ rejected definitions recorded this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
@@ -6700,7 +6684,7 @@ variable PRM-FIRST
 : PE-SYM-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
    s" " SYM-GLOBAL a u SYM-INTERN ;
 
-variable PE-NA
+PTR-VARIABLE PE-NA
 variable PE-NU
 PTR-VARIABLE PE-PKG-A
 variable PE-PKG-U
@@ -6714,10 +6698,10 @@ variable PE-SYM-ID
 variable PE-EFF-ID
 
 : PE-NA@ ( -- ptr u8 )
-   PE-NA 0 ptr-field @ ;
+   PE-NA @ ;
 
 : PE-NA! ( ptr u8 -- )
-   PE-NA 0 ptr-field ! ;
+   PE-NA ! ;
 
 : PE-OPEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a PE-NA!  u PE-NU !
@@ -7492,11 +7476,11 @@ PTABLE-END
 
 variable CHECKER-COLON-N
 variable CHECKER-COLON-I
-variable CHECKER-REC-A
+PTR-VARIABLE CHECKER-REC-A
 variable CHECKER-REC-U
-variable CHECKER-QA
+PTR-VARIABLE CHECKER-QA
 variable CHECKER-QU
-variable CHECKER-TA
+PTR-VARIABLE CHECKER-TA
 variable CHECKER-TU
 
 $10000 constant DFER-CAP
@@ -7676,7 +7660,7 @@ package CHECKER-REG
 \ to prevent: a stale row minted a bare global checker symbol out of nothing,
 \ and the collision surfaced at some later file's `using` instead of at the row.
 7143 constant E-TRUST-UNRESOLVED
-variable TSR-TOK-A   variable TSR-TOK-U     \ the row's name (raw, valid while rendering)
+PTR-VARIABLE TSR-TOK-A   variable TSR-TOK-U     \ the row's name (raw, valid while rendering)
 defer TSTALE-DIAG-XT ( -- )                 \ render.f installs the row-site diagnostic
 : TSTALE-DIAG-DEFAULT ( -- ) [: ;] is TSTALE-DIAG-XT ;
 TSTALE-DIAG-DEFAULT
@@ -7694,9 +7678,9 @@ TSTALE-DIAG-DEFAULT
    TSTALE-DIAG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-TRUST-UNRESOLVED throw ;
-variable USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token (raw, valid while rendering)
+PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token (raw, valid while rendering)
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
-variable USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
+PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
 defer USHADOW-DIAG-XT ( -- )                \ render.f installs the reference-site diagnostic
 : USHADOW-DIAG-DEFAULT ( -- ) [: ;] is USHADOW-DIAG-XT ;
 USHADOW-DIAG-DEFAULT
@@ -7713,7 +7697,7 @@ USHADOW-DIAG-DEFAULT
    CK-USED-SLOT @ dup 0 >= IF
       dup CK-USE-SLOT USH-PKG-A !  CK-USE-LEN@ USH-PKG-U !
    ELSE
-      drop  0 USH-PKG-A !  0 USH-PKG-U !
+      drop  NULL-PTR USH-PKG-A !  0 USH-PKG-U !
    THEN
    USHADOW-DIAG-XT
    E-USING-SHADOW-GLOBAL throw ;
@@ -7900,23 +7884,17 @@ public
       1 +
    REPEAT drop ;
 
-: CHECKER-QA-FIELD ( -- ptr ptr u8 )
-   CHECKER-QA 0 ptr-field ;
-
-: CHECKER-TA-FIELD ( -- ptr ptr u8 )
-   CHECKER-TA 0 ptr-field ;
-
 : CHECKER-QA@ ( -- ptr u8 )
-   CHECKER-QA-FIELD @ ;
+   CHECKER-QA @ ;
 
 : CHECKER-TA@ ( -- ptr u8 )
-   CHECKER-TA-FIELD @ ;
+   CHECKER-TA @ ;
 
 : CHECKER-QA! ( ptr u8 -- )
-   CHECKER-QA-FIELD ! ;
+   CHECKER-QA ! ;
 
 : CHECKER-TA! ( ptr u8 -- )
-   CHECKER-TA-FIELD ! ;
+   CHECKER-TA ! ;
 
 variable CHECKER-QBAD-TOK
 
@@ -8469,9 +8447,12 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 6 constant CW-QUOT-OUT               \ + twice the output cell index from the top
 
 \ cell-effects.f owns the checked storage after the bootstrap checker starts.
-: CWIN-P ( -- ptr ptr n ) CWIN-STATE 0 ptr-field ;
-: CWIN-N ( -- ptr n ) CWIN-STATE CELL + ;
-: CWIN-CAP ( -- ptr n ) CWIN-STATE 2 cells + ;
+\ CWIN-STATE hands back the DECLARED arena cell itself, so the pointer needs no
+\ field view; the two counts behind it are numbers and are read through an
+\ explicit cell view.
+: CWIN-P ( -- ptr ptr n ) CWIN-STATE ;
+: CWIN-N ( -- ptr n ) CWIN-STATE CELL + BYTE-VIEW CELL-VIEW ;
+: CWIN-CAP ( -- ptr n ) CWIN-STATE 2 cells + BYTE-VIEW CELL-VIEW ;
 
 : CWIN-AT ( n n -- ptr n )           \ field f of row i
    {: i:n f:n :}
@@ -9101,7 +9082,7 @@ create NORET-BOOT NORET-INIT-CAP allot
 PERSISTED-PTR-VARIABLE NORET-P   variable NORET-CAP-U   variable NORET-END
 NORET-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !   0 NORET-BOOT !
 variable NORET-FLAG
-variable NORET-GROW-CAP   variable NORET-GROW-NEXT
+variable NORET-GROW-CAP   PTR-VARIABLE NORET-GROW-NEXT
 
 : NORETS ( -- ptr u8 ) NORET-P @ ;
 
@@ -9218,7 +9199,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    0 NORET-END !
    0 0 NORET-CELL !
    0 NORET-GROW-CAP !
-   0 NORET-GROW-NEXT ! ;
+   NULL-PTR NORET-GROW-NEXT ! ;
 
 \ The table can outgrow its initial buffer. Persist the complete live prefix
 \ in image DATA at the grain, just like stored signatures; NORET-GROW doubles.
@@ -9241,7 +9222,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
       cap NORET-CAP-U !
    THEN
    0 NORET-GROW-CAP !
-   0 NORET-GROW-NEXT ! ;
+   NULL-PTR NORET-GROW-NEXT ! ;
 
 : NORET-GROW {: need :}
    need NORET-CAP-U @ 2 * max USIGS-ROUND-CAP NORET-GROW-CAP !
@@ -9983,7 +9964,7 @@ variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
 variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-DF-ACT  variable SV-DF-EXP
 variable SV-DVAR  variable SV-DPOS
 variable SV-SGBAD
-variable SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
+PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
 variable SV-SGBAD-AR-DECL  variable SV-SGBAD-AR-GOT
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
@@ -12483,24 +12464,24 @@ s" neutral-parse-imm?" s" ptr u8 n -- bool" TRUST
 
 package CHECKER-PREFLIGHT
 
-variable TARGET-A
+PTR-VARIABLE TARGET-A
 variable TARGET-U
-variable BODY-A
+PTR-VARIABLE BODY-A
 variable BODY-U
 variable VERDICT
 variable ACTIVE
 
 : TARGET-A@ ( -- ptr u8 )
-   TARGET-A 0 ptr-field @ ;
+   TARGET-A @ ;
 
 : TARGET-A! ( ptr u8 -- )
-   TARGET-A 0 ptr-field ! ;
+   TARGET-A ! ;
 
 : BODY-A@ ( -- ptr u8 )
-   BODY-A 0 ptr-field @ ;
+   BODY-A @ ;
 
 : BODY-A! ( ptr u8 -- )
-   BODY-A 0 ptr-field ! ;
+   BODY-A ! ;
 
 : TAIL-WS? ( -- bool )
    TI @ BEGIN dup TBLEN @ < WHILE
@@ -12565,7 +12546,7 @@ public
    -1 IMMERR !  0 OK !  -1 FAILSET ! ;
 
 variable ISQ
-variable IS-TA
+PTR-VARIABLE IS-TA
 variable IS-TU
 
 \ ---- the token a keyword swallows -------------------------------------------
@@ -12604,16 +12585,13 @@ variable IS-PEND-U                   \ and its length
    IS-TU @ IS-PEND-U !
    -1 IS-PEND ! ;
 
-\ IS-TA holds a token-start pointer (ptr u8); read/write it through a ptr-field
-\ view so the emitted token span keeps its ptr u8 role.
-: IS-TA-FIELD ( -- ptr ptr u8 )
-   IS-TA 0 ptr-field ;
-
+\ IS-TA holds a token-start pointer, so its cell is declared storage (dot
+\ habu-refuse-a-ptr-5ad2734e) and the emitted token span keeps its ptr u8 role.
 : IS-TA@ ( -- ptr u8 )
-   IS-TA-FIELD @ ;
+   IS-TA @ ;
 
 : IS-TA! ( ptr u8 -- )
-   IS-TA-FIELD ! ;
+   IS-TA ! ;
 
 : IS-WS? ( n -- bool )
    32 <= ;
@@ -12896,16 +12874,21 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 \ address (data-base DEF-TKA-CELL +) so the checker stays free of engine-layout
 \ constants it cannot name at bake time.
 variable MEO-ON       \ file-relative origin active this load?
-variable MEO-BASE     \ eval-buffer base ptr (file byte MEO-BB)
-variable MEO-NAMEC    \ absolute addr of the compiler's def name-token cell
+PTR-VARIABLE MEO-BASE \ eval-buffer base ptr (file byte MEO-BB)
+PTR-VARIABLE MEO-NAMEC \ the compiler's def name-token CELL; its content is the token
 variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/col/byte
 0 MEO-ON !
 
-: MULTI-ERR-ORIGIN! {: base:ptr namec:n bl:n bc:n bb:n :}
+: MULTI-ERR-ORIGIN! {: base:ptr namec:ptr bl:n bc:n bb:n :}
    base MEO-BASE !  namec MEO-NAMEC !
    bl MEO-BL !  bc MEO-BC !  bb MEO-BB !  -1 MEO-ON ! ;
+\ The declared cell holds the CELL the compiler writes the name token into, so
+\ the bytes are named first and the token is the pointer field on them.
+: MEO-NAMEC@ ( -- ptr u8 )
+   MEO-NAMEC @ ;
+
 : MEO-APPLY ( -- )    \ set DIAG-ORIGIN! to the current def's file position
-   MEO-BASE @  MEO-NAMEC @ @  MEO-BL @ MEO-BC @ MEO-BB @  DIAG-ORIGIN-SPAN! ;
+   MEO-BASE @  MEO-NAMEC@ 0 ptr-field @  MEO-BL @ MEO-BC @ MEO-BB @  DIAG-ORIGIN-SPAN! ;
 
 \ A declared type variable must remain a distinct variable after checking the
 \ body. Specializing it to any concrete type would publish a more general
@@ -14105,9 +14088,9 @@ ASIG-GRAPH-CHECK-INSTALL
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
-   0 SGA !  0 SGU !
+   NULL-PTR SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
-   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
+   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
    SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 NP-ORIG-N !  SG-ROWS-RESET
@@ -15005,7 +14988,7 @@ TYPES-DEFAULTS
    0 BIND-HORIZON !
    RBF-POP ;
 
-variable CAND-A   variable CAND-U   variable CAND-VERDICT
+PTR-VARIABLE CAND-A   variable CAND-U   variable CAND-VERDICT
 
 : CHECKER-CANDIDATE-SCOPE-START ( -- )
    CHECK-CANDIDATE-START ;
@@ -15116,7 +15099,7 @@ variable CK-RETRY-TOKS
 \ rest of the load. The count nests, so a probe inside an enclosing quiet scope
 \ leaves that scope quiet. Stash-and-body rather than a capturing quotation,
 \ which is the shape CHECK-CANDIDATE! above and CHECK-UNJUDGED! below both take.
-variable QCAND-A   variable QCAND-U   variable QCAND-VERDICT
+PTR-VARIABLE QCAND-A   variable QCAND-U   variable QCAND-VERDICT
 
 : QCAND-BODY ( -- )      \ ( -- ) closure: probe the stashed source, stash the verdict
    QCAND-A @ QCAND-U @ CHECK-CANDIDATE! QCAND-VERDICT ! ;
@@ -15152,7 +15135,7 @@ variable QCAND-A   variable QCAND-U   variable QCAND-VERDICT
 \ the source - so the suppression landed on one instance and the render on the
 \ other, and a product-hosted build printed a rejection for every trusted body in
 \ the window it was rebuilding.
-variable UNJ-A   variable UNJ-U   variable UNJ-VERDICT
+PTR-VARIABLE UNJ-A   variable UNJ-U   variable UNJ-VERDICT
 
 : CHECK-UNJUDGED-BODY ( -- )
    UNJ-A @ UNJ-U @ CHECK! UNJ-VERDICT ! ;

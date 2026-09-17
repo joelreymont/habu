@@ -9210,3 +9210,29 @@ only ever obtained by building the next generation with the rule engine as host
 - the build stops at the first refusal and names it - and a "clean sweep" of
 baked files on such an engine proves nothing. Unbaked sources (lib/, tools/,
 test/, src/arch/tic6x/, src/compiler/native/codewalk.f) are judged directly.
+
+## 2026-09-18 - the engine prefix has only one declared-pointer form, and it cannot hold a pointer
+
+`PTR-VARIABLE` and `PERSISTED-PTR-VARIABLE` publish `( -- ptr ptr a )`, but the
+`create` stamp leaves that inner `a` RAW-kinded, so the cell absorbs a scalar
+pointee and REFUSES a pointer one: `PTR-VARIABLE V  : F ( -- ptr u8 ) V @ ;`
+certifies and `: G ( -- ptr ptr u8 ) V @ ;` does not (E-RAW-CELL-PTR). A cell
+holding a pointer TO POINTERS, or an indexed table of pointers, therefore needs
+`TYPED-VARIABLE NAME ptr ptr t` / `TYPED-BUFFER`. Those definers throw
+E-LAYOUT-BUFFER until `src/core/include.f` arms `TDECL-EVAL-ARMED`, which is
+LATER than `checker.f`, `layout-buffer.f`, `env-base.f` and `include.f`'s own
+head - so in the engine prefix `PTR-VARIABLE` is the only form available, and
+`checker.f`'s pointer tables (`FAM-A`, `ATOMA-BOOT`, `PARAMA-BOOT`) and its
+`ATOMA`/`PARAMA`/`CT-NAME-A`/`VREC-NAME-A` arena reads cannot be declared at all.
+
+`src/core/checker.f` IS checked during a native build, by verify-source.f's
+pre-scan running on the HOST engine's checker - `LOGICAL-RESET`'s `0 set-check`
+only silences the hook. A refused pre-scan leaves no effect and surfaces as
+`ncomp: cannot compile NAME` with E-NCOMP-ARITY (-8579), naming the definition
+and nothing else. The one-pass census for any file is that same scanner:
+`MULTI-ERR-BEGIN  [: buf u VERIFY:SOURCE-BUF ;] catch drop  MULTI-ERR-END`.
+
+A cell latched from `here` and later compared against numbers (`AOT-ARM:D0/D1`,
+`BLOB-SRC`/`BLOB-END`) cannot be declared without changing the effects of every
+reader: `here` is the only DATA-pointer word and there is no checked pointer-to-
+integer direction, so the declaration has to travel the whole span API at once.

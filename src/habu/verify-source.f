@@ -6,13 +6,13 @@
 
 package VERIFY
 
-variable SOURCE-A
+PTR-VARIABLE SOURCE-A
 variable SOURCE-U
 variable SCAN-I
 variable SKIP-STRINGS
 variable FOUND
 variable TOKEN-START
-variable TOKEN-A
+PTR-VARIABLE TOKEN-A
 variable TOKEN-U
 variable BODY-U
 variable LINE-N
@@ -23,18 +23,18 @@ variable TOKEN-BYTE
 variable BASE-LINE
 variable BASE-COL
 variable BASE-BYTE
-variable STR-PREV-A
+PTR-VARIABLE STR-PREV-A
 variable STR-PREV-U
-variable STR-LAST-A
+PTR-VARIABLE STR-LAST-A
 variable STR-LAST-U
-variable TOP-PREV-A
+PTR-VARIABLE TOP-PREV-A
 variable TOP-PREV-U
-variable TOP-CUR-A
+PTR-VARIABLE TOP-CUR-A
 variable TOP-CUR-U
 create BODY-BUF BODYBUF-CAP allot
 
 : SOURCE@ ( -- ptr u8 )
-   SOURCE-A 0 ptr-field @ ;
+   SOURCE-A @ ;
 
 : BASE-RESET ( -- )
    1 BASE-LINE !
@@ -137,8 +137,8 @@ create BODY-BUF BODYBUF-CAP allot
 \ replayed as a trust. The ring resets per NEXT-SCAN call, so at a TRUST token it
 \ holds exactly the two preceding literals from the same statement.
 : STR-RING-RESET ( -- )
-   0 STR-PREV-A !  0 STR-PREV-U !
-   0 STR-LAST-A !  0 STR-LAST-U ! ;
+   NULL-PTR STR-PREV-A !  0 STR-PREV-U !
+   NULL-PTR STR-LAST-A !  0 STR-LAST-U ! ;
 
 : STR-RING-PUSH ( ptr u8 n -- ) {: a:ptr u:n :}
    STR-LAST-A @ STR-PREV-A !
@@ -619,9 +619,9 @@ variable NOM-TAIL-U
 \ A stored type may be `ptr* base` or a spaced `[ in -- out ]` xt<effect> quotation
 \ (dot habu-typed-xt-storage-ddad4af8), so the type is a contiguous multi-token
 \ span from the scanner buffer, not one token.
-variable STG-A
+PTR-VARIABLE STG-A
 variable STG-U
-variable STG-START
+PTR-VARIABLE STG-START
 
 : STG-PTR-TOK? ( ptr u8 n -- bool )
    s" ptr" CORE-STR= ;
@@ -838,7 +838,7 @@ variable STG-START
 
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
-   0 TOP-PREV-A !  0 TOP-PREV-U !
+   NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !
    BEGIN
       NEXT-SCAN dup 0 > WHILE
       2dup TOP-CUR-U ! TOP-CUR-A !

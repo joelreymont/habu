@@ -41,27 +41,25 @@ $2D constant ENV-DASH
 : ENV-FALSE ( -- bool )
    0 0= 0= ;
 
-variable ENV-Z
-variable ENV-A
+\ The comparison cursors hold C-string addresses, so they are declared pointer
+\ cells (dot habu-refuse-a-ptr-5ad2734e); an undeclared cell never holds one.
+\ PTR-VARIABLE, not TYPED-VARIABLE: this file loads before src/core/include.f
+\ arms the generated-declaration evaluator that the typed definers need.
+PTR-VARIABLE ENV-Z
+PTR-VARIABLE ENV-A
 variable ENV-U
 
-: ENV-Z-FIELD ( -- ptr ptr u8 )
-   ENV-Z 0 ptr-field ;
-
-: ENV-A-FIELD ( -- ptr ptr u8 )
-   ENV-A 0 ptr-field ;
-
 : ENV-Z@ ( -- ptr u8 )
-   ENV-Z-FIELD @ ;
+   ENV-Z @ ;
 
 : ENV-A@ ( -- ptr u8 )
-   ENV-A-FIELD @ ;
+   ENV-A @ ;
 
 : ENV-Z! ( ptr u8 -- )
-   ENV-Z-FIELD ! ;
+   ENV-Z ! ;
 
 : ENV-A! ( ptr u8 -- )
-   ENV-A-FIELD ! ;
+   ENV-A ! ;
 
 : ENV=? ( ptr u8 ptr u8 n -- bool )
    ENV-U ! ENV-A! ENV-Z!
@@ -71,17 +69,14 @@ variable ENV-U
 TRUSTED: NULL$ ( -- ptr u8 n )
    0 0 ;
 
-variable ENV-QA
+PTR-VARIABLE ENV-QA
 variable ENV-QU
 
-: ENV-QA-FIELD ( -- ptr ptr u8 )
-   ENV-QA 0 ptr-field ;
-
 : ENV-QA@ ( -- ptr u8 )
-   ENV-QA-FIELD @ ;
+   ENV-QA @ ;
 
 : ENV-QA! ( ptr u8 -- )
-   ENV-QA-FIELD ! ;
+   ENV-QA ! ;
 
 : GETENV ( ptr u8 n -- ptr u8 n )
    ENV-QU ! ENV-QA!
@@ -94,22 +89,19 @@ variable ENV-QU
 
 $100 constant TMP-PATH-CAP
 create TPB TMP-PATH-CAP allot
-variable TPP
+PTR-VARIABLE TPP
 variable TPQ
-variable TPS
+PTR-VARIABLE TPS
 variable TPU
 
 : TPP@ ( -- ptr u8 )
    TPP @ ;
 
-: TPS-FIELD ( -- ptr ptr u8 )
-   TPS 0 ptr-field ;
-
 : TPS@ ( -- ptr u8 )
-   TPS-FIELD @ ;
+   TPS @ ;
 
 : TPS! ( ptr u8 -- )
-   TPS-FIELD ! ;
+   TPS ! ;
 
 : TMP-PATH-CHECK ( n -- )
    TMP-PATH-CAP > if s" env: TMP-PATH exceeds buffer" 76 die then ;

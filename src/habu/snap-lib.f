@@ -84,8 +84,8 @@ s" SDB@" s" -- ptr u8" TRUST
 : RESET-BUF ( -- )
    \ MBUF-A is a process-local mmap pointer; restored images must allocate
    \ their own buffer before emitting a fresh ELF/snapshot header.
-   0 MBUF-A !
-   0 MP !
+   NULL-PTR MBUF-A !
+   NULL-PTR MP !
    0 MLEN! ;
 
 : BAD-SOURCE ( -- )

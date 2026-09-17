@@ -14,7 +14,7 @@
 \ engine that captured the trio as well would carry a second BPW-MAX and that
 \ require would die on the duplicate instead of loading.
 : REPL-SRC ( -- ptr u8 n ) s" src/habu/repl.f" ;
-variable HB  variable HL  variable HFD  variable HRD
+PTR-VARIABLE HB  variable HL  variable HFD  variable HRD
 $20000 constant HMAX
 \ HB exposes the raw baked-source buffer cell.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
@@ -126,7 +126,7 @@ private
 \ DP-MARK is the last thing this file does, so whatever the build driver appends
 \ runs between the mark and RUN, and RUN refuses by name if the cursor moved. The
 \ mark is mandatory: unmarked, DP0 is 0 and no boot can match it.
-variable DP0
+PTR-VARIABLE DP0
 
 : ?DP ( -- )
    here DP0 @ = IF exit THEN

@@ -21,7 +21,7 @@ variable INCLUDE-DEPTH
 variable INCLUDE-FD
 variable INCLUDE-U
 variable INCLUDE-RD
-variable INCLUDE-PATH-A
+PTR-VARIABLE INCLUDE-PATH-A
 variable INCLUDE-PATH-U
 variable INCLUDE-PATH-I
 variable REQUIRE-N
@@ -88,16 +88,16 @@ variable NORMAL-U
 variable CANDIDATE-U
 variable JOIN-U
 variable OWNER-U
-variable CURRENT-A
+PTR-VARIABLE CURRENT-A
 variable CURRENT-U
 variable SCOPES
 
 
-: CURRENT-PTR ( -- ptr u8 ) CURRENT-A 0 ptr-field @ ;
+: CURRENT-PTR ( -- ptr u8 ) CURRENT-A @ ;
 
 
 : CURRENT! ( ptr u8 n -- )
-   CURRENT-U ! CURRENT-A 0 ptr-field ! ;
+   CURRENT-U ! CURRENT-A ! ;
 
 
 : CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -342,14 +342,11 @@ using SOURCE-ROOT
    INCLUDE-CLOSE
    INCLUDE-DIE ;
 
-: INCLUDE-PATH-A-FIELD ( -- ptr ptr u8 )
-   INCLUDE-PATH-A 0 ptr-field ;
-
 : INCLUDE-PATH-A@ ( -- ptr u8 )
-   INCLUDE-PATH-A-FIELD @ ;
+   INCLUDE-PATH-A @ ;
 
 : INCLUDE-PATH-A! ( ptr u8 -- )
-   INCLUDE-PATH-A-FIELD ! ;
+   INCLUDE-PATH-A ! ;
 
 : INCLUDE-CHECK-PATH ( ptr u8 n -- ptr u8 n )
    dup 0 <= if s" include: missing path" INCLUDE-DIE then
@@ -700,10 +697,10 @@ private
 
 2 cells constant HEADER-BYTES
 HEADER-BYTES INCLUDE-BUF-CAP + constant MAP-BYTES
-variable TOP
+PTR-VARIABLE TOP
 
-: TOP@ ( -- ptr u8 ) TOP 0 ptr-field @ ;
-: TOP! ( ptr u8 -- ) TOP 0 ptr-field ! ;
+: TOP@ ( -- ptr u8 ) TOP @ ;
+: TOP! ( ptr u8 -- ) TOP ! ;
 
 : CHECK-ACTIVE ( -- )
    INCLUDE-DEPTH @ 0 <= if s" include: depth underflow" INCLUDE-DIE then ;

@@ -63,11 +63,13 @@ private
 $1000 constant TDECL-CAP        \ buffered declaration body bytes
 
 \ --- declaration context (set before TDECL-RUN, read by bodies + diagnostics).
-variable TDK-A   variable TDK-U      \ decl kind token ("newtype"/"sumtype")
-variable TDN-A   variable TDN-U      \ family name token
-variable TDB-A   variable TDB-U      \ body (SUMTYPE token buffer / arity token)
-variable TDT-A   variable TDT-U      \ offending token (diagnostics)
-variable TDW-A   variable TDW-U      \ short reason (diagnostics)
+\ The five -A cells hold token addresses, so they are declared pointer cells
+\ (dot habu-refuse-a-ptr-5ad2734e).
+PTR-VARIABLE TDK-A   variable TDK-U   \ decl kind token ("newtype"/"sumtype")
+PTR-VARIABLE TDN-A   variable TDN-U   \ family name token
+PTR-VARIABLE TDB-A   variable TDB-U   \ body (SUMTYPE token buffer / arity token)
+PTR-VARIABLE TDT-A   variable TDT-U   \ offending token (diagnostics)
+PTR-VARIABLE TDW-A   variable TDW-U   \ short reason (diagnostics)
 variable TDECL-OVERSIZE             \ a collection buffer capped an over-cap body (item 13 C2)
 variable TDECL-CUR-FAM              \ family id being declared (-1 outside a body)
 
@@ -148,7 +150,7 @@ private
    TDB-U ! TDB-A !
    TDN-U ! TDN-A !
    TDK-U ! TDK-A !
-   0 TDT-U !  0 TDT-A !
+   0 TDT-U !  NULL-PTR TDT-A !
    -1 TDECL-CUR-FAM !
    s" declaration failed" TDECL-WHY! ;
 
@@ -525,7 +527,7 @@ TDV-ELEM-INSTALL
 \ --- variants: name gate, payload run in the schema-root pool, SUMV row.
 variable TDV-TAG   variable TDV-N    variable TDV-MAX
 variable TDV-SS    variable TDV-PC   variable TDV-PW
-variable TDV-NA    variable TDV-NU
+PTR-VARIABLE TDV-NA    variable TDV-NU
 
 : TDECL-VARIANT-NAME ( -- )
    TDECL-NEXT {: a:ptr u:n :}
@@ -1064,7 +1066,7 @@ TDECL-PREFLIGHT-DEFAULTS
 $1000 constant TDGEN-CAP   \ derived-eq diagonal text is O(V^2); the C, guard still dies at the cap
 create TDGEN-BUF TDGEN-CAP allot
 variable TDGEN-U
-variable TDGEN-NA   variable TDGEN-NU     \ word-name span inside TDGEN-BUF
+PTR-VARIABLE TDGEN-NA   variable TDGEN-NU  \ word-name span inside TDGEN-BUF
 variable TDGEN-I    variable TDGEN-J      \ render loop indexes
 variable TDGEN-M    variable TDGEN-B
 

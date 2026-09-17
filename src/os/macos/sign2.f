@@ -3,15 +3,12 @@
 \ __LINKEDIT, append a CSMAGIC_EMBEDDED_SIGNATURE SuperBlob with one CodeDirectory
 \ (v0x20400, adhoc, SHA-256 page hashes). Operates on MBUF/MLEN@/LE-OFF in place.
 \ Needs sha256.fs + macho.fs. Signature ints BIG-endian; header patches LE.
-variable SIGA  variable SIGU
-: SIGA-FIELD ( -- ptr ptr u8 )
-   SIGA 0 ptr-field ;
-
+PTR-VARIABLE SIGA  variable SIGU
 : SIGA@ ( -- ptr u8 )
-   SIGA-FIELD @ ;
+   SIGA @ ;
 
 : SIGA! ( ptr u8 -- )
-   SIGA-FIELD ! ;
+   SIGA ! ;
 
 : SET-SIGID ( ptr u8 n -- ) {: a:ptr u:n :}
    a SIGA!

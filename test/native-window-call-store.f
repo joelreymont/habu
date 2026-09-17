@@ -6,10 +6,10 @@ package WINDOW-CALL-STORE
 \ live allocation, and its normal call-fact readers still compile this body.
 : ADOPTED ( -- )
    CWIN-STATE CWIN-BOOT = if 77 throw then
-   CWIN-BOOT 0 ptr-field @ 0= 0= if 77 throw then
-   CWIN-BOOT CELL + @ 0 <> if 77 throw then
-   CWIN-BOOT 2 cells + @ 0 <> if 77 throw then
-   CWIN-STATE 0 ptr-field @ 0= if 77 throw then ;
+   CWIN-BOOT @ 0= 0= if 77 throw then
+   CWIN-BOOT CELL + BYTE-VIEW CELL-VIEW @ 0 <> if 77 throw then
+   CWIN-BOOT 2 cells + BYTE-VIEW CELL-VIEW @ 0 <> if 77 throw then
+   CWIN-STATE @ 0= if 77 throw then ;
 ADOPTED
 
 ;package

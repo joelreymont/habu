@@ -54,80 +54,62 @@ create SHA-DIGEST $20 allot
 
 variable SHA-TAIL-U
 variable SHA-TOTAL
-variable SHA-A
+PTR-VARIABLE SHA-A
 variable SHA-U
 variable SHA-NEED
 variable SHA-NBLK
 variable SHA-FD
 variable SHA-RD
 variable SHA-BLEN
-variable SHA-BLOCK-A
-variable SHA-P
-variable SHA-SRC
-variable SHA-DST
-variable SHA-OUT
+PTR-VARIABLE SHA-BLOCK-A
+PTR-VARIABLE SHA-P
+PTR-VARIABLE SHA-SRC
+PTR-VARIABLE SHA-DST
+PTR-VARIABLE SHA-OUT
 variable SHA-W
 variable SHA-N
 variable SHA-TL
 variable SHA-UB
 
-: SHA-A-FIELD ( -- ptr ptr u8 )
-   SHA-A 0 ptr-field ;
-
 : SHA-A@ ( -- ptr u8 )
-   SHA-A-FIELD @ ;
+   SHA-A @ ;
 
 : SHA-A! ( ptr u8 -- )
-   SHA-A-FIELD ! ;
+   SHA-A ! ;
 
 : BE32@ ( ptr u8 -- n )
    dup 0 ZBYTE@ 24 lshift  over 1 ZBYTE@ 16 lshift or
    over 2 ZBYTE@ 8 lshift or  swap 3 ZBYTE@ or ;
 
-: SHA-P-FIELD ( -- ptr ptr u8 )
-   SHA-P 0 ptr-field ;
-
 : SHA-P@ ( -- ptr u8 )
-   SHA-P-FIELD @ ;
+   SHA-P @ ;
 
 : SHA-P! ( ptr u8 -- )
-   SHA-P-FIELD ! ;
-
-: SHA-SRC-FIELD ( -- ptr ptr u8 )
-   SHA-SRC 0 ptr-field ;
+   SHA-P ! ;
 
 : SHA-SRC@ ( -- ptr u8 )
-   SHA-SRC-FIELD @ ;
+   SHA-SRC @ ;
 
 : SHA-SRC! ( ptr u8 -- )
-   SHA-SRC-FIELD ! ;
-
-: SHA-DST-FIELD ( -- ptr ptr u8 )
-   SHA-DST 0 ptr-field ;
+   SHA-SRC ! ;
 
 : SHA-DST@ ( -- ptr u8 )
-   SHA-DST-FIELD @ ;
+   SHA-DST @ ;
 
 : SHA-DST! ( ptr u8 -- )
-   SHA-DST-FIELD ! ;
-
-: SHA-OUT-FIELD ( -- ptr ptr u8 )
-   SHA-OUT 0 ptr-field ;
+   SHA-DST ! ;
 
 : SHA-OUT@ ( -- ptr u8 )
-   SHA-OUT-FIELD @ ;
+   SHA-OUT @ ;
 
 : SHA-OUT! ( ptr u8 -- )
-   SHA-OUT-FIELD ! ;
-
-: SHA-BLOCK-A-FIELD ( -- ptr ptr u8 )
-   SHA-BLOCK-A 0 ptr-field ;
+   SHA-OUT ! ;
 
 : SHA-BLOCK-A@ ( -- ptr u8 )
-   SHA-BLOCK-A-FIELD @ ;
+   SHA-BLOCK-A @ ;
 
 : SHA-BLOCK-A! ( ptr u8 -- )
-   SHA-BLOCK-A-FIELD ! ;
+   SHA-BLOCK-A ! ;
 
 : SHA-H@ ( n -- n )
    cells H + @ ;

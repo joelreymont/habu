@@ -14,7 +14,7 @@ variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
 create RSBUF RSBUF-CAP allot   variable RSN
 variable RQM                             \ a '?' rendered = unknown tag, don't record
 variable RDIAG-ON
-variable RDIAG-A
+PTR-VARIABLE RDIAG-A
 variable RDIAG-CAP
 variable RDIAG-U
 variable RDIAG-I
@@ -37,21 +37,18 @@ variable RDIAG-I
    0 RDIAG-ON !
    0 RDIAG-U ! ;
 
-\ Typed slot for the diagnostic buffer pointer: a plain `variable @` reads back
-\ an untyped n, so the byte store below would not certify; `0 ptr-field` gives
-\ the checked ptr u8 view (the lib-wide *-BUF-A idiom).
-: RDIAG-A-FIELD ( -- ptr ptr u8 )
-   RDIAG-A 0 ptr-field ;
-
+\ The diagnostic buffer pointer lives in a declared pointer cell (dot
+\ habu-refuse-a-ptr-5ad2734e), so a plain fetch keeps the checked ptr u8 view
+\ the byte store below needs.
 : DIAG-BUFFER$ ( -- ptr u8 n )
-   RDIAG-A-FIELD @ RDIAG-U @ ;
+   RDIAG-A @ RDIAG-U @ ;
 
 : RDIAG-COPY ( ptr u8 n -- )
    {: a:ptr u:n :}
    0 RDIAG-I !
    BEGIN RDIAG-I @ u < WHILE
       a RDIAG-I @ + c@
-      RDIAG-A-FIELD @ RDIAG-U @ + RDIAG-I @ + c!
+      RDIAG-A @ RDIAG-U @ + RDIAG-I @ + c!
       RDIAG-I @ 1 + RDIAG-I !
    REPEAT ;
 

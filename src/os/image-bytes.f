@@ -10,11 +10,13 @@ dup $FFF + $1000 / $20 * $14 + $58 + $40 + +
 $FFFF + $10000 / $10000 * constant MSIZE
 $1002 constant M-MAP-PRIVATE-ANON
 75 constant M-BOUNDS-RC
-variable MBUF-A
-variable MP
+\ Four image cursors hold addresses inside the mapped image buffer, so they are
+\ declared pointer cells (dot habu-refuse-a-ptr-5ad2734e).
+PTR-VARIABLE MBUF-A
+PTR-VARIABLE MP
 variable MLEN
-variable M-A
-variable M-SRC
+PTR-VARIABLE M-A
+PTR-VARIABLE M-SRC
 variable M-N
 variable M-O
 
@@ -24,14 +26,11 @@ variable M-O
 
 TRUSTED: MBUF-RC>PTR ( n -- ptr u8 ) ;
 
-: MBUF-A-FIELD ( -- ptr ptr u8 )
-   MBUF-A 0 ptr-field ;
-
 : MBUF-A@ ( -- ptr u8 )
-   MBUF-A-FIELD @ ;
+   MBUF-A @ ;
 
 : MBUF-A! ( ptr u8 -- )
-   MBUF-A-FIELD ! ;
+   MBUF-A ! ;
 
 : M-ENSURE-BUF ( -- )
    MBUF-A@ 0= if M-ALLOC-BUF MBUF-RC>PTR MBUF-A! then ;
@@ -48,23 +47,17 @@ TRUSTED: MBUF-RC>PTR ( n -- ptr u8 ) ;
 : MLEN! ( n -- )
    MLEN ! ;
 
-: M-A-FIELD ( -- ptr ptr u8 )
-   M-A 0 ptr-field ;
-
-: M-SRC-FIELD ( -- ptr ptr u8 )
-   M-SRC 0 ptr-field ;
-
 : M-A@ ( -- ptr u8 )
-   M-A-FIELD @ ;
+   M-A @ ;
 
 : M-SRC@ ( -- ptr u8 )
-   M-SRC-FIELD @ ;
+   M-SRC @ ;
 
 : M-A! ( ptr u8 -- )
-   M-A-FIELD ! ;
+   M-A ! ;
 
 : M-SRC! ( ptr u8 -- )
-   M-SRC-FIELD ! ;
+   M-SRC ! ;
 
 : M-O@ ( -- off )
    M-O @ >OFF ;
