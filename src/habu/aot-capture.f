@@ -433,6 +433,96 @@ variable ACAP-NIDX-PM                                        \ pool-proof mismat
       then
    loop ;
 
+: ACAP-COMPACT-RECS ( -- )
+   AOT-REC-N @ 0 ?do
+      i ACAP-REC-DST {: v:ptr :}                              \ verbatim 48B record
+      v CELL-VIEW AOT-RWID -1 = {: pkg:bool :}
+      v 4 + ACAP-W32@ 0= 0= if s" aot-capture: rec blob-off exceeds u32" 74 die then
+      v 12 + ACAP-W32@ 0= 0= if s" aot-capture: rec end exceeds u32" 74 die then
+      pkg 0= if
+         v 8 + ACAP-W32@ CODE-SPAN:CHECK
+         v 44 + ACAP-W32@ 0= 0= if s" aot-capture: rec wid exceeds u32" 74 die then
+      then
+      v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}         \ flag nibble ([16] bits 60-63)
+      v 20 + ACAP-W32@ 20 rshift $FF and {: minin:n :}        \ DNAME-MIN-IN byte ([16] bits 52-59)
+      v 20 + ACAP-W32@ 18 rshift 3 and {: dkind:n :}          \ DKIND pair ([16] bits 50-51)
+      v 20 + ACAP-W32@ $0003FFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
+      v ACAP-REC-EXT? {: ext:bool :}                          \ name out of line (DNAME-EXT)
+      v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
+      ext 0= len 16 > and if s" aot-capture: rec name too long for inline" 74 die then
+      pkg if $FFFFFFFF else v 40 + ACAP-W32@ then {: wid:n :} \ package marker or full ordinary u32 WID
+      v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}
+      v ext ACAP-REC-NAME len ACAP-POOL-ADD {: noff:n :}      \ the name -> deduped pool entry
+      i ACAP-CREC-DST {: c:ptr :}                             \ 20B: start u32 + len u32 + name-off u32 + flags u8 + min-in u8 + dkind u8 + wid u32
+      start c AOT-P32!  clen c 4 + AOT-P32!  noff c 8 + AOT-P32!
+      flags  minin 8 lshift or  dkind 16 lshift or  c 12 + AOT-P32!    \ one store so the spare byte is written zero
+      wid c 16 + AOT-P32!
+   loop ;
+
+\ Expand a compact AOT-CREC-ROW record to a 48B dict record image -- the field
+\ reconstruction EM-AOT-REGISTER-RECS runs at boot. Ordinary [0] remains a blob
+\ offset for the build-time inverse proof; boot adds CP. Package [0]/[8] stay raw.
+\ ONE CELL IS NOT MODELLED, AND CANNOT BE. For an EXT-named record the boot pass
+\ stores the RUNTIME address of the pool entry's bytes in [24], and that address
+\ exists only in the engine being booted -- the same reason the code literals
+\ travel b0-relative. So the model leaves [24..32) zero for those records and
+\ ACAP-PROVE-RECS proves the NAME rather than the pointer: the pooled name the
+\ seed will hand the record is the host record's own name, byte for byte. The
+\ pointer's proof is a boot, and it is a direct one - EM-AOT-BOOTRUN resolves an
+\ entry word through LFIND, which reads exactly this cell for an EXT name.
+: ACAP-EXPAND-REC ( ptr u8 ptr u8 -- ) {: c:ptr s:ptr :}      \ c=compact record, s=48B out
+   c ACAP-W32@ s AOT-N-C!                                     \ [0..8) = blob-off or package public WID
+   c 4 + ACAP-W32@ s 8 + AOT-N-C!                             \ [8..16) = code len or package private WID
+   c 8 + ACAP-W32@ {: noff:n :}                               \ name-off u32
+   AOT-NAMES-BUF@ noff + c@ {: len:n :}                       \ len = pool[entry]
+   c 12 + c@ {: flags:n :}
+   c 13 + c@ {: minin:n :}
+   c 14 + c@ {: dkind:n :}
+   flags 60 lshift  minin 52 lshift or  dkind 50 lshift or  len or  s 16 + AOT-N-C!   \ [16] = flags<<60 | min-in<<52 | dkind<<50 | len
+   0 s 24 + AOT-N-C!  0 s 32 + AOT-N-C!                       \ zero [24..40)
+   flags 2 and 0= if                                          \ inline name: the bytes live in the record
+      len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop
+   then
+   c 16 + ACAP-W32@ dup $FFFFFFFF = if drop -1 then
+   s 40 + AOT-N-C! ;                                          \ package marker sign-extends; ordinary wid stays u32
+variable ACAP-RECMM                                           \ record-proof mismatch count
+\ The pooled name a record will resolve to at boot IS the name the host record
+\ carries: same length byte, same bytes. This is what stands in for comparing an
+\ EXT record's [24] cell, which holds two different addresses for the same name.
+: ACAP-PROVE-NAME ( ptr u8 ptr u8 -- ) {: c:ptr v:ptr :}      \ c=compact row, v=verbatim record
+   c 8 + ACAP-W32@ {: noff:n :}
+   v 16 + ACAP-W32@ {: len:n :}
+   v  v ACAP-REC-EXT?  ACAP-REC-NAME {: nm:ptr :}
+   AOT-NAMES-BUF@ noff + c@ len = 0= if 1 ACAP-RECMM +! then
+   len 0 ?do
+      nm i + c@  AOT-NAMES-BUF@ noff 1+ + i + c@  = 0= if 1 ACAP-RECMM +! then
+   loop ;
+: ACAP-PROVE-RECS ( -- )                                      \ fail-closed: expand==verbatim, field-for-field
+   0 ACAP-RECMM !
+   ACAP-REC48@ {: s:ptr :}
+   AOT-REC-N @ 0 ?do
+      i ACAP-CREC-DST {: c:ptr :}
+      c s ACAP-EXPAND-REC                                     \ rebuild 48B from compact
+      i ACAP-REC-DST {: v:ptr :}
+      v ACAP-REC-EXT? {: ext:bool :}
+      48 0 ?do
+         ext  i 24 >= and  i 32 < and  0= if                  \ EXT: [24..32) is the out-of-line pointer
+            s i + c@  v i + c@  = 0= if
+               ACAP-RECMM @ 12 < if
+                  s" record " type j . s"  byte " type i .
+                  s"  expected " type s i + c@ . s"  actual " type v i + c@ .
+                  s"  name " type v ext ACAP-REC-NAME v 16 + ACAP-W32@ type cr
+               then
+               1 ACAP-RECMM +!
+            then
+         then
+      loop
+      ext if c v ACAP-PROVE-NAME then                         \ ... and the name stands in for it
+   loop
+   ACAP-RECMM @ 0= 0= if
+      s" aot-capture: RECORD EXPANSION MISMATCH count=" type ACAP-RECMM @ . cr
+      s" aot-capture: compact record expansion != verbatim 48B" 74 die
+   then ;
 
 \ --- blob copy ---
 : ACAP-COPY-BLOB ( n n -- ) {: bstart:n bend:n :}
@@ -694,240 +784,6 @@ variable ACAP-PKG-MEMO-PUB
    w ACAP-PKG-LOOKUP {: p:n pub:bool :}
    p 0 < if s" "  0 0= 0=  0 0= 0= exit then
    p AOT-REC AOT-RNPTR  p AOT-REC AOT-RNLEN  pub  0 0= ;
-
-\ --- which records the image ships --------------------------------------------
-\
-\ WHAT GOES, AND WHY IT CAN. A package's PRIVATE word is unreachable by name in
-\ the engine this image becomes: no source can qualify into a private wordlist,
-\ the interpreter never finds one, and since the call sites carry a record index
-\ instead of a name (habu2.f EMIT-AOT-SITES) nothing in the payload looks one up
-\ either. Its record - 20 bytes here, 48 in the booted dictionary, and its name
-\ in the pool - therefore buys nothing any caller can use. THE CODE STAYS: the
-\ word is still called, by a displacement the blob carries.
-\
-\ WHAT STAYS, AS A RULE AND NOT A LIST. A record ships when the payload ITSELF
-\ names it, and the payload says so in three tables of its own: the boot-run
-\ entry list and the named code sites, which the seed resolves by name at boot,
-\ and the address cells, where a DATA cell holding a word's ENTRY is the engine
-\ reaching that word through a cell. Asking those three tables cannot drift the
-\ way a hand-written keep-list drifts. Package rows always ship: they carry the
-\ wordlist roles the seed rebases and the sealed-WID gate reads.
-variable ACAP-BP
-
-: ACAP-POOL$ ( n -- ptr u8 n ) {: noff:n :}
-   AOT-NAMES-BUF@ noff 1+ +  AOT-NAMES-BUF@ noff + c@ ;
-
-: ACAP-XTOFF-ENTRY? ( n -- bool ) {: off:n :}
-   AOT-WINDOW:XTOFF-N @ 0 ?do
-      AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + 4 + ACAP-W32@ {: tgt:n :}
-      tgt AOT-WINDOW:XTOFF-KIND-MASK and 0= if
-         tgt AOT-WINDOW:XTOFF-VALUE-MASK and off 1+ = if true unloop exit then
-      then
-   loop
-   false ;
-
-: ACAP-XTSITE-NAMES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   AOT-XTSITE:N @ 0 ?do
-      AOT-XTSITE:BUF@ i 8 * + 4 + ACAP-W32@ ACAP-POOL$ a u CORE-STR=CI if
-         true unloop exit
-      then
-   loop
-   false ;
-
-: ACAP-BOOTRUN-AT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   AOT-BOOTRUN-BUF@ ACAP-BP @ + c@ {: len:n :}
-   len 0= if false exit then
-   AOT-BOOTRUN-BUF@ ACAP-BP @ + 1+  len  a u CORE-STR=CI ;
-
-: ACAP-BOOTRUN-NAMES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 ACAP-BP !
-   begin ACAP-BP @ AOT-BOOTRUN-LEN @ < while
-      a u ACAP-BOOTRUN-AT? if true exit then
-      AOT-BOOTRUN-BUF@ ACAP-BP @ + c@ 1+ ACAP-BP @ + ACAP-BP !
-   repeat
-   false ;
-
-: ACAP-PRIVATE? ( n -- bool ) {: w:n :}
-   w 0= if false exit then
-   w ACAP-REC-PKG {: pa:ptr pu:n pub:bool found:bool :}
-   found 0= if false exit then
-   pub 0= ;
-
-: ACAP-REC-NAME$ ( n -- ptr u8 n ) {: k:n :}
-   k ACAP-REC-DST {: v:ptr :}
-   v  v ACAP-REC-EXT?  ACAP-REC-NAME  v 16 + ACAP-W32@ ;
-
-\ ---- the keep-set -------------------------------------------------------------
-\ FOUR NAMES THE DERIVED RULE CANNOT SEE, each because something OUTSIDE the
-\ payload resolves it by name. The list is short, explicit and reviewed as
-\ policy, the way tools/manifest-lint.f states the engine's entry points: a rule
-\ that cannot see a use is better than a rule quietly widened until it can.
-\
-\ NSTR:IMPORT-ROWS - tools/native-build-core.f TARGET-IMPORTER reaches it by name
-\ through the shipped dictionary, because the alternatives are a public wrapper,
-\ which test/compiler/native-string.f forbids outright, or a fixed engine cell.
-\ That file's own comment named this dot as the one that has to carry the entry,
-\ before this dot ran. The drift guard is the build's own refusal, "native-build:
-\ literal importer missing", the moment the entry stops matching.
-\
-\ MEM:WB-DEPTH, MEM:WB-BUFFERS, MEM:WB-LENGTHS - lib/memory-test.f asserts that a
-\ completed WITH-BYTES left no frame behind: the depth is back to zero and both
-\ frame buffers are released, which index 0 refusing proves. The property is real
-\ and nothing public observes it, so the audited suite reads the cells. This is
-\ the weaker of the four reasons - a white-box suite over a BAKED package is
-\ asking the shipped image for something the shipped image should not have to
-\ answer - and the end state is that block moving to where it is compiled beside
-\ what it audits, after which these three go.
-: ACAP-KEEP-PKG? ( n ptr u8 n -- bool ) {: k:n pa:ptr pu:n :}
-   k ACAP-REC-DST 40 + ACAP-W32@ ACAP-REC-PKG {: na:ptr nu:n pub:bool found:bool :}
-   found 0= if false exit then
-   na nu pa pu CORE-STR=CI ;
-
-: ACAP-KEEP? ( n -- bool ) {: k:n :}
-   k ACAP-REC-NAME$ {: a:ptr u:n :}
-   a u s" IMPORT-ROWS" CORE-STR=CI  k s" NSTR" ACAP-KEEP-PKG? and if true exit then
-   k s" MEM" ACAP-KEEP-PKG? 0= if false exit then
-   a u s" WB-DEPTH" CORE-STR=CI if true exit then
-   a u s" WB-BUFFERS" CORE-STR=CI if true exit then
-   a u s" WB-LENGTHS" CORE-STR=CI ;
-
-: ACAP-NAMED? ( n -- bool ) {: k:n :}
-   k ACAP-REC-DST {: v:ptr :}
-   v CELL-VIEW AOT-RWID -1 = if true exit then
-   v 40 + ACAP-W32@ ACAP-PRIVATE? 0= if true exit then
-   v ACAP-W32@ ACAP-XTOFF-ENTRY? if true exit then
-   k ACAP-KEEP? if true exit then
-   k ACAP-REC-NAME$ {: a:ptr u:n :}
-   a u ACAP-XTSITE-NAMES? if true exit then
-   a u ACAP-BOOTRUN-NAMES? ;
-
-\ THE ROW STAYS, THE NAME GOES. The row is 20 bytes here and 48 in the booted
-\ dictionary and it carries the word's code span, which is not a name and is not
-\ optional: src/habu/aot-lib.f walks the shipped records to retarget every
-\ PC-relative branch when hb-build shakes an application out of this image, and a
-\ displacement that lands in a span no record covers has nowhere to go ("aot:
-\ PC-relative target removed or outside closure"). The NAME is what makes a word
-\ reachable, and that is what a stripped row loses: its pool entry becomes the
-\ empty name, so no lookup in the booted engine can return it - not the
-\ interpreter, not a reopened package, not XREF-FIND. The build writes every name
-\ it stripped to <image>.names beside the engine (tools/native-build-core.f), so
-\ a tool that has to name this code still can.
-create ACAP-NAMED-BIT AOT-REC-MAX cells allot   \ per record: 1 kept its name, 0 stripped
-variable ACAP-REC-ALL
-
-: ACAP-COMPACT-ONE ( n -- ) {: k:n :}
-   k ACAP-REC-DST {: v:ptr :}                              \ verbatim 48B record
-   v CELL-VIEW AOT-RWID -1 = {: pkg:bool :}
-   v 4 + ACAP-W32@ 0= 0= if s" aot-capture: rec blob-off exceeds u32" 74 die then
-   v 12 + ACAP-W32@ 0= 0= if s" aot-capture: rec end exceeds u32" 74 die then
-   pkg 0= if
-      v 8 + ACAP-W32@ CODE-SPAN:CHECK
-      v 44 + ACAP-W32@ 0= 0= if s" aot-capture: rec wid exceeds u32" 74 die then
-   then
-   v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}         \ flag nibble ([16] bits 60-63)
-   v 20 + ACAP-W32@ 20 rshift $FF and {: minin:n :}        \ DNAME-MIN-IN byte ([16] bits 52-59)
-   v 20 + ACAP-W32@ 18 rshift 3 and {: dkind:n :}          \ DKIND pair ([16] bits 50-51)
-   v 20 + ACAP-W32@ $0003FFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
-   v ACAP-REC-EXT? {: ext:bool :}                          \ name out of line (DNAME-EXT)
-   v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
-   ext 0= len 16 > and if s" aot-capture: rec name too long for inline" 74 die then
-   pkg if $FFFFFFFF else v 40 + ACAP-W32@ then {: wid:n :} \ package marker or full ordinary u32 WID
-   v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}
-   k ACAP-NAMED? {: named:bool :}
-   named if v ext ACAP-REC-NAME len else s" " then ACAP-POOL-ADD {: noff:n :}
-   named if flags else flags 13 and then {: rflags:n :}    \ stripped rows are inline and empty: clear DNAME-EXT
-   named if 1 else 0 then  k cells ACAP-NAMED-BIT + !
-   k ACAP-CREC-DST {: c:ptr :}                             \ 20B: start u32 + len u32 + name-off u32 + flags u8 + min-in u8 + dkind u8 + wid u32
-   start c AOT-P32!  clen c 4 + AOT-P32!  noff c 8 + AOT-P32!
-   rflags  minin 8 lshift or  dkind 16 lshift or  c 12 + AOT-P32!   \ one store so the spare byte is written zero
-   wid c 16 + AOT-P32! ;
-
-: ACAP-COMPACT-RECS ( -- )
-   AOT-REC-N @ ACAP-REC-ALL !
-   ACAP-REC-ALL @ 0 ?do
-      i ACAP-COMPACT-ONE
-   loop ;
-
-\ Expand a compact AOT-CREC-ROW record to a 48B dict record image -- the field
-\ reconstruction EM-AOT-REGISTER-RECS runs at boot. Ordinary [0] remains a blob
-\ offset for the build-time inverse proof; boot adds CP. Package [0]/[8] stay raw.
-\ ONE CELL IS NOT MODELLED, AND CANNOT BE. For an EXT-named record the boot pass
-\ stores the RUNTIME address of the pool entry's bytes in [24], and that address
-\ exists only in the engine being booted -- the same reason the code literals
-\ travel b0-relative. So the model leaves [24..32) zero for those records and
-\ ACAP-PROVE-RECS proves the NAME rather than the pointer: the pooled name the
-\ seed will hand the record is the host record's own name, byte for byte. The
-\ pointer's proof is a boot, and it is a direct one - EM-AOT-BOOTRUN resolves an
-\ entry word through LFIND, which reads exactly this cell for an EXT name.
-: ACAP-EXPAND-REC ( ptr u8 ptr u8 -- ) {: c:ptr s:ptr :}      \ c=compact record, s=48B out
-   c ACAP-W32@ s AOT-N-C!                                     \ [0..8) = blob-off or package public WID
-   c 4 + ACAP-W32@ s 8 + AOT-N-C!                             \ [8..16) = code len or package private WID
-   c 8 + ACAP-W32@ {: noff:n :}                               \ name-off u32
-   AOT-NAMES-BUF@ noff + c@ {: len:n :}                       \ len = pool[entry]
-   c 12 + c@ {: flags:n :}
-   c 13 + c@ {: minin:n :}
-   c 14 + c@ {: dkind:n :}
-   flags 60 lshift  minin 52 lshift or  dkind 50 lshift or  len or  s 16 + AOT-N-C!   \ [16] = flags<<60 | min-in<<52 | dkind<<50 | len
-   0 s 24 + AOT-N-C!  0 s 32 + AOT-N-C!                       \ zero [24..40)
-   flags 2 and 0= if                                          \ inline name: the bytes live in the record
-      len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop
-   then
-   c 16 + ACAP-W32@ dup $FFFFFFFF = if drop -1 then
-   s 40 + AOT-N-C! ;                                          \ package marker sign-extends; ordinary wid stays u32
-variable ACAP-RECMM                                           \ record-proof mismatch count
-\ The pooled name a record will resolve to at boot IS the name the host record
-\ carries: same length byte, same bytes. This is what stands in for comparing an
-\ EXT record's [24] cell, which holds two different addresses for the same name.
-: ACAP-PROVE-NAME ( ptr u8 ptr u8 -- ) {: c:ptr v:ptr :}      \ c=compact row, v=verbatim record
-   c 8 + ACAP-W32@ {: noff:n :}
-   v 16 + ACAP-W32@ {: len:n :}
-   v  v ACAP-REC-EXT?  ACAP-REC-NAME {: nm:ptr :}
-   AOT-NAMES-BUF@ noff + c@ len = 0= if 1 ACAP-RECMM +! then
-   len 0 ?do
-      nm i + c@  AOT-NAMES-BUF@ noff 1+ + i + c@  = 0= if 1 ACAP-RECMM +! then
-   loop ;
-\ A STRIPPED ROW IS PROVED DIFFERENTLY, AND SAYS SO. Its name fields are meant
-\ to differ from the record's: [16]'s low word is 0 where the record has a
-\ length, DNAME-EXT is clear, and [24..40) holds no inline bytes. So the walk
-\ skips [16..40) for such a row and ACAP-PROVE-STRIPPED asserts what the row
-\ MUST say instead - an empty pooled name and no EXT - which is the property the
-\ booted engine's lookup depends on. Every other byte, the code span included,
-\ is still compared field for field.
-: ACAP-PROVE-STRIPPED ( ptr u8 -- ) {: c:ptr :}
-   c 8 + ACAP-W32@ {: noff:n :}
-   AOT-NAMES-BUF@ noff + c@ 0= 0= if 1 ACAP-RECMM +! then
-   c 12 + c@ 2 and 0= 0= if 1 ACAP-RECMM +! then ;
-: ACAP-PROVE-RECS ( -- )                                      \ fail-closed: expand==verbatim, field-for-field
-   0 ACAP-RECMM !
-   ACAP-REC48@ {: s:ptr :}
-   AOT-REC-N @ 0 ?do
-      i ACAP-CREC-DST {: c:ptr :}
-      c s ACAP-EXPAND-REC                                     \ rebuild 48B from compact
-      i ACAP-REC-DST {: v:ptr :}                              \ the record this row was made from
-      v ACAP-REC-EXT? {: ext:bool :}
-      i cells ACAP-NAMED-BIT + @ 0= {: stripped:bool :}
-      48 0 ?do
-         ext  i 24 >= and  i 32 < and
-         stripped  i 16 >= and  i 40 < and  or
-         0= if
-            s i + c@  v i + c@  = 0= if
-               ACAP-RECMM @ 12 < if
-                  s" record " type j . s"  byte " type i .
-                  s"  expected " type s i + c@ . s"  actual " type v i + c@ .
-                  s"  name " type v ext ACAP-REC-NAME v 16 + ACAP-W32@ type cr
-               then
-               1 ACAP-RECMM +!
-            then
-         then
-      loop
-      stripped if c ACAP-PROVE-STRIPPED else
-         ext if c v ACAP-PROVE-NAME then                      \ ... and the name stands in for it
-      then
-   loop
-   ACAP-RECMM @ 0= 0= if
-      s" aot-capture: RECORD EXPANSION MISMATCH count=" type ACAP-RECMM @ . cr
-      s" aot-capture: compact record expansion != verbatim 48B" 74 die
-   then ;
 
 variable ACAP-SIG-KNOWN                            \ window records the checker knows an effect for
 variable ACAP-SIG-EXEMPT                           \ package, retired, and unrecorded records
@@ -1550,34 +1406,6 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
 \ still what an INTERACTIVE claim needs (the entry words ask TTY? themselves), and
 \ nothing else. ---
 public
-
-\ ---- the build-side name map ---------------------------------------------------
-\ Every record the capture SAW, shipped or not, read back by capture order. The
-\ image keeps the names it can be asked for and strips the rest, so a tool that
-\ needs to name the code a stripped image carries reads the map the build wrote
-\ beside it (tools/native-build-core.f writes <image>.names from these readers).
-\ The verbatim 48-byte records still hold every name when the driver asks, which
-\ is where the stripped ones come from.
-
-: MAP-N ( -- n )
-   ACAP-REC-ALL @ ;
-
-: MAP-NAMED ( n -- n )                             \ 1 when the image kept the name, 0 when stripped
-   cells ACAP-NAMED-BIT + @ ;
-
-: MAP-NAME$ ( n -- ptr u8 n )
-   ACAP-REC-NAME$ ;
-
-: MAP-START ( n -- n )                             \ code blob offset, build-time
-   ACAP-REC-DST ACAP-W32@ ;
-
-: MAP-LEN ( n -- n )                               \ code length in bytes
-   ACAP-REC-DST 8 + ACAP-W32@ ;
-
-: MAP-WID ( n -- n )                               \ wordlist id, or -1 for a package row
-   ACAP-REC-DST {: v:ptr :}
-   v CELL-VIEW AOT-RWID -1 = if -1 exit then
-   v 40 + ACAP-W32@ ;
 
 : BOOTRUN+ ( ptr u8 n -- ) {: a:ptr u:n :}
    u 255 > if s" aot-capture: boot-run name too long" 74 die then
