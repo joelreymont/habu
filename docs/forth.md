@@ -981,6 +981,18 @@ address arithmetic at the public boundary.
   `( ptr u8 n n -- )`: pass an actual byte string and exit code, not `0 0` as a
   fake string. Model process exits as no-return control flow only at certified
   wrappers.
+- **A word that never returns ends its branch.** A call to a word whose body
+  ends in `die` diverges, so the checker refuses an `exit` after it inside an
+  `if`:
+
+  ```forth
+  ARG s" child" TOK= if CHILD-MAIN exit then
+  \ habu: in dispatch: at 'exit' after 'CHILD-MAIN'
+  \ hook: non-certified definition: dispatch at 'exit'
+  ```
+
+  Write the branch without it, `if CHILD-MAIN then`: control reaches the rest
+  of the definition only on the paths that can return.
 
 ## Constants
 
