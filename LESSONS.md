@@ -1495,6 +1495,33 @@ fits.
 
 ## Runtime, Codegen & AOT
 
+- **A quotation body is a separate FUNCTION at the tail of its word's emission,
+  and the stripped linker must carry it without the word that defined it.** One
+  sealed emission is function 0 (the word) followed by its quotations' functions
+  in order (`src/compiler/native/emit.f` FUNCTION-OFFSET@), and publication gives
+  the whole run ONE dictionary record — so a `[: ... ;] is X` body resolves
+  through `ADDRESS-OWNER` to the record of the initializer that bound it, and no
+  record has that body's own entry. Adding the OWNER as the closure member drags
+  the initializer's `is`, whose store reaches the `xt!` primitive, and `xt!`'s
+  56-byte engine-text record branches outside its own span: the link dies "aot:
+  PC-relative target removed or outside closure", which is not even a named
+  refusal. The body is carried alone instead, bounded by the next RECORDED code
+  literal inside the same record (the address map is the compiler's own statement
+  of which literals are addresses) and the record's end — measured 2026-09-17:
+  two bodies in one initializer sat at owner+84 and owner+100 of a 116-byte
+  record, 16 bytes each, with the word's own code below them
+  (`src/habu/aot-closure.f` ADD-BODY-CLO, dot habu-let-a-stripped-0a064bf5).
+- **What a persistent cell HOLDS is answered by its declaration, never by its
+  value's range — including in the AOT linker.** `defer`/`is`/`xt!` register a
+  cell in the engine's address-cell table (`src/habu/layout.f` package
+  SNAP-RELOC, `src/habu/address-cells.f`), which is what the snapshot writer and
+  the AOT capture already relocate from. The stripped linker reads the same rows
+  (`ADDRESS-CELLS:LIVE-SPAN`/`ROW@`) and relocates exactly those cells; the value
+  scan keeps refusing what no declaration accounts for, so a `' word ,` table —
+  an untyped cell — stays refused by name and a plain datum that happens to land
+  in a code range is never rewritten. Measured on Tender's CLI: 32005 declared
+  rows, three inside the capture window, one of them the XT row for the refused
+  cell.
 - **Widening a shape check to accept more must add a requirement, not just drop
   one.** `SNAP-RELOC:EMIT-ADDRS` re-verified a recorded address chain by masking
   each of its four words with ADDR-OPC-MASK and comparing against W-MOVZ0 /

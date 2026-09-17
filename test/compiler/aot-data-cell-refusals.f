@@ -2,11 +2,20 @@
 \ span scan in src/habu/aot-lib.f, which reads every cell the capture window
 \ covers, and the span bound in src/habu/aot-closure.f, which meets the same kind
 \ of cell through a recorded address naming one the window never opened over.
-\ They must answer alike, and the refusal that a genuine data pointer keeps must
-\ say which cell, which value and which bounds. Build four stripped images
-\ through the real native linker and read the diagnostic each is refused with.
+\ Each must name WHICH cell, WHICH value and - for a genuine data pointer -
+\ WHICH bounds. Build four stripped images through the real native linker and
+\ read the diagnostic each is refused with.
 \
-\ RED BEFORE THIS LANE: a PRE-WINDOW cell holding an xt (PRE-XT below) was
+\ WHAT IS LEFT TO REFUSE. A cell DECLARED to hold an execution token is relocated
+\ now rather than refused, and test/compiler/aot-xt-cells.f builds and runs an
+\ image full of them (dot habu-let-a-stripped-0a064bf5). These are the cells no
+\ declaration accounts for: `' word ,` fills an untyped cell and declares
+\ nothing, so nothing may read it as a code address, and the refusal says which
+\ forms do declare one. The three facts stay identical whichever check meets the
+\ cell; the REASONS differ because the faults do - a cell below the window is not
+\ restored at all, so its declaration could not help it either.
+\
+\ RED BEFORE THE CELL LANE: a PRE-WINDOW cell holding an xt (PRE-XT below) was
 \ refused with "aot: address refers to data outside the restored span", exit 74,
 \ naming neither the cell nor the value nor the bounds, while the same class of
 \ cell inside the window was refused as unsupported persistent data, exit 70. One
@@ -70,46 +79,41 @@ variable IMAGE-U
 
 \ ---- a cell inside the capture window: the span scan meets it -----------------
 
-: CASE-DEFER ( -- )
-   S\" : DCR-BUMP ( n -- n ) 1+ ;\ndefer DCR-STEP ( n -- n )\n: DCR-INIT ( -- ) [: DCR-BUMP ;] is DCR-STEP ;\nDCR-INIT\n: MAIN ( -- ) 41 DCR-STEP . ;\n"
-      WRITE-SUBJECT
-   LINK-ONLY$ BUILD
-   70 s" defer cell: refusal code" GE-EXPECT-RC
-   s" stripped AOT persistent data holds a code/dict pointer"
-      s" defer cell: refusal reason" GE-EXPECT-ERR-HAS
-   s" word=DCR-STEP" s" defer cell: names the owning word" GE-EXPECT-ERR-HAS
-   s" defer cell: fields filled" FIELDS-FILLED
-   s" outside the restored span" s" defer cell: one answer only" GE-EXPECT-ERR-LACKS
-   s" defer cell: no image" NO-IMAGE ;
-
+\ `,` stores a cell with no declaration of what it holds, so the image has no
+\ authority to read this one as a code address and says which forms would give it
+\ one. A DEFER cell in the same position is relocated instead, which is what
+\ test/compiler/aot-xt-cells.f builds and runs.
 : CASE-TICK ( -- )
    S\" : DCR-BUMP ( n -- n ) 1+ ;\ncreate DCR-TABLE ' DCR-BUMP ,\n: MAIN ( -- ) DCR-TABLE @ . ;\n"
       WRITE-SUBJECT
    LINK-ONLY$ BUILD
    70 s" ' word , cell: refusal code" GE-EXPECT-RC
-   s" stripped AOT persistent data holds a code/dict pointer"
+   s" stripped AOT persistent data holds an undeclared code/dict pointer"
       s" ' word , cell: refusal reason" GE-EXPECT-ERR-HAS
    s" word=DCR-TABLE" s" ' word , cell: names the owning word" GE-EXPECT-ERR-HAS
    s" ' word , cell: fields filled" FIELDS-FILLED
-   s" outside the restored span" s" ' word , cell: one answer only" GE-EXPECT-ERR-LACKS
+   s" (defer/is/xt!)" s" ' word , cell: names the declaring forms" GE-EXPECT-ERR-HAS
+   s" outside the restored span" s" ' word , cell: not the unrestored answer" GE-EXPECT-ERR-LACKS
    s" ' word , cell: no image" NO-IMAGE ;
 
 \ ---- a cell outside it: the span bound meets the same two kinds ---------------
 
 \ THE CONSISTENCY CASE. This cell holds an xt and sits below the window, so the
-\ scan never reads it and only the span bound meets it. It must still be the
-\ unsupported-persistent-data refusal, named the same way.
+\ scan never reads it and only the span bound meets it. It keeps the
+\ unsupported-persistent-data verdict and the same three facts; its reason says
+\ the thing that is actually wrong with it, which no declaration could fix: the
+\ image does not restore this cell at all.
 : CASE-PRE-XT ( -- )
    S\" : MAIN ( -- ) DCR-PRE-XT @ . ;\n" WRITE-SUBJECT
    S\" : DCR-PRE ( n -- n ) 1+ ;\ncreate DCR-PRE-XT ' DCR-PRE ,\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
       BUILD
    70 s" pre-window xt cell: refusal code" GE-EXPECT-RC
-   s" stripped AOT persistent data holds a code/dict pointer"
+   s" stripped AOT persistent data outside the restored span holds a code/dict pointer"
       s" pre-window xt cell: refusal reason" GE-EXPECT-ERR-HAS
    s" word=DCR-PRE-XT" s" pre-window xt cell: names the owning word" GE-EXPECT-ERR-HAS
    s" pre-window xt cell: fields filled" FIELDS-FILLED
-   s" outside the restored span"
-      s" pre-window xt cell: one answer whichever check meets it" GE-EXPECT-ERR-LACKS
+   s" aot: address refers to data"
+      s" pre-window xt cell: named as a cell, not as a bare span bound" GE-EXPECT-ERR-LACKS
    s" pre-window xt cell: no image" NO-IMAGE ;
 
 \ A genuine data pointer keeps exit 74, and now names the recorded cell, the
@@ -151,7 +155,6 @@ variable IMAGE-U
 
 : BODY ( -- )
    PREPARE
-   CASE-DEFER
    CASE-TICK
    CASE-PRE-XT
    CASE-PRE-DATA

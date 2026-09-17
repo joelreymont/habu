@@ -4,6 +4,7 @@ require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
 require src/habu/aot-decl.f
+require src/habu/address-cells.f
 require src/habu/code-span.f
 
 \ This file compiles checked, with raw-pointer boundaries as explicit TRUST rows.
@@ -363,9 +364,17 @@ variable SP2  variable SEND
 \ aot-lib.f, which reads every cell the capture window covers, and DATA-ADDRESS!
 \ below, which meets the same kind of cell through a recorded address naming one
 \ the window never opened over. They must not answer differently.
+\ THE TWO EXTENTS ARE ASKED FOR SEPARATELY, because the stripped image answers
+\ for them differently: a code address a declared cell holds is relocated against
+\ this image's own code base, and a dictionary-record address is refused however
+\ it was declared - the image carries no records for one to point at.
+: CELL-DICTPTR? ( n -- bool ) {: v:n :}                                      \ in live dict records
+   v AOT-DBASE-N >=  v AOT-DBASE-N ndict@ DREC * + < and ;
+: CELL-CODEPTR? ( n -- bool ) {: v:n :}                                      \ in emitted code
+   v AOT-DBASE-N DICT-SIZE + >=  v AOT-CP-N < and ;
 : CELL-TEXTPTR? ( n -- bool ) {: v:n :}     \ code/dict pointer, by live extents (not magnitude)
-   v AOT-DBASE-N >=  v AOT-DBASE-N ndict@ DREC * + < and IF true EXIT THEN   \ in live dict records
-   v AOT-DBASE-N DICT-SIZE + >=  v AOT-CP-N < and ;                          \ in emitted code
+   v CELL-DICTPTR? IF true EXIT THEN
+   v CELL-CODEPTR? ;
 
 \ The cell at a DATA address. An address arrives here as a plain integer (the
 \ value a recorded chain spells out, or a scan cursor), and the checker keeps the
@@ -403,7 +412,13 @@ variable DCELL
       then
    loop XREF-NULL ;
 
-: DATA-TEXTPTR-JSON ( n n -- ) {: cell:n v:n :}
+\ A PERSISTENT CELL THE STRIPPED IMAGE CANNOT CARRY, named the way dot
+\ habu-name-the-cell-740feb52 settled it: the word whose data the cell is, the
+\ cell's DATA offset and the value it holds. Only the reason and the suggestion
+\ differ between the cases below, so those travel as arguments and every case
+\ renders through this one pair of writers - a program is edited by the three
+\ facts, and they must not depend on which check met the cell.
+: DATA-CELL-JSON ( n n ptr u8 n ptr u8 n -- ) {: cell:n v:n ra:ptr ru:n sa:ptr su:n :}
    123 AE1
    s" schema_version" AEJKEY 1 AEJNUM 44 AE1
    s" code" AEJKEY s" E-AOT-UNSUPPORTED" AEJSTR 44 AE1
@@ -411,24 +426,58 @@ variable DCELL
    s" word" AEJKEY cell DATA-CELL-OWNER AEJREC 44 AE1
    s" data_off" AEJKEY cell DATA-VA VA>N - AEJNUM 44 AE1
    s" value" AEJKEY v AEJNUM 44 AE1
-   s" reason" AEJKEY s" stripped AOT persistent data holds a code/dict pointer" AEJSTR 44 AE1
-   s" suggestion" AEJKEY
-   s" stripped AOT cannot rebase code/dict pointers in data (defer or ' word ,); use --repl or remove the code pointer from data" AEJSTR
+   s" reason" AEJKEY ra ru AEJSTR 44 AE1
+   s" suggestion" AEJKEY sa su AEJSTR
    125 AE1 10 AE1 ;
 
-: DATA-TEXTPTR-PROSE ( n n -- ) {: cell:n v:n :}
-   s" hb-build: stripped AOT persistent data holds a code/dict pointer (defer or ' word ,) word=" AETXT
-   cell DATA-CELL-OWNER AEREC-TXT
+\ The suggestion travels in the prose rendering too, the way CLO-OVERFLOW-PROSE
+\ carries its own: the person reading stderr is the one who has to edit the
+\ program, and which form to reach for is the whole answer for a declared cell.
+: DATA-CELL-PROSE ( n n ptr u8 n ptr u8 n -- ) {: cell:n v:n ra:ptr ru:n sa:ptr su:n :}
+   s" hb-build: " AETXT  ra ru AETXT
+   s"  word=" AETXT cell DATA-CELL-OWNER AEREC-TXT
    s"  data-off=" AETXT cell DATA-VA VA>N - AEJNUM
    s"  value=" AETXT v AEJNUM
+   s"  suggestion='" AETXT sa su AETXT 39 AE1
    10 AE1 ;
 
-\ The ONE answer for a persistent cell that holds a code or dictionary pointer,
-\ wherever it was met. Public within the package so aot-lib.f's span scan refuses
-\ with exactly this text.
-: REFUSE-DATA-TEXTPTR ( n n -- ) {: cell:n v:n :}
-   JSON-DIAGS @ IF cell v DATA-TEXTPTR-JSON ELSE cell v DATA-TEXTPTR-PROSE THEN
+: REFUSE-DATA-CELL ( n n ptr u8 n ptr u8 n -- ) {: cell:n v:n ra:ptr ru:n sa:ptr su:n :}
+   JSON-DIAGS @ IF cell v ra ru sa su DATA-CELL-JSON ELSE cell v ra ru sa su DATA-CELL-PROSE THEN
    s" hb-build: AOT unsupported persistent data" 70 die ;
+
+\ A code pointer in a cell NOTHING DECLARED. The image relocates a declared xt
+\ cell (the table below), and a declaration is the only authority for reading a
+\ cell as a code address: an ordinary integer can hold any value at all, so a
+\ value-range guess would rewrite a datum that merely looks like an address.
+\ `defer`, `is` and `xt!` declare; `' word ,` stores an untyped cell and does not.
+: REFUSE-UNDECLARED-CELL ( n n -- ) {: cell:n v:n :}
+   cell v
+   s" stripped AOT persistent data holds an undeclared code/dict pointer"
+   s" a stripped image relocates only DECLARED xt cells (defer/is/xt!); ' word , declares nothing - bind the cell with a defer or xt!, or use --repl"
+   REFUSE-DATA-CELL ;
+
+\ A dictionary-record pointer, declared or not. The image ships code, never
+\ records, so there is nothing for this value to be rebased onto.
+: REFUSE-DICT-CELL ( n n -- ) {: cell:n v:n :}
+   cell v
+   s" stripped AOT persistent data holds a dictionary-record pointer"
+   s" a stripped image carries no dictionary records; remove the record pointer from persistent data, or use --repl"
+   REFUSE-DATA-CELL ;
+
+\ A declared xt cell whose value is not a word's code at all.
+: REFUSE-XT-TARGET ( n n -- ) {: cell:n v:n :}
+   cell v
+   s" stripped AOT declared xt cell holds an address no word in the image owns"
+   s" the cell is declared to hold an execution token; store a real token in it, or use --repl"
+   REFUSE-DATA-CELL ;
+
+\ A cell below the capture window: a preloaded module's data, which the stripped
+\ image never restores. The declaration cannot help a cell that is not there.
+: REFUSE-UNRESTORED-CELL ( n n -- ) {: cell:n v:n :}
+   cell v
+   s" stripped AOT persistent data outside the restored span holds a code/dict pointer"
+   s" the image restores only the program's own DATA window; define the cell in the program's own source, or use --repl"
+   REFUSE-DATA-CELL ;
 
 \ A genuine data pointer the restored span does not cover. Named the way
 \ REFUSE-ADDRESS-SITE names its site - the owning word and the region offset of
@@ -447,11 +496,13 @@ variable DCELL
    s" " 74 die ;
 
 \ The cell this address names, refused as unsupported persistent data when it
-\ holds a code or dictionary pointer - the same verdict, from the same predicate,
-\ that the span scan reaches such a cell with.
+\ holds a code or dictionary pointer - named with the same three facts, from the
+\ same predicate, that the span scan reaches such a cell with. The reason differs
+\ because the fault does: this cell is outside the span the image restores, so
+\ even a declared xt cell has nothing to be patched in.
 : CHECK-DATA-CELL ( n -- ) {: cell:n :}
    cell DATA-CELL@ {: v:n :}
-   v CELL-TEXTPTR? if cell v REFUSE-DATA-TEXTPTR then ;
+   v CELL-TEXTPTR? if cell v REFUSE-UNRESTORED-CELL then ;
 
 : DATA-ADDRESS! ( ptr n ptr u8 n -- ) {: owner:ptr site:ptr v:n :}
    \ The end is a valid one-past pointer for a zero-length buffer. Relocation
@@ -466,6 +517,91 @@ variable DCELL
    v BLOB-SRC @ >= v BLOB-END @ <= and if v exit then
    v NSTR:REINTERN-OWNED drop {: w:n :}
    owner site w DATA-ADDRESS!  w ;
+
+\ ---- the program's DECLARED xt cells -------------------------------------------
+\ A PERSISTED CELL HOLDS A CODE ADDRESS BECAUSE IT WAS DECLARED TO, never because
+\ its value looks like one. The engine's address-cell table (src/habu/layout.f
+\ package SNAP-RELOC, src/habu/address-cells.f) is where `defer` registers a
+\ dispatch cell, `is` the cell it stores into and `xt!` a cell a checked word
+\ worked out at run time - the same authority the snapshot writer and the AOT
+\ capture relocate from, and the same reason both of them refuse to scan DATA for
+\ values in an address band. This pass reads the XT-kind rows that fall inside the
+\ capture window; the two things it answers are what the span scan must NOT refuse
+\ and what the image must carry.
+\ A row whose value is zero is an unbound cell: the sparse copy restores the zero
+\ and there is nothing to relocate. A DATA-kind row needs nothing either - DATA is
+\ mapped MAP_FIXED at DATA-VA and the window is restored to the same addresses.
+1024 constant MAX-XTCELL
+create XTC-OFF MAX-XTCELL cells allot     \ each declared cell's DATA offset
+create XTC-VAL MAX-XTCELL cells allot     \ ... and the code address it holds
+variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
+
+: XTC-OFF@ ( n -- n ) cells XTC-OFF + @ ;
+: XTC-VAL@ ( n -- n ) cells XTC-VAL + @ ;
+: XTC-CELL ( n -- n ) XTC-OFF@ DATA-VA VA>N + ;
+: XTC-SET ( n n n -- ) {: k:n off:n v:n :}
+   off k cells XTC-OFF + !  v k cells XTC-VAL + ! ;
+
+\ Ascending by DATA offset, which is the order the span scan meets cells in, so
+\ its membership test is a cursor rather than a search. Rows arrive in
+\ declaration order; insertion sort keeps the two arrays in step with no scratch.
+: XTC-PLACE ( n -- ) {: i:n :}
+   i XTC-OFF@ {: off:n :}
+   i XTC-VAL@ {: v:n :}
+   i XTC-J !
+   BEGIN XTC-J @ 0 > IF XTC-J @ 1 - XTC-OFF@ off > ELSE false THEN WHILE
+      XTC-J @  XTC-J @ 1 - XTC-OFF@  XTC-J @ 1 - XTC-VAL@  XTC-SET
+      XTC-J @ 1 - XTC-J !
+   REPEAT
+   XTC-J @ off v XTC-SET ;
+
+: XTC-SORT ( -- )
+   1 XTC-I ! BEGIN XTC-I @ XTC-N @ < WHILE
+      XTC-I @ XTC-PLACE  XTC-I @ 1+ XTC-I !
+   REPEAT ;
+
+: XTC+ ( n n -- ) {: off:n v:n :}
+   XTC-N @ MAX-XTCELL >= IF
+      s" aot: more declared xt cells in the data window than MAX-XTCELL" 74 die THEN
+   XTC-N @ off v XTC-SET
+   XTC-N @ 1+ XTC-N ! ;
+
+\ The WHOLE cell is inside the span the image restores. A declared cell that
+\ straddles the window's end is not one this image can carry, and it keeps the
+\ unrestored-cell refusal the span bound already gives such a cell.
+: XTC-IN-WINDOW? ( n -- bool ) {: at:n :}
+   at BLOB-SRC @ >= at 8 + BLOB-END @ <= and ;
+
+: XTC-ROW ( n -- ) {: k:n :}
+   k ADDRESS-CELLS:ROW@ {: raw:n :}
+   raw XTCELL-DATA-TAG and 0<> IF exit THEN
+   raw XTCELL-OFF-MASK and {: off:n :}
+   DATA-VA VA>N off + {: at:n :}
+   at XTC-IN-WINDOW? 0= IF exit THEN
+   at DATA-CELL@ {: v:n :}
+   v 0= IF exit THEN
+   v CELL-DICTPTR? IF at v REFUSE-DICT-CELL THEN
+   off v XTC+ ;
+
+: COLLECT-XT-CELLS ( -- )
+   0 XTC-N !  0 XTC-CX !
+   ADDRESS-CELLS:LIVE-SPAN {: base:ptr rows:n :}
+   rows 0 ?do i XTC-ROW loop
+   XTC-SORT ;
+
+\ Does a declared cell overlap the eight bytes at this address? The span scan asks
+\ once per cell in ascending order, so the cursor only moves forward. Containment
+\ is the declaration's whole rule (layout.f XTCELL-OFF-MAX: a cell reached through
+\ `allot` after byte data keeps its residue), so this is an overlap test and not
+\ an equality one.
+: XTC-REWIND ( -- ) 0 XTC-CX ! ;
+: XTC-PASSED? ( n -- bool ) {: at:n :}
+   XTC-CX @ XTC-N @ >= IF false EXIT THEN
+   XTC-CX @ XTC-CELL 8 + at <= ;
+: XTC-DECLARED? ( n -- bool ) {: at:n :}
+   BEGIN at XTC-PASSED? WHILE XTC-CX @ 1+ XTC-CX ! REPEAT
+   XTC-CX @ XTC-N @ >= IF false EXIT THEN
+   XTC-CX @ XTC-CELL at 8 + < ;
 
 : REFUSE-ADDRESS-SITE ( ptr n ptr u8 ptr u8 -- ) {: caller:ptr p:ptr e:ptr :}
    s" aot: malformed recorded address chain caller=" AETXT
@@ -515,7 +651,85 @@ variable WI
 : NO-ENTRY-DIE ( -- )
    s" aot: entry word not found: " AETXT  ENTRY-NAME$ AETXT  10 AE1
    s" aot: no entry" 74 die ;
+
+\ A record's code span as integers, the domain interior addresses arrive in, and
+\ the code pointer for one address inside it. A record carries its entry as a
+\ pointer and the walk carries addresses as integers, so the crossing happens
+\ here, once, as the entry plus the address's distance from it.
+: REC-ENTRY-N ( ptr n -- n ) {: r:ptr :}
+   r REC-CODE-PTR@ AOT-DBASE@ BYTE-VIEW -  AOT-DBASE-N + ;
+: REC-END-N ( ptr n -- n ) {: r:ptr :}  r REC-ENTRY-N r REC-BYTES + ;
+: CODE-AT ( ptr n n -- ptr u8 ) {: r:ptr v:n :}
+   r REC-CODE-PTR@  v r REC-ENTRY-N -  + ;
+
+\ The same crossing for an address whose owner is not known yet: through the
+\ record that names it, or through the payload's span table for a word the image
+\ ships no record for. An address neither can place is refused here rather than
+\ turned into a pointer to a guess.
+: CODE-PTR ( n -- ptr u8 ) {: v:n :}
+   v ADDRESS-OWNER {: owner:ptr :}
+   owner XREF-FOUND? if owner v CODE-AT exit then
+   v SPAN-OWNER {: s:n :}
+   s 0 < if s" aot: code address has no dictionary owner" 74 die then
+   s SPAN-START  v s SPAN-START-N -  + ;
+
+\ WHERE AN ANONYMOUS BODY ENDS. One emission is the word's own function followed
+\ by its quotations' functions, laid out in order (src/compiler/native/emit.f
+\ FUNCTION-OFFSET@), and one record covers all of them - so an anonymous body
+\ ends where the next function begins, and the last one ends with the record.
+\ THE NEXT FUNCTION IS FOUND BY THE ADDRESS MAP: the compiler records every
+\ literal it decides IS a code address (src/habu/layout.f ADDRMAP-OFF, the
+\ quotation entry a `[: ;]` pushes among them), so the next entry above this one
+\ is the smallest recorded chain value above it inside this record. Nothing here
+\ decides what a body looks like by decoding bytes.
+variable BODY-END
+: BODY-END-SCAN ( ptr n n -- ) {: r:ptr v:n :}
+   r REC-END-N BODY-END !
+   r REC-CODE-PTR@ {: p:ptr :}
+   r REC-BYTES ADDR-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
+      p i 4 * + ADDRESS-SITE? if
+         p i 4 * +  p i 4 * + ADDR-CHAIN-BYTES + ADDRESS-CHAIN? if
+            p i 4 * + CHAINV dup v > over BODY-END @ < and if BODY-END ! else drop then
+         then
+      then
+   loop ;
+
+\ The anonymous body at v, as a member in its own right. The word that DEFINED it
+\ is not pulled in with it: a `[: ... ;] is X` initializer runs at load time and
+\ its own code declares an address cell, which a stripped image has no registrar
+\ for - the image needs the quotation, not the word that bound it. The record
+\ still travels with the member, because it is what a diagnostic has to say about
+\ a body: no record NAMES it, and the word it was compiled inside is the only
+\ thing a program can be edited by. Nothing resolves an address through it.
+: ADD-BODY-CLO ( ptr n n -- ) {: r:ptr v:n :}
+   r v BODY-END-SCAN
+   r  r v CODE-AT  BODY-END @ v -  ADD-CLO ;
+
+\ A DECLARED XT CELL IS A CLOSURE ROOT. Its value is resolved exactly the way
+\ SCAN-ADDRESS resolves a code literal met inside a word - the record whose ENTRY
+\ it is, else the record whose span CONTAINS it (an anonymous body, added above
+\ without the word that defined it), else the payload's span table. The target
+\ joins the closure BEFORE the walk below, so the strip cannot drop the code a
+\ persistent cell points at, and a target no table can place is refused by name
+\ rather than relocated to a guess.
+: XT-CELL-ROOT ( n -- ) {: k:n :}
+   k XTC-VAL@ {: v:n :}
+   v ADDRESS-OWNER {: owner:ptr :}
+   owner XREF-FOUND? if
+      v owner REC-ENTRY-N = if
+         owner AOT-UNSAFE? if k XTC-CELL DATA-CELL-OWNER owner AOT-UNSAFE-DIE then
+         owner ADD-REC-CLO exit
+      then
+      owner v ADD-BODY-CLO exit
+   then
+   v SPAN-OWNER {: s:n :}
+   s 0 < if k XTC-CELL v REFUSE-XT-TARGET then
+   s ADD-SPAN-CLO ;
+
+: XT-CELL-ROOTS ( -- )  XTC-N @ 0 ?do i XT-CELL-ROOT loop ;
+
 : CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop NO-ENTRY-DIE THEN  dup ROOTREC !  ADD-REC-CLO
+   XT-CELL-ROOTS
    0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ SCAN-MEMBER  WI @ 1+ WI ! REPEAT ;
 
 ;using

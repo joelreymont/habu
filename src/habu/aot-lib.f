@@ -27,6 +27,9 @@ using A64ASM
 
 \ --- emit the image: minimal entry + compacted, relocated blobs.
 variable MLBL
+\ The label at text offset zero: the image's own code base, which the declared
+\ xt cells are restored against. It costs no bytes and is placed by EMIT-ENTRY.
+variable LTEXT
 create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
 
 \ --- persistent data region: the program's compile-time create/variable/allot/
@@ -50,17 +53,21 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
    here  BLOB-END !
    BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN ! ;
 
-\ Every cell the capture window covers, classified by the ONE predicate
-\ aot-closure.f publishes (CELL-TEXTPTR?, by live engine extents) and refused by
-\ the ONE refusal it publishes, so a cell that holds a code or dictionary pointer
-\ reads the same here as it does when a recorded address meets it outside the
-\ window. The scan reports the first such cell rather than a bare verdict: its
-\ owning word, its DATA offset and the pointer it holds are what a program has to
-\ be edited by.
+\ Every cell the capture window covers that NOTHING DECLARED, classified by the
+\ ONE predicate aot-closure.f publishes (CELL-TEXTPTR?, by live engine extents).
+\ A declared xt cell is relocated instead (COLLECT-XT-CELLS above it, EMIT-XT-ROWS
+\ below), and it is skipped here by its declaration and not by its value, so the
+\ two answers cannot disagree about one cell. What is left is a code or dictionary
+\ pointer no declaration accounts for - a `' word ,` table - and the scan reports
+\ the first one with the three facts a program has to be edited by: its owning
+\ word, its DATA offset and the pointer it holds.
 : AOT-DATA-TEXTPTR-CHECK ( -- )
+   XTC-REWIND
    BLOB-SRC @ DSCAN !
    BEGIN DSCAN @ 8 + BLOB-END @ <= WHILE
-      DSCAN @ @ CELL-TEXTPTR? IF DSCAN @ DSCAN @ @ REFUSE-DATA-TEXTPTR THEN
+      DSCAN @ XTC-DECLARED? 0= IF
+         DSCAN @ @ CELL-TEXTPTR? IF DSCAN @ DSCAN @ @ REFUSE-UNDECLARED-CELL THEN
+      THEN
       DSCAN @ 8 + DSCAN !
    REPEAT ;
 
@@ -118,6 +125,38 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
       rowtop B,
    rowdone LBL,
    7 BLOB-END @ LIT64,  7 DATA DP-CELL STR, ;      \ DP = user-end (runtime here/allot base)
+
+\ ---- the declared xt cells: what the copy alone cannot restore -----------------
+\ The copy above restores every cell's capture-time BYTES, and for a cell declared
+\ to hold an execution token those bytes are the BUILDER's code address. The rows
+\ EMIT-XT-ROWS places after the blob say where such a cell is and where its word
+\ ended up in THIS image, in the shape src/habu/aot-file.f's XTOFF rows carry: a
+\ u32 location and a u32 target in one eight-byte row.
+\ THE ROWS NEED NO ADDRESS OF THEIR OWN. The copy loop's byte cursor x10 ends one
+\ past the blob's last payload byte, which is where the rows begin (BYTES, pads
+\ the blob to the four-byte boundary they sit on), so the startup adds no second
+\ ADR ahead of the root call: test/gate-aot-image.f admits exactly one ADR x9 in
+\ the startup and ends the reported code range at the blob, and rows placed past
+\ the blob are outside that range rather than read as instructions.
+\ The cell is x20-relative (DATA is mapped MAP_FIXED, so its offset is the same
+\ number the declaration carries) and the value is relative to the image's own
+\ code base, which is the label at text offset zero.
+: EMIT-XT-CELLS ( -- )
+   XTC-N @ 0= IF exit THEN
+   BLOB-LEN @ 0= IF s" aot: declared xt cells without a restored data span" 74 die THEN
+   10 10 3 ADDI,  10 10 2 LSRI,  10 10 2 LSLI,     \ x10 = the rows, at the 4-byte boundary
+   11 XTC-N @ LIT64,                               \ x11 = rows remaining
+   12 LTEXT LABEL@ ADR,                            \ x12 = this image's code base
+   LBL LBL {: xtop:label xdone:label :}
+   xtop LBL,
+      11 xdone CBZ,
+      13 10 0 LDRW,                                \ x13 = the cell's DATA offset
+      14 10 4 LDRW,                                \ x14 = its word's code offset
+      13 DATA 13 ADD,                              \ ... the cell
+      14 12 14 ADD,                                \ ... and the token it takes
+      14 13 0 STR,
+      10 10 8 ADDI,  11 11 1 SUBI,  xtop B,
+   xdone LBL, ;
 
 \ --- sparse encoding: the captured span travels as its non-zero byte extents
 \ (plus the zero gaps under AOT-WINDOW:RUN-GAP-MIN, which are cheaper to carry
@@ -208,6 +247,8 @@ variable BLOB-LAST-END
    SPARSE-LEN @ 4 -  0 SPARSE-U32!
    [: BLOB-BYTES! ;] EACH-BLOB-RUN ;
 
+\ The declared xt-cell rows follow this blob immediately (LINK emits them next),
+\ at the four-byte boundary BYTES, pads to.
 : EMIT-DATA-BLOB ( -- )                            \ place the sparse blob after all code
    BLOB-LEN @ 0= IF exit THEN
    ASM-LEN AOT-DATA-BLOB-MAX > IF
@@ -265,6 +306,7 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
 \ guard page would be a bare SIGSEGV; with it, the overflow is the same named
 \ `hb: stack bounds exceeded (<which>)` and STACK-BOUNDS exit the engine gives.
 : EMIT-ENTRY
+   LTEXT LABEL@ LBL,                             \ text offset zero: this image's code base
    STACK-ABI:BOOT-BYTES XDS STACK-GUARD:EMIT-MAP
    EMIT-DATA-REGION-MAP                          \ map DATA-VA, set x20/S0
    STACK-ABI:RETURN-BYTES 10 STACK-GUARD:EMIT-MAP
@@ -273,6 +315,7 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
    10 DATA STACK-ABI:LOOP-BASE-CELL STR,
    G-INSTALL-CRASH                               \ name a guard-page fault instead of dumping SIGSEGV
    EMIT-DATA-COPY                                \ restore persistent data + DP
+   EMIT-XT-CELLS                                 \ ... and the tokens its declared cells hold
    EMIT-SIGNAL-PUBLISH                           \ this image's stub address and fd word
    EMIT-SEED                                     \ push preseeded value-stack cells (empty for MAIN)
    MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)
@@ -433,6 +476,29 @@ variable BDELTA  variable TNEW
    k 0 < if s" aot: code address has no dictionary owner" 74 die then
    k SPAN-START MEMBER-AT ;
 
+\ A declared xt cell's row target is the new offset of the code it names, from
+\ the SAME mapping a relocated branch target goes through (OLD>NEW: the member
+\ that covers the address, plus the address's own distance into it, which
+\ COPY-COMPACT-BLOB's instruction-for-instruction copy preserves). An address no
+\ member covers dies by name here: the emit-time proof that this image carries
+\ the code the cell will point at, after the root pass put it in the closure.
+: XT-CELL-TARGET ( n -- n ) {: k:n :}
+   k XTC-VAL@ CODE-PTR OLD>NEW {: t:n :}
+   t 0 < IF s" aot: declared xt cell target is outside the closure" 74 die THEN
+   t ;
+
+: XT-ROW-FIELD ( n -- n ) {: v:n :}
+   v 0 < v $FFFFFFFF > or IF s" aot: a declared xt cell row field is not a u32" 74 die THEN
+   v ;
+
+\ One row per declared cell, (location u32, target u32) little-endian, which is
+\ one DCQ, of target<<32 or location.
+: EMIT-XT-ROWS ( -- )
+   XTC-N @ 0 ?do
+      i XTC-OFF@ XT-ROW-FIELD
+      i XT-CELL-TARGET XT-ROW-FIELD 32 lshift or DCQ,
+   loop ;
+
 : COPY-ADDRESS ( ptr n ptr u8 ptr u8 -- ) {: owner:ptr p:ptr e:ptr :}
    p e ADDRESS-VALUE {: v:n :}
    v DATA-ADDRESS? if
@@ -486,10 +552,11 @@ public
 
 : LINK ( -- )
    AOT-DATA-SPAN
-   AOT-DATA-TEXTPTR-CHECK
-   CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !
+   COLLECT-XT-CELLS                                 \ the window's DECLARED xt cells
+   AOT-DATA-TEXTPTR-CHECK                           \ ... and no undeclared code pointer beside them
+   CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !  LBL LTEXT !
    LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !   \ the stripped image carries both handlers too
-   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-CRASH-CODE  EMIT-DATA-BLOB
+   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-CRASH-CODE  EMIT-DATA-BLOB  EMIT-XT-ROWS
    AOT-WRITE-OBJ
    s" hb-prog" AOT-OUT DRV-EMIT-IMAGE ;
 

@@ -47,6 +47,49 @@ The native REPL build compiles the current source into a fresh running image.
 It does not use the AOT maker or artifact caches. The existing build report
 therefore records no cache source and no cache hits for `--repl`.
 
+## Stripped images and persistent execution tokens
+
+Without `--repl` the same driver builds a *stripped* image: only the closure of
+`MAIN` travels, with no compiler, no dictionary and no REPL, which is what lets
+a unit run it under `MemoryDenyWriteExecute`.
+
+```sh
+bin/hb --load tools/hb-build.f -- app.f -o app
+```
+
+A stripped image restores the program's own DATA window byte for byte, so a
+persistent cell arrives holding whatever the BUILD process put there. For a cell
+that holds an execution token those bytes are the builder's own code address,
+and the image has to replace them with its own. It does that for every cell that
+was **declared** to hold a token:
+
+- `defer NAME` declares its dispatch cell, and `is` declares the cell it stores
+  into. A binding made at load time therefore survives the strip.
+- `xt!` declares a cell a checked word computed at run time. The optimizing tier
+  selects it for a proven quotation store, so an ordinary `!` of a quotation into
+  a persistent cell declares that cell too (see the tier note below).
+
+The declaration is the only authority. Nothing reads a cell as a code address
+because its value happens to land in a code range: an ordinary integer can hold
+any value at all, and the same rule governs snapshots and the AOT capture
+(`src/habu/layout.f`, package `SNAP-RELOC`). So the linker takes the declared
+address cells that fall inside the program's DATA window, records one 8-byte row
+per cell — the cell's DATA offset and its target's offset in this image's code —
+after the image's data blob, and the startup applies them right after restoring
+the window. The word a row names joins the image's closure, and an anonymous
+quotation body is carried on its own, without the initializer that bound it.
+
+Four things are still refused by name, each naming the word, the cell's DATA
+offset and the value:
+
+- an **undeclared** code or dictionary pointer in persistent data. `create T
+  ' W ,` fills an untyped cell, so nothing declares it; bind the token with a
+  `defer` or `xt!`, or build with `--repl`.
+- a **dictionary-record** pointer: a stripped image carries no records.
+- a cell **below the capture window** — a preloaded module's data, which the
+  image does not restore at all.
+- a declared cell whose value is not the code of any word the image can carry.
+
 ## Capturing an existing dictionary
 
 `src/habu/app-image.f` provides two checked operations:
