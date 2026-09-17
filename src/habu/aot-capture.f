@@ -758,10 +758,10 @@ variable ACAP-BP
    v  v ACAP-REC-EXT?  ACAP-REC-NAME  v 16 + ACAP-W32@ ;
 
 \ ---- the keep-set -------------------------------------------------------------
-\ FOUR NAMES THE DERIVED RULE CANNOT SEE, each because something OUTSIDE the
-\ payload resolves it by name. The list is short, explicit and reviewed as
-\ policy, the way tools/manifest-lint.f states the engine's entry points: a rule
-\ that cannot see a use is better than a rule quietly widened until it can.
+\ ONE NAME THE DERIVED RULE CANNOT SEE, because something OUTSIDE the payload
+\ resolves it by name. The list is explicit and reviewed as policy, the way
+\ tools/manifest-lint.f states the engine's entry points: a rule that cannot see
+\ a use is better than a rule quietly widened until it can.
 \
 \ NSTR:IMPORT-ROWS - tools/native-build-core.f TARGET-IMPORTER reaches it by name
 \ through the shipped dictionary, because the alternatives are a public wrapper,
@@ -770,14 +770,13 @@ variable ACAP-BP
 \ before this dot ran. The drift guard is the build's own refusal, "native-build:
 \ literal importer missing", the moment the entry stops matching.
 \
-\ MEM:WB-DEPTH, MEM:WB-BUFFERS, MEM:WB-LENGTHS - lib/memory-test.f asserts that a
-\ completed WITH-BYTES left no frame behind: the depth is back to zero and both
-\ frame buffers are released, which index 0 refusing proves. The property is real
-\ and nothing public observes it, so the audited suite reads the cells. This is
-\ the weaker of the four reasons - a white-box suite over a BAKED package is
-\ asking the shipped image for something the shipped image should not have to
-\ answer - and the end state is that block moving to where it is compiled beside
-\ what it audits, after which these three go.
+\ IT USED TO BE FOUR. MEM:WB-DEPTH, MEM:WB-BUFFERS and MEM:WB-LENGTHS were here
+\ for lib/memory-test.f's WITH-BYTES frame audit, which reopens package MEM and
+\ reads them to prove a completed WITH-BYTES left no frame behind. That was a
+\ whitebox suite asking the SHIPPED image for something the shipped image should
+\ not have to answer, and it is a WHITEBOX-SUITE now: it runs on the unsealed,
+\ unstripped engine test/whitebox-engine.f builds, which carries every name, and
+\ the product owes it nothing.
 : ACAP-KEEP-PKG? ( n ptr u8 n -- bool ) {: k:n pa:ptr pu:n :}
    k ACAP-REC-DST 40 + ACAP-W32@ ACAP-REC-PKG {: na:ptr nu:n pub:bool found:bool :}
    found 0= if false exit then
@@ -785,11 +784,7 @@ variable ACAP-BP
 
 : ACAP-KEEP? ( n -- bool ) {: k:n :}
    k ACAP-REC-NAME$ {: a:ptr u:n :}
-   a u s" IMPORT-ROWS" CORE-STR=CI  k s" NSTR" ACAP-KEEP-PKG? and if true exit then
-   k s" MEM" ACAP-KEEP-PKG? 0= if false exit then
-   a u s" WB-DEPTH" CORE-STR=CI if true exit then
-   a u s" WB-BUFFERS" CORE-STR=CI if true exit then
-   a u s" WB-LENGTHS" CORE-STR=CI ;
+   a u s" IMPORT-ROWS" CORE-STR=CI  k s" NSTR" ACAP-KEEP-PKG? and ;
 
 \ THE WHITEBOX IMAGE KEEPS EVERY NAME, and it is the same switch the seal pass
 \ takes (src/core/internal-mark.f IMK-WHITEBOX?): test/whitebox-engine.f sets
