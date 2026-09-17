@@ -24,7 +24,7 @@ package AOT-LINK
    XREF-FIND dup XREF-FOUND? TTRUE ;
 
 : SPAN-END ( ptr n -- n ) {: rec:ptr :}
-   rec XREF-START rec RAW-LEN + ;
+   rec XREF-START rec REC-BYTES + ;
 
 : ADJACENT ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
    a u SPAN-REC {: rec:ptr :}
@@ -38,8 +38,10 @@ package AOT-LINK
    ROOTREC @ rec = TTRUE
    ASM-INIT PLAN-BLOBS
    ASM-LEN {: before:n :}
-   rec COPY-COMPACT-BLOB
-   ASM-LEN before - rec RAW-LEN T= ;
+   rec REC-CODE-PTR@ MEMBER-AT {: i:n :}
+   i CLO-BYTES rec REC-BYTES T=
+   i COPY-COMPACT-BLOB
+   ASM-LEN before - i CLO-BYTES T= ;
 
 : SPAN-RUN ( -- )
    T-RESET
@@ -50,11 +52,11 @@ package AOT-LINK
    s" ordinary returning record preserves its legacy final slot" T-LABEL
    s" CODE-SPAN-FIXTURE:BACK" SPAN-REC {: back:ptr :}
    back 8 + @ CODE-SPAN:FULL? TFALSE
-   back RAW-LEN back 8 + @ 4 + T=
+   back REC-BYTES back 8 + @ 4 + T=
    s" DOES retains its patched final slot and companion extent" T-LABEL
    s" CODE-SPAN-FIXTURE:MADE" SPAN-REC {: made:ptr :}
    made 8 + @ CODE-SPAN:FULL? TFALSE
-   made RAW-LEN made 8 + @ 4 + T=
+   made REC-BYTES made 8 + @ 4 + T=
    made SPAN-END 4 - ADDRESS-OWNER made = TTRUE
    s" CODE-SPAN-FIXTURE:MAKE" SPAN-REC SPAN-END
    s" CODE-SPAN-FIXTURE:MAKE;does" SPAN-REC SPAN-END T=
