@@ -3,7 +3,7 @@ title: Lower return-row effects at native call boundaries
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-13T21:51:55.550637+03:00\""
+created-at: "2026-09-13T21:51:55.550637+03:00"
 closed-at: "2026-09-16T14:34:47.968873+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Native callable rows still cannot carry callee return-vector motion; residue is a typed return-row ABI or an enforced and diagnosed cross-tier boundary."
 ---

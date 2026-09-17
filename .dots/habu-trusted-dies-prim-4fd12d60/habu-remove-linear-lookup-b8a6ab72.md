@@ -3,7 +3,7 @@ title: Remove linear lookup cost from native compilation
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T09:05:33.547563+03:00\\\"\""
+created-at: "\\\"2026-09-11T09:05:33.547563+03:00\\\""
 closed-at: "2026-09-11T09:37:30.294125+03:00"
 close-reason: Direct validated context/arena slot lookup is integrated. Focused lifetime, builder and application-image checks pass; the same isolated F64 workload improved from 65.87s to 16.97s. Combined full-suite verification remains tracked by the existing integration dot.
 ---

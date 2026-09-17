@@ -3,7 +3,7 @@ title: TRUSTED inventory missing and retirement owners do not exist
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.934874+02:00\""
+created-at: "2026-08-22T22:38:25.934874+02:00"
 closed-at: "2026-09-16T14:34:49.717774+03:00"
 close-reason: "merged into habu-audit-trusted-inventory-3a950436: Same subject: the TRUSTED inventory tool and per-site ownership rows."
 ---

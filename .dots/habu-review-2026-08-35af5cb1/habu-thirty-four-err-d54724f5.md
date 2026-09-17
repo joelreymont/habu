@@ -3,7 +3,7 @@ title: thirty-four error codes declared in two to five files
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.862049+02:00\""
+created-at: "2026-08-22T22:38:25.862049+02:00"
 closed-at: "2026-09-16T14:34:49.520439+03:00"
 close-reason: "superseded by habu-campaign-c4-diagnostics-3b6de147: Error codes are still declared in two to five files each; keep one pre-hook codes package in the error-codes-owned-in-one-place work."
 ---

@@ -3,7 +3,7 @@ title: Preserve source-order binding during warmed verification
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-09-14T01:34:02.890611+03:00\\\"\""
+created-at: "\\\"2026-09-14T01:34:02.890611+03:00\\\""
 closed-at: "2026-09-16T14:34:49.473733+03:00"
 close-reason: "done: The plan records this work as reviewed and integrated with no implementation remaining. [PLAN.md item 2: \"Warmed source-order verification (0c9fe3d7) is reviewed and integrated ... no implementation remains here\"]"
 ---

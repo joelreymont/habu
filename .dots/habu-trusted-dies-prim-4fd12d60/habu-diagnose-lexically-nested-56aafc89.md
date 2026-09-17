@@ -3,7 +3,7 @@ title: Diagnose lexically nested quotation elaboration rejection
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-11T16:51:00.123952+03:00\""
+created-at: "2026-09-11T16:51:00.123952+03:00"
 closed-at: "2026-09-11T17:21:56.229628+03:00"
 close-reason: Reviewed a301eb61 integrated as ebe19a15; combined explicit-tier1 quotation suite passes original nested reducer, deeper/loop/EXIT/sibling cases and capture/unknown-effect negatives. JIT counterpart remains7c5267cd.
 ---

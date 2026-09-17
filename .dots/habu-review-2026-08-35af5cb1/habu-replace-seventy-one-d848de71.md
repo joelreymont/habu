@@ -3,7 +3,7 @@ title: replace seventy one-line TRUSTED forwarders with PPRIM rows
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.840499+02:00\""
+created-at: "2026-08-22T22:38:25.840499+02:00"
 closed-at: "2026-09-16T14:34:50.111091+03:00"
 close-reason: "superseded by habu-campaign-c2-mem-c3d7662b: Residue: one-line TRUSTED forwarders in the declaration front ends must become PPRIM rows so callers reach the targets qualified"
 ---

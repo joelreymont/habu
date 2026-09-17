@@ -3,7 +3,7 @@ title: Reuse one compile context and word model per session
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-09-11T16:38:06.259940+03:00\\\"\""
+created-at: "\\\"2026-09-11T16:38:06.259940+03:00\\\""
 closed-at: "2026-09-12T18:11:06.110844+03:00"
 close-reason: "landed 565f80a8 (five commits on 8319cd60): one compiler context per load with slot ownership recorded per scope (a session under an open context is a named refusal, not a use-after-free), the checker asked once per call site, a module's interner started from a prototype (CLONED-FROM? structural), the dialect vocabulary interned once per load with its opcode memo, the word vocabulary registered once per load with the registration builder given back (60 of 64 arena slots free with a session live) and the intrinsic gate on both link kinds; independent review's two blockers and four should-fixes fixed with mutation-tested regressions; quiet-box floor 4106 -> 3668 us per trivial tier-1 definition (three reps each); run.f identical red set; follow-ups dotted: IR-SYM:SCAN index, the word table's interner, the committed plan on the prototype path; reviewed by hazel"
 ---

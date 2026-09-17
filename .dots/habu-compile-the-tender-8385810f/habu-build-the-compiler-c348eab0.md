@@ -3,7 +3,7 @@ title: Produce and measure an optimized native compiler
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T16:38:06.278925+03:00\\\"\""
+created-at: "\\\"2026-09-11T16:38:06.278925+03:00\\\""
 closed-at: "2026-09-16T14:34:48.777646+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Producing and measuring an optimized native compiler is the campaign's integration and measurement step, downstream of the open selfbuild defects"
 blocks:

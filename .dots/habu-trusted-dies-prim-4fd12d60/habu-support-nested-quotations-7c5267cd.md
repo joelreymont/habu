@@ -3,7 +3,7 @@ title: Support nested quotations in the JIT load tier
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T17:00:21.745861+03:00\\\"\""
+created-at: "\\\"2026-09-11T17:00:21.745861+03:00\\\""
 closed-at: "2026-09-16T14:34:48.011896+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: The JIT load tier still refuses lexically nested quotations; residue is removing the representation limit at the responsible layer, not the diagnostic."
 ---

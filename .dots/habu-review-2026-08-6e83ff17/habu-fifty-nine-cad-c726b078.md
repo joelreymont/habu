@@ -3,7 +3,7 @@ title: fifty-nine CAD-NUM reopen shims cite a closed dot
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.924468+02:00\""
+created-at: "2026-08-22T22:38:25.924468+02:00"
 closed-at: "2026-09-16T14:34:51.485011+03:00"
 close-reason: "superseded by habu-campaign-c3-the-a2477c89: Still true but smaller: CAD-NUM's private role-to-n projection is re-exported by files reopening the package; publish once and lint the reopen"
 ---

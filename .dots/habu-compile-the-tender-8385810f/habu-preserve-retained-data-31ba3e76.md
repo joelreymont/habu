@@ -3,7 +3,7 @@ title: Preserve retained DATA address provenance and literal owners in stripped 
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-14T15:25:49.033014+03:00\""
+created-at: "2026-09-14T15:25:49.033014+03:00"
 closed-at: "2026-09-16T14:34:48.760999+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: A retained pre-window DATA literal still survives a stripped build as an unclassified old address that reads zero"
 ---

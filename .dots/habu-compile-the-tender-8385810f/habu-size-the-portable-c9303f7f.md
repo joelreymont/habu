@@ -3,7 +3,7 @@ title: Size the portable effect pool from its actual encoded bytes
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-09-14T03:34:37.750797+03:00\\\"\""
+created-at: "\\\"2026-09-14T03:34:37.750797+03:00\\\""
 closed-at: "2026-09-16T14:34:48.398386+03:00"
 close-reason: "done: The effect pool and the writer staging use dynamic storage and the obsolete fixed text-pool cap is gone. [test/aot-effect-pool.f registered at test/gate-stdlib-cases.f:1157; src/habu/aot-file.f uses DYNAMIC-BUFFER and carries no 262144 cap.]"
 ---

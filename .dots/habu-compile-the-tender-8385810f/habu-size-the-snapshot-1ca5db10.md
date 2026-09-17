@@ -3,7 +3,7 @@ title: Size the address table for the complete Tender closure
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-12T10:41:22.834193+03:00\""
+created-at: "2026-09-12T10:41:22.834193+03:00"
 closed-at: "2026-09-16T14:34:48.748325+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: The 65,536-row cap and full-width encoding are in the tree; what remains is the rebuilt product plus the complete Tender-closure measurement"
 blocks:

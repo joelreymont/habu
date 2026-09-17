@@ -3,7 +3,7 @@ title: doubled typed surfaces and nineteen OK extractors
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.946942+02:00\""
+created-at: "2026-08-22T22:38:25.946942+02:00"
 closed-at: "2026-09-16T14:34:50.692778+03:00"
 close-reason: "superseded by habu-campaign-c3-the-a2477c89: The nineteen-fold extractor is gone; residue: STR, MEM and VEC still re-state raw words as one-line typed wrappers"
 ---

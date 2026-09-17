@@ -3,7 +3,7 @@ title: Restore complete generated-source certification
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-14T12:14:20.562581+03:00\""
+created-at: "2026-09-14T12:14:20.562581+03:00"
 closed-at: "2026-09-16T14:34:47.979004+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: The named SOURCE-BUF-PRELOADED path is gone, but the residue stands: generated-source certification must isolate candidate declarations and reject malformed bodies."
 ---

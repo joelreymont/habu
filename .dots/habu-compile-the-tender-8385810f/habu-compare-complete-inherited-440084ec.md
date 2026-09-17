@@ -3,7 +3,7 @@ title: Compare complete inherited environment values in tests
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-09-13T16:24:10.275135+03:00\\\"\""
+created-at: "\\\"2026-09-13T16:24:10.275135+03:00\\\""
 closed-at: "2026-09-13T16:33:24.014073+03:00"
 close-reason: Integrated1d62ea29+317b7dae after separate Astra review and review follow-up requiring whole-line boundaries. Existing1024-byte SB assumption removed using scoped exact-size memory. Independent actualPATH1047 real-load suite passes26 cases including first/middle matches, prefixed-name/embedded-value/changed-value refusals. No environment value or config changed; full compiler gate remains separately open.
 ---

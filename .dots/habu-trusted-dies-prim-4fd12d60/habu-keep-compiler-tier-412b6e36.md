@@ -3,7 +3,7 @@ title: Keep compiler tier stable during an active definition
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T17:07:16.410211+03:00\\\"\""
+created-at: "\\\"2026-09-11T17:07:16.410211+03:00\\\""
 closed-at: "2026-09-16T14:34:48.780356+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: The compiler tier is still re-read per token, so a tier change inside a definition crashes rc 134"
 ---

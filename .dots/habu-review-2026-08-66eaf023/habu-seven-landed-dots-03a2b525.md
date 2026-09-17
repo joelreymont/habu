@@ -3,7 +3,7 @@ title: seven landed dots still open and ready
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:26.034299+02:00\""
+created-at: "2026-08-22T22:38:26.034299+02:00"
 closed-at: "2026-09-16T14:34:48.317768+03:00"
 close-reason: "obsolete: Tracker bookkeeping that this triage performs directly; the listed leaves are verified landed here. [Packages present: prof.f:21 PROF, aot-lib.f:18 AOT-LINK, aot-capture.f:24, snap-lib.f:25 SNAP, public-signatures-core.f:11 PS, error-code-lint-core.f:55, check-core.f:29.]"
 ---

@@ -3,7 +3,7 @@ title: WALK-FILES bakes in repo policy and aborts on dangling symlinks
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.954142+02:00\""
+created-at: "2026-08-22T22:38:25.954142+02:00"
 closed-at: "2026-09-16T14:34:50.118647+03:00"
 close-reason: "superseded by habu-campaign-c5-runtime-723833a3: Residue: the file walk bakes repo policy into the library, applies it to the root, and aborts the whole walk on one dangling link"
 ---

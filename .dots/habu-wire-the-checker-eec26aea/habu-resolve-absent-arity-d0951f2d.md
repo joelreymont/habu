@@ -3,7 +3,7 @@ title: Resolve absent arity in the native checker prefix
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-13T23:29:10.699091+03:00\""
+created-at: "2026-09-13T23:29:10.699091+03:00"
 closed-at: "2026-09-14T00:13:41.065583+03:00"
 close-reason: Reviewed callback and boolean contracts build in native products E and F; retained tier-1 prefix and graph regressions pass.
 ---

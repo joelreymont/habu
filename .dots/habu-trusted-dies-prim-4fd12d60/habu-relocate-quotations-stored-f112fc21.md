@@ -3,7 +3,7 @@ title: Relocate quotations stored in typed image data
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-10T18:03:13.371249+03:00\""
+created-at: "2026-09-10T18:03:13.371249+03:00"
 closed-at: "2026-09-10T20:37:34.459158+03:00"
 close-reason: Normal typed quotation stores now register persistent DATA cells with the shared relocation table while transient buffers remain unmarked. Native stored-quotation and combined app-image tests pass, including overwrite, source-free restore and recapture.
 ---

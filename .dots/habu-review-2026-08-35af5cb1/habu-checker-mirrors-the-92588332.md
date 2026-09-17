@@ -3,7 +3,7 @@ title: "checker mirrors the engine's sealed-package table by hand"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.871061+02:00\""
+created-at: "2026-08-22T22:38:25.871061+02:00"
 closed-at: "2026-09-16T14:34:52.136277+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Residue: the checker still lists the sealed package names by hand beside the engine's declared single authority, with nothing pinning the two together."
 ---

@@ -3,7 +3,7 @@ title: stale checker.f size header and fixed 512 KiB readers
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.858564+02:00\""
+created-at: "2026-08-22T22:38:25.858564+02:00"
 closed-at: "2026-09-16T14:34:49.308333+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: The header still states a size the file passed long ago and fixed $80000 readers remain; keep the correction and the runtime-sized readers."
 ---

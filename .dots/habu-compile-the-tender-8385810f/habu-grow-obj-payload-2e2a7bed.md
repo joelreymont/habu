@@ -3,7 +3,7 @@ title: Grow object payload storage without fixed codec or linker ceilings
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-14T15:20:07.967704+03:00\""
+created-at: "2026-09-14T15:20:07.967704+03:00"
 closed-at: "2026-09-14T15:33:32.319981+03:00"
 close-reason: Implemented and independently reviewed as1fb297ec (original71f266be). Five optimizer-enabled object suites pass; >512KiB text/data and alias/cache/hash controls preserve bytes, actual525288-byte raw object roundtrips into byte-identical executable and runs. Combined test/stripped-quotation.f now passes through full hb-build plus fresh execution. Full native release gate remains separate.
 ---

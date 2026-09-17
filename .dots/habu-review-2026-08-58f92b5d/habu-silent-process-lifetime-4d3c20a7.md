@@ -3,7 +3,7 @@ title: silent process-lifetime caps in the native chain
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.906648+02:00\""
+created-at: "2026-08-22T22:38:25.906648+02:00"
 closed-at: "2026-09-16T14:34:52.020135+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Residue: silent per-process caps survive in native/string.f, native/trap.f and a64-effect.f SEQ-MAX-N; the inline.f and migrate.f halves are gone."
 ---

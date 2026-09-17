@@ -3,7 +3,7 @@ title: source comments cite unpinned Examples as machine-checked facts
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-22T22:38:26.070155+02:00\""
+created-at: "2026-08-22T22:38:26.070155+02:00"
 closed-at: "2026-09-16T14:34:50.548542+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: Still true: the IR type comments cite two Rocq Examples as if they were manifest theorems"
 ---

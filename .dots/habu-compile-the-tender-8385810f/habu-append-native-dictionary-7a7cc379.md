@@ -3,7 +3,7 @@ title: Append native dictionary publications without a full rebuild
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-09-14T00:01:46.985086+03:00\\\"\""
+created-at: "\\\"2026-09-14T00:01:46.985086+03:00\\\""
 closed-at: "2026-09-16T14:34:49.468757+03:00"
 close-reason: "done: The primitive and its consumer are in the tree. [src/habu/habu1.f:3200 publishes \"ndict-append\"; src/compiler/native/publish.f:38 calls it]"
 ---

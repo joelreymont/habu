@@ -3,7 +3,7 @@ title: Fix spill shape for a quotation carried across an IF
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T16:16:48.909168+03:00\\\"\""
+created-at: "\\\"2026-09-11T16:16:48.909168+03:00\\\""
 closed-at: "2026-09-16T14:34:48.008620+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: A quotation retained across an IF still faults the spill shape on a valid program; residue is E-A64SPILL-SHAPE -8442 for that lowering."
 ---

@@ -3,7 +3,7 @@ title: root plan documents contradict the tree
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:26.044480+02:00\""
+created-at: "2026-08-22T22:38:26.044480+02:00"
 closed-at: "2026-09-16T14:34:51.295690+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: MODEL-CAD-V2-PLAN.md is already gone and PLAN.md is now honestly the native-compiler plan; MISSING.md, TYPE-FIXES-PLAN.md, LLM.md and RESTART.md still sit at the root"
 ---

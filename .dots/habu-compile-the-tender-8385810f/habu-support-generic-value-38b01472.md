@@ -3,7 +3,7 @@ title: Support generic value parameters instantiated with closed products
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-14T14:12:28.625536+03:00\""
+created-at: "2026-09-14T14:12:28.625536+03:00"
 closed-at: "2026-09-16T14:34:52.061982+03:00"
 close-reason: "superseded by habu-campaign-c3-the-a2477c89: Residue: a scalar type variable still cannot bind a closed product at a generic call boundary, so Tender's APPLY-PROOF shape is refused."
 ---

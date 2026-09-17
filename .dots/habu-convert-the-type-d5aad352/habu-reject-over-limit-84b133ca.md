@@ -3,7 +3,7 @@ title: Reject over-limit generated names
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-30T16:16:01.769515+02:00\""
+created-at: "2026-07-30T16:16:01.769515+02:00"
 closed-at: "2026-09-16T14:34:50.571333+03:00"
 close-reason: "superseded by habu-campaign-c4-diagnostics-3b6de147: Still-true rule (no silent hash fallback for an over-limit generated name) but its census and named owner are stale"
 ---

@@ -3,7 +3,7 @@ title: Reuse indexed dictionary records and binding results
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-11T16:38:06.274143+03:00\""
+created-at: "2026-09-11T16:38:06.274143+03:00"
 closed-at: "2026-09-16T14:34:49.395225+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Indexed dictionary record reuse is live compiler work under the plan; keep it there rather than as a standing claim."
 blocks:

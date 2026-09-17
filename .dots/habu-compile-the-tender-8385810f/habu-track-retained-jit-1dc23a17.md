@@ -3,7 +3,7 @@ title: Finish tier dispatch, checker owners and retained-code provenance
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"\\\\\\\"2026-09-11T16:07:57.854352+03:00\\\\\\\"\\\"\""
+created-at: "\\\"\\\\\\\"2026-09-11T16:07:57.854352+03:00\\\\\\\"\\\""
 closed-at: "2026-09-16T14:34:48.797744+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Tier dispatch, checker owner records and retained-code provenance are one large interface change inside the live compiler campaign"
 blocks:

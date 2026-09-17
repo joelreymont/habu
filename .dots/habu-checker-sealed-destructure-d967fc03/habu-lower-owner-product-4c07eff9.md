@@ -3,7 +3,7 @@ title: Lower owner product construction
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-29T20:53:42.745487+02:00\""
+created-at: "2026-07-29T20:53:42.745487+02:00"
 closed-at: "2026-09-16T14:34:49.116572+03:00"
 close-reason: "superseded by habu-campaign-c3-the-a2477c89: A checked owner product form still has no lowering; keep the padding-only lowering leaf with the parse leaf."
 blocks:

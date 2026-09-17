@@ -3,7 +3,7 @@ title: lib minor defects
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.969049+02:00\""
+created-at: "2026-08-22T22:38:25.969049+02:00"
 closed-at: "2026-09-16T14:34:50.280306+03:00"
 close-reason: "superseded by habu-campaign-c5-runtime-723833a3: A twelve-defect list, not one task; residue: comparator globals, unchecked stats reads, the fixed-name atomic write and masked errors in lib"
 ---

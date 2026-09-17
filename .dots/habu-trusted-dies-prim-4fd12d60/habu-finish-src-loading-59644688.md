@@ -3,7 +3,7 @@ title: Finish source loading and public Habu documentation
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-10T18:03:13.389278+03:00\""
+created-at: "2026-09-10T18:03:13.389278+03:00"
 closed-at: "2026-09-16T14:34:49.387381+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: This is a campaign statement with a live handoff, not a task; keep the remaining source-loading and documentation acceptance in the toolchain work."
 ---

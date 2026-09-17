@@ -3,7 +3,7 @@ title: "seal lib/test/budget.f's remaining globals"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-23T12:39:44.950384+02:00\""
+created-at: "2026-08-23T12:39:44.950384+02:00"
 closed-at: "2026-09-16T14:34:50.555260+03:00"
 close-reason: "obsolete: lib/test/budget.f was deleted [lib/test now holds assert, mapped, outcome, record, runner, spawn-report, src-shape, subject and suite only]"
 ---

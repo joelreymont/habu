@@ -3,7 +3,7 @@ title: Make model config owner-only
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-29T20:36:41.100566+02:00\""
+created-at: "2026-07-29T20:36:41.100566+02:00"
 closed-at: "2026-09-16T14:34:51.180332+03:00"
 close-reason: "moved to loom as loom-make-model-config-25c0985c (commit dcb8d632): GPT2 model config ownership is Loom's inference code"
 ---

@@ -3,7 +3,7 @@ title: forty-eight one-line public aliases should be EXPORT
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.949786+02:00\""
+created-at: "2026-08-22T22:38:25.949786+02:00"
 closed-at: "2026-09-16T14:34:50.545369+03:00"
 close-reason: "superseded by habu-campaign-c3-the-a2477c89: Still true in part: one-line public forwarders remain where EXPORT says the same thing at no cost"
 ---

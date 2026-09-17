@@ -3,7 +3,7 @@ title: Bind libcurl through the FFI for HTTPS
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-16T13:54:54.720416+03:00\""
+created-at: "2026-09-16T13:54:54.720416+03:00"
 closed-at: "2026-09-17T03:44:25.324564+03:00"
 close-reason: "implemented, reviewed, landed on hazel's line and integrated at d7555528, gate R green (417 of 417)"
 ---

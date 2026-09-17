@@ -3,7 +3,7 @@ title: token ladders where the standard requires tables
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.964851+02:00\""
+created-at: "2026-08-22T22:38:25.964851+02:00"
 closed-at: "2026-09-16T14:34:50.190500+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: Residue: classification ladders where the standard requires row data; the ptx files named are gone with Loom but the lib ladders remain"
 ---

@@ -3,7 +3,7 @@ title: Preserve caught value boundaries in native compilation
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-13T21:25:00Z\""
+created-at: "2026-09-13T21:25:00Z"
 closed-at: "2026-09-16T14:34:51.500490+03:00"
 close-reason: "done: DO-CATCH now keeps the caught window's value boundaries and appends the result code as a separate cell [src/compiler/native/elaborate.f DO-CATCH computes glue with VGLUE-LOW; test/compiler/native-catch.f:270 multicell-payload window case]"
 blocks:

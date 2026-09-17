@@ -3,7 +3,7 @@ title: Honor committed ceilings on symbol prototype clones
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-09-12T18:11:06.107844+03:00\""
+created-at: "2026-09-12T18:11:06.107844+03:00"
 blocks:
   - habu-check-arena-append-c7b1e040
 ---

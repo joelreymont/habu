@@ -3,7 +3,7 @@ title: Default restored executable sessions to the JIT load tier
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T17:07:16.553782+03:00\\\"\""
+created-at: "\\\"2026-09-11T17:07:16.553782+03:00\\\""
 closed-at: "2026-09-16T14:34:48.015653+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Restored executable sessions must default to the JIT tier while saved bodies stay optimizing AOT; residue is the reset point after every fresh-process restore."
 ---

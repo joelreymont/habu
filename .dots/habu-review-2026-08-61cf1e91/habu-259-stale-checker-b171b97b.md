@@ -3,7 +3,7 @@ title: 259 stale checker.f line citations in the checker model
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:26.054254+02:00\""
+created-at: "2026-08-22T22:38:26.054254+02:00"
 closed-at: "2026-09-16T14:34:50.125580+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: Residue: the models' only check-me-against-the-code affordance is stale everywhere; cite by word name and let the gate resolve the name structurally"
 ---

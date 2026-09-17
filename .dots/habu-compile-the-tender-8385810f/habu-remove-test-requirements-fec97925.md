@@ -3,7 +3,7 @@ title: Remove obsolete JIT inliner code and fixture requirements
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-13T14:51:13.076942+03:00\""
+created-at: "2026-09-13T14:51:13.076942+03:00"
 closed-at: "2026-09-16T14:34:48.374561+03:00"
 close-reason: "done: The dead C-CALL scan and copy helpers and the fixtures that required them are gone. [No CARRY-SITE or EMIT-OUTSIDE anywhere in src, tools or test; test/addrmap-call.f and test/p2-map-rewind.f remain as behavioural cases.]"
 blocks:

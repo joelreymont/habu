@@ -3,7 +3,7 @@ title: Reject out-of-range script argument access before dereference
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T16:07:57.880042+03:00\\\"\""
+created-at: "\\\"2026-09-11T16:07:57.880042+03:00\\\""
 closed-at: "2026-09-11T17:21:56.363718+03:00"
 close-reason: Reviewed a4b13907 integrated in current source; updated-prefix CLI contracts pass2.066s including actual child zero/negative/one-past and first/last/empty arguments. Standalone valid/rejected args were checked in original candidate. RawARGV sentinel unchanged.
 ---

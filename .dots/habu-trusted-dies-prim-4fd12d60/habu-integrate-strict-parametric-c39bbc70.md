@@ -3,7 +3,7 @@ title: Integrate strict parametric effects and checked Forth helpers
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-10T18:03:13.337312+03:00\""
+created-at: "2026-09-10T18:03:13.337312+03:00"
 closed-at: "2026-09-16T14:34:48.737785+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Strict parametric effects are in force but five suites are still red under them and docs/forth.md does not state the rule"
 ---

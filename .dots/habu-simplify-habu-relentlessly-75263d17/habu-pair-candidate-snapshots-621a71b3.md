@@ -3,7 +3,7 @@ title: Pair candidate snapshots with the existing host
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-08-23T21:07:08.958927+02:00\\\"\""
+created-at: "\\\"2026-08-23T21:07:08.958927+02:00\\\""
 closed-at: "2026-09-16T14:34:48.768271+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Candidate-hosted snapshot builds still need the existing <engine>-host sibling convention wired into snapshot-writer"
 ---

@@ -3,7 +3,7 @@ title: Rebuild an engine from its own product to a fixpoint
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-11T18:15:57.448451+03:00\""
+created-at: "2026-09-11T18:15:57.448451+03:00"
 closed-at: "2026-09-12T00:51:04.789944+03:00"
 close-reason: "landed c64225a700d9 (USIGS-POW2-CAP deleted; USIGS-SNAPSHOT-PERSIST and NORET-SNAPSHOT-PERSIST bake at USIGS-ROUND-CAP; engine-suite pins the persisted cap) and 59f0623ef57a (tools/two-generation-build.f + probe, docs/bootstrap.md Generation Chain Check). Measured 2026-09-12: the per-generation growth was exactly the two persisted checker pool caps (B1->B2 +2,228,224 at the power of two, +262,144 at the grain, B2->B3 zero); gen 3 now builds rc 0 in 36 s and matches gen 2 field for field (img 5308608, sym-n 12345, usigs 2260952/2293760, norets 133424/196608, rows 24916, heap 10221500); B2-hosted build peak 30,675,584 against the DP cap 33,030,144 (7.1% margin). The byte-for-byte fixpoint is not met and moves to habu-make-the-engine (image reproducibility): same-host builds differ by 3-4 bytes, B2 vs B3 by 1,129,827, B4 vs B5 by 3."
 ---

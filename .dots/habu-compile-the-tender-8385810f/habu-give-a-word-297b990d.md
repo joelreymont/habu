@@ -3,7 +3,7 @@ title: Give word tables their interner and one binding gate
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-12T18:11:06.105604+03:00\""
+created-at: "2026-09-12T18:11:06.105604+03:00"
 closed-at: "2026-09-16T14:34:50.261532+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Live PLAN.md work, but written as a whole lane; residue: word tables need one owning interner and a uniform lookup gate"
 blocks:

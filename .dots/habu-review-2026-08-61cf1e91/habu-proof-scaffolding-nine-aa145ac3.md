@@ -3,7 +3,7 @@ title: "proof scaffolding: nine CAS restatements, seven gate copies, a lexer tha
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-22T22:38:26.073425+02:00\""
+created-at: "2026-08-22T22:38:26.073425+02:00"
 closed-at: "2026-09-16T14:34:52.142692+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: Residue: the proof-walk vocabulary is still copied across the gate files and the design doc still describes a tree and a CI that do not exist."
 ---

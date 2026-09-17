@@ -3,7 +3,7 @@ title: error codes minted outside errors.f and a drifting map
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.961934+02:00\""
+created-at: "2026-08-22T22:38:25.961934+02:00"
 closed-at: "2026-09-16T14:34:51.282027+03:00"
 close-reason: "superseded by habu-campaign-c4-diagnostics-3b6de147: Error codes are still minted outside lib/errors.f and the claimed ranges still drift; this is the campaign's own \"codes owned in one place\""
 ---

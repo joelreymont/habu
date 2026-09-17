@@ -3,7 +3,7 @@ title: README points at archived plans and stale facts
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:26.022197+02:00\""
+created-at: "2026-08-22T22:38:26.022197+02:00"
 closed-at: "2026-09-16T14:34:51.285691+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: README was rewritten and almost every cited defect is gone; the residue is that it still lists a bench/ directory that does not exist"
 ---

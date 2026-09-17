@@ -3,7 +3,7 @@ title: constant pops below the interpret stack base before any guard
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-08-22T22:47:07.218842+02:00\""
+created-at: "2026-08-22T22:47:07.218842+02:00"
 closed-at: "2026-09-16T14:34:48.734363+03:00"
 close-reason: "superseded by habu-campaign-c4-diagnostics-3b6de147: constant still pops a value before any depth guard, so an empty stack underflows past the interpret base and leaves checker rows behind"
 ---

@@ -3,7 +3,7 @@ title: checker certifies bodies the engine cannot load
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-23T12:46:49.262680+02:00\""
+created-at: "2026-08-23T12:46:49.262680+02:00"
 closed-at: "2026-09-16T14:34:49.375718+03:00"
 close-reason: "superseded by habu-campaign-c4-diagnostics-3b6de147: The verifier still passes bodies the engine cannot compile, with no checker packet; keep the definer-hook distinction in the diagnostics contract."
 ---

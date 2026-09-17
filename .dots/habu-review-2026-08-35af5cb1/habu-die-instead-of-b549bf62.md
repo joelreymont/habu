@@ -3,7 +3,7 @@ title: die instead of throw on user-reachable checker inputs
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.867129+02:00\""
+created-at: "2026-08-22T22:38:25.867129+02:00"
 closed-at: "2026-09-16T14:34:50.115098+03:00"
 close-reason: "superseded by habu-campaign-c4-diagnostics-3b6de147: Residue: this is the campaign's own item - user-reachable checker inputs must throw a named code instead of ending the process with no rollback"
 ---

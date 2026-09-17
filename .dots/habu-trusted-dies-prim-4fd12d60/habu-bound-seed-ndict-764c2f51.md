@@ -3,7 +3,7 @@ title: Bound seed-ndict! below and register the prefix checker test
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-11T18:15:57.452577+03:00\""
+created-at: "2026-09-11T18:15:57.452577+03:00"
 closed-at: "2026-09-14T13:29:21.200239+03:00"
 close-reason: Negative/out-of-range seed indices fail before pointer arithmetic; new native product passes build-rewind and engine suites plus prefix declarations. Registered checker owner-handoff fixture passes tier1. Earliest global marker policy unified; independent Astra review found no correctness defects.
 ---

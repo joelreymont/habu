@@ -3,7 +3,7 @@ title: Preserve prefix identity for named code literals
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-14T04:04:40.958930+03:00\""
+created-at: "2026-09-14T04:04:40.958930+03:00"
 closed-at: "2026-09-16T14:34:48.751172+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: AOT out-chain literals still take a bare record name without band or scope qualification, so an alias or same-spelling private word can be misrepresented"
 ---

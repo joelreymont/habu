@@ -3,7 +3,7 @@ title: Production compiler and REPL
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-08-24T21:24:44.720413+02:00\""
+created-at: "2026-08-24T21:24:44.720413+02:00"
 closed-at: "2026-09-16T14:34:51.489174+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Epic restating PLAN.md's required result: one native compiler path, source-located errors, a REPL usable after interruption, one self-contained hb"
 ---

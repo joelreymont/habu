@@ -3,7 +3,7 @@ title: Fix PF-LAYOUT-REQUIRE frame ordering in optimizing selfbuild
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T17:19:33.198324+03:00\\\"\""
+created-at: "\\\"2026-09-11T17:19:33.198324+03:00\\\""
 closed-at: "2026-09-16T14:34:48.782892+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: The optimizing self-build still stops with an uncaught -8522 frame-ordering failure compiling PF-LAYOUT-REQUIRE"
 ---

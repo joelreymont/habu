@@ -3,7 +3,7 @@ title: Respect contravariance in quotation input rows
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-14T13:31:34.143512+03:00\""
+created-at: "2026-09-14T13:31:34.143512+03:00"
 closed-at: "2026-09-16T14:34:51.508083+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Residue: quotation input rows must be contravariant so a callback cannot narrow where a direct call is refused"
 ---

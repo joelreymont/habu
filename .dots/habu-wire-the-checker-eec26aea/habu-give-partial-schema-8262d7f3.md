@@ -3,7 +3,7 @@ title: Give partial schema constructors canonical persistent identity
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-13T21:36:14.479617+03:00\""
+created-at: "2026-09-13T21:36:14.479617+03:00"
 closed-at: "2026-09-16T14:34:47.959086+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Partial-payload capture still refuses dynamic schema-constructor codes; residue is canonical persistent constructor identity rather than a process-local code."
 ---

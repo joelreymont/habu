@@ -3,7 +3,7 @@ title: Regress reopen name resolution
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-27T17:25:37.562438+02:00\""
+created-at: "2026-07-27T17:25:37.562438+02:00"
 closed-at: "2026-09-16T14:34:49.667717+03:00"
 close-reason: "merged into habu-share-reopen-name-92885254: The regression pins the same fix and should land in the same change."
 blocks:

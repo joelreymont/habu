@@ -3,7 +3,7 @@ title: Reject internal JIT calls even when a typed effect is available
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-13T16:24:10.390520+03:00\\\"\""
+created-at: "\\\"2026-09-13T16:24:10.390520+03:00\\\""
 closed-at: "2026-09-16T14:34:48.791358+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: The JIT still emits calls to internal words once a typed effect exists, where tier 1 rejects them"
 ---

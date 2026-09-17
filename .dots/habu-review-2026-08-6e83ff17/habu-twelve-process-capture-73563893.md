@@ -3,7 +3,7 @@ title: twelve process capture entry points
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.942492+02:00\""
+created-at: "2026-08-22T22:38:25.942492+02:00"
 closed-at: "2026-09-16T14:34:48.313727+03:00"
 close-reason: "superseded by habu-campaign-c5-runtime-723833a3: Residue: the process library still carries twelve near-identical capture entry points that differ only in spawn primitive and result shape."
 ---

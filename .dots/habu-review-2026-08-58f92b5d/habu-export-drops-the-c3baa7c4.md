@@ -3,7 +3,7 @@ title: EXPORT drops the internal and kind bits from the alias record
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:47:07.233392+02:00\""
+created-at: "2026-08-22T22:47:07.233392+02:00"
 closed-at: "2026-09-16T14:34:50.128643+03:00"
 close-reason: "superseded by habu-campaign-c3-the-a2477c89: Residue: an EXPORT alias record must carry the internal bit and the kind pair, or an internal word stays interpretable and a constant alias loses its fold"
 ---

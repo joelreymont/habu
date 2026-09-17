@@ -3,7 +3,7 @@ title: Fix ACAP-TIDX-INS spill rejection in optimizing selfbuild
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T16:59:27.075369+03:00\\\"\""
+created-at: "\\\"2026-09-11T16:59:27.075369+03:00\\\""
 closed-at: "2026-09-11T17:21:56.092332+03:00"
 close-reason: Reviewed b7780bba integrated as c0bd71d4; original reducer and EXHAUST/EXHAUST-READ controls pass; actual optimizing selfbuild passed ACAP-TIDX-INS and reached separate PF-LAYOUT-REQUIRE blocker8f0960e3.
 ---

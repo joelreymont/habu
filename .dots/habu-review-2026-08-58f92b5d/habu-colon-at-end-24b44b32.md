@@ -3,7 +3,7 @@ title: colon at end of input is accepted silently
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-08-22T22:47:07.208879+02:00\""
+created-at: "2026-08-22T22:47:07.208879+02:00"
 closed-at: "2026-09-16T14:34:48.723849+03:00"
 close-reason: "superseded by habu-campaign-c4-diagnostics-3b6de147: The reader half landed but nothing audits PEND-CELL at exit, so an evaluate ending inside a definition still returns cleanly and leaks the open record"
 ---

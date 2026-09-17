@@ -3,7 +3,7 @@ title: 117 concrete Examples published as theorem rows
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:26.057389+02:00\""
+created-at: "2026-08-22T22:38:26.057389+02:00"
 closed-at: "2026-09-16T14:34:52.024038+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: Residue: the checker-model manifest still publishes example families as theorem rows while the other manifests publish theorems only."
 ---

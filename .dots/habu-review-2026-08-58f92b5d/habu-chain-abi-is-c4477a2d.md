@@ -3,7 +3,7 @@ title: chain ABI is Darwin with x18 reserved on the Linux host
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.899371+02:00\""
+created-at: "2026-08-22T22:38:25.899371+02:00"
 closed-at: "2026-08-24T19:00:43.475550+02:00"
 close-reason: "landed and verified: 5eaf4056 integrated at 4f228ccb; ABI/assembler/native-chain suites, judge/fuzz, maki, PTX, and full native suite green"
 ---

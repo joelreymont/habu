@@ -3,7 +3,7 @@ title: Implement generic linear owner scopes
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-26T20:49:21.319845+02:00\""
+created-at: "2026-07-26T20:49:21.319845+02:00"
 closed-at: "2026-09-16T14:34:49.888667+03:00"
 close-reason: "superseded by habu-campaign-c2-mem-c3d7662b: Residue: the runtime half of the same scope - cleanup and rethrow around a linear owner in call-local state, no process-global owner cells"
 blocks:

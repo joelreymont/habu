@@ -3,7 +3,7 @@ title: Remove superseded agent workspaces and handoff clutter
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T09:05:33.564038+03:00\\\"\""
+created-at: "\\\"2026-09-11T09:05:33.564038+03:00\\\""
 closed-at: "2026-09-11T09:10:14.211817+03:00"
 close-reason: Forgot and trashed 13 superseded empty Cedar workspaces after snapshot checks; unique source changes, current integration and active agent/reference workspaces retained. Replaced stale parent/build/integration/source dot diaries with current concise acceptance.
 ---

@@ -3,7 +3,7 @@ title: "one declaration system: retire SUMTYPE and PRODUCT"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.851213+02:00\""
+created-at: "2026-08-22T22:38:25.851213+02:00"
 closed-at: "2026-09-16T14:34:49.305115+03:00"
 close-reason: "superseded by habu-campaign-c3-the-a2477c89: Two declaration systems still coexist with parsers duplicated three and four ways; keep the migration and E-REMOVED-TYPE-SYNTAX in the type-surface work."
 ---

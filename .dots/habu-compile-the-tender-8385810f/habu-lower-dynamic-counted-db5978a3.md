@@ -3,7 +3,7 @@ title: Lower dynamic counted-loop steps in the optimizing compiler
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-14T15:00:03.712796+03:00\""
+created-at: "2026-09-14T15:00:03.712796+03:00"
 ---
 
 Resolved 2026-09-14: Hazel's fdf58aa3 integrated as 4b31dbcf after Cedar's

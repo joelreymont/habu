@@ -3,7 +3,7 @@ title: Preserve exceptional stack types across catch and payload restoration
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-09-13T21:26:24.684087+03:00\""
+created-at: "2026-09-13T21:26:24.684087+03:00"
 ---
 
 Confirmed 2026-09-13 by payload_resume under the current fresh source-checker owner in .jj-ws/cedar-owner-payload. CHECK! accepts both:

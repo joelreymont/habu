@@ -3,7 +3,7 @@ title: Migrate tree to the converted type surface
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-30T16:16:01.775217+02:00\""
+created-at: "2026-07-30T16:16:01.775217+02:00"
 closed-at: "2026-09-16T14:34:48.694832+03:00"
 close-reason: "superseded by habu-campaign-c3-the-a2477c89: The tree-wide migration sweep is unstarted: arity NEWTYPE and legacy declarations are still everywhere"
 ---

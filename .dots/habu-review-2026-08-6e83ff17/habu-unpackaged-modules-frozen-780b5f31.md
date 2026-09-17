@@ -3,7 +3,7 @@ title: unpackaged modules frozen by the package lint
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.939463+02:00\""
+created-at: "2026-08-22T22:38:25.939463+02:00"
 closed-at: "2026-09-16T14:34:50.496461+03:00"
 close-reason: "superseded by habu-campaign-c3-the-a2477c89: The lint that forbade packaging is deleted, so the residue is the cascade itself: core lib modules and the gate pool still open no package"
 ---

@@ -3,7 +3,7 @@ title: Factor declaration growth throw rows
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-26T21:39:46.814091+02:00\""
+created-at: "2026-07-26T21:39:46.814091+02:00"
 closed-at: "2026-09-16T14:34:51.586517+03:00"
 close-reason: "obsolete: GROW-TABLE, NEXT-CAP and the injectable allocator were deleted; the transaction table is a fixed capacity now [src/core/declaration-transaction.f:16-30 records the deletion and why, citing habu-seal-the-declaration-7183177e]"
 ---

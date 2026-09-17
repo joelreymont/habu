@@ -3,7 +3,7 @@ title: Prevent ordinary JIT loads from exhausting code span tracking
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-11T17:23:20.225919+03:00\""
+created-at: "2026-09-11T17:23:20.225919+03:00"
 closed-at: "2026-09-16T14:34:47.951000+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: The 512-row bound is now 8192, so the reported tier0 exit-96 load failure is gone; residue is that span coalescing was never diagnosed, only out-sized."
 ---

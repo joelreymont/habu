@@ -3,7 +3,7 @@ title: judge reference column needs an ELF reader
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-23T11:50:22.783045+02:00\""
+created-at: "2026-08-23T11:50:22.783045+02:00"
 closed-at: "2026-09-16T14:34:52.153490+03:00"
 close-reason: "obsolete: The judge, its reference reader and the doc it would update were all deleted; there is no reference column to give an ELF leg. [tools/judge*, tools/codegen-compare-cc.f and docs/codegen-parity.md all absent]"
 ---

@@ -3,7 +3,7 @@ title: Resolve an IR arena handle once per read
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-09-11T16:38:06.253483+03:00\\\"\""
+created-at: "\\\"2026-09-11T16:38:06.253483+03:00\\\""
 closed-at: "2026-09-11T18:50:28.286056+03:00"
 close-reason: "Landed on the root as 035bfb4c (cedar's integration of a62274eb): LIVE-SLOT/FROZEN-SLOT flat with the check order pinned by four negatives, SERIAL-LIVE? a direct compare, READ/FREAD/USED/SIZE resolve once, CELL-AT native-cell read behind a load-time probe with the SCRATCH-TAKE alignment proof; frozen-input pair 179.75 to 155.37 s forced-tier Tender load (-13.6%), ANSWER-COUNT 8.37 to 7.60 s, 16 calls per read to 3, full gate byte-identical pass/red sets."
 ---

@@ -3,7 +3,7 @@ title: Complete queued profiler and debugger fixes
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-10T18:03:13.402262+03:00\""
+created-at: "2026-09-10T18:03:13.402262+03:00"
 closed-at: "2026-09-12T00:23:54.336929+03:00"
 close-reason: crash fixed and landed on the root as cb4fece2 by rowan after independent review (handler off the interrupted registers, own band, alternate stack; regressions GDB-PROFILER-FOREIGN and GDB-PROFILER-CLOCK fail on the previous engine); the queued tooling asks (package-qualified names, caller chains, a stop command, breakpoint-target validation) are reopened as habu-finish-profiler-tooling below
 ---

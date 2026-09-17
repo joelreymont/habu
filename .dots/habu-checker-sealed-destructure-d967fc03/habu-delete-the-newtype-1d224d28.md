@@ -3,7 +3,7 @@ title: Replace NEWTYPE with carrier form; delete DEFTYPE
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-30T15:42:15.774373+02:00\""
+created-at: "2026-07-30T15:42:15.774373+02:00"
 closed-at: "2026-09-16T14:34:49.164788+03:00"
 close-reason: "superseded by habu-campaign-c3-the-a2477c89: NEWTYPE still states no carrier and DEFTYPE still duplicates a one-field structure; keep the single carrier-stating declaration in the type-surface work."
 ---

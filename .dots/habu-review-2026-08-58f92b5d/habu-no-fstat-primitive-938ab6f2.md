@@ -3,7 +3,7 @@ title: "no fstat primitive: post-open checks re-race the path"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-23T12:49:26.590932+02:00\""
+created-at: "2026-08-23T12:49:26.590932+02:00"
 closed-at: "2026-09-16T14:34:49.379440+03:00"
 close-reason: "superseded by habu-campaign-c5-runtime-723833a3: There is still no fstat primitive and no O_NOFOLLOW, so post-open checks re-race the path and leak descriptors; keep it in runtime services."
 ---

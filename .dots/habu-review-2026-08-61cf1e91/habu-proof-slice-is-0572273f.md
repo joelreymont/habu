@@ -3,7 +3,7 @@ title: proof slice is outside the commit gate and no prover here
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:26.051233+02:00\""
+created-at: "2026-08-22T22:38:26.051233+02:00"
 closed-at: "2026-09-16T14:34:49.320503+03:00"
 close-reason: "done: The proof suites are in the single registry that always runs, and the prover is a stated hard requirement of the documented gate. [test/gate-stdlib-cases.f:604-625 registers the *-proof suites; docs/bootstrap.md:77-85 requires Rocq 9.2+ and forbids skip logic]"
 ---

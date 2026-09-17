@@ -3,7 +3,7 @@ title: definers have no code-room check; exhaustion reports a seal violation
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:47:07.222721+02:00\""
+created-at: "2026-08-22T22:47:07.222721+02:00"
 closed-at: "2026-09-16T14:34:49.343769+03:00"
 close-reason: "superseded by habu-campaign-c4-diagnostics-3b6de147: Two definers still emit without a code-room check, so exhaustion surfaces as a silent seal violation; keep the shared room check and the named diagnostic."
 ---

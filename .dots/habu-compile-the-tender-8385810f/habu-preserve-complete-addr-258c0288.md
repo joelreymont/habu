@@ -3,7 +3,7 @@ title: Preserve complete address rows through artifact IO and merge
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-13T14:51:13.059918+03:00\\\"\""
+created-at: "\\\"2026-09-13T14:51:13.059918+03:00\\\""
 closed-at: "2026-09-16T14:34:48.785395+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: AOT artifact IO still uses a narrower row width than the declared row, so a second row is lost while the roundtrip reports ok"
 ---

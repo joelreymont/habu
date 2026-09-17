@@ -3,7 +3,7 @@ title: Reduce remaining superlinear optimizing allocator work
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T16:07:57.874253+03:00\\\"\""
+created-at: "\\\"2026-09-11T16:07:57.874253+03:00\\\""
 closed-at: "2026-09-16T14:34:48.005439+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Remaining superlinear allocator, spill-rewrite and combiner scaling above 256 values; residue is the measured growth, not a target multiple."
 ---

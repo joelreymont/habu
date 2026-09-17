@@ -3,7 +3,7 @@ title: "src/core hygiene: latches, heuristics, JSON, magic numbers"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.879667+02:00\""
+created-at: "2026-08-22T22:38:25.879667+02:00"
 closed-at: "2026-09-16T14:34:50.186695+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: Residue: a mixed hygiene list - a latch left set on throw, token-adjacency detection, invalid JSON for negatives and control bytes, unnamed exit codes and stale comments"
 ---

@@ -3,7 +3,7 @@ title: host-profile skill and gate.md disagree with the runner
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:26.028039+02:00\""
+created-at: "2026-08-22T22:38:26.028039+02:00"
 closed-at: "2026-09-16T14:34:51.288766+03:00"
 close-reason: "obsolete: Both the skill and the runner it contradicted are gone [skills/ holds only habu-bootstrap, habu-build, habu-gate; test/run-lib.f absent]"
 ---

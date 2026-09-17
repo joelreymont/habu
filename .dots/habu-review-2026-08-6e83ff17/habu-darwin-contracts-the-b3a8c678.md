@@ -3,7 +3,7 @@ title: Darwin contracts the engine patches over on Linux
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.931920+02:00\""
+created-at: "2026-08-22T22:38:25.931920+02:00"
 closed-at: "2026-09-16T14:34:50.308873+03:00"
 close-reason: "superseded by habu-campaign-c5-runtime-723833a3: The budget clause died with lib/test/budget.f; residue: the fcntl-73 hijack, Darwin stat offsets and a codesign that only chmods are undocumented Linux patch-overs"
 ---

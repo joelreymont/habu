@@ -3,7 +3,7 @@ title: delete the one-instance transaction coordinator
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.854675+02:00\""
+created-at: "2026-08-22T22:38:25.854675+02:00"
 closed-at: "2026-09-16T14:34:48.310627+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: Residue: a 383-line ordered transaction coordinator still serves exactly one instance with five fixed participants."
 ---

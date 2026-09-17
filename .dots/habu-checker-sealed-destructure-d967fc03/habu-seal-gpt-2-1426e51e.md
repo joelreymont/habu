@@ -3,7 +3,7 @@ title: Make GPT-2 tensor identity owner-only
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-29T20:36:41.189664+02:00\""
+created-at: "2026-07-29T20:36:41.189664+02:00"
 closed-at: "2026-09-16T14:34:51.183900+03:00"
 close-reason: "moved to loom as loom-make-gpt-2-dca523f6 (commit dcb8d632): GPT-2 tensor identity is Loom's inference code"
 ---

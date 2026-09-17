@@ -3,7 +3,7 @@ title: Support spills inside quotation function bodies
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T16:50:23.291688+03:00\\\"\""
+created-at: "\\\"2026-09-11T16:50:23.291688+03:00\\\""
 closed-at: "2026-09-11T17:21:55.967830+03:00"
 close-reason: Reviewed5137130d integrated as8756f514; combined explicit-tier1 quotation, return-stack and allocator suites pass with per-function frame and sibling rejection checks intact.
 ---

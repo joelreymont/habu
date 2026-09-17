@@ -3,7 +3,7 @@ title: Reduce repeated IR arena and context access cost in AOT builds
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T16:07:57.864391+03:00\\\"\""
+created-at: "\\\"2026-09-11T16:07:57.864391+03:00\\\""
 closed-at: "2026-09-16T14:34:48.001672+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Measured IR handle and arena accessor cost in AOT builds; residue is reducing nested accessor and validation chains without a session cache."
 ---

@@ -3,7 +3,7 @@ title: Register quotation stores against shared image DATA
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-14T02:24:35.664285+03:00\\\"\""
+created-at: "\\\"2026-09-14T02:24:35.664285+03:00\\\""
 closed-at: "2026-09-14T03:01:41.270479+03:00"
 close-reason: Independent source review and all eight K2 storage/image suites pass, including exact worker ownership and unchanged concurrency stress. Registrar race 1420730a and the combined gate remain separate.
 ---

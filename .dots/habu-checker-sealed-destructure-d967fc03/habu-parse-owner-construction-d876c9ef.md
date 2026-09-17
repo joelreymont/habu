@@ -3,7 +3,7 @@ title: Parse owner construction policy
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-29T20:53:42.570989+02:00\""
+created-at: "2026-07-29T20:53:42.570989+02:00"
 closed-at: "2026-09-16T14:34:49.112624+03:00"
 close-reason: "superseded by habu-campaign-c3-the-a2477c89: STRUCTURE source still cannot request package-owned construction; keep the parse leaf beside the registry-flag dot in the declaration work."
 ---

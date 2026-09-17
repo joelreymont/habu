@@ -3,7 +3,7 @@ title: Bind locals by one case rule in checker and compiler
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-12T00:57:25.366743+03:00\""
+created-at: "2026-09-12T00:57:25.366743+03:00"
 closed-at: "2026-09-13T16:25:50.462035+03:00"
 close-reason: "Integrated55455720 with separate Astra review; both JIT/AOT local-case and native-elaborate pass on fresh0c602d1c. Full315-suite run passed local-case and exposed two callers relying on old case mismatch: ZIP path fixture fixedc25bd570, existing ZIP tests pass; ACAP-DEFER-SITE fixed81a7ceef after separate review, real capture suite and product-hosted build from825c2c60 pass, product968cabff also passes capture. Remaining full-gate failures stay explicit under campaign and named leaves; no all-AOT/speed or final green claim."
 ---

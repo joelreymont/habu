@@ -3,7 +3,7 @@ title: Finish minimal PRIM boundaries and remove TRUST forms
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-10T18:03:13.363372+03:00\""
+created-at: "2026-09-10T18:03:13.363372+03:00"
 closed-at: "2026-09-16T14:34:48.740448+03:00"
 close-reason: "superseded by habu-campaign-c2-mem-c3d7662b: TRUSTED:/TRUST are still a live category with broad bodies behind them, and the seed/primitive assumption set is undocumented"
 blocks:

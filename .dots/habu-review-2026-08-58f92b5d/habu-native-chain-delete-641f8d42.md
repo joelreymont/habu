@@ -3,7 +3,7 @@ title: native chain delete candidates
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.916536+02:00\""
+created-at: "2026-08-22T22:38:25.916536+02:00"
 closed-at: "2026-09-16T14:34:50.541215+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Partly overtaken (migrate.f and judge-test.f are gone); residue: dead declare and probe surface in hir-word.f, emit.f and abi.f"
 ---

@@ -3,7 +3,7 @@ title: Migrate SAFET loads to linear scope
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-26T20:49:36.436278+02:00\""
+created-at: "2026-07-26T20:49:36.436278+02:00"
 closed-at: "2026-09-16T14:34:51.137995+03:00"
 close-reason: "moved to loom as loom-migrate-safet-loads-d3b45736 (commit dcb8d632): SAFET is Loom's safetensors reader"
 blocks:

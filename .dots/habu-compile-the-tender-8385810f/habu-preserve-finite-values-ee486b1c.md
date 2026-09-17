@@ -3,7 +3,7 @@ title: Preserve finite values when scaling decimal exponents
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-13T20:46:47.063402+03:00\""
+created-at: "2026-09-13T20:46:47.063402+03:00"
 closed-at: "2026-09-14T14:22:20.594695+03:00"
 close-reason: Reviewed original 79f6766e independently; Hazel reviewed the negative-POW10+ followup. Integrated both into compiler line. Float tests pass through real source loads at tiers0/1, including signed zero, normal/subnormal values, compensating long exponents and invalid syntax. Public negative POW10+ behavior preserved; converter explicitly remains approximate rather than correctly rounded at arbitrary decimal boundaries.
 ---

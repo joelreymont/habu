@@ -3,7 +3,7 @@ title: Ratchet the trivial-definition compile floor
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-11T16:38:06.286337+03:00\""
+created-at: "2026-09-11T16:38:06.286337+03:00"
 closed-at: "2026-09-11T19:05:39.100007+03:00"
 close-reason: "Landed on the root: tools/compile-floor.f and test/compiler/compile-floor.f (registered as compiler-compile-floor). Real-dispatch timing with an NCOMP count proof, ratchet on a ms argument, prior dispatch xt and tier restored with finally on both outcomes (review blocker fixed, controls committed). Root b4363e71 measures trivial-t1 4,111 us, three-op-t1 3,146 us, trivial-t0 41 us at load 5.8; the campaign base 41df9051 measured 9,095-9,123 us. Target 500 us."
 ---

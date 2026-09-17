@@ -3,7 +3,7 @@ title: Preserve frozen engine include facts through symlinked roots
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-14T00:45:10.526415+03:00\""
+created-at: "2026-09-14T00:45:10.526415+03:00"
 closed-at: "2026-09-16T14:34:51.504438+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Residue: frozen-engine include facts must survive symlinked lib/tools/src roots so a missing engine reports its own diagnostic, not duplicate-first"
 ---

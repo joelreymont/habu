@@ -3,7 +3,7 @@ title: Reject colon without a definition name
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-08-23T18:41:29.286254+02:00\\\"\""
+created-at: "\\\"2026-08-23T18:41:29.286254+02:00\\\""
 closed-at: "2026-09-16T14:34:50.592055+03:00"
 close-reason: "superseded by habu-campaign-c4-diagnostics-3b6de147: Still true: a lone colon at end of input must be a named refusal rather than exit 0"
 ---

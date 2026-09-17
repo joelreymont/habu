@@ -3,7 +3,7 @@ title: one gate command and one checker command
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:26.031255+02:00\""
+created-at: "2026-08-22T22:38:26.031255+02:00"
 closed-at: "2026-09-16T14:34:49.316894+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: The gate is now one command and LLM.md is a symlink to AGENTS.md; the residue is docs/worker-briefing.md, which still names a dead path and duplicates the agent rules."
 ---

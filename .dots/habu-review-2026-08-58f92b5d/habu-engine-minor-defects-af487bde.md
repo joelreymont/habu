@@ -3,7 +3,7 @@ title: engine minor defects and dead names
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-22T22:47:07.240654+02:00\""
+created-at: "2026-08-22T22:47:07.240654+02:00"
 closed-at: "2026-09-16T14:34:52.149308+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: Residue: the fail-open definer hook, the dead names and the misplaced files are still there; only the PTX test under src/ has left."
 ---

@@ -3,7 +3,7 @@ title: "docs per-file verdicts: archive, fold, delete"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-22T22:38:26.047833+02:00\""
+created-at: "2026-08-22T22:38:26.047833+02:00"
 closed-at: "2026-09-16T14:34:51.370881+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: Most of the verdict table already executed; the residue is the remaining archive/fold set and keeping every doc reachable from README or forth.md"
 ---

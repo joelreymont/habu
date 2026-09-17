@@ -3,7 +3,7 @@ title: Restore optimizing dispatch in fresh compiler-chain products
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-14T12:14:20.566878+03:00\""
+created-at: "2026-09-14T12:14:20.566878+03:00"
 closed-at: "2026-09-16T14:34:47.982583+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Fresh compiler-chain products must install the optimizing dispatch cell at boot; residue is optimizing-tier availability in the emitted product, not the integration engine."
 ---

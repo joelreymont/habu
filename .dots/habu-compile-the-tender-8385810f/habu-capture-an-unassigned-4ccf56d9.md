@@ -3,7 +3,7 @@ title: Capture an unassigned defer without borrowing the producer prefix
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-14T03:40:59.034378+03:00\""
+created-at: "2026-09-14T03:40:59.034378+03:00"
 closed-at: "2026-09-16T14:34:48.381243+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Residue: capture must accept a defer whose registered default target lies outside the captured code range without borrowing the producer's prefix."
 ---

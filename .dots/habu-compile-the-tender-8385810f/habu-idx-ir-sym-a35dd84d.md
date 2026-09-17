@@ -3,7 +3,7 @@ title: Index symbols with owned collision-safe lookup
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-12T18:11:06.102488+03:00\""
+created-at: "2026-09-12T18:11:06.102488+03:00"
 closed-at: "2026-09-16T14:34:50.145893+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Residue: the bucket index landed but the rebuilt full gate and the all-AOT speed pair have not certified it"
 blocks:

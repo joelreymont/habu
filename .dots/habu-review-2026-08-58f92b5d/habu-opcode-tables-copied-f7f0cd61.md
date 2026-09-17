@@ -3,7 +3,7 @@ title: opcode tables copied five times with a copy-paste defect
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.902441+02:00\""
+created-at: "2026-08-22T22:38:25.902441+02:00"
 closed-at: "2026-08-24T19:00:43.325798+02:00"
 close-reason: "landed and verified: 0ba4111e integrated at 4f228ccb; focused compiler suites, judge/fuzz, maki, PTX, and full native suite green"
 ---

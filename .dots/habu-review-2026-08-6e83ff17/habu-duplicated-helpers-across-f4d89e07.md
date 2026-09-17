@@ -3,7 +3,7 @@ title: duplicated helpers across lib
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.957256+02:00\""
+created-at: "2026-08-22T22:38:25.957256+02:00"
 closed-at: "2026-09-16T14:34:49.312062+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: Some cited copies went with their files, but the decimal printer, TRUE/FALSE and STR= duplication classes remain; keep the shared helpers."
 ---

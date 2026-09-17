@@ -3,7 +3,7 @@ title: native chain robustness defects
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.911900+02:00\""
+created-at: "2026-08-22T22:38:25.911900+02:00"
 closed-at: "2026-08-24T19:00:43.637043+02:00"
 close-reason: "landed and verified: 56068f6b integrated through d92543ac at 4f228ccb; focused backend, AOT, judge/fuzz, maki, PTX, and full native suite green"
 ---

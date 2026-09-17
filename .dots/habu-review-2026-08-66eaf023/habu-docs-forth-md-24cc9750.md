@@ -3,7 +3,7 @@ title: docs/forth.md names files, labels and words that do not exist
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:38:26.024916+02:00\""
+created-at: "2026-08-22T22:38:26.024916+02:00"
 closed-at: "2026-09-16T14:34:50.122383+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: Residue: the read-first document still names files, gate labels and words that do not exist, which is exactly what this campaign has to fix"
 ---

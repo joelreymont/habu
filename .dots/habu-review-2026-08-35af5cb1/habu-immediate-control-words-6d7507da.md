@@ -3,7 +3,7 @@ title: immediate control words silently shadow package definitions
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-08-23T12:11:04.940211+02:00\\\"\""
+created-at: "\\\"2026-08-23T12:11:04.940211+02:00\\\""
 closed-at: "2026-09-16T14:34:49.461289+03:00"
 close-reason: "superseded by habu-campaign-c4-diagnostics-3b6de147: Defining a name that resolves to an immediate control word still compiles and then names the wrong token at the call site; keep the refusal and its diagnostic."
 ---

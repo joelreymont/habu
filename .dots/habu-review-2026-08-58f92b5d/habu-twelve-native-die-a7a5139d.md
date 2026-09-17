@@ -3,7 +3,7 @@ title: twelve native die sites print only the offending token
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-22T22:47:07.228185+02:00\""
+created-at: "2026-08-22T22:47:07.228185+02:00"
 closed-at: "2026-09-16T14:34:49.347848+03:00"
 close-reason: "merged into habu-name-silent-engine-9b28ac13: Same invariant and same two files: every fatal engine exit must identify itself on stderr in the native engine and the Gforth mirror."
 ---

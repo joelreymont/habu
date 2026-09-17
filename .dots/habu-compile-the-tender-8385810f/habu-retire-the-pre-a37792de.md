@@ -3,7 +3,7 @@ title: Retire the pre-record bridge after native selfbuild
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-12T18:19:08.180438+03:00\""
+created-at: "2026-09-12T18:19:08.180438+03:00"
 closed-at: "2026-09-16T14:34:49.437253+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: The pre-record bridge is still in the build path; keep its retirement with the seed and self-rebuild work."
 blocks:

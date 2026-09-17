@@ -3,7 +3,7 @@ title: Bind partial registry imports to exact prefix contents
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-13T22:08:28.696695+03:00\""
+created-at: "2026-09-13T22:08:28.696695+03:00"
 closed-at: "2026-09-16T14:34:47.975156+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Partial registry imports must be bound to their exact pre-capture prefix contents; residue is canonical prefix validation before publication."
 ---

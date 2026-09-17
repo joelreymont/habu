@@ -3,7 +3,7 @@ title: Preserve computed real values across calls
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T16:50:23.007484+03:00\\\"\""
+created-at: "\\\"2026-09-11T16:50:23.007484+03:00\\\""
 closed-at: "2026-09-11T17:21:55.726564+03:00"
 close-reason: Reviewed b817c42f integrated as92ef13f0; combined c0bd71d4 explicit-tier1 native-rstack, native-quot and native-regalloc pass, including computed real direct/local/indirect regressions. Full compiler selfbuild tracked separately.
 ---

@@ -3,7 +3,7 @@ title: Certify generated stage source again
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-11T19:32:23.873474+03:00\""
+created-at: "2026-09-11T19:32:23.873474+03:00"
 closed-at: "2026-09-16T14:34:49.398798+03:00"
 close-reason: "merged into habu-certify-generated-payloads-369d625d: Same defect, root-caused later: the generated stage/payload source is rejected by a verifier running against the warmed host rather than its retained prefix."
 ---

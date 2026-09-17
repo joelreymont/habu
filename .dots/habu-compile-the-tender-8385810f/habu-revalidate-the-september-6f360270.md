@@ -3,7 +3,7 @@ title: Revalidate the September audit against the native integration candidate
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-14T13:33:29.234952+03:00\""
+created-at: "2026-09-14T13:33:29.234952+03:00"
 closed-at: "2026-09-16T14:34:47.989312+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Audit revalidation against the integration candidate; the audit file lived in /tmp and is gone, but the named correctness claims remain open."
 ---

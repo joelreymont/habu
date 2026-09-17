@@ -3,7 +3,7 @@ title: Bind libpq through the FFI with a typed DB layer
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-16T16:10:29.926595+03:00\""
+created-at: "2026-09-16T16:10:29.926595+03:00"
 closed-at: "2026-09-17T03:44:25.329586+03:00"
 close-reason: "implemented, reviewed, landed on hazel's line and integrated at d7555528, gate R green (417 of 417)"
 ---

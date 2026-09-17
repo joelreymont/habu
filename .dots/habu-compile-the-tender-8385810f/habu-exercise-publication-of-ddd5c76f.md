@@ -3,7 +3,7 @@ title: Execute published namespaced generated constructors
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-13T14:51:13.085488+03:00\""
+created-at: "2026-09-13T14:51:13.085488+03:00"
 closed-at: "2026-09-16T14:34:50.149201+03:00"
 close-reason: "superseded by habu-campaign-c3-the-a2477c89: Residue: no fixture publishes a checked generated constructor in a package, executes it, and rejects a same-tail foreign type"
 blocks:

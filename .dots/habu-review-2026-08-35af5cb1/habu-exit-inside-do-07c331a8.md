@@ -3,7 +3,7 @@ title: exit inside do-loop without unloop certifies
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.822102+02:00\""
+created-at: "2026-08-22T22:38:25.822102+02:00"
 closed-at: "2026-09-16T14:34:48.719372+03:00"
 close-reason: "done: CF-EXIT now rejects an undischarged DO frame, CF-UNLOOP discharges one, and i/j stop at the quotation boundary [src/core/checker.f:11339 CF-EXIT, :11346 CF-UNLOOP, :11123 CF-LOOP-FIND stops at kind 6; test/native-window-loop-obligations.f:173-181 rejects each case]"
 ---

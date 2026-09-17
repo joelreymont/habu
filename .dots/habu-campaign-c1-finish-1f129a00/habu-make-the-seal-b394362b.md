@@ -3,7 +3,7 @@ title: Make the seal and engine honour owner-private primitive rows
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-16T16:10:29.929487+03:00\""
+created-at: "2026-09-16T16:10:29.929487+03:00"
 closed-at: "2026-09-16T16:10:52.825654+03:00"
 close-reason: "merged into habu-honour-owner-private-0a19f45d: hazel opened the same follow-up on the integration line first"
 ---

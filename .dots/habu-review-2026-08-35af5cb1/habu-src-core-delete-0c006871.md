@@ -3,7 +3,7 @@ title: src/core delete candidates
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-08-22T22:38:25.883724+02:00\""
+created-at: "2026-08-22T22:38:25.883724+02:00"
 closed-at: "2026-09-16T14:34:52.139546+03:00"
 close-reason: "superseded by habu-campaign-c7-learning-b18a8259: Residue: the delete candidates are still there and one is now stronger - VALUE-RECORD lost its only production consumer when maki left the repository."
 ---

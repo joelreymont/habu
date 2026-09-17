@@ -3,7 +3,7 @@ title: Restore package import depth during source replay
 status: active
 priority: 2
 issue-type: task
-created-at: "\"2026-09-14T02:03:28.653389+03:00\""
+created-at: "2026-09-14T02:03:28.653389+03:00"
 ---
 
 Cedar owns checker package import restoration. Product I loads the three-line

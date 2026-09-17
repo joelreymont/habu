@@ -3,7 +3,7 @@ title: Retain every recorded match-layout fact in native compilation
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-13T15:48:42Z\""
+created-at: "2026-09-13T15:48:42Z"
 closed-at: "2026-09-16T14:34:47.954786+03:00"
 close-reason: "done: Match-layout facts now go to the growing CWIN owner store with a distinct kind, so the 24-fact table and its silent drop are gone. [src/core/checker.f:8702-8705 MWIN-COMMIT calls CW-MATCH-CELLS CWIN-ADD; PLAN.md records the actual 76-arm enum compiling and executing]"
 blocks:

@@ -3,7 +3,7 @@ title: Validate partial effect row widths against type semantics
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-09-13T22:36:30.824089+03:00\\\"\""
+created-at: "\\\"2026-09-13T22:36:30.824089+03:00\\\""
 closed-at: "2026-09-16T14:34:48.394167+03:00"
 close-reason: "done: Producer and importer now validate encoded effect-row widths against the type, with the scalar-zero and hidden-wide negatives in the real suite. [test/aot-payload-graph-child.f:138-174 CORRUPT drives scalar-zero and hidden-wide rows through EN.C and ER.MINI.]"
 ---

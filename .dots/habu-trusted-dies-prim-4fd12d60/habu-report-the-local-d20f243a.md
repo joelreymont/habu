@@ -3,7 +3,7 @@ title: Report the local-name length limit accurately
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-11T16:07:57.885292+03:00\""
+created-at: "2026-09-11T16:07:57.885292+03:00"
 closed-at: "2026-09-11T19:13:11.185291+03:00"
 close-reason: landed on the root as e259542a by rowan after independent review (bound on the one LOC-REC writer, refusal before any byte is written, LOC-NAME-CAP derived from LOC-REC, both tiers consistent inside and outside evaluate, LOCALBAD precedence ahead of E-UNDEFINED, real-child tests that fail on the pre-fix engine); evidence in the dot body
 ---

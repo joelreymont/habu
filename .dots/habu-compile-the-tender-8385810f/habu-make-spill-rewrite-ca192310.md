@@ -3,7 +3,7 @@ title: Plan combine once and fix measured spill scaling
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"\\\\\\\"2026-09-11T16:38:06.270563+03:00\\\\\\\"\\\"\""
+created-at: "\\\"\\\\\\\"2026-09-11T16:38:06.270563+03:00\\\\\\\"\\\""
 closed-at: "2026-09-16T14:34:49.484485+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Measured spill scaling is a live plan item behind correctness; keep the measurement and the fixed point, not the standing lane."
 blocks:
