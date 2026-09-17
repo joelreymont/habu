@@ -8729,3 +8729,27 @@ native-runtime engine (`tools/native-build.f`), whose repl.f came from source
 with its rows. A defer the program defines itself, and a prefix defer such as
 `TYPE-DECL:TDECL-EVAL-XT`, both bind normally, so the gap is exactly the
 captured window.
+
+## 2026-09-17 - an empty does> clause is a type, not a behaviour
+
+A definer that writes `does> ( -- T ) ;` is asking for a declared effect, not a
+runtime: `does>` runs its clause AFTER the created word has pushed its data
+address, so a clause that compiles nothing leaves that word doing exactly what
+`create` left it doing. Both compilers elide such a clause now - the created
+word keeps its RET and the DKIND:ADDR stamp a mention folds through
+(`src/habu/habu2.f` DOES-REC:ELIDE-EMPTY, keyed on CP still standing one word
+past the clause entry slot at `;`, and `src/compiler/native/elaborate.f`
+STAGE-DOES-ENTRY, keyed on the clause holding no token) - so a read costs the
+one load a bare `create`d cell costs instead of a call, a branch and a frame
+more. WRITE THE CLAUSE EMPTY WHEN THE BODY WOULD BE THE IDENTITY: `PTR-VARIABLE`
+spelled `0 ptr-field`, which is the identity on an address, and paying for that
+on every IR-arena read was 8.9 percent of a trivial tier-1 definition - the
+measured reason `src/compiler/ir/arena.f` held its region base in a bare marked
+cell for one release. A clause with a body, identity or not, is still patched
+and still loses the stamp, which is what `test/does-empty-clause.f` pins.
+
+The elision spends bytes to buy calls, and that has to be said with it: each
+folded read drops one `bl` and gains the four-word MOVZ/MOVK address stencil,
++8 bytes a site, so the thirteen-file tier-1 census grew 168 bytes over 2,133
+words while the same change took 2.39 percent off a trivial tier-1 definition
+and 2.20 percent off that corpus (`docs/compiler-measurements.md` section 10).

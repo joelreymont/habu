@@ -1309,6 +1309,177 @@ HB_TMP=$E/tmp HABU_FIXPOINT_ENGINE=$E/engine-B $E/engine-B \
 objdump -b binary -m aarch64 -D $E/gen/hb-C | grep -c 'str.*\[x19\], #'
 ```
 
+## 10. What a pointer definer's read costs
+
+Measured 2026-09-17 on the same machine, against a993db02, which already carries
+the offset handles of section 6. Engines were built with the integrated host in
+`/tmp/hazel-host-R2`, each build in a private `HB_TMP` with a private
+`HABU_FIXPOINT_ENGINE`. Every instruction count is `perf stat -e instructions:u`
+pinned to cpu8 or cpu10, the section 6 denominator: a `tools/tier-census.f` run
+over 500 `: PVn ( n -- n ) 1 + ;` definitions minus one over a single
+definition, divided by 499. Wall-clock rows say so and quote the load average,
+which ran 17 to 22 throughout.
+
+**Read generation 2 and not generation 1.** A compiler change reaches the
+emitted code only in the generation its own compiler wrote, and both changes
+here are compiler changes, so the engine a host without them builds still pays
+the old price. Generation 1 is quoted once, below, precisely because it prices
+the old path.
+
+### What the cost actually was
+
+Not `ptr-field`. `PTR-VARIABLE` and `PERSISTED-PTR-VARIABLE` were
+`create ... does> ( -- ptr ptr a ) 0 ptr-field ;`, and section 7 measured
+`ptr-field` plus the two clause bodies at 9.5 percent exclusive. By a993db02 the
+`ptr-field` row had already gone: the engine's own clause bodies are compiled at
+tier 1, where `ptr-field` is arithmetic this dialect expands inline
+(`src/compiler/native/hir-word.f` CELL-INDEX), so the call was already gone and
+the clause body had become
+
+```
+str  x30,[sp,#-16]!        the clause's frame
+ldur x0,[x19,#-8]          the address create just pushed
+mov  x1,#0                 the literal 0
+mov  x2,#8                 CELL
+madd x0,x1,x2,x0           x0 = x0 + 0*8, three instructions to compute nothing
+stur x0,[x19,#-8]
+ldr  x30,[sp],#16
+ret
+```
+
+while the created word itself materialized its data address in four
+`movz`/`movk`, pushed it, and `b`-ed into that. So the whole remaining cost of a
+read was the **does> dispatch**: a call, a branch, a frame, and an identity.
+`tools/tier0-profile.f -- trivial 50 4000` on a993db02 put
+`PERSISTED-PTR-VARIABLE;does` at 81 of 2,348 samples exclusive (3.4 percent) and
+`PTR-VARIABLE;does` at 24 (1.0 percent), with `ptr-field` nowhere in the 64
+reported rows.
+
+That is why the offset-handle lane held the arena's region base in a bare
+`create`d cell marked with `ptr-cell-mark` instead, and why section 6's table
+shows that exception buying 12.1 points.
+
+### What changed
+
+A clause that compiles no instruction runs after the created word has pushed its
+data address and then does nothing to it, so it is a request for a type and not
+for a behaviour. Both compilers now leave such a word alone: it keeps the RET
+`create` emitted and the `DKIND:ADDR` stamp both compilers fold a mention
+through. Tier 0 writes `movz x10,#0` over the `adr x10, D` its own opener
+emitted, keyed on CP still standing one word past the clause entry slot at `;`
+— the compiler's cursor, not a guess about the emitted code — and tier 1 stages a
+zero clause entry into the `does-patch` call when the clause holds no token.
+`bootstrap/cg/forth.fs` carries the same two changes.
+
+The definers then drop the `0 ptr-field` they were spelling, which was the
+identity on that address, and the arena's exception reverts to
+`PERSISTED-PTR-VARIABLE`.
+
+### What a read compiles to now
+
+At tier 1, `FOO @` for a `PERSISTED-PTR-VARIABLE FOO`, in a word that calls
+nothing else, from `tools/tier-dump.f`:
+
+| | before | after |
+|---|---|---|
+| the reading word | `str x30,[sp,#-16]!` / `bl FOO` / `ldr x0,[x19,#-8]!` / `ldr x0,[x0]` / `str x0,[x19],#8` / `ldr x30,[sp],#16` / `ret` | `movz`+3 `movk` / `ldr x0,[x0]` / `str x0,[x19],#8` / `ret` |
+| `FOO` | 4 address words, push, `b FOO;does` | 4 address words, push, `ret` |
+| `FOO;does` | the eight instructions above | never entered |
+
+The reading word is a leaf now: no call, no frame, and the fold is the same
+relocatable `movz`/`movk` stencil a `create`d word's mention has always
+produced. The bare marked cell the arena used spells `RBASE-CELL 0 ptr-field @`,
+which is that stencil **plus** the `mov`/`mov`/`madd`, so the definer's read is
+three instructions shorter than the exception that replaced it. At tier 0
+neither form folds and both are one `bl`; what goes is the clause's branch and
+frame.
+
+### Per trivial tier-1 definition
+
+Second-generation engines, cpu8, 499-definition difference:
+
+| engine | per definition | against the base |
+|---|---:|---:|
+| a993db02, the base | 4,937,759 | — |
+| the empty-clause elision + the definers | 4,916,373 | -0.43% |
+| + the arena's base back on the definer | **4,819,662** | **-2.39%** |
+
+Over the thirteen-file corpus of section 1, cpu10: 53,788,375,093 on the base
+against **52,602,908,828**, **-2.20 percent**.
+
+**The generation-1 row, which prices the old dispatch.** The same final tree
+built once by the integrated host — an engine with no elision, so its
+compilation of the arena's reads still pays the full does> dispatch — is
+5,308,192 per definition, **+7.50 percent** against the base. That is the cost
+the arena's exception existed to avoid, measured again from the other direction,
+and it is what generation 2 removes.
+
+### The profile rows
+
+`tools/tier0-profile.f -- trivial 50 4000`, taskset cpu8, load average 17-20:
+
+| row | base, 2,348 samples | landed, 2,250 samples |
+|---|---:|---:|
+| `PERSISTED-PTR-VARIABLE;does` excl | 81 (3.4%) | absent from the whole report |
+| `PTR-VARIABLE;does` excl | 24 (1.0%) | absent from the whole report |
+| `ptr-field` excl | outside the 64 rows | outside the 64 rows |
+
+### Size, run time and the fixpoint
+
+`tools/tier-census.f` over the same thirteen-file corpus, 2,133 words:
+
+| | base | landed |
+|---|---:|---:|
+| tier 0, bytes | 157,836 | 157,836 (md5 identical) |
+| tier 1, bytes | 188,200 | 188,368 (**+168, +0.089%**) |
+| tier 1, `bl` | 4,973 | 4,952 (-21) |
+| tier 1, `movk` | 6,184 | 6,247 (+63) |
+
+**The tier-1 census grows, and this is the growth it should have.** Ten words
+change — eight in `lib/ffi-abi.f`, one in `lib/genio.f`, one in `lib/task.f` —
+and every one of them trades `bl` for `movk` at exactly three `movk` per call
+removed. They are readers of buffers minted by `lib/codegen.f BUFFER` and of
+`lib/task.f`'s `TASK`, definers that already wrote an empty clause and needed no
+source change: 21 such reads stopped being calls and became inline address
+literals, at +8 bytes each. That is the four-instruction address stencil ranked
+second in this document's own fix list, not a new cause, and it is the price of
+the -2.39 percent above. The lane was asked for bytes at or below the head's;
+this is 168 above, and the cause is named rather than argued away.
+
+`tools/tier-bench.f` at tier 1, `src/core/checker.f`, five interleaved runs of
+each engine on cpu8 at load average 17-22, medians in µs: `harness` 2,765 /
+2,774, `arith` 866 / 860, `branch` 1,445 / 1,469, `search` 1,902 / 1,905,
+`fold` 81,282 / 81,417, `move` 139,660 / 138,990, `lines` 6,014 / 5,978. Every
+row moves less than its own run-to-run spread and the two largest change
+direction between rounds, so this reads as no change: none of these benchmarks
+reads a pointer-valued global. The tier-0 rows are not reportable at this load —
+one `move` sample came back at twice its median.
+
+Two-generation byte fixpoint: the landed tree's generation 2 and generation 3
+are byte identical, sha256 `7fbe0e29416bf201…`.
+
+`bootstrap/cg/forth.fs` carries the same elision, and the seed's copy is the one
+that compiles `src/core/pointer-storage.f` when there is no binary at all, so it
+was run rather than argued for: the periodic no-binary check
+(`HABU_ALLOW_BOOTSTRAP=1 HABU_BOOTSTRAP_CHECK_ONLY=1 tools/bootstrap.sh`) exits 0
+on this tree with `bootstrap check OK`, through stage0, the stage engine's own
+fixpoint, `hb-stdin-mk` and `hb-stdin`. That is further than the status note at
+the head of `docs/bootstrap.md` describes, which is stale rather than wrong
+about this change.
+
+### What is left
+
+The elision is keyed on a clause compiling nothing, so the four definers in the
+tree that already wrote an empty clause — `lib/string.f BUFFER:`,
+`lib/codegen.f BUFFER-E`, and `lib/task.f`'s `TASK` and `FACILITY` — get it
+without a source change, which is where the census movement comes from. A clause
+with a body still pays the dispatch, including one whose body
+is the identity, which is what `test/does-empty-clause.f` pins. The empty
+clause's own record and its three-instruction body are still published; nothing
+branches into them, and removing them would mean unwinding CP, the derived name
+and the frame cell at `;` in both compilers for twelve bytes and one dictionary
+slot per definer.
+
 ## Verdict and the ranked fixes
 
 Tier 1 pays for itself. It halves the calls, wins every run-time benchmark by

@@ -570,6 +570,13 @@ engine, and none of those forms are removed.
 - `PTR-VARIABLE` creates a pointer-valued cell with runtime effect
   `( -- ptr ptr a )`; use it instead of `variable` plus `0 ptr-field` wrappers
   for global pointer slots.
+- **A definer that only wants a type writes an EMPTY `does>` clause.** `does>`
+  runs its clause after the created word has pushed its data address, so a
+  clause that compiles nothing is elided at both tiers: the created word keeps
+  the body `create` gave it and the definer stamp a mention folds through, and
+  a read costs the one load a bare `create`d cell costs. Spelling an identity
+  in the clause instead — `0 ptr-field` on the address it was handed — is a
+  clause with a body, and pays a call, a branch and a frame on every read.
 - **A `SUMTYPE`, `PRODUCT` or `ENUM` body is parsed by its definer, not by the
   interpreter.** Today a `\` comment between the opener and its closer is
   refused (`E-TDECL-SYNTAX`), so comment the family above its opener. Dot
