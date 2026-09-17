@@ -210,6 +210,13 @@ variable SDT-SRC-U
    s" src/habu/driver-io.f" DISCOVER:RUN
    EVENT-COUNT 0 T= ;
 
+\ The loader's own definition site. The manifest tolerates the reserved names it
+\ defines, and it loads no source itself, so the walk that keys the engine's
+\ prefix (test/whitebox-engine.f) crosses it without losing a file.
+: SDT-TEST-MANIFEST-INCLUDE ( -- )
+   s" src/core/include.f" DISCOVER:RUN
+   EVENT-COUNT 0 T= ;
+
 : SDT-RUN-EMIT-SMALL ( -- )
    SDT-DISCOVER
    SDT-OUT 4 DISCOVER:EMIT drop ;
@@ -298,6 +305,7 @@ variable SDT-SRC-U
    SDT-TEST-BIG-STRING-DATA
    SDT-TEST-BIG-STRING-LOADER
    SDT-TEST-MANIFEST-DRIVER
+   SDT-TEST-MANIFEST-INCLUDE
    SDT-TEST-EMIT-CAP
    SDT-TEST-LOCALS
    SDT-TEST-LOCAL-SCOPES

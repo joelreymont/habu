@@ -8769,3 +8769,20 @@ folded read drops one `bl` and gains the four-word MOVZ/MOVK address stencil,
 +8 bytes a site, so the thirteen-file tier-1 census grew 168 bytes over 2,133
 words while the same change took 2.39 percent off a trivial tier-1 definition
 and 2.20 percent off that corpus (`docs/compiler-measurements.md` section 10).
+
+## 2026-09-17 - keying a closure over the engine's own prefix took two fixes, and neither was EC-MAX
+
+`test/whitebox-engine.f` keyed the unsealed host on `bin/hb`'s bytes because the
+shared walk (`tools/event-closure-lib.f` over `tools/source-discovery.f`) could
+not cross `src/`, and the two refusals it hit are both upstream of the closure
+list's own caps. Discovery reads each file whole into one buffer capped at
+`SD-SRC-CAP`, and `src/core/checker.f` is `$A76BE` bytes against the old
+`$80000`, so the walk threw `E-FS-CAPACITY` (-2106) and not `E-DISC-CAPACITY`;
+then `src/core/include.f` defines `included`/`required`/`provided` and names them
+inside each other's bodies, which is `E-DISC-SHADOW` and then `E-DISC-DYNAMIC`.
+A file that IS the loader cannot be read by a loader walker, so it belongs in
+`tools/dynamic-tail-manifest.f` - and it loads nothing, so the closure stays
+complete. The closure measures 159 files and 4.4 MB, inside `EC-MAX` (`$400`)
+and `EC-POOL-CAP` (`$40000`) with room to spare: READ THE THROWN CODE before
+raising a walker's cap, because three different caps answer to "the walk ran out
+of room" and only one of them was in the way.

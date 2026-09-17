@@ -30,6 +30,10 @@ require tools/source-discovery.f
 package EC
 using SOURCE-ROOT
 
+\ One closure's entries and its path pool - each entry stores its own path and
+\ the root it resolved under. The largest walk any consumer keys is
+\ tools/native-build.f, the engine's own prefix: 159 entries and $2AFB bytes of
+\ paths plus one root string each, measured 2026-09-17, well inside both caps.
 $400 constant EC-MAX
 $40000 constant EC-POOL-CAP
 

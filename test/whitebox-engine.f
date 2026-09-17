@@ -16,16 +16,21 @@
 \ of the gate runs on keeps its seal and test/internal-word-gate.f keeps pinning
 \ that.
 \
-\ THE KEY IS THE BUILDING ENGINE'S OWN BYTES, and the engine is what it should
-\ be: this artifact is defined as "the running engine, minus the seal", so it
-\ tracks the engine and not the checkout. A tree whose engine sources moved
-\ without a reinstall already has the whole gate testing the installed binary
-\ rather than the edit; the whitebox host is stale in exactly that case and no
-\ other, and reinstalling bin/hb rebuilds it.
+\ THE KEY IS WHAT THE IMAGE IS BUILT FROM: the engine binary that runs the
+\ builder, and the builder's own ordered require/include closure - which is the
+\ engine's whole boot prefix, because tools/native-build.f names every prefix
+\ source it compiles. Both go into the content key below, exactly as
+\ test/cold-engine.f keys the cold host, so an edit anywhere in that closure
+\ changes the key and no stale host is reused. Keying on the installed binary
+\ alone made the artifact track bin/hb instead of the checkout: a tree whose
+\ engine sources changed without a reinstall got a whitebox host built from the
+\ older sources.
 \
 \ PROVIDE is the whole interface: it names the private path a caller wants its
 \ own copy at. The keyed artifact itself is never handed out, so no suite can
-\ run from - or clobber - the shared bytes.
+\ run from - or clobber - the shared bytes. ENTRY-PATH! is the same derivation
+\ for a caller that names its own entry and buffers;
+\ test/whitebox-engine-key-test.f keys a copied tree with it.
 
 require lib/errors.f
 require lib/string.f
@@ -39,6 +44,7 @@ require lib/process-env.f
 require lib/build-cache.f
 require lib/content-key.f
 require lib/engine-candidate.f
+require tools/event-closure-lib.f
 
 package WHITEBOX-ENGINE
 
@@ -62,9 +68,18 @@ variable WORK-U
 variable TMP-U
 variable EMIT-RC
 variable RESOLVED?
+variable CLOSURE-IDX
 
+public
+
+\ The builder this host is built from, and whose closure the key folds. Public
+\ because test/whitebox-engine-key-test.f copies exactly this entry's closure: a
+\ second spelling of the path there would go on keying the old entry after a
+\ rename.
 : BUILDER$ ( -- ptr u8 n )
    s" tools/native-build.f" ;
+
+private
 
 \ The variable the build-time passes that shape the shipped image read to learn
 \ that this one is for whitebox suites: src/core/internal-mark.f's seal, and any
@@ -83,10 +98,21 @@ variable RESOLVED?
 : TMP-BYTES ( -- ptr u8 n )
    TMP-BUF TMP-U @ ;
 
-: KEY! ( -- )
+\ Discovery rejects fail-closed, so a closure that cannot be reproduced cannot be
+\ keyed - the key never silently covers fewer files than the build reads.
+: CLOSURE-CK+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
+   a u EC:BUILD
+   0 CLOSURE-IDX !
+   begin CLOSURE-IDX @ EC:COUNT < while
+      CLOSURE-IDX @ EC:PATH$ CONTENT-KEY:FILE+
+      CLOSURE-IDX @ 1+ CLOSURE-IDX !
+   repeat ;
+
+: KEY! ( ptr u8 n -- ) {: a:ptr u:n :}
    CONTENT-KEY:OPEN
-   s" whitebox-engine-v1" CONTENT-KEY:TEXT+
+   s" whitebox-engine-v2" CONTENT-KEY:TEXT+
    ENGINE-CANDIDATE:PATH$ CONTENT-KEY:FILE+
+   a u CLOSURE-CK+
    KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
 : NAME! ( -- )
@@ -96,14 +122,22 @@ variable RESOLVED?
    KEY-HEX NAME-BUF u + KEY-HEX-LEN BYTE-COPY
    u KEY-HEX-LEN + NAME-U ! ;
 
-: PATH! ( -- )
-   KEY!
+public
+
+\ The keyed artifact path a builder entry resolves to, written into the caller's
+\ own buffer (FS-PATH-CAP bytes) and length cell. RESOLVE names the tree's
+\ builder; test/whitebox-engine-key-test.f names a copied tree's, which is why
+\ the derivation takes both from the caller instead of reading this module's.
+: ENTRY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
+   a u KEY!
    NAME!
-   BUILD-CACHE:ROOT$ NAME-BUF NAME-U @ PATH-BUF JOIN-PATH PATH-U ! ;
+   BUILD-CACHE:ROOT$ NAME-BUF NAME-U @ dst JOIN-PATH up ! ;
+
+private
 
 : RESOLVE ( -- )
    RESOLVED? @ 0 <> if exit then
-   PATH!
+   BUILDER$ PATH-BUF PATH-U ENTRY-PATH!
    0 0= RESOLVED? ! ;
 
 : COPY-OUT! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}

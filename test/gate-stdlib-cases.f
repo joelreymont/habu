@@ -1469,6 +1469,10 @@ SUITE event-closure
    tools/event-closure-test.f
 ;SUITE
 
+SUITE whitebox-engine-key
+   test/whitebox-engine-key-test.f
+;SUITE
+
 SUITE hb-baseline-contracts
    tools/hb-baseline-contracts-test.f
 ;SUITE
