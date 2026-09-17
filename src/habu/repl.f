@@ -23,6 +23,8 @@ variable HN  variable HV        \ history count, browse index
 variable HS                     \ history slot scratch
 variable DONE                   \ 0 editing, 1 accepted, 2 eof
 
+-1 constant KEY-EOF             \ KEY1's no-key answer; no byte collides with it
+
 defer REPL-READ ( -- ptr u8 n )
 
 : HS-FIELD ( -- ptr ptr u8 )
@@ -74,7 +76,17 @@ defer REPL-READ ( -- ptr u8 n )
 \ RD-LINE below stay on descriptor 0 because together they ARE the terminal
 \ device's key and accept; another device supplies its own pair, and lib/genio.f
 \ picks between them at REPL-READ.
-: KEY1 ( -- n )  0 KB 1 read drop  KB c@ ;
+\ A one-byte read answers 1, or 0 once the terminal has hung up — a pty slave
+\ whose master closed reads 0 — and -1 when the read failed. Neither left a byte
+\ in KB, so both are end of input rather than the key before them. EINTR is not
+\ among them: the one asynchronous handler this engine installs (the profiler's
+\ SIGALRM) sets SA_RESTART and the crash handlers exit, and the syscall wrappers
+\ in src/habu/habu1.f collapse a failed read to -1 without errno, so a handler
+\ that returns without SA_RESTART would end the line here
+\ (habu-keep-key1-s-cfc8c6ad).
+: KEY1 ( -- n )
+   0 KB 1 read 1 < IF KEY-EOF exit THEN
+   KB c@ ;
 
 \ full-line redraw: CR, clear-to-eol, prompt, line, cursor back to LPOS
 : REDRAW ( -- )
@@ -133,6 +145,7 @@ defer REPL-READ ( -- ptr u8 n )
    k 66 = IF HDOWN THEN ;
 
 : DOKEY ( n -- ) {: c :}
+   c KEY-EOF = IF 2 DONE ! exit THEN
    c 13 =  c 10 = or IF 13 emit 10 emit  1 DONE !  exit THEN
    c 4 = IF LLEN @ 0 = IF 2 DONE ! THEN exit THEN
    c 3 = IF CLEARLN REDRAW exit THEN

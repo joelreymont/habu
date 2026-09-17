@@ -667,6 +667,67 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    REAP 0 T-EXIT=
    CLOSE-MASTER ;
 
+\ --- a terminal that hangs up mid-line ends the session -----------------------
+\ Dot habu-make-key1-end-cabdb980. KEY1 is one 1-byte read of descriptor 0. It
+\ used to drop the count, so a read of 0 (the far side hung up; a slave whose pty
+\ master has closed reads 0) or -1 (a failed read) handed back the byte still in
+\ the key buffer and the child re-ran it for ever instead of leaving the editor.
+\ That is a spin, not a failure, so this case bounds its own reap: PROC-WAIT-RC
+\ has no timeout and would hang the run the defect is meant to fail. The watch
+\ descriptor opens while the child is still alive -- macOS cannot register a
+\ process that has already exited (test/proc-watch-smoke.f).
+\ This case runs LAST and owns the second child: PTY-STOP-HB reaped the first and
+\ closed the master, and the harness holds one pair at a time.
+
+$1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its editor
+
+: PTY-WATCH-CHILD ( -- fd )
+   CHILD-PID PID>N proc-watch-open {: wfd:n :}
+   wfd 0 < if E-PROC-OUTPUT throw then
+   wfd >FD ;
+
+\ True once the watch says the child is gone; a broken descriptor throws instead
+\ of passing for an exit.
+: PTY-WATCH-EXITED? ( fd n -- bool ) {: wfd:fd ms:n :}
+   wfd ms >MS POLL-IN COUNT>N {: rc:n :}
+   rc 0 < if E-PROC-OUTPUT throw then
+   rc 0= if false exit then
+   0 >IDX PROC-PFD-REVENTS {: ev:n :}
+   ev POLLERR POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
+   ev POLLIN and 0 <> ;
+
+: PTY-KILL-CHILD ( -- )
+   CHILD-PID SIGKILL PROC-KILL-RAW drop
+   CHILD-PID PROC-WAIT-RC MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
+
+\ A child that left the editor is reaped for its status; one still in it at the
+\ deadline is killed and reaped, so a failing run reports instead of hanging and
+\ leaves no process behind.
+: PTY-HANGUP-REAP ( fd -- ) {: wfd:fd :}
+   wfd PTY-EXIT-MS PTY-WATCH-EXITED? {: gone:bool :}
+   gone TTRUE
+   gone if
+      CHILD-PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+   else
+      PTY-KILL-CHILD
+   then
+   wfd FD>N close ;
+
+\ The half-typed line is what the defect replayed: its last key is the byte in
+\ the key buffer when the master closes. Only REDRAW echoes it and only after
+\ RAW-ON, so the echo is also the proof that the child holds the terminal raw.
+: PTY-HANGUP-MIDLINE ( -- )
+   s" 1 2 +" SEND
+   s" 1 2 +" EXPECT ;
+
+: PTY-HANGUP ( -- )
+   PTY-START-HB
+   PTY-PROMPT
+   PTY-HANGUP-MIDLINE
+   PTY-WATCH-CHILD {: wfd:fd :}
+   CLOSE-MASTER
+   wfd PTY-HANGUP-REAP ;
+
 : PTY-BASIC ( -- )
    SEED-BATCH                        \ the pipe-mode fold, before this file owns a pty child
    PTY-START-HB
@@ -704,7 +765,8 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    PTY-EDITOR
    PTY-BREAKPOINTS
    PTY-TOOLS
-   PTY-STOP-HB ;
+   PTY-STOP-HB
+   PTY-HANGUP ;
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" PASS: process/pty primitives" type cr exit then
