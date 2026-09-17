@@ -52,8 +52,8 @@ create GB-REPORT-PATH FS-PATH-CAP allot
 variable GB-SRC-U
 variable GB-OUT-U
 variable GB-REPORT-U
-variable GB-REPORT-BUF-A
-variable GB-EXEC-A
+TYPED-VARIABLE GB-REPORT-BUF-A ptr u8
+TYPED-VARIABLE GB-EXEC-A ptr u8
 variable GB-EXEC-CAP-U
 variable GB-EXEC-U
 variable GB-TEXT-SIZE-V
@@ -70,14 +70,11 @@ variable GB-LC-OFF
 : GB-REPORT$ ( -- ptr u8 n )
    GB-REPORT-PATH GB-REPORT-U @ ;
 
-: GB-REPORT-BUF-A-FIELD ( -- ptr ptr u8 )
-   GB-REPORT-BUF-A 0 ptr-field ;
-
 : GB-REPORT-BUF-A@ ( -- ptr u8 )
-   GB-REPORT-BUF-A-FIELD @ ;
+   GB-REPORT-BUF-A @ ;
 
 : GB-REPORT-BUF-A! ( ptr u8 -- )
-   GB-REPORT-BUF-A-FIELD ! ;
+   GB-REPORT-BUF-A ! ;
 
 : GB-REPORT-BUF ( -- ptr u8 )
    GB-REPORT-BUF-A@ 0= if

@@ -64,7 +64,7 @@ STRUCTURE nested 0 FIELD owner CAST-NEG:lease ;STRUCTURE
 \ shows is exactly what a file would contain.
 package CN-RUN
 public
-variable SRC-A
+TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
 : EVAL ( -- ) SRC-A @ SRC-U @ INCLUDE-EVALUATE ;
 : DECL ( ptr u8 n -- n )               \ ( decl-source -- thrown-code | 0 )

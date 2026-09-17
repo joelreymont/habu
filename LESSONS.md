@@ -9236,3 +9236,22 @@ A cell latched from `here` and later compared against numbers (`AOT-ARM:D0/D1`,
 `BLOB-SRC`/`BLOB-END`) cannot be declared without changing the effects of every
 reader: `here` is the only DATA-pointer word and there is no checked pointer-to-
 integer direction, so the declaration has to travel the whole span API at once.
+
+## 2026-09-18 - a checker-prefix fixture gets PTR-VARIABLE, and only a whitebox engine judges a whitebox suite
+
+`TYPED-VARIABLE`/`TYPED-BUFFER` need `TDECL-EVAL-ARMED`, which `src/core/include.f`
+sets. A fixture the rebuilt checker prefix loads never reaches that arming, so
+`3 TYPED-BUFFER SLOTS ptr u8` in `test/compiler/native-checker-storage.f` made the
+window answer `window: 7121` (E-LAYOUT-BUFFER) and turned
+`compiler-native-checker-prefix` red while every direct `--load` of the same file
+stayed green. IN A PREFIX-LOADED FIXTURE, `PTR-VARIABLE` IS THE ONLY DECLARED
+POINTER FORM; a contiguous run of them replaces an indexed raw table, and the
+adjacency a range walk then depends on belongs in the fixture as an assertion
+(`SLOT0 cell+ SLOT1 <>` dies), not in a comment.
+
+The red was also nearly misdiagnosed as pre-existing: a WHITEBOX-SUITE runs on
+`test/whitebox-engine.f`'s keyed artifact, and `--load`ing one of those files on
+`bin/hb` dies at `hb: internal engine word: DECLARATIONS` on ANY tree, red or
+green. Reproduce a whitebox suite with the cached `hb-whitebox-<key>` under
+`$XDG_CACHE_HOME/habu-build`, never with the product engine, or the baseline
+comparison is meaningless.

@@ -680,7 +680,7 @@ s" CBAD-PTR-CELL-ON-BYTE ( ptr u8 -- n ) @" T-CHECK-REJECTS
 \ cell with `0 WORD !` must reject, because `!` requires a ptr a target.
 s" CBAD-PTR-CELL-STORE-ON-BYTE ( ptr u8 -- ) 0 swap !" T-CHECK-REJECTS
 s" COK-PTR-CELL-STORE ( ptr n -- ) 0 swap !" T-CHECK-PASSES
-variable ESB-BYTE-P
+TYPED-VARIABLE ESB-BYTE-P ptr u8
 : ESB-BYTE-HEAD ( -- ptr u8 ) ESB-BYTE-P @ ;
 s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
 \ REC-SIG refusal is certified-but-unrecorded and must say which word and why.

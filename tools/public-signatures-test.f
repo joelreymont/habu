@@ -38,7 +38,7 @@ SUMTYPE psthash 0 DERIVE hash VARIANT hh n ;VARIANT ;SUMTYPE
 
 variable PST-ROOT-U
 variable PST-FIX-U
-variable PST-RUN-A
+TYPED-VARIABLE PST-RUN-A ptr u8
 variable PST-RUN-U
 
 create PST-ROOT-BUF FS-PATH-CAP allot
@@ -76,21 +76,12 @@ variable PST-NUM-U
 : PST-FIX ( -- ptr u8 n )
    PST-FIX-BUF PST-FIX-U @ ;
 
-: PST-RUN-A-FIELD ( -- ptr ptr u8 )
-   PST-RUN-A 0 ptr-field ;
-
-: PST-RUN-A@ ( -- ptr u8 )
-   PST-RUN-A-FIELD @ ;
-
-: PST-RUN-A! ( ptr u8 -- )
-   PST-RUN-A-FIELD ! ;
-
 : PST-RUN! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a PST-RUN-A!
+   a PST-RUN-A !
    u PST-RUN-U ! ;
 
 : PST-RUN$ ( -- ptr u8 n )
-   PST-RUN-A@ PST-RUN-U @ ;
+   PST-RUN-A @ PST-RUN-U @ ;
 
 : PST-LF ( -- )
    10 SB-APPEND-C ;

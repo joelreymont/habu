@@ -56,7 +56,7 @@ variable TDC-I
 \ Checked: the dynamic-evaluate boundary is the existing audited
 \ INCLUDE-EVALUATE; the throw code crosses the eval frame into this compiled
 \ catch (a TOP-LEVEL catch around evaluate loses the code — see LESSONS.md).
-variable TDTE-A   variable TDTE-U
+TYPED-VARIABLE TDTE-A ptr u8   variable TDTE-U
 : TDT-EVAL-GO ( -- )
    TDTE-A @ TDTE-U @ INCLUDE-EVALUATE ;
 : TDT-EVAL-CATCH ( ptr u8 n -- n )

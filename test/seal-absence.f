@@ -211,21 +211,18 @@ variable SAB-NAMES-LEN
 
 \ --- scan buffer + mirror source read ---
 
-variable SAB-BUF-A
-
-: SAB-BUF-A-FIELD ( -- ptr ptr u8 )
-   SAB-BUF-A 0 ptr-field ;
+TYPED-VARIABLE SAB-BUF-A ptr u8
 
 variable SAB-READY
 
 : SAB-ALLOC ( -- )
    SAB-READY @ 0 <> if exit then
-   SAB-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop SAB-BUF-A-FIELD !
+   SAB-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop SAB-BUF-A !
    -1 SAB-READY ! ;
 
 : SAB-BUF ( -- ptr u8 )
    SAB-ALLOC
-   SAB-BUF-A-FIELD @ ;
+   SAB-BUF-A @ ;
 
 : SAB-MIRROR-FITS ( -- )                \ name the overflow before READ-ALL throws a bare code
    s" bootstrap/cg/forth.fs" FILE-SIZE {: flen:n :}

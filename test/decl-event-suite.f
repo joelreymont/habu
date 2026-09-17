@@ -405,7 +405,7 @@ s" decl-event" CHECKER-PACKAGE-PUBLIC s" raw-local" 0 TK-ENUM TWX-TFAM-DECL drop
 s" other-event-test" CHECKER-PACKAGE-PUBLIC s" raw-foreign" 0 TK-ENUM TWX-TFAM-DECL drop
 VALUE-RECORD event-record payload n END-VALUE-RECORD
 
-variable VN-A         variable VN-U
+TYPED-VARIABLE VN-A ptr u8   variable VN-U
 variable VN-TFAM      variable VN-STR       variable VN-PK
 variable VN-SUMV      variable VN-LAY       variable VN-SCH
 variable VN-ROOT      variable VN-PF        variable VN-PFP

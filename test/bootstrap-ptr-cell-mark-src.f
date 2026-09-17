@@ -26,7 +26,7 @@ variable PCM-FAILS
 : PCM-TRUE ( bool -- )
    0= if PCM-FAIL then ;
 
-create PCM-ZERO-CELL 0 ,
+PTR-VARIABLE PCM-ZERO-SLOT               \ a declared slot nothing ever writes
 create PCM-TARGET 0 ,
 create PCM-OTHER 0 ,
 
@@ -34,7 +34,7 @@ PERSISTED-PTR-VARIABLE PCM-SLOT
 PERSISTED-PTR-VARIABLE PCM-SLOT2
 
 : PCM-NULL ( -- ptr n )
-   PCM-ZERO-CELL 0 ptr-field @ ;
+   PCM-ZERO-SLOT @ ;
 
 : PCM-ADDR ( -- ptr ptr n )
    PCM-SLOT ;

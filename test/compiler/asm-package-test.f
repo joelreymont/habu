@@ -46,7 +46,7 @@ package ASM-PACKAGE-TEST
 private
 
 \ Evaluate a source string, answering its throw code (0 = accepted).
-variable AP-A   variable AP-U
+TYPED-VARIABLE AP-A ptr u8   variable AP-U
 : AP-GO ( -- )  AP-A @ AP-U @ INCLUDE-EVALUATE ;
 : AP-EVAL ( ptr u8 n -- n )  AP-U ! AP-A !  [: AP-GO ;] catch ;
 

@@ -43,7 +43,7 @@ variable #CASE
 
 \ Evaluate one source string, returning its throw code (0 = accepted). The row
 \ under test is the LAST thing in the string, so a non-zero code is the row's.
-variable TCE-A   variable TCE-U
+TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
 : TCE-GO ( -- )  TCE-A @ TCE-U @ INCLUDE-EVALUATE ;
 
 public

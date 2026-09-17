@@ -21,7 +21,7 @@ $40000 constant GE-SRC-CAP
 s" JSON-DIAGS" s" -- ptr a" TRUST
 
 create GE-SRC-BUF GE-SRC-CAP allot
-create GE-SRC-A GE-SRC-MAX cells allot
+GE-SRC-MAX TYPED-BUFFER GE-SRC-A ptr u8
 create GE-SRC-LEN GE-SRC-MAX cells allot
 create GE-ARGV-BUF GE-SRC-CAP allot
 create GE-HB-BUF FS-PATH-CAP allot
@@ -38,33 +38,27 @@ variable GE-EVAL-CURRENT
 variable GE-EVAL-JSON-DIAGS
 variable GE-EVAL-OUT-SAVE
 variable GE-EVAL-ERR-SAVE
-variable GE-EVAL-STACK-A
-variable GE-EVAL-SRC-A
+TYPED-VARIABLE GE-EVAL-STACK-A ptr u8
+TYPED-VARIABLE GE-EVAL-SRC-A ptr u8
 variable GE-EVAL-SRC-U
 
-: GE-EVAL-STACK-A-FIELD ( -- ptr ptr u8 )
-   GE-EVAL-STACK-A 0 ptr-field ;
-
 : GE-EVAL-STACK@ ( -- ptr u8 )
-   GE-EVAL-STACK-A-FIELD @ ;
+   GE-EVAL-STACK-A @ ;
 
 : GE-EVAL-STACK! ( ptr u8 -- )
-   GE-EVAL-STACK-A-FIELD ! ;
+   GE-EVAL-STACK-A ! ;
 
 : GE-EVAL-STACK ( -- ptr u8 n )
    GE-EVAL-STACK@ 0= if STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop GE-EVAL-STACK! then
    GE-EVAL-STACK@ STACK-ABI:PAGE-BYTES ;
 
-: GE-EVAL-SRC-A-FIELD ( -- ptr ptr u8 )
-   GE-EVAL-SRC-A 0 ptr-field ;
-
 : GE-EVAL-SRC! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-STR-BOUNDS throw then
-   a GE-EVAL-SRC-A-FIELD !
+   a GE-EVAL-SRC-A !
    u GE-EVAL-SRC-U ! ;
 
 : GE-EVAL-SRC$ ( -- ptr u8 n )
-   GE-EVAL-SRC-A-FIELD @ GE-EVAL-SRC-U @ ;
+   GE-EVAL-SRC-A @ GE-EVAL-SRC-U @ ;
 
 : GE-STORE-CAPTURE ( len len rc -- ) {: outu:len erru:len rc:rc :}
    rc RC>N OUTCOME:EXITED GT-OUTCOME!
@@ -272,12 +266,12 @@ variable GE-EVAL-SRC-U
 : GE-SRC$ ( n -- ptr u8 n ) {: idx:n :}
    idx 0 < if E-STR-BOUNDS throw then
    idx GE-SRC-N @ >= if E-STR-BOUNDS throw then
-   idx cells GE-SRC-A + @
+   idx GE-SRC-A @
    idx cells GE-SRC-LEN + @ ;
 
 : GE-SRC-PATH+ ( ptr u8 n -- ) {: path:ptr pathu:n :}
    GE-SRC-N @ GE-SRC-MAX >= if E-STR-CAPACITY throw then
-   path GE-SRC-A GE-SRC-N @ cells + !
+   path GE-SRC-N @ GE-SRC-A !
    pathu GE-SRC-LEN GE-SRC-N @ cells + !
    GE-SRC-N @ 1+ GE-SRC-N ! ;
 

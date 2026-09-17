@@ -15,13 +15,13 @@ $800 constant SOURCE-CAP
 
 create SOURCE SOURCE-CAP allot
 variable SOURCE-U
-create ZERO-CELL 0 ,
+PTR-VARIABLE ZERO-SLOT                   \ a declared slot nothing ever writes
 create TARGET 0 ,
 PTR-VARIABLE SLOT
 PERSISTED-PTR-VARIABLE PERSISTED-SLOT
 
 : ZERO-PTR ( -- ptr n )
-   ZERO-CELL 0 ptr-field @ ;
+   ZERO-SLOT @ ;
 
 : ADDRESS ( -- ptr ptr n )
    SLOT ;

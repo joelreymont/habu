@@ -350,7 +350,7 @@ variable LABEL-U
    s" : JRET ( i64 -- ) >r ;" GE-SRC-LINE
    s" : JDEAD ( i64 -- i64 ) dup 0 < if 1 throw 0 then 1 + ;" GE-SRC-LINE
    s" : JDIE ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 + ;" GE-SRC-LINE
-   s" variable JBP" GE-SRC-LINE
+   s" TYPED-VARIABLE JBP ptr u8" GE-SRC-LINE
    s" : JBPBASE ( -- ptr u8 ) JBP @ ;" GE-SRC-LINE
    s" : JBPS ( -- ) 0 JBPBASE ! ;" GE-SRC-LINE
    s" tools/check.f --json-errors --all-errors accepted repair class batch" CHECK-JSON-ALL

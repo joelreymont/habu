@@ -13,10 +13,12 @@ package STACK-LIFECYCLE-TEST
 \ MEM-ALLOC-GUARDED): an inaccessible page on each side of the capacity, sized
 \ in whole STACK-ABI:PAGE-BYTES multiples. POOL is that mapping, made once and
 \ reused by every in-process case below; POOL-BYTES is its exact capacity.
-STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED constant POOL-BYTES constant POOL
-variable SAVED-BASE
+PTR-VARIABLE POOL-A
+STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED constant POOL-BYTES POOL-A !
+: POOL ( -- ptr u8 ) POOL-A @ ;
+PTR-VARIABLE SAVED-BASE
 variable SAVED-CAP
-variable SEEN-BASE
+PTR-VARIABLE SEEN-BASE
 variable SEEN-CAP
 
 : ACTIVE-BASE ( -- ptr u8 )
@@ -26,15 +28,15 @@ variable SEEN-CAP
    data-base STACK-ABI:CAP-CELL + @ ;
 
 : SAVE-CALLER ( -- )
-   ACTIVE-BASE SAVED-BASE 0 ptr-field !
+   ACTIVE-BASE SAVED-BASE !
    ACTIVE-CAP SAVED-CAP ! ;
 
 : CALLER-RESTORED ( -- )
-   ACTIVE-BASE SAVED-BASE 0 ptr-field @ = TTRUE
+   ACTIVE-BASE SAVED-BASE @ = TTRUE
    ACTIVE-CAP SAVED-CAP @ T= ;
 
 : OBSERVE ( -- )
-   ACTIVE-BASE SEEN-BASE 0 ptr-field !
+   ACTIVE-BASE SEEN-BASE !
    ACTIVE-CAP SEEN-CAP ! ;
 
 : EMPTY ( -- ) ;
@@ -58,7 +60,7 @@ private
    SAVE-CALLER
    s" alternate allocation is active" T-LABEL
    ['] OBSERVE POOL POOL-BYTES run-in-stack
-   SEEN-BASE 0 ptr-field @ POOL = TTRUE
+   SEEN-BASE @ POOL = TTRUE
    SEEN-CAP @ POOL-BYTES T=
    CALLER-RESTORED
    \ There is no such thing as a zero-capacity guarded mapping any more:
@@ -75,7 +77,7 @@ private
    ['] EVAL-CROSS-THROW catch 19 T= CALLER-RESTORED
    s" clean evaluate preserves alternate allocation" T-LABEL
    ['] EVAL-OBSERVE POOL POOL-BYTES run-in-stack
-   SEEN-BASE 0 ptr-field @ POOL = TTRUE
+   SEEN-BASE @ POOL = TTRUE
    SEEN-CAP @ POOL-BYTES T= CALLER-RESTORED ;
 
 $200 constant IO-CAP

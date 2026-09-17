@@ -32,7 +32,7 @@ TYPED-VARIABLE HK [ n -- n ]
 2 TYPED-BUFFER HKB [ n -- n ]
 
 \ define-time reject verdicts (INCLUDE-EVALUATE under catch)
-variable XC-A  variable XC-U
+TYPED-VARIABLE XC-A ptr u8  variable XC-U
 : XC-RUN ( -- ) XC-A @ XC-U @ INCLUDE-EVALUATE ;
 : XC-EVAL ( ptr u8 n -- n ) XC-U ! XC-A ! [: XC-RUN ;] catch ;
 

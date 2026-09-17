@@ -18,31 +18,25 @@ variable INC-CORE-U
 variable INC-API-U
 variable INC-MAIN-U
 variable INC-DUP-U
-variable LABEL-A
+TYPED-VARIABLE LABEL-A ptr u8
 variable LABEL-U
-variable CANDIDATE-A
+TYPED-VARIABLE CANDIDATE-A ptr u8
 variable CANDIDATE-U
 variable CANDIDATE-VERDICT
 
-: LABEL-A-FIELD ( -- ptr ptr u8 )
-   LABEL-A 0 ptr-field ;
-
-: CANDIDATE-A-FIELD ( -- ptr ptr u8 )
-   CANDIDATE-A 0 ptr-field ;
-
 : LABEL$ ( -- ptr u8 n )
-   LABEL-A-FIELD @ LABEL-U @ ;
+   LABEL-A @ LABEL-U @ ;
 
 : CANDIDATE$ ( -- ptr u8 n )
-   CANDIDATE-A-FIELD @ CANDIDATE-U @ ;
+   CANDIDATE-A @ CANDIDATE-U @ ;
 
 : LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
    u LABEL-U !
-   a LABEL-A-FIELD ! ;
+   a LABEL-A ! ;
 
 : CANDIDATE! ( ptr u8 n -- ) {: a:ptr u:n :}
    u CANDIDATE-U !
-   a CANDIDATE-A-FIELD ! ;
+   a CANDIDATE-A ! ;
 
 : EMIT-LONG-NAME ( -- )
    LONG-NAME-LEN NAME-CHAR GE-SRC-REPEAT-C ;
@@ -930,7 +924,7 @@ variable CANDIDATE-VERDICT
    s" : TARGET ( -- n ) 42 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" GD-QUNDEF:TARGET ." GE-SRC-LINE
-   s" variable GD-UQ-A   variable GD-UQ-U" GE-SRC-LINE
+   s" TYPED-VARIABLE GD-UQ-A ptr u8   variable GD-UQ-U" GE-SRC-LINE
    s" : GD-UQ-GO ( -- ) GD-UQ-A @ GD-UQ-U @ INCLUDE-EVALUATE ;" GE-SRC-LINE
    s" : GD-UQ-CATCH ( ptr u8 n -- n ) GD-UQ-U ! GD-UQ-A ! [: GD-UQ-GO ;] catch ;" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  undefine PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C

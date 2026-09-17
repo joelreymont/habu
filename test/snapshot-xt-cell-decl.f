@@ -37,7 +37,7 @@ private
 variable N0   variable N1   variable N2   variable N3   variable N4
 variable N5   variable N6   variable N7   variable N8   variable N9
 variable P0   variable P1   variable P2
-variable FORGED-A
+PTR-VARIABLE FORGED-A
 variable RAW-XT
 variable HIT
 
@@ -66,7 +66,10 @@ variable HIT
 
 \ An ordinary heap cell holding a value that looks exactly like an execution
 \ token: an address a little way into the live JIT region. Nothing about the store
-\ declares anything, so the cell must stay out of the table.
+\ declares anything, so the cell must stay out of the table. FORGED-A is only the
+\ HANDLE that names it and is a declared pointer cell like any other address-
+\ carrying slot; the forged cell is the anonymous `0 ,` allotment, and nothing
+\ declares that.
 : FORGE ( -- )
    here FORGED-A !
    0 ,

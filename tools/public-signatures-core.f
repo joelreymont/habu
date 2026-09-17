@@ -59,11 +59,11 @@ variable PS-I
 variable PS-CLOSURE-I
 variable PS-NUM-I
 variable PS-FIRST?
-variable PS-TA
+TYPED-VARIABLE PS-TA ptr u8
 variable PS-TU
 variable PS-HAS-ALPHA?
 
-variable PS-SRC-A
+TYPED-VARIABLE PS-SRC-A ptr u8
 variable PS-SRC-U
 variable PS-X
 variable PS-OFF
@@ -75,117 +75,90 @@ variable PS-START-LINE
 variable PS-START-COL
 
 variable PS-TOK-K
-variable PS-TOK-A
+TYPED-VARIABLE PS-TOK-A ptr u8
 variable PS-TOK-U
 variable PS-TOK-BYTE
 variable PS-TOK-LINE
 variable PS-TOK-COL
-variable PS-CONT-A
+TYPED-VARIABLE PS-CONT-A ptr u8
 variable PS-CONT-U
 
-variable PS-NAME-A
+TYPED-VARIABLE PS-NAME-A ptr u8
 variable PS-NAME-U
 variable PS-NAME-BYTE
 variable PS-NAME-LINE
 variable PS-NAME-COL
-variable PS-SIG-A
+TYPED-VARIABLE PS-SIG-A ptr u8
 variable PS-SIG-U
 public
 variable PS-TRUST
 private
 variable PS-ARG-I
-variable PS-OUT-A
+TYPED-VARIABLE PS-OUT-A ptr u8
 variable PS-OUT-CAP
 variable PS-OUT-U
-variable PS-ERR-A
+TYPED-VARIABLE PS-ERR-A ptr u8
 variable PS-ERR-CAP
 variable PS-ERR-U
-variable PS-PKG-A
+TYPED-VARIABLE PS-PKG-A ptr u8
 variable PS-PKG-U
 variable PS-IN-PKG
 variable PS-PKG-PUBLIC
 variable PS-DEF-SIG-U
 
-: PS-TA-FIELD ( -- ptr ptr u8 )
-   PS-TA 0 ptr-field ;
-
-: PS-SRC-A-FIELD ( -- ptr ptr u8 )
-   PS-SRC-A 0 ptr-field ;
-
-: PS-TOK-A-FIELD ( -- ptr ptr u8 )
-   PS-TOK-A 0 ptr-field ;
-
-: PS-CONT-A-FIELD ( -- ptr ptr u8 )
-   PS-CONT-A 0 ptr-field ;
-
-: PS-NAME-A-FIELD ( -- ptr ptr u8 )
-   PS-NAME-A 0 ptr-field ;
-
-: PS-SIG-A-FIELD ( -- ptr ptr u8 )
-   PS-SIG-A 0 ptr-field ;
-
-: PS-OUT-A-FIELD ( -- ptr ptr u8 )
-   PS-OUT-A 0 ptr-field ;
-
-: PS-ERR-A-FIELD ( -- ptr ptr u8 )
-   PS-ERR-A 0 ptr-field ;
-
-: PS-PKG-A-FIELD ( -- ptr ptr u8 )
-   PS-PKG-A 0 ptr-field ;
-
 : PS-TA@ ( -- ptr u8 )
-   PS-TA-FIELD @ ;
+   PS-TA @ ;
 
 : PS-SRC-A@ ( -- ptr u8 )
-   PS-SRC-A-FIELD @ ;
+   PS-SRC-A @ ;
 
 : PS-TOK-A@ ( -- ptr u8 )
-   PS-TOK-A-FIELD @ ;
+   PS-TOK-A @ ;
 
 : PS-CONT-A@ ( -- ptr u8 )
-   PS-CONT-A-FIELD @ ;
+   PS-CONT-A @ ;
 
 : PS-NAME-A@ ( -- ptr u8 )
-   PS-NAME-A-FIELD @ ;
+   PS-NAME-A @ ;
 
 : PS-SIG-A@ ( -- ptr u8 )
-   PS-SIG-A-FIELD @ ;
+   PS-SIG-A @ ;
 
 : PS-OUT-A@ ( -- ptr u8 )
-   PS-OUT-A-FIELD @ ;
+   PS-OUT-A @ ;
 
 : PS-ERR-A@ ( -- ptr u8 )
-   PS-ERR-A-FIELD @ ;
+   PS-ERR-A @ ;
 
 : PS-PKG-A@ ( -- ptr u8 )
-   PS-PKG-A-FIELD @ ;
+   PS-PKG-A @ ;
 
 : PS-TA! ( ptr u8 -- )
-   PS-TA-FIELD ! ;
+   PS-TA ! ;
 
 : PS-SRC-A! ( ptr u8 -- )
-   PS-SRC-A-FIELD ! ;
+   PS-SRC-A ! ;
 
 : PS-TOK-A! ( ptr u8 -- )
-   PS-TOK-A-FIELD ! ;
+   PS-TOK-A ! ;
 
 : PS-CONT-A! ( ptr u8 -- )
-   PS-CONT-A-FIELD ! ;
+   PS-CONT-A ! ;
 
 : PS-NAME-A! ( ptr u8 -- )
-   PS-NAME-A-FIELD ! ;
+   PS-NAME-A ! ;
 
 : PS-SIG-A! ( ptr u8 -- )
-   PS-SIG-A-FIELD ! ;
+   PS-SIG-A ! ;
 
 : PS-OUT-A! ( ptr u8 -- )
-   PS-OUT-A-FIELD ! ;
+   PS-OUT-A ! ;
 
 : PS-ERR-A! ( ptr u8 -- )
-   PS-ERR-A-FIELD ! ;
+   PS-ERR-A ! ;
 
 : PS-PKG-A! ( ptr u8 -- )
-   PS-PKG-A-FIELD ! ;
+   PS-PKG-A ! ;
 
 : PS-TRUE ( -- bool )
    0 0= ;

@@ -56,18 +56,15 @@ public
 package CRPS
 private
 
-variable SRC-A
+TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
-
-: SRC-A-FIELD ( -- ptr ptr u8 )
-   SRC-A 0 ptr-field ;
 
 create DIAG-BUF $2000 allot
 
 \ A quotation cannot read the enclosing word's locals, so the source span travels
 \ to the caught body through these two cells.
 : ACT ( -- )
-   SRC-A-FIELD @ SRC-U @ VERIFY:SOURCE-BUF ;
+   SRC-A @ SRC-U @ VERIFY:SOURCE-BUF ;
 
 public
 
@@ -83,7 +80,7 @@ public
 \ case, not to the gate's stderr. The scope is opened and closed around the
 \ catch, so a rejecting case still restores the caller.
 : REPLAY ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a SRC-A-FIELD !
+   a SRC-A !
    u SRC-U !
    DIAG-BUF $2000 DIAG-BUFFER!
    CHECKER-SCOPE-START-NEUTRAL

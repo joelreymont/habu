@@ -28,7 +28,7 @@ variable #CASE
    then ;
 
 \ evaluate a source string, returning its throw code (0 = accepted).
-variable UCE-A   variable UCE-U
+TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 : UCE-GO ( -- )  UCE-A @ UCE-U @ INCLUDE-EVALUATE ;
 : UCE-CATCH ( ptr u8 n -- n )  UCE-U ! UCE-A !  [: UCE-GO ;] catch ;
 

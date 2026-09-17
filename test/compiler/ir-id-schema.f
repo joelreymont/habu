@@ -188,19 +188,16 @@ PACK-OFF PACK-CAP PACK-FIELDS * + constant CHECK-OFF
 CHECK-OFF CHECK-CAP CHECK-FIELDS * + constant SCALAR-OFF
 SCALAR-OFF SCALAR-CAP SCALAR-FIELDS * + constant ARENA-CELLS
 
-variable ARENA-BASE
+TYPED-VARIABLE ARENA-BASE ptr n
 variable PACK-N
 variable CHECK-N
 variable SCALAR-N
 
-: ARENA-FIELD ( -- ptr ptr a )
-   ARENA-BASE 0 ptr-field ;
-
-: ARENA ( -- ptr a )
-   ARENA-FIELD @ 0= if
-      ARENA-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS ARENA-FIELD !
+: ARENA ( -- ptr n )
+   ARENA-BASE @ 0= if
+      ARENA-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS ARENA-BASE !
    then
-   ARENA-FIELD @ ;
+   ARENA-BASE @ ;
 
 : SLOT@ ( n -- n ) {: slot:n :}
    slot 0 < slot ARENA-CELLS >= or if E-CID-ROW throw then

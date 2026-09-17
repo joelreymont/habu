@@ -77,7 +77,7 @@ s" LB-WRONG-FETCH ( ptr lb-res<n,n> -- lb-other<n> ) @" CHECK-QUIET-CANDIDATE! 0
 LB-LOW-RC E-LAYOUT-BOUNDS T=
 LB-HIGH-RC E-LAYOUT-BOUNDS T=
 
-variable LB-EVAL-A
+TYPED-VARIABLE LB-EVAL-A ptr u8
 variable LB-EVAL-U
 
 : LB-EVAL-RUN ( -- )

@@ -29,16 +29,13 @@ require src/habu/verify-source.f
 package CVPS
 private
 
-variable SRC-A
+TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
-
-: SRC-A-FIELD ( -- ptr ptr u8 )
-   SRC-A 0 ptr-field ;
 
 \ A quotation cannot read the enclosing word's locals, so the source span
 \ travels through these two cells to the caught body.
 : ACT ( -- )
-   SRC-A-FIELD @ SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
+   SRC-A @ SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 create DIAG-BUF $1000 allot
 variable DIAG-U
@@ -48,7 +45,7 @@ public
 \ Replay one source span in the caller's live package context; 0 means the
 \ verifier accepted both the package context and the source.
 : REPLAY ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a SRC-A-FIELD !
+   a SRC-A !
    u SRC-U !
    [: ACT ;] catch ;
 

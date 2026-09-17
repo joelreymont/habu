@@ -262,7 +262,9 @@ variable BWM-GXT
 \ lib/memory.f directly, the Gforth stage0 seed through the same `require`
 \ in the source it bakes.
 require lib/memory.f
-STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop constant BWM-POOL
+PTR-VARIABLE BWM-POOL-A
+STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop BWM-POOL-A !
+: BWM-POOL ( -- ptr u8 ) BWM-POOL-A @ ;
 
 : BWM-SWITCHED-STORE ( -- ) BWM-MK2 BWM-STORE2 ;
 

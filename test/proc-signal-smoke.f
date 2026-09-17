@@ -24,7 +24,7 @@ package PROC-SIGNAL-SMOKE
 2 constant ENOENT#                 \ "no such file or directory" (POSIX, identical both OSes)
 $7FFF0000 constant DEAD-PID        \ a positive pid guaranteed not to exist
 
-create EXEC-ENVP 1 cells allot     \ a single-slot, NULL-terminated (empty) environment
+1 TYPED-BUFFER EXEC-ENVP ptr u8    \ a single-slot, NULL-terminated (empty) environment
 
 \ ---- checks ------------------------------------------------------------------
 \ Signal 0 to our own live pid: the process exists, so the probe succeeds.
@@ -41,10 +41,10 @@ create EXEC-ENVP 1 cells allot     \ a single-slot, NULL-terminated (empty) envi
 \ process is left intact. PROC-ARGV-PREPARE builds the [pathz, NULL] argv; the
 \ NULL-terminated EXEC-ENVP is the empty environment.
 : CHECK-EXEC-FAIL ( -- )
-   0 EXEC-ENVP !
+   NULL-PTR 0 EXEC-ENVP !
    PROC-ARGV-RESET
    s" /no/such/hb-execve-probe" >LEN PROC-ARGV-PREPARE
-   EXEC-ENVP execve ENOENT# negate T= ;
+   0 EXEC-ENVP execve ENOENT# negate T= ;
 
 : RUN ( -- )
    T-RESET

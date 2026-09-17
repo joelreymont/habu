@@ -38,12 +38,12 @@ variable CAE-IN-U
 variable CAE-LARGE-U
 variable CAE-XSUP-PATH-U
 variable CAE-NUM-I
-variable CAE-RUN-A
+TYPED-VARIABLE CAE-RUN-A ptr u8
 variable CAE-RUN-U
 variable CAE-RC
-variable CAE-CASE-A
+TYPED-VARIABLE CAE-CASE-A ptr u8
 variable CAE-CASE-U
-variable CAE-BUF-SRC-A
+TYPED-VARIABLE CAE-BUF-SRC-A ptr u8
 variable CAE-BUF-SRC-U
 variable CAE-START-NS
 
@@ -72,14 +72,11 @@ create CAE-LF-BYTE 10 c,
 : CAE-XSUP ( -- ptr u8 n )
    CAE-XSUP-PATH-BUF CAE-XSUP-PATH-U @ ;
 
-: CAE-RUN-A-FIELD ( -- ptr ptr u8 )
-   CAE-RUN-A 0 ptr-field ;
-
 : CAE-RUN-A@ ( -- ptr u8 )
-   CAE-RUN-A-FIELD @ ;
+   CAE-RUN-A @ ;
 
 : CAE-RUN-A! ( ptr u8 -- )
-   CAE-RUN-A-FIELD ! ;
+   CAE-RUN-A ! ;
 
 : CAE-RUN! ( ptr u8 n -- ) {: a:ptr u:n :}
    u CAE-RUN-U !
@@ -88,14 +85,11 @@ create CAE-LF-BYTE 10 c,
 : CAE-RUN$ ( -- ptr u8 n )
    CAE-RUN-A@ CAE-RUN-U @ ;
 
-: CAE-CASE-A-FIELD ( -- ptr ptr u8 )
-   CAE-CASE-A 0 ptr-field ;
-
 : CAE-CASE-A@ ( -- ptr u8 )
-   CAE-CASE-A-FIELD @ ;
+   CAE-CASE-A @ ;
 
 : CAE-CASE-A! ( ptr u8 -- )
-   CAE-CASE-A-FIELD ! ;
+   CAE-CASE-A ! ;
 
 : CAE-CASE! ( ptr u8 n -- ) {: a:ptr u:n :}
    a CAE-CASE-A!
@@ -104,14 +98,11 @@ create CAE-LF-BYTE 10 c,
 : CAE-CASE$ ( -- ptr u8 n )
    CAE-CASE-A@ CAE-CASE-U @ ;
 
-: CAE-BUF-SRC-A-FIELD ( -- ptr ptr u8 )
-   CAE-BUF-SRC-A 0 ptr-field ;
-
 : CAE-BUF-SRC-A@ ( -- ptr u8 )
-   CAE-BUF-SRC-A-FIELD @ ;
+   CAE-BUF-SRC-A @ ;
 
 : CAE-BUF-SRC-A! ( ptr u8 -- )
-   CAE-BUF-SRC-A-FIELD ! ;
+   CAE-BUF-SRC-A ! ;
 
 : CAE-BUF-SRC! ( ptr u8 n -- ) {: a:ptr u:n :}
    a CAE-BUF-SRC-A!

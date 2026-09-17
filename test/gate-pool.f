@@ -67,8 +67,8 @@ create GT-POOL-RED-SAT-LIVES GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SAT-LIMITS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SAT-MSS GT-POOL-RED-MAX cells allot
 
-variable GT-POOL-OUT-BUFS-A
-variable GT-POOL-ERR-BUFS-A
+TYPED-VARIABLE GT-POOL-OUT-BUFS-A ptr u8
+TYPED-VARIABLE GT-POOL-ERR-BUFS-A ptr u8
 variable GT-POOL-LIVE
 variable GT-POOL-RD
 variable GT-POOL-LIMIT
@@ -91,26 +91,20 @@ variable GT-POOL-DEATH-MADE
 : GT-POOL-RED-RESET ( -- )
    0 GT-POOL-RED-N ! ;
 
-: GT-POOL-OUT-BUFS-FIELD ( -- ptr ptr u8 )
-   GT-POOL-OUT-BUFS-A 0 ptr-field ;
-
 : GT-POOL-OUT-BUFS@ ( -- ptr u8 )
-   GT-POOL-OUT-BUFS-FIELD @ ;
+   GT-POOL-OUT-BUFS-A @ ;
 
 : GT-POOL-OUT-BUFS! ( ptr u8 -- )
-   GT-POOL-OUT-BUFS-FIELD ! ;
+   GT-POOL-OUT-BUFS-A ! ;
 
 : GT-POOL-OUT-BUFS ( -- ptr u8 )
    GT-POOL-OUT-BUFS@ ;
 
-: GT-POOL-ERR-BUFS-FIELD ( -- ptr ptr u8 )
-   GT-POOL-ERR-BUFS-A 0 ptr-field ;
-
 : GT-POOL-ERR-BUFS@ ( -- ptr u8 )
-   GT-POOL-ERR-BUFS-FIELD @ ;
+   GT-POOL-ERR-BUFS-A @ ;
 
 : GT-POOL-ERR-BUFS! ( ptr u8 -- )
-   GT-POOL-ERR-BUFS-FIELD ! ;
+   GT-POOL-ERR-BUFS-A ! ;
 
 : GT-POOL-ERR-BUFS ( -- ptr u8 )
    GT-POOL-ERR-BUFS@ ;

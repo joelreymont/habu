@@ -44,7 +44,7 @@ variable #CASE
 
 \ evaluate a declaration string, returning its throw code (0 = accepted);
 \ the type-decl-suite INCLUDE-EVALUATE catch shape.
-variable TCE-A   variable TCE-U
+TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
 : TCE-GO ( -- )
    TCE-A @ TCE-U @ INCLUDE-EVALUATE ;
 : TCE-CATCH ( ptr u8 n -- n )

@@ -286,7 +286,8 @@ variable NSUB  variable NSI
 
 \ ---- metamorphic render round-trip: render the just-certified body's effect, then
 \ re-declare the SAME body with that exact rendered sig — it must re-certify. ----
-variable NRT  variable NRI  variable RSA  variable RSU
+variable NRT  variable NRI  variable RSU
+TYPED-VARIABLE RSA ptr u8
 TRUSTED: REND-SIG$ ( -- ptr u8 n )
    REND-SIG ;
 : ROUNDTRIP  ( -- )   \ pre: G just certified; REND-SIG holds G's rendered effect

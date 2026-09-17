@@ -69,18 +69,15 @@ private
 
 create DIAG-BUF $1000 allot
 variable DIAG-U
-variable SRC-A
+TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
 
-: SRC-A-FIELD ( -- ptr ptr u8 )
-   SRC-A 0 ptr-field ;
-
 : ACT ( -- )
-   SRC-A-FIELD @ SRC-U @ VERIFY:SOURCE-BUF ;
+   SRC-A @ SRC-U @ VERIFY:SOURCE-BUF ;
 
 \ The verdict of verifying a text warm: 0 certified, else the throw code.
 : VERDICT ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a SRC-A-FIELD !
+   a SRC-A !
    u SRC-U !
    DIAG-BUF $1000 DIAG-BUFFER!
    [: ACT ;] catch {: rc:n :}

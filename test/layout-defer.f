@@ -125,7 +125,7 @@ SUMTYPE dfl-owned 0
    VARIANT hold dfl-lin ;VARIANT
 ;SUMTYPE
 
-variable DFL-EVAL-A
+TYPED-VARIABLE DFL-EVAL-A ptr u8
 variable DFL-EVAL-U
 : DFL-EVAL-RUN ( -- )  DFL-EVAL-A @ DFL-EVAL-U @ INCLUDE-EVALUATE ;
 : DFL-EVAL ( ptr u8 n -- n )  DFL-EVAL-U ! DFL-EVAL-A !  [: DFL-EVAL-RUN ;] catch ;

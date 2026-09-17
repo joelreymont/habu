@@ -113,16 +113,20 @@ variable PRIM-N
 \ ---- the subjects ------------------------------------------------------------
 \ Real checked definitions, each doing work whose answer is asserted below.
 create TIP-CELLS 8 cells allot       \ plain cells
-create TIP-TAB 8 cells allot         \ cells that hold pointers
+create TIP-TAB-STORE 8 cells allot   \ the block the pointer table lives in
+TYPED-VARIABLE TIP-TAB ptr n         \ and the declared cell that names its base
+TIP-TAB-STORE TIP-TAB !
 
 public
 
-\ `ptr-field` indexes the pointer table; the pointer it holds is then read.
+\ `ptr-field` indexes the pointer table; the pointer it holds is then read. It
+\ indexes a base whose pointee is DECLARED, which is why the table is reached
+\ through TIP-TAB rather than through a raw cell named directly.
 : TIP-INDEXED ( n -- n ) {: k:n :}
-   TIP-TAB k ptr-field @ @ ;
+   TIP-TAB @ k ptr-field @ @ ;
 
 : TIP-INDEXED! ( ptr n n -- ) {: p:ptr k:n :}
-   p TIP-TAB k ptr-field ! ;
+   p TIP-TAB @ k ptr-field ! ;
 
 \ `cell+` steps one cell past the cell an index names.
 : TIP-NEXT-CELL ( n -- n ) {: k:n :}

@@ -14,14 +14,14 @@ require tools/codegen-tail-probe.f
 package DKA
 public
 
-variable SB                          \ base of the fresh data stack
+PTR-VARIABLE SB                      \ base of the fresh data stack
 variable SZ                          \ its size
 variable ANS                         \ where a body leaves its answer
 
 : ALLOC ( -- )
-   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED SZ !  SB 0 ptr-field ! ;
+   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED SZ !  SB ! ;
 
-: BASE ( -- ptr u8 )   SB 0 ptr-field @ ;
+: BASE ( -- ptr u8 )   SB @ ;
 : SIZE ( -- n )        SZ @ ;
 
 : SEVEN ( -- n )       7 ;

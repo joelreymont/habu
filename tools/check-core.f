@@ -76,13 +76,16 @@ create CHK-DIR-IDS CHK-DEP-MAX cells allot
 create CHK-DEP-ORDER CHK-DEP-MAX cells allot
 create CHK-ONE 1 allot
 
-variable CHK-SRC-BUF-A
-variable CHK-RUN-BUF-A
-variable CHK-ORIGIN-BUF-A
-variable CHK-OUT-BUF-A
-variable CHK-ERR-BUF-A
-variable CHK-EXP-BUF-A
-variable CHK-SEL-SRC-BUF-A
+\ The lazily allocated byte buffers hold addresses, so each is a declared
+\ pointer cell: a raw `variable` would launder the address through a cell of
+\ unknown type.
+TYPED-VARIABLE CHK-SRC-BUF-A ptr u8
+TYPED-VARIABLE CHK-RUN-BUF-A ptr u8
+TYPED-VARIABLE CHK-ORIGIN-BUF-A ptr u8
+TYPED-VARIABLE CHK-OUT-BUF-A ptr u8
+TYPED-VARIABLE CHK-ERR-BUF-A ptr u8
+TYPED-VARIABLE CHK-EXP-BUF-A ptr u8
+TYPED-VARIABLE CHK-SEL-SRC-BUF-A ptr u8
 
 variable CHK-ARG-I
 variable CHK-POS-N
@@ -103,7 +106,7 @@ variable CHK-NUM-I
 variable CHK-LABEL-A
 variable CHK-LABEL-U
 variable CHK-SRC-A
-variable CHK-HB-A
+TYPED-VARIABLE CHK-HB-A ptr u8
 variable CHK-HB-U
 variable CHK-SRC-PATH-U
 variable CHK-RUN-PATH-U
@@ -140,21 +143,12 @@ variable CHK-TFAM-NAME-I
 : CHK-PTR-U8-SLOT! ( ptr u8 n ptr a -- )
    CHK-PTR-U8-SLOT ! ;
 
-: CHK-HB-A-FIELD ( -- ptr ptr u8 )
-   CHK-HB-A 0 ptr-field ;
-
-: CHK-HB-A@ ( -- ptr u8 )
-   CHK-HB-A-FIELD @ ;
-
-: CHK-HB-A! ( ptr u8 -- )
-   CHK-HB-A-FIELD ! ;
-
 : CHK-HB! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a CHK-HB-A!
+   a CHK-HB-A !
    u CHK-HB-U ! ;
 
 : CHK-HB$ ( -- ptr u8 n )
-   CHK-HB-A@ CHK-HB-U @ ;
+   CHK-HB-A @ CHK-HB-U @ ;
 
 : CHK-ALLOC-BUF ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
@@ -334,7 +328,7 @@ private
    NULL$ drop CHK-LABEL-A CHK-PTR-U8!
    NULL$ drop CHK-SRC-A CHK-PTR-U8!
    0 CHK-HB-U !
-   NULL$ drop CHK-HB-A!
+   NULL$ drop CHK-HB-A !
    0 CHK-NOM-I !
    0 CHK-NOM-U !
    0 CHK-VREC-DEF-I !

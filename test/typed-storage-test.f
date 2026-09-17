@@ -53,7 +53,7 @@ TRUSTED: TSRES-UN ( tsres<n,n> -- n n ) ;
 TRUSTED: RES-K-UN ( tsres<tsk,n> -- tsk n ) ;
 
 \ ---- eval helper (define-time reject verdicts) ------------------------------
-variable TS-EVAL-A
+TYPED-VARIABLE TS-EVAL-A ptr u8
 variable TS-EVAL-U
 : TS-EVAL-RUN ( -- ) TS-EVAL-A @ TS-EVAL-U @ INCLUDE-EVALUATE ;
 : TS-EVAL ( ptr u8 n -- n ) TS-EVAL-U ! TS-EVAL-A ! [: TS-EVAL-RUN ;] catch ;

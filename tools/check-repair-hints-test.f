@@ -36,9 +36,9 @@ $4000 constant BUF-CAP
 variable ROOT-U
 variable SRC-U
 variable DIAG-U
-variable LABEL-A
+TYPED-VARIABLE LABEL-A ptr u8
 variable LABEL-U
-variable PHASE-A
+TYPED-VARIABLE PHASE-A ptr u8
 variable PHASE-U
 
 create ROOT-BUF FS-PATH-CAP allot
