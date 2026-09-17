@@ -35,6 +35,9 @@ variable QUIET-N
 : HB$ ( -- ptr u8 len )
    s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then >LEN ;
 
+: PROMPT$ ( -- ptr u8 n )    s" habu> " ;
+: ANYWHERE$ ( -- ptr u8 n )  s" " ;      \ an empty head: the tail may be anywhere
+
 : RCLR ( -- ) 0 RN ! ;
 
 \ One wait runs at a time, so a single deadline cell serves every loop here. The
@@ -46,12 +49,26 @@ variable QUIET-N
 : WAIT-LEFT ( -- n )
    DEADLINE @ PROC-LEFT-MS MS>N ;
 
-: HAS? ( ptr u8 n -- bool ) {: na:ptr nu:n :}   \ is the text in what was read so far?
-   RN @ nu < if false exit then
-   0 begin dup RN @ nu - <= while
-      RBUF over + nu na nu STR= if drop true exit then
+\ Offset of the first occurrence at or after `from`, or -1. Where a marker
+\ landed is what puts two of them in order.
+: FIND ( n ptr u8 n -- n ) {: from:n na:ptr nu:n :}
+   from begin dup RN @ nu - <= while
+      RBUF over + nu na nu STR= if exit then
       1+
-   repeat drop false ;
+   repeat drop -1 ;
+
+: HAS? ( ptr u8 n -- bool ) {: na:ptr nu:n :}   \ is the text in what was read so far?
+   0 na nu FIND 0 >= ;
+
+\ Offset of the tail at or after the END of the first head, or -1: the two
+\ markers in that order, which is what tells a prompt the child printed after
+\ its answer from one the line editor redrew before it.
+: FIND-AFTER ( ptr u8 n ptr u8 n -- n ) {: ha:ptr hu:n ta:ptr tu:n :}
+   0 ha hu FIND dup 0 < if exit then
+   hu + ta tu FIND ;
+
+: HAS-AFTER? ( ptr u8 n ptr u8 n -- bool )
+   FIND-AFTER 0 >= ;
 
 \ A full buffer keeps its tail rather than dropping everything: a marker split
 \ across the compaction survives whole in what is kept, and every older byte has
@@ -69,20 +86,22 @@ variable QUIET-N
    n 0 > if RN @ n + RN ! then
    n ;
 
-\ Keep reading until the text appears, the target hangs up, or the wait's
-\ deadline passes. A child engine answers in as many pieces as the host's
-\ scheduling chooses -- a line editor redraws on every keystroke, and a loaded
-\ box splits one echo across dozens of reads -- so no count of reads or of quiet
-\ polls bounds the wait. A partial read is not an answer and not a failure: only
-\ the marker, the hang-up and the clock end the loop. The linear handle stays on
-\ top of the stack for READ-STEP.
-: EXPECT ( process-pty-handle ptr u8 n -- process-pty-handle bool ) {: na:ptr nu:n :}
+\ Keep reading until the tail appears at or after the head, the target hangs up,
+\ or the wait's deadline passes. An empty head waits for the tail anywhere; a
+\ real one waits for the two in that order. A child engine answers in as many
+\ pieces as the host's scheduling chooses -- a line editor redraws on every
+\ keystroke, and a loaded box splits one echo across dozens of reads -- so no
+\ count of reads or of quiet polls bounds the wait. A partial read is not an
+\ answer and not a failure: only the markers, the hang-up and the clock end it.
+\ The linear handle stays on top of the stack for READ-STEP.
+: EXPECT-AFTER ( process-pty-handle ptr u8 n ptr u8 n -- process-pty-handle bool )
+   {: ha:ptr hu:n ta:ptr tu:n :}
    WAIT-MS WAIT-OPEN
    begin
-      na nu HAS? if true exit then
+      ha hu ta tu HAS-AFTER? if true exit then
       WAIT-LEFT 0= if false exit then
       READ-STEP {: n:n :}
-      n 0 < if na nu HAS? exit then
+      n 0 < if ha hu ta tu HAS-AFTER? exit then
    again ;
 
 \ After the target exited, read everything it left behind until the hang-up.
@@ -92,13 +111,28 @@ variable QUIET-N
       READ-STEP 0 < if exit then
    repeat ;
 
-\ A failed wait shows how long it waited and what the child actually said.
-: EXPECT! ( process-pty-handle ptr u8 n -- process-pty-handle ) {: na:ptr nu:n :}
-   na nu EXPECT 0= if
-      s" expected: " type na nu type s"  (wait budget " type WAIT-MS . s" ms)" type cr
-      s" read so far (" type RN @ . s" bytes):" type cr RBUF RN @ type cr
-      false TTRUE
-   then ;
+\ A failed wait shows what it waited for, how long, and what the child said.
+: WAIT-FAILED ( ptr u8 n ptr u8 n -- ) {: ha:ptr hu:n ta:ptr tu:n :}
+   s" expected: " type ta tu type
+   hu 0 > if s"  after " type ha hu type then
+   s"  (wait budget " type WAIT-MS . s" ms)" type cr
+   s" read so far (" type RN @ . s" bytes):" type cr RBUF RN @ type cr
+   false TTRUE ;
+
+: EXPECT-AFTER! ( process-pty-handle ptr u8 n ptr u8 n -- process-pty-handle )
+   {: ha:ptr hu:n ta:ptr tu:n :}
+   ha hu ta tu EXPECT-AFTER 0= if ha hu ta tu WAIT-FAILED then ;
+
+: EXPECT! ( process-pty-handle ptr u8 n -- process-pty-handle ) {: ta:ptr tu:n :}
+   ANYWHERE$ ta tu EXPECT-AFTER! ;
+
+\ A prompt proves the REPL came back only when it FOLLOWS the answer. The line
+\ editor redraws prompt and line on every keystroke (src/habu/repl.f REDRAW,
+\ one byte per KEY1), so the echo of the line just typed carries prompts of its
+\ own, printed before the child evaluated anything: a bare wait for the prompt
+\ is answered by the echo and proves nothing about the line it was typed for.
+: PROMPT-AFTER! ( process-pty-handle ptr u8 n -- process-pty-handle ) {: na:ptr nu:n :}
+   na nu PROMPT$ EXPECT-AFTER! ;
 
 \ Read until QUIET-POLLS polls in a row bring nothing, the target hangs up, or
 \ the deadline passes, and then DROP what was read. A drain is the barrier before
@@ -147,8 +181,7 @@ variable QUIET-N
    s" tty-bad" EXPECT!
    RCLR
    ARITH$ SEND
-   s" 42" EXPECT!
-   s" habu> " EXPECT!
+   s" 42" PROMPT-AFTER!
    PROCESS-PTY:ALIVE? TTRUE
    PROCESS-PTY:TEARDOWN
    s" PASS: REPL on a pseudo-terminal refuses, recovers and prompts again" type cr ;
@@ -167,8 +200,7 @@ variable QUIET-N
    DRAIN
    s" PTYP:FIRST-X . cr depth . cr" SEND
    S\" \r\n2\r\n" EXPECT!
-   S\" \r\n0\r\n" EXPECT!
-   s" habu> " EXPECT!
+   S\" \r\n0\r\n" PROMPT-AFTER!
    PROCESS-PTY:ALIVE? TTRUE
    PROCESS-PTY:TEARDOWN
    s" PASS: checked layout calculation works at the REPL after bare-layout refusal" type cr ;
@@ -202,14 +234,37 @@ variable QUIET-N
    s" ?" EXPECT!                          \ the uncaught throw's mark, with nothing refused or undefined
    s" E-UNDEFINED" HAS? 0= TTRUE
    s" non-certified" HAS? 0= TTRUE
-   s" habu> " EXPECT!
+   s" ?" PROMPT-AFTER!
    RCLR
    s" 1 2 3 4 . . . . depth . cr" SEND
-   S\" 4\r\n3\r\n2\r\n1\r\n0\r\n" EXPECT!
-   s" habu> " EXPECT!
+   S\" 4\r\n3\r\n2\r\n1\r\n0\r\n" PROMPT-AFTER!
    PROCESS-PTY:ALIVE? TTRUE
    PROCESS-PTY:TEARDOWN
    s" PASS: REPL recovers its own stack allocation after an uncaught throw inside run-in-stack" type cr ;
+
+\ ---- the prompt barrier itself is under test --------------------------------
+\ The line editor redraws prompt and line on every keystroke, so the echo of the
+\ line just typed carries prompts of its own. This case reads the buffer the
+\ barrier ended on and puts the two in order: the FIRST prompt in it is one the
+\ editor redrew, printed before the answer -- that is the one a bare
+\ `s" habu> " EXPECT!` takes, and reads append in order, so such a wait can
+\ return before the child has evaluated anything -- while the barrier's prompt
+\ is a later one that only the finished line could print.
+: ECHO-PROMPT-REJECTED ( -- )
+   RCLR
+   HB$ PROCESS-PTY:SPAWN-TTY
+   PROCESS-PTY:LAUNCH
+   DRAIN
+   ARITH$ SEND
+   s" 42" PROMPT-AFTER!
+   0 PROMPT$ FIND {: echo-at:n :}
+   0 s" 42" FIND {: ans-at:n :}
+   echo-at 0 >= TTRUE                      \ a bare prompt wait had a prompt to take
+   echo-at ans-at < TTRUE                  \ and it was the editor's, ahead of the answer
+   s" 42" PROMPT$ FIND-AFTER ans-at > TTRUE   \ the barrier took one that follows it
+   PROCESS-PTY:ALIVE? TTRUE
+   PROCESS-PTY:TEARDOWN
+   s" PASS: the prompt barrier is not answered by the echo's own prompt" type cr ;
 
 public
 
@@ -217,6 +272,7 @@ public
    T-RESET
    PIPE-STOPS
    TTY-RECOVERS
+   ECHO-PROMPT-REJECTED
    TTY-LAYOUT
    TTY-STACK-RECOVERS
    T-REPORT
