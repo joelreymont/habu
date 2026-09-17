@@ -72,12 +72,24 @@ BIND
 : ABSENT2 ( n n -- )
    -1 T= -1 T= ;
 
+\ WHAT THE TAGS ARE, because two of them moved once and would be re-pinned for
+\ the wrong reason otherwise. A derived TAG is the member's position in the
+\ DECLARATION, which is not `A64IR:ORD`: the dialect keeps its ordinals stable
+\ for the passes that store them in their own tables, and lets the declaration
+\ group each form with the family it belongs to. So an opcode added beside its
+\ family moves the tag of every member declared after it and moves NOTHING else
+\ - no ordinal, no table, no emitted byte. The four fused data-stack forms went
+\ in beside `dpublish` (dot habu-fuse-tier-1), which is why the two below sit
+\ four higher than they did while `movz` and `store`, declared before them, do
+\ not move. The last one is not a literal: `codeaddr` closes the declaration, so
+\ its tag is one less than the number of opcodes the dialect says it has, and
+\ that pair drifts apart only if a member and its ordinal row disagree.
 : OPCODE-CASE ( -- )
-   s" the compiler's 76-arm opcode declaration compiles and executes" T-LABEL
+   s" the compiler's eighty-arm opcode declaration compiles and executes" T-LABEL
    NMXC-OPCODE:MOVZ NMXC-OPCODE:TAG 0 T=
    NMXC-OPCODE:STORE NMXC-OPCODE:TAG 13 T=
-   NMXC-OPCODE:FCMPBR NMXC-OPCODE:TAG 56 T=
-   NMXC-OPCODE:CODEADDR NMXC-OPCODE:TAG 75 T=
+   NMXC-OPCODE:FCMPBR NMXC-OPCODE:TAG 60 T=
+   NMXC-OPCODE:CODEADDR NMXC-OPCODE:TAG A64IR:OPCODES 1- T=
    NMXC-OPCODE:CODEADDR NMXC-OPCODE:CODEADDR NMXC-OPCODE:EQ TTRUE
    NMXC-OPCODE:MOVZ NMXC-OPCODE:CODEADDR NMXC-OPCODE:EQ TFALSE ;
 
