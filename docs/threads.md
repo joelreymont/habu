@@ -175,7 +175,7 @@ read the source to find out. There are three:
 | --- | --- | --- |
 | `lib/string.f` | task-local (SB) / caller-owned (`BUF-*`) | `SB-BUF` and `SB-LEN` are the STRING-ABI band of the per-task region; `BUF-RESET`/`BUF-APPEND`/`BUF-APPEND-C`/`BUF-LEN@` take the caller's buffer, capacity and length cell, for when two tasks must share one |
 | `lib/fmt.f` | task-local | the integer render buffer and the `POW10I`/`SB-FRAC` scratch cells are the FMT-ABI band of the per-task region; they append into string's SB, which is task-local too, so two tasks formatting at once share nothing |
-| `lib/fs.f` | process-wide | one descriptor, length, path and stat buffer per image, plus one walk stack; the data spans `READ-ALL`/`READ-LINK`/`WRITE-ALL` take are caller-owned |
+| `lib/fs.f` | task-local (the per-call slots) / process-wide (the walk stack) | the descriptor, length, offset, path and stat buffer are the FS-ABI band of the per-task region, so any number of tasks may be in `READ-ALL`, `FILE-SIZE` or an `FS-*` predicate at once; `WALK-FILES`'s two stacks are fifteen times that band and stay shared, so it is still single-task; the data spans `READ-ALL`/`READ-LINK`/`WRITE-ALL` take are caller-owned |
 | `lib/json-write.f` | caller-owned | the caller declares the writer (`TYPED-VARIABLE W JSON-WRITE:writer`) and the bytes `JSON-WRITE:OPEN` binds it to; no module state |
 | `lib/json-read.f` | caller-owned | no module state; the caller allots `JR:STORAGE-BYTES` and owns the source span |
 | `lib/memory.f` | caller-owned | every mapping belongs to its caller; `WITH-BYTES`'s scope stack is the one process-wide part |
@@ -187,37 +187,48 @@ read the source to find out. There are three:
 | `lib/serial.f` | task-local | `$60` row: termios and per-call staging |
 | `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) | the input and output indices are per-task DATA cells `TASK-REGION-INIT` copies; the rows and their eight operations are shared |
 
-`lib/fs.f`'s per-call slots are the one row still to change, under dot
-`habu-make-the-shared-0c2bfbc6`.
-
 ### Which mechanism a task-local library uses
 
 Which of the two a library reaches for is forced, not preferred:
 
-- A module the ENGINE BAKES takes a **declared band** in `src/habu/layout.f`
-  and addresses it as `data-base <off> +`, the way `lib/ffi-abi.f` addresses
-  `FFI-BUF` and package `GENIO-ABI` its device cells. `lib/string.f` has no
-  choice: it sits below `lib/ffi-abi.f`, which requires it back, so `require
-  lib/task.f` there fails the engine build with an undefined `STR=` inside
-  ffi-abi's `TOK-IS?`. `lib/fmt.f` could have taken rows - it has no cycle, and
-  an engine built that way compiles - but `src/habu/habu2.f` requires it for
-  number text, so a require would have pulled pthread, mmap and the FFI staging
-  tables into the base image for 52 bytes of scratch, so fmt takes the FMT-ABI
-  band instead.
+- A module the ENGINE BAKES, or one the engine's own BUILD loads, takes a
+  **declared band** in `src/habu/layout.f` and addresses it as
+  `data-base <off> +`, the way `lib/ffi-abi.f` addresses `FFI-BUF` and package
+  `GENIO-ABI` its device cells. `lib/string.f` has no choice: it sits below
+  `lib/ffi-abi.f`, which requires it back, so `require lib/task.f` there fails
+  the engine build with an undefined `STR=` inside ffi-abi's `TOK-IS?`.
+  `lib/fmt.f` could have taken rows - it has no cycle, and an engine built that
+  way compiles - but `src/habu/habu2.f` requires it for number text, so a
+  require would have pulled pthread, mmap and the FFI staging tables into the
+  base image for 52 bytes of scratch. `lib/fs.f` is not baked at all, but
+  `tools/native-build-core.f` requires it to BUILD the engine, so a require
+  there loads the task runtime into the build tool ahead of the target.
 - A module LOADED LATER takes **`TASK:+USER` rows** out of USER-BAND, the way
   `lib/net/tcp4.f`, `udp4`, `curl`, `serial` and `genio` do.
+
+A band a SOURCE-LOADED module reads costs a bootstrap the baked ones do not.
+The PRODUCT IMAGE `tools/native-build.f` emits - what `bin/hb` is, and what
+builds the next engine - carries this file's constants and `lib/errors.f`'s
+codes from the tree it was BUILT in and does not re-read either; only the small
+checked engine that `tools/build-fixpoint-refresh.f -- install` writes recompiles
+the cold prefix at every launch, and that engine cannot run the native build on
+this base. So an engine that predates a band cannot compile the module reading
+it. `lib/fs.f` is the first such module: its build tool dies `E-UNDEFINED:
+FS-ABI:STAT-BYTES`, rc 70, before any target work. Build one engine from the
+layout and error declarations alone, build the tree with that engine, and the
+third generation is byte-identical.
 
 ### The arena a task-local row comes from
 
 `TASK:+USER` hands out offsets from `USER-BAND:START` ($5300) up to
-`USER-BAND:END` — **10432 bytes for the whole image**. The band is one declared
+`USER-BAND:END` — **9104 bytes for the whole image**. The band is one declared
 run of the per-task header with no engine cell inside it, which
 `src/habu/layout.f`'s DATA-CLAIMS assertion checks at engine build time, and
-the declared bands directly above it are `FMT-ABI` (56 bytes) and `STRING-ABI`
-(1032 bytes), neither of which is part of it.
+the declared bands directly above it are `FS-ABI` (1328 bytes), `FMT-ABI`
+(56 bytes) and `STRING-ABI` (1032 bytes), none of which is part of it.
 
-The libraries above claim 1664 of those 10488 bytes when one image loads them
-all — `lib/process.f`'s $4A0 row is the large one — so **8824 bytes are free**. A row
+The libraries above claim 1664 of those 9104 bytes when one image loads them
+all — `lib/process.f`'s $4A0 row is the large one — so **7440 bytes are free**. A row
 that would cross
 `USER-BAND:END` is `E-TASK-USER` at its definition, not a store into whatever
 lies above. Budget accordingly.

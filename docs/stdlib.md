@@ -67,15 +67,15 @@ the caller holds a `TASK:FACILITY` across the whole sequence), **task-local**
 (a `TASK:+USER` row or a per-task DATA cell, so any number of tasks may use it
 at once), or **caller-owned** (the caller supplies the storage). A new module
 declares its class in its header; [threads.md](threads.md) carries the table
-and the size of the band a `TASK:+USER` row comes from, which is 10488 bytes
-for the whole image with 8824 free once the libraries above have claimed
+and the size of the band a `TASK:+USER` row comes from, which is 9104 bytes
+for the whole image with 7440 free once the libraries above have claimed
 theirs.
 
 | module | class |
 | --- | --- |
 | `lib/string.f` | task-local (the SB builder, STRING-ABI band) / caller-owned (the `BUF-*` family) |
 | `lib/fmt.f` | task-local (the render buffer and its scratch cells, FMT-ABI band) |
-| `lib/fs.f` | process-wide |
+| `lib/fs.f` | task-local (the per-call slots, FS-ABI band) / process-wide (the walk stack) |
 | `lib/json-write.f` | caller-owned |
 | `lib/json-read.f` | caller-owned |
 | `lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |
@@ -89,10 +89,11 @@ theirs.
 | `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) |
 
 A task-local module reaches its storage one of two ways, and which one is
-forced rather than chosen: a module the engine bakes takes a declared band in
-`src/habu/layout.f` (string, fmt), and a module loaded later takes `TASK:+USER`
-rows (tcp4, udp4, curl, serial, genio). [threads.md](threads.md) says why, and
-which rows are still to move.
+forced rather than chosen: a module the engine bakes, or one the engine's own
+build loads, takes a declared band in `src/habu/layout.f` (string, fmt, fs),
+and a module loaded later takes `TASK:+USER` rows (tcp4, udp4, curl, serial,
+genio). [threads.md](threads.md) says why, and what a new band costs to
+bootstrap.
 
 ## LLM Surface
 

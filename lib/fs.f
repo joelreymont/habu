@@ -2,16 +2,15 @@
 \
 \ Load after lib/errors.f and lib/string.f.
 \
-\ STORAGE CLASS. PROCESS-WIDE, so this module is single-task. The per-call
-\ slots (FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR), the NUL-padded
-\ path buffer FS-PATHZ-BUF and the stat buffer FS-STAT-BUF are one set for the
-\ image: two tasks in READ-ALL, WRITE-ALL, FILE-SIZE, FILE-META or any FS-*
-\ predicate at once read each other's descriptor and length, and a concurrent
-\ READ-ALL pair does not finish. The walk state (FS-DEPTH and the FS-WALK-BUF /
-\ FS-DIR-BUF stacks) is process-wide too, so WALK-FILES runs in one task. Only
-\ the data spans READ-ALL, READ-LINK and WRITE-ALL take are caller-owned.
-\ Moving the per-call slots to task-local storage is dot
-\ habu-make-the-shared-0c2bfbc6; see docs/threads.md.
+\ STORAGE CLASS. TASK-LOCAL for everything one call threads: the per-call slots
+\ (FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR), the NUL-padded path
+\ buffer FS-PATHZ-BUF, the stat buffer FS-STAT-BUF and the read probe are the
+\ FS-ABI band of the per-task DATA region, so two tasks in READ-ALL, WRITE-ALL,
+\ FILE-SIZE, FILE-META or any FS-* predicate at once share nothing. The data
+\ spans READ-ALL, READ-LINK and WRITE-ALL take are CALLER-OWNED. The walk state
+\ (FS-DEPTH and the FS-WALK-BUF / FS-DIR-BUF stacks) is PROCESS-WIDE and does
+\ not fit a per-task band, so WALK-FILES is still single-task. See
+\ docs/threads.md.
 
 require lib/errors.f
 require lib/string.f
@@ -56,9 +55,50 @@ $A000 constant S-IFLNK
 $2E constant FS-DOT
 $2F constant FS-SLASH
 
-create FS-PATHZ-BUF FS-PATHZ-CAP allot
-create FS-READ-PROBE FS-READ-PROBE-CAP allot
-create FS-STAT-BUF FS-STAT-CAP allot
+\ THE PER-CALL SLOTS ARE TASK-LOCAL, in the FS-ABI band of the per-task DATA
+\ region: every accessor reads `data-base`, which is the RUNNING task's region,
+\ so two tasks in READ-ALL, WRITE-ALL, FILE-SIZE, FILE-META or any FS-*
+\ predicate at once share nothing. The band is declared in src/habu/layout.f
+\ below FMT-ABI and asserted there against every other DATA claim. It is a
+\ declared band and not TASK:+USER rows although this module is not baked:
+\ tools/native-build-core.f requires it to build the engine, so a
+\ `require lib/task.f` here would load the task runtime into the build tool.
+\ A region is a fresh zeroed mapping, so a new task's cells start at zero
+\ exactly as the old `variable`s did.
+\
+\ layout.f is loaded before this file and cannot see FS-STAT-CAP,
+\ FS-READ-PROBE-CAP or FS-PATHZ-CAP, so the band states those widths and this
+\ executes the agreement once at load.
+: FS-BAND-AGREE ( -- )
+   FS-STAT-CAP FS-ABI:STAT-BYTES <> if E-FS-BAND throw then
+   FS-READ-PROBE-CAP FS-ABI:PROBE-BYTES <> if E-FS-BAND throw then
+   FS-PATHZ-CAP FS-ABI:PATHZ-BYTES <> if E-FS-BAND throw then ;
+FS-BAND-AGREE
+
+: FS-IO-FD ( -- ptr a )
+   data-base FS-ABI:FD-OFF + ;
+
+: FS-IO-LEN ( -- ptr a )
+   data-base FS-ABI:LEN-OFF + ;
+
+: FS-IO-RD ( -- ptr a )
+   data-base FS-ABI:RD-OFF + ;
+
+: FS-IO-OFF ( -- ptr a )
+   data-base FS-ABI:OFF-OFF + ;
+
+: FS-IO-WR ( -- ptr a )
+   data-base FS-ABI:WR-OFF + ;
+
+: FS-STAT-BUF ( -- ptr u8 )
+   data-base FS-ABI:STAT-OFF + BYTE-VIEW ;
+
+: FS-READ-PROBE ( -- ptr u8 )
+   data-base FS-ABI:PROBE-OFF + BYTE-VIEW ;
+
+: FS-PATHZ-BUF ( -- ptr u8 )
+   data-base FS-ABI:PATHZ-OFF + BYTE-VIEW ;
+
 create FS-WALK-BUF FS-MAX-DEPTH FS-PATH-CAP * allot
 create FS-DIR-BUF FS-MAX-DEPTH FS-DIR-CAP * allot
 create FS-BASES FS-MAX-DEPTH cells allot
@@ -72,11 +112,6 @@ variable FS-CHILD-U
 variable FS-ENT
 variable FS-NAME-A
 variable FS-NAME-U
-variable FS-IO-FD
-variable FS-IO-LEN
-variable FS-IO-RD
-variable FS-IO-OFF
-variable FS-IO-WR
 
 : FS-FALSE ( -- bool )
    0 0= 0= ;

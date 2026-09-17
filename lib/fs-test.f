@@ -6,6 +6,7 @@ require lib/string.f
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/task.f                  \ two tasks through READ-ALL / FILE-SIZE at once
 
 1 constant FS-TEST-EX-FAIL
 $34 constant FS-TEST-U16-LO
@@ -17,6 +18,12 @@ $78 constant FS-TEST-FILL-C
 8 constant FS-TEST-READ-CAP
 40 constant FS-TEST-DEEP-LIMIT
 292 constant FS-TEST-MODE-READONLY
+$40 constant FS-TEST-PAR-CAP
+150 constant FS-TEST-PAR-ITERS
+$61 constant FS-TEST-PAR-A-C
+$62 constant FS-TEST-PAR-B-C
+16 constant FS-TEST-PAR-A-N
+32 constant FS-TEST-PAR-B-N
 
 variable FS-TEST-CASE
 variable FS-TEST-FAIL
@@ -27,6 +34,11 @@ variable FS-TEST-BETA-IDX
 variable FS-TEST-FILE-COUNT
 variable FS-TEST-FD
 variable FS-TEST-BASE-U
+variable FS-TEST-PAR-A-U
+variable FS-TEST-PAR-B-U
+variable FS-TEST-PAR-BAD
+variable FS-TEST-PAR-DONE
+variable FS-TEST-PAR-READY
 variable FS-TEST-ROOT-U
 variable FS-TEST-ALPHA-U
 variable FS-TEST-CHILD-U
@@ -42,6 +54,11 @@ variable FS-TEST-BIG-U
 variable FS-TEST-EMPTY-U
 
 create FS-TEST-OUT FS-PATH-CAP allot
+create FS-TEST-PAR-A-BUF FS-PATH-CAP allot
+create FS-TEST-PAR-B-BUF FS-PATH-CAP allot
+create FS-TEST-PAR-SEED FS-TEST-PAR-CAP allot
+create FS-TEST-PAR-A-DATA FS-TEST-PAR-CAP allot
+create FS-TEST-PAR-B-DATA FS-TEST-PAR-CAP allot
 create FS-TEST-BASE-BUF FS-PATH-CAP allot
 create FS-TEST-ROOT-BUF FS-PATH-CAP allot
 create FS-TEST-ALPHA-BUF FS-PATH-CAP allot
@@ -82,9 +99,13 @@ create FS-TEST-U64
 : FS-TEST$= ( ptr u8 n ptr u8 n -- )
    STR= FS-TEST-ASSERT ;
 
+\ `c dst over + c!` wrote c at dst+c on every pass instead of filling dst[0,u):
+\ `over` copied c, not the loop index. Its only caller measured a length and
+\ never read the bytes back, so it went unseen until FS-TEST-PARALLEL below
+\ compared file contents. `c over dst +` takes the index.
 : FS-TEST-FILL ( ptr u8 n n -- ) {: dst:ptr u c :}
    0 begin dup u < while
-      c dst over + c!
+      c over dst + c!
       1+
    repeat drop ;
 
@@ -431,6 +452,60 @@ create FS-TEST-U64
    CLEANUP-RUN
    FS-TEST-BASE EXISTS? FS-TEST-FALSE ;
 
+\ TWO TASKS THROUGH READ-ALL AND FILE-SIZE AT ONCE. The per-call slots are the
+\ FS-ABI band of each task's own region now, so each task threads its own
+\ descriptor, length and path. While they were process-wide this did not merely
+\ return wrong bytes: one task's `0 FS-IO-LEN !` reset the other's progress and
+\ the pair did not terminate, so a regression here shows up as this file
+\ hanging rather than failing. The two files differ in both length and content
+\ so a crossed descriptor is caught either way.
+TASK:MIN-STACK TASK:TASK FS-TEST-PAR-A-TASK
+TASK:MIN-STACK TASK:TASK FS-TEST-PAR-B-TASK
+
+: FS-TEST-PAR-A ( -- ptr u8 n )
+   FS-TEST-PAR-A-BUF FS-TEST-PAR-A-U @ ;
+
+: FS-TEST-PAR-B ( -- ptr u8 n )
+   FS-TEST-PAR-B-BUF FS-TEST-PAR-B-U @ ;
+
+: FS-TEST-PAR-BAD+ ( -- )
+   1 FS-TEST-PAR-BAD atomic-add drop ;
+
+: FS-TEST-PAR-ROUND ( ptr u8 n ptr u8 n n -- ) {: pa:ptr pu buf:ptr want:n c :}
+   pa pu FILE-SIZE want <> if FS-TEST-PAR-BAD+ exit then
+   pa pu buf FS-TEST-PAR-CAP READ-ALL want <> if FS-TEST-PAR-BAD+ exit then
+   want 0 do buf i + c@ c <> if FS-TEST-PAR-BAD+ unloop exit then loop ;
+
+: FS-TEST-PAR-WORK ( ptr u8 n ptr u8 n n -- ) {: pa:ptr pu buf:ptr want:n c :}
+   1 FS-TEST-PAR-READY atomic-add drop
+   begin FS-TEST-PAR-READY atomic@ 2 < while TASK:PAUSE repeat
+   FS-TEST-PAR-ITERS 0 do pa pu buf want c FS-TEST-PAR-ROUND loop
+   1 FS-TEST-PAR-DONE atomic-add drop ;
+
+: FS-TEST-PAR-WORK-A ( -- )
+   FS-TEST-PAR-A FS-TEST-PAR-A-DATA FS-TEST-PAR-A-N FS-TEST-PAR-A-C FS-TEST-PAR-WORK ;
+
+: FS-TEST-PAR-WORK-B ( -- )
+   FS-TEST-PAR-B FS-TEST-PAR-B-DATA FS-TEST-PAR-B-N FS-TEST-PAR-B-C FS-TEST-PAR-WORK ;
+
+: FS-TEST-PAR-WRITE ( ptr u8 n n n -- ) {: pa:ptr pu n c :}
+   FS-TEST-PAR-SEED n c FS-TEST-FILL
+   pa pu FS-TEST-PAR-SEED n WRITE-ALL
+   pa pu CLEANUP+ ;
+
+: FS-TEST-PARALLEL ( -- )
+   FS-TEST-BASE s" par-a.txt" FS-TEST-PAR-A-BUF FS-TEST-PAR-A-U FS-TEST-PATH!
+   FS-TEST-BASE s" par-b.txt" FS-TEST-PAR-B-BUF FS-TEST-PAR-B-U FS-TEST-PATH!
+   FS-TEST-PAR-A FS-TEST-PAR-A-N FS-TEST-PAR-A-C FS-TEST-PAR-WRITE
+   FS-TEST-PAR-B FS-TEST-PAR-B-N FS-TEST-PAR-B-C FS-TEST-PAR-WRITE
+   0 FS-TEST-PAR-BAD !  0 FS-TEST-PAR-DONE !  0 FS-TEST-PAR-READY !
+   ['] FS-TEST-PAR-WORK-A FS-TEST-PAR-A-TASK TASK:ACTIVATE
+   ['] FS-TEST-PAR-WORK-B FS-TEST-PAR-B-TASK TASK:ACTIVATE
+   begin FS-TEST-PAR-DONE atomic@ 2 < while TASK:PAUSE repeat
+   FS-TEST-PAR-A-TASK TASK:KILL
+   FS-TEST-PAR-B-TASK TASK:KILL
+   FS-TEST-PAR-BAD @ 0= FS-TEST-TRUE ;
+
 : FS-TEST-MAIN ( -- )
    FS-TEST-SETUP
    FS-TEST-PREPARE-FIXTURE
@@ -444,6 +519,7 @@ create FS-TEST-U64
    FS-TEST-JOIN
    FS-TEST-WALK
    FS-TEST-IO
+   FS-TEST-PARALLEL
    FS-TEST-THROWS
    FS-TEST-CLEANUP
    FS-TEST-REPORT ;

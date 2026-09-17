@@ -25,6 +25,7 @@
 -2105 constant E-FS-IO
 -2106 constant E-FS-CAPACITY
 -2107 constant E-FS-PATH-UNSAFE
+-2108 constant E-FS-BAND        \ layout FS-ABI band widths disagree with the caps here
 
 \ Strings: -2200..-2299
 -2200 constant E-STR-FIRST

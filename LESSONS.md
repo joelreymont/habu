@@ -262,6 +262,24 @@ fits.
   and are checker-invisible to later tool sources unless a `PRIM:` row persists
   their effect; a cold-prefix `.f` sees only engine prims, core words, the curated
   public checker API, and hardcoded ABI constants.
+- **Only the SMALL CHECKED engine recompiles the cold prefix from the working
+  tree; the PRODUCT IMAGE carries it from the tree it was built in.** Measured
+  2026-09-17: a constant appended to `src/core/bytes.f` or `src/habu/layout.f`
+  is visible to the engine `tools/build-fixpoint-refresh.f -- install` writes
+  and invisible to the engine `tools/native-build.f` emits, whatever directory
+  it is run from — and `bin/hb` in a built tree is the product image. So a NEW
+  `src/habu/layout.f` band or `lib/errors.f` code is invisible to every existing
+  engine, and a module the BUILD TOOL loads FROM SOURCE cannot read one until an
+  engine carrying it exists. Baked libraries are immune: `require lib/string.f`
+  / `lib/fmt.f` / `lib/errors.f` is a no-op in a booted engine, so only the
+  target build compiles them, after layout.f. `lib/fs.f` is the exception —
+  `tools/native-build-core.f:8` requires it — and FS-ABI cost a two-stage
+  bootstrap: build one engine from the layout and error declarations alone, then
+  build the tree with that engine; the third generation is byte-identical. Skip
+  it and you get `E-UNDEFINED: FS-ABI:STAT-BYTES`, `ncomp: cannot compile
+  FS-BAND-AGREE`, rc 70, before any target work. The small checked engine is not
+  a way out: it cannot run `tools/native-build.f` at all (`ncomp: cannot compile
+  REG-INCOMING? at TFAM:REG-AOT-MERGE-INCOMING?`, rc 67, pre-existing).
 - **The `( ... )` stack comment on a `:` IS the checked signature, and its tokens
   are TYPES, not local names.** `( got expected -- bool )` silently binds
   `got`/`expected` as fresh type vars (later `n n` op mismatches "at '<='"); write

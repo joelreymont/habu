@@ -19,13 +19,14 @@
 \
 \ ENGINE-GPR:DSTACK is declared HERE and not read from src/arch/arm64/mnem.f's
 \ XDS, even though mnem.f is that number's historic home. mnem.f is an
-\ emitter-side vocabulary the BUILD chain compiles; this file is also re-read by
-\ the booted engine at every `--load`, and mnem.f is not. A derivation through
-\ XDS therefore compiles during the build and dies E-UNDEFINED at runtime - which
-\ is exactly what happened when it was tried. The two must agree, and
-\ src/habu/rt.f - the first consumer of XDS, loaded after this file in both
-\ build chains - executes that agreement (RT:DSTACK-AGREE) and dies on mismatch,
-\ so a change to either stops the build rather than drifting.
+\ emitter-side vocabulary only the BUILD chain compiles; this file is loaded by
+\ both build chains and belongs to every engine's own prefix, and mnem.f does
+\ not. A derivation through XDS therefore compiles during the build and dies
+\ E-UNDEFINED at runtime - which is exactly what happened when it was tried.
+\ The two must agree, and src/habu/rt.f - the first consumer of XDS, loaded
+\ after this file in both build chains - executes that agreement
+\ (RT:DSTACK-AGREE) and dies on mismatch, so a change to either stops the build
+\ rather than drifting.
 package ENGINE-GPR
 
 public
@@ -1215,11 +1216,58 @@ FR-OFF 8 + constant DV-OFF
 DV-OFF 8 + constant NUM-BUF-OFF
 ;package
 
+\ FS-ABI is lib/fs.f's per-call slots: the five cells one transfer threads, the
+\ stat buffer, the one-byte read probe and the NUL-padded path copy. lib/fs.f
+\ is NOT baked into the engine, so the rule above would send it to TASK:+USER
+\ rows - except tools/native-build-core.f requires it to BUILD the engine, and
+\ a `require lib/task.f` there loads the task runtime into the build tool ahead
+\ of the target it is building. A module the engine's own BUILD needs is in the
+\ same position as one the engine bakes, so it takes a declared band too.
+\
+\ IT ALSO COSTS A BOOTSTRAP, which the band above does not. The PRODUCT IMAGE
+\ tools/native-build.f emits carries this file's constants, and lib/errors.f's
+\ codes, from the tree it was BUILT in; adding a band here does not make an
+\ existing one see it. A baked module does not care - `require lib/string.f` or
+\ `lib/fmt.f` is a no-op in a booted engine, so only the target build ever
+\ compiles them, after this file. lib/fs.f is loaded from source by the build
+\ tool, so an engine that predates this band dies `E-UNDEFINED:
+\ FS-ABI:STAT-BYTES`, rc 70, before any target work. Build one engine from this
+\ declaration and E-FS-BAND alone, then build the tree with it.
+\
+\ THE WALK STATE IS NOT HERE and WALK-FILES stays single-task: FS-WALK-BUF and
+\ FS-DIR-BUF are FS-MAX-DEPTH deep, $8000 and $20000 bytes, fifteen times this
+\ whole band. A second task that must walk needs its own walker, not a wider
+\ per-task region.
+\
+\ Sized the way FMT-ABI above is: every member at its measured width, the five
+\ cells at the band base so they are cell-aligned whatever the buffers do, the
+\ buffers after them, and BYTES the member sum rounded up to the cell the base
+\ needs - 1322 bytes of members in a 1328-byte extent.
+package FS-ABI
+public
+5 constant IO-CELLS                    \ FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR
+256 constant STAT-BYTES                \ lib/fs.f FS-STAT-CAP
+1 constant PROBE-BYTES                 \ lib/fs.f FS-READ-PROBE-CAP
+1025 constant PATHZ-BYTES              \ lib/fs.f FS-PATHZ-CAP = PATH-CAP + 1
+IO-CELLS cells STAT-BYTES + PROBE-BYTES + PATHZ-BYTES + constant MEMBER-BYTES
+MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
+FMT-ABI:START constant END
+END BYTES - constant START
+START constant FD-OFF
+FD-OFF 8 + constant LEN-OFF
+LEN-OFF 8 + constant RD-OFF
+RD-OFF 8 + constant OFF-OFF
+OFF-OFF 8 + constant WR-OFF
+WR-OFF 8 + constant STAT-OFF
+STAT-OFF STAT-BYTES + constant PROBE-OFF
+PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
+;package
+
 \ USER-BAND is what lib/task.f `TASK:+USER` hands out, base and bound both.
 package USER-BAND
 public
 TXN-STATE-OFF TXN-STATE-LEN + constant START
-FMT-ABI:START constant END
+FS-ABI:START constant END
 ;package
 
 \ --- Pre-trust defer pending table (dot habu-engine-pre-trust-77410827) ---
@@ -1717,6 +1765,7 @@ variable NAMES-U
    s" STACK-ABI-LOOP-BASE" NAME,
    s" TXN-STATE" NAME,
    s" USER-BAND" NAME,
+   s" FS-ABI" NAME,
    s" FMT-ABI" NAME,
    s" STRING-ABI" NAME,
    s" PD-TABLE" NAME,
@@ -1829,6 +1878,7 @@ create TAB
    STACK-ABI:LOOP-BASE-CELL       ,  1 cells ,
    TXN-STATE-OFF                  ,  TXN-STATE-LEN ,
    USER-BAND:START                ,  USER-BAND:END USER-BAND:START - ,
+   FS-ABI:START                   ,  FS-ABI:BYTES ,
    FMT-ABI:START                  ,  FMT-ABI:BYTES ,
    STRING-ABI:START               ,  STRING-ABI:BYTES ,
    PD-TABLE-OFF                   ,  PD-TABLE-END PD-TABLE-OFF - ,
