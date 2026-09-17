@@ -1,0 +1,9 @@
+---
+title: Read code bytes through one bounded boundary
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-17T19:12:52.293566+03:00"
+---
+
+Problem: six tool sites take an engine-supplied code address as an n (CW@, an xt, XREF-START), store it in a raw cell and read it back as ptr u8 through ptr-field, which is the only way a checked body could read the bytes at a code address (tools/tier-census.f says so in its comment): tools/codegen-role.f:62 CGR-WP@ and :65 CGR-WORD@, tools/codegen-tail-probe.f:50 CODE-PTR, tools/jitdump-core.f:30 JDP@ and :38 JD, tools/tier-dump.f:57 CODE-P, tools/tier-census.f:167 CODE-P, and src/arch/arm64/disasm.f DRP@; the raw-storage rule habu-refuse-a-ptr-5ad2734e refuses the pun, a declared cell refuses the n store, and CAST: refuses a pointer operand (E-CAST-CLASS 7130), so each site is a hidden unchecked seam with no name (measured by the lib/tools conversion lane 2026-09-17). Acceptance: one explicit, bounded boundary word in the layer that owns code spans (the xref or code-span reader: ( rec -- ptr u8 n ) answering the bytes of a record's span, or ( n n -- ptr u8 n ) for a start and a length the caller proves) with its TRUST row, its bound checked against the live code extents, and a test that a span outside the code region is refused; the six sites and DRP@ read through it and their raw cells disappear; docs/effects.md names it as the one way checked code reads code bytes. This replaces seven silent puns with one declared boundary; it is not a new seam. Files: src/habu/code-span.f or src/arch/arm64/disasm.f (the owner), the seven call sites, docs/effects.md, test/. Verify: the tools' own suites; the refusal test; raw-rule-gen1 loads of the converted tools; test/run.f. Depends: none; lands before the rule. Ownership: code-span reader. Parent: habu-refuse-a-ptr-5ad2734e. Claim: unassigned.
