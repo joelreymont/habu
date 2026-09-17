@@ -271,6 +271,14 @@ SUITE compiler-native-select
    test/compiler/native-select.f
 ;SUITE
 
+\ The register-file description the allocator reads instead of one architecture's
+\ constants, and the ARM64 description a64ir.f derives from it. It is beside the
+\ allocator's own suite because the allocator is its only production consumer and
+\ the two have to agree about what a machine is.
+SUITE compiler-regfile
+   test/compiler/regfile.f
+;SUITE
+
 SUITE compiler-native-regalloc
    test/compiler/native-regalloc.f
 ;SUITE

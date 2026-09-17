@@ -21,6 +21,7 @@ require src/compiler/ir/schema.f
 require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
+require src/compiler/native/regfile.f
 require src/compiler/native/a64ir.f
 require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
@@ -77,7 +78,11 @@ variable SCRATCH-OPS
 
 -1 constant NOSLOT
 
-A64EFF:FILE-SIZE constant REGS-N
+\ The widest register file this pass can hold a table for. It is not a machine's
+\ number and no machine has to reach it: it is how many registers one set of the
+\ description below can name at all, and the tables indexed by register are cut
+\ to it once so that installing a description never resizes anything.
+NREGFILE:REG-MAX constant REGS-MAX
 
 -1 constant NOPOS
 
@@ -161,12 +166,90 @@ DYNAMIC-BUFFER V-DECL-BUF n
 : V-DECL ( -- ptr n ) 0 V-DECL-BUF ;
 create A-REG FIXED-MAX cells allot
 create O-REG FIXED-MAX cells allot
-create R-HOLD FILES-N REGS-N * cells allot
+create R-HOLD FILES-N REGS-MAX * cells allot
 \ How many registers each file's pool holds, and how many of those are free.
 \ Maintained where a holder changes, because the pressure questions are asked at
 \ every instruction and the answer moves only when a register changes hands.
 create R-POOL-N FILES-N cells allot
 create R-FREE-N FILES-N cells allot
+
+\ ---- the machine, as the backend described it --------------------------------
+\ Linear scan is not an ARM64 pass. What it needs to know about the machine is
+\ how many registers each file numbers, which of them a routine may be given at
+\ all, which of those a call destroys, and how wide a spill slot is - and all
+\ four arrive as one description the backend installs with the dialect, so a
+\ second architecture supplies numbers here instead of forking the pass.
+\
+\ The description's own values are kept per file ordinal rather than as the
+\ record, because every question below is asked of ONE file and a multi-cell
+\ value cannot be bound to a local. The allocatable mask is the description's
+\ own answer read once at the install rather than a fact restated here: this
+\ pass has no opinion about which registers the virtual machine took.
+create RF-SIZE-T FILES-N cells allot
+create RF-RES-T FILES-N cells allot
+create RF-CLB-T FILES-N cells allot
+create RF-ALC-T FILES-N cells allot
+variable RF-SLOT-N
+0 RF-SLOT-N !
+
+: FL-CK ( n -- n )
+   dup 0 < over FILES-N >= or if E-A64RA-CLASS throw then ;
+
+\ How many registers this file numbers. Every loop over a file's registers runs
+\ to here, so a sixteen-register machine is walked sixteen times and a register
+\ the file does not have is never offered to anything.
+: RF-SIZE ( n -- n )         FL-CK cells RF-SIZE-T + @ ;
+
+\ Every register of this file a routine may be given at all. A routine's own
+\ pool is a subset of it, which WALK checks before it allocates anything.
+: RF-ALLOCATABLE ( n -- n )  FL-CK cells RF-ALC-T + @ ;
+
+\ And which of those a call destroys. What a call leaves alone is this set's
+\ complement inside the pool, which is what a value live across a call may keep.
+: RF-CLOBBERED ( n -- n )    FL-CK cells RF-CLB-T + @ ;
+
+\ The virtual machine's own claim. Nothing here decides anything by it - the
+\ allocatable set above is what every question is asked of - but the description
+\ has to be handed back to the validator exactly as it arrived, and this is the
+\ field it cannot be derived from.
+: RF-RESERVED ( n -- n )     FL-CK cells RF-RES-T + @ ;
+
+\ The bytes one spilled value occupies in the frame.
+: RF-SLOT-WIDTH ( -- n )     RF-SLOT-N @ ;
+
+\ The description, put back together out of the fields it was taken apart into,
+\ so the validator downstream reads the same machine this allocation was made
+\ for rather than a second opinion about it.
+: RF-FILE ( -- NREGFILE:file )
+   F-GPR RF-SIZE  F-GPR RF-RESERVED NREGFILE:REGS-SET
+   F-GPR RF-CLOBBERED NREGFILE:REGS-SET
+   F-FPR RF-SIZE  F-FPR RF-RESERVED NREGFILE:REGS-SET
+   F-FPR RF-CLOBBERED NREGFILE:REGS-SET
+   RF-SLOT-WIDTH
+   NREGFILE:FILE ;
+
+\ One file's row of the description. The two rows are filled from the two named
+\ halves of it, which is the one place this pass's file ordinals and the
+\ description's two register files are said to be the same two things.
+: RF-ROW! ( n n n n n -- )
+   {: fl:n size:n res:n clb:n alc:n :}
+   size fl cells RF-SIZE-T + !
+   res fl cells RF-RES-T + !
+   clb fl cells RF-CLB-T + !
+   alc fl cells RF-ALC-T + ! ;
+
+\ A description is seven cells and a value of more than one cell cannot be bound
+\ to a local, so it is unmade at entry exactly as a routine contract is.
+: RF-FILE! ( NREGFILE:file -- )
+   NREGFILE-FILE:UNMAKE
+   {: gn:n gr:NREGFILE:regs gc:NREGFILE:regs
+      fn:n fr:NREGFILE:regs fc:NREGFILE:regs w:n :}
+   F-GPR gn  gr NREGFILE:REGS-BITS  gc NREGFILE:REGS-BITS
+      gn gr NREGFILE:ALLOCATABLE-MASK  RF-ROW!
+   F-FPR fn  fr NREGFILE:REGS-BITS  fc NREGFILE:REGS-BITS
+      fn fr NREGFILE:ALLOCATABLE-MASK  RF-ROW!
+   w RF-SLOT-N ! ;
+
 DYNAMIC-BUFFER PL-BLK-BUF n
 : PL-BLK ( -- ptr n ) 0 PL-BLK-BUF ;
 DYNAMIC-BUFFER PL-POS-BUF n
@@ -259,13 +342,14 @@ variable SHORT-FUN                           \ the function whose scan ran short
 : SLOT! ( n n -- )                   {: v:n k:n :} v k cells V-SLOT + ! ;
 : REMAT! ( n n -- )                  {: v:n k:n :} v k cells V-REMAT + ! ;
 
-\ A register is a file and a number, and the file is checked against the table's
-\ own shape rather than trusted from the caller.
+\ A register is a file and a number. The file is checked against the table's own
+\ shape rather than trusted from the caller, and the number against the FILE THE
+\ DESCRIPTION DECLARES rather than against the table: a machine of sixteen
+\ registers has no register sixteen, whatever the row it would land in holds.
 : RIX ( n n -- n )
    {: fl:n r:n :}
-   fl 0 < fl FILES-N >= or if E-A64RA-CLASS throw then
-   r 0 < r REGS-N >= or if E-A64RA-CLASS throw then
-   fl REGS-N * r + ;
+   r 0 < r fl RF-SIZE >= or if E-A64RA-CLASS throw then
+   fl REGS-MAX * r + ;
 
 : HOLD-AT ( n n -- n )               RIX cells R-HOLD + @ ;
 
@@ -296,13 +380,13 @@ variable SHORT-FUN                           \ the function whose scan ran short
 : POOL-SIZE ( n -- n )
    {: fl:n :}
    0
-   REGS-N 0 ?do fl i POOL-HAS? if 1+ then loop ;
+   fl RF-SIZE 0 ?do fl i POOL-HAS? if 1+ then loop ;
 
 \ The counts are restated after the table is cleared rather than carried through
 \ it: what HOLD! reads on the way past is the turn before's holder.
 : HOLDERS-CLEAR ( -- )
    FILES-N 0 ?do
-      REGS-N 0 ?do NOBODY j i HOLD! loop
+      i RF-SIZE 0 ?do NOBODY j i HOLD! loop
    loop
    FILES-N 0 ?do
       i POOL-SIZE {: n:n :}
@@ -491,7 +575,7 @@ variable SHORT-FUN                           \ the function whose scan ran short
 : FREE-REG ( n n -- n )
    {: fl:n forbid:n :}
    -1
-   REGS-N 0 ?do
+   fl RF-SIZE 0 ?do
       fl i POOL-HAS?
       forbid i FORBIDDEN? 0= and
       fl i HOLD-AT NOBODY = and if drop i leave then
@@ -523,6 +607,18 @@ variable SHORT-FUN                           \ the function whose scan ran short
    ARGS-N @ 0 ?do args i A64EFF:SEQ-REG@  i cells A-REG + ! loop
    OUTS-N @ 0 ?do outs i A64EFF:SEQ-REG@  i cells O-REG + ! loop ;
 
+\ A routine's pool says which registers THIS routine may destroy; the description
+\ says which registers the machine has to give at all. A pool naming a register
+\ outside it is a contract about a different machine than the one being allocated
+\ for - the virtual machine's own register, or one a sixteen-register file does
+\ not have - and nothing downstream would catch it, because every later question
+\ is asked of the pool.
+: POOL-FILE-CK ( -- )
+   FILES-N 0 ?do
+      i POOL-BITS  i RF-ALLOCATABLE invert and
+      0<> if E-A64RA-POOL throw then
+   loop ;
+
 \ A declared register the routine may not write is a contract that contradicts
 \ itself for this allocation.
 : FIXED-POOL-CK ( -- )
@@ -550,16 +646,16 @@ variable SHORT-FUN                           \ the function whose scan ran short
 \ ---- taking a register away --------------------------------------------------
 \ Slots are handed out in order and never given back.
 : FRAME-CEIL ( -- n )
-   VMAX A64IR:SLOT-WIDTH *  A64EFF:FRAME-MAX min ;
+   VMAX RF-SLOT-WIDTH *  A64EFF:FRAME-MAX min ;
 
 : NEW-SLOT ( -- n )
-   BASE-N @  N-SLOTS @ A64IR:SLOT-WIDTH *  + {: off:n :}
-   off A64IR:SLOT-WIDTH + FRAME-CEIL > if E-A64RA-PRESSURE throw then
+   BASE-N @  N-SLOTS @ RF-SLOT-WIDTH *  + {: off:n :}
+   off RF-SLOT-WIDTH + FRAME-CEIL > if E-A64RA-PRESSURE throw then
    N-SLOTS @ 1+ N-SLOTS !
    off ;
 
 : DEPTH-WANT ( -- n )
-   BASE-N @  N-SLOTS @ A64IR:SLOT-WIDTH *  + ;
+   BASE-N @  N-SLOTS @ RF-SLOT-WIDTH *  + ;
 
 : FRAME-WANT ( -- n )
    DEPTH-WANT A64EFF:FRAME-ROUND ;
@@ -1296,7 +1392,7 @@ variable N-CALLS
    {: limit:n :}
    FILES-N 0 ?do
       i FREE-N-AT  i POOL-N-AT <> if
-         REGS-N 0 ?do j i limit MB-EXPIRE1 loop
+         i RF-SIZE 0 ?do j i limit MB-EXPIRE1 loop
       then
    loop ;
 
@@ -1381,8 +1477,14 @@ variable N-CALLS
       i cells CALL-POS + @ {: p:n :}
       p limit >= if unloop exit then
       r p MB-CROSSES? if
-         \ One crossing call forbids the whole file's writable pool.
-         fl POOL-BITS or unloop exit
+         \ One crossing call forbids every register of the routine's pool that
+         \ the machine says a call DESTROYS. What the description declares
+         \ callee-saved survives the call, so a class that crosses one may keep
+         \ it. Under the Habu convention on ARM64 nothing is callee-saved - the
+         \ routine's whole pool is declared destroyed - so this is the whole pool
+         \ there, and a machine that saves registers says so in its description
+         \ rather than in an edit here.
+         fl POOL-BITS  fl RF-CLOBBERED and  or unloop exit
       then
    loop ;
 
@@ -1509,7 +1611,7 @@ variable N-CALLS
    {: r:n :}
    r FILE-AT {: fl:n :}
    false
-   REGS-N 0 ?do fl i HOLD-AT r = if drop true leave then loop ;
+   fl RF-SIZE 0 ?do fl i HOLD-AT r = if drop true leave then loop ;
 
 \ ---- the class that can be WRITTEN AGAIN instead of put away -----------------
 \ The one form of this dialect that costs the same to re-emit as to reload.
@@ -1542,7 +1644,7 @@ variable N-CALLS
 : MB-SPARE-N ( IR-ID:ir-fun-id n n -- n )
    {: f:IR-ID:ir-fun-id p:n fl:n :}
    0
-   REGS-N 0 ?do
+   fl RF-SIZE 0 ?do
       fl i HOLD-AT {: r:n :}
       r NOBODY <> if
          f r p MB-TOUCHES? 0= if 1+ then
@@ -1552,7 +1654,7 @@ variable N-CALLS
 : MB-FURTHEST ( IR-ID:ir-fun-id n n -- n )
    {: f:IR-ID:ir-fun-id p:n fl:n :}
    -1
-   REGS-N 0 ?do
+   fl RF-SIZE 0 ?do
       fl i HOLD-AT {: r:n :}
       r NOBODY <> if
          f r p MB-CANDIDATE? if
@@ -1572,7 +1674,7 @@ variable N-CALLS
       E-A64RA-SPILL throw
    then
    -1
-   REGS-N 0 ?do
+   fl RF-SIZE 0 ?do
       fl i HOLD-AT {: r:n :}
       r NOBODY <> if
          f r p MB-CANDIDATE? if
@@ -1946,7 +2048,7 @@ variable N-CALLS
       size:n delta:n :}
    FRAME-WANT {: want:n :}
    N-SLOTS @ 0 ?do
-      BASE-N @  i A64IR:SLOT-WIDTH *  +  A64IR:SLOT-WIDTH
+      BASE-N @  i RF-SLOT-WIDTH *  +  RF-SLOT-WIDTH
       cv gi gr gc fi fr fc z l ct t want delta A64EFF-ROUTINE:MAKE
       A64EFF:CHECK-SLOT
    loop ;
@@ -1981,12 +2083,23 @@ variable N-CALLS
 
 public
 
-\ ---- binding the dialect -----------------------------------------------------
+\ ---- binding the dialect and the machine -------------------------------------
 \ The only moment a module can be asked its identities, because its symbols and
-\ types are its own ordinals.
-: BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+\ types are its own ordinals - and the moment the backend says which machine is
+\ being allocated for, because there is no allocation that is not for one. The
+\ two arrive together deliberately: a description installed on its own could be
+\ forgotten at one call site and the pass would then allocate the last caller's
+\ machine, while a pass that cannot be entered without one cannot get it wrong.
+\
+\ The description is taken off the stack first because it is seven cells and a
+\ value of more than one cell cannot be bound to a local, so nothing below it
+\ can be named until it is gone. A binding refused after that point leaves the
+\ tables holding a machine no allocation can reach: the mode stays unbound and
+\ WALK refuses before it reads them.
+: BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NREGFILE:file -- )
    BND-MODE @ BOUND-YES = if E-A64RA-BIND throw then
+   RF-FILE!
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b DIALECT-CK
    b IR-BUILD:MODULE@ 0 BND-MOD !
    c b A64IR:GPR-TYPE 0 BND-TYP !
@@ -2023,6 +2136,7 @@ public
    c TARGET-CK
    pool 0 S-POOL !
    fpool 0 S-FPOOL !
+   POOL-FILE-CK
    m VIEWS!
    RESERVE-SCRATCH
    m IR-BUILD:FMODULE 0 S-MOD !
@@ -2107,6 +2221,16 @@ public
 
 : FPOOL ( -- A64EFF:fprs )
    SEAL-CK 0 S-FPOOL @ ;
+
+\ The machine this allocation was made for, put back together out of the fields
+\ the install took it apart into. src/compiler/native/regalloc-verify.f re-derives
+\ every live range from the module itself and has to measure the result against
+\ the same register file the walk placed it in; a validator with its own idea of
+\ how many registers the machine has would accept a register that does not exist
+\ on it. It is sealed like the two pools above and for the same reason: it
+\ describes one finished allocation, not whatever was installed most recently.
+: REGFILE ( -- NREGFILE:file )
+   SEAL-CK RF-FILE ;
 
 \ What the prologue owns plus every slot handed out, rounded to the alignment.
 : FRAME ( -- n )

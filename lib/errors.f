@@ -1135,6 +1135,16 @@ public
 -8664 constant E-NLOOP-CAP      \ more values, blocks or invariant addends in one function than the rewriter's tables hold
 -8665 constant E-NLOOP-PLAN     \ a rewrite asked for when the scan had recognised no loop, so there is nothing to fold and the caller and this pass disagree about what was measured
 
+\ The register-file description: -8670
+\
+\ src/compiler/native/regfile.f is the one declaration a backend makes about its
+\ machine's register files, and the register allocator reads it instead of naming
+\ one architecture's constants. There is a single code because there is a single
+\ moment it can be wrong - the checked constructor, which either assembles a
+\ description every reader can believe or refuses. Nothing downstream re-judges
+\ it, so no later pass needs a refusal of its own.
+-8670 constant E-NREGFILE       \ a register-file description that cannot describe a machine: a file of no registers or more than one set's bit mask holds, a reserved register outside the file it is reserved from, a file whose every register is reserved so nothing is allocatable at all, a call-destroyed register that is not allocatable in the first place, or a spill slot width that is not a positive power of two
+
 \ The trap terminator's family table: -8640..-8649
 \
 \ src/compiler/native/trap.f owns the one routine a compiled trap branches to and

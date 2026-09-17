@@ -9078,3 +9078,31 @@ read by chain code holds plain cells; keep the family value in a code the
 file already owns (`ARCH-CODE`) rather than the value itself. The refusal names
 only the word it gave up on, so bisect the body - the engine will not tell you
 which token had no model.
+
+## 2026-09-17 - a compiler change takes two generations to reach a fixpoint
+
+Parameterising the register allocator changed no emitted instruction, and
+`tools/native-build.f` still produced gen1 != gen2. Every differing byte was the
+same `+720`, decoded out of a `MOVZ` immediate: 90 cells of data-region offset,
+not a different instruction anywhere. THE IMAGE A BUILD CAPTURES CARRIES LAYOUT
+CONSTANTS FROM THE ENGINE THAT BUILT IT, so a compiler whose own data footprint
+moved hands its successor an offset the generation after washes out. gen1 is
+built by the old engine and inherits the old layout; gen2 onwards inherit the
+new one, and gen2 == gen3 is the fixpoint. `cmp gen1 gen2` is not the test.
+
+Two controls separate a layout shift from a codegen regression, and both are
+cheap. A comment-only edit to a compiler source still rebuilds to the release
+engine byte for byte, so comments are stripped and the build is a pure function
+of the code - which means an unexplained difference IS a real one. And building
+the UNMODIFIED tree with the modified compiler, twice, must return the release
+engine exactly: the first generation carries the new engine's layout, the second
+does not, and `gen2 == the shipped artifact` is a direct proof that the modified
+compiler emits what the old one emitted for every word in the tree. That is a
+stronger statement than any self-fixpoint, and it is two builds.
+
+A gate run does not test the engine you just built. `test/gate-stdlib-lib.f`
+spawns `bin/hb` from the checkout by name - `HABU_UNDER_TEST` reaches the child
+as an environment variable but is not what gets executed - so a suite using a
+word a compiler source only just gained fails with `E-UNDEFINED` in the child
+while the same file passes when loaded directly. Run the full gate from a tree
+whose own `bin/hb` is the new engine.

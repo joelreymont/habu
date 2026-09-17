@@ -31,6 +31,7 @@ require src/compiler/ir/symbol.f
 require src/compiler/ir/build.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/backend.f
+require src/compiler/native/regfile.f
 
 package A64IR
 public
@@ -348,6 +349,31 @@ public
 
 \ ---- the bytes one frame access moves ----------------------------------------
 : SLOT-WIDTH ( -- n )    SLOT-BYTES ;
+
+\ ---- this machine's register files, for the passes that are not about it ------
+\ The register allocator is linear scan and not an ARM64 pass, so it reads this
+\ description instead of the numbers around it. Every field is DERIVED from the
+\ authority that already owns it rather than written again here: the file size
+\ and the reserved set from src/compiler/a64-effect.f, which folds the target's
+\ platform register - x18, which Darwin reserves and Linux does not - together
+\ with everything src/habu/layout.f says the running engine occupies, and the
+\ slot width from this dialect's own frame access. A literal here would be a
+\ second authority, and the first thing it would get wrong is Darwin.
+\
+\ Every allocatable register is declared call-destroyed because that is what the
+\ Habu convention says: src/compiler/native/abi.f declares the whole pool
+\ destroyed on every routine, so no value survives a call in a register and the
+\ callee-saved set this description derives is empty. A convention that kept
+\ registers across a call would say so here and the allocator would follow.
+: REGFILE ( -- NREGFILE:file )
+   A64EFF:FILE-SIZE
+   A64EFF:RESERVED-GPRS NREGFILE:REGS-SET
+   A64EFF:GPR-ALL A64EFF:GPRS-N NREGFILE:REGS-SET
+   A64EFF:FILE-SIZE
+   NREGFILE:REGS-NONE
+   A64EFF:FPR-ALL A64EFF:FPRS-N NREGFILE:REGS-SET
+   SLOT-BYTES
+   NREGFILE:FILE ;
 
 : FRAME-LIMIT ( -- n )   FRAME-LIM ;
 

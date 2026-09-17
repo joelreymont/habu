@@ -391,7 +391,7 @@ create TXT
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
-   CC ab A64RA:BIND-DIALECT
+   CC ab A64IR:REGFILE A64RA:BIND-DIALECT
    CC ab A64RAV:BIND-DIALECT
    CC m ab A64EFF:GPR-NONE LEAF  A64SEL:SELECT ;
 
@@ -590,7 +590,7 @@ create TXT
    c A64IR:NEW-BUILDER {: b:IR-BUILD:builder :}
    c 0 W-CTX !
    b 0 W-BLD !
-   c b A64RA:BIND-DIALECT
+   c b A64IR:REGFILE A64RA:BIND-DIALECT
    c b A64RAV:BIND-DIALECT
    c b A64IR:REGISTER
    c b TXT TXT-N IR-BUILD:ADD-SOURCE 0 W-SRC ! ;
@@ -1859,7 +1859,7 @@ variable LOWER-TURNS
 : LOWER-ONE ( IR-BUILD:module -- IR-BUILD:module )
    {: m0:IR-BUILD:module :}
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC nb A64RA:BIND-DIALECT
+   CC nb A64IR:REGFILE A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
    CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    m0 IR-BUILD:RETIRE
@@ -2232,7 +2232,7 @@ using A64RA
    M-FREEZE {: m0:IR-BUILD:module :}
    CC m0 DECL-KEEP A64RA:ALLOCATE
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC nb A64RA:BIND-DIALECT
+   CC nb A64IR:REGFILE A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
    CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 DECL-KEEP A64RA:ALLOCATE
@@ -2342,7 +2342,7 @@ using A64RA
    M-FREEZE {: m0:IR-BUILD:module :}
    CC m0 DECL-SPILL-CONTRACT A64RA:ALLOCATE
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC nb A64RA:BIND-DIALECT
+   CC nb A64IR:REGFILE A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
    CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 DECL-SPILL-CONTRACT A64RA:ALLOCATE
@@ -2592,7 +2592,7 @@ using A64RA
    HIR-MOD
    BUILD-SQUARE
    A64-BUILDER {: ab:IR-BUILD:builder :}
-   CC ab A64RA:BIND-DIALECT
+   CC ab A64IR:REGFILE A64RA:BIND-DIALECT
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    CC m 4 LEAF-N A64RA:ALLOCATE ;
 
@@ -2613,15 +2613,15 @@ using A64RA
    IR-BUILD:PLAN-BEGIN
    IR-BUILD:PLAN-DEFAULT
    c A64IR:NEW-BUILDER {: b:IR-BUILD:builder :}
-   c b A64RA:BIND-DIALECT
-   c b A64RA:BIND-DIALECT ;
+   c b A64IR:REGFILE A64RA:BIND-DIALECT
+   c b A64IR:REGFILE A64RA:BIND-DIALECT ;
 
 : WRONG-DIALECT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    IR-BUILD:PLAN-BEGIN
    IR-BUILD:PLAN-DEFAULT
    c HIR:NEW-BUILDER {: b:IR-BUILD:builder :}
-   c b A64RA:BIND-DIALECT ;
+   c b A64IR:REGFILE A64RA:BIND-DIALECT ;
 
 \ These registers belong to one architecture; a context bound to another machine
 \ has none of them. The module is built under the machine this dialect is for and
@@ -2644,7 +2644,7 @@ using A64RA
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: hm:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
-   CC ab A64RA:BIND-DIALECT
+   CC ab A64IR:REGFILE A64RA:BIND-DIALECT
    CC hm ab A64EFF:GPR-NONE LEAF  A64SEL:SELECT {: m:IR-BUILD:module :}
    CC m 4 LEAF-N A64RA:ALLOCATE
    hm 4 LEAF-N A64RAV:ACCEPT ;
@@ -3467,7 +3467,7 @@ using A64RA
    M-FREEZE {: m0:IR-BUILD:module :}
    CC m0 FSPILL-CONTRACT A64RA:ALLOCATE
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC nb A64RA:BIND-DIALECT
+   CC nb A64IR:REGFILE A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
    CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 FSPILL-CONTRACT A64RA:ALLOCATE
@@ -3517,7 +3517,7 @@ using A64RA
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
-   CC ab A64RA:BIND-DIALECT
+   CC ab A64IR:REGFILE A64RA:BIND-DIALECT
    CC ab A64RAV:BIND-DIALECT
    CC m ab n in out HABU-N  A64SEL:SELECT ;
 
@@ -3613,6 +3613,259 @@ using A64RA
    1 2 3 4 5 6 7 8 9 10 11 12 1 WIDE-CALL-LOOP 1248 T=
    1 2 3 4 5 6 7 8 9 10 11 12 2 WIDE-CALL-LOOP 2496 T= ;
 
+\ ---- allocating for a machine that is not this one ---------------------------
+\ The pass reads the register file off a description the backend installs, so a
+\ machine with sixteen registers of which the virtual machine took six can be
+\ allocated for before any backend for it exists. That is the shape
+\ docs/x86-64.md fixes - rbp, rbx and r12..r15 reserved, ten left over - stated
+\ here as a file of sixteen with its top six reserved. Every allocatable number
+\ is one ARM64 leaves alone too, so the fixtures below build their A64EFF pools
+\ over the same registers and nothing but the description differs.
+\
+\ WHAT EACH CASE IS FOR. The positive one asserts the SAME exact registers the
+\ thirty-two-register description gives, because a program that fits in ten
+\ registers has no reason to be allocated differently and a file bound that was
+\ wrong in either direction would move them. The two refusals are the ones only
+\ a description can state: a pool holding a register this machine does not have
+\ at all, and a pool holding one the virtual machine took. Neither is expressible
+\ without the description - on ARM64 both pools are perfectly legal - which is
+\ what makes this suite fail on the tree before this change rather than pass
+\ vacuously. And the call case measures the one decision the caller/callee split
+\ owns: whether a value may stay in a register across a branch.
+
+16 constant SMALL-N                  \ registers this machine numbers
+10 constant SMALL-ALLOC-N            \ and how many of them a routine may have
+2 constant SMALL-SAVED-N             \ under a convention that keeps some
+
+: SMALL-RANGE ( n n -- NREGFILE:regs )
+   {: base:n n:n :}
+   NREGFILE:REGS-NONE
+   n 0 ?do base i + NREGFILE:REGS-REG NREGFILE:REGS-WITH loop ;
+
+: SMALL-RESERVED ( -- NREGFILE:regs )
+   SMALL-ALLOC-N  SMALL-N SMALL-ALLOC-N -  SMALL-RANGE ;
+
+\ The whole allocatable set destroyed by a call, as the Habu convention says.
+: SMALL-FILE ( -- NREGFILE:file )
+   SMALL-N SMALL-RESERVED  0 SMALL-ALLOC-N SMALL-RANGE
+   SMALL-N NREGFILE:REGS-NONE  0 SMALL-N SMALL-RANGE
+   A64IR:SLOT-WIDTH NREGFILE:FILE ;
+
+\ The same machine under a convention whose top two allocatable registers
+\ survive a call, so the callee-saved set is not empty.
+: SAVED-FILE ( -- NREGFILE:file )
+   SMALL-N SMALL-RESERVED  0 SMALL-ALLOC-N SMALL-SAVED-N - SMALL-RANGE
+   SMALL-N NREGFILE:REGS-NONE  0 SMALL-N SMALL-RANGE
+   A64IR:SLOT-WIDTH NREGFILE:FILE ;
+
+\ SELECTED, with the small machine installed instead of this one. Selection is
+\ unchanged by it - the description is the allocator's - so the module the two
+\ allocate is the same module.
+: SELECTED-SMALL ( -- IR-BUILD:module )
+   CC BB A64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   A64-BUILDER {: ab:IR-BUILD:builder :}
+   CC ab SMALL-FILE A64RA:BIND-DIALECT
+   CC ab A64RAV:BIND-DIALECT
+   CC m ab A64EFF:GPR-NONE LEAF  A64SEL:SELECT ;
+
+: A64-MOD-SAVED ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN
+   IR-BUILD:PLAN-DEFAULT
+   c A64IR:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c 0 W-CTX !
+   b 0 W-BLD !
+   c b SAVED-FILE A64RA:BIND-DIALECT
+   c b A64RAV:BIND-DIALECT
+   c b A64IR:REGISTER
+   c b TXT TXT-N IR-BUILD:ADD-SOURCE 0 W-SRC ! ;
+
+: A64-MOD-SMALL ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN
+   IR-BUILD:PLAN-DEFAULT
+   c A64IR:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c 0 W-CTX !
+   b 0 W-BLD !
+   c b SMALL-FILE A64RA:BIND-DIALECT
+   c b A64RAV:BIND-DIALECT
+   c b A64IR:REGISTER
+   c b TXT TXT-N IR-BUILD:ADD-SOURCE 0 W-SRC ! ;
+
+: SMALL-SQUARE-BODY ( IR-CTX:ctx -- n n n n bool )
+   HIR-MOD
+   BUILD-SQUARE
+   SELECTED-SMALL {: m:IR-BUILD:module :}
+   CC m 4 LEAF-N A64RA:ALLOCATE
+   m 4 LEAF-N A64RAV:ACCEPT
+   A64RA:VALUES
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   1 A64RA:DEF@
+   A64RAV:ACCEPTED? ;
+
+: SMALL-SQUARE-CASE ( -- )
+   s" a ten-register machine allocates the same program the same way" T-LABEL
+   WBND [: SMALL-SQUARE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 1 T= 0 T= 0 T= 2 T= ;
+
+\ The top of the allocatable set, so the bound is exactly ten and not nine or
+\ eleven: a pool of the two highest allocatable registers is honoured.
+: SMALL-EDGE-BODY ( IR-CTX:ctx -- n n )
+   HIR-MOD
+   BUILD-SQUARE
+   SELECTED-SMALL {: m:IR-BUILD:module :}
+   CC m  SMALL-ALLOC-N 2 -  2 LEAF-FROM A64RA:ALLOCATE
+   m  SMALL-ALLOC-N 2 -  2 LEAF-FROM A64RAV:ACCEPT
+   0 A64RAV:REG@
+   1 A64RAV:REG@ ;
+
+: SMALL-EDGE-CASE ( -- )
+   s" the highest allocatable registers of a smaller file are handed out"
+   T-LABEL
+   WBND [: SMALL-EDGE-BODY ;] IR-CTX:WITH-CONTEXT
+   SMALL-ALLOC-N 2 - T=  SMALL-ALLOC-N 2 - T= ;
+
+\ A pool naming registers this machine does not have. Both are ordinary ARM64
+\ registers, so nothing but the description refuses them.
+: SMALL-ABSENT-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   BUILD-SQUARE
+   SELECTED-SMALL {: m:IR-BUILD:module :}
+   CC m  SMALL-N 2 LEAF-FROM A64RA:ALLOCATE ;
+
+: SMALL-ABSENT ( -- )
+   WBND [: SMALL-ABSENT-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ And a pool naming registers the virtual machine took. They are inside the
+\ file, which is what tells this refusal apart from the one above.
+: SMALL-RESERVED-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   BUILD-SQUARE
+   SELECTED-SMALL {: m:IR-BUILD:module :}
+   CC m  SMALL-ALLOC-N 2 LEAF-FROM A64RA:ALLOCATE ;
+
+: SMALL-RESERVED-REFUSE ( -- )
+   WBND [: SMALL-RESERVED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: SMALL-POOL-CASES ( -- )
+   s" a pool of registers the described machine does not have is refused"
+   T-LABEL
+   [: SMALL-ABSENT ;] E-A64RA-POOL TTHROWSQ
+   s" a pool of registers the virtual machine reserved is refused" T-LABEL
+   [: SMALL-RESERVED-REFUSE ;] E-A64RA-POOL TTHROWSQ ;
+
+\ ---- and the same for the other file -----------------------------------------
+\ A description states both files, and a routine holding no floating value never
+\ reaches the second half of either the bound or the check. These two do: one
+\ program with a value in each file, allocated under the small machine, and a
+\ floating pool that runs one register past the file it is declared from.
+: SMALL-TWO-FILES-BODY ( IR-CTX:ctx -- n n n bool )
+   A64-MOD-SMALL
+   BUILD-TWO-FILES
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m  2 2 LEAF-FN  A64RA:ALLOCATE
+   m  2 2 LEAF-FN  A64RAV:ACCEPT
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
+: SMALL-FPOOL-BODY ( IR-CTX:ctx -- )
+   A64-MOD-SMALL
+   BUILD-TWO-FILES
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m  2 SMALL-N 1+ LEAF-FN  A64RA:ALLOCATE ;
+
+: SMALL-FPOOL-REFUSE ( -- )
+   WBND [: SMALL-FPOOL-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: SMALL-FILE-FPR-CASES ( -- )
+   s" a smaller machine allocates both register files the same way" T-LABEL
+   WBND [: SMALL-TWO-FILES-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 1 T= 0 T= 0 T=
+   s" a floating pool past the described floating file is refused" T-LABEL
+   [: SMALL-FPOOL-REFUSE ;] E-A64RA-POOL TTHROWSQ ;
+
+\ ---- what a call does to a register ------------------------------------------
+\ A value made before a call and read after it. Whether it may stay where it is
+\ across the branch is the caller/callee split and nothing else: the two cases
+\ below allocate ONE module with ONE pool under two descriptions that differ in
+\ that field alone.
+: BUILD-ACROSS ( -- )
+   s" ACROSS" 0 1 OPEN-FUN
+   A64EFF:SP-ALIGN M-RESERVE {: f0:IR-ID:ir-value-id :}
+   f0 A64IR-OPCODE:LINKSAVE M-LINK {: f1:IR-ID:ir-value-id :}
+   $11 M-CONST {: a:IR-ID:ir-value-id :}
+   0 M-DTAKE {: t0:IR-ID:ir-value-id :}
+   t0 0 0 M-CALL {: t1:IR-ID:ir-value-id :}
+   t1 0 M-DPUBLISH
+   f1 A64IR-OPCODE:LINKLOAD M-LINK {: f2:IR-ID:ir-value-id :}
+   f2 A64EFF:SP-ALIGN M-RELEASE
+   a a M-ADD M-RET
+   CLOSE-FUN ;
+
+: CALL-LEAF-N ( n -- A64EFF:routine )
+   {: n:n :}
+   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE n POOL-N
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:T-CALL A64EFF:SP-ALIGN 0 A64EFF:ROUTINE ;
+
+: ACROSS-ALLOCATE ( -- )
+   BUILD-ACROSS
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m SMALL-ALLOC-N CALL-LEAF-N A64RA:ALLOCATE ;
+
+\ Under the convention that keeps two registers, the value stays in one of them
+\ and the walk plans nothing: no store, no reload, no re-emission.
+: ACROSS-SAVED-BODY ( IR-CTX:ctx -- n n )
+   A64-MOD-SAVED
+   ACROSS-ALLOCATE
+   A64RA:SPILLS
+   A64RA:REMATS ;
+
+: ACROSS-CLOBBERED-BODY ( IR-CTX:ctx -- n n )
+   A64-MOD-SMALL
+   ACROSS-ALLOCATE
+   A64RA:SPILLS
+   A64RA:REMATS ;
+
+\ The module holds eight values and the one live across the call is the fourth:
+\ two frame tokens, the move-wide, then the sum that is read after the branch.
+3 constant ACROSS-LIVE               \ the value the call stands in the middle of
+
+: ACROSS-SAVED-REG-BODY ( IR-CTX:ctx -- n )
+   A64-MOD-SAVED
+   ACROSS-ALLOCATE
+   ACROSS-LIVE A64RA:CLAIM@ ;
+
+: ACROSS-CASES ( -- )
+   s" a value live across a call keeps a register a call does not destroy"
+   T-LABEL
+   WBND [: ACROSS-SAVED-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T=
+   s" and it is one of the registers the description declared callee-saved"
+   T-LABEL
+   WBND [: ACROSS-SAVED-REG-BODY ;] IR-CTX:WITH-CONTEXT
+   SMALL-ALLOC-N SMALL-SAVED-N - T=
+   s" the same value on the same pool goes to the frame when a call destroys every register"
+   T-LABEL
+   WBND [: ACROSS-CLOBBERED-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 1 T= ;
+
+\ A refusing case above leaves its binding standing - the pass refuses a second
+\ binding rather than taking one - so these cases clear it first, the way every
+\ other group that follows one does.
+: SMALL-FILE-CASES ( -- )
+   A64RA:BOUND? if A64RA:RELEASE then
+   SMALL-SQUARE-CASE
+   SMALL-EDGE-CASE
+   SMALL-POOL-CASES
+   SMALL-FILE-FPR-CASES
+   ACROSS-CASES ;
+
 public
 
 : RUN ( -- )
@@ -3696,6 +3949,7 @@ public
 
    WBND [: GROUP-MB-CARRIED ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MB-ACCEPT ;] IR-CTX:WITH-CONTEXT
+   SMALL-FILE-CASES
    T-REPORT ;
 
 ;package

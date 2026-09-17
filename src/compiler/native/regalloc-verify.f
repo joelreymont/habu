@@ -20,6 +20,7 @@ require src/compiler/ir/schema.f
 require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
+require src/compiler/native/regfile.f
 require src/compiler/native/a64ir.f
 require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
@@ -75,6 +76,31 @@ variable SCRATCH-OPS
    cls C-FPR = if F-FPR exit then
    cls C-TOKEN = if NOFILE exit then
    E-A64RAV-CLASS throw ;
+
+\ ---- the machine the allocation under test was made for ----------------------
+\ Asked of the allocator rather than read off one architecture's constants, so
+\ the validator measures a claim against the same register file the walk placed
+\ it in. A validator with its own idea of how many registers the machine has
+\ would accept a register that does not exist on it, which is exactly the bug
+\ this pass exists to catch.
+: RF-SIZE ( n -- n )
+   {: fl:n :}
+   fl F-GPR = if A64RA:REGFILE NREGFILE:GPR-SIZE exit then
+   fl F-FPR = if A64RA:REGFILE NREGFILE:FPR-SIZE exit then
+   E-A64RAV-CLASS throw ;
+
+\ The widest file this machine has, for the one question asked of a value that
+\ belongs to NO file: whether a memory token is holding something that looks
+\ like a register of this machine at all.
+: RF-WIDEST ( -- n )
+   F-GPR RF-SIZE  F-FPR RF-SIZE  max ;
+
+\ The bytes one SPILLED value occupies. It is not the data-stack cell width the
+\ VD- words below measure with: that one is the engine's stack stride, an ABI
+\ fact of the dialect, and the two coincide on this machine without being the
+\ same statement.
+: RF-SLOT-WIDTH ( -- n )
+   A64RA:REGFILE NREGFILE:SLOT-WIDTH ;
 
 -1 constant NOSLOT
 
@@ -598,9 +624,9 @@ variable FPO-RUN                     \ where the next predecessor run starts
    N-VALS @ 0 ?do
       i A64RA:CLAIM@ {: r:n :}
       i REGGED? 0= if
-         r 0 >= r A64EFF:FILE-SIZE < and if E-A64RAV-CLASS throw then
+         r 0 >= r RF-WIDEST < and if E-A64RAV-CLASS throw then
       else
-         r 0 < r A64EFF:FILE-SIZE >= or if
+         r 0 < r i FILE-AT RF-SIZE >= or if
             E-A64RAV-REGISTER throw
          then
          i FILE-AT pool fpool FILE-POOL
@@ -773,7 +799,7 @@ variable FPO-RUN                     \ where the next predecessor run starts
 : FLOW-SLOT ( IR-ID:ir-op-id -- n )
    SLOT-OF {: off:n :}
    off NOSLOT = if NOSLOT exit then
-   off A64IR:SLOT-WIDTH / {: s:n :}
+   off RF-SLOT-WIDTH / {: s:n :}
    s 0 < s SLOTS-MAX >= or if E-A64RAV-SLOT throw then
    s ;
 
@@ -1011,7 +1037,7 @@ variable FPO-RUN                     \ where the next predecessor run starts
       bk OP-COUNT 0 ?do
          bk i OP-AT SLOT-OF {: off:n :}
          off NOSLOT <> if
-            off A64IR:SLOT-WIDTH
+            off RF-SLOT-WIDTH
             cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
             A64EFF:CHECK-SLOT
          then
