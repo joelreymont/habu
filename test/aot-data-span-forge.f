@@ -68,11 +68,10 @@
 \         half that says the name reaches the right address at boot.
 \
 \ The gate registers one case per independent build; a standalone run with no
-\ case keeps the complete focused sequence. The PTY primitives below mirror
-\ test/proc-pty.f, deadline shape included, down to one deliberate difference
-\ noted at READ-STEP; factoring them into a shared lib is out of this dot's scope
-\ (dot habu-share-one-pty-b1d88b7c). Linux gate hosts provide /dev/ptmx + a
-\ mounted /dev/pts (docs/process-pty.md).
+\ case keeps the complete focused sequence. The terminal itself - the pair, the
+\ spawn on it, the reads and the waits - is lib/pty-harness.f, which this file
+\ and test/proc-pty.f share. Linux gate hosts provide /dev/ptmx + a mounted
+\ /dev/pts (docs/process-pty.md).
 \
 \ Standalone:
 \   bin/hb --load lib/errors.f lib/string.f lib/fmt.f lib/memory.f lib/fs.f lib/fs-mutate.f \
@@ -88,9 +87,12 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/pty-harness.f
 require lib/test.f
 
 package AOT-DATA-SPAN-FORGE
+
+using PTY-HARNESS
 
 \ Any span >= DATA-SIZE overflows the region (the seed headroom is always strictly
 \ under DATA-SIZE), so 2*DATA-SIZE is unambiguously oversized. DATA-SIZE is
@@ -113,22 +115,9 @@ create SPAN-BUF 32 allot   variable SPAN-U             \ decimal text of OVERSIZ
 240000 constant BUILD-TIMEOUT-MS
 $40 constant ARG-RC
 
-\ --- PTY constants + poll tuning (mirror test/proc-pty.f) ---
-$40045431 constant LINUX-TIOCSPTLCK
-$80045430 constant LINUX-TIOCGPTN
-2   constant PTY-OPEN-RDWR
-10  constant PTY-POLL-MS
-$4E20 constant PTY-WAIT-MS                \ one wait runs at most this long on the clock
-$1000 constant PTY-RBUF-CAP
-$200 constant PTY-KEEP-TAIL               \ bytes kept when a full buffer is compacted
-
 $8000 constant CAP
 create OUT CAP allot    variable OUT-U
 create ERR CAP allot    variable ERR-U
-create RBUF PTY-RBUF-CAP allot  variable RN
-create PTYNAME 128 allot   variable PTY-U
-create CH 1 allot
-variable PTYNUM   variable MFD   variable SFD   variable PID
 
 create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
@@ -137,7 +126,6 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
 : HBPWID$ ( -- ptr u8 n ) HBPWID-BUF HBPWID-U @ ;
 : PLAIN$ ( -- ptr u8 n )  s" bin/hb" ;
 : ERR$ ( -- ptr u8 n )    ERR ERR-U @ ;
-: RBUF$ ( -- ptr u8 n )   RBUF RN @ ;
 
 : SETUP ( -- )
    CLEANUP-RESET
@@ -197,110 +185,35 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
             c RC>N throw ENDOF
    ;MATCH ;
 
-\ --- PTY plumbing (mirror test/proc-pty.f) ---
-\ A full buffer keeps its tail rather than dropping everything: a marker split
-\ across the compaction survives whole in what is kept, and every older byte has
-\ already been searched. PTY-KEEP-TAIL is far longer than any marker or boot
-\ report line below. Without it the read below asks for zero bytes once the
-\ buffer is full, is handed zero back, and the harness is deaf from there on --
-\ measured: a child that wrote 5000 bytes before its marker parked RN at exactly
-\ PTY-RBUF-CAP and the marker was never seen.
-: KEEP-TAIL! ( -- )
-   RN @ PTY-RBUF-CAP PTY-KEEP-TAIL - < if exit then
-   RBUF RN @ PTY-KEEP-TAIL - + RBUF PTY-KEEP-TAIL BYTE-COPY
-   PTY-KEEP-TAIL RN ! ;
-
-\ Append one read and report it, keeping room for the next one.
-: READ+ ( fd -- n ) {: fd :}
-   KEEP-TAIL!
-   fd FD>N RBUF RN @ + PTY-RBUF-CAP RN @ - read {: got :}
-   got 0 > if RN @ got + RN ! then
-   got ;
-
-\ One poll and, when the master has bytes, one read: above zero for bytes
-\ appended, 0 for a quiet poll, below zero once the child is gone -- a ready
-\ descriptor that reads nothing is the hang-up. A poll that reports no readiness
-\ is quiet, an errno included: the master is opened blocking, so a read no poll
-\ authorised could block past the deadline.
-: READ-STEP ( fd -- n ) {: fd :}
-   fd PTY-POLL-MS >MS POLL-IN COUNT>N 0 <= if 0 exit then
-   fd READ+ 0 > if 1 exit then
-   -1 ;
-
-\ Keep reading the master until the text appears, the child hangs up, or the
-\ wait's deadline passes. A booting engine answers in as many pieces as the
-\ host's scheduling chooses, so no count of polls bounds this wait: reads that
-\ bring data and a dead child's ready-and-empty polls both spend a count without
-\ spending time -- measured, the 500-poll budget this wait used to carry went by
-\ in 19 ms. The deadline is absolute and is tested before each poll, so the wait
-\ overruns it by at most the poll already in flight. A partial read is neither an
-\ answer nor a failure: only the text, the hang-up and the clock end the loop.
-\ Mirrors proc-pty EXPECT-WAIT?.
-: WAIT-FOR ( ptr u8 n -- bool ) {: a:ptr u :}
-   PTY-WAIT-MS >MS PROC-DEADLINE-AT {: deadline :}
-   begin
-      RBUF$ a u CONTAINS? if true exit then
-      deadline PROC-LEFT-MS MS>N 0 = if false exit then
-      MFD @ >FD READ-STEP 0 < if RBUF$ a u CONTAINS? exit then
-   again ;
-
-: SEND-C {: c :} ( c -- )
-   c CH c!
-   MFD @ CH 1 write drop ;
-
-: PTY-PATH-C ( n -- ) {: c :}
-   c PTYNAME PTY-U @ + c!
-   PTY-U @ 1 + PTY-U ! ;
-: PTY-PATH+ ( ptr u8 n -- ) {: a:ptr u :}
-   0 begin dup u < while  dup a + c@ PTY-PATH-C  1 + repeat drop ;
-: PTY-PATH-U+ ( n -- ) {: n :}
-   n 10 >= if n 10 / recurse then  n 10 mod 48 + PTY-PATH-C ;
-: PTY-PATH-BUILD ( -- )              \ /dev/pts/<PTYNUM>\0
-   0 PTY-U !  s" /dev/pts/" PTY-PATH+  PTYNUM @ PTY-PATH-U+  0 PTY-PATH-C ;
-
-: OPEN-PTY ( -- )                    \ Linux ptmx master + /dev/pts/N slave
-   s" /dev/ptmx" >LEN PROC-PATHZ PTY-OPEN-RDWR 0 open MFD !
-   MFD @ 2 > TTRUE
-   MFD @ >FD FD-CLOEXEC!
-   0 PTYNUM !
-   MFD @ LINUX-TIOCSPTLCK PTYNUM ioctl 0 T=
-   MFD @ LINUX-TIOCGPTN PTYNUM ioctl 0 T=
-   PTY-PATH-BUILD
-   PTYNAME PTY-OPEN-RDWR 0 open SFD !
-   SFD @ 2 > TTRUE ;
-
-: PTY-SPAWN ( ptr u8 n -- ) {: e:ptr eu:n :}   \ boot engine e with the slave on fd 0/1/2
-   0 RN !
-   OPEN-PTY
-   e eu >LEN  SFD @ >FD SFD @ >FD SFD @ >FD  PROC-SPAWN-IO PID !
-   PID @ 0 > TTRUE
-   SFD @ close ;
-
 \ --- the two directions ---
 : ASSERT-FORGED-DIES ( -- )
-   HBPWID$ PTY-SPAWN                 \ boot the forged image under a PTY
+   HBPWID$ SPAWN-ON-PTY              \ boot the forged image under a PTY
    s" AOT data span guard: forged span prints the named boot die" T-LABEL
    s" hb: AOT data span out of range" WAIT-FOR TTRUE   \ its fd-2 die reaches the master
    s" AOT data span guard: forged span exits 82 (ENGINE-ERROR:AOT-SEED)" T-LABEL
-   PID @ >PID PROC-WAIT-RC MATCH result
+   CHILD-PID PROC-WAIT-RC MATCH result
      ok  OF drop 1 0 T= ENDOF          \ unexpected clean exit -> fail
      err OF 82 T= ENDOF                \ expected: exit code == 82
    ;MATCH
-   MFD @ close ;
+   CLOSE-MASTER ;
 
+\ The claim that the die did NOT fire is a watch, not a scan of the buffer: a
+\ boot long enough to compact it would drop the very bytes such a scan needs.
 : ASSERT-LEGAL-BOOTS ( -- )
-   PLAIN$ PTY-SPAWN                  \ boot the unforged engine under a PTY
+   WATCH-RESET
+   s" hb: AOT data span out of range" WATCH+ {: fired:watch :}
+   PLAIN$ SPAWN-ON-PTY               \ boot the unforged engine under a PTY
    s" AOT data span guard: legal engine reaches the REPL prompt" T-LABEL
    s" habu> " WAIT-FOR TTRUE         \ boot banner + prompt appear (span reserve passed)
    s" AOT data span guard: legal engine does not fire the span die" T-LABEL
-   RBUF$ s" hb: AOT data span out of range" CONTAINS? 0= TTRUE
-   4 SEND-C                          \ Ctrl-D: leave the REPL
+   fired NEVER-SEEN? TTRUE
+   4 SEND-BYTE                       \ Ctrl-D: leave the REPL
    s" AOT data span guard: legal engine exits 0" T-LABEL
-   PID @ >PID PROC-WAIT-RC MATCH result
+   CHILD-PID PROC-WAIT-RC MATCH result
      ok  OF 0 T= ENDOF
      err OF drop 1 0 T= ENDOF
    ;MATCH
-   MFD @ close ;
+   CLOSE-MASTER ;
 
 \ --- the window's content, both halves ---------------------------------------
 \ The magic is the value aot-wid-build.f stores into the fixture cell; matching it
@@ -310,30 +223,32 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" awb-cell=6510728274268543578" ;
 
 : ASSERT-CONTENT-TRAVELS ( -- )
-   HBPWID$ PTY-SPAWN
+   WATCH-RESET
+   s" awb-cell=0" WATCH+ {: zeroed:watch :}
+   HBPWID$ SPAWN-ON-PTY
    s" AOT window content: the initialised cell reports its value at boot" T-LABEL
    CONTENT-MAGIC$ WAIT-FOR TTRUE
    s" AOT window content: it is not the zeroed reserve's answer" T-LABEL
-   RBUF$ s" awb-cell=0" CONTAINS? 0= TTRUE
+   zeroed NEVER-SEEN? TTRUE
    s" habu> " WAIT-FOR TTRUE
-   4 SEND-C
+   4 SEND-BYTE
    s" AOT window content: the engine still exits 0" T-LABEL
-   PID @ >PID PROC-WAIT-RC MATCH result
+   CHILD-PID PROC-WAIT-RC MATCH result
      ok  OF 0 T= ENDOF
      err OF drop 1 0 T= ENDOF
    ;MATCH
-   MFD @ close ;
+   CLOSE-MASTER ;
 
 : ASSERT-TRAP-DIES-NAMED ( -- )
-   HBPWID$ PTY-SPAWN
+   HBPWID$ SPAWN-ON-PTY
    s" AOT declared cell: an uninstalled vector dies by name" T-LABEL
    s" defer: unset execution vector" WAIT-FOR TTRUE
    s" AOT declared cell: it exits 76 (EXEC-VECTOR-RC), not a fault" T-LABEL
-   PID @ >PID PROC-WAIT-RC MATCH result
+   CHILD-PID PROC-WAIT-RC MATCH result
      ok  OF drop 1 0 T= ENDOF
      err OF 76 T= ENDOF
    ;MATCH
-   MFD @ close ;
+   CLOSE-MASTER ;
 
 : REQUIRE-IMAGE ( -- )
    HBPWID$ EXISTS? 0= if
@@ -367,19 +282,21 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" awb-big=6510711284817812058" ;
 
 : ASSERT-BIG-WINDOW-BOOTS ( -- )
-   HBPWID$ PTY-SPAWN
+   WATCH-RESET
+   s" awb-big=0" WATCH+ {: zeroed:watch :}
+   HBPWID$ SPAWN-ON-PTY
    s" AOT wide format: an over-64 KiB window reports its magic at boot" T-LABEL
    BIG-MAGIC$ WAIT-FOR TTRUE
    s" AOT wide format: it is not the zeroed or unrelocated answer" T-LABEL
-   RBUF$ s" awb-big=0" CONTAINS? 0= TTRUE
+   zeroed NEVER-SEEN? TTRUE
    s" habu> " WAIT-FOR TTRUE
-   4 SEND-C
+   4 SEND-BYTE
    s" AOT wide format: the over-64 KiB engine exits 0" T-LABEL
-   PID @ >PID PROC-WAIT-RC MATCH result
+   CHILD-PID PROC-WAIT-RC MATCH result
      ok  OF 0 T= ENDOF
      err OF drop 1 0 T= ENDOF
    ;MATCH
-   MFD @ close ;
+   CLOSE-MASTER ;
 
 : PROBE-BIG-WINDOW ( -- )
    s" HABU_AOT_BIG" BUILD-MODE
@@ -398,17 +315,17 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" awb-ext=6510767442340633178" ;
 
 : ASSERT-EXT-NAME-BOOTS ( -- )
-   HBPWID$ PTY-SPAWN
+   HBPWID$ SPAWN-ON-PTY
    s" AOT out-of-line name: the long-named word is found and runs at boot" T-LABEL
    EXT-MAGIC$ WAIT-FOR TTRUE
    s" habu> " WAIT-FOR TTRUE
-   4 SEND-C
+   4 SEND-BYTE
    s" AOT out-of-line name: the engine exits 0, not the boot-run's not-found" T-LABEL
-   PID @ >PID PROC-WAIT-RC MATCH result
+   CHILD-PID PROC-WAIT-RC MATCH result
      ok  OF 0 T= ENDOF
      err OF drop 1 0 T= ENDOF
    ;MATCH
-   MFD @ close ;
+   CLOSE-MASTER ;
 
 : PROBE-EXT-NAME ( -- )
    s" HABU_AOT_EXT" BUILD-MODE
@@ -432,19 +349,21 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
 : PRE-ZEROED$ ( -- ptr u8 n )    s" awb-pre=0" ;
 
 : ASSERT-PREWINDOW-BOOTS ( -- )
-   HBPWID$ PTY-SPAWN
+   WATCH-RESET
+   PRE-ZEROED$ WATCH+ {: zeroed:watch :}
+   HBPWID$ SPAWN-ON-PTY
    s" AOT pre-window: the relocated call reads the prefix word's own cell" T-LABEL
    PRE-MAGIC$ WAIT-FOR TTRUE
    s" AOT pre-window: not the zero an unrelocated or window-DATA read gives" T-LABEL
-   RBUF$ PRE-ZEROED$ CONTAINS? 0= TTRUE
+   zeroed NEVER-SEEN? TTRUE
    s" habu> " WAIT-FOR TTRUE
-   4 SEND-C
+   4 SEND-BYTE
    s" AOT pre-window: the engine exits 0" T-LABEL
-   PID @ >PID PROC-WAIT-RC MATCH result
+   CHILD-PID PROC-WAIT-RC MATCH result
      ok  OF 0 T= ENDOF
      err OF drop 1 0 T= ENDOF
    ;MATCH
-   MFD @ close ;
+   CLOSE-MASTER ;
 
 : PROBE-PREWINDOW ( -- )
    s" HABU_AOT_PREWIN" BUILD-MODE
@@ -521,6 +440,8 @@ public
    code 0 <> if code throw then
    T-REPORT
    s" aot-data-span-forge: ok" type cr ;
+
+;using
 
 ;package
 

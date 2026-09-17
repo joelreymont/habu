@@ -9,9 +9,11 @@ Use the direct test through `bin/hb --load`; do not concatenate files with
 host shell logic:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f \
-  lib/process-argv.f lib/process-env.f lib/test.f test/proc-pty.f
+bin/hb --load lib/errors.f lib/process.f test/proc-pty.f
 ```
+
+The suite requires `lib/pty-harness.f` (below) itself; the two files named on
+the line are the ones the engine bakes neither of.
 
 The canonical native registry loads this test through `test/run.f`.
 
@@ -62,6 +64,50 @@ gate hosts must provide `/dev/ptmx` and a mounted `/dev/pts`.
 The PTY gate is the native compatibility baseline for process capture, PTY
 startup, line editing, history, breakpoints, stepper recovery, Ctrl-C, Ctrl-D,
 and async exit.
+
+## Test harness (`lib/pty-harness.f`)
+
+One module owns that flow for the suites that drive a child engine at a
+terminal: `test/proc-pty.f`, `test/aot-data-span-forge.f` and the reading half
+of `test/process-pty-tty-smoke.f`. They keep no copy of it. `PTY-HARNESS`
+publishes:
+
+- `SPAWN-ON-PTY ( ptr u8 n -- )` opens the pair, starts the executable with the
+  slave on fds 0, 1 and 2, closes the slave and keeps the close-on-exec master;
+  `CHILD-PID`, `MASTER-FD` and `CLOSE-MASTER` are the rest of that child's
+  handle. A failed spawn throws what failed and leaves nothing open.
+- `SEND` / `SEND-LINE` / `SEND-BYTE` type at the master; `WRITE-ALL`,
+  `WRITE-BYTE` and `WRITE-LINE` write to any descriptor, so a suite's pipe
+  children use the same buffer.
+- `READ-STEP ( fd -- n )` is one poll and, when the descriptor has bytes, one
+  read: above zero for bytes appended, `0` for a quiet poll, `-1` for the
+  far side's hang-up. A poll that reports no readiness is quiet, an errno
+  included -- the descriptors are blocking, so a read no poll authorised could
+  block past the caller's deadline. `READ-TO-EOF` and `DRAIN ( fd n -- )` are
+  the two bulk shapes.
+- `WAIT-FOR ( ptr u8 n -- bool )` reads the master until the text appears, the
+  child hangs up, or the wait budget passes, on an absolute deadline
+  (`PROC-DEADLINE-AT` / `PROC-LEFT-MS`, reached through `WAIT-OPEN` /
+  `WAIT-LEFT`). No count of polls or reads bounds it: reads that bring data and
+  a dead child's ready-and-empty polls both spend a count without spending time
+  -- measured, the 500-poll budget one of these waits used to carry went by in
+  19 ms.
+- `BUF$`, `BUF-CLEAR`, `FIND-FROM`, `IN-BUF?`, `FIND-AFTER` and `AFTER?` are the
+  buffer and one span search over it. A full buffer keeps its tail, so old bytes
+  do leave it.
+- A negative claim therefore never scans the buffer alone. `WAIT-BARRIER` closes
+  a window at a marker the child printed PAST the point where the rejected text
+  would have appeared and `WINDOW-ABSENT?` reads only that window (with no
+  barrier there is no claim, and the answer is false); `WATCH+ ( ptr u8 n --
+  watch )` records a never-seen fact as the bytes arrive, which a compaction
+  cannot erase, and `NEVER-SEEN?` reads it back.
+- `ROOM$` / `TOOK` are the append itself, for a reader the module does not own:
+  `test/process-pty-tty-smoke.f` reads through the supervised linear handle
+  below and hands the bytes back through them.
+
+The state is process-wide: one child and one wait at a time, and `SPAWN-ON-PTY`
+refuses a second pair while one is open. `lib/pty-harness-test.f` drives the
+buffer, the search, the watches and the spawn's abort path directly.
 
 ## Supervised sessions (`lib/process-pty-io.f`)
 

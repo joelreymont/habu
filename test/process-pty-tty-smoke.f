@@ -13,23 +13,25 @@
 \ outside the package, which used to be E-UNDEFINED.
 \
 \ Run: bin/hb --load test/process-pty-tty-smoke.f   (HABU_UNDER_TEST names the child)
+\
+\ The buffer, its compaction, the span search, the waits and the never-seen
+\ facts are lib/pty-harness.f's. Only the reading step is this file's own: the
+\ bytes come through the supervisor's linear handle, which cannot be handed to
+\ the module's own descriptor reader.
 
 require lib/process-pty-io.f
+require lib/pty-harness.f
 require lib/prelude.f
 require lib/test.f
 
 package PTY-TTY-SMOKE
 
-$64 constant STEP-MS               \ one poll blocks at most this long
-$4E20 constant WAIT-MS             \ and one wait runs at most this long on the clock
-3 constant QUIET-POLLS             \ polls in a row that bring nothing and so end a drain
-$200 constant KEEP-TAIL            \ bytes kept when a full buffer is compacted
-$1388 constant EXIT-MS
-$4000 constant RCAP
+using PTY-HARNESS
 
-create RBUF RCAP allot
-variable RN
-variable DEADLINE                  \ absolute monotonic end of the wait in flight
+$64 constant STEP-MS               \ one poll blocks at most this long
+3 constant QUIET-POLLS             \ polls in a row that bring nothing and so end a drain
+$1388 constant EXIT-MS
+
 variable QUIET-N
 
 : HB$ ( -- ptr u8 len )
@@ -38,52 +40,13 @@ variable QUIET-N
 : PROMPT$ ( -- ptr u8 n )    s" habu> " ;
 : ANYWHERE$ ( -- ptr u8 n )  s" " ;      \ an empty head: the tail may be anywhere
 
-: RCLR ( -- ) 0 RN ! ;
-
-\ One wait runs at a time, so a single deadline cell serves every loop here. The
-\ deadline is absolute and is tested before each poll, so a wait overruns it by
-\ at most the one poll already in flight and never restarts its budget.
-: WAIT-OPEN ( n -- ) {: ms:n :}
-   ms >MS PROC-DEADLINE-AT DEADLINE ! ;
-
-: WAIT-LEFT ( -- n )
-   DEADLINE @ PROC-LEFT-MS MS>N ;
-
-\ Offset of the first occurrence at or after `from`, or -1. Where a marker
-\ landed is what puts two of them in order.
-: FIND ( n ptr u8 n -- n ) {: from:n na:ptr nu:n :}
-   from begin dup RN @ nu - <= while
-      RBUF over + nu na nu STR= if exit then
-      1+
-   repeat drop -1 ;
-
-: HAS? ( ptr u8 n -- bool ) {: na:ptr nu:n :}   \ is the text in what was read so far?
-   0 na nu FIND 0 >= ;
-
-\ Offset of the tail at or after the END of the first head, or -1: the two
-\ markers in that order, which is what tells a prompt the child printed after
-\ its answer from one the line editor redrew before it.
-: FIND-AFTER ( ptr u8 n ptr u8 n -- n ) {: ha:ptr hu:n ta:ptr tu:n :}
-   0 ha hu FIND dup 0 < if exit then
-   hu + ta tu FIND ;
-
-: HAS-AFTER? ( ptr u8 n ptr u8 n -- bool )
-   FIND-AFTER 0 >= ;
-
-\ A full buffer keeps its tail rather than dropping everything: a marker split
-\ across the compaction survives whole in what is kept, and every older byte has
-\ already been searched. KEEP-TAIL is far longer than any marker below.
-: KEEP-TAIL! ( -- )
-   RN @ RCAP KEEP-TAIL - < if exit then
-   RBUF RN @ KEEP-TAIL - + RBUF KEEP-TAIL BYTE-COPY
-   KEEP-TAIL RN ! ;
-
-\ Read what is ready within STEP-MS and append it: the count, 0 for a quiet poll,
-\ -1 once the target's side is gone.
+\ Read what is ready within STEP-MS into the harness buffer and append it: the
+\ count, 0 for a quiet poll, -1 once the target's side is gone. The linear
+\ handle stays on top of the stack, which is why this step is here and not in
+\ the module.
 : READ-STEP ( process-pty-handle -- process-pty-handle n )
-   KEEP-TAIL!
-   RBUF RN @ + RCAP RN @ - STEP-MS PROCESS-PTY:AWAIT-BYTES {: n:n :}
-   n 0 > if RN @ n + RN ! then
+   ROOM$ STEP-MS PROCESS-PTY:AWAIT-BYTES {: n:n :}
+   n 0 > if n TOOK then
    n ;
 
 \ Keep reading until the tail appears at or after the head, the target hangs up,
@@ -96,17 +59,17 @@ variable QUIET-N
 \ The linear handle stays on top of the stack for READ-STEP.
 : EXPECT-AFTER ( process-pty-handle ptr u8 n ptr u8 n -- process-pty-handle bool )
    {: ha:ptr hu:n ta:ptr tu:n :}
-   WAIT-MS WAIT-OPEN
+   WAIT-BUDGET-MS WAIT-OPEN
    begin
-      ha hu ta tu HAS-AFTER? if true exit then
+      ha hu ta tu AFTER? if true exit then
       WAIT-LEFT 0= if false exit then
       READ-STEP {: n:n :}
-      n 0 < if ha hu ta tu HAS-AFTER? exit then
+      n 0 < if ha hu ta tu AFTER? exit then
    again ;
 
 \ After the target exited, read everything it left behind until the hang-up.
 : DRAIN-ALL ( process-pty-handle -- process-pty-handle )
-   WAIT-MS WAIT-OPEN
+   WAIT-BUDGET-MS WAIT-OPEN
    begin WAIT-LEFT 0 > while
       READ-STEP 0 < if exit then
    repeat ;
@@ -115,8 +78,9 @@ variable QUIET-N
 : WAIT-FAILED ( ptr u8 n ptr u8 n -- ) {: ha:ptr hu:n ta:ptr tu:n :}
    s" expected: " type ta tu type
    hu 0 > if s"  after " type ha hu type then
-   s"  (wait budget " type WAIT-MS . s" ms)" type cr
-   s" read so far (" type RN @ . s" bytes):" type cr RBUF RN @ type cr
+   s"  (wait budget " type WAIT-BUDGET-MS . s" ms)" type cr
+   BUF$ {: ra:ptr ru:n :}
+   s" read so far (" type ru . s" bytes):" type cr ra ru type cr
    false TTRUE ;
 
 : EXPECT-AFTER! ( process-pty-handle ptr u8 n ptr u8 n -- process-pty-handle )
@@ -141,16 +105,18 @@ variable QUIET-N
 \ wait that could match those would be answered by bytes older than the line it
 \ is waiting on.
 : DRAIN ( process-pty-handle -- process-pty-handle )
-   WAIT-MS WAIT-OPEN
+   WAIT-BUDGET-MS WAIT-OPEN
    0 QUIET-N !
    begin QUIET-N @ QUIET-POLLS <  WAIT-LEFT 0 >  and while
       READ-STEP {: n:n :}
-      n 0 < if RCLR exit then
+      n 0 < if BUF-CLEAR exit then
       n 0= if QUIET-N @ 1 + QUIET-N ! else 0 QUIET-N ! then
    repeat
-   RCLR ;
+   BUF-CLEAR ;
 
-: SEND ( process-pty-handle ptr u8 n -- process-pty-handle )
+\ One line typed at the target. Not SEND: that is the module's own master, and
+\ this suite's bytes go through the supervised handle.
+: TELL ( process-pty-handle ptr u8 n -- process-pty-handle )
    PROCESS-PTY:WRITE-LINE ;
 
 : BAD-DEF$ ( -- ptr u8 n )  s" : TTY-BAD ( -- n ) drop ;" ;
@@ -158,29 +124,31 @@ variable QUIET-N
 
 \ ---- red-first case 1: the batch REPL over pipes stops at the refusal --------
 : PIPE-STOPS ( -- )
-   RCLR
+   WATCH-RESET
+   BUF-CLEAR
+   s" 42" WATCH+ {: answered:watch :}   \ the claim below outlives every compaction
    HB$ PROCESS-PTY:SPAWN
    PROCESS-PTY:LAUNCH
-   BAD-DEF$ SEND
-   ARITH$ SEND
+   BAD-DEF$ TELL
+   ARITH$ TELL
    PROCESS-PTY:END-INPUT
    s" non-certified definition: tty-bad" EXPECT!
    EXIT-MS PROCESS-PTY:AWAIT TTRUE
    DRAIN-ALL
-   s" 42" HAS? 0= TTRUE
+   answered NEVER-SEEN? TTRUE
    PROCESS-PTY:TEARDOWN
    s" PASS: batch REPL over pipes stops at the refused definition" type cr ;
 
 \ ---- red-first case 2: the REPL on a pseudo-terminal refuses and recovers ----
 : TTY-RECOVERS ( -- )
-   RCLR
+   BUF-CLEAR
    HB$ PROCESS-PTY:SPAWN-TTY
    PROCESS-PTY:LAUNCH
    DRAIN
-   BAD-DEF$ SEND
+   BAD-DEF$ TELL
    s" tty-bad" EXPECT!
-   RCLR
-   ARITH$ SEND
+   BUF-CLEAR
+   ARITH$ TELL
    s" 42" PROMPT-AFTER!
    PROCESS-PTY:ALIVE? TTRUE
    PROCESS-PTY:TEARDOWN
@@ -189,16 +157,16 @@ variable QUIET-N
 \ A normal checked structure needs no TRUSTED seed. The same constructor and
 \ projection are refused as bare tokens and work inside a checked definition.
 : TTY-LAYOUT ( -- )
-   RCLR
+   BUF-CLEAR
    HB$ PROCESS-PTY:SPAWN-TTY
    PROCESS-PTY:LAUNCH
    DRAIN
-   s" package PTYP public STRUCTURE point 0 FIELD x n FIELD y n ;STRUCTURE : AT ( n n -- point ) PTYP-POINT:MAKE ; : FIRST ( point -- n ) PTYP-POINT:UNMAKE drop ; : FIRST-X ( -- n ) 2 3 AT FIRST ; ;package" SEND
+   s" package PTYP public STRUCTURE point 0 FIELD x n FIELD y n ;STRUCTURE : AT ( n n -- point ) PTYP-POINT:MAKE ; : FIRST ( point -- n ) PTYP-POINT:UNMAKE drop ; : FIRST-X ( -- n ) 2 3 AT FIRST ; ;package" TELL
    DRAIN
-   s" 2 3 PTYP:AT PTYP:FIRST" SEND
+   s" 2 3 PTYP:AT PTYP:FIRST" TELL
    s" hb: interpret-mode layout value: PTYP:AT" EXPECT!
    DRAIN
-   s" PTYP:FIRST-X . cr depth . cr" SEND
+   s" PTYP:FIRST-X . cr depth . cr" TELL
    S\" \r\n2\r\n" EXPECT!
    S\" \r\n0\r\n" PROMPT-AFTER!
    PROCESS-PTY:ALIVE? TTRUE
@@ -223,20 +191,23 @@ variable QUIET-N
    s" require lib/memory.f STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED constant TTY-POOL-CAP constant TTY-POOL : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL TTY-POOL-CAP run-in-stack ;" ;
 
 : TTY-STACK-RECOVERS ( -- )
-   RCLR
+   BUF-CLEAR
    HB$ PROCESS-PTY:SPAWN-TTY
    PROCESS-PTY:LAUNCH
    DRAIN
-   STACK-DEFS$ SEND
+   STACK-DEFS$ TELL
    s" ok" EXPECT!
-   RCLR
-   s" TTY-CROSS" SEND
+   BUF-CLEAR
+   WATCH-RESET
+   s" E-UNDEFINED" WATCH+ {: undef:watch :}
+   s" non-certified" WATCH+ {: refused:watch :}
+   s" TTY-CROSS" TELL
    s" ?" EXPECT!                          \ the uncaught throw's mark, with nothing refused or undefined
-   s" E-UNDEFINED" HAS? 0= TTRUE
-   s" non-certified" HAS? 0= TTRUE
+   undef NEVER-SEEN? TTRUE
+   refused NEVER-SEEN? TTRUE
    s" ?" PROMPT-AFTER!
-   RCLR
-   s" 1 2 3 4 . . . . depth . cr" SEND
+   BUF-CLEAR
+   s" 1 2 3 4 . . . . depth . cr" TELL
    S\" 4\r\n3\r\n2\r\n1\r\n0\r\n" PROMPT-AFTER!
    PROCESS-PTY:ALIVE? TTRUE
    PROCESS-PTY:TEARDOWN
@@ -251,14 +222,14 @@ variable QUIET-N
 \ return before the child has evaluated anything -- while the barrier's prompt
 \ is a later one that only the finished line could print.
 : ECHO-PROMPT-REJECTED ( -- )
-   RCLR
+   BUF-CLEAR
    HB$ PROCESS-PTY:SPAWN-TTY
    PROCESS-PTY:LAUNCH
    DRAIN
-   ARITH$ SEND
+   ARITH$ TELL
    s" 42" PROMPT-AFTER!
-   0 PROMPT$ FIND {: echo-at:n :}
-   0 s" 42" FIND {: ans-at:n :}
+   0 PROMPT$ FIND-FROM {: echo-at:n :}
+   0 s" 42" FIND-FROM {: ans-at:n :}
    echo-at 0 >= TTRUE                      \ a bare prompt wait had a prompt to take
    echo-at ans-at < TTRUE                  \ and it was the editor's, ahead of the answer
    s" 42" PROMPT$ FIND-AFTER ans-at > TTRUE   \ the barrier took one that follows it
@@ -277,6 +248,8 @@ public
    TTY-STACK-RECOVERS
    T-REPORT
    s" process-pty-tty-smoke: ok" type cr ;
+
+;using
 
 ;package
 
