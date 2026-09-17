@@ -1,0 +1,9 @@
+---
+title: "Declare icode.f's pointer cells before the storage definers"
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-09-18T00:41:16.089640+03:00"
+---
+
+Problem: src/arch/arm64/icode.f holds five raw cells the raw-storage rule (habu-refuse-a-ptr-5ad2734e) refuses: EP, BYP and BYA hold ptr u8 (the mechanical shape), and CODE-A and ICODE-TAB-A hold mmap results refined by 's" CODE" s" -- ptr u8" TRUST' (the number-to-pointer boundary family of habu-read-code-bytes-844e7c50); but the declared forms do not exist where the file loads: tools/bootstrap.sh SRC_COMMON compiles src/arch/arm64/{asm,icode,mnem}.f at lines 92-94 while src/core/pointer-storage.f is line 205 and src/core/layout-buffer.f line 218, and the file's header keeps it local-free so the Gforth recovery compiler can check it (compiler conversion lane, 2026-09-18). A rule engine cannot build the next generation until these cells are declared, so this blocks the rule's landing. Acceptance: a declared pointer cell form available at icode.f's position in every prefix (pointer-storage.f moved ahead of the arm64 assembler in tools/bootstrap.sh, bootstrap/cg/forth.fs, src/habu/habu2.f's tables and tools/build-fixpoint.f if its own dependencies allow, or a minimal pre-definer PTR-VARIABLE that pointer-storage.f later subsumes), EP/BYP/BYA declared, CODE-A and ICODE-TAB-A settled with the code-bytes boundary or declared as the mmap pointers they are, the recovery check (HABU_BOOTSTRAP_CHECK_ONLY) green, byte fixpoint, and the file loading on a rule engine. Files: src/arch/arm64/icode.f, tools/bootstrap.sh, bootstrap/cg/forth.fs, src/habu/habu2.f, tools/build-fixpoint.f, src/core/pointer-storage.f. Verify: tools/bootstrap.sh check; fixpoint; a rule-host generation build; test/run.f. Depends: none; lands before the rule. Ownership: engine prefix order. Parent: habu-refuse-a-ptr-5ad2734e. Claim: unassigned.
