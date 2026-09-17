@@ -3909,6 +3909,13 @@ variable DOES-FUN
 PTR-VARIABLE DOES-SIG
 variable DOES-SIG-U
 variable DOES-PATCH
+\ True when the clause between `does>` and `;` holds no token at all. Such a
+\ clause runs after the created word has pushed its data address and does
+\ nothing to it, so `does-patch` is given a zero entry and publishes the
+\ declared effect without patching the body or clearing its DKIND:ADDR stamp -
+\ the engine's own rule, src/habu/habu2.f DOES-REC:ELIDE-EMPTY, stated here on
+\ the tape because this compiler never reaches that path.
+variable DOES-EMPTY
 
 public
 
@@ -3920,6 +3927,7 @@ public
    NULL-PTR TOK-TABLES ! 0 TMAX !
    NULL-PTR DOES-SIG !  0 DOES-SIG-U !
    0 TAIL-ENTRY !
+   0 DOES-EMPTY !
    0 DOES-PATCH ! ;
 
 private
@@ -3947,8 +3955,15 @@ private
    CTX BLD op CLOSE
    VQ-NONE VN @ 1- VQ! ;
 
+\ The clause entry `does-patch` is given: the clause function's address, or the
+\ zero that tells it to publish the declared effect and leave the created word
+\ the body and the stamp `create` gave it.
+: STAGE-DOES-ENTRY ( -- )
+   DOES-EMPTY @ 0<> if DOES-AT @ 0 HIR:ADDR-NONE STAGE-LIT exit then
+   DOES-AT @ DOES-FUN @ STAGE-FUN-ADDR ;
+
 : STAGE-DOES-PATCH ( -- )
-   DOES-AT @ DOES-FUN @ STAGE-FUN-ADDR
+   STAGE-DOES-ENTRY
    DOES-AT @  DOES-SIG @ DOES-SIG-U @ NSTR:INTERN  HIR:ADDR-DATA STAGE-LIT
    DOES-AT @ DOES-SIG-U @ HIR:ADDR-NONE STAGE-LIT
    DOES-AT @ DOES-PATCH @ 3 0 NDICT:GLUE-NONE STAGE-WCALL
@@ -4045,6 +4060,8 @@ public
    at 1 < at n >= or if E-NELAB-SHAPE throw then
    s" does-patch" NDICT:CALL-TARGET dup 0= if E-HIR-UNMODELED throw then DOES-PATCH !
    at DOES-AT !  sig DOES-SIG !  sigu DOES-SIG-U !
+   0 DOES-EMPTY !
+   at 1+ n >= if 1 DOES-EMPTY ! then
    FUN-DOES-PARENT FUN-KIND !
    FR-GIN @ FUN-GIN !  FR-GOUT @ FUN-GOUT !
    0 FR-GIN ! 0 FR-GOUT !

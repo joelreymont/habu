@@ -1247,6 +1247,10 @@ SUITE does-clause-record
    test/does-clause-record.f
 ;SUITE
 
+SUITE does-empty-clause
+   test/does-empty-clause.f
+;SUITE
+
 SUITE friend-arena-absence
    test/seal-absence.f
 ;SUITE

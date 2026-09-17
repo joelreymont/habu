@@ -3052,6 +3052,15 @@ public
 \ storage in place of a call to the behaviour - the miscompile the stamp exists
 \ to make impossible - so the clear happens in the same protected window as the
 \ patch, on the same record, and never a step apart from it.
+\
+\ A ZERO CLAUSE ENTRY IS "PUBLISH ONLY". `;` elides a clause that compiled no
+\ instruction (DOES-REC:ELIDE-EMPTY) by writing W-DOESDECL over the `adr x10, D`
+\ its opener emitted, because such a clause runs after the created word has
+\ pushed its data address and then does nothing to it: patching would cost every
+\ reader a call, a branch and a frame, and take away the stamp both compilers
+\ fold a mention through, to reach the body `create` already left. So neither
+\ the patch nor the clear runs here, the declared effect is published exactly as
+\ it is for a clause with a body, and the created word keeps its own.
 package DOESPATCH
 
 public
@@ -3065,9 +3074,10 @@ public
    B A 0 ADDI,  LDOESPATCH LABEL@ BL, ;
 
 : EMIT ( -- )
-   LBL LBL {: nocr:label slot:label :}
+   LBL LBL LBL {: nocr:label slot:label declared:label :}
    LDOESPATCH LABEL@ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
+   10 declared CBZ,                                     \ an elided empty clause: publish, patch nothing
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                  \ code band -> RW
    10 SP 8 LDR,
    11 DATA LASTC-CELL LDR,                               \ created slot
@@ -3086,6 +3096,7 @@ public
    PROT:LCLOSE LABEL@ BL,                                \ region -> RX
    12 SP 16 LDR,
    12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
+   declared LBL,
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
       LASTC-TRUST:PUBLISH
       C-RUNTIME-CRSIG-CLEAR
@@ -3300,6 +3311,44 @@ public
    5 6 RECORD
    CP CP 15 ADD,
    PROT:LCLOSE LABEL@ BL, ;
+
+\ ---- a clause that compiled nothing is not a clause --------------------------
+\ `does>` runs its clause AFTER the created word has pushed its data address, so
+\ a clause whose body emitted no instruction leaves that word doing exactly what
+\ `create` left it doing. Patching it anyway costs every reader of every word the
+\ definer makes a call, a branch and a frame, and clears the DKIND:ADDR stamp
+\ both compilers fold a mention through - which is what made the pointer definers
+\ of src/core and lib/ the hottest rows of a tier-0 profile. So the opener's
+\ `adr x10, D` becomes W-DOESDECL here, and LDOESPATCH publishes the declared
+\ effect without touching either body or stamp.
+\
+\ THE TEST IS THE COMPILER'S OWN CURSOR, NOT A GUESS ABOUT THE CODE. It runs
+\ before `;` emits the epilogue, while CP still stands one word past the clause's
+\ own entry slot, so equality means the clause body emitted nothing at all; a
+\ clause that emitted anything, no-op or not, fails it and is patched as before.
+\ The clause keeps its record and its empty body - every `does>` clause has one,
+\ and this one is simply no longer branched into.
+\
+\ AND DOESB-CELL ALONE IS NOT THE PRECONDITION, because both front ends set it:
+\ J-DOES here and NCOMP-EMIT:CAPTURE-DOES on the tape. Only J-DOES emits the
+\ `adr x10, D` this overwrites, and only J-DOES makes the clause record at
+\ NDICT+1 that locates it, so on a native definition this would read a slot no
+\ one wrote and, on a chance match, store into an address derived from it - a
+\ wild write into code. Today's dispatch already keeps that away: LMAIN sends a
+\ body token to LCOMPILE only when DEF-TIER-CELL is zero, and this word's one
+\ caller is that loop's `;`. The same cell is therefore read here, where the
+\ consequence of being wrong is unbounded and the test is two instructions. The
+\ native side has its own elision, elaborate.f STAGE-DOES-ENTRY.
+: ELIDE-EMPTY ( -- )
+   LBL {: done:label :}
+   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 done CBNZ,
+   9 DATA DOESB-CELL LDR,  9 done CBZ,
+   11 NDICT 1 ADDI,  12 DREC MOVZ,  11 11 12 MUL,  11 DBASE 11 ADD,
+   9 11 0 LDR,  9 9 4 ADDI,  CP 9 CMP,  C-NE done BCOND,
+      10 11 24 LDR,  10 10 16 SUBI,                     \ the `adr x10, D` its opener emitted
+      1 10 0 ADDI,  2 4 MOVZ,  PROT:LSPAN LABEL@ BL,    \ a write below CP, flushed at the close
+      9 W-DOESDECL LIT64,  9 10 0 STRW,
+   done LBL, ;
 
 \ The clause record's own length, by the parent's rule and inside the parent's
 \ protection span: both bodies end at the shared epilogue. It runs BEFORE the
@@ -8654,6 +8703,7 @@ public
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
       LVSPILL LABEL@ BL,
       EM-COMPILE-DROP-LOCALS
+      DOES-REC:ELIDE-EMPTY
       14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN LABEL@ BL,
       EM-COMPILE-RET
       EM-COMPILE-FLUSH-PEND

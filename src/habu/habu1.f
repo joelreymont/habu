@@ -23,6 +23,12 @@ public
 $D65F03C0 constant W-RET
 $D503201F constant W-NOP
 $D2800009 constant W-MOVZ0
+\ What `;` writes over the `adr x10, D` a does>-clause opener emitted when that
+\ clause turned out to compile nothing (habu2.f DOES-REC:ELIDE-EMPTY). A zero
+\ clause entry is LDOESPATCH's "publish the declared effect and patch nothing",
+\ which leaves the created word the body and the DKIND:ADDR stamp `create` gave
+\ it - the behaviour an empty clause was asking for in the first place.
+$D280000A constant W-DOESDECL              \ movz x10,#0
 $F2A00009 constant W-MOVK1
 $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3

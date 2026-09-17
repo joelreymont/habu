@@ -441,6 +441,9 @@ $F85F8E71 constant W-POP17      \ ldr x17,[x19,#-8]!
 $F81F0FFE constant W-LINKSAVE   \ str x30,[sp,#-16]!
 $F84107FE constant W-LINKREST   \ ldr x30,[sp],#16
 $D2800009 constant W-MOVZ0     \ movz x9,#0
+\ What `;` writes over a does>-clause opener's `adr x10, D` when that clause
+\ turned out to compile nothing (C-DOES-ELIDE-EMPTY). Mirror of src/habu/habu1.f.
+$D280000A constant W-DOESDECL  \ movz x10,#0
 $F2A00009 constant W-MOVK1     \ movk x9,#0,lsl#16
 $F2C00009 constant W-MOVK2     \ movk x9,#0,lsl#32
 $F2E00009 constant W-MOVK3     \ movk x9,#0,lsl#48
@@ -4037,6 +4040,26 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 DATA PEND-CELL LDR,  9 11 40 LDR,  9 14 40 STR,
    CP CP 15 ADD, ;
 
+\ A clause that compiled no instruction is not a clause: `does>` runs it after
+\ the created word has pushed its data address, so it leaves that word doing
+\ exactly what `create` left it doing, and patching would cost every reader a
+\ call, a branch and a frame, and clear the DKIND:ADDR stamp a mention folds
+\ through. The opener's `adr x10, D` becomes W-DOESDECL and LDOESPATCH publishes
+\ the effect without touching body or stamp. The test is the cursor, not the
+\ code: this runs before the epilogue, while CP still stands one word past the
+\ clause's entry slot. Mirror of src/habu/habu2.f DOES-REC:ELIDE-EMPTY, less its
+\ tier gate: this seed has one front end, so J-DOES is the only writer of
+\ DOESB-CELL and the only emitter of the `adr x10, D` this overwrites. The
+\ region is already RW here, where the native side declares a span.
+: C-DOES-ELIDE-EMPTY ( -- )
+   LBL {: done :}
+   9 DATA DOESB-CELL LDR,  9 done CBZ,
+   11 NDICT 1 ADDI,  12 DREC MOVZ,  11 11 12 MUL,  11 DBASE 11 ADD,
+   9 11 0 LDR,  9 9 4 ADDI,  CP 9 CMP,  C-NE done BCOND,
+      10 11 24 LDR,  10 10 16 SUBI,                     \ the `adr x10, D` its opener emitted
+      9 W-DOESDECL LIT64,  9 10 0 STRW,
+   done LBL, ;
+
 : C-DOES-LEN ( -- )
    LBL {: none :}
    9 DATA DOESB-CELL LDR,  9 none CBZ,
@@ -4133,10 +4156,13 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 \ LDOESPATCH ( x10=D ): patch the last-created word's RET into `b D`.
 \ Runs from engine text, so the region RW/RX flips are safe mid-execution.
+\ x10 = 0 is the empty clause `;` elided: publish the declared effect and leave
+\ the created word the body and the stamp `create` gave it.
 : EMIT-DOESPATCH ( -- )
-   LBL LBL {: nocr slot :}
+   LBL LBL LBL {: nocr slot declared :}
    LDOESPATCH @ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
+   10 declared CBZ,                                      \ an elided empty clause: publish, patch nothing
    2 3 MOVZ,  LPROT @ BL,                                \ region -> RW
    10 SP 8 LDR,
    11 DATA LASTC-CELL LDR,                               \ created slot
@@ -4152,6 +4178,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    2 5 MOVZ,  LPROT @ BL,                                \ region -> RX
    12 SP 16 LDR,
    12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
+   declared LBL,
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
       C-PUBLISH
       C-RUNTIME-CRSIG-CLEAR
@@ -6895,6 +6922,7 @@ variable P2SK
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
       LVSPILL @ BL,
       EMIT-COMPILE-DROP-LOCALS
+      C-DOES-ELIDE-EMPTY
       14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,
       EMIT-COMPILE-RET
       EMIT-COMPILE-FLUSH-PEND
