@@ -508,7 +508,7 @@ already failed, a halted task joined through the `TASK:PAUSE` ending, every
 refused join and second answer, and a 50 ms `TASK:SLEEP` measured from the main
 task and from a worker - wall time against the requested duration and the
 sleeping task's own `RUSAGE_THREAD` CPU time against zero, so a sleep that spun
-would fail - beside the refused negative duration, a counting task that runs
-right through a sleeper's 50 ms, and a `TASK:KILL` that waits one out.
+would fail - beside the refused negative duration, a counting task that ticks
+inside a sleeper's 250 ms, and a `TASK:KILL` that waits one out.
 The full test suite includes these as `tasking-primitive-smoke` and
 `tasking-threads`.

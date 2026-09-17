@@ -32,8 +32,10 @@ SLEEP-MS NS-PER-MS * constant SLEEP-LEAST-NS
 SLEEP-MS SLEEP-SLACK-MS + NS-PER-MS * constant SLEEP-MOST-NS
 5000 constant SLEEP-CPU-US           \ a PAUSE loop over the same 50 ms costs ten times this
 1000000 constant SLEEP-ZERO-NS       \ a zero sleep never enters the kernel
-$100 constant SLEEP-LEAST-TICKS      \ a floor far under the tens of thousands a
-                                     \ counting task reaches over a 50 ms sleep
+\ The concurrent case sleeps longer than the timed ones: a gate host running
+\ twenty suites at once hands a freshly started thread its first slice tens of
+\ milliseconds late, so the claim is a tick INSIDE the sleep, never a tick rate.
+250 constant SLEEP-LONG-MS
 
 TASK-TEST-ALIGN8
 variable TASK-COUNT
@@ -957,8 +959,8 @@ FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- n )
    mono-ns 0 >MS TASK:SLEEP mono-ns swap - SLEEP-ZERO-NS < TTRUE
    [: -1 >MS TASK:SLEEP ;] E-TASK-SLEEP-MS TTHROWSQ ;
 
-: SLEEP-SLEEPER-BODY ( -- )
-   SLEEP-MS >MS TASK:SLEEP
+: SLEEP-LONG-BODY ( -- )
+   SLEEP-LONG-MS >MS TASK:SLEEP
    1 SLEEP-DONE-CELL atomic-add drop ;
 
 : SLEEP-COUNTER-BODY ( -- )
@@ -968,17 +970,31 @@ FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- n )
       TASK:PAUSE
    again ;
 
-\ A sleeping task holds nothing, so the counter runs right through the sleeper's
-\ 50 ms instead of waiting for it.
+\ True once the counter has ticked while the sleeper is still asleep; false if
+\ the sleep ended first. Read here, in the main task, so a tick the counter
+\ takes only after the sleeper wakes cannot count.
+: SLEEP-PROGRESS? ( -- bool )
+   SLEEP-TICKS atomic@ {: before:n :}
+   begin
+      SLEEP-DONE-CELL atomic@ 0 > if 0 0= 0= exit then
+      SLEEP-TICKS atomic@ before > if 0 0= exit then
+      TASK:PAUSE
+   again ;
+
+\ A sleeping task holds nothing, so the counter ticks inside the sleeper's sleep
+\ instead of waiting for it. A tick floor was the wrong claim: gate AA
+\ (2026-09-17, load 21) counted under $100 ticks in a 50 ms sleep three runs
+\ out of three, because the counter's thread had barely started when the sleep
+\ ended - a rate says how the host schedules, progress says what SLEEP holds.
 : TASK-TEST-SLEEP-CONCURRENT ( -- )
    0 SLEEP-TICKS ! 0 SLEEP-DONE-CELL !
    ['] SLEEP-COUNTER-BODY SLEEP-COUNTER TASK:ACTIVATE
-   ['] SLEEP-SLEEPER-BODY SLEEP-SLEEPER TASK:ACTIVATE
+   ['] SLEEP-LONG-BODY SLEEP-SLEEPER TASK:ACTIVATE
+   SLEEP-PROGRESS? TTRUE
    SLEEP-SLEEPER APP-WAIT-DONE
    SLEEP-COUNTER APP-WAIT-DONE
    SLEEP-SLEEPER TASK:THROW@ 0 T=
    SLEEP-COUNTER TASK:THROW@ 0 T=
-   SLEEP-TICKS @ SLEEP-LEAST-TICKS > TTRUE
    SLEEP-SLEEPER TASK:KILL
    SLEEP-COUNTER TASK:KILL ;
 
