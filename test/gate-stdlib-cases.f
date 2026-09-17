@@ -347,6 +347,14 @@ WHITEBOX-SUITE primitive-trust
    test/primitive-trust.f
 ;SUITE
 
+\ The behaviour half of src/habu/prims.f: one case set per row, run against this
+\ backend's primitive and against the row's reference implementation. It stays
+\ on the product engine - a case may only reach a primitive the way any checked
+\ program does.
+SUITE prim-parity
+   test/prim-parity.f
+;SUITE
+
 \ WHITEBOX-SUITE runs the file on the unsealed engine test/whitebox-engine.f
 \ builds once per gate, never on bin/hb. Declare one when the suite reaches
 \ inside the engine it tests - a reopened engine package, a pre-hook global, a
