@@ -8,15 +8,13 @@ and rewrites the Landed section as each arm64 lane lands.
 
 ## State
 
-Updated 2026-09-18 00:05 by hazel. Integrated line head `89173b3f`; arm64
-engine `bin/hb` sha256 `4b66cb2ab04ea441` (3,997,888 bytes). Commits above
-the integrated head are on the line and in their chains, integrated as each
-gate comes back green.
+Updated 2026-09-18 00:40 by hazel. Integrated line head `315b3146`; arm64
+engine `bin/hb` sha256 `0448677fb5588e39` (3,997,888 bytes).
 
 | Dot | Work | Runs on | State |
 | --- | --- | --- | --- |
 | `habu-write-the-x86-fbaf3086` | `src/arch/x86-64/asm.f` encoder + byte tests | arm64 host (hazel) | landed 07a7e90c |
-| `habu-specify-the-engine-fcbcee25` | `src/habu/prims.f` primitive table + parity gate | arm64 host (hazel) | table landed fb4f2392; references + parity gate in progress |
+| `habu-specify-the-engine-fcbcee25` | `src/habu/prims.f` primitive table + parity gate | arm64 host (hazel) | landed fb4f2392 + 383a18c7 (closed) |
 | `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract | arm64 host (hazel) | seam landed d55021af + 5e05cbfd; the instruction emitters (`SYS,`, the stencils, the process words) in progress (worker 2) |
 | `habu-parameterise-the-alloc-7efbe7a1` | register-file description for regalloc/spill/prune | arm64 host (hazel) | landed 50ee6a3c |
 | `habu-bind-compiler-targets-ff970b99` | backend registry + pass dispatch | arm64 host (hazel) | landed 0901e61c + ddc1412d (closed) |
@@ -169,10 +167,20 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
 - Readers (with checker rows, callable from checked Habu): `COUNT`, `KIND@`,
   `NAME$`, `PKG$`, `REF$`, `TRUSTED-ONLY?`, `CODE-LEN@`, `CODE@`,
   `FIND ( ptr u8 n -- n )`, `K-PRIM K-PKG-PRIVATE K-ELAB K-UNROWED`.
-- Docs: `docs/porting.md` "Engine Primitives". Worker 2 adds `REF` clauses
-  (a NAME, read back with `REF$`) to rows that get a checked reference and
-  `test/prim-parity.f`, which runs the same case table against the primitive
-  and its reference and is the file the x86_64 engine runs unchanged.
+- Docs: `docs/porting.md` "Engine Primitives".
+- **The parity gate** (`test/prim-parity.f`, `SUITE prim-parity`, line
+  383a18c7) is the file the x86_64 engine runs unchanged: 64 case sets over
+  81 effect rows (416 assertions), each `CASES <name> … ;CASES` block a
+  column of inputs and expected outputs (`3 4 7 NN-N`; shufflers get the
+  sentinels 1 2 3 4 and expect the digit spelling of the window they leave,
+  `swap` = 1243), reached through name-keyed dispatcher arms that are the
+  only place a primitive is spelled. 46 rows carry `REF PRIM-REF:<X>`
+  (`src/habu/prim-ref.f`, checked Habu, never baked, never using the
+  primitive it stands for); the gate runs those beside the body. The 132
+  rows with neither (I/O, syscalls, process, code publication, profiler,
+  engine state, FFI) are printed by name every run. On x86_64 the first
+  green run of this file is the primitive-parity acceptance of
+  `docs/x86-64.md`.
 - Known engine facts the parity lane measured and the x86_64 bodies must
   match or the dots must settle first: `/` and `mod` truncate toward zero;
   `lshift`/`rshift` mask the count to 6 bits, `rshift` is logical; division
