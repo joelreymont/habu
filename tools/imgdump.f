@@ -157,14 +157,25 @@ private
    o E-CODE-END o E-S - ;
 
 variable OKV
+public
+\ FIND-DICT asks this of every 4-byte offset in the image and E-L is a 46-bit
+\ field (src/habu/layout.f DNAME-LEN-MASK), so a candidate whose length field
+\ is large but still inside the file made this scan megabytes of bytes even
+\ when byte 0 had already answered: `--pc` over the 5 MB bin/hb cost 130 s of
+\ CPU, and two of those overran tools/imgdump-test.f's own child deadline
+\ under a loaded test pool. The loop therefore stops at the first byte that is
+\ not printable ASCII and reads no byte past it; the answer is the same one.
+\ Public so tools/imgdump-test.f can pin that bound structurally, with a span
+\ whose declared length runs off the end of a guarded mapping.
 : PRN? {: a:ptr u :} ( ptr u8 n -- bool )     \ a..a+u all printable ascii?
    1 OKV !
-   0 begin dup u < while
+   0 begin dup u < OKV @ 0<> and while
      dup a + c@ 32 >  OKV @ and
      over a + c@ 127 <  and  OKV !
      1 +
    repeat drop
    OKV @ ;
+private
 \ Validate the six 8-byte trailer fields (src/habu/layout.f owns the geometry).
 : SNAP-CORE? {: o :} ( n -- bool )
    o SNAP-TRL-BYTES + IL @ > if IMG-FALSE exit then

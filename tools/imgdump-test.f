@@ -27,10 +27,22 @@ $4000 constant IDT-CAP
 \ colliding with it.
 128 constant IDT-HDR-BYTES
 3 constant IDT-ET-DYN               \ e_type: ET_DYN, a PIE image
+IDT-HDR-BYTES DREC + constant IDT-IMG-BYTES
+
+\ The decoy fixture (IDT-WRITE-DECOY-IMG) puts a second, refused record ahead
+\ of the real one. Its name length field declares far more bytes than the
+\ record holds, and the file carries a tail long enough that ENT?'s in-file
+\ bound still accepts it - that is what makes the scan reach PRN? at all - so
+\ the only thing that can refuse the decoy is its first name byte.
+$1000 constant IDT-DECOY-TAIL-BYTES
+IDT-IMG-BYTES DREC + IDT-DECOY-TAIL-BYTES + constant IDT-DECOY-IMG-BYTES
+4000 constant IDT-DECOY-NAME-LEN
+1 constant IDT-DECOY-NAME-C         \ not printable ascii: PRN? refuses at byte 0
 
 create IDT-OUT IDT-CAP allot
 create IDT-ERR IDT-CAP allot
-create IDT-IMG IDT-HDR-BYTES DREC + allot
+create IDT-IMG IDT-DECOY-IMG-BYTES allot
+create IDT-PRN-BUF 3 allot
 create IDT-ROOT FS-PATH-CAP allot
 create IDT-A FS-PATH-CAP allot
 create IDT-SAME FS-PATH-CAP allot
@@ -38,6 +50,7 @@ create IDT-SHIFT FS-PATH-CAP allot
 create IDT-DIFF FS-PATH-CAP allot
 create IDT-PIE FS-PATH-CAP allot
 create IDT-NONELF FS-PATH-CAP allot
+create IDT-DECOY FS-PATH-CAP allot
 
 variable IDT-ROOT-U
 variable IDT-A-U
@@ -46,6 +59,7 @@ variable IDT-SHIFT-U
 variable IDT-DIFF-U
 variable IDT-PIE-U
 variable IDT-NONELF-U
+variable IDT-DECOY-U
 
 : IDT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -72,20 +86,28 @@ variable IDT-NONELF-U
 : IDT-NONELF$ ( -- ptr u8 n )
    IDT-NONELF IDT-NONELF-U @ ;
 
-: IDT-ZERO ( -- )
-   IDT-HDR-BYTES DREC + 0 ?do
+: IDT-DECOY$ ( -- ptr u8 n )
+   IDT-DECOY IDT-DECOY-U @ ;
+
+: IDT-ZERO ( n -- ) {: bytes :}
+   bytes 0 ?do
       0 IDT-IMG i + c!
    loop ;
 
-\ The one dict record every fixture below carries, DREC bytes past the fake
-\ header. A no-trailer image stores slot 1 as the span's __text-relative END
-\ (tools/imgdump.f E-CODE-END), so a (start, len) fixture writes start + len.
+\ One dict record at `off`, with a single-byte inline name. A no-trailer image
+\ stores slot 1 as the span's __text-relative END (tools/imgdump.f E-CODE-END),
+\ so a (start, len) fixture writes start + len.
+: IDT-REC-AT ( n n n n n -- ) {: off start len namelen ch :}
+   start IDT-IMG off + !
+   start len + IDT-IMG off + 8 + !
+   namelen IDT-IMG off + 16 + !
+   ch      IDT-IMG off + 24 + c! ;
+
+\ The one dict record every single-record fixture below carries, DREC bytes
+\ past the fake header.
 : IDT-WRITE-RECORD ( ptr u8 n n n n -- ) {: path:ptr pathu start len ch :}
-   start IDT-IMG IDT-HDR-BYTES + !
-   start len + IDT-IMG IDT-HDR-BYTES + 8 + !
-   1     IDT-IMG IDT-HDR-BYTES + 16 + !
-   ch    IDT-IMG IDT-HDR-BYTES + 24 + c!
-   path pathu IDT-IMG IDT-HDR-BYTES DREC + WRITE-ALL ;
+   IDT-HDR-BYTES start len 1 ch IDT-REC-AT
+   path pathu IDT-IMG IDT-IMG-BYTES WRITE-ALL ;
 
 \ An arm64 ELF64 header of the given e_type, with entry 0: the base
 \ NO-SNAP-XTBASE reads from an accepted one is 0, so every offset assertion
@@ -99,23 +121,35 @@ variable IDT-NONELF-U
    etype                     IDT-IMG IMAGE-DUMP:ELF-TYPE-OFF + c! ;
 
 : IDT-WRITE-IMG ( ptr u8 n n n n -- )
-   IDT-ZERO
+   IDT-IMG-BYTES IDT-ZERO
    IMAGE-DUMP:ELF-ET-EXEC IDT-WRITE-ELF-HDR
    IDT-WRITE-RECORD ;
 
 \ A PIE image: the loader picks its load base at exec time, so the file does
 \ not carry the xt base at all.
 : IDT-WRITE-PIE-IMG ( ptr u8 n n n n -- )
-   IDT-ZERO
+   IDT-IMG-BYTES IDT-ZERO
    IDT-ET-DYN IDT-WRITE-ELF-HDR
    IDT-WRITE-RECORD ;
 
 \ Not an ELF, but carrying ET_EXEC's byte at e_type's offset: the one field
 \ the check used to trust on its own.
 : IDT-WRITE-NON-ELF-IMG ( ptr u8 n n n n -- )
-   IDT-ZERO
+   IDT-IMG-BYTES IDT-ZERO
    IMAGE-DUMP:ELF-ET-EXEC IDT-IMG IMAGE-DUMP:ELF-TYPE-OFF + c!
    IDT-WRITE-RECORD ;
+
+\ A decoy record ahead of the real one, and nothing but its first name byte to
+\ refuse it with: the length field declares IDT-DECOY-NAME-LEN bytes of name,
+\ which the tail keeps inside the file, so ENT? runs the whole plausibility
+\ check and reaches PRN?. FIND-DICT must anchor its run on the real record and
+\ the dump must be the one a.img produces.
+: IDT-WRITE-DECOY-IMG ( ptr u8 n -- ) {: path:ptr pathu :}
+   IDT-DECOY-IMG-BYTES IDT-ZERO
+   IMAGE-DUMP:ELF-ET-EXEC IDT-WRITE-ELF-HDR
+   IDT-HDR-BYTES $100 $0c IDT-DECOY-NAME-LEN IDT-DECOY-NAME-C IDT-REC-AT
+   IDT-HDR-BYTES DREC + $100 $0c 1 65 IDT-REC-AT
+   path pathu IDT-IMG IDT-DECOY-IMG-BYTES WRITE-ALL ;
 
 : IDT-PREPARE ( -- )
    CLEANUP-RESET
@@ -127,12 +161,14 @@ variable IDT-NONELF-U
    IDT-ROOT$ s" diff.img" IDT-DIFF JOIN-PATH IDT-DIFF-U !
    IDT-ROOT$ s" pie.img" IDT-PIE JOIN-PATH IDT-PIE-U !
    IDT-ROOT$ s" nonelf.img" IDT-NONELF JOIN-PATH IDT-NONELF-U !
+   IDT-ROOT$ s" decoy.img" IDT-DECOY JOIN-PATH IDT-DECOY-U !
    IDT-A$ $100 $0c 65 IDT-WRITE-IMG
    IDT-SAME$ $100 $0c 65 IDT-WRITE-IMG
    IDT-SHIFT$ $120 $0c 65 IDT-WRITE-IMG
    IDT-DIFF$ $100 $10 66 IDT-WRITE-IMG
    IDT-PIE$ $100 $0c 65 IDT-WRITE-PIE-IMG
-   IDT-NONELF$ $100 $0c 65 IDT-WRITE-NON-ELF-IMG ;
+   IDT-NONELF$ $100 $0c 65 IDT-WRITE-NON-ELF-IMG
+   IDT-DECOY$ IDT-WRITE-DECOY-IMG ;
 
 : IDT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -180,6 +216,22 @@ variable IDT-NONELF-U
    a u IDT-ARG+
    s" bin/hb" >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-SELF-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
+
+\ Source for the child that pins PRN?'s read bound. MEM-ALLOC-GUARDED keeps an
+\ inaccessible page past the capacity it hands back, so a span that starts on
+\ the last readable byte and declares a whole page of name has exactly one byte
+\ the scan may touch. That byte is not printable, so PRN? has its answer at
+\ once; a scan that keeps going reads the guard page and the child dies on the
+\ fault. Nothing here is timed - the pin is which bytes the scan may touch.
+: IDT-PRN-GUARD-SRC$ ( -- ptr u8 n )
+   S\" require tools/imgdump.f\nrequire lib/memory.f\n: PRN-GUARD ( -- )\n   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED {: base:ptr cap:n :}\n   1 base cap 1 - BYTE+ c!\n   base cap 1 - BYTE+ cap IMAGE-DUMP:PRN? if s\q imgdump-test: PRN? read past the first non-printable byte\q 70 die then\n   s\q prn-guard ok\q type cr ;\nPRN-GUARD\n" ;
+
+\ hb evaluates stdin only when no --load names a file, so this child compiles
+\ imgdump from the source it is fed rather than through IDT-ARGV-BASE.
+: IDT-RUN-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu :}
+   PROC-ARGV-RESET
+   s" bin/hb" >LEN src srcu >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   IDT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE IDT-CAPTURE>N ;
 
 \ A word this engine carries live. Its record says both what to ask --pc and
 \ what the answer has to be: a word baked into __text (EM-SEED-DICT) keeps a
@@ -306,9 +358,51 @@ variable IDT-NONELF-U
    outu 0 T=
    IDT-ERR erru s" refusing to guess" CONTAINS? TTRUE ;
 
+\ PRN?'s answer, which the read bound below must not change.
+: IDT-TEST-PRN ( -- )
+   s" imgdump PRN? accepts a printable span" T-LABEL
+   s" Aword" IMAGE-DUMP:PRN? TTRUE
+   s" imgdump PRN? accepts an empty span" T-LABEL
+   IDT-PRN-BUF 0 IMAGE-DUMP:PRN? TTRUE
+   s" imgdump PRN? refuses a non-printable first byte" T-LABEL
+   IDT-DECOY-NAME-C IDT-PRN-BUF c!
+   65 IDT-PRN-BUF 1 + c!
+   65 IDT-PRN-BUF 2 + c!
+   IDT-PRN-BUF 3 IMAGE-DUMP:PRN? TFALSE
+   s" imgdump PRN? refuses a non-printable byte behind a printable one" T-LABEL
+   65 IDT-PRN-BUF c!
+   IDT-DECOY-NAME-C IDT-PRN-BUF 1 + c!
+   65 IDT-PRN-BUF 2 + c!
+   IDT-PRN-BUF 3 IMAGE-DUMP:PRN? TFALSE ;
+
+\ FIND-DICT asks PRN? about every 4-byte offset of the image and E-L is a
+\ 46-bit field, so a scan that does not stop at the first refused byte costs a
+\ pass over the rest of the file per candidate: 130 s of CPU for one --pc of
+\ bin/hb, twice per run, which is what overran this suite's own child deadline
+\ under a loaded pool. The guarded span pins the bound by memory, not by clock.
+: IDT-TEST-PRN-BOUND ( -- )
+   s" imgdump PRN? reads no byte past the first non-printable one" T-LABEL
+   IDT-PRN-GUARD-SRC$ IDT-RUN-STDIN 0 T=
+   {: outu erru :}
+   erru 0 T=
+   IDT-OUT outu s" prn-guard ok" CONTAINS? TTRUE ;
+
+\ The same refusal through the real load path: a record-shaped decoy whose
+\ declared name is long and whose first name byte is not printable is no
+\ dictionary anchor, and the dump is the one a.img's single record produces.
+: IDT-TEST-DECOY ( -- )
+   s" imgdump skips a record whose name is not printable" T-LABEL
+   IDT-DECOY$ IDT-RUN-1 0 T=
+   {: outu erru :}
+   erru 0 T=
+   IDT-OUT outu S\" A $100 $c\n" T$= ;
+
 : IDT-MAIN ( -- )
    T-RESET
    IDT-PREPARE
+   IDT-TEST-PRN
+   IDT-TEST-PRN-BOUND
+   IDT-TEST-DECOY
    IDT-TEST-DUMP
    IDT-TEST-IDENTICAL
    IDT-TEST-SHIFT
