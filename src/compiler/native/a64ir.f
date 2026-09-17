@@ -30,6 +30,7 @@ require src/compiler/ir/schema.f
 require src/compiler/ir/symbol.f
 require src/compiler/ir/build.f
 require src/arch/arm64/asm.f
+require src/arch/arm64/backend.f
 
 package A64IR
 public
@@ -319,18 +320,19 @@ private
 
 public
 
-\ ---- the type of a virtual register ------------------------------------------
-: TARGET-OK? ( IR-CTX:ctx -- bool )
-   IR-CTX:BINDING@ CBIND:VALIDATE CBIND:TARGET@ CTARGET-CONTRACT:UNMAKE drop
-   {: arch:CTARGET:arch abi:CTARGET:abi order:CTARGET:endian width:CTARGET:ptr-width :}
-   arch CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
-   order CTARGET-ENDIAN:LITTLE CTARGET-ENDIAN:EQ and
-   width CTARGET-PTR--WIDTH:BITS64 CTARGET-PTR--WIDTH:EQ and ;
+\ ---- the machine this compilation is for --------------------------------------
+\ The contract the context is bound to, which is what both of this backend's
+\ stage gates ask the registry about.
+: CONTRACT@ ( IR-CTX:ctx -- CTARGET:contract )
+   IR-CTX:BINDING@ CBIND:VALIDATE CBIND:TARGET@ ;
 
-\ A coherent foreign target can own HIR, but this backend emits only the
-\ supported AArch64 layout. Refuse before allocating a machine module.
+\ A coherent foreign target can own HIR; producing a machine module for it is a
+\ different question, and it is the registry's. An architecture whose backend is
+\ not loaded in this image refuses there with E-CTGT-UNLOADED - the module that
+\ would answer is simply not here - and a loaded backend that does not serve this
+\ machine (a big-endian AArch64 core) refuses here. Refuse before allocating.
 : CHECK-TARGET ( IR-CTX:ctx -- )
-   TARGET-OK? 0= if E-IR-SCHEMA-TARGET throw then ;
+   CONTRACT@ CTARGET:LOWERS? 0= if E-IR-SCHEMA-TARGET throw then ;
 
 : GPR-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;

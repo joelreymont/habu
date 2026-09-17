@@ -370,4 +370,95 @@ public
 : DIGEST ( CTARGET:contract -- CDIGEST:digest )
    ENCODE CDIGEST:COMPUTE ;
 
+\ ---- the backend registry ----------------------------------------------------
+\ WHAT THIS ANSWERS. A contract says what machine a compilation is for. It does
+\ not say that this image can produce code for that machine - the header above
+\ says why those are different questions - and the answer belongs to whoever can
+\ produce the instructions. A backend is therefore a MODULE: it registers a row
+\ when it loads, and there is no list of backends anywhere for a new one to be
+\ added to. An image that never loads src/arch/arm64/ has no aarch64 row, and
+\ asking either stage about an aarch64 contract refuses with E-CTGT-UNLOADED
+\ rather than compiling with a backend that is not there. That is what lets a
+\ binary carry only the backend its own sources require.
+\
+\ THE ROW. The key is the architecture's wire code. That code is injective and
+\ may never be renumbered - the identity rule above is what fixes it - which is
+\ exactly what a key needs, and taking it means the registry has no opinion on
+\ how many variants the family has: the table is sized by how many backends one
+\ image may hold, so a new architecture adds nothing here. (It also keeps a row
+\ a plain cell. A TYPED-BUFFER of the family VALUE is refused by the native
+\ chain's own dialect - E-HIR-UNMODELED, measured while compiling this file into
+\ an engine - so the row could not have held one anyway.)
+\
+\ Beside the key sit the two stages - lowering, which builds the machine module,
+\ and emission, which writes the instructions - each a quotation answering
+\ whether that stage can serve one exact contract. They are separate rows
+\ because the two stages ask separately, each with its own refusal, and a
+\ backend may lower for a machine whose instructions it cannot yet write. A
+\ quotation is not a structure field, so the row is parallel TYPED-BUFFERs
+\ indexed together; a table that later stores a stage's pass beside its
+\ predicate is indexed the same way, which is why ROW is public and is the one
+\ answer to "which row is this architecture".
+\
+\ A ROW IS NEVER RELEASED. Code that has loaded cannot unload. A second module
+\ claiming an architecture that already has a row is a build defect - `require`
+\ makes loading one module twice a no-op - so it is refused instead of replacing
+\ the row the loaded code is already reaching through.
+
+public
+
+\ The rows an image may hold at once, and the size of every table indexed
+\ beside them.
+4 constant BACKEND-ROWS
+
+private
+
+BACKEND-ROWS TYPED-BUFFER B-ARCH  n
+BACKEND-ROWS TYPED-BUFFER B-LOWER [ CTARGET:contract -- bool ]
+BACKEND-ROWS TYPED-BUFFER B-EMIT  [ CTARGET:contract -- bool ]
+
+\ Rows 0..B-N-1 are claimed, in claim order. A claim publishes itself by bumping
+\ this AFTER the row's cells are stored, so a half-built row is never found.
+variable B-N
+
+: FIND-ROW ( CTARGET:arch -- n )
+   ARCH-CODE {: a:n :}
+   -1 B-N @ 0 ?do
+      a i B-ARCH @ = if drop i leave then
+   loop ;
+
+public
+
+: REGISTERED? ( CTARGET:arch -- bool )
+   FIND-ROW 0 >= ;
+
+\ The row an architecture's backend holds, so a table indexed beside the
+\ registry's own rows has one place to ask.
+: ROW ( CTARGET:arch -- n )
+   FIND-ROW dup 0 < if E-CTGT-UNLOADED throw then ;
+
+\ The registration a backend module performs as it loads.
+: REGISTER ( CTARGET:arch [ CTARGET:contract -- bool ] [ CTARGET:contract -- bool ] -- )
+   {: a:arch lower emit :}
+   a REGISTERED? if E-CTGT-REGISTERED throw then
+   B-N @ {: row:n :}
+   row BACKEND-ROWS >= if E-CTGT-ROW throw then
+   a ARCH-CODE row B-ARCH !
+   lower row B-LOWER !
+   emit row B-EMIT !
+   row 1+ B-N ! ;
+
+\ Can the loaded backend for this contract's architecture lower for it? Emit for
+\ it? The contract is revalidated here for the reason the header gives, so the
+\ backend's own predicate is asked about a declarable machine. An architecture
+\ with no backend refuses; one with a backend gets that backend's answer, so
+\ "no code for this machine in this image" and "this backend does not serve this
+\ machine" stay different answers with different owners.
+: LOWERS? ( CTARGET:contract -- bool )
+   VALIDATE dup ARCH@ ROW B-LOWER @ execute ;
+
+: EMITS? ( CTARGET:contract -- bool )
+   VALIDATE dup ARCH@ ROW B-EMIT @ execute ;
+
+
 ;package

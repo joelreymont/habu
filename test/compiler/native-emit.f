@@ -63,6 +63,17 @@ private
 : WBND ( -- CBIND:binding )
    NFIX:BINDING ;
 
+\ The same numeric policy on an AArch64 core whose byte order this backend does
+\ not serve. Its architecture HAS a registered backend, so emission reaches this
+\ backend's own refusal instead of the registry's.
+: BEBND ( -- CBIND:binding )
+   CTARGET-ARCH:AARCH64 CTARGET-ABI:AAPCS64-LINUX CTARGET-ENDIAN:BIG
+   CTARGET-PTR--WIDTH:BITS64
+   CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH CTARGET:CONTRACT
+   CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
+   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
+   CBIND:BIND ;
+
 \ The same numeric policy on a machine that executes none of these instructions.
 : PBND ( -- CBIND:binding )
    CTARGET-ARCH:PTX CTARGET-ABI:PTX-KERNEL CTARGET-ENDIAN:LITTLE
@@ -1110,6 +1121,15 @@ $1000 constant BUMP-ADDR
    M-FREEZE {: m:IR-BUILD:module :}
    m PBND [: WRONG-TARGET-INNER ;] IR-CTX:WITH-CONTEXT ;
 
+\ The same presentation to a machine whose architecture this backend does serve.
+: UNSERVED-TARGET-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c A64-NEW
+   BIND-EMIT
+   BUILD-PLAIN
+   M-FREEZE {: m:IR-BUILD:module :}
+   m BEBND [: WRONG-TARGET-INNER ;] IR-CTX:WITH-CONTEXT ;
+
 \ An acceptance about one module is not an answer about another: the first module
 \ is allocated and accepted, the second is the one presented for emission.
 : OTHER-ALLOC-BODY ( IR-CTX:ctx -- )
@@ -1227,6 +1247,7 @@ $1000 constant BUMP-ADDR
 : WRONG-DIALECT ( -- )   WBND [: WRONG-DIALECT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EXTRA-OPCODE ( -- )    WBND [: EXTRA-OPCODE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-TARGET ( -- )    WBND [: WRONG-TARGET-BODY ;] IR-CTX:WITH-CONTEXT ;
+: UNSERVED-TARGET ( -- ) WBND [: UNSERVED-TARGET-BODY ;] IR-CTX:WITH-CONTEXT ;
 : OTHER-ALLOC ( -- )     WBND [: OTHER-ALLOC-BODY ;] IR-CTX:WITH-CONTEXT ;
 : STALE ( -- )           WBND [: STALE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PAST-END ( -- )        WBND [: PAST-END-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1270,8 +1291,10 @@ $1000 constant BUMP-ADDR
    [: EXTRA-OPCODE ;] E-A64EMIT-OPCODE TTHROWSQ ;
 
 : TARGET-REFUSE-CASES ( -- )
-   s" emitting under a context bound to another machine is refused" T-LABEL
-   [: WRONG-TARGET ;] E-A64EMIT-TARGET TTHROWSQ ;
+   s" emitting under a context bound to an architecture with no backend refuses there" T-LABEL
+   [: WRONG-TARGET ;] E-CTGT-UNLOADED TTHROWSQ
+   s" emitting under a context this backend does not serve is this stage's refusal" T-LABEL
+   [: UNSERVED-TARGET ;] E-A64EMIT-TARGET TTHROWSQ ;
 
 : OTHER-ALLOC-REFUSE-CASE ( -- )
    s" an acceptance made from another module is refused" T-LABEL

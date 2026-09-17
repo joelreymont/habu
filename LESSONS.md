@@ -9029,3 +9029,33 @@ copy.
   so the correct spelling is also the cheaper one - and it deletes the
   `X 0 ptr-field` accessor each such variable had grown. A `data-base + offset`
   read is a different thing and keeps its `ptr-field`.
+
+## 2026-09-17 - the compiler chain is in bin/hb, and its dialect is not the engine's
+
+Two facts about editing `src/compiler/` cost an afternoon between them.
+
+`bin/hb` carries the native compiler chain as a captured AOT window
+(`tools/aot-chain-capture.f`, driven from `tools/build-fixpoint.f`), so
+`src/compiler/target.f` and everything it pulls in is ALREADY IN THE DICTIONARY
+at boot: `CTARGET:F-BASE` resolves in a program that requires nothing at all,
+and `require src/compiler/target.f` is a registry no-op. An edit to a chain file
+therefore does nothing until the engine is rebuilt - and the no-op is SILENT, so
+a deliberate syntax error in the edited file produces no error either, while the
+words defined before the edit keep working. If a new definition in a chain file
+is `E-UNDEFINED` and the old ones are not, stop looking for a package-visibility
+bug: rebuild with `bin/hb --load tools/native-build.f -- <out>` (about 70s) and
+ask again. The same holds for `lib/errors.f`, which the boot prefix bakes: a new
+error constant is an engine change, so the rebuild that bakes it must not be the
+build that first names it.
+
+The chain compiles its own sources with ncomp inside `tools/native-build.f`'s
+window, and that dialect is SMALLER than what a booted engine accepts. A
+`TYPED-BUFFER` whose stored type is a nominal ENUM (`BACKEND-ROWS TYPED-BUFFER
+B-ARCH CTARGET:arch`) compiles and runs fine under `bin/hb` and even under
+`EXECUTABLE-BUILD:WITH`, but fetching a row of one in a definition the native
+build compiles refuses with `ncomp: cannot compile <word>` and E-HIR-UNMODELED
+(-8286) - reduced to `i B-ARCH @ drop`, with no comparison involved. Storage
+read by chain code holds plain cells; keep the family value in a code the
+file already owns (`ARCH-CODE`) rather than the value itself. The refusal names
+only the word it gave up on, so bisect the body - the engine will not tell you
+which token had no model.

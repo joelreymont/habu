@@ -71,10 +71,11 @@ public
    s" the supported native host still creates its machine module" T-LABEL
    NABI:BINDING [: BUILD-HIR ;] IR-CTX:WITH-CONTEXT
    NABI:BINDING [: BUILD-NATIVE ;] IR-CTX:WITH-CONTEXT
-   s" unsupported native targets refuse before machine construction" T-LABEL
-   [: ARM-NATIVE ;] E-IR-SCHEMA-TARGET TTHROWSQ
-   [: THUMB-NATIVE ;] E-IR-SCHEMA-TARGET TTHROWSQ
-   [: C66-NATIVE ;] E-IR-SCHEMA-TARGET TTHROWSQ
+   s" an architecture with no backend loaded refuses at the registry" T-LABEL
+   [: ARM-NATIVE ;] E-CTGT-UNLOADED TTHROWSQ
+   [: THUMB-NATIVE ;] E-CTGT-UNLOADED TTHROWSQ
+   [: C66-NATIVE ;] E-CTGT-UNLOADED TTHROWSQ
+   s" the loaded backend declining this machine is the other refusal" T-LABEL
    [: BIG-NATIVE ;] E-IR-SCHEMA-TARGET TTHROWSQ
    T-REPORT ;
 

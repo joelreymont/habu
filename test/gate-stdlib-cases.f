@@ -241,6 +241,13 @@ SUITE compiler-target-policy
    test/compiler/target-policy.f
 ;SUITE
 
+\ The backend registry: src/compiler/target.f's rows and the registration in
+\ src/arch/arm64/backend.f, which is the acceptance suite for
+\ habu-bind-compiler-targets-ff970b99.
+SUITE compiler-target-registry
+   test/compiler/target-registry.f
+;SUITE
+
 SUITE compiler-arm32-asm
    test/compiler/arm32-asm.f
 ;SUITE
