@@ -1,0 +1,9 @@
+---
+title: "Give the build chain's sealed callees declared effects"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-17T13:17:55.786792+03:00"
+---
+
+Problem: three sites in the engine's own build chain name words the internal-mark seal marks DNAME-INT, through the TRUSTED:-body exception src/habu/layout.f grants and through XREF-FIND by string: src/habu/aot-file.f:972 TRUSTED: REG-INCOMING? calls TFAM:REG-AOT-MERGE-INCOMING?; src/habu/prefix-rewind.f:48 looks up CHECKER-BOUND:REWIND with XREF-FIND; src/habu/hide.f:20 TRUSTED: BFR-USIG-END-PTR reads the global USIGS. tools/build-fixpoint.f requires hide.f and prefix-rewind.f and tools/native-build.f reaches aot-file.f through aot-owned.f, so a product image that strips sealed-internal names (habu-strip-the-names-89d6524a, parked at 512bd6da) cannot build the next generation (ncomp: cannot compile REG-INCOMING?, rc 67, measured 2026-09-17) and cannot run test/run.f (cold-engine fixture writer fails the same way). Acceptance: each of the three callees reaches its consumer through a declared surface, a public word with a checked effect in its own package or an address cell the payload records, the three TRUSTED: bodies and the string lookup are gone and no new TRUSTED seam appears, an engine built from the tree builds the next generation and the byte fixpoint converges, test/run.f is green, and the internal-word-gate cases that pin these three as internal are updated with the reason on the line. Files: src/habu/aot-file.f, src/habu/prefix-rewind.f, src/habu/hide.f, the TFAM and CHECKER-BOUND packages, test/internal-word-gate.f. Verify: native-build from the built engine; tools/build-fixpoint.f; test/run.f. Depends: none. Ownership: build chain. Claim: unassigned.
