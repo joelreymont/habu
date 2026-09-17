@@ -1,0 +1,9 @@
+---
+title: Refuse a scalar store through a view of a pointer cell
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-09-18T02:57:37.390477+03:00"
+---
+
+Problem: on the rule engine raw-rule-gen2, 'PTR-VARIABLE V  : POKE ( n -- ) V BYTE-VIEW CELL-VIEW ! ;  : READ ( n -- n ) POKE V @ c@ ;' certifies (prefix-form lane, 2026-09-18): BYTE-VIEW and CELL-VIEW are type-level renames (src/compiler/native/hir-word.f DEF-BYTE-VIEW/DEF-CELL-VIEW) that reinterpret a declared pointer cell's bytes as a scalar cell, so an arbitrary integer is laundered into the declared cell and read back as an address with no TRUST row; the same PEEK/POKE the raw-storage rule habu-refuse-a-ptr-5ad2734e closes, reached through the declared form the rule prescribes, so it defeats the rule for every declared cell. Sibling of habu-refuse-ptr-field-331a9731 (ptr-field over a scalar pointee). Acceptance: a view over a base whose pointee is a pointer (or a pointer-holding record head) does not admit a scalar store into the pointer's own cell: BYTE-VIEW/CELL-VIEW refuse a pointer-pointee base, or a store through such a view is refused, with a named diagnostic in the E-RAW-CELL-PTR family; the legitimate uses (reading a count cell behind a declared head, DYNAMIC-BUFFER's 'cell+ byte-view cell-view @', ARENA-SNAP-BOOT's zero pass) keep certifying, measured across the tree on a rule engine; the POKE/READ fixture and a view-over-declared-head fixture in test/compiler/raw-cell-pointer-refusals.f. Files: src/core/checker.f (the view rows or the store rule), src/core/render.f, test/compiler/raw-cell-pointer-refusals.f, docs/effects.md. Verify: the fixtures; a rule-hosted generation build; test/run.f. Depends: habu-refuse-a-ptr-5ad2734e's rule commit. Ownership: checker. Parent: habu-refuse-a-ptr-5ad2734e. Claim: unassigned.
