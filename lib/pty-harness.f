@@ -53,11 +53,13 @@ $200 constant TAIL-KEEP            \ bytes kept when a full buffer is compacted
 $80 constant NAME-CAP              \ slave path bytes + NUL (Darwin fills it, Linux builds it)
 $10 constant WATCH-CAP             \ registered never-seen needles
 $40 constant NEEDLE-CAP            \ bytes per needle
+$400 constant PATH-CAP             \ supervised executable path bytes
 10 constant LF
 
 create RBUF BUF-CAP allot
 create PTYNAME NAME-CAP allot
 create OUTB 1 allot                \ the one byte SEND-BYTE and SEND-LINE write
+create PATH-BUF PATH-CAP allot     \ the path the spawn transaction execs
 create NEEDLE WATCH-CAP NEEDLE-CAP * allot
 create NEEDLE-LEN WATCH-CAP cells allot
 create NEEDLE-SEEN WATCH-CAP cells allot
@@ -71,6 +73,7 @@ variable KID                       \ the pty child; -1 with no child
 variable PTYNUM
 variable DEADLINE                  \ absolute monotonic end of the wait in flight
 variable QUIET                     \ polls in a row that brought nothing
+variable PATH-U
 variable WATCH-N
 
 
@@ -296,16 +299,47 @@ public
    MFD CLOSE-FD! ;
 
 
+private
+
+\ The transaction below cannot read a local, so the path it execs travels
+\ through storage.
+: STORE-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
+   u PATH-CAP > if E-PTY-CAPACITY throw then
+   a PATH-BUF u BYTE-COPY
+   u PATH-U ! ;
+
+
+\ Open the pair and start the child on its slave. Every throw here leaves both
+\ ends to the abort path: the child owns the slave only once the spawn returned.
+: SPAWN-BUILD ( -- )
+   OPEN-PAIR
+   PATH-BUF PATH-U @ >LEN SFD @ >FD SFD @ >FD SFD @ >FD PROC-SPAWN-IO PID>N KID !
+   KID @ 0 <= if E-PTY-IO throw then
+   SFD CLOSE-FD! ;
+
+
+\ Close what the build opened and forget the child it never started, so the next
+\ spawn opens its own pair instead of refusing over a dead one.
+: SPAWN-CLEAN ( -- )
+   SFD CLOSE-FD!
+   MFD CLOSE-FD!
+   -1 KID ! ;
+
+public
+
 \ Open a pseudo-terminal pair, start the executable with the slave as its whole
 \ terminal - input, output and diagnostics - and keep the master. The slave is
 \ closed here: the child holds the only copies, so its exit hangs the master up.
-: SPAWN-ON-PTY ( ptr u8 n -- ) {: a:ptr u:n :}
+\ A failed spawn throws what failed and leaves nothing open.
+: SPAWN-ON-PTY ( ptr u8 n -- )
    MFD @ 0 >= if E-PTY-IO throw then
    -1 SFD !
-   OPEN-PAIR
-   a u >LEN SFD @ >FD SFD @ >FD SFD @ >FD PROC-SPAWN-IO PID>N KID !
-   KID @ 0 <= if E-PTY-IO throw then
-   SFD CLOSE-FD!
+   STORE-PATH
+   [: SPAWN-BUILD ;] catch dup 0 <> if
+      SPAWN-CLEAN
+      throw
+   then
+   drop
    BUF-CLEAR ;
 
 

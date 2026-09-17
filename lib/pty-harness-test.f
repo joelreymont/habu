@@ -1,9 +1,10 @@
 \ pty-harness-test.f - the harness buffer's claims, without a child.
 \
-\ Every case here feeds bytes through ROOM$ / TOOK, the same append the fd
-\ readers use, so the compaction, the span search and the never-seen facts are
-\ exercised where they can be driven exactly. The pty half - spawn, the waits and
-\ both barrier shapes against a live child - is test/proc-pty.f's.
+\ Most cases here feed bytes through ROOM$ / TOOK, the same append the fd readers
+\ use, so the compaction, the span search and the never-seen facts are exercised
+\ where they can be driven exactly. The last one is the spawn's own abort path,
+\ which needs a real pair. The rest of the pty half - the waits and both barrier
+\ shapes against a live child - is test/proc-pty.f's.
 \
 \ Run: bin/hb --load lib/pty-harness-test.f
 require lib/test.f
@@ -20,6 +21,7 @@ create FILLER 64 allot
 variable HIT                       \ did the loop reach the case it was feeding for?
 
 : FILLER$ ( -- ptr u8 n )   FILLER 64 ;
+: MISSING$ ( -- ptr u8 n )  s" /nonexistent/hb-is-not-here" ;
 : MARK$ ( -- ptr u8 n )     s" edge-marker" ;
 : GONE$ ( -- ptr u8 n )     s" dropped-marker" ;
 : ABSENT$ ( -- ptr u8 n )   s" never-fed-marker" ;
@@ -175,6 +177,36 @@ variable HIT                       \ did the loop reach the case it was feeding 
    [: FILL-WATCHES ;] catch 0 <> TTRUE ;
 
 
+: HB$ ( -- ptr u8 n )
+   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then ;
+
+
+\ Only the editor's own prompt proves the child holds the terminal raw, and only
+\ then is ^D a key rather than a canonical end of file (test/proc-pty.f
+\ PTY-EDITOR-READY has the whole reasoning).
+: STOP-CHILD ( -- )
+   BUF-CLEAR
+   127 SEND-BYTE
+   s" habu> " WAIT-FOR TTRUE
+   4 SEND-BYTE
+   CHILD-PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+   CLOSE-MASTER ;
+
+
+\ A spawn that throws must leave neither end of its pair open: the master cell is
+\ what says "a child is running", so a leaked one refuses every later spawn.
+: CASE-SPAWN-ABORT ( -- )
+   BUF-CLEAR
+   s" a spawn of a path that does not exist throws the spawn's own error" T-LABEL
+   [: MISSING$ SPAWN-ON-PTY ;] catch E-PROC-SPAWN T=
+   s" and the next one is refused by nothing it left behind" T-LABEL
+   [: MISSING$ SPAWN-ON-PTY ;] catch E-PROC-SPAWN T=
+   s" so a real child still reaches its prompt and exits" T-LABEL
+   HB$ SPAWN-ON-PTY
+   s" habu> " WAIT-FOR TTRUE
+   STOP-CHILD ;
+
+
 : BODY ( -- )
    FILLER!
    CASE-APPEND
@@ -184,7 +216,8 @@ variable HIT                       \ did the loop reach the case it was feeding 
    CASE-WATCH-SPLIT
    CASE-KEEP-TAIL
    CASE-NO-WINDOW
-   CASE-WATCH-REFUSALS ;
+   CASE-WATCH-REFUSALS
+   CASE-SPAWN-ABORT ;
 
 
 : RUN ( -- )
