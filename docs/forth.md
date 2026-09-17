@@ -830,6 +830,15 @@ address arithmetic at the public boundary.
   value differs per task, that storage is the task's own slot (a `TASK:+USER`
   cell, or a row of a typed buffer indexed by the task): the quotation asks
   which task is running and reads its own row.
+- **A handle over caller-owned storage is a public `STRUCTURE` plus a
+  `TYPED-VARIABLE` or `TYPED-BUFFER` in the caller, giving a checked
+  `ptr PKG:type`.** Do not add `TRUSTED:` mint, state and consume leaves for
+  one: `CAST:` refuses a pointer operand (7130 `E-CAST-CLASS`) and a linear one
+  (7137 `E-CAST-LINEAR`), so a linear token over caller storage is not
+  expressible today; trade the type-level lifetime for a runtime refusal off
+  the definer's zero image (`lib/json-write.f`). This holds until a
+  checker-owned linear mint exists, dot `habu-mint-and-erase-72e83e7a`; the
+  bullet goes when that lands.
 - **Structural integers widen, roles do not.** The checker models structural
   integer tokens with width/sign metadata: `u8 -> u16 -> u32 -> n/cell/i64`
   widening is implicit when lossless, but narrowing and same-width sign changes
