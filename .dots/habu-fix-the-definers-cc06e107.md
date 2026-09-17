@@ -1,9 +1,0 @@
----
-title: Fix the definers that generate accessors over raw cells
-status: active
-priority: 2
-issue-type: task
-created-at: "2026-09-17T18:44:23.876268+03:00"
----
-
-Problem: the raw-storage census (/home/joel/.cache/hazel/scout-pun/census.md, 2026-09-17, rule commit 1204d189 in .jj-ws/hazel-raw-ptr) counts 404 sites of one shape, 'generated accessor over a raw cell': words a definer generates (126 named *-buf, 16 *-storage, 5 *-cell, structure fields such as xs ys wrole vmap, the sumtype fam accessor at src/core/sumtype.f:718, image-bytes m-src) whose generated body takes ptr-field of a raw create/variable cell, which the rule habu-refuse-a-ptr-5ad2734e refuses as E-RAW-CELL-PTR (MD-RAW-FIELD); maki/src/model.f alone carries 129 of them through the same definers. Acceptance: each such definer generates its cell as a declared pointer cell (PTR-VARIABLE, PERSISTED-PTR-VARIABLE, TYPED-BUFFER, or the declared form its own contract names) so every accessor it generates certifies under the rule with no edit at the declaration sites; the definers are named in the report with the census count before and after, measured by loading each converted definer's suite and consumers on the rule engine ~/.cache/hazel/engines/raw-rule-gen1 (read-only; a converted closure loads there without E-RAW-CELL-PTR); behaviour unchanged on the release engine: the definer suites, test/run.f, and the byte fixpoint since the definers are baked. Files: the definers under src/core/ (structure-decl.f, sumtype.f, enum-decl.f, generated-declaration.f, dynamic-storage.f, the typed and byte storage definers) and src/os/image-bytes.f, found from the census names. Verify: definer suites on bin/hb and on raw-rule-gen1; fixpoint; test/run.f. Depends: none; lands before the rule. Ownership: definers. Parent: habu-refuse-a-ptr-5ad2734e. Claim: agent=hazel-raw-definers workspace=.jj-ws/hazel-raw-definers.
