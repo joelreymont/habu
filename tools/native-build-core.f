@@ -34,6 +34,35 @@ $1000 constant SMOKE-CAP
 create SMOKE-OUT SMOKE-CAP allot
 create SMOKE-ERR SMOKE-CAP allot
 
+\ ---- the image class this build was asked for ---------------------------------
+\ src/core/internal-mark.f's seal stands down when HABU_WHITEBOX_IMAGE=1 is set
+\ for the target load, which is how test/whitebox-engine.f gets the unsealed
+\ host the gate's whitebox suites run on. An environment variable reaches this
+\ build whether or not anyone meant it to, so it cannot be the authority for
+\ what gets promoted: the REQUEST is an argument, spelled after the output path,
+\ and the ANSWER comes back out of the finished image in SMOKE below. A build
+\ that was not asked for a whitebox host and made one anyway stops before it
+\ renames the binary into place.
+\
+\ The two values are ENGINE-INTERNAL:IMAGE-SEALED and :IMAGE-WHITEBOX, which
+\ this file cannot name: it is compiled by the host engine, and an older host
+\ has no such word. So the wire form is the digit the new image prints and the
+\ meaning is named on both sides.
+\
+\ The cell starts at CLASS-SEALED, which is the safe default and the one a
+\ caller that drives RUN-PATH-RC directly rather than RUN gets
+\ (tools/build-profile.f): it asks for nothing and is held to the product's
+\ check.
+0 constant CLASS-SEALED
+1 constant CLASS-WHITEBOX
+variable CLASS-WANTED
+
+: WHITEBOX-ARG$ ( -- ptr u8 n ) s" whitebox" ;
+
+: CLASS-WANTED$ ( -- ptr u8 n )
+   CLASS-WANTED @ CLASS-WHITEBOX = if s" whitebox image" exit then
+   s" product image" ;
+
 \ The running host may predate a new engine callback, and its reserved bands may be
 \ smaller than this tree's. Keep the host's actual engine declarations -- the cells
 \ below ITS heap floor -- and discard every declaration belonging to the retired
@@ -326,11 +355,31 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
       ENDOF
    ;MATCH ;
 
+\ `.` ends its number with a newline of its own and `cr` adds the second, so one
+\ printed value is "<digits>\n\n". The smoke program prints two: the arithmetic
+\ that proves the image runs, then the class the image says it is.
+: SMOKE-PROGRAM$ ( -- ptr u8 n )
+   S\" : X ( -- n ) 42 ; X . cr ENGINE-INTERNAL:IMAGE-CLASS . cr\n" ;
+
+: SMOKE-EXPECT$ ( -- ptr u8 n )
+   CLASS-WANTED @ CLASS-WHITEBOX = if S\" 42\n\n1\n\n" exit then
+   S\" 42\n\n0\n\n" ;
+
+\ The one place a whitebox image is stopped from becoming a product. It runs
+\ before PROMOTE, so the refusal costs a temp file and nothing that was named.
+: SMOKE-CLASS-REFUSE ( -- )
+   CLASS-WANTED @ CLASS-WHITEBOX = if
+      S\" native-build: `whitebox` was asked for and the image came back sealed; the target load needs HABU_WHITEBOX_IMAGE=1\n" type
+      BUILD-RC throw
+   then
+   S\" native-build: refusing to promote a whitebox image as the product - the seal pass stood down for this build, so HABU_WHITEBOX_IMAGE=1 was set in its environment. Pass `whitebox` after the output path to build one on purpose.\n" type
+   BUILD-RC throw ;
+
 : SMOKE ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
    TEMP$ >LEN
    SMOKE-DIR SMOKE-DIR-U @ >LEN
-   S\" : X ( -- n ) 42 ; X . cr\n" >LEN
+   SMOKE-PROGRAM$ >LEN
    SMOKE-OUT SMOKE-CAP >LEN SMOKE-ERR SMOKE-CAP >LEN SMOKE-TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE SMOKE-RESULT {: outu:n erru:n rc:n :}
    rc 0<> if
@@ -341,7 +390,8 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
       SMOKE-ERR erru type
       BUILD-RC throw
    then
-   SMOKE-OUT outu S\" 42\n\n" STR= 0= if
+   SMOKE-OUT outu SMOKE-EXPECT$ STR= 0= if
+      SMOKE-OUT outu S\" 42\n\n" STARTS-WITH? if SMOKE-CLASS-REFUSE then
       BUILD-RC throw
    then ;
 
@@ -490,11 +540,30 @@ public
    rc 0<> if s" native-build: uncaught throw code " type rc . cr then
    rc ;
 
-: RUN ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
-   SCRIPT-ARGC 1 <> if
-      S\" native-build: one explicit output path is required\n" BUILD-RC die
+\ The build says which of the two images it wrote, on the way out, so a build
+\ log records the class instead of leaving it to be inferred from a size.
+: REPORT-CLASS ( -- )
+   s" native-build OK: " type OUTPUT$ type
+   s"  (" type CLASS-WANTED$ type s" )" type cr ;
+
+\ `whitebox` after the output path asks for the unsealed host
+\ test/whitebox-engine.f builds; nothing else is a legal second argument, so a
+\ typo cannot quietly produce a product.
+: CLASS-ARG! ( -- )
+   CLASS-SEALED CLASS-WANTED !
+   SCRIPT-ARGC 2 < if exit then
+   1 SCRIPT-ARGV$ WHITEBOX-ARG$ STR= 0= if
+      S\" native-build: the only second argument is `whitebox`\n" BUILD-RC die
    then
+   CLASS-WHITEBOX CLASS-WANTED ! ;
+
+: RUN ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
+   SCRIPT-ARGC 1 < SCRIPT-ARGC 2 > or if
+      S\" native-build: one explicit output path is required, then an optional `whitebox`\n" BUILD-RC die
+   then
+   CLASS-ARG!
    0 SCRIPT-ARGV$ query bootstrap RUN-PATH-RC {: rc:n :}
+   rc 0= if REPORT-CLASS then
    s" " rc die ;
 
 ;package

@@ -182,13 +182,44 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
 : IMK-WHITEBOX? ( -- bool )
    s" HABU_WHITEBOX_IMAGE" GETENV s" 1" CORE-STR= ;
 
+\ AND THE IMAGE SAYS WHICH IT IS. An environment variable is a request, not a
+\ property: once the pass has answered it, what the image IS has to be readable
+\ from the image, or a build that was never asked for a whitebox host cannot
+\ tell that it made one. So the pass writes its own verdict into this cell, the
+\ capture bakes the cell with the rest of DATA, and every later reader - the
+\ build's own smoke run before it promotes the binary
+\ (tools/native-build-core.f), test/whitebox-engine-suite.f on both engines -
+\ asks the engine instead of the environment.
+\
+\ A COLD ENGINE ANSWERS FOR ITS BOOT, not for its build, and that is the honest
+\ answer for one: it reads this file from source every time it starts, so the
+\ pass runs again and the cell is set again. Only a seeded image - the product,
+\ and the whitebox host beside it - carries a verdict its build wrote.
+0 constant IMAGE-SEALED         \ the pass ran: internal names are DNAME-INT
+1 constant IMAGE-WHITEBOX       \ the pass stood down: they are ordinary words
+variable IMK-CLASS
+
 : IMK-PASS ( -- )
-   IMK-WHITEBOX? IF EXIT THEN
+   IMK-WHITEBOX? IF IMAGE-WHITEBOX IMK-CLASS ! EXIT THEN
+   IMAGE-SEALED IMK-CLASS !
    CORE-PREFIX:FIRST-RECORD IMK-FIRST !
    IMK-WALK
    IMK-WALK-PACKAGES
    IMK-SEAL-REGISTRY
    IMK-SEAL-PRIM ;
+
+public
+
+\ The two class values are defined above because IMK-PASS assigns them; they are
+\ published here because IMAGE-CLASS's answer is meaningless without them.
+EXPORT IMAGE-SEALED
+EXPORT IMAGE-WHITEBOX
+
+\ IMAGE-SEALED or IMAGE-WHITEBOX, as the pass that shaped this image left it.
+: IMAGE-CLASS ( -- n )
+   IMK-CLASS @ ;
+
+private
 
 get-current prot-wid-add
 ' IMK-PASS

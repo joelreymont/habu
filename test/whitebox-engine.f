@@ -124,8 +124,14 @@ variable RESOLVED?
 : ARG ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-\ The switch goes in BEFORE the inherit, so the one row the child reads is this
-\ one whatever the parent's own environment says.
+\ TWO HALVES, AND NEITHER ALONE BUILDS THIS. The variable reaches the seal pass,
+\ which runs deep inside the target load where no argument can be handed to it;
+\ the `whitebox` argument is what the builder checks the finished image against
+\ before it promotes anything, so an ambient variable cannot turn some other
+\ build's product into this. Both are set here, deliberately, for this one run.
+\
+\ The variable goes in BEFORE the inherit, so the one row the child reads is
+\ this one whatever the parent's own environment says.
 : BUILD-ARGS ( -- )
    PROC-ARGV-ENV-RESET
    SWITCH$ >LEN s" 1" >LEN PROC-ENV+
@@ -133,7 +139,8 @@ variable RESOLVED?
    s" --load" ARG
    BUILDER$ ARG
    s" --" ARG
-   TMP-BYTES ARG ;
+   TMP-BYTES ARG
+   s" whitebox" ARG ;
 
 : BUILD-RUN ( -- )
    BUILD-ARGS
