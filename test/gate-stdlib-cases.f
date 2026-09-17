@@ -1414,6 +1414,12 @@ SUITE pty
    lib/pty-test.f
 ;SUITE
 
+\ The pty test harness's buffer: the compaction, the span search and the
+\ never-seen facts, driven without a child.
+SUITE pty-harness
+   lib/pty-harness-test.f
+;SUITE
+
 \ IPv4 stream sockets: a listener task and a client in one process.
 SUITE tcp4
    lib/net/tcp4-test.f

@@ -4,32 +4,21 @@
 \ two library files are part of the invocation; test/runtime-regression-test.f
 \ (GE-PROCESS-PTY) drives exactly this line, and the engine to test can follow
 \ as `-- <path>` or in HABU_UNDER_TEST.
+\
+\ The terminal itself — the pair, the spawn, the reads, the waits and both
+\ barrier shapes — is lib/pty-harness.f; this file types at the child and says
+\ what the answers must be.
+
+require lib/pty-harness.f
 
 package PROC-PTY
 
-$20007454 constant TIOCPTYGRANT
-$40807453 constant TIOCPTYGNAME
-$20007452 constant TIOCPTYUNLK
-$40045431 constant LINUX-TIOCSPTLCK
-$80045430 constant LINUX-TIOCGPTN
-2 constant PTY-OPEN-RDWR
-10 constant PTY-POLL-MS
-$4E20 constant PTY-WAIT-MS         \ one wait runs at most this long on the clock
-1 constant PTY-QUIET-POLLS
-$1000 constant PTY-RBUF-CAP
-$80 constant PTY-KEEP-TAIL         \ bytes kept when a full buffer is compacted
+using PTY-HARNESS
 
-create RBUF PTY-RBUF-CAP allot
-create NL 1 allot
-create EOT 1 allot
-create CH 1 allot
-create PTYNAME 128 allot
+1 constant PTY-QUIET-POLLS         \ polls in a row that bring nothing and so end a drain
 
 variable #FAIL
 variable #CASE
-variable RN
-variable WEND                      \ end of the window an absence claim reads; -1 with no barrier
-variable QUIET
 variable IN-R
 variable IN-W
 variable OUT-R
@@ -37,10 +26,6 @@ variable OUT-W
 variable ERR-R
 variable ERR-W
 variable PID
-variable MFD
-variable SFD
-variable PTY-U
-variable PTYNUM
 
 : HB-ARG? ( -- bool )
    SCRIPT-ARGC 0 > ;
@@ -51,16 +36,18 @@ variable PTYNUM
       2drop s" bin/hb" exit
    then ;
 
-: RBUF-DUMP ( -- )
-   s" rbuf bytes: " type RN @ . cr
-   RN @ 0 > if
-      s" rbuf:" type cr
-      RBUF RN @ type cr
-   then ;
+: BUF-N ( -- n )
+   BUF$ {: a:ptr u:n :} u ;
+
+: BUF-DUMP ( -- )
+   s" buf bytes: " type BUF-N . cr
+   BUF-N 0= if exit then
+   s" buf:" type cr
+   BUF$ type cr ;
 
 : T-FAIL ( -- )
    [char] F emit #CASE @ . cr
-   RBUF-DUMP
+   BUF-DUMP
    #FAIL @ 1 + #FAIL ! ;
 
 : T= {: got want :} ( n n -- )
@@ -71,142 +58,37 @@ variable PTYNUM
    #CASE @ 1 + #CASE !
    0= if T-FAIL then ;
 
-\ Clearing the buffer retires the barrier with it: the bytes a claim would have
-\ read are gone.
-: RCLR ( -- )
-   0 RN !
-   -1 WEND ! ;
+: TCONTAINS ( ptr u8 n -- )
+   IN-BUF? TTRUE ;
 
-\ A full buffer keeps its tail rather than dropping everything: a marker split
-\ across the compaction survives whole in what is kept, and every older byte has
-\ already been searched. PTY-KEEP-TAIL is far longer than any marker below.
-: KEEP-TAIL! ( -- )
-   RN @ PTY-RBUF-CAP PTY-KEEP-TAIL - < if exit then
-   RBUF RN @ PTY-KEEP-TAIL - + RBUF PTY-KEEP-TAIL BYTE-COPY
-   PTY-KEEP-TAIL RN !
-   -1 WEND ! ;
-
-\ Append one read and report it, keeping room for the next one.
-: READ+ {: fd :} ( fd -- n )
-   KEEP-TAIL!
-   fd FD>N RBUF RN @ + PTY-RBUF-CAP RN @ - read {: got :}
-   got 0 > if RN @ got + RN ! then
-   got ;
-
-\ A pipe hands over what the writer has flushed, not what it will write. Read to
-\ the far end's close, so a child that answers in pieces is never truncated into
-\ a wrong verdict by one short read.
-: READ-ALL {: fd :} ( fd -- )
-   begin fd READ+ 0 > while repeat ;
-
-\ One poll and, when the descriptor has bytes, one read: above zero for bytes
-\ appended, 0 for a quiet poll, below zero once the far side is gone -- a ready
-\ descriptor that reads nothing is the hang-up.
-: READ-STEP {: fd :} ( fd -- n )
-   fd PTY-POLL-MS >MS POLL-IN COUNT>N 0 = if 0 exit then
-   fd READ+ 0 > if 1 exit then
-   -1 ;
-
-: MATCH-AT {: ha:ptr na:ptr nu off :} ( ptr u8 ptr u8 n n -- bool )
-   0 0=
-   nu 0 ?do
-      ha off + i + c@  na i + c@  <> if drop 0 0= 0= leave then
-   loop ;
-
-: CONTAINS? {: ha:ptr hu na:ptr nu :} ( ptr u8 n ptr u8 n -- bool )
-   nu 0= if 0 0= exit then
-   hu nu < if 0 0= 0= exit then
-   hu nu - 1 + 0 ?do
-      ha na nu i MATCH-AT if 0 0= unloop exit then
-   loop
-   0 0= 0= ;
-
-\ Offset of the first occurrence at or after `from`, or -1. Where a barrier
-\ lands is what bounds the window an absence claim may read.
-: FIND-AT {: from a:ptr u :} ( n ptr u8 n -- n )
-   RN @ u - from < if -1 exit then
-   RN @ u - 1 + from ?do
-      RBUF a u i MATCH-AT if i unloop exit then
-   loop
-   -1 ;
-
-: TCONTAINS {: a:ptr u :} ( ptr u8 n -- )
-   RBUF RN @ a u CONTAINS? TTRUE ;
-
-: FD-WRITE {: fd a:ptr u :} ( fd ptr u8 n -- )
-   fd FD>N a u write u T= ;
-
-: FD-WRITE-LN {: fd a:ptr u :} ( fd ptr u8 n -- )
-   fd a u FD-WRITE
-   fd NL 1 FD-WRITE ;
-
-\ Read until PTY-QUIET-POLLS polls in a row bring nothing, the far side hangs
-\ up, or the deadline passes. The deadline is absolute and is tested before each
-\ poll, so the drain overruns it by at most the one poll already in flight.
-: DRAIN {: fd :} ( fd -- )
-   RCLR
-   0 QUIET !
-   PTY-WAIT-MS >MS PROC-DEADLINE-AT {: deadline :}
-   begin QUIET @ PTY-QUIET-POLLS <  deadline PROC-LEFT-MS MS>N 0 >  and while
-      fd READ-STEP {: n :}
-      n 0 < if exit then
-      n 0 > if 0 QUIET ! else QUIET @ 1 + QUIET ! then
-   repeat ;
-
+\ Every drain starts from an empty buffer: the bytes it swallows are the ones a
+\ later wait must not be answered by.
 : MFD-DRAIN ( -- )
-   MFD @ >FD DRAIN ;
-
-: RBUF-HAS? {: a:ptr u :} ( ptr u8 n -- bool )
-   RBUF RN @ a u CONTAINS? ;
-
-\ Keep reading the master until the text appears, the child hangs up, or the
-\ wait's deadline passes. A child engine answers in as many pieces as the host's
-\ scheduling chooses -- its line editor redraws on every keystroke, and a loaded
-\ box splits one echo across dozens of reads -- so no count of polls bounds the
-\ wait. A partial read is not an answer and not a failure: only the text, the
-\ hang-up and the clock end the loop.
-: EXPECT-WAIT? {: a:ptr u :} ( ptr u8 n -- bool )
-   PTY-WAIT-MS >MS PROC-DEADLINE-AT {: deadline :}
-   begin
-      a u RBUF-HAS? if 0 0= exit then
-      deadline PROC-LEFT-MS MS>N 0 = if 0 0= 0= exit then
-      MFD @ >FD READ-STEP 0 < if a u RBUF-HAS? exit then
-   again ;
-
-: SEND-C ( n -- ) {: c:n :}
-   c CH c!
-   MFD @ >FD CH 1 FD-WRITE ;
-
-: SEND-S {: a:ptr u :} ( ptr u8 n -- )
-   MFD @ >FD a u FD-WRITE ;
-
-: SEND-LN {: a:ptr u :} ( ptr u8 n -- )
-   MFD @ >FD a u FD-WRITE-LN ;
+   BUF-CLEAR
+   MASTER-FD PTY-QUIET-POLLS DRAIN ;
 
 : SEND-ESC ( n -- )
-   27 SEND-C
-   91 SEND-C
-   SEND-C ;
+   27 SEND-BYTE
+   91 SEND-BYTE
+   SEND-BYTE ;
 
-: STEP-LN {: a:ptr u :} ( ptr u8 n -- )
-   a u SEND-LN
+: STEP-LN ( ptr u8 n -- )
+   SEND-LINE
    MFD-DRAIN ;
 
-: STEP-S {: a:ptr u :} ( ptr u8 n -- )
-   a u SEND-S
+: STEP-S ( ptr u8 n -- )
+   SEND
    MFD-DRAIN ;
 
 : EXPECT ( ptr u8 n -- )
-   EXPECT-WAIT? TTRUE ;
+   WAIT-FOR TTRUE ;
 
 \ Wait for a marker and close an absence claim's window at its end. The marker
 \ has to be one the child prints PAST the point where the rejected text could
 \ have appeared; a failed wait leaves no window, so the claim behind it is
 \ refused as well.
-: BARRIER {: a:ptr u :} ( ptr u8 n -- )
-   a u EXPECT
-   0 a u FIND-AT dup 0 < if drop exit then
-   u + WEND ! ;
+: BARRIER ( ptr u8 n -- )
+   WAIT-BARRIER TTRUE ;
 
 \ The barrier for a claim about the line before it: the child prints the hex
 \ literal in decimal, so the answer's digits are in nothing the line editor
@@ -214,20 +96,11 @@ variable PTYNUM
 \ next line after finishing the one before it, so this answer proves that line
 \ is over -- diagnostics, trailer and all.
 : PROBE-BARRIER ( -- )
-   s" $BEEF ." SEND-LN
+   s" $BEEF ." SEND-LINE
    s" 48879" BARRIER ;
 
-\ An absence claim reads the window a barrier closed, never the whole buffer:
-\ RBUF[0,WEND) ends at a marker the child printed past the point where the
-\ rejected text would have been, so the claim reads the child's answer instead
-\ of a buffer that is merely still empty. With no barrier there is no window
-\ and the claim is refused, not granted.
-: REJECT? {: a:ptr u :} ( ptr u8 n -- bool )
-   WEND @ 0 < if false exit then
-   RBUF WEND @ a u CONTAINS? 0= ;
-
 : REJECT ( ptr u8 n -- )
-   REJECT? TTRUE ;
+   WINDOW-ABSENT? TTRUE ;
 
 : EXPECT-OK ( -- )
    s"  ok" EXPECT ;
@@ -253,22 +126,22 @@ variable PTYNUM
    ERR-W @ close ;
 
 : CAPTURE-SEND-SOURCE ( -- )
-   IN-W @ >FD s" 2 3 + ." FD-WRITE-LN
+   IN-W @ >FD s" 2 3 + ." WRITE-LINE
    IN-W @ close ;
 
 : CAPTURE-EXPECT-RC ( -- )
    PID @ >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
 
 : CAPTURE-EXPECT-OUT ( -- )
-   RCLR
-   OUT-R @ >FD READ-ALL
+   BUF-CLEAR
+   OUT-R @ >FD READ-TO-EOF
    s" 5" TCONTAINS
    OUT-R @ close ;
 
 : CAPTURE-EXPECT-ERR ( -- )
-   RCLR
-   ERR-R @ >FD READ-ALL
-   RN @ 0 T=
+   BUF-CLEAR
+   ERR-R @ >FD READ-TO-EOF
+   BUF-N 0 T=
    ERR-R @ close ;
 
 : CAPTURE-VERIFY ( -- )
@@ -283,67 +156,8 @@ variable PTYNUM
    CAPTURE-SEND-SOURCE
    CAPTURE-VERIFY ;
 
-: PTY-PATH-C ( n -- ) {: c :}
-   c PTYNAME PTY-U @ + c!
-   PTY-U @ 1 + PTY-U ! ;
-
-: PTY-PATH+ ( ptr u8 n -- ) {: a:ptr u :}
-   0 begin dup u < while
-      dup a + c@ PTY-PATH-C
-      1 +
-   repeat drop ;
-
-: PTY-PATH-U+ ( n -- ) {: n :}
-   n 10 >= if n 10 / recurse then
-   n 10 mod 48 + PTY-PATH-C ;
-
-: PTY-PATH-BUILD ( -- )
-   0 PTY-U !
-   s" /dev/pts/" PTY-PATH+
-   PTYNUM @ PTY-PATH-U+
-   0 PTY-PATH-C ;
-
-: OPEN-PTY-MASTER ( n -- ) {: flags :}
-   s" /dev/ptmx" >LEN PROC-PATHZ flags 0 open MFD !
-   MFD @ 2 > TTRUE
-   MFD @ >FD FD-CLOEXEC! ;
-
-: OPEN-PTY-DARWIN ( -- )
-   PTY-OPEN-RDWR OPEN-PTY-MASTER
-   MFD @ TIOCPTYGRANT NULL$ drop ioctl 0 T=
-   MFD @ TIOCPTYUNLK NULL$ drop ioctl 0 T=
-   MFD @ TIOCPTYGNAME PTYNAME ioctl 0 T=
-   PTYNAME PTY-OPEN-RDWR 0 open SFD !
-   SFD @ 2 > TTRUE ;
-
-: OPEN-PTY-LINUX-MASTER ( -- )
-   PTY-OPEN-RDWR OPEN-PTY-MASTER
-   0 PTYNUM !
-   MFD @ LINUX-TIOCSPTLCK PTYNUM ioctl 0 T=
-   MFD @ LINUX-TIOCGPTN PTYNUM ioctl 0 T= ;
-
-: OPEN-PTY-LINUX-SLAVE ( -- )
-   PTY-PATH-BUILD
-   PTYNAME PTY-OPEN-RDWR 0 open SFD !
-   SFD @ 2 > TTRUE ;
-
-: OPEN-PTY-LINUX ( -- )
-   OPEN-PTY-LINUX-MASTER
-   OPEN-PTY-LINUX-SLAVE ;
-
-: PTY-TARGET-UNKNOWN ( -- )
-   s" proc-pty: unknown target" 64 die ;
-
-: OPEN-PTY ( -- )
-   HB-TARGET-LINUX? if OPEN-PTY-LINUX exit then
-   HB-TARGET-MACOS? if OPEN-PTY-DARWIN exit then
-   PTY-TARGET-UNKNOWN ;
-
 : PTY-START-HB ( -- )
-   OPEN-PTY
-   HB-EXE$ >LEN SFD @ >FD SFD @ >FD SFD @ >FD PROC-SPAWN-IO PID !
-   PID @ 0 > TTRUE
-   SFD @ close
+   HB-EXE$ SPAWN-ON-PTY
    MFD-DRAIN ;
 
 : PTY-PROMPT ( -- )
@@ -377,9 +191,11 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 : SEED-LINE$ ( -- ptr u8 n )  S\" s\" test/aot-seed-surface.f\" required" ;
 
 : SEED-BYTE ( -- n )
-   SEEDI @ RN @ < if RBUF SEEDI @ + c@ exit then 0 ;
+   BUF$ {: a:ptr u:n :}
+   SEEDI @ u < if a SEEDI @ + c@ exit then
+   0 ;
 
-: SEED-TOKEN! ( -- )                 \ first whitespace-delimited token of RBUF
+: SEED-TOKEN! ( -- )                 \ first whitespace-delimited token of the buffer
    0 SEEDNUM-U !  0 SEEDI !
    begin SEED-BYTE dup 0 <> swap 33 < and while  SEEDI @ 1 + SEEDI !  repeat
    begin SEED-BYTE 32 > SEEDNUM-U @ 64 < and while
@@ -392,10 +208,10 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    CAPTURE-PIPES
    CAPTURE-START-HB
    CAPTURE-CLOSE-CHILD-ENDS
-   IN-W @ >FD SEED-LINE$ FD-WRITE-LN
+   IN-W @ >FD SEED-LINE$ WRITE-LINE
    IN-W @ close
-   RCLR
-   OUT-R @ >FD READ-ALL
+   BUF-CLEAR
+   OUT-R @ >FD READ-TO-EOF
    SEED-TOKEN!
    OUT-R @ close
    ERR-R @ close
@@ -442,16 +258,16 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    s"  ok" EXPECT ;
 
 : PTY-BACKSPACE ( -- )
-   s" 1 2 + .." SEND-S
-   127 SEND-C
-   10 SEND-C
+   s" 1 2 + .." SEND
+   127 SEND-BYTE
+   10 SEND-BYTE
    MFD-DRAIN
    s" 3" EXPECT
    s"  ok" EXPECT ;
 
 : PTY-CANCEL ( -- )
-   s" garbage" SEND-S
-   3 SEND-C
+   s" garbage" SEND
+   3 SEND-BYTE
    MFD-DRAIN
    s" habu> " EXPECT
    PROBE-BARRIER
@@ -463,14 +279,14 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    s"  ok" EXPECT ;
 
 : PTY-EDIT-LEFT3 ( -- )
-   s" 13 ." SEND-S
+   s" 13 ." SEND
    68 SEND-ESC
    68 SEND-ESC
    68 SEND-ESC ;
 
 : PTY-EDIT-INSERT-RUN ( -- )
-   48 SEND-C
-   10 SEND-C
+   48 SEND-BYTE
+   10 SEND-BYTE
    MFD-DRAIN
    s" 103" EXPECT
    s"  ok" EXPECT ;
@@ -482,7 +298,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 
 : PTY-HISTORY-UP ( -- )
    65 SEND-ESC
-   10 SEND-C
+   10 SEND-BYTE
    MFD-DRAIN
    s" 103" EXPECT
    s"  ok" EXPECT ;
@@ -802,15 +618,15 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 \ catch the text when the child really printed it.
 : PTY-REJECT-UNBARRIERED ( -- )
    s" frobnicate" STEP-LN
-   RCLR                               \ the child's answer is not in the buffer
-   s"  ok" REJECT? 0= TTRUE           \ so the claim is refused
+   BUF-CLEAR                          \ the child's answer is not in the buffer
+   s"  ok" WINDOW-ABSENT? 0= TTRUE    \ so the claim is refused
    PROBE-BARRIER
-   s"  ok" REJECT? TTRUE ;            \ and granted once a barrier closes the window
+   s"  ok" WINDOW-ABSENT? TTRUE ;     \ and granted once a barrier closes the window
 
 : PTY-REJECT-CATCHES ( -- )
    s" 5 ." STEP-LN                    \ a line that DOES print the trailer
    PROBE-BARRIER
-   s"  ok" REJECT? 0= TTRUE ;         \ the window holds it, so the claim is refuted
+   s"  ok" WINDOW-ABSENT? 0= TTRUE ;  \ the window holds it, so the claim is refuted
 
 : PTY-REJECT-BARRIER ( -- )
    PTY-REJECT-UNBARRIERED
@@ -831,15 +647,15 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 \ nothing from an empty line and redraws, and in canonical mode it is VERASE
 \ over an empty buffer, so neither mode can act on it or read it as a signal.
 : PTY-EDITOR-READY ( -- )
-   RCLR
-   127 SEND-C
+   BUF-CLEAR
+   127 SEND-BYTE
    s" habu> " EXPECT ;
 
 : PTY-STOP-HB ( -- )
    PTY-EDITOR-READY
-   4 SEND-C
-   PID @ >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
-   MFD @ close ;
+   4 SEND-BYTE
+   CHILD-PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+   CLOSE-MASTER ;
 
 : PTY-BASIC ( -- )
    SEED-BATCH                        \ the pipe-mode fold, before this file owns a pty child
@@ -884,9 +700,10 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    #FAIL @ 0 = if s" PASS: process/pty primitives" type cr exit then
    #FAIL @ . s" proc-pty: failures" 1 die ;
 
-10 NL c!
-4 EOT c!
 CAPTURE-HB
 PTY-HB
 REPORT
+
+;using
+
 ;package
