@@ -8,14 +8,16 @@ and rewrites the Landed section as each arm64 lane lands.
 
 ## State
 
-Updated 2026-09-18 00:40 by hazel. Integrated line head `315b3146`; arm64
-engine `bin/hb` sha256 `0448677fb5588e39` (3,997,888 bytes).
+Updated 2026-09-18 01:20 by hazel. Integrated line head: the commit that
+closes `habu-add-the-x86-56726659`; arm64 engine `bin/hb` sha256
+`fa4980358806e3ca` (3,997,888 bytes). **All four arm64-side dots are closed;
+the Intel agent starts at `habu-lower-hir-to-6bf80d33`.**
 
 | Dot | Work | Runs on | State |
 | --- | --- | --- | --- |
 | `habu-write-the-x86-fbaf3086` | `src/arch/x86-64/asm.f` encoder + byte tests | arm64 host (hazel) | landed 07a7e90c |
 | `habu-specify-the-engine-fcbcee25` | `src/habu/prims.f` primitive table + parity gate | arm64 host (hazel) | landed fb4f2392 + 383a18c7 (closed) |
-| `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract, emitters | arm64 host (hazel) | seam landed d55021af + 5e05cbfd; emitters on the line d1961798 (chain AU) |
+| `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract, emitters | arm64 host (hazel) | landed d55021af + 5e05cbfd + d1961798 (closed) |
 | `habu-parameterise-the-alloc-7efbe7a1` | register-file description for regalloc/spill/prune | arm64 host (hazel) | landed 50ee6a3c |
 | `habu-bind-compiler-targets-ff970b99` | backend registry + pass dispatch | arm64 host (hazel) | landed 0901e61c + ddc1412d (closed) |
 | `habu-lower-hir-to-6bf80d33` | `x64ir.f`, `select-x64.f`, `emit-x64.f` | Intel agent | open; depends on the five above |
@@ -215,6 +217,65 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   `spill.f`/`prune.f` are instruction-form code over the A64 dialect; the
   lowering dot supplies an x64 effect schema (or a generalised `A64EFF`)
   and its own dialect before `A64RA` can be handed a real x86_64 pool.
+
+### OS seam, ELF64, contract, site kind, emitters (`habu-add-the-x86-56726659`, lines d55021af + 5e05cbfd + d1961798, engine fa498035)
+
+- Target name `linux-x86-64`, predicate `HB-TARGET-LINUX-X86-64?`; every
+  `src/os/<target>/target.f` defines all three predicates and
+  `HB-TARGET-KNOWN?` is closed over the three. Every selector in the tree
+  has an explicit linux-x86-64 arm or a named refusal (`src/habu/prof.f`
+  refuses at load: the signal frame is not modelled; `src/compiler/native/abi.f`
+  answers `sysv-amd64`). Source-list owners (`tools/bootstrap.sh`,
+  `tools/build-fixpoint.f`, `src/habu/habu2.f` + `bootstrap/cg/forth.fs`,
+  `src/habu/stdin.f`, `tools/hb-build-lib.f`, `tools/lint/shadow-lint.f`,
+  `tools/native-emit.f`) know the target; the recovery chain stays
+  aarch64-only (x86_64 recovery is a cross-build, `docs/bootstrap.md`).
+- `src/os/linux-x86-64/`: `target.f`, `layout.f` (`DATA-VA $340000000`,
+  `DATA-SIZE $2000000`, `CODE-OFF $1000`, same guard-page model), `elf.f`
+  (ELF64 `EM_X86_64`, `VMBASE $400000`, entry `$401000`, four phdrs:
+  LOAD RX, LOAD RW `$C0`, INTERP `/lib64/ld-linux-x86-64.so.2`, DYNAMIC
+  `$B0`; `R_X86_64_GLOB_DAT` for `dlopen`/`dlsym`; validated with
+  `readelf`), `sys.f` (the x86_64 numbers, the *at* family as aarch64 uses;
+  `SYS, ( n -- )` = `mov eax, NR / syscall / mov rcx, -4096 / cmp rcx, rax`
+  so **CF set means error** and the x86_64 `SYS-PUSH` is a `setc`;
+  `OS-OPEN-RD` (openat, `AT_FDCWD` in rdi), branchless `OS-OPEN-FLAGS` /
+  `OS-MMAP-FLAGS` (test/cmov; they clobber rax, rcx, r11); the stencils
+  `SYS-EMIT-WRITE/EXIT/SVC ( -- ptr u8 n )` as byte strings, consumed by
+  `src/habu/jit.f C-EMIT-STENCIL`), `repl-term.f`, `sign.f`,
+  `proc-watch.f` (`BPROCWATCHOPEN` = pidfd_open), `proc-control.f`
+  (`BKILLERRNO`, `BEXECVE`, publishing rax). `G-POP`/`G-PUSH` in this seam
+  take x86_64 register numbers: 7 rdi, 6 rsi, 2 rdx, 0 rax.
+- **`ASM-SINK ( -- ptr u8 )`** is the seam's one forward reference: the
+  byte buffer the current code stream appends into, referenced unrequired
+  the way the aarch64 seam references `mnem.f`. The cross-build dot's x86-64
+  code layer defines it. It cannot be a `lib/byte-buffer.f` BUF in the
+  engine payload (BUF needs `lib/memory.f`, which needs the mmap primitives
+  `habu1.f` defines, and the seam loads before `habu1.f`): give `X64ASM` an
+  append seam the payload can satisfy, or reorder the payload.
+- Contract: `CTARGET` arch `x86-64` (wire code 5), ABI `sysv-amd64` (code
+  5), little-endian, 64-bit pointers, `MASK-X86-64` = BASE|FP|SIMD|FP16|
+  BF16|ATOMIC (no AMX); the exhaustive `MATCH` arms in `ir/schema.f`,
+  `attr.f`, `type.f`; `test/compiler/target-policy.f` domain 484 → 516.
+- Relocation site kind `MOVABS` in `src/habu/aot-decl.f` (package
+  `SNAP-RELOC`): 10 bytes, REX.W `B8+r` imm64, patch at offset 2 width 8;
+  `MOVABS-SITE?` admits exactly `$48`/`$49` and `B8..BF`; `MOVABSV`,
+  `SET-MOVABS`. `formal/Common/Reloc.v` models it with three theorems
+  (`test/compiler/reloc-axioms.txt` rows). `SNAP-RELOC:MOVABS-IMM-OFF` and
+  `X64ASM:MOV-RI64-IMM-OFF` both say 2, pinned equal by
+  `test/x86-64-seam.f`.
+- Tests: `test/x86-64-seam.f` (ELF header by field, MOVABS fixtures,
+  contract rows), `test/x86-64-emit.f` (every emitted byte string pinned
+  against `llvm-mc`, and the stencils against the encoders), suites
+  `x86-64-seam`, `x86-64-emit`. Docs: `docs/porting.md` (seam row,
+  syscall paragraph), `docs/bootstrap.md` (recovery rule).
+- Residuals for the Intel dots: `src/habu/habu1.f` (25 two-arm
+  `HB-TARGET-LINUX?` forms, the arm64 primitive bodies) and
+  `bootstrap/cg/*.fs` → cross-build dot; `src/habu/crash.f` frames and the
+  `lib/` platform gates (`pq`, `evp`, `serial`, `net/*`, `task`, `fs`,
+  `process`, `genio`, `codesign`, `pty`) refuse an x86_64 host until the
+  FFI is SysV → FFI dot; `tools/engine-size.f` and `tools/imgdump.f` read
+  only `EM_AARCH64` images. **No x86_64 instruction has executed anywhere;
+  the carry polarity is argued and byte-pinned, not observed.**
 
 ### Target registry, rows (`habu-bind-compiler-targets-ff970b99` worker 1, line 0901e61c, engine 343ef770)
 
