@@ -25,6 +25,7 @@
 require lib/test.f
 require lib/string.f
 require lib/engine-id.f
+require lib/engine-candidate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
@@ -32,7 +33,7 @@ require lib/process-env.f
 package WHITEBOX-ENGINE-SUITE
 
 $1000 constant IO-CAP
-30000 constant PRODUCT-TIMEOUT-MS
+30000 constant CHILD-TIMEOUT-MS
 
 create OUT IO-CAP allot
 create ERR IO-CAP allot
@@ -58,15 +59,41 @@ TRUSTED: INTERNAL-XT ( -- n )
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING ;
 
-: PRODUCT-CLASS$ ( -- ptr u8 n )
-   PRODUCT-ARGS
-   s" bin/hb" >LEN
-   S\" ENGINE-INTERNAL:IMAGE-CLASS . cr\n" >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN PRODUCT-TIMEOUT-MS >MS
+: CLASS-PROGRAM$ ( -- ptr u8 n )
+   S\" ENGINE-INTERNAL:IMAGE-CLASS . cr\n" ;
+
+: CLASS-OF$ ( ptr u8 n -- ptr u8 n ) {: eng:ptr engu:n :}
+   eng engu >LEN
+   CLASS-PROGRAM$ >LEN
+   OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    rc 0 <> if s" " exit then
    OUT outu LEN>N ;
+
+: PRODUCT-CLASS$ ( -- ptr u8 n )
+   PRODUCT-ARGS
+   s" bin/hb" CLASS-OF$ ;
+
+\ THE CHILD FOLLOWS THIS ENGINE, AND AN OUTER VARIABLE CANNOT MOVE IT. Every
+\ tool a suite forks asks lib/engine-candidate.f which engine to run, and that
+\ resolver reads HABU_UNDER_TEST before it falls back to the running engine. A
+\ CI that exports HABU_UNDER_TEST=<tree>/bin/hb - the ordinary way to point a
+\ gate at a candidate - therefore used to send the children of a whitebox suite
+\ to the sealed product while the suite itself ran here: thirteen suites went
+\ red with the CHILD answering `hb: internal engine word: DECLARATIONS`.
+\ test/gate-stdlib-lib.f names the item's own engine in the environment it hands
+\ each suite, and this is the case that says so.
+\
+\ The spawned child carries HABU_UNDER_TEST pointing at the SEALED product, so
+\ the assertion cannot be satisfied by the child resolving the variable for
+\ itself: what is under test is the binary the resolver handed this process,
+\ and it has to be the whitebox one whatever the environment says afterwards.
+: CANDIDATE-CLASS$ ( -- ptr u8 n )
+   PROC-ARGV-ENV-RESET
+   s" HABU_UNDER_TEST" >LEN s" bin/hb" >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$ CLASS-OF$ ;
 
 : RUN ( -- )
    s" tick of a sealed name compiles here" T-LABEL
@@ -85,6 +112,9 @@ TRUSTED: INTERNAL-XT ( -- n )
 
    s" and bin/hb says it is the sealed one" T-LABEL
    PRODUCT-CLASS$ S\" 0\n\n" T$=
+
+   s" a child spawned the way every suite spawns one runs this engine" T-LABEL
+   CANDIDATE-CLASS$ S\" 1\n\n" T$=
 
    T-REPORT ;
 
