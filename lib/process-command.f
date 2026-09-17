@@ -27,8 +27,14 @@ PROC-ARGV-MAX 1- constant ARG-MAX        \ public: max positional argv slots a c
 private
 
 PROC-ARGV-BUF-CAP constant PROC-CMD-ARG-BUF-CAP
-PROC-ENV-MAX constant PROC-CMD-ENV-MAX
-PROC-ENV-BUF-CAP constant PROC-CMD-ENV-BUF-CAP
+
+\ This table holds only the rows a command states for itself: PROC-CMD-PREPARE
+\ copies them into lib/process-env.f and lets PROC-ENV-INHERIT-MISSING add the
+\ parent's own environment there, in a table sized from the actual envp. So the
+\ ceiling here is lib/process-env.f's added-row ceiling, not a second guess at
+\ how large a machine's environment is.
+PROC-ENV-EXTRA constant PROC-CMD-ENV-MAX
+PROC-ENV-EXTRA-BYTES constant PROC-CMD-ENV-BUF-CAP
 131072 constant PROC-CMD-IN-CAP
 32768 constant PROC-CMD-OUT-CAP
 32768 constant PROC-CMD-ERR-CAP

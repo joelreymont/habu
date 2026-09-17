@@ -17,7 +17,12 @@ $1388 constant PET-HB-TIMEOUT-MS
 $3E8 constant PET-CMD-TIMEOUT-MS
 $32 constant PET-SHORT-TIMEOUT-MS
 $2 constant PET-ENOENT
+$258 constant PET-BIG-N                  \ variables the big-environment child must inherit
+$9 constant PET-BIG-PREFIX-U             \ "HABU_BIG_"
+$C constant PET-BIG-NAME-U               \ prefix plus three digits
+3 constant PET-MIN-ENV-N                 \ PATH, HOME, HB_TMP: the overflow child's whole envp
 
+create PET-BIG-NAME PET-BIG-NAME-U allot
 create PET-OUT PET-CAP allot
 create PET-ERR PET-CAP allot
 create PET-PATH FS-PATH-CAP allot
@@ -86,6 +91,20 @@ variable PET-START-NS
 : PET-RESOLVE ( ptr u8 n ptr u8 -- n )
    {: cmd:ptr cmdu dst:ptr :}
    cmd cmdu >LEN dst RESOLVE-EXECUTABLE LEN>N ;
+
+: PET-SB-N ( n -- ) {: v:n :}
+   v 0 < if E-STR-BOUNDS throw then
+   v 10 >= if v 10 / RECURSE then
+   v 10 mod STR-ZERO + SB-APPEND-C ;
+
+\ HABU_BIG_001 .. HABU_BIG_600: fixed width, so the child can count them by
+\ prefix and the parent never has to parse the name back.
+: PET-BIG-NAME$ ( n -- ptr u8 n ) {: i:n :}
+   s" HABU_BIG_" PET-BIG-NAME swap BYTE-COPY
+   i 100 / STR-ZERO + PET-BIG-NAME PET-BIG-PREFIX-U + c!
+   i 100 mod 10 / STR-ZERO + PET-BIG-NAME PET-BIG-PREFIX-U 1 + + c!
+   i 10 mod STR-ZERO + PET-BIG-NAME PET-BIG-PREFIX-U 2 + + c!
+   PET-BIG-NAME PET-BIG-NAME-U ;
 
 : PET-ENV-CMD$ ( -- ptr u8 n )
    s" /usr/bin/env" ;
@@ -292,6 +311,73 @@ variable PET-START-NS
       1+
    repeat drop ;
 
+\ A 600-variable environment is larger than the whole table used to be, so this
+\ case only runs at all once the table is sized from the parent's own envp. The
+\ child reports both how many of them reached it and how many its own
+\ grandchild saw.
+: PET-BIG-ENV-BUILD ( -- )
+   PET-RESET
+   0 PET-I !
+   begin PET-I @ PET-BIG-N < while
+      PET-I @ 1 + PET-BIG-NAME$ s" 1" PET-ENV+
+      PET-I @ 1 + PET-I !
+   repeat
+   PROC-ENV-INHERIT-MISSING ;
+
+: PET-BIG-EXPECT$ ( -- ptr u8 n )
+   SB-RESET
+   s" big-env-child " SB-APPEND
+   PET-BIG-N PET-SB-N
+   s"  " SB-APPEND
+   PET-BIG-N PET-SB-N
+   SB$ ;
+
+: PET-BIG-INHERIT-CHILD ( -- )
+   PET-BIG-ENV-BUILD
+   PROC-ENV-N @ COUNT>N PET-BIG-N < TFALSE
+   s" --load" >LEN PROC-ARGV+
+   s" test/process-env-big-child.f" >LEN PROC-ARGV+
+   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   {: outu:n erru:n code:n :}
+   code 0 T=
+   PET-OUT outu PET-BIG-EXPECT$ CONTAINS? TTRUE ;
+
+\ The overflow child is given exactly PET-MIN-ENV-N entries, so its ceiling is
+\ known here and the refusal line can be compared in full: a bare E-PROC-ENV
+\ with no count and no limit is what left gates with nothing to act on.
+: PET-PASS-ENV ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu GETENV {: val:ptr valu:n :}
+   name nameu val valu PET-ENV+ ;
+
+: PET-MIN-ENV ( -- )
+   PET-RESET
+   s" PATH" PET-PASS-ENV
+   s" HOME" PET-PASS-ENV
+   s" HB_TMP" PET-PASS-ENV ;
+
+: PET-CEILING-LINE$ ( -- ptr u8 n )
+   SB-RESET
+   s" process-env: child environment full at " SB-APPEND
+   PET-MIN-ENV-N PROC-ENV-EXTRA + PET-SB-N
+   s"  entries (" SB-APPEND
+   PET-MIN-ENV-N PET-SB-N
+   s"  inherited + " SB-APPEND
+   PROC-ENV-EXTRA PET-SB-N
+   s"  added): entry " SB-APPEND
+   PET-MIN-ENV-N PROC-ENV-EXTRA + 1 + PET-SB-N
+   s"  refused" SB-APPEND
+   SB$ ;
+
+: PET-ENV-CEILING-DIAGNOSTIC ( -- )
+   PET-MIN-ENV
+   s" --load" >LEN PROC-ARGV+
+   s" test/process-env-overflow-child.f" >LEN PROC-ARGV+
+   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   {: outu:n erru:n code:n :}
+   code 0 = TFALSE
+   PET-OUT outu s" overflow-child: no refusal" CONTAINS? TFALSE
+   PET-ERR erru PET-CEILING-LINE$ CONTAINS? TTRUE ;
+
 : PET-BAD-ENV-NAME ( -- )
    PET-RESET
    s" BAD=NAME" s" x" PET-ENV+ ;
@@ -343,6 +429,8 @@ variable PET-START-NS
    s" set-replaces" [: PET-SET-REPLACES ;] PET-CASE
    s" set-appends-new" [: PET-SET-APPENDS-NEW ;] PET-CASE
    s" append-keeps-dup" [: PET-APPEND-KEEPS-DUP ;] PET-CASE
+   s" big-inherit-child" [: PET-BIG-INHERIT-CHILD ;] PET-CASE
+   s" env-ceiling-diagnostic" [: PET-ENV-CEILING-DIAGNOSTIC ;] PET-CASE
    s" argv-env-capture-result" [: PET-RUN-ARGV-ENV-CAPTURE-RESULT ;] PET-CASE
    s" env-outcome-false" [: PET-RUN-ENV-OUTCOME-FALSE ;] PET-CASE
    s" env-outcome-timeout" [: PET-RUN-ENV-OUTCOME-TIMEOUT ;] PET-CASE

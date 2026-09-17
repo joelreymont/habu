@@ -8854,3 +8854,25 @@ complete. The closure measures 159 files and 4.4 MB, inside `EC-MAX` (`$400`)
 and `EC-POOL-CAP` (`$40000`) with room to spare: READ THE THROWN CODE before
 raising a walker's cap, because three different caps answer to "the walk ran out
 of room" and only one of them was in the way.
+
+## 2026-09-17 - a table for the host's environment has to be measured, not guessed
+
+`lib/process-env.f` held the child environment in a 256-row table and a 128KB
+buffer, both compile-time constants, while `PROC-ENV-INHERIT-MISSING` copies the
+parent's whole envp into it. A developer shell exporting 251 variables plus a
+fixture's own three was already over, so gates and Tender's server build only
+passed from a trimmed environment. The fix is not a larger constant: the startup
+envp vector is right there at `ENVP`, so the table and buffer are sized from the
+parent's actual environment the first time a builder allocates, plus
+`PROC-ENV-EXTRA` rows for what the caller adds itself. ANYTHING SIZED FOR DATA
+THE HOST HANDS YOU IS A GUESS UNTIL YOU MEASURE THE HOST - and the measured
+number belongs in its own cell, not derived back out of the ceiling by
+subtraction, which is only non-negative by an invariant a refusal path cannot
+check.
+
+The refusal cost as much as the ceiling did: a bare `E-PROC-ENV` printed
+`hb: uncaught throw code -2505` and nothing else, so the gate that died had
+nothing to act on and the count that broke it was invisible. One stderr line -
+what filled up, the count it saw, the ceiling and how the ceiling was arrived at
+- is the whole fix, and `lib/ffi-abi.f`'s `REPORT-FULL` already had the shape to
+copy.

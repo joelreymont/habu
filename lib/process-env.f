@@ -2,18 +2,38 @@
 \
 \ Kept separate from process-argv so old native seeds can still run the
 \ build-fixpoint installer before this newer primitive exists.
+\
+\ CHILD ENVIRONMENT CEILING. The prepared environment is not a fixed 256 rows.
+\ Its table and byte buffer are sized, the first time a builder allocates, from
+\ the envp this process was actually started with: room for every parent entry
+\ plus PROC-ENV-EXTRA rows and PROC-ENV-EXTRA-BYTES bytes the caller adds
+\ itself. So PROC-ENV-INHERIT-MISSING always fits, whatever a developer shell
+\ or a CI runner exports, and only the caller's own additions have a ceiling.
+\ The inherited-default table is all caller rows, so it stays at PROC-ENV-EXTRA
+\ rows and PROC-ENV-EXTRA-BYTES bytes.
+\
+\ COST, for a parent envp of n entries and b bytes: (n + PROC-ENV-EXTRA + 1)
+\ cells and b + PROC-ENV-EXTRA-BYTES bytes for the prepared environment, plus
+\ (PROC-ENV-EXTRA + 1) cells and PROC-ENV-EXTRA-BYTES bytes for the defaults -
+\ about 290KB of mapping for a 16KB environment, and none of it is allocated
+\ until a builder is used. IMAGE-LIFECYCLE releases all four and clears the
+\ measured sizes, so a restored image re-measures its own envp.
+\
+\ Every capacity refusal writes one line to stderr naming what filled up, the
+\ count it saw and the ceiling, then throws E-PROC-ENV.
 
 require lib/errors.f
 require lib/string.f
 require lib/string-roles.f               \ package STR: the typed string surface
 require lib/memory.f
+require lib/codegen.f                    \ the refusal line is built in a CODEGEN buffer
 require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
 require lib/adt/option.f                 \ option<len> for the FIND-EXECUTABLE cluster (switchover wave A)
 
-256 constant PROC-ENV-MAX
-131072 constant PROC-ENV-BUF-CAP
+1024 constant PROC-ENV-EXTRA             \ rows a caller may add beyond the parent's environment
+$20000 constant PROC-ENV-EXTRA-BYTES     \ bytes those added rows may occupy
 61 constant PROC-ENV-EQUAL
 58 constant PROC-PATH-SEP
 47 constant PROC-PATH-SLASH
@@ -27,6 +47,92 @@ variable PROC-ENV-DEF-N
 variable PROC-ENV-DEF-OFF
 variable PROC-ENV-DEF-TABLE-A
 variable PROC-ENV-DEF-BUF-A
+variable PROC-ENV-CAP-N                  \ 0 until the parent envp has been measured
+variable PROC-ENV-BUF-CAP-N
+variable PROC-ENV-INHERITED-N            \ the parent envp's entry count, as measured
+
+\ The parent's environment as it actually is, walked from the startup envp
+\ vector. Both walks stop at the NULL terminator the kernel wrote, so neither
+\ depends on a compile-time guess about how much a shell exports.
+: PROC-ENVP-COUNT ( -- n )
+   0 begin dup ENVP 0= 0= while 1 + repeat ;
+
+: PROC-ENVP-BYTES ( -- n )
+   0 0 begin over ENVP 0= 0= while
+      over ENVP ZLEN 1 + +
+      swap 1 + swap
+   repeat nip ;
+
+\ Measure once per process, and again after an image restore, which clears all
+\ three cells. Every capacity question goes through PROC-ENV-CAP,
+\ PROC-ENV-BUF-CAP or PROC-ENV-INHERITED, so none of them can read an
+\ unmeasured ceiling.
+: PROC-ENV-MEASURE ( -- )
+   PROC-ENV-CAP-N @ 0= 0= if exit then
+   PROC-ENVP-BYTES PROC-ENV-EXTRA-BYTES + PROC-ENV-BUF-CAP-N !
+   PROC-ENVP-COUNT PROC-ENV-INHERITED-N !
+   PROC-ENV-INHERITED-N @ PROC-ENV-EXTRA + PROC-ENV-CAP-N ! ;
+
+: PROC-ENV-CAP ( -- n )
+   PROC-ENV-MEASURE PROC-ENV-CAP-N @ ;
+
+: PROC-ENV-BUF-CAP ( -- n )
+   PROC-ENV-MEASURE PROC-ENV-BUF-CAP-N @ ;
+
+: PROC-ENV-INHERITED ( -- n )
+   PROC-ENV-MEASURE PROC-ENV-INHERITED-N @ ;
+
+\ ---- capacity refusals -----------------------------------------------------
+\ A bare E-PROC-ENV told a gate nothing: a shell with 251 exported variables
+\ plus a fixture's own three died as `uncaught throw code -2505`. Each refusal
+\ below names the ceiling, how it was arrived at, and the count that broke it,
+\ on stderr, exactly as a load-time diagnostic does.
+2 constant PROC-ENV-DIAG-FD              \ stderr
+$0A constant PROC-ENV-DIAG-LF
+$100 constant PROC-ENV-DIAG-CAP          \ one refusal line: its wording and three decimals
+PROC-ENV-DIAG-CAP CODEGEN:BUFFER PROC-ENV-DIAG
+
+: PROC-ENV-DIAG+ ( ptr u8 n -- )
+   PROC-ENV-DIAG CODEGEN:APPEND-STRING ;
+
+: PROC-ENV-DIAG-N ( n -- )
+   PROC-ENV-DIAG CODEGEN:APPEND-DECIMAL ;
+
+: PROC-ENV-DIAG-LINE ( -- )
+   PROC-ENV-DIAG-LF PROC-ENV-DIAG CODEGEN:APPEND-BYTE
+   PROC-ENV-DIAG CODEGEN:CONTENTS {: a:ptr u:n :}
+   PROC-ENV-DIAG-FD a u write drop ;
+
+: PROC-ENV-REPORT-FULL ( n -- ) {: saw:n :}
+   PROC-ENV-DIAG CODEGEN:RESET
+   s" process-env: child environment full at " PROC-ENV-DIAG+
+   PROC-ENV-CAP PROC-ENV-DIAG-N
+   s"  entries (" PROC-ENV-DIAG+
+   PROC-ENV-INHERITED PROC-ENV-DIAG-N
+   s"  inherited + " PROC-ENV-DIAG+
+   PROC-ENV-EXTRA PROC-ENV-DIAG-N
+   s"  added): entry " PROC-ENV-DIAG+
+   saw PROC-ENV-DIAG-N
+   s"  refused" PROC-ENV-DIAG+
+   PROC-ENV-DIAG-LINE ;
+
+: PROC-ENV-DEF-REPORT-FULL ( n -- ) {: saw:n :}
+   PROC-ENV-DIAG CODEGEN:RESET
+   s" process-env: inherited defaults full at " PROC-ENV-DIAG+
+   PROC-ENV-EXTRA PROC-ENV-DIAG-N
+   s"  entries: entry " PROC-ENV-DIAG+
+   saw PROC-ENV-DIAG-N
+   s"  refused" PROC-ENV-DIAG+
+   PROC-ENV-DIAG-LINE ;
+
+: PROC-ENV-REPORT-BYTES ( n n -- ) {: need:n limit:n :}
+   PROC-ENV-DIAG CODEGEN:RESET
+   s" process-env: environment buffer full at " PROC-ENV-DIAG+
+   limit PROC-ENV-DIAG-N
+   s"  bytes: " PROC-ENV-DIAG+
+   need PROC-ENV-DIAG-N
+   s"  needed" PROC-ENV-DIAG+
+   PROC-ENV-DIAG-LINE ;
 
 package PROC-ENV-LIFECYCLE
 private
@@ -45,10 +151,13 @@ false REGISTERED !
    0 >OFF PROC-ENV-OFF !
    0 >COUNT PROC-ENV-DEF-N !
    0 >OFF PROC-ENV-DEF-OFF !
-   PROC-ENV-TABLE-A 0 ptr-field PROC-ENV-MAX 1+ cells RELEASE-MAPPING
+   PROC-ENV-TABLE-A 0 ptr-field PROC-ENV-CAP 1+ cells RELEASE-MAPPING
    PROC-ENV-BUF-A 0 ptr-field PROC-ENV-BUF-CAP RELEASE-MAPPING
-   PROC-ENV-DEF-TABLE-A 0 ptr-field PROC-ENV-MAX 1+ cells RELEASE-MAPPING
-   PROC-ENV-DEF-BUF-A 0 ptr-field PROC-ENV-BUF-CAP RELEASE-MAPPING
+   PROC-ENV-DEF-TABLE-A 0 ptr-field PROC-ENV-EXTRA 1+ cells RELEASE-MAPPING
+   PROC-ENV-DEF-BUF-A 0 ptr-field PROC-ENV-EXTRA-BYTES RELEASE-MAPPING
+   0 PROC-ENV-CAP-N !
+   0 PROC-ENV-BUF-CAP-N !
+   0 PROC-ENV-INHERITED-N !
    false REGISTERED ! ;
 
 public
@@ -85,7 +194,7 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 : PROC-ENV-TABLE ( -- ptr a )
    PROC-ENV-TABLE@ 0= if
       PROC-ENV-LIFECYCLE:REGISTER
-      PROC-ENV-MAX 1 + >COUNT MEM-ALLOC-CELLS PROC-ENV-TABLE!
+      PROC-ENV-CAP 1 + >COUNT MEM-ALLOC-CELLS PROC-ENV-TABLE!
    then
    PROC-ENV-TABLE@ ;
 
@@ -98,10 +207,10 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 : PROC-ENV-BUF! ( ptr u8 -- )
    PROC-ENV-BUF-A-FIELD ! ;
 
-\ PROC-ENV-BUF-CAP is a positive library constant: MEM:BYTES-ALLOC-LEN narrows the
-\ raw size to the validated alloc role before MEM:ALLOC-BYTES, throwing E-MEM-SIZE
-\ on any refusal (unreachable for the constant). Same narrowing guards the default
-\ env buffer below.
+\ PROC-ENV-BUF-CAP is the measured envp bytes plus a positive constant, so it is
+\ always positive: MEM:BYTES-ALLOC-LEN narrows the raw size to the validated
+\ alloc role before MEM:ALLOC-BYTES, throwing E-MEM-SIZE on any refusal
+\ (unreachable here). Same narrowing guards the default env buffer below.
 : PROC-ENV-BUF ( -- ptr u8 )
    PROC-ENV-BUF@ 0= if
       PROC-ENV-LIFECYCLE:REGISTER
@@ -121,7 +230,7 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 : PROC-ENV-DEF-TABLE ( -- ptr a )
    PROC-ENV-DEF-TABLE@ 0= if
       PROC-ENV-LIFECYCLE:REGISTER
-      PROC-ENV-MAX 1 + >COUNT MEM-ALLOC-CELLS PROC-ENV-DEF-TABLE!
+      PROC-ENV-EXTRA 1 + >COUNT MEM-ALLOC-CELLS PROC-ENV-DEF-TABLE!
    then
    PROC-ENV-DEF-TABLE@ ;
 
@@ -137,7 +246,7 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 : PROC-ENV-DEF-BUF ( -- ptr u8 )
    PROC-ENV-DEF-BUF@ 0= if
       PROC-ENV-LIFECYCLE:REGISTER
-      PROC-ENV-BUF-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop PROC-ENV-DEF-BUF!
+      PROC-ENV-EXTRA-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop PROC-ENV-DEF-BUF!
    then
    PROC-ENV-DEF-BUF@ ;
 
@@ -161,14 +270,30 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 
 : PROC-ENV-SLOT ( idx -- ptr a ) {: idx :}
    idx IDX>N 0 < if E-PROC-ENV throw then
-   idx IDX>N PROC-ENV-MAX > if E-PROC-ENV throw then
+   idx IDX>N PROC-ENV-CAP > if E-PROC-ENV throw then
    idx IDX>N cells PROC-ENV-TABLE + ;
 
 : PROC-ENV-CHECK-EXTRA ( -- )
-   PROC-ENV-N @ COUNT>N PROC-ENV-MAX >= if E-PROC-ENV throw then ;
+   PROC-ENV-N @ COUNT>N {: have:n :}
+   have PROC-ENV-CAP < if exit then
+   have 1 + PROC-ENV-REPORT-FULL
+   E-PROC-ENV throw ;
 
 : PROC-ENV-DEF-CHECK-EXTRA ( -- )
-   PROC-ENV-DEF-N @ COUNT>N PROC-ENV-MAX >= if E-PROC-ENV throw then ;
+   PROC-ENV-DEF-N @ COUNT>N {: have:n :}
+   have PROC-ENV-EXTRA < if exit then
+   have 1 + PROC-ENV-DEF-REPORT-FULL
+   E-PROC-ENV throw ;
+
+: PROC-ENV-CHECK-BYTES ( n -- ) {: need:n :}
+   need PROC-ENV-BUF-CAP <= if exit then
+   need PROC-ENV-BUF-CAP PROC-ENV-REPORT-BYTES
+   E-PROC-ENV throw ;
+
+: PROC-ENV-DEF-CHECK-BYTES ( n -- ) {: need:n :}
+   need PROC-ENV-EXTRA-BYTES <= if exit then
+   need PROC-ENV-EXTRA-BYTES PROC-ENV-REPORT-BYTES
+   E-PROC-ENV throw ;
 
 : PROC-ENV-HAS-EQUAL? ( ptr u8 len -- bool ) {: a:ptr u :}
    0 begin dup u LEN>N < while
@@ -191,7 +316,7 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 : PROC-ENV-STORE-Z ( ptr u8 len -- ptr u8 ) {: a:ptr u :}
    u LEN>N 0 < if E-PROC-ENV throw then
    PROC-ENV-OFF @ {: off :}
-   off OFF>N u LEN>N 1 + + PROC-ENV-BUF-CAP > if E-PROC-ENV throw then
+   off OFF>N u LEN>N 1 + + PROC-ENV-CHECK-BYTES
    a PROC-ENV-BUF off OFF>N + u LEN>N BYTE-COPY
    0 PROC-ENV-BUF off OFF>N + u LEN>N + c!
    off OFF>N u LEN>N 1 + + >OFF PROC-ENV-OFF !
@@ -203,7 +328,7 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 
 : PROC-ENV-DEF-SLOT ( idx -- ptr a ) {: idx:idx :}
    idx IDX>N 0 < if E-PROC-ENV throw then
-   idx IDX>N PROC-ENV-MAX > if E-PROC-ENV throw then
+   idx IDX>N PROC-ENV-EXTRA > if E-PROC-ENV throw then
    idx IDX>N cells PROC-ENV-DEF-TABLE + ;
 
 : PROC-ENV-DEF-INSTALL-Z ( ptr u8 -- )
@@ -261,7 +386,7 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    name nameu PROC-ENV-CHECK-NAME
    valu LEN>N 0 < if E-PROC-ENV throw then
    PROC-ENV-OFF @ {: off:off :}
-   off OFF>N nameu LEN>N valu LEN>N + 2 + + PROC-ENV-BUF-CAP > if E-PROC-ENV throw then
+   off OFF>N nameu LEN>N valu LEN>N + 2 + + PROC-ENV-CHECK-BYTES
    name PROC-ENV-BUF off OFF>N + nameu LEN>N BYTE-COPY
    PROC-ENV-EQUAL PROC-ENV-BUF off OFF>N + nameu LEN>N + c!
    val PROC-ENV-BUF off OFF>N + nameu LEN>N + 1 + valu LEN>N BYTE-COPY
@@ -287,7 +412,7 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    valu LEN>N 0 < if E-PROC-ENV throw then
    PROC-ENV-DEF-CHECK-EXTRA
    PROC-ENV-DEF-OFF @ {: off:off :}
-   off OFF>N nameu LEN>N valu LEN>N + 2 + + PROC-ENV-BUF-CAP > if E-PROC-ENV throw then
+   off OFF>N nameu LEN>N valu LEN>N + 2 + + PROC-ENV-DEF-CHECK-BYTES
    name PROC-ENV-DEF-BUF off OFF>N + nameu LEN>N BYTE-COPY
    PROC-ENV-EQUAL PROC-ENV-DEF-BUF off OFF>N + nameu LEN>N + c!
    val PROC-ENV-DEF-BUF off OFF>N + nameu LEN>N + 1 + valu LEN>N BYTE-COPY

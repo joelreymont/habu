@@ -1810,6 +1810,21 @@ Use `PROC-ENV-DEFAULT$?` when an in-process fixture needs to read the same
 prepared default that would be passed to a child process. Use
 `PROC-ENV-DEFAULT-RESET` at harness setup boundaries.
 
+The prepared environment has no fixed entry ceiling. Its table and byte buffer
+are sized, the first time a builder allocates, from the envp this process was
+actually started with: room for every parent entry plus `PROC-ENV-EXTRA` (1024)
+rows and `PROC-ENV-EXTRA-BYTES` (128KB) of text the caller adds itself. So
+`PROC-ENV-INHERIT-MISSING` always fits, whatever a developer shell or a CI
+runner exports, and only a caller's own additions can exhaust the table. The
+inherited-default table is all caller rows, so it stays at `PROC-ENV-EXTRA`
+rows and `PROC-ENV-EXTRA-BYTES` bytes. Every capacity refusal writes one line
+to stderr naming what filled up, the count it saw and the ceiling, before
+throwing `E-PROC-ENV`:
+
+```
+process-env: child environment full at 1027 entries (3 inherited + 1024 added): entry 1028 refused
+```
+
 The argv and environment builders, including inherited defaults, are process
 state. `APP-IMAGE:SAVE` releases their cached mappings and clears their pointer
 tables, counts and offsets through `IMAGE-LIFECYCLE`. A restored image starts
@@ -1844,7 +1859,10 @@ PROC-CMD-RC@         ( -- result<n,n> )
 Call `PROC-CMD-RESET`, append extra args with `PROC-CMD-ARG+`, append explicit
 environment entries with `PROC-CMD-ENV+` or `PROC-CMD-ENV-ENTRY+`, optionally
 replace the default inherited environment with `PROC-CMD-ENV-HERMETIC`, and set
-bounded stdin with `PROC-CMD-IN!`. `PROC-CMD-RUN-OUTCOME` validates the path and
+bounded stdin with `PROC-CMD-IN!`. A command's own table holds only the rows it
+states for itself, up to `PROC-ENV-EXTRA`; the parent's environment is added by
+`PROC-ENV-INHERIT-MISSING` in the envp-sized table described above.
+`PROC-CMD-RUN-OUTCOME` validates the path and
 timeout before transferring state into the lower-level argv/env buffers, captures
 bounded stdout/stderr into command-owned buffers, stores the decomposed outcome, and returns
 that same outcome pair. `PROC-CMD-RUN-RC` wraps the `PROC-OUTCOME>RC` completion
