@@ -10,6 +10,11 @@ CAST: TOKEN-N ( token -- n )
 
 DYNAMIC-BUFFER TOKENS token
 DYNAMIC-BUFFER OPTIONS option<n>
+\ Cells that hold addresses: the accessor hands back a pointer to a pointer, so
+\ this is the element type that reads the control head's own declared cell and
+\ moves pointers when a growing reserve copies the old capacity.
+DYNAMIC-BUFFER ADDRS ptr u8
+create MARK 8 allot
 variable RAW
 
 : OPTION-N ( option<n> -- n )
@@ -40,6 +45,13 @@ variable RAW
    0 OPTIONS @ OPTION-N 123 T=
    OPTION:NONE 1023 OPTIONS !
    1023 OPTIONS @ OPTION-N -1 T=
+   4 ADDRS-RESERVE
+   MARK byte-view 0 ADDRS !
+   MARK byte-view 3 ADDRS !
+   0 ADDRS @ MARK byte-view = TTRUE
+   1024 ADDRS-RESERVE
+   0 ADDRS @ MARK byte-view = TTRUE
+   3 ADDRS @ MARK byte-view = TTRUE
    ['] BAD-LOW 7122 TTHROWS
    ['] BAD-HIGH 7122 TTHROWS
    ['] BAD-SIZE 7121 TTHROWS
@@ -56,6 +68,7 @@ variable RAW
    0 TOKENS @ TOKEN-N 7 T=
    TOKENS-RELEASE
    OPTIONS-RELEASE
+   ADDRS-RELEASE
    T-REPORT ;
 
 RUN

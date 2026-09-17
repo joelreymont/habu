@@ -2,6 +2,13 @@
 \ A private control record holds mapping, byte capacity and registry slot + 1.
 \ Membership follows live allocation, including a precompiled reserve after
 \ restore. Release zeroes the record; no process address survives capture.
+\ THE RECORD HEAD IS A DECLARED POINTER CELL (dot habu-refuse-a-ptr-5ad2734e):
+\ a raw storage cell never holds an address, so the mapping lives in the
+\ PTR-VARIABLE the definer generates and the record arrives here as `ptr ptr a`,
+\ a pointer to that cell. `a` stays a quantifier of these words, so a buffer
+\ whose cells hold pointers moves them as pointers. The two count cells behind
+\ the head hold numbers, so they are reached through an explicit cell view of
+\ the head (CTL) rather than through its pointer type.
 \ This runtime belongs below the core-prefix mark: generated declarations in
 \ a rewound build source already call it, before lib/errors.f is available.
 package DYNAMIC-STORAGE
@@ -25,12 +32,16 @@ $40 constant REG-INIT
    old MAX-BYTES 2 / > if need exit then
    need old 2 * 64 max max ;
 
-: COPY ( ptr n ptr n n -- ) {: src:ptr dst:ptr bytes:n :}
+\ Both regions hold the same element type — an abandoned mapping and its
+\ replacement, or the old and new registry — so the copy stays parametric in it
+\ and a buffer of pointers moves its cells as pointers.
+: COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr bytes:n :}
    bytes CELL / 0 ?do src i cells + @ dst i cells + ! loop ;
 
 \ One registry per runtime instance. Empty capacity is retained until capture,
-\ so the pointer itself is the authority on whether the mapping is live.
-create REG 0 ,
+\ so the pointer itself is the authority on whether the mapping is live. The
+\ registry holds the address of a mapping, so its own cell is declared too.
+PTR-VARIABLE REG
 variable REG-U
 here data-base - negate 7 and allot
 variable MUTEX
@@ -38,12 +49,19 @@ variable MUTEX
 : LOCK ( -- ) begin 0 1 MUTEX atomic-cas 0= until ;
 : UNLOCK ( -- ) 0 MUTEX atomic! ;
 
-: REG@ ( -- ptr n ) REG 0 ptr-field @ ;
+: REG@ ( -- ptr n ) REG @ ;
 : REG-CAP ( -- n ) REG@ @ ;
 : REG-BYTES ( n -- n ) REG-HEAD + CELL EXTENT ;
-: REG-AT ( n -- ptr ptr n ) REG-HEAD + REG@ swap ptr-field ;
-: REG-ENTRY ( n -- ptr n ) REG-AT @ ;
-: SLOT ( ptr n -- ptr n ) 2 cells + ;
+\ A registry entry holds one control record's head, so the entry's own type is
+\ a pointer to that declared pointer cell.
+: REG-AT ( n -- ptr ptr ptr a ) REG-HEAD + REG@ swap ptr-field ;
+: REG-ENTRY ( n -- ptr ptr a ) REG-AT @ ;
+
+\ The count cells sit behind the declared head: view the record's bytes as cells
+\ and address them by offset, which keeps the head's pointer type off the counts.
+: CTL ( ptr ptr a n -- ptr n ) {: cb:ptr off:n :} cb byte-view off + cell-view ;
+: CAP ( ptr ptr a -- ptr n ) CELL CTL ;
+: SLOT ( ptr ptr a -- ptr n ) 2 cells CTL ;
 
 : REG-MAP ( n -- ptr n )
    REG-BYTES map-anon 0< if drop E-MAP throw then ;
@@ -51,7 +69,7 @@ variable MUTEX
 : REG-CLOSE ( -- )
    REG@ 0= if exit then
    REG@ REG-CAP REG-BYTES munmap 0< if E-UNMAP throw then
-   NULL-PTR REG 0 ptr-field ! ;
+   NULL-PTR REG ! ;
 
 \ Capacity is secured before RESERVE publishes either mapping or membership.
 \ A failed grow leaves the old registry and every handle intact.
@@ -59,7 +77,7 @@ variable MUTEX
    REG@ 0= if
       REG-INIT REG-MAP {: fresh:ptr :}
       REG-INIT fresh !
-      fresh REG 0 ptr-field !
+      fresh REG !
       exit
    then
    REG-U @ REG-CAP < if exit then
@@ -72,14 +90,14 @@ variable MUTEX
    REG@ old REG-BYTES munmap 0< if
       fresh cap REG-BYTES munmap drop E-UNMAP throw
    then
-   fresh REG 0 ptr-field ! ;
+   fresh REG ! ;
 
-: REGISTER ( ptr n -- ) {: cb:ptr :}
+: REGISTER ( ptr ptr a -- ) {: cb:ptr :}
    cb REG-U @ REG-AT !
    REG-U @ 1+ dup cb SLOT ! REG-U ! ;
 
 \ Swap removal is bounded and repairs the moved record's private handle.
-: UNREGISTER ( ptr n -- ) {: cb:ptr :}
+: UNREGISTER ( ptr ptr a -- ) {: cb:ptr :}
    cb SLOT @ 1- {: at:n :}
    REG-U @ 1- {: last:n :}
    at last <> if
@@ -93,9 +111,9 @@ variable MUTEX
 
 public
 
-: RESERVE ( n ptr n n -- ) {: count:n cb:ptr width:n :}
+: RESERVE ( n ptr ptr a n -- ) {: count:n cb:ptr width:n :}
    count width EXTENT {: need:n :}
-   cb cell+ @ {: old:n :}
+   cb CAP @ {: old:n :}
    need old <= if exit then
    need old CAPACITY {: cap:n :}
    cap map-anon 0< if drop E-MAP throw then {: fresh:ptr :}
@@ -107,29 +125,29 @@ public
       rc 0 <> if
          UNLOCK fresh cap munmap drop rc throw
       then
-      fresh cb 0 ptr-field !
-      cap cb cell+ !
+      fresh cb !
+      cap cb CAP !
       cb REGISTER
       UNLOCK
       exit
    then
    old 0 > if
-      cb 0 ptr-field @ fresh old COPY
-      cb 0 ptr-field @ old munmap 0< if
+      cb @ fresh old COPY
+      cb @ old munmap 0< if
          fresh cap munmap drop E-UNMAP throw
       then
    then
-   fresh cb 0 ptr-field !
-   cap cb cell+ ! ;
+   fresh cb !
+   cap cb CAP ! ;
 
-: RELEASE ( ptr n -- ) {: cb:ptr :}
-   cb cell+ @ {: cap:n :}
+: RELEASE ( ptr ptr a -- ) {: cb:ptr :}
+   cb CAP @ {: cap:n :}
    cap 0= if exit then
-   cb 0 ptr-field @ cap munmap 0< if E-UNMAP throw then
+   cb @ cap munmap 0< if E-UNMAP throw then
    LOCK
    cb UNREGISTER
-   NULL-PTR cb 0 ptr-field !
-   0 cb cell+ !
+   NULL-PTR cb !
+   0 cb CAP !
    UNLOCK ;
 
 : REGISTERED-N ( -- n ) REG-U @ ;

@@ -495,18 +495,37 @@ PRIM: TYPED-VARIABLE PRIM;
 \ The private third control cell is the live registry handle. RESERVE registers
 \ on first allocation; RELEASE unregisters, so an existing declaration remains
 \ reusable after capture and restore without replaying this generated source.
+\
+\ THE CONTROL HEAD IS DECLARED, NOT `create`d (dot habu-refuse-a-ptr-5ad2734e).
+\ It holds the mapping's address, and a raw storage cell never holds an address:
+\ `NAME#base 0 ptr-field @` fetched a typed pointer out of an undeclared cell,
+\ which is exactly the launder the rule refuses, in every accessor this definer
+\ has ever generated. `PTR-VARIABLE` declares the head, so the accessor reads the
+\ mapping with a plain `@` and DYNAMIC-STORAGE receives `ptr ptr a`, a pointer to
+\ that declared cell. The accessor's own pointee is minted from the declared
+\ signature the way every generated accessor's is (LBUF-EVAL's armed window), so
+\ a nominal or pointer element type reaches it exactly as it does through
+\ LAYOUT-BUFFER and TYPED-BUFFER. The definer's other three generative forms need
+\ no change at all: their accessors do pointer ARITHMETIC on the storage word and
+\ load counts, and never fetch a pointer out of it.
+\
+\ The head's cell is committed by the generated `PTR-VARIABLE` itself, so the
+\ definer allots the two count cells behind it (DBUF-ALLOT). Those counts are
+\ numbers, so the accessor reads the capacity through an explicit cell view of
+\ the head rather than through its pointer type — the same record layout, the
+\ same compiled add-and-load, since both views are type-level only.
 : DBUF-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
    {: name:ptr nameu:n type:ptr typeu:n :}
    LBUF-CLEAR
-   s" create " LBUF-APP name nameu LBUF-BASE,
+   s" PTR-VARIABLE " LBUF-APP name nameu LBUF-BASE,
    s"  : " LBUF-APP name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( n -- ptr " LBUF-APP type typeu LBUF-APP
    s"  ) {: i:n :} i 0 < if " LBUF-APP E-LAYOUT-BOUNDS LBUF-DEC,
    s"  throw then i " LBUF-APP name nameu LBUF-BASE,
-   s"  cell+ @ " LBUF-APP LBUF-W @ cells LBUF-DEC,
+   s"  cell+ byte-view cell-view @ " LBUF-APP LBUF-W @ cells LBUF-DEC,
    s"  / >= if " LBUF-APP E-LAYOUT-BOUNDS LBUF-DEC,
    s"  throw then " LBUF-APP name nameu LBUF-BASE,
-   s"  0 ptr-field @ i " LBUF-APP LBUF-W @ cells LBUF-DEC,
+   s"  @ i " LBUF-APP LBUF-W @ cells LBUF-DEC,
    s"  * + ; : " LBUF-APP name nameu LBUF-APP
    s" -RESERVE ( n -- ) " LBUF-APP name nameu LBUF-BASE,
    s"  " LBUF-APP LBUF-W @ cells LBUF-DEC,
@@ -518,6 +537,18 @@ PRIM: TYPED-VARIABLE PRIM;
 : DBUF-SUFFIX-GUARD ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n suffix:ptr su:n :}
    LBUF-CLEAR name nu LBUF-APP suffix su LBUF-APP
    LBUF-GEN LBUF-GEN-U @ LBUF-NAME-GUARD ;
+
+\ LBUF-ALLOT one cell on: the generated `PTR-VARIABLE` publishes the control head
+\ AND commits its cell, so the definer allots the two count cells behind it and
+\ zeroes the record it measured. The same transactional check — if anything else
+\ moved DP between the measurement and here, the accessor and the storage would
+\ name different places, so this refuses instead of allotting into the gap. A
+\ rejected accessor leaves the head's cell allotted and unnamed, like the
+\ alignment pad; the declaration itself fails, so nothing reads it.
+: DBUF-ALLOT ( ptr n -- ) {: base:ptr :}
+   here base CELL + <> if E-LAYOUT-BUFFER throw then
+   LBUF-BYTES @ CELL - allot
+   base LBUF-BYTES @ LBUF-ZERO ;
 
 : DYNAMIC-BUFFER ( -- )
    parse-name {: name:ptr nameu:n :}
@@ -534,7 +565,7 @@ PRIM: TYPED-VARIABLE PRIM;
    here {: base:ptr :}
    name nameu type typeu DBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
-   base LBUF-ALLOT ;
+   base DBUF-ALLOT ;
 
 PRIM: DYNAMIC-BUFFER PRIM;
 

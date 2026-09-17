@@ -9151,3 +9151,29 @@ cannot; state those facts as separate cells, or pack them into a one-field
 nominal as `NBACK:linkage` does. Interpret mode cannot hold one either:
 producing a wide value at the top level is `hb: interpret-mode layout value`,
 so build it inside a definition.
+
+## 2026-09-17 - a declared pointer cell holds an address, not an address of one
+
+`PTR-VARIABLE` (and `PERSISTED-PTR-VARIABLE`) publish `( -- ptr ptr a )` with a
+RAW-kinded `a`, so under the raw-cell pointer rule the cell takes an address and
+refuses an address OF an address: `PTR-VARIABLE X  : F ( -- ptr ptr u8 ) X @ ;`
+is `E-RAW-CELL-PTR` while `: F ( -- ptr u8 ) X @ ;` certifies. That is not a gap
+in the declared form, because the place where a pointee is chosen is a definer's
+armed window: `LAYOUT-INTRO` disables the RAW discipline (`RAW-BLOCK?`) exactly
+while `CHECK` coerces the OUTPUT row of the accessor a storage definer just
+generated, which is how a `TYPED-BUFFER ... ptr u8` accessor mints `ptr ptr u8`
+over a `create`d base. A STORAGE WORD ONLY HAS TO CARRY THE ADDRESS; the element
+type is minted at the accessor, so `DYNAMIC-BUFFER`'s control head is a
+`PTR-VARIABLE` and the accessor reads it with a plain `@`.
+
+The token-level refusals are NOT under that exemption, and that is the whole
+reason `DYNAMIC-BUFFER` needed converting while its three sibling definers did
+not: `ptr-field` is refused at the token when its base is a raw cell, so the
+generated `NAME#base 0 ptr-field @` died where `NAME#base i W * +` never even
+asks. When a generated form is refused, check whether the refusal is a token
+rule or an output coercion before redesigning the storage.
+
+Reading a count out of a record whose head is a declared pointer cell is
+`byte-view` then `cell-view`, not `cell+ @`: both views are renames that stage
+no operation (`src/compiler/native/hir-word.f` DEF-BYTE-VIEW), so the record
+keeps its layout and the accessor keeps its single add and load.
