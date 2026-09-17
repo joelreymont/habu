@@ -41,12 +41,12 @@ variable PROC-ENV-N
 variable PROC-ENV-OFF
 variable PROC-ENV-I
 variable PROC-PATH-I
-variable PROC-ENV-TABLE-A
-variable PROC-ENV-BUF-A
+TYPED-VARIABLE PROC-ENV-TABLE-A ptr ptr u8
+TYPED-VARIABLE PROC-ENV-BUF-A ptr u8
 variable PROC-ENV-DEF-N
 variable PROC-ENV-DEF-OFF
-variable PROC-ENV-DEF-TABLE-A
-variable PROC-ENV-DEF-BUF-A
+TYPED-VARIABLE PROC-ENV-DEF-TABLE-A ptr ptr u8
+TYPED-VARIABLE PROC-ENV-DEF-BUF-A ptr u8
 variable PROC-ENV-CAP-N                  \ 0 until the parent envp has been measured
 variable PROC-ENV-BUF-CAP-N
 variable PROC-ENV-INHERITED-N            \ the parent envp's entry count, as measured
@@ -151,10 +151,10 @@ false REGISTERED !
    0 >OFF PROC-ENV-OFF !
    0 >COUNT PROC-ENV-DEF-N !
    0 >OFF PROC-ENV-DEF-OFF !
-   PROC-ENV-TABLE-A 0 ptr-field PROC-ENV-CAP 1+ cells RELEASE-MAPPING
-   PROC-ENV-BUF-A 0 ptr-field PROC-ENV-BUF-CAP RELEASE-MAPPING
-   PROC-ENV-DEF-TABLE-A 0 ptr-field PROC-ENV-EXTRA 1+ cells RELEASE-MAPPING
-   PROC-ENV-DEF-BUF-A 0 ptr-field PROC-ENV-EXTRA-BYTES RELEASE-MAPPING
+   PROC-ENV-TABLE-A PROC-ENV-CAP 1+ cells RELEASE-MAPPING
+   PROC-ENV-BUF-A PROC-ENV-BUF-CAP RELEASE-MAPPING
+   PROC-ENV-DEF-TABLE-A PROC-ENV-EXTRA 1+ cells RELEASE-MAPPING
+   PROC-ENV-DEF-BUF-A PROC-ENV-EXTRA-BYTES RELEASE-MAPPING
    0 PROC-ENV-CAP-N !
    0 PROC-ENV-BUF-CAP-N !
    0 PROC-ENV-INHERITED-N !
@@ -182,30 +182,24 @@ public
 CAST: PROC-SEG>LEN ( NUM:byte-len -- len )
 CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 
-: PROC-ENV-TABLE-A-FIELD ( -- ptr ptr a )
-   PROC-ENV-TABLE-A 0 ptr-field ;
+: PROC-ENV-TABLE@ ( -- ptr ptr u8 )
+   PROC-ENV-TABLE-A @ ;
 
-: PROC-ENV-TABLE@ ( -- ptr a )
-   PROC-ENV-TABLE-A-FIELD @ ;
+: PROC-ENV-TABLE! ( ptr ptr u8 -- )
+   PROC-ENV-TABLE-A ! ;
 
-: PROC-ENV-TABLE! ( ptr a -- )
-   PROC-ENV-TABLE-A-FIELD ! ;
-
-: PROC-ENV-TABLE ( -- ptr a )
+: PROC-ENV-TABLE ( -- ptr ptr u8 )
    PROC-ENV-TABLE@ 0= if
       PROC-ENV-LIFECYCLE:REGISTER
       PROC-ENV-CAP 1 + >COUNT MEM-ALLOC-CELLS PROC-ENV-TABLE!
    then
    PROC-ENV-TABLE@ ;
 
-: PROC-ENV-BUF-A-FIELD ( -- ptr ptr u8 )
-   PROC-ENV-BUF-A 0 ptr-field ;
-
 : PROC-ENV-BUF@ ( -- ptr u8 )
-   PROC-ENV-BUF-A-FIELD @ ;
+   PROC-ENV-BUF-A @ ;
 
 : PROC-ENV-BUF! ( ptr u8 -- )
-   PROC-ENV-BUF-A-FIELD ! ;
+   PROC-ENV-BUF-A ! ;
 
 \ PROC-ENV-BUF-CAP is the measured envp bytes plus a positive constant, so it is
 \ always positive: MEM:BYTES-ALLOC-LEN narrows the raw size to the validated
@@ -218,30 +212,24 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    then
    PROC-ENV-BUF@ ;
 
-: PROC-ENV-DEF-TABLE-A-FIELD ( -- ptr ptr a )
-   PROC-ENV-DEF-TABLE-A 0 ptr-field ;
+: PROC-ENV-DEF-TABLE@ ( -- ptr ptr u8 )
+   PROC-ENV-DEF-TABLE-A @ ;
 
-: PROC-ENV-DEF-TABLE@ ( -- ptr a )
-   PROC-ENV-DEF-TABLE-A-FIELD @ ;
+: PROC-ENV-DEF-TABLE! ( ptr ptr u8 -- )
+   PROC-ENV-DEF-TABLE-A ! ;
 
-: PROC-ENV-DEF-TABLE! ( ptr a -- )
-   PROC-ENV-DEF-TABLE-A-FIELD ! ;
-
-: PROC-ENV-DEF-TABLE ( -- ptr a )
+: PROC-ENV-DEF-TABLE ( -- ptr ptr u8 )
    PROC-ENV-DEF-TABLE@ 0= if
       PROC-ENV-LIFECYCLE:REGISTER
       PROC-ENV-EXTRA 1 + >COUNT MEM-ALLOC-CELLS PROC-ENV-DEF-TABLE!
    then
    PROC-ENV-DEF-TABLE@ ;
 
-: PROC-ENV-DEF-BUF-A-FIELD ( -- ptr ptr u8 )
-   PROC-ENV-DEF-BUF-A 0 ptr-field ;
-
 : PROC-ENV-DEF-BUF@ ( -- ptr u8 )
-   PROC-ENV-DEF-BUF-A-FIELD @ ;
+   PROC-ENV-DEF-BUF-A @ ;
 
 : PROC-ENV-DEF-BUF! ( ptr u8 -- )
-   PROC-ENV-DEF-BUF-A-FIELD ! ;
+   PROC-ENV-DEF-BUF-A ! ;
 
 : PROC-ENV-DEF-BUF ( -- ptr u8 )
    PROC-ENV-DEF-BUF@ 0= if
@@ -268,7 +256,7 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    0 >COUNT PROC-ENV-DEF-N !
    0 >OFF PROC-ENV-DEF-OFF ! ;
 
-: PROC-ENV-SLOT ( idx -- ptr a ) {: idx :}
+: PROC-ENV-SLOT ( idx -- ptr ptr u8 ) {: idx :}
    idx IDX>N 0 < if E-PROC-ENV throw then
    idx IDX>N PROC-ENV-CAP > if E-PROC-ENV throw then
    idx IDX>N cells PROC-ENV-TABLE + ;
@@ -326,7 +314,7 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    PROC-ENV-N @ COUNT>N >IDX PROC-ENV-SLOT !
    PROC-ENV-N @ COUNT>N 1+ >COUNT PROC-ENV-N ! ;
 
-: PROC-ENV-DEF-SLOT ( idx -- ptr a ) {: idx:idx :}
+: PROC-ENV-DEF-SLOT ( idx -- ptr ptr u8 ) {: idx:idx :}
    idx IDX>N 0 < if E-PROC-ENV throw then
    idx IDX>N PROC-ENV-EXTRA > if E-PROC-ENV throw then
    idx IDX>N cells PROC-ENV-DEF-TABLE + ;
@@ -420,8 +408,10 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    PROC-ENV-DEF-BUF off OFF>N + PROC-ENV-DEF-INSTALL-Z
    off OFF>N nameu LEN>N valu LEN>N + 2 + + >OFF PROC-ENV-DEF-OFF ! ;
 
-: PROC-ENV-PREPARE ( -- ptr a )
-   0 PROC-ENV-N @ COUNT>N >IDX PROC-ENV-SLOT !
+\ The envp array the child receives ends at a null entry; the declared null
+\ pointer spells it, because the table now holds `ptr u8` and not a bare cell.
+: PROC-ENV-PREPARE ( -- ptr ptr u8 )
+   NULL-PTR PROC-ENV-N @ COUNT>N >IDX PROC-ENV-SLOT !
    PROC-ENV-TABLE ;
 
 : PROC-ENV-INHERIT-ONE ( idx -- idx ) {: idx :}

@@ -54,18 +54,15 @@ variable MAC-WANT-N
 \ groups or repeat counts that fill it. The cursor refuses to run past the
 \ target's capacity, so a mistyped fixture fails here and not inside libcrypto.
 
-variable FILL-CELL
+TYPED-VARIABLE FILL-CELL ptr u8
 variable FILL-CAP
 variable FILL-N
 
-: FILL-FIELD ( -- ptr ptr u8 )
-   FILL-CELL 0 ptr-field ;
-
 : FILL-AT ( -- ptr u8 )
-   FILL-FIELD @ ;
+   FILL-CELL @ ;
 
 : INTO ( ptr u8 n -- ) {: target cap:n :}
-   target FILL-FIELD !
+   target FILL-CELL !
    cap FILL-CAP !
    0 FILL-N ! ;
 

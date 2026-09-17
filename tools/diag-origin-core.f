@@ -19,8 +19,8 @@ $40000 constant DO-FILE-CAP
 create DO-NUM-BUF DO-NUM-CAP allot
 create DO-ONE 1 allot
 
-variable DO-FILE-A
-variable DO-SRC-A
+TYPED-VARIABLE DO-FILE-A ptr u8
+TYPED-VARIABLE DO-SRC-A ptr u8
 variable DO-SRC-U
 variable DO-X
 variable DO-LINE
@@ -29,7 +29,7 @@ variable DO-OUT-X
 variable DO-NUM-I
 
 variable DO-TOK-K
-variable DO-TOK-A
+TYPED-VARIABLE DO-TOK-A ptr u8
 variable DO-TOK-U
 variable DO-TOK-BYTE
 variable DO-TOK-LINE
@@ -42,7 +42,7 @@ variable DO-ORIG-LINE
 variable DO-ORIG-COL
 variable DO-ORIG-BYTE
 variable DO-ORIG-POS
-variable DO-OUT-A
+TYPED-VARIABLE DO-OUT-A ptr u8
 variable DO-OUT-U
 variable DO-OUT-CAP
 variable DO-OUT-BUF?
@@ -53,14 +53,11 @@ variable DO-OUT-BUF?
 : DO-FALSE ( -- bool )
    DO-TRUE 0= ;
 
-: DO-FILE-A-FIELD ( -- ptr ptr u8 )
-   DO-FILE-A 0 ptr-field ;
-
 : DO-FILE-A@ ( -- ptr u8 )
-   DO-FILE-A-FIELD @ ;
+   DO-FILE-A @ ;
 
 : DO-FILE-A! ( ptr u8 -- )
-   DO-FILE-A-FIELD ! ;
+   DO-FILE-A ! ;
 
 : DO-ALLOC-FILE-BUF ( -- )
    DO-FILE-A @ 0= if
@@ -71,32 +68,23 @@ variable DO-OUT-BUF?
    DO-ALLOC-FILE-BUF
    DO-FILE-A@ ;
 
-: DO-SRC-A-FIELD ( -- ptr ptr u8 )
-   DO-SRC-A 0 ptr-field ;
-
 : DO-SRC-A@ ( -- ptr u8 )
-   DO-SRC-A-FIELD @ ;
+   DO-SRC-A @ ;
 
 : DO-SRC-A! ( ptr u8 -- )
-   DO-SRC-A-FIELD ! ;
-
-: DO-TOK-A-FIELD ( -- ptr ptr u8 )
-   DO-TOK-A 0 ptr-field ;
+   DO-SRC-A ! ;
 
 : DO-TOK-A@ ( -- ptr u8 )
-   DO-TOK-A-FIELD @ ;
+   DO-TOK-A @ ;
 
 : DO-TOK-A! ( ptr u8 -- )
-   DO-TOK-A-FIELD ! ;
-
-: DO-OUT-A-FIELD ( -- ptr ptr u8 )
-   DO-OUT-A 0 ptr-field ;
+   DO-TOK-A ! ;
 
 : DO-OUT-A@ ( -- ptr u8 )
-   DO-OUT-A-FIELD @ ;
+   DO-OUT-A @ ;
 
 : DO-OUT-A! ( ptr u8 -- )
-   DO-OUT-A-FIELD ! ;
+   DO-OUT-A ! ;
 
 : DO-FAIL ( ptr u8 n n -- )
    die ;

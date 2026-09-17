@@ -42,7 +42,8 @@ private
 1 constant ROW-PKG              \ FAM: `PPRIM:` row, closed by `PPRIM;` or `CLOSE-PRIVATE`
 
 variable CAP
-variable TOK-N   variable SRC-A   variable SRC-U   variable POS
+TYPED-VARIABLE SRC-A ptr u8   \ start of the source span being lexed
+variable TOK-N   variable SRC-U   variable POS
 variable LINE-N  variable COL-N  variable START  variable START-LINE  variable START-COL
 variable CSTART
 variable CLEN
@@ -56,12 +57,14 @@ variable FOFF   variable FLEN   \ current row field: offset into the source, len
 variable R-BYTE variable R-LINE variable R-COL   \ opener site of the row being scanned
 
 create KIND-V VEC-HEADER-CELLS cells allot
-create ADDR-V VEC-HEADER-CELLS cells allot
+\ The two address columns hold starts into the linted source, so their vector
+\ headers are declared pointer storage and carry the element type.
+VEC-HEADER-CELLS TYPED-BUFFER ADDR-V ptr u8
 create LEN-V VEC-HEADER-CELLS cells allot
 create BYTE-V VEC-HEADER-CELLS cells allot
 create LINE-V VEC-HEADER-CELLS cells allot
 create COL-V VEC-HEADER-CELLS cells allot
-create CADDR-V VEC-HEADER-CELLS cells allot
+VEC-HEADER-CELLS TYPED-BUFFER CADDR-V ptr u8
 create CLEN-V VEC-HEADER-CELLS cells allot
 
 \ ---- raw table cell -> NUM role bridges for the typed VEC surface ---------
@@ -91,14 +94,11 @@ create CLEN-V VEC-HEADER-CELLS cells allot
       misaligned OF E-VEC-BOUNDS throw ENDOF
    ;MATCH ;
 
-: SRC-FIELD ( -- ptr ptr u8 )
-   SRC-A 0 ptr-field ;
-
 : SRC@ ( -- ptr u8 )
-   SRC-FIELD @ ;
+   SRC-A @ ;
 
 : SRC! ( ptr u8 -- )
-   SRC-FIELD ! ;
+   SRC-A ! ;
 
 : INIT-ONE ( ptr a -- )
    MIN-CAP N>ITEM VEC:INIT ;
@@ -108,23 +108,23 @@ create CLEN-V VEC-HEADER-CELLS cells allot
 
 : INIT-VECTORS ( -- )
    KIND-V INIT-ONE
-   ADDR-V INIT-ONE
+   0 ADDR-V INIT-ONE
    LEN-V INIT-ONE
    BYTE-V INIT-ONE
    LINE-V INIT-ONE
    COL-V INIT-ONE
-   CADDR-V INIT-ONE
+   0 CADDR-V INIT-ONE
    CLEN-V INIT-ONE
    MIN-CAP CAP ! ;
 
 : CLEAR-VECTORS ( -- )
    KIND-V CLEAR-ONE
-   ADDR-V CLEAR-ONE
+   0 ADDR-V CLEAR-ONE
    LEN-V CLEAR-ONE
    BYTE-V CLEAR-ONE
    LINE-V CLEAR-ONE
    COL-V CLEAR-ONE
-   CADDR-V CLEAR-ONE
+   0 CADDR-V CLEAR-ONE
    CLEN-V CLEAR-ONE ;
 
 : RESET-TABLES ( -- )
@@ -141,12 +141,12 @@ create CLEN-V VEC-HEADER-CELLS cells allot
 
 : ADD ( n ptr u8 n n n n ptr u8 n -- ) {: kind:n a:ptr u:n byte:n line:n col:n ca:ptr cu:n :}
    kind KIND-V VEC:PUSH drop
-   a ADDR-V VEC:PUSH drop
+   a 0 ADDR-V VEC:PUSH drop
    u LEN-V VEC:PUSH drop
    byte BYTE-V VEC:PUSH drop
    line LINE-V VEC:PUSH drop
    col COL-V VEC:PUSH drop
-   ca CADDR-V VEC:PUSH drop
+   ca 0 CADDR-V VEC:PUSH drop
    cu CLEN-V VEC:PUSH drop
    SYNC-COUNT ;
 
@@ -163,11 +163,11 @@ public
    TOK-N @ ;
 
 : TOKEN ( n -- ptr u8 n ) {: k:n :}
-   ADDR-V k N>INDEX VEC:@
+   0 ADDR-V k N>INDEX VEC:@
    LEN-V k N>INDEX VEC:@ ;
 
 : CONTENT ( n -- ptr u8 n ) {: k:n :}
-   CADDR-V k N>INDEX VEC:@
+   0 CADDR-V k N>INDEX VEC:@
    CLEN-V k N>INDEX VEC:@ ;
 
 : KIND@ ( n -- n ) {: k:n :}

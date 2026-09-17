@@ -28,7 +28,7 @@ $DFFF constant SURROGATE-LAST
 35 constant HASH
 46 constant DOT
 
-variable TRUTH
+TYPED-VARIABLE TRUTH ptr u8
 variable VERIFY-PENDING
 variable VERIFY-PENDING-LO
 variable VERIFY-PENDING-BIT
@@ -114,7 +114,7 @@ create OUTPUT-LOCK 65 allot
 
 : TRUTH+ ( n n -- ) {: cp:n bit:n :}
    cp SCALAR {: safe:n :}
-   TRUTH 0 ptr-field @ safe + dup c@ bit or swap c! ;
+   TRUTH @ safe + dup c@ bit or swap c! ;
 
 : MARK-RANGE-AT ( n n n -- ) {: cp:n hi:n bit:n :}
    cp begin dup hi <= while
@@ -250,7 +250,7 @@ create OUTPUT-LOCK 65 allot
    [: UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGE@ ;] CHECK-TABLE ;
 
 : TRUTH-BIT? ( n n -- bool ) {: cp:n bit:n :}
-   TRUTH 0 ptr-field @ cp + c@ bit and 0= 0= ;
+   TRUTH @ cp + c@ bit and 0= 0= ;
 
 : SAME-BOOL? ( bool bool -- bool )
    if else 0= then ;
@@ -280,7 +280,7 @@ public
 : VERIFY ( -- )
    CHECK-DIGESTS
    CHECK-OUTPUT-LOCK
-   SCALAR-COUNT MEM-ALLOC-BYTES drop TRUTH 0 ptr-field !
+   SCALAR-COUNT MEM-ALLOC-BYTES drop TRUTH !
    LOAD-UNICODE-TRUTH
    LOAD-PROPERTY-TRUTH
    CHECK-TABLES

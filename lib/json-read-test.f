@@ -24,7 +24,6 @@ create JRT-STATE-A JR:STORAGE-BYTES allot
 create JRT-STATE-A-AFTER JRT-CANARY ,
 create JRT-STATE-B JR:STORAGE-BYTES allot
 create JRT-STATE-B-AFTER JRT-CANARY ,
-create JRT-ZERO-PTR-CELL 0 ,
 \ Two storage blocks, each behind a one-byte allot. `create` rounds its data
 \ field up to a cell, so INIT accepts both; an engine that did not round could
 \ not place both on a cell (STORAGE-BYTES is a whole number of cells).
@@ -45,11 +44,14 @@ TYPED-VARIABLE JRT-WRITER JSON-WRITE:writer
 : JRT-OPEN-B ( ptr u8 n -- JR:reader )
    JRT-STATE-B JR:STORAGE-BYTES 2swap JR:INIT ;
 
+\ The null address the reader must refuse, taken from the core's declared null
+\ slot: a `create`d cell read back through `ptr-field` is an undeclared raw
+\ storage cell and the checker refuses the pointer it publishes.
 : JRT-ZERO-PTR ( -- ptr a )
-   JRT-ZERO-PTR-CELL 0 ptr-field @ ;
+   NULL-PTR ;
 
 : JRT-ZERO-U8 ( -- ptr u8 )
-   JRT-ZERO-PTR-CELL 0 ptr-field @ ;
+   NULL-PTR ;
 
 : JRT-REJECTED ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 = TFALSE ;

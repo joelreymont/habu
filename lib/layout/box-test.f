@@ -11,11 +11,10 @@ require lib/layout/box.f
 111 constant BOXT-P0
 222 constant BOXT-P1
 
-\ a kept box pointer (ptr-field idiom, so it survives across later allocations)
-variable BOXT-KEEP
-: BOXT-KEEP-FIELD ( -- ptr ptr a )   BOXT-KEEP 0 ptr-field ;
-: BOXT-KEEP@ ( -- ptr a )   BOXT-KEEP-FIELD @ ;
-: BOXT-KEEP! ( ptr a -- )   BOXT-KEEP-FIELD ! ;
+\ a kept box pointer in a declared pointer cell, so it survives later allocations
+TYPED-VARIABLE BOXT-KEEP ptr n
+: BOXT-KEEP@ ( -- ptr n )   BOXT-KEEP @ ;
+: BOXT-KEEP! ( ptr n -- )   BOXT-KEEP ! ;
 
 : BOXT-ZERO-INIT ( -- )         \ a fresh record reads tag 0 and every payload 0
    BOXT-M BOX-ALLOC {: p:ptr :}

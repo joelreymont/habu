@@ -11,7 +11,7 @@ $100 constant GJA-LINE-MAX
 create GJA-IN GJA-IN-CAP allot
 create GJA-SRC GJA-SRC-CAP allot
 create GJA-PATH GJA-PATH-CAP allot
-create GJA-LINE-A GJA-LINE-MAX cells allot
+GJA-LINE-MAX TYPED-BUFFER GJA-LINE-A ptr u8   \ one line start per captured line
 create GJA-LINE-U GJA-LINE-MAX cells allot
 
 variable GJA-FD
@@ -42,14 +42,11 @@ variable GJA-DIRECT
 : GJA-FALSE ( -- bool )
    GJA-TRUE 0= ;
 
-: GJA-LINE-A-FIELD ( n -- ptr ptr u8 )
-   cells GJA-LINE-A + 0 ptr-field ;
-
 : GJA-LINE-A@ ( n -- ptr u8 )
-   GJA-LINE-A-FIELD @ ;
+   GJA-LINE-A @ ;
 
 : GJA-LINE-A! ( ptr u8 n -- )
-   GJA-LINE-A-FIELD ! ;
+   GJA-LINE-A ! ;
 
 : GJA-FAIL ( ptr u8 n -- )
    1 die ;

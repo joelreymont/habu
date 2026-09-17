@@ -39,9 +39,9 @@ PROC-ENV-EXTRA-BYTES constant PROC-CMD-ENV-BUF-CAP
 32768 constant PROC-CMD-OUT-CAP
 32768 constant PROC-CMD-ERR-CAP
 
-create PROC-CMD-ARG-TABLE ARG-MAX cells allot
+ARG-MAX TYPED-BUFFER PROC-CMD-ARG-TABLE ptr u8    \ one zero-terminated argument address per slot
 create PROC-CMD-ARG-BUF PROC-CMD-ARG-BUF-CAP allot
-create PROC-CMD-ENV-TABLE PROC-CMD-ENV-MAX cells allot
+PROC-CMD-ENV-MAX TYPED-BUFFER PROC-CMD-ENV-TABLE ptr u8   \ one NAME=VALUE address per slot
 create PROC-CMD-ENV-BUF PROC-CMD-ENV-BUF-CAP allot
 create PROC-CMD-IN PROC-CMD-IN-CAP allot
 create PROC-CMD-OUT PROC-CMD-OUT-CAP allot
@@ -89,7 +89,7 @@ private
 : PROC-CMD-ARG-SLOT ( idx -- ptr ptr u8 ) {: idx :}
    idx IDX>N 0 < if E-PROC-OUTPUT throw then
    idx IDX>N ARG-MAX >= if E-PROC-OUTPUT throw then
-   PROC-CMD-ARG-TABLE idx IDX>N ptr-field ;
+   idx IDX>N PROC-CMD-ARG-TABLE ;
 
 : PROC-CMD-CHECK-ARG-EXTRA ( -- )
    PROC-CMD-ARG-N @ COUNT>N ARG-MAX >= if E-PROC-OUTPUT throw then ;
@@ -118,7 +118,7 @@ private
 : PROC-CMD-ENV-SLOT ( idx -- ptr ptr u8 ) {: idx :}
    idx IDX>N 0 < if E-PROC-ENV throw then
    idx IDX>N PROC-CMD-ENV-MAX >= if E-PROC-ENV throw then
-   PROC-CMD-ENV-TABLE idx IDX>N ptr-field ;
+   idx IDX>N PROC-CMD-ENV-TABLE ;
 
 : PROC-CMD-CHECK-ENV-EXTRA ( -- )
    PROC-CMD-ENV-N @ COUNT>N PROC-CMD-ENV-MAX >= if E-PROC-ENV throw then ;

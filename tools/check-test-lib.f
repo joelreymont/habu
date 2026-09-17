@@ -95,8 +95,8 @@ create CLI-HB FS-PATH-CAP allot
 create CAP-OUT-PATH FS-PATH-CAP allot
 create CAP-ERR-PATH FS-PATH-CAP allot
 
-variable OUT-A
-variable ERR-A
+TYPED-VARIABLE OUT-A ptr u8
+TYPED-VARIABLE ERR-A ptr u8
 variable TMP-ROOT-U
 variable BAD-U
 variable DIRECT-U
@@ -171,23 +171,17 @@ variable START-NS
    CLI-ROOT$ name nameu CLI-LINK-PATH JOIN-PATH CLI-LINK-U !
    CLI-TARGET CLI-TARGET-U @ CLI-LINK-PATH CLI-LINK-U @ MAKE-SYMLINK ;
 
-: OUT-A-FIELD ( -- ptr ptr u8 )
-   OUT-A 0 ptr-field ;
-
-: ERR-A-FIELD ( -- ptr ptr u8 )
-   ERR-A 0 ptr-field ;
-
 : OUT-A@ ( -- ptr u8 )
-   OUT-A-FIELD @ ;
+   OUT-A @ ;
 
 : ERR-A@ ( -- ptr u8 )
-   ERR-A-FIELD @ ;
+   ERR-A @ ;
 
 : OUT-A! ( ptr u8 -- )
-   OUT-A-FIELD ! ;
+   OUT-A ! ;
 
 : ERR-A! ( ptr u8 -- )
-   ERR-A-FIELD ! ;
+   ERR-A ! ;
 
 : CAP-ALLOC ( -- ptr u8 )
    BUF-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;

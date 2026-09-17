@@ -22,42 +22,33 @@ variable REPL-TMP
 variable REPL-CMP
 variable REPL-NUM-L
 create REPL-NUM 32 allot
-variable REPL-SRC-A
+TYPED-VARIABLE REPL-SRC-A ptr u8
 variable REPL-SRC-U
 variable REPL-X
 variable REPL-LINE
-variable REPL-TOK-A
+TYPED-VARIABLE REPL-TOK-A ptr u8
 variable REPL-TOK-U
 variable REPL-TOK-LINE
-variable REPL-ROOT-A
+TYPED-VARIABLE REPL-ROOT-A ptr u8
 variable REPL-ROOT-U
 
-: REPL-ROOT-A-FIELD ( -- ptr ptr u8 )
-   REPL-ROOT-A 0 ptr-field ;
-
-: REPL-SRC-A-FIELD ( -- ptr ptr u8 )
-   REPL-SRC-A 0 ptr-field ;
-
-: REPL-TOK-A-FIELD ( -- ptr ptr u8 )
-   REPL-TOK-A 0 ptr-field ;
-
 : REPL-ROOT-A@ ( -- ptr u8 )
-   REPL-ROOT-A-FIELD @ ;
+   REPL-ROOT-A @ ;
 
 : REPL-SRC-A@ ( -- ptr u8 )
-   REPL-SRC-A-FIELD @ ;
+   REPL-SRC-A @ ;
 
 : REPL-TOK-A@ ( -- ptr u8 )
-   REPL-TOK-A-FIELD @ ;
+   REPL-TOK-A @ ;
 
 : REPL-ROOT-A! ( ptr u8 -- )
-   REPL-ROOT-A-FIELD ! ;
+   REPL-ROOT-A ! ;
 
 : REPL-SRC-A! ( ptr u8 -- )
-   REPL-SRC-A-FIELD ! ;
+   REPL-SRC-A ! ;
 
 : REPL-TOK-A! ( ptr u8 -- )
-   REPL-TOK-A-FIELD ! ;
+   REPL-TOK-A ! ;
 
 : REPL-OUT-FD! ( fd -- )
    REPL-OUT-FD ! ;

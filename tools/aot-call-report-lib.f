@@ -43,7 +43,7 @@ create OUT-BYTE 1 allot
 create JSON-NUM-BUF JSON-NUM-CAP allot
 
 variable REPORT-PATH-U
-variable REPORT-OUT-A
+TYPED-VARIABLE REPORT-OUT-A ptr u8
 variable REPORT-OUT-CAP
 variable REPORT-OUT-U
 variable ACR-FD
@@ -68,14 +68,11 @@ variable JSON-NUM-N
 : REPORT-FALSE ( -- bool )
    0 0= 0= ;
 
-: REPORT-OUT-A-FIELD ( -- ptr ptr u8 )
-   REPORT-OUT-A 0 ptr-field ;
-
 : REPORT-OUT-A@ ( -- ptr u8 )
-   REPORT-OUT-A-FIELD @ ;
+   REPORT-OUT-A @ ;
 
 : REPORT-OUT-A! ( ptr u8 -- )
-   REPORT-OUT-A-FIELD ! ;
+   REPORT-OUT-A ! ;
 
 : REPORT-COPY-BYTES ( ptr u8 ptr u8 n -- ) {: a:ptr dst:ptr u:n :}
    0 begin dup u < while

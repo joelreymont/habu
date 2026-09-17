@@ -21,28 +21,22 @@ variable NUM-I
 variable JSON
 variable OUT-FD
 
-variable FILE-A
+TYPED-VARIABLE FILE-A ptr u8
 variable FILE-U
-variable CUR-A
+TYPED-VARIABLE CUR-A ptr u8
 variable CUR-U
 
-: FILE-A-FIELD ( -- ptr ptr u8 )
-   FILE-A 0 ptr-field ;
-
-: CUR-A-FIELD ( -- ptr ptr u8 )
-   CUR-A 0 ptr-field ;
-
 : FILE-A@ ( -- ptr u8 )
-   FILE-A-FIELD @ ;
+   FILE-A @ ;
 
 : FILE-A! ( ptr u8 -- )
-   FILE-A-FIELD ! ;
+   FILE-A ! ;
 
 : CUR-A@ ( -- ptr u8 )
-   CUR-A-FIELD @ ;
+   CUR-A @ ;
 
 : CUR-A! ( ptr u8 -- )
-   CUR-A-FIELD ! ;
+   CUR-A ! ;
 
 public
 

@@ -9,7 +9,9 @@ require lib/vector.f
 require test/checker-assert.f
 
 create VECT-VEC VEC-HEADER-CELLS cells allot
-create VECT-PTR-VEC VEC-HEADER-CELLS cells allot
+\ The header of a vector OF POINTERS is declared storage: its base carries the
+\ element type (`ptr ptr u8`), which a `create`d cell cannot publish.
+VEC-HEADER-CELLS TYPED-BUFFER VECT-PTR-VEC ptr u8
 create VECT-BIG-VEC VEC-HEADER-CELLS cells allot
 create VECT-REL-VEC VEC-HEADER-CELLS cells allot   \ dedicated header for release/dispose lifecycle tests
 
@@ -20,7 +22,7 @@ variable VECT-IDX-SUM
 
 : VECT-RESET ( -- )                     \ dispose-then-init: re-init of a live header now rejects
    VECT-VEC VEC-DISPOSE  VECT-VEC 2 VEC-CAP-COUNT VEC-INIT
-   VECT-PTR-VEC VEC-DISPOSE  VECT-PTR-VEC 1 VEC-CAP-COUNT VEC-INIT
+   0 VECT-PTR-VEC VEC-DISPOSE  0 VECT-PTR-VEC 1 VEC-CAP-COUNT VEC-INIT
    0 VECT-SUM !
    0 VECT-IDX-SUM ! ;
 
@@ -152,10 +154,10 @@ variable VECT-IDX-SUM
 
 : VECT-POINTER ( -- )
    VECT-RESET
-   s" alpha" drop VECT-PTR-VEC VEC-PUSH-A IDX>N 0 T=
-   VECT-PTR-VEC 0 VEC-IDX VEC-A@ 5 s" alpha" T$=
-   s" beta" drop VECT-PTR-VEC 0 VEC-IDX VEC-A!
-   VECT-PTR-VEC 0 VEC-IDX VEC-A@ 4 s" beta" T$= ;
+   s" alpha" drop 0 VECT-PTR-VEC VEC-PUSH-A IDX>N 0 T=
+   0 VECT-PTR-VEC 0 VEC-IDX VEC-A@ 5 s" alpha" T$=
+   s" beta" drop 0 VECT-PTR-VEC 0 VEC-IDX VEC-A!
+   0 VECT-PTR-VEC 0 VEC-IDX VEC-A@ 4 s" beta" T$= ;
 
 : VECT-EACH-ACC ( idx n -- ) {: ix value :}
    VECT-SUM @ value + VECT-SUM !

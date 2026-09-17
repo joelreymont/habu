@@ -78,7 +78,7 @@ variable SOURCE-PREV
 variable PENDING
 variable PENDING-LO
 variable PENDING-CLASS
-variable PENDING-NAME-A
+TYPED-VARIABLE PENDING-NAME-A ptr u8
 variable PENDING-NAME-U
 
 : FALSE-VALUE ( -- bool )   0 0= 0= ;

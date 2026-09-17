@@ -72,7 +72,7 @@ CK-CACHE-CAP CK-MIN-ROW / constant CK-CACHE-MAX-ROWS
 -6921 constant E-CK-STALE    \ the handle does not own the slot it names (closed, or never opened)
 
 create CK-BUF CK-CAP allot
-create CK-FOLD-A CK-FOLD-N cells allot
+CK-FOLD-N TYPED-BUFFER CK-FOLD-A ptr u8   \ one preimage buffer address per fold slot
 create CK-FOLD-U CK-FOLD-N cells allot
 create CK-FOLD-G CK-FOLD-N cells allot
 create CK-DG 40 allot
@@ -83,9 +83,9 @@ create CK-ROW-BUF CK-ROW-CAP allot
 create CK-CACHE-TMP-BUF FS-PATH-CAP allot
 
 variable CK-GEN
-variable CK-CACHE-BUF-A
-variable CK-CACHE-OUT-A
-variable CK-IDX-BASE
+TYPED-VARIABLE CK-CACHE-BUF-A ptr u8
+TYPED-VARIABLE CK-CACHE-OUT-A ptr u8
+TYPED-VARIABLE CK-IDX-BASE ptr n
 variable CK-CACHE-U
 variable CK-CACHE-OUT-U
 variable CK-CACHE-PATH-U
@@ -150,18 +150,15 @@ DEFTYPE FOLD
 
 private
 
-: CK-SLOT-A-FIELD ( n -- ptr ptr u8 )
-   cells CK-FOLD-A + 0 ptr-field ;
-
 \ CK-CAP is a positive library constant: MEM:BYTES-ALLOC-LEN narrows it to the
 \ validated alloc role before MEM:ALLOC-BYTES, which throws E-MEM-SIZE on any
 \ refusal (unreachable for the constant).
 : CK-SLOT-BUF ( n -- ptr u8 ) {: s:n :}
    s 0= if CK-BUF exit then
-   s CK-SLOT-A-FIELD @ 0= if
-      CK-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop s CK-SLOT-A-FIELD !
+   s CK-FOLD-A @ 0= if
+      CK-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop s CK-FOLD-A !
    then
-   s CK-SLOT-A-FIELD @ ;
+   s CK-FOLD-A @ ;
 
 : CK-SLOT-U@ ( n -- n )
    cells CK-FOLD-U + @ ;
@@ -274,14 +271,11 @@ public
 
 private
 
-: CK-CACHE-BUF-FIELD ( -- ptr ptr u8 )
-   CK-CACHE-BUF-A 0 ptr-field ;
-
 : CK-CACHE-BUF@ ( -- ptr u8 )
-   CK-CACHE-BUF-FIELD @ ;
+   CK-CACHE-BUF-A @ ;
 
 : CK-CACHE-BUF! ( ptr u8 -- )
-   CK-CACHE-BUF-FIELD ! ;
+   CK-CACHE-BUF-A ! ;
 
 \ CK-CACHE-CAP is a positive library constant: MEM:BYTES-ALLOC-LEN narrows the raw
 \ size to the validated alloc role before MEM:ALLOC-BYTES, throwing E-MEM-SIZE on
@@ -294,14 +288,11 @@ private
 
 \ Second cap-sized buffer used only to assemble the compacted image before the
 \ atomic write; kept off the static image the same way as the load buffer.
-: CK-CACHE-OUT-FIELD ( -- ptr ptr u8 )
-   CK-CACHE-OUT-A 0 ptr-field ;
-
 : CK-CACHE-OUT@ ( -- ptr u8 )
-   CK-CACHE-OUT-FIELD @ ;
+   CK-CACHE-OUT-A @ ;
 
 : CK-CACHE-OUT! ( ptr u8 -- )
-   CK-CACHE-OUT-FIELD ! ;
+   CK-CACHE-OUT-A ! ;
 
 : CK-CACHE-OUT ( -- ptr u8 )
    CK-CACHE-OUT@ 0= if
@@ -311,14 +302,13 @@ private
 
 \ Path-ordered offset index over the loaded rows: one cell per row, bounded by
 \ CK-CACHE-MAX-ROWS, allocated once through the checked MEM: cell surface.
-: CK-IDX-FIELD ( -- ptr ptr a )
-   CK-IDX-BASE 0 ptr-field ;
-
-: CK-IDX ( -- ptr a )
-   CK-IDX-FIELD @ 0= if
-      CK-CACHE-MAX-ROWS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS CK-IDX-FIELD !
+\ The index cells hold row offsets, so the slot declares `ptr n`: a plain cell
+\ read back as `ptr a` is the raw-storage pun the checker refuses.
+: CK-IDX ( -- ptr n )
+   CK-IDX-BASE @ 0= if
+      CK-CACHE-MAX-ROWS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS CK-IDX-BASE !
    then
-   CK-IDX-FIELD @ ;
+   CK-IDX-BASE @ ;
 
 : CK-IDX-AT@ ( n -- n ) {: i:n :}
    CK-IDX i cells + @ ;

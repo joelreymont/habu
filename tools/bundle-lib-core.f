@@ -27,7 +27,7 @@ $7A constant BL-Z-LOW
 $F000 constant BL-S-IFMT
 $8000 constant BL-S-IFREG
 
-create BL-MOD-A BL-MOD-MAX cells allot
+BL-MOD-MAX TYPED-BUFFER BL-MOD-A-SLOT ptr u8   \ one module path start per slot
 create BL-MOD-U BL-MOD-MAX cells allot
 create BL-PATH BL-PATH-CAP allot
 create BL-TMP BL-PATH-CAP allot
@@ -37,10 +37,10 @@ create BL-IO BL-IO-CAP allot
 create BL-STAT BL-STAT-CAP allot
 
 variable BL-NMOD
-variable BL-OUT-A
+TYPED-VARIABLE BL-OUT-A ptr u8
 variable BL-OUT-U
 variable BL-OUT-SET
-variable BL-SCRIPT-A
+TYPED-VARIABLE BL-SCRIPT-A ptr u8
 variable BL-SCRIPT-U
 variable BL-PATH-LEN
 variable BL-TMP-LEN
@@ -163,13 +163,13 @@ variable BL-RD-N
    u 1 > if a c@ BL-DASH = else BL-FALSE then ;
 
 : BL-MOD-A! ( ptr u8 n -- ) {: a:ptr idx:n :}
-   a idx cells BL-MOD-A + ! ;
+   a idx BL-MOD-A-SLOT ! ;
 
 : BL-MOD-U! ( n n -- ) {: u:n idx:n :}
    u idx cells BL-MOD-U + ! ;
 
 : BL-MOD-A@ ( n -- ptr u8 ) {: idx:n :}
-   idx cells BL-MOD-A + @ ;
+   idx BL-MOD-A-SLOT @ ;
 
 : BL-MOD-U@ ( n -- n ) {: idx:n :}
    idx cells BL-MOD-U + @ ;
@@ -196,9 +196,9 @@ variable BL-RD-N
 : BL-RESET ( -- )
    0 BL-NMOD !
    0 BL-OUT-SET !
-   0 BL-OUT-A !
+   NULL-PTR BL-OUT-A !
    0 BL-OUT-U !
-   0 BL-SCRIPT-A !
+   NULL-PTR BL-SCRIPT-A !
    0 BL-SCRIPT-U !
    -1 BL-OUT-FD !
    -1 BL-IN-FD !

@@ -437,7 +437,7 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 \    name   the definition's name, as the capture saw it
 create NAMES-PATH OUTPUT-CAP allot
 variable NAMES-PATH-U
-variable NAMES-A
+TYPED-VARIABLE NAMES-A ptr u8
 variable NAMES-CAP
 variable NAMES-U
 
@@ -455,9 +455,8 @@ variable NAMES-U
 \ The buffer address is held in a typed cell: a plain variable would hand
 \ BYTE-COPY a bare n where it wants a byte pointer, the same reason env-base.f
 \ keeps ENV-QA behind a ptr-field.
-: NAMES-A-FIELD ( -- ptr ptr u8 ) NAMES-A 0 ptr-field ;
-: NAMES-A@ ( -- ptr u8 ) NAMES-A-FIELD @ ;
-: NAMES-A! ( ptr u8 -- ) NAMES-A-FIELD ! ;
+: NAMES-A@ ( -- ptr u8 ) NAMES-A @ ;
+: NAMES-A! ( ptr u8 -- ) NAMES-A ! ;
 
 : NAMES+ ( ptr u8 n -- ) {: a:ptr u:n :}
    NAMES-U @ u + NAMES-CAP @ > if

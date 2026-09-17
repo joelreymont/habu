@@ -14,7 +14,7 @@ require test/checker-assert.f
 
 variable STR-TEST-N
 variable STR-TEST-FAIL
-variable STR-TEST-SPLIT-A
+TYPED-VARIABLE STR-TEST-SPLIT-A ptr u8
 variable STR-TEST-SPLIT-U
 variable STR-TEST-SPLIT-NEXT
 variable STR-TEST-SPLIT-OK

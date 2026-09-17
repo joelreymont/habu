@@ -6,7 +6,9 @@ $10000 constant TMAX            \ largest linted source (src/core/checker.f) + h
 77 constant E-LINT-TOKEN-CAP
 s" E-LINT-TOKEN-CAP" E-LINT-TOKEN-CAP LINT-CODE-NAME+
 
-create TOFF TMAX cells allot
+\ Each token's start is an address into the linted source, so the starts are
+\ declared pointer storage; the lengths and line flags stay plain cells.
+TMAX TYPED-BUFFER TOFF ptr u8
 create TLEN TMAX cells allot
 create TBOL TMAX cells allot
 
@@ -19,14 +21,11 @@ variable BOL
 : SP? ( n -- bool )
    dup 32 = over 9 = or swap 10 = or ;
 
-: T-OFF-FIELD ( n -- ptr ptr u8 )
-   cells TOFF + 0 ptr-field ;
-
 : T-OFF@ ( n -- ptr u8 )
-   T-OFF-FIELD @ ;
+   TOFF @ ;
 
 : T-OFF! ( ptr u8 n -- ) {: a:ptr k :}
-   a k T-OFF-FIELD ! ;
+   a k TOFF ! ;
 
 : T-LEN@ ( n -- n )
    cells TLEN + @ ;

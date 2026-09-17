@@ -26,7 +26,8 @@ undefine IMG-LOAD-TARGET-LAYOUT
 
 package IMAGE-DUMP
 
-variable IB   variable IL                    \ image buffer, length
+TYPED-VARIABLE IB ptr u8                     \ image buffer
+variable IL                                  \ image length
 variable IFD
 1024 constant IPATH-CAP
 create IPATH IPATH-CAP 1 + allot
@@ -43,24 +44,23 @@ variable RUNV  variable BESTO  variable BESTN
 variable XTBASE
 variable HN  variable ISZ
 variable A-N  variable CMP-NAME-LEN-DIFF  variable CMP-OFF-DIFF  variable CMP-IDX
-variable CMP-B0-P  variable CMP-B0-U  variable CMP-B0-S  variable CMP-B0-L
-variable CMP-BAD-IDX  variable CMP-BAD-P  variable CMP-BAD-U  variable CMP-BAD-L
+TYPED-VARIABLE CMP-B0-P ptr u8
+variable CMP-B0-U  variable CMP-B0-S  variable CMP-B0-L
+TYPED-VARIABLE CMP-BAD-P ptr u8
+variable CMP-BAD-IDX  variable CMP-BAD-U  variable CMP-BAD-L
 variable PCV
 variable NUM-I  variable NUM-ACC  variable NUM-DIG
 
-create A-NAME-P DICT-CAP cells allot
+DICT-CAP TYPED-BUFFER A-NAME-P-SLOT ptr u8   \ one dictionary name start per row
 create A-NAME-U DICT-CAP cells allot
 create A-START DICT-CAP cells allot
 create A-LEN DICT-CAP cells allot
 
-: IB-FIELD ( -- ptr ptr u8 )
-   IB 0 ptr-field ;
-
 : IB@ ( -- ptr u8 )
-   IB-FIELD @ ;
+   IB @ ;
 
 : IB! ( ptr u8 -- )
-   IB-FIELD ! ;
+   IB ! ;
 
 \ Checked -1 validation refines the file mmap result; retire with
 \ habu-builder-trust-rows-c5d41af6 when syscall-result refinement is typed.
@@ -351,11 +351,11 @@ private
    LOAD-SNAPSHOT
    HAS-SNAP @ 0= if NO-SNAP-XTBASE XTBASE !  FIND-DICT then ;
 
-: A-NAME-P! ( ptr u8 n -- ) cells A-NAME-P + ! ;
+: A-NAME-P! ( ptr u8 n -- ) A-NAME-P-SLOT ! ;
 : A-NAME-U! ( n n -- ) cells A-NAME-U + ! ;
 : A-START! ( n n -- ) cells A-START + ! ;
 : A-LEN! ( n n -- ) cells A-LEN + ! ;
-: A-NAME-P@ ( n -- ptr u8 ) cells A-NAME-P + @ ;
+: A-NAME-P@ ( n -- ptr u8 ) A-NAME-P-SLOT @ ;
 : A-NAME-U@ ( n -- n ) cells A-NAME-U + @ ;
 : A-START@ ( n -- n ) cells A-START + @ ;
 : A-LEN@ ( n -- n ) cells A-LEN + @ ;
@@ -483,7 +483,7 @@ private
    CMP-NAME-LEN-DIFF @ 0= if
       CMP-IDX @ A-N @ <> if
          CMP-IDX @ CMP-BAD-IDX !
-         0 CMP-BAD-P !
+         NULL-PTR CMP-BAD-P !
          0 CMP-BAD-U !
          0 CMP-BAD-L !
          -1 CMP-NAME-LEN-DIFF !
@@ -494,7 +494,7 @@ private
    CMP-NAME-LEN-DIFF @ if
       s" word size/name differences (name len):" type cr
       CMP-BAD-IDX @ A-N @ < if 60 EMITC 32 EMITC CMP-BAD-IDX @ PRINT-A-NL then
-      CMP-BAD-P @ 0 <> if 62 EMITC 32 EMITC PRINT-BAD-NL then
+      CMP-BAD-P @ 0= 0= if 62 EMITC 32 EMITC PRINT-BAD-NL then
       s" imgdump: dictionaries differ" 1 die
    then
    CMP-OFF-DIFF @ if

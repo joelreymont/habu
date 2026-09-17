@@ -23,19 +23,16 @@ LOWER-CERT-HOOK:INSTALL
 create PATHBUF 1024 allot
 create READ-PROBE 1 allot
 variable RFD  variable RGOT  variable RLEN
-variable LINT-OUT-A
+TYPED-VARIABLE LINT-OUT-A ptr u8
 variable LINT-OUT-CAP
 variable LINT-OUT-U
 variable LINT-OUT-ON
 
-: LINT-OUT-A-FIELD ( -- ptr ptr u8 )
-   LINT-OUT-A 0 ptr-field ;
-
 : LINT-OUT-A@ ( -- ptr u8 )
-   LINT-OUT-A-FIELD @ ;
+   LINT-OUT-A @ ;
 
 : LINT-OUT-A! ( ptr u8 -- )
-   LINT-OUT-A-FIELD ! ;
+   LINT-OUT-A ! ;
 
 : LINT-TRUE ( -- bool )
    0 0= ;
@@ -327,7 +324,10 @@ package LINT-SPLIT
 private
 
 $400 constant SMAX
-create SOFF SMAX cells allot   create SLEN SMAX cells allot
+\ Each split field's start is an address, so the starts are declared pointer
+\ storage; the lengths beside them stay plain cells.
+SMAX TYPED-BUFFER SOFF ptr u8
+create SLEN SMAX cells allot
 variable CUR    \ scan cursor
 variable MARK   \ start of the field being scanned
 
@@ -337,8 +337,8 @@ variable SN#
 : SPLIT-CLEAR  ( -- )  0 SN# ! ;
 : SPLIT+ ( ptr u8 n -- ) {: a:ptr u:n :}
    SN# @ SMAX >= IF s" lint: split result overflow" 1 die THEN
-   a SOFF SN# @ cells + !  u SLEN SN# @ cells + !  SN# @ 1+ SN# ! ;
-: S@ ( n -- ptr u8 n )  dup cells SOFF + @  swap cells SLEN + @ ;
+   a SN# @ SOFF !  u SLEN SN# @ cells + !  SN# @ 1+ SN# ! ;
+: S@ ( n -- ptr u8 n )  dup SOFF @  swap cells SLEN + @ ;
 
 private
 

@@ -17,7 +17,7 @@ create CACHE-ROOT-BUF FS-PATH-CAP allot
 1 LAYOUT-BUFFER CACHE-SOURCE-BUF BUILD-CACHE:source
 1 LAYOUT-BUFFER STATE-BUF state
 
-variable TEXT-A
+TYPED-VARIABLE TEXT-A ptr u8
 variable TEXT-CAP
 variable TEXT-U
 variable CACHE-ROOT-U
@@ -70,14 +70,11 @@ TYPED-VARIABLE REPORT-W JSON-WRITE:writer
    a CACHE-ROOT-BUF u BYTE-COPY
    u CACHE-ROOT-U ! ;
 
-: TEXT-A-FIELD ( -- ptr ptr u8 )
-   TEXT-A 0 ptr-field ;
-
 : TEXT-A@ ( -- ptr u8 )
-   TEXT-A-FIELD @ ;
+   TEXT-A @ ;
 
 : TEXT-A! ( ptr u8 -- )
-   TEXT-A-FIELD ! ;
+   TEXT-A ! ;
 
 : TEXT-ALLOC ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;

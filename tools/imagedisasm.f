@@ -10,7 +10,7 @@ $7FFFFFFFFFFFFFF constant IMGD-HEX-MAX-PRE
 create IMGD-PATH IMGD-PATH-CAP 1 + allot
 create IMGD-STAT IMGD-STAT-U allot
 
-variable IMGD-IMG
+TYPED-VARIABLE IMGD-IMG ptr u8
 variable IMGD-LEN
 variable IMGD-FD
 variable IMGD-OFF
@@ -20,14 +20,11 @@ variable IMGD-HEX-ACC
 variable IMGD-HEX-DIG
 variable IMGD-LOWER
 
-: IMGD-IMG-FIELD ( -- ptr ptr u8 )
-   IMGD-IMG 0 ptr-field ;
-
 : IMGD-IMG@ ( -- ptr u8 )
-   IMGD-IMG-FIELD @ ;
+   IMGD-IMG @ ;
 
 : IMGD-IMG! ( ptr u8 -- )
-   IMGD-IMG-FIELD ! ;
+   IMGD-IMG ! ;
 
 : IMGD-USAGE ( -- )
    s" usage: imagedisasm image offset count" 64 die ;

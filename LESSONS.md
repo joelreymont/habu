@@ -9177,3 +9177,22 @@ Reading a count out of a record whose head is a declared pointer cell is
 `byte-view` then `cell-view`, not `cell+ @`: both views are renames that stage
 no operation (`src/compiler/native/hir-word.f` DEF-BYTE-VIEW), so the record
 keeps its layout and the accessor keeps its single add and load.
+
+## 2026-09-17 - a declared pointer cell publishes two names, and an erase block has to retire both
+
+Converting a raw `variable` to `TYPED-VARIABLE NAME ptr t` does not rename one
+word, it publishes TWO: the accessor `NAME` and the `create`d storage
+`NAME#base` (`LBUF-BASE$`, `src/core/layout-buffer.f:128`). `tools/build-fixpoint.f`
+closes package `BUILD-EXT` by undefining its whole mutable surface so a reopened
+package cannot select an arbitrary source file, and erasing only `NAME` would
+leave `NAME#base` writable under exactly that reopen. WHEN A CELL BECOMES
+DECLARED STORAGE, GREP FOR AN `undefine` OF ITS OLD NAME AND ADD `#base`.
+
+The same conversion also retires the `: NAME-FIELD ( -- ptr ptr t ) NAME 0
+ptr-field ;` wrapper, and a blind whole-word rename of `NAME-FIELD` to `NAME`
+turns `undefine NAME-FIELD` into a second `undefine NAME`, which is
+`undefine: word not found` (`src/habu/xref.f:329`) - eleven red suites whose
+only visible symptom was `hb-build` exiting 70 on every stripped fixture,
+because the name it failed on is never printed. A mechanical rename over Forth
+source must be audited against `undefine`, `s"` text and comments, not just
+call sites.

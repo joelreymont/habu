@@ -31,7 +31,7 @@ variable CKT-ROOT-U
 variable CKT-SRC-U
 variable CKT-CACHE-U
 variable CKT-BUILD-U
-variable CKT-BIG-A
+TYPED-VARIABLE CKT-BIG-A ptr u8
 variable CKT-TMP-COUNT
 variable CKT-OLD-U
 variable CKT-BADCACHE-U
@@ -165,10 +165,10 @@ create CKT-BADCACHE FS-PATH-CAP allot
    CKT-CACHE$ CKT-BUILD CKT-BUILD-U @ WRITE-ALL ;
 
 : CKT-BIG ( -- ptr u8 )
-   CKT-BIG-A 0 ptr-field @ 0= if
-      CKT-BIG-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop CKT-BIG-A 0 ptr-field !
+   CKT-BIG-A @ 0= if
+      CKT-BIG-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop CKT-BIG-A !
    then
-   CKT-BIG-A 0 ptr-field @ ;
+   CKT-BIG-A @ ;
 
 \ ---- existing behaviour ------------------------------------------------------
 

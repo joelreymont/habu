@@ -22,18 +22,15 @@ JSON-MAX-NODES 2 * 64 + constant T-CAP
 $9000 constant T-LARGE-BODY
 create TBUF T-CAP allot
 variable TLEN
-variable T-LARGE-A
+TYPED-VARIABLE T-LARGE-A ptr u8
 variable T-LARGE-CAP
 variable T-LARGE-LEN
 
-: T-LARGE-A-FIELD ( -- ptr ptr u8 )
-   T-LARGE-A 0 ptr-field ;
-
 : T-LARGE-A@ ( -- ptr u8 )
-   T-LARGE-A-FIELD @ ;
+   T-LARGE-A @ ;
 
 : T-LARGE-A! ( ptr u8 -- )
-   T-LARGE-A-FIELD ! ;
+   T-LARGE-A ! ;
 
 : T-CLEAR ( -- )
    0 TLEN ! ;
@@ -75,19 +72,16 @@ variable T-LARGE-LEN
      err OF ENDOF                                \ the caught throw code
    ;MATCH ;
 
-variable TA
+TYPED-VARIABLE TA ptr u8
 variable TU
 variable ROOT
 variable NODE
 
-: TA-FIELD ( -- ptr ptr u8 )
-   TA 0 ptr-field ;
-
 : TA@ ( -- ptr u8 )
-   TA-FIELD @ ;
+   TA @ ;
 
 : TA! ( ptr u8 -- )
-   TA-FIELD ! ;
+   TA ! ;
 
 : ASSERT-BYTE ( ptr u8 n n -- ) {: a:ptr idx c :}
    a idx + c@ c ASSERT= ;

@@ -65,12 +65,12 @@ variable BFT-STALE-STAMP-U
 variable BFT-STALE-PAYLOAD-U
 variable BFT-STALE-MARK-U
 variable BFT-CP-U
-variable BFT-BIG-OUT-A
-variable BFT-BIG-ERR-A
+TYPED-VARIABLE BFT-BIG-OUT-A ptr u8
+TYPED-VARIABLE BFT-BIG-ERR-A ptr u8
 variable BFT-BUILD-FILES
-variable BFT-READ-A
+TYPED-VARIABLE BFT-READ-A ptr u8
 variable BFT-READ-CAP
-variable BFT-BYTES-A
+TYPED-VARIABLE BFT-BYTES-A ptr u8
 variable BFT-BYTES-N
 variable BFT-PROF-I
 variable BFT-REG-I
@@ -105,14 +105,11 @@ create BFT-KEY1 64 allot
 create BFT-OUT BFT-CAPTURE-CAP allot
 create BFT-ERR BFT-CAPTURE-CAP allot
 
-: BFT-READ-FIELD ( -- ptr ptr u8 )
-   BFT-READ-A 0 ptr-field ;
-
 : BFT-READ-BUF! ( ptr u8 -- )
-   BFT-READ-FIELD ! ;
+   BFT-READ-A ! ;
 
 : BFT-READ-BUF ( -- ptr u8 )
-   BFT-READ-FIELD @ ;
+   BFT-READ-A @ ;
 
 : BFT-ALLOC-READ ( n -- )
    dup BFT-READ-CAP @ <= if drop exit then
@@ -187,21 +184,15 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 : BFT-STALE-MARK ( -- ptr u8 n )
    BFT-STALE-MARK-BUF BFT-STALE-MARK-U @ ;
 
-: BFT-BIG-OUT-FIELD ( -- ptr ptr u8 )
-   BFT-BIG-OUT-A 0 ptr-field ;
-
-: BFT-BIG-ERR-FIELD ( -- ptr ptr u8 )
-   BFT-BIG-ERR-A 0 ptr-field ;
-
 : BFT-BIG-OUT ( -- ptr u8 )
-   BFT-BIG-OUT-FIELD @ ;
+   BFT-BIG-OUT-A @ ;
 
 : BFT-BIG-ERR ( -- ptr u8 )
-   BFT-BIG-ERR-FIELD @ ;
+   BFT-BIG-ERR-A @ ;
 
 : BFT-ALLOC-BIG ( -- )
-   BFT-BIG-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BIG-OUT-FIELD !
-   BFT-BIG-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BIG-ERR-FIELD ! ;
+   BFT-BIG-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BIG-OUT-A !
+   BFT-BIG-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BIG-ERR-A ! ;
 
 : BFT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
@@ -948,11 +939,8 @@ package BUILD-FIXPOINT
 
 \ Corrupt the current native snapshot's trailer and assert the loader's named
 \ version and bounds refusals. Re-sign mutations so macOS reaches the loader.
-: BFT-BYTES-FIELD ( -- ptr ptr u8 )
-   BFT-BYTES-A 0 ptr-field ;
-
 : BFT-BYTES ( -- ptr u8 )
-   BFT-BYTES-FIELD @ ;
+   BFT-BYTES-A @ ;
 
 : BFT-SNAP0-BUILD ( -- )
    BF-BUILD-SNAP-FRESH
@@ -967,7 +955,7 @@ package BUILD-FIXPOINT
 
 : BFT-BYTES-READ ( -- )
    s" hb-snap0" BF-A$ FILE-SIZE {: sz:n :}
-   sz MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BYTES-FIELD !
+   sz MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BYTES-A !
    s" hb-snap0" BF-A$ BFT-BYTES sz READ-ALL BFT-BYTES-N ! ;
 
 : BFT-BYTE@ ( n -- n ) {: off:n :}
@@ -1119,19 +1107,16 @@ $10000 constant PROBE-START
 variable EXITED
 variable EXIT-CODE
 variable ERR-U
-variable SRC-A
+TYPED-VARIABLE SRC-A ptr u8
 variable OK-N
 variable BAD-N
 
-: SRC-FIELD ( -- ptr ptr u8 )
-   SRC-A 0 ptr-field ;
-
 : SRC-BUF ( -- ptr u8 )
-   SRC-FIELD @ ;
+   SRC-A @ ;
 
 : SRC-ALLOC ( -- )
-   SRC-A @ 0 <> if exit then
-   SOURCE-ARENA-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop SRC-FIELD !
+   SRC-A @ 0= 0= if exit then
+   SOURCE-ARENA-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop SRC-A !
    SOURCE-ARENA-CAP 0 ?do 32 SRC-BUF i + c! loop ;
 
 : ERR$ ( -- ptr u8 n )

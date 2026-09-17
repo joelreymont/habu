@@ -175,7 +175,7 @@ variable BF-APP-OFF
 variable BF-GEN
 variable BF-FOUND
 variable BF-PID
-variable BF-TMP-A
+TYPED-VARIABLE BF-TMP-A ptr u8
 variable BF-TMP-U
 variable BF-STRIP-R
 variable BF-STRIP-W
@@ -196,37 +196,28 @@ variable BF-PIN-N
 variable BF-PIN-ON
 variable BF-CERT-RC
 variable BF-CERT-DIAG-U
-variable BF-CERT-LAB-A
+TYPED-VARIABLE BF-CERT-LAB-A ptr u8
 variable BF-CERT-LAB-U
-variable BF-CERT-PATH-A
+TYPED-VARIABLE BF-CERT-PATH-A ptr u8
 variable BF-CERT-PATH-U
 
-: BF-TMP-A-FIELD ( -- ptr ptr u8 )
-   BF-TMP-A 0 ptr-field ;
-
-: BF-CERT-LAB-A-FIELD ( -- ptr ptr u8 )
-   BF-CERT-LAB-A 0 ptr-field ;
-
-: BF-CERT-PATH-A-FIELD ( -- ptr ptr u8 )
-   BF-CERT-PATH-A 0 ptr-field ;
-
 : BF-TMP-A@ ( -- ptr u8 )
-   BF-TMP-A-FIELD @ ;
+   BF-TMP-A @ ;
 
 : BF-TMP-A! ( ptr u8 -- )
-   BF-TMP-A-FIELD ! ;
+   BF-TMP-A ! ;
 
 : BF-CERT-LAB-A@ ( -- ptr u8 )
-   BF-CERT-LAB-A-FIELD @ ;
+   BF-CERT-LAB-A @ ;
 
 : BF-CERT-LAB-A! ( ptr u8 -- )
-   BF-CERT-LAB-A-FIELD ! ;
+   BF-CERT-LAB-A ! ;
 
 : BF-CERT-PATH-A@ ( -- ptr u8 )
-   BF-CERT-PATH-A-FIELD @ ;
+   BF-CERT-PATH-A @ ;
 
 : BF-CERT-PATH-A! ( ptr u8 -- )
-   BF-CERT-PATH-A-FIELD ! ;
+   BF-CERT-PATH-A ! ;
 
 : BF-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -674,16 +665,13 @@ private
 package BUILD-EXT
 using BUILD-FIXPOINT
 
-variable PATH-A
+TYPED-VARIABLE PATH-A ptr u8
 variable PATH-U
 PTR-VARIABLE KEEP-A
 variable KEEP-U
 
-: PATH-FIELD ( -- ptr ptr u8 )
-   PATH-A 0 ptr-field ;
-
 : PATH@ ( -- ptr u8 )
-   PATH-FIELD @ ;
+   PATH-A @ ;
 
 : KEEP@ ( -- ptr u8 )
    KEEP-A @ ;
@@ -694,7 +682,7 @@ variable KEEP-U
 
 : SET ( ptr u8 n -- )
    PATH-U !
-   PATH-FIELD ! ;
+   PATH-A ! ;
 
 : KEEP-SET ( ptr u8 n -- )
    KEEP-U !
@@ -2141,8 +2129,8 @@ package BUILD-EXT
 undefine SET
 undefine CLEAR
 undefine PATH@
-undefine PATH-FIELD
 undefine PATH-A
+undefine PATH-A#base
 undefine PATH-U
 undefine KEEP-SET
 undefine KEEP@

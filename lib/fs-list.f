@@ -27,14 +27,14 @@ create DIR-BASE 1 cells allot
 variable FD
 variable FILLED
 variable OFFSET
-variable OUT
+TYPED-VARIABLE OUT ptr u8
 variable OUT-LEN
 variable OUT-CAP
 variable SCAN
 -1 FD !
 
 
-: OUT-BASE ( -- ptr u8 ) OUT @ {: start:ptr :} start ;
+: OUT-BASE ( -- ptr u8 ) OUT @ ;
 
 
 : CLOSE ( -- )

@@ -36,7 +36,7 @@ variable CAPTURE-ROWS
 
 : CHECK-ROWS ( -- )
    PROC-ARGV-MAX 1+ 0 ?do
-      PROC-ARGV-TABLE i ptr-field @ 0= TTRUE
+      i PROC-ARGV-TABLE @ 0= TTRUE
    loop ;
 
 public

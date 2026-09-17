@@ -18,15 +18,15 @@ require lib/test/src-shape.f
 require tools/codegen-role.f
 
 $100000 constant CRT-CAP
-variable CRT-BUF-A
+TYPED-VARIABLE CRT-BUF-A ptr u8
 variable CRT-LEN
 
 : CRT-BUF ( -- ptr u8 )
    CRT-BUF-A @ 0= if
       CRT-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
-      CRT-BUF-A 0 ptr-field !
+      CRT-BUF-A !
    then
-   CRT-BUF-A 0 ptr-field @ ;
+   CRT-BUF-A @ ;
 
 : CRT-RESET ( -- )
    0 >LEN CRT-LEN ! ;

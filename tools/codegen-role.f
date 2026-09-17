@@ -174,15 +174,15 @@ variable CGR-GEN
 
 \ ---- scratch buffers ----
 $1000 constant CGR-SB-CAP
-variable CGR-SB-A
+TYPED-VARIABLE CGR-SB-A ptr u8
 variable CGR-SB-LEN
 
 : CGR-SB-BUF ( -- ptr u8 )
    CGR-SB-A @ 0= if
       CGR-SB-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
-      CGR-SB-A 0 ptr-field !
+      CGR-SB-A !
    then
-   CGR-SB-A 0 ptr-field @ ;
+   CGR-SB-A @ ;
 
 : CGR-SB-RESET ( -- )
    0 >LEN CGR-SB-LEN ! ;
@@ -200,16 +200,16 @@ variable CGR-SB-LEN
    CGR-SB+ CGR-DASH CGR-SB-C+ CGR-GEN-C CGR-SB-C+ ;
 
 $1000 constant CGR-NB-CAP
-variable CGR-NB-A
+TYPED-VARIABLE CGR-NB-A ptr u8
 variable CGR-NB-LEN
 variable CGR-NI
 
 : CGR-NB-BUF ( -- ptr u8 )
    CGR-NB-A @ 0= if
       CGR-NB-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
-      CGR-NB-A 0 ptr-field !
+      CGR-NB-A !
    then
-   CGR-NB-A 0 ptr-field @ ;
+   CGR-NB-A @ ;
 
 : CGR-NB-C+ ( n -- )
    CGR-NB-BUF CGR-NB-CAP STR:LENGTH CGR-NB-LEN STR:BUF-APPEND-C ;
@@ -233,19 +233,16 @@ variable CGR-NI
 \ ---- token rename: NAME -> NAME-<gen> over a normalized text ----
 4 constant CGR-RN-CAP
 variable CGR-RN-N
-variable CGR-RN0-A  variable CGR-RN0-U
-variable CGR-RN1-A  variable CGR-RN1-U
-variable CGR-RN2-A  variable CGR-RN2-U
-variable CGR-RN3-A  variable CGR-RN3-U
+\ Each needle's start is an address, so the slots are declared pointer storage;
+\ the lengths beside them stay plain cells.
+CGR-RN-CAP TYPED-BUFFER CGR-RN-SLOT-A ptr u8
+variable CGR-RN0-U
+variable CGR-RN1-U
+variable CGR-RN2-U
+variable CGR-RN3-U
 
 : CGR-RN-RESET ( -- )
    0 CGR-RN-N ! ;
-
-: CGR-RN-SLOT-A ( n -- ptr n )
-   dup 0 = if drop CGR-RN0-A exit then
-   dup 1 = if drop CGR-RN1-A exit then
-   dup 2 = if drop CGR-RN2-A exit then
-   drop CGR-RN3-A ;
 
 : CGR-RN-SLOT-U ( n -- ptr n )
    dup 0 = if drop CGR-RN0-U exit then
@@ -257,12 +254,12 @@ variable CGR-RN3-A  variable CGR-RN3-U
    CGR-RN-N @ CGR-RN-CAP < 0= if
       s" codegen-role: too many rename needles" type cr E-CGR-CAP throw
    then
-   a CGR-RN-N @ CGR-RN-SLOT-A 0 ptr-field !
+   a CGR-RN-N @ CGR-RN-SLOT-A !
    u CGR-RN-N @ CGR-RN-SLOT-U !
    CGR-RN-N @ 1+ CGR-RN-N ! ;
 
 : CGR-RN$ ( n -- ptr u8 n )
-   dup CGR-RN-SLOT-A 0 ptr-field @ swap CGR-RN-SLOT-U @ ;
+   dup CGR-RN-SLOT-A @ swap CGR-RN-SLOT-U @ ;
 
 variable CGR-RJ
 
@@ -310,17 +307,17 @@ variable CGR-RTE
 \ renamed E-CGR-EVAL by the wrapper below.
 : CGR-EVALUATE ( ptr u8 n -- ) INCLUDE-EVALUATE ;
 
-variable CGR-EV-A
+TYPED-VARIABLE CGR-EV-A ptr u8
 variable CGR-EV-U
 
 : CGR-EV$ ( -- ptr u8 n )
-   CGR-EV-A 0 ptr-field @ CGR-EV-U @ ;
+   CGR-EV-A @ CGR-EV-U @ ;
 
 : CGR-EVAL-GO ( -- )
    CGR-EV$ CGR-EVALUATE ;
 
 : CGR-EVAL ( ptr u8 n -- ) {: a:ptr u:n :}
-   a CGR-EV-A 0 ptr-field !  u CGR-EV-U !
+   a CGR-EV-A !  u CGR-EV-U !
    [: CGR-EVAL-GO ;] catch dup 0 <> if
       drop
       s" codegen-role: extracted source failed on live emitters:" type cr
@@ -340,11 +337,11 @@ variable CGR-EV-U
    a u CGR-EVAL ;
 
 \ ---- shared check state ----
-variable CGR-TXT-A
+TYPED-VARIABLE CGR-TXT-A ptr u8
 variable CGR-TXT-U
 
 : CGR-TXT$ ( -- ptr u8 n )
-   CGR-TXT-A 0 ptr-field @ CGR-TXT-U @ ;
+   CGR-TXT-A @ CGR-TXT-U @ ;
 
 \ ---- spawn descriptor-slot role ----
 variable CGR-BASE
@@ -432,14 +429,14 @@ variable CGR-I
    CGR-SPAWN-DECODE ;
 
 \ ---- CLOC-MAIN label-relative branch role ----
-variable CGR-BODY-A
+TYPED-VARIABLE CGR-BODY-A ptr u8
 variable CGR-BODY-U
 variable CGR-LBL-N
 variable CGR-OCC
 variable CGR-USES
 
 : CGR-BODY$ ( -- ptr u8 n )
-   CGR-BODY-A 0 ptr-field @ CGR-BODY-U @ ;
+   CGR-BODY-A @ CGR-BODY-U @ ;
 
 : CGR-NEXT-USE ( n -- n ) {: from:n :}
    CGR-BODY$ {: a:ptr u:n :}
@@ -531,15 +528,15 @@ variable CGR-USES
    repeat drop ;
 
 : CGR-CHECK-CLOC ( ptr u8 n -- ) {: a:ptr u:n :}
-   a CGR-TXT-A 0 ptr-field !  u CGR-TXT-U !
+   a CGR-TXT-A !  u CGR-TXT-U !
    a u s" : C-LOCAL-REF " CGR-DEF$ {: b:ptr bu:n :}
-   b CGR-BODY-A 0 ptr-field !  bu CGR-BODY-U !
+   b CGR-BODY-A !  bu CGR-BODY-U !
    CGR-CLOC-USES
    CGR-USES @ 0= if
       s" codegen-role: C-LOCAL-REF has no CLOC-MAIN use" type cr E-CGR-SRC throw
    then ;
 
 : CGR-CHECK-SPAWN ( ptr u8 n -- ) {: a:ptr u:n :}
-   a CGR-TXT-A 0 ptr-field !  u CGR-TXT-U !
+   a CGR-TXT-A !  u CGR-TXT-U !
    CGR-SPAWN-ADESC-CHECK
    CGR-SPAWN-ATTR-CHECK ;

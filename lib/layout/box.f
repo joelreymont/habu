@@ -24,15 +24,12 @@ require lib/memory.f
 2 constant BOX-HEAD-CELLS               \ hidden capacity + public tag
 MEM-64K 1 cells / constant BOX-CHUNK-CELLS   \ default arena chunk = one 64K page of cells
 
-\ --- arena state. CUR is a pointer (held via ptr-field, json-write's idiom);
-\ OFF/CAP are plain cell counts.
-variable BOX-CUR                        \ current chunk base pointer (0 until first alloc)
+\ --- arena state. CUR holds the chunk base, so it is a declared pointer cell;
+\ the chunk is cells the arena hands out as box records, hence `ptr n`. OFF/CAP
+\ are plain cell counts.
+TYPED-VARIABLE BOX-CUR ptr n            \ current chunk base pointer (0 until first alloc)
 variable BOX-OFF                        \ next free cell offset within the current chunk
 variable BOX-CAP                        \ current chunk capacity in cells
-
-: BOX-CUR-FIELD ( -- ptr ptr a )   BOX-CUR 0 ptr-field ;
-: BOX-CUR@ ( -- ptr a )   BOX-CUR-FIELD @ ;
-: BOX-CUR! ( ptr a -- )   BOX-CUR-FIELD ! ;
 
 \ BOX-ARENA-RESET drops every live box: cap 0 forces the next allocation to grow a
 \ fresh (zero-filled) chunk; the old chunks leak (grow-only arena, no MEM-FREE).
@@ -47,7 +44,7 @@ BOX-ARENA-RESET
    {: need:n :}
    need BOX-CELL-COUNT-CHECK
    need BOX-CHUNK-CELLS max {: n:n :}
-   n >COUNT MEM-ALLOC-CELLS BOX-CUR!
+   n >COUNT MEM-ALLOC-CELLS BOX-CUR !
    0 BOX-OFF !   n BOX-CAP ! ;
 
 : BOX-ROOM? ( n -- bool )               \ do n more cells fit in the current chunk?
@@ -55,14 +52,14 @@ BOX-ARENA-RESET
    n BOX-CELL-COUNT-CHECK
    n BOX-CAP @ BOX-OFF @ - <= ;
 
-: BOX-BUMP ( n -- ptr a )               \ take n cells off the current chunk, return the base
+: BOX-BUMP ( n -- ptr n )               \ take n cells off the current chunk, return the base
    {: n:n :}
    n BOX-ROOM? 0= IF E-MEM-SIZE throw THEN
-   BOX-CUR@ BOX-OFF @ cells +  {: p:ptr :}
+   BOX-CUR @ BOX-OFF @ cells +  {: p:ptr :}
    BOX-OFF @ n +  BOX-OFF !
    p ;
 
-: BOX-CELLS ( n -- ptr a )              \ allocate n contiguous zero-filled cells from the arena
+: BOX-CELLS ( n -- ptr n )              \ allocate n contiguous zero-filled cells from the arena
    {: n:n :}
    n BOX-CELL-COUNT-CHECK
    n BOX-ROOM? 0= IF n BOX-CHUNK THEN

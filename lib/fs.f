@@ -109,9 +109,14 @@ create FS-RECS FS-MAX-DEPTH cells allot
 
 variable FS-DEPTH
 variable FS-CHILD-U
-variable FS-ENT
 variable FS-NAME-A
 variable FS-NAME-U
+
+\ The walk cursor holds the address of a dirent record inside FS-DIR-BUF, so it
+\ is a declared pointer cell: a plain `variable` publishes an undeclared raw
+\ cell, and a pointer stored in or fetched from one is refused
+\ (E-RAW-CELL-PTR).
+TYPED-VARIABLE FS-ENT ptr u8
 
 : FS-FALSE ( -- bool )
    0 0= 0= ;

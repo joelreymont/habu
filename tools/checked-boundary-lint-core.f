@@ -23,22 +23,22 @@ private
 create UB-NUM UB-NUM-CAP allot
 create UB-LF-BUF 1 allot
 
-variable UB-FILE-A
+TYPED-VARIABLE UB-FILE-A ptr u8
 variable UB-FILE-U
-variable UB-SRC-A
+TYPED-VARIABLE UB-SRC-A ptr u8
 variable UB-SRC-U
 variable UB-SRC-CAP
 variable UB-I
 variable UB-LINE
 variable UB-COL
-variable UB-TOK-A
+TYPED-VARIABLE UB-TOK-A ptr u8
 variable UB-TOK-U
 variable UB-TOK-BYTE
 variable UB-TOK-LINE
 variable UB-TOK-COL
-variable UB-PREV-A
+TYPED-VARIABLE UB-PREV-A ptr u8
 variable UB-PREV-U
-variable UB-PREV2-A
+TYPED-VARIABLE UB-PREV2-A ptr u8
 variable UB-PREV2-U
 variable UB-BAD
 variable UB-CHECK-OFF
@@ -50,53 +50,38 @@ variable UB-JSON
 variable UB-STRICT-BOUNDARY
 variable UB-OUT-FD
 
-: UB-FILE-A-FIELD ( -- ptr ptr u8 )
-   UB-FILE-A 0 ptr-field ;
-
-: UB-SRC-A-FIELD ( -- ptr ptr u8 )
-   UB-SRC-A 0 ptr-field ;
-
-: UB-TOK-A-FIELD ( -- ptr ptr u8 )
-   UB-TOK-A 0 ptr-field ;
-
-: UB-PREV-A-FIELD ( -- ptr ptr u8 )
-   UB-PREV-A 0 ptr-field ;
-
-: UB-PREV2-A-FIELD ( -- ptr ptr u8 )
-   UB-PREV2-A 0 ptr-field ;
-
 : UB-FILE-A@ ( -- ptr u8 )
-   UB-FILE-A-FIELD @ ;
+   UB-FILE-A @ ;
 
 : UB-FILE$ ( -- ptr u8 n )
    UB-FILE-A@ UB-FILE-U @ ;
 
 : UB-SRC-A@ ( -- ptr u8 )
-   UB-SRC-A-FIELD @ ;
+   UB-SRC-A @ ;
 
 : UB-TOK-A@ ( -- ptr u8 )
-   UB-TOK-A-FIELD @ ;
+   UB-TOK-A @ ;
 
 : UB-PREV-A@ ( -- ptr u8 )
-   UB-PREV-A-FIELD @ ;
+   UB-PREV-A @ ;
 
 : UB-PREV2-A@ ( -- ptr u8 )
-   UB-PREV2-A-FIELD @ ;
+   UB-PREV2-A @ ;
 
 : UB-FILE-A! ( ptr u8 -- )
-   UB-FILE-A-FIELD ! ;
+   UB-FILE-A ! ;
 
 : UB-SRC-A! ( ptr u8 -- )
-   UB-SRC-A-FIELD ! ;
+   UB-SRC-A ! ;
 
 : UB-TOK-A! ( ptr u8 -- )
-   UB-TOK-A-FIELD ! ;
+   UB-TOK-A ! ;
 
 : UB-PREV-A! ( ptr u8 -- )
-   UB-PREV-A-FIELD ! ;
+   UB-PREV-A ! ;
 
 : UB-PREV2-A! ( ptr u8 -- )
-   UB-PREV2-A-FIELD ! ;
+   UB-PREV2-A ! ;
 
 : UB-TRUE ( -- bool )
    0 0= ;

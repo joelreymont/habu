@@ -26,8 +26,8 @@ create ACRT-BUF ACRT-BUF-CAP allot
 create ACRT-PATH 128 allot
 variable ACRT-FD
 variable ACRT-N
-variable ACRT-JSON-A
-variable ACRT-ERR-A
+TYPED-VARIABLE ACRT-JSON-A ptr u8
+TYPED-VARIABLE ACRT-ERR-A ptr u8
 
 : ACRT-COUNT-FILE ( ptr u8 n -- n n n )
    REPORT-FILE!
@@ -57,23 +57,17 @@ variable ACRT-ERR-A
       1+
    repeat drop ;
 
-: ACRT-JSON-A-FIELD ( -- ptr ptr u8 )
-   ACRT-JSON-A 0 ptr-field ;
-
-: ACRT-ERR-A-FIELD ( -- ptr ptr u8 )
-   ACRT-ERR-A 0 ptr-field ;
-
 : ACRT-JSON-A@ ( -- ptr u8 )
-   ACRT-JSON-A-FIELD @ ;
+   ACRT-JSON-A @ ;
 
 : ACRT-ERR-A@ ( -- ptr u8 )
-   ACRT-ERR-A-FIELD @ ;
+   ACRT-ERR-A @ ;
 
 : ACRT-JSON-A! ( ptr u8 -- )
-   ACRT-JSON-A-FIELD ! ;
+   ACRT-JSON-A ! ;
 
 : ACRT-ERR-A! ( ptr u8 -- )
-   ACRT-ERR-A-FIELD ! ;
+   ACRT-ERR-A ! ;
 
 : ACRT-JSON ( -- ptr u8 )
    ACRT-JSON-A@ 0= if

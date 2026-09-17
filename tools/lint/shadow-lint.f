@@ -40,14 +40,17 @@ create FB-SLAB LINT-SLAB:CELLS cells allot
 \ ---- prim-name store: copied out of habu1.f so the slab can be reused per file ----
 create PNAMES 8192 allot   variable PEND
 $200 constant PMAX
-create POFF PMAX cells allot   create PRIM-LEN PMAX cells allot   variable PN#
+\ Each prim name's start is an address into PNAMES, so the starts are declared
+\ pointer storage; the lengths beside them stay plain cells.
+PMAX TYPED-BUFFER POFF ptr u8
+create PRIM-LEN PMAX cells allot   variable PN#
 : ADD-PRIM  ( ptr u8 n -- ) {: a:ptr u :}
    a  PNAMES PEND @ +  u LINT-BMOVE
-   PNAMES PEND @ +  POFF PN# @ cells + !   u PRIM-LEN PN# @ cells + !
+   PNAMES PEND @ +  PN# @ POFF !   u PRIM-LEN PN# @ cells + !
    PEND @ u + PEND !   PN# @ 1+ PN# ! ;
 : PRIM?  ( ptr u8 n -- bool ) {: a:ptr u :}   \ case-insensitive membership
    0 begin dup PN# @ < while
-      dup cells POFF + @  over cells PRIM-LEN + @  a u LINT-STR=CI IF drop LINT-TRUE exit THEN  1+
+      dup POFF @  over cells PRIM-LEN + @  a u LINT-STR=CI IF drop LINT-TRUE exit THEN  1+
    repeat  drop  LINT-FALSE ;
 
 \ token "NAME"" (trailing quote from s" NAME") -> NAME

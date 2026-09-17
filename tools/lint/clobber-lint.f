@@ -401,13 +401,16 @@ $800 constant CMAX      \ callable labels plus discovered call targets
 $2000 constant EMAX     \ unique BL graph edges
 $10000 constant CNBUF-CAP
 create CNBUF CNBUF-CAP allot   variable CEND
-create CNOFF CMAX cells allot   create CNLEN CMAX cells allot
+\ Each collected name's start is an address into the name buffer, so the starts
+\ are declared pointer storage; the lengths beside them stay plain cells.
+CMAX TYPED-BUFFER CNOFF ptr u8
+create CNLEN CMAX cells allot
 create CWS CMAX cells allot     variable CN#
 create EFROM EMAX cells allot   create ETO EMAX cells allot   variable EN#
 variable CX  variable EX
 
 : C-NAME  ( n -- ptr u8 n )
-   dup CNOFF swap cells + @  swap CNLEN swap cells + @ ;
+   dup CNOFF @  swap CNLEN swap cells + @ ;
 : CWS@  ( n -- n )  CWS swap cells + @ ;
 : CWS!  ( n n -- )  CWS swap cells + ! ;
 : C-WOR  ( n n -- ) {: idx m :}  idx CWS@ m or idx CWS! ;
@@ -421,7 +424,7 @@ variable CX  variable EX
    CN# @ CMAX >= if s" clobber-lint: too many labels" 1 die then
    CEND @ u + CNBUF-CAP > if s" clobber-lint: label store full" 1 die then
    a u CNBUF CEND @ + FOLD-TO
-   CNBUF CEND @ + CNOFF CN# @ cells + !  u CNLEN CN# @ cells + !
+   CNBUF CEND @ +  CN# @ CNOFF !  u CNLEN CN# @ cells + !
    0 CWS CN# @ cells + !
    CEND @ u + CEND !  CN# @ dup 1+ CN# ! ;
 : C-ENSURE  {: a u :}  ( -- idx )
@@ -442,7 +445,8 @@ variable CX  variable EX
 \ ---- definitions, labels, and routine regions ----------------------------
 $80 constant OMAX
 create OPENINGS OMAX cells allot   variable ON#
-variable DI  variable OX  variable OPLO  variable CALA  variable CALU
+TYPED-VARIABLE CALA ptr u8   \ start of the callee name CALLEE? resolved
+variable DI  variable OX  variable OPLO  variable CALU
 variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
 
 \ The current wrapped call sits at token DI; its two register operands are the

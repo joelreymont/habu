@@ -9,20 +9,21 @@ require lib/image-lifecycle.f
 $100 constant PROC-ARGV-MAX
 32768 constant PROC-ARGV-BUF-CAP
 
-create PROC-ARGV-TABLE PROC-ARGV-MAX 1 + cells allot
+\ The argv table holds the address of every zero-terminated argument and
+\ PROC-ARGV-BUF-A the address of the mapping they live in, so both are declared
+\ pointer storage: a pointer stored in or fetched from an undeclared `create`d
+\ cell is refused (E-RAW-CELL-PTR).
+PROC-ARGV-MAX 1 + TYPED-BUFFER PROC-ARGV-TABLE ptr u8
 
 variable PROC-ARGV-N
 variable PROC-ARGV-OFF
-variable PROC-ARGV-BUF-A
-
-: PROC-ARGV-BUF-A-FIELD ( -- ptr ptr u8 )
-   PROC-ARGV-BUF-A 0 ptr-field ;
+TYPED-VARIABLE PROC-ARGV-BUF-A ptr u8
 
 : PROC-ARGV-BUF@ ( -- ptr u8 )
-   PROC-ARGV-BUF-A-FIELD @ ;
+   PROC-ARGV-BUF-A @ ;
 
 : PROC-ARGV-BUF! ( ptr u8 -- )
-   PROC-ARGV-BUF-A-FIELD ! ;
+   PROC-ARGV-BUF-A ! ;
 
 package PROC-ARGV-LIFECYCLE
 private
@@ -36,7 +37,7 @@ false REGISTERED !
    0 >COUNT PROC-ARGV-N !
    0 >OFF PROC-ARGV-OFF !
    PROC-ARGV-MAX 1+ 0 ?do
-      NULL-PTR PROC-ARGV-TABLE i ptr-field !
+      NULL-PTR i PROC-ARGV-TABLE !
    loop
    bytes 0= 0= if
       bytes PROC-ARGV-BUF-CAP MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
@@ -75,7 +76,7 @@ public
 : PROC-ARGV-SLOT ( idx -- ptr ptr u8 ) {: idx :}
    idx IDX>N 0 < if E-PROC-OUTPUT throw then
    idx IDX>N PROC-ARGV-MAX > if E-PROC-OUTPUT throw then
-   PROC-ARGV-TABLE idx IDX>N ptr-field ;
+   idx IDX>N PROC-ARGV-TABLE ;
 
 : PROC-ARGV-CHECK-EXTRA ( -- )
    PROC-ARGV-N @ COUNT>N PROC-ARGV-MAX 1- >= if E-PROC-OUTPUT throw then ;
@@ -101,7 +102,7 @@ public
    path pathu PROC-PATHZ {: pathz:ptr :}
    pathz 0 >IDX PROC-ARGV-SLOT !
    NULL$ drop PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !
-   pathz PROC-ARGV-TABLE 0 ptr-field ;
+   pathz 0 PROC-ARGV-TABLE ;
 
 : PROC-SPAWN-ARGV-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
    a u PROC-ARGV-PREPARE infd outfd errfd PROC-SPAWN-ARGV-RAW {: pid :}

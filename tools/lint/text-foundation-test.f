@@ -42,17 +42,14 @@ create BAD-FIX FIX-CAP allot     variable BAD-LEN
 create ESC-FIX FIX-CAP allot     variable ESC-LEN
 create TOK-FIX FIX-CAP allot     variable TOK-LEN
 9000 constant BIG-LEX-TOKENS
-variable BIG-LEX-A
+TYPED-VARIABLE BIG-LEX-A ptr u8
 variable BIG-LEX-U
 
-: BIG-LEX-A-FIELD ( -- ptr ptr u8 )
-   BIG-LEX-A 0 ptr-field ;
-
 : BIG-LEX-A@ ( -- ptr u8 )
-   BIG-LEX-A-FIELD @ ;
+   BIG-LEX-A @ ;
 
 : BIG-LEX-A! ( ptr u8 -- )
-   BIG-LEX-A-FIELD ! ;
+   BIG-LEX-A ! ;
 
 : BIG-LEX$ ( -- ptr u8 n ) BIG-LEX-A@ BIG-LEX-U @ ;
 

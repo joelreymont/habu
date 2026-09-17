@@ -29,7 +29,7 @@ variable SARIF-RULE-END
 variable SARIF-LINE-I
 variable SARIF-LINE-N
 variable SARIF-LINE-START
-variable SARIF-LINE-A
+TYPED-VARIABLE SARIF-LINE-A ptr u8
 variable SARIF-LINE-U
 variable SARIF-FIELD?
 variable SARIF-RD
@@ -45,14 +45,11 @@ variable SARIF-PARSE-NODE
 : SARIF-FALSE ( -- bool )
    SARIF-TRUE 0= ;
 
-: SARIF-LINE-A-FIELD ( -- ptr ptr u8 )
-   SARIF-LINE-A 0 ptr-field ;
-
 : SARIF-LINE-A@ ( -- ptr u8 )
-   SARIF-LINE-A-FIELD @ ;
+   SARIF-LINE-A @ ;
 
 : SARIF-LINE-A! ( ptr u8 -- )
-   SARIF-LINE-A-FIELD ! ;
+   SARIF-LINE-A ! ;
 
 : SARIF-FAIL ( ptr u8 n n -- )
    die ;

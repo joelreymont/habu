@@ -28,10 +28,10 @@ create RNL-SDQ  $73 c, $22 c,
 create RNL-CDQ  $63 c, $22 c,
 create RNL-DOTQ $2E c, $22 c,
 
-variable RNL-SRC-A
+TYPED-VARIABLE RNL-SRC-A ptr u8
 variable RNL-SRC-U
 variable RNL-SRC-CAP
-variable RNL-FILE-A
+TYPED-VARIABLE RNL-FILE-A ptr u8
 variable RNL-FILE-U
 variable RNL-BAD
 variable RNL-I
@@ -40,23 +40,17 @@ variable RNL-JSON
 variable RNL-OUT-FD
 variable RNL-NUM-I
 
-: RNL-SRC-A-FIELD ( -- ptr ptr u8 )
-   RNL-SRC-A 0 ptr-field ;
-
-: RNL-FILE-A-FIELD ( -- ptr ptr u8 )
-   RNL-FILE-A 0 ptr-field ;
-
 : RNL-SRC-A@ ( -- ptr u8 )
-   RNL-SRC-A-FIELD @ ;
+   RNL-SRC-A @ ;
 
 : RNL-FILE-A@ ( -- ptr u8 )
-   RNL-FILE-A-FIELD @ ;
+   RNL-FILE-A @ ;
 
 : RNL-SRC-A! ( ptr u8 -- )
-   RNL-SRC-A-FIELD ! ;
+   RNL-SRC-A ! ;
 
 : RNL-FILE-A! ( ptr u8 -- )
-   RNL-FILE-A-FIELD ! ;
+   RNL-FILE-A ! ;
 
 public
 

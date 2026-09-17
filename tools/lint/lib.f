@@ -4,24 +4,25 @@
 \ ---- named scanners replacing the former regex use-cases ------------------
 \ Scanner captures remain in shared cells for scanner callers; scanner logic is
 \ checked and returns typed bools.
-variable PSA  variable PSU  variable PX  variable PSTART
-variable P1A  variable P1U  variable P2A  variable P2U
-variable PTA  variable PTU
+\ The four capture starts hold addresses into the scanned text, so each is a
+\ declared pointer cell; the lengths and cursors beside them stay plain.
+TYPED-VARIABLE PSA ptr u8
+TYPED-VARIABLE P1A ptr u8
+TYPED-VARIABLE P2A ptr u8
+TYPED-VARIABLE PTA ptr u8
+variable PSU  variable PX  variable PSTART
+variable P1U  variable P2U
+variable PTU
 
-: PSA-FIELD ( -- ptr ptr u8 )  PSA 0 ptr-field ;
-: P1A-FIELD ( -- ptr ptr u8 )  P1A 0 ptr-field ;
-: P2A-FIELD ( -- ptr ptr u8 )  P2A 0 ptr-field ;
-: PTA-FIELD ( -- ptr ptr u8 )  PTA 0 ptr-field ;
+: PSA@ ( -- ptr u8 )  PSA @ ;
+: P1A@ ( -- ptr u8 )  P1A @ ;
+: P2A@ ( -- ptr u8 )  P2A @ ;
+: PTA@ ( -- ptr u8 )  PTA @ ;
 
-: PSA@ ( -- ptr u8 )  PSA-FIELD @ ;
-: P1A@ ( -- ptr u8 )  P1A-FIELD @ ;
-: P2A@ ( -- ptr u8 )  P2A-FIELD @ ;
-: PTA@ ( -- ptr u8 )  PTA-FIELD @ ;
-
-: PSA! ( ptr u8 -- )  PSA-FIELD ! ;
-: P1A! ( ptr u8 -- )  P1A-FIELD ! ;
-: P2A! ( ptr u8 -- )  P2A-FIELD ! ;
-: PTA! ( ptr u8 -- )  PTA-FIELD ! ;
+: PSA! ( ptr u8 -- )  PSA ! ;
+: P1A! ( ptr u8 -- )  P1A ! ;
+: P2A! ( ptr u8 -- )  P2A ! ;
+: PTA! ( ptr u8 -- )  PTA ! ;
 
 : PAT-RESET ( ptr u8 n -- )
    {: a:ptr u :}

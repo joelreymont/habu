@@ -21,7 +21,7 @@ $2F constant SLASH
 create ROOT-BUF FS-PATH-CAP allot
 1 LAYOUT-BUFFER SOURCE-BUF source
 
-variable SELECT-A
+TYPED-VARIABLE SELECT-A ptr u8
 variable SELECT-CAP
 variable SELECT-U
 variable ROOT-U
@@ -39,14 +39,11 @@ variable CAUSE-CODE
 : ROOT-BYTES ( -- ptr u8 n )
    ROOT-BUF ROOT-U @ ;
 
-: SELECT-A-FIELD ( -- ptr ptr u8 )
-   SELECT-A 0 ptr-field ;
-
 : SELECT-A@ ( -- ptr u8 )
-   SELECT-A-FIELD @ ;
+   SELECT-A @ ;
 
 : SELECT-A! ( ptr u8 -- )
-   SELECT-A-FIELD ! ;
+   SELECT-A ! ;
 
 : SELECT-ALLOC ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;

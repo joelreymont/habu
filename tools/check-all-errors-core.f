@@ -33,20 +33,20 @@ variable CA-FULL-R
 variable CA-FAILED
 variable CA-RAW-FAILURE
 variable CA-JSON-FOUND
-variable CA-SRC-A
+TYPED-VARIABLE CA-SRC-A ptr u8
 variable CA-SRC-U
 variable CA-SRC-CAP
 variable CA-ERR-LEN
-variable CA-ERR-A
+TYPED-VARIABLE CA-ERR-A ptr u8
 variable CA-ERR-CAP
 variable CA-OUT-LEN
-variable CA-OUT-A
+TYPED-VARIABLE CA-OUT-A ptr u8
 variable CA-OUT-CAP
 variable CA-LS
 variable CA-LE
 variable CA-TOKU                        \ length of the source word at a lexer diagnostic
 
-variable CA-FILE-A
+TYPED-VARIABLE CA-FILE-A ptr u8
 variable CA-FILE-U
 variable CA-JSON
 
@@ -57,44 +57,32 @@ variable CA-JSON
    CA-TRUE 0= ;
 
 
-: CA-SRC-A-FIELD ( -- ptr ptr u8 )
-   CA-SRC-A 0 ptr-field ;
-
 : CA-SRC-A@ ( -- ptr u8 )
-   CA-SRC-A-FIELD @ ;
+   CA-SRC-A @ ;
 
 : CA-SRC-A! ( ptr u8 -- )
-   CA-SRC-A-FIELD ! ;
+   CA-SRC-A ! ;
 
 
 
-
-: CA-FILE-A-FIELD ( -- ptr ptr u8 )
-   CA-FILE-A 0 ptr-field ;
 
 : CA-FILE-A@ ( -- ptr u8 )
-   CA-FILE-A-FIELD @ ;
+   CA-FILE-A @ ;
 
 : CA-FILE-A! ( ptr u8 -- )
-   CA-FILE-A-FIELD ! ;
-
-: CA-ERR-A-FIELD ( -- ptr ptr u8 )
-   CA-ERR-A 0 ptr-field ;
+   CA-FILE-A ! ;
 
 : CA-ERR-A@ ( -- ptr u8 )
-   CA-ERR-A-FIELD @ ;
+   CA-ERR-A @ ;
 
 : CA-ERR-A! ( ptr u8 -- )
-   CA-ERR-A-FIELD ! ;
-
-: CA-OUT-A-FIELD ( -- ptr ptr u8 )
-   CA-OUT-A 0 ptr-field ;
+   CA-ERR-A ! ;
 
 : CA-OUT-A@ ( -- ptr u8 )
-   CA-OUT-A-FIELD @ ;
+   CA-OUT-A @ ;
 
 : CA-OUT-A! ( ptr u8 -- )
-   CA-OUT-A-FIELD ! ;
+   CA-OUT-A ! ;
 
 : CA-JSON? ( -- bool )
    CA-JSON @ 0 <> ;
@@ -145,17 +133,14 @@ create CA-XSUP-US CA-XSUP-MAX cells allot
 variable CA-XSUP-N
 variable CA-XSUP-I
 variable CA-XSUP-RC
-variable CA-XSUP-BUF-A
+TYPED-VARIABLE CA-XSUP-BUF-A ptr u8
 variable CA-XSUP-BUF-CAP
 
-: CA-XSUP-BUF-A-FIELD ( -- ptr ptr u8 )
-   CA-XSUP-BUF-A 0 ptr-field ;
-
 : CA-XSUP-BUF-A@ ( -- ptr u8 )
-   CA-XSUP-BUF-A-FIELD @ ;
+   CA-XSUP-BUF-A @ ;
 
 : CA-XSUP-BUF-A! ( ptr u8 -- )
-   CA-XSUP-BUF-A-FIELD ! ;
+   CA-XSUP-BUF-A ! ;
 
 : CA-XSUP$ ( n -- ptr u8 n ) {: i:n :}
    CA-XSUP-PATHS i FS-PATH-CAP * +

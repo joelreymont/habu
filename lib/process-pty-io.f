@@ -53,7 +53,7 @@ $7F constant IO-EXEC-FAIL          \ child exit code when execve never replaces 
 \ Load-time scratch shared by the parent build path and by each forked child (a
 \ fork copies this memory, so a child reads the same values the parent stored).
 create IO-PATH-BUF IO-PATH-CAP allot   \ supervised executable path bytes (child reads)
-create IO-ENVP 1 cells allot           \ single NULL slot: the empty child environment
+1 TYPED-BUFFER IO-ENVP ptr u8          \ single NULL slot: the empty child environment
 create IO-POLL 1 cells allot           \ one pollfd for AWAIT
 create IO-GOBYTE 1 allot               \ the one-byte release token written by LAUNCH
 create IO-GO SLOT-CAP cells allot       \ per-slot release-gate write end, indexed by slot
@@ -166,7 +166,7 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
    IO-GO-R @ >FD FD>N IO-GOBYTE 1 read drop
    IO-TTY @ if IO-TARGET-TTY else IO-TARGET-STDIO then
    IO-CLOSE-HIGH
-   IO-PATH-BUF IO-PATH-LEN @ >LEN PROC-ARGV-PREPARE IO-ENVP execve drop
+   IO-PATH-BUF IO-PATH-LEN @ >LEN PROC-ARGV-PREPARE 0 IO-ENVP execve drop
    s" " IO-EXEC-FAIL die ;
 
 \ ---- parent-side build steps ------------------------------------------------
@@ -408,7 +408,7 @@ public
 private
 
 : IO-INIT ( -- )
-   0 IO-ENVP !
+   NULL-PTR 0 IO-ENVP !
    0 begin dup SLOT-CAP < while
       -1 >FD over >IDX IO-GO!
       1+
