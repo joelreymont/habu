@@ -8,16 +8,18 @@ and rewrites the Landed section as each arm64 lane lands.
 
 ## State
 
-Updated 2026-09-17 19:20 by hazel. Integrated line head `1a3cba18`; arm64
-engine `bin/hb` sha256 `343ef7705f0ea45a` (3,932,352 bytes).
+Updated 2026-09-17 23:30 by hazel. Integrated line head `e4d37b7b`; arm64
+engine `bin/hb` sha256 `7f70b47e77d945ba` (3,997,888 bytes). Commits above
+the integrated head are on the line and in their chains (AN..AR), integrated
+as each gate comes back green.
 
 | Dot | Work | Runs on | State |
 | --- | --- | --- | --- |
 | `habu-write-the-x86-fbaf3086` | `src/arch/x86-64/asm.f` encoder + byte tests | arm64 host (hazel) | landed 07a7e90c |
-| `habu-specify-the-engine-fcbcee25` | `src/habu/prims.f` primitive table + parity gate | arm64 host (hazel) | in progress |
-| `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract | arm64 host (hazel) | in progress |
-| `habu-parameterise-the-alloc-7efbe7a1` | register-file description for regalloc/spill/prune | arm64 host (hazel) | in progress |
-| `habu-bind-compiler-targets-ff970b99` | backend registry in `src/compiler/target.f` | arm64 host (hazel) | half landed 0901e61c (registry rows); pass dispatch in progress |
+| `habu-specify-the-engine-fcbcee25` | `src/habu/prims.f` primitive table + parity gate | arm64 host (hazel) | table landed fb4f2392; references + parity gate in progress |
+| `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract | arm64 host (hazel) | on the line d55021af + 5e05cbfd, chains AN/AO; the instruction emitters (SYS, and the process seam) follow as a second worker |
+| `habu-parameterise-the-alloc-7efbe7a1` | register-file description for regalloc/spill/prune | arm64 host (hazel) | landed 50ee6a3c |
+| `habu-bind-compiler-targets-ff970b99` | backend registry in `src/compiler/target.f` | arm64 host (hazel) | rows landed 0901e61c; pass dispatch on the line ddc1412d, chain AP |
 | `habu-lower-hir-to-6bf80d33` | `x64ir.f`, `select-x64.f`, `emit-x64.f` | Intel agent | open; depends on the five above |
 | `habu-cross-build-the-d25a959d` | cross-build entry + device-peer gate | Intel agent | open |
 | `habu-port-the-ffi-676f745d` | SysV FFI, task entry, traps | Intel agent | open |
@@ -144,6 +146,67 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
 - Open decision for the lowering dot: `src/compiler/native/emit.f` is a
   fixed 4-byte word sink; the x86_64 emitter is either a byte-sized layout
   pass in emit.f or a separate emitter over `BUF` (see the lowering dot).
+
+### Primitive table (`habu-specify-the-engine-fcbcee25` worker 1, line fb4f2392, engine 7f70b47e)
+
+- `src/habu/prims.f`, package `PRIM-SPEC`, loads BEFORE `src/core/checker.f`
+  as pure data: 222 rows (210 global, 3 `FFI` package rows, 7 `ELAB:`
+  elaborated by the checker, 2 `UNROWED:` with no declaration). Row forms:
+  `EPRIM: name atoms [REF word] EPRIM;`, `EPPRIM: pkg name atoms
+  ECLOSE-PRIVATE`, `ETRUSTED-ONLY!` (flags the row before it), `ELAB: name`,
+  `UNROWED: name`. Atoms are the checker's `PE-*` spellings encoding codes
+  `A-IN 1 A-OUT 2 A-VAR-A..E 3..7 A-NUM 8 A-BOOL 9 A-REAL 10 A-U8 11 A-PTR 12
+  A-RAW 13 A-QUOT 14 A-QUOT-END 15 A-FINALLY 16` (composites are sequences:
+  `PE-PTR-A` = `A-VAR-A A-PTR`). checker.f replays the stream at its table
+  position, so the effects exist only in prims.f (proved by a byte-identical
+  textual round trip and a PES differential).
+- Two gates close the fork: `habu1.f FP-ARGS` refuses a machine body whose
+  name has no row; `habu2.f ENGINE-EMIT:PRIM-TABLE-COMPLETE` refuses a
+  `KEEP?`-kept row that no section registered. **The x86_64 engine
+  registers its bodies under exactly these names** and passes the same two
+  gates; the table is the contract, the arm64 bodies in `habu1.f` are one
+  implementation of it.
+- Readers (with checker rows, callable from checked Habu): `COUNT`, `KIND@`,
+  `NAME$`, `PKG$`, `REF$`, `TRUSTED-ONLY?`, `CODE-LEN@`, `CODE@`,
+  `FIND ( ptr u8 n -- n )`, `K-PRIM K-PKG-PRIVATE K-ELAB K-UNROWED`.
+- Docs: `docs/porting.md` "Engine Primitives". Worker 2 adds `REF` clauses
+  (a NAME, read back with `REF$`) to rows that get a checked reference and
+  `test/prim-parity.f`, which runs the same case table against the primitive
+  and its reference and is the file the x86_64 engine runs unchanged.
+- Known engine facts the parity lane measured and the x86_64 bodies must
+  match or the dots must settle first: `/` and `mod` truncate toward zero;
+  `lshift`/`rshift` mask the count to 6 bits, `rshift` is logical; division
+  by zero crashes with a register dump (dot `habu-refuse-int-division-639af5fa`);
+  `MIN-INT -1 /` wraps on arm64 and traps on x86 (dot
+  `habu-define-min-int-50dc15ef`).
+
+### Register file (`habu-parameterise-the-alloc-7efbe7a1`, line 50ee6a3c, engine 7f70b47e)
+
+- `src/compiler/native/regfile.f`, package `NREGFILE`: `regs` (a one-cell
+  set, bit i = register i) and the seven-field `file` record (`gpr-size`,
+  `gpr-reserved`, `gpr-clobbered`, `fpr-size`, `fpr-reserved`,
+  `fpr-clobbered`, `slot-width`); reserved is stored and allocatable
+  derived, clobbered stored and callee-saved derived; one checked
+  constructor `FILE ( n regs regs n regs regs n -- file )` refusing an
+  incoherent description (`E-NREGFILE`); `REG-MAX` 63; builders
+  `REGS-NONE`, `REGS-SET`, `REGS-REG`, `REGS-WITH`; readers `GPR-SIZE`,
+  `GPR-RESERVED`, `GPR-ALLOCATABLE`, `GPR-CLOBBERED`, `GPR-CALLEE-SAVED`,
+  the `FPR-` four, `SLOT-WIDTH`, `ALLOCATABLE-MASK`.
+- The allocator takes it with the dialect:
+  `A64RA:BIND-DIALECT ( ctx builder NREGFILE:file -- )`; nothing allocates
+  without a description. `A64IR:REGFILE` is the arm64 description, derived
+  from `A64EFF` (Darwin's x18 included). `regalloc-verify.f` reads
+  `A64RA:REGFILE`. Frame rounding stays in `A64EFF` (`FRAME-ROUND`,
+  `FRAME-MAX`).
+- **For x86_64:** the description for the design's machine is 16 general
+  registers with `rbp r12 r13 r14 r15 rbx` reserved (ten allocatable), the
+  SysV callee-saved set equal to the reserved set, so `clobbered` = the
+  allocatable set; `test/compiler/native-regalloc.f` already drives the
+  allocator with that shape. What is NOT yet target-neutral: the pool type
+  the allocator checks a routine's pool against is still `A64EFF:gprs`, and
+  `spill.f`/`prune.f` are instruction-form code over the A64 dialect; the
+  lowering dot supplies an x64 effect schema (or a generalised `A64EFF`)
+  and its own dialect before `A64RA` can be handed a real x86_64 pool.
 
 ### Target registry, rows (`habu-bind-compiler-targets-ff970b99` worker 1, line 0901e61c, engine 343ef770)
 
