@@ -14,6 +14,13 @@
 \
 \ The engine leaves the definition pending. Only a chain emission that passes
 \ every stage publishes it, so a refusal leaves no word behind.
+\
+\ NO BACKEND IS NAMED HERE. Every stage that turns an elaborated definition into
+\ instructions goes through src/compiler/native/backend.f, at the row the
+\ definition's own target contract resolves to, and an architecture with no
+\ backend loaded is refused at the declaration before a module is built. The
+\ ARM64 rows are installed by src/arch/arm64/passes.f, which this file requires
+\ because it is what loads the ARM64 passes today.
 
 require lib/prelude.f
 require lib/errors.f
@@ -21,17 +28,13 @@ require lib/string.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/abi.f
-require src/compiler/native/frame.f
 require src/compiler/native/dict.f
 require src/compiler/native/feed.f
 require src/compiler/native/elaborate.f
-require src/compiler/native/loop.f
-require src/compiler/native/select.f
-require src/compiler/native/prune.f
-require src/compiler/native/spill.f
-require src/compiler/native/emit.f
+require src/compiler/native/backend.f
 require src/compiler/native/publish.f
 require src/compiler/native/prof.f
+require src/arch/arm64/passes.f
 
 package NCOMP
 
@@ -74,8 +77,6 @@ variable PRIOR-TARGET-U
 variable M-OPEN                      \ a compilation is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
-variable M-SPILLS                    \ padded spill slots that define the cumulative frame
-variable M-FUNS                      \ functions sharing the emitted routine contract
 variable M-DOES                      \ byte split after `does> `, or zero
 variable M-DOES-ROW                  \ the tape row that carries `does>`
 PTR-VARIABLE M-DOES-SIG
@@ -407,160 +408,30 @@ create SPELL-BUF SPELL-CAP allot
 : NO-RETURN? ( -- bool )
    NAME-BUF NAME-U @ NDICT:SPELL-DEAD? ;
 
-\ All functions share this ABI. No-return and tail-call control describe a
-\ single function; quotation siblings must retain their ordinary returns.
-: ROUTINE ( -- A64EFF:routine )
-   NO-RETURN? M-FUNS @ 1 = and if
-      NELAB:CALLED? if
-         NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-FRAMED exit
-      then
-      NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-LEAF-FRAMED exit
+\ How control reaches and leaves this definition's routine. The backend composes
+\ its own machine contract from this and from what the definition takes and
+\ leaves; which registers or frame that means is the backend's answer.
+: LINKAGE ( -- NBACK:linkage )
+   NBACK:L-NONE
+   NO-RETURN? if NBACK:L-DEAD NBACK:WITH then
+   NELAB:CALLED? if NBACK:L-CALLED NBACK:WITH then
+   NELAB:TAIL-CALLED? NELAB:TAIL-ENTRY@ NPUB:IN-REGION? and if
+      NBACK:L-TAIL NBACK:WITH
    then
-   NELAB:TAIL-CALLED? NELAB:TAIL-ENTRY@ NPUB:IN-REGION? and
-   M-FUNS @ 1 = and if
-      NELAB:CALLS-BACK? if
-         NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:TAIL-CALLING-FRAMED exit
-      then
-      NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:TAIL-FRAMED exit
-   then
-   NELAB:CALLED? if
-      NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:CALL-FRAMED exit
-   then
-   NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:LEAF-FRAMED ;
-
-: A64-BUILDER ( -- IR-BUILD:builder )
-   IR-BUILD:PLAN-DEFAULT
-   CC A64IR:NEW-BUILDER ;
-
-: HIR-BUILDER ( -- IR-BUILD:builder )
-   IR-BUILD:PLAN-DEFAULT
-   CC HIR:NEW-BUILDER ;
-
-\ A module with no such loop is handed back UNTOUCHED: rebuilding renumbers
-\ values, so a routine that gained nothing could still come out with other bytes.
-: CLOSED ( IR-BUILD:module -- IR-BUILD:module )
-   {: m:IR-BUILD:module :}
-   m NLOOP:FOLDS {: n:n :}
-   n 0= if NLOOP:RELEASE m exit then
-   A64SEL:RELEASE
-   HIR-BUILDER {: nb:IR-BUILD:builder :}
-   CC nb A64SEL:BIND-SOURCE
-   CC m nb NLOOP:REWRITE {: m1:IR-BUILD:module :}
-   NLOOP:FOLDED n <> if E-NLOOP-PLAN throw then
-   m IR-BUILD:RETIRE
-   m1 ;
-
-\ The lowering pass is bound here because a module's symbols are its own.
-\
-\ THE HIR MODULE IS FROZEN INTERIM. It is never the module this compilation
-\ emits - selection reads it and writes the A64 module - and that one is
-\ verified whole. So the HIR freeze derives the edge table selection reads and
-\ leaves the checking to the freeze of the module that becomes the routine.
-: SELECTED ( -- IR-BUILD:module )
-   CC BB NLOOP:BIND-DIALECT
-   CC BB A64SEL:BIND-SOURCE
-   BB IR-BUILD:FUNS M-FUNS !
-   CC BB IR-BUILD:FREEZE-INTERIM {: m0:IR-BUILD:module :}
-   m0 CLOSED {: m:IR-BUILD:module :}
-   A64-BUILDER {: ab:IR-BUILD:builder :}
-   CC ab A64IR:REGFILE A64RA:BIND-DIALECT
-   CC ab A64RAV:BIND-DIALECT
-   CC ab A64EMIT:BIND-DIALECT
-   CC ab A64SPILL:BIND-DIALECT
-   CC ab A64PRUNE:BIND-DIALECT
-   CC m ab ROUTINE A64SEL:SELECT {: selected:IR-BUILD:module :}
-   m IR-BUILD:RETIRE
-   selected ;
-
-\ Declared for every definition, not only one that calls, so the seam can place
-\ it at the slot it really claims.
-: EMIT-AT ( IR-BUILD:module -- )
-   {: m:IR-BUILD:module :}
-   m ROUTINE A64RAV:ACCEPT
-   NPUB:NEXT-SLOT A64EMIT:PLACE-AT
-   CC m A64EMIT:EMIT ;
-
-\ The reserve is sized from A64RA:FRAME, the same count ROUTINE declares from,
-\ so the module and its contract agree by construction.
-: LOWERED ( IR-BUILD:module -- IR-BUILD:module )
-   {: m:IR-BUILD:module :}
-   A64EMIT:RELEASE
-   A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC nb A64IR:REGFILE A64RA:BIND-DIALECT
-   CC nb A64RAV:BIND-DIALECT
-   CC nb A64EMIT:BIND-DIALECT
-   NPROF-PHASE:SPILL NPROF:START
-   CC m nb A64SPILL:REWRITE
-   NPROF-PHASE:SPILL NPROF:STOP ;
-
-\ Turn the allocator's absolute frame high-water back into the ABI's slot count.
-\ Alignment holes stay counted, so a later allocation starts after this frame
-\ rather than reusing padding as though it were unowned.
-: KEEP-FRAME ( A64EFF:routine -- )
-   {: r :}
-   r A64EFF:TRAITS@  r A64EFF:LINK@  A64FRAME:SPILL-BASE {: base:n :}
-   A64RA:FRAME base - {: bytes:n :}
-   bytes 0 <  bytes A64IR:SLOT-WIDTH mod 0<> or if E-A64RA-FRAME throw then
-   bytes A64IR:SLOT-WIDTH / M-SPILLS ! ;
-
-: NEEDS-LOWERING? ( IR-BUILD:module -- bool )
-   {: m:IR-BUILD:module :}
-   ROUTINE {: r :}
-   CC m r A64RA:ALLOCATE
-   A64RA:PLAN-N 0= if false exit then
-   A64RA:SPILLS A64RA:REMATS + A64RA:MOVES +
-   0= if E-A64SPILL-PLAN throw then
-   r KEEP-FRAME
-   true ;
-
-\ Each turn consumes a non-empty sealed plan and rewrites all of its decisions.
-\ The next allocation either seals an empty plan or contributes another class.
-: LOWER-FIXPOINT ( IR-BUILD:module -- IR-BUILD:module )
-   begin
-      dup NEEDS-LOWERING?
-   while
-      dup LOWERED
-      swap IR-BUILD:RETIRE
-   repeat ;
-
-\ A module with no such load is handed back UNTOUCHED: rebuilding renumbers
-\ values and the allocator breaks ties on those numbers, so a routine that
-\ gained nothing would still come out with other bytes. Nothing in the corpus
-\ reaches the rebuild; the shapes that do are named in prune.f.
-: PRUNED ( IR-BUILD:module -- IR-BUILD:module )
-   {: m:IR-BUILD:module :}
-   NPROF-PHASE:PRUNE NPROF:START
-   m A64PRUNE:REWRITES {: n:n :}
-   n 0= if
-      A64PRUNE:RELEASE  NPROF-PHASE:PRUNE NPROF:STOP  m exit
-   then
-   A64RA:RELEASE
-   A64EMIT:RELEASE
-   A64SPILL:RELEASE
-   A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC nb A64IR:REGFILE A64RA:BIND-DIALECT
-   CC nb A64RAV:BIND-DIALECT
-   CC nb A64EMIT:BIND-DIALECT
-   CC nb A64SPILL:BIND-DIALECT
-   CC m nb A64PRUNE:REWRITE {: m1:IR-BUILD:module :}
-   A64PRUNE:REWRITTEN n <> if E-A64PRUNE-SHAPE throw then
-   m IR-BUILD:RETIRE
-   NPROF-PHASE:PRUNE NPROF:STOP
-   m1 ;
+   NELAB:CALLS-BACK? if NBACK:L-BACK NBACK:WITH then ;
 
 \ ---- the one stage, or the two -----------------------------------------------
 \ Selection publishes the module that is emitted, and a routine whose values do
 \ not all fit its registers is lowered - once per class the allocator seals - and
-\ the last lowering publishes it instead.
-\
-\ Frame slots and DECISIONS are different counts: a value re-emitted where it is
-\ read takes no slot, so a walk asked through the slot count looks like one that
-\ decided nothing. A routine that calls still cannot spill; it is refused.
+\ the last lowering publishes it instead. Every stage is the row the definition's
+\ own target contract resolves to, so this file names no backend and an
+\ architecture with no backend loaded is refused at the declaration.
 : EMITTED ( -- )
-   SELECTED PRUNED {: m:IR-BUILD:module :}
-   m LOWER-FIXPOINT {: ready:IR-BUILD:module :}
-   A64SPILL:BOUND? if A64SPILL:RELEASE then
-   ready EMIT-AT ;
+   CC M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
+   CC BB NBACK:SELECT {: m0:IR-BUILD:module :}
+   CC m0 NBACK:PRUNE {: m:IR-BUILD:module :}
+   CC m NBACK:FIXPOINT {: ready:IR-BUILD:module :}
+   CC ready NPUB:NEXT-SLOT NBACK:EMIT ;
 
 : PUBLISH-IT ( -- )
    M-DOES @ 0<> if M-DOES-FUN @ NPUB:PUBLISH-PENDING-DOES exit then
@@ -592,20 +463,12 @@ create SPELL-BUF SPELL-CAP allot
    EMITTED
    PUBLISH-IT ;
 
-\ Caught INSIDE the context so it always leaves the ordinary way and gives its
-\ arenas back. Each pass is asked about ITSELF, so this cannot get out of step.
-: RETURN-BINDINGS ( -- )
-   NLOOP:BOUND? if NLOOP:RELEASE then
-   A64SEL:BOUND? if A64SEL:RELEASE then
-   A64RA:BOUND? if A64RA:RELEASE then
-   A64SPILL:BOUND? if A64SPILL:RELEASE then
-   A64PRUNE:BOUND? if A64PRUNE:RELEASE then
-   A64EMIT:BOUND? if A64EMIT:RELEASE then ;
-
+\ Asked INSIDE the context so the backend always leaves the ordinary way and
+\ gives its arenas back.
 : RETIRE-BODY ( -- )
    NFETCH:RELEASE
-   M-RC @ 0<> if RETURN-BINDINGS then
-   A64EMIT:RETIRE ;
+   M-RC @ 0<> if CC NBACK:RELEASE then
+   CC NBACK:RETIRE ;
 
 : BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -654,23 +517,23 @@ create SPELL-BUF SPELL-CAP allot
    SC k IR-SYM:CAP-MAX IR-SYM:BYTE-MAX IR-SYM:NEW
    {: a:IR-ARENA:arena r:IR-ARENA:arena :}
    SC a r k HIR:PROTOTYPE
-   SC a r k A64IR:PROTOTYPE
+   SC a r k NBACK:PROTOTYPE
    IR-BUILD:PLAN-BEGIN
    IR-BUILD:PLAN-DEFAULT
    SC HIR:NEW-BUILDER {: mb:IR-BUILD:builder :}
    SC a r k mb HIR-WORD:SESSION-MODEL
    mb IR-BUILD:ABORT ;
 
-\ What NCOMP holds that lives in the session context and nowhere else: two
-\ dialect prototypes and the registered vocabulary. Each is a flag over storage
-\ the session owns, so the flags go out when the session does - through
-\ IR-CTX:SESSION-CLOSE, which runs this before it retires the row. Nothing else
-\ clears them, so no ordering between a capture's entry points can leave a
-\ reader holding a flag over an arena that is gone.
+\ What NCOMP holds that lives in the session context and nowhere else: the HIR
+\ prototype, the registered vocabulary, and whatever each loaded backend interned
+\ beside them. Each is a flag over storage the session owns, so the flags go out
+\ when the session does - through IR-CTX:SESSION-CLOSE, which runs this before it
+\ retires the row. Nothing else clears them, so no ordering between a capture's
+\ entry points can leave a reader holding a flag over an arena that is gone.
 : SESSION-FORGET ( -- )
    HIR-WORD:SESSION-MODEL-CLEAR
    HIR:PROTOTYPE-CLEAR
-   A64IR:PROTOTYPE-CLEAR ;
+   NBACK:FORGET ;
 
 : INSTALL-FORGET ( -- )
    [: SESSION-FORGET ;] IR-CTX:SESSION-STAND-DOWN! ;
@@ -739,7 +602,6 @@ INSTALL-FORGET
    KEEP-PRIOR
    0 M-IN ! 0 M-OUT !
    0 M-VERDICT !
-   0 M-SPILLS !
    DOES-BYTE@ M-DOES !
    DOES-SIG-FIELD @ M-DOES-SIG !
    data-base TCSIG-U-CELL + @ M-DOES-SIG-U !
@@ -774,16 +636,9 @@ public
    NULL-PTR TRUST-SRC-A !  0 TRUST-SRC-U !
    0 PRIOR-ENTRY !  0 PRIOR-IN !  0 PRIOR-OUT !
    0 PRIOR-GLUE !  0 PRIOR-DEAD !  0 PRIOR-CAST !  0 PRIOR-CALLABLE !
-   A64EMIT:CAPTURE-PREPARE
-   \ The registry releases buffers immediately before DATA copy. Reset the
-   \ pass reservations here so a restored compiler sizes them again on use.
-   A64EMIT:RESET-SCRATCH
-   A64SPILL:RESET-SCRATCH
-   A64RAV:RESET-SCRATCH
-   A64RA:RESET-SCRATCH
-   A64PRUNE:RESET-SCRATCH
-   A64SEL:RESET-SCRATCH
-   NLOOP:RESET-SCRATCH
+   \ The registry releases buffers immediately before DATA copy, so each loaded
+   \ backend gives up its pass reservations here and sizes them again on use.
+   NBACK:PREPARE
    CHECKER-OWNER:CAPTURE-PREPARE
    NFEED:CAPTURE-PREPARE
    IR-BUILD:CAPTURE-PREPARE

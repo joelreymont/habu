@@ -9132,3 +9132,22 @@ The same shape applies to `src/compiler/target.f`: it is part of the baked
 compiler, so `require src/compiler/target.f` in a test is a registry no-op and
 the test measures the ENGINE's contract tables, never the edited file, until the
 engine is rebuilt.
+
+## 2026-09-17 - a multi-field value cannot be bound to a local
+
+`{: r:req :}` for a STRUCTURE with more than one FIELD refuses with
+`habu: in <word>: unknown type 'r:req' in signature` - the same message a
+misspelled type gets, so it reads like a scope or spelling bug and is not.
+Qualifying it (`r:PKG:req`) says the same thing, and so does the bare tail
+inside the owning package. A ONE-field structure over a bit set binds fine
+(`CTARGET:features` does), and so does every `NEWTYPE` handle.
+
+Wide values still travel on the stack: as word arguments, and through a
+quotation row in a TYPED-BUFFER (`[ CTARGET:contract -- bool ]` is one), and
+they still `UNMAKE` into typed locals field by field. What has no layout is the
+whole value in one local. So a word that must hold a wide value while it reaches
+PAST it - a dispatcher that reads the context sitting under its arguments, say -
+cannot; state those facts as separate cells, or pack them into a one-field
+nominal as `NBACK:linkage` does. Interpret mode cannot hold one either:
+producing a wide value at the top level is `hb: interpret-mode layout value`,
+so build it inside a definition.
