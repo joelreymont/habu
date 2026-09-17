@@ -569,12 +569,13 @@ public
 \   -8720..-8739  the judge's second block, taken when the first filled: the
 \                 storage a corpus declares, and the package a derived word is
 \                 published in (package JUDGE-CHAIN)
+\   -8830..-8839  x86_64 instruction construction (package X64ASM)
 \   -8840..-8859  ARM32/Thumb instruction construction (package A32ASM)
 \   -8860..-8869  C66x instruction construction (package C6XASM)
 \   -8870..-8879  C66x instruction facts (package C6XFACTS)
 \   -8880..-8889  C66x subset interpreter (package C6XSIM)
 \   -8890..-8899  C6000 EABI helper emission (package C6XEABI)
-\   -8420..-8439, -8488..-8499, -8520..-8599, -8666..-8699, -8740..-8839,
+\   -8420..-8439, -8488..-8499, -8520..-8599, -8666..-8699, -8740..-8829,
 \   -8880..-8999
 \                 unassigned. The remaining dialect packages
 \                 (SIR, LIR, and the GPU stages) and the native and GPU back
@@ -1186,6 +1187,7 @@ public
 -8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, a scrutinee whose bundle on that vector does not begin, hold together and end where its family's width says - which is what an instantiation wider than the declared one looks like from here - or an arm whose payload has several FIELDS in more CELLS, where no per-field width says where its values begin (dot habu-publish-the-payload-eb4ae38a)
 
 \ Embedded instruction constructors (compiler growth region).
+-8830 constant E-X64ASM-OPERAND
 -8840 constant E-A32ASM-OPERAND
 -8860 constant E-C6XASM-OPERAND
 

@@ -245,6 +245,10 @@ SUITE compiler-arm32-asm
    test/compiler/arm32-asm.f
 ;SUITE
 
+SUITE compiler-x86-64-asm
+   test/compiler/x86-64-asm.f
+;SUITE
+
 SUITE compiler-tic6x-asm
    test/compiler/tic6x-asm.f
    test/compiler/tic6x-facts.f

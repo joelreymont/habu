@@ -1,10 +1,12 @@
 # Embedded instruction constructors
 
 `src/arch/arm32/asm.f` (`A32ASM`) and `src/arch/tic6x/asm.f` (`C6XASM`)
-construct instruction values in checked Habu. They do not emit host memory,
-select a compiler target, lower IR, allocate registers, schedule instructions,
-apply relocations, or produce an executable. Those operations belong to the
-compiler layers that consume these modules.
+construct instruction values in checked Habu. `src/arch/x86-64/asm.f`
+(`X64ASM`) belongs to the same family but appends bytes to a sink instead of
+answering a value, because an x86_64 instruction has no fixed width. None of
+them emit host memory, select a compiler target, lower IR, allocate registers,
+schedule instructions, apply relocations, or produce an executable. Those
+operations belong to the compiler layers that consume these modules.
 
 Operands use nominal register, condition, offset, and instruction types.
 Generated `>TYPE` converters make an explicit role conversion; constructors
@@ -37,6 +39,53 @@ little-endian 16-bit integers. A `thumb32-instruction` holds the **first
 halfword in bits 31–16** and the second in bits 15–0: emit each halfword
 little-endian in that order. For example, `0 >GPR 0 THUMB-MOVW` is
 `0xF2400000`, whose bytes are `40 F2 00 00`.
+
+## x86_64
+
+Four register files are four distinct nominal types — `r64`, `r32`, `r16` and
+`r8` — so a 32-bit register where a 64-bit one is required is a checker
+refusal, not a runtime throw. `imm8`, `imm32`, `imm64`, `condition`, `rel` and
+`mem` are nominal too. The `r8` file is the REX-only one: 4–7 are `spl`, `bpl`,
+`sil` and `dil`, never the legacy `ah`/`ch`/`dh`/`bh`, and any `r8` operand at
+or above 4 forces a REX prefix. The 64-bit register names `RAX`–`R15` and the
+sixteen condition names `C-O`–`C-G` are words of those types.
+
+A `mem` is one packed cell built only by `MEM-AT` (base), `MEM-OFF` (base plus
+displacement), `MEM-IDX` (base plus scaled index plus displacement, scale 1, 2,
+4 or 8, index never `rsp`) and `MEM-RIP`. Its fields are re-screened on the way
+into an encoder, so a value forged through the generated `>MEM` cast is refused
+with `E-OPERAND` rather than reaching a ModRM field.
+
+Every encoder takes the byte sink as its LAST operand and appends through
+`lib/byte-buffer.f` (`BUF`); there is no instruction type, because the
+instruction is the bytes. Operand order otherwise matches the ARM32 and C66x
+sets: destination first, then sources, and a memory form takes the data
+register first and the memory operand second, stores included.
+
+Encoding is deterministic. The emitted length is a function of the word the
+caller chose and of the memory operand's own displacement magnitude — never of
+a peephole or a relaxation pass — so a caller that needs a size encodes into a
+scratch buffer and reads the length. Branch width is the caller's choice:
+`ENC-JCC-REL8` and `ENC-JCC-REL32` are separate words, and a `rel` is measured
+in bytes from the END of the instruction, unlike ARM32's instruction address
+plus 8 or 4.
+
+Each operation has exactly one encoding. The accumulator short forms (`05 id`,
+`A9 id`, `90+r`) and the `D1 /n` shift-by-one form are size optimisations and
+are not implemented, so `llvm-mc`, which prefers them, is compared against the
+general form with registers other than `rax` and shift counts other than one.
+`ENC-MOV-RI64` is the one relocatable literal the x86_64 design names
+(`docs/x86-64.md`); `MOV-RI64-IMM-OFF` is where its imm64 begins inside the
+instruction, and the relocation writer patches there.
+
+The set covers group-1 arithmetic and logic (`add or adc sbb and sub xor cmp`)
+in five forms each, `test`, moves and loads and stores at 8, 16, 32 and 64
+bits, `movzx`/`movsx`/`movsxd`, `lea`, the F7 and FF one-register groups
+(`not neg mul imul div idiv inc dec`) with `cqo`, the non-widening `imul`,
+shifts and rotates by imm8 and by `cl`, relative and indirect branches and
+calls, `ret`, `setcc`, `cmovcc`, `push`, `pop`, `xchg` and `syscall`. The one
+32-bit arithmetic form is `ENC-XOR32-RR`, the register-zeroing idiom; a 32-bit
+result zero-extends into the whole 64-bit register.
 
 ## C66x
 
@@ -86,8 +135,17 @@ Run focused tests through the normal native engine from the Habu checkout:
 ```sh
 bin/hb --load test/compiler/tic6x-asm.f </dev/null
 bin/hb --load test/compiler/arm32-asm.f </dev/null
+bin/hb --load test/compiler/x86-64-asm.f </dev/null
 python3 test/compiler/embedded-asm.py --tic6x-prefix /path/to/tic6x-elf-
 ```
+
+The x86_64 suite needs no assembler at test time: each of its 152 forms is
+pinned to a fixed byte string, and the `llvm-mc:` comment above each case is
+the source line that produced it. The strings came from
+`llvm-mc -triple=x86_64 -show-encoding` on 2026-09-17 (LLVM 22.1.8), and the
+five relative branches from `llvm-mc -filetype=obj` plus
+`llvm-objdump -d --triple=x86_64`, because llvm-mc leaves a fixup rather than
+bytes for a symbolic branch target.
 
 The Python harness compares actual checked Habu results with independent
 assemblers: LLVM `llvm-mc`/`ld.lld`/`llvm-objcopy` for ARM/Thumb and GNU
@@ -100,6 +158,13 @@ All 92 LLVM ARM/Thumb comparisons and 47 GNU C674x/C66x comparisons passed.
 The local `immediate` operand name remains covered by the ARM constructors.
 No target program has been executed on hardware; no full native compiler-suite
 result is claimed for these isolated additive modules.
+
+On 2026-09-17 the x86_64 suite passed on the ARM64 host: 152 byte-string
+forms, 27 runtime refusals, 11 checker-refusal candidates. A second,
+independent check disassembled a 99-byte buffer the encoders themselves
+produced with `llvm-objdump -d --triple=x86_64`, and all 26 instructions read
+back as the intended mnemonics. No x86_64 code has been executed anywhere; the
+encoders are target-free Habu and no machine has run their output.
 
 ## C66x execute packets
 
