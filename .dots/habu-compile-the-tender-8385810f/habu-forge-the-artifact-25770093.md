@@ -23,3 +23,5 @@ payload` (75) before copying. The registered artifact suite passes on lifecycle
 host `cdac89e02a34`, including real owned capture restoration after every original
 section is erased and its large source mappings are released. Other malformed
 header/source and checker-payload cases remain in this task.
+
+ Added 2026-09-17 (run-rows lane, 3afce20f + f6e2c707): the S-WDATA run table is now a byte string of (gap, length) varint rows, so its reader refusals changed: a malformed varint (truncated, padded, past five bytes, past u32), an empty run, a run past the span, and lengths that do not fill the byte section; ascending and overlap are no longer refusals because the encoding cannot express them. None is forged through a doctored artifact; test/aot-run-rows.f covers only the field codec. The producers also refuse by name now (aot-capture.f ACAP-ADD-RUN, aot-lib.f BLOB-V!, aot-file.f MERGE-WDATA-GAP) and those die paths have no child-process regression either.
