@@ -15,7 +15,7 @@ engine `bin/hb` sha256 `0448677fb5588e39` (3,997,888 bytes).
 | --- | --- | --- | --- |
 | `habu-write-the-x86-fbaf3086` | `src/arch/x86-64/asm.f` encoder + byte tests | arm64 host (hazel) | landed 07a7e90c |
 | `habu-specify-the-engine-fcbcee25` | `src/habu/prims.f` primitive table + parity gate | arm64 host (hazel) | landed fb4f2392 + 383a18c7 (closed) |
-| `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract | arm64 host (hazel) | seam landed d55021af + 5e05cbfd; the instruction emitters (`SYS,`, the stencils, the process words) in progress (worker 2) |
+| `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract, emitters | arm64 host (hazel) | seam landed d55021af + 5e05cbfd; emitters on the line d1961798 (chain AU) |
 | `habu-parameterise-the-alloc-7efbe7a1` | register-file description for regalloc/spill/prune | arm64 host (hazel) | landed 50ee6a3c |
 | `habu-bind-compiler-targets-ff970b99` | backend registry + pass dispatch | arm64 host (hazel) | landed 0901e61c + ddc1412d (closed) |
 | `habu-lower-hir-to-6bf80d33` | `x64ir.f`, `select-x64.f`, `emit-x64.f` | Intel agent | open; depends on the five above |
