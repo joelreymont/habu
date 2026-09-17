@@ -114,6 +114,22 @@ variable GPT-ROOT-SAVE-U
    s" quick worker" GPT-TIMEOUT-MS [: GPT-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN-SOFT ;
 
+\ A suite's own inner deadline: lib/process throws E-PROC-TIMEOUT when a child
+\ it spawned outlives the deadline it was given, and an uncaught one leaves the
+\ suite through the engine's top-level reporter. The pool has to name that as
+\ the load outcome it is (tools/imgdump-test.f reds this way under a saturated
+\ pool), never as an anonymous exit.
+: GPT-INNER-TIMEOUT-SRC$ ( -- ptr u8 n )
+   S\" require lib/errors.f\nE-PROC-TIMEOUT throw\n" ;
+
+\ The same shape with any other throw code stays a plain exit.
+: GPT-OTHER-THROW-SRC$ ( -- ptr u8 n )
+   S\" require lib/errors.f\nE-PROC-SPAWN throw\n" ;
+
+: GPT-BATTERY-INNER-TIMEOUT ( -- )
+   GPT-HB$ s" inner deadline worker" GPT-INNER-TIMEOUT-SRC$ GPT-TIMEOUT-MS GT-POOL-START-STDIN
+   GT-POOL-DRAIN-SOFT ;
+
 : GPT-BATTERY-OVERFLOW ( -- )
    GPT-OVERFLOW-N 0 ?do
       s" soft overflow" GPT-TIMEOUT-MS [: GPT-SOFT-ONE ;] GT-POOL-START-FORK
@@ -129,6 +145,7 @@ variable GPT-ROOT-SAVE-U
    GPT-BATTERY-SOFT
    GPT-BATTERY-WRAP
    GPT-BATTERY-TIMEOUT
+   GPT-BATTERY-INNER-TIMEOUT
    GPT-BATTERY-OVERFLOW
    GT-POOL-DRAIN ;
 
@@ -210,8 +227,19 @@ private
    GPT-OUT outu s" ran=" CONTAINS? TTRUE
    GPT-OUT outu s" PASS: quick worker" CONTAINS? TTRUE ;
 
+\ The row the pool's own reaper never touched: the child reported its own
+\ expired deadline and the pool read that report, so the report reads like the
+\ row a pool-side kill produces and never kind=exit. The count keeps it from
+\ passing on the hang worker's row alone; GPT-INNER-TIMEOUT-CASE holds the
+\ saturation fields the suffix is rendered from.
+: GPT-EXPECT-INNER-TIMEOUT-OUT ( n -- ) {: outu:n :}
+   GPT-OUT outu s" RED: inner deadline worker kind=TIMEOUT-UNDER-LOAD code=0" CONTAINS? TTRUE
+   GPT-OUT outu s" RED: inner deadline worker kind=exit" CONTAINS? TFALSE
+   GPT-OUT outu s" kind=TIMEOUT-UNDER-LOAD" GPT-COUNT$ 2 T=
+   GPT-OUT outu s" outcome: TIMEOUT-UNDER-LOAD code: 0" CONTAINS? TTRUE ;
+
 : GPT-EXPECT-OVERFLOW-OUT ( n -- ) {: outu:n :}
-   GPT-OUT outu s" red tests: 17" CONTAINS? TTRUE
+   GPT-OUT outu s" red tests: 18" CONTAINS? TTRUE
    GPT-OUT outu s" more failed tests" CONTAINS? TFALSE
    GPT-OUT outu s" RED: soft overflow" GPT-COUNT$ 12 T= ;
 
@@ -225,6 +253,7 @@ private
    outu GPT-EXPECT-SOFT-OUT
    outu GPT-EXPECT-WRAP-OUT
    outu GPT-EXPECT-TIMEOUT-OUT
+   outu GPT-EXPECT-INNER-TIMEOUT-OUT
    outu GPT-EXPECT-OVERFLOW-OUT
    erru GPT-EXPECT-BATTERY-ERR ;
 
@@ -508,6 +537,64 @@ variable GPT-FC-DONE-U
    0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ s" gate-pool stdin worker" CONTAINS? TTRUE
    GT-CLEANUP ;
 
+\ The reader takes the engine's report and nothing shaped merely like it. Its
+\ input is a captured stderr tail, so every fixture here is one.
+: GPT-UNCAUGHT-CASE ( -- )
+   s" uncaught: the engine's own report classifies" T-LABEL
+   S\" hb: uncaught throw code -2502\n" GT-POOL-UNCAUGHT-TIMEOUT? TTRUE
+   s" uncaught: a report behind the suite's output still classifies" T-LABEL
+   S\" PASS: something\nhb: uncaught throw code -2502\n" GT-POOL-UNCAUGHT-TIMEOUT? TTRUE
+   s" uncaught: another throw code does not" T-LABEL
+   S\" hb: uncaught throw code -60\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
+   s" uncaught: a longer code ending in those digits does not" T-LABEL
+   S\" hb: uncaught throw code -12502\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
+   s" uncaught: the code without its sign does not" T-LABEL
+   S\" hb: uncaught throw code 2502\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
+   s" uncaught: output after the report does not" T-LABEL
+   S\" hb: uncaught throw code -2502\nand then more\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
+   s" uncaught: a report with no digits does not" T-LABEL
+   S\" hb: uncaught throw code -\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
+   s" uncaught: a report with no newline does not" T-LABEL
+   s" hb: uncaught throw code -2502" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
+   s" uncaught: more digits than a code can have does not" T-LABEL
+   S\" hb: uncaught throw code -11111111111111111111\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
+   s" uncaught: the code on its own does not" T-LABEL
+   S\" -2502\n" GT-POOL-UNCAUGHT-TIMEOUT? TFALSE
+   s" uncaught: an empty capture does not" T-LABEL
+   GPT-OUT 0 GT-POOL-UNCAUGHT-TIMEOUT? TFALSE ;
+
+: GPT-INNER-TIMEOUT-RUN ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   GT-POOL-RED-RESET
+   GPT-HB$ s" inner deadline worker" src srcu GPT-TIMEOUT-MS GT-POOL-START-STDIN
+   GT-POOL-DRAIN-SOFT ;
+
+\ Slot state, which is what the report is rendered from: the saturation depth
+\ has to be snapshotted for this row the same way a pool-side kill snapshots
+\ it, and an uncaught code that is not E-PROC-TIMEOUT has to stay an exit.
+: GPT-INNER-TIMEOUT-CASE ( -- )
+   s" gate-pool-inner-timeout" GT-START
+   GPT-INNER-TIMEOUT-SRC$ GPT-INNER-TIMEOUT-RUN
+   s" inner timeout: the child's own expired deadline is no plain exit" T-LABEL
+   0 >IDX GT-POOL-EXITED-PTR @ TFALSE
+   s" inner timeout: the slot reports a load timeout" T-LABEL
+   0 >IDX GT-POOL-TIMED-OUT-PTR @ TTRUE
+   s" inner timeout: the row is red" T-LABEL
+   GT-POOL-RED# 1 T=
+   s" inner timeout: the red row is a timeout row" T-LABEL
+   0 GT-POOL-RED-TIMED-OUT-PTR @ TTRUE
+   0 GT-POOL-RED-EXITED-PTR @ TFALSE
+   s" inner timeout: the red row carries the saturation depth" T-LABEL
+   0 GT-POOL-RED-SAT-LIVE-PTR @ 1 T=
+   0 GT-POOL-RED-SAT-LIMIT-PTR @ 1 T=
+   GPT-OTHER-THROW-SRC$ GPT-INNER-TIMEOUT-RUN
+   s" inner timeout: another uncaught code stays an exit" T-LABEL
+   0 >IDX GT-POOL-EXITED-PTR @ TTRUE
+   0 >IDX GT-POOL-TIMED-OUT-PTR @ TFALSE
+   0 >IDX GT-POOL-CODE-PTR @ UNCAUGHT-RC T=
+   GT-CLEANUP ;
+
 : GATE-POOL-TEST-MAIN ( -- )
    s" fail-battery-case" GPT-MODE? if GPT-BATTERY-CASE exit then
    T-RESET
@@ -526,6 +613,8 @@ variable GPT-FC-DONE-U
    GPT-EXTERNAL-KILL-CASE
    GPT-FC-CASE
    GPT-STDIN-CASE
+   GPT-UNCAUGHT-CASE
+   GPT-INNER-TIMEOUT-CASE
    GPT-BATTERY-REPORT
    T-REPORT
    s" gate-pool-test: ok" type cr ;

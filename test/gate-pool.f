@@ -972,6 +972,84 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-EXITED-PTR @
    idx GT-POOL-CODE-PTR @ 0= and ;
 
+\ ---- a deadline the child itself owned ---------------------------------------
+\
+\ lib/process throws E-PROC-TIMEOUT when a child a suite spawned outlives the
+\ deadline that suite gave it. Uncaught, it leaves the suite through the
+\ engine's top-level reporter (src/habu/habu2.f, labels LUNCAUGHT and LUNCMSG):
+\ for a throw code outside [1,255] that reporter writes "hb: uncaught throw
+\ code ", the signed decimal code and a newline to fd 2 as the process's last
+\ output, then exits the deterministic UNCAUGHT-RC (src/habu/layout.f). Such a
+\ row used to read kind=exit code=67 with nothing naming the cause, so a red
+\ this pool caused by starving that child could not be told apart from a
+\ genuine failure and every gate run under load had to be repeated by hand.
+19 constant GT-POOL-UNC-DIGITS-MAX      \ a signed 64-bit code has no more
+variable GT-POOL-UNC-I                  \ cursor into the captured stderr
+variable GT-POOL-UNC-V                  \ the code being read back
+variable GT-POOL-UNC-SCALE              \ place value of the digit under the cursor
+
+: GT-POOL-UNCAUGHT-MSG$ ( -- ptr u8 n )
+   s" hb: uncaught throw code " ;
+
+: GT-POOL-DIGIT? ( n -- bool ) {: c:n :}
+   c $30 >= c $39 <= and ;
+
+: GT-POOL-DIGIT-BEFORE? ( ptr u8 n n -- bool ) {: a:ptr u:n i:n :}
+   i 0 <= if 0 0= 0= exit then
+   i u > if 0 0= 0= exit then
+   a i 1 - BYTE+ c@ GT-POOL-DIGIT? ;
+
+\ The v bytes of b sit immediately before index i.
+: GT-POOL-ENDS-AT? ( ptr u8 n n ptr u8 n -- bool ) {: a:ptr u:n i:n b:ptr v:n :}
+   i v - 0 < if 0 0= 0= exit then
+   i u > if 0 0= 0= exit then
+   a i v - BYTE+ v b v STR= ;
+
+\ Read the code back out of that report. The reporter's write is the process's
+\ last, so the report ends the capture, which keeps the stream's tail: the
+\ prefix, an optional minus, at least one digit, the closing newline and
+\ nothing after it. A capture shaped any other way reports no code, so output
+\ that merely carries the text is not mistaken for the engine's own report.
+: GT-POOL-UNCAUGHT-CODE? ( ptr u8 n -- bool n )   \ reported? code
+   {: a:ptr u:n :}
+   0 GT-POOL-UNC-V !  1 GT-POOL-UNC-SCALE !
+   u 0 <= if 0 0= 0= 0 exit then
+   a u 1 - BYTE+ c@ $0A <> if 0 0= 0= 0 exit then
+   u 1 - GT-POOL-UNC-I !
+   begin a u GT-POOL-UNC-I @ GT-POOL-DIGIT-BEFORE? while
+      GT-POOL-UNC-I @ 1 - GT-POOL-UNC-I !
+      a GT-POOL-UNC-I @ BYTE+ c@ $30 - GT-POOL-UNC-SCALE @ * GT-POOL-UNC-V @ + GT-POOL-UNC-V !
+      GT-POOL-UNC-SCALE @ 10 * GT-POOL-UNC-SCALE !
+   repeat
+   u 1 - GT-POOL-UNC-I @ <= if 0 0= 0= 0 exit then
+   u 1 - GT-POOL-UNC-I @ - GT-POOL-UNC-DIGITS-MAX > if 0 0= 0= 0 exit then
+   a u GT-POOL-UNC-I @ s" -" GT-POOL-ENDS-AT? if
+      GT-POOL-UNC-V @ negate GT-POOL-UNC-V !
+      GT-POOL-UNC-I @ 1 - GT-POOL-UNC-I !
+   then
+   a u GT-POOL-UNC-I @ GT-POOL-UNCAUGHT-MSG$ GT-POOL-ENDS-AT? 0= if 0 0= 0= 0 exit then
+   0 0= GT-POOL-UNC-V @ ;
+
+: GT-POOL-UNCAUGHT-TIMEOUT? ( ptr u8 n -- bool )
+   GT-POOL-UNCAUGHT-CODE? E-PROC-TIMEOUT = and ;
+
+\ A slot whose child died on its own inner deadline: it exited UNCAUGHT-RC and
+\ its last stderr bytes are the engine's report for E-PROC-TIMEOUT.
+: GT-POOL-INNER-TIMEOUT? ( idx -- bool ) {: idx :}
+   idx GT-POOL-EXITED-PTR @ 0= if 0 0= 0= exit then
+   idx GT-POOL-CODE-PTR @ UNCAUGHT-RC <> if 0 0= 0= exit then
+   idx GT-POOL-ERR-BUF idx GT-POOL-ERR-U-PTR @ GT-POOL-UNCAUGHT-TIMEOUT? ;
+
+\ Report it the way the pool reports a slot its own reaper killed: a deadline
+\ expired, and the saturation suffix says how contended the pool was when it
+\ did. The row stays red - the timeout variant clears the exited flag, which
+\ is what GT-POOL-OK? answers on - and the depth is snapshotted before the
+\ reap drops this slot from the live count, exactly as GT-POOL-TIMEOUT does.
+: GT-POOL-RECLASSIFY-INNER-TIMEOUT ( idx -- ) {: idx :}
+   idx GT-POOL-INNER-TIMEOUT? 0= if exit then
+   OUTCOME:TIMEOUT idx GT-POOL-OUTCOME!
+   GT-POOL-LIVE @ idx GT-POOL-SAT-LIVE-PTR ! ;
+
 : GT-POOL-TRUNC-LINE ( idx n -- ) {: idx:idx stream:n :}
    idx stream GT-POOL-STREAM-TOTAL-PTR @ idx stream GT-POOL-STREAM-U-PTR @ - {: cut:n :}
    cut 0 <= if exit then
@@ -1003,6 +1081,7 @@ GT-POOL-ABORT-KILL!
 
 : GT-POOL-REAP ( idx -- ) {: idx :}
    idx GT-POOL-PID@ PROC-WAIT-OUTCOME idx GT-POOL-OUTCOME!
+   idx GT-POOL-RECLASSIFY-INNER-TIMEOUT
    -1 >PID idx GT-POOL-PID-PTR !
    idx GT-POOL-KILL-REAPER
    idx GT-POOL-CLOSE-CAPTURE
