@@ -5558,6 +5558,34 @@ public
    xdone LBL, ;
 ;package
 
+\ Publish the payload's CODE-SPAN TABLE: where the baked rows are, how many there
+\ are, and the address the blob just landed at. Three DATA cells, written once and
+\ never again, which is what makes them readable by ordinary checked code
+\ (src/habu/aot-closure.f) with no relocation of their own: the rows are __text,
+\ mapped for the life of the process, and a row's blob offset means the same thing
+\ at every boot once the base sits beside it.
+\ IT RUNS WITH CP STILL AT THE BLOB'S BASE, before this pass advances past the
+\ blob, because that base is what a row's offset is measured from. A build that
+\ captured nothing emits no seed pass at all, so all three keep the zero the DATA
+\ region boots with, which is exactly "no stripped spans" to the reader.
+\ In the package that owns the three cells, the way AOT-SIG's publish sits in the
+\ package that owns its two: src/habu/layout.f declares TABLE-CELL, N-CELL and
+\ BASE-CELL, and this is their one writer.
+package AOT-SPAN
+public
+variable LCOUNT   variable LROWS
+
+: PUBLISH, ( -- )
+   9 5 LROWS LABEL@ TADR,
+   9 DATA TABLE-CELL STR,
+   9 5 LCOUNT LABEL@ TADR,  9 9 0 LDR,
+   9 DATA N-CELL STR,
+   CP DATA BASE-CELL STR, ;
+
+: EMIT-ROWS ( -- )   \ packed 8B rows (blob-off u32 + raw code span u32)
+   N @ 0 > IF BUF@ N @ ROW * BYTES, THEN ;
+;package
+
 \ Boot-run the captured top-level entry words (the REPL's INSTALL) once
 \ the seeded blob is RX + icache-flushed: walk the 0-terminated [len][name] list,
 \ LFIND each in the now-registered dict, and blr its xt. This replaces the embedded
@@ -5654,6 +5682,7 @@ public
    11 5 LAOTCODELEN LABEL@ TADR,  11 11 0 LDR,     \ x11 = blob length, read before the flip
    1 CP 11 ADD,  PROT:LOPEN LABEL@ BL,              \ region -> RW over the blob's landing span
    EM-AOT-COPY-BLOB                                 \ x11 rides the kernel-preserved x2-x15 band
+   AOT-SPAN:PUBLISH,                                \ CP is still the blob base here
    EM-AOT-REGISTER-RECS
    EM-AOT-PATCH-SITES
    EM-AOT-RELOC-DATA
@@ -9649,6 +9678,7 @@ package LABELS
    LBL AOT-WINDOW:LNXTOFF !  LBL AOT-WINDOW:LXTOFFS !
    LBL LAOTNCSITE !  LBL LAOTCSITES !  LBL LAOTCODEB0 !
    LBL AOT-XTSITE:LCOUNT !  LBL AOT-XTSITE:LROWS !
+   LBL AOT-SPAN:LCOUNT !  LBL AOT-SPAN:LROWS !
    LBL LAOTBOOTRUN !
    LBL AOT-SIG:LLEN !  LBL AOT-SIG:LSPAN !  LBL AOT-SIG:LNAME !
    LBL LPROTWIDQ !
@@ -10052,6 +10082,8 @@ variable CUR
    LAOTCSITES LABEL@ LBL,  EMIT-AOT-CSITES
    AOT-XTSITE:LCOUNT LABEL@ LBL,  AOT-XTSITE:N @ DCQ,
    AOT-XTSITE:LROWS LABEL@ LBL,  AOT-XTSITE:EMIT-ROWS
+   AOT-SPAN:LCOUNT LABEL@ LBL,  AOT-SPAN:N @ DCQ,
+   AOT-SPAN:LROWS LABEL@ LBL,  AOT-SPAN:EMIT-ROWS
    LAOTBOOTRUN LABEL@ LBL,  AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ 1 + BYTES,   \ +1 = live 0 terminator
    AOT-WINDOW:LWIDW0 LABEL@ LBL,  AOT-WID-W0 @ DCQ,
    AOT-WINDOW:LWIDSPAN LABEL@ LBL,  AOT-WID-SPAN @ DCQ,

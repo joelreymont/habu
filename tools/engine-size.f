@@ -278,6 +278,7 @@ variable RUN0        variable RUN-N       variable RBYTES0    variable RBYTES-LE
 variable CODE-B0
 variable CSITE0      variable CSITE-N
 variable XTSITE0     variable XTSITE-N
+variable SPAN0       variable SPAN-N
 variable BOOTRUN0    variable BOOTRUN-LEN
 variable WID-W0      variable WID-SPAN
 variable PWIN0       variable PWIN-N
@@ -295,6 +296,7 @@ $80000000 constant SITE-NAME-TAG                  \ target is a name-pool offset
 8 constant XTOFF-ROW                              \ location u32, typed target u32
 8 constant RUN-ROW                                \ window offset u32, length u32
 8 constant XTSITE-ROW                             \ blob-off u32, name-off u32
+8 constant SPAN-ROW                               \ blob-off u32, raw code span u32
 AOT-NAMES-CAP constant NAMES-CAP
 
 : TAKE-CELL ( -- n )
@@ -396,6 +398,8 @@ AOT-NAMES-CAP constant NAMES-CAP
    CSITE-N @ 4 TAKE-ROWS CSITE0 !
    TAKE-CELL TEXT-SIZE ?BOUND XTSITE-N !
    XTSITE-N @ XTSITE-ROW TAKE-ROWS XTSITE0 !
+   TAKE-CELL DICT-CAP ?BOUND SPAN-N !
+   SPAN-N @ SPAN-ROW TAKE-ROWS SPAN0 !
    CUR @ BOOTRUN-MEASURE BOOTRUN-LEN !
    BOOTRUN-LEN @ TAKE-RUN BOOTRUN0 !
    TAKE-CELL WID-W0 !
@@ -478,6 +482,7 @@ variable TOTAL
    s" aot/data-run-bytes" RBYTES-LEN @ PADDED ROW
    s" aot/code-sites" CSITE-N @ 4 * PADDED ROW
    s" aot/named-code-sites" XTSITE-N @ XTSITE-ROW * PADDED ROW
+   s" aot/code-spans" SPAN-N @ SPAN-ROW * PADDED ROW
    s" aot/boot-run-entries" BOOTRUN-LEN @ PADDED ROW
    s" aot/protected-wordlists" PWIN-N @ 4 * PADDED ROW
    s" aot/checker-sidecar" SIG-LEN @ 0 > SIGNAME-LEN @ 0 > or

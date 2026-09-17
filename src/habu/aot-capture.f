@@ -808,19 +808,30 @@ variable ACAP-BP
    a u ACAP-XTSITE-NAMES? if true exit then
    a u ACAP-BOOTRUN-NAMES? ;
 
-\ THE ROW STAYS, THE NAME GOES. The row is 20 bytes here and 48 in the booted
-\ dictionary and it carries the word's code span, which is not a name and is not
-\ optional: src/habu/aot-lib.f walks the shipped records to retarget every
-\ PC-relative branch when hb-build shakes an application out of this image, and a
-\ displacement that lands in a span no record covers has nowhere to go ("aot:
-\ PC-relative target removed or outside closure"). The NAME is what makes a word
-\ reachable, and that is what a stripped row loses: its pool entry becomes the
-\ empty name, so no lookup in the booted engine can return it - not the
-\ interpreter, not a reopened package, not XREF-FIND. The build writes every name
-\ it stripped to <image>.names beside the engine (tools/native-build-core.f), so
-\ a tool that has to name this code still can.
-create ACAP-NAMED-BIT AOT-REC-MAX cells allot   \ per record: 1 kept its name, 0 stripped
+\ THE ROW GOES WITH THE NAME, AND THE SPAN GOES ON WITHOUT IT. A record is what
+\ makes a word reachable - the interpreter, a reopened package and XREF-FIND all
+\ arrive through one - so a word no scope can name buys no caller anything and
+\ its record does not travel at all: not the 20 bytes here, not the 48 in the
+\ booted dictionary, not its pool entry. THE CODE STAYS, called by a
+\ displacement the blob carries, and exactly one reader still has to account for
+\ it: src/habu/aot-closure.f retargets every PC-relative branch when hb-build
+\ shakes an application out of this image, and a displacement landing in a span
+\ nothing accounts for has nowhere to go ("aot: PC-relative target removed or
+\ outside closure"). That account is an 8-byte AOT-SPAN row - the blob offset and
+\ the raw code span, the two u32 the compact row would have opened with, and
+\ nothing else. The build writes every name it stripped to <image>.names beside
+\ the engine (tools/native-build-core.f), so a tool that has to name this code
+\ still can.
+create ACAP-NAMED-BIT AOT-REC-MAX cells allot   \ per record: 1 shipped a row, 0 shipped a span
 variable ACAP-REC-ALL
+
+: ACAP-SPAN-ROW ( n -- ptr u8 ) AOT-SPAN:ROW * AOT-SPAN:BUF@ + ;
+
+: ACAP-ADD-SPAN ( n n -- ) {: start:n raw:n :}
+   AOT-SPAN:N @ AOT-SPAN:MAX >= if s" aot-capture: too many code spans" 74 die then
+   AOT-SPAN:N @ ACAP-SPAN-ROW {: r:ptr :}
+   start r AOT-P32!  raw r 4 + AOT-P32!
+   AOT-SPAN:N @ 1+ AOT-SPAN:N ! ;
 
 : ACAP-COMPACT-ONE ( n -- ) {: k:n :}
    k ACAP-REC-DST {: v:ptr :}                              \ verbatim 48B record
@@ -841,16 +852,24 @@ variable ACAP-REC-ALL
    pkg if $FFFFFFFF else v 40 + ACAP-W32@ then {: wid:n :} \ package marker or full ordinary u32 WID
    v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}
    k ACAP-NAMED? {: named:bool :}
-   named if v ext ACAP-REC-NAME len else s" " then ACAP-POOL-ADD {: noff:n :}
-   named if flags else flags 13 and then {: rflags:n :}    \ stripped rows are inline and empty: clear DNAME-EXT
    named if 1 else 0 then  k cells ACAP-NAMED-BIT + !
-   k ACAP-CREC-DST {: c:ptr :}                             \ 20B: start u32 + len u32 + name-off u32 + flags u8 + min-in u8 + dkind u8 + wid u32
+   named 0= if
+      pkg if s" aot-capture: a package row carries no code span" 74 die then
+      start clen ACAP-ADD-SPAN exit                        \ 8B: start u32 + raw code span u32
+   then
+   v ext ACAP-REC-NAME len ACAP-POOL-ADD {: noff:n :}
+   AOT-REC-N @ ACAP-CREC-DST {: c:ptr :}                   \ 20B: start u32 + len u32 + name-off u32 + flags u8 + min-in u8 + dkind u8 + wid u32
    start c AOT-P32!  clen c 4 + AOT-P32!  noff c 8 + AOT-P32!
-   rflags  minin 8 lshift or  dkind 16 lshift or  c 12 + AOT-P32!   \ one store so the spare byte is written zero
-   wid c 16 + AOT-P32! ;
+   flags  minin 8 lshift or  dkind 16 lshift or  c 12 + AOT-P32!   \ one store so the spare byte is written zero
+   wid c 16 + AOT-P32!
+   AOT-REC-N @ 1+ AOT-REC-N ! ;
 
+\ The verbatim count moves aside first: the compact table is no longer a row per
+\ record, so AOT-REC-N becomes the cursor the shipped rows are counted on and
+\ ACAP-REC-ALL is what every walk over the capture's own records reads.
 : ACAP-COMPACT-RECS ( -- )
    AOT-REC-N @ ACAP-REC-ALL !
+   0 AOT-REC-N !  0 AOT-SPAN:N !
    ACAP-REC-ALL @ 0 ?do
       i ACAP-COMPACT-ONE
    loop ;
@@ -893,44 +912,49 @@ variable ACAP-RECMM                                           \ record-proof mis
    len 0 ?do
       nm i + c@  AOT-NAMES-BUF@ noff 1+ + i + c@  = 0= if 1 ACAP-RECMM +! then
    loop ;
-\ A STRIPPED ROW IS PROVED DIFFERENTLY, AND SAYS SO. Its name fields are meant
-\ to differ from the record's: [16]'s low word is 0 where the record has a
-\ length, DNAME-EXT is clear, and [24..40) holds no inline bytes. So the walk
-\ skips [16..40) for such a row and ACAP-PROVE-STRIPPED asserts what the row
-\ MUST say instead - an empty pooled name and no EXT - which is the property the
-\ booted engine's lookup depends on. Every other byte, the code span included,
-\ is still compared field for field.
-: ACAP-PROVE-STRIPPED ( ptr u8 -- ) {: c:ptr :}
-   c 8 + ACAP-W32@ {: noff:n :}
-   AOT-NAMES-BUF@ noff + c@ 0= 0= if 1 ACAP-RECMM +! then
-   c 12 + c@ 2 and 0= 0= if 1 ACAP-RECMM +! then ;
-: ACAP-PROVE-RECS ( -- )                                      \ fail-closed: expand==verbatim, field-for-field
-   0 ACAP-RECMM !
-   ACAP-REC48@ {: s:ptr :}
-   AOT-REC-N @ 0 ?do
-      i ACAP-CREC-DST {: c:ptr :}
-      c s ACAP-EXPAND-REC                                     \ rebuild 48B from compact
-      i ACAP-REC-DST {: v:ptr :}                              \ the record this row was made from
-      v ACAP-REC-EXT? {: ext:bool :}
-      i cells ACAP-NAMED-BIT + @ 0= {: stripped:bool :}
-      48 0 ?do
-         ext  i 24 >= and  i 32 < and
-         stripped  i 16 >= and  i 40 < and  or
-         0= if
-            s i + c@  v i + c@  = 0= if
-               ACAP-RECMM @ 12 < if
-                  s" record " type j . s"  byte " type i .
-                  s"  expected " type s i + c@ . s"  actual " type v i + c@ .
-                  s"  name " type v ext ACAP-REC-NAME v 16 + ACAP-W32@ type cr
-               then
-               1 ACAP-RECMM +!
+\ A SPAN ROW IS PROVED AGAINST THE RECORD IT REPLACED. There is no expansion to
+\ invert - the row is not a record and becomes none - so what has to hold is that
+\ its two u32 say what the record's first two cells said: the same blob offset
+\ and the same raw CODE-SPAN word. Those are the only two numbers the closure
+\ walk asks a record for, so this is the whole of what the row owes.
+: ACAP-PROVE-SPAN ( n ptr u8 -- ) {: sx:n v:ptr :}
+   sx ACAP-SPAN-ROW {: r:ptr :}
+   r ACAP-W32@      v ACAP-W32@     = 0= if 1 ACAP-RECMM +! then
+   r 4 + ACAP-W32@  v 8 + ACAP-W32@ = 0= if 1 ACAP-RECMM +! then ;
+variable ACAP-PROVE-CX                                        \ shipped-row cursor
+variable ACAP-PROVE-SX                                        \ span-row cursor
+: ACAP-PROVE-ROW ( n ptr u8 ptr u8 -- ) {: k:n v:ptr s:ptr :} \ record index, verbatim, scratch
+   ACAP-PROVE-CX @ ACAP-CREC-DST {: c:ptr :}
+   c s ACAP-EXPAND-REC                                        \ rebuild 48B from compact
+   v ACAP-REC-EXT? {: ext:bool :}
+   48 0 ?do
+      ext  i 24 >= and  i 32 < and  0= if
+         s i + c@  v i + c@  = 0= if
+            ACAP-RECMM @ 12 < if
+               s" record " type k . s"  byte " type i .
+               s"  expected " type s i + c@ . s"  actual " type v i + c@ .
+               s"  name " type v ext ACAP-REC-NAME v 16 + ACAP-W32@ type cr
             then
+            1 ACAP-RECMM +!
          then
-      loop
-      stripped if c ACAP-PROVE-STRIPPED else
-         ext if c v ACAP-PROVE-NAME then                      \ ... and the name stands in for it
       then
    loop
+   ext if c v ACAP-PROVE-NAME then                            \ ... and the name stands in for it
+   ACAP-PROVE-CX @ 1+ ACAP-PROVE-CX ! ;
+: ACAP-PROVE-RECS ( -- )                                      \ fail-closed: expand==verbatim, field-for-field
+   0 ACAP-RECMM !  0 ACAP-PROVE-CX !  0 ACAP-PROVE-SX !
+   ACAP-REC48@ {: s:ptr :}
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-REC-DST {: v:ptr :}                              \ the record this row was made from
+      i cells ACAP-NAMED-BIT + @ 0= if
+         ACAP-PROVE-SX @ v ACAP-PROVE-SPAN
+         ACAP-PROVE-SX @ 1+ ACAP-PROVE-SX !
+      else
+         i v s ACAP-PROVE-ROW
+      then
+   loop
+   ACAP-PROVE-CX @ AOT-REC-N @ <> if 1 ACAP-RECMM +! then     \ every record accounted for, once
+   ACAP-PROVE-SX @ AOT-SPAN:N @ <> if 1 ACAP-RECMM +! then
    ACAP-RECMM @ 0= 0= if
       s" aot-capture: RECORD EXPANSION MISMATCH count=" type ACAP-RECMM @ . cr
       s" aot-capture: compact record expansion != verbatim 48B" 74 die
@@ -1703,7 +1727,7 @@ private
 : ACAP-RESET ( -- )
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  ACAP-POOL-RESET
    0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
-   0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !
+   0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  0 AOT-SPAN:N !
    0 AOT-WINDOW:RUN-N !  0 AOT-WINDOW:RBYTES-LEN !
    0 AOT-XTSITE:N !  0 AOT-PWIN-N !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
@@ -1877,13 +1901,16 @@ private
    1 AOT-REC-N !
    ACAP-COMPACT-RECS                                 \ pack -> 16B compact
    ACAP-PROVE-RECS                                   \ expand==verbatim, field-for-field (incl [40] wid)
+   AOT-REC-N @ 1 <> if
+      s" aot-capture: wid>255 self-test: the synthetic record did not ship" 74 die then
    0 ACAP-CREC-DST 16 + ACAP-W32@ 1000 <> if
       s" aot-capture: wid>255 self-test: compact wid corrupted" 74 die then
    8 CODE-SPAN:EXACT d 8 + AOT-N-C!
+   1 AOT-REC-N !
    ACAP-COMPACT-RECS ACAP-PROVE-RECS
    0 ACAP-CREC-DST 4 + ACAP-W32@ 8 CODE-SPAN:EXACT <> if
       s" aot-capture: full code span corrupted" 74 die then
-   0 AOT-REC-N !  ACAP-POOL-RESET ;                 \ leave buffers clean for the real capture
+   0 AOT-REC-N !  0 AOT-SPAN:N !  ACAP-POOL-RESET ;  \ leave buffers clean for the real capture
 
 \ --- build-time regression: the pool index answers what the linear pool walk
 \ answers. Runs in the live metabuild BEFORE stdin.f's CAPTURE-REPL and leaves the

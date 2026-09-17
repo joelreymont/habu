@@ -575,6 +575,30 @@ $47D0 constant POOL-CELL
 $47D8 constant LEN-CELL
 ;package
 
+\ AOT-SPAN:TABLE-CELL / N-CELL / BASE-CELL: where the baked CODE-SPAN TABLE is,
+\ how many rows it has, and the address the blob was copied to, published by the
+\ seed (habu2.f EM-SEED-AOT) the moment the blob lands. The image ships no
+\ dictionary record for a word nothing can name, so the only account of that
+\ word's code is a row of this table, and src/habu/aot-closure.f is the reader:
+\ hb-build retargets every PC-relative branch against the span that owns it, and
+\ a displacement into a span nothing accounts for has nowhere to go.
+\ A ROW IS A BLOB OFFSET, so the base is what turns it into an address of the
+\ code this boot actually copied. Zero in all three reads as "no stripped spans",
+\ which is what an engine with nothing captured, and a whitebox image that kept
+\ every name, both are.
+\ WHERE THEY GO: the $600..$800 header hole BODYBUF-OFF names as free space,
+\ directly above GENIO-ABI's band, swept for a claimant across src lib tools test
+\ maki bootstrap and read back as zero out of a booted engine. NOT the run above
+\ BOOT-LAYOUT:HEAP-START-CELL, which reads free in the source and is not: that is
+\ stack-abi.f's $47E8..$4810 and lib/task.f's `+USER` arena. All three are below
+\ $7FF8 and below DATA-START, like their neighbours.
+package AOT-SPAN
+public
+$660 constant TABLE-CELL
+$668 constant N-CELL
+$670 constant BASE-CELL
+;package
+
 \ BOOT-LAYOUT:HEAP-START-CELL: the DP-heap floor of the RUNNING engine, as a DATA
 \ offset, stored by habu2.f EM-DATA-INIT out of the same DATA-START it hands DP.
 \ It is the engine stating its own layout, so a tool that has to classify the

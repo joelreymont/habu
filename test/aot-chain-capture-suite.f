@@ -44,8 +44,8 @@ $8000 constant CAP
 32 constant O-PAYLEN
 40 constant O-PRODUCER
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order
-9 constant VERSION
-17 constant SECTIONS
+10 constant VERSION
+18 constant SECTIONS
 64 constant HEX-LEN
 
 \ tools/aot-chain-capture.f's refusal code and the sentence the product must die

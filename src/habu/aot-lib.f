@@ -9,12 +9,12 @@ require src/habu/rt.f
 require src/habu/crash.f
 require src/habu/aot-decl.f
 
-\ The AOT relocation core compiles checked. MAP-IN-BLOB is the remaining
-\ named TRUSTED: boundary - a dictionary-record blob-span walk whose record
-\ reads and pointer round-trips through scratch cells are outside checked
-\ pointer inference until the typed dictionary-record schema lands (dot
-\ habu-typed-dictionary-record-c67adddb).
-\ Retirement: MAP-IN-BLOB under habu-typed-dictionary-record-c67adddb.
+\ The AOT relocation core compiles checked. It works over CLOSURE MEMBERS - a
+\ code entry and a length, held in the parallel arrays src/habu/aot-closure.f
+\ fills - and not over dictionary records, because the image ships no record for
+\ a word nothing can name and the payload's span table is what accounts for one.
+\ A member is named by its index, so every read here is a cell of an owned array
+\ and the record-shaped TRUSTED: boundary this file used to carry is gone.
 
 package AOT-LINK
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
@@ -26,7 +26,7 @@ using A64ASM
 : AOT-FALSE ( -- bool ) 0 0= 0= ;
 
 \ --- emit the image: minimal entry + compacted, relocated blobs.
-variable MLBL  variable REC2
+variable MLBL
 create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
 
 \ --- persistent data region: the program's compile-time create/variable/allot/
@@ -265,25 +265,29 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
 : EMIT-CRASH-CODE ( -- )
    EMIT-CRASH-HANDLER  EMIT-HEX ;
 variable CP2  variable CEND  variable NEXT-OFF
+\ The closure member whose entry this is, or -1. The entry is a member's
+\ identity (aot-closure.f ADD-CLO), so this is what a record pointer or a span
+\ row is resolved through before anything asks where the member is going.
+: MEMBER-AT {: start:ptr :} ( ptr u8 -- n )
+   0 CLO-CX !
+   BEGIN CLO-CX @ NCLO @ < WHILE
+      CLO-CX @ CLO-AT start = IF CLO-CX @ EXIT THEN
+      CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
+: MEMBER-NEWOFF ( n -- n ) cells NEWOFF + @ ;
+: CLO-AT-N ( n -- n ) cells CLO + @ ;      \ the same cell, for value-domain arithmetic
 : BCOND? {: w:n :}  w $FF000010 and $54000000 = ;
 : CBZIMM? {: w:n :}  w $7E000000 and $34000000 = ;
 : TBZIMM? {: w:n :}  w $7E000000 and $36000000 = ;
 : ADR? {: w:n :}  w $9F000000 and $10000000 = ;
 : ADRP? {: w:n :}  w $9F000000 and $90000000 = ;
-: RAW-LEN {: r:ptr :} ( ptr a -- n )
-   r REC-BYTES ;
-: REC-END {: r:ptr :} ( ptr a -- ptr u8 )
-   r @ r RAW-LEN + ;
 \ Compacted blob length. Under the direct-BL-only contract every word maps 1:1
 \ (no movz/movk/movk/blr chain is ever collapsed), so the compacted length is the
-\ raw length.
-: COMPACT-LEN {: r:ptr :} ( ptr a -- n )  r RAW-LEN ;
+\ member's own length.
 : PLAN-BLOBS
    ASM-LEN NEXT-OFF !
    0 WI ! BEGIN WI @ NCLO @ < WHILE
-      WI @ cells CLO + @ REC2 !
       NEXT-OFF @       NEWOFF WI @ cells + !
-      REC2 @ COMPACT-LEN dup BLEN WI @ cells + !
+      WI @ CLO-BYTES dup BLEN WI @ cells + !
       NEXT-OFF @ + NEXT-OFF !
       WI @ 1+ WI ! REPEAT ;
 \ Relocation math for direct branches. The binary is PIE (arm64 macOS requires it),
@@ -317,30 +321,20 @@ variable BDELTA  variable TNEW
    BDELTA @ -1048576 <  BDELTA @ 1048575 > or IF s" aot: ADR target out of range" 74 die THEN
    BDELTA @ 3 and 29 lshift  BDELTA @ 2 rshift $7FFFF and 5 lshift or ;
 
-variable MAPOUT  variable MAPP  variable MAPE
-: REC-NEWOFF {: r:ptr :} ( ptr a -- n )
-   0 CLO-CX !
-   BEGIN CLO-CX @ NCLO @ < WHILE
-      CLO-CX @ cells CLO + @ r = IF NEWOFF CLO-CX @ cells + @ EXIT THEN
-      CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
-TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
-   t r @ < IF -1 EXIT THEN
-   t r REC-END >= IF -1 EXIT THEN                \ a target at the record end is the
-   0 MAPOUT !  r @ MAPP !  r REC-END MAPE !      \ adjacent record's start, not this one's
-   BEGIN MAPP @ MAPE @ < WHILE
-      t MAPP @ 4 + < IF r REC-NEWOFF MAPOUT @ +  t MAPP @ - + EXIT THEN
-      MAPOUT @ 4 + MAPOUT !  MAPP @ 4 + MAPP !
-   REPEAT
-   -1 ;
+\ A target at a member's end is the adjacent member's start, not this one's.
+: MAP-IN-MEMBER {: i:n t:ptr :} ( n ptr u8 -- n )
+   t i CLO-AT < IF -1 EXIT THEN
+   t i CLO-AT i CLO-BYTES + >= IF -1 EXIT THEN
+   i MEMBER-NEWOFF  t i CLO-AT -  + ;
 : OLD>NEW {: t:ptr :} ( ptr u8 -- n )
    0 CLO-CX !
    BEGIN CLO-CX @ NCLO @ < WHILE
-      CLO-CX @ cells CLO + @ t MAP-IN-BLOB dup -1 <> IF EXIT THEN drop
+      CLO-CX @ t MAP-IN-MEMBER dup -1 <> IF EXIT THEN drop
       CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
-: MAP-TARGET {: r:ptr t:ptr :} ( ptr a ptr u8 -- n )
-   r t MAP-IN-BLOB dup -1 <> IF EXIT THEN drop  t OLD>NEW ;
-: MAP-TARGET! {: r:ptr t:ptr :} ( ptr a ptr u8 -- )
-   r t MAP-TARGET TNEW !
+: MAP-TARGET {: i:n t:ptr :} ( n ptr u8 -- n )
+   i t MAP-IN-MEMBER dup -1 <> IF EXIT THEN drop  t OLD>NEW ;
+: MAP-TARGET! {: i:n t:ptr :} ( n ptr u8 -- )
+   i t MAP-TARGET TNEW !
    TNEW @ -1 = IF s" aot: PC-relative target removed or outside closure" 74 die THEN ;
 : BTGT19 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
    p  w 5 19 BITS 19 SX 4 * + ;
@@ -348,21 +342,21 @@ TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
    p  w 5 14 BITS 14 SX 4 * + ;
 : ADRTGT {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
    p  w 5 19 BITS 2 lshift  w 29 2 BITS or 21 SX + ;
-: RELOC-W32 {: r:ptr p:ptr w:n :} ( ptr a ptr u8 n -- n )
+: RELOC-W32 {: i:n p:ptr w:n :} ( n ptr u8 n -- n )
    w DIRECT? IF
-      r p w TARGET MAP-TARGET!
+      i p w TARGET MAP-TARGET!
       w $FC000000 and  ASM-LEN TNEW @ REL26 or EXIT THEN
    w BCOND? IF
-      r p w BTGT19 MAP-TARGET!
+      i p w BTGT19 MAP-TARGET!
       w $FF00001F and  ASM-LEN TNEW @ REL19 5 lshift or EXIT THEN
    w CBZIMM? IF
-      r p w BTGT19 MAP-TARGET!
+      i p w BTGT19 MAP-TARGET!
       w $FF00001F and  ASM-LEN TNEW @ REL19 5 lshift or EXIT THEN
    w TBZIMM? IF
-      r p w BTGT14 MAP-TARGET!
+      i p w BTGT14 MAP-TARGET!
       w $FFF8001F and  ASM-LEN TNEW @ REL14 5 lshift or EXIT THEN
    w ADR? IF
-      r p w ADRTGT MAP-TARGET!
+      i p w ADRTGT MAP-TARGET!
       w $9F00001F and  ASM-LEN TNEW @ ADRD32 or EXIT THEN
    w ADRP? IF s" aot: ADRP relocation unsupported" 74 die THEN
    w ;
@@ -408,6 +402,17 @@ TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
    rd rd target $FFF and ADDI,
    NOP, NOP, ;
 
+\ The closure member whose span holds this code address, or -1 when nothing in
+\ the closure covers it. The owner record answers for a word the image still
+\ names; the payload's span table answers for one it does not, and an address
+\ neither can place is refused here rather than relocated to a guess.
+: ADDRESS-MEMBER ( n -- n ) {: v:n :}
+   v ADDRESS-OWNER {: owner:ptr :}
+   owner XREF-FOUND? if owner REC-CODE-PTR@ MEMBER-AT exit then
+   v SPAN-OWNER {: k:n :}
+   k 0 < if s" aot: code address has no dictionary owner" 74 die then
+   k SPAN-START MEMBER-AT ;
+
 : COPY-ADDRESS ( ptr u8 ptr u8 -- ) {: p:ptr e:ptr :}
    p e ADDRESS-VALUE {: v:n :}
    v DATA-ADDRESS? if
@@ -420,29 +425,26 @@ TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
       loop
       exit
    then
-   v ADDRESS-OWNER {: owner:ptr :}
-   owner XREF-FOUND? 0= if s" aot: code address has no dictionary owner" 74 die then
-   owner REC-NEWOFF {: start:n :}
-   start 0 < if s" aot: code address is outside the closure" 74 die then
-   start v owner @ - +
+   v ADDRESS-MEMBER {: m:n :}
+   m 0 < if s" aot: code address is outside the closure" 74 die then
+   m MEMBER-NEWOFF  v m CLO-AT-N -  +
    p AOT-W32@ SNAP-RELOC:ADDR-RD-MASK and EMIT-CODE-ADDRESS ;
 
-: COPY-COMPACT-BLOB {: r:ptr :} ( ptr a -- )
-   r @ CP2 !  r @ r RAW-LEN + CEND !
+: COPY-COMPACT-BLOB {: i:n :} ( n -- )
+   i CLO-AT CP2 !  i CLO-AT i CLO-BYTES + CEND !
    BEGIN CP2 @ CEND @ < WHILE
       CP2 @ CEND @ ABS-CHAIN? IF ABS-CHAIN-DIE THEN
       CP2 @ ADDRESS-SITE? if
          CP2 @ CEND @ COPY-ADDRESS
          SNAP-RELOC:ADDR-CHAIN-BYTES
       else
-         r CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW 4
+         i CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW 4
       then CP2 +!
    REPEAT ;
 : COPY-PLANNED-BLOBS
    0 WI ! BEGIN WI @ NCLO @ < WHILE
-      WI @ cells CLO + @ REC2 !
       WI @ 0= IF MLBL LABEL@ LBL, THEN          \ MAIN is closure word 0 -> place its label
-      REC2 @ COPY-COMPACT-BLOB
+      WI @ COPY-COMPACT-BLOB
       WI @ 1+ WI ! REPEAT ;
 : COPY-BLOBS  PLAN-BLOBS  COPY-PLANNED-BLOBS ;
 variable RP  variable RE

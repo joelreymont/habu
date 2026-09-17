@@ -268,39 +268,62 @@ variable BLR-CNT
 \ create/comma, reads it in a runtime ?do/loop, and accumulates into a
 \ variable via @/!/+!. Proves the AOT entry maps DATA-VA, restores the
 \ persistent content, and sets up the return/loop stack.
+\ The span table the seed published, read in the shipped engine's own linker
+\ through the production reader, while a real hb-build is running.
+\ THE FIRST TWO ASSERTIONS ARE THE WHOLE POINT and they are two-sided: a row's
+\ code has NO dictionary record (if a stripped word's row came back, the record
+\ lookup would answer and this fails) and the span table answers for it instead
+\ (if the table stopped being published, this fails). The other two pin the
+\ reader's boundaries - a row's own entry answers its row, and so does an
+\ address inside it - which is what the closure walk asks of every branch.
+: DATA-SPAN-SOURCE ( -- )
+   s" package AOT-LINK" GE-SRC-LINE
+   s" : ASPAN-RUN ( -- ) SPAN-N 0 >" GE-SRC+
+   s\"  s\" AOT span table is empty\" AMAP-EXPECT" GE-SRC+
+   s"  0 SPAN-START FINDADDR-PTR XREF-FOUND? 0=" GE-SRC+
+   s\"  s\" AOT span row still has a record\" AMAP-EXPECT" GE-SRC+
+   s"  0 SPAN-START SPAN-AT-ENTRY 0 =" GE-SRC+
+   s\"  s\" AOT span entry lookup\" AMAP-EXPECT" GE-SRC+
+   s"  0 SPAN-START-N 0 SPAN-BYTES 1- + SPAN-OWNER 0 =" GE-SRC+
+   s\"  s\" AOT span interior lookup\" AMAP-EXPECT ;" GE-SRC-LINE
+   s" ASPAN-RUN" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
 \ Load-time self-test of the relocation math the direct-branch capability adds:
-\ two adjacent synthetic records prove MAP-IN-BLOB treats a target at a record's
-\ end as the NEXT record's start (the >= boundary), and MAP-TARGET relocates that
-\ adjacent target to the next record's new offset. Runs while the AOT program is
-\ compiled (not reachable from MAIN), so it validates the linker without bloating
-\ the built image.
-\ Safe to scribble on the live CLO/NEWOFF/NCLO here: this runs at program
-\ load/compile time, before this program's own closure walk, and the real build
-\ recomputes the closure from scratch (aot-closure.f CLOSURE resets NCLO to 0 and
-\ refills CLO/NEWOFF), so the synthetic values cannot leak into the shipped image.
+\ two adjacent synthetic closure MEMBERS prove MAP-IN-MEMBER treats a target at a
+\ member's end as the NEXT member's start (the >= boundary), and MAP-TARGET
+\ relocates that adjacent target to the next member's new offset. The members
+\ carry XREF-NULL for their record, which is what a word the image ships no
+\ record for looks like to this walk. Runs while the AOT program is compiled (not
+\ reachable from MAIN), so it validates the linker without bloating the image.
+\ Safe to scribble on the live CLO/CLO-LEN/CLO-REC/NEWOFF/NCLO here: this runs at
+\ program load/compile time, before this program's own closure walk, and the real
+\ build recomputes the closure from scratch (aot-closure.f CLOSURE resets NCLO to
+\ 0 and refills the arrays), so the synthetic values cannot leak into the image.
 : DATA-SOURCE ( -- )
    GE-SRC-RESET
    s" package AOT-LINK" GE-SRC-LINE
    s" create AMAP-CODE 16 allot" GE-SRC-LINE
-   s" create AMAP-R1 DREC allot" GE-SRC-LINE
-   s" create AMAP-R2 DREC allot" GE-SRC-LINE
-   s" 4 constant AMAP-BODY-LEN" GE-SRC-LINE
+   s" 8 constant AMAP-SPAN-BYTES" GE-SRC-LINE
    s" 8 constant AMAP-CODE-ROW" GE-SRC-LINE
-   s" $40 constant AMAP-R2-OFF" GE-SRC-LINE
-   s" : AMAP-REC! ( ptr n ptr u8 n -- ) {: r:ptr code:ptr len:n :} code r 0 ptr-field ! len r 8 + ! ;" GE-SRC-LINE
-   s" : AMAP-RECS! ( -- ) AMAP-R1 AMAP-CODE AMAP-BODY-LEN AMAP-REC! AMAP-R2 AMAP-CODE AMAP-CODE-ROW + AMAP-BODY-LEN AMAP-REC! ;" GE-SRC-LINE
-   s" : AMAP-CLOSURE! ( -- ) AMAP-R1 CLO 0 ptr-field ! AMAP-R2 CLO 1 ptr-field ! 0 NEWOFF ! AMAP-R2-OFF NEWOFF cell+ ! 2 NCLO ! ;" GE-SRC-LINE
+   s" $40 constant AMAP-M2-OFF" GE-SRC-LINE
+   s" : AMAP-MEMBER! ( n ptr u8 n -- ) {: i:n code:ptr len:n :}" GE-SRC+
+   s"  code i cells CLO + ! len i cells CLO-LEN + ! XREF-NULL i cells CLO-REC + ! ;" GE-SRC-LINE
+   s" : AMAP-CLOSURE! ( -- ) 0 AMAP-CODE AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
+   s"  1 AMAP-CODE AMAP-CODE-ROW + AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
+   s"  0 NEWOFF ! AMAP-M2-OFF NEWOFF cell+ ! 2 NCLO ! ;" GE-SRC-LINE
    s" : AMAP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
-   s" : AMAP-RUN ( -- ) AMAP-RECS! AMAP-CLOSURE!" GE-SRC+
-   s"  AMAP-R1 AMAP-CODE AMAP-CODE-ROW + MAP-IN-BLOB -1 =" GE-SRC+
-   s\"  s\" AOT closed record range\" AMAP-EXPECT" GE-SRC+
-   s"  AMAP-R1 AMAP-CODE AMAP-CODE-ROW + MAP-TARGET AMAP-R2-OFF =" GE-SRC+
-   s\"  s\" AOT adjacent record relocation\" AMAP-EXPECT ;" GE-SRC-LINE
+   s" : AMAP-RUN ( -- ) AMAP-CLOSURE!" GE-SRC+
+   s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-IN-MEMBER -1 =" GE-SRC+
+   s\"  s\" AOT closed member range\" AMAP-EXPECT" GE-SRC+
+   s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-TARGET AMAP-M2-OFF =" GE-SRC+
+   s\"  s\" AOT adjacent member relocation\" AMAP-EXPECT ;" GE-SRC-LINE
    s" AMAP-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" create TABLE 10 , 20 , 30 ," GE-SRC-LINE
    s" variable SUM" GE-SRC-LINE
-   s" : MAIN ( -- ) 0 SUM ! 3 0 ?do TABLE i 8 * + @ SUM +! loop SUM @ . ;" GE-SRC-LINE ;
+   s" : MAIN ( -- ) 0 SUM ! 3 0 ?do TABLE i 8 * + @ SUM +! loop SUM @ . ;" GE-SRC-LINE
+   DATA-SPAN-SOURCE ;
 
 : DATA-EXPECT ( -- ptr u8 n )
    SB-RESET
@@ -439,10 +462,10 @@ variable BLR-CNT
    s" -1 JSON-DIAGS !" GE-SRC-LINE
    s" package AOT-LINK" GE-SRC-LINE
    s" create ABT-CHAIN 16 allot" GE-SRC-LINE
-   s" create ABT-REC DREC allot" GE-SRC-LINE
    s" : ABT-W! ( n ptr u8 -- ) {: w:n a:ptr :} w a c! w 8 rshift a 1+ c! w 16 rshift a 2 + c! w 24 rshift a 3 + c! ;" GE-SRC-LINE
    s" : ABT-BUILD ( -- ) $D2800010 ABT-CHAIN ABT-W! $F2A00010 ABT-CHAIN 4 + ABT-W! $F2C00010 ABT-CHAIN 8 + ABT-W! $D63F0200 ABT-CHAIN 12 + ABT-W! ;" GE-SRC-LINE
-   s" : ABT-RUN ( -- ) ABT-BUILD ABT-CHAIN ABT-REC 0 ptr-field ! 12 ABT-REC 8 + ! ABT-REC CLO 0 ptr-field ! 0 NEWOFF ! 1 NCLO ! ABT-REC COPY-COMPACT-BLOB ;" GE-SRC-LINE
+   s" : ABT-RUN ( -- ) ABT-BUILD ABT-CHAIN CLO ! 16 CLO-LEN ! XREF-NULL CLO-REC !" GE-SRC+
+   s"  0 NEWOFF ! 1 NCLO ! 0 COPY-COMPACT-BLOB ;" GE-SRC-LINE
    s" ABT-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" : MAIN ( -- ) ;" GE-SRC-LINE ;

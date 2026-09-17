@@ -203,17 +203,17 @@ create AENB 20 allot  variable AENV  variable AENN
    s" schema_version" AEJKEY 1 AEJNUM 44 AE1
    s" code" AEJKEY s" E-AOT-UNSUPPORTED" AEJSTR 44 AE1
    s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
-   s" word" AEJKEY caller REC-NAME@ AEJSTR 44 AE1
-   s" token" AEJKEY callee REC-NAME@ AEJSTR 44 AE1
+   s" word" AEJKEY caller AEJREC 44 AE1
+   s" token" AEJKEY callee AEJREC 44 AE1
    s" reason" AEJKEY s" stripped AOT has no runtime compiler, dictionary, or writable code" AEJSTR 44 AE1
    s" suggestion" AEJKEY
    s" stripped AOT cannot run create/patch32 at runtime; use --repl or remove the word from the runtime path" AEJSTR
    125 AE1 10 AE1 ;
 : AOT-UNSAFE-PROSE {: caller:ptr callee:ptr :} ( ptr a ptr a -- )
    s" hb-build: stripped AOT unsupported word '" AETXT
-   callee REC-NAME@ AETXT
+   callee AEREC-TXT
    s" ' called by '" AETXT
-   caller REC-NAME@ AETXT
+   caller AEREC-TXT
    s" '" AETXT 10 AE1 ;
 : AOT-UNSAFE-DIE {: caller:ptr callee:ptr :} ( ptr a ptr a -- )
    JSON-DIAGS @ IF caller callee AOT-UNSAFE-JSON ELSE caller callee AOT-UNSAFE-PROSE THEN
@@ -224,14 +224,69 @@ variable FX
 : REC-CODE-PTR@ ( ptr a -- ptr u8 )  REC-CODE-PTR @ ;
 : REC-WID@ ( ptr n -- n ) {: r:ptr :}  r 40 + @ ;
 
+\ ---- the payload's code-span table --------------------------------------------
+\ THE IMAGE SHIPS NO RECORD FOR A WORD NOTHING CAN NAME, and the walk below still
+\ has to account for that word's code: a displacement landing in a span nothing
+\ accounts for has nowhere to go. So the payload carries the span instead of the
+\ record - an 8-byte row of (blob offset u32, raw CODE-SPAN u32), which is exactly
+\ the two numbers this file asks a record for - and the seed publishes the table,
+\ its row count and the address it copied the blob to (habu2.f AOT-SPAN:PUBLISH,).
+\ All three cells are zero in an engine that captured nothing and in a whitebox
+\ image that kept every name, and a zero count is simply no rows.
+\ THE BASE IS READ TWICE, as a pointer for the spans this file walks and as a
+\ number for the value-domain range test, the same two readings CELL-TEXTPTR?
+\ already makes of the live extents above.
+: SPAN-TABLE ( -- ptr u8 )
+   data-base AOT-SPAN:TABLE-CELL CELL / ptr-field @ ;
+: SPAN-BASE ( -- ptr u8 )
+   data-base AOT-SPAN:BASE-CELL CELL / ptr-field @ ;
+: SPAN-BASE-N ( -- n ) data-base AOT-SPAN:BASE-CELL + @ ;
+: SPAN-N ( -- n ) data-base AOT-SPAN:N-CELL + @ ;
+: SPAN-ROW ( n -- ptr u8 ) {: k:n :}
+   SPAN-TABLE k AOT-SPAN:ROW * + ;
+: SPAN-OFF ( n -- n ) SPAN-ROW AOT-W32@ ;
+: SPAN-START ( n -- ptr u8 ) {: k:n :} SPAN-BASE k SPAN-OFF + ;
+: SPAN-START-N ( n -- n ) {: k:n :} SPAN-BASE-N k SPAN-OFF + ;
+: SPAN-BYTES ( n -- n ) SPAN-ROW 4 + AOT-W32@ CODE-SPAN:BYTES ;
+
+\ The span that STARTS here, or -1: FINDADDR-PTR's question, asked of the words
+\ the image ships no record for.
+: SPAN-AT-ENTRY ( ptr u8 -- n ) {: t:ptr :}
+   SPAN-N 0 ?do
+      i SPAN-START t = if i unloop exit then
+   loop  -1 ;
+
+\ ... and the span that CONTAINS this address, which is ADDRESS-OWNER's second
+\ question: an anonymous body is interior to the word that emitted it.
+: SPAN-OWNER ( n -- n ) {: t:n :}
+   SPAN-N 0 ?do
+      t i SPAN-START-N >= if
+         t i SPAN-START-N - i SPAN-BYTES < if i unloop exit then
+      then
+   loop  -1 ;
+
 : FINDMAIN ( -- ptr n )
    ENTRY-NAME$ XREF-FIND ;
 
 \ --- closure: BFS from MAIN over the native call graph. CLO and the parallel
 \ COPY/RELOCATE arrays (NEWOFF/BLEN) are all sized by MAX-CLO; ADD-CLO fails
 \ closed at the cap so a large closure can never write past the tables.
+\
+\ A MEMBER IS A CODE SPAN, and a record is what NAMED it rather than what it is.
+\ The words the image still names arrive with one and the stripped ones arrive
+\ from the span table above; everything past this point - the plan, the copy, the
+\ branch retarget - asks a member only for its entry and its length, which is why
+\ the table needs to carry nothing else. CLO-REC is XREF-NULL for a member no
+\ record names, and only the unsupported-word check and the diagnostics read it;
+\ both already answer for a record that is not there.
+\ THE ENTRY IS ALSO THE IDENTITY. Two records can share one entry - `EXPORT`
+\ publishes a second name for the same execution token - and one span is one
+\ member however many names reach it, so the blob is copied once.
 1024 constant MAX-CLO
-create CLO MAX-CLO cells allot   variable NCLO  variable CLO-CX
+create CLO MAX-CLO cells allot       \ each member's code entry
+create CLO-LEN MAX-CLO cells allot   \ ... its code length in bytes
+create CLO-REC MAX-CLO cells allot   \ ... and the record that named it, or XREF-NULL
+variable NCLO  variable CLO-CX
 variable ROOTREC
 variable CLO-LIMIT
 : CLO-LIMIT! {: n:n :}
@@ -239,8 +294,11 @@ variable CLO-LIMIT
    n MAX-CLO > IF s" aot: CLO-LIMIT above MAX-CLO" 74 die THEN
    n CLO-LIMIT ! ;
 MAX-CLO CLO-LIMIT!
-: IN-CLO? {: r:ptr :} ( ptr a -- bool )
-   0 CLO-CX ! BEGIN CLO-CX @ NCLO @ < WHILE CLO-CX @ cells CLO + @ r = IF 0 0= exit THEN CLO-CX @ 1+ CLO-CX ! REPEAT 0 0= 0= ;
+: CLO-AT ( n -- ptr u8 ) cells CLO + @ ;
+: CLO-BYTES ( n -- n ) cells CLO-LEN + @ ;
+: CLO-REC@ ( n -- ptr n ) cells CLO-REC + @ ;
+: IN-CLO? {: start:ptr :} ( ptr u8 -- bool )
+   0 CLO-CX ! BEGIN CLO-CX @ NCLO @ < WHILE CLO-CX @ CLO-AT start = IF 0 0= exit THEN CLO-CX @ 1+ CLO-CX ! REPEAT 0 0= 0= ;
 : CLO-OVERFLOW-JSON {: r:ptr :} ( ptr a -- )
    123 AE1
    s" schema_version" AEJKEY 1 AEJNUM 44 AE1
@@ -263,15 +321,22 @@ MAX-CLO CLO-LIMIT!
 : CLO-OVERFLOW-DIE {: r:ptr :} ( ptr a -- )
    JSON-DIAGS @ IF r CLO-OVERFLOW-JSON ELSE r CLO-OVERFLOW-PROSE THEN
    s" aot: closure exceeds MAX-CLO" 74 die ;
-: ADD-CLO {: r:ptr :} ( ptr a -- )
-   r IN-CLO? IF exit THEN
+: ADD-CLO ( ptr n ptr u8 n -- ) {: r:ptr start:ptr len:n :}
+   start IN-CLO? IF exit THEN
    NCLO @ CLO-LIMIT @ >= IF r CLO-OVERFLOW-DIE THEN
-   r NCLO @ cells CLO + !  NCLO @ 1+ NCLO ! ;
+   start NCLO @ cells CLO + !
+   len NCLO @ cells CLO-LEN + !
+   r NCLO @ cells CLO-REC + !
+   NCLO @ 1+ NCLO ! ;
 variable SP2  variable SEND
+: ADD-REC-CLO ( ptr n -- ) {: r:ptr :}
+   r  r REC-CODE-PTR@  r REC-BYTES  ADD-CLO ;
+: ADD-SPAN-CLO ( n -- ) {: k:n :}
+   XREF-NULL  k SPAN-START  k SPAN-BYTES  ADD-CLO ;
 : SCAN-CALLEE ( ptr n ptr n -- ) {: caller:ptr callee:ptr :}
    callee XREF-FOUND? 0= if exit then
-   callee dup AOT-UNSAFE? if caller swap AOT-UNSAFE-DIE then
-   ADD-CLO ;
+   callee AOT-UNSAFE? if caller callee AOT-UNSAFE-DIE then
+   callee ADD-REC-CLO ;
 
 \ Resolve a call target (a code address) to its record by EXACT code entry: scan the
 \ dict records and match on the code-entry pointer directly (REC-CODE-PTR@) so a
@@ -317,31 +382,37 @@ variable SP2  variable SEND
       v DATA-TARGET drop exit
    then
    v ADDRESS-OWNER {: owner:ptr :}
-   owner XREF-FOUND? 0= if s" aot: code address has no dictionary owner" 74 die then
-   caller owner SCAN-CALLEE ;
+   owner XREF-FOUND? if caller owner SCAN-CALLEE exit then
+   v SPAN-OWNER {: k:n :}
+   k 0 < if s" aot: code address has no dictionary owner" 74 die then
+   k ADD-SPAN-CLO ;
 
 \ Follow a direct BL (the one native call form) to its callee; leave everything
 \ else (a plain B, conditional/compare branches, intra-record jumps) untouched.
+\ A callee the image ships no record for answers from the span table instead,
+\ and an entry neither table knows is left where the relocation pass will refuse
+\ it by name.
 : SCAN-DIRECT ( ptr n ptr u8 -- ) {: caller:ptr p:ptr :}
-   p AOT-W32@ dup CALL? if
-      p swap TARGET FINDADDR-PTR caller swap SCAN-CALLEE
-   else
-      drop
-   then ;
+   p AOT-W32@ dup CALL? 0= if drop exit then
+   p swap TARGET {: t:ptr :}
+   t FINDADDR-PTR {: callee:ptr :}
+   callee XREF-FOUND? if caller callee SCAN-CALLEE exit then
+   t SPAN-AT-ENTRY {: k:n :}
+   k 0 >= if k ADD-SPAN-CLO then ;
 
-: SCAN-REC {: r:ptr :} ( ptr a -- )
-   r @ SP2 !  r @ r REC-BYTES + SEND !
+: SCAN-MEMBER {: i:n :} ( n -- )
+   i CLO-AT SP2 !  i CLO-AT i CLO-BYTES + SEND !
    BEGIN SP2 @ SEND @ < WHILE
-      r SP2 @ SEND @ SCAN-ADDRESS
-      r SP2 @ SCAN-DIRECT
+      i CLO-REC@ SP2 @ SEND @ SCAN-ADDRESS
+      i CLO-REC@ SP2 @ SCAN-DIRECT
       SP2 @ 4 + SP2 !
    REPEAT ;
 variable WI
 : NO-ENTRY-DIE ( -- )
    s" aot: entry word not found: " AETXT  ENTRY-NAME$ AETXT  10 AE1
    s" aot: no entry" 74 die ;
-: CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop NO-ENTRY-DIE THEN  dup ROOTREC !  ADD-CLO
-   0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ cells CLO + @ SCAN-REC  WI @ 1+ WI ! REPEAT ;
+: CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop NO-ENTRY-DIE THEN  dup ROOTREC !  ADD-REC-CLO
+   0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ SCAN-MEMBER  WI @ 1+ WI ! REPEAT ;
 
 ;using
 ;package

@@ -126,10 +126,10 @@ using AOT-REACH-LINT
    FINDINGS-RESET
    s" src/habu/habu2.f" SCAN-FILE
    FINDINGS 0 T=
-   \ The 27 ordinary payload labels and LIMGEND remain covered. Partial images
+   \ The 29 ordinary payload labels and LIMGEND remain covered. Partial images
    \ also bind AOT-SIG:LLEN/LSPAN/LNAME for the portable checker graph; the lint
    \ must include those conditional bindings even when full capture omits them.
-   LABELS-FOUND 31 T= ;
+   LABELS-FOUND 33 T= ;
 
 : MAIN ( -- )
    T-RESET

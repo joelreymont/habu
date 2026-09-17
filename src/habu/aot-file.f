@@ -71,6 +71,16 @@
 \ says. An artifact that still carries the band is refused by name on its own
 \ version, not skipped.
 \
+\ WHAT VERSION 10 ADDS, and why it is a version and not an appended table. The
+\ payload now carries the CODE SPANS of the words the image ships no record for
+\ (src/habu/aot-decl.f package AOT-SPAN): the strip took their names, and with a
+\ span table to account for their code the rows themselves stop travelling too.
+\ The section sits where its producer sits in habu2.f EMIT-AOT-SEED's order,
+\ between the named code sites and the boot-run list, so every section after it
+\ is renumbered and SECTION-COUNT changes - which is what the version says. A
+\ version 9 artifact has records where a version 10 reader expects none and no
+\ spans at all, so it is refused by name on its own version rather than read.
+\
 \ THREE OF THE SECTIONS ARE THE CHECKER'S, not the seed's. The signature rows and
 \ the strings they name are src/core/checker.f's signature pool, carried verbatim
 \ so nothing is re-encoded on the way through; the type registry is one opaque
@@ -130,7 +140,7 @@ using AOT-BUF
 using AOT-WINDOW
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-9 constant VERSION   \ address rows can name a prefix CODE target through the name pool
+10 constant VERSION  \ the code spans of the words the image ships no record for
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -145,7 +155,7 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 104 constant O-PAYSHA
 32 constant SHA-BYTES
 
-17 constant SEC-N
+18 constant SEC-N
 16 constant ROW-BYTES                \ one section-table row: offset u64 + length u64
 
 0 constant S-SCALARS
@@ -159,14 +169,15 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 8 constant S-WDATA                   \ the window's non-zero extents: 8B rows
 9 constant S-WRUNS                   \ ... and their bytes, concatenated in row order
 10 constant S-XTSITES
-11 constant S-BOOTRUN
-\ 12 was the protected-WID bitmap through version 5; see the header for why it is
+11 constant S-SPANS                  \ the code spans of the records the image does not ship
+12 constant S-BOOTRUN
+\ 13 was the protected-WID bitmap through version 5; see the header for why it is
 \ gone and why the sections after it moved down rather than leaving a hole.
-12 constant S-PWIN
-13 constant S-SIGS
-14 constant S-SIGSTR
-15 constant S-REG
-16 constant S-CLOSURE
+13 constant S-PWIN
+14 constant S-SIGS
+15 constant S-SIGSTR
+16 constant S-REG
+17 constant S-CLOSURE
 
 \ The five genuine scalars: the capture-time DATA base, the canonical code base,
 \ the window's wordlist base and span, and the window's DATA span. Everything else
@@ -260,6 +271,7 @@ variable CUR
    k S-WDATA   = if RUN-BUF@ exit then
    k S-WRUNS   = if RBYTES-BUF@ exit then
    k S-XTSITES = if AOT-XTSITE:BUF@ exit then
+   k S-SPANS   = if AOT-SPAN:BUF@ exit then
    k S-BOOTRUN = if AOT-BOOTRUN-BUF@ exit then
    k S-PWIN    = if AOT-PWIN-BUF@ exit then
    k S-SIGS    = if AOT-SIG-BUF@ exit then
@@ -284,6 +296,7 @@ variable CUR
    k S-WDATA   = if RUN-N @ 8 ROW-BYTES-CHECKED exit then
    k S-WRUNS   = if RBYTES-LEN @ exit then
    k S-XTSITES = if AOT-XTSITE:N @ 8 ROW-BYTES-CHECKED exit then
+   k S-SPANS   = if AOT-SPAN:N @ AOT-SPAN:ROW ROW-BYTES-CHECKED exit then
    k S-BOOTRUN = if AOT-BOOTRUN-LEN @ exit then
    k S-PWIN    = if AOT-PWIN-N @ 4 ROW-BYTES-CHECKED exit then
    k S-SIGS    = if AOT-SIG-N @ SIG-ROW ROW-BYTES-CHECKED exit then
@@ -302,6 +315,7 @@ variable CUR
    k S-XTOFFS  = if XTOFF-ROW exit then
    k S-WDATA   = if 8 exit then
    k S-XTSITES = if 8 exit then
+   k S-SPANS   = if AOT-SPAN:ROW exit then
    k S-PWIN    = if 4 exit then
    k S-SIGS    = if SIG-ROW exit then
    1 ;
@@ -312,6 +326,7 @@ variable CUR
 : SEC-CAP-TAIL ( n -- n ) {: k:n :}
    k S-WRUNS   = if RBYTES-CAP exit then
    k S-XTSITES = if AOT-XTSITE:MAX 8 * exit then
+   k S-SPANS   = if AOT-SPAN:MAX AOT-SPAN:ROW * exit then
    k S-BOOTRUN = if AOT-BOOTRUN-CAP exit then
    k S-PWIN    = if AOT-PWIN-MAX 4 * exit then
    k S-SIGS    = if AOT-SIG-MAX SIG-ROW * exit then
@@ -334,6 +349,7 @@ variable CUR
 : SEC-NAME-TAIL ( n -- ptr u8 n ) {: k:n :}
    k S-WRUNS   = if s" window DATA run bytes" exit then
    k S-XTSITES = if s" named code sites" exit then
+   k S-SPANS   = if s" code spans" exit then
    k S-BOOTRUN = if s" boot-run list" exit then
    k S-PWIN    = if s" protected window WIDs" exit then
    k S-SIGS    = if s" signature rows" exit then
@@ -672,6 +688,7 @@ private
    S-WDATA ROW-LEN@ 8 / RUN-N !
    S-WRUNS ROW-LEN@ RBYTES-LEN !
    S-XTSITES ROW-LEN@ 8 / AOT-XTSITE:N !
+   S-SPANS ROW-LEN@ AOT-SPAN:ROW / AOT-SPAN:N !
    S-BOOTRUN ROW-LEN@ AOT-BOOTRUN-LEN !
    S-PWIN ROW-LEN@ 4 / AOT-PWIN-N !
    S-SIGS ROW-LEN@ SIG-ROW / AOT-SIG-N !
@@ -941,6 +958,7 @@ private
 variable H-BLOB   variable H-REC     variable H-SITE   variable H-NAMES
 variable H-DSITE  variable H-CSITE   variable H-XTOFF  variable H-DATA
 variable H-XTSITE variable H-BOOTRUN variable H-PWIN   variable H-SPAN
+variable H-CSPAN                     \ the host's code-span rows
 variable H-SIG    variable H-SIGSTR  variable H-REG
 variable H-RUN    variable H-RBYTES
 variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
@@ -975,6 +993,7 @@ TRUSTED: REG-INCOMING? ( ptr u8 n ptr u8 n -- bool )
    AOT-DSITE-N @ H-DSITE !            AOT-CSITE-N @ H-CSITE !
    XTOFF-N @ H-XTOFF !               AOT-DATA-SIZE @ H-DATA !
    AOT-XTSITE:N @ H-XTSITE !          AOT-BOOTRUN-LEN @ H-BOOTRUN !
+   AOT-SPAN:N @ H-CSPAN !
    AOT-PWIN-N @ H-PWIN !              AOT-WID-SPAN @ H-SPAN !
    AOT-SIG-N @ H-SIG !                AOT-SIG-STR-LEN @ H-SIGSTR !
    RUN-N @ H-RUN !                   RBYTES-LEN @ H-RBYTES !
@@ -1010,6 +1029,7 @@ TRUSTED: REG-INCOMING? ( ptr u8 n ptr u8 n -- bool )
    H-RUN @ 8 *                 S-WDATA BASE!
    H-RBYTES @                  S-WRUNS BASE!
    H-XTSITE @ 8 *              S-XTSITES BASE!
+   H-CSPAN @ AOT-SPAN:ROW *    S-SPANS BASE!
    H-BOOTRUN @                 S-BOOTRUN BASE!
    H-PWIN @ 4 *                S-PWIN BASE!
    H-SIG @ SIG-ROW *           S-SIGS BASE!
@@ -1209,6 +1229,7 @@ TRUSTED: REG-INCOMING? ( ptr u8 n ptr u8 n -- bool )
    MERGE-SITE-SCOPE
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 0 H-BLOB @ FIELD+
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 4 H-NAMES @ FIELD+
+   S-SPANS SEC-AT    S-SPANS SEC-ROWS    AOT-SPAN:ROW 0 H-BLOB @ FIELD+
    MERGE-XTOFFS
    S-WDATA SEC-AT    S-WDATA SEC-ROWS    8 0 H-DATA-R @ FIELD+
    S-PWIN SEC-AT     S-PWIN SEC-ROWS     4 0 H-SPAN @ FIELD+
@@ -1310,6 +1331,7 @@ TRUSTED: REG-INCOMING? ( ptr u8 n ptr u8 n -- bool )
    H-RUN @ S-WDATA SEC-ROWS + RUN-N !
    H-RBYTES @ S-WRUNS ROW-LEN@ + RBYTES-LEN !
    H-XTSITE @ S-XTSITES SEC-ROWS + AOT-XTSITE:N !
+   H-CSPAN @ S-SPANS SEC-ROWS + AOT-SPAN:N !
    H-BOOTRUN @ S-BOOTRUN ROW-LEN@ + AOT-BOOTRUN-LEN !
    H-PWIN @ S-PWIN SEC-ROWS + AOT-PWIN-N !
    H-SPAN @ A-SPAN @ + AOT-WID-SPAN !

@@ -211,13 +211,14 @@ variable OKV
    o E-NAME-OFF dup 0 < if s" imgdump: bad external name pointer" 74 die then
    dup o E-L + IL @ > if s" imgdump: truncated name" 74 die then
    IB@ +  o E-L ;
-\ AN EMPTY NAME IS A RECORD, NOT A CORRUPTION. Since
-\ habu-ship-no-dictionary-2fee2dea the capture ships a record whose pool entry
-\ is the empty name and whose DNAME-EXT is clear for every word nothing can ask
-\ for by name (src/habu/aot-capture.f ACAP-NAMED?); the row is still there
-\ because it carries the word's code span. So the length floor here is 0: it is
-\ what a dump of a stripped image walks over, and refusing it reported the
-\ engine's own shipping format as a broken file.
+\ AN EMPTY NAME IS A RECORD, NOT A CORRUPTION. habu-ship-no-dictionary-2fee2dea
+\ shipped a record with an empty pool entry for every word nothing can ask for
+\ by name, and habu-carry-code-spans-0db56c19 stopped shipping the row at all -
+\ its code span travels in the payload's AOT-SPAN table instead. A current image
+\ therefore holds no empty-named record, and every engine built between those
+\ two does. So the length floor here stays 0: it is what a dump of one of those
+\ engines walks over, and refusing it reported a shipped format as a broken
+\ file. A name length is a record field, not a plausibility test.
 : ENT? {: o :} ( n -- bool )
    o E-S 0 <= if IMG-FALSE exit then
    o E-E 0 < if IMG-FALSE exit then                 \ the raw field, never the rebased span

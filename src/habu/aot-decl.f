@@ -353,6 +353,30 @@ public
 create BUF MAX 8 * allot    variable N   \ 8B rows: blob-off u32 + name-off u32
 ;package
 
+\ THE CODE SPANS OF THE WORDS THE IMAGE SHIPS NO RECORD FOR. A record is what
+\ makes a word reachable by name, and a private word nothing can qualify into is
+\ reachable by nothing - so its record buys no caller anything and does not
+\ travel (aot-capture.f ACAP-NAMED? decides). Its CODE does travel, called by a
+\ displacement the blob carries, and one reader still has to account for it:
+\ src/habu/aot-closure.f walks the code a `hb-build` is shaking out and retargets
+\ every PC-relative branch against the span that owns it. A row here is that
+\ account, and it is the whole of it - the two u32 a record row would have
+\ carried, and none of the eighteen bytes of name, flags, kind and wordlist that
+\ only a lookup needs. 20 bytes a word becomes 8, and 48 bytes of booted
+\ dictionary become none.
+\ A ROW IS (blob offset u32, raw code span u32), in capture order, the same two
+\ fields and the same CODE-SPAN encoding a compact record's first two words hold,
+\ so the build proves a span row against the record it replaced field for field.
+\ The seed publishes the table's address, this count and the blob's landing base
+\ in the three AOT-SPAN cells layout.f set aside.
+package AOT-SPAN
+public
+AOT-BUF:AOT-REC-MAX constant MAX      \ at most one row per window record
+8 constant ROW
+create BUF MAX ROW * allot    variable N
+: BUF@ ( -- ptr u8 ) BUF ;
+;package
+
 package AOT-BUF
 public
 
@@ -488,10 +512,10 @@ public
    count AOT-SECTION-CAP width / > if REFUSE then
    used count width * +BYTES ;
 
-\ Fifteen scalar/count cells frame the common baked section. BYTES, rounds
+\ Sixteen scalar/count cells frame the common baked section. BYTES, rounds
 \ each byte run to four bytes; packed rows already have that alignment.
 : BODY-BYTES ( -- n )
-   15 cells
+   16 cells
    AOT-BLOB-LEN @ +BYTES
    AOT-REC-N @ AOT-CREC-ROW +ROWS
    AOT-SITE-N @ SITE-ROW +ROWS
@@ -502,6 +526,7 @@ public
    AOT-WINDOW:RBYTES-LEN @ +BYTES
    AOT-CSITE-N @ 4 +ROWS
    AOT-XTSITE:N @ 8 +ROWS
+   AOT-SPAN:N @ AOT-SPAN:ROW +ROWS
    AOT-BOOTRUN-LEN @ 1+ +BYTES
    AOT-PWIN-N @ 4 +ROWS ;
 
