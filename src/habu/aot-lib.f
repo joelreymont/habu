@@ -239,6 +239,20 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
       1 +
    REPEAT drop ;
 
+\ The stripped image carries the signal stub too, and publishes it the way
+\ habu2.f EM-STARTUP-RUNTIME-STATE does, with this image's own addresses.
+\ IT CLEARS NO FD WORD, where the engine's boot has to: this startup's DATA is a
+\ fresh MAP_ANON mapping at DATA-VA and EMIT-DATA-COPY restores only [heap mark,
+\ here), which begins at DATA-START and cannot reach a header cell -- so the fd
+\ word this image starts with is the mapping's own zero. A SNAPSHOT copies DATA
+\ from offset zero (snap-lib.f SND-COPY), which is why the engine clears it.
+\ The address travels in x11 for the reason G-INSTALL-CRASH's does -
+\ test/gate-aot-image.f finds the DATA restore by its ADR x9 and admits exactly
+\ one in the startup.
+: EMIT-SIGNAL-PUBLISH ( -- )
+   11 LSIGH LABEL@ ADR,  11 DATA SIGNAL-ABI:STUB-CELL STR,
+   11 DATA-VA VA>N SIGNAL-ABI:FD-CELL + LIT64,  11 DATA SIGNAL-ABI:FD-PTR-CELL STR, ;
+
 \ A stripped image runs the same three guarded VM stacks as the engine, and
 \ installs the same crash handler. Both matter here and not only in the engine:
 \ a stripped application has no interpreter to name an overflow, so before guard
@@ -254,6 +268,7 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
    10 DATA STACK-ABI:LOOP-BASE-CELL STR,
    G-INSTALL-CRASH                               \ name a guard-page fault instead of dumping SIGSEGV
    EMIT-DATA-COPY                                \ restore persistent data + DP
+   EMIT-SIGNAL-PUBLISH                           \ this image's stub address and fd word
    EMIT-SEED                                     \ push preseeded value-stack cells (empty for MAIN)
    MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;               \ exit(0)
@@ -263,7 +278,7 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
 \ pins that) and the entry's ADR to the handler spans at most the code, which
 \ EMIT-DATA-BLOB already bounds for the data blob placed after them.
 : EMIT-CRASH-CODE ( -- )
-   EMIT-CRASH-HANDLER  EMIT-HEX ;
+   EMIT-CRASH-HANDLER  EMIT-SIGNAL-HANDLER  EMIT-HEX ;
 variable CP2  variable CEND  variable NEXT-OFF
 \ The closure member whose entry this is, or -1. The entry is a member's
 \ identity (aot-closure.f ADD-CLO), so this is what a record pointer or a span
@@ -468,7 +483,7 @@ public
    AOT-DATA-SPAN
    AOT-DATA-TEXTPTR? IF AOT-DATA-TEXTPTR-DIE THEN
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !
-   LBL LCRASHH !  LBL LHEX !  LBL LHDR !          \ the stripped image carries the crash handler too
+   LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !   \ the stripped image carries both handlers too
    EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-CRASH-CODE  EMIT-DATA-BLOB
    AOT-WRITE-OBJ
    s" hb-prog" AOT-OUT DRV-EMIT-IMAGE ;

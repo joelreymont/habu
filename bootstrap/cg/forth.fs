@@ -172,8 +172,18 @@ $80 constant STACK-ABI:EVAL-BASE
 $88 constant STACK-ABI:EVAL-CAP
 $90 constant STACK-ABI:EVAL-BYTES
 
-require crash.fs           \ in-binary crash handler (register dump on signal);
-                            \ needs STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS above
+\ Mirror of src/habu/layout.f package SIGNAL-ABI: the two cells the boot
+\ publishes the baked signal stub through, and the fd word the stub itself
+\ reads. The stub reaches the fd word by the absolute address DATA-VA+FD-CELL,
+\ never as `DATA <off>`, because a handler runs on whichever thread the kernel
+\ hands the signal to and that thread's x20 is its own task region.
+$678 constant SIGNAL-ABI:STUB-CELL
+$680 constant SIGNAL-ABI:FD-PTR-CELL
+$688 constant SIGNAL-ABI:FD-CELL
+
+require crash.fs           \ in-binary crash handler + the signal stub;
+                            \ needs STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS
+                            \ and the SIGNAL-ABI: block above
 
 $D2800010 constant C-CALL-MOVZ-X16
 $F2A00010 constant C-CALL-MOVK-X16-16
@@ -5633,8 +5643,11 @@ variable CFSK2
    9 DATA TXN-CERT-U-CELL STR,  9 DATA TXN-BIND-I-CELL STR,
    9 DATA TXN-FETCH-I-CELL STR,
    9 DATA TXN-BLOB-A-CELL STR,  9 DATA TXN-BLOB-CAP-CELL STR,
+   9 DATA SIGNAL-ABI:FD-CELL STR,        \ no signal fd inherited from restored bytes
    G-INSTALL-CRASH
-   G-INSTALL-TRAP ;
+   G-INSTALL-TRAP
+   9 LSIGH @ ADR,  9 DATA SIGNAL-ABI:STUB-CELL STR,
+   9 DATA-VA SIGNAL-ABI:FD-CELL + LIT64,  9 DATA SIGNAL-ABI:FD-PTR-CELL STR, ;
 
 : EMIT-STARTUP ( -- )
    LANCHOR @ LBL,
@@ -7611,7 +7624,7 @@ variable P2SK
    LBL LTFLMATCHFAM !  LBL LTFLNAME !  LBL LBADTAGPFX !  LBL LBADTAGSFX ! ;
 
 : EMIT-LABEL-SIGNALS ( -- )
-   LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !
+   LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !
    LBL LSRCRD !  LBL LSRCRDP !  LBL LSHBANG ! ;
 
 : EMIT-LABEL-SOURCES ( -- )
@@ -7710,6 +7723,7 @@ variable P2SK
 
 : EMIT-RUNTIME-SECTIONS ( -- )
    EMIT-CRASH-HANDLER
+   EMIT-SIGNAL-HANDLER
    EMIT-TRAPH
    EMIT-HEX
    EMIT-PROFDUMP

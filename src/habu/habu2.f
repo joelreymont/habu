@@ -6831,8 +6831,18 @@ public
    9 DATA TXN-CERT-A-CELL STR,  9 DATA TXN-CERT-U-CELL STR,  9 DATA TXN-BIND-I-CELL STR,
    9 DATA TXN-WF-I-CELL STR,  9 DATA TXN-FETCH-I-CELL STR,
    9 DATA TXN-BLOB-A-CELL STR,  9 DATA TXN-BLOB-CAP-CELL STR,
+   \ No signal fd inherited from a restored snapshot: snap-lib.f SND-COPY carries
+   \ DATA from offset zero through DP, so an image written while a program had
+   \ the stub armed carries that program's descriptor number, which names nothing
+   \ this process ever opened.
+   9 DATA SIGNAL-ABI:FD-CELL STR,
    G-INSTALL-CRASH
    G-INSTALL-TRAP
+   \ Publish the baked signal stub and the address of the word it reads, so a
+   \ program installs the stub and arms it without spelling either (layout.f
+   \ package SIGNAL-ABI). Both are written on every boot, like the entries above.
+   9 LSIGH LABEL@ ADR,  9 DATA SIGNAL-ABI:STUB-CELL STR,
+   9 DATA-VA VA>N SIGNAL-ABI:FD-CELL + LIT64,  9 DATA SIGNAL-ABI:FD-PTR-CELL STR,
    9 LDOESPATCH LABEL@ ADR,  9 DATA DOESP-CELL STR,
    9 LCREATE LABEL@ ADR,  9 DATA CREATEP-CELL STR,
    9 LRREC LABEL@ ADR,  9 DATA RRECP-CELL STR,
@@ -9779,7 +9789,7 @@ package LABELS
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !  LBL LREPLROUTE !  LBL LGENIOOUT !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LEX0 !  LBL LUN0 !  LBL LEVALREC !
-   LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
+   LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
    LBL LSRCRD !  LBL LSRCRDP !  LBL LSHBANG !  LBL LOPENERR !  LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
@@ -10216,6 +10226,7 @@ package ENGINE-EMIT
    EMIT-REPL-ROUTE
    EMIT-GENIO-OUT
    EMIT-CRASH-HANDLER
+   EMIT-SIGNAL-HANDLER
    EMIT-TRAPH
    EMIT-HEX
    PROF:EMIT-PROFFIND

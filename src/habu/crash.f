@@ -1,7 +1,9 @@
-\ crash.fs — in-binary crash handler for the native engine.
+\ crash.fs — the in-binary signal handlers the native engine bakes.
 \ sa_tramp = the handler itself: kernel enters with x2=sig, x4=ucontext; we dump
 \ sig + x0..x28 + fp/lr/sp/pc as hex lines to stderr and exit(134).
-variable LCRASHH   variable LHEX   variable LHDR
+\ EMIT-SIGNAL-HANDLER at the end of this file bakes the second one: the
+\ async-signal-safe stub a program installs for an ordinary signal.
+variable LCRASHH   variable LHEX   variable LHDR   variable LSIGH
 create CRH 80 allot  variable CRHL
 variable CR-L1  variable CR-L2  variable CR-L3
 variable CR-OFF  variable CR-HANDLER
@@ -276,5 +278,50 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
       4 INSTALL-SIGACT  5 INSTALL-SIGACT  8 INSTALL-SIGACT  10 INSTALL-SIGACT  11 INSTALL-SIGACT
    THEN
    C-SIGACTION-FRAME-DONE ;
+
+\ LSIGH: the async-signal-safe stub, installed through sigaction by a program
+\ that wants a signal on a file descriptor. No Forth word is async-signal-safe,
+\ so this is machine code and nothing else: it reads the process-wide fd word
+\ and, when that word is nonzero, writes the four-byte signal number to it with
+\ one write syscall.
+\
+\ IT IS AN ORDINARY `void (int)` sa_handler, so the signal number is its first
+\ argument, in x0, on both targets. That is what makes it target-uniform where
+\ the crash handler above is not: the engine installs THAT one as the raw
+\ sa_tramp, which the macOS kernel enters with (catcher, style, sig, ...) and so
+\ it has to fish the number out of x2 (C-CRASH-ENTRY). This one is installed by
+\ a program through libc sigaction, and libc's own trampoline hands a handler
+\ the C argument order on Linux and macOS alike.
+\
+\ IT READS THE FD WORD BY ITS ABSOLUTE ADDRESS, never as `DATA <off>`: the
+\ handler runs on whichever thread the kernel picks and that thread's x20 is its
+\ own task region, so the offset form would read a different word per task and
+\ zero on a new one. DATA-VA is MAP_FIXED, so the literal names one word for the
+\ life of the process (src/habu/layout.f package SIGNAL-ABI).
+\
+\ WHAT IT COSTS THE INTERRUPTED CONTEXT: x0, x1, x2 and the registers SYS, uses
+\ for the call itself, the flags, and sixteen bytes below its own sp. It touches
+\ no Forth state at all - no DATA cell, no dictionary, no VM stack - and the
+\ kernel restores the saved context when it returns, so a program can carry the
+\ stub through any point of its own execution. A fd word of zero absorbs the
+\ signal: the stub returns having written nothing.
+\
+\ THE WRITE IS ONE FOUR-BYTE WRITE AND THE STUB IGNORES ITS RESULT. Four bytes
+\ is under PIPE_BUF, so a pipe takes it whole or not at all and a reader never
+\ sees a torn number; a caller whose reader falls behind therefore loses whole
+\ signals rather than framing, and it is the CALLER's job to make the write end
+\ non-blocking, because a blocking write into a full pipe would stall whichever
+\ thread the signal landed on.
+: EMIT-SIGNAL-HANDLER ( -- )
+   LSIGH LABEL@ LBL,
+   LBL {: done:label :}
+   SP SP $10 SUBI,
+   0 SP 0 STR,                                   \ the four low bytes ARE the number the fd receives
+   0 DATA-VA VA>N SIGNAL-ABI:FD-CELL + LIT64,
+   0 0 0 LDR,
+   0 done CBZ,
+   1 SP 0 ADDI,  2 4 MOVZ,  NR-WRITE SYS,
+   done LBL,
+   SP SP $10 ADDI,  RET, ;
 
 ;using

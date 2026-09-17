@@ -1,13 +1,13 @@
-\ crash.fs — in-binary crash handler for habu-built binaries. Installs a signal
+\ crash.fs — the in-binary signal handlers for habu-built binaries. Installs a signal
 \ handler (SIGILL/TRAP/BUS/SEGV) that dumps the faulting registers (from the
 \ signal ucontext) to stderr and exits, so a crash in generated code is
 \ self-diagnosing — no external debugger (lldb can't launch our minimal Mach-O
 \ in sandboxed environments). Mirror of src/habu/crash.f.
 \
 \ bootstrap/cg/forth.fs is the only file that requires this one, and it requires
-\ it only once the names below are its own: DATA, RBASE-VA, REGION, the
-\ STACK-ABI: block and ENGINE-ERROR:STACK-BOUNDS. Loading this file on its own
-\ leaves every one of them undefined.
+\ it only once the names below are its own: DATA, DATA-VA, RBASE-VA, REGION, the
+\ STACK-ABI: block, the SIGNAL-ABI: block and ENGINE-ERROR:STACK-BOUNDS. Loading
+\ this file on its own leaves every one of them undefined.
 \
 \ macOS arm64 signal delivery: sigaction(#46) records sa_handler + sa_tramp; on a
 \ signal the kernel enters sa_tramp with x0=catcher, x2=sig, x3=siginfo,
@@ -18,7 +18,7 @@
 require asm.fs
 require sys.fs                 \ icode mnemonics (ADR, STR, SVC, ...)
 
-variable LCRASHH   variable LHEX   variable LHDR
+variable LCRASHH   variable LHEX   variable LHDR   variable LSIGH
 create CRH 80 allot  variable CRHL
 
 : CRH-INIT ( -- )
@@ -298,3 +298,23 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
       4 INSTALL-SIGACT  5 INSTALL-SIGACT  8 INSTALL-SIGACT  10 INSTALL-SIGACT  11 INSTALL-SIGACT
    THEN
    C-SIGACTION-FRAME-DONE ;
+
+\ LSIGH: the async-signal-safe stub a program installs through sigaction. It is
+\ an ordinary `void (int)` sa_handler, so the signal number is its first
+\ argument in x0 on both targets -- unlike the crash handler above, which the
+\ engine installs as the raw sa_tramp. It reads the process-wide fd word by its
+\ ABSOLUTE address -- a handler runs on whichever thread the kernel picks, so
+\ x20 is not the main task's region -- and writes the four-byte signal number
+\ there with one write syscall when that word is nonzero. It touches no Forth
+\ state; a zero fd word absorbs the signal.
+: EMIT-SIGNAL-HANDLER ( -- )
+   LSIGH @ LBL,
+   LBL {: done :}
+   SP SP 16 SUBI,
+   0 SP 0 STR,                            \ the four low bytes ARE the number the fd receives
+   0 DATA-VA SIGNAL-ABI:FD-CELL + LIT64,
+   0 0 0 LDR,
+   0 done CBZ,
+   1 SP 0 ADDI,  2 4 MOVZ,  NR-WRITE SYS,
+   done LBL,
+   SP SP 16 ADDI,  RET, ;

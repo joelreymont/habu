@@ -600,6 +600,52 @@ $668 constant N-CELL
 $670 constant BASE-CELL
 ;package
 
+\ SIGNAL-ABI: the baked async-signal-safe handler stub (src/habu/crash.f
+\ EMIT-SIGNAL-HANDLER, label LSIGH) and the one word it reads. STUB-CELL is the
+\ stub's runtime address, which is what a program hands sigaction as its
+\ sa_handler; FD-PTR-CELL is the ADDRESS of the fd word, so a program stores its
+\ self-pipe's write end through a published pointer instead of spelling where
+\ that word lives; FD-CELL is that word's own offset, claimed here so nothing
+\ else takes it. The two published cells are written at boot beside the crash
+\ handler's own installation (habu2.f EM-STARTUP-RUNTIME-STATE, aot-lib.f
+\ EMIT-ENTRY), the way the AOT-SPAN cells are written by the seed. The ENGINE's
+\ boot also CLEARS the fd word there, because snap-lib.f SND-COPY carries DATA
+\ from offset zero, so an image written while a program had the stub armed
+\ carries that program's descriptor number; a stripped image needs no clear,
+\ since its DATA is a fresh mapping and its restore starts at DATA-START.
+\
+\ THE STUB NEVER READS THE FD WORD THROUGH x20. A handler runs on whichever
+\ thread the kernel hands the signal to, and that thread's x20 is its own task
+\ region - lib/task.f PREPARE maps a fresh zeroed region per task and
+\ TASK-REGION-INIT copies only the cells it names - so `DATA FD-CELL LDR` would
+\ read a different word on every task and zero on a new one. The stub reaches
+\ the word by its ABSOLUTE address instead, DATA-VA + FD-CELL baked in as a
+\ literal: DATA-VA is a MAP_FIXED address (src/os/<target>/layout.f, and
+\ EM-MMAP-DATA-REGION refuses a boot the kernel answered elsewhere), so that one
+\ address names the SAME word for the life of the process whatever task is
+\ running. That is the LOCK-CELL class of process-wide cell, and it is why
+\ FD-PTR-CELL publishes an address rather than an offset. Every task's region
+\ carries a copy of the FD-CELL slot that nothing reads; that is the price of
+\ keeping the word inside the one fixed mapping the image already owns.
+\
+\ THE TWO PUBLISHED CELLS ARE READ FROM THE MAIN TASK, like the AOT-SPAN cells
+\ they follow: a spawned task's region is fresh and carries neither, so a
+\ library reads them once where the boot wrote them and keeps the two values in
+\ its own storage. What it keeps is process-wide - one stub address and one word
+\ address - so every task then arms and disarms the same word.
+\
+\ WHERE THEY GO: the next three cells of the $600..$800 header hole BODYBUF-OFF
+\ names as free space, directly above AOT-SPAN's band, swept for a claimant
+\ across src lib tools test maki bootstrap and read back as zero out of a booted
+\ engine. Below $7FF8, the ceiling for a cell the boot addresses directly as
+\ `DATA <off> STR`, and below DATA-START, so no compiled source can reach them.
+package SIGNAL-ABI
+public
+$678 constant STUB-CELL
+$680 constant FD-PTR-CELL
+$688 constant FD-CELL
+;package
+
 \ BOOT-LAYOUT:HEAP-START-CELL: the DP-heap floor of the RUNNING engine, as a DATA
 \ offset, stored by habu2.f EM-DATA-INIT out of the same DATA-START it hands DP.
 \ It is the engine stating its own layout, so a tool that has to classify the
@@ -1701,6 +1747,7 @@ variable NAMES-U
    s" LVD-CELL" NAME,
    s" GENIO-ABI" NAME,
    s" AOT-SPAN" NAME,
+   s" SIGNAL-ABI" NAME,
    s" FRAME-CELL" NAME,
    s" QFRAME-CELL" NAME,
    s" BODYBUF" NAME,
@@ -1814,6 +1861,7 @@ create TAB
    LVD-CELL                       ,  1 cells ,
    GENIO-ABI:OUT-CELL             ,  GENIO-ABI:END GENIO-ABI:OUT-CELL - ,
    AOT-SPAN:TABLE-CELL            ,  3 cells ,
+   SIGNAL-ABI:STUB-CELL           ,  3 cells ,
    FRAME-CELL                     ,  1 cells ,
    QFRAME-CELL                    ,  1 cells ,
    BODYBUF-OFF                    ,  BODYBUF-CAP 2 + ,

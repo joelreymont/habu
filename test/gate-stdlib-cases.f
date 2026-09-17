@@ -1239,6 +1239,10 @@ SUITE heap-start-cell
    test/heap-start-cell.f
 ;SUITE
 
+SUITE signal-stub
+   test/signal-stub.f
+;SUITE
+
 SUITE compiler-native-create-does
    test/compiler/native-create-does.f
 ;SUITE
