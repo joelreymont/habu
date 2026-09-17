@@ -163,29 +163,23 @@ DESC-CELLS cells constant DESC-BYTES
 \ is also what a captured image carries, since a capture is what closes the
 \ region.
 \
-\ THE BASE IS A BARE MARKED CELL AND NOT A PTR-VARIABLE, which is a measured
-\ exception to the rule in docs/forth.md. A PTR-VARIABLE is create-plus-does>,
-\ so reading one is a call into the does> body and then a call to ptr-field, and
-\ this cell is read on every arena read: with the definer, the does> body alone
-\ was 8.9 percent of a trivial tier-1 definition's samples, half of them from
-\ RD@. The cell is marked with ptr-cell-mark exactly as the definer marks its
-\ own, so it relocates with the image the same way, and the reads below spell
-\ out the one ptr-field the definer would have reached anyway.
+\ THE BASE IS THE DEFINER'S OWN CELL, and every read of it below is spelled out
+\ rather than wrapped. It was a bare `create`d cell marked by hand for one
+\ release: the definer's does> clause used to compute `0 ptr-field`, the
+\ identity on the address `create` had already pushed, and paying a call, a
+\ branch and a frame for that on every read here was 8.9 percent of a trivial
+\ tier-1 definition's samples. The clause declares and computes nothing now, so
+\ a mention of this word folds to the same address literal the bare cell folded
+\ to (src/core/pointer-storage.f, test/does-empty-clause.f).
 here CELL 1- and CELL swap - CELL 1- and allot
 create DEAD-DESC DESC-BYTES allot
-create RBASE-CELL here ptr-cell-mark 0 ,
+PERSISTED-PTR-VARIABLE RBASE
 variable RMASK
-
-: RBASE@ ( -- ptr u8 )
-   RBASE-CELL 0 ptr-field @ ;
-
-: RBASE! ( ptr u8 -- )
-   RBASE-CELL 0 ptr-field ! ;
 
 \ An identity names its own descriptor, and this is the whole of the lookup: the
 \ mask is the region's when there is a region and zero when there is not.
 : DESC ( n -- ptr u8 )
-   RMASK @ and RBASE@ + ;
+   RMASK @ and RBASE @ + ;
 
 : D@ ( ptr u8 n -- n )
    + CELL-VIEW @ ;
@@ -206,14 +200,14 @@ variable RMASK
    loop ;
 
 : DEAD-BASE ( -- )
-   DEAD-DESC BYTE-VIEW RBASE!
+   DEAD-DESC BYTE-VIEW RBASE !
    0 RMASK ! ;
 DEAD-CLEAR
 DEAD-BASE
 
 : REBASE ( ptr u8 -- ) {: b:ptr :}
    b NULL-PTR = if DEAD-BASE exit then
-   b RBASE!
+   b RBASE !
    OFF-MASK RMASK ! ;
 
 : INSTALL-REBASE ( -- )
@@ -224,7 +218,7 @@ INSTALL-REBASE
 \ a load of a cell this package wrote is cheaper than keeping it live across the
 \ checks in between.
 : DATA-AT ( ptr u8 -- ptr u8 ) {: d:ptr :}
-   RBASE-CELL 0 ptr-field @ d D-DATA + CELL-VIEW @ + ;
+   RBASE @ d D-DATA + CELL-VIEW @ + ;
 
 \ ---- the chain of live descriptors -------------------------------------------
 \ A context's teardown has to end its arenas BEFORE the region cursor moves back
@@ -307,13 +301,13 @@ INSTALL-RETIRE
 \ else, which tells the caller its handle still names something.
 : LIVE-DESC ( IR-ARENA:arena -- ptr u8 )
    ARENA>N {: t:n :}
-   RBASE-CELL 0 ptr-field @ t RMASK @ and + {: d:ptr :}
+   RBASE @ t RMASK @ and + {: d:ptr :}
    d D-TOK + CELL-VIEW @ t <> if t TOKEN-REFUSE then
    d ;
 
 : FROZEN-DESC ( IR-ARENA:view -- ptr u8 )
    VIEW>N {: t:n :}
-   RBASE-CELL 0 ptr-field @ t RMASK @ and + {: d:ptr :}
+   RBASE @ t RMASK @ and + {: d:ptr :}
    d D-TOK + CELL-VIEW @ t <> if t TOKEN-REFUSE then
    d ;
 
@@ -341,7 +335,7 @@ NATIVE-PROBE CELL-VIEW @ $0123456789ABCDEF = constant NATIVE-CELLS?
 
 : CELL-AT ( ptr u8 n -- n )
    {: d:ptr k:n :}
-   RBASE-CELL 0 ptr-field @ d D-DATA + CELL-VIEW @ +
+   RBASE @ d D-DATA + CELL-VIEW @ +
    NATIVE-CELLS? if k CDIGEST:SLOT-BYTES * + CELL-VIEW @ exit then
    k CDIGEST:SLOT@ ;
 
@@ -393,7 +387,7 @@ NATIVE-PROBE CELL-VIEW @ $0123456789ABCDEF = constant NATIVE-CELLS?
    need d D-CEIL D@ > if E-IR-ARENA-FULL throw then
    d D-CAP D@ need d D-CEIL D@ CAP-FOR {: ncap:n :}
    c ncap CDIGEST:SLOT-BYTES * IR-CTX:SCRATCH-OFFSET {: noff:n :}
-   d DATA-AT  noff RBASE@ +  d D-CNT D@ CDIGEST:SLOTS-COPY
+   d DATA-AT  noff RBASE @ +  d D-CNT D@ CDIGEST:SLOTS-COPY
    noff d D-DATA D!
    ncap d D-CAP D! ;
 
@@ -663,7 +657,7 @@ public
 : RD@ ( IR-ARENA:reader n -- n )
    {: r:IR-ARENA:reader k:n :}
    r READER>N {: t:n :}
-   RBASE-CELL 0 ptr-field @ {: base:ptr :}
+   RBASE @ {: base:ptr :}
    base t RMASK @ and + {: d:ptr :}
    d D-TOK + CELL-VIEW @ t <> if t TOKEN-REFUSE then
    k 0 < k d D-CNT + CELL-VIEW @ >= or if E-IR-ARENA-BOUND throw then
@@ -694,7 +688,7 @@ public
 : RD-FIND ( IR-ARENA:reader n n n n -- n )
    {: r:IR-ARENA:reader first:n stride:n count:n want:n :}
    r READER>N {: t:n :}
-   RBASE-CELL 0 ptr-field @ {: base:ptr :}
+   RBASE @ {: base:ptr :}
    base t RMASK @ and + {: d:ptr :}
    d D-TOK + CELL-VIEW @ t <> if t TOKEN-REFUSE then
    count 0 <= if -1 exit then
@@ -721,7 +715,7 @@ public
 \ The readable count through the same token, checked the same way; see RD@.
 : RD-SIZE ( IR-ARENA:reader -- n )
    READER>N {: t:n :}
-   RBASE-CELL 0 ptr-field @ t RMASK @ and + {: d:ptr :}
+   RBASE @ t RMASK @ and + {: d:ptr :}
    d D-TOK + CELL-VIEW @ t <> if t TOKEN-REFUSE then
    d D-CNT + CELL-VIEW @ ;
 
