@@ -585,6 +585,25 @@ fits.
   HOST `BF-BOOTSTRAP-STAGE` compiles stage2 with -- `HABU_FIXPOINT_ENGINE` only
   re-targets the INSTALL -- so the fixpoint needs the promoted binary, not just
   the env var.
+- **A `PRIM:`/`PPRIM:` row makes the name TICKABLE, and `PRIM-TRUSTED-ONLY!` guards
+  only the direct call site.** So never give a row to a seam that takes an address or
+  an offset. Measured on a tree that gave the signature store's truncation seam a
+  `( n -- )` row: checked source was refused with `E-CAP-TRUSTED`, but `'
+  USIGS-RESTORE-END` returned the xt, `search-wl` handed it over too, and executing
+  it with `$7FFFFFFF` was a SIGSEGV — an arbitrary store write for any program.
+  Declare a zero-argument wrapper carrying the one value the caller wants
+  (`CHECKER-BOUND:EMPTY-STORE`) and judge it the way `CHECKER-BOUND:REWIND` is
+  judged: what it discards must leave the next reference failing CLOSED rather than
+  mis-certified (2026-09-17).
+- **The recovery prologue and `prefix-rewind.f` rewind to DIFFERENT points.**
+  `tools/bootstrap.sh`'s boot-hide text reloads the whole core prefix, `checker.f`
+  included, so it lowers the dictionary to the prefix's FIRST record and the
+  signature store has to come back to zero with it; `CHECKER-BOUND:REWIND` returns to
+  the prefix's END, which is where `prefix-rewind.f`'s payload reloads from. Calling
+  the boundary in the prologue instead builds a stage-1 engine that dies at boot with
+  a SILENT rc 78 (the fixed-region class) — and the gforth stage0 builds that engine
+  happily, so the failure lands one stage after the edit and prints nothing
+  (2026-09-17).
 - **Cross-agent engine landings BRICK sibling binaries.** A new cold-prefix file
   (e.g. `engine-error.f`) makes every other agent's baked-prefix-list `bin/hb` fail
   AT BOOT with `E-UNDEFINED` on updated consumers (find the baked list with

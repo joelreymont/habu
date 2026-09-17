@@ -1152,8 +1152,56 @@ create QNAME QNAME-CAP allot
    s" undefined word 'IWGBCA'" ASSERT-DIAG
    s" MARK keeps the seal: only lower-cert-seal.f may take the boundary" T-LABEL
    s" CHECKER-BOUND:MARK" NEG
-   s" USIGS keeps it as well: the uncalled hide.f reset that named it is gone" T-LABEL
+   s" USIGS keeps it as well: no reset names it any more (RECOVERY-RESET below)" T-LABEL
    s" USIGS" NEG ;
+
+\ --- the recovery launcher's prologue (dot habu-route-the-recovery-4ef43bd9).
+\ tools/bootstrap.sh feeds ONE boot-hide prologue to the gforth stage0 and to
+\ every sealed native stage after it, and its checker half used to be a hand
+\ rewind: `0 UEND !` and the store's terminator, written from a TRUSTED: body
+\ spelling `USIGS`. That is a fourth instance of the shape above - the seal
+\ marks `USIGS` DNAME-INT, so its record survived in a stage image only because
+\ that one body spelled it, and a stage stripped to the names the checker knows
+\ could not compile the prelude the whole recovery starts from.
+\
+\ IT GOT A ROW OF ITS OWN, unlike the third site, because the reset really is
+\ distinct: CHECKER-BOUND:REWIND returns to the prefix's END and this caller
+\ reloads the prefix from its FIRST record, so it needs the store at zero, and
+\ rewinding the boundary there instead builds a stage-1 engine that cannot boot
+\ (measured: silent rc 78). The row is CHECKER-BOUND:EMPTY-STORE, a second
+\ public on the same package.
+\
+\ WHAT THE ROW IS NOT is the seam underneath it. USIGS-RESTORE-END takes the new
+\ end, and an axiom'd name is tickable whatever PRIM-TRUSTED-ONLY! says about
+\ the call site, so declaring THAT would hand every program a store write at an
+\ offset of its choosing - measured on a tree that tried it: `'
+\ USIGS-RESTORE-END` executed with $7FFFFFFF crashed with SIGSEGV. So the last
+\ case below keeps that seam sealed, beside the store base and the boundary's
+\ MARK one section above. The declared word takes no argument and its
+\ consequence is the one REWIND's case pins there - the next reference is
+\ refused, not mis-certified - which is what makes a tickable row safe to have.
+
+: RRR-EMPTY$ ( -- ptr u8 n )      \ the prologue's call, and what it costs
+   SB-RESET
+   s" : IWGRRA ( -- n ) 7 ;" SB-APPEND LF
+   s" CHECKER-BOUND:EMPTY-STORE" SB-APPEND LF
+   s" : IWGRRB ( -- n ) IWGRRA ;" SB-APPEND LF
+   SB$ ;
+
+: RRR-USIGS$ ( -- ptr u8 n )      \ what the prologue stopped spelling
+   SB-RESET
+   s" : IWGRR-USIGS ( -- ptr u8 ) USIGS ;" SB-APPEND LF
+   SB$ ;
+
+: RECOVERY-RESET-CASES ( -- )
+   s" the prologue's store reset carries a row and discards the source effects" T-LABEL
+   RRR-EMPTY$ RUN-SUBJECT
+   s" undefined word 'IWGRRA'" ASSERT-DIAG
+   s" USIGS is outside the checker's universe, so checked source cannot name it" T-LABEL
+   RRR-USIGS$ RUN-SUBJECT
+   s" E-UNDEFINED: USIGS" ASSERT-DIAG
+   s" the seam under the row keeps the seal: no offset of the caller's choosing" T-LABEL
+   s" USIGS-RESTORE-END" NEG ;
 
 \ --- the sealed declaration grammar (dot habu-tfam-2b-sealed-1b77662c, third of
 \ three). src/core/sumtype.f defined 316 globals and now defines 45 publics and
@@ -1356,6 +1404,7 @@ create QNAME QNAME-CAP allot
    VERIFY-MIRROR-CASES
    TFAM-SEAL-CASES
    BUILD-CHAIN-CALLEE-CASES
+   RECOVERY-RESET-CASES
    TYPE-DECL-SEAL-CASES
    NEG-SHAPES
    SEED-RESET-CASES

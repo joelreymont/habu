@@ -255,12 +255,15 @@ TABLE-LIVE
 s" EIXA" EIX-MIN-IN 2 T=
 s" EIXT2" EIX-MIN-IN 5 T=
 
-\ A REWIND NO SEAM PERFORMED. tools/bootstrap.sh's recovery prologue assigns
-\ UEND and writes the terminator directly (BOOT-USIGS-RESET), so the store can
-\ move under the table without USIGS-RESTORE-END ever being called. src/habu/
-\ hide.f carried the BFR-* twin of that until dot habu-give-the-build-4b825045
-\ removed it as uncalled; the recovery launcher still does it, and so does the
-\ raw rewind below. The append choke point is where that has
+\ A REWIND NO SEAM PERFORMED. The store can move under the table without
+\ USIGS-RESTORE-END ever being called: E-INTERN's hit path assigns UEND itself
+\ (it rewinds mid-record, before the record has an ER.NEXT for that seam's chain
+\ walk to follow), and so does the raw rewind below. Two hand rewinds that used
+\ to be quoted here are gone - src/habu/hide.f's BFR-* twin as uncalled (dot
+\ habu-give-the-build-4b825045) and tools/bootstrap.sh's recovery prologue,
+\ which calls USIGS-RESTORE-END itself now (dot
+\ habu-route-the-recovery-4ef43bd9) - so the engine is the live example and the
+\ fixture below is the deliberate one. The append choke point is where that has
 \ to be noticed, and the case that proves it is a record with NO NODES: an
 \ `undefine` appends a record and copies nothing, so the interner's own entry
 \ path never runs and only E-REC-START's sync is left to see the rewind. Read as

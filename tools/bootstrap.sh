@@ -130,8 +130,6 @@ emit_boot_hide() {
 TRUSTED: BOOT-N>REC ( n -- ptr n ) ;
 TRUSTED: BOOT-A>U8 ( ptr n -- ptr u8 ) ;
 TRUSTED: BOOT-N>U8 ( n -- ptr u8 ) ;
-TRUSTED: BOOT-USIG-END-PTR ( -- ptr a ) USIGS UEND @ + ;
-TRUSTED: BOOT-UEND! ( n -- ) UEND ! ;
 TRUSTED: BOOT-NDICT! ( n -- ) seed-ndict! ;
 $0 constant BOOT-XREF-START-SLOT
 $2 constant BOOT-XREF-FLAGS-SLOT
@@ -187,10 +185,7 @@ $3 constant BOOT-XREF-NAME-SLOT
    a u BOOT-XREF-FIND-INDEX  b v BOOT-XREF-FIND-INDEX  BOOT-MIN-FOUND
    dup 0 < if s" bootstrap: hide marker not found" 76 die then
    BOOT-NDICT! ;
-: BOOT-USIGS-RESET ( -- )
-   0 BOOT-UEND!
-   0 BOOT-USIG-END-PTR ! ;
-BOOT-USIGS-RESET
+CHECKER-BOUND:EMPTY-STORE
 s" IMK-NDICT0" s" SEQ" BOOT-HIDE-DICT-FROM-EARLIEST
 EOF
 }
@@ -276,6 +271,32 @@ emit_src() {
   # in the fixpoint loop carry the seal floor, and public `ndict!` below it is
   # a silent exit 83 (src/habu/hide.f says the same for its own rewind); the
   # gforth stage0 answers the name with its unsealed lowering.
+  #
+  # The checker half of that clearing is CHECKER-BOUND:EMPTY-STORE, a declared
+  # public of the checker's own boundary package. It used to be a hand rewind --
+  # `0 UEND !` and the store's terminator, written through a TRUSTED: body
+  # naming `USIGS` -- and that name is why it had to go: `USIGS` is a
+  # signature-less colon word of the checker's, so the seal marks it DNAME-INT,
+  # its record survived in a stage image only because that one body spelled it,
+  # and a stage stripped to the names the checker knows could not compile the
+  # prelude the whole recovery starts from (the shape dot
+  # habu-give-the-build-4b825045 measured in the build chain as `ncomp: cannot
+  # compile REG-INCOMING?`). The call below is ordinary checked Habu, so the
+  # prologue is down to ONE trusted row, the dictionary's.
+  #
+  # NOT CHECKER-BOUND:REWIND, the sibling src/habu/prefix-rewind.f uses for the
+  # same job one layer up. That one returns to the prefix's END, because
+  # prefix-rewind.f's payload reloads from there; this text reloads the WHOLE
+  # prefix, src/core/checker.f included, so it lowers the dictionary to the
+  # prefix's FIRST record and the store has to come back to zero with it.
+  # Rewinding the boundary here instead builds a stage-1 engine that cannot
+  # boot: measured on this tree, silent rc 78, the fixed-region class, with the
+  # same tree's hand rewind building it (dot habu-route-the-recovery-4ef43bd9).
+  #
+  # IT RUNS BEFORE THE DICTIONARY LOWERING, for the reason prefix-rewind.f
+  # gives for the same order: the truncation walks the records it is
+  # discarding, and those walks need the dictionary those records still belong
+  # to.
   emit_boot_hide "$out"
   printf "0 set-check\n" >> "$out"
   local f

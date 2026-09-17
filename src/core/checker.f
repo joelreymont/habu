@@ -7647,6 +7647,31 @@ PPRIM: TFAM REG-AOT-MERGE-INCOMING? PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN P
 \ knowledge, so a caller that runs it in a booted engine loses the symbols above
 \ the prefix and every later reference fails closed with E-UNDEFINED (measured).
 PPRIM: CHECKER-BOUND REWIND PPRIM;
+\ CHECKER-BOUND EMPTY-STORE is the same package's other answer, for the other
+\ kind of reloading host: tools/bootstrap.sh's boot-hide prologue, which every
+\ recovery stage interprets at boot. That text reloads the WHOLE core prefix,
+\ this file included, so it lowers the dictionary to the prefix's FIRST record
+\ and the signature store has to come back to offset zero with it. REWIND comes
+\ back to the prefix's END, which is where ITS consumer reloads from, and using
+\ it there builds a stage-1 engine that cannot boot (measured: silent rc 78,
+\ the fixed-region class, with the same tree's hand rewind building it). The
+\ prologue used to do it by hand from a TRUSTED: body naming `USIGS`, which is
+\ why this row exists at all: `USIGS` has no effect, so the seal marks it
+\ DNAME-INT and a stripped image drops the record that body needed (dot
+\ habu-route-the-recovery-4ef43bd9).
+\
+\ IT TAKES NO ARGUMENT, and that is the row rather than a detail of it. The seam
+\ underneath, USIGS-RESTORE-END, takes the new end: declaring THAT would hand
+\ every program a store write at an offset of its choosing, because an axiom'd
+\ name is tickable and PRIM-TRUSTED-ONLY! guards only the direct call site -
+\ measured, `' USIGS-RESTORE-END` with $7FFFFFFF executed to a SIGSEGV. Zero is
+\ the only end this caller wants, so zero is what the declared word means, and
+\ the seam keeps its seal. What it discards is checker knowledge, so a caller
+\ that runs it in a booted engine loses the effects the source recorded and the
+\ next reference to one fails closed with E-UNDEFINED (measured, and an engine
+\ that keeps interpreting after it stays sound: a following enum declaration and
+\ a following arithmetic body both certify), exactly as for REWIND.
+PPRIM: CHECKER-BOUND EMPTY-STORE PPRIM;
 PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: E-USING-AMBIGUOUS  PE-N PE-OUT PRIM;
 PRIM: EFFECT-DIN-N       PE-N PE-OUT PRIM;
@@ -15029,6 +15054,20 @@ public
    REG-EXT-BND-RESTORE-XT
    RBF-BND-NAME RBF-BND-REC RBF.PKGU @ RBF-NAME-RESTORE
    RBF-BND-REC RBF-RESTORE-FROM ;
+
+\ THE COARSER REWIND, for a host that reloads the prefix from its first record
+\ instead of from the mark: the signature store back to empty, through the
+\ store's own truncation seam, so the interned-node table and the per-symbol
+\ record index are repaired rather than left pointing above the store the way a
+\ bare `0 UEND !` left them. tools/bootstrap.sh's boot-hide prologue is the one
+\ consumer; the row for it in this file's primitive table says why it is a row
+\ and why it takes no argument. It moves no depth and touches no other cursor,
+\ which is the whole difference from REWIND: the caller is discarding the
+\ dictionary those other cursors describe, not returning to a recorded moment
+\ in it.
+: EMPTY-STORE ( -- )
+   RBF-DEPTH @ IF s" checker: store reset inside rollback scope" 76 die THEN
+   0 USIGS-RESTORE-END ;
 
 ;package
 

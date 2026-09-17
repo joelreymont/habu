@@ -4,16 +4,19 @@
 \ intentionally use a BFR prefix so they can be defined in old engines that lack
 \ xref.f, then hide themselves by truncating back to the requested marker.
 \
-\ WHAT IS NOT MIRRORED HERE ANY MORE. tools/bootstrap.sh's prologue resets the
-\ signature store before it truncates (BOOT-USIGS-RESET); this file carried the
-\ BFR-* twin of that reset, and nothing in the tree ever called it - the native
-\ refresh rewinds the checker through its own boundary instead
-\ (src/habu/prefix-rewind.f). Its only body was a TRUSTED: row naming `USIGS`,
-\ a signature-less colon word of the checker's that the seal marks DNAME-INT,
-\ so the uncalled words were also the reason a product image that keeps only
-\ the names the checker knows could not compile this payload. They are gone
-\ rather than given a declared surface, because the seal is not wrongly
-\ covering `USIGS`: no consumer needs it (dot habu-give-the-build-4b825045).
+\ WHAT IS NOT MIRRORED HERE ANY MORE. This file carried a BFR-* signature-store
+\ reset, and nothing in the tree ever called it - the native refresh rewinds the
+\ checker through its own boundary instead (src/habu/prefix-rewind.f). Its only
+\ body was a TRUSTED: row naming `USIGS`, a signature-less colon word of the
+\ checker's that the seal marks DNAME-INT, so the uncalled words were also the
+\ reason a product image that keeps only the names the checker knows could not
+\ compile this payload. They are gone rather than given a declared surface,
+\ because the seal is not wrongly covering `USIGS`: no consumer needs it (dot
+\ habu-give-the-build-4b825045). tools/bootstrap.sh's prologue carried the same
+\ row for a rewind it really does call, and it is gone the same way: that
+\ prologue asks the checker's own boundary package to empty the store now
+\ (CHECKER-BOUND:EMPTY-STORE, dot habu-route-the-recovery-4ef43bd9), so neither
+\ side of this mirror spells `USIGS` any more.
 
 0 constant BFR-START-SLOT
 2 constant BFR-FLAGS-SLOT
