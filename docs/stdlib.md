@@ -74,7 +74,7 @@ theirs.
 | module | class |
 | --- | --- |
 | `lib/string.f` | task-local (the SB builder, STRING-ABI band) / caller-owned (the `BUF-*` family) |
-| `lib/fmt.f` | process-wide |
+| `lib/fmt.f` | task-local (the render buffer and its scratch cells, FMT-ABI band) |
 | `lib/fs.f` | process-wide |
 | `lib/json-write.f` | caller-owned |
 | `lib/json-read.f` | caller-owned |
@@ -90,7 +90,7 @@ theirs.
 
 A task-local module reaches its storage one of two ways, and which one is
 forced rather than chosen: a module the engine bakes takes a declared band in
-`src/habu/layout.f` (string), and a module loaded later takes `TASK:+USER`
+`src/habu/layout.f` (string, fmt), and a module loaded later takes `TASK:+USER`
 rows (tcp4, udp4, curl, serial, genio). [threads.md](threads.md) says why, and
 which rows are still to move.
 

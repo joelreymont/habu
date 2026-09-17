@@ -1,11 +1,10 @@
 \ fmt.f - checked number formatting.
 \
-\ STORAGE CLASS. PROCESS-WIDE. The integer render buffer (FMT-NUM-BUF,
-\ FMT-NUM-U) and the POW10I/SB-FRAC scratch cells (FMT-IX, FMT-FR, FMT-DV) are
-\ one set for the image, and the appenders write into lib/string.f's
-\ process-wide SB, so two tasks formatting at once interleave in both. Moving
-\ them to task-local storage is dot habu-make-the-shared-0c2bfbc6; see
-\ docs/threads.md.
+\ STORAGE CLASS. TASK-LOCAL. The integer render buffer (FMT-NUM-BUF, FMT-NUM-U)
+\ and the POW10I/SB-FRAC scratch cells (FMT-IX, FMT-FR, FMT-DV) live in the
+\ FMT-ABI band of the per-task DATA region, and the appenders write into
+\ lib/string.f's SB, which is task-local too, so two tasks formatting at once
+\ share nothing. See docs/threads.md.
 \
 \ The module lives in `package FMT`. External callers reach it through the
 \ qualified public API: FMT:SB-U and FMT:SB-INT append an unsigned or signed
@@ -42,9 +41,24 @@ package FMT
 48 constant FMT-ZERO
 46 constant FMT-DOT
 
-variable FMT-IX
-variable FMT-FR
-variable FMT-DV
+\ Every byte and cell fmt keeps is TASK-LOCAL, in the FMT-ABI band of the
+\ per-task DATA region: each accessor reads `data-base`, which is the RUNNING
+\ task's region, so two tasks formatting at once share nothing. The band is
+\ declared in src/habu/layout.f beside STRING-ABI and asserted there against
+\ every other DATA claim. It is a declared band and not TASK:+USER rows because
+\ src/habu/habu2.f requires this module for number text, so fmt is inside the
+\ engine's own closure and a `require lib/task.f` here would pull pthread, mmap
+\ and the FFI staging tables into the base image for 52 bytes of scratch. A
+\ region is a fresh zeroed mapping, so a new task's cells start at zero exactly
+\ as the old `variable`s did.
+: FMT-IX ( -- ptr a )
+   data-base FMT-ABI:IX-OFF + ;
+
+: FMT-FR ( -- ptr a )
+   data-base FMT-ABI:FR-OFF + ;
+
+: FMT-DV ( -- ptr a )
+   data-base FMT-ABI:DV-OFF + ;
 
 \ ---- integer render buffer ------------------------------------------------
 \ An i64 never renders wider than one sign byte plus the STR-I64-DIGITS digits
@@ -53,8 +67,20 @@ variable FMT-DV
 \ the direct printers off the shared builder.
 
 STR-I64-DIGITS 1+ constant FMT-NUM-CAP
-create FMT-NUM-BUF FMT-NUM-CAP allot
-variable FMT-NUM-U
+\ src/habu/layout.f is loaded before lib/string.f and cannot see
+\ STR-I64-DIGITS, so FMT-ABI:NUM-BUF-BYTES states the width there and this
+\ executes the agreement once at load, the way src/habu/rt.f executes
+\ RT:DSTACK-AGREE. A narrower band would let the renderer overrun the band's
+\ top into STRING-ABI; a wider one would reserve bytes no renderer uses.
+: BAND-AGREE ( -- )
+   FMT-NUM-CAP FMT-ABI:NUM-BUF-BYTES <> if E-FMT-BAND throw then ;
+BAND-AGREE
+
+: FMT-NUM-BUF ( -- ptr u8 )
+   data-base FMT-ABI:NUM-BUF-OFF + BYTE-VIEW ;
+
+: FMT-NUM-U ( -- ptr a )
+   data-base FMT-ABI:NUM-U-OFF + ;
 
 : NUM-C+ ( n -- )
    FMT-NUM-BUF FMT-NUM-U @ + c!

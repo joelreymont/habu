@@ -174,7 +174,7 @@ read the source to find out. There are three:
 | library | class | what the class is about |
 | --- | --- | --- |
 | `lib/string.f` | task-local (SB) / caller-owned (`BUF-*`) | `SB-BUF` and `SB-LEN` are the STRING-ABI band of the per-task region; `BUF-RESET`/`BUF-APPEND`/`BUF-APPEND-C`/`BUF-LEN@` take the caller's buffer, capacity and length cell, for when two tasks must share one |
-| `lib/fmt.f` | process-wide | one integer render buffer and the `POW10I`/`SB-FRAC` scratch cells for the image; they append into string's SB, which is task-local, so the builder is safe and the number is not |
+| `lib/fmt.f` | task-local | the integer render buffer and the `POW10I`/`SB-FRAC` scratch cells are the FMT-ABI band of the per-task region; they append into string's SB, which is task-local too, so two tasks formatting at once share nothing |
 | `lib/fs.f` | process-wide | one descriptor, length, path and stat buffer per image, plus one walk stack; the data spans `READ-ALL`/`READ-LINK`/`WRITE-ALL` take are caller-owned |
 | `lib/json-write.f` | caller-owned | the caller declares the writer (`TYPED-VARIABLE W JSON-WRITE:writer`) and the bytes `JSON-WRITE:OPEN` binds it to; no module state |
 | `lib/json-read.f` | caller-owned | no module state; the caller allots `JR:STORAGE-BYTES` and owns the source span |
@@ -187,8 +187,8 @@ read the source to find out. There are three:
 | `lib/serial.f` | task-local | `$60` row: termios and per-call staging |
 | `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) | the input and output indices are per-task DATA cells `TASK-REGION-INIT` copies; the rows and their eight operations are shared |
 
-`lib/fmt.f`'s number buffer and `lib/fs.f`'s per-call slots are the two rows
-still to change, under dot `habu-make-the-shared-0c2bfbc6`.
+`lib/fs.f`'s per-call slots are the one row still to change, under dot
+`habu-make-the-shared-0c2bfbc6`.
 
 ### Which mechanism a task-local library uses
 
@@ -199,22 +199,22 @@ Which of the two a library reaches for is forced, not preferred:
   `FFI-BUF` and package `GENIO-ABI` its device cells. `lib/string.f` has no
   choice: it sits below `lib/ffi-abi.f`, which requires it back, so `require
   lib/task.f` there fails the engine build with an undefined `STR=` inside
-  ffi-abi's `TOK-IS?`. `lib/fmt.f` could take rows - it has no cycle, and an
-  engine built that way compiles - but `src/habu/habu2.f` requires it for
-  number text, so a require would pull pthread, mmap and the FFI staging
-  tables into the base image for 56 bytes of scratch - so fmt takes a band
-  too when it moves.
+  ffi-abi's `TOK-IS?`. `lib/fmt.f` could have taken rows - it has no cycle, and
+  an engine built that way compiles - but `src/habu/habu2.f` requires it for
+  number text, so a require would have pulled pthread, mmap and the FFI staging
+  tables into the base image for 52 bytes of scratch, so fmt takes the FMT-ABI
+  band instead.
 - A module LOADED LATER takes **`TASK:+USER` rows** out of USER-BAND, the way
-  `lib/net/tcp4.f` does, and `lib/fs.f` will.
+  `lib/net/tcp4.f`, `udp4`, `curl`, `serial` and `genio` do.
 
 ### The arena a task-local row comes from
 
 `TASK:+USER` hands out offsets from `USER-BAND:START` ($5300) up to
-`USER-BAND:END` — **10488 bytes for the whole image**. The band is one declared
+`USER-BAND:END` — **10432 bytes for the whole image**. The band is one declared
 run of the per-task header with no engine cell inside it, which
 `src/habu/layout.f`'s DATA-CLAIMS assertion checks at engine build time, and
-the declared band directly above it is `STRING-ABI` (1032 bytes), which is not
-part of it.
+the declared bands directly above it are `FMT-ABI` (56 bytes) and `STRING-ABI`
+(1032 bytes), neither of which is part of it.
 
 The libraries above claim 1664 of those 10488 bytes when one image loads them
 all — `lib/process.f`'s $4A0 row is the large one — so **8824 bytes are free**. A row

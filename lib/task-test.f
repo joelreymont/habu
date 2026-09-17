@@ -112,6 +112,9 @@ $80000000 constant SEM-OVER-MAX      \ SEM_VALUE_MAX + 1
 16 constant BUILD-RUN
 97 constant BUILD-A-C
 98 constant BUILD-B-C
+20000 constant BUILD-FMT-ITERS       \ the render never yields; the window is one preemption wide
+111111 constant BUILD-A-V
+222222 constant BUILD-B-V
 $80 constant POOL-CAP                \ handles this fixture can hold; the pool is smaller
 
 POOL-CAP TYPED-BUFFER POOL-SEMS TASK:sem
@@ -158,6 +161,7 @@ variable POOL-RC
 variable BUILD-BAD
 variable BUILD-DONE
 variable BUILD-READY
+variable BUILD-FMT-READY
 
 : TASK-WAIT-READY ( n -- ) {: want:n :}
    begin TASK-READY-CELL atomic@ want < while TASK:PAUSE repeat ;
@@ -400,13 +404,22 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
 : TASK-TEST-WORKER-DIE ( -- )
    TASK-DIE$ TASK-DIE-RC s" task died" TASK-EXPECT-FAIL ;
 
-\ SB IS TASK-LOCAL. It lives in the STRING-ABI band the layout declares, so
-\ each task builds in its own bytes with its own cursor. The two workers append
-\ different bytes, yielding between every append so the interleaving is real,
-\ and read the builder back each round: a shared builder shows up as another
-\ task's byte or a wrong length. Measured before the move, this shape found
-\ 265 of 400 rounds corrupt. lib/fmt.f's number buffer is still process-wide
-\ (dot habu-make-the-shared-0c2bfbc6), so nothing here renders a number.
+\ SB AND FMT'S NUMBER BUFFER ARE BOTH TASK-LOCAL: SB in the STRING-ABI band the
+\ layout declares, fmt's render buffer and its scratch cells in FMT-ABI beside
+\ it, so each task builds and renders in its own bytes with its own cursors.
+\ The two workers run two phases, each opened by its own barrier.
+\
+\ The SB phase appends different bytes and yields between every append, so the
+\ interleaving is real and a shared builder shows up as the other task's byte
+\ or a wrong length: measured 265 of 400 rounds corrupt before the move.
+\
+\ The FMT phase renders different values in a tight loop with no yield, because
+\ nothing inside a render yields and the window is one preemption wide:
+\ measured 1961, 10787, 6069, 0 and 879 corrupt of 40000 over five runs before
+\ the move. A busy machine can miss it, so the phase is a regression net rather
+\ than the proof. The proof is that FMT-ABI is a declared claim DATA-CLAIMS
+\ asserts disjoint from every other, and that both fmt accessors read
+\ `data-base`, which is the running task's region.
 : BUILD-BAD+ ( -- )
    1 BUILD-BAD atomic-add drop ;
 
@@ -417,17 +430,30 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    u BUILD-RUN <> if BUILD-BAD+ exit then
    u 0 do a i + c@ c <> if BUILD-BAD+ unloop exit then loop ;
 
-: BUILD-WORK ( n -- ) {: c :}
+\ Render my own value and read the builder back as a decimal: another task's
+\ digits, or its cursor, answer a different number.
+: BUILD-FMT-ROUND ( n -- ) {: v :}
+   SB-RESET v FMT:SB-U
+   SB$ {: a:ptr u :}
+   0 0 begin dup u < while
+      swap 10 * over a + c@ STR-ZERO - + swap 1+
+   repeat drop
+   v <> if BUILD-BAD+ then ;
+
+: BUILD-WORK ( n n -- ) {: c v :}
    1 BUILD-READY atomic-add drop
    begin BUILD-READY atomic@ 2 < while TASK:PAUSE repeat
    BUILD-ITERS 0 do c BUILD-SB-ROUND loop
+   1 BUILD-FMT-READY atomic-add drop
+   begin BUILD-FMT-READY atomic@ 2 < while TASK:PAUSE repeat
+   BUILD-FMT-ITERS 0 do v BUILD-FMT-ROUND loop
    1 BUILD-DONE atomic-add drop ;
 
-: BUILD-WORK-A ( -- ) BUILD-A-C BUILD-WORK ;
-: BUILD-WORK-B ( -- ) BUILD-B-C BUILD-WORK ;
+: BUILD-WORK-A ( -- ) BUILD-A-C BUILD-A-V BUILD-WORK ;
+: BUILD-WORK-B ( -- ) BUILD-B-C BUILD-B-V BUILD-WORK ;
 
 : TASK-TEST-BUILDERS ( -- )
-   0 BUILD-BAD !  0 BUILD-DONE !  0 BUILD-READY !
+   0 BUILD-BAD !  0 BUILD-DONE !  0 BUILD-READY !  0 BUILD-FMT-READY !
    ['] BUILD-WORK-A BUILD-A TASK:ACTIVATE
    ['] BUILD-WORK-B BUILD-B TASK:ACTIVATE
    begin BUILD-DONE atomic@ 2 < while TASK:PAUSE repeat

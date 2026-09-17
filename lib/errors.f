@@ -303,6 +303,7 @@ public
 -5999 constant E-FMT-LAST
 -5900 constant E-FMT-DOMAIN      \ unsigned formatter (SB-U/.U) given a negative value
 -5901 constant E-FMT-OVERFLOW    \ SB-FIX scaled magnitude |x|*10^k does not fit an i64
+-5902 constant E-FMT-BAND        \ layout FMT-ABI band width disagrees with FMT-NUM-CAP
 
 \ JSON reader performance samples: -6300..-6399
 -6300 constant E-JRP-FIRST

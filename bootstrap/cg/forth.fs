@@ -383,10 +383,10 @@ PD-NAME-OFF PD-NAME-CAP + constant PD-SIG-OFF
 PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT
 8 constant PD-SLOTS-REL
 \ USER-REGION-END is the anchor PD-TABLE-OFF has always started at; it does not
-\ move, so DATA-START does not move. $5300..$7BF8 is USER-BAND (lib/task.f
-\ TASK:+USER) and $7BF8..$8000 is STRING-ABI, neither of which this stage
-\ names: the recovery chain has to agree about the GUARD, not about the two
-\ library bands behind it.
+\ move, so DATA-START does not move. $5300..$7BC0 is USER-BAND (lib/task.f
+\ TASK:+USER), $7BC0..$7BF8 is FMT-ABI and $7BF8..$8000 is STRING-ABI, none of
+\ which this stage names: the recovery chain has to agree about the GUARD, not
+\ about the library bands behind it.
 $8000 constant USER-REGION-END
 USER-REGION-END constant PD-TABLE-OFF   \ band base (= old DATA-START)
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END

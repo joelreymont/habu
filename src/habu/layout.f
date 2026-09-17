@@ -1182,11 +1182,44 @@ SB-BUF-OFF SB-BUF-BYTES + constant SB-LEN-OFF
 USER-REGION-END constant END
 ;package
 
+\ FMT-ABI is lib/fmt.f's integer render buffer and the four cells its appenders
+\ and its fraction helper thread. Declared here for the same reason STRING-ABI
+\ is, though not from the same cause: src/habu/habu2.f requires lib/fmt.f for
+\ number text, so fmt is inside the ENGINE'S OWN closure. fmt has no require
+\ cycle the way string.f does, and an engine built with `require lib/task.f` in
+\ fmt.f compiles - but that require pulls lib/task.f, and with it pthread, mmap
+\ and the FFI staging tables, into the base image for 52 bytes of scratch.
+\ src/habu/native-runtime.f says what belongs in that closure: the compiler,
+\ the JIT and the REPL, and the task runtime is none of the three. So the rule
+\ is one rule - a module the engine bakes takes a declared band.
+\
+\ Carved from the TOP of the run, directly below STRING-ABI, so USER-BAND keeps
+\ the growable end. EVERY MEMBER IS ITS MEASURED WIDTH; nothing here is rounded
+\ up to leave room. The four cells sit at the band base, which is a cell
+\ boundary, so they are cell-aligned whatever the render buffer's width is, and
+\ the buffer follows them. BYTES is the member sum rounded up to the cell the
+\ base needs, and that rounding is the band's only slack: 52 bytes of members
+\ in a 56-byte extent, the four above the buffer claimed by nobody.
+package FMT-ABI
+public
+4 constant SCRATCH-CELLS               \ FMT-NUM-U, FMT-IX, FMT-FR, FMT-DV
+20 constant NUM-BUF-BYTES              \ lib/fmt.f FMT-NUM-CAP = STR-I64-DIGITS + 1
+SCRATCH-CELLS cells NUM-BUF-BYTES + constant MEMBER-BYTES
+MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
+STRING-ABI:START constant END
+END BYTES - constant START
+START constant NUM-U-OFF
+NUM-U-OFF 8 + constant IX-OFF
+IX-OFF 8 + constant FR-OFF
+FR-OFF 8 + constant DV-OFF
+DV-OFF 8 + constant NUM-BUF-OFF
+;package
+
 \ USER-BAND is what lib/task.f `TASK:+USER` hands out, base and bound both.
 package USER-BAND
 public
 TXN-STATE-OFF TXN-STATE-LEN + constant START
-STRING-ABI:START constant END
+FMT-ABI:START constant END
 ;package
 
 \ --- Pre-trust defer pending table (dot habu-engine-pre-trust-77410827) ---
@@ -1684,6 +1717,7 @@ variable NAMES-U
    s" STACK-ABI-LOOP-BASE" NAME,
    s" TXN-STATE" NAME,
    s" USER-BAND" NAME,
+   s" FMT-ABI" NAME,
    s" STRING-ABI" NAME,
    s" PD-TABLE" NAME,
    s" USE-BAND" NAME,
@@ -1795,6 +1829,7 @@ create TAB
    STACK-ABI:LOOP-BASE-CELL       ,  1 cells ,
    TXN-STATE-OFF                  ,  TXN-STATE-LEN ,
    USER-BAND:START                ,  USER-BAND:END USER-BAND:START - ,
+   FMT-ABI:START                  ,  FMT-ABI:BYTES ,
    STRING-ABI:START               ,  STRING-ABI:BYTES ,
    PD-TABLE-OFF                   ,  PD-TABLE-END PD-TABLE-OFF - ,
    USE-BAND-OFF                   ,  USE-BAND-END USE-BAND-OFF - ,
