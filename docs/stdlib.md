@@ -68,7 +68,7 @@ the caller holds a `TASK:FACILITY` across the whole sequence), **task-local**
 at once), or **caller-owned** (the caller supplies the storage). A new module
 declares its class in its header; [threads.md](threads.md) carries the table
 and the size of the band a `TASK:+USER` row comes from, which is 10488 bytes
-for the whole image with 8816 free once the libraries above have claimed
+for the whole image with 8824 free once the libraries above have claimed
 theirs.
 
 | module | class |

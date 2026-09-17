@@ -179,6 +179,7 @@ read the source to find out. There are three:
 | `lib/json-write.f` | caller-owned | the caller declares the writer (`TYPED-VARIABLE W JSON-WRITE:writer`) and the bytes `JSON-WRITE:OPEN` binds it to; no module state |
 | `lib/json-read.f` | caller-owned | no module state; the caller allots `JR:STORAGE-BYTES` and owns the source span |
 | `lib/memory.f` | caller-owned | every mapping belongs to its caller; `WITH-BYTES`'s scope stack is the one process-wide part |
+| `lib/task.f` | task-local | `$20` row: the sleep request and remainder timespecs |
 | `lib/process.f` | task-local | `$4A0` row: the NUL-path staging buffer, the three-slot pollfd array and the per-call capture slots (pids, descriptors, lengths, deadline, wait status). `PROC-REAP-ARM` is the one process-wide part: an installed policy, not per-call state. The layers above it — `lib/process-command.f`'s argv/env tables and its 128K/32K/32K capture buffers, `lib/process-cwd.f`'s path buffer — are still process-wide |
 | `lib/net/tcp4.f` | task-local | `$20` row: sockaddr, socklen, pollfd |
 | `lib/net/udp4.f` | task-local | `$20` row: endpoint and poll storage |
@@ -215,9 +216,9 @@ run of the per-task header with no engine cell inside it, which
 the declared band directly above it is `STRING-ABI` (1032 bytes), which is not
 part of it.
 
-The libraries above claim 1672 of those 10488 bytes when one image loads them
-all — `lib/process.f`'s $4A0 row is the large one, and `lib/task.f`'s 32-byte
-sleep row is among them — so **8816 bytes are free**. A row that would cross
+The libraries above claim 1664 of those 10488 bytes when one image loads them
+all — `lib/process.f`'s $4A0 row is the large one — so **8824 bytes are free**. A row
+that would cross
 `USER-BAND:END` is `E-TASK-USER` at its definition, not a store into whatever
 lies above. Budget accordingly.
 
