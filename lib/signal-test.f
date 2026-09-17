@@ -18,9 +18,36 @@ require src/habu/layout.f
 package SIGNAL-TEST
 private
 
-$98 constant SA-BYTES
-$88 constant SA-FLAGS-OFF
-$10000000 constant SA-RESTART
+\ THE EXPECTATIONS FOLLOW THE HOST, AND THIS FILE SPELLS THEM ITSELF. lib/signal.f
+\ selects its record layout, its SA_RESTART and its SIGUSR numbers per target;
+\ asserting one host's values would make this suite - and the process-signals
+\ gate that runs it - red by construction on the other supported target. The
+\ arms below are a second, independent spelling of the same platform facts, so a
+\ wrong arm in the library still fails here. The macOS arm is never executed:
+\ no macOS host runs this suite, and a third target is refused by name.
+: EXPECT-SIGUSR1 ( -- n )
+   HB-TARGET-LINUX? if 10 exit then
+   HB-TARGET-MACOS? if 30 exit then
+   E-PROC-HOST throw ;
+
+: EXPECT-SIGUSR2 ( -- n )
+   HB-TARGET-LINUX? if 12 exit then
+   HB-TARGET-MACOS? if 31 exit then
+   E-PROC-HOST throw ;
+
+: SA-FLAGS-OFF ( -- n )
+   HB-TARGET-LINUX? if $88 exit then
+   HB-TARGET-MACOS? if $0C exit then
+   E-PROC-HOST throw ;
+
+: SA-RESTART ( -- n )
+   HB-TARGET-LINUX? if $10000000 exit then
+   HB-TARGET-MACOS? if 2 exit then
+   E-PROC-HOST throw ;
+
+\ One buffer of the larger record ($98 on glibc/aarch64, $10 on macOS) serves
+\ both, exactly as the library's does, so only the offset above needs an arm.
+$98 constant SA-BUF-BYTES
 0 constant SA-NO-FLAGS
 0 constant SIG-DFL                 \ the handler an unarmed signal carries
 $FFFFFFFF constant INT-MASK        \ sa_flags is an int; the cell read carries its padding
@@ -36,21 +63,42 @@ $FFFFFFFF constant INT-MASK        \ sa_flags is an int; the cell read carries i
 120 constant TASK-SLEEP-MS
 2000 constant TASK-JOIN-MS
 
-create SA-ACT SA-BYTES allot
-create SA-OLD SA-BYTES allot
+400 constant RACE-WINDOW-MS        \ the window both racing tasks give their WAIT
+250 constant RACE-SLACK-MS         \ what a loaded host may add to it
+80 constant RACE-ARM-MS            \ both tasks are inside poll before the raise
+1 constant RACE-SIGNAL             \ the kinds a racing task records
+2 constant RACE-TIMEOUT
+1 constant NOT-RUN                 \ no throw code and no kind, so an idle task fails
 
-variable ABI-KEPT
+create SA-ACT SA-BUF-BYTES allot
+create SA-OLD SA-BUF-BYTES allot
+
+PTR-VARIABLE ABI-KEPT              \ it holds a pointer, so it is declared as one
 variable MAIN-FD-WORD
 variable TASK-FD-WORD
 variable TASK-RAISED
 variable RELEASED-FD
 
+variable A-KIND                    \ what the first racing task's WAIT answered
+variable A-SIGNO
+variable A-MS
+variable B-KIND
+variable B-SIGNO
+variable B-MS
+
+variable OUTSIDER-CATCH            \ what CATCH, RELEASE and FD threw off-owner
+variable OUTSIDER-RELEASE
+variable OUTSIDER-FD
+
 TASK:MIN-STACK TASK:TASK SIG-RAISER
+TASK:MIN-STACK TASK:TASK RACER-A
+TASK:MIN-STACK TASK:TASK RACER-B
+TASK:MIN-STACK TASK:TASK OUTSIDER
 
 PROCESS-SYMBOLS
 
 FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
-   2 SA-BYTES WRITES-BYTES
+   2 SA-BUF-BYTES WRITES-BYTES
 ;FUNCTION
 
 : ZERO-BYTES ( ptr u8 n -- ) {: a:ptr u :}
@@ -65,24 +113,28 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
 : STUB@ ( -- n )
    SIGNAL-ABI:STUB-CELL ABI-SLOT @ ;
 
-: KEPT-SLOT ( -- ptr ptr n )
-   ABI-KEPT 0 ptr-field ;
-
 \ Read in the MAIN task, where the boot wrote it: the fd word's absolute
 \ address. A spawned task's region carries neither published cell, so this
 \ pointer is the only way that task reaches the one word the stub writes
 \ through.
 : KEEP-FD-WORD ( -- )
-   SIGNAL-ABI:FD-PTR-CELL ABI-SLOT 0 ptr-field @ KEPT-SLOT ! ;
+   SIGNAL-ABI:FD-PTR-CELL ABI-SLOT 0 ptr-field @ ABI-KEPT ! ;
 
 : FD-WORD ( -- ptr n )
-   KEPT-SLOT @ ;
+   ABI-KEPT @ ;
 
 : RAISE ( n -- ) {: sig:n :}
    getpid sig kill 0 <> if E-PROC-OUTPUT throw then ;
 
 : FD-OPEN? ( n -- bool ) {: fd:n :}
    fd F-GETFD 0 fcntl 0 >= ;
+
+\ F_GETFL reads the flags back, so "INIT asked for non-blocking" and "the
+\ descriptor IS non-blocking" are different claims and this is the second one.
+: NONBLOCK? ( n -- bool ) {: fd:n :}
+   fd F-GETFL 0 fcntl {: flags :}
+   flags 0 < if false exit then
+   flags O-NONBLOCK and 0 <> ;
 
 : ELAPSED-MS ( n -- n ) {: started:n :}
    mono-ns started - NS-PER-MS / ;
@@ -91,8 +143,8 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
 \ expected to hold over it: the record sigaction returns in oldact is the
 \ assertion, and the disposition is where it was when this returns.
 : SET-DISPOSITION ( n n n -- ) {: sig:n handler:n flags:n :}
-   SA-ACT SA-BYTES ZERO-BYTES
-   SA-OLD SA-BYTES ZERO-BYTES
+   SA-ACT SA-BUF-BYTES ZERO-BYTES
+   SA-OLD SA-BUF-BYTES ZERO-BYTES
    handler SA-ACT cell-view !
    flags SA-ACT SA-FLAGS-OFF + cell-view !
    sig SA-ACT SA-OLD SIGACTION-CALL 0 <> if E-PROC-OUTPUT throw then ;
@@ -121,6 +173,18 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
       timeout OF 0 0 T= ENDOF
    ;MATCH ;
 
+\ ---- case zero: the target arms picked this host's values --------------------
+\ 10/12 on Linux and 30/31 on macOS, against this file's own arm rather than the
+\ library's: a library that spelled one host's number everywhere would agree
+\ with itself on both and fail here on one.
+
+: HOST-CASE ( -- )
+   s" SIGUSR1 carries this host's number, not the other host's" T-LABEL
+   SIGNAL:SIGUSR1 EXPECT-SIGUSR1 T=
+
+   s" ... and so does SIGUSR2" T-LABEL
+   SIGNAL:SIGUSR2 EXPECT-SIGUSR2 T= ;
+
 \ ---- case one: every word refuses before INIT --------------------------------
 
 : COLD-CASE ( -- )
@@ -147,6 +211,12 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
 
    s" ... which is the write end, not the read end a program polls" T-LABEL
    FD-WORD @ SIGNAL:FD FD>N <> TTRUE
+
+   s" the write end the stub writes really is non-blocking" T-LABEL
+   FD-WORD @ NONBLOCK? TTRUE
+
+   s" ... and so is the read end WAIT reads, so a lost race is refused" T-LABEL
+   SIGNAL:FD FD>N NONBLOCK? TTRUE
 
    s" a second INIT without RELEASE is refused by name" T-LABEL
    [: SIGNAL:INIT ;] E-SIGNAL-STATE TTHROWSQ ;
@@ -235,10 +305,13 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
    SIGNAL:SIGUSR1 RAISE
    1 TASK-RAISED ! ;
 
-: JOIN-RAISER ( -- )
+\ TASK:JOIN would park the main task forever on a worker that never ends, and a
+\ worker that never ends is exactly what some of these cases are watching for,
+\ so the wait owns a deadline and the case asserts TASK:DONE? afterwards.
+: JOIN-TASK ( ptr n -- ) {: t:ptr :}
    TASK-JOIN-MS >MS PROC-DEADLINE-AT {: deadline :}
    begin
-      SIG-RAISER TASK:DONE? if exit then
+      t TASK:DONE? if exit then
       deadline PROC-LEFT-MS MS>N 0= if exit then
       TASK:PAUSE
    again ;
@@ -248,7 +321,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
    0 TASK-RAISED !
    ['] RAISER-WORK SIG-RAISER TASK:ACTIVATE
    TASK-SLEEP-MS >MS TASK:SLEEP
-   JOIN-RAISER
+   SIG-RAISER JOIN-TASK
 
    s" the spawned task ran and raised the signal" T-LABEL
    TASK-RAISED @ 1 T=
@@ -262,7 +335,81 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
    s" a signal raised while the main task slept is still answered" T-LABEL
    RAISE-WAIT-MS >MS SIGNAL:WAIT SIGNAL:SIGUSR1 WANT-SIGNAL ;
 
-\ ---- case nine: RELEASE disarms the word and closes both ends ----------------
+\ ---- case nine: two tasks WAIT, one signal ------------------------------------
+\ Both tasks are inside one WAIT window when the signal lands, so both polls
+\ report POLLIN and only one of them finds four bytes left to read. The loser's
+\ read is refused, it re-polls against the deadline it already had, and its own
+\ window closes on a timeout. With a BLOCKING read end the loser parks in read
+\ until the NEXT signal instead, which turns a race into a task that never
+\ finishes the window it was given - so DONE? is asserted, not assumed.
+
+: RACE-RUN ( ptr n ptr n ptr n -- ) {: kind:ptr signo:ptr elapsed:ptr :}
+   mono-ns {: started :}
+   RACE-WINDOW-MS >MS SIGNAL:WAIT {: answer :}
+   started ELAPSED-MS elapsed !
+   answer MATCH SIGNAL:signal-result
+      signal OF signo ! RACE-SIGNAL kind ! ENDOF
+      timeout OF RACE-TIMEOUT kind ! ENDOF
+   ;MATCH ;
+
+: RACE-A-WORK ( -- )
+   A-KIND A-SIGNO A-MS RACE-RUN ;
+
+: RACE-B-WORK ( -- )
+   B-KIND B-SIGNO B-MS RACE-RUN ;
+
+: RACE-CASE ( -- )
+   0 A-KIND !  0 A-SIGNO !  0 A-MS !
+   0 B-KIND !  0 B-SIGNO !  0 B-MS !
+   ['] RACE-A-WORK RACER-A TASK:ACTIVATE
+   ['] RACE-B-WORK RACER-B TASK:ACTIVATE
+   RACE-ARM-MS >MS TASK:SLEEP
+   SIGNAL:SIGUSR1 RAISE
+   RACER-A JOIN-TASK
+   RACER-B JOIN-TASK
+
+   s" the first racing task finished the window it was given" T-LABEL
+   RACER-A TASK:DONE? TTRUE
+
+   s" ... and so did the second, rather than parking in read" T-LABEL
+   RACER-B TASK:DONE? TTRUE
+
+   s" one of the two answered the signal and the other a timeout" T-LABEL
+   A-KIND @ B-KIND @ + RACE-SIGNAL RACE-TIMEOUT + T=
+
+   s" ... and the one that answered carried the number raised" T-LABEL
+   A-SIGNO @ B-SIGNO @ + SIGNAL:SIGUSR1 T=
+
+   s" the loser closed on its own deadline, not on the next signal" T-LABEL
+   A-MS @ B-MS @ max RACE-WINDOW-MS RACE-SLACK-MS + <= TTRUE ;
+
+\ ---- case ten: CATCH and RELEASE answer to the task that ran INIT -------------
+\ They install through the one SA-ACT and read back the one SA-OLD, so a second
+\ task in either would be overwriting a record the owner is using. FD shares
+\ none of that and stays callable.
+
+: OUTSIDER-WORK ( -- )
+   [: SIGNAL:SIGUSR1 SIGNAL:CATCH ;] catch OUTSIDER-CATCH !
+   [: SIGNAL:RELEASE ;] catch OUTSIDER-RELEASE !
+   [: SIGNAL:FD drop ;] catch OUTSIDER-FD ! ;
+
+: OWNER-CASE ( -- )
+   NOT-RUN OUTSIDER-CATCH !
+   NOT-RUN OUTSIDER-RELEASE !
+   NOT-RUN OUTSIDER-FD !
+   ['] OUTSIDER-WORK OUTSIDER TASK:ACTIVATE
+   OUTSIDER JOIN-TASK
+
+   s" CATCH from a task that did not run INIT is refused by name" T-LABEL
+   OUTSIDER-CATCH @ E-SIGNAL-STATE T=
+
+   s" ... and so is RELEASE, which writes the same two records" T-LABEL
+   OUTSIDER-RELEASE @ E-SIGNAL-STATE T=
+
+   s" ... while FD, which writes neither, answers that task too" T-LABEL
+   OUTSIDER-FD @ 0 T= ;
+
+\ ---- case eleven: RELEASE disarms the word and closes both ends --------------
 
 : RELEASE-CASE ( -- )
    SIGNAL:FD FD>N RELEASED-FD !
@@ -294,10 +441,31 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
    s" the facility refuses its words again once released" T-LABEL
    [: SIGNAL:FD drop ;] E-SIGNAL-STATE TTHROWSQ ;
 
+\ ---- case twelve: a read end closed behind the facility's back ---------------
+\ Not a state a caller reaches politely - it is the one thing a non-blocking
+\ read end must never do, which is re-read a descriptor poll refuses until the
+\ deadline runs out. poll counts POLLNVAL as ready, so a WAIT that only looked
+\ at the count would spin there and a PENDING? that only looked at the count
+\ would answer true; both read the revents.
+
+: BROKEN-CASE ( -- )
+   SIGNAL:INIT
+   SIGNAL:FD FD>N close-rc drop
+
+   s" PENDING? on a read end poll refuses is not true, it is refused" T-LABEL
+   [: SIGNAL:PENDING? drop ;] E-SIGNAL-POLL TTHROWSQ
+
+   s" WAIT on a read end poll refuses names the poll, not a timeout" T-LABEL
+   [: QUIET-MS >MS SIGNAL:WAIT drop ;] E-SIGNAL-POLL TTHROWSQ
+
+   s" ... and RELEASE names the close it could not make" T-LABEL
+   [: SIGNAL:RELEASE ;] E-SIGNAL-CLOSE TTHROWSQ ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   HOST-CASE
    COLD-CASE
    SIGNAL:INIT
    KEEP-FD-WORD
@@ -310,7 +478,10 @@ public
    TIMEOUT-CASE
    PENDING-CASE
    TASK-CASE
+   RACE-CASE
+   OWNER-CASE
    RELEASE-CASE
+   BROKEN-CASE
    T-REPORT ;
 
 ;package

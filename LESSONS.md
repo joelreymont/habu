@@ -8961,3 +8961,71 @@ copy.
   against `SA_RESTART`: in, `$10000000`; out of `oldact`, `$10000000`, with the
   padding after the int zero and `sa_restorer` untouched. That is how a test pins
   a flag an install would otherwise accept silently, whatever bits it held.
+
+## 2026-09-17 - a self-pipe two tasks can wait on needs BOTH ends non-blocking
+
+- **poll-then-read is not atomic across tasks, so a blocking read end turns a lost
+  race into a wait that never returns.** One delivery wakes every poller with
+  `POLLIN`, and only the first reader finds the four bytes. With a blocking read
+  end the loser parks in `read` until the NEXT signal - measured, a second task
+  given a 400 ms `SIGNAL:WAIT` window was still not `TASK:DONE?` two seconds
+  later. The write end's `O_NONBLOCK` protects the handler's thread; the read
+  end's protects the window a caller asked for, and they are two different
+  reasons for the same flag.
+- **The engine collapses every failed syscall but `poll` to a bare -1
+  (`src/habu/habu1.f`, "THE ERRNO RULE FOR THIS FILE'S SYSCALL WRAPPERS"), so
+  non-blocking checked code cannot name `EAGAIN` and has to earn it from the
+  descriptor instead.** Measured: `read` on an empty non-blocking pipe answers
+  -1, and `FFI:ERRNO` beside it reads a stale `22` because the primitive is a raw
+  syscall and never touched libc's errno. A facility that owns the descriptor,
+  the buffer and the length can still conclude EAGAIN - nothing else is left -
+  but it has to say why in the code, not read it off an errno.
+- **Re-deriving a window from an absolute deadline before anything has consumed
+  it shaves a millisecond.** `PROC-LEFT-MS` floors, so `ms PROC-DEADLINE-AT`
+  immediately followed by `PROC-LEFT-MS` answers `ms-1` and a 40 ms window
+  measured 39. The first poll of a window takes the `ms` the caller spelled; only
+  a poll that FOLLOWS something re-derives what is left.
+- **`poll` counts POLLNVAL as ready, so any loop that re-reads on a refusal has to
+  read the slot's revents and not the count.** Measured: with the read end closed
+  behind the facility, `poll` answers 1, `read` answers -1, and a WAIT that
+  treated every refusal as the lost race never left the loop - the suite ran to a
+  30 s kill with no output at all. `PROC-PFD-REVENTS` and a POLLIN test are the
+  whole guard, and they are what makes "refused" mean EAGAIN rather than "the
+  descriptor is gone". Every word answering from the same poll owes the same
+  test: a PENDING? that reported the count would answer true for a descriptor
+  the WAIT beside it refuses.
+
+## 2026-09-17 - enforce a facility's owner, do not document it
+
+- **A facility whose words share one FFI record pair is single-owner, and
+  `TASK:SELF-N` recorded at INIT is the whole enforcement.** `SIGNAL:CATCH` and
+  `SIGNAL:RELEASE` both fill one `struct sigaction` and read back one `oldact`; a
+  second task in either overwrites a record the owner is using. Recording
+  `TASK:SELF-N` at `INIT` and refusing a mismatch costs one variable and one
+  guard, where a comment costs nothing and prevents nothing. Words that touch
+  none of the shared records stay callable from any task, and the split belongs
+  in the interface table.
+- **A target-dependent constant in `lib/` is selected behind `HB-TARGET-LINUX?` /
+  `HB-TARGET-MACOS?` and a third target is refused, never defaulted.**
+  `lib/process.f` `O-NONBLOCK`, `lib/fs.f`, `lib/process-pty-io.f` and now
+  `lib/signal.f` all have the shape. Spelling one host's numbers and recording
+  the other's in prose is the failure mode: on macOS the Linux 10 is `SIGBUS`,
+  `SA_RESTART` `$10000000` is three other flags, and the install would succeed
+  silently. Where two record LAYOUTS differ, one buffer of the larger size serves
+  both and only the field offset needs an arm.
+- **A SUITE in the gate selects its expectations by target too, or it is red by
+  construction on the target it never runs on.** `lib/signal-test.f` is
+  `SUITE process-signals`, and an assertion that the host is Linux would have
+  failed the whole gate on macOS/arm64 - a supported target - while claiming to
+  check a portable library. The expectations carry the same arms as the library
+  but spelled a second time in the test, so they stay an independent assertion
+  and a wrong arm on either side still fails; an arm the host never reaches is
+  untested, which is a fact for the docs, not a reason to pin the host.
+- **A global that holds a POINTER is a `PTR-VARIABLE`, never a `variable` read
+  through `0 ptr-field`.** The raw storage definers mint TVK-RAW, which admits
+  plain scalars only, so `ptr-field` on a `variable` base is a refusal waiting
+  to happen. `PTR-VARIABLE` (`src/core/pointer-storage.f`) declares the slot's
+  pointer type outright and its empty `does>` clause elides to a bare cell load,
+  so the correct spelling is also the cheaper one - and it deletes the
+  `X 0 ptr-field` accessor each such variable had grown. A `data-base + offset`
+  read is a different thing and keeps its `ptr-field`.
