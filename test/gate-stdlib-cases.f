@@ -1211,6 +1211,10 @@ SUITE aot-source-identity
    test/aot-source-identity.f
 ;SUITE
 
+SUITE aot-run-rows
+   test/aot-run-rows.f
+;SUITE
+
 WHITEBOX-SUITE aot-registry-identity
    test/aot-registry-identity.f
 ;SUITE

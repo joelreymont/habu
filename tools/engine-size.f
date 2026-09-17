@@ -274,7 +274,9 @@ variable NAMES0      variable NAMES-LEN
 variable DATA-SPAN   variable DATA-D0
 variable DSITE0      variable DSITE-N
 variable XTOFF0      variable XTOFF-N
-variable RUN0        variable RUN-N       variable RBYTES0    variable RBYTES-LEN
+variable RUN0        variable RUN-BYTES   variable RUN-N
+variable RUN-AT      variable RUN-PREV
+variable RBYTES0     variable RBYTES-LEN
 variable CODE-B0
 variable CSITE0      variable CSITE-N
 variable XTSITE0     variable XTSITE-N
@@ -294,10 +296,37 @@ variable CAND        variable ACC
 12 constant SITE-ROW                              \ blob-off u32, target u32, callee scope u32
 $80000000 constant SITE-NAME-TAG                  \ target is a name-pool offset, not an index
 8 constant XTOFF-ROW                              \ location u32, typed target u32
-8 constant RUN-ROW                                \ window offset u32, length u32
 8 constant XTSITE-ROW                             \ blob-off u32, name-off u32
 8 constant SPAN-ROW                               \ blob-off u32, raw code span u32
 AOT-NAMES-CAP constant NAMES-CAP
+\ The window's DATA run row has no width to mirror: it is two unsigned LEB128
+\ varints, the gap from the previous run's end and the run's length. This decode
+\ mirrors src/habu/aot-decl.f AOT-WINDOW:RUN-V@ for the same reason the widths
+\ above are mirrored, and it is what counts the rows and sums their lengths -
+\ the payload states neither.
+5 constant RUN-VMAX                               \ a u32 varint is at most five bytes
+
+: RUN-VW ( n n -- n ) {: at:n avail:n :}
+   avail RUN-VMAX min 0 ?do
+      at i + U8@ $80 and 0= if
+         i 1+ {: w:n :}
+         w 1 > at w 1- + U8@ 0= and if 0 unloop exit then
+         w unloop exit
+      then
+   loop
+   0 ;
+
+: RUN-VV ( n n -- n ) {: at:n w:n :}
+   0 w 0 ?do  at i + U8@ $7F and  i 7 * lshift or  loop ;
+
+\ Value and width, and a walk that cannot decode a row is a walk that did not
+\ land - the refusal every other malformation here raises.
+: RUN-V@ ( n n -- n n ) {: at:n avail:n :}
+   at avail RUN-VW {: w:n :}
+   w 0= if E-ES-WALK throw then
+   at w RUN-VV {: v:n :}
+   v $FFFFFFFF > if E-ES-WALK throw then
+   v w ;
 
 : TAKE-CELL ( -- n )
    CUR @ 8 ?RANGE
@@ -328,15 +357,23 @@ AOT-NAMES-CAP constant NAMES-CAP
    repeat
    ACC @ len <> if E-ES-WALK throw then ;
 
+\ The rows are a byte string that states no count, so walking them is what
+\ counts them, and their lengths are what the byte section that follows is long.
 : RUN-BYTES-MEASURE ( -- n )
-   0 ACC !
-   RUN-N @ 0 ?do
-      RUN0 @ i RUN-ROW * + {: row:n :}
-      row U32@ {: off:n :}
-      row 4 + U32@ {: len:n :}
-      len 1 < off 0 < or  off len + DATA-SPAN @ > or if E-ES-WALK throw then
+   0 ACC !  0 RUN-N !  0 RUN-PREV !
+   RUN0 @ RUN-AT !
+   RUN0 @ RUN-BYTES @ + {: stop:n :}
+   begin RUN-AT @ stop < while
+      RUN-AT @ stop RUN-AT @ - RUN-V@ {: gap:n gw:n :}
+      RUN-AT @ gw + RUN-AT !
+      RUN-AT @ stop RUN-AT @ - RUN-V@ {: len:n lw:n :}
+      RUN-AT @ lw + RUN-AT !
+      RUN-PREV @ gap + {: off:n :}
+      len 1 < off len + DATA-SPAN @ > or if E-ES-WALK throw then
+      off len + RUN-PREV !
       ACC @ len + ACC !
-   loop
+      RUN-N @ 1+ RUN-N !
+   repeat
    ACC @ ;
 
 : BOOTRUN-MEASURE ( n -- n ) {: at:n :}
@@ -389,8 +426,8 @@ AOT-NAMES-CAP constant NAMES-CAP
    DSITE-N @ 4 TAKE-ROWS DSITE0 !
    TAKE-CELL TEXT-SIZE ?BOUND XTOFF-N !
    XTOFF-N @ XTOFF-ROW TAKE-ROWS XTOFF0 !
-   TAKE-CELL TEXT-SIZE ?BOUND RUN-N !
-   RUN-N @ RUN-ROW TAKE-ROWS RUN0 !
+   TAKE-CELL TEXT-SIZE ?BOUND RUN-BYTES !
+   RUN-BYTES @ TAKE-RUN RUN0 !
    RUN-BYTES-MEASURE RBYTES-LEN !
    RBYTES-LEN @ TAKE-RUN RBYTES0 !
    TAKE-CELL CODE-B0 !
@@ -478,7 +515,7 @@ variable TOTAL
    s" aot/name-pool" NAMES-LEN @ PADDED ROW
    s" aot/data-sites" DSITE-N @ 4 * PADDED ROW
    s" aot/address-cells" XTOFF-N @ XTOFF-ROW * PADDED ROW
-   s" aot/data-run-rows" RUN-N @ RUN-ROW * PADDED ROW
+   s" aot/data-run-rows" RUN-BYTES @ PADDED ROW
    s" aot/data-run-bytes" RBYTES-LEN @ PADDED ROW
    s" aot/code-sites" CSITE-N @ 4 * PADDED ROW
    s" aot/named-code-sites" XTSITE-N @ XTSITE-ROW * PADDED ROW
@@ -1016,10 +1053,11 @@ $FFFF constant ROW-MASK
 \ not an accusation.
 DYNAMIC-BUFFER DOWNER n                           \ (DATA offset, record) packed, ascending
 DYNAMIC-BUFFER DBYTES n                           \ run bytes charged to each owner
-DYNAMIC-BUFFER DRUNS n                            \ run headers charged to each owner
+DYNAMIC-BUFFER DRUNS n                            \ run rows charged to each owner
+DYNAMIC-BUFFER DROWB n                            \ ... and what those rows encode to
 DYNAMIC-BUFFER DCOST n                            \ (cost, owner) packed, for the ranking
 variable DOWN-N     variable DCOST-N   variable CRP
-variable UNOWNED-BYTES  variable UNOWNED-RUNS
+variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
 16 constant OWNER-SHIFT
 
 : DOWN-OFF ( n -- n ) DOWNER @ OWNER-SHIFT rshift ;
@@ -1039,7 +1077,8 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS
    loop
    0 DOWNER DOWN-N @ [: < ;] SORT:SORT!
    DOWN-N @ 1+ DBYTES-RESERVE  DOWN-N @ 1+ DRUNS-RESERVE
-   DOWN-N @ 1+ 0 ?do 0 i DBYTES !  0 i DRUNS ! loop ;
+   DOWN-N @ 1+ DROWB-RESERVE
+   DOWN-N @ 1+ 0 ?do 0 i DBYTES !  0 i DRUNS !  0 i DROWB ! loop ;
 
 \ The last owner at or below off, or -1 when the run starts below every owner.
 : OWNER-AT ( n -- n ) {: off:n :}
@@ -1068,10 +1107,15 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS
    k DBYTES @ to from - + k DBYTES ! ;
 
 \ A run is a maximal non-zero extent and may cross into the next owner's table,
-\ so its bytes are split; the header row is charged where the run starts.
-: CHARGE-RUN ( n n -- ) {: off:n len:n :}
+\ so its bytes are split; the row is charged, with what it encoded to, where the
+\ run starts.
+: CHARGE-RUN ( n n n -- ) {: off:n len:n rowb:n :}
    off OWNER-AT {: k:n :}
-   k 0 < if UNOWNED-RUNS @ 1+ UNOWNED-RUNS ! else k DRUNS @ 1+ k DRUNS ! then
+   k 0 < if
+      UNOWNED-RUNS @ 1+ UNOWNED-RUNS !  UNOWNED-ROWB @ rowb + UNOWNED-ROWB !
+   else
+      k DRUNS @ 1+ k DRUNS !  k DROWB @ rowb + k DROWB !
+   then
    off len + {: end:n :}
    off CRP !
    begin CRP @ end < while
@@ -1083,14 +1127,21 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS
    repeat ;
 
 : CHARGE-RUNS ( -- )
-   0 UNOWNED-BYTES !  0 UNOWNED-RUNS !
-   RUN-N @ 0 ?do
-      RUN0 @ i RUN-ROW * + {: row:n :}
-      row U32@  row 4 + U32@ CHARGE-RUN
-   loop ;
+   0 UNOWNED-BYTES !  0 UNOWNED-RUNS !  0 UNOWNED-ROWB !
+   RUN0 @ RUN-AT !  0 RUN-PREV !
+   RUN0 @ RUN-BYTES @ + {: stop:n :}
+   begin RUN-AT @ stop < while
+      RUN-AT @ stop RUN-AT @ - RUN-V@ {: gap:n gw:n :}
+      RUN-AT @ gw + RUN-AT !
+      RUN-AT @ stop RUN-AT @ - RUN-V@ {: len:n lw:n :}
+      RUN-AT @ lw + RUN-AT !
+      RUN-PREV @ gap + {: off:n :}
+      off len gw lw + CHARGE-RUN
+      off len + RUN-PREV !
+   repeat ;
 
 : OWNER-COST ( n -- n ) {: k:n :}
-   k DBYTES @  k DRUNS @ RUN-ROW * + ;
+   k DBYTES @  k DROWB @ + ;
 
 : RANK-OWNERS ( -- )
    DOWN-N @ 1+ DCOST-RESERVE
@@ -1104,8 +1155,9 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS
    loop
    0 DCOST DCOST-N @ [: > ;] SORT:SORT! ;
 
-\ Every run byte and every run header lands on exactly one owner or on the
-\ unowned head, so the charges add up to the payload's own two numbers.
+\ Every run byte, every row and every byte those rows encode to lands on exactly
+\ one owner or on the unowned head, so the charges add up to the payload's own
+\ three numbers.
 : CHECK-CHARGES ( -- )
    0 ACC !
    DOWN-N @ 0 ?do ACC @ i DBYTES @ + ACC ! loop
@@ -1116,13 +1168,19 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS
    DOWN-N @ 0 ?do ACC @ i DRUNS @ + ACC ! loop
    ACC @ UNOWNED-RUNS @ + RUN-N @ <> if
       s" engine-size: DATA run rows do not add up" RC die
+   then
+   0 ACC !
+   DOWN-N @ 0 ?do ACC @ i DROWB @ + ACC ! loop
+   ACC @ UNOWNED-ROWB @ + RUN-BYTES @ <> if
+      s" engine-size: DATA run row bytes do not add up" RC die
    then ;
 
 : REPORT-DATA ( -- )
    COLLECT-OWNERS  CHARGE-RUNS  CHECK-CHARGES  RANK-OWNERS
    cr s" captured DATA heap: " type DATA-SPAN @ FMT:.U
-   s"  bytes of span, " type RUN-N @ FMT:.U s"  runs, " type
-   RUN-N @ RUN-ROW * RBYTES-LEN @ + FMT:.U s"  bytes of image" type cr
+   s"  bytes of span, " type RUN-N @ FMT:.U s"  runs in " type
+   RUN-BYTES @ FMT:.U s"  row bytes, " type
+   RUN-BYTES @ RBYTES-LEN @ + FMT:.U s"  bytes of image" type cr
    s"   owners " type DOWN-N @ FMT:.U
    s" , unowned run bytes " type UNOWNED-BYTES @ FMT:.U
    s" , unowned run rows " type UNOWNED-RUNS @ FMT:.U cr

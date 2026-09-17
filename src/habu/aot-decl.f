@@ -254,43 +254,109 @@ public
 \ closed on a span no engine could reserve. 16 MiB against the full runtime's
 \ measured 8,310,765 bytes leaves honest headroom at no storage cost.
 $1000000 constant SPAN-CAP
-\ A run's header: (offset u32, length u32). Every emitter and reader of this
-\ format writes it eight bytes wide.
-8 constant RUN-ROW
+\ A ROW IS TWO UNSIGNED LEB128 VARINTS: the gap in zero bytes from the previous
+\ run's end, then the run's length. Seven bits a byte, low group first, high bit
+\ set while more groups follow; the first row's gap counts from offset zero. The
+\ fixed (offset u32, length u32) row this replaces cost eight bytes for a table
+\ whose fields almost all fit in seven bits: measured over the engine's own
+\ window, 85,043 of 85,285 gaps and 85,227 of 85,285 lengths encode in one byte
+\ (the widest are three), so the table went from 682,280 bytes to 170,895.
+\ A GAP IS UNSIGNED, so a row that went backwards or overlapped its predecessor
+\ is not a shape this format can express - the reader below has no such refusal
+\ because there is nothing left to refuse.
+5 constant RUN-VMAX                  \ a u32 varint is at most five bytes
+2 constant RUN-ROW-MIN               \ two one-byte varints: the narrowest a row can be
 \ HOW SHORT A ZERO GAP HAS TO BE TO TRAVEL RATHER THAN SPLIT A RUN. Carrying g
 \ zero bytes inside a run costs g payload bytes; splitting the run around them
-\ costs one more RUN-ROW. So a gap of fewer than RUN-ROW zeros is cheaper to
-\ carry and a gap of exactly RUN-ROW breaks even: the width is the rule's own
-\ arithmetic, not a tuned constant. It is not a small effect on real content,
-\ because a cell array of small integers breaks into one run per cell. The
-\ engine's own capture window measured 243,891 runs over 729,560 payload bytes,
-\ an average run of three bytes carrying an eight-byte header; merging measured
-\ 84,724 runs over 1,720,230 bytes, which is 282,666 fewer section bytes, an
-\ engine 327,680 bytes smaller, and a run count back from 93% of RUN-MAX to 32%.
-RUN-ROW constant RUN-GAP-MIN
-\ 262144 rows against a full engine window's measured 84,724. A run is a non-zero
-\ extent, maximal except for the zero gaps under RUN-GAP-MIN it carries, so the
-\ count is a property of the window's content and not of its size, and a window
-\ that outgrew this is refused by name rather than truncated. Splitting on every
-\ single zero byte put that same window at 243,891 rows, 93% of this ceiling.
-262144 constant RUN-MAX
+\ costs one more row, and no row is narrower than RUN-ROW-MIN. So a gap of fewer
+\ than RUN-ROW-MIN zeros is cheaper to carry and a gap of exactly RUN-ROW-MIN
+\ breaks even: the threshold is the row's own arithmetic, not a tuned constant.
+\ Measured over the engine's own window, rows plus run bytes come to 1,228,047 at
+\ a threshold of two and 1,906,204 at the eight the eight-byte row bought; one
+\ and two cost the same bytes and two builds 61 fewer rows.
+RUN-ROW-MIN constant RUN-GAP-MIN
+\ The encoded table's own byte ceiling. A run is a non-zero extent, maximal
+\ except for the zero gaps under RUN-GAP-MIN it carries, so the table is a
+\ property of the window's content and not of its size, and a window that outgrew
+\ this is refused by name rather than truncated. A full engine window measured
+\ 245,194 rows in 490,673 bytes, so this leaves 3.2x over what a whole
+\ self-hosting compiler costs.
+$180000 constant RUN-CAP
 DYNAMIC-BUFFER RUN-STORAGE n
 : RUN-BUF ( -- ptr u8 )
-   RUN-MAX RUN-STORAGE-RESERVE
+   RUN-CAP CELL / RUN-STORAGE-RESERVE
    0 RUN-STORAGE BYTE-VIEW ;
-variable RUN-N
+variable RUN-N                       \ rows, which the encoded bytes no longer state
+variable RUN-LEN                     \ bytes of encoded rows
+variable RUN-END                     \ one past the last run: what the next gap counts from
 \ Run bytes carry the merged zero gaps as well as the non-zero content, so this
-\ cap answers to the merged payload: a full engine window measured 1,720,230
-\ bytes, and the arithmetic worst case for that window's content - every one of
-\ its 243,891 unmerged runs joined across a gap of RUN-ROW-1 zeros, over 729,560
-\ non-zero bytes - is 2,436,797. $300000 leaves 29% over that bound. Overflow is
-\ refused by name.
+\ cap answers to the merged payload: the full engine window measured 737,374
+\ bytes over 737,252 non-zero ones, and the arithmetic worst case for that
+\ content - every one of its 245,255 unmerged runs joined across a gap of
+\ RUN-GAP-MIN-1 zeros - is 982,506. $300000 leaves 3.2x over that bound. Overflow
+\ is refused by name.
 $300000 constant RBYTES-CAP
 DYNAMIC-BUFFER RBYTES-STORAGE n
 : RBYTES-BUF ( -- ptr u8 )
    RBYTES-CAP CELL / RBYTES-STORAGE-RESERVE
    0 RBYTES-STORAGE BYTE-VIEW ;
 variable RBYTES-LEN
+
+\ Every producer of a run table starts from the same four numbers, so no caller
+\ can zero three of them and leave the fourth describing the last capture.
+: RUNS-RESET ( -- )
+   0 RUN-N !  0 RUN-LEN !  0 RUN-END !  0 RBYTES-LEN ! ;
+
+\ ---- the row codec, and the only Forth that writes or reads this varint -------
+\ The two emitted decoders (src/habu/habu2.f AOT-WINDOW:APPLY-RUNS for the baked
+\ window, src/habu/aot-lib.f EMIT-DATA-COPY for a stripped image's own DATA) are
+\ this same grammar in ARM64, and tools/engine-size.f mirrors it for the same
+\ reason it mirrors the other row widths: it reads images in a booted engine that
+\ cannot load this build-side file.
+
+: RUN-VLEN ( n -- n ) {: v:n :}
+   v $80 < if 1 exit then
+   v $4000 < if 2 exit then
+   v $200000 < if 3 exit then
+   v $10000000 < if 4 exit then
+   RUN-VMAX ;
+
+: RUN-V! ( n ptr u8 -- n ) {: v:n p:ptr :}   \ answers the bytes written
+   v RUN-VLEN {: w:n :}
+   w 0 ?do
+      v i 7 * rshift $7F and {: g:n :}
+      i 1+ w < if g $80 or else g then  p i + c!
+   loop
+   w ;
+
+\ The width, or 0 for a varint that does not end within `avail`, runs past
+\ RUN-VMAX, or wastes a byte on a zero high group - one encoding per value, so a
+\ round trip through this format is an identity rather than a resemblance.
+private
+
+: RUN-VW@ ( ptr u8 n -- n ) {: p:ptr avail:n :}
+   avail RUN-VMAX min 0 ?do
+      p i + c@ $80 and 0= if
+         i 1+ {: w:n :}
+         w 1 > p w 1- + c@ 0= and if 0 unloop exit then
+         w unloop exit
+      then
+   loop
+   0 ;
+
+: RUN-VV@ ( ptr u8 n -- n ) {: p:ptr w:n :}
+   0 w 0 ?do  p i + c@ $7F and  i 7 * lshift or  loop ;
+
+public
+
+\ Value and width, with a width of 0 for every malformation above and for a
+\ value no u32 field of this format could have held.
+: RUN-V@ ( ptr u8 n -- n n ) {: p:ptr avail:n :}
+   p avail RUN-VW@ {: w:n :}
+   w 0= if 0 0 exit then
+   p w RUN-VV@ {: v:n :}
+   v $FFFFFFFF > if 0 0 exit then
+   v w ;
 \ Address rows grow independently of the engine's declaration registry. The
 \ artifact's aggregate byte budget, checked before copy or emission, is the
 \ limit; this single-section ceiling also bounds each allocation request.

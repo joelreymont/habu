@@ -93,22 +93,39 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
    XDS DATA STACK-ABI:BASE-CELL STR,
    7 STACK-ABI:BOOT-BYTES LIT64,  7 DATA STACK-ABI:CAP-CELL STR, ;
 
+\ ONE UNSIGNED LEB128 VARINT, INLINE: seven bits a byte from the cursor `cur`,
+\ low group first, until a byte arrives with its high bit clear. `acc` answers
+\ the value, `cur` is advanced past it, and `b`, `g` and `sh` are clobbered.
+\ This is src/habu/aot-decl.f AOT-WINDOW:RUN-V! read backwards, and the same
+\ grammar src/habu/habu2.f AOT-WINDOW:APPLY-RUNS decodes for the baked window.
+: EMIT-VGET ( n n n n n -- ) {: acc:n cur:n b:n g:n sh:n :}
+   LBL {: vtop:label :}
+   acc 0 MOVZ,  sh 0 MOVZ,
+   vtop LBL,
+      b cur 0 LDRB,  cur cur 1 ADDI,
+      g b $7F ANDI,  g g sh LSLV,  acc acc g ORR,
+      sh sh 7 ADDI,
+      g b $80 ANDI,  g vtop CBNZ, ;
+
+\ A row is (gap from the last run's end, length), so the destination cursor x13
+\ is the decoder's whole state between rows: it ends each run one past that
+\ run's last byte, which is exactly what the next row's gap counts from.
 : EMIT-DATA-COPY ( -- )
    BLOB-LEN @ 0= IF
       7 BLOB-END @ LIT64,  7 DATA DP-CELL STR,  exit         \ DP = data base (no user data)
    THEN
    9 BLOB-LBL LABEL@ ADR,                         \ x9 = sparse header in __text
-   11 9 0 LDRW,                                   \ x11 = run count
-   9 9 4 ADDI,                                    \ x9 = row array start
-   11 11 3 LSLI,                                  \ x11 = row array byte length
-   11 9 11 ADD,                                   \ x11 = row array end == byte payload start
+   11 9 0 LDRW,                                   \ x11 = encoded row byte length
+   9 9 4 ADDI,                                    \ x9 = row cursor
+   11 9 11 ADD,                                   \ x11 = one past the last row == byte payload start
    10 11 0 ADDI,                                  \ x10 = byte payload cursor
-   12 BLOB-SRC @ LIT64,                           \ x12 = dst absolute base VA
+   13 BLOB-SRC @ LIT64,                           \ x13 = destination cursor, at the span's base VA
    LBL LBL LBL LBL {: rowtop:label rowdone:label innertop:label outerback:label :}
    rowtop LBL,
       9 11 CMP,  C-CS rowdone BCOND,
-      13 9 0 LDRW,  14 9 4 LDRW,  9 9 8 ADDI,
-      13 12 13 ADD,
+      14 9 15 16 12 EMIT-VGET                     \ x14 = gap from the last run's end
+      13 13 14 ADD,
+      14 9 15 16 12 EMIT-VGET                     \ x14 = this run's length
       innertop LBL,
       14 outerback CBZ,
       15 10 0 LDRB,  15 13 0 STRB,
@@ -124,10 +141,12 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
 \ than to split around), not as the span. A table `allot`ed at declared capacity
 \ but only partly filled left its unused tail as literal zero bytes in every
 \ earlier image; the restore above maps an anonymous (already zero) region, so a
-\ zero byte never has to travel. Format: [count u32] [(offset u32, length u32) x count]
-\ [bytes, row order, concatenated] - one cursor decodes it with no stored
-\ row->byte offset. Mirrors the AOT-WINDOW run format aot-capture.f already
-\ uses for the metabuild seed (src/habu/aot-decl.f package AOT-WINDOW).
+\ zero byte never has to travel. Format: [row bytes u32] [(gap varint, length
+\ varint) until those bytes are spent] [bytes, row order, concatenated] - one
+\ cursor decodes it with no stored row->byte offset, and the header is a byte
+\ length rather than a row count because a varint row has no fixed width. The
+\ row IS the AOT-WINDOW run row aot-capture.f writes for the metabuild seed
+\ (src/habu/aot-decl.f package AOT-WINDOW).
 \ SPARSE-CAP is generous headroom over the row/byte overhead of a span already
 \ expected to stay near AOT-DATA-BLOB-MAX; a span that still overflows it dies
 \ closed by name instead of corrupting the buffer.
@@ -138,13 +157,13 @@ create SPARSE-BUF SPARSE-CAP allot   variable SPARSE-LEN
    SPARSE-LEN @ + SPARSE-CAP > IF
       s" aot: sparse data blob exceeds buffer" 74 die THEN ;
 
-: SPARSE-U32! ( n -- ) {: v:n :}
-   4 SPARSE-ROOM?
-   v         $FF and SPARSE-BUF SPARSE-LEN @ + c!
-   v 8  rshift $FF and SPARSE-BUF SPARSE-LEN @ + 1 + c!
-   v 16 rshift $FF and SPARSE-BUF SPARSE-LEN @ + 2 + c!
-   v 24 rshift $FF and SPARSE-BUF SPARSE-LEN @ + 3 + c!
-   SPARSE-LEN @ 4 + SPARSE-LEN ! ;
+\ The header, and the only fixed-width field the blob has. It is written last,
+\ over room reserved first, because its value is how long the rows turned out.
+: SPARSE-U32! ( n n -- ) {: v:n at:n :}
+   v         $FF and SPARSE-BUF at + c!
+   v 8  rshift $FF and SPARSE-BUF at + 1 + c!
+   v 16 rshift $FF and SPARSE-BUF at + 2 + c!
+   v 24 rshift $FF and SPARSE-BUF at + 3 + c! ;
 
 : SPARSE-BYTE! ( n -- ) {: v:n :}
    1 SPARSE-ROOM?
@@ -182,25 +201,27 @@ variable BLOB-RUN-AT   variable BLOB-RUN-OPEN   variable BLOB-RUN-END
    REPEAT
    body BLOB-RUN-END @ BLOB-RUN-CLOSE ;
 
-variable BLOB-RUN-N
+\ One past the last row's run: what the next row's gap counts from.
+variable BLOB-LAST-END
 
-: BLOB-RUN-TALLY ( n n -- ) 2drop BLOB-RUN-N @ 1+ BLOB-RUN-N ! ;
-
-: BLOB-RUN-COUNT ( -- n )
-   0 BLOB-RUN-N !
-   [: BLOB-RUN-TALLY ;] EACH-BLOB-RUN
-   BLOB-RUN-N @ ;
+: BLOB-V! ( n -- ) {: v:n :}
+   v  SPARSE-BUF SPARSE-LEN @ +  AOT-WINDOW:RUN-V!
+   SPARSE-LEN @ + SPARSE-LEN ! ;
 
 : BLOB-ROW! ( n n -- ) {: start:n len:n :}
-   start SPARSE-U32!  len SPARSE-U32! ;
+   AOT-WINDOW:RUN-VMAX 2 * SPARSE-ROOM?
+   start BLOB-LAST-END @ - BLOB-V!
+   len BLOB-V!
+   start len + BLOB-LAST-END ! ;
 
 : BLOB-BYTES! ( n n -- ) {: start:n len:n :}
    len 0 ?do  BLOB-SRC@ start + i + c@ SPARSE-BYTE!  loop ;
 
 : BUILD-SPARSE-DATA ( -- )
-   0 SPARSE-LEN !
-   BLOB-RUN-COUNT SPARSE-U32!
+   0 SPARSE-LEN !  0 BLOB-LAST-END !
+   4 SPARSE-ROOM?  4 SPARSE-LEN !
    [: BLOB-ROW! ;] EACH-BLOB-RUN
+   SPARSE-LEN @ 4 -  0 SPARSE-U32!
    [: BLOB-BYTES! ;] EACH-BLOB-RUN ;
 
 : EMIT-DATA-BLOB ( -- )                            \ place the sparse blob after all code

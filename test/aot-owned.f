@@ -27,7 +27,7 @@ create HASH-AFTER 32 allot
    0 AOT-DSITE-N ! 0 AOT-CSITE-N !
    0 AOT-DATA-D0 ! 0 AOT-CODE-B0 !
    0 AOT-WID-W0 ! 0 AOT-WID-SPAN ! 0 AOT-DATA-SIZE !
-   0 RUN-N ! 0 RBYTES-LEN !
+   RUNS-RESET
    0 AOT-XTSITE:N ! 0 AOT-BOOTRUN-LEN !
    0 AOT-PWIN-N ! 0 AOT-SIG-N ! 0 AOT-SIG-STR-LEN ! 0 AOT-REG-LEN !
    \ Two distinct fixed-location, null-target rows: the old four-byte IO lost one.

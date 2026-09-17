@@ -48,12 +48,21 @@ using AOT-FILE
 
 8 constant ROWS
 $40 constant HOST-BLOB
-$23 constant HOST-DATA
+\ THE HOST'S WINDOW IS TWO MEGABYTES SO THE MERGED RUN TABLE HAS TO BE REWRITTEN.
+\ A run row's gap is a varint counted from the previous run's end, so appending
+\ this artifact widens exactly one field - its first row's - and everything after
+\ it has to move up by the difference (src/habu/aot-file.f MERGE-WDATA-GAP). A
+\ host window small enough to leave that field its old width would merge without
+\ moving a byte and prove nothing; MERGED-RUNS= below refuses a merge that did
+\ not widen it.
+$200000 constant HOST-DATA
 variable HOST-D0
 variable ART-D0
 
 variable ART-BLOB
 variable ART-DATA
+variable ART-RUNS    variable ART-RUN-LEN   variable ART-RUN-END
+variable MRUN-AT     variable MRUN-END      variable MRUN-N
 variable MERGED-DATA
 variable RAW-INDEX
 variable RAW-SITE
@@ -72,6 +81,10 @@ variable CHAIN-VALUE
 : ASSERT ( bool -- )
    if exit then
    s" artifact-row-test: exact address row mismatch" $4C die ;
+
+: RUN-ASSERT ( bool -- )
+   if exit then
+   s" artifact-row-test: merged run table mismatch" $4C die ;
 
 
 : U32@ ( ptr u8 -- n )
@@ -202,6 +215,37 @@ variable CHAIN-VALUE
    $1018 XTOFF-DATA-TAG 8 ROW= ;
 
 
+\ One field of the merged run table, decoded where it lies.
+: MRUN-V ( -- n )
+   RUN-BUF@ MRUN-AT @ +  RUN-LEN @ MRUN-AT @ -  RUN-V@ {: v:n w:n :}
+   w 0 > RUN-ASSERT
+   MRUN-AT @ w + MRUN-AT !
+   v ;
+
+\ THE MERGED TABLE, DECODED RATHER THAN COUNTED. Each gap counts from the row
+\ before it, so the whole block reads correctly only if the one rewritten field
+\ and the bytes it displaced both landed: the row count, the end of the last run
+\ and the exact section length are three independent ways for a botched move to
+\ show. The artifact's own rows are unchanged, so its end simply moves by where
+\ the merge placed its window.
+: MERGED-RUNS= ( -- )
+   ART-RUNS @ 0 > RUN-ASSERT
+   0 MRUN-AT !  0 MRUN-END !  0 MRUN-N !
+   begin MRUN-AT @ RUN-LEN @ < while
+      MRUN-V {: gap:n :}
+      MRUN-V {: rl:n :}
+      rl 0 > RUN-ASSERT
+      MRUN-END @ gap + rl + MRUN-END !
+      MRUN-N @ 1+ MRUN-N !
+   repeat
+   MRUN-AT @ RUN-LEN @ = RUN-ASSERT
+   MRUN-N @ ART-RUNS @ = RUN-ASSERT
+   RUN-N @ ART-RUNS @ = RUN-ASSERT
+   MRUN-END @ ART-RUN-END @ MERGED-DATA @ + = RUN-ASSERT
+   RUN-END @ MRUN-END @ = RUN-ASSERT
+   RUN-LEN @ ART-RUN-LEN @ > RUN-ASSERT ;
+
+
 : REBASED-DATA ( n -- n )
    ART-D0 @ - HOST-D0 @ + MERGED-DATA @ + ;
 
@@ -215,11 +259,16 @@ variable CHAIN-VALUE
    CHAIN-VALUE @ REBASED-DATA = ASSERT ;
 
 
+: ART-RUNS! ( -- )
+   RUN-N @ ART-RUNS !  RUN-LEN @ ART-RUN-LEN !  RUN-END @ ART-RUN-END ! ;
+
 : MATRIX-ROUNDTRIP ( -- )
    WRITE-ARTIFACT READ-ARTIFACT MATRIX=
+   ART-RUNS!
    HOST!
    AOTRT:KEY ART$ MERGE
    MERGED=
+   MERGED-RUNS=
    MERGED-DSITES=
    s" address-rows: merge=ok" type cr ;
 

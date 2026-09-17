@@ -1451,18 +1451,23 @@ variable ACAP-RQ      \ the segment cursor across the window
 variable ACAP-RN      \ the next declared cell at or above ACAP-RQ
 variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
 
+\ The row is the gap from the last run's end and the length, so the widest a row
+\ can be is two full varints: charge that before writing either of them.
 : ACAP-ADD-RUN ( n n n -- ) {: d0:n off:n rl:n :}
-   AOT-WINDOW:RUN-N @ AOT-WINDOW:RUN-MAX >= if
-      s" aot-capture: too many window DATA runs" 74 die then
+   AOT-WINDOW:RUN-LEN @ AOT-WINDOW:RUN-VMAX 2 * + AOT-WINDOW:RUN-CAP > if
+      s" aot-capture: the window DATA runs exceed the AOT run-row buffer" 74 die then
    AOT-WINDOW:RBYTES-LEN @ rl + AOT-WINDOW:RBYTES-CAP > if
       s" aot-capture: the window DATA runs exceed the AOT run-byte buffer" 74 die then
-   AOT-WINDOW:RUN-N @ AOT-WINDOW:RUN-ROW * AOT-WINDOW:RUN-BUF@ + {: r:ptr :}
-   off r AOT-P32!  rl r 4 + AOT-P32!
+   AOT-WINDOW:RUN-BUF@ AOT-WINDOW:RUN-LEN @ + {: r:ptr :}
+   off AOT-WINDOW:RUN-END @ -  r  AOT-WINDOW:RUN-V! {: gw:n :}
+   rl  r gw +  AOT-WINDOW:RUN-V! {: lw:n :}
    rl 0 ?do
       d0 off + i + AOT-N>U8 c@
       AOT-WINDOW:RBYTES-BUF@ AOT-WINDOW:RBYTES-LEN @ + i + c!
    loop
+   AOT-WINDOW:RUN-LEN @ gw + lw + AOT-WINDOW:RUN-LEN !
    AOT-WINDOW:RBYTES-LEN @ rl + AOT-WINDOW:RBYTES-LEN !
+   off rl + AOT-WINDOW:RUN-END !
    AOT-WINDOW:RUN-N @ 1+ AOT-WINDOW:RUN-N ! ;
 
 : ACAP-RUN-CLOSE ( n n -- ) {: d0:n at:n :}
@@ -1728,7 +1733,7 @@ private
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  ACAP-POOL-RESET
    0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
    0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  0 AOT-SPAN:N !
-   0 AOT-WINDOW:RUN-N !  0 AOT-WINDOW:RBYTES-LEN !
+   AOT-WINDOW:RUNS-RESET
    0 AOT-XTSITE:N !  0 AOT-PWIN-N !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 public

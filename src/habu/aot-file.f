@@ -102,12 +102,13 @@
 \ working rather than bending. The span used to BE a section's length, because the
 \ window travelled verbatim; it does not any more. The compiler chain's window is
 \ 1,531,045 bytes of span holding 32 bytes of content, so what travels is the
-\ NON-ZERO EXTENTS - a fixed-width table of (offset u32, length u32) rows, and
-\ their bytes concatenated in row order in a section of their own - and the seed
-\ zeroes the span before it lays them in. No section's length fixes the span any
-\ more, so the scalar is not a second authority for it: it is the only one.
-\ Splitting the bytes out of the rows is what keeps the rows fixed-width, and that
-\ is what keeps "not a whole number of rows" a refusal this format can state.
+\ NON-ZERO EXTENTS - a table of (gap from the previous run's end, length) rows,
+\ each field an unsigned LEB128 varint, and their bytes concatenated in row order
+\ in a section of their own - and the seed zeroes the span before it lays them in.
+\ No section's length fixes the span any more, so the scalar is not a second
+\ authority for it: it is the only one. The run table is the one section this
+\ format measures in bytes rather than in rows, so "not a whole number of rows" is
+\ a refusal it cannot state and the row walk below is what refuses in its place.
 \
 \ WHAT THE READER REFUSES, each by name and each fail-closed: a wrong magic, a
 \ wrong version, a wrong target, a wrong section count, a producer that is not the
@@ -117,10 +118,10 @@
 \ runs past the payload, a set of sections that does not fill it, a fixed-width
 \ section that is not its fixed width, a section longer than the buffer it fills, a
 \ section length that is not a whole number of rows, a window DATA span no engine
-\ could reserve, an empty window run, a run reaching past the span, runs out of
-\ ascending order, runs that overlap, runs whose lengths do not fill the run-byte
-\ section, a closure list that does not walk to its own end, a second pass that did
-\ not read what the first one verified,
+\ could reserve, a run row that is not a well-formed varint or does not end inside
+\ its own section, an empty window run, a run reaching past the span, runs whose
+\ lengths do not fill the run-byte section, a closure list that does not walk to
+\ its own end, a second pass that did not read what the first one verified,
 \ and a chain digest that does not re-derive from the files on disk.
 \ NOT ONE OF THEM IS FORGED YET. test/aot-chain-capture-suite.f drives a real
 \ capture through this writer and this reader in a child process and pins the
@@ -140,7 +141,7 @@ using AOT-BUF
 using AOT-WINDOW
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-10 constant VERSION  \ the code spans of the words the image ships no record for
+11 constant VERSION  \ the window's DATA runs as (gap, length) varint rows
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -166,7 +167,7 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 5 constant S-DSITES
 6 constant S-CSITES
 7 constant S-XTOFFS
-8 constant S-WDATA                   \ the window's non-zero extents: 8B rows
+8 constant S-WDATA                   \ the window's non-zero extents: varint rows
 9 constant S-WRUNS                   \ ... and their bytes, concatenated in row order
 10 constant S-XTSITES
 11 constant S-SPANS                  \ the code spans of the records the image does not ship
@@ -293,7 +294,7 @@ variable CUR
    k S-DSITES  = if AOT-DSITE-N @ 4 ROW-BYTES-CHECKED exit then
    k S-CSITES  = if AOT-CSITE-N @ 4 ROW-BYTES-CHECKED exit then
    k S-XTOFFS  = if XTOFF-N @ XTOFF-ROW ROW-BYTES-CHECKED exit then
-   k S-WDATA   = if RUN-N @ 8 ROW-BYTES-CHECKED exit then
+   k S-WDATA   = if RUN-LEN @ exit then
    k S-WRUNS   = if RBYTES-LEN @ exit then
    k S-XTSITES = if AOT-XTSITE:N @ 8 ROW-BYTES-CHECKED exit then
    k S-SPANS   = if AOT-SPAN:N @ AOT-SPAN:ROW ROW-BYTES-CHECKED exit then
@@ -313,7 +314,6 @@ variable CUR
    k S-DSITES  = if 4 exit then
    k S-CSITES  = if 4 exit then
    k S-XTOFFS  = if XTOFF-ROW exit then
-   k S-WDATA   = if 8 exit then
    k S-XTSITES = if 8 exit then
    k S-SPANS   = if AOT-SPAN:ROW exit then
    k S-PWIN    = if 4 exit then
@@ -343,7 +343,7 @@ variable CUR
    k S-DSITES  = if AOT-DSITE-MAX 4 * exit then
    k S-CSITES  = if AOT-DSITE-MAX 4 * exit then
    k S-XTOFFS  = if XTOFF-MAX XTOFF-ROW * exit then
-   k S-WDATA   = if RUN-MAX 8 * exit then
+   k S-WDATA   = if RUN-CAP exit then
    k SEC-CAP-TAIL ;
 
 : SEC-NAME-TAIL ( n -- ptr u8 n ) {: k:n :}
@@ -667,48 +667,30 @@ private
    k SEC-PTR k BASE@ + k ROW-LEN@ GET
    k SEC-PTR k BASE@ + k ROW-LEN@ SHA256-UPDATE ;
 
-\ Every count is the length the table gave, divided by the row the format fixes -
-\ except the window's DATA SPAN, which no length fixes any more and which the
-\ scalars section is therefore the only authority for.
-\ Reading them back in the same order the writer derived them from is what makes
-\ the round trip an identity rather than a resemblance.
-: RESTORE-COUNTS ( -- )
-   SCAL U64@ AOT-DATA-D0 !
-   SCAL 8 + U64@ AOT-CODE-B0 !
-   SCAL 16 + U64@ AOT-WID-W0 !
-   SCAL 24 + U64@ AOT-WID-SPAN !
-   SCAL 32 + U64@ AOT-DATA-SIZE !
-   S-BLOB ROW-LEN@ AOT-BLOB-LEN !
-   S-RECS ROW-LEN@ AOT-CREC-ROW / AOT-REC-N !
-   S-SITES ROW-LEN@ SITE-ROW / AOT-SITE-N !
-   S-NAMES ROW-LEN@ AOT-NAMES-LEN !
-   S-DSITES ROW-LEN@ 4 / AOT-DSITE-N !
-   S-CSITES ROW-LEN@ 4 / AOT-CSITE-N !
-   S-XTOFFS ROW-LEN@ XTOFF-ROW / XTOFF-N !
-   S-WDATA ROW-LEN@ 8 / RUN-N !
-   S-WRUNS ROW-LEN@ RBYTES-LEN !
-   S-XTSITES ROW-LEN@ 8 / AOT-XTSITE:N !
-   S-SPANS ROW-LEN@ AOT-SPAN:ROW / AOT-SPAN:N !
-   S-BOOTRUN ROW-LEN@ AOT-BOOTRUN-LEN !
-   S-PWIN ROW-LEN@ 4 / AOT-PWIN-N !
-   S-SIGS ROW-LEN@ SIG-ROW / AOT-SIG-N !
-   S-SIGSTR ROW-LEN@ AOT-SIG-STR-LEN !
-   S-REG ROW-LEN@ AOT-REG-LEN !
-   0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
-
 \ ---- the window's runs, which the table's own shape cannot state --------------
-\ ?TABLE already refuses a run table that is not a whole number of 8-byte rows.
-\ What it cannot see is whether those rows describe a window: a row has to name a
-\ non-empty extent inside the span, the rows have to arrive in ascending order
-\ without overlapping - because their bytes are concatenated in row order and the
-\ decoder walks them with one cursor - and their lengths have to add up to the
-\ byte section exactly. Each of the five is a shape a well-formed table can take
-\ and a booted engine could not survive, so each is refused by name here.
-variable RN-PREV-OFF   variable RN-PREV-END   variable RN-SUM
+\ ?TABLE divides a section by its row width, and a varint row has none: the rows
+\ are a byte string it can only measure. What has to hold is that the string
+\ decodes - every varint ends inside the section, and the rows spend it exactly -
+\ that every run names a non-empty extent inside the span, and that their lengths
+\ add up to the byte section exactly, because their bytes are concatenated in row
+\ order and the decoder walks them with one cursor. Each is a shape a section of
+\ the stated length can take and a booted engine could not survive, so each is
+\ refused by name here.
+\
+\ ASCENDING AND NON-OVERLAPPING ARE NO LONGER REFUSALS, because a gap is an
+\ unsigned distance from the previous run's END: an offset that went backwards or
+\ landed inside its predecessor is not a shape this encoding can express. The
+\ check did not weaken; the format absorbed it.
+variable RN-AT   variable RN-END   variable RN-SUM   variable RN-COUNT
 
-: RUN-AT ( n -- ptr u8 ) {: k:n :} RUN-BUF@ k 8 * + ;
-: RUN-OFF@ ( n -- n ) RUN-AT U32@ ;
-: RUN-LEN@ ( n -- n ) RUN-AT 4 + U32@ ;
+\ One varint of a row, refused by name rather than guessed at. `avail` is what is
+\ left of the section, so a varint that runs off its end is a malformation here
+\ and never a read past it.
+: RUN-V ( n n -- n n ) {: at:n avail:n :}
+   RUN-BUF@ at + avail RUN-V@ {: v:n w:n :}
+   w 0<> if v w exit then
+   s" aot-file: a window DATA run row is not a well-formed varint" DIE
+   0 0 ;
 
 : ?SPAN ( n -- ) {: span:n :}
    span 0< 0= span SPAN-CAP <= and if exit then
@@ -795,31 +777,65 @@ variable NAME-BOUNDARY-LEN
    XTOFF-BUF@ S-XTOFFS ROW-LEN@ XTOFF-ROW /
    span S-BLOB ROW-LEN@ NAME-SECTION$ ?XTOFFS ;
 
-\ `at` is the first row of the artifact's own block: a plain read puts it at 0 and
-\ a merge puts it behind the host's rows, whose ascending order this has already
-\ proved on the capture that produced them.
-: ?RUNS ( n n n -- ) {: at:n cnt:n span:n :}
-   0 RN-PREV-OFF !  0 RN-PREV-END !  0 RN-SUM !
-   cnt 0 ?do
-      at i + RUN-OFF@ {: off:n :}
-      at i + RUN-LEN@ {: rl:n :}
+\ `at` is the first byte of the artifact's own block and `len` is its length: a
+\ plain read puts it at 0 and a merge puts it behind the host's rows, whose own
+\ decode this has already proved on the capture that produced them. Either way
+\ the block's gaps count from its own zero, so this reads the artifact in the
+\ coordinates it was written in and the merge moves it afterwards. What the walk
+\ found - how many rows, and where the last one ends - is what the counts are
+\ then published from.
+: ?RUNS ( n n n -- ) {: at:n len:n span:n :}
+   at RN-AT !  at len + {: stop:n :}
+   0 RN-END !  0 RN-SUM !  0 RN-COUNT !
+   begin RN-AT @ stop < while
+      RN-AT @ stop RN-AT @ - RUN-V {: gap:n gw:n :}
+      RN-AT @ gw + RN-AT !
+      RN-AT @ stop RN-AT @ - RUN-V {: rl:n lw:n :}
+      RN-AT @ lw + RN-AT !
       rl 0= if s" aot-file: a window DATA run is empty" DIE then
+      RN-END @ gap + {: off:n :}
       off rl + span > if
          s" aot-file: a window DATA run reaches past the window DATA span" DIE
       then
-      i 0 > if
-         off RN-PREV-OFF @ < if
-            s" aot-file: the window DATA runs are not in ascending order" DIE
-         then
-         off RN-PREV-END @ < if
-            s" aot-file: the window DATA runs overlap" DIE
-         then
-      then
-      off RN-PREV-OFF !  off rl + RN-PREV-END !
+      off rl + RN-END !
       RN-SUM @ rl + RN-SUM !
-   loop
+      RN-COUNT @ 1+ RN-COUNT !
+   repeat
    RN-SUM @ S-WRUNS ROW-LEN@ = if exit then
    s" aot-file: the window DATA runs do not fill their own byte section" DIE ;
+
+\ Every count is the length the table gave, divided by the row the format fixes -
+\ except three the table's shape cannot state: the window's DATA SPAN, which no
+\ length fixes any more and which the scalars section is therefore the only
+\ authority for, and how many runs the row section holds and where the last one
+\ ends, which the walk above is the only authority for.
+\ Reading them back in the same order the writer derived them from is what makes
+\ the round trip an identity rather than a resemblance.
+: RESTORE-COUNTS ( -- )
+   SCAL U64@ AOT-DATA-D0 !
+   SCAL 8 + U64@ AOT-CODE-B0 !
+   SCAL 16 + U64@ AOT-WID-W0 !
+   SCAL 24 + U64@ AOT-WID-SPAN !
+   SCAL 32 + U64@ AOT-DATA-SIZE !
+   S-BLOB ROW-LEN@ AOT-BLOB-LEN !
+   S-RECS ROW-LEN@ AOT-CREC-ROW / AOT-REC-N !
+   S-SITES ROW-LEN@ SITE-ROW / AOT-SITE-N !
+   S-NAMES ROW-LEN@ AOT-NAMES-LEN !
+   S-DSITES ROW-LEN@ 4 / AOT-DSITE-N !
+   S-CSITES ROW-LEN@ 4 / AOT-CSITE-N !
+   S-XTOFFS ROW-LEN@ XTOFF-ROW / XTOFF-N !
+   S-WDATA ROW-LEN@ RUN-LEN !
+   RN-COUNT @ RUN-N !
+   RN-END @ RUN-END !
+   S-WRUNS ROW-LEN@ RBYTES-LEN !
+   S-XTSITES ROW-LEN@ 8 / AOT-XTSITE:N !
+   S-SPANS ROW-LEN@ AOT-SPAN:ROW / AOT-SPAN:N !
+   S-BOOTRUN ROW-LEN@ AOT-BOOTRUN-LEN !
+   S-PWIN ROW-LEN@ 4 / AOT-PWIN-N !
+   S-SIGS ROW-LEN@ SIG-ROW / AOT-SIG-N !
+   S-SIGSTR ROW-LEN@ AOT-SIG-STR-LEN !
+   S-REG ROW-LEN@ AOT-REG-LEN !
+   0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
 
 \ The list walks to its own end or the artifact is refused: a count that promises
 \ more entries than the bytes hold, or bytes left after the last entry, are both a
@@ -908,7 +924,7 @@ public
    ?PAYLOAD-AGAIN
    SCAL 32 + U64@ {: span:n :}
    span ?SPAN
-   0  S-WDATA ROW-LEN@ 8 /  span  ?RUNS
+   0  S-WDATA ROW-LEN@  span  ?RUNS
    ?ADDRESS-ROWS
    RESTORE-COUNTS
    RESTORE-CLOSURE
@@ -960,7 +976,8 @@ variable H-DSITE  variable H-CSITE   variable H-XTOFF  variable H-DATA
 variable H-XTSITE variable H-BOOTRUN variable H-PWIN   variable H-SPAN
 variable H-CSPAN                     \ the host's code-span rows
 variable H-SIG    variable H-SIGSTR  variable H-REG
-variable H-RUN    variable H-RBYTES
+variable H-RUN    variable H-RUNLEN  variable H-RUNEND  variable H-RBYTES
+variable A-RUNGROW                   \ bytes the artifact's first row gained on the merge
 variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
 variable A-DSPAN                     \ the artifact's own window DATA span
 variable H-DATA-R                    \ where the artifact's window begins inside the merged one
@@ -995,6 +1012,7 @@ DYNAMIC-BUFFER HOST-REG n
    AOT-PWIN-N @ H-PWIN !              AOT-WID-SPAN @ H-SPAN !
    AOT-SIG-N @ H-SIG !                AOT-SIG-STR-LEN @ H-SIGSTR !
    RUN-N @ H-RUN !                   RBYTES-LEN @ H-RBYTES !
+   RUN-LEN @ H-RUNLEN !               RUN-END @ H-RUNEND !
    AOT-REG-LEN @ H-REG ! ;
 
 \ A merge appends, so there has to be something to append to. A host that has not
@@ -1024,7 +1042,7 @@ DYNAMIC-BUFFER HOST-REG n
    then
    dend cbytes +               S-CSITES BASE!
    H-XTOFF @ XTOFF-ROW *       S-XTOFFS BASE!
-   H-RUN @ 8 *                 S-WDATA BASE!
+   H-RUNLEN @                  S-WDATA BASE!
    H-RBYTES @                  S-WRUNS BASE!
    H-XTSITE @ 8 *              S-XTSITES BASE!
    H-CSPAN @ AOT-SPAN:ROW *    S-SPANS BASE!
@@ -1221,6 +1239,33 @@ DYNAMIC-BUFFER HOST-REG n
    loop ;
 
 
+\ THE ONE ROW A MERGE REWRITES. Every gap inside the artifact's block counts from
+\ the row before it, so the whole block already reads correctly wherever it lands
+\ - except its first row, whose gap counts from zero in the artifact's own
+\ window. In the merged window that run begins H-DATA-R later and the run before
+\ it is the HOST's last, so that one gap grows by H-DATA-R minus the host's last
+\ run end. It can only grow: the host's runs all end at or below its own span,
+\ and H-DATA-R is at or above it. A wider varint needs the rest of the block
+\ moved up by the difference, from the top down because the two overlap.
+: MERGE-WDATA-GAP ( -- )
+   0 A-RUNGROW !
+   S-WDATA ROW-LEN@ 0= if exit then
+   S-WDATA BASE@ {: at:n :}
+   at S-WDATA ROW-LEN@ RUN-V {: gap:n gw:n :}
+   gap H-DATA-R @ + H-RUNEND @ - {: merged:n :}
+   merged RUN-VLEN gw - {: grow:n :}
+   at S-WDATA ROW-LEN@ + grow + RUN-CAP > if
+      S-WDATA s" is larger than the buffer it fills" SECT-DIE then
+   grow 0 > if
+      S-WDATA ROW-LEN@ gw - {: tail:n :}
+      tail 0 ?do
+         tail 1- i - gw + at + {: from:n :}
+         RUN-BUF@ from + c@  RUN-BUF@ from grow + + c!
+      loop
+   then
+   merged RUN-BUF@ at + RUN-V! drop
+   grow A-RUNGROW ! ;
+
 : MERGE-ROWS ( -- )
    S-SITES SEC-AT    S-SITES SEC-ROWS    SITE-ROW 0 H-BLOB @ FIELD+
    S-SITES SEC-AT    S-SITES SEC-ROWS    SITE-ROW 4 H-NAMES @ FIELD+
@@ -1229,7 +1274,7 @@ DYNAMIC-BUFFER HOST-REG n
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 4 H-NAMES @ FIELD+
    S-SPANS SEC-AT    S-SPANS SEC-ROWS    AOT-SPAN:ROW 0 H-BLOB @ FIELD+
    MERGE-XTOFFS
-   S-WDATA SEC-AT    S-WDATA SEC-ROWS    8 0 H-DATA-R @ FIELD+
+   MERGE-WDATA-GAP
    S-PWIN SEC-AT     S-PWIN SEC-ROWS     4 0 H-SPAN @ FIELD+
    S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 0 S-SIGSTR BASE@ FIELD+
    S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 4 S-SIGSTR BASE@ FIELD+
@@ -1326,7 +1371,9 @@ DYNAMIC-BUFFER HOST-REG n
    H-CSITE @ S-CSITES SEC-ROWS + AOT-CSITE-N !
    H-XTOFF @ S-XTOFFS SEC-ROWS + XTOFF-N !
    H-DATA-R @ A-DSPAN @ + AOT-DATA-SIZE !
-   H-RUN @ S-WDATA SEC-ROWS + RUN-N !
+   H-RUN @ RN-COUNT @ + RUN-N !
+   H-RUNLEN @ S-WDATA ROW-LEN@ + A-RUNGROW @ + RUN-LEN !
+   H-DATA-R @ RN-END @ + RUN-END !
    H-RBYTES @ S-WRUNS ROW-LEN@ + RBYTES-LEN !
    H-XTSITE @ S-XTSITES SEC-ROWS + AOT-XTSITE:N !
    H-CSPAN @ S-SPANS SEC-ROWS + AOT-SPAN:N !
@@ -1370,7 +1417,7 @@ public
    SCALARS@
    ?BASES
    H-DATA-R @ A-DSPAN @ + ?SPAN
-   H-RUN @  S-WDATA SEC-ROWS  A-DSPAN @  ?RUNS
+   S-WDATA BASE@  S-WDATA ROW-LEN@  A-DSPAN @  ?RUNS
    ?MERGED-XTOFFS
    MERGE-RECS
    MERGE-ROWS

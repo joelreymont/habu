@@ -39,8 +39,9 @@
 \ (aot-capture.f ACAP-SCAN-SEG, aot-lib.f EACH-BLOB-RUN) rather than the raw
 \ content: a run ends at its last non-zero byte and reopens only after
 \ AOT-WINDOW:RUN-GAP-MIN zeros, so a shorter gap is carried inside the run, and
-\ `cost` is the bytes so carried plus AOT-WINDOW:RUN-ROW for each row. A table
-\ of cells holding small numbers still costs more than its non-zero bytes;
+\ `cost` is the bytes so carried plus what each row's two varints - the gap from
+\ the previous run's end, then the length - encode to. A table of cells holding
+\ small numbers still costs more than its non-zero bytes;
 \ sort on this column rather than on non-zero.
 \
 \ Runs are counted inside one owner's extent, so an owner boundary splits a run
@@ -67,7 +68,9 @@ DYNAMIC-BUFFER T-ROW n
 variable T-N
 variable NZ        variable FILL       variable RUNS
 variable PAY       variable OPEN
+variable ROWB      variable PREV-END
 variable SUM-NZ    variable SUM-FILL   variable SUM-RUNS   variable SUM-PAY
+variable SUM-ROWB
 variable IN-RUN
 
 32 constant OFF-SHIFT
@@ -108,8 +111,18 @@ $FFFFFFFF constant IDX-MASK
    loop
    0 T-ROW T-N @ [: < ;] SORT:SORT! ;
 
+\ The open run's own charge: its carried bytes, and the row the capture encodes
+\ for it - a gap varint from the last run's end and a length varint.
+: CLOSE-RUN ( -- )
+   PAY @ FILL @ OPEN @ - + PAY !
+   ROWB @
+   OPEN @ PREV-END @ - AOT-WINDOW:RUN-VLEN +
+   FILL @ OPEN @ - AOT-WINDOW:RUN-VLEN +  ROWB !
+   FILL @ PREV-END ! ;
+
 : SCAN ( n n -- ) {: base:n len:n :}
    0 NZ !  0 FILL !  0 RUNS !  0 PAY !  0 OPEN !  false IN-RUN !
+   0 ROWB !  0 PREV-END !
    len 0 ?do
       base i + HEAP@ c@ 0<> if
          NZ @ 1+ NZ !  i 1+ FILL !
@@ -117,20 +130,21 @@ $FFFFFFFF constant IDX-MASK
       else
          IN-RUN @ if
             i FILL @ - AOT-WINDOW:RUN-GAP-MIN >= if
-               PAY @ FILL @ OPEN @ - + PAY !  false IN-RUN !
+               CLOSE-RUN  false IN-RUN !
             then
          then
       then
    loop
-   IN-RUN @ if PAY @ FILL @ OPEN @ - + PAY ! then ;
+   IN-RUN @ if CLOSE-RUN then ;
 
 : ROW ( n n ptr u8 n n -- ) {: off:n len:n name:ptr nameu:n wid:n :}
    off len SCAN
    off FMT:.U TAB  len FMT:.U TAB  FILL @ FMT:.U TAB  NZ @ FMT:.U TAB
-   RUNS @ FMT:.U TAB  PAY @ RUNS @ AOT-WINDOW:RUN-ROW * + FMT:.U TAB
+   RUNS @ FMT:.U TAB  PAY @ ROWB @ + FMT:.U TAB
    wid FMT:.INT TAB  name nameu type cr
    SUM-NZ @ NZ @ + SUM-NZ !  SUM-FILL @ FILL @ + SUM-FILL !
-   SUM-RUNS @ RUNS @ + SUM-RUNS !  SUM-PAY @ PAY @ + SUM-PAY ! ;
+   SUM-RUNS @ RUNS @ + SUM-RUNS !  SUM-PAY @ PAY @ + SUM-PAY !
+   SUM-ROWB @ ROWB @ + SUM-ROWB ! ;
 
 : END-OF ( n -- n ) {: k:n :}
    k 1+ T-N @ >= if DP0 exit then
@@ -148,7 +162,7 @@ $FFFFFFFF constant IDX-MASK
    DATA-START  first DATA-START -  s" (unowned-heap)" -1 ROW ;
 
 : REPORT ( -- )
-   0 SUM-NZ !  0 SUM-FILL !  0 SUM-RUNS !  0 SUM-PAY !
+   0 SUM-NZ !  0 SUM-FILL !  0 SUM-RUNS !  0 SUM-PAY !  0 SUM-ROWB !
    s" offset" type TAB s" extent" type TAB s" fill" type TAB
    s" nonzero" type TAB s" runs" type TAB s" cost" type TAB
    s" wid" type TAB s" owner" type cr
@@ -159,7 +173,7 @@ $FFFFFFFF constant IDX-MASK
    s"  data-start " type DATA-START FMT:.U
    s"  nonzero " type SUM-NZ @ FMT:.U
    s"  runs " type SUM-RUNS @ FMT:.U
-   s"  cost " type SUM-PAY @ SUM-RUNS @ AOT-WINDOW:RUN-ROW * + FMT:.U
+   s"  cost " type SUM-PAY @ SUM-ROWB @ + FMT:.U
    s"  fill " type SUM-FILL @ FMT:.U cr ;
 
 public
