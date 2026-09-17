@@ -351,6 +351,103 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 : PROMOTE ( -- )
    TEMP$ OUTPUT$ RENAME-FILE ;
 
+\ ---- the build-side name map ---------------------------------------------------
+\ The image keeps a name only for the records something can ask for by name and
+\ strips the rest (src/habu/aot-capture.f ACAP-NAMED?). The code is all still
+\ there, so a tool that reads this image - imgdump, a debugger, an xref over a
+\ shipped engine - can still be handed a code address it cannot name. The build
+\ therefore writes the COMPLETE map beside the engine, at <image>.names: every
+\ record the capture saw, stripped ones included, with the span the image kept
+\ and the name it did not.
+\
+\ FORMAT. A version line, a `columns` line naming the fields in order, then one
+\ row per record with fields separated by one space. The columns line is the
+\ extension point: a reader keys on the names, so a later column appends without
+\ breaking a reader that does not know it. A Habu name carries no space, so the
+\ name is last and needs no quoting.
+\    rec    capture-order index, 0-based and dense
+\    named  1 when the image kept this name, 0 when it stripped it
+\    start  code offset in the payload blob, build-time
+\    len    code length in bytes
+\    wid    wordlist id, or -1 for a package row
+\    name   the definition's name, as the capture saw it
+create NAMES-PATH OUTPUT-CAP allot
+variable NAMES-PATH-U
+variable NAMES-A
+variable NAMES-CAP
+variable NAMES-U
+
+: NAMES-SUFFIX$ ( -- ptr u8 n ) s" .names" ;
+
+: NAMES-PATH! ( -- )
+   OUTPUT$ {: a:ptr u:n :}
+   u NAMES-SUFFIX$ nip + OUTPUT-CAP > if E-FS-PATH throw then
+   a NAMES-PATH u BYTE-COPY
+   NAMES-SUFFIX$ NAMES-PATH u + swap BYTE-COPY
+   u NAMES-SUFFIX$ nip + NAMES-PATH-U ! ;
+
+: NAMES-PATH$ ( -- ptr u8 n ) NAMES-PATH NAMES-PATH-U @ ;
+
+\ The buffer address is held in a typed cell: a plain variable would hand
+\ BYTE-COPY a bare n where it wants a byte pointer, the same reason env-base.f
+\ keeps ENV-QA behind a ptr-field.
+: NAMES-A-FIELD ( -- ptr ptr u8 ) NAMES-A 0 ptr-field ;
+: NAMES-A@ ( -- ptr u8 ) NAMES-A-FIELD @ ;
+: NAMES-A! ( ptr u8 -- ) NAMES-A-FIELD ! ;
+
+: NAMES+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   NAMES-U @ u + NAMES-CAP @ > if
+      S\" native-build: name map buffer overflow\n" BUILD-RC die
+   then
+   a  NAMES-A@ NAMES-U @ +  u BYTE-COPY
+   NAMES-U @ u + NAMES-U ! ;
+
+\ Its own decimal renderer rather than FMT's: the build runs inside a rewound
+\ prefix where the shared string builder is not in scope, and a map row needs
+\ nothing more than digits.
+20 constant NAMES-NCAP
+create NAMES-NBUF NAMES-NCAP allot
+variable NAMES-NI
+
+: NAMES-DIGITS+ ( n -- ) {: v:n :}                    \ v >= 0, digits built tail first
+   v 0= if s" 0" NAMES+ exit then
+   NAMES-NCAP NAMES-NI !
+   v begin dup 0 > while
+      dup 10 mod 48 +
+      NAMES-NI @ 1- NAMES-NI !
+      NAMES-NBUF NAMES-NI @ + c!
+      10 /
+   repeat drop
+   NAMES-NBUF NAMES-NI @ +  NAMES-NCAP NAMES-NI @ -  NAMES+ ;
+
+: NAMES-INT+ ( n -- ) {: v:n :}
+   v 0 < if s" -" NAMES+ 0 v - NAMES-DIGITS+ exit then
+   v NAMES-DIGITS+ ;
+
+: NAMES-ROW ( n -- ) {: k:n :}
+   k NAMES-INT+                          s"  " NAMES+
+   k AOT-CAPTURE:MAP-NAMED NAMES-INT+    s"  " NAMES+
+   k AOT-CAPTURE:MAP-START NAMES-INT+    s"  " NAMES+
+   k AOT-CAPTURE:MAP-LEN NAMES-INT+      s"  " NAMES+
+   k AOT-CAPTURE:MAP-WID NAMES-INT+      s"  " NAMES+
+   k AOT-CAPTURE:MAP-NAME$ NAMES+
+   S\" \n" NAMES+ ;
+
+\ 64 bytes a row is the budget: five decimal fields and their separators cannot
+\ reach 40, and ACAP-POOL-ADD already refuses a name over 255, so the only way
+\ past this is a record count the capture itself would have refused first.
+: NAMES-ALLOCATE ( -- )
+   AOT-CAPTURE:MAP-N 64 * $1000 + MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   buf NAMES-A!  cap NAMES-CAP !  0 NAMES-U ! ;
+
+: WRITE-NAMES ( -- )
+   NAMES-PATH!
+   NAMES-ALLOCATE
+   S\" habu-names 1\n" NAMES+
+   S\" columns rec named start len wid name\n" NAMES+
+   AOT-CAPTURE:MAP-N 0 ?do i NAMES-ROW loop
+   NAMES-PATH$ NAMES-A@ NAMES-U @ WRITE-ALL ;
+
 : REMOVE-STALE-TEMP ( -- )
    TEMP$ 2dup SYMLINK? if REMOVE-FILE exit then
    2dup EXISTS? if REMOVE-FILE else 2drop then ;
@@ -368,6 +465,7 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
    SIGN-TEMP
    SMOKE
    PROMOTE
+   WRITE-NAMES
    query bootstrap ;
 
 public

@@ -211,14 +211,31 @@ variable OKV
    o E-NAME-OFF dup 0 < if s" imgdump: bad external name pointer" 74 die then
    dup o E-L + IL @ > if s" imgdump: truncated name" 74 die then
    IB@ +  o E-L ;
+\ AN EMPTY NAME IS A RECORD, NOT A CORRUPTION. Since
+\ habu-ship-no-dictionary-2fee2dea the capture ships a record whose pool entry
+\ is the empty name and whose DNAME-EXT is clear for every word nothing can ask
+\ for by name (src/habu/aot-capture.f ACAP-NAMED?); the row is still there
+\ because it carries the word's code span. So the length floor here is 0: it is
+\ what a dump of a stripped image walks over, and refusing it reported the
+\ engine's own shipping format as a broken file.
 : ENT? {: o :} ( n -- bool )
    o E-S 0 <= if IMG-FALSE exit then
    o E-E 0 < if IMG-FALSE exit then                 \ the raw field, never the rebased span
    HAS-SNAP @ if o E-S PTR>OFF 0 < if IMG-FALSE exit then then
-   o E-L 1 < if IMG-FALSE exit then
+   o E-L 0 < if IMG-FALSE exit then
    o E-NAME-OFF dup 0 < if drop 0 0= 0= exit then
    dup o E-L + IL @ > if drop 0 0= 0= exit then
    IB@ +  o E-L PRN? ;
+
+\ The SCAN still needs a name. An image with no snapshot trailer has no header
+\ saying where its dictionary is, so FIND-DICT looks for the longest run of
+\ plausible records - and a printable name is most of what makes a record
+\ plausible. A run may CONTAIN stripped rows, which is why RUN# counts with
+\ ENT? above, but it has to be ANCHORED on a named one or a region of
+\ span-shaped numbers could pass for a dictionary.
+: ENT-NAMED? ( n -- bool ) {: o :}
+   o ENT? 0= if IMG-FALSE exit then
+   o E-L 1 >= ;
 
 : RUN# {: o :} ( n -- n )
    0 RUNV !
@@ -230,7 +247,7 @@ variable OKV
 : FIND-DICT ( -- )
    0 BESTO !  0 BESTN !
    0 begin dup IL @ DREC - <= while
-      dup ENT? if
+      dup ENT-NAMED? if
          dup RUN# RUNV !
          RUNV @ BESTN @ > if dup BESTO ! RUNV @ BESTN ! then
       then
