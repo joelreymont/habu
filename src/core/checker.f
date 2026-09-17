@@ -7629,6 +7629,24 @@ PPRIM: TFAM SUMV-TAG@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TFAM TFL-VPADS PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TFAM SUMV-PAYCELLS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TFAM SUMV-PAY-N PE-N PE-IN  PE-N PE-OUT PPRIM;
+\ THE BUILD CHAIN'S OWN TWO CALLEES, for the same reason and with one more of
+\ its own: a product image that strips the names the seal marks DNAME-INT has
+\ to be able to build the next generation, and until these rows existed the
+\ only route to either word was a TRUSTED: body naming it - which keeps the
+\ name alive in the image but states nothing, so the stripped image died
+\ `ncomp: cannot compile REG-INCOMING?` (dot habu-give-the-build-4b825045).
+\
+\ REG-AOT-MERGE-INCOMING? decides which of two captured type registries a merge
+\ retains; src/habu/aot-file.f MERGE-REG is its only caller and calls it checked.
+PPRIM: TFAM REG-AOT-MERGE-INCOMING? PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PPRIM;
+\ CHECKER-BOUND REWIND is the core-prefix boundary's restore half, declared and
+\ its MARK half deliberately not: src/habu/prefix-rewind.f TO-CORE is the one
+\ consumer and it only ever rewinds, so nothing outside this file can move the
+\ boundary. The rewind is guarded by its own body - it dies on an unrecorded
+\ boundary and inside a rollback scope — and what it restores is checker
+\ knowledge, so a caller that runs it in a booted engine loses the symbols above
+\ the prefix and every later reference fails closed with E-UNDEFINED (measured).
+PPRIM: CHECKER-BOUND REWIND PPRIM;
 PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: E-USING-AMBIGUOUS  PE-N PE-OUT PRIM;
 PRIM: EFFECT-DIN-N       PE-N PE-OUT PRIM;

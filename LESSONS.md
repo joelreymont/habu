@@ -555,6 +555,18 @@ fits.
   a >16 name wedges gforth's `BUILD-MACHO` fixup walk in a ~40-min EXC_BAD_ACCESS
   loop (now fail-closed `PRIM-INL-CAP?`). Same lands-in-two-stages rule for a
   cross-layer checker word consumed by a habu-layer file.
+- **Turning a build-chain `TRUSTED:` bridge into a checked call needs the two
+  stages too, and fails EARLIER than a prefix change.** The TRUSTED: body was the
+  only route the checker admitted to a `DNAME-INT` callee, so replacing it with a
+  direct call needs the callee's `PRIM:`/`PPRIM:` row in the HOST. The consumer is
+  a tool file the host loads (`tools/native-build.f` -> `aot-file.f`,
+  `tools/build-fixpoint.f` -> `prefix-rewind.f`), so an old host dies at `--load`
+  of the build tool (`ncomp: cannot compile <word>`), before any target compiles.
+  Recovery is the same shape: build a stage engine from a tree carrying only the
+  row, promote it to `bin/hb`, then build the full tree. `bin/hb` is also the
+  HOST `BF-BOOTSTRAP-STAGE` compiles stage2 with -- `HABU_FIXPOINT_ENGINE` only
+  re-targets the INSTALL -- so the fixpoint needs the promoted binary, not just
+  the env var.
 - **Cross-agent engine landings BRICK sibling binaries.** A new cold-prefix file
   (e.g. `engine-error.f`) makes every other agent's baked-prefix-list `bin/hb` fail
   AT BOOT with `E-UNDEFINED` on updated consumers (find the baked list with

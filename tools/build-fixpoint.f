@@ -91,11 +91,12 @@ BF-NEED-PREAMBLE
 \ CHECKER-BOUND lives below the lower-cert seal, and the seal is what makes it
 \ unreachable from every consumer outside the prefix - measured here,
 \ `s" CHECKER-BOUND:CURSORS" CHECKER-RESOLVES?` answers 0 on a booted engine while
-\ the same query answers -1 for PREFIX-MARK:CURSORS. It is the same wall that made
-\ src/habu/prefix-rewind.f reach the seam through a trusted row rather than a
-\ name. So no consumer can hold the two numbers at once, and the property that
-\ the count comes OFF the seam is carried by construction instead: one assignment,
-\ in the file that owns the mark, from the seam itself.
+\ the same query answers -1 for PREFIX-MARK:CURSORS. Declaring the boundary's
+\ REWIND (dot habu-give-the-build-4b825045) did not move that wall: only the
+\ restore half carries a row, so CURSORS and MARK stay behind the seal and no
+\ consumer can hold the two numbers at once. The property that the count comes
+\ OFF the seam is carried by construction instead: one assignment, in the file
+\ that owns the mark, from the seam itself.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: BF-EVAL-N ( ptr u8 n -- n ) evaluate ;
 

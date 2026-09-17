@@ -171,7 +171,7 @@ create EMPTY 1 allot            \ zero-length stdin
    s" E-INST" NEG
    s" bare CT-LIVE? field-liveness query fails closed" T-LABEL
    s" CT-LIVE?" NEG
-   s" the unchecked prefix cursor reader is internal" T-LABEL
+   s" the prefix cursor reader stays internal: only REWIND carries a row" T-LABEL
    s" CHECKER-BOUND:CURSORS" NEG ;
 
 : ARGS-FORGE$ ( -- ptr u8 n )        \ args present: the gate is not depth-keyed
@@ -1112,6 +1112,49 @@ create QNAME QNAME-CAP allot
    s" TFAM-SLOTS@" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: TFAM-SLOTS@" ASSERT-DIAG ;
 
+\ --- the engine's own build chain (dot habu-give-the-build-4b825045). Three
+\ sites in it used to name a word this pass marks DNAME-INT - two through a
+\ TRUSTED: body, one through an XREF-FIND on the spelling - which keeps the name
+\ alive in a shipped image for one caller and states nothing about the word. A
+\ product image that keeps only the names the checker knows therefore could not
+\ build the next generation (`ncomp: cannot compile REG-INCOMING?`, rc 67).
+\
+\ THE THREE ANSWERS ARE NOT THE SAME ANSWER, and the point of these cases is
+\ which one each site got. Two callees the build chain really must reach carry a
+\ declared effect now, so their callers are ordinary checked Habu and the pass
+\ leaves the name callable. The third had no consumer at all - hide.f's
+\ signature-store reset was never called by anything - so `USIGS` keeps the seal
+\ and the uncalled words are gone instead.
+\
+\ AND THEIR NEIGHBOURS STAYED SEALED, which is the half a row could quietly take
+\ away: CHECKER-BOUND:MARK is what TAKES the core-prefix boundary and only
+\ src/core/lower-cert-seal.f may do that, CURSORS (in NEG-BARE above) is the
+\ number tools/build-fixpoint.f deliberately cannot hold beside the mark's own
+\ copy, and REWIND is guarded by its own body. Running REWIND in a booted engine
+\ discards the checker's symbols above the prefix, so the case below pins the
+\ outcome that makes the row safe to have: the next reference is refused, not
+\ mis-certified.
+
+: BCC-REWIND-FORGE$ ( -- ptr u8 n )   \ a rewound boundary refuses, it does not lie
+   SB-RESET
+   s" : IWGBCA ( -- n ) 7 ;" SB-APPEND LF
+   s" CHECKER-BOUND:REWIND" SB-APPEND LF
+   s" : IWGBCB ( -- n ) IWGBCA ;" SB-APPEND LF
+   SB$ ;
+
+: BUILD-CHAIN-CALLEE-CASES ( -- )
+   s" the merge comparator carries a row: aot-file.f MERGE-REG calls it checked" T-LABEL
+   s" TFAM:REG-AOT-MERGE-INCOMING?" TSEAL-BRIDGE-AXIOM
+   s" the boundary rewind carries one too: prefix-rewind.f TO-CORE calls it checked" T-LABEL
+   s" CHECKER-BOUND:REWIND" TOKEN$ RUN-SUBJECT ASSERT-OK
+   s" and a rewound boundary refuses the next reference instead of certifying it" T-LABEL
+   BCC-REWIND-FORGE$ RUN-SUBJECT
+   s" undefined word 'IWGBCA'" ASSERT-DIAG
+   s" MARK keeps the seal: only lower-cert-seal.f may take the boundary" T-LABEL
+   s" CHECKER-BOUND:MARK" NEG
+   s" USIGS keeps it as well: the uncalled hide.f reset that named it is gone" T-LABEL
+   s" USIGS" NEG ;
+
 \ --- the sealed declaration grammar (dot habu-tfam-2b-sealed-1b77662c, third of
 \ three). src/core/sumtype.f defined 316 globals and now defines 45 publics and
 \ 271 privates under `package TYPE-DECL`, with SEVEN names left global.
@@ -1312,6 +1355,7 @@ create QNAME QNAME-CAP allot
    SEAL-CASES
    VERIFY-MIRROR-CASES
    TFAM-SEAL-CASES
+   BUILD-CHAIN-CALLEE-CASES
    TYPE-DECL-SEAL-CASES
    NEG-SHAPES
    SEED-RESET-CASES

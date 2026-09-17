@@ -969,9 +969,6 @@ variable H-DATA-R                    \ where the artifact's window begins inside
 \ registry owner compares their format and identity; no live serialization.
 DYNAMIC-BUFFER HOST-REG n
 
-TRUSTED: REG-INCOMING? ( ptr u8 n ptr u8 n -- bool )
-   TFAM:REG-AOT-MERGE-INCOMING? ;
-
 : SAVE-REG ( -- )
    H-REG @ 0 < H-REG @ AOT-REG-CAP > or if
       s" aot-file: captured host registry exceeds its buffer" DIE then
@@ -979,7 +976,8 @@ TRUSTED: REG-INCOMING? ( ptr u8 n ptr u8 n -- bool )
    H-REG @ 0 ?do AOT-REG-BUF@ i + c@ 0 HOST-REG BYTE-VIEW i + c! loop ;
 
 : MERGE-REG ( -- )
-   0 HOST-REG BYTE-VIEW H-REG @ AOT-REG-BUF@ S-REG ROW-LEN@ REG-INCOMING? if
+   0 HOST-REG BYTE-VIEW H-REG @ AOT-REG-BUF@ S-REG ROW-LEN@
+   TFAM:REG-AOT-MERGE-INCOMING? if
       S-REG ROW-LEN@ AOT-REG-LEN !
    else
       H-REG @ 0 ?do 0 HOST-REG BYTE-VIEW i + c@ AOT-REG-BUF@ i + c! loop

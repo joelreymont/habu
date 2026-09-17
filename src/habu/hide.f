@@ -3,6 +3,17 @@
 \ Loaded before the native refresh source reloads common engine files. The words
 \ intentionally use a BFR prefix so they can be defined in old engines that lack
 \ xref.f, then hide themselves by truncating back to the requested marker.
+\
+\ WHAT IS NOT MIRRORED HERE ANY MORE. tools/bootstrap.sh's prologue resets the
+\ signature store before it truncates (BOOT-USIGS-RESET); this file carried the
+\ BFR-* twin of that reset, and nothing in the tree ever called it - the native
+\ refresh rewinds the checker through its own boundary instead
+\ (src/habu/prefix-rewind.f). Its only body was a TRUSTED: row naming `USIGS`,
+\ a signature-less colon word of the checker's that the seal marks DNAME-INT,
+\ so the uncalled words were also the reason a product image that keeps only
+\ the names the checker knows could not compile this payload. They are gone
+\ rather than given a declared surface, because the seal is not wrongly
+\ covering `USIGS`: no consumer needs it (dot habu-give-the-build-4b825045).
 
 0 constant BFR-START-SLOT
 2 constant BFR-FLAGS-SLOT
@@ -11,14 +22,11 @@
 -1 constant BFR-NOT-FOUND
 24 constant BFR-INLINE-OFF
 
-\ Refresh casts expose mixed dictionary records, inline/long names, the signature
-\ terminator, and the raw cursors truncated before reload.
+\ Refresh casts expose mixed dictionary records and inline/long names.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: BFR-N>REC ( n -- ptr n ) ;
 TRUSTED: BFR-A>U8 ( ptr n -- ptr u8 ) ;
 TRUSTED: BFR-N>U8 ( n -- ptr u8 ) ;
-TRUSTED: BFR-USIG-END-PTR ( -- ptr n ) USIGS UEND @ + ;
-TRUSTED: BFR-UEND! ( n -- ) UEND ! ;
 \ THE LOWERING SEAM, and `seed-ndict!` rather than public `ndict!` because the
 \ host this prelude runs on has its seal floor armed: the watermark is set
 \ before any entry (habu2.f EM-SEAL-SEEDED-RUNTIME) and BNDSET refuses every
@@ -125,13 +133,6 @@ TRUSTED: BFR-SN! ( ptr u8 -- )
 : BFR-MATCH? ( ptr n ptr u8 n -- bool )
    BFR-U ! BFR-A!
    BFR-NAME$ BFR-A@ BFR-U @ BFR-STR=CI ;
-
-: BFR-USIG-TERM ( -- )
-   0 BFR-USIG-END-PTR ! ;
-
-: BFR-USIGS-RESET ( -- )
-   0 BFR-UEND!
-   BFR-USIG-TERM ;
 
 : BFR-FIND-FIRST-INDEX ( ptr u8 n -- n )
    BFR-SU ! BFR-SN!

@@ -255,9 +255,12 @@ TABLE-LIVE
 s" EIXA" EIX-MIN-IN 2 T=
 s" EIXT2" EIX-MIN-IN 5 T=
 
-\ A REWIND NO SEAM PERFORMED. src/habu/hide.f's refresh prelude assigns UEND and
-\ writes the terminator directly, so the store can move under the table without
-\ USIGS-RESTORE-END ever being called. The append choke point is where that has
+\ A REWIND NO SEAM PERFORMED. tools/bootstrap.sh's recovery prologue assigns
+\ UEND and writes the terminator directly (BOOT-USIGS-RESET), so the store can
+\ move under the table without USIGS-RESTORE-END ever being called. src/habu/
+\ hide.f carried the BFR-* twin of that until dot habu-give-the-build-4b825045
+\ removed it as uncalled; the recovery launcher still does it, and so does the
+\ raw rewind below. The append choke point is where that has
 \ to be noticed, and the case that proves it is a record with NO NODES: an
 \ `undefine` appends a record and copies nothing, so the interner's own entry
 \ path never runs and only E-REC-START's sync is left to see the rewind. Read as

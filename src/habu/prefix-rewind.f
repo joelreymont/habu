@@ -2,10 +2,10 @@
 \
 \ PAYLOAD-ONLY, exactly like src/habu/hide.f: tools/build-fixpoint.f emits this
 \ file at the head of every generated engine source and nothing else loads it.
-\ That is what keeps the two raw seams below out of a shipped engine - a
-\ booted engine has no such word to call, and the seal guard the first of them
-\ bypasses (src/habu/xref.f SEAL-DICT-GUARD) therefore still answers for every
-\ name a user program can reach.
+\ That is what keeps the one raw seam below out of a shipped engine - a booted
+\ engine has no such word to call, and the seal guard it bypasses
+\ (src/habu/xref.f SEAL-DICT-GUARD) therefore still answers for every name a
+\ user program can reach.
 \
 \ WHY IT IS NOT IN hide.f, the file that owns the other rewind. hide.f is
 \ deliberately unpackaged - tools/bootstrap-codegen-test.f includes it to drive
@@ -26,10 +26,10 @@ package PREFIX-REWIND
 
 private
 
-\ THE TWO ENGINE SEAMS THIS REWIND DRIVES, one row each, because a checked body
-\ can name neither. NOT spelled `seed-ndict!`: Habu folds case, so a tail spelled
-\ like the engine word it wraps IS that word inside this package block and the
-\ body would call itself.
+\ THE ONE ENGINE SEAM THIS REWIND DRIVES THROUGH A ROW, because a checked body
+\ can name it no other way. NOT spelled `seed-ndict!`: Habu folds case, so a
+\ tail spelled like the engine word it wraps IS that word inside this package
+\ block and the body would call itself.
 \
 \ `seed-ndict!` AND NOT `ndict!`, because a build host reaches this rewind with
 \ its own seal floor already armed: a seeded engine arms it at startup
@@ -43,32 +43,27 @@ private
 \ LOGICAL-RESET drives the same seam for the in-process window build.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: DICT! ( n -- ) seed-ndict! ;
-defer BOUND! ( -- )
-TRUSTED: BIND-BOUND ( -- )
-   s" CHECKER-BOUND:REWIND" XREF-FIND
-   dup XREF-FOUND? 0= if drop s" prefix rewind: checker boundary missing" 76 die then
-   dup XREF-RETIRED? if drop s" prefix rewind: checker boundary retired" 76 die then
-   XREF-START dup 0= if drop s" prefix rewind: checker boundary has no code" 76 die then
-   is BOUND! ;
-BIND-BOUND
 
-\ The rewind is a pre-hook definition, so an older host may carry its code
-\ without a native call model. The protected package owns its dictionary
-\ record; the trusted binder reads that record into this private typed slot.
-\ Ordinary tick and search continue to refuse internal execution tokens.
-\ It does not publish a global axiom or a checked-callable rewind capability.
+\ The checker boundary is reached by its own name. It is a pre-hook definition,
+\ so the checker records no signature for it and the seal-time marking pass used
+\ to leave it DNAME-INT - which is why this file used to find its record by
+\ string and bind a defer from inside a trusted body. src/core/checker.f now
+\ carries `PPRIM: CHECKER-BOUND REWIND PPRIM;`, so the call below is ordinary
+\ checked Habu and survives an image that keeps only the names the checker knows
+\ (dot habu-give-the-build-4b825045). MARK has no row, so the boundary can still
+\ only be TAKEN by the file that owns it.
 
 public
 
-\ FOUR PARTS, IN THIS ORDER. The checker first, because BOUND! is the checker's
-\ own boundary seam and it walks the records being discarded before their counts
-\ move - the signature store's index heads, the symbol hash index, the signature
-\ pool - and every one of those walks needs the dictionary those records still
-\ belong to. It is one call and not a list of numbers on purpose: the marks a
-\ scope invalidates are checker.f's list, it changes when that file changes, and
-\ a copy of it here went stale the first time, carrying four cursor families out
-\ of twenty. A warm image built that way segfaulted on its first type
-\ declaration. Then the dictionary.
+\ FOUR PARTS, IN THIS ORDER. The checker first, because the rewind is the
+\ checker's own boundary seam and it walks the records being discarded before
+\ their counts move - the signature store's index heads, the symbol hash index,
+\ the signature pool - and every one of those walks needs the dictionary those
+\ records still belong to. It is one call and not a list of numbers on purpose:
+\ the marks a scope invalidates are checker.f's list, it changes when that file
+\ changes, and a copy of it here went stale the first time, carrying four
+\ cursor families out of twenty. A warm image built that way segfaulted on its
+\ first type declaration. Then the dictionary.
 \
 \ Then the include registry, through its own seam for the same reason the
 \ signature store has one: the rows above the mark name files whose definitions
@@ -91,7 +86,7 @@ public
 \ it repairs. It is last because it reads the dictionary the lines above it
 \ settle, and because it re-arms the floor that DICT! cleared.
 : TO-CORE ( -- )
-   BOUND!
+   CHECKER-BOUND:REWIND
    PREFIX-MARK:DICT DICT!
    PREFIX-MARK:REQ REQUIRE-REG:TRUNCATE
    SEAL-CAPTURE ;
