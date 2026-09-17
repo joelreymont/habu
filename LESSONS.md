@@ -9196,3 +9196,17 @@ only visible symptom was `hb-build` exiting 70 on every stripped fixture,
 because the name it failed on is never printed. A mechanical rename over Forth
 source must be audited against `undefine`, `s"` text and comments, not just
 call sites.
+
+## 2026-09-18 - an engine judges nothing it has baked
+
+A read-only engine built to carry a new checker rule cannot judge a baked
+source: `--load src/compiler/native/emit.f` on it is a 20 ms no-op, because
+`REQUIRE-BODY` (`src/core/include.f`) returns for a path already in the boot
+require registry, and feeding the file on stdin dies on the duplicate package
+or family before the rule is ever asked. Measured by appending a deliberately
+ill-typed probe word to three baked files (nothing reported) and to one unbaked
+file (reported at once). So a rule's verdict on a prefix or compiler source is
+only ever obtained by building the next generation with the rule engine as host
+- the build stops at the first refusal and names it - and a "clean sweep" of
+baked files on such an engine proves nothing. Unbaked sources (lib/, tools/,
+test/, src/arch/tic6x/, src/compiler/native/codewalk.f) are judged directly.
