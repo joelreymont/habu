@@ -387,6 +387,14 @@ the declaration; and `FFI:ERRNO ( -- n )` is the one errno binding every
 consumer shares. `lib/ffi-test.f` covers the declarer, including the refusals and
 the invariant that a declaration leaves the stack as it found it.
 
+Every declaration in an image shares one table, sized for a server that binds
+five or six libraries at once: `FFI:DECLARATION-MAX` is 256 rows of $48 bytes
+each, $4800 bytes of image data, and `FFI:ROOM?` answers whether another row is
+left. A declaration that finds the table full is `E-FFI-TABLE-FULL`, and the
+declarer names the Habu word and the C symbol it could not give a row on stderr
+before it throws. `test/five-bindings.f` holds `TCP4`, `CURL`, `DB`, `CRYPTO`
+and `TASK` - 68 rows - in one image and declares past them.
+
 ```forth
 FFI:RESET         ( -- )
 FFI:VALUE!        ( n n -- )
@@ -417,6 +425,8 @@ FFI:CSTR          ( ptr u8 n ptr u8 -- )
 FFI:NOW           ( -- n )
 FFI:DLOPEN        ( ptr u8 n -- n )
 FFI:DLSYM         ( n ptr u8 -- n )
+FFI:DECLARATION-MAX ( -- n )
+FFI:ROOM?         ( -- bool )
 ```
 
 ## ZIP Archives

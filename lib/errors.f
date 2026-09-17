@@ -161,6 +161,10 @@
 \ FUNCTION: with no library selected in the declaring scope: state LIBRARY or
 \ PROCESS-SYMBOLS beside the declarations rather than inherit another file's.
 -3503 constant E-FFI-LIBRARY
+\ Every declaration this image holds shares one table, sized by lib/ffi-abi.f's
+\ FN-MAX: a full one is refused here, naming the Habu word and the C symbol that
+\ found no row. Arity keeps E-FFI-ARITY; this is capacity.
+-3504 constant E-FFI-TABLE-FULL
 
 \ Tasking/threads: -3600..-3699
 -3600 constant E-TASK-FIRST

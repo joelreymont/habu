@@ -5,6 +5,11 @@ require lib/test.f
 require lib/ffi-abi.f
 require test/checker-assert.f
 require lib/type/deftype.f         \ DEFTYPE - the ffi-dev / ffi-ctx test nominals
+require lib/string.f               \ SB / CONTAINS? - the child's stderr is matched here
+require lib/fmt.f                  \ the code the child prints is rendered from its name
+require lib/process.f
+require lib/process-argv.f         \ the full-table case needs a child engine
+require lib/test/outcome.f
 
 package FFI-TEST
 
@@ -159,6 +164,62 @@ variable FFI-T-PAIR-AFTER
 \ A declared symbol that no library carries: the failure is named and lands at
 \ the first call, never at the declaration.
 FUNCTION: FFI-T-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION
+
+\ ---- the declaration table's ceiling ---------------------------------------
+\ The table belongs to the IMAGE, so its ceiling can only be reached by a
+\ process that fills it: this case fills a child engine's. The loop declares and
+\ undefines ONE name, so whichever turn runs out of rows, the refusal carries
+\ that word and that symbol - and the symbol is one no library exports, which a
+\ declaration is entitled to because it never resolves.
+$200 constant FFI-T-SRC-CAP
+$4000 constant FFI-T-CAP
+30000 constant FFI-T-TIMEOUT-MS
+67 constant FFI-T-UNCAUGHT-RC             \ hb's exit status for an uncaught throw
+
+FFI-T-SRC-CAP CODEGEN:BUFFER FFI-T-SRC
+
+create FFI-T-OUT FFI-T-CAP allot
+create FFI-T-ERR FFI-T-CAP allot
+
+: FFI-T-SRC+ ( ptr u8 n -- )
+   FFI-T-SRC CODEGEN:APPEND-STRING ;
+
+: FFI-T-FULL-SRC$ ( -- ptr u8 n )
+   FFI-T-SRC CODEGEN:RESET
+   s\" require lib/ffi-abi.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
+   s\" : ZZ-FILL ( -- ) FFI:DECLARATION-MAX 1+ 0 ?do\n" FFI-T-SRC+
+   s\"    s\" FUNCTION: ZZ-OVER habu-ffi-table-probe ( -- n )" FFI-T-SRC+
+   s\"  ;FUNCTION\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\"    s\" undefine ZZ-OVER\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\" loop ;\nZZ-FILL\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-ERR$ ( len -- ptr u8 n ) {: u:len :}
+   FFI-T-ERR u LEN>N ;
+
+: FFI-T-RUN-STDIN ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
+   PROC-ARGV-RESET
+   s" bin/hb" >LEN src srcu >LEN
+   FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
+   FFI-T-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+
+\ The line the child prints for an uncaught code, rendered from the name so the
+\ needle follows lib/errors.f instead of repeating its number.
+: FFI-T-CODE$ ( n -- ptr u8 n ) {: code:n :}
+   SB-RESET
+   s" uncaught throw code " SB-APPEND
+   code FMT:SB-INT
+   SB$ ;
+
+: FFI-T-TABLE-FULL ( -- )
+   s" a full declaration table is refused with its own code" T-LABEL
+   FFI-T-FULL-SRC$ FFI-T-RUN-STDIN FFI-T-UNCAUGHT-RC T-OUTCOME-EXITED=
+   {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru FFI-T-ERR$ E-FFI-TABLE-FULL FFI-T-CODE$ CONTAINS? TTRUE
+   s" the refusal names the symbol and the word being declared" T-LABEL
+   erru FFI-T-ERR$ s" habu-ffi-table-probe" CONTAINS? TTRUE
+   erru FFI-T-ERR$ s" ZZ-OVER" CONTAINS? TTRUE ;
 
 : FFI-T-CHECK-PASSES ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
@@ -334,7 +395,9 @@ PROCESS-SYMBOLS
    s" FFI-T-LIE ( n -- ) 8 0 FFI:WRITABLE!" FFI-T-CHECK-REJECTS
    s" FFI-T-MULTI ( ptr u8 n -- n n ) FFI:DLOPEN" FFI-T-CHECK-REJECTS
    s" FFI:" 0 search-wl 0= TTRUE
-   s" CALL0" 0 search-wl 0= TTRUE ;
+   s" CALL0" 0 search-wl 0= TTRUE
+
+   FFI-T-TABLE-FULL ;
 
 FFI-RUN
 

@@ -761,6 +761,12 @@ SUITE ffi-cabi
    lib/ffi-test.f
 ;SUITE
 
+\ The five foreign libraries a server binds at once, in one image: the load is
+\ the case, because one short declaration table refuses it outright.
+SUITE five-bindings
+   test/five-bindings.f
+;SUITE
+
 \ Loopback HTTP in one process; the one HTTPS request is opt-in behind
 \ HABU_NET_TESTS.
 SUITE curl-http

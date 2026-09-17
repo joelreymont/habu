@@ -197,8 +197,17 @@ $41C8 constant FFI-SCRATCH-END
 \ binder. A row resolves its symbol on the first call and caches the address;
 \ library 0 is the process itself (RTLD_DEFAULT, acquiring no reference), any
 \ other index is a path this package dlopens once.
+\
+\ THE TABLE IS SIZED FOR A SERVER IMAGE, not for a library or two. One process
+\ legitimately binds five or six: the Tender server holds TCP4's 11 rows,
+\ libcurl's 15, libpq's 18, libcrypto's 19 and task's 5 at once, 68 before it
+\ declares anything of its own, and each later milestone adds foreign surface.
+\ A row costs FN-NAME-CAP bytes of symbol plus three cells (address, library,
+\ argc) = $48 bytes, so the whole table is FN-MAX * $48 = $4800 bytes of image
+\ data. A declaration past the last row is E-FFI-TABLE-FULL, not a wrap or a
+\ silent drop.
 
-$40 constant FN-MAX
+$100 constant FN-MAX                      \ $100 rows * $48 bytes = $4800 bytes
 $30 constant FN-NAME-CAP                  \ NUL-terminated C symbol
 $08 constant LIB-MAX
 $60 constant LIB-PATH-CAP                 \ NUL-terminated library path
@@ -385,14 +394,24 @@ public
 \ declaration resolves against.
 : PROCESS ( -- n ) 0 ;
 
+\ The table's size and whether one more row is left. The declarer asks before it
+\ registers, so a refusal can name the declaration package FFI never sees; the
+\ ceiling is documented in docs/stdlib.md and read from here, never retyped.
+: DECLARATION-MAX ( -- n ) FN-MAX ;
+
+: ROOM? ( -- bool ) FN-N @ FN-MAX < ;
+
 : LIBRARY-PATH ( ptr u8 n -- n ) {: path:ptr u:n :}
    LIB-N @ LIB-MAX >= if E-FFI-ARITY throw then
    path u PATH-ROOM LIB-N @ LIB-PATH CSTR
    0 LIB-N @ LIB-HANDLE!
    LIB-N @ 1 + dup LIB-N ! ;
 
+\ The table's own fail-closed guard. The declarer refuses first, with the word
+\ and symbol in its diagnostic; this stands for every other caller and for the
+\ errno row below, and it is what keeps a full table from being overrun.
 : DECLARE ( ptr u8 n n n -- n ) {: name:ptr u:n lib:n argc:n :}
-   FN-N @ FN-MAX >= if E-FFI-ARITY throw then
+   ROOM? 0= if E-FFI-TABLE-FULL throw then
    lib LIB-N @ 1 + FFI-CHECK-INDEX
    argc FFI-MAX-ARGS FFI-CHECK-COUNT
    name u NAME-ROOM FN-N @ FN-NAME CSTR
@@ -480,6 +499,12 @@ get-current prot-wid-add
 \ declaration, so an absent symbol is E-FFI-DLSYM where the caller stands;
 \ package FFI re-resolves after an image restore.
 \
+\ Every declaration in the image shares FFI's one table. A declaration that
+\ finds it full is E-FFI-TABLE-FULL, and the refusal is the declarer's because
+\ only here are the Habu word and the C symbol both in hand: the diagnostic
+\ names them on stderr before the throw, so a full table is one line rather
+\ than a bisection over the libraries a process happens to load.
+\
 \ THE GENERATED TEXT DEFINES WORDS AND LEAVES NOTHING ON THE STACK. That is the
 \ only reading under which the loader's audited INCLUDE-EVALUATE ( ptr u8 n -- )
 \ is honest, and it is this declarer's whole obligation to that boundary: one
@@ -503,6 +528,9 @@ $10 constant ARG-MAX
 16 constant HEX-BASE
 $20 constant SP-C
 $24 constant HEX-C                        \ '$' - the hex literal prefix
+$0A constant LF-C                         \ the diagnostic's line terminator
+2 constant DIAG-FD                        \ stderr
+$100 constant DIAG-CAP                    \ the refusal line: two $40 tokens and its wording
 
 0 constant K-VALUE
 1 constant K-POINTER
@@ -522,6 +550,7 @@ $24 constant HEX-C                        \ '$' - the hex literal prefix
 
 GEN-CAP CODEGEN:BUFFER GEN
 EFF-CAP CODEGEN:BUFFER EFF
+DIAG-CAP CODEGEN:BUFFER DIAG
 
 create NAME-BUF TOK-CAP allot
 create SYM-BUF TOK-CAP allot
@@ -710,7 +739,38 @@ variable SCOPE-SET                         \ ... and whether one was stated at a
    CALL-KIND @ C-POINTER = if s" FFI:CALL-PTR" GEN+ exit then
    s" FFI:CALL" GEN+ ;
 
+\ ---- the row this declaration takes ----------------------------------------
+\ Package FFI owns the table and refuses a full one itself. The declarer asks
+\ first because the two facts a refusal has to carry - the Habu word being
+\ defined and the C symbol behind it - are held here and nowhere else. The
+\ line goes to stderr exactly as a load-time diagnostic does, and the throw
+\ that follows is what ends the load.
+
+: DIAG-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   DIAG-FD a u write drop ;
+
+: DIAG+ ( ptr u8 n -- )
+   DIAG CODEGEN:APPEND-STRING ;
+
+: REPORT-FULL ( -- )
+   DIAG CODEGEN:RESET
+   s" ffi: declaration table full at " DIAG+
+   FFI:DECLARATION-MAX DIAG CODEGEN:APPEND-DECIMAL
+   s"  rows: no row for " DIAG+
+   NAME-BUF NAME-U @ DIAG+
+   s"  (symbol " DIAG+
+   SYM-BUF SYM-U @ DIAG+
+   s" )" DIAG+
+   LF-C DIAG CODEGEN:APPEND-BYTE
+   DIAG CODEGEN:CONTENTS DIAG-LINE ;
+
+: TABLE-ROOM ( -- )
+   FFI:ROOM? if exit then
+   REPORT-FULL
+   E-FFI-TABLE-FULL throw ;
+
 : SLOT ( -- n )
+   TABLE-ROOM
    SYM-BUF SYM-U @ CUR-LIB @ INT-N @ FFI:DECLARE ;
 
 : EMIT ( -- )
