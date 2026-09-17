@@ -7126,6 +7126,16 @@ and --no-lldbinit.
   waited for " ok" over a buffer still holding the boot banner (" ok\r\n\r\e[Khabu> ")
   and so typed its next line into a child still compiling the previous one — a
   drain must drop what it swallowed (2026-09-17).
+- **A pty harness that stops reading deadlocks the child it is waiting on.**
+  `test/aot-data-span-forge.f` read with `4096 RN @ - read`, so a full buffer
+  asked for zero bytes and was handed zero back: RN parked at exactly the cap and
+  the harness was deaf from there on. A child that wrote 5000 bytes before its
+  marker was never heard, the wait's 500-poll budget went by in 19 ms (a count of
+  polls is not a clock), and the run then HUNG rather than redding — `PROC-WAIT-RC`
+  has no timeout and the child was blocked writing into a pty nobody drained
+  (5.5 minutes, then killed by hand). Keep the buffer's tail and read to the
+  marker under a deadline, so even a wait that gives up has drained everything
+  the child sent (2026-09-17).
 
 - **A keep list derived by reading requires is not a closure.** The spill probe
   needed a file no direct require named — reached transitively through a case

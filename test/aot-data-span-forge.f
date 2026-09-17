@@ -68,9 +68,11 @@
 \         half that says the name reaches the right address at boot.
 \
 \ The gate registers one case per independent build; a standalone run with no
-\ case keeps the complete focused sequence. The PTY primitives below mirror test/proc-pty.f
-\ verbatim; factoring them into a shared lib is out of this dot's scope. Linux gate
-\ hosts provide /dev/ptmx + a mounted /dev/pts (docs/process-pty.md).
+\ case keeps the complete focused sequence. The PTY primitives below mirror
+\ test/proc-pty.f, deadline shape included, down to one deliberate difference
+\ noted at READ-STEP; factoring them into a shared lib is out of this dot's scope
+\ (dot habu-share-one-pty-b1d88b7c). Linux gate hosts provide /dev/ptmx + a
+\ mounted /dev/pts (docs/process-pty.md).
 \
 \ Standalone:
 \   bin/hb --load lib/errors.f lib/string.f lib/fmt.f lib/memory.f lib/fs.f lib/fs-mutate.f \
@@ -116,12 +118,14 @@ $40045431 constant LINUX-TIOCSPTLCK
 $80045430 constant LINUX-TIOCGPTN
 2   constant PTY-OPEN-RDWR
 10  constant PTY-POLL-MS
-500 constant PTY-EXPECT-MAX-POLLS         \ up to ~5s to let the child boot + write
+$4E20 constant PTY-WAIT-MS                \ one wait runs at most this long on the clock
+$1000 constant PTY-RBUF-CAP
+$200 constant PTY-KEEP-TAIL               \ bytes kept when a full buffer is compacted
 
 $8000 constant CAP
 create OUT CAP allot    variable OUT-U
 create ERR CAP allot    variable ERR-U
-create RBUF 4096 allot  variable RN
+create RBUF PTY-RBUF-CAP allot  variable RN
 create PTYNAME 128 allot   variable PTY-U
 create CH 1 allot
 variable PTYNUM   variable MFD   variable SFD   variable PID
@@ -194,24 +198,51 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    ;MATCH ;
 
 \ --- PTY plumbing (mirror test/proc-pty.f) ---
-: READ+ {: fd :} ( fd -- )
-   fd FD>N RBUF RN @ + 4096 RN @ - read
-   dup 0 > if RN @ + RN ! else drop then ;
+\ A full buffer keeps its tail rather than dropping everything: a marker split
+\ across the compaction survives whole in what is kept, and every older byte has
+\ already been searched. PTY-KEEP-TAIL is far longer than any marker or boot
+\ report line below. Without it the read below asks for zero bytes once the
+\ buffer is full, is handed zero back, and the harness is deaf from there on --
+\ measured: a child that wrote 5000 bytes before its marker parked RN at exactly
+\ PTY-RBUF-CAP and the marker was never seen.
+: KEEP-TAIL! ( -- )
+   RN @ PTY-RBUF-CAP PTY-KEEP-TAIL - < if exit then
+   RBUF RN @ PTY-KEEP-TAIL - + RBUF PTY-KEEP-TAIL BYTE-COPY
+   PTY-KEEP-TAIL RN ! ;
 
-: MFD-READ-READY? ( -- bool )        \ one poll+read on the master
-   MFD @ >FD PTY-POLL-MS >MS POLL-IN COUNT>N 0 > if MFD @ >FD READ+ 0 0= exit then
-   0 0= 0= ;
+\ Append one read and report it, keeping room for the next one.
+: READ+ ( fd -- n ) {: fd :}
+   KEEP-TAIL!
+   fd FD>N RBUF RN @ + PTY-RBUF-CAP RN @ - read {: got :}
+   got 0 > if RN @ got + RN ! then
+   got ;
 
-\ Poll the master until the accumulated output contains a/u, or the poll budget is
-\ spent (the child needs ~0.5s to boot before it writes). Mirrors proc-pty EXPECT-WAIT?.
+\ One poll and, when the master has bytes, one read: above zero for bytes
+\ appended, 0 for a quiet poll, below zero once the child is gone -- a ready
+\ descriptor that reads nothing is the hang-up. A poll that reports no readiness
+\ is quiet, an errno included: the master is opened blocking, so a read no poll
+\ authorised could block past the deadline.
+: READ-STEP ( fd -- n ) {: fd :}
+   fd PTY-POLL-MS >MS POLL-IN COUNT>N 0 <= if 0 exit then
+   fd READ+ 0 > if 1 exit then
+   -1 ;
+
+\ Keep reading the master until the text appears, the child hangs up, or the
+\ wait's deadline passes. A booting engine answers in as many pieces as the
+\ host's scheduling chooses, so no count of polls bounds this wait: reads that
+\ bring data and a dead child's ready-and-empty polls both spend a count without
+\ spending time -- measured, the 500-poll budget this wait used to carry went by
+\ in 19 ms. The deadline is absolute and is tested before each poll, so the wait
+\ overruns it by at most the poll already in flight. A partial read is neither an
+\ answer nor a failure: only the text, the hang-up and the clock end the loop.
+\ Mirrors proc-pty EXPECT-WAIT?.
 : WAIT-FOR ( ptr u8 n -- bool ) {: a:ptr u :}
-   RBUF$ a u CONTAINS? if 0 0= exit then
-   0 begin dup PTY-EXPECT-MAX-POLLS < while
-      MFD-READ-READY? drop
-      RBUF$ a u CONTAINS? if drop 0 0= exit then
-      1 +
-   repeat drop
-   0 0= 0= ;
+   PTY-WAIT-MS >MS PROC-DEADLINE-AT {: deadline :}
+   begin
+      RBUF$ a u CONTAINS? if true exit then
+      deadline PROC-LEFT-MS MS>N 0 = if false exit then
+      MFD @ >FD READ-STEP 0 < if RBUF$ a u CONTAINS? exit then
+   again ;
 
 : SEND-C {: c :} ( c -- )
    c CH c!
