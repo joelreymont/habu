@@ -20,7 +20,7 @@ require lib/test.f
 
 package PTY-TTY-SMOKE
 
-$3E8 constant STEP-MS              \ one poll blocks at most this long
+$64 constant STEP-MS               \ one poll blocks at most this long
 $4E20 constant WAIT-MS             \ and one wait runs at most this long on the clock
 3 constant QUIET-POLLS             \ polls in a row that bring nothing and so end a drain
 $200 constant KEEP-TAIL            \ bytes kept when a full buffer is compacted
