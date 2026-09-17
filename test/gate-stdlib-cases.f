@@ -376,6 +376,10 @@ SUITE stripped-literal
    test/stripped-literal.f
 ;SUITE
 
+SUITE aot-data-cell-refusals
+   test/compiler/aot-data-cell-refusals.f
+;SUITE
+
 SUITE stripped-entry
    test/stripped-entry.f
 ;SUITE

@@ -65,20 +65,9 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 
 \ Only the user DATA span is copied by stripped startup. A fixed address into
 \ the compiler's earlier heap would otherwise silently read a zeroed replacement.
+\ DATA-ADDRESS! and DATA-TARGET, which enforce that, are defined with the other
+\ refusals below, after the record accessors their diagnostics name a cell with.
 variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN  variable BLOB-LBL
-: DATA-ADDRESS! ( n -- ) {: v:n :}
-   \ The end is a valid one-past pointer for a zero-length buffer. Relocation
-   \ preserves the address; it does not certify a later memory access.
-   v BLOB-SRC @ < v BLOB-END @ > or if
-      s" aot: address refers to data outside the restored span" 74 die
-   then ;
-
-\ Immutable literal rows can be copied into the capture's active pool. Other
-\ pre-window DATA has no ownership proof and must keep the link refusal.
-: DATA-TARGET ( n -- n ) {: v:n :}
-   v BLOB-SRC @ >= v BLOB-END @ <= and if v exit then
-   v NSTR:REINTERN-OWNED if dup DATA-ADDRESS! exit then
-   dup DATA-ADDRESS! ;
 
 \ Decode an AArch64 direct branch (B / BL). Both share opcode bits: masking off
 \ the link bit leaves $14000000, so DIRECT? recognizes B and BL and excludes the
@@ -363,6 +352,121 @@ variable SP2  variable SEND
       then
    loop XREF-NULL ;
 
+\ A cell holds a code/dict pointer iff its value lands in a LIVE engine extent the
+\ dictionary records: the dict-record array [AOT-DBASE@, +ndict@*DREC) or the emitted
+\ code span [AOT-DBASE@+DICT-SIZE, AOT-CP@). Both bounds are recorded live extents, so a
+\ plain datum in free space (above the code high-water, or a free dict slot) is data and
+\ the classification survives the code region moving near ordinary integer magnitudes. The
+\ former [RBASE-VA, RBASE-VA+REGION) window was a MAGNITUDE HEURISTIC that misclassified any
+\ datum in the 8 MiB window as a pointer (dot habu-identify-code-pointers-b973e6cc).
+\ THE TWO CHECKS THAT MEET SUCH A CELL SHARE THIS ONE PREDICATE: the span scan in
+\ aot-lib.f, which reads every cell the capture window covers, and DATA-ADDRESS!
+\ below, which meets the same kind of cell through a recorded address naming one
+\ the window never opened over. They must not answer differently.
+: CELL-TEXTPTR? ( n -- bool ) {: v:n :}     \ code/dict pointer, by live extents (not magnitude)
+   v AOT-DBASE-N >=  v AOT-DBASE-N ndict@ DREC * + < and IF true EXIT THEN   \ in live dict records
+   v AOT-DBASE-N DICT-SIZE + >=  v AOT-CP-N < and ;                          \ in emitted code
+
+\ The cell at a DATA address. An address arrives here as a plain integer (the
+\ value a recorded chain spells out, or a scan cursor), and the checker keeps the
+\ value and pointer domains apart, so the read goes through the cursor cell the
+\ span scan in aot-lib.f already reads its cells through.
+variable DCELL
+: DATA-CELL@ ( n -- n )  DCELL !  DCELL @ @ ;
+
+\ A WHOLE cell at this address is inside the mapped DATA region, so reading it to
+\ see what it holds cannot fault. DATA-ADDRESS? admits the region's one-past end,
+\ which is a valid address to relocate and not a readable cell.
+: DATA-CELL? ( n -- bool ) {: v:n :}
+   v DATA-VA VA>N >= v 8 + DATA-VA VA>N DATA-SIZE + <= and ;
+
+\ Does this record's code spell out that DATA address? `variable`, `create` and
+\ `defer` each compile a recorded address chain for their own body, so the site is
+\ the structural link from a persistent cell back to the word that owns it. A cell
+\ reached by arithmetic from some other body has no site of its own and stays
+\ unnamed rather than being attributed to the nearest word below it.
+: REC-CELL-SITE? ( ptr n n -- bool ) {: r:ptr v:n :}
+   r REC-CODE-PTR@ {: p:ptr :}
+   r REC-BYTES ADDR-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
+      p i 4 * + ADDRESS-SITE? if
+         p i 4 * +  p i 4 * + ADDR-CHAIN-BYTES + ADDRESS-CHAIN? if
+            p i 4 * + CHAINV v = if true unloop exit then
+         then
+      then
+   loop false ;
+
+\ Namespace records hold wordlist IDs where a word record holds its code span.
+: DATA-CELL-OWNER ( n -- ptr n ) {: v:n :}
+   ndict@ 0 ?do
+      i REC REC-WID@ -1 <> if
+         i REC v REC-CELL-SITE? if i REC unloop exit then
+      then
+   loop XREF-NULL ;
+
+: DATA-TEXTPTR-JSON ( n n -- ) {: cell:n v:n :}
+   123 AE1
+   s" schema_version" AEJKEY 1 AEJNUM 44 AE1
+   s" code" AEJKEY s" E-AOT-UNSUPPORTED" AEJSTR 44 AE1
+   s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
+   s" word" AEJKEY cell DATA-CELL-OWNER AEJREC 44 AE1
+   s" data_off" AEJKEY cell DATA-VA VA>N - AEJNUM 44 AE1
+   s" value" AEJKEY v AEJNUM 44 AE1
+   s" reason" AEJKEY s" stripped AOT persistent data holds a code/dict pointer" AEJSTR 44 AE1
+   s" suggestion" AEJKEY
+   s" stripped AOT cannot rebase code/dict pointers in data (defer or ' word ,); use --repl or remove the code pointer from data" AEJSTR
+   125 AE1 10 AE1 ;
+
+: DATA-TEXTPTR-PROSE ( n n -- ) {: cell:n v:n :}
+   s" hb-build: stripped AOT persistent data holds a code/dict pointer (defer or ' word ,) word=" AETXT
+   cell DATA-CELL-OWNER AEREC-TXT
+   s"  data-off=" AETXT cell DATA-VA VA>N - AEJNUM
+   s"  value=" AETXT v AEJNUM
+   10 AE1 ;
+
+\ The ONE answer for a persistent cell that holds a code or dictionary pointer,
+\ wherever it was met. Public within the package so aot-lib.f's span scan refuses
+\ with exactly this text.
+: REFUSE-DATA-TEXTPTR ( n n -- ) {: cell:n v:n :}
+   JSON-DIAGS @ IF cell v DATA-TEXTPTR-JSON ELSE cell v DATA-TEXTPTR-PROSE THEN
+   s" hb-build: AOT unsupported persistent data" 70 die ;
+
+\ A genuine data pointer the restored span does not cover. Named the way
+\ REFUSE-ADDRESS-SITE names its site - the owning word and the region offset of
+\ the recorded cell - plus the value, the word whose data that value is, and the
+\ span it had to fall in. Without the target name the value is an address the
+\ program has no way to recognise.
+: REFUSE-DATA-SPAN ( ptr n ptr u8 n -- ) {: owner:ptr site:ptr v:n :}
+   s" aot: address refers to data outside the restored span caller=" AETXT
+   owner AEREC-TXT
+   s"  region-off=" AETXT site AOT-DBASE@ BYTE-VIEW - AEJNUM
+   s"  value=" AETXT v AEJNUM
+   s"  target=" AETXT v DATA-CELL-OWNER AEREC-TXT
+   s"  span=[" AETXT BLOB-SRC @ AEJNUM
+   44 AE1 BLOB-END @ AEJNUM
+   93 AE1 10 AE1
+   s" " 74 die ;
+
+\ The cell this address names, refused as unsupported persistent data when it
+\ holds a code or dictionary pointer - the same verdict, from the same predicate,
+\ that the span scan reaches such a cell with.
+: CHECK-DATA-CELL ( n -- ) {: cell:n :}
+   cell DATA-CELL@ {: v:n :}
+   v CELL-TEXTPTR? if cell v REFUSE-DATA-TEXTPTR then ;
+
+: DATA-ADDRESS! ( ptr n ptr u8 n -- ) {: owner:ptr site:ptr v:n :}
+   \ The end is a valid one-past pointer for a zero-length buffer. Relocation
+   \ preserves the address; it does not certify a later memory access.
+   v BLOB-SRC @ >= v BLOB-END @ <= and if exit then
+   v DATA-CELL? if v CHECK-DATA-CELL then
+   owner site v REFUSE-DATA-SPAN ;
+
+\ Immutable literal rows can be copied into the capture's active pool. Other
+\ pre-window DATA has no ownership proof and must keep the link refusal.
+: DATA-TARGET ( ptr n ptr u8 n -- n ) {: owner:ptr site:ptr v:n :}
+   v BLOB-SRC @ >= v BLOB-END @ <= and if v exit then
+   v NSTR:REINTERN-OWNED drop {: w:n :}
+   owner site w DATA-ADDRESS!  w ;
+
 : REFUSE-ADDRESS-SITE ( ptr n ptr u8 ptr u8 -- ) {: caller:ptr p:ptr e:ptr :}
    s" aot: malformed recorded address chain caller=" AETXT
    caller AEJREC
@@ -379,7 +483,7 @@ variable SP2  variable SEND
    p e ADDRESS-CHAIN? 0= if caller p e REFUSE-ADDRESS-SITE then
    p CHAINV {: v:n :}
    v DATA-ADDRESS? if
-      v DATA-TARGET drop exit
+      caller p v DATA-TARGET drop exit
    then
    v ADDRESS-OWNER {: owner:ptr :}
    owner XREF-FOUND? if caller owner SCAN-CALLEE exit then

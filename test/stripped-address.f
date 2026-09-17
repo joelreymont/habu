@@ -22,6 +22,11 @@ get-current constant SAT-WID
 : SAT-DECODE ( -- n )
    SAT-CHAIN SAT-CHAIN 16 + ADDRESS-VALUE ;
 
+\ A real record and a real recorded cell inside the code region, so the refusals
+\ below name a site the way the linker's own callers do.
+: SAT-REC ( -- ptr n ) 0 REC ;
+: SAT-SITE ( -- ptr u8 ) SAT-REC REC-CODE-PTR@ ;
+
 : SAT-OWNER ( -- )
    s" SAT-DECODE" SAT-WID XREF-FIND-WL {: r:ptr :}
    r XREF-FOUND? TTRUE
@@ -44,10 +49,14 @@ get-current constant SAT-WID
    SAT-CHAIN SAT-CHAIN 15 + ADDRESS-CHAIN? TFALSE
    SAT-CHAIN SAT-CHAIN ADDRESS-CHAIN? TFALSE
    SAT-CHAIN 1+ SAT-CHAIN ADDRESS-CHAIN? TFALSE
-   \ The validator proves a stable address, including an empty buffer's end.
+   \ The validator proves a stable address, including an empty buffer's end. A
+   \ refusal names the site, so every call carries the owning record and the
+   \ recorded cell; an admitted address reads neither.
    100 BLOB-SRC ! 116 BLOB-END !
-   100 DATA-ADDRESS! 115 DATA-ADDRESS! 116 DATA-ADDRESS!
-   100 BLOB-END ! 100 DATA-ADDRESS! ;
+   SAT-REC SAT-SITE 100 DATA-ADDRESS!
+   SAT-REC SAT-SITE 115 DATA-ADDRESS!
+   SAT-REC SAT-SITE 116 DATA-ADDRESS!
+   100 BLOB-END ! SAT-REC SAT-SITE 100 DATA-ADDRESS! ;
 
 : SAT-REFUSED ( ptr u8 n ptr u8 n -- )
    {: body:ptr bodyu:n message:ptr messageu:n :}
@@ -66,10 +75,10 @@ get-current constant SAT-WID
    s" $F2C00009 SAT-CHAIN 4 + SAT-W! SAT-DECODE drop" SAT-BAD-CHAIN
    s" $D503201F SAT-CHAIN 12 + SAT-W! SAT-DECODE drop" SAT-BAD-CHAIN
    s" SAT-CHAIN SAT-CHAIN 15 + ADDRESS-VALUE drop" SAT-BAD-CHAIN
-   s" 100 BLOB-SRC ! 116 BLOB-END ! 99 DATA-ADDRESS!"
-      s" aot: address refers to data outside the restored span" SAT-REFUSED
-   s" 100 BLOB-SRC ! 116 BLOB-END ! 117 DATA-ADDRESS!"
-      s" aot: address refers to data outside the restored span" SAT-REFUSED
+   s" 100 BLOB-SRC ! 116 BLOB-END ! SAT-REC SAT-SITE 99 DATA-ADDRESS!"
+      s" aot: address refers to data outside the restored span caller=" SAT-REFUSED
+   s" 100 BLOB-SRC ! 116 BLOB-END ! SAT-REC SAT-SITE 117 DATA-ADDRESS!"
+      s" aot: address refers to data outside the restored span caller=" SAT-REFUSED
    s" 0 31 EMIT-CODE-ADDRESS"
       s" aot: code address cannot use the zero register" SAT-REFUSED ;
 

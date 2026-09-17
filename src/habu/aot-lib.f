@@ -50,36 +50,19 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
    here  BLOB-END !
    BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN ! ;
 
-\ A cell holds a code/dict pointer iff its value lands in a LIVE engine extent the
-\ dictionary records: the dict-record array [AOT-DBASE@, +ndict@*DREC) or the emitted
-\ code span [AOT-DBASE@+DICT-SIZE, AOT-CP@). Both bounds are recorded live extents, so a
-\ plain datum in free space (above the code high-water, or a free dict slot) is data and
-\ the classification survives the code region moving near ordinary integer magnitudes. The
-\ former [RBASE-VA, RBASE-VA+REGION) window was a MAGNITUDE HEURISTIC that misclassified any
-\ datum in the 8 MiB window as a pointer (dot habu-identify-code-pointers-b973e6cc).
-: CELL-TEXTPTR? ( n -- bool ) {: v:n :}     \ code/dict pointer, by live extents (not magnitude)
-   v AOT-DBASE-N >=  v AOT-DBASE-N ndict@ DREC * + < and IF 0 0= EXIT THEN   \ in live dict records
-   v AOT-DBASE-N DICT-SIZE + >=  v AOT-CP-N < and ;                          \ in emitted code
-: AOT-DATA-TEXTPTR? ( -- bool )
+\ Every cell the capture window covers, classified by the ONE predicate
+\ aot-closure.f publishes (CELL-TEXTPTR?, by live engine extents) and refused by
+\ the ONE refusal it publishes, so a cell that holds a code or dictionary pointer
+\ reads the same here as it does when a recorded address meets it outside the
+\ window. The scan reports the first such cell rather than a bare verdict: its
+\ owning word, its DATA offset and the pointer it holds are what a program has to
+\ be edited by.
+: AOT-DATA-TEXTPTR-CHECK ( -- )
    BLOB-SRC @ DSCAN !
    BEGIN DSCAN @ 8 + BLOB-END @ <= WHILE
-      DSCAN @ @ CELL-TEXTPTR? IF 0 0= EXIT THEN
+      DSCAN @ @ CELL-TEXTPTR? IF DSCAN @ DSCAN @ @ REFUSE-DATA-TEXTPTR THEN
       DSCAN @ 8 + DSCAN !
-   REPEAT  0 0= 0= ;
-: AOT-DATA-TEXTPTR-JSON ( -- )
-   123 AE1
-   s" schema_version" AEJKEY 1 AEJNUM 44 AE1
-   s" code" AEJKEY s" E-AOT-UNSUPPORTED" AEJSTR 44 AE1
-   s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
-   s" reason" AEJKEY s" stripped AOT persistent data holds a code/dict pointer" AEJSTR 44 AE1
-   s" suggestion" AEJKEY
-   s" stripped AOT cannot rebase code/dict pointers in data (defer or ' word ,); use --repl or remove the code pointer from data" AEJSTR
-   125 AE1 10 AE1 ;
-: AOT-DATA-TEXTPTR-DIE ( -- )
-   JSON-DIAGS @ IF AOT-DATA-TEXTPTR-JSON ELSE
-      s" hb-build: stripped AOT persistent data holds a code/dict pointer (defer or ' word ,)" AETXT 10 AE1
-   THEN
-   s" hb-build: AOT unsupported persistent data" 70 die ;
+   REPEAT ;
 
 : EMIT-DATA-REGION-MAP ( -- )
    LBL {: dvok:label :}
@@ -450,10 +433,10 @@ variable BDELTA  variable TNEW
    k 0 < if s" aot: code address has no dictionary owner" 74 die then
    k SPAN-START MEMBER-AT ;
 
-: COPY-ADDRESS ( ptr u8 ptr u8 -- ) {: p:ptr e:ptr :}
+: COPY-ADDRESS ( ptr n ptr u8 ptr u8 -- ) {: owner:ptr p:ptr e:ptr :}
    p e ADDRESS-VALUE {: v:n :}
    v DATA-ADDRESS? if
-      v DATA-TARGET {: target:n :}
+      owner p v DATA-TARGET {: target:n :}
       \ Keep all four instructions and their Rd/shift/opcode fields. A variable
       \ length literal encoder would invalidate the planned code offsets.
       SNAP-RELOC:ADDR-CHAIN-BYTES 4 / 0 ?do
@@ -472,7 +455,7 @@ variable BDELTA  variable TNEW
    BEGIN CP2 @ CEND @ < WHILE
       CP2 @ CEND @ ABS-CHAIN? IF ABS-CHAIN-DIE THEN
       CP2 @ ADDRESS-SITE? if
-         CP2 @ CEND @ COPY-ADDRESS
+         i CLO-REC@ CP2 @ CEND @ COPY-ADDRESS
          SNAP-RELOC:ADDR-CHAIN-BYTES
       else
          i CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW 4
@@ -503,7 +486,7 @@ public
 
 : LINK ( -- )
    AOT-DATA-SPAN
-   AOT-DATA-TEXTPTR? IF AOT-DATA-TEXTPTR-DIE THEN
+   AOT-DATA-TEXTPTR-CHECK
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !
    LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !   \ the stripped image carries both handlers too
    EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-CRASH-CODE  EMIT-DATA-BLOB
