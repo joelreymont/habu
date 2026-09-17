@@ -175,7 +175,7 @@ read the source to find out. There are three:
 | `lib/string.f` | process-wide (SB) / caller-owned (`BUF-*`) | `SB-BUF` and `SB-LEN` are one builder for the image; `BUF-RESET`/`BUF-APPEND`/`BUF-APPEND-C`/`BUF-LEN@` take the caller's buffer, capacity and length cell |
 | `lib/fmt.f` | process-wide | one integer render buffer and the `POW10I`/`SB-FRAC` scratch cells, appending into string's SB |
 | `lib/fs.f` | process-wide | one descriptor, length, path and stat buffer per image, plus one walk stack; the data spans `READ-ALL`/`READ-LINK`/`WRITE-ALL` take are caller-owned |
-| `lib/json-write.f` | process-wide | one growable output buffer and one number buffer |
+| `lib/json-write.f` | caller-owned | the caller declares the writer (`TYPED-VARIABLE W JSON-WRITE:writer`) and the bytes `JSON-WRITE:OPEN` binds it to; no module state |
 | `lib/json-read.f` | caller-owned | no module state; the caller allots `JR:STORAGE-BYTES` and owns the source span |
 | `lib/memory.f` | caller-owned | every mapping belongs to its caller; `WITH-BYTES`'s scope stack is the one process-wide part |
 | `lib/net/tcp4.f` | task-local | `$20` row: sockaddr, socklen, pollfd |
@@ -187,8 +187,8 @@ read the source to find out. There are three:
 Three of these are about to change class, and until they do the workaround is
 the caller's: `lib/string.f`'s SB, `lib/fmt.f`'s number buffer and
 `lib/fs.f`'s per-call slots move to task-local storage under dot
-`habu-make-the-shared-0c2bfbc6`, and `lib/json-write.f` gets a caller-owned
-buffer under dot `habu-give-the-json-fd2ba9fc`.
+`habu-make-the-shared-0c2bfbc6`. `lib/json-write.f` is already caller-owned:
+the caller declares the writer and the bytes it writes into.
 
 ### The arena a task-local row comes from
 
