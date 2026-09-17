@@ -1,5 +1,9 @@
 \ proc-pty.f — focused native process/PTY harness. Run with:
-\   bin/hb < test/proc-pty.f
+\   bin/hb --load lib/errors.f lib/process.f test/proc-pty.f
+\ The engine bakes neither POLL-IN nor the process primitives below them, so the
+\ two library files are part of the invocation; test/runtime-regression-test.f
+\ (GE-PROCESS-PTY) drives exactly this line, and the engine to test can follow
+\ as `-- <path>` or in HABU_UNDER_TEST.
 
 package PROC-PTY
 
@@ -10,11 +14,12 @@ $40045431 constant LINUX-TIOCSPTLCK
 $80045430 constant LINUX-TIOCGPTN
 2 constant PTY-OPEN-RDWR
 10 constant PTY-POLL-MS
-300 constant PTY-DRAIN-MAX-POLLS
-200 constant PTY-EXPECT-MAX-POLLS
+$4E20 constant PTY-WAIT-MS         \ one wait runs at most this long on the clock
 1 constant PTY-QUIET-POLLS
+$1000 constant PTY-RBUF-CAP
+$80 constant PTY-KEEP-TAIL         \ bytes kept when a full buffer is compacted
 
-create RBUF 4096 allot
+create RBUF PTY-RBUF-CAP allot
 create NL 1 allot
 create EOT 1 allot
 create CH 1 allot
@@ -68,9 +73,34 @@ variable PTYNUM
 : RCLR ( -- )
    0 RN ! ;
 
-: READ+ {: fd :} ( fd -- )
-   fd FD>N RBUF RN @ + 4096 RN @ - read
-   dup 0 > if RN @ + RN ! else drop then ;
+\ A full buffer keeps its tail rather than dropping everything: a marker split
+\ across the compaction survives whole in what is kept, and every older byte has
+\ already been searched. PTY-KEEP-TAIL is far longer than any marker below.
+: KEEP-TAIL! ( -- )
+   RN @ PTY-RBUF-CAP PTY-KEEP-TAIL - < if exit then
+   RBUF RN @ PTY-KEEP-TAIL - + RBUF PTY-KEEP-TAIL BYTE-COPY
+   PTY-KEEP-TAIL RN ! ;
+
+\ Append one read and report it, keeping room for the next one.
+: READ+ {: fd :} ( fd -- n )
+   KEEP-TAIL!
+   fd FD>N RBUF RN @ + PTY-RBUF-CAP RN @ - read {: got :}
+   got 0 > if RN @ got + RN ! then
+   got ;
+
+\ A pipe hands over what the writer has flushed, not what it will write. Read to
+\ the far end's close, so a child that answers in pieces is never truncated into
+\ a wrong verdict by one short read.
+: READ-ALL {: fd :} ( fd -- )
+   begin fd READ+ 0 > while repeat ;
+
+\ One poll and, when the descriptor has bytes, one read: above zero for bytes
+\ appended, 0 for a quiet poll, below zero once the far side is gone -- a ready
+\ descriptor that reads nothing is the hang-up.
+: READ-STEP {: fd :} ( fd -- n )
+   fd PTY-POLL-MS >MS POLL-IN COUNT>N 0 = if 0 exit then
+   fd READ+ 0 > if 1 exit then
+   -1 ;
 
 : MATCH-AT {: ha:ptr na:ptr nu off :} ( ptr u8 ptr u8 n n -- bool )
    0 0=
@@ -96,13 +126,18 @@ variable PTYNUM
    fd a u FD-WRITE
    fd NL 1 FD-WRITE ;
 
+\ Read until PTY-QUIET-POLLS polls in a row bring nothing, the far side hangs
+\ up, or the deadline passes. The deadline is absolute and is tested before each
+\ poll, so the drain overruns it by at most the one poll already in flight.
 : DRAIN {: fd :} ( fd -- )
    RCLR
    0 QUIET !
-   0 begin dup PTY-DRAIN-MAX-POLLS < QUIET @ PTY-QUIET-POLLS < and while
-      fd PTY-POLL-MS >MS POLL-IN COUNT>N 0 > if fd READ+ 0 QUIET ! else QUIET @ 1 + QUIET ! then
-      1 +
-   repeat drop ;
+   PTY-WAIT-MS >MS PROC-DEADLINE-AT {: deadline :}
+   begin QUIET @ PTY-QUIET-POLLS <  deadline PROC-LEFT-MS MS>N 0 >  and while
+      fd READ-STEP {: n :}
+      n 0 < if exit then
+      n 0 > if 0 QUIET ! else QUIET @ 1 + QUIET ! then
+   repeat ;
 
 : MFD-DRAIN ( -- )
    MFD @ >FD DRAIN ;
@@ -110,21 +145,19 @@ variable PTYNUM
 : RBUF-HAS? {: a:ptr u :} ( ptr u8 n -- bool )
    RBUF RN @ a u CONTAINS? ;
 
-: MFD-READ-READY? ( -- bool )
-   MFD @ >FD PTY-POLL-MS >MS POLL-IN COUNT>N 0 > if
-      MFD @ >FD READ+
-      0 0= exit
-   then
-   0 0= 0= ;
-
+\ Keep reading the master until the text appears, the child hangs up, or the
+\ wait's deadline passes. A child engine answers in as many pieces as the host's
+\ scheduling chooses -- its line editor redraws on every keystroke, and a loaded
+\ box splits one echo across dozens of reads -- so no count of polls bounds the
+\ wait. A partial read is not an answer and not a failure: only the text, the
+\ hang-up and the clock end the loop.
 : EXPECT-WAIT? {: a:ptr u :} ( ptr u8 n -- bool )
-   a u RBUF-HAS? if 0 0= exit then
-   0 begin dup PTY-EXPECT-MAX-POLLS < while
-      MFD-READ-READY? drop
-      a u RBUF-HAS? if drop 0 0= exit then
-      1 +
-   repeat drop
-   0 0= 0= ;
+   PTY-WAIT-MS >MS PROC-DEADLINE-AT {: deadline :}
+   begin
+      a u RBUF-HAS? if 0 0= exit then
+      deadline PROC-LEFT-MS MS>N 0 = if 0 0= 0= exit then
+      MFD @ >FD READ-STEP 0 < if a u RBUF-HAS? exit then
+   again ;
 
 : SEND-C ( n -- ) {: c:n :}
    c CH c!
@@ -190,13 +223,13 @@ variable PTYNUM
 
 : CAPTURE-EXPECT-OUT ( -- )
    RCLR
-   OUT-R @ >FD READ+
+   OUT-R @ >FD READ-ALL
    s" 5" TCONTAINS
    OUT-R @ close ;
 
 : CAPTURE-EXPECT-ERR ( -- )
    RCLR
-   ERR-R @ >FD READ+
+   ERR-R @ >FD READ-ALL
    RN @ 0 T=
    ERR-R @ close ;
 
@@ -324,7 +357,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    IN-W @ >FD SEED-LINE$ FD-WRITE-LN
    IN-W @ close
    RCLR
-   OUT-R @ >FD READ+
+   OUT-R @ >FD READ-ALL
    SEED-TOKEN!
    OUT-R @ close
    ERR-R @ close

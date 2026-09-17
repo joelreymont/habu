@@ -7106,10 +7106,26 @@ and --no-lldbinit.
   verdict is about no single tree, and a green result obtained that way must be
   thrown away and re-run. The -2802 capture guard only catches chain sources;
   everything else fails silently into a mixed verdict.
-- **`test/proc-pty.f` case 10 is host-load sensitive** and can red the direct
-  runtime regression test on a busy machine (dot habu-the-pty-991d107e protocol:
-  rerun once, idle). Three consecutive standalone passes plus a green rerun of
-  the exact tree adjudicates it as the flake, not the candidate.
+- **`test/proc-pty.f` case 10 was never a host-load flake: it was one read.** The
+  seed child's stdout was read ONCE and both pipe read ends were then closed
+  while the child was still writing its " ok" trailer, so the child died of
+  SIGPIPE and its exit code redded case 10 — twice in five runs at load 13,
+  never on an idle box. A pipe hands over what the writer has flushed, not what
+  it will write: read to the far end's close before closing your end. The
+  rerun-once-idle protocol kept the real cause hidden (2026-09-17).
+- **A wait bounded by a count of reads is not a timeout.**
+  `test/process-pty-tty-smoke.f` gave each wait 200 reads-with-data and 12
+  consecutive quiet polls; only the read count ever bound it (97 of 200 spent on
+  an idle box, 0 quiet polls ever used), and a tty line editor redrawing on every
+  keystroke splits one 190-byte line's echo across hundreds of reads, so the wait
+  expired mid-echo around 900 bytes — half the runs at load 17. Bound a wait by
+  an absolute monotonic deadline (`PROC-DEADLINE-AT` / `PROC-LEFT-MS`, already in
+  lib/process.f) and end it only on the marker, the hang-up or the clock; a
+  partial read is neither an answer nor a failure. A marker searched over bytes
+  that arrived BEFORE the line was typed is not a barrier either: the same file
+  waited for " ok" over a buffer still holding the boot banner (" ok\r\n\r\e[Khabu> ")
+  and so typed its next line into a child still compiling the previous one — a
+  drain must drop what it swallowed (2026-09-17).
 
 - **A keep list derived by reading requires is not a closure.** The spill probe
   needed a file no direct require named — reached transitively through a case

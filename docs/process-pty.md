@@ -76,7 +76,12 @@ Both modes share the handle lifecycle (`LAUNCH`, `ALIVE?`, `AWAIT`, `SIGNAL`,
   the target's input; a short write throws `E-PROC-OUTPUT`.
 - `AWAIT-BYTES ( handle ptr u8 n ms -- handle n )` waits up to `ms` for output
   and reads what is there: the byte count, `0` when nothing arrived in time,
-  `-1` once the target's side is gone; a broken descriptor throws.
+  `-1` once the target's side is gone; a broken descriptor throws. It answers
+  with ONE read, never with the target's whole answer -- a child's line editor
+  redraws on every keystroke and a loaded host splits one line's echo across
+  dozens of reads -- so a caller waiting for text loops to its marker under an
+  absolute deadline (`PROC-DEADLINE-AT` / `PROC-LEFT-MS`) and ends only on the
+  marker, the `-1`, or the clock.
 
 The slave is opened `O_NOCTTY`, so a session-leading supervisor without a
 terminal never adopts it, and nobody takes it as a controlling terminal (that
