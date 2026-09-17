@@ -55,3 +55,12 @@ belong in the language core.
 - Keep durable technical findings concise in [LESSONS.md](LESSONS.md); reference
   material belongs in `docs/`. No mandatory ledgers, claim choreography,
   mutation campaigns or ritual response templates.
+
+## Session start in Herdr
+
+- Herdr forgets a pane's agent name when Herdr or the machine restarts. When a
+  session starts with `HERDR_ENV=1`, look up your pane (`$HERDR_PANE_ID`) in
+  `herdr agent list`; if it has no `name`, take your name back before other
+  work: `herdr agent rename "$HERDR_PANE_ID" <name>`.
+- The session that owns Habu integration is `hazel`. Any other session restores
+  the name its own memory or its user gave it and never takes `hazel`.
