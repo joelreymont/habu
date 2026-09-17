@@ -38,6 +38,10 @@ create PT-CAPTURE-HANG-BUF FS-PATH-CAP allot
 create PT-CAPTURE-ERR-LONG-BUF FS-PATH-CAP allot
 create PT-CAPTURE-FALSE-BUF FS-PATH-CAP allot
 create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
+4096 constant PT-CHUNK                   \ one PROC-STDIN-CHUNK-CAP write
+1024 constant PT-FILL-MAX                \ bounds the pipe fill at 4 MiB
+create PT-CHUNK-BUF PT-CHUNK allot
+create PT-DRAIN-BUF PT-CHUNK allot
 
 2 constant PT-ENOENT
 15000 constant PT-HB-TIMEOUT-MS
@@ -266,6 +270,76 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PT-W @ s" 12345678901234567890123456789012" write -1 T=
    PT-W @ close ;
 
+\ habu-give-o-nonblock-cff35c7a. O_NONBLOCK is $800 on Linux and 4 on macOS, and
+\ F_SETFL drops a bit the host does not know without saying so, so the only
+\ honest proof that PROC-NONBLOCK! armed anything is the flag read back.
+: PT-NONBLOCK-ARMED? ( fd -- bool ) {: fd :}
+   fd FD>N F-GETFL 0 fcntl {: flags :}
+   flags 0 < if 0 0= 0= exit then
+   flags O-NONBLOCK and O-NONBLOCK = ;
+
+
+\ Chunks that land before the pipe refuses one. PT-FILL-MAX bounds the loop, but
+\ a BLOCKING descriptor never reaches that bound: it stops inside write and
+\ stays there. Every caller proves PT-NONBLOCK-ARMED? first for that reason.
+: PT-FILL-FD ( n -- n ) {: wfd:n :}
+   0 begin dup PT-FILL-MAX < while
+      wfd PT-CHUNK-BUF PT-CHUNK write 0 < if exit then
+      1+
+   repeat ;
+
+
+\ Reads the chunks the fill wrote back out, emptying the pipe. Draining a single
+\ chunk is not enough to make room: a host page holds several of them (four to
+\ a 16 KiB page here), and a slot frees only when its whole page is consumed.
+: PT-DRAIN-FD ( n n -- n ) {: rfd:n chunks:n :}
+   0 begin dup chunks < while
+      rfd PT-DRAIN-BUF PT-CHUNK read PT-CHUNK <> if exit then
+      1+
+   repeat ;
+
+
+\ The flag readback and the behaviour it buys: a full pipe refuses the next
+\ write instead of blocking in it, and the same descriptor writes again once the
+\ reader drains. That recovery is what separates back pressure from a broken
+\ pipe, which no drain would fix and which this engine cannot tell apart by
+\ errno -- every failed write answers a bare -1.
+: TEST-PROC-NONBLOCK-ARMED ( -- )
+   PIPE-PAIR PT-W ! PT-R !
+   PT-W @ PROC-NONBLOCK!
+   PT-W @ PT-NONBLOCK-ARMED? dup TTRUE
+   if
+      PT-W @ PT-FILL-FD {: filled:n :}
+      filled 0 > TTRUE
+      filled PT-FILL-MAX < TTRUE
+      PT-R @ filled PT-DRAIN-FD filled T=
+      PT-W @ PT-CHUNK-BUF PT-CHUNK write PT-CHUNK T=
+   then
+   PT-R @ close
+   PT-W @ close ;
+
+
+\ The capture loop's stdin writer under back pressure. A refused write must
+\ leave the child's stdin open and its offset untouched, so the next POLLOUT
+\ under the capture deadline resumes the feed; closing there instead truncated
+\ the child's input without a word.
+: TEST-PROC-STDIN-BACKPRESSURE ( -- )
+   PROC-CAPTURE-RESET
+   PROC-SETUP-STDIN-FDS
+   PROC-IN-W @ >FD PT-NONBLOCK-ARMED? dup TTRUE
+   if
+      PROC-IN-W @ PT-FILL-FD {: filled:n :}
+      filled 0 > TTRUE
+      PT-CHUNK-BUF PT-CHUNK >LEN PROC-WRITE-STDIN
+      PROC-IN-W @ 0 >= TTRUE
+      PROC-IN-OFF @ 0 T=
+      PROC-IN-R @ filled PT-DRAIN-FD filled T=
+      PT-CHUNK-BUF PT-CHUNK >LEN PROC-WRITE-STDIN
+      PROC-IN-OFF @ PT-CHUNK T=
+   then
+   PROC-CLOSE-STDIN-FDS ;
+
+
 : TEST-POLL-TIMEOUT ( -- )
    PIPE-PAIR PT-W ! PT-R !
    [: TEST-POLL-WAIT ;] E-PROC-TIMEOUT TTHROWSQ
@@ -413,6 +487,8 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    TEST-WAIT-FAIL
    TEST-PIPE
    TEST-WRITE-CLOSED-PIPE-NOSIGPIPE
+   TEST-PROC-NONBLOCK-ARMED
+   TEST-PROC-STDIN-BACKPRESSURE
    TEST-POLL-TIMEOUT
    TEST-RUN-CAPTURE-BASIC
    TEST-RUN-ARGV-CAPTURE-BASIC

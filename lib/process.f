@@ -63,10 +63,19 @@ private
 4 constant F-SETFL
 73 constant F-SETNOSIGPIPE
 1 constant FD-CLOEXEC
-4 constant O-NONBLOCK
 $7F constant PROC-WAIT-TERM-MASK
 $FF constant PROC-WAIT-EXIT-MASK
 4096 constant PROC-STDIN-CHUNK-CAP
+
+
+\ O_NONBLOCK is not one number: $800 (0o4000) on Linux, 4 on macOS. F_SETFL
+\ silently drops a bit the host does not know, so the wrong constant arms
+\ nothing at all and the descriptor stays blocking.
+: O-NONBLOCK ( -- n )
+   HB-TARGET-LINUX? if $800 exit then
+   HB-TARGET-MACOS? if 4 exit then
+   E-PROC-HOST throw ;
+
 
 -1 constant PROC-NO-FD                   \ a closed / never-opened descriptor cell
 -1 constant PROC-NO-PID                  \ no child, and no armed reaper
@@ -493,10 +502,16 @@ PROC-REAP-ARM-DEFAULT
    events POLLNVAL and 0= 0= if 0 0= exit then
    0 0= 0= ;
 
+\ The write end is non-blocking, so a refused write is back pressure: the pipe
+\ is full because the child stopped reading. The engine collapses every write
+\ errno to -1, and the caller above has already asked poll whether the reader is
+\ gone, so the descriptor keeps its offset and the next POLLOUT under the
+\ capture deadline resumes the feed; a short write advances by what landed and
+\ resumes the same way. Closing here instead would truncate the child's stdin.
 : PROC-WRITE-STDIN-ACTIVE ( ptr u8 len -- ) {: src:ptr inu :}
    inu LEN>N PROC-IN-OFF @ - >LEN PROC-STDIN-CHUNK {: chunk :}
    PROC-IN-W @ src PROC-IN-OFF @ + chunk LEN>N write {: wrote :}
-   wrote 0 < if PROC-IN-W PROC-CLOSE-CELL exit then
+   wrote 0 < if exit then
    wrote chunk LEN>N > if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    PROC-IN-OFF @ wrote + PROC-IN-OFF !
    inu PROC-CLOSE-STDIN-DONE ;
