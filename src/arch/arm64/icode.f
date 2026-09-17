@@ -103,8 +103,18 @@ $1000 constant ICODE-TAB-CELLS
 $5 constant ICODE-TAB-COUNT
 ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
 72 constant ICODE-EXIT-RC
-variable CODE-A
-variable ICODE-TAB-A
+\ THE MAPPINGS ARE POINTERS AND THEIR CELLS SAY SO. A successful anonymous
+\ mapping is a number the kernel answers, and nothing infers an address from a
+\ syscall result, so ONE refinement states that fact - the shape
+\ src/core/checker.f gives it for its own arenas (ARENA-RC>PTR). Past it both
+\ mappings travel as pointers in cells declared by src/core/pointer-storage.f,
+\ and the two `TRUST` rows that used to re-declare the whole accessor are gone:
+\ a raw `create`d cell may not hold an address at all (dot
+\ habu-refuse-a-ptr-5ad2734e), and re-declaring the reader was never a statement
+\ about the cell. Retirement of this row: habu-read-code-bytes-844e7c50.
+TRUSTED: ICODE-MAP>PTR ( n -- ptr a ) ;
+PTR-VARIABLE CODE-A
+PTR-VARIABLE ICODE-TAB-A
 variable ASM-CP
 variable I-SITE
 variable I-LBL
@@ -115,26 +125,26 @@ variable I-X
 variable I-N
 variable I-W
 
-: CODE-ALLOC ( -- n )
+: CODE-ALLOC ( -- ptr u8 )
    0 CODE-CAP-BYTES 3 ICODE-MAP-PRIVATE-ANON -1 0 mmap
-   dup 0 < if s" icode: code mmap failed" ICODE-EXIT-RC die then ;
+   dup 0 < if s" icode: code mmap failed" ICODE-EXIT-RC die then
+   ICODE-MAP>PTR ;
 
-\ CODE and ICODE-TABS refine successful anonymous mappings into the byte-code
-\ buffer and numeric label/fixup tables; syscall-result provenance is not inferred.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ An unmapped cell holds the typed null, so the first-emit test compares against
+\ NULL-PTR rather than the integer 0: the cell is a pointer now and `0=` asks a
+\ number's question.
 : CODE ( -- ptr u8 )
-   CODE-A @ 0= IF CODE-ALLOC CODE-A ! THEN
+   CODE-A @ NULL-PTR = IF CODE-ALLOC CODE-A ! THEN
    CODE-A @ ;
-s" CODE" s" -- ptr u8" TRUST
 
-: ICODE-TAB-ALLOC ( -- n )
+: ICODE-TAB-ALLOC ( -- ptr n )
    0 ICODE-TAB-BYTES 3 ICODE-MAP-PRIVATE-ANON -1 0 mmap
-   dup 0 < if s" icode: table mmap failed" ICODE-EXIT-RC die then ;
+   dup 0 < if s" icode: table mmap failed" ICODE-EXIT-RC die then
+   ICODE-MAP>PTR ;
 
 : ICODE-TABS ( -- ptr n )
-   ICODE-TAB-A @ 0= IF ICODE-TAB-ALLOC ICODE-TAB-A ! THEN
+   ICODE-TAB-A @ NULL-PTR = IF ICODE-TAB-ALLOC ICODE-TAB-A ! THEN
    ICODE-TAB-A @ ;
-s" ICODE-TABS" s" -- ptr n" TRUST
 
 : ICODE-TAB ( n -- ptr n )
    ICODE-TABS swap ICODE-TAB-CELLS * cells + ;
@@ -153,8 +163,8 @@ s" ICODE-TABS" s" -- ptr n" TRUST
    ASM-CP @ + CODE-CAP-WORDS > if s" icode: code buffer overflow" ICODE-EXIT-RC die then ;
 \ Keep stage-source words local-free: the Gforth recovery compiler must check
 \ this file before the native checker is available.
-variable EP
-: EP@ ( -- ptr u8 ) EP 0 ptr-field @ ;
+PTR-VARIABLE EP
+: EP@ ( -- ptr u8 ) EP @ ;
 
 : EMITW ( n -- )
    I-W !
@@ -428,11 +438,11 @@ variable LBI
 
 : DLBL, ( label -- )                                  \ cell = label's byte offset
    LABEL>N cells LBLP + @ dup 0 < if s" icode: DLBL forward ref" ICODE-EXIT-RC die then  $4 * DCQ, ;
-variable BYP
-variable BYA
+PTR-VARIABLE BYP
+PTR-VARIABLE BYA
 variable BYU
-: BYP@ ( -- ptr u8 ) BYP 0 ptr-field @ ;
-: BYA@ ( -- ptr u8 ) BYA 0 ptr-field @ ;
+: BYP@ ( -- ptr u8 ) BYP @ ;
+: BYA@ ( -- ptr u8 ) BYA @ ;
 
 : BYTES-ARGS ( ptr u8 n -- )
    BYU !  BYA ! ;

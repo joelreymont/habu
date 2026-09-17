@@ -9221,9 +9221,21 @@ holding a pointer TO POINTERS, or an indexed table of pointers, therefore needs
 `TYPED-VARIABLE NAME ptr ptr t` / `TYPED-BUFFER`. Those definers throw
 E-LAYOUT-BUFFER until `src/core/include.f` arms `TDECL-EVAL-ARMED`, which is
 LATER than `checker.f`, `layout-buffer.f`, `env-base.f` and `include.f`'s own
-head - so in the engine prefix `PTR-VARIABLE` is the only form available, and
-`checker.f`'s pointer tables (`FAM-A`, `ATOMA-BOOT`, `PARAMA-BOOT`) and its
-`ATOMA`/`PARAMA`/`CT-NAME-A`/`VREC-NAME-A` arena reads cannot be declared at all.
+head.
+
+CORRECTED 2026-09-18: a prefix form needs no armed window, because the mint was
+never the point. `trust-raw` seals TYPE VARIABLES (`SIG-RAW-MODE` acts inside
+`MK-VAR`), so a `does>` clause that SPELLS ITS POINTEE OUT publishes a cell
+whose type carries no variable, nothing is sealed, and the raw discipline never
+looks at it - `RAW-OK?`/`RAW-BLOCK?` fire only on a TVK-RAW var.
+`: PTR-U8-TABLE ( n -- ) create cells allot does> ( -- ptr ptr u8 ) ;` is the
+whole form (`src/core/pointer-storage.f`), and `FAM-A`, `ATOMA-BOOT`,
+`PARAMA-BOOT`, `ATOMA` and `PARAMA` are declared with it and its persisted
+sibling. What it costs is genericity: a parsed `NAME ptr ptr u8` would have to
+register a COMPUTED effect through `trust-raw`, which is defined at
+checker.f:12330 - one file after pointer-storage.f - so the pointee is chosen by
+naming a definer, one per pointee, and `TYPED-VARIABLE` stays the general form
+after arming.
 
 `src/core/checker.f` IS checked during a native build, by verify-source.f's
 pre-scan running on the HOST engine's checker - `LOGICAL-RESET`'s `0 set-check`
@@ -9255,3 +9267,24 @@ The red was also nearly misdiagnosed as pre-existing: a WHITEBOX-SUITE runs on
 green. Reproduce a whitebox suite with the cached `hb-whitebox-<key>` under
 `$XDG_CACHE_HOME/habu-build`, never with the product engine, or the baseline
 comparison is meaningless.
+
+## 2026-09-18 - a definer written before the checker needs TWO effect rows
+
+`src/core/pointer-storage.f` loads third, long before `src/core/checker.f`, so
+nothing records what its definers do: a new one compiles, builds, reaches a byte
+fixpoint, and is then unusable from any loaded file with `hb: internal engine
+word: NAME`. `internal-mark.f` classifies every global record by asking
+`EFFECT-EXTERNAL-MIN-IN` for its bare name and marks an unknown one DNAME-INT;
+`PTR-VARIABLE` escapes only because `src/core/cell-effects.f` - "effects for
+words needed before the checker starts" - carries `s" PTR-VARIABLE" s" --"
+TRUST`. Measured by cloning `PTR-VARIABLE` verbatim under a second name: the
+clone is sealed internal and the original is not, so the exemption is the ROW,
+not the shape. The second row is `src/habu/verify-source.f`'s definer table,
+which tells the source scanner what the definer publishes for the word it
+creates; without it every use of that word fails the pre-scan even though the
+native path publishes it correctly through `trust-raw`.
+
+`tools/lint/def.f`'s definer case table is a THIRD list of the same names, and
+it is already incomplete (`PERSISTED-PTR-VARIABLE` is not in it), so it is a
+lint surface rather than a gate - but check it when a definer starts appearing
+in lint output.

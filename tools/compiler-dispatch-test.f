@@ -111,7 +111,7 @@ require lib/test/src-shape.f
 
 : CDT-TEST-ICODE ( -- )
    s" src/arch/arm64/icode.f" SHAPE:LOAD
-   s" variable BYA" SHAPE:MUST-HAVE
+   s" PTR-VARIABLE BYA" SHAPE:MUST-HAVE
    s" variable BYU" SHAPE:MUST-HAVE
    s" : BYA@ ( -- ptr u8 )" SHAPE:MUST-HAVE
    s" : BYTES-ARGS ( ptr u8 n -- )" SHAPE:MUST-HAVE

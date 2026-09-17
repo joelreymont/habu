@@ -810,6 +810,11 @@ PTR-VARIABLE STG-START
    a u s" variable" STR=CI IF s" -- ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" PERSISTED-PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
+   \ The declared-pointee forms: the clause names the pointee, so the effect has
+   \ no type variable and the raw registration seals nothing. Same word, same row
+   \ as the native path publishes through `trust-raw`.
+   a u s" PTR-U8-TABLE" STR=CI IF s" -- ptr ptr u8" RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" PERSISTED-PTR-U8-TABLE-VARIABLE" STR=CI IF s" -- ptr ptr ptr u8" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
    a u s" PRIM:" STR=CI IF RECORD-PRIM 0 0= EXIT THEN
    a u s" PPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN

@@ -478,7 +478,10 @@ QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
    xr q PAY cells QXRA + ! ;
 
 512 constant MAXATOM-INIT       \ atom terms (grows on demand)
-create ATOMA-BOOT MAXATOM-INIT cells allot
+\ The name column holds POINTERS into the token text, so it is declared storage
+\ (src/core/pointer-storage.f): a raw `create`d cell may not hold an address.
+\ Its two siblings hold a length and a kind and stay raw cells.
+MAXATOM-INIT PTR-U8-TABLE ATOMA-BOOT
 create ATOMU-BOOT MAXATOM-INIT cells allot
 create ATOMK-BOOT MAXATOM-INIT cells allot
 variable ATOMN
@@ -495,7 +498,8 @@ variable RIGID-N
 7140 constant E-RIGID-EXHAUST   \ a rigid identity domain exhausted before wrap
 variable RGN-N   variable EXT-N   variable GEN-N
 variable RIGID-MAX   $4000000000000000 RIGID-MAX !
-PERSISTED-PTR-VARIABLE ATOMA-P   PERSISTED-PTR-VARIABLE ATOMU-P   PERSISTED-PTR-VARIABLE ATOMK-P   variable ATOM-CAP
+PERSISTED-PTR-U8-TABLE-VARIABLE ATOMA-P
+PERSISTED-PTR-VARIABLE ATOMU-P   PERSISTED-PTR-VARIABLE ATOMK-P   variable ATOM-CAP
 ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
 : ATOMA ( -- ptr ptr u8 ) ATOMA-P @ ;
 : ATOMU ( -- ptr n ) ATOMU-P @ ;
@@ -550,7 +554,7 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : ATOM>K ( n -- n ) PAY cells ATOMK + @ ;
 
 512 constant MAXPARAM-INIT      \ param terms (grows on demand)
-create PARAMA-BOOT MAXPARAM-INIT cells allot
+MAXPARAM-INIT PTR-U8-TABLE PARAMA-BOOT   \ name pointers: declared storage, like ATOMA-BOOT
 create PARAMU-BOOT MAXPARAM-INIT cells allot
 create PARAMC-BOOT MAXPARAM-INIT cells allot
 create PARAMFAM-BOOT MAXPARAM-INIT cells allot   \ resolved family-id per param term (identity)
@@ -572,7 +576,8 @@ create PARAM-SCR-BOOT PARAM-SCR-INIT cells allot
 variable PARAMN
 variable PARAM-SCR-N
 variable PARAM-I
-PERSISTED-PTR-VARIABLE PARAMA-P   PERSISTED-PTR-VARIABLE PARAMU-P   PERSISTED-PTR-VARIABLE PARAMC-P   PERSISTED-PTR-VARIABLE PARAMFAM-P
+PERSISTED-PTR-U8-TABLE-VARIABLE PARAMA-P
+PERSISTED-PTR-VARIABLE PARAMU-P   PERSISTED-PTR-VARIABLE PARAMC-P   PERSISTED-PTR-VARIABLE PARAMFAM-P
 PERSISTED-PTR-VARIABLE PARAMOFF-P   PERSISTED-PTR-VARIABLE PARAMHID-P   PERSISTED-PTR-VARIABLE PARGP-P   variable PARG-N   variable PARG-CAP-V
 PERSISTED-PTR-VARIABLE PARAM-SCR-P
 variable PARAM-CAP     variable PARAM-SCR-CAP-V
@@ -3303,7 +3308,7 @@ create NMAP 26 cells allot
 : NMAP-RESET 0 BEGIN dup cells NMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
 
 64 constant FAM-CAP
-create FAM-A FAM-CAP cells allot
+FAM-CAP PTR-U8-TABLE FAM-A       \ name pointers: declared storage, like ATOMA-BOOT
 create FAM-U FAM-CAP cells allot
 variable FAM-N
 variable FAM-I
@@ -9266,8 +9271,14 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ (tools/data-table-census.f prints the per-owner table). Together with the
 \ NORET buffer above and render.f's SEEN, emptying them took the sparse DATA
 \ blob of a self-built engine from 3,777,887 bytes to 3,644,805.
-: ARENA-SNAP-BOOT ( ptr ptr n ptr n n -- ) {: pv:ptr boot:ptr cells:n :}
-   boot 0 cells ARENA-CELLS-ZERO
+\ The pointee is a quantifier, not `n`: a store whose boot buffer is a declared
+\ PTR-U8-TABLE (ATOMA-BOOT, PARAMA-BOOT) repoints its head through this word too,
+\ and its cells hold `ptr u8` rather than numbers. Zeroing is a byte-level act on
+\ any store, so the cell view is taken explicitly - `byte-view` is the polymorphic
+\ direction and `cell-view` only accepts `ptr u8`, so the pair leaves `a` alone
+\ where a bare `cell-view` would specialize it to `u8` (E-NONPARAMETRIC-EFFECT).
+: ARENA-SNAP-BOOT ( ptr ptr a ptr a n -- ) {: pv:ptr boot:ptr cells:n :}
+   boot BYTE-VIEW CELL-VIEW 0 cells ARENA-CELLS-ZERO
    boot pv ! ;
 
 \ DECOUPLED-ARENA-SNAP-RESET ( -- ) : repoint the per-definition scratch arenas
