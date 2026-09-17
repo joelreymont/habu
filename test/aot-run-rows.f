@@ -81,6 +81,22 @@ create VBUF 16 allot
    s" a value no u32 row field could have held is refused" T-LABEL
    5 REFUSED ;
 
+\ The writer refuses what the reader refuses: a value outside u32 has no width
+\ and RUN-V! leaves the buffer alone. A negative value is the case that matters,
+\ because a gap is `start - last end` and a backwards row is otherwise silent.
+: UNWRITABLE ( -- )
+   $55 0 B!
+   s" a negative value has no width" T-LABEL
+   -1 RUN-VLEN 0 T=
+   s" ... and is not written" T-LABEL
+   -1 VBUF RUN-V! 0 T=
+   VBUF c@ $55 T=
+   s" a value past u32 has no width" T-LABEL
+   $100000000 RUN-VLEN 0 T=
+   s" ... and is not written" T-LABEL
+   $100000000 VBUF RUN-V! 0 T=
+   VBUF c@ $55 T= ;
+
 \ A gap is an unsigned distance from the last run's END, so the merged threshold
 \ and the row's own arithmetic have to agree: a row is never narrower than two
 \ one-byte fields, and that width is what decides whether a zero gap travels.
@@ -92,7 +108,7 @@ create VBUF 16 allot
 
 : RUN ( -- )
    T-RESET
-   WIDTHS  TRUNCATED  EMPTY  PADDED  OVERLONG  TOO-WIDE  THRESHOLD
+   WIDTHS  TRUNCATED  EMPTY  PADDED  OVERLONG  TOO-WIDE  UNWRITABLE  THRESHOLD
    T-REPORT ;
 
 RUN

@@ -205,8 +205,9 @@ variable BLOB-RUN-AT   variable BLOB-RUN-OPEN   variable BLOB-RUN-END
 variable BLOB-LAST-END
 
 : BLOB-V! ( n -- ) {: v:n :}
-   v  SPARSE-BUF SPARSE-LEN @ +  AOT-WINDOW:RUN-V!
-   SPARSE-LEN @ + SPARSE-LEN ! ;
+   v  SPARSE-BUF SPARSE-LEN @ +  AOT-WINDOW:RUN-V! {: w:n :}
+   w 0= IF s" aot: a sparse data row field is not a u32 varint" 74 die THEN
+   SPARSE-LEN @ w + SPARSE-LEN ! ;
 
 : BLOB-ROW! ( n n -- ) {: start:n len:n :}
    AOT-WINDOW:RUN-VMAX 2 * SPARSE-ROOM?

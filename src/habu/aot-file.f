@@ -1253,7 +1253,9 @@ DYNAMIC-BUFFER HOST-REG n
    S-WDATA BASE@ {: at:n :}
    at S-WDATA ROW-LEN@ RUN-V {: gap:n gw:n :}
    gap H-DATA-R @ + H-RUNEND @ - {: merged:n :}
-   merged RUN-VLEN gw - {: grow:n :}
+   merged RUN-VLEN {: mw:n :}
+   mw 0= if s" aot-file: the merged window DATA gap is not a row field" DIE then
+   mw gw - {: grow:n :}
    at S-WDATA ROW-LEN@ + grow + RUN-CAP > if
       S-WDATA s" is larger than the buffer it fills" SECT-DIE then
    grow 0 > if

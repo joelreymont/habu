@@ -1460,7 +1460,11 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
       s" aot-capture: the window DATA runs exceed the AOT run-byte buffer" 74 die then
    AOT-WINDOW:RUN-BUF@ AOT-WINDOW:RUN-LEN @ + {: r:ptr :}
    off AOT-WINDOW:RUN-END @ -  r  AOT-WINDOW:RUN-V! {: gw:n :}
+   gw 0= if
+      s" aot-capture: a window DATA run does not follow the last run's end" 74 die then
    rl  r gw +  AOT-WINDOW:RUN-V! {: lw:n :}
+   lw 0= if
+      s" aot-capture: a window DATA run's length is not a row field" 74 die then
    rl 0 ?do
       d0 off + i + AOT-N>U8 c@
       AOT-WINDOW:RBYTES-BUF@ AOT-WINDOW:RBYTES-LEN @ + i + c!

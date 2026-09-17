@@ -314,14 +314,22 @@ variable RBYTES-LEN
 \ reason it mirrors the other row widths: it reads images in a booted engine that
 \ cannot load this build-side file.
 
+\ A FIELD IS A u32, FOR THE WRITER AS FOR THE READER. RUN-VLEN answers 0 for a
+\ value that is negative or past $FFFFFFFF and RUN-V! then writes nothing and
+\ answers 0, so every producer refuses by name what RUN-V@ would refuse on the
+\ way back in. It matters most for the gap: a gap is `start - last end`, and now
+\ that a backwards row is a shape the READER cannot see, a producer that computed
+\ a negative gap is the only place left that can notice one.
 : RUN-VLEN ( n -- n ) {: v:n :}
+   v 0< if 0 exit then
+   v $FFFFFFFF > if 0 exit then
    v $80 < if 1 exit then
    v $4000 < if 2 exit then
    v $200000 < if 3 exit then
    v $10000000 < if 4 exit then
    RUN-VMAX ;
 
-: RUN-V! ( n ptr u8 -- n ) {: v:n p:ptr :}   \ answers the bytes written
+: RUN-V! ( n ptr u8 -- n ) {: v:n p:ptr :}   \ answers the bytes written, 0 for no field
    v RUN-VLEN {: w:n :}
    w 0 ?do
       v i 7 * rshift $7F and {: g:n :}
