@@ -16,18 +16,42 @@ package TASK-TEST
 : TASK-TEST-ALIGN8 ( -- )
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
 
+\ ---- what the sleeping cases measure -----------------------------------------
+1 constant RUSAGE-THREAD             \ the CALLING thread's CPU time, not the process's
+$90 constant RUSAGE-BYTES            \ struct rusage: two timevals and fourteen longs
+0 constant RU-UTIME-OFF
+$10 constant RU-STIME-OFF
+1000000 constant US-PER-S
+1000000 constant NS-PER-MS
+50 constant SLEEP-MS                 \ the duration every sleeping case asks for
+SLEEP-MS NS-PER-MS * constant SLEEP-LEAST-NS
+\ Scheduler slack: the machine is shared, so a woken task is not always the next
+\ one to run. The upper bound catches a sleep that waited out a DIFFERENT
+\ duration, not one the scheduler was late to resume.
+100 constant SLEEP-SLACK-MS
+SLEEP-MS SLEEP-SLACK-MS + NS-PER-MS * constant SLEEP-MOST-NS
+5000 constant SLEEP-CPU-US           \ a PAUSE loop over the same 50 ms costs ten times this
+1000000 constant SLEEP-ZERO-NS       \ a zero sleep never enters the kernel
+$100 constant SLEEP-LEAST-TICKS      \ a floor far under the tens of thousands a
+                                     \ counting task reaches over a 50 ms sleep
+
 TASK-TEST-ALIGN8
 variable TASK-COUNT
 variable TASK-READY-CELL
 variable TASK-SELF-A
 variable TASK-SELF-B
 variable TASK-OK-CELL
+variable SLEEP-W-NS
+variable SLEEP-W-CPU
+variable SLEEP-TICKS
+variable SLEEP-DONE-CELL
 
 TASK:#USER
 CELL TASK:+USER TASK-USER-CELL
 CELL TASK:+USER TASK-LOCAL-ID
 CELL TASK:+USER TASK-LOCAL-FFI
 CELL TASK:+USER TASK-EXIT-MARK
+RUSAGE-BYTES TASK:+USER TASK-RUSAGE
 drop
 
 TASK:MIN-STACK TASK:TASK WORKER-A
@@ -63,6 +87,10 @@ TASK:MIN-STACK TASK:TASK JOIN-HALT
 TASK:MIN-STACK TASK:TASK JOIN-IDLE
 TASK:MIN-STACK TASK:TASK BUILD-A
 TASK:MIN-STACK TASK:TASK BUILD-B
+TASK:MIN-STACK TASK:TASK SLEEP-WORKER
+TASK:MIN-STACK TASK:TASK SLEEP-SLEEPER
+TASK:MIN-STACK TASK:TASK SLEEP-COUNTER
+TASK:MIN-STACK TASK:TASK SLEEP-KILLED
 
 $4000 constant TASK-CAP
 60000 constant TASK-CAPTURE-MS       \ includes compiling lib/task.f in each child
@@ -870,6 +898,105 @@ variable JOIN-TWICE-RC
    s" TASK-TH-BOOL ( ptr n -- bool ) TASK:THROW@"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ ---- sleeping ----------------------------------------------------------------
+\ The claim TASK:SLEEP makes is not "it waited" - a PAUSE loop waits too - but
+\ "it waited without running". Wall time proves the duration, the calling task's
+\ own CPU time proves it was parked in the kernel rather than spinning, and the
+\ concurrent case proves that being parked costs the tasks beside it nothing.
+
+PROCESS-SYMBOLS
+
+FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- n )
+   1 RUSAGE-BYTES WRITES-BYTES
+;FUNCTION
+
+\ struct timeval as microseconds.
+: TV-US ( ptr n -- n ) {: tv:ptr :}
+   tv @ US-PER-S *  tv CELL + @ + ;
+
+\ The CALLING task's own CPU time, user plus system. RUSAGE_THREAD, not
+\ RUSAGE_SELF: a worker must measure itself and not the tasks running beside it.
+\ The buffer is a TASK:+USER row for the same reason.
+: THREAD-US ( -- n )
+   RUSAGE-THREAD TASK-RUSAGE BYTE-VIEW RESOURCE-USAGE
+   0 <> if E-TASK-THREAD throw then
+   TASK-RUSAGE RU-UTIME-OFF + TV-US
+   TASK-RUSAGE RU-STIME-OFF + TV-US + ;
+
+\ One sleep, measured from inside whichever task takes it: the wall time it
+\ spanned and the CPU time it cost that task.
+: SLEEP-MEASURE ( -- n n )
+   THREAD-US {: cpu0:n :}
+   mono-ns {: t0:n :}
+   SLEEP-MS >MS TASK:SLEEP
+   mono-ns t0 -
+   THREAD-US cpu0 - ;
+
+: SLEEP-CHECK ( n n -- ) {: elapsed:n cpu:n :}
+   elapsed SLEEP-LEAST-NS >= TTRUE
+   elapsed SLEEP-MOST-NS < TTRUE
+   cpu SLEEP-CPU-US < TTRUE ;
+
+: TASK-TEST-SLEEP-MAIN ( -- )
+   SLEEP-MEASURE SLEEP-CHECK ;
+
+: SLEEP-WORKER-BODY ( -- )
+   SLEEP-MEASURE SLEEP-W-CPU ! SLEEP-W-NS ! ;
+
+: TASK-TEST-SLEEP-WORKER ( -- )
+   0 SLEEP-W-NS ! 0 SLEEP-W-CPU !
+   ['] SLEEP-WORKER-BODY SLEEP-WORKER TASK:ACTIVATE
+   SLEEP-WORKER APP-WAIT-DONE
+   SLEEP-WORKER TASK:THROW@ 0 T=
+   SLEEP-WORKER TASK:KILL
+   SLEEP-W-NS @ SLEEP-W-CPU @ SLEEP-CHECK ;
+
+\ Zero returns without entering the kernel; a duration below zero is the named
+\ operand refusal, not a sleep of some other length.
+: TASK-TEST-SLEEP-EDGES ( -- )
+   mono-ns 0 >MS TASK:SLEEP mono-ns swap - SLEEP-ZERO-NS < TTRUE
+   [: -1 >MS TASK:SLEEP ;] E-TASK-SLEEP-MS TTHROWSQ ;
+
+: SLEEP-SLEEPER-BODY ( -- )
+   SLEEP-MS >MS TASK:SLEEP
+   1 SLEEP-DONE-CELL atomic-add drop ;
+
+: SLEEP-COUNTER-BODY ( -- )
+   begin
+      1 SLEEP-TICKS atomic-add drop
+      SLEEP-DONE-CELL atomic@ 0 > if exit then
+      TASK:PAUSE
+   again ;
+
+\ A sleeping task holds nothing, so the counter runs right through the sleeper's
+\ 50 ms instead of waiting for it.
+: TASK-TEST-SLEEP-CONCURRENT ( -- )
+   0 SLEEP-TICKS ! 0 SLEEP-DONE-CELL !
+   ['] SLEEP-COUNTER-BODY SLEEP-COUNTER TASK:ACTIVATE
+   ['] SLEEP-SLEEPER-BODY SLEEP-SLEEPER TASK:ACTIVATE
+   SLEEP-SLEEPER APP-WAIT-DONE
+   SLEEP-COUNTER APP-WAIT-DONE
+   SLEEP-SLEEPER TASK:THROW@ 0 T=
+   SLEEP-COUNTER TASK:THROW@ 0 T=
+   SLEEP-TICKS @ SLEEP-LEAST-TICKS > TTRUE
+   SLEEP-SLEEPER TASK:KILL
+   SLEEP-COUNTER TASK:KILL ;
+
+: SLEEP-HALT-BODY ( -- )
+   SLEEP-MS >MS TASK:SLEEP
+   begin TASK:PAUSE again ;
+
+\ A sleeping task observes no TASK:HALT until it wakes, so the kill of one
+\ blocks for the rest of the sleep and joins it at the TASK:PAUSE after it. t0
+\ is taken before the activate, so the worker's sleep can only have started
+\ later than it and the bound below is the sleep's own duration.
+: TASK-TEST-SLEEP-KILL ( -- )
+   mono-ns {: t0:n :}
+   ['] SLEEP-HALT-BODY SLEEP-KILLED TASK:ACTIVATE
+   SLEEP-KILLED TASK:HALT
+   SLEEP-KILLED TASK:KILL
+   mono-ns t0 - SLEEP-LEAST-NS >= TTRUE ;
+
 : TASK-TEST-RUN ( -- )
    T-RESET
    TASK-TEST-CALLBACK-TYPES
@@ -923,6 +1050,11 @@ variable JOIN-TWICE-RC
    TASK-TEST-JOIN-CLEANUP-THROWS
    TASK-TEST-JOIN-HALTED
    TASK-TEST-JOIN-REFUSED
+   TASK-TEST-SLEEP-MAIN
+   TASK-TEST-SLEEP-WORKER
+   TASK-TEST-SLEEP-EDGES
+   TASK-TEST-SLEEP-CONCURRENT
+   TASK-TEST-SLEEP-KILL
    T-REPORT ;
 
 TASK-TEST-RUN

@@ -184,16 +184,12 @@ TASK:MIN-STACK TASK:TASK PEER-TASK
 
 \ ---- the delayed peer --------------------------------------------------------
 
-\ Habu has no sleep word, so the peer yields until its own monotonic deadline.
-: SPIN-MS ( n -- ) {: delay:n :}
-   mono-ns delay NS-PER-MS * + {: deadline:n :}
-   begin mono-ns deadline >= if exit then TASK:PAUSE again ;
-
-
 \ Nothing reaches the reader before PEER-MS, so a ready answer sooner than that
-\ never waited in poll(2).
+\ never waited in poll(2). The peer sleeps out its delay rather than yielding
+\ against a deadline: a spinning peer would take a core away from the reader it
+\ is timing.
 : PEER-WORK ( -- )
-   PEER-MS SPIN-MS
+   PEER-MS >MS TASK:SLEEP
    PEER-FD @ TCP4:>CONNECTION CHAT$ TCP4:TRANSFER-BYTES TCP4:WRITE ECHO-STATUS
    1 ECHO-DONE atomic-add drop ;
 

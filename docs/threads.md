@@ -50,6 +50,7 @@ TASK:ACTIVATE        ( n ptr a -- )    \ run xt in a pthread-backed task
 TASK:SELF            ( -- ptr a )
 TASK:SELF-N          ( -- n )
 TASK:PAUSE           ( -- )            \ yield; worker exits if HALT requested
+TASK:SLEEP           ( ms -- )         \ park this task for a duration
 TASK:HALT            ( ptr a -- )      \ request stop at next PAUSE
 TASK:KILL            ( ptr a -- )      \ join/release task memory
 TASK:DONE?           ( ptr a -- bool )
@@ -214,7 +215,8 @@ the declared band directly above it is `STRING-ABI` (1032 bytes), which is not
 part of it.
 
 An image loading `genio`, `tcp4`, `udp4`, `curl` and `serial` together claims
-448 of those bytes, leaving **9984 free**. A row that would cross
+480 of those bytes - 448 for those five and 32 for the sleep row `lib/task.f`
+takes for itself - leaving **10008 free**. A row that would cross
 `USER-BAND:END` is `E-TASK-USER` at its definition, not a store into whatever
 lies above.
 
@@ -224,6 +226,42 @@ Shared cells used across tasks must be 8-byte aligned. `atomic@`, `atomic!`,
 `atomic-add`, `atomic-cas`, and `fence` are native AArch64 primitives and are
 checked in `src/core/checker.f`. Unaligned atomic cells can fault on LSE
 hardware; align dictionary cells before sharing them.
+
+## Sleeping
+
+`TASK:SLEEP ( ms -- )` parks the calling task for at least `ms` milliseconds, in
+`nanosleep` rather than in a loop. It is what a task that must wait a fixed time
+uses: a `TASK:PAUSE` loop against `mono-ns` burns a core for the whole wait and
+this burns none.
+
+```forth
+require lib/task.f
+
+50 >MS TASK:SLEEP                     \ from the main task or from any worker
+```
+
+- The duration is `ms`, the role, not a bare cell, so a nanosecond count or a
+  byte count cannot be passed by accident. Zero returns without entering the
+  kernel; a duration below zero is `E-TASK-SLEEP-MS`, because no sleep serves it.
+- `nanosleep` is declared with `FUNCTION:` over `PROCESS-SYMBOLS` beside the
+  semaphore bindings, so package FFI owns its symbol resolution and its bounded
+  staging and this module states only the prototype and the timespec extent.
+- A signal cuts the sleep short and `nanosleep` reports `EINTR` with the time it
+  did not serve, in its second timespec. The retry asks for exactly that
+  remainder, so no signal can shorten the sleep; the remainder is capped by what
+  is left of an absolute `mono-ns` deadline taken before the first call - the
+  shape `lib/process.f` states as `PROC-DEADLINE-AT` and `PROC-LEFT-MS`, in
+  nanoseconds - so no storm of signals stretches the total either. Any other
+  errno is `E-TASK-THREAD`.
+- Storage class: task-local. The request and the remainder are one 32-byte
+  `TASK:+USER` row, so the main task and every worker may be asleep at the same
+  moment, each over its own pair of timespecs.
+- A sleeping task holds nothing: the row is its own, and the argument tables the
+  call stages sit in its own DATA region, exactly as a blocked `TASK:WAIT`'s do.
+- It observes no `TASK:HALT` until it wakes, for the same reason a task parked in
+  `TASK:WAIT` does not. `TASK:KILL` on a sleeping task therefore blocks for the
+  rest of the sleep and joins it at the next `TASK:PAUSE` - but unlike a waiter,
+  a sleeper needs nothing to release it, because the duration does that.
 
 ## Semaphores
 
@@ -457,7 +495,11 @@ message operation, the semaphore pool exhausting, refusing a foreign handle
 and recovering, a joined value and a joined throw, a worker that ends without
 answering, a cleanup counted through `TASK:HIS` on both the returning and the
 throwing ending, a cleanup that throws over a stored value and beside a body that
-already failed, a halted task joined through the `TASK:PAUSE` ending, and every
-refused join and second answer.
+already failed, a halted task joined through the `TASK:PAUSE` ending, every
+refused join and second answer, and a 50 ms `TASK:SLEEP` measured from the main
+task and from a worker - wall time against the requested duration and the
+sleeping task's own `RUSAGE_THREAD` CPU time against zero, so a sleep that spun
+would fail - beside the refused negative duration, a counting task that runs
+right through a sleeper's 50 ms, and a `TASK:KILL` that waits one out.
 The full test suite includes these as `tasking-primitive-smoke` and
 `tasking-threads`.

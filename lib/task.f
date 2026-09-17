@@ -42,6 +42,13 @@ $0B constant TASK-EAGAIN
 0 constant TASK-SEM-GUARD-OFF
 $8 constant TASK-SEM-OBJ-OFF
 TASK-SEM-OBJ-OFF TASK-SEM-BYTES + constant TASK-SEMAPHORE-BYTES
+$10 constant TASK-TIMESPEC-BYTES         \ struct timespec on an LP64 host
+0 constant TASK-SPEC-SEC-OFF
+$8 constant TASK-SPEC-NSEC-OFF
+TASK-TIMESPEC-BYTES 2 * constant TASK-SLEEP-BYTES  \ the request and the remainder
+1000000 constant TASK-NS-PER-MS
+1000000000 constant TASK-NS-PER-S
+$FFFFFFFFFFFFFFF8 constant TASK-CELL-MASK          \ with the 7 + below, rounds a row's offset up to a cell
 
 TASK-ABI:EMPTY constant TASK-EMPTY
 TASK-ABI:CONSTRUCTED constant TASK-CONSTRUCTED
@@ -314,6 +321,15 @@ FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- n )
 \ TRY-POP refuse on.
 FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- n )
    0 TASK-SEM-BYTES WRITES-BYTES
+;FUNCTION
+
+\ nanosleep is the other call here that blocks on purpose: it parks the calling
+\ thread until a time arrives rather than until something happens. The first
+\ timespec is the request, which the kernel only reads; the second is the one it
+\ writes when a signal cuts the sleep short, so the extent is stated on that
+\ argument alone and the request stays a read-only pointer.
+FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- n )
+   1 TASK-TIMESPEC-BYTES WRITES-BYTES
 ;FUNCTION
 
 : TASK-RC0 ( n -- )
@@ -969,6 +985,71 @@ TRUSTED: FACILITY ( -- )
    create TASK-SEMAPHORE-BYTES allot
    does> ( -- sem ) FFI:>CELL >SEM ;
 
+\ ---- sleeping ----------------------------------------------------------------
+\ The semaphores above park a task until something happens; SLEEP parks it until
+\ a time arrives. It is what replaces a TASK:PAUSE loop against mono-ns: the
+\ loop burns a core for the whole wait and the sleep burns none.
+\
+\ Storage class: task-local. The request and the remainder are one
+\ TASK-SLEEP-BYTES row of the per-task user band, so the main task and every
+\ worker may be asleep at the same moment over their own pair of timespecs. A
+\ sleeping task therefore holds nothing: the row is its own, and the argument
+\ tables the generated call stages sit in its own DATA region, exactly as a
+\ blocked sem_wait's do.
+#USER 7 + TASK-CELL-MASK and TASK-SLEEP-BYTES +USER SLEEP-SPECS drop
+
+: SLEEP-REQ ( -- ptr n )
+   SLEEP-SPECS ;
+
+: SLEEP-REM ( -- ptr n )
+   SLEEP-SPECS TASK-TIMESPEC-BYTES + ;
+
+\ Nanoseconds as a timespec, and back. The kernel's remainder is read the way the
+\ request was written, so nothing outside these two words handles the fields.
+: SPEC! ( n ptr n -- ) {: ns:n spec:ptr :}
+   ns TASK-NS-PER-S /   spec TASK-SPEC-SEC-OFF + !
+   ns TASK-NS-PER-S mod spec TASK-SPEC-NSEC-OFF + ! ;
+
+: SPEC@ ( ptr n -- n ) {: spec:ptr :}
+   spec TASK-SPEC-SEC-OFF + @ TASK-NS-PER-S *
+   spec TASK-SPEC-NSEC-OFF + @ + ;
+
+\ The deadline shape lib/process.f states as PROC-DEADLINE-AT and PROC-LEFT-MS,
+\ in nanoseconds because a sleep resumes on the nanosecond the kernel hands back
+\ and not on a millisecond boundary. Same arithmetic, same floor at zero.
+: SLEEP-DEADLINE-AT ( ms -- n ) {: timeout:ms :}
+   mono-ns timeout MS>N TASK-NS-PER-MS * + ;
+
+: SLEEP-LEFT-NS ( n -- n ) {: deadline:n :}
+   deadline mono-ns - dup 0 <= if drop 0 then ;
+
+\ Zero, or the errno the call refused with.
+: SLEEP-CALL ( -- n )
+   SLEEP-REQ BYTE-VIEW SLEEP-REM BYTE-VIEW NANOSLEEP-CALL
+   0= if 0 exit then
+   FFI:ERRNO ;
+
+\ A signal wakes the thread early, and nanosleep reports EINTR with the time it
+\ did not serve in the second timespec: the retry asks for exactly that
+\ remainder, so no signal can shorten the sleep. The remainder is capped by what
+\ is left of an absolute deadline taken before the first call, so no storm of
+\ signals can stretch the total either - the retries converge on the deadline
+\ from below. Zero returns without entering the kernel; a duration below zero is
+\ an operand nothing could serve.
+: TASK-SLEEP ( ms -- ) {: timeout:ms :}
+   timeout MS>N {: want:n :}
+   want 0 < if E-TASK-SLEEP-MS throw then
+   want 0= if exit then
+   timeout SLEEP-DEADLINE-AT {: deadline:n :}
+   want TASK-NS-PER-MS * SLEEP-REQ SPEC!
+   begin
+      SLEEP-CALL dup 0= if drop exit then
+      TASK-EINTR <> if E-TASK-THREAD throw then
+      SLEEP-REM SPEC@ deadline SLEEP-LEFT-NS min {: next:n :}
+      next 0 <= if exit then
+      next SLEEP-REQ SPEC!
+   again ;
+
 public
 
 TASK-MIN-STACK constant MIN-STACK
@@ -990,6 +1071,15 @@ TASK-MIN-STACK constant MIN-STACK
 
 : PAUSE ( -- )
    PAUSE ;
+
+\ Parks the calling task for at least ms milliseconds and returns as soon after
+\ that as the scheduler allows, from the main task or from a worker. It burns no
+\ CPU: the task is in the kernel rather than in a PAUSE loop, and it holds
+\ nothing while it is there. A sleeping task observes no TASK:HALT until it
+\ wakes, so TASK:KILL on one waits out the rest of the sleep. Zero returns at
+\ once; a duration below zero is E-TASK-SLEEP-MS.
+: SLEEP ( ms -- )
+   TASK-SLEEP ;
 
 : HALT ( ptr n -- )
    HALT ;

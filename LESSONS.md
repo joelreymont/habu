@@ -1894,7 +1894,10 @@ fits.
   same-name re-registrations). Keep older widely-used codes stable, renumber the newer claimant; a bulk
   `E-*`→`ENGINE-ERROR:*` migration must EXCLUDE its replacement spelling and end with an exact
   legacy/near-miss scan (a non-token-exact match corrupts the new spelling). Removing a satisfied class
-  error is fine only when it had a single runtime reader.
+  error is fine only when it had a single runtime reader. A new code is also invisible until the engine
+  is rebuilt: `lib/errors.f` is a baked prefix file, so `require lib/errors.f` short-circuits and the
+  constant is `E-UNDEFINED` — a library-only change that claims one still needs `tools/native-build.f`
+  before its own tests can run.
 - **A benchmark reports axes SEPARATELY, deterministically, from evidence.** Trial pass, task pass@k,
   repair rounds, wall time, generated-token cost (a proxy, not hidden reasoning); reports are
   evidence-derived text with no wall-clock stamp (provable with `cmp` before archiving outside git);
