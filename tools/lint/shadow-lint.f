@@ -172,6 +172,7 @@ variable IN-DEFINITION
    s" src/core/pointer-storage.f" LINT-FILE
    s" src/core/engine-error.f" LINT-FILE
    s" src/core/engine-error-effects.f" LINT-FILE
+   s" src/habu/prims.f"     LINT-FILE
    s" src/core/checker.f"   LINT-FILE
    s" src/core/lower-cert-base.f" LINT-FILE
    s" src/core/type-schema.f" LINT-FILE s" src/core/type-family.f" LINT-FILE

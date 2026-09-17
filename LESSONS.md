@@ -639,6 +639,25 @@ fits.
   reject to UNCK, which multi-error loads trust differently); latch reason codes with
   the token pin, not at render time, and truncation must latch BEFORE the
   output-boundary coercion.
+- **A primitive axiom registered after `PTABLE-END` is a USER effect, and an
+  overload set silently becomes one row.** `src/core/checker.f` `E-REC-START`
+  links every record it appends into the per-symbol index, and `PTABLE-END` sets
+  `USIGS-USER-OFF` behind it; a row past that boundary is what `USIG-NEWEST`
+  answers with, so `+`'s three rows collapse to the newest and pointer
+  arithmetic stops checking. Rows for `LAYOUT-BUFFER`/`NEWTYPE`/`SUMTYPE` sit
+  there safely only because each is a single-row declarer axiom. That is why
+  `src/habu/prims.f` is data loaded BEFORE checker.f and replayed inside the
+  region, not rows loaded after it — checker.f is one file, so any row source
+  that follows it lands past the boundary.
+- **`E-NCOMP-ARITY` from `KEEP-ARITY` has a reaching case: a body whose branches
+  leave different stack depths.** `src/compiler/native/compiler.f` says the
+  absent `SPELL-ARITY` answer "has no reaching case today" (dot
+  habu-reach-the-absent-360162f5). It does: an atom dispatcher where one branch
+  mints a value and another consumes one has no inferable effect, so the checker
+  records none and the native compiler refuses with `ncomp: cannot compile
+  <name>` and no " at " token. Measured on `PE-SPEC-ATOM`. The fix is to give the
+  branches one uniform effect — keep the varying operands in the word's own
+  stack, not the data stack.
 
 ## Types, ADTs & Signatures
 

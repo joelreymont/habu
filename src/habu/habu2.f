@@ -284,6 +284,7 @@ variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
 variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPDYNAMIC      variable LPBYTES        variable LPFETCHABI     variable LPOWNERABI     variable LPCHECKER      variable LPRENDER
+variable LPPRIMS
 variable LPLOWERCERTBASE
 variable LPOWNERGUARD
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
@@ -927,6 +928,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-LOAD-ROW
    PFX-COMMON LPFETCHABI     s" src/core/checker-fetch-abi.f" PFX-LOAD-ROW
    PFX-COMMON LPOWNERABI     s" src/core/checker-owner-abi.f" PFX-LOAD-ROW
+   PFX-COMMON LPPRIMS        s" src/habu/prims.f"       PFX-LOAD-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-LOAD-ROW
    PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-LOAD-ROW
@@ -1070,6 +1072,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PATH-ROW
    PFX-COMMON LPFETCHABI     s" src/core/checker-fetch-abi.f" PFX-PATH-ROW
    PFX-COMMON LPOWNERABI     s" src/core/checker-owner-abi.f" PFX-PATH-ROW
+   PFX-COMMON LPPRIMS        s" src/habu/prims.f"       PFX-PATH-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PATH-ROW
    PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-PATH-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PATH-ROW
@@ -1535,6 +1538,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PROVIDE-ROW
    PFX-COMMON LPFETCHABI     s" src/core/checker-fetch-abi.f" PFX-PROVIDE-ROW
    PFX-COMMON LPOWNERABI     s" src/core/checker-owner-abi.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPPRIMS        s" src/habu/prims.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PROVIDE-ROW
@@ -9838,7 +9842,7 @@ package LABELS
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
-   LBL LPSTRUCTURES !  LBL LPBYTES ! LBL LPDYNAMIC !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNERABI !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
+   LBL LPSTRUCTURES !  LBL LPBYTES ! LBL LPDYNAMIC !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNERABI !  LBL LPPRIMS !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
@@ -10195,6 +10199,43 @@ variable CUR
 \ ENGINE-BUILD:BUILD below all call.
 package ENGINE-EMIT
 
+\ ---- the primitive specification's other half --------------------------------
+\ habu1.f FP-ARGS refuses a machine body whose name has no row in
+\ src/habu/prims.f. This is the converse: a row that this backend never answered.
+\ Without it a primitive could be specified, and every checked caller believe the
+\ effect, while the engine carried no code for the name - which is the same fork
+\ the table exists to close, read from the other end.
+\
+\ IT ASKS KEEP?, because a subset build drops bodies on purpose (habu1.f
+\ FP-KEEP?). A row the treeshaker drops is not a missing body; a row it keeps and
+\ no section registered is.
+variable PTC-I   variable PTC-J
+
+: PTC-BODY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 PTC-J !
+   BEGIN PTC-J @ ENGINE-PRIMS:COUNT < WHILE
+      PTC-J @ ENGINE-PRIMS:NAME$ a u CORE-STR= IF 0 0= EXIT THEN
+      PTC-J @ 1 + PTC-J !
+   REPEAT
+   0 0= 0= ;
+
+: PTC-MISSING ( ptr u8 n -- )
+   s" prims: no arm64 body for specified primitive " type type cr
+   s" prims: specification row without a backend body" 76 die ;
+
+: PTC-ROW ( n -- )
+   PRIM-SPEC:NAME$
+   2dup KEEP? IF
+      2dup PTC-BODY? 0= IF PTC-MISSING ELSE 2drop THEN
+   ELSE 2drop THEN ;
+
+: PRIM-TABLE-COMPLETE ( -- )
+   0 PTC-I !
+   BEGIN PTC-I @ PRIM-SPEC:COUNT < WHILE
+      PTC-I @ PTC-ROW
+      PTC-I @ 1 + PTC-I !
+   REPEAT ;
+
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    TIER-PROV:EMIT-HELPERS
    EMIT-PRIMS
@@ -10209,6 +10250,7 @@ package ENGINE-EMIT
    s" addr-cells-abi" ['] SNAP-RELOC:BVERSION FPRIM
    PROF:EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
+   PRIM-TABLE-COMPLETE
    EMIT-CEMIT
    EMIT-CEMITBL
    EMIT-ADDSUB-IMM

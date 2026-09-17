@@ -202,6 +202,7 @@ SRC_CORE=(
   src/core/exec-vector.f
   src/core/checker-fetch-abi.f
   src/core/checker-owner-abi.f
+  src/habu/prims.f
   src/core/checker.f
   src/core/engine-error-effects.f
   src/core/lower-cert-base.f

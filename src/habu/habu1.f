@@ -104,8 +104,21 @@ require src/habu/code-origin.f
 
 variable FPL  variable FPE
 
+\ THE TABLE IS WHICH PRIMITIVES EXIST. Every body below registers under a name
+\ that src/habu/prims.f already specifies - the row states the effect, the body
+\ states the machine code, and neither restates the other. A body whose name has
+\ no row is a second primitive list starting, so it is refused here, and the
+\ other half of the pair - a row that no backend answers - is the completeness
+\ gate in habu2.f ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS. The check runs before
+\ KEEP?, so a subset build cannot hide an unspecified primitive.
+: FP-SPEC-MISSING ( -- )
+   s" prims: primitive with no row in src/habu/prims.f: " type
+   FP-A@ FP-U @ type cr
+   s" prims: engine primitive absent from the specification table" 76 die ;
+
 : FP-ARGS ( ptr u8 n [ -- ] -- )
-   is FP-EMIT  FP-U !  FP-A ! ;
+   is FP-EMIT  FP-U !  FP-A !
+   FP-A@ FP-U @ PRIM-SPEC:FIND 0 < IF FP-SPEC-MISSING THEN ;
 
 : FP-KEEP? ( -- bool )
    FP-A@ FP-U @ KEEP? ;

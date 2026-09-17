@@ -52,6 +52,7 @@ s" src/core/engine-error.f" provided
 s" src/core/exec-vector.f" provided
 s" src/core/checker-fetch-abi.f" provided
 s" src/core/checker-owner-abi.f" provided
+s" src/habu/prims.f" provided
 s" src/core/checker.f" provided
 s" src/core/engine-error-effects.f" provided
 s" src/core/lower-cert-base.f" provided

@@ -41,6 +41,18 @@ Target selection must fail closed. Do not write boolean branches that mean
 "Linux, otherwise macOS"; every selector should handle each supported target
 explicitly and call a named target-unknown error when none match.
 
+## Engine Primitives
+
+`src/habu/prims.f` is the single specification of the engine's primitives: one
+row per primitive carrying its name, its checker effect and the name of the
+reference implementation that answers for it, and nothing machine-specific.
+`src/core/checker.f` replays that table to build its own rows, so an effect is
+stated once; `src/habu/habu1.f` refuses a machine body whose name has no row and
+`src/habu/habu2.f` refuses a row that the backend never answered. A new backend
+adds bodies under the row names and declares no effects of its own. Rows of kind
+`ELAB` (the checker computes the effect at the call site) and `UNROWED` (no
+declaration anywhere) name the primitives that deliberately have no row.
+
 ## Native Compiler ABI
 
 `src/compiler/native/abi.f` maps the same target predicates to

@@ -938,6 +938,7 @@ package BUILD-FIXPOINT
    out outu s" src/core/exec-vector.f" BF-APPEND-SOURCE
    out outu s" src/core/checker-fetch-abi.f" BF-APPEND-SOURCE
    out outu s" src/core/checker-owner-abi.f" BF-APPEND-SOURCE
+   out outu s" src/habu/prims.f" BF-APPEND-SOURCE
    out outu s" src/core/checker.f" BF-APPEND-SOURCE
    out outu s" src/core/engine-error-effects.f" BF-APPEND-SOURCE
    out outu s" src/core/lower-cert-base.f" BF-APPEND-SOURCE

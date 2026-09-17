@@ -6796,19 +6796,14 @@ variable PE-EFF-ID
 : PE-U8 ( -- n ) CC-U8 MK-CON ;
 : PE-PTR ( n -- n ) MK-PTR ;
 : PE-PTR-A ( -- n ) PE-A PE-PTR ;
-: PE-PTR-B ( -- n ) PE-B PE-PTR ;
-: PE-PTR-C ( -- n ) PE-C PE-PTR ;
-: PE-PTR-D ( -- n ) PE-D PE-PTR ;
-: PE-PTR-E ( -- n ) PE-E PE-PTR ;
 : PE-PTR-N ( -- n ) PE-N PE-PTR ;
 : PE-PTR-U8 ( -- n ) PE-U8 PE-PTR ;
-: PE-PTR-PTR-B ( -- n ) PE-B PE-PTR PE-PTR ;
-\ RAW-kinded prototype var for raw storage-definer prims (here/data-base): the
-\ minted pointee is TVK-RAW, so a fetch through it yields a RAW value that cannot
-\ launder into a nominal atom/family. E-COPY reads the kind at PE-CLOSE and bakes
-\ it onto the stored effect (EN.B), and E-INST re-freshens it per application.
-: PE-A-RAW ( -- n ) PE-A dup PAY TVK-RAW! ;
-: PE-PTR-A-RAW ( -- n ) PE-A-RAW PE-PTR ;
+\ RAW-kinds a prototype var, for the raw storage-definer prims (here/data-base):
+\ the minted pointee is TVK-RAW, so a fetch through it yields a RAW value that
+\ cannot launder into a nominal atom/family. E-COPY reads the kind at PE-CLOSE
+\ and bakes it onto the stored effect (EN.B), and E-INST re-freshens it per
+\ application.
+: PE-RAW! ( n -- n ) dup PAY TVK-RAW! ;
 
 \ A QUOTATION operand for a prim row. `PE-Q` opens one, PE-QIN / PE-QOUT
 \ accumulate the quotation's own data rows exactly the way PE-IN / PE-OUT
@@ -6877,261 +6872,99 @@ variable PE-QDOUT
 : FFI-PTR>CELL ;                         \ ( ptr a -- n ) by axiom
 : FFI-CELL>PTR ;                         \ ( n -- ptr u8 ) by axiom
 
+\ ---- the engine primitives' rows ---------------------------------------------
+\ Every primitive the engine implements as a machine body is specified once, in
+\ src/habu/prims.f: the name, the checker effect, the reference implementation
+\ that answers for it and the per-backend body that implements it. That file
+\ loads before this one and carries the effects as an atom-code stream; the words
+\ below replay it onto the row constructors above, so the row registered
+\ here IS the row written there and no second copy of an effect exists. A backend
+\ adds a body under a row's name and states nothing about its type.
+\
+\ THE REPLAY RUNS INSIDE THE PRIM REGION, immediately after PTABLE-START. A row
+\ appended after PTABLE-END is a USER effect record for its symbol - E-REC-START
+\ links every record it appends into the per-symbol index - and the newest user
+\ record answers alone, which would silently reduce `+`'s three rows to one. That
+\ is also why the table is data loaded ahead of this file rather than rows loaded
+\ after it: this file is one file, and a row source that follows it lands past
+\ the boundary.
+\ THE ATOMS HOLD THEIR OPERANDS IN A STACK OF THEIR OWN, not on the data stack,
+\ because a replayed atom does not have one stack effect: PE-A mints a term and
+\ PE-IN consumes one, so a dispatcher that left them on the data stack has a
+\ different depth down each branch and no inferable effect - measured,
+\ `ncomp: cannot compile PE-SPEC-ATOM`, E-NCOMP-ARITY. Every atom below is
+\ ( n -- ), the pending operands live in PE-SPEC-TERMS, and a row that ends with
+\ one left over is malformed and says so.
+$20 constant PE-SPEC-CAP
+create PE-SPEC-TERMS PE-SPEC-CAP cells allot
+variable PE-SPEC-TOS
+variable PE-SPEC-I   variable PE-SPEC-J
+
+: PE-SPEC-PUSH ( n -- )
+   PE-SPEC-TOS @ PE-SPEC-CAP >= IF s" checker: primitive-spec operands overflow" 76 die THEN
+   PE-SPEC-TERMS PE-SPEC-TOS @ cells + !
+   PE-SPEC-TOS @ 1 + PE-SPEC-TOS ! ;
+
+: PE-SPEC-POP ( -- n )
+   PE-SPEC-TOS @ 0 <= IF s" checker: primitive-spec operand missing" 76 die THEN
+   PE-SPEC-TOS @ 1 - PE-SPEC-TOS !
+   PE-SPEC-TERMS PE-SPEC-TOS @ cells + @ ;
+
+: PE-SPEC-ATOM ( n -- ) {: code:n :}
+   code PRIM-SPEC:A-IN       = IF PE-SPEC-POP PE-IN  EXIT THEN
+   code PRIM-SPEC:A-OUT      = IF PE-SPEC-POP PE-OUT EXIT THEN
+   code PRIM-SPEC:A-VAR-A    = IF PE-A  PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-VAR-B    = IF PE-B  PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-VAR-C    = IF PE-C  PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-VAR-D    = IF PE-D  PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-VAR-E    = IF PE-E  PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-NUM      = IF PE-N  PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-BOOL     = IF PE-F  PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-REAL     = IF PE-R  PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-U8       = IF PE-U8 PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-PTR      = IF PE-SPEC-POP PE-PTR  PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-RAW      = IF PE-SPEC-POP PE-RAW! PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-QUOT     = IF PE-Q EXIT THEN
+   code PRIM-SPEC:A-QUOT-END = IF ;PE-Q PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-FINALLY  = IF PE-FINALLY EXIT THEN
+   s" checker: unknown primitive-spec atom" 76 die ;
+
+: PE-SPEC-ROW ( n -- ) {: row:n :}
+   row PRIM-SPEC:KIND@ {: kind:n :}
+   kind PRIM-SPEC:K-ELAB = kind PRIM-SPEC:K-UNROWED = or IF EXIT THEN
+   kind PRIM-SPEC:K-PKG-PRIVATE = IF
+      row PRIM-SPEC:PKG$ PE-PKG-U ! PE-PKG-A !
+   THEN
+   row PRIM-SPEC:NAME$ PE-OPEN
+   0 PE-SPEC-TOS !
+   0 PE-SPEC-J !
+   BEGIN PE-SPEC-J @ row PRIM-SPEC:CODE-LEN@ < WHILE
+      row PE-SPEC-J @ PRIM-SPEC:CODE@ PE-SPEC-ATOM
+      PE-SPEC-J @ 1 + PE-SPEC-J !
+   REPEAT
+   PE-SPEC-TOS @ 0 <> IF s" checker: primitive-spec operand left over" 76 die THEN
+   kind PRIM-SPEC:K-PKG-PRIVATE = IF CLOSE-PRIVATE ELSE PE-CLOSE THEN
+   row PRIM-SPEC:TRUSTED-ONLY? IF PRIM-TRUSTED-ONLY! THEN ;
+
+: PE-SPEC-REPLAY ( -- )
+   0 PE-SPEC-I !
+   BEGIN PE-SPEC-I @ PRIM-SPEC:COUNT < WHILE
+      PE-SPEC-I @ PE-SPEC-ROW
+      PE-SPEC-I @ 1 + PE-SPEC-I !
+   REPEAT ;
+
 PTABLE-START
 
-PRIM: finally PE-FINALLY PRIM;
+PE-SPEC-REPLAY
 
-PRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT PRIM;
-PRIM: drop  PE-A PE-IN PRIM;
-PRIM: swap  PE-A PE-IN PE-B PE-IN  PE-B PE-OUT PE-A PE-OUT PRIM;
-PRIM: over  PE-A PE-IN PE-B PE-IN  PE-A PE-OUT PE-B PE-OUT PE-A PE-OUT PRIM;
-PRIM: nip   PE-A PE-IN PE-B PE-IN  PE-B PE-OUT PRIM;
-PRIM: tuck  PE-A PE-IN PE-B PE-IN  PE-B PE-OUT PE-A PE-OUT PE-B PE-OUT PRIM;
-PRIM: rot   PE-A PE-IN PE-B PE-IN PE-C PE-IN  PE-B PE-OUT PE-C PE-OUT PE-A PE-OUT PRIM;
-PRIM: -rot  PE-A PE-IN PE-B PE-IN PE-C PE-IN  PE-C PE-OUT PE-A PE-OUT PE-B PE-OUT PRIM;
-PRIM: 2dup  PE-A PE-IN PE-B PE-IN  PE-A PE-OUT PE-B PE-OUT PE-A PE-OUT PE-B PE-OUT PRIM;
-PRIM: 2drop PE-A PE-IN PE-B PE-IN PRIM;
-PRIM: 2swap PE-A PE-IN PE-B PE-IN PE-C PE-IN PE-D PE-IN
-            PE-C PE-OUT PE-D PE-OUT PE-A PE-OUT PE-B PE-OUT PRIM;
-PRIM: 2over PE-A PE-IN PE-B PE-IN PE-C PE-IN PE-D PE-IN
-            PE-A PE-OUT PE-B PE-OUT PE-C PE-OUT PE-D PE-OUT PE-A PE-OUT PE-B PE-OUT PRIM;
-
-PRIM: +      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: +      PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-A PE-OUT PRIM;
-PRIM: +      PE-N PE-IN PE-PTR-A PE-IN  PE-PTR-A PE-OUT PRIM;
-PRIM: -      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: -      PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-A PE-OUT PRIM;
-PRIM: -      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;
-PRIM: *      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: and    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: and    PE-F PE-IN PE-F PE-IN  PE-F PE-OUT PRIM;
-PRIM: or     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: or     PE-F PE-IN PE-F PE-IN  PE-F PE-OUT PRIM;
-PRIM: xor    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: xor    PE-F PE-IN PE-F PE-IN  PE-F PE-OUT PRIM;
-PRIM: 1+     PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: 1+     PE-PTR-A PE-IN  PE-PTR-A PE-OUT PRIM;
-PRIM: 1-     PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: 1-     PE-PTR-A PE-IN  PE-PTR-A PE-OUT PRIM;
-PRIM: negate PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: invert PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: 0=     PE-A PE-IN  PE-F PE-OUT PRIM;
-PRIM: 0<     PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: =      PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: =      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT PRIM;
-PRIM: <      PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: <      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT PRIM;
-PRIM: >      PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: >      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT PRIM;
-PRIM: <>     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: <>     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT PRIM;
-PRIM: <=     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: <=     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT PRIM;
-PRIM: >=     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: >=     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT PRIM;
-PRIM: /      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: mod    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: /mod   PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
-PRIM: abs    PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: min    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: max    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: lshift PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: rshift PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: cells  PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: cell+  PE-PTR-A PE-IN  PE-PTR-A PE-OUT PRIM;
-PRIM: cell+  PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: chars  PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: char+  PE-PTR-A PE-IN  PE-PTR-A PE-OUT PRIM;
-PRIM: char+  PE-N PE-IN  PE-N PE-OUT PRIM;
-
-PRIM: @          PE-PTR-A PE-IN  PE-A PE-OUT PRIM;
-PRIM: !          PE-A PE-IN PE-PTR-A PE-IN PRIM;
-\ `xt!` is `!` plus the declaration that the cell it writes holds a JIT-region
-\ address, for a persisted cell whose address the caller works out at run time
-\ from a table base and a row index (dot habu-declare-persisted-cb-b150b5d5).
-\ Its row is `!`'s row, so the value and the pointee are the same type and a
-\ quotation-typed cell is written with a quotation of exactly its own effect.
-\ What the row still cannot say is that the pointee MUST be an execution token:
-\ there is no quotation-kinded type variable, only TVK-ANY and TVK-RAW, so `xt!`
-\ into a plain integer cell type-checks today and would have the loader shift an
-\ ordinary integer. That missing kind, and the rule that would make a plain `!`
-\ of a quotation into a persisted cell a reject, are dotted as
-\ habu-add-a-quotation-1610f30c.
-PRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN PRIM;
-PRIM: ptr-cell-mark PE-PTR-A PE-IN PRIM;
-PRIM: addr-cells-abi PE-N PE-OUT PRIM;
-PRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT PRIM;
-\ Explicit memory views preserve address bits while changing the access type.
-PRIM: byte-view  PE-PTR-A PE-IN PE-PTR-U8 PE-OUT PRIM;
-PRIM: cell-view  PE-PTR-U8 PE-IN PE-PTR-N PE-OUT PRIM;
-PRIM: +!         PE-N PE-IN PE-PTR-N PE-IN PRIM;
-PRIM: c@         PE-PTR-U8 PE-IN  PE-U8 PE-OUT PRIM;
-PRIM: c!         PE-U8 PE-IN PE-PTR-U8 PE-IN PRIM;
-PRIM: atomic@    PE-PTR-A PE-IN  PE-A PE-OUT PRIM;
-PRIM: atomic!    PE-A PE-IN PE-PTR-A PE-IN PRIM;
-PRIM: atomic-add PE-N PE-IN PE-PTR-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: atomic-cas PE-A PE-IN PE-A PE-IN PE-PTR-A PE-IN  PE-A PE-OUT PRIM;
-PRIM: fence      PRIM;
-PRIM: run-in-stack PE-Q ;PE-Q PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-PRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-
-PRIM: .            PE-N PE-IN PRIM;
-PRIM: .s           PRIM;
-PRIM: depth        PE-N PE-OUT PRIM;
-PRIM: here         PE-PTR-A-RAW PE-OUT PRIM;
-PRIM: tok-imm?     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PRIM;
-PRIM: allot        PE-N PE-IN PRIM;
-PRIM: align        PRIM;
-PRIM: ,            PE-N PE-IN PRIM;
-PRIM: c,           PE-N PE-IN PRIM;
-PRIM: type         PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: script-argc  PE-N PE-OUT PRIM;
 PRIM: script-argv$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-PRIM: throw        PE-N PE-IN PRIM;
-PRIM: die          PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PRIM;
-
-PRIM: open     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: read     PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: ioctl    PE-N PE-IN PE-N PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;
-PRIM: map-anon PE-N PE-IN  PE-PTR-A PE-OUT PE-N PE-OUT PRIM;
-PRIM: mmap     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: path0    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
-PRIM: open-rd  PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
-PRIM: access   PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: unlink   PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
-PRIM: rename   PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
-PRIM: chmod    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: symlink  PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
-PRIM: readlink PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: realpath PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: mkdir    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: rmdir    PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
-PRIM: stat64   PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
-PRIM: lstat64  PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
-PRIM: getdirentries64
-   PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: pipe     PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PRIM;
-PRIM: dup2     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: fcntl    PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: poll     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( fds nfds ms -- nready|0|-errno ) the one unrestartable wait: callers restart on -EINTR
-PRIM: kill     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: setpgid  PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-
-PRIM: spawn-io  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: spawn-argv-io
-   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: spawn-argv-env-io
-   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
-   PE-N PE-OUT PRIM;
-PRIM: spawn-argv-env-cwd-io
-   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN PE-PTR-U8 PE-IN
-   PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: fork          PE-N PE-OUT PRIM;
-PRIM: wait-rc       PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: wait-status   PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: patch32       PE-N PE-IN PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary may emit machine code (F3)
-PRIM: code-publish  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ the bulk publication window is code injection too
-PRIM: callmap-set   PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
-PRIM: addrmap-set   PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ the same, for an address chain the publisher just wrote
-PRIM: xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ points a live dictionary record at new code
-\ The seal's own two record writers. A row here is what lets the OPTIMIZING
-\ compiler build the call window from src/core/internal-mark.f's TRUSTED:
-\ wrappers, the same reason CHECKER-VERIFY-PKG-START below carries one: that
-\ compiler reads a callee's cell widths out of this table for every name a body
-\ writes, and a primitive is the one kind of name no scan can ever supply. The
-\ JIT tier never asked, which is why the absence survived until a product engine
-\ hosted a build at tier 1 and `TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;` came
-\ back E-HIR-UNMODELED. TRUSTED-only keeps the boundary exactly where it was:
-\ a CHECKED caller is refused here, and the emitted records carry DNAME-INT
-\ (habu1.f PRIM-GLOBAL-INT-WID) so neither name is executable or tickable.
-PRIM: int-mark      PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ sets DNAME-INT on one live record
-PRIM: min-in-mark   PE-N PE-IN PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ records a certified minimum input arity on one
-PRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ clears metadata over reclaimed code
-PRIM: does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ native defining-word runtime patch
-PRIM: does-record PE-N PE-IN PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ native `;does` companion publication
-PRIM: snap-rebase PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
-PRIM: write         PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: close         PE-N PE-IN PRIM;
-PRIM: close-rc      PE-N PE-IN  PE-N PE-OUT PRIM;   \ close returning host status (0 ok, <0 fail)
-PRIM: epoch-seconds PE-N PE-OUT PRIM;
-PRIM: mono-ns       PE-N PE-OUT PRIM;
-PRIM: prof-on       PE-N PE-IN PRIM;
-PRIM: prof-report   PRIM;
-PRIM: prof-off      PRIM;
-PRIM: prof-reset    PRIM;
-PRIM: prof-rate     PE-N PE-IN PRIM;
-PRIM: prof-json     PRIM;
-PRIM: prof-row      PE-N PE-IN PRIM;                \ the report row for one dictionary record
-PRIM: prof-pc>rec   PE-N PE-IN  PE-N PE-OUT PRIM;   \ the armed index's record for a pc, -1 when none owns it
-
-PRIM: rbase          PE-N PE-OUT PRIM;
-PRIM: cp@            PE-N PE-OUT PRIM;
-PRIM: cp!            PE-N PE-IN PRIM;
-PRIM: dbase@         PE-N PE-OUT PRIM;
-PRIM: check@         PE-N PE-OUT PRIM;
-\ Reading the selected compiler tier decides nothing and mutates nothing, so it
-\ is an ordinary reader like check@ beside it.
-PRIM: tier@          PE-N PE-OUT PRIM;
-PRIM: code-origin    PE-N PE-IN PE-N PE-IN PE-N PE-OUT PRIM;
-PRIM: executable-build-enter PRIM;
-PRIM-TRUSTED-ONLY!
-PRIM: executable-build-leave PRIM;
-PRIM-TRUSTED-ONLY!
-\ Compiler hook installation is an explicit engine boundary.
-PRIM: set-check     PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!
-PRIM: set-preflight PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!
-PRIM: set-top-check PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!
-\ Choosing the compiler is the same class of boundary as installing the hook and
-\ takes the same restriction. Its callers are build drivers, which already reach
-\ it from top level or from a TRUSTED: word, exactly as they reach set-check.
-PRIM: set-tier      PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!
-PRIM: ndict@         PE-N PE-OUT PRIM;
-PRIM: ndict!         PE-N PE-IN PRIM;
-PRIM: seed-ndict!    PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ explicit trusted reset boundary
-PRIM: ndict-append   PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ native pending-record publication
-PRIM: SEAL-CAPTURE   PRIM;
-PRIM: seal-captured? PE-F PE-OUT PRIM;
-PRIM: SEAL-FRIEND    PRIM;
-PRIM: DRAIN-PRETRUST PRIM;   \ dot habu-engine-pre-trust-77410827: drains the pending pre-trust defer table
-PRIM: data-base      PE-PTR-A PE-OUT PRIM;
-PRIM: prot-wid-add   PE-N PE-IN PRIM;
-PRIM: prot-wid-room  PE-N PE-OUT PRIM;
 \ TFAM-CTOR-WORD? is defined in src/core/type-family.f, which is `package TFAM`,
 \ and its row is PRIM: rather than PPRIM: because the word itself is one of the
 \ six that stay at global scope: src/habu/xref.f calls it from AOT-captured code,
 \ and the boot seed re-resolves a baked callee only through a global scope.
 PRIM: TFAM-CTOR-WORD? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: wordlist       PE-N PE-OUT PRIM;
-PRIM: get-current    PE-N PE-OUT PRIM;
-PRIM: set-current    PE-N PE-IN PRIM;
-PRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT PRIM;
-PRIM-TRUSTED-ONLY!                       \ NDICT's private indexed-record boundary
-PRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-\ num-parse ( ptr u8 n -- n bool bool ) : the engine's own number reader, over
-\ bytes the caller already holds - the routine the interpret and compile
-\ dispatches call for every literal token (habu1.f BNUMPARSE, at LNUM). It
-\ answers the value, whether that value is a double's bits, and whether the
-\ bytes were a number at all. A checked stage that has to know what cell a
-\ literal spelling stands for asks this rather than reading the spelling back
-\ with a second decoder (src/compiler/native/feed.f).
-PRIM: num-parse      PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PE-F PE-OUT PRIM;
 PRIM: CORE-STR=      PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CORE-STR=CI    PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: PATHZ          PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PRIM;
@@ -7403,7 +7236,6 @@ PRIM: WF-FLAGS@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-WIDE? PE-F PE-OUT PRIM;
 PRIM: WF-NEEDS-P2? PE-F PE-OUT PRIM;
 PRIM: WF-W-AT PE-N PE-IN  PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: wide-mark PRIM;
 PRIM: REC-WIDE-PUBLISH PRIM;
 PRIM: REC-MIN-IN@ PE-N PE-OUT PRIM;
 PRIM: LOCW-HW@ PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -7494,43 +7326,13 @@ PRIM: CHECKER-USING-POP PRIM;
 PRIM: CHECKER-PUBLIC PRIM;
 PRIM: CHECKER-PRIVATE PRIM;
 PRIM: CHECKER-END-PACKAGE PRIM;
-PRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM-TRUSTED-ONLY!
-PRIM: ffi-call-n     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM-TRUSTED-ONLY!
-PRIM: ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM-TRUSTED-ONLY!
-PRIM: task-entry PE-N PE-OUT PRIM;
-PRIM-TRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
-PRIM: ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
-                           PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
-                           PE-N PE-OUT PRIM;
-PRIM-TRUSTED-ONLY!
-PRIM: ffi-call-abi-r-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
-                             PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
-                             PE-R PE-OUT PRIM;
-PRIM-TRUSTED-ONLY!
-PRIM: ffi-call-abi   PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
-                     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM-TRUSTED-ONLY!
-PRIM: ffi-call-abi-r PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
-                     PE-N PE-IN PE-N PE-IN  PE-R PE-OUT PRIM;
-PRIM-TRUSTED-ONLY!
-
-\ ---- package FFI's owner-private capability rows ----------------------------
-\ Each primitive here keeps the global PRIM-TRUSTED-ONLY! row above — the outside
-\ boundary (E-CAP-TRUSTED) and the record's callability past the seal — and gains
-\ an owner-private row, so a CHECKED body compiled inside package FFI resolves it
-\ and every other scope misses the symbol. This is what retires the TRUSTED:
-\ bodies in lib/ffi-abi.f and lib/net/udp4.f: FFI's own words become ordinary
-\ checked Habu, and no consumer can reach a raw foreign call at all.
-PPRIM: FFI ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT CLOSE-PRIVATE
-PPRIM: FFI ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
-                                PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
-                                PE-N PE-OUT CLOSE-PRIVATE
-PPRIM: FFI ffi-call-abi-r-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
-                                  PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
-                                  PE-R PE-OUT CLOSE-PRIVATE
+\ ---- package FFI's two retypes ----------------------------------------------
+\ The axiom rows for the two identity words defined above PTABLE-START. Each
+\ keeps a global PRIM-TRUSTED-ONLY! row, which is the outside boundary
+\ (E-CAP-TRUSTED) and what keeps the record callable past the seal, and gains an
+\ owner-private row so a CHECKED body compiled inside package FFI resolves it
+\ while every other scope misses the symbol. The foreign-call primitives take
+\ exactly the same pair; theirs are in src/habu/prims.f, with their bodies.
 PRIM: FFI-PTR>CELL PE-PTR-A PE-IN  PE-N PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
 PPRIM: FFI FFI-PTR>CELL PE-PTR-A PE-IN  PE-N PE-OUT CLOSE-PRIVATE
@@ -7539,22 +7341,6 @@ PPRIM: FFI FFI-PTR>CELL PE-PTR-A PE-IN  PE-N PE-OUT CLOSE-PRIVATE
 PRIM: FFI-CELL>PTR PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
 PPRIM: FFI FFI-CELL>PTR PE-N PE-IN  PE-PTR-U8 PE-OUT CLOSE-PRIVATE
-
-PRIM: f+      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT PRIM;
-PRIM: f-      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT PRIM;
-PRIM: f*      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT PRIM;
-PRIM: f/      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT PRIM;
-PRIM: fnegate PE-R PE-IN  PE-R PE-OUT PRIM;
-PRIM: fabs    PE-R PE-IN  PE-R PE-OUT PRIM;
-PRIM: fsqrt   PE-R PE-IN  PE-R PE-OUT PRIM;
-PRIM: f<      PE-R PE-IN PE-R PE-IN  PE-F PE-OUT PRIM;
-PRIM: f>      PE-R PE-IN PE-R PE-IN  PE-F PE-OUT PRIM;
-PRIM: f=      PE-R PE-IN PE-R PE-IN  PE-F PE-OUT PRIM;
-PRIM: f0<     PE-R PE-IN  PE-F PE-OUT PRIM;
-PRIM: f0=     PE-R PE-IN  PE-F PE-OUT PRIM;
-PRIM: s>f     PE-N PE-IN  PE-R PE-OUT PRIM;
-PRIM: f>s     PE-R PE-IN  PE-N PE-OUT PRIM;
-PRIM: f.      PE-R PE-IN PRIM;
 
 PRIM: s"     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: c"     PE-PTR-U8 PE-OUT PRIM;
@@ -7565,18 +7351,7 @@ PRIM: .\"    PRIM;
 PRIM: [']    PE-N PE-OUT PRIM;
 PRIM: char   PE-N PE-OUT PRIM;
 PRIM: [char] PE-N PE-OUT PRIM;
-PRIM: emit   PE-N PE-IN PRIM;
-PRIM: cr     PRIM;
-PRIM: space  PRIM;
-PRIM: u.     PE-N PE-IN PRIM;
-
-PRIM: create   PRIM;
 PRIM: constant PE-N PE-IN PRIM;
-PRIM: getpid   PE-N PE-OUT PRIM;   \ ( -- pid ) process-identity syscall
-PRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT PRIM;   \ ( pid -- fd|-1 ) process-lifetime watch
-PRIM: kill-errno PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( pid sig -- 0|-errno ) signal with errno detail
-PRIM: execve   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;   \ ( pathz argv envp -- -errno ) child-side exec; only returns on failure
-PRIM: munmap   PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( addr len -- 0|-1 ) release a mapping; consumed by MEM:RELEASE-BYTES
 \ BTC-7: EXTPROD: (maki/extent.f) marks a product's free factor via this axiom. The
 \ effect keeps it checker-known so the seal-time internal-word marking pass leaves it
 \ callable from the candidate-B surface (like CHECKER-DEFFAMILY for EXTENT:). Its
@@ -7639,6 +7414,28 @@ PPRIM: TFAM SUMV-PAY-N PE-N PE-IN  PE-N PE-OUT PPRIM;
 \ REG-AOT-MERGE-INCOMING? decides which of two captured type registries a merge
 \ retains; src/habu/aot-file.f MERGE-REG is its only caller and calls it checked.
 PPRIM: TFAM REG-AOT-MERGE-INCOMING? PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PPRIM;
+\ THE PRIMITIVE SPECIFICATION'S OWN READERS, for the same reason: src/habu/prims.f
+\ loads ahead of this file so it records no signature of its own, and its readers
+\ have three checked callers - src/habu/habu1.f, which refuses a machine body
+\ whose name has no row; src/habu/habu2.f, whose completeness gate refuses a row
+\ that no body answers; and the parity gate that runs each row's reference
+\ implementation beside each backend's body. This file reads the same table
+\ pre-hook, through the private spellings, to build the rows themselves.
+PPRIM: PRIM-SPEC COUNT PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC KIND@ PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC PKG$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC REF$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC TRUSTED-ONLY? PE-N PE-IN  PE-F PE-OUT PPRIM;
+PPRIM: PRIM-SPEC CODE-LEN@ PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC CODE@ PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC FIND PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
+\ The row kinds, whole rather than in part: classifying a row means telling all
+\ four apart, and the table is the one place that says what they are.
+PPRIM: PRIM-SPEC K-PRIM PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC K-PKG-PRIVATE PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC K-ELAB PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC K-UNROWED PE-N PE-OUT PPRIM;
 \ CHECKER-BOUND REWIND is the core-prefix boundary's restore half, declared and
 \ its MARK half deliberately not: src/habu/prefix-rewind.f TO-CORE is the one
 \ consumer and it only ever rewinds, so nothing outside this file can move the
