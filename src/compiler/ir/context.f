@@ -126,7 +126,9 @@ create HANDLES DEPTH-MAX cells allot
 : HANDLES-CLEAR ( -- )
    DEPTH-MAX 0 ?do 0 HANDLES i cells + ! loop ;
 HANDLES-CLEAR
-create BASES DEPTH-MAX cells allot
+\ A slot's base is the address of the header the context lives at, so the table
+\ is a declared table of pointers and each slot is read as one.
+DEPTH-MAX TYPED-BUFFER BASES ptr u8
 create ENTERED DEPTH-MAX cells allot   \ scope depth -> the slot that scope took
 variable ENTERED-N
 0 ENTERED-N !
@@ -134,9 +136,6 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 
 : HANDLE! ( n n -- )
    cells HANDLES + ! ;
-
-: BASE-FIELD ( n -- ptr ptr u8 )
-   cells BASES + 0 ptr-field ;
 
 \ ---- header slot access ------------------------------------------------------
 : HDR@ ( ptr u8 n -- n )
@@ -285,7 +284,7 @@ private
 : RESOLVE ( IR-CTX:ctx -- ptr u8 )
    CTX>N FIND-SLOT
    dup 0 < if E-IR-CTX-STALE throw then
-   BASE-FIELD @ ;
+   BASES @ ;
 
 \ THE CURSOR IS A STACK, SO ONLY THE INNERMOST CONTEXT MAY TAKE FROM IT. A span
 \ taken for a context that a deeper live one encloses lies ABOVE that deeper
@@ -301,7 +300,7 @@ private
    CTX>N FIND-SLOT
    dup 0 < if E-IR-CTX-STALE throw then
    dup TOP-CK
-   BASE-FIELD @ ;
+   BASES @ ;
 
 \ ---- binding wire codes: decode ----------------------------------------------
 \ The codes are the components' stable canonical wire codes; a slot outside the
@@ -489,7 +488,7 @@ private
 \ not-yet-landed module slots unbound, and copy the staged binding codes.
 : CTX-INSTALL ( n ptr u8 n n -- )
    {: slot:n mark:n :}
-   dup slot BASE-FIELD !
+   dup slot BASES !
    swap over HF-CEIL HDR!
    0 over HF-MINTED HDR!
    0 over HF-USED HDR!
@@ -526,7 +525,7 @@ private
    at cells HANDLES + @ RETIRE-CHILDREN
    0 at HANDLE!
    at DEPTH @ 1- = if
-      at BASE-FIELD @ HF-MARK HDR@ REGION-HERE !
+      at BASES @ HF-MARK HDR@ REGION-HERE !
       EPOCH-BUMP
       at DEPTH !
    then ;
@@ -716,7 +715,7 @@ public
 : CAPTURE-PREPARE ( -- )
    DEPTH @ 0<> if E-IR-CTX-STATE throw then
    DEPTH-MAX 0 ?do
-      NULL-PTR i BASE-FIELD !
+      NULL-PTR i BASES !
    loop
    REGION-CLOSE ;
 

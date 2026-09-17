@@ -47,7 +47,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER F-TAPE IR-ARENA:arena
 1 TYPED-BUFFER F-SID IR-ID:ir-source-id
 variable F-STATE     ST-IDLE F-STATE !
-variable F-TXT                         \ the caller's buffer, holding the text the reader scanned
+TYPED-VARIABLE F-TXT ptr u8            \ the caller's buffer, holding the text the reader scanned
 variable F-CAP                         \ how many bytes that buffer holds
 variable F-LEN                         \ how many it was handed
 variable F-N                           \ rows appended so far
@@ -56,14 +56,11 @@ variable F-DOES                        \ byte split after `does> `, or zero
 variable F-BASE                        \ start of the scan now being recorded
 variable OBSERVER-ID                   \ address identifies this producer instance
 
-: TXT-FIELD ( -- ptr ptr u8 )
-   F-TXT 0 ptr-field ;
-
 : TXT@ ( -- ptr u8 )
-   TXT-FIELD @ ;
+   F-TXT @ ;
 
 : TXT! ( ptr u8 -- )
-   TXT-FIELD ! ;
+   F-TXT ! ;
 
 : CTX ( -- IR-CTX:ctx )          0 F-CTX @ ;
 : BLD ( -- IR-BUILD:builder )    0 F-BLD @ ;

@@ -58,7 +58,7 @@ variable PENDING-COUNT
 variable PACKET-COUNT
 variable COMMIT-COUNT
 variable STORE-COUNT
-variable PROGRAM
+TYPED-VARIABLE PROGRAM ptr n                       \ the caller's program words
 variable PROGRAM-WORDS
 variable NEXT-WORD                                 \ word index of the next instruction
 variable CYCLES

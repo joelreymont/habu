@@ -662,7 +662,10 @@ create STG-T LIST# cells allot
    MODE-NONE STG-MODE !
    have MODE-OPEN <> if E-IR-SCHEMA-STAGE throw then ;
 
-: ONCE-CK ( ptr ptr u8 -- )
+\ The cell is one of the stage's own sentinel cells, holding UNSET until the
+\ field is set once, so the input is a cell of numbers and not the pointer cell
+\ the effect used to claim.
+: ONCE-CK ( ptr n -- )
    @ UNSET <> if E-IR-SCHEMA-STAGE throw then ;
 
 : LIST-ROOM ( n -- )
