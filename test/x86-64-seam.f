@@ -30,6 +30,7 @@ require lib/test.f
 require lib/errors.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
+require src/arch/x86-64/asm.f
 require src/os/image-bytes.f
 require src/habu/aot-decl.f
 require src/compiler/target.f
@@ -197,6 +198,13 @@ create NEAR 16 allot
    SNAP-RELOC:MOVABS-BYTES 10 T=
    SNAP-RELOC:MOVABS-IMM-OFF 2 T=
    SNAP-RELOC:MOVABS-IMM-BYTES 8 T=
+
+   \ The site kind and the assembler each state where the immediate begins.
+   \ src/habu/aot-decl.f cannot read X64ASM's constant, because aot-decl.f is in
+   \ every engine's payload and the encoder would follow it there, so the two
+   \ numbers are one fact in two files and this case is what keeps them equal.
+   s" the assembler names the same patch offset as the site kind" T-LABEL
+   SNAP-RELOC:MOVABS-IMM-OFF X64ASM:MOV-RI64-IMM-OFF T=
 
    s" mov rax, imm64 reads back the immediate it carries" T-LABEL
    $48 $B8 $123456789ABCDEF BUILD-SITE

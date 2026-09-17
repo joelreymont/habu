@@ -154,12 +154,23 @@ create CODE-PATH FS-PATH-CAP allot
    DATA-COUNT @ 1 = IMAGE-CK ;
 
 
+\ A seam publishes a syscall stencil as a byte string, because an x86_64 stencil
+\ is five or two bytes; on the two targets this gate reads, each one is exactly
+\ one instruction word.
+: STENCIL-W ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 4 = IMAGE-CK
+   a c@
+   a 1 + c@ 8 lshift or
+   a 2 + c@ 16 lshift or
+   a 3 + c@ 24 lshift or ;
+
+
 : STARTUP-END ( -- n )
    \ The exit syscall tail is emitted even though a successful exit never
    \ returns to its Linux errno reconciliation instructions.
    ROOT-CALL @ 4 + 0 0 0 MOVZHW INSTR=
-   ROOT-CALL @ 8 + SYS-EMIT-EXIT INSTR=
-   ROOT-CALL @ 12 + SYS-EMIT-SVC INSTR=
+   ROOT-CALL @ 8 + SYS-EMIT-EXIT STENCIL-W INSTR=
+   ROOT-CALL @ 12 + SYS-EMIT-SVC STENCIL-W INSTR=
    HB-TARGET-LINUX? if
       ROOT-CALL @ 16 + 16 $FFE 0 MOVNHW INSTR=
       ROOT-CALL @ 20 + 0 16 ENC-CMP INSTR=

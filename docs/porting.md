@@ -1,11 +1,12 @@
 # Porting Habu
 
 The supported native targets are macOS/arm64 and Linux/aarch64, with
-Linux/x86-64 declared: its seam directory, ELF64 writer and target contract
-exist and are exercised from an aarch64 host, and the files that EMIT
-instructions for it do not (see the seam row below). A new port adds one target
-seam and proves it with native refresh plus the port gate; it does not add
-host-language build logic or benchmark-runtime requirements.
+Linux/x86-64 declared: its seam directory, ELF64 writer, target contract and
+syscall emitters exist and are exercised from an aarch64 host, and no x86_64
+instruction has executed yet — the engine body and the compiler backend are
+still to come. A new port adds one target seam and proves it with native refresh
+plus the port gate; it does not add host-language build logic or
+benchmark-runtime requirements.
 
 ## Target Source Seam
 
@@ -22,17 +23,23 @@ Each target owns these files under `src/os/<target>/`:
 - process primitives — `proc-watch.f` and `proc-control.f`, the syscall
   emitters the supervisor uses after fork.
 
-`src/os/linux-x86-64/` is the third seam and carries `target.f`, `layout.f`,
-`sys.f`, `elf.f`, `repl-term.f` and `sign.f` under the word names the other two
-use, so an image builder selects a seam instead of branching. What it does not
-carry is every file whose body emits an instruction: `SYS,`, the `OS-OPEN-RD`,
-`OS-OPEN-FLAGS` and `OS-MMAP-FLAGS` translators, the runtime-emit syscall
-stencils, `proc-watch.f` and `proc-control.f` all need package `X64ASM`
-(`src/arch/x86-64/asm.f`), so `sys.f` publishes the kernel's numbers and the
-flag values its callers pass and nothing more. Every source list that needs one
-of the missing files refuses that target by name rather than loading a partial
-seam: `tools/build-fixpoint.f` `BF-TARGET-NO-EMITTERS` and `tools/native-emit.f`
-say which piece is missing.
+`src/os/linux-x86-64/` is the third seam and carries the whole file set under the
+word names the other two use, so an image builder selects a seam instead of
+branching. Its emitters are written against package `X64ASM`
+(`src/arch/x86-64/asm.f`) where the other two are written against `A64ASM`'s
+mnemonics. Two names they use are not the seam's own: `G-POP` and `G-PUSH` from
+the engine's runtime layer, and `ASM-SINK ( -- ptr u8 )`, the byte buffer the
+code stream being emitted appends into. An x86_64 instruction has no value
+representation, so every `X64ASM` encoder takes that sink as its last operand
+rather than returning a word, and supplying it is the x86-64 code layer's
+obligation; `test/x86-64-emit.f` binds it to a test-owned buffer and pins every
+byte the seam emits.
+
+A syscall stencil — the write and exit steps the MATCH bad-tag die emits into a
+user word — is a BYTE STRING `( -- ptr u8 n )` in every seam, not an instruction
+word, because the x86_64 spelling is five bytes of `mov eax, imm32` and two of
+`syscall` where the ARM64 spelling is one four-byte word. `C-EMIT-STENCIL`
+(`src/habu/jit.f`) compiles the runtime emission from that span.
 
 The common engine layout lives in `src/habu/layout.f`. Startup argv/envp access is
 shared in `src/os/env-base.f`; `src/os/script-argv.f` owns the `bin/hb --load`
@@ -46,6 +53,7 @@ The target must be wired in exactly these source-list owners:
 
 - `tools/bootstrap.sh` for no-binary recovery.
 - `tools/build-fixpoint.f` for native refresh, AOT, and REPL builds.
+- `tools/native-emit.f` for the source-bound emitter's own seam load.
 - `src/habu/habu2.f` and `bootstrap/cg/forth.fs` for the runtime `--load`
   prefix.
 - `src/habu/stdin.f` and `tools/hb-build-lib.f` for baked REPL runtime sources.
@@ -99,11 +107,15 @@ lstat, through their flag arguments.
 
 Two things about Linux/x86-64 are not settled by the numbers. Its syscall ABI
 passes arguments in rdi, rsi, rdx, r10, r8 and r9 rather than in the engine's
-x0..x5 order, so the mapping belongs to the x86_64 engine's primitives. And the
-error convention differs in POLARITY: the aarch64 seam reconciles Linux's
-`-errno` return into the carry flag with `cmp x0, #-4095`, where ARM sets C on
-NO borrow, while x86 sets CF on borrow. The trap sequence must be chosen
-against what `SYS-PUSH`'s `C-CS` consumers read, not transliterated.
+x0..x5 order; the seam maps x0..x5 onto them in that order, so `OS-OPEN-RD` and
+the process primitives name x86_64 register numbers. And the error convention
+differs in POLARITY: the aarch64 seam reconciles Linux's `-errno` return into the
+carry flag with `cmp x0, #-4095`, where ARM sets C on NO borrow, while x86 sets
+CF on borrow, so `cmp rax, -4095` would set CF exactly when the call SUCCEEDED.
+The x86_64 seam therefore reverses the operands — `mov rcx, -4096` then
+`cmp rcx, rax`, with rcx free because `syscall` clobbers it — which sets CF on
+the same -errno range the aarch64 sequence flags, so `SYS-PUSH`'s `C-CS`
+consumers read the bit the same way on both.
 
 Signal handlers are target ABI boundaries. Crash and profiler handlers must use
 the target's `sigaction` frame, ucontext pointer, PC offset, `sigreturn`

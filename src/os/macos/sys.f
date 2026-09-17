@@ -61,9 +61,31 @@ $1   constant NR-EXIT-GROUP
 \ field do not overlap so + == or) and the call is `svc #0x80`. The die never
 \ inspects the write return, so the Darwin carry-flag reconciliation SYS, adds is
 \ not needed.
-$D2800010 NR-WRITE 32 * + constant SYS-EMIT-WRITE       \ movz x16, #NR-WRITE
-$D2800010 NR-EXIT-GROUP 32 * + constant SYS-EMIT-EXIT   \ movz x16, #NR-EXIT-GROUP
-$D4001001 constant SYS-EMIT-SVC                          \ svc #0x80
+\
+\ A STENCIL IS A BYTE STRING, not an instruction word. An ARM64 instruction is
+\ always four bytes, but the linux-x86-64 seam spells the same two steps as five
+\ bytes of `mov eax, imm32` and two of `syscall`, so what every seam publishes is
+\ the bytes and their length. C-EMIT-STENCIL (src/habu/jit.f) compiles the
+\ runtime emission from that span.
+4 constant SYS-STENCIL-W                 \ one ARM64 instruction
+
+create SYS-WRITE-STENCIL SYS-STENCIL-W allot
+create SYS-EXIT-STENCIL SYS-STENCIL-W allot
+create SYS-SVC-STENCIL SYS-STENCIL-W allot
+
+: SYS-STENCIL-W! ( n ptr u8 -- )         \ one instruction word, little-endian
+   over $FF and over c!
+   over 8 rshift $FF and over 1 + c!
+   over 16 rshift $FF and over 2 + c!
+   swap 24 rshift $FF and swap 3 + c! ;
+
+$D2800010 NR-WRITE 32 * + SYS-WRITE-STENCIL SYS-STENCIL-W!      \ movz x16, #NR-WRITE
+$D2800010 NR-EXIT-GROUP 32 * + SYS-EXIT-STENCIL SYS-STENCIL-W!  \ movz x16, #NR-EXIT-GROUP
+$D4001001 SYS-SVC-STENCIL SYS-STENCIL-W!                        \ svc #0x80
+
+: SYS-EMIT-WRITE ( -- ptr u8 n )  SYS-WRITE-STENCIL SYS-STENCIL-W ;
+: SYS-EMIT-EXIT ( -- ptr u8 n )   SYS-EXIT-STENCIL SYS-STENCIL-W ;
+: SYS-EMIT-SVC ( -- ptr u8 n )    SYS-SVC-STENCIL SYS-STENCIL-W ;
 
 : OS-OPEN-RD ( n -- )
    0 swap 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS, ;

@@ -844,15 +844,6 @@ package BUILD-FIXPOINT
 : BF-TARGET-UNKNOWN ( -- )
    s" build-fixpoint: unknown target" BF-BUILD-RC die ;
 
-\ The linux-x86-64 seam is source selection only so far: its syscall numbers,
-\ image writer and terminal constants are written, and every file that would
-\ EMIT an instruction - the syscall trap and the two process-control
-\ primitives - waits on package X64ASM. A build that reaches one of those says
-\ which piece is missing instead of reporting the target as unknown.
-: BF-TARGET-NO-EMITTERS ( -- )
-   s" build-fixpoint: the linux-x86-64 seam has no instruction emitters yet"
-   BF-BUILD-RC die ;
-
 : BF-APPEND-TARGET-LAYOUT ( ptr u8 n -- ) {: out:ptr outu :}
    HB-TARGET-LINUX? if
       out outu s" src/os/linux/layout.f" BF-APPEND-SOURCE
@@ -877,7 +868,10 @@ package BUILD-FIXPOINT
       out outu s" src/os/macos/sys.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-LINUX-X86-64? if BF-TARGET-NO-EMITTERS then
+   HB-TARGET-LINUX-X86-64? if
+      out outu s" src/os/linux-x86-64/sys.f" BF-APPEND-SOURCE
+      exit
+   then
    BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-TARGET-PROC-WATCH ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -889,7 +883,10 @@ package BUILD-FIXPOINT
       out outu s" src/os/macos/proc-watch.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-LINUX-X86-64? if BF-TARGET-NO-EMITTERS then
+   HB-TARGET-LINUX-X86-64? if
+      out outu s" src/os/linux-x86-64/proc-watch.f" BF-APPEND-SOURCE
+      exit
+   then
    BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-TARGET-PROC-CONTROL ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -901,7 +898,10 @@ package BUILD-FIXPOINT
       out outu s" src/os/macos/proc-control.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-LINUX-X86-64? if BF-TARGET-NO-EMITTERS then
+   HB-TARGET-LINUX-X86-64? if
+      out outu s" src/os/linux-x86-64/proc-control.f" BF-APPEND-SOURCE
+      exit
+   then
    BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-TARGET-FLAG ( ptr u8 n -- ) {: out:ptr outu :}

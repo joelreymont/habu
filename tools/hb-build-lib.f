@@ -454,15 +454,17 @@ HBB-INSTALL-CHILD-LINT
    s" src/os/macos/macho.f" HBB-KEY-FILE+
    s" src/os/macos/sign2.f" HBB-KEY-FILE+ ;
 
-\ The x86-64 seam carries no process-control or syscall emitters yet, so the
-\ key folds exactly the files that exist for it.
+\ The x86-64 seam's process primitives are emitters, so a change to either one
+\ changes the engine this key names.
 : HBB-KEY-LINUX-X86-64-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:linux-x86-64" CONTENT-KEY:TEXT+
    s" src/os/linux-x86-64/target.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/layout.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/sys.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/elf.f" HBB-KEY-FILE+
-   s" src/os/linux-x86-64/sign.f" HBB-KEY-FILE+ ;
+   s" src/os/linux-x86-64/sign.f" HBB-KEY-FILE+
+   s" src/os/linux-x86-64/proc-watch.f" HBB-KEY-FILE+
+   s" src/os/linux-x86-64/proc-control.f" HBB-KEY-FILE+ ;
 
 : HBB-KEY-TARGET-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    HB-TARGET-LINUX? if HBB-KEY-LINUX-SOURCES exit then

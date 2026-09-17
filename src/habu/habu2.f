@@ -9519,11 +9519,11 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
       9 8 0 ADDI,  LCEMIT LABEL@ BL,
    14 SP 8 LDR,  14 14 13 ADDI,                        \ x14 = 8 + name-len + 5 = name-len + 13
    9 $D2800002 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ movz x2, #len
-   9 SYS-EMIT-WRITE LIT64,  LCEMIT LABEL@ BL,          \ movz x_sys, #NR-WRITE
-   SYS-EMIT-SVC C-EMITW                                \ svc
+   SYS-EMIT-WRITE C-EMIT-STENCIL                       \ movz x_sys, #NR-WRITE
+   SYS-EMIT-SVC C-EMIT-STENCIL                         \ svc
    9 $D2800000 ENGINE-ERROR:BAD-TAG 32 * + LIT64,  LCEMIT LABEL@ BL,   \ movz x0, #ENGINE-ERROR:BAD-TAG
-   9 SYS-EMIT-EXIT LIT64,  LCEMIT LABEL@ BL,           \ movz x_sys, #NR-EXIT-GROUP
-   SYS-EMIT-SVC C-EMITW                                \ svc
+   SYS-EMIT-EXIT C-EMIT-STENCIL                        \ movz x_sys, #NR-EXIT-GROUP
+   SYS-EMIT-SVC C-EMIT-STENCIL                         \ svc
    SP SP $20 ADDI, ;
 
 : EM-MATCH-SEMI ( -- )                  \ ;match: invalid-tag die + join + pop frame

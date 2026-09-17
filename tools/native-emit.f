@@ -7,7 +7,13 @@ package NATIVE-EMIT
 : LOAD-SYS ( -- )
    HB-TARGET-LINUX? if s" src/os/linux/sys.f" required exit then
    HB-TARGET-MACOS? if s" src/os/macos/sys.f" required exit then
-   HB-TARGET-LINUX-X86-64? if s" src/os/linux-x86-64/sys.f" required exit then
+   \ The linux-x86-64 seam's emitters are written against package X64ASM the way
+   \ the other two are written against A64ASM's mnemonics, and only a build for
+   \ that target pays for it.
+   HB-TARGET-LINUX-X86-64? if
+      s" src/arch/x86-64/asm.f" required
+      s" src/os/linux-x86-64/sys.f" required exit
+   then
    s" native-emit: unknown target" 76 die ;
 : LOAD-IMAGE ( -- )
    HB-TARGET-LINUX? if
@@ -22,13 +28,11 @@ package NATIVE-EMIT
       s" src/os/macos/proc-watch.f" required
       s" src/os/macos/proc-control.f" required exit
    then
-   \ The x86-64 seam's image writer exists; its two process-control primitives
-   \ are instruction emitters waiting on package X64ASM, and an engine cannot be
-   \ emitted without them. Say which piece is missing rather than load a partial
-   \ seam and die later on an undefined word.
    HB-TARGET-LINUX-X86-64? if
-      s" native-emit: the linux-x86-64 seam has no instruction emitters yet"
-      76 die
+      s" src/os/linux-x86-64/elf.f" required
+      s" src/os/linux-x86-64/sign.f" required
+      s" src/os/linux-x86-64/proc-watch.f" required
+      s" src/os/linux-x86-64/proc-control.f" required exit
    then
    s" native-emit: unknown target" 76 die ;
 ' LOAD-SYS

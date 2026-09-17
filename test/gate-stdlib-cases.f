@@ -1004,6 +1004,13 @@ SUITE x86-64-seam
    test/x86-64-seam.f
 ;SUITE
 
+\ The same seam's instruction emitters, whose bytes an aarch64 engine can produce
+\ and read back. Its own suite for the same reason: it loads
+\ src/os/linux-x86-64/sys.f, which spells the host's syscall-number words.
+SUITE x86-64-emit
+   test/x86-64-emit.f
+;SUITE
+
 SUITE xml-byte-edits
    lib/xml-test.f
    lib/byte-edit-test.f

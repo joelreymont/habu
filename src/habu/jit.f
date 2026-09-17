@@ -19,6 +19,23 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
 \ Emit one fixed instruction into the running compiler's code window.
 : C-EMITW ( n -- ) 9 swap LIT64,  LCEMIT LABEL@ BL, ;
 
+\ Emit one target syscall stencil (src/os/<target>/sys.f) into that window. The
+\ seam publishes a stencil as a byte string because an x86_64 instruction is one
+\ to fifteen bytes; on this ARM64 emitter every stencil is a whole number of
+\ four-byte words, so a length that is not is a seam defect and dies here rather
+\ than emitting a torn instruction.
+: C-STENCIL-W@ ( ptr u8 n -- n ) {: a:ptr i:n :}
+   a i + c@
+   a i 1 + + c@ 8 lshift or
+   a i 2 + + c@ 16 lshift or
+   a i 3 + + c@ 24 lshift or ;
+
+: C-EMIT-STENCIL ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 4 mod 0<> if
+      s" jit: syscall stencil is not whole instruction words" ICODE-EXIT-RC die
+   then
+   u 4 / 0 ?do  a i 4 * C-STENCIL-W@ C-EMITW  loop ;
+
 : EMIT-VLITPUSH ( -- )
    LVLITPUSH LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,

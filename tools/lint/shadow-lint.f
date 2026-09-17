@@ -204,6 +204,8 @@ variable IN-DEFINITION
    s" src/os/linux-x86-64/repl-term.f" LINT-FILE
    s" src/os/linux-x86-64/elf.f" LINT-FILE
    s" src/os/linux-x86-64/sign.f" LINT-FILE
+   s" src/os/linux-x86-64/proc-watch.f" LINT-FILE
+   s" src/os/linux-x86-64/proc-control.f" LINT-FILE
    s" src/habu/habu1.f"     LINT-FILE   s" src/habu/prof.f"      LINT-FILE
    s" src/habu/regalloc.f"  LINT-FILE   s" src/habu/jit.f"       LINT-FILE
    s" src/habu/habu2.f"     LINT-FILE   s" src/habu/snap-lib.f"  LINT-FILE
