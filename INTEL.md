@@ -167,8 +167,61 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   `x64ir.f`/`emit-x64.f` require that file.
 - Tests: `test/compiler/target-registry.f` (`SUITE compiler-target-registry`);
   `backend-boundary.f` now expects `E-CTGT-UNLOADED` for A32/THUMB2/C66X.
-- Worker 2 (in progress) adds the pass rows above `ir/build.f` (`NBACK`,
-  ten typed quotation rows indexed by `<arch> CTARGET:ROW`, refusing
-  defaults) so `compiler.f` names no backend; its report will list the exact
-  registration sequence a second backend performs. There is no `--target`
-  flag: the registry is the single resolution point.
+- There is no `--target` flag: the registry is the single resolution point.
+
+### Target registry, pass dispatch (worker 2, line ddc1412d, chain AP)
+
+- `src/compiler/native/backend.f`, package `NBACK`, above `ir/build.f`,
+  nothing arm64 in its requires: ten `CTARGET:BACKEND-ROWS TYPED-BUFFER`
+  rows indexed by `<arch> CTARGET:ROW`, one dispatch word and one `!`
+  installer per row, refusing defaults (`E-CTGT-UNLOADED`) for the
+  per-definition stages and no-ops for the lifecycle rows. The one-field
+  nominal `NBACK:linkage` (`L-NONE L-DEAD L-CALLED L-TAIL L-BACK`, `WITH`,
+  `HAS?`) carries how control reaches and leaves a routine, because a
+  multi-field value cannot be bound to a local (LESSONS.md).
+- `src/compiler/native/compiler.f` names no backend package: `EMITTED` is
+  `NBACK:DECLARE → SELECT → PRUNE → FIXPOINT → EMIT`, retire uses
+  `RELEASE`/`RETIRE`, the session `PROTOTYPE`/`FORGET`, capture `PREPARE`.
+  `NABI:BINDING` remains the one target-naming word (which machine this
+  engine compiles for; where a host binding for x86_64 lands).
+- `src/arch/arm64/passes.f`, package `A64PASS`, installs the arm64 rows at
+  load (required by `compiler.f`); it wraps the A64* passes without moving
+  their state and passes `A64IR:REGFILE` to `A64RA:BIND-DIALECT`.
+- **What the x86_64 lowering dot provides, in require order:**
+  1. `src/arch/x86-64/backend.f` (package `X64BACK`): requires only
+     `lib/prelude.f` and `src/compiler/target.f`; defines
+     `SERVES? ( CTARGET:contract -- bool )` and ends with
+     `CTARGET-ARCH:X86-64 [: SERVES? ;] [: SERVES? ;] CTARGET:REGISTER`.
+     The `x86-64` arch variant (wire code 5) and `sysv-amd64` ABI are in
+     `target.f` from the OS-seam lane.
+  2. `x64ir.f` and the x86_64 emitter require that file, so the row exists
+     whenever any backend code is loaded.
+  3. `src/arch/x86-64/passes.f` (package `X64PASS`): requires
+     `src/compiler/native/backend.f`, `src/arch/x86-64/backend.f` and the
+     pass modules it wraps; ends with `X64PASS:INSTALL`, ten calls, each
+     `arch quotation NBACK:<STAGE>!`; an installer throws
+     `E-CTGT-UNLOADED` if the arch never registered, so step 1 precedes it.
+
+  | installer | quotation effect | obligation |
+  | --- | --- | --- |
+  | `NBACK:DECLARE!` | `[ n n NBACK:linkage -- ]` | record in-cells, out-cells, linkage; reset per-definition state |
+  | `NBACK:SELECT!` | `[ IR-CTX:ctx IR-BUILD:builder -- IR-BUILD:module ]` | HIR builder in, machine module out |
+  | `NBACK:PRUNE!` | `[ IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ]` | may hand the module back untouched |
+  | `NBACK:FIXPOINT!` | `[ IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ]` | lower until the allocation seals empty |
+  | `NBACK:EMIT!` | `[ IR-CTX:ctx IR-BUILD:module n -- ]` | write at the code slot the driver passes (`NPUB:NEXT-SLOT`) |
+  | `NBACK:RELEASE!` | `[ -- ]` | give back every pass binding still held (failure path) |
+  | `NBACK:RETIRE!` | `[ -- ]` | end-of-definition emitter reset (success and failure) |
+  | `NBACK:PROTOTYPE!` | `[ IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- ]` | intern the dialect vocabulary into the session prototype |
+  | `NBACK:FORGET!` | `[ -- ]` | clear that prototype flag at session stand-down |
+  | `NBACK:PREPARE!` | `[ -- ]` | scrub code buffers and pass scratch before an image capture |
+
+  Beyond the rows the backend composes its own `ROUTINE` equivalent from
+  `NBACK:linkage`, the declared arity and its own function/spill readings.
+  No edit to `compiler.f` is needed to reach a second backend. The
+  register allocator's pool type is still ARM64's (`A64EFF:gprs`), so the
+  x86_64 backend needs an x64 effect schema or a generalised `A64EFF`
+  before it can hand `A64RA` a real pool (register-file lane's handoff).
+- Tests: `test/compiler/target-registry.f` property 5 (a fake PTX backend
+  with pass rows, dispatch through `DECLARE`/`RELEASE`/`RETIRE`, an
+  unregistered arch refused, a registered-but-passless arch refused through
+  the default row).
