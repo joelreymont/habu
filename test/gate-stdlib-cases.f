@@ -97,7 +97,7 @@ SUITE engine-identity
    lib/engine-id-test.f
 ;SUITE
 
-SUITE compiler-ir-id
+WHITEBOX-SUITE compiler-ir-id
    test/compiler/ir-id.f
 ;SUITE
 
@@ -324,7 +324,7 @@ SUITE compiler-native-prefix-declarations
    test/compiler/native-prefix-declarations.f
 ;SUITE
 
-SUITE primitive-trust
+WHITEBOX-SUITE primitive-trust
    test/primitive-trust.f
 ;SUITE
 
@@ -348,11 +348,11 @@ SUITE checker-effect-authority
    test/checker-effect-authority.f
 ;SUITE
 
-SUITE native-window-owner
+WHITEBOX-SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE
 
-SUITE loop-obligations
+WHITEBOX-SUITE loop-obligations
    test/loop-obligations.f
 ;SUITE
 
@@ -420,7 +420,7 @@ SUITE native-resource-image
    test/native-resource-image.f
 ;SUITE
 
-SUITE app-image
+WHITEBOX-SUITE app-image
    test/app-image.f
 ;SUITE
 
@@ -572,7 +572,7 @@ SUITE compiler-native-generated-constructor
    test/compiler/native-generated-constructor.f
 ;SUITE
 
-SUITE compiler-native-checker-prefix
+WHITEBOX-SUITE compiler-native-checker-prefix
    test/compiler/native-checker-prefix.f
 ;SUITE
 
@@ -1062,7 +1062,7 @@ SUITE checker-replay-pkg-state
    test/checker-replay-pkg-state.f
 ;SUITE
 
-SUITE verify-prim
+WHITEBOX-SUITE verify-prim
    test/verify-prim-test.f
 ;SUITE
 
@@ -1070,7 +1070,7 @@ SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
 
-SUITE defer-history
+WHITEBOX-SUITE defer-history
    test/defer-history.f
 ;SUITE
 
@@ -1206,19 +1206,19 @@ SUITE aot-source-identity
    test/aot-source-identity.f
 ;SUITE
 
-SUITE aot-registry-identity
+WHITEBOX-SUITE aot-registry-identity
    test/aot-registry-identity.f
 ;SUITE
 
-SUITE aot-payload-graph
+WHITEBOX-SUITE aot-payload-graph
    test/aot-payload-graph.f
 ;SUITE
 
-SUITE aot-prefix-literal
+WHITEBOX-SUITE aot-prefix-literal
    test/aot-prefix-literal.f
 ;SUITE
 
-SUITE aot-payload-unsupported
+WHITEBOX-SUITE aot-payload-unsupported
    test/aot-payload-unsupported.f
 ;SUITE
 
@@ -1258,7 +1258,7 @@ SUITE pre-trust-defer
    test/pre-trust-defer.f
 ;SUITE
 
-SUITE snapshot-xt-cell-decl
+WHITEBOX-SUITE snapshot-xt-cell-decl
    test/snapshot-xt-cell-decl.f
 ;SUITE
 
@@ -1524,7 +1524,7 @@ SUITE cast
    test/cast-suite.f
 ;SUITE
 
-SUITE decl-event
+WHITEBOX-SUITE decl-event
    test/decl-event-suite.f
 ;SUITE
 
@@ -1684,7 +1684,7 @@ SUITE bootstrap-wide-memory-src
    test/bootstrap-wide-memory-src.f
 ;SUITE
 
-SUITE enum-decl
+WHITEBOX-SUITE enum-decl
    test/enum-decl-suite.f
 ;SUITE
 
@@ -1696,7 +1696,7 @@ SUITE field-proj
    test/field-proj-suite.f
 ;SUITE
 
-SUITE field-proj-boundary
+WHITEBOX-SUITE field-proj-boundary
    test/field-proj-boundary.f
 ;SUITE
 
@@ -1704,7 +1704,7 @@ SUITE gate-pool-orphan
    test/gate-pool-orphan-test.f
 ;SUITE
 
-SUITE generated-declaration-transaction
+WHITEBOX-SUITE generated-declaration-transaction
    test/generated-declaration-transaction-suite.f
 ;SUITE
 

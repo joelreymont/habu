@@ -18,6 +18,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/codesign.f
 require lib/test/outcome.f
+require lib/engine-candidate.f            \ the engine under test, not a fixed bin/hb
 require src/habu/verify-source.f
 
 package VERIFY-PRIM-TEST
@@ -403,7 +404,7 @@ variable ROOT-U
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    path pathu PROC-ARGV+
-   s" bin/hb" >LEN out outcap err errcap timeout RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN out outcap err errcap timeout RUN-ARGV-CAPTURE
    CAPTURE> ;
 
 : RUN-COLD-CHILD ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n )
@@ -413,7 +414,7 @@ variable ROOT-U
    s" test/native-window-owner-child.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    path pathu PROC-ARGV+
-   s" bin/hb" >LEN out outcap err errcap timeout RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN out outcap err errcap timeout RUN-ARGV-CAPTURE
    CAPTURE> ;
 
 : ADD-NORMAL-LIT ( -- )

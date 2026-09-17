@@ -941,6 +941,18 @@ create QNAME QNAME-CAP allot
    s" 5 SCHEMA-REG:SCH-RBF-DEPTH !" SB-APPEND LF
    SB$ ;
 
+\ The IR verifier's package-scope mirror, moved here from
+\ test/compiler/ir-id.f when that suite became a WHITEBOX-SUITE: the claim is
+\ about the PRODUCT engine's refusal, so it belongs with the rest of the seal
+\ and not on a host built without one. src/compiler/ir/id.f still owns the
+\ positive side - that the mirror is the only way the verifier reaches a
+\ package scope - and asserts the rest of that surface is not addressable.
+: VERIFY-MIRROR-CASES ( -- )
+   s" the IR verifier's package mirror start is engine-internal" T-LABEL
+   s" CHECKER-VERIFY-PKG-START" NEG
+   s" and its close is too" T-LABEL
+   s" CHECKER-VERIFY-PKG-DONE" NEG ;
+
 : SEAL-CASES ( -- )
    s" the sealed tail left the global universe: bare SCHEMA-A@ is E-UNDEFINED" T-LABEL
    s" SCHEMA-A@" TOKEN$ RUN-SUBJECT
@@ -1298,6 +1310,7 @@ create QNAME QNAME-CAP allot
    SIBLING-CASES
    CTLIVE-CASES
    SEAL-CASES
+   VERIFY-MIRROR-CASES
    TFAM-SEAL-CASES
    TYPE-DECL-SEAL-CASES
    NEG-SHAPES

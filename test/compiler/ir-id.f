@@ -14,7 +14,6 @@ private
 
 $FFFFFFFF constant LOCAL-MAX
 $1000 constant SUBJECT-CAP
-70 constant INTERNAL-RC
 
 \ The exit status the concurrency child uses for every overlap failure, named
 \ OVERLAP-RC there too (test/compiler/ir-id-concurrency.f). The two live in
@@ -260,14 +259,6 @@ create SUBJECT-ERR SUBJECT-CAP allot
    LEN>N drop
    LEN>N drop ;
 
-: INTERNAL-AUTH-CASE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SUBJECT-RUN INTERNAL-RC CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
-   outu 0 T=
-   SUBJECT-ERR erru s" hb: internal engine word: " CONTAINS? TTRUE
-   SUBJECT-ERR erru a u CONTAINS? TTRUE ;
-
 : OWNER-CAST-REJECT ( ptr u8 n -- )
    SUBJECT-RUN UNCAUGHT-RC CHILD-EXITED=
    LEN>N {: erru:n :}
@@ -321,10 +312,6 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" VPKG-SAVE" XREF-FIND XREF-FOUND? TFALSE
    s" verifier package snapshot restore is not addressable" T-LABEL
    s" VPKG-RESTORE" XREF-FIND XREF-FOUND? TFALSE
-   s" verifier mirror start is engine-internal" T-LABEL
-   s" CHECKER-VERIFY-PKG-START" INTERNAL-AUTH-CASE
-   s" verifier mirror close is engine-internal" T-LABEL
-   s" CHECKER-VERIFY-PKG-DONE" INTERNAL-AUTH-CASE
    s" family package hook is not addressable" T-LABEL
    s" TFAM-PKG-XT" XREF-FIND XREF-FOUND? TFALSE
    s" family package wrapper is not addressable" T-LABEL
