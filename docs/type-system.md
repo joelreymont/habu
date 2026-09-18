@@ -750,7 +750,7 @@ one of those tables. A base that is a raw cell is already refused
 scalar, is refused by a new code:
 
 ```
-E-RAW-CELL-PTR  code 28  MD-FIELD-BASE-KIND
+E-RAW-CELL-PTR  MD-FIELD-BASE-KIND  (the next free MD- code when it lands)
 reason:  ptr-field: base is <kind>, not a declared pointer cell
 repair:  declare_record_field — declare the record (STRUCTURE … DERIVE addr)
          and take the field through its generated accessor; ptr-field
@@ -767,7 +767,7 @@ a declared cell or a record head, and a scalar cell behind one is a record
 field:
 
 ```
-E-RAW-CELL-PTR  code 29  MD-VIEW-PTR-BASE
+E-RAW-CELL-PTR  MD-VIEW-PTR-BASE  (the next free MD- code when it lands)
 reason:  byte-view: base holds an address; a scalar behind a pointer head is
          a record field
 repair:  declare_record_field — declare the record and read the field through
@@ -878,8 +878,9 @@ because `lib/task.f`'s TCB reaches its five pointer fields through the very row
 8. **Byte and inline-blob fields.** *Acceptance:* a byte-extent field kind or a
    nested-blob family; `CFIELD:`'s users converted; TCB declared with its five
    pointer fields and its semaphore blobs; `BEGIN-STRUCTURE` retired.
-9. **The two rule narrowings.** `MD-FIELD-BASE-KIND` (28) and
-   `MD-VIEW-PTR-BASE` (29). *Acceptance:* `V8` and `V9` in
+9. **The two rule narrowings.** `MD-FIELD-BASE-KIND` and `MD-VIEW-PTR-BASE`,
+   taking the next free `MD-` codes when they land (the vocabulary grows in
+   between: `MD-UNDERFLOW` took 28 on 2026-09-18). *Acceptance:* `V8` and `V9` in
    `test/typed-storage-structural-test.f` and `L1`–`L4` in
    `test/record-launder-probe.f` flip from certified to rejected, each with its
    own code, reason and repair class; `K1`–`K6` and every control in
