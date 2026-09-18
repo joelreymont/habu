@@ -815,6 +815,10 @@ PTR-VARIABLE STG-START
    \ as the native path publishes through `trust-raw`.
    a u s" PTR-U8-TABLE" STR=CI IF s" -- ptr ptr u8" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" PERSISTED-PTR-U8-TABLE-VARIABLE" STR=CI IF s" -- ptr ptr ptr u8" RAW-TRUST-NEXT 0 0= EXIT THEN
+   \ The reserved-offset cell: the offset token precedes the name, as the table
+   \ count does, so the created word is still the NEXT token and the row is the
+   \ definer's declared clause.
+   a u s" RESERVED-PTR-U8-CELL" STR=CI IF s" -- ptr ptr u8" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
    a u s" PRIM:" STR=CI IF RECORD-PRIM 0 0= EXIT THEN
    a u s" PPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN

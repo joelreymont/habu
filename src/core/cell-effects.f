@@ -8,6 +8,7 @@ s" PTR-VARIABLE" s" --" TRUST
 s" PERSISTED-PTR-VARIABLE" s" --" TRUST
 s" PTR-U8-TABLE" s" n --" TRUST
 s" PERSISTED-PTR-U8-TABLE-VARIABLE" s" --" TRUST
+s" RESERVED-PTR-U8-CELL" s" n --" TRUST
 \ NULL-PTR is the language's null: a pointer of any pointee, and the address OF
 \ nothing. `src/core/pointer-storage.f` defines it, and this file loads after
 \ it, so THIS row is the record that answers - which is what lets the pointee

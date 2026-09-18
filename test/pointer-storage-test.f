@@ -11,7 +11,7 @@ require test/checker-assert.f
 
 package POINTER-STORAGE-TEST
 
-$1000 constant SOURCE-CAP        \ the whole of pointer-storage.f is read in below
+$2000 constant SOURCE-CAP        \ the whole of pointer-storage.f is read in below
 
 create SOURCE SOURCE-CAP allot
 variable SOURCE-U
@@ -21,6 +21,15 @@ PTR-VARIABLE SLOT
 PERSISTED-PTR-VARIABLE PERSISTED-SLOT
 4 PTR-U8-TABLE TABLE-SLOT
 PERSISTED-PTR-U8-TABLE-VARIABLE TABLE-HEAD
+
+\ Reserved engine-layout cells, named by their DATA offset. Two of them, so the
+\ runtime case below can read the offset arithmetic itself rather than a layout
+\ meaning: nothing here depends on what lives at either offset, and neither is
+\ ever written. That these two lines LOAD AT ALL is the first half of the
+\ two-row rule — a prefix definer the seal marked DNAME-INT answers `internal
+\ engine word` here, not a definition.
+0 RESERVED-PTR-U8-CELL RSV-CELL-A
+$18 RESERVED-PTR-U8-CELL RSV-CELL-B
 
 : ZERO-PTR ( -- ptr n )
    ZERO-SLOT @ ;
@@ -39,6 +48,17 @@ PERSISTED-PTR-U8-TABLE-VARIABLE TABLE-HEAD
 
 : MUST-LACK ( ptr u8 n -- )
    HAS? TFALSE ;
+
+TRUSTED: RSV-OFF-A ( -- n ) RSV-CELL-A data-base - ;
+TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
+
+\ The definer answers `data-base + the offset it was given`, which is the whole
+\ of what it promises; the difference pins that the offset is the created
+\ body's and not a constant baked into the clause.
+: RESERVED-RUNTIME ( -- )
+   RSV-OFF-A 0 T=
+   RSV-OFF-B $18 T=
+   RSV-OFF-B RSV-OFF-A - $18 T= ;
 
 : RUNTIME ( -- )
    ADDRESS @ ZERO-PTR = TTRUE
@@ -106,12 +126,41 @@ PERSISTED-PTR-U8-TABLE-VARIABLE TABLE-HEAD
    s" DP-STORE-WRONG ( n -- ) 0 cells DPT + 0 ptr-field !" CHECK-QUIET-CANDIDATE! 0 T=
    s" DP-HEAD-WRONG ( ptr ptr n -- ) DPH !" CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ THE TWO ROWS, AND THE PAIR THAT SHOWS WHAT THEY DO. `RESERVED-PTR-U8-CELL`
+\ is written in src/core/pointer-storage.f, before the checker exists, so the
+\ seal would mark it DNAME-INT on its own; src/core/cell-effects.f states the
+\ definer's effect and src/habu/verify-source.f states what it publishes for the
+\ created word. NULL-PTR-CELL is the control: same file, same phase, neither
+\ row, and checked source cannot name it. (The control is the real sibling
+\ rather than a clone of the definer because the seal runs when the engine is
+\ built - a clone written in this file is ordinary checked source and could
+\ never be sealed. test/internal-word-gate.f owns the `internal engine word`
+\ diagnostic itself.) The control candidate is spelled with NULL-PTR-CELL's OWN
+\ effect, so a type disagreement cannot be what refuses it: the name is.
+: VERIFY-RESERVED-EFFECT ( -- )
+   s" RSV-BASE ( -- ptr ptr u8 ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! -1 T=
+   s" RSV-READ ( -- ptr u8 ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! -1 T=
+   s" RSV-BASE-WRONG ( -- ptr ptr n ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! 0 T=
+   s" RSV-READ-WRONG ( -- ptr n ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! 0 T=
+   s" RSV-SEALED ( -- ptr n ) NULL-PTR-CELL" CHECK-QUIET-CANDIDATE! 0 T= ;
+
+\ The scanner's own row: the pre-scan sees the same definer and publishes the
+\ same effect for the word it creates, so a source file that declares a
+\ reserved cell verifies without being run.
+: REG-RESERVED-CELL ( -- )
+   s" $30 RESERVED-PTR-U8-CELL VSRSV" VERIFY:SOURCE-BUF-IN-SCOPE ;
+: VERIFY-RESERVED-SCAN ( -- )
+   REG-RESERVED-CELL
+   s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" CHECK-QUIET-CANDIDATE! -1 T=
+   s" VSRSV-WRONG ( -- ptr ptr n ) VSRSV" CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : ISOLATION ( -- )
    LOAD-SOURCE
    s" PTR-VARIABLE" MUST-HAVE
    s" PERSISTED-PTR-VARIABLE" MUST-HAVE
    s" PTR-U8-TABLE" MUST-HAVE
    s" PERSISTED-PTR-U8-TABLE-VARIABLE" MUST-HAVE
+   s" RESERVED-PTR-U8-CELL" MUST-HAVE
    s" +FIELD" MUST-LACK
    s" CFIELD:" MUST-LACK
    s" STRUCT-BYTE+" MUST-LACK
@@ -127,6 +176,9 @@ PERSISTED-PTR-U8-TABLE-VARIABLE TABLE-HEAD
    VERIFY-EFFECT
    VERIFY-RAW-VALUE
    VERIFY-DECLARED-POINTEE
+   RESERVED-RUNTIME
+   VERIFY-RESERVED-EFFECT
+   VERIFY-RESERVED-SCAN
    ISOLATION
    T-REPORT ;
 

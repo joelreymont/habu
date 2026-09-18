@@ -2111,6 +2111,16 @@ variable TDAD-FAM                          \ the family under generation (read b
    TDAD-FAM @ TDECL-ADDR-PLAN
    TDECL-ADDR-EVAL ;
 
+\ Replay renders the same plan and takes only its FIRST reading: each row is
+\ armed and checked, so the accessor's effect is registered under its own name,
+\ and no row reaches TDECL-EVAL-XT, so no dictionary word is emitted. The arming
+\ is the live one — this participant commits after DECL-EVENT (800) has advanced
+\ the committed field watermark, on the replay path exactly as on the live one,
+\ so the field ids the plan bakes are committed ids and the window reads them.
+: TDECL-ADDR-REPLAY-BODY ( -- )
+   TDAD-FAM @ TDECL-ADDR-PLAN
+   TDPLAN-PREFLIGHT-DEFINITIONS ;
+
 public
 
 \ TDECL-ADDR-WORDS ( fam -- ) : publish one family's address surface. The window
@@ -2123,11 +2133,16 @@ public
    rc 0 <> IF rc throw THEN ;
 
 \ Replay (tools/check-core.f's nominal pass, src/habu/verify-source.f) registers
-\ the checked EFFECTS of a generated set without emitting code. The address
-\ surface is not replayed yet: its arming authority is a committed field id, and
-\ the replay arm that carries one is its own dot (docs/type-system.md §10.5 item
-\ 3). A replayed declaration therefore registers make/unmake and no accessor, so
-\ a source file that uses its own accessors still needs the live load path.
+\ the checked EFFECTS of a generated set without emitting code, and the address
+\ surface replays with the rest of the set: TDECL-ADDR-REPLAY publishes one
+\ accessor effect per field plus AT / BYTES / CELLS, from the same plan the live
+\ path evaluates, so a source file that uses its own record accessors is
+\ resolvable on the pre-scan (docs/type-system.md §10.5 item 3).
+: TDECL-ADDR-REPLAY ( n -- )
+   TDAD-FAM !
+   [: TDECL-ADDR-REPLAY-BODY ;] catch {: rc:n :}
+   TDPLAN-FP-CLEAR
+   rc 0 <> IF rc throw THEN ;
 
 \ Generation for ONE family the caller names, reading that family's payload only
 \ through the provider the caller supplies. TDECL-GEN-BODY is the named helper

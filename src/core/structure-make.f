@@ -197,6 +197,7 @@ variable SM-ARM-CAP   SM-ARM-CAP-INIT SM-ARM-CAP !
 TRUSTED: SM-ARM-GROW ( ptr n n n -- ptr n ) ARENA-BYTES-GROW ;
 TRUSTED: SM-ADDR? ( n -- bool ) TFAM-DERIVE-ADDR? ;
 TRUSTED: SM-ADDR-WORDS ( n -- ) TDECL-ADDR-WORDS ;
+TRUSTED: SM-ADDR-REPLAY ( n -- ) TDECL-ADDR-REPLAY ;
 
 : SM-ARM-BASE ( -- ptr n ) SM-ARM-P @ ;
 : SM-ARM-SLOT ( -- ptr n )
@@ -237,11 +238,14 @@ TRUSTED: SM-ADDR-WORDS ( n -- ) TDECL-ADDR-WORDS ;
    fam SM-NO-FAMILY <> IF fam SM-ADDR-REQUIRE THEN
    depth ;
 
+\ Replay registers the accessors' checked effects from the same plan and emits
+\ no code, the way the constructor participant (820) replays MAKE / UNMAKE — so
+\ a tool that pre-scans a source sees the record's own accessors.
 : SM-PART-COMMIT ( n -- n ) {: depth:n :}
    SM-ARMED-FAM {: fam:n :}
    fam SM-NO-FAMILY = IF depth EXIT THEN
    fam SM-ADDR-REQUIRE
-   DECL-REPLAY:RP-ACTIVE? IF depth EXIT THEN
+   DECL-REPLAY:RP-ACTIVE? IF fam SM-ADDR-REPLAY depth EXIT THEN
    fam SM-ADDR-WORDS
    depth ;
 

@@ -370,6 +370,43 @@ s" habu: bad enum declaration 'cm3': name must be a lowercase tail at '\'"
 DECL-DIAG:HAS? -1 VSPARITY:T=
 DECL-DIAG:OFF
 
+\ ---------------------------------------------------------------------------
+\ 6. `DERIVE addr`. The accessors are minted by the SIXTH participant (830,
+\    src/core/structure-make.f) in the commit phase, one phase after the
+\    make/unmake set, so before this arm a replayed record had constructors and
+\    no accessors — and a source that read its own fields through them failed
+\    the pre-scan at the accessor's name while loading fine on the live path.
+\
+\    The replay renders the SAME plan the live path evaluates and stops after
+\    its first reading: each row is armed and checked, so the accessor's effect
+\    is registered under its own name, and no row reaches the evaluator, so no
+\    dictionary word appears (VS-LOAD's ndict@ assertion covers that here).
+\    The effects are the real ones, not placeholders: the wrong-typed uses below
+\    are refused exactly as they are after a live declaration.
+\ ---------------------------------------------------------------------------
+s" package adrep public STRUCTURE rec 0 DERIVE addr FIELD a n FIELD b n ;STRUCTURE : ADR-USE ( ptr rec -- ptr n ) ADREP-REC:A ; : ADR-SPAN ( -- n ) ADREP-REC:BYTES ADREP-REC:CELLS + ; ;package"
+VSPARITY:VS-LOAD
+
+s" ADR-A ( ptr adrep:rec -- ptr n ) ADREP-REC:A" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
+s" ADR-B ( ptr adrep:rec -- ptr n ) ADREP-REC:B" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
+s" ADR-AT ( ptr adrep:rec n -- ptr adrep:rec ) ADREP-REC:AT" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
+s" ADR-BYTES ( -- n ) ADREP-REC:BYTES" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
+s" ADR-CELLS ( -- n ) ADREP-REC:CELLS" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
+\ the projection is the field's, not the record's: a replayed accessor that
+\ answered its own input would be a registered lie
+s" ADR-SELF ( ptr adrep:rec -- ptr adrep:rec ) ADREP-REC:A" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
+s" ADR-NOARG ( -- ptr n ) ADREP-REC:A" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
+s" ADR-AT-WRONG ( ptr adrep:rec -- ptr adrep:rec ) ADREP-REC:AT" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
+
+\ The private spelling. A private product publishes FAMILY-MEMBER into its
+\ declaring package's private wordlist, so the only place the names resolve is
+\ inside that package — which is where the source below uses them.
+s" package adprv STRUCTURE prec 0 DERIVE addr FIELD lo n FIELD hi n ;STRUCTURE : PRV-HI ( ptr prec -- ptr n ) PREC-HI ; : PRV-STEP ( ptr prec -- ptr prec ) 1 PREC-AT ; : PRV-BYTES ( -- n ) PREC-BYTES ; ;package"
+VSPARITY:VS-LOAD
+
+\ and stays private: the same name outside the package does not resolve
+s" ADR-LEAK ( ptr adprv:prec -- ptr n ) PREC-HI" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
+
 VSPARITY:REPORT
 
 ;using

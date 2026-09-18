@@ -765,13 +765,19 @@ clause style, per pointee:
 
 ```forth
 : RESERVED-PTR-U8-CELL ( n -- )
-   create , does> ( -- ptr ptr u8 ) @ data-base swap + ;
+   create , does> ( -- ptr ptr u8 ) @ data-base swap + 0 ptr-field ;
 ```
 
-Measured: the clause certifies, the cell the accessor answers sits at exactly
-the reserved offset from `data-base`, and the value read back is the same
-pointer the hand-written accessor returns (probed against `NULL-PTR-OFF` and
-`NULL-PTR`). The clause spells its pointee out, so `trust-raw` seals no
+The field view at the end is not decoration: `data-base <off> +` answers the
+untyped `ptr n` view of the DATA region, and `0 ptr-field` is what says the cell
+there holds a `ptr u8`. A clause without it computes the same address with the
+wrong type and the engine's own check refuses the definition — measured as
+`E-NCOMP-VERDICT` out of the native build, which is where a pre-checker
+definition is checked. Measured for the landed form: the clause certifies, the
+cell the created word answers sits at exactly the offset it was given from
+`data-base` (`test/pointer-storage-test.f`), and the declared pointee holds in
+both directions — `ptr ptr u8` in, `ptr ptr n` refused. The clause spells its
+pointee out, so `trust-raw` seals no
 variable and the raw discipline never looks at it — the same reason
 `PTR-U8-TABLE` works before the checker exists. Being a pre-checker definer, it
 needs **two effect rows**, not one: a `TRUST` row in `src/core/cell-effects.f`
@@ -927,15 +933,30 @@ because `lib/task.f`'s TCB reaches its five pointer fields through the very row
    accessor; `F:AT` strides by the committed width and preserves the family; a
    field read through an accessor equals the same field read through `UNMAKE`,
    for a pointer field, a scalar field and a nested family field; a rejected
-   declaration rolls back byte-identically. *Not covered:* replay publishes no
-   accessor (item 3 below owns it), so a source file that uses its own accessors
-   still needs the live load path.
-3. **The verify-source replay arm.** `DERIVE addr`'s generated words registered
-   by `src/habu/verify-source.f`'s `RECORD-STRUCTURE-DECL` path, and the
-   reserved-cell definer added to its definer table and to
-   `src/core/cell-effects.f`. *Acceptance:* a file that uses its own record
-   accessors in the same source passes the pre-scan; a clone of the definer
-   without its two rows is sealed internal, and with them is not.
+   declaration rolls back byte-identically. Replay publishes the accessors too,
+   which item 3 below owns.
+3. **The verify-source replay arm** — *landed*. The address participant (830)
+   takes the replay branch its constructor sibling (820) already had:
+   `TDECL-ADDR-REPLAY` renders the SAME plan the live path evaluates and stops
+   after its first reading, so each row is armed and checked and the accessor's
+   effect is registered under its own name, and no row reaches the evaluator, so
+   no code is emitted and no runtime dictionary entry appears. Nothing restates a
+   spelling: the names and signatures come from the plan the generator renders.
+   The arming is the live one — this participant commits after `DECL-EVENT` (800)
+   has advanced the committed field watermark on the replay path exactly as on
+   the live one, so the field ids the plan bakes are committed ids and the
+   field-projection window reads them; an unarmed reading would reject the
+   accessor body, which is how the fixture measures it. The reserved-cell definer
+   is in the verify-source definer table and in `src/core/cell-effects.f`, with
+   its case in `tools/lint/def.f`. *Acceptance, pinned as case 6 of
+   `test/decl-replay-verify-source.f` and in `test/pointer-storage-test.f`:* a
+   file that uses its own record accessors — public spelling and private — passes
+   the pre-scan, while a use that disagrees with the registered effect is
+   refused, and the private surface stays private; a pre-checker definer with
+   both rows is reachable from checked source and its sibling with neither
+   (`NULL-PTR-CELL`, same file, same phase) is not. The seal runs when the engine
+   is built, so the rowless half is measured on that real sibling rather than on
+   a clone written in a test, which would be ordinary checked source.
 4. **`ptr-cell-mark` for a persisted record's pointer fields.** *Acceptance:* a
    declared record in a persisted arena has each pointer field marked exactly
    once; a restored image reads them back; a scalar field is not marked; a

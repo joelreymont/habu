@@ -66,3 +66,23 @@ REG-PROTECT
 \ the same reason PERSISTED-PTR-VARIABLE is - the value must survive an image.
 : PERSISTED-PTR-U8-TABLE-VARIABLE ( -- )
    create here ptr-cell-mark 0 , does> ( -- ptr ptr ptr u8 ) ;
+
+\ A cell the ENGINE LAYOUT reserves, not the dictionary: `off
+\ RESERVED-PTR-U8-CELL NAME` publishes NAME as the address of the DATA cell at
+\ `off`, declared as a `ptr ptr u8` the way the table definers above declare
+\ theirs. The offset lives in the created body and is added to `data-base` on
+\ every read, so no absolute address is baked - the reason NULL-PTR-CELL above
+\ is a reserved offset rather than a `create`d body, now spelled once as a
+\ definer instead of per site.
+\
+\ THIS DEFINER IS THE TWO-ROW RULE'S OWN EXAMPLE. It has both rows, so the seal
+\ leaves the name alone; NULL-PTR-CELL, in this same file and this same phase,
+\ has neither and is DNAME-INT (test/internal-word-gate.f). test/pointer-storage-test.f
+\ measures the pair.
+\ The clause ends in `0 ptr-field` for the reason NULL-PTR does: `data-base +`
+\ answers the untyped `ptr n` view of the DATA region, and the field view is what
+\ says the cell at that address holds a `ptr u8`. Without it the clause computes
+\ the right address with the wrong type and the engine's own check refuses the
+\ definition (measured: E-NCOMP-VERDICT during the native build).
+: RESERVED-PTR-U8-CELL ( n -- )
+   create , does> ( -- ptr ptr u8 ) @ data-base swap + 0 ptr-field ;
