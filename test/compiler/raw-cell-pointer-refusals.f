@@ -171,6 +171,19 @@ create DIAG-BUF 8192 allot
    CODE$ HAS?  REPAIR$ HAS?  FIELD-REASON$ HAS?
    DISARM ;
 
+\ ---- the refusal that lands on the signature ---------------------------------
+\ Not every raw-cell refusal has a token to sit on. Every token here accepts the
+\ value the cell hands out -- `@` takes `ptr a` and answers `a` -- and only the
+\ DECLARED output row refuses it as an address. The reason still has to be the
+\ raw-cell one rather than a bare `expected: ptr u8 actual: a`, so the naming
+\ has to survive a rejection raised after the last token was checked.
+: CASE-SIGNATURE-BOUNDARY ( -- )
+   s" the declared output row refuses it too, and names the same rule" T-LABEL
+   ARM
+   [: s" : RCP-VBASE ( -- ptr u8 ) RCP-V @ ;" EV ;] CHECK-RC TTHROWSQ
+   NAMED
+   DISARM ;
+
 \ ---- the controls ------------------------------------------------------------
 
 \ A `create`d byte buffer is the honest use of raw storage: the pointee binds to
@@ -179,6 +192,19 @@ create DIAG-BUF 8192 allot
 : CASE-BYTE-BUFFER ( -- )
    s" a create'd byte buffer still certifies through type" T-LABEL
    [: s" : RCP-SHOW ( -- ) RCP-BYTES 4 type ;" EV ;] 0 TTHROWSQ ;
+
+\ The latch is raised inside the unifier, which means it can be raised by a row
+\ that is then thrown away: TRY-PRIMS applies each candidate in turn, so
+\ `V @ cell+` refuses the `ptr a -- ptr a` row and then succeeds on `n -- n`.
+\ Whatever rejects the definition AFTERWARDS must keep its own reason -- a
+\ refusal that borrowed this one would send the reader to a cell that was never
+\ the problem.
+: CASE-ABANDONED-CANDIDATE ( -- )
+   s" a candidate row that was abandoned does not name the real refusal" T-LABEL
+   ARM
+   [: s" : RCP-SPEC ( -- n ) RCP-V @ cell+ 0= ;" EV ;] CHECK-RC TTHROWSQ
+   CODE$ LACKS?  VALUE-REASON$ LACKS?
+   DISARM ;
 
 \ A TASK:+USER slot publishes a CONCRETE `-- ptr n`, so it was never part of
 \ this pun and its refusal is the ordinary one it always gave. It is here to
@@ -203,6 +229,8 @@ public
    CASE-POINTER-IN
    CASE-FIELD-FORGE
    CASE-FIELD-FORGE-NOMINAL
+   CASE-SIGNATURE-BOUNDARY
+   CASE-ABANDONED-CANDIDATE
    CASE-BYTE-BUFFER
    CASE-TASK-SLOT
    T-REPORT ;

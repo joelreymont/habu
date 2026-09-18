@@ -2102,8 +2102,7 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 \ address is declared: PTR-VARIABLE, PERSISTED-PTR-VARIABLE, TYPED-VARIABLE NAME
 \ ptr t, or TYPED-BUFFER. `create BUF 256 allot  BUF 4 type` keeps certifying:
 \ the pointee binds to the `u8` CON, which stays admissible.
-variable RAW-PTR-HIT   \ a RAW cell refused a pointer this token; DO-TOK1/CHECK latch the reason (the reject machinery lives far below)
-variable RAW-FIELD-HIT \ `ptr-field` refused a RAW base this token; latched the same way so the prose names `ptr-field`
+variable RAW-PTR-HIT   \ a RAW cell refused a pointer in this token's unify; UF-CAPTURE names it as the pin closes
 : RAW-OK? ( n -- bool )   \ may a RAW cell absorb resolved `term`? (meets var RAW)
    T-RES
    dup ISVAR IF PAY TVK-RAISE RES-TRUE EXIT THEN     \ var: meet -> RAW (trailed)
@@ -2495,6 +2494,57 @@ variable LTC-P
 : LIN-CHECK ( -- )
    DCUR @ RCUR @ LIN-TOTAL LINBEF @ <> IF 0 OK ! THEN ;
 
+\ --- reject reasons (docs §24, item 9 slice 4). A failure site latches a reason
+\ code alongside the token pin; render.f maps it to a stable code, repair class,
+\ suggestion, and prose. First reason wins, and only while the token pin is
+\ still open (FAILSET clear), so the reason always describes the pinned token.
+\ The nonexhaustive reason also latches (family, seen-bitset offset, variant
+\ count) so the renderer can walk the unseen declaration-order tags to NAMES.
+\
+\ THE VOCABULARY SITS HERE, ABOVE THE FIRST-FAILURE CAPTURE, because that is the
+\ only place a VALUE-POSITION refusal can name itself: CHECKER-STEP sets FAILSET
+\ the instant UNIFY-IN fails, and after that MDIAG! has nothing to say (dot
+\ habu-latch-value-pos-373cad6b). UF-CAPTURE below names the refusal in the one
+\ instruction between the failure and the pin closing. The match/construct
+\ machinery that raises most of these codes is far below and unaffected.
+1 constant MD-FAM-UNKNOWN     \ match family token resolves nothing in signature scope
+2 constant MD-FAM-KIND        \ match family is not a sum or enum
+3 constant MD-SCRUT           \ top of stack is not a sum/enum bundle
+4 constant MD-FAM-MISMATCH    \ top bundle belongs to a different family
+5 constant MD-VAR-UNKNOWN     \ variant not declared by the matched family
+6 constant MD-VAR-DUP         \ duplicate variant branch
+7 constant MD-MISSING-OF      \ variant token not followed by OF
+8 constant MD-NONEXH          \ ;MATCH with unseen variants (no default branch in v1)
+9 constant MD-STRAY           \ stray ;match / closer over a foreign frame
+10 constant MD-TRUNC          \ unterminated match form at definition end
+11 constant MD-DEPTH          \ match cannot reserve its two control frames
+12 constant MD-QUOT           \ match inside a quotation: open rows carry no scrutinee
+13 constant MD-OPEN-ARGS      \ open-arg parametric scrutinee (v1 conservative cell)
+14 constant MD-JOIN           \ branch outputs do not unify
+15 constant MD-CON-FAM        \ construct family not declared in the active package
+16 constant MD-CON-KIND       \ construct family is not a sum or enum
+17 constant MD-CON-VAR        \ construct variant not declared by the family
+18 constant MD-CON-TRUNC      \ construct missing its family/variant operand
+19 constant MD-DIVBAR         \ M5: block collective/barrier reached under divergent control
+20 constant MD-EXEC-OPAQUE    \ execute of an opaque xt fetched from untyped memory (RSEXEC T-VAR)
+21 constant MD-CATCH-OPAQUE   \ catch of an opaque xt fetched from untyped memory (RSCATCH T-VAR); same E-EXEC-OPAQUE-XT code, prose names 'catch'
+22 constant MD-RIGID-REGION   \ two host allocations differ in host region (which allocation)
+23 constant MD-RIGID-EXTENT   \ two host allocations differ in extent (bounds)
+24 constant MD-RIGID-GEN      \ stale mutation generation: index outlived the container's epoch
+25 constant MD-RIGID-XDOM     \ rigid-identity domain confusion: a region/extent/generation used where another is required
+26 constant MD-RAW-PTR        \ a pointer met an undeclared raw storage cell (RAW-OK? T-PTR)
+27 constant MD-RAW-FIELD      \ ptr-field on an undeclared raw storage base; same E-RAW-CELL-PTR code, prose names 'ptr-field'
+
+variable MDIAG        \ latched reason code (0 = none; reset per definition)
+variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
+variable MDIAG-SEEN   \ nonexhaustive: seen-bitset offset (MSEEN pool, per-check)
+variable MDIAG-VCNT   \ nonexhaustive: variant count
+
+: MDIAG! ( n -- ) {: code:n :}   \ first reason wins, only while the pin is open
+   MDIAG @ 0 <> IF EXIT THEN
+   FAILSET @ 0 <> IF EXIT THEN
+   code MDIAG ! ;
+
 : UF>DIAG ( -- )
    UF-SET @ IF
       UF-ACT @ DF-ACT !  UF-EXP @ DF-EXP !  UF-POSN @ DPOS !
@@ -2502,6 +2552,19 @@ variable LTC-P
       0 DF-ACT !  0 DF-EXP !  -1 DPOS !
    THEN
    CVLIVE @ DVAR ! ;   \ the variant live at the first-failure capture (-1 = none)
+
+\ THE FIRST FAILURE, CAPTURED ONCE. Every site that judges a row -- the token
+\ step, the locals annotation bind, and the three boundary unifies -- pins the
+\ same three things in the same order: the expected/actual pair the renderer
+\ prints, the reason the refusal itself raised, and then FAILSET, which freezes
+\ the token pin so nothing later can move it. The reason has to be named BEFORE
+\ that last store: MDIAG! is silent once the pin is closed, which is why the raw
+\ cell rule used to need a second latch path of its own.
+: UF-CAPTURE ( n n -- ) {: exp:n act:n :}
+   exp DEXP !  act DACT !
+   UF>DIAG
+   RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
+   -1 FAILSET ! ;
 
 \ CONSTRUCT-DECL-TERM ( fam -- term bool ) : the constructed value's type args are
 \ named only by the DECLARED output (a payloadless variant like `none`, or a
@@ -2552,7 +2615,7 @@ variable CDT-ROW
    LINEXP @ 0= IF LIN-SNAPSHOT THEN
    DCUR @ WAS !
    DCUR @ din UNIFY-IN
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF din DEXP !  WAS @ DACT !  UF>DIAG  -1 FAILSET ! THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF din WAS @ UF-CAPTURE THEN
    OK @ and OK !
    dout DCUR !
    OK @ LINEXP @ 0= and IF LIN-CHECK THEN ;
@@ -9976,7 +10039,7 @@ variable UNSAFE-SYM-N
 variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
 variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-DF-ACT  variable SV-DF-EXP
-variable SV-DVAR  variable SV-DPOS
+variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG
 variable SV-SGBAD
 PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
 variable SV-SGBAD-AR-DECL  variable SV-SGBAD-AR-GOT
@@ -9991,6 +10054,7 @@ variable SV-TRAIL
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !
    DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !  DPOS @ SV-DPOS !
+   MDIAG @ SV-MDIAG !                     \ the reason is part of the cursor a trial may abandon
    SGBAD @ SV-SGBAD !  SGBAD-A @ SV-SGBAD-A !
    SGBAD-U @ SV-SGBAD-U !  SGBAD-KIND @ SV-SGBAD-KIND !
    SGBAD-AR-DECL @ SV-SGBAD-AR-DECL !  SGBAD-AR-GOT @ SV-SGBAD-AR-GOT !
@@ -10020,6 +10084,7 @@ variable SV-TRAIL
    SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !
    SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
+   SV-MDIAG @ MDIAG !                     \ a reason raised by an abandoned candidate is abandoned too
    SV-THDROW @ THDROW !  SV-THRROW @ THRROW !  SV-THSET @ THSET !
    TRIAL-REST-SG ;
 
@@ -10330,10 +10395,12 @@ variable WF-I
    PTR>INNER T-RES dup ISVAR 0= IF drop RES-FALSE EXIT THEN
    PAY TVK-RAW? ;
 
+\ This one refuses the token outright rather than failing a unify, so it names
+\ itself here: the pin is this token and FAILSET is still clear.
 : RAW-FIELD-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ true only when it REJECTED
    a u s" ptr-field" CORE-STR= 0= IF RES-FALSE EXIT THEN
    DCUR @ RAW-FIELD-BASE? 0= IF RES-FALSE EXIT THEN
-   -1 RAW-FIELD-HIT !
+   MD-RAW-FIELD MDIAG!
    0 OK !
    RES-TRUE ;
 
@@ -10888,9 +10955,9 @@ variable LCO
 : LOC-ANN-BIND-CHECK ( n n -- ) {: gi:n idx:n :}   \ assert the annotation against the bundle
    gi XG-TERM0@  idx cells LOCTV + @  UNIFY
    dup 0=  FAILSET @ 0=  and  OK @ and  IF        \ first failure: capture the exact pair
-      idx cells LOCTV + @ FRESH MK-ROW MK-PUSH DEXP !
-      gi XG-TERM0@ FRESH MK-ROW MK-PUSH DACT !
-      UF>DIAG  -1 FAILSET !
+      idx cells LOCTV + @ FRESH MK-ROW MK-PUSH
+      gi XG-TERM0@ FRESH MK-ROW MK-PUSH
+      UF-CAPTURE
    THEN
    OK @ and OK ! ;
 : LOC-BUNDLE-BIND ( n n -- ) {: gi:n idx:n :}
@@ -11198,17 +11265,17 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : SUNI {: s :}
    DCUR @ s UNIFY
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  UF>DIAG  -1 FAILSET ! THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DCUR @ UF-CAPTURE THEN
    OK @ and OK ! ;
 
 : SUNI-IN {: s:n :}
    DCUR @ s UNIFY-IN
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  UF>DIAG  -1 FAILSET ! THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DCUR @ UF-CAPTURE THEN
    OK @ and OK ! ;
 
 : SUNI-COERCE {: s:n :}
    DCUR @ s UNIFY-COERCE
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  UF>DIAG  -1 FAILSET ! THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DCUR @ UF-CAPTURE THEN
    OK @ and OK ! ;
 
 : RSUNI {: s :}  RCUR @ s UNIFY OK @ and OK ! ;
@@ -11673,51 +11740,6 @@ variable MM      \ 0 off | 1 expecting family | 2 expecting variant or ;match | 
 variable MPEND   \ pending variant SUMV id between the variant token and its OF (-1 poisoned)
 variable MREJ    \ match structural-reject latch: forces verdict 0, never uncheckable
 
-\ --- item 9 slice 4: match/construct reject reasons (docs §24). Failure sites
-\ latch a reason code alongside the token pin; render.f maps it to a stable
-\ E-MATCH-*/E-CONSTRUCT-* code, repair class, suggestion, and prose. First
-\ reason wins and only while the token pin is still open (FAILSET clear), so
-\ the reason always describes the pinned token. The nonexhaustive reason also
-\ latches (family, seen-bitset offset, variant count) so the renderer can walk
-\ the unseen declaration-order tags to variant NAMES.
-1 constant MD-FAM-UNKNOWN     \ match family token resolves nothing in signature scope
-2 constant MD-FAM-KIND        \ match family is not a sum or enum
-3 constant MD-SCRUT           \ top of stack is not a sum/enum bundle
-4 constant MD-FAM-MISMATCH    \ top bundle belongs to a different family
-5 constant MD-VAR-UNKNOWN     \ variant not declared by the matched family
-6 constant MD-VAR-DUP         \ duplicate variant branch
-7 constant MD-MISSING-OF      \ variant token not followed by OF
-8 constant MD-NONEXH          \ ;MATCH with unseen variants (no default branch in v1)
-9 constant MD-STRAY           \ stray ;match / closer over a foreign frame
-10 constant MD-TRUNC          \ unterminated match form at definition end
-11 constant MD-DEPTH          \ match cannot reserve its two control frames
-12 constant MD-QUOT           \ match inside a quotation: open rows carry no scrutinee
-13 constant MD-OPEN-ARGS      \ open-arg parametric scrutinee (v1 conservative cell)
-14 constant MD-JOIN           \ branch outputs do not unify
-15 constant MD-CON-FAM        \ construct family not declared in the active package
-16 constant MD-CON-KIND       \ construct family is not a sum or enum
-17 constant MD-CON-VAR        \ construct variant not declared by the family
-18 constant MD-CON-TRUNC      \ construct missing its family/variant operand
-19 constant MD-DIVBAR         \ M5: block collective/barrier reached under divergent control
-20 constant MD-EXEC-OPAQUE    \ execute of an opaque xt fetched from untyped memory (RSEXEC T-VAR)
-21 constant MD-CATCH-OPAQUE   \ catch of an opaque xt fetched from untyped memory (RSCATCH T-VAR); same E-EXEC-OPAQUE-XT code, prose names 'catch'
-22 constant MD-RIGID-REGION   \ two host allocations differ in host region (which allocation)
-23 constant MD-RIGID-EXTENT   \ two host allocations differ in extent (bounds)
-24 constant MD-RIGID-GEN      \ stale mutation generation: index outlived the container's epoch
-25 constant MD-RIGID-XDOM     \ rigid-identity domain confusion: a region/extent/generation used where another is required
-26 constant MD-RAW-PTR        \ a pointer met an undeclared raw storage cell (RAW-OK? T-PTR)
-27 constant MD-RAW-FIELD      \ ptr-field on an undeclared raw storage base; same E-RAW-CELL-PTR code, prose names 'ptr-field'
-
-variable MDIAG        \ latched reason code (0 = none; reset per definition)
-variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
-variable MDIAG-SEEN   \ nonexhaustive: seen-bitset offset (MSEEN pool, per-check)
-variable MDIAG-VCNT   \ nonexhaustive: variant count
-
-: MDIAG! ( n -- ) {: code:n :}   \ first reason wins, only while the pin is open
-   MDIAG @ 0 <> IF EXIT THEN
-   FAILSET @ 0 <> IF EXIT THEN
-   code MDIAG ! ;
-
 \ Rigid host-identity mismatch naming (dot habu-define-rigid-host). RIGID-ATOM-DOMAIN
 \ classifies a resolved term as a rigid-identity atom of a given domain (0 = none).
 \ RIGID-DIAG-CLASSIFY runs on the captured mismatch pair after the verdict is a
@@ -11743,29 +11765,6 @@ variable MDIAG-VCNT   \ nonexhaustive: variant count
    de 1 = IF MD-RIGID-REGION MDIAG ! EXIT THEN
    de 2 = IF MD-RIGID-EXTENT MDIAG ! EXIT THEN
    MD-RIGID-GEN MDIAG ! ;
-
-\ A raw-cell refusal raised inside a step has ALREADY pinned its token and set
-\ FAILSET (CHECKER-STEP does both the moment UNIFY-IN fails), so MDIAG! -- which
-\ only latches while the pin is still open -- can never name it. Latch it
-\ directly instead, under the three conditions MDIAG! would otherwise enforce:
-\ no earlier reason won, this token really rejected, and the pin belongs to THIS
-\ token (an earlier failure leaves FAILIX behind, and TRY-PRIMS can raise the
-\ latch speculatively on a row it then abandons).
-: RAW-DIAG-TOK! ( n -- ) {: code:n :}
-   MDIAG @ 0 <> IF EXIT THEN
-   OK @ 0 <> IF EXIT THEN
-   FAILIX @ TOKIX @ <> IF EXIT THEN
-   code MDIAG ! ;
-
-\ The raw-cell pointer refusal can also land on the definition's own signature
-\ check rather than on one of its tokens: `: BLOB-SRC@ ( -- ptr u8 ) BLOB-SRC @ ;`
-\ fetches a RAW value every token accepts, and only the declared output row
-\ refuses it. DO-TOK1 names a token-level refusal and clears the latch behind
-\ itself, so a latch still standing here was raised by the post-token unify;
-\ name it too rather than rendering a bare mismatch against a bare `a`.
-: RAW-PTR-DIAG-CLASSIFY ( -- )
-   MDIAG @ IF EXIT THEN                           \ a match/construct/rigid reason already won
-   RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG ! THEN ;
 
 : MATCH-REJECT ( -- )
    0 OK !  -1 FAILSET !  -1 MREJ !  0 MM ! ;
@@ -12871,7 +12870,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
-   0 RAW-PTR-HIT !  0 RAW-FIELD-HIT !
+   0 RAW-PTR-HIT !
    TKF TKFU @ LAYOUT-XPORT-TOK? LAYOUT-XPORT !    \ transport op? layout value moves whole
    TOK0 @ IF NAME-TOK ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
@@ -12916,14 +12915,12 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
-   \ The raw-cell pointer refusal, named only when this token really rejected:
-   \ TRY-PRIMS applies candidate rows in turn, so `V @ cell+` raises the latch on
-   \ the `ptr a -- ptr a` row and then succeeds on `n -- n`. Clearing the latch
-   \ behind the conversion leaves the post-token signature check the only thing
-   \ that can raise it again (RAW-PTR-DIAG-CLASSIFY names that one).
-   RAW-PTR-HIT @ 0 <> IF MD-RAW-PTR RAW-DIAG-TOK! THEN
-   RAW-FIELD-HIT @ 0 <> IF MD-RAW-FIELD RAW-DIAG-TOK! THEN
-   0 RAW-PTR-HIT !  0 RAW-FIELD-HIT !
+   \ The raw-cell refusals name themselves where they are raised: the value
+   \ position in UF-CAPTURE, `ptr-field` in RAW-FIELD-TOK?. Nothing is left to
+   \ collect here -- the flag only has to be dropped, because TRY-PRIMS applies
+   \ candidate rows in turn (`V @ cell+` raises it on the `ptr a -- ptr a` row
+   \ and then succeeds on `n -- n`) and the next token must start clean.
+   0 RAW-PTR-HIT !
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -14159,7 +14156,7 @@ ASIG-GRAPH-CHECK-INSTALL
    0 CF-LOOPS !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
-   0 RAW-PTR-HIT !  0 RAW-FIELD-HIT !
+   0 RAW-PTR-HIT !
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    NULL-PTR SGA !  0 SGU !
@@ -14548,7 +14545,6 @@ variable CTOR-PEND-I
    dup DVERD !
    CK-AOT-LATCH-RETRY                                 \ is a seeded signature still to come?
    dup 0= IF RIGID-DIAG-CLASSIFY THEN                 \ name a rigid host-identity mismatch
-   dup 0= IF RAW-PTR-DIAG-CLASSIFY THEN               \ name a raw cell that refused a pointer at the signature check
    dup 0 =  over 1 = JSON-DIAGS @ and  or
    dup MEO-ON @ and IF MEO-APPLY THEN     \ file-relative origin for this def's diagnostic
    \ A pass another pass will replace has not judged anything yet, so it says
