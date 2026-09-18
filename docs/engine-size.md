@@ -321,6 +321,19 @@ Measured against this engine, so the numbers are bounds, not hopes:
 - **An owner is a record the image carries, charged up to the next owner.** An
   anonymous heap block lands under the name below it, and so does every table a
   dropped private record used to own.
+- **A snapshot's payload lengths are the trailer's own statement, and only their
+  shape is checked.** `REGLEN` and `DATALEN` are validated against this engine's
+  band geometry and against the page boundary the donor's text ends on, so every
+  single-field edit — either length, the record count, the version, the magic —
+  is refused by name. An edit that raises one length by a page and lowers the
+  other by the same page keeps every one of those invariants, and the walk
+  reports a table whose region/DATA boundary is off by a page. Nothing in the
+  file is a second witness to where that boundary falls; only a checksum over the
+  payloads would be.
+- **A record charged in the code band is charged for the ground it covers
+  first.** An `EXPORT` alias or a `does>` clause that shares a span is charged
+  nothing, and a record whose span nests inside another's is charged nothing:
+  the bytes belong to whichever record's span reached them first in band order.
 - **The reachability census above is a question only a baked engine has**, so it
   does not run on an application image. A `--repl` image ships the interpreter,
   which resolves user tokens by name, so every word it carries is reachable by
@@ -375,30 +388,32 @@ bin/hb --load tools/hb-build.f -- --repl app.f -o app-repl
 bin/hb --load tools/engine-size.f -- app-repl
 ```
 
-23,920,832 bytes, of which **16,683,930 — 69.7% — are zero**.
+23,920,832 bytes, of which **16,675,521 — 69.7% — are zero**.
 
 | class | bytes | zero | % | what it is |
 | --- | ---: | ---: | ---: | --- |
 | `elf/header` … `elf/header-pad` | 4,096 | 3,970 | 0.0 | the header page, as in any image |
-| `engine/code` | 127,964 | 18,322 | 0.5 | the donor engine's own emitted code |
-| `engine/primitive-*` | 10,176 | 7,402 | 0.0 | its boot-seeded primitive dictionary |
-| `aot/*` | 3,804,672 | 526,896 | 15.9 | its AOT payload, the twenty rows the engine table itemises |
-| `engine/text-pad` | 50,788 | 50,788 | 0.2 | the donor's own text pad, now interior to this file |
-| `region/dict-records` | 464,640 | 307,030 | 1.9 | 9,680 live 48-byte dictionary records |
-| `region/dict-unused` | 2,681,088 | 2,681,088 | 11.2 | the rest of the 65,536-slot array, never written |
+| `engine/code` | 129,036 | 18,466 | 0.5 | the donor engine's own emitted code |
+| `engine/primitive-*` | 10,224 | 7,419 | 0.0 | its boot-seeded primitive dictionary |
+| `aot/*` | 3,809,140 | 527,537 | 15.9 | its AOT payload, the twenty rows the engine table itemises |
+| `engine/text-pad` | 45,200 | 45,200 | 0.2 | the donor's own text pad, now interior to this file |
+| `region/dict-records` | 465,696 | 307,730 | 1.9 | 9,702 live 48-byte dictionary records |
+| `region/dict-unused` | 2,680,032 | 2,680,032 | 11.2 | the rest of the 65,536-slot array, never written |
 | `region/cf-stack` | 4,096 | 4,096 | 0.0 | the control-flow stack inside the dictionary band |
-| `region/code-band` | 1,902,880 | 268,180 | 7.9 | every word the application compiled, plus its out-of-line names |
-| `data/window` | 14,870,192 | 12,815,963 | 62.1 | the DATA window, copied byte for byte |
+| `region/record-names` | 5,788 | 460 | 0.0 | the names too long to sit in a record, written in the band |
+| `region/code-band` | 839,376 | 122,873 | 3.5 | the code the live records own, attributed by package below |
+| `region/code-unowned` | 1,059,396 | 145,097 | 4.4 | code in the band no record owns |
+| `data/window` | 14,868,512 | 12,812,446 | 62.1 | the DATA window, copied byte for byte |
 | `snapshot/trailer` | 48 | 31 | 0.0 | magic, text base, ndict, region length, data length, version |
 | `container/rw-segment` | 192 | 164 | 0.0 | DYNAMIC plus the two loader slots |
-| **total** | **23,920,832** | **16,683,930** | 100.0 | |
+| **total** | **23,920,832** | **16,675,521** | 100.0 | |
 
 Three facts follow.
 
 **Five sixths of the file is the application's half, and four fifths of that is
 zero.** The engine travels whole — 3,997,696 bytes, the same text a baked engine
 carries, which is why the engine's own walkers measure it unchanged — and the
-snapshot adds 19,922,944 bytes on top. 16,076,388 of those are zero.
+snapshot adds 19,922,944 bytes on top. 16,072,765 of those are zero.
 
 **The DATA window is copied verbatim, zeros included.** It is 62.1% of the file
 and 86% of it is zero. `src/habu/snap-lib.f` writes `[data-base, DP)` as bytes,
@@ -410,11 +425,96 @@ as those cells. Nothing compresses it and nothing skips it: a restore is a
 runs, which is why the engine pays 1.2 MB for a 6.8 MB heap while the snapshot
 pays 14.9 MB for a 14.9 MB one.
 
-**The dictionary slot array is the second lever, at 2,681,088 bytes of nothing.**
-`DICT-CAP` is 65,536 records and this application publishes 9,680; the other
-55,856 slots are written to the file because they are inside the region the
+**The dictionary slot array is the second lever, at 2,680,032 bytes of nothing.**
+`DICT-CAP` is 65,536 records and this application publishes 9,702; the other
+55,834 slots are written to the file because they are inside the region the
 trailer's `REGLEN` covers. They cost more than every record the image actually
 ships.
+
+#### The code band, by package
+
+A live record's wordlist id names its package the same way a compact record's
+does, so the band is attributed with the map `BUILD-WID-MAP` already builds —
+from the namespace records, which spend their two code slots on the public and
+private wordlist ids their package publishes. The out-of-line names are
+separated from the code first: a name too long for a record is written at `CP`
+like code is (`src/habu/habu2.f C-STORE-NAME`), so both live in the band.
+
+Every band byte is charged at most once. The spans are sorted and walked in
+order, and a record is charged what its own span covers that no earlier span
+already covered — an `EXPORT` alias and a `does>` clause put a second record over
+ground the first already answers for (12 spans, 184 bytes here). What no record
+covers is the `unowned` row.
+
+```
+band 1904560 bytes: code 839376, out-of-line names 5788, unowned 1059396
+records with code in the band 9282, in the donor engine's text 209, names there 708
+```
+
+| package | records | code bytes |
+| --- | ---: | ---: |
+| `TFAM` | 220 | 23,740 |
+| `TASK` | 253 | 18,456 |
+| `IR-ATTR` | 75 | 14,076 |
+| `IR-FUN` | 68 | 12,020 |
+| `A64IR` | 72 | 10,964 |
+| `IR-SCHEMA` | 85 | 10,132 |
+| `IR-BUILD` | 121 | 9,792 |
+| `FFI-DECL` | 98 | 8,548 |
+| `IR-OP` | 70 | 8,492 |
+| `HIR-WORD` | 49 | 8,440 |
+
+188 more packages follow, and 528,236 bytes belong to global-wordlist words,
+which are in no package at all.
+
+**The band is the build's own compiler, not the application.** 9,282 of the
+9,702 records have their code in the region and only 209 in the donor engine's
+text, for a twenty-line program. A `--repl` build runs a maker child over stdin
+— `require tools/app-build.f`, which loads `src/habu/app-image.f` under
+`1 set-tier` — so the child compiles the whole tier-1 optimizer stack from
+source (the `IR-*`, `A64*`, `HIR-*`, `TFAM` and `TASK` rows above are it) before
+the application is loaded at all, and the snapshot keeps every word of it. That
+is where a `--repl` image's region goes, and it is a property of how the image is
+made rather than of what was compiled: a prebuilt maker, or one whose loader is
+already captured in the donor engine, would cut it without touching the
+application. The 1,059,396 unowned bytes are the same story from the other end —
+stored quotation bodies, hidden bodies, and the code a definition abandoned
+where it stood (`src/habu/snap-lib.f`: the retained region carries them).
+
+#### The DATA window, by owner
+
+An owner is a record the definer stamped `DKIND:ADDR` — `create` and `variable`,
+the only records whose body pushes a DATA address — and it is charged from its
+own base up to the next owner's, so a static `allot` lands on the word that
+declared it. The stamp is the claim and the body has to back it: `does>` clears
+the stamp in the same window it patches the body, so a stamped record whose body
+is not the four-instruction `MOVZ`/`MOVK` chain, or whose chain names an address
+outside this image's DATA, is refused rather than skipped. Verbatim makes the
+arithmetic trivial: an owner's image cost *is* its extent, and the only question
+left is how much of that extent carries anything.
+
+```
+owners 1114, below the first one 3514248 bytes (3179006 zero)
+```
+
+| owner | package | offset | extent | written | zero |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `COUNTER` | `IMGFIX` | 10,102,584 | 4,765,928 | 792,337 | 3,973,591 |
+| `DONE` | — | 7,030,040 | 2,794,208 | 376,834 | 2,417,374 |
+| `STR-MIN-I64$` | — | 6,067,504 | 939,336 | 9,720 | 929,616 |
+| `SYMS-BOOT` | — | 4,020,672 | 655,360 | 202,359 | 453,001 |
+| `REQUIRE-PATHS` | — | 5,466,456 | 524,800 | 4,382 | 520,418 |
+| `SYM-STR-BOOT` | — | 4,676,032 | 393,216 | 264,649 | 128,567 |
+| `FS-DIR-BUF` | — | 9,857,016 | 131,072 | 0 | 131,072 |
+| `NORET-BOOT` | — | 5,155,392 | 98,304 | 0 | 98,304 |
+
+1,106 more owners follow. `COUNTER` is the application's own `variable`, the
+last owner in the window, so the row is every byte of heap above the last name
+the image carries: 4.77 MB of which 3.97 MB is zero — a fifth of the file under
+one name, and a locator rather than an accusation. `TABLE`, the fixture's
+`create TABLE 4096 allot`, is charged 4,096 bytes exactly. The 3,514,248 bytes
+below the first owner are the engine's own fixed DATA bands, which no `create`
+names.
 
 ### A stripped image
 
@@ -486,7 +586,7 @@ byte would lose eight bytes of the file to the pad.
 `tools/hb-build.f` measures what it just wrote and prints one line:
 
 ```
-hb-build size: app-repl 23920832 bytes = code 3863024, names 3396076, data 2808144 written + 12816224 zero, padding 54407, other 982957 (repl-snapshot)
+hb-build size: app-repl 23920832 bytes = code 3861636, names 3402492, data 2811109 written + 12812703 zero, padding 48819, other 984073 (repl-snapshot)
 ```
 
 The six terms plus `other` are the file's own length, so the line is an identity

@@ -697,7 +697,16 @@ create READER-STATE JR:STORAGE-BYTES allot
    IMAGE-SIZE:DATA-ZERO 0 > TTRUE
    IMAGE-SIZE:DATA-ZERO IMAGE-SIZE:DATA-WRITTEN > TTRUE
    IMAGE-SIZE:CODE-BYTES 0 > TTRUE
-   IMAGE-SIZE:NAME-BYTES 0 > TTRUE ;
+   IMAGE-SIZE:NAME-BYTES 0 > TTRUE
+   \ The region payload is attributed and not just classified: the code band
+   \ splits into what records own, the out-of-line names beside it and the code
+   \ no record owns, and the DATA window into owners. Each of those partitions
+   \ is checked against the payload it covers inside MEASURE, so the case both
+   \ pins that the walk ran and that every charge added up.
+   IMAGE-SIZE:REGION-CODE 0 > TTRUE
+   IMAGE-SIZE:REGION-NAMES 0 > TTRUE
+   IMAGE-SIZE:REGION-UNOWNED 0 > TTRUE
+   IMAGE-SIZE:DATA-OWNERS 0 > TTRUE ;
 
 \ Builds its own image: every AOT case above removes its output as its last
 \ act, and this one has to read the file rather than a report about it.
@@ -716,6 +725,13 @@ create READER-STATE JR:STORAGE-BYTES allot
    IMAGE-SIZE:CODE-BYTES 0 > TTRUE
    \ ... and it carries no dictionary at all.
    IMAGE-SIZE:NAME-BYTES 0 T=
+   \ No region either, and no DATA owner: these run after the snapshot case in
+   \ one process, so they also pin that the attribution answers for the image in
+   \ hand and never with the last one's numbers.
+   IMAGE-SIZE:REGION-CODE 0 T=
+   IMAGE-SIZE:REGION-NAMES 0 T=
+   IMAGE-SIZE:REGION-UNOWNED 0 T=
+   IMAGE-SIZE:DATA-OWNERS 0 T=
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    BF-TMP-RESET ;

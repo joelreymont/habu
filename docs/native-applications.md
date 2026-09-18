@@ -53,7 +53,11 @@ same numbers in the report object's `size` field. A `--repl` image is mostly
 zero bytes — it copies the DATA window verbatim and the dictionary slot array
 whole — which is a property of the format and not of your program; [Where an
 application image's bytes go](engine-size.md#where-an-application-images-bytes-go)
-measures both classes and says what moves the number.
+measures both classes and says what moves the number. It attributes the code
+band by package and the DATA window by owner, and the answer for a `--repl`
+image is usually the build's own compiler rather than the application: the maker
+child loads the tier-1 optimizer from source before your program, and the
+snapshot keeps it.
 
 ## Stripped images and persistent execution tokens
 

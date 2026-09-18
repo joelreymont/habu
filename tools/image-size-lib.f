@@ -679,6 +679,93 @@ variable BK-DZERO  variable BK-PAD
    SUMS?
    TOTAL-ROW ;
 
+\ ---- the snapshot trailer and its two payloads ---------------------------------
+\ src/habu/layout.f owns the trailer's size and every field offset, and is the
+\ only place that may state them; src/habu/snap-lib.f SNAP:WRITE-BYTES writes
+\ the stream this reads back, src/habu/habu2.f EM-SNAPSHOT-RESTORE restores it
+\ and tools/imgdump.f reads the same six fields for its own report. The stream
+\ is: the new ELF header page, the donor engine's text content, the region
+\ payload (the dictionary slot array then the code band), the DATA window, the
+\ trailer, and the RW segment.
+\ It is read here, above the dictionary walkers, because the records a snapshot
+\ carries are inside that region payload: the cursor below needs its offsets.
+variable TRL-OFF     variable NDICT-N
+variable REG-LEN     variable DAT-LEN
+variable REG-OFF     variable DAT-OFF
+variable TBASE                                    \ the writing run's text base
+
+: TRAILER-OFF ( -- n )
+   TEXT-SIZE IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - ;
+
+\ The trailer is the last thing inside the authenticated text extent, so a
+\ snapshot announces itself at a fixed place and nothing has to be searched for.
+: SNAPSHOT? ( -- bool )
+   TRAILER-OFF {: trl:n :}
+   trl 0 < if false exit then
+   trl SNAP-TRL-BYTES IN-IMAGE? 0= if false exit then
+   trl U64@ SNAP-MAGIC = ;
+
+: ?TRL ( bool ptr u8 n -- ) {: ok:bool a:ptr u:n :}
+   ok if exit then
+   a u RC die ;
+
+: READ-TRAILER ( -- )
+   TRAILER-OFF TRL-OFF !
+   TRL-OFF @ SNAP-TRL-VERSION + U64@ SNAP-FORMAT-VERSION =
+      s" image-size: snapshot format version is not the one this engine writes" ?TRL
+   TRL-OFF @ SNAP-TRL-TBASE + U64@ TBASE !
+   TRL-OFF @ SNAP-TRL-NDICT + U64@ NDICT-N !
+   TRL-OFF @ SNAP-TRL-REGLEN + U64@ REG-LEN !
+   TRL-OFF @ SNAP-TRL-DATALEN + U64@ DAT-LEN !
+   NDICT-N @ 1 >= NDICT-N @ DICT-CAP <= and
+      s" image-size: snapshot record count is outside the dictionary" ?TRL
+   NDICT-N @ DREC * CFSTK-OFF <=
+      s" image-size: snapshot records overflow the dictionary slot array" ?TRL
+   \ The bands are this engine's constants, so an image whose region was written
+   \ against a different DICT-SIZE is refused by name rather than split at an
+   \ offset that means nothing in it.
+   REG-LEN @ DICT-SIZE > REG-LEN @ REGION <= and
+      s" image-size: region payload does not hold this engine's dictionary band and a code band" ?TRL
+   DAT-LEN @ 1 >= DAT-LEN @ DATA-SIZE <= and
+      s" image-size: snapshot DATA payload is outside the DATA window" ?TRL
+   TRL-OFF @ DAT-LEN @ - REG-LEN @ - {: r:n :}
+   r CODE-OFF >=
+      s" image-size: snapshot payloads do not fit in front of the trailer" ?TRL
+   \ The payloads begin where the DONOR engine's text ended, and an engine
+   \ image's text is rounded up to PROT-PAGE-MAX -- which is what turns a
+   \ trailer whose lengths were edited into a refusal. Without this, moving
+   \ REGLEN by a page slides the boundary through the donor's zero text pad,
+   \ where the classes still sum and the table is still wrong.
+   r PROT-PAGE-MAX mod 0=
+      s" image-size: the snapshot's payloads do not begin on the donor engine's text boundary" ?TRL
+   r REG-OFF !
+   r REG-LEN @ + DAT-OFF !
+   \ The engine half ends where the region payload begins: every baked walker
+   \ above is bounded by this and not by the file's own text extent.
+   r ETEXT-N ! ;
+
+\ ---- which of the three images is in hand -------------------------------------
+\ Read out of the file, never out of this tool's own build: a snapshot says so
+\ at a fixed offset, a baked engine carries a counted boot-seeded dictionary,
+\ and what has neither is a stripped application, which is then proved by its
+\ own blob rather than accepted by elimination. CLASSIFY, which fills this in,
+\ is at the bottom of the file with the walkers it chooses between; the class is
+\ named here because the record cursor below dispatches on it.
+ENUM image-class engine snapshot stripped ;ENUM
+
+1 LAYOUT-BUFFER CLASS-BUF image-class
+
+: CLASS-PTR ( -- ptr image-class ) 0 CLASS-BUF ;
+
+: CLASS! ( image-class -- ) CLASS-PTR ! ;
+
+: SNAPSHOT-CLASS? ( -- bool )
+   CLASS-PTR @ MATCH image-class
+      engine OF false ENDOF
+      snapshot OF true ENDOF
+      stripped OF false ENDOF
+   ;MATCH ;
+
 \ ---- the shipped dictionary ----------------------------------------------------
 \ Compact records, 20 bytes each (src/habu/aot-capture.f ACAP-COMPACT-RECS;
 \ src/habu/habu2.f EM-AOT-REGISTER-RECS expands them to 48-byte dictionary
@@ -712,8 +799,114 @@ $FFFFFFFF constant PKG-ROW
 : POOL-BYTES ( n -- n ) POOL-LEN 1+ ;
 : CREC-NAME ( n -- n n ) CREC-NAME-OFF POOL-TEXT ;
 
+\ ---- the live dictionary a snapshot carries ------------------------------------
+\ 48-byte records (DREC, src/habu/layout.f), the ones EM-SNAPSHOT-RESTORE maps
+\ straight back into the region: slot 0 the code start, slot 1 the raw CODE-SPAN
+\ length, [16] the flags cell, [24] the name bytes or a pointer to them, slot 5
+\ the wordlist id. src/habu/xref.f names the same slots for a running engine and
+\ tools/imgdump.f reads them out of a file exactly like this.
+\ A namespace record (wid XREF-NAMESPACE-WL) has no code: it spends slots 0 and 1
+\ on the two wordlist ids its package publishes, which is what makes the live
+\ records their own wid-to-package map.
+: PTR>OFF ( n -- n ) {: p:n :}
+   p RBASE-VA >= p RBASE-VA REG-LEN @ + < and if p RBASE-VA - REG-OFF @ + exit then
+   p TBASE @ >= p TBASE @ REG-OFF @ CODE-OFF - + < and if
+      p TBASE @ - CODE-OFF + exit then
+   -1 ;
+
+: LREC ( n -- n ) DREC * REG-OFF @ + ;
+: LREC-START ( n -- n ) LREC U64@ ;
+: LREC-RAW-LEN ( n -- n ) LREC 8 + U64@ ;
+: LREC-FLAGS ( n -- n ) LREC 16 + U64@ ;
+: LREC-WID ( n -- n ) LREC 40 + U64@ ;
+: LREC-PKG? ( n -- bool ) LREC-WID XREF-NAMESPACE-WL = ;
+: LREC-ADDR? ( n -- bool ) LREC-FLAGS DKIND:MASK and DKIND:ADDR = ;
+
+\ An out-of-line name (DNAME-EXT) is a canonical pointer like a code start, so it
+\ is found the same way; an inline one is the record's own [24] bytes.
+: LREC-NAME ( n -- n n ) {: k:n :}
+   k LREC-FLAGS DNAME-EXT and 0<> if k LREC 24 + U64@ PTR>OFF else k LREC 24 + then
+   k LREC-FLAGS DNAME-LEN-MASK and ;
+
+\ A record's code start is a pointer, and 0 is not one: it is what an untouched
+\ dictionary slot holds, so a record whose start is zero is not a record at all
+\ (tools/imgdump.f ENT? refuses the same slot for the same reason). Answering
+\ -1 here is what turns a trailer whose NDICT was raised into a refusal, instead
+\ of a walk that reads empty slots and charges the engine's header page for them.
+: LREC-CODE ( n -- n ) {: k:n :}
+   k LREC-PKG? if -1 exit then
+   k LREC-START 0= if -1 exit then
+   k LREC-START PTR>OFF ;
+
+: LREC-BYTES ( n -- n ) {: k:n :}
+   k LREC-PKG? if 0 exit then
+   k LREC-RAW-LEN CODE-SPAN:VALID? 0= if
+      s" image-size: a live dictionary record carries no code length" RC die
+   then
+   k LREC-RAW-LEN CODE-SPAN:BYTES ;
+
+\ The highest wordlist id the live records mention. The payload states its span;
+\ a region does not, so it is read off the records themselves.
+: LWIDS ( -- n )
+   0 ACC !
+   NDICT-N @ 0 ?do
+      i LREC-WID {: w:n :}
+      w ACC @ > if w ACC ! then
+   loop
+   ACC @ 1+ ;
+
+\ ---- one cursor over the two record formats ------------------------------------
+\ Everything below reads records through these words and nothing else, so the
+\ wid map, the roles, the owner collection and the rankings are written once and
+\ answer for a baked engine's compact rows and for a snapshot's live ones alike.
+\ Code is answered as a FILE OFFSET by both, which is what lets one CHAIN-VALUE
+\ decode an address literal wherever the body lives.
+: NRECS ( -- n )
+   SNAPSHOT-CLASS? if NDICT-N @ exit then  REC-N @ ;
+
+: REC-PKG? ( n -- bool )
+   SNAPSHOT-CLASS? if LREC-PKG? exit then  CREC-PKG? ;
+
+: REC-WID ( n -- n )
+   SNAPSHOT-CLASS? if LREC-WID exit then  CREC-WID ;
+
+: REC-PUB-WID ( n -- n )
+   SNAPSHOT-CLASS? if LREC-START exit then  CREC-START ;
+
+: REC-PRI-WID ( n -- n )
+   SNAPSHOT-CLASS? if LREC-RAW-LEN exit then  CREC-RAW-LEN ;
+
+: NWIDS ( -- n )
+   SNAPSHOT-CLASS? if LWIDS exit then  WID-W0 @ WID-SPAN @ + 1+ ;
+
+: REC-CODE ( n -- n ) {: k:n :}
+   SNAPSHOT-CLASS? if k LREC-CODE exit then
+   k CREC-PKG? if -1 exit then
+   BLOB-OFF @ k CREC-START + ;
+
+: REC-BYTES ( n -- n )
+   SNAPSHOT-CLASS? if LREC-BYTES exit then  CREC-BYTES ;
+
+: REC-ADDR? ( n -- bool )
+   SNAPSHOT-CLASS? if LREC-ADDR? exit then  CREC-ADDR? ;
+
+: REC-NAME ( n -- n n )
+   SNAPSHOT-CLASS? if LREC-NAME exit then  CREC-NAME ;
+
+\ The address a DKIND:ADDR body's chain holds for DATA offset 0, and how far the
+\ image's DATA reaches. A snapshot's DATA window is mapped at the fixed DATA-VA
+\ (src/habu/habu2.f EM-MMAP-DATA-REGION refuses a boot the kernel answered
+\ elsewhere), so a live address literal is its offset plus that base; the AOT
+\ payload records the base of the run that captured it.
+: DATA-AT0 ( -- n )
+   SNAPSHOT-CLASS? if DATA-VA exit then  DATA-D0 @ ;
+
+: DATA-REACH ( -- n )
+   SNAPSHOT-CLASS? if DAT-LEN @ exit then  DATA-SPAN @ ;
+
 : .NAME ( n -- ) {: k:n :}
-   k CREC-NAME {: at:n len:n :}
+   k REC-NAME {: at:n len:n :}
+   at 0 < if s" ?" type exit then
    len 0 ?do at i + U8@ emit loop ;
 
 DYNAMIC-BUFFER WROLE n                            \ role of each wordlist id
@@ -724,14 +917,14 @@ variable WID-CAP
    w 0 >= w WID-CAP @ < and ;
 
 : BUILD-WID-MAP ( -- )
-   WID-W0 @ WID-SPAN @ + 1+ WID-CAP !
+   NWIDS WID-CAP !
    WID-CAP @ DICT-CAP > if s" image-size: wordlist span outside the dictionary" RC die then
    WID-CAP @ WROLE-RESERVE  WID-CAP @ WPKG-RESERVE
    WID-CAP @ 0 ?do  ROLE-GLOBAL i WROLE !  0 i WPKG !  loop
-   REC-N @ 0 ?do
-      i CREC-PKG? if
-         i CREC-START {: pub:n :}
-         i CREC-RAW-LEN {: priv:n :}
+   NRECS 0 ?do
+      i REC-PKG? if
+         i REC-PUB-WID {: pub:n :}
+         i REC-PRI-WID {: priv:n :}
          \ A generated package (ENUM, SUMTYPE, the type-family products) carries
          \ 0 as its private role: it has no private wordlist. Zero is the GLOBAL
          \ wordlist and belongs to no package, so neither role may claim it.
@@ -740,8 +933,8 @@ variable WID-CAP
       then
    loop ;
 
-: CREC-ROLE ( n -- n ) {: k:n :}
-   k CREC-WID {: w:n :}
+: REC-ROLE ( n -- n ) {: k:n :}
+   k REC-WID {: w:n :}
    w 0= if ROLE-GLOBAL exit then
    w WID-OK? 0= if ROLE-UNMAPPED exit then
    w WROLE @ {: role:n :}
@@ -782,7 +975,7 @@ DYNAMIC-BUFFER PMASK n
    NAMES-LEN @ 1+ 0 ?do 0 i PMASK ! loop
    REC-N @ 0 ?do
       i CREC-PKG? if i CREC-NAME-OFF M-OTHER PMASK+
-      else i CREC-NAME-OFF i CREC-ROLE ROLE-BIT PMASK+ then
+      else i CREC-NAME-OFF i REC-ROLE ROLE-BIT PMASK+ then
    loop
    XTSITE-N @ 0 ?do  XTSITE0 @ i XTSITE-ROW * + 4 + U32@ M-SITE PMASK+  loop ;
 
@@ -803,7 +996,7 @@ DYNAMIC-BUFFER RNAME n
    ROLE-N 1+ RCOUNT-RESERVE  ROLE-N 1+ RCODE-RESERVE  ROLE-N 1+ RNAME-RESERVE
    ROLE-N 1+ 0 ?do 0 i RCOUNT !  0 i RCODE !  0 i RNAME ! loop
    REC-N @ 0 ?do
-      i CREC-PKG? if ROLE-N else i CREC-ROLE then {: slot:n :}
+      i CREC-PKG? if ROLE-N else i REC-ROLE then {: slot:n :}
       slot RCOUNT @ 1+ slot RCOUNT !
       slot RCODE @ i CREC-BYTES + slot RCODE !
       slot RNAME @ i CREC-NAME-OFF POOL-BYTES + slot RNAME !
@@ -996,12 +1189,25 @@ variable LO         variable HI         variable IDXV       variable GAP
       k CREC-START dup k CREC-BYTES + SCAN-SPAN
    repeat ;
 
-\ A four-instruction MOVZ/MOVK chain, the one form a code literal takes
-\ (src/habu/aot-closure.f ADDRESS-CHAIN?). Only the immediates are read.
+\ A four-instruction MOVZ/MOVK chain, the one form an address literal takes
+\ (src/habu/aot-closure.f ADDRESS-CHAIN?, src/habu/layout.f SNAP-RELOC, whose
+\ two relocation passes rewrite exactly these four immediates). It is read at a
+\ FILE OFFSET, so the same decode answers for a chain in the baked code blob and
+\ for one in a snapshot's region.
+: CHAIN? ( n -- bool ) {: at:n :}
+   at 16 IN-IMAGE? 0= if false exit then
+   at U32@ $FF800000 and $D2800000 <> if false exit then     \ MOVZ x?, #imm16
+   at U32@ $1F and {: rd:n :}
+   4 1 ?do
+      at i 4 * + U32@ $FF800000 and $F2800000 <> if false unloop exit then
+      at i 4 * + U32@ $1F and rd <> if false unloop exit then \ MOVK x?, #imm16, LSL k
+   loop
+   true ;
+
 : CHAIN-VALUE ( n -- n ) {: at:n :}
    0 ACC !
    4 0 ?do
-      at i 4 * + BLOB-W32@ {: w:n :}
+      at i 4 * + U32@ {: w:n :}
       ACC @  w 5 rshift $FFFF and  w 21 rshift 3 and 16 * lshift  or ACC !
    loop
    ACC @ ;
@@ -1033,7 +1239,7 @@ variable LO         variable HI         variable IDXV       variable GAP
    v 0 > if v 1- MARK-SPAN then ;
 
 : ROOT-CSITE ( n -- ) {: off:n :}
-   off CHAIN-VALUE CODE-B0 @ - {: at:n :}
+   BLOB-OFF @ off + CHAIN-VALUE CODE-B0 @ - {: at:n :}
    at 0 >= at BLOB-LEN @ < and if at MARK-SPAN then ;
 
 : ROOT-BOOTRUN ( -- )
@@ -1058,7 +1264,7 @@ variable LO         variable HI         variable IDXV       variable GAP
 : ROOTS-SURFACE ( -- )
    REC-N @ 0 ?do
       i CREC-PKG? 0= if
-         i CREC-ROLE ROLE-PRIVATE <> if i CREC-START MARK-ENTRY then
+         i REC-ROLE ROLE-PRIVATE <> if i CREC-START MARK-ENTRY then
       then
    loop ;
 
@@ -1079,7 +1285,7 @@ $FFFF constant ROW-MASK
 : DEAD? ( n -- bool ) MARK @ 0= ;
 
 : PKG-ROW-OF ( n -- n ) {: k:n :}
-   k CREC-WID {: w:n :}
+   k REC-WID {: w:n :}
    w WID-OK? 0= if -1 exit then
    w WROLE @ ROLE-GLOBAL = if -1 exit then
    w WPKG @ ;
@@ -1124,7 +1330,7 @@ $FFFF constant ROW-MASK
    0 DROLE-N !  0 DROLE-CODE !
    REC-N @ 0 ?do
       i CREC-PKG? 0= i DEAD? and if
-         i CREC-ROLE role = if
+         i REC-ROLE role = if
             DROLE-N @ 1+ DROLE-N !
             DROLE-CODE @ i CREC-BYTES + DROLE-CODE !
          then
@@ -1185,14 +1391,23 @@ $FFFF constant ROW-MASK
    REACH-RESET  ROOTS-ENTRY  SWEEP
    s" engine-entry" REPORT-REACH ;
 
-\ ---- the captured DATA heap ----------------------------------------------------
-\ The payload carries the window's DATA as its non-zero runs, each with an
-\ (offset, length) header, so a table of cells holding small numbers costs MORE
-\ in header rows than in bytes. tools/data-table-census.f asks this question of
-\ a LIVE heap; this asks it of the shipped image, where the cost is real.
+\ ---- who owns the DATA ---------------------------------------------------------
+\ Shared by the two image classes that carry DATA at all. A baked engine carries
+\ the window as the payload's non-zero runs, each with an (offset, length)
+\ header, so a table of cells holding small numbers costs MORE in header rows
+\ than in bytes; a snapshot carries the window verbatim, where a cell costs its
+\ bytes whatever it holds. tools/data-table-census.f asks this question of a
+\ LIVE heap; this asks it of the shipped image, where the cost is real.
 \ An owner is a record the definer stamped DKIND:ADDR (create/variable): no
 \ other record kind owns DATA. Its address is the MOVZ/MOVK chain its body
 \ pushes, read with the same decode the relocation pass uses.
+\ THE STAMP IS THE CLAIM AND THE BODY MUST BACK IT. DKIND:ADDR says the body
+\ pushes its DATA address and nothing else, and `does>` CLEARS the stamp in the
+\ same window it patches the body (src/habu/habu2.f DOESPATCH:EMIT), so a
+\ stamped record whose body is not that chain, or whose chain names an address
+\ outside this image's DATA, is a record this walk cannot read. Both are refused
+\ by name: skipping one silently would charge its table to the owner below it
+\ and the table would still add up.
 \ AN OWNER IS CHARGED UP TO THE NEXT OWNER, the rule tools/data-table-census.f
 \ states for the live heap and for the same reason: `allot` only moves DP, so
 \ consecutive bases partition the span exactly. A block allotted after a
@@ -1200,9 +1415,12 @@ $FFFF constant ROW-MASK
 \ `create` -- therefore shows up under the name below it, which is a locator,
 \ not an accusation.
 DYNAMIC-BUFFER DOWNER n                           \ (DATA offset, record) packed, ascending
-DYNAMIC-BUFFER DBYTES n                           \ run bytes charged to each owner
-DYNAMIC-BUFFER DRUNS n                            \ run rows charged to each owner
-DYNAMIC-BUFFER DROWB n                            \ ... and what those rows encode to
+DYNAMIC-BUFFER DBYTES n                           \ content bytes charged to each owner
+DYNAMIC-BUFFER DRUNS n                            \ run rows charged to each owner (engine)
+\ What the image spends on the owner BESIDE its content, so that DBYTES + DOVER
+\ is the owner's image cost in either class: the bytes the engine's run rows
+\ encode to, and the zero bytes a snapshot's window carries verbatim.
+DYNAMIC-BUFFER DOVER n
 DYNAMIC-BUFFER DCOST n                            \ (cost, owner) packed, for the ranking
 variable DOWN-N     variable DCOST-N   variable CRP
 variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
@@ -1212,21 +1430,26 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
 : DOWN-REC ( n -- n ) DOWNER @ ROW-MASK and ;
 
 : COLLECT-OWNERS ( -- )
-   REC-N @ 1+ DOWNER-RESERVE
+   NRECS 1+ DOWNER-RESERVE
    0 DOWN-N !
-   REC-N @ 0 ?do
-      i CREC-PKG? 0= i CREC-ADDR? and i CREC-BYTES 16 >= and if
-         i CREC-START CHAIN-VALUE DATA-D0 @ - {: off:n :}
-         off 0 >= off DATA-SPAN @ < and if
-            off OWNER-SHIFT lshift i or  DOWN-N @ DOWNER !
-            DOWN-N @ 1+ DOWN-N !
+   NRECS 0 ?do
+      i REC-PKG? 0= i REC-ADDR? and i REC-BYTES 16 >= and if
+         i REC-CODE {: at:n :}
+         at 0 < at CHAIN? 0= or if
+            s" image-size: a DKIND:ADDR record's body is not the address chain its definer emits" RC die
          then
+         at CHAIN-VALUE DATA-AT0 - {: off:n :}
+         off 0 < off DATA-REACH >= or if
+            s" image-size: a DKIND:ADDR record names an address outside this image's DATA" RC die
+         then
+         off OWNER-SHIFT lshift i or  DOWN-N @ DOWNER !
+         DOWN-N @ 1+ DOWN-N !
       then
    loop
    0 DOWNER DOWN-N @ [: < ;] SORT:SORT!
    DOWN-N @ 1+ DBYTES-RESERVE  DOWN-N @ 1+ DRUNS-RESERVE
-   DOWN-N @ 1+ DROWB-RESERVE
-   DOWN-N @ 1+ 0 ?do 0 i DBYTES !  0 i DRUNS !  0 i DROWB ! loop ;
+   DOWN-N @ 1+ DOVER-RESERVE
+   DOWN-N @ 1+ 0 ?do 0 i DBYTES !  0 i DRUNS !  0 i DOVER ! loop ;
 
 \ The last owner at or below off, or -1 when the run starts below every owner.
 : OWNER-AT ( n -- n ) {: off:n :}
@@ -1238,7 +1461,7 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
    LO @ 1- ;
 
 : OWNER-END ( n -- n ) {: k:n :}
-   k 1+ DOWN-N @ >= if DATA-SPAN @ exit then
+   k 1+ DOWN-N @ >= if DATA-REACH exit then
    k 1+ DOWN-OFF ;
 
 \ A run is a maximal non-zero extent and may cross into the next owner's table,
@@ -1246,7 +1469,7 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
 \ Where the owner at index k ends; -1 is the head below the first owner.
 : OWNER-LIMIT ( n -- n ) {: k:n :}
    k 0 < if
-      DOWN-N @ 0 > if 0 DOWN-OFF else DATA-SPAN @ then exit
+      DOWN-N @ 0 > if 0 DOWN-OFF else DATA-REACH then exit
    then
    k OWNER-END ;
 
@@ -1262,7 +1485,7 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
    k 0 < if
       UNOWNED-RUNS @ 1+ UNOWNED-RUNS !  UNOWNED-ROWB @ rowb + UNOWNED-ROWB !
    else
-      k DRUNS @ 1+ k DRUNS !  k DROWB @ rowb + k DROWB !
+      k DRUNS @ 1+ k DRUNS !  k DOVER @ rowb + k DOVER !
    then
    off len + {: end:n :}
    off CRP !
@@ -1289,7 +1512,7 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
    repeat ;
 
 : OWNER-COST ( n -- n ) {: k:n :}
-   k DBYTES @  k DROWB @ + ;
+   k DBYTES @  k DOVER @ + ;
 
 : RANK-OWNERS ( -- )
    DOWN-N @ 1+ DCOST-RESERVE
@@ -1318,7 +1541,7 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
       s" image-size: DATA run rows do not add up" RC die
    then
    0 ACC !
-   DOWN-N @ 0 ?do ACC @ i DROWB @ + ACC ! loop
+   DOWN-N @ 0 ?do ACC @ i DOVER @ + ACC ! loop
    ACC @ UNOWNED-ROWB @ + RUN-BYTES @ <> if
       s" image-size: DATA run row bytes do not add up" RC die
    then ;
@@ -1345,109 +1568,255 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
    then ;
 
 
-\ ---- a --repl application: the snapshot trailer and its two payloads ----------
-\ src/habu/layout.f owns the trailer's size and every field offset, and is the
-\ only place that may state them; src/habu/snap-lib.f SNAP:WRITE-BYTES writes
-\ the stream this reads back, src/habu/habu2.f EM-SNAPSHOT-RESTORE restores it
-\ and tools/imgdump.f reads the same six fields for its own report. The stream
-\ is: the new ELF header page, the donor engine's text content, the region
-\ payload (the dictionary slot array then the code band), the DATA window, the
-\ trailer, and the RW segment.
-variable TRL-OFF     variable NDICT-N
-variable REG-LEN     variable DAT-LEN
-variable REG-OFF     variable DAT-OFF
+\ ---- a --repl application: the code band, by package ---------------------------
+\ The band holds two different things: the code of every word the image compiled
+\ into its region, and the out-of-line bytes of every name too long to sit in a
+\ record (src/habu/habu2.f C-STORE-NAME and DOES-REC:COPY-NAME both write theirs
+\ at CP, padded to a word), so the two are separated before either is attributed.
+\ EVERY BAND BYTE IS CHARGED AT MOST ONCE. The spans are sorted and walked in
+\ order, and a record is charged the bytes its own span covers THAT NO EARLIER
+\ SPAN ALREADY COVERED: an EXPORT alias and a `does>` clause put a second record
+\ over ground the first one already answers for, and charging both would report
+\ more code than the band holds. What no span covers is the `unowned` row --
+\ stored quotation bodies, hidden bodies, and the code a definition abandoned
+\ where it stood (src/habu/snap-lib.f says the retained region carries them).
+DYNAMIC-BUFFER BSPAN n                            \ (band offset, kind, record), ascending
+DYNAMIC-BUFFER PKGB n                             \ band code bytes per package row
+DYNAMIC-BUFFER PKGN n                             \ records charged to it
+DYNAMIC-BUFFER PCOST n                            \ (bytes, package row), for the ranking
+variable BSPAN-N    variable PCOST-N   variable COVER
+variable BAND-CODE  variable BAND-CZERO
+variable BAND-NAMES variable BAND-NZERO
+variable BAND-FREE  variable BAND-FZERO
+variable PKG-GLOBAL variable PKG-UNMAPPED
+variable SHARED-N   variable SHARED-BYTES
+variable TEXT-RECS  variable TEXT-NAMES variable BAND-RECS
+17 constant BAND-SHIFT                            \ a band offset fits above the two tag fields
+$10000 constant BAND-NAME                         \ the row is a name, not code
 
-: TRAILER-OFF ( -- n )
-   TEXT-SIZE IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - ;
+: BAND0 ( -- n ) REG-OFF @ DICT-SIZE + ;
+: BAND-END ( -- n ) REG-OFF @ REG-LEN @ + ;
+: BAND-BYTES ( -- n ) BAND-END BAND0 - ;
+: IN-BAND? ( n -- bool ) {: at:n :} at BAND0 >= at BAND-END < and ;
 
-\ The trailer is the last thing inside the authenticated text extent, so a
-\ snapshot announces itself at a fixed place and nothing has to be searched for.
-: SNAPSHOT? ( -- bool )
-   TRAILER-OFF {: trl:n :}
-   trl 0 < if false exit then
-   trl SNAP-TRL-BYTES IN-IMAGE? 0= if false exit then
-   trl U64@ SNAP-MAGIC = ;
+: BSPAN-OFF ( n -- n ) BSPAN @ BAND-SHIFT rshift ;
+: BSPAN-REC ( n -- n ) BSPAN @ ROW-MASK and ;
+: BSPAN-NAME? ( n -- bool ) BSPAN @ BAND-NAME and 0<> ;
 
-: ?TRL ( bool ptr u8 n -- ) {: ok:bool a:ptr u:n :}
-   ok if exit then
-   a u RC die ;
+: BSPAN+ ( n n n -- ) {: at:n k:n kind:n :}
+   at BAND0 - BAND-SHIFT lshift kind or k or  BSPAN-N @ BSPAN !
+   BSPAN-N @ 1+ BSPAN-N ! ;
 
-: READ-TRAILER ( -- )
-   TRAILER-OFF TRL-OFF !
-   TRL-OFF @ SNAP-TRL-VERSION + U64@ SNAP-FORMAT-VERSION =
-      s" image-size: snapshot format version is not the one this engine writes" ?TRL
-   TRL-OFF @ SNAP-TRL-NDICT + U64@ NDICT-N !
-   TRL-OFF @ SNAP-TRL-REGLEN + U64@ REG-LEN !
-   TRL-OFF @ SNAP-TRL-DATALEN + U64@ DAT-LEN !
-   NDICT-N @ 1 >= NDICT-N @ DICT-CAP <= and
-      s" image-size: snapshot record count is outside the dictionary" ?TRL
-   NDICT-N @ DREC * CFSTK-OFF <=
-      s" image-size: snapshot records overflow the dictionary slot array" ?TRL
-   \ The bands are this engine's constants, so an image whose region was written
-   \ against a different DICT-SIZE is refused by name rather than split at an
-   \ offset that means nothing in it.
-   REG-LEN @ DICT-SIZE > REG-LEN @ REGION <= and
-      s" image-size: region payload does not hold this engine's dictionary band and a code band" ?TRL
-   DAT-LEN @ 1 >= DAT-LEN @ DATA-SIZE <= and
-      s" image-size: snapshot DATA payload is outside the DATA window" ?TRL
-   TRL-OFF @ DAT-LEN @ - REG-LEN @ - {: r:n :}
-   r CODE-OFF >=
-      s" image-size: snapshot payloads do not fit in front of the trailer" ?TRL
-   \ The payloads begin where the DONOR engine's text ended, and an engine
-   \ image's text is rounded up to PROT-PAGE-MAX -- which is what turns a
-   \ trailer whose lengths were edited into a refusal. Without this, moving
-   \ REGLEN by a page slides the boundary through the donor's zero text pad,
-   \ where the classes still sum and the table is still wrong.
-   r PROT-PAGE-MAX mod 0=
-      s" image-size: the snapshot's payloads do not begin on the donor engine's text boundary" ?TRL
-   r REG-OFF !
-   r REG-LEN @ + DAT-OFF !
-   \ The engine half ends where the region payload begins: every baked walker
-   \ above is bounded by this and not by the file's own text extent.
-   r ETEXT-N ! ;
+: BSPAN-LEN ( n -- n ) {: j:n :}
+   j BSPAN-REC {: k:n :}
+   j BSPAN-NAME? if k REC-NAME nip PADDED exit then
+   k REC-BYTES ;
 
-\ ---- HANDOFF: the shared record cursor and the owner charging plug in HERE ----
-\ This lane attributes every byte of a --repl image to a CLASS. The second half
-\ of dot habu-report-where-an-cdcd7976 attributes the two largest classes to an
-\ OWNER, and this is the seam it plugs into.
-\
-\ region/code-band BY PACKAGE. The region carries 48-byte live records (DREC,
-\ src/habu/layout.f), not the 20-byte compact records CREC-* reads, so the two
-\ need one record cursor between them: slot 0 is the code start, slot 1 the raw
-\ CODE-SPAN length (tools/imgdump.f E-S/E-E), slot 2 the flags cell, slot 5 the
-\ wordlist id, and a namespace record (wid XREF-NAMESPACE-WL) carries the
-\ package's public and private wids in slots 0 and 1 -- which is the map from a
-\ wid to a package, the live counterpart of what BUILD-WID-MAP builds from the
-\ compact rows. With that cursor in place BUILD-WID-MAP, CREC-ROLE, ROLE-NAME,
-\ .NAME, CENSUS-RECORDS and REPORT-RECORDS are all reusable unchanged: they read
-\ records only through it. A canonical region pointer maps to a file offset the
-\ way tools/imgdump.f PTR>OFF does -- [RBASE-VA, RBASE-VA+REG-LEN) lands at
-\ REG-OFF + (p - RBASE-VA), an engine-text value at CODE-OFF + p -- and that is
-\ also how an out-of-line record name (DNAME-EXT) is found. 9,680 records, 265
-\ of them with a name in the region and 709 with one in the engine text, were
-\ measured in the fixture image this lane's doc section describes.
-\
-\ data/window BY OWNER. COLLECT-OWNERS, OWNER-AT, OWNER-END, OWNER-LIMIT,
-\ CHAIN-VALUE, RANK-OWNERS and CHECK-CHARGES carry over as they stand: an owner
-\ is still a record stamped DKIND:ADDR whose body pushes its DATA address, and
-\ it is still charged from its own base up to the next owner's, so a static
-\ `allot` lands on the definer below it. Only CHARGE-RUNS is replaced, and by
-\ something simpler than itself: a snapshot's DATA is not varint runs but the
-\ window verbatim, so each owner's charge is one ZEROS call over
-\ [DAT-OFF + base, DAT-OFF + next base) -- written bytes and zero bytes, the
-\ two columns this table already prints -- with no row bytes to charge at all.
-\ The engine's own three-way sum check becomes a two-way one: the owners' written
-\ and zero bytes must add up to the payload's length.
-\
-\ Until that lands the two rows carry an explicit `not yet attributed` note, so
-\ the table never implies an attribution it does not have.
+: ?FITS ( n n ptr u8 n -- ) {: at:n len:n a:ptr u:n :}
+   at len + BAND-END > if a u RC die then ;
+
+\ A record's code and its name each live in the band, in the donor engine's own
+\ text, or -- if the pointer maps nowhere at all -- in an image this walk will
+\ not report on.
+: COLLECT-BAND ( -- )
+   NRECS 2 * 2 + BSPAN-RESERVE
+   0 BSPAN-N !  0 TEXT-RECS !  0 TEXT-NAMES !  0 BAND-RECS !
+   NRECS 0 ?do
+      i REC-PKG? 0= if
+         i REC-CODE {: at:n :}
+         at 0 < if
+            s" image-size: a dictionary record's code is not in this image" RC die
+         then
+         at IN-BAND? if
+            BAND-RECS @ 1+ BAND-RECS !
+            at i REC-BYTES s" image-size: a dictionary record's code runs past the region payload" ?FITS
+            i REC-BYTES 0 > if at i 0 BSPAN+ then
+         else TEXT-RECS @ 1+ TEXT-RECS ! then
+      then
+      i REC-NAME {: nat:n nlen:n :}
+      nat 0 < if
+         s" image-size: a dictionary record's name is not in this image" RC die
+      then
+      nat IN-BAND? if
+         nat nlen PADDED s" image-size: a record name runs past the region payload" ?FITS
+         nlen 0 > if nat i BAND-NAME BSPAN+ then
+      else nat CODE-OFF >= nat REG-OFF @ < and if TEXT-NAMES @ 1+ TEXT-NAMES ! then then
+   loop
+   0 BSPAN BSPAN-N @ [: < ;] SORT:SORT! ;
+
+: CHARGE-PKG ( n n -- ) {: k:n got:n :}
+   k REC-ROLE {: role:n :}
+   role ROLE-GLOBAL = if PKG-GLOBAL @ got + PKG-GLOBAL ! exit then
+   role ROLE-UNMAPPED = if PKG-UNMAPPED @ got + PKG-UNMAPPED ! exit then
+   k PKG-ROW-OF {: row:n :}
+   row 0 < if PKG-UNMAPPED @ got + PKG-UNMAPPED ! exit then
+   row PKGB @ got + row PKGB !
+   row PKGN @ 1+ row PKGN ! ;
+
+: CHARGE-GAP ( n n -- ) {: from:n to:n :}
+   to from <= if exit then
+   BAND-FREE @ to from - + BAND-FREE !
+   BAND-FZERO @ BAND0 from + to from - ZEROS + BAND-FZERO ! ;
+
+: CHARGE-SPAN ( n -- ) {: j:n :}
+   j BSPAN-OFF {: off:n :}
+   j BSPAN-LEN {: len:n :}
+   off COVER @ max {: from:n :}
+   off len + {: end:n :}
+   end from <= if
+      SHARED-N @ 1+ SHARED-N !  SHARED-BYTES @ len + SHARED-BYTES !  exit
+   then
+   end from - {: got:n :}
+   got len < if SHARED-N @ 1+ SHARED-N !  SHARED-BYTES @ len got - + SHARED-BYTES ! then
+   j BSPAN-NAME? if
+      BAND-NAMES @ got + BAND-NAMES !
+      BAND-NZERO @ BAND0 from + got ZEROS + BAND-NZERO !
+   else
+      BAND-CODE @ got + BAND-CODE !
+      BAND-CZERO @ BAND0 from + got ZEROS + BAND-CZERO !
+      j BSPAN-REC got CHARGE-PKG
+   then
+   end COVER ! ;
+
+: CHARGE-BAND ( -- )
+   NRECS 1+ PKGB-RESERVE  NRECS 1+ PKGN-RESERVE
+   NRECS 1+ 0 ?do 0 i PKGB !  0 i PKGN ! loop
+   0 BAND-CODE !  0 BAND-CZERO !  0 BAND-NAMES !  0 BAND-NZERO !
+   0 BAND-FREE !  0 BAND-FZERO !  0 PKG-GLOBAL !  0 PKG-UNMAPPED !
+   0 SHARED-N !  0 SHARED-BYTES !  0 COVER !
+   BSPAN-N @ 0 ?do
+      COVER @ i BSPAN-OFF CHARGE-GAP
+      i CHARGE-SPAN
+   loop
+   COVER @ BAND-BYTES CHARGE-GAP ;
+
+\ The three classes partition the band, and so do their zero bytes: both are
+\ checked against the band's own length and its own zero count, so a span this
+\ walk placed twice or missed cannot reach the table.
+: CHECK-BAND ( -- )
+   0 ACC !
+   NRECS 0 ?do ACC @ i PKGB @ + ACC ! loop
+   ACC @ PKG-GLOBAL @ + PKG-UNMAPPED @ + BAND-CODE @ <> if
+      s" image-size: band code does not add up to its packages" RC die
+   then
+   BAND-CODE @ BAND-NAMES @ + BAND-FREE @ + BAND-BYTES <> if
+      s" image-size: region band charges do not add up" RC die
+   then
+   BAND-CZERO @ BAND-NZERO @ + BAND-FZERO @ + BAND0 BAND-BYTES ZEROS <> if
+      s" image-size: region band zero bytes do not add up" RC die
+   then ;
+
+: RANK-PKGS ( -- )
+   NRECS 1+ PCOST-RESERVE
+   0 PCOST-N !
+   NRECS 0 ?do
+      i PKGB @ 0 > if
+         i PKGB @ BAND-SHIFT lshift i or  PCOST-N @ PCOST !
+         PCOST-N @ 1+ PCOST-N !
+      then
+   loop
+   0 PCOST PCOST-N @ [: > ;] SORT:SORT! ;
+
+: REPORT-BAND ( -- )
+   cr s" the region code band by package" type cr
+   s"   band " type BAND-BYTES FMT:.U s"  bytes: code " type BAND-CODE @ FMT:.U
+   s" , out-of-line names " type BAND-NAMES @ FMT:.U
+   s" , unowned " type BAND-FREE @ FMT:.U cr
+   s"   records with code in the band " type BAND-RECS @ FMT:.U
+   s" , in the donor engine's text " type TEXT-RECS @ FMT:.U
+   s" , names there " type TEXT-NAMES @ FMT:.U cr
+   s"   package" type TAB s" records" type TAB s" code bytes" type cr
+   PCOST-N @ TOP-ROWS min 0 ?do
+      i PCOST @ ROW-MASK and {: row:n :}
+      s"   " type row .NAME TAB  row PKGN @ FMT:.U TAB  row PKGB @ FMT:.U cr
+   loop
+   PCOST-N @ TOP-ROWS > if
+      s"   (" type PCOST-N @ TOP-ROWS - FMT:.U s"  more packages)" type cr
+   then
+   s"   global-wordlist words " type PKG-GLOBAL @ FMT:.U s"  bytes" type
+   PKG-UNMAPPED @ 0 > if
+      s" , unmapped wordlists " type PKG-UNMAPPED @ FMT:.U s"  bytes" type
+   then cr
+   SHARED-N @ 0 > if
+      s"   " type SHARED-N @ FMT:.U
+      s"  spans (" type SHARED-BYTES @ FMT:.U
+      s"  bytes) were already covered by the record below them" type cr
+   then ;
+
+\ ---- a --repl application: the DATA window, by owner ---------------------------
+\ Verbatim is what makes this simple: the window is written as it stood, so an
+\ owner's image cost IS its extent, and the only question left is how much of
+\ that extent carries anything. No run rows to charge, and the engine's
+\ three-way sum becomes a two-way one.
+variable HEAD-W     variable HEAD-Z
+
+: CHARGE-WINDOW ( -- )
+   DOWN-N @ 0 > if 0 DOWN-OFF else DAT-LEN @ then {: head:n :}
+   DAT-OFF @ head ZEROS {: hz:n :}
+   hz HEAD-Z !  head hz - HEAD-W !
+   DOWN-N @ 0 ?do
+      i OWNER-END i DOWN-OFF - {: ext:n :}
+      ext 0 < if s" image-size: DATA owners do not advance" RC die then
+      DAT-OFF @ i DOWN-OFF + ext ZEROS {: z:n :}
+      ext z - i DBYTES !  z i DOVER !
+   loop ;
+
+: CHECK-WINDOW ( -- )
+   0 ACC !
+   DOWN-N @ 0 ?do ACC @ i DBYTES @ + i DOVER @ + ACC ! loop
+   ACC @ HEAD-W @ + HEAD-Z @ + DAT-LEN @ <> if
+      s" image-size: DATA owner extents do not add up" RC die
+   then ;
+
+: .OWNER-PKG ( n -- ) {: k:n :}
+   k REC-ROLE ROLE-GLOBAL = if s" -" type exit then
+   k PKG-ROW-OF {: row:n :}
+   row 0 < if s" -" type exit then
+   row .NAME ;
+
+: REPORT-WINDOW ( -- )
+   cr s" the DATA window by owner" type cr
+   s"   owners " type DOWN-N @ FMT:.U
+   s" , below the first one " type HEAD-W @ HEAD-Z @ + FMT:.U s"  bytes (" type
+   HEAD-Z @ FMT:.U s"  zero)" type cr
+   s"   owner" type TAB s" package" type TAB s" offset" type TAB s" extent" type TAB
+   s" written" type TAB s" zero" type cr
+   DCOST-N @ TOP-ROWS min 0 ?do
+      i DCOST @ ROW-MASK and {: k:n :}
+      s"   " type k DOWN-REC .NAME TAB  k DOWN-REC .OWNER-PKG TAB
+      k DOWN-OFF FMT:.U TAB  k OWNER-END k DOWN-OFF - FMT:.U TAB
+      k DBYTES @ FMT:.U TAB  k DOVER @ FMT:.U cr
+   loop
+   DCOST-N @ TOP-ROWS > if
+      s"   (" type DCOST-N @ TOP-ROWS - FMT:.U s"  more owners)" type cr
+   then ;
+
+\ A class that has no region and no DATA owners must not answer with the last
+\ image's numbers: one process measures several images (tools/hb-build-test.f
+\ measures two), so every accumulator this section publishes starts at zero for
+\ each of them.
+: ATTRIB-RESET ( -- )
+   0 BAND-CODE !  0 BAND-CZERO !  0 BAND-NAMES !  0 BAND-NZERO !
+   0 BAND-FREE !  0 BAND-FZERO !  0 PKG-GLOBAL !  0 PKG-UNMAPPED !
+   0 SHARED-N !  0 SHARED-BYTES !  0 TEXT-RECS !  0 TEXT-NAMES !
+   0 BAND-RECS !  0 BSPAN-N !  0 PCOST-N !
+   0 DOWN-N !  0 DCOST-N !  0 HEAD-W !  0 HEAD-Z ! ;
+
+\ Both attributions, run before the table because the band's rows are their
+\ result; the two reports below print what this computed.
+: SNAP-ATTRIBUTE ( -- )
+   BUILD-WID-MAP
+   COLLECT-BAND  CHARGE-BAND  CHECK-BAND  RANK-PKGS
+   COLLECT-OWNERS  CHARGE-WINDOW  CHECK-WINDOW  RANK-OWNERS ;
 
 : REGION-ROWS ( -- )
    NDICT-N @ DREC * {: recs:n :}
    s" region/dict-records" REG-OFF @ recs SPAN B-NAMES ROW
    s" region/dict-unused" REG-OFF @ recs + CFSTK-OFF recs - SPAN B-NAMES ROW
    s" region/cf-stack" REG-OFF @ CFSTK-OFF + DICT-SIZE CFSTK-OFF - SPAN B-OTHER ROW
-   s" region/code-band" REG-OFF @ DICT-SIZE + REG-LEN @ DICT-SIZE - SPAN B-CODE ROW ;
+   s" region/record-names" BAND-NAMES @ BAND-NZERO @ B-NAMES ROW
+   s" region/code-band" BAND-CODE @ BAND-CZERO @ B-CODE ROW
+   s" region/code-unowned" BAND-FREE @ BAND-FZERO @ B-CODE ROW ;
 
 : SNAP-BUDGET ( -- )
    -1 ZCOL !  BUDGET-BEGIN
@@ -1465,9 +1834,8 @@ variable REG-OFF     variable DAT-OFF
    cr s" the application's own half: " type
    REG-LEN @ DAT-LEN @ + SNAP-TRL-BYTES + FMT:.U s"  bytes, " type
    NDICT-N @ FMT:.U s"  dictionary records" type cr
-   s"   region/code-band is not yet attributed by package, and holds the" type cr
-   s"   out-of-line record names as well as the code; data/window is not yet" type cr
-   s"   attributed by owner" type cr ;
+   REPORT-BAND
+   REPORT-WINDOW ;
 
 \ ---- a stripped application ---------------------------------------------------
 \ src/habu/aot-lib.f LINK emits, in this order: the startup entry, the closure
@@ -1713,24 +2081,13 @@ $D37EF54A constant XTC-LSL2
    s" , declared address cells this image rebinds at startup" type cr ;
 
 \ ---- which of the three images is in hand -------------------------------------
-\ Read out of the file, never out of this tool's own build: a snapshot says so
-\ at a fixed offset, a baked engine carries a counted boot-seeded dictionary,
-\ and what has neither is a stripped application, which is then proved by its
-\ own blob rather than accepted by elimination.
-ENUM image-class engine snapshot stripped ;ENUM
-
-1 LAYOUT-BUFFER CLASS-BUF image-class
-
-: CLASS-PTR ( -- ptr image-class ) 0 CLASS-BUF ;
-
-: CLASS! ( image-class -- ) CLASS-PTR ! ;
-
 : SEEDED-DICT? ( -- bool )
    ETEXT-END PRIM-DICT-SCAN
    PDICT-N @ 0 > ;
 
 : CLASSIFY ( -- )
    TEXT-SIZE ETEXT-N !
+   ATTRIB-RESET
    SNAPSHOT? if
       READ-TRAILER
       construct image-class snapshot CLASS!
@@ -1749,6 +2106,7 @@ ENUM image-class engine snapshot stripped ;ENUM
          ETEXT-END PRIM-DICT-FIND
          PRIM-NAMES-MEASURE
          DICT-END FIND-AOT
+         SNAP-ATTRIBUTE
       ENDOF
       stripped OF STRIP-WALK ENDOF
    ;MATCH ;
@@ -1813,6 +2171,13 @@ public
 : DATA-ZERO ( -- n ) BK-DZERO @ ;
 : PAD-BYTES ( -- n ) BK-PAD @ ;
 : OTHER-BYTES ( -- n ) BK-OTHER ;
+
+\ What the region attribution found, for a caller that wants the numbers rather
+\ than the two tables. Zero on the two classes that carry no region.
+: REGION-CODE ( -- n ) BAND-CODE @ ;
+: REGION-NAMES ( -- n ) BAND-NAMES @ ;
+: REGION-UNOWNED ( -- n ) BAND-FREE @ ;
+: DATA-OWNERS ( -- n ) DOWN-N @ ;
 
 \ The same rows again, printed this time, with the class's own notes under them.
 : REPORT ( -- )

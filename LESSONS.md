@@ -9443,3 +9443,19 @@ A zero byte is data, not absence: ask the emitter how many rows it wrote.
   RAW` that silently dropped the base fence on every row an abandoned
   prim-overload trial touched. The tag is 3 bits now (`id*8`), tag 4 restores
   TVK-BASE, and `TVK-RAISE-TO` records the kind it displaced.
+
+## 2026-09-18 - a --repl image's region is the maker's compiler, not the program
+
+`tools/hb-build.f --repl` runs a maker child over stdin with
+`require tools/app-build.f`, which loads `src/habu/app-image.f` under
+`1 set-tier`, so the child compiles the whole tier-1 optimizer stack from source
+before the application source is read at all -- and the snapshot keeps every
+word of it. For a twenty-line program, 9,282 of the image's 9,702 live records
+have their code in the region and only 209 in the donor engine's text. Asking
+"why is this image large" of the application is therefore asking the wrong half:
+`tools/image-size-lib.f` attributes the code band by package and the top rows
+are `IR-*`, `A64*`, `HIR-*`, `TFAM` and `TASK`. A prebuilt maker, or a donor
+engine that already carries the loader, moves that number; the program cannot.
+Charge every band byte at most once when attributing it: an `EXPORT` alias and a
+`does>` clause put a second record over ground the first one already answers
+for, and charging both reports more code than the band holds.
