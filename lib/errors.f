@@ -590,13 +590,16 @@ public
 \   -8720..-8739  the judge's second block, taken when the first filled: the
 \                 storage a corpus declares, and the package a derived word is
 \                 published in (package JUDGE-CHAIN)
+\   -8740..-8759  native x86-64 machine dialect (package X64IR)
+\   -8760..-8779  native x86-64 instruction selection (package X64SEL)
+\   -8780..-8799  native x86-64 instruction emission (package X64EMIT)
 \   -8830..-8839  x86_64 instruction construction (package X64ASM)
 \   -8840..-8859  ARM32/Thumb instruction construction (package A32ASM)
 \   -8860..-8869  C66x instruction construction (package C6XASM)
 \   -8870..-8879  C66x instruction facts (package C6XFACTS)
 \   -8880..-8889  C66x subset interpreter (package C6XSIM)
 \   -8890..-8899  C6000 EABI helper emission (package C6XEABI)
-\   -8420..-8439, -8488..-8499, -8520..-8599, -8666..-8699, -8740..-8829,
+\   -8420..-8439, -8488..-8499, -8520..-8599, -8666..-8699, -8800..-8829,
 \   -8880..-8999
 \                 unassigned. The remaining dialect packages
 \                 (SIR, LIR, and the GPU stages) and the native and GPU back
@@ -1216,6 +1219,27 @@ public
 -8652 constant E-NELAB-QUOT-CAP \ more quotation bodies in one definition than a module of the native chain holds functions for
 
 -8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, a scrutinee whose bundle on that vector does not begin, hold together and end where its family's width says - which is what an instantiation wider than the declared one looks like from here - or an arm whose payload has several FIELDS in more CELLS, where no per-field width says where its values begin (dot habu-publish-the-payload-eb4ae38a)
+
+\ Native x86-64 machine dialect (package X64IR): -8740..-8759.
+\
+\ The operand bounds of the forms this dialect stands for. They are the x86-64
+\ fields and not the ARM64 ones: an immediate is the signed thirty-two bits the
+\ ALU and the memory forms sign-extend, a displacement is disp32, a shift count
+\ is the six bits the machine masks to, and a condition is the four-bit tttn the
+\ Jcc and SETcc opcodes carry. The relocatable literal has no immediate refusal
+\ at all - `mov r64, imm64` holds every cell - which is why there is no code for
+\ one here and the ARM64 move-wide refusals have no counterpart.
+-8740 constant E-X64IR-DIALECT  \ a module whose schema table was created for another dialect or another schema version
+-8741 constant E-X64IR-OPCODE   \ an ordinal outside the machine dialect's closed opcode vocabulary
+-8742 constant E-X64IR-IMM      \ an immediate outside the signed thirty-two bits the ALU and compare forms hold
+-8743 constant E-X64IR-SHIFT    \ a shift count outside the six bits the machine masks a shift to
+-8744 constant E-X64IR-SLOT     \ a frame-slot offset the memory forms cannot address: negative, not a multiple of the eight bytes they move, or past the reach of their signed thirty-two bit displacement
+-8745 constant E-X64IR-FRAME    \ a reserved frame size no routine can declare: negative, not a multiple of the stack alignment, or past the deepest frame this dialect describes
+-8746 constant E-X64IR-DSLOT    \ a data-stack slot offset the load and store forms cannot address: past the reach behind the pointer, not a multiple of one stack cell, or past the displacement field
+-8747 constant E-X64IR-DBYTES   \ a data-stack pointer adjustment no routine can make: not a multiple of one stack cell, or past the immediate that claims it
+-8748 constant E-X64IR-COND     \ a condition code the conditional forms cannot carry: outside the four-bit field Jcc and SETcc encode it in
+-8749 constant E-X64IR-FUN      \ a function ordinal the address-of-a-function form cannot name: negative, so it denotes no function of any emission
+-8750 constant E-X64IR-ENTRY    \ a callee entry address the call form cannot name: zero or negative, so it is the address of no emitted routine
 
 \ Embedded instruction constructors (compiler growth region).
 -8830 constant E-X64ASM-OPERAND

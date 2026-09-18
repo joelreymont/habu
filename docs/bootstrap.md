@@ -408,6 +408,14 @@ debugger — `require src/habu/debug.f`, which pulls the stepper and the shared
 watch cells with it — about 14 ms. `bootstrap/cg/forth.fs` mirrors the
 manifest's prefix rows, so a row that moves here moves there too.
 
+The other side of that cost: a file the manifest bakes is answered from the
+baked copy, so editing it and re-running `bin/hb --load` changes nothing — a
+deliberate syntax error in `src/compiler/ir/context.f` loads clean. That covers
+the whole tier-1 compiler under `src/compiler/`, the checker and its declarers
+under `src/core/`, `src/habu/`, and the libraries the manifest names
+(`lib/errors.f`, `lib/string.f`, `lib/memory.f` among them); an edit there is
+proved only by the generation chain, never by loading the file.
+
 The two chains and their comparison point:
 
 - **Native chain** — the current `bin/hb`, which reproduces itself at the native

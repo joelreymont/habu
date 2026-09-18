@@ -261,6 +261,12 @@ SUITE compiler-x86-64-asm
    test/compiler/x86-64-asm.f
 ;SUITE
 
+\ The x86-64 machine dialect and the backend row it loads with:
+\ src/compiler/native/x64ir.f and src/arch/x86-64/backend.f.
+SUITE compiler-x64ir
+   test/compiler/x64ir.f
+;SUITE
+
 SUITE compiler-tic6x-asm
    test/compiler/tic6x-asm.f
    test/compiler/tic6x-facts.f

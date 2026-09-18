@@ -9462,3 +9462,8 @@ engine that already carries the loader, moves that number; the program cannot.
 Charge every band byte at most once when attributing it: an `EXPORT` alias and a
 `does>` clause put a second record over ground the first one already answers
 for, and charging both reports more code than the band holds.
+- A new architecture goes into every wire-code decode table, not only
+  `CTARGET:ARCH-CODE`: `src/compiler/ir/context.f` and `ir/attr.f` each decode
+  `N>ARCH`/`N>ABI` themselves. Proof: x86-64 was in `attr.f` and not in
+  `context.f`, and the first x86-64 context threw `E-IR-CTX-STATE` at
+  `STAGE-BINDING`.

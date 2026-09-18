@@ -20,7 +20,7 @@ the Intel agent starts at `habu-lower-hir-to-6bf80d33`.**
 | `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract, emitters | arm64 host (hazel) | landed d55021af + 5e05cbfd + d1961798 (closed) |
 | `habu-parameterise-the-alloc-7efbe7a1` | register-file description for regalloc/spill/prune | arm64 host (hazel) | landed 50ee6a3c |
 | `habu-bind-compiler-targets-ff970b99` | backend registry + pass dispatch | arm64 host (hazel) | landed 0901e61c + ddc1412d (closed) |
-| `habu-lower-hir-to-6bf80d33` | `x64ir.f`, `select-x64.f`, `emit-x64.f` | Intel agent | open; depends on the five above |
+| `habu-lower-hir-to-6bf80d33` | `x64ir.f`, `select-x64.f`, `emit-x64.f` | arm64 host (hazel) | `x64ir.f` + backend row landed (see Landed); selection and emission open behind the effect-schema lane |
 | `habu-cross-build-the-d25a959d` | cross-build entry + device-peer gate | Intel agent | open |
 | `habu-port-the-ffi-676f745d` | SysV FFI, task entry, traps | Intel agent | open |
 | `habu-self-host-the-ccc31e78` | fixpoint on the Intel machine, release artifact | Intel agent | open |
@@ -357,3 +357,42 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   with pass rows, dispatch through `DECLARE`/`RELEASE`/`RETIRE`, an
   unregistered arch refused, a registered-but-passless arch refused through
   the default row).
+
+### Machine dialect and backend row (`habu-lower-hir-to-6bf80d33`, first slice)
+
+- `src/arch/x86-64/backend.f` (`X64BACK`): the registry row, `SERVES?` =
+  x86-64 + little-endian + 64-bit, installed at load; requires only the
+  registry, nothing under `src/os/`, so no engine prefix grows a compiler
+  dependency.
+- `src/compiler/native/x64ir.f` (`X64IR`, dialect `x64` 0.1): 46 opcodes, 12
+  attribute keys, six signed conditions taken from `X64ASM:C-L/LE/G/GE/E/NE`.
+  Two-address forms declare a schema tie on the operand they overwrite; every
+  flags user is fused (`cmpset`, `cmpseti`, `cmpsel`, `selz`, `cmpbr`,
+  `cmpbri`, `brz`); the literal is `mov r64, imm64` (site kind `MOVABS`); no
+  `movk`, `linksave`/`linkload` or `dpush`/`dpop`. No float forms yet (they
+  raise MINOR when they land). Two fixed-register obligations are stated in
+  the file for the selector and emitter: `shl`/`shr` count in `rcx`, `idiv`
+  over `rdx:rax` (quotient `rax`, remainder `rdx`); `idiv` also traps on
+  `MIN-N / -1`, which the selector must answer as `(MIN-N, 0)` by contract.
+- `rsp` is reserved (call pushes through it): seven reserved, nine allocatable
+  (`rax rcx rdx rsi rdi r8..r11`). `X64IR:REGFILE` states it;
+  `test/compiler/x64ir.f` asserts it.
+- The emitter's sink is decided in `docs/x86-64.md`: a separate
+  `src/compiler/native/emit-x64.f` over the `BUF` byte sink, layout in bytes,
+  branches laid out as `rel32`; `emit.f` stays the ARM64 word sink.
+- `src/compiler/ir/context.f` decodes wire code 5 (`x86-64`, `sysv-amd64`);
+  before this the first x86-64 context threw `E-IR-CTX-STATE`.
+- Errors `-8740..-8759` (`X64IR`); `-8760..-8779` and `-8780..-8799` reserved
+  for `X64SEL` and `X64EMIT`.
+- Still open in the dot: `select-x64.f` (blocked on the effect-schema
+  decision below), `emit-x64.f`, `src/arch/x86-64/passes.f`, the pinned-bytes
+  suite `test/compiler/x64-emit.f`.
+- Decision (hazel, 2026-09-18): the allocator's effect schema is
+  GENERALISED, not duplicated. `src/compiler/a64-effect.f` (`A64EFF`) is the
+  typed machine-state contract `A64RA`/`A64SPILL`/`A64PRUNE` are written over;
+  its content (ordered interface, register sets, frame, flags, exits) is
+  target-neutral except its name and the ARM64 register file it defaults to.
+  A lane renames it into a target-neutral module the register-file
+  description parameterises, with the arm64 engine proved byte-identical by
+  the generation chain and `test/compiler/native-emit.f`, before
+  `select-x64.f` starts.
