@@ -9,8 +9,8 @@
 \ Everywhere else it is a consumer re-doing by hand what the span type already
 \ does, so this lint names the site and the replacement.
 \
-\ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f \
-\              tools/lint/source-lex.f tools/lint/bare-copy-lint.f
+\ Run, from the habu root: bin/hb --load tools/lint/bare-copy-lint.f
+\ For a consumer tree:    bin/hb --load tools/lint/bare-copy-lint.f -- /path/to/tree
 \
 \ NOT A GATE YET. Band 0 of habu-bound-pointers reports; the consumer bands
 \ convert their files and the band that finishes them turns REPORT into a die.
@@ -61,12 +61,31 @@ variable N-TEST  variable N-EX    variable N-OTHER
 : BUMP ( ptr n -- ) {: v:ptr :}
    v @ 1+ v ! ;
 
+\ ---- the tree to lint ---------------------------------------------------------
+\ The script's one optional argument, so a consumer repository is linted from
+\ the habu root - `bin/hb --load tools/lint/... -- /path/to/consumer` - where
+\ the lint's own `require` rows resolve. Without it the walk starts at `.`.
+create ROOT-BUF 1024 allot
+variable ROOT-U
+
+: ROOT$ ( -- ptr u8 n )
+   ROOT-BUF ROOT-U @ ;
+
+: ROOT! ( -- )
+   SCRIPT-ARGC 0= if [char] . ROOT-BUF c! 1 ROOT-U ! exit then
+   0 SCRIPT-ARGV$ {: a:ptr u:n :}
+   u 1024 > if E-FS-PATH throw then
+   a ROOT-BUF u BYTE-COPY u ROOT-U ! ;
+
 \ ---- ownership: an anchored path prefix, never a substring --------------------
-\ The walk hands back `./lib/x.f`; the leading `./` is dropped once, here, so the
-\ anchored prefix below answers about the repository path and not about the walk
-\ root's spelling.
+\ The walk hands back `<root>/lib/x.f`; the root's spelling and its slash are
+\ dropped once, here, so the anchored prefix below answers about the repository
+\ path and not about the walk root's spelling.
 : REL$ ( ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n :}
-   pa pu s" ./" LINT-PREFIX? if pa 2 + pu 2 - exit then
+   ROOT-U @ {: ru:n :}
+   pa pu ROOT$ LINT-PREFIX? if
+      pu ru > if pa ru + c@ [char] / = if pa ru + 1+ pu ru - 1- exit then then
+   then
    pa pu ;
 
 : OWNED? ( ptr u8 n -- bool ) {: pa:ptr pu:n :}
@@ -147,17 +166,20 @@ variable N-TEST  variable N-EX    variable N-OTHER
       LI @ 1+ LI !
    repeat ;
 
+\ The file is opened by the path the walk handed back and reported by its
+\ repository path, so a foreign root reads its own files and still buckets them
+\ by the anchored prefix.
 : LINT-FILE ( ptr u8 n -- ) {: pa:ptr pu:n :}
    FILES BUMP
    pa pu FB-LOAD {: a:ptr u:n :}
-   pa pu a u LINT-SCAN ;
+   pa pu REL$ a u LINT-SCAN ;
 
 \ ---- the tree -----------------------------------------------------------------
 \ lib/fs.f's walk already skips .git, .jj, .jj-ws and .dots, so a sibling
 \ workspace is never read. Only `.f` sources are scanned.
 : WALK-ONE ( ptr u8 n -- ) {: pa:ptr pu:n :}
    pa pu s" .f" HAS-EXT? LINT-NOT if exit then
-   pa pu REL$ LINT-FILE ;
+   pa pu LINT-FILE ;
 
 : DIR. ( ptr u8 n ptr n -- ) {: a:ptr u:n v:ptr :}
    s"   " type a u type s" =" type v @ . ;
@@ -175,7 +197,8 @@ variable N-TEST  variable N-EX    variable N-OTHER
 
 : CENSUS ( -- )
    RESET
-   s" ." [: WALK-ONE ;] WALK-FILES
+   ROOT!
+   ROOT$ [: WALK-ONE ;] WALK-FILES
    REPORT ;
 
 CENSUS
