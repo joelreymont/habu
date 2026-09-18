@@ -1,9 +1,11 @@
 ---
 title: Grow captured relocation sites within the code blob bound
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-13T20:48:33+03:00"
+closed-at: "2026-09-18T10:13:02.449316+03:00"
+close-reason: "landed in a different form: the site buffer is AOT-SITE-BUF at AOT-SITE-MAX $28000 rows (src/habu/aot-decl.f:212), section reservation bounded by +ROWS/+BYTES/ROOM? with refusal on negative, overflowing and over-cap counts (aot-decl.f:619-627); test/aot-chain-capture-suite.f registered (test/gate-stdlib-cases.f:1249) and green in the BB3 gate on release e7b1e2dc (438 pass, 0 fail, 2026-09-18); the complete tier-1 load succeeds on every chain generation; the transient DYNAMIC-BUFFER form the dot described was not what landed, and the image stores an unwritten allot as a zero gap (docs/engine-size.md) so the static buffer costs nothing at rest; the claim was stale"
 blocks:
   - habu-build-engine-layout-abdd0188
 ---

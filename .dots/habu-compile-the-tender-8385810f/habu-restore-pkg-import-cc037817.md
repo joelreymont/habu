@@ -1,9 +1,11 @@
 ---
 title: Restore package import depth during source replay
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-14T02:03:28.653389+03:00"
+closed-at: "2026-09-18T10:10:13.377409+03:00"
+close-reason: "landed in cedar's era: test/checker-replay-pkg-state.f exists, registered in test/gate-stdlib-cases.f:1129 (SUITE checker-replay-pkg-state), passes on release e7b1e2dc under the sandbox (2026-09-18), gate 437/437 green on chain BB; the claim was stale"
 ---
 
 Cedar owns checker package import restoration. Product I loads the three-line
