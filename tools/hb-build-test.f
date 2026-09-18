@@ -263,14 +263,20 @@ create HBT-EXP-HEX2 64 allot
 \ DYNAMIC-STORAGE registry. Each cell it reaches is named in
 \ src/habu/aot-owned-cells.f, so the entry publishes or zeroes it by declaration
 \ and the closure walker admits it; nothing here is admitted for being scratch.
-\ The argv line pins the CURRENT stripped offset, not a correct one: a stripped
-\ image's SCRIPT-ARG-START reads APP-ENTRY:XT-CELL, which is zero in an image
-\ with no entry record, so it takes the source-list branch and arg 0 is the
-\ SECOND argument the image was given. That is a pre-existing defect of
-\ src/os/script-argv.f with its own dot; when it is fixed this expectation moves
-\ to `arg=one` and says so.
+\ The argv lines pin the APPLICATION convention: the image's own arguments start
+\ at argv[1], every one of them, because the stripped entry publishes its claim
+\ on APP-ENTRY:XT-CELL. The program prints them numbered, so a dropped first
+\ argument (the defect while that cell read zero and SCRIPT-ARG-START took the
+\ engine's source-list branch) shows up as a shifted index and not just a
+\ different word.
 : HBT-CELLS-SRC$ ( -- ptr u8 n )
-   S\" require lib/memory.f\n: SHOW ( ptr u8 NUM:alloc-byte-len -- ) drop {: a:ptr :}\n   $6F a c!  $6B a 1 + c!  a 2 type cr ;\n: MAIN ( -- )\n   s\" HBT_EXPLICIT\" GETENV type cr\n   s\" HOME\" GETENV type cr\n   SCRIPT-ARGC 0 > if s\" arg=\" type 0 SCRIPT-ARGV$ type cr then\n   4096 MEM:BYTES-ALLOC-LEN [: SHOW ;] MEM:WITH-BYTES ;\n" ;
+   SB-RESET
+   S\" require lib/memory.f\n: SHOW ( ptr u8 NUM:alloc-byte-len -- ) drop {: a:ptr :}\n" SB-APPEND
+   S\"    $6F a c!  $6B a 1 + c!  a 2 type cr ;\n: MAIN ( -- )\n" SB-APPEND
+   S\"    s\" HBT_EXPLICIT\" GETENV type cr\n   s\" HOME\" GETENV type cr\n" SB-APPEND
+   S\"    SCRIPT-ARGC 0 ?do s\" arg\" type 48 i + emit s\" =\" type i SCRIPT-ARGV$ type cr loop\n" SB-APPEND
+   S\"    4096 MEM:BYTES-ALLOC-LEN [: SHOW ;] MEM:WITH-BYTES ;\n" SB-APPEND
+   SB$ ;
 
 \ ... and an engine cell NOTHING claims is refused exactly as before. TMP-PATH is
 \ src/os/env-base.f, the same baked file as the admitted environment cells and
@@ -596,20 +602,46 @@ create READER-STATE JR:STORAGE-BYTES allot
    SB-RESET
    s" explicit-ok" SB-APPEND 10 SB-APPEND-C
    s" HOME" GETENV SB-APPEND 10 SB-APPEND-C
-   s" arg=two" SB-APPEND 10 SB-APPEND-C
+   s" arg0=one" SB-APPEND 10 SB-APPEND-C
+   s" arg1=two" SB-APPEND 10 SB-APPEND-C
+   s" ok" SB-APPEND 10 SB-APPEND-C
+   SB$ ;
+
+\ ... and the same image started with NO arguments prints no argument line at
+\ all: SCRIPT-ARGC is 0 and the loop body never runs.
+: HBT-CELLS-NOARG-EXPECTED$ ( -- ptr u8 n )
+   SB-RESET
+   s" explicit-ok" SB-APPEND 10 SB-APPEND-C
+   s" HOME" GETENV SB-APPEND 10 SB-APPEND-C
    s" ok" SB-APPEND 10 SB-APPEND-C
    SB$ ;
 
 \ One variable set for the child and the rest of this process's environment
 \ inherited - lib/process-env.f's inherited path, which is how every application
 \ image is actually started.
-: HBT-CELLS-CHILD-ARGV-ENV ( -- )
+: HBT-CELLS-CHILD-ENV ( -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HBT_EXPLICIT" >LEN s" explicit-ok" >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
+   PROC-ENV-INHERIT-MISSING ;
+
+: HBT-CELLS-CHILD-ARGV-ENV ( -- )
+   HBT-CELLS-CHILD-ENV
    s" one" >LEN PROC-ARGV+
    s" two" >LEN PROC-ARGV+ ;
+
+\ The image built above, started a second time with no arguments at all: the
+\ empty vector is the boundary of the application convention, where ARGC is 1,
+\ the start offset is 1 and SCRIPT-ARGC answers 0 from the subtraction itself -
+\ no argument line is printed, and none is clamped away either.
+: HBT-CELLS-NOARG-RUN ( -- )
+   HBT-CELLS-CHILD-ENV
+   HBT-CELLS-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-CELLS-NOARG-EXPECTED$ T$= ;
 
 \ ... and the engine runtime cells the stripped entry OWNS are readable in the
 \ image: the environment (explicit and inherited), argv, and an allocation
@@ -634,7 +666,8 @@ create READER-STATE JR:STORAGE-BYTES allot
    rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
    rcn 0 T=
    errn 0 T=
-   HBT-RUN-OUT outn HBT-CELLS-EXPECTED$ T$= ;
+   HBT-RUN-OUT outn HBT-CELLS-EXPECTED$ T$=
+   HBT-CELLS-NOARG-RUN ;
 
 \ ... while an engine cell on no list is still refused, with its own diagnostic.
 : HBT-STRIPPED-UNOWNED-CELL ( -- )

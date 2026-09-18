@@ -36,6 +36,17 @@ both provide one argument, `hello`. These application arguments are not treated
 as Habu source filenames. A program can choose a command such as `repl` and
 return from `MAIN` when it sees it.
 
+An application image's arguments start at `argv[1]`, and that holds for a
+stripped image as well as a `--repl` one: `./app one two` gives `SCRIPT-ARGC` 2,
+argument 0 `one` and argument 1 `two`. `SCRIPT-ARG-START` (`src/os/script-argv.f`)
+decides between that convention and the engine's own — where `argv[1]` names a
+source file and the program's arguments begin after a `--` — by reading
+`APP-ENTRY:XT-CELL`, the cell that says *this process is an application*. A
+`--repl` image's entry record writes it with `APP-IMAGE:START!`; a stripped image
+has no record to write it, so its entry publishes the claim itself
+(`src/habu/aot-owned-cells.f`). Left unpublished the cell reads zero, the image
+answers as the engine would and its FIRST argument disappears.
+
 Application source is loaded once during the build. Top-level initialization
 runs then; it is not replayed at startup. Put work that needs the new process,
 such as opening a window or socket, in `MAIN` or a word it calls. If build-time
@@ -106,13 +117,15 @@ in. Each entry declares how the entry initialises it:
 | --- | --- | --- | --- |
 | `ENV-DATA-PTR` | `src/os/env-base.f` | image base | the entry stores this image's own DATA base (`x20`), the value the file writes when the engine loads |
 | `ARGC-CELL`, `ARGV-CELL`, `ENVP-CELL` | `src/habu/layout.f` | fixed startup cells | the entry stores the kernel's `argc`/`argv`/`envp`, read off the untouched entry frame before anything else runs |
+| `APP-ENTRY:XT-CELL` | `src/habu/layout.f` | entry xt | the entry stores the address of the word this image starts, the token an entry record would have written with `APP-IMAGE:START!` |
 | `ENV-Z`, `ENV-A`, `ENV-U`, `ENV-QA`, `ENV-QU` | `src/os/env-base.f` | fresh | nothing: they are `GETENV`/`ENV=?` cursors, written from the caller's arguments before they are read, and the fresh mapping's zero is their correct start |
 | the registry head, count and lock | `src/core/dynamic-storage.f` | fresh | nothing: a runtime instance with no mapping, no members and an open lock is correct, and that is the zero a fresh anonymous mapping holds |
 | the `WITH-BYTES` scope stack | `lib/memory.f` | fresh | nothing: depth zero with no cached mapping is the same fresh state |
 
 A **fresh** claim emits no instruction at all — `EMIT-DATA-REGION-MAP` has just
 mapped DATA anonymously, so the cell already holds the zero the claim declares
-correct. An **image-base** claim gets one store of `x20`. Both readers work from
+correct. An **image-base** claim gets one store of `x20`, and an **entry-xt**
+claim one store of the entry root's own address. Both readers work from
 that one table: `src/habu/aot-lib.f EMIT-OWNED-CELLS` emits what each claim
 declares, and `src/habu/aot-closure.f OWNED-CELL?` admits exactly the same
 addresses, so the entry and the walker cannot disagree about a cell.

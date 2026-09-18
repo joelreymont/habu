@@ -108,13 +108,22 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
 \ src/os/env-base.f reaches them through the IMAGE-BASE cell, and habu2.f
 \ EM-DATA-INIT publishes them for the engine out of these same three registers.
 \ They sit below DATA-START, so EMIT-DATA-COPY's restore cannot reach them.
+\ An ENTRY-XT claim gets the address of the word this image starts, which is the
+\ label the root call below branches to, taken with ADR into x11 rather than x9:
+\ test/gate-aot-image.f finds the DATA restore by its ADR x9 and admits exactly
+\ one in the startup, the same reason G-INSTALL-CRASH's address travels in x11.
 : EMIT-OWNED-CELLS ( -- )
    13 DATA ARGC-CELL STR,  14 DATA ARGV-CELL STR,  15 DATA ENVP-CELL STR,
    AOT-OWNED:N 0 ?do
-      i AOT-OWNED:IMAGE-BASE? IF
+      i AOT-OWNED:IMAGE-BASE? i AOT-OWNED:ENTRY-XT? or IF
          9 i AOT-OWNED:AT DATA-VA VA>N - LIT64,   \ x9 = the cell's DATA offset
          9 DATA 9 ADD,                            \ ... the cell itself
-         DATA 9 0 STR,                            \ *cell = x20, this image's DATA base
+         i AOT-OWNED:ENTRY-XT? IF
+            11 MLBL LABEL@ ADR,                   \ x11 = this image's entry word
+            11 9 0 STR,                           \ *cell = the entry it starts at
+         ELSE
+            DATA 9 0 STR,                         \ *cell = x20, this image's DATA base
+         THEN
       THEN
    loop ;
 

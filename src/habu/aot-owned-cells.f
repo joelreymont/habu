@@ -47,8 +47,9 @@ create OFFS MAX-CELLS cells allot
 create KINDS MAX-CELLS cells allot
 variable COUNT
 
-\ FRESH is 0 and IMAGE-BASE is 1. The kind is stored because it is what the entry
-\ emitter switches on; deriving it back from the cell would be a second answer.
+\ FRESH is 0, IMAGE-BASE is 1 and ENTRY-XT is 2. The kind is stored because it is
+\ what the entry emitter switches on; deriving it back from the cell would be a
+\ second answer.
 \
 \ A claim records the cell as a DATA ADDRESS IN THE LINKER'S INTEGER DOMAIN - the
 \ domain BLOB-SRC/BLOB-END and every recorded chain value live in
@@ -73,9 +74,15 @@ public
 \ declaring file stores into it when the engine loads.
 : IMAGE-BASE ( ptr a -- ) 1 CLAIM ;
 
+\ The entry publishes the address of the word this image starts - the token an
+\ application image's own source stores with APP-IMAGE:START!. A stripped image
+\ has no entry record to store it, so the entry does it for itself.
+: ENTRY-XT ( ptr a -- ) 2 CLAIM ;
+
 : N ( -- n ) COUNT @ ;
 : AT ( n -- n ) cells OFFS + @ ;
 : IMAGE-BASE? ( n -- bool ) cells KINDS + @ 1 = ;
+: ENTRY-XT? ( n -- bool ) cells KINDS + @ 2 = ;
 
 private
 
@@ -102,6 +109,16 @@ private
 \ three before it ever reaches DYNAMIC-STORAGE (measured 2026-09-18: with only the
 \ registry claimed, the refusal moved 400 bytes past MUTEX, to WB-BUFFERS).
 \
+\ APP-ENTRY:XT-CELL (src/habu/layout.f) is the cell that says THIS PROCESS IS AN
+\ APPLICATION AND NOT THE ENGINE. An image saved with APP-IMAGE:START! writes the
+\ entry word's token into it, and the words that ask the question read it there:
+\ src/os/script-argv.f SCRIPT-ARG-START takes the application convention -
+\ argument 0 is argv[1] - exactly when it is non-zero. A stripped image is an
+\ application with no entry record to write it, so its entry writes its own: the
+\ address of the word the image starts, which is the same token by the same
+\ meaning. Left at the mapping's zero the image answered the engine's source-list
+\ convention and reported its SECOND argument as argument 0.
+\
 \ NOT ON THE LIST, and refused as loudly as before, is every other engine cell
 \ below the window. src/os/env-base.f's own TMP-PATH cursors and buffer (TPB, TPP,
 \ TPQ, TPS, TPU) are the nearest miss: same file, same transient character, no
@@ -116,7 +133,8 @@ private
    ENV-QA FRESH
    ENV-QU FRESH
    [: FRESH ;] DYNAMIC-STORAGE:OWNED-CELLS
-   [: FRESH ;] MEM:OWNED-CELLS ;
+   [: FRESH ;] MEM:OWNED-CELLS
+   data-base APP-ENTRY:XT-CELL + ENTRY-XT ;
 
 LIST
 ;package
