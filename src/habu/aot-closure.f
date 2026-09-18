@@ -39,7 +39,7 @@ s" AOT-CP-N" s" -- n" TRUST
 s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 
 \ --- read a little-endian 32-bit instruction word from a code pointer. Used by the
-\ direct-BL closure scan and the linker's address-chain validation.
+\ direct-branch closure scan and the linker's address-chain validation.
 : AOT-W32@ ( ptr u8 -- n ) {: a:ptr :}
    a c@  a 1+ c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
 
@@ -87,15 +87,10 @@ $7C000000 constant MASK
 $14000000 constant OPCODE
 $3FFFFFF constant DELTA-MASK
 $2000000 constant SIGN
-$FC000000 constant CALL-MASK
-$94000000 constant CALL-OP
 
 : SIGNED ( n -- n ) SIGN xor SIGN - ;
 
 : DIRECT? ( n -- bool ) MASK and OPCODE = ;
-\ A `BL imm26` — the one native call form (habu2.f LCEMITBL). Distinguished from a
-\ plain `B` (same opcode minus the link bit) so intra-record control flow is skipped.
-: CALL? ( n -- bool ) CALL-MASK and CALL-OP = ;
 
 : TARGET ( ptr u8 n -- ptr u8 ) {: p:ptr w:n :}
    p w DELTA-MASK and SIGNED 4 * + ;
@@ -662,14 +657,24 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
    k 0 < if s" aot: code address has no dictionary owner" 74 die then
    k ADD-SPAN-CLO ;
 
-\ Follow a direct BL (the one native call form) to its callee; leave everything
-\ else (a plain B, conditional/compare branches, intra-record jumps) untouched.
+\ A BRANCH OUT OF THE MEMBER IS A CALL for the closure's purposes, so a direct
+\ branch - BL or B alike - whose target lies outside the member being scanned is
+\ followed to its callee, and one whose target lands back inside that member is
+\ intra-record control flow (a loop, an `if` arm, a refusal's jump) and is left
+\ alone. Two emitters plant the outward B, and both aim at a callee's entry base:
+\ habu2.f DOESPATCH:EMIT overwrites a created word's RET with a `b` to its
+\ parent's `;does` companion record (elaborate.f DOES-NAME), and the native
+\ compiler's tail call (emit.f PUT-TAILCALL) leaves through the callee. Either
+\ way the target has to join the closure or aot-lib.f MAP-TARGET! refuses the
+\ branch it cannot rewrite. Conditional and compare branches are not DIRECT? and
+\ are never followed.
 \ A callee the image ships no record for answers from the span table instead,
 \ and an entry neither table knows is left where the relocation pass will refuse
 \ it by name.
-: SCAN-DIRECT ( ptr n ptr u8 -- ) {: caller:ptr p:ptr :}
-   p AOT-W32@ dup CALL? 0= if drop exit then
+: SCAN-DIRECT ( ptr n ptr u8 ptr u8 ptr u8 -- ) {: caller:ptr p:ptr mstart:ptr mend:ptr :}
+   p AOT-W32@ dup DIRECT? 0= if drop exit then
    p swap TARGET {: t:ptr :}
+   t mstart >= t mend < and if exit then
    t FINDADDR-PTR {: callee:ptr :}
    callee XREF-FOUND? if caller callee SCAN-CALLEE exit then
    t SPAN-AT-ENTRY {: k:n :}
@@ -679,7 +684,7 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
    i CLO-AT SP2 !  i CLO-AT i CLO-BYTES + SEND !
    BEGIN SP2 @ SEND @ < WHILE
       i CLO-REC@ SP2 @ SEND @ SCAN-ADDRESS
-      i CLO-REC@ SP2 @ SCAN-DIRECT
+      i CLO-REC@ SP2 @ i CLO-AT SEND @ SCAN-DIRECT
       SP2 @ 4 + SP2 !
    REPEAT ;
 variable WI

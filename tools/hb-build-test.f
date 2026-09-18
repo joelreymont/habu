@@ -231,6 +231,12 @@ create HBT-EXP-HEX2 64 allot
 : HBT-SPAN-EXPECTED$ ( -- ptr u8 n )
    S\" 64\n\nspan\n16\n\n" ;
 
+\ A definer whose `does>` clause is EMPTY, in a stripped image: the created word
+\ keeps the RET `create` emitted (habu2.f DOES-REC:ELIDE-EMPTY), so it reads its
+\ cell with no branch out of its own body, and the image prints what was stored.
+: HBT-AOT-DOES-SRC$ ( -- ptr u8 n )
+   S\" package HBT-DOES\n: LOADING ( -- ) tier@ 1 <> if -9070 throw then ;\nLOADING\n: SLOT: ( -- ) create 0 , does> ( -- ptr n ) ;\nSLOT: S1\npublic\n: RUN ( -- ) 42 S1 ! S1 @ dup . cr 42 <> if -9071 throw then ;\n;package\n: MAIN ( -- ) HBT-DOES:RUN ;\n" ;
+
 : HBT-LARGE-AOT-SRC$ ( -- ptr u8 n )
    s" variable SLOT 9 SLOT ! : MAIN ( -- ) SLOT @ . cr ;" ;
 
@@ -1087,14 +1093,7 @@ create READER-STATE JR:STORAGE-BYTES allot
 \ to - allocate, copy, skip, take, sub, release - is exercised through that
 \ value. Nothing short of running the image shows the created word's row
 \ surviving the build (dot habu-give-a-does-97cd0db2).
-\ THE IMAGE IS NOT STRIPPED, and that is a limit of the capture rather than of
-\ the row: a does>-created word reachable from MAIN cannot be shaken out at all.
-\ The child reaches its does> clause by a plain B, and src/habu/aot-closure.f
-\ SCAN-DIRECT follows only BL, so the clause never joins the closure and the
-\ relocation refuses it - `aot: PC-relative target removed or outside closure`.
-\ Measured the same way on the engine this change was built from, so it is that
-\ closure's defect and not this one's; `create , does> @` and the stripped
-\ builds above show the same refusal with no span in sight.
+\ BUILD-AOT-SPAN below is the stripped twin of this case, on the same source.
 : BUILD-REPL-SPAN ( -- )
    HBT-TMP BUILD-CACHE:ROOT!
    HBT-SPAN-SRC HBT-SPAN-SRC$ WRITE-ALL
@@ -1105,6 +1104,42 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-SPAN-OUT HBT-SPAN-EXPECTED$ HBT-RUN-IMAGE-OUT
    HBT-REMOVE-ARTIFACT
    HBT-SPAN-OUT HBT-REMOVE-FILE? ;
+
+\ THE SAME SOURCE WITH THE NAMES SHAKEN OUT. `SPAN-BUFFER:` is a `create ...
+\ does>` definer whose clause has a body, so the created word's last instruction
+\ is the plain B that habu2.f DOESPATCH:EMIT wrote over its RET, aimed at the
+\ parent's `;does` companion record. Only src/habu/aot-closure.f SCAN-DIRECT
+\ following a direct branch OUT of the member puts that record in the closure;
+\ without it the relocation refused this very program with `aot: PC-relative
+\ target removed or outside closure`. Running the image is what proves the clause
+\ was copied and retargeted rather than merely counted.
+: BUILD-AOT-SPAN ( -- )
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-SPAN-SRC HBT-SPAN-SRC$ WRITE-ALL
+   HBT-SPAN-OUT HBT-REMOVE-FILE?
+   HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-AOT
+   HBT-HBB-BUILD-OUT
+   HBT-SPAN-OUT FILE? TTRUE
+   HBT-SPAN-OUT HBT-SPAN-EXPECTED$ HBT-RUN-IMAGE-OUT
+   HBT-REMOVE-ARTIFACT
+   HBT-SPAN-OUT HBT-REMOVE-FILE? ;
+
+\ THE OTHER HALF OF THE DOES> RULE. An EMPTY clause compiles no instruction, so
+\ elaborate.f STAGE-DOES-ENTRY publishes the companion record and patches
+\ nothing: the created word keeps its RET and emits no branch at all. Such a
+\ definer must still build and run stripped - the closure has nothing extra to
+\ follow and the unreached companion record is shaken out with every other name.
+: BUILD-AOT-DOES-EMPTY ( -- )
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-AOT-SRC HBT-AOT-DOES-SRC$ WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBB-BUILD
+   S\" 42\n" HBT-RUN-AOT-PRINTS
+   HBT-REMOVE-ARTIFACT
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   BF-TMP-RESET ;
 
 : BUILD-AOT-PRESEED ( -- )
    HBT-AOT-SRC s" : ALTERNATE ( n n -- ) 42 <> if -9042 throw then 10 <> if -9043 throw then ; : MAIN ( -- ) -9044 throw ;" WRITE-ALL
@@ -1325,6 +1360,8 @@ public
    BUILD-AOT-NATIVE
    BUILD-AOT-DIV-REFUSAL
    BUILD-REPL-SPAN
+   BUILD-AOT-SPAN
+   BUILD-AOT-DOES-EMPTY
    HBT-SIZE-AOT
    BUILD-AOT-PRESEED
    HBT-AOT-JIT-REJECT
