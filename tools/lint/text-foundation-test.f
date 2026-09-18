@@ -41,6 +41,7 @@ create LEX-FIX FIX-CAP allot     variable LEX-LEN
 create BAD-FIX FIX-CAP allot     variable BAD-LEN
 create ESC-FIX FIX-CAP allot     variable ESC-LEN
 create TOK-FIX FIX-CAP allot     variable TOK-LEN
+create MOVE-FIX 16 allot
 9000 constant BIG-LEX-TOKENS
 TYPED-VARIABLE BIG-LEX-A ptr u8
 variable BIG-LEX-U
@@ -301,6 +302,11 @@ variable REG-I
    INIT-BIG-LEX ;
 
 : TEST-STRINGS  ( -- )
+   s" unchanged" drop MOVE-FIX 9 LINT-BMOVE
+   s" x" drop MOVE-FIX -1 LINT-BMOVE
+   MOVE-FIX 9 s" unchanged" ASSERT$
+   s" x" drop MOVE-FIX 0 LINT-BMOVE
+   MOVE-FIX 9 s" unchanged" ASSERT$
    STR-FIX$ SPLIT-LINES  SN# @ 2 ASSERT=
    0 S@ LINT-TRIM s" Alpha beta" ASSERT$
    1 S@ LINT-TRIM s" Gamma" ASSERT$

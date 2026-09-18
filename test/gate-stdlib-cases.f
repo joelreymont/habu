@@ -40,6 +40,10 @@ SUITE lint-slab
    tools/lint/slab-test.f
 ;SUITE
 
+SUITE byte-copy
+   test/byte-copy-test.f
+;SUITE
+
 SUITE lint-def-fixtures
    tools/lint/def-test.f
 ;SUITE

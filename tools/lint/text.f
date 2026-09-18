@@ -210,8 +210,9 @@ public
    ;MATCH ;
 
 \ ---- more string ops for the linters ----
-: LINT-BMOVE ( ptr u8 ptr u8 n -- ) {: a:ptr dst:ptr u :}
-   0 begin dup u < while  dup a + c@  over dst + c!  1+  repeat  drop ;
+: LINT-BMOVE ( ptr u8 ptr u8 n -- )
+   \ This helper has always treated negative lengths as an empty copy.
+   0 max BYTE-COPY ;
 
 : LINT-FOLD ( n -- n )
    dup 64 > over 91 < and IF 32 + THEN ;
