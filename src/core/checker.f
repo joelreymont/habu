@@ -2534,11 +2534,14 @@ variable LTC-P
 25 constant MD-RIGID-XDOM     \ rigid-identity domain confusion: a region/extent/generation used where another is required
 26 constant MD-RAW-PTR        \ a pointer met an undeclared raw storage cell (RAW-OK? T-PTR)
 27 constant MD-RAW-FIELD      \ ptr-field on an undeclared raw storage base; same E-RAW-CELL-PTR code, prose names 'ptr-field'
+28 constant MD-UNDERFLOW      \ a step reached under the definition's declared inputs (STEP-BORROWS?)
 
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
 variable MDIAG-SEEN   \ nonexhaustive: seen-bitset offset (MSEEN pool, per-check)
 variable MDIAG-VCNT   \ nonexhaustive: variant count
+variable MDIAG-NEED   \ underflow: cells the refused step's input row needs
+variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 
 : MDIAG! ( n -- ) {: code:n :}   \ first reason wins, only while the pin is open
    MDIAG @ 0 <> IF EXIT THEN
@@ -2565,6 +2568,47 @@ variable MDIAG-VCNT   \ nonexhaustive: variant count
    UF>DIAG
    RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
    -1 FAILSET ! ;
+
+\ --- input underflow (dot habu-name-an-input-45ee675e) -------------------------
+\ The cells below a definition's declared inputs are the CALLER'S. A body that
+\ reaches under them does not fail where it reaches: the declared base is an
+\ open row, so the step unifies by binding that row and checking continues as if
+\ the stack had always been deeper. CHECK-NO-BORROW catches it at the boundary,
+\ where the pin is on whatever token happened to run last and no reason survives
+\ -- measured, `: CONSUME ( n -- ) drop ;  : G ( -- n ) CONSUME 0 ;` answered
+\ `at '0'` and nothing else.
+\
+\ So ask the same question one step earlier, at the token that spends the frame.
+\ The two depths must be read BEFORE the unify: ROW-CELLS deliberately follows a
+\ bound tail, so after the step the borrowed row and the row it was measured
+\ against are one row and neither can be recovered.
+\
+\ WHY THE REFUSAL WAITS FOR THE UNIFY TO SUCCEED. A step can be short AND
+\ mistyped, and then the mismatch is the better answer: `( r -- n ) CONSUME2 0`
+\ already says `expected: n n actual: r`, which names the fix. Firing only when
+\ the row otherwise fit leaves every existing mismatch exactly where it was and
+\ takes over only the rejections that had no token and no reason.
+variable UF-NEED   variable UF-HAVE
+
+\ The live-graph twin of EFF-ROW-TAIL: what a row ends in once its fixed cells
+\ are walked off. Two rows are the same stack only if they share this tail.
+: ROW-TAIL ( n -- n )
+   R-RES BEGIN dup TAG S-PUSH = WHILE P>REST R-RES REPEAT ;
+
+: STEP-BORROWS? ( n -- bool ) {: din:n :}   \ would this step reach under the declared inputs?
+   SGDBASE @ 0= IF RES-FALSE EXIT THEN            \ no declared signature: no sealed base
+   DCUR @ ROW-TAIL  SGDBASE @ ROW-TAIL  <> IF RES-FALSE EXIT THEN   \ quotation/locals frames own a fresh base
+   DCUR @ ROW-CELLS UF-HAVE !
+   din ROW-CELLS UF-NEED !
+   UF-NEED @ UF-HAVE @ > ;
+
+: STEP-UNDERFLOW! ( -- )   \ the step fit only by spending the caller's frame
+   FAILSET @ 0=  OK @ and IF
+      MDIAG @ 0= IF UF-NEED @ MDIAG-NEED !  UF-HAVE @ MDIAG-HAVE ! THEN
+      MD-UNDERFLOW MDIAG!
+      -1 FAILSET !
+   THEN
+   0 OK ! ;
 
 \ CONSTRUCT-DECL-TERM ( fam -- term bool ) : the constructed value's type args are
 \ named only by the DECLARED output (a payloadless variant like `none`, or a
@@ -2614,9 +2658,11 @@ variable CDT-ROW
    din dout LIN-EXPLICIT? LINEXP !
    LINEXP @ 0= IF LIN-SNAPSHOT THEN
    DCUR @ WAS !
+   din STEP-BORROWS? {: borrows:bool :}   \ measured before the unify binds the tail
    DCUR @ din UNIFY-IN
    dup 0=  FAILSET @ 0=  and  OK @ and  IF din WAS @ UF-CAPTURE THEN
    OK @ and OK !
+   OK @ borrows and IF STEP-UNDERFLOW! THEN
    dout DCUR !
    OK @ LINEXP @ 0= and IF LIN-CHECK THEN ;
 
@@ -14155,7 +14201,7 @@ ASIG-GRAPH-CHECK-INSTALL
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
    0 CF-LOOPS !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
-   0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
+   0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 RAW-PTR-HIT !
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !

@@ -476,6 +476,7 @@ variable MDV-I   variable MDV-F
       MD-CATCH-OPAQUE of s" E-EXEC-OPAQUE-XT" endof
       MD-RAW-PTR      of s" E-RAW-CELL-PTR" endof
       MD-RAW-FIELD    of s" E-RAW-CELL-PTR" endof
+      MD-UNDERFLOW    of s" E-INPUT-UNDERFLOW" endof
       MD-RIGID-REGION of s" E-RIGID-REGION-MISMATCH" endof
       MD-RIGID-EXTENT of s" E-RIGID-EXTENT-MISMATCH" endof
       MD-RIGID-GEN    of s" E-RIGID-STALE-GENERATION" endof
@@ -504,6 +505,7 @@ variable MDV-I   variable MDV-F
       MD-CATCH-OPAQUE of s" fix_opaque_execute" endof
       MD-RAW-PTR      of s" declare_pointer_cell" endof
       MD-RAW-FIELD    of s" declare_pointer_cell" endof
+      MD-UNDERFLOW    of s" supply_missing_input" endof
       MD-RIGID-REGION of s" fix_host_region" endof
       MD-RIGID-EXTENT of s" fix_host_extent" endof
       MD-RIGID-GEN    of s" fix_stale_generation" endof
@@ -537,6 +539,7 @@ variable MDV-I   variable MDV-F
       MD-RIGID-EXTENT of s" These host allocations have different extents; a bound proved for one does not carry to another. Use the value whose extent identity the position requires." endof
       MD-RIGID-GEN    of s" This index or borrow is from an earlier mutation generation; the container was mutated since. Re-derive the index after the mutation." endof
       MD-RIGID-XDOM   of s" A host region, an extent, and a mutation generation are distinct identities that never interchange. Supply the identity the position requires." endof
+      MD-UNDERFLOW    of s" Push the missing inputs before the call, or declare them in the signature; a definition may not consume below its declared inputs." endof
       s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
    endcase ;
 
@@ -569,6 +572,7 @@ variable MDV-I   variable MDV-F
       MD-RIGID-EXTENT of s" rigid host: extent mismatch (different bounds identity)" endof
       MD-RIGID-GEN    of s" rigid host: stale mutation generation" endof
       MD-RIGID-XDOM   of s" rigid host: identity domain confusion" endof
+      MD-UNDERFLOW    of s" input underflow: the call takes more cells than the definition's declared inputs leave" endof
       s" bad match: rejected" rot
    endcase ;
 
@@ -589,6 +593,12 @@ variable MDV-I   variable MDV-F
 
 : MDIAG-MISSING-PROSE ( -- )
    0 0= 0= MDIAG-MISSING-WALK ;
+
+\ The underflow shortfall, latched with the reason. Digits and spaces only, so
+\ the one word serves the prose line and the inside of the JSON reason string.
+: MDIAG-UF-COUNTS ( -- )
+   s"  (needs " DTXT  MDIAG-NEED @ JNUM
+   s" , has " DTXT  MDIAG-HAVE @ JNUM  s" )" DTXT ;
 
 : IMM-CODE$ ( -- ptr u8 n )
    s" E-UNMODELED-IMMEDIATE" ;
@@ -817,6 +827,7 @@ variable JPOS  variable JLINE  variable JCOL
    MDIAG @ 0 <> IF
      s"  " DTXT  MDIAG-REASON$ DTXT
      MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
+     MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS THEN
    THEN
    DEADERR @ IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN
    DEXP @ 0 <> IF
@@ -878,7 +889,15 @@ variable JPOS  variable JLINE  variable JCOL
    s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
    DEADERR @ IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
    MDIAG @ 0 <> IF
-     s" reason" JKEY MDIAG-REASON$ JSTR 44 EMIT1
+     s" reason" JKEY
+     \ The shortfall belongs IN the reason, so the underflow builds its own
+     \ string: a literal this file owns plus digits, none of which JCHAR would
+     \ have anything to escape (MDIAG-MISSING-JSTR writes variant names the
+     \ same way). Every other reason goes through JSTR unchanged.
+     MDIAG @ MD-UNDERFLOW = IF
+       34 EMIT1  MDIAG-REASON$ DTXT  MDIAG-UF-COUNTS  34 EMIT1
+     ELSE MDIAG-REASON$ JSTR THEN
+     44 EMIT1
      MDIAG @ MD-NONEXH = IF s" missing_variants" JKEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
    THEN
    s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1

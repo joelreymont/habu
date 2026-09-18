@@ -82,7 +82,11 @@ syntax reject (`checker: bad stored signature`, exit 76).
   return row).
 - The implicit row in a checked definition is sealed for the body: callees may
   preserve it, but may not bind it by consuming below the declared inputs. The
-  implicit return row is sealed the same way: `r>`, `r@`, `2r>` and `2r@` may
+  call that reaches under them is refused at its own token, with the cells it
+  needed and the cells the declaration left (`E-INPUT-UNDERFLOW`, repair class
+  `supply_missing_input`). A call that is short *and* mistyped keeps the type
+  mismatch instead, since that names the fix.
+- The implicit return row is sealed the same way: `r>`, `r@`, `2r>` and `2r@` may
   reach only cells this definition pushed with `>r` or declared after `|`;
   reading or popping below them is refused (`fix_return_stack`), even when a
   later `>r` restores the balance. This

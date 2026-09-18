@@ -178,6 +178,7 @@ create DIAG-BUF FS-PATH-CAP allot
    s" add_producer" NEED-CLASS
    s" fix_type" NEED-CLASS
    s" fix_return_stack" NEED-CLASS
+   s" supply_missing_input" NEED-CLASS
    s" trusted_boundary_required" NEED-CLASS
    s" model_compile_immediate" NEED-CLASS
    s" factor_local_shape" NEED-CLASS

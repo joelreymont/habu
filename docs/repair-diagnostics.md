@@ -18,7 +18,7 @@ Fields:
 | Field | Type | Presence | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Current checker diagnostic schema version. |
-| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-UNMODELED-IMMEDIATE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-LOCAL-NAME-TOO-LONG`, `E-TOO-MANY-LOCALS`, `E-LINEAR-LOCAL`, `E-DEAD-CODE`, or `E-UNCHECKABLE`. |
+| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-UNMODELED-IMMEDIATE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-LOCAL-NAME-TOO-LONG`, `E-TOO-MANY-LOCALS`, `E-LINEAR-LOCAL`, `E-DEAD-CODE`, `E-INPUT-UNDERFLOW`, or `E-UNCHECKABLE`. |
 | `repair_class` | string | required | Stable repair bucket used by LLM repair loops. |
 | `verdict` | string | required | `rejected` or `uncheckable`; certification is not emitted as a diagnostic. |
 | `word` | string | required | Failing definition name as seen by the checker. |
@@ -126,6 +126,11 @@ Current checker classes:
 - `add_producer`: the body leaves fewer data-stack values than declared.
 - `fix_type`: data-stack arity matches, but one or more types differ.
 - `fix_return_stack`: return-stack row differs from the declaration.
+- `supply_missing_input`: a call inside the body consumed more cells than the
+  declared inputs leave, so it reached under them into the caller's stack. The
+  reason names both counts. Push the missing inputs before the call or declare
+  them in the signature; `E-INPUT-UNDERFLOW` is a checker verdict and is
+  unrelated to the runtime `E-UNDERFLOW` exit.
 - `trusted_boundary_required`: checked code used a compiler or runtime boundary
   that requires audited `TRUST` or a modeled rewrite. This includes adversarial
   attempts to call `evaluate`, declare effects with `TRUST`, or disable/replace
@@ -174,6 +179,7 @@ The checker `suggestion` field is stable short text derived only from
 | `add_producer` | `Add the missing producer or stop consuming a required value.` |
 | `fix_type` | `Change the body so produced types match the signature.` |
 | `fix_return_stack` | `Balance return-stack transfers before the definition exits.` |
+| `supply_missing_input` | `Push the missing inputs before the call, or declare them in the signature; a definition may not consume below its declared inputs.` |
 | `trusted_boundary_required` | `Move this compiler or runtime boundary behind audited TRUST.` |
 | `model_compile_immediate` | `Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body.` |
 | `factor_local_shape` | `Move locals to a live top-level path or factor a helper.` |

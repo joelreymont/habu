@@ -314,6 +314,8 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" fix_return_stack" s" Balance return-stack transfers before the definition exits."
    GJA-SUGGEST-ROW IF exit THEN
+   s" supply_missing_input" s" Push the missing inputs before the call, or declare them in the signature; a definition may not consume below its declared inputs."
+   GJA-SUGGEST-ROW IF exit THEN
    s" trusted_boundary_required" s" Move this compiler or runtime boundary behind audited TRUST."
    GJA-SUGGEST-ROW IF exit THEN
    s" model_compile_immediate" s" Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body."
