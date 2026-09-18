@@ -1186,7 +1186,7 @@ FS-TRUE            ( -- bool )
 FS-U16@            ( ptr u8 -- n )
 FS-U64@            ( ptr u8 -- n )
 FS-CHECK-JOIN-CAP       ( n -- )
-FS-PATHZ-INTO           ( ptr u8 n ptr u8 -- ptr u8 )
+FS-PATHZ-INTO           ( ptr u8 n SPAN:span<u8> -- ptr u8 )
 FS-PATHZ                ( ptr u8 n -- ptr u8 )
 EXISTS?                 ( ptr u8 n -- bool )
 FS-STAT-MODE@           ( -- n )
@@ -1208,7 +1208,8 @@ SYMLINK?                ( ptr u8 n -- bool )
 EXECUTABLE?             ( ptr u8 n -- bool )
 BASENAME                ( ptr u8 n -- ptr u8 n )
 JOIN-PATH               ( ptr u8 n ptr u8 n ptr u8 -- n )
-READ-LINK               ( ptr u8 n ptr u8 n -- n )
+JOIN-PATH-INTO          ( ptr u8 n ptr u8 n SPAN:span<u8> -- n )
+READ-LINK               ( ptr u8 n SPAN:span<u8> -- n )
 READ-ALL                ( ptr u8 n ptr u8 n -- n )
 FS-WRITE-BY-FLAGS       ( ptr u8 n ptr u8 n n -- )
 WRITE-ALL               ( ptr u8 n ptr u8 n -- )
@@ -1266,9 +1267,12 @@ error. `OPEN-APPEND-FD` opens the same append-only regular-file target and
 returns an fd for callers that need to stream child process output directly into
 a file.
 `SYMLINK?` uses `lstat64`, so it detects a link itself rather than following the
-target. `READ-LINK` reads the target bytes into caller storage and returns the
+target. `READ-LINK` reads the target bytes into the caller's span and returns the
 byte count without appending a NUL; missing, non-link, I/O, and capacity failures
-throw named filesystem errors.
+throw named filesystem errors, and a destination window past the caller's buffer
+is refused by the span itself (`E-SPAN-RANGE`). `JOIN-PATH-INTO` is `JOIN-PATH`
+with a span destination: it carries its own reach, so it needs no capacity
+argument and no `FS-CHECK-JOIN-CAP` on the caller's word.
 
 `lib/fs-mutate.f` is layered after the native engine contains mutation
 primitives such as `unlink`, `rename`, `chmod`, `mkdir`, and `rmdir`. It owns

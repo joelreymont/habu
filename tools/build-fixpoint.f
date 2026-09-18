@@ -122,6 +122,7 @@ BF-REQUIRE-WATERMARK
 \ would satisfy FS-PATH-CAP by side effect and the missing-preamble case would
 \ stop being reported at all.
 require lib/process-fork.f
+require lib/span.f                       \ SPAN-BUFFER: destinations for FS-MUT-SUFFIX-PATH
 require src/habu/hide.f
 require src/habu/prefix-rewind.f
 require lib/content-key.f                \ the chain fold
@@ -147,9 +148,9 @@ create BF-STAMP-PATH-BUF FS-PATH-CAP allot
 create BF-STAMP-DIR-BUF FS-PATH-CAP allot
 create BF-STAMP-DEF-BUF FS-PATH-CAP allot
 create BF-ENGINE-BUF FS-PATH-CAP allot
-create BF-INSTALL-TMP-BUF FS-PATH-CAP allot
-create BF-HOST-DST-BUF FS-PATH-CAP allot
-create BF-HOST-TMP-BUF FS-PATH-CAP allot
+FS-PATH-CAP SPAN-BUFFER: BF-INSTALL-TMP-BUF     \ FS-MUT-SUFFIX-PATH destinations
+FS-PATH-CAP SPAN-BUFFER: BF-HOST-DST-BUF
+FS-PATH-CAP SPAN-BUFFER: BF-HOST-TMP-BUF
 BF-LF BF-LF-BUF c!
 
 variable BF-ART-PATH-A
@@ -1743,7 +1744,7 @@ variable BF-DRV-R
 
 : BF-INSTALL-TMP$ ( -- ptr u8 n )
    BF-ENGINE$ s" .tmp" BF-INSTALL-TMP-BUF FS-MUT-SUFFIX-PATH BF-INSTALL-TMP-U !
-   BF-INSTALL-TMP-BUF BF-INSTALL-TMP-U @ ;
+   BF-INSTALL-TMP-BUF BF-INSTALL-TMP-U @ SPAN:TAKE SPAN:$ ;
 
 : BF-INSTALL-CLEAN-TMP ( -- )
    BF-INSTALL-TMP$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
@@ -1765,11 +1766,11 @@ variable BF-DRV-R
 \ never writes this repo's bin.
 : BF-HOST-DST$ ( -- ptr u8 n )
    BF-ENGINE$ s" -host" BF-HOST-DST-BUF FS-MUT-SUFFIX-PATH BF-HOST-DST-U !
-   BF-HOST-DST-BUF BF-HOST-DST-U @ ;
+   BF-HOST-DST-BUF BF-HOST-DST-U @ SPAN:TAKE SPAN:$ ;
 
 : BF-HOST-TMP$ ( -- ptr u8 n )
    BF-ENGINE$ s" -host.tmp" BF-HOST-TMP-BUF FS-MUT-SUFFIX-PATH BF-HOST-TMP-U !
-   BF-HOST-TMP-BUF BF-HOST-TMP-U @ ;
+   BF-HOST-TMP-BUF BF-HOST-TMP-U @ SPAN:TAKE SPAN:$ ;
 
 : BF-INSTALL-HOST ( -- )
    BF-HOST-TMP$ 2dup EXISTS? if REMOVE-FILE else 2drop then

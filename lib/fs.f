@@ -7,14 +7,28 @@
 \ buffer FS-PATHZ-BUF, the stat buffer FS-STAT-BUF and the read probe are the
 \ FS-ABI band of the per-task DATA region, so two tasks in READ-ALL, WRITE-ALL,
 \ FILE-SIZE, FILE-META or any FS-* predicate at once share nothing. The data
-\ spans READ-ALL, READ-LINK and WRITE-ALL take are CALLER-OWNED. The walk state
+\ buffers READ-ALL and WRITE-ALL take are CALLER-OWNED. The walk state
 \ (FS-DEPTH and the FS-WALK-BUF / FS-DIR-BUF stacks) is PROCESS-WIDE and does
 \ not fit a per-task band, so WALK-FILES is still single-task. See
 \ docs/threads.md.
+\
+\ THE BUFFERS THIS MODULE OWNS ARE SPANS (lib/span.f): the NUL-padded path
+\ buffer, the per-depth walk path slot and the per-depth dirent block publish a
+\ base AND a reach, so every copy into them goes through SPAN:COPY and every
+\ indexed write through SPAN:U8! / SPAN:AT - a wrong length cannot reach past
+\ the buffer even where the length came from the kernel (a dirent reclen) or
+\ from a caller. Two hand-written checks stay on purpose and both are
+\ caller-facing contracts rather than buffer extents: FS-PATHZ-INTO keeps
+\ `u FS-PATH-CAP > -> E-FS-PATH`, the one path-length limit every fs consumer's
+\ refusal test names, and JOIN-PATH keeps FS-CHECK-JOIN-CAP because its
+\ destination is still a bare `ptr u8` the caller supplies (294 call sites in
+\ this repository; the parameter becomes a span in the consumer band of
+\ habu-bound-pointers). READ-ALL's destination is the same deferred case.
 
 require lib/errors.f
 require lib/string.f
 require lib/adt/option.f                        \ option<n> for FS-TRY-*STAT-MODE (switchover wave A)
+require lib/span.f                              \ the module's own buffers carry their reach
 
 PATH-CAP constant FS-PATH-CAP                   \ the core's one path capacity (src/core/util.f)
 FS-PATH-CAP 1 + constant FS-PATHZ-CAP
@@ -96,11 +110,13 @@ FS-BAND-AGREE
 : FS-READ-PROBE ( -- ptr u8 )
    data-base FS-ABI:PROBE-OFF + BYTE-VIEW ;
 
-: FS-PATHZ-BUF ( -- ptr u8 )
-   data-base FS-ABI:PATHZ-OFF + BYTE-VIEW ;
+\ The reach is the band width FS-BAND-AGREE asserted against src/habu/layout.f,
+\ so the span says exactly what this task's region holds.
+: FS-PATHZ-BUF ( -- SPAN:span<u8> )
+   data-base FS-ABI:PATHZ-OFF + BYTE-VIEW FS-PATHZ-CAP SPAN:MAKE ;
 
-create FS-WALK-BUF FS-MAX-DEPTH FS-PATH-CAP * allot
-create FS-DIR-BUF FS-MAX-DEPTH FS-DIR-CAP * allot
+FS-MAX-DEPTH FS-PATH-CAP * SPAN-BUFFER: FS-WALK-BUF
+FS-MAX-DEPTH FS-DIR-CAP * SPAN-BUFFER: FS-DIR-BUF
 create FS-BASES FS-MAX-DEPTH cells allot
 create FS-FDS FS-MAX-DEPTH cells allot
 create FS-NS FS-MAX-DEPTH cells allot
@@ -144,21 +160,23 @@ TYPED-VARIABLE FS-ENT ptr u8
    d 0 < if E-FS-DEPTH throw then
    d FS-MAX-DEPTH >= if E-FS-DEPTH throw then ;
 
-: FS-PATH-SLOT ( n -- ptr u8 ) {: d :}
+\ A slot is a narrowing of the whole stack buffer, so the depth arithmetic is
+\ bounded by the buffer itself (E-SPAN-RANGE) and not only by FS-CHECK-DEPTH.
+: FS-PATH-SLOT ( n -- SPAN:span<u8> ) {: d :}
    d FS-CHECK-DEPTH
-   d FS-PATH-CAP * FS-WALK-BUF + ;
+   FS-WALK-BUF d FS-PATH-CAP * FS-PATH-CAP SPAN:SUB ;
 
-: FS-DIR-SLOT ( n -- ptr u8 ) {: d :}
+: FS-DIR-SLOT ( n -- SPAN:span<u8> ) {: d :}
    d FS-CHECK-DEPTH
-   d FS-DIR-CAP * FS-DIR-BUF + ;
+   FS-DIR-BUF d FS-DIR-CAP * FS-DIR-CAP SPAN:SUB ;
 
-: FS-CUR-PATH ( -- ptr u8 )
+: FS-CUR-PATH ( -- SPAN:span<u8> )
    FS-DEPTH @ FS-PATH-SLOT ;
 
-: FS-NEXT-PATH ( -- ptr u8 )
+: FS-NEXT-PATH ( -- SPAN:span<u8> )
    FS-DEPTH @ 1 + FS-PATH-SLOT ;
 
-: FS-CUR-DIR ( -- ptr u8 )
+: FS-CUR-DIR ( -- SPAN:span<u8> )
    FS-DEPTH @ FS-DIR-SLOT ;
 
 : FS-BASE@ ( -- ptr n )
@@ -218,12 +236,17 @@ TYPED-VARIABLE FS-ENT ptr u8
 : FS-CHECK-JOIN-CAP ( n -- )
    dup FS-PATH-CAP > if E-FS-CAPACITY throw then drop ;
 
-: FS-PATHZ-INTO ( ptr u8 n ptr u8 -- ptr u8 ) {: a:ptr u dst:ptr :}
+\ The length gate stays E-FS-PATH: a path longer than FS-PATH-CAP is a bad PATH,
+\ the refusal every fs consumer tests for, and it is the same limit whatever
+\ buffer it is copied into. What the span adds is that the copy and the NUL
+\ terminator are bounds-checked against the destination's real reach, so the
+\ gate is no longer the only thing between a wrong length and an overrun.
+: FS-PATHZ-INTO ( ptr u8 n SPAN:span<u8> -- ptr u8 ) {: a:ptr u dst :}
    u 0 < if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-PATH throw then
-   a dst u BYTE-COPY
-   0 dst u + c!
-   dst ;
+   a u dst SPAN:COPY
+   0 dst u SPAN:U8!
+   dst SPAN:$ drop ;
 
 : FS-PATHZ ( ptr u8 n -- ptr u8 )
    FS-PATHZ-BUF FS-PATHZ-INTO ;
@@ -311,31 +334,52 @@ TYPED-VARIABLE FS-ENT ptr u8
    repeat
    drop a u ;
 
-: JOIN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n ) {: pa:ptr pu na:ptr nu dst:ptr :}
+\ A parent that already ends in a separator takes no second one; the measure and
+\ the write share this one answer.
+: FS-JOIN-SEPARATED? ( ptr u8 n -- bool ) {: pa:ptr pu :}
+   pu 0 <= if FS-FALSE exit then
+   pa pu 1 - + c@ FS-SLASH = ;
+
+: FS-JOIN-LEN ( ptr u8 n n -- n ) {: pa:ptr pu nu :}
+   pa pu FS-JOIN-SEPARATED? if pu nu + exit then
+   pu 1 + nu + ;
+
+: JOIN-PATH-INTO ( ptr u8 n ptr u8 n SPAN:span<u8> -- n ) {: pa:ptr pu na:ptr nu dst :}
    pu 0 < if E-FS-PATH throw then
    nu 0 < if E-FS-PATH throw then
-   pu 0 > if pa pu 1 - + c@ FS-SLASH = else FS-FALSE then if
-      pu nu + FS-CHECK-JOIN-CAP
-      pa dst pu BYTE-COPY
-      na dst pu + nu BYTE-COPY
-      pu nu +
-   else
-      pu 1 + nu + FS-CHECK-JOIN-CAP
-      pa dst pu BYTE-COPY
-      FS-SLASH dst pu + c!
-      na dst pu 1 + + nu BYTE-COPY
-      pu 1 + nu +
-   then ;
+   pa pu dst SPAN:COPY
+   pa pu FS-JOIN-SEPARATED? if
+      na nu dst pu SPAN:SKIP SPAN:COPY
+      pu nu + exit
+   then
+   FS-SLASH dst pu SPAN:U8!
+   na nu dst pu 1 + SPAN:SKIP SPAN:COPY
+   pu 1 + nu + ;
+
+\ The public join still takes a bare destination, so FS-CHECK-JOIN-CAP stays:
+\ E-FS-CAPACITY is what this word promises its 294 call sites, and the reach
+\ minted below is the FS-PATH-CAP destination those callers already owe (the
+\ check above proved the join fits it). The consumer band of
+\ habu-bound-pointers replaces the parameter with the caller's own span and
+\ this adapter disappears; every destination this module owns already passes
+\ JOIN-PATH-INTO a span from its producer.
+: JOIN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n ) {: pa:ptr pu na:ptr nu dst:ptr :}
+   pa pu nu FS-JOIN-LEN FS-CHECK-JOIN-CAP
+   pa pu na nu  dst FS-PATH-CAP SPAN:MAKE  JOIN-PATH-INTO ;
 
 : FS-PATH= ( ptr u8 n ptr u8 n -- bool )
    STR= ;
 
-: READ-LINK ( ptr u8 n ptr u8 n -- n ) {: pa:ptr pu dst:ptr cap :}
-   cap 0 < if E-FS-CAPACITY throw then
+\ The destination is the caller's span: `cap 0 <` is gone because a reach is
+\ nonnegative by construction, and readlink is handed the span's own base and
+\ reach so the kernel cannot write past it. The remaining E-FS-CAPACITY is a
+\ SEMANTIC refusal - a link that does not fit would be silently truncated - and
+\ stays the caller-facing code its test names.
+: READ-LINK ( ptr u8 n SPAN:span<u8> -- n ) {: pa:ptr pu dst :}
    pa pu FS-TRY-LSTAT 0= if E-FS-STAT throw then
    FS-STAT-MODE@ S-IFMT and S-IFLNK <> if E-FS-STAT throw then
-   FS-STAT-SIZE@ cap > if E-FS-CAPACITY throw then
-   pa pu FS-PATHZ dst cap readlink {: n :}
+   FS-STAT-SIZE@ dst SPAN:LEN > if E-FS-CAPACITY throw then
+   pa pu FS-PATHZ dst SPAN:$ readlink {: n :}
    n 0 < if E-FS-IO throw then
    n ;
 
@@ -452,23 +496,21 @@ TYPED-VARIABLE FS-ENT ptr u8
    then ;
 
 : FS-READ-DIR ( -- bool )
-   FS-FD@ FS-CUR-DIR FS-DIR-CAP FS-BASE@ getdirentries64
+   FS-FD@ FS-CUR-DIR SPAN:$ FS-BASE@ getdirentries64
    dup 0 < if drop E-FS-DIR FS-THROW-WALK then
    dup FS-N! 0 > ;
 
+\ The root goes into the depth-0 walk slot, whose reach the span carries, so the
+\ hand-written FS-PATH-CAP check is gone: a root too long for the slot is
+\ refused by the copy itself (E-SPAN-CAPACITY).
 : FS-WALK-ROOT! ( ptr u8 n -- ) {: a:ptr u :}
    u 0 < if E-FS-PATH throw then
-   u FS-PATH-CAP > if E-FS-PATH throw then
-   a FS-CUR-PATH u BYTE-COPY ;
+   a u FS-CUR-PATH SPAN:COPY ;
 
 : FS-WALK-JOIN-LEN ( ptr u8 n n -- n ) {: pa:ptr pu nu :}
    pu 0 < if E-FS-PATH FS-THROW-WALK then
    nu 0 < if E-FS-PATH FS-THROW-WALK then
-   pu 0 > if pa pu 1 - + c@ FS-SLASH = else FS-FALSE then if
-      pu nu +
-   else
-      pu 1 + nu +
-   then ;
+   pa pu nu FS-JOIN-LEN ;
 
 : FS-CHECK-WALK-JOIN-CAP ( ptr u8 n n -- )
    FS-WALK-JOIN-LEN FS-PATH-CAP > if E-FS-CAPACITY FS-THROW-WALK then ;
@@ -491,8 +533,11 @@ TYPED-VARIABLE FS-ENT ptr u8
 : FS-DIR-MORE? ( -- bool )
    FS-OFF@ FS-N@ < ;
 
+\ The block offset is a running sum of kernel-supplied record lengths, so the
+\ entry address is taken through the dir span: an offset past the block refuses
+\ with E-SPAN-RANGE instead of naming memory beyond the buffer.
 : FS-LOAD-ENTRY ( -- )
-   FS-CUR-DIR FS-OFF@ + FS-ENT !
+   FS-CUR-DIR FS-OFF@ SPAN:AT FS-ENT !
    FS-ENT @ FS-DIRENT-RECLEN FS-REC!
    FS-CHECK-RECORD ;
 
@@ -501,9 +546,9 @@ TYPED-VARIABLE FS-ENT ptr u8
 
 : FS-DESCEND-PATH ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pa:ptr pu na:ptr nu :}
    pa pu nu FS-CHECK-WALK-JOIN-CAP
-   pa pu na nu FS-NEXT-PATH JOIN-PATH FS-CHILD-U !
+   pa pu na nu FS-NEXT-PATH JOIN-PATH-INTO FS-CHILD-U !
    FS-DEPTH @ 1 + FS-DEPTH !
-   FS-CUR-PATH FS-CHILD-U @ ;
+   FS-CUR-PATH FS-CHILD-U @ SPAN:TAKE SPAN:$ ;
 
 : FS-ASCEND-PATH ( -- )
    FS-DEPTH @ 1 - FS-DEPTH ! ;
@@ -532,4 +577,4 @@ TYPED-VARIABLE FS-ENT ptr u8
    FS-FDS-RESET
    0 FS-DEPTH !
    a u FS-WALK-ROOT!
-   FS-CUR-PATH u q FS-WALK-PATH ;
+   FS-CUR-PATH u SPAN:TAKE SPAN:$ q FS-WALK-PATH ;

@@ -17,7 +17,7 @@
 12 constant SEED-SMOKE-IN-U
 
 create SEED-SHA-HEX SEED-SHA256-HEX-U allot
-create SEED-TMP-PATH FS-PATH-CAP allot
+FS-PATH-CAP SPAN-BUFFER: SEED-TMP-PATH     \ FS-MUT-SUFFIX-PATH's destination is a span
 create SEED-SMOKE-OUT SEED-SMOKE-OUT-CAP allot
 create SEED-SMOKE-ERR SEED-SMOKE-ERR-CAP allot
 create SEED-BUILD-OUT SEED-BUILD-OUT-CAP allot
@@ -99,8 +99,8 @@ variable SEED-LAST
    idx 0 > if a idx MAKE-DIRS then ;
 
 : SEED-TMP$ ( ptr u8 n -- ptr u8 n )
-   s" .seed-tmp" SEED-TMP-PATH FS-MUT-SUFFIX-PATH
-   SEED-TMP-PATH swap ;
+   s" .seed-tmp" SEED-TMP-PATH FS-MUT-SUFFIX-PATH {: u :}
+   SEED-TMP-PATH u SPAN:TAKE SPAN:$ ;
 
 : SEED-INSTALL ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
    src srcu SEED-EXPECT-FILE

@@ -9,12 +9,29 @@
 \ throws before install, leaving the old mapping owned and intact), and
 \ capacity-as-ownership so a touch of a disposed buffer throws E-BUF-STATE instead
 \ of dereferencing freed storage. Growth doubles with a checked cell-overflow
-\ clamp; storage flows through MEM:ALLOC-BYTES / MEM:RELEASE-BYTES.
+\ clamp; storage flows through MEM:ALLOC-SPAN / MEM:FREE-SPAN.
 \
-\ Load after lib/errors.f and lib/memory.f.
+\ THE HEADER IS THE SPAN, KEPT IN THE THREE CELLS THE CALLER ALREADY ALLOTS.
+\ `data` plus `cap` IS a span - a base and a reach in bytes - and `len` is the
+\ active prefix, so the record design is not "store a span value plus a length"
+\ but "the base lives in the header's POINTER FIELD (DATA-FIELD's `ptr-field`)
+\ and the reach lives in the capacity cell". Storing a minted span by writing its
+\ two cells into the header instead would put a base address in a raw cell, which
+\ docs/effects.md "Raw storage never holds an address" refuses, and it would
+\ change HDR-BYTES, a published footprint every caller allots. So the header
+\ layout is UNCHANGED and BUF-SPAN projects the pair into a span at each use: the
+\ capacity cell is the ownership token, a live mapping of exactly that many bytes,
+\ which is the fact SPAN:MAKE needs and the one this module already maintains.
+\ Every write into the storage - append, replace, the copy into a fresh mapping -
+\ then goes through SPAN:U8! / SPAN:COPY and is bounds-checked against the owned
+\ reach, so the module has no unchecked byte copy left. DATA-FIELD's cast is the
+\ pointer field's, unchanged and still BUF-private.
+\
+\ Load after lib/errors.f, lib/memory.f and lib/span.f.
 
 require lib/errors.f
 require lib/memory.f
+require lib/span.f
 
 package BUF
 private
@@ -82,24 +99,31 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    need 0 < if E-BUF-CAPACITY throw then ;
 
 \ ---- storage: allocate / release exactly `n` bytes through the typed MEM sinks -
-: STORAGE-ALLOC ( n -- ptr u8 )
-   MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
-: STORAGE-RELEASE ( ptr u8 n -- ) {: d:ptr cap:n :}
-   d  cap MEM:BYTES-ALLOC-LEN  MEM:RELEASE-BYTES ;
+: STORAGE-ALLOC ( n -- SPAN:span<u8> )
+   MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN ;
+: STORAGE-RELEASE ( SPAN:span<u8> -- )
+   MEM:FREE-SPAN ;
 
-: COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr u:n :}
-   src dst u >LEN BYTE-COPY-LEN ;
+\ ---- the header's storage as the span it is ------------------------------------
+\ The reach is the capacity cell, which is the ownership token: positive means a
+\ live mapping of exactly that many bytes is owned here (INIT-RAW and
+\ INSTALL-RESIZE write base and reach together, DISPOSE-RAW clears both), so the
+\ extent SPAN:MAKE is told is the extent this module owns.
+: BUF-SPAN ( ptr a -- SPAN:span<u8> ) {: buf:ptr :}
+   buf DATA@ buf CAP-RAW@ SPAN:MAKE ;
 
 \ ---- copy into the new mapping, install it, then release the prior one. Release
 \ is LAST and the caller allocates BEFORE this word runs, so a failed grow (the
 \ alloc throws upstream) never reaches here and leaves the old storage owned.
-: INSTALL-RESIZE ( ptr a n ptr u8 -- ) {: buf:ptr cap:n d:ptr :}
-   buf DATA@ {: old:ptr :}
-   buf CAP-RAW@ {: oldcap:n :}
-   old d buf LEN-RAW@ COPY
-   d buf DATA!
+\ The active prefix is taken from the old span and copied into the new one, so
+\ both ends of the move are bounds-checked (E-SPAN-RANGE, E-SPAN-CAPACITY).
+: INSTALL-RESIZE ( ptr a SPAN:span<u8> -- ) {: buf:ptr d :}
+   buf BUF-SPAN {: old :}
+   old buf LEN-RAW@ SPAN:TAKE SPAN:$ d SPAN:COPY
+   d SPAN:$ {: dp:ptr cap:n :}
+   dp buf DATA!
    cap buf CAP-RAW!
-   old oldcap STORAGE-RELEASE ;
+   old STORAGE-RELEASE ;
 
 : CHECK-RESIZE-CAP ( ptr a n -- ) {: buf:ptr cap:n :}
    buf CHECK-LIVE
@@ -108,7 +132,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 : RESIZE-RAW ( ptr a n -- ) {: buf:ptr cap:n :}
    buf cap CHECK-RESIZE-CAP
-   buf cap  cap STORAGE-ALLOC  INSTALL-RESIZE ;
+   buf  cap STORAGE-ALLOC  INSTALL-RESIZE ;
 
 \ ---- doubling growth with a checked cell-overflow clamp ------------------------
 : GROW-CAP ( ptr a n -- n ) {: buf:ptr need:n :}
@@ -137,38 +161,40 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : INIT-RAW ( ptr a n -- ) {: buf:ptr cap:n :}
    buf CHECK-DEAD
    cap CHECK-CAP
-   cap STORAGE-ALLOC buf DATA!
-   cap buf CAP-RAW!
+   cap STORAGE-ALLOC SPAN:$ {: d:ptr got:n :}
+   d buf DATA!
+   got buf CAP-RAW!
    0 buf SET-LEN ;
 
 \ Clear the entire header before release; dead headers retain no process address.
 : DISPOSE-RAW ( ptr a -- ) {: buf:ptr :}
-   buf CAP-RAW@ {: cap:n :}
-   buf DATA@ {: d:ptr :}
+   buf BUF-SPAN {: owned :}
    NULL-PTR buf DATA!
    0 buf CAP-RAW!
    0 buf LEN-FIELD !
-   cap 0= if exit then
-   d cap STORAGE-RELEASE ;
+   owned SPAN:LEN 0= if exit then
+   owned STORAGE-RELEASE ;
 
 : CLEAR-RAW ( ptr a -- ) {: buf:ptr :}
    buf CHECK-LIVE
    0 buf SET-LEN ;
 
+\ The three writers mint the span AFTER the growth step: a grow installs a new
+\ mapping, so a span taken before it would name the released one.
 : APPEND-BYTE-RAW ( n ptr a -- ) {: v:n buf:ptr :}
    buf  buf LEN-RAW@ 1 +  ENSURE-RAW
-   v  buf DATA@ buf LEN-RAW@ +  c!
+   v  buf BUF-SPAN buf LEN-RAW@ SPAN:U8!
    buf LEN-RAW@ 1 + buf SET-LEN ;
 
 : APPEND-SPAN-RAW ( ptr u8 n ptr a -- ) {: src:ptr u:n buf:ptr :}
    buf  buf LEN-RAW@ u +  ENSURE-RAW           \ len + u; a cell-overflow need fails closed
-   src  buf DATA@ buf LEN-RAW@ +  u COPY
+   src u  buf BUF-SPAN buf LEN-RAW@ SPAN:SKIP  SPAN:COPY
    buf LEN-RAW@ u + buf SET-LEN ;
 
 : REPLACE-RAW ( ptr u8 n ptr a -- ) {: src:ptr u:n buf:ptr :}
    buf CHECK-LIVE
    buf u RESERVE-RAW
-   src buf DATA@ u COPY
+   src u buf BUF-SPAN SPAN:COPY
    u buf SET-LEN ;
 
 public

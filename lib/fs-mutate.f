@@ -1,8 +1,17 @@
 \ fs-mutate.f - checked filesystem mutation helpers.
 \
+\ Every buffer this module owns - the second NUL-padded path, the copy buffer,
+\ the atomic and temp path builders and the cleanup path stack - is a span, so
+\ the copies into them are bounded by the buffer's own reach (E-SPAN-CAPACITY,
+\ E-SPAN-RANGE) and not by a hand-written FS-PATH-CAP comparison. What remains
+\ hand-written is the path DOMAIN: a negative or empty path is E-FS-PATH and
+\ fs.f's one FS-PATH-CAP length gate still runs on every path handed to a
+\ syscall through FS-PATHZ / FS-MUT-PATHZ2.
+\
 require lib/errors.f
 require lib/string.f
 require lib/fs.f
+require lib/span.f
 
 $FFF constant FS-MUT-MODE-PERM
 73 constant FS-MUT-MODE-EXEC
@@ -18,11 +27,11 @@ $2D constant FS-MUT-DASH
 $2E constant FS-MUT-DOT
 $2F constant FS-MUT-SLASH
 
-create FS-MUT-PATHZ2-BUF FS-PATHZ-CAP allot
-create FS-MUT-COPY-BUF FS-MUT-COPY-CAP allot
-create FS-MUT-ATOMIC-PATH FS-PATH-CAP allot
-create FS-MUT-TMP-PATH FS-PATH-CAP allot
-create FS-MUT-CLEANUP-PATHS FS-MUT-CLEANUP-MAX FS-PATH-CAP * allot
+FS-PATHZ-CAP SPAN-BUFFER: FS-MUT-PATHZ2-BUF
+FS-MUT-COPY-CAP SPAN-BUFFER: FS-MUT-COPY-BUF
+FS-PATH-CAP SPAN-BUFFER: FS-MUT-ATOMIC-PATH
+FS-PATH-CAP SPAN-BUFFER: FS-MUT-TMP-PATH
+FS-MUT-CLEANUP-MAX FS-PATH-CAP * SPAN-BUFFER: FS-MUT-CLEANUP-PATHS
 create FS-MUT-CLEANUP-US FS-MUT-CLEANUP-MAX cells allot
 create FS-MUT-CLEANUP-KINDS FS-MUT-CLEANUP-MAX cells allot
 
@@ -39,21 +48,22 @@ create FS-MUT-ATOMIC-SUFFIX
 : FS-MUT-PATHZ2 ( ptr u8 n -- ptr u8 )
    FS-MUT-PATHZ2-BUF FS-PATHZ-INTO ;
 
-: FS-MUT-CHECK-SUFFIX-CAP ( n n -- ) {: u su :}
+\ The destination is the caller's span, so the capacity comparison is gone: a
+\ base plus suffix longer than the destination is refused by the copy itself.
+: FS-MUT-CHECK-SUFFIX-LENS ( n n -- ) {: u su :}
    u 0 < if E-FS-PATH throw then
-   su 0 < if E-FS-PATH throw then
-   u su + FS-PATH-CAP > if E-FS-CAPACITY throw then ;
+   su 0 < if E-FS-PATH throw then ;
 
-: FS-MUT-SUFFIX-PATH ( ptr u8 n ptr u8 n ptr u8 -- n ) {: a:ptr u s:ptr su dst:ptr :}
-   u su FS-MUT-CHECK-SUFFIX-CAP
-   a dst u BYTE-COPY
-   s dst u + su BYTE-COPY
+: FS-MUT-SUFFIX-PATH ( ptr u8 n ptr u8 n SPAN:span<u8> -- n ) {: a:ptr u s:ptr su dst :}
+   u su FS-MUT-CHECK-SUFFIX-LENS
+   a u dst SPAN:COPY
+   s su dst u SPAN:SKIP SPAN:COPY
    u su + ;
 
-: FS-MUT-CLEANUP-SLOT ( n -- ptr u8 ) {: idx :}
+: FS-MUT-CLEANUP-SLOT ( n -- SPAN:span<u8> ) {: idx :}
    idx 0 < if E-FS-CAPACITY throw then
    idx FS-MUT-CLEANUP-MAX >= if E-FS-CAPACITY throw then
-   idx FS-PATH-CAP * FS-MUT-CLEANUP-PATHS + ;
+   FS-MUT-CLEANUP-PATHS idx FS-PATH-CAP * FS-PATH-CAP SPAN:SUB ;
 
 : FS-MUT-CLEANUP-U-PTR ( n -- ptr n ) {: idx :}
    idx 0 < if E-FS-CAPACITY throw then
@@ -126,7 +136,7 @@ create FS-MUT-ATOMIC-SUFFIX
    FS-FDS-RESET
    0 FS-DEPTH !
    a u FS-WALK-ROOT!
-   FS-CUR-PATH u FS-MUT-REMOVE-TREE-PATH ;
+   FS-CUR-PATH u SPAN:TAKE SPAN:$ FS-MUT-REMOVE-TREE-PATH ;
 
 : FS-MUT-MKDIR-ONE ( ptr u8 n -- ) {: a:ptr u :}
    a u FS-PATHZ FS-MUT-MODE-DIR mkdir {: rc :}
@@ -144,11 +154,13 @@ create FS-MUT-ATOMIC-SUFFIX
    repeat drop
    a u FS-MUT-MKDIR-ONE ;
 
+\ `cap` is how much of the copy buffer this call may use: the narrowing refuses
+\ a cap past the buffer (E-SPAN-RANGE) and a negative one, so neither needs a
+\ hand-written comparison. A file larger than `cap` is still READ-ALL's
+\ E-FS-CAPACITY.
 : COPY-FILE ( ptr u8 n ptr u8 n n -- ) {: src:ptr srcu dst:ptr dstu cap :}
-   cap 0 < if E-FS-CAPACITY throw then
-   cap FS-MUT-COPY-CAP > if E-FS-CAPACITY throw then
-   src srcu FS-MUT-COPY-BUF cap READ-ALL {: n :}
-   dst dstu FS-MUT-COPY-BUF n WRITE-ALL ;
+   src srcu FS-MUT-COPY-BUF cap SPAN:TAKE SPAN:$ READ-ALL {: n :}
+   dst dstu FS-MUT-COPY-BUF n SPAN:TAKE SPAN:$ WRITE-ALL ;
 
 : FS-MUT-COPY-RESET ( -- )
    -1 FS-MUT-COPY-IN !
@@ -181,7 +193,9 @@ create FS-MUT-ATOMIC-SUFFIX
 : FS-MUT-COPY-WRITE-CHUNK ( n -- ) {: u :}
    0 FS-MUT-COPY-OFF !
    begin FS-MUT-COPY-OFF @ u < while
-      FS-MUT-COPY-OUT @ FS-MUT-COPY-BUF FS-MUT-COPY-OFF @ + u FS-MUT-COPY-OFF @ - write FS-MUT-COPY-WR !
+      FS-MUT-COPY-OUT @
+      FS-MUT-COPY-BUF FS-MUT-COPY-OFF @ SPAN:SKIP  u FS-MUT-COPY-OFF @ - SPAN:TAKE SPAN:$
+      write FS-MUT-COPY-WR !
       FS-MUT-COPY-WR @ 0 <= if E-FS-IO FS-MUT-COPY-THROW then
       FS-MUT-COPY-WR @ u FS-MUT-COPY-OFF @ - > if E-FS-IO FS-MUT-COPY-THROW then
       FS-MUT-COPY-OFF @ FS-MUT-COPY-WR @ + FS-MUT-COPY-OFF !
@@ -192,7 +206,7 @@ create FS-MUT-ATOMIC-SUFFIX
    src srcu FS-MUT-COPY-OPEN-SRC
    dst dstu FS-MUT-COPY-OPEN-DST
    begin
-      FS-MUT-COPY-IN @ FS-MUT-COPY-BUF FS-MUT-COPY-CAP read FS-MUT-COPY-RD !
+      FS-MUT-COPY-IN @ FS-MUT-COPY-BUF SPAN:$ read FS-MUT-COPY-RD !
       FS-MUT-COPY-RD @ 0 < if E-FS-IO FS-MUT-COPY-THROW then
       FS-MUT-COPY-RD @ FS-MUT-COPY-CAP > if E-FS-IO FS-MUT-COPY-THROW then
       FS-MUT-COPY-RD @ 0 >
@@ -204,8 +218,9 @@ create FS-MUT-ATOMIC-SUFFIX
 
 : ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
    path pathu FS-MUT-ATOMIC-SUFFIX 4 FS-MUT-ATOMIC-PATH FS-MUT-SUFFIX-PATH {: tempu :}
-   FS-MUT-ATOMIC-PATH tempu src srcu WRITE-ALL
-   FS-MUT-ATOMIC-PATH tempu path pathu RENAME-FILE ;
+   FS-MUT-ATOMIC-PATH tempu SPAN:TAKE SPAN:$ {: temp:ptr tu :}
+   temp tu src srcu WRITE-ALL
+   temp tu path pathu RENAME-FILE ;
 
 : FS-MUT-SB-U ( n -- ) {: n :}
    n 0 < if E-FS-PATH throw then
@@ -222,9 +237,8 @@ create FS-MUT-ATOMIC-SUFFIX
    FS-MUT-DASH SB-APPEND-C
    attempt FS-MUT-SB-U
    SB$ {: a:ptr u :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
-   a FS-MUT-TMP-PATH u BYTE-COPY
-   FS-MUT-TMP-PATH u ;
+   a u FS-MUT-TMP-PATH SPAN:COPY
+   FS-MUT-TMP-PATH u SPAN:TAKE SPAN:$ ;
 
 : FS-MUT-TMP-COLLISION? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u EXISTS? if 0 0= exit then
@@ -257,11 +271,10 @@ create FS-MUT-ATOMIC-SUFFIX
 : FS-MUT-CLEANUP+ ( ptr u8 n n -- ) {: a:ptr u kind :}
    FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-MAX >= if E-FS-CAPACITY throw then
    u 0 < if E-FS-PATH throw then
-   u FS-PATH-CAP > if E-FS-PATH throw then
    kind FS-MUT-CLEANUP-FILE <>
    kind FS-MUT-CLEANUP-DIR <> and
    kind FS-MUT-CLEANUP-TREE <> and if E-FS-IO throw then
-   a FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-SLOT u BYTE-COPY
+   a u FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-SLOT SPAN:COPY
    u FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-U-PTR !
    kind FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-KIND-PTR !
    FS-MUT-CLEANUP-N @ 1 + FS-MUT-CLEANUP-N ! ;
@@ -276,7 +289,7 @@ create FS-MUT-ATOMIC-SUFFIX
    FS-MUT-CLEANUP-TREE FS-MUT-CLEANUP+ ;
 
 : FS-MUT-CLEANUP-REMOVE ( n -- ) {: idx :}
-   idx FS-MUT-CLEANUP-SLOT idx FS-MUT-CLEANUP-U-PTR @ {: a:ptr u :}
+   idx FS-MUT-CLEANUP-SLOT idx FS-MUT-CLEANUP-U-PTR @ SPAN:TAKE SPAN:$ {: a:ptr u :}
    idx FS-MUT-CLEANUP-KIND-PTR @ {: kind :}
    a u SYMLINK? if a u REMOVE-FILE exit then
    a u EXISTS? 0= if exit then

@@ -32,6 +32,10 @@ public
 
 
 : BUFT-LEN-RAW@ ( ptr a -- n ) LEN-FIELD @ ;
+
+\ Writes the length cell WITHOUT SET-LEN's len <= cap guard, to stage the one
+\ header corruption the span refuses: an active length past the owned mapping.
+: BUFT-LEN-RAW! ( n ptr a -- ) {: len:n buf:ptr :}  len buf LEN-FIELD ! ;
 ;package
 
 \ ---- byte-len role builders/readers for scalar assertions ----------------------
@@ -160,6 +164,17 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-REL-BUF BUFT-TCAP BUFT-CAP0 T=
    BUFT-REL-BUF BUF:SPAN$ BUFT-BL>RAW s" keep" T$= ;
 
+\ ---- the copy-on-grow reads only what the buffer owns ---------------------------
+\ A length cell past the owned capacity is the one corruption that used to turn
+\ the grow into an over-READ: INSTALL-RESIZE copied LEN bytes out of a CAP-byte
+\ mapping. The source is now taken from the owned span, so the take refuses at
+\ the reach (E-SPAN-RANGE) before a byte moves.
+: BUFT-GROW-OVER-READ ( -- )
+   BUFT-CAP0 BUFT-REL-INIT
+   s" keep" BUFT-N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN
+   BUFT-CAP0 1 + BUFT-REL-BUF BUF:BUFT-LEN-RAW!        \ len = 33 past the 32-byte mapping
+   s" more" BUFT-N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN ; \ grow copies the active prefix
+
 \ ---- use-after-dispose fails closed (E-BUF-STATE) ------------------------------
 : BUFT-USE-SPAN ( -- )
    BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
@@ -238,6 +253,8 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    \ ---- capacity / bounds refusals --------------------------------------------
    [: BUFT-CAP-ZERO ;] E-BUF-CAPACITY TTHROWSQ
    [: BUFT-APPEND-OVERFLOW ;] E-BUF-CAPACITY TTHROWSQ
+   [: BUFT-GROW-OVER-READ ;] E-SPAN-RANGE TTHROWSQ
+   BUFT-REL-BUF BUF:DISPOSE                                          \ the refused grow left the buffer owned
    \ ---- scale + property ------------------------------------------------------
    BUFT-BIG-FILL
    BUFT-PROP

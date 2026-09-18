@@ -270,6 +270,12 @@ create FS-TEST-U64
 : FS-TEST-DEEP-WALK ( -- )
    FS-TEST-DEEP [: 2drop ;] WALK-FILES ;
 
+\ The walk root is copied into the depth-0 walk slot, a span of FS-PATH-CAP: a
+\ root that does not fit is refused by the copy (E-SPAN-CAPACITY) where the
+\ module used to compare the length by hand.
+: FS-TEST-WALK-ROOT-TOO-LONG ( -- )
+   FS-TEST-LONG FS-PATH-CAP 1 + [: 2drop ;] WALK-FILES ;
+
 : FS-TEST-MISSING-READ ( -- )
    s" no-such-habu-fs-read-file" FS-TEST-READ-BUF FS-TEST-READ-CAP READ-ALL drop ;
 
@@ -407,6 +413,7 @@ create FS-TEST-U64
    [: FS-TEST-DIR-FILE-SIZE ;] E-FS-STAT TTHROWSQ
    [: FS-TEST-MISSING-WALK ;] E-FS-STAT TTHROWSQ
    [: FS-TEST-DEEP-WALK ;] E-FS-DEPTH TTHROWSQ
+   [: FS-TEST-WALK-ROOT-TOO-LONG ;] E-SPAN-CAPACITY TTHROWSQ
    [: FS-TEST-MISSING-READ ;] E-FS-OPEN TTHROWSQ
    [: FS-TEST-READ-TOO-LARGE ;] E-FS-CAPACITY TTHROWSQ
    [: FS-TEST-WRITE-DIR ;] E-FS-OPEN TTHROWSQ
