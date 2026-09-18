@@ -502,16 +502,37 @@ one slot) and `ENGINE-ROW`/`ENGINE-ROW-CLEAR` (a write handler, and the zero
 that means "no device") now do too. What is gone is the single `( -- ptr a )`
 that said neither and let the caller decide.
 
-**The null keeps one residue, and it is the price of its pointee arm.** Because
-`TVK-NULL` stays permissive inside a pointee — which is what lets
-`NULL-PTR PP !` clear a cell declared `ptr ptr n`, and what 89 null stores and 11
-null compares in the tree depend on — the same arm admits
-`( n -- ptr ptr n ) NULL-PTR + `, so a *computed* offset from the null can still
-be declared two deep and read back as an address. Nothing distinguishes the two
-at the binding: both are the null's pointee meeting a `ptr` term inside a `ptr`.
-Closing it needs the offset, not the kind, and that is the same extent
-`habu-bound-ptr-arithmetic-8bf6b54a` measures below. The DATA base, which is the
-one that reaches a *writable, attacker-chosen* word, has no such arm.
+**An OFFSET null is a DATA-base pointer; the LITERAL null is the one address
+whose only readable value is the trap.** `TVK-NULL` stays permissive inside a
+pointee — which is what lets `NULL-PTR PP !` clear a cell declared `ptr ptr n`,
+and what 89 null stores and 11 null compares in the tree depend on — but that arm
+is judged at the *binding*, and the arithmetic rows keep the base's pointee var,
+so a *computed* offset wore the permissive kind too. It was not a residue, it was
+the same forgery `habu-fence-a-base-c6c1d71d` closed for `data-base 8 +`:
+`: F ( -- ptr ptr n ) NULL-PTR OFF + ;  : G ( -- n ) F @ @ ;` certified and
+printed 777 out of an attacker-chosen `variable` — a `!` would have written it —
+and the typed-cell (`PP !`) and parametric (`( n -- ptr ptr n ) NULL-PTR swap +`)
+spellings did the same.
+
+The rows that step a pointer by an **integer offset** — `+` either way round, `-`
+with an `n`, `1+`, `1-`, `cell+`, `char+` — therefore mark the pointee they step
+(`src/habu/prims.f` `PE-PTR-A-OFF`, the checker's `TVK-OFF`), and the mark changes
+exactly one meet: a null that rides such a row comes out **`TVK-DBASE`**. What the
+offset addresses is the caller's arithmetic and no longer the one literal address
+the permissive arm is for, so it is fenced at every pointee depth and has no
+input-only excuse, exactly like the DATA base — and it answers that rule's reason,
+which now names both bases.
+
+`TVK-OFF` is *provenance*, not a fence: against every other kind the meet answers
+the other kind. `( ptr a -- ptr a ) 8 +` still preserves its quantifier,
+`( ptr thing -- thing ) 8 + @` still reads its nominal, and because the mark rides
+a checked stepper's published quantifier, a null handed to one is refused *at the
+caller* rather than laundered. Everything the literal null had, it keeps:
+`NULL-PTR cb !` (the 89 stores, `RELEASE`'s input-only excuse), `NULL-PTR =`,
+`NULL-PTR 0=`, `NULL-PTR PP !` two deep, and the sanctioned address-to-integer
+distance `V BYTE-VIEW NULL-PTR BYTE-VIEW -` — the pointer-minus-pointer row is a
+distance, not a step, and carries no mark. `test/compiler/base-pointer-arith-refusals.f`
+pins the refusals and every one of those controls.
 
 **The reach is not closed.** The axiom `ptr a n + -- ptr a` still admits any
 offset from any base, so a pointer that *is* the address of a declared element

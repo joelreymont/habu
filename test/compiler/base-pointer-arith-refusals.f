@@ -58,6 +58,11 @@ TYPED-VARIABLE BPA-PP ptr ptr n     \ a declared cell that really holds an addre
 TYPED-VARIABLE BPA-HK [ -- n ]      \ a declared CODE cell, for the executable-value controls
 variable BPA-RAW                    \ an undeclared raw storage cell, for the RAW controls
 
+\ A stepper written in ordinary checked Habu. Its own certification is half the
+\ point: the offset mark rides its published quantifier, so a null handed to it
+\ comes out a DATA-base pointer at the CALLER, and no wrapper launders the step.
+: BPA-STEPPER ( ptr a n -- ptr a ) + ;
+
 package BASE-PTR-ARITH-TEST
 
 private
@@ -75,7 +80,7 @@ create DIAG-BUF 8192 allot
    S\" \"code\":\"E-RAW-CELL-PTR\"" ;
 
 : DB-REASON$ ( -- ptr u8 n )
-   S\" \"reason\":\"base address: a cell reached from data-base holds a plain value at every pointee depth, never a nominal type or a pointer\"" ;
+   S\" \"reason\":\"base address: a cell reached from data-base, or from a pointer computed off NULL-PTR, holds a plain value at every pointee depth, never a nominal type or a pointer\"" ;
 
 : NULL-REASON$ ( -- ptr u8 n )
    S\" \"reason\":\"null address: nothing is read through NULL-PTR, so it is never a nominal type and never the address of one\"" ;
@@ -145,9 +150,13 @@ create DIAG-BUF 8192 allot
 
 \ ---- the forgery: a nominal identity out of a base address -------------------
 
+\ An OFFSET null is a DATA-base pointer, so it answers the DATA base's reason:
+\ what the pointer addresses is the caller's arithmetic, not the one literal
+\ address the permissive pointee arm is for. The LITERAL null keeps that arm and
+\ its own reason (CASE-NULL-ZERO below, and every control at the end).
 : CASE-NULL-NOMINAL ( -- )
    s" a null plus an offset does not answer a nominal identity" T-LABEL
-   s" BPA-F ( n -- bpathing ) NULL-PTR + @" NULL-REFUSED ;
+   s" BPA-F ( n -- bpathing ) NULL-PTR + @" DB-REFUSED ;
 
 : CASE-DATA-NOMINAL ( -- )
    s" and neither does an offset into the engine's own DATA" T-LABEL
@@ -200,7 +209,7 @@ create DIAG-BUF 8192 allot
 
 : CASE-NULL-POINTER ( -- )
    s" a pointer fetched through a null-derived address is refused too" T-LABEL
-   s" BPA-G ( n -- ptr n ) NULL-PTR + @" NULL-REFUSED ;
+   s" BPA-G ( n -- ptr n ) NULL-PTR + @" DB-REFUSED ;
 
 : CASE-DATA-POINTER ( -- )
    s" a DATA cell answers a number, not the address it was never declared to hold" T-LABEL
@@ -344,6 +353,97 @@ create DIAG-BUF 8192 allot
    s" BPA-LEAK ( ptr a -- ptr a ) drop data-base 8 +" CHECK-CANDIDATE! 0 T=
    NP-CODE$ HAS?  NP-SUGGEST$ HAS?
    DISARM ;
+
+\ ---- an OFFSET null is a DATA-base pointer -----------------------------------
+\ The hole the two kinds left. TVK-NULL's permissive pointee arm is judged at the
+\ BINDING, and the arithmetic rows (`+`, `-` with an n, `1+`, `1-`, `cell+`,
+\ `char+`) keep the base's pointee var, so a COMPUTED offset from the null still
+\ wore the permissive kind and could be declared two deep. Measured on the engine
+\ before this rule: `variable V  777 V !` and
+\ `: F ( -- ptr ptr n ) NULL-PTR <V's distance> + ;  : G ( -- n ) F @ @ ;`
+\ certified and PRINTED 777 -- a read of an attacker-chosen writable cell, which
+\ is exactly the reach the null was said not to have. The offset rows now mark
+\ the pointee they step (src/habu/prims.f PE-PTR-A-OFF), and a null riding one
+\ meets out as TVK-DBASE: fenced at every depth, with no input-only excuse.
+
+: CASE-NULL-OFFSET-DEPTH-2 ( -- )
+   s" a null plus an offset is not the address of an address" T-LABEL
+   s" BPA-NO2 ( n -- ptr ptr n ) NULL-PTR +" DB-REFUSED ;
+
+: CASE-NULL-OFFSET-NOMINAL-DEEP ( -- )
+   s" nor the address of a pointer to a nominal" T-LABEL
+   s" BPA-NON ( n -- ptr ptr bpathing ) NULL-PTR +" DB-REFUSED ;
+
+\ The parametric spelling: the offset arrives as an argument and the body never
+\ names data-base at all.
+: CASE-NULL-OFFSET-PARAMETRIC ( -- )
+   s" and neither does the parametric spelling of the same step" T-LABEL
+   s" BPA-NO7 ( n -- ptr ptr n ) NULL-PTR swap +" DB-REFUSED ;
+
+\ The typed-cell route: store the offset null into a cell declared to hold an
+\ address, and the caller reads it back typed. The store is where it lands.
+: CASE-NULL-OFFSET-TYPED-CELL ( -- )
+   s" an offset null does not go into a cell declared to hold an address" T-LABEL
+   s" BPA-NO6 ( n -- ) NULL-PTR + BPA-PP !" DB-REFUSED ;
+
+\ Every other step of the same pointee, not only bare `+`.
+: CASE-NULL-OFFSET-CELL-STEP ( -- )
+   s" cell+ steps the null the same way, and is refused the same way" T-LABEL
+   s" BPA-NOC ( -- ptr ptr n ) NULL-PTR cell+" DB-REFUSED ;
+
+: CASE-NULL-OFFSET-MINUS ( -- )
+   s" and so does stepping it backwards by an integer" T-LABEL
+   s" BPA-NOM ( n -- ptr ptr n ) NULL-PTR swap -" DB-REFUSED ;
+
+: CASE-NULL-OFFSET-FETCH ( -- )
+   s" a fetch that lands two deep through an offset null is refused" T-LABEL
+   s" BPA-NOF ( n -- ptr n ) NULL-PTR + @ @" DB-REFUSED ;
+
+\ The wrapper, refused where it is written: the input-only excuse is the LITERAL
+\ null's, and an offset null is no longer one address.
+: CASE-NULL-OFFSET-PUBLISH ( -- )
+   s" a wrapper may not publish an offset null under a type variable" T-LABEL
+   ARM
+   s" BPA-NOW ( -- ptr a ) NULL-PTR 8 +" CHECK-CANDIDATE! 0 T=
+   NP-CODE$ HAS?  NP-SUGGEST$ HAS?
+   DISARM ;
+
+: CASE-NULL-OFFSET-EXCUSE ( -- )
+   s" and an input-only quantifier does not excuse one either" T-LABEL
+   ARM
+   s" BPA-NOS ( ptr ptr a -- ) NULL-PTR 8 + swap !" CHECK-CANDIDATE! 0 T=
+   NP-CODE$ HAS?  NP-SUGGEST$ HAS?
+   DISARM ;
+
+: CASE-NULL-OFFSET-VIA-WRAPPER ( -- )
+   s" a checked stepper does not launder the offset either" T-LABEL
+   s" BPA-NOWR ( n -- ptr ptr n ) NULL-PTR swap BPA-STEPPER" DB-REFUSED ;
+
+\ The mark is PROVENANCE, not a fence: an ordinary pointer still steps, and a
+\ definition that steps a pointee it was handed still preserves its quantifier.
+\ A rule that refuses these is not this rule -- it is a ban on `+`.
+: CASE-OFFSET-KEEPS-POINTEE ( -- )
+   s" stepping a pointer to a nominal still answers that nominal" T-LABEL
+   s" BPA-STEP ( ptr bpathing -- bpathing ) 8 + @" CERTIFIES ;
+
+: CASE-OFFSET-KEEPS-QUANTIFIER ( -- )
+   s" and a declared quantifier survives an offset step" T-LABEL
+   s" BPA-STEPQ ( ptr a -- ptr a ) 8 +" CERTIFIES ;
+
+: CASE-OFFSET-KEEPS-DEPTH ( -- )
+   s" including a pointee that is itself an address" T-LABEL
+   s" BPA-STEP2 ( ptr ptr n -- ptr ptr n ) cell+" CERTIFIES ;
+
+: CASE-OFFSET-WRAPPER-CERTIFIES ( -- )
+   s" and a stepper called on an ordinary pointer answers its pointee" T-LABEL
+   s" BPA-OKWR ( ptr bpathing -- bpathing ) 8 BPA-STEPPER @" CERTIFIES ;
+
+\ The sanctioned address-to-integer idiom, which is how the probes computed the
+\ offset in the first place: both sides are byte views, so the pointee is a
+\ concrete `u8` and no kind rides the distance row.
+: CASE-NULL-BYTE-DISTANCE ( -- )
+   s" the byte-view distance from the null is still a number" T-LABEL
+   s" BPA-NBV ( ptr bpathing -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW -" CERTIFIES ;
 
 \ ---- the controls: every honest use of a base address -------------------------
 
@@ -492,6 +592,21 @@ public
    CASE-RAW-DEPTH-2-NOMINAL
    CASE-EXCUSE-STORE
    CASE-EXCUSE-QUOTATION
+   CASE-NULL-OFFSET-DEPTH-2
+   CASE-NULL-OFFSET-NOMINAL-DEEP
+   CASE-NULL-OFFSET-PARAMETRIC
+   CASE-NULL-OFFSET-TYPED-CELL
+   CASE-NULL-OFFSET-CELL-STEP
+   CASE-NULL-OFFSET-MINUS
+   CASE-NULL-OFFSET-FETCH
+   CASE-NULL-OFFSET-PUBLISH
+   CASE-NULL-OFFSET-EXCUSE
+   CASE-NULL-OFFSET-VIA-WRAPPER
+   CASE-OFFSET-KEEPS-POINTEE
+   CASE-OFFSET-KEEPS-QUANTIFIER
+   CASE-OFFSET-KEEPS-DEPTH
+   CASE-OFFSET-WRAPPER-CERTIFIES
+   CASE-NULL-BYTE-DISTANCE
    CASE-INPUT-ONLY
    CASE-INPUT-ONLY-QUOT
    CASE-NULL-STORE

@@ -317,6 +317,18 @@ TVINIT
 \ whole point -- a cell reached from DATA holds a plain value at any depth.
 4 constant TVK-NULL
 5 constant TVK-DBASE
+\ TVK-OFF is not a fence: it is PROVENANCE, carried by the pointee variable of
+\ every row that steps a pointer by an INTEGER offset (`+`, `-` with an n,
+\ `1+`, `1-`, `cell+`, `char+` -- src/habu/prims.f PE-PTR-A-OFF). It changes
+\ exactly one meet: a null that rides such a row comes out TVK-DBASE. An OFFSET
+\ null is no longer the one literal address every honest null shape means, it is
+\ an arbitrary address the caller computed, so it loses the permissive pointee
+\ arm and is fenced at every depth exactly as `data-base` is (dot
+\ habu-fence-an-offset-7372e836: `: F ( -- ptr ptr n ) NULL-PTR OFF + ; F @ @`
+\ certified and read an attacker-chosen `variable` -- measured, it printed 777).
+\ Against every other kind TVK-OFF is transparent (the meet answers the other
+\ kind), so an ordinary pointer keeps stepping and the LITERAL null keeps its arm.
+6 constant TVK-OFF
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
 : BASE-KIND? ( n -- bool )   \ is this KIND one of the two base addresses?
@@ -326,6 +338,7 @@ TVINIT
 : TVK-RAW! ( n -- ) TVK-RAW swap cells TVK + ! ;
 : TVK-NULL! ( n -- ) TVK-NULL swap cells TVK + ! ;
 : TVK-DBASE! ( n -- ) TVK-DBASE swap cells TVK + ! ;
+: TVK-OFF! ( n -- ) TVK-OFF swap cells TVK + ! ;
 
 \ The fence lattice: ANY < NULL < DBASE < RAW. A meet keeps the STRICTER of two
 \ kinds, so a null that meets a DATA-derived pointee comes out DBASE (the fence
@@ -337,7 +350,12 @@ TVINIT
    dup TVK-DBASE = IF drop 2 EXIT THEN
    TVK-NULL = IF 1 EXIT THEN
    0 ;
+\ TVK-OFF sits beside that lattice rather than on it: offset provenance meeting
+\ the null yields the DATA base's discipline (an arbitrary address, fenced at
+\ every depth), and meeting anything else answers the other kind unchanged.
 : TVK-MEET ( n n -- n ) {: k1:n k2:n :}
+   k1 TVK-OFF = IF k2 TVK-NULL = IF TVK-DBASE ELSE k2 THEN EXIT THEN
+   k2 TVK-OFF = IF k1 TVK-NULL = IF TVK-DBASE ELSE k1 THEN EXIT THEN
    k1 TVK-RANK k2 TVK-RANK >= IF k1 ELSE k2 THEN ;
 
 : TAG 7 and ;
@@ -404,14 +422,15 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
 \ TVK-ANY: with three fenced kinds on one lattice (TVK-NULL < TVK-DBASE <
 \ TVK-RAW) a rolled back raise that reset a fenced var to ANY would drop the
 \ base-address fence on every row an abandoned prim-overload trial touched.
-: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=RVK-INFERRED, 4=TVK-NULL, 5=TVK-DBASE
+: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=RVK-INFERRED, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF
    TRAIL-N @ 1 + TRAIL-ENSURE
    id 8 * tag +  TRAIL-N @ cells TRAIL + !
    TRAIL-N @ 1 + TRAIL-N ! ;
 : TRAIL-KIND-OF ( n -- n )   \ the kind a kind-tag puts back
    dup 3 = IF drop RVK-INFERRED EXIT THEN
    dup 4 = IF drop TVK-NULL EXIT THEN
-   5 = IF TVK-DBASE ELSE TVK-ANY THEN ;
+   dup 5 = IF drop TVK-DBASE EXIT THEN
+   6 = IF TVK-OFF ELSE TVK-ANY THEN ;
 : TRAIL-UNWIND ( n -- ) {: mark:n :}     \ pop+undo every mutation above `mark`
    BEGIN TRAIL-N @ mark > WHILE
       TRAIL-N @ 1 - TRAIL-N !
@@ -428,7 +447,8 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
 \ changes nothing records nothing (so no spurious trail growth).
 : TVK-KIND-TAG ( n -- n )
    dup TVK-NULL = IF drop 4 EXIT THEN
-   TVK-DBASE = IF 5 ELSE 2 THEN ;
+   dup TVK-DBASE = IF drop 5 EXIT THEN
+   TVK-OFF = IF 6 ELSE 2 THEN ;
 : TVK-RAISE-TO ( n n -- ) {: id:n kind:n :}
    id TVK@ kind TVK-MEET
    dup id TVK@ = IF drop EXIT THEN
@@ -2306,10 +2326,20 @@ variable XT-DECL
 \ was `data-base <baked offset> +` -- an address no relocation pass can see,
 \ which is what put another table's writes on BMID's cells in a merged engine
 \ (dot habu-bmid-module-id-ec6c709b, src/core/layout-buffer.f LBUF-SOURCE).
+\ OFFSET PROVENANCE RIDES THE OTHER WAY TOO. U-TYPE binds one var side to the
+\ other, and which side that is depends on the argument order at the call, so an
+\ offset row's pointee var is sometimes the var that SURVIVES (FENCE-WHY raises
+\ it to the null's kind, and the meet answers DBASE) and sometimes the var that
+\ is bound AWAY. In the second case nothing would carry the provenance across,
+\ and `NULL-PTR n +` would keep the null's permissive arm on the surviving var.
+\ Meeting the term with TVK-OFF closes it: the meet is identity for every kind
+\ but the null, so this raises nothing else.
+: OFF-RIDE ( n -- ) T-RES dup ISVAR IF PAY TVK-OFF TVK-RAISE-TO ELSE drop THEN ;
 : RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates a cell discipline?
    {: vid:n term:n :}
    LAYOUT-INTRO @ 0 <> IF RES-FALSE EXIT THEN        \ the definer's own introduction form
    vid TVK-RAW? IF term RAW-OK? 0= EXIT THEN         \ RAW var: `term` must be RAW-admissible
+   vid TVK@ TVK-OFF = IF term OFF-RIDE RES-FALSE EXIT THEN   \ offset row's pointee: provenance, never a fence
    vid TVK@ dup BASE-KIND? 0= IF drop RES-FALSE EXIT THEN   \ ordinary var: never blocks
    term T-RES swap BASE-BLOCK? ;                     \ base-address var: fenced by its own kind
 
@@ -6783,6 +6813,7 @@ defer E-I-FOREIGN-CON ( n -- n )
          r@ EN.B @ TVK-RAW = IF dup PAY TVK-RAW! THEN       \ restore persisted RAW kind on the fresh var
          r@ EN.B @ TVK-NULL  = IF dup PAY TVK-NULL!  THEN   \ and the base-address kinds: `NULL-PTR`
          r@ EN.B @ TVK-DBASE = IF dup PAY TVK-DBASE! THEN   \ and `data-base`
+         r@ EN.B @ TVK-OFF   = IF dup PAY TVK-OFF!   THEN   \ and an offset row's pointee provenance
          r> drop
       endof
       EN-ROW of
@@ -7160,6 +7191,12 @@ variable PE-EFF-ID
 : PE-DBASE! ( n -- n ) dup PAY TVK-DBASE! ;
 : PE-PTR-A-NULL ( -- n ) PE-A PE-NULL! PE-PTR ;
 
+\ Marks the pointee var of a row that steps a pointer by an INTEGER offset, so a
+\ null riding that row comes out TVK-DBASE (TVK-MEET). The rows that use it are
+\ in src/habu/prims.f; the mark is transparent to every other pointee, which is
+\ why `( ptr a -- ptr a ) 8 +` still preserves its quantifier.
+: PE-OFF! ( n -- n ) dup PAY TVK-OFF! ;
+
 \ A QUOTATION operand for a prim row. `PE-Q` opens one, PE-QIN / PE-QOUT
 \ accumulate the quotation's own data rows exactly the way PE-IN / PE-OUT
 \ accumulate the prim's, and `;PE-Q` closes them into one `[ in -- out ]` term
@@ -7280,6 +7317,7 @@ variable PE-SPEC-I   variable PE-SPEC-J
    code PRIM-SPEC:A-PTR      = IF PE-SPEC-POP PE-PTR  PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-RAW      = IF PE-SPEC-POP PE-RAW! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-DBASE    = IF PE-SPEC-POP PE-DBASE! PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-OFF      = IF PE-SPEC-POP PE-OFF!   PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-QUOT     = IF PE-Q EXIT THEN
    code PRIM-SPEC:A-QUOT-END = IF ;PE-Q PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-FINALLY  = IF PE-FINALLY EXIT THEN
@@ -13538,6 +13576,11 @@ variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
    oid NP-OUTVARS-HAS? IF RES-FALSE EXIT THEN
    oid NP-INVARS-HAS? ;
 
+\ TVK-OFF is provenance, not a restriction: `( ptr a -- ptr a ) 8 +` steps a
+\ pointer of whatever pointee the caller instantiates, and the mark only decides
+\ what a NULL meeting that quantifier becomes. A quantifier that comes back
+\ marked is therefore still preserved.
+: NP-KIND-SEEN ( n -- n ) dup TVK-OFF = IF drop TVK-ANY THEN ;
 : NP-CHECK-ONE ( n n -- )   \ preserve the declared quantifier and its kind
    {: oid:n kind:n :}
    oid MK-VAR T-RES {: rt:n :}
@@ -13545,7 +13588,7 @@ variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
       oid rt NP-FAIL-SPEC
       EXIT
    THEN
-   rt PAY TVK@ kind <> IF
+   rt PAY TVK@ NP-KIND-SEEN kind <> IF
       oid rt PAY TVK@ NP-KIND-EXCUSED? 0= IF oid rt NP-FAIL-KIND EXIT THEN
    THEN
    rt PAY NP-SEEN-FIND dup 0 < IF
@@ -14228,7 +14271,8 @@ variable CK-GRAPH-WIDTH-BAD
    id 0 < id count >= or IF ASIG-GRAPH-DIE THEN
    row IF
       kind 0 <> kind RVK-QUOT <> and kind RVK-INFERRED <> and IF ASIG-GRAPH-DIE THEN
-   ELSE kind TVK-ANY <> kind TVK-RAW <> and kind BASE-KIND? 0= and IF ASIG-GRAPH-DIE THEN THEN
+   ELSE kind TVK-ANY <> kind TVK-RAW <> and kind BASE-KIND? 0= and
+        kind TVK-OFF <> and IF ASIG-GRAPH-DIE THEN THEN   \ offset provenance persists on a stored effect's pointee var
    row IF id 0 CK-GRAPH-PTR ER.TVN @ + ELSE id THEN cells
    CK-GRAPH-MAP-U @ + CK-GRAPH-SLOT {: slot:ptr :}
    slot @ 0 <> slot @ kind 1+ <> and IF ASIG-GRAPH-DIE THEN

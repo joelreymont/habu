@@ -75,6 +75,7 @@ public
 15 constant A-QUOT-END
 16 constant A-FINALLY
 17 constant A-DBASE          \ DBASE-kind the pending pointee: the DATA region's base, the address OF nothing
+18 constant A-OFF            \ mark the pending pointee as an INTEGER-offset step: a null riding it becomes a DATA-base pointer
 
 private
 
@@ -168,6 +169,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-PTR-PTR-B   A-VAR-B CODE, A-PTR CODE, A-PTR CODE, ;
 : PE-PTR-A-RAW   A-VAR-A CODE, A-RAW CODE, A-PTR CODE, ;
 : PE-PTR-A-DBASE A-VAR-A CODE, A-DBASE CODE, A-PTR CODE, ;
+: PE-PTR-A-OFF   A-VAR-A CODE, A-OFF CODE, A-PTR CODE, ;
 : PE-Q           A-QUOT CODE, ;
 : ;PE-Q          A-QUOT-END CODE, ;
 : PE-FINALLY     A-FINALLY CODE, ;
@@ -295,10 +297,18 @@ EPRIM: 2over PE-A PE-IN PE-B PE-IN PE-C PE-IN PE-D PE-IN
             REF PRIM-REF:S-2OVER EPRIM;
 
 EPRIM: +      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:ADD EPRIM;
-EPRIM: +      PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM;
-EPRIM: +      PE-N PE-IN PE-PTR-A PE-IN  PE-PTR-A PE-OUT EPRIM;
+\ THE INTEGER-OFFSET ROWS carry PE-PTR-A-OFF on the pointee they step (the same
+\ `a` the result keeps, so the pointee is still preserved). The mark is inert for
+\ every pointee but the null: a null that rides one of these rows comes out a
+\ DATA-base pointer, because the address it answers is the caller's arithmetic
+\ and no longer the one literal address the null's permissive pointee arm is for
+\ (dot habu-fence-an-offset-7372e836). The pointer-MINUS-pointer row below is a
+\ distance, not a step, and is deliberately left unmarked: `BYTE-VIEW ...
+\ NULL-PTR BYTE-VIEW -` is the sanctioned address-to-integer idiom.
+EPRIM: +      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM;
+EPRIM: +      PE-N PE-IN PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM;
 EPRIM: -      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:SUB EPRIM;
-EPRIM: -      PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM;
+EPRIM: -      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM;
 EPRIM: -      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: *      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:MUL EPRIM;
 EPRIM: and    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BAND EPRIM;
@@ -308,9 +318,9 @@ EPRIM: or     PE-F PE-IN PE-F PE-IN  PE-F PE-OUT REF PRIM-REF:BOR-F EPRIM;
 EPRIM: xor    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BXOR EPRIM;
 EPRIM: xor    PE-F PE-IN PE-F PE-IN  PE-F PE-OUT REF PRIM-REF:BXOR-F EPRIM;
 EPRIM: 1+     PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:INC EPRIM;
-EPRIM: 1+     PE-PTR-A PE-IN  PE-PTR-A PE-OUT EPRIM;
+EPRIM: 1+     PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM;
 EPRIM: 1-     PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:DEC EPRIM;
-EPRIM: 1-     PE-PTR-A PE-IN  PE-PTR-A PE-OUT EPRIM;
+EPRIM: 1-     PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM;
 EPRIM: negate PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:NEG EPRIM;
 EPRIM: invert PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BNOT EPRIM;
 EPRIM: 0=     PE-A PE-IN  PE-F PE-OUT EPRIM;
@@ -340,10 +350,10 @@ EPRIM: max    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:MAXIMUM EPRIM;
 EPRIM: lshift PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:SHL EPRIM;
 EPRIM: rshift PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:SHR EPRIM;
 EPRIM: cells  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CELL-BYTES EPRIM;
-EPRIM: cell+  PE-PTR-A PE-IN  PE-PTR-A PE-OUT EPRIM;
+EPRIM: cell+  PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM;
 EPRIM: cell+  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CELL-STEP EPRIM;
 EPRIM: chars  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CHAR-BYTES EPRIM;
-EPRIM: char+  PE-PTR-A PE-IN  PE-PTR-A PE-OUT EPRIM;
+EPRIM: char+  PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM;
 EPRIM: char+  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CHAR-STEP EPRIM;
 
 EPRIM: @          PE-PTR-A PE-IN  PE-A PE-OUT EPRIM;

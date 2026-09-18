@@ -577,7 +577,7 @@ variable MDV-I   variable MDV-F
       MD-CATCH-OPAQUE of s" catch: opaque xt of unknown provenance (fetched from untyped memory)" endof
       MD-RAW-PTR      of s" raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell" endof
       MD-NULL-PTR     of s" null address: nothing is read through NULL-PTR, so it is never a nominal type and never the address of one" endof
-      MD-DBASE-PTR    of s" base address: a cell reached from data-base holds a plain value at every pointee depth, never a nominal type or a pointer" endof
+      MD-DBASE-PTR    of s" base address: a cell reached from data-base, or from a pointer computed off NULL-PTR, holds a plain value at every pointee depth, never a nominal type or a pointer" endof
       MD-RAW-FIELD    of s" ptr-field: base is an undeclared raw storage cell, not a declared pointer cell" endof
       MD-RAW-EXEC     of s" raw storage cell: an undeclared cell cannot hold an execution token / a quotation" endof
       MD-RIGID-REGION of s" rigid host: region mismatch (different allocation)" endof
@@ -793,7 +793,7 @@ variable JPOS  variable JLINE  variable JCOL
      s" E-NONPARAMETRIC-EFFECT habu: in " DTXT  NMA @ NMU @ DTXT
      NPBAD-KIND @ 4 = IF
        s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
-       s" ' is restricted to the DATA region's base address; its declared kind must stay unchanged" DTXT EXIT
+       s" ' is restricted to a base address -- the DATA region, or a pointer computed off NULL-PTR; its declared kind must stay unchanged" DTXT EXIT
      THEN
      NPBAD-KIND @ 5 = IF
        s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
