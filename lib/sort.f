@@ -16,9 +16,6 @@
 
 package SORT
 
-variable HS-NODE                           \ sift-down cursor
-variable HS-I                              \ build / extract loop index
-
 public
 
 : FX@ ( ptr a n -- a ) {: a:ptr idx :}  a idx cells + @ ;
@@ -28,9 +25,9 @@ private
    a ix FX@  a jx FX@  {: vi vj :}
    vj a ix cells + !   vi a jx cells + ! ;
 
-\ Index of the heap-larger child of HS-NODE within heap[0..size), or -1 if a leaf.
-: HS-CHILD ( ptr a n [ a a -- bool ] -- n ) {: a:ptr size q :}
-   HS-NODE @ 2 * 1 + {: left :}
+\ Index of the heap-larger child of node within heap[0..size), or -1 if a leaf.
+: HS-CHILD ( ptr a n n [ a a -- bool ] -- n ) {: a:ptr size node q :}
+   node 2 * 1 + {: left :}
    left 1 + {: right :}
    left size >= if -1 else
       right size >= if left else
@@ -38,25 +35,27 @@ private
       then
    then ;
 
-\ One sift-down step: if HS-NODE precedes its larger child, swap down + continue.
-: HS-STEP ( ptr a n [ a a -- bool ] -- bool ) {: a:ptr size q :}
-   a size q HS-CHILD {: c :}
-   c 0 < if 0 0= 0= exit then
-   a HS-NODE @ FX@  a c FX@  q execute if
-      a HS-NODE @ c FX-SWAP  c HS-NODE !  0 0=
-   else 0 0= 0= then ;
+\ Keep each cursor on its invocation's stack: comparators may themselves sort.
+: HS-STEP ( ptr a n n [ a a -- bool ] -- n bool ) {: a:ptr size node q :}
+   a size node q HS-CHILD {: c :}
+   c 0 < if node false exit then
+   a node FX@  a c FX@  q execute if
+      a node c FX-SWAP  c true
+   else node false then ;
 
 : HS-SIFT ( ptr a n n [ a a -- bool ] -- ) {: a:ptr size root q :}
-   root HS-NODE !
-   begin a size q HS-STEP while repeat ;
+   root begin {: node :} a size node q HS-STEP while repeat drop ;
 
 public
 
 : SORT! ( ptr a n [ a a -- bool ] -- ) {: a:ptr len q :}
-   len 2 / 1 - HS-I !                       \ build the heap from the last parent down
-   begin HS-I @ 0 >= while  a len HS-I @ q HS-SIFT  HS-I @ 1 - HS-I !  repeat
-   len 1 - HS-I !                           \ move the extreme to the tail, shrink, re-sift
-   begin HS-I @ 1 >= while  a 0 HS-I @ FX-SWAP  a HS-I @ 0 q HS-SIFT  HS-I @ 1 - HS-I !  repeat ;
+   len 1 <= if exit then
+   len 2 / 1 -                             \ build the heap from the last parent down
+   begin dup 0 >= while {: root :} a len root q HS-SIFT root 1 - repeat drop
+   len 1 -                                 \ move the extreme to the tail, shrink, re-sift
+   begin dup 1 >= while {: tail :}
+      a 0 tail FX-SWAP a tail 0 q HS-SIFT tail 1 -
+   repeat drop ;
 
 \ Float-ascending convenience (the percentile/median path in lib/stats.f).
 : FSORT! ( ptr r n -- )  [: f< ;] SORT! ;

@@ -5,8 +5,11 @@ require lib/errors.f
 require lib/test.f
 require lib/sort.f
 
+package SORT-TEST
+
 create ST-A 8 cells allot
 create IT-A 8 cells allot
+create INNER 4 cells allot
 
 : ST! ( r n -- ) {: idx:n :} ST-A idx 8 * + ! ;     \ store float at slot
 : ST@ ( n -- r ) {: idx:n :} ST-A idx SORT:FX@ ;
@@ -17,8 +20,19 @@ create IT-A 8 cells allot
       ST-A i SORT:FX@  ST-A i 1 + SORT:FX@  f> if drop 0 0= 0= then
    loop ;
 
+: INNER-LESS? ( n n -- bool )
+   INNER cell+ 2 [: < ;] SORT:SORT! < ;
+
+: TEST-NESTED ( -- )
+   101 INNER ! 2 INNER cell+ ! 1 INNER 2 cells + ! 103 INNER 3 cells + !
+   5 0 IT! 2 1 IT! 9 2 IT! 1 3 IT! 7 4 IT! 107 5 IT!
+   IT-A 5 [: INNER-LESS? ;] SORT:SORT!
+   0 IT@ 1 T= 1 IT@ 2 T= 2 IT@ 5 T= 3 IT@ 7 T= 4 IT@ 9 T= 5 IT@ 107 T=
+   INNER @ 101 T= INNER cell+ @ 1 T= INNER 2 cells + @ 2 T= INNER 3 cells + @ 103 T= ;
+
 : SORT-RUN ( -- )
    T-RESET
+   TEST-NESTED
    \ [3,1,4,1,5] -> [1,1,3,4,5]
    3.0 0 ST!  1.0 1 ST!  4.0 2 ST!  1.0 3 ST!  5.0 4 ST!
    ST-A 5 SORT:FSORT!
@@ -34,6 +48,7 @@ create IT-A 8 cells allot
    \ len 1 and len 0 are no-ops (no crash)
    7.0 0 ST!  ST-A 1 SORT:FSORT!  0 ST@ 7.0 f= T-ASSERT
    ST-A 0 SORT:FSORT!  0 ST@ 7.0 f= T-ASSERT
+   ST-A $8000000000000000 SORT:FSORT! 0 ST@ 7.0 f= T-ASSERT
    \ generic SORT:SORT! with an integer ascending comparator
    5 0 IT!  2 1 IT!  9 2 IT!  1 3 IT!  7 4 IT!
    IT-A 5 [: < ;] SORT:SORT!
@@ -45,3 +60,5 @@ create IT-A 8 cells allot
 
 SORT-RUN
 T-REPORT
+
+;package
