@@ -16,9 +16,10 @@ belong in the language core.
 - Use `jj`, preserve unrelated changes, and commit coherent completed work.
   Use separate workspaces when concurrent edits would conflict. Create Habu
   workspaces under this repository's `.jj-ws/`, never directly under `~/Work/`.
-- Use dots or blackboard only when the task calls for them. Neither is a gate
-  for coding, commits, reviews or ordinary communication. Do not post messages
-  on the user's behalf without authorization.
+- Use dots only when the task calls for them; they are not a gate for coding,
+  commits, reviews or ordinary communication. Agents talk through Herdr session
+  messaging; there is no blackboard. Do not post messages on the user's behalf
+  without authorization.
 
 ## Language and implementation
 

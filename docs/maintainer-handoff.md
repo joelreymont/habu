@@ -16,9 +16,10 @@ for work assignments and dependencies.
 
 ## Identities and channels
 
-The blackboard is `.blackboard` in this repo (`bb`, identity `BB_AGENT`).
-Names in use and never to be reused: cedar, rowan, tender, tender-build,
-kestrel, maki, astra (cedar's reviewers). Pick a fresh name and announce it.
+Agents talk through Herdr session messaging; the `.blackboard` board and the
+`bb` tool were retired on 2026-09-18. Names in use and never to be reused:
+cedar, rowan, tender, tender-build, kestrel, maki, astra (cedar's reviewers).
+Pick a fresh name (see CLAUDE.md, Session start in Herdr).
 
 ## Roots and bookmarks
 
@@ -26,8 +27,8 @@ kestrel, maki, astra (cedar's reviewers). Pick a fresh name and announce it.
   (`jj -R .jj-ws/rowan-root log -r @-`); the workspace keeps its name. On
   2026-09-12 morning it is 04701ef9, lineage a04dd347 → bb7bb027 → 04701ef9.
   Cedar's last independently reviewed root is 5568d9c0.
-- The root advances linearly. Whoever lands on it announces the new tip on
-  the board. No force, no rewriting of landed commits, no `master` move and
+- The root advances linearly. Whoever lands on it tells the owners who wait on
+  it. No force, no rewriting of landed commits, no `master` move and
   no `jj git push` except by hazel at a coherent point (master 2057bcbd and
   origin are far behind).
 - The tracker lives in `.dots/` on the root; `habu-trusted-dies-prim-4fd12d60`
