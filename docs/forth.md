@@ -1224,6 +1224,13 @@ the rule.
   Declare the primitive instead, in the axiom form the engine's own primitives
   use (`PRIM: name PE-… PRIM;`), and the rest of the program still compiles
   checked.
+- **A `defer` in `src/core/checker.f` before `: TRUST` takes a pre-trust
+  pending slot, and the table holds 48** (`src/habu/layout.f PD-CAP`); the
+  file holds 47 today. The 49th dies at boot with exit 72 (`C-PD-DIE-FULL`),
+  and `test/pre-trust-defer.f` appends one to prove it — a lane that added one
+  more defer went red there. Add a selector to an existing hook instead
+  (`SHADOW-DIAG-XT ( n -- )` carries two diagnostics), or place the defer after
+  `: TRUST`.
 - **`MATCH` and the other compile keywords name words, not constants**, even
   inside a package; a `case` default runs with the selector still on the
   stack. Two flags are not compared with `=` (`bool bool` is refused): a test
