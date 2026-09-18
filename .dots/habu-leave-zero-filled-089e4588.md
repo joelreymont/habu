@@ -1,0 +1,9 @@
+---
+title: Leave zero-filled snapshot data out of the image file
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-18T10:26:28.263918+03:00"
+---
+
+Problem: a --repl snapshot image writes its region and DATA payloads verbatim behind the trailer (src/habu/snap-lib.f SNAP:WRITE-BYTES, loader src/habu/habu2.f EM-SNAPSHOT-RESTORE), so every zero cell of every static allot the build reached (checker arenas, the AOT site buffers such as AOT-SITE-BUF at 1.9 MB, lib tables) is written to disk and mapped from the file, and readelf on Tender's 24.6 MB scraper image shows one R+E LOAD segment with filesz equal to memsz; the baked engine avoids this by encoding DATA as zero-gap runs (docs/engine-size.md, A run row is two unsigned LEB128 varints), which is why bin/hb is 3.8 MB. Acceptance: the snapshot payload encodes zero runs the way the engine payload does, or the trailing zero extent travels as memsz beyond filesz with the loader zeroing it, or both, chosen by measurement on Tender's three images (aspen can rebuild them on request) and recorded in docs/native-applications.md with before and after sizes; the loader restores byte-identical memory (fixture: a snapshot round trip compares the restored window against the writer's), the legacy-format refusal rc 80 stays, tools/imgdump.f and test/snapshot-writer.f follow the format, SNAP-FORMAT-VERSION bumps. Files: src/habu/snap-lib.f, src/habu/habu2.f (EM-SNAPSHOT-RESTORE), src/habu/layout.f (trailer geometry), tools/imgdump.f, test/snapshot-writer.f, tools/build-fixpoint-test.f, docs/native-applications.md. Verify: the round-trip fixture; a --repl build of test/ examples; three generations with cmp (habu2.f is baked); test/run.f. Depends: habu-report-where-an-cdcd7976 (measure first). Ownership: snapshot writer. Claim: unassigned.
