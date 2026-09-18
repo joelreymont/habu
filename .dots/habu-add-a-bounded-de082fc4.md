@@ -1,9 +1,0 @@
----
-title: Add a bounded byte copy that carries its capacity
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-09-18T11:20:41.142780+03:00"
----
-
-Problem (aspen for Joel, 2026-09-18, Tender dot Tender-refuse-an-overrun-e2ed1dff): the checker types pointers but not the length of a copy, so every site that moves platform bytes into a buffer writes 'u cap > if E-CAPACITY throw then' by hand before BYTE-COPY, and one forgotten check is an overrun; BYTE-COPY has 298 sites in 53 lib files and more under src/ and tools/, and lib/string.f already refuses its own overruns with E-STR-CAPACITY (-2201, string.f:148,178). Acceptance: lib/string.f (beside the string builder's capacity refusals) publishes BYTES-INTO ( ptr u8 n ptr u8 n -- ) — src u dst cap — which throws E-STR-CAPACITY when u > cap and otherwise BYTE-COPYs exactly u bytes (zero-length admitted; u == cap admitted; the throw carries no partial copy), with a suite (refusal red-first, exact fit, zero length, a hostile length) and a docs/stdlib.md entry stating the rule 'a copy names its destination's capacity'; tools/lint/bare-copy-lint.f (registered like the other tools/lint fixtures) refuses a bare BYTE-COPY in a checked source outside lib/ and src/ with the site and the replacement named, so a consumer tree (Tender first) can run it as a gate; the lint's own fixture; a count of the habu tree's own hand-checked sites that match the pattern (a sweep converting them is a follow-up dot, filed with the count). Naming: BYTES-INTO, so Tender can carry the same spelling in server/ until this lands and delete it after. Files: lib/string.f, lib/string-test.f, docs/stdlib.md, tools/lint/bare-copy-lint.f, tools/lint/bare-copy-lint-test.f, test/gate-stdlib-cases.f. Verify: the suites; the lint on the habu tree (report, do not gate habu's own tree yet); test/run.f. Depends: none. Ownership: lib. Claim: unassigned.
