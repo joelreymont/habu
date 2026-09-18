@@ -30,12 +30,14 @@
 \ and runs as ordinary checked Habu after the check hook is installed. The
 \ parity gate requires it. Reference loops keep their cursors in package
 \ variables because a local cannot be reassigned (src/habu/prims.f does the
-\ same for its own walkers), so no word here is reentrant.
+\ same for its own walkers), so no word here is reentrant. The one dependency is
+\ lib/errors.f, for the refusal code DIVREM shares with the primitive it mirrors.
+
+require lib/errors.f                    \ E-DIV-ZERO
 
 package PRIM-REF
 private
 
-$4C constant REF-RC                     \ EX_PROTOCOL, as prims.f uses for its own wall
 $8000000000000000 constant SIGN-BIT
 $4000000000000000 constant SIGN-HALF    \ the sign bit one place down
 $3F constant SHIFT-MASK                 \ shift counts are taken modulo the cell width
@@ -210,12 +212,16 @@ public
 \ `/mod`'s order, measured: remainder under quotient. Division truncates toward
 \ zero, so the remainder carries the dividend's sign.
 \
-\ A zero divisor has no value semantics to reference: the engine does not refuse
-\ it by name, it terminates the process (measured: SIGTRAP crash dump, exit
-\ 134), so this word dies rather than inventing a quotient. The gate cannot
-\ hold that case in process and says so.
+\ A zero divisor has no quotient to reference, so this word refuses it with the
+\ code the engine's own bodies throw (E-DIV-ZERO), and the gate catches both
+\ sides and compares the codes like any other pair of answers.
+\
+\ MIN-N -1 NEEDS NO CASE OF ITS OWN. MAGN(MIN-N) is 2^63, MAGN(-1) is 1, so the
+\ unsigned division answers 2^63, and the two operands' signs agree, so nothing
+\ negates it: the cell that comes back is MIN-N -- the modular answer the
+\ primitive's SDIV gives (docs/forth.md).
 : DIVREM ( n n -- n n ) {: num:n den:n :}
-   den 0= IF s" prim-ref: division by zero" REF-RC die THEN
+   den 0= IF E-DIV-ZERO throw THEN
    num MAGN den MAGN UDIVMOD {: uq:n ur:n :}
    ur num 0< IF NEG THEN
    uq num 0< den 0< xor IF NEG THEN ;

@@ -47,14 +47,15 @@
 \ Rows with no case set are printed by name at the end; the gate reports that
 \ gap rather than failing on it.
 \
+\ A REFUSAL IS A CASE TOO. A primitive that rejects its inputs is pinned by the
+\ code it throws, not by a value: `NN-THROWS` runs the arm under `catch` and the
+\ case column is the expected throw code, so the two dividing refusals below read
+\ like any other row and the reference is held to the same code.
+\
+\     CASES /
+\             7       0   E-DIV-ZERO  NN-THROWS
+\
 \ WHAT THIS GATE CANNOT HOLD.
-\ - A zero divisor. `7 0 /` does not refuse by name: it terminates the engine
-\   (measured on arm64: SIGTRAP crash dump, exit 134), so an in-process case
-\   would take the gate with it. PRIM-REF:DIVREM dies on it rather than
-\   inventing a quotient.
-\ - `MIN-N -1 /`. arm64 answers MIN-N; an x86_64 `idiv` traps on it. Pinning
-\   either would hand the other backend a crash instead of a red line, so the
-\   divergence is recorded here and decided when that backend exists.
 \ - I/O, syscalls, process, code publication, profiler, engine-state and FFI
 \   rows. They have no (inputs -> outputs) case and no honest reference; several
 \   are TRUSTED-only or owner-private and a checked gate cannot even name them.
@@ -62,6 +63,7 @@
 
 require lib/test.f
 require lib/string.f
+require lib/errors.f                    \ E-DIV-ZERO, the dividing rows' refusal
 require src/habu/prim-ref.f
 
 package PARITY
@@ -95,6 +97,11 @@ variable NPRINT
 variable NCOVER
 variable NREF
 variable NPRIM-ROWS
+
+\ A refusing case's two operands. They are cells and not locals because the arm
+\ runs inside the quotation `catch` takes, and a quotation captures nothing.
+variable DV-A
+variable DV-B
 
 $3A constant COLON-B
 
@@ -328,6 +335,22 @@ $3A constant COLON-B
    na nu s" /mod" STR= IF a b PRIM-REF:DIVREM EXIT THEN
    s" divmod reference" na nu NO-ARM ;
 
+\ ---- two numbers in, a refusal out -------------------------------------------
+\ The arm answers the code the primitive threw. Each drops whatever the body
+\ left, so a primitive that wrongly ANSWERS is caught by the code comparison
+\ (`catch` gives 0) rather than by an unbalanced stack further down the gate.
+: NN-THROW-PRIM ( ptr u8 n -- n ) {: na:ptr nu:n :}
+   na nu s" /"    STR= IF [: DV-A @ DV-B @ /    drop  ;] catch EXIT THEN
+   na nu s" mod"  STR= IF [: DV-A @ DV-B @ mod  drop  ;] catch EXIT THEN
+   na nu s" /mod" STR= IF [: DV-A @ DV-B @ /mod 2drop ;] catch EXIT THEN
+   s" refusing binary" na nu NO-ARM ;
+
+: NN-THROW-REF ( ptr u8 n -- n ) {: na:ptr nu:n :}
+   na nu s" /"    STR= IF [: DV-A @ DV-B @ PRIM-REF:DIV    drop  ;] catch EXIT THEN
+   na nu s" mod"  STR= IF [: DV-A @ DV-B @ PRIM-REF:REM    drop  ;] catch EXIT THEN
+   na nu s" /mod" STR= IF [: DV-A @ DV-B @ PRIM-REF:DIVREM 2drop ;] catch EXIT THEN
+   s" refusing binary reference" na nu NO-ARM ;
+
 \ ---- memory ------------------------------------------------------------------
 \ One scenario per row over the file's own fixtures: the case value goes in
 \ through the primitive under test and comes back out, so a store row is read
@@ -435,6 +458,12 @@ public
       r2 w2 T=
       LBL-REF r1 w1 T=
    THEN ;
+
+: NN-THROWS ( n n n -- ) {: a:n b:n want:n :}
+   CASE+
+   a DV-A !  b DV-B !
+   LBL-PRIM SUBJ$ NN-THROW-PRIM want T=
+   REF? IF LBL-REF SUBJ$ NN-THROW-REF want T= THEN ;
 
 : MEM ( n n -- ) {: v:n want:n :}
    CASE+
@@ -561,7 +590,8 @@ CASES *
 ;CASES
 
 \ Truncated toward zero, so the remainder carries the dividend's sign. A zero
-\ divisor is not a case: it terminates the engine (see the header).
+\ divisor is refused by name and MIN-N -1 wraps: both are contracts every backend
+\ answers, stated in docs/forth.md.
 CASES /
            7           2                   3  NN-N
           -7           2                  -3  NN-N
@@ -570,6 +600,9 @@ CASES /
            6           3                   2  NN-N
            0           5                   0  NN-N
        MAX-N           2   $3FFFFFFFFFFFFFFF  NN-N
+       MIN-N          -1               MIN-N  NN-N     \ wraps
+           7           0          E-DIV-ZERO  NN-THROWS
+       MIN-N           0          E-DIV-ZERO  NN-THROWS
 ;CASES
 
 CASES mod
@@ -578,6 +611,8 @@ CASES mod
            7          -2                   1  NN-N
           -7          -2                  -1  NN-N
            6           3                   0  NN-N
+       MIN-N          -1                   0  NN-N     \ the wrapped quotient's remainder
+           7           0          E-DIV-ZERO  NN-THROWS
 ;CASES
 
 CASES /mod
@@ -585,6 +620,8 @@ CASES /mod
           -7           2              -1    -3  NN-NN
            7          -2               1    -3  NN-NN
           -7          -2              -1     3  NN-NN
+       MIN-N          -1               0 MIN-N  NN-NN   \ wraps
+           7           0          E-DIV-ZERO  NN-THROWS
 ;CASES
 
 CASES and

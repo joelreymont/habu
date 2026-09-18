@@ -164,6 +164,10 @@ STACK-ABI:LOOP-BYTES STACK-ABI:LOOP-FRAME-BYTES / constant STACK-ABI:LOOP-FRAMES
 \ mirror carries stack-abi.f's spelling exactly, never a second name for it.
 -3802 constant STACK-ABI:E-STACK-UNGUARDED
 
+\ The dividing primitives' refusal code, carried here for the same reason and in
+\ src/habu/arith-abi.f's spelling: lib/errors.f E-DIV-ZERO owns it.
+-6400 constant ARITH-ABI:E-DIV-ZERO
+
 $40 constant STACK-ABI:CATCH-BASE
 $48 constant STACK-ABI:CATCH-CAP
 $50 constant STACK-ABI:CATCH-BYTES
@@ -540,6 +544,7 @@ PRIM-NAME-PAD DNAME-INL erase
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN  variable SRCA
 variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LPROTWIDQ  variable LFLUSH variable LNCOUNT
+variable LDIVZERO                       \ the dividing bodies' refusal routine
 variable LADDSUBIMM   \ the shared add/sub-immediate emitter (EMIT-ADDSUB-IMM): every transfer offset folds through it
 \ control-flow JIT helpers + keyword data labels (self-host 1b)
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
@@ -1017,7 +1022,12 @@ variable BAND-IX
 
 : BRSH ( -- ) B G-POP A G-POP  A A B LSRV, A G-PUSH ;
 
-: BDIV0? ( -- ) LBL {: lok :} B lok CBNZ, BRK, lok LBL, ;   \ SDIV by 0 silently yields 0; trap a zero divisor (B)
+\ MIRROR of src/habu/habu1.f. SDIV by 0 silently yields 0, so the divisor (B) is
+\ tested; a zero divisor is the caller's error, so the guard branches to the
+\ shared refusal routine (EMIT-DIV-ZERO below, which inlines BTHROW) instead of
+\ trapping the process. Out of line so the divide stays two instructions past
+\ the test. MIN-N -1 / is MIN-N, the modular answer SDIV gives (docs/forth.md).
+: BDIV0? ( -- ) LBL {: lok :} B lok CBNZ, LDIVZERO @ BL, lok LBL, ;
 
 : BDIV ( -- ) B G-POP A G-POP  BDIV0?  A A B SDIV, A G-PUSH ;
 
@@ -1507,6 +1517,14 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
    9 ldone CBZ,
    9 G-PUSH  BTHROW                      \ the body's throw goes on
    ldone LBL, ;
+
+\ The dividing primitives' refusal ( no arguments; never returns ). MIRROR of
+\ src/habu/habu1.f EMIT-DIV-ZERO: `/`, `mod` and `/mod` branch here when their
+\ divisor is zero, so the throw exists once and their bodies grow by nothing.
+\ It inlines BTHROW, which is why it sits here and not beside the bodies.
+: EMIT-DIV-ZERO ( -- )
+   LDIVZERO @ LBL,
+   9 ARITH-ABI:E-DIV-ZERO LIT64,  9 G-PUSH  BTHROW ;
 
 : BWORDLIST ( -- )  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
 
@@ -7595,6 +7613,7 @@ variable P2SK
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LFINDUSED !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LADDSUBIMM !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
+   LBL LDIVZERO !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !
    LBL LDEFKWGUARD !  LBL LDEFKWFAIL ! ;
@@ -7715,6 +7734,7 @@ variable P2SK
    EMIT-ADDSUB-IMM
    EMIT-BCAP
    EMIT-TOK
+   EMIT-DIV-ZERO
    EMIT-PROT
    EMIT-PROTWID
    EMIT-FLUSH

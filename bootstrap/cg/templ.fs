@@ -51,6 +51,9 @@ $100000 constant HEAPSZ
 \ Native SDIV by 0 silently yields 0; gforth THROWS. Trap on a zero divisor so a
 \ miscompile can't pass off wrong data as a result (exact gforth exit code isn't
 \ matched — both error, different mechanism). T1 holds the divisor here.
+\ THIS STAGE STAYS A TRAP, unlike the engine's own `/` (src/habu/habu1.f BDIV0?,
+\ which throws E-DIV-ZERO): these templates compile Habu to native BEFORE any
+\ engine exists, so there is no catch/throw runtime here to raise a code into.
 : G-DIV0? ( -- )  LBL {: lok :}  T1 lok CBNZ,  BRK,  lok LBL, ;
 
 : P-DIV   T1 G-POP  T0 G-POP  G-DIV0?  T0 T0 T1 SDIV, T0 G-PUSH ;

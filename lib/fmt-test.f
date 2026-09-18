@@ -51,6 +51,7 @@ package FMT
    0     s" 0"      T-INT
    STR-MAX-I64 s" 9223372036854775807" T-INT  \ i64 max
    STR-MIN-I64 s" -9223372036854775808" T-INT \ i64 min: no positive magnitude, table-emitted
+   STR-MIN-I64 1+ s" -9223372036854775807" T-INT \ its neighbour, which negates without overflowing
    3.14    2 s" 3.14"   T-FIX
    0.5     3 s" 0.500"  T-FIX
    -2.5    1 s" -2.5"   T-FIX

@@ -59,6 +59,7 @@ $F2E00009 constant W-MOVK3
 \ Pass-2 transaction cells are defined as one protected band in layout.f.
 \ --- primitive registry (build-side, for the seed dictionary) ---
 require src/habu/primitive-registry.f
+require src/habu/arith-abi.f            \ E-DIV-ZERO, the dividing bodies' refusal
 require src/habu/task-abi.f
 require src/habu/code-span.f
 PTR-VARIABLE FP-A  variable FP-U
@@ -186,6 +187,7 @@ variable GD-MIN
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
 variable LCEMIT   variable LCEMITBL  variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
+variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
 \ The number EMIT-DICT actually bakes into LNCOUNT, kept so a later emitter can
 \ use the seeded table's own size instead of re-reading the primitive registry.
 \ The two are the same number only while nothing registers a primitive between
@@ -599,7 +601,6 @@ variable TIME-OK
 variable PS-LOOP
 variable PS-DONE
 variable CMP-COND
-variable DIV-OK
 variable PRIM-DONE
 variable RSTK-REG
 variable DP-REG
@@ -1614,9 +1615,22 @@ variable SZA-I
 : BRSH ( -- )
    B G-POP A G-POP  A A B LSRV, A G-PUSH ;
 
+\ SDIV BY ZERO SILENTLY YIELDS ZERO on arm64, so the divisor (B) is tested. A
+\ zero divisor is a CALLER error the program can fix and recover from -- the
+\ divisor came from the program's own arithmetic -- so the guard branches to the
+\ engine-resident (DIV-ZERO) helper, which throws ARITH-ABI:E-DIV-ZERO, instead
+\ of trapping the process. The helper is a separate span BECAUSE THE GUARD MUST
+\ COST NOTHING: inlining the throw would put forty instructions of BTHROW
+\ between the test and the SDIV and push the divide out of the body's first
+\ cache lines (measured: 8.7% on a million-division loop). One branch, as
+\ before, and the three bodies keep their size.
+\
+\ MIN-N -1 / IS MIN-N, the modular answer SDIV gives, like the wrap `+`, `-` and
+\ `*` already make (docs/forth.md). It is not a second refusal: a guard for it
+\ would cost every division a compare no caller in this tree can fail.
 : BDIV0? ( -- )
-   LBL DIV-OK !
-   B DIV-OK LABEL@ CBNZ, BRK, DIV-OK LABEL@ LBL, ;   \ SDIV by 0 silently yields 0; trap a zero divisor (B)
+   LBL {: ok:label :}
+   B ok CBNZ,  LDIVZERO LABEL@ BL,  ok LBL, ;
 
 : BDIV ( -- )
    B G-POP A G-POP  BDIV0?  A A B SDIV, A G-PUSH ;
@@ -3620,6 +3634,21 @@ package ENGINE-EMIT
    RET,
    end LBL, ;
 
+\ The dividing primitives' refusal ( no arguments; never returns ). `/`, `mod`
+\ and `/mod` each test their divisor and branch here when it is zero, so the
+\ throw exists ONCE and their bodies grow by nothing: the guard is the same two
+\ instructions the trapping version had. Registered as the sealed (DIV-ZERO)
+\ engine helper for the same reason (PROT-SPAN) is -- a direct branch out of a
+\ primitive has to be a record the ahead-of-time closure walker can follow.
+\ It inlines BTHROW, which is why it sits here and not beside the bodies.
+: EMIT-DIV-ZERO ( -- )
+   LDIVZERO LABEL@ {: start:label :}
+   LBL {: end:label :}
+   s" (DIV-ZERO)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   start LBL,
+   9 ARITH-ABI:E-DIV-ZERO LIT64,  9 G-PUSH  BTHROW
+   end LBL, ;
+
 \ ---- the region's write bands --------------------------------------------------
 \ The region mapping holds three things a compile bracket writes, and they are far
 \ apart: the dictionary records low down, the control-flow stack just under the
@@ -3900,7 +3929,8 @@ package ENGINE-EMIT
    LPROTREC LABEL@ LBL,
    0 9 14 LSRI,  0 0 14 LSLI,  1 $8000 MOVZ,  NR-MPROTECT SYS,  RET,
    EMIT-PROT-WINDOW
-   EMIT-PROT-SPAN ;
+   EMIT-PROT-SPAN
+   EMIT-DIV-ZERO ;
 
 ;package
 

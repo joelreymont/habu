@@ -975,6 +975,59 @@ address arithmetic at the public boundary.
   `img -- img` or `fd -- fd` must not satisfy final output by binding an implicit
   base row that hides underflow.
 
+## Integer arithmetic
+
+Cells are two's-complement 64-bit. `+`, `-` and `*` **wrap**: they are the
+modular operations, they never refuse, and `MAX-N 1 +` is `MIN-N`. Division is
+the one partial operation, and its two boundary cases are contracts every
+backend answers the same way.
+
+- **A zero divisor throws `E-DIV-ZERO`.** `/`, `mod` and `/mod` — the only
+  dividing primitives — test the divisor and throw `E-DIV-ZERO` (`lib/errors.f`;
+  `src/habu/prims.f` re-registers the same code for the engine emitters, which
+  compile before `lib/` exists). It is an ordinary catchable throw, so a checked
+  program recovers from it like any other refusal:
+
+  ```forth
+  [: a b / drop ;] catch E-DIV-ZERO = if … then
+  ```
+
+  It is a throw and not a process exit because the divisor came from the
+  program's own arithmetic: there is a caller who can fix it. The cost is
+  nothing — the guard is the cold side of a compare-and-branch that was already
+  there to stop arm64's `sdiv` from silently answering zero.
+
+  When a divisor is structurally positive, say so in the type instead of
+  catching: `lib/num-arithmetic.f` carries a `positive-divisor` role whose whole
+  point is that the refusal becomes unreachable.
+
+- **`MIN-N -1 /` is `MIN-N`, and `MIN-N -1 mod` is `0`.** The quotient
+  `2^63` has no cell, so the answer wraps, exactly as `+`, `-` and `*` wrap.
+  It is deliberately *not* a second refusal: guarding it would cost every
+  division in the tree a compare, and no caller in the tree can reach it (every
+  divisor is a positive literal, a positive named constant, a count or a
+  `positive-divisor`). A backend whose divide instruction traps on this quotient
+  — x86_64's `idiv` does — must test for the `-1` divisor and answer
+  `(MIN-N, 0)` without executing it. `test/prim-parity.f` pins both contracts
+  against the reference implementation.
+
+- **Tier-1 compiled code and AOT executables still trap on a zero divisor.**
+  The refusal above is the engine's primitive. The native compiler's own
+  division lowering (`src/compiler/native/emit.f PUT-SDIV`) emits its own guard,
+  and that guard is still a `brk`: a word compiled with `1 set-tier`, and every
+  AOT-built executable, dies with the crash handler's register dump instead of
+  throwing. Closing that gap needs a throw-raising trap form in the emitter,
+  which the native compiler does not have yet — it has no `throw` lowering at
+  all, only `NTRAP`, which dies. Until then, do not rely on catching
+  `E-DIV-ZERO` inside an AOT-built program.
+
+- **`.` prints every cell, `MIN-N` included.** The signed printer negates and
+  then divides **unsigned**, because `MIN-N` is the one cell whose negation
+  overflows back to itself; a signed divide there wrote bytes below `'0'`. The
+  checked renderer (`FMT:SB-INT`) reaches the same value from the other side,
+  through a canonical digit table, since `MIN-N` has no positive magnitude to
+  negate into.
+
 ## Errors
 
 - Engine process failures use only the sealed `ENGINE-ERROR` package ABI:

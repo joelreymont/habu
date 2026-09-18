@@ -355,6 +355,13 @@ SUITE prim-parity
    test/prim-parity.f
 ;SUITE
 
+\ The engine's own `.` and `u.` over MIN-N, read back through a genio device.
+\ The parity gate cannot hold these: a printer's answer is text on a device, not
+\ a cell a case column can state.
+SUITE print-min-int
+   test/print-min-int.f
+;SUITE
+
 \ WHITEBOX-SUITE runs the file on the unsealed engine test/whitebox-engine.f
 \ builds once per gate, never on bin/hb. Declare one when the suite reaches
 \ inside the engine it tests - a reopened engine package, a pre-hook global, a

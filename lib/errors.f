@@ -312,6 +312,13 @@ public
 -6300 constant E-JRP-SAMPLE      \ sample stored out of workload order or past the declared total
 -6301 constant E-JRP-RANGE       \ workload or sample index outside the sample table
 
+\ Engine arithmetic: -6400..-6499
+-6400 constant E-ARITH-FIRST
+-6499 constant E-ARITH-LAST
+-6400 constant E-DIV-ZERO       \ `/`, `mod` or `/mod` given a zero divisor (thrown by the
+                                \ engine's own primitive bodies in src/habu/habu1.f through
+                                \ the same (code, name) re-registered in src/habu/arith-abi.f)
+
 \ Native test runner (package TEST): -6500..-6599
 -6500 constant E-TR-FIRST
 -6599 constant E-TR-LAST

@@ -195,6 +195,13 @@ variable GO-DEV  variable GO-DONE
 
 \ print x9 as signed decimal + newline (itoa into an sp buffer, then out through
 \ G-OUT). clobbers x9-x14 + 32 bytes of sp scratch; preserves XDS.
+\
+\ THE DIGIT LOOP DIVIDES UNSIGNED. A negative value is negated first, and MIN-N
+\ is the one cell whose negation overflows: `0 - MIN-N` is MIN-N again, still
+\ negative. UDIV reads that pattern as the magnitude it is (2^63), so the digits
+\ come out right for MIN-N and unchanged for every other value, whose magnitude
+\ after the negate is a positive cell either way. A signed divide here printed
+\ MIN-N as bytes below '0' (dot habu-print-min-int-074e1c48).
 : G-PRINT9 ( -- )
    LBL RT-LPOS !  LBL RT-LLOOP !  LBL RT-LDONE !
    SP SP $20 SUBI,  12 SP $20 ADDI,
@@ -204,7 +211,7 @@ variable GO-DEV  variable GO-DONE
    14 1 MOVZ,  9 SP 9 SUB,  RT-LPOS LABEL@ LBL,
    10 $A MOVZ,
    RT-LLOOP LABEL@ LBL,
-   11 9 10 SDIV,  13 11 10 MUL,  13 9 13 SUB,
+   11 9 10 UDIV,  13 11 10 MUL,  13 9 13 SUB,
    13 13 $30 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
    9 11 0 ADDI,  9 RT-LLOOP LABEL@ CBNZ,
    14 RT-LDONE LABEL@ CBZ,
