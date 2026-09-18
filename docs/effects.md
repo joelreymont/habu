@@ -372,9 +372,13 @@ cell), dot `habu-refuse-ptr-field-331a9731`; and `byte-view`/`cell-view` are
 type-level renames, so a scalar store through a view of a *declared* pointer
 cell (`V BYTE-VIEW CELL-VIEW !`) puts an integer in the cell the rule
 prescribes, dot `habu-refuse-a-scalar-030be3ad`. Both bottom out in the same
-missing facility: the language has no nominal record type, so a record that
-mixes a pointer field with scalar fields is expressed by casting one of the two,
-and the cast is the launder.
+missing facility: a record that mixes a pointer field with scalar fields has no
+declared form, so one of the two halves is expressed by a cast, and the cast is
+the launder. `docs/type-system.md` § 10 is the design that closes them — a
+declared memory record whose fields carry their offsets and types into the
+checker, after which `ptr-field` admits only a declared pointer cell and a view
+refuses a pointer pointee. `test/record-launder-probe.f` measures both launders,
+the refusals that did land, and the field reads the design must preserve.
 
 ## Examples
 

@@ -388,7 +388,505 @@ reads worse than it should. The factoring idioms in `docs/forth.md` are the
 answer for now: when the juggling gets deep, the real fix is almost always
 another small word whose entry consumes the bundle.
 
-## 10. Where the deep detail lives
+## 10. Declared memory records
+
+Everything above is about **values**: a `STRUCTURE` is a bundle of cells that
+travels on the stack. This section is about the other kind of record — a
+contiguous region of memory, addressed by one pointer, whose fields are read and
+written in place. The tree is full of them: a vector header, a reader state, a
+task control block, a connection record. None of them is declared today, and
+this section is the design for declaring them.
+
+It is a design, not a description. Where it says something was measured, it was
+run on the engine this document ships with; where it says a word will be
+generated, nothing generates it yet.
+
+### 10.1 The problem in one sentence
+
+A memory record that mixes a **pointer field** with **scalar fields** has no
+declared form, so the tree expresses it by casting one of the two halves — and
+each cast is a hole the raw-storage rule (`docs/effects.md`, "Raw storage never
+holds an address") cannot close.
+
+**Cast A — `ptr-field`.** The primitive's row is `( ptr a n -- ptr ptr b )` with
+`b` free, so it manufactures a fully typed pointer out of any base. Applied to a
+base the checker only knows as a parameter, it launders an integer:
+
+```forth
+create RLP-RAW 3 cells allot
+: RLP-FIELD-A ( ptr a -- ptr ptr u8 ) 0 ptr-field ;   \ what PTR-FIELD: generates
+: L1 ( n -- u8 ) RLP-RAW ! RLP-RAW RLP-FIELD-A @ c@ ; \ certifies
+```
+
+`src/core/structures.f` `PTR-FIELD:` generates exactly that helper, so the
+legitimate form and the bypass are the same shape. The token-level refusal that
+did land only sees a base named *at* the `ptr-field` token, and a parameter
+hides it.
+
+**Cast B — `byte-view` / `cell-view`.** Both are type-level renames, so the pair
+reads a declared pointer cell as a scalar cell. That is how the tree reaches the
+count cells behind a declared head, and it is also how an integer gets into the
+very cell the rule prescribes:
+
+```forth
+PTR-VARIABLE RLP-HEAD 0 , 0 ,
+: L3 ( n -- ) RLP-HEAD BYTE-VIEW CELL-VIEW ! ;                \ certifies
+: L4 ( n -- u8 ) RLP-HEAD BYTE-VIEW CELL-VIEW ! RLP-HEAD @ c@ ; \ certifies
+```
+
+`test/record-launder-probe.f` pins both launders, the refusals that did land,
+and the six legitimate field reads a record must preserve. The same two are
+suite rows `V8` and `V9` of
+`test/typed-storage-structural-test.f`. Dots `habu-refuse-ptr-field-331a9731`
+and `habu-refuse-a-scalar-030be3ad`.
+
+### 10.2 What already exists, measured
+
+Four facts decided the design. Each was run on the release engine.
+
+**A mixed record is already declarable and storable.** A layout family with a
+pointer field and scalar fields loads, in a public or a private package, and the
+storage definers accept it:
+
+```forth
+STRUCTURE rec 0  FIELD data ptr u8  FIELD len n  FIELD cap n  ;STRUCTURE
+TYPED-VARIABLE ZRV ZZ:rec        \ ( -- ptr ZZ:rec )
+1 TYPED-BUFFER ZRB ZZ:rec        \ ( n -- ptr ZZ:rec )
+TYPED-VARIABLE ZRP ptr ZZ:rec    \ a cell holding a record pointer
+```
+
+**A record pointer already refuses both casts.** A layout pointee does not unify
+with a one-cell type variable, so neither row admits it:
+
+```
+habu: in z2: at 'ptr-field' expected: ptr a n actual: ptr zz:rec<> n
+habu: in z3: at 'BYTE-VIEW' expected: ptr a actual: ptr zz:rec<>
+```
+
+So the fence the two dots are trying to build already stands on the far side of
+a declaration. What is missing is not the fence; it is the door.
+
+**The only field access today is whole-value.** `( ptr ZZ:rec -- n ) @
+ZZ-REC:UNMAKE drop nip` certifies, including for a caller-supplied base, and
+writing one field means `UNMAKE`, rebuild with `MAKE`, store the whole record.
+That is why no mixed record in the tree is declared: the declaration costs a
+full load and store per field access and forbids in-place mutation. Indexing is
+gone too — `( ptr ZZ:rec n -- ptr ZZ:rec ) 3 cells * +` is refused, because
+`+`'s pointer row is `( ptr a n -- ptr a )`.
+
+**The checker half of the field door is already implemented.**
+`field-project` is a reserved checker operation (`src/core/checker.f`, the
+`FIELD-PROJ-STEP` window; hook bound in `src/core/type-family.f`). Inside an
+armed window it consumes `ptr family<args>` plus a baked byte-offset literal and
+produces `ptr <instantiated field type>`, deriving the field's owning family,
+offset, extent, role and schema from the committed field id by `TYPE-FIELD`
+reflection. `test/field-proj-suite.f` pins the positives — a cell field, a
+byte-offset field, a **pointer** field (`FIELD p ptr u8` projects as
+`( ptr fpptr -- ptr ptr u8 )`), a generic field substituted at the caller's
+instantiation — and the negatives, red-first: unarmed use, a forged offset, an
+offset past the family width, a non-layout pointer, a foreign family, a wrong
+arity, a role or output mismatch, an uncommitted id. `docs/type-families.md` §2.2
+documents it and names the missing half: the accessor generator, tracker id
+`habu-structure-generate-field-b9dc52f8`.
+
+So this design is not a new facility. It is the generator, three small words
+around it, and a migration.
+
+### 10.3 The survey
+
+Every memory record in the tree that mixes a pointer field with a scalar field,
+measured 2026-09-18 by reading the definers and loading probes on `bin/hb`.
+"Tier" is where the file sits in the boot prefix, because that decides what a
+record may use:
+
+- **T1** — the pre-arm prefix, `src/core/util.f` through `src/core/include.f`.
+  `include.f` arms `TDECL-EVAL-ARMED` at the end of the file, and a family's
+  constructor generation dies without it, so **no record facility is usable
+  anywhere in T1** — including `src/core/checker.f` (the 9th file, loaded before
+  families exist at all) and `src/core/dynamic-storage.f` (in
+  `PFX-LOAD-CORE-FILES`, before `include.f`).
+- **T2** — the post-arm prefix, `src/core/enums.f` through
+  `src/core/layout-buffer-seal.f`, then the boot stdlib.
+- **T3** — everything else: `src/compiler/`, `src/habu/*`, `src/arch/`, `lib/`,
+  `tools/`, `test/`.
+
+Totals: **31 distinct mixed records** (14 under `src/`, 16 under `lib/`, 1 under
+`tools/`), plus 13 `tools/` pointer-slot families over ~60 call sites, plus the
+reserved engine-layout cells read through the same cast — 17 sites in `src/`,
+1 in `tools/`, 10 in `test/`. Cast-A call sites whose base is a declared
+`( ptr a … )` / `( ptr n … )` parameter: **~75**. Cast-B sites over a
+pointer-bearing base: ~70 in `src/`, ~40 in `lib/`, ~25 in `tools/` and `test/`.
+
+#### src/
+
+| record | fields (cell offset : type) | cast | tier | persisted |
+|---|---|---|:--:|---|
+| SYM row, `checker.f:4370-4467` | 0 `ptr u8`, 1 n, 2 `ptr u8`, 3 n, 4 enum | A×2, B×3 | T1 | yes — `REG-PERSIST-BUF`, `ptr-cell-mark` per row |
+| CWIN call window, `checker.f:1309` + `cell-effects.f:43` | 0 `ptr n`, 1 n, 2 n | B×8 | T1 | in DATA across capture |
+| declaration-owner record + cells `$360`/`$368`, `checker.f:6-7,118-127` | two head cells `ptr u8`; record: magic/len at −$10/−$8, xts at $48/$70/$78 | A×7, B×7 | T1 head, T3 readers | yes — `ptr-cell-mark`, AOT-captured |
+| transaction state, `declaration-transaction.f:80-105` | 0 `ptr n`, 1–10 n, 11 xt | A×1 | T1 | yes (xt cells) |
+| DYNAMIC-STORAGE registry, `dynamic-storage.f:44-58` | 0 n capacity, 1..n `ptr ptr a` | A×1 | T1 | no |
+| DYNAMIC-BUFFER control, `dynamic-storage.f:1-11`, generated by `layout-buffer.f:517-535` | 0 `ptr a` declared head, 1 n cap, 2 n slot | B (`CTL`, and the generated `cell+ byte-view cell-view @`) | T1 runtime | no — unmapped before capture |
+| include frame, `include.f:695-724` | 0 `ptr u8`, +8 byte flag, +16 buffer | A×2 | T1 | no |
+| startup DATA, `env-base.f:6-24` | $3670 n, $3678 `ptr ptr u8`, $3680 `ptr ptr u8` | A×4 | T1 | engine DATA |
+| generated-decl frame row, `generated-declaration-dictionary.f:25-43` | 0 n, 1 n, 2 `ptr a` | A×1 | T2 | persisted head; DP nulled before capture |
+| NSTR pool owner, `compiler/native/string.f:22-37` | 0 `ptr u8`, 1 `ptr u8`, 2–4 n, $28 arrays | A×2, B×5 | T3 | yes — hand `ptr-cell-mark` |
+| IR arena descriptor, `compiler/ir/arena.f:142-154` | 5 `ptr u8`; 0–4, 6, 7 n | A×1, B×31 | T3 | persisted head |
+| IR symbol index, `compiler/ir/symbol.f:306-316` | 2 `ptr u8`; 0, 1 n | A×1, B | T3 | no |
+| AOT dict record (48 B), `aot-closure.f:105-107,223` | 0 code `ptr u8`, 8 n, 16 n, 24 bytes, 40 wid | A×1, B×4 | T3 | AOT-captured |
+| address-cell vector header, `address-cells.f:159-195` | magic/mode/cap n, base as a DATA offset | B | T3 | the relocation machinery itself |
+| engine-layout pointer/count pairs | `CK-AOT-SIG-POOL`+`-LEN`; `TCSIG-A`/`TSIG-A`+`TSIG-U`; `AOT-SPAN:TABLE`+`N`; `AOT-SPAN:BASE` (read **both** ways, `aot-closure.f:242` vs `:243`); stepper INP/INE; `SIGNAL-ABI` FD-PTR/STUB; `NULL-PTR-CELL` itself | A — 17 `data-base <const> + … ptr-field` sites in `src/`, 1 in `tools/`, 10 in `test/` | T1 and T3 | several `ptr-cell-mark`ed |
+
+#### lib/ — all T3
+
+| record | pointer fields | scalar fields | cast | storage | persisted |
+|---|---|---|:--:|---|---|
+| `BUF` header, `byte-buffer.f:26,52-56` | 0 `ptr u8` | 1 len, 2 cap | A, B | caller `create`d; also embedded at cells 8–10 of the xmodem session | no |
+| `VEC` header, `vector.f:6-10` | 0 `VEC.DATA` | 1 len, 2 cap | `PTR-FIELD:`, B | `create`d **and** `TYPED-BUFFER … ptr u8` elements | no |
+| `EDIT` header + row, `byte-edit.f` | hdr 0, row 2 | hdr 1–6, row 0/1/3 | A×7 | caller `create`d | no |
+| `JR` reader, `json-read.f:148-170` | 0 and 8 | 1–7, 9–17, ctx stack | A×12 | caller `create`d | no |
+| `XML` reader, `xml/state.f:12-37` | 0 | 1–20 + arrays | A×3 | caller `create`d | no |
+| xmodem session, `serial-xmodem.f:29-45` | 12 `ptr u8`, 15 `ptr a` | 0–7, 11, 13–18, nested `BUF` at 8–10 | A×2, B×13 | caller `create`d | no |
+| ZIP node + entry/buffer overlays, `zip-state.f`, `zip-raw.f` | 0, 2, 3, 4, 6, 8, 10, 18, 22 | 1, 5, 7, 9, 11–17, 19–21, 23–27 | A×11 | **mmap** per node | closed at `IMAGE-LIFECYCLE` |
+| ZIP member, `zip-raw.f:47-57` | 7 | 0–6, 8–10 | A, B | mmap | no |
+| `MAP` slot + header, `map.f` | slot 2 | slot 0/1/3/4, hdr 0–2 | A×2, B | caller `create`d | no |
+| `TBL` pair, `table.f:68-87` | field n | field n+1 len | A×2, B | caller-supplied | no |
+| `BUILD` step, `build.f:30-41` | 0, 2, 4, 6, 8 | 1, 3, 5, 7, 9, 10 | A×2 | caller `create`d | no |
+| **TCB**, `task.f:61-91` | STACK, REGION, RSTACK, LSTACK, MSG-SENDER | ~20 scalars **plus inline semaphore byte blobs** | `PTR-FIELD:`×5, B | definer-compiled dictionary | in the image; pointers nulled on release |
+| queue index, `queue.f:44-49` | a table of record addresses | Q-REC itself is scalar-only | A behind `CELL-VIEW` | `create`d | no |
+| DYNAMIC-BUFFER instances (8) | head | cap, slot | B | generated | no |
+| `pq` connection/result, `db/pq.f:92-112` | `CONN-PG`, `CONN-ARENA`, `RES-PG` | 13 parallel tables, plus the arena's own mixed extent (`:381`) | A behind `BYTE-VIEW` | `create`d + mmap arena | no |
+| `SA-ACT` sigaction, `signal.f:101-102` | offset 0 holds a **code address kept as a scalar** | flags at `SA-FLAGS-OFF` | B | `create`d | no |
+
+#### tools/ and test/ — all T3
+
+| site | shape | cast |
+|---|---|:--:|
+| `LINT-SLAB`, `lint/text.f:110-166`, **7 `create`d instances** (`lint/text.f:173`, `error-code-lint-core.f:90`, `aot-section-reach-lint.f:47`, `aot-lint-core.f:13`, `public-signatures-core.f:45,46`, `lint/shadow-lint.f:34`) | 0 `ptr u8`, 1 cap, 2 len | A + plain `+ @` |
+| 13 `*-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )` families, ~60 call sites (`json.f`, `check-core.f`, `build-fixpoint.f:222`, `hb-build-lib.f`, `examples-test.f`, `lint/diff.f`, three `json-only*.f`, three `repair-*.f`) | one `variable` pointer slot beside a *separate* `variable` length — a two-field record spelled as two words | A only |
+| `tools/check-core.f:137-144` | an indexed cast-A helper with **no caller anywhere** | delete, do not migrate |
+| `test/` | the two documented-open rows `V8`/`V9`, the landed refusals in `test/compiler/raw-cell-pointer-refusals.f`, ~10 engine-layout readers, and `test/record-launder-probe.f` | A and B |
+
+Two facts from the survey shape the migration more than the totals do. First,
+the recurring shape is not exotic: a pointer at offset 0 followed by a length
+and a capacity, or a pointer immediately followed by its length, appears in at
+least eleven independent hand-rolled encodings. Second, the form the raw-storage
+rule *prescribes* — a declared head with counts allotted behind it — does not
+remove the cast, it moves it from A to B: `CWIN`, `cell-effects.f` `STATE` and
+every `DYNAMIC-BUFFER` control record read their own counts through a view.
+
+### 10.4 The design
+
+#### The declaration
+
+A memory record is an ordinary layout family that opts into an address surface:
+
+```forth
+package BUF
+STRUCTURE header 0
+   DERIVE addr
+   FIELD data ptr u8
+   FIELD len  n
+   FIELD cap  n
+;STRUCTURE
+;package
+```
+
+`DERIVE addr` is opt-in for two reasons: a value family such as `GPT2:config`
+should not acquire an address surface it never uses, and the engine should not
+carry accessor words nothing calls. It joins `DERIVE eq` and `DERIVE hash` as a
+third derive code in `src/core/structure-decl.f`'s header-clause grammar.
+
+There is **no second record registry**. The field offsets, widths, generic
+substitution, linear-containment rules and declaration transaction are the ones
+`STRUCTURE` already has; `docs/type-families.md` §2.2 rules a parallel registry
+out by name, and the checker's projection window already reads this one.
+
+#### What is generated
+
+Inside the one declaration transaction, for a family `F` with fields
+`f₀ … fₙ`, following the existing constructor-name spelling (package name, then
+the family name with internal hyphens doubled, capped at
+`TF-CTOR-NAME-LIMIT` = 32 characters):
+
+| word | effect | body |
+|---|---|---|
+| `F:f` (one per field) | `( ptr F -- ptr T )` — the field's **address** | `<byte-offset> field-project` |
+| `F:AT` | `( ptr F n -- ptr F )` | `record-at` — stride by the family's committed width |
+| `F:BYTES`, `F:CELLS` | `( -- n )` | the size constants `BEGIN-STRUCTURE` publishes today |
+
+The accessor yields an address, not a value, so the existing `@`, `!` and `c@`
+rows do the access and a pointer field reads back as a pointer:
+`BUF-HEADER:DATA @` is `( ptr BUF:header -- ptr u8 )`. One word per field, not
+two, and the same shape `PTR-FIELD:` and `+FIELD` already generate — with the
+offset and the type carried into the checker instead of thrown away.
+
+Generation goes into the owning package's wordlist, and for a **private** family
+into its private wordlist: most of the records in the survey are package-private
+(`BUF`, `JR`, `XML`, `EDIT`, `LINT-SLAB`), so a public-only generator would
+serve almost nothing. `src/core/structure-decl.f` gates `MAKE`/`UNMAKE`
+generation on a public family and calls package-scoped private generation
+deferred type-DSL work; this design needs that work, and it is the first
+implementation dot below.
+
+#### How the accessors are minted
+
+Per accessor, the generator arms the sealed window and evaluates one definition:
+
+```
+FIELD-PROJ! ( accessor-name-addr accessor-name-len field-id byte-offset -- )
+: F:f ( ptr F -- ptr T ) <byte-offset> field-project ;
+```
+
+The window is single-shot, keyed on the accessor's name, and disarms at the
+`field-project` token even on a reject. The **committed field id is the sole
+authority** — the checker derives the owning family, the committed offset, the
+extent, the role and the schema from it, instantiates that schema over the input
+pointer's family arguments, and cross-checks the baked offset. A generator that
+lies about an offset, a family, an arity, a role or an output type is refused,
+each case pinned in `test/field-proj-suite.f`.
+
+Two small pieces are missing beside the generator.
+
+`field-project` needs a **production runtime word**. It is `E-UNDEFINED` in the
+engine today; `test/field-proj-suite.f` supplies its own
+`: field-project ( ptr a n -- ptr a ) + ;`. Outside the armed window that row is
+exactly `+` — it preserves the pointee and retypes nothing, so the word is not a
+capability, and the checker replaces its effect only inside the window.
+
+`record-at` is a second row, and it needs no window: it consumes `ptr F` and a
+cell count and yields `ptr F`, scaling by the family's committed width. Because
+it **preserves the family**, it forges nothing; bounds remain the caller's, the
+same contract `cells +` has today. It exists because `+` and `cell+` reject a
+layout pointer outright, which is what makes a record pointer safe in the first
+place.
+
+#### Instantiating a record
+
+| where the bytes live | form | notes |
+|---|---|---|
+| a single global record | `TYPED-VARIABLE NAME F` | accessor `( -- ptr F )`, zero image, name-guarded |
+| a fixed array of records | `count TYPED-BUFFER NAME F` | accessor `( n -- ptr F )` |
+| a growable mapped region | `DYNAMIC-BUFFER NAME F` | accessor `( n -- ptr F )` over `map-anon`, plus `NAME-RESERVE` / `NAME-RELEASE` |
+| a caller-supplied region | a `( ptr F … )` parameter | measured: a caller-supplied record pointer reads and writes normally |
+| a persisted arena | `PERSISTED-PTR-*` head over a boot table, records inside it | the pointer fields need marking — see below |
+
+Individually `MEM:ALLOC-CELLS`-ed nodes are the one shape with no direct answer:
+the allocator returns `ptr a`, and there is no sound cast from `ptr a` to
+`ptr F` (`CAST` refuses a `ptr` operand, and minting one is the launder this
+whole section is about). Such a record either becomes an element of a
+`DYNAMIC-BUFFER` — an indexed arena instead of a linked list of separate
+mappings — or acquires a typed allocation crossing of its own, one audited word
+per family. The ZIP node (`lib/zip-state.f`) is the live case, and its migration
+entry below is where that choice is made.
+
+#### The engine prefix
+
+T1 has nine mixed records and cannot have a record facility, so **the pre-arm
+prefix becomes record-free**. Two mechanisms do that work.
+
+*Columns instead of records.* A T1 record splits into one declared cell or table
+per field — the shape `src/core/checker.f` already uses for `ATOMA`/`ATOMU`/
+`ATOMK` and `src/core/layout-valid.f` uses for its twelve certificate columns.
+For SYM this is a strict improvement rather than a tax: the two pointer columns
+become `PERSISTED-PTR-U8-TABLE-VARIABLE`s, so the snapshot marks **one cell per
+table** instead of walking every live row to `ptr-cell-mark` two fields of each,
+and the three scalar columns become plain tables.
+
+*A declarator for a reserved engine cell.* Seventeen `src/` sites read a fixed
+DATA offset as a pointer through `data-base <const> + 0 ptr-field`, and
+`NULL-PTR` in `src/core/pointer-storage.f` is one of them. No landed definer
+covers them — all four definers in that file `create` their own body, and
+nothing in the tree names a fixed offset — so the design adds one, in the same
+clause style, per pointee:
+
+```forth
+: RESERVED-PTR-U8-CELL ( n -- )
+   create , does> ( -- ptr ptr u8 ) @ data-base swap + ;
+```
+
+Measured: the clause certifies, the cell the accessor answers sits at exactly
+the reserved offset from `data-base`, and the value read back is the same
+pointer the hand-written accessor returns (probed against `NULL-PTR-OFF` and
+`NULL-PTR`). The clause spells its pointee out, so `trust-raw` seals no
+variable and the raw discipline never looks at it — the same reason
+`PTR-U8-TABLE` works before the checker exists. Being a pre-checker definer, it
+needs **two effect rows**, not one: a `TRUST` row in `src/core/cell-effects.f`
+so the seal does not mark it `DNAME-INT`, and a row in
+`src/habu/verify-source.f`'s definer table so the source scanner agrees with
+what the native path publishes. `tools/lint/def.f`'s case table is a third list
+of the same names and should gain it too, as a lint surface rather than a gate.
+
+Three T1 sites need a named answer beyond those two mechanisms:
+
+- **The DYNAMIC-BUFFER control record** is the only T1 record whose three cells
+  must be reachable from one pointer, because the registry stores that pointer.
+  It dissolves the same way: the generated declaration publishes
+  `NAME#base` (the declared head), `NAME#cap` and `NAME#slot` as separate
+  declared cells, `DYNAMIC-STORAGE:RESERVE` / `RELEASE` take the three, and the
+  registry keeps three parallel columns instead of one pointer to a record. The
+  cheaper alternative, if the build allows it, is to move
+  `src/core/dynamic-storage.f` after `src/core/include.f` in the prefix and
+  declare the control record properly; the migration dot decides which, and the
+  view narrowing lands after it either way.
+- **`ARENA-SNAP-BOOT`'s zero pass** views a `PTR-U8-TABLE` boot buffer as cells
+  to zero it. The typed form writes `NULL-PTR` through the table's own accessor
+  in a loop — a snapshot-time cost only.
+- **The byte-copy growers** (`ARENA-BYTES-GROW`, `TV-GROW-ONE`, `TVK-GROW-ONE`)
+  view buffers whose cells may hold `ptr u8`. The parametric cell copy already
+  in the tree — `src/core/dynamic-storage.f` `COPY ( ptr a ptr a n -- )` —
+  is the typed replacement.
+
+#### What `ptr-field` and the view rows become
+
+Once a record has a field door, neither cast has a job left, and both narrow.
+
+**`ptr-field` admits only a declared pointer cell.** Its base must be storage
+declared to hold an address — `PTR-VARIABLE`, `PERSISTED-PTR-VARIABLE`,
+`PTR-U8-TABLE`, `PERSISTED-PTR-U8-TABLE-VARIABLE`, `TYPED-VARIABLE NAME ptr t`,
+`TYPED-BUFFER`, a reserved cell declared by the definer above, or an element of
+one of those tables. A base that is a raw cell is already refused
+(`MD-RAW-FIELD`); a base that is only a parameter, or a declared cell holding a
+scalar, is refused by a new code:
+
+```
+E-RAW-CELL-PTR  code 28  MD-FIELD-BASE-KIND
+reason:  ptr-field: base is <kind>, not a declared pointer cell
+repair:  declare_record_field — declare the record (STRUCTURE … DERIVE addr)
+         and take the field through its generated accessor; ptr-field
+         addresses a declared pointer cell only.
+```
+
+`<kind>` names what the base actually was — a parameter, a scalar-pointee cell,
+a raw cell — which is the "third MD- code naming `ptr-field`'s base kind" the
+dot asks for. `PTR-FIELD:` inside `BEGIN-STRUCTURE` stops generating a free
+pointee and is retired with the rest of that definer.
+
+**`byte-view` refuses a pointer pointee.** A base whose pointee is a pointer is
+a declared cell or a record head, and a scalar cell behind one is a record
+field:
+
+```
+E-RAW-CELL-PTR  code 29  MD-VIEW-PTR-BASE
+reason:  byte-view: base holds an address; a scalar behind a pointer head is
+         a record field
+repair:  declare_record_field — declare the record and read the field through
+         its accessor. A view may not reinterpret a cell declared to hold an
+         address.
+```
+
+Both codes stay in the `E-RAW-CELL-PTR` family because both are the same
+statement: a cell that holds an address is declared, and nothing reinterprets
+it. Neither rule needs to see an offset, which is what killed the earlier
+attempt — a declared record base was never in either row, so a migrated site
+leaves the rule's reach entirely rather than arguing with it.
+
+The rows the narrowing must **not** disturb are pinned as `K1`–`K6` in
+`test/record-launder-probe.f`: a count behind a declared head (until its record
+is declared), a `PTR-U8-TABLE` field, a declared cell's fetch, and the two
+unrelated pointees one declared cell accepts today — which is the last
+observation worth keeping, because it says why a declared cell alone is not a
+record: its pointee is open, and a declared field pins it.
+
+#### Migration order and cost
+
+Prefix first, because `src/core/checker.f` cannot use a post-arm definer and
+the engine has to keep building. The two rules land after the last wave, not
+between them: a narrowing refuses every unmigrated site at once.
+
+| wave | what | cost |
+|---|---|---|
+| **P** | T1 record-free: SYM to five columns; CWIN and `cell-effects.f` `STATE` to a head plus two variables; transaction state, include frame and registry to columns; the DYNAMIC-BUFFER control record to three declared cells; the reserved-cell declarator plus its two effect rows for the 17 engine-layout sites; the zero pass and the growers to typed loops | the largest wave — SYM touches ~20 call sites, the declarator 17, the rest are single-file |
+| **1** | `tools/`: `LINT-SLAB` (one declaration, 7 `create … allot` sites become `TYPED-VARIABLE`, 6 accessor words are generated away) and the 13 pointer-slot families (one two-field record each, ~60 call sites rewritten from `X-A X-FIELD @` to `X SLOT:A @`); delete the dead helper at `check-core.f:137-144` | mechanical, no ABI |
+| **2** | `lib/` readers and headers: `BUF`, `VEC`, `EDIT`, `JR`, `XML`, `MAP`, `TBL`, `BUILD` — each publishes a size constant its callers `create … allot` against, so each becomes a family plus a caller-side `TYPED-VARIABLE`/`TYPED-BUFFER` change | 10–20 field words per record, generated away; caller edits are one line each |
+| **3** | `lib/` with storage questions: the xmodem session (nested `BUF` field — supported, a family field may name another family), the ZIP node and member (mmap — becomes a `DYNAMIC-BUFFER` arena or gains a typed allocation crossing), `pq` (struct-of-arrays plus the parameter arena) | design per record, not mechanical |
+| **4** | `src/` T3: NSTR pool owner, IR arena descriptor, IR symbol index, AOT dict record, address-cell header | each is persisted or captured; see the marking dot |
+| **after byte fields** | **TCB** (`lib/task.f`, inline semaphore byte blobs), `SA-ACT` (`lib/signal.f`, a foreign `struct sigaction` whose offset 0 holds a code address), the `CFIELD:` users in `src/arch/tic6x/` | blocked, see below |
+
+#### Known gaps in this design
+
+**Byte and inline-blob fields are outside the first cut.** A layout family's
+fields occupy cell slots; the TCB carries inline semaphore byte blobs and
+`CFIELD:` declares byte fields. The shape this expects is either a byte-extent
+field kind — `TYPE-FIELD` already records `BYTE-OFF@`, `BYTES@` and `ALIGN@`, so
+the schema has room — or a nested family standing for the blob. Until one
+exists, every byte-field user stays on `BEGIN-STRUCTURE`, and `BEGIN-STRUCTURE`
+therefore cannot be retired by this design alone.
+
+**A foreign record is not a Habu record.** `struct sigaction` and the kernel's
+argv vector have layouts someone else owns. A declared record is the right
+description of them, but the design does not claim a declaration proves the
+foreign layout; that stays what it is today — an asserted boundary with a test.
+
+**Whole-value and field access must agree.** `MAKE`/`UNMAKE` and the field
+accessors address the same cells, and nothing yet pins that they agree for every
+field kind. The generator's acceptance below asks for that pin.
+
+### 10.5 Implementation order
+
+Each entry is one dot, with what it must prove. The order is a dependency
+order, and the one constraint worth stating plainly is that **the two rule
+narrowings land last**: they refuse ~75 cast-A sites and ~135 cast-B sites, so
+every one of those has to be gone first — including the byte-field holdouts,
+because `lib/task.f`'s TCB reaches its five pointer fields through the very row
+`ptr-field` is narrowing.
+
+1. **Private family generation.** Package-scoped generation for a private
+   family, into its own private wordlist, inside the declaration transaction —
+   the work `src/core/structure-decl.f` currently defers. Nothing in `lib/`
+   can use the facility without it. *Acceptance:* a private `STRUCTURE` in a
+   package publishes its generated words privately; a second package cannot
+   resolve them; a reject rolls the whole declaration back byte-identically.
+2. **The accessor generator** (tracker id
+   `habu-structure-generate-field-b9dc52f8`), the production `field-project`
+   runtime word, and `record-at` with its generated `F:AT`. *Acceptance:*
+   `DERIVE addr` publishes one accessor per field with the declared effect; a
+   pointer field projects as `ptr ptr t` and a generic field at the caller's
+   instantiation; every negative in `test/field-proj-suite.f` still rejects when
+   reached through a generated accessor; `F:AT` strides by the committed width
+   and preserves the family; a field read through an accessor equals the same
+   field read through `UNMAKE`, for a pointer field, a scalar field and a nested
+   family field.
+3. **The verify-source replay arm.** `DERIVE addr`'s generated words registered
+   by `src/habu/verify-source.f`'s `RECORD-STRUCTURE-DECL` path, and the
+   reserved-cell definer added to its definer table and to
+   `src/core/cell-effects.f`. *Acceptance:* a file that uses its own record
+   accessors in the same source passes the pre-scan; a clone of the definer
+   without its two rows is sealed internal, and with them is not.
+4. **`ptr-cell-mark` for a persisted record's pointer fields.** *Acceptance:* a
+   declared record in a persisted arena has each pointer field marked exactly
+   once; a restored image reads them back; a scalar field is not marked; a
+   record whose pointer column became a declared table is marked once per table.
+5. **The T1 record-free migration**, including SYM's five columns, the
+   DYNAMIC-BUFFER control cells, the reserved-cell declarator over the 17
+   engine-layout sites, the typed zero pass, and the typed growers.
+   *Acceptance:* no mixed record remains in the pre-arm prefix; the engine
+   rebuilds to a byte fixpoint; the snapshot marks one cell per persisted table
+   instead of two per live SYM row.
+6. **The `tools/` migration** — `LINT-SLAB` and the 13 pointer-slot families,
+   and the dead helper at `tools/check-core.f:137-144` deleted rather than
+   migrated. *Acceptance per site:* the record is declared, every accessor is
+   generated, no cast remains, and the lint and check suites assert exactly what
+   they asserted before.
+7. **The `lib/` migrations, one dot per record** (`BUF`, `VEC`, `EDIT`, `JR`,
+   `XML`, `MAP`, `TBL`, `BUILD`, then the xmodem session, the ZIP node and
+   member — whose dot also decides arena-or-crossing — and `pq`), then **`src/`
+   T3** (NSTR pool owner, IR arena descriptor, IR symbol index, AOT dict record,
+   address-cell header). *Acceptance per record:* declared, accessors generated,
+   no `ptr-field` or view cast left for it, its own suite unchanged in what it
+   asserts, and for a captured record its marking pinned.
+8. **Byte and inline-blob fields.** *Acceptance:* a byte-extent field kind or a
+   nested-blob family; `CFIELD:`'s users converted; TCB declared with its five
+   pointer fields and its semaphore blobs; `BEGIN-STRUCTURE` retired.
+9. **The two rule narrowings.** `MD-FIELD-BASE-KIND` (28) and
+   `MD-VIEW-PTR-BASE` (29). *Acceptance:* `V8` and `V9` in
+   `test/typed-storage-structural-test.f` and `L1`–`L4` in
+   `test/record-launder-probe.f` flip from certified to rejected, each with its
+   own code, reason and repair class; `K1`–`K6` and every control in
+   `test/compiler/raw-cell-pointer-refusals.f` keep their verdicts; a
+   rule-hosted generation build completes; `test/run.f` is green.
+
+## 11. Where the deep detail lives
 
 - `docs/forth.md` — the working standard: naming, packages, factoring, the
   checker and type model section, testing, and the commit gate. Note that its
