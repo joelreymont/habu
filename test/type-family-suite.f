@@ -174,6 +174,7 @@ TRUSTED: TWX-MK-UNARY ( n n -- n ) {: arg:n fam:n :}  \ fam<arg> term
    PARAM-SCR-N @ {: base:n :}
    arg PARAM-SCR+
    base fam TFAM-NAME$ fam MK-PARAM ;
+: TWX-FAMILY-WIDTH ( n -- n ) TWX-MK-NULLARY TWX-T-WIDTH ;
 
 
 \ Explicit pre-checker layouts: offsets/accessors assert during prefix load;
@@ -551,6 +552,9 @@ PFTX @ TF-FIELD:CLOSE
 UFAM @ UBASE @ 2 TWX-TFAM-FLD-RANGE!
 UEMPTY @ TWX-SUMV-PAY-N 0 T=
 UNAMED @ TWX-SUMV-PAY-N 2 T=
+UEMPTY @ TWX-SUMV-PAYCELLS@ 0 T=
+UNAMED @ TWX-SUMV-PAYCELLS@ 2 T=
+UFAM @ TWX-FAMILY-WIDTH 3 T=
 UNAMED @ 0 TWX-SUMV-PAY-ROOT USCH0 @ T=
 UNAMED @ 1 TWX-SUMV-PAY-ROOT USCH1 @ T=
 UNAMED @ 0 TWX-SUMV-PAY-FIELD FOUNDF ! PFOUT !
@@ -562,8 +566,10 @@ UNAMED @ 2 ' TWX-SUMV-PAY-ROOT catch TC ! 2drop  TC @ E-TFAM-PAYLOAD T=
 \ they never make the same family fall back to its legacy SUMV storage.
 UFAM @ TYPE-FIELD:COUNT 1 + 1 TWX-TFAM-FLD-RANGE!
 UNAMED @ ' TWX-SUMV-PAY-N catch TC ! drop  TC @ E-TFAM-PAYLOAD T=
+UFAM @ ' TWX-FAMILY-WIDTH catch TC ! drop TC @ E-TFAM-PAYLOAD T=
 UFAM @ UBASE @ 2 TWX-TFAM-FLD-RANGE!
 UNAMED @ TWX-SUMV-PAY-N 2 T=
+UFAM @ TWX-FAMILY-WIDTH 3 T=
 
 \ A rolled-back provisional field never enters the committed payload view.
 TF-FIELD:OPEN PFTX !
@@ -588,6 +594,41 @@ PFTX @ TF-FIELD:CLOSE
 MFAM @ MBASE @ 1 TWX-TFAM-FLD-RANGE!
 MRAW @ ' TWX-SUMV-PAY-N catch TC ! drop  TC @ E-TFAM-PAYLOAD T=
 MNAMED @ ' TWX-SUMV-PAY-N catch TC ! drop  TC @ E-TFAM-PAYLOAD T=
+MFAM @ ' TWX-FAMILY-WIDTH catch TC ! drop TC @ E-TFAM-PAYLOAD T=
+
+\ Interleaved rows still sum per variant. A layout argument forces recursive
+\ width queries while the outer variant accumulators are live.
+variable IFAM variable IV0 variable IV1 variable IBASE variable ISCH
+0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ ISCH !
+s" pkgu" CHECKER-PACKAGE-PUBLIC s" interleaved" 1 TK-SUM TWX-TFAM-DECL IFAM !
+IFAM @ 0 PK-CELL TWX-TFAM-PK!
+IFAM @ s" twice" 0 0 0 0 TWX-SUMV-ADD IV0 !
+IFAM @ s" once" 1 0 0 0 TWX-SUMV-ADD IV1 !
+IFAM @ IV0 @ 2 TWX-TFAM-VAR-RANGE!
+IFAM @ 2 TWX-TFAM-SLOTS!
+TYPE-FIELD:COUNT IBASE !
+TF-FIELD:OPEN PFTX !
+PFTX @ IFAM @ IV0 @ s" a" ISCH @ 0 1 0 CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
+PFTX @ IFAM @ IV1 @ s" b" USCH0 @ 0 1 0 CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
+PFTX @ IFAM @ IV0 @ s" c" ISCH @ 1 1 CELL CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
+PFTX @ IFAM @ IV1 @ s" d" ISCH @ 1 1 CELL CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
+PFTX @ TF-FIELD:CLOSE
+IFAM @ IBASE @ 4 TWX-TFAM-FLD-RANGE!
+IV0 @ TWX-SUMV-PAYCELLS@ 2 T= IV1 @ TWX-SUMV-PAYCELLS@ 2 T=
+UFAM @ TWX-MK-NULLARY IFAM @ TWX-MK-UNARY TWX-T-WIDTH 7 T=
+\ Ownership includes the family's declared variant slice, not just SV.FAM.
+IFAM @ IV1 @ 1 TWX-TFAM-VAR-RANGE!
+IV0 @ ' TWX-SUMV-PAY-N catch TC ! drop TC @ E-TFAM-PAYLOAD T=
+IFAM @ IV0 @ 2 TWX-TFAM-VAR-RANGE!
+UFAM @ TWX-MK-NULLARY IFAM @ TWX-MK-UNARY TWX-T-WIDTH 7 T=
+\ Refuse inside a nested width query, then recover on the same instantiated
+\ term after restoring the inner metadata.
+variable ITERM
+UFAM @ TWX-MK-NULLARY IFAM @ TWX-MK-UNARY ITERM !
+UFAM @ TYPE-FIELD:COUNT 1 + 1 TWX-TFAM-FLD-RANGE!
+ITERM @ ' TWX-T-WIDTH catch TC ! drop TC @ E-TFAM-PAYLOAD T=
+UFAM @ UBASE @ 2 TWX-TFAM-FLD-RANGE!
+ITERM @ TWX-T-WIDTH 7 T=
 
 \ Recursive schema validation: owner param bounds, concrete liveness, malformed
 \ PTR/QUOT shapes, APP family/arity/root/kind/visibility, and a valid APP.
@@ -896,7 +937,7 @@ FID @ TFAM-ARITY@ 1 T=
 FID @ TFAM-KIND@ TK-SUM T=
 FID @ 0 TWX-TFAM-PK@ PK-TYPE T=
 s" pkgd" s" tree" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
-TFAM-N@ 11 T=                           \ includes the two unified-payload fixtures
+TFAM-N@ 12 T=                           \ includes the three unified-payload fixtures
 
 \ ---------------------------------------------------------------------------
 \ 14. snapshot persist/restore: run the exact words TWX-CHECKER-CAPTURE-PREPARE

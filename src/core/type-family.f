@@ -1624,8 +1624,7 @@ private
       1 +
    REPEAT drop RES-FALSE ;
 
-: SUMV-NAMED-PAYLOAD? ( n -- bool ) {: vid:n :}
-   vid SUMV-FAM@ {: fam:n :}
+: SUM-NAMED-PAYLOAD? ( n -- bool ) {: fam:n :}
    fam TFAM-SUM? fam TFAM-ENUM? or 0= IF RES-FALSE EXIT THEN
    fam TFAM-FLD-START@ {: base:n :}
    fam TFAM-FLD-COUNT@ {: count:n :}
@@ -1634,6 +1633,9 @@ private
    base 0 < IF E-TFAM-PAYLOAD throw THEN
    base PF-COMMIT-N @ > IF E-TFAM-PAYLOAD throw THEN
    count PF-COMMIT-N @ base - > IF E-TFAM-PAYLOAD throw THEN
+   fam SUMV-FAMILY-LEGACY-PAYLOAD? IF E-TFAM-PAYLOAD throw THEN
+   fam TFAM-VAR-START@ {: variants:n :}
+   fam TFAM-VAR-COUNT@ {: variant-count:n :}
    0 BEGIN dup count < WHILE
       base over + {: fid:n :}
       fid PF-FAM@ fam <> IF E-TFAM-PAYLOAD throw THEN
@@ -1641,10 +1643,12 @@ private
       owner PF-NO-VARIANT = IF E-TFAM-PAYLOAD throw THEN
       owner 0 < owner SUMV-N @ >= or IF E-TFAM-PAYLOAD throw THEN
       owner SUMV-FAM@ fam <> IF E-TFAM-PAYLOAD throw THEN
+      owner variants < owner variants - variant-count >= or IF E-TFAM-PAYLOAD throw THEN
       1 +
    REPEAT drop
-   fam SUMV-FAMILY-LEGACY-PAYLOAD? IF E-TFAM-PAYLOAD throw THEN
    RES-TRUE ;
+
+: SUMV-NAMED-PAYLOAD? ( n -- bool ) SUMV-FAM@ SUM-NAMED-PAYLOAD? ;
 
 public
 
@@ -1674,13 +1678,13 @@ public
 
 : SUMV-PAYCELLS@ ( n -- n ) {: vid:n :}
    vid SUMV-NAMED-PAYLOAD? 0= IF vid SUMV-RAW-PAYCELLS@ EXIT THEN
-   vid SUMV-PAY-N {: count:n :}
+   vid SUMV-FAM@ {: fam:n :}
+   fam TFAM-FLD-START@ {: base:n :}
    0
-   0 BEGIN dup count < WHILE
-      vid over SUMV-NAMED-FIELD 0= IF drop E-TFAM-PAYLOAD throw THEN
-      PF-CELLS@ rot + swap
-      1 +
-   REPEAT drop ;
+   fam TFAM-FLD-COUNT@ 0 ?do
+      base i + {: fid:n :}
+      fid PF-VAR@ vid = IF fid PF-CELLS@ + THEN
+   loop ;
 
 \ --- arg-aware instantiated width (item 12 / layout-cap slice 1, docs §18). The
 \ registry TFAM-WIDTH@ assumes every parameter contributes one cell; that is exact
@@ -1700,19 +1704,36 @@ private
    node SCHEMA-PARAM? IF term node SCHEMA-A@ PARAM>ARG T-WIDTH EXIT THEN
    node SCHEMA-APP?   IF node SCHEMA-A@ TFAM-WIDTH@ EXIT THEN
    1 ;
-: SUMV-IWIDTH ( n n -- n ) {: vid:n term:n :}   \ sum of variant vid's payload field inst-widths
+: SUMV-IWIDTH ( n n -- n ) {: vid:n term:n :}   \ legacy positional payload only
+   vid SUMV-SCH-COUNT@ {: count:n :}
+   vid SUMV-SCH-START@ {: base:n :}
    0                                            \ acc
-   0 BEGIN dup vid SUMV-PAY-N < WHILE             \ ( acc j )
-      vid over SUMV-PAY-ROOT SCHEMA-ROOT@ term SCH-NODE-IWIDTH   \ ( acc j wj )
+   0 BEGIN dup count < WHILE                     \ ( acc j )
+      base over + SCHEMA-ROOT@ term SCH-NODE-IWIDTH   \ ( acc j wj )
       rot + swap                                 \ ( acc' j )
       1 +
    REPEAT drop ;
+
+\ Called after validating the family once. Interleaved rows need a field scan
+\ per variant, but each field's recursive width is computed only for its owner.
+: SUMV-NAMED-IWIDTH ( n n -- n ) {: vid:n term:n :}
+   term PARAM>FAM {: fam:n :}
+   fam TFAM-FLD-START@ {: fields:n :}
+   0 fam TFAM-FLD-COUNT@ 0 ?do
+      fields i + {: fid:n :}
+      fid PF-VAR@ vid = IF
+         fid PF-SCH@ SCHEMA-ROOT@ term SCH-NODE-IWIDTH +
+      THEN
+   loop ;
+
 : SUM-IWIDTH ( n -- n ) {: term:n :}            \ tag + max variant payload inst-width
    term PARAM>FAM {: fam:n :}
+   fam SUM-NAMED-PAYLOAD? {: named:bool :}
    fam TFAM-VAR-START@ {: vs:n :}
    0                                            \ maxpay
    0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE        \ ( maxpay j )
-      vs over + term SUMV-IWIDTH                  \ ( maxpay j payj )
+      vs over + term named IF SUMV-NAMED-IWIDTH ELSE SUMV-IWIDTH THEN
+                                                 \ ( maxpay j payj )
       rot max swap                               \ ( maxpay' j )
       1 +
    REPEAT drop
@@ -1763,6 +1784,13 @@ private
       RES-FALSE EXIT
    THEN
    fam TFAM-SUM? fam TFAM-ENUM? or IF
+      fam SUM-NAMED-PAYLOAD? IF
+         fam TFAM-FLD-COUNT@ 0 ?do
+            fam TFAM-FLD-START@ i + PF-SCH@ SCHEMA-ROOT@ slot SCH-ROOT-WIDTH-SLOT?
+            IF unloop RES-TRUE EXIT THEN
+         loop
+         RES-FALSE EXIT
+      THEN
       0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
          fam TFAM-VAR-START@ over + slot SUMV-WIDTH-SLOT? IF drop RES-TRUE EXIT THEN
          1 +
