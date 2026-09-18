@@ -10,6 +10,12 @@ $1 constant INCLUDE-PROBE-CAP
 $4A constant INCLUDE-IO-RC
 $46 constant INCLUDE-EVAL-RC
 $37D8 constant INCLUDE-EVALERR-CELL
+\ Where this file publishes the innermost open source file's path for the engine's
+\ own refusal tail (src/habu/habu2.f LCOMPILEDIE, dot habu-name-the-file-70acbf10).
+\ Fixed offsets from data-base, spelled here the way INCLUDE-EVALERR-CELL is and
+\ reserved in src/habu/layout.f as SRCLOC:PATH-CELL / SRCLOC:PATHLEN-CELL.
+$2800 constant INCLUDE-SRCLOC-PATH-CELL
+$2808 constant INCLUDE-SRCLOC-PATHLEN-CELL
 INCLUDE-PATH-CAP 1 + constant REQUIRE-SLOT-BYTES
 
 create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
@@ -695,7 +701,16 @@ public
 package SOURCE-ROOT
 private
 
-2 cells constant HEADER-BYTES
+\ A frame carries its own path as well as its own bytes. INCLUDE-PATH cannot
+\ answer "which file is open": a nested include overwrites it before the inner
+\ file is even read, so the outer path is gone by the time an inner refusal or a
+\ POP needs it. The frame is the only per-load storage there is, so the resolved
+\ path is copied into it and the header grows by one length cell plus the path.
+0 constant FR-PREV                          \ parent frame (a declared pointer field)
+CELL constant FR-NAMED                       \ SCRIPT-NAMED-PEND byte
+2 cells constant FR-PATHLEN                  \ this load's path length
+3 cells constant FR-PATH                     \ this load's path bytes
+FR-PATH INCLUDE-PATH-CAP + 1 cells + constant HEADER-BYTES   \ cell-rounded, so SOURCE stays aligned
 HEADER-BYTES INCLUDE-BUF-CAP + constant MAP-BYTES
 PTR-VARIABLE TOP
 
@@ -705,20 +720,37 @@ PTR-VARIABLE TOP
 : CHECK-ACTIVE ( -- )
    INCLUDE-DEPTH @ 0 <= if s" include: depth underflow" INCLUDE-DIE then ;
 
+\ The engine's refusal tail prints ` at <path>:<line>` from these two cells and
+\ nothing else decides when they are right: they are republished on every PUSH
+\ and every POP, so they name the file the interpreter is inside and read 0 when
+\ it is inside none (tty REPL, `-e`, the boot prefix).
+: PUBLISH-LOCATION ( -- )
+   INCLUDE-DEPTH @ 0 <= if
+      0 data-base INCLUDE-SRCLOC-PATH-CELL + !
+      0 data-base INCLUDE-SRCLOC-PATHLEN-CELL + !
+      exit
+   then
+   TOP@ {: frame:ptr :}
+   frame FR-PATH + NULL-PTR - data-base INCLUDE-SRCLOC-PATH-CELL + !
+   frame FR-PATHLEN + CELL-VIEW @ data-base INCLUDE-SRCLOC-PATHLEN-CELL + ! ;
 
 : PUSH ( -- )
    MAP-BYTES map-anon 0= 0= if drop INCLUDE-IO-RC throw then {: frame:ptr :}
-   TOP@ frame 0 ptr-field !
-   SCRIPT-NAMED-PEND @ frame CELL + c!
+   TOP@ frame FR-PREV ptr-field !
+   SCRIPT-NAMED-PEND @ frame FR-NAMED + c!
+   INCLUDE-PATH-U @ frame FR-PATHLEN + CELL-VIEW !
+   INCLUDE-PATH frame FR-PATH + INCLUDE-PATH-U @ BYTE-COPY
    frame TOP!
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
-   1 INCLUDE-DEPTH +! ;
+   1 INCLUDE-DEPTH +!
+   PUBLISH-LOCATION ;
 
 : POP ( -- n )
    CHECK-ACTIVE
    TOP@ {: frame:ptr :}
-   frame 0 ptr-field @ TOP!
+   frame FR-PREV ptr-field @ TOP!
    -1 INCLUDE-DEPTH +!
+   PUBLISH-LOCATION
    frame MAP-BYTES munmap ;
 
 : SOURCE ( -- ptr u8 ) CHECK-ACTIVE TOP@ HEADER-BYTES + ;
@@ -751,7 +783,7 @@ public
 
 : NAMED? ( -- bool )
    INCLUDE-DEPTH @ 0= if INCLUDE-FALSE exit then
-   TOP@ CELL + c@ 0= 0= ;
+   TOP@ FR-NAMED + c@ 0= 0= ;
 
 : LOAD ( ptr u8 n -- )
    INCLUDE-PATH0 drop

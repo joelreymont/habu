@@ -1508,6 +1508,7 @@ variable SZA-I
    14 DATA EVAL-TOP-CELL STR,
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
+   11 DATA SRCLOC:INB-CELL LDR,  11 14 EVAL-INB STR,   \ buffer START, for the refusal line number
    30 14 16 STR,                                     \ leaf prim: x30 = caller return
    11 SP STACK-ABI:EVAL-BYTES ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
@@ -1527,6 +1528,7 @@ variable SZA-I
    11 USE-DEPTH-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP-USE STR,
    11 DATA EVALD-CELL LDR,  11 11 1 ADDI,  11 DATA EVALD-CELL STR,
    9 DATA INP-CELL STR,                              \ INP = a
+   9 DATA SRCLOC:INB-CELL STR,                       \ INB = a (this buffer's first byte)
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
    9 DATA LMAINP-CELL LDR,  9 BR, ;
 

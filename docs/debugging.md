@@ -3,6 +3,53 @@
 The standalone is JIT-compiled native ARM64; blind `.`-printing was the recurring
 pain. Toolkit:
 
+## Where a load refusal happened — read the message
+
+A refusal the engine raises while reading source names the file and the line:
+
+```
+hb: bad string literal at /home/j/Work/habu/test/fixtures/x.f:12
+```
+
+No column. `<path>` is the resolved, canonical path of the **innermost open**
+file, so a nested `require` names the file that actually holds the offending
+token, not the entry the command line asked for. `<line>` counts newlines from
+the start of the buffer being evaluated: an include evaluates the whole file as
+one buffer, so that is the file line.
+
+Two cases print the message and a newline with **no** ` at …`, because there is
+no file to name: source on stdin or at the tty REPL, and the engine's own boot
+prefix. A string a harness `evaluate`s *inside* a file is the one case where the
+two halves come from different places: the path is the file's, the line counts
+within the evaluated string.
+
+One place prints this — the `LCOMPILEDIE` tail in `src/habu/habu2.f`, from the
+three cells `src/habu/layout.f` reserves as `SRCLOC:PATH-CELL` /
+`PATHLEN-CELL` / `INB-CELL`. Every die site that branches there writes its
+message with no trailing newline and the tail ends the line.
+
+**What is located, and what is not.** Located: every refusal routed through
+`LCOMPILEDIE` — bad string literal, counted string too long, data space out of
+range, dictionary/code space full, definition body text full, BEGIN nesting
+full, nested quotation, duplicate definition, `does>` in a checker-rejected
+body, malformed stack signature, `;]` with no open quotation, `does>` with
+locals active, a local referenced inside a quotation, locals opener inside a
+quotation, `:`/`cast:`/`defer`/`is` missing a name, `is` target not found or not
+deferred, `package`/`export` misuse, and the whole `using` family.
+
+Still unlocated, and why: the interpret-level diagnostics share a **different**
+tail (`LDIAGRET`) — `hb: undefined: X`, `hb: interpret-mode layout value`,
+`hb: internal engine word`, `hb: interpret stack underdepth`,
+`hb: control-flow closer without opener`, `hb: control-flow nesting too deep`,
+`hb: local name over 16 bytes`, `hb: more than 64 locals in one definition`.
+So do the refusals that `exit_group` without any tail: the boot source errors
+(`hb: source prefix buffer full`, `hb: cannot read source`), the CLI ones
+(`hb: unknown flag`, `hb: cannot open`), `hb: uncaught throw code N`,
+`hb: catch frame corrupt`, the snapshot, AOT, protected-WID, lowering,
+address-cell, mmap and `construct:`/`match:` families, and `hb: repl line over`.
+For those the checker's own diagnostics (which carry `<path>:<line>` of their
+own) or a bisect are still the way in.
+
 ## `.s` — data-stack inspector (in the standalone)
 `forth.fs` defines a `.s` primitive: prints the whole data stack (base..top), one
 signed decimal per line, **non-destructively**. Interleave it to "step" through a

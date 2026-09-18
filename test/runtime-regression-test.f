@@ -1185,6 +1185,67 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    s" PASS: package scope rolls back on compile-error recovery (closed/stays-open/checker/top-exit)" type cr ;
 
 
+\ Every load refusal names its file and line (dot habu-name-the-file-70acbf10).
+\ `hb: bad string literal` — and every other refusal that reaches the LCOMPILEDIE
+\ tail — used to print no path and no line, so a reader bisected the file by hand.
+\ One place prints the location now: the tail writes ` at <path>:<line>` whenever
+\ a source file is open and the newline in every case, so a die site cannot
+\ forget it and cannot spell it differently. The path is the INNERMOST open
+\ include frame's (src/core/include.f publishes it), which is what makes the
+\ nested case below the one worth pinning; the line counts newlines from the
+\ start of the buffer being evaluated, which for an include is the whole file.
+: GE-LOC-FIXTURE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
+   GT-ROOT na nu GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
+   GE-SCRIPT-PATH GE-SCRIPT-U @ ta tu WRITE-ALL ;
+
+\ `--load <file>`, the real entry a reader uses, so the refusal travels the
+\ include path this change publishes from. Feeding the same bytes on stdin (the
+\ no-file case below) deliberately does not.
+: GE-LOC-LOAD ( -- )
+   GE-HB-RESET
+   s" --load" GE-ARG+
+   GE-SCRIPT-PATH GE-SCRIPT-U @ GE-ARG+
+   s" --" GE-ARG+
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV ;
+
+: GE-LOC-BADSTR ( -- )
+   \ The refusal is on line 3 of its own file; the two comment lines above it are
+   \ what a line number has to count.
+   s" hb-loc-badstr.f"
+      S\" \\ one\n\\ two\n: GELOCBAD ( -- ) S\\\q a\\u \\\q drop drop ;\n" GE-LOC-FIXTURE
+   GE-LOC-LOAD
+   74 s" bad string literal rc" GE-EXPECT-RC
+   s" hb: bad string literal at " s" bad string literal names its file" GE-EXPECT-ERR-HAS
+   s" hb-loc-badstr.f:3" s" bad string literal names its line" GE-EXPECT-ERR-HAS ;
+
+: GE-LOC-NESTED ( -- )
+   \ A requires B and B holds the refusal: the location is B's, not the entry's.
+   s" hb-loc-inner.f"
+      S\" \\ inner\n: GELOCINNER ( -- ) S\\\q b\\u \\\q drop drop ;\n" GE-LOC-FIXTURE
+   s" hb-loc-outer.f"
+      S\" \\ outer\nrequire hb-loc-inner.f\n" GE-LOC-FIXTURE
+   GE-LOC-LOAD
+   74 s" nested include refusal rc" GE-EXPECT-RC
+   s" hb-loc-inner.f:2" s" nested refusal names the inner file" GE-EXPECT-ERR-HAS
+   s" hb-loc-outer.f" s" nested refusal does not name the entry" GE-EXPECT-ERR-LACKS ;
+
+: GE-LOC-NO-FILE ( -- )
+   \ The same program with no file open (source on stdin, the REPL's own path):
+   \ the message and a newline, and no location to invent.
+   GE-HB-RESET
+   GE-SRC-RESET
+   S\" : GELOCSTDIN ( -- ) S\\\q c\\u \\\q drop drop ;" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   74 s" stdin refusal rc" GE-EXPECT-RC
+   s" hb: bad string literal" s" stdin refusal still names the cause" GE-EXPECT-ERR-HAS
+   s"  at " s" stdin refusal claims no location" GE-EXPECT-ERR-LACKS ;
+
+: GE-REFUSAL-LOCATION ( -- )
+   GE-LOC-BADSTR
+   GE-LOC-NESTED
+   GE-LOC-NO-FILE
+   s" PASS: load refusals name their file and line (file/nested/no-file)" type cr ;
+
 public
 
 : RUN ( -- )
@@ -1211,6 +1272,7 @@ public
    GE-QUOT-NEST
    GE-LOCAL-NAME-WIDTH
    GE-PKGSCOPE-RECOVERY
+   GE-REFUSAL-LOCATION
    GE-SET-CHECK-NEG ;
 
 : TEST ( -- )

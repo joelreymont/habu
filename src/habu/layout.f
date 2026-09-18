@@ -441,6 +441,41 @@ $43C0 constant EVAL-TOP-CELL  \ current native-stack evaluator frame, zero at re
 STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
+\ EVAL-INB: the outer evaluate's input-buffer START, saved beside INP ([frame+0])
+\ and INE ([frame+8]) so a nested evaluate restores it. It is the last free slot
+\ of the frame: PKGSNAP ends at EVAL-PKG + PKGSNAP-USE + 8 = $78 and
+\ STACK-ABI:EVAL-BASE opens at $80, so the frame does not grow.
+$78 constant EVAL-INB
+
+\ --- refusal location band (dot habu-name-the-file-70acbf10) --------------------
+\ Every engine load refusal that reaches the LCOMPILEDIE tail names the source it
+\ was reading: `hb: <message> at <path>:<line>`. Three cells carry what the tail
+\ needs, and they are read by emitted engine code exactly the way
+\ INCLUDE-EVALERR-CELL already is.
+\
+\ PATH-CELL / PATHLEN-CELL: address and byte length of the INNERMOST OPEN include
+\ frame's path, or 0/0 when no file is open (tty REPL, `-e`, the boot prefix).
+\ src/core/include.f SOURCE-ROOT:PUSH copies the resolved path into the frame it
+\ just mapped and publishes it here; POP republishes the parent frame's, so the
+\ pair always describes the file the interpreter is inside. The address is the
+\ frame's, not INCLUDE-PATH's, because a nested include overwrites that buffer.
+\
+\ INB-CELL: the START of the buffer INP walks, so the tail can count newlines in
+\ [INB, INP) and report a line. habu1.f B-EVAL sets it and saves the outer value
+\ in EVAL-INB. It is NOT beside INP/INE: $36B0 is regalloc.f FRFREE-CELL and
+\ $36C8 is address-cells.f INDEX-CELL, so the run there is full.
+\
+\ WHERE THEY GO: the $2800..$3000 band this file documents as free header space
+\ (the user return stack moved to its own guarded mapping, STACK-ABI). Swept for
+\ a claimant across src lib tools test bootstrap. Below $7FF8, so the tail names
+\ each with a `DATA <off> LDR` 12-bit scaled immediate, and below DATA-START, so
+\ no compiled source can reach them and DATA-START does not move.
+package SRCLOC
+public
+$2800 constant PATH-CELL
+$2808 constant PATHLEN-CELL
+$2810 constant INB-CELL
+;package
 
 \ $2780..$27A8 (TSIG/TCSIG/CRSIG) relocated into the friend arena above.
 \ RPKG-* / PKGRESYNC-CELL (dot habu-recovery-pkg-scope-e0bd98e2): the REPL-line
@@ -1755,6 +1790,9 @@ variable NAMES-U
    s" CMM-CELL" NAME,
    s" DOESB-CELL" NAME,
    s" TRUSTED-CELL" NAME,
+   s" SRCLOC-PATH" NAME,
+   s" SRCLOC-PATHLEN" NAME,
+   s" SRCLOC-INB" NAME,
    s" PKGRESYNC-CELL" NAME,
    s" HIDX-CLAIMS" NAME,
    s" PROT-WINDOW" NAME,
@@ -1869,6 +1907,9 @@ create TAB
    CMM-CELL                       ,  1 cells ,
    DOESB-CELL                     ,  1 cells ,
    TRUSTED-CELL                   ,  1 cells ,
+   SRCLOC:PATH-CELL               ,  1 cells ,
+   SRCLOC:PATHLEN-CELL            ,  1 cells ,
+   SRCLOC:INB-CELL                ,  1 cells ,
    PKGRESYNC-CELL                 ,  1 cells ,
    HIDX:CLAIMS                    ,  1 cells ,
    PROT:WINDOW                    ,  1 cells ,
