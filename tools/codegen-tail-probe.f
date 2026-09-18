@@ -28,6 +28,7 @@ require lib/string.f
 require src/habu/code-span.f
 require src/arch/arm64/disasm.f
 require src/compiler/native/branch.f
+require src/habu/code-bytes.f
 
 package NTAILPROBE
 
@@ -45,20 +46,18 @@ NBR:INSN-BYTES constant INSN-BYTES
 \ through a span), so it moved to src/compiler/native/branch.f beside the branch
 \ forms rather than being spelled out twice.
 
-variable CODE-AT
-
-: CODE-PTR ( -- ptr u8 )
-   CODE-AT 0 ptr-field @ ;
-
 \ The instruction word at an address. The engine's code region is bytes, so the
 \ four are read and assembled little-endian, which is the order the machine the
-\ chain targets stores them in.
+\ chain targets stores them in. The address arrives as a number, because
+\ XREF-START read it out of a dictionary record; CODE-BYTES:AT is the one place
+\ it becomes bytes, and it is bounded against the running image's code, so a
+\ record that claims a span the engine never emitted is refused here.
 : W@ ( n -- n ) {: at:n :}
-   at CODE-AT !
-   CODE-PTR c@
-   CODE-PTR 1 + c@ 8 lshift or
-   CODE-PTR 2 + c@ 16 lshift or
-   CODE-PTR 3 + c@ 24 lshift or ;
+   at INSN-BYTES CODE-BYTES:AT drop {: p:ptr :}
+   p c@
+   p 1 + c@ 8 lshift or
+   p 2 + c@ 16 lshift or
+   p 3 + c@ 24 lshift or ;
 
 : BL? ( n -- bool )
    NBR:BL? ;

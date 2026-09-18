@@ -5,27 +5,28 @@
 require lib/prelude.f
 require lib/errors.f
 require src/compiler/native/branch.f
+require src/habu/code-bytes.f
 
 package NWALK
 
 private
-
-variable AT
-
-: AT-PTR ( -- ptr u8 )
-   AT 0 ptr-field @ ;
 
 -1 constant NAMESPACE-WL              \ a package name, not a word
 0 constant LOWEST-WL
 
 public
 
+\ The address arrives as a number - REC-START read it out of a dictionary record
+\ - and CODE-BYTES:AT is where it becomes bytes, bounded against the running
+\ image's code. Reading the four separately rather than a whole span keeps the
+\ public effect a number in and a number out, which is what the callers below and
+\ test/compiler/native-exec.f ask for.
 : INSN@ ( n -- n ) {: a:n :}
-   a AT !
-   AT-PTR c@
-   AT-PTR 1 + c@ 8 lshift or
-   AT-PTR 2 + c@ 16 lshift or
-   AT-PTR 3 + c@ 24 lshift or ;
+   a NBR:INSN-BYTES CODE-BYTES:AT drop {: p:ptr :}
+   p c@
+   p 1 + c@ 8 lshift or
+   p 2 + c@ 16 lshift or
+   p 3 + c@ 24 lshift or ;
 
 \ the instruction at it, and a local annotation cannot carry a quotation effect.
 : SPAN-EACH ( n n [ n n -- ] -- ) {: s:n len:n q :}

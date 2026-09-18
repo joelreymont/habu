@@ -16,9 +16,14 @@
 \ from an xt to the first `ret` and finds only the current wordlist, and its
 \ output prints one operand per line, which a side-by-side reading cannot use.
 \
-\ This file requires nothing, for the reason tools/tier-census.f gives: the
-\ string and formatting libraries are corpus a tier comparison wants to weigh,
-\ and a tool that loaded them for its own use could not.
+\ This file requires one thing only, for the reason tools/tier-census.f gives:
+\ the string and formatting libraries are corpus a tier comparison wants to
+\ weigh, and a tool that loaded them for its own use could not. The one require
+\ is src/habu/code-bytes.f, the boundary that turns a record's code address into
+\ bytes. It requires nothing itself, and the only comparison it disturbs is one
+\ whose corpus names that file, which is already loaded by then.
+
+require src/habu/code-bytes.f
 
 package TIER-DUMP
 private
@@ -31,7 +36,6 @@ private
 420 constant MODE-0644
 
 create PATHZ PATH-CAP 1 + allot
-variable CODE-A
 
 \ `set-tier` is refused inside a plain checked body; one row, nothing else in it.
 TRUSTED: SELECT-TIER ( n -- ) set-tier ;
@@ -53,9 +57,6 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 : LOAD-CORPUS ( -- )
    script-argc 3 ?do i script-argv$ required loop ;
-
-: CODE-P ( -- ptr u8 )
-   CODE-A 0 ptr-field @ ;
 
 \ XREF-FIND resolves a top-level name and a `PKG:NAME` whose tail is public;
 \ a package's private words sit in a wordlist that the qualified path does not
@@ -91,18 +92,21 @@ variable HIT-IX
    HITS @ 1 > if AMBIGUOUS then
    HIT-IX @ XREF-REC ;
 
-: SPAN ( ptr u8 n -- n ) {: a:ptr u :}
+\ The record's start is an address the engine hands back as a number;
+\ CODE-BYTES:AT is the one place it becomes bytes, and it refuses a span that is
+\ not inside the running image's code, so a corrupt record cannot make this tool
+\ write whatever happens to sit at the number.
+: SPAN ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    a u FIND-REC {: rec:ptr :}
    rec XREF-CODE-BYTES {: bytes :}
    bytes 0= if s" tier-dump: word has no code" USAGE-RC die then
-   rec XREF-START CODE-A !
-   bytes ;
+   rec XREF-START bytes CODE-BYTES:AT ;
 
-: WRITE-SPAN ( ptr u8 n n -- ) {: path:ptr pu bytes :}
+: WRITE-SPAN ( ptr u8 n ptr u8 n -- ) {: path:ptr pu code:ptr bytes :}
    path pu ZPATH
    PATHZ O-WRITE-NEW MODE-0644 open {: fd :}
    fd 0 < if s" tier-dump: cannot open output" IO-RC die then
-   fd CODE-P bytes write bytes <> if
+   fd code bytes write bytes <> if
       fd close
       s" tier-dump: short write" IO-RC die
    then
@@ -114,8 +118,8 @@ public
    script-argc 4 < if USAGE then
    0 script-argv$ TIER-ARG SELECT-TIER
    LOAD-CORPUS
-   1 script-argv$ SPAN {: bytes :}
-   2 script-argv$ bytes WRITE-SPAN ;
+   1 script-argv$ SPAN {: code:ptr bytes :}
+   2 script-argv$ code bytes WRITE-SPAN ;
 
 ;package
 

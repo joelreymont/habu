@@ -56,10 +56,14 @@ create CHB 4 allot
    kind 8 = IF w FRN . w FI12 . THEN
    kind 5 = IF w FI16 . THEN ;
 \ NB: no locals inside the loop (corrupts the frame) — row fields go through variables.
-variable DDONE  variable DRI  variable DRP  variable DMSK  variable DVAL  variable DKIND  variable DNL
+variable DDONE  variable DRI  variable DMSK  variable DVAL  variable DKIND  variable DNL
+\ The row cursor walks DTB, the byte table above, and never code: it is this
+\ file's own storage, so it is a declared pointer cell rather than an address
+\ punned back out of an undeclared one.
+PTR-VARIABLE DRP
 
 : DRP@ ( -- ptr u8 )
-   DRP 0 ptr-field @ ;
+   DRP @ ;
 
 : DIS1 ( n -- ) {: w :}
    w DLS-SPECIAL IF EXIT THEN

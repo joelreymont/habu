@@ -31,11 +31,20 @@
 \ nothing behind. Two processes each get a pristine engine, and the tier is
 \ selected before the first corpus token is read.
 \
-\ WHY THIS FILE REQUIRES NOTHING. lib/string.f and lib/fmt.f are the string and
-\ formatting corpus this census most wants to weigh, and a tool that loaded
-\ them for its own output could not: they would already be in the dictionary
-\ when the corpus asked for them. The decimal writer and the line buffer below
-\ are the price of being able to measure them.
+\ WHY THIS FILE REQUIRES ALMOST NOTHING. lib/string.f and lib/fmt.f are the
+\ string and formatting corpus this census most wants to weigh, and a tool that
+\ loaded them for its own output could not: they would already be in the
+\ dictionary when the corpus asked for them. The decimal writer and the line
+\ buffer below are the price of being able to measure them.
+\
+\ The one require is src/habu/code-bytes.f, the boundary that turns a record's
+\ code address into bytes. It requires nothing itself, and it loads before MAIN
+\ takes the `ndict@` the report range starts from, so it adds no rows to any
+\ report. It pays the same price every other pre-loaded file pays, and the price
+\ is exactly one corpus: a census that names src/habu/code-bytes.f now weighs it
+\ at nothing, because it is already in the dictionary when the corpus asks.
+\ Measure that file with tools/tier-dump.f, or with a census run from a tree
+\ where it is not this tool's dependency.
 \
 \ WHAT THE COUNTS MEAN. Bytes and instructions are the whole baked span
 \ (XREF-CODE-BYTES). `bl` counts branch-with-link instructions - every call the
@@ -50,6 +59,8 @@
 \ docs/compiler-ir-design.md pins every such address to a fixed four-instruction
 \ MOVZ/MOVK stencil so a later pass can recognize it, so one inline pointer
 \ costs 16 bytes and `movk` over three is the number of them.
+
+require src/habu/code-bytes.f
 
 package TIER-CENSUS
 private
@@ -96,7 +107,6 @@ create DIG DIG-CAP allot
 variable DEC-V
 variable DEC-K
 
-variable CODE-A                    \ code address under the instruction walk
 variable WORDS
 variable T-BYTES
 variable T-INSTR
@@ -160,18 +170,18 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
    BUF-N @ BUF-HIGH > if FLUSH then ;
 
 \ ---- the instruction walk ---------------------------------------------------
-\ The record's code span is an address the engine hands back as a number; the
-\ ptr-field reinterpretation below is the only way a checked body can read the
-\ bytes at it, and tools/jitdump-core.f reads baked code the same way.
+\ The record's code span is an address the engine hands back as a number.
+\ CODE-BYTES:AT (src/habu/code-bytes.f) is the one way a checked body turns one
+\ into bytes, and it is bounded against the running image's code, so a record
+\ whose span is not code is refused here instead of being tallied. SCAN takes
+\ the span once and walks it with pointer arithmetic, so the bound costs one
+\ check per word rather than one per instruction.
 
-: CODE-P ( -- ptr u8 )
-   CODE-A 0 ptr-field @ ;
-
-: W32@ ( n -- n ) {: off :}
-   CODE-P off + c@
-   CODE-P off 1 + + c@ 8 lshift or
-   CODE-P off 2 + + c@ 16 lshift or
-   CODE-P off 3 + + c@ 24 lshift or ;
+: W32@ ( ptr u8 -- n ) {: p:ptr :}
+   p c@
+   p 1 + c@ 8 lshift or
+   p 2 + c@ 16 lshift or
+   p 3 + c@ 24 lshift or ;
 
 : BL? ( n -- bool ) BL-MASK and BL-BITS = ;
 
@@ -200,9 +210,9 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 : SCAN ( n n -- )                  \ start, bytes -> the five per-word counts
    {: start bytes :}
-   start CODE-A !
+   start bytes CODE-BYTES:AT drop {: code:ptr :}
    0 W-BL !  0 W-LDSP !  0 W-STSP !  0 W-MOV !  0 W-MOVK !
-   bytes 4 / 0 ?do i 4 * W32@ TALLY loop ;
+   bytes 4 / 0 ?do code i 4 * + W32@ TALLY loop ;
 
 \ ---- names ------------------------------------------------------------------
 \ A word's wordlist cell carries its package's id, and a namespace record's

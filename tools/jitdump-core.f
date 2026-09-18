@@ -1,6 +1,7 @@
 \ jitdump-core.f - reusable JIT code disassembly words.
 
 require src/arch/arm64/disasm.f
+require src/habu/code-bytes.f
 
 \ CLI: bin/hb --load tools/jitdump.f -- '<program>' WORD
 \ Inline usage when disasm.f is already loaded: <program> ' WORD JITDUMP:JD
@@ -19,16 +20,21 @@ package JITDUMP
 private
 
 512 constant MAX-INSTR
+4 constant INSN-BYTES
 
 : W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@
    p 1 + c@ 8 lshift or
    p 2 + c@ 16 lshift or
    p 3 + c@ 24 lshift or ;
+\ The cursor is an address the engine handed back as a number - an xt - and it
+\ stays one: CODE-BYTES:AT is where each step becomes bytes, so a walk that runs
+\ off the end of the emitted code is refused instead of decoding whatever
+\ follows it.
 variable JDP  variable JDN
 
-: JDP@ ( -- ptr u8 )
-   JDP 0 ptr-field @ ;
+: JD-INSN@ ( -- n )
+   JDP @ INSN-BYTES CODE-BYTES:AT drop W32@ ;
 
 : JIT-USAGE ( -- )
    s" usage: bin/hb --load src/arch/arm64/disasm.f tools/jitdump.f -- '<program>' WORD" 64 die ;
@@ -38,10 +44,10 @@ public
 : JD ( n -- ) {: xt:n :}
    xt JDP !  0 JDN !
    BEGIN
-     JDP@ W32@ DIS1
+     JD-INSN@ DIS1
      JDN @ 1 + JDN !
-     JDP@ W32@ $D65F03C0 =  JDN @ MAX-INSTR 1 - > or
-     JDP@ 4 + JDP !
+     JD-INSN@ $D65F03C0 =  JDN @ MAX-INSTR 1 - > or
+     JDP @ INSN-BYTES + JDP !
    UNTIL ;
 
 : JIT-FIND ( ptr u8 n -- n )

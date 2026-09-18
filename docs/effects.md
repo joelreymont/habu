@@ -507,6 +507,31 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   which is the path every tool and gate actually uses, published created words
   unsealed. `RAW-TRUST-NEXT` still brackets its registration, so it now confirms
   the seal a second time rather than being the only thing that applies it.
+- **Reading the bytes at a code address goes through `CODE-BYTES:AT`
+  (`src/habu/code-bytes.f`), and nothing else does.** A code address reaches
+  checked code as a number: `XREF-START` reads one out of a dictionary record, an
+  execution token is one, and a walk over a span counts in them. The raw-cell rule
+  above refuses the shortcut every reader used to take — park the number in an
+  undeclared `variable` and fetch it back through `ptr-field` as a `ptr u8` — and
+  that shortcut had been copied into five readers of code addresses, each an
+  unnamed and unbounded reinterpretation. `CODE-BYTES:AT ( n n -- ptr u8 n )`
+  replaces all five. It takes a start and a byte count, checks the span against
+  the running image's own code extents — the baked text at `rbase`, and the
+  region's code band from `dbase@ + DICT-SIZE` up to `cp@`, with a span having to
+  lie wholly inside ONE of them — and answers the bytes, or refuses with
+  `hb: span outside the code region` and exit code 74. It is not a new seam and
+  it adds no `TRUST` row of its own: it is the bound on `XREF-N>U8`
+  (`src/habu/xref.f`), the engine's one declared `n -> ptr u8` refinement, which
+  never had one. `src/compiler/native/codewalk.f`,
+  `tools/codegen-tail-probe.f`, `tools/jitdump-core.f`, `tools/tier-dump.f` and
+  `tools/tier-census.f` read through it, and `test/compiler/code-bytes.f` is the
+  test of its bound. A site that only carries a code address on rather than
+  reading through it — `NWALK:SPAN-EACH`, `XREF-START` itself — keeps it a number.
+  Three more cells of the same shape were not code addresses at all and needed no
+  boundary: `tools/codegen-role.f` and `test/icode-fixup-test.f` were re-minting
+  what `CW@` (`src/arch/arm64/icode.f`) already answers as `ptr u8`, so they hold
+  it in a local instead, and `src/arch/arm64/disasm.f` was walking its own
+  `create`d row table, which is now a declared `PTR-VARIABLE`.
 - **`xt<effect>` storage cells are the typed alternative to raw xt scratch.**
   `TYPED-VARIABLE HK [ in -- out ]` (and `n TYPED-BUFFER HK [ in -- out ]`)
   declares a persistent monomorphic *code cell*: the generated accessor's declared

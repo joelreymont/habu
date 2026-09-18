@@ -57,17 +57,15 @@ require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
 
 \ ---- emitted-word decode ----
-variable CGR-WP
-
-: CGR-WP@ ( -- ptr u8 )
-   CGR-WP 0 ptr-field @ ;
-
+\ CW@ (src/arch/arm64/icode.f) already answers the assembler's own code buffer
+\ as bytes, so the index needs no cell of its own: the pointer stays on the
+\ stack from the one word that produces it.
 : CGR-WORD@ ( n -- n )
-   CW@ CGR-WP 0 ptr-field !
-   CGR-WP@ 0 CODE-BYTE+ c@
-   CGR-WP@ 1 CODE-BYTE+ c@ 8 lshift or
-   CGR-WP@ 2 CODE-BYTE+ c@ 16 lshift or
-   CGR-WP@ 3 CODE-BYTE+ c@ 24 lshift or ;
+   CW@ {: p:ptr :}
+   p 0 CODE-BYTE+ c@
+   p 1 CODE-BYTE+ c@ 8 lshift or
+   p 2 CODE-BYTE+ c@ 16 lshift or
+   p 3 CODE-BYTE+ c@ 24 lshift or ;
 
 : CGR-STR? ( n -- bool )
    CGR-STR-MASK and CGR-STR-BASE = ;
