@@ -310,7 +310,7 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   per-definition stages and no-ops for the lifecycle rows. The one-field
   nominal `NBACK:linkage` (`L-NONE L-DEAD L-CALLED L-TAIL L-BACK`, `WITH`,
   `HAS?`) carries how control reaches and leaves a routine, because a
-  multi-field value cannot be bound to a local (LESSONS.md).
+  multi-field value cannot be bound to a local (docs/type-system.md §10.2).
 - `src/compiler/native/compiler.f` names no backend package: `EMITTED` is
   `NBACK:DECLARE → SELECT → PRUNE → FIXPOINT → EMIT`, retire uses
   `RELEASE`/`RETIRE`, the session `PROTOTYPE`/`FORGET`, capture `PREPARE`.

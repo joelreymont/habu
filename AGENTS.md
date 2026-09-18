@@ -15,9 +15,20 @@ belong in the language core.
   the existing language or library already expresses the requirement.
 - Use `jj`, preserve unrelated changes, and commit coherent completed work.
   Use separate workspaces when concurrent edits would conflict. Create Habu
-  workspaces under this repository's `.jj-ws/`, never directly under `~/Work/`.
+  workspaces under this repository's `.jj-ws/`, never directly under `~/Work/`,
+  and only from the repo root: one workspace name maps to one directory (a
+  nested duplicate checkout silently resets the other's edits; a divergent
+  change id is the tell). An edit exists only after a jj snapshot — `jj
+  describe -m 'WIP: …'` after each coherent step; `jj workspace update-stale`
+  rebuilds an undescribed working copy, and the lost tree comes back from
+  `jj op log` (`jj --at-op <op> log -r <change>`, `jj restore --from <commit>`),
+  never from `jj op restore` while peers are live.
+- A gate and its push never share one unconditional command chain: run the
+  gate, read its exit code on its own line, then push.
 - Use dots only when the task calls for them; they are not a gate for coding,
-  commits, reviews or ordinary communication. Agents talk through Herdr session
+  commits, reviews or ordinary communication. `dot off` archives the file and
+  orphans every `blocks:` edge naming it — search `.dots/` for the id first and
+  sweep the edges in the same commit. Agents talk through Herdr session
   messaging; there is no blackboard. Do not post messages on the user's behalf
   without authorization.
 
@@ -57,13 +68,14 @@ belong in the language core.
 - Report actual results and untested boundaries. Never weaken a claim to make a
   check pass. [docs/proofs.md](docs/proofs.md) explains proof/model limits.
 - A finding goes where it is checked: a test or a code comment if either can
-  hold it; [docs/forth.md](docs/forth.md) and the card for a language or
-  toolchain rule; this file for how agents work; [LESSONS.md](LESSONS.md) only
-  for a rule the code cannot state, about the documents, platforms, product or
-  environment — one to three lines, the rule and the fact that proves it, no
-  dates or narrative. Search and merge before adding. Reference material
-  belongs in `docs/`. No mandatory ledgers, claim choreography, mutation
-  campaigns or ritual response templates.
+  hold it; [docs/forth.md](docs/forth.md) (its "Rules learned by refusal"
+  section) and the card for a language rule; [docs/bootstrap.md](docs/bootstrap.md),
+  [docs/gate.md](docs/gate.md) and [docs/debugging.md](docs/debugging.md) for a
+  build, test or diagnosis rule; this file for how agents work. State the rule
+  and the fact that proves it, without dates or narrative; search and merge
+  before adding. There is no LESSONS.md. Reference material belongs in
+  `docs/`. No mandatory ledgers, claim choreography, mutation campaigns or
+  ritual response templates.
 
 ## Session start in Herdr
 

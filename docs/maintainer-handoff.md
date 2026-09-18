@@ -72,8 +72,8 @@ fixes (9d7bb928), the compiled-tick internal-word gate and nine record/effect
 suites (f3e7f800, d88e3efd), diagnose-hb retired (7aebfda6), certify learns
 DYNAMIC-BUFFER (4145a44f, 15d51e38), byte-identical builds (a611d84d), the
 register-allocation lane (7f49cf17), seven remaining suites (41d1d6c7). The
-recorded red set is LESSONS.md's last entry; re-measure on a quiet box after
-each engine rebuild.
+red set is whatever the last chain gate printed (`~/.cache/hazel/logs/gate-*.log`);
+re-measure on a quiet box after each engine rebuild.
 
 Opus workers implement in isolated lanes; hazel reads every diff before
 landing. Lanes cut by the API session limit on 2026-09-12 13:30 UTC keep their
@@ -133,9 +133,10 @@ on-disk state and are relaunched from it:
   compiler-ir-structure-manifest, compiler-ir-structure-proof,
   compiler-asm-package, compiler-native-elaborate,
   compiler-codegen-tail-probe, app-image; tool-boundary-aot-call is flaky
-  under load. The complete red set is recorded in LESSONS.md once the runner
-  runs every suite (habu-run-every-registered-56d4962d). engine-suite has two
-  pre-existing reds F308/F309 (habu-fix-the-two-284ac502).
+  under load. The runner now runs every registered suite
+  (habu-run-every-registered-56d4962d) and the red set is the last chain
+  gate's `FAIL:` lines. engine-suite has two pre-existing reds F308/F309
+  (habu-fix-the-two-284ac502).
 - Self-refresh (`bin/hb` rebuilding its own tree) fails at capture with
   `aot-capture: call target has no dictionary record`; 0c3099ea is the fix
   candidate.

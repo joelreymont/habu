@@ -122,6 +122,19 @@ prim (RW→store→RX→isync, atomic from JIT-resident code). A full
 Forth-predicate conditional would need signal-safe deferred evaluation; the
 supported conditional breakpoint mechanism is skip-count (`BPN`).
 
+`cp@` is stable only inside a compiled word: the interpreter compiles each
+top-level line into a transient buffer at `cp@`, so a top-level `cp@ patch32`
+clobbers the executing line (SIGILL). Write a runtime stub at `cp@` from inside
+`: WORD … ;`. To verify emitted primitive bytes without running them, compute
+the exact ARM64 encodings and search the on-disk `bin/hb` for the contiguous
+stream — ASLR slides the xt, file bytes do not move.
+
+An uncaught throw in a `--load` or spawned child exits with the throw code's
+low eight bits and prints nothing: exit 56 is `E-PROC-TRUNCATED` (-2504), 104
+is `E-STR-BOUNDS` (-2200). Add multiples of 256 until a known `E-*` appears
+before hunting for the site; a one-byte diagnostic and a clean exit means a raw
+engine capacity path (`exit_group`), not a throw.
+
 ## gdb/lldb — native stepping boundary
 Use the Habu stepper, breakpoints, watch cells, `jitdump`, and `imgdump` first.
 Use gdb on Linux and lldb on macOS only when the fault is in startup or emitted

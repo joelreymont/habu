@@ -230,6 +230,34 @@ generation 2's, or when generation 5 is not byte-identical to generation 4.
 `tools/two-generation-probe.f` is the child fixture that reads one engine's
 shape.
 
+Three facts decide how a change reaches the fixpoint:
+
+- **A compiler change takes two generations.** The image a build captures
+  carries layout constants from the engine that built it, so gen1 inherits the
+  building engine's layout and gen2 == gen3 is the fixpoint; `cmp gen1 gen2` is
+  not the test. Building the *unmodified* tree twice with the new compiler must
+  return the shipped engine byte for byte — the direct proof that codegen did
+  not change. A gate proves the engine it spawns: `test/gate-stdlib-lib.f`
+  runs `bin/hb` from the checkout by name (`HABU_UNDER_TEST` reaches the child
+  as an environment variable only), so run the full gate from a tree whose own
+  `bin/hb` is the new engine.
+- **A new engine primitive that boot-prefix source calls lands in two
+  stages.** The host compiles the prefix and resolves the name in its own
+  dictionary, so stage 1 emits and registers the primitive with its
+  `PRIM:`/`TRUST` row and builds; stage 2 adds the prefix code that calls it
+  and builds again. A one-stage landing dies `E-UNDEFINED` (rc 70) in the host
+  before any build. A `TRUSTED:` bridge turned into a checked call is the same
+  shape: the callee's `PRIM:`/`PPRIM:` row must exist in the host first, or an
+  old host dies at `--load` of the build tool with `ncomp: cannot compile
+  <word>`.
+- **The recovery prologue and `prefix-rewind.f` rewind to different points.**
+  `tools/bootstrap.sh`'s boot-hide text reloads the whole core prefix, so it
+  rewinds the dictionary to the prefix's *first* record and the signature
+  store to zero; `CHECKER-BOUND:REWIND` returns to the prefix's *end*, where
+  `prefix-rewind.f`'s payload reloads from. Calling the boundary in the
+  prologue builds a stage-1 engine that dies at boot with a silent rc 78, one
+  stage after the edit.
+
 `tools/native-build.f` and the private `tools/native-bootstrap.f` require one
 explicit output path after `--`; there is no implicit `bin/hb` replacement.
 Their output passes a basic startup smoke check, which does not establish full

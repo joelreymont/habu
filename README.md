@@ -77,4 +77,4 @@ documents native scoped-root loading against Habu's shared libraries.
 - [`docs/bootstrap.md`](docs/bootstrap.md) — bootstrap and self-hosting.
 - [`docs/debugging.md`](docs/debugging.md) — debugger and inspection tools.
 - [`docs/stdlib.md`](docs/stdlib.md) — standard library reference.
-- [`LESSONS.md`](LESSONS.md) — concise project memory.
+- [`docs/gate.md`](docs/gate.md) — the native test suite and what it demands of a test file.

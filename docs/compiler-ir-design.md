@@ -2738,7 +2738,8 @@ A leaf that reveals an unplanned interface or dependency stops and is redesigned
 - No hidden fallback from new to old compiler.
 - No pass mutates its input module.
 - No optimization merges with its validator in the same opaque word.
-- Record durable lessons in `LESSONS.md`, not API descriptions.
+- Record a durable rule where it is checked — a test, a comment, or the docs
+  page that owns the subject — never as API description.
 
 ### 17.4 Review rules
 

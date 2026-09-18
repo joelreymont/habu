@@ -3,8 +3,8 @@
 Workers: read [docs/forth-card.md](forth-card.md) first; this file is the reference.
 
 How we write Forth in this repo, for the native `bin/hb` engine. Durable
-language guidance lives here; `LESSONS.md` records the incident that taught a
-rule, never the rule itself.
+language guidance lives here, with the fact that proved each rule beside it;
+build and test rules live in [bootstrap.md](bootstrap.md) and [gate.md](gate.md).
 
 ## Checked code and primitive boundaries
 
@@ -606,8 +606,7 @@ field. Only a type annotation on that local is refused: `{: p:n :}` is
   `( before -- after )` current. Comment only what the code cannot state (units,
   ownership or ordering invariants, a hardware encoding, a checker boundary), in
   one or two lines. No design essays, rationale or refutation history: that
-  belongs in documentation and `LESSONS.md`. Meaning lives in names and
-  factoring.
+  belongs in documentation. Meaning lives in names and factoring.
 - **Every definition** carries `( before -- after )`; body lines carry a
   trailing `\ ( before -- after )` only where the stack state is not obvious. No
   empty stack comments; many line comments mean factor.
@@ -1076,7 +1075,8 @@ passing suite.
 
 ## Native Forth Gotchas That Shape How We Write Code
 
-Build and environment findings are in `../LESSONS.md`; these affect coding.
+Build and environment rules are in [bootstrap.md](bootstrap.md) and
+[gate.md](gate.md); these affect coding.
 
 - **Case-insensitive dictionary**: collision risk (see Naming).
 - **`[']` is compile-only**; interpreted tests use `'` (`' WORD catch`).
@@ -1129,6 +1129,56 @@ Build and environment findings are in `../LESSONS.md`; these affect coding.
   that `throw` go in a `--` helper, and the value-returning word's remaining
   path structurally returns its outputs; a final throw-only fallback in a
   `-- value…` word confuses path-effect merging.
+
+## Rules learned by refusal
+
+Each of these was measured on the engine; the fact that proved it is beside
+the rule.
+
+- **A local binds in the spelling it was declared in; word lookup stays
+  case-insensitive.** `{: text :}` reads `text` as the local and `TEXT` as the
+  word, and the same local hides the word `TEXT` from the definition it is
+  declared in (`address` hides `ADDRESS`). The three resolvers — the checker,
+  the JIT and tier 1 — agree; `test/compiler/native-local-case.f` pins it.
+- **`s"` reads no escapes; `S\"` does.** `S\"` needs its delimiter space
+  (`s\"\n"` is one undefined token) and reads `\u` as its own escape, so a
+  fixture holding JSON writes `\\uXXXX`.
+- **`.` ends the line.** The native `.` is newline-terminated, not
+  space-terminated: `11 . 22 . cr` emits `11\n22\n\n`, so an assertion for two
+  dotted numbers on one line never matches; digit emitters (`GT-U-TYPE`,
+  `TS-N.`) build inline text.
+- **`private` is a convention until the package seals itself.** Any file may
+  reopen `package NAME private` and call its internals. The protection idiom at
+  the foot of a substrate file — `get-current prot-wid-add` — seals the
+  wordlists; after it a second file that reopens the package dies at load with
+  the package name as its whole message (exit 84). Two files that belong
+  together are two packages with a one-way dependency, or one package that
+  only the last file seals.
+- **A `DEFTYPE` a defining word hands out sits in the public section.** A
+  `does>` body is checked code and may publish a nominal handle directly, but
+  the child's stored signature names the type, and a private one does not
+  resolve for a reader: the definition is refused as it is made
+  (`checker: bad stored signature`), even when only the package uses the
+  converters.
+- **A nominal error needs its own result family.** Constructing `RESULT:OK` in
+  the ok-only path leaves the err variable of `result<a,b>` free, and a free
+  variable unifies with a structural type but not with a nominal ENUM or
+  TYPEFAMILY. Declare `SUMTYPE foo-result 1` whose ok variant carries the
+  payload and whose errors are nullary variants (the `numeric-result` idiom in
+  `lib/num-arithmetic.f`).
+- **An arity-1 SUMTYPE is spelled with its argument in a signature and bare in
+  a `MATCH` selector.** `family<PKG:t>` in the effect (`wrong arity for type
+  family` otherwise), `MATCH family` at the arm; never both together.
+- **A checker atom prefix reserves the whole lowercase `prefix-*` namespace.**
+  A `layout-` prefix makes an ENUM variant spelled `layout-conflict` throw 7110
+  far from the cause; sweep with `rg '\bprefix-'` before choosing one.
+  Declaration-grammar keywords are reserved family names too (`ENUM policy`
+  throws 7110).
+- **`0 set-check` also disarms the compile preflight.** A program that opens
+  with it to get past one uncertified primitive is measured with neither gate.
+  Declare the primitive instead, in the axiom form the engine's own primitives
+  use (`PRIM: name PE-… PRIM;`), and the rest of the program still compiles
+  checked.
 
 ## Spans: a pointer that carries its reach
 

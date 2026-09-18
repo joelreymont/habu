@@ -3,8 +3,9 @@
 Habu is a self-hosted native ARM64 Forth with a stack-effect checker. This
 note orients a restart on the current line. For build/recovery mechanics see
 docs/bootstrap.md, for native debugging see docs/debugging.md, for the
-campaign map see docs/roadmap.md, and for durable technical findings see
-LESSONS.md (entries are dated).
+campaign map see docs/roadmap.md, and for the rules the code cannot state
+see docs/forth.md ("Rules learned by refusal"), docs/gate.md and
+docs/bootstrap.md.
 
 ## Where things stand (2026-09-16, release integration)
 

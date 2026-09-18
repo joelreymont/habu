@@ -263,8 +263,9 @@ build on this machine, for two independent reasons:
   `: BYTE-VIEW ( ptr a -- ptr u8 ) ;`, and today's engine answers
   `E-NONPARAMETRIC-EFFECT … declared type variable 'a' is specialized to a
   concrete type`, exit 70 (measured). Separately, the `cast:` reader keyword
-  landed `8818e2cb6fb7` (2026-08-19), and `LESSONS.md` records that no engine can
-  read across that seam in either direction.
+  landed `8818e2cb6fb7` (2026-08-19); no engine can read across that seam in
+  either direction (an engine judges nothing it has baked —
+  [bootstrap.md](bootstrap.md#what-the-engine-carries)).
 
 It would become buildable only by backporting four later commits, at which point
 it is no longer the pinned revision.
