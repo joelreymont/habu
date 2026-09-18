@@ -1131,8 +1131,60 @@ REC-SIG-INSTALL
    10 EMIT1
    RSBUF RSN @ RDIAG-APPEND
    0 RDST !  0 RSN ! ;
-: USHADOW-DIAG-INSTALL ( -- ) [: USHADOW-DIAG ;] is USHADOW-DIAG-XT ;
-USHADOW-DIAG-INSTALL
+
+\ --- a package public its own private tail shadows (checker.f SHADOW-ARITY-CK).
+\ The definition-site twin of the diagnostic above: there two scopes claimed one
+\ bare token, here one package does, and the reject again names both candidates
+\ with their arity so the author can see which of the two to change. The widths
+\ come from the check itself rather than from the store, because the refused
+\ record is never written: the rule runs before the append, so the public word has
+\ no row here to read.
+\
+\ CELLS on both sides, because cells are what the compiler reads a definition's
+\ contract in and what this rule compares. The package and the tail are the
+\ checker's folded spellings, as the shadow diagnostic above renders a package:
+\ every name reaches the record intake already folded, so no raw token survives
+\ this far, and a word is found by a case-insensitive search anyway.
+: SBA-CELLS-TXT ( n n -- )                \ append " (in -- out)"
+   {: in:n out:n :}
+   s"  (" DTXT  in RNUM  s"  -- " DTXT  out RNUM  41 EMIT1 ;
+: SBARITY-PROSE ( -- )
+   s" E-SHADOWED-ARITY habu: public '" DTXT
+   SBA-OWN @ SYM-PKG$ DTXT  58 EMIT1  SBA-OWN @ SYM-NAME$ DTXT  39 EMIT1
+   SBA-NIN @ SBA-NOUT @ SBA-CELLS-TXT
+   s"  does not bind its own name: the same package's private '" DTXT
+   SBA-OWN @ SYM-NAME$ DTXT  39 EMIT1
+   SBA-PIN @ SBA-POUT @ SBA-CELLS-TXT
+   s"  owns that bare tail, a definition's contract is read from the binding its" DTXT
+   s"  own name has, and the two do not move the same cells - so the public word" DTXT
+   s"  would be compiled against the private word's arity. Declare the same" DTXT
+   s"  effect on both (a public forwarder repeats its private word's signature)" DTXT
+   s"  or rename one of the two" DTXT ;
+: SBARITY-JSON ( -- )
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-SHADOWED-ARITY" JSTR 44 EMIT1
+   s" repair_class" JKEY s" match_shadowed_private_effect" JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" token" JKEY SBA-OWN @ SYM-NAME$ JSTR 44 EMIT1
+   s" package" JKEY SBA-OWN @ SYM-PKG$ JSTR 44 EMIT1
+   s" suggestion" JKEY s" A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two." JSTR
+   125 EMIT1 ;
+: SBARITY-DIAG ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF SBARITY-JSON ELSE SBARITY-PROSE THEN
+   10 EMIT1
+   RSBUF RSN @ RDIAG-APPEND
+   0 RDST !  0 RSN ! ;
+\ Both shadow diagnostics ride ONE checker hook, selected by its argument
+\ (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site, 1 = the
+\ arity-shadow definition site), because every defer written before `: TRUST`
+\ takes a slot of the engine's pre-trust pending table and checker.f holds
+\ exactly PD-CAP of them.
+: SHADOW-DIAG ( n -- )
+   1 = IF SBARITY-DIAG ELSE USHADOW-DIAG THEN ;
+: SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
+SHADOW-DIAG-INSTALL
 
 \ --- a `trust` row naming a word the engine resolves to nothing. Rendered on
 \ the same template as the shadow diagnostic above, and beside it on purpose:

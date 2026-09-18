@@ -1440,6 +1440,10 @@ SUITE trust-row-refusal
    test/trust-row-test.f
 ;SUITE
 
+SUITE shadowed-arity-refusal
+   test/shadowed-arity-test.f
+;SUITE
+
 SUITE load-reject-diag
    test/load-reject-diag-test.f
 ;SUITE

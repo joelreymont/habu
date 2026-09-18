@@ -241,6 +241,26 @@ public
   several packages (`APP:RESET`, `MK:RESET`).
 - While a package is open, unqualified lookup tries the private wordlist, then
   the public wordlist, then the saved global path.
+- A **public** definition whose tail a **private** word of the same package
+  already owns is the forwarder pattern (`lib/task.f` publishes
+  `: PREPARE ( ptr n -- ) PREPARE ;` over its private `PREPARE`) and stays
+  legal, but the two effects must move the same number of CELLS. The bare tail
+  binds the private word by the order above, and a definition's own contract is
+  read from that binding (`src/compiler/native/compiler.f` KEEP-ARITY asks
+  `NDICT:SPELL-ARITY` with the bare name), so a public word declaring a
+  different arity would be compiled against the private word's. The public
+  definition is refused where it is written, `E-SHADOWED-ARITY` (checker 7145,
+  rc 67), naming the package, the tail and both widths; until that rule the pair
+  passed the source run and the native build refused it minutes later with
+  `-8303 E-NELAB-ARITY`, which stays as the backstop. The rule judges a colon
+  definition with a DECLARED signature, which is the only record the native
+  compiler elaborates a body for: a public word made by a storage definer
+  (`constant`, `variable`, `create`) has no body and is judged by its definer's
+  own row instead, so a private and a public `SHARED` constant in one package
+  stay legal. Same cells through different types is accepted
+  (`( ptr u8 n -- n )` against `( n n -- n )`), and so is the reverse order — a
+  public definition made BEFORE the private one binds its own name at the moment
+  its contract is read.
 - `EXPORT NAME` inside an open package re-exports an EXISTING word into the
   current section under its own tail: same xt, same checked effect (a fresh
   alpha-equivalent scheme copy), defer and control flags and immediate/wide bits

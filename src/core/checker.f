@@ -7981,9 +7981,15 @@ TSTALE-DIAG-DEFAULT
 PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token (raw, valid while rendering)
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
 PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
-defer USHADOW-DIAG-XT ( -- )                \ render.f installs the reference-site diagnostic
-: USHADOW-DIAG-DEFAULT ( -- ) [: ;] is USHADOW-DIAG-XT ;
-USHADOW-DIAG-DEFAULT
+\ ONE hook for both shadow diagnostics, selected by its argument: 0 renders the
+\ using-shadow reference site below, 1 the arity-shadow definition site
+\ (SHADOW-ARITY-CK). One defer and not two because every `defer` written here,
+\ before `: TRUST`, takes a slot of the engine's pre-trust pending table
+\ (src/habu/layout.f PD-CAP, 48) and this file holds exactly that many:
+\ test/pre-trust-defer.f appends one more and boots, and a 49th dies exit 72.
+defer SHADOW-DIAG-XT ( n -- )               \ render.f installs both diagnostics behind one selector
+: SHADOW-DIAG-DEFAULT ( -- ) [: drop ;] is SHADOW-DIAG-XT ;
+SHADOW-DIAG-DEFAULT
 
 \ gsym has already resolved the bare tail to a global; if a live used public
 \ exports the same tail the reference is ambiguous — capture both candidates for
@@ -7999,7 +8005,7 @@ USHADOW-DIAG-DEFAULT
    ELSE
       drop  NULL-PTR USH-PKG-A !  0 USH-PKG-U !
    THEN
-   USHADOW-DIAG-XT
+   0 SHADOW-DIAG-XT
    E-USING-SHADOW-GLOBAL throw ;
 
 \ --- one resolver for the used-publics leg (dot habu-reject-a-bare-1f43a9a6) ---
@@ -9170,6 +9176,78 @@ package CHECKER-REG
 : CHECKER-DUP-DEFINITION ( -- )
    $4E throw ;
 
+\ --- a package public whose own bare tail a private word of the package claims --
+\ Both the engine (habu1.f EMIT-FIND) and the checker (CHECKER-FIND-ACTIVE-SYM)
+\ resolve a bare tail private-wordlist-first while a package is open, so such a
+\ public definition is NOT what its own name binds to. The native compiler reads
+\ a definition's own contract from exactly that binding — compiler.f KEEP-ARITY
+\ asks NDICT:SPELL-ARITY with the bare name — so the public word is elaborated
+\ against the PRIVATE word's arity, minutes after a source run that certified
+\ both. That is where the Tender backend's -8303 E-NELAB-ARITY came from: a
+\ public `F ( n -- n )` beside a private `F ( n n -- n )`.
+\
+\ THE PAIR ITSELF IS DELIBERATE AND STAYS LEGAL. lib/task.f publishes
+\ `: PREPARE ( ptr n -- ) PREPARE ;` over its private PREPARE, and thirteen such
+\ forwarders besides; the bare call in the body is the private word, which is the
+\ point of the pattern. What ncomp cannot survive is the two effects moving
+\ DIFFERENT numbers of cells, so that — and not the shared tail — is the rule, and
+\ it is refused at the second definition instead of at the build. ncomp keeps
+\ E-NELAB-ARITY as the backstop for every shape this cannot see.
+\
+\ WHERE IT IS ASKED, AND WHY NOT AT E-ADD-EFFECT. Only from
+\ CHECKER-PUBLISH-PARSED, which publishes a COLON DEFINITION whose body was just
+\ checked against a DECLARED signature — the one record whose contract ncomp
+\ later reads back through the bare binding, because KEEP-ARITY is asked for a
+\ compiled body. E-ADD-EFFECT is the one creator of a user record, but its rows
+\ are not always the word's declaration: a definer-made public twin reaches it
+\ through the inferred-effect intake (CHECKER-USIG-CERT-CURRENT, BROW/DCUR)
+\ carrying the DEFINER CALL's own effect — `20 constant SHARED` presents (1 -- 0)
+\ and `variable SHARED` presents (0 -- 0), not the `-- a` the source pre-pass
+\ declared for the created word — so a rule asked there judged a width the word
+\ never claimed and refused test/ndict-binding.f's legal public/private SHARED
+\ constants. A definer-made word has no body for ncomp to elaborate, so it is
+\ judged by its definer row and not by this rule; a colon definition with an
+\ INFERRED effect (no declared signature) is left to ncomp's backstop as well,
+\ and so is a `TRUSTED:` body, whose declaration arrives through the same text
+\ intake (USIG-ADD) a storage definer's does and cannot be told from it there.
+7145 constant E-SHADOWED-ARITY
+variable SBA-OWN                           \ the refused public's sym, for the diagnostic's package name
+variable SBA-NIN   variable SBA-NOUT       \ the refused declaration's width in cells
+variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
+
+\ A sym's active declared width in cells. CELLS-NONE on either side means the
+\ binding cannot be judged — no record, a tombstone, or a row carrying no
+\ recorded width — and an unjudgeable pair is left to ncomp rather than guessed.
+: SBA-CELLS ( n -- n n ) {: sym:n :}
+   sym USIG-NEWEST-VISIBLE dup 0= IF drop CELLS-NONE CELLS-NONE EXIT THEN
+   1 - {: off:n :}
+   off E-PTR ER.ACTIVE @ EFF-DELETED = IF CELLS-NONE CELLS-NONE EXIT THEN
+   off E-PTR ER.DIN @ EFF-ROW-CELLS  off E-PTR ER.DOUT @ EFF-ROW-CELLS ;
+
+\ The private sym of the same package and the same tail, 0 when the record being
+\ added is not a package public or nothing private owns its tail. Asked in symbol
+\ space rather than by re-resolving the spelling: the record's own key already
+\ carries (package, visibility, tail), and the bare-name resolver would answer
+\ about the token's scope instead of the record's.
+: SBA-PRIVATE-TWIN ( n -- n ) {: own:n :}
+   own SYM-ROW SYM.VIS @ SYM-PUBLIC <> IF 0 EXIT THEN
+   own SYM-PKG$ SYM-PRIVATE own SYM-NAME$ CHECKER-PKG-SYM? SYM-VISIBLE ;
+
+\ ( din dout -- ): the DECLARED rows of the colon definition being published.
+: SHADOW-ARITY-CK ( n n -- ) {: din:n dout:n :}
+   CHECKER-REC-SYM @ {: own:n :}
+   own 0= IF EXIT THEN
+   own SBA-PRIVATE-TWIN {: priv:n :}
+   priv 0= IF EXIT THEN
+   priv SBA-CELLS {: pin:n pout:n :}
+   pin CELLS-NONE = pout CELLS-NONE = or IF EXIT THEN
+   din ROW-CELLS dout ROW-CELLS {: nin:n nout:n :}
+   nin pin =  nout pout =  and IF EXIT THEN
+   own SBA-OWN !
+   nin SBA-NIN !  nout SBA-NOUT !  pin SBA-PIN !  pout SBA-POUT !
+   1 SHADOW-DIAG-XT
+   E-SHADOWED-ARITY throw ;
+
 : CHECKER-USIG-CERT-ADD-AS ( ptr u8 n ptr u8 n bool -- )
    {: sa:ptr su:n na:ptr nu:n external:bool :}
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
@@ -9183,6 +9261,7 @@ package CHECKER-REG
 \ The successful CHECK still owns width facts referring to its type terms.
 \ Publish its verified rows without resetting and reparsing that live arena.
 : CHECKER-PUBLISH-PARSED ( -- )
+   SGIN @ SGOUT @ SHADOW-ARITY-CK        \ before anything is written: this may throw
    SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @
    CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
