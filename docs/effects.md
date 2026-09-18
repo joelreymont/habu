@@ -331,6 +331,51 @@ pointer cannot be laundered into a cell pointer and then cell-loaded. The checke
 enforces this by unifying pointer pointees strictly (equality plus type-variable
 binding, no widening) while still widening top-level scalar cells.
 
+### Raw storage never holds an address
+
+Strict pointee unification only fences a pointer that stays a pointer. An
+integer could still *become* one by passing through memory, so the value in an
+undeclared cell is fenced as well.
+
+`variable`, `create`, `constant`, `here` and every user definer built from
+`create … does>` publish **raw storage**: a `-- ptr a` whose pointee `a` is
+sealed RAW, and re-freshened at every mention. A RAW cell admits a plain scalar
+or role con, an atom and an xt, and it **refuses a pointer in either
+direction** — `E-RAW-CELL-PTR`, repair class `declare_pointer_cell`. So
+`variable V  : PEEK ( n -- n ) V ! V @ @ ;` is refused at the fetch, the store
+half `V ! V @ !` at the store, `V @ c@` at the byte door, `$1234 constant K
+: F ( -- n ) K @ ;` with no store in sight, `here ! here @ @`, and
+`: G ( ptr a -- ) V ! ;` — one binding, whichever definer made the cell. `create BUF 256 allot  BUF 4 type`
+keeps certifying: the pointee binds to the `u8` con, which is a scalar.
+
+`ptr-field` cannot carry that refusal in its row — one row, `( ptr a n -- ptr
+ptr b )`, serves every base, and `b` is free — so its **base** is checked before
+the row is applied: a base whose pointee is still a RAW var is a raw cell and is
+refused at the `ptr-field` token. That closes the field door on the same
+forgery, `V ! V 0 ptr-field @ @`, which otherwise minted a fully typed
+pointer-to-pointer out of an undeclared cell.
+
+**A cell that holds an address is declared.** `PTR-VARIABLE`,
+`PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ptr t`, `TYPED-BUFFER NAME ptr t`,
+and the `create … does>` definers of `src/core/pointer-storage.f` that spell
+their pointee out. A declared cell takes the address it was declared for and
+refuses an address *of* one: `PTR-VARIABLE X  : F ( -- ptr u8 ) X @ ;` certifies
+while `( -- ptr ptr u8 )` does not, because the element type is minted at the
+accessor rather than at the storage word.
+
+Two launders are **still open** and refuse nothing today, each measured and
+dotted. `ptr-field`'s free result pointee is reachable through a parameter, so a
+row that manufactures a pointer out of an unconstrained base re-opens the field
+door over any raw cell (`: F ( ptr a -- ptr ptr u8 ) 0 ptr-field ;` — the shape
+`src/core/structures.f` `PTR-FIELD:` itself generates — applied to a `create`d
+cell), dot `habu-refuse-ptr-field-331a9731`; and `byte-view`/`cell-view` are
+type-level renames, so a scalar store through a view of a *declared* pointer
+cell (`V BYTE-VIEW CELL-VIEW !`) puts an integer in the cell the rule
+prescribes, dot `habu-refuse-a-scalar-030be3ad`. Both bottom out in the same
+missing facility: the language has no nominal record type, so a record that
+mixes a pointer field with scalar fields is expressed by casting one of the two,
+and the cast is the launder.
+
 ## Examples
 
 Primitive effects are the `PRIM:` axiom rows in `src/core/checker.f`; the

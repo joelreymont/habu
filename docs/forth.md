@@ -576,9 +576,19 @@ such as `STRUCTURE zpoint 0 FIELD x n ;STRUCTURE` loads clean. The older words
 above also remain supported: `E-REMOVED-TYPE-SYNTAX` exists nowhere in the
 engine, and none of those forms are removed.
 
+- **Raw storage never holds an address.** A `variable`, `create` or `constant`
+  cell — and any cell a `create … does>` definer makes — holds scalars, roles
+  and atoms. Storing a pointer into one, fetching one out of one, or taking
+  `ptr-field` of one is `E-RAW-CELL-PTR` (repair class
+  `declare_pointer_cell`), so the integer-to-address launder `variable V
+  : PEEK ( n -- n ) V ! V @ @ ;` does not certify. See
+  [effects.md](effects.md) "Raw storage never holds an address" for the rule
+  and its two open holes.
 - `PTR-VARIABLE` creates a pointer-valued cell with runtime effect
   `( -- ptr ptr a )`; use it instead of `variable` plus `0 ptr-field` wrappers
-  for global pointer slots.
+  for global pointer slots. It is one of the declared forms above, together
+  with `PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ptr t` and
+  `TYPED-BUFFER NAME ptr t`.
 - **A definer that only wants a type writes an EMPTY `does>` clause.** `does>`
   runs its clause after the created word has pushed its data address, so a
   clause that compiles nothing is elided at both tiers: the created word keeps
@@ -873,7 +883,8 @@ address arithmetic at the public boundary.
   or record field stores a pointer, compute the cell slot with `ptr-field` so
   `@`/`!` preserve nested pointer types. The index is a cell slot, not a byte
   offset. Raw fixed-header byte offsets need a checked view or a precisely
-  modeled byte-offset primitive.
+  modeled byte-offset primitive. The base must be a declared cell: `ptr-field`
+  over raw storage is refused at the token (see the raw-storage rule above).
 - **Byte pointers are not cell pointers.** `ptr u8` is a byte span and must use
   `c@`/`c!` for byte access. Cell `@`/`!` over a concrete `ptr u8` is a checker
   error; if a cell stores a byte pointer, model the address as `ptr ptr u8`

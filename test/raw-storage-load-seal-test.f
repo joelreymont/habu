@@ -12,10 +12,11 @@
 \ with no converter, and `bin/hb --load` is the path every tool and gate runs.
 \
 \ WHAT IS PINNED. Reading back a cell of raw dictionary storage yields a value
-\ the checker refuses to bind to a nominal family, whichever definer made the
-\ cell: `variable`, `create`, `constant`, `PTR-VARIABLE`, or any user definer
-\ built from `create ... does>`. The same cells keep certifying plain scalar
-\ round-trips, so the seal removes the forgery and nothing else.
+\ the checker refuses to bind to a nominal family OR to a POINTER, whichever
+\ definer made the cell: `variable`, `create`, `constant`, `PTR-VARIABLE`, or
+\ any user definer built from `create ... does>`. The same cells keep certifying
+\ plain scalar round-trips and byte buffers, so the seal removes the forgery and
+\ the integer-to-address launder, and nothing else.
 \
 \ Verdicts from CHECK-QUIET-CANDIDATE!: -1 certified, 0 refused, 1 unresolvable.
 
@@ -35,6 +36,7 @@ variable VAR-CELL
 create CRE-CELL 8 allot
 7 constant CON-CELL
 PTR-VARIABLE PTR-CELL
+create BYTE-CELL 256 allot
 
 \ A user-written definer: `create ... does>` is the general shape the four
 \ definers above are special cases of, and its created word takes the runtime
@@ -62,6 +64,42 @@ CELL-DEFINER DOES-CELL
 : FORGE-DOES ( -- )
    s" F5 ( -- rlsk ) DOES-CELL" CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ ---- the same cells never hold an ADDRESS either ------------------------------
+\ The seal above fences nominal identity. It said nothing about pointers, so the
+\ very same cells laundered an integer into an address with no TRUST row: store
+\ an `n` through one mention, fetch it through the next and `@` took it as a
+\ cell address, `c@` as a byte address (dot habu-refuse-a-ptr-5ad2734e). All of
+\ these are the SAME binding as the forgeries above -- a raw cell refusing a
+\ term -- so they belong beside them.
+: PUN-VAR ( -- )
+   s" P1 ( n -- n ) VAR-CELL ! VAR-CELL @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: PUN-VAR-STORE ( -- )
+   s" P2 ( n n -- ) VAR-CELL ! VAR-CELL @ !" CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: PUN-CREATE ( -- )
+   s" P3 ( n -- n ) CRE-CELL ! CRE-CELL @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: PUN-CONSTANT ( -- )
+   s" P4 ( -- n ) CON-CELL @" CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: PUN-HERE ( -- )
+   s" P5 ( n -- n ) here ! here @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: PUN-BYTE ( -- )
+   s" P6 ( n -- u8 ) VAR-CELL ! VAR-CELL @ c@" CHECK-QUIET-CANDIDATE! 0 T= ;
+
+\ The write half. Refusing only the fetch would leave the cell holding a real
+\ address for the next mention to read back as whatever it liked.
+: PUN-POINTER-IN ( -- )
+   s" P7 ( ptr a -- ) VAR-CELL !" CHECK-QUIET-CANDIDATE! 0 T= ;
+
+\ `0 ptr-field` was the way around BOTH seals: its row answers a fully typed
+\ `ptr ptr b` unrelated to the cell, so the very program FORGE-VAR is refused
+\ for certified once it was written through the field instead.
+: FORGE-FIELD ( -- )
+   s" F6 ( n -- rlsk ) VAR-CELL ! VAR-CELL 0 ptr-field @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
+
 \ ---- the seal must not cost the honest uses ----------------------------------
 \ A plain scalar round-trip through the very same cells still certifies, so the
 \ rejections above are about nominal identity and not about raw storage being
@@ -81,6 +119,12 @@ CELL-DEFINER DOES-CELL
 : SCALAR-DOES ( -- )
    s" S5 ( -- n ) DOES-CELL" CHECK-QUIET-CANDIDATE! -1 T= ;
 
+\ A create'd BYTE buffer is what raw storage is for, and it keeps certifying:
+\ the cell's pointee binds to the `u8` con, which is a scalar. This is the
+\ control that says the pointer rule fences addresses and not raw storage.
+: SCALAR-BYTES ( -- )
+   s" S6 ( -- ) BYTE-CELL 4 type" CHECK-QUIET-CANDIDATE! -1 T= ;
+
 \ ---- the cells still work at runtime -----------------------------------------
 : ROUND-TRIP ( -- )
    5 VAR-CELL !  VAR-CELL @ 5 T=
@@ -88,14 +132,20 @@ CELL-DEFINER DOES-CELL
    CON-CELL 7 T= ;
 
 : FORGERIES ( -- )
-   FORGE-VAR FORGE-CREATE FORGE-CONSTANT FORGE-PTR FORGE-DOES ;
+   FORGE-VAR FORGE-CREATE FORGE-CONSTANT FORGE-PTR FORGE-DOES FORGE-FIELD ;
+
+: PUNS ( -- )
+   PUN-VAR PUN-VAR-STORE PUN-CREATE PUN-CONSTANT PUN-HERE PUN-BYTE
+   PUN-POINTER-IN ;
 
 : SCALARS ( -- )
-   SCALAR-VAR SCALAR-CREATE SCALAR-CONSTANT SCALAR-PTR SCALAR-DOES ;
+   SCALAR-VAR SCALAR-CREATE SCALAR-CONSTANT SCALAR-PTR SCALAR-DOES
+   SCALAR-BYTES ;
 
 : RUN ( -- )
    T-RESET
    FORGERIES
+   PUNS
    SCALARS
    ROUND-TRIP
    T-REPORT ;

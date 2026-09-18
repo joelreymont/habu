@@ -716,6 +716,10 @@ SUITE raw-storage-load-seal
    test/raw-storage-load-seal-test.f
 ;SUITE
 
+SUITE raw-cell-pointer-refusals
+   test/compiler/raw-cell-pointer-refusals.f
+;SUITE
+
 SUITE object-record-codec
    lib/object-test.f
 ;SUITE

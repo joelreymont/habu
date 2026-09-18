@@ -13,9 +13,12 @@
 \
 \ THE INVARIANT: a certification must not be vacuous. A raw `variable` types its
 \ cell with an open var that every call site instantiates afresh, so ONE raw
-\ cell certifies six mutually contradictory readings — section 1 measures them,
-\ and that is why an accessor over a raw cell had to be spelled `TRUSTED:` to
-\ stay honest: its signature was an assertion the checker never checked.
+\ cell certifies mutually contradictory readings — section 1 measures them, and
+\ that is why an accessor over a raw cell had to be spelled `TRUSTED:` to stay
+\ honest: its signature was an assertion the checker never checked. The
+\ POINTER readings are no longer among them (dot habu-refuse-a-ptr-5ad2734e):
+\ a cell that took an integer in and gave an address out was a `@` at any
+\ address, so section 1 now measures where that line was drawn as well.
 \ Pinning the cell type at its declaration is what makes the same signature
 \ mean something, and section 2 measures the difference — the wrong type is
 \ refused where the raw cell took it.
@@ -49,22 +52,55 @@ DEFLINEAR tsslin
 \ =============================================================================
 \ 1. NEGATIVE CONTROL: what a raw cell certifies, and why that is the problem.
 \    This is not a bug being reported — it is the baseline the pinned cells in
-\    section 2 improve on. If a future change makes any of these reject, the
-\    structural-cell capability has become redundant and should be re-derived,
-\    so this section failing is informative either way.
+\    section 2 improve on. If a future change makes one of the SCALAR readings
+\    reject, the structural-cell capability has become redundant and should be
+\    re-derived, so this section failing is informative either way. The pointer
+\    readings below are the opposite: they reject, and the two rows that still
+\    certify are open holes with a dot each, not a baseline to preserve.
 \ =============================================================================
 variable TSS-RAWCELL
+PTR-VARIABLE TSS-DECLCELL
+
+\ The row `PTR-FIELD:` generates for a record's pointer field: one free pointee
+\ in, a pointer-to-pointer out, related by nothing. It certifies, and V8 below
+\ measures what that costs while dot habu-refuse-ptr-field-331a9731 is open.
+: TSS-RAWFIELD ( ptr a -- ptr ptr u8 ) 0 ptr-field ;
 
 : SECTION-RAW-IS-VACUOUS ( -- )
    s" V1 ( n -- ) TSS-RAWCELL !"             CHECK-QUIET-CANDIDATE! -1 T=
    s" V2 ( -- n ) TSS-RAWCELL @"             CHECK-QUIET-CANDIDATE! -1 T=
-   s" V3 ( ptr u8 -- ) TSS-RAWCELL !"        CHECK-QUIET-CANDIDATE! -1 T=
-   s" V4 ( -- ptr u8 ) TSS-RAWCELL @"        CHECK-QUIET-CANDIDATE! -1 T=
    s" V5 ( -- bool ) TSS-RAWCELL @"          CHECK-QUIET-CANDIDATE! -1 T=
-   s" V6 ( -- ptr ptr u8 ) TSS-RAWCELL @"    CHECK-QUIET-CANDIDATE! -1 T=
    \ the ONE thing a raw cell still cannot do is mint a nominal: the fence this
    \ change had to leave standing (typed-storage-test.f section 8)
-   s" V7 ( -- tssk ) TSS-RAWCELL @"          CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" V7 ( -- tssk ) TSS-RAWCELL @"          CHECK-QUIET-CANDIDATE! 0 T=
+   \ V3, V4 and V6 read -1 until dot habu-refuse-a-ptr-5ad2734e landed. They were
+   \ the vacuity's sharp end rather than another reading of it: a cell that
+   \ certifies BOTH `( n -- )` and `( ptr u8 -- )` carries an integer in and
+   \ hands an address out, which is `@` and `c@` at any address with no TRUST
+   \ row. A raw cell now refuses a pointer in either direction, so the three
+   \ reject and the scalar readings above are the whole of what stays open.
+   s" V3 ( ptr u8 -- ) TSS-RAWCELL !"        CHECK-QUIET-CANDIDATE! 0 T=
+   s" V4 ( -- ptr u8 ) TSS-RAWCELL @"        CHECK-QUIET-CANDIDATE! 0 T=
+   s" V6 ( -- ptr ptr u8 ) TSS-RAWCELL @"    CHECK-QUIET-CANDIDATE! 0 T=
+   \ ---- the two launders that OUTLIVE that rule ------------------------------
+   \ Both certify, and both are the same pun V3/V4 stopped, reached around the
+   \ binding instead of through it. They are pinned here as -1 so the day either
+   \ dot closes, this suite says which one and not "something changed".
+   \
+   \ V8: the field door through a parameter. TSS-RAWFIELD's base pointee is a
+   \ declared free var, not a RAW one, so the ptr-field token sees nothing to
+   \ refuse; the RAW cell then binds to that free var at the call and the row's
+   \ unrelated `ptr ptr u8` result reads the cell as an address anyway.
+   \ Dot habu-refuse-ptr-field-331a9731.
+   s" V8 ( n -- u8 ) TSS-RAWCELL ! TSS-RAWCELL TSS-RAWFIELD @ c@"
+                                             CHECK-QUIET-CANDIDATE! -1 T=
+   \ V9: the view door into a DECLARED cell. byte-view and cell-view are
+   \ type-level renames, so the pair reinterprets the pointer cell the rule
+   \ prescribes as a scalar cell and stores an integer into it, which the
+   \ declared `@` then hands back as an address.
+   \ Dot habu-refuse-a-scalar-030be3ad.
+   s" V9 ( n -- ) TSS-DECLCELL BYTE-VIEW CELL-VIEW !"
+                                             CHECK-QUIET-CANDIDATE! -1 T= ;
 
 \ =============================================================================
 \ 2. Closed STRUCTURAL cells: the same three shapes the raw cell blurred, each

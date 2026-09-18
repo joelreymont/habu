@@ -430,7 +430,10 @@ variable GE-DFULL-I                 \ copy/definition loop index
    \ a quotation catch over the audited INCLUDE-EVALUATE boundary. The caller
    \ appends one failing source string; the caught code prints to stdout.
    GE-SRC-RESET
-   s" variable GECA   variable GECU" GE-SRC-LINE
+   \ GECA holds an ADDRESS, so it is a declared cell: a raw `variable` admits
+   \ scalars only and `GECA @` as a `ptr u8` is E-RAW-CELL-PTR. GECU holds a
+   \ length and stays raw.
+   s" TYPED-VARIABLE GECA ptr u8   variable GECU" GE-SRC-LINE
    s" : GEC-GO ( -- ) GECA @ GECU @ INCLUDE-EVALUATE ;" GE-SRC-LINE
    s" : GEC-CATCH ( ptr u8 n -- n ) GECU ! GECA ! [: GEC-GO ;] catch ;" GE-SRC-LINE ;
 

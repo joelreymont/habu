@@ -187,8 +187,14 @@ variable QUIET-N
 \ printed ahead of it show the recovered stack works at all -- they would
 \ also fit inside the pool, which is a whole 64 KB page, so it is the zero
 \ and not the four that identifies which stack they landed on.
+\ The pool's address lives in a declared pointer cell read back through
+\ `TTY-POOL`, because a `constant` is raw storage and a raw cell never holds an
+\ address. The backing cell is named short on purpose: this whole line is TYPED
+\ AT THE REPL, whose line editor holds 256 bytes (`src/habu/repl.f` LBUF), and a
+\ line one byte over that loses its tail silently -- the definitions after the
+\ cut are simply never made and the case fails on E-UNDEFINED much later.
 : STACK-DEFS$ ( -- ptr u8 n )
-   s" require lib/memory.f STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED constant TTY-POOL-CAP constant TTY-POOL : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL TTY-POOL-CAP run-in-stack ;" ;
+   s" require lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED constant TTY-POOL-CAP POOL-A ! : TTY-POOL ( -- ptr u8 ) POOL-A @ ; : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL TTY-POOL-CAP run-in-stack ;" ;
 
 : TTY-STACK-RECOVERS ( -- )
    BUF-CLEAR

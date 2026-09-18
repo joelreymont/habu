@@ -2080,20 +2080,36 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 \ position). Ordinary (TVK-ANY) vars are unaffected, so a typed LAYOUT-BUFFER
 \ fetch, a constructor, and role/converter words keep binding a family in value
 \ position -- only a raw-storage-minted var is fenced. RAW-OK? both DECIDES
-\ admissibility and PROPAGATES the kind (a var arg is raised RAW -- the meet; a
-\ pointer's pointee is checked recursively). It REJECTS a NOMINAL-FAMILY / LAYOUT
-\ value (a T-PARAM) and a LINEAR con, and ADMITS a plain scalar/role con, a plain
-\ pointer, and an atom/xt: the engine's own codegen legitimately raw-stores role
+\ admissibility and PROPAGATES the kind (a var arg is raised RAW -- the meet).
+\ It REJECTS a NOMINAL-FAMILY / LAYOUT value (a T-PARAM), a LINEAR con and a
+\ POINTER, and ADMITS a plain scalar/role con and an atom/xt: the engine's own
+\ codegen legitimately raw-stores role
 \ cons (`LBL RT-LPOS !`) and xts (defer/hook cells like `cold-hook!`). Fencing
 \ nominal ROLE atoms (idx/len) out of raw storage too needs that role/xt
 \ scratch migrated to typed cells first, so it is a documented follow-on; this
 \ dot closes the arity-0 nominal-family / layout mint, the epic's forgery target.
-: RAW-OK? ( n -- bool )   \ may a RAW cell absorb resolved `term`? (meets var/pointee RAW)
+\
+\ A RAW CELL NEVER HOLDS AN ADDRESS (dot habu-refuse-a-ptr-5ad2734e). The T-PTR
+\ arm used to recurse into the pointee, which admitted a pointer into a raw cell
+\ and made an undeclared `variable`/`create`/`constant`/`here`/`data-base` cell
+\ an integer-to-address launder with no TRUST row: `V ! V @ @` stored an `n`
+\ through one mention and fetched an address through the next, because each
+\ mention re-freshens the published scheme's var (E-INST) and the fetched value
+\ is only ever fenced HERE. Refusing T-PTR fences the VALUE instead of each
+\ consumer, so `V @ @`, `V @ c@`, `V @ 8 + @`, `K @` and `here @ @` all die at
+\ the same binding, as does a pointer stored into a plain cell -- the same
+\ structural move RSEXEC made for an opaque xt. A cell that genuinely holds an
+\ address is declared: PTR-VARIABLE, PERSISTED-PTR-VARIABLE, TYPED-VARIABLE NAME
+\ ptr t, or TYPED-BUFFER. `create BUF 256 allot  BUF 4 type` keeps certifying:
+\ the pointee binds to the `u8` CON, which stays admissible.
+variable RAW-PTR-HIT   \ a RAW cell refused a pointer this token; DO-TOK1/CHECK latch the reason (the reject machinery lives far below)
+variable RAW-FIELD-HIT \ `ptr-field` refused a RAW base this token; latched the same way so the prose names `ptr-field`
+: RAW-OK? ( n -- bool )   \ may a RAW cell absorb resolved `term`? (meets var RAW)
    T-RES
    dup ISVAR IF PAY TVK-RAISE RES-TRUE EXIT THEN     \ var: meet -> RAW (trailed)
    dup TAG T-PARAM = IF drop RES-FALSE EXIT THEN     \ nominal family / layout -> reject (the mint)
    dup TAG T-CON = IF PAY CT-LINEAR? 0= EXIT THEN    \ plain scalar / role OK; linear con NO
-   dup TAG T-PTR = IF PTR>INNER RECURSE EXIT THEN    \ ptr: pointee must also be RAW-admissible
+   dup TAG T-PTR = IF drop -1 RAW-PTR-HIT ! RES-FALSE EXIT THEN   \ ptr: a raw cell is never an address
    drop RES-TRUE ;                                    \ atom / xt / row: engine raw-stores these -> admit
 \ THE ARMED WINDOW IS THE SANCTIONED MINT, and it is exempt here for the same
 \ reason NOMPTR-BLOCK? exempts it: LAYOUT-INTRO is set only while CHECK coerces
@@ -10297,11 +10313,36 @@ variable WF-I
    a u s" !" CORE-STR= IF CELL-STORE-TOK RES-TRUE EXIT THEN
    RES-FALSE ;
 
+\ `ptr-field` on an undeclared raw cell (dot habu-refuse-a-ptr-5ad2734e). Its row
+\ is `ptr a n -- ptr ptr b` with `b` a FREE variable unrelated to `a`, so taking
+\ the field of a raw cell answers a fully typed pointer-to-pointer the RAW
+\ discipline never sees -- `V ! V 0 ptr-field @ @` forged a nominal value that
+\ `V ! V @` is refused. The pointee cannot carry the refusal (`ptr-field` is one
+\ prim row for every base), so the BASE is checked here, before the row is
+\ applied: a base whose pointee is still a RAW var is a raw cell and is refused.
+\ A declared cell (PTR-VARIABLE, PERSISTED-PTR-VARIABLE, TYPED-VARIABLE, LAYOUT
+\ storage) has a TVK-ANY or concrete pointee and falls through to the prim row
+\ unchanged. The base sits UNDER the index: `( ptr a n -- )`.
+: RAW-FIELD-BASE? ( n -- bool )   \ row: is the cell under the top a raw storage cell?
+   R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN        \ the field index
+   P>REST R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN \ the base
+   P>TYPE T-RES dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
+   PTR>INNER T-RES dup ISVAR 0= IF drop RES-FALSE EXIT THEN
+   PAY TVK-RAW? ;
+
+: RAW-FIELD-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ true only when it REJECTED
+   a u s" ptr-field" CORE-STR= 0= IF RES-FALSE EXIT THEN
+   DCUR @ RAW-FIELD-BASE? 0= IF RES-FALSE EXIT THEN
+   -1 RAW-FIELD-HIT !
+   0 OK !
+   RES-TRUE ;
+
 : DO-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CURSYM !
    a u DEFINER-TOK IF EXIT THEN
    a u LITERAL-TOK? IF EXIT THEN
    a u CELL-MEMORY-TOK? IF EXIT THEN
+   a u RAW-FIELD-TOK? IF EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM CURSYM !
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
@@ -11664,6 +11705,8 @@ variable MREJ    \ match structural-reject latch: forces verdict 0, never unchec
 23 constant MD-RIGID-EXTENT   \ two host allocations differ in extent (bounds)
 24 constant MD-RIGID-GEN      \ stale mutation generation: index outlived the container's epoch
 25 constant MD-RIGID-XDOM     \ rigid-identity domain confusion: a region/extent/generation used where another is required
+26 constant MD-RAW-PTR        \ a pointer met an undeclared raw storage cell (RAW-OK? T-PTR)
+27 constant MD-RAW-FIELD      \ ptr-field on an undeclared raw storage base; same E-RAW-CELL-PTR code, prose names 'ptr-field'
 
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
@@ -11700,6 +11743,29 @@ variable MDIAG-VCNT   \ nonexhaustive: variant count
    de 1 = IF MD-RIGID-REGION MDIAG ! EXIT THEN
    de 2 = IF MD-RIGID-EXTENT MDIAG ! EXIT THEN
    MD-RIGID-GEN MDIAG ! ;
+
+\ A raw-cell refusal raised inside a step has ALREADY pinned its token and set
+\ FAILSET (CHECKER-STEP does both the moment UNIFY-IN fails), so MDIAG! -- which
+\ only latches while the pin is still open -- can never name it. Latch it
+\ directly instead, under the three conditions MDIAG! would otherwise enforce:
+\ no earlier reason won, this token really rejected, and the pin belongs to THIS
+\ token (an earlier failure leaves FAILIX behind, and TRY-PRIMS can raise the
+\ latch speculatively on a row it then abandons).
+: RAW-DIAG-TOK! ( n -- ) {: code:n :}
+   MDIAG @ 0 <> IF EXIT THEN
+   OK @ 0 <> IF EXIT THEN
+   FAILIX @ TOKIX @ <> IF EXIT THEN
+   code MDIAG ! ;
+
+\ The raw-cell pointer refusal can also land on the definition's own signature
+\ check rather than on one of its tokens: `: BLOB-SRC@ ( -- ptr u8 ) BLOB-SRC @ ;`
+\ fetches a RAW value every token accepts, and only the declared output row
+\ refuses it. DO-TOK1 names a token-level refusal and clears the latch behind
+\ itself, so a latch still standing here was raised by the post-token unify;
+\ name it too rather than rendering a bare mismatch against a bare `a`.
+: RAW-PTR-DIAG-CLASSIFY ( -- )
+   MDIAG @ IF EXIT THEN                           \ a match/construct/rigid reason already won
+   RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG ! THEN ;
 
 : MATCH-REJECT ( -- )
    0 OK !  -1 FAILSET !  -1 MREJ !  0 MM ! ;
@@ -12805,6 +12871,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
+   0 RAW-PTR-HIT !  0 RAW-FIELD-HIT !
    TKF TKFU @ LAYOUT-XPORT-TOK? LAYOUT-XPORT !    \ transport op? layout value moves whole
    TOK0 @ IF NAME-TOK ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
@@ -12849,6 +12916,14 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
+   \ The raw-cell pointer refusal, named only when this token really rejected:
+   \ TRY-PRIMS applies candidate rows in turn, so `V @ cell+` raises the latch on
+   \ the `ptr a -- ptr a` row and then succeeds on `n -- n`. Clearing the latch
+   \ behind the conversion leaves the post-token signature check the only thing
+   \ that can raise it again (RAW-PTR-DIAG-CLASSIFY names that one).
+   RAW-PTR-HIT @ 0 <> IF MD-RAW-PTR RAW-DIAG-TOK! THEN
+   RAW-FIELD-HIT @ 0 <> IF MD-RAW-FIELD RAW-DIAG-TOK! THEN
+   0 RAW-PTR-HIT !  0 RAW-FIELD-HIT !
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -14084,6 +14159,7 @@ ASIG-GRAPH-CHECK-INSTALL
    0 CF-LOOPS !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
+   0 RAW-PTR-HIT !  0 RAW-FIELD-HIT !
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    NULL-PTR SGA !  0 SGU !
@@ -14472,6 +14548,7 @@ variable CTOR-PEND-I
    dup DVERD !
    CK-AOT-LATCH-RETRY                                 \ is a seeded signature still to come?
    dup 0= IF RIGID-DIAG-CLASSIFY THEN                 \ name a rigid host-identity mismatch
+   dup 0= IF RAW-PTR-DIAG-CLASSIFY THEN               \ name a raw cell that refused a pointer at the signature check
    dup 0 =  over 1 = JSON-DIAGS @ and  or
    dup MEO-ON @ and IF MEO-APPLY THEN     \ file-relative origin for this def's diagnostic
    \ A pass another pass will replace has not judged anything yet, so it says

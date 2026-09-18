@@ -9306,3 +9306,54 @@ native path publishes it correctly through `trust-raw`.
 it is already incomplete (`PERSISTED-PTR-VARIABLE` is not in it), so it is a
 lint surface rather than a gate - but check it when a definer starts appearing
 in lint output.
+
+## 2026-09-18 - fencing a raw cell's value does not fence a cast of its address
+
+"A raw storage cell never holds an address" is enforced on the VALUE a cell
+binds (`RAW-OK?` refuses `T-PTR`), which closes `V ! V @ @`, `V @ c@`, `K @`,
+`here @ @` and the store direction at one binding. It does not close a cast of
+the cell's OWN address, and the two casts that remain were measured certifying
+on an engine carrying the rule.
+
+`ptr-field`'s row is `( ptr a n -- ptr ptr b )` with `b` FREE, so the base is
+judged at the token and the token is skippable: put the `ptr-field` in a helper
+whose declared base pointee is an ordinary variable and the RAW cell binds to
+that variable at the CALL, where there is no `ptr-field` to judge.
+`: F ( ptr a -- ptr ptr u8 ) 0 ptr-field ;` then `create V …  V ! V F @ c@`
+certifies - and `( ptr a -- ptr ptr b )` is exactly what
+`src/core/structures.f` `STRUCT-PTR-FIELD` generates for every `PTR-FIELD:`,
+so the legitimate form and the bypass are the same shape. The bare cast is not:
+`: G ( ptr a -- ptr ptr u8 ) ;` is E-NONPARAMETRIC-EFFECT, and `ptr-field`'s
+row is the one thing that legitimizes that specialization.
+
+`byte-view`/`cell-view` are type-level renames (`PE-PTR-A -- PE-PTR-U8` then
+`PE-PTR-U8 -- PE-PTR-N`), so they reinterpret a DECLARED pointer cell as a
+scalar cell and store an integer into it: `PTR-VARIABLE V  V BYTE-VIEW
+CELL-VIEW !` certifies. Refusing that pair over a pointer-pointee base is not
+available either, because the tree reaches a count cell behind a declared head
+the same way and the checker sees no offsets - `src/core/dynamic-storage.f`
+`CTL`, the `cell+ byte-view cell-view @` that `src/core/layout-buffer.f`
+GENERATES for every `DYNAMIC-BUFFER`, `ARENA-SNAP-BOOT`'s zero pass, and
+`src/core/cell-effects.f`'s stores at non-zero offsets.
+
+BOTH BOTTOM OUT IN THE SAME MISSING FACILITY. `BEGIN-STRUCTURE` publishes a
+size constant and nothing else, so there is no nominal record type: a record
+mixing a pointer field with scalar fields is expressed by casting one of the
+two, and whichever cast is refused, the other becomes the only way to declare
+the record. Closing either hole is a record facility first and a checker rule
+second. Dots habu-refuse-ptr-field-331a9731, habu-refuse-a-scalar-030be3ad.
+
+## 2026-09-18 - a REPL fixture's line is capped at 256 bytes, and the tail is lost in silence
+
+Declaring a cell that a fixture used to spell `constant` makes its source line
+longer, and a line a REPL fixture TYPES is not a line a file loads.
+`src/habu/repl.f` holds the line under edit in `create LBUF 256 allot`, so
+`test/process-pty-tty-smoke.f`'s definitions line at 257 bytes lost its tail:
+no error, no refusal, just the words after the cut never defined, surfacing
+several interactions later as `E-UNDEFINED` on a word the case types by name.
+The same 257-byte text passes `--load` from a file without complaint, and the
+failure reproduces on the UNMODIFIED engine, which is what separates it from a
+checker rule - when a converted fixture fails on both engines, the conversion is
+the suspect, not the rule. Keep a typed line under 256 bytes; the backing cell
+of a `PTR-VARIABLE` + same-named-accessor pair is the cheapest name to shorten,
+because nothing else in the program mentions it.

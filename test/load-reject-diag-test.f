@@ -171,8 +171,12 @@ variable RC
 : REJECT-FIXTURES! ( -- )
    UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" WRITE-ALL
    BODY$ s" : LRD-Y ( n -- n ) drop ;" WRITE-ALL
-   BPS$ s" variable LRD-P : LRD-BASE ( -- ptr u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" WRITE-ALL
-   BPF$ s" variable LRD-Q : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" WRITE-ALL
+   \ The byte pointer comes out of a DECLARED cell. The subject here is the
+   \ cell-versus-byte pointer diagnostic, and a raw `variable` no longer hands
+   \ out an address at all (E-RAW-CELL-PTR), which would refuse the fixture one
+   \ definition before the token these cases pin.
+   BPS$ s" TYPED-VARIABLE LRD-P ptr u8 : LRD-BASE ( -- ptr u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" WRITE-ALL
+   BPF$ s" TYPED-VARIABLE LRD-Q ptr u8 : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" WRITE-ALL
    FRAG$ s" 1 +" WRITE-ALL
    SIDE$ S\" [ s\" LRD-FRAGMENT-EXECUTED\" type ]" WRITE-ALL
    SB-RESET

@@ -20,9 +20,13 @@ TRUSTED: DEFINITIONS ( ptr u8 n -- ) evaluate ;
 
 : TRUE! ( bool -- ) 0= if 79 throw then ;
 
+\ The window's four coordinates, latched by hand because this fixture closes a
+\ window it opened through WINDOW-OPEN-PERSISTENT. The DATA coordinate is
+\ `AOT-ARM:HERE-N`, not `here`: the cell is a number like the other three, and a
+\ raw cell never holds an address.
 : END-BOUNDS ( -- )
    cp@ AOT-ARM:B1 ! ndict@ AOT-ARM:R1 !
-   here AOT-ARM:D1 ! AOT-ARM:WIDN AOT-ARM:W1 ! ;
+   AOT-ARM:HERE-N AOT-ARM:D1 ! AOT-ARM:WIDN AOT-ARM:W1 ! ;
 
 : PRIME-NEXT ( -- )
    AOT-ARM:WINDOW-OPEN-PERSISTENT
