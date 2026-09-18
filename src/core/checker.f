@@ -13048,6 +13048,43 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    s" field-project" CORE-STR= 0= IF RES-FALSE EXIT THEN
    FIELD-PROJ-STEP RES-TRUE ;
 
+\ --- record-at (docs/type-system.md §10.4). The second half of the record
+\ address surface, and the one that needs NO window: it consumes `ptr F` and a
+\ cell count and answers `ptr F`, preserving the family. Preserving it is what
+\ makes it safe — nothing is retyped, bounds stay the caller's, and the contract
+\ is the one `cells +` already has on every other pointer. It exists because the
+\ layout fence refuses `+` and `cell+` on a layout pointee outright (a var never
+\ binds a layout param outside a transport op), which is exactly what keeps a
+\ record pointer from being reinterpreted; a record still has to be indexable.
+\ Outside a layout pointee this handles nothing and the word's ordinary
+\ `( ptr a n -- ptr a )` row judges the call.
+\
+\ A WIDE INSTANTIATION IS REFUSED. `F:AT` bakes the family's committed width, and
+\ the committed width describes the layout only while every type argument is one
+\ cell; a wider arg expands the product and moves every field past the first. The
+\ same condition refuses a projection (type-family.f TFAM-FIELD-PROJ-DO), so the
+\ two halves of the surface agree on which instantiations they describe.
+: RECORD-AT-REJECT ( -- ) TKF TKFU @ CAP-FAIL  0 OK ! ;   \ pin the record-at token, fail closed
+: RECORD-AT-EXACT? ( n -- bool ) {: famterm:n :}   \ declared layout == instantiated layout
+   famterm TFAM-INST-WIDTH-XT  famterm PARAM>FAM TFAM-WIDTH@*  = ;
+: RECORD-AT-STEP ( n -- ) {: famterm:n :}
+   famterm RECORD-AT-EXACT? 0= IF RECORD-AT-REJECT EXIT THEN
+   FRESH MK-ROW {: base:n :}
+   famterm MK-PTR base MK-PUSH  CC-N MK-CON swap MK-PUSH {: din:n :}   \ base, ptr family<args>, count (an integer: a pointer is no stride)
+   famterm MK-PTR base MK-PUSH {: dout:n :}                            \ base, ptr family<args>
+   din dout CHECKER-STEP ;
+: RECORD-AT-STEP? ( ptr u8 n -- bool )   \ handle a record-at token on a layout pointee
+   s" record-at" CORE-STR= 0= IF RES-FALSE EXIT THEN
+   DCUR @ R-RES {: r0:n :}                                \ top = cell count
+   r0 TAG S-PUSH <> IF RES-FALSE EXIT THEN
+   r0 P>REST R-RES {: r1:n :}                             \ below = ptr family<args>
+   r1 TAG S-PUSH <> IF RES-FALSE EXIT THEN
+   r1 P>TYPE T-RES {: pt:n :}
+   pt TAG T-PTR <> IF RES-FALSE EXIT THEN
+   pt PTR>INNER T-RES {: famterm:n :}
+   famterm LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN        \ ordinary pointee: the plain row answers
+   famterm RECORD-AT-STEP RES-TRUE ;
+
 \ The first token names the definition. Inside a verifier scope the text is a
 \ replay of recorded source, so the name's own record bounds what the body
 \ binds; anywhere else - the live load path, a candidate probe whose name is a
@@ -13086,6 +13123,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    TKF TKFU @ HIDROW-STEP? 0= IF                       \ depth/.s fail closed over hidden cells
    TKF TKFU @ XPORT-STEP? 0= IF                        \ whole-bundle transport row surgery
    TKF TKFU @ RS-TOK? 0= IF
+   TKF TKFU @ RECORD-AT-STEP? 0= IF                    \ FAMILY:AT stride: ptr family<args> n -> ptr family<args>
    TKF TKFU @ FIELD-PROJ-STEP? 0= IF                   \ armed FAMILY:FIELD projection: ptr family<args> -> ptr field-type
    TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF
       a u FAIL-PIN! REJECT-IMMEDIATE
@@ -13104,7 +13142,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    PIMM-STREAM @ 0 = IF
       CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
    THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    \ The raw-cell and base-address refusals name themselves where they are

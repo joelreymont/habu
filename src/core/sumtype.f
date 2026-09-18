@@ -1080,9 +1080,15 @@ variable TDGEN-M    variable TDGEN-B
 \ retains relocation-safe offsets for its name and checker definition span. The
 \ symbol table rejects collisions within the plan; post-xref name and capacity
 \ hooks validate live visibility and every plan-determined fixed registry.
+\ A row also carries the field-projection ARMING a generated address accessor
+\ needs (docs/type-system.md §10.4). The sealed window is single-shot and keyed
+\ on the accessor's name, and every generated definition is read twice — once by
+\ the candidate preflight, once by the evaluator — so the authority has to ride
+\ the row that names the word rather than a call site outside the plan. FID -1
+\ means "no arming", which is every constructor and derived row.
 $1000 constant TDPLAN-CAP-INIT
 4 constant TDPLAN-ROW-CAP-INIT
-5 cells constant TDPLAN-REC
+7 cells constant TDPLAN-REC
 $7FFFFFFFFFFFFFFF constant TDPLAN-BYTE-MAX
 TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 0 cells constant TDPLAN.SYM-OFF
@@ -1090,6 +1096,9 @@ TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
 2 cells constant TDPLAN.DEF-U-OFF
 3 cells constant TDPLAN.NAME-OFF-OFF
 4 cells constant TDPLAN.NAME-U-OFF
+5 cells constant TDPLAN.FID-OFF
+6 cells constant TDPLAN.FOFF-OFF
+-1 constant TDPLAN-NO-ARM
 create TDPLAN-BOOT TDPLAN-CAP-INIT allot
 create TDPLAN-ROW-BOOT TDPLAN-ROW-CAP-INIT TDPLAN-REC * allot
 PERSISTED-PTR-VARIABLE TDPLAN-P       TDPLAN-BOOT TDPLAN-P !
@@ -1211,6 +1220,8 @@ private
 : TDPLAN.DEF-U ( ptr a -- ptr a ) TDPLAN.DEF-U-OFF + ;
 : TDPLAN.NAME-OFF ( ptr a -- ptr a ) TDPLAN.NAME-OFF-OFF + ;
 : TDPLAN.NAME-U ( ptr a -- ptr a ) TDPLAN.NAME-U-OFF + ;
+: TDPLAN.FID ( ptr a -- ptr a ) TDPLAN.FID-OFF + ;
+: TDPLAN.FOFF ( ptr a -- ptr a ) TDPLAN.FOFF-OFF + ;
 
 : TDPLAN-SYM@ ( n -- n )
    TDPLAN-ROW TDPLAN.SYM @ ;
@@ -1241,8 +1252,19 @@ private
    TDGEN-U @ 3 - r TDPLAN.DEF-U !
    noff TDPLAN-BYTE-NEED r TDPLAN.NAME-OFF !
    TDGEN-NU @ r TDPLAN.NAME-U !
+   TDPLAN-NO-ARM r TDPLAN.FID !
+   0 r TDPLAN.FOFF !
    TDGEN-BUF TDGEN-U @ TDPLAN-APP
    10 TDPLAN-C, ;
+
+\ The committed field id and the baked byte offset of the row just planned. The
+\ id is the window's whole authority (the checker derives family, offset, extent,
+\ role and schema from it), and the offset is cross-checked against it, so an
+\ accessor whose text and arming disagree is refused rather than published.
+: TDPLAN-ARM+ ( n n -- ) {: fid:n off:n :}
+   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
+   fid r TDPLAN.FID !
+   off r TDPLAN.FOFF ! ;
 
 : TDPLAN-NAME+ ( -- n )
    TDGEN-NA @ TDGEN-NU @ CHECKER-DEFINED-HERE? IF
@@ -1288,6 +1310,28 @@ public
 
 private
 
+\ The whole row text, ": NAME ( sig ) body ;" — what the EVALUATOR reads. (The
+\ span TDPLAN-DEF$ answers is the same text without its ': ' and ';', which is
+\ the candidate form CHECK! takes.) Rebuilt from the recorded definition span so
+\ the two readings cannot drift.
+: TDPLAN-FULL$ ( n -- ptr u8 n )
+   TDPLAN-ROW {: r:ptr :}
+   r TDPLAN.DEF-OFF @ 2 -  r TDPLAN.DEF-U @ 3 +  TDPLAN-SPAN$ ;
+
+\ Arm the sealed field-projection window for this row, if it carries an arming.
+\ Called immediately before each of the two readings of the row's text; the
+\ window is single-shot and disarms at the `field-project` token even on a
+\ reject, so each reading arms for itself. The window's two mutators are
+\ trust-boundary primitives reached through named thin forwarders — the
+\ generative crossing the window exists for (src/core/checker.f FIELD-PROJ!).
+TRUSTED: TDPLAN-FP-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
+TRUSTED: TDPLAN-FP-CLEAR ( -- ) FIELD-PROJ-CLEAR ;
+
+: TDPLAN-ARM ( n -- ) {: i:n :}
+   i TDPLAN-ROW {: r:ptr :}
+   r TDPLAN.FID @ TDPLAN-NO-ARM = IF EXIT THEN
+   i TDPLAN-NAME$ r TDPLAN.FID @ r TDPLAN.FOFF @ TDPLAN-FP-ARM ;
+
 : TDPLAN-PREFLIGHT-NAMES ( -- )
    0 TDPLAN-I !
    BEGIN TDPLAN-I @ TDPLAN-N @ < WHILE
@@ -1298,6 +1342,7 @@ private
 : TDPLAN-PREFLIGHT-DEFINITIONS ( -- )
    0 TDPLAN-I !
    BEGIN TDPLAN-I @ TDPLAN-N @ < WHILE
+      TDPLAN-I @ TDPLAN-ARM
       TDPLAN-I @ TDPLAN-DEF$ CHECK! -1 <> IF 70 throw THEN
       TDPLAN-I @ 1 + TDPLAN-I !
    REPEAT
@@ -1772,7 +1817,13 @@ private
 \ pinned negative); the extend/undefine protection recognizes the fixed tails
 \ through TFAM-DERIVED-AT? (products: eq only), and the words ride the ctor
 \ package's item-8 closed-but-callable WID protection and registry rollback.
-: TDGEN-DRV-REF ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ "PKG:TAIL" (upper tail)
+\ "PKG-FAMILY:TAIL" for a public family, "FAMILY-TAIL" for a private one — the
+\ same two spellings, from the same two derivations, that TDGEN-NAME gives a
+\ constructor. A private family stamps no constructor package (TDECL-CTOR-PUBLISH
+\ exits early for one), so reading SUMV-CTOR-PKG$ for it would name nothing.
+: TDGEN-DRV-REF ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ member reference
+   fam TFAM-PUBLIC? 0= IF
+      fam TFAM-NAME$ ta tu TF-CTOR-PRIV$ TDGEN-APP EXIT THEN
    fam TFAM-VAR-START@ SUMV-CTOR-PKG$ TDGEN-APP
    58 TDGEN-C,
    ta tu TDGEN-UPPER ;
@@ -1968,6 +2019,115 @@ public
 : TDECL-PROD-WORDS ( n -- ) {: fam:n :}
    TDECL-SUMV-PROVIDER fam TDPV-CAPTURE
    fam TDECL-PROD-WORDS-BODY ;
+
+\ --- generated ADDRESS accessors (`DERIVE addr`, docs/type-system.md §10.4).
+\ One word per field plus AT / BYTES / CELLS, in the family's own spelling:
+\
+\   : PKG-BUF:DATA ( ptr PKG:buf -- ptr ptr u8 ) 0 field-project ;
+\   : PKG-BUF:AT   ( ptr PKG:buf n -- ptr PKG:buf ) 3 * record-at ;
+\   : PKG-BUF:BYTES ( -- n ) 24 ;
+\
+\ The accessor bodies are ORDINARY CHECKED TEXT — no TRUST row, no set-check,
+\ no pending window. `field-project` outside the armed window is exactly `+` and
+\ `record-at` is `cells +`; the checker replaces the first row only while the
+\ window this plan arms is live, and the second only on a layout pointee, which
+\ the plain rows fence. The committed FIELD ID is the whole authority: the
+\ checker re-derives the family, the committed offset, the byte extent, the role
+\ and the schema from it and refuses a body whose baked offset, arity, role or
+\ output type disagrees, so a generator that lies publishes nothing.
+\
+\ Generation runs at COMMIT, not while the body parses: a field id is the
+\ authority only once TYPE-FIELD has committed the row, and the declaration
+\ transaction's own order (event 800, this 830) is what makes that true.
+
+private
+
+variable TDAD-I                            \ accessor render index (TDGEN-* stay the renderer's)
+variable TDAD-FAM                          \ the family under generation (read by the caught body)
+
+: TDGEN-ADDR-IN ( n -- ) {: fam:n :}      \ "( ptr PKG:family<..> "
+   s" ( ptr " TDGEN-APP  fam TDGEN-OUT-TYPE  32 TDGEN-C, ;
+
+\ ( ptr F -- ptr T ) <byte-offset> field-project
+: TDECL-ADDR-FIELD-WORD ( n n -- ) {: fam:n fid:n :}
+   TDGEN-CLEAR
+   fam  fid PF-NAME$  TDGEN-DRV-NAME
+   fam TDGEN-ADDR-IN
+   s" -- ptr " TDGEN-APP  fid PF-SCH@ SCHEMA-ROOT@ TDGEN-SCH
+   s" ) " TDGEN-APP
+   fid PF-BYTE-OFF@ TDGEN-DEC
+   s"  field-project ;" TDGEN-APP
+   TDPLAN-DERIVED+
+   fid fid PF-BYTE-OFF@ TDPLAN-ARM+ ;
+
+\ ( ptr F n -- ptr F ) : stride by the family's COMMITTED width. The multiply is
+\ baked because the row cannot scale — it preserves the pointee and adds cells,
+\ which is all `cells +` promises on any other pointer.
+: TDECL-ADDR-AT-WORD ( n -- ) {: fam:n :}
+   TDGEN-CLEAR
+   fam s" at" TDGEN-DRV-NAME
+   fam TDGEN-ADDR-IN
+   s" n -- ptr " TDGEN-APP  fam TDGEN-OUT-TYPE
+   s"  ) " TDGEN-APP
+   fam TFAM-SLOTS@ TDGEN-DEC
+   s"  * record-at ;" TDGEN-APP
+   TDPLAN-DERIVED+ ;
+
+: TDECL-ADDR-SIZE-WORD ( n ptr u8 n n -- ) {: fam:n ta:ptr tu:n v:n :}
+   TDGEN-CLEAR
+   fam ta tu TDGEN-DRV-NAME
+   s" ( -- n ) " TDGEN-APP
+   v TDGEN-DEC
+   s"  ;" TDGEN-APP
+   TDPLAN-DERIVED+ ;
+
+: TDECL-ADDR-PLAN ( n -- ) {: fam:n :}
+   TDPLAN-BEGIN
+   fam TFAM-FLD-START@ {: fs:n :}
+   0 TDAD-I !
+   BEGIN TDAD-I @ fam TFAM-FLD-COUNT@ < WHILE
+      fam  fs TDAD-I @ +  TDECL-ADDR-FIELD-WORD
+      TDAD-I @ 1 + TDAD-I !
+   REPEAT
+   fam TDECL-ADDR-AT-WORD
+   fam s" bytes" fam TFAM-SLOTS@ CELL * TDECL-ADDR-SIZE-WORD
+   fam s" cells" fam TFAM-SLOTS@        TDECL-ADDR-SIZE-WORD ;
+
+\ Evaluation is row by row, unlike the constructor set's single evaluator call,
+\ because each armed row must be armed again for the reading the evaluator does.
+\ The plan is still checked WHOLE first (TDPLAN-PREFLIGHT), so a set that cannot
+\ certify reaches no evaluator at all.
+: TDECL-ADDR-EVAL ( -- )
+   TDECL-EVAL-ARMED @ 0= IF s" sumtype: accessor eval hook not installed" 76 die THEN
+   TDPLAN-PREFLIGHT
+   0 TDAD-I !
+   BEGIN TDAD-I @ TDPLAN-N @ < WHILE
+      TDAD-I @ TDPLAN-ARM
+      TDAD-I @ TDPLAN-FULL$ TDECL-EVAL-XT
+      TDAD-I @ 1 + TDAD-I !
+   REPEAT ;
+
+: TDECL-ADDR-BODY ( -- )
+   TDAD-FAM @ TDECL-ADDR-PLAN
+   TDECL-ADDR-EVAL ;
+
+public
+
+\ TDECL-ADDR-WORDS ( fam -- ) : publish one family's address surface. The window
+\ is disarmed on every exit — a rejected row leaves its arming live otherwise,
+\ and an arming outlives no generation.
+: TDECL-ADDR-WORDS ( n -- )
+   TDAD-FAM !
+   [: TDECL-ADDR-BODY ;] catch {: rc:n :}
+   TDPLAN-FP-CLEAR
+   rc 0 <> IF rc throw THEN ;
+
+\ Replay (tools/check-core.f's nominal pass, src/habu/verify-source.f) registers
+\ the checked EFFECTS of a generated set without emitting code. The address
+\ surface is not replayed yet: its arming authority is a committed field id, and
+\ the replay arm that carries one is its own dot (docs/type-system.md §10.5 item
+\ 3). A replayed declaration therefore registers make/unmake and no accessor, so
+\ a source file that uses its own accessors still needs the live load path.
 
 \ Generation for ONE family the caller names, reading that family's payload only
 \ through the provider the caller supplies. TDECL-GEN-BODY is the named helper

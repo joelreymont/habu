@@ -228,7 +228,17 @@ A public declaration with fields publishes one closed generated package:
 ```text
 POINT:MAKE      ( field... -- point )
 POINT:UNMAKE    ( point -- field... )
-POINT:X         ( ptr point -- ptr n )
+```
+
+The **address surface** is opt-in, through the header clause `DERIVE addr` (dot
+`habu-generate-typed-field-ba63866e`, `docs/type-system.md` §10.4). A family that
+asks for it publishes one accessor per field plus three fixed members:
+
+```text
+POINT:X         ( ptr point -- ptr n )        \ one per field
+POINT:AT        ( ptr point n -- ptr point )  \ stride by the committed width
+POINT:BYTES     ( -- n )
+POINT:CELLS     ( -- n )
 ```
 
 `FAMILY:FIELD` is the sole field-address spelling. For a generic declaration its
@@ -236,7 +246,10 @@ effect is `( ptr family<a,...> -- ptr field-type )`; callers use the field
 type's normal checked load/store operations. The generated words are ordinary
 checked words or compiler-certified metadata operations; none is a raw cast.
 The accessor is available only where the storage/layout policy gives an
-addressable field.
+addressable field. Because a field tail becomes a member name, a family that
+derives `addr` refuses a field named like any generated member — `make`,
+`unmake`, `at`, `bytes`, `cells`, `eq`, `hash` or `tag` — at that field's own
+token, and a fieldless family cannot derive `addr` at all.
 Private declarations expose generated operations only inside their owning
 package. Generated packages are sealed after publication.
 
@@ -246,9 +259,10 @@ The checker half of the `FAMILY:FIELD` accessor — the sealed, schema-aware
 armed window that lets a generated accessor body mint `ptr <field-type>` from a
 `ptr family<args>` input — has landed (dot
 `habu-checker-type-structure-d996215b`, `src/core/checker.f` +
-`src/core/type-family.f`; regression `test/field-proj-suite.f`). The
-accessor-generator lane (`generate-field`) binds to the contract below; nothing
-else is generated yet, so no accessor ships until that lane lands.
+`src/core/type-family.f`; regression `test/field-proj-suite.f`). The generator
+above it landed with dot `habu-generate-typed-field-ba63866e` and arms this
+window per accessor, under the contract below; `field-project` and `record-at`
+are production runtime words at global scope (`src/core/structure-make.f`).
 
 **Why it needs a dedicated operation.** A layout pointer is fenced against
 ordinary retyping: `+` and `cell+` preserve the pointee (`ptr point + n` stays
@@ -264,8 +278,14 @@ admitted only inside the armed window.
 - `field-project` is a reserved checker operation. Its *operand order on the
   stack* is `( ptr family<args> byte-offset -- ptr field-type )`: the input
   layout pointer is deeper, the baked byte-offset literal is on top. Runtime is a
-  plain pointer + byte-offset add (a `( ptr n -- ptr )` word the generator/consumer
-  supplies); the checker judges only the type effect.
+  plain pointer + byte-offset add — the engine's own
+  `: field-project ( ptr a n -- ptr a ) + ;` — and the checker judges only the
+  type effect. `F:AT` is the other half and needs no window: it calls
+  `: record-at ( ptr a n -- ptr a ) cells + ;` with the family's committed width
+  baked as the multiplier, and the row preserves the family, so it forges
+  nothing. On a layout pointee `record-at` refuses an instantiated width that is
+  not the committed width, because a type argument wider than one cell moves
+  every field past the first.
 - **Arming contract.** The window is armed by the generative crossing only —
   `FIELD-PROJ! ( accessor-name-addr accessor-name-len field-id byte-offset -- )`,
   an explicitly trusted-only operation whose record the seal protects, so user
@@ -484,6 +504,14 @@ picks the spelling and the wordlist, not whether anything is generated:
 | lands in | the reserved constructor namespace, global | the declaring package's private wordlist |
 | resolvable from | anywhere, qualified | that one package only |
 
+Every generated member takes the same two spellings, not just the constructor
+pair: `DERIVE eq`, `DERIVE hash` and the `DERIVE addr` surface all render
+`FAMILY-EQ`, `FAMILY-HASH`, `FAMILY-FIELD`, `FAMILY-AT`, `FAMILY-BYTES`,
+`FAMILY-CELLS` for a private family (dot
+`habu-generate-typed-field-ba63866e` lifted the last gate that refused a derive
+clause on one). Visibility is never a condition on generation, only on the
+spelling and the wordlist.
+
 The private spelling carries no colon because it cannot: the engine routes a
 qualified definition name to the named namespace's PUBLIC wid
 (`src/habu/habu2.f` `C-QUALIFY-DEF`) and the checker records any single non-edge
@@ -500,7 +528,11 @@ protected wid. So a private family stages no wordlist, and its words are
 protected **by name** instead: `TFAM-CTOR-WORD?` recognises the private spelling
 while the declaring package is open, and `CTOR-WORD?-XT` refuses `undefine` with
 `E-CTOR-PROTECTED`. There is no extra-tail rule for a private family, because
-there is no reserved package for a stray tail to extend.
+there is no reserved package for a stray tail to extend. `TFAM-CTOR-WORD?`
+answers for the whole generated membership — constructors, derived tails and,
+through `TFAM-ADDR-WORD-XT`, the address accessors — because the undefine guard,
+the closed-package extra-tail rule, `src/habu/xref.f`'s protected-WID assertions
+and its generated-declaration name preflight all ask that one question.
 
 The names that guard covers are exactly the **member set** the generator
 publishes for that family — `MAKE` and `UNMAKE`, the pair

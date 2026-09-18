@@ -53,13 +53,13 @@ TRUSTED: TWX-FAM ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 : FAM-ID ( ptr u8 n -- n ) {: na:ptr nu:n :}   \ top-level family name -> id
    s" " na nu TWX-FAM 0= if s" field-proj-suite: family not found" 76 die then ;
 
-\ --- runtime for the projection op. The checker intercepts `field-project` only
-\ inside the armed window (replacing the effect below with the schema-aware
-\ projection); the engine still compiles an ordinary call, so the runtime is a
-\ plain pointer + byte-offset add. The generate-field lane supplies the same
-\ contract in production. Outside the window the effect below is what a caller
-\ gets, and it is exactly `+`: no retype, layout-fenced on a layout pointer.
-: field-project ( ptr a n -- ptr a ) + ;
+\ --- the runtime for the projection op is the ENGINE's now (dot
+\ habu-generate-typed-field-ba63866e, src/core/structure-make.f): the checker
+\ intercepts `field-project` only inside the armed window (replacing its effect
+\ with the schema-aware projection), and the engine compiles an ordinary call to
+\ the production word, whose row is exactly `+` — no retype, layout-fenced on a
+\ layout pointer. This suite used to define its own; defining one now is a
+\ duplicate definition.
 
 \ ===========================================================================
 \ 1. positives

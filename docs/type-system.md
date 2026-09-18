@@ -704,20 +704,25 @@ pointer's family arguments, and cross-checks the baked offset. A generator that
 lies about an offset, a family, an arity, a role or an output type is refused,
 each case pinned in `test/field-proj-suite.f`.
 
-Two small pieces are missing beside the generator.
+Two small pieces sit beside the generator; both landed with it, at global scope
+in `src/core/structure-make.f`, because a generated body names them unqualified
+from whatever package declared the record.
 
-`field-project` needs a **production runtime word**. It is `E-UNDEFINED` in the
-engine today; `test/field-proj-suite.f` supplies its own
-`: field-project ( ptr a n -- ptr a ) + ;`. Outside the armed window that row is
-exactly `+` — it preserves the pointee and retypes nothing, so the word is not a
-capability, and the checker replaces its effect only inside the window.
+`field-project ( ptr a n -- ptr a ) + ;` is the accessor body's **production
+runtime word**. Outside the armed window that row is exactly `+` — it preserves
+the pointee and retypes nothing, so the word is not a capability, and the checker
+replaces its effect only inside the window.
 
-`record-at` is a second row, and it needs no window: it consumes `ptr F` and a
-cell count and yields `ptr F`, scaling by the family's committed width. Because
-it **preserves the family**, it forges nothing; bounds remain the caller's, the
-same contract `cells +` has today. It exists because `+` and `cell+` reject a
-layout pointer outright, which is what makes a record pointer safe in the first
-place.
+`record-at ( ptr a n -- ptr a ) cells + ;` is a second row, and it needs no
+window: it consumes `ptr F` and a cell count and yields `ptr F`, and the
+generated `F:AT` bakes the family's committed width as the multiplier — the row
+itself scales nothing. Because it **preserves the family**, it forges nothing;
+bounds remain the caller's, the same contract `cells +` has today. It exists
+because `+` and `cell+` reject a layout pointer outright, which is what makes a
+record pointer safe in the first place. On a layout pointee it refuses an
+instantiated width that is not the committed width: an argument wider than one
+cell expands the product and moves every field past the first, which is what both
+the baked multiplier and a baked field offset assume away.
 
 #### Instantiating a record
 
@@ -897,16 +902,34 @@ because `lib/task.f`'s TCB reaches its five pointer fields through the very row
    package cannot resolve them; a reject rolls the whole declaration back
    byte-identically. Pinned as cases 13-14 of
    `test/structure-decl-suite.f`.
-2. **The accessor generator** (tracker id
+2. **The accessor generator** — *landed*, dot
+   `habu-generate-typed-field-ba63866e` (tracker id
    `habu-structure-generate-field-b9dc52f8`), the production `field-project`
-   runtime word, and `record-at` with its generated `F:AT`. *Acceptance:*
-   `DERIVE addr` publishes one accessor per field with the declared effect; a
-   pointer field projects as `ptr ptr t` and a generic field at the caller's
-   instantiation; every negative in `test/field-proj-suite.f` still rejects when
-   reached through a generated accessor; `F:AT` strides by the committed width
-   and preserves the family; a field read through an accessor equals the same
-   field read through `UNMAKE`, for a pointer field, a scalar field and a nested
-   family field.
+   runtime word, and `record-at` with its generated `F:AT`. `DERIVE addr` is the
+   third derive code; a public family publishes `PKG-FAMILY:field`,
+   `PKG-FAMILY:AT`, `PKG-FAMILY:BYTES` and `PKG-FAMILY:CELLS`, a private one
+   `FAMILY-FIELD`, `FAMILY-AT`, `FAMILY-BYTES` and `FAMILY-CELLS` in the
+   declaring package's private wordlist. The words are minted by a **sixth
+   declaration-transaction participant** (`ORDER-ADDRESS` 830,
+   `src/core/structure-make.f`) in the COMMIT phase, because an accessor is armed
+   with a **committed** field id and `DECL-EVENT` (800) commits the field rows
+   first; `;STRUCTURE` only arms the family. The arming rides the plan row that
+   names the word, so the candidate preflight and the evaluator each arm the
+   single-shot window for their own reading. A field named like a generated
+   member (`make`, `unmake`, `at`, `bytes`, `cells`, `eq`, `hash`, `tag`) is
+   refused at its own token when the family derives `addr`, and a fieldless
+   family cannot derive it at all. The same lift makes `DERIVE eq` and
+   `DERIVE hash` work for a private family, in the private spelling. *Acceptance,
+   pinned as case 15 of `test/structure-decl-suite.f`:* `DERIVE addr` publishes
+   one accessor per field with the declared effect; a pointer field projects as
+   `ptr ptr t` and a generic field at the caller's instantiation; every negative
+   in `test/field-proj-suite.f` still rejects when reached through a generated
+   accessor; `F:AT` strides by the committed width and preserves the family; a
+   field read through an accessor equals the same field read through `UNMAKE`,
+   for a pointer field, a scalar field and a nested family field; a rejected
+   declaration rolls back byte-identically. *Not covered:* replay publishes no
+   accessor (item 3 below owns it), so a source file that uses its own accessors
+   still needs the live load path.
 3. **The verify-source replay arm.** `DERIVE addr`'s generated words registered
    by `src/habu/verify-source.f`'s `RECORD-STRUCTURE-DECL` path, and the
    reserved-cell definer added to its definer table and to

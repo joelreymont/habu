@@ -469,6 +469,8 @@ public
 \ their fixed generator-owned tails, exactly like generated constructors.
 1 constant DRV-EQ
 2 constant DRV-HASH
+4 constant DRV-ADDR              \ address surface: one accessor per field (docs/type-system.md §10.4)
+DRV-EQ DRV-HASH or DRV-ADDR or constant DRV-ALL
 
 private
 
@@ -480,6 +482,8 @@ public
 : TFAM-DERIVE-EQ? ( n -- bool ) TFAM-DERIVE@ DRV-EQ and 0 <> ;
 : TFAM-DERIVE-HASH! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-HASH or swap ! ;
 : TFAM-DERIVE-HASH? ( n -- bool ) TFAM-DERIVE@ DRV-HASH and 0 <> ;
+: TFAM-DERIVE-ADDR! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-ADDR or swap ! ;
+: TFAM-DERIVE-ADDR? ( n -- bool ) TFAM-DERIVE@ DRV-ADDR and 0 <> ;
 : TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ 0 <> ;
 
 \ a boxed value is a single heap/DATA pointer (docs §22.4 `ptr fam-box`) and a
@@ -1307,14 +1311,15 @@ private
 \ and the recognizer needs no other change.
 \
 \ Today the list is the product pair src/core/structure-make.f SM-EMIT-ROWS adds
-\ and sumtype.f TDECL-PROD-PLAN generates: MAKE and UNMAKE. Nothing else is
-\ private and generated. DERIVE requires a public family
-\ (src/core/structure-decl.f DERIVE-GUARD), and a private SUM or ENUM publishes
-\ no word at all — sumtype.f TDECL-GENERATES? generates for a public family or a
-\ private PRODUCT, and a private sum constructs through the checker-owned token
-\ instead. So a variant name is NOT a member: inside a package that declares a
-\ private `SUMTYPE colour`, an ordinary `COLOUR-RED` is the package's own word
-\ and stays undefinable (dot habu-protect-only-the-d1e2d4dc).
+\ and sumtype.f TDECL-PROD-PLAN generates: MAKE and UNMAKE. The tails a private
+\ product DERIVEs (eq, hash) are recognised beside it from the family's own
+\ derive flags (TFAM-DERIVED-PRIV-TAIL?), and its addr accessors from the field
+\ registry (TFAM-ADDR-WORD?). A private SUM or ENUM publishes no word at all —
+\ sumtype.f TDECL-GENERATES? generates for a public family or a private PRODUCT,
+\ and a private sum constructs through the checker-owned token instead. So a
+\ variant name is NOT a member: inside a package that declares a private
+\ `SUMTYPE colour`, an ordinary `COLOUR-RED` is the package's own word and stays
+\ undefinable (dot habu-protect-only-the-d1e2d4dc).
 2 constant TF-PRIV-MEMBER-N
 : TF-PRIV-MEMBER$ ( n -- ptr u8 n ) {: i:n :}
    i 0= IF s" make" EXIT THEN
@@ -1329,20 +1334,44 @@ variable TF-CM              \ member scan index (TF-CI stays the family scanner'
       TF-CM @ 1 + TF-CM !
    REPEAT RES-FALSE ;
 
+public
+
+\ A private family derives too (`DERIVE eq hash` on a private STRUCTURE is the
+\ same generation with the private spelling), so the private scan answers for a
+\ derived tail exactly as the qualified one does through TFAM-DERIVED-AT?. The
+\ candidate spelling is DERIVED here as well — TF-CTOR-PRIV$ over the family tail
+\ and the member — so the recogniser cannot drift from TDGEN-DRV-REF.
+: TFAM-PRIV-MEMBER? ( ptr u8 n ptr u8 n n -- bool ) {: a:ptr u:n ma:ptr mu:n fam:n :}
+   a u  fam TFAM-NAME$ ma mu TF-CTOR-PRIV$  CORE-STR=CI ;
+
+: TFAM-DERIVED-PRIV-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
+   fam TFAM-DERIVE-EQ? IF
+      a u s" eq" fam TFAM-PRIV-MEMBER? IF RES-TRUE EXIT THEN THEN
+   fam TFAM-DERIVE-HASH? IF
+      a u s" hash" fam TFAM-PRIV-MEMBER? IF RES-TRUE EXIT THEN THEN
+   fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products get no discriminant
+   a u s" tag" fam TFAM-PRIV-MEMBER? ;        \ tag rides ANY derive on sum/enum
+
+private
+
 \ A private family's generated word is recognised only while its DECLARING
 \ PACKAGE is open. That is the only scope the word resolves in, so it is the only
 \ scope in which the undefine guard has anything to protect; outside it the name
 \ belongs to whoever spells it. The three gates before that ask whether this
 \ family generated anything at all: a public one wears the qualified spelling, a
 \ private sum or enum publishes nothing, and a zero-field opaque product
-\ published no variant rows and so no member pair either.
+\ published no variant rows and so no member pair either. Past the gates the
+\ name is a member of this family when it is the constructor pair or a tail the
+\ family derived; the addr accessors are the third membership, asked through
+\ TFAM-ADDR-WORD-XT below.
 : TF-CTOR-PRIV-FAM? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
    fam TFAM-PUBLIC? IF RES-FALSE EXIT THEN
    fam TFAM-PRODUCT? 0= IF RES-FALSE EXIT THEN
    fam TFAM-VAR-COUNT@ 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a u fam TF-PRIV-NAME? ;
+   a u fam TF-PRIV-NAME? IF RES-TRUE EXIT THEN
+   a u fam TFAM-DERIVED-PRIV-TAIL? ;
 
 public
 
@@ -1353,13 +1382,27 @@ public
       TF-CI @ 1 + TF-CI !
    REPEAT RES-FALSE ;
 
+\ The third membership — a `DERIVE addr` accessor — is recognised from the FIELD
+\ registry, which this file declares further down, so the predicate is reached
+\ through a friend xt bound at its definition (the TFCL-NODE-XT pattern below).
+\ It joins the two scans above rather than standing beside them because every
+\ consumer asks ONE question: is this name a word the generator owns? Widening
+\ the answer here widens the undefine guard, the closed-package extra-tail rule,
+\ the protected-WID assertions in src/habu/xref.f and the generated-declaration
+\ name preflight together, which is exactly the membership an accessor has.
+defer TFAM-ADDR-WORD-XT ( ptr u8 n -- bool )
+
 ;package
 
 \ A generated word wears either the qualified public spelling or the bare private
 \ one, and the colon decides which scan answers for it.
 : TFAM-CTOR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact generated word?
-   a u TF-CW-SPLIT? IF a u TF-CTOR-QUAL-WORD? EXIT THEN
-   a u TF-CTOR-PRIV-WORD? ;
+   a u TF-CW-SPLIT? IF
+      a u TF-CTOR-QUAL-WORD? IF RES-TRUE EXIT THEN
+   ELSE
+      a u TF-CTOR-PRIV-WORD? IF RES-TRUE EXIT THEN
+   THEN
+   a u TFAM-ADDR-WORD-XT ;
 
 package TFAM
 
@@ -2375,6 +2418,116 @@ public
 get-current prot-wid-add
 ;package
 
+\ ---------------------------------------------------------------------------
+\ generated ADDRESS accessors (`DERIVE addr`, docs/type-system.md §10.4). A
+\ family with the addr bit publishes one word per field plus the three fixed
+\ members AT / BYTES / CELLS, in the same two spellings and the same two
+\ wordlists its constructors use. The protection predicates must recognise them
+\ for the same reason they recognise a constructor: a public family's accessors
+\ are new tails in its reserved constructor package, which TFAM-CTOR-EXTEND?
+\ would otherwise refuse, and an undefine of one must answer E-CTOR-PROTECTED.
+\
+\ This block sits after the field registry because a field tail is the member
+\ name: the recogniser reads the spelling from the declaration that generates
+\ it rather than restating it. Only COMMITTED field rows are consulted — the
+\ same range the generator reads — so a name asked about while the declaration
+\ is still provisional (the MAKE/UNMAKE generation the front end runs in the
+\ body phase) sees the fields that exist and no uncommitted row.
+\ ---------------------------------------------------------------------------
+package TFAM
+
+private
+
+variable TF-CJ              \ accessor scan index (TF-CI stays the inner field scan's)
+
+: TFAM-ADDR-FIELD-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ tail names a COMMITTED field of fam
+   fam TFAM-FLD-START@ {: fs:n :}
+   0 TF-CI !
+   BEGIN TF-CI @ fam TFAM-FLD-COUNT@ < WHILE
+      fs TF-CI @ + {: id:n :}
+      id PF-N@ < IF
+         id PF-NAME$ a u CORE-STR=CI IF RES-TRUE EXIT THEN
+      THEN
+      TF-CI @ 1 + TF-CI !
+   REPEAT RES-FALSE ;
+
+public
+
+: TFAM-ADDR-FIXED-TAIL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a fixed addr member tail
+   a u s" at" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" bytes" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" cells" CORE-STR=CI ;
+
+: TFAM-ADDR-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ member tail the FAMILY generates
+   fam TFAM-DERIVE-ADDR? 0= IF RES-FALSE EXIT THEN
+   a u TFAM-ADDR-FIXED-TAIL? IF RES-TRUE EXIT THEN
+   a u fam TFAM-ADDR-FIELD-TAIL? ;
+
+private
+
+: TFAM-ADDR-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}   \ split name = id-family accessor?
+   a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   a u TF-CW-TAIL$ id SUMV-FAM@ TFAM-ADDR-TAIL? ;
+
+\ The private spelling carries no colon, so the member is recovered by deriving
+\ each candidate spelling and comparing — the same direction TFAM-CTOR-PRIV-AT?
+\ takes, and for the same reason: the derivation is the authority.
+: TFAM-ADDR-PRIV-FIXED? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
+   a u  fam TFAM-NAME$ s" at"    TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u  fam TFAM-NAME$ s" bytes" TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u  fam TFAM-NAME$ s" cells" TF-CTOR-PRIV$ CORE-STR=CI ;
+
+: TFAM-ADDR-PRIV-FIELD? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
+   fam TFAM-FLD-START@ {: fs:n :}
+   0 TF-CI !
+   BEGIN TF-CI @ fam TFAM-FLD-COUNT@ < WHILE
+      fs TF-CI @ + {: id:n :}
+      id PF-N@ < IF
+         a u  fam TFAM-NAME$ id PF-NAME$ TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE EXIT THEN
+      THEN
+      TF-CI @ 1 + TF-CI !
+   REPEAT RES-FALSE ;
+
+: TFAM-ADDR-PRIV-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
+   id SUMV-FAM@ {: fam:n :}
+   fam TFAM-PUBLIC? IF RES-FALSE EXIT THEN
+   fam TFAM-DERIVE-ADDR? 0= IF RES-FALSE EXIT THEN
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
+   CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   a u fam TFAM-ADDR-PRIV-FIXED? IF RES-TRUE EXIT THEN
+   a u fam TFAM-ADDR-PRIV-FIELD? ;
+
+\ One scan, both spellings, over the variant rows every addr family owns (a
+\ STRUCTURE with fields always has its make/unmake pair, so a family is reached
+\ through either row; visiting it twice is free).
+: TFAM-ADDR-QUAL-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 TF-CJ !
+   BEGIN TF-CJ @ SUMV-N @ < WHILE
+      a u TF-CJ @ TFAM-ADDR-AT? IF RES-TRUE EXIT THEN
+      TF-CJ @ 1 + TF-CJ !
+   REPEAT RES-FALSE ;
+
+: TFAM-ADDR-PRIV-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 TF-CJ !
+   BEGIN TF-CJ @ SUMV-N @ < WHILE
+      a u TF-CJ @ TFAM-ADDR-PRIV-AT? IF RES-TRUE EXIT THEN
+      TF-CJ @ 1 + TF-CJ !
+   REPEAT RES-FALSE ;
+
+public
+
+: TFAM-ADDR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact generated accessor?
+   a u TF-CW-SPLIT? IF a u TFAM-ADDR-QUAL-WORD? EXIT THEN
+   a u TFAM-ADDR-PRIV-WORD? ;
+
+private
+
+: TFAM-ADDR-WORD-INSTALL ( -- )
+   [: TFAM-ADDR-WORD? ;] is TFAM-ADDR-WORD-XT ;
+TFAM-ADDR-WORD-INSTALL
+
+;package
+
 package TFAM
 
 \ Concrete schema linearity. Family arguments are checker terms and are
@@ -3383,7 +3536,7 @@ private
    row TF.LAYOUT @ TL-PACKED-TAG REG-AOT-LIMIT
    row TF.SLOTS @ $7FFFFFFFFFFFFFFF CELL / 1- REG-AOT-LIMIT
    row TF.TAGW @ CELL REG-AOT-LIMIT
-   row TF.DERIVE @ DRV-EQ DRV-HASH or invert and 0 <> IF
+   row TF.DERIVE @ DRV-ALL invert and 0 <> IF
       s" tfam: a seeded family has invalid derive flags" REG-AOT-REFUSE THEN
    src u 1 row TF.PK-START @ row TF.ARITY @ REG-AOT-RANGE
    src u 2 row TF.VAR-START @ row TF.VAR-COUNT @ REG-AOT-RANGE
@@ -4425,6 +4578,7 @@ variable FPRJ-FID    variable FPRJ-OFF   variable FPRJ-FAM
    FPRJ-OFF @ FPRJ-FID @ TYPE-FIELD:BYTE-OFF@ <> IF EXIT THEN   \ baked offset disagrees with the committed offset (forged access)
    FPRJ-FID @ TYPE-FIELD:FLAGS@ PF-FLAGS-NONE <> IF EXIT THEN   \ non-addressable field role (niche/boxed/custom): no projection
    FPRJ-FAM @ PARAM>ARGC ffam TFAM-ARITY@ <> IF EXIT THEN       \ generic arity mismatch
+   FPRJ-FAM @ TFAM-INST-WIDTH@ ffam TFAM-SLOTS@ <> IF EXIT THEN \ a wide instantiation moves every field past the first: the committed offsets no longer describe it (see the note below)
    FPRJ-OFF @ FPRJ-FID @ TYPE-FIELD:BYTES@ +  ffam TFAM-SLOTS@ CELL *  > IF EXIT THEN   \ field extent past the family width
    FPRJ-FAM @ TFC-ARGS!
    FPRJ-FID @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-SCH-TERM FPRJ-TERM !   \ root index -> node -> instantiate the field schema over the input args
@@ -4433,6 +4587,18 @@ variable FPRJ-FID    variable FPRJ-OFF   variable FPRJ-FAM
    FPRJ-FAM !  FPRJ-OFF !  FPRJ-FID !
    [: TFAM-FIELD-PROJ-DO ;] catch drop           \ E-PF-ID (uncommitted id) -> ok stays 0
    FPRJ-TERM @ FPRJ-OK @ 0= 0= ;                  \ ok as a boolean flag
+
+\ The width condition above is fail-closed defence on the ARMING boundary, like
+\ the forged-offset and role conditions beside it: those cannot be reached by a
+\ caller either, only by a generator that armed a window with an id its text does
+\ not describe. No caller reaches it today for a second reason as well — a type
+\ argument that is a family does not bind an accessor's parameter at all
+\ (measured: `expected: ptr sdagen<a> actual: ptr sdagen<sdaw1<>>`), and every
+\ other argument is one cell. Its judgeable twin is RECORD-AT-EXACT? in
+\ src/core/checker.f, which a written-out `record-at` call DOES reach with a
+\ concrete wide pointee; test/structure-decl-suite.f case 15 pins it there, and
+\ the two must keep the same condition or the halves of one address surface would
+\ describe different instantiations.
 
 \ ---------------------------------------------------------------------------
 \ item 10 slice 1: compiler-facing lowering surface (docs §16; dot

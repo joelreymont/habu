@@ -164,7 +164,141 @@ public
    DECL-REPLAY:RP-ACTIVE? IF fam SM-REPLAY-WORDS EXIT THEN
    fam SM-EMIT-WORDS ;
 
+private
+
+\ ---------------------------------------------------------------------------
+\ The ADDRESS-SURFACE participant (ORDER 830), for `DERIVE addr`.
+\
+\ MAKE / UNMAKE are generated from the still-provisional field schemas while the
+\ body parses, which is why GENERATE above reads them through DECL-EVENT. The
+\ accessors CANNOT be: each one is armed with a COMMITTED field id, and the
+\ checker's field-projection window reads that id through the committed
+\ reflection reader — a provisional id fails closed there, by design, because the
+\ id is the projection's whole authority. So this work runs one phase later, in
+\ the reversible commit phase, where the order does the arranging:
+\
+\   100 checker | 800 DECL-EVENT | 820 constructors | 830 here | 850 dictionary
+\
+\ DECL-EVENT's commit has already advanced PF-COMMIT-N over this declaration's
+\ field rows by the time this participant commits, and the dictionary owner took
+\ its savepoint before the body ran, so a reject here truncates every accessor
+\ with the rest of the declaration and the registry stays byte-identical.
+\
+\ One armed family per nesting level, the slot shape GENERATED-DECL-CTOR uses.
+\ ---------------------------------------------------------------------------
+6 constant SM-PARTICIPANT
+-1 constant SM-NO-FAMILY
+4 constant SM-ARM-CAP-INIT
+
+create SM-ARM-BOOT SM-ARM-CAP-INIT cells allot
+PERSISTED-PTR-VARIABLE SM-ARM-P   SM-ARM-BOOT SM-ARM-P !
+variable SM-ARM-CAP   SM-ARM-CAP-INIT SM-ARM-CAP !
+
+TRUSTED: SM-ARM-GROW ( ptr n n n -- ptr n ) ARENA-BYTES-GROW ;
+TRUSTED: SM-ADDR? ( n -- bool ) TFAM-DERIVE-ADDR? ;
+TRUSTED: SM-ADDR-WORDS ( n -- ) TDECL-ADDR-WORDS ;
+
+: SM-ARM-BASE ( -- ptr n ) SM-ARM-P @ ;
+: SM-ARM-SLOT ( -- ptr n )
+   GENERATED-DECL:DEPTH 1 - cells SM-ARM-BASE + ;
+: SM-ARM-GROW1 ( -- )
+   SM-ARM-CAP @ 2 * {: nc:n :}
+   SM-ARM-P @ SM-ARM-CAP @ cells nc cells SM-ARM-GROW SM-ARM-P !
+   nc SM-ARM-CAP ! ;
+: SM-ARM-ENSURE ( -- )
+   GENERATED-DECL:DEPTH SM-ARM-CAP @ <= IF EXIT THEN
+   SM-ARM-GROW1 ;
+
+: SM-ARMED-FAM ( -- n ) SM-ARM-SLOT @ ;
+: SM-DISARM ( -- ) SM-NO-FAMILY SM-ARM-SLOT ! ;
+
+\ THE GATE. A family owns an address surface when it is a live product that
+\ declared `DERIVE addr` and has at least one field. Visibility is not a
+\ condition here either: it picks the spelling and the wordlist.
+: SM-ADDR-OK? ( n -- bool ) {: fam:n :}
+   fam SM-FAM-LIVE? 0= IF 0 0= 0= EXIT THEN
+   fam SM-PRODUCT? 0= IF 0 0= 0= EXIT THEN
+   fam SM-ADDR? 0= IF 0 0= 0= EXIT THEN
+   fam SM-FLD-COUNT 0 > ;
+
+: SM-ADDR-REQUIRE ( n -- ) {: fam:n :}
+   fam SM-ADDR-OK? 0= IF E-SM-FAM throw THEN ;
+
+: SM-PART-SNAPSHOT ( n -- n ) {: depth:n :}
+   SM-ARM-ENSURE
+   SM-DISARM
+   depth ;
+
+\ Non-mutating re-proof: the front end proved this gate when it armed, and if
+\ anything since made the family ineligible the declaration fails before a word
+\ is rendered rather than publishing a surface nobody validated.
+: SM-PART-PREPARE ( n -- n ) {: depth:n :}
+   SM-ARMED-FAM {: fam:n :}
+   fam SM-NO-FAMILY <> IF fam SM-ADDR-REQUIRE THEN
+   depth ;
+
+: SM-PART-COMMIT ( n -- n ) {: depth:n :}
+   SM-ARMED-FAM {: fam:n :}
+   fam SM-NO-FAMILY = IF depth EXIT THEN
+   fam SM-ADDR-REQUIRE
+   DECL-REPLAY:RP-ACTIVE? IF depth EXIT THEN
+   fam SM-ADDR-WORDS
+   depth ;
+
+: SM-PART-ROLLBACK ( n -- n ) {: depth:n :}
+   SM-DISARM
+   depth ;
+
+: SM-PART-RELEASE ( -- ) SM-DISARM ;
+
+: SM-INSTALL ( -- )
+   SM-PARTICIPANT GENERATED-DECL:ORDER-ADDRESS
+   [: SM-PART-SNAPSHOT ;]
+   [: SM-PART-PREPARE ;]
+   [: SM-PART-COMMIT ;]
+   [: SM-PART-ROLLBACK ;]
+   [: SM-PART-RELEASE ;]
+   GENERATED-DECL-OWNER:REGISTER ;
+
+public
+
+\ ARM ( fam -- ) : the declaration front end names the family whose address
+\ surface this transaction owns. Legal only inside an open declaration
+\ transaction and only for a family that passes the gate, so a caller cannot arm
+\ a family this participant refuses and discover it two phases later.
+: ARM ( n -- ) {: fam:n :}
+   GENERATED-DECL:DEPTH 0 <= IF E-SM-FAM throw THEN
+   fam SM-ADDR-REQUIRE
+   fam SM-ARM-SLOT ! ;
+
+private
+
+SM-INSTALL
+
 ;package
+
+\ ---------------------------------------------------------------------------
+\ The two runtime rows a generated address surface calls. Both are documented
+\ global language surface (the package-first exception the STRUCTURE opener
+\ itself takes) because a generated body names them unqualified from whatever
+\ package declared the record.
+\
+\ `field-project` is the accessor body's op. OUTSIDE the checker's armed window
+\ its row is exactly what it computes — a byte offset added to a pointer, no
+\ retype, layout-fenced like any other `+` — so the word is not a capability and
+\ user code gains nothing by calling it. INSIDE the window (armed only by the
+\ generator, per accessor, with a committed field id) the checker replaces that
+\ row with the schema-aware projection `ptr family<args> -- ptr field-type`.
+\
+\ `record-at` needs no window: it consumes `ptr F` and a CELL COUNT and answers
+\ `ptr F`, preserving the family. It forges nothing — bounds stay the caller's,
+\ exactly the contract `cells +` has on every other pointer — and it exists only
+\ because `+` and `cell+` refuse a layout pointee outright, which is what makes
+\ a record pointer safe in the first place. The generated `F:AT` bakes the
+\ family's committed width as the multiplier; the row itself scales nothing.
+\ ---------------------------------------------------------------------------
+: field-project ( ptr a n -- ptr a ) + ;
+: record-at ( ptr a n -- ptr a ) cells + ;
 
 ;using
 ;using

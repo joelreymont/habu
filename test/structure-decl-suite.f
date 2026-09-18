@@ -845,6 +845,178 @@ DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
+\ 15. DERIVE addr: the ADDRESS SURFACE (dot habu-generate-typed-field-ba63866e,
+\     docs/type-system.md 10.4). One accessor per field plus AT / BYTES / CELLS,
+\     in the family's own spelling and wordlist, generated at COMMIT because an
+\     accessor is armed with a COMMITTED field id. The words are ordinary checked
+\     text over the production `field-project` and `record-at` rows; the checker
+\     derives the family, offset, extent, role and schema from the field id, so
+\     the declared output type is judged rather than believed.
+\ ---------------------------------------------------------------------------
+DECL-DIAG:PROSE                                       \ this section rejects too: keep the output clean
+STRUCTURE sdaddr 0
+   DERIVE addr
+   FIELD a n
+   FIELD p ptr u8
+   FIELD c n
+;STRUCTURE
+2 TYPED-BUFFER SDA-BUF sdaddr
+
+SDADDR:BYTES 24 T=                                    \ the size words BEGIN-STRUCTURE published
+SDADDR:CELLS 3 T=
+
+: SDA-W ( n ptr u8 n n -- ) {: av:n pv:ptr cv:n i:n :} av pv cv SDADDR:MAKE i SDA-BUF ! ;
+: SDA-A ( n -- n ) SDA-BUF SDADDR:A @ ;
+: SDA-C ( n -- n ) SDA-BUF SDADDR:C @ ;
+: SDA-P ( n -- ptr u8 ) SDA-BUF SDADDR:P @ ;
+: SDA-UA ( n -- n ) SDA-BUF @ SDADDR:UNMAKE {: av:n pv:ptr cv:n :} av ;
+: SDA-UC ( n -- n ) SDA-BUF @ SDADDR:UNMAKE {: av:n pv:ptr cv:n :} cv ;
+: SDA-UP ( n -- ptr u8 ) SDA-BUF @ SDADDR:UNMAKE {: av:n pv:ptr cv:n :} pv ;
+
+10 NULL-PTR 30 0 SDA-W
+40 NULL-PTR 60 1 SDA-W
+\ a field read through an accessor equals the same field read through UNMAKE,
+\ for a scalar field, a pointer field, and the last field of the record
+0 SDA-A 0 SDA-UA T=
+0 SDA-C 0 SDA-UC T=
+0 SDA-P 0 SDA-UP = -1 T=
+1 SDA-A 40 T=
+1 SDA-C 60 T=
+
+\ AT strides by the committed width and PRESERVES the family, so the accessor of
+\ the same family reads the next record; the stride is signed both ways.
+: SDA-NEXT ( -- n ) 0 SDA-BUF 1 SDADDR:AT SDADDR:A @ ;
+: SDA-PREV ( -- n ) 1 SDA-BUF -1 SDADDR:AT SDADDR:C @ ;
+SDA-NEXT 40 T=
+SDA-PREV 30 T=
+
+\ the declared output type is the FIELD's type: a pointer field projects as
+\ `ptr ptr u8` and nothing else, and a scalar field does not coerce.
+s" SDAX1 ( ptr sdaddr -- ptr ptr u8 ) SDADDR:P" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAX2 ( ptr sdaddr -- ptr n ) SDADDR:P" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDAX3 ( ptr sdaddr -- ptr n ) SDADDR:A" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAX4 ( ptr sdaddr -- ptr r ) SDADDR:A" CHECK-QUIET-CANDIDATE! 0 T=
+\ and the accessor of one family is not the accessor of another
+s" STRUCTURE sdaddr2 0 DERIVE addr FIELD a n ;STRUCTURE" TRY 0 T=
+s" SDAX5 ( ptr sdaddr2 -- ptr n ) SDADDR:A" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ a GENERIC family projects at the caller's instantiation
+STRUCTURE sdagen 1
+   DERIVE addr
+   FIELD v a
+   FIELD k n
+;STRUCTURE
+1 TYPED-BUFFER SDAG-BUF sdagen<n>
+: SDAG-W ( n n n -- ) {: vv:n kv:n i:n :} vv kv SDAGEN:MAKE i SDAG-BUF ! ;
+: SDAG-V ( n -- n ) SDAG-BUF SDAGEN:V @ ;
+77 88 0 SDAG-W
+0 SDAG-V 77 T=
+s" SDAG1 ( ptr sdagen<a> -- ptr a ) SDAGEN:V" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAG2 ( ptr sdagen<a> -- ptr n ) SDAGEN:V" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ...but a type argument that is itself a FAMILY is not an instantiation of the
+\ accessor at all, whatever its width: the parameter binds no family term
+\ (measured: `expected: ptr sdagen<a> actual: ptr sdagen<sdaw1<>>`), so the call
+\ is refused at the accessor's own token before any address arithmetic is judged.
+STRUCTURE sdaw1 0 FIELD z n ;STRUCTURE                 \ one cell
+STRUCTURE sdaw2 0 FIELD z n FIELD w n ;STRUCTURE       \ two cells
+s" SDAW1 ( ptr sdagen<sdaw1> -- ptr sdaw1 ) SDAGEN:V" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDAW2 ( ptr sdagen<sdaw2> -- ptr n ) SDAGEN:K" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ The stride row judges the pointee it is handed, and a written-out one can carry
+\ a family argument the accessor's parameter cannot. `record-at` scales by the
+\ CALLER's count, so it refuses a pointee whose INSTANTIATED width is not the
+\ committed width — an argument wider than one cell expands the product and moves
+\ every field past the first, which is exactly what F:AT's baked multiplier and
+\ an accessor's baked offset assume away. One cell per argument is not wide, so
+\ the refusal is about the width and not about the argument being a family.
+s" SDAW3 ( ptr sdagen<sdaw2> n -- ptr sdagen<sdaw2> ) record-at" CHECK-QUIET-CANDIDATE! 0 T=
+s" SDAW4 ( ptr sdagen<sdaw1> n -- ptr sdagen<sdaw1> ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
+s" SDAW5 ( ptr sdaddr n -- ptr sdaddr ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
+\ off a layout pointee the plain row answers, and it is `cells +` on any pointer.
+s" SDAW6 ( ptr u8 n -- ptr u8 ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
+\ the wide instantiation itself stays a perfectly ordinary type: what is refused
+\ is the address surface over it, not the pointer.
+s" SDAW7 ( ptr sdagen<sdaw2> -- n ) drop 0" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ a field named like a generated member is refused AT ITS OWN TOKEN, because the
+\ generator would otherwise render a name it had already defined.
+s" STRUCTURE sdabad 0 DERIVE addr FIELD at n ;STRUCTURE" TRY 7110 T=
+s" STRUCTURE sdabad2 0 DERIVE addr FIELD make n ;STRUCTURE" TRY 7110 T=
+s" STRUCTURE sdabad3 0 DERIVE addr FIELD cells n ;STRUCTURE" TRY 7110 T=
+\ without the addr surface the same names are ordinary fields
+s" STRUCTURE sdaok 0 FIELD at n FIELD cells n ;STRUCTURE" TRY 0 T=
+\ and a family with no field has no address to take
+s" STRUCTURE sdaempty 0 DERIVE addr ;STRUCTURE" TRY 7119 T=
+
+\ the generated words are the family's own: a stray tail in its reserved
+\ constructor package is still refused, and an accessor cannot be undefined.
+s" undefine SDADDR:A" TRY 7111 T=
+s" undefine SDADDR:AT" TRY 7111 T=
+
+\ a PRIVATE family takes the private spelling, in the declaring package only.
+SUMVN@ SV0 !
+package SDAPRIV
+private
+STRUCTURE hrec 0
+   DERIVE addr
+   FIELD x n
+   FIELD y n
+;STRUCTURE
+1 TYPED-BUFFER HB hrec
+: HW ( n n n -- ) {: xv:n yv:n i:n :} xv yv HREC-MAKE i HB ! ;
+: HX ( n -- n ) HB HREC-X @ ;
+: HY ( n -- n ) HB HREC-Y @ ;
+: HNEXT ( n -- ptr SDAPRIV:hrec ) HB 0 HREC-AT ;
+s" HXI ( ptr hrec -- ptr n ) HREC-X" CHECK-QUIET-CANDIDATE! -1 T=   \ certifies HERE
+public
+: HGO ( -- n n n ) 5 6 0 HW 0 HX 0 HY HREC-BYTES ;
+;package
+SDAPRIV:HGO 16 T= 6 T= 5 T=
+SUMVN@ SV0 @ 2 + T=                                   \ still exactly two variant rows: accessors are not variants
+
+package SDAOTHER
+private
+\ the accessor NAME reaches nothing at all here: 1 (unresolvable), not 0
+\ (refused) — the same answer the private MAKE/UNMAKE pair gives in case 14. The
+\ probe's signature names no private type on purpose: the private family TYPE is
+\ not nameable outside its package either, and a probe carrying it would be
+\ refused for that second reason instead. The next line pins that contrast.
+s" SDAP1 ( n -- n ) HREC-X" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDAP2 ( ptr SDAPRIV:hrec -- n ) drop 0" CHECK-QUIET-CANDIDATE! 0 T=
+public
+;package
+
+\ a PRIVATE family may derive eq and hash too — the same lift, the same private
+\ spelling (the gate that refused a private family stood on all three).
+package SDAPRIVDRV
+private
+STRUCTURE drec 0
+   DERIVE eq hash
+   FIELD u n
+;STRUCTURE
+public
+: DEQ ( -- bool ) 4 DREC-MAKE 4 DREC-MAKE DREC-EQ ;
+: DNE ( -- bool ) 4 DREC-MAKE 5 DREC-MAKE DREC-EQ ;
+: DHS ( -- bool ) 4 DREC-MAKE DREC-HASH 4 DREC-MAKE DREC-HASH = ;
+;package
+SDAPRIVDRV:DEQ -1 T=
+SDAPRIVDRV:DNE 0 T=
+SDAPRIVDRV:DHS -1 T=
+
+\ a rejected addr declaration rolls the whole thing back, accessors included:
+\ the name is free and re-declaring it publishes working words.
+REG-MARK
+TYPE-FIELD:COUNT PFB !
+s" STRUCTURE sdaroll 0 DERIVE addr FIELD z n FIELD z n ;STRUCTURE" TRY 7102 T=
+TFAMN@ RB-TFAM @ T=
+SCHN@ RB-SCH @ T=
+SUMVN@ RB-SUMV @ T=
+TYPE-FIELD:COUNT PFB @ T=
+s" STRUCTURE sdaroll 0 DERIVE addr FIELD z n ;STRUCTURE" TRY 0 T=
+s" SDAR1 ( ptr sdaroll -- ptr n ) SDAROLL:Z" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" structure-decl-suite: failures" 1 die ;

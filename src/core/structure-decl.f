@@ -114,6 +114,11 @@ TRUSTED: LT-STACK ( -- n ) TL-STACK-CELL-TAG ;   \ default layout policy code
 TRUSTED: LT-PACKED ( -- n ) TL-PACKED-TAG ;      \ packed-tag layout policy code
 TRUSTED: DV-EQ ( -- n ) DRV-EQ ;                 \ derive feature code: equality
 TRUSTED: DV-HASH ( -- n ) DRV-HASH ;             \ derive feature code: hash
+TRUSTED: DV-ADDR ( -- n ) DRV-ADDR ;             \ derive feature code: address surface
+TRUSTED: FAM-ADDR! ( n -- ) TFAM-DERIVE-ADDR! ;
+TRUSTED: FAM-ADDR? ( n -- bool ) TFAM-DERIVE-ADDR? ;
+TRUSTED: ADDR-FIXED-TAIL? ( ptr u8 n -- bool ) TFAM-ADDR-FIXED-TAIL? ;
+TRUSTED: DERIVED-TAIL? ( ptr u8 n -- bool ) TFAM-DERIVED-TAIL? ;
 TRUSTED: PKG-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;   \ public visibility code
 TRUSTED: SD-SCH-CON ( n -- n ) SCHEMA-CON ;
 TRUSTED: SD-SCH-PARAM ( n -- n ) SCHEMA-PARAM ;
@@ -301,18 +306,30 @@ SD-RESET
 : DERIVE-FEATURE? ( ptr u8 n -- bool )  \ a known/recognised derive feature token
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" addr" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
-: DERIVE-GUARD ( -- )                   \ derive needs a public, concrete (arity 0) family
-   FAM @ TFAM-PUBLIC? 0= IF
-      s" derive requires a public family" E-DERIVE DECL-REJECT:REJECT throw THEN
+\ VISIBILITY IS NOT A CONDITION, for the same reason it is not one for the
+\ MAKE/UNMAKE pair (see the generation note at the head of this file): it decides
+\ the spelling and the wordlist, not whether a family has a derived surface. A
+\ public family's derived words go into its reserved constructor namespace, a
+\ private family's into the declaring package's private wordlist as
+\ FAMILY-MEMBER (src/core/type-family.f TF-CTOR-PRIV$, rendered by
+\ src/core/sumtype.f TDGEN-DRV-REF). The gate that stood here refused a private
+\ family outright; nearly every memory record under lib/ is package-private, so
+\ it refused the facility to almost everything that needs it.
+: DERIVE-CONCRETE ( -- )                \ eq/hash compare whole values: arity 0 only
    FAM @ TFAM-ARITY@ 0 <> IF
       s" derive requires a concrete (arity 0) family" E-DERIVE DECL-REJECT:REJECT throw THEN ;
 : EMIT-DERIVE ( n n -- )                \ ( fam feature-code -- ) emit the DERIVE event
    TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
+\ `addr` carries no arity condition: an accessor projects the field schema at the
+\ caller's instantiation, which is the whole point of the projection window, and
+\ the checker refuses the one instantiation a baked offset would misdescribe (a
+\ type argument wider than one cell).
 : DERIVE-ONE ( ptr u8 n -- )            \ apply one feature + emit its event
-   DERIVE-GUARD
-   2dup s" eq" CORE-STR=CI IF 2drop FAM @ FAM-EQ! FAM @ DV-EQ EMIT-DERIVE EXIT THEN
-   2dup s" hash" CORE-STR=CI IF 2drop FAM @ FAM-HASH! FAM @ DV-HASH EMIT-DERIVE EXIT THEN
+   2dup s" eq" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ FAM-EQ! FAM @ DV-EQ EMIT-DERIVE EXIT THEN
+   2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ FAM-HASH! FAM @ DV-HASH EMIT-DERIVE EXIT THEN
+   2dup s" addr" CORE-STR=CI IF 2drop FAM @ FAM-ADDR! FAM @ DV-ADDR EMIT-DERIVE EXIT THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported" E-DERIVE DECL-REJECT:REJECT throw THEN
    2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
@@ -334,10 +351,27 @@ SD-RESET
    DECL-EVENT:FIELD TOK !
    fw SD-CELLS @ + SD-CELLS !
    NFLD @ 1 + NFLD ! ;
+\ A generated member and a field share one namespace: with DERIVE addr the family
+\ publishes F:AT, F:BYTES and F:CELLS beside one word per field, and it already
+\ publishes F:MAKE / F:UNMAKE and any derived tail. A field named like one of
+\ those would make the generator render a name it had already defined, which is a
+\ process-killing die inside the plan. The declaration door is where it belongs,
+\ at the offending token, and only when the addr surface is actually asked for —
+\ header clauses precede fields, so the flag is final by the time a field is read.
+: MEMBER-CLASH? ( ptr u8 n -- bool )
+   2dup s" make" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" unmake" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup ADDR-FIXED-TAIL? IF 2drop YES EXIT THEN
+   DERIVED-TAIL? ;
+: REQUIRE-FIELD-NAME ( ptr u8 n -- )    \ consumes the copy; throws on a member clash
+   FAM @ FAM-ADDR? 0= IF 2drop EXIT THEN
+   MEMBER-CLASH? IF
+      s" field name is a generated member name" E-NAME DECL-REJECT:REJECT throw THEN ;
 : FIELD-CLAUSE ( -- )
    SD-NEXT dup 0= IF
       2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
    {: na:ptr nu:n :}
+   na nu REQUIRE-FIELD-NAME
    SD-NEXT RESOLVE-TYPE {: node:n :}
    na nu node EMIT-FIELD
    -1 SEEN-FIELD ! ;
@@ -362,6 +396,17 @@ SD-RESET
 
 : SD-MAKEABLE? ( -- bool )                 \ a structure WITH fields owns a MAKE/UNMAKE pair
    NFLD @ 0 > ;
+\ `DERIVE addr` names the family whose address surface this transaction owns; the
+\ words themselves are generated one phase later, at commit, because an accessor
+\ is armed with a COMMITTED field id (src/core/structure-make.f, ORDER 830). A
+\ fieldless structure is an opaque one-cell family with nothing to address, and
+\ the fields are what give it the MAKE/UNMAKE pair whose constructor package an
+\ accessor's public spelling is built from.
+: SD-ADDR-ARM ( -- )
+   FAM @ FAM-ADDR? 0= IF EXIT THEN
+   SD-MAKEABLE? 0= IF
+      s" derive addr requires a family with fields" E-DERIVE DECL-REJECT:REJECT throw THEN
+   FAM @ STRUCTURE-MAKE:ARM ;
 : SD-CLOSE ( -- )                          \ bind field range + width, then generate the ctors
    DECL-REJECT:AT-FAMILY                   \ close-stage faults belong to the whole declaration
    FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!
@@ -370,7 +415,8 @@ SD-RESET
    \ ED-CLOSE arms none: they are raised past the last token this front end
    \ holds, so an arming here would cover all of generation rather than the one
    \ fault it names. The packet answers them from its code table.
-   SD-MAKEABLE? IF TOK @ FAM @ STRUCTURE-MAKE:GENERATE THEN ;
+   SD-MAKEABLE? IF TOK @ FAM @ STRUCTURE-MAKE:GENERATE THEN
+   SD-ADDR-ARM ;
 
 : CLAUSE ( -- bool )                    \ read + dispatch one body token; YES = ;STRUCTURE
    SD-NEXT dup 0= IF 2drop

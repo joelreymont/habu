@@ -557,19 +557,20 @@ private
 
 package GENERATED-DECL-OWNER
 
-\ Five sealed participants enroll, and five is therefore the capacity: the
+\ Six sealed participants enroll, and six is therefore the capacity: the
 \ checker frame (100), DECL-EVENT (800), constructor generation (820), the
-\ native dictionary (850), and protection (900).  The last of them registers
+\ STRUCTURE address surface (830, src/core/structure-make.f), the native
+\ dictionary (850), and protection (900).  The last of them registers
 \ through REGISTER-LAST, which seals the table, and
 \ src/core/generated-declaration-protection.f then undefines every registration
 \ entry point, so this membership is closed before any user source loads.
 \
 \ This number is the membership, not a starting guess -- the table cannot grow
-\ (see the closed-world note in src/core/declaration-transaction.f).  A sixth
+\ (see the closed-world note in src/core/declaration-transaction.f).  A seventh
 \ participant is a deliberate edit HERE as well as in its own file; forgetting
-\ this line makes the sixth registration throw E-PARTICIPANT-CAPACITY during
+\ this line makes the seventh registration throw E-PARTICIPANT-CAPACITY during
 \ cold boot rather than quietly moving the table out of DATA.
-5 constant PARTICIPANT-CAP-INIT
+6 constant PARTICIPANT-CAP-INIT
 
 create PARTICIPANT-BOOT
    PARTICIPANT-CAP-INIT DECLARATION-TRANSACTION:ROW-CELLS * cells allot
@@ -625,6 +626,7 @@ DECLARATION-TRANSACTION:E-REGISTRATION-SEALED constant E-REGISTRATION-SEALED
 
 800 constant ORDER-EVENT
 820 constant ORDER-CONSTRUCTOR
+830 constant ORDER-ADDRESS
 850 constant ORDER-DICTIONARY
 900 constant ORDER-PROTECTION
 
