@@ -46,11 +46,14 @@ variable IMAGE-U
 : WRITE-SUBJECT ( ptr u8 n -- ) {: a:ptr u:n :}
    SUBJECT$ a u WRITE-ALL ;
 
-\ The linker child reads its prelude from stdin, so a definition placed there is
-\ compiled BEFORE tools/aot-build.f opens the capture window and lands in
-\ pre-window DATA; the subject file is loaded after and lands inside it.
+\ The linker child reads its prelude from stdin, and this is the production
+\ maker script (tools/hb-build-lib.f HBB-RUN-MAKER-CMD) spelled out: phase one
+\ opens the capture window and loads the subject, phase two brings the linker in
+\ above the span, and BUILD-NATIVE links. A definition placed in the prelude
+\ AHEAD of tools/aot-build-open.f is therefore compiled before the window opens
+\ and lands in pre-window DATA; the subject file is loaded inside the window.
 : LINK-ONLY$ ( -- ptr u8 n )
-   S\" require tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
+   S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
 
 \ The linker's second argument is its JSON-diagnostics flag.
 : BUILD-DIAG ( ptr u8 n ptr u8 n -- ) {: json:ptr jsonu:n in:ptr inu:n :}
@@ -105,7 +108,7 @@ variable IMAGE-U
 \ image does not restore this cell at all.
 : CASE-PRE-XT ( -- )
    S\" : MAIN ( -- ) DCR-PRE-XT @ . ;\n" WRITE-SUBJECT
-   S\" : DCR-PRE ( n -- n ) 1+ ;\ncreate DCR-PRE-XT ' DCR-PRE ,\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
+   S\" : DCR-PRE ( n -- n ) 1+ ;\ncreate DCR-PRE-XT ' DCR-PRE ,\nrequire tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
       BUILD
    70 s" pre-window xt cell: refusal code" GE-EXPECT-RC
    s" stripped AOT persistent data outside the restored span holds a code/dict pointer"
@@ -120,7 +123,7 @@ variable IMAGE-U
 \ value, the word whose data it is, and the span it had to fall in.
 : CASE-PRE-DATA ( -- )
    S\" : MAIN ( -- ) DCR-PRE-CELL @ . ;\n" WRITE-SUBJECT
-   S\" create DCR-PRE-CELL 41 ,\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" BUILD
+   S\" create DCR-PRE-CELL 41 ,\nrequire tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" BUILD
    74 s" pre-window data cell: refusal code" GE-EXPECT-RC
    s" aot: address refers to data outside the restored span"
       s" pre-window data cell: refusal reason" GE-EXPECT-ERR-HAS
@@ -142,7 +145,7 @@ variable IMAGE-U
 : CASE-JSON ( -- )
    S\" : MAIN ( -- ) DCR-PRE-XT @ . ;\n" WRITE-SUBJECT
    s" 1"
-   S\" : DCR-PRE ( n -- n ) 1+ ;\ncreate DCR-PRE-XT ' DCR-PRE ,\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
+   S\" : DCR-PRE ( n -- n ) 1+ ;\ncreate DCR-PRE-XT ' DCR-PRE ,\nrequire tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
       BUILD-DIAG
    70 s" json refusal: code" GE-EXPECT-RC
    S\" \"code\":\"E-AOT-UNSUPPORTED\"" s" json refusal: schema code" GE-EXPECT-ERR-HAS

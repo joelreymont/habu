@@ -477,8 +477,11 @@ HBB-INSTALL-CHILD-LINT
    s" hb-build: unknown target" HBB-BUILD-RC die ;
 
 : HBB-KEY-DRIVER-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   s" native-stripped:v1" CONTENT-KEY:TEXT+
+   \ v2: the maker opens the capture window before any library loads, so the same
+   \ application source yields a different image than a v1 artifact holds.
+   s" native-stripped:v2" CONTENT-KEY:TEXT+
    s" lib/executable-build.f" HBB-KEY-FILE+
+   s" tools/aot-build-open.f" HBB-KEY-FILE+
    s" tools/aot-build.f" HBB-KEY-FILE+
    s" tools/aot-build-core.f" HBB-KEY-FILE+
    s" src/habu/app-image.f" HBB-KEY-FILE+
@@ -493,6 +496,7 @@ HBB-INSTALL-CHILD-LINT
    s" src/habu/fdio.f" HBB-KEY-FILE+
    s" src/habu/driver-io.f" HBB-KEY-FILE+
    s" src/habu/aot-decl.f" HBB-KEY-FILE+
+   s" src/habu/aot-window-latch.f" HBB-KEY-FILE+
    s" src/habu/aot-closure.f" HBB-KEY-FILE+
    s" src/habu/aot-lib.f" HBB-KEY-FILE+ ;
 
@@ -559,7 +563,10 @@ HBB-INSTALL-CHILD-LINT
 : HBB-RUN-MAKER-CMD ( -- n n n )
    HBB-RUN-MAKER-ARGS
    BF-ENGINE$ >LEN
-   S\" require tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" >LEN
+   \ Order is the invariant: aot-build-open.f opens the capture window and loads
+   \ the application while no lib module is loaded, aot-build.f then brings the
+   \ linker in above the latched span, and BUILD-NATIVE links.
+   S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" >LEN
    HBB-OUT-BUF HBB-CAPTURE-CAP >LEN
    HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
    HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE

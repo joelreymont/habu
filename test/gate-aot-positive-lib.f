@@ -214,6 +214,155 @@ variable BLR-CNT
    s" AS-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
+\ ---- the maker-side linker self-tests ----------------------------------------
+\
+\ SURFACE-DEFS above and the three blocks below check the LINKER: what AOT-LINK
+\ publishes, its relocation math, the span table the seed published, and its
+\ pointer classifier. All four need the linker in the dictionary, and they used
+\ to be spliced into the APPLICATION source, which worked only while the maker
+\ loaded the linker before the application. The capture window forbids that -
+\ nothing the application can require may be loaded when the window opens
+\ (docs/native-applications.md) - so an application naming a linker word now
+\ dies with `E-UNDEFINED ... undefined word 'CLO'`, and these run where the
+\ application and the linker first coexist instead: a file the maker's stdin
+\ requires after tools/aot-build.f, one line before AOT-LINK:BUILD-NATIVE.
+create SELF-SRC FS-PATH-CAP allot
+variable SELF-SRC-U
+
+: SELF-SRC$ ( -- ptr u8 n )
+   SELF-SRC SELF-SRC-U @ ;
+
+: SELF-SRC! ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu SELF-SRC GT-PATH SELF-SRC-U ! ;
+
+: WRITE-SELF-SRC ( -- )
+   SELF-SRC$ GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
+
+\ The production maker script (tools/hb-build-lib.f HBB-RUN-MAKER-CMD) with one
+\ line added: the self-test, required after the linker and before the link.
+: SELF-STDIN$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\ns\" " SB-APPEND
+   SELF-SRC$ SB-APPEND
+   S\" \" required\nAOT-LINK:BUILD-NATIVE\n" SB-APPEND
+   SB$ ;
+
+\ Drive the maker child the way tools/hb-build.f does - the application as the
+\ build's argv[0], the JSON flag as argv[1], HB_TMP as the image's directory -
+\ and hand it the script above on stdin. A build that reaches the end writes its
+\ image to HB_TMP/hb-aot-got, which is the name GB-OUT$ carries in these cases;
+\ the stale one goes first, so "an image exists" and "none was emitted" are both
+\ statements about THIS run.
+: MAKER-RUN ( -- )
+   GB-OUT$ EXISTS? if GB-OUT$ REMOVE-FILE then
+   GE-HB-RESET
+   GE-HB$ GE-ARGV+
+   s" --" GE-ARG+ GB-SRC$ GE-ARG+ s" 0" GE-ARG+
+   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+   GE-HB$ SELF-STDIN$ GE-TIMEOUT-MS GE-RUN-STDIN ;
+
+\ The relocation math the direct-branch capability adds: two adjacent synthetic
+\ closure MEMBERS prove MAP-IN-MEMBER treats a target at a member's end as the
+\ NEXT member's start (the >= boundary), and MAP-TARGET relocates that adjacent
+\ target to the next member's new offset. The members carry XREF-NULL for their
+\ record, which is what a word the image ships no record for looks like to this
+\ walk. Safe to scribble on the live CLO/CLO-LEN/CLO-REC/NEWOFF/NCLO: this runs
+\ before LINK and so before the program's own closure walk, and the real build
+\ recomputes the closure from scratch (aot-closure.f CLOSURE resets NCLO to 0 and
+\ refills the arrays), so the synthetic values cannot leak into the image - which
+\ is why MAKER-SELFTEST runs the image it built and reads its output back.
+: SELF-AMAP-DEFS ( -- )
+   s" package AOT-LINK" GE-SRC-LINE
+   s" create AMAP-CODE 16 allot" GE-SRC-LINE
+   s" 8 constant AMAP-SPAN-BYTES" GE-SRC-LINE
+   s" 8 constant AMAP-CODE-ROW" GE-SRC-LINE
+   s" $40 constant AMAP-M2-OFF" GE-SRC-LINE
+   s" : AMAP-MEMBER! ( n ptr u8 n -- ) {: i:n code:ptr len:n :}" GE-SRC+
+   s"  code i CLO ! len i cells CLO-LEN + ! XREF-NULL i CLO-REC ! ;" GE-SRC-LINE
+   s" : AMAP-CLOSURE! ( -- ) 0 AMAP-CODE AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
+   s"  1 AMAP-CODE AMAP-CODE-ROW + AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
+   s"  0 NEWOFF ! AMAP-M2-OFF NEWOFF cell+ ! 2 NCLO ! ;" GE-SRC-LINE
+   s" : AMAP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
+   s" : AMAP-RUN ( -- ) AMAP-CLOSURE!" GE-SRC+
+   s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-IN-MEMBER -1 =" GE-SRC+
+   s\"  s\" AOT closed member range\" AMAP-EXPECT" GE-SRC+
+   s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-TARGET AMAP-M2-OFF =" GE-SRC+
+   s\"  s\" AOT adjacent member relocation\" AMAP-EXPECT ;" GE-SRC-LINE
+   s" AMAP-RUN" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+\ The span table the seed published, read in the shipped engine's own linker
+\ through the production reader, inside a real stripped build.
+\ THE FIRST TWO ASSERTIONS ARE THE WHOLE POINT and they are two-sided: a row's
+\ code has NO dictionary record (if a stripped word's row came back, the record
+\ lookup would answer and this fails) and the span table answers for it instead
+\ (if the table stopped being published, this fails). The other two pin the
+\ reader's boundaries - a row's own entry answers its row, and so does an
+\ address inside it - which is what the closure walk asks of every branch.
+: SELF-SPAN-DEFS ( -- )
+   s" package AOT-LINK" GE-SRC-LINE
+   s" : ASPAN-RUN ( -- ) SPAN-N 0 >" GE-SRC+
+   s\"  s\" AOT span table is empty\" AMAP-EXPECT" GE-SRC+
+   s"  0 SPAN-START FINDADDR-PTR XREF-FOUND? 0=" GE-SRC+
+   s\"  s\" AOT span row still has a record\" AMAP-EXPECT" GE-SRC+
+   s"  0 SPAN-START SPAN-AT-ENTRY 0 =" GE-SRC+
+   s\"  s\" AOT span entry lookup\" AMAP-EXPECT" GE-SRC+
+   s"  0 SPAN-START-N 0 SPAN-BYTES 1- + SPAN-OWNER 0 =" GE-SRC+
+   s\"  s\" AOT span interior lookup\" AMAP-EXPECT ;" GE-SRC-LINE
+   s" ASPAN-RUN" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+\ CELL-TEXTPTR? pins BOTH directions: a value in the former [RBASE-VA,
+\ RBASE-VA+REGION) magnitude window - the top cell of the JIT region, free space
+\ far above the code high-water - is data, while a live dict-record address and a
+\ live code entry (MAIN's) are pointers. DATA-WINDOW builds and runs the program
+\ that carries such a datum; this is the classifier's own two-sided check, and
+\ the RBASE-VA/REGION expression is evaluated in the maker, so the case tracks
+\ the constants if a later dot moves the region.
+: SELF-TEXTPTR-DEFS ( -- )
+   s" package AOT-LINK" GE-SRC-LINE
+   s" : ATP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
+   s" : ATP-RUN ( -- ) RBASE-VA REGION + 8 - CELL-TEXTPTR? 0=" GE-SRC+
+   s\"  s\" free-region value is data\" ATP-EXPECT" GE-SRC+
+   s"  0 XREF-REC-ADDR CELL-TEXTPTR?" GE-SRC+
+   s\"  s\" live dict-record is a pointer\" ATP-EXPECT" GE-SRC+
+   s"  FINDMAIN XREF-START CELL-TEXTPTR?" GE-SRC+
+   s\"  s\" live code entry is a pointer\" ATP-EXPECT ;" GE-SRC-LINE
+   s" ATP-RUN" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+: SELF-SOURCE ( -- )
+   GE-SRC-RESET
+   SURFACE-DEFS
+   SELF-AMAP-DEFS
+   SELF-SPAN-DEFS
+   SELF-TEXTPTR-DEFS ;
+
+\ Two words, so the closure the linker walks has members to relocate after
+\ AMAP-RUN scribbled on the live arrays. MAIN also gives the surface check its
+\ subject (AS-MAIN-CHECK: MAIN is global, and not AOT-LINK's) and the classifier
+\ check a live code entry.
+: SELF-APP-SOURCE ( -- )
+   GE-SRC-RESET
+   s" : SELF-BUMP ( n -- n ) 1+ ;" GE-SRC-LINE
+   s" : MAIN ( -- ) 6 SELF-BUMP . ;" GE-SRC-LINE ;
+
+: SELF-EXPECT ( -- ptr u8 n )
+   SB-RESET
+   s" 7" GE-OUT-LINE
+   SB$ ;
+
+: MAKER-SELFTEST ( -- )
+   s" hb-aot-selftest.f" s" hb-aot-got" s" hb-aot-selftest-report.json" PATHS
+   SELF-APP-SOURCE GB-WRITE-SRC
+   s" hb-aot-selftest-maker.f" SELF-SRC!
+   SELF-SOURCE WRITE-SELF-SRC
+   MAKER-RUN
+   0 s" maker self-test build rc" GE-EXPECT-RC
+   GB-OUT$ FILE? 0= if s" maker self-test image" GE-FAIL then
+   SELF-EXPECT s" maker self-test image output" GB-RUN-EXPECT
+   s" PASS: maker-side linker self-tests (AOT-LINK surface, relocation math, span table, pointer classifier)" type cr ;
+
 : MAIN-OWNER-CHECK ( -- )
    s\" : AMC ( -- ) s\" MAIN\" 0 XREF-FIND-WL XREF-FOUND? 0= if" GE-SRC+
    s\"  s\" AOT global MAIN unavailable\" 74 die then ;" GE-SRC-LINE
@@ -232,8 +381,9 @@ variable BLR-CNT
    COMPACT-DEFS
    FEATURE-DEFS
    BUNDLE-MAIN
-   MAIN-OWNER-CHECK
-   SURFACE-DEFS ;
+   \ MAIN-OWNER-CHECK is engine reflection and stays in the application; the
+   \ AOT-LINK surface check moved to MAKER-SELFTEST, where the linker exists.
+   MAIN-OWNER-CHECK ;
 
 : BUNDLE-EXPECT ( -- ptr u8 n )
    SB-RESET
@@ -267,63 +417,14 @@ variable BLR-CNT
 \ Persistent data region: a program that builds a compile-time table with
 \ create/comma, reads it in a runtime ?do/loop, and accumulates into a
 \ variable via @/!/+!. Proves the AOT entry maps DATA-VA, restores the
-\ persistent content, and sets up the return/loop stack.
-\ The span table the seed published, read in the shipped engine's own linker
-\ through the production reader, while a real hb-build is running.
-\ THE FIRST TWO ASSERTIONS ARE THE WHOLE POINT and they are two-sided: a row's
-\ code has NO dictionary record (if a stripped word's row came back, the record
-\ lookup would answer and this fails) and the span table answers for it instead
-\ (if the table stopped being published, this fails). The other two pin the
-\ reader's boundaries - a row's own entry answers its row, and so does an
-\ address inside it - which is what the closure walk asks of every branch.
-: DATA-SPAN-SOURCE ( -- )
-   s" package AOT-LINK" GE-SRC-LINE
-   s" : ASPAN-RUN ( -- ) SPAN-N 0 >" GE-SRC+
-   s\"  s\" AOT span table is empty\" AMAP-EXPECT" GE-SRC+
-   s"  0 SPAN-START FINDADDR-PTR XREF-FOUND? 0=" GE-SRC+
-   s\"  s\" AOT span row still has a record\" AMAP-EXPECT" GE-SRC+
-   s"  0 SPAN-START SPAN-AT-ENTRY 0 =" GE-SRC+
-   s\"  s\" AOT span entry lookup\" AMAP-EXPECT" GE-SRC+
-   s"  0 SPAN-START-N 0 SPAN-BYTES 1- + SPAN-OWNER 0 =" GE-SRC+
-   s\"  s\" AOT span interior lookup\" AMAP-EXPECT ;" GE-SRC-LINE
-   s" ASPAN-RUN" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE ;
-
-\ Load-time self-test of the relocation math the direct-branch capability adds:
-\ two adjacent synthetic closure MEMBERS prove MAP-IN-MEMBER treats a target at a
-\ member's end as the NEXT member's start (the >= boundary), and MAP-TARGET
-\ relocates that adjacent target to the next member's new offset. The members
-\ carry XREF-NULL for their record, which is what a word the image ships no
-\ record for looks like to this walk. Runs while the AOT program is compiled (not
-\ reachable from MAIN), so it validates the linker without bloating the image.
-\ Safe to scribble on the live CLO/CLO-LEN/CLO-REC/NEWOFF/NCLO here: this runs at
-\ program load/compile time, before this program's own closure walk, and the real
-\ build recomputes the closure from scratch (aot-closure.f CLOSURE resets NCLO to
-\ 0 and refills the arrays), so the synthetic values cannot leak into the image.
+\ persistent content, and sets up the return/loop stack. The relocation-math and
+\ span-table self-tests this source used to carry are MAKER-SELFTEST's now: an
+\ application cannot name a linker word, because the linker is loaded after it.
 : DATA-SOURCE ( -- )
    GE-SRC-RESET
-   s" package AOT-LINK" GE-SRC-LINE
-   s" create AMAP-CODE 16 allot" GE-SRC-LINE
-   s" 8 constant AMAP-SPAN-BYTES" GE-SRC-LINE
-   s" 8 constant AMAP-CODE-ROW" GE-SRC-LINE
-   s" $40 constant AMAP-M2-OFF" GE-SRC-LINE
-   s" : AMAP-MEMBER! ( n ptr u8 n -- ) {: i:n code:ptr len:n :}" GE-SRC+
-   s"  code i CLO ! len i cells CLO-LEN + ! XREF-NULL i CLO-REC ! ;" GE-SRC-LINE
-   s" : AMAP-CLOSURE! ( -- ) 0 AMAP-CODE AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
-   s"  1 AMAP-CODE AMAP-CODE-ROW + AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
-   s"  0 NEWOFF ! AMAP-M2-OFF NEWOFF cell+ ! 2 NCLO ! ;" GE-SRC-LINE
-   s" : AMAP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
-   s" : AMAP-RUN ( -- ) AMAP-CLOSURE!" GE-SRC+
-   s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-IN-MEMBER -1 =" GE-SRC+
-   s\"  s\" AOT closed member range\" AMAP-EXPECT" GE-SRC+
-   s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-TARGET AMAP-M2-OFF =" GE-SRC+
-   s\"  s\" AOT adjacent member relocation\" AMAP-EXPECT ;" GE-SRC-LINE
-   s" AMAP-RUN" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE
    s" create TABLE 10 , 20 , 30 ," GE-SRC-LINE
    s" variable SUM" GE-SRC-LINE
-   s" : MAIN ( -- ) 0 SUM ! 3 0 ?do TABLE i 8 * + @ SUM +! loop SUM @ . ;" GE-SRC-LINE
-   DATA-SPAN-SOURCE ;
+   s" : MAIN ( -- ) 0 SUM ! 3 0 ?do TABLE i 8 * + @ SUM +! loop SUM @ . ;" GE-SRC-LINE ;
 
 : DATA-EXPECT ( -- ptr u8 n )
    SB-RESET
@@ -343,25 +444,15 @@ variable BLR-CNT
 \ space far above the code high-water -- is NOT a pointer. The old CELL-TEXTPTR?
 \ magnitude window MISclassified it and hb-build rejected the program (exit 70); the
 \ live-extents test correctly classifies it as data, so the program builds and its
-\ MAIN reads the datum back unchanged. The embedded AOT-TEXTPTR-TEST self-test runs in
-\ the maker (where CELL-TEXTPTR? lives, not reachable from MAIN so it never bloats the
-\ image) and pins BOTH directions: the free-region value is data, a live dict-record
-\ address and a live code entry (MAIN's) are pointers. The RBASE-VA/REGION expression is
-\ evaluated by the maker, so the case tracks the constants if a later dot moves the region.
+\ MAIN reads the datum back unchanged. The classifier's own two-sided check is
+\ SELF-TEXTPTR-DEFS, in MAKER-SELFTEST: CELL-TEXTPTR? is a linker word and this
+\ application is compiled before the linker is loaded. The RBASE-VA/REGION
+\ expression is evaluated by the maker, so the case tracks the constants if a
+\ later dot moves the region.
 : DATA-WINDOW-SOURCE ( -- )
    GE-SRC-RESET
    s" create X RBASE-VA REGION + 8 - ," GE-SRC-LINE
-   s\" : MAIN ( -- ) X @ RBASE-VA REGION + 8 - = IF s\" ok\" ELSE s\" bad\" THEN type cr ;" GE-SRC-LINE
-   s" package AOT-LINK" GE-SRC-LINE
-   s" : ATP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
-   s" : ATP-RUN ( -- ) RBASE-VA REGION + 8 - CELL-TEXTPTR? 0=" GE-SRC+
-   s\"  s\" free-region value is data\" ATP-EXPECT" GE-SRC+
-   s"  0 XREF-REC-ADDR CELL-TEXTPTR?" GE-SRC+
-   s\"  s\" live dict-record is a pointer\" ATP-EXPECT" GE-SRC+
-   s"  FINDMAIN XREF-START CELL-TEXTPTR?" GE-SRC+
-   s\"  s\" live code entry is a pointer\" ATP-EXPECT ;" GE-SRC-LINE
-   s" ATP-RUN" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE ;
+   s\" : MAIN ( -- ) X @ RBASE-VA REGION + 8 - = IF s\" ok\" ELSE s\" bad\" THEN type cr ;" GE-SRC-LINE ;
 
 : DATA-WINDOW-EXPECT ( -- ptr u8 n )
    SB-RESET
@@ -452,12 +543,23 @@ variable BLR-CNT
 \ DIRECT-BL-ONLY: no native emitter produces the absolute movz/movk/movk x16 + blr x16 call
 \ form, so the copier and relocator (aot-lib.f COPY-COMPACT-BLOB / RELOCATE) die with
 \ E-AOT-ABS-CHAIN if one is ever encountered. This hand-builds one full chain in a synthetic
-\ blob and drives the copier over it in a real hb-build. The maker's rejection is a die (not
-\ a catchable result), so per the gate boundary rule it runs as a subprocess sentinel; it
-\ lives here rather than in the in-process negative gate because the copier is in the
-\ maker-only aot-lib.f. Red-first: before the retirement the copier silently collapsed/copied
-\ the chain and hb-build exited 0; now it rejects with the named error (exit 74).
+\ blob and drives the copier over it inside a real stripped build. The maker's rejection is
+\ a die (not a catchable result), so per the gate boundary rule it runs as a subprocess
+\ sentinel; it lives here rather than in the in-process negative gate because the copier is
+\ in the maker-only aot-lib.f. Red-first: before the retirement the copier silently
+\ collapsed/copied the chain and the build exited 0; now it rejects with the named error
+\ (exit 74).
+\
+\ IT LEFT THE hb-build WRAPPER because the driver names COPY-COMPACT-BLOB, and an
+\ application is now compiled BEFORE the linker is loaded - the capture window opens first -
+\ so it has to run where MAKER-SELFTEST's checks run: a file the maker's stdin requires
+\ after tools/aot-build.f. hb-build's own propagation of a maker die, non-zero rc with the
+\ diagnostic on stderr, is tools/hb-build-test.f HBT-STRIPPED-BELOW-WINDOW's assertion.
 : ABS-CHAIN-SOURCE ( -- )
+   GE-SRC-RESET
+   s" : MAIN ( -- ) ;" GE-SRC-LINE ;
+
+: ABS-CHAIN-SELF-SOURCE ( -- )
    GE-SRC-RESET
    s" -1 JSON-DIAGS !" GE-SRC-LINE
    s" package AOT-LINK" GE-SRC-LINE
@@ -467,28 +569,17 @@ variable BLR-CNT
    s" : ABT-RUN ( -- ) ABT-BUILD ABT-CHAIN 0 CLO ! 16 CLO-LEN ! XREF-NULL 0 CLO-REC !" GE-SRC+
    s"  0 NEWOFF ! 1 NCLO ! 0 COPY-COMPACT-BLOB ;" GE-SRC-LINE
    s" ABT-RUN" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE
-   s" : MAIN ( -- ) ;" GE-SRC-LINE ;
-
-: ABS-CHAIN-ARGV ( -- )                      \ --load <hb-build layers> -- SRC -o OUT
-   GE-HB-RESET
-   s" --load" GE-ARG+
-   s" lib/errors.f" GE-ARG+  s" lib/string.f" GE-ARG+  s" lib/memory.f" GE-ARG+
-   s" lib/fs.f" GE-ARG+  s" lib/fs-mutate.f" GE-ARG+  s" lib/process.f" GE-ARG+
-   s" lib/process-argv.f" GE-ARG+  s" lib/process-env.f" GE-ARG+  s" lib/source.f" GE-ARG+
-   s" lib/build.f" GE-ARG+  s" lib/codesign.f" GE-ARG+  s" lib/content-key.f" GE-ARG+
-   s" tools/build-fixpoint.f" GE-ARG+  s" tools/cli-run.f" GE-ARG+
-   s" tools/hb-build-lib.f" GE-ARG+  s" tools/hb-build.f" GE-ARG+
-   s" --" GE-ARG+  GB-SRC$ GE-ARG+  s" -o" GE-ARG+  GB-OUT$ GE-ARG+ ;
+   s" ;package" GE-SRC-LINE ;
 
 : ABS-CHAIN ( -- )
-   s" hb-aot-abschain.f" s" hb-aot-abschain" s" hb-aot-abschain-report.json" PATHS
-   ABS-CHAIN-SOURCE
-   GB-WRITE-SRC
-   ABS-CHAIN-ARGV
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" hb-aot-abschain.f" s" hb-aot-got" s" hb-aot-abschain-report.json" PATHS
+   ABS-CHAIN-SOURCE GB-WRITE-SRC
+   s" hb-aot-abschain-maker.f" SELF-SRC!
+   ABS-CHAIN-SELF-SOURCE WRITE-SELF-SRC
+   MAKER-RUN
    74 s" hb-build AOT abs-chain reject rc" GE-EXPECT-RC
    s" E-AOT-ABS-CHAIN" s" hb-build AOT abs-chain reject code" GE-EXPECT-ERR-HAS
+   GB-OUT$ EXISTS? if s" hb-build AOT abs-chain emitted an image" GE-FAIL then
    s" PASS: hb-build AOT abs-chain reject (E-AOT-ABS-CHAIN; copier fails closed on a direct-BL-only violation)" type cr ;
 
 \ item 10 slice 5: a preseeded bad-tag object/AOT test entry. A source declaring a
@@ -612,6 +703,7 @@ variable BLR-CNT
 
 : RUN-BUNDLE-DATA ( -- )
    s" hb-gate-aot-bundle-data" GT-START
+   MAKER-SELFTEST
    BUNDLE
    DATA
    DATA-WINDOW

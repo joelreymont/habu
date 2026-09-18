@@ -8,6 +8,7 @@ require src/habu/stack-abi.f
 require src/habu/rt.f
 require src/habu/crash.f
 require src/habu/aot-decl.f
+require src/habu/aot-window-latch.f
 
 \ The AOT relocation core compiles checked. It works over CLOSURE MEMBERS - a
 \ code entry and a length, held in the parallel arrays src/habu/aot-closure.f
@@ -32,31 +33,15 @@ variable MLBL
 variable LTEXT
 create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
 
-\ --- persistent data region: the program's compile-time create/variable/allot/
-\ ,/s" data lives contiguously from the DATA pointer latched before user
-\ compilation to `here`; the source buffer and assembler CODE buffer are separate
-\ mmaps, so AOT-LINK never allots either into DATA. We emit that span
-\ into __text and the entry maps DATA-VA and copies it back to the SAME absolute
-\ VA (DATA-VA is a fixed MAP_FIXED VA, so those addresses are load-stable). All
-\ other runtime cells stay zero from the fresh anonymous mmap; only x20, S0-CELL,
-\ and DP-CELL need explicit init.
-\
-\ The span bounds and this cursor are DATA addresses as integers, the domain the
-\ rest of the linker works in, and nothing dereferences them: the one cell read
-\ in the scan below goes through aot-closure.f DATA-CELL@, which is where a DATA
-\ address becomes a pointer again.
+\ --- the persistent data region this file emits is the span
+\ src/habu/aot-window-latch.f latched: AOT-DATA-START and AOT-DATA-SPAN live there
+\ because the window must open before the application's `require` runs, which is
+\ long before this file is loaded. The scan cursor below is this file's own, and
+\ it is a DATA address as an integer like the bounds it walks between - nothing
+\ dereferences it, the one cell it reads goes through aot-closure.f DATA-CELL@,
+\ which is where a DATA address becomes a pointer again.
 variable DSCAN
 $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB range
-
-: AOT-DATA-START ( -- )
-   HERE-N BLOB-SRC !
-   \ The retained compiler must intern this application's strings and trap
-   \ messages inside the span the stripped image restores.
-   NSTR:WINDOW-OPEN ;
-
-: AOT-DATA-SPAN ( -- )
-   HERE-N  BLOB-END !
-   BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN ! ;
 
 \ Every cell the capture window covers that NOTHING DECLARED, classified by the
 \ ONE predicate aot-closure.f publishes (CELL-TEXTPTR?, by live engine extents).
@@ -557,8 +542,12 @@ variable RP  variable RE
 
 public
 
+\ The span is already latched: tools/aot-build-core.f calls AOT-DATA-SPAN the moment
+\ the application has loaded, because this file - and every lib module the linker
+\ needs - is loaded AFTER that and allots above BLOB-END. LINK therefore reads the
+\ bounds it is given and never latches them itself; latching here would put the
+\ whole linker inside the span.
 : LINK ( -- )
-   AOT-DATA-SPAN
    COLLECT-XT-CELLS                                 \ the window's DECLARED xt cells
    AOT-DATA-TEXTPTR-CHECK                           \ ... and no undeclared code pointer beside them
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !  LBL LTEXT !

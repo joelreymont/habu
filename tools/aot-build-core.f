@@ -1,4 +1,11 @@
-\ The application and linker run in one native executable-build scope.
+\ The application and linker run in one native executable-build scope, and this
+\ file is the LINKER half of it. tools/aot-build-open.f is the other half and runs
+\ first: it opens the capture window, loads the application and latches the span,
+\ because nothing the application can `require` may be loaded when the window
+\ opens. Everything below therefore lands ABOVE the span - the linker,
+\ src/habu/app-image.f, and the eight lib modules app-image-core.f requires. A
+\ module the application already loaded is shared in the harmless direction: the
+\ linker uses the application's copy, at build time only.
 require src/habu/app-image.f
 require src/os/script-argv.f
 require src/habu/aot-decl.f
@@ -30,11 +37,9 @@ private
    loop ;
 
 
-: NATIVE-OPTIONS ( -- )
-   SCRIPT-ARGC 2 <> SCRIPT-ARGC 4 <> and if
-      s" aot-build: source, JSON flag and optional entry/seed are required" 74 die
-   then
-   1 SCRIPT-ARGV$ s" 1" STR= if -1 else 0 then JSON-DIAGS !
+\ The options phase one did not take, now that the words that consume them exist.
+\ The argument count was checked there, before anything was loaded on its behalf.
+: LINK-OPTIONS ( -- )
    SCRIPT-ARGC 4 = if
       2 SCRIPT-ARGV$ ENTRY-NAME!
       3 SCRIPT-ARGV$ NATIVE-SEED
@@ -42,14 +47,14 @@ private
 
 
 : NATIVE-BUILD ( -- )
-   NATIVE-OPTIONS
-   AOT-DATA-START
-   0 SCRIPT-ARGV$ script-required
+   AOT-WINDOW-LATCHED
+   LINK-OPTIONS
    LINK ;
 
 public
 
-\ Invoke after this file's include has returned, with package scope closed.
+\ Invoke after this file's include has returned, with package scope closed, and
+\ after tools/aot-build-open.f has run - AOT-WINDOW-LATCHED refuses otherwise.
 : BUILD-NATIVE ( -- )
    ['] NATIVE-BUILD EXECUTABLE-BUILD:WITH ;
 

@@ -55,7 +55,10 @@ variable IMAGE-U
    s" --" GE-ARG+ SUBJECT$ GE-ARG+ s" 0" GE-ARG+
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
    ENGINE-CANDIDATE:PATH$
-   S\" create SLT-PREWINDOW-CELL 41 ,\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
+   \ The production maker script (tools/hb-build-lib.f HBB-RUN-MAKER-CMD): the
+   \ cell is created ahead of tools/aot-build-open.f, so it is compiled before
+   \ the capture window opens and is genuinely below the span.
+   S\" create SLT-PREWINDOW-CELL 41 ,\nrequire tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
    TIMEOUT-MS GE-RUN-STDIN
    74 s" stripped mutable pre-window DATA refusal" GE-EXPECT-RC
    s" aot: address refers to data outside the restored span"

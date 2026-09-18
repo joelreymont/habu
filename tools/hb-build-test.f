@@ -90,6 +90,19 @@ variable HBT-EXP-SRC-U
 variable HBT-EXP-OUT-U
 create HBT-EXP-SRC-BUF FS-PATH-CAP allot
 create HBT-EXP-OUT-BUF FS-PATH-CAP allot
+
+\ The two stripped-window fixtures: an application whose own require closure owns
+\ the library cells it touches, and one that reaches a cell the engine baked.
+variable HBT-LIB-SRC-U
+variable HBT-LIB-OUT-U
+variable HBT-LIB-DIR-U
+variable HBT-BELOW-SRC-U
+variable HBT-BELOW-OUT-U
+create HBT-LIB-SRC-BUF FS-PATH-CAP allot
+create HBT-LIB-OUT-BUF FS-PATH-CAP allot
+create HBT-LIB-DIR-BUF FS-PATH-CAP allot
+create HBT-BELOW-SRC-BUF FS-PATH-CAP allot
+create HBT-BELOW-OUT-BUF FS-PATH-CAP allot
 \ The quoted-path fixture below owns the writer's bytes; json-write holds none.
 6 constant HBT-ESCAPE-MAX
 FS-PATH-CAP HBT-ESCAPE-MAX * 2 + constant HBT-QUOTE-CAP
@@ -188,6 +201,52 @@ create HBT-EXP-HEX2 64 allot
 : HBT-LARGE-AOT-SRC$ ( -- ptr u8 n )
    s" variable SLOT 9 SLOT ! : MAIN ( -- ) SLOT @ . cr ;" ;
 
+: HBT-LIB-SRC ( -- ptr u8 n )
+   HBT-LIB-SRC-BUF HBT-LIB-SRC-U @ ;
+
+: HBT-LIB-OUT ( -- ptr u8 n )
+   HBT-LIB-OUT-BUF HBT-LIB-OUT-U @ ;
+
+: HBT-LIB-DIR ( -- ptr u8 n )
+   HBT-LIB-DIR-BUF HBT-LIB-DIR-U @ ;
+
+: HBT-BELOW-SRC ( -- ptr u8 n )
+   HBT-BELOW-SRC-BUF HBT-BELOW-SRC-U @ ;
+
+: HBT-BELOW-OUT ( -- ptr u8 n )
+   HBT-BELOW-OUT-BUF HBT-BELOW-OUT-U @ ;
+
+\ An application that touches a PERSISTENT CELL of each library it requires:
+\ lib/string.f's builder, lib/fs-mutate.f's copy state (FS-MUT-COPY-IN) and
+\ lib/fs.f's walk stacks (FS-DEPTH, FS-WALK-BUF). Those cells are what the maker
+\ used to own before the application was read - it required app-image.f, and so
+\ lib/fs.f and lib/fs-mutate.f, before opening the capture window - which put them
+\ below the span and refused the image. The walked directory is spliced in as a
+\ literal because a stripped image reads no argv here.
+: HBT-LIB-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require lib/string.f\nrequire lib/fs.f\nrequire lib/fs-mutate.f\n\npackage HBT-SLIB\nprivate\nvariable HITS\ncreate P1 FS-PATH-CAP allot  variable P1U\ncreate P2 FS-PATH-CAP allot  variable P2U\n: DIR$ ( -- ptr u8 n ) s\" " SB-APPEND
+   HBT-LIB-DIR SB-APPEND
+   S\" \" ;\n: JOIN! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu dst:ptr lenp:ptr :}\n   SB-RESET DIR$ SB-APPEND s\" /\" SB-APPEND name nameu SB-APPEND\n   SB$ {: a:ptr u:n :} a dst u BYTE-COPY u lenp ! ;\n: P1$ ( -- ptr u8 n ) P1 P1U @ ;\n: P2$ ( -- ptr u8 n ) P2 P2U @ ;\npublic\n: RUN ( -- )\n   SB-RESET s\" sb=\" SB-APPEND s\" ok\" SB-APPEND SB$ type cr\n   s\" a.txt\" P1 P1U JOIN!\n   s\" b.txt\" P2 P2U JOIN!\n   P1$ P2$ COPY-FILE-STREAM\n   P2$ FILE? if s\" copy=ok\" type cr then\n   0 HITS !\n   DIR$ [: 2drop HITS @ 1 + HITS ! ;] WALK-FILES\n   HITS @ 3 = if s\" files=3\" type cr then ;\n;package\n: MAIN ( -- ) HBT-SLIB:RUN ;\n" SB-APPEND
+   SB$ ;
+
+: HBT-LIB-EXPECTED$ ( -- ptr u8 n )
+   S\" sb=ok\ncopy=ok\nfiles=3\n" ;
+
+\ The refusal has to survive the reordering. GETENV is src/os/env-base.f, which the
+\ engine BAKES, so ENV-QU is below the window however the maker orders its loads -
+\ a cell the window can never cover rather than one it used to miss. The stripped
+\ image would read it as zero, so refusing is right. The separate dot on the
+\ engine-prefix environment layer - the stripped entry initialising the engine's
+\ environment cells, as it already initialises x20, S0-CELL and DP-CELL - is what
+\ will flip this case, and this assertion is the tripwire that says so.
+: HBT-BELOW-SRC$ ( -- ptr u8 n )
+   S\" : MAIN ( -- ) s\" HOME\" GETENV type cr ;\n" ;
+
+: HBT-LIB-FILE! ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu body:ptr bodyu :}
+   SB-RESET HBT-LIB-DIR SB-APPEND s" /" SB-APPEND name nameu SB-APPEND
+   SB$ body bodyu WRITE-ALL ;
+
 : HBT-LARGE-CHUNK! ( -- )
    HBT-LARGE-CHUNK-U 0 ?do 32 HBT-LARGE-CHUNK i + c! loop ;
 
@@ -216,6 +275,11 @@ create HBT-EXP-HEX2 64 allot
    HBT-ROOT s" repl-bad" HBT-REPL-BAD-OUT-BUF HBT-REPL-BAD-OUT-U HBT-PATH!
    HBT-ROOT s" aot.f" HBT-AOT-SRC-BUF HBT-AOT-SRC-U HBT-PATH!
    HBT-ROOT s" aot" HBT-AOT-OUT-BUF HBT-AOT-OUT-U HBT-PATH!
+   HBT-ROOT s" libstate.f" HBT-LIB-SRC-BUF HBT-LIB-SRC-U HBT-PATH!
+   HBT-ROOT s" libstate" HBT-LIB-OUT-BUF HBT-LIB-OUT-U HBT-PATH!
+   HBT-ROOT s" libdir" HBT-LIB-DIR-BUF HBT-LIB-DIR-U HBT-PATH!
+   HBT-ROOT s" below.f" HBT-BELOW-SRC-BUF HBT-BELOW-SRC-U HBT-PATH!
+   HBT-ROOT s" below" HBT-BELOW-OUT-BUF HBT-BELOW-OUT-U HBT-PATH!
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
@@ -458,6 +522,47 @@ create READER-STATE JR:STORAGE-BYTES allot
    rcn 0 T=
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
    HBT-RUN-OUT outn HBT-REPL-EXPECTED$ T$= ;
+
+\ THE WINDOW INVARIANT, end to end: nothing the application can require is loaded
+\ when the capture window opens, so the application's own require closure is the
+\ only library content inside the restored span. Measured before this held:
+\ `caller=WALK-FILES target=FS-DEPTH` and `caller=COPY-FILE-STREAM
+\ target=FS-MUT-COPY-IN` refused this very program.
+: HBT-STRIPPED-LIB-STATE ( -- )
+   HBT-LIB-DIR MAKE-DIR
+   s" a.txt" s" one" HBT-LIB-FILE!
+   s" c.txt" s" two" HBT-LIB-FILE!
+   HBT-LIB-SRC HBT-LIB-SRC$ WRITE-ALL
+   HBT-LIB-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-LIB-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-LIB-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
+   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
+   brc 0 T=
+   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-LIB-OUT FILE? TTRUE
+   HBT-LIB-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-LIB-EXPECTED$ T$= ;
+
+\ ... and a cell no window can cover is still refused, with its own diagnostic.
+: HBT-STRIPPED-BELOW-WINDOW ( -- )
+   HBT-BELOW-SRC HBT-BELOW-SRC$ WRITE-ALL
+   HBT-BELOW-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-BELOW-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-BELOW-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: nout:n nerr:n nrc:n :}
+   nrc 0 <> TTRUE
+   HBT-ERR nerr s" outside the restored span" CONTAINS? TTRUE
+   HBT-ERR nerr s" target=ENV-QU" CONTAINS? TTRUE
+   HBT-BELOW-OUT FILE? TFALSE ;
 
 : HBT-CLI-LARGE-SOURCE ( -- )
    HBT-LARGE-CHUNK!
@@ -1009,6 +1114,8 @@ public
    HBT-ENGINE-KEY-FLIP
    HBT-PRODUCER-KEY-MISS
    HBT-BUILD-AOT-WRONG-OBJECT-FAILS
+   HBT-STRIPPED-LIB-STATE
+   HBT-STRIPPED-BELOW-WINDOW
    HBT-CLI-LARGE-SOURCE
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE

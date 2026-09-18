@@ -6,6 +6,9 @@ require src/habu/layout.f
 require src/habu/aot-decl.f
 require src/habu/address-cells.f
 require src/habu/code-span.f
+\ The span cells and HERE-N come from the lib-free latch file, which the build
+\ driver loads on its own and much earlier - before the application's require.
+require src/habu/aot-window-latch.f
 
 \ This file compiles checked, with raw-pointer boundaries as explicit TRUST rows.
 
@@ -28,16 +31,8 @@ s" AOT-DBASE@" s" -- ptr a" TRUST
 s" AOT-DBASE-N" s" -- n" TRUST
 : AOT-CP-N cp@ ;
 s" AOT-CP-N" s" -- n" TRUST
-\ ... and the DATA cursor as one, which the two above get from their numeric
-\ primitives and this one has to compute: `here` is the only pointer-valued
-\ cursor, while the whole linker - the span bounds, the recorded chain values it
-\ compares them against, the offsets it records - works in the same absolute
-\ integer domain these two live in. DATA is mapped MAP_FIXED at DATA-VA, so the
-\ offset from data-base plus that base IS the address, by ordinary checked
-\ pointer arithmetic: NOT a trust row, and deliberately not one. src/habu/aot-arm.f
-\ carries the same one-liner for package AOT-ARM, which this file's package does
-\ not load.
-: HERE-N ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + ;
+\ ... and the DATA cursor as one, which src/habu/aot-window-latch.f HERE-N
+\ computes, because the window is latched with it before this file exists.
 : AOT-PTR@ {: a:ptr :} ( ptr a -- ptr a )
    a @ ;
 s" AOT-PTR@" s" ptr a -- ptr a" TRUST
@@ -78,7 +73,9 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 \ the compiler's earlier heap would otherwise silently read a zeroed replacement.
 \ DATA-ADDRESS! and DATA-TARGET, which enforce that, are defined with the other
 \ refusals below, after the record accessors their diagnostics name a cell with.
-variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN  variable BLOB-LBL
+\ BLOB-SRC, BLOB-END and BLOB-LEN are the latch file's; this is the emitted
+\ blob's label, which only aot-lib.f places and reads.
+variable BLOB-LBL
 
 \ Decode an AArch64 direct branch (B / BL). Both share opcode bits: masking off
 \ the link bit leaves $14000000, so DIRECT? recognizes B and BL and excludes the

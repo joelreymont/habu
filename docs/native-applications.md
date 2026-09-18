@@ -65,6 +65,35 @@ a unit run it under `MemoryDenyWriteExecute`.
 bin/hb --load tools/hb-build.f -- app.f -o app
 ```
 
+### What the window contains
+
+The maker child opens the capture window **before anything the application can
+`require` is loaded**, so the application's own require closure is the only
+library content inside the restored span. The maker's two halves enforce that:
+`tools/aot-build-open.f` loads a lib-free prefix (`lib/executable-build.f`,
+`src/os/script-argv.f`, `src/habu/aot-window-latch.f`), opens the window, loads
+the application and latches the span; `tools/aot-build-core.f` then brings in the
+linker, `src/habu/app-image.f` and the eight `lib` modules it pulls in, which all
+land above the span. A module the application has already loaded is shared in the
+harmless direction: the linker uses the application's copy, at build time only.
+
+The application therefore sees **only what it requires itself**. Nothing is
+preloaded on its behalf any more, so a program that used a `lib` word without
+requiring its module — which the maker's own eight modules used to supply — now
+fails to compile, naming the undefined word.
+
+The invariant matters because a library loaded *before* the window is the copy
+the application's own `require` resolves to. Its persistent cells then sit below
+the span, and the linker refuses the image with *address refers to data outside
+the restored span*. That refusal is correct — such a cell would read as zero in
+the image — so the fix is to load nothing early, not to relax the check.
+
+Cells the **engine itself** bakes are below the window whatever the maker does:
+`src/os/env-base.f` is part of the engine prefix, so a program calling `GETENV`
+is still refused, naming `ENV-QU`. Reading the environment from a stripped image
+needs the image's entry to initialise the engine's environment cells, the way it
+already initialises `x20`, `S0-CELL` and `DP-CELL`; that is separate work.
+
 A stripped image restores the program's own DATA window byte for byte, so a
 persistent cell arrives holding whatever the BUILD process put there. For a cell
 that holds an execution token those bytes are the builder's own code address,
