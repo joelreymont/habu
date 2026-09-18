@@ -684,6 +684,7 @@ defer TFAM-PKG-XT ( n -- ptr u8 n )                     \ family id -> declaring
 defer PKG-LIVE-XT ( -- ptr u8 n n bool )                \ authenticated engine package name + mode
 defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (docs §18)
 defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (docs §18)
+defer TFAM-WIDTH-SLOT-XT ( n n -- bool )                \ family id + arg slot -> the instantiated width READS that slot
 defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain a concrete linear value
 defer CONSTRUCT-FAM-XT ( ptr u8 n -- n bool )           \ item 9 construct family resolve, active package only
 defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ item 9 construct variant resolve + step effect
@@ -1230,7 +1231,9 @@ variable EXT-FREE-N   0 EXT-FREE-N !
 \ `[: ;]` quotations compile; `[: ;] is` is not valid at interpret level). Each
 \ default reproduces the old 0-hook fallback: resolve nothing / arity 0 / not a
 \ layout / not a cell / one cell / the declared family width / no construct family
-\ / no match family / not a wide-ctor call. type-family.f rebinds each hook with
+\ / no match family / not a wide-ctor call / every argument slot width-bearing
+\ (the conservative answer, which keeps an open instance unexpanded without the
+\ registry). type-family.f rebinds each hook with
 \ `is` to the real query word once the registry exists.
 : TFAM-QUERY-DEFAULTS ( -- )
    [: 2drop 2drop 0 RES-FALSE ;] is TFAM-RESOLVE-XT
@@ -1240,6 +1243,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: drop s" " ;] is TFAM-PKG-XT
    [: drop 1 ;] is TFAM-WIDTH-XT
    [: PARAM>FAM TFAM-WIDTH@* ;] is TFAM-INST-WIDTH-XT
+   [: 2drop RES-TRUE ;] is TFAM-WIDTH-SLOT-XT
    [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
    [: 2drop 0 RES-FALSE ;] is MATCH-FAM-XT
    [: drop RES-FALSE ;] is CTOR-STEP-XT
@@ -2072,6 +2076,27 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 : LAYOUT-ARGS-OPEN? ( n -- bool ) {: p:n :}
    0 BEGIN dup p PARAM>ARGC < WHILE
       p over PARAM>ARG T-RES ISVAR IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+\ --- an OPEN argument only hides the width when the WIDTH READS IT. The
+\ instantiated width substitutes an argument's own width at exactly one place
+\ (type-family.f SCH-NODE-IWIDTH): a schema root that IS a parameter node. A
+\ parameter occurring only under a pointer, a quotation or a concrete
+\ application therefore cannot move the family's width, and
+\ `span<t>` — `FIELD base ptr t  FIELD len n` — is two cells for every `t`.
+\ Such an instance expands into its physical cells with the open argument still
+\ a var, so a declared row carrying it has one term per cell and the native
+\ chain can read the per-cell slots it places a row from (dict.f ROW-GLUE).
+\ A family whose parameter IS a payload cell (`FIELD a t`) has a width no one
+\ can know before the argument binds; that one still answers open and stays one
+\ conservative cell. The registry owns the occurrence question, so the checker
+\ asks it per slot instead of guessing a width.
+: LAYOUT-WIDTH-OPEN? ( n -- bool ) {: p:n :}
+   0 BEGIN dup p PARAM>ARGC < WHILE
+      p over PARAM>ARG T-RES ISVAR IF
+         p PARAM>FAM over TFAM-WIDTH-SLOT-XT IF drop RES-TRUE EXIT THEN
+      THEN
       1 +
    REPEAT drop RES-FALSE ;
 
@@ -4007,15 +4032,16 @@ variable SG-ROWS-PUBLISH
 \ logical cell (== MK-PUSH). A resolved LOGICAL sum/enum/product layout family
 \ expands to its W hidden physical fields — slot0 deepest, tag on top (docs §5);
 \ the whole-bundle transport surgery (XPORT-STEP?) and U-TYPE's hidden-field
-\ discipline then keep the group intact. A POSSIBLY-LINEAR layout (a linear con
-\ arg, or an unresolved var arg that may later bind linear) stays ONE logical
-\ cell so the TFAM-11 transport reject + identity flow keep its fail-closed
-\ semantics (docs §19) until whole-bundle linear counting lands.
+\ discipline then keep the group intact. The one layout that stays ONE logical
+\ cell is the one whose WIDTH is not yet known: an open argument the width reads
+\ (LAYOUT-WIDTH-OPEN?). An open argument the width cannot read — a parameter
+\ that occurs only under a pointer — expands like a concrete one, so the
+\ declared row of `( span<t> n -- span<t> )` has one term per cell.
 : PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
    t T-RES {: r:n :}
    r LAYOUT-PARAM?  r HIDDEN-PARAM? 0= and IF
-      r LAYOUT-ARGS-OPEN? 0= IF
-         r row LAYOUT-PUSH-FIELDS EXIT   \ width known (incl. linear args): rows tell the truth
+      r LAYOUT-WIDTH-OPEN? 0= IF
+         r row LAYOUT-PUSH-FIELDS EXIT   \ width known (incl. linear and width-free open args): rows tell the truth
       THEN
    THEN
    t row MK-PUSH ;

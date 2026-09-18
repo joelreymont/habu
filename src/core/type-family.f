@@ -1733,6 +1733,43 @@ private
    fam TFAM-SUM? fam TFAM-ENUM? or IF term SUM-IWIDTH EXIT THEN
    1 ;
 
+\ --- which argument slots the width above READS (dot habu-place-an-open-d7bcba49).
+\ SCH-NODE-IWIDTH substitutes an argument's own width at exactly one kind of
+\ place: a schema root that IS a parameter node. Every other root — a pointer, a
+\ quotation, a concrete application — contributes a width the declaration fixes,
+\ so a parameter occurring only there cannot move the family's width whatever it
+\ binds to. These words walk the SAME schema roots as PRODUCT-IWIDTH and
+\ SUM-IWIDTH, one slot at a time, and the checker uses the answer to decide
+\ whether an instance with that slot still OPEN has a width it may place
+\ (checker.f LAYOUT-WIDTH-OPEN?). Keep the two walks together: a width site added
+\ to SCH-NODE-IWIDTH is an occurrence this must report.
+: SCH-ROOT-WIDTH-SLOT? ( n n -- bool ) {: node:n slot:n :}
+   node SCHEMA-PARAM? 0= IF RES-FALSE EXIT THEN
+   node SCHEMA-A@ slot = ;
+: SUMV-WIDTH-SLOT? ( n n -- bool ) {: vid:n slot:n :}
+   0 BEGIN dup vid SUMV-PAY-N < WHILE
+      vid over SUMV-PAY-ROOT SCHEMA-ROOT@ slot SCH-ROOT-WIDTH-SLOT? IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+: TFAM-WIDTH-SLOT? ( n n -- bool ) {: fam:n slot:n :}   \ the instantiated width reads argument slot `slot`
+   fam TFAM-BOXED-OR-NICHE? IF RES-FALSE EXIT THEN
+   fam TFAM-PRODUCT? IF
+      0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
+         fam TFAM-FLD-START@ over + PF-PENDING-SCH@ SCHEMA-ROOT@ slot SCH-ROOT-WIDTH-SLOT?
+         IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+      RES-FALSE EXIT
+   THEN
+   fam TFAM-SUM? fam TFAM-ENUM? or IF
+      0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
+         fam TFAM-VAR-START@ over + slot SUMV-WIDTH-SLOT? IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+   THEN
+   RES-FALSE ;
+
 : PF-ROW-OWNER? ( n n ptr n -- bool ) {: fam:n var:n r:ptr :}
    r PF.FAM @ fam = r PF.VAR @ var = and ;
 : PF-MATCH? ( n n ptr u8 n n -- bool ) {: fam:n var:n na:ptr nu:n id:n :}
@@ -4686,6 +4723,7 @@ private
    [: TFAM-PKG$ ;]    is TFAM-PKG-XT       \ nominal CAST introduction belongs to the declaring package
    [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ item 12: checker reads DECLARED logical widths (params-as-cells) for the boot fallback
    [: TFAM-INST-WIDTH@ ;] is TFAM-INST-WIDTH-XT   \ layout-cap slice 1: arg-aware INSTANTIATED width for T-WIDTH / WF fact surface
+   [: TFAM-WIDTH-SLOT? ;] is TFAM-WIDTH-SLOT-XT   \ which argument slots that width reads: an open slot it does not read is still placeable
    [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ item 9: construct family resolution (active package only)
    [: TFAM-CONSTRUCT-STEP ;] is CONSTRUCT-STEP-XT  \ item 9: construct variant resolve + inline constructor effect
    [: TFAM-CTOR-STEP? ;]     is CTOR-STEP-XT        \ layout-cap slice 3: generated-constructor CALL on a multi-cell layout arg routes through the arg-aware step

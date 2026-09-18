@@ -172,27 +172,34 @@ private
    \ fits in an 8-byte span, the second one does not
    ST-TINY 0 CELL-READ drop
    [: ST-TINY 1 CELL-READ drop ;] E-SPAN-RANGE TTHROWS
-   \ the other direction stays a checker refusal, and so does the mint
+   \ the other direction stays a checker refusal at the element read
    s" STW-CU ( SPAN:span<cell> n -- u8 ) SPAN:U8@" CHECK-QUIET-CANDIDATE! 0 T=
-   s" STW-MINT ( ptr u8 n -- SPAN:span<cell> ) SPAN:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
-   \ the mint is strict only in the dangerous direction. A cell pointer CAN mint
-   \ a byte span - measured, and sound, because the reach is a byte count either
-   \ way and byte access inside it stays in the buffer. Two concrete pointees
-   \ never unify (`( ptr cell -- u8 ) c@` is refused), so this is the generic
-   \ mint's own binding, and it is one more reason SPAN:MAKE is audited to lib/
-   \ and src/ rather than left to the checker.
-   s" STW-MINT2 ( ptr cell n -- SPAN:span<u8> ) SPAN:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+   \ THE MINT RUNS THE SAME WIDENING AS THE CALL BOUNDARY ABOVE, in the same
+   \ direction: `SPAN:MAKE` binds its element from the pointer it is given, so a
+   \ byte pointer mints a `span<u8>` and that span widens into a declared
+   \ `span<cell>` exactly as STW-OPEN's argument does; the reverse narrowing is
+   \ refused in both places. Measured once the open `span<t>` row became
+   \ placeable (dot habu-place-an-open-d7bcba49): while an open instance stayed
+   \ one opaque cell, the mint answered the two directions the other way round,
+   \ which disagreed with STW-OPEN on the same pair of types. Two concrete
+   \ pointees still never unify (`( ptr cell -- u8 ) c@` is refused), so nothing
+   \ here weakens pointer strictness, and SPAN:MAKE stays audited to lib/ and
+   \ src/ because the reach it takes is unchecked.
+   s" STW-MINT ( ptr u8 n -- SPAN:span<cell> ) SPAN:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+   s" STW-MINT2 ( ptr cell n -- SPAN:span<u8> ) SPAN:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
    s" STW-PTRSTRICT ( ptr cell -- u8 ) c@" CHECK-QUIET-CANDIDATE! 0 T=
    \ a bare pointer is not a span and a span is not a bare pointer
    s" STW-BARE ( ptr u8 n -- n ) SPAN:LEN" CHECK-QUIET-CANDIDATE! 0 T=
    s" STW-PTR ( SPAN:span<u8> -- u8 ) c@" CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ An OPEN instantiation cannot be captured in a local or transported: the
-\ checker refuses it until whole-bundle linear accounting lands, which is why the
-\ generic narrowings in lib/span.f use the return stack instead of locals.
+\ An OPEN instantiation is a value like any other: `span`'s parameter occurs only
+\ as a pointee, so every instance is two cells and the checker places the row
+\ whatever the element is (dot habu-place-an-open-d7bcba49). A local captures it
+\ and a transport moves it whole; only a family whose width READS its open
+\ argument stays one conservative cell.
 : T-OPEN-TRANSPORT ( -- )
-   s" STO-LOCAL ( SPAN:span<a> -- n ) {: s :} 0" CHECK-QUIET-CANDIDATE! 0 T=
-   s" STO-DUP ( SPAN:span<a> -- n ) dup SPAN:LEN nip" CHECK-QUIET-CANDIDATE! 0 T=
+   s" STO-LOCAL ( SPAN:span<a> -- n ) {: s :} 0" CHECK-QUIET-CANDIDATE! -1 T=
+   s" STO-DUP ( SPAN:span<a> -- n ) dup SPAN:LEN nip" CHECK-QUIET-CANDIDATE! -1 T=
    s" STO-CLOSED ( SPAN:span<u8> -- n ) dup SPAN:LEN swap SPAN:LEN +" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 public

@@ -428,6 +428,20 @@ field. Only a type annotation on that local is refused: `{: p:n :}` is
   and `SIGNAL:signal` are both `E-UNDEFINED`. Stack effects and `MATCH` name
   the family `PKG:family` (`( -- TCP4:read-result )`, `MATCH TCP4:read-result`);
   a body inside the owning package writes the bare family name in `MATCH`.
+- **An OPEN family instance is placeable when the width cannot read the open
+  argument.** `STRUCTURE span 1 FIELD base ptr a FIELD len n ;STRUCTURE` is two
+  cells for every argument, so `: SKIP ( span<t> n -- span<t> ) …` compiles at
+  tier 1 exactly like the `span<u8>` row. A family whose parameter IS a payload
+  cell (`FIELD it a`) has a width its argument decides: a row carrying an open
+  instance of THAT below another value is `E-NELAB-BUNDLE` (-8519, `ncomp:
+  cannot compile NAME`) until the argument is concrete. No width is ever
+  guessed — the registry answers which argument slots the width reads
+  (`src/core/type-family.f TFAM-WIDTH-SLOT?`) and the checker expands an
+  instance into its cells only when no open slot is one of them
+  (`src/core/checker.f LAYOUT-WIDTH-OPEN?`). Separately, a multi-cell value
+  produced by a `create … does>` clause is refused at tier 1 whatever its
+  arguments (`E-NELAB-BUNDLE` at the definer): a does> row reaches the native
+  chain as cell counts with no value boundaries.
 - `DERIVE eq`/`DERIVE hash` on a public arity-0 family generate those
   operations; clauses follow the name on `ENUM` and the arity on
   `SUMTYPE`/`PRODUCT`, one or several per feature; repeating a feature rejects.

@@ -88,10 +88,10 @@ public
    b byte-view l MAKE ;
 
 \ ---- narrowing: never wider, never past the reach ----------------------------
-\ These three are generic, and an OPEN instantiation cannot be captured in a
-\ local (an unresolved argument may still turn out to be linear, so the checker
-\ refuses to transport the bundle into a local frame). The scalar goes to the
-\ return stack instead and the bundle is unmade where it stands.
+\ These three are generic. An open instantiation is a placeable two-cell value
+\ like any other (a `span`'s element is only ever a pointee, so no argument can
+\ move its width), so a local would work here too; the return stack keeps the
+\ scalar out of the way with no frame, and the bundle is unmade where it stands.
 : SKIP ( span<t> n -- span<t> )
    >r SPAN-SPAN:UNMAKE r>
    2dup BOUND

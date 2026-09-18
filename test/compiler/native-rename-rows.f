@@ -110,7 +110,34 @@ SUMTYPE mixlo 0
    VARIANT lo n pt ;VARIANT
 ;SUMTYPE
 
+\ Two parametric families that differ in ONE way: whether the width reads the
+\ argument. `sp`'s parameter occurs only as a pointee, so every instantiation is
+\ two cells and an OPEN instance is placeable; `box` keeps its parameter as a
+\ payload cell, so no width exists before the argument binds and an open
+\ instance of it stays refused (dot habu-place-an-open-d7bcba49).
+PRODUCT sp 1
+   FIELD base ptr a
+   FIELD len n
+;PRODUCT
+
+PRODUCT box 1
+   FIELD it a
+   FIELD mark n
+;PRODUCT
+
 private
+
+create SP-BYTES 100 allot
+
+: SP-WHOLE ( -- sp<u8> )   SP-BYTES byte-view 100 NRR-SP:MAKE ;
+: SP-LEN ( sp<t> -- n )   NRR-SP:UNMAKE nip ;
+: SP-TAKE ( sp<t> n -- sp<t> )   {: k :} NRR-SP:UNMAKE drop k NRR-SP:MAKE ;
+: SP-SKIP ( sp<t> n -- sp<t> )   {: k :} NRR-SP:UNMAKE k - swap k + swap NRR-SP:MAKE ;
+
+\ The shape that drifted while an open row could not be placed: a call returns an
+\ open-argument bundle and a local binds the whole of it.
+: SP-TAKE-LEN ( n -- n )   {: k :} SP-WHOLE k SP-TAKE {: w :} w SP-LEN ;
+: SP-SKIP-LEN ( n -- n )   {: k :} SP-WHOLE k SP-SKIP {: w :} w SP-LEN ;
 
 : ENUM-BUNDLE ( lamp n -- n lamp )
    swap ;
@@ -122,11 +149,27 @@ private
 variable TORB-RC
 variable MIXHI-RC
 variable MIXLO-RC
+variable SP-DROP-RC
+variable SP-LOCAL-RC
+variable SP-PARK-RC
+variable SP-REMAKE-RC
+variable BOX-OPEN-RC
+variable BOX-CLOSED-RC
 
 : CAPTURE-DYNAMIC-CASES ( -- )
    s" : C-TORB ( option<n> -- option<n> ) >r r> ;" TRY TORB-RC !
    s" : C-MIXHI ( mixhi -- n ) MATCH mixhi nohi OF 0 ENDOF hi OF drop NRR-PT:UNMAKE + ENDOF ;MATCH ;" TRY MIXHI-RC !
-   s" : C-MIXLO ( mixlo -- n ) MATCH mixlo nolo OF 0 ENDOF lo OF NRR-PT:UNMAKE + + ENDOF ;MATCH ;" TRY MIXLO-RC ! ;
+   s" : C-MIXLO ( mixlo -- n ) MATCH mixlo nolo OF 0 ENDOF lo OF NRR-PT:UNMAKE + + ENDOF ;MATCH ;" TRY MIXLO-RC !
+   \ A row with an OPEN width-free instance BELOW another value: placeable
+   \ whatever the body does, because the row has one term per cell.
+   s" : C-SP-DROP ( sp<t> n -- sp<t> ) drop ;" TRY SP-DROP-RC !
+   s" : C-SP-LOCAL ( sp<t> n -- sp<t> ) {: k :} ;" TRY SP-LOCAL-RC !
+   s" : C-SP-PARK ( sp<t> n -- sp<t> ) >r r> drop ;" TRY SP-PARK-RC !
+   s" : C-SP-REMAKE ( sp<t> n -- sp<t> ) {: k :} NRR-SP:UNMAKE k - swap k + swap NRR-SP:MAKE ;" TRY SP-REMAKE-RC !
+   \ The same row over a family whose width READS the open argument: refused by
+   \ name, never guessed; the closed instantiation of it is placed exactly.
+   s" : C-BOX-OPEN ( box<t> n -- box<t> ) drop ;" TRY BOX-OPEN-RC !
+   s" : C-BOX-CLOSED ( box<n> n -- box<n> ) drop ;" TRY BOX-CLOSED-RC ! ;
 
 CAPTURE-DYNAMIC-CASES
 
@@ -199,9 +242,23 @@ CAPTURE-DYNAMIC-CASES
    NRR-MIXLO:NOLO C-MIXLO 0 T=
    11 3 5 NRR-PT:MAKE NRR-MIXLO:LO C-MIXLO 19 T= ;
 
+: OPEN-ROWS ( -- )
+   s" a row carrying an open width-free instance is placed" T-LABEL
+   SP-DROP-RC @ 0 T=  SP-LOCAL-RC @ 0 T=
+   SP-PARK-RC @ 0 T=  SP-REMAKE-RC @ 0 T=
+
+   s" a call's open-argument result binds whole to a local" T-LABEL
+   SP-WHOLE SP-LEN 100 T=
+   7 SP-TAKE-LEN 7 T=
+   40 SP-SKIP-LEN 60 T= ;
+
 : REFUSALS ( -- )
    s" parking one cell of a bundle remains a named refusal" T-LABEL
-   TORB-RC @ E-NELAB-BUNDLE T= ;
+   TORB-RC @ E-NELAB-BUNDLE T=
+
+   s" an open argument the width READS is refused, its closed twin placed" T-LABEL
+   BOX-OPEN-RC @ E-NELAB-BUNDLE T=
+   BOX-CLOSED-RC @ 0 T= ;
 
 public
 
@@ -212,6 +269,7 @@ public
    DISPATCH-SEAMS
    UNCHANGED-SHAPES
    MIXED-PAYLOADS
+   OPEN-ROWS
    REFUSALS ;
 
 ;package
