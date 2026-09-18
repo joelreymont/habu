@@ -137,8 +137,10 @@ $1000000 constant MAX-BYTES
 
 : ALLOC ( n ptr n -- ) {: size:n s:ptr :}
    size ALLOC-NEED MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   s BUF@ s CAP@ {: old:ptr oldcap:n :}
    cap s CAP!
-   buf s BUF! ;
+   buf s BUF!
+   old 0= 0= IF old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES THEN ;
 
 : TOO-LARGE ( ptr u8 n n -- ) {: path:ptr pathu:n size:n :}
    s" lint-slab: file exceeds maximum: " type path pathu type cr
