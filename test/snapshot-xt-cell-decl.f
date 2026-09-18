@@ -254,9 +254,13 @@ variable TALLY
 : LOOKALIKE-TARGET ( -- n ) 4711 ;
 TRUSTED: LOOKALIKE-TARGET-XT ( -- n ) ['] LOOKALIKE-TARGET ;
 
+\ The forged value is the cell's address as a number, through the same boundary
+\ the assertions below read it back through: a checked `!` of a live token into
+\ an undeclared cell is refused (RAW-ARM's note above), and this table is
+\ undeclared on purpose.
 : FORGE-TABLE ( -- )
    TAB-CELLS 0 ?do
-      ['] LOOKALIKE-TARGET  LOOKALIKE i cells + !
+      LOOKALIKE-TARGET-XT  LOOKALIKE i cells + !
    loop ;
 
 : TALLY-IF-LISTED ( n -- )
