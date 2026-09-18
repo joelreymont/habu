@@ -1,5 +1,7 @@
 # Forth Standards (habu)
 
+Workers: read [docs/forth-card.md](forth-card.md) first; this file is the reference.
+
 How we write Forth in this repo. Target is the native `bin/hb` engine.
 Use these conventions to keep code readable and correctly checked; choose the
 development workflow and verification effort to suit the actual change.

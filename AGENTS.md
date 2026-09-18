@@ -32,8 +32,11 @@ belong in the language core.
   foreign machine; `formal/` builds its proofs with rocq's own Makefile.
   Anything else under `tools/` or `test/` that is not Habu is a defect to
   convert.
-- Read [docs/forth.md](docs/forth.md) before writing Habu. It documents naming,
-  packages, small factored words, typed stack effects and native tooling.
+- Read [docs/forth-card.md](docs/forth-card.md) before writing Habu. It is the
+  worker-sized card: naming and packages, typed effects and locals, what the
+  checker refuses and admits, the storage definers, errors, require order and
+  tests, with every refusal measured on the engine. Open
+  [docs/forth.md](docs/forth.md) for lookups, at the heading the card names.
 - Every module has a real package; public effects preserve meaningful types
   instead of reducing everything to `n`.
 - Keep necessary unchecked or foreign boundaries explicit, small and tested.

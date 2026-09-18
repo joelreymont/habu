@@ -1551,6 +1551,10 @@ SUITE bootstrap-refresh-doc
    tools/bootstrap-refresh-doc-test.f
 ;SUITE
 
+SUITE forth-card-doc
+   tools/forth-card-doc-test.f
+;SUITE
+
 SUITE check-repair-hints
    tools/check-repair-hints-test.f
 ;SUITE
