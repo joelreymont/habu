@@ -944,7 +944,81 @@ because `lib/task.f`'s TCB reaches its five pointer fields through the very row
    `test/compiler/raw-cell-pointer-refusals.f` keep their verdicts; a
    rule-hosted generation build completes; `test/run.f` is green.
 
-## 11. Where the deep detail lives
+## 11. Bounded pointers
+
+A `ptr t` says what it points at and nothing about how far it reaches, so every
+copy into a buffer and every indexed read is bounded by a hand-written
+`u cap > if throw` or by nothing at all. `lib/span.f` (package `SPAN`) gives the
+reach a type. A span is one two-cell value — a base `ptr t` and a reach — and it
+travels on the stack like any other family value, so nothing in the engine
+changed to carry it:
+
+```forth
+STRUCTURE span 1
+   FIELD base ptr a
+   FIELD len n
+;STRUCTURE
+```
+
+**The reach is counted in bytes, and that is a soundness decision.** A family
+argument unifies with the ordinary integer widening lattice rather than
+strictly, so `span<u8>` IS accepted where `span<cell>` is declared — measured,
+and pinned in `lib/span-test.f`. If the reach counted elements, a 64-byte
+`span<u8>` handed to a word declared over `span<cell>` would pass `i < len` at
+i=7 and cell-read bytes 56..63, eight times past its end: the exact overrun the
+type exists to refuse. Counting bytes removes it — `SPAN:CELL-AT` checks
+`i < reach/CELL`, every other accessor checks bytes, and the widened call stays
+inside the buffer. `n` is worse than `cell` here: it is the universal integer, so
+`span<n>` accepts every integer-element span in both directions, which is why no
+word in the file is declared over it. Closing the widening itself belongs to the
+checker (the campaign's band 3), not to a declaration.
+
+The mint is strict in the direction that matters: `( ptr u8 n -- span<cell> )
+SPAN:MAKE` is refused, while `( ptr cell n -- span<u8> )` certifies — a byte
+view of a cell buffer with a byte reach, which is sound.
+
+**One audited crossing.** `SPAN:MAKE ( ptr t n -- span<t> )` is where an address
+and a number become a reach, and it takes that reach on the caller's word: the
+checker knows the pointee, never the extent behind it. It is admitted in `lib/`
+and `src/` only, where the producers live — `n SPAN-BUFFER: NAME`,
+`n SPAN-CELLS: NAME`, `MEM:ALLOC-SPAN` — and `tools/lint/bare-copy-lint.f`
+reports it, and a bare `BYTE-COPY`, anywhere else, naming the site and the
+replacement. It needs no `TRUST`: the body is the generated constructor plus a
+sign check, and the audit is the lint.
+
+**Narrowing never widens.** `SPAN:SKIP`, `SPAN:TAKE` and `SPAN:SUB` refuse an
+offset past the reach with `E-SPAN-RANGE` and can only produce a span inside the
+one they were given; `SPAN:COPY` refuses a source longer than the destination's
+reach with `E-SPAN-CAPACITY` and copies nothing at all in that case; a negative
+reach at the mint or a negative source length is `E-SPAN-LENGTH`.
+
+**What is deliberately absent.** A generic element-indexed accessor: `+` on a
+`ptr t` is byte arithmetic and checked code has no element size for a type
+parameter, so an `AT` that steps by elements is not expressible — the byte set
+(`AT`, `U8@`, `U8!`) works over `span<u8>`, the cell set (`CELL-AT`, `CELL@`,
+`CELL!`, `CELL-LEN`) over `span<cell>`, and the narrowings are byte offsets for
+every element type. There is no `TYPED-BUFFER` span form either: its generated
+accessor is an index function `( n -- ptr t )`, not a base-and-reach pair, and
+adding one means changing the generated accessor set at the sealed generative
+storage boundary (`src/core/layout-buffer.f`). A span over a nominal element is
+already reachable — hand a `TYPED-BUFFER` accessor result to `SPAN:MAKE`, which
+is how `lib/span-test.f` builds its `span<NUM:index>`.
+
+An open instantiation (`span<a>`) cannot be captured in a local or duplicated:
+an unresolved argument may still turn out to be linear, so the checker refuses to
+transport the bundle until whole-bundle linear accounting lands. The generic
+narrowings therefore park the scalar on the return stack and unmake the bundle
+where it stands; closed instantiations (`span<u8>`, `span<cell>`) transport
+normally.
+
+**Cost.** Summing 4096 bytes, 200 passes, aarch64, engine `7c8b9db7`: `SPAN:U8@`
+24 ns/byte, the same loop with a hand-written bounds check 17 ns/byte, a bare
+`c@` with no check 10 ns/byte (five runs, identical to the nanosecond). So the
+checked span read costs 2.4x a bare byte read and 1.4x the hand-written check it
+replaces. Static elimination of a bounds check whose index is already known to be
+in range is a later optimisation; release quality comes first.
+
+## 12. Where the deep detail lives
 
 - `docs/forth.md` — the working standard: naming, packages, factoring, the
   checker and type model section, testing, and the commit gate. Note that its

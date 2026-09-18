@@ -18,6 +18,7 @@ Planned module files:
 - `lib/regex.f`
 - `lib/map.f`
 - `lib/memory.f`
+- `lib/span.f`
 - `lib/ffi-abi.f`
 - `lib/zip.f`
 - `lib/net/udp4.f`
@@ -539,6 +540,45 @@ BYTE-COPY       ( ptr u8 ptr u8 n -- )
 `BYTE-VIEW` preserves the pointer address while exposing byte-granularity
 access. The resulting `ptr u8` supports `c@` and `c!`; checked code rejects
 cell-sized `@` and `!` through that view.
+
+## Bounded pointers (spans)
+
+`lib/span.f` (package `SPAN`) pairs a base pointer with the reach behind it, so a
+copy or an indexed read is bounds-checked by the type instead of by a
+hand-written capacity test. The reach is always a BYTE count, whatever the
+element type; `docs/type-system.md` § 11 says why, and what the checker does and
+does not refuse around it.
+
+```forth
+SPAN:MAKE     ( ptr t n -- SPAN:span<t> )     \ lib/ and src/ only, the audited mint
+SPAN:LEN      ( SPAN:span<t> -- n )           \ the reach in bytes
+SPAN:CELL-LEN ( SPAN:span<cell> -- n )        \ the reach in whole cells
+SPAN:$        ( SPAN:span<u8> -- ptr u8 n )
+SPAN:BYTES    ( SPAN:span<cell> -- SPAN:span<u8> )
+SPAN:SKIP     ( SPAN:span<t> n -- SPAN:span<t> )
+SPAN:TAKE     ( SPAN:span<t> n -- SPAN:span<t> )
+SPAN:SUB      ( SPAN:span<t> n n -- SPAN:span<t> )
+SPAN:AT       ( SPAN:span<u8> n -- ptr u8 )
+SPAN:U8@      ( SPAN:span<u8> n -- u8 )
+SPAN:U8!      ( u8 SPAN:span<u8> n -- )
+SPAN:CELL-AT  ( SPAN:span<cell> n -- ptr cell )
+SPAN:CELL@    ( SPAN:span<cell> n -- n )
+SPAN:CELL!    ( n SPAN:span<cell> n -- )
+SPAN:COPY     ( ptr u8 n SPAN:span<u8> -- )
+SPAN:FILL     ( u8 SPAN:span<u8> -- )
+n SPAN-BUFFER: NAME       \ NAME ( -- SPAN:span<u8> ), n bytes of static storage
+n SPAN-CELLS:  NAME       \ NAME ( -- SPAN:span<cell> ), n cells of static storage
+MEM:ALLOC-SPAN ( NUM:alloc-byte-len -- SPAN:span<u8> )
+MEM:FREE-SPAN  ( SPAN:span<u8> -- )
+```
+
+A narrowing or an index outside the reach throws `E-SPAN-RANGE`, a copy longer
+than the destination throws `E-SPAN-CAPACITY` and moves nothing, and a negative
+reach or source length throws `E-SPAN-LENGTH`. The read-only `( ptr u8 n )` pair
+stays the string idiom — it already carries its length — and `SPAN:COPY` takes
+exactly that pair as its source. `MEM:ALLOC-SPAN` and `MEM:FREE-SPAN` reopen
+package `MEM` from `lib/span.f`, because `lib/memory.f` is a boot-prefix file and
+must not depend on this one.
 
 ## String
 

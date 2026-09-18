@@ -7,6 +7,11 @@ SUITE shadow-lint
    tools/lint/shadow-lint-test.f
 ;SUITE
 
+SUITE bare-copy-lint
+   tools/lint/bare-copy-lint.f
+   tools/lint/bare-copy-lint-test.f
+;SUITE
+
 SUITE clobber-lint
    tools/lint/clobber-lint.f
 ;SUITE
@@ -1482,6 +1487,10 @@ SUITE gate-pool
 
 SUITE num-types
    lib/num-types-test.f
+;SUITE
+
+SUITE span
+   lib/span-test.f
 ;SUITE
 
 SUITE fs-mutate

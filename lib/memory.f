@@ -150,6 +150,13 @@ TRUSTED: MEM-MAPPED>PTR ( n -- ptr u8 ) ;
 \
 \ The legacy MEM-ALLOC-BYTES surface stays untouched for its four caller waves;
 \ MEM-ALLOC-CELLS and the multi-64K conveniences are out of this B5 wave.
+\
+\ MEM:ALLOC-SPAN and MEM:FREE-SPAN are NOT here: they reopen this package from
+\ lib/span.f, because a span is SPAN:span<u8> and this file is a boot-prefix
+\ file (src/habu/habu2.f PFX-LOAD-STDLIB-FILES) that every engine reads at every
+\ start - requiring lib/span.f from here would put the span package in the boot
+\ prefix before band 1 has decided that. They move into this file the day
+\ lib/span.f becomes a prefix row.
 
 package MEM
 private

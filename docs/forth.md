@@ -1132,6 +1132,20 @@ Build and environment findings are in `../LESSONS.md`; these affect coding.
   path structurally returns its outputs; a final throw-only fallback in a
   `-- value…` word confuses path-effect merging.
 
+## Spans: a pointer that carries its reach
+
+When a word writes into a buffer or indexes one, pass a `SPAN:span<u8>` rather
+than a `ptr u8` and a separate length: `lib/span.f` bounds-checks every access
+against the reach the span carries, so the capacity test is the type's job and
+not a line you can forget. Take the span from a producer — `n SPAN-BUFFER: NAME`,
+`n SPAN-CELLS: NAME`, `MEM:ALLOC-SPAN` — or narrow one you were handed with
+`SPAN:SKIP` / `SPAN:TAKE` / `SPAN:SUB`, which can never widen it. `SPAN:MAKE` is
+the one place an address and a number become a reach, so it is admitted in `lib/`
+and `src/` only and `tools/lint/bare-copy-lint.f` reports it (and bare
+`BYTE-COPY`) anywhere else. A read-only source stays the `( ptr u8 n )` string
+idiom. The reach is counted in bytes whatever the element type;
+`docs/type-system.md` § 11 has the measurement that settles why.
+
 ## ptr locals and cell access
 
 A `{: p:ptr :}` local admits cell `@`/`!`: `: F ( ptr n -- n ) {: p:ptr :} p @ ;`

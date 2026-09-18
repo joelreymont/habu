@@ -306,6 +306,17 @@ public
 -5901 constant E-FMT-OVERFLOW    \ SB-FIX scaled magnitude |x|*10^k does not fit an i64
 -5902 constant E-FMT-BAND        \ layout FMT-ABI band width disagrees with FMT-NUM-CAP
 
+\ Bounded pointers (package SPAN, lib/span.f): -6100..-6199. The block sits
+\ between lib/type/deftype.f's own -6001/-6002 and lib/render.f's -6210; both of
+\ those keep their codes in their own files and reserve no range.
+-6100 constant E-SPAN-FIRST
+-6199 constant E-SPAN-LAST
+-6100 constant E-SPAN-RANGE      \ a narrowing or an index outside the span's byte reach
+-6101 constant E-SPAN-CAPACITY   \ a copy source longer than the destination span's reach
+-6102 constant E-SPAN-LENGTH     \ a negative reach at the mint, or a negative source length
+-6103 constant E-SPAN-UNTERM     \ bare-copy lint: unterminated string literal hid the rest of a file
+-6104 constant E-SPAN-REGISTRY   \ bare-copy lint: malformed primitive-axiom row hid the rest of a file
+
 \ JSON reader performance samples: -6300..-6399
 -6300 constant E-JRP-FIRST
 -6399 constant E-JRP-LAST
