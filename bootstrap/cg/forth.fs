@@ -4206,6 +4206,31 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 DATA QENT-CELL LDR,  C-CODE-ADDR             \ push the xt in the outer word (relocatable code addr)
    12 0 MOVZ,  12 DATA QPATCH-CELL STR, ;
 
+\ Stage0 has no package scope; pass-2 checker queries are global lookups.
+: C-P2-FIND-GLOBAL? ( n n -- ) {: lvar len :}
+   9 lvar @ ADR,  10 len MOVZ,  LFIND @ BL, ;
+
+: C-P2-FIND-GLOBAL ( n n -- ) {: lvar len :}
+   LBL {: ok :}
+   lvar len C-P2-FIND-GLOBAL?
+   13 ok CBNZ,
+      0 2 MOVZ,  1 lvar @ ADR,  2 len MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+\ MIRROR of src/habu/habu2.f EM-REC-WIDE-PUBLISH (wide half only; stage0 has no
+\ min-in poke): drain the checker's wide latch for the record just published and
+\ mark it DNAME-WIDE. Hook-guarded, so it is inert while the engine loads its own
+\ prefix. It sits here, ahead of the does>-patch emitter below, because that
+\ emitter calls it: a clause effect is published like any other effect and takes
+\ the same tail (dot habu-mark-a-wide-851cab15).
+: EM-REC-WIDE-PUBLISH ( -- )
+   LBL {: nohook :}
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   LRECWPUB 16 C-P2-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   nohook LBL, ;
+
 \ LDOESPATCH ( x10=D ): patch the last-created word's RET into `b D`.
 \ Runs from engine text, so the region RW/RX flips are safe mid-execution.
 \ x10 = 0 is the empty clause `;` elided: publish the declared effect and leave
@@ -4233,6 +4258,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    declared LBL,
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
       C-PUBLISH
+      EM-REC-WIDE-PUBLISH                               \ a wide clause effect marks the created record (mirror of habu2.f DOESPATCH:EMIT)
       C-RUNTIME-CRSIG-CLEAR
    nocr LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
@@ -4502,18 +4528,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    ncd LBL,
    11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR, ;
 
-\ Stage0 has no package scope; pass-2 checker queries are global lookups.
-: C-P2-FIND-GLOBAL? ( n n -- ) {: lvar len :}
-   9 lvar @ ADR,  10 len MOVZ,  LFIND @ BL, ;
-
-: C-P2-FIND-GLOBAL ( n n -- ) {: lvar len :}
-   LBL {: ok :}
-   lvar len C-P2-FIND-GLOBAL?
-   13 ok CBNZ,
-      0 2 MOVZ,  1 lvar @ ADR,  2 len MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   ok LBL, ;
-
 : C-P2-FIND-CHECKER ( n n n -- ) {: lvar len done :}
    LBL {: ready :}
    lvar len C-P2-FIND-GLOBAL?
@@ -4780,13 +4794,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    umsg LBL,  s" hb: ;using without an open using" BYTES,
    ok LBL,
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 SUBI,  8 7 0 STR, ;   \ depth--
-
-: EM-REC-WIDE-PUBLISH ( -- )
-   LBL {: nohook :}
-   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   LRECWPUB 16 C-P2-FIND-GLOBAL
-   C-CALL-X11-SAVED
-   nohook LBL, ;
 
 : EM-P2-SLOT-DIE ( -- )
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,

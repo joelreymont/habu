@@ -131,6 +131,47 @@ variable GE-SCRIPT-U
    75 s" does>-split wide facts fail closed" GE-EXPECT-RC
    s" does>-split cannot lower layout width facts" s" does>-split wide diagnostic" GE-EXPECT-ERR-HAS ;
 
+\ A created word's clause effect is an effect like any other: `does>
+\ ( -- gewide<n,n> )` publishes a wider-than-cell layout value, so the created
+\ record must carry the same DNAME-WIDE mark a `:` word with that effect carries
+\ and a bare call must fail closed. It did not: the does> publish tail skipped
+\ the wide tail, so `64 SPAN-BUFFER: PBUF` then a bare `PBUF` landed the span's
+\ two cells on the untyped interpret stack, rc 0 (dot habu-mark-a-wide-851cab15).
+\ No library type is used here - the definer is local to the case, so the guard
+\ is pinned by the engine's own publication, not by lib/span.f.
+: GE-DOES-WIDE-BARE ( -- )
+   s" : GE-WPAIR: ( -- ) create 0 , 0 , does> ( -- gewide<n,n> ) drop GE-WMK ; GE-WPAIR: GE-WP  GE-WP drop ."
+      s" interp layout does> word fails closed" GE-ILAYOUT-CASE ;
+
+\ the same marked created word still compiles and runs inside a checked body,
+\ which is where bundle work belongs: two cells out, printed top first.
+: GE-DOES-WIDE-COMPILED ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-ILAYOUT-PRELUDE
+   s" TRUSTED: GE-WUN ( gewide<n,n> -- n n ) ;" GE-SRC-LINE
+   s" : GE-WPAIR: ( -- ) create 0 , 0 , does> ( -- gewide<n,n> ) drop GE-WMK ;" GE-SRC-LINE
+   s" GE-WPAIR: GE-WP" GE-SRC-LINE
+   s" : GE-WPRUN ( -- n n ) GE-WP GE-WUN ;" GE-SRC-LINE
+   s" GE-WPRUN . ." GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   s" checked does> wide transport guard" GE-EXPECT-OK
+   SB-RESET s" 9" SB-APPEND GE-SB-LF s" 7" SB-APPEND GE-SB-LF
+   SB$ s" checked does> wide transport output" GE-EXPECT-OUT ;
+
+\ negative control: a does>-created word whose clause effect is one cell wide is
+\ NOT marked and still interprets bare (rc 0, value printed).
+: GE-DOES-SCALAR ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GE-NPAIR: ( -- ) create 7 , does> ( -- n ) @ ;" GE-SRC-LINE
+   s" GE-NPAIR: GE-NP" GE-SRC-LINE
+   s" GE-NP ." GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   s" scalar does> word interprets" GE-EXPECT-OK
+   SB-RESET s" 7" SB-APPEND GE-SB-LF
+   SB$ s" scalar does> word output" GE-EXPECT-OUT ;
+
 : GE-INTERP-LAYOUT ( -- )
    s" GE-WMK dup . . . ." s" interp layout dup fails closed" GE-ILAYOUT-CASE
    s" GE-WMK drop ." s" interp layout drop fails closed" GE-ILAYOUT-CASE
@@ -139,6 +180,9 @@ variable GE-SCRIPT-U
    s" : GE-WMK2 ( -- gewide<n,n> ) GE-WMK ; GE-WMK2 drop ." s" interp layout checked producer fails closed" GE-ILAYOUT-CASE
    s" defer GE-WD ( -- gewide<n,n> ) GE-WD" s" interp layout defer fails closed" GE-ILAYOUT-CASE
    GE-DOES-WIDE
+   GE-DOES-WIDE-BARE
+   GE-DOES-WIDE-COMPILED
+   GE-DOES-SCALAR
    GE-ILAYOUT-GUARD
    GE-ILAYOUT-SCALAR
    s" PASS: interpret-mode layout transports fail closed" type cr ;

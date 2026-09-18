@@ -3112,6 +3112,25 @@ public
 \ fold a mention through, to reach the body `create` already left. So neither
 \ the patch nor the clear runs here, the declared effect is published exactly as
 \ it is for a clause with a body, and the created word keeps its own.
+\
+\ AND THE PUBLISH TAIL IS THE COLON TAIL. A clause effect is an effect like any
+\ other: `does> ( -- sp<u8> )` publishes a wider-than-cell layout value for the
+\ word it creates exactly as `: W ( -- sp<u8> )` does for itself. So the record
+\ latches the checker stored while recording that effect are drained here by the
+\ same EM-REC-WIDE-PUBLISH the colon, cast and defer publish tails call, and a
+\ wide clause effect marks the created record DNAME-WIDE. Without that tail the
+\ created record was published unmarked and the interpret-mode gate never fired
+\ for it: a bare `PBUF` after `64 SPAN-BUFFER: PBUF` landed the two cells of a
+\ span on the untyped interpret stack (dot habu-mark-a-wide-851cab15), the
+\ fail-open DNAME-WIDE exists to close. It runs after LASTC-TRUST:PUBLISH because
+\ the latch is stored at the checker's record choke point and consumed once the
+\ record exists; `create` already counted the created record into NDICT, so the
+\ marker's newest-published target (ndict-1) is exactly that record.
+\
+\ The tail's second half comes with it, because it is one tail: a clause that
+\ declares inputs pokes DNAME-MIN-IN too, so a bare underdepth call of a created
+\ word names itself (`hb: interpret stack underdepth: NAME`) instead of reading
+\ below the interpret base (test/underdepth-gate.f).
 package DOESPATCH
 
 public
@@ -3150,6 +3169,7 @@ public
    declared LBL,
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
       LASTC-TRUST:PUBLISH
+      EM-REC-WIDE-PUBLISH
       C-RUNTIME-CRSIG-CLEAR
    nocr LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;

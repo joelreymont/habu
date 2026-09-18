@@ -391,8 +391,11 @@ ENUM color red green blue ;ENUM     \ payloadless tag-only sum
 
 A multi-cell record is one logical value and lives inside checked definitions.
 The interpreter prompt refuses words with multi-cell inputs or outputs
-(`hb: interpret-mode layout value`); `evaluate` and interpret-mode tick do the
-same, and bare `dup`, `drop`, `swap` at the prompt move single cells. To
+(`hb: interpret-mode layout value`), including a word created by a `does>`
+clause whose effect is multi-cell (`64 SPAN-BUFFER: PBUF`, then a bare `PBUF`):
+a clause effect is published like any other effect. `evaluate` and
+interpret-mode tick do the same, and bare `dup`, `drop`, `swap` at the prompt
+move single cells. To
 compute with a record at the REPL, define a word whose public effect is
 single-cell and call it:
 

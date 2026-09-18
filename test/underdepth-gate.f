@@ -219,6 +219,13 @@ public
    s" UDG-SQ" UDG-LINE
    SB$ ;
 
+: UDG-DOES$ ( -- ptr u8 n )              \ a does> clause's declared inputs are guarded too: the
+   SB-RESET                              \ created record takes the same publish tail a `:` word takes
+   s" : UDG-MQ: ( -- ) create 5 , does> ( n -- n ) nip @ ;" UDG-LINE
+   s" UDG-MQ: UDG-MQA" UDG-LINE
+   s" UDG-MQA" UDG-LINE
+   SB$ ;
+
 : UDG-ENGINE$ ( -- ptr u8 n )            \ axiom'd engine-prefix word (seal-time min-in poke)
    SB-RESET
    s" CORE-STR=" UDG-LINE
@@ -237,6 +244,9 @@ public
    s" certified sig-less definition fails closed" T-LABEL
    UDG-SIGLESS$ UDG-EXEC:SUBJECT
    s" UDG-SQ" UDG-ASSERT-UNDERDEPTH
+   s" does>-created word's clause inputs fail closed" T-LABEL
+   UDG-DOES$ UDG-EXEC:SUBJECT
+   s" UDG-MQA" UDG-ASSERT-UNDERDEPTH
    s" axiom'd engine word (CORE-STR=) fails closed via seal-time poke" T-LABEL
    UDG-ENGINE$ UDG-EXEC:SUBJECT
    s" CORE-STR=" UDG-ASSERT-UNDERDEPTH ;
