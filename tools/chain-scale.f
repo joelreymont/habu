@@ -132,7 +132,7 @@ variable BOUND-MILLI               \ ratchet bound; read only when one was given
    NC-COUNT @ 1+ NC-COUNT !
    NCOMP:COMPILE ;
 
-: DISPATCH-CELL ( -- ptr a )
+: DISPATCH-CELL ( -- ptr [ ptr u8 n -- ] )
    data-base NCOMP-DISPATCH:XT-CELL + ;
 
 \ ---- refusal ----------------------------------------------------------------

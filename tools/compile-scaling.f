@@ -174,7 +174,7 @@ variable BOUND-R                   \ and this is it
    NC-COUNT @ 1+ NC-COUNT !
    NCOMP:COMPILE ;
 
-: DISPATCH-CELL ( -- ptr a )
+: DISPATCH-CELL ( -- ptr [ ptr u8 n -- ] )
    data-base NCOMP-DISPATCH:XT-CELL + ;
 
 \ ---- refusal ----------------------------------------------------------------

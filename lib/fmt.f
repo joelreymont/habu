@@ -51,13 +51,13 @@ package FMT
 \ and the FFI staging tables into the base image for 52 bytes of scratch. A
 \ region is a fresh zeroed mapping, so a new task's cells start at zero exactly
 \ as the old `variable`s did.
-: FMT-IX ( -- ptr a )
+: FMT-IX ( -- ptr n )
    data-base FMT-ABI:IX-OFF + ;
 
-: FMT-FR ( -- ptr a )
+: FMT-FR ( -- ptr n )
    data-base FMT-ABI:FR-OFF + ;
 
-: FMT-DV ( -- ptr a )
+: FMT-DV ( -- ptr n )
    data-base FMT-ABI:DV-OFF + ;
 
 \ ---- integer render buffer ------------------------------------------------
@@ -79,7 +79,7 @@ BAND-AGREE
 : FMT-NUM-BUF ( -- ptr u8 )
    data-base FMT-ABI:NUM-BUF-OFF + BYTE-VIEW ;
 
-: FMT-NUM-U ( -- ptr a )
+: FMT-NUM-U ( -- ptr n )
    data-base FMT-ABI:NUM-U-OFF + ;
 
 : NUM-C+ ( n -- )

@@ -20,6 +20,7 @@ $3800 constant NULL-PTR-OFF
 : NULL-PTR-CELL ( -- ptr n )
    data-base NULL-PTR-OFF + ;
 REG-PROTECT
+\ cell-effects.f restates this effect, kinded; that row is the one that answers.
 : NULL-PTR ( -- ptr a )
    NULL-PTR-CELL 0 ptr-field @ ;
 

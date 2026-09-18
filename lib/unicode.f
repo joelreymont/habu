@@ -109,8 +109,10 @@ TRUSTED: CLOSE-CALL ( -- n )
 
 \ Slot 15 is task-local FFI scratch, beyond this call's seven arguments.
 \ Zero the complete cell, then expose exactly C's four-byte int output.
+\ FFI:ARGS declares the register area a cell array, so the slot is already a
+\ cell pointer and the byte round trip that used to reach it is gone.
 : RESULT ( -- ptr n )
-   ARGS 15 cells + CELL-VIEW ;
+   ARGS 15 cells + ;
 
 \ Exact u8_casecmp schema: two counted, read-only UTF-8 spans, two NULL
 \ policy pointers, and one four-byte writable result. No callable raw binding

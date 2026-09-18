@@ -8,7 +8,18 @@ s" PTR-VARIABLE" s" --" TRUST
 s" PERSISTED-PTR-VARIABLE" s" --" TRUST
 s" PTR-U8-TABLE" s" n --" TRUST
 s" PERSISTED-PTR-U8-TABLE-VARIABLE" s" --" TRUST
-s" NULL-PTR" s" -- ptr a" TRUST
+\ NULL-PTR is the language's null: a pointer of any pointee, and the address OF
+\ nothing. `src/core/pointer-storage.f` defines it, and this file loads after
+\ it, so THIS row is the record that answers - which is what lets the pointee
+\ carry the base-address kind the definition's own signature cannot spell (dot
+\ habu-bound-ptr-arithmetic-8bf6b54a). TVK-BASE keeps every honest use: storing
+\ a null into a declared pointer cell, comparing one, subtracting one, testing
+\ it with 0= - each binds the pointee INSIDE a `ptr`, where the kind is
+\ permissive. What it refuses is a value read THROUGH it: `NULL-PTR + @` taken
+\ as a nominal identity or as an address certified and forged one. A row rather
+\ than a TRUST declaration, so the effect is stated once, by the checker's own
+\ constructors, and one trusted seam fewer stands behind the null.
+PRIM: NULL-PTR PE-PTR-A-BASE PE-OUT PRIM;
 s" LBUF-CAPTURE-PREPARE" s" --" TRUST
 
 \ These variable accessors are emitted before checking starts. Their concrete

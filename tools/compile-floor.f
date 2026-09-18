@@ -116,7 +116,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    NC-COUNT @ 1+ NC-COUNT !
    NCOMP:COMPILE ;
 
-: DISPATCH-CELL ( -- ptr a )
+: DISPATCH-CELL ( -- ptr [ ptr u8 n -- ] )
    data-base NCOMP-DISPATCH:XT-CELL + ;
 
 \ ---- refusal ----------------------------------------------------------------

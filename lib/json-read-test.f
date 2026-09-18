@@ -47,7 +47,7 @@ TYPED-VARIABLE JRT-WRITER JSON-WRITE:writer
 \ The null address the reader must refuse, taken from the core's declared null
 \ slot: a `create`d cell read back through `ptr-field` is an undeclared raw
 \ storage cell and the checker refuses the pointer it publishes.
-: JRT-ZERO-PTR ( -- ptr a )
+: JRT-ZERO-PTR ( -- ptr n )
    NULL-PTR ;
 
 : JRT-ZERO-U8 ( -- ptr u8 )

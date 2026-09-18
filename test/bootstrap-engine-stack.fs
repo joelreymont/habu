@@ -199,7 +199,7 @@ require nf.fs
    \ also what keeps the module itself read exactly once.
    s" src/habu/debug.f" slurp-file {: module bytes :}
    s\" s\" src/habu/debug-watch.f\" provided s\" src/habu/stepper.f\" provided\n"
-   s\" package BES-BP : DATAB ( -- ptr a ) data-base ; : EMITS ( ptr u8 n -- ) type ;\n"
+   s\" package BES-BP : EMITS ( ptr u8 n -- ) type ;\n"
    BES-CAT {: decls declsize :}
    decls declsize module bytes BES-CAT {: head headsize :}
    head headsize tail size BES-CAT {: source sourcesize :}

@@ -74,6 +74,7 @@ public
 14 constant A-QUOT
 15 constant A-QUOT-END
 16 constant A-FINALLY
+17 constant A-BASE           \ BASE-kind the pending pointee: a base address, not the address OF anything
 
 private
 
@@ -166,6 +167,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-PTR-U8      A-U8 CODE, A-PTR CODE, ;
 : PE-PTR-PTR-B   A-VAR-B CODE, A-PTR CODE, A-PTR CODE, ;
 : PE-PTR-A-RAW   A-VAR-A CODE, A-RAW CODE, A-PTR CODE, ;
+: PE-PTR-A-BASE  A-VAR-A CODE, A-BASE CODE, A-PTR CODE, ;
 : PE-Q           A-QUOT CODE, ;
 : ;PE-Q          A-QUOT-END CODE, ;
 : PE-FINALLY     A-FINALLY CODE, ;
@@ -506,7 +508,14 @@ EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;
 EPRIM: SEAL-FRIEND    EPRIM;
 EPRIM: DRAIN-PRETRUST EPRIM;   \ dot habu-engine-pre-trust-77410827: drains the pending pre-trust defer table
-EPRIM: data-base      PE-PTR-A PE-OUT EPRIM;
+\ data-base is a BASE ADDRESS: the start of the running task's DATA region, not
+\ the address of any declared element. Its pointee is TVK-BASE, so `data-base
+\ OFF + @` still answers a number, an xt or a role - what those cells hold - and
+\ still subtracts, compares and byte-views like any pointer, while a nominal
+\ identity or an address read through it is refused (dot
+\ habu-bound-ptr-arithmetic-8bf6b54a). A cell of the region that really holds an
+\ address is reached with `ptr-field`, the declared door, exactly as before.
+EPRIM: data-base      PE-PTR-A-BASE PE-OUT EPRIM;
 EPRIM: prot-wid-add   PE-N PE-IN EPRIM;
 EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
 EPRIM: wordlist       PE-N PE-OUT EPRIM;

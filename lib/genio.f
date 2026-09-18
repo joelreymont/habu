@@ -134,21 +134,33 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 \ ---- the engine's per-task cells --------------------------------------------
 
-: OUT-PTR ( -- ptr a )
+: OUT-PTR ( -- ptr n )
    data-base GENIO-ABI:OUT-CELL + ;
 
-: IN-PTR ( -- ptr a )
+: IN-PTR ( -- ptr n )
    data-base GENIO-ABI:IN-CELL + ;
 
-: ACTIVE-PTR ( -- ptr a )
+: ACTIVE-PTR ( -- ptr n )
    data-base GENIO-ABI:ACTIVE-CELL + ;
 
 \ Row i-1 of the engine's write table, which the output funnel reads and
 \ nothing else does. Only a registered device has one; the terminal does not.
 \ The row is in the RUNNING task's DATA, which is what makes the funnel's
 \ dispatch per task -- and what decides how the row is stored.
-: ENGINE-ROW ( n -- ptr a ) {: idx:n :}
-   data-base GENIO-ABI:WRITE-OFF idx 1- 8 * + + ;
+\ The cell holds the handler the funnel calls, and a cleared row is spelled
+\ ZERO -- habu2.f reads the cell and a zero means "no device". Those are two
+\ element types for one DATA cell, so there are two accessors, each declaring
+\ what it really touches. A single `( n -- ptr a )` said neither and handed the
+\ choice to whichever caller asked, which is how engine DATA minted whatever a
+\ caller's signature named (dot habu-bound-ptr-arithmetic-8bf6b54a).
+: ENGINE-ROW-OFF ( n -- n ) {: idx:n :}
+   GENIO-ABI:WRITE-OFF idx 1- 8 * + ;
+
+: ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
+   ENGINE-ROW-OFF data-base + ;
+
+: ENGINE-ROW-CLEAR ( n -- )
+   0 swap ENGINE-ROW-OFF data-base + ! ;
 
 \ In the main task the row is a cell of the engine's own DATA, so it is a
 \ DECLARED address that a snapshot or an AOT capture has to canonicalise, and
@@ -300,7 +312,7 @@ private
 \ refusing one outside its window (aot-capture.f ACAP-TARGET-OFFSET).
 
 : CLEAR-ROWS ( -- )
-   SLOTS 1 ?do 0 i ENGINE-ROW ! loop ;
+   SLOTS 1 ?do i ENGINE-ROW-CLEAR loop ;
 
 \ Every device is forgotten, and every row's generation moves on so a handle
 \ minted before the capture cannot address a row in the restored process.
@@ -411,7 +423,7 @@ private
 \ caller's back. A throw abandons that restore, which is harmless: every
 \ dispatcher publishes the cell before anything reads it.
 
-: BUSY-PTR ( -- ptr a )
+: BUSY-PTR ( -- ptr n )
    data-base GENIO-ABI:BUSY-CELL + ;
 
 \ A closed row answers the terminal rather than throwing, and it has to: the
@@ -442,7 +454,7 @@ private
 \ Everything the row was, undone, ending with the release: the generation has
 \ to be visible before another task can take the row.
 : RETIRE-ROW ( n -- ) {: idx:n :}
-   0 idx ENGINE-ROW !
+   idx ENGINE-ROW-CLEAR
    OUT-PTR @ idx = if 0 OUT-PTR ! then
    IN-PTR @ idx = if 0 IN-PTR ! then
    0 idx SLOT-STATE !

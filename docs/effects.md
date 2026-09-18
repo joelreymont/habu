@@ -367,10 +367,82 @@ refuses an address *of* one: `PTR-VARIABLE X  : F ( -- ptr u8 ) X @ ;` certifies
 while `( -- ptr ptr u8 )` does not, because the element type is minted at the
 accessor rather than at the storage word.
 
+### A base address addresses no declared element
+
+Strict pointee unification and the raw-cell rule both fence a *cell*. Two
+pointers are fenced for the opposite reason: they are not the address **of**
+anything. `data-base` is the start of the running task's DATA region and
+`NULL-PTR` is the null, and both published `-- ptr a` with an ordinary
+polymorphic pointee. Pointer arithmetic is pointee-polymorphic, so the caller
+chose what the cell under the derived address contained:
+`NEWTYPE thing 0  : F ( n -- thing ) NULL-PTR + @ ;` certified and forged a
+nominal identity out of an integer, `( n -- ptr n )` forged an address, and
+`data-base + @` did both out of the engine's own DATA — at offset zero, with no
+arithmetic at all, through a plain `data-base @`.
+
+The pointee of those two rows is **`TVK-BASE`**, which is fenced in **value**
+position and permissive inside a **pointee**. So a value *read through* a base
+address is never a nominal type and never a pointer — `E-RAW-CELL-PTR`, repair
+class `declare_pointer_cell`, with its own reason naming `data-base` and
+`NULL-PTR` — while the pointer *itself* still compares, subtracts, tests and
+stores like any pointer. That is every honest use the tree makes of a null:
+`ptr thing NULL-PTR =`, `NULL-PTR X !` into a declared pointer cell,
+`NULL-PTR -` and `NULL-PTR 0=` all keep certifying, because each binds the
+pointee inside a `ptr`. `data-base OFF + @` still answers the number, xt or role
+the cell holds, a DATA cell that really holds an address is still reached with
+`ptr-field` (the declared door — the checker's own `SOURCE-CELL`/`TARGET-CELL`
+and the AOT span table), and the linker's `DATA-PTR`/`DATA-CELL@` still take
+`data-base BYTE-VIEW` before any arithmetic, which erases the kind into a
+concrete `u8`.
+
+**The wrapper is refused where it is written.** `: SB-LEN ( -- ptr a )
+data-base STRING-ABI:SB-LEN-OFF + ;` handed its caller the choice of element
+type for engine DATA, so `SB-LEN @` read as a nominal certified — the forgery
+was already reachable through a shipped library word. A declared quantifier that
+the body restricts to a base address is `E-NONPARAMETRIC-EFFECT`, "restricted to
+a base address", and the repair is to name the pointee the cell really holds
+(`ptr n`, `ptr u8`, `ptr [ in -- out ]`). A quantifier restricted through an
+**input-only** position is excused: `: RELEASE ( ptr ptr a -- ) … NULL-PTR cb ! ;`
+stores the null the language's own reset code stores, and the kind still rides
+the published effect, so every caller's fetch through that quantifier is fenced
+where it lands. Input-*only*, because a quantifier named on both sides is still
+published: `: LEAK ( ptr a -- ptr a ) drop data-base 8 + ;` is refused, or
+`ptr thing LEAK @` would pick the pointee again.
+
+Two accessors over one DATA offset, each naming what it reaches, is the checked
+way to say that a cell is read at two types — `FFI-BUF`/`FFI-FBUF` already did
+it, and `FFI-STACK-BUF`/`FFI-STACK-FBUF` (an integer spill and a float spill at
+one slot) and `ENGINE-ROW`/`ENGINE-ROW-CLEAR` (a write handler, and the zero
+that means "no device") now do too. What is gone is the single `( -- ptr a )`
+that said neither and let the caller decide.
+
+**The reach is not closed.** The axiom `ptr a n + -- ptr a` still admits any
+offset from any base, so a pointer that *is* the address of a declared element
+still reaches any address by arithmetic. Closing that needs an extent — a span
+type, or provenance on `+` — and the cost was measured across the tree at the
+sites that step a pointer and then dereference it
+(`+ | cell+ | char+ | 1+ | 1-` immediately followed by `@ | ! | c@ | c! | xt@ | xt!`):
+
+| dir | sites | bare `+` | `cell+` | `char+` | `1+`/`1-` | distinct defs | in `TRUSTED:` | base is `data-base` |
+|---|---|---|---|---|---|---|---|---|
+| `src` | 1668 | 1656 | 1 | 0 | 11 | 1053 | 13 | 39 |
+| `lib` | 994 | 977 | 10 | 0 | 7 | 541 | 2 | 9 |
+| `tools` | 610 | 576 | 2 | 0 | 32 | 412 | 3 | 9 |
+| `test` | 937 | 906 | 14 | 0 | 17 | 546 | 46 | 93 |
+| **total** | **4209** | **4115** | **27** | **0** | **67** | **2552** (440 files) | 64 | 150 |
+
+A span type carrying an extent would have to reach **2552 definitions**, and
+4115 of the 4209 steps are a bare `+` by a computed offset — only 94 use a
+structured step a span handles for free. This is a same-line lexical count and
+so a lower bound. The reach half stays open under
+`habu-bound-ptr-arithmetic-8bf6b54a`.
+
 Two launders are **still open** and refuse nothing today, each measured and
 dotted. `ptr-field`'s free result pointee is reachable through a parameter, so a
 row that manufactures a pointer out of an unconstrained base re-opens the field
-door over any raw cell (`: F ( ptr a -- ptr ptr u8 ) 0 ptr-field ;` — the shape
+door over any raw cell — and over a base address, where
+`: F ( n -- thing ) NULL-PTR swap ptr-field @ @ ;` still forges the identity the
+direct fetch is now refused — (`: F ( ptr a -- ptr ptr u8 ) 0 ptr-field ;` — the shape
 `src/core/structures.f` `PTR-FIELD:` itself generates — applied to a `create`d
 cell), dot `habu-refuse-ptr-field-331a9731`; and `byte-view`/`cell-view` are
 type-level renames, so a scalar store through a view of a *declared* pointer

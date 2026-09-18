@@ -475,6 +475,7 @@ variable MDV-I   variable MDV-F
       MD-EXEC-OPAQUE  of s" E-EXEC-OPAQUE-XT" endof
       MD-CATCH-OPAQUE of s" E-EXEC-OPAQUE-XT" endof
       MD-RAW-PTR      of s" E-RAW-CELL-PTR" endof
+      MD-BASE-PTR     of s" E-RAW-CELL-PTR" endof
       MD-RAW-FIELD    of s" E-RAW-CELL-PTR" endof
       MD-UNDERFLOW    of s" E-INPUT-UNDERFLOW" endof
       MD-RIGID-REGION of s" E-RIGID-REGION-MISMATCH" endof
@@ -504,6 +505,7 @@ variable MDV-I   variable MDV-F
       MD-EXEC-OPAQUE  of s" fix_opaque_execute" endof
       MD-CATCH-OPAQUE of s" fix_opaque_execute" endof
       MD-RAW-PTR      of s" declare_pointer_cell" endof
+      MD-BASE-PTR     of s" declare_pointer_cell" endof
       MD-RAW-FIELD    of s" declare_pointer_cell" endof
       MD-UNDERFLOW    of s" supply_missing_input" endof
       MD-RIGID-REGION of s" fix_host_region" endof
@@ -534,6 +536,7 @@ variable MDV-I   variable MDV-F
       MD-EXEC-OPAQUE  of s" Execute an xt whose effect is statically known: a quotation parameter, a defer bound with is, or a typed xt cell. Do not execute an xt fetched from untyped memory." endof
       MD-CATCH-OPAQUE of s" Catch an xt whose effect is statically known: a quotation parameter, a defer bound with is, or a typed xt cell. Do not catch an xt fetched from untyped memory." endof
       MD-RAW-PTR      of s" Declare the cell that holds an address: PTR-VARIABLE, PERSISTED-PTR-VARIABLE, TYPED-VARIABLE NAME ptr t, or TYPED-BUFFER. A plain variable, create or constant cell holds scalars, roles and atoms only." endof
+      MD-BASE-PTR     of s" Reach the cell through a declared accessor instead: give the word that adds the offset a concrete pointee (ptr n, ptr u8), or take the field of a declared pointer cell with ptr-field. data-base and NULL-PTR address no declared element, so a value read through one is a plain number." endof
       MD-RAW-FIELD    of s" Take the pointer field of a declared cell: PTR-VARIABLE, PERSISTED-PTR-VARIABLE, TYPED-VARIABLE NAME ptr t, or TYPED-BUFFER. 0 ptr-field on a plain variable or create cell laundered a raw cell into a typed pointer." endof
       MD-RIGID-REGION of s" These are different host allocations; a value carrying one region's identity cannot stand in for another. Thread the same allocation through, or re-borrow from the target." endof
       MD-RIGID-EXTENT of s" These host allocations have different extents; a bound proved for one does not carry to another. Use the value whose extent identity the position requires." endof
@@ -567,6 +570,7 @@ variable MDV-I   variable MDV-F
       MD-EXEC-OPAQUE  of s" execute: opaque xt of unknown provenance (fetched from untyped memory)" endof
       MD-CATCH-OPAQUE of s" catch: opaque xt of unknown provenance (fetched from untyped memory)" endof
       MD-RAW-PTR      of s" raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell" endof
+      MD-BASE-PTR     of s" base address: a cell reached from data-base or NULL-PTR holds a plain value, never a nominal type or a pointer" endof
       MD-RAW-FIELD    of s" ptr-field: base is an undeclared raw storage cell, not a declared pointer cell" endof
       MD-RIGID-REGION of s" rigid host: region mismatch (different allocation)" endof
       MD-RIGID-EXTENT of s" rigid host: extent mismatch (different bounds identity)" endof
@@ -702,6 +706,9 @@ variable MDV-I   variable MDV-F
 : SUGGEST-TEXT ( -- ptr u8 n )
    IMMERR @ if IMM-SUGGEST$ exit then
    NPBAD @ IF
+      NPBAD-KIND @ 4 = IF
+         s" Declare the pointee this base address really reaches (ptr n, ptr u8, ...); a pointer derived from data-base or NULL-PTR cannot be published under a type variable." EXIT
+      THEN
       NPBAD-KIND @ 3 = IF
          s" Declare the concrete storage type, or keep the body polymorphic over the type variable." EXIT
       THEN
@@ -773,6 +780,10 @@ variable JPOS  variable JLINE  variable JCOL
    then
    NPBAD @ IF
      s" E-NONPARAMETRIC-EFFECT habu: in " DTXT  NMA @ NMU @ DTXT
+     NPBAD-KIND @ 4 = IF
+       s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+       s" ' is restricted to a base address; its declared kind must stay unchanged" DTXT EXIT
+     THEN
      NPBAD-KIND @ 3 = IF
        s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
        s" ' is restricted by raw storage; its declared kind must stay unchanged" DTXT EXIT

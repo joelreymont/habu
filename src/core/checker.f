@@ -286,11 +286,31 @@ TVINIT
 1 constant TVK-RAW   \ minted by a raw storage definer; admits only plain scalars
 2 constant RVK-QUOT  \ implicit callback tail: fixed window when compared as a value
 3 constant RVK-INFERRED  \ literal tail: fresh per call, extensible to a declared window
+\ TVK-BASE: the pointee of an UNPROVENANCED BASE ADDRESS -- `data-base` and
+\ `NULL-PTR`, the two rows whose pointer is not the address OF anything (dot
+\ habu-bound-ptr-arithmetic-8bf6b54a). It is fenced exactly like TVK-RAW in
+\ VALUE position and permissive inside a POINTEE, which is the whole difference
+\ between the two kinds and is what lets `ptr thing NULL-PTR =` keep certifying
+\ while `NULL-PTR + @` read as a `thing` does not. See BASE-BLOCK? below.
+4 constant TVK-BASE
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
-\ permanent (untrailed) RAW mark for build-time contexts (prim/signature build,
+: TVK-BASE? ( n -- bool ) TVK@ TVK-BASE = ;
+\ permanent (untrailed) marks for build-time contexts (prim/signature build,
 \ freshening); the trailed TVK-RAISE below is used inside unification.
 : TVK-RAW! ( n -- ) TVK-RAW swap cells TVK + ! ;
+: TVK-BASE! ( n -- ) TVK-BASE swap cells TVK + ! ;
+
+\ The fence lattice: ANY < BASE < RAW. A meet keeps the STRICTER of two kinds,
+\ so a base-derived value stored into a raw cell meets at RAW and never lowers
+\ one discipline to the other. The row kinds are not on this lattice and rank 0
+\ (a row var never meets a type var).
+: TVK-RANK ( n -- n )
+   dup TVK-RAW = IF drop 2 EXIT THEN
+   TVK-BASE = IF 1 EXIT THEN
+   0 ;
+: TVK-MEET ( n n -- n ) {: k1:n k2:n :}
+   k1 TVK-RANK k2 TVK-RANK >= IF k1 ELSE k2 THEN ;
 
 : TAG 7 and ;
 
@@ -351,27 +371,39 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
    need TRAIL-CAP @ 2 * max {: nc:n :}
    TRAIL-P @ TRAIL-CAP @ cells nc cells ARENA-BYTES-GROW TRAIL-P !
    nc TRAIL-CAP ! ;
-: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=RVK-INFERRED
+\ A trail entry carries the var id and a 3-BIT tag. The tag says what to put
+\ back, so a kind raise restores the kind it displaced rather than assuming
+\ TVK-ANY: with two fenced kinds on one lattice (TVK-BASE < TVK-RAW) a rolled
+\ back raise that reset a BASE var to ANY would drop the base-address fence on
+\ every row an abandoned prim-overload trial touched.
+: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=RVK-INFERRED, 4=TVK-BASE
    TRAIL-N @ 1 + TRAIL-ENSURE
-   id 4 * tag +  TRAIL-N @ cells TRAIL + !
+   id 8 * tag +  TRAIL-N @ cells TRAIL + !
    TRAIL-N @ 1 + TRAIL-N ! ;
+: TRAIL-KIND-OF ( n -- n )   \ the kind a kind-tag puts back
+   dup 3 = IF drop RVK-INFERRED EXIT THEN
+   4 = IF TVK-BASE ELSE TVK-ANY THEN ;
 : TRAIL-UNWIND ( n -- ) {: mark:n :}     \ pop+undo every mutation above `mark`
    BEGIN TRAIL-N @ mark > WHILE
       TRAIL-N @ 1 - TRAIL-N !
       TRAIL-N @ cells TRAIL + @ {: e:n :}
-      e 3 and {: tag:n :}   e 2 rshift {: id:n :}
+      e 7 and {: tag:n :}   e 3 rshift {: id:n :}
       tag 0= IF UNBOUND id cells TVT + ! ELSE
       tag 1 = IF UNBOUND id cells RVT + ! ELSE
-      tag 2 = IF TVK-ANY ELSE RVK-INFERRED THEN
+      tag TRAIL-KIND-OF
       id cells TVK + ! THEN THEN
    REPEAT ;
-\ TVK-RAISE ( id -- ) : raise var `id` to TVK-RAW inside unification, trailed so a
-\ failed prim-overload trial (TRIAL-REST) or definition reject restores TVK-ANY.
-\ Idempotent: a var already RAW records nothing (so no spurious trail growth).
-: TVK-RAISE ( n -- )
-   dup TVK-RAW? IF drop EXIT THEN
-   dup 2 TRAIL-PUSH
-   TVK-RAW! ;
+\ TVK-RAISE-TO ( id kind -- ) : meet var `id`'s kind with `kind` inside
+\ unification, trailed so a failed prim-overload trial (TRIAL-REST) or a
+\ definition reject puts the displaced kind back. Idempotent: a meet that
+\ changes nothing records nothing (so no spurious trail growth).
+: TVK-KIND-TAG ( n -- n ) TVK-BASE = IF 4 ELSE 2 THEN ;
+: TVK-RAISE-TO ( n n -- ) {: id:n kind:n :}
+   id TVK@ kind TVK-MEET
+   dup id TVK@ = IF drop EXIT THEN
+   id  id TVK@ TVK-KIND-TAG  TRAIL-PUSH
+   id cells TVK + ! ;
+: TVK-RAISE ( n -- ) TVK-RAW TVK-RAISE-TO ;
 
 
 : RVK-RAISE ( n -- )
@@ -2103,13 +2135,41 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 \ ptr t, or TYPED-BUFFER. `create BUF 256 allot  BUF 4 type` keeps certifying:
 \ the pointee binds to the `u8` CON, which stays admissible.
 variable RAW-PTR-HIT   \ a RAW cell refused a pointer in this token's unify; UF-CAPTURE names it as the pin closes
+variable BASE-PTR-HIT  \ a base-address cell refused a nominal or a pointer in this token's unify; UF-CAPTURE names it the same way
+
+\ FENCE-WHY answers ONE question for both fenced kinds, so TVK-BASE cannot drift
+\ from TVK-RAW's admissibility: 0 admissible, 1 nominal family or layout (the
+\ mint), 2 pointer, 3 linear con. A var argument is MET with `kind` (trailed)
+\ rather than judged, which is how the kind rides `+`, `-`, `cell+`, `char+`,
+\ `1+`, `1-` -- whose rows keep the base's pointee var -- and out through `@`.
+\ `term` is already resolved.
+: FENCE-WHY ( n n -- n ) {: t:n kind:n :}
+   t ISVAR IF t PAY kind TVK-RAISE-TO 0 EXIT THEN
+   t TAG T-PARAM = IF 1 EXIT THEN
+   t TAG T-CON = IF t PAY CT-LINEAR? IF 3 ELSE 0 THEN EXIT THEN
+   t TAG T-PTR = IF 2 EXIT THEN
+   0 ;                                                \ atom / xt / row: engine raw-stores these -> admit
+
 : RAW-OK? ( n -- bool )   \ may a RAW cell absorb resolved `term`? (meets var RAW)
-   T-RES
-   dup ISVAR IF PAY TVK-RAISE RES-TRUE EXIT THEN     \ var: meet -> RAW (trailed)
-   dup TAG T-PARAM = IF drop RES-FALSE EXIT THEN     \ nominal family / layout -> reject (the mint)
-   dup TAG T-CON = IF PAY CT-LINEAR? 0= EXIT THEN    \ plain scalar / role OK; linear con NO
-   dup TAG T-PTR = IF drop -1 RAW-PTR-HIT ! RES-FALSE EXIT THEN   \ ptr: a raw cell is never an address
-   drop RES-TRUE ;                                    \ atom / xt / row: engine raw-stores these -> admit
+   T-RES TVK-RAW FENCE-WHY
+   dup 2 = IF -1 RAW-PTR-HIT ! THEN                   \ ptr: a raw cell is never an address
+   0= ;
+
+\ A BASE pointee is fenced in VALUE position and permissive inside a POINTEE
+\ (CUR-STRICT). That split is the rule: `data-base` and `NULL-PTR` address no
+\ declared element, so nothing READ through one may be a nominal identity or an
+\ address -- while the pointer itself is still an ordinary pointer to compare,
+\ subtract or store, which is all any honest use makes of it. `ptr thing
+\ NULL-PTR =` binds `thing` inside a `ptr` and certifies; `NULL-PTR + @` read as
+\ a `thing` or a `ptr n` binds at top level and does not. The permissive arm
+\ still MEETS, so a wrapper that publishes the derived pointer as `( -- ptr a )`
+\ restricts its own declared quantifier and NP-CHECK refuses it -- which is the
+\ point: such a wrapper mints whatever its caller asks for.
+: BASE-BLOCK? ( n -- bool )   \ resolved term; may a base-address cell NOT absorb it?
+   TVK-BASE FENCE-WHY
+   dup 0= IF drop RES-FALSE EXIT THEN
+   drop CUR-STRICT @ 0 <> IF RES-FALSE EXIT THEN      \ pointee position: the pointer, not the cell
+   -1 BASE-PTR-HIT ! RES-TRUE ;
 \ THE ARMED WINDOW IS THE SANCTIONED MINT, and it is exempt here for the same
 \ reason NOMPTR-BLOCK? exempts it: LAYOUT-INTRO is set only while CHECK coerces
 \ the OUTPUT row of the accessor a storage definer just generated, keyed on the
@@ -2119,10 +2179,11 @@ variable RAW-PTR-HIT   \ a RAW cell refused a pointer in this token's unify; UF-
 \ was `data-base <baked offset> +` -- an address no relocation pass can see,
 \ which is what put another table's writes on BMID's cells in a merged engine
 \ (dot habu-bmid-module-id-ec6c709b, src/core/layout-buffer.f LBUF-SOURCE).
-: RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates the RAW cell discipline?
+: RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates a cell discipline?
    LAYOUT-INTRO @ 0 <> IF 2drop RES-FALSE EXIT THEN  \ the definer's own introduction form
-   over TVK-RAW? 0= IF 2drop RES-FALSE EXIT THEN     \ ordinary var: never blocks
-   nip RAW-OK? 0= ;                                   \ RAW var: `term` must be RAW-admissible
+   over TVK-RAW? IF nip RAW-OK? 0= EXIT THEN         \ RAW var: `term` must be RAW-admissible
+   over TVK-BASE? 0= IF 2drop RES-FALSE EXIT THEN    \ ordinary var: never blocks
+   nip T-RES BASE-BLOCK? ;                            \ base-address var: value position is fenced
 
 \ A generated constructor's result can ground one of its effect variables before
 \ that same variable meets the payload value. Permit that grounding only inside
@@ -2535,6 +2596,7 @@ variable LTC-P
 26 constant MD-RAW-PTR        \ a pointer met an undeclared raw storage cell (RAW-OK? T-PTR)
 27 constant MD-RAW-FIELD      \ ptr-field on an undeclared raw storage base; same E-RAW-CELL-PTR code, prose names 'ptr-field'
 28 constant MD-UNDERFLOW      \ a step reached under the definition's declared inputs (STEP-BORROWS?)
+29 constant MD-BASE-PTR       \ a nominal or a pointer read through a base address (BASE-BLOCK?); same E-RAW-CELL-PTR code, prose names data-base / NULL-PTR
 
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
@@ -2567,6 +2629,7 @@ variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
    exp DEXP !  act DACT !
    UF>DIAG
    RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
+   BASE-PTR-HIT @ IF MD-BASE-PTR MDIAG! THEN   \ the base-address refusal names itself the same way (BASE-BLOCK?)
    -1 FAILSET ! ;
 
 \ --- input underflow (dot habu-name-an-input-45ee675e) -------------------------
@@ -6547,6 +6610,7 @@ defer E-I-FOREIGN-CON ( n -- n )
       EN-VAR of
          r@ EN.A @ E-I-TV                                  \ fresh var term
          r@ EN.B @ TVK-RAW = IF dup PAY TVK-RAW! THEN       \ restore persisted RAW kind on the fresh var
+         r@ EN.B @ TVK-BASE = IF dup PAY TVK-BASE! THEN     \ and the base-address kind of `data-base` / `NULL-PTR`
          r> drop
       endof
       EN-ROW of
@@ -6913,6 +6977,16 @@ variable PE-EFF-ID
 \ application.
 : PE-RAW! ( n -- n ) dup PAY TVK-RAW! ;
 
+\ BASE-kinds a prototype var, for the two BASE-ADDRESS rows -- `data-base` and
+\ `NULL-PTR` (src/core/cell-effects.f), the only pointers in the language that
+\ are not the address OF a declared element. The minted pointee is TVK-BASE, so
+\ the pointer still compares, subtracts and stores like any pointer while
+\ nothing read THROUGH it can be a nominal identity or an address. E-COPY reads
+\ the kind at PE-CLOSE and bakes it onto the stored effect (EN.B); E-INST
+\ re-freshens it per application, exactly as for PE-RAW!.
+: PE-BASE! ( n -- n ) dup PAY TVK-BASE! ;
+: PE-PTR-A-BASE ( -- n ) PE-A PE-BASE! PE-PTR ;
+
 \ A QUOTATION operand for a prim row. `PE-Q` opens one, PE-QIN / PE-QOUT
 \ accumulate the quotation's own data rows exactly the way PE-IN / PE-OUT
 \ accumulate the prim's, and `;PE-Q` closes them into one `[ in -- out ]` term
@@ -7032,6 +7106,7 @@ variable PE-SPEC-I   variable PE-SPEC-J
    code PRIM-SPEC:A-U8       = IF PE-U8 PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-PTR      = IF PE-SPEC-POP PE-PTR  PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-RAW      = IF PE-SPEC-POP PE-RAW! PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-BASE     = IF PE-SPEC-POP PE-BASE! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-QUOT     = IF PE-Q EXIT THEN
    code PRIM-SPEC:A-QUOT-END = IF ;PE-Q PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-FINALLY  = IF PE-FINALLY EXIT THEN
@@ -12916,7 +12991,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
-   0 RAW-PTR-HIT !
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !
    TKF TKFU @ LAYOUT-XPORT-TOK? LAYOUT-XPORT !    \ transport op? layout value moves whole
    TOK0 @ IF NAME-TOK ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
@@ -12961,12 +13036,13 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
-   \ The raw-cell refusals name themselves where they are raised: the value
-   \ position in UF-CAPTURE, `ptr-field` in RAW-FIELD-TOK?. Nothing is left to
-   \ collect here -- the flag only has to be dropped, because TRY-PRIMS applies
-   \ candidate rows in turn (`V @ cell+` raises it on the `ptr a -- ptr a` row
-   \ and then succeeds on `n -- n`) and the next token must start clean.
-   0 RAW-PTR-HIT !
+   \ The raw-cell and base-address refusals name themselves where they are
+   \ raised: the value position in UF-CAPTURE, `ptr-field` in RAW-FIELD-TOK?.
+   \ Nothing is left to collect here -- the flags only have to be dropped,
+   \ because TRY-PRIMS applies candidate rows in turn (`V @ cell+` raises one on
+   \ the `ptr a -- ptr a` row and then succeeds on `n -- n`) and the next token
+   \ must start clean.
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -13082,9 +13158,14 @@ variable NP-SEEN-N
    -1 NPBAD !  0 NPBAD-KIND !
    oid NP-LETTER NPBAD-Q1 !  0 NPBAD-Q2 !  rt NPBAD-TERM ! ;
 
+\ Kind 3 is the raw-storage restriction; kind 4 is the base-address one, so a
+\ wrapper that publishes `data-base OFF +` as `( -- ptr a )` is told which rule
+\ it broke and what to write instead (a concrete pointee), rather than being
+\ sent looking for a `variable` it never mentions.
 : NP-FAIL-KIND ( n n -- ) {: oid:n rt:n :}
    NPBAD @ IF EXIT THEN
-   -1 NPBAD !  3 NPBAD-KIND !
+   -1 NPBAD !
+   rt PAY TVK-BASE? IF 4 ELSE 3 THEN NPBAD-KIND !
    oid NP-LETTER NPBAD-Q1 !  0 NPBAD-Q2 !  rt NPBAD-TERM ! ;
 
 : NP-FAIL-ALIAS ( n n -- )   \ two declared quantifiers unified (first-wins)
@@ -13108,6 +13189,51 @@ variable NP-SEEN-N
       NP-SEEN-N @ 1 + NP-SEEN-N !
    THEN ;
 
+create NP-INVARS NP-CAP cells allot   variable NP-INVARS-N   \ declared input var ids (dedup)
+create NP-OUTVARS NP-CAP cells allot  variable NP-OUTVARS-N  \ declared output var ids (dedup)
+variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
+: NP-INVARS+ ( n -- ) {: id:n :}
+   0 BEGIN dup NP-INVARS-N @ < WHILE
+      dup cells NP-INVARS + @ id = IF drop EXIT THEN  1 +
+   REPEAT drop
+   NP-INVARS-N @ NP-CAP < IF
+      id NP-INVARS-N @ cells NP-INVARS + !  NP-INVARS-N @ 1 + NP-INVARS-N !
+   THEN ;
+: NP-INVARS-HAS? ( n -- bool ) {: id:n :}
+   0 BEGIN dup NP-INVARS-N @ < WHILE
+      dup cells NP-INVARS + @ id = IF drop RES-TRUE EXIT THEN  1 +
+   REPEAT drop RES-FALSE ;
+: NP-OUTVARS+ ( n -- ) {: id:n :}
+   0 BEGIN dup NP-OUTVARS-N @ < WHILE
+      dup cells NP-OUTVARS + @ id = IF drop EXIT THEN  1 +
+   REPEAT drop
+   NP-OUTVARS-N @ NP-CAP < IF
+      id NP-OUTVARS-N @ cells NP-OUTVARS + !  NP-OUTVARS-N @ 1 + NP-OUTVARS-N !
+   THEN ;
+: NP-OUTVARS-HAS? ( n -- bool ) {: id:n :}
+   0 BEGIN dup NP-OUTVARS-N @ < WHILE
+      dup cells NP-OUTVARS + @ id = IF drop RES-TRUE EXIT THEN  1 +
+   REPEAT drop RES-FALSE ;
+: NP-VARS+ ( n -- )   \ one collector, two sets; NP-VARSET picks
+   NP-VARSET @ IF NP-OUTVARS+ ELSE NP-INVARS+ THEN ;
+
+\ A base-address kind that reached a declared quantifier through an INPUT is not
+\ a restriction the signature has to spell. `: RELEASE ( ptr ptr a -- ) ...
+\ NULL-PTR cb ! ;` stores the null the language's own reset code stores, and `a`
+\ is the pointee of a cell the word was HANDED, not something the body minted;
+\ the kind still rides the published effect, so every caller's fetch through
+\ that quantifier is fenced where it lands. A quantifier the body raises and
+\ then PUBLISHES has no such excuse -- `( -- ptr a ) data-base OFF +` hands its
+\ caller the choice of element type for engine DATA, which is the wrapper this
+\ rule exists to refuse, and it is named here rather than at each of its uses.
+\ INPUT-ONLY, not merely input: `: LEAK ( ptr a -- ptr a ) drop data-base 8 + ;`
+\ mentions `a` on both sides, and excusing it let the caller pick the pointee
+\ again through `ptr thing LEAK @` -- measured, it forged.
+: NP-KIND-EXCUSED? ( n n -- bool ) {: oid:n newk:n :}
+   newk TVK-BASE <> IF RES-FALSE EXIT THEN
+   oid NP-OUTVARS-HAS? IF RES-FALSE EXIT THEN
+   oid NP-INVARS-HAS? ;
+
 : NP-CHECK-ONE ( n n -- )   \ preserve the declared quantifier and its kind
    {: oid:n kind:n :}
    oid MK-VAR T-RES {: rt:n :}
@@ -13116,7 +13242,7 @@ variable NP-SEEN-N
       EXIT
    THEN
    rt PAY TVK@ kind <> IF
-      oid rt NP-FAIL-KIND EXIT
+      oid rt PAY TVK@ NP-KIND-EXCUSED? 0= IF oid rt NP-FAIL-KIND EXIT THEN
    THEN
    rt PAY NP-SEEN-FIND dup 0 < IF
       drop rt PAY oid NP-SEEN-ADD                     \ first sighting of this root
@@ -13136,21 +13262,9 @@ variable NP-SEEN-N
 \ Complements NP-CHECK's specialization and alias checks on all declared types. Raw declared identity (PAY, no T-RES): the body's speculative
 \ binds (a laundering combinator that unified u:=t) do not hide a var whose
 \ declared occurrences are all outputs.
-create NP-INVARS NP-CAP cells allot   variable NP-INVARS-N   \ declared input var ids (dedup)
 variable NP-CELL-TERM   \ output cell-family term currently scanned (for the diagnostic)
 variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recursive)
 
-: NP-INVARS+ ( n -- ) {: id:n :}
-   0 BEGIN dup NP-INVARS-N @ < WHILE
-      dup cells NP-INVARS + @ id = IF drop EXIT THEN  1 +
-   REPEAT drop
-   NP-INVARS-N @ NP-CAP < IF
-      id NP-INVARS-N @ cells NP-INVARS + !  NP-INVARS-N @ 1 + NP-INVARS-N !
-   THEN ;
-: NP-INVARS-HAS? ( n -- bool ) {: id:n :}
-   0 BEGIN dup NP-INVARS-N @ < WHILE
-      dup cells NP-INVARS + @ id = IF drop RES-TRUE EXIT THEN  1 +
-   REPEAT drop RES-FALSE ;
 
 \ NP-INVARS-WALK ( t -- ) : raw-collect every declared var id reachable in a term
 \ OR a stack row, descending through ptr pointees, quotation effect rows, and
@@ -13162,7 +13276,7 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
          P>REST R-RES
       REPEAT drop EXIT
    THEN drop
-   t ISVAR IF t PAY NP-INVARS+ EXIT THEN
+   t ISVAR IF t PAY NP-VARS+ EXIT THEN
    t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    t TAG T-QUOT = IF
       t Q>DIN  TWALK-DEEPER RECURSE TWALK-SHALLOWER
@@ -13248,7 +13362,7 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    NPBAD @ IF EXIT THEN
    SGIN @ NP-ROW-HAS-FIELD? IF EXIT THEN
    SGHASR @ IF SGRIN @ NP-ROW-HAS-FIELD? IF EXIT THEN THEN
-   0 NP-INVARS-N !  TWALK-RESET
+   0 NP-INVARS-N !  0 NP-VARSET !  TWALK-RESET
    SGIN @ NP-INVARS-WALK
    SGHASR @ IF SGRIN @ NP-INVARS-WALK THEN
    TWALK-RESET
@@ -13257,6 +13371,14 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
 
 : NP-CHECK ( -- )   \ check the quantifiers captured before the body ran
    0 NP-SEEN-N !
+   0 NP-INVARS-N !  0 NP-OUTVARS-N !                \ the two declared quantifier sets, for NP-KIND-EXCUSED?
+   0 NP-VARSET !  TWALK-RESET
+   SGIN @ NP-INVARS-WALK
+   SGHASR @ IF SGRIN @ NP-INVARS-WALK THEN
+   1 NP-VARSET !  TWALK-RESET
+   SGOUT @ NP-INVARS-WALK
+   SGHASR @ IF SGROUT @ NP-INVARS-WALK THEN
+   0 NP-VARSET !
    0 BEGIN dup NP-ORIG-N @ < WHILE
       dup cells NP-ORIG + @
       over cells NP-ORIG-KIND + @ NP-CHECK-ONE
@@ -13802,7 +13924,7 @@ variable CK-GRAPH-WIDTH-BAD
    id 0 < id count >= or IF ASIG-GRAPH-DIE THEN
    row IF
       kind 0 <> kind RVK-QUOT <> and kind RVK-INFERRED <> and IF ASIG-GRAPH-DIE THEN
-   ELSE kind TVK-ANY <> kind TVK-RAW <> and IF ASIG-GRAPH-DIE THEN THEN
+   ELSE kind TVK-ANY <> kind TVK-RAW <> and kind TVK-BASE <> and IF ASIG-GRAPH-DIE THEN THEN
    row IF id 0 CK-GRAPH-PTR ER.TVN @ + ELSE id THEN cells
    CK-GRAPH-MAP-U @ + CK-GRAPH-SLOT {: slot:ptr :}
    slot @ 0 <> slot @ kind 1+ <> and IF ASIG-GRAPH-DIE THEN
@@ -14202,7 +14324,7 @@ ASIG-GRAPH-CHECK-INSTALL
    0 CF-LOOPS !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
-   0 RAW-PTR-HIT !
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    NULL-PTR SGA !  0 SGU !

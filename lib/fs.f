@@ -75,19 +75,19 @@ $2F constant FS-SLASH
    FS-PATHZ-CAP FS-ABI:PATHZ-BYTES <> if E-FS-BAND throw then ;
 FS-BAND-AGREE
 
-: FS-IO-FD ( -- ptr a )
+: FS-IO-FD ( -- ptr n )
    data-base FS-ABI:FD-OFF + ;
 
-: FS-IO-LEN ( -- ptr a )
+: FS-IO-LEN ( -- ptr n )
    data-base FS-ABI:LEN-OFF + ;
 
-: FS-IO-RD ( -- ptr a )
+: FS-IO-RD ( -- ptr n )
    data-base FS-ABI:RD-OFF + ;
 
-: FS-IO-OFF ( -- ptr a )
+: FS-IO-OFF ( -- ptr n )
    data-base FS-ABI:OFF-OFF + ;
 
-: FS-IO-WR ( -- ptr a )
+: FS-IO-WR ( -- ptr n )
    data-base FS-ABI:WR-OFF + ;
 
 : FS-STAT-BUF ( -- ptr u8 )

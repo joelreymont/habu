@@ -130,11 +130,17 @@ variable PRIOR-TIER
 
 TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
-: DISPATCH-CELL ( -- ptr a )  data-base NCOMP-DISPATCH:XT-CELL + ;
-: DISPATCH-KEPT? ( -- bool )  DISPATCH-CELL @ ORIG-XT @ = ;
+\ This file never INSTALLS a dispatch; it only reads the cell to see whether the
+\ tool put the original back, and `=` has no row over quotation terms. So the
+\ test's accessor declares the cell as the machine word it compares, while the
+\ tool's own accessor (tools/compile-floor.f) declares the same offset as the xt
+\ cell it stores through with `xt!`. Each names what it reaches; a shared
+\ `( -- ptr a )` named neither and let either caller pick.
+: DISPATCH-WORD ( -- ptr n )  data-base NCOMP-DISPATCH:XT-CELL + ;
+: DISPATCH-KEPT? ( -- bool )  DISPATCH-WORD @ ORIG-XT @ = ;
 : TIER-KEPT? ( -- bool )  tier@ PRIOR-TIER @ = ;
 
-DISPATCH-CELL @ ORIG-XT !
+DISPATCH-WORD @ ORIG-XT !
 
 \ Requiring the tool RUNS it. Empty the mock argv first so that load-time run
 \ is the reporting one whatever argv this file itself was given.

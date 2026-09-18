@@ -731,6 +731,10 @@ SUITE input-underflow-refusals
    test/compiler/input-underflow-refusals.f
 ;SUITE
 
+SUITE base-pointer-arith-refusals
+   test/compiler/base-pointer-arith-refusals.f
+;SUITE
+
 SUITE object-record-codec
    lib/object-test.f
 ;SUITE

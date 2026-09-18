@@ -11,9 +11,6 @@
 \ history ring on up/down. A line longer than LLINE-MAX is refused by name and
 \ read again instead of being truncated.
 
-: DATAB ( -- ptr a )
-   data-base ;
-
 create TIOB0 80 allot           \ original (canonical) termios, saved at INSTALL
 create TIOB 80 allot            \ working termios
 create KB 8 allot               \ 1-byte key buffer
@@ -218,8 +215,10 @@ defer REPL-READ ( -- ptr u8 n )
    while LINE-FULL repeat
    DONE @ 2 = IF NULL$ ELSE HSAVE  LBUF LLEN @ THEN ;
 
-: REPLH-PTR ( -- ptr a )
-   DATAB REPLH-CELL + ;
+\ The cell holds the line reader itself, so the accessor says so: a bare
+\ `( -- ptr a )` over a DATA offset let every caller pick the element type.
+: REPLH-PTR ( -- ptr [ -- ptr u8 n ] )
+   data-base REPLH-CELL + ;
 
 : REPLH! ( [ -- ptr u8 n ] -- )
    REPLH-PTR xt! ;

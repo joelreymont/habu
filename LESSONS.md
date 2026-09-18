@@ -9391,3 +9391,55 @@ the image's own code base. The same shortcut IS sound one class over -- an image
 whose capture window is empty ends in an A64 instruction word, and no A64
 encoding has a zero top byte -- which is exactly why it looks safe everywhere.
 A zero byte is data, not absence: ask the emitter how many rows it wrote.
+
+- **A pointer that is the address OF nothing needs a pointee kind of its own,
+  and it has to be fenced by POSITION, not by admissibility.** `data-base` and
+  `NULL-PTR` published `-- ptr a` with an ordinary pointee, so pointee-polymorphic
+  arithmetic let the CALLER pick the element type: `NEWTYPE thing 0  : F ( n --
+  thing ) NULL-PTR + @ ;` certified, and so did `data-base @` with no arithmetic
+  at all. Reusing `TVK-RAW` there is wrong twice over — the tree's honest uses of
+  a null are `NULL-PTR X !`, `=`, `-` and `0=` (140 mentions, ZERO of them
+  arithmetic), and every one of those binds the pointee *inside* a `ptr`, which a
+  RAW pointee refuses. `TVK-BASE` (`src/core/checker.f` `BASE-BLOCK?`) reuses
+  RAW's admissibility and splits on `CUR-STRICT`: fenced in value position,
+  permissive inside a pointee. Hooking the ARITHMETIC token instead would have
+  been strictly worse — it misses offset zero, and `ptr a ptr a -- n` would have
+  fenced the distance row that `NULL-PTR -` needs.
+- **Fencing a pointee kind makes every `( -- ptr a )` wrapper over that base a
+  compile error, and that is the finding, not the collateral.** A first scan named
+  25 words in `src/`, `lib/`, `tools/` and `test/` that returned a
+  `data-base`-derived pointer under a declared quantifier, and the build found a
+  second tier of re-exports and one-line aliases behind them (28 in the end); `require lib/string.f  : F ( -- thing ) SB-LEN @ ;`
+  certified on the shipped engine, so the forgery was already reachable through
+  the standard library. The repair is to name the pointee the cell holds — the
+  same files already spelled it for their siblings (`FFI-KPARAM# ( -- ptr n )`,
+  `FMT-NUM-BUF ( -- ptr u8 )`). Where one cell is honestly read at two types, two
+  accessors each naming what they reach is the checked form (`FFI-BUF`/`FFI-FBUF`
+  was already this shape; `FFI-STACK-BUF`/`FFI-STACK-FBUF` and
+  `ENGINE-ROW`/`ENGINE-ROW-CLEAR` now are).
+- **`NP-CHECK` must excuse a kind that reached a declared quantifier through an
+  INPUT-ONLY position — and "input-only" is load-bearing, not pedantry.**
+  `: RELEASE ( ptr ptr a -- ) … NULL-PTR cb ! ;` (`src/core/dynamic-storage.f`)
+  raises `a` through the store, and the first cut rejected it with
+  E-NONPARAMETRIC-EFFECT; the kind still rides the published effect and E-INST
+  re-freshens it, so every caller's fetch through that quantifier is fenced where
+  it lands and nothing is lost by excusing it. But excusing every quantifier that
+  merely APPEARS in an input reopened the whole rule:
+  `: LEAK ( ptr a -- ptr a ) drop data-base 8 + ;` was excused, and
+  `: USE ( ptr thing -- thing ) LEAK @ ;` then certified — measured on the built
+  engine, it forged. `NP-KIND-EXCUSED?` therefore requires present-in-inputs AND
+  absent-from-outputs; `NP-INVARS-WALK` fills either set through `NP-VARSET`.
+- **A test that must compile a REFUSED program does not need `evaluate` behind a
+  `TRUSTED:` row.** `CHECK-CANDIDATE!` and `CHECK-QUIET-CANDIDATE!` are public
+  checker axioms (`src/core/checker.f`) taking `NAME ( effect ) body` and
+  answering the verdict, and with `DIAG-BUFFER!`/`DIAG-JSON!` armed the JSON
+  diagnostic is assertable — code, `repair_class`, `reason` and `suggestion`.
+  `test/compiler/base-pointer-arith-refusals.f` pins a whole rule with no trusted
+  seam at all, where `test/compiler/raw-cell-pointer-refusals.f` still carries
+  `TRUSTED: EV ( ptr u8 n -- ) evaluate ;`.
+- **Widening the unification trail's tag is what makes two fenced kinds safe.**
+  `TRAIL-PUSH` packed `id*4 + tag` with tag 2 meaning "put TVK-ANY back", so a
+  rolled-back raise reset a var to ANY whatever it had been. With `ANY < BASE <
+  RAW` that silently dropped the base fence on every row an abandoned
+  prim-overload trial touched. The tag is 3 bits now (`id*8`), tag 4 restores
+  TVK-BASE, and `TVK-RAISE-TO` records the kind it displaced.

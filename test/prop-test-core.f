@@ -655,7 +655,10 @@ TRUSTED: EVAL-RUNNER ( -- n )
    s" : PROP-PC ( -- n ) dbase@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) check@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) ndict@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- ptr a ) data-base ; " s" " 1 CHECK-CASE
+   \ data-base's pointee is a base address, which no definition may publish
+   \ under a type variable (dot habu-bound-ptr-arithmetic-8bf6b54a); the case is
+   \ about its ARITY, so it names a pointee the way any honest caller does.
+   s" : PROP-PC ( -- ptr n ) data-base ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) prot-wid-room ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) get-current ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) checker-scope-depth ; " s" " 1 CHECK-CASE

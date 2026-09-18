@@ -42,7 +42,7 @@ STR-MAX-I64 negate 1 - constant STR-MIN-I64
 : SB-BUF ( -- ptr u8 )
    data-base STRING-ABI:SB-BUF-OFF + BYTE-VIEW ;
 
-: SB-LEN ( -- ptr a )
+: SB-LEN ( -- ptr n )
    data-base STRING-ABI:SB-LEN-OFF + ;
 
 : BUFFER: ( n -- )

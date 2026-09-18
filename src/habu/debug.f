@@ -27,16 +27,16 @@ $D4200000 constant BRK0
 \ raw address display, and executable patching.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: BP-SLOT-ADDR ( n -- ptr ptr u8 )
-   SLOT-OFF DATAB + ;
+   SLOT-OFF data-base + ;
 
 TRUSTED: BP-SLOT-INSTR ( n -- ptr n )
-   SLOT-OFF 8 + DATAB + ;
+   SLOT-OFF 8 + data-base + ;
 
 TRUSTED: BP-SLOT-HITS ( n -- ptr n )
-   SLOT-OFF 16 + DATAB + ;
+   SLOT-OFF 16 + data-base + ;
 
 TRUSTED: BP-SLOT-CTRL ( n -- ptr n )
-   SLOT-OFF 24 + DATAB + ;
+   SLOT-OFF 24 + data-base + ;
 
 : BP-NULL ( -- ptr u8 )
    NULL-PTR ;

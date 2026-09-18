@@ -33,22 +33,31 @@ $40C8 constant FFI-REG-LEN-BUF-OFF
 $4148 constant FFI-STACK-LEN-BUF-OFF
 $41C8 constant FFI-SCRATCH-END
 
-: FFI-BUF ( -- ptr a )
+: FFI-BUF ( -- ptr n )
    data-base FFI-BUF-OFF + ;
 
 : FFI-FBUF ( -- ptr r )
    data-base FFI-FBUF-OFF + ;
 
-: FFI-STACK-BUF ( -- ptr a )
+\ The spill area is prepacked: slot `idx` carries an integer for an integer
+\ argument and a float for a float one, and only the signature being marshalled
+\ says which. Two accessors declare the same offset at the two pointees the two
+\ slot words really reach, the way FFI-BUF and FFI-FBUF declare the register
+\ areas; a single `( -- ptr a )` let the CALLER pick the element type of engine
+\ DATA, which is the mint this rule removes.
+: FFI-STACK-BUF ( -- ptr n )
    data-base FFI-STACK-BUF-OFF + ;
 
-: FFI-KPARAM-PBUF ( -- ptr a )
+: FFI-STACK-FBUF ( -- ptr r )
+   data-base FFI-STACK-BUF-OFF + ;
+
+: FFI-KPARAM-PBUF ( -- ptr n )
    data-base FFI-KPARAM-PBUF-OFF + ;
 
-: FFI-KPARAM-VBUF ( -- ptr a )
+: FFI-KPARAM-VBUF ( -- ptr n )
    data-base FFI-KPARAM-VBUF-OFF + ;
 
-: FFI-DLBUF ( -- ptr a )
+: FFI-DLBUF ( -- ptr n )
    data-base FFI-DLBUF-OFF + ;
 
 : FFI-KPARAM# ( -- ptr n )
@@ -91,7 +100,7 @@ $41C8 constant FFI-SCRATCH-END
    FFI-STACK-BUF idx cells + ;
 : FFI-STACK-FSLOT ( n -- ptr r ) {: idx:n :}
    idx FFI-MAX-ARGS FFI-CHECK-INDEX
-   FFI-STACK-BUF idx cells + ;
+   FFI-STACK-FBUF idx cells + ;
 : FFI-ARG! ( n n -- ) {: v:n idx:n :}
    v idx FFI-SLOT ! ;
 : FFI-PTR-ARG! ( ptr a n -- ) {: p:ptr idx:n :}
@@ -363,9 +372,9 @@ public
 : X8-READABLE! ( ptr a -- ) 8 READABLE! ;
 : X8-WRITABLE! ( ptr a n -- ) 8 WRITABLE! ;
 
-: ARGS ( -- ptr a ) FFI-BUF ;
+: ARGS ( -- ptr n ) FFI-BUF ;
 : FLOATS ( -- ptr r ) FFI-FBUF ;
-: STACK ( -- ptr a ) FFI-STACK-BUF ;
+: STACK ( -- ptr n ) FFI-STACK-BUF ;
 : REG-LENS ( -- ptr n ) FFI-REG-LEN-BUF ;
 : STACK-LENS ( -- ptr n ) FFI-STACK-LEN-BUF ;
 

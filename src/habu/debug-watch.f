@@ -21,18 +21,22 @@ TRUSTED: BPW-PRINT-ADDR ( ptr n -- )
    . ;
 
 TRUSTED: BPW-DATA-CELL ( n -- ptr n )
-   DATAB + ;
+   data-base + ;
 
+\ The cell holds the table's ADDRESS, so it is reached through `ptr-field`,
+\ the declared pointer-cell door, not by reading a plain DATA offset: nothing
+\ fetched straight out of a base address is an address (dot
+\ habu-bound-ptr-arithmetic-8bf6b54a).
 : BPW-BASE! ( -- )
-   DATAB BPWBASE-CELL + {: cell:ptr :}
+   data-base BPWBASE-CELL + 0 ptr-field {: cell:ptr :}
    cell ptr-cell-mark
    0 BPW-TAB cell ! ;
 
 : BPW-N@ ( -- n )
-   DATAB BPWN-CELL + @ ;
+   data-base BPWN-CELL + @ ;
 
 : BPW-N! ( n -- )
-   DATAB BPWN-CELL + ! ;
+   data-base BPWN-CELL + ! ;
 
 : BPW-SLOT ( n -- ptr ptr n )
    BPW-TAB ;
