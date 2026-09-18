@@ -261,6 +261,135 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s" hb: dictionary full at: " s" dict-capacity exit diagnostic" GE-EXPECT-ERR-HAS
    s" PASS: dictionary-capacity exit is labeled" type cr ;
 
+\ Per-definition body-text capacity (dot habu-name-the-per-56a594f3). One
+\ definition's captured source text lives in BODYBUF-CAP bytes of the DATA header
+\ (src/habu/layout.f), the buffer the check hook certifies from. A definition
+\ holding about 8 KiB of string literals used to refuse with the offending
+\ LITERAL echoed to fd 2 — no label, no newline, no count, no ceiling and no
+\ definition name — so a consumer had only "status 71" to act on (aspen/Tender
+\ 2026-09-17, nine 900-byte `s"` arms; eight loaded). The refusal now states the
+\ buffer, the ceiling, the definition and the bytes the capture needed, and it is
+\ a catchable rc-71 throw inside evaluate instead of a raw exit.
+\ Both fixtures scale with BODYBUF-CAP: layout.f is in the runtime prefix, so the
+\ suite reads the same constant the engine was built with.
+27 constant GE-BCAP-FIXED   \ what the fixture's own tokens cost the capture: `GEBIG ( -- ptr u8 n ) s" ` is 25 bytes of tokens-plus-separators, and the literal is captured with its closing quote and one separator
+variable GE-BCAP-P          \ generated-source cursor offset
+variable GE-BCAP-I          \ copy/fill loop index
+variable GE-BCAP-N          \ literal payload bytes for the fixture being written
+
+: GE-BCAP-C ( ptr u8 n -- ) {: buf:ptr c:n :}
+   c buf GE-BCAP-P @ + c!
+   GE-BCAP-P @ 1+ GE-BCAP-P ! ;
+
+: GE-BCAP-S ( ptr u8 ptr u8 n -- ) {: buf:ptr a:ptr u:n :}
+   0 GE-BCAP-I !
+   begin GE-BCAP-I @ u < while
+      buf  a GE-BCAP-I @ + c@  GE-BCAP-C
+      GE-BCAP-I @ 1+ GE-BCAP-I !
+   repeat ;
+
+: GE-BCAP-FILL ( ptr u8 n -- ) {: buf:ptr u:n :}      \ u payload bytes
+   0 GE-BCAP-I !
+   begin GE-BCAP-I @ u < while
+      buf 97 GE-BCAP-C
+      GE-BCAP-I @ 1+ GE-BCAP-I !
+   repeat ;
+
+\ `: GEBIG ( -- ptr u8 n ) s" aaa…" ;` with GE-BCAP-N bytes of payload. The
+\ checker stays ON: the case this regression carries is checked application code.
+: GE-BCAP-WRITE ( ptr u8 NUM:alloc-byte-len -- ) {: buf:ptr len :}
+   0 GE-BCAP-P !
+   buf s" : GEBIG ( -- ptr u8 n ) s" GE-BCAP-S
+   buf 34 GE-BCAP-C  buf 32 GE-BCAP-C
+   buf GE-BCAP-N @ GE-BCAP-FILL
+   buf 34 GE-BCAP-C  buf 32 GE-BCAP-C  buf 59 GE-BCAP-C  buf 10 GE-BCAP-C
+   GE-SCRIPT-PATH GE-SCRIPT-U @ buf GE-BCAP-P @ WRITE-ALL ;
+
+: GE-BCAP-RUN ( n -- ) {: payload:n :}
+   payload GE-BCAP-N !
+   GT-ROOT s" hb-body-cap.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
+   BODYBUF-CAP 128 + MEM:BYTES-ALLOC-LEN [: GE-BCAP-WRITE ;] MEM:WITH-BYTES
+   GE-HB-RESET
+   GE-SCRIPT-PATH GE-SCRIPT-U @ RUNTIME-RUNNER:FILE-LOADER ;
+
+: GE-BCAP-DIAG$ ( n -- ptr u8 n ) {: needed:n :}
+   SB-RESET
+   s" hb: definition body text full at " SB-APPEND
+   BODYBUF-CAP FMT:SB-U
+   s"  bytes: GEBIG needs " SB-APPEND
+   needed FMT:SB-U
+   SB$ ;
+
+: GE-BODY-CAP ( -- )
+   \ a capture ending EXACTLY at BODYBUF-CAP is the most the bound admits
+   BODYBUF-CAP GE-BCAP-FIXED - GE-BCAP-RUN
+   0 s" body-capture at the ceiling compiles" GE-EXPECT-RC
+   \ one byte more refuses, by name, with the count it needed
+   BODYBUF-CAP GE-BCAP-FIXED - 1+ GE-BCAP-RUN
+   71 s" body-capacity exit rc" GE-EXPECT-RC
+   BODYBUF-CAP 1+ GE-BCAP-DIAG$ s" body-capacity exit diagnostic" GE-EXPECT-ERR-HAS
+   s" PASS: per-definition body-text capacity is named with its count" type cr ;
+
+\ BEGIN nesting per definition (dot habu-name-silent-engine-9b28ac13). The JIT
+\ snapshots the abstract value stack once per BEGIN into JIT-SNAP:FRAMES frames
+\ of DATA, and a definition that nested past them exited 75 with NOTHING on fd 2.
+\ Same ceiling, same exit code, now named with the depth the definition asked for.
+variable GE-NEST-P
+variable GE-NEST-I
+
+: GE-NEST-C ( ptr u8 n -- ) {: buf:ptr c:n :}
+   c buf GE-NEST-P @ + c!
+   GE-NEST-P @ 1+ GE-NEST-P ! ;
+
+: GE-NEST-S ( ptr u8 ptr u8 n -- ) {: buf:ptr a:ptr u:n :}
+   0 GE-NEST-I !
+   begin GE-NEST-I @ u < while
+      buf  a GE-NEST-I @ + c@  GE-NEST-C
+      GE-NEST-I @ 1+ GE-NEST-I !
+   repeat ;
+
+variable GE-NEST-N          \ BEGIN depth for the fixture being written
+variable GE-NEST-J
+
+: GE-NEST-WRITE ( ptr u8 NUM:alloc-byte-len -- ) {: buf:ptr len :}
+   0 GE-NEST-P !
+   buf s" : GENEST ( n -- n )" GE-NEST-S  buf 10 GE-NEST-C
+   0 GE-NEST-J !
+   begin GE-NEST-J @ GE-NEST-N @ < while
+      buf s"    begin dup 0 > while 1 -" GE-NEST-S  buf 10 GE-NEST-C
+      GE-NEST-J @ 1+ GE-NEST-J !
+   repeat
+   0 GE-NEST-J !
+   begin GE-NEST-J @ GE-NEST-N @ < while
+      buf s"    repeat" GE-NEST-S  buf 10 GE-NEST-C
+      GE-NEST-J @ 1+ GE-NEST-J !
+   repeat
+   buf s" ;" GE-NEST-S  buf 10 GE-NEST-C
+   GE-SCRIPT-PATH GE-SCRIPT-U @ buf GE-NEST-P @ WRITE-ALL ;
+
+: GE-NEST-RUN ( n -- ) {: depth:n :}
+   depth GE-NEST-N !
+   GT-ROOT s" hb-begin-nest.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
+   depth 40 * 64 + MEM:BYTES-ALLOC-LEN [: GE-NEST-WRITE ;] MEM:WITH-BYTES
+   GE-HB-RESET
+   GE-SCRIPT-PATH GE-SCRIPT-U @ RUNTIME-RUNNER:FILE-LOADER ;
+
+: GE-NEST-DIAG$ ( -- ptr u8 n )
+   SB-RESET
+   s" hb: BEGIN nesting full at " SB-APPEND
+   JIT-SNAP:FRAMES FMT:SB-U
+   s"  frames: GENEST needs " SB-APPEND
+   JIT-SNAP:FRAMES 1+ FMT:SB-U
+   SB$ ;
+
+: GE-BEGIN-NEST ( -- )
+   JIT-SNAP:FRAMES GE-NEST-RUN
+   0 s" BEGIN nesting at the frame ceiling compiles" GE-EXPECT-RC
+   JIT-SNAP:FRAMES 1+ GE-NEST-RUN
+   75 s" BEGIN-nesting exit rc" GE-EXPECT-RC
+   GE-NEST-DIAG$ s" BEGIN-nesting exit diagnostic" GE-EXPECT-ERR-HAS
+   s" PASS: BEGIN-nesting capacity is named with its depth" type cr ;
+
 \ DP heap (allot/,/c,/definer) must stop below the profiler counter band reserved at
 \ the top PROF-CNT-BYTES of the DATA region (layout.f). DP-CHECK (habu1.f) caps the
 \ heap at DATA-SIZE - PROF-CNT-BYTES so a large allot + prof-on can never let profiler
@@ -1031,6 +1160,8 @@ public
    GE-INTERP-LAYOUT
    WIDE-FETCH:RUN
    GE-DICT-FULL
+   GE-BODY-CAP
+   GE-BEGIN-NEST
    GE-DATA-FULL
    GE-DIV-MOD
    GE-PROCESS-PTY

@@ -125,6 +125,33 @@ variable LDEFKWGUARD  variable LDEFKWFAIL  variable LDEFKWMSG   \ definition-nam
 49 constant DEFKWMSG-LEN    \ byte length of the definition-name diagnostic (LDEFKWMSG)
 variable LDPBADMSG   \ DP-heap bound reject (habu1.f DP-CHECK, allot/,/c,/definer sinks) fd-2 message (dot habu-dictionary-allot-past-4e5c3c2b); label LDPBAD declared in habu1.f forward-ref block
 27 constant DPBADMSG-LEN    \ byte length of "hb: data space out of range" (LDPBADMSG); LDPBAD appends a newline. Was a bare silent exit_group(76)
+\ Capacity refusals that have a COUNT to state. A ceiling reached with nothing
+\ but an exit code costs the caller the whole measurement (LESSONS 2026-09-17):
+\ one line naming what filled up, the ceiling and the count is the fix, and
+\ lib/ffi-abi.f REPORT-FULL has the shape. LDIAGU writes a number on fd 2 and
+\ LDIAGDEF writes the definition being compiled, so a tail below composes a
+\ line from message spans and those two.
+\ THESE MESSAGE SPANS STATE THEIR OWN LENGTH: the -LEN words read the literal
+\ instead of repeating a hand-counted byte count the way the constants above do.
+\ Both forms are in this file on purpose; a new message should derive its length.
+variable LDIAGU     \ ( x9 = value ) unsigned decimal on fd 2, no newline (dot habu-name-silent-engine-9b28ac13)
+variable LDIAGDEF   \ ( -- ) the open definition's name on fd 2 (first token of the body buffer)
+variable LBCAPFULLMSG   variable LBCAPUNIT   \ per-definition body-capture overflow (habu1.f EMIT-BCAP at BODYBUF-CAP); label LBCAPFULL declared in habu1.f forward-ref block (dot habu-name-the-per-56a594f3)
+variable LSNAPNESTMSG   variable LSNAPUNIT   \ BEGIN-nesting overflow (jit.f EMIT-SNAP-NEST-CHECK at JIT-SNAP:FRAMES); label LSNAPNEST declared in jit.f
+variable LDIAGNEEDS     \ the shared " needs " between the ceiling and the count
+
+: BCAPFULL-MSG$ ( -- ptr u8 n )  s" hb: definition body text full at " ;
+: BCAP-UNIT$ ( -- ptr u8 n )     s"  bytes: " ;
+: SNAPNEST-MSG$ ( -- ptr u8 n )  s" hb: BEGIN nesting full at " ;
+: SNAP-UNIT$ ( -- ptr u8 n )     s"  frames: " ;
+: DIAG-NEEDS$ ( -- ptr u8 n )    s"  needs " ;
+
+: BCAPFULL-MSG-LEN ( -- n )  BCAPFULL-MSG$ nip ;
+: BCAP-UNIT-LEN ( -- n )     BCAP-UNIT$ nip ;
+: SNAPNEST-MSG-LEN ( -- n )  SNAPNEST-MSG$ nip ;
+: SNAP-UNIT-LEN ( -- n )     SNAP-UNIT$ nip ;
+: DIAG-NEEDS-LEN ( -- n )    DIAG-NEEDS$ nip ;
+
 variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exit-compile): a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it exit_group(x0) byte-identically to the old raw exit.
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
 32 constant CONVMSG-LEN   \ byte length of "hb: construct: unknown variant: " (EM-COMPILE-ADT-MODE)
@@ -556,6 +583,11 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LDPBADMSG LABEL@ LBL, s" hb: data space out of range" BYTES,                 \ DPBADMSG-LEN bytes; LDPBAD appends a newline (DP-heap allot bound)
    LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
    LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
+   LBCAPFULLMSG LABEL@ LBL, BCAPFULL-MSG$ BYTES,                         \ EM-BODY-CAP-DIE appends the ceiling, the unit, the definition, " needs ", the count, newline
+   LBCAPUNIT LABEL@ LBL, BCAP-UNIT$ BYTES,
+   LSNAPNESTMSG LABEL@ LBL, SNAPNEST-MSG$ BYTES,                         \ EM-SNAP-NEST-DIE composes the same line from JIT-SNAP:FRAMES
+   LSNAPUNIT LABEL@ LBL, SNAP-UNIT$ BYTES,
+   LDIAGNEEDS LABEL@ LBL, DIAG-NEEDS$ BYTES,
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
    LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
    SNAP-RELOC:LCALLMSG LABEL@ LBL, s" hb: snapshot call map mismatch" BYTES,  NL-KW 1 BYTES,     \ SNAP-RELOC:CALLMSG-LEN bytes incl. newline
@@ -9265,6 +9297,91 @@ public
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,   \ LQNL[1] = newline
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
+\ LDIAGU ( x9 = value ): unsigned decimal on fd 2, no newline. The diagnostic
+\ twin of prof.f LPROFNUM, which writes fd 1 and pads a column: a diagnostic
+\ never leaves through the output device (docs/genio.md), so a refusal with a
+\ count to state calls this rather than `u.`/G-PRINTU9. Zero prints "0" — the
+\ digit loop runs once before its test. Clobbers x0-x2, x9-x13, x16 (SYS,'s errno
+\ reconciliation) and x30, plus 32 bytes of sp scratch; x14, x15 and x17 survive,
+\ so a caller holds its count in one of those across the call.
+: EMIT-DIAGU ( -- )
+   LDIAGU LABEL@ LBL,
+   LBL {: dl:label :}
+   SP SP 32 SUBI,
+   12 SP 32 ADDI,
+   11 $A MOVZ,
+   dl LBL,
+      13 9 11 UDIV,  10 13 11 MUL,  10 9 10 SUB,
+      10 10 $30 ADDI,  12 12 1 SUBI,  10 12 0 STRB,
+      9 13 0 ADDI,  9 dl CBNZ,
+   0 2 MOVZ,  1 12 0 ADDI,  2 SP 32 ADDI,  2 2 12 SUB,  NR-WRITE SYS,
+   SP SP 32 ADDI,  RET, ;
+
+\ LDIAGDEF ( -- ): the name of the definition being compiled, on fd 2. It is the
+\ FIRST token of the body buffer (C-PUSH-DREC-NAME reads the same span for the
+\ certify record) and not DEF-TKA/DEF-TKL, which the virtual stack has already
+\ overwritten by the time a body-sized ceiling is reached (layout.f VVAL-OFF).
+\ Fail-closed: bounded by BODYLEN, so an empty capture writes nothing rather
+\ than a runaway. Clobbers x0-x2, x9, x10, x12, x13 and x30.
+: EMIT-DIAGDEF ( -- )
+   LDIAGDEF LABEL@ LBL,
+   LBL LBL {: scan:label done:label :}
+   9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)
+   10 0 MOVZ,                           \ x10 = name length
+   12 DATA BODYLEN-CELL LDR,            \ x12 = body length bound
+   scan LBL,
+      10 12 CMP,  C-GE done BCOND,
+      13 9 10 ADD,  13 13 0 LDRB,
+      13 $20 CMPI,  C-EQ done BCOND,    \ the seeded trailing space ends the name
+      13 done CBZ,                      \ NUL also ends it
+      10 10 1 ADDI,  scan B,
+   done LBL,
+   0 2 MOVZ,  1 9 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS,
+   RET, ;
+
+\ Per-definition body-capture capacity diagnostic (dot habu-name-the-per-56a594f3).
+\ habu1.f EMIT-BCAP wrote the CURRENT TOKEN to fd 2 and exit_group(71): a
+\ definition holding ~8 KiB of string literals refused with the offending literal
+\ echoed, no label, no newline, no count and no ceiling — "status 71" was all a
+\ consumer had (aspen/Tender 2026-09-17, nine 900-byte `s"` arms). This target
+\ names the buffer, its ceiling, the definition and the bytes the capture needed,
+\ then routes through the SAME LCOMPILEDIE tail with x0=71: a catchable throw
+\ inside evaluate (BCAP fails before the copy, so the rollback is clean), a
+\ fail-closed exit 71 at top level. No new exit code.
+\ Entered with x16 = BODYLEN + token + 1, the size the capture would have reached.
+\ It moves to x15 BEFORE the first write because SYS, reconciles errno in x16 and
+\ macOS passes the syscall number there: x16 does not survive one diagnostic line.
+: EM-BODY-CAP-DIE ( -- )
+   LBCAPFULL LABEL@ LBL,
+   15 16 0 ADDI,                                   \ x15 = the count, across every write below
+   0 2 MOVZ,  1 LBCAPFULLMSG LABEL@ ADR,  2 BCAPFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
+   9 BODYBUF-CAP MOVZ,  LDIAGU LABEL@ BL,
+   0 2 MOVZ,  1 LBCAPUNIT LABEL@ ADR,  2 BCAP-UNIT-LEN MOVZ,  NR-WRITE SYS,
+   LDIAGDEF LABEL@ BL,
+   0 2 MOVZ,  1 LDIAGNEEDS LABEL@ ADR,  2 DIAG-NEEDS-LEN MOVZ,  NR-WRITE SYS,
+   9 15 0 ADDI,  LDIAGU LABEL@ BL,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,   \ LQNL[1] = newline
+   0 71 MOVZ,  LCOMPILEDIE LABEL@ B, ;
+
+\ BEGIN-nesting capacity diagnostic (dot habu-name-silent-engine-9b28ac13).
+\ jit.f EMIT-SNAP-NEST-CHECK exited 75 with NOTHING on fd 2 when a definition
+\ nested BEGIN past the snapshot frame area, so a program that outgrew the JIT's
+\ per-definition frames died unattributably. Same line, same routing, same
+\ pre-existing exit code (75). Entered with x6 = the depth already held, so the
+\ frame this BEGIN asked for is x6 + 1; it moves to x15 for the same reason the
+\ body-capture count does.
+: EM-SNAP-NEST-DIE ( -- )
+   LSNAPNEST LABEL@ LBL,
+   15 6 1 ADDI,                                    \ x15 = the frame this BEGIN needs
+   0 2 MOVZ,  1 LSNAPNESTMSG LABEL@ ADR,  2 SNAPNEST-MSG-LEN MOVZ,  NR-WRITE SYS,
+   9 JIT-SNAP:FRAMES MOVZ,  LDIAGU LABEL@ BL,
+   0 2 MOVZ,  1 LSNAPUNIT LABEL@ ADR,  2 SNAP-UNIT-LEN MOVZ,  NR-WRITE SYS,
+   LDIAGDEF LABEL@ BL,
+   0 2 MOVZ,  1 LDIAGNEEDS LABEL@ ADR,  2 DIAG-NEEDS-LEN MOVZ,  NR-WRITE SYS,
+   9 15 0 ADDI,  LDIAGU LABEL@ BL,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 75 MOVZ,  LCOMPILEDIE LABEL@ B, ;
+
 : EM-EVAL-CLEAN-EXIT ( -- )
    LBL {: bounds:label :}
    13 DATA EVAL-TOP-CELL LDR,
@@ -9709,6 +9826,10 @@ package ENGINE-EMIT
    COMPILE-EMIT:EM-COMPILE-LEGACY
    EM-COMPILE-UNDEF
    EM-COMPILE-DIE
+   EMIT-DIAGU
+   EMIT-DIAGDEF
+   EM-BODY-CAP-DIE
+   EM-SNAP-NEST-DIE
    EM-COMPILE-EXIT
    EM-EVAL-THROW-RECOVER
    EM-COMMENT
@@ -9836,6 +9957,9 @@ package LABELS
    LBL LLOCWIDE !  LBL LLOCWIDEMSG !  LBL LLOCMANY !  LBL LLOCMANYMSG !
    LBL LCSTR !  LBL LCSTRMSG !
    LBL LDPBAD !  LBL LDPBADMSG !
+   LBL LDIAGU !  LBL LDIAGDEF !  LBL LDIAGNEEDS !
+   LBL LBCAPFULL !  LBL LBCAPFULLMSG !  LBL LBCAPUNIT !
+   LBL LSNAPNEST !  LBL LSNAPNESTMSG !  LBL LSNAPUNIT !
    LBL LCOMPILEDIE !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !

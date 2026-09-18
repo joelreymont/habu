@@ -1014,6 +1014,34 @@ address arithmetic at the public boundary.
   Write the branch without it, `if CHILD-MAIN then`: control reaches the rest
   of the definition only on the paths that can return.
 
+## Engine limits ordinary source reaches
+
+Three ceilings are reachable from plain Habu rather than from a runaway, and
+each refuses by name with the count it saw and the ceiling it hit. None of them
+truncates: a limit that silently drops what it cannot hold costs the next reader
+an afternoon.
+
+- **A definition's captured source text: `BODYBUF-CAP`, 8000 bytes**
+  (`src/habu/layout.f`). The engine captures every token of a body — the name,
+  the stack comment, each word, and each string literal with its closing quote —
+  plus one separator byte each, because the check hook certifies the text that
+  was compiled and not a summary of it. Nine 900-byte `s"` arms in one `case`
+  reach it. Past it:
+  `hb: definition body text full at 8000 bytes: <name> needs <count>`, rc 71,
+  catchable inside `evaluate`. The repair is to factor: move the long literals
+  into words of their own. The same constant bounds the source verifier's body
+  buffer (`E-VS-BODY-CAP`) and the native compiler's unit text (`E-NCOMP-TEXT`).
+- **One REPL line: 255 bytes** (`src/habu/repl.f` `LLINE-MAX`; the line lives in
+  256 bytes and a history slot spends its first byte on the length). A longer
+  line is refused with `hb: repl line over 255 bytes: <length> typed` and read
+  again — never truncated, never evaluated, never saved to history. Load a long
+  definition from a file instead of pasting it at the prompt.
+- **`begin` nesting in one definition: `JIT-SNAP:FRAMES`, 28**
+  (`src/habu/layout.f`), the value-stack snapshot frames the JIT spends per
+  definition. Past it:
+  `hb: BEGIN nesting full at 28 frames: <name> needs <depth>`, rc 75. Factor the
+  inner loops into their own words.
+
 ## Constants
 
 - **Named constants, no magic numbers.** Limits and codes live in `src/config.fs`.

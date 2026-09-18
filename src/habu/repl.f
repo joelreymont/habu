@@ -8,7 +8,8 @@
 \ The editor runs the tty RAW (per line; canonical is restored while the line
 \ executes): insert/backspace at a cursor, left/right arrows, ^A/^E home/end,
 \ ^K kill-to-end, ^C cancel line, ^D on an empty line = EOF, and a 16-line
-\ history ring on up/down.
+\ history ring on up/down. A line longer than LLINE-MAX is refused by name and
+\ read again instead of being truncated.
 
 : DATAB ( -- ptr a )
    data-base ;
@@ -19,11 +20,26 @@ create KB 8 allot               \ 1-byte key buffer
 create LBUF 256 allot           \ line under edit
 create HIST 4096 allot          \ history ring: 16 slots x 256 ([len][bytes])
 variable LLEN  variable LPOS    \ line length, cursor
+variable LOVER                  \ bytes this line asked for past LLINE-MAX
+create LDEC 24 allot            \ the refusal's decimal scratch, filled from its end
+variable LDEC-I
+create LDEC-LF 10 c,            \ the refusal's newline: an escaped literal whose
+                                \ payload opens with a backslash breaks the shared
+                                \ lint tokenizer (tools/lint/token.f)
 variable HN  variable HV        \ history count, browse index
 PTR-VARIABLE HS                 \ history slot scratch: it holds a ring address
 variable DONE                   \ 0 editing, 1 accepted, 2 eof
 
 -1 constant KEY-EOF             \ KEY1's no-key answer; no byte collides with it
+
+\ The line's own ceiling. LBUF holds 256 bytes and a history slot spends its
+\ first byte on the length ([len][bytes] in 256), so 255 is what one line can be
+\ and what one line can be recalled as. A line that asks for more is REFUSED by
+\ name at the prompt (LINE-FULL below) rather than truncated: the editor used to
+\ drop every key past 255 silently, so a pasted 257-byte definition lost its `;`
+\ and left the session compiling a word that was never defined
+\ (dot habu-refuse-a-repl-a58c0eba).
+255 constant LLINE-MAX
 
 defer REPL-READ ( -- ptr u8 n )
 
@@ -92,14 +108,19 @@ defer REPL-READ ( -- ptr u8 n )
    LBUF LLEN @ type
    LLEN @ LPOS @ - 0 ?do 8 emit loop ;
 
-: CLEARLN ( -- )  0 LLEN !  0 LPOS ! ;
+: CLEARLN ( -- )  0 LLEN !  0 LPOS !  0 LOVER ! ;
 
+\ A key past the ceiling is COUNTED, not dropped and not inserted: the buffer
+\ stays within its 255 and RD-LINE has the length the line really asked for when
+\ it refuses it. Counting instead of refusing here is deliberate — a refusal
+\ mid-line would leave the untyped tail of a pasted line to be read as the NEXT
+\ line and executed.
 : INSCH ( n -- ) {: c :}
-   LLEN @ 255 < IF
-      LLEN @ begin dup LPOS @ > while
-         dup 1 - LBUF + c@  over LBUF + c!  1 - repeat drop
-      c LPOS @ LBUF + c!
-      LLEN @ 1 + LLEN !  LPOS @ 1 + LPOS ! THEN ;
+   LLEN @ LLINE-MAX < 0= IF LOVER @ 1 + LOVER ! exit THEN
+   LLEN @ begin dup LPOS @ > while
+      dup 1 - LBUF + c@  over LBUF + c!  1 - repeat drop
+   c LPOS @ LBUF + c!
+   LLEN @ 1 + LLEN !  LPOS @ 1 + LPOS ! ;
 
 : DELCH ( -- )
    LPOS @ 0 > IF
@@ -113,7 +134,7 @@ defer REPL-READ ( -- ptr u8 n )
 : HSAVE ( -- )
    LLEN @ 0 > IF
       HN @ HSLOT HS!
-      LLEN @ HS@ c!                      \ len byte (INSCH caps LLEN at 255)
+      LLEN @ HS@ c!                      \ len byte (INSCH holds LLEN at LLINE-MAX)
       LLEN @ 0 ?do LBUF i + c@  HS@ 1 + i + c! loop
       HN @ 1 + HN ! THEN ;
 
@@ -153,12 +174,48 @@ defer REPL-READ ( -- ptr u8 n )
    c 27 = IF KEY1 91 = IF KEY1 ESCKEY THEN exit THEN
    c 31 >  c 127 < and IF c INSCH REDRAW THEN ;
 
+\ ---- the over-long line's refusal ----
+\ The count is written from the end of LDEC so the digits come out in one write
+\ and in order; 24 bytes hold any i64 (a paste can ask for a great many bytes).
+: LDEC-C! ( n -- ) {: c :}
+   LDEC-I @ 1 - LDEC-I !
+   c LDEC LDEC-I @ + c! ;
+
+: LDEC! ( n -- ) {: v :}
+   24 LDEC-I !
+   v 0 = IF 48 LDEC-C! exit THEN
+   v begin dup 0 > while
+      dup 10 mod 48 + LDEC-C!
+      10 /
+   repeat drop ;
+
+: LDEC$ ( -- ptr u8 n )
+   LDEC LDEC-I @ +  24 LDEC-I @ - ;
+
+\ One line on descriptor 2: what filled up, the ceiling and the length the line
+\ asked for. Diagnostics do not leave through the editor's echo (docs/genio.md),
+\ and no REPL-baked word may `die` or `bye` (tools/repl-lint-core.f), so the
+\ session states the refusal and reads the next line.
+: LINE-FULL ( -- )
+   2 s" hb: repl line over " write drop
+   LLINE-MAX LDEC!  2 LDEC$ write drop
+   2 s"  bytes: " write drop
+   LLEN @ LOVER @ + LDEC!  2 LDEC$ write drop
+   2 s"  typed" write drop
+   2 LDEC-LF 1 write drop ;
+
+\ A line that asked for more than LLINE-MAX is NOT accepted: it is refused by
+\ name, left out of the history ring and read again from an empty buffer. The
+\ engine's LEXIT path only ever sees whole lines.
 : RD-LINE ( -- ptr u8 n )
    TTY? 0= IF NULL$ exit THEN
    0 HBR-TIO-GET TIOB0 ioctl drop
-   RAW-ON  CLEARLN  HN @ HV !  0 DONE !  REDRAW
-   begin KEY1 DOKEY DONE @ 0 = 0= until
-   RAW-OFF
+   begin
+      RAW-ON  CLEARLN  HN @ HV !  0 DONE !  REDRAW
+      begin KEY1 DOKEY DONE @ 0 = 0= until
+      RAW-OFF
+      DONE @ 1 =  LOVER @ 0 > and
+   while LINE-FULL repeat
    DONE @ 2 = IF NULL$ ELSE HSAVE  LBUF LLEN @ THEN ;
 
 : REPLH-PTR ( -- ptr a )

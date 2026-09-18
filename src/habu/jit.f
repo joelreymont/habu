@@ -10,6 +10,7 @@ variable LVPUSHF   variable LFFORCEK  variable LFBINPREP
 variable LKWFPLUS  variable LKWFMINUS  variable LKWFSTAR  variable LKWFSLASH
 variable LVTOP2C   variable LVFOLDPUT
 variable LVMOVK  variable LVFORCEK  variable LVBINPREP  variable LVBINIPREP  variable LVPUSHR
+variable LSNAPNEST   \ BEGIN-nesting over JIT-SNAP:FRAMES die target (defined in habu2.f EM-SNAP-NEST-DIE; dot habu-name-silent-engine-9b28ac13)
  0 XDS  8 ENC-STRPOST  constant W-PUSHR   \ str xR,[x19],#8  (or with R)
  0 XDS -8 ENC-LDRPRE   constant W-POPR    \ ldr xR,[x19,#-8]!
  0 XDS  8 ENC-STRDPOST constant W-FPUSHR  \ str dR,[x19],#8  — tag 2 = FLOAT reg
@@ -705,7 +706,7 @@ variable LVSNAP  variable LVRECON
 : EMIT-SNAP-NEST-CHECK ( label -- ) {: snok:label :}
    SP SP 16 SUBI,  30 SP 0 STR,
    6 DATA JIT-SNAP:SP-CELL LDR,  6 JIT-SNAP:FRAMES CMPI,  C-LT snok BCOND,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,              \ BEGIN nesting past the frame area
+      LSNAPNEST LABEL@ B,                         \ BEGIN nesting past the frame area: x6 = the depth held; habu2.f EM-SNAP-NEST-DIE names it, then rc 75
    snok LBL, ;
 
 : EMIT-SNAP-FORCE-LOOP ( label label label -- ) {: fl:label fd:label fail:label :}

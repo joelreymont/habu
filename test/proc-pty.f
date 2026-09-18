@@ -313,6 +313,61 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    s" 103" EXPECT
    s"  ok" EXPECT ;
 
+\ A line longer than the editor's buffer (dot habu-refuse-a-repl-a58c0eba).
+\ The editor held the line in 256 bytes and dropped every key past 255 with no
+\ signal, so this definition arrived without its `;`: the REPL answered " ok",
+\ the word was never defined, and the session was left compiling a body whose
+\ next line died E-UNDEFINED several interactions later. The line is now REFUSED
+\ by name - never evaluated, never saved to history - and the REPL reads on.
+\ The tail is padding rather than a second statement so that a truncating engine
+\ has something that still parses: the red is the missing refusal, not a syntax
+\ error the editor happened to cause.
+$123 constant PTY-LONG-BYTES   \ 291: the length the fixture types, and the length the refusal must name
+$140 constant PTY-LONG-CAP
+
+create PTY-LONG PTY-LONG-CAP allot
+variable PTY-LONG-U
+
+: PTY-LONG-C ( n -- ) {: c :}
+   PTY-LONG-U @ PTY-LONG-CAP < if
+      c PTY-LONG PTY-LONG-U @ + c!
+      PTY-LONG-U @ 1+ PTY-LONG-U !
+   then ;
+
+: PTY-LONG-S ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 begin dup u < while  dup a + c@ PTY-LONG-C  1+ repeat drop ;
+
+: PTY-LONG$ ( -- ptr u8 n )
+   PTY-LONG PTY-LONG-U @ ;
+
+: PTY-LONG-BUILD ( -- )                        \ `: PTYLONG ( -- n ) 7 <pad> ;` in PTY-LONG-BYTES
+   0 PTY-LONG-U !
+   s" : PTYLONG ( -- n ) 7 " PTY-LONG-S
+   begin PTY-LONG-U @ PTY-LONG-BYTES 1- < while 32 PTY-LONG-C repeat
+   s" ;" PTY-LONG-S ;
+
+: PTY-LINE-CAP-REFUSED ( -- )
+   PTY-LONG-BUILD
+   PTY-LONG$ STEP-LN
+   s" hb: repl line over 255 bytes: 291 typed" EXPECT
+   s" habu> " EXPECT
+   PROBE-BARRIER
+   s"  ok" REJECT ;                            \ refused, so the line never ran
+
+: PTY-LINE-CAP-UNDEFINED ( -- )                \ and nothing of it was compiled
+   s" PTYLONG" STEP-LN
+   s" E-UNDEFINED: PTYLONG" EXPECT ;
+
+: PTY-LINE-CAP-CONTINUES ( -- )                \ the session is still a session
+   s" 21 3 * ." STEP-LN
+   s" 63" EXPECT
+   s"  ok" EXPECT ;
+
+: PTY-LINE-CAP ( -- )
+   PTY-LINE-CAP-REFUSED
+   PTY-LINE-CAP-UNDEFINED
+   PTY-LINE-CAP-CONTINUES ;
+
 \ The engine bakes the REPL and nothing else (src/habu/native-runtime.f,
 \ src/habu/stdin.f): a session that wants breakpoints, watch cells or the token
 \ stepper loads them here, which is also how a REPL user reaches them.
@@ -742,7 +797,8 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
    PTY-BACKSPACE
    PTY-CANCEL
    PTY-EDIT-HOME
-   PTY-HISTORY-UP ;
+   PTY-HISTORY-UP
+   PTY-LINE-CAP ;
 
 : PTY-BREAKPOINTS ( -- )
    PTY-DEBUGGER-LOAD

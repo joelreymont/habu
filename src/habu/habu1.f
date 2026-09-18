@@ -241,6 +241,7 @@ variable LLEN  variable LSPAN  variable LNAME
 ;package
 variable LPROTWIDQ
 variable LDPBAD   \ DP-CHECK out-of-range die target (defined in habu2.f EM-COMPILE-DIE; dot habu-dictionary-allot-past-4e5c3c2b)
+variable LBCAPFULL   \ body-capture over BODYBUF-CAP die target (defined in habu2.f EM-BODY-CAP-DIE; dot habu-name-the-per-56a594f3)
 \ dict hash-index label ids: the in-place compaction BNDSET's raise leg BLs,
 \ and the cannot-maintain loud exit (both bound in EMIT-HIDX). In a package for
 \ the same reason layout.f's HIDX constants are: new names stay out of the
@@ -3553,7 +3554,11 @@ package ENGINE-EMIT
 
 \ LBCAP ( -- ) : append TKA/TKL + ' ' to the body capture. LBCS ( x11=a x12=u )
 \ is the general entry (defining-word kind tokens). FATAL (exit 71) on overflow —
-\ truncation would let the check hook certify code it never saw.
+\ truncation would let the check hook certify code it never saw. The overflow arm
+\ hands x16 (the size the capture needs) to habu2.f LBCAPFULL, which states the
+\ ceiling, the definition and that count before the exit; it used to write the
+\ current token to fd 2 bare and exit_group(71), so an 8 KiB-of-literals
+\ definition refused with a naked literal echoed and nothing named.
 : EMIT-BCAP ( -- )
    LBCAP LABEL@ LBL,
    11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
@@ -3569,8 +3574,7 @@ package ENGINE-EMIT
    14 DATA BODYLEN-CELL LDR,
    16 14 17 ADD,  16 16 1 ADDI,
    5 BODYBUF-CAP MOVZ,  16 5 CMP,  C-LE BCAP-OK LABEL@ BCOND,
-      0 2 MOVZ,  1 11 0 ADDI,  2 12 0 ADDI,  NR-WRITE SYS,
-      0 71 MOVZ,  NR-EXIT-GROUP SYS,
+      LBCAPFULL LABEL@ B,            \ x16 = the size the capture needs: habu2.f EM-BODY-CAP-DIE names buffer, ceiling, definition and count, then rc 71
    BCAP-OK LABEL@ LBL,
    15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
    BCAP-CP LABEL@ LBL,  12 BCAP-CD LABEL@ CBZ,  13 11 0 LDRB,  13 15 0 STRB,

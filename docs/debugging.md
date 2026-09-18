@@ -410,6 +410,13 @@ contents and failure boundaries:
 recovery carry matching owner tokens; stage2 and maker alias that owner rather
 than carrying independent numeric ceilings.
 
+The three ceilings a PROGRAM reaches — one definition's captured body text
+(`BODYBUF-CAP`, rc 71), one REPL line (`LLINE-MAX`, refused at the prompt) and
+`begin` nesting per definition (`JIT-SNAP:FRAMES`, rc 75) — are not arenas and
+are documented where the author of the program will look, under "Engine limits
+ordinary source reaches" in [forth.md](forth.md). Each states its ceiling and
+the count it saw on fd 2, so a refusal is read, not bisected.
+
 ## A child-process fixture disagrees with itself — `tools/launch-context.f`
 
 A fixture that spawns a child and asserts its exit code reports a bare number
