@@ -104,6 +104,25 @@ fits.
   carrying wid −1, so the same hash probe finds it with −1 as the wid; both now
   cost 1.05 µs. If a lookup has a special case, check whether the special case
   is really a different KIND of record or just a different key.
+- **A qualified name can never land in a private wordlist — engine AND checker,
+  so a generated word that must be package-private cannot wear a colon.** Two
+  independent layers decide it before any package scope is consulted: the engine
+  routes a qualified DEFINITION name to the named namespace's PUBLIC wid
+  (`src/habu/habu2.f` `C-QUALIFY-DEF`, stated at habu2.f:6465), and the checker's
+  `CHECKER-RECORD-SYM` (`src/core/checker.f`) records any name with one non-edge
+  colon as `(qpkg, PUBLIC, tail)` before it looks at `CHECKER-PKG-CONTEXT` at
+  all. Measured: inside `package ZQ`, `ZQ:HID` does not resolve to ZQ's own
+  private `HID`, while a public `ZR:A` does. That is why a private family's
+  generated words are spelled `FAMILY-MEMBER` and a public family's
+  `PKG-FAMILY:MEMBER` (`TF-CTOR-PRIV$` / `TF-CTOR-PKG$`). The flip side is
+  free: at `;STRUCTURE` the declaring package is already open and its private
+  wordlist is already `get-current`, so an UNQUALIFIED definition evaluated
+  through `TDECL-EVAL-XT` lands there with no wordlist switching at all.
+  Second-order: do not `prot-wid-add` such a wordlist. Protection is per-wid, so
+  protecting the package's private wordlist refuses every later definition that
+  package makes — exit 84 `ENGINE-ERROR:SEAL-PACKAGE` from
+  `EMIT-STORE-DEF-NAME` once the namespace watermark is sealed, which is every
+  shipped engine. Protect by NAME (`CTOR-WORD?-XT`) instead.
 - **A hostile fixture can pass for the wrong reason; falsify each guard by
   deletion.** Found while adding manifest-shape fixtures to the identity parity
   gate: the "unpinned theorem" fixture passed because the END-OF-FILE check

@@ -22,8 +22,8 @@
 \ ;STRUCTURE calls STRUCTURE-MAKE:GENERATE with the family id. This file adds NO
 \ front end, NO parser state, and NO grammar: it owns MAKE/UNMAKE generation
 \ only. The reconciliation (dot habu-structure-generate-make-872a6e75) wired that
-\ ;STRUCTURE call; the front end gates it on a PUBLIC family WITH fields, so
-\ GENERATE is only reached when its whole contract already holds (see
+\ ;STRUCTURE call; the front end gates it on a family WITH fields, so GENERATE is
+\ only reached when its whole contract already holds (see
 \ src/core/structure-decl.f's constructor-generation seam note). This module now
 \ loads baked in the post-hook DECL group immediately BEFORE
 \ src/core/structure-decl.f — the front end references STRUCTURE-MAKE:GENERATE, so
@@ -41,9 +41,9 @@
 \ contains TRUST, TRUSTED:, or set-check.
 \
 \ Atomic publication after validation. GENERATE decides every local condition
-\ in CHECKED code first — family liveness, product kind, public visibility, at
-\ least one field, every field row present in the current transaction, and
-\ MAKE/UNMAKE not already generated — and only then runs SM-EMIT. Evaluation and
+\ in CHECKED code first — family liveness, product kind, at least one field,
+\ every field row present in the current transaction, and MAKE/UNMAKE not
+\ already generated — and only then runs SM-EMIT. Evaluation and
 \ checker certification may still reject while SM-EMIT generates the words; the
 \ enclosing GENERATED-DECL transaction retains every registry and dictionary
 \ savepoint until that work succeeds, so either all metadata and both words
@@ -81,7 +81,6 @@ package STRUCTURE-MAKE
 \ registry / generation words the checker cannot type here (decl-event.f idiom).
 TRUSTED: SM-FAM-LIVE? ( n -- bool ) PF-FAM-LIVE? ;
 TRUSTED: SM-PRODUCT? ( n -- bool ) TFAM-PRODUCT? ;
-TRUSTED: SM-PUBLIC? ( n -- bool ) TFAM-PUBLIC? ;
 TRUSTED: SM-FLD-START ( n -- n ) TFAM-FLD-START@ ;
 TRUSTED: SM-FLD-COUNT ( n -- n ) TFAM-FLD-COUNT@ ;
 TRUSTED: SM-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
@@ -120,10 +119,13 @@ TRUSTED: SM-REPLAY-WORDS ( n -- ) TDECL-CTOR-REPLAY ;
 
 \ --- validation pass (checked; no registry write). A reject here leaves every
 \ registry byte-identical, so publication is attempted only after it wholly passes.
-: SM-REQUIRE-FAMILY ( n -- ) {: fam:n :}   \ live, public, product-kind
+\ Live and product-kind. Visibility is NOT a condition: a private product
+\ publishes the same two words into its declaring package's private wordlist
+\ (dot habu-generate-a-private-80272413), so the only thing left to require is
+\ that the family is the single-shape record this generator knows how to build.
+: SM-REQUIRE-FAMILY ( n -- ) {: fam:n :}   \ live, product-kind
    fam SM-FAM-LIVE? 0= IF E-SM-FAM throw THEN
-   fam SM-PRODUCT? 0= IF E-SM-FAM throw THEN
-   fam SM-PUBLIC? 0= IF E-SM-FAM throw THEN ;
+   fam SM-PRODUCT? 0= IF E-SM-FAM throw THEN ;
 
 : SM-REQUIRE-READABLE ( n n n -- ) {: tok:n fam:n fc:n :}   \ every field row is live in this transaction
    0 BEGIN dup fc < WHILE
@@ -137,10 +139,13 @@ TRUSTED: SM-REPLAY-WORDS ( n -- ) TDECL-CTOR-REPLAY ;
 
 public
 
-\ GENERATE ( fam -- ) : define the sealed FAMILY:MAKE ( fields -- family ) and
-\ FAMILY:UNMAKE ( family -- fields ) checked words for a public product family,
-\ from its declaration-order schemas in the current field transaction.
-\ Throws E-SM-FAM (not a live/public/product family), E-SM-EMPTY (no fields),
+\ GENERATE ( fam -- ) : define the sealed MAKE ( fields -- family ) and
+\ UNMAKE ( family -- fields ) checked words for a product family, from its
+\ declaration-order schemas in the current field transaction. A PUBLIC family
+\ gets FAMILY:MAKE / FAMILY:UNMAKE in its reserved constructor namespace; a
+\ PRIVATE one gets FAMILY-MAKE / FAMILY-UNMAKE in the declaring package's private
+\ wordlist (src/core/type-family.f TF-CTOR-PRIV$ owns both spellings).
+\ Throws E-SM-FAM (not a live product family), E-SM-EMPTY (no fields),
 \ a DECL-EVENT scope error (the token does not own that family/field), or E-SM-DUP
 \ (MAKE/UNMAKE already generated) — every reject
 \ before any registry write, so a rejected call publishes nothing.

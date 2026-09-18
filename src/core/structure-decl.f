@@ -23,18 +23,22 @@
 \ dictionary, and staged protection state together.
 \
 \ Once SD-CLOSE has bound the family field range and width, it asks
-\ STRUCTURE-MAKE:GENERATE to define the FAMILY:MAKE / FAMILY:UNMAKE constructor
-\ package from the still-provisional field schemas. Two conditions gate the call:
-\   - PUBLIC only. GENERATE requires a public family. A private structure gets no
-\     construction surface, matching the shipped product precedent: sumtype.f's
-\     TDECL-CTOR-PUBLISH / TDECL-PROD-WORDS simply exit for a non-public family,
-\     so private products publish no MAKE/UNMAKE (fail-closed, sumtype.f note
-\     "private products have no construction surface"). Package-scoped private
-\     generation is deferred type-DSL work, not invented here.
+\ STRUCTURE-MAKE:GENERATE to define the MAKE / UNMAKE constructor words from the
+\ still-provisional field schemas. ONE condition gates the call:
 \   - FIELDS only. A zero-field structure is an opaque one-cell family that
 \     publishes no constructor (docs/type-families.md §2.2 — the authority-safe
 \     shape a bare NEWTYPE also declares); only a declaration WITH fields is a
 \     product with a MAKE/UNMAKE pair, so GENERATE is skipped when NFLD is zero.
+\ VISIBILITY IS NOT A CONDITION. It decides the SPELLING and the WORDLIST, not
+\ whether a structure has a construction surface: a public family publishes
+\ FAMILY:MAKE / FAMILY:UNMAKE into its reserved constructor namespace, a private
+\ one publishes FAMILY-MAKE / FAMILY-UNMAKE into the declaring package's private
+\ wordlist, where a second package cannot resolve them. The gate that used to
+\ stand here refused a private family outright and called package-scoped private
+\ generation deferred type-DSL work; it is that work (dot
+\ habu-generate-a-private-80272413, docs/type-system.md §10.4), and without it
+\ the declared memory record serves almost nothing, because nearly every memory
+\ record under lib/ is package-private.
 \ Generation remains inside the shared transaction. If evaluation or checker
 \ certification rejects either constructor, the coordinator restores every
 \ participant before the error returns to the caller.
@@ -356,8 +360,8 @@ SD-RESET
    TOK @ FAM @ DECL-EVENT:DECL TOK !
    TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;
 
-: SD-MAKEABLE? ( -- bool )                 \ a public structure WITH fields owns a MAKE/UNMAKE package
-   FAM @ TFAM-PUBLIC? NFLD @ 0 > and ;
+: SD-MAKEABLE? ( -- bool )                 \ a structure WITH fields owns a MAKE/UNMAKE pair
+   NFLD @ 0 > ;
 : SD-CLOSE ( -- )                          \ bind field range + width, then generate the ctors
    DECL-REJECT:AT-FAMILY                   \ close-stage faults belong to the whole declaration
    FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!

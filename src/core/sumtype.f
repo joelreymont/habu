@@ -614,8 +614,11 @@ create TDV-BADLETTER 1 allot
 \ --- constructor metadata (item 8): a PUBLIC family derives its reserved
 \ constructor package (Package Shape) once and records it in every variant's
 \ SV.CTOR-PKG slot, keyed by family id so same-tail families in different
-\ packages get disjoint constructor namespaces. Private families export nothing,
-\ so the slot stays empty and construction waits on item 9's `construct` form.
+\ packages get disjoint constructor namespaces. A PRIVATE family reserves no
+\ namespace, so the slot stays empty and the early exit below is the whole rule:
+\ a private PRODUCT spells its generated words with TF-CTOR-PRIV$ into the
+\ declaring package's private wordlist instead, and a private SUM or ENUM still
+\ publishes no word at all and constructs through item 9's `construct` form.
 \ The derived name is interned AFTER the escaped/hashed spelling is built, so the
 \ transient family package/tail pointers are consumed before any pool grow.
 
@@ -1656,12 +1659,22 @@ private
    REPEAT
    62 TDGEN-C, ;
 
-: TDGEN-NAME ( n -- ) {: vid:n :}        \ ": PKG:VARIANT " with the span recorded
+\ ": PKG:VARIANT " for a public family, ": FAMILY-MEMBER " for a private one,
+\ with the name span recorded either way. The two spellings and the reason they
+\ differ are TF-CTOR-PKG$ / TF-CTOR-PRIV$ in src/core/type-family.f; the short
+\ version is that a private family's words go into the DECLARING PACKAGE's
+\ private wordlist, and a name carrying a colon can never land there.
+: TDGEN-NAME ( n -- ) {: vid:n :}
    s" : " TDGEN-APP
    TDGEN-U @ {: n0:n :}
-   vid SUMV-CTOR-PKG$ TDGEN-APP
-   58 TDGEN-C,
-   vid SUMV-NAME$ TDGEN-UPPER
+   vid SUMV-FAM@ {: fam:n :}
+   fam TFAM-PUBLIC? IF
+      vid SUMV-CTOR-PKG$ TDGEN-APP
+      58 TDGEN-C,
+      vid SUMV-NAME$ TDGEN-UPPER
+   ELSE
+      fam TFAM-NAME$ vid SUMV-NAME$ TF-CTOR-PRIV$ TDGEN-APP
+   THEN
    TDGEN-BUF n0 + TDGEN-NA !
    TDGEN-U @ n0 - TDGEN-NU !
    32 TDGEN-C, ;
@@ -1703,7 +1716,14 @@ public
 
 private
 
+\ A PRIVATE family protects no wordlist. Its words live in the declaring
+\ package's own private wordlist, and marking that wid protected would refuse
+\ every later definition the package makes: in a sealed engine
+\ EMIT-STORE-DEF-NAME (src/habu/habu2.f) exits 84 ENGINE-ERROR:SEAL-PACKAGE on a
+\ publish into a protected wid. The generated words stay protected BY NAME
+\ instead, through TFAM-CTOR-WORD? / the checker's CTOR-WORD?-XT undefine guard.
 : TDECL-CTOR-PROT-WID ( n -- ) {: vid:n :}
+   vid SUMV-FAM@ TFAM-PUBLIC? 0= IF EXIT THEN
    TDECL-PROT-WID-ARMED @ 0= IF s" sumtype: protected-wid hook not installed" 76 die THEN
    TDGEN-CLEAR
    vid TDGEN-NAME
@@ -1961,9 +1981,20 @@ public
 
 private
 
+\ Which families publish generated words. A PUBLIC family always has: its words
+\ go into the reserved constructor namespace. A PRIVATE PRODUCT does too, into
+\ its declaring package's private wordlist (dot habu-generate-a-private-80272413,
+\ docs/type-system.md §10.4) — most memory records in the tree are
+\ package-private, so a public-only generator serves almost nothing. A private
+\ SUM or ENUM still publishes nothing: those construct through the checker-owned
+\ `construct` token (docs/type-families.md §2), which needs no dictionary word.
+: TDECL-GENERATES? ( n -- bool ) {: fam:n :}
+   fam TFAM-PUBLIC? IF RES-TRUE EXIT THEN
+   fam TFAM-PRODUCT? ;
+
 : TDECL-GEN-PLAN ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n )
    {: ctx:n qn qr qc fam:n :}
-   fam TFAM-PUBLIC? 0= IF ctx qn qr qc fam EXIT THEN
+   fam TDECL-GENERATES? 0= IF ctx qn qr qc fam EXIT THEN
    ctx qn qr qc fam TDPV-CAPTURE          \ the whole payload view, once, validated
    fam TFAM-PRODUCT? IF
       fam TDECL-PROD-PLAN  ctx qn qr qc fam EXIT THEN
@@ -1983,7 +2014,7 @@ private
    ctx qn qr qc fam ;
 
 : TDECL-GEN-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n )
-   dup TFAM-PUBLIC? 0= IF EXIT THEN
+   dup TDECL-GENERATES? 0= IF EXIT THEN
    TDECL-GEN-PLAN
    TDECL-GEN-EVAL
    dup TFAM-VAR-START@ TDECL-CTOR-PROT-WID ;
@@ -2000,7 +2031,7 @@ private
 public
 
 : TDECL-CTOR-REPLAY ( n -- )
-   dup TFAM-PUBLIC? 0= IF drop EXIT THEN
+   dup TDECL-GENERATES? 0= IF drop EXIT THEN
    [: TDECL-REPLAY-BODY ;] catch {: rc:n :}
    CTOR-PEND-CLEAR
    rc 0 <> IF rc throw THEN

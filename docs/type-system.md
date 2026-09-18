@@ -605,9 +605,27 @@ out by name, and the checker's projection window already reads this one.
 #### What is generated
 
 Inside the one declaration transaction, for a family `F` with fields
-`f₀ … fₙ`, following the existing constructor-name spelling (package name, then
-the family name with internal hyphens doubled, capped at
-`TF-CTOR-NAME-LIMIT` = 32 characters):
+`f₀ … fₙ`. **A family's visibility picks the spelling and the wordlist**, and the
+two forms are `TF-CTOR-PKG$` and `TF-CTOR-PRIV$` in `src/core/type-family.f`:
+
+| | public `F` | private `F` |
+|---|---|---|
+| spelling | `PKG-FAMILY:member` | `FAMILY-member` |
+| derived from | package name, then the family tail, internal hyphens doubled, capped at `TF-CTOR-NAME-LIMIT` = 32 characters with a SHA-256 fallback past the cap | the family tail, `-`, the member — uppercased, no escaping, no cap, no hash |
+| lands in | the reserved constructor **namespace**, which is global | the **declaring package's private wordlist** |
+| resolvable from | anywhere, qualified | that one package only |
+
+The private form drops the package segment and the escaping because every use of
+it is inside the one package that declared the family, where the package name
+says nothing new, and a hashed spelling written on every line of a library would
+be the wrong trade. It is not injective across packages and does not need to be:
+a collision with an existing private word, or between two families of one
+package, is refused by the generator's own "generated declaration already
+defined" die. A qualified private spelling is not merely unchosen but
+structurally impossible — see "Why a private generated word wears no colon"
+below.
+
+The member set is the same either way; the table below writes the public form.
 
 | word | effect | body |
 |---|---|---|
@@ -624,10 +642,47 @@ offset and the type carried into the checker instead of thrown away.
 Generation goes into the owning package's wordlist, and for a **private** family
 into its private wordlist: most of the records in the survey are package-private
 (`BUF`, `JR`, `XML`, `EDIT`, `LINT-SLAB`), so a public-only generator would
-serve almost nothing. `src/core/structure-decl.f` gates `MAKE`/`UNMAKE`
-generation on a public family and calls package-scoped private generation
-deferred type-DSL work; this design needs that work, and it is the first
-implementation dot below.
+serve almost nothing. `src/core/structure-decl.f` used to gate `MAKE`/`UNMAKE`
+generation on a public family and call package-scoped private generation
+deferred type-DSL work; that work landed as the first implementation dot below
+(`habu-generate-a-private-80272413`), and visibility now decides the spelling
+and the wordlist rather than whether anything is generated at all.
+
+##### Why a private generated word wears no colon
+
+A generated word that must be package-private cannot carry a qualifier, at
+either layer:
+
+- the engine routes a **qualified definition name** to the named namespace's
+  PUBLIC wid (`src/habu/habu2.f` `C-QUALIFY-DEF`: "a qualified name cannot land
+  in a private wordlist"), and
+- the checker records **any** name with one non-edge colon as that package's
+  public symbol before it consults the open package at all
+  (`src/core/checker.f` `CHECKER-RECORD-SYM`).
+
+So `PKG:PRIVATE-WORD` does not resolve even from inside `PKG` — the rule
+`docs/forth.md` states for hand-written packages — and the generator obeys the
+same rule rather than working around it. Nothing switches wordlists to achieve
+this: when `;STRUCTURE` runs, the declaring package is open and its private
+wordlist is already current, so an unqualified generated definition evaluated
+through `TDECL-EVAL-XT` lands there by itself.
+
+##### Private generated words are protected by name, not by wordlist
+
+A public family's constructor namespace is a wordlist nothing else may publish
+into, so it is marked protected (`prot-wid-add`) and the checker refuses both an
+extra tail in it and an `undefine` of a word in it. A private family has no
+namespace of its own; its words live in a wordlist the package keeps defining
+into. Marking **that** wid protected would refuse every later definition the
+package makes — in a sealed engine `EMIT-STORE-DEF-NAME` exits 84
+`ENGINE-ERROR:SEAL-PACKAGE` on a publish into a protected wid — so generation
+stages no wordlist for a private family, and the guarantee narrows to a
+**name-keyed** one: `TFAM-CTOR-WORD?` recognises the private spelling while the
+declaring package is open, and the checker's `CTOR-WORD?-XT` undefine guard
+refuses it with `E-CTOR-PROTECTED`. There is no "extra tail" rule for a private
+family because there is no reserved package for a stray tail to extend. This is
+a real, deliberate weakening relative to the public path; it is the price of the
+words being private at all.
 
 #### How the accessors are minted
 
@@ -831,12 +886,14 @@ every one of those has to be gone first — including the byte-field holdouts,
 because `lib/task.f`'s TCB reaches its five pointer fields through the very row
 `ptr-field` is narrowing.
 
-1. **Private family generation.** Package-scoped generation for a private
-   family, into its own private wordlist, inside the declaration transaction —
-   the work `src/core/structure-decl.f` currently defers. Nothing in `lib/`
-   can use the facility without it. *Acceptance:* a private `STRUCTURE` in a
-   package publishes its generated words privately; a second package cannot
-   resolve them; a reject rolls the whole declaration back byte-identically.
+1. **Private family generation** — *landed*, dot
+   `habu-generate-a-private-80272413`. Package-scoped generation for a private
+   family, into its own private wordlist, inside the declaration transaction.
+   Nothing in `lib/` could use the facility without it. *Acceptance:* a private
+   `STRUCTURE` in a package publishes its generated words privately; a second
+   package cannot resolve them; a reject rolls the whole declaration back
+   byte-identically. Pinned as cases 13-14 of
+   `test/structure-decl-suite.f`.
 2. **The accessor generator** (tracker id
    `habu-structure-generate-field-b9dc52f8`), the production `field-project`
    runtime word, and `record-at` with its generated `F:AT`. *Acceptance:*

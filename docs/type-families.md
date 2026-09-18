@@ -466,11 +466,41 @@ The `@result...` names are diagnostic renderings. Internal hidden physical
 field terms carry the resolved `family-id`, so a same-tail `result` defined in a
 different package cannot unify with this one.
 
-Private family constructors are checker-owned tokens keyed by package, family,
-and variant id. They are not bare dictionary words and do not export constructor
-packages. Public families may publish constructor packages such as `RESULT:OK`;
-after the constructor token protocol is installed, private families construct
-only through that checker-owned protocol while the owning package is open.
+A private SUM or ENUM constructs through checker-owned tokens keyed by package,
+family, and variant id. Those are not bare dictionary words and export no
+constructor package; after the constructor token protocol is installed, a
+private sum constructs only through that protocol while the owning package is
+open. Public families may publish constructor packages such as `RESULT:OK`.
+
+A private **PRODUCT** — every `STRUCTURE` — is the exception, since dot
+`habu-generate-a-private-80272413`. It publishes real generated words, because
+nearly every memory record in the tree is package-private and a public-only
+generator would serve almost nothing (`docs/type-system.md` §10.4). Visibility
+picks the spelling and the wordlist, not whether anything is generated:
+
+| | public | private |
+|---|---|---|
+| spelling | `PKG-FAMILY:MAKE` (`TF-CTOR-PKG$`) | `FAMILY-MAKE` (`TF-CTOR-PRIV$`) |
+| lands in | the reserved constructor namespace, global | the declaring package's private wordlist |
+| resolvable from | anywhere, qualified | that one package only |
+
+The private spelling carries no colon because it cannot: the engine routes a
+qualified definition name to the named namespace's PUBLIC wid
+(`src/habu/habu2.f` `C-QUALIFY-DEF`) and the checker records any single non-edge
+colon name as that package's public symbol (`src/core/checker.f`
+`CHECKER-RECORD-SYM`), so no name with a colon can land in a private wordlist.
+
+**Protection differs with it.** A public family's constructor namespace is
+marked protected (`prot-wid-add`), which is what refuses an extra tail in it and
+an `undefine` of a word in it. A private family has no namespace; its words sit
+in a wordlist the package goes on defining into, and marking that wid protected
+would refuse every later definition the package makes — in a sealed engine
+`EMIT-STORE-DEF-NAME` exits 84 `ENGINE-ERROR:SEAL-PACKAGE` on a publish into a
+protected wid. So a private family stages no wordlist, and its words are
+protected **by name** instead: `TFAM-CTOR-WORD?` recognises the private spelling
+while the declaring package is open, and `CTOR-WORD?-XT` refuses `undefine` with
+`E-CTOR-PROTECTED`. There is no extra-tail rule for a private family, because
+there is no reserved package for a stray tail to extend.
 
 For `option`:
 

@@ -1093,10 +1093,10 @@ public
    a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
    a u TF-CW-TAIL$ id SUMV-FAM@ TFAM-DERIVED-KIND-TAIL? ;
 
-;package
-
-: TFAM-CTOR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact PKG:VARIANT/derived word?
-   a u TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
+\ The QUALIFIED half of the generated-word scan. Its private half, and the two
+\ recognizers that join them, sit beside TF-CTOR-PRIV$ below: a recognizer must
+\ read the spelling from the derivation that generates it, never restate it.
+: TF-CTOR-QUAL-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ PKG:VARIANT / derived word?
    0 TF-CI !
    BEGIN TF-CI @ SUMV-N @ < WHILE
       a u TF-CI @ TFAM-CTOR-WORD-AT? IF RES-TRUE EXIT THEN
@@ -1104,12 +1104,9 @@ public
       TF-CI @ 1 + TF-CI !
    REPEAT RES-FALSE ;
 
-package TFAM
+;package
 
-: TFAM-CTOR-EXTEND? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ new tail in a ctor package?
-   a u TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
-   a TF-CW-COL @ TFAM-CTOR-PKG? 0= IF RES-FALSE EXIT THEN
-   a u TFAM-CTOR-WORD? 0= ;
+package TFAM
 
 : SUMV-MATCH? ( n ptr u8 n n -- bool ) {: fam:n na:ptr nu:n id:n :}
    id SUMV-FAM@ fam = 0= IF RES-FALSE EXIT THEN
@@ -1266,6 +1263,78 @@ public
    pa pu ta tu TF-CTOR-BUILD-ESCAPED
    TF-CTOR-U @ TF-CTOR-NAME-LIMIT > IF pa pu ta tu TF-CTOR-BUILD-HASH THEN
    TF-CTOR-BUF TF-CTOR-U @ ;
+
+\ TF-CTOR-PRIV$ ( fam-tail member -- ptr u8 n ) : the spelling a PRIVATE family's
+\ generated words carry. Two spellings exist and they differ on purpose:
+\
+\   public   PKG-FAMILY:MEMBER  a word in the reserved constructor NAMESPACE
+\                               TF-CTOR-PKG$ derives above — escaped, capped, and
+\                               SHA-hashed past the cap, because that namespace is
+\                               GLOBAL and every family in the tree shares it.
+\   private  FAMILY-MEMBER      a word in the DECLARING PACKAGE's private
+\                               wordlist: the uppercased family tail, '-', the
+\                               uppercased member.
+\
+\ The private form carries no package segment and needs no escaping, cap or hash.
+\ Every use of it is inside the one package that declared the family, where the
+\ package name says nothing the reader does not already know, and a hashed
+\ spelling written on every line of a library would be the wrong trade. It is not
+\ injective across packages and does not need to be: a collision with an existing
+\ private word, or between two families of one package, is refused loudly by the
+\ generator's own "generated declaration already defined" die — the same rule the
+\ public path applies to a variant named like a derived tail.
+\
+\ A QUALIFIED private spelling is structurally impossible, not merely unchosen.
+\ The engine routes a qualified definition name to the named namespace's PUBLIC
+\ wid (src/habu/habu2.f C-QUALIFY-DEF: "a qualified name cannot land in a private
+\ wordlist"), and the checker records ANY single-non-edge-colon name as that
+\ package's public symbol before it consults the open package at all
+\ (src/core/checker.f CHECKER-RECORD-SYM). So a generated word that must be
+\ package-private cannot wear a colon.
+: TF-CTOR-PRIV$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: ta:ptr tu:n ma:ptr mu:n :}
+   0 TF-CTOR-U !
+   ta tu TF-CTOR-TAIL
+   45 TF-CTOR-C,
+   ma mu TF-CTOR-TAIL
+   TF-CTOR-BUF TF-CTOR-U @ ;
+
+\ A private family's generated word is recognised only while its DECLARING
+\ PACKAGE is open. That is the only scope the word resolves in, so it is the only
+\ scope in which the undefine guard has anything to protect; outside it the name
+\ belongs to whoever spells it.
+: TFAM-CTOR-PRIV-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
+   id SUMV-FAM@ {: fam:n :}
+   fam TFAM-PUBLIC? IF RES-FALSE EXIT THEN
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
+   CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   a u  fam TFAM-NAME$ id SUMV-NAME$ TF-CTOR-PRIV$  CORE-STR=CI ;
+
+: TF-CTOR-PRIV-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 TF-CI !
+   BEGIN TF-CI @ SUMV-N @ < WHILE
+      a u TF-CI @ TFAM-CTOR-PRIV-AT? IF RES-TRUE EXIT THEN
+      TF-CI @ 1 + TF-CI !
+   REPEAT RES-FALSE ;
+
+;package
+
+\ A generated word wears either the qualified public spelling or the bare private
+\ one, and the colon decides which scan answers for it.
+: TFAM-CTOR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact generated word?
+   a u TF-CW-SPLIT? IF a u TF-CTOR-QUAL-WORD? EXIT THEN
+   a u TF-CTOR-PRIV-WORD? ;
+
+package TFAM
+
+\ A private family reserves no namespace, so it has no package for a stray tail
+\ to extend and this stays the qualified rule alone.
+: TFAM-CTOR-EXTEND? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ new tail in a ctor package?
+   a u TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
+   a TF-CW-COL @ TFAM-CTOR-PKG? 0= IF RES-FALSE EXIT THEN
+   a u TFAM-CTOR-WORD? 0= ;
+
+public
 
 \ ---------------------------------------------------------------------------
 \ shared fields, keyed by (family-id, optional-variant-id, field tail).

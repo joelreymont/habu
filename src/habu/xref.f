@@ -354,11 +354,23 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
 
 public
 
+\ A generated declaration is qualified exactly when it reserves a constructor
+\ NAMESPACE. A private family's words carry the bare FAMILY-MEMBER spelling
+\ (src/core/type-family.f TF-CTOR-PRIV$) and land in the declaring package's own
+\ private wordlist, so they allocate no wordlist and protect none; every question
+\ below that is about a namespace has to ask this first.
+: NAMESPACED? ( ptr u8 n -- bool )
+   XREF-QUAL-INDEX 0 >= ;
+
+\ The duplicate test is asked in the scope the definition will LAND in: qualified
+\ names resolve through their namespace, a bare one through the current wordlist.
+\ XREF-FIND would answer a bare name from wid 0 instead, and a global word of the
+\ same spelling is not this package's private word.
 : CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TFAM-CTOR-WORD? 0= IF
       s" xref: generated declaration visibility mismatch" 76 die
    THEN
-   a u XREF-FIND XREF-FOUND? IF
+   a u XREF-FIND-TARGET-INDEX 0 >= IF
       s" xref: generated declaration already exists" 76 die
    THEN ;
 
@@ -366,10 +378,12 @@ public
    words 0 <= words COUNT-MAX >= or IF
       s" xref: generated declaration word count overflow" 76 die
    THEN
+   a u NAMESPACED? 0= IF words EXIT THEN
    a u NAMESPACE-EXISTS? IF words EXIT THEN
    words 1 + ;
 
 : NEW-WORDLIST? ( ptr u8 n -- bool )
+   2dup NAMESPACED? 0= IF 2drop XREF-FALSE EXIT THEN
    NAMESPACE-EXISTS? 0= ;
 
 private

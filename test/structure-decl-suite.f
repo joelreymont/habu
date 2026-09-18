@@ -13,8 +13,10 @@
 \ deterministic snapshot identity is reproducible for an identical declaration
 \ against a fresh registry; and — the reconciliation seam — a public STRUCTURE
 \ with fields generates a working sealed FAMILY:MAKE/UNMAKE ctor package that
-\ round-trips bit-identically in declaration order, while a rejected, an opaque
-\ zero-field, and a private declaration each generate no ctor words.
+\ round-trips bit-identically in declaration order, a PRIVATE one generates the
+\ same pair as FAMILY-MAKE/FAMILY-UNMAKE into its own package's private wordlist
+\ where no other scope can resolve them, and a rejected or an opaque zero-field
+\ declaration generates no ctor words at all.
 \ A failure prints F<index> + detail; REPORT exits 1.
 
 require test/checker-assert.f
@@ -179,23 +181,38 @@ s" STRUCTURE twice 0 FIELD x n ;STRUCTURE" TRY 7102 T=
 \ 9. Deterministic snapshot identity: an identical declaration against a fresh
 \    registry (family id restored, event log reset) folds to the same identity;
 \    a different declaration folds to a different one. These declarations are
-\    PRIVATE so the in-process registry-restore trick can re-declare the same
-\    family id without regenerating (and colliding on) its sealed ctor words —
-\    the snapshot identity is a DECL-EVENT property (family id + events, not
-\    visibility), so private and public declarations fold identically. The
-\    public ctor-generation seam is proven separately in cases 10-13.
+\    PRIVATE, and each one runs in a DIFFERENT package. The visibility is not
+\    the point — the snapshot identity is a DECL-EVENT property (family id +
+\    events, not visibility), so private and public declarations fold
+\    identically. What the three packages buy is a clean dictionary: REG-RESTORE
+\    rewinds the registry cursors but NOT the dictionary, and since dot
+\    habu-generate-a-private-80272413 a private structure generates words too, so
+\    re-declaring `ident` a second time in ONE package now collides on its own
+\    generated IDENT-MAKE ("generated declaration already defined", exit 76).
+\    One package per declaration keeps the three declarations byte-identical —
+\    which is exactly what this case asserts — while giving each generated pair
+\    its own private wordlist. The ctor-generation seam itself is proven in
+\    cases 10-14.
 \ ---------------------------------------------------------------------------
-package IDENTTEST
+package IDENTTEST1
 private
 REG-MARK
 DECL-EVENT:RESET
 s" STRUCTURE ident 0 FIELD x n ;STRUCTURE" EV
 DECL-EVENT:IDENTITY RC !                              \ RC holds identity A
 REG-RESTORE                                           \ retire family; fresh registry
+public
+;package
+package IDENTTEST2
+private
 DECL-EVENT:RESET
 s" STRUCTURE ident 0 FIELD x n ;STRUCTURE" EV
 DECL-EVENT:IDENTITY RC @ T=                           \ identical declaration -> same identity
 REG-RESTORE
+public
+;package
+package IDENTTEST3
+private
 DECL-EVENT:RESET
 s" STRUCTURE ident 0 FIELD x n FIELD y n ;STRUCTURE" EV
 DECL-EVENT:IDENTITY RC @ <> T-TRUE                    \ different declaration -> different identity
@@ -248,17 +265,84 @@ s" STRUCTURE opaque 0 ;STRUCTURE" EV                  \ zero-field opaque one-ce
 SUMVN@ SV0 @ T=                                       \ an opaque family owns no MAKE/UNMAKE
 
 \ ---------------------------------------------------------------------------
-\ 13. A PRIVATE structure with fields owns no construction surface either:
-\     SD-MAKEABLE? requires a public family, matching the shipped product
-\     precedent (private products publish no MAKE/UNMAKE, fail-closed).
+\ 13. A PRIVATE structure with fields owns a construction surface too, and it is
+\     PACKAGE-PRIVATE. Its generated words carry the bare FAMILY-MEMBER spelling
+\     (src/core/type-family.f TF-CTOR-PRIV$) and are defined into the DECLARING
+\     PACKAGE's own private wordlist, where a public family instead gets
+\     FAMILY:MAKE in its reserved global ctor namespace. A name carrying a colon
+\     could not land in a private wordlist at all — the engine routes a qualified
+\     definition to the namespace's PUBLIC wid and the checker records any
+\     single-colon name as that package's public symbol — which is why the two
+\     spellings differ. Dot habu-generate-a-private-80272413,
+\     docs/type-system.md §10.4.
 \ ---------------------------------------------------------------------------
 SUMVN@ SV0 !
 package SDPRIVTEST
 private
-STRUCTURE hidden 0 FIELD x n ;STRUCTURE
+STRUCTURE hidden 0 FIELD x n FIELD y n ;STRUCTURE
+: HRT ( n n -- n n ) HIDDEN-MAKE HIDDEN-UNMAKE ;      \ callable from the owning package
+: HAFTER ( -- n ) 7 ;                                 \ the package still defines privately
+public
+: HGO ( n n -- n n ) HRT ;
+: HTAIL ( -- n ) HAFTER ;
+;package
+SUMVN@ SV0 @ 2 + T=                                   \ exactly two ctor variant rows generated
+11 22 SDPRIVTEST:HGO 22 T= 11 T=                      \ declaration order + values round-trip
+SDPRIVTEST:HTAIL 7 T=                                 \ generation did not seal the private wordlist
+
+\ A SECOND package cannot resolve them, and neither can the global scope: the
+\ words exist in exactly one private wordlist, so the candidate probe answers 1
+\ (unresolvable), not 0 (refused) — the name reaches nothing at all. Two
+\ contrasts keep these from passing for the wrong reason: the SAME probe text
+\ certifies inside the declaring package, and the public family of case 10, whose
+\ ctor namespace IS global, certifies from every scope below.
+package SDPRIVTEST
+private
+s" SDPI ( n n -- n n ) HIDDEN-MAKE HIDDEN-UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 public
 ;package
-SUMVN@ SV0 @ T=                                       \ private structure generates no ctor words
+package SDPRIVOTHER
+private
+s" SDPO ( n n -- n n ) HIDDEN-MAKE HIDDEN-UNMAKE" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDPT ( n n n -- n n n ) TRI:MAKE TRI:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+public
+;package
+s" SDPG ( n n -- n n ) HIDDEN-MAKE HIDDEN-UNMAKE" CHECK-QUIET-CANDIDATE! 1 T=
+s" SDPGT ( n n n -- n n n ) TRI:MAKE TRI:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ A private family reserves no wordlist to protect, so its words are protected BY
+\ NAME: the checker's undefine guard recognises the private spelling while the
+\ declaring package is open (E-CTOR-PROTECTED 7111).
+package SDPRIVTEST
+private
+s" undefine HIDDEN-MAKE" TRY 7111 T=
+public
+;package
+
+\ ---------------------------------------------------------------------------
+\ 14. A rejected PRIVATE declaration rolls the whole thing back: no family, no
+\     schema nodes, no variant rows, no field rows, no events — and the name is
+\     free again, so the SAME package can re-declare it and get working words.
+\     That last step is what proves the dictionary rolled back too; a retained
+\     record would collide on its own generated name.
+\ ---------------------------------------------------------------------------
+package SDPRIVROLL
+private
+REG-MARK
+TYPE-FIELD:COUNT PFB !
+DECL-EVENT:COUNT DEVB !
+s" STRUCTURE roll 0 FIELD z n FIELD z n ;STRUCTURE" TRY 7102 T=
+TFAMN@ RB-TFAM @ T=                                   \ family retired
+SCHN@ RB-SCH @ T=                                     \ schema nodes retired
+SUMVN@ RB-SUMV @ T=                                   \ no ctor rows from a rejected private decl
+TYPE-FIELD:COUNT PFB @ T=                             \ committed field rows retired
+DECL-EVENT:COUNT DEVB @ T=                            \ nothing new published
+STRUCTURE roll 0 FIELD z n ;STRUCTURE                 \ the name is free again
+: RRT ( n -- n ) ROLL-MAKE ROLL-UNMAKE ;
+public
+: RGO ( n -- n ) RRT ;
+;package
+9 SDPRIVROLL:RGO 9 T=                                 \ the re-declaration generated working words
 
 \ ---------------------------------------------------------------------------
 \ Reject diagnostics. Before this section existed, SD-RUN threw every code below

@@ -115,6 +115,10 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 : PLAN-PREFLIGHT ( ptr u8 n n -- ) {: a:ptr u:n words:n :}
    a u words GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS
       GENERATED-DECL-DICTIONARY:PREFLIGHT
+   \ A private family's words go into the declaring package's own private
+   \ wordlist: no wordlist is allocated and none is protected, so the
+   \ protected-WID registry is not on that path and must not gate it.
+   a u GENERATED-DECL-NAME-PREFLIGHT:NAMESPACED? 0= IF EXIT THEN
    a u GENERATED-DECL-NAME-PREFLIGHT:NEW-WORDLIST? IF
       data-base WIDN-CELL + @ dup 0 < swap WID-MAX > or
          IF E-PROTECTION-CAP throw THEN
