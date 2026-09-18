@@ -1,9 +1,0 @@
----
-title: Design a declared record with pointer and scalar fields
-status: active
-priority: 2
-issue-type: task
-created-at: "2026-09-18T04:56:15.541268+03:00"
----
-
-Problem: the language has no nominal record type (BEGIN-STRUCTURE publishes a size constant; STRUCTURE/PRODUCT are value families), so a memory record that mixes a pointer field with scalar fields is expressed by casting one through ptr-field (a free-pointee row) or through byte-view/cell-view, and those two casts are exactly the two holes the raw-storage rule cannot close without them (habu-refuse-ptr-field-331a9731, habu-refuse-a-scalar-030be3ad, measured 2026-09-18 by the rule lane): DYNAMIC-BUFFER's control record (a pointer head plus two counts), the checker's persisted arenas (ARENA-SNAP-BOOT), cell-effects.f's STATE record, lib/vector.f, lib/byte-buffer.f DATA-FIELD, lib/serial-xmodem.f, lib/db/pq.f, tools/lint/text.f LINT-SLAB, tools/build-fixpoint.f BF-PTR-U8-FIELD all have the shape. Acceptance: a design (docs/type-system.md) for a declared memory record whose fields carry their offsets and types into the checker, so a pointer field is read as a declared pointer cell at its offset and a scalar field as a scalar, with accessors generated like the storage definers' (two effect rows if pre-checker), usable in the engine prefix; the migration of the sites above; then the two hole rules become expressible (ptr-field refuses a base that is not a declared record or pointer cell; the view rows refuse a pointer-pointee base) and land with their fixtures flipped from documented-open to rejected. Files: docs/type-system.md, src/core/structures.f or a new definer, the sites above, src/core/checker.f, test/. Verify: the design reviewed; fixtures; a rule-hosted build; test/run.f. Depends: habu-refuse-a-ptr-5ad2734e landing. Ownership: type system. Parent: habu-campaign-c2-mem-c3d7662b. Claim: agent=hazel-record-design workspace=.jj-ws/hazel-record-design.
