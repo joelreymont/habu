@@ -56,9 +56,14 @@ belong in the language core.
   Documentation, moves and other mechanical changes need proportionate checks.
 - Report actual results and untested boundaries. Never weaken a claim to make a
   check pass. [docs/proofs.md](docs/proofs.md) explains proof/model limits.
-- Keep durable technical findings concise in [LESSONS.md](LESSONS.md); reference
-  material belongs in `docs/`. No mandatory ledgers, claim choreography,
-  mutation campaigns or ritual response templates.
+- A finding goes where it is checked: a test or a code comment if either can
+  hold it; [docs/forth.md](docs/forth.md) and the card for a language or
+  toolchain rule; this file for how agents work; [LESSONS.md](LESSONS.md) only
+  for a rule the code cannot state, about the documents, platforms, product or
+  environment — one to three lines, the rule and the fact that proves it, no
+  dates or narrative. Search and merge before adding. Reference material
+  belongs in `docs/`. No mandatory ledgers, claim choreography, mutation
+  campaigns or ritual response templates.
 
 ## Session start in Herdr
 
