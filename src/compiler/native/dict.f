@@ -200,6 +200,23 @@ private
 : GLUE-WHOLE ( n -- n )
    GLUE-RUN-MASK  1 invert and ;
 
+\ WHICH ROW a glue question is about. Four rows carry per-cell value boundaries
+\ - a definition's two and a `does>` clause's two - and each is read by its own
+\ owner operation, so a caller names the row and this file asks the operation.
+\ A does> clause's rows are rows like any other: same terms, same cells, same
+\ slots, and therefore the same walk below rather than a second rule for them.
+0 constant RS-DIN
+1 constant RS-DOUT
+2 constant RS-DOES-IN
+3 constant RS-DOES-OUT
+
+: RG-SLOT ( n n -- n ) {: i:n src:n :}
+   src RS-DIN = if i CHECKER-OWNER:DIN-SLOT exit then
+   src RS-DOUT = if i CHECKER-OWNER:DOUT-SLOT exit then
+   src RS-DOES-IN = if i CHECKER-OWNER:DOES-IN-SLOT exit then
+   src RS-DOES-OUT = if i CHECKER-OWNER:DOES-OUT-SLOT exit then
+   E-NCOMP-OWNER throw ;
+
 \ The width of the value a term belongs to is readable from the top of each run:
 \ the cells of one value carry slots W, W-1 ... 1 downwards. A run of one is not
 \ a bundle, and a run reaching past the row's end answers not-known.
@@ -214,8 +231,8 @@ variable RG-MASK   variable RG-I   variable RG-S   variable RG-BAD
    width 1 -  0 ?do  cells 1 - top i + -  RG-BIT  loop ;
 
 \ The row's term count and its cell count are the same number here.
-: RG-STEP ( n bool -- ) {: cells:n din:bool :}
-   din if RG-I @ CHECKER-OWNER:DIN-SLOT else RG-I @ CHECKER-OWNER:DOUT-SLOT then RG-S !
+: RG-STEP ( n n -- ) {: cells:n src:n :}
+   RG-I @ src RG-SLOT RG-S !
    RG-S @ 2 < if
       RG-I @ 1 + RG-I !
       exit
@@ -228,7 +245,7 @@ variable RG-MASK   variable RG-I   variable RG-S   variable RG-BAD
    cells RG-I @ RG-S @ RG-RUN
    RG-I @ RG-S @ + RG-I ! ;
 
-: ROW-GLUE ( n n bool -- n ) {: terms:n cells:n din:bool :}
+: ROW-GLUE ( n n n -- n ) {: terms:n cells:n src:n :}
    cells 0 < if GLUE-UNKNOWN exit then
    cells 0 = if GLUE-NONE exit then
    cells GLUE-MAX > if GLUE-UNKNOWN exit then
@@ -240,7 +257,7 @@ variable RG-MASK   variable RG-I   variable RG-S   variable RG-BAD
    0 RG-I !
    0 RG-BAD !
    begin RG-I @ terms < while
-      cells din RG-STEP
+      cells src RG-STEP
    repeat
    RG-BAD @ 0<> if GLUE-UNKNOWN exit then
    RG-MASK @ ;
@@ -285,8 +302,18 @@ public
 : SPELL-GLUE ( ptr u8 n -- n n )
    CHECKER-OWNER:QUERY 0= if GLUE-NONE GLUE-NONE exit then
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
-   dn dc true ROW-GLUE
-   on oc false ROW-GLUE ;
+   dn dc RS-DIN ROW-GLUE
+   on oc RS-DOUT ROW-GLUE ;
+
+\ The same two answers for the `does>` clause the compiler has just had checked.
+\ The clause is not a name the effect store can be queried for - it has no name
+\ until the created word exists - so its rows come from the owner's does> group
+\ instead, and nothing else about the question changes. GLUE-UNKNOWN is the
+\ honest answer for a row whose cells the checker could not separate, and the
+\ elaborator refuses it at the definer rather than placing a guess.
+: DOES-GLUE ( -- n n )
+   CHECKER-OWNER:DOES-IN-N CHECKER-OWNER:DOES-IN RS-DOES-IN ROW-GLUE
+   CHECKER-OWNER:DOES-OUT-N CHECKER-OWNER:DOES-OUT RS-DOES-OUT ROW-GLUE ;
 
 \ ---- the callable facts a call site needs, from ONE resolution ---------------
 \ EVERY READER ABOVE STARTS WITH THE SAME EFFECT-QUERY, and that query is not a
@@ -318,7 +345,7 @@ public
    CHECKER-OWNER:DOUT-CELLS {: dout:n :}
    din 0 < dout 0 < or if ARITY-NONE ARITY-NONE GLUE-NONE false exit then
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
-   on oc false ROW-GLUE {: glue:n :}
+   on oc RS-DOUT ROW-GLUE {: glue:n :}
    din dout glue CHECKER-OWNER:RET-NEUTRAL? ;
 
 \ ---- the quotation a term of one of those rows IS ----------------------------

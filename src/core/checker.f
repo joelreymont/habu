@@ -38,6 +38,10 @@ CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DOES-CHECK-OFF
 CHECKER-OWNER-ABI:DOES-IN-OFF constant DOES-IN-OFF
 CHECKER-OWNER-ABI:DOES-OUT-OFF constant DOES-OUT-OFF
 CHECKER-OWNER-ABI:DOES-WIDE-OFF constant DOES-WIDE-OFF
+CHECKER-OWNER-ABI:DOES-IN-N-OFF constant DOES-IN-N-OFF
+CHECKER-OWNER-ABI:DOES-OUT-N-OFF constant DOES-OUT-N-OFF
+CHECKER-OWNER-ABI:DOES-IN-SLOT-OFF constant DOES-IN-SLOT-OFF
+CHECKER-OWNER-ABI:DOES-OUT-SLOT-OFF constant DOES-OUT-SLOT-OFF
 CHECKER-OWNER-ABI:USIG-TRUNCATE-OFF constant USIG-TRUNCATE-OFF
 \ --- the finalized per-call-site facts the scan recorded
 CHECKER-OWNER-ABI:CALL-CELLS-OFF constant CALL-CELLS-OFF
@@ -103,6 +107,7 @@ create OWNER-STORAGE
    0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 ,
    0 ,
+   0 , 0 , 0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -122,6 +127,14 @@ OWNER-BYTES constant OWNER-CELLS-BYTES   \ what the field list says the record i
    OWNER-COMMITTED OWNER-CELLS-BYTES <> if
       s" checker: declaration-owner field list and record size disagree" 76 die then ;
 OWNER-SIZE-AGREE
+\ The size is also the END of the last appended field, and a field appended
+\ without growing the size would be read past the record's recorded extent by
+\ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
+\ offset here so that mistake is a load failure and not a bounds refusal later.
+: OWNER-LAST-FIELD-AGREE ( -- )
+   DOES-OUT-SLOT-OFF CELL + OWNER-BYTES <> if
+      s" checker: declaration-owner last field and record size disagree" 76 die then ;
+OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
 data-base SOURCE-CELL + ptr-cell-mark
 DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
@@ -7464,6 +7477,10 @@ PRIM-TRUSTED-ONLY!
 PRIM: CHECK-DOES-DIN-CELLS PE-N PE-OUT PRIM;
 PRIM: CHECK-DOES-DOUT-CELLS PE-N PE-OUT PRIM;
 PRIM: CHECK-DOES-WIDE? PE-F PE-OUT PRIM;
+PRIM: CHECK-DOES-DIN-N PE-N PE-OUT PRIM;
+PRIM: CHECK-DOES-DOUT-N PE-N PE-OUT PRIM;
+PRIM: CHECK-DOES-DIN-SLOT PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: CHECK-DOES-DOUT-SLOT PE-N PE-IN  PE-N PE-OUT PRIM;
 \ TRUST is the public top-level effect-declaration word ( name$ effect$ -- ).
 \ The axiom keeps it checker-known so the seal-time internal-word marking pass
 \ (src/core/internal-mark.f) leaves it executable at top level (dot
@@ -15702,20 +15719,71 @@ public
 : DOES-DIN ( n -- n )
    FRESH MK-VAR MK-PTR swap MK-PUSH ;
 
-\ Capture the stable physical widths and the existing wide-layout refusal before
-\ checking binds either row tail.
+\ Capture the stable physical widths, the wide-layout fact and the per-cell
+\ VALUE BOUNDARIES of both rows before checking binds either row tail. A does>
+\ clause's rows are rows like any other: PUSH-LOGICAL has already expanded every
+\ layout value of a known width into one hidden field term per physical cell, so
+\ the term count and each term's slot are exactly what a placer needs to tell a
+\ bundle it must move whole from that many unrelated cells. They are read after
+\ the scan, and the scan binds the row tails (ROW-CELLS' note above), so they are
+\ taken by value here for the same reason the cell counts are.
+\
+\ The slot arrays are bounded by what a glue mask can describe at all (dict.f
+\ GLUE-MAX). A row longer than that has more CELLS than a mask has bits and is
+\ refused by the reader that asks, before any slot of it is read, so the cap
+\ costs no answer anything could have used.
+64 constant CD-SLOT-CAP
 variable CD-DIN-CELLS
 variable CD-DOUT-CELLS
 variable CD-WIDE
+variable CD-DIN-N
+variable CD-DOUT-N
+variable CD-I
+create CD-DIN-SLOTS CD-SLOT-CAP cells allot
+create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
+
+\ The bundle slot+1 of one row entry's type, which is what EFF-TERM-SLOT answers
+\ for a stored row: a hidden physical field carries its position, every other
+\ term is a logical value of its own and answers 0.
+: CD-TERM-SLOT ( n -- n ) {: t:n :}
+   t HIDDEN-PARAM? 0= IF 0 EXIT THEN
+   t T-RES PARAM>HID ;
+
+\ Walk one row head (top) first, recording each term's slot, and answer the
+\ row's fixed term count. Terms past the cap are counted and not recorded.
+: CD-ROW-CAPTURE ( n ptr n -- n ) {: s:n a:ptr :}
+   0 CD-I !
+   s
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      CD-I @ CD-SLOT-CAP < IF
+         dup P>TYPE CD-TERM-SLOT  CD-I @ cells a + !
+      THEN
+      CD-I @ 1 + CD-I !
+      P>REST
+   REPEAT drop
+   CD-I @ ;
 
 : CHECK-DOES-EFFECT! ( n n -- ) {: din:n dout:n :}
    din ROW-CELLS CD-DIN-CELLS !
    dout ROW-CELLS CD-DOUT-CELLS !
-   din ROW-WIDE? dout ROW-WIDE? or CD-WIDE ! ;
+   din ROW-WIDE? dout ROW-WIDE? or CD-WIDE !
+   din CD-DIN-SLOTS CD-ROW-CAPTURE CD-DIN-N !
+   dout CD-DOUT-SLOTS CD-ROW-CAPTURE CD-DOUT-N ! ;
 
 : CHECK-DOES-DIN-CELLS ( -- n ) CD-DIN-CELLS @ ;
 : CHECK-DOES-DOUT-CELLS ( -- n ) CD-DOUT-CELLS @ ;
 : CHECK-DOES-WIDE? ( -- bool ) CD-WIDE @ ;
+: CHECK-DOES-DIN-N ( -- n ) CD-DIN-N @ ;
+: CHECK-DOES-DOUT-N ( -- n ) CD-DOUT-N @ ;
+
+\ A term the captured row does not have answers 0, the same "not a bundle cell"
+\ EFFECT-DIN-SLOT answers for an index past a stored row's terms.
+: CD-SLOT@ ( n ptr n -- n ) {: i:n a:ptr :}
+   i 0 < i CD-SLOT-CAP >= or IF 0 EXIT THEN
+   i cells a + @ ;
+
+: CHECK-DOES-DIN-SLOT ( n -- n ) CD-DIN-SLOTS CD-SLOT@ ;
+: CHECK-DOES-DOUT-SLOT ( n -- n ) CD-DOUT-SLOTS CD-SLOT@ ;
 
 : RAW-SIG! ( n n n n -- )
    PD-BASE @ SGDBASE !
@@ -15932,6 +16000,10 @@ package CHECKER-REG
 ' CHECK-DOES-DIN-CELLS              DECLARATIONS DOES-IN-OFF + xt!
 ' CHECK-DOES-DOUT-CELLS             DECLARATIONS DOES-OUT-OFF + xt!
 ' CHECK-DOES-WIDE?                  DECLARATIONS DOES-WIDE-OFF + xt!
+' CHECK-DOES-DIN-N                  DECLARATIONS DOES-IN-N-OFF + xt!
+' CHECK-DOES-DOUT-N                 DECLARATIONS DOES-OUT-N-OFF + xt!
+' CHECK-DOES-DIN-SLOT               DECLARATIONS DOES-IN-SLOT-OFF + xt!
+' CHECK-DOES-DOUT-SLOT              DECLARATIONS DOES-OUT-SLOT-OFF + xt!
 ' CHECKER-USIGS-TRUNCATE-FROM-RAW   DECLARATIONS USIG-TRUNCATE-OFF + xt!
 ' CWIN-CELLS                        DECLARATIONS CALL-CELLS-OFF + xt!
 ' CWIN-GLUE                         DECLARATIONS CALL-GLUE-OFF + xt!

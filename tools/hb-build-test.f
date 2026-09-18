@@ -57,6 +57,8 @@ variable HBT-REPL-BAD-SRC-U
 variable HBT-REPL-BAD-OUT-U
 variable HBT-AOT-SRC-U
 variable HBT-AOT-OUT-U
+variable HBT-SPAN-SRC-U
+variable HBT-SPAN-OUT-U
 variable HBT-DEP-SRC-U
 variable HBT-ENTRY-SRC-U
 variable HBT-ENG-U
@@ -72,6 +74,8 @@ create HBT-REPL-BAD-SRC-BUF FS-PATH-CAP allot
 create HBT-REPL-BAD-OUT-BUF FS-PATH-CAP allot
 create HBT-AOT-SRC-BUF FS-PATH-CAP allot
 create HBT-AOT-OUT-BUF FS-PATH-CAP allot
+create HBT-SPAN-SRC-BUF FS-PATH-CAP allot
+create HBT-SPAN-OUT-BUF FS-PATH-CAP allot
 create HBT-DEP-SRC-BUF FS-PATH-CAP allot
 create HBT-ENTRY-SRC-BUF FS-PATH-CAP allot
 create HBT-ENG-BUF FS-PATH-CAP allot
@@ -159,6 +163,12 @@ create HBT-EXP-HEX2 64 allot
 : HBT-AOT-OUT ( -- ptr u8 n )
    HBT-AOT-OUT-BUF HBT-AOT-OUT-U @ ;
 
+: HBT-SPAN-SRC ( -- ptr u8 n )
+   HBT-SPAN-SRC-BUF HBT-SPAN-SRC-U @ ;
+
+: HBT-SPAN-OUT ( -- ptr u8 n )
+   HBT-SPAN-OUT-BUF HBT-SPAN-OUT-U @ ;
+
 : HBT-DEP-SRC ( -- ptr u8 n )
    HBT-DEP-SRC-BUF HBT-DEP-SRC-U @ ;
 
@@ -214,6 +224,12 @@ create HBT-EXP-HEX2 64 allot
 \ string and cannot see this file's constants.
 : HBT-AOT-DIVZ-SRC$ ( -- ptr u8 n )
    S\" package HBT-DIVZ\n: LOADING ( -- ) tier@ 1 <> if -9050 throw then ;\nLOADING\nvariable A\nvariable B\nvariable R\n: DZ ( n n -- n ) / ;\n: TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\npublic\n: RUN ( -- ) 7 A ! 0 B ! TRY dup . cr -6400 <> if -9051 throw then 7 A ! 2 B ! TRY 0 <> if -9052 throw then R @ 3 <> if -9053 throw then ;\n;package\n: MAIN ( -- ) HBT-DIVZ:RUN ;\n" ;
+
+: HBT-SPAN-SRC$ ( -- ptr u8 n )
+   S\" require lib/span.f\nrequire lib/memory.f\npackage HBT-SPAN\n: LOADING ( -- ) tier@ 1 <> if -9060 throw then ;\nLOADING\n64 SPAN-BUFFER: SB\npublic\n: RUN ( -- )\n   SB SPAN:LEN . cr\n   128 MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: s :}\n   s\" span\" s SPAN:COPY\n   s 0 4 SPAN:SUB SPAN:$ type cr\n   s 8 SPAN:SKIP 16 SPAN:TAKE SPAN:LEN . cr\n   s MEM:FREE-SPAN ;\n;package\n: MAIN ( -- ) HBT-SPAN:RUN ;\n" ;
+
+: HBT-SPAN-EXPECTED$ ( -- ptr u8 n )
+   S\" 64\n\nspan\n16\n\n" ;
 
 : HBT-LARGE-AOT-SRC$ ( -- ptr u8 n )
    s" variable SLOT 9 SLOT ! : MAIN ( -- ) SLOT @ . cr ;" ;
@@ -317,6 +333,8 @@ create HBT-EXP-HEX2 64 allot
    HBT-ROOT s" repl-bad" HBT-REPL-BAD-OUT-BUF HBT-REPL-BAD-OUT-U HBT-PATH!
    HBT-ROOT s" aot.f" HBT-AOT-SRC-BUF HBT-AOT-SRC-U HBT-PATH!
    HBT-ROOT s" aot" HBT-AOT-OUT-BUF HBT-AOT-OUT-U HBT-PATH!
+   HBT-ROOT s" span.f" HBT-SPAN-SRC-BUF HBT-SPAN-SRC-U HBT-PATH!
+   HBT-ROOT s" spanimg" HBT-SPAN-OUT-BUF HBT-SPAN-OUT-U HBT-PATH!
    HBT-ROOT s" libstate.f" HBT-LIB-SRC-BUF HBT-LIB-SRC-U HBT-PATH!
    HBT-ROOT s" libstate" HBT-LIB-OUT-BUF HBT-LIB-OUT-U HBT-PATH!
    HBT-ROOT s" libdir" HBT-LIB-DIR-BUF HBT-LIB-DIR-U HBT-PATH!
@@ -558,6 +576,15 @@ create READER-STATE JR:STORAGE-BYTES allot
    [: HB-BUILD:CACHE-ROOT$ 2drop ;] catch E-BUILD-STATUS T=
    HBT-BAD-OUT REMOVE-FILE
    HBT-TMP BUILD-CACHE:ROOT! ;
+
+\ Run an image at a path of its own and hold it to its whole output, for a case
+\ that builds somewhere other than HBT-AOT-OUT or HBT-REPL-OUT.
+: HBT-RUN-IMAGE-OUT ( ptr u8 n ptr u8 n -- ) {: img:ptr imgu:n want:ptr wantu:n :}
+   img imgu >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 T=
+   HBT-RUN-ERR errn HBT-EMPTY$ T$=
+   HBT-RUN-OUT outn want wantu T$= ;
 
 : HBT-RUN-REPL ( -- )
    HBT-REPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
@@ -1054,6 +1081,31 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    BF-TMP-RESET ;
 
+\ A `create ... does>` definer whose clause yields a multi-cell value, built and
+\ RUN as an image: the clause is compiled at tier 1 (LOADING asserts the tier),
+\ the created word yields lib/span.f's two-cell span, and the span set it belongs
+\ to - allocate, copy, skip, take, sub, release - is exercised through that
+\ value. Nothing short of running the image shows the created word's row
+\ surviving the build (dot habu-give-a-does-97cd0db2).
+\ THE IMAGE IS NOT STRIPPED, and that is a limit of the capture rather than of
+\ the row: a does>-created word reachable from MAIN cannot be shaken out at all.
+\ The child reaches its does> clause by a plain B, and src/habu/aot-closure.f
+\ SCAN-DIRECT follows only BL, so the clause never joins the closure and the
+\ relocation refuses it - `aot: PC-relative target removed or outside closure`.
+\ Measured the same way on the engine this change was built from, so it is that
+\ closure's defect and not this one's; `create , does> @` and the stripped
+\ builds above show the same refusal with no span in sight.
+: BUILD-REPL-SPAN ( -- )
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-SPAN-SRC HBT-SPAN-SRC$ WRITE-ALL
+   HBT-SPAN-OUT HBT-REMOVE-FILE?
+   HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-REPL
+   HBT-HBB-BUILD-OUT
+   HBT-SPAN-OUT FILE? TTRUE
+   HBT-SPAN-OUT HBT-SPAN-EXPECTED$ HBT-RUN-IMAGE-OUT
+   HBT-REMOVE-ARTIFACT
+   HBT-SPAN-OUT HBT-REMOVE-FILE? ;
+
 : BUILD-AOT-PRESEED ( -- )
    HBT-AOT-SRC s" : ALTERNATE ( n n -- ) 42 <> if -9042 throw then 10 <> if -9043 throw then ; : MAIN ( -- ) -9044 throw ;" WRITE-ALL
    HBT-REMOVE-AOT-OUT
@@ -1272,6 +1324,7 @@ public
    BUILD-AOT-OBJECT-PRODUCER
    BUILD-AOT-NATIVE
    BUILD-AOT-DIV-REFUSAL
+   BUILD-REPL-SPAN
    HBT-SIZE-AOT
    BUILD-AOT-PRESEED
    HBT-AOT-JIT-REJECT

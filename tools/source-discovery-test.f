@@ -156,6 +156,30 @@ variable SDT-SRC-U
    EVENT-COUNT 1 T=
    0 SDT-EVENT-TOK$ s" required" T$= ;
 
+\ --- only the definition openers open a definition ---------------------------
+
+\ A USER DEFINER'S NAME ENDS IN `:` AND IS STILL AN ORDINARY CALL. `64
+\ SPAN-BUFFER: SB` (lib/span.f) names a buffer through a `create ... does>`
+\ word, and the walk reads the whole line as calls: it consumes no name of its
+\ own, so the require after it is the event it always was. Only `:`, `TRUSTED:`
+\ and `undefine` take the token that follows them.
+: SDT-TEST-USER-DEFINER ( -- )
+   s" user-definer.f"
+   S\" require sd-j.f\n64 SPAN-BUFFER: SB\n: EXAMPLE ( n -- ) {: required:n :} SB SPAN:LEN drop required drop ;\ns\" sd-k.f\" required\n"
+   SDT-WRITE-ENTRY
+   SDT-DISCOVER
+   EVENT-COUNT 2 T=
+   0 EVENT-PATH@ s" sd-j.f" SDT-PATH T$=
+   1 EVENT-PATH@ s" sd-k.f" SDT-PATH T$= ;
+
+\ The string the file never closes is the one refusal the walk makes about text
+\ rather than about a loader: the scan runs off the end and E-DISC-UNTERM is
+\ what a caller sees. hb-build reads an application through this walk, so a
+\ source with a bad literal is refused here before anything compiles it.
+: SDT-TEST-UNTERM-STRING ( -- )
+   s" unterm.f" S\" : L ( -- ) s\" sd-l.f\n" SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-UNTERM TTHROWSQ ;
+
 \ --- fail-closed: dynamic/opener/retire forms inside colon bodies ------------
 
 : SDT-TEST-BODY-DYNAMIC ( -- )
@@ -296,6 +320,8 @@ variable SDT-SRC-U
    SDT-TEST-OPENER
    SDT-TEST-COLON-BODY
    SDT-TEST-COLON-SPAN
+   SDT-TEST-USER-DEFINER
+   SDT-TEST-UNTERM-STRING
    SDT-TEST-BODY-DYNAMIC
    SDT-TEST-BODY-OPENER
    SDT-TEST-BODY-SHADOW

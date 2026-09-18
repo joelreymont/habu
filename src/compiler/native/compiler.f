@@ -83,6 +83,8 @@ PTR-VARIABLE M-DOES-SIG
 variable M-DOES-SIG-U
 variable M-DOES-IN
 variable M-DOES-OUT
+variable M-DOES-GIN                  \ where the clause's argument row's values end
+variable M-DOES-GOUT                 \ where the clause's result row's values end
 variable M-DOES-FUN                  \ hidden clause function ordinal
 variable TRUST-VERDICT
 PTR-VARIABLE TRUST-SRC-A
@@ -254,7 +256,12 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    CHECKER-OWNER:DOES-IN M-DOES-IN !
    CHECKER-OWNER:DOES-OUT M-DOES-OUT !
    M-DOES-IN @ 0 < M-DOES-OUT @ 0 < or if E-NCOMP-ARITY throw then
-   CHECKER-OWNER:DOES-WIDE? if E-NELAB-BUNDLE throw then
+   \ WHERE THE CLAUSE'S VALUES END, read here because the checker captured the
+   \ clause's rows for this split and the next one replaces them. A row wider
+   \ than a cell is placed from these boundaries exactly as a definition's own
+   \ row is; a row the checker could not separate into cells answers
+   \ GLUE-UNKNOWN and the elaborator refuses the definer over it.
+   NDICT:DOES-GLUE M-DOES-GOUT ! M-DOES-GIN !
    -1 ;
 
 : CHECK-RECORDED ( -- n )
@@ -441,7 +448,7 @@ create SPELL-BUF SPELL-CAP allot
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    M-DOES @ 0<> if
       CC BB TAPE p r M-IN @ M-OUT @ M-DOES-ROW @
-      M-DOES-IN @ M-DOES-OUT @ NDICT:GLUE-NONE NDICT:GLUE-NONE
+      M-DOES-IN @ M-DOES-OUT @ M-DOES-GIN @ M-DOES-GOUT @
       M-DOES-SIG @ M-DOES-SIG-U @ NELAB:DOES drop
       NELAB:DOES-FUNCTION M-DOES-FUN !
       exit
@@ -606,6 +613,7 @@ INSTALL-FORGET
    DOES-SIG-FIELD @ M-DOES-SIG !
    data-base TCSIG-U-CELL + @ M-DOES-SIG-U !
    0 M-DOES-IN ! 0 M-DOES-OUT !
+   NDICT:GLUE-NONE M-DOES-GIN !  NDICT:GLUE-NONE M-DOES-GOUT !
    -1 M-DOES-FUN !
    -1 M-DOES-ROW !
    0 NAME-U ! ;

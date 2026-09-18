@@ -139,6 +139,29 @@ create SP-BYTES 100 allot
 : SP-TAKE-LEN ( n -- n )   {: k :} SP-WHOLE k SP-TAKE {: w :} w SP-LEN ;
 : SP-SKIP-LEN ( n -- n )   {: k :} SP-WHOLE k SP-SKIP {: w :} w SP-LEN ;
 
+\ A `does>` clause's rows are rows: the created word yields a two-cell value and
+\ the clause is placed from that row's own per-cell boundaries, so the definer
+\ compiles and the word it creates runs (dot habu-give-a-does-97cd0db2). The
+\ body is lib/span.f's SPAN-BUFFER: shape - a reach cell and the bytes after it.
+: SP-BUFFER: ( n -- )
+   create dup , allot
+   does> ( -- sp<u8> ) dup @ >r cell+ byte-view r> NRR-SP:MAKE ;
+
+64 SP-BUFFER: SPB
+
+: SPB-LEN ( -- n )
+   SPB SP-LEN ;
+
+: SPB-C! ( u8 n -- ) {: v:n i:n :}
+   SPB NRR-SP:UNMAKE drop i + {: p:ptr :} v p c! ;
+
+: SPB-C@ ( n -- u8 ) {: i:n :}
+   SPB NRR-SP:UNMAKE drop i + {: p:ptr :} p c@ ;
+
+\ The created word's value crossing a call boundary whole.
+: SP-LEN-AFTER ( sp<t> n -- n )
+   SP-TAKE SP-LEN ;
+
 : ENUM-BUNDLE ( lamp n -- n lamp )
    swap ;
 
@@ -155,6 +178,7 @@ variable SP-PARK-RC
 variable SP-REMAKE-RC
 variable BOX-OPEN-RC
 variable BOX-CLOSED-RC
+variable BOX-DOES-RC
 
 : CAPTURE-DYNAMIC-CASES ( -- )
    s" : C-TORB ( option<n> -- option<n> ) >r r> ;" TRY TORB-RC !
@@ -169,7 +193,13 @@ variable BOX-CLOSED-RC
    \ The same row over a family whose width READS the open argument: refused by
    \ name, never guessed; the closed instantiation of it is placed exactly.
    s" : C-BOX-OPEN ( box<t> n -- box<t> ) drop ;" TRY BOX-OPEN-RC !
-   s" : C-BOX-CLOSED ( box<n> n -- box<n> ) drop ;" TRY BOX-CLOSED-RC ! ;
+   s" : C-BOX-CLOSED ( box<n> n -- box<n> ) drop ;" TRY BOX-CLOSED-RC !
+   \ The same question at a does> clause: the clause's row carries an open
+   \ instance whose width reads the argument, so the row has fewer terms than
+   \ cells and no per-cell boundary exists to place it from. Refused at the
+   \ definer by name, never guessed.
+   s" : C-BOX-DEF: ( -- ) create 0 , does> ( box<t> -- box<t> ) drop ;"
+      TRY BOX-DOES-RC ! ;
 
 CAPTURE-DYNAMIC-CASES
 
@@ -250,7 +280,12 @@ CAPTURE-DYNAMIC-CASES
    s" a call's open-argument result binds whole to a local" T-LABEL
    SP-WHOLE SP-LEN 100 T=
    7 SP-TAKE-LEN 7 T=
-   40 SP-SKIP-LEN 60 T= ;
+   40 SP-SKIP-LEN 60 T=
+
+   s" a does> clause yields a two-cell value and the created word runs" T-LABEL
+   SPB-LEN 64 T=
+   201 7 SPB-C!  7 SPB-C@ 201 T=
+   SPB 9 SP-LEN-AFTER 9 T= ;
 
 : REFUSALS ( -- )
    s" parking one cell of a bundle remains a named refusal" T-LABEL
@@ -258,7 +293,10 @@ CAPTURE-DYNAMIC-CASES
 
    s" an open argument the width READS is refused, its closed twin placed" T-LABEL
    BOX-OPEN-RC @ E-NELAB-BUNDLE T=
-   BOX-CLOSED-RC @ 0 T= ;
+   BOX-CLOSED-RC @ 0 T=
+
+   s" a does> clause over that open argument is refused at the definer" T-LABEL
+   BOX-DOES-RC @ E-NELAB-BUNDLE T= ;
 
 public
 

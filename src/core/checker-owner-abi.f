@@ -76,6 +76,16 @@ $210 constant PAYLOAD-LOOKUP-OFF
 $218 constant PAYLOAD-SPANS-OFF
 $220 constant PAYLOAD-REG-SAVE-OFF
 $228 constant PAYLOAD-DISARM-OFF
+
+\ The does> row's own value boundaries, the shape DIN-SLOT / DOUT-SLOT already
+\ give a definition's rows: the clause's term counts and the bundle slot of each
+\ term, so the native chain can place a does> row from per-cell facts instead of
+\ refusing every clause whose value is wider than a cell. $230 is the frozen
+\ certificate (checker-fetch-abi.f), which these rows are appended after.
+$238 constant DOES-IN-N-OFF
+$240 constant DOES-OUT-N-OFF
+$248 constant DOES-IN-SLOT-OFF
+$250 constant DOES-OUT-SLOT-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

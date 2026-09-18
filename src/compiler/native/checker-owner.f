@@ -165,6 +165,29 @@ TRUSTED: DOES-WIDE? ( -- bool )
    dup 0= if drop CHECK-DOES-WIDE? exit then
    AS-BOOL execute ;
 
+\ The does> row's own value boundaries. A clause's rows are rows: the terms and
+\ the per-term bundle slot are read the same way a definition's DIN-N / DIN-SLOT
+\ are read, and the placer (dict.f ROW-GLUE) asks the same questions of both.
+TRUSTED: DOES-IN-N ( -- n )
+   CHECKER-OWNER-ABI:DOES-IN-N-OFF s" does> input terms" FIELD
+   dup 0= if drop CHECK-DOES-DIN-N exit then
+   AS-N execute ;
+
+TRUSTED: DOES-OUT-N ( -- n )
+   CHECKER-OWNER-ABI:DOES-OUT-N-OFF s" does> output terms" FIELD
+   dup 0= if drop CHECK-DOES-DOUT-N exit then
+   AS-N execute ;
+
+TRUSTED: DOES-IN-SLOT ( n -- n )
+   CHECKER-OWNER-ABI:DOES-IN-SLOT-OFF s" does> input slot" FIELD
+   dup 0= if drop CHECK-DOES-DIN-SLOT exit then
+   AS-SLOT execute ;
+
+TRUSTED: DOES-OUT-SLOT ( n -- n )
+   CHECKER-OWNER-ABI:DOES-OUT-SLOT-OFF s" does> output slot" FIELD
+   dup 0= if drop CHECK-DOES-DOUT-SLOT exit then
+   AS-SLOT execute ;
+
 TRUSTED: USIG-TRUNCATE ( ptr u8 n -- )
    CHECKER-OWNER-ABI:USIG-TRUNCATE-OFF s" signature retract" FIELD
    dup 0= if drop CHECKER-USIGS-TRUNCATE-FROM-RAW exit then

@@ -458,10 +458,13 @@ field. Only a type annotation on that local is refused: `{: p:n :}` is
   guessed — the registry answers which argument slots the width reads
   (`src/core/type-family.f TFAM-WIDTH-SLOT?`) and the checker expands an
   instance into its cells only when no open slot is one of them
-  (`src/core/checker.f LAYOUT-WIDTH-OPEN?`). Separately, a multi-cell value
-  produced by a `create … does>` clause is refused at tier 1 whatever its
-  arguments (`E-NELAB-BUNDLE` at the definer): a does> row reaches the native
-  chain as cell counts with no value boundaries.
+  (`src/core/checker.f LAYOUT-WIDTH-OPEN?`). A `create … does>` clause carries
+  the same rule: its rows are rows, with the value boundaries of a definition's
+  own (`DOES-IN-SLOT` / `DOES-OUT-SLOT` on the owner ABI), so a clause yielding
+  a multi-cell value compiles at tier 1 and the created word runs
+  (`n SPAN-BUFFER: NAME`, lib/span.f). Only a clause row carrying an instance
+  whose width reads an open argument has no per-cell boundary to place, and
+  that one is `E-NELAB-BUNDLE` at the definer.
 - `DERIVE eq`/`DERIVE hash` on a public arity-0 family generate those
   operations; clauses follow the name on `ENUM` and the arity on
   `SUMTYPE`/`PRODUCT`, one or several per feature; repeating a feature rejects.
