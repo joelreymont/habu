@@ -1314,7 +1314,7 @@ public
 
 \ Authenticated encryption and HMAC over libcrypto (package CRYPTO):
 \ -9270..-9279. After package DB (-9250..-9259); -9240..-9249 is
-\ tools/engine-size.f and -9260..-9269 tools/manifest-lint-core.f, both
+\ tools/image-size-lib.f and -9260..-9269 tools/manifest-lint-core.f, both
 \ outside this file.
 -9270 constant E-CRYPTO-FIRST
 -9279 constant E-CRYPTO-LAST
@@ -1327,7 +1327,7 @@ public
 -9276 constant E-CRYPTO-PLATFORM   \ libcrypto.so.3 is not the shared-library name this target loads
 
 \ PostgreSQL over libpq (package DB): -9250..-9259. The decade after libcurl;
-\ -9240..-9249 is tools/engine-size.f, outside this file.
+\ -9240..-9249 is tools/image-size-lib.f, outside this file.
 -9250 constant E-DB-FIRST
 -9259 constant E-DB-LAST
 

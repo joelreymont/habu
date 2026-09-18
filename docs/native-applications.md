@@ -47,6 +47,14 @@ The native REPL build compiles the current source into a fresh running image.
 It does not use the AOT maker or artifact caches. The existing build report
 therefore records no cache source and no cache hits for `--repl`.
 
+Every build prints one line saying where the bytes of the image it just wrote
+went, `--size-report` prints the whole table and `--report-json` carries the
+same numbers in the report object's `size` field. A `--repl` image is mostly
+zero bytes — it copies the DATA window verbatim and the dictionary slot array
+whole — which is a property of the format and not of your program; [Where an
+application image's bytes go](engine-size.md#where-an-application-images-bytes-go)
+measures both classes and says what moves the number.
+
 ## Stripped images and persistent execution tokens
 
 Without `--repl` the same driver builds a *stripped* image: only the closure of

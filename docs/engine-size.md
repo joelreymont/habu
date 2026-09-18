@@ -2,6 +2,9 @@
 
 `bin/hb` is 3,932,352 bytes. This is what they are, measured rather than
 estimated, and what the measurement says about making the engine smaller.
+[Where an application image's bytes go](#where-an-application-images-bytes-go)
+asks the same question of what `tools/hb-build.f` writes, which is a much
+larger file and a different answer.
 
 Reproduce it with the tool that produced every number below:
 
@@ -9,10 +12,12 @@ Reproduce it with the tool that produced every number below:
 bin/hb --load tools/engine-size.f -- bin/hb
 ```
 
-`tools/engine-size.f` walks the image file itself. It refuses to print a budget
-unless the classes it names add up to the file's own length, so the table is an
-accounting identity, not a set of estimates. Everything here is the engine this
-tree builds, sha256
+`tools/engine-size.f` is the command line; `tools/image-size-lib.f` is the walk,
+in a library because `tools/hb-build.f` runs it too. It walks the image file
+itself, reads which of the three image classes the file is out of the file, and
+refuses to print a budget unless the classes it names add up to the file's own
+length, so the table is an accounting identity, not a set of estimates.
+Everything in the engine sections is the engine this tree builds, sha256
 `d5e871c07a39b891b4e314024480f168dbc38a248fc987c0e4b567acc19a56f1`,
 3,932,352 bytes.
 
@@ -316,6 +321,195 @@ Measured against this engine, so the numbers are bounds, not hopes:
 - **An owner is a record the image carries, charged up to the next owner.** An
   anonymous heap block lands under the name below it, and so does every table a
   dropped private record used to own.
-- The tool measures baked engine images. It refuses a snapshot image, whose
-  dictionary and DATA travel verbatim behind a trailer, and a stripped
-  application, which carries no seeded dictionary at all.
+- **The reachability census above is a question only a baked engine has**, so it
+  does not run on an application image. A `--repl` image ships the interpreter,
+  which resolves user tokens by name, so every word it carries is reachable by
+  construction; a stripped image already had the closure walk
+  (`src/habu/aot-closure.f`) run against it at build time, and what that walk
+  dropped is not in the file to find.
+
+## Where an application image's bytes go
+
+`tools/hb-build.f` writes two other image classes, and the question "why is this
+application 24 MB on an engine of 4 MB" is not answered by either the code or
+the dictionary. It is answered by the zero bytes.
+
+Every class below is reported with a **zero** column beside its byte count,
+because the difference between what an image carries and what it says is the
+whole story for a snapshot. The classes still have to sum to the file's length
+or nothing is printed.
+
+The worked example is this application, built with the engine above:
+
+```forth
+package IMGFIX
+
+create TABLE 4096 allot
+variable COUNTER
+defer HOOK ( -- )
+
+: BUMP ( -- )
+   COUNTER @ 1+ COUNTER ! ;
+
+: BIND ( -- )
+   [: BUMP ;] is HOOK ;
+
+BIND
+
+public
+
+: GREET ( -- )
+   HOOK
+   s" imgfix" type cr ;
+
+;package
+
+: MAIN ( -- )
+   IMGFIX:GREET ;
+```
+
+### A `--repl` snapshot image
+
+```
+bin/hb --load tools/hb-build.f -- --repl app.f -o app-repl
+bin/hb --load tools/engine-size.f -- app-repl
+```
+
+23,920,832 bytes, of which **16,683,930 — 69.7% — are zero**.
+
+| class | bytes | zero | % | what it is |
+| --- | ---: | ---: | ---: | --- |
+| `elf/header` … `elf/header-pad` | 4,096 | 3,970 | 0.0 | the header page, as in any image |
+| `engine/code` | 127,964 | 18,322 | 0.5 | the donor engine's own emitted code |
+| `engine/primitive-*` | 10,176 | 7,402 | 0.0 | its boot-seeded primitive dictionary |
+| `aot/*` | 3,804,672 | 526,896 | 15.9 | its AOT payload, the twenty rows the engine table itemises |
+| `engine/text-pad` | 50,788 | 50,788 | 0.2 | the donor's own text pad, now interior to this file |
+| `region/dict-records` | 464,640 | 307,030 | 1.9 | 9,680 live 48-byte dictionary records |
+| `region/dict-unused` | 2,681,088 | 2,681,088 | 11.2 | the rest of the 65,536-slot array, never written |
+| `region/cf-stack` | 4,096 | 4,096 | 0.0 | the control-flow stack inside the dictionary band |
+| `region/code-band` | 1,902,880 | 268,180 | 7.9 | every word the application compiled, plus its out-of-line names |
+| `data/window` | 14,870,192 | 12,815,963 | 62.1 | the DATA window, copied byte for byte |
+| `snapshot/trailer` | 48 | 31 | 0.0 | magic, text base, ndict, region length, data length, version |
+| `container/rw-segment` | 192 | 164 | 0.0 | DYNAMIC plus the two loader slots |
+| **total** | **23,920,832** | **16,683,930** | 100.0 | |
+
+Three facts follow.
+
+**Five sixths of the file is the application's half, and four fifths of that is
+zero.** The engine travels whole — 3,997,696 bytes, the same text a baked engine
+carries, which is why the engine's own walkers measure it unchanged — and the
+snapshot adds 19,922,944 bytes on top. 16,076,388 of those are zero.
+
+**The DATA window is copied verbatim, zeros included.** It is 62.1% of the file
+and 86% of it is zero. `src/habu/snap-lib.f` writes `[data-base, DP)` as bytes,
+so a table `allot`ed at its declared capacity and filled a tenth of the way
+travels at full size, and a store laid out with interleaved zero cells travels
+as those cells. Nothing compresses it and nothing skips it: a restore is a
+`read` into the window. This is the lever, and it is the same lever the engine's
+`aot/data-run-*` rows describe from the other side — the AOT capture does encode
+runs, which is why the engine pays 1.2 MB for a 6.8 MB heap while the snapshot
+pays 14.9 MB for a 14.9 MB one.
+
+**The dictionary slot array is the second lever, at 2,681,088 bytes of nothing.**
+`DICT-CAP` is 65,536 records and this application publishes 9,680; the other
+55,856 slots are written to the file because they are inside the region the
+trailer's `REGLEN` covers. They cost more than every record the image actually
+ships.
+
+### A stripped image
+
+```
+bin/hb --load tools/hb-build.f -- app.f -o app-strip
+bin/hb --load tools/engine-size.f -- app-strip
+```
+
+65,728 bytes, of which 62,887 are zero — and almost all of that is one class.
+
+| class | bytes | zero | % | what it is |
+| --- | ---: | ---: | ---: | --- |
+| `elf/header` … `elf/header-pad` | 4,096 | 3,980 | 6.2 | the header page |
+| `app/code` | 3,176 | 524 | 4.8 | the startup, the closure of `MAIN`, the crash and signal handlers |
+| `app/data-run-rows` | 24 | 3 | 0.0 | a u32 of encoded row bytes and the varint `(gap, length)` rows |
+| `app/data-run-bytes` | 19 | 0 | 0.0 | the bytes those rows describe |
+| `app/row-align-pad` | 1 | 1 | 0.0 | the blob rounded up to the rows' four-byte boundary |
+| `app/relocation-rows` | 8 | 3 | 0.0 | one 8-byte row per declared address cell |
+| `image/text-pad` | 58,212 | 58,212 | 88.5 | the text segment rounded up to 64 KB |
+| `container/rw-segment` | 192 | 164 | 0.2 | DYNAMIC plus the two loader slots |
+| **total** | **65,728** | **62,887** | 100.0 | |
+
+```
+restored DATA window: 659516 bytes from 19 carried in 7 runs; 659497 zero bytes do not travel
+  relocation rows 1, declared address cells this image rebinds at startup
+```
+
+**A stripped image carries no zero byte of its DATA at all.** Its window is
+encoded as non-zero runs (`src/habu/aot-lib.f BUILD-SPARSE-DATA`), so 659,516
+bytes of window arrive from 19 bytes of file. That is the same encoding the
+engine's `aot/data-run-*` rows use, and it is why the snapshot's 14.9 MB and
+this image's 19 bytes describe comparable things. The zero-filled span is
+reported beside the table rather than as a class, because none of those bytes is
+in the file to attribute.
+
+**Almost the whole file is the page round.** 88.5% is `image/text-pad`: the text
+segment rounds up to 64 KB and this program needs 3.2 KB of it. A saving smaller
+than the pad does not change the file's length at all — the same warning the
+engine's own pad carries, in a much louder form.
+
+### What frames the two classes
+
+A snapshot says so at a fixed offset: the 48-byte trailer is the last thing
+inside the authenticated text extent, and `src/habu/layout.f` is the single
+owner of its size and every field offset, which `src/habu/snap-lib.f`,
+`src/habu/habu2.f EM-SNAPSHOT-RESTORE`, `tools/imgdump.f` and this tool all read
+from. Its `REGLEN` and `DATALEN` place the two payloads exactly, so nothing is
+searched for and the walk cannot land in the wrong place.
+
+A stripped image frames nothing, so the walk takes the emitter's own two
+statements about it:
+
+- **the blob** is named by the startup's single `ADR x9`
+  (`src/habu/aot-lib.f EMIT-DATA-COPY`; `test/gate-aot-image.f` already admits
+  exactly one), and then frames itself — a u32 of encoded row bytes, those rows,
+  and the bytes they describe;
+- **the relocation row count** is the `MOVZ`/`MOVK` chain `EMIT-XT-CELLS` loads
+  into x11, found behind the three-instruction idiom that rounds the byte cursor
+  up to the rows' four-byte boundary and confirmed by the `ADR x12` after it,
+  which must name this image's own code base.
+
+The row count is read and never inferred. A row is `(u32 location, u32 target)`
+and a target below 65,536 leaves the row's last two bytes zero: the image above
+has exactly one row, target 1,252, and ending the content at the last non-zero
+byte would lose eight bytes of the file to the pad.
+
+### What every build prints
+
+`tools/hb-build.f` measures what it just wrote and prints one line:
+
+```
+hb-build size: app-repl 23920832 bytes = code 3863024, names 3396076, data 2808144 written + 12816224 zero, padding 54407, other 982957 (repl-snapshot)
+```
+
+The six terms plus `other` are the file's own length, so the line is an identity
+and `other` is whatever no class claimed — the table itemises it. `code` is
+every byte of executable code, `names` every dictionary record and its names
+(the slot array included, which is why it is large), `data written` and `data
+zero-filled` the two halves of every data-carrying class, and `padding` the
+header pad, the text pads and the alignment pads.
+
+`--size-report` prints the whole table above the line. `--report-json`
+suppresses the line and puts the same numbers in the report object instead, so
+the JSON stays a single parseable object:
+
+```json
+"size":{"total":65728,"code":3176,"names":0,"data_written":19,
+        "data_zero_filled":0,"padding":61832,"other":701}
+```
+
+### Tender's images
+
+> The numbers this section was asked for — Tender's scraper (24.6 MB), product
+> CLI (28.4 MB) and server (29.0 MB) — belong here, measured by their owner
+> against their own tree. Run `bin/hb --load tools/engine-size.f -- <image>` on
+> each and paste the three tables; the shape above says what to expect, but the
+> split between `region/code-band`, `region/dict-unused` and `data/window` is a
+> property of each application and is not worth guessing.

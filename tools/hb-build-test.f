@@ -566,6 +566,55 @@ create READER-STATE JR:STORAGE-BYTES allot
      timeout  OF -1 ENDOF
    ;MATCH ;
 
+\ ---- where each image class's bytes went --------------------------------------
+\ tools/image-size-lib.f attributes every byte of the image to a class and
+\ refuses to answer unless the classes sum to the file's own length, so MEASURE
+\ returning at all is the sum-to-length proof; these cases pin that the sum is
+\ the file's REAL length (not a number the walk invented), that the summary's
+\ six terms plus `other` are the same total, and the one fact that separates the
+\ two application classes -- a snapshot writes its zero bytes and a stripped
+\ image never does.
+: HBT-SIZE-SUM ( -- n )
+   IMAGE-SIZE:CODE-BYTES IMAGE-SIZE:NAME-BYTES +
+   IMAGE-SIZE:DATA-WRITTEN + IMAGE-SIZE:DATA-ZERO +
+   IMAGE-SIZE:PAD-BYTES + IMAGE-SIZE:OTHER-BYTES + ;
+
+: HBT-SIZE-MEASURE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u IMAGE-SIZE:MEASURE
+   IMAGE-SIZE:TOTAL-BYTES  a u FILE-SIZE T=
+   HBT-SIZE-SUM  IMAGE-SIZE:TOTAL-BYTES T= ;
+
+: HBT-SIZE-REPL ( -- )
+   HBT-REPL-OUT HBT-SIZE-MEASURE
+   IMAGE-SIZE:CLASS$ s" repl-snapshot" T$=
+   \ A snapshot copies its DATA window verbatim, zeros included, and they are
+   \ most of the image: the class exists and is never empty.
+   IMAGE-SIZE:DATA-ZERO 0 > TTRUE
+   IMAGE-SIZE:DATA-ZERO IMAGE-SIZE:DATA-WRITTEN > TTRUE
+   IMAGE-SIZE:CODE-BYTES 0 > TTRUE
+   IMAGE-SIZE:NAME-BYTES 0 > TTRUE ;
+
+\ Builds its own image: every AOT case above removes its output as its last
+\ act, and this one has to read the file rather than a report about it.
+: HBT-SIZE-AOT ( -- )
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBB-BUILD
+   HBT-AOT-OUT HBT-SIZE-MEASURE
+   IMAGE-SIZE:CLASS$ s" stripped" T$=
+   \ The other half of the same fact: a stripped image encodes its window as
+   \ non-zero runs, so not one zero byte of it travels.
+   IMAGE-SIZE:DATA-ZERO 0 T=
+   IMAGE-SIZE:DATA-WRITTEN 0 > TTRUE
+   IMAGE-SIZE:CODE-BYTES 0 > TTRUE
+   \ ... and it carries no dictionary at all.
+   IMAGE-SIZE:NAME-BYTES 0 T=
+   HBT-REMOVE-ARTIFACT
+   HBT-REMOVE-AOT-OUT
+   BF-TMP-RESET ;
+
 \ imgdump prints one line per dictionary record of the image it reads, so its
 \ output is the size of that image's dictionary - 407,041 bytes for the REPL
 \ application this case builds, and growing with the engine. A bounded capture
@@ -946,11 +995,13 @@ public
    HBT-RUN-REPL
    HBT-RUN-REPL-ARGS
    HBT-IMGDUMP-REPL
+   HBT-SIZE-REPL
    HBT-BUILD-REPL-BAD
    HBT-BAD-MAIN-EFFECTS
    HBT-BUILD-MISSING-TMP
    BUILD-AOT-OBJECT-PRODUCER
    BUILD-AOT-NATIVE
+   HBT-SIZE-AOT
    BUILD-AOT-PRESEED
    HBT-AOT-JIT-REJECT
    HBT-BUILD-AOT-OBJECT-HIT

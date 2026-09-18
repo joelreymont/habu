@@ -3,8 +3,8 @@
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f,
 \ lib/memory.f, lib/source.f, lib/codesign.f, lib/content-key.f,
 \ lib/object-resolve.f, lib/build-cache.f, lib/json-write.f,
-\ tools/hb-build-report.f, tools/object-image.f, tools/build-fixpoint.f, and
-\ tools/cli-run.f.
+\ tools/hb-build-report.f, tools/object-image.f, tools/build-fixpoint.f,
+\ tools/image-size-lib.f and tools/cli-run.f.
 
 require lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer
 require lib/string-roles.f               \ package STR: the typed string surface
@@ -14,6 +14,7 @@ require lib/json-write.f
 require tools/hb-build-report.f
 require tools/object-image.f
 require tools/event-closure-lib.f
+require tools/image-size-lib.f          \ every build reports where its bytes went
 
 \ The hb-build command's implementation lives in package HB-BUILD-CLI.
 \ Everything below is private to it; the export block at the end of the file
@@ -78,6 +79,7 @@ variable HBB-KEY-I
 variable HBB-REPL
 variable HBB-JSON
 variable HBB-REPORT-JSON
+variable HBB-SIZE-REPORT
 \ Keep the report schema: a fresh native compiler runs without a cached maker.
 variable HBB-MAKER-HIT
 variable HBB-MAKER-BUILD
@@ -126,7 +128,7 @@ variable HBB-ELAPSED-NS
    s" " rot die ;
 
 : HBB-USAGE ( -- )
-   s" usage: tools/hb-build.f [--repl] [--json-errors] [--report-json] [--preseed-entry NAME --preseed-seed HEX [--preseed-mode N]] source.f -o out" HBB-USAGE-RC die ;
+   s" usage: tools/hb-build.f [--repl] [--json-errors] [--report-json] [--size-report] [--preseed-entry NAME --preseed-seed HEX [--preseed-mode N]] source.f -o out" HBB-USAGE-RC die ;
 
 : HBB-COPY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u FS-PATH-CAP > if E-BUILD-PATH throw then
@@ -207,6 +209,7 @@ variable HBB-ELAPSED-NS
    0 HBB-REPL !
    0 HBB-JSON !
    0 HBB-REPORT-JSON !
+   0 HBB-SIZE-REPORT !
    0 HBB-PRESEED !
    0 HBB-ENTRY-NAME-U !
    0 HBB-SEED-HEX-U !
@@ -272,6 +275,7 @@ variable HBB-ELAPSED-NS
    HBB-I @ s" --repl" HBB-ARG= if -1 HBB-REPL ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --json-errors" HBB-ARG= if -1 HBB-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --report-json" HBB-ARG= if -1 HBB-REPORT-JSON ! HBB-INC-I HBB-TRUE exit then
+   HBB-I @ s" --size-report" HBB-ARG= if -1 HBB-SIZE-REPORT ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --preseed-entry" HBB-ARG= if HBB-OPT-VALUE$ HBB-PRESEED-ENTRY! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --preseed-seed" HBB-ARG= if HBB-OPT-VALUE$ HBB-PRESEED-SEED! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --preseed-mode" HBB-ARG= if
@@ -776,6 +780,19 @@ HBB-INSTALL-CHILD-LINT
    HBB-OBJ-NAME$ BF-REMOVE-TMP
    HBB-RUN-MAKER-CMD HBB-FINISH-MAKER ;
 
+\ Where the bytes of what this build just wrote went. The walk is the same one
+\ tools/engine-size.f runs, so the summary line and the tool cannot disagree,
+\ and it refuses to answer at all unless the classes sum to the file's length --
+\ which is what makes one line of six numbers evidence rather than a guess.
+\ --size-report prints the whole table under it; --report-json puts the same
+\ numbers in the report object instead, so the JSON stays one parseable object.
+: HBB-MEASURE-OUT ( -- )
+   HBB-OUT$ IMAGE-SIZE:MEASURE ;
+
+: HBB-SIZE-LINE ( -- )
+   s" hb-build " type
+   HBB-OUT$ IMAGE-SIZE:.SUMMARY ;
+
 : HBB-SUCCESS ( -- )
    HBB-REPORT-JSON @ if HB-BUILD:REPORT$ type cr exit then
    s" hb-build OK: " type
@@ -785,7 +802,9 @@ HBB-INSTALL-CHILD-LINT
    else
       s"  (AOT, engine stripped)"
    then type
-   cr ;
+   cr
+   HBB-SIZE-REPORT @ if IMAGE-SIZE:REPORT then
+   HBB-SIZE-LINE ;
 
 : HBB-CAPTURE-REPORT ( -- )
    HBB-REPL @ if
@@ -799,10 +818,15 @@ HBB-INSTALL-CHILD-LINT
    HBB-MAKER-BUILD @ 0 <>
    HBB-MAKER-RUN @ 0 <>
    HBB-ELAPSED-NS @
-   HB-BUILD:CAPTURE ;
+   HB-BUILD:CAPTURE
+   IMAGE-SIZE:TOTAL-BYTES IMAGE-SIZE:CODE-BYTES IMAGE-SIZE:NAME-BYTES
+   IMAGE-SIZE:DATA-WRITTEN IMAGE-SIZE:DATA-ZERO IMAGE-SIZE:PAD-BYTES
+   IMAGE-SIZE:OTHER-BYTES
+   HB-BUILD:CAPTURE-SIZE ;
 
 : HBB-FINISH ( -- )
    mono-ns HBB-START-NS @ - HBB-ELAPSED-NS !
+   HBB-MEASURE-OUT
    HBB-CAPTURE-REPORT
    HBB-SUCCESS ;
 

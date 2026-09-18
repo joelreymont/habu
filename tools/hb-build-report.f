@@ -27,6 +27,17 @@ variable MAKER-HIT-FLAG
 variable MAKER-BUILT-FLAG
 variable MAKER-RAN-FLAG
 variable ELAPSED-VALUE
+\ Where the bytes of the image this build wrote went: the same six numbers the
+\ text summary prints, plus the file's own length. tools/image-size-lib.f
+\ measures them and refuses unless its classes sum to that length, so `other`
+\ is what no class claimed and the seven add up exactly.
+variable SIZE-TOTAL
+variable SIZE-CODE
+variable SIZE-NAMES
+variable SIZE-DATA
+variable SIZE-DATA-ZERO
+variable SIZE-PAD
+variable SIZE-OTHER
 
 \ Worst case one cache_root byte becomes \u00XX, plus the fixed keys and values.
 6 constant REPORT-ESCAPE-MAX
@@ -122,7 +133,14 @@ public
    0 MAKER-HIT-FLAG !
    0 MAKER-BUILT-FLAG !
    0 MAKER-RAN-FLAG !
-   0 ELAPSED-VALUE ! ;
+   0 ELAPSED-VALUE !
+   0 SIZE-TOTAL !
+   0 SIZE-CODE !
+   0 SIZE-NAMES !
+   0 SIZE-DATA !
+   0 SIZE-DATA-ZERO !
+   0 SIZE-PAD !
+   0 SIZE-OTHER ! ;
 
 : VALID? ( -- bool )
    COMPLETE? ;
@@ -139,6 +157,21 @@ public
    ran MAKER-RAN-FLAG !
    elapsed ELAPSED-VALUE !
    construct state complete STATE! ;
+
+: CAPTURE-SIZE ( n n n n n n n -- )
+   {: total:n code:n names:n data:n dzero:n pad:n other:n :}
+   \ The six terms plus `other` ARE the file, which is the property that lets a
+   \ build system read one of them without reading the table.
+   code names + data + dzero + pad + other + total <> if
+      E-BUILD-STATUS throw
+   then
+   total SIZE-TOTAL !
+   code SIZE-CODE !
+   names SIZE-NAMES !
+   data SIZE-DATA !
+   dzero SIZE-DATA-ZERO !
+   pad SIZE-PAD !
+   other SIZE-OTHER ! ;
 
 : CACHE-ROOT$ ( -- ptr u8 n )
    REQUIRE-COMPLETE
@@ -184,7 +217,17 @@ public
    s" maker_hit" MAKER-HIT? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
    s" maker_built" MAKER-BUILT? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
    s" maker_ran" MAKER-RAN? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
-   s" elapsed_ns" ELAPSED-NS JSON-WRITE:FIELD-U
+   s" elapsed_ns" ELAPSED-NS JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" size" JSON-WRITE:KEY
+   JSON-WRITE:OBJECT-START
+   s" total" SIZE-TOTAL @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" code" SIZE-CODE @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" names" SIZE-NAMES @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" data_written" SIZE-DATA @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" data_zero_filled" SIZE-DATA-ZERO @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" padding" SIZE-PAD @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" other" SIZE-OTHER @ JSON-WRITE:FIELD-U
+   JSON-WRITE:OBJECT-END
    JSON-WRITE:OBJECT-END
    JSON-WRITE:$ ;
 

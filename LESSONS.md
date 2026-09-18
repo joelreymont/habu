@@ -9376,3 +9376,18 @@ checker rule - when a converted fixture fails on both engines, the conversion is
 the suspect, not the rule. Keep a typed line under 256 bytes; the backing cell
 of a `PTR-VARIABLE` + same-named-accessor pair is the cheapest name to shorten,
 because nothing else in the program mentions it.
+
+## 2026-09-18 - the last non-zero byte is not where an image's content ends
+
+A stripped application ends its text with one 8-byte relocation row per declared
+address cell (`src/habu/aot-lib.f EMIT-XT-ROWS`), and a row is
+`(u32 location, u32 target)`. A target below 65,536 leaves the row's last two
+bytes zero, so a walk that ends the content at the last non-zero byte hands
+those bytes to the page pad and loses eight bytes of the file. The fixture that
+caught it has exactly one row, target 1,252. Nothing in the file frames the
+rows, so `tools/image-size-lib.f` reads the count out of the MOVZ/MOVK chain
+`EMIT-XT-CELLS` loads into x11 and confirms it with the `ADR x12` that must name
+the image's own code base. The same shortcut IS sound one class over -- an image
+whose capture window is empty ends in an A64 instruction word, and no A64
+encoding has a zero top byte -- which is exactly why it looks safe everywhere.
+A zero byte is data, not absence: ask the emitter how many rows it wrote.
