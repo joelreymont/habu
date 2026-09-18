@@ -556,7 +556,7 @@ public
 \   -8100..-8159  unassigned (canonical codec stack deleted 2026-08-05: no consumer)
 \   -8160..-8179  unassigned (pass witnesses retired 2026-07-30: no consumer)
 \   -8180..-8199  IR facade assembly and package protection (package IR)
-\   -8200..-8219  ARM64 routine machine-effect contracts (package A64EFF)
+\   -8200..-8219  ARM64 routine machine-effect contracts (package NEFF)
 \   -8220..-8239  unassigned (immediate-word contract table deleted 2026-08-20:
 \                 no consumer)
 \   -8240..-8259  native stage N0 source tape (package NTAPE)
@@ -689,24 +689,24 @@ public
 -8098 constant E-IR-VERIFY-SPAN    \ a source span that is not a valid slice of a registered source
 -8099 constant E-IR-VERIFY-TARGET  \ an operation the context's bound target contract cannot execute
 
-\ ARM64 routine machine-effect contracts (package A64EFF): -8200..-8219
+\ ARM64 routine machine-effect contracts (package NEFF): -8200..-8219
 \ The first sub-block of the dialect range the map above reserves. It belongs to
-\ src/compiler/a64-effect.f, which says what an emitted ARM64 routine does to the
+\ src/compiler/native-effect.f, which says what an emitted ARM64 routine does to the
 \ machine - which registers it reads, returns and destroys, what it does to the
 \ condition flags, the link register and the stack pointer, and how control
 \ leaves it. The A64IR dialect package composes these contracts with its own
 \ indexed operand records and takes a later sub-block for its own failures.
--8200 constant E-A64EFF-GPR     \ a general-register set naming a register no routine can hold state in: x18 is platform-reserved, x30 is the link register and has its own field, 31 is the zero register or the stack pointer, or the bit is past the 32-register file
--8201 constant E-A64EFF-FPR     \ a floating-register set bit past the 32-register file
--8202 constant E-A64EFF-ROLE    \ one register in two roles that exclude each other: a declared result that is also declared destroyed
--8203 constant E-A64EFF-FRAME   \ a frame size that is negative, not a multiple of the stack alignment, or past the reach of the load and store offset field
--8204 constant E-A64EFF-SP      \ a stack-pointer delta that rises above the caller's stack, is not a multiple of the stack alignment, is deeper than the declared frame, or is nonzero on a routine whose control returns
--8205 constant E-A64EFF-LINK    \ a link-register effect that cannot hold: control returns or tail-calls while x30 is declared destroyed
--8206 constant E-A64EFF-CONTROL \ results declared on a routine that never returns
--8207 constant E-A64EFF-TRAIT   \ a trait mask holding a bit outside the vocabulary of things a routine can do
--8208 constant E-A64EFF-SLOT    \ a frame slot the routine cannot address: a width no load or store form carries, a negative or unaligned offset, an offset past the frame, or an offset past the reach of that width's offset field
--8209 constant E-A64EFF-SEQ     \ an ordered register list no calling convention can have: more positions than one cell holds, a register no routine can hold state in, one register named at two positions, or bits set past the last position
--8210 constant E-A64EFF-CONV    \ a contract whose declared convention and whose places are two different statements: a data-stack convention naming a register, or a register convention naming a slot of the caller's data stack
+-8200 constant E-NEFF-GPR     \ a general-register set naming a register no routine can hold state in: x18 is platform-reserved, x30 is the link register and has its own field, 31 is the zero register or the stack pointer, or the bit is past the 32-register file
+-8201 constant E-NEFF-FPR     \ a floating-register set bit past the 32-register file
+-8202 constant E-NEFF-ROLE    \ one register in two roles that exclude each other: a declared result that is also declared destroyed
+-8203 constant E-NEFF-FRAME   \ a frame size that is negative, not a multiple of the stack alignment, or past the reach of the load and store offset field
+-8204 constant E-NEFF-SP      \ a stack-pointer delta that rises above the caller's stack, is not a multiple of the stack alignment, is deeper than the declared frame, or is nonzero on a routine whose control returns
+-8205 constant E-NEFF-LINK    \ a link-register effect that cannot hold: control returns or tail-calls while x30 is declared destroyed
+-8206 constant E-NEFF-CONTROL \ results declared on a routine that never returns
+-8207 constant E-NEFF-TRAIT   \ a trait mask holding a bit outside the vocabulary of things a routine can do
+-8208 constant E-NEFF-SLOT    \ a frame slot the routine cannot address: a width no load or store form carries, a negative or unaligned offset, an offset past the frame, or an offset past the reach of that width's offset field
+-8209 constant E-NEFF-SEQ     \ an ordered register list no calling convention can have: more positions than one cell holds, a register no routine can hold state in, one register named at two positions, or bits set past the last position
+-8210 constant E-NEFF-CONV    \ a contract whose declared convention and whose places are two different statements: a data-stack convention naming a register, or a register convention naming a slot of the caller's data stack
 
 
 \ Native stage N0 source tape (package NTAPE): -8240..-8259
@@ -787,7 +787,7 @@ public
 \
 \ Design section 7.9's linear scan over one straight-line block of the machine
 \ dialect. Refusals another authority owns keep that authority's name - a
-\ register no routine may hold state in is A64EFF's E-A64EFF-GPR, and a
+\ register no routine may hold state in is NEFF's E-NEFF-GPR, and a
 \ malformed module is IR-OP's or IR-VERIFY's - so these are the facts the
 \ allocator alone can judge: whether it was told which dialect it is reading,
 \ whether the module and contract it was handed are the ones it was told about,
@@ -916,7 +916,7 @@ public
 \ decisions are real store and load operations, plus the frame-slot facts the
 \ allocator (package A64RA) and its validator (package A64RAV) gained with it.
 \ Refusals another authority owns keep that authority's name: a slot no load or
-\ store form can reach is A64EFF's E-A64EFF-SLOT, a slot offset outside the
+\ store form can reach is NEFF's E-NEFF-SLOT, a slot offset outside the
 \ dialect's own field is E-A64IR-SLOT, and a malformed module is IR-OP's.
 -8440 constant E-A64SPILL-BIND   \ a rewrite attempted before the machine dialect's identities were bound, or a second binding over a live one
 -8441 constant E-A64SPILL-PLAN   \ no sealed spill plan at all, one made for another module, or one a later allocation replaced
@@ -934,7 +934,7 @@ public
 \ Native ARM64 fixed-register binding (packages A64RA and A64RAV): -8460..-8479
 \
 \ The registers a routine's arguments arrive in and its results leave in are
-\ declared by its contract (package A64EFF), which owns the shape of that
+\ declared by its contract (package NEFF), which owns the shape of that
 \ declaration and refuses one that cannot be a convention at all. These two are
 \ what the register allocator and its validator add: whether the allocation this
 \ machine module needs can honour that declaration, and whether the finished
@@ -951,9 +951,9 @@ public
 \ two that carry the pointer move in the transfer itself. These are the facts
 \ the five owners of that convention add. Refusals another authority owns keep
 \ that authority's name: a place list that is not canonical at all is still
-\ A64EFF's E-A64EFF-SEQ, a register no routine may hold state in is
-\ E-A64EFF-GPR, and an operand outside the field it lands in is the assembler's.
--8480 constant E-A64EFF-KIND    \ a place read as the kind it is not: the register of a data-stack slot, or the slot index of a register
+\ NEFF's E-NEFF-SEQ, a register no routine may hold state in is
+\ E-NEFF-GPR, and an operand outside the field it lands in is the assembler's.
+-8480 constant E-NEFF-KIND    \ a place read as the kind it is not: the register of a data-stack slot, or the slot index of a register
 -8481 constant E-A64IR-DSLOT    \ a data-stack slot offset the load and store forms cannot address: negative, not a multiple of the eight bytes they move, or past the reach of their scaled twelve-bit offset field
 -8482 constant E-A64IR-DBYTES   \ a data-stack pointer adjustment no routine can make: negative, not a multiple of one stack cell, or past the twelve-bit immediate that claims it
 -8483 constant E-A64SEL-PLACE   \ a calling convention this selector has no rule for: one side mixing register places with data-stack places
@@ -1110,7 +1110,7 @@ public
 \ twice - the elaborator reads it off the body it just walked and the routine
 \ contract says so, and src/compiler/native/select.f derives it again from the
 \ module it is building - and this is the refusal of the second derivation. It
-\ is a statement about the SITE, not about the contract: A64EFF already refuses a
+\ is a statement about the SITE, not about the contract: NEFF already refuses a
 \ contract in which a tail call and a destroyed link register are both declared,
 \ and src/compiler/native/regalloc-verify.f refuses a module whose terminator and
 \ whose contract disagree.
@@ -1156,7 +1156,7 @@ public
 -8664 constant E-NLOOP-CAP      \ more values, blocks or invariant addends in one function than the rewriter's tables hold
 -8665 constant E-NLOOP-PLAN     \ a rewrite asked for when the scan had recognised no loop, so there is nothing to fold and the caller and this pass disagree about what was measured
 
-\ The register-file description: -8670
+\ The register-file description and the machine description over it: -8670..-8671
 \
 \ src/compiler/native/regfile.f is the one declaration a backend makes about its
 \ machine's register files, and the register allocator reads it instead of naming
@@ -1165,6 +1165,10 @@ public
 \ description every reader can believe or refuses. Nothing downstream re-judges
 \ it, so no later pass needs a refusal of its own.
 -8670 constant E-NREGFILE       \ a register-file description that cannot describe a machine: a file of no registers or more than one set's bit mask holds, a reserved register outside the file it is reserved from, a file whose every register is reserved so nothing is allocatable at all, a call-destroyed register that is not allocatable in the first place, or a spill slot width that is not a positive power of two
+\ src/compiler/native/machine.f holds the register files as a component and adds
+\ the facts a routine contract needs and they do not say, with the same single
+\ moment it can be wrong and the same reason for one code.
+-8671 constant E-NMACH          \ a machine description that cannot describe a machine: a link register set holding more than one register, a link register or a stack pointer that is not a register of the general file or that the file says is allocatable, a stack alignment that is not a positive power of two, a frame bound that is negative or not a multiple of that alignment, or a negative offset-field reach
 
 \ The trap terminator's family table: -8640..-8649
 \

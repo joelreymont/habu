@@ -92,6 +92,7 @@
 require lib/test.f
 require src/compiler/native/select.f
 require src/compiler/native/regalloc-verify.f
+require src/arch/arm64/machine.f
 require src/compiler/native/spill.f
 require src/compiler/native/prune.f
 
@@ -118,105 +119,105 @@ private
 
 \ ---- routine contracts -------------------------------------------------------
 \ The lowest `n` general registers, as a set the schema itself built: every
-\ member went through A64EFF:GPR-REG, which is what refuses a register no routine
+\ member went through NEFF:GPR-REG, which is what refuses a register no routine
 \ may hold state in.
-: POOL-N ( n -- A64EFF:gprs )
+: POOL-N ( n -- NEFF:gprs )
    {: n:n :}
-   A64EFF:GPR-NONE
-   n 0 ?do i A64EFF:GPR-REG A64EFF:GPR-WITH loop ;
+   NEFF:GPR-NONE
+   n 0 ?do i NEFF:GPR-REG NEFF:GPR-WITH loop ;
 
 \ A leaf routine that computes in the given registers, returns to its caller,
 \ keeps the link register, touches no flags, reserves no frame and calls nothing.
-: LEAF ( A64EFF:gprs -- A64EFF:routine )
-   {: pool:A64EFF:gprs :}
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+: LEAF ( NEFF:gprs -- NEFF:routine )
+   {: pool:NEFF:gprs :}
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE pool
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
-: LEAF-N ( n -- A64EFF:routine )
+: LEAF-N ( n -- NEFF:routine )
    POOL-N LEAF ;
 
 \ The same leaf under the data-stack convention: its arguments arrive in slots
 \ 0.. of the caller's stack and its results are left in slots 0.., which is what
 \ gives the routine a data-stack pointer to place at all.
-: SLOTS-N ( n -- A64EFF:placeseq )
+: SLOTS-N ( n -- NEFF:placeseq )
    {: n:n :}
-   A64EFF:SEQ-NONE
-   n 0 ?do i A64EFF:SEQ-WITH-SLOT loop ;
+   NEFF:SEQ-NONE
+   n 0 ?do i NEFF:SEQ-WITH-SLOT loop ;
 
-: HABU-N ( n n n -- A64EFF:routine )
+: HABU-N ( n n n -- NEFF:routine )
    {: n:n in:n out:n :}
-   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  n POOL-N
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+   NEFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  n POOL-N
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
-: HABU-FRAMED ( n n -- A64EFF:routine )
+: HABU-FRAMED ( n n -- NEFF:routine )
    {: n:n size:n :}
-   A64EFF-CONV:DSTACK A64EFF:SEQ-NONE A64EFF:SEQ-NONE n POOL-N
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;
+   NEFF-CONV:DSTACK NEFF:SEQ-NONE NEFF:SEQ-NONE n POOL-N
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE size 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ The same leaf with a frame of its own: a routine that spills has to have
 \ somewhere to spill to, and how deep that is, is the contract's declaration.
-: LEAF-FRAMED ( n n -- A64EFF:routine )
+: LEAF-FRAMED ( n n -- NEFF:routine )
    {: n:n size:n :}
-   n POOL-N {: pool:A64EFF:gprs :}
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;
+   n POOL-N {: pool:NEFF:gprs :}
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE pool
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE size 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ `n` registers starting at `base`. A pool that does not start at register zero
 \ is what tells the allocatable set apart from the low registers: nothing may be
 \ handed out because it happened to be free, only because the contract named it.
-: POOL-FROM ( n n -- A64EFF:gprs )
+: POOL-FROM ( n n -- NEFF:gprs )
    {: base:n n:n :}
-   A64EFF:GPR-NONE
-   n 0 ?do base i + A64EFF:GPR-REG A64EFF:GPR-WITH loop ;
+   NEFF:GPR-NONE
+   n 0 ?do base i + NEFF:GPR-REG NEFF:GPR-WITH loop ;
 
-: LEAF-FROM ( n n -- A64EFF:routine )
+: LEAF-FROM ( n n -- NEFF:routine )
    POOL-FROM LEAF ;
 
 \ ---- contracts that declare where their arguments and results live -----------
 \ An ordered list of one, two or three registers, so a case can say which
 \ register each position takes without spelling the packing out.
-: SQ ( n -- A64EFF:placeseq )
-   A64EFF:SEQ-NONE swap A64EFF:SEQ-WITH ;
+: SQ ( n -- NEFF:placeseq )
+   NEFF:SEQ-NONE swap NEFF:SEQ-WITH ;
 
-: SQ2 ( n n -- A64EFF:placeseq )
+: SQ2 ( n n -- NEFF:placeseq )
    {: a:n b:n :}
-   a SQ b A64EFF:SEQ-WITH ;
+   a SQ b NEFF:SEQ-WITH ;
 
-: SQ3 ( n n n -- A64EFF:placeseq )
+: SQ3 ( n n n -- NEFF:placeseq )
    {: a:n b:n c:n :}
-   a b SQ2 c A64EFF:SEQ-WITH ;
+   a b SQ2 c NEFF:SEQ-WITH ;
 
 \ A leaf routine that declares its interface: the arguments arrive in the first
 \ list, the returned values leave in the second, and the registers it may destroy
 \ are the given pool less the ones a result leaves in - one register cannot be
 \ both. The pool is passed rather than derived, so a case can hand it one that
 \ does NOT hold a declared register and get the refusal that earns.
-: LEAF-DECL ( A64EFF:gprs A64EFF:conv A64EFF:placeseq A64EFF:placeseq -- A64EFF:routine )
-   {: pool:A64EFF:gprs cv:A64EFF:conv
-      args:A64EFF:placeseq outs:A64EFF:placeseq :}
+: LEAF-DECL ( NEFF:gprs NEFF:conv NEFF:placeseq NEFF:placeseq -- NEFF:routine )
+   {: pool:NEFF:gprs cv:NEFF:conv
+      args:NEFF:placeseq outs:NEFF:placeseq :}
    cv args outs
-   pool outs A64EFF:SEQ-SET A64EFF:GPR-WITHOUT
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+   pool outs NEFF:SEQ-SET NEFF:GPR-WITHOUT
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ The same with a frame, for a program that declares an interface AND spills.
-: LEAF-DECL-FRAMED ( A64EFF:gprs A64EFF:conv A64EFF:placeseq A64EFF:placeseq -- A64EFF:routine )
-   {: pool:A64EFF:gprs cv:A64EFF:conv
-      args:A64EFF:placeseq outs:A64EFF:placeseq :}
+: LEAF-DECL-FRAMED ( NEFF:gprs NEFF:conv NEFF:placeseq NEFF:placeseq -- NEFF:routine )
+   {: pool:NEFF:gprs cv:NEFF:conv
+      args:NEFF:placeseq outs:NEFF:placeseq :}
    cv args outs
-   pool outs A64EFF:SEQ-SET A64EFF:GPR-WITHOUT
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 16 0 A64EFF:ROUTINE ;
+   pool outs NEFF:SEQ-SET NEFF:GPR-WITHOUT
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 16 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ ---- the fixture's source text -----------------------------------------------
 create TXT
@@ -391,9 +392,9 @@ create TXT
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
-   CC ab A64IR:REGFILE A64RA:BIND-DIALECT
+   CC ab A64IR:MACHINE A64RA:BIND-DIALECT
    CC ab A64RAV:BIND-DIALECT
-   CC m ab A64EFF:GPR-NONE LEAF  A64SEL:SELECT ;
+   CC m ab NEFF:GPR-NONE LEAF  A64SEL:SELECT ;
 
 \ Allocate the selected module for a leaf routine of `n` registers and have the
 \ validator accept it. Every positive case goes through both, so no case reads a
@@ -542,8 +543,8 @@ create TXT
    HIR-MOD
    BUILD-DIFF
    SELECTED {: m:IR-BUILD:module :}
-   CC m 4 POOL-N A64EFF-CONV:REGISTER 2 0 SQ2 1 SQ LEAF-DECL A64RA:ALLOCATE
-   m 4 POOL-N A64EFF-CONV:REGISTER 2 0 SQ2 1 SQ LEAF-DECL A64RAV:ACCEPT
+   CC m 4 POOL-N NEFF-CONV:REGISTER 2 0 SQ2 1 SQ LEAF-DECL A64RA:ALLOCATE
+   m 4 POOL-N NEFF-CONV:REGISTER 2 0 SQ2 1 SQ LEAF-DECL A64RAV:ACCEPT
    A64RA:MOVES
    A64RA:VALUES
    0 A64RAV:REG@
@@ -564,10 +565,10 @@ create TXT
    HIR-MOD
    BUILD-SUM3
    SELECTED {: m:IR-BUILD:module :}
-   CC m  4 4 POOL-FROM 0 1 2 SQ3 A64EFF:SEQ-SET A64EFF:GPR-WITH
-      A64EFF-CONV:REGISTER 0 1 2 SQ3  0 SQ LEAF-DECL A64RA:ALLOCATE
-   m  4 4 POOL-FROM 0 1 2 SQ3 A64EFF:SEQ-SET A64EFF:GPR-WITH
-      A64EFF-CONV:REGISTER 0 1 2 SQ3  0 SQ LEAF-DECL A64RAV:ACCEPT
+   CC m  4 4 POOL-FROM 0 1 2 SQ3 NEFF:SEQ-SET NEFF:GPR-WITH
+      NEFF-CONV:REGISTER 0 1 2 SQ3  0 SQ LEAF-DECL A64RA:ALLOCATE
+   m  4 4 POOL-FROM 0 1 2 SQ3 NEFF:SEQ-SET NEFF:GPR-WITH
+      NEFF-CONV:REGISTER 0 1 2 SQ3  0 SQ LEAF-DECL A64RAV:ACCEPT
    A64RA:MOVES
    0 A64RAV:REG@
    1 A64RAV:REG@
@@ -590,7 +591,7 @@ create TXT
    c A64IR:NEW-BUILDER {: b:IR-BUILD:builder :}
    c 0 W-CTX !
    b 0 W-BLD !
-   c b A64IR:REGFILE A64RA:BIND-DIALECT
+   c b A64IR:MACHINE A64RA:BIND-DIALECT
    c b A64RAV:BIND-DIALECT
    c b A64IR:REGISTER
    c b TXT TXT-N IR-BUILD:ADD-SOURCE 0 W-SRC ! ;
@@ -1161,8 +1162,8 @@ create TXT
 \ Its contract: the arguments arrive in x0 and x1 the way a caller puts them, and
 \ the returned value has to leave in x1 - which is not where the argument it
 \ returns arrives. That is the one shape pre-colouring cannot serve.
-: DECL-KEEP ( -- A64EFF:routine )
-   4 POOL-N  A64EFF-CONV:REGISTER 0 1 SQ2  1 SQ  LEAF-DECL ;
+: DECL-KEEP ( -- NEFF:routine )
+   4 POOL-N  NEFF-CONV:REGISTER 0 1 SQ2  1 SQ  LEAF-DECL ;
 
 \ ---- a hand-built module allocates the same way ------------------------------
 \ The tie fixture below is the same chain the selector produces, so a module
@@ -1815,8 +1816,8 @@ create TXT
 \ return names would hand the successor's argument one register and the operand
 \ feeding it another, and A64RAV:VEDGE1 would refuse it. And it costs no copy:
 \ MOVES is zero because the class was free to take x0 where it was written.
-: MB-FIXED-CONTRACT ( -- A64EFF:routine )
-   4 POOL-N  A64EFF-CONV:REGISTER A64EFF:SEQ-NONE  0 SQ LEAF-DECL ;
+: MB-FIXED-CONTRACT ( -- NEFF:routine )
+   4 POOL-N  NEFF-CONV:REGISTER NEFF:SEQ-NONE  0 SQ LEAF-DECL ;
 
 : MB-FIXED-BODY ( IR-CTX:ctx -- n n n n n )
    A64-MOD
@@ -1859,7 +1860,7 @@ variable LOWER-TURNS
 : LOWER-ONE ( IR-BUILD:module -- IR-BUILD:module )
    {: m0:IR-BUILD:module :}
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC nb A64IR:REGFILE A64RA:BIND-DIALECT
+   CC nb A64IR:MACHINE A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
    CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    m0 IR-BUILD:RETIRE
@@ -2232,7 +2233,7 @@ using A64RA
    M-FREEZE {: m0:IR-BUILD:module :}
    CC m0 DECL-KEEP A64RA:ALLOCATE
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC nb A64IR:REGFILE A64RA:BIND-DIALECT
+   CC nb A64IR:MACHINE A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
    CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 DECL-KEEP A64RA:ALLOCATE
@@ -2332,8 +2333,8 @@ using A64RA
 \ no further spill, and the value the return carries is in the declared register
 \ - x1, not the x0 the same program lands in when nothing is declared. It costs
 \ no copy either, because the walk pre-colours the last sum straight into x1.
-: DECL-SPILL-CONTRACT ( -- A64EFF:routine )
-   3 POOL-N  A64EFF-CONV:REGISTER A64EFF:SEQ-NONE  1 SQ  LEAF-DECL-FRAMED ;
+: DECL-SPILL-CONTRACT ( -- NEFF:routine )
+   3 POOL-N  NEFF-CONV:REGISTER NEFF:SEQ-NONE  1 SQ  LEAF-DECL-FRAMED ;
 
 : DECL-SPILL-BODY ( IR-CTX:ctx -- n n n n )
    A64-MOD
@@ -2342,7 +2343,7 @@ using A64RA
    M-FREEZE {: m0:IR-BUILD:module :}
    CC m0 DECL-SPILL-CONTRACT A64RA:ALLOCATE
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC nb A64IR:REGFILE A64RA:BIND-DIALECT
+   CC nb A64IR:MACHINE A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
    CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 DECL-SPILL-CONTRACT A64RA:ALLOCATE
@@ -2377,7 +2378,7 @@ using A64RA
    A64-MOD
    BUILD-CROSS
    M-FREEZE {: m:IR-BUILD:module :}
-   CC m  2 POOL-N  A64EFF-CONV:REGISTER A64EFF:SEQ-NONE  0 1 SQ2 LEAF-DECL A64RA:ALLOCATE ;
+   CC m  2 POOL-N  NEFF-CONV:REGISTER NEFF:SEQ-NONE  0 1 SQ2 LEAF-DECL A64RA:ALLOCATE ;
 
 \ ---- fixed constraints an allocation cannot honour ---------------------------
 \ A declared argument register the routine may not write. The pool is x0 to x3
@@ -2387,21 +2388,21 @@ using A64RA
    A64-MOD
    BUILD-KEEP
    M-FREEZE {: m:IR-BUILD:module :}
-   CC m  4 POOL-N  A64EFF-CONV:REGISTER 5 0 SQ2  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
+   CC m  4 POOL-N  NEFF-CONV:REGISTER 5 0 SQ2  NEFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
 
 \ A convention that names three argument positions for a routine that has two.
 : OVER-ARG-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-KEEP
    M-FREEZE {: m:IR-BUILD:module :}
-   CC m  4 POOL-N  A64EFF-CONV:REGISTER 0 1 2 SQ3  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
+   CC m  4 POOL-N  NEFF-CONV:REGISTER 0 1 2 SQ3  NEFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
 
 \ And one that names two returned values for a routine that returns one.
 : OVER-OUT-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-KEEP
    M-FREEZE {: m:IR-BUILD:module :}
-   CC m  4 POOL-N  A64EFF-CONV:REGISTER A64EFF:SEQ-NONE  0 1 SQ2 LEAF-DECL A64RA:ALLOCATE ;
+   CC m  4 POOL-N  NEFF-CONV:REGISTER NEFF:SEQ-NONE  0 1 SQ2 LEAF-DECL A64RA:ALLOCATE ;
 
 \ ---- data-stack places the allocation cannot honour -------------------------
 \ A convention declaring an argument in a data-stack slot describes a module the
@@ -2409,16 +2410,16 @@ using A64RA
 \ argument for it. Handed a module that still carries its arguments as block
 \ arguments, this allocation would leave them in registers no caller ever wrote
 \ to, and it refuses instead. A side that names a register place and a data-stack
-\ place at once never reaches this pass: A64EFF:ROUTINE refuses that contract
-\ where it is built, and test/compiler/a64-effect.f is where the case lives.
-: DSLOT-Q ( n -- A64EFF:placeseq )
-   A64EFF:SEQ-NONE swap A64EFF:SEQ-WITH-SLOT ;
+\ place at once never reaches this pass: A64M:MACHINE NEFF:ROUTINE refuses that contract
+\ where it is built, and test/compiler/native-effect.f is where the case lives.
+: DSLOT-Q ( n -- NEFF:placeseq )
+   NEFF:SEQ-NONE swap NEFF:SEQ-WITH-SLOT ;
 
 : UNLOWERED-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-KEEP
    M-FREEZE {: m:IR-BUILD:module :}
-   CC m  4 POOL-N  A64EFF-CONV:DSTACK 0 DSLOT-Q  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
+   CC m  4 POOL-N  NEFF-CONV:DSTACK 0 DSLOT-Q  NEFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
 
 \ The same chain in two registers, which needs three slots, against a frame that
 \ holds two. A frame is a multiple of the stack alignment and a slot is half of
@@ -2592,7 +2593,7 @@ using A64RA
    HIR-MOD
    BUILD-SQUARE
    A64-BUILDER {: ab:IR-BUILD:builder :}
-   CC ab A64IR:REGFILE A64RA:BIND-DIALECT
+   CC ab A64IR:MACHINE A64RA:BIND-DIALECT
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    CC m 4 LEAF-N A64RA:ALLOCATE ;
 
@@ -2613,15 +2614,15 @@ using A64RA
    IR-BUILD:PLAN-BEGIN
    IR-BUILD:PLAN-DEFAULT
    c A64IR:NEW-BUILDER {: b:IR-BUILD:builder :}
-   c b A64IR:REGFILE A64RA:BIND-DIALECT
-   c b A64IR:REGFILE A64RA:BIND-DIALECT ;
+   c b A64IR:MACHINE A64RA:BIND-DIALECT
+   c b A64IR:MACHINE A64RA:BIND-DIALECT ;
 
 : WRONG-DIALECT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    IR-BUILD:PLAN-BEGIN
    IR-BUILD:PLAN-DEFAULT
    c HIR:NEW-BUILDER {: b:IR-BUILD:builder :}
-   c b A64IR:REGFILE A64RA:BIND-DIALECT ;
+   c b A64IR:MACHINE A64RA:BIND-DIALECT ;
 
 \ These registers belong to one architecture; a context bound to another machine
 \ has none of them. The module is built under the machine this dialect is for and
@@ -2644,8 +2645,8 @@ using A64RA
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: hm:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
-   CC ab A64IR:REGFILE A64RA:BIND-DIALECT
-   CC hm ab A64EFF:GPR-NONE LEAF  A64SEL:SELECT {: m:IR-BUILD:module :}
+   CC ab A64IR:MACHINE A64RA:BIND-DIALECT
+   CC hm ab NEFF:GPR-NONE LEAF  A64SEL:SELECT {: m:IR-BUILD:module :}
    CC m 4 LEAF-N A64RA:ALLOCATE
    hm 4 LEAF-N A64RAV:ACCEPT ;
 
@@ -2665,19 +2666,19 @@ using A64RA
    A64-MOD
    BUILD-KEEP
    4 M-ALLOCATE {: m:IR-BUILD:module :}
-   m  4 POOL-N  A64EFF-CONV:REGISTER 1 0 SQ2  A64EFF:SEQ-NONE LEAF-DECL A64RAV:ACCEPT ;
+   m  4 POOL-N  NEFF-CONV:REGISTER 1 0 SQ2  NEFF:SEQ-NONE LEAF-DECL A64RAV:ACCEPT ;
 
 : ACCEPT-WRONG-OUT-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-KEEP
    4 M-ALLOCATE {: m:IR-BUILD:module :}
-   m  4 POOL-N  A64EFF-CONV:REGISTER A64EFF:SEQ-NONE  1 SQ LEAF-DECL A64RAV:ACCEPT ;
+   m  4 POOL-N  NEFF-CONV:REGISTER NEFF:SEQ-NONE  1 SQ LEAF-DECL A64RAV:ACCEPT ;
 
 : ACCEPT-OVER-ARG-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-KEEP
    4 M-ALLOCATE {: m:IR-BUILD:module :}
-   m  4 POOL-N  A64EFF-CONV:REGISTER 0 1 2 SQ3  A64EFF:SEQ-NONE LEAF-DECL A64RAV:ACCEPT ;
+   m  4 POOL-N  NEFF-CONV:REGISTER 0 1 2 SQ3  NEFF:SEQ-NONE LEAF-DECL A64RAV:ACCEPT ;
 
 \ ---- the contract's control statement, held against the module ---------------
 \ `control no-return` is a PERMISSION: it is what lets a routine that calls keep
@@ -2689,12 +2690,12 @@ using A64RA
 \ frameless one and every one of them passes. The contract below is LEAF's with
 \ two fields changed, so the pool is the same pool the allocation was made
 \ under and the control statement is the only thing being measured.
-: NORET-DECL ( n -- A64EFF:routine )
-   POOL-N {: pool:A64EFF:gprs :}
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:CLOBBERED A64EFF-CONTROL:NO-RETURN
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+: NORET-DECL ( n -- NEFF:routine )
+   POOL-N {: pool:NEFF:gprs :}
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE pool
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:CLOBBERED NEFF-CONTROL:NO-RETURN
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 : ACCEPT-NORET-RETURNING-BODY ( IR-CTX:ctx -- )
    A64-MOD
@@ -2721,15 +2722,34 @@ using A64RA
    0 A64RAV:REG@ drop ;
 
 \ ---- registers no routine may hold state in ----------------------------------
+\ A register set and an ordered place list are machine-free values, so the
+\ question these cases ask - may a routine of THIS machine hold state in this
+\ register - is answered where the machine is named: at the contract. Each case
+\ therefore builds the contract that would hand the register out, and unmakes it
+\ because a contract is fourteen cells and the case wants only the refusal.
+: DROP-ROUTINE ( NEFF:routine -- )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop drop drop drop drop drop drop ;
+
+: DESTROYS ( n -- )
+   NEFF:GPR-REG LEAF DROP-ROUTINE ;
+
+: ARRIVES-IN ( n -- )
+   SQ {: gi:NEFF:placeseq :}
+   NEFF-CONV:REGISTER gi NEFF:SEQ-NONE NEFF:GPR-NONE
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE DROP-ROUTINE ;
+
 : RESERVED-CASES ( -- )
    s" the data-stack pointer cannot be declared destroyable" T-LABEL
-   [: A64EFF:DSTACK-GPR A64EFF:GPR-REG drop ;] E-A64EFF-GPR TTHROWSQ
+   [: A64M:DSTACK-GPR DESTROYS ;] E-NEFF-GPR TTHROWSQ
    s" the data-stack pointer cannot be declared as an argument place" T-LABEL
-   [: A64EFF:DSTACK-GPR SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
+   [: A64M:DSTACK-GPR ARRIVES-IN ;] E-NEFF-GPR TTHROWSQ
    s" the link register cannot be declared destroyable" T-LABEL
-   [: A64EFF:LINK-GPR A64EFF:GPR-REG drop ;] E-A64EFF-GPR TTHROWSQ
+   [: A64M:LINK-GPR DESTROYS ;] E-NEFF-GPR TTHROWSQ
    s" the zero register cannot be declared destroyable" T-LABEL
-   [: A64EFF:ZERO-GPR A64EFF:GPR-REG drop ;] E-A64EFF-GPR TTHROWSQ ;
+   [: A64M:ZERO-GPR DESTROYS ;] E-NEFF-GPR TTHROWSQ ;
 
 \ ---- refusal cases -----------------------------------------------------------
 : LIVE-TIE ( -- )         WBND [: LIVE-TIE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2843,7 +2863,7 @@ using A64RA
 \ so no contract carrying it can be built and no allocation is ever reached.
 : FIXED-REFUSE-CASES ( -- )
    s" two argument positions in one register cannot be declared at all" T-LABEL
-   [: 0 0 SQ2 A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 0 0 SQ2 NEFF:SEQ-LEN drop ;] E-NEFF-SEQ TTHROWSQ
    s" a declared argument register the routine may not write is refused" T-LABEL
    [: ARG-OUT-OF-POOL ;] E-A64RA-FIXED TTHROWSQ
    s" more declared arguments than the routine has is refused" T-LABEL
@@ -2920,7 +2940,7 @@ using A64RA
 
 : SLOT-REFUSE-CASES ( -- )
    s" a slot outside the declared frame is refused" T-LABEL
-   [: FAR-SLOT ;] E-A64EFF-SLOT TTHROWSQ
+   [: FAR-SLOT ;] E-NEFF-SLOT TTHROWSQ
    s" a later store initializes the shared slot's later value" T-LABEL
    SHARED-SLOT ;
 
@@ -3129,7 +3149,7 @@ using A64RA
 \ encoded.
 : DBL-DEEP-BODY ( IR-CTX:ctx -- )
    A64-MOD
-   A64EFF:SLOT-BACK A64IR:SLOT-WIDTH + -8 8 DBL-ACCEPT ;
+   A64M:SLOT-BACK A64IR:SLOT-WIDTH + -8 8 DBL-ACCEPT ;
 
 : DBL-CANON ( -- bool )
    WBND [: DBL-CANON-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -3184,22 +3204,22 @@ using A64RA
 : BUILD-SELF ( n n -- )
    {: give:n back:n :}
    s" SELF" 1 1 OPEN-FUN
-   A64EFF:SP-ALIGN M-RESERVE {: f0:IR-ID:ir-value-id :}
+   A64M:SP-ALIGN M-RESERVE {: f0:IR-ID:ir-value-id :}
    f0 A64IR-OPCODE:LINKSAVE M-LINK {: f1:IR-ID:ir-value-id :}
    0 M-DTAKE {: t0:IR-ID:ir-value-id :}
    t0 give back M-CALL {: t1:IR-ID:ir-value-id :}
    t1 0 M-DPUBLISH
    f1 A64IR-OPCODE:LINKLOAD M-LINK {: f2:IR-ID:ir-value-id :}
-   f2 A64EFF:SP-ALIGN M-RELEASE
+   f2 A64M:SP-ALIGN M-RELEASE
    M-RET0
    CLOSE-FUN ;
 
-: CALL-HABU-N ( n n n -- A64EFF:routine )
+: CALL-HABU-N ( n n n -- NEFF:routine )
    {: n:n in:n out:n :}
-   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  n POOL-N
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:T-CALL A64EFF:SP-ALIGN 0 A64EFF:ROUTINE ;
+   NEFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  n POOL-N
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:T-CALL A64M:SP-ALIGN 0 A64M:MACHINE NEFF:ROUTINE ;
 
 : SELF-ACCEPT ( n n -- )
    {: give:n back:n :}
@@ -3318,18 +3338,18 @@ using A64RA
 \ that half of A64RAV:OVERLAP-CK is proved the way the class rule's own clauses
 \ are, by mutating the compiler and watching the gate: see the note above
 \ OVERLAP-CK in src/compiler/native/regalloc-verify.f.
-: FPOOL-N ( n -- A64EFF:fprs )
+: FPOOL-N ( n -- NEFF:fprs )
    {: n:n :}
-   A64EFF:FPR-NONE
-   n 0 ?do i A64EFF:FPR-REG A64EFF:FPR-WITH loop ;
+   NEFF:FPR-NONE
+   n 0 ?do i NEFF:FPR-REG NEFF:FPR-WITH loop ;
 
 \ A leaf that may write both files: `n` general registers and `fn` floating ones.
-: LEAF-FN ( n n -- A64EFF:routine )
+: LEAF-FN ( n n -- NEFF:routine )
    {: n:n fn:n :}
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE n POOL-N
-   A64EFF:FPR-NONE A64EFF:FPR-NONE fn FPOOL-N
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE n POOL-N
+   NEFF:FPR-NONE NEFF:FPR-NONE fn FPOOL-N
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 : M-FRESULT+ ( -- )
    CC BB  CC BB A64IR:FPR-TYPE  IR-BUILD:ADD-RESULT ;
@@ -3385,8 +3405,8 @@ using A64RA
    2 A64RAV:REG@
    0 A64RAV:FLOATING?
    1 A64RAV:FLOATING?
-   A64RAV:GPR-WRITTEN A64EFF:GPRS-N
-   A64RAV:FPR-WRITTEN A64EFF:FPRS-N
+   A64RAV:GPR-WRITTEN NEFF:GPRS-N
+   A64RAV:FPR-WRITTEN NEFF:FPRS-N
    A64RAV:ACCEPTED? ;
 
 : TWO-FILES-CASE ( -- )
@@ -3431,14 +3451,14 @@ using A64RA
 
 \ LEAF-FN with a frame, because a routine that spills has to have somewhere to
 \ spill to.
-: FLEAF-FRAMED ( n n n -- A64EFF:routine )
+: FLEAF-FRAMED ( n n n -- NEFF:routine )
    {: n:n fn:n size:n :}
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE n POOL-N
-   A64EFF:FPR-NONE A64EFF:FPR-NONE fn FPOOL-N
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE n POOL-N
+   NEFF:FPR-NONE NEFF:FPR-NONE fn FPOOL-N
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE size 0 A64M:MACHINE NEFF:ROUTINE ;
 
-: FSPILL-CONTRACT ( -- A64EFF:routine )
+: FSPILL-CONTRACT ( -- NEFF:routine )
    4 2 16 FLEAF-FRAMED ;
 
 \ Three doubles are live where the third is written and two registers hold them,
@@ -3467,7 +3487,7 @@ using A64RA
    M-FREEZE {: m0:IR-BUILD:module :}
    CC m0 FSPILL-CONTRACT A64RA:ALLOCATE
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC nb A64IR:REGFILE A64RA:BIND-DIALECT
+   CC nb A64IR:MACHINE A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
    CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 FSPILL-CONTRACT A64RA:ALLOCATE
@@ -3517,7 +3537,7 @@ using A64RA
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
-   CC ab A64IR:REGFILE A64RA:BIND-DIALECT
+   CC ab A64IR:MACHINE A64RA:BIND-DIALECT
    CC ab A64RAV:BIND-DIALECT
    CC m ab n in out HABU-N  A64SEL:SELECT ;
 
@@ -3619,7 +3639,7 @@ using A64RA
 \ allocated for before any backend for it exists. That is the shape
 \ docs/x86-64.md fixes - rbp, rbx and r12..r15 reserved, ten left over - stated
 \ here as a file of sixteen with its top six reserved. Every allocatable number
-\ is one ARM64 leaves alone too, so the fixtures below build their A64EFF pools
+\ is one ARM64 leaves alone too, so the fixtures below build their NEFF pools
 \ over the same registers and nothing but the description differs.
 \
 \ WHAT EACH CASE IS FOR. The positive one asserts the SAME exact registers the
@@ -3658,6 +3678,24 @@ using A64RA
    SMALL-N NREGFILE:REGS-NONE  0 SMALL-N SMALL-RANGE
    A64IR:SLOT-WIDTH NREGFILE:FILE ;
 
+\ The allocator is bound to a MACHINE and not to a register file, so each of the
+\ two files above is described as one. Neither declares a link register - a
+\ routine contract over them is not built here, and the pool is what these cases
+\ are about - and the stack pointer is the top reserved register of the small
+\ file. The frame facts are the ARM64 ones so that only the pool differs.
+: SMALL-WIDTHS ( -- n )
+   $1 1 lshift  $1 4 lshift or  $1 A64IR:SLOT-WIDTH lshift or ;
+
+: SMALL-MACHINE ( -- NMACH:mach )
+   SMALL-FILE NREGFILE:REGS-NONE SMALL-N 1-
+   A64M:SP-ALIGN A64M:FRAME-MAX A64M:OFF-LIMIT
+   NMACH-OFFSCALE:BY-WIDTH SMALL-WIDTHS A64M:SLOT-BACK NMACH:MACHINE ;
+
+: SAVED-MACHINE ( -- NMACH:mach )
+   SAVED-FILE NREGFILE:REGS-NONE SMALL-N 1-
+   A64M:SP-ALIGN A64M:FRAME-MAX A64M:OFF-LIMIT
+   NMACH-OFFSCALE:BY-WIDTH SMALL-WIDTHS A64M:SLOT-BACK NMACH:MACHINE ;
+
 \ SELECTED, with the small machine installed instead of this one. Selection is
 \ unchanged by it - the description is the allocator's - so the module the two
 \ allocate is the same module.
@@ -3665,9 +3703,9 @@ using A64RA
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
-   CC ab SMALL-FILE A64RA:BIND-DIALECT
+   CC ab SMALL-MACHINE A64RA:BIND-DIALECT
    CC ab A64RAV:BIND-DIALECT
-   CC m ab A64EFF:GPR-NONE LEAF  A64SEL:SELECT ;
+   CC m ab NEFF:GPR-NONE LEAF  A64SEL:SELECT ;
 
 : A64-MOD-SAVED ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -3676,7 +3714,7 @@ using A64RA
    c A64IR:NEW-BUILDER {: b:IR-BUILD:builder :}
    c 0 W-CTX !
    b 0 W-BLD !
-   c b SAVED-FILE A64RA:BIND-DIALECT
+   c b SAVED-MACHINE A64RA:BIND-DIALECT
    c b A64RAV:BIND-DIALECT
    c b A64IR:REGISTER
    c b TXT TXT-N IR-BUILD:ADD-SOURCE 0 W-SRC ! ;
@@ -3688,7 +3726,7 @@ using A64RA
    c A64IR:NEW-BUILDER {: b:IR-BUILD:builder :}
    c 0 W-CTX !
    b 0 W-BLD !
-   c b SMALL-FILE A64RA:BIND-DIALECT
+   c b SMALL-MACHINE A64RA:BIND-DIALECT
    c b A64RAV:BIND-DIALECT
    c b A64IR:REGISTER
    c b TXT TXT-N IR-BUILD:ADD-SOURCE 0 W-SRC ! ;
@@ -3795,23 +3833,23 @@ using A64RA
 \ that field alone.
 : BUILD-ACROSS ( -- )
    s" ACROSS" 0 1 OPEN-FUN
-   A64EFF:SP-ALIGN M-RESERVE {: f0:IR-ID:ir-value-id :}
+   A64M:SP-ALIGN M-RESERVE {: f0:IR-ID:ir-value-id :}
    f0 A64IR-OPCODE:LINKSAVE M-LINK {: f1:IR-ID:ir-value-id :}
    $11 M-CONST {: a:IR-ID:ir-value-id :}
    0 M-DTAKE {: t0:IR-ID:ir-value-id :}
    t0 0 0 M-CALL {: t1:IR-ID:ir-value-id :}
    t1 0 M-DPUBLISH
    f1 A64IR-OPCODE:LINKLOAD M-LINK {: f2:IR-ID:ir-value-id :}
-   f2 A64EFF:SP-ALIGN M-RELEASE
+   f2 A64M:SP-ALIGN M-RELEASE
    a a M-ADD M-RET
    CLOSE-FUN ;
 
-: CALL-LEAF-N ( n -- A64EFF:routine )
+: CALL-LEAF-N ( n -- NEFF:routine )
    {: n:n :}
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE n POOL-N
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:T-CALL A64EFF:SP-ALIGN 0 A64EFF:ROUTINE ;
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE n POOL-N
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:T-CALL A64M:SP-ALIGN 0 A64M:MACHINE NEFF:ROUTINE ;
 
 : ACROSS-ALLOCATE ( -- )
    BUILD-ACROSS

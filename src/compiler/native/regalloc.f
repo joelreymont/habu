@@ -14,7 +14,8 @@ require lib/prelude.f
 require lib/errors.f
 require src/compiler/target.f
 require src/compiler/binding.f
-require src/compiler/a64-effect.f
+require src/compiler/native-effect.f
+require src/compiler/native/machine.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/schema.f
@@ -97,7 +98,7 @@ NREGFILE:REG-MAX constant REGS-MAX
 
 -1 constant NOATTR
 
-A64EFF:SEQ-LIMIT constant FIXED-MAX
+NEFF:SEQ-LIMIT constant FIXED-MAX
 
 \ One table of two planes, because everything that reads one reads the other.
 2 constant DECLS-N
@@ -145,8 +146,8 @@ variable OUTS-N
 DKEYS-N TYPED-BUFFER BND-DKEY IR-ID:ir-symbol-id
 
 1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
-1 TYPED-BUFFER S-POOL A64EFF:gprs
-1 TYPED-BUFFER S-FPOOL A64EFF:fprs
+1 TYPED-BUFFER S-POOL NEFF:gprs
+1 TYPED-BUFFER S-FPOOL NEFF:fprs
 
 DYNAMIC-BUFFER V-DEF-BUF n
 : V-DEF ( -- ptr n ) 0 V-DEF-BUF ;
@@ -240,6 +241,15 @@ variable RF-SLOT-N
 
 \ A description is seven cells and a value of more than one cell cannot be bound
 \ to a local, so it is unmade at entry exactly as a routine contract is.
+\ The machine the install was handed, kept as the ordinal NMACH hands out because
+\ a cell holds a number. Before an install there is none, and -1 is no machine:
+\ reading it refuses rather than answering about whatever was described first.
+variable RF-MACH-N
+-1 RF-MACH-N !
+
+: RF-MACH ( -- NMACH:mach )
+   RF-MACH-N @ NMACH:BY-ID ;
+
 : RF-FILE! ( NREGFILE:file -- )
    NREGFILE-FILE:UNMAKE
    {: gn:n gr:NREGFILE:regs gc:NREGFILE:regs
@@ -308,8 +318,8 @@ variable SHORT-FUN                           \ the function whose scan ran short
 \ ---- the slots, read back ----------------------------------------------------
 : POOL-BITS ( n -- n )
    {: fl:n :}
-   fl F-FPR = if 0 S-FPOOL @ A64EFF:FPRS-N exit then
-   fl F-GPR = if 0 S-POOL @ A64EFF:GPRS-N exit then
+   fl F-FPR = if 0 S-FPOOL @ NEFF:FPRS-N exit then
+   fl F-GPR = if 0 S-POOL @ NEFF:GPRS-N exit then
    E-A64RA-CLASS throw ;
 
 : POOL-HAS? ( n n -- bool )
@@ -526,8 +536,8 @@ variable SHORT-FUN                           \ the function whose scan ran short
    loop
    SEEN-FRAME @ ;
 
-: BASE! ( A64EFF:traits A64EFF:link n -- )
-   {: traits:A64EFF:traits link:A64EFF:link size:n :}
+: BASE! ( NEFF:traits NEFF:link n -- )
+   {: traits:NEFF:traits link:NEFF:link size:n :}
    MODULE-FRAME {: frame:n :}
    frame NOATTR = if traits link A64FRAME:SPILL-BASE BASE-N ! exit then
    frame size <> if E-A64RA-FRAME throw then
@@ -592,20 +602,20 @@ variable SHORT-FUN                           \ the function whose scan ran short
 
 \ ---- the routine's own fixed registers ---------------------------------------
 
-: REG-POSITIONS ( A64EFF:placeseq -- n )
-   {: s:A64EFF:placeseq :}
-   s A64EFF:SEQ-LEN {: len:n :}
-   s A64EFF:SEQ-SLOTS {: sl:n :}
+: REG-POSITIONS ( NEFF:placeseq -- n )
+   {: s:NEFF:placeseq :}
+   s NEFF:SEQ-LEN {: len:n :}
+   s NEFF:SEQ-SLOTS {: sl:n :}
    sl 0= if len exit then
    sl len <> if E-A64RA-PLACE throw then
    0 ;
 
-: FIXED! ( A64EFF:placeseq A64EFF:placeseq -- )
-   {: args:A64EFF:placeseq outs:A64EFF:placeseq :}
+: FIXED! ( NEFF:placeseq NEFF:placeseq -- )
+   {: args:NEFF:placeseq outs:NEFF:placeseq :}
    args REG-POSITIONS ARGS-N !
    outs REG-POSITIONS OUTS-N !
-   ARGS-N @ 0 ?do args i A64EFF:SEQ-REG@  i cells A-REG + ! loop
-   OUTS-N @ 0 ?do outs i A64EFF:SEQ-REG@  i cells O-REG + ! loop ;
+   ARGS-N @ 0 ?do args i NEFF:SEQ-REG@  i cells A-REG + ! loop
+   OUTS-N @ 0 ?do outs i NEFF:SEQ-REG@  i cells O-REG + ! loop ;
 
 \ A routine's pool says which registers THIS routine may destroy; the description
 \ says which registers the machine has to give at all. A pool naming a register
@@ -636,9 +646,9 @@ variable SHORT-FUN                           \ the function whose scan ran short
 
 \ A side declared in data-stack slots is one the module no longer carries in
 \ registers at all: the selector turned each place into a load or a store.
-: LOWERED-CK ( IR-ID:ir-block-id IR-ID:ir-block-id A64EFF:conv -- )
-   {: bk:IR-ID:ir-block-id rb:IR-ID:ir-block-id cv:A64EFF:conv :}
-   cv A64EFF-CONV:DSTACK A64EFF-CONV:EQ 0= if exit then
+: LOWERED-CK ( IR-ID:ir-block-id IR-ID:ir-block-id NEFF:conv -- )
+   {: bk:IR-ID:ir-block-id rb:IR-ID:ir-block-id cv:NEFF:conv :}
+   cv NEFF-CONV:DSTACK NEFF-CONV:EQ 0= if exit then
    bk ARG-COUNT 0<> if E-A64RA-PLACE throw then
    rb TERM-AT TAILBR-AT? if exit then
    rb TERM-AT OPERANDS-OF 0<> if E-A64RA-PLACE throw then ;
@@ -646,7 +656,7 @@ variable SHORT-FUN                           \ the function whose scan ran short
 \ ---- taking a register away --------------------------------------------------
 \ Slots are handed out in order and never given back.
 : FRAME-CEIL ( -- n )
-   VMAX RF-SLOT-WIDTH *  A64EFF:FRAME-MAX min ;
+   VMAX RF-SLOT-WIDTH *  RF-MACH NMACH:FRAME-MAX min ;
 
 : NEW-SLOT ( -- n )
    BASE-N @  N-SLOTS @ RF-SLOT-WIDTH *  + {: off:n :}
@@ -658,7 +668,7 @@ variable SHORT-FUN                           \ the function whose scan ran short
    BASE-N @  N-SLOTS @ RF-SLOT-WIDTH *  + ;
 
 : FRAME-WANT ( -- n )
-   DEPTH-WANT A64EFF:FRAME-ROUND ;
+   DEPTH-WANT RF-MACH NMACH:FRAME-ROUND ;
 
 \ ---- the linear order, and everything decided over it ------------------------
 
@@ -1864,16 +1874,16 @@ variable N-CALLS
       then
    loop ;
 
-: MB-CONV-CK ( IR-ID:ir-fun-id n A64EFF:conv -- )
-   {: f:IR-ID:ir-fun-id k:n cv:A64EFF:conv :}
+: MB-CONV-CK ( IR-ID:ir-fun-id n NEFF:conv -- )
+   {: f:IR-ID:ir-fun-id k:n cv:NEFF:conv :}
    k cells F-RET + @ {: rb-ord:n :}
    rb-ord NO-RET = if exit then
    f 0 BLOCK-AT  f rb-ord BLOCK-AT  {: bk:IR-ID:ir-block-id rb:IR-ID:ir-block-id :}
    bk rb FIXED-ARITY-CK
    bk rb cv LOWERED-CK ;
 
-: MB-MEASURE ( IR-ID:ir-fun-id n A64EFF:conv -- )
-   {: f:IR-ID:ir-fun-id k:n cv:A64EFF:conv :}
+: MB-MEASURE ( IR-ID:ir-fun-id n NEFF:conv -- )
+   {: f:IR-ID:ir-fun-id k:n cv:NEFF:conv :}
    f k cv MB-CONV-CK
    f  k cells F-BASE + @  MB-LAYOUT
    f MB-LIVENESS
@@ -1989,8 +1999,8 @@ variable N-CALLS
 
 \ ---- the three walks over the module's functions ------------------------------
 \ Every function onto the line, in the module's own order.
-: MEASURE-ALL ( A64EFF:conv -- )
-   {: cv:A64EFF:conv :}
+: MEASURE-ALL ( NEFF:conv -- )
+   {: cv:NEFF:conv :}
    0
    N-FUNS @ 0 ?do
       dup i cells F-BASE + !
@@ -2040,17 +2050,17 @@ variable N-CALLS
 \ ---- the contract, read once -------------------------------------------------
 \ A contract is a twelve-field value and a value of more than one cell cannot be
 \ bound to a local, so it is unmade at entry.
-: SLOTS-CK ( A64EFF:routine -- )
-   A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
-      fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
-      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
-      size:n delta:n :}
+: SLOTS-CK ( NEFF:routine -- )
+   NEFF:VALIDATE NEFF-ROUTINE:UNMAKE
+   {: cv:NEFF:conv gi:NEFF:placeseq gr:NEFF:placeseq gc:NEFF:gprs
+      fi:NEFF:fprs fr:NEFF:fprs fc:NEFF:fprs
+      z:NEFF:nzcv l:NEFF:link ct:NEFF:control t:NEFF:traits
+      size:n delta:n mch:NMACH:mach :}
    FRAME-WANT {: want:n :}
    N-SLOTS @ 0 ?do
       BASE-N @  i RF-SLOT-WIDTH *  +  RF-SLOT-WIDTH
-      cv gi gr gc fi fr fc z l ct t want delta A64EFF-ROUTINE:MAKE
-      A64EFF:CHECK-SLOT
+      cv gi gr gc fi fr fc z l ct t want delta mch NEFF-ROUTINE:MAKE
+      NEFF:CHECK-SLOT
    loop ;
 
 : TARGET-CK ( IR-CTX:ctx -- )
@@ -2096,9 +2106,11 @@ public
 \ can be named until it is gone. A binding refused after that point leaves the
 \ tables holding a machine no allocation can reach: the mode stays unbound and
 \ WALK refuses before it reads them.
-: BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NREGFILE:file -- )
+: BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NMACH:mach -- )
    BND-MODE @ BOUND-YES = if E-A64RA-BIND throw then
-   RF-FILE!
+   NMACH:ID {: row:n :}
+   row RF-MACH-N !
+   row NMACH:BY-ID NMACH:REGFILE RF-FILE!
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b DIALECT-CK
    b IR-BUILD:MODULE@ 0 BND-MOD !
@@ -2126,10 +2138,10 @@ public
    BND-TAKE ;
 
 \ ---- the pass ----------------------------------------------------------------
-: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:conv A64EFF:placeseq A64EFF:placeseq A64EFF:traits A64EFF:link n -- )
-   {: c:IR-CTX:ctx m:IR-BUILD:module pool:A64EFF:gprs fpool:A64EFF:fprs
-      cv:A64EFF:conv args:A64EFF:placeseq outs:A64EFF:placeseq
-      traits:A64EFF:traits link:A64EFF:link size:n :}
+: WALK ( IR-CTX:ctx IR-BUILD:module NEFF:gprs NEFF:fprs NEFF:conv NEFF:placeseq NEFF:placeseq NEFF:traits NEFF:link n -- )
+   {: c:IR-CTX:ctx m:IR-BUILD:module pool:NEFF:gprs fpool:NEFF:fprs
+      cv:NEFF:conv args:NEFF:placeseq outs:NEFF:placeseq
+      traits:NEFF:traits link:NEFF:link size:n :}
    BND-TAKE
    ST-EMPTY ST !
    m BND-MODULE-CK
@@ -2165,19 +2177,19 @@ public
 \ counter outside the package would have to know bounds only this entry point
 \ knows. A refused allocation throws past NS-STOP and is not counted, so what is
 \ read back is time spent on allocations that completed.
-: ALLOCATE ( IR-CTX:ctx IR-BUILD:module A64EFF:routine -- )
+: ALLOCATE ( IR-CTX:ctx IR-BUILD:module NEFF:routine -- )
    NS-START {: t0:n :}
-   A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
-      fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
-      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
-      t:A64EFF:traits size:n delta:n :}
-   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
-   A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
-   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
-   A64EFF:FPR-WRITABLE {: fpool:A64EFF:fprs :}
+   NEFF:VALIDATE NEFF-ROUTINE:UNMAKE
+   {: cv:NEFF:conv gi:NEFF:placeseq gr:NEFF:placeseq gc:NEFF:gprs
+      fi:NEFF:fprs fr:NEFF:fprs fc:NEFF:fprs
+      z:NEFF:nzcv l:NEFF:link ct:NEFF:control
+      t:NEFF:traits size:n delta:n mch:NMACH:mach :}
+   cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
+   NEFF:GPR-WRITABLE {: pool:NEFF:gprs :}
+   cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
+   NEFF:FPR-WRITABLE {: fpool:NEFF:fprs :}
    pool fpool cv gi gr t l size WALK
-   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE SLOTS-CK
+   cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE SLOTS-CK
    GEN-N @ 1+ GEN-N !
    ST-SEALED ST !
    t0 NS-STOP ;
@@ -2216,10 +2228,10 @@ public
 : MODULE@ ( -- IR-ID:ir-module-id )
    SEAL-CK 0 S-MOD @ ;
 
-: POOL ( -- A64EFF:gprs )
+: POOL ( -- NEFF:gprs )
    SEAL-CK 0 S-POOL @ ;
 
-: FPOOL ( -- A64EFF:fprs )
+: FPOOL ( -- NEFF:fprs )
    SEAL-CK 0 S-FPOOL @ ;
 
 \ The machine this allocation was made for, put back together out of the fields
@@ -2231,6 +2243,14 @@ public
 \ describes one finished allocation, not whatever was installed most recently.
 : REGFILE ( -- NREGFILE:file )
    SEAL-CK RF-FILE ;
+
+\ And the whole machine that file is part of, for a consumer that has to ask
+\ something the register files do not say - how deep a frame access reaches, or
+\ how far under a base one can name a byte. It is the description the install was
+\ handed, so the validator downstream reads the same machine this allocation was
+\ made for rather than naming an architecture of its own.
+: MACHINE ( -- NMACH:mach )
+   SEAL-CK RF-MACH ;
 
 \ What the prologue owns plus every slot handed out, rounded to the alignment.
 : FRAME ( -- n )

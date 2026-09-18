@@ -1,4 +1,4 @@
-\ a64-effect.f - the typed machine-state contract of one emitted ARM64 routine.
+\ native-effect.f - the typed machine-state contract of one emitted ARM64 routine.
 \
 \ A Forth stack effect describes the host emitter's stack: what the word that
 \ WRITES instructions consumes and leaves. It says nothing about the machine
@@ -44,32 +44,38 @@
 \ Habu convention passes floating values through canonical data-stack slots too,
 \ so it has no ordered floating-register argument or result positions to state.
 \
-\ THE VOCABULARY IS THE ASSEMBLER'S, NOT A SECOND ONE. Every bound here is read
-\ off the instruction vocabulary that formal/Common/Insn.v models and
-\ src/arch/arm64/asm.f emits, and test/compiler/a64-effect.f pins each one against
-\ that source instead of restating it:
-\   - a register operand is a five-bit field, so a file holds 32 registers;
-\   - x18 is platform-reserved on Darwin and ordinary on Linux; `XREG?` enforces
-\     that policy in every X-register operand slot;
-\   - x19 holds the running engine's data-stack pointer. src/arch/arm64/mnem.f
-\     names it (`19 constant XDS`), src/habu/rt.f's push and pop are stores and
-\     loads through it, and src/habu/habu2.f measures the interpreter's stack
-\     depth as (XDS - S0) / 8 - so every word the engine calls finds its operands
-\     through this one register and leaves its results through it. It is not a
-\     register a routine may be given: a routine that wrote to it would move the
-\     caller's stack under the caller. It is excluded from the general-register
-\     mask unconditionally, which is what makes "the allocator may
-\     never hand out the data-stack pointer" a fact about what a contract can BE
-\     rather than a check some pass has to remember;
-\   - the D-register file has no reserved member, so all 32 are nameable;
-\   - a frame slot is reached by an unsigned-offset load or store, whose offset
-\     field is twelve bits scaled by the access width, and whose scale division
-\     `SCALE/` refuses an offset it would round - which is exactly natural
-\     alignment. That fixes both how far a slot can sit from the stack pointer
-\     and the largest frame this contract can describe.
-\ There is no halfword slot width because the modelled vocabulary has no halfword
-\ load or store: its memory forms are Ldr/Str (eight bytes), Ldrw/Strw (four) and
-\ Ldrb/Strb (one).
+\ THE MACHINE IS A PARAMETER, NOT A CONSTANT. Every bound this schema used to
+\ hold - a file of 32 registers, x30 is the link register, operand 31 is the
+\ stack pointer, the stack is 16-byte aligned, a frame slot is reached by a
+\ twelve-bit offset scaled by the access width, there is no halfword load - was
+\ ARM64's, read off the instruction vocabulary that formal/Common/Insn.v models
+\ and src/arch/arm64/asm.f emits. They are still exactly that, and they are now
+\ declared where the machine that has them is: src/arch/arm64/machine.f, as one
+\ description src/compiler/native/machine.f judges. A contract NAMES the machine
+\ it is a contract over, in its `mach` field, so every rule below asks that
+\ description instead of a constant, every reader of a contract has the machine
+\ in its hand without being handed a second value that could be the wrong one,
+\ and a second architecture supplies numbers rather than forking the 2,300 lines
+\ of register allocator that read contracts. What stays here is what is true of
+\ every machine: the roles, the ordered convention, the flags, the exits, the
+\ rule that a routine control comes back from still holds its return address,
+\ and the packing.
+\
+\ WHAT THE SCHEMA STILL FIXES FOR EVERY MACHINE is one number: a position of an
+\ ordered place list carries a five-bit payload, so a list can name register 0
+\ to 31 and data-stack slot 0 to 31 however the machine numbers its registers. A
+\ machine with a wider file can hold contracts - it just cannot state a REGISTER
+\ convention that names one of the registers above 31, and SEQ-WITH refuses that
+\ rather than packing it away.
+\
+\ WHICH REGISTERS A CONTRACT MAY NAME IS THE MACHINE'S ANSWER, AND IT IS ASKED
+\ AT THE CONTRACT. A set of registers is a value and not a statement about any
+\ machine, so GPR-SET and SEQ-WITH judge only what this schema can represent. It
+\ is ROUTINE that holds every named register to what the machine says a routine
+\ may hold state in - the file less what the virtual machine, the link register
+\ and the stack pointer took - so no pass ever sees a contract handing out a
+\ register its machine reserved, which is the invariant those per-set refusals
+\ were there for.
 \
 \ WHY THE DESTROYED SET IS COMPLETE AND THE PRESERVED SET IS DERIVED. A contract
 \ that stored both could say a register is preserved and destroyed at once, and
@@ -92,7 +98,7 @@
 \ and collapsing the two would make a contract undeclarable before the code it
 \ describes exists.
 \
-\ IDENTITY. A64EFF:DIGEST is SHA-256 over the canonical preimage: the
+\ IDENTITY. NEFF:DIGEST is SHA-256 over the canonical preimage: the
 \ domain-separation tag, the schema version, and one eight-byte slot per field in
 \ declaration order. The per-family codes below are stable wire codes: a variant
 \ may be added to a family, but an existing variant's code may never be
@@ -124,8 +130,9 @@
 require lib/prelude.f
 require lib/errors.f
 require src/compiler/digest.f
+require src/compiler/native/machine.f
 
-package A64EFF
+package NEFF
 public
 
 \ ---- register sets -----------------------------------------------------------
@@ -172,7 +179,7 @@ ENUM pkind DERIVE eq
 \ disagree - exactly what making the interface ordered was for. Packing the kind
 \ into the element makes a place one value with one spelling: the packing stays
 \ canonical because every bit past the last position is zero, so one list has
-\ exactly one cell and A64EFF:DIGEST, which stores that cell, agrees with SAME?
+\ exactly one cell and NEFF:DIGEST, which stores that cell, agrees with SAME?
 \ rather than approximating it. The cost is two positions: ten instead of the
 \ twelve a five-bit element held.
 STRUCTURE placeseq 0 DERIVE eq
@@ -227,11 +234,20 @@ ENUM nzcv DERIVE eq
 ;ENUM
 
 \ ---- the link register -------------------------------------------------------
-\ Does x30 still hold the caller's return address where control leaves? A call
-\ writes it, so a routine that calls and then comes back has to save and restore.
+\ Does the link register still hold the caller's return address where control
+\ leaves? A call writes it, so a routine that calls and then comes back has to
+\ save and restore.
+\   absent - this machine has no link register, so there is no return address in
+\            one to preserve or destroy. It is a state of the same field rather
+\            than a missing field, because "what does this routine do to the
+\            link register" has one answer per contract and a machine without
+\            one answers it too. A contract over a machine that HAS a link
+\            register may not declare it, and a contract over a machine that has
+\            none may declare nothing else.
 ENUM link DERIVE eq
    preserved
    clobbered
+   absent
 ;ENUM
 
 \ ---- how control leaves ------------------------------------------------------
@@ -263,7 +279,9 @@ STRUCTURE traits 0 DERIVE eq
 \ reader used to find in their place are derived from them below. `frame` is how
 \ far below the entry stack pointer the routine's own frame reaches, in bytes;
 \ `sp-delta` is the net stack-pointer change where control leaves, which is zero
-\ or negative.
+\ or negative. `mach` is the machine every other field is stated about, and it
+\ is last because that is the order the constructor takes its arguments in and
+\ VALIDATE is exactly UNMAKE into it.
 STRUCTURE routine 0
    FIELD conv conv
    FIELD gpr-arg placeseq
@@ -278,46 +296,18 @@ STRUCTURE routine 0
    FIELD traits traits
    FIELD frame n
    FIELD sp-delta n
+   FIELD mach NMACH:mach
 ;STRUCTURE
 
 private
 
-\ ---- the machine facts this schema is bounded by -----------------------------
-\ Each one is the assembler's. test/compiler/a64-effect.f reads the assembler's
-\ own constant and asserts it against the public reader below, so a bound that
-\ moved there reddens this schema instead of silently disagreeing with it.
+\ ---- what this schema can represent, whatever the machine ---------------------
+\ One number, and it is about the packing below rather than about any register
+\ file: a position of a place list carries a five-bit payload. The machines the
+\ chain targets number 16 and 32 registers, so both fit; a wider file would fit
+\ here too and only its registers above 31 would be unnameable in a convention.
 
-5 constant REG-BITS       \ a register operand is a five-bit field
-1 REG-BITS lshift constant FILE-N        \ registers per file, which is that field's reach
-18 constant DARWIN-RESERVED-N
-30 constant LINK-N        \ x30, the link register, which has its own contract field
-31 constant ZERO-N        \ operand 31: the zero register, or the stack pointer
-
-: PLATFORM-RESERVED-MASK ( -- n )
-   HB-TARGET-LINUX? if 0 exit then
-   HB-TARGET-MACOS? if 1 DARWIN-RESERVED-N lshift exit then
-   E-CTGT-ABI throw ;
-
-\ The registers this TARGET gives another owner: its optional platform register
-\ and the two operand slots that are not general state. Everything the ENGINE
-\ occupies is
-\ not this file's to know - src/habu/layout.f declares its own register
-\ assignments and derives ENGINE-GPR:MASK from them, and that mask is the one
-\ authority. This file used to name x19 here as a fifth constant, which is
-\ exactly the second copy that let x20, x26, x27 and x28 through: the engine
-\ claimed four more registers and nothing propagated (CG-13).
-PLATFORM-RESERVED-MASK
-   1 LINK-N lshift or
-   1 ZERO-N lshift or
-constant TARGET-RESERVED-MASK
-
-\ Every register a routine may not hold state in, from both owners, in one place.
-TARGET-RESERVED-MASK ENGINE-GPR:MASK or constant RESERVED-MASK
-
-\ The general registers a routine CAN hold state in: the whole file less that.
-1 FILE-N lshift 1 -  RESERVED-MASK invert and  constant GPR-MASK
-
-1 FILE-N lshift 1 - constant FPR-MASK
+5 constant REG-BITS       \ the payload of one position of a place list
 
 \ ---- how an ordered place list is packed --------------------------------------
 \ Positions from the bottom of the cell, six bits each - one kind bit over a
@@ -339,23 +329,6 @@ SEQ-LEN-SHIFT PLACE-BITS / constant SEQ-MAX-N   \ positions one cell holds
 SEQ-LEN-MASK SEQ-LEN-SHIFT lshift constant SEQ-RANGE-TAG
 $FFFFFFFF constant SEQ-RANGE-MASK       \ u32 count; the remaining payload bits are reserved
 
-\ The unsigned-offset load and store field: twelve bits, scaled by the access
-\ width. The widest access moves eight bytes, so the deepest byte a slot can sit
-\ at is (2^12 - 1) * 8, and the largest describable frame is that rounded down to
-\ the stack alignment.
-1 12 lshift 1 - constant OFF-MAX      \ largest scaled offset the field holds
-8 constant WIDEST                     \ bytes moved by the Ldr and Str forms
-16 constant SP-ALIGN-N                \ the stack pointer is 16-byte aligned
-
-\ The unscaled load and store field: nine bits read as a signed number of BYTES,
-\ so an access can name a byte below the register it is taken from as well as
-\ above it. It is a second field on the same instruction group rather than a
-\ second group, and it is what makes an access below a base expressible at all.
-\ The number below is the DEEPEST byte under the base such a field can name.
-1 8 lshift constant BACK-MAX-N
-
-OFF-MAX WIDEST * dup SP-ALIGN-N mod - constant FRAME-MAX-N
-
 \ ---- trait bits --------------------------------------------------------------
 $1 constant BIT-CALL       \ contains a direct call: the Bl form
 $2 constant BIT-INDIRECT   \ contains an indirect call: the Blr form
@@ -363,18 +336,18 @@ $4 constant BIT-SYSCALL    \ enters the kernel: the Svc form
 
 BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 
-: MK-G ( n -- A64EFF:gprs )       A64EFF-GPRS:MAKE ;
-: G-BITS ( A64EFF:gprs -- n )     A64EFF-GPRS:UNMAKE ;
-: MK-F ( n -- A64EFF:fprs )       A64EFF-FPRS:MAKE ;
-: F-BITS ( A64EFF:fprs -- n )     A64EFF-FPRS:UNMAKE ;
-: MK-T ( n -- A64EFF:traits )     A64EFF-TRAITS:MAKE ;
-: T-BITS ( A64EFF:traits -- n )   A64EFF-TRAITS:UNMAKE ;
-: MK-S ( n -- A64EFF:placeseq )     A64EFF-PLACESEQ:MAKE ;
-: S-BITS ( A64EFF:placeseq -- n )   A64EFF-PLACESEQ:UNMAKE ;
+: MK-G ( n -- NEFF:gprs )       NEFF-GPRS:MAKE ;
+: G-BITS ( NEFF:gprs -- n )     NEFF-GPRS:UNMAKE ;
+: MK-F ( n -- NEFF:fprs )       NEFF-FPRS:MAKE ;
+: F-BITS ( NEFF:fprs -- n )     NEFF-FPRS:UNMAKE ;
+: MK-T ( n -- NEFF:traits )     NEFF-TRAITS:MAKE ;
+: T-BITS ( NEFF:traits -- n )   NEFF-TRAITS:UNMAKE ;
+: MK-S ( n -- NEFF:placeseq )     NEFF-PLACESEQ:MAKE ;
+: S-BITS ( NEFF:placeseq -- n )   NEFF-PLACESEQ:UNMAKE ;
 
 \ ---- stable wire codes -------------------------------------------------------
 \ One injective code per closed family. These fix the digest; see the header.
-: NZCV-CODE ( A64EFF:nzcv -- n )
+: NZCV-CODE ( NEFF:nzcv -- n )
    MATCH nzcv
       untouched      OF 0 ENDOF
       clobbered      OF 1 ENDOF
@@ -383,20 +356,21 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
       read-clobbered OF 4 ENDOF
    ;MATCH ;
 
-: LINK-CODE ( A64EFF:link -- n )
+: LINK-CODE ( NEFF:link -- n )
    MATCH link
       preserved OF 0 ENDOF
       clobbered OF 1 ENDOF
+      absent    OF 2 ENDOF
    ;MATCH ;
 
-: CONTROL-CODE ( A64EFF:control -- n )
+: CONTROL-CODE ( NEFF:control -- n )
    MATCH control
       returns   OF 0 ENDOF
       tail-call OF 1 ENDOF
       no-return OF 2 ENDOF
    ;MATCH ;
 
-: CONV-CODE ( A64EFF:conv -- n )
+: CONV-CODE ( NEFF:conv -- n )
    MATCH conv
       dstack   OF 0 ENDOF
       register OF 1 ENDOF
@@ -404,22 +378,39 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 
 \ ---- per-field rules ---------------------------------------------------------
 
+\ A set of registers, as a value: bit i names register i, and the sign bit names
+\ no register because a set is a collection of members and never a negative
+\ number. WHICH registers a routine of some machine may name is that machine's
+\ answer, and ROUTINE is where it is asked.
 : GPR-CK ( n -- n )
-   dup GPR-MASK invert and 0<> if E-A64EFF-GPR throw then ;
+   dup 0 < if E-NEFF-GPR throw then ;
 
 : FPR-CK ( n -- n )
-   dup FPR-MASK invert and 0<> if E-A64EFF-FPR throw then ;
+   dup 0 < if E-NEFF-FPR throw then ;
+
+\ And that question, asked: every register of the set is one the machine says a
+\ routine may hold state in. The machine's own answer, so a register the virtual
+\ machine, the link register or the stack pointer took is refused here whichever
+\ of them took it.
+: GPR-FIT ( n n -- )
+   {: bits:n alloc:n :}
+   bits alloc invert and 0<> if E-NEFF-GPR throw then ;
+
+: FPR-FIT ( n n -- )
+   {: bits:n alloc:n :}
+   bits alloc invert and 0<> if E-NEFF-FPR throw then ;
 
 : TRAIT-CK ( n -- n )
-   dup BIT-ALL invert and 0<> if E-A64EFF-TRAIT throw then ;
+   dup BIT-ALL invert and 0<> if E-NEFF-TRAIT throw then ;
 
-\ A register number for the single-register constructors. Outside the file is the
-\ same refusal as a bit past the file.
+\ A register number this schema can write down at all: a position of a place list
+\ carries a five-bit payload, so a number outside it has nowhere to be recorded
+\ however many registers the machine has.
 : REG-CK ( n -- n )
-   dup 0 < over FILE-N >= or if E-A64EFF-GPR throw then ;
+   dup 0 < over PAY-MASK > or if E-NEFF-GPR throw then ;
 
 : FREG-CK ( n -- n )
-   dup 0 < over FILE-N >= or if E-A64EFF-FPR throw then ;
+   dup 0 < over PAY-MASK > or if E-NEFF-FPR throw then ;
 
 \ ---- the rules of an ordered place list --------------------------------------
 \ Reading one packed list. Nothing below is public: a caller reaches a position
@@ -445,20 +436,15 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 : PLACE-PAY ( n -- n )
    PAY-MASK and ;
 
-\ A register a routine can hold state in, decided by the set rule rather than by
-\ a second list of what is forbidden.
-: SEQ-REG-CK ( n -- )
-   REG-CK 1 swap lshift GPR-CK drop ;
-
 \ A data-stack slot index the payload field holds. How deep a caller's stack may
 \ be is the caller's business; what this schema owns is that a position's payload
 \ is five bits wide, so an index past that has nowhere to be written down.
 : SEQ-SLOT-CK ( n -- )
-   dup 0 < over PAY-MASK > or if E-A64EFF-SEQ throw then drop ;
+   dup 0 < over PAY-MASK > or if E-NEFF-SEQ throw then drop ;
 
 : SEQ-PLACE-CK ( n -- )
    dup PLACE-SLOT? if PLACE-PAY SEQ-SLOT-CK exit then
-   PLACE-PAY SEQ-REG-CK ;
+   PLACE-PAY REG-CK drop ;
 
 \ Does the place at this position already appear before it? A caller cannot put
 \ two different values in one place, so one place is one position.
@@ -477,17 +463,17 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
    dup {: w:n :}
    w SEQ-LEN-OF {: len:n :}
    w SEQ-RANGE? if
-      w SEQ-RANGE-TAG invert and SEQ-RANGE-MASK > if E-A64EFF-SEQ throw then
-      len SEQ-MAX-N <= if E-A64EFF-SEQ throw then
+      w SEQ-RANGE-TAG invert and SEQ-RANGE-MASK > if E-NEFF-SEQ throw then
+      len SEQ-MAX-N <= if E-NEFF-SEQ throw then
       exit
    then
-   len SEQ-MAX-N > if E-A64EFF-SEQ throw then
+   len SEQ-MAX-N > if E-NEFF-SEQ throw then
    len 0 ?do
       w i SEQ-AT SEQ-PLACE-CK
-      w i SEQ-REPEATS? if E-A64EFF-SEQ throw then
+      w i SEQ-REPEATS? if E-NEFF-SEQ throw then
    loop
    SEQ-MAX-N len ?do
-      w i SEQ-AT 0<> if E-A64EFF-SEQ throw then
+      w i SEQ-AT 0<> if E-NEFF-SEQ throw then
    loop ;
 
 \ The set of registers a list names, which is how the two derived reader sets
@@ -518,26 +504,23 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 \ caller may read. One register cannot be both.
 : ROLE-CK ( n n -- )
    {: res:n clob:n :}
-   res clob and 0<> if E-A64EFF-ROLE throw then ;
+   res clob and 0<> if E-NEFF-ROLE throw then ;
 
-: ALIGNED? ( n -- bool )
-   SP-ALIGN-N mod 0= ;
+: FRAME-CK ( n NMACH:mach -- )
+   {: size:n m:NMACH:mach :}
+   size 0 < size m NMACH:FRAME-MAX > or if E-NEFF-FRAME throw then
+   size m NMACH:ALIGNED? 0= if E-NEFF-FRAME throw then ;
 
-: FRAME-CK ( n -- )
-   {: size:n :}
-   size 0 < size FRAME-MAX-N > or if E-A64EFF-FRAME throw then
-   size ALIGNED? 0= if E-A64EFF-FRAME throw then ;
-
-: DELTA-CK ( n n -- )
-   {: size:n delta:n :}
-   delta 0 > if E-A64EFF-SP throw then
-   delta ALIGNED? 0= if E-A64EFF-SP throw then
-   delta size negate < if E-A64EFF-SP throw then ;
+: DELTA-CK ( n n NMACH:mach -- )
+   {: size:n delta:n m:NMACH:mach :}
+   delta 0 > if E-NEFF-SP throw then
+   delta m NMACH:ALIGNED? 0= if E-NEFF-SP throw then
+   delta size negate < if E-NEFF-SP throw then ;
 
 \ ---- whole-contract rules ----------------------------------------------------
 \ Only the facts that need more than one field to decide.
 
-: RETURNING? ( A64EFF:control -- bool )
+: RETURNING? ( NEFF:control -- bool )
    MATCH control
       returns   OF true ENDOF
       tail-call OF true ENDOF
@@ -546,10 +529,10 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 
 \ A routine control comes back from - directly, or through a tail callee that
 \ returns to our caller - leaves the stack pointer where it found it.
-: BALANCE-CK ( A64EFF:control n -- )
+: BALANCE-CK ( NEFF:control n -- )
    {: c:control delta:n :}
    c RETURNING? 0= if exit then
-   delta 0<> if E-A64EFF-SP throw then ;
+   delta 0<> if E-NEFF-SP throw then ;
 
 \ The convention a contract declares and the places it names have to be the same
 \ statement. A data-stack convention whose list names a register, or a register
@@ -559,36 +542,47 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 \ ever holds such a contract - which is the point of declaring the convention at
 \ all. A list naming NO position satisfies either declaration: a routine that
 \ passes nothing passes nothing whichever way it would have.
-: SIDE-CK ( A64EFF:conv A64EFF:placeseq -- )
+: SIDE-CK ( NEFF:conv NEFF:placeseq -- )
    {: cv:conv s:placeseq :}
    s S-BITS SEQ-CK {: w:n :}
    w SEQ-SLOTS-OF {: sl:n :}
-   cv A64EFF-CONV:DSTACK A64EFF-CONV:EQ if
-      sl w SEQ-LEN-OF <> if E-A64EFF-CONV throw then exit
+   cv NEFF-CONV:DSTACK NEFF-CONV:EQ if
+      sl w SEQ-LEN-OF <> if E-NEFF-CONV throw then exit
    then
-   sl 0<> if E-A64EFF-CONV throw then ;
+   sl 0<> if E-NEFF-CONV throw then ;
 
-: CONV-CK ( A64EFF:conv A64EFF:placeseq A64EFF:placeseq -- )
+: CONV-CK ( NEFF:conv NEFF:placeseq NEFF:placeseq -- )
    {: cv:conv gi:placeseq gr:placeseq :}
    cv gi SIDE-CK
    cv gr SIDE-CK ;
 
-\ Both a return and a tail call end by jumping to the address in x30: the tail
+\ Both a return and a tail call end by jumping to the link register: the tail
 \ callee's own return does. Either way a destroyed link register has nowhere to
 \ go back to.
-: LINK-CK ( A64EFF:control A64EFF:link -- )
-   {: c:control l:link :}
+\
+\ On a machine that has no link register there is no such field to answer about,
+\ and `absent` is the only answer its contracts may give - the return address of
+\ one of ITS routines is in the frame, and that a returning routine leaves it
+\ reachable is what BALANCE-CK says when it holds the stack-pointer delta of a
+\ returning routine to zero.
+: LINK-CK ( NEFF:control NEFF:link NMACH:mach -- )
+   {: c:control l:link m:NMACH:mach :}
+   l NEFF-LINK:ABSENT NEFF-LINK:EQ {: none:bool :}
+   m NMACH:LINK? 0= if
+      none 0= if E-NEFF-LINK throw then exit
+   then
+   none if E-NEFF-LINK throw then
    c RETURNING? 0= if exit then
-   l A64EFF-LINK:CLOBBERED A64EFF-LINK:EQ if E-A64EFF-LINK throw then ;
+   l NEFF-LINK:CLOBBERED NEFF-LINK:EQ if E-NEFF-LINK throw then ;
 
 \ Control that never comes back delivers nothing, so a declared result of any
 \ kind contradicts it.
-: RESULT-CK ( n n A64EFF:nzcv A64EFF:control -- )
+: RESULT-CK ( n n NEFF:nzcv NEFF:control -- )
    {: gres:n fres:n z:nzcv c:control :}
    c RETURNING? if exit then
    gres 0<> fres 0<> or
-   z A64EFF-NZCV:DELIVERED A64EFF-NZCV:EQ or
-   if E-A64EFF-CONTROL throw then ;
+   z NEFF-NZCV:DELIVERED NEFF-NZCV:EQ or
+   if E-NEFF-CONTROL throw then ;
 
 \ ---- canonical preimage ------------------------------------------------------
 \ Version 3: the two interface slots hold ordered lists of PLACES rather than of
@@ -601,8 +595,13 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 \ written in, so the preimage carries one more slot and it stands in front of
 \ them - the field that says how the next two are read. Two contracts that
 \ differed only in a convention nothing recorded used to digest the same.
-4 constant SCHEMA
-15 constant SLOTS
+\ Version 5: a contract names the machine it is about, so the preimage carries
+\ one more slot holding that machine's mark - the fold over its declared facts,
+\ not the ordinal it happens to have been declared under, which would make one
+\ compiler's digests disagree with another's. Two contracts that differed only
+\ in the machine they were stated about used to digest the same.
+5 constant SCHEMA
+16 constant SLOTS
 0 constant SLOT-TAG
 1 constant SLOT-SCHEMA
 2 constant SLOT-CONV
@@ -618,112 +617,67 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 12 constant SLOT-TRAITS
 13 constant SLOT-FRAME
 14 constant SLOT-DELTA
+15 constant SLOT-MACH
 
 SLOTS CDIGEST:SLOT-BYTES * constant PRE-BYTES
 create PRE PRE-BYTES allot
 
-\ The widths the modelled memory forms move.
-: WIDTH-OK? ( n -- bool )
-   {: w:n :}
-   w 1 = w 4 = or w WIDEST = or ;
-
 public
 
-\ ---- the machine facts, for a consumer that has to agree with them ------------
-: FILE-SIZE ( -- n )      FILE-N ;
-: LINK-GPR ( -- n )       LINK-N ;
-: ZERO-GPR ( -- n )       ZERO-N ;
-
-\ The register the running engine keeps its data-stack pointer in. A pass that
-\ emits an access to the caller's stack asks for it here rather than writing 19,
-\ so the one place that says why no routine may hold state there is also the one
-\ place that says where it does appear. It is excluded from GPR-MASK above, so
-\ no general-register set and no place list can name it and no contract that
-\ hands it out can be built at all. The number itself comes from the engine's own
-\ declaration (src/arch/arm64/mnem.f XDS, which src/habu/layout.f folds into
-\ ENGINE-GPR:MASK): this file reports the engine's register, it does not decide it.
-: DSTACK-GPR ( -- n )     ENGINE-GPR:DSTACK ;
-
-\ Every register no routine may hold state in, from both owners at once - the
-\ target's platform/link/zero operands and everything the engine occupies. A
-\ consumer that wants to ask "may a routine use this register" asks here; there
-\ is no second list to consult and none to keep in step.
-: RESERVED-GPRS ( -- n )  RESERVED-MASK ;
-: ENGINE-GPRS ( -- n )    ENGINE-GPR:MASK ;
-
-\ The same operand number, named for what it means in the forms that reach a
-\ frame slot: there operand 31 is the stack pointer rather than the zero
-\ register. A pass emitting a frame access asks for it here instead of writing
-\ the number, so the one place that knows why 31 holds no routine state is also
-\ the one place that says where it does appear.
-: SP-GPR ( -- n )         ZERO-N ;
-: SP-ALIGN ( -- n )       SP-ALIGN-N ;
-: FRAME-MAX ( -- n )      FRAME-MAX-N ;
-
-\ The frame a routine needing `want` bytes below its entry declares: the request
-\ rounded up to the stack alignment, and no frame at all for a routine that needs
-\ nothing. It is here rather than in either caller because two of them need the
-\ same number now - src/compiler/native/abi.f turns a spill count into a
-\ declaration, and src/compiler/native/regalloc.f measures the frame a walk
-\ proved its routine needs - and the two have to agree exactly or the validator
-\ refuses the difference. One authority rather than two that drift.
-: FRAME-ROUND ( n -- n )
-   {: want:n :}
-   want 0= if 0 exit then
-   want SP-ALIGN-N 1- +  SP-ALIGN-N /  SP-ALIGN-N * ;
-
-\ The deepest byte an access of this width can name through the unsigned-offset
-\ field. A consumer placing slots asks this rather than repeating the arithmetic.
-\ A width no load or store form moves has no reach, so it is refused here.
-: SLOT-REACH ( n -- n )
-   dup WIDTH-OK? 0= if E-A64EFF-SLOT throw then
-   OFF-MAX * ;
-
-\ And the deepest byte UNDER the base that an access can name, through the
-\ unscaled signed field. It takes no width because that field is not scaled: the
-\ same nine bits mean the same bytes whatever the access moves. It is answered
-\ as a positive magnitude, so a consumer writes `negate` where it means an
-\ offset and reads it as a depth where it means a bound.
-: SLOT-BACK ( -- n )
-   BACK-MAX-N ;
+\ ---- the machine a consumer has to agree with ---------------------------------
+\ Every fact this schema used to report - the file size, the link, zero and
+\ stack-pointer operands, the reserved and engine sets, the stack alignment, the
+\ frame bound and the reach of a frame access - is a fact about one machine and
+\ is read from its description: NMACH for a caller holding one, and
+\ src/arch/arm64/machine.f or src/arch/x86-64/machine.f for a pass that is about
+\ that machine in the first place. What is left here is the question only a
+\ contract can answer, which machine it is a contract over, and it is answered
+\ from the contract's own field rather than from anything ambient.
 
 \ ---- register sets -----------------------------------------------------------
-: GPR-SET ( n -- A64EFF:gprs )    GPR-CK MK-G ;
-: GPRS-N ( A64EFF:gprs -- n )     G-BITS ;
-: FPR-SET ( n -- A64EFF:fprs )    FPR-CK MK-F ;
-: FPRS-N ( A64EFF:fprs -- n )     F-BITS ;
+: GPR-SET ( n -- NEFF:gprs )    GPR-CK MK-G ;
+: GPRS-N ( NEFF:gprs -- n )     G-BITS ;
+: FPR-SET ( n -- NEFF:fprs )    FPR-CK MK-F ;
+: FPRS-N ( NEFF:fprs -- n )     F-BITS ;
 
-: GPR-NONE ( -- A64EFF:gprs )     0 MK-G ;
-: GPR-ALL ( -- A64EFF:gprs )      GPR-MASK MK-G ;
-: FPR-NONE ( -- A64EFF:fprs )     0 MK-F ;
-: FPR-ALL ( -- A64EFF:fprs )      FPR-MASK MK-F ;
+: GPR-NONE ( -- NEFF:gprs )     0 MK-G ;
+: FPR-NONE ( -- NEFF:fprs )     0 MK-F ;
 
-\ The set holding exactly one register. A register this schema says no routine
-\ can hold state in is refused here rather than silently dropped.
-: GPR-REG ( n -- A64EFF:gprs )    REG-CK 1 swap lshift GPR-CK MK-G ;
-: FPR-REG ( n -- A64EFF:fprs )    FREG-CK 1 swap lshift MK-F ;
+\ Every register a routine of THIS machine may hold state in, which is the only
+\ set of the four whose members depend on which machine is asked: the file less
+\ what the virtual machine, the link register and the stack pointer took.
+: GPR-ALL ( NMACH:mach -- NEFF:gprs )
+   NMACH:GPR-ALLOCATABLE MK-G ;
 
-: GPR-WITH ( A64EFF:gprs A64EFF:gprs -- A64EFF:gprs )
+: FPR-ALL ( NMACH:mach -- NEFF:fprs )
+   NMACH:FPR-ALLOCATABLE MK-F ;
+
+\ The set holding exactly one register. A number no place list could write down
+\ is refused here rather than silently shifted out of the cell.
+: GPR-REG ( n -- NEFF:gprs )    REG-CK 1 swap lshift GPR-CK MK-G ;
+: FPR-REG ( n -- NEFF:fprs )    FREG-CK 1 swap lshift MK-F ;
+
+: GPR-WITH ( NEFF:gprs NEFF:gprs -- NEFF:gprs )
    G-BITS swap G-BITS or GPR-CK MK-G ;
 
-: FPR-WITH ( A64EFF:fprs A64EFF:fprs -- A64EFF:fprs )
+: FPR-WITH ( NEFF:fprs NEFF:fprs -- NEFF:fprs )
    F-BITS swap F-BITS or FPR-CK MK-F ;
 
-: GPR-WITHOUT ( A64EFF:gprs A64EFF:gprs -- A64EFF:gprs )
+: GPR-WITHOUT ( NEFF:gprs NEFF:gprs -- NEFF:gprs )
    {: set:gprs less:gprs :}
    set G-BITS GPR-CK less G-BITS GPR-CK invert and MK-G ;
 
-: FPR-WITHOUT ( A64EFF:fprs A64EFF:fprs -- A64EFF:fprs )
+: FPR-WITHOUT ( NEFF:fprs NEFF:fprs -- NEFF:fprs )
    {: set:fprs less:fprs :}
    set F-BITS FPR-CK less F-BITS FPR-CK invert and MK-F ;
 
 \ Does the set hold every register of the probe set?
-: GPR-HAS? ( A64EFF:gprs A64EFF:gprs -- bool )
+: GPR-HAS? ( NEFF:gprs NEFF:gprs -- bool )
    {: set:gprs probe:gprs :}
    probe G-BITS GPR-CK {: want:n :}
    set G-BITS GPR-CK want and want = ;
 
-: FPR-HAS? ( A64EFF:fprs A64EFF:fprs -- bool )
+: FPR-HAS? ( NEFF:fprs NEFF:fprs -- bool )
    {: set:fprs probe:fprs :}
    probe F-BITS FPR-CK {: want:n :}
    set F-BITS FPR-CK want and want = ;
@@ -733,7 +687,7 @@ public
 \ results leave, in no place this contract has an opinion about. It is also what
 \ a routine that takes or returns nothing declares, and those are the same
 \ statement - there is no position to say anything about either way.
-: SEQ-NONE ( -- A64EFF:placeseq )   0 MK-S ;
+: SEQ-NONE ( -- NEFF:placeseq )   0 MK-S ;
 
 \ How many positions one list can hold at all. A consumer that walks positions
 \ asks rather than assuming the packing.
@@ -749,11 +703,11 @@ private
 \ names is refused here rather than appended: two positions in one place is a
 \ convention no caller could satisfy - it would have to put two different values
 \ in one place - and that is exactly the shape a mistyped declaration takes.
-: SEQ-PUT ( A64EFF:placeseq n -- A64EFF:placeseq )
+: SEQ-PUT ( NEFF:placeseq n -- NEFF:placeseq )
    {: s:placeseq e:n :}
    s S-BITS SEQ-CK {: w:n :}
    w SEQ-LEN-OF {: len:n :}
-   len SEQ-MAX-N >= if E-A64EFF-SEQ throw then
+   len SEQ-MAX-N >= if E-NEFF-SEQ throw then
    e SEQ-PLACE-CK
    w  e len PLACE-BITS * lshift or  1 SEQ-LEN-SHIFT lshift +
    SEQ-CK MK-S ;
@@ -761,33 +715,33 @@ private
 public
 
 \ The list with one more REGISTER place after its last position.
-: SEQ-WITH ( A64EFF:placeseq n -- A64EFF:placeseq )
+: SEQ-WITH ( NEFF:placeseq n -- NEFF:placeseq )
    REG-CK SEQ-PUT ;
 
 \ The list with one more DATA-STACK SLOT place after its last position. This is
 \ the whole of what design section 7.6's convention needs to be sayable: argument
 \ i arrives in slot i, result j leaves in slot j.
-: SEQ-WITH-SLOT ( A64EFF:placeseq n -- A64EFF:placeseq )
-   dup 0 < over PAY-MASK > or if E-A64EFF-SEQ throw then
+: SEQ-WITH-SLOT ( NEFF:placeseq n -- NEFF:placeseq )
+   dup 0 < over PAY-MASK > or if E-NEFF-SEQ throw then
    KIND-BIT or SEQ-PUT ;
 
 \ Positions 0..n-1 on the Forth data stack. Small sequences keep the existing
 \ canonical packed representation; larger ones store the same range directly.
-: SEQ-DSTACK ( n -- A64EFF:placeseq ) {: n:n :}
-   n 0 < n SEQ-RANGE-MASK > or if E-A64EFF-SEQ throw then
+: SEQ-DSTACK ( n -- NEFF:placeseq ) {: n:n :}
+   n 0 < n SEQ-RANGE-MASK > or if E-NEFF-SEQ throw then
    n SEQ-MAX-N > if n SEQ-RANGE-TAG or MK-S exit then
    SEQ-NONE
    n 0 ?do i SEQ-WITH-SLOT loop ;
 
-: SEQ-LEN ( A64EFF:placeseq -- n )
+: SEQ-LEN ( NEFF:placeseq -- n )
    S-BITS SEQ-CK SEQ-LEN-OF ;
 
 private
 
-: SEQ-POSITION ( A64EFF:placeseq n -- n n )
+: SEQ-POSITION ( NEFF:placeseq n -- n n )
    {: s:placeseq p:n :}
    s S-BITS SEQ-CK {: w:n :}
-   p 0 < p w SEQ-LEN-OF >= or if E-A64EFF-SEQ throw then
+   p 0 < p w SEQ-LEN-OF >= or if E-NEFF-SEQ throw then
    w p ;
 
 public
@@ -796,47 +750,47 @@ public
 \ this or is refused: there is no word that answers a payload without saying what
 \ it is, so a pass that treated a slot index as a register number would have had
 \ to ask for the register of a slot and be told no.
-: SEQ-KIND@ ( A64EFF:placeseq n -- A64EFF:pkind )
+: SEQ-KIND@ ( NEFF:placeseq n -- NEFF:pkind )
    SEQ-POSITION {: w:n p:n :}
-   w SEQ-RANGE? if A64EFF-PKIND:DSLOT exit then
-   w p SEQ-AT PLACE-SLOT? if A64EFF-PKIND:DSLOT exit then A64EFF-PKIND:GPR ;
+   w SEQ-RANGE? if NEFF-PKIND:DSLOT exit then
+   w p SEQ-AT PLACE-SLOT? if NEFF-PKIND:DSLOT exit then NEFF-PKIND:GPR ;
 
 \ The register at one position. A position holding a data-stack slot is refused
 \ rather than answered with an index that would read as a register number.
-: SEQ-REG@ ( A64EFF:placeseq n -- n )
+: SEQ-REG@ ( NEFF:placeseq n -- n )
    SEQ-POSITION {: w:n p:n :}
-   w SEQ-RANGE? if E-A64EFF-KIND throw then
-   w p SEQ-AT dup PLACE-SLOT? if E-A64EFF-KIND throw then PLACE-PAY ;
+   w SEQ-RANGE? if E-NEFF-KIND throw then
+   w p SEQ-AT dup PLACE-SLOT? if E-NEFF-KIND throw then PLACE-PAY ;
 
 \ The data-stack slot index at one position, refused the same way in reverse.
-: SEQ-SLOT@ ( A64EFF:placeseq n -- n )
+: SEQ-SLOT@ ( NEFF:placeseq n -- n )
    SEQ-POSITION {: w:n p:n :}
    w SEQ-RANGE? if p exit then
-   w p SEQ-AT dup PLACE-SLOT? 0= if E-A64EFF-KIND throw then PLACE-PAY ;
+   w p SEQ-AT dup PLACE-SLOT? 0= if E-NEFF-KIND throw then PLACE-PAY ;
 
 \ How many positions of the list are data-stack slots. Zero and the whole length
 \ are the two homogeneous conventions; anything between mixes the kinds, which is
 \ describable here and has no lowering rule anywhere in the chain yet.
-: SEQ-SLOTS ( A64EFF:placeseq -- n )
+: SEQ-SLOTS ( NEFF:placeseq -- n )
    S-BITS SEQ-CK SEQ-SLOTS-OF ;
 
 \ Which registers a list names, forgetting the order. Data-stack slots are not
 \ registers and are not in it.
-: SEQ-SET ( A64EFF:placeseq -- A64EFF:gprs )
+: SEQ-SET ( NEFF:placeseq -- NEFF:gprs )
    S-BITS SEQ-CK SEQ-MASK MK-G ;
 
 \ ---- traits ------------------------------------------------------------------
-: TRAIT-SET ( n -- A64EFF:traits )   TRAIT-CK MK-T ;
-: TRAITS-N ( A64EFF:traits -- n )    T-BITS ;
-: TRAITS-NONE ( -- A64EFF:traits )   0 MK-T ;
-: T-CALL ( -- A64EFF:traits )        BIT-CALL MK-T ;
-: T-INDIRECT ( -- A64EFF:traits )    BIT-INDIRECT MK-T ;
-: T-SYSCALL ( -- A64EFF:traits )     BIT-SYSCALL MK-T ;
+: TRAIT-SET ( n -- NEFF:traits )   TRAIT-CK MK-T ;
+: TRAITS-N ( NEFF:traits -- n )    T-BITS ;
+: TRAITS-NONE ( -- NEFF:traits )   0 MK-T ;
+: T-CALL ( -- NEFF:traits )        BIT-CALL MK-T ;
+: T-INDIRECT ( -- NEFF:traits )    BIT-INDIRECT MK-T ;
+: T-SYSCALL ( -- NEFF:traits )     BIT-SYSCALL MK-T ;
 
-: TRAITS-WITH ( A64EFF:traits A64EFF:traits -- A64EFF:traits )
+: TRAITS-WITH ( NEFF:traits NEFF:traits -- NEFF:traits )
    T-BITS swap T-BITS or TRAIT-CK MK-T ;
 
-: TRAITS-HAS? ( A64EFF:traits A64EFF:traits -- bool )
+: TRAITS-HAS? ( NEFF:traits NEFF:traits -- bool )
    {: set:traits probe:traits :}
    probe T-BITS TRAIT-CK {: want:n :}
    set T-BITS TRAIT-CK want and want = ;
@@ -844,79 +798,95 @@ public
 \ ---- construction and validation ---------------------------------------------
 \ The production entry point. A combination that cannot be true of one routine
 \ throws a named error and no contract value is produced.
-: ROUTINE ( A64EFF:conv A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine )
+: ROUTINE ( NEFF:conv NEFF:placeseq NEFF:placeseq NEFF:gprs NEFF:fprs NEFF:fprs NEFF:fprs NEFF:nzcv NEFF:link NEFF:control NEFF:traits n n NMACH:mach -- NEFF:routine )
    {: cv:conv gi:placeseq gr:placeseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
-      l:link c:control t:traits size:n delta:n :}
-   gi S-BITS SEQ-CK drop
-   gr S-BITS SEQ-CK SEQ-MASK gc G-BITS GPR-CK ROLE-CK
-   fi F-BITS FPR-CK drop
-   fr F-BITS FPR-CK fc F-BITS FPR-CK ROLE-CK
+      l:link c:control t:traits size:n delta:n m:NMACH:mach :}
+   m NMACH:GPR-ALLOCATABLE {: ga:n :}
+   m NMACH:FPR-ALLOCATABLE {: fa:n :}
+   gi S-BITS SEQ-CK SEQ-MASK ga GPR-FIT
+   gr S-BITS SEQ-CK SEQ-MASK {: res:n :}
+   res ga GPR-FIT
+   gc G-BITS GPR-CK {: clob:n :}
+   clob ga GPR-FIT
+   res clob ROLE-CK
+   fi F-BITS FPR-CK fa FPR-FIT
+   fr F-BITS FPR-CK {: fres:n :}
+   fres fa FPR-FIT
+   fc F-BITS FPR-CK {: fclob:n :}
+   fclob fa FPR-FIT
+   fres fclob ROLE-CK
    t T-BITS TRAIT-CK drop
-   size FRAME-CK
-   size delta DELTA-CK
+   size m FRAME-CK
+   size delta m DELTA-CK
    c delta BALANCE-CK
-   c l LINK-CK
+   c l m LINK-CK
    cv gi gr CONV-CK
-   gr S-BITS SEQ-MASK fr F-BITS z c RESULT-CK
-   cv gi gr gc fi fr fc z l c t size delta A64EFF-ROUTINE:MAKE ;
+   res fres z c RESULT-CK
+   cv gi gr gc fi fr fc z l c t size delta m NEFF-ROUTINE:MAKE ;
 
 \ Recheck a contract that may have been assembled by the generated constructor.
-: VALIDATE ( A64EFF:routine -- A64EFF:routine )
-   A64EFF-ROUTINE:UNMAKE ROUTINE ;
+: VALIDATE ( NEFF:routine -- NEFF:routine )
+   NEFF-ROUTINE:UNMAKE ROUTINE ;
 
 \ ---- field readers -----------------------------------------------------------
 \ A projection of a value the caller already holds; nothing here revalidates.
-: CONV@ ( A64EFF:routine -- A64EFF:conv )
-   A64EFF-ROUTINE:UNMAKE
-   drop drop drop drop drop drop drop drop drop drop drop drop ;
+: CONV@ ( NEFF:routine -- NEFF:conv )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop drop drop drop drop drop ;
 
-: ARGS@ ( A64EFF:routine -- A64EFF:placeseq )
-   A64EFF-ROUTINE:UNMAKE
-   drop drop drop drop drop drop drop drop drop drop drop nip ;
+: ARGS@ ( NEFF:routine -- NEFF:placeseq )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop drop drop drop drop nip ;
 
-: RESULTS@ ( A64EFF:routine -- A64EFF:placeseq )
-   A64EFF-ROUTINE:UNMAKE
-   drop drop drop drop drop drop drop drop drop drop nip nip ;
+: RESULTS@ ( NEFF:routine -- NEFF:placeseq )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop drop drop drop nip nip ;
 
-: GPR-CLOBBER@ ( A64EFF:routine -- A64EFF:gprs )
-   A64EFF-ROUTINE:UNMAKE
-   drop drop drop drop drop drop drop drop drop nip nip nip ;
+: GPR-CLOBBER@ ( NEFF:routine -- NEFF:gprs )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop drop drop nip nip nip ;
 
-: FPR-IN@ ( A64EFF:routine -- A64EFF:fprs )
-   A64EFF-ROUTINE:UNMAKE
-   drop drop drop drop drop drop drop drop nip nip nip nip ;
+: FPR-IN@ ( NEFF:routine -- NEFF:fprs )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop drop nip nip nip nip ;
 
-: FPR-RESULT@ ( A64EFF:routine -- A64EFF:fprs )
-   A64EFF-ROUTINE:UNMAKE
-   drop drop drop drop drop drop drop nip nip nip nip nip ;
+: FPR-RESULT@ ( NEFF:routine -- NEFF:fprs )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop nip nip nip nip nip ;
 
-: FPR-CLOBBER@ ( A64EFF:routine -- A64EFF:fprs )
-   A64EFF-ROUTINE:UNMAKE
-   drop drop drop drop drop drop nip nip nip nip nip nip ;
+: FPR-CLOBBER@ ( NEFF:routine -- NEFF:fprs )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop nip nip nip nip nip nip ;
 
-: NZCV@ ( A64EFF:routine -- A64EFF:nzcv )
-   A64EFF-ROUTINE:UNMAKE
-   drop drop drop drop drop nip nip nip nip nip nip nip ;
+: NZCV@ ( NEFF:routine -- NEFF:nzcv )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop nip nip nip nip nip nip nip ;
 
-: LINK@ ( A64EFF:routine -- A64EFF:link )
-   A64EFF-ROUTINE:UNMAKE
-   drop drop drop drop nip nip nip nip nip nip nip nip ;
+: LINK@ ( NEFF:routine -- NEFF:link )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop drop drop nip nip nip nip nip nip nip nip ;
 
-: CONTROL@ ( A64EFF:routine -- A64EFF:control )
-   A64EFF-ROUTINE:UNMAKE
-   drop drop drop nip nip nip nip nip nip nip nip nip ;
+: CONTROL@ ( NEFF:routine -- NEFF:control )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop drop nip nip nip nip nip nip nip nip nip ;
 
-: TRAITS@ ( A64EFF:routine -- A64EFF:traits )
-   A64EFF-ROUTINE:UNMAKE
-   drop drop nip nip nip nip nip nip nip nip nip nip ;
+: TRAITS@ ( NEFF:routine -- NEFF:traits )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop nip nip nip nip nip nip nip nip nip nip ;
 
-: FRAME@ ( A64EFF:routine -- n )
-   A64EFF-ROUTINE:UNMAKE
-   drop nip nip nip nip nip nip nip nip nip nip nip ;
+: FRAME@ ( NEFF:routine -- n )
+   NEFF-ROUTINE:UNMAKE
+   drop drop nip nip nip nip nip nip nip nip nip nip nip ;
 
-: DELTA@ ( A64EFF:routine -- n )
-   A64EFF-ROUTINE:UNMAKE
-   nip nip nip nip nip nip nip nip nip nip nip nip ;
+: DELTA@ ( NEFF:routine -- n )
+   NEFF-ROUTINE:UNMAKE
+   drop nip nip nip nip nip nip nip nip nip nip nip nip ;
+
+\ Which machine every field above is stated about. A pass holding a contract
+\ needs no second value to read it, and cannot be holding the wrong one.
+: MACH@ ( NEFF:routine -- NMACH:mach )
+   NEFF-ROUTINE:UNMAKE
+   nip nip nip nip nip nip nip nip nip nip nip nip nip ;
 
 \ ---- derived facts -----------------------------------------------------------
 \ Which registers the interface lists name, as sets. A caller that only wants to
@@ -924,20 +894,21 @@ public
 \ ordered wanted exactly that - asks here rather than walking positions, and the
 \ answer cannot contradict the list because there is nothing else to read it out
 \ of.
-: GPR-IN@ ( A64EFF:routine -- A64EFF:gprs )
+: GPR-IN@ ( NEFF:routine -- NEFF:gprs )
    VALIDATE ARGS@ SEQ-SET ;
 
-: GPR-RESULT@ ( A64EFF:routine -- A64EFF:gprs )
+: GPR-RESULT@ ( NEFF:routine -- NEFF:gprs )
    VALIDATE RESULTS@ SEQ-SET ;
 
 \ What survives the routine: every register of the file it neither returns nor
 \ destroys. Derived, never stored, so it cannot contradict the destroyed set.
-: GPR-PRESERVED ( A64EFF:routine -- A64EFF:gprs )
-   VALIDATE A64EFF-ROUTINE:UNMAKE
+: GPR-PRESERVED ( NEFF:routine -- NEFF:gprs )
+   VALIDATE NEFF-ROUTINE:UNMAKE
+   {: m:NMACH:mach :}              \ the machine, which says what there is to preserve
    drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
    drop drop drop                  \ the floating sets
    {: cv:conv gi:placeseq gr:placeseq gc:gprs :}
-   GPR-MASK gr S-BITS SEQ-MASK invert and gc G-BITS invert and MK-G ;
+   m NMACH:GPR-ALLOCATABLE gr S-BITS SEQ-MASK invert and gc G-BITS invert and MK-G ;
 
 \ Every register the routine may WRITE: the ones it destroys, plus the ones it
 \ returns a value in. They are two roles and one register cannot be both, which
@@ -945,33 +916,36 @@ public
 \ register may be written, only that it may, so the set it may hand out is this
 \ one and not the destroyed set alone. Derived for the same reason the preserved
 \ set is: a stored copy could disagree with the two fields it is made of.
-: GPR-WRITABLE ( A64EFF:routine -- A64EFF:gprs )
-   VALIDATE A64EFF-ROUTINE:UNMAKE
+: GPR-WRITABLE ( NEFF:routine -- NEFF:gprs )
+   VALIDATE NEFF-ROUTINE:UNMAKE
+   drop                            \ the machine: what a routine writes is its own
    drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
    drop drop drop                  \ the floating sets
    {: cv:conv gi:placeseq gr:placeseq gc:gprs :}
    gr S-BITS SEQ-MASK gc G-BITS or MK-G ;
 
-: FPR-PRESERVED ( A64EFF:routine -- A64EFF:fprs )
-   VALIDATE A64EFF-ROUTINE:UNMAKE
+: FPR-PRESERVED ( NEFF:routine -- NEFF:fprs )
+   VALIDATE NEFF-ROUTINE:UNMAKE
+   {: m:NMACH:mach :}              \ the machine, which says what there is to preserve
    drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
    {: fi:fprs fr:fprs fc:fprs :}
    drop drop drop drop             \ the general lists, the destroyed set, the convention
-   FPR-MASK fr F-BITS invert and fc F-BITS invert and MK-F ;
+   m NMACH:FPR-ALLOCATABLE fr F-BITS invert and fc F-BITS invert and MK-F ;
 
 \ The floating file's writable set, derived exactly as the general file's is:
 \ what the routine destroys plus what it returns a value in. A register
 \ allocator with a second file asks this question of the second file in the same
 \ words it asks it of the first, so the two pools come from one rule rather than
 \ from one rule and one special case.
-: FPR-WRITABLE ( A64EFF:routine -- A64EFF:fprs )
-   VALIDATE A64EFF-ROUTINE:UNMAKE
+: FPR-WRITABLE ( NEFF:routine -- NEFF:fprs )
+   VALIDATE NEFF-ROUTINE:UNMAKE
+   drop                            \ the machine: what a routine writes is its own
    drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
    {: fi:fprs fr:fprs fc:fprs :}
    drop drop drop drop             \ the general lists, the destroyed set, the convention
    fr F-BITS fc F-BITS or MK-F ;
 
-: RETURNS? ( A64EFF:routine -- bool )
+: RETURNS? ( NEFF:routine -- bool )
    VALIDATE CONTROL@ RETURNING? ;
 
 \ ---- frame slots -------------------------------------------------------------
@@ -981,44 +955,49 @@ public
 \ the scale division will not round, an offset inside the declared frame, and an
 \ offset inside the reach of that width's twelve-bit field. The routine is last
 \ so the two numbers can be read into locals; a multi-cell value cannot be one.
-: CHECK-SLOT ( n n A64EFF:routine -- )
-   VALIDATE FRAME@ {: off:n width:n size:n :}
-   width WIDTH-OK? 0= if E-A64EFF-SLOT throw then
-   off 0 < if E-A64EFF-SLOT throw then
-   off width mod 0<> if E-A64EFF-SLOT throw then
-   off width + size > if E-A64EFF-SLOT throw then
-   off width SLOT-REACH > if E-A64EFF-SLOT throw then ;
+: CHECK-SLOT ( n n NEFF:routine -- )
+   VALIDATE NEFF-ROUTINE:UNMAKE
+   {: m:NMACH:mach :}
+   drop {: size:n :}                  \ the delta, then the frame this slot is in
+   drop drop drop drop drop drop drop drop drop drop drop
+   {: off:n width:n :}
+   width m NMACH:WIDTH-OK? 0= if E-NEFF-SLOT throw then
+   off 0 < if E-NEFF-SLOT throw then
+   off width mod 0<> if E-NEFF-SLOT throw then
+   off width + size > if E-NEFF-SLOT throw then
+   off  width m NMACH:SLOT-REACH  > if E-NEFF-SLOT throw then ;
 
 \ ---- identity ----------------------------------------------------------------
 \ Field-by-field identity. Both inputs are revalidated first, so a forged
 \ contract cannot be compared as if it were a declarable routine.
-: SAME? ( A64EFF:routine A64EFF:routine -- bool )
-   VALIDATE A64EFF-ROUTINE:UNMAKE
+: SAME? ( NEFF:routine NEFF:routine -- bool )
+   VALIDATE NEFF-ROUTINE:UNMAKE
    {: ycv:conv ygi:placeseq ygr:placeseq ygc:gprs yfi:fprs yfr:fprs yfc:fprs
-      yz:nzcv yl:link yc:control yt:traits ysize:n ydelta:n :}
-   VALIDATE A64EFF-ROUTINE:UNMAKE
+      yz:nzcv yl:link yc:control yt:traits ysize:n ydelta:n ym:NMACH:mach :}
+   VALIDATE NEFF-ROUTINE:UNMAKE
    {: xcv:conv xgi:placeseq xgr:placeseq xgc:gprs xfi:fprs xfr:fprs xfc:fprs
-      xz:nzcv xl:link xc:control xt:traits xsize:n xdelta:n :}
-   xcv ycv A64EFF-CONV:EQ
-   xgi ygi A64EFF-PLACESEQ:EQ and
-   xgr ygr A64EFF-PLACESEQ:EQ and
-   xgc ygc A64EFF-GPRS:EQ and
-   xfi yfi A64EFF-FPRS:EQ and
-   xfr yfr A64EFF-FPRS:EQ and
-   xfc yfc A64EFF-FPRS:EQ and
-   xz yz A64EFF-NZCV:EQ and
-   xl yl A64EFF-LINK:EQ and
-   xc yc A64EFF-CONTROL:EQ and
-   xt yt A64EFF-TRAITS:EQ and
+      xz:nzcv xl:link xc:control xt:traits xsize:n xdelta:n xm:NMACH:mach :}
+   xm ym NMACH-MACH:EQ
+   xcv ycv NEFF-CONV:EQ and
+   xgi ygi NEFF-PLACESEQ:EQ and
+   xgr ygr NEFF-PLACESEQ:EQ and
+   xgc ygc NEFF-GPRS:EQ and
+   xfi yfi NEFF-FPRS:EQ and
+   xfr yfr NEFF-FPRS:EQ and
+   xfc yfc NEFF-FPRS:EQ and
+   xz yz NEFF-NZCV:EQ and
+   xl yl NEFF-LINK:EQ and
+   xc yc NEFF-CONTROL:EQ and
+   xt yt NEFF-TRAITS:EQ and
    xsize ysize = and
    xdelta ydelta = and ;
 
 \ The canonical preimage. The bytes live in this module and stay valid until the
 \ next ENCODE call; DIGEST is the copy-free consumer.
-: ENCODE ( A64EFF:routine -- ptr u8 n )
-   VALIDATE A64EFF-ROUTINE:UNMAKE
+: ENCODE ( NEFF:routine -- ptr u8 n )
+   VALIDATE NEFF-ROUTINE:UNMAKE
    {: cv:conv gi:placeseq gr:placeseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
-      l:link c:control t:traits size:n delta:n :}
+      l:link c:control t:traits size:n delta:n m:NMACH:mach :}
    CDIGEST:TAG-A64-ROUTINE PRE SLOT-TAG CDIGEST:SLOT!
    SCHEMA PRE SLOT-SCHEMA CDIGEST:SLOT!
    cv CONV-CODE PRE SLOT-CONV CDIGEST:SLOT!
@@ -1034,9 +1013,10 @@ public
    t T-BITS PRE SLOT-TRAITS CDIGEST:SLOT!
    size PRE SLOT-FRAME CDIGEST:SLOT!
    delta PRE SLOT-DELTA CDIGEST:SLOT!
+   m NMACH:MARK PRE SLOT-MACH CDIGEST:SLOT!
    PRE PRE-BYTES ;
 
-: DIGEST ( A64EFF:routine -- CDIGEST:digest )
+: DIGEST ( NEFF:routine -- CDIGEST:digest )
    ENCODE CDIGEST:COMPUTE ;
 
 ;package

@@ -21,7 +21,7 @@
 \
 \ 3. THE ARM64 DESCRIPTION IS DERIVED AND NOT WRITTEN AGAIN. Every field of
 \    A64IR:REGFILE is asserted against the authority it was taken from -
-\    src/compiler/a64-effect.f for the file size and the reserved set, the
+\    src/compiler/native-effect.f for the file size and the reserved set, the
 \    dialect's own frame access for the slot width - so a description that
 \    started restating numbers reddens here. This is what keeps Darwin working:
 \    x18 is reserved there and ordinary on Linux, the reserved set already knows
@@ -34,6 +34,7 @@
 
 require lib/test.f
 require src/compiler/native/regfile.f
+require src/arch/arm64/machine.f
 require src/compiler/native/a64ir.f
 
 package REGFILE-TEST
@@ -56,7 +57,7 @@ private
 \ Sixteen general registers, six of them the virtual machine's (rbp, rbx and
 \ r12..r15 in docs/x86-64.md), so ten are allocatable; sixteen floating with none
 \ reserved; eight-byte slots. Every allocatable number is one ARM64 leaves alone
-\ too, so the allocator's suite can build A64EFF pools over the same registers.
+\ too, so the allocator's suite can build NEFF pools over the same registers.
 16 constant X64-N
 10 constant X64-ALLOC-N
 6 constant X64-RES-N
@@ -192,30 +193,30 @@ public
       E-NREGFILE TTHROWSQ ;
 
 \ ---- the ARM64 description ---------------------------------------------------
-\ Every field against the authority it was derived from. A64EFF:RESERVED-GPRS
+\ Every field against the authority it was derived from. A64M:RESERVED-GPRS
 \ already folds the platform register and everything the engine occupies
 \ together, so asserting against it is what proves the description did not
 \ restate a number - and what keeps Darwin, where x18 is reserved, correct.
 : ARM64 ( -- )
-   A64IR:REGFILE G-SIZE A64EFF:FILE-SIZE T=
-   A64IR:REGFILE G-RES A64EFF:RESERVED-GPRS T=
-   A64IR:REGFILE G-ALC A64EFF:GPR-ALL A64EFF:GPRS-N T=
+   A64IR:REGFILE G-SIZE A64M:FILE-SIZE T=
+   A64IR:REGFILE G-RES A64M:RESERVED-GPRS T=
+   A64IR:REGFILE G-ALC A64M:MACHINE NEFF:GPR-ALL NEFF:GPRS-N T=
    A64IR:REGFILE G-ALC
-      A64EFF:FILE-SIZE MASK-N A64EFF:RESERVED-GPRS invert and T=
+      A64M:FILE-SIZE MASK-N A64M:RESERVED-GPRS invert and T=
    \ The Habu convention declares the whole pool destroyed on every routine, so
    \ a call leaves no general register alone.
-   A64IR:REGFILE G-CLB A64EFF:GPR-ALL A64EFF:GPRS-N T=
+   A64IR:REGFILE G-CLB A64M:MACHINE NEFF:GPR-ALL NEFF:GPRS-N T=
    A64IR:REGFILE G-SAV 0 T=
-   A64IR:REGFILE F-SIZE A64EFF:FILE-SIZE T=
+   A64IR:REGFILE F-SIZE A64M:FILE-SIZE T=
    A64IR:REGFILE F-RES 0 T=
-   A64IR:REGFILE F-ALC A64EFF:FPR-ALL A64EFF:FPRS-N T=
+   A64IR:REGFILE F-ALC A64M:MACHINE NEFF:FPR-ALL NEFF:FPRS-N T=
    A64IR:REGFILE F-SAV 0 T=
    A64IR:REGFILE W A64IR:SLOT-WIDTH T=
    \ The engine's own registers are reserved and not allocatable, which is the
    \ one thing a description getting this wrong would break silently.
-   A64IR:REGFILE G-ALC  A64EFF:ENGINE-GPRS and  0 T=
-   A64IR:REGFILE G-ALC  1 A64EFF:LINK-GPR lshift and  0 T=
-   A64IR:REGFILE G-ALC  1 A64EFF:ZERO-GPR lshift and  0 T= ;
+   A64IR:REGFILE G-ALC  A64M:ENGINE-GPRS and  0 T=
+   A64IR:REGFILE G-ALC  1 A64M:LINK-GPR lshift and  0 T=
+   A64IR:REGFILE G-ALC  1 A64M:ZERO-GPR lshift and  0 T= ;
 
 : RUN ( -- )
    T-RESET

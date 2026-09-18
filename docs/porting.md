@@ -81,7 +81,7 @@ declaration anywhere) name the primitives that deliberately have no row.
 ## Native Compiler ABI
 
 `src/compiler/native/abi.f` maps the same target predicates to
-`aapcs64-linux` or `aapcs64-darwin`; `src/compiler/a64-effect.f` and
+`aapcs64-linux` or `aapcs64-darwin`; `src/compiler/native-effect.f` and
 `src/arch/arm64/asm.f` make x18 available only on Linux. The ABI field records
 the host platform identity. Habu-to-Habu calls still use Habu's internal
 contract: arguments and results occupy caller data-stack slots, the usable

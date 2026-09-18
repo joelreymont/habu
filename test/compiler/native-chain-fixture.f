@@ -4,6 +4,7 @@
 
 require src/compiler/native/abi.f
 require src/compiler/native/select.f
+require src/arch/arm64/machine.f
 require src/compiler/native/emit.f
 require src/compiler/native/spill.f
 
@@ -16,18 +17,18 @@ private
 \ itself, not to this fixture: src/compiler/native/abi.f states them once so the
 \ suites and the publication seam answer about one convention. What is left here
 \ is the C ABI, which only this fixture's callers use.
-: POOL ( n n -- A64EFF:gprs )
+: POOL ( n n -- NEFF:gprs )
    NABI:POOL ;
 
-: LEAF-OF ( A64EFF:gprs -- A64EFF:routine )
-   {: pool:A64EFF:gprs :}
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+: LEAF-OF ( NEFF:gprs -- NEFF:routine )
+   {: pool:NEFF:gprs :}
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE pool
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ A leaf routine that may use `n` registers starting at `base`.
-: LEAF-FROM ( n n -- A64EFF:routine )
+: LEAF-FROM ( n n -- NEFF:routine )
    POOL LEAF-OF ;
 
 \ ---- the C ABI these routines are called through -----------------------------
@@ -41,10 +42,10 @@ private
 0 constant ABI-ARG0                  \ argument i arrives in x(ABI-ARG0 + i)
 0 constant ABI-OUT0                  \ returned value j leaves in x(ABI-OUT0 + j)
 
-: ABI-SEQ ( n n -- A64EFF:placeseq )
+: ABI-SEQ ( n n -- NEFF:placeseq )
    {: base:n n:n :}
-   A64EFF:SEQ-NONE
-   n 0 ?do base i + A64EFF:SEQ-WITH loop ;
+   NEFF:SEQ-NONE
+   n 0 ?do base i + NEFF:SEQ-WITH loop ;
 
 \ The builder the machine module is written through.
 : A64-BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
@@ -58,29 +59,29 @@ private
 \ the module being read, so no caller presents the text at all.
 \ The routine contract reaches the selector as well as the allocator now, because
 \ the selector is where a data-stack place becomes a load or a store. It is the
-\ last argument for the same reason it is everywhere else: thirteen cells cannot
+\ last argument for the same reason it is everywhere else: fourteen cells cannot
 \ be bound to a typed local, so it is presented on top and taken apart there.
 \
 \ THE LOWERING PASS IS BOUND HERE TOO, because a module's symbols are its own
 \ ordinals and this is the only moment the machine dialect can be asked them. A
 \ run whose walk decides no spill gives that binding straight back, which is what
 \ the RELEASE in each of the entry points below is.
-: SELECTED ( IR-CTX:ctx IR-BUILD:builder A64EFF:routine -- IR-BUILD:module )
-   A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
-      fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
-      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
-      t:A64EFF:traits size:n delta:n :}
+: SELECTED ( IR-CTX:ctx IR-BUILD:builder NEFF:routine -- IR-BUILD:module )
+   NEFF:VALIDATE NEFF-ROUTINE:UNMAKE
+   {: cv:NEFF:conv gi:NEFF:placeseq gr:NEFF:placeseq gc:NEFF:gprs
+      fi:NEFF:fprs fr:NEFF:fprs fc:NEFF:fprs
+      z:NEFF:nzcv l:NEFF:link ct:NEFF:control
+      t:NEFF:traits size:n delta:n mch:NMACH:mach :}
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b A64SEL:BIND-SOURCE
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    c A64-BUILDER {: ab:IR-BUILD:builder :}
-   c ab A64IR:REGFILE A64RA:BIND-DIALECT
+   c ab A64IR:MACHINE A64RA:BIND-DIALECT
    c ab A64RAV:BIND-DIALECT
    c ab A64EMIT:BIND-DIALECT
    c ab A64SPILL:BIND-DIALECT
    c m ab
-   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
    A64SEL:SELECT ;
 
 public
@@ -93,19 +94,19 @@ public
    NABI:BINDING ;
 
 \ A leaf routine of `n` registers from the pool that starts at register zero.
-: LEAF-N ( n -- A64EFF:routine )
+: LEAF-N ( n -- NEFF:routine )
    0 swap LEAF-FROM ;
 
 \ The same with a frame of its own, for a routine whose values do not all fit in
 \ its registers: a spill needs somewhere to go, and how deep that is, is the
 \ contract's declaration.
-: LEAF-FRAMED ( n n -- A64EFF:routine )
+: LEAF-FRAMED ( n n -- NEFF:routine )
    {: n:n size:n :}
-   0 n POOL {: pool:A64EFF:gprs :}
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;
+   0 n POOL {: pool:NEFF:gprs :}
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE pool
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE size 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ A leaf routine with the C ABI declared on it: `in` arguments arriving in x0
 \ upwards and `out` returned values leaving in x0 upwards. The registers it may
@@ -115,21 +116,21 @@ public
 \ The destroyed set is what is left after the result registers are taken out:
 \ one register cannot be both a result and a register whose contents mean
 \ nothing.
-: LEAF-ABI ( n n n n -- A64EFF:routine )
+: LEAF-ABI ( n n n n -- NEFF:routine )
    {: base:n n:n in:n out:n :}
-   ABI-ARG0 in ABI-SEQ {: args:A64EFF:placeseq :}
-   ABI-OUT0 out ABI-SEQ {: outs:A64EFF:placeseq :}
+   ABI-ARG0 in ABI-SEQ {: args:NEFF:placeseq :}
+   ABI-OUT0 out ABI-SEQ {: outs:NEFF:placeseq :}
    base n POOL
-   args A64EFF:SEQ-SET A64EFF:GPR-WITH
-   outs A64EFF:SEQ-SET A64EFF:GPR-WITH {: pool:A64EFF:gprs :}
-   A64EFF-CONV:REGISTER args outs
-   pool outs A64EFF:SEQ-SET A64EFF:GPR-WITHOUT
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+   args NEFF:SEQ-SET NEFF:GPR-WITH
+   outs NEFF:SEQ-SET NEFF:GPR-WITH {: pool:NEFF:gprs :}
+   NEFF-CONV:REGISTER args outs
+   pool outs NEFF:SEQ-SET NEFF:GPR-WITHOUT
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ The data-stack convention used by emitted Habu fixtures.
-: LEAF-HABU ( n n n n -- A64EFF:routine )
+: LEAF-HABU ( n n n n -- NEFF:routine )
    {: base:n n:n in:n out:n :}
    base n NABI:POOL in out NABI:LEAF ;
 

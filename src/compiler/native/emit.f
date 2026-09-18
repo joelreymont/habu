@@ -22,7 +22,7 @@
 
 require lib/prelude.f
 require lib/errors.f
-require src/compiler/a64-effect.f
+require src/compiler/native-effect.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
@@ -35,6 +35,7 @@ require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/backend.f
+require src/arch/arm64/machine.f
 require src/habu/arith-abi.f            \ E-DIV-ZERO, the divide's refusal
 
 package A64EMIT
@@ -420,11 +421,11 @@ variable N-FUNS                        \ how many functions the emission holds
 
 : WORD-STORE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-STR ;
+   id 0 OPERAND-REG  A64M:SP-GPR  id SLOT-OFF  ENC-STR ;
 
 : WORD-LOAD ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 RESULT-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-LDR ;
+   id 0 RESULT-REG  A64M:SP-GPR  id SLOT-OFF  ENC-LDR ;
 
 : WORD-FNEG ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
@@ -460,11 +461,11 @@ variable N-FUNS                        \ how many functions the emission holds
 
 : WORD-RESERVE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   A64EFF:SP-GPR A64EFF:SP-GPR  id FRAME-SIZE  ENC-SUBI ;
+   A64M:SP-GPR A64M:SP-GPR  id FRAME-SIZE  ENC-SUBI ;
 
 : WORD-RELEASE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   A64EFF:SP-GPR A64EFF:SP-GPR  id FRAME-SIZE  ENC-ADDI ;
+   A64M:SP-GPR A64M:SP-GPR  id FRAME-SIZE  ENC-ADDI ;
 
 \ Over the pointer is the scaled unsigned field, Ldr and Str; under it is the
 \ unscaled signed field, Ldur and Stur. One dialect form written two ways.
@@ -476,11 +477,11 @@ variable N-FUNS                        \ how many functions the emission holds
 
 : WORD-DLOAD ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 RESULT-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-LDR ;
+   id 0 RESULT-REG  A64M:DSTACK-GPR  id DSLOT-OFF  DENC-LDR ;
 
 : WORD-DSTORE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-STR ;
+   id 0 OPERAND-REG  A64M:DSTACK-GPR  id DSLOT-OFF  DENC-STR ;
 
 \ The two fused forms, which is where the pointer move went. Post-index stores
 \ AT the pointer and then moves it forward; pre-index moves it back and reads
@@ -488,11 +489,11 @@ variable N-FUNS                        \ how many functions the emission holds
 \ neither has an offset to read because the form has no field for one.
 : WORD-DPUSH ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DWB-SIZE  ENC-STRPOST ;
+   id 0 OPERAND-REG  A64M:DSTACK-GPR  id DWB-SIZE  ENC-STRPOST ;
 
 : WORD-DPOP ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 RESULT-REG  A64EFF:DSTACK-GPR  id DWB-SIZE negate  ENC-LDRPRE ;
+   id 0 RESULT-REG  A64M:DSTACK-GPR  id DWB-SIZE negate  ENC-LDRPRE ;
 
 \ Each is its general twin with one encoder swapped, so a double reaches memory
 \ and leaves it in the file it lives in.
@@ -504,28 +505,28 @@ variable N-FUNS                        \ how many functions the emission holds
 
 : WORD-FSTORE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-STRD ;
+   id 0 OPERAND-REG  A64M:SP-GPR  id SLOT-OFF  ENC-STRD ;
 
 : WORD-FLOAD ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 RESULT-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-LDRD ;
+   id 0 RESULT-REG  A64M:SP-GPR  id SLOT-OFF  ENC-LDRD ;
 
 : WORD-FDLOAD ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 RESULT-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-LDRD ;
+   id 0 RESULT-REG  A64M:DSTACK-GPR  id DSLOT-OFF  DENC-LDRD ;
 
 : WORD-FDSTORE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-STRD ;
+   id 0 OPERAND-REG  A64M:DSTACK-GPR  id DSLOT-OFF  DENC-STRD ;
 
 \ The same two fused forms in the other register file, which is one opcode bit.
 : WORD-FDPUSH ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DWB-SIZE  ENC-STRDPOST ;
+   id 0 OPERAND-REG  A64M:DSTACK-GPR  id DWB-SIZE  ENC-STRDPOST ;
 
 : WORD-FDPOP ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 RESULT-REG  A64EFF:DSTACK-GPR  id DWB-SIZE negate  ENC-LDRDPRE ;
+   id 0 RESULT-REG  A64M:DSTACK-GPR  id DWB-SIZE negate  ENC-LDRDPRE ;
 
 \ ---- the two addressed forms -------------------------------------------------
 \ Offset zero is `[Xn]`, written here because this dialect has no addressing
@@ -563,11 +564,11 @@ variable N-FUNS                        \ how many functions the emission holds
 \ says why no routine may hold state in it.
 : WORD-LNKSTR ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   A64EFF:LINK-GPR  A64EFF:SP-GPR  id SLOT-OFF  ENC-STR ;
+   A64M:LINK-GPR  A64M:SP-GPR  id SLOT-OFF  ENC-STR ;
 
 : WORD-LNKLDR ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   A64EFF:LINK-GPR  A64EFF:SP-GPR  id SLOT-OFF  ENC-LDR ;
+   A64M:LINK-GPR  A64M:SP-GPR  id SLOT-OFF  ENC-LDR ;
 
 \ The same two transfers with the frame move folded in. The offset is the whole
 \ frame and the transfer lands at its base, which is where A64FRAME puts the
@@ -575,10 +576,10 @@ variable N-FUNS                        \ how many functions the emission holds
 \ the operation: the load end is a linkload, which carries the slot and not the
 \ size, so both take the size this function's shape was decided from.
 : WORD-LNKPUSH ( -- n )
-   A64EFF:LINK-GPR  A64EFF:SP-GPR  EM-FRAME @ negate  ENC-STRPRE ;
+   A64M:LINK-GPR  A64M:SP-GPR  EM-FRAME @ negate  ENC-STRPRE ;
 
 : WORD-LNKPOP ( -- n )
-   A64EFF:LINK-GPR  A64EFF:SP-GPR  EM-FRAME @  ENC-LDRPOST ;
+   A64M:LINK-GPR  A64M:SP-GPR  EM-FRAME @  ENC-LDRPOST ;
 
 \ ---- the condition a comparison is made under --------------------------------
 : COND-OF ( IR-ID:ir-op-id -- n )
@@ -1105,10 +1106,10 @@ variable CH-AT
    {: id:IR-ID:ir-op-id d:n :}
    d 0= if exit then
    d 0 > if
-      id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR d  ENC-ADDI  APPEND
+      id  A64M:DSTACK-GPR A64M:DSTACK-GPR d  ENC-ADDI  APPEND
       exit
    then
-   id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR d negate  ENC-SUBI  APPEND ;
+   id  A64M:DSTACK-GPR A64M:DSTACK-GPR d negate  ENC-SUBI  APPEND ;
 
 : PUT-DTAKE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
@@ -1236,7 +1237,7 @@ ARITH-ABI:E-DIV-ZERO invert constant DIV-CODE-IMM  \ the code as a Movn carries 
    id 0 RESULT-REG {: rd:n :}
    id  id 1 OPERAND-REG DIV-SKIP  ENC-CBNZ  APPEND
    id  rd DIV-CODE-IMM 0  MOVNHW  APPEND
-   id  rd A64EFF:DSTACK-GPR CELL  ENC-STRPOST  APPEND
+   id  rd A64M:DSTACK-GPR CELL  ENC-STRPOST  APPEND
    id  id THROW-ADDR EXT-DELTA  BL-WORD  APPEND
    id  id TRIPLE  ENC-SDIV  APPEND ;
 
@@ -1503,8 +1504,8 @@ ARITH-ABI:E-DIV-ZERO invert constant DIV-CODE-IMM  \ the code as a Movn carries 
 \ The allocation bounds which registers this run may write. An emission that
 \ wrote a register no value claimed means the two disagree.
 : WRITES-CK ( -- )
-   A64RAV:GPR-WRITTEN A64EFF:GPRS-N {: g:n :}
-   A64RAV:FPR-WRITTEN A64EFF:FPRS-N {: f:n :}
+   A64RAV:GPR-WRITTEN NEFF:GPRS-N {: g:n :}
+   A64RAV:FPR-WRITTEN NEFF:FPRS-N {: f:n :}
    EM-WGPR @ g invert and 0<> if E-A64EMIT-CLOBBER throw then
    EM-WFPR @ f invert and 0<> if E-A64EMIT-CLOBBER throw then ;
 

@@ -202,21 +202,22 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   `REGS-NONE`, `REGS-SET`, `REGS-REG`, `REGS-WITH`; readers `GPR-SIZE`,
   `GPR-RESERVED`, `GPR-ALLOCATABLE`, `GPR-CLOBBERED`, `GPR-CALLEE-SAVED`,
   the `FPR-` four, `SLOT-WIDTH`, `ALLOCATABLE-MASK`.
-- The allocator takes it with the dialect:
-  `A64RA:BIND-DIALECT ( ctx builder NREGFILE:file -- )`; nothing allocates
-  without a description. `A64IR:REGFILE` is the arm64 description, derived
-  from `A64EFF` (Darwin's x18 included). `regalloc-verify.f` reads
-  `A64RA:REGFILE`. Frame rounding stays in `A64EFF` (`FRAME-ROUND`,
-  `FRAME-MAX`).
+- The allocator takes the MACHINE with the dialect:
+  `A64RA:BIND-DIALECT ( ctx builder NMACH:mach -- )`; nothing allocates
+  without a description, and the register file is derived from it
+  (`NMACH:REGFILE`). `A64IR:MACHINE` is the arm64 description
+  (`src/arch/arm64/machine.f`, Darwin's x18 included); `regalloc-verify.f`
+  reads `A64RA:MACHINE`. Frame rounding is the machine's
+  (`NMACH:FRAME-ROUND`, `NMACH:FRAME-MAX`).
 - **For x86_64:** the description for the design's machine is 16 general
   registers with `rbp r12 r13 r14 r15 rbx` reserved (ten allocatable), the
   SysV callee-saved set equal to the reserved set, so `clobbered` = the
   allocatable set; `test/compiler/native-regalloc.f` already drives the
-  allocator with that shape. What is NOT yet target-neutral: the pool type
-  the allocator checks a routine's pool against is still `A64EFF:gprs`, and
-  `spill.f`/`prune.f` are instruction-form code over the A64 dialect; the
-  lowering dot supplies an x64 effect schema (or a generalised `A64EFF`)
-  and its own dialect before `A64RA` can be handed a real x86_64 pool.
+  allocator with that shape. The pool type is target-neutral now
+  (`NEFF:gprs` over an `NMACH:mach`, `src/arch/x86-64/machine.f` for this
+  machine); what is NOT is `spill.f`/`prune.f`, which are instruction-form
+  code over the A64 dialect, so the lowering dot supplies its own dialect
+  before `A64RA` can be handed a real x86_64 pool.
 
 ### OS seam, ELF64, contract, site kind, emitters (`habu-add-the-x86-56726659`, lines d55021af + 5e05cbfd + d1961798, engine fa498035)
 
@@ -350,9 +351,9 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   Beyond the rows the backend composes its own `ROUTINE` equivalent from
   `NBACK:linkage`, the declared arity and its own function/spill readings.
   No edit to `compiler.f` is needed to reach a second backend. The
-  register allocator's pool type is still ARM64's (`A64EFF:gprs`), so the
-  x86_64 backend needs an x64 effect schema or a generalised `A64EFF`
-  before it can hand `A64RA` a real pool (register-file lane's handoff).
+  register allocator's pool type is target-neutral now (`NEFF:gprs` over the
+  machine a contract carries), so the x86_64 backend can hand `A64RA` a real
+  pool once it lowers into its own dialect.
 - Tests: `test/compiler/target-registry.f` property 5 (a fake PTX backend
   with pass rows, dispatch through `DECLARE`/`RELEASE`/`RETIRE`, an
   unregistered arch refused, a registered-but-passless arch refused through
@@ -384,15 +385,23 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   before this the first x86-64 context threw `E-IR-CTX-STATE`.
 - Errors `-8740..-8759` (`X64IR`); `-8760..-8779` and `-8780..-8799` reserved
   for `X64SEL` and `X64EMIT`.
-- Still open in the dot: `select-x64.f` (blocked on the effect-schema
-  decision below), `emit-x64.f`, `src/arch/x86-64/passes.f`, the pinned-bytes
-  suite `test/compiler/x64-emit.f`.
-- Decision (hazel, 2026-09-18): the allocator's effect schema is
-  GENERALISED, not duplicated. `src/compiler/a64-effect.f` (`A64EFF`) is the
-  typed machine-state contract `A64RA`/`A64SPILL`/`A64PRUNE` are written over;
-  its content (ordered interface, register sets, frame, flags, exits) is
-  target-neutral except its name and the ARM64 register file it defaults to.
-  A lane renames it into a target-neutral module the register-file
-  description parameterises, with the arm64 engine proved byte-identical by
-  the generation chain and `test/compiler/native-emit.f`, before
-  `select-x64.f` starts.
+- Still open in the dot: `select-x64.f`, `emit-x64.f`,
+  `src/arch/x86-64/passes.f`, the pinned-bytes suite
+  `test/compiler/x64-emit.f`.
+- Decision (hazel, 2026-09-18), LANDED: the allocator's effect schema is
+  GENERALISED, not duplicated. `src/compiler/a64-effect.f` (`A64EFF`) is now
+  `src/compiler/native-effect.f` (`NEFF`), and the ARM64 facts it used to hold
+  as constants are a MACHINE DESCRIPTION the backend supplies:
+  `src/compiler/native/machine.f` (`NMACH`, a nominal one-cell `mach` over a
+  deduplicated private table - register files, link set, sp operand and
+  alignment, frame bound, offset limit and how the offset field is counted,
+  access widths, slot reach back) with `src/arch/arm64/machine.f` (`A64M`) and
+  `src/arch/x86-64/machine.f` (`X64M`) as its two instances. A contract
+  carries its machine as a fourteenth field, `ROUTINE` is where a register is
+  held to `NMACH:GPR-ALLOCATABLE`, and register sets and place lists are
+  machine-free values. The `link` field gained `absent`, which is the only
+  answer a machine with no link register may give - x86-64's contracts use it
+  (`test/compiler/x64ir.f`). Digest SCHEMA 4 -> 5, SLOTS 15 -> 16
+  (`SLOT-MACH` = `NMACH:MARK`). The arm64 engine is byte-identical across the
+  generation chain (gen2 == gen3; gen1 differs in move-wide immediates and
+  data pointers only).

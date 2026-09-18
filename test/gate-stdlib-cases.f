@@ -237,8 +237,8 @@ SUITE compiler-native-a64ir
 \ The typed ARM64 routine-effect schema, next to the a64 lowering it constrains.
 \ It was fork-only, so the register bounds it pins were unchecked in a standalone
 \ gate run.
-SUITE compiler-a64-effect
-   test/compiler/a64-effect.f
+SUITE compiler-native-effect
+   test/compiler/native-effect.f
 ;SUITE
 
 \ The target/policy binding: src/compiler/digest.f, target.f, numeric-policy.f

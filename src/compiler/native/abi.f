@@ -14,7 +14,8 @@ require lib/prelude.f
 require src/compiler/target.f
 require src/compiler/numeric-policy.f
 require src/compiler/binding.f
-require src/compiler/a64-effect.f
+require src/compiler/native-effect.f
+require src/compiler/native/machine.f
 require src/compiler/native/a64ir.f
 require src/compiler/native/frame.f
 
@@ -37,7 +38,7 @@ public
 \ The host AArch64 binding. Overflow wraps, as ARM64's add, sub and mul do; a
 \ trapping unit is refused by the selector.
 \ The architecture is this module's own: every routine it builds below names
-\ A64EFF register sets. On a host whose ABI is not an AArch64 one - linux-x86-64
+\ NEFF register sets. On a host whose ABI is not an AArch64 one - linux-x86-64
 \ answers sysv-amd64 above - CTARGET:CONTRACT refuses the pair with E-CTGT-ABI,
 \ which is the true statement: that ABI is not one this architecture runs. The
 \ x86-64 binding belongs to the x86-64 backend module, not to this file.
@@ -49,14 +50,16 @@ public
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
    CBIND:BIND ;
 
-\ `n` general registers starting at `base`. A64EFF keeps the data-stack, link,
-\ platform and zero registers out of every set, so none of them can arrive here.
-\ A caller states a run only to hold a routine UNDER the machine's pool - which
-\ is what a pressure fixture is for. Production asks SCRATCH.
-: POOL ( n n -- A64EFF:gprs )
+\ `n` general registers starting at `base`. A set is a machine-free value, so a
+\ run that crosses the data-stack, link, platform or zero register builds here
+\ and is refused by the contract that would hold state in it - NEFF:ROUTINE is
+\ where the machine is named. A caller states a run only to hold a routine UNDER
+\ the machine's pool - which is what a pressure fixture is for. Production asks
+\ SCRATCH.
+: POOL ( n n -- NEFF:gprs )
    {: base:n n:n :}
-   A64EFF:GPR-NONE
-   n 0 ?do base i + A64EFF:GPR-REG A64EFF:GPR-WITH loop ;
+   NEFF:GPR-NONE
+   n 0 ?do base i + NEFF:GPR-REG NEFF:GPR-WITH loop ;
 
 \ Every general register a routine of this convention may hold state in, which is
 \ a fact about the machine and the engine and never a number a caller picks. The
@@ -65,109 +68,109 @@ public
 \ Darwin. The complete set is twenty-five registers on Linux and twenty-four on
 \ Darwin, including x21..x25 and x29 on both. A routine that still does not fit
 \ spills, which is the spill path's job and not the caller's to pre-empt.
-: SCRATCH ( -- A64EFF:gprs )
-   A64EFF:GPR-ALL ;
+: SCRATCH ( -- NEFF:gprs )
+   A64IR:MACHINE NEFF:GPR-ALL ;
 
 \ At n of zero the list is empty and an empty list is silent, so every constructor
-\ below declares A64EFF-CONV:DSTACK rather than leaving the list to say it.
-: SLOT-SEQ ( n -- A64EFF:placeseq )
-   A64EFF:SEQ-DSTACK ;
+\ below declares NEFF-CONV:DSTACK rather than leaving the list to say it.
+: SLOT-SEQ ( n -- NEFF:placeseq )
+   NEFF:SEQ-DSTACK ;
 
 \ Prologue slots plus the allocator's, rounded to the stack alignment. It takes
 \ the link declaration as well as the trait, because A64FRAME reads both.
-: FRAME-FOR ( A64EFF:traits A64EFF:link n -- n )
-   {: t:A64EFF:traits l:A64EFF:link spills:n :}
-   t l A64FRAME:SPILL-BASE  spills A64IR:SLOT-WIDTH *  +  A64EFF:FRAME-ROUND ;
+: FRAME-FOR ( NEFF:traits NEFF:link n -- n )
+   {: t:NEFF:traits l:NEFF:link spills:n :}
+   t l A64FRAME:SPILL-BASE  spills A64IR:SLOT-WIDTH *  +  A64IR:MACHINE NMACH:FRAME-ROUND ;
 
 \ No register is part of the interface, so the whole pool is declared destroyed.
-: LEAF-FRAMED ( A64EFF:gprs n n n -- A64EFF:routine )
-   {: pool:A64EFF:gprs in:n out:n spills:n :}
-   A64EFF-CONV:DSTACK
+: LEAF-FRAMED ( NEFF:gprs n n n -- NEFF:routine )
+   {: pool:NEFF:gprs in:n out:n spills:n :}
+   NEFF-CONV:DSTACK
    in SLOT-SEQ  out SLOT-SEQ
    pool
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
-   A64EFF-NZCV:CLOBBERED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE
-   A64EFF:TRAITS-NONE A64EFF-LINK:PRESERVED spills FRAME-FOR
-   0 A64EFF:ROUTINE ;
+   NEFF:FPR-NONE NEFF:FPR-NONE A64IR:MACHINE NEFF:FPR-ALL
+   NEFF-NZCV:CLOBBERED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE
+   NEFF:TRAITS-NONE NEFF-LINK:PRESERVED spills FRAME-FOR
+   0 A64IR:MACHINE NEFF:ROUTINE ;
 
-: LEAF ( A64EFF:gprs n n -- A64EFF:routine )
+: LEAF ( NEFF:gprs n n -- NEFF:routine )
    0 LEAF-FRAMED ;
 
 \ The direct-call trait is what the selector builds the frame and the link save
 \ from. `link preserved` does not change: a caller has to make it true.
-: CALL-FRAMED ( A64EFF:gprs n n n -- A64EFF:routine )
-   {: pool:A64EFF:gprs in:n out:n spills:n :}
-   A64EFF-CONV:DSTACK
+: CALL-FRAMED ( NEFF:gprs n n n -- NEFF:routine )
+   {: pool:NEFF:gprs in:n out:n spills:n :}
+   NEFF-CONV:DSTACK
    in SLOT-SEQ  out SLOT-SEQ
    pool
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
-   A64EFF-NZCV:CLOBBERED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:T-CALL
-   A64EFF:T-CALL A64EFF-LINK:PRESERVED spills FRAME-FOR
-   0 A64EFF:ROUTINE ;
+   NEFF:FPR-NONE NEFF:FPR-NONE A64IR:MACHINE NEFF:FPR-ALL
+   NEFF-NZCV:CLOBBERED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:T-CALL
+   NEFF:T-CALL NEFF-LINK:PRESERVED spills FRAME-FOR
+   0 A64IR:MACHINE NEFF:ROUTINE ;
 
-: CALL ( A64EFF:gprs n n -- A64EFF:routine )
+: CALL ( NEFF:gprs n n -- NEFF:routine )
    0 CALL-FRAMED ;
 
 \ ---- and the same convention for a word that LEAVES through its last callee ---
 \ The callee's own return goes to OUR caller, so the data stack needs no
 \ instruction at the boundary. A tail branch is a B and not a Bl: no trait.
-: TAIL-FRAMED ( A64EFF:gprs n n n -- A64EFF:routine )
-   {: pool:A64EFF:gprs in:n out:n spills:n :}
-   A64EFF-CONV:DSTACK
+: TAIL-FRAMED ( NEFF:gprs n n n -- NEFF:routine )
+   {: pool:NEFF:gprs in:n out:n spills:n :}
+   NEFF-CONV:DSTACK
    in SLOT-SEQ  out SLOT-SEQ
    pool
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
-   A64EFF-NZCV:CLOBBERED A64EFF-LINK:PRESERVED A64EFF-CONTROL:TAIL-CALL
-   A64EFF:TRAITS-NONE
-   A64EFF:TRAITS-NONE A64EFF-LINK:PRESERVED spills FRAME-FOR
-   0 A64EFF:ROUTINE ;
+   NEFF:FPR-NONE NEFF:FPR-NONE A64IR:MACHINE NEFF:FPR-ALL
+   NEFF-NZCV:CLOBBERED NEFF-LINK:PRESERVED NEFF-CONTROL:TAIL-CALL
+   NEFF:TRAITS-NONE
+   NEFF:TRAITS-NONE NEFF-LINK:PRESERVED spills FRAME-FOR
+   0 A64IR:MACHINE NEFF:ROUTINE ;
 
-: TAIL ( A64EFF:gprs n n -- A64EFF:routine )
+: TAIL ( NEFF:gprs n n -- NEFF:routine )
    0 TAIL-FRAMED ;
 
 \ The same, for a word that also makes a call it comes back from.
-: TAIL-CALLING-FRAMED ( A64EFF:gprs n n n -- A64EFF:routine )
-   {: pool:A64EFF:gprs in:n out:n spills:n :}
-   A64EFF-CONV:DSTACK
+: TAIL-CALLING-FRAMED ( NEFF:gprs n n n -- NEFF:routine )
+   {: pool:NEFF:gprs in:n out:n spills:n :}
+   NEFF-CONV:DSTACK
    in SLOT-SEQ  out SLOT-SEQ
    pool
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
-   A64EFF-NZCV:CLOBBERED A64EFF-LINK:PRESERVED A64EFF-CONTROL:TAIL-CALL
-   A64EFF:T-CALL
-   A64EFF:T-CALL A64EFF-LINK:PRESERVED spills FRAME-FOR
-   0 A64EFF:ROUTINE ;
+   NEFF:FPR-NONE NEFF:FPR-NONE A64IR:MACHINE NEFF:FPR-ALL
+   NEFF-NZCV:CLOBBERED NEFF-LINK:PRESERVED NEFF-CONTROL:TAIL-CALL
+   NEFF:T-CALL
+   NEFF:T-CALL NEFF-LINK:PRESERVED spills FRAME-FOR
+   0 A64IR:MACHINE NEFF:ROUTINE ;
 
-: TAIL-CALLING ( A64EFF:gprs n n -- A64EFF:routine )
+: TAIL-CALLING ( NEFF:gprs n n -- NEFF:routine )
    0 TAIL-CALLING-FRAMED ;
 
 \ ---- and the convention of a word control never comes back from ---------------
 \ No Ret anywhere: nothing reads the return address back and no unwinder walks
 \ the frame, so the link is declared destroyed and the delta is the whole frame.
-: NORET-FRAMED ( A64EFF:gprs n n n -- A64EFF:routine )
-   {: pool:A64EFF:gprs in:n out:n spills:n :}
-   A64EFF-CONV:DSTACK
+: NORET-FRAMED ( NEFF:gprs n n n -- NEFF:routine )
+   {: pool:NEFF:gprs in:n out:n spills:n :}
+   NEFF-CONV:DSTACK
    in SLOT-SEQ  out SLOT-SEQ
    pool
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
-   A64EFF-NZCV:CLOBBERED A64EFF-LINK:CLOBBERED A64EFF-CONTROL:NO-RETURN
-   A64EFF:T-CALL
-   A64EFF:T-CALL A64EFF-LINK:CLOBBERED spills FRAME-FOR
-   dup negate A64EFF:ROUTINE ;
+   NEFF:FPR-NONE NEFF:FPR-NONE A64IR:MACHINE NEFF:FPR-ALL
+   NEFF-NZCV:CLOBBERED NEFF-LINK:CLOBBERED NEFF-CONTROL:NO-RETURN
+   NEFF:T-CALL
+   NEFF:T-CALL NEFF-LINK:CLOBBERED spills FRAME-FOR
+   dup negate A64IR:MACHINE NEFF:ROUTINE ;
 
 \ A `begin … again` loop: no exit edge and no call at all, so no trait - which is
 \ the field the selector holds against the module. `control no-return` still holds.
-: NORET-LEAF-FRAMED ( A64EFF:gprs n n n -- A64EFF:routine )
-   {: pool:A64EFF:gprs in:n out:n spills:n :}
-   A64EFF-CONV:DSTACK
+: NORET-LEAF-FRAMED ( NEFF:gprs n n n -- NEFF:routine )
+   {: pool:NEFF:gprs in:n out:n spills:n :}
+   NEFF-CONV:DSTACK
    in SLOT-SEQ  out SLOT-SEQ
    pool
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
-   A64EFF-NZCV:CLOBBERED A64EFF-LINK:PRESERVED A64EFF-CONTROL:NO-RETURN
-   A64EFF:TRAITS-NONE
-   A64EFF:TRAITS-NONE A64EFF-LINK:PRESERVED spills FRAME-FOR
-   dup negate A64EFF:ROUTINE ;
+   NEFF:FPR-NONE NEFF:FPR-NONE A64IR:MACHINE NEFF:FPR-ALL
+   NEFF-NZCV:CLOBBERED NEFF-LINK:PRESERVED NEFF-CONTROL:NO-RETURN
+   NEFF:TRAITS-NONE
+   NEFF:TRAITS-NONE NEFF-LINK:PRESERVED spills FRAME-FOR
+   dup negate A64IR:MACHINE NEFF:ROUTINE ;
 
 private
 

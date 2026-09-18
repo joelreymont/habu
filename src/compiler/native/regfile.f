@@ -3,7 +3,7 @@
 \
 \ WHY IT EXISTS. src/compiler/native/regalloc.f used to read the ARM64 numbers
 \ directly: how many registers a file holds came from the five-bit register
-\ operand of src/compiler/a64-effect.f, and a spill slot's width from the A64IR
+\ operand of src/compiler/native-effect.f, and a spill slot's width from the A64IR
 \ dialect. Neither is a fact about linear scan. A machine with sixteen registers
 \ could not be allocated for at all - not badly, but not at all, because the
 \ file size was a load-time constant and there was no seam to say otherwise.
@@ -24,7 +24,7 @@
 \ could say a register is reserved and allocatable at once, and two readers of
 \ one description would then disagree about the same register. So the VM's claim
 \ is the declaration - a backend author knows which registers the engine took -
-\ and what is left over is computed. src/compiler/a64-effect.f derives its
+\ and what is left over is computed. src/compiler/native-effect.f derives its
 \ GPR-MASK from its RESERVED-MASK for exactly this reason, and this file states
 \ the same rule for any machine. The caller/callee pair is split the same way:
 \ what a call DESTROYS is stored, and what therefore survives one is derived, so
@@ -55,7 +55,7 @@ public
 \ ---- a set of registers of ONE file ------------------------------------------
 \ A nominal one-field record over a bit mask, so a set cannot be confused with a
 \ register number, a count, or a bare integer. It is not per-file-typed the way
-\ A64EFF's two sets are: a description holds both files and names which is which
+\ NEFF's two sets are: a description holds both files and names which is which
 \ in the FIELD it stores the set in, so there is no position a general set could
 \ arrive in where a floating one was wanted.
 
@@ -64,7 +64,7 @@ STRUCTURE regs 0 DERIVE eq
 ;STRUCTURE
 
 \ ---- one machine's register files --------------------------------------------
-\ Flat, and for the reason src/compiler/a64-effect.f's contract is flat: a
+\ Flat, and for the reason src/compiler/native-effect.f's contract is flat: a
 \ multi-cell value cannot be bound to a typed local, so a nested per-file record
 \ would leave every reader holding a value it cannot name. The field NAMES carry
 \ the grouping. `reserved` is the virtual machine's claim and `clobbered` what a

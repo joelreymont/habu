@@ -20,7 +20,8 @@
 
 require lib/prelude.f
 require lib/errors.f
-require src/compiler/a64-effect.f
+require src/compiler/native-effect.f
+require src/compiler/native/machine.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
@@ -31,6 +32,7 @@ require src/compiler/ir/symbol.f
 require src/compiler/ir/build.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/backend.f
+require src/arch/arm64/machine.f
 require src/compiler/native/regfile.f
 
 package A64IR
@@ -152,7 +154,7 @@ XBITS 8 / constant SLOT-BYTES        \ bytes one frame access moves
 
 12 constant OFF-BITS                 \ the add/sub immediate and the offset field
 1 OFF-BITS lshift 1- constant OFF-MAX
-OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
+OFF-MAX dup A64M:SP-ALIGN mod - constant FRAME-LIM
 
 \ ---- the writeback field -----------------------------------------------------
 \ The signed byte count an indexed load or store moves its base register by.
@@ -254,14 +256,14 @@ private
 : SLOT ( n -- n )
    dup 0 < if E-A64IR-SLOT throw then
    dup SLOT-BYTES mod 0<> if E-A64IR-SLOT throw then
-   dup SLOT-BYTES A64EFF:SLOT-REACH > if E-A64IR-SLOT throw then ;
+   dup SLOT-BYTES A64M:SLOT-REACH > if E-A64IR-SLOT throw then ;
 
-\ The stack pointer stays aligned, the frame stays inside the region A64EFF can
+\ The stack pointer stays aligned, the frame stays inside the region NEFF can
 \ describe, and it stays inside the one immediate that claims it.
 : FRAME ( n -- n )
    dup 0 < if E-A64IR-FRAME throw then
-   dup A64EFF:SP-ALIGN mod 0<> if E-A64IR-FRAME throw then
-   dup A64EFF:FRAME-MAX > if E-A64IR-FRAME throw then
+   dup A64M:SP-ALIGN mod 0<> if E-A64IR-FRAME throw then
+   dup A64M:FRAME-MAX > if E-A64IR-FRAME throw then
    dup FRAME-LIM > if E-A64IR-FRAME throw then ;
 
 \ Twelve bits, UNSIGNED, with the shift bit hardwired to zero, so a negative
@@ -277,9 +279,9 @@ private
 
 \ ---- checked data-stack operands ---------------------------------------------
 : DSLOT ( n -- n )
-   dup A64EFF:SLOT-BACK negate < if E-A64IR-DSLOT throw then
+   dup A64M:SLOT-BACK negate < if E-A64IR-DSLOT throw then
    dup SLOT-BYTES mod 0<> if E-A64IR-DSLOT throw then
-   dup SLOT-BYTES A64EFF:SLOT-REACH > if E-A64IR-DSLOT throw then ;
+   dup SLOT-BYTES A64M:SLOT-REACH > if E-A64IR-DSLOT throw then ;
 
 \ A whole number of cells, and the same twelve-bit field serves the Add and the
 \ Sub, so what is bounded is the MAGNITUDE. The data stack is cell-aligned.
@@ -350,11 +352,17 @@ public
 \ ---- the bytes one frame access moves ----------------------------------------
 : SLOT-WIDTH ( -- n )    SLOT-BYTES ;
 
+\ The machine this dialect lowers for. Every pass downstream of the dialect - the
+\ selector, the allocator's install, the ABI's contracts - needs the description
+\ a routine contract is stated about, and asking the dialect for it is how a pass
+\ that is already about A64IR gets one without naming an architecture itself.
+: MACHINE ( -- NMACH:mach )   A64M:MACHINE ;
+
 \ ---- this machine's register files, for the passes that are not about it ------
 \ The register allocator is linear scan and not an ARM64 pass, so it reads this
 \ description instead of the numbers around it. Every field is DERIVED from the
 \ authority that already owns it rather than written again here: the file size
-\ and the reserved set from src/compiler/a64-effect.f, which folds the target's
+\ and the reserved set from src/compiler/native-effect.f, which folds the target's
 \ platform register - x18, which Darwin reserves and Linux does not - together
 \ with everything src/habu/layout.f says the running engine occupies, and the
 \ slot width from this dialect's own frame access. A literal here would be a
@@ -366,14 +374,7 @@ public
 \ callee-saved set this description derives is empty. A convention that kept
 \ registers across a call would say so here and the allocator would follow.
 : REGFILE ( -- NREGFILE:file )
-   A64EFF:FILE-SIZE
-   A64EFF:RESERVED-GPRS NREGFILE:REGS-SET
-   A64EFF:GPR-ALL A64EFF:GPRS-N NREGFILE:REGS-SET
-   A64EFF:FILE-SIZE
-   NREGFILE:REGS-NONE
-   A64EFF:FPR-ALL A64EFF:FPRS-N NREGFILE:REGS-SET
-   SLOT-BYTES
-   NREGFILE:FILE ;
+   MACHINE NMACH:REGFILE ;
 
 : FRAME-LIMIT ( -- n )   FRAME-LIM ;
 
@@ -1703,7 +1704,7 @@ private
    c b A64IR-OPCODE:TRAP NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ The register they move is x30, which is named by the FORM: A64EFF keeps it out
+\ The register they move is x30, which is named by the FORM: NEFF keeps it out
 \ of every general-register set, so no operand could ever name it.
 : DEF-LNKSTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}

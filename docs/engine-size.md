@@ -260,7 +260,7 @@ Their top owners:
 | IR-TYPE | `src/compiler/ir/type.f` | 23 | 4,152 |
 | NUM | `lib/num-types.f` | 47 | 3,760 |
 | A64IR | `src/compiler/native/a64ir.f` | 12 | 3,632 |
-| A64EFF | `src/compiler/a64-effect.f` | 39 | 3,308 |
+| NEFF | `src/compiler/native-effect.f` | 39 | 3,308 |
 | IR-BUILD | `src/compiler/ir/build.f` | 40 | 2,520 |
 | IR-FUN | `src/compiler/ir/fun.f` | 23 | 2,260 |
 | HIR | `src/compiler/native/hir.f` | 11 | 2,240 |

@@ -25,7 +25,8 @@
 \ been copied from the unit instead.
 
 require lib/test.f
-require src/compiler/a64-effect.f
+require src/compiler/native-effect.f
+require src/arch/arm64/machine.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/a64ir.f
 require src/arch/arm64/asm.f
@@ -122,13 +123,13 @@ private
 \ scale or its field reddens here.
 : STR-OFFSET-FIELD ( n -- n )
    {: off:n :}
-   0 A64EFF:ZERO-GPR off ENC-STR 10 rshift $FFF and ;
+   0 A64M:ZERO-GPR off ENC-STR 10 rshift $FFF and ;
 
 : FRAME-BOUND-CASE ( -- )
    s" the frame-slot bounds are the shipped assembler's" T-LABEL
    A64IR:SLOT-WIDTH STR-OFFSET-FIELD 1 T=
-   A64IR:SLOT-WIDTH A64EFF:SLOT-REACH STR-OFFSET-FIELD IMM12-LIM 1- T=
-   A64IR:SLOT-WIDTH A64EFF:SLOT-REACH  IMM12-LIM 1- A64IR:SLOT-WIDTH * T=
+   A64IR:SLOT-WIDTH A64M:SLOT-REACH STR-OFFSET-FIELD IMM12-LIM 1- T=
+   A64IR:SLOT-WIDTH A64M:SLOT-REACH  IMM12-LIM 1- A64IR:SLOT-WIDTH * T=
    A64IR:SLOT-WIDTH 8 T= ;
 
 \ ---- registration ------------------------------------------------------------
@@ -1467,7 +1468,7 @@ private
 : SLOT-HIGH-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b  A64IR:SLOT-WIDTH A64EFF:SLOT-REACH A64IR:SLOT-WIDTH +  A64IR:SLOT-ATTR
+   c b  A64IR:SLOT-WIDTH A64M:SLOT-REACH A64IR:SLOT-WIDTH +  A64IR:SLOT-ATTR
    drop ;
 
 : FRAME-ODD-BODY ( IR-CTX:ctx -- )
@@ -1478,16 +1479,16 @@ private
 : FRAME-HIGH-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b  A64EFF:FRAME-MAX A64EFF:SP-ALIGN +  A64IR:FRAME-ATTR drop ;
+   c b  A64M:FRAME-MAX A64M:SP-ALIGN +  A64IR:FRAME-ATTR drop ;
 
-\ A frame inside the region A64EFF can describe and past the one immediate that
+\ A frame inside the region NEFF can describe and past the one immediate that
 \ claims it. The two bounds are different fields - a slot offset is scaled by the
 \ access width and the frame immediate is not - so a frame between them is the
 \ only case that reaches the second bound at all.
 : FRAME-DEEP-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b  A64IR:FRAME-LIMIT A64EFF:SP-ALIGN +  A64IR:FRAME-ATTR drop ;
+   c b  A64IR:FRAME-LIMIT A64M:SP-ALIGN +  A64IR:FRAME-ATTR drop ;
 
 \ ---- the data-stack operand refusals -----------------------------------------
 \ A data-stack offset the load and store forms cannot address, and an adjustment
@@ -1511,7 +1512,7 @@ private
 : DSLOT-DEEP-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b  A64EFF:SLOT-BACK A64IR:SLOT-WIDTH + negate  A64IR:DSLOT-ATTR drop ;
+   c b  A64M:SLOT-BACK A64IR:SLOT-WIDTH + negate  A64IR:DSLOT-ATTR drop ;
 
 \ And the two that are inside their reach, so the refusals above are about the
 \ reach and not about the sign.
@@ -1519,12 +1520,12 @@ private
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR:SLOT-WIDTH negate A64IR:DSLOT-ATTR drop
-   A64EFF:SLOT-BACK ;
+   A64M:SLOT-BACK ;
 
 : DSLOT-HIGH-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b  A64IR:SLOT-WIDTH A64EFF:SLOT-REACH A64IR:SLOT-WIDTH +  A64IR:DSLOT-ATTR
+   c b  A64IR:SLOT-WIDTH A64M:SLOT-REACH A64IR:SLOT-WIDTH +  A64IR:DSLOT-ATTR
    drop ;
 
 : DBYTES-ODD-BODY ( IR-CTX:ctx -- )
@@ -1535,7 +1536,7 @@ private
 : DBYTES-LOW-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b  A64IR:FRAME-LIMIT A64EFF:SP-ALIGN + negate  A64IR:DBYTES-ATTR drop ;
+   c b  A64IR:FRAME-LIMIT A64M:SP-ALIGN + negate  A64IR:DBYTES-ATTR drop ;
 
 : DBYTES-DOWN-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -1545,7 +1546,7 @@ private
 : DBYTES-HIGH-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b  A64IR:FRAME-LIMIT A64EFF:SP-ALIGN +  A64IR:DBYTES-ATTR drop ;
+   c b  A64IR:FRAME-LIMIT A64M:SP-ALIGN +  A64IR:DBYTES-ATTR drop ;
 
 \ The writeback field is nine SIGNED bits, which is a much narrower bound than
 \ the add-and-subtract immediate a standalone move rides in - and a move of
@@ -2147,7 +2148,7 @@ public
    BOUND-CASE
    FRAME-BOUND-CASE
    s" the deepest frame this dialect can reserve is the add-sub immediate" T-LABEL
-   A64IR:FRAME-LIMIT  IMM12-LIM 1- dup A64EFF:SP-ALIGN mod -  T=
+   A64IR:FRAME-LIMIT  IMM12-LIM 1- dup A64M:SP-ALIGN mod -  T=
    HALVES-CASE
    COND-CASE
    FCOND-CASE

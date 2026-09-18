@@ -10,7 +10,7 @@
 \ THE authority. A compiled routine that writes one of these destroys the engine
 \ underneath itself: a probe that allocated x20 as a scratch base replaced the
 \ DATA/RBASE value and the process died 134 (CG-13). The compiler's own machine
-\ contract (src/compiler/a64-effect.f) derives its GPR set by REMOVING this mask,
+\ contract (src/compiler/native-effect.f) derives its GPR set by REMOVING this mask,
 \ so a register claimed here is refused by every GPR constructor, set, sequence,
 \ pool and allocation path in the chain without a second edit anywhere.
 \

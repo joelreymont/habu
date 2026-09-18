@@ -31,6 +31,8 @@
 require lib/test.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/x64ir.f
+require src/arch/x86-64/machine.f
+require src/compiler/native-effect.f
 require src/arch/x86-64/asm.f
 
 package X64IR-TEST
@@ -130,6 +132,69 @@ private
    s" a frame slot is one cell wide" T-LABEL
    X64IR:REGFILE NREGFILE:SLOT-WIDTH 8 T=
    X64IR:SLOT-WIDTH 8 T= ;
+
+\ ---- the machine, as a routine contract is written against it ----------------
+\ src/arch/x86-64/machine.f is the second instance of the description the
+\ routine-effect schema was generalised over, and the first machine that
+\ disagrees with ARM64 about facts the schema used to hold as constants. Three
+\ of those disagreements are proved here because no ARM64 case can state them:
+\ there is no link register, so `absent` is the only link field a contract of
+\ this machine may carry and the two ARM64 answers are refused; the file numbers
+\ sixteen registers, so a register the schema can write down is still not one a
+\ routine of THIS machine may hold state in; and the frame offset is counted in
+\ bytes rather than scaled by the access width, so one width reaches exactly as
+\ far as another.
+: X-ROUTINE ( NEFF:gprs NEFF:link -- NEFF:routine )
+   {: gc:NEFF:gprs l:NEFF:link :}
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE gc
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED l NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 X64M:MACHINE NEFF:ROUTINE ;
+
+\ A contract is fourteen cells, so a case that wants only the refusal unmakes
+\ what it built.
+: DROP-ROUTINE ( NEFF:routine -- )
+   NEFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop drop drop drop drop drop drop drop drop ;
+
+: DESTROYS ( n -- )
+   NEFF:GPR-REG NEFF-LINK:ABSENT X-ROUTINE DROP-ROUTINE ;
+
+: MACHINE-CASE ( -- )
+   s" the machine a contract carries is this backend's" T-LABEL
+   NEFF:GPR-NONE NEFF-LINK:ABSENT X-ROUTINE NEFF:MACH@
+      X64M:MACHINE NMACH-MACH:EQ TTRUE
+   s" and it is a machine with no link register" T-LABEL
+   X64M:MACHINE NMACH:LINK? TFALSE
+   s" so a contract of it cannot preserve or clobber one" T-LABEL
+   [: NEFF:GPR-NONE NEFF-LINK:PRESERVED X-ROUTINE DROP-ROUTINE ;]
+      E-NEFF-LINK TTHROWSQ
+   [: NEFF:GPR-NONE NEFF-LINK:CLOBBERED X-ROUTINE DROP-ROUTINE ;]
+      E-NEFF-LINK TTHROWSQ
+
+   s" the registers a routine may hold state in are the file's nine" T-LABEL
+   X64M:MACHINE NEFF:GPR-ALL NEFF:GPRS-N A-MASK T=
+   X64M:MACHINE NEFF:FPR-ALL NEFF:FPRS-N $FFFF T=
+   s" a register past the file is refused however the schema writes it" T-LABEL
+   [: 16 DESTROYS ;] E-NEFF-GPR TTHROWSQ
+   [: 31 DESTROYS ;] E-NEFF-GPR TTHROWSQ
+   s" and so is the stack pointer, which here is an ordinary operand number" T-LABEL
+   [: X64IR:SP-GPR DESTROYS ;] E-NEFF-GPR TTHROWSQ
+   s" while a register the file does hand out is admitted" T-LABEL
+   0 DESTROYS
+
+   s" the frame bound and the alignment are the dialect's" T-LABEL
+   X64M:MACHINE NMACH:FRAME-MAX X64IR:FRAME-LIMIT T=
+   X64M:MACHINE NMACH:SP-ALIGN X64IR:SP-ALIGN T=
+   X64M:MACHINE NMACH:SP-GPR X64IR:SP-GPR T=
+   s" a displacement counted in bytes reaches the same byte at every width" T-LABEL
+   1 X64M:MACHINE NMACH:SLOT-REACH X64IR:DISP-LIMIT T=
+   4 X64M:MACHINE NMACH:SLOT-REACH X64IR:DISP-LIMIT T=
+   8 X64M:MACHINE NMACH:SLOT-REACH X64IR:DISP-LIMIT T=
+   s" a halfword access exists here, and a width no mov moves does not" T-LABEL
+   2 X64M:MACHINE NMACH:WIDTH-OK? TTRUE
+   3 X64M:MACHINE NMACH:WIDTH-OK? TFALSE
+   [: 3 X64M:MACHINE NMACH:SLOT-REACH drop ;] E-NMACH TTHROWSQ ;
 
 \ ---- the conditions ----------------------------------------------------------
 \ Each code is the shipped assembler's own word, so this case states WHICH word
@@ -431,6 +496,7 @@ public
    REGISTRY-CASE
    OPCODE-ORDINAL-CASE
    REGFILE-CASE
+   MACHINE-CASE
    COND-CASE
    MOVE-CASE
    TIE-CASE

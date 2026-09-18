@@ -23,7 +23,8 @@ require src/compiler/ir/source.f
 require src/compiler/ir/schema.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
-require src/compiler/a64-effect.f
+require src/compiler/native-effect.f
+require src/compiler/native/machine.f
 require src/compiler/native/hir.f
 require src/compiler/native/a64ir.f
 require src/compiler/native/frame.f
@@ -115,11 +116,11 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-SID IR-ID:ir-source-id
 1 TYPED-BUFFER S-ACC IR-ID:ir-value-id
 1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
-1 TYPED-BUFFER S-ARGS A64EFF:placeseq
-1 TYPED-BUFFER S-OUTS A64EFF:placeseq
-1 TYPED-BUFFER S-TRT A64EFF:traits
-1 TYPED-BUFFER S-POOL A64EFF:gprs
-1 TYPED-BUFFER S-FPOOL A64EFF:fprs
+1 TYPED-BUFFER S-ARGS NEFF:placeseq
+1 TYPED-BUFFER S-OUTS NEFF:placeseq
+1 TYPED-BUFFER S-TRT NEFF:traits
+1 TYPED-BUFFER S-POOL NEFF:gprs
+1 TYPED-BUFFER S-FPOOL NEFF:fprs
 1 TYPED-BUFFER S-FTOK IR-ID:ir-value-id
 1 TYPED-BUFFER S-FUN IR-ID:ir-fun-id
 1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
@@ -279,9 +280,9 @@ variable D-RETS                                    \ returns seen while surveyin
 : ACC! ( IR-ID:ir-value-id -- )      0 S-ACC ! ;
 : TOK ( -- IR-ID:ir-value-id )       0 S-TOK @ ;
 : TOK! ( IR-ID:ir-value-id -- )      0 S-TOK ! ;
-: ARGS ( -- A64EFF:placeseq )        0 S-ARGS @ ;
-: OUTS ( -- A64EFF:placeseq )        0 S-OUTS @ ;
-: TRAITS ( -- A64EFF:traits )        0 S-TRT @ ;
+: ARGS ( -- NEFF:placeseq )        0 S-ARGS @ ;
+: OUTS ( -- NEFF:placeseq )        0 S-OUTS @ ;
+: TRAITS ( -- NEFF:traits )        0 S-TRT @ ;
 : TAIL? ( -- bool )                  S-TAIL @ 0<> ;
 : FRAME ( -- n )                     S-FRAME @ ;
 : FTOK ( -- IR-ID:ir-value-id )      0 S-FTOK @ ;
@@ -462,11 +463,11 @@ variable D-RETS                                    \ returns seen while surveyin
    CTX BLD id 0 IR-BUILD:OP-RESULT@ ACC! ;
 
 \ ---- the routine's convention, read once -------------------------------------
-: SLOT-POSITIONS ( A64EFF:placeseq -- n )
-   {: s:A64EFF:placeseq :}
-   s A64EFF:SEQ-SLOTS {: sl:n :}
+: SLOT-POSITIONS ( NEFF:placeseq -- n )
+   {: s:NEFF:placeseq :}
+   s NEFF:SEQ-SLOTS {: sl:n :}
    sl 0= if 0 exit then
-   sl s A64EFF:SEQ-LEN <> if E-A64SEL-PLACE throw then
+   sl s NEFF:SEQ-LEN <> if E-A64SEL-PLACE throw then
    sl ;
 
 \ THE CONTRACT SAYS SO and this pass does not work it out.
@@ -475,7 +476,7 @@ variable D-RETS                                    \ returns seen while surveyin
 
 \ The declaration decides whether the frame and the link save are built.
 : CALLS? ( -- bool )
-   TRAITS A64EFF:T-CALL A64EFF:TRAITS-HAS? ;
+   TRAITS NEFF:T-CALL NEFF:TRAITS-HAS? ;
 
 \ It is LINK-SAVED? and not CALLS? that decides the pair: the pair exists to
 \ make `link preserved` true.
@@ -493,8 +494,8 @@ variable D-RETS                                    \ returns seen while surveyin
 \ ---- each function's own boundary --------------------------------------------
 \ The CONTRACT describes the published word and the MODULE describes every
 \ function, so only function zero is held against the contract.
-: FUN-SLOTS ( n -- A64EFF:placeseq )
-   A64EFF:SEQ-DSTACK ;
+: FUN-SLOTS ( n -- NEFF:placeseq )
+   NEFF:SEQ-DSTACK ;
 
 : DECL-CK ( n n -- )
    {: in:n out:n :}
@@ -800,7 +801,7 @@ variable D-RETS                                    \ returns seen while surveyin
 : BITS-N ( n -- n )
    {: v:n :}
    0
-   A64EFF:FILE-SIZE 0 ?do
+   A64IR:MACHINE NMACH:GPR-SIZE 0 ?do
       v 1 i lshift and 0<> if 1+ then
    loop ;
 
@@ -1276,7 +1277,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
       r i - 1- {: k:n :}
       mask k DBIT? 0= if
          drop
-         OUTS k A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  r A64IR:SLOT-WIDTH *  FUSE?
+         OUTS k NEFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  r A64IR:SLOT-WIDTH *  FUSE?
          if k else -1 then
          leave
       then
@@ -1293,7 +1294,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
             r A64IR:SLOT-WIDTH *
             id i OPERAND-AT FPLACED? DPUSH-FORM  EMIT-DPUSH
          else
-            OUTS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *
+            OUTS i NEFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *
             id i OPERAND-AT FPLACED? DSTORE-FORM  EMIT-DSTORE
          then
       then
@@ -2036,10 +2037,10 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 2 constant SEL-ARM-REGS              \ the two any of them chooses between
 
 : GPR-POOL-N ( -- n )
-   0 S-POOL @ A64EFF:GPRS-N BITS-N ;
+   0 S-POOL @ NEFF:GPRS-N BITS-N ;
 
 : FPR-POOL-N ( -- n )
-   0 S-FPOOL @ A64EFF:FPRS-N BITS-N ;
+   0 S-FPOOL @ NEFF:FPRS-N BITS-N ;
 
 : FUSED-GPR? ( IR-ID:ir-block-id n -- bool )
    {: bk:IR-ID:ir-block-id fz:n :}
@@ -2643,7 +2644,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    id OPERANDS-OF r <> if E-A64SEL-PLACE throw then
    0
    r 0 ?do
-      id i OPERAND-AT  OUTS i A64EFF:SEQ-SLOT@  DPUT? if
+      id i OPERAND-AT  OUTS i NEFF:SEQ-SLOT@  DPUT? if
          i DELIDE-MAX < if 1 i lshift or then
       then
    loop ;
@@ -2765,7 +2766,7 @@ create D-MEET DSLOT-MAX cells allot
 : DENTRY-VALUE? ( n -- bool ) {: v:n :}
    false
    ARGS SLOT-POSITIONS 0 ?do
-      0 ARGS i A64EFF:SEQ-SLOT@ DIN-AT v = if drop true leave then
+      0 ARGS i NEFF:SEQ-SLOT@ DIN-AT v = if drop true leave then
    loop ;
 
 : DXLATE ( IR-ID:ir-op-id IR-ID:ir-block-id bool n -- n )
@@ -2842,7 +2843,7 @@ create D-MEET DSLOT-MAX cells allot
    ARGS SLOT-POSITIONS {: a:n :}
    bk ARG-COUNT a <> if E-A64SEL-PLACE throw then
    a 0 ?do
-      bk i ARG-AT VSLOT  0  ARGS i A64EFF:SEQ-SLOT@  DIN-AT!
+      bk i ARG-AT VSLOT  0  ARGS i NEFF:SEQ-SLOT@  DIN-AT!
    loop ;
 
 : DIN-INIT ( IR-ID:ir-fun-id -- )
@@ -3010,7 +3011,7 @@ create D-MEET DSLOT-MAX cells allot
 
 : DPLACE-OK? ( n -- bool )
    {: c:n :}
-   c 0 >=  c A64EFF:SLOT-BACK <=  and ;
+   c 0 >=  c A64IR:MACHINE NMACH:SLOT-BACK <=  and ;
 
 \ A routine that leaves through a callee has NO choice: the tail branch is the
 \ whole of its site.
@@ -3103,7 +3104,7 @@ create D-MEET DSLOT-MAX cells allot
    a 0 ?do
       bk i ARG-AT DNEED? if
          drop
-         ARGS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  a A64IR:SLOT-WIDTH *  FUSE?
+         ARGS i NEFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  a A64IR:SLOT-WIDTH *  FUSE?
          if i else -1 then
          leave
       then
@@ -3128,7 +3129,7 @@ create D-MEET DSLOT-MAX cells allot
          i rider = if
             at  a A64IR:SLOT-WIDTH *  v FPLACED? DPOP-FORM  EMIT-DPOP
          else
-            at  ARGS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *
+            at  ARGS i NEFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *
             v FPLACED? DLOAD-FORM  EMIT-DLOAD
          then
          VBIND
@@ -3465,28 +3466,28 @@ public
 \ ---- the pass ----------------------------------------------------------------
 \ A module with no such loop or no such pair is handed back untouched, because
 \ rebuilding renumbers values and would move registers for nothing.
-: SELECT ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder A64EFF:routine -- IR-BUILD:module )
-   A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
-      fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
-      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
-      t:A64EFF:traits size:n delta:n :}
+: SELECT ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder NEFF:routine -- IR-BUILD:module )
+   NEFF:VALIDATE NEFF-ROUTINE:UNMAKE
+   {: cv:NEFF:conv gi:NEFF:placeseq gr:NEFF:placeseq gc:NEFF:gprs
+      fi:NEFF:fprs fr:NEFF:fprs fc:NEFF:fprs
+      z:NEFF:nzcv l:NEFF:link ct:NEFF:control
+      t:NEFF:traits size:n delta:n mch:NMACH:mach :}
    {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder :}
    c A64IR:CHECK-TARGET
    BND-TAKE
    m BND-MODULE-CK
    gi 0 S-ARGS !
    gr 0 S-OUTS !
-   gi A64EFF:SEQ-LEN S-DECL-IN !
-   gr A64EFF:SEQ-LEN S-DECL-OUT !
-   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
-   A64EFF:GPR-WRITABLE 0 S-POOL !
-   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
-   A64EFF:FPR-WRITABLE 0 S-FPOOL !
+   gi NEFF:SEQ-LEN S-DECL-IN !
+   gr NEFF:SEQ-LEN S-DECL-OUT !
+   cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
+   NEFF:GPR-WRITABLE 0 S-POOL !
+   cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
+   NEFF:FPR-WRITABLE 0 S-FPOOL !
    t 0 S-TRT !
    size S-FRAME !
-   ct A64EFF-CONTROL:TAIL-CALL A64EFF-CONTROL:EQ if 1 else 0 then S-TAIL !
-   cv A64EFF-CONV:DSTACK A64EFF-CONV:EQ if 1 else 0 then S-DSTACK !
+   ct NEFF-CONTROL:TAIL-CALL NEFF-CONTROL:EQ if 1 else 0 then S-TAIL !
+   cv NEFF-CONV:DSTACK NEFF-CONV:EQ if 1 else 0 then S-DSTACK !
    t l A64FRAME:LINK-KEPT? if 1 else 0 then S-LSAVE !
    0 N-CALLS !
    0 N-TAILS !

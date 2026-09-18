@@ -13,7 +13,8 @@
 
 require lib/prelude.f
 require lib/errors.f
-require src/compiler/a64-effect.f
+require src/compiler/native-effect.f
+require src/compiler/native/machine.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/schema.f
@@ -138,8 +139,8 @@ variable V-DSTACK                    \ whether the contract declares the data-st
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
-1 TYPED-BUFFER V-POOL A64EFF:gprs
-1 TYPED-BUFFER V-FPOOL A64EFF:fprs
+1 TYPED-BUFFER V-POOL NEFF:gprs
+1 TYPED-BUFFER V-FPOOL NEFF:fprs
 
 DYNAMIC-BUFFER D-AT-BUF n
 : D-AT ( -- ptr n ) 0 D-AT-BUF ;
@@ -619,8 +620,8 @@ variable FPO-RUN                     \ where the next predecessor run starts
    E-A64RAV-CLASS throw ;
 
 : REGISTER-CK ( -- )
-   A64RA:POOL A64EFF:GPRS-N {: pool:n :}
-   A64RA:FPOOL A64EFF:FPRS-N {: fpool:n :}
+   A64RA:POOL NEFF:GPRS-N {: pool:n :}
+   A64RA:FPOOL NEFF:FPRS-N {: fpool:n :}
    N-VALS @ 0 ?do
       i A64RA:CLAIM@ {: r:n :}
       i REGGED? 0= if
@@ -652,10 +653,10 @@ variable FPO-RUN                     \ where the next predecessor run starts
 : VCALL-BITS ( n -- n )
    {: fl:n :}
    fl F-FPR = if
-      0 V-FPOOL @ A64EFF:FPRS-N exit
+      0 V-FPOOL @ NEFF:FPRS-N exit
    then
    fl F-GPR = 0= if E-A64RAV-CLASS throw then
-   0 V-POOL @ A64EFF:GPRS-N ;
+   0 V-POOL @ NEFF:GPRS-N ;
 
 : CLOB-AT ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id p:n :}
@@ -708,23 +709,23 @@ variable FPO-RUN                     \ where the next predecessor run starts
    loop ;
 
 \ ---- the routine's declared registers ------------------------------------------
-: REG-POSITIONS ( A64EFF:placeseq -- n )
-   {: s:A64EFF:placeseq :}
-   s A64EFF:SEQ-LEN {: len:n :}
-   s A64EFF:SEQ-SLOTS {: sl:n :}
+: REG-POSITIONS ( NEFF:placeseq -- n )
+   {: s:NEFF:placeseq :}
+   s NEFF:SEQ-LEN {: len:n :}
+   s NEFF:SEQ-SLOTS {: sl:n :}
    sl 0= if len exit then
    sl len <> if E-A64RAV-PLACE throw then
    0 ;
 
-: ARG-CK ( IR-ID:ir-block-id A64EFF:placeseq -- )
-   {: bk:IR-ID:ir-block-id args:A64EFF:placeseq :}
+: ARG-CK ( IR-ID:ir-block-id NEFF:placeseq -- )
+   {: bk:IR-ID:ir-block-id args:NEFF:placeseq :}
    V-DSTACK @ 0<> bk ARG-COUNT 0<> and
    if E-A64RAV-PLACE throw then
    args REG-POSITIONS {: n:n :}
    bk ARG-COUNT n < if E-A64RAV-FIXED throw then
    n 0 ?do
       bk i ARG-AT SLOT A64RA:CLAIM@
-      args i A64EFF:SEQ-REG@ <> if E-A64RAV-FIXED throw then
+      args i NEFF:SEQ-REG@ <> if E-A64RAV-FIXED throw then
    loop ;
 
 : OUT-TAIL-CK ( IR-ID:ir-op-id -- )
@@ -732,8 +733,8 @@ variable FPO-RUN                     \ where the next predecessor run starts
    V-DSTACK @ 0= if E-A64RAV-PLACE throw then
    id OPERANDS-OF 1 <> if E-A64RAV-PLACE throw then ;
 
-: OUT-CK ( IR-ID:ir-block-id A64EFF:placeseq -- )
-   {: bk:IR-ID:ir-block-id outs:A64EFF:placeseq :}
+: OUT-CK ( IR-ID:ir-block-id NEFF:placeseq -- )
+   {: bk:IR-ID:ir-block-id outs:NEFF:placeseq :}
    V-BLKR VW V-OPR VW MKEY bk IR-FUN:FTERMINATOR@ {: id:IR-ID:ir-op-id :}
    id TAILBR? if id OUT-TAIL-CK exit then
    V-DSTACK @ 0<> id OPERANDS-OF 0<> and
@@ -742,7 +743,7 @@ variable FPO-RUN                     \ where the next predecessor run starts
    id OPERANDS-OF n < if E-A64RAV-FIXED throw then
    n 0 ?do
       id i OPERAND-AT SLOT A64RA:CLAIM@
-      outs i A64EFF:SEQ-REG@ <> if E-A64RAV-FIXED throw then
+      outs i NEFF:SEQ-REG@ <> if E-A64RAV-FIXED throw then
    loop ;
 
 \ ---- the frame -----------------------------------------------------------------
@@ -1025,12 +1026,12 @@ variable FPO-RUN                     \ where the next predecessor run starts
    FFIXPOINT
    f FCK-WALK ;
 
-: SLOT-CK ( IR-ID:ir-fun-id A64EFF:routine -- )
-   A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
-      fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
-      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
-      size:n delta:n :}
+: SLOT-CK ( IR-ID:ir-fun-id NEFF:routine -- )
+   NEFF:VALIDATE NEFF-ROUTINE:UNMAKE
+   {: cv:NEFF:conv gi:NEFF:placeseq gr:NEFF:placeseq gc:NEFF:gprs
+      fi:NEFF:fprs fr:NEFF:fprs fc:NEFF:fprs
+      z:NEFF:nzcv l:NEFF:link ct:NEFF:control t:NEFF:traits
+      size:n delta:n mch:NMACH:mach :}
    {: f:IR-ID:ir-fun-id :}
    f BLOCK-COUNT 0 ?do
       f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
@@ -1038,8 +1039,8 @@ variable FPO-RUN                     \ where the next predecessor run starts
          bk i OP-AT SLOT-OF {: off:n :}
          off NOSLOT <> if
             off RF-SLOT-WIDTH
-            cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
-            A64EFF:CHECK-SLOT
+            cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
+            NEFF:CHECK-SLOT
          then
       loop
    loop ;
@@ -1609,8 +1610,8 @@ variable VD-BCOST
 
 : VDREACH-CK ( n -- )
    {: off:n :}
-   off A64EFF:SLOT-BACK negate < if E-A64RAV-DSTACK throw then
-   off A64IR:SLOT-WIDTH A64EFF:SLOT-REACH > if E-A64RAV-DSTACK throw then ;
+   off A64RA:MACHINE NMACH:SLOT-BACK negate < if E-A64RAV-DSTACK throw then
+   off A64IR:SLOT-WIDTH A64RA:MACHINE NMACH:SLOT-REACH > if E-A64RAV-DSTACK throw then ;
 
 : VDSLOT-CELL ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
@@ -1713,10 +1714,10 @@ DKEEP-HOOK-DEFAULT
       i VDD@ VD-DEF <> if E-A64RAV-DRES throw then
    loop ;
 
-: VDOUTS-CK ( A64EFF:placeseq n -- )
-   {: outs:A64EFF:placeseq r:n :}
+: VDOUTS-CK ( NEFF:placeseq n -- )
+   {: outs:NEFF:placeseq r:n :}
    r 0 ?do
-      outs i A64EFF:SEQ-SLOT@ VDD@ VD-DEF <> if E-A64RAV-DRES throw then
+      outs i NEFF:SEQ-SLOT@ VDD@ VD-DEF <> if E-A64RAV-DRES throw then
    loop ;
 
 : VDOP-XFER ( IR-ID:ir-block-id n -- )
@@ -1806,15 +1807,15 @@ DKEEP-HOOK-DEFAULT
    bk OP-COUNT 0 ?do  bk i VDOP-XFER  loop
    b VDOUT<CUR ;
 
-: VDENTRY-IN ( n A64EFF:placeseq -- )
-   {: a:n args:A64EFF:placeseq :}
+: VDENTRY-IN ( n NEFF:placeseq -- )
+   {: a:n args:NEFF:placeseq :}
    VDSLOTS 0 ?do
       VD-BOT 0 i VDV-IN!
       VD-UNDEF 0 i VDD-IN!
    loop
    a 0 ?do
-      i VDARG  0  args i A64EFF:SEQ-SLOT@  VDV-IN!
-      VD-DEF   0  args i A64EFF:SEQ-SLOT@  VDD-IN!
+      i VDARG  0  args i NEFF:SEQ-SLOT@  VDV-IN!
+      VD-DEF   0  args i NEFF:SEQ-SLOT@  VDD-IN!
    loop ;
 
 : VDIN-ANY ( n -- )
@@ -1826,8 +1827,8 @@ DKEEP-HOOK-DEFAULT
 
 : VD-ROUNDS ( -- n ) BMAX VDSLOTS * 4 * 2 + ;
 
-: VDRES-FIX ( IR-ID:ir-fun-id n A64EFF:placeseq -- )
-   {: f:IR-ID:ir-fun-id a:n args:A64EFF:placeseq :}
+: VDRES-FIX ( IR-ID:ir-fun-id n NEFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id a:n args:NEFF:placeseq :}
    V-BLKS @ 1 ?do i VDIN-ANY loop
    a args VDENTRY-IN
    V-BLKS @ 0 ?do f i VDXFER-BLOCK loop
@@ -1869,16 +1870,16 @@ DKEEP-HOOK-DEFAULT
    V-TAIL @ 0<> if 1 exit then
    2 ;
 
-: VDCK-EXIT ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
-   {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
+: VDCK-EXIT ( IR-ID:ir-fun-id n n NEFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n r:n outs:NEFF:placeseq :}
    rb VDCUR<IN
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
    xb OP-COUNT PRO-N - VDPUB-BACK - {: pub:n :}
    pub 0 ?do  xb i VDOP-XFER  loop
    outs r VDOUTS-CK ;
 
-: VDRES-CK ( IR-ID:ir-fun-id n n n A64EFF:placeseq A64EFF:placeseq -- )
-   {: f:IR-ID:ir-fun-id rb:n a:n r:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
+: VDRES-CK ( IR-ID:ir-fun-id n n n NEFF:placeseq NEFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n a:n r:n args:NEFF:placeseq outs:NEFF:placeseq :}
    f 0 LAST-FUN !
    0 LAST-CLAUSE !
    1 LAST-HELD !
@@ -1903,11 +1904,11 @@ DKEEP-HOOK-DEFAULT
 : VDSLOT-AT ( IR-ID:ir-block-id n -- n )
    OP-AT VDSLOT-CELL ;
 
-: VDSEQ-FIND ( A64EFF:placeseq n n -- )
-   {: seq:A64EFF:placeseq len:n s:n :}
+: VDSEQ-FIND ( NEFF:placeseq n n -- )
+   {: seq:NEFF:placeseq len:n s:n :}
    begin
       VD-J @ len >= if E-A64RAV-DSTACK throw then
-      seq VD-J @ A64EFF:SEQ-SLOT@ s =
+      seq VD-J @ NEFF:SEQ-SLOT@ s =
       VD-J @ 1+ VD-J !
    until ;
 
@@ -1918,12 +1919,12 @@ DKEEP-HOOK-DEFAULT
    id DBYTES-OF NOSLOT = if E-A64RAV-DSTACK throw then
    entry  bk at VDTAKE-AT -  {: stand:n :}
    stand 0 < if E-A64RAV-DSTACK throw then
-   stand A64EFF:SLOT-BACK > if E-A64RAV-DSTACK throw then
+   stand A64RA:MACHINE NMACH:SLOT-BACK > if E-A64RAV-DSTACK throw then
    stand A64IR:SLOT-WIDTH mod 0<> if E-A64RAV-DSTACK throw then
    stand VD-STAND ! ;
 
-: VDENTRY-CK ( IR-ID:ir-fun-id n A64EFF:placeseq -- )
-   {: f:IR-ID:ir-fun-id a:n args:A64EFF:placeseq :}
+: VDENTRY-CK ( IR-ID:ir-fun-id n NEFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id a:n args:NEFF:placeseq :}
    f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
    eb OP-COUNT PRO-N 1+ < if E-A64RAV-DSTACK throw then
    eb PRO-N  a A64IR:SLOT-WIDTH *  VDSTAND-AT
@@ -1938,8 +1939,8 @@ DKEEP-HOOK-DEFAULT
       VD-EL @ 1+ VD-EL !
    repeat ;
 
-: VDEXIT-CK ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
-   {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
+: VDEXIT-CK ( IR-ID:ir-fun-id n n NEFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n r:n outs:NEFF:placeseq :}
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
    xb OP-COUNT PRO-N - {: n:n :}
    n 2 < if E-A64RAV-DSTACK throw then
@@ -1959,8 +1960,8 @@ DKEEP-HOOK-DEFAULT
 
 \ The same window for a routine that leaves through a CALLEE, whose results the
 \ callee publishes into the very cells this routine's caller reads.
-: VDTAIL-CK ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
-   {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
+: VDTAIL-CK ( IR-ID:ir-fun-id n n NEFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n r:n outs:NEFF:placeseq :}
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
    xb OP-COUNT PRO-N - {: n:n :}
    n 1 < if E-A64RAV-DSTACK throw then
@@ -1981,8 +1982,8 @@ DKEEP-HOOK-DEFAULT
 
 \ Which of the two exit runs this routine has - and the third answer, NEITHER,
 \ for a routine every path of which traps.
-: VDLEAVE-CK ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
-   {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
+: VDLEAVE-CK ( IR-ID:ir-fun-id n n NEFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n r:n outs:NEFF:placeseq :}
    rb NO-RET = if exit then
    V-TAIL @ 0<> if f rb r outs VDTAIL-CK exit then
    f rb r outs VDEXIT-CK ;
@@ -2105,7 +2106,7 @@ DKEEP-HOOK-DEFAULT
 
 : VDPLACE-OK? ( n -- bool )
    {: c:n :}
-   c 0 >=  c A64EFF:SLOT-BACK <=  and ;
+   c 0 >=  c A64RA:MACHINE NMACH:SLOT-BACK <=  and ;
 
 : VDPLACE-BETTER? ( n n -- bool )
    {: c:n k:n :}
@@ -2131,10 +2132,10 @@ DKEEP-HOOK-DEFAULT
 
 \ Which of the two shapes this module has to have is the CONTRACT's declaration:
 \ a register-convention routine touches the caller's stack nowhere.
-: VDSTACK-CK ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq -- )
-   {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
-   args A64EFF:SEQ-SLOTS {: a:n :}
-   outs A64EFF:SEQ-SLOTS {: r:n :}
+: VDSTACK-CK ( IR-ID:ir-fun-id n NEFF:placeseq NEFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n args:NEFF:placeseq outs:NEFF:placeseq :}
+   args NEFF:SEQ-SLOTS {: a:n :}
+   outs NEFF:SEQ-SLOTS {: r:n :}
    V-DSTACK @ 0= if
       V-BLKS @ 0 ?do f i BLOCK-AT VNO-DSTACK loop
       exit
@@ -2198,8 +2199,8 @@ DKEEP-HOOK-DEFAULT
    REGISTER-CK
    OVERLAP-CK ;
 
-: VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq n n n -- )
-   {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq frame:n
+: VERIFY ( IR-ID:ir-fun-id n NEFF:placeseq NEFF:placeseq n n n -- )
+   {: f:IR-ID:ir-fun-id rb:n args:NEFF:placeseq outs:NEFF:placeseq frame:n
       lo:n hi:n :}
    f VANY-FRAME
    f lo hi ORDER-CK
@@ -2220,10 +2221,10 @@ DKEEP-HOOK-DEFAULT
    IR-BUILD:FMODULE A64RA:MODULE@ IR-ID:MODULE-SAME?
    0= if E-A64RAV-MODULE throw then ;
 
-: CONTRACT-CK ( A64EFF:gprs A64EFF:fprs -- )
-   {: pool:A64EFF:gprs fpool:A64EFF:fprs :}
-   pool A64RA:POOL A64EFF-GPRS:EQ 0= if E-A64RAV-CONTRACT throw then
-   fpool A64RA:FPOOL A64EFF-FPRS:EQ 0= if E-A64RAV-CONTRACT throw then ;
+: CONTRACT-CK ( NEFF:gprs NEFF:fprs -- )
+   {: pool:NEFF:gprs fpool:NEFF:fprs :}
+   pool A64RA:POOL NEFF-GPRS:EQ 0= if E-A64RAV-CONTRACT throw then
+   fpool A64RA:FPOOL NEFF-FPRS:EQ 0= if E-A64RAV-CONTRACT throw then ;
 
 : FRESH-CK ( -- )
    ST @ ST-ACCEPTED <> if E-A64RAV-STATE throw then
@@ -2247,8 +2248,8 @@ DKEEP-HOOK-DEFAULT
    c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64RAV-MODULE throw then ;
 
 \ ---- which places one FUNCTION's boundary uses -------------------------------
-: FUN-SLOTS ( n -- A64EFF:placeseq )
-   A64EFF:SEQ-DSTACK ;
+: FUN-SLOTS ( n -- NEFF:placeseq )
+   NEFF:SEQ-DSTACK ;
 
 : DECL-CK ( n n n n -- )
    {: in:n out:n din:n dout:n :}
@@ -2258,19 +2259,19 @@ DKEEP-HOOK-DEFAULT
 \ This native convention moves its cursor by the number of live cells. Check
 \ the original declaration before normalizing its order: the general effect
 \ model also supports sparse placements, which this boundary cannot implement.
-: VDPLACES-CK ( A64EFF:placeseq n -- )
-   {: seq:A64EFF:placeseq count:n :}
+: VDPLACES-CK ( NEFF:placeseq n -- )
+   {: seq:NEFF:placeseq count:n :}
    count 0 ?do
-      seq i A64EFF:SEQ-SLOT@ count >= if E-A64RAV-DSTACK throw then
+      seq i NEFF:SEQ-SLOT@ count >= if E-A64RAV-DSTACK throw then
    loop ;
 
 
-: FUN-PLACES ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq -- A64EFF:placeseq A64EFF:placeseq )
-   {: f:IR-ID:ir-fun-id ord:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
+: FUN-PLACES ( IR-ID:ir-fun-id n NEFF:placeseq NEFF:placeseq -- NEFF:placeseq NEFF:placeseq )
+   {: f:IR-ID:ir-fun-id ord:n args:NEFF:placeseq outs:NEFF:placeseq :}
    V-DSTACK @ 0= if args outs exit then
    f NFROZEN:FUN-ARITY {: in:n out:n :}
    ord 0= if
-      in out  args A64EFF:SEQ-LEN outs A64EFF:SEQ-LEN  DECL-CK
+      in out  args NEFF:SEQ-LEN outs NEFF:SEQ-LEN  DECL-CK
       args in VDPLACES-CK outs out VDPLACES-CK
    then
    in FUN-SLOTS  out FUN-SLOTS ;
@@ -2283,9 +2284,9 @@ DKEEP-HOOK-DEFAULT
    V-NORET @ 0= if exit then
    f RET-ORD NO-RET <> if E-A64RAV-SHAPE throw then ;
 
-: WALK ( IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq n -- )
-   {: m:IR-BUILD:module pool:A64EFF:gprs fpool:A64EFF:fprs
-      args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
+: WALK ( IR-BUILD:module NEFF:gprs NEFF:fprs NEFF:placeseq NEFF:placeseq n -- )
+   {: m:IR-BUILD:module pool:NEFF:gprs fpool:NEFF:fprs
+      args:NEFF:placeseq outs:NEFF:placeseq frame:n :}
    ST-NONE ST !
    BND-TAKE
    m BND-MODULE-CK
@@ -2294,7 +2295,7 @@ DKEEP-HOOK-DEFAULT
    pool 0 V-POOL !
    fpool 0 V-FPOOL !
    pool fpool CONTRACT-CK
-   outs A64EFF:SEQ-SLOTS  args A64EFF:SEQ-SLOTS -  A64IR:SLOT-WIDTH *  VD-SELF !
+   outs NEFF:SEQ-SLOTS  args NEFF:SEQ-SLOTS -  A64IR:SLOT-WIDTH *  VD-SELF !
    m VIEWS!
    RESERVE-SCRATCH
    VALS-N!
@@ -2340,25 +2341,25 @@ public
    BOUND-YES BND-MODE ! ;
 
 \ ---- the check ---------------------------------------------------------------
-: ACCEPT ( IR-BUILD:module A64EFF:routine -- )
-   A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
-      fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
-      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
-      t:A64EFF:traits size:n delta:n :}
-   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
-   A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
-   cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
-   A64EFF:FPR-WRITABLE {: fpool:A64EFF:fprs :}
+: ACCEPT ( IR-BUILD:module NEFF:routine -- )
+   NEFF:VALIDATE NEFF-ROUTINE:UNMAKE
+   {: cv:NEFF:conv gi:NEFF:placeseq gr:NEFF:placeseq gc:NEFF:gprs
+      fi:NEFF:fprs fr:NEFF:fprs fc:NEFF:fprs
+      z:NEFF:nzcv l:NEFF:link ct:NEFF:control
+      t:NEFF:traits size:n delta:n mch:NMACH:mach :}
+   cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
+   NEFF:GPR-WRITABLE {: pool:NEFF:gprs :}
+   cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
+   NEFF:FPR-WRITABLE {: fpool:NEFF:fprs :}
    t l A64FRAME:LINK-KEPT? if 1 else 0 then V-LSAVE !
-   ct A64EFF-CONTROL:TAIL-CALL A64EFF-CONTROL:EQ if 1 else 0 then V-TAIL !
-   ct A64EFF-CONTROL:NO-RETURN A64EFF-CONTROL:EQ if 1 else 0 then V-NORET !
-   cv A64EFF-CONV:DSTACK A64EFF-CONV:EQ if 1 else 0 then V-DSTACK !
+   ct NEFF-CONTROL:TAIL-CALL NEFF-CONTROL:EQ if 1 else 0 then V-TAIL !
+   ct NEFF-CONTROL:NO-RETURN NEFF-CONTROL:EQ if 1 else 0 then V-NORET !
+   cv NEFF-CONV:DSTACK NEFF-CONV:EQ if 1 else 0 then V-DSTACK !
    t l A64FRAME:SPILL-BASE V-BASE !
    pool fpool gi gr size WALK
    FUNS-CK 0 ?do
       i FUN-AT
-      cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+      cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
       SLOT-CK
    loop
    A64RA:GEN A-GEN !
@@ -2384,7 +2385,7 @@ public
 \ ---- what the accepted allocation says this routine destroys ------------------
 \ What the allocation assigned, which is what may be published: a register the
 \ emission does not happen to write today is still one it could name tomorrow.
-: GPR-WRITTEN ( -- A64EFF:gprs )
+: GPR-WRITTEN ( -- NEFF:gprs )
    FRESH-CK
    0
    N-VALS @ 0 ?do
@@ -2392,9 +2393,9 @@ public
          1  i A64RA:CLAIM@  lshift or
       then
    loop
-   A64EFF:GPR-SET ;
+   NEFF:GPR-SET ;
 
-: FPR-WRITTEN ( -- A64EFF:fprs )
+: FPR-WRITTEN ( -- NEFF:fprs )
    FRESH-CK
    0
    N-VALS @ 0 ?do
@@ -2402,7 +2403,7 @@ public
          1  i A64RA:CLAIM@  lshift or
       then
    loop
-   A64EFF:FPR-SET ;
+   NEFF:FPR-SET ;
 
 : REGISTERED? ( n -- bool )
    FRESH-CK

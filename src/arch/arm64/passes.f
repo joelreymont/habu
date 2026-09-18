@@ -68,7 +68,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
 
 \ All functions share this ABI. No-return and tail-call control describe a
 \ single function; quotation siblings must retain their ordinary returns.
-: ROUTINE ( -- A64EFF:routine )
+: ROUTINE ( -- NEFF:routine )
    D-DEAD @ 0<> D-FUNS @ 1 = and if
       D-CALLED @ 0<> if
          NABI:SCRATCH D-IN @ D-OUT @ D-SPILLS @ NABI:NORET-FRAMED exit
@@ -125,7 +125,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    c b IR-BUILD:FREEZE-INTERIM {: m0:IR-BUILD:module :}
    c m0 CLOSED {: m:IR-BUILD:module :}
    c A64-BUILDER {: ab:IR-BUILD:builder :}
-   c ab A64IR:REGFILE A64RA:BIND-DIALECT
+   c ab A64IR:MACHINE A64RA:BIND-DIALECT
    c ab A64RAV:BIND-DIALECT
    c ab A64EMIT:BIND-DIALECT
    c ab A64SPILL:BIND-DIALECT
@@ -150,7 +150,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    A64EMIT:RELEASE
    A64SPILL:RELEASE
    c A64-BUILDER {: nb:IR-BUILD:builder :}
-   c nb A64IR:REGFILE A64RA:BIND-DIALECT
+   c nb A64IR:MACHINE A64RA:BIND-DIALECT
    c nb A64RAV:BIND-DIALECT
    c nb A64EMIT:BIND-DIALECT
    c nb A64SPILL:BIND-DIALECT
@@ -167,7 +167,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
    A64EMIT:RELEASE
    c A64-BUILDER {: nb:IR-BUILD:builder :}
-   c nb A64IR:REGFILE A64RA:BIND-DIALECT
+   c nb A64IR:MACHINE A64RA:BIND-DIALECT
    c nb A64RAV:BIND-DIALECT
    c nb A64EMIT:BIND-DIALECT
    NPROF-PHASE:SPILL NPROF:START
@@ -177,9 +177,9 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
 \ Turn the allocator's absolute frame high-water back into the ABI's slot count.
 \ Alignment holes stay counted, so a later allocation starts after this frame
 \ rather than reusing padding as though it were unowned.
-: KEEP-FRAME ( A64EFF:routine -- )
+: KEEP-FRAME ( NEFF:routine -- )
    {: r :}
-   r A64EFF:TRAITS@  r A64EFF:LINK@  A64FRAME:SPILL-BASE {: base:n :}
+   r NEFF:TRAITS@  r NEFF:LINK@  A64FRAME:SPILL-BASE {: base:n :}
    A64RA:FRAME base - {: bytes:n :}
    bytes 0 <  bytes A64IR:SLOT-WIDTH mod 0<> or if E-A64RA-FRAME throw then
    bytes A64IR:SLOT-WIDTH / D-SPILLS ! ;

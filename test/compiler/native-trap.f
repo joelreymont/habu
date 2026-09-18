@@ -7,6 +7,7 @@ require lib/process-argv.f
 require lib/engine-candidate.f
 require test/compiler/native-chain-fixture.f
 require src/compiler/native/publish.f
+require src/arch/arm64/machine.f
 require src/compiler/native/compiler.f
 
 package NTRAP-TEST
@@ -379,8 +380,8 @@ $1F constant REG-MASK
 : DMOVE-WORD? ( n -- bool )
    {: w:n :}
    w ADDSUB-MASK and ADDI-OP =  w ADDSUB-MASK and SUBI-OP =  or 0= if false exit then
-   w REG-MASK and A64EFF:DSTACK-GPR <> if false exit then
-   w 5 rshift REG-MASK and A64EFF:DSTACK-GPR = ;
+   w REG-MASK and A64M:DSTACK-GPR <> if false exit then
+   w 5 rshift REG-MASK and A64M:DSTACK-GPR = ;
 
 : DMOVES-IN-EMISSION ( -- n )
    0
@@ -396,8 +397,8 @@ $1F constant REG-MASK
 : SPMOVE-WORD? ( n -- bool )
    {: w:n :}
    w ADDSUB-MASK and ADDI-OP =  w ADDSUB-MASK and SUBI-OP =  or 0= if false exit then
-   w REG-MASK and A64EFF:SP-GPR <> if false exit then
-   w 5 rshift REG-MASK and A64EFF:SP-GPR = ;
+   w REG-MASK and A64M:SP-GPR <> if false exit then
+   w 5 rshift REG-MASK and A64M:SP-GPR = ;
 
 \ THE OTHER WAY THE POINTER MOVES, and the one a frame that keeps only the link
 \ register uses: AArch64 writes the base register back as part of the transfer,
@@ -418,7 +419,7 @@ $00000C00 constant WB-MODE-MASK
    w WB-CLASS-MASK and {: op:n :}
    op WB-STORE-OP =  op WB-LOAD-OP =  or 0= if false exit then
    w WB-MODE-MASK and 0= if false exit then
-   w 5 rshift REG-MASK and A64EFF:SP-GPR = ;
+   w 5 rshift REG-MASK and A64M:SP-GPR = ;
 
 : SPMOVE-ANY? ( n -- bool )
    {: w:n :}

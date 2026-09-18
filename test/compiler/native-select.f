@@ -41,6 +41,7 @@
 
 require lib/test.f
 require src/compiler/native/select.f
+require src/arch/arm64/machine.f
 
 package A64SEL-TEST
 private
@@ -1009,11 +1010,11 @@ $3FE0000000000000 constant HALF-BITS       \ 0.5
 \ adds no entry and no exit, and what the case reads back is exactly what the
 \ source module's operations selected to. The data-stack convention has its own
 \ cases further down, which is where an entry and an exit are the subject.
-: NO-PLACES ( -- A64EFF:routine )
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-NONE
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+: NO-PLACES ( -- NEFF:routine )
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE NEFF:GPR-NONE
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ The same contract with the whole general file to hand out. The cases about a
 \ branching or selecting body run under this one, because whether a selection
@@ -1022,11 +1023,11 @@ $3FE0000000000000 constant HALF-BITS       \ 0.5
 \ hand out cannot hold one and the conversion is refused for that reason alone.
 \ Under the contract above every such case would be refused by the pool and none
 \ of them would be asking about the rule they are written for.
-: POOLED ( -- A64EFF:routine )
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-ALL
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+: POOLED ( -- NEFF:routine )
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE A64M:MACHINE NEFF:GPR-ALL
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ And the same with the whole FLOATING file to hand out as well, which is what
 \ src/compiler/native/abi.f declares for every routine the chain really
@@ -1037,28 +1038,28 @@ $3FE0000000000000 constant HALF-BITS       \ 0.5
 \ and the contract above is what the refusal case uses - a routine that may
 \ write no floating register at all cannot hold an Fcsel, whatever else is true
 \ of it.
-: POOLED-FP ( -- A64EFF:routine )
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-ALL
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+: POOLED-FP ( -- NEFF:routine )
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE A64M:MACHINE NEFF:GPR-ALL
+   NEFF:FPR-NONE NEFF:FPR-NONE A64M:MACHINE NEFF:FPR-ALL
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ And a contract that hands out EXACTLY n floating registers, which is what turns
 \ each form's floating floor from a number in a comment into a measured boundary:
 \ the same module is selected once with one register too few and once with
 \ enough, and only the second one converts. The registers are the lowest n
 \ because which ones they are decides nothing here - a floor is a count.
-: FPR-N ( n -- A64EFF:fprs )
+: FPR-N ( n -- NEFF:fprs )
    {: n:n :}
-   A64EFF:FPR-NONE
-   n 0 ?do  i A64EFF:FPR-REG A64EFF:FPR-WITH  loop ;
+   NEFF:FPR-NONE
+   n 0 ?do  i NEFF:FPR-REG NEFF:FPR-WITH  loop ;
 
-: POOLED-FN ( n -- A64EFF:routine )
+: POOLED-FN ( n -- NEFF:routine )
    {: n:n :}
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-ALL
-   A64EFF:FPR-NONE A64EFF:FPR-NONE n FPR-N
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE A64M:MACHINE NEFF:GPR-ALL
+   NEFF:FPR-NONE NEFF:FPR-NONE n FPR-N
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ Bind the source dialect while the module is still live, freeze it, and select.
 : SELECTED ( -- IR-BUILD:module )
@@ -2303,17 +2304,17 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ already published. Each of the four operations is asserted by opcode AND by the
 \ field it carries, so an entry that named the wrong slot or moved the pointer by
 \ the wrong amount is a different assertion rather than the same shape.
-: SLOTS-N ( n -- A64EFF:placeseq )
+: SLOTS-N ( n -- NEFF:placeseq )
    {: n:n :}
-   A64EFF:SEQ-NONE
-   n 0 ?do i A64EFF:SEQ-WITH-SLOT loop ;
+   NEFF:SEQ-NONE
+   n 0 ?do i NEFF:SEQ-WITH-SLOT loop ;
 
-: HABU-CONV ( n n -- A64EFF:routine )
+: HABU-CONV ( n n -- NEFF:routine )
    {: in:n out:n :}
-   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  A64EFF:GPR-NONE
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+   NEFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  NEFF:GPR-NONE
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ A contract that declares the routine CALLS, over a body that contains no call.
 \ The declaration is what makes this pass reserve a frame and save the caller's
@@ -2323,12 +2324,12 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ agree, and this is the direction test/compiler/native-chain.f cannot measure:
 \ a refused case abandons a context holding two modules, and that suite can
 \ afford exactly one of them.
-: CALL-CONV ( n n -- A64EFF:routine )
+: CALL-CONV ( n n -- NEFF:routine )
    {: in:n out:n :}
-   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  A64EFF:GPR-NONE
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:T-CALL A64EFF:SP-ALIGN 0 A64EFF:ROUTINE ;
+   NEFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  NEFF:GPR-NONE
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:T-CALL A64M:SP-ALIGN 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ A contract that declares a call under the REGISTER convention. A call site
 \ hands its arguments over through the caller's data stack and saves every live
@@ -2338,14 +2339,14 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ worked the convention out from the place lists instead of reading it.
 \
 \ A CONTRACT MIXING THE TWO KINDS IS NOT TESTED HERE ANY MORE. It cannot reach
-\ this pass at all now: A64EFF:ROUTINE refuses a declared convention that
+\ this pass at all now: A64M:MACHINE NEFF:ROUTINE refuses a declared convention that
 \ disagrees with the places it names, so the case is a construction case and
-\ lives in test/compiler/a64-effect.f, in both directions.
-: CALL-REG-CONV ( -- A64EFF:routine )
-   A64EFF-CONV:REGISTER A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-NONE
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:T-CALL A64EFF:SP-ALIGN 0 A64EFF:ROUTINE ;
+\ lives in test/compiler/native-effect.f, in both directions.
+: CALL-REG-CONV ( -- NEFF:routine )
+   NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE NEFF:GPR-NONE
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:T-CALL A64M:SP-ALIGN 0 A64M:MACHINE NEFF:ROUTINE ;
 
 \ A contract that keeps the caller's return address in a frame with no room for
 \ it. The address goes into slot zero of the routine's own frame, so a frame
@@ -2360,12 +2361,12 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ a form that kept the address and declared no room for it cannot be built there;
 \ this is the fail-closed backstop for a contract assembled some other way,
 \ exactly as the register-convention clause above it is.
-: CALL-NOFRAME-CONV ( n n -- A64EFF:routine )
+: CALL-NOFRAME-CONV ( n n -- NEFF:routine )
    {: in:n out:n :}
-   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  A64EFF:GPR-NONE
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:T-CALL 0 0 A64EFF:ROUTINE ;
+   NEFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  NEFF:GPR-NONE
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:T-CALL 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 : SELECTED-HABU ( n n -- IR-BUILD:module )
    {: in:n out:n :}
@@ -2380,12 +2381,12 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ convention that has one; and it needs the POOLS because the region under test
 \ has to be one that would otherwise convert, or the refusal being read would be
 \ the pool's and not the store's.
-: POOLED-SLOTS ( n n -- A64EFF:routine )
+: POOLED-SLOTS ( n n -- NEFF:routine )
    {: in:n out:n :}
-   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  A64EFF:GPR-ALL
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+   NEFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  A64M:MACHINE NEFF:GPR-ALL
+   NEFF:FPR-NONE NEFF:FPR-NONE A64M:MACHINE NEFF:FPR-ALL
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 : SELECTED-POOL-SLOTS ( n n -- IR-BUILD:module )
    {: in:n out:n :}
@@ -2902,12 +2903,12 @@ $400 constant CALLEE-ENTRY            \ an address; nothing here branches to it
 \ trait and no frame, which is what a routine whose ONLY call is the one it
 \ leaves through really has: nothing is saved, so there is no epilogue and no
 \ return address to keep.
-: TAIL-CONV ( n n -- A64EFF:routine )
+: TAIL-CONV ( n n -- NEFF:routine )
    {: in:n out:n :}
-   A64EFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  A64EFF:GPR-ALL
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:TAIL-CALL
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+   NEFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  A64M:MACHINE NEFF:GPR-ALL
+   NEFF:FPR-NONE NEFF:FPR-NONE A64M:MACHINE NEFF:FPR-ALL
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:TAIL-CALL
+   NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 : SELECTED-TAIL ( n n -- IR-BUILD:module )
    {: in:n out:n :}

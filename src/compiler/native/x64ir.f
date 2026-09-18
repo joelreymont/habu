@@ -320,6 +320,13 @@ public
 \ ---- the bytes one frame access moves ----------------------------------------
 : SLOT-WIDTH ( -- n )    SLOT-BYTES ;
 
+\ ---- the register a frame access is taken from -------------------------------
+\ rsp, which is one of the sixteen general registers here and is therefore named
+\ by number rather than implied by a form. src/arch/x86-64/machine.f states it
+\ as the machine's stack pointer; the number is this file's, because the whole
+\ reserved set above is.
+: SP-GPR ( -- n )        R-RSP ;
+
 \ ---- this machine's register files, for the passes that are not about it ------
 \ The register allocator is linear scan and not an x86-64 pass, so it reads this
 \ description instead of the numbers around it. Sixteen general registers, seven
