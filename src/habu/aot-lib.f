@@ -9,6 +9,7 @@ require src/habu/rt.f
 require src/habu/crash.f
 require src/habu/aot-decl.f
 require src/habu/aot-window-latch.f
+require src/habu/aot-owned-cells.f
 
 \ The AOT relocation core compiles checked. It works over CLOSURE MEMBERS - a
 \ code entry and a length, held in the parallel arrays src/habu/aot-closure.f
@@ -73,6 +74,49 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
    DATA 0 0 ADDI,                                \ x20 = DATA-VA (mmap result, verified)
    XDS DATA STACK-ABI:BASE-CELL STR,
    7 STACK-ABI:BOOT-BYTES LIT64,  7 DATA STACK-ABI:CAP-CELL STR, ;
+
+\ ---- the engine runtime cells this entry owns ---------------------------------
+\ THE KERNEL'S INITIAL STACK, read the way src/habu/habu2.f EM-ENTRY-ARGS reads
+\ it, because a stripped image's entry IS a process entry: argc at [sp], argv one
+\ cell above, envp one past argv's NULL terminator. THIS RUNS FIRST, before any
+\ other emitted instruction: it is the only point at which SP still names the
+\ kernel's frame (G-INSTALL-CRASH builds a frame of its own below it) and x0-x2
+\ still hold the macOS entry's own three arguments. Nothing between here and
+\ EMIT-OWNED-CELLS touches x13-x15 - STACK-GUARD:EMIT-MAP works in x0-x6/x9/x10,
+\ and a Linux syscall returns in x0 and preserves the rest.
+: EMIT-ENTRY-ARGS ( -- )
+   HB-TARGET-LINUX? IF
+      13 SP 0 LDR,  14 SP 8 ADDI,
+      15 13 1 ADDI,  15 15 3 LSLI,  15 14 15 ADD,
+      exit
+   THEN
+   HB-TARGET-MACOS? IF
+      13 0 0 ADDI,  14 1 0 ADDI,  15 2 0 ADDI,
+      exit
+   THEN
+   s" aot: unknown target" 74 die ;
+
+\ THE LIST IS src/habu/aot-owned-cells.f, the one src/habu/aot-closure.f
+\ OWNED-CELL? admits from, so a cell this publishes and a cell the walker lets
+\ through are the same cell by construction.
+\ A FRESH claim emits nothing: EMIT-DATA-REGION-MAP just mapped DATA anonymously,
+\ so the cell already holds the zero its claim says is correct. An IMAGE-BASE
+\ claim gets one store of x20 - this image's own DATA base, which is the value the
+\ declaring file wrote into the cell when the engine loaded it.
+\ The three fixed startup cells go with them, and are named by their layout
+\ constants rather than by a claim because no code spells out their address:
+\ src/os/env-base.f reaches them through the IMAGE-BASE cell, and habu2.f
+\ EM-DATA-INIT publishes them for the engine out of these same three registers.
+\ They sit below DATA-START, so EMIT-DATA-COPY's restore cannot reach them.
+: EMIT-OWNED-CELLS ( -- )
+   13 DATA ARGC-CELL STR,  14 DATA ARGV-CELL STR,  15 DATA ENVP-CELL STR,
+   AOT-OWNED:N 0 ?do
+      i AOT-OWNED:IMAGE-BASE? IF
+         9 i AOT-OWNED:AT DATA-VA VA>N - LIT64,   \ x9 = the cell's DATA offset
+         9 DATA 9 ADD,                            \ ... the cell itself
+         DATA 9 0 STR,                            \ *cell = x20, this image's DATA base
+      THEN
+   loop ;
 
 \ ONE UNSIGNED LEB128 VARINT, INLINE: seven bits a byte from the cursor `cur`,
 \ low group first, until a byte arrives with its high bit clear. `acc` answers
@@ -298,8 +342,10 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
 \ `hb: stack bounds exceeded (<which>)` and STACK-BOUNDS exit the engine gives.
 : EMIT-ENTRY
    LTEXT LABEL@ LBL,                             \ text offset zero: this image's code base
+   EMIT-ENTRY-ARGS                               \ argc/argv/envp into x13/x14/x15, off the untouched kernel frame
    STACK-ABI:BOOT-BYTES XDS STACK-GUARD:EMIT-MAP
    EMIT-DATA-REGION-MAP                          \ map DATA-VA, set x20/S0
+   EMIT-OWNED-CELLS                              \ the engine runtime cells this entry owns
    STACK-ABI:RETURN-BYTES 10 STACK-GUARD:EMIT-MAP
    10 DATA STACK-ABI:RETURN-BASE-CELL STR,
    STACK-ABI:LOOP-BYTES 10 STACK-GUARD:EMIT-MAP

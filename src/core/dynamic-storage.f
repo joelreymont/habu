@@ -153,6 +153,21 @@ public
 : REGISTERED-N ( -- n ) REG-U @ ;
 : DIRTY-N ( -- n ) REG-U @ ;
 
+\ THE THREE CELLS THIS REGISTRY IS, handed one at a time to a claim the caller
+\ supplies. The registry is per runtime instance, so an instance that starts with
+\ no mapping, no members and an open lock is correct - and that is the zero a
+\ fresh anonymous mapping already holds. A stripped AOT image therefore owns
+\ these three cells outright instead of being refused for naming them
+\ (src/habu/aot-owned-cells.f, dot habu-give-a-stripped-c1a6664a).
+\ THE NAMING HAPPENS HERE BECAUSE THE CELLS ARE DECLARED HERE. That list admits a
+\ cell only by name, the three are private, and a private cell of this package
+\ stays private: this hands out these three and nothing else - no capacity, no
+\ entry, and no address that outlives the call.
+: OWNED-CELLS ( [ ptr u8 -- ] -- ) {: claim :}
+   REG BYTE-VIEW claim execute
+   REG-U BYTE-VIEW claim execute
+   MUTEX BYTE-VIEW claim execute ;
+
 private
 
 \ Refuse a cut through a live control record before releasing any member.

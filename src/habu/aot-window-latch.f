@@ -26,8 +26,12 @@ package AOT-LINK
 \ mmaps, so AOT-LINK never allots either into DATA. src/habu/aot-lib.f emits that
 \ span into __text and the entry maps DATA-VA and copies it back to the SAME
 \ absolute VA (DATA-VA is a fixed MAP_FIXED VA, so those addresses are
-\ load-stable). All other runtime cells stay zero from the fresh anonymous mmap;
-\ only x20, S0-CELL, and DP-CELL need explicit init.
+\ load-stable). All other runtime cells stay zero from the fresh anonymous mmap,
+\ and that zero is a value only where something declares it one: x20, S0-CELL and
+\ DP-CELL get explicit init, and so does every cell named in
+\ src/habu/aot-owned-cells.f (aot-lib.f EMIT-OWNED-CELLS - the engine's
+\ environment and the dynamic-storage registry). A cell on neither list is
+\ refused.
 \
 \ The span bounds are DATA addresses as integers, the domain the rest of the
 \ linker works in, and nothing dereferences them: a cell inside the span is read

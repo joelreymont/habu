@@ -339,4 +339,21 @@ public
 
 : WITH-BYTES ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
    WB-SCOPE ;
+
+\ THE THREE CELLS THE WITH-BYTES SCOPE STACK IS, handed one at a time to a claim
+\ the caller supplies. Depth zero, no cached mapping and no cached capacity is
+\ what every runtime instance starts at - the zero a fresh anonymous mapping
+\ already holds - so a stripped AOT image owns these three outright instead of
+\ being refused for naming them (src/habu/aot-owned-cells.f, dot
+\ habu-give-a-stripped-c1a6664a). WB-BUFFERS and WB-LENGTHS are DYNAMIC-BUFFER
+\ declarations: the head cell is the only one code spells, because the accessor
+\ reaches capacity and slot by arithmetic from it (src/core/layout-buffer.f
+\ DBUF-SOURCE), and the head is where the reserve on first use starts.
+\ THE NAMING HAPPENS HERE BECAUSE THE CELLS ARE DECLARED HERE: this file is baked
+\ into the engine, its cells are private, and a private cell of a baked package
+\ stays private - so it hands out these three and nothing else.
+: OWNED-CELLS ( [ ptr u8 -- ] -- ) {: claim :}
+   WB-BUFFERS#base BYTE-VIEW claim execute
+   WB-LENGTHS#base BYTE-VIEW claim execute
+   WB-DEPTH BYTE-VIEW claim execute ;
 ;package

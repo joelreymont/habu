@@ -9,6 +9,7 @@ require src/habu/code-span.f
 \ The span cells and HERE-N come from the lib-free latch file, which the build
 \ driver loads on its own and much earlier - before the application's require.
 require src/habu/aot-window-latch.f
+require src/habu/aot-owned-cells.f
 
 \ This file compiles checked, with raw-pointer boundaries as explicit TRUST rows.
 
@@ -524,10 +525,24 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
    cell DATA-CELL@ {: v:n :}
    v CELL-TEXTPTR? if cell v REFUSE-UNRESTORED-CELL then ;
 
+\ AN ENGINE RUNTIME CELL THE STRIPPED ENTRY OWNS, ADMITTED BY ITS DECLARATION.
+\ src/habu/aot-owned-cells.f is the list; a cell is on it because it is named
+\ there. The value has to BE a claimed cell's address - one that merely lands in
+\ the engine's DATA below the window, or in the same file as a claimed cell, is
+\ refused exactly as before. Relocation preserves such an address because DATA is
+\ one MAP_FIXED mapping at DATA-VA in the engine and in the image alike, and
+\ src/habu/aot-lib.f EMIT-OWNED-CELLS reads this same table to publish what each
+\ claim declares - so the two cannot disagree about one cell.
+: OWNED-CELL? ( n -- bool ) {: v:n :}
+   AOT-OWNED:N 0 ?do
+      v i AOT-OWNED:AT = if true unloop exit then
+   loop false ;
+
 : DATA-ADDRESS! ( ptr n ptr u8 n -- ) {: owner:ptr site:ptr v:n :}
    \ The end is a valid one-past pointer for a zero-length buffer. Relocation
    \ preserves the address; it does not certify a later memory access.
    v BLOB-SRC @ >= v BLOB-END @ <= and if exit then
+   v OWNED-CELL? if exit then
    v DATA-CELL? if v CHECK-DATA-CELL then
    owner site v REFUSE-DATA-SPAN ;
 

@@ -92,11 +92,54 @@ the span, and the linker refuses the image with *address refers to data outside
 the restored span*. That refusal is correct — such a cell would read as zero in
 the image — so the fix is to load nothing early, not to relax the check.
 
-Cells the **engine itself** bakes are below the window whatever the maker does:
-`src/os/env-base.f` is part of the engine prefix, so a program calling `GETENV`
-is still refused, naming `ENV-QU`. Reading the environment from a stripped image
-needs the image's entry to initialise the engine's environment cells, the way it
-already initialises `x20`, `S0-CELL` and `DP-CELL`; that is separate work.
+Cells the **engine itself** bakes are below the window whatever the maker does.
+Some of them are not persisted data at all: they are runtime inputs, the way
+argv is, or state that starts empty in every runtime instance. The stripped
+entry owns those exactly as it already owns `x20`, `S0-CELL` and `DP-CELL`, and
+the closure walker admits them.
+
+**The list is `src/habu/aot-owned-cells.f`**, and a cell is on it because it is
+*named* there — never because of its value, its address, or the file it lives
+in. Each entry declares how the entry initialises it:
+
+| cell | declared in | claim | who initialises it |
+| --- | --- | --- | --- |
+| `ENV-DATA-PTR` | `src/os/env-base.f` | image base | the entry stores this image's own DATA base (`x20`), the value the file writes when the engine loads |
+| `ARGC-CELL`, `ARGV-CELL`, `ENVP-CELL` | `src/habu/layout.f` | fixed startup cells | the entry stores the kernel's `argc`/`argv`/`envp`, read off the untouched entry frame before anything else runs |
+| `ENV-Z`, `ENV-A`, `ENV-U`, `ENV-QA`, `ENV-QU` | `src/os/env-base.f` | fresh | nothing: they are `GETENV`/`ENV=?` cursors, written from the caller's arguments before they are read, and the fresh mapping's zero is their correct start |
+| the registry head, count and lock | `src/core/dynamic-storage.f` | fresh | nothing: a runtime instance with no mapping, no members and an open lock is correct, and that is the zero a fresh anonymous mapping holds |
+| the `WITH-BYTES` scope stack | `lib/memory.f` | fresh | nothing: depth zero with no cached mapping is the same fresh state |
+
+A **fresh** claim emits no instruction at all — `EMIT-DATA-REGION-MAP` has just
+mapped DATA anonymously, so the cell already holds the zero the claim declares
+correct. An **image-base** claim gets one store of `x20`. Both readers work from
+that one table: `src/habu/aot-lib.f EMIT-OWNED-CELLS` emits what each claim
+declares, and `src/habu/aot-closure.f OWNED-CELL?` admits exactly the same
+addresses, so the entry and the walker cannot disagree about a cell.
+
+The list lives with the linker and not beside the cells it names, because a
+claim is a DATA offset and **an offset computed while the engine's own prefix
+loads does not survive the capture that makes an engine**: the prefix compiles
+into the building host's DATA, millions of bytes above that host's base, and the
+image keeps only the captured span. Measured on a generation built with the
+claims in `src/os/env-base.f`, `ENV-QU` was claimed at offset 16893592 in an
+engine whose `ENV-QU` lives at 5466416 — a code-spelled address is relocated by
+the capture, a number in a raw cell is not. The offsets therefore have to be
+taken from the live cells in the process that links, which is the maker. Where
+the declaring package's cells are private — `dynamic-storage.f`, `memory.f` —
+that package exports one claim applier (`OWNED-CELLS ( [ ptr u8 -- ] -- )`) that
+hands the list its own cells and nothing else, because a private word of a baked
+package is unreachable from outside it by any spelling.
+
+So a stripped image reads its environment: `: MAIN ( -- ) s" HOME" GETENV type
+cr ;` with no `require` at all builds, runs and prints the variable, explicitly
+set or inherited through `PROC-ENV-INHERIT-MISSING`, and `MEM:WITH-BYTES`
+allocates in the same image (`tools/hb-build-test.f HBT-STRIPPED-ENGINE-CELLS`).
+Every other engine cell is refused as loudly as before — `env-base.f`'s own
+`TMP-PATH` cursors are the nearest miss: same file, same transient character, no
+claim, so a stripped program calling `TMP-PATH` still gets *outside the restored
+span*, naming `TPU` (`HBT-STRIPPED-UNOWNED-CELL`). Adding a cell to the list is
+a deliberate act that has to state, cell by cell, why the entry may own it.
 
 A stripped image restores the program's own DATA window byte for byte, so a
 persistent cell arrives holding whatever the BUILD process put there. For a cell
@@ -127,8 +170,10 @@ offset and the value:
   ' W ,` fills an untyped cell, so nothing declares it; bind the token with a
   `defer` or `xt!`, or build with `--repl`.
 - a **dictionary-record** pointer: a stripped image carries no records.
-- a cell **below the capture window** — a preloaded module's data, which the
-  image does not restore at all.
+- a cell **below the capture window** that no claim names — a preloaded
+  module's data, which the image does not restore at all. The engine runtime
+  cells `src/habu/aot-owned-cells.f` names are the only exception, and they are
+  admitted by that declaration, not by their value.
 - a declared cell whose value is not the code of any word the image can carry.
 
 ## Capturing an existing dictionary

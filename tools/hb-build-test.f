@@ -91,18 +91,23 @@ variable HBT-EXP-OUT-U
 create HBT-EXP-SRC-BUF FS-PATH-CAP allot
 create HBT-EXP-OUT-BUF FS-PATH-CAP allot
 
-\ The two stripped-window fixtures: an application whose own require closure owns
-\ the library cells it touches, and one that reaches a cell the engine baked.
+\ The three stripped-window fixtures: an application whose own require closure
+\ owns the library cells it touches, one that reads the engine runtime cells the
+\ stripped entry owns, and one that reaches an engine cell nothing claims.
 variable HBT-LIB-SRC-U
 variable HBT-LIB-OUT-U
 variable HBT-LIB-DIR-U
-variable HBT-BELOW-SRC-U
-variable HBT-BELOW-OUT-U
+variable HBT-CELLS-SRC-U
+variable HBT-CELLS-OUT-U
+variable HBT-UNOWNED-SRC-U
+variable HBT-UNOWNED-OUT-U
 create HBT-LIB-SRC-BUF FS-PATH-CAP allot
 create HBT-LIB-OUT-BUF FS-PATH-CAP allot
 create HBT-LIB-DIR-BUF FS-PATH-CAP allot
-create HBT-BELOW-SRC-BUF FS-PATH-CAP allot
-create HBT-BELOW-OUT-BUF FS-PATH-CAP allot
+create HBT-CELLS-SRC-BUF FS-PATH-CAP allot
+create HBT-CELLS-OUT-BUF FS-PATH-CAP allot
+create HBT-UNOWNED-SRC-BUF FS-PATH-CAP allot
+create HBT-UNOWNED-OUT-BUF FS-PATH-CAP allot
 \ The quoted-path fixture below owns the writer's bytes; json-write holds none.
 6 constant HBT-ESCAPE-MAX
 FS-PATH-CAP HBT-ESCAPE-MAX * 2 + constant HBT-QUOTE-CAP
@@ -222,11 +227,17 @@ create HBT-EXP-HEX2 64 allot
 : HBT-LIB-DIR ( -- ptr u8 n )
    HBT-LIB-DIR-BUF HBT-LIB-DIR-U @ ;
 
-: HBT-BELOW-SRC ( -- ptr u8 n )
-   HBT-BELOW-SRC-BUF HBT-BELOW-SRC-U @ ;
+: HBT-CELLS-SRC ( -- ptr u8 n )
+   HBT-CELLS-SRC-BUF HBT-CELLS-SRC-U @ ;
 
-: HBT-BELOW-OUT ( -- ptr u8 n )
-   HBT-BELOW-OUT-BUF HBT-BELOW-OUT-U @ ;
+: HBT-CELLS-OUT ( -- ptr u8 n )
+   HBT-CELLS-OUT-BUF HBT-CELLS-OUT-U @ ;
+
+: HBT-UNOWNED-SRC ( -- ptr u8 n )
+   HBT-UNOWNED-SRC-BUF HBT-UNOWNED-SRC-U @ ;
+
+: HBT-UNOWNED-OUT ( -- ptr u8 n )
+   HBT-UNOWNED-OUT-BUF HBT-UNOWNED-OUT-U @ ;
 
 \ An application that touches a PERSISTENT CELL of each library it requires:
 \ lib/string.f's builder, lib/fs-mutate.f's copy state (FS-MUT-COPY-IN) and
@@ -245,15 +256,28 @@ create HBT-EXP-HEX2 64 allot
 : HBT-LIB-EXPECTED$ ( -- ptr u8 n )
    S\" sb=ok\ncopy=ok\nfiles=3\n" ;
 
-\ The refusal has to survive the reordering. GETENV is src/os/env-base.f, which the
-\ engine BAKES, so ENV-QU is below the window however the maker orders its loads -
-\ a cell the window can never cover rather than one it used to miss. The stripped
-\ image would read it as zero, so refusing is right. The separate dot on the
-\ engine-prefix environment layer - the stripped entry initialising the engine's
-\ environment cells, as it already initialises x20, S0-CELL and DP-CELL - is what
-\ will flip this case, and this assertion is the tripwire that says so.
-: HBT-BELOW-SRC$ ( -- ptr u8 n )
-   S\" : MAIN ( -- ) s\" HOME\" GETENV type cr ;\n" ;
+\ THE ENGINE RUNTIME CELLS A STRIPPED IMAGE OWNS, all in one program: the
+\ environment (an explicitly set variable and an inherited one, both through
+\ GETENV, whose ENV-QA/ENV-QU/ENV-DATA-PTR are baked engine cells below every
+\ window), the kernel's argv, and lib/memory.f's WITH-BYTES scope over the baked
+\ DYNAMIC-STORAGE registry. Each cell it reaches is named in
+\ src/habu/aot-owned-cells.f, so the entry publishes or zeroes it by declaration
+\ and the closure walker admits it; nothing here is admitted for being scratch.
+\ The argv line pins the CURRENT stripped offset, not a correct one: a stripped
+\ image's SCRIPT-ARG-START reads APP-ENTRY:XT-CELL, which is zero in an image
+\ with no entry record, so it takes the source-list branch and arg 0 is the
+\ SECOND argument the image was given. That is a pre-existing defect of
+\ src/os/script-argv.f with its own dot; when it is fixed this expectation moves
+\ to `arg=one` and says so.
+: HBT-CELLS-SRC$ ( -- ptr u8 n )
+   S\" require lib/memory.f\n: SHOW ( ptr u8 NUM:alloc-byte-len -- ) drop {: a:ptr :}\n   $6F a c!  $6B a 1 + c!  a 2 type cr ;\n: MAIN ( -- )\n   s\" HBT_EXPLICIT\" GETENV type cr\n   s\" HOME\" GETENV type cr\n   SCRIPT-ARGC 0 > if s\" arg=\" type 0 SCRIPT-ARGV$ type cr then\n   4096 MEM:BYTES-ALLOC-LEN [: SHOW ;] MEM:WITH-BYTES ;\n" ;
+
+\ ... and an engine cell NOTHING claims is refused exactly as before. TMP-PATH is
+\ src/os/env-base.f, the same baked file as the admitted environment cells and
+\ just as transient, but its cursors are on no list - so the refusal is about the
+\ declaration and not about the file, the value or the address.
+: HBT-UNOWNED-SRC$ ( -- ptr u8 n )
+   S\" : MAIN ( -- ) s\" x\" TMP-PATH type cr ;\n" ;
 
 : HBT-LIB-FILE! ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu body:ptr bodyu :}
    SB-RESET HBT-LIB-DIR SB-APPEND s" /" SB-APPEND name nameu SB-APPEND
@@ -290,8 +314,10 @@ create HBT-EXP-HEX2 64 allot
    HBT-ROOT s" libstate.f" HBT-LIB-SRC-BUF HBT-LIB-SRC-U HBT-PATH!
    HBT-ROOT s" libstate" HBT-LIB-OUT-BUF HBT-LIB-OUT-U HBT-PATH!
    HBT-ROOT s" libdir" HBT-LIB-DIR-BUF HBT-LIB-DIR-U HBT-PATH!
-   HBT-ROOT s" below.f" HBT-BELOW-SRC-BUF HBT-BELOW-SRC-U HBT-PATH!
-   HBT-ROOT s" below" HBT-BELOW-OUT-BUF HBT-BELOW-OUT-U HBT-PATH!
+   HBT-ROOT s" cells.f" HBT-CELLS-SRC-BUF HBT-CELLS-SRC-U HBT-PATH!
+   HBT-ROOT s" cells" HBT-CELLS-OUT-BUF HBT-CELLS-OUT-U HBT-PATH!
+   HBT-ROOT s" unowned.f" HBT-UNOWNED-SRC-BUF HBT-UNOWNED-SRC-U HBT-PATH!
+   HBT-ROOT s" unowned" HBT-UNOWNED-OUT-BUF HBT-UNOWNED-OUT-U HBT-PATH!
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
@@ -562,19 +588,68 @@ create READER-STATE JR:STORAGE-BYTES allot
    errn 0 T=
    HBT-RUN-OUT outn HBT-LIB-EXPECTED$ T$= ;
 
-\ ... and a cell no window can cover is still refused, with its own diagnostic.
-: HBT-STRIPPED-BELOW-WINDOW ( -- )
-   HBT-BELOW-SRC HBT-BELOW-SRC$ WRITE-ALL
-   HBT-BELOW-OUT HBT-REMOVE-FILE?
+\ The expected output of HBT-CELLS-SRC$, BUILT AND NOT SPELLED: the second line is
+\ this process's own HOME, which is exactly what PROC-ENV-INHERIT-MISSING hands
+\ the child, so the assertion reads the inherited value back through the stripped
+\ image rather than hard-coding a machine's.
+: HBT-CELLS-EXPECTED$ ( -- ptr u8 n )
+   SB-RESET
+   s" explicit-ok" SB-APPEND 10 SB-APPEND-C
+   s" HOME" GETENV SB-APPEND 10 SB-APPEND-C
+   s" arg=two" SB-APPEND 10 SB-APPEND-C
+   s" ok" SB-APPEND 10 SB-APPEND-C
+   SB$ ;
+
+\ One variable set for the child and the rest of this process's environment
+\ inherited - lib/process-env.f's inherited path, which is how every application
+\ image is actually started.
+: HBT-CELLS-CHILD-ARGV-ENV ( -- )
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   s" HBT_EXPLICIT" >LEN s" explicit-ok" >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" one" >LEN PROC-ARGV+
+   s" two" >LEN PROC-ARGV+ ;
+
+\ ... and the engine runtime cells the stripped entry OWNS are readable in the
+\ image: the environment (explicit and inherited), argv, and an allocation
+\ through the baked dynamic-storage registry. Before src/habu/aot-owned-cells.f
+\ this very program was refused with
+\ `outside the restored span caller=GETENV target=ENV-QU`.
+: HBT-STRIPPED-ENGINE-CELLS ( -- )
+   HBT-CELLS-SRC HBT-CELLS-SRC$ WRITE-ALL
+   HBT-CELLS-OUT HBT-REMOVE-FILE?
    HBT-ARGV-BASE
-   HBT-BELOW-SRC >LEN PROC-ARGV+
+   HBT-CELLS-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
-   HBT-BELOW-OUT >LEN PROC-ARGV+
+   HBT-CELLS-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
+   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
+   brc 0 T=
+   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-CELLS-OUT FILE? TTRUE
+   HBT-CELLS-CHILD-ARGV-ENV
+   HBT-CELLS-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-CELLS-EXPECTED$ T$= ;
+
+\ ... while an engine cell on no list is still refused, with its own diagnostic.
+: HBT-STRIPPED-UNOWNED-CELL ( -- )
+   HBT-UNOWNED-SRC HBT-UNOWNED-SRC$ WRITE-ALL
+   HBT-UNOWNED-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-UNOWNED-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-UNOWNED-OUT >LEN PROC-ARGV+
    HBT-RUN-HB-BUILD {: nout:n nerr:n nrc:n :}
    nrc 0 <> TTRUE
    HBT-ERR nerr s" outside the restored span" CONTAINS? TTRUE
-   HBT-ERR nerr s" target=ENV-QU" CONTAINS? TTRUE
-   HBT-BELOW-OUT FILE? TFALSE ;
+   HBT-ERR nerr s" caller=TMP-PATH" CONTAINS? TTRUE
+   HBT-ERR nerr s" target=TPU" CONTAINS? TTRUE
+   HBT-UNOWNED-OUT FILE? TFALSE ;
 
 : HBT-CLI-LARGE-SOURCE ( -- )
    HBT-LARGE-CHUNK!
@@ -1173,7 +1248,8 @@ public
    HBT-PRODUCER-KEY-MISS
    HBT-BUILD-AOT-WRONG-OBJECT-FAILS
    HBT-STRIPPED-LIB-STATE
-   HBT-STRIPPED-BELOW-WINDOW
+   HBT-STRIPPED-ENGINE-CELLS
+   HBT-STRIPPED-UNOWNED-CELL
    HBT-CLI-LARGE-SOURCE
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
