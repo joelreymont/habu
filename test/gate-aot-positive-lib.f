@@ -308,7 +308,7 @@ variable BLR-CNT
    s" 8 constant AMAP-CODE-ROW" GE-SRC-LINE
    s" $40 constant AMAP-M2-OFF" GE-SRC-LINE
    s" : AMAP-MEMBER! ( n ptr u8 n -- ) {: i:n code:ptr len:n :}" GE-SRC+
-   s"  code i cells CLO + ! len i cells CLO-LEN + ! XREF-NULL i cells CLO-REC + ! ;" GE-SRC-LINE
+   s"  code i CLO ! len i cells CLO-LEN + ! XREF-NULL i CLO-REC ! ;" GE-SRC-LINE
    s" : AMAP-CLOSURE! ( -- ) 0 AMAP-CODE AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
    s"  1 AMAP-CODE AMAP-CODE-ROW + AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
    s"  0 NEWOFF ! AMAP-M2-OFF NEWOFF cell+ ! 2 NCLO ! ;" GE-SRC-LINE
@@ -464,7 +464,7 @@ variable BLR-CNT
    s" create ABT-CHAIN 16 allot" GE-SRC-LINE
    s" : ABT-W! ( n ptr u8 -- ) {: w:n a:ptr :} w a c! w 8 rshift a 1+ c! w 16 rshift a 2 + c! w 24 rshift a 3 + c! ;" GE-SRC-LINE
    s" : ABT-BUILD ( -- ) $D2800010 ABT-CHAIN ABT-W! $F2A00010 ABT-CHAIN 4 + ABT-W! $F2C00010 ABT-CHAIN 8 + ABT-W! $D63F0200 ABT-CHAIN 12 + ABT-W! ;" GE-SRC-LINE
-   s" : ABT-RUN ( -- ) ABT-BUILD ABT-CHAIN CLO ! 16 CLO-LEN ! XREF-NULL CLO-REC !" GE-SRC+
+   s" : ABT-RUN ( -- ) ABT-BUILD ABT-CHAIN 0 CLO ! 16 CLO-LEN ! XREF-NULL 0 CLO-REC !" GE-SRC+
    s"  0 NEWOFF ! 1 NCLO ! 0 COPY-COMPACT-BLOB ;" GE-SRC-LINE
    s" ABT-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE

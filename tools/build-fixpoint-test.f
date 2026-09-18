@@ -697,7 +697,7 @@ variable IX
 
 package VERIFY
 variable DEF-HIT
-variable DEF-A
+PTR-VARIABLE DEF-A
 variable DEF-U
 
 : DEF-WANT$ ( -- ptr u8 n )

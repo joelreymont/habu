@@ -40,17 +40,22 @@ create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
 \ VA (DATA-VA is a fixed MAP_FIXED VA, so those addresses are load-stable). All
 \ other runtime cells stay zero from the fresh anonymous mmap; only x20, S0-CELL,
 \ and DP-CELL need explicit init.
+\
+\ The span bounds and this cursor are DATA addresses as integers, the domain the
+\ rest of the linker works in, and nothing dereferences them: the one cell read
+\ in the scan below goes through aot-closure.f DATA-CELL@, which is where a DATA
+\ address becomes a pointer again.
 variable DSCAN
 $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB range
 
 : AOT-DATA-START ( -- )
-   here BLOB-SRC !
+   HERE-N BLOB-SRC !
    \ The retained compiler must intern this application's strings and trap
    \ messages inside the span the stripped image restores.
    NSTR:WINDOW-OPEN ;
 
 : AOT-DATA-SPAN ( -- )
-   here  BLOB-END !
+   HERE-N  BLOB-END !
    BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN ! ;
 
 \ Every cell the capture window covers that NOTHING DECLARED, classified by the
@@ -66,7 +71,8 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
    BLOB-SRC @ DSCAN !
    BEGIN DSCAN @ 8 + BLOB-END @ <= WHILE
       DSCAN @ XTC-DECLARED? 0= IF
-         DSCAN @ @ CELL-TEXTPTR? IF DSCAN @ DSCAN @ @ REFUSE-UNDECLARED-CELL THEN
+         DSCAN @ DATA-CELL@ CELL-TEXTPTR? IF
+            DSCAN @ DSCAN @ DATA-CELL@ REFUSE-UNDECLARED-CELL THEN
       THEN
       DSCAN @ 8 + DSCAN !
    REPEAT ;
@@ -194,7 +200,7 @@ create SPARSE-BUF SPARSE-CAP allot   variable SPARSE-LEN
 
 \ BLOB-SRC is a plain address cell; pin its byte-pointer role once here so
 \ every scan/copy site below reads it as a span, not a bare number.
-: BLOB-SRC@ ( -- ptr u8 ) BLOB-SRC @ ;
+: BLOB-SRC@ ( -- ptr u8 ) BLOB-SRC @ DATA-PTR ;
 
 \ The non-zero byte extents of [0, BLOB-LEN), visited in declaration order.
 \ Mirrors aot-capture.f ACAP-SCAN-SEG/ACAP-RUN-CLOSE, gap rule included: a run
@@ -327,7 +333,8 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
 \ EMIT-DATA-BLOB already bounds for the data blob placed after them.
 : EMIT-CRASH-CODE ( -- )
    EMIT-CRASH-HANDLER  EMIT-SIGNAL-HANDLER  EMIT-HEX ;
-variable CP2  variable CEND  variable NEXT-OFF
+PTR-VARIABLE CP2  PTR-VARIABLE CEND   \ the copy walk's cursor and its one-past end
+variable NEXT-OFF
 \ The closure member whose entry this is, or -1. The entry is a member's
 \ identity (aot-closure.f ADD-CLO), so this is what a record pointer or a span
 \ row is resolved through before anything asks where the member is going.
@@ -337,7 +344,7 @@ variable CP2  variable CEND  variable NEXT-OFF
       CLO-CX @ CLO-AT start = IF CLO-CX @ EXIT THEN
       CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
 : MEMBER-NEWOFF ( n -- n ) cells NEWOFF + @ ;
-: CLO-AT-N ( n -- n ) cells CLO + @ ;      \ the same cell, for value-domain arithmetic
+: CLO-AT-N ( n -- n ) CLO-AT CODE-N ;      \ the same entry, for value-domain arithmetic
 : BCOND? {: w:n :}  w $FF000010 and $54000000 = ;
 : CBZIMM? {: w:n :}  w $7E000000 and $34000000 = ;
 : TBZIMM? {: w:n :}  w $7E000000 and $36000000 = ;
@@ -525,7 +532,7 @@ variable BDELTA  variable TNEW
          SNAP-RELOC:ADDR-CHAIN-BYTES
       else
          i CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW 4
-      then CP2 +!
+      then CP2 @ + CP2 !
    REPEAT ;
 : COPY-PLANNED-BLOBS
    0 WI ! BEGIN WI @ NCLO @ < WHILE

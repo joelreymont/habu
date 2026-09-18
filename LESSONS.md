@@ -9245,9 +9245,27 @@ and nothing else. The one-pass census for any file is that same scanner:
 `MULTI-ERR-BEGIN  [: buf u VERIFY:SOURCE-BUF ;] catch drop  MULTI-ERR-END`.
 
 A cell latched from `here` and later compared against numbers (`AOT-ARM:D0/D1`,
-`BLOB-SRC`/`BLOB-END`) cannot be declared without changing the effects of every
-reader: `here` is the only DATA-pointer word and there is no checked pointer-to-
-integer direction, so the declaration has to travel the whole span API at once.
+`BLOB-SRC`/`BLOB-END`) does not have to be declared at all, because POINTER
+DIFFERENCE IS A CHECKED POINTER-TO-INTEGER DIRECTION. `p BYTE-VIEW data-base
+BYTE-VIEW -` certifies, and DATA is mapped MAP_FIXED at DATA-VA, so
+`here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N +` IS `here` as an integer
+with no trust row - measured equal to `here` on the rule engine - and
+`data-base at DATA-VA VA>N - +` is the way back. Code has the same pair through
+the dictionary base, which `src/habu/aot-closure.f` already publishes in both
+domains (`AOT-DBASE@` / `AOT-DBASE-N`). The checker checks the types, not the
+provenance, so the caller still owes the proof that the two pointers are in one
+mapping. A span API whose readers compare, difference, print and bake its bounds
+as integers - the AOT window's DATA coordinate, beside three cursors that are
+numeric primitives (`cp@`, `ndict@`, the wordlist counter) - therefore keeps its
+integer effects and crosses once at each end, instead of travelling the whole API
+as pointers and changing every reader's effect.
+
+Converting a raw `create T n cells allot` table of addresses to `TYPED-BUFFER`
+changes the ACCESSOR'S ARITY: `i cells T + !` becomes `v i T !`, so every
+indexing site moves, and a fixture that builds its subject as generated source
+carries those tokens inside `s"` strings where no grep for `cells T +` finds
+them (`test/gate-aot-positive-lib.f` had two, each found by a gate run, not by
+the sweep that cleared every other caller).
 
 ## 2026-09-18 - a checker-prefix fixture gets PTR-VARIABLE, and only a whitebox engine judges a whitebox suite
 

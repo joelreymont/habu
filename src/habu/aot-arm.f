@@ -25,6 +25,18 @@ public
 \ - when the window opens and when it closes.
 : WIDN ( -- n ) LIVE WIDN-CELL + @ ;
 
+\ `here` as an integer, which is what the window's other three cursors already
+\ are: cp@, ndict@ and the wordlist counter are numeric primitives and `here` is
+\ the one pointer among the four, while every reader of the DATA coordinate -
+\ the capture's scans, the band audit, the literal-span check - compares and
+\ differences it as a number and never follows it. DATA is mapped MAP_FIXED at
+\ DATA-VA, so the offset from data-base plus that base IS the address; the
+\ subtraction is ordinary checked pointer arithmetic, so this needs no trust row
+\ and no pointer-to-integer cast. src/habu/aot-closure.f carries the same
+\ one-liner for package AOT-LINK, which the stripped linker loads without this
+\ file.
+: HERE-N ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + ;
+
 \ ---- the window's four coordinates -------------------------------------------
 \
 \ A CAPTURE WINDOW IS FOUR SPANS, NOT ONE, and every producer needs all four at
@@ -115,7 +127,7 @@ private
 
 : LATCH-OPEN ( -- )
    CANCEL
-   cp@ B0 ! ndict@ R0 ! here D0 ! WIDN W0 ! ;
+   cp@ B0 ! ndict@ R0 ! HERE-N D0 ! WIDN W0 ! ;
 
 public
 
@@ -138,7 +150,7 @@ public
 \ Where the window's definitions end. The wordlist counter is latched HERE for
 \ the reason above, and never read again at capture time.
 : WINDOW-CLOSE ( -- )
-   cp@ B1 ! ndict@ R1 ! here D1 ! WIDN W1 !
+   cp@ B1 ! ndict@ R1 ! HERE-N D1 ! WIDN W1 !
    SIG-CLOSE ;
 
 \ The window as aot-capture.f CAPTURE takes it. One reader, so a caller cannot

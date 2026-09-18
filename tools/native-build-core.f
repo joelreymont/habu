@@ -271,7 +271,7 @@ TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
 
 : PREPARE-TARGET ( -- )
    s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute
-   here AOT-ARM:D1 ! ;
+   AOT-ARM:HERE-N AOT-ARM:D1 ! ;
 
 \ A retained driver cell is not a fixed engine slot. Registering a target XT
 \ into one after reset would make it look like a load-time engine hook.

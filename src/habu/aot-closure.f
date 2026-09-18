@@ -28,6 +28,16 @@ s" AOT-DBASE@" s" -- ptr a" TRUST
 s" AOT-DBASE-N" s" -- n" TRUST
 : AOT-CP-N cp@ ;
 s" AOT-CP-N" s" -- n" TRUST
+\ ... and the DATA cursor as one, which the two above get from their numeric
+\ primitives and this one has to compute: `here` is the only pointer-valued
+\ cursor, while the whole linker - the span bounds, the recorded chain values it
+\ compares them against, the offsets it records - works in the same absolute
+\ integer domain these two live in. DATA is mapped MAP_FIXED at DATA-VA, so the
+\ offset from data-base plus that base IS the address, by ordinary checked
+\ pointer arithmetic: NOT a trust row, and deliberately not one. src/habu/aot-arm.f
+\ carries the same one-liner for package AOT-ARM, which this file's package does
+\ not load.
+: HERE-N ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + ;
 : AOT-PTR@ {: a:ptr :} ( ptr a -- ptr a )
    a @ ;
 s" AOT-PTR@" s" ptr a -- ptr a" TRUST
@@ -272,21 +282,24 @@ variable FX
 \ THE ENTRY IS ALSO THE IDENTITY. Two records can share one entry - `EXPORT`
 \ publishes a second name for the same execution token - and one span is one
 \ member however many names reach it, so the blob is copied once.
+\ Two of the three columns hold ADDRESSES, so they are declared tables and not
+\ `create ... cells allot`: a member's entry is a code pointer and its record is
+\ a dictionary pointer, while its length is a count.
 1024 constant MAX-CLO
-create CLO MAX-CLO cells allot       \ each member's code entry
+MAX-CLO TYPED-BUFFER CLO ptr u8      \ each member's code entry
 create CLO-LEN MAX-CLO cells allot   \ ... its code length in bytes
-create CLO-REC MAX-CLO cells allot   \ ... and the record that named it, or XREF-NULL
+MAX-CLO TYPED-BUFFER CLO-REC ptr n   \ ... and the record that named it, or XREF-NULL
 variable NCLO  variable CLO-CX
-variable ROOTREC
+PTR-VARIABLE ROOTREC
 variable CLO-LIMIT
 : CLO-LIMIT! {: n:n :}
    n 1 < IF s" aot: CLO-LIMIT below 1" 74 die THEN
    n MAX-CLO > IF s" aot: CLO-LIMIT above MAX-CLO" 74 die THEN
    n CLO-LIMIT ! ;
 MAX-CLO CLO-LIMIT!
-: CLO-AT ( n -- ptr u8 ) cells CLO + @ ;
+: CLO-AT ( n -- ptr u8 ) CLO @ ;
 : CLO-BYTES ( n -- n ) cells CLO-LEN + @ ;
-: CLO-REC@ ( n -- ptr n ) cells CLO-REC + @ ;
+: CLO-REC@ ( n -- ptr n ) CLO-REC @ ;
 : IN-CLO? {: start:ptr :} ( ptr u8 -- bool )
    0 CLO-CX ! BEGIN CLO-CX @ NCLO @ < WHILE CLO-CX @ CLO-AT start = IF 0 0= exit THEN CLO-CX @ 1+ CLO-CX ! REPEAT 0 0= 0= ;
 : CLO-OVERFLOW-JSON {: r:ptr :} ( ptr a -- )
@@ -314,11 +327,11 @@ MAX-CLO CLO-LIMIT!
 : ADD-CLO ( ptr n ptr u8 n -- ) {: r:ptr start:ptr len:n :}
    start IN-CLO? IF exit THEN
    NCLO @ CLO-LIMIT @ >= IF r CLO-OVERFLOW-DIE THEN
-   start NCLO @ cells CLO + !
+   start NCLO @ CLO !
    len NCLO @ cells CLO-LEN + !
-   r NCLO @ cells CLO-REC + !
+   r NCLO @ CLO-REC !
    NCLO @ 1+ NCLO ! ;
-variable SP2  variable SEND
+PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past end
 : ADD-REC-CLO ( ptr n -- ) {: r:ptr :}
    r  r REC-CODE-PTR@  r REC-BYTES  ADD-CLO ;
 : ADD-SPAN-CLO ( n -- ) {: k:n :}
@@ -376,12 +389,22 @@ variable SP2  variable SEND
    v CELL-DICTPTR? IF true EXIT THEN
    v CELL-CODEPTR? ;
 
-\ The cell at a DATA address. An address arrives here as a plain integer (the
-\ value a recorded chain spells out, or a scan cursor), and the checker keeps the
-\ value and pointer domains apart, so the read goes through the cursor cell the
-\ span scan in aot-lib.f already reads its cells through.
-variable DCELL
-: DATA-CELL@ ( n -- n )  DCELL !  DCELL @ @ ;
+\ A DATA address as a pointer. An address arrives here as a plain integer (the
+\ value a recorded chain spells out, a scan cursor, a span bound), and DATA is
+\ ONE mapping based at data-base, so the pointer is that base plus the checked
+\ offset. THIS IS THE ONLY PLACE IN THE LINKER WHERE A DATA ADDRESS BECOMES A
+\ POINTER AGAIN - the cell read below and the blob byte reads in aot-lib.f both
+\ come through here, so no recorded value reaches DATA by a route of its own.
+\ Every caller bounds-checks first - DATA-CELL? for a recorded value,
+\ XTC-IN-WINDOW? for a declared cell, the span bounds for the scan and the copy -
+\ so the offset is inside the mapping.
+: DATA-PTR ( n -- ptr u8 ) {: at:n :}
+   data-base BYTE-VIEW at DATA-VA VA>N - + ;
+
+\ The cell at a DATA address. The span scan in aot-lib.f reads its cells through
+\ this word too, so the two checks that meet such a cell cannot read one
+\ differently.
+: DATA-CELL@ ( n -- n ) DATA-PTR CELL-VIEW @ ;
 
 \ A WHOLE cell at this address is inside the mapped DATA region, so reading it to
 \ see what it holds cannot fault. DATA-ADDRESS? admits the region's one-past end,
@@ -656,8 +679,14 @@ variable WI
 \ the code pointer for one address inside it. A record carries its entry as a
 \ pointer and the walk carries addresses as integers, so the crossing happens
 \ here, once, as the entry plus the address's distance from it.
+\ The crossing is the dictionary base - the one address published in both domains
+\ (AOT-DBASE@ and AOT-DBASE-N above) - plus the distance from it. The emitted
+\ code is mapped above that base, so this is checked arithmetic and not a cast,
+\ and the closure table's entries cross here too (aot-lib.f CLO-AT-N).
+: CODE-N ( ptr u8 -- n ) {: p:ptr :}
+   p AOT-DBASE@ BYTE-VIEW -  AOT-DBASE-N + ;
 : REC-ENTRY-N ( ptr n -- n ) {: r:ptr :}
-   r REC-CODE-PTR@ AOT-DBASE@ BYTE-VIEW -  AOT-DBASE-N + ;
+   r REC-CODE-PTR@ CODE-N ;
 : REC-END-N ( ptr n -- n ) {: r:ptr :}  r REC-ENTRY-N r REC-BYTES + ;
 : CODE-AT ( ptr n n -- ptr u8 ) {: r:ptr v:n :}
    r REC-CODE-PTR@  v r REC-ENTRY-N -  + ;
