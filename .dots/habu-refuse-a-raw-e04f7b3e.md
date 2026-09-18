@@ -1,0 +1,9 @@
+---
+title: Refuse a raw pointee flowing into a declared pointer cell
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-18T21:03:35.079782+03:00"
+---
+
+Problem (adversarial review of 576a816e..77fe4a87, MAJOR, pre-existing): the raw-storage rule (E-RAW-CELL-PTR, MD-RAW-EXEC) is bypassed through the field door on a declared pointer cell. Checked source: 'variable V  PTR-VARIABLE X  : ALIAS ( -- ) V X ! ;  : HOOK ( -- ptr [ -- n ] ) X 0 ptr-field @ ;  : PUT ( -- ) [: 1 ;] HOOK ! ;  : FIRE ( -- n ) HOOK @ execute ;  ALIAS PUT 1 V ! FIRE' certifies by the code paths: 'V X !' binds X's pointee 'ptr a_RAW' to V's 'ptr v_RAW' through FENCE-WHY's var arm (src/core/checker.f RAW-BLOCK? ~2296, FENCE-WHY var arm); 'X 0 ptr-field' (src/habu/prims.f ptr-field row, b free; RAW-FIELD-BASE? ~10752 refuses only a base whose OWN pointee is a RAW var) answers 'ptr ptr b'; '@' then binds b := [ -- n ] through an ordinary var, so FENCE-EXEC (asked only in RAW-OK? / BASE-BLOCK?) never fires; the quotation lands in the undeclared cell V, '1 V !' overwrites it and FIRE executes 1 (SIGBUS class). The same route reads V as 'ptr ptr u8', the hole docs/effects.md:363-369 pins only for 'X @'. Not executed by the reviewer; confirm on the engine first (red-first probe). Acceptance: the responsible layer chosen after the probe - either a RAW pointee flowing into a declared pointer cell ('V X !') is refused at the store, or ptr-field judges the base's pointee-of-pointee when it is RAW - without breaking the checker's own idiom 'P 0 ptr-field' on PTR-VARIABLEs (checker.f ~2534); regression in test/compiler/raw-cell-pointer-refusals.f for the store, the fetch-as-address and the fetch-as-quotation shapes; docs/effects.md's paragraph updated. Files: src/core/checker.f, src/habu/prims.f, test/compiler/raw-cell-pointer-refusals.f, docs/effects.md. Verify: the probe; three generations with cmp; test/run.f. Depends: none. Ownership: checker. Claim: unassigned.
