@@ -312,10 +312,41 @@ s" SDPGT ( n n n -- n n n ) TRI:MAKE TRI:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A private family reserves no wordlist to protect, so its words are protected BY
 \ NAME: the checker's undefine guard recognises the private spelling while the
-\ declaring package is open (E-CTOR-PROTECTED 7111).
+\ declaring package is open (E-CTOR-PROTECTED 7111). It protects the MEMBER SET
+\ the generator publishes — MAKE and UNMAKE for a product — and nothing else.
 package SDPRIVTEST
 private
 s" undefine HIDDEN-MAKE" TRY 7111 T=
+s" undefine HIDDEN-UNMAKE" TRY 7111 T=
+: HIDDEN-SIZE ( -- n ) 3 ;                            \ the family tail, a member nobody generates
+HIDDEN-SIZE 3 T=
+s" undefine HIDDEN-SIZE" TRY 0 T=                     \ so it is the package's own word
+public
+;package
+
+\ Protection keys on what a family GENERATES, never on its variant names. A
+\ private SUM or ENUM publishes no dictionary word at all — it constructs through
+\ the checker-owned token (src/core/sumtype.f TDECL-GENERATES?: a public family
+\ or a private PRODUCT, nothing else) — so a word spelled FAMILY-VARIANT inside
+\ the declaring package belongs to whoever wrote it and undefines. The second
+\ family spells its variants `make` and `unmake` on purpose: it stays undefinable
+\ even for a guard that checks the product member set but forgets to ask whether
+\ the family generates. Dot habu-protect-only-the-d1e2d4dc; before it both threw
+\ 7111 E-CTOR-PROTECTED, naming a protection the words never had.
+package SDPRIVSUM
+private
+SUMTYPE colour 0 VARIANT red ;VARIANT VARIANT green ;VARIANT ;SUMTYPE
+: COLOUR-RED ( -- n ) 5 ;
+COLOUR-RED 5 T=
+s" undefine COLOUR-RED" TRY 0 T=
+SUMTYPE deal 0 VARIANT make n ;VARIANT VARIANT unmake n ;VARIANT ;SUMTYPE
+: DEAL-MAKE ( -- n ) 6 ;
+DEAL-MAKE 6 T=
+s" undefine DEAL-MAKE" TRY 0 T=
+STRUCTURE veil 0 ;STRUCTURE                           \ an opaque product publishes no member pair
+: VEIL-MAKE ( -- n ) 4 ;
+VEIL-MAKE 4 T=
+s" undefine VEIL-MAKE" TRY 0 T=
 public
 ;package
 

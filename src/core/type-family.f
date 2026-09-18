@@ -1299,21 +1299,57 @@ public
    ma mu TF-CTOR-TAIL
    TF-CTOR-BUF TF-CTOR-U @ ;
 
+private
+
+\ THE PRIVATE MEMBER SET: the members a private family's generator publishes,
+\ and therefore the only names the by-name guard protects. It is a list on
+\ purpose — a generator that publishes a further private member extends it here
+\ and the recognizer needs no other change.
+\
+\ Today the list is the product pair src/core/structure-make.f SM-EMIT-ROWS adds
+\ and sumtype.f TDECL-PROD-PLAN generates: MAKE and UNMAKE. Nothing else is
+\ private and generated. DERIVE requires a public family
+\ (src/core/structure-decl.f DERIVE-GUARD), and a private SUM or ENUM publishes
+\ no word at all — sumtype.f TDECL-GENERATES? generates for a public family or a
+\ private PRODUCT, and a private sum constructs through the checker-owned token
+\ instead. So a variant name is NOT a member: inside a package that declares a
+\ private `SUMTYPE colour`, an ordinary `COLOUR-RED` is the package's own word
+\ and stays undefinable (dot habu-protect-only-the-d1e2d4dc).
+2 constant TF-PRIV-MEMBER-N
+: TF-PRIV-MEMBER$ ( n -- ptr u8 n ) {: i:n :}
+   i 0= IF s" make" EXIT THEN
+   s" unmake" ;
+
+variable TF-CM              \ member scan index (TF-CI stays the family scanner's)
+: TF-PRIV-NAME? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ = a member of THIS family?
+   0 TF-CM !
+   BEGIN TF-CM @ TF-PRIV-MEMBER-N < WHILE
+      a u  fam TFAM-NAME$ TF-CM @ TF-PRIV-MEMBER$ TF-CTOR-PRIV$  CORE-STR=CI
+         IF RES-TRUE EXIT THEN
+      TF-CM @ 1 + TF-CM !
+   REPEAT RES-FALSE ;
+
 \ A private family's generated word is recognised only while its DECLARING
 \ PACKAGE is open. That is the only scope the word resolves in, so it is the only
 \ scope in which the undefine guard has anything to protect; outside it the name
-\ belongs to whoever spells it.
-: TFAM-CTOR-PRIV-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
-   id SUMV-FAM@ {: fam:n :}
+\ belongs to whoever spells it. The three gates before that ask whether this
+\ family generated anything at all: a public one wears the qualified spelling, a
+\ private sum or enum publishes nothing, and a zero-field opaque product
+\ published no variant rows and so no member pair either.
+: TF-CTOR-PRIV-FAM? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
    fam TFAM-PUBLIC? IF RES-FALSE EXIT THEN
+   fam TFAM-PRODUCT? 0= IF RES-FALSE EXIT THEN
+   fam TFAM-VAR-COUNT@ 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a u  fam TFAM-NAME$ id SUMV-NAME$ TF-CTOR-PRIV$  CORE-STR=CI ;
+   a u fam TF-PRIV-NAME? ;
+
+public
 
 : TF-CTOR-PRIV-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 TF-CI !
-   BEGIN TF-CI @ SUMV-N @ < WHILE
-      a u TF-CI @ TFAM-CTOR-PRIV-AT? IF RES-TRUE EXIT THEN
+   BEGIN TF-CI @ TFAM-N @ < WHILE
+      a u TF-CI @ TF-CTOR-PRIV-FAM? IF RES-TRUE EXIT THEN
       TF-CI @ 1 + TF-CI !
    REPEAT RES-FALSE ;
 

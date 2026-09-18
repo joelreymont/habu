@@ -502,6 +502,18 @@ while the declaring package is open, and `CTOR-WORD?-XT` refuses `undefine` with
 `E-CTOR-PROTECTED`. There is no extra-tail rule for a private family, because
 there is no reserved package for a stray tail to extend.
 
+The names that guard covers are exactly the **member set** the generator
+publishes for that family — `MAKE` and `UNMAKE`, the pair
+`src/core/structure-make.f` emits — spelled against the family tail, and nothing
+else. It is a list in `TF-PRIV-MEMBER$` (`src/core/type-family.f`) that a later
+generator extends. Three kinds of family therefore protect no private name at
+all: a public one (its words wear the qualified spelling), a private SUM or ENUM
+(which publishes no word — it constructs through the checker-owned token), and a
+zero-field opaque product (which publishes no pair). Inside a package that
+declares a private `SUMTYPE colour`, an ordinary `: COLOUR-RED … ;` is the
+package's own word and `undefine COLOUR-RED` succeeds: a variant name is not a
+generated member.
+
 For `option`:
 
 ```text

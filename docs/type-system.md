@@ -679,10 +679,13 @@ package makes — in a sealed engine `EMIT-STORE-DEF-NAME` exits 84
 stages no wordlist for a private family, and the guarantee narrows to a
 **name-keyed** one: `TFAM-CTOR-WORD?` recognises the private spelling while the
 declaring package is open, and the checker's `CTOR-WORD?-XT` undefine guard
-refuses it with `E-CTOR-PROTECTED`. There is no "extra tail" rule for a private
-family because there is no reserved package for a stray tail to extend. This is
-a real, deliberate weakening relative to the public path; it is the price of the
-words being private at all.
+refuses it with `E-CTOR-PROTECTED`. It recognises the member set that family's
+generator published — the `TF-PRIV-MEMBER$` list, `make` and `unmake` today —
+and not every name spelled from the family tail, so a family that generates
+nothing (a private SUM or ENUM, an opaque zero-field product) protects nothing.
+There is no "extra tail" rule for a private family because there is no reserved
+package for a stray tail to extend. This is a real, deliberate weakening
+relative to the public path; it is the price of the words being private at all.
 
 #### How the accessors are minted
 
