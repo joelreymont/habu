@@ -217,7 +217,15 @@ defer REPL-READ ( -- ptr u8 n )
 
 \ The cell holds the line reader itself, so the accessor says so: a bare
 \ `( -- ptr a )` over a DATA offset let every caller pick the element type.
-: REPLH-PTR ( -- ptr [ -- ptr u8 n ] )
+\ REPLH-CELL is an image-ABI offset (layout.f names it and habu2.f reads it), so
+\ the cell cannot become a TYPED-VARIABLE, and since the executable-value fence
+\ (dot habu-refuse-an-executable-e8834546) no CHECKED word may give a DATA
+\ address a quotation pointee -- a `data-base <off> +` accessor declared
+\ `( -- ptr [ ... ] )` is the launder that fence refuses. The boundary is this
+\ one address computation, and it is exactly the declaration `xt!` makes below;
+\ it retires when the checker gains a quotation type kind
+\ (habu-campaign-c2-mem-c3d7662b), after which the accessor is checked again.
+TRUSTED: REPLH-PTR ( -- ptr [ -- ptr u8 n ] )
    data-base REPLH-CELL + ;
 
 : REPLH! ( [ -- ptr u8 n ] -- )

@@ -157,7 +157,10 @@ variable NC-COUNT                  \ NCOMP:COMPILE dispatches since MAIN took th
 variable NC-MARK                   \ NC-COUNT when the current set opened
 variable SCI                       \ reduction index for the least-squares sums
 
-variable PRIOR-XT                  \ the dispatch this tool borrowed, to be put back
+\ The dispatch this tool borrowed, to be put back. A DECLARED code cell: an
+\ undeclared one may not hold an execution token (dot
+\ habu-refuse-an-executable-e8834546).
+TYPED-VARIABLE PRIOR-XT [ ptr u8 n -- ]
 variable PRIOR-TIER                \ the tier the caller had selected
 
 8 constant PREFIX-CAP
@@ -174,7 +177,12 @@ variable BOUND-R                   \ and this is it
    NC-COUNT @ 1+ NC-COUNT !
    NCOMP:COMPILE ;
 
-: DISPATCH-CELL ( -- ptr [ ptr u8 n -- ] )
+\ NCOMP-DISPATCH:XT-CELL is an image-ABI offset and the cell holds the compile
+\ entry the native compiler installs with `xt!`. Since the executable-value
+\ fence (dot habu-refuse-an-executable-e8834546) no CHECKED word may give a DATA
+\ address a quotation pointee, so the address computation is a named boundary;
+\ it retires with the checker's quotation type kind (habu-campaign-c2-mem-c3d7662b).
+TRUSTED: DISPATCH-CELL ( -- ptr [ ptr u8 n -- ] )
    data-base NCOMP-DISPATCH:XT-CELL + ;
 
 \ ---- refusal ----------------------------------------------------------------

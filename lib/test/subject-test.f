@@ -48,7 +48,7 @@ variable SAVED-REPLH
 : REPL-NOOP ( -- ) ;
 
 : PARENT-PROBE ( -- )
-   ['] REPL-NOOP data-base REPLH-CELL + !
+   ['] REPL-NOOP data-base REPLH-CELL + xt!   \ xt! is the declaration point for a code cell
    s" SUBJECT-MISSING" TIMEOUT-MS >MS RUN
    70 T-OUTCOME-EXITED=
    LEN>N {: erru:n :}

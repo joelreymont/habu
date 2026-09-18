@@ -163,7 +163,12 @@ TAKE8
 : RAW-TARGET ( -- n ) 99 ;
 TRUSTED: RAW-TARGET-XT ( -- n ) ['] RAW-TARGET ;   \ the target's code address as a cell value
 
-: RAW-ARM ( -- ) ['] RAW-TARGET RAW-XT ! ;
+\ The store is the point: an ORDINARY `!` of a live token into an undeclared
+\ cell. Checked source may not write that any more (E-RAW-CELL-PTR, "an
+\ undeclared cell cannot hold an execution token"), and `xt!` would declare the
+\ cell -- the opposite of what this subject measures -- so the store is a named
+\ boundary and the runtime fact it pins stays measurable.
+TRUSTED: RAW-ARM ( -- ) ['] RAW-TARGET RAW-XT ! ;
 
 RAW-ARM
 

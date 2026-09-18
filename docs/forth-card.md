@@ -142,8 +142,8 @@ forth.md: **Structures And Enums**, **Habu Native Tooling Gotchas**.
 ## 5 A cell that holds an address is declared
 
 `variable`, `create`, `constant`, `here` and every `create … does>` definer
-publish raw storage: scalars, roles, atoms and xts only. A pointer in either
-direction, and `ptr-field` over such a base, is refused.
+publish raw storage: scalars, roles and atoms only. A pointer in either
+direction, an execution token, and `ptr-field` over such a base, is refused.
 
 ```forth
 variable V                                \ E-RAW-CELL-PTR at the fetch,
@@ -156,7 +156,7 @@ PTR-VARIABLE V                            \ the declared twin certifies
 The declared forms are the `PTR-*` and `TYPED-*` rows of § 4. Such a cell takes
 the address it was declared for and refuses the address *of* one.
 
-forth.md: **Structures And Enums**; the rule and its two open holes are
+forth.md: **Structures And Enums**; the rule and its open hole are
 `docs/effects.md` "Raw storage never holds an address".
 
 ## 6 Errors

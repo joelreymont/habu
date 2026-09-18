@@ -55,6 +55,7 @@ require lib/string.f
 NEWTYPE bpathing 0
 PTR-VARIABLE BPA-SLOT
 TYPED-VARIABLE BPA-PP ptr ptr n     \ a declared cell that really holds an address
+TYPED-VARIABLE BPA-HK [ -- n ]      \ a declared CODE cell, for the executable-value controls
 variable BPA-RAW                    \ an undeclared raw storage cell, for the RAW controls
 
 package BASE-PTR-ARITH-TEST
@@ -87,6 +88,16 @@ create DIAG-BUF 8192 allot
 \ borrowed the other one's prose would say the wrong thing about them.
 : RAW-REASON$ ( -- ptr u8 n )
    S\" \"reason\":\"raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell\"" ;
+
+\ An EXECUTABLE value reached through either base answers the same code with the
+\ raw rule's own reason and its own repair class: the answer is the same at every
+\ base and at an undeclared cell -- declare the cell that holds the xt (dot
+\ habu-refuse-an-executable-e8834546).
+: EXEC-REASON$ ( -- ptr u8 n )
+   S\" \"reason\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" ;
+
+: EXEC-REPAIR$ ( -- ptr u8 n )
+   S\" \"repair_class\":\"declare_xt_cell\"" ;
 
 : NP-CODE$ ( -- ptr u8 n )
    S\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" ;
@@ -122,6 +133,13 @@ create DIAG-BUF 8192 allot
    CODE$ HAS?  RAW-REASON$ HAS?  DB-REASON$ LACKS?  NULL-REASON$ LACKS?
    DISARM ;
 
+: EXEC-REFUSED ( ptr u8 n -- )
+   ARM
+   CHECK-CANDIDATE! 0 T=
+   CODE$ HAS?  EXEC-REPAIR$ HAS?  EXEC-REASON$ HAS?
+   REPAIR$ LACKS?  DB-REASON$ LACKS?  NULL-REASON$ LACKS?  RAW-REASON$ LACKS?
+   DISARM ;
+
 : CERTIFIES ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
 
@@ -144,6 +162,39 @@ create DIAG-BUF 8192 allot
 : CASE-DATA-ZERO ( -- )
    s" and data-base @, the first cell of the region" T-LABEL
    s" BPA-DZ ( -- bpathing ) data-base @" DB-REFUSED ;
+
+\ ---- the third door: an EXECUTION TOKEN out of a base address -----------------
+\ `: QCELL ( -- ptr [ -- n ] ) data-base 8 + ;` certified before this rule, and
+\ so did `: FIRE ( -- n ) QCELL @ execute ;`: the accessor handed its caller a
+\ certified code cell and the fetched value carried a DECLARED quotation type,
+\ so the opaque-execute rule -- which judges opacity, not provenance -- never
+\ fired. `1 W !  FIRE` then branched to address 1 (measured: SIGBUS). Neither
+\ base addresses a declared element, so neither can hand out code.
+
+: CASE-DATA-XT-CELL ( -- )
+   s" a DATA offset cannot be declared to hold an execution token" T-LABEL
+   s" BPA-Q ( -- ptr [ -- n ] ) data-base 8 +" EXEC-REFUSED ;
+
+: CASE-DATA-XT-ZERO ( -- )
+   s" the same at offset zero, with no arithmetic at all" T-LABEL
+   s" BPA-QZ ( -- ptr [ -- n ] ) data-base" EXEC-REFUSED ;
+
+\ The null's PERMISSIVE pointee arm is where a code cell declared over the null
+\ lands, so the executable value is fenced ahead of that arm. The price is
+\ CASE-NULL-XT-COMPARE below.
+: CASE-NULL-XT-CELL ( -- )
+   s" and a null-derived address cannot hold one either" T-LABEL
+   s" BPA-NQ ( -- ptr [ -- n ] ) NULL-PTR 8 +" EXEC-REFUSED ;
+
+: CASE-NULL-XT-ZERO ( -- )
+   s" NULL-PTR itself is no code cell" T-LABEL
+   s" BPA-NQZ ( -- ptr [ -- n ] ) NULL-PTR" EXEC-REFUSED ;
+
+\ A quotation READ out of a base-derived cell is the same refusal, which is what
+\ the caller of such an accessor would write if the accessor itself were legal.
+: CASE-DATA-XT-FETCH ( -- )
+   s" nor is one fetched from a DATA cell" T-LABEL
+   s" BPA-QF ( -- [ -- n ] ) data-base 8 + @" EXEC-REFUSED ;
 
 \ ---- the other half: an ADDRESS out of a base address ------------------------
 
@@ -373,6 +424,34 @@ create DIAG-BUF 8192 allot
    s" a wrapper that names its pointee is the repair, and it certifies" T-LABEL
    s" BPA-OK ( -- ptr n ) data-base 8 +" CERTIFIES ;
 
+\ ---- the executable-value controls -------------------------------------------
+
+\ `xt!` is the sanctioned mint: the one prim whose purpose is to DECLARE that
+\ the cell it writes holds an execution token, for a persisted cell whose
+\ address the caller works out from a table base and a row index. It keeps
+\ certifying at its own token -- otherwise the engine could not install its own
+\ callbacks -- and the window closes with that token.
+: CASE-XT-DECLARATION ( -- )
+   s" xt! declares the DATA cell it writes, so it keeps certifying" T-LABEL
+   s" BPA-XTPUT ( [ -- n ] -- ) data-base 8 + xt!" CERTIFIES ;
+
+\ A DECLARED code cell is a code cell wherever it is named: the storage word
+\ mints the quotation type and neither base is involved.
+: CASE-DECLARED-XT-CELL ( -- )
+   s" a TYPED-VARIABLE code cell certifies, and is executed" T-LABEL
+   s" BPA-HKACC ( -- ptr [ -- n ] ) BPA-HK" CERTIFIES
+   s" BPA-HKRUN ( -- n ) BPA-HK @ execute" CERTIFIES ;
+
+\ THE PRICE, MEASURED. Fencing the executable value ahead of the null's
+\ permissive arm costs the null COMPARISON on a declared code cell: it certified
+\ before this rule and is refused after it, with the same reason as the cell
+\ shapes above. An empty code cell is read through a NUMBER-typed accessor of
+\ the same address instead -- the two-accessor shape lib/genio.f already uses
+\ for its device rows, where a cleared row is spelled ZERO.
+: CASE-NULL-XT-COMPARE ( -- )
+   s" comparing a code cell against the null is refused, and says why" T-LABEL
+   s" BPA-HKNULL ( -- bool ) BPA-HK NULL-PTR =" EXEC-REFUSED ;
+
 public
 
 \ NULL-PTR is registered by a PRIM: row in src/core/cell-effects.f rather than a
@@ -427,6 +506,14 @@ public
    CASE-DATA-FIELD
    CASE-DATA-BYTE-VIEW
    CASE-DECLARED-POINTEE
+   CASE-DATA-XT-CELL
+   CASE-DATA-XT-ZERO
+   CASE-NULL-XT-CELL
+   CASE-NULL-XT-ZERO
+   CASE-DATA-XT-FETCH
+   CASE-XT-DECLARATION
+   CASE-DECLARED-XT-CELL
+   CASE-NULL-XT-COMPARE
    NULL-STILL-CALLABLE
    T-REPORT ;
 

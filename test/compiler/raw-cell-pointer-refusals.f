@@ -34,6 +34,13 @@ $1234 constant RCP-K
 create RCP-BYTES 256 allot
 TASK:#USER CELL TASK:+USER RCP-SLOT drop
 
+\ The DECLARED code cells the executable-value controls use. A TYPED-VARIABLE /
+\ TYPED-BUFFER over `[ in -- out ]` mints the quotation type at the storage
+\ word, so nothing may write the cell at another type -- which is why they keep
+\ certifying while the undeclared cell next to them does not.
+TYPED-VARIABLE RCP-HK [ -- n ]
+2 TYPED-BUFFER RCP-HKB [ -- n ]
+
 \ The nominal identity the field door used to forge. test/snapshot-xt-cell-decl.f
 \ keeps its own subject through a declared handle; the checked twin of its FORGE
 \ is CASE-FIELD-FORGE-NOMINAL below.
@@ -72,6 +79,15 @@ create DIAG-BUF 8192 allot
 : REPAIR$ ( -- ptr u8 n )
    S\" \"repair_class\":\"declare_pointer_cell\"" ;
 
+\ An EXECUTABLE value through the same cell answers the same code with its own
+\ reason and its own repair class: the repair is a declared CODE cell, not a
+\ declared pointer cell (dot habu-refuse-an-executable-e8834546).
+: EXEC-REASON$ ( -- ptr u8 n )
+   S\" \"reason\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" ;
+
+: EXEC-REPAIR$ ( -- ptr u8 n )
+   S\" \"repair_class\":\"declare_xt_cell\"" ;
+
 \ The repair class an ordinary return-stack mismatch keeps.
 : RETURN-REPAIR$ ( -- ptr u8 n )
    S\" \"repair_class\":\"fix_return_stack\"" ;
@@ -87,6 +103,10 @@ create DIAG-BUF 8192 allot
 \ from silently becoming a different rule's prose.
 : NAMED ( -- )
    CODE$ HAS?  REPAIR$ HAS?  VALUE-REASON$ HAS? ;
+
+: NAMED-EXEC ( -- )
+   CODE$ HAS?  EXEC-REPAIR$ HAS?  EXEC-REASON$ HAS?
+   VALUE-REASON$ LACKS?  REPAIR$ LACKS? ;
 
 \ ---- the pun itself: store an integer, fetch an address ----------------------
 
@@ -224,6 +244,50 @@ create DIAG-BUF 8192 allot
    NAMED
    DISARM ;
 
+\ ---- the executable value ----------------------------------------------------
+\ The same cell, declared to hold an EXECUTION TOKEN. `variable ZQW
+\ : ZQWQ ( -- ptr [ -- n ] ) ZQW ;  : I1 ( -- n ) ZQWQ @ execute ;` certified on
+\ every engine before this rule: the accessor handed its caller a certified code
+\ cell, the fetched value carried a DECLARED quotation type so the
+\ opaque-execute rule (which judges opacity, not provenance) never fired, and
+\ `1 ZQW !  I1` branched to address 1. The refusal lands on the ACCESSOR, which
+\ is the whole shape: an undeclared cell never gets a code type in the first
+\ place, so there is nothing left for `execute` to judge.
+
+: CASE-VARIABLE-AS-XT-CELL ( -- )
+   s" a plain variable cannot be declared to hold an execution token" T-LABEL
+   ARM
+   [: s" : RCP-QCELL ( -- ptr [ -- n ] ) RCP-V ;" EV ;] CHECK-RC TTHROWSQ
+   NAMED-EXEC
+   DISARM ;
+
+: CASE-CREATE-AS-XT-CELL ( -- )
+   s" a create'd cell gets the same answer" T-LABEL
+   ARM
+   [: s" : RCP-QCELLC ( -- ptr [ -- n ] ) RCP-C ;" EV ;] CHECK-RC TTHROWSQ
+   NAMED-EXEC
+   DISARM ;
+
+\ The two-definition shape the dot measured. The first definition is refused, so
+\ the second never names a word -- which is the point of judging the KIND rather
+\ than the `execute`.
+: CASE-EXECUTE-THROUGH-RAW ( -- )
+   s" and the fetch-and-execute pair dies at the accessor, before execute" T-LABEL
+   ARM
+   [: s" : RCP-QC2 ( -- ptr [ -- n ] ) RCP-V ;  : RCP-FIRE ( -- n ) RCP-QC2 @ execute ;" EV ;]
+      CHECK-RC TTHROWSQ
+   NAMED-EXEC
+   DISARM ;
+
+\ The write half. Refusing the accessor alone would leave `!` free to put a
+\ quotation into the cell for a later mention to read back.
+: CASE-QUOTATION-STORE ( -- )
+   s" a quotation cannot be stored into an undeclared cell either" T-LABEL
+   ARM
+   [: s" : RCP-QPUT ( -- ) [: 1 ;] RCP-V ! ;" EV ;] CHECK-RC TTHROWSQ
+   NAMED-EXEC
+   DISARM ;
+
 \ ---- the controls ------------------------------------------------------------
 
 \ The control for the three cases above. A return row that simply does not balance
@@ -257,6 +321,45 @@ create DIAG-BUF 8192 allot
    CODE$ LACKS?  VALUE-REASON$ LACKS?
    DISARM ;
 
+\ The DECLARED code cells. A rule that also refused these would refuse every
+\ hook the engine ships: the storage word mints the quotation type, so the cell
+\ is a code cell by declaration and its fetched value is executed with a known
+\ row.
+: CASE-TYPED-VARIABLE-XT ( -- )
+   s" a TYPED-VARIABLE code cell still certifies, and is still executed" T-LABEL
+   [: s" : RCP-HKACC ( -- ptr [ -- n ] ) RCP-HK ;" EV ;] 0 TTHROWSQ
+   [: s" : RCP-HKRUN ( -- n ) RCP-HK @ execute ;" EV ;] 0 TTHROWSQ
+   [: s" : RCP-HKPUT ( -- ) [: 1 ;] RCP-HK ! ;" EV ;] 0 TTHROWSQ ;
+
+: CASE-TYPED-BUFFER-XT ( -- )
+   s" and a TYPED-BUFFER of hooks certifies the same way" T-LABEL
+   [: s" : RCP-HKBRUN ( -- n ) 0 RCP-HKB @ execute ;" EV ;] 0 TTHROWSQ ;
+
+: CASE-DEFER-IS ( -- )
+   s" defer/is is the other declared code cell and is untouched" T-LABEL
+   [: s" defer RCP-DF ( -- n )" EV ;] 0 TTHROWSQ
+   [: s" : RCP-DFB ( -- ) [: 7 ;] is RCP-DF ;" EV ;] 0 TTHROWSQ
+   [: s" : RCP-DFC ( -- n ) RCP-DF ;" EV ;] 0 TTHROWSQ ;
+
+\ `xt!` is the sanctioned mint: the one prim whose purpose is to declare that
+\ the cell it writes holds an execution token (the engine installs its persisted
+\ callbacks with it, at an address worked out from a table base and a row
+\ index). Its token opens the window, and it is the only token that does.
+: CASE-XT-STORE ( -- )
+   s" xt! declares the cell it writes, so it keeps certifying" T-LABEL
+   [: s" : RCP-XTPUT ( -- ) [: 1 ;] RCP-V xt! ;" EV ;] 0 TTHROWSQ
+   [: s" : RCP-XTPUTD ( -- ) [: 1 ;] data-base 8 + xt! ;" EV ;] 0 TTHROWSQ ;
+
+\ The window closes with the token: the next mention of the same cell is judged
+\ by the rule again.
+: CASE-XT-WINDOW-CLOSES ( -- )
+   s" and the window it opens does not outlive its own token" T-LABEL
+   ARM
+   [: s" : RCP-XTTHEN ( -- ptr [ -- n ] ) [: 1 ;] RCP-V xt!  RCP-V ;" EV ;]
+      CHECK-RC TTHROWSQ
+   NAMED-EXEC
+   DISARM ;
+
 \ A TASK:+USER slot publishes a CONCRETE `-- ptr n`, so it was never part of
 \ this pun and its refusal is the ordinary one it always gave. It is here to
 \ prove the new code names the new rule and nothing else.
@@ -286,7 +389,16 @@ public
    CASE-RETURN-CALL
    CASE-RETURN-BALANCE
    CASE-ABANDONED-CANDIDATE
+   CASE-VARIABLE-AS-XT-CELL
+   CASE-CREATE-AS-XT-CELL
+   CASE-EXECUTE-THROUGH-RAW
+   CASE-QUOTATION-STORE
    CASE-BYTE-BUFFER
+   CASE-TYPED-VARIABLE-XT
+   CASE-TYPED-BUFFER-XT
+   CASE-DEFER-IS
+   CASE-XT-STORE
+   CASE-XT-WINDOW-CLOSES
    CASE-TASK-SLOT
    T-REPORT ;
 

@@ -2156,11 +2156,11 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 \ fetch, a constructor, and role/converter words keep binding a family in value
 \ position -- only a raw-storage-minted var is fenced. RAW-OK? both DECIDES
 \ admissibility and PROPAGATES the kind (a var arg is raised RAW -- the meet).
-\ It REJECTS a NOMINAL-FAMILY / LAYOUT value (a T-PARAM), a LINEAR con and a
-\ POINTER, and ADMITS a plain scalar/role con and an atom/xt: the engine's own
-\ codegen legitimately raw-stores role
-\ cons (`LBL RT-LPOS !`) and xts (defer/hook cells like `cold-hook!`). Fencing
-\ nominal ROLE atoms (idx/len) out of raw storage too needs that role/xt
+\ It REJECTS a NOMINAL-FAMILY / LAYOUT value (a T-PARAM), a LINEAR con, a
+\ POINTER and an EXECUTABLE value (a T-QUOT, see FENCE-EXEC below), and ADMITS a
+\ plain scalar/role con and an atom: the engine's own codegen legitimately
+\ raw-stores role cons (`LBL RT-LPOS !`). Fencing
+\ nominal ROLE atoms (idx/len) out of raw storage too needs that role
 \ scratch migrated to typed cells first, so it is a documented follow-on; this
 \ dot closes the arity-0 nominal-family / layout mint, the epic's forgery target.
 \
@@ -2182,23 +2182,62 @@ variable RAW-PTR-HIT   \ a RAW cell refused a pointer in this token's unify; UF-
 \ 0 none, TVK-NULL the null, TVK-DBASE the DATA region. UF-CAPTURE names the one
 \ that hit, so the two rules answer with their own prose.
 variable BASE-PTR-HIT
+\ An undeclared cell or a base address was declared to hold an EXECUTABLE value
+\ in this token's unify (dot habu-refuse-an-executable-e8834546). Its own latch,
+\ because the E-RAW-CELL-PTR family answers it with its own reason and its own
+\ repair class: the repair is a declared code cell, not a declared pointer cell.
+variable RAW-EXEC-HIT
+
+\ `xt!` IS THE SANCTIONED CODE-CELL MINT, and it is exempt from FENCE-EXEC for
+\ the same reason LAYOUT-INTRO is exempt from the nominal rules: it is the one
+\ prim whose whole purpose is to DECLARE that the cell it writes holds an
+\ execution token, for a persisted cell whose address the caller works out at
+\ run time from a table base and a row index (`' W DECLARATIONS <off> + xt!`,
+\ dot habu-declare-persisted-cb-b150b5d5). Its row cannot say so -- there is no
+\ quotation-kinded type variable, only TVK-ANY and TVK-RAW (dot
+\ habu-add-a-quotation-1610f30c) -- so the window is opened on the token, in
+\ DO-TOK1, and closed with the same token's latches. It covers that one step:
+\ every OTHER way of putting a quotation into an undeclared cell or a
+\ base-derived address, `!` included, is refused.
+variable XT-DECL
+
+\ FENCE-WHY's answers, and the whole vocabulary of the cell disciplines.
+0 constant FENCE-OK       \ the cell may absorb the term
+1 constant FENCE-FAMILY   \ a nominal family or a layout value (the mint)
+2 constant FENCE-PTR      \ a pointer, in either direction
+3 constant FENCE-LINEAR   \ a linear con
+4 constant FENCE-EXEC     \ an executable value: a quotation row
 
 \ FENCE-WHY answers ONE question for all three fenced kinds, so neither base
-\ address can drift from TVK-RAW's admissibility: 0 admissible, 1 nominal family
-\ or layout (the mint), 2 pointer, 3 linear con. A var argument is MET with `kind` (trailed)
-\ rather than judged, which is how the kind rides `+`, `-`, `cell+`, `char+`,
-\ `1+`, `1-` -- whose rows keep the base's pointee var -- and out through `@`.
-\ `term` is already resolved.
+\ address can drift from TVK-RAW's admissibility. A var argument is MET with
+\ `kind` (trailed) rather than judged, which is how the kind rides `+`, `-`,
+\ `cell+`, `char+`, `1+`, `1-` -- whose rows keep the base's pointee var -- and
+\ out through `@`. `term` is already resolved.
+\
+\ AN UNDECLARED CELL HOLDS NO EXECUTABLE VALUE (FENCE-EXEC, dot
+\ habu-refuse-an-executable-e8834546). A quotation row used to be admitted here
+\ because the ENGINE raw-stores xts, but admissibility is about PROVENANCE, not
+\ about what the store instruction can carry: a DATA word or a `variable`
+\ declared `( -- ptr [ -- n ] )` handed its caller a certified code cell, the
+\ fetched value carried a declared quotation type so the opaque-execute rule
+\ (MD-EXEC-OPAQUE, which judges OPACITY) never fired, and `1 V ! FIRE` branched
+\ to address 1 (measured: SIGBUS). The declared code cells -- TYPED-VARIABLE /
+\ TYPED-BUFFER / DYNAMIC-BUFFER over `[ in -- out ]`, `defer`/`is`, `xt!` --
+\ mint the T-QUOT at the storage word, so nothing else may write the cell at
+\ another type; those keep certifying, and so does every quotation that never
+\ goes through raw storage.
 : FENCE-WHY ( n n -- n ) {: t:n kind:n :}
-   t ISVAR IF t PAY kind TVK-RAISE-TO 0 EXIT THEN
-   t TAG T-PARAM = IF 1 EXIT THEN
-   t TAG T-CON = IF t PAY CT-LINEAR? IF 3 ELSE 0 THEN EXIT THEN
-   t TAG T-PTR = IF 2 EXIT THEN
-   0 ;                                                \ atom / xt / row: engine raw-stores these -> admit
+   t ISVAR IF t PAY kind TVK-RAISE-TO FENCE-OK EXIT THEN
+   t TAG T-PARAM = IF FENCE-FAMILY EXIT THEN
+   t TAG T-CON = IF t PAY CT-LINEAR? IF FENCE-LINEAR ELSE FENCE-OK THEN EXIT THEN
+   t TAG T-PTR = IF FENCE-PTR EXIT THEN
+   t TAG T-QUOT = IF XT-DECL @ IF FENCE-OK ELSE FENCE-EXEC THEN EXIT THEN
+   FENCE-OK ;                                         \ atom: engine raw-stores these -> admit
 
 : RAW-OK? ( n -- bool )   \ may a RAW cell absorb resolved `term`? (meets var RAW)
    T-RES TVK-RAW FENCE-WHY
-   dup 2 = IF -1 RAW-PTR-HIT ! THEN                   \ ptr: a raw cell is never an address
+   dup FENCE-PTR  = IF -1 RAW-PTR-HIT ! THEN          \ ptr: a raw cell is never an address
+   dup FENCE-EXEC = IF -1 RAW-EXEC-HIT ! THEN         \ quotation: nor a code cell
    0= ;
 
 \ Neither base address addresses a declared element, so nothing READ through one
@@ -2222,9 +2261,27 @@ variable BASE-PTR-HIT
 \ pointer as `( -- ptr a )` restricts its own declared quantifier and NP-CHECK
 \ refuses it -- which is the point: such a wrapper mints whatever its caller asks
 \ for.
+\ AN EXECUTABLE VALUE IS FENCED THROUGH THE NULL'S PERMISSIVE ARM TOO, which is
+\ why the FENCE-EXEC arm below is tested BEFORE it. The permissive arm exists
+\ for the shapes that mean the one literal address -- compare, store, distance,
+\ `0=` -- and the null's pointee is where a code cell declared over the null
+\ lands: `( -- ptr [ -- n ] ) NULL-PTR 8 +` is a pointee bind, not a value one
+\ (TVK-DBASE needs no such arm, since it blocks at every depth), and without
+\ this the fetched value is executed at address 8. The price is measured and
+\ deliberate: a DECLARED code cell may no longer be compared with or subtracted
+\ from the null (`HK NULL-PTR =`, `<>`, `-` certify before this rule and are
+\ refused after it). An empty code cell is read through a NUMBER-typed accessor
+\ of the same address instead -- the two-accessor shape lib/genio.f already uses
+\ for its device rows, where a cleared row is spelled ZERO.
+\ It is latched as the RAW rule's own refusal (RAW-EXEC-HIT), not as a
+\ base-address one, because the answer is the same at every base and at an
+\ undeclared cell: declare the cell that holds the xt.
 : BASE-BLOCK? ( n n -- bool )   \ resolved term + base kind; may that cell NOT absorb the term?
    {: t:n kind:n :}
-   t kind FENCE-WHY 0= IF RES-FALSE EXIT THEN
+   t kind FENCE-WHY
+   dup FENCE-OK   = IF drop RES-FALSE EXIT THEN
+   dup FENCE-EXEC = IF drop -1 RAW-EXEC-HIT ! RES-TRUE EXIT THEN
+   drop
    kind TVK-NULL =  CUR-STRICT @ 0 <> and IF RES-FALSE EXIT THEN   \ the null inside a pointee: the pointer, not the cell
    kind BASE-PTR-HIT ! RES-TRUE ;
 \ THE ARMED WINDOW IS THE SANCTIONED MINT, and it is exempt here for the same
@@ -2656,6 +2713,7 @@ variable LTC-P
 28 constant MD-UNDERFLOW      \ a step reached under the definition's declared inputs (STEP-BORROWS?)
 29 constant MD-NULL-PTR       \ a nominal or a pointer read through NULL-PTR (BASE-BLOCK?); same E-RAW-CELL-PTR code, prose names the null
 30 constant MD-DBASE-PTR      \ the same through data-base, at any pointee depth; same E-RAW-CELL-PTR code, prose names the DATA region
+31 constant MD-RAW-EXEC       \ an execution token met an undeclared cell or a base address (FENCE-EXEC); same E-RAW-CELL-PTR code, its own prose and repair class
 
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
@@ -2682,6 +2740,7 @@ variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 \ open. The base-address refusal names itself exactly as the raw one does
 \ (BASE-BLOCK?).
 : CELL-DIAG! ( -- )
+   RAW-EXEC-HIT @ IF MD-RAW-EXEC MDIAG! THEN   \ the executable value first: it is the one rule that names a base and a raw cell alike
    RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
    BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN   \ the base-address refusals name themselves the same way (BASE-BLOCK?),
    BASE-PTR-HIT @ TVK-DBASE = IF MD-DBASE-PTR MDIAG! THEN ; \ each with the base it was raised on
@@ -13204,7 +13263,8 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
-   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !
+   TKF TKFU @ s" xt!" CORE-STR= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
    TKF TKFU @ LAYOUT-XPORT-TOK? LAYOUT-XPORT !    \ transport op? layout value moves whole
    TOK0 @ IF NAME-TOK ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
@@ -13257,7 +13317,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    \ because TRY-PRIMS applies candidate rows in turn (`V @ cell+` raises one on
    \ the `ptr a -- ptr a` row and then succeeds on `n -- n`) and the next token
    \ must start clean.
-   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 XT-DECL !
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -14551,7 +14611,7 @@ ASIG-GRAPH-CHECK-INSTALL
    0 CF-LOOPS !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
-   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    NULL-PTR SGA !  0 SGU !

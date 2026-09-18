@@ -344,8 +344,9 @@ undeclared cell is fenced as well.
 `variable`, `create`, `constant`, `here` and every user definer built from
 `create … does>` publish **raw storage**: a `-- ptr a` whose pointee `a` is
 sealed RAW, and re-freshened at every mention. A RAW cell admits a plain scalar
-or role con, an atom and an xt, and it **refuses a pointer in either
-direction** — `E-RAW-CELL-PTR`, repair class `declare_pointer_cell`. So
+or role con and an atom, it **refuses a pointer in either
+direction** — `E-RAW-CELL-PTR`, repair class `declare_pointer_cell` — and it
+refuses an **execution token** (below). So
 `variable V  : PEEK ( n -- n ) V ! V @ @ ;` is refused at the fetch, the store
 half `V ! V @ !` at the store, `V @ c@` at the byte door, `$1234 constant K
 : F ( -- n ) K @ ;` with no store in sight, `here ! here @ @`, and
@@ -366,6 +367,55 @@ their pointee out. A declared cell takes the address it was declared for and
 refuses an address *of* one: `PTR-VARIABLE X  : F ( -- ptr u8 ) X @ ;` certifies
 while `( -- ptr ptr u8 )` does not, because the element type is minted at the
 accessor rather than at the storage word.
+
+### An undeclared cell holds no execution token
+
+The same admissibility governs code. A quotation row used to be admitted into a
+raw cell and under either base address because the engine raw-stores xts, but
+admissibility is about **provenance**, not about what the store instruction can
+carry: `variable ZQW  : ZQWQ ( -- ptr [ -- n ] ) ZQW ;
+: I1 ( -- n ) ZQWQ @ execute ;` certified, and so did the same pair over
+`data-base 8 +` and `NULL-PTR 8 +`. The accessor handed its caller a certified
+code cell, the fetched value carried a **declared** quotation type, so the
+opaque-execute rule — which judges opacity, not provenance — never fired, and
+`1 ZQW !  I1` branched to address 1 (measured: SIGBUS).
+
+A `T-QUOT` payload met by a RAW cell or by either base address is therefore
+refused: `E-RAW-CELL-PTR` again, with its own reason ("an undeclared cell cannot
+hold an execution token / a quotation") and its own repair class,
+`declare_xt_cell`. It is judged where the other cell kinds are judged — the
+accessor's own declaration — not at `execute`, so the fetch-and-execute pair
+dies at its first definition. The store half, `[: 1 ;] V !`, is refused at the
+same binding.
+
+**A cell that holds code is declared**: `TYPED-VARIABLE NAME [ in -- out ]`, a
+`TYPED-BUFFER` or `DYNAMIC-BUFFER` of `[ in -- out ]`, and `defer`/`is`. Each
+mints the quotation type at the storage word, so nothing may write the cell at
+another type, and `NAME @ execute` fit-checks the row.
+
+**`xt!` is the sanctioned mint.** It is the one prim whose purpose is to declare
+that the cell it writes holds an execution token, for a persisted cell whose
+address the caller works out at run time from a table base and a row index
+(`' W DECLARATIONS <off> + xt!`), and its row cannot say so: there is no
+quotation-kinded type variable, only `TVK-ANY` and `TVK-RAW`. The window is
+therefore opened on the `xt!` **token** and closes with it, so
+`[: 1 ;] data-base 8 + xt!` certifies while the next mention of the same cell is
+judged by the rule again.
+
+An accessor that must hand out a code cell at a fixed **image-ABI** offset
+cannot be written in checked Habu for the same reason, so the three the engine
+needs are named `TRUSTED:` boundaries with the address computation as their whole
+body: `src/habu/repl.f` `REPLH-PTR`, `lib/genio.f` `ENGINE-ROW`, and the
+`DISPATCH-CELL` of the compile-scaling tools. They retire when the checker gains
+a quotation type kind (`habu-campaign-c2-mem-c3d7662b`).
+
+The price is measured and deliberate: the null's permissive pointee arm is where
+a code cell declared over the null lands, so the executable value is fenced
+ahead of that arm and a **declared** code cell may no longer be compared with or
+subtracted from the null (`HK NULL-PTR =`, `<>`, `-` certified before this rule
+and are refused after it). An empty code cell is read through a number-typed
+accessor of the same address instead — the two-accessor shape `lib/genio.f`
+already uses for its device rows, where a cleared row is spelled `ZERO`.
 
 ### A base address addresses no declared element
 
@@ -415,9 +465,9 @@ address is still reached with `ptr-field` (the declared door — the checker's o
 `DATA-PTR`/`DATA-CELL@` still take `data-base BYTE-VIEW` before any arithmetic,
 which erases the kind into a concrete `u8`. A DATA cell declared to hold a
 *quotation* — `lib/genio.f` `ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )`, the
-write-handler row the output funnel dispatches through — also still certifies: a
-quotation row is not a nominal and not an address, and the executable payload is
-its own open question under `habu-refuse-an-executable-e8834546`.
+write-handler row the output funnel dispatches through — is **not** one of them:
+it is refused by the executable-token rule above, and the three engine
+accessors of that shape are named `TRUSTED:` boundaries.
 
 **The wrapper is refused where it is written.** `: SB-LEN ( -- ptr a )
 data-base STRING-ABI:SB-LEN-OFF + ;` handed its caller the choice of element
@@ -426,7 +476,8 @@ was already reachable through a shipped library word. A declared quantifier that
 the body restricts to a base address is `E-NONPARAMETRIC-EFFECT`, "restricted to
 the DATA region's base address" or "restricted to the null address" — the
 diagnostic names which — and the repair is to name the pointee the cell really holds
-(`ptr n`, `ptr u8`, `ptr [ in -- out ]`). A quantifier restricted through an
+(`ptr n`, `ptr u8`; not `ptr [ in -- out ]`, which the executable-token rule
+refuses over a base address). A quantifier restricted through an
 **input-only** position is excused **for the null only**:
 `: RELEASE ( ptr ptr a -- ) … NULL-PTR cb ! ;` stores the null the language's own
 reset code stores, and the kind still rides the published effect, so every
@@ -647,10 +698,11 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   fetch/store meets the kind through unification (with rollback + snapshot
   persistence), but it **rejects a nominal-family or layout value**, while a
   numeric round-trip still certifies. This is the value-position mirror of the
-  pointee-side `ptr family` seal. Nominal *role* atoms (`idx`/`len`/`label`/…
-  and `DEFTYPE` names) and execution tokens stay admitted in raw storage for now,
-  because the engine's own codegen keeps labels and xts in raw scratch cells;
-  fencing those out as well needs that role/xt scratch migrated to typed cells
+  pointee-side `ptr family` seal. Execution tokens are fenced too ("An
+  undeclared cell holds no execution token" above). Nominal *role* atoms
+  (`idx`/`len`/`label`/… and `DEFTYPE` names) stay admitted in raw storage for
+  now, because the engine's own codegen keeps labels in raw scratch cells;
+  fencing those out as well needs that role scratch migrated to typed cells
   first (tracked follow-on).
 
   **The seal holds on every path, because it is applied where the cell is

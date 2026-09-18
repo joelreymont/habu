@@ -156,7 +156,15 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : ENGINE-ROW-OFF ( n -- n ) {: idx:n :}
    GENIO-ABI:WRITE-OFF idx 1- 8 * + ;
 
-: ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
+\ GENIO-ABI:WRITE-OFF is an image-ABI offset, so this row cannot become a
+\ TYPED-VARIABLE, and since the executable-value fence (dot
+\ habu-refuse-an-executable-e8834546) no CHECKED word may give a DATA address a
+\ quotation pointee: that is the launder the fence refuses. The boundary is the
+\ address computation alone -- the same declaration `xt!` makes in
+\ QUOTATION-STORAGE:STORE below -- and it retires with the checker's quotation
+\ type kind (habu-campaign-c2-mem-c3d7662b). ENGINE-ROW-CLEAR, which touches
+\ the same cell as a number, stays checked.
+TRUSTED: ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
    ENGINE-ROW-OFF data-base + ;
 
 : ENGINE-ROW-CLEAR ( n -- )

@@ -495,7 +495,18 @@ field. Only a type annotation on that local is refused: `{: p:n :}` is
   forms: `PTR-VARIABLE` (effect `( -- ptr ptr a )`, in place of `variable` plus
   `0 ptr-field`), `PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ptr t`,
   `TYPED-BUFFER NAME ptr t`. See [effects.md](effects.md) "Raw storage never
-  holds an address" for the two open holes.
+  holds an address" for the open hole.
+- **Nor an execution token.** The same cell, and either base address, refuses a
+  quotation: `variable ZQW : ZQWQ ( -- ptr [ -- n ] ) ZQW ;` and
+  `( -- ptr [ -- n ] ) data-base 8 +` are `E-RAW-CELL-PTR` with the reason "an
+  undeclared cell cannot hold an execution token / a quotation" and repair class
+  `declare_xt_cell`; before the rule they certified and the fetched value was
+  executed at whatever integer the cell held. The declared forms:
+  `TYPED-VARIABLE NAME [ in -- out ]`, a `TYPED-BUFFER`/`DYNAMIC-BUFFER` of
+  `[ in -- out ]`, `defer`/`is`, and `xt!`, which declares the cell it writes.
+  The cost is the null comparison on a declared code cell (`HK NULL-PTR =`),
+  which is refused now; read such a cell's emptiness through a number-typed
+  accessor of the same address.
 - **A definer that only wants a type writes an EMPTY `does>` clause.** `does>`
   runs after the created word pushes its address; an empty clause is elided at
   both tiers, so a read costs the one load a bare cell costs. Spelling
