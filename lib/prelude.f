@@ -32,5 +32,6 @@ export f>=
 : fdrop ( r -- ) drop ;
 : fdup  ( r -- r r ) dup ;
 : fover ( r r -- r r r ) over ;
-: f<=   ( r r -- bool ) f> 0= ;
-: f>=   ( r r -- bool ) f< 0= ;
+\ Ordered comparisons: neither direction accepts an unordered (NaN) operand.
+: f<=   ( r r -- bool ) {: a:r b:r :} a b f< a b f= or ;
+: f>=   ( r r -- bool ) {: a:r b:r :} a b f> a b f= or ;
