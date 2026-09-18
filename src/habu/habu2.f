@@ -962,63 +962,114 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-APPEND-ENGINE-SNAP-HOOK
    done LBL, ;
 
+\ One ordered row table, projected by boot phase and emitter. Target kinds
+\ filter loads/provides; the path emitter reserves every target's spelling.
+1 constant PFX-CHECKER
+2 constant PFX-DECL
+4 constant PFX-CORE
+8 constant PFX-DYNAMIC
+16 constant PFX-OWNER
+32 constant PFX-SEAL
+64 constant PFX-ARGV
+128 constant PFX-INTERNAL
+256 constant PFX-TOPROW
+512 constant PFX-BASELIB
+1024 constant PFX-RESTLIB
+
+: PFX-FILES ( n [ n ptr n ptr u8 n -- ] -- ) {: parts row :}
+   parts PFX-CHECKER and 0 <> if
+      PFX-COMMON LPUTIL s" src/core/util.f" row execute
+      PFX-COMMON LPCELL s" src/core/cell.f" row execute
+      PFX-COMMON LPPTRSTORAGE s" src/core/pointer-storage.f" row execute
+      PFX-COMMON LPENGINEERROR s" src/core/engine-error.f" row execute
+      PFX-COMMON LPEXECVECTOR s" src/core/exec-vector.f" row execute
+      PFX-COMMON LPFETCHABI s" src/core/checker-fetch-abi.f" row execute
+      PFX-COMMON LPOWNERABI s" src/core/checker-owner-abi.f" row execute
+      PFX-COMMON LPPRIMS s" src/habu/prims.f" row execute
+      PFX-COMMON LPCHECKER s" src/core/checker.f" row execute
+      PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" row execute
+      PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" row execute
+      PFX-COMMON LPTYPESCHEMA s" src/core/type-schema.f" row execute
+      PFX-COMMON LPTYPEFAM s" src/core/type-family.f" row execute
+      PFX-COMMON LPRENDER s" src/core/render.f" row execute
+      PFX-COMMON LPSUMTYPE s" src/core/sumtype.f" row execute
+      PFX-COMMON LPLAYOUTBUF s" src/core/layout-buffer.f" row execute
+      PFX-COMMON LPLAYOUTVALID s" src/core/layout-valid.f" row execute
+      PFX-COMMON LPHOOK s" src/core/check-hook.f" row execute
+      PFX-COMMON LPCELLEFF s" src/core/cell-effects.f" row execute
+      PFX-COMMON LPDECLTXN s" src/core/declaration-transaction.f" row execute
+      PFX-COMMON LPGENDECL s" src/core/generated-declaration.f" row execute
+   then
+   parts PFX-DECL and 0 <> if
+      PFX-COMMON LPDECLEVENT s" src/core/decl-event.f" row execute
+      PFX-COMMON LPSTRUCTMAKE s" src/core/structure-make.f" row execute
+      PFX-COMMON LPSTRUCTDECL s" src/core/structure-decl.f" row execute
+      PFX-COMMON LPENUMDECL s" src/core/enum-decl.f" row execute
+   then
+   parts PFX-CORE and 0 <> if
+      PFX-COMMON LPSTRUCTURES s" src/core/structures.f" row execute
+      PFX-COMMON LPROLES s" src/core/roles.f" row execute
+      PFX-COMMON LPBYTES s" src/core/bytes.f" row execute
+   then
+   parts PFX-DYNAMIC and 0 <> if
+      PFX-COMMON LPDYNAMIC s" src/core/dynamic-storage.f" row execute
+   then
+   parts PFX-CORE and 0 <> if
+      PFX-LINUX LPLINUXTARGET s" src/os/linux/target.f" row execute
+      PFX-MACOS LPMACOSTARGET s" src/os/macos/target.f" row execute
+      PFX-X64 LPX64TARGET s" src/os/linux-x86-64/target.f" row execute
+      PFX-LINUX LPLINUXLAYOUT s" src/os/linux/layout.f" row execute
+      PFX-MACOS LPMACOSLAYOUT s" src/os/macos/layout.f" row execute
+      PFX-X64 LPX64LAYOUT s" src/os/linux-x86-64/layout.f" row execute
+      PFX-COMMON LPSTACKABI s" src/habu/stack-abi.f" row execute
+      PFX-COMMON LPHABULAYOUT s" src/habu/layout.f" row execute
+      PFX-COMMON LPENVBASE s" src/os/env-base.f" row execute
+      PFX-COMMON LPINCLUDE s" src/core/include.f" row execute
+      PFX-COMMON LPENUMS s" src/core/enums.f" row execute
+      PFX-COMMON LPSHA256 s" src/core/sha256.f" row execute
+      PFX-COMMON LPTFAMSHA s" src/core/type-family-sha.f" row execute
+      PFX-COMMON LPCOMBINATORS s" src/core/combinators.f" row execute
+      PFX-COMMON LPCODESPAN s" src/habu/code-span.f" row execute
+      PFX-COMMON LPXREF s" src/habu/xref.f" row execute
+      PFX-COMMON LPGENDECLDICT s" src/core/generated-declaration-dictionary.f" row execute
+      PFX-COMMON LPGENDECLPROT s" src/core/generated-declaration-protection.f" row execute
+      PFX-COMMON LPLAYOUTSEAL s" src/core/layout-buffer-seal.f" row execute
+   then
+   parts PFX-OWNER and 0 <> if
+      PFX-COMMON LPOWNERGUARD s" src/core/checker-owner-guard.f" row execute
+   then
+   parts PFX-SEAL and 0 <> if
+      PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" row execute
+   then
+   parts PFX-ARGV and 0 <> if
+      PFX-COMMON LPSCRIPTARGV s" src/os/script-argv.f" row execute
+   then
+   parts PFX-INTERNAL and 0 <> if
+      PFX-COMMON LPINTMARK s" src/core/internal-mark.f" row execute
+   then
+   parts PFX-TOPROW and 0 <> if
+      PFX-COMMON LPTOPROW s" src/core/top-row.f" row execute
+   then
+   parts PFX-BASELIB and 0 <> if
+      PFX-COMMON LPPRELUDE s" lib/prelude.f" row execute
+      PFX-COMMON LPERRORS s" lib/errors.f" row execute
+   then
+   parts PFX-RESTLIB and 0 <> if
+      PFX-COMMON LPOPTION s" lib/adt/option.f" row execute
+      PFX-COMMON LPNUMTYPES s" lib/num-types.f" row execute
+      PFX-COMMON LPNUMARITH s" lib/num-arithmetic.f" row execute
+      PFX-COMMON LPSTRING s" lib/string.f" row execute
+      PFX-COMMON LPMEMORY s" lib/memory.f" row execute
+   then ;
+
 : PFX-LOAD-CHECKER-FILES ( -- )
-   PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-LOAD-ROW
-   PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-LOAD-ROW
-   PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-LOAD-ROW
-   PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-LOAD-ROW
-   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-LOAD-ROW
-   PFX-COMMON LPFETCHABI     s" src/core/checker-fetch-abi.f" PFX-LOAD-ROW
-   PFX-COMMON LPOWNERABI     s" src/core/checker-owner-abi.f" PFX-LOAD-ROW
-   PFX-COMMON LPPRIMS        s" src/habu/prims.f"       PFX-LOAD-ROW
-   PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-LOAD-ROW
-   PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-LOAD-ROW
-   PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-LOAD-ROW
-   PFX-COMMON LPTYPESCHEMA   s" src/core/type-schema.f" PFX-LOAD-ROW
-   PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-LOAD-ROW
-   PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-LOAD-ROW
-   PFX-COMMON LPSUMTYPE      s" src/core/sumtype.f"     PFX-LOAD-ROW
-   PFX-COMMON LPLAYOUTBUF    s" src/core/layout-buffer.f" PFX-LOAD-ROW
-   PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-LOAD-ROW
-   PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
-   PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-LOAD-ROW
-   PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-LOAD-ROW
-   PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-LOAD-ROW ;
+   PFX-CHECKER ['] PFX-LOAD-ROW PFX-FILES ;
 
 : PFX-LOAD-DECL-FILES ( -- )
-   \ The shared declaration-event transaction loads first, then the STRUCTURE
-   \ constructor generator, then the STRUCTURE declarer (which calls the
-   \ generator, so it must load after it), then the ENUM declarer (a pure
-   \ event-driven leaf) — all after the checker hook.
-   PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-LOAD-ROW
-   PFX-COMMON LPSTRUCTMAKE   s" src/core/structure-make.f" PFX-LOAD-ROW
-   PFX-COMMON LPSTRUCTDECL   s" src/core/structure-decl.f" PFX-LOAD-ROW
-   PFX-COMMON LPENUMDECL     s" src/core/enum-decl.f"      PFX-LOAD-ROW ;
+   PFX-DECL ['] PFX-LOAD-ROW PFX-FILES ;
 
 : PFX-LOAD-CORE-FILES ( -- )
-   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
-   PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
-   PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-LOAD-ROW
-   PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-LOAD-ROW
-   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
-   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
-   PFX-X64    LPX64TARGET    s" src/os/linux-x86-64/target.f"  PFX-LOAD-ROW
-   PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-LOAD-ROW
-   PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-LOAD-ROW
-   PFX-X64    LPX64LAYOUT    s" src/os/linux-x86-64/layout.f"  PFX-LOAD-ROW
-   PFX-COMMON LPSTACKABI     s" src/habu/stack-abi.f"   PFX-LOAD-ROW
-   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
-   PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-LOAD-ROW
-   PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
-   PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-LOAD-ROW
-   PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-LOAD-ROW
-   PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-LOAD-ROW
-   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
-   PFX-COMMON LPCODESPAN     s" src/habu/code-span.f"   PFX-LOAD-ROW
-   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW
-   PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-LOAD-ROW
-   PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-LOAD-ROW
-   PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-LOAD-ROW ;
+   PFX-CORE PFX-DYNAMIC or ['] PFX-LOAD-ROW PFX-FILES ;
 
 : PFX-LOAD-BASE-FILES ( -- )
    PFX-LOAD-CHECKER-FILES
@@ -1054,16 +1105,10 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 \ test/compiler/asm-package-test.f measures from both sides. Adding the row is
 \ the seed work's, not the packaging's - dot habu-seed-the-chain-e98b03d4.
 : PFX-LOAD-STDLIB-FILES ( -- )
-   PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-LOAD-ROW
-   PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-LOAD-ROW
-   PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-LOAD-ROW
-   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"          PFX-LOAD-ROW
-   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f"     PFX-LOAD-ROW
-   PFX-COMMON LPSTRING       s" lib/string.f"             PFX-LOAD-ROW
-   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-LOAD-ROW ;
+   PFX-BASELIB PFX-RESTLIB or ['] PFX-LOAD-ROW PFX-FILES ;
 
 : PFX-LOAD-SCRIPT-ARGV ( -- )
-   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-LOAD-ROW ;
+   PFX-ARGV ['] PFX-LOAD-ROW PFX-FILES ;
 
 : PFX-LOAD-SCRIPT-ARGV-COLD ( -- )
    LBL {: done :}
@@ -1078,7 +1123,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 \ signatures) before it
 \ classifies the remaining sig-less prefix words as DNAME-INT internal.
 : PFX-LOAD-INTMARK ( -- )
-   PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-LOAD-ROW ;
+   PFX-INTERNAL ['] PFX-LOAD-ROW PFX-FILES ;
 
 : PFX-LOAD-INTMARK-COLD ( -- )
    LBL {: done:label :}
@@ -1094,7 +1139,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 \ empty on the first user token. Snapshot boots skip it (SNAP-CELL guard), like
 \ internal-mark above; snapshot/AOT re-install is docs/typed-top-level.md §5.6.
 : PFX-LOAD-TOPROW ( -- )
-   PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-LOAD-ROW ;
+   PFX-TOPROW ['] PFX-LOAD-ROW PFX-FILES ;
 
 : PFX-LOAD-TOPROW-COLD ( -- )
    LBL {: done:label :}
@@ -1109,72 +1154,16 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-LOAD-INTMARK ;
 
 : PFX-PATH-CHECKER-FILES ( -- )
-   PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PATH-ROW
-   PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PATH-ROW
-   PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PATH-ROW
-   PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PATH-ROW
-   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PATH-ROW
-   PFX-COMMON LPFETCHABI     s" src/core/checker-fetch-abi.f" PFX-PATH-ROW
-   PFX-COMMON LPOWNERABI     s" src/core/checker-owner-abi.f" PFX-PATH-ROW
-   PFX-COMMON LPPRIMS        s" src/habu/prims.f"       PFX-PATH-ROW
-   PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PATH-ROW
-   PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-PATH-ROW
-   PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PATH-ROW
-   PFX-COMMON LPTYPESCHEMA   s" src/core/type-schema.f" PFX-PATH-ROW
-   PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-PATH-ROW
-   PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PATH-ROW
-   PFX-COMMON LPSUMTYPE      s" src/core/sumtype.f"     PFX-PATH-ROW
-   PFX-COMMON LPLAYOUTBUF    s" src/core/layout-buffer.f" PFX-PATH-ROW
-   PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PATH-ROW
-   PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
-   PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PATH-ROW
-   PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-PATH-ROW
-   PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-PATH-ROW ;
+   PFX-CHECKER ['] PFX-PATH-ROW PFX-FILES ;
 
 : PFX-PATH-DECL-FILES ( -- )
-   PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-PATH-ROW
-   PFX-COMMON LPSTRUCTMAKE   s" src/core/structure-make.f" PFX-PATH-ROW
-   PFX-COMMON LPSTRUCTDECL   s" src/core/structure-decl.f" PFX-PATH-ROW
-   PFX-COMMON LPENUMDECL     s" src/core/enum-decl.f"      PFX-PATH-ROW ;
+   PFX-DECL ['] PFX-PATH-ROW PFX-FILES ;
 
 : PFX-PATH-CORE-FILES ( -- )
-   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
-   PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
-   PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PATH-ROW
-   PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-PATH-ROW
-   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
-   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
-   PFX-X64    LPX64TARGET    s" src/os/linux-x86-64/target.f"  PFX-PATH-ROW
-   PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PATH-ROW
-   PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-PATH-ROW
-   PFX-X64    LPX64LAYOUT    s" src/os/linux-x86-64/layout.f"  PFX-PATH-ROW
-   PFX-COMMON LPSTACKABI     s" src/habu/stack-abi.f"   PFX-PATH-ROW
-   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
-   PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
-   PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
-   PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
-   PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PATH-ROW
-   PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PATH-ROW
-   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
-   PFX-COMMON LPCODESPAN     s" src/habu/code-span.f"   PFX-PATH-ROW
-   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW
-   PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PATH-ROW
-   PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-PATH-ROW
-   PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PATH-ROW
-   PFX-COMMON LPOWNERGUARD   s" src/core/checker-owner-guard.f" PFX-PATH-ROW
-   PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PATH-ROW
-   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW
-   PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PATH-ROW
-   PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-PATH-ROW ;
+   PFX-CORE PFX-DYNAMIC or PFX-OWNER or PFX-SEAL or PFX-ARGV or PFX-INTERNAL or PFX-TOPROW or ['] PFX-PATH-ROW PFX-FILES ;
 
 : PFX-PATH-STDLIB-FILES ( -- )
-   PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PATH-ROW
-   PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-PATH-ROW
-   PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-PATH-ROW
-   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"          PFX-PATH-ROW
-   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f"     PFX-PATH-ROW
-   PFX-COMMON LPSTRING       s" lib/string.f"             PFX-PATH-ROW
-   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PATH-ROW ;
+   PFX-BASELIB PFX-RESTLIB or ['] PFX-PATH-ROW PFX-FILES ;
 
 : PFX-PATH-FILES ( -- )
    PFX-PATH-CHECKER-FILES
@@ -1577,62 +1566,13 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    then ;
 
 : PFX-PROVIDE-CHECKER-FILES ( -- )
-   PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PROVIDE-ROW
-   PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PROVIDE-ROW
-   PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPFETCHABI     s" src/core/checker-fetch-abi.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPOWNERABI     s" src/core/checker-owner-abi.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPPRIMS        s" src/habu/prims.f"       PFX-PROVIDE-ROW
-   PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PROVIDE-ROW
-   PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPTYPESCHEMA   s" src/core/type-schema.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PROVIDE-ROW
-   PFX-COMMON LPSUMTYPE      s" src/core/sumtype.f"     PFX-PROVIDE-ROW
-   PFX-COMMON LPLAYOUTBUF    s" src/core/layout-buffer.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PROVIDE-ROW
-   PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-PROVIDE-ROW ;
+   PFX-CHECKER ['] PFX-PROVIDE-ROW PFX-FILES ;
 
 : PFX-PROVIDE-DECL-FILES ( -- )
-   PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-PROVIDE-ROW
-   PFX-COMMON LPSTRUCTMAKE   s" src/core/structure-make.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPSTRUCTDECL   s" src/core/structure-decl.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPENUMDECL     s" src/core/enum-decl.f"      PFX-PROVIDE-ROW ;
+   PFX-DECL ['] PFX-PROVIDE-ROW PFX-FILES ;
 
 : PFX-PROVIDE-CORE-FILES ( -- )
-   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
-   PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PROVIDE-ROW
-   PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PROVIDE-ROW
-   PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-PROVIDE-ROW
-   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PROVIDE-ROW
-   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PROVIDE-ROW
-   PFX-X64    LPX64TARGET    s" src/os/linux-x86-64/target.f"  PFX-PROVIDE-ROW
-   PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PROVIDE-ROW
-   PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-PROVIDE-ROW
-   PFX-X64    LPX64LAYOUT    s" src/os/linux-x86-64/layout.f"  PFX-PROVIDE-ROW
-   PFX-COMMON LPSTACKABI     s" src/habu/stack-abi.f"   PFX-PROVIDE-ROW
-   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PROVIDE-ROW
-   PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PROVIDE-ROW
-   PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PROVIDE-ROW
-   PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PROVIDE-ROW
-   PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
-   PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPCODESPAN     s" src/habu/code-span.f"   PFX-PROVIDE-ROW
-   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW
-   PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PROVIDE-ROW
-   PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-PROVIDE-ROW ;
+   PFX-CORE PFX-DYNAMIC or PFX-SEAL or PFX-ARGV or PFX-INTERNAL or PFX-TOPROW or ['] PFX-PROVIDE-ROW PFX-FILES ;
 
 : PFX-PROVIDE-FILES ( -- )
    PFX-PROVIDE-CHECKER-FILES
@@ -1647,13 +1587,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
 \ missing STR:. On a cold boot these run inside PFX-LOAD-STDLIB-COLD, ahead of
 \ the file texts, which is exactly where the nine need them.
 : PFX-PROVIDE-STDLIB-FILES ( -- )
-   PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PROVIDE-ROW
-   PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-PROVIDE-ROW
-   PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-PROVIDE-ROW
-   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"          PFX-PROVIDE-ROW
-   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f"     PFX-PROVIDE-ROW
-   PFX-COMMON LPSTRING       s" lib/string.f"             PFX-PROVIDE-ROW
-   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PROVIDE-ROW ;
+   PFX-BASELIB PFX-RESTLIB or ['] PFX-PROVIDE-ROW PFX-FILES ;
 
 \ Cold boots only, like PFX-LOAD-SCRIPT-ARGV-COLD above: a snapshot restores its
 \ bake-time dictionary and must not reload anything.
@@ -1737,11 +1671,11 @@ public
    PFX-PROVIDE-FILES
    \ The checked owner guard requires the ABI facts above. Carry it before
    \ the core mark, so a partial compiler never borrows a tool's copy.
-   PFX-COMMON LPOWNERGUARD s" src/core/checker-owner-guard.f" PFX-LOAD-ROW
-   PFX-COMMON LPOWNERGUARD s" src/core/checker-owner-guard.f" PFX-PROVIDE-ROW
+   PFX-OWNER ['] PFX-LOAD-ROW PFX-FILES
+   PFX-OWNER ['] PFX-PROVIDE-ROW PFX-FILES
    \ Record the core mark after its include facts exist. A build rewind must
    \ retain those facts together with the definitions they describe.
-   PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-LOAD-ROW
+   PFX-SEAL ['] PFX-LOAD-ROW PFX-FILES
    PFX-LOAD-STDLIB-COLD
    PFX-LOAD-SCRIPT-ARGV-COLD
    PFX-LOAD-INTMARK-COLD

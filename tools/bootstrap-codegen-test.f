@@ -177,8 +177,8 @@ public
 \ wrongly is a recovery failure months later - the same shape as the arena
 \ constant above, and the reason both live in this file.
 \
-\ Neither fact is listed here. The row set is read out of habu2.f's own
-\ `PFX-LOAD-ROW` rows, so a file added to the prefix is covered the moment the
+\ Neither fact is listed here. Each emitter's row set is read from its own
+\ PFX-FILES table, so a file added to either prefix is covered the moment the
 \ row is written. The strippability rule is the reader's, checked against the
 \ shared lexer: the reader drops a line whose first token is the one-byte `\`
 \ and a line carrying no token at all, and it has no string state, so the one
@@ -304,38 +304,42 @@ variable PFX-RAW-N
    a u s" PFX-X64" LINT-STR=CI if KIND-X64 exit then
    -1 ;
 
-: NAMES-ROW-WORD? ( n -- bool ) {: k:n :}
+: WORD= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
    k LINT-LEX:KIND@ LINT-LEX:WORD <> if 0 0= 0= exit then
-   k LINT-LEX:TOKEN s" PFX-LOAD-ROW" LINT-STR=CI ;
+   k LINT-LEX:TOKEN a u LINT-STR=CI ;
 
-\ The emitter mentions the word twice: as the row emitter's own definition, and
-\ as every row that calls it. The definition is the one occurrence that carries
-\ no path, so it is named here rather than absorbed by a shape test that would
-\ also swallow a row whose spelling drifted.
-: DEFINES-ROW-WORD? ( n -- bool ) {: k:n :}
-   k NAMES-ROW-WORD? 0= if 0 0= 0= exit then
-   k 1 - LINT-LEX:TOKEN s" :" LINT-STR=CI ;
+: DEF-INDEX ( ptr u8 n -- n ) {: name:ptr u:n :}
+   1 begin dup LINT-LEX:COUNT < while
+      dup name u WORD= over 1- s" :" WORD= and if exit then
+      1+
+   repeat drop -1 ;
 
+\ PFX-FILES calls its row parameter with (kind, label, path). Every execute
+\ in that definition must have this shape; wrappers and decoy text cannot add
+\ rows, and a malformed call must fail the check rather than disappear.
 : ROW-AT? ( n -- bool ) {: k:n :}
-   k 3 < if 0 0= 0= exit then
-   k NAMES-ROW-WORD? 0= if 0 0= 0= exit then
-   k DEFINES-ROW-WORD? 0= ;
+   k 4 < if 0 0= 0= exit then
+   k 1- s" row" WORD= 0= if 0 0= 0= exit then
+   k 4 - KIND-OF 0 < if 0 0= 0= exit then
+   k 3 - LINT-LEX:KIND@ LINT-LEX:WORD <>
+   k 2 - LINT-LEX:KIND@ LINT-LEX:WORD <> or if 0 0= 0= exit then
+   k 2 - LINT-LEX:CONTENT nip 0 > ;
 
 : TAKE-ROW ( n -- ) {: k:n :}
-   k 3 - KIND-OF {: kd:n :}
-   kd 0 >= TTRUE
-   k 1 - LINT-LEX:CONTENT {: a:ptr u:n :}
-   u 0 > TTRUE                                     \ the path arrives as a string literal
-   kd a u ROW+ ;
+   k ROW-AT? dup TTRUE 0= if exit then
+   k 4 - KIND-OF k 2 - LINT-LEX:CONTENT ROW+ ;
 
 : COLLECT ( -- )
    0 ROW-N !
    SRC LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= TTRUE
-   0 begin dup LINT-LEX:COUNT < while
-      dup ROW-AT? if dup TAKE-ROW then
+   s" PFX-FILES" DEF-INDEX {: d:n :}
+   d 0 >= dup TTRUE 0= if exit then
+   d 1+ begin dup LINT-LEX:COUNT < while
+      dup s" ;" WORD= if drop exit then
+      dup s" execute" WORD= if dup TAKE-ROW then
       1+
-   repeat drop ;
+   repeat drop 0 0= 0= TTRUE ;                    \ the table must end
 
 \ A target's prefix is its own rows plus the common ones, and nobody else's -
 \ stated as membership rather than as "not the other target", which stopped
@@ -357,14 +361,8 @@ variable PFX-RAW-N
 \ mirror's copy of the reader runs only during no-binary recovery, so a mirror
 \ left on the raw entry would build an hb-stage0 whose prefix is 41 percent
 \ larger than every other engine's and nothing scheduled would say so.
-: DEF-INDEX ( -- n )
-   0 begin dup LINT-LEX:COUNT < while
-      dup DEFINES-ROW-WORD? if exit then
-      1+
-   repeat drop -1 ;
-
 : BODY-NAMES? ( ptr u8 n -- bool ) {: name:ptr nu:n :}
-   DEF-INDEX {: d:n :}
+   s" PFX-LOAD-ROW" DEF-INDEX {: d:n :}
    d 0 >= TTRUE
    d 1+ begin dup LINT-LEX:COUNT < while
       dup LINT-LEX:KIND@ LINT-LEX:WORD = if
@@ -384,14 +382,10 @@ variable PFX-RAW-N
 : UNDER-BUDGET? ( n -- bool ) {: bytes:n :}
    bytes BUDGET-PARTS * SOURCE-ARENA-CAP BUDGET-TAKEN * <= ;
 
-public
-
-: TEST ( -- )
+: CHECK-TABLE ( ptr u8 n -- )
    0 PFX-LINUX-N !  0 PFX-MACOS-N !  0 PFX-X64-N !  0 PFX-RAW-N !
    0 0= 0= DISAGREE !
-   s" src/habu/habu2.f" ROUTES-THROUGH-STRIP
-   s" bootstrap/cg/forth.fs" ROUTES-THROUGH-STRIP
-   s" src/habu/habu2.f" LOAD
+   LOAD
    COLLECT
    ROW-N @ 40 > TTRUE                              \ the rows were found, not zero of them
    ROW-N @ 0 ?do i MEASURE-ROW loop
@@ -400,6 +394,14 @@ public
    PFX-LINUX-N @ UNDER-BUDGET? TTRUE
    PFX-MACOS-N @ UNDER-BUDGET? TTRUE
    PFX-X64-N @ UNDER-BUDGET? TTRUE ;
+
+public
+
+: TEST ( -- )
+   s" src/habu/habu2.f" ROUTES-THROUGH-STRIP
+   s" bootstrap/cg/forth.fs" ROUTES-THROUGH-STRIP
+   s" src/habu/habu2.f" CHECK-TABLE
+   s" bootstrap/cg/forth.fs" CHECK-TABLE ;
 
 ;package
 
@@ -439,12 +441,22 @@ using BCG
    s\" \\ c\n\n: A ( -- ) ;\n: B ; \\ t\n( inline )\n" DISAGREES? 0= TTRUE
    s\" : A s\" x y\" drop drop ;\n\\ c\n" DISAGREES? 0= TTRUE ;
 
+: TABLE-ROWS ( -- )
+   s\" : OTHER PFX-COMMON L s\" outside\" row execute ;\n: PFX-FILES ( -- )\n\\ PFX-COMMON L s\" comment\" row execute\n( PFX-LINUX L s\" paren\" row execute )\ns\" PFX-MACOS L fake row execute\" 2drop\nparts PFX-CORE and if\nPFX-COMMON L s\" common.f\" row execute\nPFX-LINUX L s\" linux.f\" row execute\nPFX-MACOS L s\" macos.f\" row execute\nPFX-X64 L s\" x64.f\" row execute\nthen ;\nPFX-COMMON L s\" after\" row execute\n" SET
+   COLLECT
+   ROW-N @ 4 T=
+   0 ROW$ s" common.f" T$=  0 ROW-KIND@ KIND-COMMON T=
+   1 ROW$ s" linux.f" T$=   1 ROW-KIND@ KIND-LINUX T=
+   2 ROW$ s" macos.f" T$=   2 ROW-KIND@ KIND-MACOS T=
+   3 ROW$ s" x64.f" T$=     3 ROW-KIND@ KIND-X64 T= ;
+
 public
 
 : HOSTILE ( -- )
    STRIP-RULE
    DISAGREEMENTS
-   AGREEMENTS ;
+   AGREEMENTS
+   TABLE-ROWS ;
 
 ;package
 
