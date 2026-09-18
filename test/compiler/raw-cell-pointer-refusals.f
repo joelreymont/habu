@@ -72,6 +72,10 @@ create DIAG-BUF 8192 allot
 : REPAIR$ ( -- ptr u8 n )
    S\" \"repair_class\":\"declare_pointer_cell\"" ;
 
+\ The repair class an ordinary return-stack mismatch keeps.
+: RETURN-REPAIR$ ( -- ptr u8 n )
+   S\" \"repair_class\":\"fix_return_stack\"" ;
+
 : HAS? ( ptr u8 n -- )
    DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
 
@@ -184,7 +188,54 @@ create DIAG-BUF 8192 allot
    NAMED
    DISARM ;
 
+\ ---- and the one that lands on the RETURN row --------------------------------
+\ The return row is judged by the same unifier and refused by the same rule, so
+\ it has to name it the same way. `>r` accepts the value the cell hands out --
+\ it moves any one cell -- and only the declared RETURN row refuses it as an
+\ address. Before the return row had a first-failure capture of its own this
+\ answered a bare return-stack imbalance (dot habu-name-a-raw-09fe04d0).
+: CASE-RETURN-BOUNDARY ( -- )
+   s" the declared return row refuses it too, and names the same rule" T-LABEL
+   ARM
+   [: s" : RCP-VRET ( | -- | ptr n ) RCP-V @ >r ;" EV ;] CHECK-RC TTHROWSQ
+   NAMED
+   DISARM ;
+
+\ A branch join judges two return rows against each other rather than against a
+\ declaration, and it is the same unify: one arm carries the raw cell's value,
+\ the other the TASK slot's real address.
+: CASE-RETURN-JOIN ( -- )
+   s" a branch join on the return row names it as well" T-LABEL
+   ARM
+   [: s" : RCP-VJOIN ( n | -- | ptr n ) 0= IF RCP-V @ >r ELSE RCP-SLOT >r THEN ;" EV ;]
+      CHECK-RC TTHROWSQ
+   NAMED
+   DISARM ;
+
+\ A CALL is the third shape. The called word declares a return-row INPUT, and
+\ what the caller left on that row is the raw cell's value. The data-row half of
+\ that same step has always named itself; the return half was judged by a bare
+\ unify.
+: CASE-RETURN-CALL ( -- )
+   s" a call whose declared return inputs refuse the value names it too" T-LABEL
+   ARM
+   [: s" : RCP-RTAKE ( | ptr n -- | ) r> drop ;  : RCP-RPASS ( -- ) RCP-V @ >r RCP-RTAKE ;" EV ;]
+      CHECK-RC TTHROWSQ
+   NAMED
+   DISARM ;
+
 \ ---- the controls ------------------------------------------------------------
+
+\ The control for the three cases above. A return row that simply does not balance
+\ is not this rule and never was: it keeps the return-stack repair class and
+\ stays unnamed, which is what keeps the capture from relabelling every
+\ return-row mismatch as a laundered pointer.
+: CASE-RETURN-BALANCE ( -- )
+   s" an ordinary return-stack mismatch is still not named by this rule" T-LABEL
+   ARM
+   [: s" : RCP-RBAL ( | -- | n ) ;" EV ;] CHECK-RC TTHROWSQ
+   CODE$ LACKS?  VALUE-REASON$ LACKS?  RETURN-REPAIR$ HAS?
+   DISARM ;
 
 \ A `create`d byte buffer is the honest use of raw storage: the pointee binds to
 \ the `u8` con, which is a scalar and stays admissible. If this ever stops
@@ -230,6 +281,10 @@ public
    CASE-FIELD-FORGE
    CASE-FIELD-FORGE-NOMINAL
    CASE-SIGNATURE-BOUNDARY
+   CASE-RETURN-BOUNDARY
+   CASE-RETURN-JOIN
+   CASE-RETURN-CALL
+   CASE-RETURN-BALANCE
    CASE-ABANDONED-CANDIDATE
    CASE-BYTE-BUFFER
    CASE-TASK-SLOT

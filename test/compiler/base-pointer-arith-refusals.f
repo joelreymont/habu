@@ -159,6 +159,21 @@ create DIAG-BUF 8192 allot
    s" a round trip through a declared pointer cell is refused by the raw rule" T-LABEL
    s" BPA-RT ( -- bpathing ) data-base 8 + BPA-SLOT ! BPA-SLOT @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ ---- the same forgery, landing on the RETURN row ------------------------------
+\ `>r` moves any one cell, so it accepts the value the base cell hands out and
+\ only the declared RETURN row refuses it. That row is unified by the same
+\ unifier and fenced by the same pointee kind, so it has to answer the same
+\ reason; until the return row had a first-failure capture of its own these two
+\ answered a bare return-stack imbalance (dot habu-name-a-raw-09fe04d0).
+
+: CASE-RETURN-NOMINAL ( -- )
+   s" the declared return row refuses the nominal forgery, and names it" T-LABEL
+   s" BPA-RN ( | -- | bpathing ) data-base 8 + @ >r" REFUSED ;
+
+: CASE-RETURN-POINTER ( -- )
+   s" and the address half of it on the return row" T-LABEL
+   s" BPA-RP ( | -- | ptr n ) data-base 8 + @ >r" REFUSED ;
+
 \ ---- the wrapper, refused at its own declaration ------------------------------
 \ `( -- ptr a )` over a DATA offset is the shape that carried the forgery into
 \ the shipped library: `SB-LEN @` read as a nominal certified, because SB-LEN
@@ -271,6 +286,8 @@ public
    CASE-REVERSED-ADD
    CASE-THROUGH-QUOTATION
    CASE-THROUGH-DECLARED-CELL
+   CASE-RETURN-NOMINAL
+   CASE-RETURN-POINTER
    CASE-PUBLISH-VAR
    CASE-PUBLISH-INOUT
    CASE-INPUT-ONLY

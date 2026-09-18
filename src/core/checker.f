@@ -2618,6 +2618,14 @@ variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
    THEN
    CVLIVE @ DVAR ! ;   \ the variant live at the first-failure capture (-1 = none)
 
+\ The cell disciplines refuse INSIDE the unify, so both captures below ask the
+\ same question the instant their unify answers false and while the pin is still
+\ open. The base-address refusal names itself exactly as the raw one does
+\ (BASE-BLOCK?).
+: CELL-DIAG! ( -- )
+   RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
+   BASE-PTR-HIT @ IF MD-BASE-PTR MDIAG! THEN ;
+
 \ THE FIRST FAILURE, CAPTURED ONCE. Every site that judges a row -- the token
 \ step, the locals annotation bind, and the three boundary unifies -- pins the
 \ same three things in the same order: the expected/actual pair the renderer
@@ -2628,9 +2636,39 @@ variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 : UF-CAPTURE ( n n -- ) {: exp:n act:n :}
    exp DEXP !  act DACT !
    UF>DIAG
-   RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
-   BASE-PTR-HIT @ IF MD-BASE-PTR MDIAG! THEN   \ the base-address refusal names itself the same way (BASE-BLOCK?)
+   CELL-DIAG!
    -1 FAILSET ! ;
+
+\ THE RETURN ROW'S TWIN. The return row is judged by the same unifier and
+\ refused by the same cell rules, so a refusal there has to be named in the same
+\ instruction between the failure and the pin closing (dot
+\ habu-name-a-raw-09fe04d0: `variable RV  : RS3 ( | -- | ptr n ) RV @ >r ;`
+\ answered a bare return-stack imbalance). It latches the reason only: the row
+\ pair is already rendered from the declared and inferred return rows
+\ (`return_stack`), and claiming DEXP/DACT as well would relabel every ordinary
+\ return-stack mismatch as a value mismatch.
+: RS-CAPTURE ( -- )
+   CELL-DIAG!
+   -1 FAILSET ! ;
+
+\ The return row's SUNI family. It sits here rather than beside SUNI because the
+\ recorded call step -- where a called word's DECLARED return INPUT meets the
+\ caller's return row -- is written thousands of lines above SUNI, and a return
+\ row judged without the capture is the hole this dot closed.
+: RSUNI {: s :}
+   RCUR @ s UNIFY
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF RS-CAPTURE THEN
+   OK @ and OK ! ;
+
+: RSUNI-IN {: s:n :}
+   RCUR @ s UNIFY-IN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF RS-CAPTURE THEN
+   OK @ and OK ! ;
+
+: RSUNI-COERCE {: s:n :}
+   RCUR @ s UNIFY-COERCE
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF RS-CAPTURE THEN
+   OK @ and OK ! ;
 
 \ --- input underflow (dot habu-name-an-input-45ee675e) -------------------------
 \ The cells below a definition's declared inputs are the CALLER'S. A body that
@@ -6739,7 +6777,7 @@ variable LMI
    h ER.DOUT @ E-INST
    RECORDED-STEP
    h ER.HASR @ 0 <> if
-      RCUR @ h ER.RIN @ E-INST UNIFY-IN OK @ and OK !
+      h ER.RIN @ E-INST RSUNI-IN          \ the called word's declared return inputs
       h ER.ROUT @ E-INST RCUR !
    then
    h LIN-EFF-PASS ;
@@ -11399,10 +11437,6 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
    dup 0=  FAILSET @ 0=  and  OK @ and  IF s DCUR @ UF-CAPTURE THEN
    OK @ and OK ! ;
 
-: RSUNI {: s :}  RCUR @ s UNIFY OK @ and OK ! ;
-
-: RSUNI-IN {: s:n :}  RCUR @ s UNIFY-IN OK @ and OK ! ;
-
 : ROW-OPEN? ( n -- bool )
    R-RES TAG S-ROW = ;
 
@@ -13037,7 +13071,8 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    \ The raw-cell and base-address refusals name themselves where they are
-   \ raised: the value position in UF-CAPTURE, `ptr-field` in RAW-FIELD-TOK?.
+   \ raised: the value position in UF-CAPTURE, the return row in RS-CAPTURE,
+   \ `ptr-field` in RAW-FIELD-TOK?.
    \ Nothing is left to collect here -- the flags only have to be dropped,
    \ because TRY-PRIMS applies candidate rows in turn (`V @ cell+` raises one on
    \ the `ptr a -- ptr a` row and then succeeds on `n -- n`) and the next token
@@ -14705,7 +14740,7 @@ variable CTOR-PEND-I
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= CHECK-RETURNS? and IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    CHECK-RET-SIG? IF
-      RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK !
+      SGROUT @ RSUNI-COERCE                     \ RSUNI-COERCE names a cell refusal on the return row
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
    THEN
    CHECK-SIG? OK @ and IF NP-CHECK THEN               \ declared quantifiers must stay parametric
@@ -15490,7 +15525,7 @@ package CHECKER-REG
    OK @ IF SGOUT @ DCUR ! THEN
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= CHECK-RETURNS? and IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
-   SGHASR @ IF RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK ! THEN
+   SGHASR @ IF SGROUT @ RSUNI-COERCE THEN
    CHECK-VERDICT dup DVERD !
    dup -1 = IF CALL-FINALIZE THEN
    CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN
