@@ -1179,6 +1179,16 @@ the rule.
   Declare the primitive instead, in the axiom form the engine's own primitives
   use (`PRIM: name PE-… PRIM;`), and the rest of the program still compiles
   checked.
+- **`MATCH` and the other compile keywords name words, not constants**, even
+  inside a package; a `case` default runs with the selector still on the
+  stack. Two flags are not compared with `=` (`bool bool` is refused): a test
+  asserts a flag with `TTRUE`/`TFALSE`, not `T=`. (Measured in Tender.)
+- **A quotation sees no locals and must be stack-preserving under `catch`.**
+  A value a `catch`, `finally` or locked body needs travels through storage it
+  can address; after `catch` the restored cells are not the handles that were
+  pushed, and a nominal handle cannot cross `catch` as a quotation's result —
+  a one-slot `TYPED-BUFFER` holds it. `TTHROWSQ` runs a `( -- )` quotation.
+  (Measured in Tender.)
 
 ## Spans: a pointer that carries its reach
 
