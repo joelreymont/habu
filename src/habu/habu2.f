@@ -3164,6 +3164,30 @@ public
    10 G-POP
    nohk LBL, ;
 
+\ Capacity exits (dot habu-gate-runner-entry-81c84af0): a definer hitting the
+\ dict-record or code-region capacity used to write only the CURRENT TOKEN to
+\ fd 2 (a lone ':' at a colon definition) and exit_group - label-free and
+\ unattributable. Emit the fixed label first, then the token + newline; the
+\ exit codes stay the deterministic contracts (dict full $4D=77, code space
+\ full $4C=76).
+: C-CAP-LABEL ( ptr n -- )
+   0 2 MOVZ,
+   LABEL@ 1 swap ADR,
+   2 CAPMSG-LEN MOVZ,  NR-WRITE SYS, ;
+
+: C-DIE-TOKEN-NL ( n -- ) {: rc:n :}                  \ definer capacity die (dict full $4D / code full $4C): recoverable inside evaluate (rollback frees the aborted definition), fail-closed exit rc at top level
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
+
+: C-DIE-DICT-FULL ( -- )
+   LDICTFULL C-CAP-LABEL
+   $4D C-DIE-TOKEN-NL ;
+
+: C-DIE-CODE-FULL ( -- )
+   LCODEFULL C-CAP-LABEL
+   $4C C-DIE-TOKEN-NL ;
+
 : C-STORE-NAME ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: short fail capok lcopy lcd scopy scd done :}
    14 0 MOVZ,  14 9 24 STR,  14 9 32 STR,             \ canonical name/padding before either form
@@ -3196,39 +3220,14 @@ public
          10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  scopy B,
       scd LBL,
       done B,
-   fail LBL,                                          \ long name would overflow the code region: recoverable inside evaluate (rc 76), fail-closed exit 76 at top level
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 76 MOVZ,  LCOMPILEDIE LABEL@ B,
+   fail LBL,                                          \ long name would overflow the code region: the SAME capacity and exit code its sibling definer arms report, so it takes the same labeled tail instead of writing a bare token (rc 76 = $4C, recoverable inside evaluate, fail-closed exit at top level)
+      C-DIE-CODE-FULL
    done LBL, ;
 
 : C-QUALIFY-FAIL ( n -- ) {: rc:n :}                  \ qualified-name misuse ($4B) / dict-full ($4D) during C-QUALIFY-DEF: recoverable inside evaluate, fail-closed exit rc at top level
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
-
-\ Capacity exits (dot habu-gate-runner-entry-81c84af0): a definer hitting the
-\ dict-record or code-region capacity used to write only the CURRENT TOKEN to
-\ fd 2 (a lone ':' at a colon definition) and exit_group - label-free and
-\ unattributable. Emit the fixed label first, then the token + newline; the
-\ exit codes stay the deterministic contracts (dict full $4D=77, code space
-\ full $4C=76).
-: C-CAP-LABEL ( ptr n -- )
-   0 2 MOVZ,
-   LABEL@ 1 swap ADR,
-   2 CAPMSG-LEN MOVZ,  NR-WRITE SYS, ;
-
-: C-DIE-TOKEN-NL ( n -- ) {: rc:n :}                  \ definer capacity die (dict full $4D / code full $4C): recoverable inside evaluate (rollback frees the aborted definition), fail-closed exit rc at top level
-   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-   0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
-
-: C-DIE-DICT-FULL ( -- )
-   LDICTFULL C-CAP-LABEL
-   $4D C-DIE-TOKEN-NL ;
-
-: C-DIE-CODE-FULL ( -- )
-   LCODEFULL C-CAP-LABEL
-   $4C C-DIE-TOKEN-NL ;
 
 \ ---- the does>-clause's own dictionary record --------------------------------
 \ WHY THE CLAUSE NEEDS A NAME. LDOESPATCH patches the created word's RET into
