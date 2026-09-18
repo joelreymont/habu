@@ -952,10 +952,11 @@ QE-CAP @ MAXQE-INIT =  and  ATOM-CAP @ MAXATOM-INIT =  and
 PARAM-CAP @ MAXPARAM-INIT =  and  -1 T=
 \ --- growable registries (CT / VREC / SYMS): crossing each init cap mid-run no
 \ longer dies, a relocating grow preserves lookups (SYMS rehashes its HIDX index),
-\ and a grown store persists into fresh image DATA with its string pointers
-\ rebased. Each test lowers the live cap to force a grow, then restores the store
-\ to its baked boot buffer (record arrays grow to mmap first, so string-pool
-\ rebases never touch the pristine boot buffer).
+\ and a grown store persists into fresh image DATA with its names still resolving
+\ - CT and VREC name the pool by offset, SYMS rebases its record pointers. Each
+\ test lowers the live cap to force a grow, then restores the store to its baked
+\ boot buffer (record arrays grow to mmap first, so a SYMS rebase never touches
+\ the pristine boot buffer).
 variable TR-HERE
 \ ---- CT registry ----
 variable TR-CTN  variable TR-CTU  variable TR-CTC  variable TR-CTSC
@@ -980,7 +981,7 @@ TRUSTED: TR-CT-WHITEBOX ( -- )
    s" CTGROWTHREE" CTN @ CT-ROLE 64 CS-NONE CT-SET
    s" ct-str-grow" T-LABEL
    CT-STR-CAP-V @ TR-CT-STRLC @ > -1 T=
-   s" ct-str-grow-rebase-find" T-LABEL
+   s" ct-str-grow-find" T-LABEL
    s" CTGROWPROBE" CT-FIND TR-CTCODE @ T=
    here TR-HERE !
    CT-SNAPSHOT-PERSIST
@@ -994,9 +995,10 @@ TRUSTED: TR-CT-WHITEBOX ( -- )
 LOWER-CERT-HOOK:INSTALL
 TR-CT-WHITEBOX
 \ ---- VREC registry: records, nodes, fields, string pool ----
-\ Grow the record AND node arrays to mmap BEFORE the string pool, so the string
-\ rebase (which touches record names and VR-ATOM/VR-PARAM node VN.A cells) never
-\ mutates the pristine boot buffers.
+\ Grow the record AND node arrays to mmap BEFORE the string pool, so a pool
+\ relocation is exercised against grown arrays rather than the pristine boot
+\ buffers. Record names and VR-ATOM/VR-PARAM node VN.A cells are both offsets,
+\ so the relocation must leave them alone and the names must still resolve.
 variable TR-VN  variable TR-VU  variable TR-VC  variable TR-VSC  variable TR-VRID
 variable TR-V-LC  variable TR-V-STRLC
 variable TR-VNODEN variable TR-VNODEC variable TR-V-NODE-LC
@@ -1025,7 +1027,7 @@ TRUSTED: TR-VREC-WHITEBOX ( -- )
    s" VRGROWTHREE" VREC-BEGIN drop
    s" vrec-str-grow" T-LABEL
    VREC-STR-CAP-V @ TR-V-STRLC @ > -1 T=
-   s" vrec-str-grow-rebase-find" T-LABEL
+   s" vrec-str-grow-find" T-LABEL
    s" VRGROWPROBE" VREC-FIND -1 T= TR-VRID @ T=
    s" vrec-str-grow-name-intact" T-LABEL
    TR-VRID @ VREC-NAME$ s" VRGROWPROBE" T$=

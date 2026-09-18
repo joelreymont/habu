@@ -1478,9 +1478,16 @@ variable CT-STR-CAP-V   CT-STR-INIT CT-STR-CAP-V !
 
 \ Registry stores keep a baked DATA boot buffer (stable, always baked because
 \ build-time defs never exceed the boot cap) and grow into anon mmap on demand
-\ via the shared ARENA-BYTES-GROW layer. The record arrays hold pointers INTO
-\ CT-STR; a CT-STR relocation rebases them (CT-STR-REBASE). Snapshot persist
-\ bakes any grown store into fresh DATA and rebases (CT-SNAPSHOT-PERSIST).
+\ via the shared ARENA-BYTES-GROW layer.
+\
+\ THE NAME COLUMN HOLDS OFFSETS INTO CT-STR, NOT POINTERS, and every reader adds
+\ the pool base at use (CT-NAME$). An offset survives a pool relocation and a
+\ snapshot bake untouched, so there is no rebase pass and no cell to register
+\ with ptr-cell-mark - and the store is a plain table of numbers, which is what
+\ lets snapshot persist repoint its head at all: REG-PERSIST-MOVE grows the store
+\ with `here`, whose pointer is PE-PTR-A-RAW, and raw storage refuses to carry a
+\ pointer (dot habu-refuse-a-ptr-5ad2734e). VREC's node strings have always been
+\ interned this way (VREC-COPY-STR/VREC-I-STR).
 create CT-NAME-A-BOOT CT-CAP-INIT cells allot
 create CT-NAME-U-BOOT CT-CAP-INIT cells allot
 create CT-CLASS-BOOT CT-CAP-INIT cells allot
@@ -1500,7 +1507,7 @@ PTR-VARIABLE CT-DST
    CT-CLASS-BOOT CT-CLASS-P !     CT-WIDTH-BOOT CT-WIDTH-P !
    CT-SIGN-BOOT CT-SIGN-P !       CT-STR-BOOT CT-STR-P ! ;
 CT-ARENA-BOOT
-: CT-NAME-A ( -- ptr ptr u8 ) CT-NAME-A-P @ ;
+: CT-NAME-A ( -- ptr n ) CT-NAME-A-P @ ;
 : CT-NAME-U ( -- ptr n ) CT-NAME-U-P @ ;
 : CT-CLASS ( -- ptr n ) CT-CLASS-P @ ;
 : CT-WIDTH ( -- ptr n ) CT-WIDTH-P @ ;
@@ -1510,8 +1517,8 @@ CT-ARENA-BOOT
 1 CTN !
 0 CT-STR-U !
 
-: CT-NAME-FIELD ( n -- ptr ptr u8 )
-   cells CT-NAME-A + 0 ptr-field ;
+: CT-NAME-PTR ( n -- ptr u8 )   \ the name of code `n`, rebuilt from the pool base
+   cells CT-NAME-A + @ CT-STR swap + ;
 
 : CT-DST@ ( -- ptr u8 )
    CT-DST @ ;
@@ -1520,8 +1527,7 @@ CT-ARENA-BOOT
    CT-DST ! ;
 
 \ CT-GROW ( need -- ) : geometric grow of the record arrays to hold code `need`.
-\ The arrays hold pointers into CT-STR (unmoved here), so a plain cell copy needs
-\ no rebase.
+\ The arrays hold numbers, so a plain cell copy suffices.
 : CT-GROW ( n -- ) {: need:n :}
    need CT-CAP-V @ 2 * max {: nc:n :}
    CT-CAP-V @ cells {: ob:n :}   nc cells {: nb:n :}
@@ -1534,22 +1540,11 @@ CT-ARENA-BOOT
    need CT-CAP-V @ < IF exit THEN
    need 1 + CT-GROW ;
 
-\ CT-STR-REBASE ( delta -- ) : a CT-STR relocation moved the pool by delta; add
-\ it to every already-stored name pointer so records still resolve.
-: CT-STR-REBASE ( n -- ) {: delta:n :}
-   1 CT-I !
-   begin CT-I @ CTN @ < while
-      CT-I @ CT-NAME-FIELD {: fld:ptr :}
-      fld @ delta + fld !
-      CT-I @ 1 + CT-I !
-   repeat ;
-
+\ A relocation moves the pool, not the names in it: stored offsets stay valid.
 : CT-STR-GROW ( n -- ) {: need:n :}
    need CT-STR-CAP-V @ 2 * max {: nc:n :}
-   CT-STR-P @ {: old:ptr :}
-   old CT-STR-CAP-V @ nc ARENA-BYTES-GROW {: new:ptr :}
-   new CT-STR-P !   nc CT-STR-CAP-V !
-   new old - CT-STR-REBASE ;
+   CT-STR-P @ CT-STR-CAP-V @ nc ARENA-BYTES-GROW CT-STR-P !
+   nc CT-STR-CAP-V ! ;
 
 : CT-STR-ENSURE ( n -- ) {: add:n :}   \ ensure room for `add` more string bytes
    CT-STR-U @ add + CT-STR-CAP-V @ <= IF exit THEN
@@ -1562,16 +1557,20 @@ CT-ARENA-BOOT
 : CT-ROOM ( n -- )              \ ensure the CT-STR pool holds `n` more bytes
    CT-STR-ENSURE ;
 
-: CT-COPY ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+\ Intern `u` bytes in the pool and answer where they went as an OFFSET. CT-ROOM
+\ may relocate the pool, so the base is read after it; the pool's used mark is
+\ not moved by a relocation, so it is the offset either way.
+: CT-COPY ( ptr u8 n -- n n ) {: a:ptr u:n :}
    u CT-ROOM
-   CT-STR CT-STR-U @ + CT-DST!
+   CT-STR-U @ {: off:n :}
+   CT-STR off + CT-DST!
    0 CT-J !
    begin CT-J @ u < while
       a CT-J @ + c@ CT-DST@ CT-J @ + c!
       CT-J @ 1 + CT-J !
    repeat
    CT-STR-U @ u + CT-STR-U !
-   CT-DST@ u ;
+   off u ;
 
 : CT-ADVANCE ( n -- )
    1 + dup CTN @ > IF CTN ! ELSE drop THEN ;
@@ -1579,8 +1578,8 @@ CT-ARENA-BOOT
 : CT-SET ( ptr u8 n n n n n -- ) {: a:ptr u:n code:n class:n width:n sign:n :}
    code CT-CODE-CHECK
    code CT-ENSURE
-   a u CT-COPY {: dst:ptr len:n :}
-   dst code CT-NAME-FIELD !
+   a u CT-COPY {: off:n len:n :}
+   off code cells CT-NAME-A + !
    len code cells CT-NAME-U + !
    class code cells CT-CLASS + !
    width code cells CT-WIDTH + !
@@ -1640,7 +1639,7 @@ CT-INIT
    CT-CLASS@ CT-LINEAR = ;
 
 : CT-NAME$ ( n -- ptr u8 n )
-   dup CT-NAME-FIELD @
+   dup CT-NAME-PTR
    swap cells CT-NAME-U + @ ;
 
 : CT-NAME= ( ptr u8 n n -- bool ) {: a:ptr u:n code:n :}
@@ -2845,8 +2844,10 @@ variable VREC-NODE-CAP-V   VREC-NODE-INIT VREC-NODE-CAP-V !
 variable VREC-STR-CAP-V   VREC-STR-INIT VREC-STR-CAP-V !
 : VREC-STR-CAP ( -- n ) VREC-STR-CAP-V @ ;
 
-\ Boot buffers + P pointers; VREC-NAME-A holds pointers into VREC-STR and is
-\ rebased on relocation. VR-ATOM/VR-PARAM node VN.A cells store string offsets.
+\ Boot buffers + P pointers. VREC-NAME-A holds OFFSETS into VREC-STR, the same
+\ way VR-ATOM/VR-PARAM node VN.A cells always have, so a pool relocation and a
+\ snapshot bake both leave the stored names alone (see the CT registry head for
+\ why a registry column that snapshot persist repoints cannot hold pointers).
 create VREC-NAME-A-BOOT VREC-CAP-INIT cells allot
 create VREC-NAME-U-BOOT VREC-CAP-INIT cells allot
 create VREC-START-BOOT VREC-CAP-INIT cells allot
@@ -2881,7 +2882,7 @@ PERSISTED-PTR-VARIABLE VRN-H-P     PERSISTED-PTR-VARIABLE VREC-STR-P
    VRN-F-BOOT VRN-F-P !       VRN-G-BOOT VRN-G-P !   VRN-H-BOOT VRN-H-P !
    VREC-STR-BOOT VREC-STR-P ! ;
 VREC-ARENA-BOOT
-: VREC-NAME-A ( -- ptr ptr u8 ) VREC-NAME-A-P @ ;
+: VREC-NAME-A ( -- ptr n ) VREC-NAME-A-P @ ;
 : VREC-NAME-U ( -- ptr n ) VREC-NAME-U-P @ ;
 : VREC-START ( -- ptr n ) VREC-START-P @ ;
 : VREC-COUNT ( -- ptr n ) VREC-COUNT-P @ ;
@@ -2942,8 +2943,8 @@ variable VRC-RVN
 0 VREC-STR-U !
 
 \ --- geometric grow of the VREC stores. Record/field/node arrays hold ids or
-\ pointers into VREC-STR (unmoved by these grows), so a plain cell copy suffices;
-\ VRI-AK is a sparse UNBOUND-keyed scratch table, so its grown tail is unbound.
+\ offsets into VREC-STR, so a plain cell copy suffices; VRI-AK is a sparse
+\ UNBOUND-keyed scratch table, so its grown tail is unbound.
 : VREC-GROW ( n -- ) {: need:n :}
    need VREC-CAP-V @ 2 * max {: nc:n :}
    VREC-CAP-V @ cells {: ob:n :}   nc cells {: nb:n :}
@@ -2987,12 +2988,12 @@ variable VRC-RVN
    id 0 < IF s" checker: bad value-record id" 76 die THEN
    id VREC-N @ >= IF s" checker: bad value-record id" 76 die THEN ;
 
-: VREC-NAME-A-FIELD ( n -- ptr ptr u8 )
+: VREC-NAME-PTR ( n -- ptr u8 )   \ the name of record `n`, rebuilt from the pool base
    dup VREC-CHECK
-   cells VREC-NAME-A + 0 ptr-field ;
+   cells VREC-NAME-A + @ VREC-STR swap + ;
 
 : VREC-NAME$ ( n -- ptr u8 n ) {: id:n :}
-   id VREC-NAME-A-FIELD @
+   id VREC-NAME-PTR
    id cells VREC-NAME-U + @ ;
 
 : VREC-START@ ( n -- n )
@@ -3053,35 +3054,29 @@ variable VRC-RVN
 : VN>ARG ( n n -- n ) {: node:n i:n :}
    node VN.D@ i + cells VNARG + @ ;
 
-variable VREC-RB-I
-\ VREC-STR-REBASE ( n -- ) : a VREC-STR relocation moved the pool by delta; add
-\ it to every stored record-name pointer. Node strings store offsets, not ptrs.
-: VREC-STR-REBASE ( n -- ) {: delta:n :}
-   0 VREC-RB-I !
-   BEGIN VREC-RB-I @ VREC-N @ < WHILE
-      VREC-RB-I @ VREC-NAME-A-FIELD {: fld:ptr :}
-      fld @ delta + fld !
-      VREC-RB-I @ 1 + VREC-RB-I !
-   REPEAT ;
+\ A relocation moves the pool, not the names in it: record names and node strings
+\ are both offsets, so nothing needs rebasing.
 : VREC-STR-GROW ( n -- ) {: need:n :}
    need VREC-STR-CAP-V @ 2 * max {: nc:n :}
-   VREC-STR-P @ {: old:ptr :}
-   old VREC-STR-CAP-V @ nc ARENA-BYTES-GROW {: new:ptr :}
-   new VREC-STR-P !   nc VREC-STR-CAP-V !
-   new old - VREC-STR-REBASE ;
+   VREC-STR-P @ VREC-STR-CAP-V @ nc ARENA-BYTES-GROW VREC-STR-P !
+   nc VREC-STR-CAP-V ! ;
 : VREC-STR-ENSURE ( n -- ) {: add:n :}   \ ensure room for `add` more string bytes
    VREC-STR-U @ add + VREC-STR-CAP-V @ <= IF exit THEN
    VREC-STR-U @ add + VREC-STR-GROW ;
-: VREC-STR-COPY ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+\ Intern `u` bytes in the pool and answer where they went as an OFFSET. The
+\ ENSURE may relocate the pool, so the base is read after it; the pool's used
+\ mark is not moved by a relocation, so it is the offset either way.
+: VREC-STR-COPY ( ptr u8 n -- n n ) {: a:ptr u:n :}
    u VREC-STR-ENSURE
-   VREC-STR VREC-STR-U @ + {: dst:ptr :}
+   VREC-STR-U @ {: off:n :}
+   VREC-STR off + {: dst:ptr :}
    0 VREC-I !
    BEGIN VREC-I @ u < WHILE
       a VREC-I @ + c@ dst VREC-I @ + c!
       VREC-I @ 1 + VREC-I !
    REPEAT
    VREC-STR-U @ u + VREC-STR-U !
-   dst u ;
+   off u ;
 
 : VREC-NODE-NEW ( n -- n ) {: tag:n :}
    VREC-NODE-ENSURE
@@ -3127,10 +3122,9 @@ variable VREC-RB-I
    THEN @ ;
 
 : VREC-COPY-STR ( ptr u8 n n -- ) {: a:ptr u:n node:n :}
-   VREC-STR-U @ {: off:n :}
-   a u VREC-STR-COPY 2drop
+   a u VREC-STR-COPY {: off:n len:n :}
    off node VN.A!
-   u node VN.B! ;
+   len node VN.B! ;
 
 : VREC-RES ( n -- n ) {: x:n :}
    x TAG S-ROW = x TAG S-PUSH = or IF x R-RES ELSE x T-RES THEN ;
@@ -3977,9 +3971,9 @@ variable LBI-BAD
 : VREC-BEGIN ( ptr u8 n -- n ) {: a:ptr u:n :}
    VREC-ROOM
    VREC-N @ {: id:n :}
-   a u VREC-STR-COPY {: dst:ptr len:n :}
+   a u VREC-STR-COPY {: off:n len:n :}
    id 1 + VREC-N !
-   dst id VREC-NAME-A-FIELD !
+   off id cells VREC-NAME-A + !
    len id cells VREC-NAME-U + !
    VREC-FIELD-N @ id cells VREC-START + !
    0 id cells VREC-COUNT + !
@@ -9312,9 +9306,10 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ survive into a built image (later checked loads reference persisted signatures).
 \ A complete store already in image DATA survives the copy, including one
 \ persisted by an earlier capture. A grown store lives in process-local mmap,
-\ so bake it into fresh image DATA (here-allot + copy). Record/node arrays
-\ hold pointers into their string pool; the string pool is persisted last and its
-\ relocation delta rebases those pointers in the just-persisted arrays.
+\ so bake it into fresh image DATA (here-allot + copy). The CT and VREC record
+\ and node arrays name their string pool by OFFSET, so the pool may be persisted
+\ last and moved with nothing to fix up afterwards. SYM's records still hold
+\ pointers, and the string pool's relocation delta rebases them.
 \ THE DELTA TRAVELS ON THE STACK AND IS NEVER PARKED IN A DATA CELL. One of its
 \ two terms is the grown store's process-local mmap address, so a cell holding it
 \ differs between two builds of the same source, and the AOT capture bakes that
@@ -9357,13 +9352,9 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    CT-CLASS-P ab REG-PERSIST-BUF drop
    CT-WIDTH-P ab REG-PERSIST-BUF drop
    CT-SIGN-P ab REG-PERSIST-BUF drop
-   CT-STR-P CT-STR-U @ CT-STR-CAP-V @ REG-PERSIST-MOVE {: moved:n grown:bool :}
-   grown 0= IF EXIT THEN
-   CT-STR-U @ CT-STR-CAP-V !
-   moved CT-STR-REBASE ;
-
-: CT-SNAPSHOT-MARK-POINTERS ( -- )
-   CTN @ 1 ?do CT-NAME-A i cells + ptr-cell-mark loop ;
+   CT-STR-P CT-STR-U @ CT-STR-CAP-V @ REG-PERSIST-MOVE nip IF
+      CT-STR-U @ CT-STR-CAP-V !
+   THEN ;
 
 : VREC-SNAPSHOT-PERSIST ( -- )
    VREC-CAP-V @ cells {: rb:n :}
@@ -9385,13 +9376,9 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    VRN-G-P nb REG-PERSIST-BUF drop
    VRN-H-P nb REG-PERSIST-BUF drop
    VNARG-P VNARG-CAP-V @ cells REG-PERSIST-BUF drop
-   VREC-STR-P VREC-STR-U @ VREC-STR-CAP-V @ REG-PERSIST-MOVE {: moved:n grown:bool :}
-   grown 0= IF EXIT THEN
-   VREC-STR-U @ VREC-STR-CAP-V !
-   moved VREC-STR-REBASE ;
-
-: VREC-SNAPSHOT-MARK-POINTERS ( -- )
-   VREC-N @ 0 ?do VREC-NAME-A i cells + ptr-cell-mark loop ;
+   VREC-STR-P VREC-STR-U @ VREC-STR-CAP-V @ REG-PERSIST-MOVE nip IF
+      VREC-STR-U @ VREC-STR-CAP-V !
+   THEN ;
 
 : SYM-SNAPSHOT-PERSIST ( -- )      \ HIDX is dropped by HIDX-RESET; rebuilt on restore
    SYMS-P SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
@@ -9542,8 +9529,8 @@ REG-EXT-AOT-DEFAULTS
    PARAMA-BOOT 0 MAXPARAM-INIT REG-POINTERS-CLEAR
    FAM-A 0 FAM-CAP REG-POINTERS-CLEAR
    0 ATOMN !  0 PARAMN !  0 PARAM-SCR-N !  0 PARG-N !  0 FAM-N !
-   CT-NAME-A CTN @ CT-CAP-V @ REG-POINTERS-CLEAR
-   VREC-NAME-A VREC-N @ VREC-CAP-V @ REG-POINTERS-CLEAR
+   CT-NAME-A CTN @ CT-CAP-V @ ARENA-CELLS-ZERO   \ name offsets, so zero retires a row
+   VREC-NAME-A VREC-N @ VREC-CAP-V @ ARENA-CELLS-ZERO
    SYM-CAP-V @ SYM-N @ ?do
       NULL-PTR i SYM-PKG-A-FIELD !
       NULL-PTR i SYM-NAME-A-FIELD !
@@ -15365,8 +15352,9 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    NULL-PTR UNJ-A !  0 UNJ-U ! ;
 
 \ One capture seam owns the order: scrub transient stores before persistence
-\ copies any grown registry, persist and mark the live rows, then clear the
-\ later checker scopes that are declared below the registry implementation.
+\ copies any grown registry, persist the live rows and mark the pointers among
+\ them (SYM's; CT's and VREC's names are offsets and need no marking), then clear
+\ the later checker scopes that are declared below the registry implementation.
 : CHECKER-CAPTURE-PREPARE ( -- )
    CHECKER-TAPE:DETACH
    CK-GRAPH-RELEASE
@@ -15380,9 +15368,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    LOC-HW-SNAP-RESET                    \ the same arena job, one file-order later
    CHECKER-CAPTURE-SCRATCH-PREPARE
    CT-SNAPSHOT-PERSIST
-   CT-SNAPSHOT-MARK-POINTERS
    VREC-SNAPSHOT-PERSIST
-   VREC-SNAPSHOT-MARK-POINTERS
    SYM-SNAPSHOT-PERSIST
    SYM-SNAPSHOT-MARK-POINTERS
    USIGS-SNAPSHOT-PERSIST
