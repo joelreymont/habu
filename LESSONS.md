@@ -4361,11 +4361,14 @@ nobody refuses twice.
 ## A quotation may not be opened inside another
 
 `[: … [: … ;] … ;]` is not a nesting the engine compiles: it fails closed with
-exit 75 at the inner opener. The failure surfaces at the file that is being
-loaded LATER, because the source that contains the nesting loads fine and only
-leaves the quotation-patch cell set - so the next file's first ordinary `[:`
-is reported as the nested one. When a quotation opener is rejected for no
-visible reason, look for an unbalanced or nested quotation in something already
+exit 75 at the inner opener, `hb: a quotation may not open inside a quotation:
+<definition>` (the message since habu-name-the-nested-6a8e1b28; before that the
+engine echoed the bare token `[:` and nothing else). The failure surfaces at the
+file that is being loaded LATER, because the source that contains the nesting
+loads fine and only leaves the quotation-patch cell set - so the next file's
+first ordinary `[:` is reported as the nested one and the line names THAT
+definition. When a quotation opener is rejected and the definition named looks
+ordinary, look for an unbalanced or nested quotation in something already
 loaded, not in the file being read. Factor the inner quotation into a named
 word; nothing else changes.
 

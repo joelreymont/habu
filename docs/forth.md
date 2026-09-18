@@ -711,9 +711,11 @@ field. Only a type annotation on that local is refused: `{: p:n :}` is
   declared signature stable after `CHECK!`.
 - **Quotations are xts, not closures.** `[: … ;]` cannot read surrounding
   locals; on the JIT tier a `{:` group inside `[: ;]` is refused; until nested
-  quotations land only one `[:` is open at a time; a body that needs locals
-  inside a quotation becomes a named private word. Checker and compiler reject
-  local references while a quotation is open.
+  quotations land only one `[:` is open at a time, and a second one refuses
+  `hb: a quotation may not open inside a quotation: <name>`, rc 75, catchable
+  inside `evaluate` — sequential quotations in one definition are fine; a body
+  that needs locals inside a quotation becomes a named private word. Checker and
+  compiler reject local references while a quotation is open.
 - **Checked `catch` is quotation catch**: `[: WORD drop ;] catch`, consuming
   success outputs inside and keeping the exact code as data at an explicit
   recovery boundary; no arbitrary-xt catch. The quotation is stack-preserving,

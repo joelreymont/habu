@@ -139,18 +139,21 @@ variable LDIAGDEF   \ ( -- ) the open definition's name on fd 2 (first token of 
 variable LBCAPFULLMSG   variable LBCAPUNIT   \ per-definition body-capture overflow (habu1.f EMIT-BCAP at BODYBUF-CAP); label LBCAPFULL declared in habu1.f forward-ref block (dot habu-name-the-per-56a594f3)
 variable LSNAPNESTMSG   variable LSNAPUNIT   \ BEGIN-nesting overflow (jit.f EMIT-SNAP-NEST-CHECK at JIT-SNAP:FRAMES); label LSNAPNEST declared in jit.f
 variable LDIAGNEEDS     \ the shared " needs " between the ceiling and the count
+variable LQNEST   variable LQNESTMSG   \ a second `[:` while one is open (J-QUOT at QPATCH-CELL); LDIAGDEF names the definition (dot habu-name-the-nested-6a8e1b28)
 
 : BCAPFULL-MSG$ ( -- ptr u8 n )  s" hb: definition body text full at " ;
 : BCAP-UNIT$ ( -- ptr u8 n )     s"  bytes: " ;
 : SNAPNEST-MSG$ ( -- ptr u8 n )  s" hb: BEGIN nesting full at " ;
 : SNAP-UNIT$ ( -- ptr u8 n )     s"  frames: " ;
 : DIAG-NEEDS$ ( -- ptr u8 n )    s"  needs " ;
+: QNEST-MSG$ ( -- ptr u8 n )     s" hb: a quotation may not open inside a quotation: " ;
 
 : BCAPFULL-MSG-LEN ( -- n )  BCAPFULL-MSG$ nip ;
 : BCAP-UNIT-LEN ( -- n )     BCAP-UNIT$ nip ;
 : SNAPNEST-MSG-LEN ( -- n )  SNAPNEST-MSG$ nip ;
 : SNAP-UNIT-LEN ( -- n )     SNAP-UNIT$ nip ;
 : DIAG-NEEDS-LEN ( -- n )    DIAG-NEEDS$ nip ;
+: QNEST-MSG-LEN ( -- n )     QNEST-MSG$ nip ;
 
 variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exit-compile): a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it exit_group(x0) byte-identically to the old raw exit.
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
@@ -588,6 +591,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LSNAPNESTMSG LABEL@ LBL, SNAPNEST-MSG$ BYTES,                         \ EM-SNAP-NEST-DIE composes the same line from JIT-SNAP:FRAMES
    LSNAPUNIT LABEL@ LBL, SNAP-UNIT$ BYTES,
    LDIAGNEEDS LABEL@ LBL, DIAG-NEEDS$ BYTES,
+   LQNESTMSG LABEL@ LBL, QNEST-MSG$ BYTES,                               \ EM-QUOT-NEST-DIE appends the definition and a newline
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
    LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
    SNAP-RELOC:LCALLMSG LABEL@ LBL, s" hb: snapshot call map mismatch" BYTES,  NL-KW 1 BYTES,     \ SNAP-RELOC:CALLMSG-LEN bytes incl. newline
@@ -3058,9 +3062,8 @@ public
 
 : J-QUOT ( -- )
    LBL {: qok :}
-   9 DATA QPATCH-CELL LDR,  9 qok CBZ,                    \ nested [: quotation opener: recoverable inside evaluate (rc 75), fail-closed exit 75 at top level. Fires before J-QUOT touches QPATCH/emit; rollback drops compile-state
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
+   9 DATA QPATCH-CELL LDR,  9 qok CBZ,                    \ a quotation is already open: habu2.f EM-QUOT-NEST-DIE names the rule and the definition, then rc 75 -- recoverable inside evaluate, fail-closed exit 75 at top level. Fires before J-QUOT touches QPATCH/emit; rollback drops compile-state
+      LQNEST LABEL@ B,
    qok LBL,
    9 CP 0 ADDI,  9 DATA QPATCH-CELL STR,
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,               \ b-over placeholder
@@ -9381,6 +9384,27 @@ public
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    0 75 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
+\ Nested-quotation diagnostic (dot habu-name-the-nested-6a8e1b28). One definition
+\ compiles one quotation at a time: QPATCH-CELL holds the single `b-over`
+\ placeholder J-SEMIQUOT patches, so J-QUOT refuses a second `[:` while that cell
+\ is live. It refused by echoing the CURRENT TOKEN — the two bytes `[:`, no
+\ label, no newline, no definition, no reason — and a consumer had only "status
+\ 75" to act on. The checker is not the refusing layer: CF-QUOT/CF-SEMIQ keep a
+\ QDEPTH counter and a frame per open quotation, so the one-at-a-time limit is
+\ this cell, and the compile aborts here before any check runs — tools/check.f,
+\ which runs the program through the engine, printed the same two bytes and the
+\ same 75 as the load path. This target states the rule and the
+\ definition it aborted, then routes through the SAME LCOMPILEDIE tail with
+\ x0=75: a catchable throw inside evaluate (the check fires before QPATCH-CELL
+\ and the emit, so the rollback is clean), a fail-closed exit 75 at top level.
+\ No new exit code, no count to state — the ceiling is one and the rule names it.
+: EM-QUOT-NEST-DIE ( -- )
+   LQNEST LABEL@ LBL,
+   0 2 MOVZ,  1 LQNESTMSG LABEL@ ADR,  2 QNEST-MSG-LEN MOVZ,  NR-WRITE SYS,
+   LDIAGDEF LABEL@ BL,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 75 MOVZ,  LCOMPILEDIE LABEL@ B, ;
+
 : EM-EVAL-CLEAN-EXIT ( -- )
    LBL {: bounds:label :}
    13 DATA EVAL-TOP-CELL LDR,
@@ -9829,6 +9853,7 @@ package ENGINE-EMIT
    EMIT-DIAGDEF
    EM-BODY-CAP-DIE
    EM-SNAP-NEST-DIE
+   EM-QUOT-NEST-DIE
    EM-COMPILE-EXIT
    EM-EVAL-THROW-RECOVER
    EM-COMMENT
@@ -9960,6 +9985,7 @@ package LABELS
    LBL LDIAGU !  LBL LDIAGDEF !  LBL LDIAGNEEDS !
    LBL LBCAPFULL !  LBL LBCAPFULLMSG !  LBL LBCAPUNIT !
    LBL LSNAPNEST !  LBL LSNAPNESTMSG !  LBL LSNAPUNIT !
+   LBL LQNEST !  LBL LQNESTMSG !
    LBL LCOMPILEDIE !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
