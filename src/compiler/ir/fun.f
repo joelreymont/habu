@@ -657,16 +657,29 @@ variable BSTG-SLEN
    FSTG-LNK @ LK-REPLACEABLE = FSTG-VIS @ VS-EXPORTED <> and
    if E-IR-FUN-LINKAGE throw then ;
 
-\ Design line 391 with section 5.4: each convention belongs to exactly one
-\ architecture, and the context's bound contract has to be that architecture.
-: CC-ARCH ( n -- CTARGET:arch )
-   CV-KERNEL = if CTARGET-ARCH:PTX else CTARGET-ARCH:AARCH64 then ;
+\ Design line 391 with section 5.4: each convention belongs to one KIND of
+\ architecture, and the context's bound contract has to be of that kind. A
+\ kernel entry point is a PTX fact and nothing else can provide it. The section
+\ 7.6 Habu word ABI and the target contract's C ABI are facts of a NATIVE
+\ architecture and not of one native architecture: every backend that compiles
+\ Habu words hands arguments over in the same data-stack slots (docs/x86-64.md,
+\ "Calls between compiled words"), and the C ABI a contract names is its own -
+\ AAPCS64 on AArch64, SysV on x86-64. Naming AArch64 here refused every
+\ function of a second native backend before it had an operation in it.
+: CC-KERNEL? ( n -- bool )
+   CV-KERNEL = ;
+
+: PTX? ( CTARGET:arch -- bool )
+   CTARGET-ARCH:PTX CTARGET-ARCH:EQ ;
 
 : TARGET-CK ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   c IR-CTX:BINDING@ CBIND:TARGET@ CTARGET:ARCH@
-   FSTG-CC @ CC-ARCH CTARGET-ARCH:EQ
-   0= if E-IR-FUN-TARGET throw then ;
+   c IR-CTX:BINDING@ CBIND:TARGET@ CTARGET:ARCH@ PTX? {: ptx:bool :}
+   FSTG-CC @ CC-KERNEL? if
+      ptx 0= if E-IR-FUN-TARGET throw then
+      exit
+   then
+   ptx if E-IR-FUN-TARGET throw then ;
 
 \ Every block this function is about to claim must already name this function as
 \ its parent. The block window and the parent field are both section 6.3 fields

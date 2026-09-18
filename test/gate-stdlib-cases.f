@@ -275,6 +275,12 @@ SUITE compiler-x64ir
    test/compiler/x64ir.f
 ;SUITE
 
+\ The x86-64 selection pass: src/compiler/native/select-x64.f and the routine
+\ contracts it is told, src/arch/x86-64/abi.f.
+SUITE compiler-x64-select
+   test/compiler/x64-select.f
+;SUITE
+
 SUITE compiler-tic6x-asm
    test/compiler/tic6x-asm.f
    test/compiler/tic6x-facts.f

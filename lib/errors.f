@@ -1245,6 +1245,29 @@ public
 -8749 constant E-X64IR-FUN      \ a function ordinal the address-of-a-function form cannot name: negative, so it denotes no function of any emission
 -8750 constant E-X64IR-ENTRY    \ a callee entry address the call form cannot name: zero or negative, so it is the address of no emitted routine
 
+\ Native x86-64 instruction selection (package X64SEL): -8760..-8779.
+\
+\ The first eleven answer the ARM64 selector's own refusals on this machine, so
+\ a reader who knows one pass knows the other. The last three are this machine's
+\ and have no ARM64 counterpart: no floating form is declared in the dialect at
+\ all, two instruction forms name a register the allocator cannot yet be told to
+\ place, and a contract carries the machine it is about.
+-8760 constant E-X64SEL-BIND    \ selection attempted before the source dialect's opcode identities were bound, or a second binding over a live one
+-8761 constant E-X64SEL-SOURCE  \ a frozen module that is not the bound one, or a builder holding a dialect that is not HIR
+-8762 constant E-X64SEL-OPCODE  \ an operation whose opcode is none of the source dialect's
+-8763 constant E-X64SEL-SHAPE   \ a module or function this pass cannot select: not exactly one source, or a function with no block at all
+-8764 constant E-X64SEL-TRAP    \ an operation whose schema says it may trap lowered to a form that does not reproduce the trap - trapping arithmetic has no x86-64 lowering - or a trap whose routine is not in the target dictionary
+-8765 constant E-X64SEL-ATTR    \ an operation whose attribute is not under the source dialect's key for it
+-8766 constant E-X64SEL-CAP     \ more values, blocks or edge operands in one function than this pass's maps hold
+-8767 constant E-X64SEL-PLACE   \ a calling convention this selector has no rule for: one side mixing register places with data-stack places, or a function whose arity is not the one the contract declares
+-8768 constant E-X64SEL-MEM     \ a memory operation in a routine whose convention names no data-stack place at all, so the generic memory order of this dialect has no beginning
+-8769 constant E-X64SEL-CALL    \ a call this selector has no lowering for: a routine declared under the register convention, which never took the data-stack pointer a call site hands its arguments over through, a contract declaring a call in a module that contains none, a module containing a call under a contract that declares none, or a call whose operand and result lists disagree about how many values are live across it
+-8770 constant E-X64SEL-TAIL    \ a call the selector was told to leave through that it cannot: a value live across it, a callee whose arity is not this routine's own, a data-stack adjustment the branch would have had to carry, or a contract and a module that disagree about whether there is such a site
+-8771 constant E-X64SEL-ORDER   \ a block whose edges disagree about the memory order it is entered with, or that no edge reaches at all
+-8772 constant E-X64SEL-FLOAT   \ a floating source operation: the machine dialect declares no SSE form, so there is no lowering to select and one is refused rather than lowered wrongly
+-8773 constant E-X64SEL-FIXED   \ a form that needs an operand in a register the machine names and the allocator cannot yet be told to place: a shift whose count is not a literal reads rcx, and a divide reads and writes rdx:rax
+-8774 constant E-X64SEL-MACHINE \ a routine contract whose machine is not the one this backend lowers for
+
 \ Embedded instruction constructors (compiler growth region).
 -8830 constant E-X64ASM-OPERAND
 -8840 constant E-A32ASM-OPERAND
