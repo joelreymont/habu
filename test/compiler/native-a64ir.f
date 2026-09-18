@@ -274,7 +274,7 @@ private
 : NAMED-CASE ( -- )
    s" the schema table carries the dialect's own name and version" T-LABEL
    BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   11 T= 0 T= TTRUE ;
+   12 T= 0 T= TTRUE ;
 
 \ The spellings themselves, because every reference this dialect stores is a
 \ symbol and a renamed opcode would still read back through the same accessor.
@@ -753,13 +753,14 @@ private
    TTRUE TTRUE 0 T= 2 T= 2 T=
    TTRUE TTRUE TTRUE ;
 
-\ The division: two registers read, one written, no attribute - the same shape
-\ as the three arithmetic forms - and the ONE form of this dialect whose schema
-\ says it may raise. Its three instructions are the zero-divisor guard and the
-\ divide together, which is what makes the raise real: a compiled division ends
-\ the process where the engine's own `/` does instead of answering zero. The
-\ multiply is asserted beside it as total, so the trap flag is a statement about
-\ division rather than about arithmetic.
+\ The division: two registers read, one written, and ONE attribute - the entry
+\ its refusal branches to, which the three arithmetic forms have no use for - and
+\ the ONE form of this dialect whose schema says it may raise. Its five
+\ instructions are the zero-divisor guard, the refusal and the divide together,
+\ which is what makes the raise real: a compiled division hands the caller
+\ ARITH-ABI:E-DIV-ZERO where the engine's own `/` does instead of answering zero.
+\ The multiply is asserted beside it as total, so the trap flag is a statement
+\ about division rather than about arithmetic.
 : SDIV-BODY ( IR-CTX:ctx -- bool n n n bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -779,7 +780,7 @@ private
 : SDIV-CASE ( -- )
    s" the division is the one machine form that may raise" T-LABEL
    BND [: SDIV-BODY ;] IR-CTX:WITH-CONTEXT
-   TFALSE TTRUE 0 T= 1 T= 2 T= TTRUE ;
+   TFALSE TTRUE 1 T= 1 T= 2 T= TTRUE ;
 
 \ The copy: one register read, one register written, no attribute, no tie, and
 \ the same spelling every other reader sees. The absent tie is the whole content

@@ -210,7 +210,7 @@ public
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables.
 0 constant MAJOR
-11 constant MINOR
+12 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )      XBITS ;
@@ -678,7 +678,8 @@ private
 12 constant K-FUN
 13 constant K-COND
 14 constant K-DWB
-15 constant KEYS
+15 constant K-THROW-ENTRY
+16 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -697,6 +698,7 @@ private
       K-FUN        of s" a64.fun" endof
       K-COND       of s" a64.cond" endof
       K-DWB        of s" a64.dwb" endof
+      K-THROW-ENTRY of s" a64.throw-entry" endof
       E-A64IR-DIALECT throw
    endcase ;
 
@@ -936,6 +938,14 @@ public
 \ a trap under `a64.entry` would BE one to both of them.
 : KEY-TRAP-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-TRAP-ENTRY KEY-BIND ;
+
+\ Its own key again, and for the third reason: this entry is the routine a
+\ REFUSAL branches to and comes back from nowhere, while the operation carrying
+\ it is an ordinary value-producing one that the guard branches OVER. A form
+\ under `a64.entry` would be a tail branch to two passes and one under
+\ `a64.trap-entry` would be a terminator to two more.
+: KEY-THROW-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-THROW-ENTRY KEY-BIND ;
 
 \ An ordinal and not an address: there is no address until the emitter has laid
 \ the emission out. How many functions there are is the emitter's fact.
@@ -1274,14 +1284,19 @@ private
    c b A64IR-OPCODE:MADD NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ The one form that may raise, and three instructions: branch over the trap when
-\ the divisor is not zero, the trap, the divide - which is what the engine's `/` is.
+\ The one form that may raise, and five instructions: branch over the refusal
+\ when the divisor is not zero, the refusal - the error code, its push and the
+\ branch to `throw` - and the divide. Which is what the engine's own `/` is: two
+\ instructions on the hot path and a cold side that hands the caller
+\ ARITH-ABI:E-DIV-ZERO. The entry it branches to is an attribute because only
+\ the selector can ask the dictionary where `throw` is.
 : DEF-SDIV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:SDIV OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-RESULT
+   c b KEY-THROW-ENTRY IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    true IR-SCHEMA:SET-TRAP
    TARGET

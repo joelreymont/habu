@@ -63,7 +63,7 @@ A64IR-OPCODE:TRAP     A64IR:ORD constant O-TRAP
 A64IR-OPCODE:MOV      A64IR:ORD constant O-MOV
 
 \ One slot per attribute key the dialect declares.
-15 constant KEYS-N
+16 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -79,6 +79,7 @@ A64IR-OPCODE:MOV      A64IR:ORD constant O-MOV
 12 constant K-FUN                      \ which function of the emission an address form names
 13 constant K-ADDR                     \ the relocation kind of the value a move-wide chain builds
 14 constant K-DWB                      \ the pointer move a fused transfer carries in its own encoding
+15 constant K-THROW-ENTRY              \ the refusal's `throw`, under a key of its own
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -407,6 +408,13 @@ create NAMEBUF NAME-CAP allot
 
 \ An ordinal in a module this pass rebuilds function for function and in order,
 \ so the number means the same thing on both sides.
+\ Under a key of its own too: the routine a compiled refusal branches to is
+\ neither a callee this routine comes back from nor the one that ends it.
+: THROW-ENTRY-ATTR+ ( n -- )
+   {: entry:n :}
+   CTX BLD  CTX BLD A64IR:KEY-THROW-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
+   IR-BUILD:ADD-ATTR ;
+
 : FUN-ATTR+ ( n -- )
    {: k:n :}
    CTX BLD  CTX BLD A64IR:KEY-FUN  CTX BLD k A64IR:FUN-ATTR  IR-BUILD:ADD-ATTR ;
@@ -460,6 +468,7 @@ create NAMEBUF NAME-CAP allot
       k K-OFF = if v OFF-ATTR+ then
       k K-MASK = if v MASK-ATTR+ then
       k K-TRAP-ENTRY = if v TRAP-ENTRY-ATTR+ then
+      k K-THROW-ENTRY = if v THROW-ENTRY-ATTR+ then
       k K-FUN = if v FUN-ATTR+ then
    loop ;
 
@@ -1089,6 +1098,7 @@ public
    c b A64IR:KEY-OFF    K-OFF BND-KEY !
    c b A64IR:KEY-MASK   K-MASK BND-KEY !
    c b A64IR:KEY-TRAP-ENTRY K-TRAP-ENTRY BND-KEY !
+   c b A64IR:KEY-THROW-ENTRY K-THROW-ENTRY BND-KEY !
    c b A64IR:KEY-FUN    K-FUN BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !

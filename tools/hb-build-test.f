@@ -198,6 +198,18 @@ create HBT-EXP-HEX2 64 allot
 : HBT-AOT-SRC2$ ( -- ptr u8 n )
    S\" package HBT-NATIVE\n: LOADING ( -- ) tier@ 1 <> if -9040 throw then ;\nLOADING\npublic\n: INC ( n -- n ) 1+ ;\n: APPLY ( n [ n -- n ] -- n ) execute ;\n: RUN ( -- ) 41 [: INC ;] APPLY 42 <> if -9041 throw then NULL$ nip 0 <> if -9045 throw then ;\n;package\n: MAIN ( -- ) HBT-NATIVE:RUN ;\n" ;
 
+\ A zero divisor in a STRIPPED image. The division is compiled by the native
+\ compiler (the image is built at tier 1, which `LOADING` holds it to), and its
+\ refusal branches to the engine's own `throw` - an address outside this
+\ payload's window that the closure walker has to follow and the build has to
+\ relocate, exactly as it does for the terminator's `die`. An image whose branch
+\ was left pointing at the building engine's text does not come back here with a
+\ code at all, and one whose refusal was dropped answers zero and throws -9051.
+\ The code is ARITH-ABI:E-DIV-ZERO, spelled out because a built source is a
+\ string and cannot see this file's constants.
+: HBT-AOT-DIVZ-SRC$ ( -- ptr u8 n )
+   S\" package HBT-DIVZ\n: LOADING ( -- ) tier@ 1 <> if -9050 throw then ;\nLOADING\nvariable A\nvariable B\nvariable R\n: DZ ( n n -- n ) / ;\n: TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\npublic\n: RUN ( -- ) 7 A ! 0 B ! TRY dup . cr -6400 <> if -9051 throw then 7 A ! 2 B ! TRY 0 <> if -9052 throw then R @ 3 <> if -9053 throw then ;\n;package\n: MAIN ( -- ) HBT-DIVZ:RUN ;\n" ;
+
 : HBT-LARGE-AOT-SRC$ ( -- ptr u8 n )
    s" variable SLOT 9 SLOT ! : MAIN ( -- ) SLOT @ . cr ;" ;
 
@@ -857,6 +869,16 @@ create READER-STATE JR:STORAGE-BYTES allot
    outn 0 T=
    errn 0 T= ;
 
+\ The same run, for an image that is MEANT to print: the refusal case below
+\ prints the code it caught, so a silent image would pass HBT-RUN-AOT above for
+\ exactly the wrong reason.
+: HBT-RUN-AOT-PRINTS ( ptr u8 n -- ) {: want:ptr wantu:n :}
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn want wantu CONTAINS? TTRUE ;
+
 : HBT-OBJ-LOAD? ( -- bool )
    HBB-RESET-OPTIONS
    HBT-TMP OBJRES:ROOT!
@@ -900,6 +922,25 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBB-MAKER-RUN @ 0 <> TTRUE
    HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE CHECK-REPORT
    HBT-RUN-AOT
+   HBT-REMOVE-ARTIFACT
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   BF-TMP-RESET ;
+
+\ THE CONTRACT THAT DOES NOT DEPEND ON THE TIER. A program that divides by zero
+\ catches ARITH-ABI:E-DIV-ZERO and carries on, and a built executable is where
+\ that used to stop being true: the lowering's guard ended in a `brk`, so the
+\ same source that refused by name under `bin/hb` died with a register dump once
+\ it was an image. The catch is asserted THROUGH A BUILT AND EXECUTED IMAGE
+\ because the relocation of the refusal's branch is what makes it true and
+\ nothing short of running the image exercises it.
+: BUILD-AOT-DIV-REFUSAL ( -- )
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-AOT-SRC HBT-AOT-DIVZ-SRC$ WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBB-BUILD
+   S\" -6400\n" HBT-RUN-AOT-PRINTS
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
@@ -1122,6 +1163,7 @@ public
    HBT-BUILD-MISSING-TMP
    BUILD-AOT-OBJECT-PRODUCER
    BUILD-AOT-NATIVE
+   BUILD-AOT-DIV-REFUSAL
    HBT-SIZE-AOT
    BUILD-AOT-PRESEED
    HBT-AOT-JIT-REJECT

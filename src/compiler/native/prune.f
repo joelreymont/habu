@@ -67,7 +67,7 @@ A64IR-OPCODE:EOR   A64IR:ORD constant O-EOR
 
 \ This pass writes no attribute of its own but COPIES every one the selector
 \ built, and a field copied under the wrong key would misread a frame.
-15 constant KEYS-N
+16 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -83,6 +83,7 @@ A64IR-OPCODE:EOR   A64IR:ORD constant O-EOR
 12 constant K-FUN                      \ which function of the emission an address form names
 13 constant K-ADDR                     \ the relocation kind of the value a move-wide chain builds
 14 constant K-DWB                      \ the pointer move a fused transfer carries in its own encoding
+15 constant K-THROW-ENTRY              \ the refusal's `throw`, under a key of its own
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -414,6 +415,10 @@ DYNAMIC-BUFFER ABSORB-BUF n
          CTX BLD  CTX BLD A64IR:KEY-TRAP-ENTRY  CTX BLD v A64IR:ENTRY-ATTR
          IR-BUILD:ADD-ATTR
       then
+      k K-THROW-ENTRY = if
+         CTX BLD  CTX BLD A64IR:KEY-THROW-ENTRY  CTX BLD v A64IR:ENTRY-ATTR
+         IR-BUILD:ADD-ATTR
+      then
       k K-FUN = if
          CTX BLD  CTX BLD A64IR:KEY-FUN  CTX BLD v A64IR:FUN-ATTR
          IR-BUILD:ADD-ATTR
@@ -594,6 +599,7 @@ public
    c b A64IR:KEY-OFF    K-OFF BND-KEY !
    c b A64IR:KEY-MASK   K-MASK BND-KEY !
    c b A64IR:KEY-TRAP-ENTRY K-TRAP-ENTRY BND-KEY !
+   c b A64IR:KEY-THROW-ENTRY K-THROW-ENTRY BND-KEY !
    c b A64IR:KEY-FUN    K-FUN BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !

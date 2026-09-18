@@ -156,7 +156,7 @@ ENUM rmove DERIVE eq
 \ sequence, and src/compiler/native/elaborate.f is where each one is written.
 \ `cell-index` is `ptr-field`, the cell index scaled and added to the base;
 \ `modulo` is `mod`, the remainder the engine's own division leaves, which is why
-\ it is spelled with the division that carries the zero-divisor trap; `maximum`
+\ it is spelled with the division that carries the zero-divisor refusal; `maximum`
 \ is `max`, the larger of two signed cells, taken branchlessly with the mask a
 \ comparison answers.
 ENUM expand DERIVE eq
@@ -716,8 +716,9 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ The one arithmetic operation that may trap whatever the policy says: the
-\ policy is about OVERFLOW, and the engine's `/` traps on a zero divisor.
+\ The one arithmetic operation that may raise whatever the policy says: the
+\ policy is about OVERFLOW, and `/` refuses a zero divisor at every tier - the
+\ engine's own body and the machine lowering both throw ARITH-ABI:E-DIV-ZERO.
 : DEF-DIV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b HIR-OPCODE:DIV OPCODE IR-SCHEMA:BEGIN-OP

@@ -36,6 +36,14 @@ TRUSTED: POKE ( n n -- ) patch32 ;
 
 public
 
+\ Declare the slot this emission will be published into BEFORE it is laid out. A
+\ form whose branch leaves the emission - the division's refusal, the terminator
+\ that ends the process - measures its displacement from where the bytes land, so
+\ it is refused outright without a placement. The slot named is the one PUBLISH
+\ below claims, so the displacement an executed case branches on is the real one.
+: PLACE ( -- )
+   cp@ PLACE-AT ;
+
 \ Store the sealed emission into the free code slot and answer its entry address.
 \ It must be called from inside a definition: a top-level `cp@` patch overwrites
 \ the line being interpreted.

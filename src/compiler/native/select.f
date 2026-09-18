@@ -1150,6 +1150,29 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    CLOSE-VALUE
    id 0 RESULT-AT  ACC  VBIND ;
 
+\ ---- selecting the one arithmetic that refuses -------------------------------
+\ A zero divisor is a CALLER error, so the divide's cold side hands the code to
+\ the runtime's `throw` (src/habu/habu1.f BTHROW) exactly as the engine's own
+\ `/` hands it to (DIV-ZERO). The entry is asked for here, where the dictionary
+\ is readable, and carried to the emitter as the operation's own attribute. It
+\ is refused by the name E-A64SEL-TRAP names: the routine a compiled refusal
+\ branches to is not in the target dictionary.
+: THROW-ENTRY ( -- n )
+   s" throw" NDICT:CALL-TARGET {: e:n :}
+   e 0= if E-A64SEL-TRAP throw then
+   e ;
+
+: EMIT-DIV ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id A64IR-OPCODE:SDIV OPEN
+   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
+   RESULT+
+   CTX BLD  CTX BLD A64IR:KEY-THROW-ENTRY
+   CTX BLD  THROW-ENTRY A64IR:ENTRY-ATTR  IR-BUILD:ADD-ATTR
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
 : EMIT-FBINARY ( IR-ID:ir-op-id A64IR:opcode -- )
    {: id:IR-ID:ir-op-id o:A64IR:opcode :}
    id o OPEN
@@ -2655,7 +2678,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       add    OF id A64IR-OPCODE:ADD EMIT-BINARY ENDOF
       sub    OF id A64IR-OPCODE:SUB EMIT-BINARY ENDOF
       mul    OF id A64IR-OPCODE:MUL EMIT-BINARY ENDOF
-      div    OF id A64IR-OPCODE:SDIV EMIT-BINARY ENDOF
+      div    OF id EMIT-DIV ENDOF
       lt     OF id EMIT-FLAG ENDOF
       le     OF id EMIT-FLAG ENDOF
       gt     OF id EMIT-FLAG ENDOF

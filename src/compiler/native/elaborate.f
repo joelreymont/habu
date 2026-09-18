@@ -3386,8 +3386,9 @@ create DN-BUF DN-CAP allot
    2 VDROP ;
 
 \ mod ( n n -- n ): the remainder the division leaves, a - a/b*b. The division is
-\ this dialect's `div`, whose schema carries the zero-divisor trap, so the refusal
-\ the engine's `mod` makes on a zero divisor is the refusal this sequence makes.
+\ this dialect's `div`, whose schema carries the zero-divisor refusal, so the
+\ throw the engine's `mod` makes on a zero divisor is the throw this sequence
+\ makes - the same code, from the same cold side of the same guard.
 : EXPAND-MODULO ( n -- )
    {: ix:n :}
    EXPAND-PAIR {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}

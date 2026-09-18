@@ -320,6 +320,10 @@ SUITE compiler-native-trap
    test/compiler/native-trap.f
 ;SUITE
 
+SUITE compiler-native-div-refusal
+   test/compiler/native-div-refusal.f
+;SUITE
+
 SUITE compiler-native-quot
    test/compiler/native-quot.f
 ;SUITE

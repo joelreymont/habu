@@ -35,6 +35,7 @@ require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/backend.f
+require src/habu/arith-abi.f            \ E-DIV-ZERO, the divide's refusal
 
 package A64EMIT
 using A64ASM
@@ -182,6 +183,7 @@ A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DWB IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-THROW IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OFF IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MASK IR-ID:ir-symbol-id
@@ -362,6 +364,10 @@ variable N-FUNS                        \ how many functions the emission holds
 \ presence of `a64.entry` and a trap is not one.
 : TRAP-ADDR ( IR-ID:ir-op-id -- n )
    0 BND-TRAP @ ATTR-INT ;
+
+\ The runtime's `throw`, which the divide's cold side hands the refusal to.
+: THROW-ADDR ( IR-ID:ir-op-id -- n )
+   0 BND-THROW @ ATTR-INT ;
 
 \ ---- one instruction per operation -------------------------------------------
 : WORD-MOVZ ( IR-ID:ir-op-id -- n )
@@ -637,6 +643,12 @@ variable N-FUNS                        \ how many functions the emission holds
       if E-A64EMIT-SHAPE throw then
    loop ;
 
+\ The division is the guard, the three-instruction refusal on its cold side and
+\ the divide (PUT-SDIV). How long the form is and how far the guard jumps are
+\ ONE number, so a refusal that grows cannot leave the guard landing inside it.
+5 constant DIV-INSNS                 \ instructions one division is
+DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
+
 \ A property of the FORM: one for all but the three comparisons, the division,
 \ the two calls and the three compare-and-branches, and the two-way branch and
 \ the eight conditional selects, which are two.
@@ -654,7 +666,7 @@ variable N-FUNS                        \ how many functions the emission holds
    k O-FLAGI = if 3 exit then
    k O-FFLAG = if 3 exit then
    k O-FFLAGZ = if 3 exit then
-   k O-SDIV = if 3 exit then
+   k O-SDIV = if DIV-INSNS exit then
    k O-CALL = if 3 exit then
    k O-WORDCALL = if 3 exit then
    k O-CMPBR = if 3 exit then
@@ -1087,16 +1099,6 @@ variable CH-AT
    id  id 0 RESULT-REG  id 1 OPERAND-REG  id 2 OPERAND-REG
        id COND-OF  ENC-FCSEL  APPEND ;
 
-\ It skips exactly the one instruction between it and the divide, so it is
-\ written here rather than measured off the label table.
-2 constant DIV-SKIP                  \ words from the guard to the divide
-
-: PUT-SDIV ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id  id 1 OPERAND-REG DIV-SKIP ENC-CBNZ  APPEND
-   id  ENC-BRK  APPEND
-   id  id TRIPLE ENC-SDIV  APPEND ;
-
 \ ---- moving the data-stack pointer -------------------------------------------
 \ NO INSTRUCTION AT ALL when the distance is zero, which is the ordinary case.
 : PUT-DMOVE ( IR-ID:ir-op-id n -- )
@@ -1182,15 +1184,61 @@ variable CH-AT
    {: id:IR-ID:ir-op-id :}
    id  id WORD-DELTA B-WORD  APPEND ;
 
+\ ---- branching to a routine of the engine's own text --------------------------
+\ Both routines below name an ABSOLUTE entry and not a displacement, so the
+\ distance is measured from where this emission was placed. The BL participates
+\ in the existing external-call relocation map, which is what carries the callee
+\ into a stripped image and retargets the branch there.
+: EXT-DELTA ( n -- n )
+   PLACEMENT-CK -  INSN-BYTES /  N-INS @ - ;
+
 \ ---- leaving through the routine that ends the process -----------------------
 \ It does NOT note its callee: control that reaches here never returns to this
 \ routine, so nothing the trap routine writes can be read by anybody.
 : PUT-TRAP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id DBYTES-SIZE  PUT-DMOVE
-   \ die lives in engine text. BL participates in the existing external-call
-   \ relocation map; the link is dead because this primitive exits the process.
-   id  id TRAP-ADDR  PLACEMENT-CK -  INSN-BYTES /  N-INS @ -  BL-WORD  APPEND ;
+   \ die lives in engine text; the link is dead because it exits the process.
+   id  id TRAP-ADDR EXT-DELTA  BL-WORD  APPEND ;
+
+\ ---- the divide, and the refusal on its cold side ----------------------------
+\ ARM64's Sdiv ANSWERS ZERO for a zero divisor, so the divisor is tested. A zero
+\ divisor is a CALLER error the program can fix and recover from - it came from
+\ the program's own arithmetic - so the cold side hands the caller
+\ ARITH-ABI:E-DIV-ZERO through the runtime's `throw`, which is the refusal the
+\ engine's own `/` makes (src/habu/habu1.f BDIV0?). It used to be a `brk`: a
+\ word compiled at tier 1 and every AOT executable died with a register dump
+\ where the interpreted division threw a code the caller could catch.
+\
+\ THE HOT PATH IS THE TWO INSTRUCTIONS IT ALWAYS WAS - the compare-and-branch
+\ and the divide - and the three between them are never executed by a program
+\ whose divisor is not zero. That is why the refusal is written in line rather
+\ than reached through a block of its own: a branch to a shared block would cost
+\ this site the very instruction its branch to `throw` costs, and buy a block
+\ the layout has to place.
+\
+\ The code is ONE instruction because a Movn spells it: -6400 is ~6399. A code
+\ needing a move-wide chain would make the form longer than DIV-INSNS says, so
+\ ?IMM16 (src/arch/arm64/asm.f) refuses it rather than emitting a short form.
+\
+\ The push is `str xd,[x19],#8`, which is the engine's own G-PUSH in
+\ src/habu/rt.f, so `throw` pops this code exactly as it pops one a checked
+\ `throw` pushed. It is written into the register the DIVIDE's result holds,
+\ which no path reads: the hot path has not divided yet, and the cold path never
+\ comes back.
+\
+\ MIN-N -1 / IS MIN-N, the modular answer Sdiv gives, like the wrap `+`, `-` and
+\ `*` already make (docs/forth.md). It is not a second refusal.
+ARITH-ABI:E-DIV-ZERO invert constant DIV-CODE-IMM  \ the code as a Movn carries it
+
+: PUT-SDIV ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG {: rd:n :}
+   id  id 1 OPERAND-REG DIV-SKIP  ENC-CBNZ  APPEND
+   id  rd DIV-CODE-IMM 0  MOVNHW  APPEND
+   id  rd A64EFF:DSTACK-GPR CELL  ENC-STRPOST  APPEND
+   id  id THROW-ADDR EXT-DELTA  BL-WORD  APPEND
+   id  id TRIPLE  ENC-SDIV  APPEND ;
 
 \ ---- the two ends of the frame ----------------------------------------------
 \ The fused end writes its instruction at the FIRST operation of its pair and
@@ -1485,6 +1533,7 @@ public
    c b A64IR:KEY-DBACK  0 BND-DBACK !
    c b A64IR:KEY-ENTRY  0 BND-ENTRY !
    c b A64IR:KEY-TRAP-ENTRY 0 BND-TRAP !
+   c b A64IR:KEY-THROW-ENTRY 0 BND-THROW !
    c b A64IR:KEY-OFF    0 BND-OFF !
    c b A64IR:KEY-MASK   0 BND-MASK !
    c b A64IR:KEY-FUN    0 BND-FUN !

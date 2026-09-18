@@ -769,7 +769,9 @@ boundary cases are contracts every backend answers alike.
   The guard is the cold side of a compare-and-branch already there to stop
   arm64's `sdiv` answering zero. A structurally positive divisor says so in the
   type: `lib/num-arithmetic.f`'s `positive-divisor` role makes the refusal
-  unreachable.
+  unreachable. **The contract holds at every tier**: the interpreted primitive,
+  a word compiled with `1 set-tier`, and an AOT-built executable all throw the
+  same code, so a program may catch it wherever it runs.
 - **`MIN-N -1 /` is `MIN-N` and `MIN-N -1 mod` is `0`.** The quotient `2^63` has
   no cell, so it wraps like `+`, `-`, `*`; a second refusal would cost every
   division a compare, and no caller in the tree can reach it (every divisor is a
@@ -777,12 +779,6 @@ boundary cases are contracts every backend answers alike.
   `positive-divisor`). A backend whose divide traps on this quotient (x86_64
   `idiv`) tests for the `-1` divisor and answers `(MIN-N, 0)` without executing
   it. `test/prim-parity.f` pins both contracts.
-- **Tier-1 compiled code and AOT executables still trap on a zero divisor.** The
-  native compiler's own lowering (`src/compiler/native/emit.f PUT-SDIV`) emits a
-  `brk` guard: a word compiled with `1 set-tier`, and every AOT-built
-  executable, dies with the crash handler's register dump. The emitter has no
-  `throw` lowering, only `NTRAP`; do not rely on catching `E-DIV-ZERO` in an
-  AOT-built program.
 - **`.` prints every cell, `MIN-N` included**: the signed printer negates and
   divides unsigned, since `MIN-N` negates to itself and a signed divide there
   wrote bytes below `'0'`; `FMT:SB-INT` reaches the same value through a
