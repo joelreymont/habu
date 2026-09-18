@@ -55,6 +55,13 @@ variable HIT
    loop
    HIT @ 0 <> ;
 
+\ A declared cell's DATA offset. `-` over a pointer to a pointer and the DATA
+\ base would make the base the address of an address, which the base fence
+\ refuses at every pointee depth; the distance is measured in bytes through the
+\ same BYTE-VIEW door src/habu/snap-lib.f SND-ZERO-OFF takes.
+: DATA-OFF ( ptr a -- n )
+   BYTE-VIEW data-base BYTE-VIEW - ;
+
 : PTR-LISTED? ( n -- bool ) {: off:n :}
    0 HIT !
    COUNT@ 0 ?do
@@ -320,7 +327,7 @@ public
    s" PERSISTED-PTR-VARIABLE declares exactly one DATA-pointer cell" T-LABEL
    P2 @ P1 @ 1+ T=
    s" that cell is tagged as a DATA pointer in the shared table" T-LABEL
-   PTR-SLOT data-base - PTR-LISTED? TTRUE
+   PTR-SLOT DATA-OFF PTR-LISTED? TTRUE
    s" the structural declaration does not change its initial null value" T-LABEL
    PTR-SLOT @ 0= TTRUE
    s" defer declares exactly one new address cell" T-LABEL
@@ -354,7 +361,7 @@ public
    s" initialising a coordinator declares its table pointer and diagnostic callback" T-LABEL
    T1 @ T0 @ 2 + T=
    s" the coordinator's table owner cell is tagged as a DATA pointer" T-LABEL
-   TAB-STATE data-base - PTR-LISTED? TTRUE
+   TAB-STATE DATA-OFF PTR-LISTED? TTRUE
    s" registering a participant declares its five callback cells" T-LABEL
    T2 @ T1 @ 5 + T=
    s" a second participant declares its own row's five" T-LABEL

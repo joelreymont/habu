@@ -286,28 +286,43 @@ TVINIT
 1 constant TVK-RAW   \ minted by a raw storage definer; admits only plain scalars
 2 constant RVK-QUOT  \ implicit callback tail: fixed window when compared as a value
 3 constant RVK-INFERRED  \ literal tail: fresh per call, extensible to a declared window
-\ TVK-BASE: the pointee of an UNPROVENANCED BASE ADDRESS -- `data-base` and
-\ `NULL-PTR`, the two rows whose pointer is not the address OF anything (dot
-\ habu-bound-ptr-arithmetic-8bf6b54a). It is fenced exactly like TVK-RAW in
-\ VALUE position and permissive inside a POINTEE, which is the whole difference
-\ between the two kinds and is what lets `ptr thing NULL-PTR =` keep certifying
-\ while `NULL-PTR + @` read as a `thing` does not. See BASE-BLOCK? below.
-4 constant TVK-BASE
+\ The two BASE-ADDRESS pointees: a pointer that is not the address OF anything
+\ (dot habu-fence-a-base-c6c1d71d). They are separate kinds because their honest
+\ uses are not the same.
+\
+\ TVK-NULL is `NULL-PTR`. Fenced in VALUE position, permissive inside a POINTEE:
+\ the tree's honest uses -- `ptr thing NULL-PTR =`, `NULL-PTR X !`, `NULL-PTR -`,
+\ `NULL-PTR 0=` -- each bind the pointee INSIDE a `ptr`, and the null is the one
+\ address every one of those shapes means literally. Nothing read THROUGH it is
+\ a nominal identity or an address.
+\
+\ TVK-DBASE is `data-base`, the start of the running task's DATA region, and it
+\ is fenced at EVERY pointee depth. The first cut fenced only the first pointee,
+\ so `( -- ptr ptr n ) data-base 8 +` declared a DATA word to be the address of
+\ an address and `F @ @` then forged one out of whatever integer the region held
+\ (measured: `1 W  F @ @ @` certified and SIGSEGVed). Following the chain is the
+\ whole point -- a cell reached from DATA holds a plain value at any depth.
+4 constant TVK-NULL
+5 constant TVK-DBASE
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
-: TVK-BASE? ( n -- bool ) TVK@ TVK-BASE = ;
+: BASE-KIND? ( n -- bool )   \ is this KIND one of the two base addresses?
+   dup TVK-NULL = swap TVK-DBASE = or ;
 \ permanent (untrailed) marks for build-time contexts (prim/signature build,
 \ freshening); the trailed TVK-RAISE below is used inside unification.
 : TVK-RAW! ( n -- ) TVK-RAW swap cells TVK + ! ;
-: TVK-BASE! ( n -- ) TVK-BASE swap cells TVK + ! ;
+: TVK-NULL! ( n -- ) TVK-NULL swap cells TVK + ! ;
+: TVK-DBASE! ( n -- ) TVK-DBASE swap cells TVK + ! ;
 
-\ The fence lattice: ANY < BASE < RAW. A meet keeps the STRICTER of two kinds,
-\ so a base-derived value stored into a raw cell meets at RAW and never lowers
-\ one discipline to the other. The row kinds are not on this lattice and rank 0
-\ (a row var never meets a type var).
+\ The fence lattice: ANY < NULL < DBASE < RAW. A meet keeps the STRICTER of two
+\ kinds, so a null that meets a DATA-derived pointee comes out DBASE (the fence
+\ that follows every depth) and a base-derived value stored into a raw cell meets
+\ at RAW; no discipline is ever lowered to another. The row kinds are not on this
+\ lattice and rank 0 (a row var never meets a type var).
 : TVK-RANK ( n -- n )
-   dup TVK-RAW = IF drop 2 EXIT THEN
-   TVK-BASE = IF 1 EXIT THEN
+   dup TVK-RAW = IF drop 3 EXIT THEN
+   dup TVK-DBASE = IF drop 2 EXIT THEN
+   TVK-NULL = IF 1 EXIT THEN
    0 ;
 : TVK-MEET ( n n -- n ) {: k1:n k2:n :}
    k1 TVK-RANK k2 TVK-RANK >= IF k1 ELSE k2 THEN ;
@@ -373,16 +388,17 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
    nc TRAIL-CAP ! ;
 \ A trail entry carries the var id and a 3-BIT tag. The tag says what to put
 \ back, so a kind raise restores the kind it displaced rather than assuming
-\ TVK-ANY: with two fenced kinds on one lattice (TVK-BASE < TVK-RAW) a rolled
-\ back raise that reset a BASE var to ANY would drop the base-address fence on
-\ every row an abandoned prim-overload trial touched.
-: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=RVK-INFERRED, 4=TVK-BASE
+\ TVK-ANY: with three fenced kinds on one lattice (TVK-NULL < TVK-DBASE <
+\ TVK-RAW) a rolled back raise that reset a fenced var to ANY would drop the
+\ base-address fence on every row an abandoned prim-overload trial touched.
+: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=RVK-INFERRED, 4=TVK-NULL, 5=TVK-DBASE
    TRAIL-N @ 1 + TRAIL-ENSURE
    id 8 * tag +  TRAIL-N @ cells TRAIL + !
    TRAIL-N @ 1 + TRAIL-N ! ;
 : TRAIL-KIND-OF ( n -- n )   \ the kind a kind-tag puts back
    dup 3 = IF drop RVK-INFERRED EXIT THEN
-   4 = IF TVK-BASE ELSE TVK-ANY THEN ;
+   dup 4 = IF drop TVK-NULL EXIT THEN
+   5 = IF TVK-DBASE ELSE TVK-ANY THEN ;
 : TRAIL-UNWIND ( n -- ) {: mark:n :}     \ pop+undo every mutation above `mark`
    BEGIN TRAIL-N @ mark > WHILE
       TRAIL-N @ 1 - TRAIL-N !
@@ -397,7 +413,9 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
 \ unification, trailed so a failed prim-overload trial (TRIAL-REST) or a
 \ definition reject puts the displaced kind back. Idempotent: a meet that
 \ changes nothing records nothing (so no spurious trail growth).
-: TVK-KIND-TAG ( n -- n ) TVK-BASE = IF 4 ELSE 2 THEN ;
+: TVK-KIND-TAG ( n -- n )
+   dup TVK-NULL = IF drop 4 EXIT THEN
+   TVK-DBASE = IF 5 ELSE 2 THEN ;
 : TVK-RAISE-TO ( n n -- ) {: id:n kind:n :}
    id TVK@ kind TVK-MEET
    dup id TVK@ = IF drop EXIT THEN
@@ -2135,11 +2153,14 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 \ ptr t, or TYPED-BUFFER. `create BUF 256 allot  BUF 4 type` keeps certifying:
 \ the pointee binds to the `u8` CON, which stays admissible.
 variable RAW-PTR-HIT   \ a RAW cell refused a pointer in this token's unify; UF-CAPTURE names it as the pin closes
-variable BASE-PTR-HIT  \ a base-address cell refused a nominal or a pointer in this token's unify; UF-CAPTURE names it the same way
+\ Which base address refused a nominal or a pointer in this token's unify:
+\ 0 none, TVK-NULL the null, TVK-DBASE the DATA region. UF-CAPTURE names the one
+\ that hit, so the two rules answer with their own prose.
+variable BASE-PTR-HIT
 
-\ FENCE-WHY answers ONE question for both fenced kinds, so TVK-BASE cannot drift
-\ from TVK-RAW's admissibility: 0 admissible, 1 nominal family or layout (the
-\ mint), 2 pointer, 3 linear con. A var argument is MET with `kind` (trailed)
+\ FENCE-WHY answers ONE question for all three fenced kinds, so neither base
+\ address can drift from TVK-RAW's admissibility: 0 admissible, 1 nominal family
+\ or layout (the mint), 2 pointer, 3 linear con. A var argument is MET with `kind` (trailed)
 \ rather than judged, which is how the kind rides `+`, `-`, `cell+`, `char+`,
 \ `1+`, `1-` -- whose rows keep the base's pointee var -- and out through `@`.
 \ `term` is already resolved.
@@ -2155,21 +2176,32 @@ variable BASE-PTR-HIT  \ a base-address cell refused a nominal or a pointer in t
    dup 2 = IF -1 RAW-PTR-HIT ! THEN                   \ ptr: a raw cell is never an address
    0= ;
 
-\ A BASE pointee is fenced in VALUE position and permissive inside a POINTEE
-\ (CUR-STRICT). That split is the rule: `data-base` and `NULL-PTR` address no
-\ declared element, so nothing READ through one may be a nominal identity or an
-\ address -- while the pointer itself is still an ordinary pointer to compare,
-\ subtract or store, which is all any honest use makes of it. `ptr thing
-\ NULL-PTR =` binds `thing` inside a `ptr` and certifies; `NULL-PTR + @` read as
-\ a `thing` or a `ptr n` binds at top level and does not. The permissive arm
-\ still MEETS, so a wrapper that publishes the derived pointer as `( -- ptr a )`
-\ restricts its own declared quantifier and NP-CHECK refuses it -- which is the
-\ point: such a wrapper mints whatever its caller asks for.
-: BASE-BLOCK? ( n -- bool )   \ resolved term; may a base-address cell NOT absorb it?
-   TVK-BASE FENCE-WHY
-   dup 0= IF drop RES-FALSE EXIT THEN
-   drop CUR-STRICT @ 0 <> IF RES-FALSE EXIT THEN      \ pointee position: the pointer, not the cell
-   -1 BASE-PTR-HIT ! RES-TRUE ;
+\ Neither base address addresses a declared element, so nothing READ through one
+\ may be a nominal identity or an address. The two kinds differ in how deep that
+\ reaches.
+\
+\ TVK-NULL keeps the permissive POINTEE arm (CUR-STRICT): `ptr thing NULL-PTR =`
+\ binds `thing` inside a `ptr` and certifies, and so do the store, the distance
+\ and `0=`, because the null is the literal address those shapes mean. Only the
+\ value position is fenced -- `NULL-PTR + @` read as a `thing` or a `ptr n`.
+\
+\ TVK-DBASE has no permissive arm: a DATA cell holds a plain value at EVERY
+\ depth. The pointee chain is what carried the first cut's hole, since
+\ NOMPTR-BLOCK? stops a nominal only at the FIRST pointee: `( -- ptr ptr dthing )
+\ data-base 8 +` put the nominal one `ptr` deeper and `F @ @` minted it, and
+\ `( -- ptr ptr ptr n )` did the same for an address out of an arbitrary DATA
+\ word. Blocking the pointer term itself, strict or not, closes every depth at
+\ once.
+\
+\ The permissive arm still MEETS, so a wrapper that publishes the derived
+\ pointer as `( -- ptr a )` restricts its own declared quantifier and NP-CHECK
+\ refuses it -- which is the point: such a wrapper mints whatever its caller asks
+\ for.
+: BASE-BLOCK? ( n n -- bool )   \ resolved term + base kind; may that cell NOT absorb the term?
+   {: t:n kind:n :}
+   t kind FENCE-WHY 0= IF RES-FALSE EXIT THEN
+   kind TVK-NULL =  CUR-STRICT @ 0 <> and IF RES-FALSE EXIT THEN   \ the null inside a pointee: the pointer, not the cell
+   kind BASE-PTR-HIT ! RES-TRUE ;
 \ THE ARMED WINDOW IS THE SANCTIONED MINT, and it is exempt here for the same
 \ reason NOMPTR-BLOCK? exempts it: LAYOUT-INTRO is set only while CHECK coerces
 \ the OUTPUT row of the accessor a storage definer just generated, keyed on the
@@ -2180,10 +2212,11 @@ variable BASE-PTR-HIT  \ a base-address cell refused a nominal or a pointer in t
 \ which is what put another table's writes on BMID's cells in a merged engine
 \ (dot habu-bmid-module-id-ec6c709b, src/core/layout-buffer.f LBUF-SOURCE).
 : RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates a cell discipline?
-   LAYOUT-INTRO @ 0 <> IF 2drop RES-FALSE EXIT THEN  \ the definer's own introduction form
-   over TVK-RAW? IF nip RAW-OK? 0= EXIT THEN         \ RAW var: `term` must be RAW-admissible
-   over TVK-BASE? 0= IF 2drop RES-FALSE EXIT THEN    \ ordinary var: never blocks
-   nip T-RES BASE-BLOCK? ;                            \ base-address var: value position is fenced
+   {: vid:n term:n :}
+   LAYOUT-INTRO @ 0 <> IF RES-FALSE EXIT THEN        \ the definer's own introduction form
+   vid TVK-RAW? IF term RAW-OK? 0= EXIT THEN         \ RAW var: `term` must be RAW-admissible
+   vid TVK@ dup BASE-KIND? 0= IF drop RES-FALSE EXIT THEN   \ ordinary var: never blocks
+   term T-RES swap BASE-BLOCK? ;                     \ base-address var: fenced by its own kind
 
 \ A generated constructor's result can ground one of its effect variables before
 \ that same variable meets the payload value. Permit that grounding only inside
@@ -2596,7 +2629,8 @@ variable LTC-P
 26 constant MD-RAW-PTR        \ a pointer met an undeclared raw storage cell (RAW-OK? T-PTR)
 27 constant MD-RAW-FIELD      \ ptr-field on an undeclared raw storage base; same E-RAW-CELL-PTR code, prose names 'ptr-field'
 28 constant MD-UNDERFLOW      \ a step reached under the definition's declared inputs (STEP-BORROWS?)
-29 constant MD-BASE-PTR       \ a nominal or a pointer read through a base address (BASE-BLOCK?); same E-RAW-CELL-PTR code, prose names data-base / NULL-PTR
+29 constant MD-NULL-PTR       \ a nominal or a pointer read through NULL-PTR (BASE-BLOCK?); same E-RAW-CELL-PTR code, prose names the null
+30 constant MD-DBASE-PTR      \ the same through data-base, at any pointee depth; same E-RAW-CELL-PTR code, prose names the DATA region
 
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
@@ -2624,7 +2658,8 @@ variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 \ (BASE-BLOCK?).
 : CELL-DIAG! ( -- )
    RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
-   BASE-PTR-HIT @ IF MD-BASE-PTR MDIAG! THEN ;
+   BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN   \ the base-address refusals name themselves the same way (BASE-BLOCK?),
+   BASE-PTR-HIT @ TVK-DBASE = IF MD-DBASE-PTR MDIAG! THEN ; \ each with the base it was raised on
 
 \ THE FIRST FAILURE, CAPTURED ONCE. Every site that judges a row -- the token
 \ step, the locals annotation bind, and the three boundary unifies -- pins the
@@ -6648,7 +6683,8 @@ defer E-I-FOREIGN-CON ( n -- n )
       EN-VAR of
          r@ EN.A @ E-I-TV                                  \ fresh var term
          r@ EN.B @ TVK-RAW = IF dup PAY TVK-RAW! THEN       \ restore persisted RAW kind on the fresh var
-         r@ EN.B @ TVK-BASE = IF dup PAY TVK-BASE! THEN     \ and the base-address kind of `data-base` / `NULL-PTR`
+         r@ EN.B @ TVK-NULL  = IF dup PAY TVK-NULL!  THEN   \ and the base-address kinds: `NULL-PTR`
+         r@ EN.B @ TVK-DBASE = IF dup PAY TVK-DBASE! THEN   \ and `data-base`
          r> drop
       endof
       EN-ROW of
@@ -7015,15 +7051,16 @@ variable PE-EFF-ID
 \ application.
 : PE-RAW! ( n -- n ) dup PAY TVK-RAW! ;
 
-\ BASE-kinds a prototype var, for the two BASE-ADDRESS rows -- `data-base` and
-\ `NULL-PTR` (src/core/cell-effects.f), the only pointers in the language that
-\ are not the address OF a declared element. The minted pointee is TVK-BASE, so
-\ the pointer still compares, subtracts and stores like any pointer while
-\ nothing read THROUGH it can be a nominal identity or an address. E-COPY reads
-\ the kind at PE-CLOSE and bakes it onto the stored effect (EN.B); E-INST
-\ re-freshens it per application, exactly as for PE-RAW!.
-: PE-BASE! ( n -- n ) dup PAY TVK-BASE! ;
-: PE-PTR-A-BASE ( -- n ) PE-A PE-BASE! PE-PTR ;
+\ Base-kinds a prototype var, for the two BASE-ADDRESS rows -- `NULL-PTR`
+\ (src/core/cell-effects.f) and `data-base` (src/habu/prims.f), the only
+\ pointers in the language that are not the address OF a declared element. The
+\ null keeps its pointee arm so a stored, compared or subtracted null still
+\ certifies; the DATA base is fenced at every depth. E-COPY reads the kind at
+\ PE-CLOSE and bakes it onto the stored effect (EN.B); E-INST re-freshens it per
+\ application, exactly as for PE-RAW!.
+: PE-NULL!  ( n -- n ) dup PAY TVK-NULL! ;
+: PE-DBASE! ( n -- n ) dup PAY TVK-DBASE! ;
+: PE-PTR-A-NULL ( -- n ) PE-A PE-NULL! PE-PTR ;
 
 \ A QUOTATION operand for a prim row. `PE-Q` opens one, PE-QIN / PE-QOUT
 \ accumulate the quotation's own data rows exactly the way PE-IN / PE-OUT
@@ -7144,7 +7181,7 @@ variable PE-SPEC-I   variable PE-SPEC-J
    code PRIM-SPEC:A-U8       = IF PE-U8 PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-PTR      = IF PE-SPEC-POP PE-PTR  PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-RAW      = IF PE-SPEC-POP PE-RAW! PE-SPEC-PUSH EXIT THEN
-   code PRIM-SPEC:A-BASE     = IF PE-SPEC-POP PE-BASE! PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-DBASE    = IF PE-SPEC-POP PE-DBASE! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-QUOT     = IF PE-Q EXIT THEN
    code PRIM-SPEC:A-QUOT-END = IF ;PE-Q PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-FINALLY  = IF PE-FINALLY EXIT THEN
@@ -13193,14 +13230,17 @@ variable NP-SEEN-N
    -1 NPBAD !  0 NPBAD-KIND !
    oid NP-LETTER NPBAD-Q1 !  0 NPBAD-Q2 !  rt NPBAD-TERM ! ;
 
-\ Kind 3 is the raw-storage restriction; kind 4 is the base-address one, so a
-\ wrapper that publishes `data-base OFF +` as `( -- ptr a )` is told which rule
-\ it broke and what to write instead (a concrete pointee), rather than being
-\ sent looking for a `variable` it never mentions.
+\ Kind 3 is the raw-storage restriction, kind 4 the DATA region and kind 5 the
+\ null, so a wrapper that publishes `data-base OFF +` as `( -- ptr a )` is told
+\ which rule it broke and what to write instead (a concrete pointee), rather
+\ than being sent looking for a `variable` it never mentions.
+: NP-KIND-CODE ( n -- n )   \ diagnostic kind for the kind a quantifier was restricted to
+   dup TVK-DBASE = IF drop 4 EXIT THEN
+   TVK-NULL = IF 5 ELSE 3 THEN ;
 : NP-FAIL-KIND ( n n -- ) {: oid:n rt:n :}
    NPBAD @ IF EXIT THEN
    -1 NPBAD !
-   rt PAY TVK-BASE? IF 4 ELSE 3 THEN NPBAD-KIND !
+   rt PAY TVK@ NP-KIND-CODE NPBAD-KIND !
    oid NP-LETTER NPBAD-Q1 !  0 NPBAD-Q2 !  rt NPBAD-TERM ! ;
 
 : NP-FAIL-ALIAS ( n n -- )   \ two declared quantifiers unified (first-wins)
@@ -13252,8 +13292,8 @@ variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
 : NP-VARS+ ( n -- )   \ one collector, two sets; NP-VARSET picks
    NP-VARSET @ IF NP-OUTVARS+ ELSE NP-INVARS+ THEN ;
 
-\ A base-address kind that reached a declared quantifier through an INPUT is not
-\ a restriction the signature has to spell. `: RELEASE ( ptr ptr a -- ) ...
+\ THE NULL that reached a declared quantifier through an INPUT is not a
+\ restriction the signature has to spell. `: RELEASE ( ptr ptr a -- ) ...
 \ NULL-PTR cb ! ;` stores the null the language's own reset code stores, and `a`
 \ is the pointee of a cell the word was HANDED, not something the body minted;
 \ the kind still rides the published effect, so every caller's fetch through
@@ -13264,8 +13304,17 @@ variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
 \ INPUT-ONLY, not merely input: `: LEAK ( ptr a -- ptr a ) drop data-base 8 + ;`
 \ mentions `a` on both sides, and excusing it let the caller pick the pointee
 \ again through `ptr thing LEAK @` -- measured, it forged.
+\
+\ TVK-DBASE is NEVER excused, whatever position it arrived through. An input-only
+\ quantifier is still a quantifier the CALLER instantiates, and
+\ `: STASH ( ptr ptr a -- ) data-base 8 + swap ! ;` therefore wrote an arbitrary
+\ DATA word into `TYPED-VARIABLE PP ptr ptr n` and `PP @ @` read it back as an
+\ address (measured: `1 W  PP @ @ @` SIGSEGVed). The same shape through a
+\ quotation parameter -- `: FEED ( [ ptr a -- ] -- ) data-base 8 + swap execute ;`
+\ -- handed it to the caller's own consumer. The null has no such reach: it is
+\ one fixed address, and the only value read through it is the trap.
 : NP-KIND-EXCUSED? ( n n -- bool ) {: oid:n newk:n :}
-   newk TVK-BASE <> IF RES-FALSE EXIT THEN
+   newk TVK-NULL <> IF RES-FALSE EXIT THEN
    oid NP-OUTVARS-HAS? IF RES-FALSE EXIT THEN
    oid NP-INVARS-HAS? ;
 
@@ -13959,7 +14008,7 @@ variable CK-GRAPH-WIDTH-BAD
    id 0 < id count >= or IF ASIG-GRAPH-DIE THEN
    row IF
       kind 0 <> kind RVK-QUOT <> and kind RVK-INFERRED <> and IF ASIG-GRAPH-DIE THEN
-   ELSE kind TVK-ANY <> kind TVK-RAW <> and kind TVK-BASE <> and IF ASIG-GRAPH-DIE THEN THEN
+   ELSE kind TVK-ANY <> kind TVK-RAW <> and kind BASE-KIND? 0= and IF ASIG-GRAPH-DIE THEN THEN
    row IF id 0 CK-GRAPH-PTR ER.TVN @ + ELSE id THEN cells
    CK-GRAPH-MAP-U @ + CK-GRAPH-SLOT {: slot:ptr :}
    slot @ 0 <> slot @ kind 1+ <> and IF ASIG-GRAPH-DIE THEN

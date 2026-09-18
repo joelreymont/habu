@@ -286,15 +286,25 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    SND-ROWS {: rows:ptr count:n :}
    count 0 ?do rows i cells + @ SND-CANON-XT-CELL loop ;
 
+\ The DATA offset of a cell is a BYTE distance, so both ends are taken as byte
+\ pointers before the subtraction. `MBUF-A` is a PTR-VARIABLE, so the bare
+\ `MBUF-A data-base -` asked `-`'s `ptr a ptr a -- n` row to make the DATA base
+\ the address of an ADDRESS, which is the one thing a base address never is
+\ (dot habu-fence-a-base-c6c1d71d). `BYTE-VIEW` is the same door the AOT linker's
+\ DATA-PTR already takes: it names what the distance is measured in and says
+\ nothing about what either cell holds.
+: SND-ZERO-OFF ( ptr a -- n )
+   BYTE-VIEW data-base BYTE-VIEW - ;
+
 : SND-ZERO-WRITER ( -- )
-   SNC-N data-base - SND-ZERO-CELL
-   SND-N data-base - SND-ZERO-CELL
-   MBUF-A data-base - SND-ZERO-CELL
-   MP data-base - SND-ZERO-CELL
-   MLEN data-base - SND-ZERO-CELL
-   STB data-base - SND-ZERO-CELL
-   SDB data-base - SND-ZERO-CELL
-   SFD data-base - SND-ZERO-CELL ;
+   SNC-N SND-ZERO-OFF SND-ZERO-CELL
+   SND-N SND-ZERO-OFF SND-ZERO-CELL
+   MBUF-A SND-ZERO-OFF SND-ZERO-CELL
+   MP SND-ZERO-OFF SND-ZERO-CELL
+   MLEN SND-ZERO-OFF SND-ZERO-CELL
+   STB SND-ZERO-OFF SND-ZERO-CELL
+   SDB SND-ZERO-OFF SND-ZERO-CELL
+   SFD SND-ZERO-OFF SND-ZERO-CELL ;
 
 \ PERSIST admitted the complete retained code interval before copying. Freeze
 \ exactly that interval, excluding abandoned rows and the old engine's ASLR

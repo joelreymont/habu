@@ -9442,10 +9442,11 @@ A zero byte is data, not absence: ask the emitter how many rows it wrote.
   `TRUSTED: EV ( ptr u8 n -- ) evaluate ;`.
 - **Widening the unification trail's tag is what makes two fenced kinds safe.**
   `TRAIL-PUSH` packed `id*4 + tag` with tag 2 meaning "put TVK-ANY back", so a
-  rolled-back raise reset a var to ANY whatever it had been. With `ANY < BASE <
-  RAW` that silently dropped the base fence on every row an abandoned
-  prim-overload trial touched. The tag is 3 bits now (`id*8`), tag 4 restores
-  TVK-BASE, and `TVK-RAISE-TO` records the kind it displaced.
+  rolled-back raise reset a var to ANY whatever it had been. With
+  `ANY < NULL < DBASE < RAW` that silently dropped the base fence on every row an
+  abandoned prim-overload trial touched. The tag is 3 bits now (`id*8`), tags 4
+  and 5 restore TVK-NULL and TVK-DBASE, and `TVK-RAISE-TO` records the kind it
+  displaced.
 
 ## 2026-09-18 - a --repl image's region is the maker's compiler, not the program
 

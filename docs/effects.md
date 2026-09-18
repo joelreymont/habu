@@ -380,34 +380,69 @@ nominal identity out of an integer, `( n -- ptr n )` forged an address, and
 `data-base + @` did both out of the engine's own DATA — at offset zero, with no
 arithmetic at all, through a plain `data-base @`.
 
-The pointee of those two rows is **`TVK-BASE`**, which is fenced in **value**
-position and permissive inside a **pointee**. So a value *read through* a base
-address is never a nominal type and never a pointer — `E-RAW-CELL-PTR`, repair
-class `declare_pointer_cell`, with its own reason naming `data-base` and
-`NULL-PTR` — while the pointer *itself* still compares, subtracts, tests and
-stores like any pointer. That is every honest use the tree makes of a null:
+The two rows carry **two pointee kinds**, on the lattice
+`ANY < NULL < DBASE < RAW`, so a meet always keeps the stricter discipline and
+never lowers one to another. Both refuse with `E-RAW-CELL-PTR`, repair class
+`declare_pointer_cell`, each with its own reason.
+
+**`TVK-NULL`** is the null. It is fenced in **value** position and permissive
+inside a **pointee**, so a value *read through* the null is never a nominal type
+and never a pointer, while the pointer *itself* still compares, subtracts, tests
+and stores. That is every honest use the tree makes of a null:
 `ptr thing NULL-PTR =`, `NULL-PTR X !` into a declared pointer cell,
 `NULL-PTR -` and `NULL-PTR 0=` all keep certifying, because each binds the
-pointee inside a `ptr`. `data-base OFF + @` still answers the number, xt or role
-the cell holds, a DATA cell that really holds an address is still reached with
-`ptr-field` (the declared door — the checker's own `SOURCE-CELL`/`TARGET-CELL`
-and the AOT span table), and the linker's `DATA-PTR`/`DATA-CELL@` still take
-`data-base BYTE-VIEW` before any arithmetic, which erases the kind into a
-concrete `u8`.
+pointee inside a `ptr` — and each means this one literal address, so the caller
+learns nothing about an element from it. That arm is why a null still clears a
+cell declared `ptr ptr n`.
+
+**`TVK-DBASE`** is the DATA region's base, and it is fenced at **every pointee
+depth**. Nothing else works: strict pointee unification stops a nominal only at
+the *first* pointee, so a declaration that put the element one `ptr` deeper
+walked straight around the first cut. `( -- ptr ptr thing ) data-base 8 +`
+certified and `F @ @` then minted the nominal out of engine DATA;
+`( -- ptr ptr ptr n )` certified and `F @ @ @` dereferenced whatever integer the
+DATA word held — measured end to end, it SIGSEGVed on the integer `1`. The fence
+therefore follows the whole chain: binding the DATA base's pointee to a nominal,
+to a pointer, or to a linear con is refused wherever it happens. The cost is one
+shape the tree does not use, `( ptr thing -- n ) data-base -`: the distance
+between the DATA base and a pointer to a nominal is no longer a distance between
+two pointers of one element type.
+
+The reads the engine really makes are untouched. `data-base OFF + @` still
+answers the number, xt or role the cell holds, a DATA cell that really holds an
+address is still reached with `ptr-field` (the declared door — the checker's own
+`SOURCE-CELL`/`TARGET-CELL` and the AOT span table), and the linker's
+`DATA-PTR`/`DATA-CELL@` still take `data-base BYTE-VIEW` before any arithmetic,
+which erases the kind into a concrete `u8`. A DATA cell declared to hold a
+*quotation* — `lib/genio.f` `ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )`, the
+write-handler row the output funnel dispatches through — also still certifies: a
+quotation row is not a nominal and not an address, and the executable payload is
+its own open question under `habu-refuse-an-executable-e8834546`.
 
 **The wrapper is refused where it is written.** `: SB-LEN ( -- ptr a )
 data-base STRING-ABI:SB-LEN-OFF + ;` handed its caller the choice of element
 type for engine DATA, so `SB-LEN @` read as a nominal certified — the forgery
 was already reachable through a shipped library word. A declared quantifier that
 the body restricts to a base address is `E-NONPARAMETRIC-EFFECT`, "restricted to
-a base address", and the repair is to name the pointee the cell really holds
+the DATA region's base address" or "restricted to the null address" — the
+diagnostic names which — and the repair is to name the pointee the cell really holds
 (`ptr n`, `ptr u8`, `ptr [ in -- out ]`). A quantifier restricted through an
-**input-only** position is excused: `: RELEASE ( ptr ptr a -- ) … NULL-PTR cb ! ;`
-stores the null the language's own reset code stores, and the kind still rides
-the published effect, so every caller's fetch through that quantifier is fenced
-where it lands. Input-*only*, because a quantifier named on both sides is still
-published: `: LEAK ( ptr a -- ptr a ) drop data-base 8 + ;` is refused, or
-`ptr thing LEAK @` would pick the pointee again.
+**input-only** position is excused **for the null only**:
+`: RELEASE ( ptr ptr a -- ) … NULL-PTR cb ! ;` stores the null the language's own
+reset code stores, and the kind still rides the published effect, so every
+caller's fetch through that quantifier is fenced where it lands. Input-*only*,
+because a quantifier named on both sides is still published:
+`: LEAK ( ptr a -- ptr a ) drop data-base 8 + ;` is refused, or `ptr thing LEAK @`
+would pick the pointee again.
+
+The DATA base gets no such excuse in any position. An input-only quantifier is
+still one the **caller** instantiates, so
+`: STASH ( ptr ptr a -- ) data-base 8 + swap ! ;` wrote an arbitrary DATA word
+into the caller's own `TYPED-VARIABLE PP ptr ptr n` and `PP @ @` read it back as
+an address; the quotation-parameter spelling,
+`: FEED ( [ ptr a -- ] -- ) data-base 8 + swap execute ;`, handed it straight to
+the caller's consumer. Both are `E-NONPARAMETRIC-EFFECT` now, and the repair is
+the same concrete pointee.
 
 Two accessors over one DATA offset, each naming what it reaches, is the checked
 way to say that a cell is read at two types — `FFI-BUF`/`FFI-FBUF` already did
@@ -415,6 +450,17 @@ it, and `FFI-STACK-BUF`/`FFI-STACK-FBUF` (an integer spill and a float spill at
 one slot) and `ENGINE-ROW`/`ENGINE-ROW-CLEAR` (a write handler, and the zero
 that means "no device") now do too. What is gone is the single `( -- ptr a )`
 that said neither and let the caller decide.
+
+**The null keeps one residue, and it is the price of its pointee arm.** Because
+`TVK-NULL` stays permissive inside a pointee — which is what lets
+`NULL-PTR PP !` clear a cell declared `ptr ptr n`, and what 89 null stores and 11
+null compares in the tree depend on — the same arm admits
+`( n -- ptr ptr n ) NULL-PTR + `, so a *computed* offset from the null can still
+be declared two deep and read back as an address. Nothing distinguishes the two
+at the binding: both are the null's pointee meeting a `ptr` term inside a `ptr`.
+Closing it needs the offset, not the kind, and that is the same extent
+`habu-bound-ptr-arithmetic-8bf6b54a` measures below. The DATA base, which is the
+one that reaches a *writable, attacker-chosen* word, has no such arm.
 
 **The reach is not closed.** The axiom `ptr a n + -- ptr a` still admits any
 offset from any base, so a pointer that *is* the address of a declared element
