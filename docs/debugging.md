@@ -35,7 +35,9 @@ full, nested quotation, duplicate definition, `does>` in a checker-rejected
 body, malformed stack signature, `;]` with no open quotation, `does>` with
 locals active, a local referenced inside a quotation, locals opener inside a
 quotation, `:`/`cast:`/`defer`/`is` missing a name, `is` target not found or not
-deferred, `package`/`export` misuse, and the whole `using` family.
+deferred, `package`/`export` misuse, the whole `using` family, and the
+`construct`/`match` operand refusals (`hb: construct: unknown family: NOPE at
+<path>:<line>`).
 
 Still unlocated, and why: the interpret-level diagnostics share a **different**
 tail (`LDIAGRET`) — `hb: undefined: X`, `hb: interpret-mode layout value`,
@@ -46,7 +48,7 @@ So do the refusals that `exit_group` without any tail: the boot source errors
 (`hb: source prefix buffer full`, `hb: cannot read source`), the CLI ones
 (`hb: unknown flag`, `hb: cannot open`), `hb: uncaught throw code N`,
 `hb: catch frame corrupt`, the snapshot, AOT, protected-WID, lowering,
-address-cell, mmap and `construct:`/`match:` families, and `hb: repl line over`.
+address-cell and mmap families, and `hb: repl line over`.
 For those the checker's own diagnostics (which carry `<path>:<line>` of their
 own) or a bisect are still the way in.
 
