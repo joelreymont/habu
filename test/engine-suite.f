@@ -1687,10 +1687,13 @@ s" COK-OWN-DIP-PASS ( n own -- n own ) [: 1+ ;] DIP" T-CHECK-PASSES
 s" CBAD-OWN-LOCAL-DUP ( own -- own own ) {: x:own :} x x" T-CHECK-REJECTS
 s" CBAD-OWN-LOCAL-LEAK ( own -- ) {: x:own :}" T-CHECK-REJECTS
 s" CBAD-OWN-LOCAL-DOUBLE-FREE ( own -- ) {: x:own :} x T-FREE-OWN x T-FREE-OWN" T-CHECK-REJECTS
-s" CBAD-OWN-LOCAL-ONCE ( own -- ) {: x:own :} x T-FREE-OWN" T-CHECK-REJECTS
+s" COK-OWN-LOCAL-ONCE ( own -- ) {: x:own :} x T-FREE-OWN" T-CHECK-PASSES
 s" CBAD-OWN-LOCAL-UNTYPED ( own -- own own ) {: x :} x x" T-CHECK-REJECTS
 s" CBAD-OWN-LOCAL-BRANCH ( bool own -- ) {: x:own :} if x T-FREE-OWN then" T-CHECK-REJECTS
-s" CBAD-OWN-LOCAL-MAKE ( -- ) T-MAKE-OWN {: x:own :} x T-FREE-OWN" T-CHECK-REJECTS
+s" COK-OWN-LOCAL-BRANCH-BOTH ( bool own -- ) {: x:own :} if x T-FREE-OWN else x T-FREE-OWN then" T-CHECK-PASSES
+s" CBAD-OWN-LOCAL-BRANCH-DISAGREE ( bool own -- ) {: x:own :} if x T-FREE-OWN else then" T-CHECK-REJECTS
+s" COK-OWN-LOCAL-MAKE ( -- ) T-MAKE-OWN {: x:own :} x T-FREE-OWN" T-CHECK-PASSES
+s" CBAD-OWN-LOCAL-LOOP ( n own -- ) {: x:own :} 0 do x T-FREE-OWN loop" T-CHECK-REJECTS
 \ Deferred laundering: a local bound to a still-polymorphic var referenced twice,
 \ that only later resolves linear, must reject through the taint discipline.
 s" CBAD-OWN-LOCAL-POLY-DUP ( a -- ) {: x :} x x T-FREE-OWN T-FREE-OWN" T-CHECK-REJECTS
