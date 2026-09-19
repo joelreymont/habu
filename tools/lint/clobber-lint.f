@@ -15,7 +15,7 @@ package CLOBBER-CENSUS
 \ 399 -> 397 when 878e1026 retired BWAITRC (src/habu/habu1.f), whose LNX-OK
 \ and LNX-DONE openings were two routines; its calls were not counted (no BL).
 397 constant MIN-ROUTINES
-623 constant MIN-CALLS
+625 constant MIN-CALLS
 
 variable ROUTINE-N
 variable CALL-N

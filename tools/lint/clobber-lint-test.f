@@ -93,6 +93,17 @@ package CLOBBER
    [: s" FFI-GUARD:CALL" 9 7 CLOBBER-WRAP:RETURNS drop ;] catch
       E-CLOBBER-WRAP-UNRESOLVED = CLT-ASSERT ;
 
+: CLT-LITERAL-BOUNDARIES ( -- )
+   0 PARENS? ! 0 CN# ! 0 CEND ! 0 EN# ! CLOBBER-CENSUS:RESET
+   s" tools/lint/clobber-literal-fixture.f" DECL-FILE
+   s" tools/lint/clobber-literal-fixture.f" PASS1-FILE
+   CLOSE-CLOBBERS 0 BAD !
+   s" tools/lint/clobber-literal-fixture.f" PASS2-FILE
+   BAD @ 1 = CLT-ASSERT
+   CLOBBER-CENSUS:COUNTS {: routines:n calls:n :}
+   routines 0 = CLT-ASSERT
+   calls 2 = CLT-ASSERT ;
+
 CLT-SYS-CLOBBERS-X8
 CLT-CURRENT-SYNTAX-CENSUS
 CLT-LABEL-ACCESSORS
@@ -101,5 +112,6 @@ CLT-MACHINE-CONTRACTS
 CLT-WRAP-CONTRACTS
 CLT-WRAP-UNMODELED
 CLT-WRAPPED-CALLS
+CLT-LITERAL-BOUNDARIES
 s" clobber-lint-test: ok" type NL
 ;package

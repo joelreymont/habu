@@ -927,6 +927,41 @@ variable REG-I
    8192 LINT-LEX:TOKEN s" x" ASSERT$
    BIG-LEX-TOKENS 1- LINT-LEX:TOKEN s" x" ASSERT$ ;
 
+\ A backslash-leading payload must not eat the definition's closing semicolon.
+\ Keep the payload opaque even when it spells emitter instructions or comments.
+: TOKEN-LITERAL ( n bool -- ) {: first:n escaped:bool :}
+   ROW-RESET s" : X " ROW+ first ROW-C+
+   escaped if ROW-BS then ROW-Q
+   s"  " ROW+ ROW-BS s" n : LFAKE LABEL@ LBL, ; ( " ROW+
+   escaped if ROW-BS ROW-Q then ROW-Q
+   s"  ; : Y ;" ROW+
+   ROW$ TOKENIZE
+   TN# @ 8 ASSERT=
+   3 TOK drop c@ 92 ASSERT=
+   3 TOK s" LFAKE LABEL@ LBL," LINT-CONTAINS? ASSERT
+   4 TOK s" ;" ASSERT$
+   5 TOK s" :" ASSERT$
+   6 TOK s" Y" ASSERT$
+   7 TOK s" ;" ASSERT$ ;
+
+: TEST-TOKEN-LITERALS ( -- )
+   LINT-TRUE PARENS? !
+   115 LINT-FALSE TOKEN-LITERAL
+   99 LINT-FALSE TOKEN-LITERAL
+   46 LINT-FALSE TOKEN-LITERAL
+   115 LINT-TRUE TOKEN-LITERAL
+   99 LINT-TRUE TOKEN-LITERAL
+   46 LINT-TRUE TOKEN-LITERAL
+   ROW-RESET s" : X .( : FAKE ; ) ; " ROW+
+   ROW-BS s" : ALSO-FAKE ;" ROW+ ROW-NL s" : Y ;" ROW+
+   ROW$ TOKENIZE
+   TN# @ 6 ASSERT=
+   2 TOK s" ;" ASSERT$
+   3 TOK s" :" ASSERT$
+   3 TOK0? ASSERT
+   [: UNTERM-FIX$ TOKENIZE ;] catch E-LINT-TOKEN-SOURCE ASSERT=
+   TN# @ 0 ASSERT= ;
+
 : TEST-LINT-SOURCE ( -- )
    s" tools/lint/text.f" 2dup FILE-SIZE {: path:ptr pathu:n size:n :}
    path pathu LINT-SOURCE:LOAD
@@ -1012,6 +1047,7 @@ variable REG-I
    TEST-ROW-REUSE-AFTER-ERROR
    TEST-REAL-REGISTRY-FILES
    TEST-TOKENIZER
+   TEST-TOKEN-LITERALS
    TEST-BIG-LEXER
    TEST-LINT-SOURCE
    s" text-foundation-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;

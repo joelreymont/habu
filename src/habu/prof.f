@@ -337,23 +337,14 @@ public
    skip LBL,
    0 1 MOVZ,  1 txt ADR,  2 u MOVZ,  NR-WRITE SYS, ;
 
-\ One literal byte.
-\
-\ NO ESCAPED STRING IN THIS FILE MAY START ITS PAYLOAD WITH A BACKSLASH.
-\ tools/lint/token.f splits on whitespace and has no model of a string literal,
-\ so the payload of `s\" \n"` reaches it as the chunk `\n"` - and a chunk
-\ beginning with a backslash is Forth's line comment, which swallows the rest of
-\ the line, this definition's `;` included. clobber-lint then reads the next
-\ definition as part of this one and reports a register clobber across the join.
-\ A bare line feed and a bare quote therefore come from their byte values here,
-\ the way LPROFPCT's decimal point always has.
+\ The percentage formatter emits its decimal point from a byte value.
 : C-PROF-BYTE ( n -- ) {: c:n :}
    SP SP 16 SUBI,  13 c MOVZ,  13 SP 0 STRB,
    0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    SP SP 16 ADDI, ;
 
-: C-PROF-NL ( -- )  $0A C-PROF-BYTE ;
-: C-PROF-DQ ( -- )  $22 C-PROF-BYTE ;
+: C-PROF-NL ( -- )  s\" \n" C-PROF-SAY ;
+: C-PROF-DQ ( -- )  s\" \q" C-PROF-SAY ;
 
 \ A header field: its name, then the register's value.
 : C-PROF-FIELD ( ptr u8 n n -- ) {: a:ptr u:n reg:n :}

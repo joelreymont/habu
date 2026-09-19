@@ -29,8 +29,6 @@
 require lib/memory.f
 require lib/vector.f
 require tools/lint/text.f
-require tools/lint/token.f
-require tools/lint/lib.f
 
 package LINT-LEX
 private

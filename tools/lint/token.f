@@ -1,10 +1,11 @@
-\ token.f - checked whitespace token table for native lint tools.
-\ Load after tools/lint/text.f.
+\ token.f - legacy token table projected from the shared source lexer.
+require tools/lint/source-lex.f
 
 $10000 constant TMAX            \ largest linted source (src/core/checker.f) + headroom
                                 \ (item 9 grew checker.f past the old $8000 tokens)
 77 constant E-LINT-TOKEN-CAP
 s" E-LINT-TOKEN-CAP" E-LINT-TOKEN-CAP LINT-CODE-NAME+
+-4821 constant E-LINT-TOKEN-SOURCE
 
 \ Each token's start is an address into the linted source, so the starts are
 \ declared pointer storage; the lengths and line flags stay plain cells.
@@ -14,12 +15,7 @@ create TBOL TMAX cells allot
 
 variable TN#
 variable PARENS?
-variable LINT-TI
-variable TS
-variable BOL
-
-: SP? ( n -- bool )
-   dup 32 = over 9 = or swap 10 = or ;
+variable TOKEN-LINE
 
 : T-OFF@ ( n -- ptr u8 )
    TOFF @ ;
@@ -41,9 +37,6 @@ variable BOL
 
 : T-BOL! ( bool n -- ) {: f k :}
    f k cells TBOL + ! ;
-
-: BOL? ( -- bool )
-   BOL @ T-FLAG ;
 
 : PARENS-ENABLED? ( -- bool )
    PARENS? @ T-FLAG ;
@@ -70,56 +63,22 @@ variable BOL
 : TEOL? ( n -- bool )
    1+ dup TN# @ >= if drop LINT-TRUE else TOK0? then ;
 
-: TOKEN-C@ ( ptr u8 -- n )
-   LINT-TI @ + c@ ;
+\ Primitive-name and REPL-path consumers expect an opener followed by its
+\ payload with the closing quote. Keep that pair, but never split the payload:
+\ its backslashes, semicolons and emitter-shaped text are inert.
+: TOKEN-FROM-LEX ( n -- ) {: k:n :}
+   k LINT-LEX:KIND@ LINT-LEX:COMMENT = PARENS-ENABLED? and if exit then
+   k LINT-LEX:TOKEN
+   k LINT-LEX:LINE@ TOKEN-LINE @ <> TOKEN+
+   k LINT-LEX:LINE@ TOKEN-LINE !
+   k LINT-LEX:KIND@ LINT-LEX:WORD <> if exit then
+   k LINT-LEX:TOKEN LINT-NORMAL-STRING-OPENER?
+   k LINT-LEX:TOKEN LINT-ESC-STRING-OPENER? or if
+      k LINT-LEX:CONTENT 1+ LINT-FALSE TOKEN+
+   then ;
 
-: TOKEN-ADV ( -- )
-   LINT-TI @ 1+ LINT-TI ! ;
-
-: TOKEN-SKIP-SPACE ( ptr u8 n -- ) {: a:ptr u :}
-   begin LINT-TI @ u < while
-      a TOKEN-C@ SP? if
-         a TOKEN-C@ 10 = if LINT-TRUE BOL ! then
-         TOKEN-ADV
-      else
-         exit
-      then
-   repeat ;
-
-: TOKEN-SKIP-LINE ( ptr u8 n -- ) {: a:ptr u :}
-   begin LINT-TI @ u < a TOKEN-C@ 10 <> and while
-      TOKEN-ADV
-   repeat ;
-
-: TOKEN-PAREN-START? ( ptr u8 n -- bool ) {: a:ptr u :}
-   PARENS-ENABLED? 0= if LINT-FALSE exit then
-   a TOKEN-C@ 40 <> if LINT-FALSE exit then
-   LINT-TI @ 1+ u >= if LINT-FALSE exit then
-   a LINT-TI @ 1+ + c@ 32 = ;
-
-: TOKEN-SKIP-PAREN ( ptr u8 n -- ) {: a:ptr u :}
-   begin LINT-TI @ u < a TOKEN-C@ 41 <> and while
-      TOKEN-ADV
-   repeat
-   LINT-TI @ u < if TOKEN-ADV then ;
-
-: TOKEN-READ ( ptr u8 n -- ) {: a:ptr u :}
-   LINT-TI @ TS !
-   BOL? LINT-FALSE BOL !
-   begin LINT-TI @ u < a TOKEN-C@ SP? 0= and while
-      TOKEN-ADV
-   repeat
-   a TS @ + LINT-TI @ TS @ - rot TOKEN+ ;
-
-: TOKENIZE ( ptr u8 n -- ) {: a:ptr u :}
-   0 TN# !
-   0 LINT-TI !
-   LINT-TRUE BOL !
-   begin LINT-TI @ u < while
-      a u TOKEN-SKIP-SPACE
-      LINT-TI @ u < if
-         a TOKEN-C@ 92 = if a u TOKEN-SKIP-LINE
-         else a u TOKEN-PAREN-START? if a u TOKEN-SKIP-PAREN
-         else a u TOKEN-READ then then
-      then
-   repeat ;
+: TOKENIZE ( ptr u8 n -- )
+   0 TN# ! 0 TOKEN-LINE !
+   LINT-LEX:SOURCE
+   LINT-LEX:ERROR? if E-LINT-TOKEN-SOURCE throw then
+   LINT-LEX:COUNT 0 ?do i TOKEN-FROM-LEX loop ;
