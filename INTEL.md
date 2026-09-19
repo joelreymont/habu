@@ -6,7 +6,40 @@ on the Intel (x86_64 Linux) machine. Read `docs/x86-64.md` (the design) and
 point. Hazel, who runs Habu on the arm64 host, keeps the State section current
 and rewrites the Landed section as each arm64 lane lands.
 
-## State
+## Experiment reconciliation
+
+The `experiment/wide-typed-locals`, `experiment/intel-bootstrap-20260919` and
+`experiment/x86-native-20260919` branches start at `51546316`; the integration
+line at `39d9a399` supersedes their x86 architecture work. Keep the current
+`src/arch/x86-64/` encoder and backend, X64IR, NMACH/NEFF, ELF64/OS seam and
+`SYSV-AMD64` identity. HIR already reads the architecture from its binding.
+The older task status below predates this reconciliation: Hazel owns the
+compiler pipeline; Alder owns recovery, cross-build and the ThinkPad peer.
+
+The four recovery repairs were checked against the line:
+
+| Experiment repair | Disposition |
+| --- | --- |
+| Atomics | Salvage `atomic@`, `atomic-add` and `fence`; `atomic!` and `atomic-cas` already exist. The stage0 runtime fixture checks returned old values, final values and protected-write refusal. The removed bootstrap optimizer needs no barrier classification. |
+| libc realpath bridge | Keep the static Linux seed's existing lexical normalization for the symlink-free source paths used by recovery. This is not libc realpath: it does not resolve symlinks, and the macOS seed still refuses. The experiment's dynamic loader is not imported. |
+| Cold-image alignment | Not applicable to the static seed: both its ELF writer and cold-size check use 4 KiB rounding. The experiment changed its ELF to 64 KiB alignment and a dynamic segment. |
+| Provided rows | Already covered: prelude/errors in `PFX-PROVIDE-STDLIB-FILES`, dynamic-storage in `PFX-PROVIDE-CORE-FILES`. |
+
+The encoder comparison found three missing families, recorded with measured
+llvm-mc vectors: scalar SSE2 (`65313206`), immediate memory stores (`45775daf`),
+and NOP/UD2 (`8c377734`). RIP-relative addressing, CL shifts, SETCC, CMOVCC and
+relative/register call and jump forms are already present. Do not import the
+experimental instruction-value representation or its competing encoder.
+
+Typed locals are salvaged through the wide (`bc67d207`), parametric
+(`50be4d43`) and linear-local checker lanes, then adoption (`12aa121b`). The
+latest experimental CI at `bba129e0` failed on the existing `prior:ptr`
+annotation; its linear draft also loses branch-local ownership obligations.
+Its successful earlier recovery run built an ARM64 engine under QEMU, not a
+native Intel engine. Archive the experiment branches after these salvage
+dots land; do not merge them.
+
+## Earlier integration state
 
 Updated 2026-09-18 01:20 by hazel. Integrated line head: the commit that
 closes `habu-add-the-x86-56726659`; arm64 engine `bin/hb` sha256

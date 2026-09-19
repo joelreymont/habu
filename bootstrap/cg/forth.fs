@@ -1132,8 +1132,20 @@ variable BAND-IX
 
 \ The cold prefix's DYNAMIC-STORAGE lock uses these same acquire/release
 \ operations as the native engine. GUARD-SPAN preserves x9/x10/x11 here.
+: BATFETCH ( -- )
+   A G-POP A A LDAR, A G-PUSH ;
+
 : BATSTORE ( -- )
    B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  A B STLR, ;
+
+\ Fixed-register stencils mirror habu1.f; BYTES, preserves each instruction.
+create BATADD-INSN $49 c, $01 c, $E9 c, $F8 c,
+: BATADD ( -- )
+   B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN
+   BATADD-INSN 4 BYTES, A G-PUSH ;
+
+create BFENCE-INSN $BF c, $3B c, $03 c, $D5 c,
+: BFENCE ( -- ) BFENCE-INSN 4 BYTES, ;
 
 \ CASAL x9,x10,[x11], the fixed-register LSE instruction used by native
 \ BATCAS. BYTES, keeps this four-byte stencil in the host IR unchanged.
@@ -1757,8 +1769,11 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
    s" cell-view" ['] BADDRESSVIEW FPRIM-L
    s" xt!"  ['] BSTORE FPRIM-L
    s" ptr-cell-mark" ['] BDROP FPRIM-L
+   s" atomic@" ['] BATFETCH FPRIM-L
    s" atomic!" ['] BATSTORE FPRIM-L
+   s" atomic-add" ['] BATADD FPRIM-L
    s" atomic-cas" ['] BATCAS FPRIM-L
+   s" fence" ['] BFENCE FPRIM-L
    s" addr-cells-abi" ['] BADDRESSCELLSVERSION FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM-L
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L

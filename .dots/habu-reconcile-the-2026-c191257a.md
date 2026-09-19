@@ -1,6 +1,6 @@
 ---
 title: Reconcile the 2026-09-19 Intel handoff branches with the line
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-19T18:20:18.670931+03:00"

@@ -14,6 +14,7 @@ require bootstrap-primitive-registry.fs
 
 : BWM-STAGE0-TEST ( -- )
    s" 0 data-base $20 + atomic!" BWM-ATOMIC-REFUSAL
+   s" 1 data-base $20 + atomic-add drop" BWM-ATOMIC-REFUSAL
    \ Both matching and nonmatching CAS must check the protected write span.
    s" $90 0 data-base $20 + atomic-cas drop" BWM-ATOMIC-REFUSAL
    s" 0 0 data-base $20 + atomic-cas drop" BWM-ATOMIC-REFUSAL

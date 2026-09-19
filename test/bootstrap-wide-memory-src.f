@@ -49,7 +49,11 @@ align variable BWM-ATOMIC
    BWM-ATOMIC @ 17 BWM=
    17 42 BWM-ATOMIC atomic-cas 17 BWM=
    BWM-ATOMIC @ 42 BWM=
-   93 BWM-ATOMIC atomic! BWM-ATOMIC @ 93 BWM= ;
+   93 BWM-ATOMIC atomic! BWM-ATOMIC atomic@ 93 BWM=
+   7 BWM-ATOMIC atomic-add 93 BWM=
+   BWM-ATOMIC atomic@ 100 BWM=
+   -13 BWM-ATOMIC atomic-add 100 BWM=
+   fence BWM-ATOMIC atomic@ 87 BWM= ;
 
 1 LAYOUT-BUFFER BWM-MEM2 bwm2<n>
 1 LAYOUT-BUFFER BWM-MEM4 bwm4<n,n,n>
