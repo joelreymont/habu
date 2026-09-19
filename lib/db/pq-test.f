@@ -552,6 +552,8 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
    RECYCLE-CASES
    DB:CLOSE
    CLOSE-CLEARS-CASES
+   IMAGE-CASES
+   \ A later connection must arm cleanup for the next capture too.
    IMAGE-CASES ;
 
 

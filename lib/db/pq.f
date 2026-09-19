@@ -470,7 +470,8 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    loop
    RESULT-CAP 0 ?do
       i RES-LIVE@ 0 <> if i BUMP-RES-GEN NO-CONN i RES-CONN! 0 i RES-LIVE! then
-   loop ;
+   loop
+   0 REGISTERED ! ;
 
 
 : REGISTER-CLEANUP ( -- )
