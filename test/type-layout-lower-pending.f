@@ -54,8 +54,13 @@ SUMTYPE tlp-en 0
   VARIANT lit  ;VARIANT
   VARIANT dark ;VARIANT
 ;SUMTYPE
+\ width 2 with NO family parameters: the shape a local annotation can name.
+STRUCTURE tlp-pair 0
+  FIELD left n
+  FIELD right n
+;STRUCTURE
 
-variable TLOK   variable TLF   variable TLX
+variable TLOK   variable TLF   variable TLX   variable TLPP
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the internal registry
 \ probe goes through a named trusted shim.
 TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
@@ -65,6 +70,9 @@ TLF @ TFAM-WIDTH@ 2 T=
 s" " s" tlp-mix" TWX-TFAM-FIND-IN TLOK ! TLX !
 TLOK @ -1 T=
 TLX @ TFAM-WIDTH@ 4 T=
+s" " s" tlp-pair" TWX-TFAM-FIND-IN TLOK ! TLPP !
+TLOK @ -1 T=
+TLPP @ TFAM-WIDTH@ 2 T=
 
 \ ---------------------------------------------------------------------------
 \ transport matrix on the width-2 family. Each subject is a real checked
@@ -108,10 +116,19 @@ WF-N@ 2 T=  0 WF-POS@ 1 T=  1 WF-POS@ 1 T=
 WF-N@ 3 T=  0 WF-POS@ 1 T=  1 WF-POS@ 1 T=  2 WF-POS@ 1 T=
 
 \ locals capture: the whole group records at the :} token. `x` binds the layout
-\ value; locals annotations cannot express family types yet (capability dotted:
+\ value untyped — a PARAMETRIC spelling like `x:tlp-res<n,n>` is still not an
+\ annotation the local parser reads (capability dotted:
 \ habu-typed-locals-for-b06b6707), so the entry effect carries the detailed type.
 : TLP-LOCAL ( tlp-res<n,n> n -- n ) {: x y:n :} y ;
 WF-N@ 1 T=  0 WF-POS@ 1 T=  0 WF-FAM@ TLF @ T=  0 WF-WIDTH@ 2 T=
+
+\ An arity-0 W=2 family IS nameable: the annotation records the layout's top
+\ hidden term and the bind records width 2. The capture at :} is the only
+\ width fact of the definition — the reference's reload reads the local's own
+\ recorded width (LOCW / LOCW-HW@), not a per-op fact, exactly as the untyped
+\ TLP-LOCAL above does.
+: TLP-TYPED-WIDE-LOCAL ( tlp-pair -- tlp-pair ) {: pair:tlp-pair :} pair ;
+WF-N@ 1 T=  0 WF-POS@ 0 T=  0 WF-FAM@ TLPP @ T=  0 WF-WIDTH@ 2 T=
 
 \ ---------------------------------------------------------------------------
 \ width-4 spot checks and multi-fact ordering: facts scan top position first.

@@ -2307,14 +2307,17 @@ PRODUCT tdlp 0 FIELD amt n ;PRODUCT
 : TDLP-ID ( tdlp -- tdlp ) {: x:tdlp :} x ;
 : TDLP-RT ( -- n ) 7 TDLP:MAKE TDLP-ID TDLP:UNMAKE ;
 TDLP-RT 7 T=
-\ negatives: wrong family, scalar-vs-family both ways, parametric, W>1,
+\ negatives: wrong family, scalar-vs-family both ways, parametric,
 \ arity>0 cell tail — all reject fail-closed.
 s" TDLB1 ( tdrw -- tdrw ) {: x:tdrv :} x" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLB2 ( n -- n ) {: x:tdrv :} 5" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLB3 ( tdrv -- tdrv ) {: x:n :} x" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLB4 ( tdres<n,n> -- n ) {: x:tdres<n,n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLB5 ( tdsv -- tdsv ) {: x:tdsv :} x" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLB6 ( n -- n ) {: x:tdfoo :} x" CHECK-QUIET-CANDIDATE! 0 T=
+\ an arity-0 layout of ANY width is nameable (dot habu-bind-a-wide): tdsv is
+\ W=3, its annotation is the bundle's top hidden term and the bind records the
+\ full width, so the local holds the whole value.
+s" TDLB5 ( tdsv -- tdsv ) {: x:tdsv :} x" CHECK-QUIET-CANDIDATE! -1 T=
 \ bare W>1 bundle locals keep working (item 12 regression).
 s" TDLB7 ( tdsv -- tdsv ) {: x :} x" CHECK-QUIET-CANDIDATE! -1 T=
 \ arity-0 cell family annotation = the signature nominal.

@@ -411,11 +411,16 @@ DEMO:FIRST-X .                      \ prints 2
 ```
 
 `2 3 DEMO:AT DEMO:FIRST` at the prompt is refused at `DEMO:AT`. Inside a
-checked body a record binds to an UNTYPED local:
-`: F ( pt -- n ) {: p :} p PT:UNMAKE drop ;` certifies and answers the first
-field. Only a type annotation on that local is refused: `{: p:n :}` is
-`E-MISMATCH` (expected: n actual: @pt.tag<>) and `{: p:pt :}` is
-"unknown type 'p:pt' in signature". See
+checked body a record binds to a local — untyped
+(`: F ( pt -- n ) {: p :} p PT:UNMAKE drop ;`) or annotated with the family it
+holds (`: ID ( pt -- pt ) {: p:pt :} p ;`). The local holds the WHOLE value,
+whatever its cell count, and every reference reloads every cell, so a named
+record survives a return, an `if` arm and a loop body intact. The annotation is
+asserted, not decoration: a wrong family, a scalar spelling (`{: p:n :}` is
+`E-MISMATCH`, expected: n actual: @pt.tag<>), a parametric spelling
+(`{: p:res<n,n> :}`) and a family of arity > 0 are all refused — the
+annotation parser does not read family arguments, so a parametric value still
+takes an untyped local. See
 [the multi-cell type rules](type-system.md#5-families-records-alternatives-and-generics).
 
 - `NEWTYPE name arity` registers a nominal cell family (`TK-CELL`), no closer:

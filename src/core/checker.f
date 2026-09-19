@@ -3927,15 +3927,18 @@ variable SIGSCOPE-U
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
    a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN THEN ;
 
-\ W=1 layout local annotation (typed-locals slice 1, dot habu-typed-locals-for):
-\ a bare arity-0 family tail resolves like a signature type. An enum-tier
-\ layout (W=1 sum/enum) asserts the one-cell hidden term; the group bind
-\ (LOC-BUNDLE-BIND) unifies the captured bundle's tag term against it, so a
+\ Arity-0 family local annotation (typed-locals, dot habu-bind-a-wide): a bare
+\ arity-0 family tail resolves like a signature type. A layout family asserts
+\ the hidden term of its TOP slot — the tag — whatever its width: the group
+\ bind (LOC-BUNDLE-BIND) unifies the captured bundle's tag term against it and
+\ records the bundle's full cell count in LOCW, and LOC-PUSH-REF reloads every
+\ physical cell from that term, so W=1 and W>1 layouts need one rule and a
 \ wrong family rejects through the standard mismatch path with family fields.
 \ An arity-0 CELL family asserts its nominal scalar param, exactly as a
-\ signature would. Parametric spellings (fam<..>), arity>0 tails, and W>1
-\ layouts stay fail-closed as unknown local annotations (their slices are
-\ dotted); linear layouts never expand into locals (item 12 invariant).
+\ signature would. Parametric spellings (fam<..>) and arity>0 tails stay
+\ fail-closed as unknown local annotations until the annotation parser shares
+\ SIG-TYPE's family-argument grammar (dotted); linear values never reach a
+\ local at all (LIN-LOCAL-BIND-CHECK, item 12 invariant).
 : LOC-ANN-LT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ annotation spells <args>?
    0 BEGIN dup u < WHILE
       a over + c@ 60 = IF drop RES-TRUE EXIT THEN
@@ -3948,8 +3951,7 @@ variable SIGSCOPE-U
    fam TFAM-ARITY* 0 <> IF a u BAD-LOC-ANN EXIT THEN
    PARAM-SCR-N @ a u fam MK-PARAM {: pt:n :}
    pt LAYOUT-PARAM? 0= IF pt EXIT THEN             \ arity-0 cell family: nominal scalar
-   pt T-WIDTH 1 <> IF a u BAD-LOC-ANN EXIT THEN    \ W>1 layout locals: dotted tail (arity-0 here, so == family width)
-   pt 0 MK-HIDDEN ;
+   pt dup T-WIDTH 1 - MK-HIDDEN ;                  \ layout: its top (tag) hidden term
 : LOCAL-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" ptr" CORE-STR= IF FRESH MK-VAR MK-PTR EXIT THEN
    a u LOC-ANN-LT? IF a u BAD-LOC-ANN EXIT THEN
