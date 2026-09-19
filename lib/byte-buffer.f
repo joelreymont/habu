@@ -5,8 +5,8 @@
 \ ONE OS mapping at the storage pointer; the capacity cell is the ownership token
 \ (positive = a live mapping of that many bytes is owned, zero = no mapping owned,
 \ fresh or disposed). It mirrors lib/vector.f's storage discipline for bytes:
-\ copy-on-grow with the release LAST after a successful install (a failed grow
-\ throws before install, leaving the old mapping owned and intact), and
+\ copy-on-grow with validation before allocation and release LAST after a
+\ successful install (a refused grow leaves the old mapping owned and intact), and
 \ capacity-as-ownership so a touch of a disposed buffer throws E-BUF-STATE instead
 \ of dereferencing freed storage. Growth doubles with a checked cell-overflow
 \ clamp; storage flows through MEM:ALLOC-SPAN / MEM:FREE-SPAN.
@@ -113,8 +113,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    buf DATA@ buf CAP-RAW@ SPAN:MAKE ;
 
 \ ---- copy into the new mapping, install it, then release the prior one. Release
-\ is LAST and the caller allocates BEFORE this word runs, so a failed grow (the
-\ alloc throws upstream) never reaches here and leaves the old storage owned.
+\ is LAST; the caller validates the old prefix and new capacity before allocating,
+\ so validation or allocation failure leaves only the old storage owned.
 \ The active prefix is taken from the old span and copied into the new one, so
 \ both ends of the move are bounds-checked (E-SPAN-RANGE, E-SPAN-CAPACITY).
 : INSTALL-RESIZE ( ptr a SPAN:span<u8> -- ) {: buf:ptr d :}
@@ -128,7 +128,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : CHECK-RESIZE-CAP ( ptr a n -- ) {: buf:ptr cap:n :}
    buf CHECK-LIVE
    cap CHECK-CAP
-   cap buf LEN-RAW@ < if E-BUF-BOUNDS throw then ;
+   cap buf LEN-RAW@ < if E-BUF-BOUNDS throw then
+   buf BUF-SPAN buf LEN-RAW@ SPAN:TAKE SPAN:$ 2drop ;
 
 : RESIZE-RAW ( ptr a n -- ) {: buf:ptr cap:n :}
    buf cap CHECK-RESIZE-CAP

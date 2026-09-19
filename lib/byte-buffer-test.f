@@ -168,12 +168,24 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 \ A length cell past the owned capacity is the one corruption that used to turn
 \ the grow into an over-READ: INSTALL-RESIZE copied LEN bytes out of a CAP-byte
 \ mapping. The source is now taken from the owned span, so the take refuses at
-\ the reach (E-SPAN-RANGE) before a byte moves.
+\ the reach (E-SPAN-RANGE) before a byte moves or a new mapping is allocated.
+: BUFT-APPEND-MORE ( -- )
+   s" more" BUFT-N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN ;
+
 : BUFT-GROW-OVER-READ ( -- )
    BUFT-CAP0 BUFT-REL-INIT
    s" keep" BUFT-N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN
+   BUFT-CAP0 2 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: hole :}
+   hole MEM:FREE-SPAN
    BUFT-CAP0 1 + BUFT-REL-BUF BUF:BUFT-LEN-RAW!        \ len = 33 past the 32-byte mapping
-   s" more" BUFT-N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN ; \ grow copies the active prefix
+   [: BUFT-APPEND-MORE ;] E-SPAN-RANGE TTHROWSQ
+   \ A refused grow must leave the free hole available, not leak a new mapping
+   \ into it. This is the same address-reuse proof as the release tests above.
+   BUFT-CAP0 2 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: reuse :}
+   reuse SPAN:$ drop hole SPAN:$ drop = TTRUE
+   reuse MEM:FREE-SPAN
+   BUFT-REL-BUF BUF:BUFT-DATA@ 4 s" keep" T$=
+   BUFT-REL-BUF BUFT-TCAP BUFT-CAP0 T= ;
 
 \ ---- use-after-dispose fails closed (E-BUF-STATE) ------------------------------
 : BUFT-USE-SPAN ( -- )
@@ -253,7 +265,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    \ ---- capacity / bounds refusals --------------------------------------------
    [: BUFT-CAP-ZERO ;] E-BUF-CAPACITY TTHROWSQ
    [: BUFT-APPEND-OVERFLOW ;] E-BUF-CAPACITY TTHROWSQ
-   [: BUFT-GROW-OVER-READ ;] E-SPAN-RANGE TTHROWSQ
+   BUFT-GROW-OVER-READ
    BUFT-REL-BUF BUF:DISPOSE                                          \ the refused grow left the buffer owned
    \ ---- scale + property ------------------------------------------------------
    BUFT-BIG-FILL
