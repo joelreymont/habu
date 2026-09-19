@@ -191,6 +191,16 @@ variable NUM-U
    outu 0 T=
    erru 0 T= ;
 
+\ The primitive specification loads before the checked-definition hook. Scan
+\ its actual source too, so reserved names cannot hide in that earlier phase.
+: TEST-PRIMITIVE-SOURCES ( -- )
+   s" primitive specification reserved names" T-LABEL
+   s" src/habu/prims.f" RUN-CORE 0 EXPECT-EXIT
+   0 T= 0 T=
+   s" primitive references reserved names" T-LABEL
+   s" src/habu/prim-ref.f" RUN-CORE 0 EXPECT-EXIT
+   0 T= 0 T= ;
+
 : TEST-BAD ( -- )
    BAD$ RUN-CORE 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
@@ -265,6 +275,7 @@ public
    T-RESET
    PREPARE
    TEST-GOOD
+   TEST-PRIMITIVE-SOURCES
    TEST-BAD
    TEST-JSON
    TEST-LOADER

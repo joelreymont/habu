@@ -119,14 +119,14 @@ variable CUR-PKG-OFF    variable CUR-PKG-LEN
 variable CUR-CODE-OFF
 variable CUR-REF-OFF    variable CUR-REF-LEN
 
-\ SLOT addresses a row the caller has already bounded; FIELD is what everything
+\ SLOT addresses a row the caller has already bounded; ROW-FIELD is what everything
 \ else uses and refuses an index the table does not hold, so a reader cannot walk
 \ off the end of ROWS. Only ROW-WRITE needs SLOT: it fills the row at ROW-N
 \ before ROW-N counts it.
 : SLOT ( n n -- ptr n ) {: row:n field:n :}
    row ROW-CELLS * field + cells ROWS + ;
 
-: FIELD ( n n -- ptr n ) {: row:n field:n :}
+: ROW-FIELD ( n n -- ptr n ) {: row:n field:n :}
    row 0 < row ROW-N @ >= or IF s" prims: row index out of range" SPEC-RC die THEN
    row field SLOT ;
 
@@ -224,7 +224,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 \ refused, while a TRUSTED: body may use it (checker.f PRIM-TRUSTED-ONLY!).
 : ETRUSTED-ONLY! ( -- )
    ROW-N @ 0 <= IF s" prims: trusted-only before any row" SPEC-RC die THEN
-   ROW-N @ 1 - F-FLAGS FIELD dup @ FL-TRUSTED-ONLY or swap ! ;
+   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-TRUSTED-ONLY or swap ! ;
 
 : ELAB: ( -- )
    K-ELAB ROW-OPEN ROW-NAME ROW-WRITE ;
@@ -238,27 +238,27 @@ public
    ROW-N @ ;
 
 : KIND@ ( n -- n )
-   F-KIND FIELD @ ;
+   F-KIND ROW-FIELD @ ;
 
 : NAME$ ( n -- ptr u8 n ) {: row:n :}
-   NAMES row F-NAME-OFF FIELD @ +  row F-NAME-LEN FIELD @ ;
+   NAMES row F-NAME-OFF ROW-FIELD @ +  row F-NAME-LEN ROW-FIELD @ ;
 
 : PKG$ ( n -- ptr u8 n ) {: row:n :}
-   NAMES row F-PKG-OFF FIELD @ +  row F-PKG-LEN FIELD @ ;
+   NAMES row F-PKG-OFF ROW-FIELD @ +  row F-PKG-LEN ROW-FIELD @ ;
 
 : REF$ ( n -- ptr u8 n ) {: row:n :}
-   NAMES row F-REF-OFF FIELD @ +  row F-REF-LEN FIELD @ ;
+   NAMES row F-REF-OFF ROW-FIELD @ +  row F-REF-LEN ROW-FIELD @ ;
 
 : TRUSTED-ONLY? ( n -- bool )
-   F-FLAGS FIELD @ FL-TRUSTED-ONLY and 0 <> ;
+   F-FLAGS ROW-FIELD @ FL-TRUSTED-ONLY and 0 <> ;
 
 : CODE-LEN@ ( n -- n )
-   F-CODE-LEN FIELD @ ;
+   F-CODE-LEN ROW-FIELD @ ;
 
 : CODE@ ( n n -- n ) {: row:n idx:n :}
-   idx 0 < idx row F-CODE-LEN FIELD @ >= or
+   idx 0 < idx row F-CODE-LEN ROW-FIELD @ >= or
       IF s" prims: atom index out of range" SPEC-RC die THEN
-   CODES row F-CODE-OFF FIELD @ + idx + c@ ;
+   CODES row F-CODE-OFF ROW-FIELD @ + idx + c@ ;
 
 \ The row index for a name, -1 when the table has none. Exact spelling: a body
 \ registered under a different case is a different row and must say so.
