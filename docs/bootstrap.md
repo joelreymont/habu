@@ -444,6 +444,11 @@ under `src/core/`, `src/habu/`, and the libraries the manifest names
 (`lib/errors.f`, `lib/string.f`, `lib/memory.f` among them); an edit there is
 proved only by the generation chain, never by loading the file.
 
+The stdin build's captured compiler closure records tree paths relative to the
+build root. Those paths also become the product's provided-file registrations;
+absolute capture paths would only match at the original build directory and
+would cause duplicate definitions after relocation.
+
 The two chains and their comparison point:
 
 - **Native chain** — the current `bin/hb`, which reproduces itself at the native

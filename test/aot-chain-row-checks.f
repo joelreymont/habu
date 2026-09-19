@@ -13,6 +13,16 @@ using AOT-WINDOW
    s" chain-address-rows: fixture does not exercise every intended row kind"
    75 die ;
 
+: ?PORTABLE-CLOSURE ( -- )
+   AOT-IDENT:COUNT 0= if FIXTURE-REFUSE then
+   AOT-IDENT:COUNT 0 ?do
+      i AOT-IDENT:PATH$ 0= if FIXTURE-REFUSE then
+      c@ 47 = if
+         s" chain-closure: captured a build-tree absolute path" 75 die
+      then
+   loop
+   s" chain-closure: portable" type cr ;
+
 \ Source declarations must give the producer both location coordinates, both
 \ target kinds, and a null DATA target; these are independent of today's count.
 : ?POPULATIONS ( -- )
@@ -65,6 +75,7 @@ using AOT-WINDOW
 public
 : RUN ( -- )
    AOT-CHAIN:RUN
+   ?PORTABLE-CLOSURE
    ?POPULATIONS
    s" index-scale" CASE? if LARGE-INDEX else
       ALTER

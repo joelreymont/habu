@@ -156,6 +156,9 @@ create HEX 64 allot
 \ bracket - the metabuild fills the same table from the artifact's own list - and
 \ because aot-ident.f has to compile in a metabuild host that carries no
 \ src/core/include.f.
+\ These are application rows, hence absolute. Store tree paths relative to CWD
+\ as boot registration does: the artifact also supplies the product's provided
+\ files, which must still match after the source tree moves.
 : ?CLOSURE ( -- )
    Q1 @ Q0 @ > if exit then
    s" aot-chain-capture: the window loaded no file" REFUSE-RC die ;
@@ -163,7 +166,10 @@ create HEX 64 allot
 : LATCH-CLOSURE ( -- )
    ?CLOSURE
    AOT-IDENT:RESET
-   Q1 @ Q0 @ ?do i REQUIRE-SLOT i REQUIRE-LEN@ AOT-IDENT:PATH+ loop ;
+   Q1 @ Q0 @ ?do
+      i REQUIRE-SLOT i REQUIRE-LEN@ SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE
+      AOT-IDENT:PATH+
+   loop ;
 
 \ Address rows restore the window's declared pointers and vectors, including
 \ their exact targets. DKEEP-HOOK-DEFAULT remains the explicit diagnostic-hook

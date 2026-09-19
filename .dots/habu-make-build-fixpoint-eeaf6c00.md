@@ -124,3 +124,26 @@ but the identical file fails with duplicate STORE (78) from an exact private
 copy at /tmp/alder-install-final/other-tree. SOURCE-ROOT:CWD$ correctly names
 the copied tree there. This is a relocation/provision failure, not an absent
 row in the raw registry listing. Scratch probes: require-quote.f, root-probe.f.
+
+Portable-capture repair: alder, .jj-ws/alder-install-portable, base de37c3e6.
+LATCH-CLOSURE was copying absolute application require rows into the artifact's
+provided-file list. Boot registration shortened them only when its CWD matched
+the capture tree, concealing the problem in the original listing. Normalize
+with SOURCE-ROOT:CWD$ RELATIVE while capturing, matching the loader's existing
+boot-row rule and retaining canonical paths outside the tree.
+
+The production-capture fixture rejects the original rows with
+`chain-closure: captured a build-tree absolute path` (75). The full
+aot-chain-capture registry row passes on the repaired de37c3e6 tree. Independent
+Astra review is clear. The fresh private stdin candidate recognizes the copied
+tree's quotation-storage.f through ENGINE-PROVIDES? and requires it successfully
+(42), where the prior candidate exits 78. No install or local full gate was run.
+
+Three private stdin-route generations (tools/build-fixpoint-refresh.f -- stdin)
+are byte-identical, SHA256
+5c30c4a0fc46a18ce53de57d44edb202a869dd0c7022f1bdfecf14c8bb1c5a10.
+Generations 2 and 3 build from the copied root using the preceding candidate,
+also copied to that private tree's bin/hb because 5f3468a9 is still open.
+Artifacts and logs: /tmp/alder-install-portable-final/{gen1,gen2,gen3},
+aot-chain-capture.log and relocated.log. The final candidate still needs
+Hazel's serial full gate; eeaf6c00 remains open until that proof passes.

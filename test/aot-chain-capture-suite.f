@@ -308,6 +308,7 @@ create HOST-PATH FS-PATH-CAP allot variable HOST-PATH-U
 : PROBE-PRODUCER-ROWS ( -- )
    PREPARE-PRODUCER
    s" valid" 0 PRODUCER-CASE
+   s" chain-closure: portable" SAID?
    s" reorder" 0 PRODUCER-CASE
    s" index-scale" 0 PRODUCER-CASE
    s" missing" REFUSE-RC PRODUCER-CASE
