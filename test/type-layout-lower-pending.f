@@ -54,6 +54,10 @@ SUMTYPE tlp-en 0
   VARIANT lit  ;VARIANT
   VARIANT dark ;VARIANT
 ;SUMTYPE
+STRUCTURE tlp-pair 0
+  FIELD left n
+  FIELD right n
+;STRUCTURE
 
 variable TLOK   variable TLF   variable TLX
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the internal registry
@@ -110,8 +114,24 @@ WF-N@ 3 T=  0 WF-POS@ 1 T=  1 WF-POS@ 1 T=  2 WF-POS@ 1 T=
 \ locals capture: the whole group records at the :} token. `x` binds the layout
 \ value; locals annotations cannot express family types yet (capability dotted:
 \ habu-typed-locals-for-b06b6707), so the entry effect carries the detailed type.
-: TLP-LOCAL ( tlp-res<n,n> n -- n ) {: x y:n :} y ;
+: TLP-LOCAL ( tlp-res<n,n> n -- n ) {: x:tlp-res<n,n> y:n :} y ;
 WF-N@ 1 T=  0 WF-POS@ 1 T=  0 WF-FAM@ TLF @ T=  0 WF-WIDTH@ 2 T=
+
+\ Arity-0 W=2 products can be named directly in locals. The checker stores the
+\ bundle tag term in LOCTV and the existing width-aware lowering captures and
+\ reloads both physical cells.
+: TLP-TYPED-WIDE-LOCAL ( tlp-pair -- tlp-pair ) {: pair:tlp-pair :} pair ;
+WF-N@ 2 T=
+0 WF-WIDTH@ 2 T=
+1 WF-WIDTH@ 2 T=
+
+\ Parametric W=2 layout annotations use the same family grammar as signatures.
+: TLP-TYPED-PARAM-LOCAL ( tlp-res<n,n> -- tlp-res<n,n> )
+   {: value:tlp-res<n,n> :}
+   value ;
+WF-N@ 2 T=
+0 WF-WIDTH@ 2 T=
+1 WF-WIDTH@ 2 T=
 
 \ ---------------------------------------------------------------------------
 \ width-4 spot checks and multi-fact ordering: facts scan top position first.
