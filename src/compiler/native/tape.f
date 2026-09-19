@@ -41,8 +41,9 @@ ENUM mode DERIVE eq
 
 \ A value is not authority: the generated constructor is open, so PUSH revalidates
 \ every field against the module's registries before a row exists.
-\ The checker cannot bind a local of a multi-cell structure type
-\ (habu-bind-multi-cell-d2e153ed), so every word here unmakes one at entry.
+\ A multi-cell value binds whole to a typed local, so a word that only carries a
+\ token or a span names it; the append fronts still unmake one, because there
+\ every field becomes its own arena cell.
 STRUCTURE token 0
    FIELD kind kind
    FIELD mode mode
@@ -230,10 +231,9 @@ public
 private
 
 : MK ( IR-SOURCE:span NTAPE:kind NTAPE:mode IR-ID:ir-symbol-id n -- NTAPE:token )
-   {: k:NTAPE:kind m:NTAPE:mode sy:IR-ID:ir-symbol-id v:n :}
-   IR--SOURCE-SPAN:UNMAKE {: sid:IR-ID:ir-source-id st:n ln:n :}
+   {: sp:IR-SOURCE:span k:NTAPE:kind m:NTAPE:mode sy:IR-ID:ir-symbol-id v:n :}
    k v LIT-CK
-   k m sy v sid st ln IR--SOURCE-SPAN:MAKE NTAPE-TOKEN:MAKE ;
+   k m sy v sp NTAPE-TOKEN:MAKE ;
 
 public
 
@@ -585,9 +585,8 @@ public
 
 \ Makes "the checker and the elaborator read the same tape" a checked fact.
 : VERIFY ( IR-ARENA:view CDIGEST:digest -- )
-   CDIGEST-DIGEST:UNMAKE
-   {: v:IR-ARENA:view w0:n w1:n w2:n w3:n :}
-   v DIGEST  w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+   {: v:IR-ARENA:view want:CDIGEST:digest :}
+   v DIGEST  want CDIGEST-DIGEST:EQ
    0= if E-NTAPE-DIGEST throw then ;
 
 private

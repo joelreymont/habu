@@ -115,7 +115,7 @@ private
    c sr key SRC {: s0:IR-ID:ir-source-id :}
    c sp sy key s" A" IR-SYM:INTERN {: n0:IR-ID:ir-symbol-id :}
    sr s0 0 1 IR-SOURCE:SPAN n0 NTAPE-MODE:COMPILING -1 NTAPE:CHAR-TOKEN
-   NTAPE-TOKEN:UNMAKE IR--SOURCE-SPAN:UNMAKE drop drop drop drop drop drop drop ;
+   {: tk:NTAPE:token :} ;                 \ never reached: the mint above throws
 
 : NEGCHAR ( -- )
    BND [: NEGCHAR-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -698,17 +698,17 @@ private
 \ deliberately outside the preimage, or no cached result could outlive a run.
 : DG-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
-   c BASE CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
-   c BASE  w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+   c BASE {: want:CDIGEST:digest :}
+   c BASE  want CDIGEST-DIGEST:EQ
    c NTAPE-MODE:INTERPRETING 7 5 0 BUILD NTAPE:DIGEST
-      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+      want CDIGEST-DIGEST:EQ
    c NTAPE-MODE:COMPILING 8 5 0 BUILD NTAPE:DIGEST
-      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+      want CDIGEST-DIGEST:EQ
    c NTAPE-MODE:COMPILING 7 6 0 BUILD NTAPE:DIGEST
-      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+      want CDIGEST-DIGEST:EQ
    c NTAPE-MODE:COMPILING 7 5 1 BUILD NTAPE:DIGEST
-      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
-   c BASE  w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ ;
+      want CDIGEST-DIGEST:EQ
+   c BASE  want CDIGEST-DIGEST:EQ ;
 
 : DG-CASE ( -- )
    s" the digest is the tape and only the tape" T-LABEL
@@ -720,19 +720,18 @@ private
 \ the all-zero build is the same tape BUILD's base is.
 : DGB-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
-   c 0 0 0 0 0 BUILD-B NTAPE:DIGEST
-   CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
-   c BASE  w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+   c 0 0 0 0 0 BUILD-B NTAPE:DIGEST {: want:CDIGEST:digest :}
+   c BASE  want CDIGEST-DIGEST:EQ
    c 1 0 0 0 0 BUILD-B NTAPE:DIGEST
-      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+      want CDIGEST-DIGEST:EQ
    c 0 1 0 0 0 BUILD-B NTAPE:DIGEST
-      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+      want CDIGEST-DIGEST:EQ
    c 0 0 1 0 0 BUILD-B NTAPE:DIGEST
-      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+      want CDIGEST-DIGEST:EQ
    c 0 0 0 1 0 BUILD-B NTAPE:DIGEST
-      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+      want CDIGEST-DIGEST:EQ
    c 0 0 0 0 1 BUILD-B NTAPE:DIGEST
-      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ ;
+      want CDIGEST-DIGEST:EQ ;
 
 : DGB-CASE ( -- )
    s" kind, spelling, origin, source and length each move the digest" T-LABEL
@@ -743,12 +742,11 @@ private
 : DGE-BODY ( IR-CTX:ctx -- bool bool )
    {: c:IR-CTX:ctx :}
    c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
-   c key 4 NTAPE:NEW NTAPE:SEAL NTAPE:DIGEST
-   CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
+   c key 4 NTAPE:NEW NTAPE:SEAL NTAPE:DIGEST {: want:CDIGEST:digest :}
    c IR-CTX:NEW-MODULE drop {: k2:IR-ID:ir-module-key :}
    c k2 4 NTAPE:NEW NTAPE:SEAL NTAPE:DIGEST
-      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
-   c BASE  w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ ;
+      want CDIGEST-DIGEST:EQ
+   c BASE  want CDIGEST-DIGEST:EQ ;
 
 : DGE-CASE ( -- )
    s" an empty tape has its own stable digest" T-LABEL
@@ -768,9 +766,9 @@ private
 
 : VFX-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   c BASE CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
+   c BASE {: other:CDIGEST:digest :}
    c NTAPE-MODE:INTERPRETING 7 5 0 BUILD
-   w0 w1 w2 w3 CDIGEST-DIGEST:MAKE NTAPE:VERIFY ;
+   other NTAPE:VERIFY ;
 
 : VFX ( -- )
    BND [: VFX-BODY ;] IR-CTX:WITH-CONTEXT ;

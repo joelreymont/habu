@@ -59,20 +59,16 @@ private
 \ the module being read, so no caller presents the text at all.
 \ The routine contract reaches the selector as well as the allocator now, because
 \ the selector is where a data-stack place becomes a load or a store. It is the
-\ last argument for the same reason it is everywhere else: fourteen cells cannot
-\ be bound to a typed local, so it is presented on top and taken apart there.
+\ last argument for the same reason it is everywhere else: it is what the entry
+\ points validate on the way in, and a contract binds whole to a typed local.
 \
 \ THE LOWERING PASS IS BOUND HERE TOO, because a module's symbols are its own
 \ ordinals and this is the only moment the machine dialect can be asked them. A
 \ run whose walk decides no spill gives that binding straight back, which is what
 \ the RELEASE in each of the entry points below is.
 : SELECTED ( IR-CTX:ctx IR-BUILD:builder NEFF:routine -- IR-BUILD:module )
-   NEFF:VALIDATE NEFF-ROUTINE:UNMAKE
-   {: cv:NEFF:conv gi:NEFF:placeseq gr:NEFF:placeseq gc:NEFF:gprs
-      fi:NEFF:fprs fr:NEFF:fprs fc:NEFF:fprs
-      z:NEFF:nzcv l:NEFF:link ct:NEFF:control
-      t:NEFF:traits size:n delta:n mch:NMACH:mach :}
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   NEFF:VALIDATE
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:NEFF:routine :}
    c b A64SEL:BIND-SOURCE
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    c A64-BUILDER {: ab:IR-BUILD:builder :}
@@ -80,9 +76,7 @@ private
    c ab A64RAV:BIND-DIALECT
    c ab A64EMIT:BIND-DIALECT
    c ab A64SPILL:BIND-DIALECT
-   c m ab
-   cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
-   A64SEL:SELECT ;
+   c m ab r A64SEL:SELECT ;
 
 public
 
@@ -139,17 +133,19 @@ public
 \ agreed with, which is the whole reason the three stages are one word.
 : FINISH ( IR-CTX:ctx IR-BUILD:module n n -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module base:n n:n :}
-   c m base n LEAF-FROM A64RA:ALLOCATE
-   m base n LEAF-FROM A64RAV:ACCEPT
+   base n LEAF-FROM {: r:NEFF:routine :}
+   c m r A64RA:ALLOCATE
+   m r A64RAV:ACCEPT
    c m A64EMIT:EMIT ;
 
 \ The same three stages under the data-stack convention a Habu word is entered
-\ and left through. The contract is built twice, from the same four numbers,
-\ because a routine value cannot be held in a local.
+\ and left through. One contract, named, reaches both stages: the allocation and
+\ the verdict on it cannot be about two separately built values.
 : FINISH-HABU ( IR-CTX:ctx IR-BUILD:module n n n n -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module base:n n:n in:n out:n :}
-   c m base n in out LEAF-HABU A64RA:ALLOCATE
-   m base n in out LEAF-HABU A64RAV:ACCEPT
+   base n in out LEAF-HABU {: r:NEFF:routine :}
+   c m r A64RA:ALLOCATE
+   m r A64RAV:ACCEPT
    c m A64EMIT:EMIT ;
 
 \ Select and finish in one step, out of a pool of `n` registers from `base`.

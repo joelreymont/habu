@@ -903,12 +903,10 @@ public
 \ What survives the routine: every register of the file it neither returns nor
 \ destroys. Derived, never stored, so it cannot contradict the destroyed set.
 : GPR-PRESERVED ( NEFF:routine -- NEFF:gprs )
-   VALIDATE NEFF-ROUTINE:UNMAKE
-   {: m:NMACH:mach :}              \ the machine, which says what there is to preserve
-   drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
-   drop drop drop                  \ the floating sets
-   {: cv:conv gi:placeseq gr:placeseq gc:gprs :}
-   m NMACH:GPR-ALLOCATABLE gr S-BITS SEQ-MASK invert and gc G-BITS invert and MK-G ;
+   VALIDATE {: r:routine :}
+   r MACH@ NMACH:GPR-ALLOCATABLE   \ the machine says what there is to preserve
+   r RESULTS@ S-BITS SEQ-MASK invert and
+   r GPR-CLOBBER@ G-BITS invert and MK-G ;
 
 \ Every register the routine may WRITE: the ones it destroys, plus the ones it
 \ returns a value in. They are two roles and one register cannot be both, which
@@ -917,20 +915,15 @@ public
 \ one and not the destroyed set alone. Derived for the same reason the preserved
 \ set is: a stored copy could disagree with the two fields it is made of.
 : GPR-WRITABLE ( NEFF:routine -- NEFF:gprs )
-   VALIDATE NEFF-ROUTINE:UNMAKE
-   drop                            \ the machine: what a routine writes is its own
-   drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
-   drop drop drop                  \ the floating sets
-   {: cv:conv gi:placeseq gr:placeseq gc:gprs :}
-   gr S-BITS SEQ-MASK gc G-BITS or MK-G ;
+   VALIDATE {: r:routine :}
+   r RESULTS@ S-BITS SEQ-MASK
+   r GPR-CLOBBER@ G-BITS or MK-G ;
 
 : FPR-PRESERVED ( NEFF:routine -- NEFF:fprs )
-   VALIDATE NEFF-ROUTINE:UNMAKE
-   {: m:NMACH:mach :}              \ the machine, which says what there is to preserve
-   drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
-   {: fi:fprs fr:fprs fc:fprs :}
-   drop drop drop drop             \ the general lists, the destroyed set, the convention
-   m NMACH:FPR-ALLOCATABLE fr F-BITS invert and fc F-BITS invert and MK-F ;
+   VALIDATE {: r:routine :}
+   r MACH@ NMACH:FPR-ALLOCATABLE   \ the machine says what there is to preserve
+   r FPR-RESULT@ F-BITS invert and
+   r FPR-CLOBBER@ F-BITS invert and MK-F ;
 
 \ The floating file's writable set, derived exactly as the general file's is:
 \ what the routine destroys plus what it returns a value in. A register
@@ -938,12 +931,9 @@ public
 \ words it asks it of the first, so the two pools come from one rule rather than
 \ from one rule and one special case.
 : FPR-WRITABLE ( NEFF:routine -- NEFF:fprs )
-   VALIDATE NEFF-ROUTINE:UNMAKE
-   drop                            \ the machine: what a routine writes is its own
-   drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
-   {: fi:fprs fr:fprs fc:fprs :}
-   drop drop drop drop             \ the general lists, the destroyed set, the convention
-   fr F-BITS fc F-BITS or MK-F ;
+   VALIDATE {: r:routine :}
+   r FPR-RESULT@ F-BITS
+   r FPR-CLOBBER@ F-BITS or MK-F ;
 
 : RETURNS? ( NEFF:routine -- bool )
    VALIDATE CONTROL@ RETURNING? ;
@@ -953,14 +943,12 @@ public
 \ of the routine's own frame, and an access width. It is accepted only if a load
 \ or store form can actually reach it - a width the vocabulary carries, an offset
 \ the scale division will not round, an offset inside the declared frame, and an
-\ offset inside the reach of that width's twelve-bit field. The routine is last
-\ so the two numbers can be read into locals; a multi-cell value cannot be one.
+\ offset inside the reach of that width's twelve-bit field. The contract is named
+\ whole and the two fields it is judged against are read through its own readers.
 : CHECK-SLOT ( n n NEFF:routine -- )
-   VALIDATE NEFF-ROUTINE:UNMAKE
-   {: m:NMACH:mach :}
-   drop {: size:n :}                  \ the delta, then the frame this slot is in
-   drop drop drop drop drop drop drop drop drop drop drop
-   {: off:n width:n :}
+   VALIDATE {: off:n width:n r:routine :}
+   r MACH@ {: m:NMACH:mach :}
+   r FRAME@ {: size:n :}              \ the frame this slot is in
    width m NMACH:WIDTH-OK? 0= if E-NEFF-SLOT throw then
    off 0 < if E-NEFF-SLOT throw then
    off width mod 0<> if E-NEFF-SLOT throw then

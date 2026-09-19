@@ -3467,28 +3467,22 @@ public
 \ A module with no such loop or no such pair is handed back untouched, because
 \ rebuilding renumbers values and would move registers for nothing.
 : SELECT ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder NEFF:routine -- IR-BUILD:module )
-   NEFF:VALIDATE NEFF-ROUTINE:UNMAKE
-   {: cv:NEFF:conv gi:NEFF:placeseq gr:NEFF:placeseq gc:NEFF:gprs
-      fi:NEFF:fprs fr:NEFF:fprs fc:NEFF:fprs
-      z:NEFF:nzcv l:NEFF:link ct:NEFF:control
-      t:NEFF:traits size:n delta:n mch:NMACH:mach :}
-   {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder :}
+   NEFF:VALIDATE
+   {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder r:NEFF:routine :}
    c A64IR:CHECK-TARGET
    BND-TAKE
    m BND-MODULE-CK
-   gi 0 S-ARGS !
-   gr 0 S-OUTS !
-   gi NEFF:SEQ-LEN S-DECL-IN !
-   gr NEFF:SEQ-LEN S-DECL-OUT !
-   cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
-   NEFF:GPR-WRITABLE 0 S-POOL !
-   cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
-   NEFF:FPR-WRITABLE 0 S-FPOOL !
-   t 0 S-TRT !
-   size S-FRAME !
-   ct NEFF-CONTROL:TAIL-CALL NEFF-CONTROL:EQ if 1 else 0 then S-TAIL !
-   cv NEFF-CONV:DSTACK NEFF-CONV:EQ if 1 else 0 then S-DSTACK !
-   t l A64FRAME:LINK-KEPT? if 1 else 0 then S-LSAVE !
+   r NEFF:ARGS@ 0 S-ARGS !
+   r NEFF:RESULTS@ 0 S-OUTS !
+   r NEFF:ARGS@ NEFF:SEQ-LEN S-DECL-IN !
+   r NEFF:RESULTS@ NEFF:SEQ-LEN S-DECL-OUT !
+   r NEFF:GPR-WRITABLE 0 S-POOL !
+   r NEFF:FPR-WRITABLE 0 S-FPOOL !
+   r NEFF:TRAITS@ 0 S-TRT !
+   r NEFF:FRAME@ S-FRAME !
+   r NEFF:CONTROL@ NEFF-CONTROL:TAIL-CALL NEFF-CONTROL:EQ if 1 else 0 then S-TAIL !
+   r NEFF:CONV@ NEFF-CONV:DSTACK NEFF-CONV:EQ if 1 else 0 then S-DSTACK !
+   r NEFF:TRAITS@ r NEFF:LINK@ A64FRAME:LINK-KEPT? if 1 else 0 then S-LSAVE !
    0 N-CALLS !
    0 N-TAILS !
    -1 TAIL-SITE !
