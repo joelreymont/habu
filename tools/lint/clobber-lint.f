@@ -154,6 +154,8 @@ variable RX  variable RACC
    a u s" SNAP-RELOC:Lmark" LINT-STR=CI if $3FFFF exit then
    a u s" SNAP-RELOC:Lptrmark" LINT-STR=CI if $3FFFF exit then
    a u s" SNAP-RELOC:Lindexrelease" LINT-STR=CI if $3FFFF exit then
+   \ Recovery uses the same MARK-SAVE/RESTORE register frame as the registrars.
+   a u s" SNAP-RELOC:Lrollback" LINT-STR=CI if $3FFFF exit then
    a u s" Lvpushc" LINT-STR=CI if 0 11 CL-ADD exit then
    a u s" Lvpushr" LINT-STR=CI if 0 14 CL-ADD exit then
    a u s" Lvforcek" LINT-STR=CI if 0 5 CL-ADD exit then

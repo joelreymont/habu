@@ -7445,6 +7445,8 @@ variable P2SK
    0 2 MOVZ,  1 LQNL @ ADR,  2 2 MOVZ,  NR-WRITE SYS,
    CP DATA RSAVCP-CELL LDR,
    NDICT DATA RSAVND-CELL LDR,
+   \ Native REPL and evaluate recovery share the address-row filter before
+   \ rewinding DP. This seed has no rows (addr-cells-abi is zero), as below.
    9 DATA RSAVDP-CELL LDR,  9 DATA DP-CELL STR,
    9 DATA S0-CELL LDR,  XDS 9 0 ADDI,
    EMIT-RESET-COMPILE-STATE

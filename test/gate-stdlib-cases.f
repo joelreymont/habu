@@ -1416,6 +1416,10 @@ SUITE address-cell-rollback
    test/address-cell-rollback.f
 ;SUITE
 
+SUITE repl-address-cell-rollback
+   test/repl-address-cell-rollback.f
+;SUITE
+
 SUITE address-cell-rollback-aot
    test/compiler/aot-mode.f
    test/address-cell-rollback.f
