@@ -9,6 +9,9 @@ private
 
 DYNAMIC-BUFFER HOOKS [ -- ]
 variable N
+\ Declaration-time hooks survive captures; typed DATA cells own relocation.
+64 TYPED-BUFFER PERSISTENT [ -- ]
+variable PERSISTENT-N
 \ Atomic cells require native cell alignment. This dictionary storage is shared
 \ by every task, unlike the engine's per-task DATA header.
 here data-base - negate 7 and allot
@@ -24,6 +27,10 @@ variable MUTEX
    N @ HOOKS !
    1 N +! ;
 
+: APPEND-PERSISTENT ( [ -- ] -- )
+   PERSISTENT-N @ PERSISTENT !
+   1 PERSISTENT-N +! ;
+
 public
 
 \ Register when acquiring process-local state. Serialize growth and append;
@@ -31,13 +38,18 @@ public
 : REGISTER ( [ -- ] -- )
    LOCK [: APPEND ;] [: UNLOCK ;] finally ;
 
+\ Register at declaration time. These 64 DATA-backed slots remain armed
+\ across PREPARE and image restore; a full table refuses E-LAYOUT-BOUNDS.
+: REGISTER-PERSISTENT ( [ -- ] -- )
+   LOCK [: APPEND-PERSISTENT ;] [: UNLOCK ;] finally ;
+
 \ Number of hooks currently registered, read under the lock REGISTER takes so
 \ a concurrent registration is either counted or not, never half-applied. A
 \ cell read cannot throw, so the unwind path REGISTER needs is not needed here.
 \ A hook that throws during PREPARE is not removed, so it still counts;
 \ test/image-lifecycle.f observes both through this word.
 : COUNT ( -- n )
-   LOCK N @ UNLOCK ;
+   LOCK N @ PERSISTENT-N @ + UNLOCK ;
 
 private
 
@@ -61,6 +73,10 @@ public
       at HOOKS @ execute
       at REMOVE
    repeat
-   HOOKS-RELEASE ;
+   HOOKS-RELEASE
+   \ One-shot cleanup may use foreign functions. Forget their addresses last,
+   \ after resource cleanup has finished, in reverse declaration order.
+   PERSISTENT-N @
+   begin dup 0 > while 1- dup PERSISTENT @ execute repeat drop ;
 
 ;package
