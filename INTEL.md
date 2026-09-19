@@ -20,9 +20,9 @@ the Intel agent starts at `habu-lower-hir-to-6bf80d33`.**
 | `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract, emitters | arm64 host (hazel) | landed d55021af + 5e05cbfd + d1961798 (closed) |
 | `habu-parameterise-the-alloc-7efbe7a1` | register-file description for regalloc/spill/prune | arm64 host (hazel) | landed 50ee6a3c |
 | `habu-bind-compiler-targets-ff970b99` | backend registry + pass dispatch | arm64 host (hazel) | landed 0901e61c + ddc1412d (closed) |
-| `habu-lower-hir-to-6bf80d33` | `x64ir.f`, `select-x64.f`, `emit-x64.f` | arm64 host (hazel) | `x64ir.f` + backend row landed (see Landed); selection and emission open behind the effect-schema lane |
-| `habu-cross-build-the-d25a959d` | cross-build entry + device-peer gate | Intel agent | open |
-| `habu-port-the-ffi-676f745d` | SysV FFI, task entry, traps | Intel agent | open |
+| `habu-lower-hir-to-6bf80d33` | `x64ir.f`, `select-x64.f`, `emit-x64.f` | arm64 host (hazel) | `x64ir.f` + backend row and selection slice A landed (see Landed); fusing, the allocator's fixed-register operands (`habu-place-the-fixed-3347ae15`), emission and the pass rows open |
+| `habu-cross-build-the-d25a959d` | cross-build entry + device-peer gate | alder | open |
+| `habu-port-the-ffi-676f745d` | SysV FFI, task entry, traps | alder | open |
 | `habu-self-host-the-ccc31e78` | fixpoint on the Intel machine, release artifact | Intel agent | open |
 
 Do not start the lowering dot until every row above it says landed; its
@@ -385,7 +385,7 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   before this the first x86-64 context threw `E-IR-CTX-STATE`.
 - Errors `-8740..-8759` (`X64IR`); `-8760..-8779` and `-8780..-8799` reserved
   for `X64SEL` and `X64EMIT`.
-- Still open in the dot: `select-x64.f`, `emit-x64.f`,
+- Still open in the dot: the fusing slice of `select-x64.f`, `emit-x64.f`,
   `src/arch/x86-64/passes.f`, the pinned-bytes suite
   `test/compiler/x64-emit.f`.
 - Decision (hazel, 2026-09-18), LANDED: the allocator's effect schema is
@@ -405,3 +405,46 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   (`SLOT-MACH` = `NMACH:MARK`). The arm64 engine is byte-identical across the
   generation chain (gen2 == gen3; gen1 differs in move-wide immediates and
   data pointers only).
+
+### Selection, slice A (`habu-lower-hir-to-6bf80d33`, second slice)
+
+- `src/compiler/native/select-x64.f` (package `X64SEL`): HIR -> X64IR for the
+  straight-line and branching core, a separate pass with A64SEL's shape
+  (`BIND-SOURCE` / `RELEASE` / `SELECT ( ctx module builder routine -- module )`).
+  CORRECT AND UNFUSED: a compare feeding a branch is `x64.cmpset` then
+  `x64.brz`; `cmpbr`/`cmpbri`/`cmpsel`/`selz` are the fusing slice. The table:
+  `const`->`movi` (with `x64.addr`), `quot`->`codeaddr`, `+ - and or xor`->
+  the tied form or its `*i` immediate form when the right operand is a literal
+  the imm32 admits (the literal's own `movi` is dropped only when EVERY use
+  folds, counted over the function), `*`->`imul`, literal-count shifts->
+  `shli`/`shri`, `invert`->`not`, the six signed comparisons->`cmpset`/
+  `cmpseti`, `@ ! c@ c!`->`aload/astore/abload/abstore`, `br`/`brz` with edge
+  splitting through `x64.mov`, the data-stack boundary (`dtake`, `dload` per
+  argument, `dstore` per result, `dpublish`; the pointer stands at the entry
+  base, or never moves in a routine that leaves through its callee, so a tail
+  call reads its arguments at negative displacements), `call`/`wordcall`/
+  `tailcall`, `trap`, `reserve`/`release`. No copy is ever inserted for a
+  two-address tie: the allocator owns that.
+- Refused by name, each with a case: `E-X64SEL-FLOAT` (no SSE form declared),
+  `E-X64SEL-TRAP` (trapping-overflow unit), `E-X64SEL-FIXED` (a shift whose
+  count is not a literal reads rcx; a divide reads rdx:rax - the allocator has
+  no fixed-register operand yet, `habu-place-the-fixed-3347ae15`),
+  `E-X64SEL-MACHINE` (a contract of another machine), `E-X64SEL-OPCODE`,
+  `-BIND`, `-SOURCE`, `-MEM`; `-8760..-8774` in lib/errors.f. HIR has no
+  `negate`, so `neg` has no source form in this slice.
+- `src/arch/x86-64/abi.f` (`X64ABI`): the Habu word convention on this
+  machine - link `absent`, no prologue slot (the return address is on the
+  machine stack), the nine-register pool from `X64M:MACHINE NEFF:GPR-ALL`,
+  frames holding spills alone.
+- `src/compiler/ir/fun.f` `TARGET-CK`: a calling convention belongs to a KIND
+  of architecture (kernel <-> PTX, everything else native), not to AArch64 by
+  name; that is what lets an x86-64 module verify at all.
+- Suite `test/compiler/x64-select.f` (`compiler-x64-select`): opcode per
+  source operation and value identity per operand, the operation COUNT for the
+  immediate forms, both successors of the unfused branch, the negative
+  displacement of the tail case, the ABI contracts, and every refusal above.
+- Untested: `trap` has a rule and no positive case (no selection fixture
+  builds a target dictionary with `die`, ARM64's suite has the same gap);
+  edge splitting is covered for one carried forward edge, not the permuting
+  back edge; the seven internal shape refusals (`-SHAPE`, `-ATTR`, `-CAP`,
+  `-PLACE`, `-CALL`, `-TAIL`, `-ORDER`) have no case.
