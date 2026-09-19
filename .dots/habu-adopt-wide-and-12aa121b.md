@@ -6,12 +6,6 @@ issue-type: task
 created-at: "2026-09-19T18:23:03.521709+03:00"
 ---
 
-Active migration: alder, .jj-ws/alder-binding-locals on 3dbac18c; binding.f
-after the wide-local engine integrated. Keep the existing assertions unchanged.
-
-Active migration: alder, .jj-ws/alder-ir-build-locals on 3dbac18c; the released
-IR builder and schema transport sites, with existing assertions unchanged.
-
 Problem: Joel (2026-09-19): the wide/multi-cell and parametric typed-local features exist to improve the codebase, so every site that destructures a layout value only because a typed local could not hold it must be found and converted. Today src/, lib/, tools/ and test/ carry the workaround shapes the handoff names: unpack-then-repack around a use (X:UNMAKE ... X:MAKE), locals exploded into scalar cells ({: a b c d :} over a two-field value), adapter words that exist only to name pieces, swap/rot juggling around MATCH payloads. Acceptance (alder, after each feature dot lands and its engine is integrated): (1) an audit listing every candidate site by file:line with the shape it exhibits, measured by reading, over src/ lib/ tools/ test/ and, read-only, the consumer trees (loom, maki, kiba, radar, Tender - reported to their owners, never edited here); (2) migrations in commit-sized groups per subsystem, each keeping behaviour (its suites unchanged in what they assert), each reviewed on the line before it chains, converted sites named in the commit body; sites in a live hazel lane (span band 1 files, the native compiler, checker.f) are handed to that lane's owner instead of edited; (3) the card (docs/forth-card.md) and docs/forth.md state the idiom: a domain value stays a named local, destructure only to compute. Depends: habu-bind-a-wide-bc67d207, habu-parse-local-annotations-50be4d43. Ownership: alder (audit and migrations), hazel (review, the lane-owned files). Claim: agent=alder workspace=.jj-ws/alder-review-fixes. Measure, do not count lines: the planner port that motivated these features (~/Downloads/habu-full-session-history.md sections 9-13) reported the effect as representation plumbing - reconstruction sites 23 -> 0, DISCARD-* calls 14 -> 0, destructuring sites 17 -> 13 (the rest compute on raw fields) - while substantive lines moved 159 -> 153; every migration commit states those three counts for its group before and after, and a site whose destructuring is the computation stays.
 
 ## Read audit, base 39d9a399
@@ -105,6 +99,24 @@ Span band 1 owns these edits. Parametric annotations alone need not reduce LOC.
 | kiba/src/*.f | No layout UNMAKE/reconstruction candidate found. Raw path buffers are a separate span/API migration, not a typed-local workaround. |
 
 Send consumer findings through the owning agents; do not edit those trees here.
-Next: migrate the three released compiler files when bc67d207 is integrated,
-recheck this inventory against the feature head, then update the language card
-and manual with the tested idiom. This dot remains open until migrations land.
+
+### Integrated follow-through, checked at 1afd910c
+
+Alder's three released groups are on the line: binding.f (249cfec2), ir/build.f
+(77bbe7ed), and ir/schema.f with its digest fixtures (c07554cf). Their bodies
+record the removed reconstruction/destructuring counts; existing assertions
+were retained. The card and manual now state the idiom explicitly: keep the
+domain value whole in a named local, destructure when the fields compute.
+Documentation slice: alder, .jj-ws/alder-locals-doc.
+
+Hazel's native/tape.f MK and VERIFY, select.f SELECT, native-effect.f CHECK-SLOT,
+native-chain-fixture.f SELECTED, and native-tape.f digest fixtures also now
+retain whole typed values. The original audit remains above as a source map.
+
+Still present in Hazel's owned files: native/regalloc-verify.f SLOT-CK (1029)
+and ACCEPT (2344), and native/regalloc.f ALLOCATE (2180), all reconstructing
+the unchanged routine from fourteen scalar locals. lib/span.f's AT, U8!,
+CELL-AT, CELL!, COPY and FILL still use inferred whole-span locals; explicit
+parametric annotations remain with the span lane. SKIP/TAKE/SUB retain their
+deliberate frame-free stack implementation. Consumer follow-through stays with
+the owners already notified. This dot remains open for those remaining groups.

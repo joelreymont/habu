@@ -60,8 +60,8 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
   back 7). The restriction is on the **declared** pointee:
   `: F ( ptr a -- n ) {: p:ptr :} p @ ;` is `E-NONPARAMETRIC-EFFECT` because `a`
   is specialised, while `( ptr n -- n )` certifies.
-- A multi-cell record binds **whole** to a local, untyped (`{: p :}`) or named
-  with any signature type (`{: r:res<n,n> :}`, arity checked).
+- Bind multi-cell values whole: `{: p :}` or `{: r:res<n,n> :}` (arity checked).
+  Destructure only to compute; pass the whole local between words.
 - Quotations `[: … ;]` are xts, not closures. The token `[ in -- out ]` works as
   a parameter, a `TYPED-VARIABLE` or a `TYPED-BUFFER` element:
   `: A ( n [ n -- n ] -- n ) execute ;` certifies and `2 [: 1 + ;] A` runs. A

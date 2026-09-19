@@ -421,8 +421,13 @@ checked body a record binds to a local — untyped
 (`: F ( pt -- n ) {: p :} p PT:UNMAKE drop ;`) or annotated with the family it
 holds (`: ID ( pt -- pt ) {: p:pt :} p ;`). The local holds the WHOLE value,
 whatever its cell count, and every reference reloads every cell, so a named
-record survives a return, an `if` arm and a loop body intact. An annotation is
-read by the SIGNATURE type grammar: family arguments (`{: r:res<n,n> :}`),
+record survives a return, an `if` arm and a loop body intact. Keep a domain value
+in one named local while passing it between words. Project or unmake it when
+the fields supply the computation; unchanged-value transport uses the whole
+local, as `CBIND:BIND` does for its target and numeric policy.
+
+An annotation is read by the SIGNATURE type grammar: family arguments
+(`{: r:res<n,n> :}`),
 nested families (`{: o:opt<opt<n>> :}`), the definition's own declared type
 variables (`( opt<a> -- opt<a> ) {: o:opt<a> :} o` certifies and keeps the
 quantifier) and the same arity check. The one spelling only a local has is
