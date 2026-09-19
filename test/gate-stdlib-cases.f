@@ -1525,6 +1525,10 @@ SUITE fs-mutate
    lib/fs-mutate-test.f
 ;SUITE
 
+SUITE fs-copy-alias
+   lib/fs-copy-alias-test.f
+;SUITE
+
 SUITE fs-list
    lib/fs-list-test.f
 ;SUITE

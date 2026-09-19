@@ -11,6 +11,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/fs.f
+require lib/fs-identity.f
 require lib/span.f
 
 $FFF constant FS-MUT-MODE-PERM
@@ -162,6 +163,15 @@ create FS-MUT-ATOMIC-SUFFIX
    src srcu FS-MUT-COPY-BUF cap SPAN:TAKE SPAN:$ READ-ALL {: n :}
    dst dstu FS-MUT-COPY-BUF n SPAN:TAKE SPAN:$ WRITE-ALL ;
 
+package FS-COPY
+PROCESS-SYMBOLS
+FUNCTION: TRUNCATE-CALL ftruncate ( n n -- n ) ;FUNCTION
+public
+: PREPARE-DST ( fd fd -- ) {: source dest :}
+   source dest FS:SAME-OPEN-FILE? if E-FS-OPEN throw then
+   dest FD>N 0 TRUNCATE-CALL 0<> if E-FS-IO throw then ;
+;package
+
 : FS-MUT-COPY-RESET ( -- )
    -1 FS-MUT-COPY-IN !
    -1 FS-MUT-COPY-OUT ! ;
@@ -184,11 +194,17 @@ create FS-MUT-ATOMIC-SUFFIX
       dst dstu FILE? 0= if E-FS-OPEN FS-MUT-COPY-THROW then
    then ;
 
+: FS-MUT-COPY-PREPARE-DST ( -- )
+   FS-MUT-COPY-IN @ >FD FS-MUT-COPY-OUT @ >FD FS-COPY:PREPARE-DST ;
+
 : FS-MUT-COPY-OPEN-DST ( ptr u8 n -- ) {: dst:ptr dstu :}
    dst dstu FS-MUT-COPY-CHECK-DST
    dst dstu FS-MUT-PATHZ2
-   FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open FS-MUT-COPY-OUT !
-   FS-MUT-COPY-OUT @ 0 < if E-FS-OPEN FS-MUT-COPY-THROW then ;
+   FS-O-WRONLY FS-O-CREAT or FS-MODE-0644 open FS-MUT-COPY-OUT !
+   FS-MUT-COPY-OUT @ 0 < if E-FS-OPEN FS-MUT-COPY-THROW then
+   \ Opening must not truncate until the descriptor identities differ.
+   [: FS-MUT-COPY-PREPARE-DST ;] catch
+   dup 0<> if FS-MUT-COPY-THROW else drop then ;
 
 : FS-MUT-COPY-WRITE-CHUNK ( n -- ) {: u :}
    0 FS-MUT-COPY-OFF !

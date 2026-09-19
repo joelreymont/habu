@@ -14,6 +14,11 @@ private
 256 constant STAT-BYTES
 STAT-BYTES FS-PATHZ-CAP + constant WORK-BYTES
 
+PROCESS-SYMBOLS
+FUNCTION: FSTAT-CALL fstat ( n ptr u8 -- n )
+   1 STAT-BYTES WRITES-BYTES
+;FUNCTION
+
 : SYMBOL ( ptr u8 -- n )
    HB-TARGET-MACOS? if -2 else 0 then swap DLSYM
    dup 0= if E-FS-STAT throw then ;
@@ -28,6 +33,19 @@ STAT-BYTES FS-PATHZ-CAP + constant WORK-BYTES
 
 : UNSIGNED-INT ( ptr u8 -- n )
    dup FS-U16@ swap 2 + FS-U16@ 16 lshift or ;
+
+: DEVICE-INODE ( ptr u8 -- n n ) {: buffer :}
+   HB-TARGET-MACOS? if buffer UNSIGNED-INT else buffer FS-U64@ then
+   buffer INODE-OFFSET + FS-U64@ ;
+
+: FD-IDENTITY ( fd ptr u8 -- n n ) {: file buffer :}
+   file FD>N buffer FSTAT-CALL 0<> if E-FS-STAT throw then
+   buffer DEVICE-INODE ;
+
+: COMPARE-FDS ( fd fd ptr u8 NUM:alloc-byte-len -- bool )
+   drop {: left right buffer :}
+   left buffer FD-IDENTITY {: device:n inode:n :}
+   right buffer FD-IDENTITY inode = swap device = and ;
 
 
 \ Private fixed libc signatures. Symbols are resolved afresh per invocation;
@@ -59,8 +77,7 @@ TRUSTED: ERRNO-CALL ( n -- ptr u8 ) >r ARGS REG-LENS 0 r> ffi-call-bounded ;
    text bytes CHECK-PATH
    text bytes  work STAT-BYTES FS-PATHZ-CAP SPAN:SUB  FS-PATHZ-INTO
    work 0 STAT-BYTES SPAN:SUB stat-fn errno-fn STAT-EXISTS? if
-      HB-TARGET-MACOS? if work 0 SPAN:AT UNSIGNED-INT else work 0 SPAN:AT FS-U64@ then
-      work INODE-OFFSET SPAN:AT FS-U64@ FS-TRUE
+      work 0 SPAN:AT DEVICE-INODE FS-TRUE
    else 0 0 FS-FALSE then ;
 
 
@@ -76,6 +93,10 @@ public
 \ here, which is the reach COMPARE-IDENTITIES mints over.
 : SAMEFILE ( ptr u8 n ptr u8 n -- bool )
    WORK-BYTES BYTES-ALLOC-LEN [: COMPARE-IDENTITIES ;] WITH-BYTES ;
+
+\ Compare the actual open files, independent of later path or symlink changes.
+: SAME-OPEN-FILE? ( fd fd -- bool )
+   STAT-BYTES BYTES-ALLOC-LEN [: COMPARE-FDS ;] WITH-BYTES ;
 
 ;using
 ;using
