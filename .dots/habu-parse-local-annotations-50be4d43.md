@@ -1,6 +1,6 @@
 ---
 title: Parse local annotations with the signature type grammar
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-09-19T18:20:04.421254+03:00"
