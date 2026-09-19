@@ -60,6 +60,18 @@ create PT-PICKS 8 cells allot
    loop
    TTRUE 255 T= 255 T= ;
 
+\ Over 4096 transitions, repeats and alternations each occupy 40--60%.
+\ The raw LCG low bit has no repeats at all.
+: PT-COIN-RUNS ( -- )
+   1 PROP:SEED!
+   2 PROP:RND% 0
+   4096 0 ?do
+      {: previous:n repeats:n :}
+      2 PROP:RND% {: pick:n :}
+      pick repeats previous pick = if 1+ then
+   loop
+   nip dup 1639 >= TTRUE 2457 <= TTRUE ;
+
 T-RESET
 
 PROP:DEFAULTS PROP:DEFAULT-COUNT T= PROP:DEFAULT-SEED T=
@@ -109,5 +121,6 @@ PROP:BUF$ s" dup " T$=
 
 PT-EXAMPLE-PROP
 PT-PICK-COVERAGE
+PT-COIN-RUNS
 
 T-REPORT

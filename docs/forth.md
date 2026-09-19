@@ -983,6 +983,13 @@ T-REPORT
   matched by substring.
 - Run focused fixtures with their owning `tools/*-test.f`, and the full native
   suite when the impact warrants it (below).
+- Property generators use `lib/property.f`: `PROP:SEED!` makes a run
+  reproducible, and `PROP:RND%` mixes the generator's high bits before bounding
+  a draw. Small bounds do not inherit the raw generator's short low-bit cycles:
+  bound 2 produces repeats as well as alternations. The fixed-seed regression
+  checks that each occupies 40–60% of 4096 transitions; this is a coverage
+  guarantee for that sequence, not a claim of independent or cryptographic
+  randomness.
 - **False-reject claims need execution proof**: run an unchecked copy and show
   the measured stack behaviour matches the declared effect before counting a
   checker limitation. Generator bugs become rejections, not certifications.
