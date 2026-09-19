@@ -365,8 +365,9 @@ or redirect a symbol.
 `FFI:DLSYM` uses a dedicated task-DATA loader block, so it cannot overwrite a
 staged call: a declaration resolves its symbol inside the call, after its
 arguments are staged, and caches the address for the process. Package `FFI`
-registers one `IMAGE-LIFECYCLE` hook that clears every cached address, so a
-restored image re-resolves against its new process, and no consumer exports a
+registers one persistent `IMAGE-LIFECYCLE` hook at declaration time that clears
+every cached address before each capture, so a restored image re-resolves
+against its new process, and no consumer exports a
 mutable function-pointer cell.
 
 A binding is a declaration:

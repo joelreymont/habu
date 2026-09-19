@@ -310,6 +310,19 @@ FFI-T-SELECT-MATH
 FUNCTION: FFI-T-SQRT-CALL sqrt ( r -- r ) ;FUNCTION
 PROCESS-SYMBOLS
 
+\ The declaration's hook stays armed: calls after a capture must have their
+\ process-owned addresses forgotten by every later capture as well.
+: FFI-T-RECAPTURE ( -- )
+   IMAGE-LIFECYCLE:PREPARE
+   2 0 do
+      FFI-T-GETPID$ 0 T<>
+      IMAGE-LIFECYCLE:COUNT 1 T=
+      FFI-T-GETPID$ 0 T<>
+      IMAGE-LIFECYCLE:COUNT 1 T=
+      IMAGE-LIFECYCLE:PREPARE
+      IMAGE-LIFECYCLE:COUNT 1 T=
+   loop ;
+
 : FFI-RUN ( -- )
    T-RESET
    FFI-T-OPEN dup FFI-T-LIB !
@@ -397,7 +410,9 @@ PROCESS-SYMBOLS
    s" FFI:" 0 search-wl 0= TTRUE
    s" CALL0" 0 search-wl 0= TTRUE
 
-   FFI-T-TABLE-FULL ;
+   FFI-T-TABLE-FULL
+   s" foreign symbol cleanup remains armed across captures" T-LABEL
+   FFI-T-RECAPTURE ;
 
 FFI-RUN
 
