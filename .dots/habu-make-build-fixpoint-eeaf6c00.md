@@ -217,3 +217,49 @@ field-proj
 prop
 structure-decl
 ```
+
+Read-only reduction of the first IN2 semantic failure, using private copies of
+the stdin product (5c30c4a0...) and native product (2130d262...) from the same
+copied candidate source tree, /tmp/alder-install-recovery/tree:
+
+```forth
+1 set-tier
+TRUSTED: TO-RECOVERY? ( -- bool ) CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? ;
+TO-RECOVERY? . cr
+```
+
+The stdin product exits 67 with `ncomp: cannot compile TO-RECOVERY? at
+CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?`, throw -8286. The native product exits
+0 and prints 0. Changing only `1 set-tier` to `0 set-tier` lets both products
+execute and print 0: the callee's executable body exists in both.
+
+The missing live row is the active checker's qualified signature for
+`CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?`, declared `( -- bool )` at
+src/core/checker.f:784. Read-only queries at tier 0 give:
+
+| Query / field | stdin product | native product |
+|---|---:|---:|
+| CHECKER-FIND-ACTIVE-SYM | 0 (no active qualified symbol) | 1758 |
+| USIG-FIND-OFF-SYM | not found | found, offset 209688 |
+| PRIM-FIRST-SYM | 0 | 0 |
+| FIND-SIG and CHECKER-OWNER:QUERY | false | true |
+| Active record's ER.ACTIVE | no queried record | 1 |
+| Active record's ER.MINI | no queried record | 0 |
+| Active record's ER.DIN / ER.DOUT | no queried record | 984 / 5640 |
+| CHECKER-OWNER:DIN-CELLS / DOUT-CELLS | query absent | 0 / 1 |
+| CHECKER-OWNER:RET-NEUTRAL? | query absent | true |
+| NDICT:SPELL-CALL (in, out, glue, neutral) | -1, -1, 0, false | 0, 1, 0, true |
+
+The native output row's head is EN-CON with CC-BOOL. Its FEP-OFF@ is 209689
+(the record offset plus one). This is a missing active name/effect query in
+the stdin image; these probes do not claim that every captured arena contains
+no stale copy of the record. HIR-WORD:RESOLVE-CALLABLE refuses ARITY-NONE from
+NDICT:SPELL-CALL, leaving the token unmodeled, consistent with the -8286.
+
+Probe programs and both products' logs are in /tmp/alder-install-recovery:
+compile-probe.f, execute-probe.f, row-probe.f, raw-row-probe.f. The raw probe
+uses a tier-0 TRUSTED reader to inspect the checker's existing symbol/record
+queries; it does not patch the queried word or its rows. No checker/compiler source
+edits, candidate patch, full gate, or install was performed. The responsible
+repair is not yet established; this is the measured row comparison requested
+before proposing one. The dot remains open and the native route stays released.
