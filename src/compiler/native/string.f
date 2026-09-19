@@ -178,14 +178,34 @@ TRUSTED: PTR>N ( ptr a -- n ) ;
    ROWS @ 1+ ROWS !
    ROWS @ 1- ;
 
+\ A caller may select an existing pool, but cannot manufacture an owner.
+: OWNER? ( ptr u8 -- bool ) {: owner:ptr :}
+   FIRST-P @
+   begin dup 0= 0= while
+      dup owner = if drop true exit then
+      NEXT-FIELD @
+   repeat
+   drop false ;
+
 public
+
+: ACTIVE ( -- ptr u8 ) ACTIVE-P @ ;
+
+: SWITCH ( ptr u8 -- ) {: owner:ptr :}
+   owner OWNER? 0= if E-NSTR-BODY throw then
+   \ Imported owners have compact, already-full metadata, not writable pools.
+   owner CAP-FIELD @ ROWS-MAX <> if E-NSTR-BODY throw then
+   owner ACTIVE-P !
+   SLOTS 0 ?do 0 i cells SLOT + ! loop
+   ROWS @ 0 ?do
+      i 1+  i ROW$ FREE-SLOT cells SLOT + !
+   loop ;
 
 \ The capture driver calls this after latching D0, before evaluating source.
 \ Old pools stay allocated because published routines still hold their bytes.
 \ Call outside any evaluation that could rewind this reservation on failure.
 : WINDOW-OPEN ( -- )
-   NEW-POOL dup APPEND-OWNER ACTIVE-P !
-   SLOTS 0 ?do 0 i cells SLOT + ! loop ;
+   NEW-POOL dup APPEND-OWNER SWITCH ;
 
 \ `s" "` is a body: it gets a row and an address like any other.
 : INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}

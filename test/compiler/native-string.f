@@ -166,6 +166,35 @@ TRUSTED: N>BYTES ( n -- ptr u8 ) ;
 
 variable MUTABLE-CELL
 
+: FOREIGN-POOL ( -- ) MUTABLE-CELL BYTE-VIEW NSTR:SWITCH ;
+
+: SWITCH-CASE ( -- )
+   s" switching pools preserves addresses and rebuilds the intern index" T-LABEL
+   NSTR:WINDOW-OPEN
+   s" first-pool-body" NSTR:INTERN {: first:n :}
+   NSTR:ACTIVE {: original:ptr :}
+   NSTR:WINDOW-OPEN
+   s" second-pool-body" NSTR:INTERN {: second:n :}
+   NSTR:ACTIVE {: other:ptr :}
+   original NSTR:SWITCH
+   NSTR:COUNT 1 T=
+   s" first-pool-body" NSTR:INTERN first T=
+   NSTR:COUNT 1 T=
+   second NSTR:REINTERN-OWNED TTRUE {: imported:n :}
+   imported second T<>
+   s" second-pool-body" NSTR:INTERN imported T=
+   NSTR:COUNT 2 T=
+   other NSTR:SWITCH
+   s" second-pool-body" NSTR:INTERN second T=
+   NSTR:COUNT 1 T=
+   original NSTR:SWITCH
+   s" first-pool-body" NSTR:INTERN first T=
+   s" a foreign owner is refused without changing the active pool" T-LABEL
+   [: FOREIGN-POOL ;] E-NSTR-BODY TTHROWSQ
+   NSTR:ACTIVE original = TTRUE
+   s" second-pool-body" NSTR:INTERN imported T=
+   NSTR:COUNT 2 T= ;
+
 : OWNED-ROW ( n ptr u8 n -- ) {: address:n body:ptr size:n :}
    address NSTR:OWNER-ROW TTRUE
    size T= PTR>N body PTR>N T= ;
@@ -227,6 +256,8 @@ variable MUTABLE-CELL
 variable BAD-ROWS
 variable BAD-OFFSET
 variable BAD-LENGTH
+PTR-VARIABLE IMPORTED-POOL
+: SELECT-IMPORTED ( -- ) IMPORTED-POOL @ NSTR:SWITCH ;
 
 \ This negative fixture reaches the real private importer by its dictionary
 \ identity. It never grants ownership: every supplied row is malformed.
@@ -262,7 +293,15 @@ TRUSTED: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
    -1 BAD-ROWS ! REJECT-IMPORT
    1 BAD-ROWS ! -1 BAD-OFFSET ! 0 BAD-LENGTH ! REJECT-IMPORT
    0 BAD-OFFSET ! $7FFFFFFFFFFFFFFF BAD-LENGTH ! REJECT-IMPORT
-   $80000 BAD-OFFSET ! 1 BAD-LENGTH ! REJECT-IMPORT ;
+   $80000 BAD-OFFSET ! 1 BAD-LENGTH ! REJECT-IMPORT
+
+   s" imported compact owners cannot become writable pools" T-LABEL
+   NSTR:ACTIVE {: active:ptr :}
+   0 BAD-OFFSET ! 0 BAD-LENGTH !
+   align here BYTE-VIEW IMPORTED-POOL !
+   MUTABLE-CELL BYTE-VIEW 1 BAD-OFFSET BAD-LENGTH IMPORT-OP execute
+   [: SELECT-IMPORTED ;] E-NSTR-BODY TTHROWSQ
+   NSTR:ACTIVE active = TTRUE ;
 
 \ ---- what a literal costs in code bytes ---------------------------------------
 \ The payload lives in DATA space, so the two chain emissions have the same code
@@ -313,6 +352,7 @@ public
    SHARING-CASE
    INTERN-IDEMPOTENT-CASE
    WINDOW-CASE
+   SWITCH-CASE
    ROLLBACK-CASE
    OWNER-CASE
    SEEDED-OWNER-CASE

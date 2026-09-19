@@ -55,26 +55,13 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
    \ messages inside the span the stripped image restores.
    NSTR:WINDOW-OPEN ;
 
-\ Latch the end of the span. The string pool AOT-DATA-START opened STAYS the active
-\ one while tools/aot-build-core.f loads the linker above BLOB-END, and that is
-\ required, not merely tolerated.
-\
-\ THE POOL ACTIVE AT LINK TIME MUST BE THE APPLICATION'S. The closure is compiled
-\ natively by the retained compiler when LINK runs, so a closure word's literals are
-\ interned into whichever pool is active THEN - not into the pool that was active
-\ when the source was read. A second NSTR:WINDOW-OPEN here, to give the linker's
-\ literals a pool of their own, therefore puts every closure literal above BLOB-END,
-\ where DATA-ADDRESS! refuses it: measured, an application requiring only
-\ lib/string.f is rejected with `caller=STR-LEN value=BLOB-END+131137`, +131137
-\ being the first body in that second pool. NSTR publishes no close, and it must
-\ not be given one here.
-\
-\ THE COST, stated because it is real and unmeasured. The linker's own literals
-\ consequently land in the application's pool and travel inside the span. The 64 KB
-\ page round hides it today - plainapp is 65728 bytes both before and after this
-\ change, as is an application using lib/string.f, lib/fs.f and lib/memory.f - so
-\ nothing here is evidence that the cost is small, only that it is below one page
-\ round for these programs. habu-report-where-an-cdcd7976 is where it gets measured.
+\ Latch the application span before loading the linker. tools/aot-build.f saves
+\ its active NSTR owner, opens a separate pool for the linker, and switches back
+\ before LINK. Closure compilation therefore interns into the application pool;
+\ DATA-TARGET's REINTERN-OWNED copies any reached literal from another pool into
+\ it. Linker-only literals stay above BLOB-END. Keeping the application pool
+\ active during linker loading carried even fs-identity's three NUL-terminated
+\ symbol strings into an empty MAIN image (HBT-SIZE-AOT).
 : AOT-DATA-SPAN ( -- )
    HERE-N  BLOB-END !
    BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN ! ;
