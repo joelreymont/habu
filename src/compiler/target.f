@@ -269,7 +269,7 @@ BIT-BASE BIT-FP or BIT-SIMD or BIT-ATOMIC or constant MASK-X86-64
    a f FEATURE-CK ;
 
 \ ---- canonical preimage ------------------------------------------------------
-2 constant SCHEMA
+1 constant SCHEMA
 7 constant SLOTS
 0 constant SLOT-TAG
 1 constant SLOT-SCHEMA
