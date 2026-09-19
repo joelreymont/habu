@@ -48,6 +48,8 @@ SUMTYPE opt 1
    VARIANT none  ;VARIANT
 ;SUMTYPE
 
+TYPED-VARIABLE WL-CELL pair
+
 private
 
 \ ---- the capability: a typed local holds the whole layout value -------------
@@ -103,8 +105,23 @@ private
       none OF 0 ENDOF
    ;MATCH ;
 
+\ ---- a bundle and a `:ptr` local in ONE group -------------------------------
+\ The group path binds the pointer's inferred pointee under the same transport
+\ rule as a group without a bundle (dot habu-bind-a-ptr-ef9f15dc): the pointee
+\ here is a layout, which a bare `ptr` local only absorbs in transport.
+: WL-GROUP ( pair ptr pair -- n )         \ pointer above the bundle
+   {: p:pair q:ptr :}
+   p WLP-PAIR:UNMAKE +  q @ WLP-PAIR:UNMAKE +  + ;
+
+: WL-GROUP-BELOW ( ptr pair pair -- n )   \ pointer below the bundle
+   {: q:ptr p:pair :}
+   p WLP-PAIR:UNMAKE +  q @ WLP-PAIR:UNMAKE +  + ;
+
 public
 : MAIN ( -- )
+   1 2 WLP-PAIR:MAKE WL-CELL !
+   3 4 WLP-PAIR:MAKE WL-CELL WL-GROUP 10 T=
+   WL-CELL 5 6 WLP-PAIR:MAKE WL-GROUP-BELOW 14 T=
    7 11 WLP-PAIR:MAKE WL-ID WLP-PAIR:UNMAKE
    11 T= 7 T=                             \ right, then left: the whole value
    13 17 WLP-PAIR:MAKE WL-SUM 30 T=
@@ -159,6 +176,13 @@ s" WLC-PTR-N-ANN ( ptr n -- ptr n ) {: p:ptr :} p " YES
 \ `{: p:ptr n :}` is therefore NOT a pointee spelling: `n` is a second local.
 s" WLC-PTR-TWO ( ptr n n -- ptr n ) {: p:ptr n :} p " YES
 s" WLC-PTR-ONE ( ptr n -- ptr n ) {: p:ptr n :} p " NO
+\ a `:ptr` local whose pointee is a layout binds in ONE group with a bundle,
+\ above it or below it, exactly as it does in a group without one; the bundle
+\ annotation is still asserted in that group.
+s" WLC-GROUP-PTR ( pair ptr pair -- n ) {: p:pair q:ptr :} 0 " YES
+s" WLC-GROUP-PTR-BELOW ( ptr pair pair -- n ) {: q:ptr p:pair :} 0 " YES
+s" WLC-GROUP-PTR-ALONE ( ptr pair n -- n ) {: q:ptr k:n :} k " YES
+s" WLC-GROUP-WRONG-FAM ( pair ptr pair -- n ) {: p:trip q:ptr :} 0 " NO
 
 ;package
 

@@ -11404,9 +11404,12 @@ variable LCO
 \ Bundle-aware bind (item 12 slice 3b): when any captured operand is an expanded
 \ hidden-field group, the generic var-row CHECKER-STEP cannot bind it (a hidden
 \ field never binds a var). Read the k logical groups directly: a scalar group
-\ unifies with its local's type var exactly as the step would; a hidden group
-\ stores its TAG term in LOCTV and its cell count in LOCW (an annotated local
-\ cannot hold a bundle — reject). Group i (0 = stack top) binds local #LOC-1-i.
+\ unifies with its local's type var exactly as the step would - under the same
+\ LAYOUT-XPORT transport the step runs in, so a `:ptr` local whose captured
+\ pointee is a layout param binds beside a bundle as it does without one; a
+\ hidden group stores its TAG term in LOCTV and its cell count in LOCW (an
+\ annotated local cannot hold a bundle — reject). Group i (0 = stack top) binds
+\ local #LOC-1-i.
 : LOC-ANN-BIND-CHECK ( n n -- ) {: gi:n idx:n :}   \ assert the annotation against the bundle
    gi XG-TERM0@  idx cells LOCTV + @  UNIFY
    dup 0=  FAILSET @ 0=  and  OK @ and  IF        \ first failure: capture the exact pair
@@ -11425,7 +11428,15 @@ variable LCO
    XG-LEN gi cells + @  idx cells LOCSEQIX + @ cells LOC-HW + ! ;   \ final width at the bind seq
 
 : LOC-SCALAR-BIND ( n n -- ) {: gi:n idx:n :}
-   idx cells LOCTV + @  gi XG-TERM0@  UNIFY OK @ and OK ! ;
+   1 LAYOUT-XPORT !
+   idx cells LOCTV + @  gi XG-TERM0@  UNIFY
+   0 LAYOUT-XPORT !
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF        \ first failure: capture the exact pair
+      idx cells LOCTV + @ FRESH MK-ROW MK-PUSH
+      gi XG-TERM0@ FRESH MK-ROW MK-PUSH
+      UF-CAPTURE
+   THEN
+   OK @ and OK ! ;
 
 : LOC-GROUP-BIND ( n -- ) {: gi:n :}
    #LOC @ 1 - gi - {: idx:n :}
