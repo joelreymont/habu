@@ -939,12 +939,9 @@ public
    c b USE {: slot:n :}
    c  slot T-AP TAB@  slot T-AR TAB@  slot KEY@  slot T-TR TAB@ t IR-ATTR:TYPE-REF ;
 
-\ The digest is four cells, so it is unmade to reach the builder underneath it
-\ and remade unchanged for the interner.
 : INTERN-DIGEST-ATTR ( IR-CTX:ctx IR-BUILD:builder CDIGEST:digest -- IR-ID:ir-attr-id )
-   CDIGEST-DIGEST:UNMAKE
-   {: c:IR-CTX:ctx b:IR-BUILD:builder w0:n w1:n w2:n w3:n :}
-   c b ATTR-USE  w0 w1 w2 w3 CDIGEST-DIGEST:MAKE  IR-ATTR:DIGEST ;
+   {: c:IR-CTX:ctx b:IR-BUILD:builder digest:CDIGEST:digest :}
+   c b ATTR-USE digest IR-ATTR:DIGEST ;
 
 : INTERN-OVERFLOW-ATTR ( IR-CTX:ctx IR-BUILD:builder CNUM:overflow -- IR-ID:ir-attr-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:CNUM:overflow :}
@@ -1039,11 +1036,10 @@ public
    k a IR-OP:ADD-ATTR ;
 
 : SET-OP-SPAN ( IR-CTX:ctx IR-BUILD:builder IR-SOURCE:span -- )
-   IR--SOURCE-SPAN:UNMAKE
-   {: c:IR-CTX:ctx b:IR-BUILD:builder src:IR-ID:ir-source-id st:n ln:n :}
+   {: c:IR-CTX:ctx b:IR-BUILD:builder span:IR-SOURCE:span :}
    c b USE drop
    b SERIAL OP-MINE
-   src st ln IR--SOURCE-SPAN:MAKE IR-OP:SET-SPAN ;
+   span IR-OP:SET-SPAN ;
 
 \ Close the staged operation into this module's operation store. The stage is
 \ given back before IR-OP runs, so a rejected append leaves no stage behind for
@@ -1101,11 +1097,10 @@ public
    a IR-FUN:ADD-FUN-ATTR ;
 
 : SET-FUN-SPAN ( IR-CTX:ctx IR-BUILD:builder IR-SOURCE:span -- )
-   IR--SOURCE-SPAN:UNMAKE
-   {: c:IR-CTX:ctx b:IR-BUILD:builder src:IR-ID:ir-source-id st:n ln:n :}
+   {: c:IR-CTX:ctx b:IR-BUILD:builder span:IR-SOURCE:span :}
    c b USE drop
    b SERIAL FN-MINE
-   src st ln IR--SOURCE-SPAN:MAKE IR-FUN:SET-FUN-SPAN ;
+   span IR-FUN:SET-FUN-SPAN ;
 
 : END-FUN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
@@ -1137,11 +1132,10 @@ public
    c  slot T-OV TAB@  slot T-TR TAB@  slot T-BR TAB@  slot KEY@ t IR-FUN:ADD-BLOCK-ARG ;
 
 : SET-BLOCK-SPAN ( IR-CTX:ctx IR-BUILD:builder IR-SOURCE:span -- )
-   IR--SOURCE-SPAN:UNMAKE
-   {: c:IR-CTX:ctx b:IR-BUILD:builder src:IR-ID:ir-source-id st:n ln:n :}
+   {: c:IR-CTX:ctx b:IR-BUILD:builder span:IR-SOURCE:span :}
    c b USE drop
    b SERIAL BK-MINE
-   src st ln IR--SOURCE-SPAN:MAKE IR-FUN:SET-BLOCK-SPAN ;
+   span IR-FUN:SET-BLOCK-SPAN ;
 
 : END-BLOCK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-block-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
@@ -1264,14 +1258,10 @@ public
    slot T-SP TAB@  slot T-SR TAB@  id p cap IR-SYM:COPY ;
 
 \ The span names a source of this module and lies inside its registered bytes.
-\ The span is unmade at entry because the checker cannot yet bind a local of a
-\ multi-cell structure type (dot habu-bind-multi-cell-d2e153ed), the same step
-\ ADD-SPAN and SET-OP-SPAN take.
 : SPAN-CK ( IR-CTX:ctx IR-BUILD:builder IR-SOURCE:span -- )
-   IR--SOURCE-SPAN:UNMAKE
-   {: c:IR-CTX:ctx b:IR-BUILD:builder src:IR-ID:ir-source-id st:n ln:n :}
+   {: c:IR-CTX:ctx b:IR-BUILD:builder span:IR-SOURCE:span :}
    c b USE {: slot:n :}
-   slot T-SA TAB@  src st ln IR--SOURCE-SPAN:MAKE  IR-SOURCE:SPAN-CK ;
+   slot T-SA TAB@ span IR-SOURCE:SPAN-CK ;
 
 \ The dialect this module's schema table was created for, and the schema version
 \ it was created at. NEW-BUILDER fixes all three (design line 1714) and nothing
