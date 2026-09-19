@@ -701,6 +701,10 @@ public
 
 : ENC-SYSCALL ( ptr a -- ) {: s:ptr :}  $0F05 s EMIT-OP ;
 
+: ENC-NOP ( ptr a -- ) {: s:ptr :}  $90 s EMIT-B ;
+
+: ENC-UD2 ( ptr a -- ) {: s:ptr :}  $0F0B s EMIT-OP ;
+
 \ setcc writes one byte, so its destination is a byte register and carries that
 \ file's REX rule.
 : ENC-SETCC ( condition r8 ptr a -- ) {: c:condition r:r8 s:ptr :}
