@@ -1,0 +1,499 @@
+--- a/bootstrap/cg/icode.fs
++++ b/bootstrap/cg/icode.fs
+@@ -31,6 +31,8 @@
+ IOP: IOP-FADD IOP: IOP-FSUB IOP: IOP-FMUL IOP: IOP-FDIV
+ IOP: IOP-FNEG  IOP: IOP-FABS  IOP: IOP-FSQRT IOP: IOP-FCMP IOP: IOP-FCMP0
+ IOP: IOP-SCVTF IOP: IOP-FCVTZS
++\ Append tags so the established instruction IDs remain unchanged.
++IOP: IOP-LDADDAL IOP: IOP-CASAL IOP: IOP-DMB
+ IOP# @ constant #IOPS
+ 
+ \ --- condition codes (B.cond / CSET) ---
+@@ -224,6 +226,13 @@
+ 
+ : STLR, ( rt rn -- )       0 0 IOP-STLR IC, ;
+ 
++\ ARMv8.1 LSE: source, old-value destination, address; CAS overwrites expected.
++: LDADDAL, ( rs rt rn -- ) 0 IOP-LDADDAL IC, ;
++
++: CASAL, ( rs rt rn -- )   0 IOP-CASAL IC, ;
++
++: DMB-ISH, ( -- )         0 0 0 0 IOP-DMB IC, ;
++
+ : LDR-POST, ( rt rn off -- ) 0 IOP-LDRPO IC, ;  \ off: -256..255
+ 
+ : STR-PRE,  ( rt rn off -- ) 0 IOP-STRPR IC, ;
+--- a/bootstrap/cg/asm.fs
++++ b/bootstrap/cg/asm.fs
+@@ -292,6 +292,17 @@
+ : ENC-DLBL ( i -- )  IC-A LBL@ 4 *  ABUF @ WPOS @ 4 * +  !  2 WPOS +! ;  \ cell = label byte-offset
+ 
+ : LEN-DLBL ( i -- 2 )  drop 2 ;
++
++\ Atomic field positions differ from the three-register arithmetic recipes.
++: ENC-LDADDAL ( i -- )
++   >r $F8E00000 r@ IC-A 16 lshift or
++   r@ IC-B or r> IC-C 5 lshift or EMITW ;
++
++: ENC-CASAL ( i -- )
++   >r $C8E0FC00 r@ IC-A 16 lshift or
++   r@ IC-B or r> IC-C 5 lshift or EMITW ;
++
++: ENC-DMB ( i -- ) drop $D5033BBF EMITW ;
+ 
+ \ --- dispatch tables (indexed by op tag) ---
+ create ENCODERS #IOPS cells allot
+@@ -341,6 +352,8 @@
+ ' ENC-BYTES IOP-BYTES ENC!  ' ENC-DCQ IOP-DCQ ENC!  ' ENC-DLBL IOP-DLBL ENC!
+ ' ENC-LDRW IOP-LDRW ENC!    ' ENC-STRW IOP-STRW ENC!
+ ' ENC-LDAR IOP-LDAR ENC!    ' ENC-STLR IOP-STLR ENC!
++' ENC-LDADDAL IOP-LDADDAL ENC!  ' ENC-CASAL IOP-CASAL ENC!
++' ENC-DMB IOP-DMB ENC!
+ ' LENLIT IOP-LIT LEN!    ' LEN0 IOP-LABEL LEN!    ' LEN0 IOP-DEAD LEN!
+ ' LEN-BYTES IOP-BYTES LEN!   ' LEN-DCQ IOP-DCQ LEN!   ' LEN-DLBL IOP-DLBL LEN!
+ 
+--- a/bootstrap/cg/opt.fs
++++ b/bootstrap/cg/opt.fs
+@@ -158,6 +158,7 @@
+    CAT-SOFT IOP-BCOND CAT!  CAT-SOFT IOP-CBZ CAT!  CAT-SOFT IOP-CBNZ CAT!
+    CAT-MEM IOP-LDRB CAT!  CAT-MEM IOP-STRB CAT!  CAT-MEM IOP-LDRW CAT!  CAT-MEM IOP-STRW CAT!
+    CAT-MEM IOP-LDAR CAT!  CAT-MEM IOP-STLR CAT!
++   CAT-MEM IOP-LDADDAL CAT!  CAT-MEM IOP-CASAL CAT!  CAT-MEM IOP-DMB CAT!
+    CAT-MEM IOP-LDRPO CAT!  CAT-MEM IOP-STRPR CAT!  CAT-MEM IOP-LDPPO CAT!  CAT-MEM IOP-STPPR CAT!
+    CAT-MEM IOP-SVC CAT!  CAT-MEM IOP-ICIV CAT!  CAT-MEM IOP-DCCV CAT!
+    CAT-MEM IOP-DSB CAT!  CAT-MEM IOP-ISB CAT!
+--- a/bootstrap/cg/elf.fs
++++ b/bootstrap/cg/elf.fs
+@@ -1,5 +1,6 @@
+-\ elf.fs -- minimal Linux/aarch64 ELF executable writer for the Gforth bootstrap.
+-
++\ elf.fs -- Linux/aarch64 recovery image with the native dlopen/dlsym slots.
++\ A real loader is needed by source canonicalization, including prefix provided
++\ rows. Native and recovery images use the same four program-header contract.
+ require asm.fs
+ require image.fs
+ 
+@@ -13,60 +14,193 @@
+ 2 constant ET-EXEC
+ $B7 constant EM-AARCH64
+ 1 constant PT-LOAD
++2 constant PT-DYNAMIC
++3 constant PT-INTERP
++1 constant PF-X
++2 constant PF-W
++4 constant PF-R
+ 5 constant PF-RX
++6 constant PF-RW
+ 64 constant ELF-HDR-SZ
+ 56 constant ELF-PHDR-SZ
++4 constant ELF-PHDR-N
+ $400000 constant VMBASE
++$C0 constant ELF-RW-SZ
++$B0 constant ELF-DYNAMIC-SZ
++$B0 constant ELF-DLOPEN-SLOT-OFF
++$B8 constant ELF-DLSYM-SLOT-OFF
++$120 constant ELF-INTERP-OFF
++27 constant ELF-INTERP-SZ
++$140 constant ELF-HASH-OFF
++$158 constant ELF-DYNSYM-OFF
++$1A0 constant ELF-DYNSTR-OFF
++24 constant ELF-DYNSTR-SZ
++$1B8 constant ELF-RELA-OFF
++48 constant ELF-RELA-SZ
++24 constant ELF-SYM-SZ
++24 constant ELF-RELA-ENT-SZ
++$401 constant ELF-R-AARCH64-GLOB-DAT
++4 constant DT-HASH
++5 constant DT-STRTAB
++6 constant DT-SYMTAB
++7 constant DT-RELA
++8 constant DT-RELASZ
++9 constant DT-RELAENT
++10 constant DT-STRSZ
++11 constant DT-SYMENT
++1 constant DT-NEEDED
++30 constant DT-FLAGS
++8 constant DF-BIND-NOW
++
+ $1000 constant CODE-OFF
++$10000 constant ELF-PAGE-MAX
+ variable CODELEN
+-variable SCODE   variable SCODE-CAP
++variable ELF-TEXT-SIZE
++variable SCODE variable SCODE-CAP
+ 2variable SIG-ID
+ 
+-\ The text segment follows the emitted program: PASS1 sizes the scratch buffer,
+-\ PASS2 fills it, and TEXTSZ carries that length into the segment headers. There
+-\ is no fixed text page. An image is bounded by instruction reach, which asm.fs
+-\ checks per instruction (?ADR, ?REL19, ?REL26), and by nothing else -- a page
+-\ chosen as a round number refused images the loader would have accepted.
++: ELF-PAGE-UP ( n -- n )
++   ELF-PAGE-MAX 1- + ELF-PAGE-MAX 1- invert and ;
++
+ : ASM-CODE ( -- )
+-   PASS1  WPOS @ 4 *  SCODE SCODE-CAP BUF-FIT
++   PASS1 WPOS @ 4 * SCODE SCODE-CAP BUF-FIT
+    SCODE @ ASSEMBLE CODELEN ! ;
+ 
+-: TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $FFF +  $FFF invert and ;
+-
+-: ELF-IDENT
++: TEXTSZ ( -- n ) CODE-OFF CODELEN @ + ELF-PAGE-UP ;
++
++: ELF-VA ( n -- n )
++   VMBASE + ;
++
++: ELF-RW-VA ( -- n )
++   VMBASE ELF-TEXT-SIZE @ + ;
++
++: ELF-DLOPEN-SLOT-VA ( -- n )
++   ELF-RW-VA ELF-DLOPEN-SLOT-OFF + ;
++
++: ELF-DLSYM-SLOT-VA ( -- n )
++   ELF-RW-VA ELF-DLSYM-SLOT-OFF + ;
++
++: ELF-IDENT ( -- )
+    ELF-MAG0 M8  ELF-MAG1 M8  ELF-MAG2 M8  ELF-MAG3 M8
+    ELFCLASS64 M8  ELFDATA2LSB M8  EV-CURRENT M8  0 M8  0 M8
+    7 M-ZEROS ;
+ 
+-: ELF-HDR,
++: ELF-HDR, ( -- )
+    ELF-IDENT
+    ET-EXEC M16  EM-AARCH64 M16  EV-CURRENT M32
+    VMBASE CODE-OFF + M64
+    ELF-HDR-SZ M64
+    0 M64
+    0 M32
+-   ELF-HDR-SZ M16  ELF-PHDR-SZ M16  1 M16
++   ELF-HDR-SZ M16  ELF-PHDR-SZ M16  ELF-PHDR-N M16
+    0 M16  0 M16  0 M16 ;
+ 
+-: ELF-PHDR,
+-   PT-LOAD M32
+-   PF-RX M32
+-   0 M64
+-   VMBASE M64
+-   VMBASE M64
+-   TEXTSZ M64
+-   TEXTSZ M64
+-   $1000 M64 ;
++: ELF-PHDR, ( n n n n n n -- ) {: typ flags off va filesz align :}
++   typ M32
++   flags M32
++   off M64
++   va M64
++   va M64
++   filesz M64
++   filesz M64
++   align M64 ;
++
++: ELF-RX-PHDR, ( -- )
++   PT-LOAD PF-RX 0 VMBASE ELF-TEXT-SIZE @ ELF-PAGE-MAX ELF-PHDR, ;
++
++: ELF-RW-PHDR, ( -- )
++   PT-LOAD PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-RW-SZ ELF-PAGE-MAX ELF-PHDR, ;
++
++: ELF-INTERP-PHDR, ( -- )
++   PT-INTERP PF-R ELF-INTERP-OFF ELF-INTERP-OFF ELF-VA ELF-INTERP-SZ 1
++   ELF-PHDR, ;
++
++: ELF-DYNAMIC-PHDR, ( -- )
++   PT-DYNAMIC PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-DYNAMIC-SZ 8 ELF-PHDR, ;
++
++: ELF-PHDRS, ( -- )
++   ELF-RX-PHDR,
++   ELF-RW-PHDR,
++   ELF-INTERP-PHDR,
++   ELF-DYNAMIC-PHDR, ;
++
++: ELF-INTERP, ( -- )
++   ELF-INTERP-OFF M-PAD
++   s" /lib/ld-linux-aarch64.so.1" M-BYTES
++   0 M8 ;
++
++: ELF-HASH, ( -- )
++   ELF-HASH-OFF M-PAD
++   1 M32  3 M32  1 M32  0 M32  2 M32  0 M32 ;
++
++: ELF-SYM-NULL, ( -- )
++   ELF-SYM-SZ M-ZEROS ;
++
++: ELF-SYM, ( n -- ) {: nameoff :}
++   nameoff M32  $12 M8  0 M8  0 M16  0 M64  0 M64 ;
++
++: ELF-DYNSYM, ( -- )
++   ELF-DYNSYM-OFF M-PAD
++   ELF-SYM-NULL,
++   1 ELF-SYM,
++   8 ELF-SYM, ;
++
++: ELF-DYNSTR, ( -- )
++   ELF-DYNSTR-OFF M-PAD
++   0 M8
++   s" dlopen" M-BYTES 0 M8
++   s" dlsym" M-BYTES 0 M8
++   s" libc.so.6" M-BYTES 0 M8 ;
++
++: ELF-R-INFO ( n -- n )
++   32 lshift ELF-R-AARCH64-GLOB-DAT or ;
++
++: ELF-RELA, ( -- )
++   ELF-RELA-OFF M-PAD
++   ELF-DLOPEN-SLOT-VA M64  1 ELF-R-INFO M64  0 M64
++   ELF-DLSYM-SLOT-VA M64   2 ELF-R-INFO M64  0 M64 ;
++
++: ELF-RX-META, ( -- )
++   ELF-INTERP,
++   ELF-HASH,
++   ELF-DYNSYM,
++   ELF-DYNSTR,
++   ELF-RELA,
++   CODE-OFF M-PAD ;
++
++: ELF-DYN, ( n n -- ) {: tag val :}
++   tag M64
++   val M64 ;
++
++: ELF-DYNAMIC, ( -- )
++   DT-HASH     ELF-HASH-OFF ELF-VA ELF-DYN,
++   DT-STRTAB   ELF-DYNSTR-OFF ELF-VA ELF-DYN,
++   DT-SYMTAB   ELF-DYNSYM-OFF ELF-VA ELF-DYN,
++   DT-STRSZ    ELF-DYNSTR-SZ ELF-DYN,
++   DT-SYMENT   ELF-SYM-SZ ELF-DYN,
++   DT-RELA     ELF-RELA-OFF ELF-VA ELF-DYN,
++   DT-RELASZ   ELF-RELA-SZ ELF-DYN,
++   DT-RELAENT  ELF-RELA-ENT-SZ ELF-DYN,
++   DT-NEEDED   14 ELF-DYN,
++   DT-FLAGS    DF-BIND-NOW ELF-DYN,
++   0 0 ELF-DYN, ;
++
++: ELF-GOT, ( -- )
++   0 M64  0 M64 ;
++
++: ELF-RW-AT, ( n -- ) {: off :}
++   off M-PAD
++   ELF-DYNAMIC,
++   ELF-GOT, ;
++
+ 
+ : BUILD-ELF ( -- )
+-   ASM-CODE  TEXTSZ M-FIT  M-RESET
+-   ELF-HDR,
+-   ELF-PHDR,
+-   CODE-OFF M-PAD
++   ASM-CODE TEXTSZ ELF-TEXT-SIZE !
++   TEXTSZ ELF-RW-SZ + M-FIT M-RESET
++   ELF-HDR, ELF-PHDRS, ELF-RX-META,
+    SCODE @ CODELEN @ M-BYTES
+-   TEXTSZ M-PAD
++   TEXTSZ ELF-RW-AT,
+    M-HERE MLEN ! ;
+ 
+-: BUILD-IMAGE ( -- )  BUILD-ELF ;
+-
++: BUILD-IMAGE ( -- ) BUILD-ELF ;
+ : SIGN-IMAGE ( -- ) ;
+--- a/bootstrap/cg/forth.fs
++++ b/bootstrap/cg/forth.fs
+@@ -363,7 +363,7 @@
+ $F2E00009 constant W-MOVK3     \ movk x9,#0,lsl#48
+ 
+ \ --- primitive registry (host-side, to build the seed dictionary) ---
+-128 constant PRIM-CAP
++256 constant PRIM-CAP
+ 2048 constant PRIM-NAME-CAP
+ create PLBL PRIM-CAP cells allot   create PEL PRIM-CAP cells allot
+ create PLEN PRIM-CAP cells allot   create PNAM PRIM-CAP cells allot
+@@ -813,6 +813,28 @@
+ 
+ : BPLUSSTORE ( -- ) B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
+ 
++\ Recovery mirror of the native atomic vocabulary. RMWs return the old cell;
++\ every write checks the full eight-byte span before issuing the instruction.
++: BATFETCH ( -- )
++   A G-POP A A LDAR, A G-PUSH ;
++
++: BATSTORE ( -- )
++   B G-POP A G-POP
++   7 8 MOVZ, B 7 GUARD-SPAN
++   A B STLR, ;
++
++: BATADD ( -- )
++   B G-POP A G-POP
++   7 8 MOVZ, B 7 GUARD-SPAN
++   A A B LDADDAL, A G-PUSH ;
++
++: BATCAS ( -- )
++   C G-POP B G-POP A G-POP
++   7 8 MOVZ, C 7 GUARD-SPAN
++   A B C CASAL, A G-PUSH ;
++
++: BFENCE ( -- ) DMB-ISH, ;
++
+ : BCFETCH ( -- ) A G-POP  A A 0 LDRB, A G-PUSH ;
+ 
+ : BCSTORE ( -- ) B G-POP A G-POP  7 1 MOVZ,  B 7 GUARD-SPAN  A B 0 STRB, ;
+@@ -936,18 +958,59 @@
+    failed LBL,  0 0 MOVZ,  1 0 MOVN,
+    done LBL,  0 G-PUSH  1 G-PUSH ;
+ 
+-\ realpath ( pathz dst cap -- n ): the native word (src/habu/habu1.f PATH-OS:EMIT)
+-\ calls libc realpath through this image's loader slot. A seed image has no
+-\ interpreter and no loader slot -- bootstrap/cg/elf.fs and macho.fs emit a static
+-\ image -- so there is no libc realpath to reach, and canonicalizing by some other
+-\ rule would answer a question the engine never asked. Report the native word's own
+-\ -1 ("resolution/loader failure"), which src/core/include.f already fails closed
+-\ on: TRY-CANON is false and CWD-INIT throws INCLUDE-IO-RC. Nothing in the seed's
+-\ build path resolves an include (src/habu/stage2.f opens its source through PATH0
+-\ and `open`), so the stub is never executed while hb-stage0 builds hb-stage.
++\ Linux recovery uses the same dynamic-loader slots and realpath/free
++\ ownership contract as the native engine. The macOS recovery image remains
++\ static and reports the existing explicit resolution failure.
++HB-TARGET-LINUX? [IF]
++: BPATH-DLSYM ( -- )
++   16 DATA RBASE-CELL LDR, 15 CODE-OFF LIT64, 16 16 15 SUB,
++   17 16 IMAGE-TEXT-SIZE-OFF LDR,
++   16 16 17 ADD, 16 16 $B8 LDR,
++   0 0 MOVZ, 16 BLR, ;
++
+ : BREALPATH ( -- )
+-   2 G-POP  1 G-POP  0 G-POP
+-   0 0 MOVN,  0 G-PUSH ;
++   LBL LBL LBL LBL {: badcap failed short done :}
++   LBL LBL LBL LBL {: count counted copy release :}
++   2 G-POP 1 G-POP 0 G-POP
++   SP SP 80 SUBI,
++   0 SP 0 STR, 1 SP 8 STR, 2 SP 16 STR,
++   2 0 CMPI, C-LE badcap BCOND,
++   1 2 GUARD-SPAN
++   9 $65657266 LIT64, 9 SP 56 STR,
++   9 $687461706C616572 LIT64, 9 SP 64 STR,
++   9 0 MOVZ, 9 SP 72 STR,
++   1 SP 56 ADDI, BPATH-DLSYM
++   0 failed CBZ, 0 SP 24 STR,
++   1 SP 64 ADDI, BPATH-DLSYM
++   0 failed CBZ, 16 0 0 ADDI,
++   0 SP 0 LDR, 1 0 MOVZ, 16 BLR,
++   0 failed CBZ, 0 SP 40 STR,
++   9 0 0 ADDI, 10 0 MOVZ,
++   count LBL,
++      11 9 0 LDRB, 11 counted CBZ,
++      9 9 1 ADDI, 10 10 1 ADDI, count B,
++   counted LBL,
++   10 SP 48 STR, 12 SP 16 LDR,
++   10 12 CMP, C-CS short BCOND,
++   9 SP 40 LDR, 11 10 1 ADDI, 10 SP 8 LDR,
++   copy LBL,
++      12 9 0 LDRB, 12 10 0 STRB,
++      9 9 1 ADDI, 10 10 1 ADDI, 11 11 1 SUBI,
++      11 copy CBNZ,
++   release LBL,
++   0 SP 40 LDR, 16 SP 24 LDR, 16 BLR,
++   0 SP 48 LDR, done B,
++   short LBL,
++   9 1 MOVN, 9 SP 48 STR, release B,
++   badcap LBL, 0 1 MOVN, done B,
++   failed LBL, 0 0 MOVN,
++   done LBL,
++   SP SP 80 ADDI, 0 G-PUSH ;
++[ELSE]
++: BREALPATH ( -- )
++   2 G-POP 1 G-POP 0 G-POP
++   0 0 MOVN, 0 G-PUSH ;
++[THEN]
+ 
+ : C-FLUSH-X9-LINE ( -- )
+    9 DCCVAU,  DSB-ISH,  9 ICIVAU,  DSB-ISH,  ISB, ;
+@@ -1254,6 +1317,9 @@
+    s" xt!"  ['] BSTORE FPRIM-L
+    s" ptr-cell-mark" ['] BDROP FPRIM-L
+    s" +!" ['] BPLUSSTORE FPRIM-L
++   s" atomic@" ['] BATFETCH FPRIM-L  s" atomic!" ['] BATSTORE FPRIM-L
++   s" atomic-add" ['] BATADD FPRIM-L  s" atomic-cas" ['] BATCAS FPRIM-L
++   s" fence" ['] BFENCE FPRIM-L
+    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
+    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
+    s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT FPRIM-L ;
+@@ -1292,7 +1358,7 @@
+    s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
+    s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
+    s" map-anon" ['] BMAPANON FPRIM-L
+-   s" realpath" ['] BREALPATH FPRIM-L
++   s" realpath" ['] BREALPATH FPRIM
+    s" mmap" ['] BMMAP FPRIM-L   s" munmap" ['] BMUNMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
+    s" reloc-maps-clear" ['] BRELOCMAPSCLEAR FPRIM-L
+    s" close" ['] BCLOSE FPRIM-L
+@@ -2069,23 +2135,9 @@
+    PFX-LOAD-DECL-FILES
+    PFX-LOAD-CORE-FILES ;
+ 
+-\ The boot stdlib (habu2.f PFX-LOAD-STDLIB-FILES). src/core/dynamic-storage.f is
+-\ the row that forced this group in: src/core/layout-buffer.f DBUF-SOURCE generates
+-\ calls to DYNAMIC-STORAGE:RESERVE/:RELEASE, and stage2-src declares one
+-\ (src/habu/aot-decl.f `DYNAMIC-BUFFER AOT-NAMES-STORAGE n`), so without it the
+-\ seed compiled a call to a word it had never loaded. dynamic-storage.f needs
+-\ lib/errors.f ahead of it for E-MEM-MAP / E-MEM-UNMAP and lib/errors.f needs
+-\ lib/prelude.f, so the three are a dependency closure, not a choice. Their order
+-\ is native's. None of the three carries a `require` / `required` line of its own,
+-\ which is what lets them load here without the provide rows native pairs with the
+-\ group -- see EMIT-HOST-LOAD-PREFIX for why this seed cannot emit those yet.
+-\
+-\ Remaining LOAD drift, recorded rather than left as an unexplained short list:
+-\ native's group continues with lib/adt/option.f, lib/cad-num-types.f,
+-\ lib/cad-num-arithmetic.f, lib/string.f, lib/memory.f and lib/vector.f. Those six
+-\ are exactly the ones that DO carry require lines, and a seed that loads them dies
+-\ rc 74 inside C-PACKAGE on a `package` with no name token -- an unfinished seed
+-\ require path, which is the same missing piece as the provide rows.
++\ This recovery prefix carries the dynamic-storage dependency closure. Its
++\ corresponding provided rows keep later library requires from reloading these
++\ definitions. The remaining native boot stdlib is loaded normally on demand.
+ : PFX-LOAD-STDLIB-FILES ( -- )
+    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-LOAD-ROW
+    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-LOAD-ROW
+@@ -2435,6 +2487,8 @@
+    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PROVIDE-ROW
+    PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PROVIDE-ROW
+    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PROVIDE-ROW
++   PFX-COMMON LPPRELUDE      s" lib/prelude.f"         PFX-PROVIDE-ROW
++   PFX-COMMON LPERRORS       s" lib/errors.f"          PFX-PROVIDE-ROW
+    EMIT-SEAL-CAPTURE-TOKEN               \ watermark token at the true engine-prefix end
+    SRC-SFAIL @ EMIT-SEAL-FRIEND-TOKEN ;  \ seal before user source (all stdin/file/repl paths)
+ 
+@@ -2443,19 +2497,9 @@
+    PFX-PROVIDE-DECL-FILES
+    PFX-PROVIDE-CORE-FILES ;
+ 
+-\ Native keeps the stdlib block in its own SNAP-guarded word because a baked
+-\ native program has no cold prefix at all (habu2.f C-SOURCE-BAKED marks the prefix
+-\ end immediately). A baked SEED does re-read its prefix from disk -- that is what
+-\ makes hb-stage0 work at all -- so here the block belongs inside the one word every
+-\ seed path shares, under the SNAP guard EMIT-COLD-PREFIX already has.
+-\ Native pairs the block with PFX-PROVIDE-STDLIB-FILES so a `require` inside one of
+-\ those files does not re-read a file this table already loaded. This seed emits no
+-\ provide row for them, and cannot yet: a provide row is the source text
+-\ `s" path" provided`, src/core/include.f canonicalizes that path through CWD-INIT,
+-\ and CWD-INIT needs a realpath this static seed image has no loader slot to reach
+-\ (see BREALPATH) -- it throws INCLUDE-IO-RC, which is rc 74. The three rows loaded
+-\ here carry no require line of their own, so they do not need the rows; the seed's
+-\ own PFX-PROVIDE-FILES has the same unmet dependency on every path that calls it.
++\ Every cold seed reads its own core and the three-row stdlib closure. Linux
++\ realpath now resolves the matching provided rows through the real OS loader;
++\ a static macOS seed still has the explicitly unsupported resolver boundary.
+ : EMIT-HOST-LOAD-PREFIX ( -- )
+    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
+    PFX-TARGET-OK
+@@ -4758,8 +4802,10 @@
+    13 LSRC @ ADR,  14 13 25 SUB,
+    5 SRCN @ 3 + -4 and LIT64,  14 14 5 ADD,
+    HB-TARGET-LINUX? IF
+-      5 $FFF MOVZ,  14 14 5 ADD,
+-      5 -$1000 LIT64,  14 14 5 AND,
++      5 IMAGE-TEXT-CONTENT-ADJ LIT64, 14 14 5 ADD,
++      5 PROT-PAGE-MAX 1 - MOVZ, 14 14 5 ADD,
++      5 PROT-PAGE-MAX negate LIT64, 14 14 5 AND,
++      5 IMAGE-TEXT-CONTENT-ADJ LIT64, 14 14 5 SUB,
+    THEN
+    5 IMAGE-TEXT-CONTENT-ADJ LIT64,  11 11 5 SUB,
+    11 14 CMP,  C-LT snbad BCOND,  C-GT snpresent BCOND,
