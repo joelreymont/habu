@@ -1211,6 +1211,12 @@ the rule.
   word, and the same local hides the word `TEXT` from the definition it is
   declared in (`address` hides `ADDRESS`). The three resolvers — the checker,
   the JIT and tier 1 — agree; `test/compiler/native-local-case.f` pins it.
+- **A signature list holds at most 32 cells.** A word whose inputs (or
+  outputs) stage more than 32 cells - several records passed by value add up
+  fast - certifies at tier 0 and dies at native elaboration with
+  `E-IR-TYPE-ARITY` (-6688): measured, `( n ×32 -- n )` runs under
+  `test/compiler/aot-mode.f` and `( n ×33 -- n )` throws. Pass a record by
+  reference (`ptr fam`, a handle) when a signature grows past that.
 - **`s"` reads no escapes; `S\"` does.** `S\"` needs its delimiter space
   (`s\"\n"` is one undefined token) and reads `\u` as its own escape, so a
   fixture holding JSON writes `\\uXXXX`.
