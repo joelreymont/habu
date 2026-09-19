@@ -147,3 +147,73 @@ also copied to that private tree's bin/hb because 5f3468a9 is still open.
 Artifacts and logs: /tmp/alder-install-portable-final/{gen1,gen2,gen3},
 aot-chain-capture.log and relocated.log. The final candidate still needs
 Hazel's serial full gate; eeaf6c00 remains open until that proof passes.
+
+Relocated-tree gate of /tmp/alder-install-portable-final/gen3 over a copy of
+its matching tree: Hazel reports 426 PASS and 51 FAIL lines. Read-only source:
+~/.cache/hazel/logs/gate-IN.log; gate exit 1 after 1240 s. These include nested
+fixture FAIL labels, not 51 independent root causes. The earlier load-time
+STORE duplicate (78) is gone; the product still is not gate-equivalent to the
+native route. The native route remains the release route, and eeaf6c00 stays
+open. No install or new local full gate was run for this evidence update.
+
+Representative failures: `ncomp: cannot compile TO-RECOVERY? at
+CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?` followed by -8286;
+`install-repl-read at 'is': non-certified definition`. The final pool report
+classifies build-fixpoint-fixtures as TIMEOUT-UNDER-LOAD (360177 ms); do not
+attribute that row to a semantic defect without a focused reproduction.
+
+Complete FAIL-label list from gate-IN.log, in log order:
+
+```text
+compiler-native-tape-owner
+compiler-native-string
+print-min-int
+stripped-address
+' word , cell: refusal reason
+aot-data-cell-refusals
+stripped-quotation
+stripped retained literal build
+stripped-literal
+aot-xt-cells
+stripped default global MAIN build
+stripped-entry
+native-resource-image
+native-defer-image
+process-image
+stripped-sparse-data
+compiler-native-code-span
+pointer-storage
+effect-read-api
+checker-scan-index
+effect-intern
+snapshot-writer
+stdlib-standalone-load
+aot-wid-restore
+address-cell-tasks
+repl-address-cell-rollback
+engine-stack-debugger
+aot-wide-format
+genio
+hb-build-fixtures
+hb-open-failure
+source-root
+engine
+breakpoint resumes across protection pages
+debugger-resume
+prop-test
+native-gate-debug
+test/engine-suite.f
+program-diagnostics
+aot-named-cells-image
+boot-row
+process/pty
+engine-runtime-regressions
+build-fixpoint-fixtures
+maker self-test build rc
+fork hb-build AOT bundle/data
+fork hb-build AOT preseed
+native-gate-aot-positive
+field-proj
+prop
+structure-decl
+```
