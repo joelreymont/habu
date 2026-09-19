@@ -13,6 +13,7 @@
 
 require lib/prelude.f
 require lib/errors.f
+require src/compiler/target.f
 require src/compiler/native-effect.f
 require src/compiler/native/machine.f
 require src/compiler/ir/id.f
@@ -22,7 +23,7 @@ require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/regfile.f
-require src/compiler/native/a64ir.f
+require src/compiler/native/dialect.f
 require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 require src/compiler/native/regalloc.f
@@ -126,6 +127,14 @@ variable V-DSTACK                    \ whether the contract declares the data-st
 1 TYPED-BUFFER S-FUN IR-ID:ir-fun-id
 
 : FUN ( -- IR-ID:ir-fun-id )         0 S-FUN @ ;
+
+\ The two facts the dialect states rather than this pass assuming them: the
+\ bytes one frame access moves, and whether the dialect names a transfer that
+\ moves the data-stack pointer in the access itself.
+variable BND-SLOTW                   \ bytes per frame slot, from the vocabulary
+0 BND-SLOTW !
+variable BND-WB                      \ 1 when the dialect has a write-back key
+0 BND-WB !
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
@@ -245,7 +254,13 @@ variable FPO-RUN                     \ where the next predecessor run starts
 : DSLOT-OF ( IR-ID:ir-op-id -- n )   0 BND-DSLOT @ ATTR-INT ;
 : DBYTES-OF ( IR-ID:ir-op-id -- n )  0 BND-DBYTES @ ATTR-INT ;
 : DBACK-OF ( IR-ID:ir-op-id -- n )   0 BND-DBACK @ ATTR-INT ;
-: DWB-OF ( IR-ID:ir-op-id -- n )     0 BND-DWB @ ATTR-INT ;
+\ A dialect that declared no write-back key has no fused form either: nothing in
+\ its module moves the pointer inside an access, so there is nothing to find and
+\ no symbol to look for.
+: DWB-OF ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   BND-WB @ 0= if NOSLOT exit then
+   id 0 BND-DWB @ ATTR-INT ;
 
 \ A transfer that carries the pointer move in its own encoding. The two fused
 \ forms are the only operations this dialect gives that key, so this pass tells
@@ -1605,13 +1620,13 @@ variable VD-BCOST
 : VDCELL ( n -- n )
    VD-STAND @ + {: off:n :}
    off 0 < if E-A64RAV-DSTACK throw then
-   off A64IR:SLOT-WIDTH mod 0<> if E-A64RAV-DSTACK throw then
-   off A64IR:SLOT-WIDTH / ;
+   off BND-SLOTW @ mod 0<> if E-A64RAV-DSTACK throw then
+   off BND-SLOTW @ / ;
 
 : VDREACH-CK ( n -- )
    {: off:n :}
    off A64RA:MACHINE NMACH:SLOT-BACK negate < if E-A64RAV-DSTACK throw then
-   off A64IR:SLOT-WIDTH A64RA:MACHINE NMACH:SLOT-REACH > if E-A64RAV-DSTACK throw then ;
+   off BND-SLOTW @ A64RA:MACHINE NMACH:SLOT-REACH > if E-A64RAV-DSTACK throw then ;
 
 : VDSLOT-CELL ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
@@ -1920,14 +1935,14 @@ DKEEP-HOOK-DEFAULT
    entry  bk at VDTAKE-AT -  {: stand:n :}
    stand 0 < if E-A64RAV-DSTACK throw then
    stand A64RA:MACHINE NMACH:SLOT-BACK > if E-A64RAV-DSTACK throw then
-   stand A64IR:SLOT-WIDTH mod 0<> if E-A64RAV-DSTACK throw then
+   stand BND-SLOTW @ mod 0<> if E-A64RAV-DSTACK throw then
    stand VD-STAND ! ;
 
 : VDENTRY-CK ( IR-ID:ir-fun-id n NEFF:placeseq -- )
    {: f:IR-ID:ir-fun-id a:n args:NEFF:placeseq :}
    f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
    eb OP-COUNT PRO-N 1+ < if E-A64RAV-DSTACK throw then
-   eb PRO-N  a A64IR:SLOT-WIDTH *  VDSTAND-AT
+   eb PRO-N  a BND-SLOTW @ *  VDSTAND-AT
    PRO-N 1+ VD-P !
    0 VD-J !
    0 VD-EL !
@@ -1944,7 +1959,7 @@ DKEEP-HOOK-DEFAULT
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
    xb OP-COUNT PRO-N - {: n:n :}
    n 2 < if E-A64RAV-DSTACK throw then
-   xb n 2 -  r A64IR:SLOT-WIDTH * VD-STAND @ -  DMOVE-AT?
+   xb n 2 -  r BND-SLOTW @ * VD-STAND @ -  DMOVE-AT?
    n 2 - VD-P !
    0 VD-ES !
    begin
@@ -1966,7 +1981,7 @@ DKEEP-HOOK-DEFAULT
    xb OP-COUNT PRO-N - {: n:n :}
    n 1 < if E-A64RAV-DSTACK throw then
    xb  xb OP-COUNT 1-  OP-AT TAILBR? 0= if E-A64RAV-DSTACK throw then
-   VD-STAND @  r A64IR:SLOT-WIDTH *  <> if E-A64RAV-DSTACK throw then
+   VD-STAND @  r BND-SLOTW @ *  <> if E-A64RAV-DSTACK throw then
    n 1 - VD-P !
    0 VD-ES !
    begin
@@ -2140,8 +2155,8 @@ DKEEP-HOOK-DEFAULT
       V-BLKS @ 0 ?do f i BLOCK-AT VNO-DSTACK loop
       exit
    then
-   a A64IR:SLOT-WIDTH * VD-ENTRY !
-   r A64IR:SLOT-WIDTH * VD-LEAVE !
+   a BND-SLOTW @ * VD-ENTRY !
+   r BND-SLOTW @ * VD-LEAVE !
    0 VD-REQ-N !
    0 VD-REQ-OVER !
    VD-ENTRY @ VDREQ+
@@ -2240,12 +2255,16 @@ DKEEP-HOOK-DEFAULT
    IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
    0= if E-A64RAV-MODULE throw then ;
 
-: DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b  c b IR-BUILD:DIALECT@  A64IR:NAME IR-BUILD:SYMBOL-IS?
+\ The module says which dialect wrote it; the vocabulary says whose names it
+\ holds. Read the same way the allocator reads it, because a validator that
+\ accepted a module the allocator would refuse would be checking another
+\ compilation than the one being made.
+: DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder nm:IR-ID:ir-symbol-id mj:n mi:n :}
+   c b IR-BUILD:DIALECT@ nm SAME-SYM?
    0= if E-A64RAV-MODULE throw then
-   c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64RAV-MODULE throw then
-   c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64RAV-MODULE throw then ;
+   c b IR-BUILD:SCHEMA-MAJOR@ mj <> if E-A64RAV-MODULE throw then
+   c b IR-BUILD:SCHEMA-MINOR@ mi <> if E-A64RAV-MODULE throw then ;
 
 \ ---- which places one FUNCTION's boundary uses -------------------------------
 : FUN-SLOTS ( n -- NEFF:placeseq )
@@ -2295,7 +2314,7 @@ DKEEP-HOOK-DEFAULT
    pool 0 V-POOL !
    fpool 0 V-FPOOL !
    pool fpool CONTRACT-CK
-   outs NEFF:SEQ-SLOTS  args NEFF:SEQ-SLOTS -  A64IR:SLOT-WIDTH *  VD-SELF !
+   outs NEFF:SEQ-SLOTS  args NEFF:SEQ-SLOTS -  BND-SLOTW @ *  VD-SELF !
    m VIEWS!
    RESERVE-SCRATCH
    VALS-N!
@@ -2322,22 +2341,42 @@ public
 
 \ ---- binding the dialect -----------------------------------------------------
 \ The only moment a module can be asked its opcode and key identities, because
-\ its symbols are its own ordinals.
-: BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
+\ its symbols are its own ordinals. The names arrive in the vocabulary the
+\ dialect built (src/compiler/native/dialect.f) - the same value the allocator
+\ was bound with, so the two passes read one module by one set of names. What
+\ this pass never asks about is in it for the allocator: an address lane is a
+\ spill decision and this pass re-derives the ranges rather than the plan.
+: BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NDIALECT:vocab -- )
+   NDIALECT-VOCAB:UNMAKE
+   {: nm:IR-ID:ir-symbol-id mj:n mi:n arch:CTARGET:arch
+      gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
+      slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
+      dslot:IR-ID:ir-symbol-id dbytes:IR-ID:ir-symbol-id
+      dback:IR-ID:ir-symbol-id wb:NDIALECT:optkey
+      entry:IR-ID:ir-symbol-id trap:IR-ID:ir-symbol-id
+      addr:IR-ID:ir-symbol-id shift:IR-ID:ir-symbol-id
+      copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      lanes:n slotw:n :}
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b DIALECT-CK
+   c b nm mj mi DIALECT-CK
    b IR-BUILD:MODULE@ 0 BND-MOD !
-   c b A64IR:GPR-TYPE  0 BND-GPR !
-   c b A64IR:FPR-TYPE  0 BND-FPR !
-   c b A64IR:MEM-TYPE  0 BND-MEM !
-   c b A64IR:KEY-SLOT   0 BND-SLOT !
-   c b A64IR:KEY-FRAME  0 BND-FRAME !
-   c b A64IR:KEY-DSLOT  0 BND-DSLOT !
-   c b A64IR:KEY-DBYTES 0 BND-DBYTES !
-   c b A64IR:KEY-DWB    0 BND-DWB !
-   c b A64IR:KEY-DBACK  0 BND-DBACK !
-   c b A64IR:KEY-ENTRY  0 BND-ENTRY !
-   c b A64IR:KEY-TRAP-ENTRY 0 BND-TRAP !
+   gpr 0 BND-GPR !
+   fpr 0 BND-FPR !
+   mem 0 BND-MEM !
+   slot 0 BND-SLOT !
+   frame 0 BND-FRAME !
+   dslot 0 BND-DSLOT !
+   dbytes 0 BND-DBYTES !
+   dback 0 BND-DBACK !
+   wb NDIALECT:HAS-KEY? if
+      wb NDIALECT:KEY 0 BND-DWB !
+      1 BND-WB !
+   else
+      0 BND-WB !
+   then
+   entry 0 BND-ENTRY !
+   trap 0 BND-TRAP !
+   slotw BND-SLOTW !
    BOUND-YES BND-MODE ! ;
 
 \ ---- the check ---------------------------------------------------------------

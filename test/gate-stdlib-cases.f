@@ -289,6 +289,14 @@ SUITE compiler-x64-select
    test/compiler/x64-select.f
 ;SUITE
 
+\ The register allocator and its validator over an x86-64 module: the same
+\ src/compiler/native/regalloc.f and regalloc-verify.f the ARM64 suite runs,
+\ reading this machine through the vocabulary src/compiler/native/dialect.f
+\ declares and src/compiler/native/x64ir.f builds.
+SUITE compiler-x64-regalloc
+   test/compiler/x64-regalloc.f
+;SUITE
+
 SUITE compiler-tic6x-asm
    test/compiler/tic6x-asm.f
    test/compiler/tic6x-facts.f

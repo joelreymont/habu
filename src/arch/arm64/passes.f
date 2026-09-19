@@ -125,8 +125,8 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    c b IR-BUILD:FREEZE-INTERIM {: m0:IR-BUILD:module :}
    c m0 CLOSED {: m:IR-BUILD:module :}
    c A64-BUILDER {: ab:IR-BUILD:builder :}
-   c ab A64IR:MACHINE A64RA:BIND-DIALECT
-   c ab A64RAV:BIND-DIALECT
+   c ab A64IR:MACHINE  c ab A64IR:VOCABULARY  A64RA:BIND-DIALECT
+   c ab  c ab A64IR:VOCABULARY  A64RAV:BIND-DIALECT
    c ab A64EMIT:BIND-DIALECT
    c ab A64SPILL:BIND-DIALECT
    c ab A64PRUNE:BIND-DIALECT
@@ -150,8 +150,8 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    A64EMIT:RELEASE
    A64SPILL:RELEASE
    c A64-BUILDER {: nb:IR-BUILD:builder :}
-   c nb A64IR:MACHINE A64RA:BIND-DIALECT
-   c nb A64RAV:BIND-DIALECT
+   c nb A64IR:MACHINE  c nb A64IR:VOCABULARY  A64RA:BIND-DIALECT
+   c nb  c nb A64IR:VOCABULARY  A64RAV:BIND-DIALECT
    c nb A64EMIT:BIND-DIALECT
    c nb A64SPILL:BIND-DIALECT
    c m nb A64PRUNE:REWRITE {: m1:IR-BUILD:module :}
@@ -167,8 +167,8 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
    A64EMIT:RELEASE
    c A64-BUILDER {: nb:IR-BUILD:builder :}
-   c nb A64IR:MACHINE A64RA:BIND-DIALECT
-   c nb A64RAV:BIND-DIALECT
+   c nb A64IR:MACHINE  c nb A64IR:VOCABULARY  A64RA:BIND-DIALECT
+   c nb  c nb A64IR:VOCABULARY  A64RAV:BIND-DIALECT
    c nb A64EMIT:BIND-DIALECT
    NPROF-PHASE:SPILL NPROF:START
    c m nb A64SPILL:REWRITE

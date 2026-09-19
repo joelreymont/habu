@@ -23,7 +23,7 @@ require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/regfile.f
-require src/compiler/native/a64ir.f
+require src/compiler/native/dialect.f
 require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 
@@ -131,14 +131,26 @@ variable ARGS-N
 variable OUTS-N
 0 OUTS-N !
 
+\ The two shape facts the dialect states rather than the allocator assuming
+\ them: how many instructions one address literal is, and whether this dialect
+\ names a transfer that moves the data-stack pointer in the access itself.
+variable BND-LANES                   \ address-carrier instructions, 1 or more
+1 BND-LANES !
+variable BND-WB                      \ 1 when the dialect has a write-back key
+0 BND-WB !
+
+\ The machine the bound dialect lowers for, which is what a module's own
+\ compilation contract has to agree with before a register is placed.
+1 TYPED-BUFFER BND-ARCH CTARGET:arch
+
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER BND-TYP IR-ID:ir-type-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-MOV IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-MOVZ IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-COPY IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-REMAT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ADDR IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SHIFT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
@@ -472,22 +484,47 @@ variable SHORT-FUN                           \ the function whose scan ran short
    loop ;
 
 
+\ Which lane of the register an address carrier writes, in bits. A carrier run
+\ covers the whole register, so the lane a shift names is that shift divided by
+\ the register split into as many lanes as the dialect declares.
+: LANE-BITS ( -- n )
+   RF-SLOT-WIDTH 8 *  BND-LANES @ / ;
+
 \ Address carriers are indivisible through spill insertion: only their final
-\ lane holds the pointer that a frame slot may retain.
+\ lane holds the pointer that a frame slot may retain. A dialect whose address
+\ literal is ONE instruction has no lane arithmetic at all - there is no shift
+\ key on the carrier to read - so its only lane is the final one, zero.
+\
+\ The address kinds are the relocation model's and not a machine's, and both
+\ dialects number `none` zero; a key the operation does not carry answers
+\ NOATTR, which is lower still. So "carries no address" is one comparison and
+\ needs no dialect's spelling.
+0 constant ADDR-NONE
+
 : ADDRESS-HALF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 BND-ADDR @ ATTR-INT-OF A64IR:ADDR-NONE <= if -1 exit then
-   id 0 BND-SHIFT @ ATTR-INT-OF A64IR:HALF-BITS / ;
+   id 0 BND-ADDR @ ATTR-INT-OF ADDR-NONE <= if -1 exit then
+   BND-LANES @ 1 = if 0 exit then
+   id 0 BND-SHIFT @ ATTR-INT-OF LANE-BITS / ;
 
+
+\ The write-back attribute, from a dialect that has such a key. One asked of a
+\ dialect that declared none is no transfer: nothing in its module carries a
+\ pointer move inside an access, so there is nothing to find and no symbol to
+\ look for.
+: DWB-OF ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   BND-WB @ 0= if NOATTR exit then
+   id DK-WB BND-DKEY @ ATTR-INT-OF ;
 
 \ An operation that TRANSFERS one cell of the caller's stack. It names the cell
-\ by its own slot, or - in the two fused forms, which carry the pointer move in
-\ the transfer - by standing at the pointer, which is what `a64.dwb` says. The
-\ plain pointer moves carry neither key and are no transfer.
+\ by its own slot, or - in the fused forms of a dialect that has them, which
+\ carry the pointer move in the transfer - by standing at the pointer. The plain
+\ pointer moves carry neither key and are no transfer.
 : DXFER? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id DK-SLOT BND-DKEY @ ATTR-INT-OF NOATTR <> if true exit then
-   id DK-WB BND-DKEY @ ATTR-INT-OF NOATTR <> ;
+   id DWB-OF NOATTR <> ;
 
 \ Which way it moves the cell, asked of the schema. A fused load is READ-WRITE
 \ rather than READ - it moves the pointer as well - so the store is the arm that
@@ -1153,7 +1190,7 @@ variable N-CALLS
 
 \ ---- step five: coalescing the copies ----------------------------------------
 : MB-COPY? ( IR-ID:ir-op-id -- bool )
-   OPCODE-AT 0 BND-MOV @ SAME-SYM? ;
+   OPCODE-AT 0 BND-COPY @ SAME-SYM? ;
 
 \ Ends already in one class need nothing; ends whose classes hold an interfering
 \ pair keep their copy; ends the contract declares into two registers keep it too.
@@ -1347,7 +1384,7 @@ variable N-CALLS
    {: bk:IR-ID:ir-block-id at:n :}
    bk OP-COUNT {: n:n :}
    bk at OP-AT ADDRESS-HALF {: half:n :}
-   half 0 >= if at A64IR:HALVES + half - n min exit then
+   half 0 >= if at BND-LANES @ + half - n min exit then
    bk at OP-AT DLOAD? 0= if at 1+ n min exit then
    n
    n at 1+ ?do
@@ -1625,14 +1662,14 @@ variable N-CALLS
 
 \ ---- the class that can be WRITTEN AGAIN instead of put away -----------------
 \ The one form of this dialect that costs the same to re-emit as to reload.
-: MB-MOVZ? ( IR-ID:ir-op-id -- bool )
-   OPCODE-AT 0 BND-MOVZ @ SAME-SYM? ;
+: MB-REMAT? ( IR-ID:ir-op-id -- bool )
+   OPCODE-AT 0 BND-REMAT @ SAME-SYM? ;
 
 : MB-DEF-OP? ( IR-ID:ir-fun-id n -- bool )
    {: f:IR-ID:ir-fun-id r:n :}
    r cells CL-LO + @ {: p:n :}
    p POS-OP? 0= if false exit then
-   f p POS-OP MB-MOVZ? ;
+   f p POS-OP MB-REMAT? ;
 
 \ Everything MB-SPILLABLE? asks except the one clause remat does not need.
 : MB-REMATABLE? ( IR-ID:ir-fun-id n -- bool )
@@ -1758,7 +1795,7 @@ variable N-CALLS
    bk d OP-AT {: id:IR-ID:ir-op-id :}
    id MB-IDENTITY-COPY? if exit then
    id ADDRESS-HALF {: half:n :}
-   half 0 >= half A64IR:HALVES 1- < and if exit then
+   half 0 >= half BND-LANES @ 1- < and if exit then
    id RESULTS-OF 0 ?do
       id i RESULT-AT SLOT {: k:n :}
       k SLOT-AT NOSLOT <> if b P-STORE at k PLAN+ then
@@ -1820,7 +1857,7 @@ variable N-CALLS
    id DLOAD? {: dload:bool :}
    id ADDRESS-HALF {: half:n :}
    half 0 >= if
-      d A64IR:HALVES + half - n min
+      d BND-LANES @ + half - n min
    else
       dload if load-end else d 1+ then
    then {: at:n :}
@@ -2063,9 +2100,14 @@ variable N-CALLS
       NEFF:CHECK-SLOT
    loop ;
 
+\ The machine this compilation is for, against the machine the bound dialect
+\ lowers for. A module of a dialect this pass has the vocabulary of can still be
+\ the wrong module: the contract the context is bound to is what every number in
+\ the allocation - the register file, the frame bound, the slot reach - is
+\ stated about.
 : TARGET-CK ( IR-CTX:ctx -- )
    IR-CTX:BINDING@ CBIND:VALIDATE CBIND:TARGET@ CTARGET:ARCH@
-   CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
+   0 BND-ARCH @ CTARGET-ARCH:EQ
    0= if E-A64RA-TARGET throw then ;
 
 \ Taken whatever the outcome, so a refused allocation leaves none behind.
@@ -2078,12 +2120,16 @@ variable N-CALLS
    IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
    0= if E-A64RA-MODULE throw then ;
 
-: DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b  c b IR-BUILD:DIALECT@  A64IR:NAME IR-BUILD:SYMBOL-IS?
+\ The module says which dialect wrote it and which version of that dialect's
+\ table; the vocabulary says whose names it holds. A vocabulary bound to another
+\ dialect's module would read that module's attributes under this dialect's
+\ keys, which is why this is checked before a single name is copied out.
+: DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder nm:IR-ID:ir-symbol-id mj:n mi:n :}
+   c b IR-BUILD:DIALECT@ nm SAME-SYM?
    0= if E-A64RA-MODULE throw then
-   c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64RA-MODULE throw then
-   c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64RA-MODULE throw then ;
+   c b IR-BUILD:SCHEMA-MAJOR@ mj <> if E-A64RA-MODULE throw then
+   c b IR-BUILD:SCHEMA-MINOR@ mi <> if E-A64RA-MODULE throw then ;
 
 : SEAL-CK ( -- )
    ST @ ST-SEALED <> if E-A64RA-STATE throw then ;
@@ -2101,34 +2147,56 @@ public
 \ forgotten at one call site and the pass would then allocate the last caller's
 \ machine, while a pass that cannot be entered without one cannot get it wrong.
 \
-\ The description is taken off the stack first because it is seven cells and a
-\ value of more than one cell cannot be bound to a local, so nothing below it
-\ can be named until it is gone. A binding refused after that point leaves the
-\ tables holding a machine no allocation can reach: the mode stays unbound and
-\ WALK refuses before it reads them.
-: BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NMACH:mach -- )
+\ The VOCABULARY is what makes this pass one pass rather than one per machine:
+\ src/compiler/native/dialect.f says what is in it and the dialect that wrote
+\ the module builds it. It is unmade first because it is the value on top; the
+\ machine beneath it is named after. A binding refused after that point leaves
+\ the tables holding a machine no allocation can reach: the mode stays unbound
+\ and WALK refuses before it reads them.
+: BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NMACH:mach NDIALECT:vocab -- )
    BND-MODE @ BOUND-YES = if E-A64RA-BIND throw then
+   NDIALECT-VOCAB:UNMAKE
+   {: nm:IR-ID:ir-symbol-id mj:n mi:n arch:CTARGET:arch
+      gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
+      slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
+      dslot:IR-ID:ir-symbol-id dbytes:IR-ID:ir-symbol-id
+      dback:IR-ID:ir-symbol-id wb:NDIALECT:optkey
+      entry:IR-ID:ir-symbol-id trap:IR-ID:ir-symbol-id
+      addr:IR-ID:ir-symbol-id shift:IR-ID:ir-symbol-id
+      copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      lanes:n slotw:n :}
    NMACH:ID {: row:n :}
    row RF-MACH-N !
    row NMACH:BY-ID NMACH:REGFILE RF-FILE!
+   \ One width or two passes disagreeing about where a spill lives: the slots
+   \ this walk lays out are the machine's, and the validator measures them
+   \ against the dialect's.
+   slotw RF-SLOT-WIDTH <> if E-A64RA-BIND throw then
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b DIALECT-CK
+   c b nm mj mi DIALECT-CK
    b IR-BUILD:MODULE@ 0 BND-MOD !
-   c b A64IR:GPR-TYPE 0 BND-TYP !
-   c b A64IR:FPR-TYPE 0 BND-FPR !
-   c b A64IR:MEM-TYPE 0 BND-MEM !
-   c b A64IR:KEY-SLOT 0 BND-SLOT !
-   c b A64IR:KEY-FRAME 0 BND-FRAME !
-   c b A64IR:KEY-DSLOT  DK-SLOT BND-DKEY !
-   c b A64IR:KEY-DBYTES DK-BYTES BND-DKEY !
-   c b A64IR:KEY-DBACK  DK-BACK BND-DKEY !
-   c b A64IR:KEY-DWB    DK-WB BND-DKEY !
-   c b A64IR:KEY-ENTRY  0 BND-ENTRY !
-   c b A64IR:KEY-TRAP-ENTRY 0 BND-TRAP !
-   c b A64IR-OPCODE:MOV A64IR:OPCODE 0 BND-MOV !
-   c b A64IR-OPCODE:MOVZ A64IR:OPCODE 0 BND-MOVZ !
-   c b A64IR:KEY-ADDR 0 BND-ADDR !
-   c b A64IR:KEY-SHIFT 0 BND-SHIFT !
+   arch 0 BND-ARCH !
+   gpr 0 BND-TYP !
+   fpr 0 BND-FPR !
+   mem 0 BND-MEM !
+   slot 0 BND-SLOT !
+   frame 0 BND-FRAME !
+   dslot  DK-SLOT BND-DKEY !
+   dbytes DK-BYTES BND-DKEY !
+   dback  DK-BACK BND-DKEY !
+   wb NDIALECT:HAS-KEY? if
+      wb NDIALECT:KEY DK-WB BND-DKEY !
+      1 BND-WB !
+   else
+      0 BND-WB !
+   then
+   entry 0 BND-ENTRY !
+   trap 0 BND-TRAP !
+   copy 0 BND-COPY !
+   remat 0 BND-REMAT !
+   addr 0 BND-ADDR !
+   shift 0 BND-SHIFT !
+   lanes BND-LANES !
    BOUND-YES BND-MODE ! ;
 
 : BOUND? ( -- bool )

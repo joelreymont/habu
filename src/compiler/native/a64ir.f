@@ -34,6 +34,7 @@ require src/arch/arm64/asm.f
 require src/arch/arm64/backend.f
 require src/arch/arm64/machine.f
 require src/compiler/native/regfile.f
+require src/compiler/native/dialect.f
 
 package A64IR
 public
@@ -976,6 +977,31 @@ public
 
 : ENTRY-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    ENTRY IR-BUILD:INTERN-INT-ATTR ;
+
+\ ---- what this dialect tells the register allocator about itself --------------
+\ Every name src/compiler/native/regalloc.f and regalloc-verify.f would
+\ otherwise spell as A64IR's, in the one value they take at the binding. It is
+\ built HERE because none of it is a pass's to know: that a copy is `a64.mov`,
+\ that the form worth re-emitting instead of reloading is `a64.movz`, that an
+\ address literal is four move-wides which have to stay contiguous through spill
+\ insertion, and that the transfer forms can move the data-stack pointer in the
+\ access itself. Every symbol below is this MODULE's ordinal, so the value is
+\ built per module and consumed by the binding that asked for it.
+: VOCABULARY ( IR-CTX:ctx IR-BUILD:builder -- NDIALECT:vocab )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b NAME IR-BUILD:INTERN-SYMBOL
+   MAJOR MINOR
+   CTARGET-ARCH:AARCH64
+   c b GPR-TYPE  c b FPR-TYPE  c b MEM-TYPE
+   c b KEY-SLOT  c b KEY-FRAME
+   c b KEY-DSLOT  c b KEY-DBYTES  c b KEY-DBACK
+   c b KEY-DWB NDIALECT-OPTKEY:PRESENT
+   c b KEY-ENTRY  c b KEY-TRAP-ENTRY
+   c b KEY-ADDR  c b KEY-SHIFT
+   c b A64IR-OPCODE:MOV OPCODE
+   c b A64IR-OPCODE:MOVZ OPCODE
+   HALVES SLOT-WIDTH
+   NDIALECT-VOCAB:MAKE ;
 
 private
 

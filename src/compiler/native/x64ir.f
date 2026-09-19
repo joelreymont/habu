@@ -53,6 +53,7 @@ require src/compiler/ir/build.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/backend.f
 require src/compiler/native/regfile.f
+require src/compiler/native/dialect.f
 
 package X64IR
 public
@@ -746,6 +747,35 @@ public
 
 : COND-ATTR ( IR-CTX:ctx IR-BUILD:builder X64IR:cond -- IR-ID:ir-attr-id )
    COND-CODE COND IR-BUILD:INTERN-INT-ATTR ;
+
+\ ---- how many instructions an address literal is ------------------------------
+\ One. `mov r64, imm64` carries a whole cell, so the carrier is a single
+\ operation holding `x64.addr` with no lane to shift into and no run for a later
+\ pass to keep contiguous. ARM64 answers four here, which is the whole reason
+\ the allocator asks rather than assuming.
+: ADDR-LANES ( -- n )    1 ;
+
+\ ---- what this dialect tells the register allocator about itself --------------
+\ The same value src/compiler/native/a64ir.f builds, with this machine's
+\ answers: the copy is `x64.mov`, the form worth re-emitting instead of
+\ reloading is `x64.movi`, an address literal is one instruction, and there is
+\ NO write-back key - x86-64 has no write-back addressing, so no transfer form
+\ moves the data-stack pointer in its own encoding and no symbol names one.
+: VOCABULARY ( IR-CTX:ctx IR-BUILD:builder -- NDIALECT:vocab )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b NAME IR-BUILD:INTERN-SYMBOL
+   MAJOR MINOR
+   CTARGET-ARCH:X86-64
+   c b GPR-TYPE  c b FPR-TYPE  c b MEM-TYPE
+   c b KEY-SLOT  c b KEY-FRAME
+   c b KEY-DSLOT  c b KEY-DBYTES  c b KEY-DBACK
+   NDIALECT-OPTKEY:ABSENT
+   c b KEY-ENTRY  c b KEY-TRAP-ENTRY
+   c b KEY-ADDR  c b KEY-SHIFT
+   c b X64IR-OPCODE:MOV OPCODE
+   c b X64IR-OPCODE:MOVI OPCODE
+   ADDR-LANES SLOT-WIDTH
+   NDIALECT-VOCAB:MAKE ;
 
 private
 

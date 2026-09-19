@@ -235,10 +235,17 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   `REGS-NONE`, `REGS-SET`, `REGS-REG`, `REGS-WITH`; readers `GPR-SIZE`,
   `GPR-RESERVED`, `GPR-ALLOCATABLE`, `GPR-CLOBBERED`, `GPR-CALLEE-SAVED`,
   the `FPR-` four, `SLOT-WIDTH`, `ALLOCATABLE-MASK`.
-- The allocator takes the MACHINE with the dialect:
-  `A64RA:BIND-DIALECT ( ctx builder NMACH:mach -- )`; nothing allocates
-  without a description, and the register file is derived from it
-  (`NMACH:REGFILE`). `A64IR:MACHINE` is the arm64 description
+- The allocator takes the MACHINE and the dialect's VOCABULARY together:
+  `A64RA:BIND-DIALECT ( ctx builder NMACH:mach NDIALECT:vocab -- )` and
+  `A64RAV:BIND-DIALECT ( ctx builder NDIALECT:vocab -- )`; nothing
+  allocates without a description, and the register file is derived from
+  it (`NMACH:REGFILE`). The vocabulary
+  (`src/compiler/native/dialect.f`, built by `A64IR:VOCABULARY` and
+  `X64IR:VOCABULARY`) carries every name the two passes used to spell as
+  A64IR's: the three types, the keys, the copy and remat opcodes, the
+  address-carrier lane count, the slot width and the arch the allocation
+  is for - which is what the allocator now checks the compilation
+  contract against instead of demanding AARCH64. `A64IR:MACHINE` is the arm64 description
   (`src/arch/arm64/machine.f`, Darwin's x18 included); `regalloc-verify.f`
   reads `A64RA:MACHINE`. Frame rounding is the machine's
   (`NMACH:FRAME-ROUND`, `NMACH:FRAME-MAX`).
@@ -250,7 +257,10 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   (`NEFF:gprs` over an `NMACH:mach`, `src/arch/x86-64/machine.f` for this
   machine); what is NOT is `spill.f`/`prune.f`, which are instruction-form
   code over the A64 dialect, so the lowering dot supplies its own dialect
-  before `A64RA` can be handed a real x86_64 pool.
+  before a SPILLED x86_64 function can be lowered.
+  `test/compiler/x64-regalloc.f` allocates and validates real x86_64
+  leaves through `X64IR:VOCABULARY` and `X64M:MACHINE`; a function that
+  needs no spill plan needs neither of those two passes.
 
 ### OS seam, ELF64, contract, site kind, emitters (`habu-add-the-x86-56726659`, lines d55021af + 5e05cbfd + d1961798, engine fa498035)
 

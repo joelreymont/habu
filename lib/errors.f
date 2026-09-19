@@ -1156,7 +1156,8 @@ public
 -8664 constant E-NLOOP-CAP      \ more values, blocks or invariant addends in one function than the rewriter's tables hold
 -8665 constant E-NLOOP-PLAN     \ a rewrite asked for when the scan had recognised no loop, so there is nothing to fold and the caller and this pass disagree about what was measured
 
-\ The register-file description and the machine description over it: -8670..-8671
+\ The register-file description, the machine description over it and the
+\ dialect's vocabulary beside them: -8670..-8672
 \
 \ src/compiler/native/regfile.f is the one declaration a backend makes about its
 \ machine's register files, and the register allocator reads it instead of naming
@@ -1169,6 +1170,11 @@ public
 \ the facts a routine contract needs and they do not say, with the same single
 \ moment it can be wrong and the same reason for one code.
 -8671 constant E-NMACH          \ a machine description that cannot describe a machine: a link register set holding more than one register, a link register or a stack pointer that is not a register of the general file or that the file says is allocatable, a stack alignment that is not a positive power of two, a frame bound that is negative or not a multiple of that alignment, or a negative offset-field reach
+\ src/compiler/native/dialect.f is the vocabulary a machine dialect hands the
+\ register allocator: the names the allocator would otherwise spell itself. The
+\ record is built whole or not at all, so the one moment it can be wrong is a
+\ reader asking for a key the dialect declared it does not have.
+-8672 constant E-NDIALECT       \ a dialect's vocabulary asked for a key it declared absent - x86-64 has no write-back addressing and interns no symbol for one - so there is no symbol to answer with and naming another key would be worse than saying nothing
 
 \ The trap terminator's family table: -8640..-8649
 \
