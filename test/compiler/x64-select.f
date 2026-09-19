@@ -20,6 +20,10 @@
 \   `x64.brz` where the ARM64 pass fuses the pair into one `a64.cmpbr`. The case
 \   asserts both operations and both successors, so the fusing slice that comes
 \   next changes this case deliberately rather than silently.
+\ - THE COPY A TWO-ADDRESS FORM NEEDS. `add rd, rs` destroys rd, so an operand
+\   anything else in the function reads is copied with `x64.mov` before the
+\   form, and an operand this operation is the last reader of is not. ARM64's
+\   three-register forms destroy nothing, so no ARM64 fixture measures it.
 \ - THE NEGATIVE DATA-STACK OFFSET. In a routine that leaves through its callee
 \   the pointer never moves, so every argument is read BEHIND it. x86-64
 \   displacements are signed and ARM64's are not, which is why the tail case
@@ -236,6 +240,37 @@ $400 constant CALLEE-ENTRY           \ an address; nothing here branches to it
    ARG+ {: x:IR-ID:ir-value-id :}
    ARG+ {: y:IR-ID:ir-value-id :}
    HIR-OPCODE:ADD x y BINOP RET1
+   CLOSE-FUN ;
+
+\ `x y + x -`: the sum, and then the first argument taken off it again. The add
+\ may not destroy `x`, because the subtraction below reads it; the subtraction
+\ may destroy the sum, whose only reader it is. One function holds both answers.
+: BUILD-REUSE ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD x y BINOP {: sum:IR-ID:ir-value-id :}
+   HIR-OPCODE:SUB sum x BINOP RET1
+   CLOSE-FUN ;
+
+\ `8 + x -`: the same reuse under the form that carries its second operand as an
+\ immediate. The literal still folds into the instruction and the copy is the
+\ operand the instruction destroys, which is the only thing the imm form changes.
+: BUILD-IMM-REUSE ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   8 CONSTOP {: k:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD x k BINOP {: sum:IR-ID:ir-value-id :}
+   HIR-OPCODE:SUB sum x BINOP RET1
+   CLOSE-FUN ;
+
+\ `dup invert and`: the unary's operand is read again below it, and a unary form
+\ is tied exactly as a binary one is, so it takes the copy too.
+: BUILD-MASK ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   HIR-OPCODE:INVERT x UNOP {: m:IR-ID:ir-value-id :}
+   HIR-OPCODE:AND m x BINOP RET1
    CLOSE-FUN ;
 
 \ The three logical forms and the one unary, in one function: each is the same
@@ -644,24 +679,83 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    TTRUE TTRUE 0 T= TTRUE 7 T= TTRUE TTRUE 2 T= ;
 
 \ ---- the arithmetic ---------------------------------------------------------
-: SQUARE-BODY ( IR-CTX:ctx -- n bool bool bool )
+\ The tie names the operand the add destroys, so one value in both operands is
+\ the case the copy exists for: the machine add reads the copy and the original.
+\ The COUNT is asserted because a selection that dropped the copy would carry
+\ these same opcodes with one instruction fewer.
+: SQUARE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
    HIR-MOD
    BUILD-SQUARE
    SELECTED READ!
    OPS
-   0 s" x64.add" OPCODE-IS?
+   0 s" x64.mov" OPCODE-IS?
    0 0 OPERAND@ 0 ARG@ SAME-VALUE?
-   0 1 OPERAND@ 0 ARG@ SAME-VALUE? ;
+   1 s" x64.add" OPCODE-IS?
+   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   1 1 OPERAND@ 0 ARG@ SAME-VALUE? ;
 
 : SQUARE-CASE ( -- )
-   s" an addition over one value twice selects to one tied machine add" T-LABEL
+   s" an addition over one value twice copies it: the tie destroys operand 0" T-LABEL
    WBND [: SQUARE-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE 2 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE 3 T= ;
 
-: DIFF-BODY ( IR-CTX:ctx -- bool bool bool bool bool )
+\ Two different operands, and the rule still turns on the one being destroyed:
+\ the add's `x` is read again by the subtraction below and is copied, while the
+\ subtraction's own first operand is the sum it is the only reader of and stays.
+: REUSE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
+   HIR-MOD
+   BUILD-REUSE
+   SELECTED READ!
+   OPS
+   0 s" x64.mov" OPCODE-IS?
+   1 s" x64.add" OPCODE-IS?
+   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   2 s" x64.sub" OPCODE-IS?
+   2 0 OPERAND@ 1 0 RESULT@ SAME-VALUE? ;
+
+: REUSE-CASE ( -- )
+   s" an operand read below the form is copied; a last-use operand is not" T-LABEL
+   WBND [: REUSE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE 4 T= ;
+
+: IMM-REUSE-BODY ( IR-CTX:ctx -- n bool bool bool n bool bool )
+   HIR-MOD
+   BUILD-IMM-REUSE
+   SELECTED READ!
+   OPS
+   0 s" x64.mov" OPCODE-IS?
+   1 s" x64.addi" OPCODE-IS?
+   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   1 0 ATTR-INT
+   2 s" x64.sub" OPCODE-IS?
+   2 1 OPERAND@ 0 ARG@ SAME-VALUE? ;
+
+: IMM-REUSE-CASE ( -- )
+   s" the immediate form copies its destroyed operand and still folds the literal" T-LABEL
+   WBND [: IMM-REUSE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 8 T= TTRUE TTRUE TTRUE 4 T= ;
+
+: MASK-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
+   HIR-MOD
+   BUILD-MASK
+   SELECTED READ!
+   OPS
+   0 s" x64.mov" OPCODE-IS?
+   1 s" x64.not" OPCODE-IS?
+   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   2 s" x64.and" OPCODE-IS?
+   2 1 OPERAND@ 0 ARG@ SAME-VALUE? ;
+
+: MASK-CASE ( -- )
+   s" a unary over a value read again copies it too: its form is tied as well" T-LABEL
+   WBND [: MASK-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE 4 T= ;
+
+: DIFF-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
    HIR-MOD
    BUILD-DIFF
    SELECTED READ!
+   OPS
    0 s" x64.sub" OPCODE-IS?
    0 s" x64.add" OPCODE-IS?
    0 0 OPERAND@ 0 ARG@ SAME-VALUE?
@@ -669,9 +763,9 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    0 0 OPERAND@ 1 ARG@ SAME-VALUE? ;
 
 : DIFF-CASE ( -- )
-   s" a subtraction keeps its operands in order, which is what the tie names" T-LABEL
+   s" a subtraction takes its operands in order and copies neither: both die here" T-LABEL
    WBND [: DIFF-BODY ;] IR-CTX:WITH-CONTEXT
-   TFALSE TTRUE TTRUE TFALSE TTRUE ;
+   TFALSE TTRUE TTRUE TFALSE TTRUE 2 T= ;
 
 : LOGIC-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
    HIR-MOD
@@ -685,7 +779,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    3 0 OPERAND@ 2 0 RESULT@ SAME-VALUE? ;
 
 : LOGIC-CASE ( -- )
-   s" each logical form selects to its own machine form, the unary included" T-LABEL
+   s" each logical form is its own, and a chain of single readers copies none" T-LABEL
    WBND [: LOGIC-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE 5 T= ;
 
@@ -1095,6 +1189,9 @@ public
    T-RESET
    LIT-CASE
    SQUARE-CASE
+   REUSE-CASE
+   IMM-REUSE-CASE
+   MASK-CASE
    DIFF-CASE
    LOGIC-CASE
    IMM-ADD-CASE

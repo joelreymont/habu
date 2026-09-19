@@ -456,8 +456,10 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   argument, `dstore` per result, `dpublish`; the pointer stands at the entry
   base, or never moves in a routine that leaves through its callee, so a tail
   call reads its arguments at negative displacements), `call`/`wordcall`/
-  `tailcall`, `trap`, `reserve`/`release`. No copy is ever inserted for a
-  two-address tie: the allocator owns that.
+  `tailcall`, `trap`, `reserve`/`release`. A two-address tie is made
+  satisfiable HERE: operand 0 is copied through `x64.mov` before the form
+  whenever any other use in the function reads it (the allocator refuses a tie
+  it cannot satisfy and coalesces the copies it can).
 - Refused by name, each with a case: `E-X64SEL-FLOAT` (no SSE form declared),
   `E-X64SEL-TRAP` (trapping-overflow unit), `E-X64SEL-FIXED` (a shift whose
   count is not a literal reads rcx; a divide reads rdx:rax - the allocator has

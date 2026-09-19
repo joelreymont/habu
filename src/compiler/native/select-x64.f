@@ -18,10 +18,14 @@
 \
 \ THE THREE THINGS THIS MACHINE MAKES THE SELECTOR DO DIFFERENTLY.
 \
-\ ONE. IT NEVER INSERTS A COPY FOR A TWO-ADDRESS FORM. `add rd, rs` destroys rd,
-\ and the dialect says so with a schema TIE. A tie the allocator cannot satisfy
-\ is a copy the ALLOCATOR inserts, so a selector that inserted one here would be
-\ making the decision twice.
+\ ONE. IT INSERTS THE COPY EVERY TWO-ADDRESS FORM NEEDS. `add rd, rs` destroys
+\ rd, and the dialect says so with a schema TIE. The allocator READS that tie as
+\ a must-share constraint and REFUSES a pair whose ends cannot share a register
+\ (regalloc.f MB-TIE1 throws E-A64RA-TIE); it inserts nothing. Making every tie
+\ satisfiable is therefore this pass's work: operand 0 is copied into a fresh
+\ value with `x64.mov` first whenever anything but this operand reads it, which
+\ is counted over the whole function. The allocator coalesces the copies it can
+\ (MB-COPY?), so a copy that was not needed costs nothing after allocation.
 \
 \ TWO. A LITERAL IN THE SECOND OPERAND IS PART OF THE INSTRUCTION. x86-64 ALU
 \ and compare forms carry a signed imm32, so `8 +` is one instruction and not
@@ -295,6 +299,19 @@ create NAMEBUF NAME-CAP allot
 : CLOSE-VALUE ( -- )
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ ACC! ;
+
+\ One value moved into a fresh one, carrying the span of the operation the move
+\ was made for. Both places that need a value somewhere else are this: the
+\ destination an edge carries its argument into, and the operand a two-address
+\ form is about to destroy. The opcode is `x64.mov`, which ties nothing and is
+\ what an allocator coalesces away when the two ends can share a register.
+: EMIT-COPY ( IR-ID:ir-op-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
+   at X64IR-OPCODE:MOV OPEN
+   CTX BLD v IR-BUILD:ADD-OPERAND
+   RESULT+
+   CLOSE-VALUE
+   ACC ;
 
 \ ---- the attributes an operation of the source carries ------------------------
 : ATTR-SLOT-OF ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
@@ -699,14 +716,48 @@ create NAMEBUF NAME-CAP allot
    v LIT-VALUE {: k:n :}
    k 0 >=  k X64IR:SHIFT-LIMIT <  and ;
 
+\ ---- counting what reads a value ---------------------------------------------
+\ How many operands of the whole function name a value. Two rules read this: a
+\ literal becomes no instruction of its own only when every use of it folds into
+\ one, and a two-address form may destroy its first operand only when this use
+\ is the value's only one. A use later in this block and a use in any other
+\ block are one answer here: nothing is computed about where a value dies,
+\ only whether a use exists that is not the operand being asked about.
+: OP-USES ( IR-ID:ir-value-id IR-ID:ir-op-id -- n )
+   {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id :}
+   0
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT v SAME-VALUE? if 1+ then
+   loop ;
+
+: BLOCK-USES ( IR-ID:ir-value-id IR-ID:ir-block-id -- n )
+   {: v:IR-ID:ir-value-id bk:IR-ID:ir-block-id :}
+   0
+   bk OP-COUNT 0 ?do  v bk i OP-AT OP-USES  +  loop ;
+
+: VALUE-USES ( IR-ID:ir-value-id -- n )
+   {: v:IR-ID:ir-value-id :}
+   0
+   FUN BLOCK-COUNT 0 ?do  v FUN i BLOCK-AT BLOCK-USES  +  loop ;
+
 \ ---- selecting the arithmetic ------------------------------------------------
 \ Operand 0 is the one the instruction overwrites and the schema ties the result
-\ to it. No copy is inserted here: a tie the allocator cannot satisfy is a copy
-\ IT inserts, and inserting one here would decide that twice.
+\ to it. The allocator refuses a tie whose ends cannot share a register
+\ (regalloc.f MB-TIE1) instead of repairing it, so the operand a form is about
+\ to destroy is copied here unless this operation is its only reader: a second
+\ operand naming the same value - `dup +` - and a use anywhere else in the
+\ function both count. The copy is `x64.mov` into a fresh value, and the
+\ allocator coalesces the ones whose ends can share a register after all.
+: TIED-OPERAND ( IR-ID:ir-op-id -- IR-ID:ir-value-id )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-AT VALUE-USES 1 > if  id  id 0 OPERAND  EMIT-COPY exit then
+   id 0 OPERAND ;
+
 : EMIT-BINARY ( IR-ID:ir-op-id X64IR:opcode -- )
    {: id:IR-ID:ir-op-id o:X64IR:opcode :}
+   id TIED-OPERAND {: dst:IR-ID:ir-value-id :}
    id o OPEN
-   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  dst  IR-BUILD:ADD-OPERAND
    CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
    RESULT+
    CLOSE-VALUE
@@ -714,8 +765,9 @@ create NAMEBUF NAME-CAP allot
 
 : EMIT-BINARY-IMM ( IR-ID:ir-op-id X64IR:opcode n -- )
    {: id:IR-ID:ir-op-id o:X64IR:opcode imm:n :}
+   id TIED-OPERAND {: dst:IR-ID:ir-value-id :}
    id o OPEN
-   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  dst  IR-BUILD:ADD-OPERAND
    RESULT+
    CTX BLD  CTX BLD X64IR:KEY-IMM
    CTX BLD  imm X64IR:IMM32-ATTR  IR-BUILD:ADD-ATTR
@@ -724,8 +776,9 @@ create NAMEBUF NAME-CAP allot
 
 : EMIT-SHIFT-IMM ( IR-ID:ir-op-id X64IR:opcode n -- )
    {: id:IR-ID:ir-op-id o:X64IR:opcode count:n :}
+   id TIED-OPERAND {: dst:IR-ID:ir-value-id :}
    id o OPEN
-   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  dst  IR-BUILD:ADD-OPERAND
    RESULT+
    CTX BLD  CTX BLD X64IR:KEY-SHIFT
    CTX BLD  count X64IR:SHIFT-ATTR  IR-BUILD:ADD-ATTR
@@ -734,8 +787,9 @@ create NAMEBUF NAME-CAP allot
 
 : EMIT-UNARY ( IR-ID:ir-op-id X64IR:opcode -- )
    {: id:IR-ID:ir-op-id o:X64IR:opcode :}
+   id TIED-OPERAND {: dst:IR-ID:ir-value-id :}
    id o OPEN
-   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  dst  IR-BUILD:ADD-OPERAND
    RESULT+
    CLOSE-VALUE
    id 0 RESULT-AT  ACC  VBIND ;
@@ -955,16 +1009,8 @@ create NAMEBUF NAME-CAP allot
 \ ---- splitting the edges that carry values -----------------------------------
 \ Edge destinations must share the successor arguments' registers. Snapshot all
 \ sources before those destination copies: a backedge can permute live header
-\ values, and writing one destination must not destroy a later source. The copy
-\ is `x64.mov`, which ties nothing and is what an allocator coalesces away.
-: EMIT-COPY ( IR-ID:ir-op-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
-   {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
-   at X64IR-OPCODE:MOV OPEN
-   CTX BLD v IR-BUILD:ADD-OPERAND
-   RESULT+
-   CLOSE-VALUE
-   ACC ;
-
+\ values, and writing one destination must not destroy a later source.
+\
 \ An unchanged header argument already occupies its destination. Copying it
 \ would create another value tied to that register while the original can still
 \ be live on the loop's exit path.
@@ -1136,32 +1182,15 @@ create NAMEBUF NAME-CAP allot
    0= if false exit then
    id 1 OPERAND-AT IMM-FOLD? ;
 
-: OP-USES ( IR-ID:ir-value-id IR-ID:ir-op-id -- n )
-   {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id :}
-   0
-   id OPERANDS-OF 0 ?do
-      id i OPERAND-AT v SAME-VALUE? if 1+ then
-   loop ;
-
 : OP-FOLDS ( IR-ID:ir-value-id IR-ID:ir-op-id -- n )
    {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id :}
    id FOLDS-OPERAND1? 0= if 0 exit then
    id 1 OPERAND-AT v SAME-VALUE? if 1 else 0 then ;
 
-: BLOCK-USES ( IR-ID:ir-value-id IR-ID:ir-block-id -- n )
-   {: v:IR-ID:ir-value-id bk:IR-ID:ir-block-id :}
-   0
-   bk OP-COUNT 0 ?do  v bk i OP-AT OP-USES  +  loop ;
-
 : BLOCK-FOLDS ( IR-ID:ir-value-id IR-ID:ir-block-id -- n )
    {: v:IR-ID:ir-value-id bk:IR-ID:ir-block-id :}
    0
    bk OP-COUNT 0 ?do  v bk i OP-AT OP-FOLDS  +  loop ;
-
-: VALUE-USES ( IR-ID:ir-value-id -- n )
-   {: v:IR-ID:ir-value-id :}
-   0
-   FUN BLOCK-COUNT 0 ?do  v FUN i BLOCK-AT BLOCK-USES  +  loop ;
 
 : VALUE-FOLDS ( IR-ID:ir-value-id -- n )
    {: v:IR-ID:ir-value-id :}

@@ -8,8 +8,10 @@
 \ three-register add. Every such operation therefore declares a TIE between its
 \ result and the operand it destroys (src/compiler/ir/schema.f ADD-TIE), which is
 \ the constraint a register allocator reads rather than a rule it must know per
-\ opcode. The selector never has to insert the copy itself: a tie the allocator
-\ cannot satisfy is a copy the allocator inserts. Where ARM64 has `madd`, this
+\ opcode. The allocator REFUSES a tie whose ends cannot share a register rather
+\ than repairing it, so the selector is what makes a tie satisfiable: it copies
+\ the operand a form is about to destroy whenever another use reads it
+\ (select-x64.f, "selecting the arithmetic"). Where ARM64 has `madd`, this
 \ machine has nothing: `imul rd, rs` is the tied form and an addend is a second
 \ operation.
 \
