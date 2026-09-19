@@ -16,7 +16,7 @@ package IMAGE-DUMP-TEST
 
 $4000 constant IDT-CAP
 60000 constant IDT-TIMEOUT-MS       \ includes checked compilation of imgdump
-\ FIND-DICT's longest-run scan over a real multi-MB baked engine (IDT-RUN-PC-SELF)
+\ FIND-DICT's longest-run scan over a real multi-MB baked engine (IDT-TEST-BAKED-PC)
 \ does far more work than a scan of the tiny synthetic images above, on top of
 \ the same checked compilation; give it its own, larger budget.
 240000 constant IDT-SELF-TIMEOUT-MS
@@ -206,17 +206,6 @@ variable IDT-DECOY-U
    s" bin/hb" >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
-\ Asks imgdump about bin/hb itself: a real baked engine with no snapshot
-\ trailer, so this is the only fixture above that exercises NO-SNAP-XTBASE
-\ against a genuine image rather than a synthetic one.
-: IDT-RUN-PC-SELF ( ptr u8 n -- n n n ) {: a:ptr u:n :}
-   IDT-ARGV-BASE
-   s" --pc" IDT-ARG+
-   s" bin/hb" IDT-ARG+
-   a u IDT-ARG+
-   s" bin/hb" >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
-   IDT-SELF-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
-
 \ Source for the child that pins PRN?'s read bound. MEM-ALLOC-GUARDED keeps an
 \ inaccessible page past the capacity it hands back, so a span that starts on
 \ the last readable byte and declares a whole page of name has exactly one byte
@@ -251,24 +240,14 @@ variable IDT-DECOY-U
 \ The whole line --pc must print for that word, in imgdump's own $hex spelling:
 \ the start column is the xt that was asked for and the third is the code span
 \ length, not the span's end address.
-: IDT-PC-LINE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+: IDT-PC-LINE+ ( ptr u8 n -- ) {: a:ptr u :}
    a u IDT-REC {: r:ptr :}
-   SB-RESET
    a u SB-APPEND
    32 SB-APPEND-C
    r XREF-START IMAGE-DUMP:HEX$ SB-APPEND
    32 SB-APPEND-C
    r XREF-CODE-BYTES IMAGE-DUMP:HEX$ SB-APPEND
-   10 SB-APPEND-C
-   SB$ ;
-
-: IDT-SELF-PC ( ptr u8 n -- ) {: a:ptr u :}
-   a u IDT-XT$ IDT-RUN-PC-SELF
-   a u IDT-PC-LINE$
-   {: outu erru rcv e:ptr eu :}
-   rcv 0 T=
-   erru 0 T=
-   IDT-OUT outu e eu STR= TTRUE ;
+   10 SB-APPEND-C ;
 
 : IDT-TEST-DUMP ( -- )
    s" imgdump single image" T-LABEL
@@ -335,10 +314,38 @@ variable IDT-DECOY-U
 \ made every record's window reach to the end of __text so the first one
 \ answered nearly any pc. `+` is that first record; `evaluate` is not.
 : IDT-TEST-BAKED-PC ( -- )
-   s" imgdump --pc on bin/hb itself (baked, no snapshot)" T-LABEL
-   s" +" IDT-SELF-PC
-   s" imgdump --pc past the first dict record" T-LABEL
-   s" evaluate" IDT-SELF-PC ;
+   s" imgdump --pc batches addresses on bin/hb itself" T-LABEL
+   IDT-ARGV-BASE
+   s" --pc" IDT-ARG+ s" bin/hb" IDT-ARG+
+   s" +" IDT-XT$ IDT-ARG+
+   s" evaluate" IDT-XT$ IDT-ARG+
+   s" bin/hb" >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   IDT-SELF-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N 0 T=
+   {: outu:n erru:n :}
+   erru 0 T=
+   SB-RESET s" +" IDT-PC-LINE+ s" evaluate" IDT-PC-LINE+
+   IDT-OUT outu SB$ T$= ;
+
+: IDT-TEST-NAMESPACE ( -- )
+   s" imgdump namespace WIDs are not code addresses" T-LABEL
+   IDT-IMG-BYTES IDT-ZERO
+   IMAGE-DUMP:ELF-ET-EXEC IDT-WRITE-ELF-HDR
+   $100000000 IDT-IMG IMAGE-DUMP:ELF-ENTRY-OFF + !
+   IDT-HDR-BYTES 17 6 1 78 IDT-REC-AT
+   XREF-NAMESPACE-WL IDT-IMG IDT-HDR-BYTES + 40 + !
+   IDT-A$ IDT-IMG IDT-IMG-BYTES WRITE-ALL
+   IDT-A$ IDT-RUN-1 0 T=
+   {: outu:n erru:n :}
+   erru 0 T=
+   IDT-OUT outu S\" N $11 $17\n" T$=
+   \ Zero roles remain valid records in the same run as a following word.
+   IDT-HDR-BYTES 0 0 1 78 IDT-REC-AT
+   IDT-HDR-BYTES DREC + $100 $0c 1 65 IDT-REC-AT
+   IDT-A$ IDT-IMG IDT-IMG-BYTES DREC + WRITE-ALL
+   IDT-A$ IDT-RUN-1 0 T=
+   {: outu:n erru:n :}
+   erru 0 T=
+   IDT-OUT outu S\" N $0 $0\nA $100000100 $c\n" T$= ;
 
 \ A no-trailer image whose base is not file-derivable must refuse by name
 \ instead of guessing one.
@@ -411,6 +418,7 @@ variable IDT-DECOY-U
    IDT-TEST-BAKED-PC
    IDT-TEST-NO-BASE-REFUSES
    IDT-TEST-NON-ELF-REFUSES
+   IDT-TEST-NAMESPACE
    CLEANUP-RUN
    T-REPORT
    s" imgdump-test: ok" type cr ;

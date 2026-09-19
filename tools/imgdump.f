@@ -1,8 +1,9 @@
 \ imgdump.f — habu image inspector, in habu.
 \ Run: bin/hb --load tools/imgdump.f -- <image> [image2]
 \ Reads the image path argument, locates the snapshot trailer, maps the live region
-\ payload, and prints one line per word: name $start $len. With two images,
-\ compares name+length first, then reports offset-only shifts.
+\ payload, and prints one line per word: name $start $len (namespace rows
+\ carry public/private WIDs instead). --pc accepts one or more addresses.
+\ With two images, compares name+length first, then reports offset-only shifts.
 \ Loads the target executable layout on demand; common dictionary layout is
 \ already present in the native cold prefix.
 
@@ -68,7 +69,7 @@ TRUSTED: IMG-MMAP-PTR ( n -- ptr u8 )
    dup 0 < IF IFD @ close s" imgdump: mmap failed" 74 die THEN ;
 
 : IMG-USAGE ( -- )
-   s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc | --wid image name | --data image off" 64 die ;
+   s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc [pc ...] | --wid image name | --data image off" 64 die ;
 
 : IMG-PATH$ ( -- ptr u8 n )
    SCRIPT-ARGC 1 < if IMG-USAGE then
@@ -130,8 +131,6 @@ private
    p 5 + c@ 40 lshift or
    p 6 + c@ 48 lshift or
    p 7 + c@ 56 lshift or ;
-: E-S {: o :} ( n -- n )
-   o I@  HAS-SNAP @ 0= if XTBASE @ + then ;
 : E-E {: o :} ( n -- n )
    o 8 + I@ ;
 : E-F {: o :} ( n -- n )
@@ -144,6 +143,9 @@ private
 \ one and its slot 1 is reported as stored.
 : E-CODE? {: o :} ( n -- bool )
    o E-WID XREF-NAMESPACE-WL <> ;
+
+: E-S {: o :} ( n -- n )
+   o I@  HAS-SNAP @ 0= o E-CODE? and if XTBASE @ + then ;
 
 \ Dictionary slot 1 carries a different quantity in each image class: a
 \ snapshot stores the live CODE-SPAN raw length, a baked no-trailer image the
@@ -233,9 +235,14 @@ private
 \ engines walks over, and refusing it reported a shipped format as a broken
 \ file. A name length is a record field, not a plausibility test.
 : ENT? {: o :} ( n -- bool )
-   o E-S 0 <= if IMG-FALSE exit then
+   o E-CODE? if
+      o E-S 0 <= if IMG-FALSE exit then
+      HAS-SNAP @ if o E-S PTR>OFF 0 < if IMG-FALSE exit then then
+   else
+      \ Namespace roles may be zero and are never code pointers.
+      o E-S 0 < if IMG-FALSE exit then
+   then
    o E-E 0 < if IMG-FALSE exit then                 \ the raw field, never the rebased span
-   HAS-SNAP @ if o E-S PTR>OFF 0 < if IMG-FALSE exit then then
    o E-L 0 < if IMG-FALSE exit then
    o E-NAME-OFF dup 0 < if drop 0 0= 0= exit then
    dup o E-L + IL @ > if drop 0 0= 0= exit then
@@ -509,15 +516,15 @@ private
    0 SCRIPT-ARGV$ READ-IMG-PATH PREP-IMG CAPTURE-A
    1 SCRIPT-ARGV$ READ-IMG-PATH PREP-IMG COMPARE-B REPORT-COMPARE ;
 
-: PC-ARG ( -- n )
-   2 SCRIPT-ARGV$ IMG>NUMBER? MATCH option
+: PC-ARG ( n -- n )
+   SCRIPT-ARGV$ IMG>NUMBER? MATCH option
      none OF IMG-USAGE ENDOF
      some OF ENDOF
    ;MATCH ;
 
 : PC-IMG ( -- )
    1 SCRIPT-ARGV$ READ-IMG-PATH PREP-IMG
-   PC-ARG PC>DICT ;
+   SCRIPT-ARGC 2 ?do i PC-ARG PC>DICT loop ;
 
 : WID-IMG ( -- )
    1 SCRIPT-ARGV$ READ-IMG-PATH PREP-IMG
@@ -550,7 +557,7 @@ private
    s" data " type TDATA @ h. cr ;
 
 : MAIN ( -- )
-   SCRIPT-ARGC 3 = if 0 SCRIPT-ARGV$ s" --pc" CORE-STR= if PC-IMG exit then then
+   SCRIPT-ARGC 3 >= if 0 SCRIPT-ARGV$ s" --pc" CORE-STR= if PC-IMG exit then then
    SCRIPT-ARGC 3 = if 0 SCRIPT-ARGV$ s" --wid" CORE-STR= if WID-IMG exit then then
    SCRIPT-ARGC 3 = if 0 SCRIPT-ARGV$ s" --data" CORE-STR= if DATA-IMG exit then then
    SCRIPT-ARGC 2 = if 0 SCRIPT-ARGV$ s" --snap" CORE-STR= if SNAP-INFO exit then then
