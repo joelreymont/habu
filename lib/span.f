@@ -162,8 +162,11 @@ CAST: SPAN-ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
 
 public
 
+: ALLOCATION>SPAN ( ptr u8 NUM:alloc-byte-len -- SPAN:span<u8> )
+   SPAN-ALLOC-LEN>N SPAN:MAKE ;
+
 : ALLOC-SPAN ( NUM:alloc-byte-len -- SPAN:span<u8> )
-   MEM:ALLOC-BYTES SPAN-ALLOC-LEN>N SPAN:MAKE ;
+   MEM:ALLOC-BYTES ALLOCATION>SPAN ;
 
 : FREE-SPAN ( SPAN:span<u8> -- )
    SPAN:$ MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;

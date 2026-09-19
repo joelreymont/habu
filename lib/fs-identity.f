@@ -82,15 +82,15 @@ TRUSTED: ERRNO-CALL ( n -- ptr u8 ) >r ARGS REG-LENS 0 r> ffi-call-bounded ;
 
 
 : COMPARE-IDENTITIES ( ptr u8 n ptr u8 n ptr u8 NUM:alloc-byte-len -- bool )
-   drop {: left left-bytes:n right right-bytes:n buffer :}
+   ALLOCATION>SPAN {: left left-bytes:n right right-bytes:n work :}
    STAT-SYMBOL ERRNO-SYMBOL {: stat-fn:n errno-fn:n :}
-   left left-bytes  buffer WORK-BYTES SPAN:MAKE  stat-fn errno-fn IDENTITY {: left-device:n left-inode:n left-exists:bool :}
-   right right-bytes  buffer WORK-BYTES SPAN:MAKE  stat-fn errno-fn IDENTITY {: right-device:n right-inode:n right-exists:bool :}
+   left left-bytes work stat-fn errno-fn IDENTITY {: left-device:n left-inode:n left-exists:bool :}
+   right right-bytes work stat-fn errno-fn IDENTITY {: right-device:n right-inode:n right-exists:bool :}
    left-exists right-exists and left-device right-device = and left-inode right-inode = and ;
 
 public
 \ WITH-BYTES hands the quotation exactly the WORK-BYTES mapping it allocated
-\ here, which is the reach COMPARE-IDENTITIES mints over.
+\ here; ALLOCATION>SPAN preserves that producer's base and reach together.
 : SAMEFILE ( ptr u8 n ptr u8 n -- bool )
    WORK-BYTES BYTES-ALLOC-LEN [: COMPARE-IDENTITIES ;] WITH-BYTES ;
 

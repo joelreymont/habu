@@ -140,7 +140,15 @@ private
    [: ST-BUF SPAN:$ drop -1 SPAN:MAKE SPAN:LEN drop ;] E-SPAN-LENGTH TTHROWS ;
 
 \ ---- allocated spans ----------------------------------------------------------
+: T-ALLOCATION ( ptr u8 NUM:alloc-byte-len -- ) {: base:ptr bytes :}
+   base bytes MEM:ALLOCATION>SPAN {: s :}
+   s SPAN:LEN 37 T=
+   s SPAN:$ drop base = TTRUE
+   65 s 36 SPAN:U8!
+   base 36 + c@ 65 T= ;
+
 : T-ALLOC ( -- )
+   37 MEM:BYTES-ALLOC-LEN [: T-ALLOCATION ;] MEM:WITH-BYTES
    128 MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: s :}
    s SPAN:LEN 128 T=
    s 127 SPAN:U8@ 0 T=

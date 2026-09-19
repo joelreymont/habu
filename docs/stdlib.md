@@ -569,6 +569,7 @@ SPAN:FILL     ( u8 SPAN:span<u8> -- )
 n SPAN-BUFFER: NAME       \ NAME ( -- SPAN:span<u8> ), n bytes of static storage
 n SPAN-CELLS:  NAME       \ NAME ( -- SPAN:span<cell> ), n cells of static storage
 MEM:ALLOC-SPAN ( NUM:alloc-byte-len -- SPAN:span<u8> )
+MEM:ALLOCATION>SPAN ( ptr u8 NUM:alloc-byte-len -- SPAN:span<u8> )
 MEM:FREE-SPAN  ( SPAN:span<u8> -- )
 ```
 
@@ -579,6 +580,8 @@ stays the string idiom — it already carries its length — and `SPAN:COPY` tak
 exactly that pair as its source. `MEM:ALLOC-SPAN` and `MEM:FREE-SPAN` reopen
 package `MEM` from `lib/span.f`, because `lib/memory.f` is a boot-prefix file and
 must not depend on this one.
+`MEM:ALLOCATION>SPAN` preserves the base and reach handed to a `MEM:WITH-BYTES`
+body; the scope retains ownership and releases the allocation after the body.
 
 ## String
 
