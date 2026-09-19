@@ -64,6 +64,10 @@ SUITE imgdump-compare
    tools/imgdump-test.f
 ;SUITE
 
+SUITE engine-size-fixtures
+   tools/engine-size-test.f
+;SUITE
+
 SUITE imagedisasm-tool
    tools/imagedisasm-test.f
 ;SUITE
