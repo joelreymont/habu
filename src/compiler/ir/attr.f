@@ -319,6 +319,7 @@ $8000000000000000 constant INT-MIN
       a32     OF 2 ENDOF
       thumb2  OF 3 ENDOF
       c66x    OF 4 ENDOF
+      x86-64  OF 5 ENDOF
    ;MATCH ;
 
 : ABI-CODE ( CTARGET:abi -- n )
@@ -328,6 +329,7 @@ $8000000000000000 constant INT-MIN
       ptx-kernel     OF 2 ENDOF
       aapcs32       OF 3 ENDOF
       c6000-eabi    OF 4 ENDOF
+      sysv-amd64-linux OF 5 ENDOF
    ;MATCH ;
 
 : ENDN-CODE ( CTARGET:endian -- n )
