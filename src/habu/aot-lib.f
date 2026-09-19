@@ -109,21 +109,28 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
 \ EM-DATA-INIT publishes them for the engine out of these same three registers.
 \ They sit below DATA-START, so EMIT-DATA-COPY's restore cannot reach them.
 \ An ENTRY-XT claim gets the address of the word this image starts, which is the
-\ label the root call below branches to, taken with ADR into x11 rather than x9:
+\ label the root call below branches to, and a TEXT-BASE claim this image's own
+\ code base (LTEXT, the label at text offset zero - the value the engine's entry
+\ stores with EM-DATA-INIT). Both travel with ADR into x11 rather than x9:
 \ test/gate-aot-image.f finds the DATA restore by its ADR x9 and admits exactly
 \ one in the startup, the same reason G-INSTALL-CRASH's address travels in x11.
+: OWNED-PUBLISHED? ( n -- bool ) {: k:n :}
+   k AOT-OWNED:IMAGE-BASE?  k AOT-OWNED:ENTRY-XT? or  k AOT-OWNED:TEXT-BASE? or ;
 : EMIT-OWNED-CELLS ( -- )
    13 DATA ARGC-CELL STR,  14 DATA ARGV-CELL STR,  15 DATA ENVP-CELL STR,
    AOT-OWNED:N 0 ?do
-      i AOT-OWNED:IMAGE-BASE? i AOT-OWNED:ENTRY-XT? or IF
+      i OWNED-PUBLISHED? IF
          9 i AOT-OWNED:AT DATA-VA VA>N - LIT64,   \ x9 = the cell's DATA offset
          9 DATA 9 ADD,                            \ ... the cell itself
          i AOT-OWNED:ENTRY-XT? IF
             11 MLBL LABEL@ ADR,                   \ x11 = this image's entry word
             11 9 0 STR,                           \ *cell = the entry it starts at
+         ELSE i AOT-OWNED:TEXT-BASE? IF
+            11 LTEXT LABEL@ ADR,                  \ x11 = this image's code base
+            11 9 0 STR,                           \ *cell = the text base `rbase` answers
          ELSE
             DATA 9 0 STR,                         \ *cell = x20, this image's DATA base
-         THEN
+         THEN THEN
       THEN
    loop ;
 
@@ -443,9 +450,20 @@ variable BDELTA  variable TNEW
       CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
 : MAP-TARGET {: i:n t:ptr :} ( n ptr u8 -- n )
    i t MAP-IN-MEMBER dup -1 <> IF EXIT THEN drop  t OLD>NEW ;
+\ A TARGET THE COMPACTED IMAGE HAS NO ADDRESS FOR NAMES ITSELF. The member being
+\ relocated is the site, so its record is the word to edit; the target is the
+\ address the closure walk never reached, and the word that owns it - when the
+\ building dictionary still knows one - says what was not carried. Without those
+\ three facts the refusal is a bare sentence and the next case costs a bisection.
 : MAP-TARGET! {: i:n t:ptr :} ( n ptr u8 -- )
    i t MAP-TARGET TNEW !
-   TNEW @ -1 = IF s" aot: PC-relative target removed or outside closure" 74 die THEN ;
+   TNEW @ -1 = IF
+      s" aot: PC-relative target removed or outside closure site=" AETXT
+      i CLO-REC@ AEREC-TXT
+      s"  target=" AETXT t CODE-N AEJNUM
+      s"  target-word=" AETXT t CODE-N ADDRESS-OWNER AEREC-TXT
+      10 AE1
+      s" " 74 die THEN ;
 : BTGT19 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
    p  w 5 19 BITS 19 SX 4 * + ;
 : BTGT14 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )

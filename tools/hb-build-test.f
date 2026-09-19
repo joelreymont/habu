@@ -237,6 +237,19 @@ create HBT-EXP-HEX2 64 allot
 : HBT-AOT-DOES-SRC$ ( -- ptr u8 n )
    S\" package HBT-DOES\n: LOADING ( -- ) tier@ 1 <> if -9070 throw then ;\nLOADING\n: SLOT: ( -- ) create 0 , does> ( -- ptr n ) ;\nSLOT: S1\npublic\n: RUN ( -- ) 42 S1 ! S1 @ dup . cr 42 <> if -9071 throw then ;\n;package\n: MAIN ( -- ) HBT-DOES:RUN ;\n" ;
 
+\ ONE FOREIGN CALL IN A STRIPPED IMAGE. The declarer's generated word reaches
+\ package FFI's staged call, which resolves `getpid` through the loader at the
+\ FIRST CALL - in the image's own process, never the builder's - so the program
+\ prints 1 only if the image carried everything that resolution needs: the FFI
+\ table, in the program's own DATA window; the loader's two GOT slots, which
+\ src/os/linux/elf.f relocates in every image it writes; and the engine's
+\ text-base cell, which src/os/linux/layout.f locates those slots from and
+\ src/habu/aot-owned-cells.f claims TEXT-BASE. Left at the fresh mapping's zero
+\ that cell made this program build without a word of complaint and take SIGSEGV
+\ inside DLSYM-SLOT's `@`.
+: HBT-AOT-FFI-SRC$ ( -- ptr u8 n )
+   S\" require lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: GETPID-CALL getpid ( -- n ) ;FUNCTION\n: MAIN ( -- ) GETPID-CALL 0 > if 1 else 0 then . cr ;\n" ;
+
 : HBT-LARGE-AOT-SRC$ ( -- ptr u8 n )
    s" variable SLOT 9 SLOT ! : MAIN ( -- ) SLOT @ . cr ;" ;
 
@@ -1141,6 +1154,18 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    BF-TMP-RESET ;
 
+: BUILD-AOT-FFI ( -- )
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-AOT-SRC HBT-AOT-FFI-SRC$ WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBB-BUILD
+   S\" 1\n\n" HBT-RUN-AOT-PRINTS
+   HBT-REMOVE-ARTIFACT
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   BF-TMP-RESET ;
+
 : BUILD-AOT-PRESEED ( -- )
    HBT-AOT-SRC s" : ALTERNATE ( n n -- ) 42 <> if -9042 throw then 10 <> if -9043 throw then ; : MAIN ( -- ) -9044 throw ;" WRITE-ALL
    HBT-REMOVE-AOT-OUT
@@ -1362,6 +1387,7 @@ public
    BUILD-REPL-SPAN
    BUILD-AOT-SPAN
    BUILD-AOT-DOES-EMPTY
+   BUILD-AOT-FFI
    HBT-SIZE-AOT
    BUILD-AOT-PRESEED
    HBT-AOT-JIT-REJECT

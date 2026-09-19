@@ -47,9 +47,9 @@ create OFFS MAX-CELLS cells allot
 create KINDS MAX-CELLS cells allot
 variable COUNT
 
-\ FRESH is 0, IMAGE-BASE is 1 and ENTRY-XT is 2. The kind is stored because it is
-\ what the entry emitter switches on; deriving it back from the cell would be a
-\ second answer.
+\ FRESH is 0, IMAGE-BASE is 1, ENTRY-XT is 2 and TEXT-BASE is 3. The kind is
+\ stored because it is what the entry emitter switches on; deriving it back from
+\ the cell would be a second answer.
 \
 \ A claim records the cell as a DATA ADDRESS IN THE LINKER'S INTEGER DOMAIN - the
 \ domain BLOB-SRC/BLOB-END and every recorded chain value live in
@@ -79,10 +79,16 @@ public
 \ has no entry record to store it, so the entry does it for itself.
 : ENTRY-XT ( ptr a -- ) 2 CLAIM ;
 
+\ The entry publishes this image's own text CONTENT base in the cell - the value
+\ the engine's own entry stores there (src/habu/habu2.f EM-DATA-INIT), which is
+\ the address of the image's first instruction.
+: TEXT-BASE ( ptr a -- ) 3 CLAIM ;
+
 : N ( -- n ) COUNT @ ;
 : AT ( n -- n ) cells OFFS + @ ;
 : IMAGE-BASE? ( n -- bool ) cells KINDS + @ 1 = ;
 : ENTRY-XT? ( n -- bool ) cells KINDS + @ 2 = ;
+: TEXT-BASE? ( n -- bool ) cells KINDS + @ 3 = ;
 
 private
 
@@ -119,6 +125,24 @@ private
 \ meaning. Left at the mapping's zero the image answered the engine's source-list
 \ convention and reported its SECOND argument as argument 0.
 \
+\ RBASE-CELL (src/habu/layout.f) is the live text CONTENT base - the address of
+\ the image's first instruction, which the engine's own entry stores at boot
+\ (src/habu/habu2.f EM-DATA-INIT) and the `rbase` primitive reads back. It is a
+\ runtime input exactly as argv is: one process's text base is no other's. NO
+\ CODE SPELLS THE CELL'S ADDRESS, so neither the closure walk's address scan nor
+\ the window's cell scan can reach it - `rbase` compiles inline as an
+\ x20-relative load - and an image that left it at the mapping's zero was built
+\ without a word of complaint and crashed when it ran.
+\
+\ EVERY FOREIGN CALL IN A STRIPPED IMAGE GOES THROUGH IT. src/os/linux/layout.f
+\ DLOPEN-SLOT/DLSYM-SLOT locate the loader's two GOT slots as rbase - CODE-OFF +
+\ the text size in the image header + the slot offset, and the image carries
+\ those slots: src/os/linux/elf.f emits a dlopen and a dlsym R_AARCH64_GLOB_DAT
+\ for them in every image it writes. With the cell at zero, the getpid reduction
+\ (`FUNCTION: GETPID-CALL getpid ( -- n ) ;FUNCTION`) read address -$FA0 and took
+\ SIGSEGV inside DLSYM-SLOT's `@`; with the cell published the same image
+\ resolves the symbol and runs.
+\
 \ NOT ON THE LIST, and refused as loudly as before, is every other engine cell
 \ below the window. src/os/env-base.f's own TMP-PATH cursors and buffer (TPB, TPP,
 \ TPQ, TPS, TPU) are the nearest miss: same file, same transient character, no
@@ -134,7 +158,8 @@ private
    ENV-QU FRESH
    [: FRESH ;] DYNAMIC-STORAGE:OWNED-CELLS
    [: FRESH ;] MEM:OWNED-CELLS
-   data-base APP-ENTRY:XT-CELL + ENTRY-XT ;
+   data-base APP-ENTRY:XT-CELL + ENTRY-XT
+   data-base RBASE-CELL + TEXT-BASE ;
 
 LIST
 ;package

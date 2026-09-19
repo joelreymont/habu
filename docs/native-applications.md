@@ -121,11 +121,13 @@ in. Each entry declares how the entry initialises it:
 | `ENV-Z`, `ENV-A`, `ENV-U`, `ENV-QA`, `ENV-QU` | `src/os/env-base.f` | fresh | nothing: they are `GETENV`/`ENV=?` cursors, written from the caller's arguments before they are read, and the fresh mapping's zero is their correct start |
 | the registry head, count and lock | `src/core/dynamic-storage.f` | fresh | nothing: a runtime instance with no mapping, no members and an open lock is correct, and that is the zero a fresh anonymous mapping holds |
 | the `WITH-BYTES` scope stack | `lib/memory.f` | fresh | nothing: depth zero with no cached mapping is the same fresh state |
+| `RBASE-CELL` | `src/habu/layout.f` | text base | the entry stores this image's own text content base — the address of its first instruction — which `rbase` answers and the engine's own entry writes at boot |
 
 A **fresh** claim emits no instruction at all — `EMIT-DATA-REGION-MAP` has just
 mapped DATA anonymously, so the cell already holds the zero the claim declares
-correct. An **image-base** claim gets one store of `x20`, and an **entry-xt**
-claim one store of the entry root's own address. Both readers work from
+correct. An **image-base** claim gets one store of `x20`, an **entry-xt** claim
+one store of the entry root's own address, and a **text-base** claim one store
+of the image's own code base. Both readers work from
 that one table: `src/habu/aot-lib.f EMIT-OWNED-CELLS` emits what each claim
 declares, and `src/habu/aot-closure.f OWNED-CELL?` admits exactly the same
 addresses, so the entry and the walker cannot disagree about a cell.
@@ -153,6 +155,19 @@ Every other engine cell is refused as loudly as before — `env-base.f`'s own
 claim, so a stripped program calling `TMP-PATH` still gets *outside the restored
 span*, naming `TPU` (`HBT-STRIPPED-UNOWNED-CELL`). Adding a cell to the list is
 a deliberate act that has to state, cell by cell, why the entry may own it.
+
+**A stripped image can call a foreign function.** A `FUNCTION:` declaration
+resolves its symbol at the *first call*, so no address the builder resolved ever
+travels; what the image has to carry is the declaration's data and the loader's
+own entry points — the FFI table, which is in the program's DATA window because
+`lib/ffi-abi.f` is a library the program requires; the two GOT slots
+`src/os/linux/elf.f` relocates (`dlopen`, `dlsym`) in every image it writes; and
+the text-base cell those slots are located from, since `src/os/linux/layout.f
+DLSYM-SLOT` reads `rbase - CODE-OFF + the image's text size + $B8`. With that
+cell left at the mapping's zero the slot address came out as -$FA0 and the image
+took SIGSEGV where it should have called; the claim above is what carries it.
+`tools/hb-build-test.f BUILD-AOT-FFI` builds a stripped image whose `MAIN` calls
+`getpid` through the declarer and holds it to its output.
 
 A stripped image restores the program's own DATA window byte for byte, so a
 persistent cell arrives holding whatever the BUILD process put there. For a cell
