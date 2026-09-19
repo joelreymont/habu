@@ -2,7 +2,7 @@ name: Intel host bootstrap experiment
 
 on:
   push:
-    branches: [experiment/intel-bootstrap-20260919]
+    branches: [experiment/intel-bootstrap-20260919, experiment/x86-native-20260919]
     paths:
       - .github/workflows/intel-bootstrap-experiment.yml
       - .github/patches/intel-hosted-recovery.patch
@@ -81,6 +81,10 @@ jobs:
           grep -Fq 'wrong-effect' "$evidence/reject.stderr"
           run_case guard 83 'GUARD-ARMED'
           ! grep -Fq 'GUARD-LEAKED' "$evidence/guard.stdout"
+          timeout --kill-after=5s 180s qemu-aarch64-static -L /usr/aarch64-linux-gnu "$HB_TMP/hb-aarch64-recovery" --load test/compiler/x86-64-asm.f </dev/null >"$evidence/x86-asm.stdout" 2>"$evidence/x86-asm.stderr"
+          grep -Fq 'test: ok' "$evidence/x86-asm.stdout"
+          timeout --kill-after=5s 180s qemu-aarch64-static -L /usr/aarch64-linux-gnu "$HB_TMP/hb-aarch64-recovery" --load test/compiler/x86-64-target.f </dev/null >"$evidence/x86-target.stdout" 2>"$evidence/x86-target.stderr"
+          grep -Fq 'test: ok' "$evidence/x86-target.stdout"
           printf ': STDIN-CHECK ( n -- n ) 1 + ;\n41 STDIN-CHECK . cr\n' > "$HB_TMP/stdin.f"
           timeout --kill-after=5s 180s qemu-aarch64-static -L /usr/aarch64-linux-gnu "$HB_TMP/hb-aarch64-recovery" < "$HB_TMP/stdin.f" > "$evidence/stdin.stdout" 2> "$evidence/stdin.stderr"
           grep -Eq '(^|[[:space:]])42([[:space:]]|$)' "$evidence/stdin.stdout"
