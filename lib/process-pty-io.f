@@ -37,6 +37,7 @@
 require lib/process-pty-handle.f
 require lib/process-fork.f
 require lib/process-argv.f
+require lib/process.f
 require lib/pty.f
 require lib/prelude.f
 
@@ -54,7 +55,6 @@ $7F constant IO-EXEC-FAIL          \ child exit code when execve never replaces 
 \ fork copies this memory, so a child reads the same values the parent stored).
 create IO-PATH-BUF IO-PATH-CAP allot   \ supervised executable path bytes (child reads)
 1 TYPED-BUFFER IO-ENVP ptr u8          \ single NULL slot: the empty child environment
-create IO-POLL 1 cells allot           \ one pollfd for AWAIT
 create IO-GOBYTE 1 allot               \ the one-byte release token written by LAUNCH
 create IO-GO SLOT-CAP cells allot       \ per-slot release-gate write end, indexed by slot
 create IO-PTY-NAME PTY:SLAVE-PATH-CAP allot \ slave path (NUL-terminated)
@@ -114,20 +114,15 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
    E-PROC-OUTPUT throw ;
 
 \ ---- poll one watch descriptor ----------------------------------------------
-: IO-PFD! ( fd n -- ) {: wfd:fd events:n :}
-   events 32 lshift wfd FD>N $FFFFFFFF and or IO-POLL ! ;
-
-: IO-PFD-REVENTS ( -- n )
-   IO-POLL @ 48 rshift $FFFF and ;
-
 \ True only when the descriptor reports a clean readable exit; a POLLERR/POLLNVAL
 \ revent means the descriptor is broken and must not masquerade as an exit.
 : IO-POLL-READY? ( fd n -- bool ) {: wfd:fd ms:n :}
-   wfd POLLIN IO-PFD!
-   IO-POLL 1 ms poll {: rc:n :}
+   ms >MS PROC-DEADLINE-AT {: deadline:n :}
+   wfd POLLIN PROC-PFD!
+   1 ms deadline PROC-POLL-RESTART {: rc:n :}
    rc 0 < if E-PROC-OUTPUT throw then
    rc 0= if false exit then
-   IO-PFD-REVENTS {: ev:n :}
+   0 >IDX PROC-PFD-REVENTS {: ev:n :}
    ev POLLERR POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
    ev POLLIN and 0 <> ;
 
@@ -343,11 +338,12 @@ public
 : AWAIT-BYTES ( process-pty-handle ptr u8 n n -- process-pty-handle n ) {: buf:ptr cap:n ms:n :}
    cap 0 <= if E-PROC-OUTPUT throw then
    HANDLE-MASTER@ {: m:fd :}
-   m POLLIN IO-PFD!
-   IO-POLL 1 ms poll {: rc:n :}
+   ms >MS PROC-DEADLINE-AT {: deadline:n :}
+   m POLLIN PROC-PFD!
+   1 ms deadline PROC-POLL-RESTART {: rc:n :}
    rc 0 < if E-PROC-OUTPUT throw then
    rc 0= if 0 exit then
-   IO-PFD-REVENTS {: ev:n :}
+   0 >IDX PROC-PFD-REVENTS {: ev:n :}
    ev POLLNVAL and 0 <> if E-PROC-OUTPUT throw then
    ev POLLIN and 0 <> if
       m FD>N buf cap read {: got:n :}

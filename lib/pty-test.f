@@ -21,6 +21,15 @@ create BUF 32 allot
    SLAVE 9 s" /dev/pts/" STR= TTRUE
    u SLAVE-FD {: s:n :}
    s 0 >= TTRUE
+   s" an interrupted empty read waits out its original deadline" T-LABEL
+   1000 prof-rate 1000000 prof-on
+   mono-ns {: started:n :}
+   m BUF 32 100 >MS PTY:READ {: quiet:n :}
+   mono-ns started - {: elapsed:n :}
+   prof-off
+   quiet 0 T=
+   elapsed 90000000 >= TTRUE
+   elapsed 1000000000 < TTRUE
    s" bytes written at the slave arrive at the master" T-LABEL
    s s" pong" write 4 T=
    m BUF 32 2000 >MS PTY:READ 4 T=

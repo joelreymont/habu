@@ -17,6 +17,7 @@
 require lib/errors.f
 require lib/type/deftype.f
 require lib/fs.f
+require lib/process.f
 
 package PTY
 public
@@ -36,7 +37,6 @@ $80 constant SLAVE-PATH-CAP             \ Darwin's TIOCPTYGNAME answer, NUL incl
 
 private
 
-1 constant POLLIN
 $40045431 constant LINUX-TIOCSPTLCK
 $80045430 constant LINUX-TIOCGPTN
 $20007454 constant MACOS-TIOCPTYGRANT
@@ -44,12 +44,7 @@ $20007452 constant MACOS-TIOCPTYUNLK
 $40807453 constant MACOS-TIOCPTYGNAME
 create LOCK 1 cells allot
 create NUMBER 1 cells allot
-create POLLFD 8 allot
 variable WRITTEN
-
-: W32! ( n ptr u8 -- ) {: value:n dst :}
-   value $FF and dst c! value 8 rshift $FF and dst 1 + c!
-   value 16 rshift $FF and dst 2 + c! value 24 rshift $FF and dst 3 + c! ;
 
 : DIGIT-COUNT ( n -- n )
    1 swap begin 10 / dup 0 > while swap 1+ swap repeat drop ;
@@ -122,8 +117,9 @@ public
 
 \ One chunk after at most ms of waiting; zero means nothing arrived in time.
 : READ ( master ptr u8 n ms -- n ) {: m:master bytes cap:n timeout:ms :}
-   m MASTER>N POLLFD W32! POLLIN POLLFD 4 + W32!
-   POLLFD 1 timeout MS>N poll {: ready:n :}
+   timeout PROC-DEADLINE-AT {: deadline:n :}
+   m MASTER>N >FD POLLIN PROC-PFD!
+   1 timeout MS>N deadline PROC-POLL-RESTART {: ready:n :}
    ready 0 < if E-IO throw then
    ready 0= if 0 exit then
    m MASTER>N bytes cap read {: got:n :}

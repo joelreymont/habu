@@ -33,6 +33,7 @@ $1388 constant DEADLINE-MS         \ 5s ceiling for the live->dead watch transit
 20 constant CYCLES                 \ > PROCESS-PTY slot capacity (16): proves each teardown frees its slot
 
 create WAIT-BYTE 1 allot
+create SIGNAL-BYTES 64 allot
 variable TGT-PID
 variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, closes on exit
 
@@ -107,12 +108,49 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
    then
    cpid PROC-WAIT-STATUS drop ;                    \ reap the zombie
 
+\ A gated target stays alive beyond the 100 ms deadline. A 1 kHz
+\ profiler interrupts its watch poll; that must neither throw nor renew time.
+: SIGNAL-WATCH ( -- )
+   PROC-ARGV-RESET
+   TRUE-PATH PROCESS-PTY:SPAWN
+   1000 prof-rate 1000000 prof-on
+   mono-ns {: started:n :}
+   100 PROCESS-PTY:AWAIT {: ready:bool :}
+   mono-ns started - {: elapsed:n :}
+   prof-off
+   PROCESS-PTY:TEARDOWN
+   ready TFALSE
+   elapsed 90000000 >= TTRUE
+   elapsed 1000000000 < TTRUE ;
+
+\ Drive the same interrupted wait through the terminal's data descriptor,
+\ first a quiet deadline, then real bytes. No input is written to echo back.
+: SIGNAL-OUTPUT ( -- )
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   s" sleep 0.3; printf %s habu-pty-eintr" >LEN PROC-ARGV+
+   s" /bin/sh" >LEN PROCESS-PTY:SPAWN-TTY PROCESS-PTY:LAUNCH
+   1000 prof-rate 1000000 prof-on
+   mono-ns {: started:n :}
+   SIGNAL-BYTES 64 100 PROCESS-PTY:AWAIT-BYTES {: quiet:n :}
+   mono-ns started - {: elapsed:n :}
+   \ Negative poll timeouts stay unbounded even after a signal.
+   SIGNAL-BYTES 64 -1 PROCESS-PTY:AWAIT-BYTES {: got:n :}
+   prof-off
+   PROCESS-PTY:TEARDOWN
+   quiet 0 T=
+   elapsed 90000000 >= TTRUE
+   elapsed 1000000000 < TTRUE
+   SIGNAL-BYTES got s" habu-pty-eintr" T$= ;
+
 : RUN ( -- )
    T-RESET
    LIFECYCLE
    BALANCE
    STATIC
    DEAD-WATCH
+   SIGNAL-WATCH
+   SIGNAL-OUTPUT
    T-REPORT
    s" process-pty-io-smoke: ok" type cr ;
 

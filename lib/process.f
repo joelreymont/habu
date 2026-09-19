@@ -262,12 +262,13 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- n )
 \ each restart waits out only what is left of it and no signal storm can push a
 \ capture past its timeout; a deadline that has already passed reports the
 \ ordinary zero-event timeout. Every other negative rc is a real errno, and the
-\ caller names it through its own E-PROC-* code.
+\ caller names it through its own E-PROC-* code. A negative initial timeout
+\ retains poll's unbounded-wait contract across interruptions.
 : PROC-POLL-RESTART ( n n n -- n ) {: nfds ms deadline :}
    nfds ms PROC-POLL-ONCE {: rc :}
    rc EINTR# negate <> if rc exit then
    begin
-      deadline PROC-LEFT-MS MS>N {: left :}
+      ms 0 < if ms else deadline PROC-LEFT-MS MS>N then {: left :}
       left 0= if 0 exit then
       nfds left PROC-POLL-ONCE {: restarted :}
       restarted EINTR# negate <> if restarted exit then
