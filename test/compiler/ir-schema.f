@@ -1258,8 +1258,8 @@ private
    c sp sr tp tr key V-BASE STAGE
    c a r key sr tr IR-SCHEMA:DEFINE
    c sp sr key V-BASE OP-SYM {: op:IR-ID:ir-symbol-id :}
-   a r op IR-SCHEMA:DIGEST CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
-   a r IR-SCHEMA:TABLE-DIGEST CDIGEST-DIGEST:UNMAKE {: t0:n t1:n t2:n t3:n :}
+   a r op IR-SCHEMA:DIGEST {: digest:CDIGEST:digest :}
+   a r IR-SCHEMA:TABLE-DIGEST {: table:CDIGEST:digest :}
    a IR-ARENA:FREEZE {: pv:IR-ARENA:view :}
    r IR-ARENA:FREEZE {: rv:IR-ARENA:view :}
    rv IR-SCHEMA:FSCHEMAS
@@ -1267,9 +1267,9 @@ private
    rv op IR-SCHEMA:FOPERANDS
    rv IR-SCHEMA:FMAJOR@
    pv rv op IR-SCHEMA:FDIGEST
-      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+      digest CDIGEST-DIGEST:EQ
    pv rv IR-SCHEMA:FTABLE-DIGEST
-      t0 t1 t2 t3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ ;
+      table CDIGEST-DIGEST:EQ ;
 
 : FZ-CASE ( -- )
    s" a frozen module serves the schema readers through the views" T-LABEL
@@ -1463,13 +1463,12 @@ private
    c a r key sr tr IR-SCHEMA:DEFINE
    c sp sr key V-BASE OP-SYM {: op:IR-ID:ir-symbol-id :}
    r op IR-SCHEMA:ARCH@ arch CTARGET-ARCH:EQ TTRUE
-   a r op IR-SCHEMA:DIGEST CDIGEST-DIGEST:UNMAKE
-      {: w0:n w1:n w2:n w3:n :}
+   a r op IR-SCHEMA:DIGEST {: digest:CDIGEST:digest :}
    a IR-ARENA:FREEZE {: av:IR-ARENA:view :}
    r IR-ARENA:FREEZE {: rv:IR-ARENA:view :}
    rv op IR-SCHEMA:FARCH@ arch CTARGET-ARCH:EQ TTRUE
    av rv op IR-SCHEMA:FDIGEST
-      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ TTRUE ;
+      digest CDIGEST-DIGEST:EQ TTRUE ;
 
 : EMBED-CASE ( CTARGET:arch CTARGET:abi -- )
    EMBED-BND [: EMBED-BODY ;] IR-CTX:WITH-CONTEXT ;

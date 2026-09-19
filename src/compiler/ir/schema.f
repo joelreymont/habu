@@ -1414,9 +1414,8 @@ public
 \ how a caller detects that the schema table it holds is not the one an
 \ artifact was built against.
 : VERIFY ( IR-ARENA:arena IR-ARENA:arena CDIGEST:digest -- )
-   CDIGEST-DIGEST:UNMAKE
-   {: a:IR-ARENA:arena r:IR-ARENA:arena w0:n w1:n w2:n w3:n :}
-   a r TABLE-DIGEST  w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+   {: a:IR-ARENA:arena r:IR-ARENA:arena digest:CDIGEST:digest :}
+   a r TABLE-DIGEST digest CDIGEST-DIGEST:EQ
    0= if E-IR-SCHEMA-DIGEST throw then ;
 
 \ ---- frozen readers ----------------------------------------------------------
@@ -1576,9 +1575,8 @@ public
    loop ;
 
 : FVERIFY ( IR-ARENA:view IR-ARENA:view CDIGEST:digest -- )
-   CDIGEST-DIGEST:UNMAKE
-   {: pv:IR-ARENA:view rv:IR-ARENA:view w0:n w1:n w2:n w3:n :}
-   pv rv FTABLE-DIGEST  w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ
+   {: pv:IR-ARENA:view rv:IR-ARENA:view digest:CDIGEST:digest :}
+   pv rv FTABLE-DIGEST digest CDIGEST-DIGEST:EQ
    0= if E-IR-SCHEMA-DIGEST throw then ;
 
 private
