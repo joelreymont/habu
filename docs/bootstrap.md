@@ -512,6 +512,12 @@ The selected engine must already exist and is also the install destination.
 Setting it therefore isolates both the build host and installation from the
 checkout's engine.
 
+Before installation replaces the engine, the staged candidate boots from a fresh
+copy of `src/` and `lib/`, requires its compiler and compiles and executes a
+tier-1 probe. A timeout, failed process or wrong answer refuses promotion and
+removes the temporary copy; the existing engine and stamp remain intact. Running
+from the copied tree also checks that provided modules survive relocation.
+
 The `all`/`install` refresh is content-keyed. After a successful install the
 tool writes a stamp — SHA-256 over the digests of `bin/hb`, the exact emitted
 fixpoint and stdin stage sources captured at the moment the build consumed

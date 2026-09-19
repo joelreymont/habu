@@ -359,6 +359,29 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-STAMP REMOVE-FILE
    BFT-STAMP-UNSCOPE ;
 
+: BFT-BOOT-REFUSED ( ptr u8 n -- )
+   s" hb-stdin" BF-A$ COPY-FILE-STREAM
+   [: BF-INSTALL-HB ;] E-BUILD-STATUS TTHROWSQ
+   BFT-ENG-A s" /usr/bin/true" BF-FILE= TTRUE
+   BF-INSTALL-TMP$ EXISTS? TFALSE
+   BF-BOOT-ROOT$ EXISTS? TFALSE ;
+
+: BFT-TEST-CANDIDATE-BOOT ( -- )
+   BFT-ROOT s" candidate-boot" BFT-CP-BUF JOIN-PATH
+   BFT-CP-BUF swap 2dup MAKE-DIRS BF-TMP!
+   BFT-ENG-A BF-ENGINE!
+   s" /usr/bin/true" BFT-ENG-A COPY-FILE-STREAM
+   \ A failed boot and a successful exit without running the probe both refuse.
+   s" /usr/bin/false" BFT-BOOT-REFUSED
+   s" /usr/bin/true" BFT-BOOT-REFUSED
+   BFT-HB s" hb-stdin" BF-A$ COPY-FILE-STREAM
+   BF-INSTALL-HB
+   BFT-ENG-A BFT-HB BF-FILE= TTRUE
+   s" hb-stdin" BF-A$ EXISTS? TFALSE
+   BF-INSTALL-TMP$ EXISTS? TFALSE
+   BF-BOOT-ROOT$ EXISTS? TFALSE
+   BF-ENGINE-RESET BF-TMP-RESET ;
+
 \ The selected engine must be executed, not silently replaced by bin/hb.
 : BFT-TEST-ENGINE-SELECTION ( -- )
    BFT-ROOT BF-TMP!
@@ -1685,6 +1708,7 @@ public
    s" stage argv reset" [: BFT-TEST-STAGE-ARGV-RESET ;] BFT-STEP
    s" stamp seed" [: BFT-TEST-STAMP-SEED ;] BFT-STEP
    s" build" [: BFT-TEST-BUILD ;] BFT-STEP
+   s" candidate boot" [: BFT-TEST-CANDIDATE-BOOT ;] BFT-STEP
    s" stage engine selection" [: BFT-TEST-ENGINE-SELECTION ;] BFT-STEP
    s" cached skip" [: BFT-TEST-CACHED-SKIP ;] BFT-STEP
    s" build fail no stamp" [: BFT-TEST-BUILD-FAIL-NO-STAMP ;] BFT-STEP

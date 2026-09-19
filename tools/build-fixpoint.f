@@ -115,12 +115,13 @@ BF-REQUIRE-WATERMARK
 
 ;package
 
-\ The package closes for these two requires, and not for the guard above: both
+\ The package closes for these requires, and not for the guard above: the
 \ files open packages of their own, and `package` inside an open package is
 \ rejected as nesting. They also come AFTER the guard on purpose - both pull the
 \ preamble libraries in through their own requires, so requiring them earlier
 \ would satisfy FS-PATH-CAP by side effect and the missing-preamble case would
 \ stop being reported at all.
+require lib/process-cwd.f
 require lib/process-fork.f
 require lib/span.f                       \ SPAN-BUFFER: destinations for FS-MUT-SUFFIX-PATH
 require src/habu/hide.f
@@ -1643,8 +1644,7 @@ variable BF-DRV-R
 \   hb-host    the CAPTURE HOST. No artifact: today's bin/hb shape. A build
 \              artifact, never installed, and the engine the capture runs in.
 \   hb-stdin   the PRODUCT, seeded from the artifact captured in hb-host.
-\              BF-INSTALL-HB is untouched, so bin/hb is the product by
-\              construction.
+\              BF-INSTALL-HB checks this candidate before promoting it.
 : BF-EMIT-ENGINE ( ptr u8 n -- ) {: drv:ptr drvu:n :}
    s" stage2-src" drv drvu BF-EMIT-STDIN-RUN-SOURCE
    BF-CERTIFY-STDIN
@@ -1749,10 +1749,71 @@ variable BF-DRV-R
 : BF-INSTALL-CLEAN-TMP ( -- )
    BF-INSTALL-TMP$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
 
+create BF-BOOT-ROOT FS-PATH-CAP allot
+variable BF-BOOT-ROOT-U
+create BF-BOOT-PATH FS-PATH-CAP allot
+$100 constant BF-BOOT-OUT-CAP
+$1000 constant BF-BOOT-ERR-CAP
+30000 constant BF-BOOT-TIMEOUT-MS
+create BF-BOOT-OUT BF-BOOT-OUT-CAP allot
+create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
+
+: BF-BOOT-ROOT$ ( -- ptr u8 n ) BF-BOOT-ROOT BF-BOOT-ROOT-U @ ;
+
+\ A real copied tree makes a captured build-directory path fail here, before
+\ the candidate can replace the working engine. Symlinks back to the original
+\ sources would conceal that mismatch through canonical path resolution.
+: BF-BOOT-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u FILE? 0= if exit then
+   BF-BOOT-ROOT$ a u SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE
+   BF-BOOT-PATH JOIN-PATH {: size:n :}
+   BF-BOOT-PATH size SOURCE-ROOT:DIRNAME MAKE-DIRS
+   a u BF-BOOT-PATH size COPY-FILE-STREAM ;
+
+: BF-BOOT-TREE ( -- )
+   s" src" [: BF-BOOT-COPY ;] WALK-FILES
+   s" lib" [: BF-BOOT-COPY ;] WALK-FILES ;
+
+: BF-BOOT-PROGRAM$ ( -- ptr u8 n )
+   S\" require src/compiler/native/compiler.f\n1 set-tier\n: BF-CANDIDATE-INC ( n -- n ) 1+ ;\n41 BF-CANDIDATE-INC . cr\n" ;
+
+: BF-BOOT-RESULT ( result<pcap:captured,pcap:failed> -- n n n )
+   MATCH result
+      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
+         outu LEN>N erru LEN>N 0 ENDOF
+      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
+         outu LEN>N erru LEN>N rc RC>N ENDOF
+   ;MATCH ;
+
+: BF-BOOT-RUN ( -- )
+   BF-BOOT-TREE
+   BF-PREPARE-ENV
+   PROC-ARGV-RESET
+   BF-INSTALL-TMP$ SOURCE-ROOT:CANONICAL drop >LEN
+   BF-BOOT-ROOT$ >LEN BF-BOOT-PROGRAM$ >LEN
+   BF-BOOT-OUT BF-BOOT-OUT-CAP >LEN BF-BOOT-ERR BF-BOOT-ERR-CAP >LEN
+   BF-BOOT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
+   BF-BOOT-RESULT {: outu:n erru:n rc:n :}
+   rc 0<> erru 0<> or BF-BOOT-OUT outu S\" 42\n\n" STR= 0= or if
+      s" build-fixpoint: candidate failed its copied-tree boot check" type cr
+      BF-BOOT-OUT outu type BF-BOOT-ERR erru type
+      E-BUILD-STATUS throw
+   then ;
+
+: BF-BOOT-CLEAN ( -- ) BF-BOOT-ROOT$ REMOVE-TREE ;
+
+: BF-CHECK-CANDIDATE ( -- )
+   BF-TMP$ s" boot-check" MAKE-TEMP-DIR SOURCE-ROOT:CANONICAL drop
+   {: root:ptr size:n :}
+   root BF-BOOT-ROOT size BYTE-COPY size BF-BOOT-ROOT-U !
+   [: BF-BOOT-RUN ;] [: BF-BOOT-CLEAN ;] finally ;
+
 : BF-INSTALL-HB ( -- )
    BF-INSTALL-CLEAN-TMP
    s" hb-stdin" BF-A$ BF-INSTALL-TMP$ COPY-FILE-STREAM
    BF-INSTALL-TMP$ CHMOD-X
+   [: BF-CHECK-CANDIDATE ;] catch {: rc:n :}
+   rc 0<> if BF-INSTALL-CLEAN-TMP rc throw then
    BF-INSTALL-TMP$ BF-ENGINE$ RENAME-FILE
    s" hb-stdin" BF-REMOVE-TMP ;
 
