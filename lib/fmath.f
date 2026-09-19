@@ -16,11 +16,6 @@ package FMATH
 
 private
 
-\ 2^n for signed int n (reference: |n| multiplies; n stays small after reduction)
-: F2^N ( n -- r )
-   dup 0< if  negate  1.0 swap 0 ?do 0.5 f* loop
-        else  1.0 swap 0 ?do 2.0 f* loop  then ;
-
 \ exp(r) for |r| <= ln2/2 via degree-6 Horner (error ~ r^7/5040 ~ 1e-8)
 : FEXP-POLY ( r -- r ) {: r:r :}
    0.0013888889
@@ -31,22 +26,12 @@ private
    r f*  1.0 f+
    r f*  1.0 f+ ;
 
-: FEXP-K ( r n -- r ) {: x:r k:n :}            \ exp(x) given k = round(x/ln2)
-   x  k s>f 0.6931471805599453 f*  f-  FEXP-POLY  k F2^N  f* ;
-
 \ The power path needs more precision than the legacy degree-6 FEXP. With
 \ |x| <= ln(2)/2, terms after degree 16 are below binary64 rounding noise.
 : FEXP-SERIES ( r r r n -- r ) {: x:r term:r sum:r degree:n :}
    degree 16 > if sum exit then
    term x f* degree s>f f/ {: next:r :}
    x next sum next f+ degree 1+ recurse ;
-
-\ Scale the polynomial itself: constructing 2^1024 first would overflow even
-\ when a negative reduced argument makes the final result finite.
-: FEXP-SCALED ( r n -- r ) {: x:r k:n :}
-   x k s>f 0.6931471805599453 f* f- 1.0 1.0 1 FEXP-SERIES
-   k 0 < if k negate 0 ?do 0.5 f* loop
-   else k 0 ?do 2.0 f* loop then ;
 
 : ISQRT-ITER ( n n -- n ) {: value:n guess:n :}
    value guess / guess + 2 / {: next:n :}
@@ -221,6 +206,15 @@ $413921FB00000000 constant MEDIUM-BITS     \ 2^20 * pi/2: the reduction's exact 
    n -1074 < if x -1022 POW2 f* n 1022 + recurse exit then
    x n POW2 f* ;
 
+\ Scale the polynomial itself without first overflowing/underflowing 2^k.
+\ LDEXP-STEPS keeps intermediates normal and rounds a subnormal result once.
+: FEXP-K ( r n -- r ) {: x:r k:n :}
+   x k s>f 0.6931471805599453 f* f- FEXP-POLY k LDEXP-STEPS ;
+
+: FEXP-SCALED ( r n -- r ) {: x:r k:n :}
+   x k s>f 0.6931471805599453 f* f- 1.0 1.0 1 FEXP-SERIES
+   k LDEXP-STEPS ;
+
 public
 
 \ Compare the fractional part before rounding; adding 0.5 first can round a
@@ -234,6 +228,11 @@ public
    whole ;
 
 : FEXP ( r -- r ) {: x:r :}
+   x FINITE? 0= if E-DOMAIN throw then
+   \ Clamp before FROUND: even a finite x can exceed the integer range or
+   \ request trillions of scaling steps. Reduced k stays in [-1075,1024].
+   x 709.782712893384 f> if $7FF0000000000000 IEEE754:BITS>F64 exit then
+   x -745.1332191019411 f< if 0.0 exit then
    x  x 1.4426950408889634 f* FROUND  FEXP-K ;
 
 : ISQRT-FLOOR ( n -- n )

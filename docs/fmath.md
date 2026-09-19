@@ -22,7 +22,13 @@ Negative and zero bases are outside `FPOW`'s contract, including zero raised
 to zero. `FROUND` rejects nonfinite inputs with `E-DOMAIN` and values outside
 the signed-cell range with `E-OUTPUT`. It compares the fractional part before
 rounding, preserving values immediately below a half and large exact integers.
-`FEXP` retains its existing polynomial and range reduction.
+`FEXP` retains its degree-six polynomial and range reduction. It rejects
+nonfinite inputs with `E-DOMAIN`, returns positive infinity for finite inputs
+above 709.782712893384 and zero below -745.1332191019411. Clamping before the
+integer conversion bounds the reduced exponent to [-1075, 1024], requiring
+at most two multiplications through the existing `LDEXP` helper. Scaling the
+polynomial itself preserves finite results near overflow and the least subnormal value;
+constructing a separate power of two would lose those results.
 
 The integer roots use Newton iteration with integer division and an initial
 upper bound of 2^32. The ceiling test uses quotient and remainder, avoiding
