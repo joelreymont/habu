@@ -283,7 +283,8 @@ variable GLOBAL-REGISTERED
 \ A captured image is restored into another process, where libcurl is not
 \ initialised; the flag is cleared then, exactly as FFI clears its symbol cache.
 : FORGET-GLOBAL ( -- )
-   0 GLOBAL-DONE ! ;
+   0 GLOBAL-DONE !
+   0 GLOBAL-REGISTERED ! ;
 
 
 \ The registered flag is set only after REGISTER completes, so a throwing

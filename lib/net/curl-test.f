@@ -15,6 +15,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process-env.f
 require lib/ffi-abi.f
+require lib/image-lifecycle.f
 require lib/task.f
 require lib/net/tcp4.f
 require lib/net/curl.f
@@ -745,10 +746,23 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    STOP-SERVER
    ROOT$ REMOVE-TREE ;
 
+\ No request or live task is needed: each fresh initialization must arm the
+\ reset that makes the next captured process initialize libcurl for itself.
+: TEST-RECAPTURE ( -- )
+   IMAGE-LIFECYCLE:PREPARE
+   IMAGE-LIFECYCLE:COUNT {: base:n :}
+   2 0 do
+      OPEN-HANDLE CURL:CLEANUP
+      IMAGE-LIFECYCLE:COUNT base 1+ T=
+      IMAGE-LIFECYCLE:PREPARE
+      IMAGE-LIFECYCLE:COUNT base T=
+   loop ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   TEST-RECAPTURE
    PREPARE
    TEST-GET
    TEST-MISSING
