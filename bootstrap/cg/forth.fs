@@ -4192,31 +4192,40 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 \ LDOESPATCH ( x10=D ): patch the last-created word's RET into `b D`.
 \ Runs from engine text, so the region RW/RX flips are safe mid-execution.
-\ x10 = 0 is the empty clause `;` elided: publish the declared effect and leave
-\ the created word the body and the stamp `create` gave it.
+\ x10 = 0 is an empty clause: keep an existing RET or restore it over the
+\ earlier clause's branch, then publish the replacement effect.
 : EMIT-DOESPATCH ( -- )
-   LBL LBL LBL {: nocr slot declared :}
+   LBL LBL LBL LBL LBL {: nocr slot declared patch write :}
    LDOESPATCH @ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
-   10 declared CBZ,                                      \ an elided empty clause: publish, patch nothing
-   2 3 MOVZ,  LPROT @ BL,                                \ region -> RW
-   10 SP 8 LDR,
    11 DATA LASTC-CELL LDR,                               \ created slot
    12 11 0 LDR,  13 11 8 LDR,
    14 13 CODE-SPAN:FULL ANDI,  13 13 CODE-SPAN:MASK ANDI,
    14 slot CBZ,  13 13 4 SUBI,
    slot LBL,  12 12 13 ADD,
+   10 patch CBNZ,
+   14 12 0 LDRW,  5 W-RET LIT64,  14 5 CMP,  C-EQ declared BCOND,
+   patch LBL,
+   12 SP 16 STR,
+   2 3 MOVZ,  LPROT @ BL,                                \ region -> RW
+   10 SP 8 LDR,  12 SP 16 LDR,
+   14 W-RET LIT64,  10 write CBZ,
    14 10 12 SUB,  14 14 2 ASRI,                          \ delta words (negative)
    5 $3FFFFFF LIT64,  14 14 5 AND,
    5 $14000000 LIT64,  14 14 5 ORR,                      \ b D
+   write LBL,
    14 12 0 STRW,
-   12 SP 16 STR,
    2 5 MOVZ,  LPROT @ BL,                                \ region -> RX
    12 SP 16 LDR,
    12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
    declared LBL,
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
       C-PUBLISH
+      \ Replacing a clause replaces its guard facts, including zero/scalar.
+      9 DATA LASTC-CELL LDR,  2 3 MOVZ,  LPROTREC @ BL,
+      12 9 16 LDR,  10 DNAME-WIDE DNAME-MIN-IN-MASK or invert LIT64,
+      12 12 10 AND,  12 9 16 STR,
+      2 5 MOVZ,  LPROTREC @ BL,
       EM-REC-WIDE-PUBLISH                               \ a wide clause effect marks the created record (mirror of habu2.f DOESPATCH:EMIT)
       C-RUNTIME-CRSIG-CLEAR
    nocr LBL,

@@ -3038,14 +3038,13 @@ public
 \ to make impossible - so the clear happens in the same protected window as the
 \ patch, on the same record, and never a step apart from it.
 \
-\ A ZERO CLAUSE ENTRY IS "PUBLISH ONLY". `;` elides a clause that compiled no
+\ A ZERO CLAUSE ENTRY RESTORES THE BARE BODY. `;` elides a clause that compiled no
 \ instruction (DOES-REC:ELIDE-EMPTY) by writing W-DOESDECL over the `adr x10, D`
-\ its opener emitted, because such a clause runs after the created word has
-\ pushed its data address and then does nothing to it: patching would cost every
-\ reader a call, a branch and a frame, and take away the stamp both compilers
-\ fold a mention through, to reach the body `create` already left. So neither
-\ the patch nor the clear runs here, the declared effect is published exactly as
-\ it is for a clause with a body, and the created word keeps its own.
+\ its opener emitted. A fresh created word already ends in RET: leave that
+\ body and its kind stamp intact. If an earlier clause replaced the RET with a
+\ branch, an empty replacement restores the RET before publishing its effect.
+\ Its old cleared kind stays conservative; LASTC can also name a constant, so
+\ recovering the bare body is not evidence that it pushes a DATA address.
 \
 \ AND THE PUBLISH TAIL IS THE COLON TAIL. A clause effect is an effect like any
 \ other: `does> ( -- sp<u8> )` publishes a wider-than-cell layout value for the
@@ -3078,31 +3077,44 @@ public
    B A 0 ADDI,  LDOESPATCH LABEL@ BL, ;
 
 : EMIT ( -- )
-   LBL LBL LBL {: nocr:label slot:label declared:label :}
+   LBL LBL LBL LBL LBL LBL
+   {: nocr:label slot:label declared:label patch:label write:label flush:label :}
    LDOESPATCH LABEL@ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
-   10 declared CBZ,                                     \ an elided empty clause: publish, patch nothing
-   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                  \ code band -> RW
-   10 SP 8 LDR,
    11 DATA LASTC-CELL LDR,                               \ created slot
    12 11 0 LDR,  13 11 8 LDR,
    14 13 CODE-SPAN:FULL ANDI,  13 13 CODE-SPAN:MASK ANDI,
    14 slot CBZ,  13 13 4 SUBI,
    slot LBL,  12 12 13 ADD,                              \ final RET/B slot from either representation
+   10 patch CBNZ,
+   14 12 0 LDRW,  5 W-RET LIT64,  14 5 CMP,  C-EQ declared BCOND,
+   patch LBL,
+   12 SP 16 STR,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                  \ code band -> RW
+   10 SP 8 LDR,  12 SP 16 LDR,  11 DATA LASTC-CELL LDR,
    1 11 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,     \ the created record, whose kind stamp clears below
    1 12 0 ADDI,  2 4 MOVZ,  PROT:LSPAN LABEL@ BL,        \ the created body's RET, below CP
+   14 W-RET LIT64,  10 write CBZ,                       \ an empty replacement cancels the previous clause
    14 10 12 SUB,  14 14 2 ASRI,                          \ delta words (negative)
    5 $3FFFFFF LIT64,  14 14 5 AND,
    5 $14000000 LIT64,  14 14 5 ORR,                      \ b D
+   write LBL,
    14 12 0 STRW,
+   10 flush CBZ,
    13 11 16 LDR,  5 DKIND:MASK -1 xor LIT64,  13 13 5 AND,  13 11 16 STR,   \ the body is a clause now, not a push
-   12 SP 16 STR,
+   flush LBL,
    PROT:LCLOSE LABEL@ BL,                                \ region -> RX
    12 SP 16 LDR,
    12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
    declared LBL,
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
       LASTC-TRUST:PUBLISH
+      \ A second does> may replace an existing clause. Its new effect replaces
+      \ the old guard facts, including a zero min-in or a scalar result.
+      9 DATA LASTC-CELL LDR,  2 3 MOVZ,  LPROTREC LABEL@ BL,
+      12 9 16 LDR,  10 DNAME-WIDE DNAME-MIN-IN-MASK or -1 xor LIT64,
+      12 12 10 AND,  12 9 16 STR,
+      2 5 MOVZ,  LPROTREC LABEL@ BL,
       EM-REC-WIDE-PUBLISH
       C-RUNTIME-CRSIG-CLEAR
    nocr LBL,

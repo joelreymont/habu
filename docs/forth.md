@@ -523,10 +523,16 @@ argument and a bare tail of a family of arity > 0 are all refused. See
   which is refused now; read such a cell's emptiness through a number-typed
   accessor of the same address.
 - **A definer that only wants a type writes an EMPTY `does>` clause.** `does>`
-  runs after the created word pushes its address; an empty clause is elided at
+  runs after the created word pushes its address; on a fresh word it is elided at
   both tiers, so a read costs the one load a bare cell costs. Spelling
   `0 ptr-field` in the clause is a body and pays a call, a branch and a frame
   per read.
+- **A definer may replace another definer's `does>` clause.** Calling the inner
+  definer creates the word; a nonempty outer clause then replaces its behavior and
+  declared effect. Minimum input depth and the interpret-mode wide-value guard
+  follow the replacement effect, including zero inputs or a scalar result.
+  An empty replacement removes the earlier clause and restores the created
+  word's original body.
 - **A `SUMTYPE`, `PRODUCT` or `ENUM` body is parsed by its definer.** A `\`
   comment inside the body is refused: `PRODUCT` and `SUMTYPE` throw 7107
   ("unexpected token in product declaration at '\'"; `tools/check.f` reports

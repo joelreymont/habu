@@ -172,6 +172,30 @@ variable GE-SCRIPT-U
    SB-RESET s" 7" SB-APPEND GE-SB-LF
    SB$ s" scalar does> word output" GE-EXPECT-OUT ;
 
+\ A definer may create through another definer and replace its clause. The
+\ newest signature owns the record's min-in and wide facts, at either tier.
+: GE-DOES-REPATCH ( -- )
+   2 0 do
+      GE-HB-RESET GE-SRC-RESET
+      GE-ILAYOUT-PRELUDE
+      i GE-SRC-U+ s"  set-tier" GE-SRC-LINE
+      s" : GE-INNER: ( -- ) create 7 , does> ( n n -- n ) @ + + ;" GE-SRC-LINE
+      s" : GE-ONE: ( -- ) GE-INNER: does> ( n -- n ) @ + ;" GE-SRC-LINE
+      s" : GE-ZERO: ( -- ) GE-INNER: does> ( -- n ) @ ;" GE-SRC-LINE
+      s" : GE-WIDE: ( -- ) create 7 , does> ( -- gewide<n,n> ) drop GE-WMK ;" GE-SRC-LINE
+      s" : GE-NARROW: ( -- ) GE-WIDE: does> ( -- n ) @ ;" GE-SRC-LINE
+      s" : GE-EMPTY: ( -- ) GE-WIDE: does> ( -- ptr n ) ;" GE-SRC-LINE
+      s" GE-ONE: GE-A GE-ZERO: GE-B GE-NARROW: GE-C GE-EMPTY: GE-D" GE-SRC-LINE
+      s" : GE-READ ( -- n ) GE-D @ ;" GE-SRC-LINE
+      s" 5 GE-A . GE-B . GE-C . GE-READ ." GE-SRC-LINE
+      RUNTIME-RUNNER:BUFFER
+      s" repeated does> replaces min-in and wide facts" GE-EXPECT-OK
+      SB-RESET s" 12" SB-APPEND GE-SB-LF
+      s" 7" SB-APPEND GE-SB-LF s" 7" SB-APPEND GE-SB-LF
+      s" 7" SB-APPEND GE-SB-LF
+      SB$ s" repeated does> output at both tiers" GE-EXPECT-OUT
+   loop ;
+
 : GE-INTERP-LAYOUT ( -- )
    s" GE-WMK dup . . . ." s" interp layout dup fails closed" GE-ILAYOUT-CASE
    s" GE-WMK drop ." s" interp layout drop fails closed" GE-ILAYOUT-CASE
@@ -183,6 +207,7 @@ variable GE-SCRIPT-U
    GE-DOES-WIDE-BARE
    GE-DOES-WIDE-COMPILED
    GE-DOES-SCALAR
+   GE-DOES-REPATCH
    GE-ILAYOUT-GUARD
    GE-ILAYOUT-SCALAR
    s" PASS: interpret-mode layout transports fail closed" type cr ;
