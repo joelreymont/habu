@@ -264,6 +264,11 @@ Their output passes a basic startup smoke check, which does not establish full
 compiler or application acceptance. Keep candidates at private paths until the
 required verification passes and select any installed replacement explicitly.
 
+Concurrent native builds need distinct output paths: each writes
+`<output>.native-build.tmp` before promotion. They may share `HB_TMP`; the
+target is captured in memory, and each build creates and removes its own smoke
+directory under `TMPDIR` (or `/tmp` when unset).
+
 Measured 2026-09-12 on linux-aarch64 from a seed `hb-stdin`, 173 s wall:
 
 ```
