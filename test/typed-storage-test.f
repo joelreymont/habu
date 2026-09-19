@@ -23,6 +23,8 @@ require lib/test.f
 require lib/fs.f
 require src/habu/verify-source.f
 require test/checker-assert.f
+require src/habu/layout.f
+require src/habu/address-cells.f
 
 \ named storage-boundary codes (mirrors src/core/layout-buffer.f)
 7121 constant E-STORAGE
@@ -223,6 +225,40 @@ PTR-VARIABLE TS-DP
    s" R5 ( tsk -- ) TSV !" CHECK-QUIET-CANDIDATE! -1 T=
    s" R6 ( -- tsk ) TSV @" CHECK-QUIET-CANDIDATE! -1 T= ;
 
+\ Declaration, including a null cell, owns the relocation row. Ordinary cells
+\ must not gain the code kind, and a later store must reuse the declared row.
+: TS-ADDRESS-ROWS ( -- n ) ADDRESS-CELLS:LIVE-SPAN nip ;
+
+TS-ADDRESS-ROWS constant TS-BEFORE-QUOT
+TYPED-VARIABLE TS-CALLBACK [ n -- n ]
+TS-ADDRESS-ROWS TS-BEFORE-QUOT - constant TS-QUOT-ROWS
+TS-ADDRESS-ROWS constant TS-BEFORE-QUOTS
+3 TYPED-BUFFER TS-CALLBACKS [ n -- n ]
+TS-ADDRESS-ROWS TS-BEFORE-QUOTS - constant TS-QUOTS-ROWS
+TS-ADDRESS-ROWS constant TS-BEFORE-NUMBER
+TYPED-VARIABLE TS-NUMBER n
+TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
+
+: TS-CODE-CELL? ( ptr u8 -- bool )
+   data-base BYTE-VIEW - {: off:n :}
+   TS-ADDRESS-ROWS 0 ?do
+      i ADDRESS-CELLS:ROW@ off = if true unloop exit then
+   loop false ;
+
+: TS-STORE-CALLBACK ( -- ) [: 1 + ;] TS-CALLBACK ! ;
+
+: TS-SECTION-QUOT-DECLARATION ( -- )
+   s" typed quotation storage declares every zero code cell" T-LABEL
+   TS-QUOT-ROWS 1 T= TS-QUOTS-ROWS 3 T= TS-NUMBER-ROWS 0 T=
+   TS-CALLBACK BYTE-VIEW TS-CODE-CELL? TTRUE
+   3 0 ?do i TS-CALLBACKS BYTE-VIEW TS-CODE-CELL? TTRUE loop
+   TS-NUMBER BYTE-VIEW TS-CODE-CELL? TFALSE
+   CELL 0 ?do TS-CALLBACK BYTE-VIEW i + c@ 0 T= loop
+   TS-ADDRESS-ROWS {: before:n :}
+   TS-STORE-CALLBACK
+   TS-ADDRESS-ROWS before T=
+   41 TS-CALLBACK @ execute 42 T= ;
+
 : RUN ( -- )
    T-RESET
    TS-SECTION-VAR-NOMINAL
@@ -233,6 +269,7 @@ PTR-VARIABLE TS-DP
    TS-SECTION-DUP-ROLLBACK
    TS-SECTION-PIN-LAYOUT-BUFFER
    TS-SECTION-PIN-RAW-REJECT
+   TS-SECTION-QUOT-DECLARATION
    T-REPORT ;
 
 RUN

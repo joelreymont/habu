@@ -452,6 +452,16 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    s"  ;" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
+\ Quotation cells belong to the image even while null, before either compiler
+\ stores into them. These allocations are DATA; xt! is the declaration used by
+\ QUOTATION-STORAGE:STORE for that same region. Pointer-to-quotation elements
+\ start with `ptr`, so they do not acquire the code-cell kind.
+: STORAGE-ALLOT ( ptr n ptr u8 -- ) {: base:ptr type:ptr :}
+   base LBUF-ALLOT
+   type 1 STORAGE-QUOT-OPEN? if
+      LBUF-N @ 0 ?do 0 base i cells + xt! loop
+   then ;
+
 : TYPED-BUFFER ( n -- ) {: count:n :}
    parse-name {: name:ptr nameu:n :}
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
@@ -464,7 +474,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    here {: base:ptr :}
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
-   base LBUF-ALLOT ;
+   base type STORAGE-ALLOT ;
 
 : TYPED-VARIABLE ( -- )
    parse-name {: name:ptr nameu:n :}
@@ -478,7 +488,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    here {: base:ptr :}
    name nameu type typeu TYPED-VAR-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
-   base LBUF-ALLOT ;
+   base type STORAGE-ALLOT ;
 
 \ Axioms keep the two definers checker-known so the seal-time internal-word pass
 \ leaves them executable at top level (like LAYOUT-BUFFER); UNSAFE-TOK? rejects
