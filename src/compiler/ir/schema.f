@@ -357,6 +357,7 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
       a32     OF AR-A32 ENDOF
       thumb2  OF AR-THUMB2 ENDOF
       c66x    OF AR-C66X ENDOF
+      x86-64  OF AR-X86-64 ENDOF
    ;MATCH ;
 
 \ ---- wire-code decoders ------------------------------------------------------
