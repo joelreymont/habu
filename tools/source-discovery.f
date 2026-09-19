@@ -23,6 +23,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/memory.f
+require lib/span.f
 require lib/fs.f
 require lib/source.f
 require tools/dynamic-tail-manifest.f
@@ -31,12 +32,6 @@ package DISCOVER
 using SOURCE                             \ the shared source-string emitters
 using SOURCE-ROOT
 
-\ One lazily-allocated read buffer holds the whole entry file, so this cap is the
-\ largest source any walk may read. The engine's own prefix is the largest
-\ closure keyed through here: tools/native-build.f reaches 159 files and tops out
-\ at src/core/checker.f, $A76BE bytes measured 2026-09-17. The former $80000
-\ refused that file with E-FS-CAPACITY, so no consumer could key the prefix.
-$100000 constant SD-SRC-CAP
 $400 constant SD-PATH-CAP
 
 $5C constant SD-BACKSLASH
@@ -59,7 +54,7 @@ create SD-ENTRY SD-PATH-CAP 1+ allot
 variable SD-ROOT-U
 variable SD-ENTRY-U
 
-variable SD-BUF-A
+TYPED-VARIABLE SD-STORAGE SPAN:span<u8>
 variable SD-U
 variable SD-I
 variable SD-PATH-U
@@ -79,8 +74,15 @@ variable SD-LOCAL-BASE
 variable SD-SCOPES
 
 : SD-BUF ( -- ptr u8 )
-   SD-BUF-A @ 0= if SD-SRC-CAP SOURCE-ALLOC-BUF SD-BUF-A SOURCE-PTR-U8! then
-   SD-BUF-A SOURCE-PTR-U8@ ;
+   SD-STORAGE @ SPAN:$ drop ;
+
+\ Reuse the largest source allocation. No scanner pointer survives a read:
+\ install the new scratch span before releasing the old one, without copying.
+: SD-BUF-ENSURE ( n -- ) {: need:n :}
+   SD-STORAGE @ {: old :}
+   need old SPAN:LEN <= if exit then
+   need MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SD-STORAGE !
+   old SPAN:LEN 0 > if old MEM:FREE-SPAN then ;
 
 : SD-BYTE ( n -- u8 )   SD-BUF + c@ ;
 : SD-AT? ( n -- bool )  SD-U @ < ;
@@ -345,7 +347,8 @@ variable SD-SCOPES
    again ;
 
 : SD-READ-ENTRY ( ptr u8 n -- ) {: pa:ptr pu:n :}
-   pa pu SD-BUF SD-SRC-CAP READ-ALL SD-U ! ;
+   pa pu FILE-SIZE 1 max SD-BUF-ENSURE
+   pa pu SD-STORAGE @ SPAN:$ READ-ALL SD-U ! ;
 
 : SD-KIND-NAME ( n -- ptr u8 n ) {: kind:n :}
    kind EV-INCLUDED = if s" included" exit then

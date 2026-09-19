@@ -228,6 +228,27 @@ variable SDT-SRC-U
    s" big-bad.f" S\" \" required\n" SDT-WRITE-BIG
    [: SDT-RUN-ENTRY ;] E-DISC-CAPACITY TTHROWSQ ;
 
+\ Find loaders beyond the former 1 MiB ceiling, then grow the same scratch
+\ again. The normal smaller-file fixtures after this must not see stale text.
+: SDT-TEST-LARGE-SOURCE ( -- )
+   s" large.f" s" " SDT-WRITE-ENTRY
+   SDT-DISCOVER EVENT-COUNT 0 T=
+   SDT-SRC-CAP 0 ?do 32 SDT-SRC i + c! loop
+   $100 0 ?do SDT-ENTRY$ SDT-SRC SDT-SRC-CAP APPEND-FILE loop
+   SDT-ENTRY$ S\" require sd-large-a.f\n" APPEND-FILE
+   SDT-DISCOVER
+   EVENT-COUNT 1 T=
+   0 EVENT-PATH@ s" sd-large-a.f" SDT-PATH T$=
+   0 EVENT-TOK@ 7 T= $100000 T=
+   SDT-ENTRY$ FILE-SIZE {: end:n :}
+   SDT-ENTRY$ S\" include sd-large-b.f\n" APPEND-FILE
+   SDT-DISCOVER
+   EVENT-COUNT 2 T=
+   0 EVENT-KIND@ EV-REQUIRED T=
+   1 EVENT-KIND@ EV-INCLUDED T=
+   1 EVENT-PATH@ s" sd-large-b.f" SDT-PATH T$=
+   1 EVENT-TOK@ 7 T= end T= ;
+
 \ --- dynamic-tail manifest: seeded repo files tolerated, path-keyed ----------
 
 : SDT-TEST-MANIFEST-DRIVER ( -- )
@@ -310,6 +331,7 @@ variable SDT-SRC-U
 : SDT-MAIN ( -- )
    T-RESET
    SDT-PREP
+   SDT-TEST-LARGE-SOURCE
    SDT-TEST-MIXED
    SDT-TEST-SPELLING
    SDT-TEST-FRESH
