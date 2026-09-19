@@ -10339,6 +10339,16 @@ create LOCSHOW LOC-CAP cells allot
 \ via MK-HIDDEN (LOC-PUSH-REF). Linear layouts never expand, so no linear bundle
 \ can reach a local; the bind-time linear check is unchanged.
 create LOCW LOC-CAP cells allot
+\ Linear locals are affine names: binding moves ownership out of the data row;
+\ the first reference moves it back and marks the name consumed. Non-linear
+\ locals remain ordinary reusable names. Branch/loop snapshots below make the
+\ consumed bit path-sensitive.
+create LOCLIN LOC-CAP cells allot
+create LOCUSED LOC-CAP cells allot
+create CF-LUSED 32 LOC-CAP * cells allot
+create CF-LALT  32 LOC-CAP * cells allot
+create X-LUSED LOC-CAP cells allot
+variable X-LUSED-SET
 variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  variable LI  variable LRF
 \ Emitter-facing width queries (item 12 slice 3b + habu-tfam-12-pass): LOCW is
 \ live-indexed and branch-scoped locals are popped at their join (CF-LOC-REST)
@@ -10488,6 +10498,8 @@ variable LCO
      LCO @ #LOC @ cells LOCLN + !
      FRESH MK-VAR #LOC @ cells LOCTV + !
      1 #LOC @ cells LOCW + !
+     0 #LOC @ cells LOCLIN + !
+     0 #LOC @ cells LOCUSED + !
      LOCSEQ @ #LOC @ cells LOCSEQIX + !    \ this bind's monotone sequence
      1 LOCSEQ @ cells LOC-HW + !
      LOCSEQ @ 1 + LOCSEQ !
@@ -10496,21 +10508,39 @@ variable LCO
      THEN
      #LOC @ 1 + #LOC ! THEN THEN ;
 
-\ Linear values may not launder through locals. A local reference re-pushes its
-\ binding without a LIN-SNAPSHOT/LIN-CHECK-covered step, so the concrete-count
-\ conservation discipline never sees the copy (two references duplicate) or the
-\ drop (an unreferenced local leaks). Binding a linear con into a local — where
-\ the value CONCRETELY resolves linear at bind time — is therefore rejected
-\ outright with a dedicated E-LINEAR-LOCAL diagnostic (keep the linear on the
-\ stack and factor). Path-sensitive per-reference accounting (consume-exactly-
-\ once across every branch) is a separate capability tracked by dot.
+\ Linear locals use affine move semantics. A concrete linear value may bind
+\ into a local: the bind itself moves it out of the counted stack row, and one
+\ reference moves it back. A second reference or an unconsumed live local is a
+\ hard E-LINEAR-LOCAL reject. Polymorphic locals retain the existing deferred
+\ taint discipline because they may resolve linear only after the bind.
 : LIN-LOCAL-REJECT ( -- )  0 OK !  -1 FAILSET !  -1 LINLOCBAD ! ;
 
-: LIN-LOCAL-BIND-CHECK ( -- )       \ reject if any just-bound local resolves linear
+: LOC-LINEAR-TYPE? ( n -- bool ) {: t:n :}
+   t LIN-TYPE-COUNT 0 > ;
+
+: LIN-LOCAL-BIND-MARK ( -- )
    LIN-ANY? 0= IF exit THEN
    LGRP @ BEGIN dup #LOC @ < WHILE
-     dup cells LOCTV + @ LIN-CON? IF LIN-LOCAL-REJECT THEN
-     1 + REPEAT drop ;
+      dup cells LOCTV + @ LOC-LINEAR-TYPE? IF
+         -1 over cells LOCLIN + !
+         0 over cells LOCUSED + !
+      THEN
+      1 +
+   REPEAT drop ;
+
+: LIN-LOCAL-REF ( n -- bool ) {: idx:n :}
+   idx cells LOCLIN + @ 0= IF RES-FALSE EXIT THEN
+   idx cells LOCUSED + @ IF LIN-LOCAL-REJECT RES-TRUE EXIT THEN
+   -1 idx cells LOCUSED + !
+   RES-TRUE ;
+
+: LIN-LOCALS-ALL-CONSUMED? ( -- bool )
+   0 BEGIN dup #LOC @ < WHILE
+      dup cells LOCLIN + @ IF
+         dup cells LOCUSED + @ 0= IF drop RES-FALSE EXIT THEN
+      THEN
+      1 +
+   REPEAT drop RES-TRUE ;
 
 \ A local bound to a still-polymorphic var that only LATER resolves to a linear
 \ con (deferred laundering, e.g. `( a -- ) {: x :} x x T-FREE-OWN T-FREE-OWN`)
@@ -10555,14 +10585,12 @@ variable LCO
    THEN ;
 
 : LOC-BIND-GROUPS ( -- )
-   LIN-SNAPSHOT
    DCUR @  #LOC @ LGRP @ -  XG-READ 0= IF EXIT THEN
    0 BEGIN dup #LOC @ LGRP @ - < WHILE
       dup LOC-GROUP-BIND
       1 +
    REPEAT drop
-   XG-ROW @ DCUR !
-   OK @ IF LIN-CHECK THEN ;
+   XG-ROW @ DCUR ! ;
 
 : LOC-BIND
    FRESH dup LROW !  MK-ROW LCH !
@@ -10578,7 +10606,7 @@ variable LCO
       0 LAYOUT-XPORT !
    THEN
    LOC-SHOW-GROUP
-   LIN-LOCAL-BIND-CHECK ;
+   LIN-LOCAL-BIND-MARK ;
 
 : LOC-TOK {: a u :}
    a u s" :}" CORE-STR= IF 0 LMODE ! LOC-BIND ELSE
@@ -10593,6 +10621,8 @@ variable LCO
 \ re-expands its whole group — slot0 deepest up to the stored tag term on top
 \ (docs §5); a scalar local pushes its var/term with the deferred-linear taint.
 : LOC-PUSH-REF ( n -- ) {: idx:n :}
+   idx LIN-LOCAL-REF drop
+   OK @ 0= IF EXIT THEN
    idx cells LOCW + @ {: w:n :}
    idx cells LOCTV + @ {: t:n :}
    w 1 > IF
@@ -10618,6 +10648,44 @@ variable LCO
        THEN
        -1 LRF ! THEN
    REPEAT  LRF @ ;
+\ Path-sensitive linear-local state. Each control frame snapshots the consumed
+\ bits at entry; ELSE saves the completed if-arm separately and restores entry.
+\ Joins require both live arms to agree. Loop backedges require exact equality
+\ with entry, preventing a local from being consumed once per iteration.
+: LOCUSED-COPY ( ptr n ptr n n -- ) {: src:ptr dst:ptr count:n :}
+   0 BEGIN dup count < WHILE
+      dup cells src + @ over cells dst + !
+      1 +
+   REPEAT drop ;
+
+: CF-LUSED-ROW ( n -- ptr n ) LOC-CAP * cells CF-LUSED + ;
+: CF-LALT-ROW  ( n -- ptr n ) LOC-CAP * cells CF-LALT + ;
+: LOCUSED-SAVE-CF ( n -- ) {: fi:n :} LOCUSED fi CF-LUSED-ROW #LOC @ LOCUSED-COPY ;
+: LOCUSED-REST-CF ( n -- ) {: fi:n :} fi CF-LUSED-ROW LOCUSED #LOC @ LOCUSED-COPY ;
+: LOCUSED-SAVE-ALT ( n -- ) {: fi:n :} LOCUSED fi CF-LALT-ROW #LOC @ LOCUSED-COPY ;
+
+: LOCUSED-EQ-BUF? ( ptr n -- bool ) {: other:ptr :}
+   0 BEGIN dup #LOC @ < WHILE
+      dup cells LOCLIN + @ IF
+         dup cells LOCUSED + @ over cells other + @ <> IF drop RES-FALSE EXIT THEN
+      THEN
+      1 +
+   REPEAT drop RES-TRUE ;
+
+: LOCUSED-JOIN-ALT ( n -- ) {: fi:n :}
+   fi CF-LALT-ROW LOCUSED-EQ-BUF? 0= IF LIN-LOCAL-REJECT THEN ;
+
+: LOCUSED-BACKEDGE ( n -- ) {: fi:n :}
+   fi CF-LUSED-ROW LOCUSED-EQ-BUF? 0= IF LIN-LOCAL-REJECT THEN ;
+
+: LOCUSED-SAVE-EXIT ( -- )
+   X-LUSED-SET @ IF
+      X-LUSED LOCUSED-EQ-BUF? 0= IF LIN-LOCAL-REJECT THEN
+   ELSE
+      LOCUSED X-LUSED #LOC @ LOCUSED-COPY
+      -1 X-LUSED-SET !
+   THEN ;
+
 \ --- control flow: branch states saved on a CF stack and unified at joins.
 \ Both rows are snapshot: A/B = data, RA/RB = return (PLAN: net growth on
 \ either row at a back edge is a row-occurs failure).
@@ -10759,6 +10827,8 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
      r0 rec CF.RA !  r1 rec CF.RB !
      #LOC @ rec CF.LN !
      0 rec CF.UNI !                        \ default non-uniform; CF-IF marks a uniform<bool> branch
+     #CFC @ {: fi:n :}
+     fi LOCUSED-SAVE-CF
      #CFC @ 1 + #CFC ! THEN ;
 
 : CF@K CF-TOP CF.KND @ ;
@@ -10958,6 +11028,9 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
      2 CF-TOP CF.KND !
      CTMP @ CF-TOP CF.SB !
      RTMP @ CF-TOP CF.RB !
+     #CFC @ 1 - {: fi:n :}
+     fi LOCUSED-SAVE-ALT
+     fi LOCUSED-REST-CF
      CF-LOC-REST
    THEN THEN ;
 
@@ -10981,14 +11054,24 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 : CF-THEN
    CF-MT? IF CF-FAIL ELSE
      CF@K 1 = IF                                          \ IF ... THEN (no else)
-        DEADP? IF CF@A DCUR !  CF@RA RCUR !  0 DEADP !   \ if-branch exited: take fall-through
-        ELSE CF@A SUNI  CF@RA RSUNI THEN  CF-LOC-REST  CF-DROP
+        #CFC @ 1 - {: fi:n :}
+        DEADP? IF
+           fi LOCUSED-REST-CF
+           CF@A DCUR !  CF@RA RCUR !  0 DEADP !            \ only fall-through survives
+        ELSE
+           fi CF-LUSED-ROW LOCUSED-EQ-BUF? 0= IF LIN-LOCAL-REJECT THEN
+           CF@A SUNI  CF@RA RSUNI
+        THEN
+        CF-LOC-REST  CF-DROP
      ELSE CF@K 2 = IF                                     \ IF ... ELSE ... THEN
+        #CFC @ 1 - {: fi:n :}
+        DEADP? 0= CF@DED? 0= and IF fi LOCUSED-JOIN-ALT THEN
         CF-THEN-ELSE-MERGE
         CF-LOC-REST  CF-DROP
      ELSE CF-FAIL THEN THEN THEN ;
 
 : CF-EXIT ( -- )
+   LOCUSED-SAVE-EXIT
    XSET @ IF  DCUR @ XROW @ UNIFY OK @ and OK !
               RCUR @ XRROW @ UNIFY OK @ and OK !
    ELSE  DCUR @ XROW !  RCUR @ XRROW !  -1 XSET ! THEN
@@ -11003,11 +11086,13 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    STEP-BOOL-IN
    CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
      CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !
+     #CFC @ 1 - LOCUSED-BACKEDGE
      CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-AGAIN ( -- )
    CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
      CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !
+     #CFC @ 1 - LOCUSED-BACKEDGE
      CF-LOC-REST  CF-DROP  -1 DEADP ! THEN THEN ;
 
 : CF-WHILE
@@ -11021,6 +11106,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 : CF-REPEAT
    CF-MT? IF CF-FAIL ELSE CF@K 4 <> IF CF-FAIL ELSE
      CF@A SUNI  CF@B DCUR !  CF@RA RSUNI  CF@RB RCUR !
+     #CFC @ 1 - LOCUSED-BACKEDGE
      CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-DO  STEP-NN-IN  5 DCUR @ 0 RCUR @ 0 CF-PUSH ;
@@ -11033,7 +11119,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 : CF-LOOP
    CF-MT? IF CF-FAIL ELSE CF@K 5 <> IF CF-FAIL ELSE
      DEADP @ IF  0 DEADP !
-     ELSE  CF@A SUNI  CF@RA RSUNI  THEN
+     ELSE  CF@A SUNI  CF@RA RSUNI  #CFC @ 1 - LOCUSED-BACKEDGE  THEN
      CF@A DCUR !  CF@RA RCUR !  CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-+LOOP
@@ -13188,7 +13274,7 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
 : CHECK-RESET {: a u :}
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
-   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
+   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 X-LUSED-SET !  0 #CFC !  0 QDEPTH !  0 CONM !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
@@ -13570,6 +13656,7 @@ variable CTOR-PEND-I
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
    THEN
    CHECK-SIG? OK @ and IF NP-CHECK THEN               \ declared quantifiers must stay parametric
+   OK @ IF LIN-LOCALS-ALL-CONSUMED? 0= IF LIN-LOCAL-REJECT THEN THEN
    CHECK-VERDICT                                      \ malformed/unsafe/non-parametric rejects
    dup DVERD !
    CK-AOT-LATCH-RETRY                                 \ is a seeded signature still to come?
@@ -14303,6 +14390,7 @@ package CHECKER-REG
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= CHECK-RETURNS? and IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
    SGHASR @ IF RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK ! THEN
+   OK @ IF LIN-LOCALS-ALL-CONSUMED? 0= IF LIN-LOCAL-REJECT THEN THEN
    CHECK-VERDICT dup DVERD !
    dup -1 = IF CALL-FINALIZE THEN
    CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN ;
