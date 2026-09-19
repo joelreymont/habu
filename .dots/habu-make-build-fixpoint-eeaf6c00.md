@@ -263,3 +263,32 @@ queries; it does not patch the queried word or its rows. No checker/compiler sou
 edits, candidate patch, full gate, or install was performed. The responsible
 repair is not yet established; this is the measured row comparison requested
 before proposing one. The dot remains open and the native route stays released.
+
+The active recovery signature is already absent before the stdin capture.
+The exact final-generation capture host was copied privately from
+/tmp/alder-install-portable-final/g3-tmp/hb-host (SHA-256
+c203be38b92eb3f33e946b7a2cd7b08ce072369a8517cdf1a3e79673746e5e90).
+The dependency-free raw-row-probe.f reports symbol 0, USIG not found,
+PRIM-FIRST-SYM 0 and FIND-SIG false on that host's clean boot. The native
+product still reports the active row above; the stdin product reports absence.
+
+To bracket capture itself, a scratch copy of tools/aot-chain-capture.f adds
+only a tier-0 TRUSTED query helper above RUN (outside the closed window) and
+calls it immediately before and after AOT-CAPTURE:CAPTURE. The driver remains
+the first loaded file and retains its normal window preparation, prelude marks,
+capture and BOOTRUN. Both points report the same absent active signature:
+
+| Point | Active symbol | USIG found | Primitive symbol | FIND-SIG |
+|---|---:|---|---:|---|
+| Capture host clean boot | 0 | false | 0 | false |
+| Immediately before CAPTURE | 0 | false | 0 | false |
+| Immediately after CAPTURE | 0 | false | 0 | false |
+| Final stdin product clean boot | 0 | false | 0 | false |
+
+The diagnostic driver exits 0 with 8144 captured signature rows. It writes
+no artifact and changes no queried word or row. This establishes that the
+missing active query predates capture; it does not identify when the boot
+prefix first fails to establish it, or rule out dormant records elsewhere.
+Evidence: /tmp/alder-install-recovery/{capture-host,native-product,stdin-product}-boot-row.log,
+capture-boundary-row.log and tree/tools/alder-capture-row-probe.f. No source
+repair, compiler proposal, full gate or install was performed.
