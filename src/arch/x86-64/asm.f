@@ -525,6 +525,14 @@ public
    $B8 n 7 and + s EMIT-B
    imm s EMIT-D ;
 
+\ Like the register-to-memory stores, the source precedes the destination.
+\ C7's signed imm32 literal writes exactly four bytes here (no REX.W).
+\ A RIP displacement is relative to the end, including these immediate bytes.
+: ENC-MOV32-MI32 ( imm32 mem ptr a -- ) {: v:imm32 m:mem s:ptr :}
+   v IMM32>N ?SIMM32 {: imm:n :}
+   W32 $C7 0 m 0 s RM-ENC
+   imm s EMIT-D ;
+
 \ The relocatable literal. MOV-RI64-IMM-OFF names where its immediate starts.
 : ENC-MOV-RI64 ( r64 imm64 ptr a -- ) {: d:r64 v:imm64 s:ptr :}
    d R64>N REG-NUM {: n:n :}

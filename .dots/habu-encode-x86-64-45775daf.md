@@ -1,12 +1,12 @@
 ---
 title: Encode x86-64 immediate memory stores
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-19T18:30:02.114409+03:00"
 ---
 
-Reconciliation c191257a: the experimental STORE-I32 encodes C7 /0 imm32 stores, including RIP-relative destinations; current X64ASM has register stores only. Supply this form in the existing BUF encoder for direct constant stores, with llvm-mc differential vectors and the displacement measured from the full instruction end. Ownership: hazel, src/arch/x86-64/asm.f and test/compiler/x86-64-asm.f.
+Reconciliation c191257a: the experimental STORE-I32 encodes C7 /0 imm32 stores, including RIP-relative destinations; current X64ASM has register stores only. Supply this form in the existing BUF encoder for direct constant stores, with llvm-mc differential vectors and the displacement measured from the full instruction end. Ownership: alder, src/arch/x86-64/asm.f and test/compiler/x86-64-asm.f. Claim: .jj-ws/alder-x64-encoders.
 
 Measured with `llvm-mc -triple=x86_64 -show-encoding` (AT&T syntax):
 
