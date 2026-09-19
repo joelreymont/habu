@@ -1161,6 +1161,13 @@ public
 -8840 constant E-A32ASM-OPERAND
 -8860 constant E-C6XASM-OPERAND
 
+\ x86-64 pure instruction constructors and bounded writer.
+-8880 constant E-X64ASM-OPERAND
+-8881 constant E-X64ASM-SIZE
+-8882 constant E-X64ASM-HOST
+-8883 constant E-X64EMIT-BOUNDS
+-8884 constant E-X64EMIT-RELOC
+
 \ ELF32 bounded binary reader: -9000..-9019.
 -9000 constant E-ELF32-FIRST
 -9019 constant E-ELF32-LAST
