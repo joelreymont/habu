@@ -395,6 +395,15 @@ PROC-REAP-ARM-DEFAULT
 : PROC-CLOEXEC-CELL ( ptr n -- ) {: p:ptr :}
    p @ F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then ;
 
+\ Default captures supply EOF, independent of the parent's terminal or pipe.
+\ Keep the descriptor in the capture row so a refused spawn also closes it.
+: PROC-CAPTURE-NULL-INPUT ( -- fd )
+   s\" /dev/null\z" drop open-rd
+   dup 0 < if drop E-PROC-OUTPUT PROC-THROW-CAPTURE then
+   PROC-IN-R !
+   PROC-IN-R PROC-CLOEXEC-CELL
+   PROC-IN-R @ >FD ;
+
 : PROC-NONBLOCK! ( fd -- ) {: fd :}
    fd FD>N F-GETFL 0 fcntl {: flags :}
    flags 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
@@ -646,9 +655,10 @@ PROC-REAP-ARM-DEFAULT
    PROC-CAPTURE-OUTCOME@ ;
 
 : PROC-SPAWN-CAPTURE ( ptr u8 -- )
-   PROC-NO-FD >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD PROC-SPAWN-RAW {: pid :}
+   PROC-CAPTURE-NULL-INPUT PROC-OUT-W @ >FD PROC-ERR-W @ >FD PROC-SPAWN-RAW {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-CAPTURE-PID!
+   PROC-IN-R PROC-CLOSE-CELL
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 

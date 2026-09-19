@@ -51,11 +51,12 @@ private
 
 : PROC-SPAWN-ARGV-ENV-CWD-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}
-   pathz argv envp cwdz -1 >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
+   pathz argv envp cwdz PROC-CAPTURE-NULL-INPUT PROC-OUT-W @ >FD PROC-ERR-W @ >FD
    SPAWN-ARGV-ENV-CWD-RAW {: pid:pid :}
    ARGV-ENV-CWD-RESET
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-CAPTURE-PID!
+   PROC-IN-R PROC-CLOSE-CELL
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 

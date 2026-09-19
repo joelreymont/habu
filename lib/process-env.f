@@ -452,10 +452,11 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    PROC-SPAWN-ARGV-ENV-IO PROC-WAIT-RC ;
 
 : PROC-SPAWN-ARGV-ENV-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
-   pathz argv envp -1 >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD PROC-SPAWN-ARGV-ENV-RAW {: pid :}
+   pathz argv envp PROC-CAPTURE-NULL-INPUT PROC-OUT-W @ >FD PROC-ERR-W @ >FD PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    PROC-ARGV-ENV-RESET
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-CAPTURE-PID!
+   PROC-IN-R PROC-CLOSE-CELL
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 

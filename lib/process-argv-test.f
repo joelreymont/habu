@@ -5,6 +5,9 @@ require lib/errors.f
 require lib/test.f
 require lib/process.f
 require lib/process-argv.f
+require lib/process-env.f
+require lib/process-cwd.f
+require lib/engine-candidate.f
 require lib/test/outcome.f
 
 variable PAT-IN-R
@@ -231,8 +234,42 @@ variable PAT-I
    65 PAT-I !
    PAT-IN-R PAT-CAP-OUT 64 >LEN PAT-I PROC-READ-STREAM ;
 
+variable PAT-SAVED-STDIN
+
+: PAT-EOF-RESULT ( result<pcap:captured,pcap:failed> -- )
+   PAT-CAPTURE>N 0 T= 0 T= 0 T= ;
+
+\ A bare engine waits for stdin EOF. The parent keeps the pipe writer open,
+\ so inheriting its stdin times out; each default capture must supply EOF.
+: PAT-IDLE-CAPTURES ( -- )
+   PROC-ARGV-RESET
+   ENGINE-CANDIDATE:PATH$ >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
+   3000 >MS RUN-ARGV-CAPTURE PAT-EOF-RESULT
+   ENGINE-CANDIDATE:PATH$ >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
+   3000 >MS RUN-CAPTURE PAT-EOF-RESULT
+   PROC-ARGV-RESET PROC-ENV-RESET
+   ENGINE-CANDIDATE:PATH$ >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
+   3000 >MS RUN-ARGV-ENV-CAPTURE PAT-EOF-RESULT
+   PROC-ARGV-RESET PROC-ENV-RESET
+   ENGINE-CANDIDATE:PATH$ >LEN s" ." >LEN
+   PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
+   3000 >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE PAT-EOF-RESULT ;
+
+: PAT-RESTORE-STDIN ( -- )
+   PAT-SAVED-STDIN @ 0 dup2 0 < if E-PROC-OUTPUT throw then
+   PAT-SAVED-STDIN @ close
+   PAT-IN-R @ close PAT-IN-W @ close ;
+
+: PAT-RUN-IDLE-STDIN ( -- )
+   s" default captures ignore an idle inherited stdin" T-LABEL
+   0 0 3 fcntl dup 0 < if drop E-PROC-OUTPUT throw then PAT-SAVED-STDIN !
+   PIPE-PAIR PAT-IN-W ! PAT-IN-R !
+   PAT-IN-R @ FD>N 0 dup2 0 < if E-PROC-OUTPUT throw then
+   [: PAT-IDLE-CAPTURES ;] [: PAT-RESTORE-STDIN ;] finally ;
+
 : PROCESS-ARGV-TEST-MAIN ( -- )
    T-RESET
+   PAT-RUN-IDLE-STDIN
    PAT-RUN-PRINTF
    PAT-RUN-CAT
    [: PAT-SPAWN-MISSING ;] E-PROC-SPAWN TTHROWSQ
