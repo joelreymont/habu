@@ -1,4 +1,5 @@
 name: Intel host bootstrap experiment
+# checkpoint 2026-09-19T13:40Z
 
 on:
   push:
