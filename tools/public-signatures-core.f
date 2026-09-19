@@ -693,11 +693,13 @@ private
          PS-TOK$ PS-SCOPE-TOKEN? IF
          ELSE PS-TOK$ s" :" LINT-STR= IF
             file-a file-u PS-MAYBE-DEF
+         ELSE PS-TOK$ s" CAST:" LINT-STR=CI IF
+            file-a file-u PS-MAYBE-DEF
          ELSE PS-TOK$ s" LAYOUT-BUFFER" LINT-STR=CI IF
             file-a file-u PS-LAYOUT-BUFFER
          ELSE
             PS-TOK$ PS-MAYBE-TRUST-DEFINER drop
-         THEN THEN THEN
+         THEN THEN THEN THEN
       THEN
    repeat ;
 

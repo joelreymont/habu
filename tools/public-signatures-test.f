@@ -12,6 +12,7 @@ require lib/vector.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
+require lib/process-argv.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
@@ -500,6 +501,60 @@ variable PST-NUM-U
    PST-OUT outu s" PSTHASH:EQ" PST-WORD$ CONTAINS? TFALSE       \ hash-only: no eq row
    PST-OUT outu s" PSTSUM:HASH" PST-WORD$ CONTAINS? TFALSE ;    \ eq-only: no hash row
 
+package PST-CAST
+
+: SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" package PSCAST" SB-APPEND PST-LF
+   s" NEWTYPE inner-role 0" SB-APPEND PST-LF
+   s" : FORECAST: ( -- ) parse-name 2drop ;" SB-APPEND PST-LF
+   s" public" SB-APPEND PST-LF
+   s" NEWTYPE src-role 0 NEWTYPE dst-role 0" SB-APPEND PST-LF
+   s" CAST: TO-DEST ( src-role -- dst-role )" SB-APPEND PST-LF
+   s\" \\ CAST: FROM-LINE ( src-role -- dst-role )" SB-APPEND PST-LF
+   s" ( CAST: FROM-COMMENT ) ( src-role -- dst-role )" SB-APPEND PST-LF
+   s\" s\q CAST: FROM-STRING ( src-role -- dst-role )\q 2drop" SB-APPEND PST-LF
+   s" FORECAST: FROM-LONG ( src-role -- dst-role )" SB-APPEND PST-LF
+   s" private CAST: HIDDEN ( dst-role -- inner-role )" SB-APPEND PST-LF
+   s" ;package" SB-APPEND PST-LF
+   SB$ ;
+
+: ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+
+: CAPTURE ( -- n n n )
+   s" bin/hb" >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
+   10000 >MS RUN-ARGV-CAPTURE MATCH result
+      ok OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
+
+: SCAN ( bool -- n n n ) {: trust:bool :}
+   PROC-ARGV-RESET
+   s" --load" ARG+ PST-FIX ARG+
+   s" tools/public-signatures-core.f" ARG+
+   s" tools/public-signatures.f" ARG+
+   s" --" ARG+
+   trust if s" --trust" ARG+ then
+   PST-FIX ARG+ CAPTURE ;
+
+public
+: RUN ( -- )
+   PST-FIX SOURCE$ WRITE-ALL
+   \ The real child compiles the nominal declarations before scanning them.
+   false SCAN 0 PST-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   PST-OUT outu s" PSCAST:TO-DEST" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (src-role -- dst-role)" PST-SIG$ CONTAINS? TTRUE
+   PST-OUT outu 123 COUNT-CHAR 2 T=  \ document + exactly one definition
+   PST-OUT outu s" HIDDEN" CONTAINS? TFALSE
+   true SCAN 0 PST-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   s" PSCAST:TO-DEST" s" src-role -- dst-role" PST-TRUST$ 2drop
+   PST-LF
+   PST-OUT outu SB$ T$= ;
+
+;package
+
 : PST-MAIN ( -- )
    T-RESET
    PST-PREPARE
@@ -515,6 +570,7 @@ variable PST-NUM-U
    PST-TEST-CLOSURE-NESTED
    PST-TEST-CONST-LAYOUT
    PST-TEST-SUM-LAYOUT
+   PST-CAST:RUN
    CLEANUP-RUN
    PST-ROOT EXISTS? TFALSE
    T-REPORT
