@@ -8,10 +8,10 @@
 \ runs unchanged on the next backend: same cases, same expectations, so the
 \ x86_64 and Cortex-M bodies answer the arm64 numbers or the gate is red.
 \
-\ A CASE IS DATA. `CASES <name>` opens a case set for one row of the table and
+\ A CASE IS DATA. `<overload> CASES <name>` opens a case set for one row and
 \ every line inside it is inputs and expected outputs:
 \
-\     CASES +
+\     0 CASES +
 \             3       4          7  NN-N
 \            -7       4         -3  NN-N
 \     ;CASES
@@ -41,18 +41,18 @@
 \ presence and its integral behaviour; fractional and NaN semantics belong to
 \ lib/float-test.f and to f64 text, not here.
 \
-\ COVERAGE IS BY NAME. `CASES <name>` marks every row of that name, so an
-\ overloaded name (`+` has three rows) counts as covered once its arm is
-\ exercised, and the arm's instantiation — the numeric one here — is what ran.
-\ Rows with no case set are printed by name at the end; the gate reports that
-\ gap rather than failing on it.
+\ COVERAGE IS BY ROW. The zero-based overload ordinal selects one row of that
+\ name in table order. Closing a nonempty case set marks only that row; a
+\ numeric case never covers a pointer or boolean sibling. REF also belongs to
+\ that exact row. Uncovered rows print their absolute table index with the name;
+\ the gate reports that gap rather than failing on it.
 \
 \ A REFUSAL IS A CASE TOO. A primitive that rejects its inputs is pinned by the
 \ code it throws, not by a value: `NN-THROWS` runs the arm under `catch` and the
 \ case column is the expected throw code, so the two dividing refusals below read
 \ like any other row and the reference is held to the same code.
 \
-\     CASES /
+\     0 CASES /
 \             7       0   E-DIV-ZERO  NN-THROWS
 \
 \ WHAT THIS GATE CANNOT HOLD.
@@ -63,6 +63,7 @@
 
 require lib/test.f
 require lib/string.f
+require lib/fmt.f
 require lib/errors.f                    \ E-DIV-ZERO, the dividing rows' refusal
 require src/habu/prim-ref.f
 
@@ -88,11 +89,9 @@ create LBL-BUF LBL-CAP allot
 variable SUBJ-U
 variable LBL-U
 variable SUBJ-N                         \ cases run under the current subject
+variable SUBJ-ROW
 variable CI
-variable CJ
-variable RI
 variable SI
-variable NREF-SUBJ
 variable NPRINT
 variable NCOVER
 variable NREF
@@ -104,9 +103,6 @@ variable DV-A
 variable DV-B
 
 $3A constant COLON-B
-
-: YES ( -- bool )
-   0 0= ;
 
 : NO ( -- bool )
    0 0= 0= ;
@@ -140,8 +136,14 @@ $3A constant COLON-B
    a SUBJ-BUF u BYTE-COPY
    u SUBJ-U ! ;
 
-: SUBJ-ROW ( -- n )
-   SUBJ$ PRIM-SPEC:FIND ;
+: FIND-ROW ( ptr u8 n n -- n ) {: a:ptr u:n overload:n :}
+   0
+   PRIM-SPEC:COUNT 0 ?do
+      i PRIM-SPEC:NAME$ a u STR= if
+         dup overload = if drop i unloop exit then
+         1+
+      then
+   loop drop -1 ;
 
 : NO-ARM ( ptr u8 n ptr u8 n -- ) {: ka:ptr ku:n na:ptr nu:n :}
    s" prim-parity: no " type ka ku type s"  arm for " type na nu type cr
@@ -161,19 +163,8 @@ $3A constant COLON-B
 : LBL-REF ( -- )
    s" reference" LBL ;
 
-\ Does any row of this name carry a REF clause? Any, not the first: an
-\ overloaded name states its reference on the row the gate's arm instantiates,
-\ and that is not always the row the table lists first (`cell+` lists its
-\ pointer row ahead of its numeric one).
 : REF? ( -- bool )
-   0 NREF-SUBJ !
-   0 RI !
-   BEGIN RI @ PRIM-SPEC:COUNT < WHILE
-      RI @ PRIM-SPEC:NAME$ SUBJ$ STR=
-      RI @ PRIM-SPEC:REF$ nip 0= 0= and IF NREF-SUBJ @ 1+ NREF-SUBJ ! THEN
-      RI @ 1+ RI !
-   REPEAT
-   NREF-SUBJ @ 0= 0= ;
+   SUBJ-ROW @ PRIM-SPEC:REF$ nip 0= 0= ;
 
 : CASE+ ( -- )
    SUBJ-N @ 1+ SUBJ-N ! ;
@@ -371,44 +362,59 @@ $3A constant COLON-B
    na nu s" count" STR= IF v FIX-BYTES c! FIX-BYTES PRIM-REF:COUNTED$ nip EXIT THEN
    s" memory reference" na nu NO-ARM ;
 
+\ Pointer columns are offsets into FIX-BYTES; results are offsets or distances.
+\ All accesses stay within that fixture. Each arm has the row's checked types.
+: PN-P-PRIM ( n n ptr u8 n -- n ) {: a:n b:n na:ptr nu:n :}
+   na nu s" +" STR= IF FIX-BYTES a + b + FIX-BYTES - EXIT THEN
+   na nu s" -" STR= IF FIX-BYTES a + b - FIX-BYTES - EXIT THEN
+   s" pointer step" na nu NO-ARM ;
+
+: P-P-PRIM ( n ptr u8 n -- n ) {: a:n na:ptr nu:n :}
+   na nu s" 1+"    STR= IF FIX-BYTES a + 1+    FIX-BYTES - EXIT THEN
+   na nu s" 1-"    STR= IF FIX-BYTES a + 1-    FIX-BYTES - EXIT THEN
+   na nu s" cell+" STR= IF FIX-BYTES a + cell+ FIX-BYTES - EXIT THEN
+   na nu s" char+" STR= IF FIX-BYTES a + char+ FIX-BYTES - EXIT THEN
+   s" pointer unary" na nu NO-ARM ;
+
+: PP-F-PRIM ( n n ptr u8 n -- n ) {: a:n b:n na:ptr nu:n :}
+   na nu s" ="  STR= IF FIX-BYTES a + FIX-BYTES b + =  B>N EXIT THEN
+   na nu s" <>" STR= IF FIX-BYTES a + FIX-BYTES b + <> B>N EXIT THEN
+   na nu s" <"  STR= IF FIX-BYTES a + FIX-BYTES b + <  B>N EXIT THEN
+   na nu s" >"  STR= IF FIX-BYTES a + FIX-BYTES b + >  B>N EXIT THEN
+   na nu s" <=" STR= IF FIX-BYTES a + FIX-BYTES b + <= B>N EXIT THEN
+   na nu s" >=" STR= IF FIX-BYTES a + FIX-BYTES b + >= B>N EXIT THEN
+   s" pointer order" na nu NO-ARM ;
+
+: PTR-CASE+ ( -- )
+   CASE+
+   REF? IF s" pointer reference" SUBJ$ NO-ARM THEN ;
+
 \ ---- coverage ----------------------------------------------------------------
 : PRIM-ROW? ( n -- bool ) {: row:n :}
    row PRIM-SPEC:KIND@ PRIM-SPEC:K-PRIM =
    row PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = or ;
 
-: MARK ( ptr u8 n -- ) {: a:ptr u:n :}  \ every row of this name, overloads included
-   0 CI !
-   BEGIN CI @ PRIM-SPEC:COUNT < WHILE
-      CI @ PRIM-SPEC:NAME$ a u STR= IF 1 COVERED CI @ + c! THEN
-      CI @ 1+ CI !
-   REPEAT ;
+: MARK ( n -- )
+   COVERED + 1 swap c! ;
 
 : COVERED? ( n -- bool )
    COVERED swap + c@ 0= 0= ;
 
-: FIRST-OF-NAME? ( n -- bool ) {: row:n :}   \ so an uncovered overload prints once
-   0 CJ !
-   BEGIN CJ @ row < WHILE
-      CJ @ PRIM-SPEC:NAME$ row PRIM-SPEC:NAME$ STR= IF NO EXIT THEN
-      CJ @ 1+ CJ !
-   REPEAT
-   YES ;
-
 public
 
-: CASES ( -- )                          \ CASES <name> ... ;CASES
+: CASES ( n -- ) {: overload:n :}       \ <overload> CASES <name> ... ;CASES
    parse-name {: a:ptr u:n :}
    u 0= IF s" prim-parity: CASES needs a primitive name" PARITY-RC die THEN
    a u SUBJ!
-   SUBJ-ROW 0 < IF
+   a u overload FIND-ROW SUBJ-ROW !
+   SUBJ-ROW @ 0 < IF
       s" prim-parity: no table row for " type SUBJ$ type cr
-      s" prim-parity: unknown primitive" PARITY-RC die
+      s" prim-parity: unknown primitive overload" PARITY-RC die
    THEN
-   SUBJ-ROW PRIM-ROW? 0= IF
+   SUBJ-ROW @ PRIM-ROW? 0= IF
       s" prim-parity: not an effect row: " type SUBJ$ type cr
       s" prim-parity: wrong row kind" PARITY-RC die
    THEN
-   SUBJ$ MARK
    0 SUBJ-N ! ;
 
 : ;CASES ( -- )
@@ -416,6 +422,7 @@ public
       s" prim-parity: empty case set for " type SUBJ$ type cr
       s" prim-parity: empty case set" PARITY-RC die
    THEN
+   SUBJ-ROW @ MARK
    0 SUBJ-U ! ;
 
 : SHUF ( n -- ) {: want:n :}
@@ -470,6 +477,28 @@ public
    LBL-PRIM v SUBJ$ MEM-PRIM want T=
    REF? IF LBL-REF v SUBJ$ MEM-REF want T= THEN ;
 
+: PN-P ( n n n -- ) {: a:n b:n want:n :}
+   PTR-CASE+
+   LBL-PRIM a b SUBJ$ PN-P-PRIM want T= ;
+
+: NP-P ( n n n -- ) {: a:n b:n want:n :}
+   PTR-CASE+
+   SUBJ$ s" +" STR= 0= IF s" number plus pointer" SUBJ$ NO-ARM THEN
+   LBL-PRIM a FIX-BYTES b + + FIX-BYTES - want T= ;
+
+: PP-N ( n n n -- ) {: a:n b:n want:n :}
+   PTR-CASE+
+   SUBJ$ s" -" STR= 0= IF s" pointer distance" SUBJ$ NO-ARM THEN
+   LBL-PRIM FIX-BYTES a + FIX-BYTES b + - want T= ;
+
+: P-P ( n n -- ) {: a:n want:n :}
+   PTR-CASE+
+   LBL-PRIM a SUBJ$ P-P-PRIM want T= ;
+
+: PP-F ( n n n -- ) {: a:n b:n want:n :}
+   PTR-CASE+
+   LBL-PRIM a b SUBJ$ PP-F-PRIM want T= ;
+
 private
 
 \ ---- the report --------------------------------------------------------------
@@ -520,8 +549,8 @@ private
    0 NPRINT !
    0 CI !
    BEGIN CI @ PRIM-SPEC:COUNT < WHILE
-      CI @ PRIM-ROW? CI @ COVERED? 0= and CI @ FIRST-OF-NAME? and IF
-         s"   " type CI @ PRIM-SPEC:NAME$ type
+      CI @ PRIM-ROW? CI @ COVERED? 0= and IF
+         s"   " type CI @ FMT:.U s" :" type CI @ PRIM-SPEC:NAME$ type
          NPRINT @ 1+ NPRINT !
          NPRINT @ PER-LINE mod 0= IF cr THEN
       THEN
@@ -552,21 +581,21 @@ T-RESET
 \ =============================================================================
 
 \ ---- stack shufflers: 1 2 3 4 in, the whole window out ----------------------
-CASES dup     12344 SHUF ;CASES
-CASES drop      123 SHUF ;CASES
-CASES swap     1243 SHUF ;CASES
-CASES over    12343 SHUF ;CASES
-CASES nip       124 SHUF ;CASES
-CASES tuck    12434 SHUF ;CASES
-CASES rot      1342 SHUF ;CASES
-CASES -rot     1423 SHUF ;CASES
-CASES 2dup   123434 SHUF ;CASES
-CASES 2drop      12 SHUF ;CASES
-CASES 2swap    3412 SHUF ;CASES
-CASES 2over  123412 SHUF ;CASES
+0 CASES dup     12344 SHUF ;CASES
+0 CASES drop      123 SHUF ;CASES
+0 CASES swap     1243 SHUF ;CASES
+0 CASES over    12343 SHUF ;CASES
+0 CASES nip       124 SHUF ;CASES
+0 CASES tuck    12434 SHUF ;CASES
+0 CASES rot      1342 SHUF ;CASES
+0 CASES -rot     1423 SHUF ;CASES
+0 CASES 2dup   123434 SHUF ;CASES
+0 CASES 2drop      12 SHUF ;CASES
+0 CASES 2swap    3412 SHUF ;CASES
+0 CASES 2over  123412 SHUF ;CASES
 
 \ ---- arithmetic --------------------------------------------------------------
-CASES +
+0 CASES +
            3           4                   7  NN-N
           -7           4                  -3  NN-N
            0           0                   0  NN-N
@@ -574,14 +603,46 @@ CASES +
        MIN-N       MIN-N                   0  NN-N
 ;CASES
 
-CASES -
+s" numeric + covers only its own row" T-LABEL
+s" +" 0 FIND-ROW COVERED? TTRUE
+s" +" 1 FIND-ROW COVERED? TFALSE
+s" +" 2 FIND-ROW COVERED? TFALSE
+s" unknown overload is absent" T-LABEL
+s" +" 3 FIND-ROW -1 T=
+s" +" -1 FIND-ROW -1 T=
+
+1 CASES +                              \ (ptr a n -- ptr a)
+           4           3                   7  PN-P
+           8          -3                   5  PN-P
+           0           0                   0  PN-P
+;CASES
+
+2 CASES +                              \ (n ptr a -- ptr a)
+           3           4                   7  NP-P
+          -3           8                   5  NP-P
+           0           0                   0  NP-P
+;CASES
+
+0 CASES -
            7           4                   3  NN-N
            4           7                  -3  NN-N
        MIN-N           1               MAX-N  NN-N     \ wraps
           -1          -1                   0  NN-N
 ;CASES
 
-CASES *
+1 CASES -                              \ (ptr a n -- ptr a)
+           8           3                   5  PN-P
+           4          -3                   7  PN-P
+           0           0                   0  PN-P
+;CASES
+
+2 CASES -                              \ (ptr a ptr a -- n)
+           8           3                   5  PP-N
+           3           8                  -5  PP-N
+           4           4                   0  PP-N
+;CASES
+
+0 CASES *
            6           7                  42  NN-N
           -6           7                 -42  NN-N
           -6          -7                  42  NN-N
@@ -592,7 +653,7 @@ CASES *
 \ Truncated toward zero, so the remainder carries the dividend's sign. A zero
 \ divisor is refused by name and MIN-N -1 wraps: both are contracts every backend
 \ answers, stated in docs/forth.md.
-CASES /
+0 CASES /
            7           2                   3  NN-N
           -7           2                  -3  NN-N
            7          -2                  -3  NN-N
@@ -605,7 +666,7 @@ CASES /
        MIN-N           0          E-DIV-ZERO  NN-THROWS
 ;CASES
 
-CASES mod
+0 CASES mod
            7           2                   1  NN-N
           -7           2                  -1  NN-N
            7          -2                   1  NN-N
@@ -615,7 +676,7 @@ CASES mod
            7           0          E-DIV-ZERO  NN-THROWS
 ;CASES
 
-CASES /mod
+0 CASES /mod
            7           2               1     3  NN-NN
           -7           2              -1    -3  NN-NN
            7          -2               1    -3  NN-NN
@@ -624,65 +685,81 @@ CASES /mod
            7           0          E-DIV-ZERO  NN-THROWS
 ;CASES
 
-CASES and
+0 CASES and
          $F0         $3C                 $30  NN-N
           -1         $FF                 $FF  NN-N
            0          -1                   0  NN-N
+;CASES
+1 CASES and
            1           1                   1  FF-F
            1           0                   0  FF-F
            0           0                   0  FF-F
 ;CASES
 
-CASES or
+0 CASES or
          $F0         $0C                 $FC  NN-N
            0           0                   0  NN-N
           -1           0                  -1  NN-N
+;CASES
+1 CASES or
            1           0                   1  FF-F
            0           0                   0  FF-F
            1           1                   1  FF-F
 ;CASES
 
-CASES xor
+0 CASES xor
          $F0         $3C                 $CC  NN-N
           -1          -1                   0  NN-N
          $FF           0                 $FF  NN-N
+;CASES
+1 CASES xor
            1           1                   0  FF-F
            1           0                   1  FF-F
            0           0                   0  FF-F
 ;CASES
 
-CASES 1+
+0 CASES 1+
            3                               4  N-N
           -1                               0  N-N
        MAX-N                           MIN-N  N-N     \ wraps
 ;CASES
 
-CASES 1-
+1 CASES 1+
+           0                               1  P-P
+           7                               8  P-P
+;CASES
+
+0 CASES 1-
            3                               2  N-N
            0                              -1  N-N
        MIN-N                           MAX-N  N-N     \ wraps
 ;CASES
 
-CASES negate
+1 CASES 1-
+           1                               0  P-P
+           8                               7  P-P
+;CASES
+
+0 CASES negate
            5                              -5  N-N
           -5                               5  N-N
            0                               0  N-N
        MIN-N                           MIN-N  N-N     \ the one fixed point
 ;CASES
 
-CASES invert
+0 CASES invert
            0                              -1  N-N
           -1                               0  N-N
          $F0            $FFFFFFFFFFFFFF0F  N-N
 ;CASES
 
-CASES 0=
+0 CASES 0=
            0                               1  N-F
            1                               0  N-F
           -1                               0  N-F
 ;CASES
 
-CASES 0<
+0 CASES 0<
           -1                               1  N-F
            0                               0  N-F
            1                               0  N-F
@@ -690,13 +767,18 @@ CASES 0<
        MAX-N                               0  N-F
 ;CASES
 
-CASES =
+0 CASES =
            3           3                   1  NN-F
            3           4                   0  NN-F
           -1          -1                   1  NN-F
 ;CASES
 
-CASES <
+1 CASES =
+           3           3                   1  PP-F
+           3           4                   0  PP-F
+;CASES
+
+0 CASES <
            3           4                   1  NN-F
            4           3                   0  NN-F
            3           3                   0  NN-F
@@ -704,45 +786,74 @@ CASES <
        MIN-N       MAX-N                   1  NN-F
 ;CASES
 
-CASES >
+1 CASES <
+           3           4                   1  PP-F
+           4           3                   0  PP-F
+           3           3                   0  PP-F
+;CASES
+
+0 CASES >
            4           3                   1  NN-F
            3           4                   0  NN-F
        MAX-N       MIN-N                   1  NN-F
 ;CASES
 
-CASES <>
+1 CASES >
+           4           3                   1  PP-F
+           3           4                   0  PP-F
+           3           3                   0  PP-F
+;CASES
+
+0 CASES <>
            3           3                   0  NN-F
            3           4                   1  NN-F
 ;CASES
 
-CASES <=
+1 CASES <>
+           3           3                   0  PP-F
+           3           4                   1  PP-F
+;CASES
+
+0 CASES <=
            3           3                   1  NN-F
            3           4                   1  NN-F
            4           3                   0  NN-F
        MIN-N       MAX-N                   1  NN-F
 ;CASES
 
-CASES >=
+1 CASES <=
+           3           3                   1  PP-F
+           3           4                   1  PP-F
+           4           3                   0  PP-F
+;CASES
+
+0 CASES >=
            3           3                   1  NN-F
            4           3                   1  NN-F
            3           4                   0  NN-F
 ;CASES
 
-CASES abs
+1 CASES >=
+           3           3                   1  PP-F
+           4           3                   1  PP-F
+           3           4                   0  PP-F
+;CASES
+
+0 CASES abs
           -5                               5  N-N
            5                               5  N-N
            0                               0  N-N
        MIN-N                           MIN-N  N-N     \ negate's fixed point again
 ;CASES
 
-CASES min
+0 CASES min
            3           4                   3  NN-N
           -3           4                  -3  NN-N
            5           5                   5  NN-N
        MIN-N       MAX-N               MIN-N  NN-N
 ;CASES
 
-CASES max
+0 CASES max
            3           4                   4  NN-N
           -3          -4                  -3  NN-N
        MIN-N       MAX-N               MAX-N  NN-N
@@ -750,7 +861,7 @@ CASES max
 
 \ The shift count is taken modulo the cell width: 64 shifts by none. Measured on
 \ arm64 and pinned here so a backend that answers zero instead is red.
-CASES lshift
+0 CASES lshift
            1           4                 $10  NN-N
            1          63               MIN-N  NN-N
            1          64                   1  NN-N
@@ -758,151 +869,161 @@ CASES lshift
           -1           1                  -2  NN-N
 ;CASES
 
-CASES rshift
+0 CASES rshift
          $10           4                   1  NN-N
           -1           1               MAX-N  NN-N     \ logical, not arithmetic
           -1          63                   1  NN-N
            1          64                   1  NN-N
 ;CASES
 
-CASES cells
+0 CASES cells
            1                               8  N-N
            3                              24  N-N
            0                               0  N-N
 ;CASES
 
-CASES cell+
+1 CASES cell+
            0                               8  N-N
            8                              16  N-N
 ;CASES
 
-CASES chars
+0 CASES cell+
+           0                               8  P-P
+           8                              16  P-P
+;CASES
+
+0 CASES chars
            1                               1  N-N
            7                               7  N-N
 ;CASES
 
-CASES char+
+1 CASES char+
            0                               1  N-N
            7                               8  N-N
 ;CASES
 
+0 CASES char+
+           0                               1  P-P
+           7                               8  P-P
+;CASES
+
 \ ---- memory ------------------------------------------------------------------
-CASES !
+0 CASES !
            0                               0  MEM
        $1234                           $1234  MEM
           -1                              -1  MEM
 ;CASES
 
-CASES @
+0 CASES @
            0                               0  MEM
        $1234                           $1234  MEM
           -1                              -1  MEM
 ;CASES
 
-CASES c!
+0 CASES c!
            0                               0  MEM
          $7F                             $7F  MEM
          $FF                             $FF  MEM
 ;CASES
 
-CASES c@
+0 CASES c@
            0                               0  MEM
          $7F                             $7F  MEM
          $FF                             $FF  MEM
 ;CASES
 
-CASES +!
+0 CASES +!
            0                               3  MEM
           10                              13  MEM
           -3                               0  MEM
 ;CASES
 
-CASES count
+0 CASES count
            0                               0  MEM
            5                               5  MEM
          $FF                             $FF  MEM
 ;CASES
 
-CASES byte-view
+0 CASES byte-view
        $1234                             $34  MEM     \ little-endian, as both live targets are
           -1                             $FF  MEM
            0                               0  MEM
 ;CASES
 
-CASES cell-view
+0 CASES cell-view
        $1234                           $1234  MEM
           -1                              -1  MEM
 ;CASES
 
 \ ---- floats ------------------------------------------------------------------
-CASES f+
+0 CASES f+
            3           4                   7  NN-N
           -3           4                   1  NN-N
            0           0                   0  NN-N
 ;CASES
 
-CASES f-
+0 CASES f-
            7           4                   3  NN-N
            4           7                  -3  NN-N
 ;CASES
 
-CASES f*
+0 CASES f*
            6           7                  42  NN-N
           -6           7                 -42  NN-N
 ;CASES
 
-CASES f/
+0 CASES f/
           12           3                   4  NN-N
          -12           3                  -4  NN-N
 ;CASES
 
-CASES fnegate
+0 CASES fnegate
            5                              -5  N-N
           -5                               5  N-N
 ;CASES
 
-CASES fabs
+0 CASES fabs
           -5                               5  N-N
            5                               5  N-N
 ;CASES
 
-CASES fsqrt
+0 CASES fsqrt
           16                               4  N-N
            0                               0  N-N
 ;CASES
 
-CASES f<
+0 CASES f<
            3           4                   1  NN-F
            4           3                   0  NN-F
 ;CASES
 
-CASES f>
+0 CASES f>
            4           3                   1  NN-F
            3           4                   0  NN-F
 ;CASES
 
-CASES f=
+0 CASES f=
            3           3                   1  NN-F
            3           4                   0  NN-F
 ;CASES
 
-CASES f0<
+0 CASES f0<
           -1                               1  N-F
            1                               0  N-F
            0                               0  N-F
 ;CASES
 
-CASES f0=
+0 CASES f0=
            0                               1  N-F
            1                               0  N-F
 ;CASES
 
-CASES s>f
+0 CASES s>f
            7                               7  N-N
           -7                              -7  N-N
 ;CASES
 
-CASES f>s
+0 CASES f>s
            7                               7  N-N
           -7                              -7  N-N
 ;CASES
