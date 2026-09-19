@@ -6,7 +6,7 @@
 \ underneath it is per task. See docs/threads.md.
 \
 \ The module lives in `package PROC-CMD`. External callers use the qualified public
-\ command-builder API (PROC-CMD:RESET, PROC-CMD:ARG+, PROC-CMD:ENV+,
+\ command-builder API (PROC-CMD:RESET, PROC-CMD:WIPE, PROC-CMD:ARG+, PROC-CMD:ENV+,
 \ PROC-CMD:ENV-ENTRY+, PROC-CMD:ENV-HERMETIC, PROC-CMD:IN!, PROC-CMD:CWD!, PROC-CMD:RUN-OUTCOME,
 \ PROC-CMD:RUN-RC, PROC-CMD:OUT$, PROC-CMD:ERR$, PROC-CMD:OUTCOME@, PROC-CMD:RC@);
 \ the argument/environment tables, capture buffers, and staging helpers are
@@ -17,6 +17,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/process-cwd.f
+require lib/span.f
 
 package PROC-CMD
 
@@ -83,6 +84,16 @@ public
    PROC-CMD-CAPTURE-RESET
    PROC-ARGV-RESET
    PROC-ENV-RESET ;
+
+\ Explicitly erase stdin and captures, including bytes beyond the live lengths.
+\ RESET and RUN keep their existing lifetime; the caller chooses when to wipe.
+: WIPE ( -- )
+   0 PROC-CMD-IN PROC-CMD-IN-CAP SPAN:MAKE SPAN:FILL
+   0 PROC-CMD-OUT PROC-CMD-OUT-CAP SPAN:MAKE SPAN:FILL
+   0 PROC-CMD-ERR PROC-CMD-ERR-CAP SPAN:MAKE SPAN:FILL
+   0 >LEN PROC-CMD-IN-LEN !
+   0 >LEN PROC-CMD-OUT-LEN !
+   0 >LEN PROC-CMD-ERR-LEN ! ;
 
 private
 

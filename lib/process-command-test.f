@@ -176,8 +176,61 @@ create PCMDT-REL 512 allot   variable PCMDT-REL-U
    PROC-CMD:RESET
    s" /nonexistent-hb-proc-cmd-dir" >LEN PROC-CMD:CWD! ;
 
+\ Inspect full capacities: empty OUT$/ERR$ alone cannot prove erasure.
+package PROC-CMD
+
+: WIPE-ZERO? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 u 0 ?do a i + c@ or loop 0= ;
+
+: WIPE-CHECK ( -- )
+   PROC-CMD-IN PROC-CMD-IN-CAP WIPE-ZERO? TTRUE
+   PROC-CMD-OUT PROC-CMD-OUT-CAP WIPE-ZERO? TTRUE
+   PROC-CMD-ERR PROC-CMD-ERR-CAP WIPE-ZERO? TTRUE
+   PROC-CMD-IN-LEN @ LEN>N 0 T=
+   OUT$ nip 0 T= ERR$ nip 0 T= ;
+
+: WIPE-TAINT ( -- )
+   165 PROC-CMD-IN PROC-CMD-IN-CAP SPAN:MAKE SPAN:FILL
+   165 PROC-CMD-OUT PROC-CMD-OUT-CAP SPAN:MAKE SPAN:FILL
+   165 PROC-CMD-ERR PROC-CMD-ERR-CAP SPAN:MAKE SPAN:FILL ;
+
+: WIPE-REFUSED-RUN ( -- )
+   s" " >LEN PCMDT-CMD-TIMEOUT-MS >MS RUN-RC drop ;
+
+public
+
+: TEST-WIPE ( -- )
+   WIPE WIPE-CHECK                  \ safe before the first run
+   WIPE-TAINT RESET                 \ RESET still only forgets live lengths
+   PROC-CMD-IN c@ 165 T=
+   PROC-CMD-OUT c@ 165 T=
+   PROC-CMD-ERR c@ 165 T=
+   s" staged input" >LEN IN!
+   s" /bin/cat" >LEN PCMDT-CMD-TIMEOUT-MS >MS RUN-RC PCMDT-RC>N 0 T=
+   OUT$ s" staged input" T$=       \ RUN has not wiped its capture
+   s" /usr/bin/false" >LEN PCMDT-CMD-TIMEOUT-MS >MS RUN-RC PCMDT-RC>N 1 T=
+   s" kept" >LEN ARG+
+   s" WIPE_TEST" >LEN s" kept" >LEN ENV+
+   s" /tmp" >LEN CWD! ENV-HERMETIC
+   WIPE WIPE-CHECK                  \ stale tails and unused stderr are erased too
+   PROC-CMD-ARG-N @ COUNT>N 1 T=
+   PROC-CMD-ENV-N @ COUNT>N 1 T=
+   PROC-CMD-CWD PROC-CMD-CWD-LEN @ LEN>N s" /tmp" T$=
+   PROC-CMD-INHERIT @ 0 T=
+   RC@ PCMDT-RC>N 1 T=             \ wiping does not reset the outcome
+   RESET
+   s" later input" >LEN IN!
+   s" /bin/cat" >LEN PCMDT-CMD-TIMEOUT-MS >MS RUN-RC PCMDT-RC>N 0 T=
+   OUT$ s" later input" T$=
+   [: WIPE-REFUSED-RUN ;] E-PROC-OUTPUT TTHROWSQ
+   WIPE WIPE-CHECK
+   WIPE WIPE-CHECK ;
+
+;package
+
 : PROCESS-COMMAND-TEST-MAIN ( -- )
    T-RESET
+   PROC-CMD:TEST-WIPE
    PCMDT-RUN-PRINTF
    PCMDT-RUN-STDIN
    PCMDT-RUN-HERMETIC-ENV

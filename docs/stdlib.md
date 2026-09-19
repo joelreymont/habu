@@ -1899,6 +1899,7 @@ PROC-CMD-ENV-INHERIT ( -- )
 PROC-CMD-ENV-HERMETIC ( -- )
 PROC-CMD-IN-RESET    ( -- )
 PROC-CMD-IN!         ( ptr u8 len -- )
+PROC-CMD:WIPE        ( -- )
 PROC-CMD-RUN-OUTCOME ( ptr u8 len ms -- n n )
 PROC-CMD-RUN-RC      ( ptr u8 len ms -- result<n,n> )
 PROC-CMD-OUT$        ( -- ptr u8 n )
@@ -1920,6 +1921,10 @@ that same outcome pair. `PROC-CMD-RUN-RC` wraps the `PROC-OUTCOME>RC` completion
 in a `result<n,n>` (ok on a clean exit, err carrying the nonzero code) for
 callers that branch on success/failure. `PROC-CMD-OUT$`, `PROC-CMD-ERR$`,
 `PROC-CMD-OUTCOME@`, and `PROC-CMD-RC@` expose the stored result after the run.
+`PROC-CMD:WIPE` explicitly zero-fills the full stdin, stdout and stderr staging
+buffers and clears their lengths, including after a refused run. `RESET` only
+resets lengths and state; no run wipes implicitly. Wiping leaves the command's
+arguments, environment, working directory and recorded outcome intact.
 
 `lib/process-cwd.f` is a post-env layer for running prepared argv/envp children
 with a child-only working directory. It uses the native
