@@ -36,3 +36,16 @@ protected publication, caught rollback, snapshot and compact-AOT validation,
 and failure parity with native.
 
 Evidence: Unlanded candidate commit `6f90f4297156` is preserved for future adaptation.
+
+Rescope required; unclaimed. The E1 namespace-kind design above is superseded
+and is not a porting plan for the current line. At `c07554cf`, package namespace
+records have the namespace wordlist sentinel (`DICT-WL:NAMESPACE`, -1), with
+public and private wordlist IDs in the two cells otherwise used for a word's
+code start and length. `C-PACKAGE-NEW-RECORD` in `src/habu/habu2.f` writes them;
+`XREF-PKG-PUBLIC` and `XREF-PKG-PRIVATE` in `src/habu/xref.f` name those fields.
+The current native and recovery emitters have no `LNSFIND` or E1 namespace-kind
+constants. The owner-WID/protected-owner design was removed by the package hard
+cut (`a8c716c5`; see the closed `habu-guard-owner-namespace-baef64c5` dot).
+Any remaining recovery parity gap must first be reproduced against this
+representation; do not transplant the preserved E1 candidate or its acceptance
+criteria as a new namespace architecture.
