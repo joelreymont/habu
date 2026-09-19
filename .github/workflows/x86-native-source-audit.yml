@@ -1,0 +1,51 @@
+name: Native x86 source freshness audit
+
+on:
+  push:
+    branches: [experiment/x86-native-20260919]
+    paths: [.github/workflows/x86-native-source-audit.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  source-audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Audit published heads tags and pull request refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/habu-source-audit"
+          mkdir -p "$evidence"
+          date -u +%FT%TZ > "$evidence/audited-at.txt"
+          git ls-remote --refs origin > "$evidence/advertised-refs.tsv"
+          git fetch --force --prune origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*'
+          if grep -q 'refs/pull/' "$evidence/advertised-refs.tsv"; then
+            git fetch origin '+refs/pull/*/head:refs/audit/pull/*'
+          fi
+          git for-each-ref --sort=-committerdate --format='%(committerdate:iso-strict)%09%(authordate:iso-strict)%09%(objectname)%09%(refname)%09%(subject)' refs/remotes/origin refs/tags refs/audit > "$evidence/ref-tips.tsv"
+          git log --all --since-as-filter='2026-09-15T21:00:00Z' --format='%cI%x09%aI%x09%H%x09%s' --date-order > "$evidence/commits-since-sep16-kyiv.tsv"
+          git log --all --since-as-filter='2026-09-15T21:00:00Z' --format='%cI%x09%aI%x09%H%x09%s' --name-status -- src bootstrap lib test > "$evidence/recent-language-changes.txt"
+          git log --all -i --grep='x86\|x64\|intel\|amd64' --format='%cI%x09%H%x09%s' > "$evidence/intel-history.tsv"
+          git bundle create "$evidence/published-source.bundle" --all
+          git bundle verify "$evidence/published-source.bundle"
+          sha256sum "$evidence/published-source.bundle" > "$evidence/bundle.sha256"
+          echo '=== Newest 25 ref tips ==='
+          head -25 "$evidence/ref-tips.tsv"
+          echo '=== All published commits from Sep 16 Kyiv onward ==='
+          cat "$evidence/commits-since-sep16-kyiv.tsv"
+          echo '=== Published ref count ==='
+          wc -l "$evidence/advertised-refs.tsv"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: habu-published-source-audit
+          path: ${{ runner.temp }}/habu-source-audit/
+          if-no-files-found: error
+          retention-days: 7
