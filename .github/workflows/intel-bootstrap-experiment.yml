@@ -1,0 +1,78 @@
+name: Intel host bootstrap experiment
+
+on:
+  push:
+    branches: [experiment/intel-bootstrap-20260919]
+    paths: [.github/workflows/intel-bootstrap-experiment.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      HABU_TARGET: linux-aarch64
+      HB_TMP: /tmp/habu-intel
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Record source and host
+        shell: bash
+        run: |
+          mkdir -p "$HB_TMP" "$RUNNER_TEMP/habu-intel-evidence"
+          git rev-parse HEAD > "$RUNNER_TEMP/habu-intel-evidence/source-commit.txt"
+          uname -a > "$RUNNER_TEMP/habu-intel-evidence/host.txt"
+          git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/habu-intel-evidence/habu-source.tar.gz"
+      - name: Provision isolated bootstrap dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gforth autoconf automake libtool-bin libffi-dev libltdl-dev texinfo qemu-user-static libc6-arm64-cross
+          cp /usr/bin/qemu-aarch64-static "$RUNNER_TEMP/habu-intel-evidence/"
+          tar -czf "$RUNNER_TEMP/habu-intel-evidence/aarch64-sysroot.tar.gz" -C /usr aarch64-linux-gnu
+          dpkg-query -W gforth qemu-user-static libc6-arm64-cross > "$RUNNER_TEMP/habu-intel-evidence/packages.txt"
+      - name: Build pinned Gforth recovery host
+        shell: bash
+        run: |
+          git clone --depth 1 --branch 0.7.9_20260610 https://github.com/forthy42/gforth.git "$RUNNER_TEMP/gforth"
+          cd "$RUNNER_TEMP/gforth"
+          test "$(git rev-parse 0.7.9_20260610)" = 39c54928ae2b62c31ed828a99fc6507a70a47cbe
+          git rev-parse HEAD > "$RUNNER_TEMP/habu-intel-evidence/gforth-commit.txt"
+          ./autogen.sh
+          UNSUITABLE_CC=none ./configure --prefix="$RUNNER_TEMP/gforth-installed"
+          make -j2 gforth-itc gforth-light.fi
+          ./gforth-itc -i ./gforth-light.fi -e ': f {: a :} a . cr ; 1 f bye'
+          printf '#!/bin/sh\nexec "%s/gforth-itc" -i "%s/gforth-light.fi" "$@"\n' "$PWD" "$PWD" > "$HB_TMP/gforth"
+          chmod +x "$HB_TMP/gforth"
+          tar --exclude=.git -czf "$RUNNER_TEMP/habu-intel-evidence/gforth-build.tar.gz" -C "$RUNNER_TEMP" gforth
+      - name: Emit genuine ARM64 recovery REPL on Intel
+        shell: bash
+        run: |
+          "$HB_TMP/gforth" -e "require $PWD/test/nf.fs s\" $HB_TMP/hb-aarch64-repl\" FORTH-REPL-EXE bye" > "$RUNNER_TEMP/habu-intel-evidence/build.stdout" 2> "$RUNNER_TEMP/habu-intel-evidence/build.stderr"
+          file "$HB_TMP/hb-aarch64-repl"
+          cp "$HB_TMP/hb-aarch64-repl" "$RUNNER_TEMP/habu-intel-evidence/"
+          sha256sum "$HB_TMP/hb-aarch64-repl" > "$RUNNER_TEMP/habu-intel-evidence/engine.sha256"
+      - name: Execute the real checker and compiled body under QEMU
+        shell: bash
+        run: |
+          printf ': INTEL-SMOKE ( n -- n ) 1 + ;\n41 INTEL-SMOKE . cr\n' > "$HB_TMP/good.f"
+          timeout 180 qemu-aarch64-static -L /usr/aarch64-linux-gnu "$HB_TMP/hb-aarch64-repl" < "$HB_TMP/good.f" > "$RUNNER_TEMP/habu-intel-evidence/good.stdout" 2> "$RUNNER_TEMP/habu-intel-evidence/good.stderr"
+          grep -Eq '(^|[[:space:]])42([[:space:]]|$)' "$RUNNER_TEMP/habu-intel-evidence/good.stdout"
+          printf ': INTEL-BAD ( n -- n ) dup ;\n' > "$HB_TMP/bad.f"
+          set +e
+          timeout 180 qemu-aarch64-static -L /usr/aarch64-linux-gnu "$HB_TMP/hb-aarch64-repl" < "$HB_TMP/bad.f" > "$RUNNER_TEMP/habu-intel-evidence/bad.stdout" 2> "$RUNNER_TEMP/habu-intel-evidence/bad.stderr"
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > "$RUNNER_TEMP/habu-intel-evidence/bad.exit"
+          test "$rc" -eq 70
+      - name: Preserve evidence even when bootstrap fails
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: habu-intel-bootstrap-evidence
+          path: ${{ runner.temp }}/habu-intel-evidence/
+          if-no-files-found: error
+          retention-days: 7
