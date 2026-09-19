@@ -313,6 +313,7 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 2 constant AR-A32
 3 constant AR-THUMB2
 4 constant AR-C66X
+5 constant AR-X86-64
 
 : EFF-CODE ( IR-SCHEMA:effect -- n )
    MATCH effect
@@ -408,6 +409,7 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
       AR-A32     of CTARGET-ARCH:A32 endof
       AR-THUMB2  of CTARGET-ARCH:THUMB2 endof
       AR-C66X    of CTARGET-ARCH:C66X endof
+      AR-X86-64  of CTARGET-ARCH:X86-64 endof
       E-IR-SCHEMA-STATE throw
    endcase ;
 
