@@ -1,9 +1,11 @@
 ---
 title: Preserve the source when stream-copy paths alias
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-18T19:52:45.285581+03:00"
+closed-at: "2026-09-19T23:04:52.121722+03:00"
+close-reason: "landed alder's alias re-land 627070a7 (SAME-OPEN-FILE? by fstat identity before truncation) and pool isolation 38487d1a (NSTR:ACTIVE/SWITCH; the three zero bytes were fs-identity's NUL literals in the application pool), hb-build fixtures green incl. HBT-SIZE-AOT 7710+3 -> 57+0, gate CS 452/453 with curl-http E-PROC-TIMEOUT under load and green alone, integrated c07554cf"
 ---
 
 Claim: alder, .jj-ws/alder-alias-reland, based on integrated 88e43ad5.
