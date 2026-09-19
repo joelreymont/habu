@@ -3,8 +3,8 @@
 \ The friend-arena seal (TFAM 2b-i) is a runtime range guard on every raw-write
 \ SINK (! c! +! atomic* patch32 snap-rebase, syscall write buffers). The native
 \ engine (src/habu/habu1.f) carries the full sink set; the Gforth stage0 mirror
-\ (bootstrap/cg/forth.fs) is a strict SUBSET — it has atomic! and atomic-cas
-\ for the storage lock, but no atomic-add, no snap-rebase,
+\ (bootstrap/cg/forth.fs) is a strict SUBSET — it has guarded atomic!, atomic-cas
+\ and atomic-add, but no snap-rebase,
 \ no readlink/stat64/lstat64/getdirentries64/poll/ffi-call syscalls and no
 \ CHECKER-* registry mutators except the reviewed checker-defer registration
 \ bridge, whose exact sites are presence-pinned below (SAB-REAL-CHKDEFER).
@@ -78,7 +78,7 @@ CAST: SAB-BO>RAW ( NUM:byte-off -- n )   \ next offset for the raw-shaped return
 $80000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~257 KB + headroom)
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)
 92 constant SAB-BSLASH                  \ ASCII '\' — the line-comment introducer
-13 constant SAB-GUARD-PINS              \ prior 11 sites + BATSTORE and BATCAS destination guards
+14 constant SAB-GUARD-PINS              \ prior 11 sites + atomic!, atomic-cas and atomic-add destination guards
 2 constant SAB-SEAL-PINS                \ EMIT-SEAL-FRIEND code sites: 1 def + the one seal every entry path runs
 6 constant SAB-PROVIDE-PINS             \ PFX-PROVIDE-FILES code sites: 1 def + the pipe, file, repl and baked entries
 2 constant SAB-CHKDEFER-PINS            \ CHECKER-DEFER code sites: C-CALL-CHECKER-DEFER def + C-DEFER call
@@ -110,9 +110,6 @@ variable SAB-NAMES-LEN
    SAB-NAMES pos + 1 +
    nu ;
 
-: SAB-ADD-ATOMICS ( -- )
-   s" atomic-add" SAB-NAME, ;
-
 : SAB-ADD-SNAP ( -- )
    s" snap-rebase" SAB-NAME,  s" BSNAPREBASE" SAB-NAME, ;
 
@@ -130,7 +127,7 @@ variable SAB-NAMES-LEN
 
 : SAB-INIT-NAMES ( -- )
    0 SAB-NAMES-LEN !
-   SAB-ADD-ATOMICS  SAB-ADD-SNAP  SAB-ADD-SYSCALLS
+   SAB-ADD-SNAP  SAB-ADD-SYSCALLS
    SAB-ADD-CHECKER ;
 
 \ --- comment stripping + substring scan ---
@@ -200,7 +197,7 @@ variable SAB-NAMES-LEN
    repeat 2drop drop
    SAB-TOT @ ;
 
-\ These two formerly absent sinks now back the cold storage lock. Pin each
+\ These formerly absent sinks now back the cold storage lock. Pin each
 \ exact eight-byte destination guard as well as the total: an unrelated new
 \ GUARD-SPAN must not compensate for a deleted or misdirected atomic guard.
 : SAB-ATSTORE-GUARDED? ( ptr u8 n -- bool )
@@ -208,6 +205,28 @@ variable SAB-NAMES-LEN
 
 : SAB-ATCAS-GUARDED? ( ptr u8 n -- bool )
    s" C G-POP B G-POP A G-POP  7 8 MOVZ,  C 7 GUARD-SPAN" SAB-COUNT-CODE 1 = ;
+
+\ BATADD-INSN is LDADDAL x9,x9,[x10]: B (x10), not A, is its destination.
+\ Its stencil line must immediately follow the eight-byte destination guard.
+\ BATFETCH's LDAR only reads memory, so it is not a raw-write sink.
+variable SAB-ADD-GUARD?
+
+: SAB-ATADD-GUARDED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 SAB-LSTART !  0 SAB-TOT !  0 SAB-ADD-GUARD? !
+   begin
+      a u STR-LF SAB-LSTART @ SAB-SPLIT-NEXT
+   while
+      SAB-LSTART !
+      2dup SAB-CODE-LEN nip {: line:ptr cu:n :}
+      SAB-ADD-GUARD? @ 0<> if
+         line cu s" BATADD-INSN 4 BYTES, A G-PUSH" CONTAINS? if
+            SAB-TOT @ 1 + SAB-TOT !
+         then
+      then
+      line cu s" B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN" CONTAINS?
+      if -1 else 0 then SAB-ADD-GUARD? !
+   repeat 2drop drop
+   SAB-TOT @ 1 = ;
 
 \ --- scan buffer + mirror source read ---
 
@@ -256,19 +275,19 @@ variable SAB-READY
 : SAB-SELF-NEG ( -- )
    s" seeded unguarded sink line fails closed" T-LABEL
    0 SAB-VIOL# !
-   s" : BX ( -- ) atomic-add A B 0 STR, ;" SAB-SCAN-BUF
+   s" : BX ( -- ) snap-rebase A B 0 STR, ;" SAB-SCAN-BUF
    SAB-VIOL# @ 0 > TTRUE ;
 
 : SAB-SELF-GUARD-OK ( -- )
    s" absent name on a GUARD-SPAN line is an allowed guarded add" T-LABEL
    0 SAB-VIOL# !
-   s" : BX ( -- ) B G-POP A G-POP B 7 GUARD-SPAN atomic-add A B 0 STR, ;" SAB-SCAN-BUF
+   s" : BX ( -- ) B G-POP A G-POP B 7 GUARD-SPAN snap-rebase A B 0 STR, ;" SAB-SCAN-BUF
    SAB-VIOL# @ 0 T= ;
 
 : SAB-SELF-COMMENT-OK ( -- )
    s" absent name only in a backslash comment is ignored" T-LABEL
    0 SAB-VIOL# !
-   s" : BX ( -- ) A B 0 STR, ;   \ atomic-add snap-rebase package here" SAB-SCAN-BUF
+   s" : BX ( -- ) A B 0 STR, ;   \ snap-rebase package here" SAB-SCAN-BUF
    SAB-VIOL# @ 0 T= ;
 
 : SAB-SELF-TESTS ( -- )
@@ -281,7 +300,13 @@ variable SAB-READY
    s" B G-POP A G-POP  7 8 MOVZ,  A B STLR," SAB-ATSTORE-GUARDED? 0= TTRUE
    s" B G-POP A G-POP  7 8 MOVZ,  A 7 GUARD-SPAN  A B STLR," SAB-ATSTORE-GUARDED? 0= TTRUE
    s" C G-POP B G-POP A G-POP  7 8 MOVZ," SAB-ATCAS-GUARDED? 0= TTRUE
-   s" C G-POP B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN" SAB-ATCAS-GUARDED? 0= TTRUE ;
+   s" C G-POP B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN" SAB-ATCAS-GUARDED? 0= TTRUE
+   s\" B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN\n   BATADD-INSN 4 BYTES, A G-PUSH" SAB-ATADD-GUARDED? TTRUE
+   s\" B G-POP A G-POP  7 8 MOVZ,\n   BATADD-INSN 4 BYTES, A G-PUSH" SAB-ATADD-GUARDED? 0= TTRUE
+   s\" B G-POP A G-POP  7 8 MOVZ,  A 7 GUARD-SPAN\n   BATADD-INSN 4 BYTES, A G-PUSH" SAB-ATADD-GUARDED? 0= TTRUE
+   s" B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN" SAB-ATADD-GUARDED? 0= TTRUE
+   s\" BATADD-INSN 4 BYTES, A G-PUSH\nB G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN" SAB-ATADD-GUARDED? 0= TTRUE
+   s\" \\ B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN\n   BATADD-INSN 4 BYTES, A G-PUSH" SAB-ATADD-GUARDED? 0= TTRUE ;
 
 \ --- real proofs against the stage0 mirror source ---
 
@@ -299,6 +324,7 @@ variable SAB-READY
    s" stage0 atomic stores guard their exact destinations" T-LABEL
    SAB-FORTH$ SAB-ATSTORE-GUARDED? TTRUE
    SAB-FORTH$ SAB-ATCAS-GUARDED? TTRUE
+   SAB-FORTH$ SAB-ATADD-GUARDED? TTRUE
    \ One seal site, inside PFX-PROVIDE-CORE-FILES, which PFX-PROVIDE-FILES
    \ reaches from every cold-prefix entry path (pipe, file, repl and baked);
    \ the entry count pins that every path still goes through it.
