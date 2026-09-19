@@ -1,0 +1,9 @@
+---
+title: Bind a pointer local beside a wide local in one group
+status: active
+priority: 1
+issue-type: task
+created-at: "2026-09-20T01:06:18.448565+03:00"
+---
+
+Problem (aspen, Tender server/writer.f ADD-TENDER, engine 05c5e207/2130d262): '{: row:PDB2:tender fx:ptr :}' - a wide record local and a bare ':ptr' local whose actual pointee is a layout family (ptr PDB2:tender-facts) in ONE group - is refused at ':}' with no reason, while the split form '{: fx:ptr :} {: row:PDB2:tender :}' certifies, as does the group with a ptr to a scalar (ptr n, ptr u8) or with a scalar local; measured deterministic on the current engine (reproducers /tmp/hazel-probe-locals/tree/probe/p5a.f red, p5b.f green, v1-v11), not order-dependent as first reported. Cause: src/core/checker.f LOC-BIND takes the bundle path (LOC-BIND-GROUPS) when any captured operand is a hidden-field bundle; that path's LOC-SCALAR-BIND unifies the ':ptr' annotation's fresh pointee var with the operand's pointer type WITHOUT LAYOUT-XPORT set, so the var may not bind to the layout param, UNIFY answers false and nothing captures the pair (hence the bare diagnostic); the non-bundle path (CHECKER-STEP) sets LAYOUT-XPORT around the capture. Acceptance: the group path binds scalar locals under the same transport rule as the non-bundle path (LAYOUT-XPORT set for LOC-SCALAR-BIND), a failed scalar bind captures the pair for the diagnostic like LOC-ANN-BIND-CHECK does, test/wide-typed-local-probe.f gains the group shape (a wide local with a ptr-to-layout local above and below it) certified and run at both tiers plus the diagnostic of a mismatched group naming the pair, p5a certifies on gen3; three generations with gen2 == gen3; test/run.f. Files: src/core/checker.f, test/wide-typed-local-probe.f. Verify: the probe suite (tier 0 and aot twin); test/run.f. Depends: none. Ownership: checker (hazel). Claim: agent=hazel workspace=.jj-ws/hazel-locals-xport.
