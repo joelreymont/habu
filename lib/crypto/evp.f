@@ -1,4 +1,4 @@
-\ AES-256-GCM sealing and HMAC-SHA-256 over OpenSSL 3's libcrypto.
+\ AES-256-GCM sealing and HMAC-SHA-256/SHA-1 over OpenSSL 3's libcrypto.
 require lib/errors.f
 require lib/prelude.f                      \ true / false
 require lib/ffi-abi.f
@@ -31,6 +31,7 @@ $20 constant KEY-BYTES                    \ AES-256
 $0C constant NONCE-BYTES                  \ GCM's 96-bit IV, the only length this package accepts
 $10 constant TAG-BYTES                    \ the GCM tag SEAL appends and UNSEAL verifies
 $20 constant MAC-BYTES                    \ HMAC-SHA-256
+$14 constant MAC1-BYTES                   \ HMAC-SHA-1
 
 private
 
@@ -62,6 +63,7 @@ FUNCTION: CTX-NEW EVP_CIPHER_CTX_new ( -- n ) ;FUNCTION
 FUNCTION: CTX-FREE EVP_CIPHER_CTX_free ( n -- ) ;FUNCTION
 FUNCTION: AES-256-GCM EVP_aes_256_gcm ( -- n ) ;FUNCTION
 FUNCTION: SHA-256 EVP_sha256 ( -- n ) ;FUNCTION
+FUNCTION: SHA-1 EVP_sha1 ( -- n ) ;FUNCTION
 
 FUNCTION: RAND-BYTES RAND_bytes ( ptr u8 n -- n )
    0 1 WRITES-ARG                         \ the caller's span, length from arg 1
@@ -111,6 +113,11 @@ FUNCTION: CTL-TAG-IN EVP_CIPHER_CTX_ctrl ( n n n ptr u8 -- n ) ;FUNCTION
 FUNCTION: HMAC-CALL HMAC ( n ptr u8 n ptr u8 n ptr u8 ptr u8 -- n )
    5 MAC-BYTES WRITES-BYTES                \ the digest
    6 C-INT-BYTES WRITES-BYTES              \ unsigned int *md_len
+;FUNCTION
+
+FUNCTION: HMAC1-CALL HMAC ( n ptr u8 n ptr u8 n ptr u8 ptr u8 -- n )
+   5 MAC1-BYTES WRITES-BYTES               \ SHA-1's 20-byte digest
+   6 C-INT-BYTES WRITES-BYTES
 ;FUNCTION
 
 
@@ -335,5 +342,14 @@ public
    ou MAC-BYTES < if E-OPERAND throw then
    SHA-256 key ku msg mu out MAC-LEN-BUF HMAC-CALL 0= if E-MAC throw then
    MAC-LEN@ MAC-BYTES <> if E-MAC throw then ;
+
+\ HMAC-SHA-1 has the same span contract, with a MAC1-BYTES digest.
+: HMAC-SHA1 ( ptr u8 n ptr u8 n ptr u8 n -- ) {: key ku:n msg mu:n out ou:n :}
+   PLATFORM
+   ku SPAN-LEN
+   mu SPAN-LEN
+   ou MAC1-BYTES < if E-OPERAND throw then
+   SHA-1 key ku msg mu out MAC-LEN-BUF HMAC1-CALL 0= if E-MAC throw then
+   MAC-LEN@ MAC1-BYTES <> if E-MAC throw then ;
 
 ;package

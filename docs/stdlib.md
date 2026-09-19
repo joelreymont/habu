@@ -1164,7 +1164,8 @@ payload formats belong above this module.
 `FUNCTION:` declarer on Linux AArch64/glibc. `RANDOM-BYTES` fills a span from the
 system generator; `SEAL` and `UNSEAL` are AES-256-GCM with the 16-byte tag
 appended to the ciphertext and the associated data authenticated in place;
-`HMAC-SHA256` is the one-shot keyed digest. `UNSEAL` answers a typed outcome, and
+`HMAC-SHA256` and `HMAC-SHA1` are one-shot keyed digests writing `MAC-BYTES`
+(32) and `MAC1-BYTES` (20), respectively. `UNSEAL` answers a typed outcome, and
 a record whose tag does not authenticate answers `failed` with the output span
 cleared, never a partial plaintext. Every `EVP_CIPHER_CTX` is freed on every
 path including a throw. See [crypto](crypto.md) for the vocabulary, a

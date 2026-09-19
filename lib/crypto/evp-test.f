@@ -5,6 +5,8 @@
 \ Viega's GCM specification (the submission NIST SP 800-38D adopted), which is
 \ where the 96-bit-IV AES-256 cases with associated data live. The HMAC-SHA-256
 \ vectors are RFC 4231 test cases 1 to 4.
+\ SHA-1: https://www.rfc-editor.org/rfc/rfc2202.html#section-3 and
+\ https://www.rfc-editor.org/rfc/rfc6238.html#appendix-B (time 59).
 
 require lib/test.f
 require lib/prelude.f
@@ -230,6 +232,27 @@ variable FILL-N
    s" 85f0faa3e578f8077a2e3ff46729665b" HEX,
    FILLED MAC-WANT-N ! ;
 
+\ Dynamic truncation belongs to the TOTP consumer, not the crypto binding.
+: TOTP1 ( -- n )
+   MAC-BUF CRYPTO:MAC1-BYTES 1- + c@ $0F and MAC-BUF + {: p:ptr :}
+   p c@ $7F and 24 lshift p 1+ c@ 16 lshift or
+   p 2 + c@ 8 lshift or p 3 + c@ or 100000000 mod ;
+
+: MAC1-VECTORS ( -- )
+   s" RFC 2202 HMAC-SHA-1 test case 1, exact 20-byte output span" T-LABEL
+   RFC4231-1
+   MAC-WANT-BUF MAC-CAP INTO
+   s" b617318655057264e28bc0b6fb378c8ef146be00" HEX, FILLED MAC-WANT-N !
+   $A5 MAC-BUF CRYPTO:MAC1-BYTES + c!
+   MAC-KEY$ MSG$ MAC-BUF CRYPTO:MAC1-BYTES CRYPTO:HMAC-SHA1
+   MAC-BUF CRYPTO:MAC1-BYTES MAC-WANT$ T$=
+   MAC-BUF CRYPTO:MAC1-BYTES + c@ $A5 T=
+
+   s" RFC 6238 SHA-1: time 59, 30-second step, eight digits" T-LABEL
+   MSG-BUF MSG-CAP INTO 0 7 REPEAT, 59 30 / BYTE, FILLED MSG-N !
+   s" 12345678901234567890" MSG$ MAC-BUF CRYPTO:MAC1-BYTES CRYPTO:HMAC-SHA1
+   TOTP1 94287082 T= ;
+
 
 \ ---- refusals --------------------------------------------------------------
 \ Each quotation differs from a working call in exactly one operand.
@@ -263,6 +286,9 @@ variable FILL-N
 
 : MAC-NO-ROOM ( -- )
    MAC-KEY$ MSG$ MAC-BUF CRYPTO:MAC-BYTES 1- CRYPTO:HMAC-SHA256 ;
+
+: MAC1-NO-ROOM ( -- )
+   MAC-KEY$ MSG$ MAC-BUF CRYPTO:MAC1-BYTES 1- CRYPTO:HMAC-SHA1 ;
 
 : RANDOM-NO-SPAN ( -- )
    MAC-BUF 0 CRYPTO:RANDOM-BYTES ;
@@ -449,6 +475,11 @@ FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- n )
    RFC4231-1
    [: MAC-NO-ROOM ;] CRYPTO:E-OPERAND TTHROWSQ
 
+   s" a SHA-1 digest span under 20 bytes is refused before writing" T-LABEL
+   $A5 MAC-BUF c!
+   [: MAC1-NO-ROOM ;] CRYPTO:E-OPERAND TTHROWSQ
+   MAC-BUF c@ $A5 T=
+
    s" an empty span of random bytes is refused" T-LABEL
    [: RANDOM-NO-SPAN ;] CRYPTO:E-OPERAND TTHROWSQ ;
 
@@ -482,12 +513,13 @@ FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- n )
 
 \ The count a complete run reaches. A group that stops early or is dropped from
 \ RUN shows up here rather than as a quiet green.
-$23 constant EXPECTED-CASES
+$28 constant EXPECTED-CASES
 
 : RUN ( -- )
    GCM-VECTORS
    TAMPER
    MAC-VECTORS
+   MAC1-VECTORS
    REFUSALS
    RANDOMNESS
    BIG-MESSAGE
