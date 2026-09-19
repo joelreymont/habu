@@ -84,16 +84,10 @@ public
 \ The production entry point. Both halves are revalidated and the pair rule is
 \ applied; an unrealisable pairing throws a named error and no binding is made.
 : BIND ( CTARGET:contract CNUM:numeric-policy -- CBIND:binding )
-   CNUM:VALIDATE CNUM-NUMERIC--POLICY:UNMAKE
-   {: o:CNUM:overflow f:CNUM:float-model c:CNUM:contraction
-      m:CNUM:fast-math k:CNUM:compare :}
-   CTARGET:VALIDATE CTARGET-CONTRACT:UNMAKE
-   {: a:CTARGET:arch b:CTARGET:abi e:CTARGET:endian
-      p:CTARGET:ptr-width ft:CTARGET:features :}
-   c ft FMA-CK
-   a b e p ft CTARGET-CONTRACT:MAKE
-   o f c m k CNUM-NUMERIC--POLICY:MAKE
-   CBIND-BINDING:MAKE ;
+   CNUM:VALIDATE {: numeric:CNUM:numeric-policy :}
+   CTARGET:VALIDATE {: target:CTARGET:contract :}
+   numeric CNUM:CONTRACTION@ target CTARGET:FEATURES@ FMA-CK
+   target numeric CBIND-BINDING:MAKE ;
 
 \ Recheck a binding that may have been assembled by the generated constructor.
 : VALIDATE ( CBIND:binding -- CBIND:binding )
@@ -106,40 +100,28 @@ public
 
 : POLICY@ ( CBIND:binding -- CNUM:numeric-policy )
    CBIND-BINDING:UNMAKE
-   CNUM-NUMERIC--POLICY:UNMAKE
-   {: o:CNUM:overflow f:CNUM:float-model c:CNUM:contraction
-      m:CNUM:fast-math k:CNUM:compare :}
-   CTARGET-CONTRACT:UNMAKE drop drop drop drop drop
-   o f c m k CNUM-NUMERIC--POLICY:MAKE ;
+   {: target:CTARGET:contract numeric:CNUM:numeric-policy :}
+   numeric ;
 
 \ ---- identity ----------------------------------------------------------------
 \ Structural identity, delegated to each half's own field-by-field comparison.
 : SAME? ( CBIND:binding CBIND:binding -- bool )
    CBIND-BINDING:UNMAKE
-   CNUM-NUMERIC--POLICY:UNMAKE
-   {: yo:CNUM:overflow yf:CNUM:float-model yc:CNUM:contraction
-      ym:CNUM:fast-math yk:CNUM:compare :}
-   CTARGET-CONTRACT:UNMAKE
-   {: ya:CTARGET:arch yb:CTARGET:abi ye:CTARGET:endian
-      yp:CTARGET:ptr-width yft:CTARGET:features :}
+   {: yt:CTARGET:contract yn:CNUM:numeric-policy :}
    CBIND-BINDING:UNMAKE
-   yo yf yc ym yk CNUM-NUMERIC--POLICY:MAKE
-   CNUM:SAME? {: same:bool :}
-   ya yb ye yp yft CTARGET-CONTRACT:MAKE
-   CTARGET:SAME? same and ;
+   {: xt:CTARGET:contract xn:CNUM:numeric-policy :}
+   xn yn CNUM:SAME? xt yt CTARGET:SAME? and ;
 
 \ The canonical preimage: binding tag, binding schema version, the target
 \ contract's whole preimage, the numerical policy's whole preimage. The bytes
 \ live in this module and stay valid until the next ENCODE call.
 : ENCODE ( CBIND:binding -- ptr u8 n )
    VALIDATE CBIND-BINDING:UNMAKE
-   CNUM-NUMERIC--POLICY:UNMAKE
-   {: o:CNUM:overflow f:CNUM:float-model c:CNUM:contraction
-      m:CNUM:fast-math k:CNUM:compare :}
+   {: numeric:CNUM:numeric-policy :}
    CDIGEST:TAG-BINDING PRE SLOT-TAG CDIGEST:SLOT!
    SCHEMA PRE SLOT-SCHEMA CDIGEST:SLOT!
    CTARGET:ENCODE SLOT-HEAD APPEND {: at:n :}
-   o f c m k CNUM-NUMERIC--POLICY:MAKE CNUM:ENCODE at APPEND {: end:n :}
+   numeric CNUM:ENCODE at APPEND {: end:n :}
    PRE end CDIGEST:SLOT-BYTES * ;
 
 : DIGEST ( CBIND:binding -- CDIGEST:digest )
