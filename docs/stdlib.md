@@ -2171,21 +2171,22 @@ BUILD:ARTIFACT       ( ptr u8 n ptr u8 n -- ptr u8 n )
 BUILD:STEP           ( ptr u8 n [ -- n ] -- )
 BUILD:RUN            ( ptr u8 n ptr u8 n -- n )
 BUILD:STEP-CELLS     ( -- n )
-BUILD:STEP-CLEAR     ( ptr a -- )
-BUILD:STEP-NAME!     ( ptr u8 n ptr a -- )
-BUILD:STEP-COMMAND!  ( ptr u8 n ptr a -- )
-BUILD:STEP-ARGV!     ( ptr u8 n ptr a -- )
-BUILD:STEP-TMP!      ( ptr u8 n ptr a -- )
-BUILD:STEP-ARTIFACT! ( ptr u8 n ptr a -- )
-BUILD:STEP-NAME$     ( ptr a -- ptr u8 n )
-BUILD:STEP-COMMAND$  ( ptr a -- ptr u8 n )
-BUILD:STEP-ARGV$     ( ptr a -- ptr u8 n )
-BUILD:STEP-TMP$      ( ptr a -- ptr u8 n )
-BUILD:STEP-ARTIFACT$ ( ptr a -- ptr u8 n )
-BUILD:STEP-RC@       ( ptr a -- n )
-BUILD:STEP-RC!       ( n ptr a -- )
-BUILD:STEP-VALIDATE  ( ptr a -- )
-BUILD:STEP-RUN       ( ptr a -- n )
+BUILD:STEP-CLEAR     ( ptr BUILD:step -- )
+BUILD:STEP-NAME!     ( ptr u8 n ptr BUILD:step -- )
+BUILD:STEP-COMMAND!  ( ptr u8 n ptr BUILD:step -- )
+BUILD:STEP-ARGV!     ( ptr u8 n ptr BUILD:step -- )
+BUILD:STEP-TMP!      ( ptr u8 n ptr BUILD:step -- )
+BUILD:STEP-ARTIFACT! ( ptr u8 n ptr BUILD:step -- )
+BUILD:STEP-NAME$     ( ptr BUILD:step -- ptr u8 n )
+BUILD:STEP-COMMAND$  ( ptr BUILD:step -- ptr u8 n )
+BUILD:STEP-ARGV$     ( ptr BUILD:step -- ptr u8 n )
+BUILD:STEP-TMP$      ( ptr BUILD:step -- ptr u8 n )
+BUILD:STEP-ARTIFACT$ ( ptr BUILD:step -- ptr u8 n )
+BUILD:STEP-STATE@    ( ptr BUILD:step -- BUILD:state )
+BUILD:STEP-RC@       ( ptr BUILD:step -- n )
+BUILD:STEP-RC!       ( n ptr BUILD:step -- )
+BUILD:STEP-VALIDATE  ( ptr BUILD:step -- )
+BUILD:STEP-RUN       ( ptr BUILD:step -- n )
 ```
 
 `lib/test.f` is the public checked test framework interface. It loads assertion
@@ -2310,14 +2311,24 @@ after a successful command. The artifact-existence check, the source scanner,
 the `CHECK!` trust boundary, and every buffer and state cell are package-private.
 Raw process exits are only allowed at the final CLI/script boundary.
 
-Build step records are `BUILD:STEP-CELLS cells` caller-owned storage with counted
-fields for name, executable command path, argv metadata, private temp path,
-required artifact path, and last rc. `BUILD:STEP-VALIDATE` rejects missing command
-files, missing temp directories, and empty artifact paths before execution.
-`BUILD:STEP-RUN` validates the record, runs the command path through `BUILD:RUN`,
-requires the artifact, stores the rc, and returns it. Argv is modeled as metadata
-until the process layer grows argv-vector spawning; it is still part of the
-checked build contract so drivers can preserve intended command arguments.
+Allocate a build step with `TYPED-VARIABLE JOB BUILD:step` or a `TYPED-BUFFER`
+of that type, then call `JOB BUILD:STEP-CLEAR`. The record has five named
+`BUILD:text` counted spans for its name, command, argv metadata, temp path and
+artifact path, plus `BUILD:state`: `pending` or `completed` carrying an `rc`.
+`STEP-STATE@` exposes that distinction; the numeric `STEP-RC@` / `STEP-RC!`
+interface retains `-1` as the spelling of pending. `STEP-CELLS` reports the
+physical width; raw `create … allot` storage is not a typed step.
+
+`STEP-CLEAR` publishes a complete empty, pending record. Successful input
+setters make it pending again; a refused setter leaves the old input and
+result intact. `STEP-VALIDATE` rejects missing command files, missing temp
+directories and empty artifact paths without mutation. `STEP-RUN` validates
+first, makes the step pending, runs the command through `BUILD:RUN`, requires
+the artifact, then stores and returns the result. A throw after execution
+starts leaves it pending. Repeat runs and explicit result updates remain legal.
+These transition rules belong to the `STEP-*` operations; direct generated
+field stores enforce field types but do not invalidate the result.
+Argv and temp path remain metadata; `STEP-RUN` runs the command path as supplied.
 
 `lib/codesign.f` owns checked executable promotion and target signing policy for
 build drivers that already produced an artifact. On macOS it runs

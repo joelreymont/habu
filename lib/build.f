@@ -8,10 +8,9 @@
 \ A build-step record is assembled and executed through BUILD:STEP-CLEAR, the
 \ BUILD:STEP-NAME! / STEP-COMMAND! / STEP-ARGV! / STEP-TMP! / STEP-ARTIFACT!
 \ setters, the matching STEP-NAME$ / STEP-COMMAND$ / STEP-ARGV$ / STEP-TMP$ /
-\ STEP-ARTIFACT$ readers, STEP-RC@ / STEP-RC!, BUILD:STEP-VALIDATE, and
-\ BUILD:STEP-RUN. The source scanner, the record cell plumbing, and every
-\ buffer and state variable are
-\ package-private.
+\ STEP-ARTIFACT$ readers, STEP-STATE@ / STEP-RC@ / STEP-RC!, STEP-VALIDATE,
+\ and STEP-RUN. Input setters invalidate the preceding result; refused edits
+\ leave it intact. The source scanner, buffers and state variables are private.
 \
 require lib/errors.f
 require lib/string.f
@@ -20,25 +19,30 @@ require lib/process.f
 
 package BUILD
 
+public
+
+STRUCTURE text 0 FIELD base ptr u8 FIELD size len ;STRUCTURE
+ENUM state 0
+   VARIANT pending ;VARIANT
+   VARIANT completed FIELD code rc ;VARIANT
+;ENUM
+STRUCTURE step 0 DERIVE addr
+   FIELD name text
+   FIELD command text
+   FIELD argv text
+   FIELD tmp text
+   FIELD artifact text
+   FIELD state state
+;STRUCTURE
+
+private
+
 65536 constant BUILD-SOURCE-CAP
 10 constant BUILD-LF
 13 constant BUILD-CR
 32 constant BUILD-SP
 58 constant BUILD-COLON
 59 constant BUILD-SEMI
-
-0 constant BUILD-STEP-NAME-A
-1 constant BUILD-STEP-NAME-U
-2 constant BUILD-STEP-CMD-A
-3 constant BUILD-STEP-CMD-U
-4 constant BUILD-STEP-ARGV-A
-5 constant BUILD-STEP-ARGV-U
-6 constant BUILD-STEP-TMP-A
-7 constant BUILD-STEP-TMP-U
-8 constant BUILD-STEP-ART-A
-9 constant BUILD-STEP-ART-U
-10 constant BUILD-STEP-RC-OFF
-11 constant BUILD-STEP-CELLS
 
 create BUILD-SOURCE-BUF BUILD-SOURCE-CAP allot
 create BUILD-PATH-BUF FS-PATH-CAP allot
@@ -60,92 +64,78 @@ variable BUILD-END
    c BUILD-LF = if BUILD-TRUE exit then
    c BUILD-CR = ;
 
-: BUILD-STEP-CHECK-OFF ( n -- ) {: off :}
-   off 0 < if E-BUILD-PATH throw then
-   off BUILD-STEP-CELLS >= if E-BUILD-PATH throw then ;
+: BUILD-LENGTH ( n -- len )
+   dup 0 < if E-BUILD-PATH throw then >LEN ;
 
-: BUILD-STEP-FIELD ( ptr n n -- ptr n ) {: rec:ptr off :}
-   off BUILD-STEP-CHECK-OFF
-   rec off cells + ;
+: BUILD-EMPTY ( -- ptr u8 len ) BUILD-SOURCE-BUF 0 >LEN ;
 
-: BUILD-STEP-A! ( ptr u8 ptr n n -- ) {: a:ptr rec:ptr off :}
-   a rec off BUILD-STEP-FIELD 0 ptr-field ! ;
-
-: BUILD-STEP-N! ( n ptr n n -- ) {: n rec:ptr off :}
-   n rec off BUILD-STEP-FIELD ! ;
-
-: BUILD-STEP-A@ ( ptr n n -- ptr u8 )
-   BUILD-STEP-FIELD 0 ptr-field @ ;
-
-: BUILD-STEP-N@ ( ptr n n -- n )
-   BUILD-STEP-FIELD @ ;
-
-: BUILD-STEP-PAIR! ( ptr u8 n ptr n n -- ) {: a:ptr u rec:ptr off :}
-   u 0 < if E-BUILD-PATH throw then
-   a rec off BUILD-STEP-A!
-   u rec off 1 + BUILD-STEP-N! ;
-
-: BUILD-STEP-PAIR$ ( ptr n n -- ptr u8 n ) {: rec:ptr off :}
-   rec off BUILD-STEP-A@
-   rec off 1 + BUILD-STEP-N@ ;
-
-: BUILD-STEP-EMPTY! ( ptr n n -- ) {: rec:ptr off :}
-   BUILD-SOURCE-BUF 0 rec off BUILD-STEP-PAIR! ;
+: BUILD-PENDING ( ptr step -- )
+   BUILD-STATE:pending swap BUILD-STEP:STATE ! ;
 
 public
 
-\ Cell count of a caller-owned build-step record, so external callers can size
-\ their own `create ... cells allot` storage before STEP-CLEAR.
-: STEP-CELLS ( -- n )
-   BUILD-STEP-CELLS ;
+\ Caller-owned storage is TYPED-VARIABLE / TYPED-BUFFER of BUILD:step.
+: STEP-CELLS ( -- n ) BUILD-STEP:CELLS ;
 
-: STEP-CLEAR ( ptr n -- ) {: rec:ptr :}
-   rec BUILD-STEP-NAME-A BUILD-STEP-EMPTY!
-   rec BUILD-STEP-CMD-A BUILD-STEP-EMPTY!
-   rec BUILD-STEP-ARGV-A BUILD-STEP-EMPTY!
-   rec BUILD-STEP-TMP-A BUILD-STEP-EMPTY!
-   rec BUILD-STEP-ART-A BUILD-STEP-EMPTY!
-   -1 rec BUILD-STEP-RC-OFF BUILD-STEP-FIELD ! ;
+: STEP-CLEAR ( ptr step -- ) {: rec:ptr :}
+   BUILD-EMPTY BUILD-TEXT:MAKE
+   BUILD-EMPTY BUILD-TEXT:MAKE
+   BUILD-EMPTY BUILD-TEXT:MAKE
+   BUILD-EMPTY BUILD-TEXT:MAKE
+   BUILD-EMPTY BUILD-TEXT:MAKE
+   BUILD-STATE:pending BUILD-STEP:MAKE rec ! ;
 
-: STEP-NAME! ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
+: STEP-NAME! ( ptr u8 n ptr step -- ) {: a:ptr u:n rec:ptr :}
    u 0 <= if E-BUILD-COMMAND throw then
-   a u rec BUILD-STEP-NAME-A BUILD-STEP-PAIR! ;
+   a u BUILD-LENGTH BUILD-TEXT:MAKE rec BUILD-STEP:NAME !
+   rec BUILD-PENDING ;
 
-: STEP-COMMAND! ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
+: STEP-COMMAND! ( ptr u8 n ptr step -- ) {: a:ptr u:n rec:ptr :}
    u 0 <= if E-BUILD-COMMAND throw then
-   a u rec BUILD-STEP-CMD-A BUILD-STEP-PAIR! ;
+   a u BUILD-LENGTH BUILD-TEXT:MAKE rec BUILD-STEP:COMMAND !
+   rec BUILD-PENDING ;
 
-: STEP-ARGV! ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
-   a u rec BUILD-STEP-ARGV-A BUILD-STEP-PAIR! ;
+: STEP-ARGV! ( ptr u8 n ptr step -- ) {: a:ptr u:n rec:ptr :}
+   a u BUILD-LENGTH BUILD-TEXT:MAKE rec BUILD-STEP:ARGV !
+   rec BUILD-PENDING ;
 
-: STEP-TMP! ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
+: STEP-TMP! ( ptr u8 n ptr step -- ) {: a:ptr u:n rec:ptr :}
    u 0 <= if E-BUILD-PATH throw then
-   a u rec BUILD-STEP-TMP-A BUILD-STEP-PAIR! ;
+   a u BUILD-LENGTH BUILD-TEXT:MAKE rec BUILD-STEP:TMP !
+   rec BUILD-PENDING ;
 
-: STEP-ARTIFACT! ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
+: STEP-ARTIFACT! ( ptr u8 n ptr step -- ) {: a:ptr u:n rec:ptr :}
    u 0 <= if E-BUILD-PATH throw then
-   a u rec BUILD-STEP-ART-A BUILD-STEP-PAIR! ;
+   a u BUILD-LENGTH BUILD-TEXT:MAKE rec BUILD-STEP:ARTIFACT !
+   rec BUILD-PENDING ;
 
-: STEP-NAME$ ( ptr n -- ptr u8 n )
-   BUILD-STEP-NAME-A BUILD-STEP-PAIR$ ;
+: STEP-NAME$ ( ptr step -- ptr u8 n )
+   BUILD-STEP:NAME @ BUILD-TEXT:UNMAKE LEN>N ;
 
-: STEP-COMMAND$ ( ptr n -- ptr u8 n )
-   BUILD-STEP-CMD-A BUILD-STEP-PAIR$ ;
+: STEP-COMMAND$ ( ptr step -- ptr u8 n )
+   BUILD-STEP:COMMAND @ BUILD-TEXT:UNMAKE LEN>N ;
 
-: STEP-ARGV$ ( ptr n -- ptr u8 n )
-   BUILD-STEP-ARGV-A BUILD-STEP-PAIR$ ;
+: STEP-ARGV$ ( ptr step -- ptr u8 n )
+   BUILD-STEP:ARGV @ BUILD-TEXT:UNMAKE LEN>N ;
 
-: STEP-TMP$ ( ptr n -- ptr u8 n )
-   BUILD-STEP-TMP-A BUILD-STEP-PAIR$ ;
+: STEP-TMP$ ( ptr step -- ptr u8 n )
+   BUILD-STEP:TMP @ BUILD-TEXT:UNMAKE LEN>N ;
 
-: STEP-ARTIFACT$ ( ptr n -- ptr u8 n )
-   BUILD-STEP-ART-A BUILD-STEP-PAIR$ ;
+: STEP-ARTIFACT$ ( ptr step -- ptr u8 n )
+   BUILD-STEP:ARTIFACT @ BUILD-TEXT:UNMAKE LEN>N ;
 
-: STEP-RC@ ( ptr n -- n )
-   BUILD-STEP-RC-OFF BUILD-STEP-FIELD @ ;
+: STEP-STATE@ ( ptr step -- state ) BUILD-STEP:STATE @ ;
 
-: STEP-RC! ( n ptr n -- ) {: rc:n rec:ptr :}
-   rc rec BUILD-STEP-RC-OFF BUILD-STEP-N! ;
+: STEP-RC@ ( ptr step -- n )
+   STEP-STATE@ MATCH state
+      pending OF -1 ENDOF
+      completed OF RC>N ENDOF
+   ;MATCH ;
+
+\ The public numeric API retains -1 as its pending spelling; storage does not.
+: STEP-RC! ( n ptr step -- ) {: code:n rec:ptr :}
+   code -1 = if rec BUILD-PENDING exit then
+   code >RC BUILD-STATE:completed rec BUILD-STEP:STATE ! ;
 
 private
 
@@ -245,14 +235,15 @@ public
    artifact artifactu BUILD-EXPECT
    rc ;
 
-: STEP-VALIDATE ( ptr n -- ) {: rec:ptr :}
+: STEP-VALIDATE ( ptr step -- ) {: rec:ptr :}
    rec STEP-NAME$ nip 0 <= if E-BUILD-COMMAND throw then
    rec STEP-COMMAND$ FILE? 0= if E-BUILD-COMMAND throw then
    rec STEP-TMP$ DIR? 0= if E-BUILD-PATH throw then
    rec STEP-ARTIFACT$ nip 0 <= if E-BUILD-PATH throw then ;
 
-: STEP-RUN ( ptr n -- n ) {: rec:ptr :}
+: STEP-RUN ( ptr step -- n ) {: rec:ptr :}
    rec STEP-VALIDATE
+   rec BUILD-PENDING
    rec STEP-COMMAND$ rec STEP-ARTIFACT$ RUN {: rc:n :}
    rc rec STEP-RC!
    rc ;
