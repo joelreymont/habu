@@ -32,10 +32,11 @@ the campaign dots are the ledger.
 
 ## C1 Toolchain: finish the compiler and qualify a release
 
-What is missing: `PLAN.md` is titled "Finish Habu's native compiler";
-`docs/bootstrap.md` records that neither self-rebuild path can replace a
-working engine; Tender and Radar run only on pinned engine and source pairs;
-`RESTART.md` says not to call Habu release-qualified.
+Remaining work is tracked by `PLAN.md` and the open release dots. Follow
+[RESTART.md](../RESTART.md) to the current integration head and
+[bootstrap.md](bootstrap.md) for the native build and recovery routes.
+Qualification belongs to a particular source/engine pair and its recorded
+gates; downstream acceptance is a separate part of the checklist below.
 
 Grounding: `PLAN.md` "Required result" and "Dispatch order" define the
 compiler's completion and its dependency graph over existing dots. The
