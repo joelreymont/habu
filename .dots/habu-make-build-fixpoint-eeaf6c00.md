@@ -96,3 +96,31 @@ extends it to typed quotation cells. Reproducers are
 /tmp/alder-quotation-review/{typed,defer,persisted}.f. Coordinate the shared
 rollback fix 620cbf86 with Hazel before landing; do not hide it in a storage
 wrapper.
+
+After the declaration and rollback repairs integrated at d3c99b9b, the fresh
+private candidate in /tmp/alder-install-final/tmp/hb-stdin passes the original
+tier-1 INC probe (42), declaration counts 1/3/0, store delta 0 and callback 42.
+It is 5,570,752 bytes, SHA256
+39dba34d4211cdefb98882a5d7c2dd685fba78f9b47a8c4c70b84c5da667a5ea.
+The stdin refresh reports compiler fixpoint and two-process capture identity
+green. Its provided-file set differs from the product only by repl.f and
+linux/repl-term.f. A fresh tier-0 hb-host capture of the callback, baked through
+tools/aot-chain-bake.f, restores and prints 42 in a new process. The artifact
+is callback.aot and the resulting executable is callback-tmp/hb-chain.
+No installation, shared engine write or full gate was performed; Hazel's
+serial slot was requested for the candidate's remaining full-gate proof.
+
+Hazel's private d3c99b9b gate of that candidate fails at load, before any
+suite: `duplicate definition: STORE at src/core/quotation-storage.f:14`,
+exit 78. The stdin product carries the quotation-storage definitions but its
+require behavior permits the tree to redeclare them. This is the same failure
+class as d00185b1. The raw REQUIRE-BOOT-N listing above is not proof that the
+candidate provides the same modules to the tree's real load path. eeaf6c00
+remains open; fix this module-provision failure and repeat the candidate gate.
+
+Reduced without running a gate: the same candidate successfully runs a file
+containing `require src/core/quotation-storage.f` from its original build tree,
+but the identical file fails with duplicate STORE (78) from an exact private
+copy at /tmp/alder-install-final/other-tree. SOURCE-ROOT:CWD$ correctly names
+the copied tree there. This is a relocation/provision failure, not an absent
+row in the raw registry listing. Scratch probes: require-quote.f, root-probe.f.
