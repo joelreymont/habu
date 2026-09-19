@@ -13,6 +13,15 @@ E-X64EMIT-RELOC constant E-RELOC
 
 private
 
+\ XOR of the sign bit maps unsigned order to the engine's signed order.
+: BELOW? ( n n -- bool )
+   {: left:n right:n :}
+   left -$8000000000000000 xor right -$8000000000000000 xor < ;
+
+: ABOVE? ( n n -- bool )
+   {: left:n right:n :}
+   left -$8000000000000000 xor right -$8000000000000000 xor > ;
+
 : ROOM ( capacity offset n -- ) {: capacity:capacity offset:offset size:n :}
    capacity CAPACITY>N {: cap:n :} offset OFFSET>N {: pos:n :}
    cap 0 < pos 0 < or size 0 < or if E-BOUNDS throw then
@@ -55,17 +64,17 @@ public
 : DELTA32 ( target-address target-address -- X64ASM:displacement )
    {: target:target-address pc:target-address :}
    target TARGET-ADDRESS>N {: dest:n :} pc TARGET-ADDRESS>N {: origin:n :}
-   dest origin u< if
-      origin dest - dup $80000000 u> if E-RELOC throw then negate
+   dest origin BELOW? if
+      origin dest - dup $80000000 ABOVE? if E-RELOC throw then negate
    else
-      dest origin - dup $7FFFFFFF u> if E-RELOC throw then
+      dest origin - dup $7FFFFFFF ABOVE? if E-RELOC throw then
    then X64ASM:>DISPLACEMENT ;
 
 : ADDRESS+ ( target-address offset -- target-address )
    {: base:target-address offset:offset :}
    offset OFFSET>N dup 0 < if E-BOUNDS throw then {: size:n :}
    base TARGET-ADDRESS>N {: origin:n :}
-   origin size + dup origin u< if E-RELOC throw then >TARGET-ADDRESS ;
+   origin size + dup origin BELOW? if E-RELOC throw then >TARGET-ADDRESS ;
 
 \ The two offsets are coordinates, not byte counts and not host pointers.
 \ end is the actual instruction end, including any trailing immediate.
