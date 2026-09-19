@@ -1,6 +1,7 @@
 \ x86-64 target-contract smoke.
 require lib/test.f
 require src/compiler/target.f
+require src/compiler/ir/schema.f
 
 package X64TARGET-TEST
 private
@@ -17,6 +18,8 @@ private
    X64 CTARGET:ABI@ CTARGET-ABI:SYSV-AMD64-LINUX CTARGET-ABI:EQ T-TRUE
    s" x86 target is 64-bit" T-LABEL
    X64 CTARGET:PTR-BITS 64 T=
+   s" existing AArch64 wire identity is unchanged" T-LABEL
+   CTARGET-ARCH:AARCH64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET drop
    s" x86 rejects big endian" T-LABEL
    [: CTARGET-ARCH:X86-64 CTARGET-ABI:SYSV-AMD64-LINUX CTARGET-ENDIAN:BIG
       CTARGET-PTR--WIDTH:BITS64 CTARGET:F-BASE CTARGET:CONTRACT drop ;]
