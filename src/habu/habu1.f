@@ -1040,23 +1040,6 @@ variable NUM-FPOS
    LNX-DONE LABEL@ LBL,
    0 G-PUSH ;
 
-: BWAITRC ( -- )                   \ ( pid -- rc ) wait4; -1 = wait failed
-   A G-POP
-   LBL LNX-OK !
-   LBL LNX-DONE !
-   SP SP 16 SUBI,
-   0 9 0 ADDI,
-   1 SP 0 ADDI,  2 0 MOVZ,  3 0 MOVZ,
-   NR-WAIT4 SYS,
-   9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
-      9 0 MOVN,  LNX-DONE LABEL@ B,
-   LNX-OK LABEL@ LBL,
-   9 SP 0 LDRW,
-   9 9 8 LSRI,  9 9 $FF ANDI,
-   LNX-DONE LABEL@ LBL,
-   9 G-PUSH
-   SP SP 16 ADDI, ;
-
 : BWAITSTATUS ( -- )               \ ( pid -- status ) wait4 raw status; -1 = wait failed
    A G-POP
    LBL LNX-OK !
@@ -3354,7 +3337,6 @@ public
    s" spawn-argv-env-io" ['] BSPAWNARGVENVIO FPRIM-L
    s" spawn-argv-env-cwd-io" ['] BSPAWNARGVENVCWDIO FPRIM-L
    s" fork" ['] BFORK FPRIM-L
-   s" wait-rc" ['] BWAITRC FPRIM-L
    s" wait-status" ['] BWAITSTATUS FPRIM-L ;
 
 package ENGINE-EMIT

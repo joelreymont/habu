@@ -436,7 +436,6 @@ EPRIM: spawn-argv-env-cwd-io
    PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN PE-PTR-U8 PE-IN
    PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: fork          PE-N PE-OUT EPRIM;
-EPRIM: wait-rc       PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: wait-status   PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: patch32       PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary may emit machine code (F3)

@@ -1,6 +1,6 @@
 ---
 title: wait-rc masks signal deaths as rc 0
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-07-05T00:00:31.440913+02:00"
@@ -28,3 +28,23 @@ REMAINING (engine-owned, routed): delete the BWAITRC primitive + its
 (test/prop-test-core.f AX-NOEXEC-B) in one engine change, keeping the
 byte-for-byte fixpoint green. No stage0 mirror row exists (bootstrap/cg/forth.fs
 has no wait-rc).
+
+Claim: alder, .jj-ws/alder-retire-wait-rc from d3c99b9b after the address-row
+rollback integrated. Hazel released only BWAITRC, its habu1.f registration and
+the EPRIM row in prims.f. The old checker and noexec-list references above are
+gone already. The recovery seed has no corresponding primitive to remove.
+
+Retirement ready for Hazel's chain: BWAITRC, its FPRIM-L registration and
+its EPRIM row are removed. No executable caller remains; the checked
+PROC-WAIT-RC path and its SIGKILL -> 137 regression remain unchanged.
+
+Private proof in /tmp/alder-retire-wait-rc: check-only bootstrap passes;
+three product generations built, gen2 equals gen3 (4,391,104 bytes,
+SHA256 05c5e2079da2e5116d2fc505a38fe3d43d64ac19200d6a647531f1920229985c).
+On gen3, wait-rc is absent and wait-status is present. Rows prim-parity,
+primitive-registry, prop, spawn-emitter-shape, compiler-dispatch-shape,
+codegen-role, the eleven-file tail-pure-fixtures and six-file
+stdlib-process-fixtures pass. A fresh private whitebox passes primitive-trust
+and native-window-owner. Astra's independent review is clear.
+No full gate run here. build-fixpoint-fixtures invokes install --force, so
+it is left to Hazel's chain under the standing no-install instruction.
