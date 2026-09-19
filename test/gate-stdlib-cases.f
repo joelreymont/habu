@@ -1412,6 +1412,15 @@ WHITEBOX-SUITE snapshot-xt-cell-decl
    test/snapshot-xt-cell-decl.f
 ;SUITE
 
+SUITE address-cell-rollback
+   test/address-cell-rollback.f
+;SUITE
+
+SUITE address-cell-rollback-aot
+   test/compiler/aot-mode.f
+   test/address-cell-rollback.f
+;SUITE
+
 SUITE address-cell-cap-grown
    test/address-cell-cap-grown.f
 ;SUITE

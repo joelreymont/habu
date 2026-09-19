@@ -8991,7 +8991,7 @@ public
 \ Recovery, undefined/exit handling, ADT construction/matching, and main-loop helpers
 \ emit raw machine state transitions and diagnostics.
 : EM-EVAL-THROW-RECOVER ( -- )
-   LBL {: bounds:label :}
+   LBL LBL {: bounds:label addrfull:label :}
    LEVALREC LABEL@ LBL,
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !  LBL LEVLR !
    LBL LEVCORRUPT !  LBL LEVCORRUPTMSG !
@@ -9019,7 +9019,58 @@ public
       12 13 EVAL-INB LDR,  12 DATA SRCLOC:INB-CELL STR,
       TIER-PROV:ABANDON,
       CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
-      12 13 56 LDR,  12 DATA DP-CELL STR,
+      12 13 56 LDR,
+      \ Registration order is not address order: a late xt! can declare an
+      \ older cell. Keep every row below the cut, preserving its relative order.
+      \ The index records its row count; a reduced count makes the next marker
+      \ rebuild it before lookup, so stale ordinals cannot survive this cut.
+      SNAP-RELOC:MARK-SAVE
+      SNAP-RELOC:MARK-HEADER SNAP-RELOC:MARK-LOCK SNAP-RELOC:MARK-ROWS
+      12 12 16 SUB,                                  \ cut as DATA offset
+      13 4 0 LDR, 10 4 ADDRESS-CELLS:CAP-FIELD LDR,
+      LBL LBL LBL LBL LBL LBL LBL
+      {: acopy:label acloop:label acdone:label afilter:label
+         arloop:label arnext:label ardone:label :}
+      11 afilter CBNZ,                               \ mapped backing survives DP rewind
+      6 5 16 SUB, 6 12 CMP, C-HI acopy BCOND,
+      7 12 6 SUB, 7 7 3 LSRI, 10 7 CMP, C-LS afilter BCOND,
+   acopy LBL,
+      \ A snapshot/PERSIST may have placed the row backing in the abandoned
+      \ DATA suffix. Move that existing backing outside DATA before rewinding.
+      5 SP 144 STR, 10 SP 152 STR, 12 SP 160 STR, 13 SP 168 STR,
+      0 0 MOVZ, 1 10 3 LSLI, 2 3 MOVZ,
+      3 MAP-ANON-PRIVATE LIT64, 4 0 MOVN, 5 0 MOVZ,
+      NR-MMAP SYS, C-CS addrfull BCOND, 0 addrfull CBZ,
+      17 0 0 ADDI,
+      SNAP-RELOC:MARK-HEADER
+      5 SP 144 LDR, 10 SP 152 LDR, 12 SP 160 LDR, 13 SP 168 LDR,
+      3 0 MOVZ,
+   acloop LBL,
+      3 13 CMP, C-CS acdone BCOND,
+      6 3 3 LSLI, 7 5 6 ADD, 7 7 0 LDR,
+      6 17 6 ADD, 7 6 0 STR,
+      3 3 1 ADDI, acloop B,
+   acdone LBL,
+      17 4 ADDRESS-CELLS:BASE-FIELD STR,
+      6 1 MOVZ, 6 4 ADDRESS-CELLS:MODE-FIELD STR,
+      5 17 0 ADDI,
+   afilter LBL,
+      3 0 MOVZ, 10 0 MOVZ,
+      6 SNAP-RELOC:XTCELL-OFF-MASK LIT64,
+   arloop LBL,
+      3 13 CMP, C-CS ardone BCOND,
+      9 3 3 LSLI, 9 5 9 ADD, 7 9 0 LDR,
+      8 7 6 AND, 8 12 CMP, C-CS arnext BCOND,
+      9 10 3 LSLI, 9 5 9 ADD, 7 9 0 STR,
+      10 10 1 ADDI,
+   arnext LBL,
+      3 3 1 ADDI, arloop B,
+   ardone LBL,
+      10 4 0 STR,
+      SNAP-RELOC:MARK-UNLOCK
+      18 0 ?do i SP i cells LDR, loop
+      SP SP 192 ADDI,
+      12 DATA DP-CELL STR,
       \ Restore package/search state from this escaped native-stack frame.
       10 13 EVAL-PKG ADDI,
       9 10 PKGSNAP-CUR LDR,     9 DATA CUR-CELL STR,
@@ -9100,7 +9151,11 @@ public
    0 2 MOVZ,  1 LEVCORRUPTMSG LABEL@ ADR,  2 23 MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
    LEVCORRUPTMSG LABEL@ LBL,  s" hb: catch frame corrupt" BYTES,
-   bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
+   bounds LBL,  STACK-GUARD:EXIT-BOUNDS
+   addrfull LBL,
+   1 SNAP-RELOC:LXTMSG LABEL@ ADR, 0 2 MOVZ,
+   2 SNAP-RELOC:XTMSG-LEN MOVZ, NR-WRITE SYS,
+   0 SNAP-RELOC:XTCELL-RC MOVZ, NR-EXIT-GROUP SYS, ;
 
 : EM-REPL-RECOVER ( -- )
    LBL {: bounds:label :}

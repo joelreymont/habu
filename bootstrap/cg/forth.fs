@@ -7471,6 +7471,9 @@ variable P2SK
       12 13 0 LDR,   12 DATA INP-CELL STR,
       12 13 8 LDR,   12 DATA INE-CELL STR,
       CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
+      \ Native recovery filters address declarations before this DP rewind.
+      \ The seed owns no such rows: addr-cells-abi is zero, xt! only stores,
+      \ and ptr-cell-mark only consumes its address (EMIT-MEMORY-PRIMS).
       12 13 56 LDR,  12 DATA DP-CELL STR,
       9 DATA EVALD-CELL LDR,  9 9 1 SUBI,
       10 13 EVAL-PKG ADDI,
