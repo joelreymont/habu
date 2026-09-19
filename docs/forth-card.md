@@ -61,7 +61,7 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
   `: F ( ptr a -- n ) {: p:ptr :} p @ ;` is `E-NONPARAMETRIC-EFFECT` because `a`
   is specialised, while `( ptr n -- n )` certifies.
 - A multi-cell record binds **whole** to a local, untyped (`{: p :}`) or named
-  with its arity-0 family (`{: p:pt :}`); a parametric one is refused.
+  with any signature type (`{: r:res<n,n> :}`, arity checked).
 - Quotations `[: … ;]` are xts, not closures. The token `[ in -- out ]` works as
   a parameter, a `TYPED-VARIABLE` or a `TYPED-BUFFER` element:
   `: A ( n [ n -- n ] -- n ) execute ;` certifies and `2 [: 1 + ;] A` runs. A

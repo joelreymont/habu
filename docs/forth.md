@@ -415,12 +415,16 @@ checked body a record binds to a local — untyped
 (`: F ( pt -- n ) {: p :} p PT:UNMAKE drop ;`) or annotated with the family it
 holds (`: ID ( pt -- pt ) {: p:pt :} p ;`). The local holds the WHOLE value,
 whatever its cell count, and every reference reloads every cell, so a named
-record survives a return, an `if` arm and a loop body intact. The annotation is
-asserted, not decoration: a wrong family, a scalar spelling (`{: p:n :}` is
-`E-MISMATCH`, expected: n actual: @pt.tag<>), a parametric spelling
-(`{: p:res<n,n> :}`) and a family of arity > 0 are all refused — the
-annotation parser does not read family arguments, so a parametric value still
-takes an untyped local. See
+record survives a return, an `if` arm and a loop body intact. An annotation is
+read by the SIGNATURE type grammar: family arguments (`{: r:res<n,n> :}`),
+nested families (`{: o:opt<opt<n>> :}`), the definition's own declared type
+variables (`( opt<a> -- opt<a> ) {: o:opt<a> :} o` certifies and keeps the
+quantifier) and the same arity check. The one spelling only a local has is
+`{: p:ptr :}`: an annotation is a single token, so the bare `ptr` means an
+INFERRED pointee, and `{: p:ptr n :}` is two locals, not a pointee. The
+annotation is asserted, not decoration: a wrong family, a scalar spelling
+(`{: p:n :}` is `E-MISMATCH`, expected: n actual: @pt.tag<>), a wrong family
+argument and a bare tail of a family of arity > 0 are all refused. See
 [the multi-cell type rules](type-system.md#5-families-records-alternatives-and-generics).
 
 - `NEWTYPE name arity` registers a nominal cell family (`TK-CELL`), no closer:

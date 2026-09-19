@@ -3927,36 +3927,9 @@ variable SIGSCOPE-U
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
    a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN THEN ;
 
-\ Arity-0 family local annotation (typed-locals, dot habu-bind-a-wide): a bare
-\ arity-0 family tail resolves like a signature type. A layout family asserts
-\ the hidden term of its TOP slot — the tag — whatever its width: the group
-\ bind (LOC-BUNDLE-BIND) unifies the captured bundle's tag term against it and
-\ records the bundle's full cell count in LOCW, and LOC-PUSH-REF reloads every
-\ physical cell from that term, so W=1 and W>1 layouts need one rule and a
-\ wrong family rejects through the standard mismatch path with family fields.
-\ An arity-0 CELL family asserts its nominal scalar param, exactly as a
-\ signature would. Parametric spellings (fam<..>) and arity>0 tails stay
-\ fail-closed as unknown local annotations until the annotation parser shares
-\ SIG-TYPE's family-argument grammar (dotted); linear values never reach a
-\ local at all (LIN-LOCAL-BIND-CHECK, item 12 invariant).
-: LOC-ANN-LT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ annotation spells <args>?
-   0 BEGIN dup u < WHILE
-      a over + c@ 60 = IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop RES-FALSE ;
-: BAD-LOC-ANN ( ptr u8 n -- n )    \ unsupported local annotation: fail fast so the
-   BAD-SIG-TYPE                    \ pinned token is the annotation itself, not ':}'
-   0 OK !  -1 FAILSET ! ;
-: LOC-FAM-ANN ( ptr u8 n n -- n ) {: a:ptr u:n fam:n :}
-   fam TFAM-ARITY* 0 <> IF a u BAD-LOC-ANN EXIT THEN
-   PARAM-SCR-N @ a u fam MK-PARAM {: pt:n :}
-   pt LAYOUT-PARAM? 0= IF pt EXIT THEN             \ arity-0 cell family: nominal scalar
-   pt dup T-WIDTH 1 - MK-HIDDEN ;                  \ layout: its top (tag) hidden term
-: LOCAL-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u s" ptr" CORE-STR= IF FRESH MK-VAR MK-PTR EXIT THEN
-   a u LOC-ANN-LT? IF a u BAD-LOC-ANN EXIT THEN
-   a u SIG-FAM? IF a u rot LOC-FAM-ANN EXIT THEN drop
-   a u TOK-TYPE ;
+\ Typed local annotations are parsed by LOCAL-TYPE, below SIG-TYPE: they share
+\ the signature type grammar rather than growing a second one (dot
+\ habu-parse-local-annotations).
 
 PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
 PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
@@ -4082,6 +4055,71 @@ defer SIG-QUOT-XT ( -- n )
    a u s" ptr" CORE-STR= IF
       NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
    ELSE a u TOK-TYPE THEN ;
+
+\ ---- typed local annotations (dot habu-parse-local-annotations) --------------
+\ `{: name:type :}` reads its type with the SAME grammar a signature stack
+\ reads: family resolution, `<arg,...>` parameter lists, nested families, the
+\ definition's own declared type variables, arity checking and `ptr <pointee>`.
+\ There is no second annotation grammar; the parser is placed here, below
+\ SIG-TYPE, so the locals scanner (far below) can simply call it.
+\ The one spelling a signature does not have is the BARE `ptr`: an annotation
+\ is a single token, so `{: p:ptr :}` has no pointee to read and means an
+\ INFERRED one. SIG-TYPE would call that a bare pointer (SGBAD-BAREPTR!), so
+\ the shorthand is taken ahead of the delegation.
+: BAD-LOC-ANN ( ptr u8 n -- n )    \ unusable local annotation: fail fast so the
+   BAD-SIG-TYPE                    \ pinned token is the annotation itself, not ':}'
+   0 OK !  -1 FAILSET ! ;
+
+\ The annotation owns the signature cursor for the length of one type: the
+\ cursor and its push-back are saved, pointed at the annotation's bytes and
+\ restored. NMAP and the family registry are shared on purpose — that is how an
+\ annotation names the definition's own type variables. The body scanner does
+\ not hold the cursor today, but LOCAL-TYPE is a parser helper and must not make
+\ cursor ownership an implicit calling convention.
+PTR-VARIABLE LTS-SB variable LTS-SL variable LTS-SI PTR-VARIABLE LTS-SS
+PTR-VARIABLE LTS-PKA variable LTS-PKU variable LTS-PKH
+
+: LOC-ANN-SAVE ( -- )
+   SB@ LTS-SB !  SL @ LTS-SL !  SI @ LTS-SI !  SS@ LTS-SS !
+   PKA@ LTS-PKA !  PKU @ LTS-PKU !  PKHAVE @ LTS-PKH ! ;
+
+: LOC-ANN-RESTORE ( -- )
+   LTS-SB @ SB!  LTS-SL @ SL !  LTS-SI @ SI !  LTS-SS @ SS!
+   LTS-PKA @ PKA!  LTS-PKU @ PKU !  LTS-PKH @ PKHAVE ! ;
+
+: LOC-ANN-END? ( -- bool )         \ the annotation held exactly one type
+   NEXT-SIG-TOK {: ea:ptr eu:n :}
+   eu 0 = ;
+
+: LOC-ANN-READ ( ptr u8 n -- n )   \ one complete type over the annotation's bytes
+   {: a:ptr u:n :}
+   NEXT-SIG-TOK {: ta:ptr tu:n :}
+   tu 0 = IF a u BAD-LOC-ANN EXIT THEN          \ nothing after the ':'
+   ta tu SIG-TYPE
+   LOC-ANN-END? IF EXIT THEN
+   a u BAD-LOC-ANN nip ;                        \ a trailing token: not one type
+
+\ The term the local's row cell will hold, by PUSH-LOGICAL's rule: a layout the
+\ row EXPANDS is recorded as its TOP hidden term — the tag — so the group bind
+\ (LOC-BUNDLE-BIND) validates the captured bundle and records its full cell
+\ count, whatever the width; a layout whose width the row cannot read stays the
+\ one logical cell the row pushes; a cell family stays its nominal scalar and a
+\ type var stays a var.
+: LOC-ANN-TERM ( n -- n ) {: t:n :}
+   t T-RES {: rt:n :}
+   rt LAYOUT-PARAM? 0= IF rt EXIT THEN
+   rt LAYOUT-WIDTH-OPEN? IF rt EXIT THEN
+   rt dup T-WIDTH 1 - MK-HIDDEN ;
+
+: LOCAL-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" ptr" CORE-STR= IF FRESH MK-VAR MK-PTR EXIT THEN   \ `:ptr` = inferred pointee
+   SGBAD @ {: sg0:n :}        \ only a NEW verdict is this annotation's: a signature
+   LOC-ANN-SAVE               \ that already failed keeps its own diagnostic
+   a SB!  u SL !  0 SI !  PKRESET
+   a u LOC-ANN-READ
+   LOC-ANN-RESTORE
+   SGBAD @ sg0 0= and IF a u BAD-LOC-ANN nip THEN
+   LOC-ANN-TERM ;
 
 create ROWMAP 26 cells allot
 : ROWMAP-RESET 0 BEGIN dup cells ROWMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
@@ -11292,9 +11330,9 @@ variable LCO
       exit
    then
    a u LOC-SUFFIX$ LOCAL-TYPE {: t:n :}
-   t T-RES HIDDEN-PARAM? IF                 \ layout annotation: store the asserted
-      t idx cells LOCTV + !  EXIT THEN      \ hidden term (hidden never binds a var)
-   t idx cells LOCTV + @ UNIFY OK @ and OK ! ;
+   t T-RES LAYOUT-PARAM? IF                 \ layout annotation: STORE the asserted term
+      t idx cells LOCTV + !  EXIT THEN      \ (a layout binds no var outside a transport;
+   t idx cells LOCTV + @ UNIFY OK @ and OK ! ;   \ the capture in LOC-BIND checks it)
 
 : LOC-SHOW-ONE ( n -- ) {: idx:n :}
    idx cells LOCSHOW + @ 0= if exit then

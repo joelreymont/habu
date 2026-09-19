@@ -2307,13 +2307,33 @@ PRODUCT tdlp 0 FIELD amt n ;PRODUCT
 : TDLP-ID ( tdlp -- tdlp ) {: x:tdlp :} x ;
 : TDLP-RT ( -- n ) 7 TDLP:MAKE TDLP-ID TDLP:UNMAKE ;
 TDLP-RT 7 T=
-\ negatives: wrong family, scalar-vs-family both ways, parametric,
-\ arity>0 cell tail — all reject fail-closed.
+\ negatives: wrong family, scalar-vs-family both ways, arity>0 cell tail — all
+\ reject fail-closed.
 s" TDLB1 ( tdrw -- tdrw ) {: x:tdrv :} x" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLB2 ( n -- n ) {: x:tdrv :} 5" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLB3 ( tdrv -- tdrv ) {: x:n :} x" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLB4 ( tdres<n,n> -- n ) {: x:tdres<n,n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
+\ an annotation is read by the SIGNATURE grammar (dot
+\ habu-parse-local-annotations), so a parametric spelling is an annotation:
+\ tdres<n,n> is the W=2 instance the declared row carries.
+s" TDLB4 ( tdres<n,n> -- n ) {: x:tdres<n,n> :} 5" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLB4B ( tdres<n,n> -- tdres<n,n> ) {: x:tdres<n,n> :} x" CHECK-QUIET-CANDIDATE! -1 T=
+\ the same grammar means the same arity check: a bare arity>0 tail and a wrong
+\ argument count are both refused, in an annotation as in a signature.
 s" TDLB6 ( n -- n ) {: x:tdfoo :} x" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB6B ( tdres<n,n> -- n ) {: x:tdres :} 5" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB6C ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB6D ( tdres<n,n> -- n ) {: x:tdres<n,n,n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
+\ the definition's own type variables are in scope in an annotation, and the
+\ declared quantifier survives the local (the parametricity seal, NP-CHECK).
+s" TDLB6E ( tdres<a,b> -- tdres<a,b> ) {: x:tdres<a,b> :} x" CHECK-QUIET-CANDIDATE! -1 T=
+\ a nested family argument parses exactly as it does in a signature.
+s" TDLB6F ( tdres<tdfoo<n,n>,n> -- tdres<tdfoo<n,n>,n> ) {: x:tdres<tdfoo<n,n>,n> :} x" CHECK-QUIET-CANDIDATE! -1 T=
+\ and a wrong argument is still a wrong type: tdres<n,n> is not tdres<tdfoo<n,n>,n>.
+s" TDLB6G ( tdres<n,n> -- n ) {: x:tdres<tdfoo<n,n>,n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
+\ a parametric CELL family is one cell and stays its nominal scalar, so the
+\ annotation unifies with the local's var exactly as the arity-0 nominal does.
+s" TDLB6H ( tdfoo<n,n> -- tdfoo<n,n> ) {: x:tdfoo<n,n> :} x" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLB6I ( n -- tdfoo<n,n> ) {: x:tdfoo<n,n> :} x" CHECK-QUIET-CANDIDATE! 0 T=
 \ an arity-0 layout of ANY width is nameable (dot habu-bind-a-wide): tdsv is
 \ W=3, its annotation is the bundle's top hidden term and the bind records the
 \ full width, so the local holds the whole value.
@@ -2334,6 +2354,12 @@ s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
 \ SAME exact row as a signature-declared one, and a foreign-package family
 \ renders the qualified pkg:tail spelling.
 \ ---------------------------------------------------------------------------
+\ A failure INSIDE an annotation is pinned to the annotation token, not to the
+\ `:}` that would fail next: the annotation parser forces the verdict where it
+\ reads, and the signature's own arity diagnostic is what comes out.
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" wrong arity for type family 'x:tdres<n>'" TDT-CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s" expected: n actual: tdlnom<> " TDT-CONTAINS? -1 T=

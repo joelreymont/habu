@@ -116,10 +116,15 @@ WF-N@ 2 T=  0 WF-POS@ 1 T=  1 WF-POS@ 1 T=
 WF-N@ 3 T=  0 WF-POS@ 1 T=  1 WF-POS@ 1 T=  2 WF-POS@ 1 T=
 
 \ locals capture: the whole group records at the :} token. `x` binds the layout
-\ value untyped — a PARAMETRIC spelling like `x:tlp-res<n,n>` is still not an
-\ annotation the local parser reads (capability dotted:
-\ habu-typed-locals-for-b06b6707), so the entry effect carries the detailed type.
+\ value untyped, so the entry effect carries the detailed type.
 : TLP-LOCAL ( tlp-res<n,n> n -- n ) {: x y:n :} y ;
+WF-N@ 1 T=  0 WF-POS@ 1 T=  0 WF-FAM@ TLF @ T=  0 WF-WIDTH@ 2 T=
+
+\ the TYPED twin: a PARAMETRIC spelling is an annotation the local parser reads
+\ (dot habu-parse-local-annotations — it shares SIG-TYPE's grammar), and it
+\ records the same width fact as the untyped bind above. Naming the family does
+\ not change the capture: one fact, operand position 1, family tlp-res, width 2.
+: TLP-TYPED-RES-LOCAL ( tlp-res<n,n> n -- n ) {: x:tlp-res<n,n> y:n :} y ;
 WF-N@ 1 T=  0 WF-POS@ 1 T=  0 WF-FAM@ TLF @ T=  0 WF-WIDTH@ 2 T=
 
 \ An arity-0 W=2 family IS nameable: the annotation records the layout's top

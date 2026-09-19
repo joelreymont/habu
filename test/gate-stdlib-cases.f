@@ -1756,9 +1756,10 @@ SUITE type-layout-lower-pending
    test/type-layout-lower-pending.f
 ;SUITE
 
-\ A wide arity-0 layout value inside a typed local, run at both tiers: the
-\ annotation is a checker rule, the whole-bundle reload is code the native
-\ compiler emits, so tier 1 is a separate run and not a repeat.
+\ A wide layout value — arity 0 and a parametric instance — inside a typed
+\ local, run at both tiers: the annotation is a checker rule, the whole-bundle
+\ reload is code the native compiler emits, so tier 1 is a separate run and not
+\ a repeat.
 SUITE wide-typed-local-probe
    test/wide-typed-local-probe.f
 ;SUITE

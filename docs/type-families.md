@@ -2087,20 +2087,29 @@ mirroring `RECORD-LAYOUT-BUFFER`; `test/typed-storage-test.f` pins the surface.
 
 ### 17.1 Typed locals for family types
 
-A `{: x:fam :}` annotation accepts a bare arity-0 family tail, resolved with
-signature scope. A layout family of ANY width asserts the hidden term of its
+A `{: x:type :}` annotation is read by the SIGNATURE type parser itself
+(`LOCAL-TYPE` delegates to `SIG-TYPE` over the annotation's bytes, with the
+signature cursor saved and restored): family resolution in signature scope,
+`<arg,…>` parameter lists, nested families, the definition's own declared type
+variables and the same arity check, so `x:res<n,n>`, `x:opt<opt<n>>` and
+`x:opt<a>` name exactly what a signature names. There is no second annotation
+grammar; the only spelling a signature does not have is the bare `x:ptr`, which
+means an inferred pointee because an annotation is a single token. A layout
+family the row EXPANDS asserts the hidden term of its
 top slot — the tag: the `:}` bind unifies the captured bundle's tag term
 against it (wrong family = standard `E-MISMATCH` with family fields; a scalar
 operand or a scalar-annotated bundle rejects the same way) and records the
 bundle's full cell count in `LOCW`, so a read restores the exact bound term and
 re-expands every physical cell — family id intact, so `MATCH`/derived words
 work on local reads and a W>1 value can be named, returned whole, read in a
-branch arm and read after a loop. An arity-0 CELL family asserts its nominal
-scalar exactly as a signature would. Parametric spellings (`x:fam<..>`) and
-arity>0 tails stay fail-closed as named unknown-annotation rejects until the
-annotation parser shares the signature grammar for family arguments (tracked on
-the typed-locals dot); bare (unannotated) locals keep the item-12 wide-bundle
-behavior unchanged, and linear layouts still never expand into locals.
+branch arm and read after a loop. A layout whose WIDTH the row cannot read (an
+open argument the width occurs in, `opt<a>`) is the one logical cell the row
+pushes, and the annotation asserts that term instead — the annotation records
+what `PUSH-LOGICAL` puts on the row, which is the one rule for both. A CELL
+family asserts its nominal scalar exactly as a signature would. A bare arity>0
+tail (`x:fam`) and a wrong argument count reject with the signature's own arity
+diagnostic; bare (unannotated) locals keep the item-12 wide-bundle behavior
+unchanged, and linear layouts still never expand into locals.
 
 ## 18. Width and parameter kinds
 
