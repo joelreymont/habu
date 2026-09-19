@@ -1,5 +1,7 @@
 \ native-trap.f - checked tests for the terminator that does not return.
 
+\ Emission assertions require the optimizing tier, including standalone loads.
+require test/compiler/aot-mode.f
 require lib/test.f
 require lib/string.f
 require lib/process.f

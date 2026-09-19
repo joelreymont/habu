@@ -1,5 +1,7 @@
 \ native-rename-rows.f - whole-value stack renames through production code.
 
+\ Width refusals belong to native elaboration, including standalone loads.
+require test/compiler/aot-mode.f
 require test/compiler/native-eval-fixture.f
 require lib/test.f
 require lib/adt/option.f
