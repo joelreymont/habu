@@ -6,6 +6,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/argv.f
+require test/checker-assert.f
 
 \ White-box test: reopen the module's package so the fixtures reach argv's
 \ private path buffer/capacity (ARGV-PATH-BUF, ARGV-PATH-CAP) and call the public
@@ -171,6 +172,123 @@ variable TEST-FAIL
 : TEST-ZCOPY-FULL-CAP ( -- )
    [: ZCOPY-FULL-CAP-CASE ;] catch E-INTERNAL ASSERT-RC ;
 
+: EXPECT-TOKEN-BOUNDS ( -- )
+   -1 QUIET!
+   [: -1 TOK$ 2drop ;] catch E-USAGE ASSERT=
+   [: COUNT TOK$ 2drop ;] catch E-USAGE ASSERT=
+   0 QUIET! ;
+
+: TEST-TOKEN-BOUNDS ( -- )
+   QUIET-MOCK PARSE
+   POS# 0 ASSERT=
+   [: 0 POS$ 2drop ;] catch E-USAGE ASSERT=
+   EXPECT-TOKEN-BOUNDS
+   s" one" MOCK+
+   0 TOK$ s" one" ASSERT$
+   EXPECT-TOKEN-BOUNDS ;
+
+: TEST-CONFIGURED-VALUES ( -- )
+   RESET
+   s" first" LABEL-DEFAULT!
+   s" first" OUT-DEFAULT!
+   LABEL$ s" first" ASSERT$
+   OUT$ s" first" ASSERT$
+   s" chosen" LABEL!
+   s" chosen" OUT!
+   s" second" LABEL-DEFAULT!
+   s" second" OUT-DEFAULT!
+   LABEL? ASSERT OUT? ASSERT
+   LABEL$ s" chosen" ASSERT$
+   OUT$ s" chosen" ASSERT$
+   s" replaced" LABEL!
+   s" replaced" OUT!
+   LABEL$ s" replaced" ASSERT$
+   OUT$ s" replaced" ASSERT$
+   RESET
+   LABEL? 0= ASSERT OUT? 0= ASSERT
+   LABEL$ s" second" ASSERT$
+   OUT$ s" second" ASSERT$ ;
+
+: TEST-REPEATED-OPTIONS ( -- )
+   QUIET-MOCK
+   s" --label" MOCK+ s" first" MOCK+
+   s" --label" MOCK+ s" last" MOCK+
+   s" -o" MOCK+ s" first" MOCK+
+   s" -o" MOCK+ s" last" MOCK+
+   PARSE
+   LABEL$ s" last" ASSERT$
+   OUT$ s" last" ASSERT$
+   LABEL? ASSERT OUT? ASSERT
+   POS# 0 ASSERT=
+   0 QUIET! ;
+
+: ASSERT-PRIOR-PARSE ( -- )
+   JSON? ASSERT
+   ALL-ERRORS? ASSERT
+   STRICT-BOUNDARY? ASSERT
+   POS# 1 ASSERT=
+   0 POS$ s" file.f" ASSERT$
+   LABEL? ASSERT OUT? ASSERT
+   LABEL$ s" NAME" ASSERT$
+   OUT$ s" OUT" ASSERT$ ;
+
+: TEST-PARSE-ROLLBACK ( -- )
+   COMMON-ARGS PARSE
+   QUIET-MOCK
+   s" changed.f" MOCK+
+   s" --label" MOCK+ s" changed" MOCK+
+   s" --unknown" MOCK+
+   PARSE-RC E-USAGE ASSERT=
+   ASSERT-PRIOR-PARSE
+   QUIET-MOCK
+   s" changed.f" MOCK+
+   s" -o" MOCK+
+   PARSE-RC E-USAGE ASSERT=
+   ASSERT-PRIOR-PARSE
+   0 QUIET! ;
+
+: TEST-APPEND-BOUNDS ( -- )
+   COMMON-ARGS PARSE
+   QUIET-MOCK
+   s" first" MOCK+
+   ARGV-MAX 2 - 0 do s" middle" MOCK+ loop
+   s" last" MOCK+
+   COUNT ARGV-MAX ASSERT=
+   [: s" overflow" MOCK+ ;] catch E-INTERNAL ASSERT=
+   ASSERT-PRIOR-PARSE
+   COUNT ARGV-MAX ASSERT=
+   0 TOK$ s" first" ASSERT$
+   ARGV-MAX 1- TOK$ s" last" ASSERT$
+   PARSE
+   POS# ARGV-MAX ASSERT=
+   0 POS$ s" first" ASSERT$
+   ARGV-MAX 1- POS$ s" last" ASSERT$
+   [: -1 POS$ 2drop ;] catch E-USAGE ASSERT=
+   [: ARGV-MAX POS$ 2drop ;] catch E-USAGE ASSERT=
+   EXPECT-TOKEN-BOUNDS
+   QUIET-MOCK
+   s" kept" MOCK+
+   [: s" bad" drop -1 MOCK+ ;] catch E-INTERNAL ASSERT=
+   COUNT 1 ASSERT=
+   0 TOK$ s" kept" ASSERT$
+   POS# ARGV-MAX ASSERT=
+   0 POS$ s" first" ASSERT$
+   ARGV-MAX 1- POS$ s" last" ASSERT$
+   PARSE
+   POS# 1 ASSERT=
+   0 POS$ s" kept" ASSERT$
+   0 QUIET! ;
+
+: TEST-SPAN-REFUSALS ( -- )
+   s" ARGV-SPAN-OK ( ptr u8 len -- span ) SPAN-MAKE"
+      CHECK-QUIET-CANDIDATE! -1 ASSERT=
+   s" ARGV-SPAN-SWAP ( len ptr u8 -- span ) SPAN-MAKE"
+      CHECK-QUIET-CANDIDATE! 0 ASSERT=
+   s" ARGV-SPAN-SCALAR ( n -- ) 0 ARGV-MOCK !"
+      CHECK-QUIET-CANDIDATE! 0 ASSERT=
+   s" ARGV-CONFIG-SCALAR ( span -- ) ARGV-LABEL !"
+      CHECK-QUIET-CANDIDATE! 0 ASSERT= ;
+
 : TEST-MOCKS ( -- )
    TEST-COMMON
    TEST-DEFAULTS
@@ -185,7 +303,13 @@ variable TEST-FAIL
    TEST-REQUIRE-OUT
    TEST-REQUIRE-LABEL
    TEST-ZCOPY-NEG
-   TEST-ZCOPY-FULL-CAP ;
+   TEST-ZCOPY-FULL-CAP
+   TEST-TOKEN-BOUNDS
+   TEST-CONFIGURED-VALUES
+   TEST-REPEATED-OPTIONS
+   TEST-PARSE-ROLLBACK
+   TEST-APPEND-BOUNDS
+   TEST-SPAN-REFUSALS ;
 
 : TEST-SCRIPT-ARGS ( -- )
    s" hb argv-test [options] file.f" USAGE!
@@ -199,7 +323,8 @@ variable TEST-FAIL
    LABEL$ s" NAME" ASSERT$
    OUT$ s" OUT" ASSERT$
    0 POS$ s" file.f" ASSERT$
-   1 POS$ s" --literal" ASSERT$ ;
+   1 POS$ s" --literal" ASSERT$
+   EXPECT-TOKEN-BOUNDS ;
 
 : REPORT ( -- )
    TEST-FAIL @ 0 = if

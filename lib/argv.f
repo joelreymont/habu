@@ -13,8 +13,7 @@
 \ NUL-terminated path copies in the module path buffer. A usage failure throws the
 \ public code ARGV:E-USAGE after emitting the usage text, and a capacity failure
 \ throws ARGV:E-INTERNAL. Every buffer, parser-state cell, and internal helper
-\ (ARGV-FAIL-DONE, ARGV-PARSE-OPT, ARGV-TAKE-NEXT, the ARGV-PTR-U8* pointer-field
-\ accessors, ...) is package-private.
+\ (ARGV-FAIL-DONE, ARGV-PARSE-OPT, ARGV-TAKE-NEXT, ...) is package-private.
 
 package ARGV
 
@@ -31,34 +30,32 @@ private
 $0A constant ARGV-CHAR-LF
 $2D constant ARGV-CHAR-DASH
 
+STRUCTURE span 0 FIELD base ptr u8 FIELD size len ;STRUCTURE
+ENUM configured-value 0
+   VARIANT defaulted FIELD value span ;VARIANT
+   VARIANT explicit FIELD value span ;VARIANT
+;ENUM
+
 variable ARGV-USE-MOCK?
 variable ARGV-MOCK#
-create ARGV-MOCK-A ARGV-MAX cells allot
-create ARGV-MOCK-U ARGV-MAX cells allot
+ARGV-MAX LAYOUT-BUFFER ARGV-MOCK span
 
 variable ARGV-I
 variable ARGV-NPOS
-create ARGV-POS-A ARGV-MAX cells allot
-create ARGV-POS-U ARGV-MAX cells allot
+variable ARGV-SCAN-NPOS
+ARGV-MAX LAYOUT-BUFFER ARGV-POS span
 
-variable ARGV-JSON
-variable ARGV-ALL-ERRORS
-variable ARGV-STRICT-BOUNDARY
+TYPED-VARIABLE ARGV-JSON bool
+TYPED-VARIABLE ARGV-ALL-ERRORS bool
+TYPED-VARIABLE ARGV-STRICT-BOUNDARY bool
 
-variable ARGV-LABEL-A
-variable ARGV-LABEL-U
-variable ARGV-LABEL-SET
-variable ARGV-LABEL-DEFAULT-A
-variable ARGV-LABEL-DEFAULT-U
+TYPED-VARIABLE ARGV-LABEL configured-value
+TYPED-VARIABLE ARGV-LABEL-DEFAULT span
 
-variable ARGV-OUT-A
-variable ARGV-OUT-U
-variable ARGV-OUT-SET
-variable ARGV-OUT-DEFAULT-A
-variable ARGV-OUT-DEFAULT-U
+TYPED-VARIABLE ARGV-OUT configured-value
+TYPED-VARIABLE ARGV-OUT-DEFAULT span
 
-variable ARGV-USAGE-A
-variable ARGV-USAGE-U
+TYPED-VARIABLE ARGV-USAGE span
 variable ARGV-QUIET
 variable ARGV-MSG-L
 create ARGV-MSG ARGV-MSG-CAP allot
@@ -68,23 +65,24 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-TRUE ( -- bool )  0 0= ;
 
-: ARGV-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
-   0 ptr-field ;
+: >SPAN ( ptr u8 n -- span )
+   dup 0 < if E-INTERNAL throw then
+   >LEN SPAN-MAKE ;
 
-: ARGV-PTR-U8@ ( ptr a -- ptr u8 )
-   ARGV-PTR-U8-FIELD @ ;
+: SPAN$ ( span -- ptr u8 n )
+   SPAN-UNMAKE LEN>N ;
 
-: ARGV-PTR-U8! ( ptr u8 ptr a -- )
-   ARGV-PTR-U8-FIELD ! ;
+: EXPLICIT? ( configured-value -- bool )
+   MATCH configured-value
+      defaulted OF drop ARGV-FALSE ENDOF
+      explicit OF drop ARGV-TRUE ENDOF
+   ;MATCH ;
 
-: ARGV-PTR-U8-SLOT ( n ptr a -- ptr ptr u8 )
-   swap cells + ARGV-PTR-U8-FIELD ;
-
-: ARGV-PTR-U8-SLOT@ ( n ptr a -- ptr u8 )
-   ARGV-PTR-U8-SLOT @ ;
-
-: ARGV-PTR-U8-SLOT! ( ptr u8 n ptr a -- )
-   ARGV-PTR-U8-SLOT ! ;
+: VALUE$ ( configured-value -- ptr u8 n )
+   MATCH configured-value
+      defaulted OF SPAN$ ENDOF
+      explicit OF SPAN$ ENDOF
+   ;MATCH ;
 
 : ARGV-BYTES= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    u v <> if ARGV-FALSE exit then
@@ -110,8 +108,8 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 public
 
-: USAGE! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a ARGV-USAGE-A ARGV-PTR-U8!  u ARGV-USAGE-U ! ;
+: USAGE! ( ptr u8 n -- )
+   >SPAN ARGV-USAGE ! ;
 
 : QUIET! ( n -- )  ARGV-QUIET ! ;
 
@@ -120,7 +118,7 @@ private
 : ARGV-FAIL-DONE ( -- )
    ARGV-CHAR-LF ARGV-MSG-C+
    s" usage: " ARGV-MSG+
-   ARGV-USAGE-A ARGV-PTR-U8@ ARGV-USAGE-U @ ARGV-MSG+
+   ARGV-USAGE @ SPAN$ ARGV-MSG+
    ARGV-CHAR-LF ARGV-MSG-C+
    ARGV-QUIET @ 0 = if 2 ARGV-MSG ARGV-MSG-L @ write drop then
    E-USAGE throw ;
@@ -151,11 +149,11 @@ public
 : RESET ( -- )
    0 ARGV-I !
    0 ARGV-NPOS !
-   0 ARGV-JSON !
-   0 ARGV-ALL-ERRORS !
-   0 ARGV-STRICT-BOUNDARY !
-   NULL$ drop ARGV-LABEL-A ARGV-PTR-U8!  0 ARGV-LABEL-U !  0 ARGV-LABEL-SET !
-   NULL$ drop ARGV-OUT-A ARGV-PTR-U8!  0 ARGV-OUT-U !  0 ARGV-OUT-SET ! ;
+   ARGV-FALSE ARGV-JSON !
+   ARGV-FALSE ARGV-ALL-ERRORS !
+   ARGV-FALSE ARGV-STRICT-BOUNDARY !
+   ARGV-LABEL-DEFAULT @ construct configured-value defaulted ARGV-LABEL !
+   ARGV-OUT-DEFAULT @ construct configured-value defaulted ARGV-OUT ! ;
 
 : USE-SCRIPT ( -- )  0 ARGV-USE-MOCK? ! ;
 
@@ -163,22 +161,28 @@ public
    -1 ARGV-USE-MOCK? !
    0 ARGV-MOCK# ! ;
 
-: MOCK+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: MOCK+ ( ptr u8 n -- )
    ARGV-MOCK# @ ARGV-MAX >= if E-INTERNAL throw then
-   a ARGV-MOCK# @ ARGV-MOCK-A ARGV-PTR-U8-SLOT!
-   u ARGV-MOCK-U ARGV-MOCK# @ cells + !
+   >SPAN ARGV-MOCK# @ ARGV-MOCK !
    ARGV-MOCK# @ 1 + ARGV-MOCK# ! ;
 
 : COUNT ( -- n )
    ARGV-USE-MOCK? @ if ARGV-MOCK# @ else SCRIPT-ARGC then ;
 
-: TOK$ ( n -- ptr u8 n ) {: idx:n :}
+private
+
+: ARGV-TOKEN ( n -- span ) {: idx:n :}
+   idx 0 < idx COUNT >= or if s" token index out of range" FAIL then
    ARGV-USE-MOCK? @ if
-      idx ARGV-MOCK-A ARGV-PTR-U8-SLOT@
-      idx cells ARGV-MOCK-U + @
+      idx ARGV-MOCK @
    else
-      idx SCRIPT-ARGV$
+      idx SCRIPT-ARGV$ >SPAN
    then ;
+
+public
+
+: TOK$ ( n -- ptr u8 n )
+   ARGV-TOKEN SPAN$ ;
 
 : TOK= ( n ptr u8 n -- bool ) {: idx:n a:ptr u:n :}
    idx TOK$ a u ARGV-BYTES= ;
@@ -188,11 +192,10 @@ private
 : ARGV-DASH? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 1 > if a c@ ARGV-CHAR-DASH = else ARGV-FALSE then ;
 
-: ARGV-POS+ ( ptr u8 n -- ) {: a:ptr u :}
-   ARGV-NPOS @ ARGV-MAX >= if s" too many positional arguments" FAIL then
-   a ARGV-NPOS @ ARGV-POS-A ARGV-PTR-U8-SLOT!
-   u ARGV-POS-U ARGV-NPOS @ cells + !
-   ARGV-NPOS @ 1 + ARGV-NPOS ! ;
+: ARGV-POS+ ( span bool -- ) {: arg:span dry:bool :}
+   ARGV-SCAN-NPOS @ ARGV-MAX >= if s" too many positional arguments" FAIL then
+   dry 0= if arg ARGV-SCAN-NPOS @ ARGV-POS ! then
+   ARGV-SCAN-NPOS @ 1+ ARGV-SCAN-NPOS ! ;
 
 public
 
@@ -200,80 +203,96 @@ public
 
 : POS$ ( n -- ptr u8 n ) {: idx:n :}
    idx 0 <  idx ARGV-NPOS @ >= or if s" positional index out of range" FAIL then
-   idx ARGV-POS-A ARGV-PTR-U8-SLOT@
-   idx cells ARGV-POS-U + @ ;
+   idx ARGV-POS @ SPAN$ ;
 
-: LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a ARGV-LABEL-A ARGV-PTR-U8!  u ARGV-LABEL-U !  -1 ARGV-LABEL-SET ! ;
+: LABEL! ( ptr u8 n -- )
+   >SPAN construct configured-value explicit ARGV-LABEL ! ;
+
+: LABEL? ( -- bool )
+   ARGV-LABEL @ EXPLICIT? ;
 
 : LABEL-DEFAULT! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a ARGV-LABEL-DEFAULT-A ARGV-PTR-U8!  u ARGV-LABEL-DEFAULT-U ! ;
-
-: LABEL? ( -- bool )  ARGV-LABEL-SET @ 0 <> ;
+   a u >SPAN {: value:span :}
+   value ARGV-LABEL-DEFAULT !
+   LABEL? 0= if value construct configured-value defaulted ARGV-LABEL ! then ;
 
 : LABEL$ ( -- ptr u8 n )
-   LABEL? if
-      ARGV-LABEL-A ARGV-PTR-U8@  ARGV-LABEL-U @
-   else
-      ARGV-LABEL-DEFAULT-A ARGV-PTR-U8@  ARGV-LABEL-DEFAULT-U @
-   then ;
+   ARGV-LABEL @ VALUE$ ;
 
-: OUT! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a ARGV-OUT-A ARGV-PTR-U8!  u ARGV-OUT-U !  -1 ARGV-OUT-SET ! ;
+: OUT! ( ptr u8 n -- )
+   >SPAN construct configured-value explicit ARGV-OUT ! ;
+
+: OUT? ( -- bool )
+   ARGV-OUT @ EXPLICIT? ;
 
 : OUT-DEFAULT! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a ARGV-OUT-DEFAULT-A ARGV-PTR-U8!  u ARGV-OUT-DEFAULT-U ! ;
-
-: OUT? ( -- bool )  ARGV-OUT-SET @ 0 <> ;
+   a u >SPAN {: value:span :}
+   value ARGV-OUT-DEFAULT !
+   OUT? 0= if value construct configured-value defaulted ARGV-OUT ! then ;
 
 : OUT$ ( -- ptr u8 n )
-   OUT? if
-      ARGV-OUT-A ARGV-PTR-U8@  ARGV-OUT-U @
-   else
-      ARGV-OUT-DEFAULT-A ARGV-PTR-U8@  ARGV-OUT-DEFAULT-U @
-   then ;
+   ARGV-OUT @ VALUE$ ;
 
-: JSON? ( -- bool )  ARGV-JSON @ 0 <> ;
+: JSON? ( -- bool )  ARGV-JSON @ ;
 
-: ALL-ERRORS? ( -- bool )  ARGV-ALL-ERRORS @ 0 <> ;
+: ALL-ERRORS? ( -- bool )  ARGV-ALL-ERRORS @ ;
 
-: STRICT-BOUNDARY? ( -- bool )  ARGV-STRICT-BOUNDARY @ 0 <> ;
+: STRICT-BOUNDARY? ( -- bool )  ARGV-STRICT-BOUNDARY @ ;
 
 private
 
-: ARGV-TAKE-NEXT ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
-   ARGV-I @ 1 + COUNT >= if a u ARGV-MISSING then
+: ARGV-TAKE-NEXT ( span -- span ) {: arg:span :}
+   ARGV-I @ 1 + COUNT >= if arg SPAN$ ARGV-MISSING then
    ARGV-I @ 1 + ARGV-I !
-   ARGV-I @ TOK$ ;
+   ARGV-I @ ARGV-TOKEN ;
 
-: ARGV-PARSE-OPT ( ptr u8 n -- ) {: a:ptr u :}
-   a u s" --json" ARGV-BYTES= if -1 ARGV-JSON ! exit then
-   a u s" --json-errors" ARGV-BYTES= if -1 ARGV-JSON ! exit then
-   a u s" --label" ARGV-BYTES= if a u ARGV-TAKE-NEXT LABEL! exit then
-   a u s" --all-errors" ARGV-BYTES= if -1 ARGV-ALL-ERRORS ! exit then
-   a u s" --strict-boundary" ARGV-BYTES= if -1 ARGV-STRICT-BOUNDARY ! exit then
-   a u s" -o" ARGV-BYTES= if a u ARGV-TAKE-NEXT OUT! exit then
-   a u ARGV-DASH? if a u ARGV-UNKNOWN else a u ARGV-POS+ then ;
+: ARGV-PARSE-OPT ( span bool -- ) {: arg:span dry:bool :}
+   arg SPAN$ s" --json" ARGV-BYTES= arg SPAN$ s" --json-errors" ARGV-BYTES= or if
+      dry 0= if ARGV-TRUE ARGV-JSON ! then exit
+   then
+   arg SPAN$ s" --label" ARGV-BYTES= if
+      arg ARGV-TAKE-NEXT
+      dry if drop else construct configured-value explicit ARGV-LABEL ! then exit
+   then
+   arg SPAN$ s" --all-errors" ARGV-BYTES= if
+      dry 0= if ARGV-TRUE ARGV-ALL-ERRORS ! then exit
+   then
+   arg SPAN$ s" --strict-boundary" ARGV-BYTES= if
+      dry 0= if ARGV-TRUE ARGV-STRICT-BOUNDARY ! then exit
+   then
+   arg SPAN$ s" -o" ARGV-BYTES= if
+      arg ARGV-TAKE-NEXT
+      dry if drop else construct configured-value explicit ARGV-OUT ! then exit
+   then
+   arg SPAN$ ARGV-DASH? if arg SPAN$ ARGV-UNKNOWN else arg dry ARGV-POS+ then ;
 
-: ARGV-COLLECT-REST ( -- )
+: ARGV-COLLECT-REST ( bool -- ) {: dry:bool :}
    begin ARGV-I @ COUNT < while
-      ARGV-I @ TOK$ ARGV-POS+
+      ARGV-I @ ARGV-TOKEN dry ARGV-POS+
+      ARGV-I @ 1 + ARGV-I !
+   repeat ;
+
+: ARGV-SCAN ( bool -- ) {: dry:bool :}
+   0 ARGV-I !  0 ARGV-SCAN-NPOS !
+   begin ARGV-I @ COUNT < while
+      ARGV-I @ s" --" TOK= if
+         ARGV-I @ 1 + ARGV-I !
+         dry ARGV-COLLECT-REST
+         exit
+      then
+      ARGV-I @ ARGV-TOKEN dry ARGV-PARSE-OPT
       ARGV-I @ 1 + ARGV-I !
    repeat ;
 
 public
 
+\ Validate with the same parser before replacing any published result. A bad
+\ option or full positional list therefore leaves the prior parse intact.
 : PARSE ( -- )
+   ARGV-TRUE ARGV-SCAN
    RESET
-   begin ARGV-I @ COUNT < while
-      ARGV-I @ s" --" TOK= if
-         ARGV-I @ 1 + ARGV-I !
-         ARGV-COLLECT-REST
-         exit
-      then
-      ARGV-I @ TOK$ ARGV-PARSE-OPT
-      ARGV-I @ 1 + ARGV-I !
-   repeat ;
+   ARGV-FALSE ARGV-SCAN
+   ARGV-SCAN-NPOS @ ARGV-NPOS ! ;
 
 : EXPECT-POS ( n n -- ) {: lo:n hi:n :}
    ARGV-NPOS @ lo < if s" wrong number of positional arguments" FAIL then
@@ -314,9 +333,9 @@ private
 
 : ARGV-INIT ( -- )
    USE-SCRIPT
+   NULL$ >SPAN ARGV-LABEL-DEFAULT !
+   NULL$ >SPAN ARGV-OUT-DEFAULT !
    RESET
-   NULL$ LABEL-DEFAULT!
-   NULL$ OUT-DEFAULT!
    0 QUIET!
    s" hb script.f [options] file ..." USAGE! ;
 

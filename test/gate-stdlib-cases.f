@@ -984,6 +984,24 @@ SUITE argv-stdlib-script-args
    --strict-boundary -o OUT -- file.f --literal
 ;SUITE
 
+\ Sixty-five positionals exceed the parser's 64-row table. Real argv is needed:
+\ the mock table refuses the 65th append before PARSE can observe it.
+SUITE argv-stdlib-capacity
+   test/argv-capacity.f --
+   x x x x x x x x x x x x x x x x
+   x x x x x x x x x x x x x x x x
+   x x x x x x x x x x x x x x x x
+   x x x x x x x x x x x x x x x x x
+;SUITE
+
+SUITE argv-stdlib-capacity-after-dashdash
+   test/argv-capacity.f -- --
+   x x x x x x x x x x x x x x x x
+   x x x x x x x x x x x x x x x x
+   x x x x x x x x x x x x x x x x
+   x x x x x x x x x x x x x x x x x
+;SUITE
+
 SUITE test-stdlib
    lib/test/assert-test.f
    lib/test/suite-test.f

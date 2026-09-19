@@ -2046,7 +2046,10 @@ in-memory mock argv set for focused tests. `ARGV:PARSE` recognizes `--json`,
 and `--`; tokens after `--` are always
 positionals, even when they begin with a dash. Unknown dash-prefixed options and
 missing option values throw `ARGV:E-USAGE` after emitting the configured usage
-text unless quiet mode is enabled.
+text unless quiet mode is enabled. Parsing validates the complete input before
+replacing the published result; a refusal leaves the previous positional values,
+options and flags intact. `ARGV:TOK$` and `ARGV:POS$` throw `ARGV:E-USAGE` for
+negative or out-of-range indexes.
 
 ```forth
 ARGV:USAGE!             ( ptr u8 n -- )
@@ -2092,7 +2095,8 @@ Path-oriented syscall wrappers may use `ARGV:POSZ`, `ARGV:OUTZ`, or
 
 Mocks keep parser tests self-hosted: `ARGV:MOCK-CLEAR` enables mock mode and
 empties the mock list, `ARGV:MOCK+` appends one counted token, and
-`ARGV:USE-SCRIPT` restores real script argv. `ARGV:QUIET!` suppresses usage
+`ARGV:USE-SCRIPT` restores real script argv. A negative length or a full mock
+list throws `ARGV:E-INTERNAL` before changing the list. `ARGV:QUIET!` suppresses usage
 writes while still throwing exact error codes, so tests can assert
 `ARGV:E-USAGE` deterministically.
 
