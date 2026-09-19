@@ -46,6 +46,7 @@ require lib/errors.f
 require lib/string.f
 require lib/memory.f
 require lib/vector.f
+require lib/adt/option.f
 require lib/fs.f
 require tools/lint/text.f
 require tools/lint/intern.f
@@ -91,14 +92,36 @@ create SRC-SLAB LINT-SLAB:CELLS cells allot
 create PATH PATH-CAP allot
 create DIGITS 32 allot
 
-create CODES  MAX-CLAIMS cells allot   \ claimed negative codes
-create NAMES  MAX-CLAIMS cells allot   \ claimant name intern ids
-create OWNERS MAX-CLAIMS cells allot   \ claimant file intern ids
+NEWTYPE intern-id 0
+NEWTYPE file-id 0
+NEWTYPE stem-id 0
 
-create RES-STEM  MAX-RES cells allot   \ block stem intern id (E-FS)
-create RES-OWNER MAX-RES cells allot   \ declaring/owning file intern id
-create RES-LO    MAX-RES cells allot   \ FIRST value (0 = not yet seen)
-create RES-HI    MAX-RES cells allot   \ LAST value  (0 = not yet seen)
+CAST: N>NAME ( n -- intern-id )
+CAST: NAME>N ( intern-id -- n )
+CAST: N>FILE ( n -- file-id )
+CAST: FILE>N ( file-id -- n )
+CAST: N>STEM ( n -- stem-id )
+CAST: STEM>N ( stem-id -- n )
+
+: NAME= ( intern-id intern-id -- bool ) NAME>N swap NAME>N = ;
+: FILE= ( file-id file-id -- bool ) FILE>N swap FILE>N = ;
+: STEM= ( stem-id stem-id -- bool ) STEM>N swap STEM>N = ;
+
+STRUCTURE claim 0 DERIVE addr
+   FIELD code n FIELD name intern-id FIELD owner file-id
+;STRUCTURE
+ENUM reservation-state 0
+   VARIANT none ;VARIANT
+   VARIANT first-only FIELD code n ;VARIANT
+   VARIANT last-only FIELD code n ;VARIANT
+   VARIANT complete FIELD first n FIELD last n ;VARIANT
+;ENUM
+STRUCTURE reservation 0 DERIVE addr
+   FIELD stem stem-id FIELD owner file-id FIELD state reservation-state
+;STRUCTURE
+
+MAX-CLAIMS LAYOUT-BUFFER CLAIM-ROWS claim
+MAX-RES LAYOUT-BUFFER RES-ROWS reservation
 variable RES#
 
 variable PATH-U
@@ -181,20 +204,22 @@ variable JX
 : SENTINEL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" -FIRST" LINT-ENDS-WITH?  a u s" -LAST" LINT-ENDS-WITH? or ;
 
-: CODE@  ( n -- n )  cells CODES + @ ;
-: NAME@  ( n -- n )  cells NAMES + @ ;
-: OWNER@ ( n -- n )  cells OWNERS + @ ;
+: CODE@  ( n -- n )         CLAIM-ROWS CLAIM-CODE @ ;
+: NAME@  ( n -- intern-id ) CLAIM-ROWS CLAIM-NAME @ ;
+: OWNER@ ( n -- file-id )   CLAIM-ROWS CLAIM-OWNER @ ;
+
+: NAME$ ( intern-id -- ptr u8 n ) NAME>N INTERN$ ;
+: FILE$ ( file-id -- ptr u8 n ) FILE>N INTERN$ ;
+: STEM-NAME$ ( stem-id -- ptr u8 n ) STEM>N INTERN$ ;
 
 \ Every claim is recorded with its file, an identical (code, name) pair from a
 \ second file included: the pair is one identity reachable through two files,
 \ so COLLIDE? ignores same-name pairs and FOREIGN? asks whether the range's
 \ owner registers the pair itself. Dropping the second copy here used to lose
 \ which file was the owner, and the range check then flagged the re-export.
-: CLAIM+ ( n n n -- ) {: code:n name:n file:n :}
+: CLAIM+ ( n intern-id file-id -- ) {: code:n name:intern-id file:file-id :}
    CLAIM# @ MAX-CLAIMS >= if s" error-code-lint: claim table full" 1 die then
-   code CLAIM# @ cells CODES + !
-   name CLAIM# @ cells NAMES + !
-   file CLAIM# @ cells OWNERS + !
+   code name file CLAIM-MAKE CLAIM# @ CLAIM-ROWS !
    CLAIM# @ 1+ CLAIM# ! ;
 
 : PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -208,10 +233,9 @@ variable JX
 \ codes for the file that declares it (lib/errors.f owns every stdlib block).
 \ Pairs are keyed by shared stem (E-FS-FIRST/E-FS-LAST -> E-FS) and declaring
 \ file, so two files can each own a same-named block.
-: RES-STEM@  ( n -- n )  cells RES-STEM + @ ;
-: RES-OWNER@ ( n -- n )  cells RES-OWNER + @ ;
-: RES-LO@    ( n -- n )  cells RES-LO + @ ;
-: RES-HI@    ( n -- n )  cells RES-HI + @ ;
+: RES-STEM@  ( n -- stem-id ) RES-ROWS RESERVATION-STEM @ ;
+: RES-OWNER@ ( n -- file-id ) RES-ROWS RESERVATION-OWNER @ ;
+: RES-STATE@ ( n -- reservation-state ) RES-ROWS RESERVATION-STATE @ ;
 
 \ name minus its -FIRST / -LAST suffix (caller guarantees SENTINEL?)
 : STEM$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
@@ -220,34 +244,67 @@ variable JX
 
 : FIRST-TOK? ( ptr u8 n -- bool )  s" -FIRST" LINT-ENDS-WITH? ;
 
-: RES-FIND ( n n -- n ) {: stem:n file:n :}   \ row for (stem,file) or -1
-   0 begin dup RES# @ < while
-      dup RES-STEM@ stem =
-      over RES-OWNER@ file = and if exit then
-      1+
-   repeat drop -1 ;
+: RES-FIND ( stem-id file-id -- option<n> ) {: stem:stem-id file:file-id :}
+   RES# @ 0 ?do
+      i RES-STEM@ stem STEM= i RES-OWNER@ file FILE= and if
+         i OPTION:SOME unloop exit
+      then
+   loop OPTION:NONE ;
 
-: RES-NEW ( n n -- n ) {: stem:n file:n :}    \ append an empty row, return idx
-   RES# @ MAX-RES >= if s" error-code-lint: reservation table full" 1 die then
-   RES# @ {: k:n :}
-   stem k cells RES-STEM + !
-   file k cells RES-OWNER + !
-   0 k cells RES-LO + !
-   0 k cells RES-HI + !
-   k 1+ RES# !
-   k ;
+: WITH-FIRST ( reservation-state n -- reservation-state ) {: code:n :}
+   \ The scanner accepts -0. Preserve its old meaning: clear this bound.
+   code 0= if
+      MATCH reservation-state
+         none OF construct reservation-state none ENDOF
+         first-only OF drop construct reservation-state none ENDOF
+         last-only OF construct reservation-state last-only ENDOF
+         complete OF swap drop construct reservation-state last-only ENDOF
+      ;MATCH exit
+   then
+   MATCH reservation-state
+      none OF code construct reservation-state first-only ENDOF
+      first-only OF drop code construct reservation-state first-only ENDOF
+      last-only OF code swap construct reservation-state complete ENDOF
+      complete OF swap drop code swap construct reservation-state complete ENDOF
+   ;MATCH ;
 
-: RES-ROW ( n n -- n ) {: stem:n file:n :}    \ find-or-create (stem,file) row
-   stem file RES-FIND dup 0 >= if exit then drop
-   stem file RES-NEW ;
+: WITH-LAST ( reservation-state n -- reservation-state ) {: code:n :}
+   code 0= if
+      MATCH reservation-state
+         none OF construct reservation-state none ENDOF
+         first-only OF construct reservation-state first-only ENDOF
+         last-only OF drop construct reservation-state none ENDOF
+         complete OF drop construct reservation-state first-only ENDOF
+      ;MATCH exit
+   then
+   MATCH reservation-state
+      none OF code construct reservation-state last-only ENDOF
+      first-only OF code construct reservation-state complete ENDOF
+      last-only OF drop code construct reservation-state last-only ENDOF
+      complete OF drop code construct reservation-state complete ENDOF
+   ;MATCH ;
 
-\ record one FIRST/LAST sentinel into its (stem,file) reservation row
+: WITH-BOUND ( reservation-state n bool -- reservation-state )
+   if WITH-FIRST else WITH-LAST then ;
+
+\ A new row is published whole after capacity checks; an existing row changes
+\ only after the exhaustive transition has produced its replacement state.
 : RES+ ( n ptr u8 n -- ) {: code:n a:ptr u:n :}
-   a u STEM$ INTERN {: stem:n :}
-   PATH$ INTERN {: file:n :}
-   stem file RES-ROW {: k:n :}
-   a u FIRST-TOK? if code k cells RES-LO + !
-                  else code k cells RES-HI + ! then ;
+   a u STEM$ INTERN N>STEM {: stem:stem-id :}
+   PATH$ INTERN N>FILE {: file:file-id :}
+   a u FIRST-TOK? {: first:bool :}
+   stem file RES-FIND MATCH option
+      some OF
+         {: k:n :}
+         k RES-STATE@ code first WITH-BOUND k RES-ROWS RESERVATION-STATE !
+      ENDOF
+      none OF
+         RES# @ MAX-RES >= if s" error-code-lint: reservation table full" 1 die then
+         construct reservation-state none code first WITH-BOUND {: state:reservation-state :}
+         stem file state RESERVATION-MAKE RES# @ RES-ROWS !
+         RES# @ 1+ RES# !
+      ENDOF
+   ;MATCH ;
 
 \ ---- token walk -------------------------------------------------------------
 : WORD? ( n -- bool ) {: k:n :}
@@ -275,7 +332,7 @@ variable JX
    repeat ;
 
 \ token k as a `<negative-number> constant E-NAME` claim
-: CLAIM-AT ( n -- ) {: k:n :}
+: SCAN-CLAIM ( n -- ) {: k:n :}
    k 1+ NEXT-WORD {: ki:n :}
    ki LINT-LEX:COUNT >= if exit then
    ki LINT-LEX:TOKEN s" constant" LINT-STR=CI 0= if exit then
@@ -286,7 +343,7 @@ variable JX
    k LINT-LEX:TOKEN NEG? {: code:n ok:bool :}
    ok 0= if exit then
    na nu SENTINEL? if code na nu RES+ exit then
-   code  na nu INTERN  PATH$ INTERN  CLAIM+ ;
+   code na nu INTERN N>NAME PATH$ INTERN N>FILE CLAIM+ ;
 
 : UNKNOWN-KIND ( n -- ) {: k:n :}
    s" error-code-lint: " type PATH$ type
@@ -297,7 +354,7 @@ variable JX
 : SCAN-TOKENS ( -- )
    0 begin dup LINT-LEX:COUNT < while
       dup KNOWN-KIND? 0= if dup UNKNOWN-KIND then
-      dup WORD? if dup CLAIM-AT then
+      dup WORD? if dup SCAN-CLAIM then
       1+
    repeat drop ;
 
@@ -330,17 +387,17 @@ variable JX
 : HIT ( n n -- ) {: i:n j:n :}
    SHOW? @ if
       s" ERROR-CODE " type i CODE@ EMIT-N
-      s"  claimed by '" type i NAME@ INTERN$ type
-      s" ' (" type i OWNER@ INTERN$ type
-      s" ) and '" type j NAME@ INTERN$ type
-      s" ' (" type j OWNER@ INTERN$ type
+      s"  claimed by '" type i NAME@ NAME$ type
+      s" ' (" type i OWNER@ FILE$ type
+      s" ) and '" type j NAME@ NAME$ type
+      s" ' (" type j OWNER@ FILE$ type
       s" )" type NL
    then
    BAD @ 1+ BAD ! ;
 
 : COLLIDE? ( n n -- bool ) {: i:n j:n :}
    i CODE@ j CODE@ =
-   i NAME@ j NAME@ <> and ;
+   i NAME@ j NAME@ NAME= 0= and ;
 
 \ one finding per colliding claim pair
 : FINDINGS ( -- )
@@ -366,28 +423,33 @@ variable JX
 \ re-registration of that identity, not a foreign one
 : OWNER-REGISTERED? ( n n -- bool ) {: ci:n ri:n :}
    CLAIM# @ 0 ?do
-      i OWNER@ ri RES-OWNER@ =
+      i OWNER@ ri RES-OWNER@ FILE=
       i CODE@ ci CODE@ = and
-      i NAME@ ci NAME@ = and if LINT-TRUE unloop exit then
+      i NAME@ ci NAME@ NAME= and if LINT-TRUE unloop exit then
    loop LINT-FALSE ;
 
 \ claim ci falls inside a COMPLETE reservation ri owned by another file, under
 \ a name the owner does not itself register for that code
 : FOREIGN? ( n n -- bool ) {: ci:n ri:n :}
-   ri RES-LO@ {: first:n :}
-   ri RES-HI@ {: last:n :}
-   first 0= last 0= or if LINT-FALSE exit then
-   ci CODE@ first last IN-RANGE? 0= if LINT-FALSE exit then
-   ci OWNER@ ri RES-OWNER@ = if LINT-FALSE exit then
-   ci ri OWNER-REGISTERED? 0= ;
+   ri RES-STATE@ MATCH reservation-state
+      none OF LINT-FALSE ENDOF
+      first-only OF drop LINT-FALSE ENDOF
+      last-only OF drop LINT-FALSE ENDOF
+      complete OF
+         {: first:n last:n :}
+         ci CODE@ first last IN-RANGE?
+         ci OWNER@ ri RES-OWNER@ FILE= 0= and
+         if ci ri OWNER-REGISTERED? 0= else LINT-FALSE then
+      ENDOF
+   ;MATCH ;
 
 : RES-HIT ( n n -- ) {: ci:n ri:n :}
    SHOW? @ if
       s" ERROR-CODE " type ci CODE@ EMIT-N
-      s"  claimed by '" type ci NAME@ INTERN$ type
-      s" ' (" type ci OWNER@ INTERN$ type
-      s" ) inside reserved range " type ri RES-STEM@ INTERN$ type
-      s" -FIRST..-LAST owned by (" type ri RES-OWNER@ INTERN$ type
+      s"  claimed by '" type ci NAME@ NAME$ type
+      s" ' (" type ci OWNER@ FILE$ type
+      s" ) inside reserved range " type ri RES-STEM@ STEM-NAME$ type
+      s" -FIRST..-LAST owned by (" type ri RES-OWNER@ FILE$ type
       s" )" type NL
    then
    BAD @ 1+ BAD ! ;
@@ -466,13 +528,20 @@ public
    SHOW? @ {: show:bool :}
    SHOW-OFF  WALK  show SHOW! ;
 
-\ live reservation rows whose two bounds are exactly first/last
+\ Live rows whose bounds are exactly first/last. This public query retains 0
+\ for an absent bound; the stored state and range checks never use a sentinel.
 : RESERVATIONS ( n n -- n ) {: first:n last:n :}
-   0  0 begin dup RES# @ < while
-      dup RES-LO@ first =
-      over RES-HI@ last = and if swap 1+ swap then
-      1+
-   repeat drop ;
+   0 RES# @ 0 ?do
+      i RES-STATE@ MATCH reservation-state
+         none OF first 0= last 0= and if 1+ then ENDOF
+         first-only OF first = last 0= and if 1+ then ENDOF
+         last-only OF last = first 0= and if 1+ then ENDOF
+         complete OF
+            {: lo:n hi:n :}
+            lo first = hi last = and if 1+ then
+         ENDOF
+      ;MATCH
+   loop ;
 
 \ live claims whose code falls inside the inclusive range
 : CLAIMS-IN ( n n -- n ) {: first:n last:n :}

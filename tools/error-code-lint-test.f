@@ -15,6 +15,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/fmt.f
 require lib/memory.f
 require lib/vector.f
 require lib/fs.f
@@ -185,6 +186,33 @@ variable FIX-U
    s" -9100 constant E-FOO-FIRST"
    s" -9150 constant E-BAR" ERROR-CODE-LINT:COUNT2 0 T= ;
 
+: RANGE-TRANSITIONS ( -- )
+   s" -9199 constant E-FOO-LAST -9100 constant E-FOO-FIRST"
+   s" -9150 constant E-BAR" ERROR-CODE-LINT:COUNT2 1 T=
+   \ A repeated bound replaces that endpoint, retaining its opposite.
+   s" -9100 constant E-FOO-FIRST -9199 constant E-FOO-LAST -9130 constant E-FOO-FIRST"
+   s" -9120 constant E-BAR" ERROR-CODE-LINT:COUNT2 0 T=
+   s" -9100 constant E-FOO-FIRST -9199 constant E-FOO-LAST -9130 constant E-FOO-LAST"
+   s" -9150 constant E-BAR" ERROR-CODE-LINT:COUNT2 0 T=
+   \ Missing bounds remain visible as zero only at the legacy query boundary.
+   s" -9100 constant E-FOO-FIRST" ERROR-CODE-LINT:COUNT 0 T=
+   -9100 0 ERROR-CODE-LINT:RESERVATIONS 1 T=
+   s" -9199 constant E-FOO-LAST" ERROR-CODE-LINT:COUNT 0 T=
+   0 -9199 ERROR-CODE-LINT:RESERVATIONS 1 T=
+   \ -0 was accepted by the scanner and cleared the corresponding bound.
+   s" -0 constant E-FOO-FIRST -9199 constant E-FOO-LAST"
+   s" -9150 constant E-BAR" ERROR-CODE-LINT:COUNT2 0 T=
+   0 -9199 ERROR-CODE-LINT:RESERVATIONS 1 T=
+   s" -9100 constant E-FOO-FIRST -9199 constant E-FOO-LAST -0 constant E-FOO-LAST"
+   s" -9150 constant E-BAR" ERROR-CODE-LINT:COUNT2 0 T=
+   -9100 0 ERROR-CODE-LINT:RESERVATIONS 1 T=
+   s" -9100 constant E-FOO-FIRST -0 constant E-FOO-FIRST" ERROR-CODE-LINT:COUNT 0 T=
+   0 0 ERROR-CODE-LINT:RESERVATIONS 1 T=
+   \ Equal stems in different files remain distinct reservation identities.
+   s" -9100 constant E-FOO-FIRST -9199 constant E-FOO-LAST"
+   s" -9100 constant E-FOO-FIRST -9199 constant E-FOO-LAST" ERROR-CODE-LINT:COUNT2 0 T=
+   -9100 -9199 ERROR-CODE-LINT:RESERVATIONS 2 T= ;
+
 : NOT-CLAIMS ( -- )
    \ a whole line after `\` is a comment
    s" \ -9001 constant E-XA  -9001 constant E-XB" ERROR-CODE-LINT:COUNT 0 T=
@@ -231,6 +259,7 @@ variable FIX-U
    DETECT
    ALLOWANCES
    RANGES
+   RANGE-TRANSITIONS
    NOT-CLAIMS
    PRINT-PAREN
    STRINGS
@@ -241,4 +270,59 @@ variable FIX-U
 
 MAIN
 
+;package
+
+package ERROR-CODE-LINT
+using LINT-INTERN
+private
+
+: EOWN-TYPES ( -- )
+   s" EOWN-GOOD ( n intern-id file-id -- claim ) CLAIM-MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+   s" EOWN-SWAP ( n file-id intern-id -- claim ) CLAIM-MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+   s" EOWN-FIELD ( file-id ptr claim -- ) CLAIM-NAME !" CHECK-QUIET-CANDIDATE! 0 T=
+   s" EOWN-KEY ( file-id stem-id -- option<n> ) RES-FIND" CHECK-QUIET-CANDIDATE! 0 T=
+   s" EOWN-CODE ( n -- intern-id )" CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: EOWN-BOUNDS ( -- )
+   RESET-LEDGER
+   s" E-CANARY" INTERN N>NAME {: name:intern-id :}
+   s" canary.f" INTERN N>FILE {: file:file-id :}
+   MAX-CLAIMS 0 ?do -9231 name file CLAIM+ loop
+   CLAIM# @ MAX-CLAIMS T=
+   0 CODE@ -9231 T= MAX-CLAIMS 1- CODE@ -9231 T=
+   [: MAX-CLAIMS CLAIM-ROWS drop ;] E-LAYOUT-BOUNDS TTHROWSQ
+   [: -1 CLAIM-ROWS drop ;] E-LAYOUT-BOUNDS TTHROWSQ
+   MAX-CLAIMS 1- NAME@ name NAME= TTRUE
+   MAX-CLAIMS 1- OWNER@ file FILE= TTRUE
+   s" canary.f" PATH!
+   -9230 s" E-RANGE-FIRST" RES+
+   RES# @ 1 T=
+   MAX-RES 1- 0 ?do
+      SB-RESET i 1+ FMT:SB-U SB$ PATH! -9230 s" E-RANGE-FIRST" RES+
+   loop
+   RES# @ MAX-RES T=
+   \ The last available record is intact; either table refuses its neighbors.
+   [: MAX-RES RES-ROWS drop ;] E-LAYOUT-BOUNDS TTHROWSQ
+   [: -1 RES-ROWS drop ;] E-LAYOUT-BOUNDS TTHROWSQ
+   0 RES-OWNER@ file FILE= TTRUE
+   MAX-RES 1- RES-OWNER@ FILE$ SB-RESET MAX-RES 1- FMT:SB-U SB$ T$=
+   MAX-CLAIMS 1- CODE@ -9231 T= ;
+
+create EOWN-BAD 96 allot
+
+: EOWN-ROLLBACK ( -- )
+   RESET-LEDGER s" owner.f" PATH!
+   s" -9230 constant E-KEEP-FIRST -9239 constant E-KEEP-LAST -9231 constant E-KEEP"
+   SCAN-TEXT
+   s" -9250 constant E-NEW s" {: a:ptr u:n :}
+   a EOWN-BAD u BYTE-COPY 34 EOWN-BAD u + c!
+   [: EOWN-BAD s" -9250 constant E-NEW s" nip 1+ SCAN-TEXT ;] E-QUOTE TTHROWSQ
+   CLAIM# @ 1 T= RES# @ 1 T=
+   0 CODE@ -9231 T= -9230 -9239 RESERVATIONS 1 T= ;
+
+: EOWN-MAIN ( -- )
+   T-RESET EOWN-TYPES EOWN-BOUNDS EOWN-ROLLBACK T-REPORT
+   RESET-LEDGER ;
+
+EOWN-MAIN
 ;package
