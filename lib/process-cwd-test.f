@@ -10,6 +10,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/process-cwd.f
+require lib/test/outcome.f
 
 package PROCESS-CWD-TEST
 
@@ -96,6 +97,26 @@ variable PCT-I
    s" /bin/cat" >LEN s" /no/such/habu-process-cwd-test" >LEN -1 >FD -1 >FD -1 >FD
    PROC-CWD:SPAWN-ARGV-ENV-CWD-IO drop ;
 
+: PCT-EARLY-EOF$ ( -- ptr u8 n )
+   s" 111 emit 107 emit 1 close 2 close : PCT-WAIT ( -- ) mono-ns 1000000000 + begin dup mono-ns > while repeat drop ; PCT-WAIT" ;
+
+: PCT-EARLY-EOF ( -- )
+   PCT-RESET
+   s" bin/hb" s" ." PCT-EARLY-EOF$ PCT-OUT PCT-CAP PCT-ERR PCT-CAP 300
+   PCT-STDIN-CAPTURE drop 2drop ;
+
+: PCT-RUN-EARLY-EOF ( -- )
+   [: PCT-EARLY-EOF ;] E-PROC-TIMEOUT TTHROWSQ
+   PROC-OUT-LEN @ 2 T= PCT-OUT 2 s" ok" T$=
+   PROC-PID @ PROC-NO-PID T= PROC-IN-W @ PROC-NO-FD T=
+   PCT-RESET
+   s" bin/hb" >LEN s" ." >LEN PCT-EARLY-EOF$ >LEN
+   PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 300 >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME
+   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 2 T=
+   PCT-OUT 2 s" ok" T$=
+   PROC-PID @ PROC-NO-PID T= PROC-IN-W @ PROC-NO-FD T= ;
+
 : PCT-RUN-MISSING-CWD ( -- )
    [: PCT-MISSING-CWD ;] E-PROC-SPAWN TTHROWSQ
    PROC-ARGV-N @ 0 T=
@@ -126,6 +147,7 @@ variable PCT-I
    PCT-RUN-CAT-CWD
    PCT-RUN-ARGV-ENV-CWD-CAPTURE-RESULT
    PCT-RUN-STDIN-CAPTURE
+   PCT-RUN-EARLY-EOF
    PCT-RUN-MISSING-CWD
    [: PCT-CWD-TOO-LONG ;] E-PROC-OUTPUT TTHROWSQ
    T-REPORT

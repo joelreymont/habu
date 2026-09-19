@@ -26,6 +26,7 @@ variable PT-CAPTURE-HANG-U
 variable PT-CAPTURE-ERR-LONG-U
 variable PT-CAPTURE-FALSE-U
 variable PT-CAPTURE-HB-U
+variable PT-CAPTURE-EOF-U
 variable PT-FORK-CELL
 create PT-BUF 32 allot
 create PT-OUT 32 allot
@@ -38,6 +39,7 @@ create PT-CAPTURE-HANG-BUF FS-PATH-CAP allot
 create PT-CAPTURE-ERR-LONG-BUF FS-PATH-CAP allot
 create PT-CAPTURE-FALSE-BUF FS-PATH-CAP allot
 create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
+create PT-CAPTURE-EOF-BUF FS-PATH-CAP allot
 4096 constant PT-CHUNK                   \ one PROC-STDIN-CHUNK-CAP write
 1024 constant PT-FILL-MAX                \ bounds the pipe fill at 4 MiB
 create PT-CHUNK-BUF PT-CHUNK allot
@@ -76,6 +78,9 @@ create PT-DRAIN-BUF PT-CHUNK allot
 : PT-CAPTURE-HB ( -- ptr u8 n )
    PT-CAPTURE-HB-BUF PT-CAPTURE-HB-U @ ;
 
+: PT-CAPTURE-EOF ( -- ptr u8 n )
+   PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U @ ;
+
 : PT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
@@ -92,7 +97,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-ROOT s" capture-hang.f" PT-CAPTURE-HANG-BUF PT-CAPTURE-HANG-U PT-PATH!
    PT-ROOT s" capture-err-long.f" PT-CAPTURE-ERR-LONG-BUF PT-CAPTURE-ERR-LONG-U PT-PATH!
    PT-ROOT s" capture-false.f" PT-CAPTURE-FALSE-BUF PT-CAPTURE-FALSE-U PT-PATH!
-   PT-ROOT s" capture-hb.f" PT-CAPTURE-HB-BUF PT-CAPTURE-HB-U PT-PATH! ;
+   PT-ROOT s" capture-hb.f" PT-CAPTURE-HB-BUF PT-CAPTURE-HB-U PT-PATH!
+   PT-ROOT s" capture-eof.f" PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U PT-PATH! ;
 
 : PT-WRITE-SCRIPT ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
    path pathu src srcu WRITE-ALL
@@ -104,7 +110,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-CAPTURE-HANG s" : HANG ( -- ) begin again ; HANG" PT-WRITE-SCRIPT
    PT-CAPTURE-ERR-LONG s" create E 97 c, 98 c, 99 c, 100 c, 101 c, 102 c, 2 E 6 write drop" PT-WRITE-SCRIPT
    PT-CAPTURE-FALSE s" 0 0 1 die" PT-WRITE-SCRIPT
-   PT-CAPTURE-HB s" 1 2 + . cr" PT-WRITE-SCRIPT ;
+   PT-CAPTURE-HB s" 1 2 + . cr" PT-WRITE-SCRIPT
+   PT-CAPTURE-EOF s" 111 emit 107 emit 1 close 2 close : PT-WAIT ( -- ) mono-ns 1000000000 + begin dup mono-ns > while repeat drop ; PT-WAIT" PT-WRITE-SCRIPT ;
 
 : PT-PREPARE ( -- )
    CLEANUP-RESET
@@ -386,6 +393,22 @@ create PT-DRAIN-BUF PT-CHUNK allot
    T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 0 T=
    PROC-CAPTURE-OUTCOME T-OUTCOME-TIMEOUT ;             \ derived getter agrees
 
+\ The child closes its output pipes but remains alive for one second. The
+\ prefix proves it reached that path before the shorter capture deadline.
+: PT-RUN-EARLY-EOF ( -- )
+   PT-CAPTURE-EOF PT-OUT 32 PT-ERR 32 PT-SHORT-TIMEOUT-MS PT-RUN-HB-SCRIPT
+   drop 2drop ;
+
+: TEST-CAPTURE-EARLY-EOF ( -- )
+   [: PT-RUN-EARLY-EOF ;] E-PROC-TIMEOUT TTHROWSQ
+   PROC-OUT-LEN @ 2 T= PT-OUT 2 s" ok" T$=
+   PROC-PID @ PROC-NO-PID T=
+   PROC-OUT-R @ PROC-NO-FD T= PROC-ERR-R @ PROC-NO-FD T=
+   PT-CAPTURE-EOF PT-OUT 32 PT-ERR 32 PT-SHORT-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
+   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 2 T=
+   PT-OUT 2 s" ok" T$=
+   PROC-PID @ PROC-NO-PID T= ;
+
 \ Signal-death capture: the reap path derives signaled(sig) from the raw wait
 \ status alone -- no stored pair. The API return and the derived getter agree.
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-SIGNAL ( -- )
@@ -504,6 +527,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    TEST-RUN-ARGV-CAPTURE-FALSE
    TEST-RUN-ARGV-CAPTURE-OUTCOME-EXIT
    TEST-RUN-ARGV-CAPTURE-OUTCOME-TIMEOUT
+   TEST-CAPTURE-EARLY-EOF
    TEST-RUN-ARGV-CAPTURE-OUTCOME-SIGNAL
    TEST-STARVED-TIMEOUT
    TEST-RUN-ARGV-CAPTURE-HB

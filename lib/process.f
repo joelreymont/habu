@@ -148,6 +148,11 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and PROC-STORAGE-BYTES TASK:+USER PROC-STORAGE 
 : PROC-WAIT-STATUS-RAW ( pid -- n ) {: pid :}
    pid PID>N wait-status ;
 
+PROCESS-SYMBOLS
+FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- n )
+   1 4 WRITES-BYTES                    \ wait status is a C int, not a cell
+;FUNCTION
+
 : PROC-SPAWN-RAW ( ptr u8 fd fd fd -- pid ) {: pathz:ptr infd outfd errfd :}
    pathz infd FD>N outfd FD>N errfd FD>N spawn-io >PID ;
 
@@ -434,6 +439,30 @@ PROC-REAP-ARM-DEFAULT
 : PROC-REMAINING-MS ( -- ms )
    PROC-DEADLINE @ PROC-LEFT-MS ;
 
+\ EOF says that the child closed its pipes, not that it exited. Keep the same
+\ absolute capture deadline while waiting for its status; only the existing
+\ timeout path may do a blocking wait, after sending SIGKILL. WNOHANG is 1 on
+\ both supported hosts. Clear the cell because waitpid writes only four bytes.
+: PROC-REAP-CAPTURE-BOUNDED ( -- )
+   begin PROC-PID @ 0 >= while
+      0 PROC-STATUS !
+      PROC-PID @ PROC-STATUS BYTE-VIEW 1 PROC-WAITPID-CALL $FFFFFFFF and {: got:n :}
+      got PROC-PID @ = if
+         PROC-STATUS @ PROC-STATUS>RC RC>N PROC-RC !
+         PROC-NO-PID PROC-PID !
+      else
+         got 0<> if
+            FFI:ERRNO EINTR# <> if E-PROC-WAIT PROC-THROW-CAPTURE then
+         then
+         PROC-REMAINING-MS MS>N {: left:n :}
+         left 0= if PROC-REAP-CAPTURE-TIMEOUT exit then
+         \ PAUSE can exit a halted task and abandon its child. SLEEP returns
+         \ here to reap it, and does not burn a core while the child runs.
+         left 1 min >MS TASK:SLEEP
+      then
+   repeat
+   PROC-REAP-DISARM ;
+
 : PROC-ARM-CAPTURE-PFD ( -- )
    PROC-OUT-R @ >FD POLLIN 0 >IDX PROC-PFD-AT!
    PROC-ERR-R @ >FD POLLIN 1 >IDX PROC-PFD-AT! ;
@@ -577,7 +606,7 @@ PROC-REAP-ARM-DEFAULT
       drop
       out outcap err errcap PROC-DRAIN-READY
    repeat
-   PROC-REAP-CAPTURE ;
+   PROC-REAP-CAPTURE-BOUNDED ;
 
 : PROC-RUN-STDIN-CAPTURE-LOOP ( ptr u8 len ptr u8 len ptr u8 len -- )
    {: in:ptr inu out:ptr outcap err:ptr errcap :}
@@ -602,7 +631,7 @@ PROC-REAP-ARM-DEFAULT
       in inu PROC-DRIVE-STDIN
       out outcap err errcap PROC-DRAIN-READY
    repeat
-   PROC-REAP-CAPTURE ;
+   PROC-REAP-CAPTURE-BOUNDED ;
 
 : PROC-CAPTURE-CHECK-CAPS ( len len -- ) {: outcap errcap :}
    outcap LEN>N 0 < if E-PROC-OUTPUT throw then
@@ -647,7 +676,8 @@ PROC-REAP-ARM-DEFAULT
 
 : PROC-CAPTURE-FINISH-RC ( -- result<pcap:captured,pcap:failed> )
    PROC-CLOSE-ALL-CAPTURE-FDS
-   PROC-REAP-CAPTURE
+   PROC-REAP-CAPTURE-BOUNDED
+   PROC-TIMED-OUT @ 0<> if E-PROC-TIMEOUT throw then
    PROC-CAPTURE-RC@ ;
 
 : PROC-CAPTURE-FINISH-OUTCOME ( -- len len outcome )
