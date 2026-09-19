@@ -38,13 +38,28 @@ create FB-SLAB LINT-SLAB:CELLS cells allot
    FB-SLAB LINT-SLAB:TEXT ;
 
 \ ---- prim-name store: copied out of habu1.f so the slab can be reused per file ----
-create PNAMES 8192 allot   variable PEND
+8192 constant PNAMES-CAP
+create PNAMES PNAMES-CAP allot   variable PEND
 $200 constant PMAX
 \ Each prim name's start is an address into PNAMES, so the starts are declared
 \ pointer storage; the lengths beside them stay plain cells.
 PMAX TYPED-BUFFER POFF ptr u8
 create PRIM-LEN PMAX cells allot   variable PN#
+-4803 constant E-SHADOW-CAPACITY
+
+: CAPACITY-FAIL ( ptr u8 n n n -- ) {: label:ptr u:n count:n cap:n :}
+   s" shadow-lint: " LINT-MAIN-OUT label u LINT-MAIN-OUT
+   s"  capacity exceeded (count " LINT-MAIN-OUT
+   count LINT-MAIN-N$ LINT-MAIN-OUT
+   s" , ceiling " LINT-MAIN-OUT cap LINT-MAIN-N$ LINT-MAIN-OUT
+   s" )" LINT-MAIN-OUT LINT-MAIN-LF
+   E-SHADOW-CAPACITY throw ;
+
 : ADD-PRIM  ( ptr u8 n -- ) {: a:ptr u :}
+   \ Refuse before the copy: a rejected name must not change either store.
+   PN# @ PMAX >= IF s" prim rows" PN# @ PMAX CAPACITY-FAIL THEN
+   u 0 < u PNAMES-CAP PEND @ - > or IF
+      s" name bytes" PEND @ PNAMES-CAP CAPACITY-FAIL THEN
    a  PNAMES PEND @ +  u LINT-BMOVE
    PNAMES PEND @ +  PN# @ POFF !   u PRIM-LEN PN# @ cells + !
    PEND @ u + PEND !   PN# @ 1+ PN# ! ;

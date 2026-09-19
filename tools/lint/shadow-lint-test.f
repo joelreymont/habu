@@ -66,6 +66,47 @@ create SLT-UB 2 allot
    dup E-SHADOW-UNTERM <> TTRUE
    E-SHADOW-REGISTRY T= ;
 
+create SLT-DIAG 256 allot
+
+: SLT-ROW-CAPACITY ( -- )
+   0 PN# ! 0 PEND !
+   PMAX 0 ?do s" x" ADD-PRIM loop
+   PN# @ PMAX T= PEND @ PMAX T=
+   90 PNAMES PMAX + c!
+   SLT-DIAG 256 LINT-OUT-BUFFER!
+   [: s" overflow" ADD-PRIM ;] catch
+   LINT-OUT-BUFFER-OFF E-SHADOW-CAPACITY T=
+   LINT-OUT$ s" shadow-lint: prim rows capacity exceeded (count 512, ceiling 512)"
+   LINT-STARTS-WITH? TTRUE
+   PN# @ PMAX T= PEND @ PMAX T=
+   PNAMES PMAX + c@ 90 T=
+   PMAX 1- POFF @ 1 s" x" T$=
+   PRIM-LEN PMAX 1- cells + @ 1 T= ;
+
+: SLT-NAME-CAPACITY ( -- )
+   0 PN# ! 0 PEND !
+   PNAMES-CAP 0 ?do 65 PNAMES i + c! loop
+   PNAMES PNAMES-CAP ADD-PRIM
+   PN# @ 1 T= PEND @ PNAMES-CAP T=
+   SLT-DIAG 256 LINT-OUT-BUFFER!
+   [: s" x" ADD-PRIM ;] catch
+   LINT-OUT-BUFFER-OFF E-SHADOW-CAPACITY T=
+   LINT-OUT$ s" shadow-lint: name bytes capacity exceeded (count 8192, ceiling 8192)"
+   LINT-STARTS-WITH? TTRUE
+   PN# @ 1 T= PEND @ PNAMES-CAP T=
+   0 POFF @ c@ 65 T= PRIM-LEN @ PNAMES-CAP T=
+   \ A name longer than the remaining space is refused even before full.
+   0 PN# ! 0 PEND ! s" x" ADD-PRIM
+   90 PNAMES 1+ c!
+   SLT-DIAG 256 LINT-OUT-BUFFER!
+   [: PNAMES PNAMES-CAP ADD-PRIM ;] catch
+   LINT-OUT-BUFFER-OFF E-SHADOW-CAPACITY T=
+   PN# @ 1 T= PEND @ 1 T= PNAMES 1+ c@ 90 T=
+   SLT-DIAG 256 LINT-OUT-BUFFER!
+   [: PNAMES -1 ADD-PRIM ;] catch
+   LINT-OUT-BUFFER-OFF E-SHADOW-CAPACITY T=
+   PN# @ 1 T= PEND @ 1 T= ;
+
 : SLT-MAIN ( -- )
    T-RESET
    SLT-LAYOUT-BUFFER
@@ -75,6 +116,9 @@ create SLT-UB 2 allot
    SLT-DEFINER-BODY
    SLT-UNTERM
    SLT-MALFORMED-ROW
+   SLT-ROW-CAPACITY
+   SLT-NAME-CAPACITY
+   s" src/habu/habu1.f" FB-LOAD TOKENIZE SCAN-PRIMS
    T-REPORT
    s" shadow-lint-test: ok" type cr ;
 
