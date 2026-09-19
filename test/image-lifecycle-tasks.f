@@ -15,14 +15,18 @@ TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 TASK:MIN-STACK TASK:TASK WORKER-C
 TASK:MIN-STACK TASK:TASK WORKER-D
+\ Inspected only by the main thread after its worker has stopped.
+: ADDRESS-ROWS ( -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
+
+\ A typed quotation cell owns its relocation row from its definition on
+\ (src/core/layout-buffer.f STORAGE-ALLOT); the stores below reuse that row.
+ADDRESS-ROWS constant ROWS-BEFORE-SHARED
 TYPED-VARIABLE SHARED-ACTION [ -- ]
+ADDRESS-ROWS ROWS-BEFORE-SHARED - constant SHARED-ROWS
 TASK:#USER CELL TASK:+USER LOCAL-CELL drop
 
 \ The task allocator returns a raw cell; this test declares its quotation type.
 TRUSTED: LOCAL-ACTION ( -- ptr [ -- ] ) LOCAL-CELL ;
-
-\ Inspected only by the main thread after its worker has stopped.
-: ADDRESS-ROWS ( -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
 
 : CLEAN ( -- ) 1 CLEANED +! ;
 
@@ -49,18 +53,20 @@ TRUSTED: LOCAL-ACTION ( -- ptr [ -- ] ) LOCAL-CELL ;
    \ Establish the TCB's own dispatch rows before measuring application stores.
    ['] EMPTY-WORK WORKER-A TASK:ACTIVATE WORKER-A JOIN
    ADDRESS-ROWS {: before:n :}
+   SHARED-ROWS 1 T=
    0 CLEANED !
    ['] LOCAL-WORK WORKER-A TASK:ACTIVATE WORKER-A JOIN
    CLEANED @ 1 T=
    ADDRESS-ROWS before T=
+   \ The shared cell's one row was declared with it; a store adds none.
    ['] SHARED-WORK WORKER-A TASK:ACTIVATE WORKER-A JOIN
    CLEANED @ 2 T=
-   ADDRESS-ROWS before 1+ T=
-   \ Repeated stores own one shared row, and the main thread sees the callback.
+   ADDRESS-ROWS before T=
+   \ Repeated stores keep that one row, and the main thread sees the callback.
    ['] SHARED-WORK WORKER-A TASK:ACTIVATE WORKER-A JOIN
    SHARED-ACTION @ execute
    CLEANED @ 4 T=
-   ADDRESS-ROWS before 1+ T= ;
+   ADDRESS-ROWS before T= ;
 
 : ROUND ( -- )
    0 READY ! 0 START ! 0 CLEANED !
