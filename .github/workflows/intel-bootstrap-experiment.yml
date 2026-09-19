@@ -7,6 +7,10 @@ on:
       - .github/workflows/intel-bootstrap-experiment.yml
       - .github/patches/intel-hosted-recovery.patch
       - .github/fixtures/intel/**
+      - src/targets/x86-64/**
+      - src/compiler/target.f
+      - src/core/checker.f
+      - test/compiler/x86-64-*.f
 
 permissions:
   contents: read
