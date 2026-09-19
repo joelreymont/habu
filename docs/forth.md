@@ -365,28 +365,34 @@ for a one-off call or to escape a collision.
 
 ### Structures And Enums
 
-The composite-type surface is the typed-family DSL in `src/core/sumtype.f`
-(`NEWTYPE`, `SUMTYPE`, `PRODUCT`, `ENUM`) plus the value-record
-(`src/core/roles.f`), low-level structure (`src/core/structures.f`) and
-counter-enum (`src/core/enums.f`) definers. Each opener parses its body to its
-`;NAME`/`END-NAME` closer and registers the family whole; the `sumtype.f`
-openers and `VALUE-RECORD` mutate the type registry, so they are
-top-level-interpret-only and reject inside checked bodies.
+New declarations use `NEWTYPE` for an opaque nominal cell, `STRUCTURE` for a
+record with named fields, and `ENUM` for alternatives with or without payloads.
+These landed forms register a whole family at top level; they cannot be called
+inside a checked definition. `STRUCTURE` and full `ENUM` require an arity;
+compact `ENUM` omits it and has no payload fields.
+
+Legacy `SUMTYPE`, `PRODUCT`, `VALUE-RECORD`, low-level
+`BEGIN-STRUCTURE`/`END-STRUCTURE` definers and counter enums (`ENUM+`, `ENUM4+`)
+still have executable sites in the repository. They are migration debt,
+forbidden in new code; use the declarations below.
 
 ```forth
-NEWTYPE index 0                     \ opaque nominal cell family, no closer
+package EXAMPLE
+public
+NEWTYPE index 0
 
-PRODUCT point 0                     \ single-shape record, no tag
+STRUCTURE point 0
    FIELD x n
    FIELD y n
-;PRODUCT
+;STRUCTURE
 
-SUMTYPE message 0                   \ tagged union; positional variant payloads
+ENUM message 0
    VARIANT quit ;VARIANT
-   VARIANT move n n ;VARIANT
-;SUMTYPE
+   VARIANT move FIELD x n FIELD y n ;VARIANT
+;ENUM
 
-ENUM color red green blue ;ENUM     \ payloadless tag-only sum
+ENUM color red green blue ;ENUM
+;package
 ```
 
 A multi-cell record is one logical value and lives inside checked definitions.
@@ -438,25 +444,33 @@ argument and a bare tail of a family of arity > 0 are all refused. See
   eligible non-lexical package-public rows are an error. So adding `MEM:span`
   cannot change what a top-level `span` means. Same-package duplicates,
   reserved grammar names and foreign private rows reject.
-- `SUMTYPE name arity [ DERIVE … ] VARIANT v payload… ;VARIANT … ;SUMTYPE`
-  registers a tagged union (`TK-SUM`, tag = declaration order). Variant payloads
-  are positional type tokens: letter params, concrete cell types, `ptr T` or
-  closed arity-0 families; a named `FIELD` in a variant is `E-TDECL-SYNTAX`
-  (7107). It generates constructors and drives exhaustive `MATCH … ;MATCH`.
-- `PRODUCT name arity [ DERIVE … ] FIELD f type … ;PRODUCT` registers a
-  single-shape record (`TK-PRODUCT`, no tag) with named fields. A product with
-  fields generates sealed `MAKE`/`UNMAKE`: `PKG-FAMILY:MAKE` in the constructor
-  namespace for a public family, `FAMILY-MAKE` in the declaring package's
-  private wordlist for a private one (a qualified name can never land in a
-  private wordlist, `docs/type-families.md`).
-- `ENUM name header… v0 v1 … ;ENUM` registers a payloadless sum (`TK-ENUM`) from
-  bare variant names: no arity token, no `VARIANT` keyword (either throws 7101).
-  `POLICY` and `DERIVE` headers precede the first variant. Payloads need
-  `SUMTYPE`.
+- `STRUCTURE name arity [ header… ] FIELD f type … ;STRUCTURE` declares a
+  single-shape record with named fields in declaration order, deepest field
+  first on the stack. A structure with fields generates sealed `MAKE`/`UNMAKE`:
+  `PKG-FAMILY:MAKE` in the constructor namespace for a public package family,
+  `FAMILY-MAKE` in the declaring package's private wordlist for a private one
+  (a qualified name can never land in a private wordlist). A fieldless structure
+  is an opaque cell family with no
+  generated constructor or destructor.
+- Full `ENUM name arity [ header… ] VARIANT v FIELD f type … ;VARIANT … ;ENUM`
+  declares named alternatives with named payload fields. A variant may have no
+  fields. Its tag is its declaration order; generated constructors feed an
+  exhaustive `MATCH … ;MATCH`.
+- Compact `ENUM name [ header… ] v0 v1 … ;ENUM` declares payloadless variants
+  from bare names, with implicit arity zero. Do not mix compact names with full
+  `VARIANT` blocks. `POLICY` and `DERIVE` headers precede the first field or
+  variant, after the arity when one is present.
+- `DERIVE addr` on a structure with fields generates typed field-address
+  accessors plus `AT`, `BYTES` and `CELLS`. For example, a global public `point`
+  with `FIELD x n` gains `POINT:X ( ptr point -- ptr n )`. Read or write through
+  it with the field type's ordinary checked operations. See
+  [type-families.md](type-families.md) for
+  layout policies and the generated storage interface.
 - **A package family's generated words are `PKG-FAMILY:tail` with every hyphen
-  in the family name doubled**: `SUMTYPE read-result` in `package TCP4`
-  constructs through `TCP4-READ--RESULT:data`; a `PRODUCT captured` in
-  `package PCAP` unmakes through `PCAP-CAPTURED:UNMAKE`. `SIGNAL-RESULT:signal`
+  in the family name doubled**: an `ENUM read-result` in `package TCP4`
+  constructs its `data` variant through `TCP4-READ--RESULT:data`; a
+  `STRUCTURE captured` in `package PCAP` unmakes through
+  `PCAP-CAPTURED:UNMAKE`. `SIGNAL-RESULT:signal`
   and `SIGNAL:signal` are both `E-UNDEFINED`. Stack effects and `MATCH` name
   the family `PKG:family` (`( -- TCP4:read-result )`, `MATCH TCP4:read-result`);
   a body inside the owning package writes the bare family name in `MATCH`.
@@ -478,14 +492,8 @@ argument and a bare tail of a family of arity > 0 are all refused. See
   whose width reads an open argument has no per-cell boundary to place, and
   that one is `E-NELAB-BUNDLE` at the definer.
 - `DERIVE eq`/`DERIVE hash` on a public arity-0 family generate those
-  operations; clauses follow the name on `ENUM` and the arity on
-  `SUMTYPE`/`PRODUCT`, one or several per feature; repeating a feature rejects.
-- `VALUE-RECORD name field type … END-VALUE-RECORD` declares a checked value
-  record.
-- `BEGIN-STRUCTURE NAME … END-STRUCTURE` is the Forth-2012 offset-threading form
-  (`size +FIELD f`, `PTR-FIELD: p`, `CFIELD: c`; `NAME` becomes the byte-size
-  constant). `structures.f` loads after the checker hook and publishes checked
-  effects directly. Reserve it for raw layout (`lib/vector.f`).
+  operations. Clauses follow the name on compact `ENUM` and the arity on
+  `STRUCTURE` or full `ENUM`; repeating a feature rejects.
 - `CAST: NAME ( source -- destination )` declares a checked retype: a reader
   keyword with no body and no `;`, publishing `NAME` as an identity whose call
   sites emit nothing. A conversion that can refuse is a checked word that
@@ -494,14 +502,8 @@ argument and a bare tail of a family of arity > 0 are all refused. See
   namespace record and actual definition wordlist identify the declaring
   package; mutable `CHECKER-PACKAGE-*` mirror state is not authority.
   Projection casts from such a family are unrestricted.
-- `n ENUM+ NAME` (`ENUM4+`) is the legacy counter definer: `NAME = n`, leaving
-  `n+1` (`n+4`).
 - Type, field and variant names are lowercase; generated and project words are
   uppercase.
-- The unified `STRUCTURE … ;STRUCTURE` and `ENUM … ;ENUM` openers ship
-  (`src/core/structure-decl.f`, `src/core/enum-decl.f`) and are used widely,
-  about 71 and 207 sites; `STRUCTURE zpoint 0 FIELD x n ;STRUCTURE` loads clean.
-  The older forms remain; `E-REMOVED-TYPE-SYNTAX` exists nowhere.
 - **Raw storage never holds an address.** A `variable`, `create` or `constant`
   cell, and any cell a `create … does>` definer makes, holds scalars, roles and
   atoms. Storing a pointer into one, fetching one out, or `ptr-field` over one
@@ -533,13 +535,9 @@ argument and a bare tail of a family of arity > 0 are all refused. See
   follow the replacement effect, including zero inputs or a scalar result.
   An empty replacement removes the earlier clause and restores the created
   word's original body.
-- **A `SUMTYPE`, `PRODUCT` or `ENUM` body is parsed by its definer.** A `\`
-  comment inside the body is refused: `PRODUCT` and `SUMTYPE` throw 7107
-  ("unexpected token in product declaration at '\'"; `tools/check.f` reports
-  `E-BAD-DECLARATION`, repair class `fix_family_declaration`, rc 67) and `ENUM`
-  throws 7101 ("name must be a lowercase tail at '\'"). Comment above the
-  opener. Dot `habu-accept-comments-inside-145f82eb` teaches the unified `ENUM`
-  and `STRUCTURE` front ends to skip comments; this bullet goes when it lands.
+- **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` comment
+  inside the body is refused with `E-BAD-DECLARATION`; put comments above the
+  opener, including comments explaining the header or fields.
 - **A `FIELD` holds a value, not a body.** A payload is a type token (letter
   param, concrete cell type, `ptr T`, closed arity-0 family); a quotation type
   (`[ a -- b ]`) is `E-TDECL-SYNTAX` (7109). A record that describes a
