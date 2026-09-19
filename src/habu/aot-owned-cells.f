@@ -12,6 +12,17 @@
 \ that carry a value and leaves the rest at the mapping's zero, which is what the
 \ engine's own entry does (src/habu/habu2.f EM-DATA-INIT).
 \
+\ AND SOME ARE CONSTANT BYTES THAT MUST TRAVEL. A baked table the application
+\ reads - the digits of the i64 bounds, SHA-256's round constants - holds a value
+\ no entry can recompute and no fresh mapping can supply. Such a cell is CARRIED:
+\ the claim names it WITH ITS BYTE LENGTH, src/habu/aot-lib.f CARRY-CELLS copies
+\ those bytes into the carried run inside the application's window
+\ (src/habu/aot-window-latch.f CARRY-RESERVE, so the image writes them as part of
+\ its own data blob), and aot-closure.f CARRIED-TARGET maps every spelled address
+\ inside [cell, cell+length) to the copy plus its interior offset - the same
+\ target map a re-interned literal goes through. No entry code runs for a carried
+\ cell and nothing below the window is written.
+\
 \ THE LIST IS AT THE BOTTOM OF THIS FILE. A cell is on it because it is NAMED
 \ there - never because of its value, its address, or the file it lives in.
 \ aot-closure.f OWNED-CELL? admits a named cell and refuses every other cell below
@@ -34,7 +45,9 @@
 \ not otherwise know that AOT exists.
 require src/os/env-base.f
 require src/core/dynamic-storage.f
+require src/core/sha256.f
 require lib/memory.f
+require lib/string.f
 require src/habu/layout.f
 
 package AOT-OWNED
@@ -45,11 +58,13 @@ private
 64 constant MAX-CELLS
 create OFFS MAX-CELLS cells allot
 create KINDS MAX-CELLS cells allot
+create LENS MAX-CELLS cells allot
+create DESTS MAX-CELLS cells allot
 variable COUNT
 
-\ FRESH is 0, IMAGE-BASE is 1, ENTRY-XT is 2 and TEXT-BASE is 3. The kind is
-\ stored because it is what the entry emitter switches on; deriving it back from
-\ the cell would be a second answer.
+\ FRESH is 0, IMAGE-BASE is 1, ENTRY-XT is 2, TEXT-BASE is 3 and CARRIED is 4.
+\ The kind is stored because it is what the entry emitter switches on; deriving
+\ it back from the cell would be a second answer.
 \
 \ A claim records the cell as a DATA ADDRESS IN THE LINKER'S INTEGER DOMAIN - the
 \ domain BLOB-SRC/BLOB-END and every recorded chain value live in
@@ -57,10 +72,16 @@ variable COUNT
 \ MAP_FIXED mapping based at DATA-VA, so the offset from data-base plus that base
 \ IS the address, by ordinary checked pointer arithmetic; nothing here holds a
 \ pointer in a raw cell (dot habu-refuse-a-ptr-5ad2734e).
-: CLAIM ( ptr a n -- ) {: c:ptr k:n :}
+\
+\ EVERY CLAIM CARRIES A BYTE LENGTH: one cell for the kinds that name a single
+\ cell, the declared extent for CARRIED, which is the only kind whose length is
+\ read (the bytes to copy, and the range a spelled address is mapped through).
+: CLAIM ( ptr a n n -- ) {: c:ptr k:n len:n :}
    COUNT @ MAX-CELLS >= if s" aot: owned-cell list exceeds its table" 74 die then
    c BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N +  COUNT @ cells OFFS + !
    k COUNT @ cells KINDS + !
+   len COUNT @ cells LENS + !
+   0 COUNT @ cells DESTS + !
    COUNT @ 1+ COUNT ! ;
 
 public
@@ -68,27 +89,43 @@ public
 \ The fresh mapping's zero IS this cell's correct starting value, so the entry
 \ publishes nothing for it: either the word that reads it writes it first within
 \ one call, or zero is the empty state this engine itself boots with.
-: FRESH ( ptr a -- ) 0 CLAIM ;
+: FRESH ( ptr a -- ) 0 8 CLAIM ;
 
 \ The entry publishes this image's own DATA base in the cell - the value the
 \ declaring file stores into it when the engine loads.
-: IMAGE-BASE ( ptr a -- ) 1 CLAIM ;
+: IMAGE-BASE ( ptr a -- ) 1 8 CLAIM ;
 
 \ The entry publishes the address of the word this image starts - the token an
 \ application image's own source stores with APP-IMAGE:START!. A stripped image
 \ has no entry record to store it, so the entry does it for itself.
-: ENTRY-XT ( ptr a -- ) 2 CLAIM ;
+: ENTRY-XT ( ptr a -- ) 2 8 CLAIM ;
 
 \ The entry publishes this image's own text CONTENT base in the cell - the value
 \ the engine's own entry stores there (src/habu/habu2.f EM-DATA-INIT), which is
 \ the address of the image's first instruction.
-: TEXT-BASE ( ptr a -- ) 3 CLAIM ;
+: TEXT-BASE ( ptr a -- ) 3 8 CLAIM ;
+
+\ THE NAMED BYTES TRAVEL. The linker copies [cell, cell+length) into the window's
+\ carried run and records where it put them; the walker maps an address inside
+\ that range to the copy. The entry publishes nothing - the bytes arrive in the
+\ image's data blob like the application's own. The length is the declaration:
+\ nothing here measures a `create` body from the dictionary.
+: CARRIED ( ptr a n -- ) {: c:ptr len:n :}
+   len 0 <= if s" aot: a carried claim needs a positive byte length" 74 die then
+   c 4 len CLAIM ;
 
 : N ( -- n ) COUNT @ ;
 : AT ( n -- n ) cells OFFS + @ ;
+: LEN ( n -- n ) cells LENS + @ ;
 : IMAGE-BASE? ( n -- bool ) cells KINDS + @ 1 = ;
 : ENTRY-XT? ( n -- bool ) cells KINDS + @ 2 = ;
 : TEXT-BASE? ( n -- bool ) cells KINDS + @ 3 = ;
+: CARRIED? ( n -- bool ) cells KINDS + @ 4 = ;
+
+\ Where the linker put a carried claim's copy, in the same integer domain: zero
+\ until CARRY-CELLS runs, which is before anything maps an address into it.
+: DEST ( n -- n ) cells DESTS + @ ;
+: DEST! ( n n -- ) {: at:n i:n :} at i cells DESTS + ! ;
 
 private
 
@@ -143,12 +180,59 @@ private
 \ SIGSEGV inside DLSYM-SLOT's `@`; with the cell published the same image
 \ resolves the symbol and runs.
 \
+\ THE i64 BOUND DIGITS (lib/string.f) are the first carried cells: STR-PARSE-POS
+\ compares its input against STR-MAX-I64$ and STR-PARSE-NEG against
+\ STR-MIN-I64$, both STR-I64-DIGITS bytes, and lib/fmt.f INT>NUM COPIES
+\ STR-MIN-I64$ for the one integer with no positive magnitude. lib/string.f is
+\ baked, so both tables sit below every window and any program that formats or
+\ parses an integer reaches one.
+\
+\ SHA-256 (src/core/sha256.f) is baked for the same reason and splits both ways.
+\ KK (64 round constants) and HH0 (the 8 initial hash values) are read-only
+\ tables SHA-BLOCK and SHA-INIT read and nothing writes: carried. Everything else
+\ in that file is scratch this engine's own boot leaves at zero, and each cell
+\ below was read for the fact that justifies its claim - written before read
+\ within one call, or zero is its empty start:
+\   H     SHA-INIT writes all eight from HH0 before SHA-BLOCK reads one, and
+\         SHA256 and SHA256-FILE both call SHA256-RESET first.
+\   WS    SHA-BLOCK writes WS[0..15] from the block and WS[16..63] from those
+\         before the compression loop reads one.
+\   SHA-TAIL     only SHA-TAIL-U bytes are ever read, and SHA256-UPDATE moves
+\                them in before it raises that count.
+\   SHA-IO       SHA256-FILE reads the file into it and hashes SHA-RD bytes of it.
+\   SHA-DIGEST   SHA256-FILE-HEX fills it through SHA256-FINAL before SHA256>HEX
+\                reads it.
+\   PBLK         SHA-PAD zero-fills all $80 bytes, copies the tail in and writes
+\                the length before SHA-BLOCK reads it.
+\   SHA-TAIL-U, SHA-TOTAL   SHA256-RESET writes zero into both, which is also the
+\                           empty start a fresh mapping gives.
+\   SHA-A, SHA-U            SHA256 and SHA256-UPDATE store the caller's span
+\                           before any read.
+\   SHA-NEED     SHA256-UPDATE writes it in the branch that reads it.
+\   SHA-NBLK     SHA256-FINAL stores SHA-PAD's block count before reading it.
+\   SHA-FD, SHA-RD   SHA256-FILE stores open's and read's results before reading
+\                    them, and SHA-CLOSE runs only inside that call.
+\   SHA-BLEN     SHA-PAD writes it before reading it.
+\   SHA-BLOCK-A  SHA-BLOCK stores the block pointer at entry before reading it.
+\   SHA-P        BE32!, BE64!, ZFILL, BYTE>HEX and SHA256-FILE store their
+\                destination before reading it.
+\   SHA-SRC, SHA-DST   BMOVE, SHA-PAD and SHA256>HEX store both before reading.
+\   SHA-OUT      SHA256, SHA256-FINAL and SHA256-FILE store the caller's digest
+\                buffer before reading it.
+\   SHA-W        BE32!, BE64! and BYTE>HEX store the value before reading it.
+\   SHA-N        ZFILL, BMOVE and SHA-TAKE-TAIL store the count before reading it.
+\   SHA-TL, SHA-UB     SHA-PAD stores both at entry before reading them.
+\ src/core/sha256.f declares no package, so the list names its cells directly and
+\ that file needs no word of its own: the DYNAMIC-STORAGE:OWNED-CELLS detour
+\ below exists only because those three cells are private to their package.
+\
 \ NOT ON THE LIST, and refused as loudly as before, is every other engine cell
 \ below the window. src/os/env-base.f's own TMP-PATH cursors and buffer (TPB, TPP,
 \ TPQ, TPS, TPU) are the nearest miss: same file, same transient character, no
 \ claim - so a stripped program calling TMP-PATH still gets the
 \ outside-the-restored-span refusal, and tools/hb-build-test.f
-\ HBT-STRIPPED-UNOWNED-CELL pins that.
+\ HBT-STRIPPED-UNOWNED-CELL pins that. TPB is a `create` table like the carried
+\ ones and is not carried either: a table travels because it is named here.
 : LIST ( -- )
    ENV-DATA-PTR IMAGE-BASE
    ENV-Z  FRESH
@@ -159,7 +243,17 @@ private
    [: FRESH ;] DYNAMIC-STORAGE:OWNED-CELLS
    [: FRESH ;] MEM:OWNED-CELLS
    data-base APP-ENTRY:XT-CELL + ENTRY-XT
-   data-base RBASE-CELL + TEXT-BASE ;
+   data-base RBASE-CELL + TEXT-BASE
+   STR-MAX-I64$ STR-I64-DIGITS CARRIED
+   STR-MIN-I64$ STR-I64-DIGITS CARRIED
+   KK  64 cells CARRIED
+   HH0  8 cells CARRIED
+   H FRESH  WS FRESH  SHA-TAIL FRESH  SHA-IO FRESH  SHA-DIGEST FRESH  PBLK FRESH
+   SHA-TAIL-U FRESH  SHA-TOTAL FRESH  SHA-A FRESH  SHA-U FRESH
+   SHA-NEED FRESH  SHA-NBLK FRESH  SHA-FD FRESH  SHA-RD FRESH
+   SHA-BLEN FRESH  SHA-BLOCK-A FRESH  SHA-P FRESH  SHA-SRC FRESH
+   SHA-DST FRESH  SHA-OUT FRESH  SHA-W FRESH  SHA-N FRESH
+   SHA-TL FRESH  SHA-UB FRESH ;
 
 LIST
 ;package

@@ -528,10 +528,32 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
 \ one MAP_FIXED mapping at DATA-VA in the engine and in the image alike, and
 \ src/habu/aot-lib.f EMIT-OWNED-CELLS reads this same table to publish what each
 \ claim declares - so the two cannot disagree about one cell.
+\ A CARRIED claim is not owned in place - its bytes move - so its base address is
+\ admitted by the mapping below and never by this predicate.
+: OWNED-AT? ( n n -- bool ) {: i:n v:n :}
+   i AOT-OWNED:CARRIED? if false exit then
+   v i AOT-OWNED:AT = ;
+
 : OWNED-CELL? ( n -- bool ) {: v:n :}
    AOT-OWNED:N 0 ?do
-      v i AOT-OWNED:AT = if true unloop exit then
+      i v OWNED-AT? if true unloop exit then
    loop false ;
+
+\ AN ADDRESS INSIDE A CARRIED CLAIM'S BYTES NAMES THE COPY. src/habu/aot-lib.f
+\ CARRY-CELLS has already copied [cell, cell+length) into the window's carried run
+\ and recorded where, so the image's code reads the bytes it restores and not the
+\ engine DATA it was compiled against. The interior offset is preserved, which is
+\ what makes the mapping answer for `KK i cells +` as well as for `KK` - the whole
+\ declared range maps, one address at a time, through the same target the closure
+\ walk hands a re-interned literal.
+: CARRIED-IN? ( n n -- bool ) {: i:n v:n :}
+   i AOT-OWNED:CARRIED? 0= if false exit then
+   v i AOT-OWNED:AT >=  v i AOT-OWNED:AT i AOT-OWNED:LEN + < and ;
+
+: CARRIED-TARGET ( n -- n ) {: v:n :}                 \ the copy's address, or -1
+   AOT-OWNED:N 0 ?do
+      i v CARRIED-IN? if i AOT-OWNED:DEST v i AOT-OWNED:AT - + unloop exit then
+   loop -1 ;
 
 : DATA-ADDRESS! ( ptr n ptr u8 n -- ) {: owner:ptr site:ptr v:n :}
    \ The end is a valid one-past pointer for a zero-length buffer. Relocation
@@ -541,10 +563,14 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
    v DATA-CELL? if v CHECK-DATA-CELL then
    owner site v REFUSE-DATA-SPAN ;
 
-\ Immutable literal rows can be copied into the capture's active pool. Other
-\ pre-window DATA has no ownership proof and must keep the link refusal.
+\ A carried cell's declared bytes and an immutable literal row can both be copied
+\ into the window - the first into the carried run by name, the second into the
+\ capture's active pool - and the address is rewritten to the copy either way.
+\ Other pre-window DATA has no ownership proof and must keep the link refusal.
 : DATA-TARGET ( ptr n ptr u8 n -- n ) {: owner:ptr site:ptr v:n :}
    v BLOB-SRC @ >= v BLOB-END @ <= and if v exit then
+   v CARRIED-TARGET {: c:n :}
+   c 0 >= if c exit then
    v NSTR:REINTERN-OWNED drop {: w:n :}
    owner site w DATA-ADDRESS!  w ;
 

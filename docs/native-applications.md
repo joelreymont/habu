@@ -156,6 +156,26 @@ claim, so a stripped program calling `TMP-PATH` still gets *outside the restored
 span*, naming `TPU` (`HBT-STRIPPED-UNOWNED-CELL`). Adding a cell to the list is
 a deliberate act that has to state, cell by cell, why the entry may own it.
 
+**A baked constant an application reads is carried by name.** Printing an
+integer, parsing one or hashing reaches a table the engine baked below every
+window — `lib/string.f`'s `STR-MAX-I64$` and `STR-MIN-I64$`, SHA-256's `KK` and
+`HH0` — whose bytes no entry store can recompute and no fresh mapping can
+supply. Such a cell is claimed **carried**, with its byte length: at link
+`src/habu/aot-lib.f CARRY-CELLS` copies `[cell, cell+length)` into the
+cell-aligned run `src/habu/aot-window-latch.f CARRY-RESERVE` reserves inside the
+span, so the bytes travel in the image's own data blob, and `aot-closure.f
+CARRIED-TARGET` rewrites every spelled address in that range to the copy at the
+same interior offset — the map a re-interned literal already goes through, so
+`KK i cells +` lands where `KK` does. No entry code runs for a carried cell and
+nothing below the window is written. The scratch cells and buffers of
+`src/core/sha256.f` are claimed **fresh** by the same list, each after reading
+the word that writes it before it reads it. A baked table on no list still
+refuses: `src/core/util.f`'s `PZB`, reached through `PATH0`, is the nearest miss
+(`HBT-STRIPPED-UNCARRIED-TABLE`) — a table travels because the list names it,
+never because it is a table. One program that prints, parses and hashes, with
+its stdout pinned to `42`, `123` and the FIPS-180 digest of `abc`, is
+`HBT-STRIPPED-PRINT-PARSE-HASH`.
+
 **A stripped image can call a foreign function.** A `FUNCTION:` declaration
 resolves its symbol at the *first call*, so no address the builder resolved ever
 travels; what the image has to carry is the declaration's data and the loader's

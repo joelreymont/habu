@@ -30,8 +30,9 @@ package AOT-LINK
 \ and that zero is a value only where something declares it one: x20, S0-CELL and
 \ DP-CELL get explicit init, and so does every cell named in
 \ src/habu/aot-owned-cells.f (aot-lib.f EMIT-OWNED-CELLS - the engine's
-\ environment and the dynamic-storage registry). A cell on neither list is
-\ refused.
+\ environment and the dynamic-storage registry). A cell named there as CARRIED
+\ gets neither: its bytes are COPIED into the carried run below, inside this span,
+\ and travel in the blob. A cell on neither list is refused.
 \
 \ The span bounds are DATA addresses as integers, the domain the rest of the
 \ linker works in, and nothing dereferences them: a cell inside the span is read
@@ -62,7 +63,37 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
 \ it. Linker-only literals stay above BLOB-END. Keeping the application pool
 \ active during linker loading carried even fs-identity's three NUL-terminated
 \ symbol strings into an empty MAIN image (HBT-SIZE-AOT).
+\
+\ THE CARRIED RUN: room inside the window for the engine constants the application
+\ READS. An application that FORMATS an integer, PARSES one or HASHES a string
+\ builds stripped because the constants those words reach are carried by name. A
+\ baked table an application reaches - the i64 bound digits, SHA-256's round
+\ constants - lives below the span, and the image can only get its bytes by
+\ carrying them: src/habu/aot-lib.f CARRY-CELLS copies each cell named CARRIED in
+\ src/habu/aot-owned-cells.f into this run at link time, and it is inside the
+\ window, so the copy travels in the image's own data blob with no entry code and
+\ no write below the window. It is reserved HERE, in the last moment DATA still
+\ grows inside the span: the list itself loads with the linker, above BLOB-END,
+\ and nothing it names could be given a home after the span is latched. The
+\ reserve is zeroed, so whatever no claim uses is invisible to aot-lib.f
+\ EACH-BLOB-RUN and costs the image nothing but address space.
+$400 constant CARRY-BYTES
+variable CARRY-BASE
+PTR-VARIABLE CARRY-P
+
+: CARRY-BASE$ ( -- ptr u8 ) CARRY-P @ ;
+
+\ Cell-aligned, because a carried table is read with `@` at the same interior
+\ offsets it had in the engine (sha256's KK is 64 cells), and DATA grows by bytes.
+: CARRY-RESERVE ( -- )
+   HERE-N 7 and dup 0<> IF 8 swap - allot ELSE drop THEN
+   here BYTE-VIEW CARRY-P !
+   HERE-N CARRY-BASE !
+   CARRY-BYTES allot
+   CARRY-BYTES 0 ?do 0 CARRY-BASE$ i + c! loop ;
+
 : AOT-DATA-SPAN ( -- )
+   CARRY-RESERVE
    HERE-N  BLOB-END !
    BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN ! ;
 

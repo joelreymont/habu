@@ -105,6 +105,10 @@ variable HBT-CELLS-SRC-U
 variable HBT-CELLS-OUT-U
 variable HBT-UNOWNED-SRC-U
 variable HBT-UNOWNED-OUT-U
+variable HBT-PPH-SRC-U
+variable HBT-PPH-OUT-U
+variable HBT-TABLE-SRC-U
+variable HBT-TABLE-OUT-U
 create HBT-LIB-SRC-BUF FS-PATH-CAP allot
 create HBT-LIB-OUT-BUF FS-PATH-CAP allot
 create HBT-LIB-DIR-BUF FS-PATH-CAP allot
@@ -112,6 +116,10 @@ create HBT-CELLS-SRC-BUF FS-PATH-CAP allot
 create HBT-CELLS-OUT-BUF FS-PATH-CAP allot
 create HBT-UNOWNED-SRC-BUF FS-PATH-CAP allot
 create HBT-UNOWNED-OUT-BUF FS-PATH-CAP allot
+create HBT-PPH-SRC-BUF FS-PATH-CAP allot
+create HBT-PPH-OUT-BUF FS-PATH-CAP allot
+create HBT-TABLE-SRC-BUF FS-PATH-CAP allot
+create HBT-TABLE-OUT-BUF FS-PATH-CAP allot
 \ The quoted-path fixture below owns the writer's bytes; json-write holds none.
 6 constant HBT-ESCAPE-MAX
 FS-PATH-CAP HBT-ESCAPE-MAX * 2 + constant HBT-QUOTE-CAP
@@ -274,6 +282,18 @@ create HBT-EXP-HEX2 64 allot
 : HBT-UNOWNED-OUT ( -- ptr u8 n )
    HBT-UNOWNED-OUT-BUF HBT-UNOWNED-OUT-U @ ;
 
+: HBT-PPH-SRC ( -- ptr u8 n )
+   HBT-PPH-SRC-BUF HBT-PPH-SRC-U @ ;
+
+: HBT-PPH-OUT ( -- ptr u8 n )
+   HBT-PPH-OUT-BUF HBT-PPH-OUT-U @ ;
+
+: HBT-TABLE-SRC ( -- ptr u8 n )
+   HBT-TABLE-SRC-BUF HBT-TABLE-SRC-U @ ;
+
+: HBT-TABLE-OUT ( -- ptr u8 n )
+   HBT-TABLE-OUT-BUF HBT-TABLE-OUT-U @ ;
+
 \ An application that touches a PERSISTENT CELL of each library it requires:
 \ lib/string.f's builder, lib/fs-mutate.f's copy state (FS-MUT-COPY-IN) and
 \ lib/fs.f's walk stacks (FS-DEPTH, FS-WALK-BUF). Those cells are what the maker
@@ -320,6 +340,40 @@ create HBT-EXP-HEX2 64 allot
 : HBT-UNOWNED-SRC$ ( -- ptr u8 n )
    S\" : MAIN ( -- ) s\" x\" TMP-PATH type cr ;\n" ;
 
+\ THE THREE BAKED CONSTANTS AN ORDINARY PROGRAM READS, in one program: printing
+\ an integer reaches lib/fmt.f INT>NUM and its copy of STR-MIN-I64$, parsing one
+\ reaches STR-PARSE-POS and STR-MAX-I64$, hashing reaches SHA-256's KK and HH0
+\ and every scratch cell in src/core/sha256.f. All of those live in baked files,
+\ below every capture window, and each one of them refused this program before
+\ src/habu/aot-owned-cells.f named them (measured: caller=INT>NUM
+\ target=STR-MIN-I64$, caller=STR-PARSE-POS target=STR-MAX-I64$, caller=SHA256
+\ target=SHA-U). The digest is SHA-256 of "abc" from FIPS-180, so the pinned
+\ stdout below proves the CARRIED bytes arrived, not merely that the image ran:
+\ a zeroed KK or HH0 answers a different digest, and a zeroed bound table parses
+\ nothing.
+: HBT-PPH-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require lib/fmt.f\ncreate PPH-DIG $20 allot\ncreate PPH-HEX $40 allot\n" SB-APPEND
+   S\" : MAIN ( -- )\n   42 FMT:.INT cr\n   s\" 123\" STR-PARSE-POS MATCH option\n" SB-APPEND
+   S\"      none OF s\" none\" type cr ENDOF\n     some OF FMT:.INT cr ENDOF\n   ;MATCH\n" SB-APPEND
+   S\"    s\" abc\" PPH-DIG SHA256\n   PPH-DIG PPH-HEX SHA256>HEX\n   PPH-HEX $40 type cr ;\n" SB-APPEND
+   SB$ ;
+
+: HBT-PPH-EXPECTED$ ( -- ptr u8 n )
+   SB-RESET
+   s" 42" SB-APPEND 10 SB-APPEND-C
+   s" 123" SB-APPEND 10 SB-APPEND-C
+   s" ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" SB-APPEND 10 SB-APPEND-C
+   SB$ ;
+
+\ ... and a baked `create` TABLE that no claim names is refused exactly as
+\ before. PZB is src/core/util.f's shared path0 scratch, the same shape as the
+\ carried digit tables and reached by PATH0, which any program can call - so the
+\ carried kind makes a table travel because the list NAMES it, never because it
+\ is a table.
+: HBT-TABLE-SRC$ ( -- ptr u8 n )
+   S\" : MAIN ( -- ) s\" /tmp/x\" PATH0 1 type cr ;\n" ;
+
 : HBT-LIB-FILE! ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu body:ptr bodyu :}
    SB-RESET HBT-LIB-DIR SB-APPEND s" /" SB-APPEND name nameu SB-APPEND
    SB$ body bodyu WRITE-ALL ;
@@ -361,6 +415,10 @@ create HBT-EXP-HEX2 64 allot
    HBT-ROOT s" cells" HBT-CELLS-OUT-BUF HBT-CELLS-OUT-U HBT-PATH!
    HBT-ROOT s" unowned.f" HBT-UNOWNED-SRC-BUF HBT-UNOWNED-SRC-U HBT-PATH!
    HBT-ROOT s" unowned" HBT-UNOWNED-OUT-BUF HBT-UNOWNED-OUT-U HBT-PATH!
+   HBT-ROOT s" pph.f" HBT-PPH-SRC-BUF HBT-PPH-SRC-U HBT-PATH!
+   HBT-ROOT s" pph" HBT-PPH-OUT-BUF HBT-PPH-OUT-U HBT-PATH!
+   HBT-ROOT s" table.f" HBT-TABLE-SRC-BUF HBT-TABLE-SRC-U HBT-PATH!
+   HBT-ROOT s" table" HBT-TABLE-OUT-BUF HBT-TABLE-OUT-U HBT-PATH!
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
@@ -729,6 +787,44 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-ERR nerr s" caller=TMP-PATH" CONTAINS? TTRUE
    HBT-ERR nerr s" target=TPU" CONTAINS? TTRUE
    HBT-UNOWNED-OUT FILE? TFALSE ;
+
+\ ... a program that PRINTS an integer, PARSES one and HASHES a string builds
+\ stripped, because every baked constant those three reach is carried by name,
+\ and the image's stdout is the proof that the bytes travelled.
+: HBT-STRIPPED-PRINT-PARSE-HASH ( -- )
+   HBT-PPH-SRC HBT-PPH-SRC$ WRITE-ALL
+   HBT-PPH-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-PPH-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-PPH-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
+   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
+   brc 0 T=
+   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-PPH-OUT FILE? TTRUE
+   HBT-PPH-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-PPH-EXPECTED$ T$= ;
+
+\ ... while a baked create table on no list is refused however much it looks like
+\ the carried ones.
+: HBT-STRIPPED-UNCARRIED-TABLE ( -- )
+   HBT-TABLE-SRC HBT-TABLE-SRC$ WRITE-ALL
+   HBT-TABLE-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-TABLE-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-TABLE-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: tout:n terr:n trc:n :}
+   trc 0 <> TTRUE
+   HBT-ERR terr s" outside the restored span" CONTAINS? TTRUE
+   HBT-ERR terr s" caller=PATH0" CONTAINS? TTRUE
+   HBT-ERR terr s" target=PZB" CONTAINS? TTRUE
+   HBT-TABLE-OUT FILE? TFALSE ;
 
 : HBT-CLI-LARGE-SOURCE ( -- )
    HBT-LARGE-CHUNK!
@@ -1399,6 +1495,8 @@ public
    HBT-STRIPPED-LIB-STATE
    HBT-STRIPPED-ENGINE-CELLS
    HBT-STRIPPED-UNOWNED-CELL
+   HBT-STRIPPED-PRINT-PARSE-HASH
+   HBT-STRIPPED-UNCARRIED-TABLE
    HBT-CLI-LARGE-SOURCE
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE

@@ -44,6 +44,37 @@ create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
 variable DSCAN
 $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB range
 
+\ THE CARRIED CELLS, COPIED INTO THE WINDOW BEFORE ANYTHING READS OR MAPS IT.
+\ Each claim named CARRIED in src/habu/aot-owned-cells.f is copied, by its
+\ declared byte length, into the run aot-window-latch.f CARRY-RESERVE reserved
+\ inside the span, and the destination is recorded so aot-closure.f
+\ CARRIED-TARGET can map a spelled address to the copy at the same interior
+\ offset. Runs are placed in claim order and cell-aligned, because a carried table
+\ is read with `@` (sha256's KK is 64 cells); the copies go in BEFORE
+\ AOT-DATA-TEXTPTR-CHECK and the closure walk, so carried bytes face the same
+\ window checks the application's own data does and no pass can meet a
+\ half-carried window.
+variable CARRY-USED
+
+: CARRY-CELL ( n -- ) {: i:n :}
+   i AOT-OWNED:LEN {: len:n :}
+   \ The source is read through DATA-PTR, whose every caller bounds-checks the
+   \ address it hands over: a claim's declared length is the only number here
+   \ the linker did not compute itself.
+   i AOT-OWNED:AT DATA-ADDRESS? i AOT-OWNED:AT len + DATA-ADDRESS? and 0= IF
+      s" aot: a carried claim reaches outside the DATA mapping" 74 die THEN
+   CARRY-USED @ len + CARRY-BYTES > IF
+      s" aot: carried engine cells exceed the window's carried run" 74 die THEN
+   i AOT-OWNED:AT DATA-PTR  CARRY-BASE$ CARRY-USED @ +  len  BYTE-COPY
+   CARRY-BASE @ CARRY-USED @ +  i AOT-OWNED:DEST!
+   CARRY-USED @ len + 7 + 8 / 8 *  CARRY-USED ! ;
+
+: CARRY-CELLS ( -- )
+   0 CARRY-USED !
+   AOT-OWNED:N 0 ?do
+      i AOT-OWNED:CARRIED? IF i CARRY-CELL THEN
+   loop ;
+
 \ Every cell the capture window covers that NOTHING DECLARED, classified by the
 \ ONE predicate aot-closure.f publishes (CELL-TEXTPTR?, by live engine extents).
 \ A declared xt cell is relocated instead (COLLECT-XT-CELLS above it, EMIT-XT-ROWS
@@ -100,7 +131,10 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
 \ OWNED-CELL? admits from, so a cell this publishes and a cell the walker lets
 \ through are the same cell by construction.
 \ A FRESH claim emits nothing: EMIT-DATA-REGION-MAP just mapped DATA anonymously,
-\ so the cell already holds the zero its claim says is correct. An IMAGE-BASE
+\ so the cell already holds the zero its claim says is correct. A CARRIED claim
+\ emits nothing either, for the opposite reason: CARRY-CELLS below already copied
+\ its bytes into the window, so EMIT-DATA-COPY restores them with the rest of the
+\ application's data and there is no cell here to publish. An IMAGE-BASE
 \ claim gets one store of x20 - this image's own DATA base, which is the value the
 \ declaring file wrote into the cell when the engine loaded it.
 \ The three fixed startup cells go with them, and are named by their layout
@@ -621,6 +655,7 @@ public
 \ bounds it is given and never latches them itself; latching here would put the
 \ whole linker inside the span.
 : LINK ( -- )
+   CARRY-CELLS                                      \ the engine constants this image carries
    COLLECT-XT-CELLS                                 \ the window's DECLARED xt cells
    AOT-DATA-TEXTPTR-CHECK                           \ ... and no undeclared code pointer beside them
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !  LBL LTEXT !
