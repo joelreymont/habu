@@ -1,6 +1,9 @@
 \ x86-64 target-contract smoke.
 require lib/test.f
 require src/compiler/target.f
+require src/compiler/numeric-policy.f
+require src/compiler/binding.f
+require src/compiler/ir/context.f
 
 package X64TARGET-TEST
 private
@@ -17,6 +20,11 @@ private
    X64 CTARGET:ABI@ CTARGET-ABI:SYSV-AMD64-LINUX CTARGET-ABI:EQ T-TRUE
    s" x86 target is 64-bit" T-LABEL
    X64 CTARGET:PTR-BITS 64 T=
+   s" x86 binding opens an IR context" T-LABEL
+   X64 CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754
+   CNUM-CONTRACTION:FORBIDDEN CNUM-FAST--MATH:BIT-EXACT
+   CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY CBIND:BIND
+   [: drop 1 T= ;] IR-CTX:WITH-CONTEXT
    s" x86 rejects big endian" T-LABEL
    [: CTARGET-ARCH:X86-64 CTARGET-ABI:SYSV-AMD64-LINUX CTARGET-ENDIAN:BIG
       CTARGET-PTR--WIDTH:BITS64 CTARGET:F-BASE CTARGET:CONTRACT drop ;]
