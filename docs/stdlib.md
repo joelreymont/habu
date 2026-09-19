@@ -2211,7 +2211,9 @@ words from `lib/test/assert.f` and publishes suite orchestration through package
 `TEST`. Assertion words throw named test errors and keep one final report path;
 they never mask assertion failures. `T-LABEL` attaches a bounded case label to
 the next assertion, and successful or failed assertions clear the label after
-printing details. `TTHROWSQ` takes a stack-preserving quotation plus an expected
+printing details. Numeric mismatches print on one line, for example
+`assert: expected 3 got 9`; string mismatches preserve embedded newlines.
+`TTHROWSQ` takes a stack-preserving quotation plus an expected
 throw code and uses the checker's modeled `catch` effect. `TTHROWS` keeps the
 audited execution-token boundary for top-level test scripts, where `[: ;]`
 quotation syntax is unavailable.
