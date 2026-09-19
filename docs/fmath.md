@@ -28,7 +28,9 @@ above 709.782712893384 and zero below -745.1332191019411. Clamping before the
 integer conversion bounds the reduced exponent to [-1075, 1024], requiring
 at most two multiplications through the existing `LDEXP` helper. Scaling the
 polynomial itself preserves finite results near overflow and the least subnormal value;
-constructing a separate power of two would lose those results.
+constructing a separate power of two would lose those results. Reducing with
+fdlibm's high and low parts of ln(2) retains the small negative remainder at
+709.782712893384, whose exponential is finite; the next binary64 input overflows.
 
 The integer roots use Newton iteration with integer division and an initial
 upper bound of 2^32. The ceiling test uses quotient and remainder, avoiding

@@ -209,7 +209,11 @@ $413921FB00000000 constant MEDIUM-BITS     \ 2^20 * pi/2: the reduction's exact 
 \ Scale the polynomial itself without first overflowing/underflowing 2^k.
 \ LDEXP-STEPS keeps intermediates normal and rounds a subnormal result once.
 : FEXP-K ( r n -- r ) {: x:r k:n :}
-   x k s>f 0.6931471805599453 f* f- FEXP-POLY k LDEXP-STEPS ;
+   \ fdlibm's split ln(2): k*hi is exact for our bounded exponent. Keeping
+   \ the low part preserves the negative remainder at the overflow threshold.
+   x k s>f $3FE62E42FEE00000 IEEE754:BITS>F64 f* f-
+   k s>f $3DEA39EF35793C76 IEEE754:BITS>F64 f* f-
+   FEXP-POLY k LDEXP-STEPS ;
 
 : FEXP-SCALED ( r n -- r ) {: x:r k:n :}
    x k s>f 0.6931471805599453 f* f- 1.0 1.0 1 FEXP-SERIES
