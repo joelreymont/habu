@@ -424,6 +424,98 @@ create SINK BUF:HDR-BYTES allot
    \ llvm-objdump: pushq %r15
    R15 SINK ENC-PUSH   s" 4157" X= ;
 
+: SSE-REGISTERS ( -- )
+   \ llvm-mc: movsd %xmm0, %xmm0
+   XMM0 XMM0 SINK ENC-MOVSD-RR   s" f20f10c0" X=
+   \ llvm-mc: movsd %xmm0, %xmm1
+   XMM1 XMM0 SINK ENC-MOVSD-RR   s" f20f10c8" X=
+   \ llvm-mc: movsd %xmm0, %xmm2
+   XMM2 XMM0 SINK ENC-MOVSD-RR   s" f20f10d0" X=
+   \ llvm-mc: movsd %xmm0, %xmm3
+   XMM3 XMM0 SINK ENC-MOVSD-RR   s" f20f10d8" X=
+   \ llvm-mc: movsd %xmm0, %xmm4
+   XMM4 XMM0 SINK ENC-MOVSD-RR   s" f20f10e0" X=
+   \ llvm-mc: movsd %xmm0, %xmm5
+   XMM5 XMM0 SINK ENC-MOVSD-RR   s" f20f10e8" X=
+   \ llvm-mc: movsd %xmm0, %xmm6
+   XMM6 XMM0 SINK ENC-MOVSD-RR   s" f20f10f0" X=
+   \ llvm-mc: movsd %xmm0, %xmm7
+   XMM7 XMM0 SINK ENC-MOVSD-RR   s" f20f10f8" X=
+   \ llvm-mc: movsd %xmm0, %xmm8
+   XMM8 XMM0 SINK ENC-MOVSD-RR   s" f2440f10c0" X=
+   \ llvm-mc: movsd %xmm0, %xmm9
+   XMM9 XMM0 SINK ENC-MOVSD-RR   s" f2440f10c8" X=
+   \ llvm-mc: movsd %xmm0, %xmm10
+   XMM10 XMM0 SINK ENC-MOVSD-RR   s" f2440f10d0" X=
+   \ llvm-mc: movsd %xmm0, %xmm11
+   XMM11 XMM0 SINK ENC-MOVSD-RR   s" f2440f10d8" X=
+   \ llvm-mc: movsd %xmm0, %xmm12
+   XMM12 XMM0 SINK ENC-MOVSD-RR   s" f2440f10e0" X=
+   \ llvm-mc: movsd %xmm0, %xmm13
+   XMM13 XMM0 SINK ENC-MOVSD-RR   s" f2440f10e8" X=
+   \ llvm-mc: movsd %xmm0, %xmm14
+   XMM14 XMM0 SINK ENC-MOVSD-RR   s" f2440f10f0" X=
+   \ llvm-mc: movsd %xmm0, %xmm15
+   XMM15 XMM0 SINK ENC-MOVSD-RR   s" f2440f10f8" X= ;
+
+: SSE-MOVES ( -- )
+   \ llvm-mc: movsd %xmm15, %xmm8
+   XMM8 XMM15 SINK ENC-MOVSD-RR   s" f2450f10c7" X=
+   \ llvm-mc: movsd %xmm15, %xmm0
+   XMM0 XMM15 SINK ENC-MOVSD-RR   s" f2410f10c7" X=
+   \ llvm-mc: movsd 8(%r13,%r12,4), %xmm9
+   XMM9 R13 R12 4 8 MEM-IDX SINK ENC-MOVSD-RM   s" f2470f104ca508" X=
+   \ llvm-mc: movsd %xmm15, -129(%r12)
+   XMM15 R12 -129 MEM-OFF SINK ENC-MOVSD-MR   s" f2450f11bc247fffffff" X=
+   \ llvm-mc: movsd 16(%rip), %xmm8
+   XMM8 16 MEM-RIP SINK ENC-MOVSD-RM   s" f2440f100510000000" X=
+   \ llvm-mc: movsd %xmm1, -16(%rip)
+   XMM1 -16 MEM-RIP SINK ENC-MOVSD-MR   s" f20f110df0ffffff" X=
+   \ llvm-mc: movsd (%rbp), %xmm0
+   XMM0 RBP MEM-AT SINK ENC-MOVSD-RM   s" f20f104500" X=
+   \ llvm-mc: movsd (%rsp), %xmm1
+   XMM1 RSP MEM-AT SINK ENC-MOVSD-RM   s" f20f100c24" X= ;
+
+: SSE-ARITHMETIC ( -- )
+   \ llvm-mc: addsd %xmm9, %xmm8
+   XMM8 XMM9 SINK ENC-ADDSD-RR   s" f2450f58c1" X=
+   \ llvm-mc: subsd %xmm9, %xmm8
+   XMM8 XMM9 SINK ENC-SUBSD-RR   s" f2450f5cc1" X=
+   \ llvm-mc: mulsd %xmm9, %xmm8
+   XMM8 XMM9 SINK ENC-MULSD-RR   s" f2450f59c1" X=
+   \ llvm-mc: divsd %xmm9, %xmm8
+   XMM8 XMM9 SINK ENC-DIVSD-RR   s" f2450f5ec1" X=
+   \ llvm-mc: sqrtsd %xmm9, %xmm8
+   XMM8 XMM9 SINK ENC-SQRTSD-RR   s" f2450f51c1" X=
+   \ llvm-mc: andpd %xmm15, %xmm8
+   XMM8 XMM15 SINK ENC-ANDPD-RR   s" 66450f54c7" X=
+   \ llvm-mc: xorpd %xmm15, %xmm8
+   XMM8 XMM15 SINK ENC-XORPD-RR   s" 66450f57c7" X=
+   \ llvm-mc: ucomisd %xmm15, %xmm8
+   XMM8 XMM15 SINK ENC-UCOMISD-RR   s" 66450f2ec7" X=
+   \ llvm-mc: cvtsi2sdq %r15, %xmm8
+   XMM8 R15 SINK ENC-CVTSI2SD-RR   s" f24d0f2ac7" X=
+   \ llvm-mc: cvttsd2siq %xmm15, %r8
+   R8 XMM15 SINK ENC-CVTTSD2SI-RR   s" f24d0f2cc7" X=
+   \ llvm-mc: cvtsi2sdq %rax, %xmm0
+   XMM0 RAX SINK ENC-CVTSI2SD-RR   s" f2480f2ac0" X=
+   \ llvm-mc: cvttsd2siq %xmm1, %rcx
+   RCX XMM1 SINK ENC-CVTTSD2SI-RR   s" f2480f2cc9" X= ;
+
+: SSE-REFUSALS ( -- )
+   \ Preserve an existing instruction as well as emitting no partial prefix.
+   RAX SINK ENC-PUSH
+   [: 16 >XMM XMM0 SINK ENC-MOVSD-RR ;] E-OPERAND TTHROWSQ
+   [: XMM0 -1 >XMM SINK ENC-ADDSD-RR ;] E-OPERAND TTHROWSQ
+   [: XMM0 16 >R64 SINK ENC-CVTSI2SD-RR ;] E-OPERAND TTHROWSQ
+   [: -1 >R64 XMM0 SINK ENC-CVTTSD2SI-RR ;] E-OPERAND TTHROWSQ
+   [: 16 >XMM RAX MEM-AT SINK ENC-MOVSD-RM ;] E-OPERAND TTHROWSQ
+   [: -1 >XMM RAX MEM-AT SINK ENC-MOVSD-MR ;] E-OPERAND TTHROWSQ
+   [: XMM0 16 32 lshift >MEM SINK ENC-MOVSD-RM ;] E-OPERAND TTHROWSQ
+   [: XMM0 4 37 lshift >MEM SINK ENC-MOVSD-MR ;] E-OPERAND TTHROWSQ
+   [: XMM0 1 44 lshift >MEM SINK ENC-MOVSD-RM ;] E-OPERAND TTHROWSQ
+   s" 50" X= ;
+
 \ The five relative branches. A displacement is measured from the END of the
 \ instruction, so the -12 cases jump back over ten bytes plus their own two, and
 \ the rel32 cases back over two hundred plus their own five or six. Bytes read
@@ -483,6 +575,18 @@ create SINK BUF:HDR-BYTES allot
 
 \ The operand types themselves: an ill-formed instruction is a CHECKER refusal,
 \ not a runtime throw. -1 is accepted, 0 refused.
+: SSE-NOMINAL-CASES ( -- )
+   s" X64-GOOD-SSE ( X64ASM:xmm X64ASM:xmm ptr a -- ) X64ASM:ENC-ADDSD-RR"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" X64-GOOD-CVT ( X64ASM:xmm X64ASM:r64 ptr a -- ) X64ASM:ENC-CVTSI2SD-RR"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" X64-BAD-SSE ( X64ASM:r64 X64ASM:xmm ptr a -- ) X64ASM:ENC-MOVSD-RR"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" X64-BAD-CVT ( X64ASM:xmm X64ASM:xmm ptr a -- ) X64ASM:ENC-CVTSI2SD-RR"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" X64-BAD-CVTT ( X64ASM:r32 X64ASM:xmm ptr a -- ) X64ASM:ENC-CVTTSD2SI-RR"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : NOMINAL-CASES ( -- )
    s" X64-GOOD-MOV ( X64ASM:r64 X64ASM:r64 ptr a -- ) X64ASM:ENC-MOV-RR"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -528,6 +632,7 @@ create SINK BUF:HDR-BYTES allot
    ALU-ADD-OR ALU-ADC-SBB ALU-AND-SUB ALU-XOR-CMP TEST-FORMS
    MOVES WIDENING ADDRESS-AND-ZERO ONE-REGISTER SIGNED-MULTIPLY
    SHIFTS CONTROL MEMORY-TRAPS CONDITION-NAMES REGISTER-NAMES BRANCHES
+   SSE-REGISTERS SSE-MOVES SSE-ARITHMETIC SSE-REFUSALS SSE-NOMINAL-CASES
    REGISTER-REFUSALS IMMEDIATE-REFUSALS MEMORY-REFUSALS BRANCH-REFUSALS
    NOMINAL-CASES RELOCATION-CONTRACT
    SINK BUF:DISPOSE

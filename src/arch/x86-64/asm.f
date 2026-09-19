@@ -50,6 +50,7 @@ DEFTYPE R64
 DEFTYPE R32
 DEFTYPE R16
 DEFTYPE R8
+DEFTYPE XMM
 DEFTYPE IMM8
 DEFTYPE IMM32
 DEFTYPE IMM64
@@ -309,6 +310,20 @@ private
 : BRANCH-REG ( n r64 ptr a -- ) {: digit:n r:r64 s:ptr :}
    W32 $FF digit r R64>N REG-NUM 0 s RR-ENC ;
 
+\ Mandatory SSE prefixes precede REX. Screen both registers before that prefix;
+\ REX.W is set only by the signed 64-bit integer conversion forms.
+: SSE-RR ( n n n n n ptr a -- ) {: prefix:n wd:n op:n reg:n rm:n s:ptr :}
+   reg REG-NUM {: rn:n :}  rm REG-NUM {: mn:n :}
+   prefix s EMIT-B
+   wd op rn mn 0 s RR-ENC ;
+
+: MOVSD-MEM ( n xmm mem ptr a -- ) {: op:n r:xmm m:mem s:ptr :}
+   r XMM>N REG-NUM {: rn:n :}  m MEM-CHECK
+   $F2 s EMIT-B
+   0 rn 3 rshift m MEM-X-BIT m MEM-B-BIT 0 s EMIT-REX
+   op s EMIT-OP
+   rn m s EMIT-MEM ;
+
 public
 
 \ ---- the 64-bit register file ------------------------------------------------
@@ -328,6 +343,24 @@ public
 : R13 ( -- r64 ) 13 >R64 ;
 : R14 ( -- r64 ) 14 >R64 ;
 : R15 ( -- r64 ) 15 >R64 ;
+
+\ ---- the SSE register file ---------------------------------------------------
+: XMM0  ( -- xmm )  0 >XMM ;
+: XMM1  ( -- xmm )  1 >XMM ;
+: XMM2  ( -- xmm )  2 >XMM ;
+: XMM3  ( -- xmm )  3 >XMM ;
+: XMM4  ( -- xmm )  4 >XMM ;
+: XMM5  ( -- xmm )  5 >XMM ;
+: XMM6  ( -- xmm )  6 >XMM ;
+: XMM7  ( -- xmm )  7 >XMM ;
+: XMM8  ( -- xmm )  8 >XMM ;
+: XMM9  ( -- xmm )  9 >XMM ;
+: XMM10 ( -- xmm ) 10 >XMM ;
+: XMM11 ( -- xmm ) 11 >XMM ;
+: XMM12 ( -- xmm ) 12 >XMM ;
+: XMM13 ( -- xmm ) 13 >XMM ;
+: XMM14 ( -- xmm ) 14 >XMM ;
+: XMM15 ( -- xmm ) 15 >XMM ;
 
 \ ---- condition codes ---------------------------------------------------------
 : C-O  ( -- condition )  0 >CONDITION ;
@@ -498,6 +531,39 @@ public
    1 0 0 n 3 rshift 0 s EMIT-REX
    $B8 n 7 and + s EMIT-B
    v IMM64>N s EMIT-Q ;
+
+\ ---- scalar double precision -------------------------------------------------
+\ Register operands are destination then source, as for the integer forms.
+\ ANDPD and XORPD operate on both 64-bit lanes; UCOMISD compares the low lane.
+: ENC-MOVSD-RR ( xmm xmm ptr a -- ) {: d:xmm sr:xmm s:ptr :}
+   $F2 W32 $0F10 d XMM>N sr XMM>N s SSE-RR ;
+: ENC-MOVSD-RM ( xmm mem ptr a -- ) {: d:xmm m:mem s:ptr :}
+   $0F10 d m s MOVSD-MEM ;
+: ENC-MOVSD-MR ( xmm mem ptr a -- ) {: sr:xmm m:mem s:ptr :}
+   $0F11 sr m s MOVSD-MEM ;
+: ENC-ADDSD-RR ( xmm xmm ptr a -- ) {: d:xmm sr:xmm s:ptr :}
+   $F2 W32 $0F58 d XMM>N sr XMM>N s SSE-RR ;
+: ENC-SUBSD-RR ( xmm xmm ptr a -- ) {: d:xmm sr:xmm s:ptr :}
+   $F2 W32 $0F5C d XMM>N sr XMM>N s SSE-RR ;
+: ENC-MULSD-RR ( xmm xmm ptr a -- ) {: d:xmm sr:xmm s:ptr :}
+   $F2 W32 $0F59 d XMM>N sr XMM>N s SSE-RR ;
+: ENC-DIVSD-RR ( xmm xmm ptr a -- ) {: d:xmm sr:xmm s:ptr :}
+   $F2 W32 $0F5E d XMM>N sr XMM>N s SSE-RR ;
+: ENC-SQRTSD-RR ( xmm xmm ptr a -- ) {: d:xmm sr:xmm s:ptr :}
+   $F2 W32 $0F51 d XMM>N sr XMM>N s SSE-RR ;
+: ENC-ANDPD-RR ( xmm xmm ptr a -- ) {: d:xmm sr:xmm s:ptr :}
+   $66 W32 $0F54 d XMM>N sr XMM>N s SSE-RR ;
+: ENC-XORPD-RR ( xmm xmm ptr a -- ) {: d:xmm sr:xmm s:ptr :}
+   $66 W32 $0F57 d XMM>N sr XMM>N s SSE-RR ;
+: ENC-UCOMISD-RR ( xmm xmm ptr a -- ) {: l:xmm r:xmm s:ptr :}
+   $66 W32 $0F2E l XMM>N r XMM>N s SSE-RR ;
+
+\ Hardware conversions only: range/NaN handling for Habu's realint belongs to
+\ lowering, not this byte encoder.
+: ENC-CVTSI2SD-RR ( xmm r64 ptr a -- ) {: d:xmm sr:r64 s:ptr :}
+   $F2 W64 $0F2A d XMM>N sr R64>N s SSE-RR ;
+: ENC-CVTTSD2SI-RR ( r64 xmm ptr a -- ) {: d:r64 sr:xmm s:ptr :}
+   $F2 W64 $0F2C d R64>N sr XMM>N s SSE-RR ;
 
 \ ---- widening moves ----------------------------------------------------------
 \ Every one of these widens into a 64-bit register, so REX.W is always set. movsxd
