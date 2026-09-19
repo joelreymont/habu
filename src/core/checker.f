@@ -3420,28 +3420,13 @@ variable SIGSCOPE-U
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
    a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN THEN ;
 
-\ Arity-0 family local annotation (typed-locals wide slice,
-\ dot habu-typed-locals-for): a bare family tail resolves like a signature
-\ type. A layout annotation asserts the hidden TAG term of the whole bundle;
-\ LOC-BUNDLE-BIND checks that term against the captured group's tag and records
-\ the group's full width in LOCW. This works uniformly for W=1 and W>1 layouts,
-\ while an arity-0 CELL family remains a nominal scalar. Parametric spellings
-\ (fam<..>) and arity>0 bare tails remain fail-closed until the annotation
-\ parser shares SIG-TYPE's family-argument grammar. Linear values remain
-\ rejected by LIN-LOCAL-BIND-CHECK.
-: LOC-ANN-LT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ annotation spells <args>?
-   0 BEGIN dup u < WHILE
-      a over + c@ 60 = IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop RES-FALSE ;
-: BAD-LOC-ANN ( ptr u8 n -- n )    \ unsupported local annotation: fail fast so the
-   BAD-SIG-TYPE                    \ pinned token is the annotation itself, not ':}'
+\ Typed local annotations are parsed by LOCAL-TYPE after SIG-TYPE is
+\ available. BAD-LOC-ANN keeps annotation failures pinned to the annotation
+\ token rather than surfacing later at :}.
+: BAD-LOC-ANN ( ptr u8 n -- n )
+   BAD-SIG-TYPE
    0 OK !  -1 FAILSET ! ;
-: LOC-FAM-ANN ( ptr u8 n n -- n ) {: a:ptr u:n fam:n :}
-   fam TFAM-ARITY* 0 <> IF a u BAD-LOC-ANN EXIT THEN
-   PARAM-SCR-N @ a u fam MK-PARAM {: pt:n :}
-   pt LAYOUT-PARAM? 0= IF pt EXIT THEN             \ arity-0 cell family: nominal scalar
-   pt dup T-WIDTH 1 - MK-HIDDEN ;                  \ layout: store its top/tag hidden term
+
 \ LOCAL-TYPE is installed after SIG-TYPE, because parametric local
 \ annotations deliberately reuse the signature family's parser rather than
 \ growing a second <arg,...> grammar here.
