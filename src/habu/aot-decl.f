@@ -160,9 +160,15 @@ DYNAMIC-BUFFER BLOB-STORAGE n
    AOT-BLOB-CAP CELL / BLOB-STORAGE-RESERVE
    0 BLOB-STORAGE BYTE-VIEW ;
 variable AOT-BLOB-LEN
-\ 16384: the chain needs ~6554 records, and DICT-CAP (32768) is the absolute
-\ ceiling a capture window can reach, since the window is a dictionary subrange.
-16384 constant AOT-REC-MAX
+\ A capture window is a dictionary subrange, so DICT-CAP - 65536 records - is
+\ the absolute ceiling one can reach and any bound under it refuses a window the
+\ dictionary itself would hold. The line here read 16384 "because the chain
+\ needs ~6554"; the chain had grown to 16382 records by the time the next
+\ twenty definitions in src/ hit the bound, and what a build over it reports is
+\ `aot-capture: too many records`, which names neither the file nor the
+\ definition that crossed it. This is that bound doubled, measured at 16402
+\ records for the build that first exceeded it.
+32768 constant AOT-REC-MAX
 \ AOT-REC-BUF holds three regions (all viewed via AOT-REC-BUF@, no extra TRUST):
 \   [0 .. MAX*48)              verbatim 48B dict records (capture source of truth)
 \   [MAX*48 .. +MAX*CREC-ROW)  compact 20B records (three u32 role/code/name fields + metadata + wid)
