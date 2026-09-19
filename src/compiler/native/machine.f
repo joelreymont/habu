@@ -209,25 +209,6 @@ variable MACH-N
    wd 1 < if E-NMACH throw then
    wd  1 w lshift  and 0= if E-NMACH throw then ;
 
-\ ---- is this machine already described? --------------------------------------
-\ Total, every stored cell, so a row differing in any fact is a different
-\ machine and two rows that agree in all of them are one.
-: ROW-EQ? ( n n -- bool )
-   {: a:n b:n :}
-   true
-   ROW-N 0 ?do
-      a i ROW@  b i ROW@ <> if drop false leave then
-   loop ;
-
-\ The row a machine with the facts written at `row` already has, or `row` itself
-\ when no earlier row holds them.
-: DUP-ROW ( n -- n )
-   {: row:n :}
-   row
-   row 0 ?do
-      i row ROW-EQ? if drop i leave then
-   loop ;
-
 public
 
 \ ---- the description ---------------------------------------------------------
@@ -249,6 +230,26 @@ public
    om 0 < if E-NMACH throw then
    bk 0 < if E-NMACH throw then
    wd w WIDTHS-CK
+   \ Compare every fact before reserving storage: an existing description needs
+   \ no free row, even when the table is full.
+   MACH-N @ 0 ?do
+      i F-GPR-SIZE ROW@ gn =
+      i F-GPR-RES ROW@ gr NREGFILE:REGS-BITS = and
+      i F-GPR-CLOB ROW@ gc NREGFILE:REGS-BITS = and
+      i F-FPR-SIZE ROW@ fn = and
+      i F-FPR-RES ROW@ fr NREGFILE:REGS-BITS = and
+      i F-FPR-CLOB ROW@ fc NREGFILE:REGS-BITS = and
+      i F-SLOT-WIDTH ROW@ w = and
+      i F-LINK ROW@ lb = and
+      i F-SP ROW@ sp = and
+      i F-SP-ALIGN ROW@ al = and
+      i F-FRAME-MAX ROW@ fm = and
+      i F-OFF-MAX ROW@ om = and
+      i F-SCALE ROW@ os SCALE-CODE = and
+      i F-WIDTHS ROW@ wd = and
+      i F-SLOT-BACK ROW@ bk = and
+      if i NMACH-MACH:MAKE unloop exit then
+   loop
    MACH-N @ {: row:n :}
    row MACH-MAX >= if E-NMACH throw then
    row F-GPR-SIZE gn ROW!
@@ -266,9 +267,8 @@ public
    row F-SCALE os SCALE-CODE ROW!
    row F-WIDTHS wd ROW!
    row F-SLOT-BACK bk ROW!
-   row DUP-ROW {: have:n :}
-   have row = if row 1+ MACH-N ! then
-   have NMACH-MACH:MAKE ;
+   row 1+ MACH-N !
+   row NMACH-MACH:MAKE ;
 
 \ ---- the ordinal, for a caller that has to keep one in a cell -----------------
 \ A backend describes its machine once at load and reports it from a constant,

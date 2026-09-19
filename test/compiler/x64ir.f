@@ -489,6 +489,24 @@ private
    drop
    TARGET-CASE ;
 
+\ A minimal machine with a distinct frame bound per row. Fill after all other
+\ cases: a full table must still intern an existing description without writes.
+: CAPACITY-MACHINE ( n -- NMACH:mach ) {: frame:n :}
+   2 1 NREGFILE:REGS-SET NREGFILE:REGS-NONE
+   1 NREGFILE:REGS-NONE NREGFILE:REGS-NONE 8 NREGFILE:FILE
+   NREGFILE:REGS-NONE 0 16 frame 0 NMACH-OFFSCALE:BY-BYTE
+   1 8 lshift 0 NMACH:MACHINE ;
+
+: MACHINE-CAPACITY-CASE ( -- )
+   s" a full machine table still returns an existing description" T-LABEL
+   0 CAPACITY-MACHINE {: first:NMACH:mach :}
+   16 first NMACH:ID - 1 ?do i 16 * CAPACITY-MACHINE drop loop
+   0 CAPACITY-MACHINE first NMACH-MACH:EQ TTRUE
+   s" a new description is refused without changing the full table" T-LABEL
+   [: 4096 CAPACITY-MACHINE drop ;] E-NMACH TTHROWSQ
+   0 CAPACITY-MACHINE first NMACH-MACH:EQ TTRUE
+   [: 16 NMACH:BY-ID drop ;] E-NMACH TTHROWSQ ;
+
 public
 
 : RUN ( -- )
@@ -506,6 +524,7 @@ public
    BND [: GROUP-REFUSE ;] IR-CTX:WITH-CONTEXT
    ADMIT-CASE
    BND [: GROUP-TARGET ;] IR-CTX:WITH-CONTEXT
+   MACHINE-CAPACITY-CASE
    T-REPORT ;
 
 ;package
