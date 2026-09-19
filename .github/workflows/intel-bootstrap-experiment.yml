@@ -3,7 +3,10 @@ name: Intel host bootstrap experiment
 on:
   push:
     branches: [experiment/intel-bootstrap-20260919]
-    paths: [.github/workflows/intel-bootstrap-experiment.yml]
+    paths:
+      - .github/workflows/intel-bootstrap-experiment.yml
+      - .github/patches/intel-hosted-recovery.patch
+      - .github/fixtures/intel/**
 
 permissions:
   contents: read
@@ -19,20 +22,23 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Record source and host
+      - name: Record source and apply exact recovery patch
         shell: bash
         run: |
           mkdir -p "$HB_TMP" "$RUNNER_TEMP/habu-intel-evidence"
           git rev-parse HEAD > "$RUNNER_TEMP/habu-intel-evidence/source-commit.txt"
           uname -a > "$RUNNER_TEMP/habu-intel-evidence/host.txt"
-          git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/habu-intel-evidence/habu-source.tar.gz"
+          printf '%s  %s\n' c206cb99642fbcf24f0c363158d18d237037f6e66dc56d1276083227c463861f .github/patches/intel-hosted-recovery.patch | sha256sum --check
+          git apply --check .github/patches/intel-hosted-recovery.patch
+          git apply .github/patches/intel-hosted-recovery.patch
+          git diff --binary > "$RUNNER_TEMP/habu-intel-evidence/applied.patch"
+          cp .github/patches/intel-hosted-recovery.patch "$RUNNER_TEMP/habu-intel-evidence/"
+          tar --exclude=.git -czf "$RUNNER_TEMP/habu-intel-evidence/habu-patched-source.tar.gz" .
       - name: Provision isolated bootstrap dependencies
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y gforth autoconf automake libtool-bin libffi-dev libltdl-dev texinfo qemu-user-static libc6-arm64-cross
-          cp /usr/bin/qemu-aarch64-static "$RUNNER_TEMP/habu-intel-evidence/"
-          tar -czf "$RUNNER_TEMP/habu-intel-evidence/aarch64-sysroot.tar.gz" -C /usr aarch64-linux-gnu
           dpkg-query -W gforth qemu-user-static libc6-arm64-cross > "$RUNNER_TEMP/habu-intel-evidence/packages.txt"
       - name: Build pinned Gforth recovery host
         shell: bash
@@ -45,29 +51,41 @@ jobs:
           UNSUITABLE_CC=none ./configure --prefix="$RUNNER_TEMP/gforth-installed"
           make -j2 gforth-itc gforth-light.fi
           ./gforth-itc -i ./gforth-light.fi -e ': f {: a :} a . cr ; 1 f bye'
-          printf '#!/bin/sh\nexec "%s/gforth-itc" -i "%s/gforth-light.fi" "$@"\n' "$PWD" "$PWD" > "$HB_TMP/gforth"
-          chmod +x "$HB_TMP/gforth"
-          tar --exclude=.git -czf "$RUNNER_TEMP/habu-intel-evidence/gforth-build.tar.gz" -C "$RUNNER_TEMP" gforth
       - name: Emit genuine ARM64 recovery REPL on Intel
         shell: bash
         run: |
-          "$HB_TMP/gforth" -e "require $PWD/test/nf.fs s\" $HB_TMP/hb-aarch64-repl\" FORTH-REPL-EXE bye" > "$RUNNER_TEMP/habu-intel-evidence/build.stdout" 2> "$RUNNER_TEMP/habu-intel-evidence/build.stderr"
-          file "$HB_TMP/hb-aarch64-repl"
-          cp "$HB_TMP/hb-aarch64-repl" "$RUNNER_TEMP/habu-intel-evidence/"
-          sha256sum "$HB_TMP/hb-aarch64-repl" > "$RUNNER_TEMP/habu-intel-evidence/engine.sha256"
-      - name: Execute the real checker and compiled body under QEMU
+          export GFORTHPATH=".:$RUNNER_TEMP/gforth:$RUNNER_TEMP/gforth/arch/amd64:$RUNNER_TEMP/gforth/kernel"
+          export HABU_OUTPUT="$HB_TMP/hb-aarch64-recovery"
+          "$RUNNER_TEMP/gforth/gforth-itc" -i "$RUNNER_TEMP/gforth/gforth-light.fi" -e 'require bootstrap/cg/forth.fs s" HABU_OUTPUT" getenv FORTH-REPL-EXE bye' > "$RUNNER_TEMP/habu-intel-evidence/build.stdout" 2> "$RUNNER_TEMP/habu-intel-evidence/build.stderr"
+          file "$HABU_OUTPUT" | tee "$RUNNER_TEMP/habu-intel-evidence/engine-format.txt"
+          cp "$HABU_OUTPUT" "$RUNNER_TEMP/habu-intel-evidence/"
+          sha256sum "$HABU_OUTPUT" > "$RUNNER_TEMP/habu-intel-evidence/engine.sha256"
+      - name: Execute real compiler runtime and rejection gates
         shell: bash
         run: |
-          printf ': INTEL-SMOKE ( n -- n ) 1 + ;\n41 INTEL-SMOKE . cr\n' > "$HB_TMP/good.f"
-          timeout 180 qemu-aarch64-static -L /usr/aarch64-linux-gnu "$HB_TMP/hb-aarch64-repl" < "$HB_TMP/good.f" > "$RUNNER_TEMP/habu-intel-evidence/good.stdout" 2> "$RUNNER_TEMP/habu-intel-evidence/good.stderr"
-          grep -Eq '(^|[[:space:]])42([[:space:]]|$)' "$RUNNER_TEMP/habu-intel-evidence/good.stdout"
-          printf ': INTEL-BAD ( n -- n ) dup ;\n' > "$HB_TMP/bad.f"
-          set +e
-          timeout 180 qemu-aarch64-static -L /usr/aarch64-linux-gnu "$HB_TMP/hb-aarch64-repl" < "$HB_TMP/bad.f" > "$RUNNER_TEMP/habu-intel-evidence/bad.stdout" 2> "$RUNNER_TEMP/habu-intel-evidence/bad.stderr"
-          rc=$?
-          set -e
-          printf '%s\n' "$rc" > "$RUNNER_TEMP/habu-intel-evidence/bad.exit"
-          test "$rc" -eq 70
+          evidence="$RUNNER_TEMP/habu-intel-evidence"
+          run_case() {
+            local name="$1" want="$2" marker="$3"
+            local rc=0
+            timeout --kill-after=5s 180s qemu-aarch64-static -L /usr/aarch64-linux-gnu "$HB_TMP/hb-aarch64-recovery" --load ".github/fixtures/intel/$name.f" </dev/null >"$evidence/$name.stdout" 2>"$evidence/$name.stderr" || rc=$?
+            printf '%s\n' "$rc" > "$evidence/$name.exit"
+            cat "$evidence/$name.stdout"
+            cat "$evidence/$name.stderr" >&2
+            test "$rc" -eq "$want"
+            grep -Fq "$marker" "$evidence/$name.stdout"
+          }
+          run_case smoke 0 'real-checker-and-runtime: ok'
+          run_case adt 0 'real-adt-runtime: ok'
+          run_case reject 70 'NEGATIVE-ARMED'
+          ! grep -Fq 'NEGATIVE-LEAKED' "$evidence/reject.stdout"
+          grep -Fq 'wrong-effect' "$evidence/reject.stderr"
+          run_case guard 83 'GUARD-ARMED'
+          ! grep -Fq 'GUARD-LEAKED' "$evidence/guard.stdout"
+          printf ': STDIN-CHECK ( n -- n ) 1 + ;\n41 STDIN-CHECK . cr\n' > "$HB_TMP/stdin.f"
+          timeout --kill-after=5s 180s qemu-aarch64-static -L /usr/aarch64-linux-gnu "$HB_TMP/hb-aarch64-recovery" < "$HB_TMP/stdin.f" > "$evidence/stdin.stdout" 2> "$evidence/stdin.stderr"
+          grep -Eq '(^|[[:space:]])42([[:space:]]|$)' "$evidence/stdin.stdout"
+          printf '0\n' > "$evidence/stdin.exit"
+          printf 'Real ARM64 recovery engine passed smoke, ADT, rejection, protected-write, and stdin gates on x86-64 under QEMU. Native x86 backend and production selfbuild are NOT established.\n' > "$evidence/RESULT.txt"
       - name: Preserve evidence even when bootstrap fails
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
