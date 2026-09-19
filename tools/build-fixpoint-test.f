@@ -211,6 +211,8 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-ROOT CLEANUP-TREE+
    BFT-ROOT s" hb-new" BFT-HB-NEW-BUF BFT-HB-NEW-U BFT-PATH!
    BFT-ROOT s" hb-stdin" BFT-HB-BUF BFT-HB-U BFT-PATH!
+   s" bin/hb" BFT-HB COPY-FILE-STREAM
+   BFT-HB CHMOD-X
    BFT-ROOT s" prefix-src" BFT-PREFIX-BUF BFT-PREFIX-U BFT-PATH!
    BFT-ROOT s" stage2-src" BFT-STAGE2-BUF BFT-STAGE2-U BFT-PATH!
    BFT-ROOT s" stage2-run-src" BFT-RUN-BUF BFT-RUN-U BFT-PATH!
@@ -356,6 +358,14 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BF-STAMP-MATCH? TTRUE
    BFT-STAMP REMOVE-FILE
    BFT-STAMP-UNSCOPE ;
+
+\ The selected engine must be executed, not silently replaced by bin/hb.
+: BFT-TEST-ENGINE-SELECTION ( -- )
+   BFT-ROOT BF-TMP!
+   s" /usr/bin/false" BF-ENGINE!
+   [: BF-BOOTSTRAP-STAGE ;] E-BUILD-STATUS TTHROWSQ
+   BF-ENGINE-RESET
+   BF-TMP-RESET ;
 
 : BFT-TEST-CACHED-SKIP ( -- )
    BFT-ROOT BF-TMP!
@@ -1675,6 +1685,7 @@ public
    s" stage argv reset" [: BFT-TEST-STAGE-ARGV-RESET ;] BFT-STEP
    s" stamp seed" [: BFT-TEST-STAMP-SEED ;] BFT-STEP
    s" build" [: BFT-TEST-BUILD ;] BFT-STEP
+   s" stage engine selection" [: BFT-TEST-ENGINE-SELECTION ;] BFT-STEP
    s" cached skip" [: BFT-TEST-CACHED-SKIP ;] BFT-STEP
    s" build fail no stamp" [: BFT-TEST-BUILD-FAIL-NO-STAMP ;] BFT-STEP
    s" no-main self dispatch" [: BFT-TEST-NO-MAIN-DISPATCHES ;] BFT-STEP

@@ -506,6 +506,12 @@ bin/hb --load tools/build-fixpoint-refresh.f -- install
 `bin/hb --load` selects the host core/checker/env source prefix from the
 running binary. Callers load only the libraries and tool source they need.
 
+The first stage-2 build runs on `HABU_FIXPOINT_ENGINE` when set (otherwise
+`bin/hb`); subsequent stage-2 generations run the resulting private `hb-stage`.
+The selected engine must already exist and is also the install destination.
+Setting it therefore isolates both the build host and installation from the
+checkout's engine.
+
 The `all`/`install` refresh is content-keyed. After a successful install the
 tool writes a stamp — SHA-256 over the digests of `bin/hb`, the exact emitted
 fixpoint and stdin stage sources captured at the moment the build consumed

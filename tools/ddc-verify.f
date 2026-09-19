@@ -176,9 +176,11 @@ variable DDC-FXP-U
    s" --" DDC-ARG  s" install" DDC-ARG  s" --force" DDC-ARG ;
 
 \ Refresh the raw gforth seed to the native fixpoint at <rf-root>/hb-ddc-fixpoint.
-\ HABU_FIXPOINT_ENGINE re-targets the install so the checkout's bin/hb is never
-\ replaced; XDG_CACHE_HOME isolates the fixpoint stamp under the scratch root.
+\ Seed the selected build/install path with that Gforth engine, keeping the
+\ checkout's bin/hb outside this chain. XDG_CACHE_HOME isolates its stamp.
 : DDC-RUN-REFRESH ( -- )
+   DDC-STDIN$ DDC-FXP$ COPY-FILE-STREAM
+   DDC-FXP$ CHMOD-X
    PROC-ARGV-RESET
    PROC-ENV-RESET
    DDC-REFRESH-ARGV+

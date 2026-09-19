@@ -1397,10 +1397,24 @@ package BUILD-FIXPOINT
    BF-REC-STDIN-DG BF-STAGE2-DIGEST
    -1 BF-REC-STDIN? ! ;
 
+: BF-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if E-BUILD-PATH throw then
+   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   a BF-ENGINE-BUF u BYTE-COPY
+   u BF-ENGINE-U ! ;
+
+: BF-ENGINE-RESET ( -- )
+   0 BF-ENGINE-U ! ;
+
+: BF-ENGINE$ ( -- ptr u8 n )
+   BF-ENGINE-U @ 0 > if BF-ENGINE-BUF BF-ENGINE-U @ exit then
+   s" HABU_FIXPOINT_ENGINE" GETENV dup 0 > if exit then drop drop
+   s" bin/hb" ;
+
 : BF-BOOTSTRAP-STAGE ( -- )
    s" stage2-got" BF-REMOVE-TMP
    s" hb-stage" BF-REMOVE-TMP
-   s" bin/hb" s" stage2-src" BF-A$ COMPILER-BUILD:RUN BF-RC0
+   BF-ENGINE$ s" stage2-src" BF-A$ COMPILER-BUILD:RUN BF-RC0
    s" stage2-got" BF-EXPECT
    s" stage2-got" s" hb-stage" BF-RENAME-TMP
    s" hb-stage" BF-CHMOD-X-TMP ;
@@ -1692,20 +1706,6 @@ variable BF-DRV-R
 : BF-BUILD-ALL ( -- )
    BF-ASSERT-PRODUCT
    BF-BUILD-STDIN-FRESH ;
-
-: BF-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 <= if E-BUILD-PATH throw then
-   u FS-PATH-CAP > if E-BUILD-PATH throw then
-   a BF-ENGINE-BUF u BYTE-COPY
-   u BF-ENGINE-U ! ;
-
-: BF-ENGINE-RESET ( -- )
-   0 BF-ENGINE-U ! ;
-
-: BF-ENGINE$ ( -- ptr u8 n )
-   BF-ENGINE-U @ 0 > if BF-ENGINE-BUF BF-ENGINE-U @ exit then
-   s" HABU_FIXPOINT_ENGINE" GETENV dup 0 > if exit then drop drop
-   s" bin/hb" ;
 
 \ Rebuild the complete native runtime before taking its snapshot. APP-IMAGE owns
 \ preparation and provenance; the source-only recovery host is not an image.
