@@ -3442,11 +3442,10 @@ variable SIGSCOPE-U
    PARAM-SCR-N @ a u fam MK-PARAM {: pt:n :}
    pt LAYOUT-PARAM? 0= IF pt EXIT THEN             \ arity-0 cell family: nominal scalar
    pt dup T-WIDTH 1 - MK-HIDDEN ;                  \ layout: store its top/tag hidden term
-: LOCAL-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u s" ptr" CORE-STR= IF FRESH MK-VAR MK-PTR EXIT THEN
-   a u LOC-ANN-LT? IF a u BAD-LOC-ANN EXIT THEN
-   a u SIG-FAM? IF a u rot LOC-FAM-ANN EXIT THEN drop
-   a u TOK-TYPE ;
+\ LOCAL-TYPE is installed after SIG-TYPE, because parametric local
+\ annotations deliberately reuse the signature family's parser rather than
+\ growing a second <arg,...> grammar here.
+defer LOCAL-TYPE ( ptr u8 n -- n )
 
 variable SB variable SL variable SI variable SS
 variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
@@ -3581,6 +3580,43 @@ defer SIG-QUOT-XT ( -- n )
    a u s" ptr" CORE-STR= IF
       NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
    ELSE a u TOK-TYPE THEN ;
+
+\ Parse one complete local annotation with the exact signature type grammar.
+\ The body scanner is not using the signature cursor at this point, but save it
+\ anyway: LOCAL-TYPE is a parser helper and must not make cursor ownership an
+\ implicit calling convention. NMAP/FAM state is intentionally shared so an
+\ annotation may name the definition's existing type variables.
+variable LTS-SB variable LTS-SL variable LTS-SI variable LTS-SS
+variable LTS-PKA variable LTS-PKU variable LTS-PKH
+
+: LOCAL-TYPE-PARSED ( ptr u8 n -- n ) {: a:ptr u:n :}
+   SB@ LTS-SB !  SL @ LTS-SL !  SI @ LTS-SI !  SS@ LTS-SS !
+   PKA@ LTS-PKA !  PKU @ LTS-PKU !  PKHAVE @ LTS-PKH !
+   a SB!  u SL !  0 SI !  PKRESET
+   NEXT-SIG-TOK dup 0= IF
+      2drop a u BAD-LOC-ANN
+   ELSE
+      SIG-TYPE
+      NEXT-SIG-TOK dup 0 <> IF
+         2drop a u BAD-LOC-ANN drop
+      ELSE
+         2drop
+      THEN
+   THEN
+   {: t:n :}
+   LTS-SB @ SB!  LTS-SL @ SL !  LTS-SI @ SI !  LTS-SS @ SS!
+   LTS-PKA @ PKA!  LTS-PKU @ PKU !  LTS-PKH @ PKHAVE !
+   SGBAD @ IF a u BAD-LOC-ANN drop THEN
+   t T-RES {: rt:n :}
+   rt LAYOUT-PARAM? IF
+      rt dup T-WIDTH 1 - MK-HIDDEN
+   ELSE
+      rt
+   THEN ;
+
+: LOCAL-TYPE-INSTALL ( -- )
+   [: LOCAL-TYPE-PARSED ;] is LOCAL-TYPE ;
+LOCAL-TYPE-INSTALL
 
 create ROWMAP 26 cells allot
 : ROWMAP-RESET 0 BEGIN dup cells ROWMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
