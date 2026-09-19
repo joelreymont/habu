@@ -1180,10 +1180,37 @@ variable LONG-J
    CAP-ERR erru s" <source-list>" CONTAINS? TTRUE ;
 
 : AUDITED-LIB-TEST ( -- )
-   s" lib/test.f" LIST-RUN 0 T=
+   \ The resident harness has already provided lib/test.f. A fresh tool
+   \ process also exercises its resident verification instead of skipping it.
+   CHECK-ARGV-START
+   s" --source-list" CHECK-ARG+
+   s" lib/test.f" CHECK-ARG+
+   CHECK-CAPTURE 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
+
+: EXPECT-PROVIDED-LIST ( n n n -- )
+   64 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" all source-list inputs are already provided" CONTAINS? TTRUE ;
+
+: PROVIDED-LIST-TEST ( -- )
+   CHECK-ARGV-START
+   s" --source-list" CHECK-ARG+
+   s" src/core/type-schema.f" CHECK-ARG+
+   CHECK-CAPTURE EXPECT-PROVIDED-LIST
+   s" src/core/type-schema.f" s" ./src/core/type-schema.f"
+   CLI-ALL-LIST EXPECT-PROVIDED-LIST
+   LIST$ GOOD$ WRITE-ALL
+   s" src/core/type-schema.f" LIST$ CLI-ALL-LIST 0 T=
+   {: outu:n erru:n :}
+   outu 0 T= erru 0 T=
+   LIST$ UNDEFINED$SRC WRITE-ALL
+   s" src/core/type-schema.f" LIST$ CLI-ALL-LIST 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE ;
 
 : PREVERIFY-DIAG-TEST ( -- )
    LIST$ UNDEFINED$SRC WRITE-ALL
@@ -2053,6 +2080,7 @@ POISON-RECORD
    s" check/duplicate-all-errors" [: TEST-DUP-ALL ;] CASE-RUN
    s" check/source-list-reserved" [: RESERVED-LIST-TEST ;] CASE-RUN
    s" check/source-list-audited-lib" [: AUDITED-LIB-TEST ;] CASE-RUN
+   s" check/source-list-provided" [: PROVIDED-LIST-TEST ;] CASE-RUN
    s" check/source-list-preverify-diag" [: PREVERIFY-DIAG-TEST ;] CASE-RUN
    s" check/value-record-good" [: VREC-GOOD-TEST ;] CASE-RUN
    s" check/linear-bad" [: TEST-LINEAR-BAD ;] CASE-RUN

@@ -596,8 +596,18 @@ private
    CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
    CHK-SRC-PATH CHK-SOURCE! ;
 
+\ Resident verification skips already-provided inputs. Refuse a list for
+\ which it would check nothing; engine-provided inputs also skip in the child.
+: CHK-CHECK-LIST-INPUTS ( -- )
+   CHK-POS-N @ 0 ?do
+      i CHK-POS$ ENTRY-RESOLVE nip nip 0= if unloop exit then
+   loop
+   s" check.f: all source-list inputs are already provided; resident verification would skip them"
+   CHK-E-USAGE CHK-FAIL ;
+
 : CHK-MATERIALIZE-LIST ( -- )
    CHK-POS-N @ 0= if CHK-USAGE then
+   CHK-CHECK-LIST-INPUTS
    s" <source-list>" CHK-LABEL!
    CHK-EXPAND-RESET
    0 begin dup CHK-POS-N @ < while
