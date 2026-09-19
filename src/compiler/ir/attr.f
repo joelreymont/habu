@@ -389,6 +389,7 @@ $8000000000000000 constant INT-MIN
       2 of CTARGET-ARCH:A32 endof
       3 of CTARGET-ARCH:THUMB2 endof
       4 of CTARGET-ARCH:C66X endof
+      5 of CTARGET-ARCH:X86-64 endof
       E-IR-ATTR-STATE throw
    endcase ;
 
@@ -399,6 +400,7 @@ $8000000000000000 constant INT-MIN
       2 of CTARGET-ABI:PTX-KERNEL endof
       3 of CTARGET-ABI:AAPCS32 endof
       4 of CTARGET-ABI:C6000-EABI endof
+      5 of CTARGET-ABI:SYSV-AMD64-LINUX endof
       E-IR-ATTR-STATE throw
    endcase ;
 
