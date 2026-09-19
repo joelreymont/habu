@@ -3,11 +3,14 @@
 
 require tools/lint/clobber-lint.f
 
+package CLOBBER
+
 : CLT-ASSERT ( bool -- )
    0= if s" clobber-lint-test failed" 1 die then ;
 
 : CLT-FIXTURE-BAD# ( -- n )
    0 PARENS? !  0 CN# !  0 CEND !  0 EN# !  CLOBBER-CENSUS:RESET
+   s" tools/lint/clobber-sys-x8-fixture.f" DECL-FILE
    s" tools/lint/clobber-sys-x8-fixture.f" PASS1-FILE
    CLOSE-CLOBBERS
    0 BAD !
@@ -15,12 +18,22 @@ require tools/lint/clobber-lint.f
    BAD @ ;
 
 : CLT-SYS-CLOBBERS-X8 ( -- )
-   CLT-FIXTURE-BAD# 6 = CLT-ASSERT ;
+   CLT-FIXTURE-BAD# 11 = CLT-ASSERT ;
 
 : CLT-CURRENT-SYNTAX-CENSUS ( -- )
    CLOBBER-CENSUS:COUNTS {: routines:n calls:n :}
-   routines 19 = CLT-ASSERT
-   calls 6 = CLT-ASSERT ;
+   routines 32 = CLT-ASSERT
+   calls 12 = CLT-ASSERT ;
+
+: CLT-QUALIFIED-LABELS ( -- )
+   s" LPROT" START-L? CLT-ASSERT
+   s" PROT:LOPEN" START-L? CLT-ASSERT
+   s" SNAP-RELOC:LCALLS" START-L? CLT-ASSERT
+   s" A:B:LTAIL" START-L? CLT-ASSERT
+   s" LHEAD:OPEN" START-L? 0= CLT-ASSERT
+   s" PROT:OPEN" START-L? 0= CLT-ASSERT
+   s" PROT:" START-L? 0= CLT-ASSERT
+   s" CP" START-L? 0= CLT-ASSERT ;
 
 : CLT-LABEL-ACCESSORS ( -- )
    s" @" LABEL-ACCESS? 0= CLT-ASSERT
@@ -29,9 +42,16 @@ require tools/lint/clobber-lint.f
    s" LABEL" LABEL-ACCESS? 0= CLT-ASSERT ;
 
 : CLT-MACHINE-CONTRACTS ( -- )
+   s" WLFIND:LENTRY" RETURNS-MASK 0 11 CL-ADD 12 CL-ADD = CLT-ASSERT
+   s" SNAP-RELOC:LCALLS" PRESERVE-MASK SYS-SCRATCH-MASK = CLT-ASSERT
+   s" SNAP-RELOC:LADDRS" PRESERVE-MASK SYS-SCRATCH-MASK = CLT-ASSERT
    s" LREPLROUTE" RETURNS-MASK 0 9 CL-ADD = CLT-ASSERT
    s" LP2CWAT" RETURNS-MASK 0 10 CL-ADD 11 CL-ADD = CLT-ASSERT
-   s" LCEMIT" PRESERVE-MASK 0 12 CL-ADD 13 CL-ADD = CLT-ASSERT
+   s" LCEMIT" PRESERVE-MASK
+      0 0 CL-ADD 1 CL-ADD 2 CL-ADD 8 CL-ADD 12 CL-ADD 13 CL-ADD
+        16 CL-ADD 30 CL-ADD = CLT-ASSERT
+   s" PROT:LGROW" PRESERVE-MASK
+      0 0 CL-ADD 2 CL-ADD 8 CL-ADD 16 CL-ADD 30 CL-ADD = CLT-ASSERT
    s" LAOTWIDGATE" PRESERVE-MASK 0 11 CL-ADD = CLT-ASSERT
    s" LPROTWIDQ" PRESERVE-MASK 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 14 CL-ADD = CLT-ASSERT
    s" LHIDXADD" PRESERVE-MASK
@@ -40,6 +60,7 @@ require tools/lint/clobber-lint.f
 
 : CLT-WRAP-BAD# ( -- n )
    0 PARENS? !  0 CN# !  0 CEND !  0 EN# !  CLOBBER-CENSUS:RESET
+   s" tools/lint/clobber-wrap-fixture.f" DECL-FILE
    s" tools/lint/clobber-wrap-fixture.f" PASS1-FILE
    CLOSE-CLOBBERS
    0 BAD !
@@ -75,8 +96,10 @@ require tools/lint/clobber-lint.f
 CLT-SYS-CLOBBERS-X8
 CLT-CURRENT-SYNTAX-CENSUS
 CLT-LABEL-ACCESSORS
+CLT-QUALIFIED-LABELS
 CLT-MACHINE-CONTRACTS
 CLT-WRAP-CONTRACTS
 CLT-WRAP-UNMODELED
 CLT-WRAPPED-CALLS
 s" clobber-lint-test: ok" type NL
+;package

@@ -8,45 +8,12 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 
-: NL  ( -- )  10 emit ;
-
-\ Fail-closed code for a wrapped emitter call (a `PKG:CALL` macro that emits a
-\ branch-with-link) whose clobber contract is not modeled, or whose register
-\ operands cannot be resolved. Negative so error-code-lint keeps it globally
-\ unique; -4801 sits right after shadow-lint's -4800 in the unclaimed gap above
-\ lib/codegen's E-CG codes (-4700/-4701) and below the -5000 cluster. It claims
-\ no reserved range.
--4801 constant E-CLOBBER-WRAP-UNRESOLVED
-
 package CLOBBER-CENSUS
 
-301 constant MIN-ROUTINES   \ observed production floor; lower counts need review
-\ Direct BL + wrapped emitter calls; lower counts need review. 470 -> 458 on
-\ 2026-08-11, reviewed and derived exactly, not fitted: the code-region
-\ protection flip became PROT:LOPEN / PROT:LCLOSE (dot
-\ habu-narrow-the-code-291b2cef), so 47 sites that read `LPROT LABEL@ BL,` now
-\ read `PROT:LOPEN LABEL@ BL,`, and one bare `LGROW LABEL@ BL,` site was added
-\ inside PROT:RESERVE. 504 - 47 + 1 = 458, measured on both trees.
-\
-\ WHY THOSE 47 STOPPED COUNTING, WHICH IS A DEFECT IN THIS FILE AND NOT IN THE
-\ ENGINE: START-L? below asks whether the FIRST character of the label token is
-\ `l`, so a package-qualified label fails it however its tail is spelled. The
-\ predicate is shared by COLLECT-OPENINGS and CALLEE?, so such a label is not
-\ merely uncounted - its routine is never analysed and its callers never see its
-\ clobbers. The tree's other packaged labels (SNAP-RELOC, HIDX, AOT-WINDOW,
-\ DEFER-DIAG, HOLD-EMIT, KWDATA) have been invisible the same way all along.
-\ Reading the segment after the LAST colon fixes it and was measured to work
-\ here: routines 335 -> 347, calls 504 -> 518, clean, once LCEMIT's and
-\ PROT:LGROW's PRESERVE-MASK rows and a PSEUDO? row for PROT:RESERVE are added.
-\ Dot habu-clobber-lint-cannot-305ed456 owns that correction.
-\
-\ NOTHING THE LOWERED FLOOR HIDES IS NEW. The 47 sites clobber exactly what they
-\ clobbered before - PROT:LOPEN and PROT:LCLOSE cost their callers the same
-\ x0/x1/x2, syscall-number register and x30 that the whole-region LPROT flip they
-\ replaced cost - and the code around each site is unchanged. The one site whose
-\ surroundings moved (EM-SEED-AOT, which now reads the blob length before the
-\ flip instead of after) moved a value in x11, which no flip has ever touched.
-458 constant MIN-CALLS
+\ Observed production floors include qualified labels and wrapped calls.
+\ Lower counts need review; dropping package tails must not hide routines.
+399 constant MIN-ROUTINES
+623 constant MIN-CALLS
 
 variable ROUTINE-N
 variable CALL-N
@@ -81,6 +48,14 @@ public
    s" clobber-lint: calls=" type CALL-N @ . ;
 
 ;package
+
+package CLOBBER
+
+: NL  ( -- )  10 emit ;
+
+\ Fail closed when a wrapped emitter call has no modeled contract or its
+\ register operands cannot be resolved. This claims no reserved error range.
+-4801 constant E-CLOBBER-WRAP-UNRESOLVED
 
 \ ---- register sets --------------------------------------------------------
 variable WMSK  variable RMSK
@@ -121,7 +96,8 @@ variable RX  variable RACC
 
 \ ---- string/token helpers -------------------------------------------------
 : START-L?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   u 0 > if a c@ LINT-FOLD 108 = else LINT-FALSE then ;
+   0 u 0 ?do a i + c@ 58 = if drop i 1+ then loop {: off:n :}
+   off u < if a off + c@ LINT-FOLD 108 = else LINT-FALSE then ;
 : LABEL-ACCESS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" LABEL@" LINT-STR=CI IF LINT-TRUE exit THEN
    u 7 > IF a u s" :LABEL@" LINT-SUFFIX? ELSE LINT-FALSE THEN ;
@@ -142,6 +118,7 @@ variable RX  variable RACC
 
 \ ---- modeled maps ---------------------------------------------------------
 : RETURNS-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
+   a u s" WLFIND:LENTRY" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD exit then
    a u s" Lcfpop" LINT-STR=CI if 0 9 CL-ADD exit then
    a u s" Lkwcmp" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lloc-find" LINT-STR=CI if 0 0 CL-ADD exit then
@@ -167,10 +144,14 @@ variable RX  variable RACC
    a u s" Lp2cwat" LINT-STR=CI if 0 10 CL-ADD 11 CL-ADD exit then
    0 ;
 : PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
+   \ The relocation helpers touch syscall scratch only in fatal write/exit
+   \ arms; neither x8 nor x16 is written on a returning path.
+   a u s" SNAP-RELOC:LCALLS" LINT-STR=CI
+   a u s" SNAP-RELOC:LADDRS" LINT-STR=CI or if SYS-SCRATCH-MASK exit then
    \ Every registrar entry saves/restores x0..x17 around its emitted helpers.
-   a u s" Lmark" LINT-STR=CI if $3FFFF exit then
-   a u s" Lptrmark" LINT-STR=CI if $3FFFF exit then
-   a u s" Lindexrelease" LINT-STR=CI if $3FFFF exit then
+   a u s" SNAP-RELOC:Lmark" LINT-STR=CI if $3FFFF exit then
+   a u s" SNAP-RELOC:Lptrmark" LINT-STR=CI if $3FFFF exit then
+   a u s" SNAP-RELOC:Lindexrelease" LINT-STR=CI if $3FFFF exit then
    a u s" Lvpushc" LINT-STR=CI if 0 11 CL-ADD exit then
    a u s" Lvpushr" LINT-STR=CI if 0 14 CL-ADD exit then
    a u s" Lvforcek" LINT-STR=CI if 0 5 CL-ADD exit then
@@ -179,7 +160,12 @@ variable RX  variable RACC
    a u s" Lvbit" LINT-STR=CI if 0 7 CL-ADD exit then
    a u s" Lbcap" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
    a u s" Lbcs" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
-   a u s" Lcemit" LINT-STR=CI if 0 12 CL-ADD 13 CL-ADD exit then
+   \ EMIT-CEMIT frames x1/x12/x13/x30; EMIT-PROT-GROW frames the rest.
+   a u s" Lcemit" LINT-STR=CI if
+      0 0 CL-ADD 1 CL-ADD 2 CL-ADD 8 CL-ADD 12 CL-ADD 13 CL-ADD
+        16 CL-ADD 30 CL-ADD exit then
+   a u s" PROT:LGROW" LINT-STR=CI if
+      0 0 CL-ADD 2 CL-ADD 8 CL-ADD 16 CL-ADD 30 CL-ADD exit then
    a u s" Laotwidgate" LINT-STR=CI if 0 11 CL-ADD exit then
    a u s" Lprotwidq" LINT-STR=CI if 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 14 CL-ADD exit then
    a u s" Lhidxadd" LINT-STR=CI if
@@ -201,7 +187,13 @@ variable RX  variable RACC
 \ to registers, fails closed via E-CLOBBER-WRAP-UNRESOLVED. C-FIND-GLOBAL is
 \ also modeled: its literal label/count arguments feed LFIND and its returned
 \ registers follow that helper's ABI.
+public
+EXPORT CL-ADD
+EXPORT E-CLOBBER-WRAP-UNRESOLVED
+;package
+
 package CLOBBER-WRAP
+using CLOBBER
 
 0 12 CL-ADD 13 CL-ADD constant GUARD-BODY   \ registers the LPROTSPAN body clobbers
 0 10 CL-ADD 11 CL-ADD constant GUARD-ABI    \ x10=addr, x11=len on return
@@ -240,9 +232,13 @@ public
    a u PROT? if GUARD-ABI exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
+;using
 ;package
 
+package CLOBBER
+
 : PSEUDO?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" prot:reserve" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-save" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-restore" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-header" LINT-STR=CI if LINT-TRUE exit then
@@ -320,6 +316,10 @@ variable RK
 : ER  ( n -- )  RR@ dup 0 >= if RMSK @ swap CL-ADD RMSK ! else drop then ;
 
 : PSEUDO-EFFECTS  {: a u :}  ( -- )
+   \ PROT:RESERVE reads the byte count in x1 and CP, preserves its LR, and
+   \ calls LGROW, whose only unpreserved register is x1.
+   a u s" prot:reserve" LINT-STR=CI if
+      0 1 CL-ADD 28 CL-ADD CL-ROR 0 1 CL-ADD CL-WOR exit then
    \ These inline registrar helpers use a fixed machine-register ABI.
    a u s" mark-save" LINT-STR=CI if
       $3FFFF 31 CL-ADD CL-ROR 0 31 CL-ADD CL-WOR exit then
@@ -430,6 +430,26 @@ variable CX  variable EX
 : C-ENSURE  {: a u :}  ( -- idx )
    a u C-FIND dup 0 >= if exit then
    drop a u C-ADD ;
+
+PTR-VARIABLE PKG-A
+variable PKG-U
+
+\ The unused tail of the name pool is scratch until C-ADD commits a name.
+: C-QUALIFIED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   PKG-U @ 0= a u s" :" CONTAINS? or if a u exit then
+   PKG-U @ u + 1+ {: size:n :}
+   size CNBUF-CAP CEND @ - > if s" clobber-lint: label store full" 1 die then
+   CNBUF CEND @ + {: dst:ptr :}
+   PKG-A @ dst PKG-U @ LINT-BMOVE
+   58 dst PKG-U @ + c!
+   a dst PKG-U @ 1+ + u LINT-BMOVE
+   dst size ;
+
+\ Bare labels prefer declarations in their current package, then globals.
+\ Explicitly qualified labels already name their owner.
+: C-LABEL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u C-QUALIFIED$ C-FIND {: idx:n :}
+   idx 0 >= if idx C-NAME else a u then ;
 : EDGE?  ( n n -- bool ) {: from to :}
    0 EX !
    begin EX @ EN# @ < while
@@ -473,6 +493,28 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
       DI @ TOK s" ;" LINT-STR= if DI @ exit then
       DI @ 1+ DI !
    repeat  DI @ ;
+
+: SCOPE-STEP ( n -- n ) {: k:n :}
+   k TOK s" ;package" LINT-STR=CI if 0 PKG-U ! k exit then
+   k TOK s" package" LINT-STR=CI 0= if k exit then
+   k 1+ TN# @ >= if s" clobber-lint: missing package name" 1 die then
+   k 1+ TOK PKG-U ! PKG-A ! k 1+ ;
+
+\ Declarations precede body analysis, including labels owned by another file.
+\ Colon bodies are skipped so emitter operands cannot declare a label.
+: DECL-FILE ( ptr u8 n -- )
+   LINT-SOURCE:LOAD LINT-SOURCE:TEXT TOKENIZE 0 PKG-U !
+   0 begin dup TN# @ < while
+      {: k:n :}
+      k TOK s" :" LINT-STR= if
+         k DEF-END 1+
+      else
+         k TOK s" variable" LINT-STR=CI k 1+ TN# @ < and if
+            k 1+ TOK START-L? if k 1+ TOK C-QUALIFIED$ C-ENSURE drop then
+         then
+         k SCOPE-STEP 1+
+      then
+   repeat drop ;
 : OPEN@  ( n -- n )  OPENINGS swap cells + @ ;
 : OPEN+  ( n -- )
    ON# @ OMAX >= if s" clobber-lint: too many labels in definition" 1 die then
@@ -497,7 +539,7 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    hi lo - 2 < if LINT-FALSE exit then
    hi 1- TOK LABEL-ACCESS? 0= if LINT-FALSE exit then
    hi 2 - TOK START-L? 0= if LINT-FALSE exit then
-   hi 2 - TOK  CALU ! CALA !  LINT-TRUE ;
+   hi 2 - TOK C-LABEL$ CALU ! CALA ! LINT-TRUE ;
 
 : ROUTINE-INIT ( n -- ) {: oi :}
    oi OPEN@ 3 + DI !
@@ -565,7 +607,7 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    lo hi COLLECT-OPENINGS
    0 OX !
    begin OX @ ON# @ < while
-      OX @ OPEN@ TOK C-ENSURE CUR !
+      OX @ OPEN@ TOK C-LABEL$ C-ENSURE CUR !
       CUR @ OX @ hi ROUTINE-SCAN
       OX @ 1+ OX !
    repeat ;
@@ -573,12 +615,14 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
 variable WI  variable WE
 : PASS1-FILE ( ptr u8 n -- ) {: pa:ptr pu:n :}
    pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT TOKENIZE
-   0 WI !
+   0 PKG-U ! 0 WI !
    begin WI @ TN# @ 1- < while
       WI @ TOK s" :" LINT-STR= if
          WI @ DEF-END WE !
          WI @ 2 + WE @ PASS1-DEF
          WE @ WI !
+      else
+         WI @ SCOPE-STEP WI !
       then
       WI @ 1+ WI !
    repeat ;
@@ -715,12 +759,65 @@ variable TRACK-LR
    CALIDX @ POISON-LINK-REGISTER
    WRAP-RETURNS APPLY-RETURNS ;
 
+: PASS2-ENTRY ( -- )
+   TRACK-LR @ if 0 30 CL-ADD else 0 then DIRTY !
+   POIS-CLEAR ;
+
+\ A direct branch names its target last, optionally through LABEL@.
+: TARGET-INDEX ( n -- n )
+   1- dup TOK LABEL-ACCESS? if 1- then ;
+
+: DIRECT-JUMP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" B," LINT-STR= if true exit then
+   a u s" BL," LINT-STR= if true exit then
+   a u s" BCOND," LINT-STR= if true exit then
+   a u s" CBZ," LINT-STR= if true exit then
+   a u s" CBNZ," LINT-STR= if true exit then
+   a u s" TBZ," LINT-STR= if true exit then
+   a u s" TBNZ," LINT-STR= ;
+
+: ENTRY-BETWEEN? ( n n n -- bool ) {: from:n dest:n hi:n :}
+   from dest max 1+ from dest min 1+ ?do
+      i hi LABEL-OPEN? if true unloop exit then
+   loop false ;
+
+\ A jump to a local join can skip a global entry, just like a qualified jump.
+\ Keep whole-definition state whenever a reference crosses an entry boundary.
+: JUMP-CROSSES? ( n n n -- bool ) {: ref:n lo:n hi:n :}
+   ref TOK C-LABEL$ {: a:ptr u:n :}
+   hi lo 1+ ?do
+      i TOK s" LBL," LINT-STR= if
+         i TARGET-INDEX {: dest:n :}
+         dest lo >= if
+            dest TOK C-LABEL$ a u LINT-STR=CI if
+               ref dest hi ENTRY-BETWEEN? if true unloop exit then
+            then
+         then
+      then
+   loop false ;
+
+: SEPARATE-ENTRIES? ( n n -- bool ) {: lo:n hi:n :}
+   hi lo ?do
+      i TOK s" BR," LINT-STR= i TOK s" BLR," LINT-STR= or if
+         false unloop exit then
+      i lo > i TOK DIRECT-JUMP? and if
+         i TARGET-INDEX {: ref:n :}
+         ref lo >= if
+            ref lo hi JUMP-CROSSES? if false unloop exit then
+         then
+      then
+   loop true ;
+
 : PASS2-DEF  {: fa fu lo hi :}  ( -- )
+   lo hi SEPARATE-ENTRIES? {: separate:bool :}
    lo hi RET-IN-RANGE? TRACK-LR !
-   TRACK-LR @ if 0 30 CL-ADD else 0 then DIRTY !  POIS-CLEAR  lo OPLO !  lo DI !
+   PASS2-ENTRY 0 LASTSTOP ! lo OPLO ! lo DI !
    begin DI @ hi < while
+      \ Split only independent entries; fall-through always retains state.
+      DI @ hi LABEL-OPEN? LASTSTOP @ and separate and if PASS2-ENTRY then
       DI @ TOK CLOBBER-WRAP:WRAP? if
          fa fu APPLY-WRAP
+         0 LASTSTOP !
          DI @ 1+ OPLO !
       else
          DI @ TOK INSTR? if
@@ -733,6 +830,7 @@ variable TRACK-LR
                DI @ TOK SYS? OPLO @ DI @ SYS-EXIT? 0= and if POISON-SYS-SCRATCH then
                DI @ TOK BLR? if s" blr" C-ENSURE POISON-LINK-REGISTER then
             then
+            DI @ TOK STOP-MN? LASTSTOP !
             DI @ 1+ OPLO !
          then
       then
@@ -740,29 +838,31 @@ variable TRACK-LR
    repeat ;
 : PASS2-FILE ( ptr u8 n -- ) {: pa:ptr pu:n :}
    pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT TOKENIZE
-   0 WI !
+   0 PKG-U ! 0 WI !
    begin WI @ TN# @ 1- < while
       WI @ TOK s" :" LINT-STR= if
          WI @ DEF-END WE !
          WI @ 1+ WORD-NAME!
          pa pu  WI @ 2 + WE @ PASS2-DEF
          WE @ WI !
+      else
+         WI @ SCOPE-STEP WI !
       then
       WI @ 1+ WI !
    repeat ;
 
 \ ---- driver ---------------------------------------------------------------
-: ALL-PASS1  ( -- )
-   0 CN# !  0 CEND !  0 EN# !
-   s" src/habu/habu1.f" PASS1-FILE  s" src/habu/habu2.f" PASS1-FILE
-   s" src/habu/jit.f" PASS1-FILE  s" src/habu/regalloc.f" PASS1-FILE
-   s" src/habu/prof.f" PASS1-FILE  s" src/habu/rt.f" PASS1-FILE
-   s" src/habu/crash.f" PASS1-FILE ;
-: ALL-PASS2  ( -- )
-   s" src/habu/habu1.f" PASS2-FILE  s" src/habu/habu2.f" PASS2-FILE
-   s" src/habu/jit.f" PASS2-FILE  s" src/habu/regalloc.f" PASS2-FILE
-   s" src/habu/prof.f" PASS2-FILE  s" src/habu/rt.f" PASS2-FILE
-   s" src/habu/crash.f" PASS2-FILE ;
+: EACH-FILE ( [ ptr u8 n -- ] -- ) {: visit :}
+   s" src/habu/habu1.f" visit execute  s" src/habu/habu2.f" visit execute
+   s" src/habu/jit.f" visit execute  s" src/habu/regalloc.f" visit execute
+   s" src/habu/prof.f" visit execute  s" src/habu/rt.f" visit execute
+   s" src/habu/crash.f" visit execute ;
+: ALL-PASS1 ( -- )
+   0 CN# ! 0 CEND ! 0 EN# !
+   [: DECL-FILE ;] EACH-FILE
+   [: PASS1-FILE ;] EACH-FILE ;
+: ALL-PASS2 ( -- )
+   [: PASS2-FILE ;] EACH-FILE ;
 : CLOBBER-LINT  ( -- )
    0 PARENS? !  CLOBBER-CENSUS:RESET  ALL-PASS1
    CLOBBER-CENSUS:PROVE  CLOSE-CLOBBERS  0 BAD !  ALL-PASS2
@@ -774,3 +874,4 @@ variable TRACK-LR
       s" clobber-lint: clean" type NL
    then ;
 CLOBBER-LINT
+;package

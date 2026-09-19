@@ -168,3 +168,98 @@ variable LINDEX-STALE
    30 SP 0 LDR,
    SP SP 16 ADDI,
    RET, ;
+
+package CLOBBER-FIX
+public
+variable LQUAL
+
+: EMIT-QUALIFIED-CALLEE ( -- )
+   LQUAL LABEL@ LBL,
+   13 0 MOVZ,
+   RET, ;
+;package
+
+package CLOBBER-FIXTURE
+variable LQUAL-CALLER
+
+: EMIT-QUALIFIED-CALLER-BAD ( -- )
+   LQUAL-CALLER LABEL@ LBL,
+   SP SP 16 SUBI,
+   30 SP 0 STR,
+   13 9 0 ADDI,
+   CLOBBER-FIX:LQUAL LABEL@ BL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,
+   SP SP 16 ADDI,
+   RET, ;
+;package
+
+package CLOBBER-FIXTURE
+variable LSEPARATE-CLOBBER
+variable LSEPARATE-READ
+variable LFALL-CLOBBER
+variable LFALL-READ
+variable LJUMP-CLOBBER
+variable LJUMP-READ
+variable LUNUSED
+variable LCOND-CLOBBER
+variable LCOND-READ
+variable LLOCAL-CLOBBER
+variable LLOCAL-SKIP
+
+\ A read in the next independent routine does not use the prior routine's
+\ poisoned value. The same read reached by fall-through must still be caught.
+: EMIT-SEPARATE-ENTRIES-OK ( -- )
+   LSEPARATE-CLOBBER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LX13-CALLEE LABEL@ BL,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET,
+   LSEPARATE-READ LABEL@ LBL,
+   4 13 0 LDRB,  RET, ;
+
+: EMIT-FALL-THROUGH-BAD ( -- )
+   LFALL-CLOBBER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LX13-CALLEE LABEL@ BL,
+   LFALL-READ LABEL@ LBL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+: EMIT-JUMP-TO-NEXT-BAD ( -- )
+   LJUMP-CLOBBER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LX13-CALLEE LABEL@ BL,
+   30 SP 0 LDR,
+   LJUMP-READ LABEL@ B,
+   LUNUSED LABEL@ LBL, RET,
+   LJUMP-READ LABEL@ LBL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+: EMIT-JUMP-PAST-RETURN-BAD ( -- )
+   LCOND-CLOBBER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LX13-CALLEE LABEL@ BL,
+   C-EQ LCOND-READ LABEL@ BCOND,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET,
+   LCOND-READ LABEL@ LBL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+: EMIT-LOCAL-JUMP-PAST-ENTRY-BAD ( -- )
+   LBL {: shared:label :}
+   LLOCAL-CLOBBER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LX13-CALLEE LABEL@ BL,
+   30 SP 0 LDR,
+   shared B,
+   LLOCAL-SKIP LABEL@ LBL, RET,
+   shared LBL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+;package

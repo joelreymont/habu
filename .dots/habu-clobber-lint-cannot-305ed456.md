@@ -1,6 +1,6 @@
 ---
 title: clobber-lint cannot see a packaged label
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-11T22:01:29.226022+02:00"
@@ -22,3 +22,26 @@ the seed's patch pass deliberately keys its gate check on the
 requested scope instead of re-reading the resolved record to
 dodge the stale LFIND x5 model. Repairing this lint unblocks
 that simplification.
+
+Claim: alder. Current measured baseline is 369 routines / 527 calls; restoring
+qualified labels yields 399 / 623. LCEMIT and PROT:LGROW save/restore masks were
+checked against EMIT-CEMIT and EMIT-PROT-GROW, and PROT:RESERVE is modeled.
+Declarations are collected before analysis, so a bare label inside its package
+and a qualified external call resolve to the same owned identity. This connects
+SNAP-RELOC and WLFIND callers that a spelling-only predicate still misses.
+WLFIND's explicit x11/x12 results and the relocation helpers' x8/x16 preservation
+on returning paths are now modeled; their syscall writes occur in fatal arms.
+
+Restored coverage also exposed PASS2 carrying LPAT's poisoned x1 past its RET
+into the unrelated LKWCMP entry. Independent entries now start fresh after a
+terminator. A direct jump crossing any entry boundary (including a local join)
+or an indirect branch keeps whole-definition state instead. No CFG or saved-state
+table was added. Fixtures pin independent entries, fall-through, qualified calls
+to bare package openings, and jumps over returns and unused entries.
+
+Validation: production clobber-lint is clean at 399 routines / 623 calls; those
+are now the census floors. The focused fixture row passes tiers 0 and 1 (32
+routines, 12 calls, 11 expected findings in the syscall/entry fixture). Mutations
+restoring the old spelling predicate, disconnecting owner resolution, or dropping
+the crossing check fail the regressions. Astra's ownership and boundary findings
+were fixed and follow-up review is clear. No engine source edits or full gate.
