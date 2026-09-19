@@ -81,7 +81,9 @@ public
 
 : RND% ( n -- n ) {: bound:n :}
    bound 0 <= if E-PROP-GENERATOR throw then
-   RND bound mod ;
+   \ Fold the high bits into the short-cycling low bits before bounding.
+   \ This permutation keeps the full 31-bit range and the seed sequence.
+   RND dup 16 rshift xor bound mod ;
 
 : BUF-CHECK-ROOM ( n -- ) {: add:n :}
    add 0 < if E-PROP-CAPACITY throw then

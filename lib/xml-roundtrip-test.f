@@ -1,6 +1,7 @@
 require lib/test.f
 require lib/xml.f
 require lib/byte-edit.f
+require lib/property.f
 
 package XML-ROUNDTRIP-TEST
 using XML
@@ -16,7 +17,6 @@ create DOCUMENT BYTE-CAP allot
 create READBACK BYTE-CAP allot
 create SINGLE 1 allot
 create RANDOM-BUF BYTE-CAP allot
-variable RANDOM-STATE
 variable TEMPLATE
 
 : ORIGINAL$ ( -- ptr u8 n )
@@ -75,16 +75,10 @@ variable TEMPLATE
       SINGLE 1 ROUNDTRIP
    loop ;
 
-\ Fixed seed makes failures reproducible; high bits avoid the LCG's short
-\ low-bit cycles. Chunks include every XML escape, whitespace normalization,
-\ multi-byte offsets, combining text, and expanding Unicode casefold inputs.
-: RANDOM ( n -- n )
-   {: bound:n :}
-   RANDOM-STATE @ 1664525 * 1013904223 + $7FFFFFFF and
-   dup RANDOM-STATE ! 8 rshift bound mod ;
-
+\ Chunks include every XML escape, whitespace normalization, multi-byte
+\ offsets, combining text, and expanding Unicode casefold inputs.
 : CHUNK$ ( -- ptr u8 n )
-   12 RANDOM case
+   12 PROP:RND% case
       0 of s" <" endof
       1 of s" &" endof
       2 of s" >" endof
@@ -101,7 +95,7 @@ variable TEMPLATE
 
 : RANDOM-VALUE$ ( -- ptr u8 n )
    0
-   32 RANDOM 1+ 0 ?do
+   32 PROP:RND% 1+ 0 ?do
       {: size:n :}
       CHUNK$ {: chunk:ptr count:n :}
       chunk RANDOM-BUF size + count BYTE-COPY
@@ -121,12 +115,12 @@ variable TEMPLATE
    \ The final 17 bytes close the root and retain its following comment.
    \ Every selected prefix stops before that close, including mid-UTF8,
    \ mid-entity, mid-attribute, and incomplete processing-instruction cuts.
-   17 - RANDOM 1+ DOCUMENT swap REJECTS ;
+   17 - PROP:RND% 1+ DOCUMENT swap REJECTS ;
 
 : RANDOM-ROUNDTRIPS ( -- )
-   $517A32D RANDOM-STATE !
+   $517A32D PROP:SEED!
    2048 0 ?do
-      4 RANDOM TEMPLATE !
+      4 PROP:RND% TEMPLATE !
       RANDOM-VALUE$ 2dup APPLY dup >r VERIFY r> RANDOM-REJECTION
    loop ;
 

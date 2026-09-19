@@ -282,29 +282,22 @@ create JWT-NAME
    [: JWT-C-HIGH ;] E-JW-BYTE TTHROWSQ
    [: JWT-U-NEG ;] E-JW-BYTE TTHROWSQ ;
 
-\ PROP:RND% takes an LCG's low bits, which cycle in step with the draws: with a
-\ power-of-two bound a fixed draw pattern locks onto a few residues and never
-\ generates whole byte classes (measured: no control byte and no quote in 2048
-\ cases). Draw from the high bits instead.
-: JWT-RND% ( n -- n ) {: bound:n :}
-   PROP:RND 8 rshift bound mod ;
-
 \ One random source string: plain ASCII, a control byte, a quote, a backslash,
 \ or a two-byte UTF-8 scalar, so every escape width is exercised.
 : JWT-RT-BYTE+ ( -- )
-   8 JWT-RND% {: pick:n :}
-   pick 0 = if 32 JWT-RND% PROP:BUF-C+ exit then
+   8 PROP:RND% {: pick:n :}
+   pick 0 = if 32 PROP:RND% PROP:BUF-C+ exit then
    pick 1 = if JW-DQ PROP:BUF-C+ exit then
    pick 2 = if JW-BACKSLASH PROP:BUF-C+ exit then
    pick 3 = if
-      30 JWT-RND% $C2 + PROP:BUF-C+
-      64 JWT-RND% $80 + PROP:BUF-C+ exit
+      30 PROP:RND% $C2 + PROP:BUF-C+
+      64 PROP:RND% $80 + PROP:BUF-C+ exit
    then
-   95 JWT-RND% 32 + PROP:BUF-C+ ;
+   95 PROP:RND% 32 + PROP:BUF-C+ ;
 
 : JWT-RT-CASE$ ( -- ptr u8 n )
    PROP:BUF-RESET
-   JWT-RT-MAX-N JWT-RND% 0 ?do JWT-RT-BYTE+ loop
+   JWT-RT-MAX-N PROP:RND% 0 ?do JWT-RT-BYTE+ loop
    PROP:BUF$ ;
 
 : JWT-RT-ENCODE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}

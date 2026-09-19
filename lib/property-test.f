@@ -42,6 +42,24 @@ require lib/property.f
       1+
    repeat drop ;
 
+create PT-PICKS 8 cells allot
+
+\ Check both adjacent draws and the fixed-stride sampling used by generators.
+\ Low-bit LCG picks cover 0..7 but repeat every eight draws.
+: PT-PICK-COVERAGE ( -- )
+   1 PROP:SEED!
+   0 0 false
+   4096 0 ?do
+      {: seen:n stride:n changed:bool :}
+      8 PROP:RND% {: pick:n :}
+      PT-PICKS i 7 and cells + {: slot:ptr :}
+      seen 1 pick lshift or
+      i 7 and 0= if stride 1 pick lshift or else stride then
+      i 8 >= if changed slot @ pick <> or else changed then
+      pick slot !
+   loop
+   TTRUE 255 T= 255 T= ;
+
 T-RESET
 
 PROP:DEFAULTS PROP:DEFAULT-COUNT T= PROP:DEFAULT-SEED T=
@@ -52,8 +70,8 @@ PROP:RND 1103527590 T=
 PROP:SEED@ 1103527590 T=
 
 1 PROP:SEED!
-10 PROP:RND% 0 T=
-8 PROP:RND% 7 T=
+10 PROP:RND% 2 T=
+8 PROP:RND% 1 T=
 
 PROP:BUF-RESET
 65 PROP:BUF-C+
@@ -90,5 +108,6 @@ PROP:BUF$ s" dup " T$=
 ' PT-BAD-SHRINK E-PROP-SHRINK TTHROWS
 
 PT-EXAMPLE-PROP
+PT-PICK-COVERAGE
 
 T-REPORT
