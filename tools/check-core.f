@@ -582,9 +582,16 @@ private
    CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
    CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
 
+: CHK-SOURCE-TOO-BIG ( -- )
+   s" check.f: source exceeds capacity" CHK-E-NOINPUT CHK-FAIL ;
+
+\ The bound is checked on the file itself: discovery sizes its own scratch to
+\ the source, so a source over CHK-SRC-CAP no longer refuses there, and the
+\ later read into the source buffer sits outside CHK-MATERIALIZE's catch.
 : CHK-MATERIALIZE-FILE ( -- )
    0 CHK-POS$ CHK-LABEL!
    CHK-LABEL FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   CHK-LABEL FILE-SIZE CHK-SRC-CAP > if CHK-SOURCE-TOO-BIG then
    CHK-EXPAND-RESET
    CHK-LABEL CHK-EXPAND-PATH
    CHK-LABEL CHK-SOURCE! ;
@@ -620,9 +627,6 @@ private
       1+
    repeat drop
    CHK-WRITE-EXPANDED-SOURCE ;
-
-: CHK-SOURCE-TOO-BIG ( -- )
-   s" check.f: source exceeds capacity" CHK-E-NOINPUT CHK-FAIL ;
 
 public
 
