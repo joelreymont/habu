@@ -1,9 +1,11 @@
 ---
 title: FS-WRITE-BY-FLAGS leaks the fd on refusal
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-08-22T22:38:25.921224+02:00"
+closed-at: "2026-09-20T04:39:53.067354+03:00"
+close-reason: "landed 93c7ed6f (alder: FS-WRITE-BY-FLAGS closes the descriptor before the post-open E-FS-OPEN; the pre-open guard stays; a 4000-call raced WRITE/APPEND fixture pinned the leaked fd before), gate DH 461/461, integrated 93c7ed6f (engine unchanged)"
 ---
 
 Problem: lib/fs.f:311-314 checks FILE? before open and again after it; the second check throws E-FS-OPEN past the open fd, so every WRITE-ALL/APPEND-FILE on a fifo, device, or a path raced into a directory leaks one descriptor; the runner and gate pools call these in loops. Acceptance: close FS-IO-FD before the throw (the shape two lines below), drop the pre-open duplicate; a test writes to a fifo path and asserts the fd count unchanged. Files: lib/fs.f, lib/fs-test.f. Verify: the test. Depends: none. Ownership: fs. Claim: unassigned (released 2026-08-23; see the correction below).
