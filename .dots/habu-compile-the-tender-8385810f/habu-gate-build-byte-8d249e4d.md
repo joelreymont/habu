@@ -1,9 +1,11 @@
 ---
-title: "Check same-source build identity in the existing chain tool"
-status: active
+title: Check same-source build identity in the existing chain tool
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-12T18:19:40.670747+03:00"
+closed-at: "2026-09-20T04:24:27.914635+03:00"
+close-reason: "landed d8175ae0 (alder: tools/two-generation-core.f with --same-host and --compare, first-difference offset and its .names owner; clean same-host pair byte-identical, a deliberately varied driver refuses at offset 5852), gate DG 461/461, integrated d8175ae0 (engine unchanged)"
 blocks:
   - habu-let-the-chain-9fe66f8e
   - habu-build-the-compiler-c348eab0
