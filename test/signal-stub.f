@@ -20,17 +20,17 @@ require lib/string.f
 require lib/test.f
 require lib/process.f
 require lib/ffi-abi.f
+require lib/signal.f
 require src/habu/layout.f
 
 package SIGNAL-STUB-TEST
 private
 
-\ glibc's struct sigaction on aarch64: sa_handler, then the 128-byte mask, the
-\ flags and the restorer. Only offset zero is spelled here - the handler - and
-\ the rest of the record is zeroed, which is an empty mask and no flags.
-152 constant SA-BYTES
-10 constant SIGUSR1
-12 constant SIGUSR2
+\ Both supported aarch64 hosts put sa_handler at offset zero. Reserve the
+\ larger record, as lib/signal.f does; the rest is an empty mask and no flags.
+$98 constant SA-LINUX-BYTES
+$10 constant SA-MACOS-BYTES
+SA-LINUX-BYTES SA-MACOS-BYTES max constant SA-BYTES
 4 constant SIGNO-BYTES
 
 create SA-ACT SA-BYTES allot
@@ -145,7 +145,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
 
 : ABSORBED-CASE ( -- )
    0 FD!
-   SIGUSR1 RAISE
+   SIGNAL:SIGUSR1 RAISE
 
    s" a signal delivered with the fd word clear writes nothing" T-LABEL
    0 PIPE-READ SIGNO-BYTES < TTRUE
@@ -161,13 +161,13 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
    s" the fd word holds the descriptor stored through the published pointer" T-LABEL
    FD@ PIPE-W @ T=
 
-   SIGUSR2 RAISE
+   SIGNAL:SIGUSR2 RAISE
 
    s" a signal delivered with the fd word armed reaches the pipe" T-LABEL
    1000 PIPE-READ SIGNO-BYTES T=
 
    s" ... as the four-byte number of the signal that was raised" T-LABEL
-   SIGNO-BUF@ SIGUSR2 T=
+   SIGNO-BUF@ SIGNAL:SIGUSR2 T=
 
    s" and it wrote that number once, not once per delivery" T-LABEL
    0 PIPE-READ SIGNO-BYTES < TTRUE ;
@@ -188,8 +188,8 @@ public
    PUBLISHED-CASE
    BAND-CASE
    OPEN-PIPE
-   SIGUSR1 INSTALL-STUB
-   SIGUSR2 INSTALL-STUB
+   SIGNAL:SIGUSR1 INSTALL-STUB
+   SIGNAL:SIGUSR2 INSTALL-STUB
    ABSORBED-CASE
    DELIVERED-CASE
    CLOSE-PIPE
