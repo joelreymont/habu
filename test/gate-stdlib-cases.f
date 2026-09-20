@@ -217,6 +217,10 @@ SUITE compiler-native-string-forms
    test/compiler/native-string-forms.f
 ;SUITE
 
+SUITE compiler-native-colon
+   test/compiler/native-colon.f
+;SUITE
+
 SUITE compiler-native-hir
    test/compiler/native-hir.f
 ;SUITE
