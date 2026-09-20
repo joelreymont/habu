@@ -485,10 +485,17 @@ public
 \ beneath them inherit the entry directory as their primary root.
 : ENTRY-RESOLVE ( ptr u8 n -- ptr u8 n bool )
    REQUEST!
-   CWD$ INCLUDE-TRUE CANDIDATE drop
-   {: known:bool :}
-   2dup DIRNAME OWNER!
-   known ;
+   CWD$ INCLUDE-TRUE CANDIDATE
+   {: path:ptr pathu:n known:bool exists:bool :}
+   exists if
+      path pathu DIRNAME OWNER!
+   else
+      \ A missing command-line path may sit below a dangling directory
+      \ symlink. Its canonical parent is not a usable WITH root; keep the
+      \ invocation root so INCLUDE-OPEN can report the path it could not open.
+      CWD$ OWNER!
+   then
+   path pathu known ;
 
 \ Every boot row is portable now: each prefix that records one opens the
 \ registry first, with REQUIRE-BOOT-OPEN as a source token (src/habu/habu2.f

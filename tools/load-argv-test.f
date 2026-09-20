@@ -39,6 +39,8 @@ create LA-PROBE  FS-PATH-CAP allot
 create LA-THROW  FS-PATH-CAP allot
 create LA-DECOY  FS-PATH-CAP allot
 create LA-MISS   FS-PATH-CAP allot
+create LA-DANGLING FS-PATH-CAP allot
+create LA-DANGLING-LINK FS-PATH-CAP allot
 create LA-OUT    LA-CAP allot
 create LA-ERR    LA-CAP allot
 
@@ -47,12 +49,16 @@ variable LA-PROBE-U
 variable LA-THROW-U
 variable LA-DECOY-U
 variable LA-MISS-U
+variable LA-DANGLING-U
+variable LA-DANGLING-LINK-U
 
 : LA-ROOT$ ( -- ptr u8 n )    LA-ROOT LA-ROOT-U @ ;
 : LA-PROBE$ ( -- ptr u8 n )   LA-PROBE LA-PROBE-U @ ;
 : LA-THROW$ ( -- ptr u8 n )   LA-THROW LA-THROW-U @ ;
 : LA-DECOY$ ( -- ptr u8 n )   LA-DECOY LA-DECOY-U @ ;
 : LA-MISS$ ( -- ptr u8 n )    LA-MISS LA-MISS-U @ ;
+: LA-DANGLING$ ( -- ptr u8 n ) LA-DANGLING LA-DANGLING-U @ ;
+: LA-DANGLING-LINK$ ( -- ptr u8 n ) LA-DANGLING-LINK LA-DANGLING-LINK-U @ ;
 
 \ The probe both proves the run reached user source AND proves the seeded
 \ module is usable, so a case cannot pass by loading nothing at all.
@@ -78,6 +84,9 @@ variable LA-MISS-U
    LA-ROOT$ s" thrower.f" LA-THROW JOIN-PATH LA-THROW-U !
    LA-ROOT$ s" decoy.f"   LA-DECOY JOIN-PATH LA-DECOY-U !
    LA-ROOT$ s" missing.f" LA-MISS  JOIN-PATH LA-MISS-U !
+   LA-ROOT$ s" lib/test.f" LA-DANGLING JOIN-PATH LA-DANGLING-U !
+   LA-ROOT$ s" lib" LA-DANGLING-LINK JOIN-PATH LA-DANGLING-LINK-U !
+   s" missing-lib" LA-DANGLING-LINK$ MAKE-SYMLINK
    LA-PROBE$ LA-PROBE-SRC$ WRITE-ALL
    LA-THROW$ LA-THROW-SRC$ WRITE-ALL
    LA-DECOY$ LA-DECOY-SRC$ WRITE-ALL ;
@@ -144,6 +153,19 @@ variable LA-MISS-U
    erru LA-ERR$ LA-MISS$ CONTAINS? TTRUE
    erru LA-ERR$ s" cannot open" CONTAINS? TTRUE ;
 
+\ A command-line path below a dangling directory symlink used to fail while
+\ canonicalizing the invocation root, before INCLUDE-OPEN could render its
+\ path. The refusal still names the exact requested path.
+: LA-DANGLING-PATH-NAMED ( -- )
+   LA-ARGV0  LA-DANGLING$ LA-ARG
+   LA-RUN {: outu:n erru:n rc:n :}
+   s" a --load path below a dangling symlink exits 74" T-LABEL
+   rc 74 T=
+   s" a dangling-symlink --load path is named on stderr" T-LABEL
+   erru LA-ERR$ LA-DANGLING$ CONTAINS? TTRUE
+   s" a dangling-symlink --load path keeps the open diagnostic" T-LABEL
+   erru LA-ERR$ s" cannot open" CONTAINS? TTRUE ;
+
 \ Nesting each argv file in its own evaluate must not reshape an uncaught
 \ throw: same line, same status as before the change.
 : LA-THROW-SHAPE ( -- )
@@ -163,6 +185,7 @@ public
    LA-REPEATED-PATH-OK
    LA-UNSEEDED-PATH-LOADS
    LA-MISSING-PATH-NAMED
+   LA-DANGLING-PATH-NAMED
    LA-THROW-SHAPE
    CLEANUP-RUN
    T-REPORT
