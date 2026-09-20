@@ -805,11 +805,10 @@ This is the method for "what does the build spend its time on". `strace -c` and
 compiled for itself, because it is all one anonymous mapping. The build's own
 phase timers still go to stdout, so they sit beside the profile.
 
-It is not a replacement for `tools/native-build.f`. The self-build is byte
-reproducible for an identical driver and only for that — adding a single
-`require lib/fs.f` to `native-build.f` moves the same baked constant this tool
-moves. The engine it writes is valid and passes the suites, but ship the one
-`tools/native-build.f` produced.
+For the same source tree and host, its product is byte-identical to
+`tools/native-build.f`. Capture stores DATA addresses in window coordinates,
+and symbol-table growth clears retired storage, so the profiler's own DATA
+allocations do not enter the artifact.
 
 A caller line's share is of the row's own denominator: the exclusive count in the
 flat section, where the edges come from, and the inclusive count in the inclusive

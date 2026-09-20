@@ -80,3 +80,11 @@ The sparse DATA expansion in /tmp/alder-capture-data/data-diff.f identifies only
 this owner. Native/profile run bytes are 975,616/975,628. Hazel released zeroing
 the retired table in SYM-GROW as a separate commit after this coordinate repair;
 the dot stays open until the combined equality and gates pass.
+
+Combined proof with 956d2e08: native, profile, gen2 and gen3 are byte-identical
+at e9d37e79bf90193f96231b3b5d1b6138eaa68ece18d2c1a72e5ea9d0e608913a,
+4,063,424 bytes. All 72 complete owning/reader/AOT/stripped/whitebox registry
+rows passed, plus the exact matrix and check-only bootstrap; build-fixpoint's
+install --force fixture is deferred to Hazel's serial gate. Both commits have
+clear independent Astra xhigh review. /tmp/alder-symbol-retire carries the
+private products and logs. Awaiting Hazel's DI full gate and integration.

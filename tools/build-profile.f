@@ -12,12 +12,9 @@
 \ phase timers still go to stdout, so they sit beside the profile rather than
 \ being replaced by it.
 \
-\ IT IS NOT A REPLACEMENT FOR tools/native-build.f. The self-build is byte
-\ reproducible for an identical driver and only for that: adding a single
-\ `require lib/fs.f` to native-build.f moves the same constant in (LP2VEXEC)
-\ that this tool moves, measured on this tree. The engine this writes is valid
-\ and passes the suites - it is the profile that is the point - but ship the one
-\ tools/native-build.f produced.
+\ Its product is byte-identical to tools/native-build.f for the same tree and
+\ host: capture stores window coordinates, and retired symbol storage is zeroed
+\ when it grows. The profiler's own DATA allocations do not enter the artifact.
 \
 \ WHY IT DOES NOT `include tools/native-build.f`. That file ends in
 \ NATIVE-BUILD:RUN, which ends in `die`, which is an unconditional exit_group:

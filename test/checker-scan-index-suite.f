@@ -493,9 +493,18 @@ SCX-DIFF-TFAM 0 T=
       IX @ 1 + IX !
    REPEAT ;
 
+PTR-VARIABLE RETIRED-SYMS
+variable RETIRED-SYMS-U
+TRUSTED: SCX-SYM-STORAGE ( -- ptr u8 n ) SYMS-P @ SYM-CAP SYM-REC * ;
+: SCX-ZERO? ( ptr u8 n -- bool ) {: base:ptr size:n :}
+   size 0 ?do base i + c@ 0<> if false unloop exit then loop true ;
+
+SCX-SYM-STORAGE RETIRED-SYMS-U ! RETIRED-SYMS !
+RETIRED-SYMS @ RETIRED-SYMS-U @ SCX-ZERO? TFALSE
 SCX-SYM-CAP IX !
 IX @ 1 + SCX-FILL-SYMS
 SCX-SYM-CAP IX @ > TTRUE                       \ the symbol table really did grow
+RETIRED-SYMS @ RETIRED-SYMS-U @ SCX-ZERO? TTRUE  \ no dead pointers enter a capture
 SCX-DIFF-ALL                                   \ ... and every index answers at the new cap
 
 \ the answers pinned in section 1 survive the rebuild

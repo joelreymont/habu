@@ -5211,7 +5211,10 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 \ the HIDX mapping so the next lookup rebuilds — rehashes — at the new cap/mask.
 : SYM-GROW ( n -- ) {: need:n :}
    need SYM-CAP-NEXT {: nc:n :}
-   SYMS-P @ SYM-CAP-V @ SYM-REC * nc SYM-REC * ARENA-BYTES-GROW SYMS-P !
+   SYMS-P @ SYM-CAP-V @ SYM-REC * nc SYM-REC * ARENA-BYTES-GROW
+   \ The copied table is retired; its old pointers must not enter image DATA.
+   SYMS-P @ CELL-VIEW 0 SYM-CAP-V @ SYM-REC * CELL / ARENA-CELLS-ZERO
+   SYMS-P !
    nc SYM-CAP-V !
    HIDX-MEM-CLEAR   0 HIDX-VALID !
    HIDX-EPOCH+ ;
