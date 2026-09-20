@@ -406,7 +406,7 @@ TYPED-VARIABLE FS-ENT ptr u8
    pa pu EXISTS? if pa pu FILE? 0= if E-FS-OPEN throw then then
    pa pu FS-PATHZ flags FS-MODE-0644 open FS-IO-FD !
    FS-IO-FD @ 0 < if E-FS-OPEN throw then
-   pa pu FILE? 0= if E-FS-OPEN throw then
+   pa pu FILE? 0= if FS-IO-FD @ close E-FS-OPEN throw then
    0 FS-IO-OFF !
    begin FS-IO-OFF @ u < while
       FS-IO-FD @ src FS-IO-OFF @ + u FS-IO-OFF @ - write FS-IO-WR !
