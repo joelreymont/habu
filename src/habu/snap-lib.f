@@ -5,9 +5,9 @@
 \ to prepare checker/include state and call the writer's `PERSIST`.
 \
 \ Everything here belongs to package SNAP. The only word an entry file needs is
-\ the public `SNAP:PERSIST`; `SNAP:INSTALL-HOOK` is the audited trusted entry
-\ that freezes the verify-on-definition hook into an emitted image. The writer
-\ state and the scratch-copy machinery stay package-private.
+\ the public `SNAP:PERSIST`. The live LOWER-CERT-HOOK installed by the core
+\ prefix survives capture and restore; the writer does not replace it. Writer
+\ state and scratch-copy machinery stay package-private.
 \
 \ The entry is `SNAP:PERSIST` - it builds the header, canonicalises the two
 \ regions and writes the image, then exits. The tail is deliberately not `GO`:
@@ -397,13 +397,6 @@ package SNAP
    SNAP-DROP
    WRITE-BYTES ;
 
-\ Freeze the verify-on-definition hook into the emitted image: hb is fully
-\ loaded, so a typed def in its REPL is checked against its sig.
-\ Retirement: CHECK-HOOK under cap:checker-hook-identity;
-\ INSTALL-HOOK under habu-builder-trust-rows-c5d41af6.
-TRUSTED: CHECK-HOOK ( ptr u8 n -- n )
-   CHECK! dup -1 <> IF 70 throw THEN ;
-
 public
 
 : PATH! ( ptr u8 n -- ) {: path:ptr size:n :}
@@ -429,9 +422,5 @@ public
    WRITE-IMAGE
    OUT-PATH CODESIGN:ENSURE
    DRV-EXIT-OK ;
-
-TRUSTED: INSTALL-HOOK ( -- )
-   LOWER-CERT-HOOK:INSTALL
-   ['] CHECK-HOOK set-check ;
 
 ;package

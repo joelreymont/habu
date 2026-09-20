@@ -8,7 +8,7 @@ package HOOK-SITES
 
 private
 
-10 constant ROW-N
+9 constant ROW-N
 
 0 constant KIND-CHECK
 1 constant KIND-TOP
@@ -18,15 +18,14 @@ private
    k ROW-N >= if E-TBL-BOUNDS throw then
    k case
       0 of s" src/core/check-hook.f" s" HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
-      1 of s" src/habu/snap-lib.f" s" CHECK-HOOK" s" builder-emit" s" cap:checker-hook-identity" KIND-CHECK endof
-      2 of s" test/compile-preflight-recovery.f" s" CPR-HOOK" s" test-metaprog" s" cap:checker-hook-identity" KIND-CHECK endof
-      3 of s" test/engine-suite.f" s" ES-VERDICT-HOOK" s" test-metaprog" s" cap:checker-hook-identity" KIND-CHECK endof
-      4 of s" test/prop-test-core.f" s" PROP-CHECK-HOOK" s" test-metaprog" s" cap:checker-hook-identity" KIND-CHECK endof
-      5 of s" tools/check-core.f" s" CHK-CHECK-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
-      6 of s" tools/codegen-role.f" s" CGR-HOOK" s" test-metaprog" s" cap:checker-hook-identity" KIND-CHECK endof
-      7 of s" tools/lint/text.f" s" LINT-CHECK-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
-      8 of s" src/core/top-row.f" s" TR-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-TOP endof
-      9 of s" test/top-row-hook-test.f" s" TRH-LOG" s" test-metaprog" s" cap:checker-hook-identity" KIND-TOP endof
+      1 of s" test/compile-preflight-recovery.f" s" CPR-HOOK" s" test-metaprog" s" cap:checker-hook-identity" KIND-CHECK endof
+      2 of s" test/engine-suite.f" s" ES-VERDICT-HOOK" s" test-metaprog" s" cap:checker-hook-identity" KIND-CHECK endof
+      3 of s" test/prop-test-core.f" s" PROP-CHECK-HOOK" s" test-metaprog" s" cap:checker-hook-identity" KIND-CHECK endof
+      4 of s" tools/check-core.f" s" CHK-CHECK-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
+      5 of s" tools/codegen-role.f" s" CGR-HOOK" s" test-metaprog" s" cap:checker-hook-identity" KIND-CHECK endof
+      6 of s" tools/lint/text.f" s" LINT-CHECK-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-CHECK endof
+      7 of s" src/core/top-row.f" s" TR-HOOK" s" stdlib-boundary" s" cap:checker-hook-identity" KIND-TOP endof
+      8 of s" test/top-row-hook-test.f" s" TRH-LOG" s" test-metaprog" s" cap:checker-hook-identity" KIND-TOP endof
       drop E-TBL-BOUNDS throw
    endcase ;
 

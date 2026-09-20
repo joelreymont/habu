@@ -311,6 +311,10 @@ variable BAND-WID
    s" restored compiler accepts a fresh type and existing nominal signatures" T-LABEL
    PROBE-DECLARE$ WARM-STDIN
    EXITED @ TTRUE RC @ 0 T= PARSE-OUT 42 T=
+   s" restored default hook refuses a mismatched stack effect" T-LABEL
+   s" : BAD-EFFECT ( n -- n ) drop ;" WARM-STDIN
+   EXITED @ TTRUE RC @ 70 T=
+   ERR$ s" hook: non-certified definition: bad-effect" CONTAINS? TTRUE
    s" restored compiler retains current and prior literal row ownership" T-LABEL
    s" require test/compiler/native-string.f" WARM-STDIN
    EXITED @ TTRUE RC @ 0 T= ERR-U @ 0 T=
