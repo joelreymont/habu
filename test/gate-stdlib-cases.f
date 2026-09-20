@@ -221,6 +221,10 @@ SUITE compiler-native-colon
    test/compiler/native-colon.f
 ;SUITE
 
+SUITE compiler-native-suite-orphans
+   tools/native-suite-orphan-test.f
+;SUITE
+
 SUITE compiler-native-hir
    test/compiler/native-hir.f
 ;SUITE
