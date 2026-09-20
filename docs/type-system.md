@@ -201,12 +201,14 @@ in short private words.
 occupies several stack cells. The checker tracks the whole bundle, and two
 rules follow from that:
 
-- A multi-cell value **cannot be bound to a typed local**. Writing
-  `{: p:pair :}` for a `STRUCTURE pair` is rejected with `unknown type
-  'p:pair' in signature`, exit 70. Consume it straight off the stack with
-  `UNMAKE` or `MATCH` instead, deepest field first. Single-cell families are
-  fine in locals — `{: tok:cfg-proof :}` and `{: dt:MAKI:datatype :}` both appear
-  throughout `maki/infer/gpt2-config.f`.
+- A non-linear multi-cell value binds **whole** to a local: `{: p :}` infers
+  its type and `{: p:pair :}` asserts it. Every reference reloads every cell.
+  An annotation uses the signature type grammar, including nested families
+  and the definition's own type variables: `( opt<a> -- opt<a> )
+  {: o:opt<a> :} o`. Wrong families, arguments and arities are refused.
+  Keep a value whole while passing it between words; use `UNMAKE` or `MATCH`
+  when its fields participate in the computation. The runtime and refusal
+  cases are in `test/wide-typed-local-probe.f`, run at both tiers.
 - A word that returns a multi-cell value **cannot be called at the interpreter
   prompt**. The interpreter would shuffle one physical cell of a multi-cell
   bundle without knowing it, so such words are marked at definition time and
@@ -382,11 +384,11 @@ input's value rather than its type, so it has no signature. It is not merely
 uncheckable — it does not resolve at all; a body naming it fails to load with
 `E-UNDEFINED`. Branch on an explicit comparison instead.
 
-**Multi-cell and linear values cannot live in locals.** Both refusals are
-correct (§ 5, § 6), but together they push some code into stack discipline that
-reads worse than it should. The factoring idioms in `docs/forth.md` are the
-answer for now: when the juggling gets deep, the real fix is almost always
-another small word whose entry consumes the bundle.
+**Linear values still cannot live in locals.** Wide and parametric local
+bindings are supported (§ 5); the linear-owner refusal in § 6 remains.
+`test/engine-suite.f` rejects even a local referenced exactly once
+(`CBAD-OWN-LOCAL-ONCE`). Keep an owner on the stack and factor a consumer when
+its fields need processing.
 
 ## 10. Declared memory records
 
@@ -1020,9 +1022,10 @@ inside the buffer. `n` is worse than `cell` here: it is the universal integer, s
 word in the file is declared over it. Closing the widening itself belongs to the
 checker (the campaign's band 3), not to a declaration.
 
-The mint is strict in the direction that matters: `( ptr u8 n -- span<cell> )
-SPAN:MAKE` is refused, while `( ptr cell n -- span<u8> )` certifies — a byte
-view of a cell buffer with a byte reach, which is sound.
+The mint follows the same widening: `( ptr u8 n -- span<cell> ) SPAN:MAKE`
+certifies, while `( ptr cell n -- span<u8> )` is refused. The `STW-MINT` and
+`STW-MINT2` cases in `lib/span-test.f` pin both directions. Use `SPAN:BYTES`
+for an explicit byte view of a cell span.
 
 **One audited crossing.** `SPAN:MAKE ( ptr t n -- span<t> )` is where an address
 and a number become a reach, and it takes that reach on the caller's word: the
@@ -1051,12 +1054,12 @@ storage boundary (`src/core/layout-buffer.f`). A span over a nominal element is
 already reachable — hand a `TYPED-BUFFER` accessor result to `SPAN:MAKE`, which
 is how `lib/span-test.f` builds its `span<NUM:index>`.
 
-An open instantiation (`span<a>`) cannot be captured in a local or duplicated:
-an unresolved argument may still turn out to be linear, so the checker refuses to
-transport the bundle until whole-bundle linear accounting lands. The generic
-narrowings therefore park the scalar on the return stack and unmake the bundle
-where it stands; closed instantiations (`span<u8>`, `span<cell>`) transport
-normally.
+An open instantiation (`span<a>`) can be bound to a local and duplicated: its
+argument occurs only as a pointee, so every instance occupies the same two
+cells and carries no linear owner. `lib/span-test.f`'s `T-OPEN-TRANSPORT` pins
+both operations. A family whose width depends on an unresolved argument still
+has a conservative one-cell representation. The generic narrowings use the
+return stack deliberately to avoid a local frame, as `lib/span.f` explains.
 
 **Cost.** Summing 4096 bytes, 200 passes, aarch64, engine `7c8b9db7`: `SPAN:U8@`
 24 ns/byte, the same loop with a hand-written bounds check 17 ns/byte, a bare
