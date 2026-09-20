@@ -93,6 +93,23 @@ variable PID
 : EXPECT ( ptr u8 n -- )
    WAIT-FOR TTRUE ;
 
+\ A redraw while echoing the input already contains a prompt. Completion
+\ requires a prompt after the answer, using the same predicate in the wait
+\ and the live echo regression below.
+: PROMPT-READY? ( ptr u8 n -- bool )
+   s" habu> " AFTER? ;
+
+: WAIT-PROMPT ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   WAIT-BUDGET-MS WAIT-OPEN
+   begin
+      a u PROMPT-READY? if true exit then
+      WAIT-LEFT 0= if false exit then
+      MASTER-FD READ-STEP 0 < if a u PROMPT-READY? exit then
+   again ;
+
+: PROMPT-AFTER ( ptr u8 n -- )
+   WAIT-PROMPT TTRUE ;
+
 \ Wait for a marker and close an absence claim's window at its end. The marker
 \ has to be one the child prints PAST the point where the rejected text could
 \ have appeared; a failed wait leaves no window, so the claim behind it is
@@ -111,12 +128,6 @@ variable PID
 
 : REJECT ( ptr u8 n -- )
    WINDOW-ABSENT? TTRUE ;
-
-: EXPECT-OK ( -- )
-   s"  ok" EXPECT ;
-
-: EXPECT-PROMPT ( -- )
-   s" habu> " EXPECT ;
 
 : CAPTURE-PIPES ( -- )
    PIPE-PAIR IN-W ! IN-R !
@@ -171,8 +182,7 @@ variable PID
    MFD-DRAIN ;
 
 : PTY-PROMPT ( -- )
-   s"  ok" EXPECT
-   s" habu> " EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 \ --- the two boot modes must enumerate ONE dictionary --------------------------
 \ Dot habu-decide-arm-the-5234727b (USER RULING 2026-08-11: one dictionary surface
@@ -236,14 +246,12 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 : PTY-ARITH ( -- )
    s" 1 2 + ." STEP-LN
    s" 3" EXPECT
-   s"  ok" EXPECT
-   s" habu> " EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-UNKNOWN ( -- )
    s" frobnicate" STEP-LN
    s" E-UNDEFINED: frobnicate" EXPECT
-   s" ?" EXPECT
-   s" habu> " EXPECT
+   s" ?" PROMPT-AFTER
    PROBE-BARRIER
    s"  ok" REJECT ;
 
@@ -259,8 +267,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 \ habu-habu-certified-words-84e84eaf).
 : PTY-UNDERDEPTH ( -- )
    s" SQ" STEP-LN
-   s" hb: interpret stack underdepth: SQ" EXPECT
-   s" habu> " EXPECT
+   s" hb: interpret stack underdepth: SQ" PROMPT-AFTER
    PROBE-BARRIER
    s"  ok" REJECT
    s" 6 SQ ." STEP-LN
@@ -279,7 +286,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    s" garbage" SEND
    3 SEND-BYTE
    MFD-DRAIN
-   s" habu> " EXPECT
+   s" garbage" PROMPT-AFTER
    PROBE-BARRIER
    s" garbage?" REJECT ;
 
@@ -349,8 +356,7 @@ variable PTY-LONG-U
 : PTY-LINE-CAP-REFUSED ( -- )
    PTY-LONG-BUILD
    PTY-LONG$ STEP-LN
-   s" hb: repl line over 255 bytes: 291 typed" EXPECT
-   s" habu> " EXPECT
+   s" hb: repl line over 255 bytes: 291 typed" PROMPT-AFTER
    PROBE-BARRIER
    s"  ok" REJECT ;                            \ refused, so the line never ran
 
@@ -610,8 +616,7 @@ variable PTY-LONG-U
 
 : PTY-THROW-LINE ( -- )
    s" 99 throw" STEP-LN
-   s" ?" EXPECT
-   s" habu> " EXPECT
+   s" ?" PROMPT-AFTER
    PROBE-BARRIER
    s"  ok" REJECT ;
 
@@ -633,8 +638,7 @@ variable PTY-LONG-U
 
 : PTY-COMPILE-RECOVER ( -- )
    s" : PRDUP ( -- ) ;" STEP-LN
-   s" duplicate definition: PRDUP" EXPECT
-   s" habu> " EXPECT
+   s" duplicate definition: PRDUP" PROMPT-AFTER
    PROBE-BARRIER
    s"  ok" REJECT ;
 
@@ -657,8 +661,7 @@ variable PTY-LONG-U
 \ the next define lands global and runs.
 : PTY-PKGSCOPE-FAIL ( -- )
    s" package PRP public : PRFOO ( -- ) NOPEWORD ;" STEP-LN
-   s" E-UNDEFINED: NOPEWORD" EXPECT
-   s" habu> " EXPECT
+   s" E-UNDEFINED: NOPEWORD" PROMPT-AFTER
    PROBE-BARRIER
    s"  ok" REJECT ;
 
@@ -697,6 +700,22 @@ variable PTY-LONG-U
    PTY-REJECT-UNBARRIERED
    PTY-REJECT-CATCHES ;
 
+\ Without Enter the child can echo and redraw, but cannot have evaluated the
+\ line. Its decimal answer is absent from the hex input. This pins both sides
+\ of the wait: the echo prompt is insufficient; the prompt after evaluation is.
+: PTY-PROMPT-ORDER ( -- )
+   MFD-DRAIN BUF-CLEAR
+   s" $BEEF ." SEND
+   s" habu> $BEEF ." EXPECT
+   0 s" habu> $BEEF ." FIND-FROM {: echo:n :}
+   echo 0 >= TTRUE
+   s" 48879" PROMPT-READY? 0= TTRUE
+   10 SEND-BYTE
+   s" 48879" PROMPT-AFTER
+   0 s" 48879" FIND-FROM {: answer:n :}
+   echo answer < TTRUE
+   s" 48879" s" habu> " FIND-AFTER answer > TTRUE ;
+
 : PTY-THROW-RECOVERY ( -- )
    PTY-THROW-LINE
    PTY-THROW-AFTER ;
@@ -707,14 +726,12 @@ variable PTY-LONG-U
 \ empty-line EOF instead, never becomes a key, and leaves the child waiting for
 \ one that never comes -- with the harness waiting on its exit, that is a hang,
 \ not a failure. Only REDRAW prints the prompt and only after RAW-ON, so a
-\ prompt printed after the buffer was cleared is proof that the editor holds
-\ the terminal. The key that asks for one is DEL: in the editor it deletes
-\ nothing from an empty line and redraws, and in canonical mode it is VERASE
-\ over an empty buffer, so neither mode can act on it or read it as a signal.
+\ prompt after a completed probe is proof that the editor holds the terminal.
+\ The ordered wait cannot be satisfied by the probe's echoed input.
 : PTY-EDITOR-READY ( -- )
    BUF-CLEAR
-   127 SEND-BYTE
-   s" habu> " EXPECT ;
+   PROBE-BARRIER
+   s" 48879" PROMPT-AFTER ;
 
 : PTY-STOP-HB ( -- )
    PTY-EDITOR-READY
@@ -788,6 +805,7 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
    PTY-START-HB
    PTY-PROMPT
    PTY-SEED-SURFACE                  \ FIRST at the prompt: before any case types a definition
+   PTY-PROMPT-ORDER
    PTY-ARITH
    PTY-UNKNOWN
    PTY-SQUARE
