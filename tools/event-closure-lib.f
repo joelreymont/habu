@@ -186,6 +186,11 @@ public
 
 : PATH$ ( n -- ptr u8 n )   EC-PATH$ ;
 
+\ Identity within the root that resolved this member; PATH$ still names the
+\ actual file to read, including a dependency found through a fallback root.
+: NAME$ ( n -- ptr u8 n ) {: i:n :}
+   i EC-PATH$ i EC-ROOT$ RELATIVE ;
+
 : BUILD ( ptr u8 n -- ) {: a:ptr u:n :}
    RESET
    a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-ADD

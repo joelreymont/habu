@@ -447,6 +447,28 @@ create CKT-BADCACHE FS-PATH-CAP allot
    repeat drop
    0 FOLD-FILL 0 T= ;
 
+: CKT-LOGICAL-NAME ( -- )
+   CACHE-CLEAR!
+   CKT-CACHE$ CACHE-PATH!
+   CKT-ROOT$ s" copy.f" CKT-BUILD JOIN-PATH {: copyu:n :}
+   CKT-SRC$ s" first" WRITE-ALL
+   CKT-SRC$ CKT-BUILD copyu COPY-FILE-STREAM
+   OPEN CKT-SRC$ s" source.f" FILE-NAMED+ CKT-KEY1 FINAL-HEX
+   OPEN CKT-BUILD copyu s" source.f" FILE-NAMED+ CKT-KEY2 FINAL-HEX
+   s" one logical name and content ignore the physical location" T-LABEL
+   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$=
+   OPEN CKT-BUILD copyu s" renamed.f" FILE-NAMED+ CKT-KEY2 FINAL-HEX
+   s" different logical names remain different inputs" T-LABEL
+   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$<>
+   CKT-BUILD copyu s" second" WRITE-ALL
+   OPEN CKT-BUILD copyu s" source.f" FILE-NAMED+ CKT-KEY2 FINAL-HEX
+   s" the named file is still read from its physical path" T-LABEL
+   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$<>
+   OPEN CKT-SRC$ FILE+ CKT-KEY1 FINAL-HEX
+   OPEN CKT-SRC$ CKT-SRC$ FILE-NAMED+ CKT-KEY2 FINAL-HEX
+   s" FILE+ retains its path-as-name contract" T-LABEL
+   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$= ;
+
 : CKT-MAIN ( -- )
    T-RESET
    CKT-FOLD-OVERLAP-MATCHES
@@ -465,6 +487,7 @@ create CKT-BADCACHE FS-PATH-CAP allot
    CKT-PERSIST-NOMASK
    CKT-PERSIST-RETRY
    CKT-PERSIST-REAL-MISSING-DIR
+   CKT-LOGICAL-NAME
    CKT-CLEANUP
    T-REPORT ;
 

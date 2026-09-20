@@ -104,14 +104,14 @@ private
    a u EC:BUILD
    0 CLOSURE-IDX !
    begin CLOSURE-IDX @ EC:COUNT < while
-      CLOSURE-IDX @ EC:PATH$ CONTENT-KEY:FILE+
+      CLOSURE-IDX @ EC:PATH$ CLOSURE-IDX @ EC:NAME$ CONTENT-KEY:FILE-NAMED+
       CLOSURE-IDX @ 1+ CLOSURE-IDX !
    repeat ;
 
 : KEY! ( ptr u8 n -- ) {: a:ptr u:n :}
    CONTENT-KEY:OPEN
-   s" whitebox-engine-v2" CONTENT-KEY:TEXT+
-   ENGINE-CANDIDATE:PATH$ CONTENT-KEY:FILE+
+   s" whitebox-engine-v3" CONTENT-KEY:TEXT+
+   ENGINE-CANDIDATE:PATH$ s" host-engine" CONTENT-KEY:FILE-NAMED+
    a u CLOSURE-CK+
    KEY-HEX CONTENT-KEY:FINAL-HEX ;
 

@@ -1359,16 +1359,23 @@ Callers append version strings and source files, then hash the accumulated
 manifest into a binary or hex digest:
 
 ```forth
-CONTENT-KEY:RESET       ( -- )
-CONTENT-KEY:TEXT+       ( ptr u8 n -- )
-CONTENT-KEY:DIGEST+     ( ptr u8 -- )
-CONTENT-KEY:FILE+       ( ptr u8 n -- )
-CONTENT-KEY:FINAL       ( ptr u8 -- )
-CONTENT-KEY:FINAL-HEX   ( ptr u8 -- )
+CONTENT-KEY:OPEN        ( -- CONTENT-KEY:fold )
+CONTENT-KEY:TEXT+       ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold )
+CONTENT-KEY:DIGEST+     ( CONTENT-KEY:fold ptr u8 -- CONTENT-KEY:fold )
+CONTENT-KEY:FILE+       ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold )
+CONTENT-KEY:FILE-NAMED+ ( CONTENT-KEY:fold ptr u8 n ptr u8 n -- CONTENT-KEY:fold )
+CONTENT-KEY:FINAL       ( CONTENT-KEY:fold ptr u8 -- )
+CONTENT-KEY:FINAL-HEX   ( CONTENT-KEY:fold ptr u8 -- )
+CONTENT-KEY:DISCARD     ( CONTENT-KEY:fold -- )
 ```
 
 `CONTENT-KEY:FILE+` records the path in the manifest but hashes file content
 through a metadata-validated per-file digest cache when one is configured.
+`FILE-NAMED+` takes the physical path followed by a logical name: only that
+name and the file's content enter the key, while cache lookup still uses the
+physical path and metadata. Whitebox and cold engine keys use each source's
+root-relative name and the host engine's bytes, so identical trees in different
+workspaces share their cached artifact.
 `CONTENT-KEY:CACHE-PATH!` sets an explicit cache file, `CONTENT-KEY:CACHE-ROOT!`
 uses `content-key.cache` under a root directory, and `CONTENT-KEY:CACHE-CLEAR!`
 clears the explicit setting. The test suite installs this root in-process;

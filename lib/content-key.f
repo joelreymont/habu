@@ -703,11 +703,14 @@ private
 
 public
 
-\ The row builder below is per-CALL state, not per-fold: one FILE+ builds its
+\ The row builder below is per-CALL state, not per-fold: one file append builds its
 \ cache-row prefix, looks it up and appends to it before returning, and nothing
 \ re-enters FILE+ in between. Only the preimage is per-fold.
-: FILE+ ( fold ptr u8 n -- fold ) {: f:fold a:ptr u:n :}
-   f CK-LIVE CK-FILE-TAG a u CK-FRAG+
+\ Read/cache the physical path, but fold the supplied logical name. A build can
+\ name a source relative to its root without changing where its bytes are read.
+: FILE-NAMED+ ( fold ptr u8 n ptr u8 n -- fold )
+   {: f:fold a:ptr u:n name:ptr size:n :}
+   f CK-LIVE CK-FILE-TAG name size CK-FRAG+
    a u FILE-META {: sz:n mt:n mn:n ct:n cn:n :}
    a u sz mt mn ct cn CK-ROW-FILE-PREFIX
    CK-CACHE-LOAD? if
@@ -716,6 +719,9 @@ public
    a u CK-FILE-DIGEST!
    f CK-FILE-DG DIGEST+
    CK-CACHE-APPEND ;
+
+: FILE+ ( fold ptr u8 n -- fold ) {: f:fold a:ptr u:n :}
+   f a u a u FILE-NAMED+ ;
 
 \ Finalizing a key closes its fold - the slot is released for the next one - and
 \ is the cache batch boundary: flush the accumulated rows to disk once,
