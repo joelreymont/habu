@@ -57,3 +57,26 @@ One extra control defining two variables BEFORE loading the driver shifts by24
 (bytes, including earlier allocation effects), so the exact reproducer places
 16 allot AFTER the dependency load. No engine/capture implementation changed;
 Hazel owns that seam and this dot remains open for the repair and its gates.
+
+Repair claim: alder, .jj-ws/alder-capture-data on 18d59ba4. Hazel released
+src/habu/aot-capture.f and the DATA relocation loader, plus tests: replace
+absolute DATA-site values and D0 with window coordinates, retaining D0's
+modulo-eight alignment. No new format fields or driver-name refusal. Proof:
+native/profile products with equal SHA, all AOT/stripped/whitebox rows, three
+generations. The filesystem refusal repair precedes this lane.
+
+Coordinate repair: both scans classify the original live addresses, then one
+linear pass over the DATA-site rows stores value - live-D0 + (live-D0 & 7),
+including deferred metadata cells. D0 becomes its 8-residue. The existing seed
+delta and artifact READ/MERGE arithmetic handle this coordinate system without
+new format fields. Astra's concern about a normalized DATA value colliding with
+the later live CODE scan is resolved by doing normalization after both scans.
+The matrix fixture compares every captured DATA site against its live source:
+rc 76 before, merge=ok after. Astra's follow-up review is clear.
+
+Equality exposed one further owner: all 32,766 pointer cells in the retired
+SYMS-BOOT (16,383 rows, PKG-A and NAME-A) differ by +16 under the profile driver.
+The sparse DATA expansion in /tmp/alder-capture-data/data-diff.f identifies only
+this owner. Native/profile run bytes are 975,616/975,628. Hazel released zeroing
+the retired table in SYM-GROW as a separate commit after this coordinate repair;
+the dot stays open until the combined equality and gates pass.

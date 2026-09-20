@@ -2,6 +2,19 @@
 \ Run with an artifact path and case name; the registered capture suite owns both.
 require test/aot-artifact-roundtrip.f
 
+package AOT-CAPTURE
+public
+
+\ The source instruction/cell still carries its live address. Compare its
+\ window coordinate with the artifact, including the capture base's alignment.
+: ROW-TEST-DATA-VALUE ( n -- n ) {: site:n :}
+   AOT-ARM:B0 @ site AOT-BUF:AOT-DSITE-OFF-MASK and + AOT-N>U8 {: p:ptr :}
+   site AOT-BUF:AOT-DSITE-CELL and 0<> if p CELL-VIEW @
+   else p SNAP-RELOC:CHAINV then
+   AOT-ARM:D0 @ - AOT-ARM:D0 @ 7 and + ;
+
+;package
+
 package AOT-FILE
 
 \ Forge only the old version and half-row cases, with honest lengths and digest.
@@ -107,14 +120,18 @@ variable CHAIN-VALUE
 
 
 : SAVE-DSITES ( -- )
+   AOT-DATA-D0 @ AOT-ARM:D0 @ 7 and = ASSERT
    -1 RAW-INDEX ! -1 CHAIN-INDEX !
    AOT-DSITE-N @ 0 ?do
       i DSITE@ {: site:n :}
       site AOT-DSITE-CELL and 0<> if
          i RAW-INDEX ! site RAW-SITE !
+         AOT-BLOB-BUF@ site AOT-DSITE-OFF-MASK and + U64@
       else
          i CHAIN-INDEX ! site CHAIN-SITE !
+         AOT-BLOB-BUF@ site + SNAP-RELOC:CHAINV
       then
+      site AOT-CAPTURE:ROW-TEST-DATA-VALUE = ASSERT
    loop
    RAW-INDEX @ 0 >= CHAIN-INDEX @ 0 >= and ASSERT
    AOT-BLOB-BUF@ RAW-SITE @ AOT-DSITE-OFF-MASK and + U64@ RAW-VALUE !

@@ -1329,6 +1329,23 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
       ACAP-P @ 4 + ACAP-P !
    repeat ;
 
+\ Normalize only after both sweeps classify live addresses: a window-relative
+\ DATA value could otherwise be mistaken for a live CODE address. D0 retains
+\ its 8-residue, so the seed's (seed-DP - D0) delta also preserves alignment.
+: ACAP-NORMALIZE-DSITES ( -- )
+   AOT-DATA-D0 @ {: d0:n :}
+   d0 7 and {: base:n :}
+   AOT-DSITE-N @ 0 ?do
+      AOT-DSITE-BUF@ i 4 * + ACAP-W32@ {: site:n :}
+      AOT-BLOB-BUF@ site AOT-DSITE-OFF-MASK and + {: p:ptr :}
+      site AOT-DSITE-CELL and 0<> if
+         p CELL-VIEW @ d0 - base + p AOT-N-C!
+      else
+         p p SNAP-RELOC:CHAINV d0 - base + SNAP-RELOC:SET-CHAIN
+      then
+   loop
+   base AOT-DATA-D0 ! ;
+
 \ --- the captured window's DATA content ---------------------------------------
 \ WHY THE BYTES HAVE TO TRAVEL. The seed used to reserve the span and copy
 \ nothing, on the reading that a REPL window is all `allot`/`variable` and so all
@@ -1867,6 +1884,7 @@ TRUSTED: ACAP-ADDRESS ( ptr u8 -- n ) ;
    bstart bend d0 d1 ACAP-SCAN-DSITES
    bstart bend d0 d1 ACAP-SCAN-DEFER-SITES
    bstart bend ACAP-SCAN-CSITES
+   ACAP-NORMALIZE-DSITES
    bstart bend d0 d1 ACAP-RELEASE-DYNAMIC      \ no dynamic-storage mapping may reach the bytes below
    bstart bend d0 d1 ACAP-BAKE-DATA            \ DATA bytes plus every declared address cell
    ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
