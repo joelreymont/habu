@@ -200,6 +200,17 @@ public
       EC-HEAD @ 1+ EC-HEAD !
    repeat ;
 
+\ Engine keys cross manifested loader-definition files only on the reviewed
+\ assumption that they load no source. Their discovery log is otherwise only a
+\ lower bound. Ordinary walks may still inspect a boundary with literal loads.
+: CHECK-KEYABLE ( -- )
+   EC-N @ 0 ?do
+      i EC-PATH$ DTM:KNOWN? if
+         i EC-PATH$ i EC-ROOT$ DISCOVER:RUN-IN
+         EVENT-COUNT 0 <> if E-DISC-DYNAMIC throw then
+      then
+   loop ;
+
 \ Depth-first, post-order closure: each file is preceded by its own transitive
 \ require/include closure, so the last entry is always the entry file itself.
 \ Consumers that replay residual package scope walk indices 0..ORDER-COUNT-2

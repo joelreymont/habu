@@ -19,6 +19,7 @@ require lib/string.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/engine-candidate.f
+require lib/process-cwd.f
 require tools/dynamic-tail-manifest.f
 require tools/event-closure-lib.f
 require test/whitebox-engine.f
@@ -41,6 +42,8 @@ create PATH-C CAP allot
 create PATH-D CAP allot
 create ENG-A DG-LEN allot
 create ENG-B DG-LEN allot
+create CHILD-OUT $4000 allot
+create CHILD-ERR $4000 allot
 
 variable ROOT-U
 variable ENTRY-U
@@ -182,6 +185,49 @@ variable SEAL-SEEN?
    ENG-B ENGINE-DIGEST!
    ENG-A DG-LEN ENG-B DG-LEN STR= TTRUE ;
 
+\ Manifest identity is relative to the child's invocation root. Give it real
+\ copies of the two boundary files and links to the unchanged test/tool libs.
+: MANIFEST$ ( -- ptr u8 n ) ROOT$ s" manifest" JOIN ;
+
+: MANIFEST-LINK ( ptr u8 n -- ) {: a:ptr u:n :}
+   CWD$ a u JOIN DST DST-U COPY!
+   DST$ MANIFEST$ a u JOIN MAKE-SYMLINK ;
+
+: MANIFEST-PREP ( -- )
+   MANIFEST$ s" src/habu" JOIN MAKE-DIRS
+   MANIFEST$ s" src/core" JOIN MAKE-DIRS
+   s" lib" MANIFEST-LINK s" tools" MANIFEST-LINK s" test" MANIFEST-LINK
+   s" src/habu/task-abi.f" MANIFEST-LINK ;
+
+: MANIFEST-RUN ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n mode:ptr modeu:n :}
+   PROC-ARGV-RESET PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
+   s" --load" >LEN PROC-ARGV+
+   s" test/whitebox-manifest-child.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   path pathu >LEN PROC-ARGV+ mode modeu >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ CANONICAL TTRUE >LEN MANIFEST$ >LEN
+   CHILD-OUT $4000 >LEN CHILD-ERR $4000 >LEN 30000 >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
+   MATCH result
+      ok OF PCAP-CAPTURED:UNMAKE 0 ENDOF
+      err OF PCAP-FAILED:UNMAKE RC>N ENDOF
+   ;MATCH {: outu:len erru:len rc:n :}
+   rc 0 <> if CHILD-OUT outu LEN>N type CHILD-ERR erru LEN>N type then
+   rc 0 T= ;
+
+: MANIFEST-CASE ( ptr u8 n -- ) {: a:ptr u:n :}
+   MANIFEST$ a u JOIN DST DST-U COPY!
+   a u DST$ COPY-FILE-STREAM
+   a u s" clean" MANIFEST-RUN
+   DST$ S\" \nrequire lib/errors.f\n" APPEND-FILE
+   a u s" dirty" MANIFEST-RUN ;
+
+: TEST-MANIFEST-LOADS ( -- )
+   s" manifested key members must record no loader events" T-LABEL
+   MANIFEST-PREP
+   s" src/habu/driver-io.f" MANIFEST-CASE
+   s" src/core/include.f" MANIFEST-CASE ;
+
 : RUN ( -- )
    T-RESET
    PREP
@@ -191,6 +237,7 @@ variable SEAL-SEEN?
    TEST-PREFIX-EDIT-MOVES-KEY
    TEST-RESTORE-RESTORES-KEY
    TEST-UNLOADED-FILE-IS-IGNORED
+   TEST-MANIFEST-LOADS
    TEST-ENGINE-UNTOUCHED
    CLEANUP-RUN
    T-REPORT ;

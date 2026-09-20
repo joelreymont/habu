@@ -100,8 +100,7 @@ private
 
 \ Discovery rejects fail-closed, so a closure that cannot be reproduced cannot be
 \ keyed - the key never silently covers fewer files than the build reads.
-: CLOSURE-CK+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
-   a u EC:BUILD
+: CLOSURE-CK+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    0 CLOSURE-IDX !
    begin CLOSURE-IDX @ EC:COUNT < while
       CLOSURE-IDX @ EC:PATH$ CLOSURE-IDX @ EC:NAME$ CONTENT-KEY:FILE-NAMED+
@@ -109,10 +108,11 @@ private
    repeat ;
 
 : KEY! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u EC:BUILD EC:CHECK-KEYABLE
    CONTENT-KEY:OPEN
    s" whitebox-engine-v3" CONTENT-KEY:TEXT+
    ENGINE-CANDIDATE:PATH$ s" host-engine" CONTENT-KEY:FILE-NAMED+
-   a u CLOSURE-CK+
+   CLOSURE-CK+
    KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
 : NAME! ( -- )

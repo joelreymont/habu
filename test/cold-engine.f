@@ -66,7 +66,6 @@ variable CLOSURE-IDX
 \ Discovery rejects fail-closed, so a closure that cannot be reproduced cannot
 \ be keyed - the key never silently covers fewer files than the build reads.
 : CLOSURE-CK+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   WRITER$ EC:BUILD
    0 CLOSURE-IDX !
    begin CLOSURE-IDX @ EC:COUNT < while
       CLOSURE-IDX @ EC:PATH$ CLOSURE-IDX @ EC:NAME$ CONTENT-KEY:FILE-NAMED+
@@ -74,6 +73,7 @@ variable CLOSURE-IDX
    repeat ;
 
 : KEY! ( -- )
+   WRITER$ EC:BUILD EC:CHECK-KEYABLE
    CONTENT-KEY:OPEN
    s" cold-fixture-engine-v2" CONTENT-KEY:TEXT+
    ENGINE-CANDIDATE:PATH$ s" host-engine" CONTENT-KEY:FILE-NAMED+
