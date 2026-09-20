@@ -1,9 +1,11 @@
 ---
 title: Honor committed ceilings on symbol prototype clones
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-12T18:11:06.107844+03:00"
+closed-at: "2026-09-20T04:14:24.660957+03:00"
+close-reason: "already implemented: ir/symbol.f:551-568 checks committed bounds before PART-NEW, ir/build.f:666 passes P-SYMS/P-SBYTES, ir-symbol.f cases 573/604/637/695; DD gate compiler-ir-build and compiler-ir-symbol green (alder's verification)"
 blocks:
   - habu-check-arena-append-c7b1e040
 ---
