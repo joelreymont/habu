@@ -2179,6 +2179,10 @@ public
 : REGION-UNOWNED ( -- n ) BAND-FREE @ ;
 : DATA-OWNERS ( -- n ) DOWN-N @ ;
 
+\ File coordinates of the captured code, matching the start/len columns in
+\ native-build's .names sidecar. Valid after MEASURE on a baked engine.
+: CODE-BLOB-RANGE ( -- n n ) BLOB-OFF @ BLOB-LEN @ ;
+
 \ The same rows again, printed this time, with the class's own notes under them.
 : REPORT ( -- )
    TABLE

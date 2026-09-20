@@ -68,6 +68,10 @@ SUITE engine-size-fixtures
    tools/engine-size-test.f
 ;SUITE
 
+SUITE two-generation-fixtures
+   tools/two-generation-test.f
+;SUITE
+
 SUITE imagedisasm-tool
    tools/imagedisasm-test.f
 ;SUITE

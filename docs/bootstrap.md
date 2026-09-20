@@ -230,6 +230,27 @@ generation 2's, or when generation 5 is not byte-identical to generation 4.
 `tools/two-generation-probe.f` is the child fixture that reads one engine's
 shape.
 
+The same tool checks build identity independently of convergence:
+
+```sh
+HB_TMP=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- --same-host <seed-engine>
+```
+
+This copies the seed privately, then invokes `tools/native-build.f` twice with
+that same copy and distinct output paths. Both builds are uncached. A difference
+anywhere in the complete files fails the command, reporting a zero-based first
+differing offset. For an offset in captured code, the matching `.names` sidecar
+identifies its owner, including words whose names were stripped from the image;
+offsets without a matching name are reported as unavailable. The image reader
+supplies the code blob's file coordinates, and the sidecar's column names select
+the fields. No installed engine is replaced.
+
+For an existing pair, `--compare file-a file-b` performs the byte check without
+building or interpreting image metadata. It reports the differing-byte count
+for equal lengths, or a length mismatch, and the first differing offset in
+either case. The focused `two-generation-fixtures` gate row covers the byte
+boundaries and sidecar parser without launching a build chain on every gate.
+
 Three facts decide how a change reaches the fixpoint:
 
 - **A compiler change takes two generations.** The image a build captures

@@ -432,7 +432,8 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 \    rec    capture-order index, 0-based and dense
 \    named  1 when the image kept this name, 0 when it stripped it
 \    start  code offset in the payload blob, build-time
-\    len    code length in bytes
+\    len    raw CODE-SPAN length: bit 31 means an exact byte span; otherwise
+\           the final instruction follows the body (decode with CODE-SPAN:BYTES)
 \    wid    wordlist id, or -1 for a package row
 \    name   the definition's name, as the capture saw it
 create NAMES-PATH OUTPUT-CAP allot
