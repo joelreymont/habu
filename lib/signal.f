@@ -319,7 +319,9 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
    0 CAUGHT !
    0 OWNER !
    FORGET-FDS
-   false READY ! ;
+   false READY !
+   \ REGISTER is one-shot: the next INIT must arm the next capture's reset.
+   false REGISTERED ! ;
 
 : REGISTER-CLEANUP ( -- )
    REGISTERED @ if exit then

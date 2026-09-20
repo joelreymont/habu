@@ -166,11 +166,14 @@ by construction on the target it never runs on. `SIG-MAX` is 64, the range
 Linux's `sigaction` installs: on macOS a number between 32 and 64 passes that
 check and is refused by `sigaction` itself as `E-SIGNAL-INSTALL`.
 
-## Known gaps
+## Image restore
 
-**The image-restore hook is registered but unexercised.** A restored image is a
-different process, so `INIT` registers a reset with `IMAGE-LIFECYCLE` that drops
-the facility's cells; no test writes and restores an image with signals armed.
+`INIT` registers a one-shot reset with `IMAGE-LIFECYCLE`. Capture clears the
+facility's cells and registration flag, so the restored process starts cold
+and its next `INIT` registers a fresh reset. `test/process-image.f` captures
+with signals armed, restores outside the checkout, and repeats capture twice.
+Each restore refuses descriptor access before `INIT`, then proves the new pipe
+delivers a signal.
 
 ## Refusals
 

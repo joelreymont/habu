@@ -1,5 +1,6 @@
 \ The process caches must be fresh in every restored generation.
 require lib/process-command.f
+require lib/signal.f
 require lib/test.f
 
 package PROCESS-IMAGE-SUBJECT
@@ -43,6 +44,14 @@ public
 
 : CLEAN ( -- )
    T-RESET
+   s" restored signals are uninitialised before any descriptor access" T-LABEL
+   [: SIGNAL:FD drop ;] E-SIGNAL-STATE TTHROWSQ
+   [: 0 >MS SIGNAL:WAIT drop ;] E-SIGNAL-STATE TTHROWSQ
+   [: SIGNAL:RELEASE ;] E-SIGNAL-STATE TTHROWSQ
+   s" restored environment sizing is unmeasured" T-LABEL
+   PROC-ENV-INHERITED-N @ 0 T=
+   PROC-ENV-CAP-N @ 0 T=
+   PROC-ENV-BUF-CAP-N @ 0 T=
    PROC-ARGV-BUF@ 0= TTRUE
    PROC-ENV-TABLE@ 0= TTRUE
    PROC-ENV-BUF@ 0= TTRUE
@@ -55,6 +64,13 @@ public
    CHECK-ROWS
    T-REPORT ;
 
+: ENV-SIZE ( n -- ) {: expected:n :}
+   s" environment ceiling comes from this child's envp" T-LABEL
+   PROC-ENV-INHERITED expected T=
+   PROC-ENV-CAP expected PROC-ENV-EXTRA + T=
+   PROC-ENV-BUF-CAP PROC-ENVP-BYTES PROC-ENV-EXTRA-BYTES + T=
+   T-REPORT ;
+
 \ This path publishes a pointer row without allocating the argv byte cache.
 \ Repeated preparation also checks that an already completed cleanup is inert.
 : EMPTY-ARGV ( -- )
@@ -64,12 +80,22 @@ public
 
 : USE ( -- )
    T-RESET
+   s" restored signal initialization opens a working self-pipe" T-LABEL
+   AIO:START
+   SIGNAL:INIT
+   SIGNAL:SIGUSR1 SIGNAL:CATCH
+   getpid SIGNAL:SIGUSR1 kill 0 T=
+   100 >MS SIGNAL:WAIT MATCH SIGNAL:signal-result
+      signal OF SIGNAL:SIGUSR1 T= ENDOF
+      timeout OF false TTRUE ENDOF
+   ;MATCH
+   AIO:STOP
    PROC-ENV-DEFAULT-RESET
    s" HABU_IMAGE_DEFAULT" >LEN s" default-value" >LEN PROC-ENV-DEFAULT+
    CHECK-DEFAULT
    COMMAND
    CHECK-DEFAULT
-   \ Leave active rows and all five mappings for capture to clear.
+   \ Leave signals armed, active rows and all five mappings for capture to clear.
    PROC-ARGV-ENV-RESET
    s" pending-argument" >LEN PROC-ARGV+
    s" HABU_IMAGE_ENV" >LEN s" pending-value" >LEN PROC-ENV+

@@ -1,4 +1,4 @@
-\ Capture unused caches, then warm and recapture them twice outside the checkout.
+\ Capture live signals and caches, then reinitialise and recapture them twice.
 require lib/test.f
 require lib/fs-mutate.f
 require lib/process-cwd.f
@@ -58,13 +58,14 @@ variable SECOND-U
    FIRST$ >LEN PROC-ARGV+
    ENVIRONMENT
    ENGINE-CANDIDATE:PATH$ >LEN
-   S\" require src/habu/app-image.f\nrequire test/process-image-subject.f\nPROCESS-IMAGE-SUBJECT:CLEAN\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   S\" require src/habu/app-image.f\nrequire test/process-image-subject.f\nPROCESS-IMAGE-SUBJECT:CLEAN\nSIGNAL:INIT\nSIGNAL:SIGUSR1 SIGNAL:CATCH\nPROC-ENV-TABLE drop\n2 PROCESS-IMAGE-SUBJECT:ENV-SIZE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN
    FIRST$ EXECUTABLE? TTRUE ;
 
 : RESTORE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n input:ptr inputu:n :}
    ENVIRONMENT
+   s" HABU_IMAGE_RESTORED" >LEN s" different-envp" >LEN PROC-ENV+
    path pathu >LEN ROOT$ >LEN input inputu >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT CLEAN ;
@@ -74,7 +75,7 @@ variable SECOND-U
    s" --" >LEN PROC-ARGV+
    next nextu >LEN PROC-ARGV+
    path pathu
-   S\" PROCESS-IMAGE-SUBJECT:CLEAN\nPROCESS-IMAGE-SUBJECT:EMPTY-ARGV\nPROCESS-IMAGE-SUBJECT:USE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" RESTORE
+   S\" PROCESS-IMAGE-SUBJECT:CLEAN\nPROCESS-IMAGE-SUBJECT:EMPTY-ARGV\nPROCESS-IMAGE-SUBJECT:USE\n3 PROCESS-IMAGE-SUBJECT:ENV-SIZE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" RESTORE
    next nextu EXECUTABLE? TTRUE ;
 
 : CHECK-IMAGES ( -- )
@@ -82,7 +83,7 @@ variable SECOND-U
    FIRST$ SECOND$ RECAPTURE
    SECOND$ FIRST$ RECAPTURE
    PROC-ARGV-ENV-RESET
-   FIRST$ S\" PROCESS-IMAGE-SUBJECT:CLEAN\nPROCESS-IMAGE-SUBJECT:USE\n" RESTORE ;
+   FIRST$ S\" PROCESS-IMAGE-SUBJECT:CLEAN\nPROCESS-IMAGE-SUBJECT:USE\n3 PROCESS-IMAGE-SUBJECT:ENV-SIZE\n" RESTORE ;
 
 : RUN ( -- )
    T-RESET PREPARE
