@@ -549,7 +549,8 @@ private
 9 constant K-TRAP-ENTRY
 10 constant K-FUN
 11 constant K-COND
-12 constant KEYS
+12 constant K-THROW-ENTRY
+13 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -565,6 +566,7 @@ private
       K-TRAP-ENTRY of s" x64.trap-entry" endof
       K-FUN        of s" x64.fun" endof
       K-COND       of s" x64.cond" endof
+      K-THROW-ENTRY of s" x64.throw-entry" endof
       E-X64IR-DIALECT throw
    endcase ;
 
@@ -724,6 +726,13 @@ public
 
 : KEY-COND ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-COND KEY-BIND ;
+
+\ The routine a compiled refusal hands its code to, which is `throw` itself and
+\ not the engine's trap door: a zero divisor is a caller error the divide's cold
+\ side reports, where a trap is the runtime's own. Its own key for that reason,
+\ the way a64ir spells it.
+: KEY-THROW-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-THROW-ENTRY KEY-BIND ;
 
 \ The literal's own value is NOT screened: `mov r64, imm64` holds every cell.
 : IMM-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
@@ -1026,8 +1035,14 @@ private
 \ Four register fields of this form are the machine's own and not the
 \ allocator's: the dividend is operand 0 in rax, the quotient is result 0 in rax
 \ and the remainder result 1 in rdx, which the schema declares beside the
-\ operand types. Only the divisor is free, and a value live across this
-\ operation may not be in rax or rdx, because the instruction writes both.
+\ operand types. Only the divisor is free, and neither a value live across this
+\ operation nor the divisor itself may be in rax or rdx, because `cqo` has
+\ already written rdx when the divide reads its divisor.
+\
+\ THE COLD SIDE IS THE ROUTINE THE FORM CARRIES. A zero divisor is a caller
+\ error, so the branch over the trap hands the code to the runtime's `throw`,
+\ whose entry the selector reads where the dictionary is readable and states as
+\ this operation's own attribute - the same arrangement a64.sdiv has.
 : DEF-IDIV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b X64IR-OPCODE:IDIV OPCODE IR-SCHEMA:BEGIN-OP
@@ -1038,6 +1053,7 @@ private
    IR--SCHEMA-SIDE:OPERAND 0 R-RAX IR-SCHEMA:ADD-FIXED
    IR--SCHEMA-SIDE:RESULT  0 R-RAX IR-SCHEMA:ADD-FIXED
    IR--SCHEMA-SIDE:RESULT  1 R-RDX IR-SCHEMA:ADD-FIXED
+   c b KEY-THROW-ENTRY IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    true IR-SCHEMA:SET-TRAP
    TARGET

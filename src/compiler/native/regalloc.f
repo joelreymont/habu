@@ -1275,8 +1275,34 @@ variable N-FIXP
 : MB-COPY? ( IR-ID:ir-op-id -- bool )
    OPCODE-AT 0 BND-COPY @ SAME-SYM? ;
 
+\ Whether some OTHER class the merge would overlap already demands the register
+\ the merged class would. The declarations are read off the members, because the
+\ per-class ones are written after coalescing (MB-DECLS!), and the overlap is the
+\ member-against-member question the class invariant is.
+: MB-WANT-TAKEN? ( n n n -- bool )
+   {: ra:n rb:n w:n :}
+   false
+   N-VALS @ 0 ?do
+      i UF-FIND i = if
+         i ra <> i rb <> and if
+            i MB-DECL-OF w = if
+               i ra MB-CLASH? i rb MB-CLASH? or if drop true unloop exit then
+            then
+         then
+      then
+   loop ;
+
 \ Ends already in one class need nothing; ends whose classes hold an interfering
 \ pair keep their copy; ends the contract declares into two registers keep it too.
+\
+\ AND A COPY INTO A REGISTER ANOTHER LIVE CLASS ALREADY DEMANDS KEEPS IT. One
+\ register holds one value at one instant, so a merged class that wants the
+\ register a class it overlaps wants - or is fixed into - cannot be placed
+\ (MB-WANTED, MB-PIN). Two variable shifts whose counts live over one interval
+\ are that case: the selector copies each count into the register the form names,
+\ and merging the second copy back into its count would make the pair
+\ unplaceable. The copy the source dies at is coalesced only where the register
+\ is still free for it.
 : MB-COALESCE1 ( n n -- )
    {: s:n d:n :}
    s UF-FIND {: ra:n :}
@@ -1286,6 +1312,10 @@ variable N-FIXP
    rb MB-DECL-OF {: db:n :}
    da NOBODY <> db NOBODY <> and  da db <> and if exit then
    ra rb MB-CLASH? if exit then
+   da NOBODY = if db else da then {: w:n :}
+   w NOBODY <> if
+      ra rb w MB-WANT-TAKEN? if exit then
+   then
    s d UF-UNION ;
 
 : MB-COALESCE-OP ( IR-ID:ir-op-id -- )
@@ -1437,8 +1467,11 @@ variable N-FIXP
    dup end = if drop MB-AT @ exit then
    cells USE-POS + @ MB-AT @ min ;
 
-: MB-READS? ( IR-ID:ir-fun-id n n -- bool )
-   {: f:IR-ID:ir-fun-id r:n p:n :}
+\ The read positions are the class's own slice and not the function's operations,
+\ so this question needs no function: which class is read where is what MB-USES
+\ recorded.
+: MB-READS? ( n n -- bool )
+   {: r:n p:n :}
    p POS-OP? 0= if false exit then
    r p MB-USE-FROM p = ;
 
@@ -1453,7 +1486,7 @@ variable N-FIXP
 
 : MB-TOUCHES? ( IR-ID:ir-fun-id n n -- bool )
    {: f:IR-ID:ir-fun-id r:n p:n :}
-   f r p MB-READS? if true exit then
+   r p MB-READS? if true exit then
    f r p MB-DEFS? ;
 
 \ A class nothing reads again answers the position past the last one.
@@ -1624,19 +1657,44 @@ variable N-FIXP
       then
    loop ;
 
+\ The register the class is declared into, as a mask, or no bit at all. A class
+\ two declarations disagree about was refused when the declarations were read
+\ (MB-ONE-DECL), so there is at most one such register.
+: MB-DECL-BIT ( n -- n )
+   {: r:n :}
+   r cells CL-FIX + @ {: fx:n :}
+   fx NOBODY = if r cells CL-WANT + @ else fx then {: w:n :}
+   w NOBODY = if 0 exit then
+   1 w lshift ;
+
 \ One crossing operation whose form fixes a RESULT register forbids that
-\ register the same way: the instruction writes it whatever is in it, so a value
-\ that has to survive the operation cannot be there. The fixed OPERAND registers
-\ are not forbidden here - the value the form reads out of one is the class that
-\ crosses in the cases that matter, and keeping two such classes apart is the
-\ selector's copy rather than this scan's refusal.
+\ register: the instruction writes it whatever is in it, so a value that has to
+\ survive the operation cannot be there.
+\
+\ AND SO DOES AN OPERATION THE CLASS IS ONLY READ BY, which crosses nothing. A
+\ form that fixes a result may write that register before it has read its
+\ operands - `x64.idiv` renders `cqo; idiv r64` and the cqo writes rdx - so a
+\ value this operation READS may not be in a fixed-result register either, with
+\ the one exception the form itself states: the operand declared INTO that
+\ register, which is where the instruction wants it and nowhere else. The
+\ exception is asked of the CLASS and not of the operand ordinal, which is as
+\ exact as one declaration per class makes it (MB-ONE-DECL): a class a routine
+\ CONTRACT declares into a fixed-result register would be exempt at an operation
+\ that reads it for another operand, and no convention of either machine declares
+\ a place a form also fixes.
+: MB-FIXED-BITS ( n n n -- n )
+   {: r:n p:n m:n :}
+   r p MB-CROSSES? if m exit then
+   r p MB-READS? 0= if 0 exit then
+   m  r MB-DECL-BIT invert  and ;
+
 : MB-FORBID-FIXED ( n n n n -- n )
    {: r:n first:n limit:n acc:n :}
    acc
    N-FIXP @  first MB-FIX-FROM  ?do
       i cells FIXP-POS + @ {: p:n :}
       p limit >= if unloop exit then
-      r p MB-CROSSES? if  i cells FIXP-MASK + @ or  then
+      r p  i cells FIXP-MASK + @  MB-FIXED-BITS or
    loop ;
 
 : MB-FORBID ( n -- n )
@@ -1645,9 +1703,12 @@ variable N-FIXP
    \ MB-CROSSES?, because coalesced members need not cover every position.
    F-LO @ r cells CL-LO + @ 1+ max {: first:n :}
    MB-AT @ r cells CL-HI + @ min {: limit:n :}
-   first limit >= if 0 exit then
+   first limit > if 0 exit then
    r first limit MB-FORBID-CALLS {: acc:n :}
-   r first limit acc MB-FORBID-FIXED ;
+   \ The fixed scan runs one position FURTHER than the calls one, because the
+   \ operation that READS a class for the last time is the last position of its
+   \ hull and forbids its fixed results there.
+   r first limit 1+ acc MB-FORBID-FIXED ;
 
 : MB-DUE? ( n n -- bool )
    {: r:n pos:n :}

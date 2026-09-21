@@ -171,7 +171,7 @@ create TXT
    CC BB IR-BUILD:END-BLOCK drop
    CC BB IR-BUILD:END-FUN drop ;
 
-\ ---- the two shapes ----------------------------------------------------------
+\ ---- the shapes --------------------------------------------------------------
 \ `: LEAF ( a b -- n ) - ;` - two arguments that die at the subtraction, which is
 \ two-address and destroys the first of them. Nothing is copied.
 : BUILD-DIFF ( -- )
@@ -188,6 +188,40 @@ create TXT
    1 1 OPEN-FUN
    ARG+ {: a:IR-ID:ir-value-id :}
    HIR-OPCODE:ADD a a BINOP RET1
+   CLOSE-FUN ;
+
+\ `: LEAF ( a b -- n ) lshift ;` - a count that is not a literal, which the
+\ selector copies with `x64.mov` because the form fixes the copy to rcx. Nothing
+\ else reads the count, so the copy is coalesced back into it and one class
+\ carries the register.
+: BUILD-VAR-SHIFT ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:LSHIFT x y BINOP RET1
+   CLOSE-FUN ;
+
+\ `: LEAF ( a b c -- n ) lshift lshift ;` - two variable shifts whose counts are
+\ BOTH live at the first of them. One register holds one count at one instant, so
+\ the second count's copy may not be coalesced back into it: that would put two
+\ demands for rcx over one interval and no placement satisfies both.
+: BUILD-TWO-SHIFTS ( -- )
+   3 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: c1:IR-ID:ir-value-id :}
+   ARG+ {: c2:IR-ID:ir-value-id :}
+   HIR-OPCODE:LSHIFT x c1 BINOP {: s1:IR-ID:ir-value-id :}
+   HIR-OPCODE:LSHIFT s1 c2 BINOP RET1
+   CLOSE-FUN ;
+
+\ `: LEAF ( a b -- n ) / ;` - the dividend is copied into the register the divide
+\ takes it in, the divisor is the free operand, and the remainder is a result
+\ nothing reads.
+: BUILD-DIV ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:DIV x y BINOP RET1
    CLOSE-FUN ;
 
 \ ---- running selection, allocation and validation ----------------------------
@@ -254,11 +288,13 @@ create TXT
 \ ---- the forms whose registers the MACHINE names -----------------------------
 \ `shl r64, cl` reads its count from rcx and `idiv r64` divides rdx:rax into rax
 \ and rdx, which x64ir declares in the schema as fixed registers beside the
-\ operand types. The selector does not lower either shape yet (select-x64.f
-\ refuses a variable shift and a division by name), so these modules are built
-\ straight into the machine dialect - the way native-regalloc.f builds the
-\ shapes its own selector never produces - and what they measure is the
-\ allocator honouring a constraint it reads out of the schema.
+\ operand types. The selector lowers both shapes, and it makes every constraint
+\ satisfiable by COPYING the count and the dividend first. These modules are
+\ built straight into the machine dialect - the way native-regalloc.f builds the
+\ shapes its own selector never produces - so that what they measure is the
+\ allocator alone: the constraint read out of the schema, and the refusal of a
+\ pair no copy has been inserted for. The selected shapes are cases of their own
+\ further down.
 : X64-MOD ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    IR-BUILD:PLAN-BEGIN
@@ -302,6 +338,10 @@ create TXT
 : M-ADD ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
    X64IR-OPCODE:ADD -rot M-BIN ;
 
+\ The form carries the routine its cold side branches to as a required attribute.
+\ The allocator never reads the entry, so a stand-in address satisfies the schema.
+$1000 constant THROW-STAND
+
 : M-IDIV ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id IR-ID:ir-value-id )
    {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
    X64IR-OPCODE:IDIV M-OPEN
@@ -309,6 +349,8 @@ create TXT
    CC BB y IR-BUILD:ADD-OPERAND
    M-RESULT+
    M-RESULT+
+   CC BB  CC BB X64IR:KEY-THROW-ENTRY
+      CC BB THROW-STAND X64IR:ENTRY-ATTR  IR-BUILD:ADD-ATTR
    CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CC BB id 0 IR-BUILD:OP-RESULT@
    CC BB id 1 IR-BUILD:OP-RESULT@ ;
@@ -356,6 +398,31 @@ create TXT
    100 M-MOVI {: d:IR-ID:ir-value-id :}
    7 M-MOVI {: v:IR-ID:ir-value-id :}
    9 M-MOVI {: k:IR-ID:ir-value-id :}
+   d v M-IDIV {: q:IR-ID:ir-value-id r:IR-ID:ir-value-id :}
+   q r M-ADD {: s1:IR-ID:ir-value-id :}
+   s1 k M-ADD M-RET
+   CLOSE-FUN
+   M-ALLOCATED drop
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@
+   4 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
+\ THE DIVISOR IS EARLY-CLOBBERED. The same division with the value live across it
+\ defined FIRST, so it takes rcx and rdx is the lowest register still free where
+\ the divisor is placed. The divisor dies AT the divide and crosses nothing, and
+\ yet rdx is not its to have: the form renders `cqo; idiv r64` and the cqo has
+\ written rdx before the divide reads its divisor. It is placed in rsi, the next
+\ register of the pool, and the only operand a fixed-result register is left to is
+\ the dividend, which the form declares INTO rax.
+: EARLY-CLOBBER-BODY ( IR-CTX:ctx -- n n n n n bool )
+   X64-MOD
+   0 1 OPEN-FUN
+   9 M-MOVI {: k:IR-ID:ir-value-id :}
+   100 M-MOVI {: d:IR-ID:ir-value-id :}
+   7 M-MOVI {: v:IR-ID:ir-value-id :}
    d v M-IDIV {: q:IR-ID:ir-value-id r:IR-ID:ir-value-id :}
    q r M-ADD {: s1:IR-ID:ir-value-id :}
    s1 k M-ADD M-RET
@@ -471,6 +538,54 @@ create TXT
    A64RA:PLAN-N
    A64RAV:ACCEPTED? ;
 
+\ ---- and the same two forms as the SELECTOR leaves them ----------------------
+\ The count is copied and the COPY is what the form fixes to rcx, so the count
+\ itself is placed like any other value - and because nothing else reads it, the
+\ copy is coalesced back into it and one class holds rcx over both. The value
+\ shifted is tied to the result and keeps its own register.
+: VAR-SHIFT-BODY ( IR-CTX:ctx -- n n n n bool )
+   HIR-MOD
+   BUILD-VAR-SHIFT
+   ALLOCATED drop
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
+\ Two variable shifts whose counts are both live at the first of them, which the
+\ direct-dialect case above refuses when no copy stands between them. Here the
+\ selector's copies make the pair placeable: the first count's copy is coalesced
+\ back into it and holds rcx to the first shift, and the second count waits in a
+\ register of its own until its own copy takes rcx after the first is dead.
+: TWO-SHIFTS-BODY ( IR-CTX:ctx -- n n n n n n n bool )
+   HIR-MOD
+   BUILD-TWO-SHIFTS
+   ALLOCATED drop
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@
+   4 A64RAV:REG@
+   5 A64RAV:REG@
+   6 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
+\ The division the selector lowers: the dividend's copy is coalesced into the
+\ argument and holds rax, the divisor is placed out of rax and rdx, the quotient
+\ is rax again and the remainder is the rdx result NOTHING reads - a result with
+\ no reader is placed and validated like any other.
+: DIVIDE-BODY ( IR-CTX:ctx -- n n n n n bool )
+   HIR-MOD
+   BUILD-DIV
+   ALLOCATED drop
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@
+   4 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
 \ ---- the vocabulary is one module's, and only that module's ------------------
 \ Every name in a vocabulary is an ordinal of the module it was interned in, so
 \ a vocabulary handed to another module's binding names nothing there. The
@@ -527,6 +642,22 @@ public
    s" a division puts its dividend and quotient in rax and its remainder in rdx, and a value live across it is placed in neither" T-LABEL
    WBND [: IDIV-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 2 T= 0 T= 6 T= 1 T= 0 T=
+
+   s" the divisor is kept out of rdx as well, because the form writes rdx before it reads its divisor: it takes rsi where rdx was free" T-LABEL
+   WBND [: EARLY-CLOBBER-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 2 T= 0 T= 6 T= 0 T= 1 T=
+
+   s" a variable shift the selector lowered places the count's copy in rcx and coalesces the copy into the count nothing else reads" T-LABEL
+   WBND [: VAR-SHIFT-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 0 T= 1 T= 1 T= 0 T=
+
+   s" two variable shifts whose counts are both live at the first allocate, because the second count's copy is NOT coalesced into a count another class already wants the register for" T-LABEL
+   WBND [: TWO-SHIFTS-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 0 T= 1 T= 0 T= 1 T= 2 T= 1 T= 0 T=
+
+   s" a division the selector lowered places the dividend's copy in rax, the divisor out of rax and rdx, and the remainder nothing reads in rdx" T-LABEL
+   WBND [: DIVIDE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 2 T= 0 T= 0 T= 1 T= 0 T=
 
    WBND [: GROUP-VOCAB ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-FIXED ;] IR-CTX:WITH-CONTEXT

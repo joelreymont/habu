@@ -32,14 +32,28 @@
 \ two. The literal's own `x64.movi` is left out only when EVERY use of it is one
 \ of these, which is counted over the whole function and not guessed at.
 \
-\ THREE. TWO FORMS NAME A REGISTER AND THIS PASS CANNOT YET ASK FOR IT. `shl
-\ r64, cl` reads its count from rcx and `idiv` divides rdx:rax; the routine
-\ contract has no way to fix an operand to a register, so a variable shift count
-\ and a division are REFUSED by name (E-X64SEL-FIXED) rather than lowered into a
-\ form whose register the allocator would hand out to something else. A shift by
-\ a literal has no such constraint and is selected. The follow-up is the
-\ register-constraint dot on the allocator; until it lands, a Habu program that
-\ divides or shifts by a computed count has no x86-64 lowering and says so.
+\ THREE. TWO FORMS NAME A REGISTER, AND THE COPY IS HOW THIS PASS ASKS FOR IT.
+\ `shl r64, cl` reads its count from rcx and `idiv r64` divides rdx:rax into rax
+\ and rdx. The schema states those obligations as the forms' own fixed operand
+\ and result registers (x64ir.f DEF-SHIFT-CL and DEF-IDIV) and the allocator
+\ places them from there, so making them SATISFIABLE is this pass's work, as it
+\ is for a tie: the count of a variable shift and the dividend of a division are
+\ copied into fresh values with `x64.mov` first, and a count or dividend the rest
+\ of the function reads - or two counts live over one interval - is repaired by
+\ the copy instead of refused. A shift by a literal keeps the immediate form and
+\ carries no constraint at all. A division's quotient is result 0 and the source
+\ value's; its remainder is a second result nothing reads; `cqo` and the branch
+\ over the zero-divisor refusal belong to the form's RENDER, which is why the
+\ operation carries the runtime `throw` entry as its own attribute the way
+\ a64.sdiv does, and why a target dictionary without `throw` is refused
+\ (E-X64SEL-TRAP).
+\
+\ WHAT THE EMITTER STILL OWES. emit-x64.f renders none of `x64.shl`, `x64.shr`
+\ and `x64.idiv` and refuses each by name (E-X64EMIT-FORM), so a variable shift
+\ and a division are lowered, placed and validated here but are not yet bytes.
+\ The render owes two answers this pass cannot give it: the branch that hands a
+\ zero divisor to the entry above, and `MIN-N / -1`, which raises #DE on this
+\ machine where Habu's `/` wraps to MIN-N.
 \
 \ AND ONE THE DIALECT MAKES: THERE IS NO FLOATING FORM AT ALL. x64ir declares no
 \ SSE operation, so every floating source operation - including the four
@@ -808,12 +822,61 @@ create NAMEBUF NAME-CAP allot
    then
    id o EMIT-BINARY ;
 
-\ `shl r64, cl` is the only other form and it names rcx, which no contract can
-\ yet demand, so a count that is not a literal is refused rather than lowered.
-: SHIFT-RULE ( IR-ID:ir-op-id X64IR:opcode -- )
+\ `shl r64, cl` reads its count from rcx and the schema fixes operand 1 there, so
+\ the count is COPIED into a fresh value and the copy is the operand: a count
+\ another operation reads, and two counts live over one interval, are then two
+\ classes the allocator can place in one register one after the other. The copy
+\ that was not needed is coalesced away (regalloc.f MB-COALESCE1).
+: EMIT-SHIFT-CL ( IR-ID:ir-op-id X64IR:opcode -- )
    {: id:IR-ID:ir-op-id o:X64IR:opcode :}
-   id 1 OPERAND-AT SHIFT-FOLD? 0= if E-X64SEL-FIXED throw then
-   id o  id 1 OPERAND-AT LIT-VALUE  EMIT-SHIFT-IMM ;
+   id TIED-OPERAND {: dst:IR-ID:ir-value-id :}
+   id  id 1 OPERAND  EMIT-COPY {: cnt:IR-ID:ir-value-id :}
+   id o OPEN
+   CTX BLD  dst  IR-BUILD:ADD-OPERAND
+   CTX BLD  cnt  IR-BUILD:ADD-OPERAND
+   RESULT+
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
+\ The register form and the immediate form are one rule, as they are for a binary
+\ operation, because which one the machine has is decided by what the count IS.
+: SHIFT-RULE ( IR-ID:ir-op-id X64IR:opcode X64IR:opcode -- )
+   {: id:IR-ID:ir-op-id o:X64IR:opcode oi:X64IR:opcode :}
+   id 1 OPERAND-AT SHIFT-FOLD? if
+      id oi  id 1 OPERAND-AT LIT-VALUE  EMIT-SHIFT-IMM exit
+   then
+   id o EMIT-SHIFT-CL ;
+
+\ ---- selecting the division --------------------------------------------------
+\ A zero divisor is a CALLER error, so the divide's cold side hands the code to
+\ the runtime's `throw` (src/habu/habu1.f BTHROW) exactly as the engine's own `/`
+\ does. The entry is asked for here, where the dictionary is readable, and
+\ carried to the emitter as the operation's own attribute; the name E-X64SEL-TRAP
+\ names is the routine a compiled refusal branches to missing from the target
+\ dictionary, which is the same refusal the ARM64 selector makes.
+: THROW-ENTRY ( -- n )
+   s" throw" NDICT:CALL-TARGET {: e:n :}
+   e 0= if E-X64SEL-TRAP throw then
+   e ;
+
+\ `idiv r64` takes its dividend in rax and writes rax and rdx, so the dividend is
+\ COPIED into a fresh value the allocator can place in rax - the source value
+\ itself may be read after the division, and the instruction destroys what it
+\ divides. The divisor is the free operand. Two results leave the form because
+\ one instruction leaves both: the quotient is what `/` computes and the
+\ remainder is the result this lowering does not read.
+: EMIT-DIV ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND  EMIT-COPY {: num:IR-ID:ir-value-id :}
+   id X64IR-OPCODE:IDIV OPEN
+   CTX BLD  num  IR-BUILD:ADD-OPERAND
+   CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
+   RESULT+
+   RESULT+
+   CTX BLD  CTX BLD X64IR:KEY-THROW-ENTRY
+   CTX BLD  THROW-ENTRY X64IR:ENTRY-ATTR  IR-BUILD:ADD-ATTR
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
 
 \ ---- selecting a comparison --------------------------------------------------
 \ One source relation is one machine condition, and the comparison of two Habu
@@ -1127,7 +1190,7 @@ create NAMEBUF NAME-CAP allot
       add    OF id X64IR-OPCODE:ADD X64IR-OPCODE:ADDI BINARY-RULE ENDOF
       sub    OF id X64IR-OPCODE:SUB X64IR-OPCODE:SUBI BINARY-RULE ENDOF
       mul    OF id X64IR-OPCODE:IMUL EMIT-BINARY ENDOF
-      div    OF E-X64SEL-FIXED throw ENDOF
+      div    OF id EMIT-DIV ENDOF
       lt     OF id COMPARE-RULE ENDOF
       le     OF id COMPARE-RULE ENDOF
       gt     OF id COMPARE-RULE ENDOF
@@ -1137,8 +1200,8 @@ create NAMEBUF NAME-CAP allot
       and    OF id X64IR-OPCODE:AND X64IR-OPCODE:ANDI BINARY-RULE ENDOF
       or     OF id X64IR-OPCODE:OR X64IR-OPCODE:ORI BINARY-RULE ENDOF
       xor    OF id X64IR-OPCODE:XOR X64IR-OPCODE:XORI BINARY-RULE ENDOF
-      lshift OF id X64IR-OPCODE:SHLI SHIFT-RULE ENDOF
-      rshift OF id X64IR-OPCODE:SHRI SHIFT-RULE ENDOF
+      lshift OF id X64IR-OPCODE:SHL X64IR-OPCODE:SHLI SHIFT-RULE ENDOF
+      rshift OF id X64IR-OPCODE:SHR X64IR-OPCODE:SHRI SHIFT-RULE ENDOF
       invert OF id X64IR-OPCODE:NOT EMIT-UNARY ENDOF
       mem    OF id EMIT-MEM ENDOF
       load   OF id X64IR-OPCODE:ALOAD EMIT-ALOAD ENDOF

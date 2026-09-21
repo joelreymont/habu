@@ -5,8 +5,8 @@
 \ machine operations that compute it, every source value has become the value
 \ the last of those operations defines, and every operand names that value
 \ rather than a position; and a float, a trapping unit, an opcode with no rule,
-\ a form that needs a fixed register, a module the pass was not told about and a
-\ contract of another machine are each refused by name.
+\ a module the pass was not told about and a contract of another machine are each
+\ refused by name.
 \
 \ WHAT THESE FIXTURES MEASURE THAT THE ARM64 ONES CANNOT. Three answers are this
 \ machine's alone and a wrong table would pass every ARM64 case:
@@ -24,6 +24,12 @@
 \   anything else in the function reads is copied with `x64.mov` before the
 \   form, and an operand this operation is the last reader of is not. ARM64's
 \   three-register forms destroy nothing, so no ARM64 fixture measures it.
+\ - THE COPY A FIXED REGISTER NEEDS. `shl r64, cl` reads its count from rcx and
+\   `idiv r64` its dividend from rax, so the count and the dividend are copied
+\   with `x64.mov` ALWAYS - the copy is the value the allocator places in the
+\   named register, and a count the rest of the function reads is then repaired
+\   rather than refused. The cases assert that the form's operand is the copy and
+\   not the source value. ARM64's sdiv and lslv name no register at all.
 \ - THE NEGATIVE DATA-STACK OFFSET. In a routine that leaves through its callee
 \   the pointer never moves, so every argument is read BEHIND it. x86-64
 \   displacements are signed and ARM64's are not, which is why the tail case
@@ -815,6 +821,52 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    WBND [: SHIFT-BODY ;] IR-CTX:WITH-CONTEXT
    3 T= TTRUE TTRUE 2 T= ;
 
+\ ---- the two forms that name a register --------------------------------------
+\ The count is copied and the copy is the shift's second operand, which is the
+\ whole of how this pass asks for rcx: the count itself stays where it was and
+\ what the allocator has to place in the named register is a value nothing else
+\ reads.
+: VAR-SHIFT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool )
+   HIR-MOD
+   BUILD-VAR-SHIFT
+   SELECTED READ!
+   OPS
+   0 s" x64.mov" OPCODE-IS?
+   1 s" x64.shl" OPCODE-IS?
+   0 0 OPERAND@ 1 ARG@ SAME-VALUE?
+   1 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   1 1 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   1 1 OPERAND@ 1 ARG@ SAME-VALUE? ;
+
+: VAR-SHIFT-CASE ( -- )
+   s" a shift by a computed count is the register form and its operand is the count's copy" T-LABEL
+   WBND [: VAR-SHIFT-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TTRUE TTRUE TTRUE TTRUE 3 T= ;
+
+\ The dividend is copied for the same reason and the quotient is result 0, which
+\ is the value the source division named. The remainder is result 1 and nothing
+\ reads it. The runtime routine the cold side hands a zero divisor to is the
+\ operation's own attribute, and it is the dictionary's `throw`.
+: DIVIDE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool )
+   HIR-MOD
+   BUILD-DIV
+   SELECTED READ!
+   OPS
+   0 s" x64.mov" OPCODE-IS?
+   1 s" x64.idiv" OPCODE-IS?
+   0 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   1 1 OPERAND@ 1 ARG@ SAME-VALUE?
+   1 0 s" x64.throw-entry" ATTR-KEY-IS?
+   1 0 ATTR-INT  s" throw" NDICT:CALL-TARGET =
+   2 0 OPERAND@ 1 0 RESULT@ SAME-VALUE?
+   2 0 OPERAND@ 1 1 RESULT@ SAME-VALUE? ;
+
+: DIVIDE-CASE ( -- )
+   s" a division is the divide form: the dividend's copy, the divisor, the quotient and the throw entry" T-LABEL
+   WBND [: DIVIDE-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 3 T= ;
+
 \ ---- the comparison and the branch below it ---------------------------------
 : BRANCH-BODY ( IR-CTX:ctx -- n n bool bool bool n n bool )
    HIR-MOD
@@ -1071,16 +1123,6 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    BUILD-FLOAT
    SELECTED drop ;
 
-: VAR-SHIFT-BODY ( IR-CTX:ctx -- )
-   HIR-MOD
-   BUILD-VAR-SHIFT
-   SELECTED drop ;
-
-: DIVIDE-BODY ( IR-CTX:ctx -- )
-   HIR-MOD
-   BUILD-DIV
-   SELECTED drop ;
-
 : WRONG-MACHINE-BODY ( IR-CTX:ctx -- )
    HIR-MOD
    BUILD-SQUARE
@@ -1111,12 +1153,6 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 
 : FLOATING ( -- )
    WBND [: FLOAT-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: VAR-SHIFT ( -- )
-   WBND [: VAR-SHIFT-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: DIVIDE ( -- )
-   WBND [: DIVIDE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : WRONG-MACHINE ( -- )
    WBND [: WRONG-MACHINE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1154,14 +1190,6 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    s" a floating operation has no form in this dialect and is refused" T-LABEL
    [: FLOATING ;] E-X64SEL-FLOAT TTHROWSQ ;
 
-: FIXED-REFUSE-CASES ( -- )
-   s" a shift whose count is not a literal reads rcx and is refused" T-LABEL
-   [: VAR-SHIFT ;] E-X64SEL-FIXED TTHROWSQ ;
-
-: DIVIDE-REFUSE-CASES ( -- )
-   s" a divide reads and writes rdx:rax and is refused for the same reason" T-LABEL
-   [: DIVIDE ;] E-X64SEL-FIXED TTHROWSQ ;
-
 : MACHINE-REFUSE-CASES ( -- )
    s" a contract of another machine is not one this backend lowers for" T-LABEL
    [: WRONG-MACHINE ;] E-X64SEL-MACHINE TTHROWSQ
@@ -1178,8 +1206,6 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : GROUP-OPCODE ( IR-CTX:ctx -- )      drop OPCODE-REFUSE-CASES ;
 : GROUP-TRAP ( IR-CTX:ctx -- )        drop TRAP-REFUSE-CASES ;
 : GROUP-FLOAT ( IR-CTX:ctx -- )       drop FLOAT-REFUSE-CASES ;
-: GROUP-FIXED ( IR-CTX:ctx -- )       drop FIXED-REFUSE-CASES ;
-: GROUP-DIVIDE ( IR-CTX:ctx -- )      drop DIVIDE-REFUSE-CASES ;
 : GROUP-MACHINE ( IR-CTX:ctx -- )     drop MACHINE-REFUSE-CASES ;
 : GROUP-MEM ( IR-CTX:ctx -- )         drop MEM-REFUSE-CASES ;
 
@@ -1196,6 +1222,8 @@ public
    LOGIC-CASE
    IMM-ADD-CASE
    SHIFT-CASE
+   VAR-SHIFT-CASE
+   DIVIDE-CASE
    BRANCH-CASE
    COND-CASE
    CARRY-CASE
@@ -1211,8 +1239,6 @@ public
    WBND [: GROUP-OPCODE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TRAP ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-FLOAT ;] IR-CTX:WITH-CONTEXT
-   WBND [: GROUP-FIXED ;] IR-CTX:WITH-CONTEXT
-   WBND [: GROUP-DIVIDE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MACHINE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MEM ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;

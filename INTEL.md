@@ -408,16 +408,18 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   x86-64 + little-endian + 64-bit, installed at load; requires only the
   registry, nothing under `src/os/`, so no engine prefix grows a compiler
   dependency.
-- `src/compiler/native/x64ir.f` (`X64IR`, dialect `x64` 0.1): 46 opcodes, 12
-  attribute keys, six signed conditions taken from `X64ASM:C-L/LE/G/GE/E/NE`.
+- `src/compiler/native/x64ir.f` (`X64IR`, dialect `x64` 0.1): 46 opcodes, 13
+  attribute keys (`x64.throw-entry` is the division's cold-side routine), six
+  signed conditions taken from `X64ASM:C-L/LE/G/GE/E/NE`.
   Two-address forms declare a schema tie on the operand they overwrite; every
   flags user is fused (`cmpset`, `cmpseti`, `cmpsel`, `selz`, `cmpbr`,
   `cmpbri`, `brz`); the literal is `mov r64, imm64` (site kind `MOVABS`); no
   `movk`, `linksave`/`linkload` or `dpush`/`dpop`. No float forms yet (they
-  raise MINOR when they land). Two fixed-register obligations are stated in
-  the file for the selector and emitter: `shl`/`shr` count in `rcx`, `idiv`
-  over `rdx:rax` (quotient `rax`, remainder `rdx`); `idiv` also traps on
-  `MIN-N / -1`, which the selector must answer as `(MIN-N, 0)` by contract.
+  raise MINOR when they land). Two fixed-register obligations are declared in
+  the schema and placed by the allocator: `shl`/`shr` count in `rcx`, `idiv`
+  dividend and quotient in `rax` and remainder in `rdx`; `idiv` also traps on
+  `MIN-N / -1`, which the form's render must answer as `(MIN-N, 0)` by contract
+  and does not yet.
 - `rsp` is reserved (call pushes through it): seven reserved, nine allocatable
   (`rax rcx rdx rsi rdi r8..r11`). `X64IR:REGFILE` states it;
   `test/compiler/x64ir.f` asserts it.
@@ -469,14 +471,22 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   `tailcall`, `trap`, `reserve`/`release`. A two-address tie is made
   satisfiable HERE: operand 0 is copied through `x64.mov` before the form
   whenever any other use in the function reads it (the allocator refuses a tie
-  it cannot satisfy and coalesces the copies it can).
+  it cannot satisfy and coalesces the copies it can). A FIXED REGISTER is made
+  satisfiable the same way and always: a computed shift count selects `shl`/`shr`
+  with the count's `x64.mov` copy as the operand the schema fixes to rcx, and
+  `/` selects `idiv` with the dividend's copy as the operand fixed to rax, two
+  results (quotient, unread remainder) and the runtime `throw` entry as its
+  `x64.throw-entry` attribute. `cqo` and the zero-divisor branch are the form's
+  render, which emit-x64.f does not write yet (`E-X64EMIT-FORM` for `shl`, `shr`
+  and `idiv`), so both lowerings are proven through allocation and validation and
+  not through bytes.
 - Refused by name, each with a case: `E-X64SEL-FLOAT` (no SSE form declared),
-  `E-X64SEL-TRAP` (trapping-overflow unit), `E-X64SEL-FIXED` (a shift whose
-  count is not a literal reads rcx; a divide reads rdx:rax - the allocator has
-  no fixed-register operand yet, `habu-place-the-fixed-3347ae15`),
-  `E-X64SEL-MACHINE` (a contract of another machine), `E-X64SEL-OPCODE`,
-  `-BIND`, `-SOURCE`, `-MEM`; `-8760..-8774` in lib/errors.f. HIR has no
-  `negate`, so `neg` has no source form in this slice.
+  `E-X64SEL-TRAP` (trapping-overflow unit, or no `throw` in the target
+  dictionary for a division's cold side), `E-X64SEL-MACHINE` (a contract of
+  another machine), `E-X64SEL-OPCODE`, `-BIND`, `-SOURCE`, `-MEM`;
+  `-8760..-8774` in lib/errors.f, of which -8773 is retired with the
+  fixed-register refusal it named. HIR has no `negate`, so `neg` has no source
+  form in this slice.
 - `src/arch/x86-64/abi.f` (`X64ABI`): the Habu word convention on this
   machine - link `absent`, no prologue slot (the return address is on the
   machine stack), the nine-register pool from `X64M:MACHINE NEFF:GPR-ALL`,
