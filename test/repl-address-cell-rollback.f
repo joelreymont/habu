@@ -6,9 +6,15 @@ require lib/engine-candidate.f
 package REPL-ROW-TEST
 using PTY-HARNESS
 
+\ The first prompt of a fresh child is the only one a plain wait may take: after
+\ a line the editor has already echoed "habu> " ahead of the answer, so the
+\ prompt that proves the child holds the terminal raw again is the one AFTER
+\ the answer (lib/pty-harness.f WAIT-AFTER). ^D sent on the echoed prompt lands
+\ in the cooked window and is read as a NUL, never as the end of file STOP means.
 : PROMPT ( -- ) s" habu> " WAIT-FOR TTRUE ;
+: PROMPT-AFTER ( ptr u8 n -- ) s" habu> " WAIT-AFTER TTRUE ;
 : STEP ( ptr u8 n -- )
-   BUF-CLEAR SEND-LINE s"  ok" WAIT-FOR TTRUE PROMPT ;
+   BUF-CLEAR SEND-LINE s"  ok" WAIT-FOR TTRUE s"  ok" PROMPT-AFTER ;
 : STOP ( -- )
    4 SEND-BYTE
    REAP MATCH outcome
@@ -24,7 +30,8 @@ using PTY-HARNESS
    s" require test/repl-address-cell-probe.f" STEP
    s" REPL-ROWS:SAVE" STEP
    BUF-CLEAR bad badu SEND-LINE
-   s" E-UNDEFINED: NOSUCH-WORD" WAIT-FOR TTRUE PROMPT
+   s" E-UNDEFINED: NOSUCH-WORD" WAIT-FOR TTRUE
+   s" E-UNDEFINED: NOSUCH-WORD" PROMPT-AFTER
    s" REPL-ROWS:RESTORED" STEP
    s" rows-restored-pass" IN-BUF? {: restored:bool :}
    restored TTRUE

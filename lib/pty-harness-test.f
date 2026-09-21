@@ -211,6 +211,24 @@ variable HIT                       \ did the loop reach the case it was feeding 
    STOP-CHILD ;
 
 
+\ WAIT-AFTER on a live child: the echo of "42 ." carries the prompt ahead of
+\ the answer, so a wait for the prompt after " ok" is a wait for the prompt
+\ the editor prints once it holds the terminal raw again, not the echoed one.
+\ (A pair that never appears waits the whole 20 s budget out; CASE-ORDER pins
+\ the refusal on the buffer, where it costs nothing.)
+: CASE-WAIT-AFTER ( -- )
+   HB$ SPAWN-ON-PTY
+   s" habu> " WAIT-FOR TTRUE
+   BUF-CLEAR
+   s" 42 ." SEND-LINE
+   s" the answer arrives" T-LABEL
+   s"  ok" WAIT-FOR TTRUE
+   s" and the prompt after it is a later one than the echo's" T-LABEL
+   s"  ok" s" habu> " WAIT-AFTER TTRUE
+   s"  ok" s" habu> " FIND-AFTER  0 s" habu> " FIND-FROM  > TTRUE
+   STOP-CHILD ;
+
+
 \ A child that writes into the terminal faster than anyone empties it and never
 \ exits. Reaped by waiting alone, the parent sat in do_wait for 5 m 34 s with the
 \ child blocked in write() (dot habu-bound-the-pty-7771d0fb); the bounded reap
@@ -240,6 +258,7 @@ variable HIT                       \ did the loop reach the case it was feeding 
    CASE-NO-WINDOW
    CASE-WATCH-REFUSALS
    CASE-SPAWN-ABORT
+   CASE-WAIT-AFTER
    CASE-WEDGE-REAP ;
 
 

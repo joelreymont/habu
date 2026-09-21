@@ -435,6 +435,27 @@ public
    again ;
 
 
+\ The same wait for the TAIL AT OR AFTER THE HEAD, which is the only wait that
+\ can tell the prompt a child prints once it holds the terminal raw from the
+\ one its line editor redrew while echoing the line. The editor redraws
+\ "habu> " plus the line on every keystroke, so the prompt is in the buffer
+\ before the answer is; a wait for the prompt alone is satisfied by the echo
+\ and a ^D sent then lands while the child has the terminal cooked between
+\ the answer and the next read, where the line discipline turns it into an end
+\ of file the raw-mode read later sees as a NUL and ignores. Measured (strace
+\ of test/repl-address-cell-rollback.f): the child restores cooked mode before
+\ it prints " ok" and takes raw mode about 100 us later; a driver that reacts
+\ within that window hangs the child at its read, and a loaded box widens the
+\ window to milliseconds for any driver.
+: WAIT-AFTER ( ptr u8 n ptr u8 n -- bool ) {: ha:ptr hu:n ta:ptr tu:n :}
+   WAIT-BUDGET-MS WAIT-OPEN
+   begin
+      ha hu ta tu AFTER? if true exit then
+      WAIT-LEFT 0= if false exit then
+      MASTER-FD READ-STEP 0 < if ha hu ta tu AFTER? exit then
+   again ;
+
+
 \ Wait for a marker and close an absence claim's window at its end. The marker
 \ has to be one the child prints PAST the point where the rejected text could
 \ have appeared; a failed wait leaves no window, so the claim behind it is
