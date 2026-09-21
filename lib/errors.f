@@ -1443,3 +1443,14 @@ public
 -9284 constant E-SIGNAL-READ      \ the descriptor answered short of the four-byte number
 -9285 constant E-SIGNAL-POLL      \ poll refused the read end with an errno
 -9286 constant E-SIGNAL-CLOSE     \ closing an end of the self-pipe failed
+
+\ The io_uring readiness loop (package AIO): -9290..-9299. The decade after
+\ SIGNAL.
+-9290 constant E-AIO-FIRST
+-9299 constant E-AIO-LAST
+-9290 constant E-AIO-SETUP        \ io_uring_setup or one of the ring mappings was refused
+-9291 constant E-AIO-ENTER        \ io_uring_enter was refused, or took fewer entries than offered
+-9292 constant E-AIO-STATE        \ no loop running, a second LOOP-START, or a ticket this task does not own
+-9293 constant E-AIO-FULL         \ no free record, or no room left in the submission ring
+-9294 constant E-AIO-BUSY         \ LOOP-STOP with an operation still in flight
+-9295 constant E-AIO-GROUP        \ the group is full or empty, holds no such ticket, or no row is left

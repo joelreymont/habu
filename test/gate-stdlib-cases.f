@@ -865,6 +865,11 @@ SUITE tasking-threads
    lib/task-test.f
 ;SUITE
 
+\ Readiness, timers and cancellation on io_uring, over pipes only.
+SUITE aio-uring
+   lib/aio-test.f
+;SUITE
+
 \ Process signals on the engine's baked stub and a self-pipe.
 SUITE process-signals
    lib/signal-test.f

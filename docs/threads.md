@@ -138,6 +138,9 @@ wake-up is never evidence that the state the caller wants has arrived:
 - The count is not cleared by `TASK:ACTIVATE`: a task reactivated without being
   released can see one stale hint, which the re-check above absorbs.
 
+[aio.md](aio.md) builds on this: `AIO:AWAIT` is exactly the loop above over one
+io_uring record, and the loop that drains the ring wakes each waiter by TCB.
+
 ## Joins and cleanups
 
 A worker answers with `TASK:RETURN` and the task that started it collects that
