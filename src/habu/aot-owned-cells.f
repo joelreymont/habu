@@ -25,10 +25,11 @@
 \
 \ THE LIST IS AT THE BOTTOM OF THIS FILE. A cell is on it because it is NAMED
 \ there - never because of its value, its address, or the file it lives in.
-\ aot-closure.f OWNED-CELL? admits a named cell and refuses every other cell below
-\ the window with the diagnostic it always gave; aot-lib.f EMIT-OWNED-CELLS emits
-\ the initialisation each claim declares. One table, two readers, so the walker
-\ and the entry cannot disagree about a cell.
+\ aot-closure.f CLAIMED-CELL? admits a named cell - the cell an owned claim names,
+\ any byte a carried claim declares - and refuses every other cell below the
+\ window with the diagnostic it always gave; aot-lib.f EMIT-OWNED-CELLS emits the
+\ initialisation each claim declares. One table, two readers, so the walker and
+\ the entry cannot disagree about a cell.
 \
 \ WHY THE LIST IS HERE AND NOT IN THE ENGINE, BESIDE THE CELLS IT NAMES. A claim
 \ is a DATA offset, and an offset computed while the engine's own prefix loads

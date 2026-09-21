@@ -76,7 +76,11 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
 \ grows inside the span: the list itself loads with the linker, above BLOB-END,
 \ and nothing it names could be given a home after the span is latched. The
 \ reserve is zeroed, so whatever no claim uses is invisible to aot-lib.f
-\ EACH-BLOB-RUN and costs the image nothing but address space.
+\ EACH-BLOB-RUN and costs the image nothing but address space. WHAT THE CLAIMS DO
+\ USE TRAVELS IN EVERY IMAGE: the copies are made for every link, reached or not,
+\ and their non-zero bytes are blob content like any other window byte (measured:
+\ a hello-world image carries 390 written data bytes, 64 without the copies).
+\ docs/native-applications.md states the budget the four claims spend.
 $400 constant CARRY-BYTES
 variable CARRY-BASE
 PTR-VARIABLE CARRY-P

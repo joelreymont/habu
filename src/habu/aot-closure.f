@@ -409,6 +409,13 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
 \ differently.
 : DATA-CELL@ ( n -- n ) DATA-PTR CELL-VIEW @ ;
 
+\ The linker writes a window cell in exactly two places, and both write bytes the
+\ image is about to capture: src/habu/aot-lib.f CARRY-CELLS copies a carried
+\ claim into the carried run, and XTD-ROW below stores a declared DATA cell's
+\ mapped value into the cell itself. The blob is read out of live DATA after
+\ both, so the image ships what they wrote.
+: DATA-CELL! ( n n -- ) {: at:n v:n :} v at DATA-PTR CELL-VIEW ! ;
+
 \ A WHOLE cell at this address is inside the mapped DATA region, so reading it to
 \ see what it holds cannot fault. DATA-ADDRESS? admits the region's one-past end,
 \ which is a valid address to relocate and not a readable cell.
@@ -505,6 +512,17 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
    s" the image restores only the program's own DATA window; define the cell in the program's own source, or use --repl"
    REFUSE-DATA-CELL ;
 
+\ A DECLARED DATA CELL HOLDING AN ENGINE ADDRESS NO CLAIM NAMES. The cell itself
+\ is inside the window and travels; the address it holds is engine DATA the image
+\ never restores, so the image would read the fresh mapping's zero through it.
+\ The cell is named rather than a code site, because the fault is the value the
+\ program stored and not an instruction the compiler emitted.
+: REFUSE-UNCLAIMED-CELL ( n n -- ) {: cell:n v:n :}
+   cell v
+   s" stripped AOT declared data cell holds an engine address outside the restored span"
+   s" the image restores only the window this program owns and the cells src/habu/aot-owned-cells.f claims; take the address at run time, claim the target carried, or use --repl"
+   REFUSE-DATA-CELL ;
+
 \ A genuine data pointer the restored span does not cover. Named the way
 \ REFUSE-ADDRESS-SITE names its site - the owning word and the region offset of
 \ the recorded cell - plus the value, the word whose data that value is, and the
@@ -530,24 +548,11 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
    cell DATA-CELL@ {: v:n :}
    v CELL-TEXTPTR? if cell v REFUSE-UNRESTORED-CELL then ;
 
-\ AN ENGINE RUNTIME CELL THE STRIPPED ENTRY OWNS, ADMITTED BY ITS DECLARATION.
-\ src/habu/aot-owned-cells.f is the list; a cell is on it because it is named
-\ there. The value has to BE a claimed cell's address - one that merely lands in
-\ the engine's DATA below the window, or in the same file as a claimed cell, is
-\ refused exactly as before. Relocation preserves such an address because DATA is
-\ one MAP_FIXED mapping at DATA-VA in the engine and in the image alike, and
-\ src/habu/aot-lib.f EMIT-OWNED-CELLS reads this same table to publish what each
-\ claim declares - so the two cannot disagree about one cell.
-\ A CARRIED claim is not owned in place - its bytes move - so its base address is
-\ admitted by the mapping below and never by this predicate.
-: OWNED-AT? ( n n -- bool ) {: i:n v:n :}
-   i AOT-OWNED:CARRIED? if false exit then
-   v i AOT-OWNED:AT = ;
-
-: OWNED-CELL? ( n -- bool ) {: v:n :}
-   AOT-OWNED:N 0 ?do
-      i v OWNED-AT? if true unloop exit then
-   loop false ;
+\ THE SPAN THE IMAGE RESTORES, as a test on a value. The end is a valid one-past
+\ address for a zero-length buffer, so the bound admits it; relocation preserves
+\ an address and does not certify a later memory access.
+: IN-WINDOW? ( n -- bool ) {: v:n :}
+   v BLOB-SRC @ >= v BLOB-END @ <= and ;
 
 \ AN ADDRESS INSIDE A CARRIED CLAIM'S BYTES NAMES THE COPY. src/habu/aot-lib.f
 \ CARRY-CELLS has already copied [cell, cell+length) into the window's carried run
@@ -565,24 +570,61 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
       i v CARRIED-IN? if i AOT-OWNED:DEST v i AOT-OWNED:AT - + unloop exit then
    loop -1 ;
 
+\ AN ENGINE RUNTIME CELL THE STRIPPED ENTRY OWNS OR CARRIES, ADMITTED BY ITS
+\ DECLARATION. src/habu/aot-owned-cells.f is the list; a cell is on it because it
+\ is named there. An owned claim admits its cell's own address and nothing else -
+\ a value that merely lands in the engine's DATA below the window, or in the same
+\ file as a claimed cell, is refused exactly as before - and a carried claim
+\ admits every address inside its declared bytes, because that whole range maps
+\ to the copy. Relocation preserves an owned address because DATA is one
+\ MAP_FIXED mapping at DATA-VA in the engine and in the image alike, and
+\ src/habu/aot-lib.f EMIT-OWNED-CELLS reads this same table to publish what each
+\ claim declares - so the two cannot disagree about one cell.
+\ ONE PREDICATE FOR BOTH KINDS, because both roads below ask it: the map answers
+\ a carried address with the copy, and the refusal check must admit exactly what
+\ the map answered for.
+: CLAIMED-AT? ( n n -- bool ) {: i:n v:n :}
+   i AOT-OWNED:CARRIED? if i v CARRIED-IN? exit then
+   v i AOT-OWNED:AT = ;
+
+: CLAIMED-CELL? ( n -- bool ) {: v:n :}
+   AOT-OWNED:N 0 ?do
+      i v CLAIMED-AT? if true unloop exit then
+   loop false ;
+
+\ THE IMAGE'S ANSWER FOR A DATA ADDRESS, and whether any claim covers it. BOTH
+\ ROADS INTO A BELOW-WINDOW ADDRESS GO THROUGH THIS ONE MAP - the address a
+\ record's code spells out (SCAN-ADDRESS, aot-lib.f COPY-ADDRESS) and the value a
+\ declared DATA cell holds (XTD-ROW) - so an address one road rewrites is never
+\ an address the other ships verbatim. An in-window value answers itself, because
+\ the window is restored at the addresses it was captured from; a value inside a
+\ carried claim answers with the copy at the same interior offset; a string
+\ literal interned in another pool is re-interned into the application's and
+\ answers with that copy. What is left is engine DATA the image does not restore
+\ and no claim names, and each road refuses it by the site it has: a code site,
+\ or the cell.
+: MAPPED-DATA ( n -- n bool ) {: v:n :}
+   v IN-WINDOW? if v true exit then
+   v CARRIED-TARGET {: c:n :}
+   c 0 >= if c true exit then
+   v NSTR:REINTERN-OWNED drop {: w:n :}
+   w  w IN-WINDOW? w CLAIMED-CELL? or ;
+
 : DATA-ADDRESS! ( ptr n ptr u8 n -- ) {: owner:ptr site:ptr v:n :}
-   \ The end is a valid one-past pointer for a zero-length buffer. Relocation
-   \ preserves the address; it does not certify a later memory access.
-   v BLOB-SRC @ >= v BLOB-END @ <= and if exit then
-   v OWNED-CELL? if exit then
+   v IN-WINDOW? if exit then
+   v CLAIMED-CELL? if exit then
    v DATA-CELL? if v CHECK-DATA-CELL then
    owner site v REFUSE-DATA-SPAN ;
 
 \ A carried cell's declared bytes and an immutable literal row can both be copied
 \ into the window - the first into the carried run by name, the second into the
 \ capture's active pool - and the address is rewritten to the copy either way.
-\ Other pre-window DATA has no ownership proof and must keep the link refusal.
+\ Other pre-window DATA has no ownership proof and must keep the link refusal,
+\ which DATA-ADDRESS! raises with this site's three facts.
 : DATA-TARGET ( ptr n ptr u8 n -- n ) {: owner:ptr site:ptr v:n :}
-   v BLOB-SRC @ >= v BLOB-END @ <= and if v exit then
-   v CARRIED-TARGET {: c:n :}
-   c 0 >= if c exit then
-   v NSTR:REINTERN-OWNED drop {: w:n :}
-   owner site w DATA-ADDRESS!  w ;
+   v MAPPED-DATA {: w:n ok:bool :}
+   ok 0= if owner site w DATA-ADDRESS! then
+   w ;
 
 \ ---- the program's DECLARED xt cells -------------------------------------------
 \ A PERSISTED CELL HOLDS A CODE ADDRESS BECAUSE IT WAS DECLARED TO, never because
@@ -595,8 +637,9 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
 \ capture window; the two things it answers are what the span scan must NOT refuse
 \ and what the image must carry.
 \ A row whose value is zero is an unbound cell: the sparse copy restores the zero
-\ and there is nothing to relocate. A DATA-kind row needs nothing either - DATA is
-\ mapped MAP_FIXED at DATA-VA and the window is restored to the same addresses.
+\ and there is nothing to relocate. A DATA-kind row carries no code address, so
+\ it is not collected here - its cell is mapped in place by XTD-ROW below and
+\ travels in the image's data blob like any other window byte.
 1024 constant MAX-XTCELL
 create XTC-OFF MAX-XTCELL cells allot     \ each declared cell's DATA offset
 create XTC-VAL MAX-XTCELL cells allot     \ ... and the code address it holds
@@ -638,12 +681,29 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
 : XTC-IN-WINDOW? ( n -- bool ) {: at:n :}
    at BLOB-SRC @ >= at 8 + BLOB-END @ <= and ;
 
+\ A DECLARED DATA CELL HOLDS THE ADDRESS IT WAS DECLARED FOR, and the image has
+\ to be able to read it. The window is restored at the addresses it was captured
+\ from, so an in-window value needs nothing - which is all a DATA-kind row ever
+\ needed while every declared pointer named the program's own data. A value below
+\ the window is the engine's own DATA, which a stripped image does not restore:
+\ it goes through the SAME map a code-spelled address goes through, and an
+\ address no claim covers is refused by the cell that holds it. THE REWRITE IS
+\ THE CELL'S CAPTURED VALUE: it is stored into the live window cell here, before
+\ aot-lib.f reads the window out into the image's data blob, so the image ships
+\ the mapped address in the cell itself and no second pass patches it.
+: XTD-ROW ( n -- ) {: at:n :}
+   at DATA-CELL@ {: v:n :}
+   v DATA-ADDRESS? 0= IF exit THEN
+   v MAPPED-DATA {: w:n ok:bool :}
+   ok 0= IF at v REFUSE-UNCLAIMED-CELL THEN
+   w v <> IF at w DATA-CELL! THEN ;
+
 : XTC-ROW ( n -- ) {: k:n :}
    k ADDRESS-CELLS:ROW@ {: raw:n :}
-   raw XTCELL-DATA-TAG and 0<> IF exit THEN
    raw XTCELL-OFF-MASK and {: off:n :}
    DATA-VA VA>N off + {: at:n :}
    at XTC-IN-WINDOW? 0= IF exit THEN
+   raw XTCELL-DATA-TAG and 0<> IF at XTD-ROW exit THEN
    at DATA-CELL@ {: v:n :}
    v 0= IF exit THEN
    v CELL-DICTPTR? IF at v REFUSE-DICT-CELL THEN

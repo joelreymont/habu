@@ -111,6 +111,10 @@ variable HBT-TABLE-SRC-U
 variable HBT-TABLE-OUT-U
 variable HBT-CHAIN-SRC-U
 variable HBT-CHAIN-OUT-U
+variable HBT-PTRC-SRC-U
+variable HBT-PTRC-OUT-U
+variable HBT-PTRU-SRC-U
+variable HBT-PTRU-OUT-U
 create HBT-LIB-SRC-BUF FS-PATH-CAP allot
 create HBT-LIB-OUT-BUF FS-PATH-CAP allot
 create HBT-LIB-DIR-BUF FS-PATH-CAP allot
@@ -124,6 +128,10 @@ create HBT-TABLE-SRC-BUF FS-PATH-CAP allot
 create HBT-TABLE-OUT-BUF FS-PATH-CAP allot
 create HBT-CHAIN-SRC-BUF FS-PATH-CAP allot
 create HBT-CHAIN-OUT-BUF FS-PATH-CAP allot
+create HBT-PTRC-SRC-BUF FS-PATH-CAP allot
+create HBT-PTRC-OUT-BUF FS-PATH-CAP allot
+create HBT-PTRU-SRC-BUF FS-PATH-CAP allot
+create HBT-PTRU-OUT-BUF FS-PATH-CAP allot
 \ The quoted-path fixture below owns the writer's bytes; json-write holds none.
 6 constant HBT-ESCAPE-MAX
 FS-PATH-CAP HBT-ESCAPE-MAX * 2 + constant HBT-QUOTE-CAP
@@ -304,6 +312,18 @@ create HBT-EXP-HEX2 64 allot
 : HBT-CHAIN-OUT ( -- ptr u8 n )
    HBT-CHAIN-OUT-BUF HBT-CHAIN-OUT-U @ ;
 
+: HBT-PTRC-SRC ( -- ptr u8 n )
+   HBT-PTRC-SRC-BUF HBT-PTRC-SRC-U @ ;
+
+: HBT-PTRC-OUT ( -- ptr u8 n )
+   HBT-PTRC-OUT-BUF HBT-PTRC-OUT-U @ ;
+
+: HBT-PTRU-SRC ( -- ptr u8 n )
+   HBT-PTRU-SRC-BUF HBT-PTRU-SRC-U @ ;
+
+: HBT-PTRU-OUT ( -- ptr u8 n )
+   HBT-PTRU-OUT-BUF HBT-PTRU-OUT-U @ ;
+
 \ An application that touches a PERSISTENT CELL of each library it requires:
 \ lib/string.f's builder, lib/fs-mutate.f's copy state (FS-MUT-COPY-IN) and
 \ lib/fs.f's walk stacks (FS-DEPTH, FS-WALK-BUF). Those cells are what the maker
@@ -383,6 +403,41 @@ create HBT-EXP-HEX2 64 allot
 \ is a table.
 : HBT-TABLE-SRC$ ( -- ptr u8 n )
    S\" : MAIN ( -- ) s\" /tmp/x\" PATH0 1 type cr ;\n" ;
+
+\ A DECLARED CELL THAT HOLDS A CARRIED TABLE'S ADDRESS, stored at BUILD time. The
+\ cell travels in the window like any other byte, so before src/habu/aot-closure.f
+\ XTD-ROW mapped it the image read the ENGINE's STR-MAX-I64$ out of its own
+\ zero-filled mapping and printed nineteen NUL bytes (measured on this fixture's
+\ program). The second line is the same table spelled in code, which the closure
+\ walk has always mapped to the carried copy: equal lines are the proof that both
+\ roads answer with one address. The third is a cached pointer into the program's
+\ OWN window data, which the window restores at the address it was captured from
+\ and which the map therefore leaves alone.
+: HBT-PTRC-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require lib/string.f\ncreate PTRC-OWN 111 c, 107 c,\n" SB-APPEND
+   S\" PERSISTED-PTR-VARIABLE PTRC-CACHED\nPERSISTED-PTR-VARIABLE PTRC-MINE\n" SB-APPEND
+   S\" STR-MAX-I64$ PTRC-CACHED !\nPTRC-OWN PTRC-MINE !\n" SB-APPEND
+   S\" : MAIN ( -- )\n   PTRC-CACHED @ STR-I64-DIGITS type cr\n" SB-APPEND
+   S\"    STR-MAX-I64$ STR-I64-DIGITS type cr\n   PTRC-MINE @ 2 type cr ;\n" SB-APPEND
+   SB$ ;
+
+: HBT-PTRC-EXPECTED$ ( -- ptr u8 n )
+   SB-RESET
+   s" 9223372036854775807" SB-APPEND 10 SB-APPEND-C
+   s" 9223372036854775807" SB-APPEND 10 SB-APPEND-C
+   s" ok" SB-APPEND 10 SB-APPEND-C
+   SB$ ;
+
+\ ... and a declared cell holding a baked table NO claim names is refused by the
+\ cell that holds it. PZB is the same table HBT-STRIPPED-UNCARRIED-TABLE reaches
+\ through PATH0, so the two cases differ only in how the address got into the
+\ image: spelled in code, or stored in a declared cell at build time.
+: HBT-PTRU-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" PERSISTED-PTR-VARIABLE PTRU-CACHED\nPZB PTRU-CACHED !\n" SB-APPEND
+   S\" : MAIN ( -- ) PTRU-CACHED @ 1 type cr ;\n" SB-APPEND
+   SB$ ;
 
 \ A PROGRAM WHOSE CLOSURE IS ITS OWN SIZE. HBT-CHAIN-N words, each calling the
 \ next and reaching no library, are exactly HBT-CHAIN-N + 1 closure members, so
@@ -468,6 +523,10 @@ create HBT-EXP-HEX2 64 allot
    HBT-ROOT s" table" HBT-TABLE-OUT-BUF HBT-TABLE-OUT-U HBT-PATH!
    HBT-ROOT s" chain.f" HBT-CHAIN-SRC-BUF HBT-CHAIN-SRC-U HBT-PATH!
    HBT-ROOT s" chain" HBT-CHAIN-OUT-BUF HBT-CHAIN-OUT-U HBT-PATH!
+   HBT-ROOT s" ptrcell.f" HBT-PTRC-SRC-BUF HBT-PTRC-SRC-U HBT-PATH!
+   HBT-ROOT s" ptrcell" HBT-PTRC-OUT-BUF HBT-PTRC-OUT-U HBT-PATH!
+   HBT-ROOT s" ptrunowned.f" HBT-PTRU-SRC-BUF HBT-PTRU-SRC-U HBT-PATH!
+   HBT-ROOT s" ptrunowned" HBT-PTRU-OUT-BUF HBT-PTRU-OUT-U HBT-PATH!
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
@@ -896,6 +955,45 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-ERR terr s" caller=PATH0" CONTAINS? TTRUE
    HBT-ERR terr s" target=PZB" CONTAINS? TTRUE
    HBT-TABLE-OUT FILE? TFALSE ;
+
+\ ... and a DECLARED CELL that holds a carried table's address is mapped to the
+\ carried copy, so the image reads the bytes it ships. The three pinned lines are
+\ the cached pointer, the same table spelled in code and a cached pointer into
+\ the program's own window data (src/habu/aot-closure.f XTD-ROW).
+: HBT-STRIPPED-CACHED-CARRIED ( -- )
+   HBT-PTRC-SRC HBT-PTRC-SRC$ WRITE-ALL
+   HBT-PTRC-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-PTRC-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-PTRC-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
+   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
+   brc 0 T=
+   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-PTRC-OUT FILE? TTRUE
+   HBT-PTRC-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-PTRC-EXPECTED$ T$=
+   HBT-PTRC-OUT HBT-REMOVE-FILE? ;
+
+\ ... while a declared cell holding a baked table on no list is refused, naming
+\ the cell that holds the address rather than a code site.
+: HBT-STRIPPED-CACHED-UNOWNED ( -- )
+   HBT-PTRU-SRC HBT-PTRU-SRC$ WRITE-ALL
+   HBT-PTRU-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-PTRU-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-PTRU-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: uout:n uerr:n urc:n :}
+   urc 70 T=
+   HBT-ERR uerr s" declared data cell holds an engine address outside the restored span" CONTAINS? TTRUE
+   HBT-ERR uerr s" word=PTRU-CACHED" CONTAINS? TTRUE
+   HBT-PTRU-OUT FILE? TFALSE ;
 
 : HBT-CLI-LARGE-SOURCE ( -- )
    HBT-LARGE-CHUNK!
@@ -1569,6 +1667,8 @@ public
    HBT-STRIPPED-PRINT-PARSE-HASH
    HBT-STRIPPED-CHAIN
    HBT-STRIPPED-UNCARRIED-TABLE
+   HBT-STRIPPED-CACHED-CARRIED
+   HBT-STRIPPED-CACHED-UNOWNED
    HBT-CLI-LARGE-SOURCE
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE

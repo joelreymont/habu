@@ -71,6 +71,13 @@ variable CARRY-USED
    \ the linker did not compute itself.
    i AOT-OWNED:AT DATA-ADDRESS? i AOT-OWNED:AT len + DATA-ADDRESS? and 0= IF
       s" aot: a carried claim reaches outside the DATA mapping" 74 die THEN
+   \ A CARRIED CLAIM IS ENGINE DATA, which is all below the window: the image
+   \ restores the window itself, so a claim reaching into it would be copied into
+   \ the run and never consulted - aot-closure.f MAPPED-DATA answers an in-window
+   \ address with itself before it ever asks a claim - and the same bytes would
+   \ ship twice. The bound above admits the whole mapping and cannot see this.
+   i AOT-OWNED:AT len + BLOB-SRC @ > IF
+      s" aot: a carried claim reaches into the capture window" 74 die THEN
    CARRY-USED @ len + CARRY-BYTES > IF
       s" aot: carried engine cells exceed the window's carried run" 74 die THEN
    i AOT-OWNED:AT DATA-PTR  CARRY-BASE$ CARRY-USED @ +  len  BYTE-COPY
@@ -136,7 +143,7 @@ variable CARRY-USED
    s" aot: unknown target" 74 die ;
 
 \ THE LIST IS src/habu/aot-owned-cells.f, the one src/habu/aot-closure.f
-\ OWNED-CELL? admits from, so a cell this publishes and a cell the walker lets
+\ CLAIMED-CELL? admits from, so a cell this publishes and a cell the walker lets
 \ through are the same cell by construction.
 \ A FRESH claim emits nothing: EMIT-DATA-REGION-MAP just mapped DATA anonymously,
 \ so the cell already holds the zero its claim says is correct. A CARRIED claim
@@ -682,7 +689,7 @@ public
 \ whole linker inside the span.
 : LINK ( -- )
    CARRY-CELLS                                      \ the engine constants this image carries
-   COLLECT-XT-CELLS                                 \ the window's DECLARED xt cells
+   COLLECT-XT-CELLS                                 \ the window's DECLARED cells: xt rows out, DATA cells mapped
    AOT-DATA-TEXTPTR-CHECK                           \ ... and no undeclared code pointer beside them
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !  LBL LTEXT !
    LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !   \ the stripped image carries both handlers too

@@ -167,7 +167,21 @@ span, so the bytes travel in the image's own data blob, and `aot-closure.f
 CARRIED-TARGET` rewrites every spelled address in that range to the copy at the
 same interior offset — the map a re-interned literal already goes through, so
 `KK i cells +` lands where `KK` does. No entry code runs for a carried cell and
-nothing below the window is written. The scratch cells and buffers of
+nothing below the window is written.
+
+**The carried run travels in every stripped image.** The copies are made for
+every link, whether the program reaches them or not, and the blob ships every
+non-zero byte of the window: a hello-world image carries 390 written data bytes,
+64 of them its own (measured by removing the copy from `CARRY-CELLS` on this
+engine). The 326 bytes of difference are the four claims' non-zero content. The
+run itself is `CARRY-BYTES` = 1024 bytes and the four claims use 624 of it
+(`STR-MAX-I64$` and `STR-MIN-I64$` at `STR-I64-DIGITS` = 19 bytes each, rounded
+up to a cell, `KK` at 64 cells and `HH0` at 8 cells); what no claim uses stays
+zero and never travels. A fifth claim larger than the remaining 400 bytes fails
+the build with *aot: carried engine cells exceed the window's carried run*, and
+a claim reaching into the capture window fails with *aot: a carried claim
+reaches into the capture window* — the window is restored on its own and a copy
+of part of it would never be read. The scratch cells and buffers of
 `src/core/sha256.f` are claimed **fresh** by the same list, each after reading
 the word that writes it before it reads it. A baked table on no list still
 refuses: `src/core/util.f`'s `PZB`, reached through `PATH0`, is the nearest miss
@@ -211,7 +225,23 @@ after the image's data blob, and the startup applies them right after restoring
 the window. The word a row names joins the image's closure, and an anonymous
 quotation body is carried on its own, without the initializer that bound it.
 
-Four things are still refused by name, each naming the word, the cell's DATA
+A cell **declared to hold an address** — `PERSISTED-PTR-VARIABLE` and the other
+`ptr-cell-mark` definers of `src/core/pointer-storage.f` — is mapped the same
+way its value would be if the code spelled it out. `src/habu/aot-closure.f
+XTD-ROW` reads every DATA-kind row inside the window and puts its value through
+the one map (`MAPPED-DATA`): an address in the window answers itself, an address
+inside a carried claim answers with the copy at the same interior offset, and an
+engine address no claim names is refused. The mapped value is stored into the
+cell before the window is read out, so the image ships it in the cell's own
+captured bytes and no startup pass patches it. Without that map a cell holding
+`STR-MAX-I64$` at build time shipped the engine's address and the image printed
+nineteen NUL bytes out of its zero-filled mapping
+(`tools/hb-build-test.f HBT-STRIPPED-CACHED-CARRIED`). A bare `PTR-VARIABLE` is
+scratch by declaration — it joins no relocation table — so a build-time address
+left in one is not mapped and not refused; use the persisted definer for a
+pointer that must survive the strip.
+
+Five things are still refused by name, each naming the word, the cell's DATA
 offset and the value:
 
 - an **undeclared** code or dictionary pointer in persistent data. `create T
@@ -223,6 +253,9 @@ offset and the value:
   cells `src/habu/aot-owned-cells.f` names are the only exception, and they are
   admitted by that declaration, not by their value.
 - a declared cell whose value is not the code of any word the image can carry.
+- a **declared DATA cell** holding an engine address no claim names — the map
+  above has nothing to rewrite it to (`HBT-STRIPPED-CACHED-UNOWNED` pins it on a
+  cell holding `PZB`).
 
 ## Capturing an existing dictionary
 
