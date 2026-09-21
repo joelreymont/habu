@@ -35,6 +35,13 @@ NEWTYPE ticket 0
 \ allotted for a GROUP definition.
 NEWTYPE group 0
 
+\ The handle a READ or a WRITE answers with. It is a second type and not a
+\ ticket because it is also the ownership rule: the MEM allocation goes in with
+\ the submission and comes back out of AWAIT-XFER and nowhere else, so AWAIT,
+\ GROUP+ and GROUP- cannot name one and no checked code can read, write or
+\ release the bytes while the kernel is still moving them.
+NEWTYPE xfer 0
+
 \ What an operation ended as. `ready` carries the poll revents the kernel
 \ reported (or zero for an operation with no mask); `refused` carries the errno
 \ as a positive number.
@@ -51,6 +58,13 @@ CAST: >TICKET ( n -- ticket )
 CAST: TICKET>N ( ticket -- n )
 CAST: >GROUP ( n -- group )
 CAST: GROUP>N ( group -- n )
+CAST: >XFER ( n -- xfer )
+CAST: XFER>N ( xfer -- n )
+
+\ The extent MEM:ALLOC-BYTES answered, as the number the bounds check and the
+\ SQE need. The same erasure lib/memory.f makes for mmap and munmap; no raw
+\ value escapes, and nothing here mints the role.
+CAST: ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
 
 \ ---- the kernel ABI ----------------------------------------------------------
 \ Every number below is read from /usr/include/linux/io_uring.h,
@@ -76,8 +90,15 @@ $10000000 constant OFF-SQES         \ IORING_OFF_SQES
 0 constant OP-NOP
 6 constant OP-POLL-ADD
 11 constant OP-TIMEOUT
+13 constant OP-ACCEPT
 14 constant OP-ASYNC-CANCEL
 15 constant OP-LINK-TIMEOUT
+16 constant OP-CONNECT
+22 constant OP-READ
+23 constant OP-WRITE
+
+$80000 constant ACCEPT-FLAGS        \ SOCK_CLOEXEC, exactly what TCP4's accept4 asks for
+-1 constant OFF-CURRENT             \ the file's own position, used and advanced
 
 \ struct io_uring_params: seven __u32, three reserved, then the two offset
 \ blocks. 120 bytes, which is the extent the declaration below names written.
@@ -97,6 +118,7 @@ $14 constant CQO-CQES
 $40 constant SQE-BYTES
 1 constant SQE-FLAGS
 4 constant SQE-FD
+8 constant SQE-OFF                  \ the union off/addr2: a file offset, or a socklen
 $10 constant SQE-ADDR
 $18 constant SQE-LEN
 $1C constant SQE-OPFLAGS
@@ -129,6 +151,10 @@ $7D constant ERR-CANCELED           \ ECANCELED 125
 1 constant KIND-TIMEOUT
 2 constant KIND-CANCEL
 3 constant KIND-LINK                \ the link timeout of a poll with a deadline
+4 constant KIND-READ
+5 constant KIND-WRITE
+6 constant KIND-ACCEPT
+7 constant KIND-CONNECT
 
 BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.STATE
@@ -138,6 +164,7 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.PENDING          \ completions still owed: 2 for a linked poll
    CELL +FIELD REC.PEER             \ the link's record, or -1
    CELL +FIELD REC.TIMED-OUT        \ the link fired, so -ECANCELED means timed out
+   CELL +FIELD REC.HOLD             \ this record owns the allocation in its two rows
    SPEC-BYTES +FIELD REC.SPEC       \ the timespec a TIMEOUT or a link submits
 END-STRUCTURE
 
@@ -162,6 +189,17 @@ AIO-ALIGN8
 \ so an owner is stored and read as a pointer and this module needs no address
 \ cast of its own to wake one.
 MAX-OPS TYPED-BUFFER REC-OWNER ptr n
+
+\ The allocation a transfer record holds, in its own typed rows: the pointer
+\ MEM:ALLOC-BYTES answered and the extent it answered with it. Neither is a
+\ number here, so the length cannot be confused with the transfer count beside
+\ it and the pointer needs no cast. REC.HOLD says the rows are this record's to
+\ give back. It is set with the rows, before the entry is published, because
+\ once an entry is in the ring the kernel may run it whether or not the
+\ io_uring_enter that offered it was refused; TAKE-XFER clears it when the
+\ caller gets the pair back, and REC-DISCARD when the loop releases the pair.
+MAX-OPS TYPED-BUFFER REC-BUF ptr u8
+MAX-OPS TYPED-BUFFER REC-BUF-LEN NUM:alloc-byte-len
 
 variable GROUP-N
 variable RING-FD
@@ -298,12 +336,36 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 : AIO-NULL ( -- ptr n )
    NULL$ drop CELL-VIEW ;
 
+: AIO-NULL-BYTES ( -- ptr u8 )
+   NULL$ drop ;
+
+\ The buffer rows: only the pointer is cleared, because REC.HOLD is what says
+\ the pair is readable and nothing in this package mints an alloc-byte-len to
+\ clear the extent row with. A record whose HOLD is zero never has its extent
+\ read.
 : REC-FREE ( n -- ) {: idx:n :}
    idx REC {: r:ptr :}
    0 r REC.RES ! 0 r REC.FLAGS ! 0 r REC.TIMED-OUT !
    0 r REC.PENDING ! -1 r REC.PEER ! KIND-POLL r REC.KIND !
+   0 r REC.HOLD !
+   AIO-NULL-BYTES idx REC-BUF !
    AIO-NULL idx REC-OWNER !
    STATE-FREE r REC.STATE atomic! ;
+
+\ Release the allocation a record still holds, and then free the record. THE
+\ ONLY PLACE A TRANSFER'S ALLOCATION IS RELEASED BY THIS MODULE, and it runs at
+\ the one moment that is safe: the kernel's completion for that operation has
+\ arrived, so it is no longer reading or writing those bytes. Doing it earlier -
+\ at the cancel, or when the owning task ended - would hand the pages back while
+\ the kernel still had them. The loop task is the one that gets here for a
+\ forgotten transfer, which is fine: MEM's release is a munmap and needs nothing
+\ of the owner.
+: REC-DISCARD ( n -- ) {: idx:n :}
+   idx REC REC.HOLD @ 0 <> if
+      idx REC-BUF @ idx REC-BUF-LEN @ MEM:RELEASE-BYTES
+      0 idx REC REC.HOLD !
+   then
+   idx REC-FREE ;
 
 \ One claim wins: the state cell moves FREE -> SUBMITTED in one step, so two
 \ tasks submitting at the same moment are handed different records. -1 when the
@@ -321,6 +383,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    kind r REC.KIND !
    owed r REC.PENDING !
    0 r REC.RES ! 0 r REC.FLAGS ! 0 r REC.TIMED-OUT ! -1 r REC.PEER !
+   0 r REC.HOLD !
    TASK:SELF idx REC-OWNER ! ;
 
 : ANY-BUSY? ( -- bool )
@@ -381,7 +444,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    ms MS-PER-S / spec LE64!
    ms MS-PER-S mod NS-PER-MS * spec SPEC-NSEC + LE64! ;
 
-\ ---- the four operations, as SQEs --------------------------------------------
+\ ---- the operations, as SQEs --------------------------------------------
 \ Each writes one cleared SQE at the given slot and publishes it. None of them
 \ can throw: the slot and the record index are already checked.
 : SQE-COMMON ( n n n -- ) {: slot:n op:n id:n :}
@@ -408,6 +471,32 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 : SQE-LINK! ( n -- ) {: slot:n :}
    SQE-IO-LINK slot SQE-AT SQE-FLAGS + c! ;
 
+\ IORING_OP_READ and IORING_OP_WRITE: addr is the buffer, len the byte count and
+\ off the file offset. An offset of -1 goes out as the all-ones 64-bit value,
+\ which is io_uring's "use and advance this file's own position".
+: SQE-RW ( n n n n n n -- ) {: slot:n id:n op:n f:n count:n off:n :}
+   slot op id SQE-COMMON
+   f slot SQE-AT SQE-FD + LE32!
+   count slot SQE-AT SQE-LEN + LE32!
+   off slot SQE-AT SQE-OFF + LE64! ;
+
+: SQE-BUF! ( n ptr u8 -- ) {: slot:n buf :}
+   buf FFI:>CELL slot SQE-AT SQE-ADDR + LE64! ;
+
+\ IORING_OP_ACCEPT with addr and addr2 both zero asks for no peer address, so
+\ nothing of the caller's has to stay alive for it. IORING_OP_CONNECT puts the
+\ sockaddr in addr and its length in the addr2 half of the off field.
+: SQE-SOCK ( n n n n n n -- ) {: slot:n id:n op:n f:n addr:n off:n :}
+   slot op id SQE-COMMON
+   f slot SQE-AT SQE-FD + LE32!
+   addr slot SQE-AT SQE-ADDR + LE64!
+   off slot SQE-AT SQE-OFF + LE64! ;
+
+\ The SQE's per-operation flag word, which an accept uses for the flags it wants
+\ on the new descriptor - the same word SQE-POLL writes its event mask into.
+: SQE-OPFLAGS! ( n n -- ) {: slot:n v:n :}
+   v slot SQE-AT SQE-OPFLAGS + LE32! ;
+
 \ ---- completion --------------------------------------------------------------
 \ A record owes one completion, or two when a poll carries a link timeout. The
 \ last one settles it: a forgotten record is freed and a waited-for one is
@@ -417,7 +506,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    idx REC {: r:ptr :}
    r REC.PENDING @ 1 - dup r REC.PENDING !
    0 > if exit then
-   r REC.STATE atomic@ STATE-FORGET = if idx REC-FREE exit then
+   r REC.STATE atomic@ STATE-FORGET = if idx REC-DISCARD exit then
    STATE-DONE r REC.STATE atomic!
    idx REC-OWNER @ TASK:WAKE ;
 
@@ -575,6 +664,48 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    SQ-SLOT dup idx ms OP-TIMEOUT SQE-TIMEOUT SQ-PUBLISH
    1 idx SUBMIT-OR-FORGET idx ;
 
+: XFER-OP ( n -- n ) {: kind:n :}
+   kind KIND-READ = if OP-READ exit then OP-WRITE ;
+
+: SOCK-OP ( n -- n ) {: kind:n :}
+   kind KIND-ACCEPT = if OP-ACCEPT exit then OP-CONNECT ;
+
+\ A transfer is one SQE on one record, and the record takes the caller's
+\ allocation with it: the two rows and REC.HOLD are written before the entry is
+\ published. The two E-AIO-FULL exits above happen before any entry is written,
+\ so there the allocation is still the caller's. A refused io_uring_enter is
+\ not that case: the entry is in the ring, the kernel may or may not have taken
+\ it, and a published entry it did not take is consumed by the next
+\ io_uring_enter from anyone. So E-AIO-ENTER keeps the allocation - the record
+\ is forgotten, and its late completion releases the bytes through REC-DISCARD,
+\ exactly the FORGET rule. No test provokes E-AIO-ENTER; this comment holds it.
+: XFER-STAGE ( n ptr u8 NUM:alloc-byte-len n n n -- n n )
+   {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
+   1 SQ-ROOM? 0= if E-AIO-FULL -1 exit then
+   REC-CLAIM {: idx:n :}
+   idx 0 < if E-AIO-FULL -1 exit then
+   idx kind 1 REC-ARM
+   buf idx REC-BUF !
+   cap idx REC-BUF-LEN !
+   1 idx REC REC.HOLD !
+   SQ-SLOT dup idx kind XFER-OP f count off SQE-RW
+   dup buf SQE-BUF!
+   SQ-PUBLISH
+   1 idx SUBMIT-OR-FORGET idx ;
+
+\ An accept or a connect: one SQE on one record and no memory of the caller's
+\ that this module owns. The bytes a connect names stay the caller's, and the
+\ caller keeps them unchanged until the outcome is taken (docs/aio.md).
+: SOCK-STAGE ( n n n n -- n n ) {: f:n addr:n off:n kind:n :}
+   1 SQ-ROOM? 0= if E-AIO-FULL -1 exit then
+   REC-CLAIM {: idx:n :}
+   idx 0 < if E-AIO-FULL -1 exit then
+   idx kind 1 REC-ARM
+   SQ-SLOT dup idx kind SOCK-OP f addr off SQE-SOCK
+   kind KIND-ACCEPT = if dup ACCEPT-FLAGS SQE-OPFLAGS! then
+   SQ-PUBLISH
+   1 idx SUBMIT-OR-FORGET idx ;
+
 \ A cancel is submitted on a record nobody waits for, so its own completion
 \ frees it; the operation it names completes cancelled on its own record.
 : CANCEL-STAGE ( n -- n ) {: target:n :}
@@ -601,7 +732,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    idx REC-STATE@ {: st:n :}
    st STATE-FREE = st STATE-FORGET = or if exit then
    idx REC-OWNER @ FFI:>CELL me <> if exit then
-   st STATE-DONE = if idx REC-FREE exit then
+   st STATE-DONE = if idx REC-DISCARD exit then
    STATE-FORGET idx REC REC.STATE atomic!
    idx TRY-CANCEL ;
 
@@ -636,6 +767,17 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    idx REC-FREE
    AIO-LOCK TASK:RELEASE ;
 
+\ The transfer's own take: the allocation leaves the record before the record is
+\ freed, and REC.HOLD is cleared with it, so the caller has the only copy of the
+\ pair and the release path above can no longer reach those bytes.
+: TAKE-XFER ( n -- ptr u8 NUM:alloc-byte-len outcome ) {: idx:n :}
+   AIO-LOCK TASK:GET
+   idx REC-BUF @ idx REC-BUF-LEN @
+   0 idx REC REC.HOLD !
+   idx OUTCOME-OF
+   idx REC-FREE
+   AIO-LOCK TASK:RELEASE ;
+
 : OWNED-CHECK ( n -- ) {: idx:n :}
    idx 0 < idx MAX-OPS >= or if E-AIO-STATE throw then
    idx REC-STATE@ STATE-FREE = if E-AIO-STATE throw then
@@ -644,15 +786,61 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ The wait: a hint returns the task to its own state, which is the record's.
 \ The PAUSE is what lets a TASK:HALT end a task parked here, exactly as
 \ docs/threads.md requires of a STOP loop.
-: AWAIT-ONE ( n -- outcome ) {: idx:n :}
+: WAIT-DONE ( n -- ) {: idx:n :}
    begin
-      idx REC-STATE@ STATE-DONE = if idx TAKE exit then
+      idx REC-STATE@ STATE-DONE = if exit then
       TASK:STOP
       TASK:PAUSE
    again ;
 
+: AWAIT-ONE ( n -- outcome ) {: idx:n :}
+   idx WAIT-DONE idx TAKE ;
+
+: AWAIT-XFER-ONE ( n -- ptr u8 NUM:alloc-byte-len outcome ) {: idx:n :}
+   idx WAIT-DONE idx TAKE-XFER ;
+
 : RUNNING-CHECK ( -- )
    RING-LIVE @ 0= if E-AIO-STATE throw then ;
+
+\ One cancel body for both handles: the public words differ only in the type
+\ they take apart, so neither of them has to name a record index.
+: CANCEL-IDX ( n -- ) {: idx:n :}
+   RUNNING-CHECK
+   idx OWNED-CHECK
+   AIO-LOCK TASK:GET
+   idx CANCEL-STAGE {: rc:n :}
+   AIO-LOCK TASK:RELEASE
+   rc 0 <> if rc throw then ;
+
+\ A count must fit the allocation it names and an offset must be a real one:
+\ -1 is the file's own position and nothing is below it.
+: XFER-BOUNDS ( n NUM:alloc-byte-len n -- )
+   {: count:n cap:NUM:alloc-byte-len off:n :}
+   count 0 < if E-AIO-BOUNDS throw then
+   off OFF-CURRENT < if E-AIO-BOUNDS throw then
+   count cap ALLOC-LEN>N > if E-AIO-BOUNDS throw then ;
+
+\ The one submission path a READ and a WRITE share; the kind is what tells them
+\ apart, in the record and in the SQE.
+: XFER-SUBMIT ( n ptr u8 NUM:alloc-byte-len n n n -- xfer )
+   {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
+   RUNNING-CHECK
+   count cap off XFER-BOUNDS
+   ENSURE-SCRUB
+   AIO-LOCK TASK:GET
+   f buf cap count off kind XFER-STAGE {: rc:n idx:n :}
+   AIO-LOCK TASK:RELEASE
+   rc 0 <> if rc throw then
+   idx >XFER ;
+
+: SOCK-SUBMIT ( n n n n -- ticket ) {: f:n addr:n off:n kind:n :}
+   RUNNING-CHECK
+   ENSURE-SCRUB
+   AIO-LOCK TASK:GET
+   f addr off kind SOCK-STAGE {: rc:n idx:n :}
+   AIO-LOCK TASK:RELEASE
+   rc 0 <> if rc throw then
+   idx >TICKET ;
 
 \ ---- groups ------------------------------------------------------------------
 : G-ROW ( n -- ptr n ) {: g:n :}
@@ -780,14 +968,14 @@ public
 
 \ Asks the kernel to end that operation. It does not wait: the ticket still has
 \ to be AWAITed, and answers cancelled once the kernel has ended it.
-: CANCEL ( ticket -- ) {: t:ticket :}
-   RUNNING-CHECK
-   t TICKET>N {: idx:n :}
-   idx OWNED-CHECK
-   AIO-LOCK TASK:GET
-   idx CANCEL-STAGE {: rc:n :}
-   AIO-LOCK TASK:RELEASE
-   rc 0 <> if rc throw then ;
+: CANCEL ( ticket -- )
+   TICKET>N CANCEL-IDX ;
+
+\ The same for a transfer. A cancel of a READ on a regular file may lose the
+\ race and the outcome is then ready, because such a read can be served without
+\ ever becoming cancellable; a cancel is a request, not a guarantee.
+: CANCEL-XFER ( xfer -- )
+   XFER>N CANCEL-IDX ;
 
 \ Blocks until that operation has ended and answers its outcome, releasing the
 \ record. Only the task that submitted the ticket may await it, and only once:
@@ -798,6 +986,56 @@ public
    t TICKET>N {: idx:n :}
    idx OWNED-CHECK
    idx AWAIT-ONE ;
+
+\ ---- the completion operations -----------------------------------------------
+\ READ and WRITE hand the transfer a MEM allocation - the pointer and the extent
+\ exactly as MEM:ALLOC-BYTES answered them - and it owns those bytes until
+\ AWAIT-XFER gives them back. Nothing else in this module answers them again, so
+\ while the kernel is reading or writing that memory no checked code holds a way
+\ to touch it. count is the bytes to transfer and must fit the allocation; off
+\ is a file offset, or -1 for the descriptor's own position, which the operation
+\ uses and advances the way read(2) and write(2) do. A count past the
+\ allocation, a count below zero or an offset below -1 is E-AIO-BOUNDS.
+\ E-AIO-BOUNDS, E-AIO-STATE and E-AIO-FULL happen before any entry is written
+\ and leave the allocation the caller's. E-AIO-ENTER does not: the entry is
+\ published and the kernel may yet run it, so the transfer keeps the allocation
+\ and the loop releases it at the late completion. A caller that catches
+\ E-AIO-ENTER must not touch or release those bytes.
+\ The ready arm carries the bytes the kernel moved: fewer than count is a short
+\ transfer, and zero from a READ is the end of the file.
+: READ ( fd ptr u8 NUM:alloc-byte-len n n -- xfer )
+   {: f:fd buf cap:NUM:alloc-byte-len count:n off:n :}
+   f FD>N buf cap count off KIND-READ XFER-SUBMIT ;
+
+: WRITE ( fd ptr u8 NUM:alloc-byte-len n n -- xfer )
+   {: f:fd buf cap:NUM:alloc-byte-len count:n off:n :}
+   f FD>N buf cap count off KIND-WRITE XFER-SUBMIT ;
+
+\ Accepts one connection on a listening descriptor. The ready arm carries the
+\ new descriptor, which the caller owns and closes; no peer address is asked
+\ for, so nothing of the caller's has to outlive the submission. The accepted
+\ descriptor is close-on-exec, exactly as TCP4:ACCEPT's is.
+: ACCEPT ( fd -- ticket ) {: f:fd :}
+   f FD>N 0 0 KIND-ACCEPT SOCK-SUBMIT ;
+
+\ Connects a socket to the address in the caller's bytes. THE ADDRESS BYTES ARE
+\ THE CALLER'S AND MUST STAY MAPPED AND UNCHANGED UNTIL THE TICKET'S OUTCOME IS
+\ TAKEN: this module does not copy them and does not model when the kernel
+\ does. The ready arm carries zero; a refused connect is `refused` with the
+\ errno. A length that is not positive is not a socket address: E-AIO-BOUNDS.
+: CONNECT ( fd ptr u8 n -- ticket ) {: f:fd addr alen:n :}
+   alen 0 <= if E-AIO-BOUNDS throw then
+   f FD>N addr FFI:>CELL alen KIND-CONNECT SOCK-SUBMIT ;
+
+\ Waits for that transfer and answers the allocation with its outcome, in that
+\ order. This is the only word that gives the bytes back. Only the task that
+\ submitted the transfer may await it, and only once: both are E-AIO-STATE,
+\ exactly as for a ticket.
+: AWAIT-XFER ( xfer -- ptr u8 NUM:alloc-byte-len outcome ) {: x:xfer :}
+   RUNNING-CHECK
+   x XFER>N {: idx:n :}
+   idx OWNED-CHECK
+   idx AWAIT-XFER-ONE ;
 
 \ Defines one group:  AIO:GROUP WAITERS   \ WAITERS ( -- AIO:group )
 : GROUP ( -- )

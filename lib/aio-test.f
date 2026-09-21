@@ -1,14 +1,19 @@
-\ aio-test.f - the io_uring readiness loop: readiness, timers, cancellation,
-\ grouped waits, the per-task cleanup and every refusal.
+\ aio-test.f - the io_uring loop: readiness, timers, cancellation, grouped
+\ waits, the completion operations, the per-task cleanup and every refusal.
 \
-\ Pipes only; no network and no clock but the monotonic one. Every wait in this
-\ file is bounded, so an operation that never completes is a FAIL and not a hung
-\ suite.
+\ Pipes, one regular file under the test's own temporary directory, and one
+\ loopback stream this process is both ends of; no clock but the monotonic one.
+\ Every wait in this file is bounded, so an operation that never completes is a
+\ FAIL and not a hung suite.
 
 require lib/errors.f
 require lib/test.f
 require lib/task.f
+require lib/memory.f              \ the allocations the transfers own
+require lib/num-types.f           \ the alloc-byte-len those allocations carry
 require lib/fs-list.f             \ the /proc/self/task entries the fan-out counts
+require lib/fs-mutate.f           \ the temporary directory the READ file lives in
+require lib/net/tcp4.f            \ the loopback listener ACCEPT and CONNECT run on
 require test/checker-assert.f     \ the effect candidates the public words refuse
 require lib/aio.f
 
@@ -28,6 +33,14 @@ $100 constant FULL-N                 \ AIO's MAX-OPS: the record table's size
 -1 constant MARK-TIMED-OUT
 -2 constant MARK-CANCELLED
 
+$1000 constant XFER-N                \ the pattern file, and every transfer buffer
+$800 constant XFER-HALF
+251 constant PAT-MOD                 \ a period no multiple of XFER-N, so the bytes
+                                     \ at one file offset never match another's
+$7F000001 constant LOOPBACK
+$10 constant SOCKADDR-N              \ sockaddr_in, as lib/net/udp4.f lays it out
+4 constant STREAM-BACKLOG
+
 : AIO-TEST-ALIGN8 ( -- )
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
 
@@ -44,8 +57,18 @@ variable ANY-CANCELLED
 variable HALT-PARKED
 variable P-R
 variable P-W
+variable XFER-PATH-U
+variable XFER-FD
+variable XFER-OWNER-RC
+variable XFER-FORGET-DONE
 
 create POKE-BYTE $41 c,
+AIO-TEST-ALIGN8
+create XFER-PAT XFER-N allot
+AIO-TEST-ALIGN8
+create XFER-PATH-BUF FS-PATH-CAP allot
+AIO-TEST-ALIGN8
+create XFER-SA SOCKADDR-N allot
 AIO-TEST-ALIGN8
 create FAN-R FAN-TASKS cells allot
 AIO-TEST-ALIGN8
@@ -60,12 +83,20 @@ ANY-N TYPED-BUFFER ANY-TICKETS AIO:ticket
 FULL-N TYPED-BUFFER FULL-TICKETS AIO:ticket
 TYPED-VARIABLE ANY-CUR AIO:ticket
 TYPED-VARIABLE LONE-TICKET AIO:ticket
+TYPED-VARIABLE LONE-XFER AIO:xfer
+TYPED-VARIABLE XB-PTR ptr u8          \ an allocation a quotation has to reach, and
+TYPED-VARIABLE XB-CAP NUM:alloc-byte-len   \ so cannot hold in a local of its own
+TYPED-VARIABLE FORGET-PTR ptr u8
+TYPED-VARIABLE XL TCP4:listener
+TYPED-VARIABLE XC TCP4:connection
 
 AIO:GROUP ANY-GROUP
 
 TASK:MIN-STACK TASK:TASK C1-TASK
 TASK:MIN-STACK TASK:TASK OWNER-TASK
 TASK:MIN-STACK TASK:TASK HALT-TASK
+TASK:MIN-STACK TASK:TASK XFER-OWNER-TASK
+TASK:MIN-STACK TASK:TASK XFER-FORGET-TASK
 TASK:MIN-STACK TASK:TASK FAN0
 TASK:MIN-STACK TASK:TASK FAN1
 TASK:MIN-STACK TASK:TASK FAN2
@@ -343,6 +374,216 @@ TASK:MIN-STACK TASK:TASK FAN7
    FAN-READY @ FULL-N T=
    P-R P-W PIPE-CLOSE ;
 
+\ ---- the completion operations ----------------------------------------------
+\ Every transfer below hands its allocation to the operation and takes it back
+\ from AWAIT-XFER, which is the only word that answers one, and releases it
+\ itself. A buffer a case still holds after a refusal was never submitted.
+: PAT-C ( n -- n )
+   PAT-MOD mod ;
+
+: PAT-FILL ( ptr u8 -- ) {: buf :}
+   XFER-N 0 ?do i PAT-C buf i + c! loop ;
+
+\ The bytes at file offset `off` are the pattern's, and the pattern's period is
+\ no divisor of the offsets this suite reads at, so a chunk read at the wrong
+\ offset does not match.
+: PAT-CHECK ( ptr u8 n n -- bool ) {: buf off:n cnt:n :}
+   cnt 0 ?do
+      buf i + c@ off i + PAT-C <> if 0 0= 0= unloop exit then
+   loop
+   0 0= ;
+
+: XFER-ALLOC ( -- ptr u8 NUM:alloc-byte-len )
+   XFER-N MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES ;
+
+: XB-ALLOC ( -- )
+   XFER-ALLOC XB-CAP ! XB-PTR ! ;
+
+: XB-FREE ( -- )
+   XB-PTR @ XB-CAP @ MEM:RELEASE-BYTES ;
+
+: XFER-DROP ( ptr u8 NUM:alloc-byte-len AIO:outcome -- )
+   OUTCOME>N drop drop drop ;
+
+: XFER-TICKET-DROP ( AIO:xfer -- )
+   drop ;
+
+: XFER-PATH ( -- ptr u8 n )
+   XFER-PATH-BUF XFER-PATH-U @ ;
+
+\ The pattern file: this suite's own temporary directory, the way the other
+\ suites make one.
+: XFER-FILE! ( -- )
+   XFER-PAT PAT-FILL
+   s" habu-aio" TMPDIR-MKDIR {: a:ptr u :}
+   a u s" xfer.bin" XFER-PATH-BUF JOIN-PATH XFER-PATH-U !
+   XFER-PATH XFER-PAT XFER-N WRITE-ALL ;
+
+\ One READ through the loop: a fresh allocation in, the bytes the kernel moved
+\ out, and the buffer checked against the pattern at the file offset `at` before
+\ it is released.
+: READ-ONCE ( n n n n -- n ) {: fd:n count:n off:n at:n :}
+   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
+   fd >FD buf cap count off AIO:READ AIO:AWAIT-XFER
+      {: rbuf rcap:NUM:alloc-byte-len out:AIO:outcome :}
+   out OUTCOME>N {: got:n :}
+   got 0 > if rbuf at got PAT-CHECK TTRUE then
+   rbuf rcap MEM:RELEASE-BYTES
+   got ;
+
+\ ---- 12: a regular file, which has no readiness at all ----------------------
+\ An explicit offset leaves the descriptor's position alone; -1 uses it and
+\ advances it, so the two halves come back in order.
+: CASE-XFER-FILE ( -- )
+   XFER-FILE!
+   XFER-PATH FS-PATHZ open-rd XFER-FD !
+   XFER-FD @ 0 >= TTRUE
+   XFER-FD @ XFER-N 0 0 READ-ONCE XFER-N T=
+   XFER-FD @ XFER-HALF -1 0 READ-ONCE XFER-HALF T=
+   XFER-FD @ XFER-HALF -1 XFER-HALF READ-ONCE XFER-HALF T=
+   XFER-FD @ XFER-N XFER-N 0 READ-ONCE 0 T=
+   XFER-FD @ close-rc drop ;
+
+\ ---- 13: a pipe, with both transfers in flight at once ----------------------
+\ The WRITE is submitted first and awaited second: a transfer is not a call, and
+\ nothing about the order they are awaited in changes what they answer.
+: CASE-XFER-PIPE ( -- )
+   P-R P-W PIPE-OPEN
+   XFER-ALLOC {: wbuf wcap:NUM:alloc-byte-len :}
+   wbuf PAT-FILL
+   XFER-ALLOC {: rbuf rcap:NUM:alloc-byte-len :}
+   P-W @ >FD wbuf wcap XFER-N 0 AIO:WRITE {: wx:AIO:xfer :}
+   P-R @ >FD rbuf rcap XFER-N 0 AIO:READ {: rx:AIO:xfer :}
+   rx AIO:AWAIT-XFER {: rb rc2:NUM:alloc-byte-len rout:AIO:outcome :}
+   wx AIO:AWAIT-XFER {: wb wc2:NUM:alloc-byte-len wout:AIO:outcome :}
+   rout OUTCOME>N XFER-N T=
+   wout OUTCOME>N XFER-N T=
+   rb 0 XFER-N PAT-CHECK TTRUE
+   rb rc2 MEM:RELEASE-BYTES
+   wb wc2 MEM:RELEASE-BYTES
+   P-R P-W PIPE-CLOSE ;
+
+\ ---- 14: a loopback stream, accepted and connected through the ring ---------
+: XFER-SA! ( n n -- ) {: addr:n port:n :}
+   SOCKADDR-N 0 ?do 0 XFER-SA i + c! loop
+   2 XFER-SA c!
+   port 8 rshift $FF and XFER-SA 2 + c!
+   port $FF and XFER-SA 3 + c!
+   addr $18 rshift $FF and XFER-SA 4 + c!
+   addr $10 rshift $FF and XFER-SA 5 + c!
+   addr 8 rshift $FF and XFER-SA 6 + c!
+   addr $FF and XFER-SA 7 + c! ;
+
+: STATUS-OK ( TCP4:status -- )
+   MATCH TCP4:status
+      ok OF ENDOF
+      failed OF drop E-AIO-SETUP throw ENDOF
+   ;MATCH ;
+
+: BIND-LISTENER ( -- )
+   LOOPBACK TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND MATCH TCP4:bind-result
+      bound OF XL ! ENDOF
+      failed OF drop E-AIO-SETUP throw ENDOF
+   ;MATCH
+   XL @ STREAM-BACKLOG TCP4:LISTEN STATUS-OK ;
+
+: LISTEN-PORT ( -- n )
+   XL @ TCP4:LOCAL MATCH TCP4:endpoint-result
+      endpoint OF TCP4:PORT>N swap drop ENDOF
+      failed OF drop E-AIO-SETUP throw ENDOF
+   ;MATCH ;
+
+: OPEN-SOCKET ( -- )
+   TCP4:SOCKET MATCH TCP4:socket-result
+      opened OF XC ! ENDOF
+      failed OF drop E-AIO-SETUP throw ENDOF
+   ;MATCH ;
+
+\ One 4096-byte exchange over a connected pair, each direction through the loop.
+: STREAM-XCHG ( n n -- ) {: wfd:n rfd:n :}
+   XFER-ALLOC {: sbuf scap:NUM:alloc-byte-len :}
+   sbuf PAT-FILL
+   wfd >FD sbuf scap XFER-N 0 AIO:WRITE AIO:AWAIT-XFER
+      {: wb wc:NUM:alloc-byte-len wout:AIO:outcome :}
+   wout OUTCOME>N XFER-N T=
+   wb wc MEM:RELEASE-BYTES
+   rfd XFER-N 0 0 READ-ONCE XFER-N T= ;
+
+\ The accept's ready arm is the new descriptor, the connect's is zero. The
+\ sockaddr XFER-SA holds is the caller's and stays unchanged until the connect's
+\ outcome is taken, which is what CONNECT requires of it.
+: CASE-XFER-STREAM ( -- )
+   BIND-LISTENER
+   OPEN-SOCKET
+   LOOPBACK LISTEN-PORT XFER-SA!
+   XL @ TCP4:LISTENER-FD AIO:ACCEPT {: ax:AIO:ticket :}
+   XC @ TCP4:CONNECTION-FD XFER-SA SOCKADDR-N AIO:CONNECT {: cx:AIO:ticket :}
+   ax AWAIT>N {: peer:n :}
+   cx AWAIT>N 0 T=
+   peer 0 > TTRUE
+   XC @ TCP4:CONNECTION-FD FD>N peer STREAM-XCHG
+   peer XC @ TCP4:CONNECTION-FD FD>N STREAM-XCHG
+   peer close-rc drop
+   XC @ TCP4:CLOSE STATUS-OK
+   XL @ TCP4:CLOSE-LISTENER STATUS-OK ;
+
+\ ---- 15: the bounds and the state refusals ----------------------------------
+\ A refused submission never happened, so the allocation is still the caller's
+\ and this case releases it itself.
+: CASE-XFER-BOUNDS ( -- )
+   P-R P-W PIPE-OPEN
+   XB-ALLOC
+   [: P-R @ >FD XB-PTR @ XB-CAP @ XFER-N 1 + 0 AIO:READ XFER-TICKET-DROP ;]
+      E-AIO-BOUNDS TTHROWSQ
+   [: P-R @ >FD XB-PTR @ XB-CAP @ XFER-N -2 AIO:READ XFER-TICKET-DROP ;]
+      E-AIO-BOUNDS TTHROWSQ
+   XB-FREE
+   P-R P-W PIPE-CLOSE ;
+
+: XFER-OWNER-WORK ( -- )
+   [: LONE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] catch XFER-OWNER-RC ! ;
+
+: CASE-XFER-STATE ( -- )
+   0 XFER-OWNER-RC !
+   P-R P-W PIPE-OPEN
+   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
+   P-R @ >FD buf cap XFER-N 0 AIO:READ LONE-XFER !
+   ['] XFER-OWNER-WORK XFER-OWNER-TASK TASK:ACTIVATE
+   XFER-OWNER-TASK ENDED? TTRUE
+   XFER-OWNER-RC @ E-AIO-STATE T=
+   XFER-OWNER-TASK TASK:KILL
+   LONE-XFER @ AIO:CANCEL-XFER
+   LONE-XFER @ AIO:AWAIT-XFER {: rb rcap:NUM:alloc-byte-len out:AIO:outcome :}
+   out OUTCOME>N MARK-CANCELLED T=
+   rb rcap MEM:RELEASE-BYTES
+   [: LONE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] E-AIO-STATE TTHROWSQ
+   P-R P-W PIPE-CLOSE ;
+
+\ ---- 16: a transfer its task never awaited ----------------------------------
+\ The task ends with the READ in flight; its cleanup forgets and cancels it, and
+\ the loop releases the allocation when the kernel's completion arrives - not
+\ at the cancel, because until then the kernel may still be writing those bytes.
+: XFER-FORGET-WORK ( -- )
+   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
+   buf FORGET-PTR !
+   P-R @ >FD buf cap XFER-N 0 AIO:READ XFER-TICKET-DROP
+   1 XFER-FORGET-DONE atomic! ;
+
+\ Two things are observable. The ring goes idle, so LOOP-STOP is not E-AIO-BUSY:
+\ the record came back. And a write(2) out of the pages the transfer held is
+\ EFAULT instead of a byte into the pipe: the mapping is gone.
+: CASE-XFER-FORGOTTEN ( -- )
+   0 XFER-FORGET-DONE !
+   P-R P-W PIPE-OPEN
+   ['] XFER-FORGET-WORK XFER-FORGET-TASK TASK:ACTIVATE
+   XFER-FORGET-DONE 1 REACHED? TTRUE
+   XFER-FORGET-TASK ENDED? TTRUE
+   XFER-FORGET-TASK TASK:KILL
+   STOPPED? TTRUE
+   P-W @ FORGET-PTR @ 1 write 0 < TTRUE
+   P-R P-W PIPE-CLOSE
+   AIO:LOOP-START ;
+
 \ ---- 10: a task halted while parked in AWAIT --------------------------------
 \ Its cleanup cancels and forgets the operation, so the loop never wakes a TCB
 \ the join has released and the ring goes idle without it.
@@ -382,6 +623,20 @@ TASK:MIN-STACK TASK:TASK FAN7
    s" AIO-CANCEL-OK ( AIO:ticket -- ) AIO:CANCEL"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" AIO-CANCEL-RAW ( n -- ) AIO:CANCEL"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" AIO-READ-OK ( fd ptr u8 NUM:alloc-byte-len n n -- AIO:xfer ) AIO:READ"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" AIO-READ-TICKET ( fd ptr u8 NUM:alloc-byte-len n n -- AIO:ticket ) AIO:READ"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" AIO-XFER-OK ( AIO:xfer -- ptr u8 NUM:alloc-byte-len AIO:outcome ) AIO:AWAIT-XFER"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" AIO-XFER-AWAIT ( AIO:xfer -- AIO:outcome ) AIO:AWAIT"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" AIO-XFER-GROUP-IN ( AIO:xfer AIO:group -- ) AIO:GROUP+"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" AIO-XFER-GROUP-OUT ( AIO:xfer AIO:group -- ) AIO:GROUP-"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" AIO-TICKET-AWAIT-XFER ( AIO:ticket -- ptr u8 NUM:alloc-byte-len AIO:outcome ) AIO:AWAIT-XFER"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : AIO-TEST-RUN ( -- )
@@ -402,6 +657,12 @@ TASK:MIN-STACK TASK:TASK FAN7
    CASE-AWAIT-TWICE
    CASE-BUSY
    CASE-FULL
+   CASE-XFER-FILE
+   CASE-XFER-PIPE
+   CASE-XFER-STREAM
+   CASE-XFER-BOUNDS
+   CASE-XFER-STATE
+   CASE-XFER-FORGOTTEN
    CASE-HALTED-AWAIT
    CASE-RESTART
    T-REPORT ;

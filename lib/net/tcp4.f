@@ -60,6 +60,14 @@ SUMTYPE ready-result 0
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
+\ A socket that exists but is connected to nothing yet. It is a `connection`
+\ because that is what it becomes and what closes it; until something connects
+\ it, reading or writing it is the OS's ENOTCONN.
+SUMTYPE socket-result 0
+   VARIANT opened connection ;VARIANT
+   VARIANT failed errno ;VARIANT
+;SUMTYPE
+
 E-TCP4-OPERAND constant E-OPERAND
 E-TCP4-PLATFORM constant E-PLATFORM
 E-TCP4-RESULT constant E-RESULT
@@ -507,5 +515,25 @@ public
 
 : CLOSE-LISTENER ( listener -- status )
    LISTENER-FD INIT CLOSE-RAW RC>STATUS ;
+
+\ ---- the descriptor seam -----------------------------------------------------
+\ The three words an asynchronous caller needs and this module's own blocking
+\ surface does not: the descriptor under a listener or a connection, so it can
+\ be handed to a readiness or completion loop (docs/aio.md), and a socket that
+\ is not connected yet, so such a loop can do the connecting. Nothing here
+\ changes ownership: a descriptor read out still belongs to the handle it came
+\ from, and CLOSE / CLOSE-LISTENER is still what ends it.
+: LISTENER-FD ( listener -- fd )
+   LISTENER-FD >FD ;
+
+: CONNECTION-FD ( connection -- fd )
+   CONNECTION-FD >FD ;
+
+\ A fresh AF_INET stream socket, bound to nothing and connected to nothing, with
+\ the flags this module's own BIND and CONNECT ask for. The caller owns it and
+\ closes it with CLOSE.
+: SOCKET ( -- socket-result )
+   INIT SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-SOCKET--RESULT:failed exit then
+   >CONNECTION TCP4-SOCKET--RESULT:opened ;
 
 ;package

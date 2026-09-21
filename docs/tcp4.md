@@ -36,6 +36,9 @@ nominal conversion words are not validators.
 | `SHUTDOWN` | Connection, direction | `status`: `ok` or `failed errno` |
 | `CLOSE` | Connection | `status`: `ok` or `failed errno` |
 | `CLOSE-LISTENER` | Listener | `status`: `ok` or `failed errno` |
+| `SOCKET` | — | `socket-result`: `opened connection` or `failed errno` |
+| `LISTENER-FD` | Listener | `fd` |
+| `CONNECTION-FD` | Connection | `fd` |
 
 Byte spans are `ptr u8 NUM:byte-len`. Sockets are created blocking with
 close-on-exec set atomically, so `ACCEPT`, `CONNECT`, `READ`, `READ-EXACT` and
@@ -45,6 +48,16 @@ answer. Address zero binds every local IPv4 interface; port zero
 requests an ephemeral port, obtainable with `LOCAL`. A failed `BIND` or
 `CONNECT` closes the newly created socket and retains the original failure's
 errno, so a `failed` result never leaks a descriptor.
+
+`SOCKET`, `LISTENER-FD` and `CONNECTION-FD` are the descriptor seam an
+asynchronous caller needs and this module's own blocking surface does not.
+`SOCKET` answers an AF_INET stream socket with the same flags `BIND` and
+`CONNECT` ask for, bound to nothing and connected to nothing, as a
+`TCP4:connection` because that is what it becomes and what `CLOSE` ends. The two
+`-FD` words read the descriptor out of a handle without giving it away: the
+handle still owns it, and `CLOSE` or `CLOSE-LISTENER` is still what closes it.
+They exist so a listener can be handed to `AIO:ACCEPT` and a fresh socket to
+`AIO:CONNECT` ([aio.md](aio.md)).
 
 `LISTEN` takes a backlog of `1..4096` (Linux `SOMAXCONN`), the queue of
 connections completed but not yet accepted; the kernel may cap it lower.

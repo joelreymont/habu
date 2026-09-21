@@ -1455,3 +1455,4 @@ public
 -9293 constant E-AIO-FULL         \ no free record, or no room left in the submission ring
 -9294 constant E-AIO-BUSY         \ LOOP-STOP with an operation still in flight
 -9295 constant E-AIO-GROUP        \ the group is full or empty, holds no such ticket, or no row is left
+-9296 constant E-AIO-BOUNDS       \ a transfer count past its allocation or below zero, a file offset below -1, or a socket address length not positive

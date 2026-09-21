@@ -1,7 +1,8 @@
 # Asynchronous I/O on io_uring
 
 `lib/aio.f` (package `AIO`) lets a task wait for a descriptor, a duration or a
-cancellation without parking its thread inside the host call. Linux only.
+cancellation, and read, write, accept or connect, without parking its thread
+inside the host call. Linux only.
 
 ## Model
 
@@ -42,6 +43,12 @@ words. A submission with no loop running is `E-AIO-STATE`.
 | `AIO:TIMEOUT` | `( ms -- AIO:ticket )` | never |
 | `AIO:CANCEL` | `( AIO:ticket -- )` | never |
 | `AIO:AWAIT` | `( AIO:ticket -- AIO:outcome )` | until that operation has ended |
+| `AIO:READ` | `( fd ptr u8 NUM:alloc-byte-len n n -- AIO:xfer )` | never; count then offset |
+| `AIO:WRITE` | `( fd ptr u8 NUM:alloc-byte-len n n -- AIO:xfer )` | never; count then offset |
+| `AIO:ACCEPT` | `( fd -- AIO:ticket )` | never |
+| `AIO:CONNECT` | `( fd ptr u8 n -- AIO:ticket )` | never; the sockaddr and its length |
+| `AIO:AWAIT-XFER` | `( AIO:xfer -- ptr u8 NUM:alloc-byte-len AIO:outcome )` | until that transfer has ended |
+| `AIO:CANCEL-XFER` | `( AIO:xfer -- )` | never |
 | `AIO:GROUP` | `( -- )` | defines a set of at most `$40` tickets |
 | `AIO:GROUP+` | `( AIO:ticket AIO:group -- )` | never |
 | `AIO:GROUP-` | `( AIO:ticket AIO:group -- )` | never |
@@ -54,7 +61,7 @@ do about every arm:
 
 | arm | when |
 | --- | --- |
-| `ready ( n )` | the operation succeeded; for a poll, the revents mask |
+| `ready ( n )` | the operation succeeded; for a poll the revents mask, for a `READ` or a `WRITE` the bytes moved, for an `ACCEPT` the new descriptor |
 | `timed-out` | a `TIMEOUT` fired (`-ETIME`), or a `POLL-ADD` ended by its own deadline |
 | `cancelled` | an `AIO:CANCEL` ended it (`-ECANCELED`) |
 | `refused ( n )` | any other `-errno`, as a positive number |
@@ -75,6 +82,65 @@ do about every arm:
 - `AIO:LOOP-STOP` refuses with `E-AIO-BUSY` while any record is still in flight:
   unmapping a ring the kernel still owns is not something a caller may ask for.
   Await or cancel everything first. After a stop the ring can be started again.
+
+## Completion operations
+
+A poll says a descriptor is ready; a completion operation does the work. A
+regular file has no readiness at all, which is what `AIO:READ` and `AIO:WRITE`
+are for.
+
+**The allocation belongs to the transfer.** `AIO:READ` and `AIO:WRITE` take a
+`lib/memory.f` allocation - the pointer and the extent exactly as
+`MEM:ALLOC-BYTES` answered them - and answer an `AIO:xfer`. From that moment
+until `AIO:AWAIT-XFER` answers the pair again, nothing in the module produces
+it, so no checked code can read, write or release the bytes the kernel is
+moving. The type is the rule: `AIO:AWAIT`, `AIO:GROUP+` and `AIO:GROUP-` take an
+`AIO:ticket` and refuse an `AIO:xfer` at compile time, and `AIO:AWAIT-XFER`
+refuses a ticket. `lib/aio-test.f` pins both refusals as rejected programs.
+
+A raw pointer the caller kept a copy of before submitting is outside this
+design: the checker has nothing to say about it. The unique bounded borrow of
+dot `habu-add-unique-bounded-527e05ca` is what would close that hole; until it
+lands, hand `AIO:READ` an allocation and forget the pointer.
+
+- `count` is the bytes to transfer and `off` the file offset, or `-1` for the
+  descriptor's own position, which the transfer uses and advances the way
+  `read(2)` and `write(2)` do. A non-seekable descriptor (a pipe, a socket)
+  takes offset `0`.
+- The `ready` arm carries the bytes the kernel moved. Fewer than `count` is a
+  short transfer and not an error; zero from a `READ` is the end of the file.
+- A count above the allocation's extent, a count below zero, or an offset below
+  `-1`, is `E-AIO-BOUNDS`. That refusal, `E-AIO-STATE` and `E-AIO-FULL` happen
+  before any submission entry is written, so the allocation is still the
+  caller's; keep the pair in a local or a cell across the submission if the
+  program means to recover from one of them. `E-AIO-ENTER` is different: the
+  entry is published, and a published entry the refused `io_uring_enter` did
+  not take is consumed by the next one from anyone, so the kernel may yet run
+  it. The transfer keeps the allocation and the loop releases it when that late
+  completion arrives. A program that catches `E-AIO-ENTER` must not touch or
+  release those bytes.
+- `AIO:CANCEL-XFER` is `AIO:CANCEL` for a transfer, and just as much a request:
+  a cancel of a `READ` on a regular file may lose the race and the outcome is
+  then `ready`, because such a read can be served before it is ever cancellable.
+- An `AIO:xfer` is not a group member in this slice: `AIO:AWAIT-ANY` waits on
+  tickets only.
+
+`AIO:ACCEPT` asks for no peer address, so nothing of the caller's has to outlive
+it; its `ready` arm carries the new descriptor, which the caller owns and
+closes, and which is close-on-exec like `TCP4:ACCEPT`'s. `AIO:CONNECT`'s `ready`
+arm carries zero. **The sockaddr bytes `AIO:CONNECT` names are the caller's and
+must stay mapped and unchanged until the ticket's outcome is taken.** This
+module does not copy them and states no claim about when the kernel does.
+`lib/net/tcp4.f` answers the descriptors: `TCP4:LISTENER-FD`,
+`TCP4:CONNECTION-FD` and `TCP4:SOCKET`, which is a stream socket connected to
+nothing yet.
+
+**A transfer nobody awaits.** When a task ends with one in flight, the per-task
+cleanup described below marks the record forgotten and cancels it, and the loop
+releases the allocation when the kernel's
+completion for that operation arrives - never before, because until then the
+kernel may still be writing those bytes. The loop task is the one that makes
+that call, which costs nothing: `MEM`'s release is a `munmap`.
 
 ## Waiting, and the hint protocol
 
@@ -140,15 +206,22 @@ facility held.
 ## Errors
 
 `E-AIO-SETUP`, `E-AIO-ENTER`, `E-AIO-STATE`, `E-AIO-FULL`, `E-AIO-BUSY`,
-`E-AIO-GROUP`, the `-9290..-9299` block of `lib/errors.f`.
+`E-AIO-GROUP`, `E-AIO-BOUNDS`, the `-9290..-9299` block of `lib/errors.f`.
+`E-AIO-BOUNDS` is a transfer count past its allocation or below zero, a file
+offset below `-1`, or a socket address length that is not positive.
 
 ## Kernel and target floor
 
-- The ring interface and the four operations used here - `IORING_OP_POLL_ADD`,
+- The ring interface and the readiness operations - `IORING_OP_POLL_ADD`,
   `IORING_OP_TIMEOUT`, `IORING_OP_ASYNC_CANCEL`, `IORING_OP_LINK_TIMEOUT` -
-  date from Linux 5.5. The floor this module is written against is **5.10**,
-  the first long-term kernel with all of them and with `IORING_FEAT_NODROP`.
+  date from Linux 5.5, and so do `IORING_OP_ACCEPT` and `IORING_OP_CONNECT`;
+  `IORING_OP_READ` and `IORING_OP_WRITE` date from 5.6. The floor this module is
+  written against is **5.10**, the first long-term kernel with all of them and
+  with `IORING_FEAT_NODROP`.
   An older kernel refuses `io_uring_setup` with `ENOSYS` and the error names it.
+  An offset of `-1` on a `READ` or a `WRITE` - use and advance the descriptor's
+  own position - is io_uring's own rule for those two operations; it is measured
+  in `lib/aio-test.f` on the kernel the suite runs on and not against the floor.
 - aarch64 only so far. `syscall` is a variadic C function, and on aarch64 a
   variadic call passes integer arguments in the ordinary registers, so the two
   declarations above are exact. **On x86-64 the caller of a variadic function
