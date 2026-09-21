@@ -1627,6 +1627,11 @@ SUITE tcp4
    lib/net/tcp4-test.f
 ;SUITE
 
+\ IPv4 datagrams: two loopback sockets in one process, every wait bounded.
+SUITE udp4
+   lib/net/udp4-test.f
+;SUITE
+
 \ The process row is per task: a capturing task and a polling task at once.
 SUITE process-tasks
    lib/process-task-test.f

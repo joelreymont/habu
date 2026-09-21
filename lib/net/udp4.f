@@ -1,13 +1,19 @@
 \ Linux AArch64 IPv4 datagrams through exact, bounded libc bindings.
 \
-\ STORAGE CLASS. TASK-LOCAL. The endpoint and poll storage is one $20
-\ TASK:+USER row, so each task holds its own, and the datagram spans the
-\ transfer words take are caller-owned. See docs/threads.md.
+\ STORAGE CLASS. TASK-LOCAL. The endpoint storage is one $18 TASK:+USER row, so
+\ each task holds its own, and the datagram spans the transfer words take are
+\ caller-owned. See docs/threads.md.
+\
+\ The socket is nonblocking and RECEIVE waits on the AIO loop (docs/aio.md): one
+\ POLL-ADD for the time left on its deadline, awaited without parking a thread. A
+\ program calls AIO:LOOP-START before its first RECEIVE that waits; a wait with
+\ no loop is E-AIO-STATE.
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/type/deftype.f
 require lib/num-types.f
 require lib/task.f
+require lib/aio.f
 
 package UDP4
 public
@@ -53,11 +59,12 @@ $80802 constant SOCKET-FLAGS       \ SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC.
 $20 constant MSG-TRUNC
 1000000 constant NS-PER-MS
 
-\ Endpoint/poll storage is per task, matching FFI's argument/extent tables.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $20 TASK:+USER IO-STORAGE drop
+\ Endpoint storage is per task, matching FFI's argument/extent tables: a $10
+\ sockaddr_in and a $04 socklen_t, rounded up to the cell so the row after this
+\ one still starts aligned.
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $18 TASK:+USER IO-STORAGE drop
 : SOCKADDR ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
 : ADDRLEN ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
-: POLLFD ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $18 + ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -158,11 +165,6 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
    5 $04 WRITES-BYTES                     \ socklen_t
 ;FUNCTION
 
-FUNCTION: POLL-CALL poll ( ptr u8 n n -- n )
-   0 $08 WRITES-BYTES                     \ one pollfd
-;FUNCTION
-
-
 \ The platform gate. Symbol resolution is package FFI's now, so there is no
 \ publication to synchronize and no cached address to invalidate here.
 : INIT ( -- )
@@ -203,12 +205,12 @@ FUNCTION: POLL-CALL poll ( ptr u8 n n -- n )
    SOCKADDR ADDRLEN RECEIVE-CALL ;
 
 
-: POLL-RAW ( ms -- n ) {: timeout:ms :}
-   POLLFD 1 timeout MS>N POLL-CALL C-INT ;
-
-
-: POLL! ( socket -- )
-   SOCKET>N POLLFD LE32! 1 POLLFD $04 + LE32! ;
+\ The wait between two tries: one poll on the AIO loop for the time this
+\ RECEIVE has left. `cancelled` cannot arrive - nothing here cancels, the ticket
+\ never leaves this word, and the cleanup AIO registers on a submitting task runs
+\ only after that task has ended - so it is a broken foreign result.
+: WAIT-READABLE ( socket ms -- AIO:outcome ) {: socket:socket left:ms :}
+   socket SOCKET>N >FD AIO:READABLE left AIO:POLL-ADD AIO:AWAIT ;
 
 
 : REMAINING ( ns -- ms )
@@ -307,22 +309,27 @@ public
 
 \ A packet may contain zero bytes. Capacity is 1..65507; the caller owns that
 \ writable span. A truncated result carries the ORIGINAL datagram byte length,
-\ while only capacity bytes were copied. Timeout zero makes one immediate try.
+\ while only capacity bytes were copied. Timeout zero makes one immediate try and
+\ never reaches the loop; any other timeout is an absolute deadline the waits on
+\ the loop share, so AIO:LOOP-START must have run before the first of them.
 : RECEIVE ( socket ptr u8 NUM:byte-len ms -- receive-result )
    {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
    socket CHECK-SOCKET capacity BLEN>N 1 MAX-PAYLOAD WITHIN-RANGE
    timeout MS>N 0 $7FFFFFFF WITHIN-RANGE INIT
    mono-ns timeout MS>N NS-PER-MS * + >NS {: deadline:ns :}
-   socket POLL!
    begin
       ENDPOINT-OUTPUT socket bytes capacity RECEIVE-RAW dup 0 >= if
          capacity RECEIVED exit
       then drop
       LAST-ERROR dup RETRY? 0= if UDP4-RECEIVE--RESULT:failed exit then drop
       deadline REMAINING dup MS>N 0= if drop UDP4-RECEIVE--RESULT:timeout exit then
-      POLL-RAW 0 < if
-         LAST-ERROR dup ERRNO>N 4 <> if UDP4-RECEIVE--RESULT:failed exit then drop
-      then
+      socket swap WAIT-READABLE
+      MATCH AIO:outcome
+         ready OF drop ENDOF
+         timed-out OF UDP4-RECEIVE--RESULT:timeout exit ENDOF
+         cancelled OF E-RESULT throw ENDOF
+         refused OF >ERRNO UDP4-RECEIVE--RESULT:failed exit ENDOF
+      ;MATCH
    again ;
 
 

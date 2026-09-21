@@ -3,7 +3,9 @@
 [`lib/net/tcp4.f`](../lib/net/tcp4.f) provides generic IPv4 stream socket I/O.
 The current implementation supports Habu on Linux AArch64 with glibc. It
 contains no application protocol, framing, name resolution, or connection
-policy. Other operating systems are rejected before opening a socket.
+policy. Other operating systems are rejected before opening a socket. Every
+readiness wait runs on the AIO loop ([aio.md](aio.md)), so a program that asks
+one starts the loop with `AIO:LOOP-START` first.
 
 ## Values and operations
 
@@ -92,29 +94,31 @@ deadline:
 | --- | --- |
 | `ready` | `ACCEPT` / `READ` will answer at once |
 | `idle` | Nothing is waiting; for the timed forms, the deadline passed first |
-| `failed` | Errno from the OS poll |
+| `failed` | Errno the loop reported for the readiness operation |
 
 `ready` covers the end of stream and a failed connection as well as data, since
 those also answer immediately; the following `READ` reports which it was.
 
-The timed forms park the task in
-[`poll(2)`](https://man7.org/linux/man-pages/man2/poll.2.html) instead of
-spinning, so a connection waiting for its peer costs no CPU. Their deadline is
-absolute: an interrupted poll resumes the time still left rather than restarting
-the timeout, so the whole wait is the one the caller asked for however many
-signals arrive. A timeout of zero polls once without waiting and is exactly
-`READABLE?` / `PENDING?` — all four questions share one poll path — while a
-timeout below zero or above `0x7FFFFFFF`, the `int` milliseconds `poll` takes,
-throws `E-OPERAND` before any descriptor is touched. The waiting task holds only
-its own socket and its own task-local `pollfd`, so other tasks keep running.
+**All four questions run on the AIO loop** ([aio.md](aio.md)): each one submits
+a single `AIO:POLL-ADD` for the descriptor with the caller's timeout as the
+poll's own linked deadline and awaits it, so a task waiting for its peer costs
+no CPU and no thread of its own — only its own socket and its own task-local
+endpoint row, and other tasks keep running. The program starts the loop:
+`AIO:LOOP-START` must have run before the first wait, and a wait without it is
+`E-AIO-STATE`; there is no fallback to `poll(2)`. Because the deadline belongs
+to the operation the kernel is running, a signal no longer cuts the wait short
+and nothing has to be resumed. A timeout of zero asks the question with a
+zero-length deadline and is exactly `READABLE?` / `PENDING?`; a timeout below
+zero or above `0x7FFFFFFF` throws `E-OPERAND` before any descriptor is touched.
 
 `SHUTDOWN` half-closes a live stream in one direction or both and leaves the
 descriptor open until `CLOSE`. The direction is the `TCP4:direction` enum built
 by `RECEIVING`, `SENDING` or `BOTH`; `SENDING` is the one that tells the peer
 the stream has ended while still reading its reply.
 
-An interrupted `ACCEPT`, `READ`, `READ-EXACT`, `WRITE` or poll retries against
-the same descriptor. An interrupted `CONNECT` does **not**: Linux
+An interrupted `ACCEPT`, `READ`, `READ-EXACT` or `WRITE` retries against
+the same descriptor; a readiness wait has nothing to retry, because the loop
+absorbs the signal. An interrupted `CONNECT` does **not**: Linux
 [completes that connection asynchronously](https://man7.org/linux/man-pages/man2/connect.2.html),
 so it is reported as `failed` with `EINTR` and its socket is closed.
 
@@ -125,20 +129,20 @@ Handle lifetime is a caller obligation, not a linear ownership proof.
 
 ## Foreign boundary and errors
 
-The API and control flow are checked Habu. Eleven exact libc schemas reach the
+The API and control flow are checked Habu. Ten exact libc schemas reach the
 bounded FFI as `FUNCTION:` declarations, each stating the C function's own
 effect: `socket`, `bind`, `listen`, `accept4`, `connect`, `getsockname`, `recv`,
-`send`, `shutdown`, `poll` and `close`; errno is package FFI's binding, shared by
+`send`, `shutdown` and `close`; errno is package FFI's binding, shared by
 every consumer. Argument preparation and result normalization are checked
 helpers, and the module carries no `TRUSTED:` body at all. Writable extents are
 explicit. C `int` returns are
 normalized from 32 bits; `ssize_t` results retain the host's 64 bits. The
-16-byte `sockaddr_in`, four-byte `socklen_t`, and eight-byte `pollfd` layouts
+16-byte `sockaddr_in` and four-byte `socklen_t` layouts
 come from this platform's libc headers, not an application wire format.
 `accept4` carries `SOCK_CLOEXEC` so an accepted connection is never inherited
 across an exec.
 
-Temporary endpoint/poll storage is task-local, as are the existing FFI argument
+Temporary endpoint storage is task-local, as are the existing FFI argument
 tables. Each declared symbol resolves on its first call through
 [`RTLD_DEFAULT`](https://man7.org/linux/man-pages/man3/dlsym.3.html) and is cached
 by package FFI for every later caller. The native executable already depends on
@@ -174,7 +178,8 @@ bin/hb --load lib/net/tcp4-test.f
 
 The suite holds both peers in one process: the main task binds an ephemeral
 loopback port, listens, starts a listener task that blocks in `ACCEPT`, then
-connects to it. Its 91 assertions cover the echo round trip through `WRITE`,
+connects to it. It starts the AIO loop before its first case and stops it after
+its last. Its 115 assertions cover the echo round trip through `WRITE`,
 `READ-EXACT` and the peer endpoint `ACCEPT` reports, a server half-close read
 back as the end of stream, an idle listener and an idle stream answering `idle`
 before a waiting connection and a sent request answer `ready`, a partial `READ`,
@@ -191,7 +196,14 @@ least 40 ms, a silent peer and a quiet listener answer `idle` after a 100 ms
 deadline having waited at least 90 ms, a peer that closes answers `ready` and
 reads back as the end of stream, and a pending connect answers `ready` on the
 listener. A wait that ignored its timeout would return early and fail those
-lower bounds, which is what separates a parked poll from a busy loop.
+lower bounds, which is what separates a parked wait from a busy loop.
+
+Two cases pin the loop itself. A task parked in a `READABLE-WITHIN?` on a silent
+connection is counted in `/proc/self/task`: three threads where one ran before
+the suite's first task — the base, the parked task, and the loop's one — so a
+wait costs no thread of its own, and the peer's later write is what answers that
+parked wait. A `READABLE-WITHIN?` with the loop stopped throws `E-AIO-STATE`
+rather than falling back to `poll(2)`.
 
 `E-PLATFORM`, `E-FFI-DLSYM` and `E-RESULT` have no case here: each needs a host
 this build does not run on, a process without libc, or a kernel returning a

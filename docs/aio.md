@@ -31,6 +31,11 @@ The loop is started explicitly because a live task forbids compilation
 ([threads.md](threads.md)): the program decides when it has finished defining
 words. A submission with no loop running is `E-AIO-STATE`.
 
+`lib/net/tcp4.f` and `lib/net/udp4.f` are the loop's first library callers:
+every `TCP4` readiness question and every `UDP4:RECEIVE` that has to wait is one
+`POLL-ADD` and one `AWAIT` here ([tcp4.md](tcp4.md), [udp4.md](udp4.md)), so a
+program that uses either starts the loop before its first wait.
+
 ## The surface
 
 | Word | Effect | Blocks |
@@ -223,6 +228,11 @@ offset below `-1`, or a socket address length that is not positive.
   An offset of `-1` on a `READ` or a `WRITE` - use and advance the descriptor's
   own position - is io_uring's own rule for those two operations; it is measured
   in `lib/aio-test.f` on the kernel the suite runs on and not against the floor.
+  A `POLL-ADD` with a deadline of zero links a zero-length timeout, and it still
+  answers `ready` for a descriptor that is already ready because the kernel
+  serves the poll inline before the linked timer is armed: measured 200 of 200
+  each way on the running kernel and pinned by the zero-timeout questions of
+  `lib/net/tcp4-test.f` and `lib/net/udp4-test.f`, not guaranteed by the floor.
 - aarch64 only so far. `syscall` is a variadic C function, and on aarch64 a
   variadic call passes integer arguments in the ordinary registers, so the two
   declarations above are exact. **On x86-64 the caller of a variadic function

@@ -10,6 +10,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
 SETUP = '''
+require lib/aio.f
 require lib/net/udp4.f
 package UDP4-TEST
 using UDP4
@@ -112,7 +113,9 @@ def exchange(habu, output):
       ok OF -1 throw ENDOF
       failed OF ERRNO>N . ENDOF
    ;MATCH ;
+AIO:LOOP-START
 RUN
+AIO:LOOP-STOP
 ;package
 ''')
         packets = [b'hello\0UDP', bytes(range(64)), b'', b'Z' * 65507]
@@ -233,7 +236,9 @@ TASK:MIN-STACK TASK:TASK WORKER1
    WORKER0 WAIT-DONE WORKER1 WAIT-DONE
    WORKER0 TASK:KILL WORKER1 TASK:KILL
    DONE atomic@ . ;
+AIO:LOOP-START
 RUN
+AIO:LOOP-STOP
 '''
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(serve)

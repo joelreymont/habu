@@ -4,6 +4,9 @@
 The current implementation supports Habu on Linux AArch64 with glibc. It
 contains no application protocol, packet sequencing, device addresses, or
 capture policy. Other operating systems are rejected before opening a socket.
+A `RECEIVE` that has to wait does so on the AIO loop ([aio.md](aio.md)), so a
+program that receives with a non-zero timeout starts the loop with
+`AIO:LOOP-START` first.
 
 ## Values and operations
 
@@ -44,12 +47,17 @@ is valid, distinct from timeout. The result requires an exhaustive match:
 | `packet` | Byte length, source address, source port | Entire datagram copied into the supplied buffer |
 | `truncated` | Original byte length, source address, source port | Only capacity bytes copied; remaining bytes discarded |
 | `timeout` | None | No datagram obtained before the receive wait expired |
-| `failed` | Errno | OS receive or poll failure |
+| `failed` | Errno | OS receive failure, or the errno the loop reported for the wait |
 
 Lengths in `truncated` must **not** be used as readable buffer lengths. The
 receiver uses Linux `MSG_TRUNC` to retain the original datagram size.
-Interrupted receives/polls and readiness races retry against a monotonic
-deadline; they do not restart the full timeout. Source filtering and packet
+The socket is nonblocking, so `RECEIVE` tries `recvfrom` first and waits only
+when there is nothing queued: it submits one `AIO:POLL-ADD` for the
+milliseconds left on its absolute deadline and awaits it, so a receiving task
+costs no thread of its own. A wait with no loop running is `E-AIO-STATE`; a
+zero timeout never reaches the loop, since one immediate try is the whole call.
+Interrupted receives and readiness races retry against that monotonic deadline;
+they do not restart the full timeout. Source filtering and packet
 reordering are application responsibilities. See the Linux
 [`recvfrom` contract](https://man7.org/linux/man-pages/man2/recv.2.html).
 
@@ -60,18 +68,18 @@ Handle lifetime is a caller obligation, not a linear ownership proof.
 
 ## Foreign boundary and errors
 
-The API and control flow are checked Habu. Eight small private `TRUSTED:`
-definitions describe exact libc schemas through the existing bounded FFI:
-`socket`, `bind`, `getsockname`, `sendto`, `recvfrom`, `poll` and `close`, each
-a `FUNCTION:` declaration whose effect is the C function's own; errno is package
+The API and control flow are checked Habu. Six exact libc schemas reach the
+bounded FFI as `FUNCTION:` declarations, each stating the C function's own
+effect: `socket`, `bind`, `getsockname`, `sendto`, `recvfrom` and `close`;
+errno is package
 FFI's binding, shared by every consumer. Argument preparation and result
 normalization are checked helpers, and the module carries no `TRUSTED:` body at
 all. Writable extents are explicit. C `int` returns are
 normalized from 32 bits; `ssize_t` results retain the host's 64 bits. The
-16-byte `sockaddr_in`, four-byte `socklen_t`, and eight-byte `pollfd` layouts
+16-byte `sockaddr_in` and four-byte `socklen_t` layouts
 come from this platform's libc headers, not an application wire format.
 
-Temporary endpoint/poll storage is task-local, as are the existing FFI argument
+Temporary endpoint storage is task-local, as are the existing FFI argument
 tables. Each declared symbol resolves on its first call through
 [`RTLD_DEFAULT`](https://man7.org/linux/man-pages/man3/dlsym.3.html) and is cached
 by package FFI for every later caller. The native executable already depends on
@@ -97,20 +105,30 @@ dynamic-library reference to release. Callers must
 close their descriptors and stop concurrent use before capture; live descriptors
 are process resources, not serializable handles.
 
-This handoff's lifecycle integration is pending native validation. The current
-compiler fails while loading the required `TASK` library, and shared registration
-must support concurrent initialization by different resource owners. A
-fresh-process image regression remains required before shipping saved
-applications containing this library. The earlier source-loaded host behavior
-is covered by the existing transport tests; it does not prove this integration.
+A fresh-process image regression remains required before shipping saved
+applications containing this library: the suites below prove host behaviour,
+not image capture.
 
 ## Checks
 
 ```sh
+bin/hb --load lib/net/udp4-test.f
 python3 test/net/udp4.py
 ```
 
-The harness runs Habu's supported source-list loader and an independent Python
+The Habu suite holds both peers in one process: two sockets bound to ephemeral
+`127.0.0.1` ports, with the AIO loop started before its first case and stopped
+after its last. Its 58 assertions cover a 64-byte datagram delivered with its
+length, its bytes and its sender's address and port; an idle socket answering
+`timeout` having waited out a 30 ms deadline against the monotonic clock; a zero
+timeout answering `timeout` at once and answering a queued datagram without
+waiting; a 64-byte datagram received into a 16-byte capacity reported as
+`truncated` carrying 64 with the first bytes delivered; a `RECEIVE` parked in the
+loop from a task and answered by the main thread's later `SEND`; and a `RECEIVE`
+that must wait with the loop stopped refused as `E-AIO-STATE`.
+
+The Python harness runs Habu's supported source-list loader and an independent
+Python
 UDP peer on localhost. Its 36 native cases cover empty and maximum-size
 datagrams in both directions, exact source endpoints and lengths, truncation
 with buffer guards, immediate and timed empty receives, nonblocking/close-on-exec

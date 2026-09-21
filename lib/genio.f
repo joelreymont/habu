@@ -611,6 +611,9 @@ private
    SCRATCH 1 TCP-RECEIVE drop
    SCRATCH c@ ;
 
+\ TCP4's readiness question runs on the AIO loop (docs/aio.md), so a program
+\ that asks a TCP device whether a byte is waiting starts the loop first; the
+\ other operations of this device are transfers and need no loop.
 : TCP-READY? ( -- bool )
    SELF-CONNECTION TCP4:READABLE?
    MATCH TCP4:ready-result

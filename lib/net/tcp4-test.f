@@ -1,12 +1,17 @@
 \ tcp4-test.f - a loopback TCP connection carries bytes both ways.
 \
 \ One process holds both peers: a listener task blocks in ACCEPT while the main
-\ task connects, writes and reads back. Run: bin/hb --load lib/net/tcp4-test.f
+\ task connects, writes and reads back. Every timed wait runs on the AIO loop,
+\ which this suite starts before its first case and stops after its last.
+\ Run: bin/hb --load lib/net/tcp4-test.f
 require lib/test.f
 require lib/prelude.f
 require lib/string.f
+require lib/errors.f
 require lib/ffi-abi.f
 require lib/task.f
+require lib/fs-list.f              \ the /proc/self/task entries the parked case counts
+require lib/aio.f                  \ the loop every readiness wait runs on
 require lib/net/tcp4.f
 
 package TCP4-TEST
@@ -28,6 +33,7 @@ $40 constant POLL-TRIES
 50 constant PEER-MS                \ the peer's delay before it writes
 40 constant LEAST-WAIT-MS          \ a ready answer still covered the peer's delay
 90 constant LEAST-IDLE-MS          \ an idle answer waited out its deadline
+20 constant SETTLE-MS              \ the armed task reaches its submission within this
 
 create CLIENT-BUF BUF-CAP allot
 create SERVER-BUF BUF-CAP allot
@@ -47,9 +53,17 @@ variable PROBE-CONNECTION
 variable PROBE-PORT
 variable CLIENT-FD
 variable PEER-FD
+variable THREAD-N
+variable BASE-THREADS
+variable PARKED-THREADS
+variable PARK-ARMED
+variable PARK-DONE
+variable PARK-READY
+variable PARK-FD
 
 TASK:MIN-STACK TASK:TASK ECHO-TASK
 TASK:MIN-STACK TASK:TASK PEER-TASK
+TASK:MIN-STACK TASK:TASK PARK-TASK
 
 : PING$ ( -- ptr u8 n )
    s" ping" ;
@@ -198,6 +212,45 @@ TASK:MIN-STACK TASK:TASK PEER-TASK
    mono-ns start - NS-PER-MS / ;
 
 
+\ ---- the parked waiter -------------------------------------------------------
+
+: THREAD-TALLY ( ptr u8 n -- )
+   2drop 1 THREAD-N atomic-add drop ;
+
+
+\ The live threads of this process, counted from its own task directory, the way
+\ lib/aio-test.f counts them for the fan-out.
+: THREADS ( -- n )
+   0 THREAD-N !
+   s" /proc/self/task" [: THREAD-TALLY ;] FS-LIST:EACH
+   THREAD-N @ ;
+
+
+: REACHED? ( ptr n n -- bool ) {: cell:ptr want:n :}
+   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      cell atomic@ want >= if true exit then
+      mono-ns deadline > if false exit then
+      TASK:PAUSE
+   again ;
+
+
+\ One number per answer, because the assertions belong to the main thread.
+: PARK-ANSWER ( TCP4:ready-result -- n )
+   MATCH TCP4:ready-result
+      ready OF 1 ENDOF
+      idle OF 0 ENDOF
+      failed OF TCP4:ERRNO>N negate ENDOF
+   ;MATCH ;
+
+
+\ Arms, then parks in the wait until the main thread's write reaches it.
+: PARK-WORK ( -- )
+   1 PARK-ARMED atomic-add drop
+   PARK-FD @ TCP4:>CONNECTION WAIT-MS >MS TCP4:READABLE-WITHIN? PARK-ANSWER PARK-READY !
+   1 PARK-DONE atomic-add drop ;
+
+
 \ ---- endpoints the cases share -----------------------------------------------
 
 : BIND-LISTENER ( -- n )
@@ -292,7 +345,7 @@ TASK:MIN-STACK TASK:TASK PEER-TASK
    PROBE-LISTENER @ TCP4:>LISTENER -1 >MS TCP4:PENDING-WITHIN? READY-DROP ;
 
 
-\ A deadline wider than poll's own C int would be truncated, not waited out.
+\ A deadline wider than the range this module declares is refused, not clamped.
 : BAD-LONG-TIMEOUT ( -- )
    CLIENT-FD @ TCP4:>CONNECTION $80000000 >MS TCP4:READABLE-WITHIN? READY-DROP ;
 
@@ -309,6 +362,45 @@ TASK:MIN-STACK TASK:TASK PEER-TASK
    [: BAD-TIMEOUT ;] TCP4:E-OPERAND TTHROWSQ
    [: BAD-LISTEN-TIMEOUT ;] TCP4:E-OPERAND TTHROWSQ
    [: BAD-LONG-TIMEOUT ;] TCP4:E-OPERAND TTHROWSQ ;
+
+
+\ The waits do not park threads: one task waiting on a silent connection costs
+\ its own thread and the loop's, and nothing per wait. This case runs before any
+\ other task of the suite exists, so the count it pins is the base plus those two.
+: T-PARKED-THREADS ( -- )
+   s" a task parked in a timed wait costs no thread beyond the loop's" T-LABEL
+   0 PARK-ARMED ! 0 PARK-DONE ! 0 PARK-READY !
+   OPEN-PAIR
+   PROBE-CONNECTION @ PARK-FD !
+   ['] PARK-WORK PARK-TASK TASK:ACTIVATE
+   PARK-ARMED 1 REACHED? TTRUE
+   SETTLE-MS >MS TASK:SLEEP
+   THREADS PARKED-THREADS !
+   PARKED-THREADS @ BASE-THREADS @ 1 + 1 + T=
+   s" and the peer's write answers that parked wait" T-LABEL
+   CLIENT-FD @ TCP4:>CONNECTION CHAT$ TCP4:TRANSFER-BYTES TCP4:WRITE STATUS-ERRNO 0 T=
+   PARK-DONE 1 REACHED? TTRUE
+   PARK-READY @ 1 T=
+   PARK-TASK TASK:KILL
+   PROBE-CONNECTION @ TCP4:>CONNECTION SERVER-BUF BUF-CAP TCP4:TRANSFER-BYTES TCP4:READ
+      CHAT-BYTES WANT-DATA
+   SERVER-BUF CHAT-BYTES CHAT$ T$=
+   CLOSE-PAIR ;
+
+
+: STOPPED-WAIT ( -- )
+   PROBE-CONNECTION @ TCP4:>CONNECTION IDLE-MS >MS TCP4:READABLE-WITHIN? READY-DROP ;
+
+
+\ The loop is the program's to start, and a wait without one says so by name
+\ instead of falling back to a thread parked in poll(2).
+: T-NO-LOOP ( -- )
+   s" a wait with the loop stopped is refused by name" T-LABEL
+   OPEN-PAIR
+   AIO:LOOP-STOP
+   [: STOPPED-WAIT ;] E-AIO-STATE TTHROWSQ
+   AIO:LOOP-START
+   CLOSE-PAIR ;
 
 
 : ECHO-EXCHANGE ( -- )
@@ -447,7 +539,10 @@ TASK:MIN-STACK TASK:TASK PEER-TASK
 
 : RUN ( -- )
    T-RESET
+   THREADS BASE-THREADS !
+   AIO:LOOP-START
    T-OPERANDS
+   T-PARKED-THREADS
    T-ECHO
    T-READINESS
    T-WAIT-DATA
@@ -456,6 +551,8 @@ TASK:MIN-STACK TASK:TASK PEER-TASK
    T-WAIT-LISTENER
    T-REFUSED
    T-READ-AFTER-CLOSE
+   T-NO-LOOP
+   AIO:LOOP-STOP
    T-REPORT
    s" tcp4-test: ok" type cr ;
 

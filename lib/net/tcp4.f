@@ -1,14 +1,19 @@
 \ Linux AArch64 IPv4 stream sockets through exact, bounded libc bindings.
 \
-\ STORAGE CLASS. TASK-LOCAL. The endpoint and poll storage is one $20
-\ TASK:+USER row, so each task holds its own sockaddr, socklen and pollfd and
-\ any number of tasks may bind, accept, read and write at once. The payload
-\ spans READ, READ-EXACT and WRITE take are caller-owned. See docs/threads.md.
+\ STORAGE CLASS. TASK-LOCAL. The endpoint storage is one $18 TASK:+USER row, so
+\ each task holds its own sockaddr and socklen and any number of tasks may bind,
+\ accept, read and write at once. The payload spans READ, READ-EXACT and WRITE
+\ take are caller-owned. See docs/threads.md.
+\
+\ Every readiness wait runs on the AIO loop (docs/aio.md): WAIT-READY submits one
+\ POLL-ADD and awaits it, so a waiting task costs no thread of its own. A program
+\ calls AIO:LOOP-START before its first wait; a wait with no loop is E-AIO-STATE.
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/type/deftype.f
 require lib/num-types.f
 require lib/task.f
+require lib/aio.f
 
 package TCP4
 public
@@ -83,20 +88,19 @@ $1000 constant MAX-BACKLOG         \ Linux SOMAXCONN.
 $80001 constant SOCKET-FLAGS       \ SOCK_STREAM | SOCK_CLOEXEC.
 $80000 constant ACCEPT-FLAGS       \ SOCK_CLOEXEC on the accepted connection.
 $4000 constant MSG-NOSIGNAL        \ A write to a closed peer fails; it never signals.
-1 constant POLL-READ               \ POLLIN.
 $39 constant POLL-DONE             \ POLLIN|POLLERR|POLLHUP|POLLNVAL: a read will not block.
-$7FFFFFFF constant MAX-TIMEOUT     \ poll's timeout is a C int, in milliseconds.
-1000000 constant NS-PER-MS
+$7FFFFFFF constant MAX-TIMEOUT     \ the widest deadline this module accepts, in milliseconds.
 4 constant EINTR
 0 constant SHUT-RD
 1 constant SHUT-WR
 2 constant SHUT-RDWR
 
-\ Endpoint/poll storage is per task, matching FFI's argument/extent tables.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $20 TASK:+USER IO-STORAGE drop
+\ Endpoint storage is per task, matching FFI's argument/extent tables: a $10
+\ sockaddr_in and a $04 socklen_t, rounded up to the cell so the row after this
+\ one still starts aligned.
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $18 TASK:+USER IO-STORAGE drop
 : SOCKADDR ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
 : ADDRLEN ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
-: POLLFD ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $18 + ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -131,10 +135,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 : C-INT ( n -- n )
    U32-MASK and dup $80000000 and 0 <> if $100000000 - then ;
-
-
-: LE16@ ( ptr u8 -- n ) {: source :}
-   source c@ source $01 + c@ 8 lshift or ;
 
 
 : LE32! ( n ptr u8 -- ) {: value:n target :}
@@ -223,10 +223,6 @@ FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n )
    1 2 WRITES-ARG                         \ the caller's payload span
 ;FUNCTION
 
-FUNCTION: POLL-CALL poll ( ptr u8 n n -- n )
-   0 $08 WRITES-BYTES                     \ one pollfd
-;FUNCTION
-
 
 \ The platform gate. Symbol resolution is package FFI's now, so there is no
 \ publication to synchronize and no cached address to invalidate here.
@@ -280,10 +276,6 @@ FUNCTION: POLL-CALL poll ( ptr u8 n n -- n )
    SHUTDOWN-CALL C-INT ;
 
 
-: POLL-RAW ( ms -- n ) {: timeout:ms :}
-   POLLFD 1 timeout MS>N POLL-CALL C-INT ;
-
-
 : CLOSE-RAW ( n -- n )
    CLOSE-CALL C-INT ;
 
@@ -292,43 +284,32 @@ FUNCTION: POLL-CALL poll ( ptr u8 n n -- n )
    0 < if LAST-ERROR TCP4-STATUS:failed else TCP4-STATUS:ok then ;
 
 
-: POLL! ( n -- )
-   POLLFD LE32! POLL-READ POLLFD $04 + LE32! ;
-
-
 \ POLLERR, POLLHUP and POLLNVAL all mean a read returns at once, with the end of
-\ stream or the error as its answer, so they are readiness and not a poll failure.
+\ stream or the error as its answer, so they are readiness and not a failure.
 : REVENTS>READY ( n -- ready-result )
-   0= if TCP4-READY--RESULT:idle exit then
-   POLLFD $06 + LE16@ POLL-DONE and 0 <> if TCP4-READY--RESULT:ready exit then
+   POLL-DONE and 0 <> if TCP4-READY--RESULT:ready exit then
    TCP4-READY--RESULT:idle ;
 
 
-\ Milliseconds left before an absolute monotonic deadline, floored at zero and
-\ rounded up so a remaining fraction still waits.
-: REMAINING ( ns -- ms )
-   NS>N mono-ns - dup 0 <= if drop 0 >MS exit then
-   NS-PER-MS 1 - + NS-PER-MS / >MS ;
-
-
-\ The deadline is absolute, so an interrupt resumes the wait the signal cut
-\ short instead of restarting it. A deadline already reached still polls once,
-\ which is how the zero timeout asks its question without waiting.
-: POLL-UNTIL ( ms -- ready-result ) {: timeout:ms :}
-   mono-ns timeout MS>N NS-PER-MS * + >NS {: deadline:ns :}
-   timeout
-   begin
-      POLL-RAW dup 0 >= if REVENTS>READY exit then
-      drop LAST-ERROR dup INTERRUPTED? 0= if TCP4-READY--RESULT:failed exit then drop
-      deadline REMAINING
-   again ;
-
-
-\ The one poll path: every readiness question a listener or a connection asks
-\ reaches poll(2) through here, with the timeout as their only difference.
+\ The one readiness path: every question a listener or a connection asks reaches
+\ the AIO loop through here, with the timeout as their only difference. The
+\ deadline is the poll's own linked timeout, so a signal no longer cuts the wait
+\ short and there is nothing to restart; a zero timeout asks the question with a
+\ zero-length link, which still answers `ready` for a descriptor already ready.
+\ The loop must be running: a wait without AIO:LOOP-START is E-AIO-STATE.
+\ `cancelled` cannot arrive here - nothing in this module cancels, the ticket
+\ never leaves this word, and the cleanup AIO registers on a submitting task runs
+\ only after that task has ended - so it is a broken foreign result, exactly like
+\ a sockaddr this module did not write.
 : WAIT-READY ( n ms -- ready-result ) {: fd:n timeout:ms :}
    timeout MS>N 0 MAX-TIMEOUT WITHIN-RANGE INIT
-   fd POLL! timeout POLL-UNTIL ;
+   fd >FD AIO:READABLE timeout AIO:POLL-ADD AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF REVENTS>READY ENDOF
+      timed-out OF TCP4-READY--RESULT:idle ENDOF
+      cancelled OF E-RESULT throw ENDOF
+      refused OF >ERRNO TCP4-READY--RESULT:failed ENDOF
+   ;MATCH ;
 
 
 \ A transfer longer than the span handed to the OS is not a short answer this
@@ -484,7 +465,7 @@ public
    CONNECTION-FD 0 >MS WAIT-READY ;
 
 
-\ Parks the task in poll(2) until the stream would answer a READ or the
+\ Parks the task on the AIO loop until the stream would answer a READ or the
 \ deadline passes, which is `idle`. A timeout below zero is refused.
 : READABLE-WITHIN? ( connection ms -- ready-result )
    {: conn:connection timeout:ms :}
