@@ -1223,6 +1223,116 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
    s" TASK-WAKE-RAW ( n -- ) TASK:WAKE"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ ---- KILL and HALT at the moment the task ends -------------------------------
+\ The teardown docs/threads.md sanctions - the owner sets a stop flag, the body
+\ writes its own "I am finished" flag and returns, the owner KILLs - arrives
+\ INSIDE the interval in which the task is finishing: that last write precedes
+\ TASK-END and the thread entry's own DONE store. So the owner's KILL reaches a
+\ TCB that still says RUNNING and finds it DONE a moment later, and both words
+\ must tolerate it. Before the fix a KILL in that window released nothing or
+\ threw E-TASK-STATE through HALT's wake, and either way the task stayed counted
+\ in TASKS-LIVE-CELL, so the next dictionary mutation - a suite's own ;package -
+\ exited $4F.
+
+TASK:MIN-STACK TASK:TASK KILL-ENDED
+TASK:MIN-STACK TASK:TASK HALT-ENDED
+TASK:MIN-STACK TASK:TASK HALT-IDLE
+TASK:MIN-STACK TASK:TASK KILL-RACE-TASK
+
+TASK-TEST-ALIGN8
+variable ENDED-RAN
+variable KILL-RACE-GO
+variable KILL-RACE-ENDING
+variable KILL-RACE-THREW
+variable KILL-RACE-LEFT
+
+\ Measured on this host (aarch64, idle): 3000 rounds of activate / stop / wait
+\ for the body's flag / KILL took 207 ms, 184 ms and 157 ms over three runs.
+3000 constant KILL-RACE-ROUNDS
+
+\ The count dictionary mutation is refused on. A task a KILL failed to release
+\ stays in it for the life of the image, so this is the cell the reported
+\ failure was read from.
+: TASK-LIVE-COUNT ( -- n )
+   data-base TASKS-LIVE-CELL + @ ;
+
+: ENDED-WORK ( -- )
+   1 ENDED-RAN atomic-add drop ;
+
+\ The deterministic half: the task has certainly ended - DONE? answered true -
+\ when the KILL arrives. The kill still joins it, gives the live count back and
+\ leaves an EMPTY task, which the second activation of the same task proves.
+: TASK-TEST-KILL-ENDED ( -- )
+   0 ENDED-RAN !
+   TASK-LIVE-COUNT {: base:n :}
+   ['] ENDED-WORK KILL-ENDED TASK:ACTIVATE
+   KILL-ENDED APP-WAIT-DONE
+   KILL-ENDED TASK:DONE? TTRUE
+   KILL-ENDED TASK:KILL
+   KILL-ENDED TASK:DONE? TFALSE
+   TASK-LIVE-COUNT base T=
+   ['] ENDED-WORK KILL-ENDED TASK:ACTIVATE
+   KILL-ENDED APP-WAIT-DONE
+   KILL-ENDED TASK:KILL
+   KILL-ENDED TASK:DONE? TFALSE
+   TASK-LIVE-COUNT base T=
+   ENDED-RAN @ 2 T= ;
+
+\ Halting a task that has ended is a no-op, not a throw: it has no PAUSE left to
+\ observe the request, and its DONE is not overwritten - so the KILL after it
+\ still releases it.
+: TASK-TEST-HALT-ENDED ( -- )
+   0 ENDED-RAN !
+   ['] ENDED-WORK HALT-ENDED TASK:ACTIVATE
+   HALT-ENDED APP-WAIT-DONE
+   [: HALT-ENDED TASK:HALT ;] catch 0 T=
+   HALT-ENDED TASK:DONE? TTRUE
+   HALT-ENDED TASK:KILL
+   HALT-ENDED TASK:DONE? TFALSE
+   ENDED-RAN @ 1 T= ;
+
+\ A task that was never activated and one that is only prepared have no run to
+\ halt either, and their state is left alone. The ACTIVATE that follows is what
+\ proves it: a HALT-REQ written into either state would refuse it.
+: TASK-TEST-HALT-IDLE ( -- )
+   0 ENDED-RAN !
+   [: HALT-IDLE TASK:HALT ;] catch 0 T=
+   HALT-IDLE TASK:PREPARE
+   [: HALT-IDLE TASK:HALT ;] catch 0 T=
+   ['] ENDED-WORK HALT-IDLE TASK:ACTIVATE
+   HALT-IDLE APP-WAIT-DONE
+   ENDED-RAN @ 1 T=
+   HALT-IDLE TASK:KILL ;
+
+\ The reported round, with the PAUSE loop that makes the owner's arrival land
+\ anywhere inside the window. This exercises it; the proof that the window is
+\ closed is the 200000-round reproducer in the lane's notes, which this case
+\ shortens to a suite-sized run.
+: KILL-RACE-WORK ( -- )
+   begin KILL-RACE-GO atomic@ 0 <> until
+   1 KILL-RACE-ENDING atomic! ;
+
+: KILL-RACE-ROUND ( -- )
+   0 KILL-RACE-GO atomic!
+   0 KILL-RACE-ENDING atomic!
+   ['] KILL-RACE-WORK KILL-RACE-TASK TASK:ACTIVATE
+   1 KILL-RACE-GO atomic!
+   KILL-RACE-ENDING 1 APP-WAIT-CELL
+   [: KILL-RACE-TASK TASK:KILL ;] catch 0 <> if
+      1 KILL-RACE-THREW +!
+      exit
+   then
+   KILL-RACE-TASK TASK:DONE? if 1 KILL-RACE-LEFT +! then ;
+
+: TASK-TEST-KILL-RACE ( -- )
+   0 KILL-RACE-THREW !
+   0 KILL-RACE-LEFT !
+   TASK-LIVE-COUNT {: base:n :}
+   KILL-RACE-ROUNDS 0 do KILL-RACE-ROUND loop
+   KILL-RACE-THREW @ 0 T=
+   KILL-RACE-LEFT @ 0 T=
+   TASK-LIVE-COUNT base T= ;
+
 : TASK-TEST-RUN ( -- )
    T-RESET
    TASK-TEST-CALLBACK-TYPES
@@ -1288,6 +1398,10 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
    TASK-TEST-STOP-HALT
    TASK-TEST-STOP-MAIN
    TASK-TEST-STOP-REFUSED
+   TASK-TEST-KILL-ENDED
+   TASK-TEST-HALT-ENDED
+   TASK-TEST-HALT-IDLE
+   TASK-TEST-KILL-RACE
    T-REPORT ;
 
 TASK-TEST-RUN

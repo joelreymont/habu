@@ -703,11 +703,17 @@ variable TASK-EXIT-N
    TASK-RUN-EXIT
    TASK-SELF TASK-DONE-SEM SEM-SIGNAL ;
 
+\ One shared cell counted from several threads: an owner releasing one task can
+\ run while another thread activates a second, so each side moves the count in
+\ ONE atomic step. No clamp below zero - every release follows an activation, so
+\ a count below zero is a pairing defect, and a nonzero count already refuses
+\ dictionary mutation, which is where it must surface (exit $4F) rather than in
+\ a clamp that hides it.
 : TASK-LIVE+ ( -- )
-   data-base TASKS-LIVE-CELL + dup @ 1 + swap ! ;
+   1 data-base TASKS-LIVE-CELL + atomic-add drop ;
 
 : TASK-LIVE- ( -- )
-   data-base TASKS-LIVE-CELL + dup @ 1 - dup 0 < if drop 0 then swap ! ;
+   -1 data-base TASKS-LIVE-CELL + atomic-add drop ;
 
 : TASK-MUNMAP-SPAN ( ptr n n -- )
    MUNMAP-CALL TASK-RC0 ;
@@ -883,29 +889,51 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
 \ The request is observed at TASK:PAUSE, so a task parked in TASK:STOP would not
 \ see it until somebody else woke it. HALT wakes it itself: the task returns from
 \ its STOP, re-checks its state as the hint protocol requires, and ends at its
-\ next PAUSE. Only a task that was running has a park to post - the state is read
-\ before the request overwrites it.
+\ next PAUSE.
+\
+\ The move RUNNING -> HALT-REQ is one atomic-cas on the status cell, the shape
+\ TASK-JOIN-CHECK uses on the joiner claim, and its answer - the state as it was
+\ - is read once. A task ends under its own owner: the body's last write comes
+\ before TASK-END and before the entry's DONE store, so a halt ordinarily
+\ arrives while the task is finishing. An answer that is neither RUNNING nor
+\ HALT-REQ means there is nothing to halt - never activated, only prepared, or
+\ ended - and that task's state and stop flag are left alone: a task that has
+\ ended has no PAUSE to reach, and DONE is never overwritten by a request nobody
+\ can observe.
+\
+\ The park is posted DIRECTLY rather than through TASK-WAKE, which refuses an
+\ ended task: that refusal is TASK:WAKE's own contract, while here the task may
+\ end between the CAS and the post and a hint nobody will wait for is harmless.
+\ It cannot reach the next run either - TASK-RELEASE-MEM destroys the park
+\ record with the task's memory and PREPARE's PARK-INIT opens the next one at
+\ zero, so a stray count dies with the run that never took it.
 : HALT ( ptr n -- ) {: tcb:ptr :}
-   tcb TASK-STATE@ {: st:n :}
-   TASK-HALT-REQ tcb TASK-STATE!
+   TASK-RUNNING TASK-HALT-REQ tcb TCB.STATUS atomic-cas {: st:n :}
+   st TASK-RUNNING <> st TASK-HALT-REQ <> and if exit then
    1 tcb TASK-STOP!
-   st TASK-RUNNING = st TASK-HALT-REQ = or if tcb TASK-WAKE then ;
+   tcb TASK-PARK-SEM SEM-SIGNAL ;
 
+\ ONE read of the state decides, because the state moves while the owner is
+\ reading it: a task that answers RUNNING to the first test can be DONE by the
+\ next, and re-reading per arm made every arm false - the task was neither
+\ halted nor joined, TASK-LIVE- never ran, and it stayed counted live for the
+\ life of the image (the next dictionary mutation then exits $4F).
+\
+\ EMPTY has nothing to release and CONSTRUCTED has memory but no thread. Every
+\ other state was activated and is released the same way, whichever state it
+\ reaches first: HALT unless the read already said DONE - it is the no-op above
+\ on a task that ended in between - and then the join, which waits for the
+\ thread however the task ends.
 : TASK-KILL ( ptr n -- ) {: tcb:ptr :}
-   tcb TASK-STATE@ TASK-EMPTY = if exit then
-   tcb TASK-STATE@ TASK-CONSTRUCTED = if
+   tcb TASK-STATE@ {: st:n :}
+   st TASK-EMPTY = if exit then
+   st TASK-CONSTRUCTED = if
       tcb TASK-RELEASE-MEM
       TASK-EMPTY tcb TASK-STATE!
       exit
    then
-   tcb TASK-STATE@ TASK-DONE = if
-      tcb TASK-JOIN-RELEASE
-      exit
-   then
-   tcb TASK-STATE@ TASK-RUNNING = tcb TASK-STATE@ TASK-HALT-REQ = or if
-      tcb HALT
-      tcb TASK-JOIN-RELEASE
-   then ;
+   st TASK-DONE <> if tcb HALT then
+   tcb TASK-JOIN-RELEASE ;
 
 : TASK-DONE? ( ptr n -- bool )
    TASK-STATE@ TASK-DONE = ;
@@ -1191,10 +1219,17 @@ TASK-MIN-STACK constant MIN-STACK
    TASK-WAKE ;
 
 \ Requests the stop the target observes at its next TASK:PAUSE, and wakes it so
-\ a task parked in TASK:STOP gets there.
+\ a task parked in TASK:STOP gets there. A task that has ended, one that was
+\ never activated and one that is only prepared have no PAUSE to reach: halting
+\ them is a no-op that leaves their state alone.
 : HALT ( ptr n -- )
    HALT ;
 
+\ Releases the task: a task that was activated is halted if it is still running,
+\ joined, and its memory given back, whichever of those states it reaches first
+\ - a body ending under the KILL is the teardown shape, not an error. A task
+\ that was never activated or was already released is the no-op it is after a
+\ TASK:JOIN.
 : KILL ( ptr n -- )
    TASK-KILL ;
 

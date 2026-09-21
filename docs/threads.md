@@ -90,6 +90,15 @@ Use `TASK:KILL` for teardown of a task whose outcome nobody wants, and
 loops must call `TASK:PAUSE` or block in a host call; `TASK:HALT` is cooperative
 and is observed by `TASK:PAUSE`.
 
+Both tolerate a task that ends under them, which is the ordinary case for this
+teardown: the body's own "I am finished" write happens before the task reaches
+`DONE`, so an owner woken by it arrives while the TCB still says `RUNNING`.
+`TASK:KILL` of a task that was activated always joins and releases it, whichever
+state it reaches first, and `TASK:HALT` of a task that has ended, was never
+activated or is only prepared is a no-op that leaves its state alone. Only
+`TASK:WAKE` refuses an ended task - a hint would sit in a record the next
+activation is not entitled to.
+
 The surface tracks the SwiftForth multitasking words captured in
 `docs/swiftforth-task-api.md`. Habu keeps the task body typed by passing an XT to
 `TASK:ACTIVATE` instead of parsing a following source body.
