@@ -28,28 +28,28 @@ engine/primitive-count	8	0.0
 engine/primitive-records	9984	0.2
 source/baked	0	0.0
 aot/framing-cells	128	0.0
-aot/code-blob	1821108	47.9
-aot/dictionary-records	160500	4.2
-aot/call-sites	149052	3.9
+aot/code-blob	1821236	47.9
+aot/dictionary-records	160520	4.2
+aot/call-sites	149088	3.9
 aot/name-pool	87112	2.2
-aot/data-sites	76624	2.0
-aot/address-cells	267912	7.0
+aot/data-sites	76636	2.0
+aot/address-cells	267928	7.0
 aot/data-cell-bitmap	130792	3.4
-aot/data-cell-values	839044	22.0
+aot/data-cell-values	839096	22.0
 aot/code-sites	36	0.0
 aot/named-code-sites	0	0.0
 aot/code-spans	67520	1.7
 aot/boot-run-entries	4	0.0
 aot/protected-wordlists	672	0.0
 aot/checker-sidecar	0	0.0
-image/text-pad	57348	1.5
+image/text-pad	57084	1.5
 container/rw-segment	192	0.0
 total	3801280	100.0
 
 dictionary the image ships
 class	records	record bytes	name bytes	code bytes
 global	4861	97220	58245	466152
-package-public	2957	59140	30019	266360
+package-public	2958	59160	30031	266488
 package-private	11	220	114	1684
 unmapped-wordlist	0	0	0	0
 package rows	196	3920	2265	0
@@ -58,11 +58,11 @@ name pool entries reachable only from named code sites, bytes 0
 name pool entries nothing in the image references, bytes 606
 
 baked call sites
-  sites 12421, bound to seeded primitives 12421, to payload records 0, left as names 0
+  sites 12424, bound to seeded primitives 12424, to payload records 0, left as names 0
   distinct bound callees 75
 
 reachability from the dictionary-surface roots
-  reachable	7828	733896 code bytes
+  reachable	7829	734024 code bytes
   unreachable	1	300 code bytes, 20 record bytes, 12 name bytes
   package-private	1	20	300
   package	records	code bytes
@@ -70,9 +70,9 @@ reachability from the dictionary-surface roots
 
 reachability from the engine-entry roots
   reachable	3507	528864 code bytes
-  unreachable	4322	205332 code bytes, 86440 record bytes, 48258 name bytes
+  unreachable	4323	205460 code bytes, 86460 record bytes, 48258 name bytes
   global	3048	60960	122468
-  package-public	1273	25460	82564
+  package-public	1274	25480	82692
   package-private	1	20	300
   package	records	code bytes
   IR-ATTR	70	13244
@@ -93,11 +93,11 @@ reachability from the engine-entry roots
   PRIM-SPEC	31	1292
   (113 more packages)
 
-captured DATA heap: 8371360 bytes of span, 302541 present cells in 130791 bitmap bytes, 969833 bytes of image
+captured DATA heap: 8371360 bytes of span, 302557 present cells in 130791 bitmap bytes, 969887 bytes of image
   owners 963, unowned value bytes 52197, unowned cells 8562
   owner	offset	extent	cells	bytes	image cost
-  DONE	4170712	4200648	251241	428676	494299
-  SYM-STR-BOOT	1817328	393216	31096	279864	286008
+  DONE	4170712	4200648	251253	428700	494323
+  SYM-STR-BOOT	1817328	393216	31100	279894	286038
   STR-MIN-I64$	3203480	944000	56	317	15067
   EC-RV-BOOT	769424	10240	1280	12800	12960
   EC-TV-BOOT	759184	10240	1280	12800	12960
