@@ -1,9 +1,0 @@
----
-title: Pin the data-stack and addressed x86-64 emitter forms
-status: active
-priority: 2
-issue-type: task
-created-at: "2026-09-21T15:18:57.014677+03:00"
----
-
-Problem: test/compiler/x64-emit.f header (lines 23-39) lists eight X64EMIT forms with no pinned byte string - x64.dtake, dload, dstore, dpublish and x64.aload, astore, abload, abstore - because no accepted module held them. d2786d19 (NDIALECT:dstand entry) now makes the validator accept an x86-64 X64ABI:LEAF routine (test/compiler/x64-regalloc.f data-stack case ( a b -- n ) -: 7 values, PLAN-N 0, ACCEPTED? true), so the four data-stack forms are reachable end to end; the addressed forms need a memory order, and a register-convention leaf mints one in its RETURN block that nothing reads (E-A64RAV-ORDER, measured in the suite). Acceptance: a LEAF fixture in test/compiler/x64-emit.f pins the WHOLE byte string of ( a b -- n ) - under X64ABI:LEAF, every byte group annotated with its mc: line checked by llvm-mc -disassemble and re-assembled with -show-encoding as the header describes; the addressed forms pinned through a LEAF body that loads or stores through an argument (( a -- n ) @, ( n a -- ) !) when the validator accepts such a module, otherwise that refusal measured in a case, recorded in the header and dotted with the reason; an emitter byte found wrong is fixed in src/compiler/native/emit-x64.f with the fixture as its regression; the header's cannot-pin paragraph rewritten to what remains. Files: test/compiler/x64-emit.f, src/compiler/native/emit-x64.f (only for a wrong byte), test/compiler/x64-regalloc.f (read). Verify: bin/hb --load test/compiler/x64-emit.f; bin/hb --load test/compiler/x64-regalloc.f; bin/hb --load test/compiler/x86-64-asm.f; bin/hb --load test/compiler/x64-select.f. Depends: none (d2786d19 landed at c9423b65). Ownership: x86-64 emitter and its tests (hazel). Claim: agent=hazel-x64-pins workspace=.jj-ws/hazel-x64-pins.
