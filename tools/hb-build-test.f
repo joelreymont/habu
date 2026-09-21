@@ -109,6 +109,8 @@ variable HBT-PPH-SRC-U
 variable HBT-PPH-OUT-U
 variable HBT-TABLE-SRC-U
 variable HBT-TABLE-OUT-U
+variable HBT-CHAIN-SRC-U
+variable HBT-CHAIN-OUT-U
 create HBT-LIB-SRC-BUF FS-PATH-CAP allot
 create HBT-LIB-OUT-BUF FS-PATH-CAP allot
 create HBT-LIB-DIR-BUF FS-PATH-CAP allot
@@ -120,6 +122,8 @@ create HBT-PPH-SRC-BUF FS-PATH-CAP allot
 create HBT-PPH-OUT-BUF FS-PATH-CAP allot
 create HBT-TABLE-SRC-BUF FS-PATH-CAP allot
 create HBT-TABLE-OUT-BUF FS-PATH-CAP allot
+create HBT-CHAIN-SRC-BUF FS-PATH-CAP allot
+create HBT-CHAIN-OUT-BUF FS-PATH-CAP allot
 \ The quoted-path fixture below owns the writer's bytes; json-write holds none.
 6 constant HBT-ESCAPE-MAX
 FS-PATH-CAP HBT-ESCAPE-MAX * 2 + constant HBT-QUOTE-CAP
@@ -294,6 +298,12 @@ create HBT-EXP-HEX2 64 allot
 : HBT-TABLE-OUT ( -- ptr u8 n )
    HBT-TABLE-OUT-BUF HBT-TABLE-OUT-U @ ;
 
+: HBT-CHAIN-SRC ( -- ptr u8 n )
+   HBT-CHAIN-SRC-BUF HBT-CHAIN-SRC-U @ ;
+
+: HBT-CHAIN-OUT ( -- ptr u8 n )
+   HBT-CHAIN-OUT-BUF HBT-CHAIN-OUT-U @ ;
+
 \ An application that touches a PERSISTENT CELL of each library it requires:
 \ lib/string.f's builder, lib/fs-mutate.f's copy state (FS-MUT-COPY-IN) and
 \ lib/fs.f's walk stacks (FS-DEPTH, FS-WALK-BUF). Those cells are what the maker
@@ -374,6 +384,43 @@ create HBT-EXP-HEX2 64 allot
 : HBT-TABLE-SRC$ ( -- ptr u8 n )
    S\" : MAIN ( -- ) s\" /tmp/x\" PATH0 1 type cr ;\n" ;
 
+\ A PROGRAM WHOSE CLOSURE IS ITS OWN SIZE. HBT-CHAIN-N words, each calling the
+\ next and reaching no library, are exactly HBT-CHAIN-N + 1 closure members, so
+\ this fixture measures the table sizing and nothing else. 1100 is past the 1024
+\ rows the tables were once cut to by a constant - the wall that refused every
+\ Tender entry point (dot habu-size-the-stripped-b2932715) and, measured on the
+\ engine before the sizing landed, this very chain at `last_added_word='CW76'`.
+\ The image prints the chain's value rather than merely exiting, so a closure
+\ that built but lost a member is a wrong number and not a silent pass. The
+\ source is generated here because 1101 definitions is 50 KB of fixture; the
+\ builder holds one line at a time (SB-CAP is 1 KB).
+1100 constant HBT-CHAIN-N
+: HBT-SB-U+ ( n -- ) {: n:n :}
+   n 0 < if E-STR-BOUNDS throw then
+   n 10 >= if n 10 / recurse then
+   n 10 mod STR-ZERO + SB-APPEND-C ;
+
+: HBT-CHAIN-WORD! ( n -- ) {: i:n :}
+   SB-RESET
+   s" : CW" SB-APPEND i HBT-SB-U+ s"  ( n -- n ) " SB-APPEND
+   i 0 > if s" CW" SB-APPEND i 1- HBT-SB-U+ s"  " SB-APPEND then
+   s" dup 0 < if drop 0 then 1 + ;" SB-APPEND 10 SB-APPEND-C
+   HBT-CHAIN-SRC SB$ APPEND-FILE ;
+
+: HBT-CHAIN-SRC! ( -- )
+   HBT-CHAIN-SRC s" " WRITE-ALL
+   HBT-CHAIN-N 0 ?do i HBT-CHAIN-WORD! loop
+   SB-RESET
+   s" : MAIN ( -- ) 0 CW" SB-APPEND HBT-CHAIN-N 1- HBT-SB-U+
+   s"  " SB-APPEND HBT-CHAIN-N HBT-SB-U+
+   s\"  = if s\" chain=ok\" type cr then ;" SB-APPEND 10 SB-APPEND-C
+   HBT-CHAIN-SRC SB$ APPEND-FILE ;
+
+: HBT-CHAIN-EXPECTED$ ( -- ptr u8 n )
+   SB-RESET
+   s" chain=ok" SB-APPEND 10 SB-APPEND-C
+   SB$ ;
+
 : HBT-LIB-FILE! ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu body:ptr bodyu :}
    SB-RESET HBT-LIB-DIR SB-APPEND s" /" SB-APPEND name nameu SB-APPEND
    SB$ body bodyu WRITE-ALL ;
@@ -419,6 +466,8 @@ create HBT-EXP-HEX2 64 allot
    HBT-ROOT s" pph" HBT-PPH-OUT-BUF HBT-PPH-OUT-U HBT-PATH!
    HBT-ROOT s" table.f" HBT-TABLE-SRC-BUF HBT-TABLE-SRC-U HBT-PATH!
    HBT-ROOT s" table" HBT-TABLE-OUT-BUF HBT-TABLE-OUT-U HBT-PATH!
+   HBT-ROOT s" chain.f" HBT-CHAIN-SRC-BUF HBT-CHAIN-SRC-U HBT-PATH!
+   HBT-ROOT s" chain" HBT-CHAIN-OUT-BUF HBT-CHAIN-OUT-U HBT-PATH!
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
@@ -809,6 +858,28 @@ create READER-STATE JR:STORAGE-BYTES allot
    rcn 0 T=
    errn 0 T=
    HBT-RUN-OUT outn HBT-PPH-EXPECTED$ T$= ;
+
+\ ... and a program whose closure is larger than any constant the linker used to
+\ carry builds and runs: the tables are sized from the program (aot-closure.f
+\ CLO-CAPACITY).
+: HBT-STRIPPED-CHAIN ( -- )
+   HBT-CHAIN-SRC!
+   HBT-CHAIN-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-CHAIN-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-CHAIN-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
+   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
+   brc 0 T=
+   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-CHAIN-OUT FILE? TTRUE
+   HBT-CHAIN-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-CHAIN-EXPECTED$ T$= ;
 
 \ ... while a baked create table on no list is refused however much it looks like
 \ the carried ones.
@@ -1496,6 +1567,7 @@ public
    HBT-STRIPPED-ENGINE-CELLS
    HBT-STRIPPED-UNOWNED-CELL
    HBT-STRIPPED-PRINT-PARSE-HASH
+   HBT-STRIPPED-CHAIN
    HBT-STRIPPED-UNCARRIED-TABLE
    HBT-CLI-LARGE-SOURCE
    CLEANUP-RUN

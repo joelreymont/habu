@@ -268,9 +268,11 @@ variable SELF-SRC-U
 \ record, which is what a word the image ships no record for looks like to this
 \ walk. Safe to scribble on the live CLO/CLO-LEN/CLO-REC/NEWOFF/NCLO: this runs
 \ before LINK and so before the program's own closure walk, and the real build
-\ recomputes the closure from scratch (aot-closure.f CLOSURE resets NCLO to 0 and
-\ refills the arrays), so the synthetic values cannot leak into the image - which
-\ is why MAKER-SELFTEST runs the image it built and reads its output back.
+\ recomputes the closure from scratch (aot-closure.f CLOSURE sizes the tables for
+\ the program, resets NCLO to 0 and refills them), so the synthetic values cannot
+\ leak into the image - which is why MAKER-SELFTEST runs the image it built and
+\ reads its output back. The two synthetic rows are allocated the same way the
+\ walk's are, by asking for the rows about to be written (CLO-TABLES, PLAN-TABLES).
 : SELF-AMAP-DEFS ( -- )
    s" package AOT-LINK" GE-SRC-LINE
    s" create AMAP-CODE 16 allot" GE-SRC-LINE
@@ -278,10 +280,11 @@ variable SELF-SRC-U
    s" 8 constant AMAP-CODE-ROW" GE-SRC-LINE
    s" $40 constant AMAP-M2-OFF" GE-SRC-LINE
    s" : AMAP-MEMBER! ( n ptr u8 n -- ) {: i:n code:ptr len:n :}" GE-SRC+
-   s"  code i CLO ! len i cells CLO-LEN + ! XREF-NULL i CLO-REC ! ;" GE-SRC-LINE
-   s" : AMAP-CLOSURE! ( -- ) 0 AMAP-CODE AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
+   s"  code i CLO ! len i CLO-LEN ! XREF-NULL i CLO-REC ! ;" GE-SRC-LINE
+   s" : AMAP-CLOSURE! ( -- ) 2 CLO-TABLES 2 PLAN-TABLES" GE-SRC+
+   s"  0 AMAP-CODE AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
    s"  1 AMAP-CODE AMAP-CODE-ROW + AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
-   s"  0 NEWOFF ! AMAP-M2-OFF NEWOFF cell+ ! 2 NCLO ! ;" GE-SRC-LINE
+   s"  0 0 NEWOFF ! AMAP-M2-OFF 1 NEWOFF ! 2 NCLO ! ;" GE-SRC-LINE
    s" : AMAP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
    s" : AMAP-RUN ( -- ) AMAP-CLOSURE!" GE-SRC+
    s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-IN-MEMBER -1 =" GE-SRC+
@@ -566,8 +569,9 @@ variable SELF-SRC-U
    s" create ABT-CHAIN 16 allot" GE-SRC-LINE
    s" : ABT-W! ( n ptr u8 -- ) {: w:n a:ptr :} w a c! w 8 rshift a 1+ c! w 16 rshift a 2 + c! w 24 rshift a 3 + c! ;" GE-SRC-LINE
    s" : ABT-BUILD ( -- ) $D2800010 ABT-CHAIN ABT-W! $F2A00010 ABT-CHAIN 4 + ABT-W! $F2C00010 ABT-CHAIN 8 + ABT-W! $D63F0200 ABT-CHAIN 12 + ABT-W! ;" GE-SRC-LINE
-   s" : ABT-RUN ( -- ) ABT-BUILD ABT-CHAIN 0 CLO ! 16 CLO-LEN ! XREF-NULL 0 CLO-REC !" GE-SRC+
-   s"  0 NEWOFF ! 1 NCLO ! 0 COPY-COMPACT-BLOB ;" GE-SRC-LINE
+   s" : ABT-RUN ( -- ) 1 CLO-TABLES 1 PLAN-TABLES ABT-BUILD" GE-SRC+
+   s"  ABT-CHAIN 0 CLO ! 16 0 CLO-LEN ! XREF-NULL 0 CLO-REC !" GE-SRC+
+   s"  0 0 NEWOFF ! 1 NCLO ! 0 COPY-COMPACT-BLOB ;" GE-SRC-LINE
    s" ABT-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 

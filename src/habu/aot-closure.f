@@ -262,8 +262,9 @@ variable FX
    ENTRY-NAME$ XREF-FIND ;
 
 \ --- closure: BFS from MAIN over the native call graph. CLO and the parallel
-\ COPY/RELOCATE arrays (NEWOFF/BLEN) are all sized by MAX-CLO; ADD-CLO fails
-\ closed at the cap so a large closure can never write past the tables.
+\ COPY/RELOCATE arrays (NEWOFF/BLEN) are sized from the program being linked;
+\ ADD-CLO fails closed at that capacity so a walk can never write past the
+\ tables, and no constant decides which programs can be stripped.
 \
 \ A MEMBER IS A CODE SPAN, and a record is what NAMED it rather than what it is.
 \ The words the image still names arrive with one and the stripped ones arrive
@@ -278,20 +279,25 @@ variable FX
 \ Two of the three columns hold ADDRESSES, so they are declared tables and not
 \ `create ... cells allot`: a member's entry is a code pointer and its record is
 \ a dictionary pointer, while its length is a count.
-1024 constant MAX-CLO
-MAX-CLO TYPED-BUFFER CLO ptr u8      \ each member's code entry
-create CLO-LEN MAX-CLO cells allot   \ ... its code length in bytes
-MAX-CLO TYPED-BUFFER CLO-REC ptr n   \ ... and the record that named it, or XREF-NULL
+\ THE COLUMNS ARE DYNAMIC-BUFFERS because their capacity is a runtime number:
+\ the tables are sized from the program being linked (CLO-CAPACITY and CLO-TABLES
+\ below, at the head of the walk), not cut to a constant. The definer's control
+\ head is a declared pointer cell, so the two address columns keep their pointer
+\ types - raw `create ... cells allot` storage may hold no address at all. The
+\ heads are allotted above BLOB-END like every other linker cell and the mappings
+\ register in the host's DYNAMIC-STORAGE registry, which a stripped image
+\ publishes FRESH (src/habu/aot-owned-cells.f), so a link-time table reaches
+\ neither the captured window nor the image.
+DYNAMIC-BUFFER CLO ptr u8      \ each member's code entry
+DYNAMIC-BUFFER CLO-LEN n       \ ... its code length in bytes
+DYNAMIC-BUFFER CLO-REC ptr n   \ ... and the record that named it, or XREF-NULL
 variable NCLO  variable CLO-CX
 PTR-VARIABLE ROOTREC
-variable CLO-LIMIT
-: CLO-LIMIT! {: n:n :}
-   n 1 < IF s" aot: CLO-LIMIT below 1" 74 die THEN
-   n MAX-CLO > IF s" aot: CLO-LIMIT above MAX-CLO" 74 die THEN
-   n CLO-LIMIT ! ;
-MAX-CLO CLO-LIMIT!
+variable CLO-CAP     \ rows allocated, 0 until the tables are sized
+variable CLO-REQ     \ a limit a program lowered by hand, or 0 for the capacity
+variable CLO-LIMIT   \ ... and the one ADD-CLO enforces, resolved at the sizing
 : CLO-AT ( n -- ptr u8 ) CLO @ ;
-: CLO-BYTES ( n -- n ) cells CLO-LEN + @ ;
+: CLO-BYTES ( n -- n ) CLO-LEN @ ;
 : CLO-REC@ ( n -- ptr n ) CLO-REC @ ;
 : IN-CLO? {: start:ptr :} ( ptr u8 -- bool )
    0 CLO-CX ! BEGIN CLO-CX @ NCLO @ < WHILE CLO-CX @ CLO-AT start = IF 0 0= exit THEN CLO-CX @ 1+ CLO-CX ! REPEAT 0 0= 0= ;
@@ -305,23 +311,27 @@ MAX-CLO CLO-LIMIT!
    s" root_word" AEJKEY ROOTREC @ AEJREC 44 AE1
    s" last_added_word" AEJKEY r AEJREC 44 AE1
    s" suggestion" AEJKEY
-   s" split program, use --repl/snapshot, or raise MAX-CLO with a gate that proves the larger closure" AEJSTR
+   s" split the program into smaller entry points, or run it with --repl or a snapshot image" AEJSTR
    125 AE1 10 AE1 ;
 : CLO-OVERFLOW-PROSE {: r:ptr :} ( ptr a -- )
-   s" aot: closure exceeds MAX-CLO reachable_count=" AETXT NCLO @ AEJNUM
+   s" aot: closure exceeds the closure limit reachable_count=" AETXT NCLO @ AEJNUM
    s"  max_closure=" AETXT CLO-LIMIT @ AEJNUM
    s"  root_word='" AETXT ROOTREC @ AEREC-TXT
    s" ' last_added_word='" AETXT r AEREC-TXT
-   s" ' suggestion='split program, use --repl/snapshot, or raise MAX-CLO with a gate that proves the larger closure'" AETXT
+   s" ' suggestion='split the program into smaller entry points, or run it with --repl or a snapshot image'" AETXT
    10 AE1 ;
+\ The tables are sized from the program, so a closure cannot outgrow them by
+\ construction: this refusal is reachable only where CLO-LIMIT! lowered the limit
+\ below the capacity, and the suggestion says what a user can do about a program
+\ that is genuinely too large rather than naming a number to raise.
 : CLO-OVERFLOW-DIE {: r:ptr :} ( ptr a -- )
    JSON-DIAGS @ IF r CLO-OVERFLOW-JSON ELSE r CLO-OVERFLOW-PROSE THEN
-   s" aot: closure exceeds MAX-CLO" 74 die ;
+   s" aot: closure exceeds the closure limit" 74 die ;
 : ADD-CLO ( ptr n ptr u8 n -- ) {: r:ptr start:ptr len:n :}
    start IN-CLO? IF exit THEN
    NCLO @ CLO-LIMIT @ >= IF r CLO-OVERFLOW-DIE THEN
    start NCLO @ CLO !
-   len NCLO @ cells CLO-LEN + !
+   len NCLO @ CLO-LEN !
    r NCLO @ CLO-REC !
    NCLO @ 1+ NCLO ! ;
 PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past end
@@ -800,7 +810,49 @@ variable BODY-END
 
 : XT-CELL-ROOTS ( -- )  XTC-N @ 0 ?do i XT-CELL-ROOT loop ;
 
-: CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop NO-ENTRY-DIE THEN  dup ROOTREC !  ADD-REC-CLO
+\ THE CAPACITY IS A BOUND THE LINKER ALREADY KNOWS, which is why the tables can
+\ be allocated per program. A member IS its entry (ADD-CLO dedups on it), and
+\ every entry the walk can offer is one of three: a dictionary record's code
+\ entry (ADD-REC-CLO, at most `ndict@` of them), a stripped span's start
+\ (ADD-SPAN-CLO, at most SPAN-N) or an anonymous body interior to a record
+\ (ADD-BODY-CLO, reached only from XT-CELL-ROOT above and so at most one per
+\ declared xt cell, XTC-N). Their sum bounds the closure, and all three counts
+\ are final before the walk starts: the application has finished loading, so the
+\ dictionary is closed and the seed's span table is published, and aot-lib.f LINK
+\ runs COLLECT-XT-CELLS before CLOSURE. One allocation of that many rows per
+\ column, no growth and no constant.
+: CLO-CAPACITY ( -- n ) ndict@ SPAN-N + XTC-N @ + ;
+: CLO-LIMIT-ABOVE-DIE ( n n -- ) {: req:n cap:n :}
+   s" aot: CLO-LIMIT " AETXT req AEJNUM
+   s"  above the closure capacity " AETXT cap AEJNUM
+   s"  = records " AETXT ndict@ AEJNUM
+   s"  + stripped spans " AETXT SPAN-N AEJNUM
+   s"  + declared xt cells " AETXT XTC-N @ AEJNUM
+   10 AE1
+   s" aot: CLO-LIMIT above the closure capacity" 74 die ;
+\ The capacity is the limit unless a program asked for a lower one, and a request
+\ above the capacity is refused where the two first meet: at the sizing for a
+\ request made before it (a fixture lowers the limit while its source loads), at
+\ the call for one made after.
+: CLO-LIMIT-RESOLVE ( -- )
+   CLO-REQ @ 0= IF CLO-CAP @ CLO-LIMIT ! exit THEN
+   CLO-REQ @ CLO-CAP @ > IF CLO-REQ @ CLO-CAP @ CLO-LIMIT-ABOVE-DIE THEN
+   CLO-REQ @ CLO-LIMIT ! ;
+: CLO-LIMIT! {: n:n :}
+   n 1 < IF s" aot: CLO-LIMIT below 1" 74 die THEN
+   n CLO-REQ !
+   CLO-CAP @ 0<> IF CLO-LIMIT-RESOLVE THEN ;
+\ Allocate the three columns for one link. CLOSURE asks for CLO-CAPACITY rows; a
+\ test that fills the tables by hand instead of walking asks for the rows it is
+\ about to write.
+: CLO-TABLES ( n -- ) {: rows:n :}
+   rows 1 < IF s" aot: closure capacity below 1" 74 die THEN
+   rows CLO-RESERVE  rows CLO-LEN-RESERVE  rows CLO-REC-RESERVE
+   rows CLO-CAP !
+   CLO-LIMIT-RESOLVE ;
+
+: CLOSURE  CLO-CAPACITY CLO-TABLES
+   0 NCLO !  FINDMAIN dup 0= IF drop NO-ENTRY-DIE THEN  dup ROOTREC !  ADD-REC-CLO
    XT-CELL-ROOTS
    0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ SCAN-MEMBER  WI @ 1+ WI ! REPEAT ;
 

@@ -32,7 +32,15 @@ variable MLBL
 \ The label at text offset zero: the image's own code base, which the declared
 \ xt cells are restored against. It costs no bytes and is placed by EMIT-ENTRY.
 variable LTEXT
-create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
+\ The planning columns, parallel to aot-closure.f's closure tables: where each
+\ member lands in the compacted __text and how many bytes were planned for it.
+\ Both hold counts. PLAN-BLOBS allocates them for the members the walk actually
+\ found (NCLO), which is why they carry no capacity of their own.
+DYNAMIC-BUFFER NEWOFF n   \ each member's offset in the emitted __text
+DYNAMIC-BUFFER BLEN n     \ ... and the bytes planned for it
+: PLAN-TABLES ( n -- ) {: rows:n :}
+   rows 1 < IF s" aot: no closure members to plan" 74 die THEN
+   rows NEWOFF-RESERVE  rows BLEN-RESERVE ;
 
 \ --- the persistent data region this file emits is the span
 \ src/habu/aot-window-latch.f latched: AOT-DATA-START and AOT-DATA-SPAN live there
@@ -441,7 +449,7 @@ variable NEXT-OFF
    BEGIN CLO-CX @ NCLO @ < WHILE
       CLO-CX @ CLO-AT start = IF CLO-CX @ EXIT THEN
       CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
-: MEMBER-NEWOFF ( n -- n ) cells NEWOFF + @ ;
+: MEMBER-NEWOFF ( n -- n ) NEWOFF @ ;
 : CLO-AT-N ( n -- n ) CLO-AT CODE-N ;      \ the same entry, for value-domain arithmetic
 : BCOND? {: w:n :}  w $FF000010 and $54000000 = ;
 : CBZIMM? {: w:n :}  w $7E000000 and $34000000 = ;
@@ -452,10 +460,11 @@ variable NEXT-OFF
 \ (no movz/movk/movk/blr chain is ever collapsed), so the compacted length is the
 \ member's own length.
 : PLAN-BLOBS
+   NCLO @ PLAN-TABLES
    ASM-LEN NEXT-OFF !
    0 WI ! BEGIN WI @ NCLO @ < WHILE
-      NEXT-OFF @       NEWOFF WI @ cells + !
-      WI @ CLO-BYTES dup BLEN WI @ cells + !
+      NEXT-OFF @       WI @ NEWOFF !
+      WI @ CLO-BYTES dup WI @ BLEN !
       NEXT-OFF @ + NEXT-OFF !
       WI @ 1+ WI ! REPEAT ;
 \ Relocation math for direct branches. The binary is PIE (arm64 macOS requires it),
@@ -656,8 +665,8 @@ variable RP  variable RE
 \ dies with the named error if any absolute call chain survived into the shipped image.
 : RELOCATE
    0 WI ! BEGIN WI @ NCLO @ < WHILE
-      NEWOFF WI @ cells + @ RP !
-      RP @ BLEN WI @ cells + @ + RE !
+      WI @ NEWOFF @ RP !
+      RP @ WI @ BLEN @ + RE !
       BEGIN RP @ RE @ < WHILE
          CODE RP @ + CODE RE @ + ABS-CHAIN? IF ABS-CHAIN-DIE THEN
          RP @ 4 + RP !

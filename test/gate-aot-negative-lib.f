@@ -131,6 +131,28 @@ variable REPORT-U
    s" root_word" s" MAIN" s" hb-build closure limit root word" EXPECT-STR
    s" hb-build closure limit JSON schema" ERR-SCHEMA ;
 
+\ THE OTHER SIDE OF THE SAME KNOB. The tables are sized from the program being
+\ linked, so the capacity is the walk's fail-closed invariant and CLO-LIMIT! may
+\ only lower it: a limit above the capacity is refused where the two first meet
+\ (aot-closure.f CLO-LIMIT-RESOLVE, at the sizing for a request made while the
+\ source loaded) rather than silently clamped. The refusal names the capacity and
+\ the three counts it is made of, never a constant - there is no constant left.
+: SOURCE-CLOSURE-CAPACITY ( -- )
+   GE-SRC-RESET
+   s" : MAIN ( -- ) 1 drop ;" GE-SRC-LINE
+   s" package AOT-LINK" GE-SRC-LINE
+   s" 999999999 CLO-LIMIT!" GE-SRC-LINE
+   s" CLOSURE" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+: CLOSURE-CAPACITY ( -- )
+   SOURCE-CLOSURE-CAPACITY
+   74 s" aot: CLO-LIMIT above the closure capacity"
+   s" hb-build closure capacity" GE-EVAL-FORK-BAD
+   s" aot: CLO-LIMIT 999999999 above the closure capacity "
+   s" hb-build closure capacity names the request" GE-EXPECT-ERR-HAS
+   s"  = records " s" hb-build closure capacity names its parts" GE-EXPECT-ERR-HAS ;
+
 \ Kept rejection: patch32 writes the code region, which a stripped binary has
 \ no way to do (its __text is r-x and its code is at the PIE image base, not the
 \ RBASE-VA region patch32 targets). The persistent data region does NOT make this
@@ -162,6 +184,7 @@ public
    s" hb-gate-aot-negative" GT-START
    BRANCH-RUN
    CLOSURE-LIMIT
+   CLOSURE-CAPACITY
    PATCH32
    GT-CLEANUP
    s" PASS: native hb-build AOT negative tests" type cr ;
