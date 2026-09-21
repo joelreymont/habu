@@ -139,7 +139,7 @@ variable SAVED-XTOFF-N
 : FORGET-COUNTS ( -- )
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  0 AOT-NAMES-LEN !
    0 AOT-DSITE-N !  0 AOT-CSITE-N !  0 XTOFF-N !
-   RUNS-RESET
+   WINDOW-RESET
    0 AOT-XTSITE:N !  0 AOT-BOOTRUN-LEN !  0 AOT-PWIN-N !
    0 AOT-SIG-N !  0 AOT-SIG-STR-LEN !  0 AOT-REG-LEN !
    0 AOT-DATA-SIZE !  0 AOT-DATA-D0 !  0 AOT-CODE-B0 !
@@ -196,14 +196,14 @@ variable SAVED-XTOFF-N
 
 : ?RESTORED ( -- )
    AOT-REC-N @ 0 >  AOT-BLOB-LEN @ 0 >  and
-   RUN-N @ 0 >  and  AOT-DATA-SIZE @ 0 >  and
+   CELL-N @ 0 >  and  AOT-DATA-SIZE @ 0 >  and
    AOT-PWIN-N @ 0 >  and  AOT-NAMES-LEN @ 0 >  and if exit then
    s" aot-artifact-roundtrip: the read left the capture empty" REFUSE-RC die ;
 
 : REPORT ( -- )
    s" roundtrip: recs=" type AOT-REC-N @ .
    s" sites=" type AOT-SITE-N @ .
-   s" runs=" type RUN-N @ .
+   s" cells=" type CELL-N @ .
    s" pwin=" type AOT-PWIN-N @ .
    s" xtcells=" type XTOFF-N @ .
    s" dataspan=" type AOT-DATA-SIZE @ . cr

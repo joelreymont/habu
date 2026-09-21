@@ -74,7 +74,7 @@ create KEY 32 allot
    0 AOT-DSITE-N ! 0 AOT-CSITE-N !
    0 AOT-CODE-B0 ! 0 AOT-DATA-D0 ! 0 AOT-DATA-SIZE !
    0 AOT-WID-W0 ! 0 AOT-WID-SPAN !
-   RUNS-RESET 0 XTOFF-N !
+   WINDOW-RESET 0 XTOFF-N !
    0 AOT-XTSITE:N ! 0 AOT-BOOTRUN-LEN ! 0 AOT-PWIN-N !
    0 AOT-SIG-N ! 0 AOT-SIG-STR-LEN ! 0 AOT-REG-LEN ! ;
 
@@ -155,6 +155,10 @@ create KEY 32 allot
       2 SCRIPT-ARGV$ s" merge" STR= if
          \ As in the address-row merge fixture, one zeroed host record marks
          \ a captured host. The positive host span must not hide source -1.
+         \ One cell of host span is under a whole bitmap byte, so the merge
+         \ rounds it up to BM-BYTE-SPAN before it places the artifact's cells
+         \ (src/habu/aot-file.f PLACE-WDATA) - which is what the merged span
+         \ below is counted from.
          1 AOT-REC-N ! 8 AOT-DATA-SIZE !
          KEY 0 SCRIPT-ARGV$ AOT-FILE:MERGE
       else
@@ -162,7 +166,7 @@ create KEY 32 allot
       then
    then
    AOT-DATA-SIZE @ SPAN-VALUE
-   2 SCRIPT-ARGV$ s" merge" STR= if 8 + then T=
+   2 SCRIPT-ARGV$ s" merge" STR= if BM-BYTE-SPAN + then T=
    T-REPORT
    s" aot-data-sites: span ok" type cr ;
 

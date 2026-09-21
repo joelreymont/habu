@@ -167,8 +167,8 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 5 constant S-DSITES
 6 constant S-CSITES
 7 constant S-XTOFFS
-8 constant S-WDATA                   \ the window's non-zero extents: varint rows
-9 constant S-WRUNS                   \ ... and their bytes, concatenated in row order
+8 constant S-WDATA                   \ the window's present cells: the presence bitmap
+9 constant S-WVALS                   \ ... and their values, one varint each, in cell order
 10 constant S-XTSITES
 11 constant S-SPANS                  \ the code spans of the records the image does not ship
 12 constant S-BOOTRUN
@@ -269,8 +269,8 @@ variable CUR
    k S-DSITES  = if AOT-DSITE-BUF@ exit then
    k S-CSITES  = if AOT-DSITE-BUF@ exit then
    k S-XTOFFS  = if XTOFF-BUF@ exit then
-   k S-WDATA   = if RUN-BUF@ exit then
-   k S-WRUNS   = if RBYTES-BUF@ exit then
+   k S-WDATA   = if BM-BUF@ exit then
+   k S-WVALS   = if VAL-BUF@ exit then
    k S-XTSITES = if AOT-XTSITE:BUF@ exit then
    k S-SPANS   = if AOT-SPAN:BUF@ exit then
    k S-BOOTRUN = if AOT-BOOTRUN-BUF@ exit then
@@ -294,8 +294,8 @@ variable CUR
    k S-DSITES  = if AOT-DSITE-N @ 4 ROW-BYTES-CHECKED exit then
    k S-CSITES  = if AOT-CSITE-N @ 4 ROW-BYTES-CHECKED exit then
    k S-XTOFFS  = if XTOFF-N @ XTOFF-ROW ROW-BYTES-CHECKED exit then
-   k S-WDATA   = if RUN-LEN @ exit then
-   k S-WRUNS   = if RBYTES-LEN @ exit then
+   k S-WDATA   = if BM-LEN @ exit then
+   k S-WVALS   = if VAL-LEN @ exit then
    k S-XTSITES = if AOT-XTSITE:N @ 8 ROW-BYTES-CHECKED exit then
    k S-SPANS   = if AOT-SPAN:N @ AOT-SPAN:ROW ROW-BYTES-CHECKED exit then
    k S-BOOTRUN = if AOT-BOOTRUN-LEN @ exit then
@@ -324,7 +324,7 @@ variable CUR
 \ buffer, so both name the whole of it and their BASEs are what keeps them apart
 \ - which is also what makes the room check `base + length` rather than length.
 : SEC-CAP-TAIL ( n -- n ) {: k:n :}
-   k S-WRUNS   = if RBYTES-CAP exit then
+   k S-WVALS   = if VAL-CAP exit then
    k S-XTSITES = if AOT-XTSITE:MAX 8 * exit then
    k S-SPANS   = if AOT-SPAN:MAX AOT-SPAN:ROW * exit then
    k S-BOOTRUN = if AOT-BOOTRUN-CAP exit then
@@ -343,11 +343,11 @@ variable CUR
    k S-DSITES  = if AOT-DSITE-MAX 4 * exit then
    k S-CSITES  = if AOT-DSITE-MAX 4 * exit then
    k S-XTOFFS  = if XTOFF-MAX XTOFF-ROW * exit then
-   k S-WDATA   = if RUN-CAP exit then
+   k S-WDATA   = if BM-CAP exit then
    k SEC-CAP-TAIL ;
 
 : SEC-NAME-TAIL ( n -- ptr u8 n ) {: k:n :}
-   k S-WRUNS   = if s" window DATA run bytes" exit then
+   k S-WVALS   = if s" window DATA run bytes" exit then
    k S-XTSITES = if s" named code sites" exit then
    k S-SPANS   = if s" code spans" exit then
    k S-BOOTRUN = if s" boot-run list" exit then
@@ -366,7 +366,7 @@ variable CUR
    k S-DSITES  = if s" DATA sites" exit then
    k S-CSITES  = if s" CODE sites" exit then
    k S-XTOFFS  = if s" address cells" exit then
-   k S-WDATA   = if s" window DATA runs" exit then
+   k S-WDATA   = if s" window DATA cell bitmap" exit then
    k SEC-NAME-TAIL ;
 
 \ A refusal that names a section has to arrive on ONE stream. `type` writes to
@@ -683,13 +683,13 @@ private
 \ check did not weaken; the format absorbed it.
 variable RN-AT   variable RN-END   variable RN-SUM   variable RN-COUNT
 
-\ One varint of a row, refused by name rather than guessed at. `avail` is what is
+\ One cell value, refused by name rather than guessed at. `avail` is what is
 \ left of the section, so a varint that runs off its end is a malformation here
 \ and never a read past it.
-: RUN-V ( n n -- n n ) {: at:n avail:n :}
-   RUN-BUF@ at + avail RUN-V@ {: v:n w:n :}
+: WIN-V ( n n -- n n ) {: at:n avail:n :}
+   VAL-BUF@ at + avail CELL-V@ {: v:n w:n :}
    w 0<> if v w exit then
-   s" aot-file: a window DATA run row is not a well-formed varint" DIE
+   s" aot-file: a window DATA cell value is not a well-formed varint" DIE
    0 0 ;
 
 : ?SPAN ( n -- ) {: span:n :}
@@ -784,25 +784,25 @@ variable NAME-BOUNDARY-LEN
 \ coordinates it was written in and the merge moves it afterwards. What the walk
 \ found - how many rows, and where the last one ends - is what the counts are
 \ then published from.
-: ?RUNS ( n n n -- ) {: at:n len:n span:n :}
-   at RN-AT !  at len + {: stop:n :}
+: ?CELLS ( n n n -- ) {: at:n len:n span:n :}
+   S-WVALS BASE@ RN-AT !
+   S-WVALS BASE@ S-WVALS ROW-LEN@ + {: stop:n :}
    0 RN-END !  0 RN-SUM !  0 RN-COUNT !
-   begin RN-AT @ stop < while
-      RN-AT @ stop RN-AT @ - RUN-V {: gap:n gw:n :}
-      RN-AT @ gw + RN-AT !
-      RN-AT @ stop RN-AT @ - RUN-V {: rl:n lw:n :}
-      RN-AT @ lw + RN-AT !
-      rl 0= if s" aot-file: a window DATA run is empty" DIE then
-      RN-END @ gap + {: off:n :}
-      off rl + span > if
-         s" aot-file: a window DATA run reaches past the window DATA span" DIE
+   len CELL-BITS * 0 ?do
+      BM-BUF@ at +  i CELL-BITS / + c@  i CELL-BITS mod rshift  1 and 0<> if
+         i 1+ CELL-BYTES * {: end:n :}
+         end span > if
+            s" aot-file: a window DATA cell reaches past the window DATA span" DIE
+         then
+         RN-AT @ stop RN-AT @ - WIN-V {: v:n w:n :}
+         RN-AT @ w + RN-AT !
+         RN-SUM @ w + RN-SUM !
+         RN-COUNT @ 1+ RN-COUNT !
+         end RN-END !
       then
-      off rl + RN-END !
-      RN-SUM @ rl + RN-SUM !
-      RN-COUNT @ 1+ RN-COUNT !
-   repeat
-   RN-SUM @ S-WRUNS ROW-LEN@ = if exit then
-   s" aot-file: the window DATA runs do not fill their own byte section" DIE ;
+   loop
+   RN-AT @ stop = if exit then
+   s" aot-file: the window DATA cells do not fill their own value section" DIE ;
 
 \ Every count is the length the table gave, divided by the row the format fixes -
 \ except three the table's shape cannot state: the window's DATA SPAN, which no
@@ -824,10 +824,10 @@ variable NAME-BOUNDARY-LEN
    S-DSITES ROW-LEN@ 4 / AOT-DSITE-N !
    S-CSITES ROW-LEN@ 4 / AOT-CSITE-N !
    S-XTOFFS ROW-LEN@ XTOFF-ROW / XTOFF-N !
-   S-WDATA ROW-LEN@ RUN-LEN !
-   RN-COUNT @ RUN-N !
-   RN-END @ RUN-END !
-   S-WRUNS ROW-LEN@ RBYTES-LEN !
+   S-WDATA ROW-LEN@ BM-LEN !
+   RN-COUNT @ CELL-N !
+   RN-END @ CONTENT-END !
+   S-WVALS ROW-LEN@ VAL-LEN !
    S-XTSITES ROW-LEN@ 8 / AOT-XTSITE:N !
    S-SPANS ROW-LEN@ AOT-SPAN:ROW / AOT-SPAN:N !
    S-BOOTRUN ROW-LEN@ AOT-BOOTRUN-LEN !
@@ -924,7 +924,7 @@ public
    ?PAYLOAD-AGAIN
    SCAL 32 + U64@ {: span:n :}
    span ?SPAN
-   0  S-WDATA ROW-LEN@  span  ?RUNS
+   0  S-WDATA ROW-LEN@  span  ?CELLS
    ?ADDRESS-ROWS
    RESTORE-COUNTS
    RESTORE-CLOSURE
@@ -976,8 +976,7 @@ variable H-DSITE  variable H-CSITE   variable H-XTOFF  variable H-DATA
 variable H-XTSITE variable H-BOOTRUN variable H-PWIN   variable H-SPAN
 variable H-CSPAN                     \ the host's code-span rows
 variable H-SIG    variable H-SIGSTR  variable H-REG
-variable H-RUN    variable H-RUNLEN  variable H-RUNEND  variable H-RBYTES
-variable A-RUNGROW                   \ bytes the artifact's first row gained on the merge
+variable H-CELLS  variable H-BMLEN   variable H-CEND    variable H-VALS
 variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
 variable A-DSPAN                     \ the artifact's own window DATA span
 variable H-DATA-R                    \ where the artifact's window begins inside the merged one
@@ -1011,8 +1010,8 @@ DYNAMIC-BUFFER HOST-REG n
    AOT-SPAN:N @ H-CSPAN !
    AOT-PWIN-N @ H-PWIN !              AOT-WID-SPAN @ H-SPAN !
    AOT-SIG-N @ H-SIG !                AOT-SIG-STR-LEN @ H-SIGSTR !
-   RUN-N @ H-RUN !                   RBYTES-LEN @ H-RBYTES !
-   RUN-LEN @ H-RUNLEN !               RUN-END @ H-RUNEND !
+   CELL-N @ H-CELLS !                VAL-LEN @ H-VALS !
+   BM-LEN @ H-BMLEN !                 CONTENT-END @ H-CEND !
    AOT-REG-LEN @ H-REG ! ;
 
 \ A merge appends, so there has to be something to append to. A host that has not
@@ -1042,8 +1041,7 @@ DYNAMIC-BUFFER HOST-REG n
    then
    dend cbytes +               S-CSITES BASE!
    H-XTOFF @ XTOFF-ROW *       S-XTOFFS BASE!
-   H-RUNLEN @                  S-WDATA BASE!
-   H-RBYTES @                  S-WRUNS BASE!
+   H-VALS @                    S-WVALS BASE!
    H-XTSITE @ 8 *              S-XTSITES BASE!
    H-CSPAN @ AOT-SPAN:ROW *    S-SPANS BASE!
    H-BOOTRUN @                 S-BOOTRUN BASE!
@@ -1092,30 +1090,37 @@ DYNAMIC-BUFFER HOST-REG n
 
 \ WHERE THE ARTIFACT'S WINDOW BEGINS, and it is not simply the host's length.
 \ What a captured address needs kept is its 8-RESIDUE - the atomics fault on a
-\ misaligned cell - and the seed delivers that by advancing DP to the residue of
-\ the base it was captured against (habu2.f EM-AOT-RELOC-DATA). So an artifact
-\ address survives exactly when its slice starts at (A-D0 - hostD0) past the
-\ host's length, modulo eight. Measured on the compiler chain: the host base
-\ carries residue 7 and the artifact's carries 4, so the two do NOT agree and
-\ appending flush - which is what this did - moved every chain `variable` four
-\ bytes off and killed the merged engine with SIGBUS (dot
-\ habu-merged-data-window-b8fec035). Rounding the host's LENGTH up to eight
-\ would not have fixed it: that length is already a multiple of four and the
-\ skew comes from the two BASES, not from it.
-\
-\ THE PAD IS NOW ZERO BY CONSTRUCTION, and it used to have to be written. While
-\ the window travelled verbatim these bytes were a buffer nobody had decided, and
-\ a byte no one decides can change when another producer reaches the buffer first
-\ (the capture tool's own round trip smears $A5 over it), so the merge stored
-\ them. With the window sparse there is no buffer: the pad is simply an extent no
-\ run covers, and the seed zeroes the whole span before it lays any run down.
+\ misaligned cell - and appending flush at a length that did not keep it moved
+\ every chain `variable` four bytes off and killed the merged engine with SIGBUS
+\ (dot habu-merged-data-window-b8fec035). Both writers now capture against a
+\ CELL-ALIGNED base and round their span up to a whole cell, so every window's
+\ cells sit on the one DATA cell grid and the residue is zero on both sides; a
+\ base that is not is refused here rather than spliced.
+\ THE BASE IS ROUNDED TO A WHOLE BITMAP BYTE, eight cells of window, because
+\ that is what lets the artifact's bitmap and values be appended to the host's
+\ as bytes instead of decoded and re-encoded.
+\ THE PAD IS ZERO BY CONSTRUCTION: it is an extent no cell covers, the bitmap
+\ bytes that reach over it are written zero here - a buffer another producer
+\ reached first is not evidence - and the seed zeroes the whole span before it
+\ lays any cell down.
 \
 \ IT IS SET HERE AND NOT WITH THE OTHER BASES because it needs the artifact's
 \ own DATA base, and that arrives in the scalars section - which the format puts
 \ first, so it is already read when the window's own section comes up.
 : PLACE-WDATA ( -- )
    SCALARS@
-   A-D0 @  AOT-DATA-D0 @ -  H-DATA @ -  7 and  H-DATA @ +  H-DATA-R ! ;
+   A-D0 @ CELL-BYTES mod  AOT-DATA-D0 @ CELL-BYTES mod or 0<> if
+      s" aot-file: a captured DATA window base is not cell-aligned" DIE then
+   H-DATA @ BM-BYTE-SPAN 1- + BM-BYTE-SPAN / BM-BYTE-SPAN * H-DATA-R !
+   H-CEND @ H-DATA-R @ > if
+      s" aot-file: the host window's own cells reach into the merge pad" DIE then
+   H-DATA-R @ BM-BYTE-SPAN / {: bmbase:n :}
+   bmbase BM-CAP > if
+      S-WDATA s" is larger than the buffer it fills" SECT-DIE then
+   begin H-BMLEN @ bmbase < while
+      0 BM-BUF@ H-BMLEN @ + c!  H-BMLEN @ 1+ H-BMLEN !
+   repeat
+   bmbase S-WDATA BASE! ;
 
 \ Both captures canonicalize their code literals against base 0 (aot-capture.f
 \ ACAP-SCAN-CSITES), which is what lets a merge move one into the other's blob by
@@ -1239,35 +1244,6 @@ DYNAMIC-BUFFER HOST-REG n
    loop ;
 
 
-\ THE ONE ROW A MERGE REWRITES. Every gap inside the artifact's block counts from
-\ the row before it, so the whole block already reads correctly wherever it lands
-\ - except its first row, whose gap counts from zero in the artifact's own
-\ window. In the merged window that run begins H-DATA-R later and the run before
-\ it is the HOST's last, so that one gap grows by H-DATA-R minus the host's last
-\ run end. It can only grow: the host's runs all end at or below its own span,
-\ and H-DATA-R is at or above it. A wider varint needs the rest of the block
-\ moved up by the difference, from the top down because the two overlap.
-: MERGE-WDATA-GAP ( -- )
-   0 A-RUNGROW !
-   S-WDATA ROW-LEN@ 0= if exit then
-   S-WDATA BASE@ {: at:n :}
-   at S-WDATA ROW-LEN@ RUN-V {: gap:n gw:n :}
-   gap H-DATA-R @ + H-RUNEND @ - {: merged:n :}
-   merged RUN-VLEN {: mw:n :}
-   mw 0= if s" aot-file: the merged window DATA gap is not a row field" DIE then
-   mw gw - {: grow:n :}
-   at S-WDATA ROW-LEN@ + grow + RUN-CAP > if
-      S-WDATA s" is larger than the buffer it fills" SECT-DIE then
-   grow 0 > if
-      S-WDATA ROW-LEN@ gw - {: tail:n :}
-      tail 0 ?do
-         tail 1- i - gw + at + {: from:n :}
-         RUN-BUF@ from + c@  RUN-BUF@ from grow + + c!
-      loop
-   then
-   merged RUN-BUF@ at + RUN-V! drop
-   grow A-RUNGROW ! ;
-
 : MERGE-ROWS ( -- )
    S-SITES SEC-AT    S-SITES SEC-ROWS    SITE-ROW 0 H-BLOB @ FIELD+
    S-SITES SEC-AT    S-SITES SEC-ROWS    SITE-ROW 4 H-NAMES @ FIELD+
@@ -1276,7 +1252,6 @@ DYNAMIC-BUFFER HOST-REG n
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 4 H-NAMES @ FIELD+
    S-SPANS SEC-AT    S-SPANS SEC-ROWS    AOT-SPAN:ROW 0 H-BLOB @ FIELD+
    MERGE-XTOFFS
-   MERGE-WDATA-GAP
    S-PWIN SEC-AT     S-PWIN SEC-ROWS     4 0 H-SPAN @ FIELD+
    S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 0 S-SIGSTR BASE@ FIELD+
    S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 4 S-SIGSTR BASE@ FIELD+
@@ -1373,10 +1348,10 @@ DYNAMIC-BUFFER HOST-REG n
    H-CSITE @ S-CSITES SEC-ROWS + AOT-CSITE-N !
    H-XTOFF @ S-XTOFFS SEC-ROWS + XTOFF-N !
    H-DATA-R @ A-DSPAN @ + AOT-DATA-SIZE !
-   H-RUN @ RN-COUNT @ + RUN-N !
-   H-RUNLEN @ S-WDATA ROW-LEN@ + A-RUNGROW @ + RUN-LEN !
-   H-DATA-R @ RN-END @ + RUN-END !
-   H-RBYTES @ S-WRUNS ROW-LEN@ + RBYTES-LEN !
+   H-CELLS @ RN-COUNT @ + CELL-N !
+   H-BMLEN @ S-WDATA ROW-LEN@ + BM-LEN !
+   H-DATA-R @ RN-END @ + CONTENT-END !
+   H-VALS @ S-WVALS ROW-LEN@ + VAL-LEN !
    H-XTSITE @ S-XTSITES SEC-ROWS + AOT-XTSITE:N !
    H-CSPAN @ S-SPANS SEC-ROWS + AOT-SPAN:N !
    H-BOOTRUN @ S-BOOTRUN ROW-LEN@ + AOT-BOOTRUN-LEN !
@@ -1419,7 +1394,7 @@ public
    SCALARS@
    ?BASES
    H-DATA-R @ A-DSPAN @ + ?SPAN
-   S-WDATA BASE@  S-WDATA ROW-LEN@  A-DSPAN @  ?RUNS
+   S-WDATA BASE@  S-WDATA ROW-LEN@  A-DSPAN @  ?CELLS
    ?MERGED-XTOFFS
    MERGE-RECS
    MERGE-ROWS

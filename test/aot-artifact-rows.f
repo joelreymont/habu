@@ -61,21 +61,23 @@ using AOT-FILE
 
 8 constant ROWS
 $40 constant HOST-BLOB
-\ THE HOST'S WINDOW IS TWO MEGABYTES SO THE MERGED RUN TABLE HAS TO BE REWRITTEN.
-\ A run row's gap is a varint counted from the previous run's end, so appending
-\ this artifact widens exactly one field - its first row's - and everything after
-\ it has to move up by the difference (src/habu/aot-file.f MERGE-WDATA-GAP). A
-\ host window small enough to leave that field its old width would merge without
-\ moving a byte and prove nothing; MERGED-RUNS= below refuses a merge that did
-\ not widen it.
-$200000 constant HOST-DATA
+\ THE HOST'S WINDOW IS TWO MEGABYTES AND ONE CELL SO THE MERGE HAS TO PAD. The
+\ artifact's cells are spliced in at a BITMAP BYTE, so the merge rounds the host's
+\ span up to a multiple of BM-BYTE-SPAN (64 span bytes) and zero-fills the host's
+\ bitmap to there before the artifact's bitmap and values are appended
+\ (src/habu/aot-file.f PLACE-WDATA). A host span that was already a whole bitmap
+\ byte would splice at its own end and prove nothing; the extra cell puts the
+\ merged base 56 bytes above it, and MERGED= below refuses a merge that did not
+\ move it. Two megabytes also makes the host bitmap long enough that the
+\ artifact's own bitmap cannot be mistaken for the merged one.
+$200008 constant HOST-DATA
 variable HOST-D0
 variable ART-D0
 
 variable ART-BLOB
 variable ART-DATA
-variable ART-RUNS    variable ART-RUN-LEN   variable ART-RUN-END
-variable MRUN-AT     variable MRUN-END      variable MRUN-N
+variable ART-CELLS   variable ART-BM-LEN    variable ART-CEND
+variable MCELL-AT    variable MCELL-END     variable MCELL-N
 variable MERGED-DATA
 variable RAW-INDEX
 variable RAW-SITE
@@ -200,12 +202,17 @@ variable CHAIN-VALUE
    AOTRT:KEY ART$ AOT-FILE:WRITE ;
 
 
+\ THE HOST'S OWN BASE SITS A WHOLE NUMBER OF CELLS BELOW THE ARTIFACT'S. Both
+\ windows stand on the one DATA cell grid - a capture refuses a base that is not
+\ (src/habu/aot-capture.f ACAP-BAKE-DATA) and a merge refuses a pair that is not
+\ (src/habu/aot-file.f PLACE-WDATA) - so $100 is what makes the rebase delta of
+\ MERGED-DSITES= below non-zero without leaving the grid.
 : HOST! ( -- )
    FORGET-COUNTS
    1 AOT-REC-N !
    HOST-BLOB AOT-BLOB-LEN !
    HOST-DATA AOT-DATA-SIZE !
-   ART-D0 @ $FF - dup HOST-D0 ! AOT-DATA-D0 !
+   ART-D0 @ $100 - dup HOST-D0 ! AOT-DATA-D0 !
    XTOFF-WINDOW-TAG XTOFF-DATA-TAG 1+ 0 ROW!
    1 XTOFF-N ! ;
 
@@ -213,9 +220,14 @@ variable CHAIN-VALUE
 : MERGED= ( -- )
    XTOFF-N @ ROWS 1+ = ASSERT
    WDATA-BASE MERGED-DATA !
+   \ The artifact's window begins at the first BITMAP BYTE at or above the host's
+   \ own span: never below it, less than one bitmap byte above it, on the cell
+   \ grid both windows share - and, because HOST-DATA is one cell past a bitmap
+   \ byte, strictly above it, which is the pad PLACE-WDATA had to write.
    MERGED-DATA @ HOST-DATA >= ASSERT
-   MERGED-DATA @ HOST-DATA - 8 < ASSERT
-   HOST-D0 @ MERGED-DATA @ + ART-D0 @ - 7 and 0= ASSERT
+   MERGED-DATA @ HOST-DATA - BM-BYTE-SPAN < ASSERT
+   MERGED-DATA @ BM-BYTE-SPAN mod 0= ASSERT
+   HOST-D0 @ MERGED-DATA @ + ART-D0 @ - CELL-BYTES mod 0= ASSERT
    MERGED-DATA @ HOST-DATA > ASSERT
    AOT-BLOB-LEN @ ART-BLOB @ HOST-BLOB + = ASSERT
    AOT-DATA-SIZE @ ART-DATA @ MERGED-DATA @ + = ASSERT
@@ -232,35 +244,31 @@ variable CHAIN-VALUE
    $1018 XTOFF-DATA-TAG 8 ROW= ;
 
 
-\ One field of the merged run table, decoded where it lies.
-: MRUN-V ( -- n )
-   RUN-BUF@ MRUN-AT @ +  RUN-LEN @ MRUN-AT @ -  RUN-V@ {: v:n w:n :}
-   w 0 > RUN-ASSERT
-   MRUN-AT @ w + MRUN-AT !
-   v ;
-
-\ THE MERGED TABLE, DECODED RATHER THAN COUNTED. Each gap counts from the row
-\ before it, so the whole block reads correctly only if the one rewritten field
-\ and the bytes it displaced both landed: the row count, the end of the last run
-\ and the exact section length are three independent ways for a botched move to
-\ show. The artifact's own rows are unchanged, so its end simply moves by where
-\ the merge placed its window.
-: MERGED-RUNS= ( -- )
-   ART-RUNS @ 0 > RUN-ASSERT
-   0 MRUN-AT !  0 MRUN-END !  0 MRUN-N !
-   begin MRUN-AT @ RUN-LEN @ < while
-      MRUN-V {: gap:n :}
-      MRUN-V {: rl:n :}
-      rl 0 > RUN-ASSERT
-      MRUN-END @ gap + rl + MRUN-END !
-      MRUN-N @ 1+ MRUN-N !
-   repeat
-   MRUN-AT @ RUN-LEN @ = RUN-ASSERT
-   MRUN-N @ ART-RUNS @ = RUN-ASSERT
-   RUN-N @ ART-RUNS @ = RUN-ASSERT
-   MRUN-END @ ART-RUN-END @ MERGED-DATA @ + = RUN-ASSERT
-   RUN-END @ MRUN-END @ = RUN-ASSERT
-   RUN-LEN @ ART-RUN-LEN @ > RUN-ASSERT ;
+\ THE MERGED TABLE, DECODED RATHER THAN COUNTED. The host's bitmap is padded to
+\ where the merge placed the artifact's window and the artifact's own bitmap and
+\ values are appended there, so the block reads correctly only if the pad and
+\ both sections landed: the present-cell count, the end of the last present cell
+\ and the exact value section length are three independent ways for a botched
+\ splice to show. The artifact's own values are unchanged, so its end simply
+\ moves by where the merge placed its window.
+: MERGED-CELLS= ( -- )
+   ART-CELLS @ 0 > RUN-ASSERT
+   0 MCELL-AT !  0 MCELL-END !  0 MCELL-N !
+   BM-LEN @ CELL-BITS * 0 ?do
+      BM-BUF@ i CELL-BITS / + c@  i CELL-BITS mod rshift  1 and 0<> if
+         VAL-BUF@ MCELL-AT @ +  VAL-LEN @ MCELL-AT @ -  CELL-V@ {: v:n w:n :}
+         w 0 > RUN-ASSERT
+         MCELL-AT @ w + MCELL-AT !
+         i 1+ CELL-BYTES * MCELL-END !
+         MCELL-N @ 1+ MCELL-N !
+      then
+   loop
+   MCELL-AT @ VAL-LEN @ = RUN-ASSERT
+   MCELL-N @ ART-CELLS @ = RUN-ASSERT
+   CELL-N @ ART-CELLS @ = RUN-ASSERT
+   MCELL-END @ ART-CEND @ MERGED-DATA @ + = RUN-ASSERT
+   CONTENT-END @ MCELL-END @ = RUN-ASSERT
+   BM-LEN @ ART-BM-LEN @ > RUN-ASSERT ;
 
 
 : REBASED-DATA ( n -- n )
@@ -276,16 +284,16 @@ variable CHAIN-VALUE
    CHAIN-VALUE @ REBASED-DATA = ASSERT ;
 
 
-: ART-RUNS! ( -- )
-   RUN-N @ ART-RUNS !  RUN-LEN @ ART-RUN-LEN !  RUN-END @ ART-RUN-END ! ;
+: ART-CELLS! ( -- )
+   CELL-N @ ART-CELLS !  BM-LEN @ ART-BM-LEN !  CONTENT-END @ ART-CEND ! ;
 
 : MATRIX-ROUNDTRIP ( -- )
    WRITE-ARTIFACT READ-ARTIFACT MATRIX=
-   ART-RUNS!
+   ART-CELLS!
    HOST!
    AOTRT:KEY ART$ MERGE
    MERGED=
-   MERGED-RUNS=
+   MERGED-CELLS=
    MERGED-DSITES=
    s" address-rows: merge=ok" type cr ;
 

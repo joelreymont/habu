@@ -360,9 +360,9 @@ growth and release through the shared registry.
 
 **The chain reaches its fixpoint at generation 3; the (4,5) pair stays the
 asserted one as margin.** The product is a function of its host as well as of
-the source: the capture bakes the window's DATA as its non-zero extents
-(offset/length rows plus the bytes, `AOT-WINDOW:EMIT-RUNS` / `EMIT-RBYTES`), so
-build-time residue in that DATA changes the run partitioning and displaces
+the source: the capture bakes the window's DATA as its present cells
+(a presence bitmap plus one varint each, `AOT-WINDOW:EMIT-BM` / `EMIT-VALS`), so
+build-time residue in that DATA changes which cells are present and displaces
 every later section of the image. Until 2026-09-12 that residue made the chain
 four generations long: measured between B3 and B4, 21 residue cells, one
 non-zero byte each, in the unused tail of a baked boot buffer (`SYM-STR-BOOT`

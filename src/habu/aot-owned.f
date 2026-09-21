@@ -82,7 +82,7 @@ public
    SEC-N 0 ?do src i IMPORT-SECTION loop
    SCAL 32 + U64@ {: span:n :}
    span ?SPAN
-   0 S-WDATA ROW-LEN@ span ?RUNS
+   0 S-WDATA ROW-LEN@ span ?CELLS
    ?ADDRESS-ROWS
    RESTORE-COUNTS
    S-CLOSURE ROW-LEN@ CLEN !

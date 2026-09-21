@@ -1410,6 +1410,14 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    s" aot-capture: declared address cell straddles the window edge at offset " type woff . cr
    s" aot-capture: declared address cell straddles the window edge" 74 die ;
 
+\ The window's cells ARE the DATA cell grid: the capture describes the span as one
+\ presence bit and one varint per whole cell, so a declared cell that begins part
+\ way into a cell has no bit of its own to carry it and no cell of its own to be
+\ rewritten in. It ends the build for the same reason a straddling cell does.
+: ACAP-XTCELL-GRID ( n -- ) {: woff:n :}
+   s" aot-capture: declared address cell off the window cell grid at offset " type woff . cr
+   s" aot-capture: a declared DATA cell is not on the window cell grid" 74 die ;
+
 : ACAP-CLASSIFY-XTCELL ( n n -- ) {: woff:n len:n :}
    woff 8 + 0 <= if exit then                         \ wholly below the window
    woff len >= if exit then                          \ wholly above the window
@@ -1456,66 +1464,66 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    v lo hi ACAP-TARGET-OFFSET
    k ACAP-XTCELL-DATA? if AOT-WINDOW:XTOFF-DATA-TAG or then ;
 
-\ --- the window's non-zero extents --------------------------------------------
-\ ONE ROW AND ITS BYTES, APPENDED TOGETHER. The bytes go into their own section in
-\ ROW ORDER, so a row needs no offset into them: the decoder walks the byte
-\ section with a running cursor, which is the same counts-not-stored discipline
-\ the rest of the format keeps. Both buffers refuse their own overflow by name.
-variable ACAP-RS      \ the open run's start, or -1 when none is open
-variable ACAP-RE      \ one past the open run's last non-zero byte
-variable ACAP-RP      \ the scan cursor inside one segment
+\ --- the window's present cells -------------------------------------------------
+\ ONE BIT A CELL, AND A VARINT FOR EVERY CELL THAT HOLDS SOMETHING. The values go
+\ into their own section in CELL ORDER, so a bit needs no offset into them: the
+\ decoder walks the value section with a running cursor, which is the same
+\ counts-not-stored discipline the rest of the format keeps. The bitmap grows to
+\ the highest present cell and no further, so a window's trailing room costs
+\ nothing at all. Both buffers refuse their own overflow by name.
 variable ACAP-RQ      \ the segment cursor across the window
 variable ACAP-RN      \ the next declared cell at or above ACAP-RQ
 variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
+variable ACAP-CV      \ the cell value being assembled
+variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 
-\ The row is the gap from the last run's end and the length, so the widest a row
-\ can be is two full varints: charge that before writing either of them.
-: ACAP-ADD-RUN ( n n n -- ) {: d0:n off:n rl:n :}
-   AOT-WINDOW:RUN-LEN @ AOT-WINDOW:RUN-VMAX 2 * + AOT-WINDOW:RUN-CAP > if
-      s" aot-capture: the window DATA runs exceed the AOT run-row buffer" 74 die then
-   AOT-WINDOW:RBYTES-LEN @ rl + AOT-WINDOW:RBYTES-CAP > if
-      s" aot-capture: the window DATA runs exceed the AOT run-byte buffer" 74 die then
-   AOT-WINDOW:RUN-BUF@ AOT-WINDOW:RUN-LEN @ + {: r:ptr :}
-   off AOT-WINDOW:RUN-END @ -  r  AOT-WINDOW:RUN-V! {: gw:n :}
-   gw 0= if
-      s" aot-capture: a window DATA run does not follow the last run's end" 74 die then
-   rl  r gw +  AOT-WINDOW:RUN-V! {: lw:n :}
-   lw 0= if
-      s" aot-capture: a window DATA run's length is not a row field" 74 die then
-   rl 0 ?do
-      d0 off + i + AOT-N>U8 c@
-      AOT-WINDOW:RBYTES-BUF@ AOT-WINDOW:RBYTES-LEN @ + i + c!
-   loop
-   AOT-WINDOW:RUN-LEN @ gw + lw + AOT-WINDOW:RUN-LEN !
-   AOT-WINDOW:RBYTES-LEN @ rl + AOT-WINDOW:RBYTES-LEN !
-   off rl + AOT-WINDOW:RUN-END !
-   AOT-WINDOW:RUN-N @ 1+ AOT-WINDOW:RUN-N ! ;
+\ The bitmap is written in ascending cell order, so extending it is appending
+\ zero bytes - and those zeros are written rather than assumed, because a chain
+\ capture reaches this buffer more than once.
+: ACAP-BM-EXTEND ( n -- ) {: b:n :}
+   b 1+ AOT-WINDOW:BM-CAP > if
+      s" aot-capture: the window DATA cells exceed the AOT bitmap buffer" 74 die then
+   begin AOT-WINDOW:BM-LEN @ b <= while
+      0 AOT-WINDOW:BM-BUF@ AOT-WINDOW:BM-LEN @ + c!
+      AOT-WINDOW:BM-LEN @ 1+ AOT-WINDOW:BM-LEN !
+   repeat ;
 
-: ACAP-RUN-CLOSE ( n n -- ) {: d0:n at:n :}
-   ACAP-RS @ 0 < if exit then
-   d0 ACAP-RS @ at ACAP-RS @ - ACAP-ADD-RUN
-   -1 ACAP-RS ! ;
+: ACAP-ADD-CELL ( n n -- ) {: c:n v:n :}
+   c AOT-WINDOW:CELL-BITS / ACAP-BM-EXTEND
+   AOT-WINDOW:BM-BUF@ c AOT-WINDOW:CELL-BITS / + c@
+   1 c AOT-WINDOW:CELL-BITS mod lshift or
+   AOT-WINDOW:BM-BUF@ c AOT-WINDOW:CELL-BITS / + c!
+   AOT-WINDOW:VAL-LEN @ AOT-WINDOW:VMAX + AOT-WINDOW:VAL-CAP > if
+      s" aot-capture: the window DATA cells exceed the AOT value buffer" 74 die then
+   v  AOT-WINDOW:VAL-BUF@ AOT-WINDOW:VAL-LEN @ +  AOT-WINDOW:CELL-V! {: w:n :}
+   AOT-WINDOW:VAL-LEN @ w + AOT-WINDOW:VAL-LEN !
+   c 1+ AOT-WINDOW:CELL-BYTES * AOT-WINDOW:CONTENT-END !
+   AOT-WINDOW:CELL-N @ 1+ AOT-WINDOW:CELL-N ! ;
 
-\ The non-zero extents of [from, to), which is one gap between declared cells.
-\ Nothing outside such a gap is ever offered, which is how the cells stay out of
-\ every run - and it is also why the merge below can never swallow one: a run
-\ closes at every segment end, so a declared cell is a boundary no gap crosses.
-\ A run ends at its last non-zero byte and reopens only after RUN-GAP-MIN zeros,
-\ so shorter gaps travel inside it rather than buying a second row.
-: ACAP-SCAN-SEG ( n n n -- ) {: d0:n from:n to:n :}
-   -1 ACAP-RS !
-   from ACAP-RE !
-   from ACAP-RP !
-   begin ACAP-RP @ to < while
-      d0 ACAP-RP @ + AOT-N>U8 c@ 0=
-      if    ACAP-RP @ ACAP-RE @ - AOT-WINDOW:RUN-GAP-MIN >=
-            if d0 ACAP-RE @ ACAP-RUN-CLOSE then
-      else  ACAP-RS @ 0 < if ACAP-RP @ ACAP-RS ! then
-            ACAP-RP @ 1+ ACAP-RE !
+\ A CELL'S VALUE, AND THE SPAN IS WHAT BOUNDS THE READ. The span was rounded up
+\ to a whole cell, so the last cell can reach above the captured content: those
+\ bytes are above the builder's DP, they are not the window's, and they read as
+\ the zeros the seed will leave there.
+: ACAP-CELL@ ( n n -- n ) {: d0:n c:n :}
+   0 ACAP-CV !
+   AOT-WINDOW:CELL-BYTES 0 ?do
+      c AOT-WINDOW:CELL-BYTES * i + {: off:n :}
+      off ACAP-WLEN @ < if
+         d0 off + AOT-N>U8 c@  i 8 * lshift  ACAP-CV @ or  ACAP-CV !
       then
-      ACAP-RP @ 1+ ACAP-RP !
-   repeat
-   d0 ACAP-RE @ ACAP-RUN-CLOSE ;
+   loop
+   ACAP-CV @ ;
+
+\ The present cells of [from, to), which is one gap between declared cells.
+\ Nothing outside such a gap is ever offered, which is how a declared cell keeps
+\ its bit clear and lets the seed write the value its own row carries. Both
+\ bounds are cell multiples: the window base is cell-aligned, every declared
+\ cell is checked against the grid, and the span was rounded up to a whole cell.
+: ACAP-SCAN-SEG ( n n n -- ) {: d0:n from:n to:n :}
+   to AOT-WINDOW:CELL-BYTES /  from AOT-WINDOW:CELL-BYTES / ?do
+      d0 i ACAP-CELL@ {: v:n :}
+      v 0<> if i v ACAP-ADD-CELL then
+   loop ;
 
 \ The lowest declared-cell offset at or above `p`, or the span when none is left.
 \ Asked once per gap rather than once per byte, and it reads the table in whatever
@@ -1535,12 +1543,12 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
    loop
    ACAP-RC @ ;
 
-: ACAP-SCAN-RUNS ( n n -- ) {: d0:n len:n :}
+: ACAP-SCAN-CELLS ( n n -- ) {: d0:n len:n :}
    0 ACAP-RQ !
    begin ACAP-RQ @ len < while
       ACAP-RQ @ len ACAP-NEXT-CELL ACAP-RN !
       d0 ACAP-RQ @ ACAP-RN @ ACAP-SCAN-SEG
-      ACAP-RN @ 8 + ACAP-RQ !
+      ACAP-RN @ AOT-WINDOW:CELL-BYTES + ACAP-RQ !
    repeat ;
 
 \ Where the seed will find this cell: a window offset under the window tag for a
@@ -1577,16 +1585,32 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
 \ still fail-closed, on the cell that has no other answer: one INSIDE the window,
 \ whose bytes travel and whose target the window does not place
 \ (test/aot-address-cell-target-out-bad.f).
+\ THE SPAN IS A WHOLE NUMBER OF CELLS, and the bytes the rounding adds are above
+\ the captured DP: never read here, zero in the seeded engine, and they leave its
+\ DP cell-aligned. The base has to be cell-aligned already, because every
+\ declared address cell in the window must fall on one grid cell for the capture
+\ to leave its bits clear (measured on the release engine: base residue 0, and
+\ all 33,324 window cells eight-byte aligned).
 : ACAP-BAKE-DATA ( n n n n -- ) {: b0:n b1:n d0:n d1:n :}
    d1 d0 - {: len:n :}
    len AOT-WINDOW:SPAN-CAP > if
       s" aot-capture: DATA window exceeds the AOT window span cap" 74 die then
+   d0 AOT-WINDOW:CELL-BYTES mod 0<> if
+      s" aot-capture: the captured DATA window base is not cell-aligned" 74 die then
+   len ACAP-WLEN !
+   len AOT-WINDOW:CELL-BYTES 1- +
+   AOT-WINDOW:CELL-BYTES / AOT-WINDOW:CELL-BYTES * {: rlen:n :}
+   rlen AOT-WINDOW:SPAN-CAP > if
+      s" aot-capture: DATA window exceeds the AOT window span cap" 74 die then
+   rlen AOT-DATA-SIZE !
    d0 AOT-DATA-N - {: d0off:n :}
    ACAP-XTCELL-ROWS 0 ?do
       i ACAP-XTCELL-OFF {: celloff:n :}
       celloff ACAP-XTCELL-CELL-CHECK
       celloff d0off - {: woff:n :}
       woff len ACAP-CLASSIFY-XTCELL
+      woff 0 >= woff len < and  woff AOT-WINDOW:CELL-BYTES mod 0<> and if
+         woff ACAP-XTCELL-GRID then
       woff 0 >= woff len < and
       i b0 b1 d0 d1 ACAP-XTCELL-TARGET-IN? or if
          i b0 b1 d0 d1 ACAP-XTCELL-META {: meta:n :}
@@ -1594,7 +1618,7 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
          meta ACAP-ADD-XTOFF
       then
    loop
-   d0 len ACAP-SCAN-RUNS ;
+   d0 rlen ACAP-SCAN-CELLS ;
 
 \ --- boot-run list: append a top-level entry-word NAME to the 0-terminated
 \ [len][name] list EM-AOT-BOOTRUN walks (LFIND + blr) after the seed installs the
@@ -1754,7 +1778,7 @@ private
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  ACAP-POOL-RESET
    0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
    0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  0 AOT-SPAN:N !
-   AOT-WINDOW:RUNS-RESET
+   AOT-WINDOW:WINDOW-RESET
    0 AOT-XTSITE:N !  0 AOT-PWIN-N !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 public

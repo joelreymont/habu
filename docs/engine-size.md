@@ -42,8 +42,8 @@ sha256
 | `aot/name-pool` | 84,680 | 2.1 | the deduplicated `[len][bytes]` name pool |
 | `aot/data-sites` | 74,896 | 1.8 | 18,724 DATA literals the boot rebases |
 | `aot/address-cells` | 260,456 | 6.5 | 32,557 declared address cells |
-| `aot/data-run-rows` | 501,604 | 12.5 | 250,652 varint `(gap, length)` rows framing the captured DATA |
-| `aot/data-run-bytes` | 755,300 | 18.8 | the captured DATA bytes those rows describe |
+| `aot/data-cell-bitmap` | 130,416 | 3.4 | one bit per 8-byte cell of the captured DATA window |
+| `aot/data-cell-values` | 834,156 | 22.3 | one unsigned LEB128 per present cell, in cell order |
 | `aot/code-sites` | 36 | 0.0 | 9 code literals |
 | `aot/named-code-sites` | 0 | 0.0 | none in this engine |
 | `aot/code-spans` | 65,792 | 1.6 | 8,224 `(blob offset, code span)` rows for the words the image ships no record for, 8 B |
@@ -63,32 +63,38 @@ still ships own 708,820 bytes of it; the rest is the code of words that travel
 without a record, accounted for by the 8,224 rows of `aot/code-spans` — eight
 bytes each instead of a 20-byte record and the 48 the boot would expand it to.
 
-**Not quite a third of the engine is the captured DATA heap, and content is now
-the larger term.** `aot/data-run-rows` plus `aot/data-run-bytes` is 1,256,904
-bytes, 31.4% of the file: 755,299 bytes of content carried in 250,652 runs, an
-average run of 3.0 bytes, framed by 501,601 bytes of rows. The framing used to
-be the offender — a fixed eight-byte `(offset u32, length u32)` header per run —
-and it no longer is.
+**A quarter of the engine is the captured DATA heap, and almost all of it is
+content.** THE TWO CELL ROWS ABOVE, AND THE DATA-OWNER SECTION BELOW, ARE
+MEASURED ON THE ENGINE THIS FORMAT BUILDS (3,735,744 bytes); the pinned engine
+at the head of this page predates the format and the rest of its table is still
+that older measurement. `aot/data-cell-bitmap` plus `aot/data-cell-values` is
+970,164 bytes, 26.0% of that file, where the varint `(gap, length)` extent rows
+this replaced cost 1,285,456 bytes for the same heap. The framing used to be the
+offender — a fixed eight-byte `(offset u32, length u32)` header per run, then
+two varints — and it is now one bit a cell.
 
-**A run row is two unsigned LEB128 varints**: the gap in zero bytes from the
-previous run's end, then the run's length (`src/habu/aot-decl.f`, package
-AOT-WINDOW). Seven bits a byte, low group first, high bit set while more groups
-follow; the first row's gap counts from offset zero. A gap is unsigned, so a row
-that went backwards or overlapped its predecessor is not a shape the format can
-express rather than one a reader has to refuse. The image stores the table's
-encoded byte length and not a row count, because a varint array cannot be found
-from a count; the run count is what the walk that validates the table counts.
-This engine's table encodes to 501,601 bytes over 250,652 rows — 2.001 bytes a
-row — so nearly every gap and every length fits in one byte.
+**A cell is one unsigned LEB128, and the bitmap says which cells are there**:
+one bit per 8-byte cell of the window, cell k in bit k mod 8 of bitmap byte
+k div 8, then the value of every present cell in cell order
+(`src/habu/aot-decl.f`, package AOT-WINDOW). Seven bits a byte, low group first,
+high bit set while more groups follow; a whole cell needs at most ten bytes,
+which is `VMAX`. The image stores the byte length of the bitmap and of the
+values and not a cell count, because a varint array cannot be found from a
+count; the present-cell count is what the walk that validates the bitmap counts.
+The bitmap stops after the last present cell, so a window's trailing zeros cost
+nothing at all. This engine's bitmap is 130,545 bytes over 1,044,454 cells, of
+which 301,860 are present and encode to 839,613 value bytes — 2.8 bytes a
+present cell.
 
-**A zero gap under two bytes travels inside a run.** Carrying g zero bytes costs
-g payload bytes; splitting the run around them costs one more row, and no row is
-narrower than two one-byte varints. So a gap of one is cheaper to carry, a gap
-of exactly two breaks even, and RUN-GAP-MIN is the row's own arithmetic rather
-than a tuned constant. It fell from 8 to 2 with the fixed row it was sized for
-(3afce20f): re-split at that threshold, the engine of that landing went from
-85,285 rows to 245,194 and its two classes together from 2,417,592 bytes to
-1,228,047.
+**A bit per cell beats a header per extent.** The window's non-zero bytes come
+in ones and twos: 772,892 content bytes in 256,128 maximal extents, about 1.7
+bytes each, so the varint `(gap, length)` rows this replaced spent 512,563 bytes
+on headers alone. A bitmap spends one bit on a cell whether it is present or
+not, and measured over this engine's window the four candidates cost 1,285,454
+(extent rows), 964,570 (this format), 2,535,017 (bitmap plus raw cells) and
+843,675 (a per-4-KiB-page choice between the first two). The page-tagged hybrid
+is 9.4% of the DATA class cheaper and costs two decoders and a tag byte a page,
+so the one encoding is the bitmap.
 
 **The zero pad is a real place for bytes to hide.** The text segment rounds up
 to 64 KB, so a saving smaller than the current pad — 45,200 bytes — does not
@@ -105,35 +111,43 @@ An owner is also a record the image still carries, and private records no longer
 travel, so a private table is invisible here and its bytes charge to the nearest
 shipped name below it.
 
-The heap is 6,965,405 bytes of span holding 250,652 runs in 501,601 row bytes,
-1,256,900 bytes of image, across 945 owners, with 42,909 bytes in 3,392 runs
-below the first owner.
+The heap is 8,355,632 bytes of span holding 301,860 present cells in 130,545
+bitmap bytes, 970,158 bytes of image, across 968 owners, with 52,171 value bytes
+in 8,558 cells below the first owner.
 
-| owner | offset | extent | runs | bytes | image cost |
+| owner | offset | extent | cells | bytes | image cost |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `DONE` | 4,171,200 | 2,794,205 | 204,302 | 365,073 | 773,687 |
-| `SYM-STR-BOOT` | 1,817,192 | 393,216 | 1 | 242,076 | 242,081 |
-| `SYMS-BOOT` | 1,161,832 | 655,360 | 38,408 | 38,408 | 115,224 |
-| `EC-TV-BOOT` | 759,136 | 10,240 | 1 | 10,240 | 10,246 |
-| `TVT-BOOT` | 697,696 | 10,240 | 1 | 10,240 | 10,244 |
-| `EC-RV-BOOT` | 769,376 | 10,240 | 0 | 10,240 | 10,240 |
-| `RVT-BOOT` | 707,936 | 10,240 | 0 | 10,240 | 10,240 |
-| `RDP` | 658,000 | 39,672 | 1,010 | 4,854 | 6,880 |
-| `TDECL-PROT-WID-ARMED` | 2,549,000 | 8,456 | 27 | 5,634 | 5,690 |
-| `PES` | 2,213,584 | 12,288 | 1,484 | 2,199 | 5,168 |
-| `REQUIRE-PATHS` | 2,607,616 | 524,800 | 111 | 2,641 | 2,974 |
-| `NAMES` | 2,599,088 | 4,096 | 1 | 1,350 | 1,354 |
-| `NAMES-U` | 2,603,184 | 1,248 | 2 | 1,240 | 1,246 |
-| `DFERS` | 2,226,352 | 65,536 | 103 | 956 | 1,162 |
-| `TAB` | 2,604,432 | 1,808 | 223 | 331 | 777 |
-| `DISC-TOK-U` | 3,201,376 | 768 | 1 | 745 | 750 |
+| `DONE` | 4,175,568 | 4,180,064 | 250,138 | 427,117 | 492,418 |
+| `SYM-STR-BOOT` | 1,817,328 | 393,216 | 30,959 | 278,623 | 284,767 |
+| `STR-MIN-I64$` | 3,210,984 | 941,352 | 56 | 317 | 15,026 |
+| `EC-RV-BOOT` | 769,424 | 10,240 | 1,280 | 12,800 | 12,960 |
+| `EC-TV-BOOT` | 759,184 | 10,240 | 1,280 | 12,800 | 12,960 |
+| `RVT-BOOT` | 707,984 | 10,240 | 1,280 | 12,800 | 12,960 |
+| `TVT-BOOT` | 697,744 | 10,240 | 1,280 | 12,800 | 12,960 |
+| `REQUIRE-PATHS` | 2,609,416 | 524,800 | 443 | 3,571 | 11,771 |
+| `SYMS-BOOT` | 1,161,968 | 655,360 | 0 | 0 | 10,240 |
+| `TDECL-PROT-WID-ARMED` | 2,550,520 | 8,520 | 731 | 6,378 | 6,511 |
+| `RDP` | 658,000 | 39,720 | 1,433 | 5,329 | 5,949 |
+| `PES` | 2,213,720 | 12,288 | 1,496 | 2,738 | 2,930 |
+| `DFERS` | 2,226,488 | 65,536 | 200 | 1,168 | 2,192 |
+| `NAMES` | 2,600,800 | 4,096 | 174 | 1,562 | 1,626 |
+| `NORET-BOOT` | 2,296,728 | 98,304 | 0 | 0 | 1,536 |
+| `NAMES-U` | 2,604,896 | 1,288 | 161 | 1,434 | 1,454 |
 
-308 more owners follow.
+472 more owners follow.
+
+An owner's `bytes` is what its present cells encode to, and its image cost is
+that plus the bitmap bytes covering its span, charged whole to the owner the
+byte's first cell lands on. So an owner with no present cell still costs a
+sixty-fourth of its extent — `SYMS-BOOT` and `NORET-BOOT` are entirely zero and
+are in the table for that reason, and `STR-MIN-I64$` is nearly so: 56 present
+cells in 941,352 bytes of span, 317 bytes of value against 14,709 of bitmap.
 
 `DONE` (`src/habu/repl.f`) is a global variable in the REPL, and the last owner
 whose record the image still ships, so the row is the heap above every named
-table the census can still see: 2.79 MB of span holding 365,073 bytes in 204,302
-runs, which cost 773,687 bytes of image — 19.4% of the engine, one row. Two
+table the census can still see: 4.18 MB of span holding 250,138 present cells
+that encode to 427,117 bytes, which cost 492,418 bytes of image — 13.2% of the
+engine, one row. Two
 things land in it. The packages that load after the REPL keep their tables here,
 because their private records were dropped at capture. And the checker's baked
 user-signature store has no name to charge to at all: `USIGS-SNAPSHOT-PERSIST`
@@ -142,15 +156,19 @@ rounded up to a 64 KB grain, so it lands in this row under the REPL's name.
 Nothing in the image says how much of the row it is — the census can only charge
 an anonymous block to the word below it.
 
-The row's shape says what kind of store it is. Its content averages 1.8 bytes a
-run, so the non-zero bytes are scattered over cells that mostly hold small
-numbers, and its framing costs more than its content: 408,614 bytes of rows
-against 365,073 bytes of content. `SYMS-BOOT` (`src/core/checker.f`) is the same
-shape taken to its limit — 38,408 runs of exactly one byte each, 115,224 bytes
-of image for 38,408 bytes of content. Its string arena `SYM-STR-BOOT` is the
-opposite and the cheapest thing in the table: 242,076 bytes in a single run,
-costing five bytes to frame. The checker's two symbol stores are 357,305 bytes
-of image between them.
+The row's shape says what kind of store it is. Its present cells encode to 1.7
+bytes each, so the non-zero bytes are scattered over cells that mostly hold
+small numbers — and a small number now costs its own byte and one bit, where an
+extent row charged two framing bytes on top of it. The same row cost 773,687
+bytes of image under those rows. `SYMS-BOOT` (`src/core/checker.f`) is that
+shape taken to its limit and the clearest measure of the change: 655,360 bytes
+of span with no present cell at all cost their bitmap alone, 10,240 bytes,
+against the 115,224 its 38,408 one-byte runs cost. Its string arena
+`SYM-STR-BOOT` is the opposite, and the one owner the extent rows carried more
+cheaply: 30,959 present cells of packed text encode to 278,623 bytes — nine a
+cell, because a cell with a byte in its top octet needs nine groups — costing
+284,767 against 242,081 for the single run they made of it. The checker's two
+symbol stores are 295,007 bytes of image between them, down from 357,305.
 
 ## The dictionary the image ships
 
@@ -297,13 +315,16 @@ Measured against this engine, so the numbers are bounds, not hopes:
   and all of its name.
   The same caveat applies — a word outside the closure is still callable by name,
   so the list decides what goes, not the walk.
-- **The DATA image**: 1,256,904 bytes, 31.4%, and the framing is finished. Rows
-  average 2.001 bytes, one byte a field, which is the floor the format has; what
-  is left to win is content and layout. The checker's stores are where both are:
-  365,073 bytes scattered across 204,302 runs in the `DONE` row and 38,408
-  one-byte runs in `SYMS-BOOT`, together costing 888,911 bytes of image for
-  403,481 bytes of content. A store laid out without interleaved zero cells is
-  the lever (`habu-ship-only-the-d7d38629`, item 4), not a denser row format.
+- **The DATA image**: 970,164 bytes, 26.0%, and the framing is finished. A
+  present cell costs its own varint and one bit, and an absent one costs the
+  bit, which is the floor a per-cell format has; what is left to win is content
+  and layout. The checker's stores are where both are: 250,138 present cells in
+  the `DONE` row costing 492,418 bytes of image, and `SYM-STR-BOOT`'s packed
+  text costing 284,767 for 278,623 bytes of value. A store laid out without
+  interleaved zero cells is the lever (`habu-ship-only-the-d7d38629`, item 4),
+  not a denser cell format; the measured alternative to this one, a per-4-KiB
+  page choice between cells and extent rows, was 9.4% of the class and two
+  decoders.
 
 ## What the measurement does not say
 
@@ -422,9 +443,9 @@ so a table `allot`ed at its declared capacity and filled a tenth of the way
 travels at full size, and a store laid out with interleaved zero cells travels
 as those cells. Nothing compresses it and nothing skips it: a restore is a
 `read` into the window. This is the lever, and it is the same lever the engine's
-`aot/data-run-*` rows describe from the other side — the AOT capture does encode
-runs, which is why the engine pays 1.2 MB for a 6.8 MB heap while the snapshot
-pays 14.9 MB for a 14.9 MB one.
+`aot/data-cell-*` sections describe from the other side — the AOT capture does
+encode cells, which is why the engine pays under 1 MB for a 8.3 MB heap while
+the snapshot pays 14.9 MB for a 14.9 MB one.
 
 **The dictionary slot array is the second lever, at 2,680,032 bytes of nothing.**
 `DICT-CAP` is 65,536 records and this application publishes 9,702; the other
@@ -530,8 +551,8 @@ bin/hb --load tools/engine-size.f -- app-strip
 | --- | ---: | ---: | ---: | --- |
 | `elf/header` … `elf/header-pad` | 4,096 | 3,980 | 6.2 | the header page |
 | `app/code` | 3,176 | 524 | 4.8 | the startup, the closure of `MAIN`, the crash and signal handlers |
-| `app/data-run-rows` | 24 | 3 | 0.0 | a u32 of encoded row bytes and the varint `(gap, length)` rows |
-| `app/data-run-bytes` | 19 | 0 | 0.0 | the bytes those rows describe |
+| `app/data-cell-bitmap` | 24 | 3 | 0.0 | a u32 of bitmap bytes and the bitmap itself |
+| `app/data-cell-values` | 19 | 0 | 0.0 | one varint per present cell |
 | `app/row-align-pad` | 1 | 1 | 0.0 | the blob rounded up to the rows' four-byte boundary |
 | `app/relocation-rows` | 8 | 3 | 0.0 | one 8-byte row per declared address cell |
 | `image/text-pad` | 58,212 | 58,212 | 88.5 | the text segment rounded up to 64 KB |
@@ -544,12 +565,16 @@ restored DATA window: 659516 bytes from 19 carried in 7 runs; 659497 zero bytes 
 ```
 
 **A stripped image carries no zero byte of its DATA at all.** Its window is
-encoded as non-zero runs (`src/habu/aot-lib.f BUILD-SPARSE-DATA`), so 659,516
-bytes of window arrive from 19 bytes of file. That is the same encoding the
-engine's `aot/data-run-*` rows use, and it is why the snapshot's 14.9 MB and
-this image's 19 bytes describe comparable things. The zero-filled span is
-reported beside the table rather than as a class, because none of those bytes is
-in the file to attribute.
+encoded as present cells (`src/habu/aot-lib.f BUILD-SPARSE-DATA`), the same
+encoding the engine's `aot/data-cell-*` sections use, which is why the
+snapshot's 14.9 MB and this image's tens of bytes describe comparable things.
+The zero-filled span is reported beside the table rather than as a class,
+because none of those bytes is in the file to attribute. THE TABLE AND THE
+OUTPUT ABOVE ARE THIS IMAGE'S LAST MEASUREMENT UNDER THE EXTENT ROWS: the two
+rows carry the names the tool reports now, their bytes are the ones the rows
+cost, and the note says runs where the tool now counts present cells. The
+fixture it was measured on is not in the tree, so the block stands until someone
+writes another one.
 
 **Almost the whole file is the page round.** 88.5% is `image/text-pad`: the text
 segment rounds up to 64 KB and this program needs 3.2 KB of it. A saving smaller

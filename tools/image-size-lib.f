@@ -367,15 +367,17 @@ $80000000 constant SITE-NAME-TAG                  \ target is a name-pool offset
 8 constant XTSITE-ROW                             \ blob-off u32, name-off u32
 8 constant SPAN-ROW                               \ blob-off u32, raw code span u32
 AOT-NAMES-CAP constant NAMES-CAP
-\ The window's DATA run row has no width to mirror: it is two unsigned LEB128
-\ varints, the gap from the previous run's end and the run's length. This decode
-\ mirrors src/habu/aot-decl.f AOT-WINDOW:RUN-V@ for the same reason the widths
-\ above are mirrored, and it is what counts the rows and sums their lengths -
-\ the payload states neither.
-5 constant RUN-VMAX                               \ a u32 varint is at most five bytes
+\ The window's cells have no row width to mirror: the payload is a presence
+\ bitmap, one bit a cell, and one unsigned LEB128 per present cell. This decode
+\ mirrors src/habu/aot-decl.f AOT-WINDOW:CELL-V@ for the same reason the widths
+\ above are mirrored, and it is what counts the present cells and sums their
+\ value bytes - the payload states neither.
+8 constant CELL-BYTES                             \ the DATA cell grid the bitmap covers
+8 constant CELL-BITS                              \ cells one bitmap byte covers
+10 constant CELL-VMAX                             \ an unsigned LEB128 of a cell is at most ten bytes
 
 : RUN-VW ( n n -- n ) {: at:n avail:n :}
-   avail RUN-VMAX min 0 ?do
+   avail CELL-VMAX min 0 ?do
       at i + U8@ $80 and 0= if
          i 1+ {: w:n :}
          w 1 > at w 1- + U8@ 0= and if 0 unloop exit then
@@ -392,8 +394,8 @@ AOT-NAMES-CAP constant NAMES-CAP
 : RUN-V@ ( n n -- n n ) {: at:n avail:n :}
    at avail RUN-VW {: w:n :}
    w 0= if E-ES-WALK throw then
+   w CELL-VMAX = at CELL-VMAX 1- + U8@ 1 > and if E-ES-WALK throw then
    at w RUN-VV {: v:n :}
-   v $FFFFFFFF > if E-ES-WALK throw then
    v w ;
 
 \ The count cells are the payload's only class that is not one contiguous span,
@@ -428,23 +430,20 @@ AOT-NAMES-CAP constant NAMES-CAP
    repeat
    ACC @ len <> if E-ES-WALK throw then ;
 
-\ The rows are a byte string that states no count, so walking them is what
-\ counts them, and their lengths are what the byte section that follows is long.
+\ The bitmap states no count of present cells, so walking it is what counts
+\ them, and their value widths are what the value section that follows is long.
 : RUN-BYTES-MEASURE ( -- n )
    0 ACC !  0 RUN-N !  0 RUN-PREV !
-   RUN0 @ RUN-AT !
-   RUN0 @ RUN-BYTES @ + {: stop:n :}
-   begin RUN-AT @ stop < while
-      RUN-AT @ stop RUN-AT @ - RUN-V@ {: gap:n gw:n :}
-      RUN-AT @ gw + RUN-AT !
-      RUN-AT @ stop RUN-AT @ - RUN-V@ {: len:n lw:n :}
-      RUN-AT @ lw + RUN-AT !
-      RUN-PREV @ gap + {: off:n :}
-      len 1 < off len + DATA-SPAN @ > or if E-ES-WALK throw then
-      off len + RUN-PREV !
-      ACC @ len + ACC !
-      RUN-N @ 1+ RUN-N !
-   repeat
+   RUN-BYTES @ CELL-BITS * 0 ?do
+      RUN0 @ i CELL-BITS / + U8@  i CELL-BITS mod rshift  1 and 0<> if
+         i 1+ CELL-BYTES * {: end:n :}
+         end DATA-SPAN @ > if E-ES-WALK throw then
+         RBYTES0 @ ACC @ +  ETEXT-END RBYTES0 @ ACC @ + -  RUN-V@ {: v:n w:n :}
+         ACC @ w + ACC !
+         end RUN-PREV !
+         RUN-N @ 1+ RUN-N !
+      then
+   loop
    ACC @ ;
 
 : BOOTRUN-MEASURE ( n -- n ) {: at:n :}
@@ -499,8 +498,9 @@ AOT-NAMES-CAP constant NAMES-CAP
    XTOFF-N @ XTOFF-ROW TAKE-ROWS XTOFF0 !
    TAKE-CELL ETEXT-END ?BOUND RUN-BYTES !
    RUN-BYTES @ TAKE-RUN RUN0 !
+   CUR @ RBYTES0 !                                \ the values begin where the bitmap ended
    RUN-BYTES-MEASURE RBYTES-LEN !
-   RBYTES-LEN @ TAKE-RUN RBYTES0 !
+   RBYTES-LEN @ TAKE-RUN drop
    TAKE-CELL CODE-B0 !
    TAKE-CELL ETEXT-END ?BOUND CSITE-N !
    CSITE-N @ 4 TAKE-ROWS CSITE0 !
@@ -652,8 +652,8 @@ variable BK-DZERO  variable BK-PAD
    s" aot/name-pool" NAMES0 @ NAMES-LEN @ PADDED SPAN B-NAMES ROW
    s" aot/data-sites" DSITE0 @ DSITE-N @ 4 * PADDED SPAN B-OTHER ROW
    s" aot/address-cells" XTOFF0 @ XTOFF-N @ XTOFF-ROW * PADDED SPAN B-OTHER ROW
-   s" aot/data-run-rows" RUN0 @ RUN-BYTES @ PADDED SPAN B-OTHER ROW
-   s" aot/data-run-bytes" RBYTES0 @ RBYTES-LEN @ PADDED SPAN B-DATA ROW
+   s" aot/data-cell-bitmap" RUN0 @ RUN-BYTES @ PADDED SPAN B-OTHER ROW
+   s" aot/data-cell-values" RBYTES0 @ RBYTES-LEN @ PADDED SPAN B-DATA ROW
    s" aot/code-sites" CSITE0 @ CSITE-N @ 4 * PADDED SPAN B-OTHER ROW
    s" aot/named-code-sites" XTSITE0 @ XTSITE-N @ XTSITE-ROW * PADDED SPAN B-OTHER ROW
    s" aot/code-spans" SPAN0 @ SPAN-N @ SPAN-ROW * PADDED SPAN B-CODE ROW
@@ -1422,7 +1422,7 @@ DYNAMIC-BUFFER DRUNS n                            \ run rows charged to each own
 \ encode to, and the zero bytes a snapshot's window carries verbatim.
 DYNAMIC-BUFFER DOVER n
 DYNAMIC-BUFFER DCOST n                            \ (cost, owner) packed, for the ranking
-variable DOWN-N     variable DCOST-N   variable CRP
+variable DOWN-N     variable DCOST-N
 variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
 16 constant OWNER-SHIFT
 
@@ -1464,52 +1464,37 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
    k 1+ DOWN-N @ >= if DATA-REACH exit then
    k 1+ DOWN-OFF ;
 
-\ A run is a maximal non-zero extent and may cross into the next owner's table,
-\ so its bytes are split; the header row is charged where the run starts.
-\ Where the owner at index k ends; -1 is the head below the first owner.
-: OWNER-LIMIT ( n -- n ) {: k:n :}
-   k 0 < if
-      DOWN-N @ 0 > if 0 DOWN-OFF else DATA-REACH then exit
-   then
-   k OWNER-END ;
-
-: CHARGE-BYTES ( n n n -- ) {: k:n from:n to:n :}
-   k 0 < if UNOWNED-BYTES @ to from - + UNOWNED-BYTES ! exit then
-   k DBYTES @ to from - + k DBYTES ! ;
-
-\ A run is a maximal non-zero extent and may cross into the next owner's table,
-\ so its bytes are split; the row is charged, with what it encoded to, where the
-\ run starts.
-: CHARGE-RUN ( n n n -- ) {: off:n len:n rowb:n :}
+\ A CELL BELONGS TO ONE OWNER, the one its own offset lands on, and its value
+\ bytes go there whole: a cell is eight bytes and an owner is a `create` base,
+\ so no cell straddles two of them.
+: CHARGE-CELL ( n n -- ) {: off:n w:n :}
    off OWNER-AT {: k:n :}
    k 0 < if
-      UNOWNED-RUNS @ 1+ UNOWNED-RUNS !  UNOWNED-ROWB @ rowb + UNOWNED-ROWB !
-   else
-      k DRUNS @ 1+ k DRUNS !  k DOVER @ rowb + k DOVER !
+      UNOWNED-RUNS @ 1+ UNOWNED-RUNS !  UNOWNED-BYTES @ w + UNOWNED-BYTES !
+      exit
    then
-   off len + {: end:n :}
-   off CRP !
-   begin CRP @ end < while
-      CRP @ OWNER-AT {: cur:n :}
-      cur OWNER-LIMIT end min {: cut:n :}
-      cut CRP @ <= if s" image-size: DATA owners do not advance" RC die then
-      cur CRP @ cut CHARGE-BYTES
-      cut CRP !
-   repeat ;
+   k DRUNS @ 1+ k DRUNS !
+   k DBYTES @ w + k DBYTES ! ;
+
+\ A BITMAP BYTE IS CHARGED WHOLE, to the owner its first cell lands on: the
+\ eight cells it covers cost one byte however many of them are present, and
+\ splitting that byte eight ways would report bits as bytes.
+: CHARGE-BM-BYTE ( n n -- ) {: off:n bytes:n :}
+   off OWNER-AT {: k:n :}
+   k 0 < if UNOWNED-ROWB @ bytes + UNOWNED-ROWB ! exit then
+   k DOVER @ bytes + k DOVER ! ;
 
 : CHARGE-RUNS ( -- )
    0 UNOWNED-BYTES !  0 UNOWNED-RUNS !  0 UNOWNED-ROWB !
-   RUN0 @ RUN-AT !  0 RUN-PREV !
-   RUN0 @ RUN-BYTES @ + {: stop:n :}
-   begin RUN-AT @ stop < while
-      RUN-AT @ stop RUN-AT @ - RUN-V@ {: gap:n gw:n :}
-      RUN-AT @ gw + RUN-AT !
-      RUN-AT @ stop RUN-AT @ - RUN-V@ {: len:n lw:n :}
-      RUN-AT @ lw + RUN-AT !
-      RUN-PREV @ gap + {: off:n :}
-      off len gw lw + CHARGE-RUN
-      off len + RUN-PREV !
-   repeat ;
+   0 ACC !
+   RUN-BYTES @ CELL-BITS * 0 ?do
+      i CELL-BITS mod 0= if i CELL-BYTES * 1 CHARGE-BM-BYTE then
+      RUN0 @ i CELL-BITS / + U8@  i CELL-BITS mod rshift  1 and 0<> if
+         RBYTES0 @ ACC @ +  ETEXT-END RBYTES0 @ ACC @ + -  RUN-V@ {: v:n w:n :}
+         i CELL-BYTES * w CHARGE-CELL
+         ACC @ w + ACC !
+      then
+   loop ;
 
 : OWNER-COST ( n -- n ) {: k:n :}
    k DBYTES @  k DOVER @ + ;
@@ -1533,29 +1518,29 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
    0 ACC !
    DOWN-N @ 0 ?do ACC @ i DBYTES @ + ACC ! loop
    ACC @ UNOWNED-BYTES @ + RBYTES-LEN @ <> if
-      s" image-size: DATA run bytes do not add up" RC die
+      s" image-size: DATA cell values do not add up" RC die
    then
    0 ACC !
    DOWN-N @ 0 ?do ACC @ i DRUNS @ + ACC ! loop
    ACC @ UNOWNED-RUNS @ + RUN-N @ <> if
-      s" image-size: DATA run rows do not add up" RC die
+      s" image-size: DATA present cells do not add up" RC die
    then
    0 ACC !
    DOWN-N @ 0 ?do ACC @ i DOVER @ + ACC ! loop
    ACC @ UNOWNED-ROWB @ + RUN-BYTES @ <> if
-      s" image-size: DATA run row bytes do not add up" RC die
+      s" image-size: DATA bitmap bytes do not add up" RC die
    then ;
 
 : REPORT-DATA ( -- )
    COLLECT-OWNERS  CHARGE-RUNS  CHECK-CHARGES  RANK-OWNERS
    cr s" captured DATA heap: " type DATA-SPAN @ FMT:.U
-   s"  bytes of span, " type RUN-N @ FMT:.U s"  runs in " type
-   RUN-BYTES @ FMT:.U s"  row bytes, " type
+   s"  bytes of span, " type RUN-N @ FMT:.U s"  present cells in " type
+   RUN-BYTES @ FMT:.U s"  bitmap bytes, " type
    RUN-BYTES @ RBYTES-LEN @ + FMT:.U s"  bytes of image" type cr
    s"   owners " type DOWN-N @ FMT:.U
-   s" , unowned run bytes " type UNOWNED-BYTES @ FMT:.U
-   s" , unowned run rows " type UNOWNED-RUNS @ FMT:.U cr
-   s"   owner" type TAB s" offset" type TAB s" extent" type TAB s" runs" type TAB
+   s" , unowned value bytes " type UNOWNED-BYTES @ FMT:.U
+   s" , unowned cells " type UNOWNED-RUNS @ FMT:.U cr
+   s"   owner" type TAB s" offset" type TAB s" extent" type TAB s" cells" type TAB
    s" bytes" type TAB s" image cost" type cr
    DCOST-N @ TOP-ROWS min 0 ?do
       i DCOST @ ROW-MASK and {: k:n :}
@@ -1886,26 +1871,27 @@ variable IP          variable MOVACC
    at INSN@ {: w:n :}
    w ADR? w ADR-RD rd = and ;
 
-\ Does a sparse blob start here? Its own header and rows have to walk to a byte
-\ payload that ends inside the text, which no run of code bytes does by accident.
+\ Does a sparse blob start here? Its own header and bitmap have to walk to a
+\ value payload that ends inside the text, which no run of code bytes does by
+\ accident.
 variable ROWS-END
 
-\ One pass of the AOT-WINDOW rows, throwing the walk's own refusal on a row the
-\ format cannot express, so a candidate offset that is not a blob comes back as
-\ a failed walk rather than as an exit.
+\ One pass of the AOT-WINDOW bitmap, throwing the walk's own refusal on a cell
+\ the format cannot express, so a candidate offset that is not a blob comes back
+\ as a failed walk rather than as an exit.
 : BLOB-ROWS-WALK ( -- )
    0 ACC !  0 RUN-N !  0 RUN-PREV !
-   begin RUN-AT @ ROWS-END @ < while
-      RUN-AT @ ROWS-END @ RUN-AT @ - RUN-V@ {: gap:n gw:n :}
-      RUN-AT @ gw + RUN-AT !
-      RUN-AT @ ROWS-END @ RUN-AT @ - RUN-V@ {: len:n lw:n :}
-      RUN-AT @ lw + RUN-AT !
-      len 1 < if E-ES-WALK throw then
-      RUN-PREV @ gap + len + DATA-SIZE > if E-ES-WALK throw then
-      RUN-PREV @ gap + len + RUN-PREV !
-      ACC @ len + ACC !
-      RUN-N @ 1+ RUN-N !
-   repeat ;
+   ROWS-END @ RUN-AT @ - {: bm:n :}
+   bm CELL-BITS * 0 ?do
+      RUN-AT @ i CELL-BITS / + U8@  i CELL-BITS mod rshift  1 and 0<> if
+         i 1+ CELL-BYTES * {: end:n :}
+         end DATA-SIZE > if E-ES-WALK throw then
+         ROWS-END @ ACC @ +  TEXT-SIZE ROWS-END @ ACC @ + -  RUN-V@ {: v:n w:n :}
+         ACC @ w + ACC !
+         end RUN-PREV !
+         RUN-N @ 1+ RUN-N !
+      then
+   loop ;
 
 : BLOB-AT? ( n -- bool ) {: at:n :}
    at 4 IN-IMAGE? 0= if false exit then
@@ -2054,9 +2040,9 @@ $D37EF54A constant XTC-LSL2
    -1 ZCOL !  BUDGET-BEGIN
    ELF-ROWS
    s" app/code" CODE-OFF BLOB-AT @ CODE-OFF - SPAN B-CODE ROW
-   s" app/data-run-rows" BLOB-AT @ BLOB-RUNS @ 0 > if 4 BLOB-ROWB @ + else 0 then
+   s" app/data-cell-bitmap" BLOB-AT @ BLOB-RUNS @ 0 > if 4 BLOB-ROWB @ + else 0 then
       SPAN B-OTHER ROW
-   s" app/data-run-bytes" BLOB-STOP @ BLOB-CARRIED @ - BLOB-CARRIED @ SPAN B-DATA ROW
+   s" app/data-cell-values" BLOB-STOP @ BLOB-CARRIED @ - BLOB-CARRIED @ SPAN B-DATA ROW
    s" app/row-align-pad" BLOB-STOP @ RELOC-AT @ BLOB-STOP @ - SPAN B-PAD ROW
    s" app/relocation-rows" RELOC-AT @ RELOC-N @ XTOFF-ROW * SPAN B-OTHER ROW
    s" image/text-pad" APP-END @ TEXT-SIZE APP-END @ - SPAN B-PAD ROW
@@ -2065,8 +2051,8 @@ $D37EF54A constant XTC-LSL2
    TOTAL-ROW ;
 
 \ What a stripped image does NOT carry is the interesting half of its DATA: the
-\ runs restore a window far larger than the file, because a zero byte never
-\ travels. Reported beside the table rather than as a class, since none of those
+\ cells restore a window far larger than the file, because a zero cell costs one
+\ bit and never travels as bytes. Reported beside the table rather than as a class, since none of those
 \ bytes is in the file to attribute.
 : STRIP-NOTES ( -- )
    BLOB-RUNS @ 0= if
@@ -2075,8 +2061,8 @@ $D37EF54A constant XTC-LSL2
    then
    cr s" restored DATA window: " type BLOB-SPAN @ FMT:.U
    s"  bytes from " type BLOB-CARRIED @ FMT:.U s"  carried in " type
-   BLOB-RUNS @ FMT:.U s"  runs; " type
-   BLOB-SPAN @ BLOB-CARRIED @ - FMT:.U s"  zero bytes do not travel" type cr
+   BLOB-RUNS @ FMT:.U s"  cells; " type
+   BLOB-SPAN @ BLOB-CARRIED @ - FMT:.U s"  bytes do not travel" type cr
    s"   relocation rows " type RELOC-N @ FMT:.U
    s" , declared address cells this image rebinds at startup" type cr ;
 

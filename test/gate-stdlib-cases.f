@@ -1362,8 +1362,8 @@ SUITE aot-source-identity
    test/aot-source-identity.f
 ;SUITE
 
-SUITE aot-run-rows
-   test/aot-run-rows.f
+SUITE aot-cell-values
+   test/aot-cell-values.f
 ;SUITE
 
 WHITEBOX-SUITE aot-registry-identity

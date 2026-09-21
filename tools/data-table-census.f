@@ -36,12 +36,11 @@
 \ non-zero byte (what a capture sized to content would carry) and `non-zero`
 \ counts the bytes inside the extent that are not zero. `runs` and `cost` model
 \ what the capture would charge for the extent, so they follow the scanners
-\ (aot-capture.f ACAP-SCAN-SEG, aot-lib.f EACH-BLOB-RUN) rather than the raw
-\ content: a run ends at its last non-zero byte and reopens only after
-\ AOT-WINDOW:RUN-GAP-MIN zeros, so a shorter gap is carried inside the run, and
-\ `cost` is the bytes so carried plus what each row's two varints - the gap from
-\ the previous run's end, then the length - encode to. A table of cells holding
-\ small numbers still costs more than its non-zero bytes;
+\ (aot-capture.f ACAP-SCAN-SEG, aot-lib.f BUILD-SPARSE-DATA) rather than the raw
+\ content: the extent is cells, every cell costs one bitmap bit, and a cell that
+\ holds anything costs the unsigned LEB128 of its value as well. `cost` is those
+\ value bytes plus the extent's own bitmap bytes. A table of cells holding small
+\ numbers still costs more than its non-zero bytes;
 \ sort on this column rather than on non-zero.
 \
 \ Runs are counted inside one owner's extent, so an owner boundary splits a run
@@ -67,11 +66,9 @@ package DATA-CENSUS
 DYNAMIC-BUFFER T-ROW n
 variable T-N
 variable NZ        variable FILL       variable RUNS
-variable PAY       variable OPEN
-variable ROWB      variable PREV-END
+variable PAY       variable ROWB
 variable SUM-NZ    variable SUM-FILL   variable SUM-RUNS   variable SUM-PAY
 variable SUM-ROWB
-variable IN-RUN
 
 32 constant OFF-SHIFT
 $FFFFFFFF constant IDX-MASK
@@ -111,31 +108,34 @@ $FFFFFFFF constant IDX-MASK
    loop
    0 T-ROW T-N @ [: < ;] SORT:SORT! ;
 
-\ The open run's own charge: its carried bytes, and the row the capture encodes
-\ for it - a gap varint from the last run's end and a length varint.
-: CLOSE-RUN ( -- )
-   PAY @ FILL @ OPEN @ - + PAY !
-   ROWB @
-   OPEN @ PREV-END @ - AOT-WINDOW:RUN-VLEN +
-   FILL @ OPEN @ - AOT-WINDOW:RUN-VLEN +  ROWB !
-   FILL @ PREV-END ! ;
+\ One cell of the extent, read as the unsigned number its bytes spell. Bytes
+\ past the extent read as the zeros a capture would leave there.
+variable CV
 
-: SCAN ( n n -- ) {: base:n len:n :}
-   0 NZ !  0 FILL !  0 RUNS !  0 PAY !  0 OPEN !  false IN-RUN !
-   0 ROWB !  0 PREV-END !
-   len 0 ?do
-      base i + HEAP@ c@ 0<> if
-         NZ @ 1+ NZ !  i 1+ FILL !
-         IN-RUN @ 0= if i OPEN !  RUNS @ 1+ RUNS !  true IN-RUN ! then
-      else
-         IN-RUN @ if
-            i FILL @ - AOT-WINDOW:RUN-GAP-MIN >= if
-               CLOSE-RUN  false IN-RUN !
-            then
-         then
+: CELL@ ( n n n -- n ) {: base:n c:n len:n :}
+   0 CV !
+   AOT-WINDOW:CELL-BYTES 0 ?do
+      c AOT-WINDOW:CELL-BYTES * i + {: off:n :}
+      off len < if
+         base off + HEAP@ c@  i 8 * lshift  CV @ or  CV !
       then
    loop
-   IN-RUN @ if CLOSE-RUN then ;
+   CV @ ;
+
+: SCAN ( n n -- ) {: base:n len:n :}
+   0 NZ !  0 FILL !  0 RUNS !  0 PAY !  0 ROWB !
+   len 0 ?do
+      base i + HEAP@ c@ 0<> if  NZ @ 1+ NZ !  i 1+ FILL !  then
+   loop
+   len AOT-WINDOW:CELL-BYTES 1- + AOT-WINDOW:CELL-BYTES / {: cells:n :}
+   cells AOT-WINDOW:CELL-BITS 1- + AOT-WINDOW:CELL-BITS / ROWB !
+   cells 0 ?do
+      base i len CELL@ {: v:n :}
+      v 0<> if
+         RUNS @ 1+ RUNS !
+         PAY @ v AOT-WINDOW:CELL-VLEN + PAY !
+      then
+   loop ;
 
 : ROW ( n n ptr u8 n n -- ) {: off:n len:n name:ptr nameu:n wid:n :}
    off len SCAN
@@ -164,7 +164,7 @@ $FFFFFFFF constant IDX-MASK
 : REPORT ( -- )
    0 SUM-NZ !  0 SUM-FILL !  0 SUM-RUNS !  0 SUM-PAY !  0 SUM-ROWB !
    s" offset" type TAB s" extent" type TAB s" fill" type TAB
-   s" nonzero" type TAB s" runs" type TAB s" cost" type TAB
+   s" nonzero" type TAB s" cells" type TAB s" cost" type TAB
    s" wid" type TAB s" owner" type cr
    T-N @ 0 > if 0 T-ROW @ ROW-OFF HEAD-ROWS then
    T-N @ 0 ?do i ROW-AT loop
@@ -172,7 +172,7 @@ $FFFFFFFF constant IDX-MASK
    s"  dp " type DP0 FMT:.U
    s"  data-start " type DATA-START FMT:.U
    s"  nonzero " type SUM-NZ @ FMT:.U
-   s"  runs " type SUM-RUNS @ FMT:.U
+   s"  cells " type SUM-RUNS @ FMT:.U
    s"  cost " type SUM-PAY @ SUM-ROWB @ + FMT:.U
    s"  fill " type SUM-FILL @ FMT:.U cr ;
 

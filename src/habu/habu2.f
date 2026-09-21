@@ -5396,7 +5396,7 @@ private
 \ ONE UNSIGNED LEB128 VARINT, INLINE: seven bits a byte from the cursor `cur`,
 \ low group first, until a byte arrives with its high bit clear. `acc` answers
 \ the value, `cur` is advanced past it, and `b`, `g` and `sh` are clobbered.
-\ This is src/habu/aot-decl.f AOT-WINDOW:RUN-V! read backwards, and the same
+\ This is src/habu/aot-decl.f AOT-WINDOW:CELL-V! read backwards, and the same
 \ grammar src/habu/aot-lib.f EMIT-VGET decodes for a stripped image's own DATA.
 : EMIT-VGET ( n n n n n -- ) {: acc:n cur:n b:n g:n sh:n :}
    LBL {: vtop:label :}
@@ -5409,30 +5409,40 @@ private
 
 public
 
-\ Each row is (gap from the last run's end, length) and the bytes of every run
-\ are concatenated in ROW ORDER, so both cursors only ever advance: x13 ends a
-\ run one past its last byte, which is what the next row's gap counts from, and
-\ x25 advances by each run's own length with no row carrying an offset into it.
-\ The rows are bounded by their section's byte length, not by a count, because a
-\ varint row has no fixed width.
-: APPLY-RUNS ( -- )
-   LBL LBL LBL LBL {: rloop:label rdone:label bloop:label bdone:label :}
-   23 10 LRUNBYTES LABEL@ TADR,  23 23 0 LDR,       \ x23 = encoded row byte length
-   21 10 LRUNS LABEL@ TADR,                         \ x21 = row cursor
-   23 21 23 ADD,                                    \ x23 = one past the last row
-   25 10 LRBYTES LABEL@ TADR,                       \ x25 = byte cursor
+\ ONE BIT A CELL, and the values of the present cells are concatenated in CELL
+\ ORDER, so both cursors only ever advance: x13 steps one cell for every bit the
+\ bitmap carries, present or not, and x25 advances by each value's own width with
+\ no bit carrying an offset into it. An all-clear bitmap byte costs one branch
+\ and one add for eight cells, which is what makes a window of mostly `allot`ed
+\ room cheap to lay down. The bitmap is bounded by its section's byte length, not
+\ by a count, because it ends at the highest present cell.
+: APPLY-CELLS ( -- )
+   LBL LBL LBL LBL LBL LBL
+   {: bmtop:label bmdone:label bittop:label bitdone:label bitnext:label empty:label :}
+   23 10 LBMLEN LABEL@ TADR,  23 23 0 LDR,          \ x23 = bitmap byte length
+   21 10 LBM LABEL@ TADR,                           \ x21 = bitmap cursor
+   23 21 23 ADD,                                    \ x23 = one past the bitmap
+   25 10 LVALS LABEL@ TADR,                         \ x25 = value cursor
    13 3 0 ADDI,                                     \ x13 = destination cursor, at the span's base
-   rloop LBL,  21 23 CMP,  C-CS rdone BCOND,
-      24 21 15 14 22 EMIT-VGET                      \ x24 = gap from the last run's end
-      13 13 24 ADD,
-      24 21 15 14 22 EMIT-VGET                      \ x24 = this run's length
-      bloop LBL,  24 bdone CBZ,
-         15 25 0 LDRB,  15 13 0 STRB,
-         25 25 1 ADDI,  13 13 1 ADDI,  24 24 1 SUBI,
-         bloop B,
-      bdone LBL,
-      rloop B,
-   rdone LBL, ;
+   bmtop LBL,  21 23 CMP,  C-CS bmdone BCOND,
+      24 21 0 LDRB,  21 21 1 ADDI,                  \ x24 = this byte's eight cells
+      24 empty CBZ,
+      22 CELL-BITS MOVZ,                            \ x22 = cells left in the byte
+      bittop LBL,
+         22 bitdone CBZ,
+         15 24 1 ANDI,
+         15 bitnext CBZ,
+            15 25 14 12 11 EMIT-VGET                \ x15 = the present cell's value
+            15 13 0 STR,
+         bitnext LBL,
+         24 24 1 LSRI,  13 13 CELL-BYTES ADDI,  22 22 1 SUBI,
+         bittop B,
+      bitdone LBL,
+      bmtop B,
+   empty LBL,
+      13 13 BM-BYTE-SPAN ADDI,                      \ eight absent cells: step the destination
+      bmtop B,
+   bmdone LBL, ;
 
 \ Heap cell locations move with the captured window; fixed engine cells remain
 \ DATA-relative. The value has a separate null/CODE/DATA/name coordinate.
@@ -5525,7 +5535,7 @@ public
    msg LBL,  s" hb: AOT data span out of range" BYTES,  NL-KW 1 BYTES,
    ok LBL,
    AOT-WINDOW:ZERO-SPAN                             \ the span, decided rather than inherited
-   AOT-WINDOW:APPLY-RUNS                            \ ... and the window's own non-zero extents
+   AOT-WINDOW:APPLY-CELLS                           \ ... and the window's own present cells
    3 3 5 ADD,  3 DATA DP-CELL STR,                  \ DP += span (bounded)
    21 10 LAOTDSITES LABEL@ TADR,                    \ x21 = DATA-site cursor (u32 offsets)
    23 10 LAOTNDSITE LABEL@ TADR,  23 23 0 LDR,      \ x23 = DATA-site count
@@ -9981,7 +9991,7 @@ package LABELS
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
    LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !  LBL LAOTNAMESLEN !
    LBL LAOTNDSITE !  LBL LAOTDSITES !  LBL LAOTDATAD0 !  LBL LAOTDATASIZE !
-   LBL AOT-WINDOW:LRUNBYTES !  LBL AOT-WINDOW:LRUNS !  LBL AOT-WINDOW:LRBYTES !
+   LBL AOT-WINDOW:LBMLEN !  LBL AOT-WINDOW:LBM !  LBL AOT-WINDOW:LVALS !
    LBL AOT-WINDOW:LNXTOFF !  LBL AOT-WINDOW:LXTOFFS !
    LBL LAOTNCSITE !  LBL LAOTCSITES !  LBL LAOTCODEB0 !
    LBL AOT-XTSITE:LCOUNT !  LBL AOT-XTSITE:LROWS !
@@ -10288,10 +10298,10 @@ public
 ;package
 package AOT-WINDOW
 public
-: EMIT-RUNS ( -- )   \ varint rows (gap from the last run's end + length)
-   RUN-LEN @ 0 > IF RUN-BUF@ RUN-LEN @ BYTES, THEN ;
-: EMIT-RBYTES ( -- )   \ the run bytes, concatenated in row order
-   RBYTES-LEN @ 0 > IF RBYTES-BUF@ RBYTES-LEN @ BYTES, THEN ;
+: EMIT-BM ( -- )   \ the presence bitmap, one bit a cell, low bit first
+   BM-LEN @ 0 > IF BM-BUF@ BM-LEN @ BYTES, THEN ;
+: EMIT-VALS ( -- )   \ one unsigned LEB128 per present cell, in cell order
+   VAL-LEN @ 0 > IF VAL-BUF@ VAL-LEN @ BYTES, THEN ;
 : EMIT-XTOFFS ( -- )   \ packed (cell offset, typed target) u32 rows
    XTOFF-N @ 0 > IF XTOFF-BUF@ XTOFF-N @ XTOFF-ROW * BYTES, THEN ;
 : EMIT-PWIN ( -- )   \ packed u32 window-relative protected WIDs
@@ -10386,9 +10396,9 @@ variable CUR
    LAOTDSITES LABEL@ LBL,  EMIT-AOT-DSITES
    AOT-WINDOW:LNXTOFF LABEL@ LBL,  AOT-WINDOW:XTOFF-N @ DCQ,
    AOT-WINDOW:LXTOFFS LABEL@ LBL,  AOT-WINDOW:EMIT-XTOFFS
-   AOT-WINDOW:LRUNBYTES LABEL@ LBL,  AOT-WINDOW:RUN-LEN @ DCQ,
-   AOT-WINDOW:LRUNS LABEL@ LBL,  AOT-WINDOW:EMIT-RUNS
-   AOT-WINDOW:LRBYTES LABEL@ LBL,  AOT-WINDOW:EMIT-RBYTES
+   AOT-WINDOW:LBMLEN LABEL@ LBL,  AOT-WINDOW:BM-LEN @ DCQ,
+   AOT-WINDOW:LBM LABEL@ LBL,  AOT-WINDOW:EMIT-BM
+   AOT-WINDOW:LVALS LABEL@ LBL,  AOT-WINDOW:EMIT-VALS
    LAOTCODEB0 LABEL@ LBL,  AOT-CODE-B0 @ DCQ,
    LAOTNCSITE LABEL@ LBL,  AOT-CSITE-N @ DCQ,
    LAOTCSITES LABEL@ LBL,  EMIT-AOT-CSITES

@@ -968,7 +968,7 @@ TEST:;SUITE
 TEST:;GROUP
 
 TEST:RUN
-RUN-N @ 1 T=
+CELL-N @ 1 T=
 T-REPORT
 
 ;package

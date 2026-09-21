@@ -284,14 +284,14 @@ variable AOT-WID-W0    variable AOT-WID-SPAN
 
 package AOT-WINDOW
 public
-\ THE WINDOW'S CONTENT TRAVELS AS RUNS, AND THE SPAN IS A NUMBER.
+\ THE WINDOW'S CONTENT TRAVELS AS CELLS, AND THE SPAN IS A NUMBER.
 \ The window is a dictionary subrange, so almost all of it is `allot`ed room that
 \ nothing has written: the compiler chain's window measures 1,531,045 bytes of
 \ span and 32 bytes of content, in four cells, 99.998% zero (dot
 \ habu-census-the-captured-fe5f7c49). Storing the span verbatim baked 1.5 MB of
-\ zeros into every engine. So what is stored is the NON-ZERO EXTENTS - one 8-byte
-\ row of (offset u32, length u32) each, and their bytes concatenated in row order -
-\ and the seed zeroes the span and lays the runs into it.
+\ zeros into every engine. So what is stored is a PRESENCE BITMAP over the
+\ window's cells and one varint per non-zero cell, and the seed zeroes the span
+\ and lays those cells into it.
 \
 \ THE SPAN IS NO LONGER A LENGTH ANYWHERE, which is why AOT-DATA-SIZE is now a
 \ genuine scalar in the artifact rather than a section's length. SPAN-CAP bounds
@@ -300,96 +300,95 @@ public
 \ closed on a span no engine could reserve. 16 MiB against the full runtime's
 \ measured 8,310,765 bytes leaves honest headroom at no storage cost.
 $1000000 constant SPAN-CAP
-\ A ROW IS TWO UNSIGNED LEB128 VARINTS: the gap in zero bytes from the previous
-\ run's end, then the run's length. Seven bits a byte, low group first, high bit
-\ set while more groups follow; the first row's gap counts from offset zero. The
-\ fixed (offset u32, length u32) row this replaces cost eight bytes for a table
-\ whose fields almost all fit in seven bits: measured over the engine's own
-\ window, 85,043 of 85,285 gaps and 85,227 of 85,285 lengths encode in one byte
-\ (the widest are three), so the table went from 682,280 bytes to 170,895.
-\ A GAP IS UNSIGNED, so a row that went backwards or overlapped its predecessor
-\ is not a shape this format can express - the reader below has no such refusal
-\ because there is nothing left to refuse.
-5 constant RUN-VMAX                  \ a u32 varint is at most five bytes
-2 constant RUN-ROW-MIN               \ two one-byte varints: the narrowest a row can be
-\ HOW SHORT A ZERO GAP HAS TO BE TO TRAVEL RATHER THAN SPLIT A RUN. Carrying g
-\ zero bytes inside a run costs g payload bytes; splitting the run around them
-\ costs one more row, and no row is narrower than RUN-ROW-MIN. So a gap of fewer
-\ than RUN-ROW-MIN zeros is cheaper to carry and a gap of exactly RUN-ROW-MIN
-\ breaks even: the threshold is the row's own arithmetic, not a tuned constant.
-\ Measured over the engine's own window, rows plus run bytes come to 1,228,047 at
-\ a threshold of two and 1,906,204 at the eight the eight-byte row bought; one
-\ and two cost the same bytes and two builds 61 fewer rows.
-RUN-ROW-MIN constant RUN-GAP-MIN
-\ The encoded table's own byte ceiling. A run is a non-zero extent, maximal
-\ except for the zero gaps under RUN-GAP-MIN it carries, so the table is a
-\ property of the window's content and not of its size, and a window that outgrew
-\ this is refused by name rather than truncated. A full engine window measured
-\ 245,194 rows in 490,673 bytes, so this leaves 3.2x over what a whole
-\ self-hosting compiler costs.
-$180000 constant RUN-CAP
-DYNAMIC-BUFFER RUN-STORAGE n
-: RUN-BUF ( -- ptr u8 )
-   RUN-CAP CELL / RUN-STORAGE-RESERVE
-   0 RUN-STORAGE BYTE-VIEW ;
-variable RUN-N                       \ rows, which the encoded bytes no longer state
-variable RUN-LEN                     \ bytes of encoded rows
-variable RUN-END                     \ one past the last run: what the next gap counts from
-\ Run bytes carry the merged zero gaps as well as the non-zero content, so this
-\ cap answers to the merged payload: the full engine window measured 737,374
-\ bytes over 737,252 non-zero ones, and the arithmetic worst case for that
-\ content - every one of its 245,255 unmerged runs joined across a gap of
-\ RUN-GAP-MIN-1 zeros - is 982,506. $300000 leaves 3.2x over that bound. Overflow
-\ is refused by name.
-$300000 constant RBYTES-CAP
-DYNAMIC-BUFFER RBYTES-STORAGE n
-: RBYTES-BUF ( -- ptr u8 )
-   RBYTES-CAP CELL / RBYTES-STORAGE-RESERVE
-   0 RBYTES-STORAGE BYTE-VIEW ;
-variable RBYTES-LEN
+\ WHY A BITMAP OVER CELLS AND NOT EXTENTS. A window is tables of cells holding
+\ small numbers, so its non-zero bytes come in ones and twos: the release
+\ engine's window holds 772,892 content bytes in 256,128 maximal non-zero
+\ extents, about 1.7 bytes each. Any extent format pays a header per extent -
+\ the varint (gap, length) rows this replaces cost 512,563 bytes for those
+\ 256,128 extents - while a bitmap pays ONE BIT PER CELL whether the cell is
+\ present or not, and a present cell then pays only its own varint. Measured on
+\ the release engine (4,063,424 bytes), bytes for the whole captured window:
+\   (a) varint (gap, length) run rows plus their bytes        1,285,454
+\   (b) this format: cell bitmap plus one varint per cell       964,570
+\   (c) (b) with raw 8-byte cells instead of varints          2,535,017
+\   (d) a per-4-KiB-page choice between (a) and (b)             843,675
+\ (d) is 9.4% of the DATA class below (b) and costs two decoders and a tag byte
+\ a page, so the one encoding is (b).
+8 constant CELL-BYTES                \ the grid's cell: the DATA cell a declared address sits on
+8 constant CELL-BITS                 \ cells one bitmap byte covers
+CELL-BYTES CELL-BITS * constant BM-BYTE-SPAN
+10 constant VMAX                     \ an unsigned LEB128 of a whole cell is at most ten bytes
+\ THE GRID IS THE DATA CELL GRID, NOT THE WINDOW'S OWN. Every declared address
+\ cell in the window is eight-byte aligned in DATA - the atomics fault on a
+\ misaligned cell - and each must fall on exactly one grid cell, because the
+\ capture leaves its bits clear and lets the seed write the value. So a window
+\ whose base is not cell-aligned is refused by its writer, and a span is rounded
+\ UP to a whole number of cells: the bytes it gains are above the captured DP,
+\ never read, and zero by construction. One grid also makes a merge a splice:
+\ two windows captured against cell-aligned bases share it, so an appended
+\ artifact's bitmap and values concatenate once its base is padded to a bitmap
+\ byte (src/habu/aot-file.f PLACE-WDATA).
+\ The bitmap's byte ceiling is the span cap's own arithmetic, so a window this
+\ refuses is one no engine could reserve. Measured: 130,417 bytes for the
+\ release engine's 8,346,672-byte window.
+SPAN-CAP BM-BYTE-SPAN / constant BM-CAP
+DYNAMIC-BUFFER BM-STORAGE n
+: BM-BUF ( -- ptr u8 )
+   BM-CAP CELL / BM-STORAGE-RESERVE
+   0 BM-STORAGE BYTE-VIEW ;
+variable CELL-N                      \ present cells, which the encoded bytes no longer state
+variable BM-LEN                      \ bytes of bitmap, trailing absent cells dropped
+variable CONTENT-END                 \ one past the last present cell: where a merge may pad to
+\ A present cell costs its own varint and no more, so this cap answers to the
+\ content: the release engine's window encodes its 300,575 present cells in
+\ 834,153 value bytes, 2.8 bytes a cell, and the arithmetic worst case for that
+\ many cells is VMAX each. $400000 leaves 5x over the measured figure and covers
+\ a window of 419,430 pointer-valued cells, which is 3.3 MB of live cells.
+\ Overflow is refused by name.
+$400000 constant VAL-CAP
+DYNAMIC-BUFFER VAL-STORAGE n
+: VAL-BUF ( -- ptr u8 )
+   VAL-CAP CELL / VAL-STORAGE-RESERVE
+   0 VAL-STORAGE BYTE-VIEW ;
+variable VAL-LEN
 
-\ Every producer of a run table starts from the same four numbers, so no caller
-\ can zero three of them and leave the fourth describing the last capture.
-: RUNS-RESET ( -- )
-   0 RUN-N !  0 RUN-LEN !  0 RUN-END !  0 RBYTES-LEN ! ;
+\ Every producer of a window table starts from the same four numbers, so no
+\ caller can zero three of them and leave the fourth describing the last capture.
+: WINDOW-RESET ( -- )
+   0 CELL-N !  0 BM-LEN !  0 CONTENT-END !  0 VAL-LEN ! ;
 
-\ ---- the row codec, and the only Forth that writes or reads this varint -------
-\ The two emitted decoders (src/habu/habu2.f AOT-WINDOW:APPLY-RUNS for the baked
-\ window, src/habu/aot-lib.f EMIT-DATA-COPY for a stripped image's own DATA) are
-\ this same grammar in ARM64, and tools/engine-size.f mirrors it for the same
-\ reason it mirrors the other row widths: it reads images in a booted engine that
-\ cannot load this build-side file.
+\ ---- the value codec, and the only Forth that writes or reads this varint -----
+\ A CELL'S VALUE IS AN UNSIGNED LEB128: seven bits a byte, low group first, high
+\ bit set while more groups follow. The two emitted decoders (src/habu/habu2.f
+\ AOT-WINDOW:APPLY-CELLS for the baked window, src/habu/aot-lib.f EMIT-DATA-COPY
+\ for a stripped image's own DATA) are this same grammar in ARM64, and
+\ tools/engine-size.f mirrors it for the same reason it mirrors the row widths:
+\ it reads images in a booted engine that cannot load this build-side file.
+\ A VALUE IS A WHOLE CELL, so every bit pattern a cell can hold is a field this
+\ format expresses: an address, a small count and a cell of packed bytes alike.
+\ A negative Habu cell is the unsigned value with bit 63 set and encodes in VMAX
+\ bytes, the widest this format has.
+: CELL-VLEN ( n -- n ) {: v:n :}
+   VMAX 1 ?do
+      v i 7 * rshift 0= if i unloop exit then
+   loop
+   VMAX ;
 
-\ A FIELD IS A u32, FOR THE WRITER AS FOR THE READER. RUN-VLEN answers 0 for a
-\ value that is negative or past $FFFFFFFF and RUN-V! then writes nothing and
-\ answers 0, so every producer refuses by name what RUN-V@ would refuse on the
-\ way back in. It matters most for the gap: a gap is `start - last end`, and now
-\ that a backwards row is a shape the READER cannot see, a producer that computed
-\ a negative gap is the only place left that can notice one.
-: RUN-VLEN ( n -- n ) {: v:n :}
-   v 0< if 0 exit then
-   v $FFFFFFFF > if 0 exit then
-   v $80 < if 1 exit then
-   v $4000 < if 2 exit then
-   v $200000 < if 3 exit then
-   v $10000000 < if 4 exit then
-   RUN-VMAX ;
-
-: RUN-V! ( n ptr u8 -- n ) {: v:n p:ptr :}   \ answers the bytes written, 0 for no field
-   v RUN-VLEN {: w:n :}
+: CELL-V! ( n ptr u8 -- n ) {: v:n p:ptr :}   \ answers the bytes written
+   v CELL-VLEN {: w:n :}
    w 0 ?do
       v i 7 * rshift $7F and {: g:n :}
       i 1+ w < if g $80 or else g then  p i + c!
    loop
    w ;
 
-\ The width, or 0 for a varint that does not end within `avail`, runs past
-\ RUN-VMAX, or wastes a byte on a zero high group - one encoding per value, so a
-\ round trip through this format is an identity rather than a resemblance.
+\ The width, or 0 for a varint that does not end within `avail`, runs past VMAX,
+\ or wastes a byte on a zero high group - one encoding per value, so a round trip
+\ through this format is an identity rather than a resemblance.
 private
 
-: RUN-VW@ ( ptr u8 n -- n ) {: p:ptr avail:n :}
-   avail RUN-VMAX min 0 ?do
+: CELL-VW@ ( ptr u8 n -- n ) {: p:ptr avail:n :}
+   avail VMAX min 0 ?do
       p i + c@ $80 and 0= if
          i 1+ {: w:n :}
          w 1 > p w 1- + c@ 0= and if 0 unloop exit then
@@ -398,18 +397,18 @@ private
    loop
    0 ;
 
-: RUN-VV@ ( ptr u8 n -- n ) {: p:ptr w:n :}
+: CELL-VV@ ( ptr u8 n -- n ) {: p:ptr w:n :}
    0 w 0 ?do  p i + c@ $7F and  i 7 * lshift or  loop ;
 
 public
 
-\ Value and width, with a width of 0 for every malformation above and for a
-\ value no u32 field of this format could have held.
-: RUN-V@ ( ptr u8 n -- n n ) {: p:ptr avail:n :}
-   p avail RUN-VW@ {: w:n :}
+\ Value and width, with a width of 0 for every malformation above. The tenth
+\ group holds bit 63 alone, so a tenth byte above one is a value no cell held.
+: CELL-V@ ( ptr u8 n -- n n ) {: p:ptr avail:n :}
+   p avail CELL-VW@ {: w:n :}
    w 0= if 0 0 exit then
-   p w RUN-VV@ {: v:n :}
-   v $FFFFFFFF > if 0 0 exit then
+   w VMAX = p VMAX 1- + c@ 1 > and if 0 0 exit then
+   p w CELL-VV@ {: v:n :}
    v w ;
 \ Address rows grow independently of the engine's declaration registry. The
 \ artifact's aggregate byte budget, checked before copy or emission, is the
@@ -587,8 +586,8 @@ public
 ;package
 package AOT-WINDOW
 public
-: RUN-BUF@ ( -- ptr u8 ) RUN-BUF ;
-: RBYTES-BUF@ ( -- ptr u8 ) RBYTES-BUF ;
+: BM-BUF@ ( -- ptr u8 ) BM-BUF ;
+: VAL-BUF@ ( -- ptr u8 ) VAL-BUF ;
 : XTOFF-BUF@ ( -- ptr u8 ) XTOFF-BUF ;
 ;package
 
@@ -642,8 +641,8 @@ public
    AOT-NAMES-LEN @ +BYTES
    AOT-DSITE-N @ 4 +ROWS
    AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-ROW +ROWS
-   AOT-WINDOW:RUN-N @ 8 +ROWS
-   AOT-WINDOW:RBYTES-LEN @ +BYTES
+   AOT-WINDOW:BM-LEN @ +BYTES
+   AOT-WINDOW:VAL-LEN @ +BYTES
    AOT-CSITE-N @ 4 +ROWS
    AOT-XTSITE:N @ 8 +ROWS
    AOT-SPAN:N @ AOT-SPAN:ROW +ROWS

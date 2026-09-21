@@ -75,6 +75,10 @@ package PROGRAM-DIAGNOSTICS
       s" AOT-XTCELL-UPPER-STRADDLE-ARMED" s" aot-capture: declared address cell straddles the window edge" NEGATIVE-DIAG
    s" test/aot-address-cell-target-out-bad.f" 74
       s" AOT-XTCELL-TARGET-OUT-ARMED" s" aot-capture: declared address target is not self-contained" NEGATIVE-DIAG
+   s" test/aot-address-cell-off-grid-bad.f" 74
+      s" AOT-XTCELL-OFF-GRID-ARMED" s" aot-capture: a declared DATA cell is not on the window cell grid" NEGATIVE-DIAG
+   s" test/aot-window-base-off-grid-bad.f" 74
+      s" AOT-WINDOW-BASE-OFF-GRID-ARMED" s" aot-capture: the captured DATA window base is not cell-aligned" NEGATIVE
    s" test/checker-decl-nested-bad.f" 76
       s" CHECKER-DECL-NESTED-ARMED" s" checker: declaration rollback frame mismatch" NEGATIVE
    s" test/checker-decl-depth0-bad.f" 76

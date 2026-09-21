@@ -84,10 +84,10 @@ create CODE-PATH FS-PATH-CAP allot
 
 
 \ Format authority: src/habu/aot-lib.f EMIT-DATA-COPY. The image is SPARSE: a u32
-\ row-byte length, then (gap varint, length varint) rows until those bytes are
-\ spent, then their bytes in row order. Validate the cursor setup that reads the
-\ row length out of the image, the span-base literal, and the complete row + byte
-\ loops after ADR x9.
+\ bitmap-byte length, then that many bitmap bytes (one bit a cell, low bit
+\ first), then one unsigned LEB128 per present cell in cell order. Validate the
+\ cursor setup that reads the bitmap length out of the image, the span-base
+\ literal, and the complete bitmap + cell loops after ADR x9.
 : CHECK-CURSORS ( n -- n ) {: off:n :}
    off      11 9 0 ENC-LDRW INSTR=
    off 4 +  9 9 4 ENC-ADDI INSTR=
@@ -97,36 +97,43 @@ create CODE-PATH FS-PATH-CAP allot
 
 
 \ One inlined unsigned LEB128 decode, register for register: src/habu/aot-lib.f
-\ EMIT-VGET, which is what makes a row's two fields variable width.
-: CHECK-VGET ( n -- n ) {: off:n :}
-   off      14 0 0 MOVZHW INSTR=
-   off 4 +  12 0 0 MOVZHW INSTR=
-   off 8 +  15 9 0 ENC-LDRB INSTR=
-   off 12 + 9 9 1 ENC-ADDI INSTR=
-   off 16 + 16 15 $7F >LIMM ENC-ANDI INSTR=
-   off 20 + 16 16 12 ENC-LSLV INSTR=
-   off 24 + 14 14 16 ENC-ORR INSTR=
-   off 28 + 12 12 7 ENC-ADDI INSTR=
-   off 32 + 16 15 $80 >LIMM ENC-ANDI INSTR=
-   off 36 + 16 -7 ENC-CBNZ INSTR=
+\ EMIT-VGET, which is what makes a cell's value variable width. The registers
+\ are arguments because the two loops that inline it hold their cursors in
+\ different ones.
+: CHECK-VGET ( n n n n n n -- n ) {: off:n acc:n cur:n b:n g:n sh:n :}
+   off      acc 0 0 MOVZHW INSTR=
+   off 4 +  sh 0 0 MOVZHW INSTR=
+   off 8 +  b cur 0 ENC-LDRB INSTR=
+   off 12 + cur cur 1 ENC-ADDI INSTR=
+   off 16 + g b $7F >LIMM ENC-ANDI INSTR=
+   off 20 + g g sh ENC-LSLV INSTR=
+   off 24 + acc acc g ENC-ORR INSTR=
+   off 28 + sh sh 7 ENC-ADDI INSTR=
+   off 32 + g b $80 >LIMM ENC-ANDI INSTR=
+   off 36 + g -7 ENC-CBNZ INSTR=
    off 40 + ;
 
 
 : CHECK-COPY ( n -- )
    4 + CHECK-CURSORS {: top:n :}
-   top      9 11 ENC-CMP INSTR=
-   top 4 +  30 C-CS ENC-BCOND INSTR=
-   top 8 + CHECK-VGET {: gapend:n :}
-   gapend      13 13 14 ENC-ADD INSTR=
-   gapend 4 + CHECK-VGET {: inner:n :}
-   inner      14 7 ENC-CBZ INSTR=
-   inner 4 +  15 10 0 ENC-LDRB INSTR=
-   inner 8 +  15 13 0 ENC-STRB INSTR=
-   inner 12 + 10 10 1 ENC-ADDI INSTR=
-   inner 16 + 13 13 1 ENC-ADDI INSTR=
-   inner 20 + 14 14 1 ENC-SUBI INSTR=
-   inner 24 + -6 ENC-B INSTR=
-   inner 28 + -30 ENC-B INSTR= ;
+   top       9 11 ENC-CMP INSTR=
+   top 4 +   26 C-CS ENC-BCOND INSTR=
+   top 8 +   14 9 0 ENC-LDRB INSTR=
+   top 12 +  9 9 1 ENC-ADDI INSTR=
+   top 16 +  14 21 ENC-CBZ INSTR=
+   top 20 +  12 8 0 MOVZHW INSTR=
+   top 24 +  12 18 ENC-CBZ INSTR=
+   top 28 +  21 14 1 >LIMM ENC-ANDI INSTR=
+   top 32 +  21 12 ENC-CBZ INSTR=
+   top 36 +  15 10 16 22 7 CHECK-VGET {: vend:n :}
+   vend      15 13 0 ENC-STR INSTR=
+   vend 4 +  14 14 1 ENC-LSRI INSTR=
+   vend 8 +  13 13 8 ENC-ADDI INSTR=
+   vend 12 + 12 12 1 ENC-SUBI INSTR=
+   vend 16 + -17 ENC-B INSTR=
+   vend 20 + -24 ENC-B INSTR=
+   vend 24 + 13 13 64 ENC-ADDI INSTR=
+   vend 28 + -26 ENC-B INSTR= ;
 
 
 : ADR-X9? ( n -- bool )
