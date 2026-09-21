@@ -37,8 +37,9 @@
 \               LOWER BOUND on what a tree-shaken engine could keep, not a strip
 \               list: the interpreter resolves user tokens by name, so a public
 \               word outside this closure is still callable.
-\ Both over-approximate reachability -- code no record owns is scanned as a root
-\ region, and an address the payload records is a root -- so a word this reports
+\ Both over-approximate reachability -- gaps outside the record and stripped-span
+\ indices are root regions, and an address the payload records is a root --
+\ so a word this reports
 \ as unreachable is unreachable, and the report is a floor, never a wish.
 \ NEITHER ROOT SET MEANS ANYTHING FOR AN APPLICATION IMAGE, so the census does
 \ not run on one: a stripped image already had the closure walk run against it
@@ -71,6 +72,7 @@ require lib/fmt.f
 require lib/fs.f
 require lib/sort.f
 require src/habu/code-span.f
+require tools/image-names.f
 
 \ The engine's own layout is already in the cold prefix; the target executable
 \ layout (CODE-OFF, IMAGE-TEXT-SIZE-OFF) is not. tools/imgdump.f loads it the
@@ -1074,9 +1076,10 @@ variable SITE-NAMED    variable SITE-CALLEES  variable SITE-BAD
 \ ---- reachability --------------------------------------------------------------
 \ The same call graph src/habu/aot-closure.f walks for a stripped application:
 \ direct B/BL edges between baked routines, plus the code addresses the payload's
-\ own relocation tables name. Code inside the blob that no record owns -- a
-\ quotation body, padding between routines -- is scanned as a root region, so an
-\ edge out of it is never lost and the answer stays a floor.
+\ own relocation tables name. Each aot/code-spans row is an anonymous graph node,
+\ so its edges are followed without making every stripped span a root. Bytes in
+\ gaps outside both indices remain root regions, so an edge out of a true gap is
+\ never lost and the answer stays a floor.
 $7C000000 constant BR-MASK
 $14000000 constant BR-OP                          \ B and BL differ only in the link bit
 $3FFFFFF constant BR-IMM
@@ -1090,84 +1093,91 @@ DYNAMIC-BUFFER RIDX n
 DYNAMIC-BUFFER MARK n
 DYNAMIC-BUFFER WORK n
 variable CODE-N     variable WORK-N     variable REACH-N    variable REACH-CODE
+variable REACH-SN   variable REACH-SCODE
 variable LO         variable HI         variable IDXV       variable GAP
 
 : BLOB-W32@ ( n -- n ) BLOB-OFF @ + U32@ ;
+: SPAN-START ( n -- n ) SPAN-ROW * SPAN0 @ + U32@ ;
+: SPAN-BYTES ( n -- n ) SPAN-ROW * SPAN0 @ + 4 + U32@ CODE-SPAN:BYTES ;
+
+\ A graph member is either a dictionary record or an anonymous span row. The
+\ latter's ID follows the records. Sorting the combined index puts every body
+\ behind the same binary lookup and worklist; neither kind is an implicit root.
+: NODE-START ( n -- n ) {: k:n :}
+   k REC-N @ < if k CREC-START else k REC-N @ - SPAN-START then ;
+: NODE-BYTES ( n -- n ) {: k:n :}
+   k REC-N @ < if k CREC-BYTES else k REC-N @ - SPAN-BYTES then ;
+
+: INDEX-ADD ( n -- ) {: k:n :}
+   k NODE-START {: at:n :}
+   at BLOB-LEN @ > if s" image-size: code starts past the blob" RC die then
+   k NODE-BYTES BLOB-LEN @ at - > if
+      s" image-size: a code span runs past the blob" RC die
+   then
+   at 32 lshift k or CODE-N @ RIDX !
+   CODE-N @ 1+ CODE-N ! ;
 
 : BUILD-CODE-INDEX ( -- )
-   REC-N @ 1+ RSTART-RESERVE  REC-N @ 1+ REND-RESERVE  REC-N @ 1+ RIDX-RESERVE
-   REC-N @ 1+ MARK-RESERVE    REC-N @ 1+ WORK-RESERVE
+   REC-N @ SPAN-N @ + 1+ {: cap:n :}
+   cap RSTART-RESERVE cap REND-RESERVE cap RIDX-RESERVE
+   cap MARK-RESERVE cap WORK-RESERVE
    0 CODE-N !
-   REC-N @ 0 ?do
-      i CREC-PKG? 0= if
-         i CREC-START {: at:n :}
-         at i CREC-BYTES + BLOB-LEN @ > if
-            s" image-size: a baked record runs past the code blob" RC die
-         then
-         CODE-N @ 0 > if
-            at CODE-N @ 1- RSTART @ < if
-               s" image-size: baked records are not in code order" RC die
-            then
-         then
-         at CODE-N @ RSTART !
-         at i CREC-BYTES + CODE-N @ REND !
-         i CODE-N @ RIDX !
-         CODE-N @ 1+ CODE-N !
-      then
+   REC-N @ 0 ?do i CREC-PKG? 0= if i INDEX-ADD then loop
+   SPAN-N @ 0 ?do REC-N @ i + INDEX-ADD loop
+   0 RIDX CODE-N @ [: < ;] SORT:SORT!
+   CODE-N @ 0 ?do
+      i RIDX @ $FFFFFFFF and {: k:n :}
+      k i RIDX !
+      k NODE-START dup i RSTART !
+      k NODE-BYTES + i REND !
    loop ;
 
 \ The lowest code index whose start is not below off.
 : LOWER-BOUND ( n -- n ) {: off:n :}
-   0 LO !  CODE-N @ HI !
+   0 LO ! CODE-N @ HI !
    begin LO @ HI @ < while
       LO @ HI @ + 2 / {: mid:n :}
       mid RSTART @ off < if mid 1+ LO ! else mid HI ! then
-   repeat
-   LO @ ;
+   repeat LO @ ;
 
 : ENTRY-INDEX ( n -- n ) {: off:n :}
    off LOWER-BOUND {: j:n :}
    j CODE-N @ >= if -1 exit then
-   j RSTART @ off <> if -1 exit then
-   j ;
+   j RSTART @ off <> if -1 exit then j ;
 
 : MARK-ONE ( n -- ) {: j:n :}
    j RIDX @ {: k:n :}
    k MARK @ 0<> if exit then
    1 k MARK !
-   k WORK-N @ WORK !  WORK-N @ 1+ WORK-N !
-   REACH-N @ 1+ REACH-N !
-   REACH-CODE @ k CREC-BYTES + REACH-CODE ! ;
-
-: MORE-BELOW? ( n -- bool ) {: off:n :}
-   IDXV @ 0 <= if false exit then
-   IDXV @ 1- RSTART @ off = ;
+   j WORK-N @ WORK ! WORK-N @ 1+ WORK-N !
+   k REC-N @ < if
+      REACH-N @ 1+ REACH-N !
+      REACH-CODE @ k NODE-BYTES + REACH-CODE !
+   else
+      REACH-SN @ 1+ REACH-SN !
+      REACH-SCODE @ k NODE-BYTES + REACH-SCODE !
+   then ;
 
 : MORE-HERE? ( n -- bool ) {: off:n :}
    IDXV @ CODE-N @ >= if false exit then
    IDXV @ RSTART @ off = ;
 
-\ An EXPORT alias puts a second record over one routine, so an entry marks every
-\ record that starts there, not the first one the search lands on.
+\ EXPORT aliases can name the same entry, including a record/span pair. Mark
+\ all rows at that entry so a stripped alias never looks dead beside live code.
 : MARK-ENTRY ( n -- ) {: off:n :}
    off ENTRY-INDEX {: j:n :}
    j 0 < if exit then
    j IDXV !
-   begin off MORE-BELOW? while IDXV @ 1- IDXV ! repeat
-   begin off MORE-HERE? while IDXV @ MARK-ONE  IDXV @ 1+ IDXV ! repeat ;
+   begin off MORE-HERE? while IDXV @ MARK-ONE IDXV @ 1+ IDXV ! repeat ;
 
-\ A DATA cell or a code literal may hold an address INSIDE a routine -- a does>
-\ clause, a quotation body -- and that routine runs when the address is used, so
-\ a recorded address marks the record whose span contains it. A branch is the
-\ other case: it enters a word at its entry, and a target in the middle of
-\ another routine is that routine's own control flow (src/habu/aot-closure.f
-\ follows entries for the same reason).
+\ A declared DATA cell or a code literal can point inside a body (quotation,
+\ does> clause). Mark every overlapping owner, conservatively; alias spans can
+\ have different ends. Direct branches below still resolve exact entries.
 : MARK-SPAN ( n -- ) {: off:n :}
    off ENTRY-INDEX 0 >= if off MARK-ENTRY exit then
-   off LOWER-BOUND {: j:n :}
-   j 0 <= if exit then
-   j 1- {: prev:n :}
-   off prev REND @ < if prev RSTART @ MARK-ENTRY then ;
+   off LOWER-BOUND 0 ?do
+      off i REND @ < if i RSTART @ MARK-ENTRY then
+   loop ;
 
 : SCAN-AT ( n -- ) {: at:n :}
    at BLOB-W32@ {: w:n :}
@@ -1178,15 +1188,13 @@ variable LO         variable HI         variable IDXV       variable GAP
    tgt 0 >= tgt BLOB-LEN @ < and if tgt MARK-ENTRY then ;
 
 : SCAN-SPAN ( n n -- ) {: from:n to:n :}
-   from begin dup to < while
-      dup SCAN-AT  4 +
-   repeat drop ;
+   from begin dup to < while dup SCAN-AT 4 + repeat drop ;
 
 : SWEEP ( -- )
    begin WORK-N @ 0 > while
       WORK-N @ 1- WORK-N !
-      WORK-N @ WORK @ {: k:n :}
-      k CREC-START dup k CREC-BYTES + SCAN-SPAN
+      WORK-N @ WORK @ {: j:n :}
+      j RSTART @ j REND @ SCAN-SPAN
    repeat ;
 
 \ A four-instruction MOVZ/MOVK chain, the one form an address literal takes
@@ -1222,7 +1230,8 @@ variable LO         variable HI         variable IDXV       variable GAP
       then
    loop ;
 
-\ Every span of the blob no record owns is a root region.
+\ Only bytes outside both the record and stripped-span indices are roots.
+\ Scanning an unreachable span here would root all of its callees by mistake.
 : SCAN-UNOWNED ( -- )
    0 GAP !
    CODE-N @ 0 ?do
@@ -1269,8 +1278,9 @@ variable LO         variable HI         variable IDXV       variable GAP
    loop ;
 
 : REACH-RESET ( -- )
-   REC-N @ 0 ?do 0 i MARK ! loop
-   0 WORK-N !  0 REACH-N !  0 REACH-CODE ! ;
+   REC-N @ SPAN-N @ + 0 ?do 0 i MARK ! loop
+   0 WORK-N ! 0 REACH-N ! 0 REACH-CODE !
+   0 REACH-SN ! 0 REACH-SCODE ! ;
 
 \ ---- what nothing reaches ------------------------------------------------------
 DYNAMIC-BUFFER DEAD-N n                           \ unreachable records per package row
@@ -1279,6 +1289,9 @@ DYNAMIC-BUFFER DMASK n                            \ per pool entry: 1 dead ref, 
 DYNAMIC-BUFFER PROW n                             \ sortable (bytes, package row)
 variable PROW-N     variable DROLE-N   variable DROLE-CODE
 variable DEAD-TOTAL variable DEAD-BYTES variable DEAD-NAMES
+variable DEAD-SN variable DEAD-SCODE
+DYNAMIC-BUFFER SPROW n                            \ sortable (bytes, stripped span)
+variable SPROW-N
 16 constant TOP-ROWS
 $FFFF constant ROW-MASK
 
@@ -1324,6 +1337,40 @@ $FFFF constant ROW-MASK
             row DEAD-CODE @ i CREC-BYTES + row DEAD-CODE !
          then
       then
+   loop ;
+
+: COLLECT-DEAD-SPANS ( -- )
+   0 DEAD-SN ! 0 DEAD-SCODE !
+   SPAN-N @ 0 ?do
+      REC-N @ i + DEAD? if
+         DEAD-SN @ 1+ DEAD-SN !
+         DEAD-SCODE @ i SPAN-BYTES + DEAD-SCODE !
+      then
+   loop ;
+
+: BUILD-SPROWS ( -- )
+   SPAN-N @ 1+ SPROW-RESERVE 0 SPROW-N !
+   SPAN-N @ 0 ?do
+      REC-N @ i + DEAD? if
+         i SPAN-BYTES 32 lshift i or SPROW-N @ SPROW !
+         SPROW-N @ 1+ SPROW-N !
+      then
+   loop
+   0 SPROW SPROW-N @ [: > ;] SORT:SORT! ;
+
+: .SPAN-ROWS ( -- )
+   COLLECT-DEAD-SPANS
+   s"   spans reachable" type TAB REACH-SN @ FMT:.U TAB
+   REACH-SCODE @ FMT:.U s"  code bytes" type cr
+   s"   spans unreachable" type TAB DEAD-SN @ FMT:.U TAB
+   DEAD-SCODE @ FMT:.U s"  code bytes" type cr
+   BUILD-SPROWS
+   SPROW-N @ 0= if exit then
+   s"   largest unreachable spans (blob offset, bytes, optional sidecar name)" type cr
+   SPROW-N @ TOP-ROWS min 0 ?do
+      i SPROW @ $FFFFFFFF and {: k:n :}
+      s"     " type k SPAN-START FMT:.U TAB k SPAN-BYTES FMT:.U
+      k SPAN-START k SPAN-BYTES IMAGE-NAMES:SPAN-NAME$ dup 0 > if TAB type else 2drop then cr
    loop ;
 
 : DEAD-ROLE ( n -- ) {: role:n :}
@@ -1381,7 +1428,8 @@ $FFFF constant ROW-MASK
    ROLE-PUBLIC .ROLE-DEAD
    ROLE-PRIVATE .ROLE-DEAD
    ROLE-UNMAPPED .ROLE-DEAD
-   .TOP-PACKAGES ;
+   .TOP-PACKAGES
+   .SPAN-ROWS ;
 
 : CENSUS-SURFACE ( -- )
    REACH-RESET  ROOTS-SURFACE  ROOTS-ENTRY  SWEEP
@@ -2148,6 +2196,7 @@ public
    CHECK-SEGMENTS
    CLASSIFY
    WALK
+   path pathu IMAGE-NAMES:LOAD
    -1 QUIET !  TABLE  0 QUIET ! ;
 
 : TOTAL-BYTES ( -- n ) TOTAL @ ;

@@ -13,6 +13,20 @@ has one cause.** On the same 1,772 words, tier 1 halves the call count and runs
 compile time. Every byte of the growth, and more, is inline relocatable-address
 stencils on cold guard paths.
 
+## 0. Anonymous stripped-code reachability
+
+The engine-size census treats each `aot/code-spans` row as a graph node. Code
+without a dictionary record is therefore measured as code with its own B/BL
+edges instead of being charged to an unowned root gap. On the 3,801,280-byte
+engine pinned at
+`a747899315f742dc4414be4ac1b74400b6bcf83c5e76c12f89028337755e4327`,
+the dictionary-surface census reaches 5,313 anonymous spans (985,860 code
+bytes) and leaves 3,127 spans (66,980 bytes) unreachable. The engine-entry
+census reaches 4,715 spans (886,156 code bytes) and leaves 3,725 spans
+(166,684 bytes). The optional `.names` sidecar labels a matching full span;
+without one the report still gives the blob offset and byte count. The focused
+engine-size fixture covers both cases.
+
 ## Method
 
 Tier 0 is the direct JIT (`src/habu/habu2.f`); tier 1 is the IR compiler

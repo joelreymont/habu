@@ -1,6 +1,7 @@
 \ The sidecar's count belongs to framing; only its padded runs belong to the
 \ sidecar row. Exercise both payload shapes on a private copy of bin/hb.
 require lib/test.f
+require lib/fs-mutate.f
 require tools/image-size-lib.f
 
 package IMAGE-SIZE
@@ -43,9 +44,45 @@ private
    BUDGET-BEGIN ENGINE-ROWS 0 QUIET !
    TOTAL @ before size + T= ;
 
+: EST-SPAN-REACH ( -- )
+   s" bin/hb" MEASURE
+   BUILD-CODE-INDEX
+   SPAN-N @ 0 > TTRUE
+   REACH-RESET ROOTS-SURFACE SWEEP
+   REACH-SN @ 0 > TTRUE
+   COLLECT-DEAD-SPANS
+   DEAD-SN @ 0 > TTRUE ;
+
+\ The sidecar is written beside a stand-in image path in a private temp dir, so
+\ two runs of this fixture never read or remove each other's map.
+create EST-IMG FS-PATH-CAP allot
+variable EST-IMG-U
+create EST-MAP FS-PATH-CAP allot
+variable EST-MAP-U
+
+: EST-SPAN-SIDECAR ( -- )
+   s" bin/hb" MEASURE
+   BUILD-CODE-INDEX
+   CLEANUP-RESET
+   s" habu-image-size" TMPDIR-MKDIR {: root:ptr rootu:n :}
+   root rootu CLEANUP-TREE+
+   root rootu s" hb" EST-IMG JOIN-PATH EST-IMG-U !
+   root rootu s" hb.names" EST-MAP JOIN-PATH EST-MAP-U !
+   SB-RESET
+   S\" habu-names 1\ncolumns rec named start len wid name\n0 0 " SB-APPEND
+   0 SPAN-START FMT:SB-U s"  " SB-APPEND
+   SPAN0 @ 4 + U32@ FMT:SB-U S\"  -1 EST-ANONYMOUS-SPAN\n" SB-APPEND
+   EST-MAP EST-MAP-U @ SB$ WRITE-ALL
+   EST-IMG EST-IMG-U @ IMAGE-NAMES:LOAD
+   0 SPAN-START 0 SPAN-BYTES IMAGE-NAMES:SPAN-NAME$
+   s" EST-ANONYMOUS-SPAN" T$=
+   CLEANUP-RUN ;
+
 : EST-MAIN ( -- )
    T-RESET
    EST-SIDECAR
+   EST-SPAN-REACH
+   EST-SPAN-SIDECAR
    T-REPORT ;
 
 EST-MAIN
