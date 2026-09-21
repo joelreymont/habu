@@ -1,9 +1,11 @@
 ---
 title: Add the io_uring readiness loop
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-21T18:07:21.881993+03:00"
+closed-at: "2026-09-21T19:06:56.484021+03:00"
+close-reason: "Landed as cdaf05a9 Add the io_uring readiness loop: lib/aio.f (AIO), 256 records, linked timeouts, groups, AT-EXIT scrub; 46 assertions in lib/aio-test.f; follow-up habu-run-lib-task-6ee2170d for the AT-EXIT slot."
 blocks:
   - habu-add-task-stop-c4cf301a
 ---
