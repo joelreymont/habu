@@ -6,6 +6,15 @@
 \ the emitter materialising the stores out of the allocator's claims - would
 \ leave the validator checking the allocator's belief against itself.
 \
+\ ONE PASS, ANY DIALECT. Nothing here is one machine's: a frame is reserved and
+\ released, a value is put away in a slot and brought back, a copy is a copy.
+\ What WAS one machine's is the spelling, and it now arrives in the vocabulary
+\ the dialect builds (src/compiler/native/dialect.f) - the same value the
+\ register allocator is bound with - together with the one thing no value can
+\ hold: how that dialect materialises a form of its own in the module this pass
+\ is writing. So this file names no dialect package, and a second machine is
+\ lowered by binding its vocabulary rather than by a second copy of the walk.
+\
 \ Each function keeps its own invocation frame. An existing frame is resized;
 \ a frameless function gains a reserve and, when it returns, a release. The
 \ frame-size contract remains common to all functions in the module.
@@ -29,7 +38,7 @@ require src/compiler/ir/source.f
 require src/compiler/ir/schema.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
-require src/compiler/native/a64ir.f
+require src/compiler/native/dialect.f
 require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 require src/compiler/native/regalloc.f
@@ -55,32 +64,14 @@ variable SCRATCH-OPS
    NFROZEN:TOTAL-OPS 1 max SCRATCH-OPS ! ;
 
 \ ---- the bound dialect -------------------------------------------------------
-A64IR-OPCODE:RESERVE  A64IR:ORD constant O-RESERVE
-A64IR-OPCODE:RELEASE  A64IR:ORD constant O-RELEASE
-A64IR-OPCODE:LINKSAVE A64IR:ORD constant O-LINKSAVE
-A64IR-OPCODE:LINKLOAD A64IR:ORD constant O-LINKLOAD
-A64IR-OPCODE:TRAP     A64IR:ORD constant O-TRAP
-A64IR-OPCODE:MOV      A64IR:ORD constant O-MOV
-
-\ One slot per attribute key the dialect declares.
-16 constant KEYS-N
-0 constant K-IMM
-1 constant K-SHIFT
-2 constant K-SLOT
-3 constant K-FRAME
-4 constant K-DSLOT
-5 constant K-DBYTES
-6 constant K-COND
-7 constant K-DBACK
-8 constant K-ENTRY
-9 constant K-OFF
-10 constant K-MASK
-11 constant K-TRAP-ENTRY               \ the trap form's target, under a key of its own
-12 constant K-FUN                      \ which function of the emission an address form names
-13 constant K-ADDR                     \ the relocation kind of the value a move-wide chain builds
-14 constant K-DWB                      \ the pointer move a fused transfer carries in its own encoding
-15 constant K-THROW-ENTRY              \ the refusal's `throw`, under a key of its own
-
+\ TWO VOCABULARIES PASS THROUGH THIS FILE AND THEY DESCRIBE DIFFERENT MODULES.
+\ The one BIND-DIALECT takes names the module being READ: every question this
+\ pass asks of an operation - is this the copy, the trap, the reserve; is this
+\ attribute the frame slot - compares that module's own symbols. The one REWRITE
+\ takes names the module being WRITTEN, and the types of the values this pass
+\ mints come out of it. A FORM crosses between them by NAME: the dialect is
+\ handed the spelling and answers with the form materialised in the module being
+\ written, which is the one thing a rebuild cannot do for itself.
 0 constant BOUND-NO
 1 constant BOUND-YES
 -1 constant NO-SLOT
@@ -104,11 +95,38 @@ variable OLD-BBASE
 variable CUR-B
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
-A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
-KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
+\ The two keys this pass reads an operation's reach into the frame off, and the
+\ forms it tells apart or writes. All of them are the READ module's symbols.
+1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-RESERVE IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-RELEASE IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-STORE IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-LOAD IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-FSTORE NDIALECT:optsym
+1 TYPED-BUFFER BND-FLOAD NDIALECT:optsym
+1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-LINKSAVE NDIALECT:optsym
+1 TYPED-BUFFER BND-LINKLOAD NDIALECT:optsym
+1 TYPED-BUFFER BND-COPY IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-REMAT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
+
+\ How the dialect materialises one of its forms in the module being written,
+\ asked for by the name the module being read spells it with. Bound once with
+\ the vocabulary and held across the rebinding REWRITE takes at its end, because
+\ it is the DIALECT's and not one module's.
+TYPED-VARIABLE BND-ENSURE [ IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id ]
+
+\ The three types this pass mints values of, out of the written module's own
+\ vocabulary. Taken by REWRITE, because the module they belong to does not exist
+\ when the binding over the read module is taken.
+1 TYPED-BUFFER OUT-LOW NDIALECT:lowering
+1 TYPED-BUFFER OUT-GPR IR-ID:ir-type-id
+1 TYPED-BUFFER OUT-MEM IR-ID:ir-type-id
+1 TYPED-BUFFER OUT-FPR IR-ID:ir-type-id
 
 1 TYPED-BUFFER S-CTX IR-CTX:ctx
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
@@ -213,34 +231,40 @@ create NAMEBUF NAME-CAP allot
 : F-NEED-CLEAR ( -- )
    BMAX 0 ?do 0 i cells F-NEED + ! loop ;
 
-\ ---- the machine operation family --------------------------------------------
-\ An operation of a form outside the family has no rule here and is refused
-\ rather than copied blind.
-: OPCODE-SLOT ( IR-ID:ir-symbol-id -- n )
+\ ---- the names the two modules share -----------------------------------------
+\ The spelling the module being read gives a symbol. Both modules were written
+\ by one dialect, so a name is what identifies a form or a key across them; the
+\ ordinal is not, because each module interns for itself.
+: SYM-NAME ( IR-ID:ir-symbol-id -- ptr u8 n )
    {: sym:IR-ID:ir-symbol-id :}
-   -1
-   A64IR:OPCODES 0 ?do
-      sym i BND-OP @ SAME-SYM? if drop i leave then
-   loop
-   dup 0 < if E-A64SPILL-OPCODE throw then ;
+   V-SYMP VW V-SYMR VW sym NAMEBUF NAME-CAP IR-SYM:FCOPY {: u:n :}
+   NAMEBUF u ;
 
-\ A frozen module carries no attribute under a key its schema did not declare,
-\ so this refusal is fail-closed rather than reachable.
-: KEY-SLOT-OF ( IR-ID:ir-symbol-id -- n )
-   {: sym:IR-ID:ir-symbol-id :}
-   -1
-   KEYS-N 0 ?do
-      sym i BND-KEY @ SAME-SYM? if drop i leave then
-   loop
-   dup 0 < if E-A64SPILL-OPCODE throw then ;
+\ The form of a read operation, materialised in the module being written. The
+\ dialect answers, because which forms exist and what each one's rule is belongs
+\ to it; a name it has no form for is refused there by name.
+: ENSURE-FORM ( IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
+   SYM-NAME {: a:ptr u:n :}
+   CTX BLD a u BND-ENSURE @ execute ;
+
+\ Whether an optional form is one this dialect declared at all. An absent form
+\ is named by nothing in the read module, so nothing can be it.
+: IS-OPT? ( IR-ID:ir-symbol-id NDIALECT:optsym -- bool )
+   {: sym:IR-ID:ir-symbol-id o:NDIALECT:optsym :}
+   o NDIALECT:HAS? 0= if false exit then
+   sym o NDIALECT:SYM SAME-SYM? ;
 
 \ ---- which operations reach the routine's own frame --------------------------
+: FRAME-KEY? ( IR-ID:ir-symbol-id -- bool )
+   {: k:IR-ID:ir-symbol-id :}
+   k 0 BND-SLOT @ SAME-SYM? if true exit then
+   k 0 BND-FRAME @ SAME-SYM? ;
+
 : FRAME-TOUCH? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    false
    id ATTRS-OF 0 ?do
-      id i ATTR-KEY-AT KEY-SLOT-OF {: k:n :}
-      k K-SLOT = k K-FRAME = or if drop true leave then
+      id i ATTR-KEY-AT FRAME-KEY? if drop true leave then
    loop ;
 
 \ Found by TYPE, because that is what tells a memory order apart from the
@@ -316,9 +340,9 @@ create NAMEBUF NAME-CAP allot
 : TYPE-OF ( IR-ID:ir-value-id -- IR-ID:ir-type-id )
    {: id:IR-ID:ir-value-id :}
    id VALUE-TYPE-AT {: t:IR-ID:ir-type-id :}
-   t 0 BND-GPR @ SAME-TYPE? if CTX BLD A64IR:GPR-TYPE exit then
-   t 0 BND-FPR @ SAME-TYPE? if CTX BLD A64IR:FPR-TYPE exit then
-   t 0 BND-MEM @ SAME-TYPE? if CTX BLD A64IR:MEM-TYPE exit then
+   t 0 BND-GPR @ SAME-TYPE? if 0 OUT-GPR @ exit then
+   t 0 BND-FPR @ SAME-TYPE? if 0 OUT-FPR @ exit then
+   t 0 BND-MEM @ SAME-TYPE? if 0 OUT-MEM @ exit then
    E-A64SPILL-SHAPE throw ;
 
 \ A value put away and brought back has to travel through the file it lives in:
@@ -330,28 +354,35 @@ create NAMEBUF NAME-CAP allot
    {: k:n :}
    MKEY k IR-ID:PACK-VALUE FPR-VALUE? ;
 
-\ The general pair is a64.str/a64.ldr and the floating pair a64.fstr/a64.fldr;
-\ nothing else about an insert depends on where the eight bytes live.
-: STORE-FORM ( n -- A64IR:opcode )
-   FPR-SLOT? if A64IR-OPCODE:FSTORE exit then A64IR-OPCODE:STORE ;
+\ The dialect's general pair, or its floating pair when the slot holds a value
+\ out of the floating file; nothing else about an insert depends on where the
+\ eight bytes live. A dialect that declares no floating pair has no form to put
+\ such a value away in, and one is refused rather than stored as a general
+\ value of the same width in a register file it cannot come back into.
+: STORE-FORM ( n -- IR-ID:ir-symbol-id )
+   FPR-SLOT? 0= if 0 BND-STORE @ exit then
+   0 BND-FSTORE @ NDIALECT:HAS? 0= if E-A64SPILL-OPCODE throw then
+   0 BND-FSTORE @ NDIALECT:SYM ;
 
-: LOAD-FORM ( n -- A64IR:opcode )
-   FPR-SLOT? if A64IR-OPCODE:FLOAD exit then A64IR-OPCODE:LOAD ;
+: LOAD-FORM ( n -- IR-ID:ir-symbol-id )
+   FPR-SLOT? 0= if 0 BND-LOAD @ exit then
+   0 BND-FLOAD @ NDIALECT:HAS? 0= if E-A64SPILL-OPCODE throw then
+   0 BND-FLOAD @ NDIALECT:SYM ;
 
 \ ---- staging one operation in the new module ---------------------------------
-: OPEN ( IR-ID:ir-op-id A64IR:opcode -- )
-   {: id:IR-ID:ir-op-id o:A64IR:opcode :}
-   CTX BLD  CTX BLD o A64IR:ENSURE-OP  IR-BUILD:BEGIN-OP
+: OPEN ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- )
+   {: id:IR-ID:ir-op-id o:IR-ID:ir-symbol-id :}
+   CTX BLD  o ENSURE-FORM  IR-BUILD:BEGIN-OP
    CTX BLD  id OP-SPAN  IR-BUILD:SET-OP-SPAN ;
 
 : OPERAND+ ( IR-ID:ir-value-id -- )
    CTX BLD rot IR-BUILD:ADD-OPERAND ;
 
 : GPR-RESULT+ ( -- )
-   CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-RESULT ;
+   CTX BLD  0 OUT-GPR @  IR-BUILD:ADD-RESULT ;
 
 : FPR-RESULT+ ( -- )
-   CTX BLD  CTX BLD A64IR:FPR-TYPE  IR-BUILD:ADD-RESULT ;
+   CTX BLD  0 OUT-FPR @  IR-BUILD:ADD-RESULT ;
 
 \ A value comes back into the class of register it left, which is what makes the
 \ reload of a double land where the operation below it looks.
@@ -359,76 +390,31 @@ create NAMEBUF NAME-CAP allot
    FPR-SLOT? if FPR-RESULT+ exit then GPR-RESULT+ ;
 
 : MEM-RESULT+ ( -- )
-   CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-RESULT ;
+   CTX BLD  0 OUT-MEM @  IR-BUILD:ADD-RESULT ;
+
+\ ---- carrying one attribute across -------------------------------------------
+\ EVERY ATTRIBUTE OF EVERY FORM IS AN INTEGER UNDER A KEY THE DIALECT SPELLS,
+\ and this pass decides the value of exactly one of them. The selector wrote the
+\ others and the schema of the module being read admitted them, so a value is
+\ re-interned under the key of the SAME NAME rather than put through the
+\ dialect's constructor for that key a second time: a screened constructor would
+\ be re-measuring a number that is already in a module, and naming one key at a
+\ time is what tied this pass to one dialect's list of them.
+: INT-ATTR+ ( IR-ID:ir-symbol-id n -- )
+   {: key:IR-ID:ir-symbol-id v:n :}
+   key SYM-NAME {: a:ptr u:n :}
+   CTX BLD
+   CTX BLD a u IR-BUILD:INTERN-SYMBOL
+   CTX BLD v IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR ;
 
 : SLOT-ATTR+ ( n -- )
    {: off:n :}
-   CTX BLD  CTX BLD A64IR:KEY-SLOT  CTX BLD off A64IR:SLOT-ATTR  IR-BUILD:ADD-ATTR ;
+   0 BND-SLOT @ off INT-ATTR+ ;
 
 : FRAME-ATTR+ ( n -- )
    {: size:n :}
-   CTX BLD  CTX BLD A64IR:KEY-FRAME  CTX BLD size A64IR:FRAME-ATTR  IR-BUILD:ADD-ATTR ;
-
-\ This pass introduces no immediate but copies the ones the combine pass built,
-\ and one copied under the wrong key would compare against the wrong number.
-: OFF-ATTR+ ( n -- )
-   {: imm:n :}
-   CTX BLD  CTX BLD A64IR:KEY-OFF  CTX BLD imm A64IR:OFF-ATTR  IR-BUILD:ADD-ATTR ;
-
-: MASK-ATTR+ ( n -- )
-   {: m:n :}
-   CTX BLD  CTX BLD A64IR:KEY-MASK  CTX BLD m A64IR:MASK-ATTR  IR-BUILD:ADD-ATTR ;
-
-\ This pass inserts no data-stack operation but copies the selector's, and a
-\ field copied under the wrong key would read arguments out of the frame.
-: DSLOT-ATTR+ ( n -- )
-   {: off:n :}
-   CTX BLD  CTX BLD A64IR:KEY-DSLOT  CTX BLD off A64IR:DSLOT-ATTR  IR-BUILD:ADD-ATTR ;
-
-: DBYTES-ATTR+ ( n -- )
-   {: size:n :}
-   CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD size A64IR:DBYTES-ATTR  IR-BUILD:ADD-ATTR ;
-
-: DWB-ATTR+ ( n -- )
-   {: size:n :}
-   CTX BLD  CTX BLD A64IR:KEY-DWB  CTX BLD size A64IR:DWB-ATTR  IR-BUILD:ADD-ATTR ;
-
-\ Copied unchanged: this pass decides nothing about where a call goes.
-: ENTRY-ATTR+ ( n -- )
-   {: entry:n :}
-   CTX BLD  CTX BLD A64IR:KEY-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
-   IR-BUILD:ADD-ATTR ;
-
-\ Under a key of its own, so a reader cannot mistake it for a callee this
-\ routine comes back from.
-: TRAP-ENTRY-ATTR+ ( n -- )
-   {: entry:n :}
-   CTX BLD  CTX BLD A64IR:KEY-TRAP-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
-   IR-BUILD:ADD-ATTR ;
-
-\ An ordinal in a module this pass rebuilds function for function and in order,
-\ so the number means the same thing on both sides.
-\ Under a key of its own too: the routine a compiled refusal branches to is
-\ neither a callee this routine comes back from nor the one that ends it.
-: THROW-ENTRY-ATTR+ ( n -- )
-   {: entry:n :}
-   CTX BLD  CTX BLD A64IR:KEY-THROW-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
-   IR-BUILD:ADD-ATTR ;
-
-: FUN-ATTR+ ( n -- )
-   {: k:n :}
-   CTX BLD  CTX BLD A64IR:KEY-FUN  CTX BLD k A64IR:FUN-ATTR  IR-BUILD:ADD-ATTR ;
-
-: DBACK-ATTR+ ( n -- )
-   {: size:n :}
-   CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD size A64IR:DBACK-ATTR  IR-BUILD:ADD-ATTR ;
-
-\ Decoded back into the dialect's vocabulary, so a stored code the dialect has
-\ no condition for is refused rather than copied through.
-: COND-ATTR+ ( n -- )
-   {: v:n :}
-   CTX BLD  CTX BLD A64IR:KEY-COND  CTX BLD v A64IR:N>COND A64IR:COND-ATTR
-   IR-BUILD:ADD-ATTR ;
+   0 BND-FRAME @ size INT-ATTR+ ;
 
 : CLOSE ( -- IR-ID:ir-op-id )
    CTX BLD IR-BUILD:END-OP ;
@@ -443,44 +429,23 @@ create NAMEBUF NAME-CAP allot
    {: id:IR-ID:ir-op-id :}
    id ATTRS-OF {: n:n :}
    n 0 ?do
-      id i ATTR-KEY-AT KEY-SLOT-OF {: k:n :}
-      id i ATTR-INT-AT {: v:n :}
-      k K-IMM = if
-         CTX BLD  CTX BLD A64IR:KEY-IMM  CTX BLD v A64IR:IMM-ATTR
-         IR-BUILD:ADD-ATTR
+      id i ATTR-KEY-AT {: k:IR-ID:ir-symbol-id :}
+      k 0 BND-FRAME @ SAME-SYM? if
+         k FRAME-N @ INT-ATTR+
+      else
+         k  id i ATTR-INT-AT  INT-ATTR+
       then
-      k K-SHIFT = if
-         CTX BLD  CTX BLD A64IR:KEY-SHIFT  CTX BLD v A64IR:SHIFT-ATTR
-         IR-BUILD:ADD-ATTR
-      then
-      k K-ADDR = if
-         CTX BLD  CTX BLD A64IR:KEY-ADDR  CTX BLD v A64IR:ADDR-ATTR
-         IR-BUILD:ADD-ATTR
-      then
-      k K-SLOT = if v SLOT-ATTR+ then
-      k K-FRAME = if FRAME-N @ FRAME-ATTR+ then
-      k K-DSLOT = if v DSLOT-ATTR+ then
-      k K-DBYTES = if v DBYTES-ATTR+ then
-      k K-DWB = if v DWB-ATTR+ then
-      k K-COND = if v COND-ATTR+ then
-      k K-DBACK = if v DBACK-ATTR+ then
-      k K-ENTRY = if v ENTRY-ATTR+ then
-      k K-OFF = if v OFF-ATTR+ then
-      k K-MASK = if v MASK-ATTR+ then
-      k K-TRAP-ENTRY = if v TRAP-ENTRY-ATTR+ then
-      k K-THROW-ENTRY = if v THROW-ENTRY-ATTR+ then
-      k K-FUN = if v FUN-ATTR+ then
    loop ;
 
 \ ---- the four operations this pass inserts -----------------------------------
 : EMIT-RESERVE ( IR-ID:ir-op-id -- )
-   A64IR-OPCODE:RESERVE OPEN
+   0 BND-RESERVE @ OPEN
    MEM-RESULT+
    FRAME-N @ FRAME-ATTR+
    CLOSE 0 RESULT@ TOK! ;
 
 : EMIT-RELEASE ( IR-ID:ir-op-id -- )
-   A64IR-OPCODE:RELEASE OPEN
+   0 BND-RELEASE @ OPEN
    TOK OPERAND+
    FRAME-N @ FRAME-ATTR+
    CLOSE drop ;
@@ -513,7 +478,7 @@ create NAMEBUF NAME-CAP allot
 \ so a double is never the subject of a move.
 : EMIT-MOVE ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id k:n pos:n :}
-   at A64IR-OPCODE:MOV OPEN
+   at 0 BND-COPY @ OPEN
    MKEY k IR-ID:PACK-VALUE pos READ-AS OPERAND+
    GPR-RESULT+
    CLOSE {: id:IR-ID:ir-op-id :}
@@ -524,7 +489,7 @@ create NAMEBUF NAME-CAP allot
 : EMIT-REMAT ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id k:n pos:n :}
    k DOP @ {: d:IR-ID:ir-op-id :}
-   at A64IR-OPCODE:MOVZ OPEN
+   at 0 BND-REMAT @ OPEN
    k FILE-RESULT+
    d COPY-ATTRS
    CLOSE {: id:IR-ID:ir-op-id :}
@@ -744,7 +709,7 @@ create NAMEBUF NAME-CAP allot
 \ reload and the store-back the plan no longer holds.
 : IDENTITY-COPY? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
-   id OPCODE-AT  O-MOV BND-OP @  SAME-SYM? 0= if false exit then
+   id OPCODE-AT  0 BND-COPY @  SAME-SYM? 0= if false exit then
    id 0 OPERAND-AT SPILL-SLOT {: k:n :}
    k NO-SLOT = if false exit then
    k  id 0 RESULT-AT SPILL-SLOT  = ;
@@ -822,7 +787,7 @@ create NAMEBUF NAME-CAP allot
 
 : COPY-OP ( IR-ID:ir-fun-id IR-ID:ir-op-id n bool -- )
    {: f:IR-ID:ir-fun-id id:IR-ID:ir-op-id pos:n carry:bool :}
-   id OPCODE-AT OPCODE-SLOT A64IR:NTH {: o:A64IR:opcode :}
+   id OPCODE-AT {: o:IR-ID:ir-symbol-id :}
    id FRAME-TOUCH? {: frame:bool :}
    id o OPEN
    id pos frame COPY-OPERANDS
@@ -851,7 +816,7 @@ create NAMEBUF NAME-CAP allot
    loop
    carry  b 0<> and  fa NO-FRAME-ARG <> f bk b SYNTH-FRAME-ARG? or and if
       fa NO-FRAME-ARG <> if exit then
-      CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-BLOCK-ARG TOK!
+      CTX BLD  0 OUT-MEM @  IR-BUILD:ADD-BLOCK-ARG TOK!
       exit
    then
    carry if
@@ -896,7 +861,7 @@ create NAMEBUF NAME-CAP allot
    {: f:IR-ID:ir-fun-id :}
    V-TYPR VW  V-FUNR VW MKEY f IR-FUN:FSIGNATURE@  IR-TYPE:FARITY@
    {: in:n out:n :}
-   CTX BLD A64IR:GPR-TYPE {: t:IR-ID:ir-type-id :}
+   0 OUT-GPR @ {: t:IR-ID:ir-type-id :}
    IR-TYPE:FN-BEGIN
    in 0 ?do t IR-TYPE:FN-PARAM loop
    out 0 ?do t IR-TYPE:FN-RESULT loop
@@ -911,7 +876,7 @@ create NAMEBUF NAME-CAP allot
    NO-RET
    f BLOCK-COUNT 0 ?do
       f i BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
-      t SUCCS-OF 0=  t OPCODE-AT OPCODE-SLOT O-TRAP = 0=  and if
+      t SUCCS-OF 0=  t OPCODE-AT 0 BND-TRAP @ SAME-SYM? 0=  and if
          dup NO-RET <> if E-A64SPILL-SHAPE throw then
          drop i
       then
@@ -981,7 +946,7 @@ create NAMEBUF NAME-CAP allot
    CTX BLD  V-FUNR VW f IR-FUN:FCONVENTION@  IR-BUILD:SET-CONVENTION
    CTX BLD f FUN-SPAN IR-BUILD:SET-FUN-SPAN
    f RET-ORD {: rb:n :}
-   f 0 BLOCK-AT 0 OP-AT OPCODE-AT OPCODE-SLOT O-RESERVE = PRO-N !
+   f 0 BLOCK-AT 0 OP-AT OPCODE-AT  0 BND-RESERVE @ SAME-SYM? PRO-N !
    VCLEAR
    F-ORDER-CLEAR
    f 0 BLOCK-AT IR-ID:BLOCK-LOCAL OLD-BBASE !
@@ -1021,13 +986,18 @@ create NAMEBUF NAME-CAP allot
 \ ---- whose frame the module arrives with -------------------------------------
 \ Two lowerable shapes, told apart by counting the four frame forms by NAME: none
 \ at all, or exactly a selector's prologue with its reserve opening the entry block.
+\
+\ A dialect that keeps its return address on the machine stack declares no link
+\ forms at all, so no operation of its modules can be one and both counts stay
+\ zero - which is exactly the shape FRAME-SHAPE-CK then asks for, a prologue
+\ that reserves and an epilogue that releases and saves nothing.
 : COUNT-FRAME-OP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id OPCODE-AT OPCODE-SLOT {: k:n :}
-   k O-RESERVE  = if N-RES @ 1+ N-RES ! then
-   k O-RELEASE  = if N-REL @ 1+ N-REL ! then
-   k O-LINKSAVE = if N-SAV @ 1+ N-SAV ! then
-   k O-LINKLOAD = if N-LDL @ 1+ N-LDL ! then ;
+   id OPCODE-AT {: k:IR-ID:ir-symbol-id :}
+   k 0 BND-RESERVE @ SAME-SYM? if N-RES @ 1+ N-RES ! then
+   k 0 BND-RELEASE @ SAME-SYM? if N-REL @ 1+ N-REL ! then
+   k 0 BND-LINKSAVE @ IS-OPT? if N-SAV @ 1+ N-SAV ! then
+   k 0 BND-LINKLOAD @ IS-OPT? if N-LDL @ 1+ N-LDL ! then ;
 
 : COUNT-FRAME ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
@@ -1049,7 +1019,7 @@ create NAMEBUF NAME-CAP allot
    else
       N-REL @ 1 <>  N-LDL @ N-SAV @ <> or if E-A64SPILL-SHAPE throw then
    then
-   f 0 BLOCK-AT 0 OP-AT OPCODE-AT OPCODE-SLOT O-RESERVE <>
+   f 0 BLOCK-AT 0 OP-AT OPCODE-AT  0 BND-RESERVE @ SAME-SYM? 0=
    if E-A64SPILL-SHAPE throw then ;
 
 \ The common frame size describes a separate frame in every invocation.
@@ -1067,43 +1037,68 @@ create NAMEBUF NAME-CAP allot
    n 0 ?do MKEY i IR-ID:PACK-FUN ONCE-CK loop
    n ;
 
-: DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b  c b IR-BUILD:DIALECT@  A64IR:NAME IR-BUILD:SYMBOL-IS?
+\ The module says which dialect wrote it and which version of that dialect's
+\ table; the vocabulary says whose names it holds. A vocabulary bound to another
+\ dialect's module would read that module's attributes under this dialect's keys
+\ and copy its operations as forms of another machine.
+: DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder nm:IR-ID:ir-symbol-id mj:n mi:n :}
+   c b IR-BUILD:DIALECT@ nm SAME-SYM?
    0= if E-A64SPILL-PLAN throw then
-   c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64SPILL-PLAN throw then
-   c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64SPILL-PLAN throw then ;
+   c b IR-BUILD:SCHEMA-MAJOR@ mj <> if E-A64SPILL-PLAN throw then
+   c b IR-BUILD:SCHEMA-MINOR@ mi <> if E-A64SPILL-PLAN throw then ;
+
+\ One vocabulary, taken apart into the slots the walk reads. Used for both
+\ bindings this pass takes: the caller's, over the module about to be read, and
+\ the one REWRITE takes over the module it has just written so the next rewrite
+\ reads it by the same names.
+: BIND! ( IR-CTX:ctx IR-BUILD:builder NDIALECT:lowering -- )
+   NDIALECT-LOWERING:UNMAKE
+   {: nm:IR-ID:ir-symbol-id mj:n mi:n
+      gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
+      slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
+      copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      reserve:IR-ID:ir-symbol-id release:IR-ID:ir-symbol-id
+      store:IR-ID:ir-symbol-id load:IR-ID:ir-symbol-id
+      fstore:NDIALECT:optsym fload:NDIALECT:optsym
+      trapop:IR-ID:ir-symbol-id
+      linksave:NDIALECT:optsym linkload:NDIALECT:optsym :}
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b nm mj mi DIALECT-CK
+   b IR-BUILD:MODULE@ 0 BND-MOD !
+   gpr 0 BND-GPR !
+   fpr 0 BND-FPR !
+   mem 0 BND-MEM !
+   slot 0 BND-SLOT !
+   frame 0 BND-FRAME !
+   copy 0 BND-COPY !
+   remat 0 BND-REMAT !
+   reserve 0 BND-RESERVE !
+   release 0 BND-RELEASE !
+   store 0 BND-STORE !
+   load 0 BND-LOAD !
+   fstore 0 BND-FSTORE !
+   fload 0 BND-FLOAD !
+   trapop 0 BND-TRAP !
+   linksave 0 BND-LINKSAVE !
+   linkload 0 BND-LINKLOAD !
+   BOUND-YES BND-MODE ! ;
 
 public
 
 \ ---- binding the dialect -----------------------------------------------------
 \ The only moment a module can be asked its operation, key and type identities,
-\ because its symbols and types are its own ordinals.
-: BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+\ because its symbols and types are its own ordinals. The names arrive in the
+\ lowering record the dialect built (src/compiler/native/dialect.f), and with it
+\ one thing no value can hold: how the dialect materialises a form of its own in
+\ a module this pass is writing, given the name the module it reads spells that
+\ form with. The rest of the vocabulary is named here and used nowhere - a value
+\ is unmade whole - and belongs to the allocator this pass carries out the plan
+\ of.
+: BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NDIALECT:lowering [ IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id ] -- )
    BND-MODE @ BOUND-YES = if E-A64SPILL-BIND throw then
-   c b DIALECT-CK
-   c b 0 BND-OP A64IR:OPCODES A64IR:BIND-OPCODES! 0 BND-MOD !
-   c b A64IR:KEY-IMM    K-IMM BND-KEY !
-   c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
-   c b A64IR:KEY-ADDR   K-ADDR  BND-KEY !
-   c b A64IR:KEY-SLOT   K-SLOT BND-KEY !
-   c b A64IR:KEY-FRAME  K-FRAME BND-KEY !
-   c b A64IR:KEY-DSLOT  K-DSLOT BND-KEY !
-   c b A64IR:KEY-DBYTES K-DBYTES BND-KEY !
-   c b A64IR:KEY-DWB    K-DWB BND-KEY !
-   c b A64IR:KEY-COND   K-COND BND-KEY !
-   c b A64IR:KEY-DBACK  K-DBACK BND-KEY !
-   c b A64IR:KEY-ENTRY  K-ENTRY BND-KEY !
-   c b A64IR:KEY-OFF    K-OFF BND-KEY !
-   c b A64IR:KEY-MASK   K-MASK BND-KEY !
-   c b A64IR:KEY-TRAP-ENTRY K-TRAP-ENTRY BND-KEY !
-   c b A64IR:KEY-THROW-ENTRY K-THROW-ENTRY BND-KEY !
-   c b A64IR:KEY-FUN    K-FUN BND-KEY !
-   c b A64IR:GPR-TYPE 0 BND-GPR !
-   c b A64IR:MEM-TYPE 0 BND-MEM !
-   c b A64IR:FPR-TYPE 0 BND-FPR !
-   BOUND-YES BND-MODE ! ;
+   BND-ENSURE !
+   BIND! ;
 
 \ Whether a binding is live, for a caller cleaning up after a refused run.
 \ Each pass answers for itself; this one needs it because whether its binding was
@@ -1118,9 +1113,17 @@ public
 \ ---- the pass ----------------------------------------------------------------
 \ The source is carried from the old module, so this pass is never handed the
 \ text and cannot be handed the wrong text.
-: REWRITE ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder -- IR-BUILD:module )
+\
+\ THE LOWERING RECORD TAKEN HERE IS THE WRITTEN MODULE'S, not the read module's: it
+\ is the builder's own, and the module it describes does not exist when the
+\ binding over the read module is taken. Two things come out of it - the types
+\ the values this rewrite mints are of, and the binding it leaves standing at
+\ the end, so the next rewrite reads what this one wrote by the same names.
+: REWRITE ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder NDIALECT:lowering -- IR-BUILD:module )
+   0 OUT-LOW !
    {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder :}
    BND-TAKE
+   0 OUT-LOW @ NDIALECT:TYPES 0 OUT-MEM ! 0 OUT-FPR ! 0 OUT-GPR !
    m BND-MODULE-CK
    m PLAN-CK
    A64RA:FRAME FRAME-N !
@@ -1137,7 +1140,7 @@ public
    SHAPE-CK {: nf:n :}
    nf 0 ?do MKEY i IR-ID:PACK-FUN WALK-FUN loop
    N-CUR @ A64RA:PLAN-N <> if E-A64SPILL-PLAN throw then
-   c b BIND-DIALECT
+   c b  0 OUT-LOW @  BIND!
    c b IR-BUILD:FREEZE ;
 
 public

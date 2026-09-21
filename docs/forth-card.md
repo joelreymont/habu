@@ -1,7 +1,7 @@
 # Habu in one card
 
 Read this instead of [forth.md](forth.md). Every refusal below was measured
-with a two-line probe on `bin/hb`; every other claim condenses the forth.md
+on `bin/hb`; every other claim condenses the forth.md
 heading named at the end of its section; section 9 says which heading to open
 when this runs out.
 
@@ -56,14 +56,15 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
   lives on the stack or in a cell. Names are at most 16 bytes, 64 per
   definition, block-scoped, bindable after a closed early-exit guard.
-- **A `{: p:ptr :}` local admits cell `@` and `!`** (measured: stored 7, read
-  back 7). The restriction is on the **declared** pointee:
+- **A `{: p:ptr :}` local admits cell `@` and `!`**. The restriction is on
+  the **declared** pointee:
   `: F ( ptr a -- n ) {: p:ptr :} p @ ;` is `E-NONPARAMETRIC-EFFECT` because `a`
   is specialised, while `( ptr n -- n )` certifies.
 - Bind multi-cell values whole: `{: p :}` or `{: r:res<n,n> :}` (arity checked).
   Destructure only to compute; pass the whole local between words.
 - Quotations `[: … ;]` are xts, not closures. The token `[ in -- out ]` works as
-  a parameter, a `TYPED-VARIABLE` or a `TYPED-BUFFER` element:
+  a parameter, a `TYPED-VARIABLE` or a `TYPED-BUFFER` element, never a
+  `FIELD` (`E-TDECL-SYNTAX`):
   `: A ( n [ n -- n ] -- n ) execute ;` certifies and `2 [: 1 + ;] A` runs. A
   quotation may not touch an enclosing local (`E-BAD-LOCAL-SHAPE`, rc 75) —
   pass the value on the stack or through a cell.
@@ -130,7 +131,7 @@ Every form loaded and its accessor effect certified.
 | `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
 | `DYNAMIC-BUFFER DB t` | a growable mapped array | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire pointers, release before an image save |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
-| `STRUCTURE p 0 FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled |
+| `STRUCTURE p 0 FIELD x n … ;STRUCTURE` | a by-value record, at most 32 cells | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled |
 
 `PERSISTED-PTR-VARIABLE` and `PERSISTED-PTR-U8-TABLE-VARIABLE` are the
 snapshot-marked siblings, the table one `ptr` deeper. Runtime-sized buffers come

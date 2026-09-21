@@ -128,7 +128,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    c ab A64IR:MACHINE  c ab A64IR:VOCABULARY  A64RA:BIND-DIALECT
    c ab  c ab A64IR:VOCABULARY  A64RAV:BIND-DIALECT
    c ab A64EMIT:BIND-DIALECT
-   c ab A64SPILL:BIND-DIALECT
+   c ab  c ab A64IR:LOWERING  [: A64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT
    c ab A64PRUNE:BIND-DIALECT
    c m ab ROUTINE A64SEL:SELECT {: selected:IR-BUILD:module :}
    m IR-BUILD:RETIRE
@@ -153,7 +153,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    c nb A64IR:MACHINE  c nb A64IR:VOCABULARY  A64RA:BIND-DIALECT
    c nb  c nb A64IR:VOCABULARY  A64RAV:BIND-DIALECT
    c nb A64EMIT:BIND-DIALECT
-   c nb A64SPILL:BIND-DIALECT
+   c nb  c nb A64IR:LOWERING  [: A64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT
    c m nb A64PRUNE:REWRITE {: m1:IR-BUILD:module :}
    A64PRUNE:REWRITTEN n <> if E-A64PRUNE-SHAPE throw then
    m IR-BUILD:RETIRE
@@ -171,7 +171,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    c nb  c nb A64IR:VOCABULARY  A64RAV:BIND-DIALECT
    c nb A64EMIT:BIND-DIALECT
    NPROF-PHASE:SPILL NPROF:START
-   c m nb A64SPILL:REWRITE
+   c m nb  c nb A64IR:LOWERING  A64SPILL:REWRITE
    NPROF-PHASE:SPILL NPROF:STOP ;
 
 \ Turn the allocator's absolute frame high-water back into the ABI's slot count.

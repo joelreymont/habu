@@ -42,6 +42,7 @@
 
 require lib/prelude.f
 require lib/errors.f
+require lib/string.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
@@ -789,6 +790,7 @@ public
 \ does: the entry transfer takes every argument's bytes at once, so the body
 \ stands at the base that transfer leaves the pointer at and never moves it
 \ again until the exit publishes.
+
 : VOCABULARY ( IR-CTX:ctx IR-BUILD:builder -- NDIALECT:vocab )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b NAME IR-BUILD:INTERN-SYMBOL
@@ -797,7 +799,7 @@ public
    c b GPR-TYPE  c b FPR-TYPE  c b MEM-TYPE
    c b KEY-SLOT  c b KEY-FRAME
    c b KEY-DSLOT  c b KEY-DBYTES  c b KEY-DBACK
-   NDIALECT-OPTKEY:ABSENT
+   NDIALECT-OPTSYM:ABSENT
    c b KEY-ENTRY  c b KEY-TRAP-ENTRY
    c b KEY-ADDR  c b KEY-SHIFT
    c b X64IR-OPCODE:MOV OPCODE
@@ -805,6 +807,38 @@ public
    ADDR-LANES SLOT-WIDTH
    NDIALECT-DSTAND:ENTRY
    NDIALECT-VOCAB:MAKE ;
+
+\ ---- what this dialect tells the spill rewriter about itself ------------------
+\ The counterpart of src/compiler/native/a64ir.f's, with this machine's answers
+\ and its absences.
+\
+\ FOUR FRAME FORMS ARE ABSENT, and each is absent for a reason of this machine:
+\ there is no `fstore` or `fload` because a value this dialect allocates is
+\ never put away out of the floating file - select-x64.f lowers no floating
+\ form at all - so a module that asked for a float slot is refused by name
+\ rather than stored in a general form it cannot come back into; and there is
+\ no `linksave` or `linkload` because `call` pushes the return address onto the
+\ machine stack and `ret` takes it back, so saving it is no operation of the
+\ module and a frame shape that counted one would be counting something this
+\ machine never writes.
+: LOWERING ( IR-CTX:ctx IR-BUILD:builder -- NDIALECT:lowering )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b NAME IR-BUILD:INTERN-SYMBOL
+   MAJOR MINOR
+   c b GPR-TYPE  c b FPR-TYPE  c b MEM-TYPE
+   c b KEY-SLOT  c b KEY-FRAME
+   c b X64IR-OPCODE:MOV OPCODE
+   c b X64IR-OPCODE:MOVI OPCODE
+   c b X64IR-OPCODE:RESERVE OPCODE
+   c b X64IR-OPCODE:RELEASE OPCODE
+   c b X64IR-OPCODE:STORE OPCODE
+   c b X64IR-OPCODE:LOAD OPCODE
+   NDIALECT-OPTSYM:ABSENT
+   NDIALECT-OPTSYM:ABSENT
+   c b X64IR-OPCODE:TRAP OPCODE
+   NDIALECT-OPTSYM:ABSENT
+   NDIALECT-OPTSYM:ABSENT
+   NDIALECT-LOWERING:MAKE ;
 
 private
 
@@ -1616,6 +1650,16 @@ private
       codeaddr OF c b c b GPR-TYPE DEF-CODEADDR ENDOF
    ;MATCH ;
 
+\ The form this dialect spells with a name. The table is the authority on the
+\ spelling in both directions, so a name that is not one of them is refused as
+\ the foreign form it is rather than defined as something near it.
+: OP-NAMED ( ptr u8 n -- X64IR:opcode )
+   {: a:ptr u:n :}
+   OPCODES 0 ?do
+      a u i NTH OP-NAME STR= if i NTH unloop exit then
+   loop
+   E-X64IR-OPCODE throw ;
+
 public
 
 \ Materialize only a requested opcode, retaining the module's schema as the sole
@@ -1626,6 +1670,13 @@ public
    c b o ORD MEMO-BIND {: op:IR-ID:ir-symbol-id :}
    c b op IR-BUILD:SCHEMA-DEFINED? 0= if c b o DEFINE-ONE then
    op ;
+
+\ The same materialisation, asked for by NAME, for a pass that rebuilds a module
+\ and reads an operation's spelling out of the module it is copying. The
+\ counterpart of src/compiler/native/a64ir.f's, and what makes one spill
+\ rewriter serve this machine as well.
+: ENSURE-NAMED ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )
+   OP-NAMED ENSURE-OP ;
 
 private
 get-current prot-wid-add

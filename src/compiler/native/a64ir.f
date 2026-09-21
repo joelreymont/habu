@@ -20,6 +20,7 @@
 
 require lib/prelude.f
 require lib/errors.f
+require lib/string.f
 require src/compiler/native-effect.f
 require src/compiler/native/machine.f
 require src/compiler/target.f
@@ -991,6 +992,7 @@ public
 \ The stand is `survey` because that is what src/compiler/native/select.f does:
 \ it surveys the body's boundary transfers and stands the pointer where the
 \ fewest of them need an adjustment.
+
 : VOCABULARY ( IR-CTX:ctx IR-BUILD:builder -- NDIALECT:vocab )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b NAME IR-BUILD:INTERN-SYMBOL
@@ -999,7 +1001,7 @@ public
    c b GPR-TYPE  c b FPR-TYPE  c b MEM-TYPE
    c b KEY-SLOT  c b KEY-FRAME
    c b KEY-DSLOT  c b KEY-DBYTES  c b KEY-DBACK
-   c b KEY-DWB NDIALECT-OPTKEY:PRESENT
+   c b KEY-DWB NDIALECT-OPTSYM:PRESENT
    c b KEY-ENTRY  c b KEY-TRAP-ENTRY
    c b KEY-ADDR  c b KEY-SHIFT
    c b A64IR-OPCODE:MOV OPCODE
@@ -1007,6 +1009,38 @@ public
    HALVES SLOT-WIDTH
    NDIALECT-DSTAND:SURVEY
    NDIALECT-VOCAB:MAKE ;
+
+\ ---- what this dialect tells the spill rewriter about itself ------------------
+\ The frame forms src/compiler/native/spill.f reads and writes, with the
+\ identity, the types and the two keys it shares with the vocabulary above. The
+\ two records are separate because one holding both lists is past the staged
+\ arity a record's MAKE admits, not because the answers come from two places:
+\ every name below is this module's, taken from the same tables.
+\
+\ THE FRAME FORMS ARE PRESENT IN FULL. This machine has a floating register
+\ file, so a value put away out of one comes back into one and `a64.fstr` /
+\ `a64.fldr` are named; it keeps the return address in a register, so the
+\ prologue that saves it and the epilogue that restores it are operations of
+\ the module and `a64.lnkstr` / `a64.lnkldr` are named too. A dialect with
+\ neither says `absent` and the rewriter counts none.
+: LOWERING ( IR-CTX:ctx IR-BUILD:builder -- NDIALECT:lowering )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b NAME IR-BUILD:INTERN-SYMBOL
+   MAJOR MINOR
+   c b GPR-TYPE  c b FPR-TYPE  c b MEM-TYPE
+   c b KEY-SLOT  c b KEY-FRAME
+   c b A64IR-OPCODE:MOV OPCODE
+   c b A64IR-OPCODE:MOVZ OPCODE
+   c b A64IR-OPCODE:RESERVE OPCODE
+   c b A64IR-OPCODE:RELEASE OPCODE
+   c b A64IR-OPCODE:STORE OPCODE
+   c b A64IR-OPCODE:LOAD OPCODE
+   c b A64IR-OPCODE:FSTORE OPCODE NDIALECT-OPTSYM:PRESENT
+   c b A64IR-OPCODE:FLOAD OPCODE NDIALECT-OPTSYM:PRESENT
+   c b A64IR-OPCODE:TRAP OPCODE
+   c b A64IR-OPCODE:LINKSAVE OPCODE NDIALECT-OPTSYM:PRESENT
+   c b A64IR-OPCODE:LINKLOAD OPCODE NDIALECT-OPTSYM:PRESENT
+   NDIALECT-LOWERING:MAKE ;
 
 private
 
@@ -2184,6 +2218,16 @@ private
       fastore   OF c b c b GPR-TYPE c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FASTORE DEF-ASTR ENDOF
    ;MATCH ;
 
+\ The form this dialect spells with a name. The table is the authority on the
+\ spelling in both directions, so a name that is not one of them is refused as
+\ the foreign form it is rather than defined as something near it.
+: OP-NAMED ( ptr u8 n -- A64IR:opcode )
+   {: a:ptr u:n :}
+   OPCODES 0 ?do
+      a u i NTH OP-NAME STR= if i NTH unloop exit then
+   loop
+   E-A64IR-OPCODE throw ;
+
 public
 
 \ Materialize only a requested opcode, retaining the module's schema as the
@@ -2194,6 +2238,15 @@ public
    c b o ORD MEMO-BIND {: op:IR-ID:ir-symbol-id :}
    c b op IR-BUILD:SCHEMA-DEFINED? 0= if c b o DEFINE-ONE then
    op ;
+
+\ The same materialisation, asked for by NAME. A pass that rebuilds a module
+\ reads an operation's spelling out of the module it is copying - a symbol of
+\ THAT module, which means nothing in the one being written - and has no opcode
+\ of this package to name. This is the whole of what such a pass needs from a
+\ dialect beyond the vocabulary: the vocabulary says which names matter, and
+\ this turns any of them into a form defined in the module being built.
+: ENSURE-NAMED ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )
+   OP-NAMED ENSURE-OP ;
 
 private
 get-current prot-wid-add

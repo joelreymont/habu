@@ -137,7 +137,7 @@ variable V-DSTACK                    \ whether the contract declares the data-st
 \ sitting where a symbol would be read.
 variable BND-SLOTW                   \ bytes per frame slot, from the vocabulary
 0 BND-SLOTW !
-1 TYPED-BUFFER BND-DWB NDIALECT:optkey
+1 TYPED-BUFFER BND-DWB NDIALECT:optsym
 1 TYPED-BUFFER BND-STAND NDIALECT:dstand
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
@@ -262,8 +262,8 @@ variable FPO-RUN                     \ where the next predecessor run starts
 \ no symbol to look for.
 : DWB-OF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   0 BND-DWB @ NDIALECT:HAS-KEY? 0= if NOSLOT exit then
-   id  0 BND-DWB @ NDIALECT:KEY  ATTR-INT ;
+   0 BND-DWB @ NDIALECT:HAS? 0= if NOSLOT exit then
+   id  0 BND-DWB @ NDIALECT:SYM  ATTR-INT ;
 
 \ A transfer that carries the pointer move in its own encoding. The two fused
 \ forms are the only operations this dialect gives that key, so this pass tells
@@ -2402,13 +2402,14 @@ public
 \ stand is the other way round - where the data-stack pointer stands over a body
 \ is the selector's policy, and reading it here is what lets one validator be
 \ true of two selectors instead of re-deriving one of them.
+
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NDIALECT:vocab -- )
    NDIALECT-VOCAB:UNMAKE
    {: nm:IR-ID:ir-symbol-id mj:n mi:n arch:CTARGET:arch
       gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
       slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
       dslot:IR-ID:ir-symbol-id dbytes:IR-ID:ir-symbol-id
-      dback:IR-ID:ir-symbol-id wb:NDIALECT:optkey
+      dback:IR-ID:ir-symbol-id wb:NDIALECT:optsym
       entry:IR-ID:ir-symbol-id trap:IR-ID:ir-symbol-id
       addr:IR-ID:ir-symbol-id shift:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id

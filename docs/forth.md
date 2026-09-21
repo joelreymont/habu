@@ -1221,7 +1221,18 @@ the rule.
   fast - certifies at tier 0 and dies at native elaboration with
   `E-IR-TYPE-ARITY` (-6688): measured, `( n ×32 -- n )` runs under
   `test/compiler/aot-mode.f` and `( n ×33 -- n )` throws. Pass a record by
-  reference (`ptr fam`, a handle) when a signature grows past that.
+  reference (`ptr fam`, a handle) when a signature grows past that. A record
+  is the same list: `MAKE` stages one value per cell, so a `STRUCTURE` past 32
+  cells (thirty-one fields, five of them two-cell sumtypes) fails at load with
+  `habu: bad structure declaration 'NAME'` / `ncomp: cannot compile
+  PKG-NAME:MAKE`, rc 67 — split it into the records each reader takes
+  (`vocab` and `lowering` in `src/compiler/native/dialect.f`).
+- **A `FIELD` holds no quotation.** `FIELD fn [ n n -- n ]` is
+  `habu: bad structure declaration: unknown field type at '['`
+  (`E-TDECL-SYNTAX`, 7109), whatever the effect. A `TYPED-VARIABLE V [ n n -- n ]`
+  holds one, and `V @ execute` checks and runs it: the record keeps the data
+  and the hook stands beside it, written and read by the same owner (see **A
+  `FIELD` holds a value, not a body** under Structures And Enums).
 - **`s"` reads no escapes; `S\"` does.** `S\"` needs its delimiter space
   (`s\"\n"` is one undefined token) and reads `\u` as its own escape, so a
   fixture holding JSON writes `\\uXXXX`.

@@ -159,7 +159,7 @@ DKEYS-N TYPED-BUFFER BND-DKEY IR-ID:ir-symbol-id
 \ The write-back key as the dialect stated it, absent and all: a binding that
 \ declares none stores `absent` over whatever the last one named, so no other
 \ dialect's ordinal can be left sitting where a symbol would be read.
-1 TYPED-BUFFER BND-DWB NDIALECT:optkey
+1 TYPED-BUFFER BND-DWB NDIALECT:optsym
 
 1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER S-POOL NEFF:gprs
@@ -540,8 +540,8 @@ variable SHORT-FUN                           \ the function whose scan ran short
 \ look for.
 : DWB-OF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   0 BND-DWB @ NDIALECT:HAS-KEY? 0= if NOATTR exit then
-   id  0 BND-DWB @ NDIALECT:KEY  ATTR-INT-OF ;
+   0 BND-DWB @ NDIALECT:HAS? 0= if NOATTR exit then
+   id  0 BND-DWB @ NDIALECT:SYM  ATTR-INT-OF ;
 
 \ An operation that TRANSFERS one cell of the caller's stack. It names the cell
 \ by its own slot, or - in the fused forms of a dialect that has them, which
@@ -2373,7 +2373,7 @@ public
       gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
       slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
       dslot:IR-ID:ir-symbol-id dbytes:IR-ID:ir-symbol-id
-      dback:IR-ID:ir-symbol-id wb:NDIALECT:optkey
+      dback:IR-ID:ir-symbol-id wb:NDIALECT:optsym
       entry:IR-ID:ir-symbol-id trap:IR-ID:ir-symbol-id
       addr:IR-ID:ir-symbol-id shift:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id

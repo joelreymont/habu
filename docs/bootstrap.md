@@ -262,6 +262,18 @@ Three facts decide how a change reaches the fixpoint:
   runs `bin/hb` from the checkout by name (`HABU_UNDER_TEST` reaches the child
   as an environment variable only), so run the full gate from a tree whose own
   `bin/hb` is the new engine.
+  - *A baked declaration that mints a wordlist moves every wid the next
+    generation bakes.* A product numbers its wordlists in the window of the
+    engine that built it, so an engine built from a tree with one more
+    `STRUCTURE` than the host bakes every package and record wid one higher:
+    gen1 and gen2 differ in the wid columns alone (each package row's public
+    and private wid, each record's wid) and gen2 == gen3 still holds.
+    Measured with `require lib/prelude.f  wordlist . cr` under each engine: a
+    package costs 2, a `STRUCTURE` 1, a `TYPED-VARIABLE` 0 and a `require` of
+    already baked source 0; a tree with one extra trivial `STRUCTURE` moves
+    every wid by 2. Such a change is proved neutral through the `.names`
+    sidecar: every WORD row keeps its start and length and only the wid column
+    and the package rows move.
 - **A new engine primitive that boot-prefix source calls lands in two
   stages.** The host compiles the prefix and resolves the name in its own
   dictionary, so stage 1 emits and registers the primitive with its

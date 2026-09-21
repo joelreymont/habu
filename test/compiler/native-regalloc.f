@@ -1848,7 +1848,7 @@ create TXT
 \ allocate that. The second walk decides nothing, because it reads a module whose
 \ operations already are the ones the first walk assumed.
 : SPILL-BIND ( -- )
-   CC BB A64SPILL:BIND-DIALECT ;
+   CC BB  CC BB A64IR:LOWERING  [: A64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT ;
 
 \ The prune takes its binding the same way, and needs it for the cases below
 \ that reach its rewrite without the scan that plans one.
@@ -1862,7 +1862,7 @@ variable LOWER-TURNS
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC nb A64IR:MACHINE  CC nb A64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC nb  CC nb A64IR:VOCABULARY  A64RAV:BIND-DIALECT
-   CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m0 nb  CC nb A64IR:LOWERING  A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    m0 IR-BUILD:RETIRE
    m1 ;
 
@@ -2235,7 +2235,7 @@ using A64RA
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC nb A64IR:MACHINE  CC nb A64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC nb  CC nb A64IR:VOCABULARY  A64RAV:BIND-DIALECT
-   CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m0 nb  CC nb A64IR:LOWERING  A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 DECL-KEEP A64RA:ALLOCATE
    A64SPILL:BOUND? if A64SPILL:RELEASE then
    m1 DECL-KEEP A64RAV:ACCEPT
@@ -2345,7 +2345,7 @@ using A64RA
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC nb A64IR:MACHINE  CC nb A64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC nb  CC nb A64IR:VOCABULARY  A64RAV:BIND-DIALECT
-   CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m0 nb  CC nb A64IR:LOWERING  A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 DECL-SPILL-CONTRACT A64RA:ALLOCATE
    A64SPILL:BOUND? if A64SPILL:RELEASE then
    m1 DECL-SPILL-CONTRACT A64RAV:ACCEPT
@@ -2462,7 +2462,7 @@ using A64RA
    M-FREEZE {: m0:IR-BUILD:module :}
    CC m0 4 16 LEAF-FRAMED A64RA:ALLOCATE
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb A64SPILL:REWRITE drop ;
+   CC m0 nb  CC nb A64IR:LOWERING  A64SPILL:REWRITE drop ;
 
 \ The same shape one pass over, and the reason the prune needs its own refusal:
 \ A64PRUNE:REWRITES is what searches for the loads AND seals the plan the
@@ -3489,7 +3489,7 @@ using A64RA
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC nb A64IR:MACHINE  CC nb A64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC nb  CC nb A64IR:VOCABULARY  A64RAV:BIND-DIALECT
-   CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m0 nb  CC nb A64IR:LOWERING  A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 FSPILL-CONTRACT A64RA:ALLOCATE
    A64SPILL:BOUND? if A64SPILL:RELEASE then
    m1 FSPILL-CONTRACT A64RAV:ACCEPT
@@ -3501,6 +3501,49 @@ using A64RA
    s" a lowered double spill allocates and is accepted" T-LABEL
    WBND [: FSPILL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 16 T= 0 T= ;
+
+\ THE SAME PLAN UNDER A DIALECT THAT DECLARES NO FLOATING PAIR. The rewriter
+\ asks the lowering record it was bound with, never the dialect, so this
+\ dialect's record with `fstore` and `fload` taken out is a dialect that has
+\ nowhere to put a double: the walk plans the slot exactly as above and the
+\ rewrite refuses it by name where it reaches the store, rather than writing
+\ the general form the eight bytes could not come back out of. This is the
+\ refusal src/compiler/native/x64ir.f's LOWERING earns for a float slot.
+: NO-FSTORE-LOWERING ( -- NDIALECT:lowering )
+   CC BB A64IR:LOWERING NDIALECT-LOWERING:UNMAKE
+   {: nm:IR-ID:ir-symbol-id mj:n mi:n
+      gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
+      slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
+      copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      reserve:IR-ID:ir-symbol-id release:IR-ID:ir-symbol-id
+      store:IR-ID:ir-symbol-id load:IR-ID:ir-symbol-id
+      fstore:NDIALECT:optsym fload:NDIALECT:optsym
+      trapop:IR-ID:ir-symbol-id
+      linksave:NDIALECT:optsym linkload:NDIALECT:optsym :}
+   fstore NDIALECT:HAS? 0= if E-A64SPILL-PLAN throw then
+   fload NDIALECT:HAS? 0= if E-A64SPILL-PLAN throw then
+   nm mj mi gpr fpr mem slot frame copy remat reserve release store load
+   NDIALECT-OPTSYM:ABSENT NDIALECT-OPTSYM:ABSENT
+   trapop linksave linkload
+   NDIALECT-LOWERING:MAKE ;
+
+: FSPILL-REFUSE-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   CC BB  NO-FSTORE-LOWERING  [: A64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT
+   BUILD-FCHAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 FSPILL-CONTRACT A64RA:ALLOCATE
+   A64RA:PLAN-N 0= if E-A64SPILL-PLAN throw then
+   m0 LOWER-ONE drop ;
+
+: FSPILL-REFUSE ( -- )
+   WBND [: FSPILL-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: FSPILL-REFUSE-CASE ( IR-CTX:ctx -- )
+   drop
+   s" a double put away under a dialect with no floating pair is refused by name" T-LABEL
+   [: FSPILL-REFUSE ;] E-A64SPILL-OPCODE TTHROWSQ
+   A64RA:RELEASE ;                    \ LOWER-ONE bound the refused output builder
 
 \ ---- an emission whose two functions have two arities -------------------------
 \ THE SHAPE A QUOTATION MAKES, judged by the validator rather than by the
@@ -3936,6 +3979,7 @@ public
    TWO-FILES-CASE
    FSPILL-PLAN-CASE
    FSPILL-LOWER-CASE
+   WBND [: FSPILL-REFUSE-CASE ;] IR-CTX:WITH-CONTEXT
    INTERLEAVED-CASE
    TIED-EXTRA-CASE
    UNTIED-EXTRA-CASE

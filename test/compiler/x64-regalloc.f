@@ -658,7 +658,7 @@ $1000 constant THROW-STAND
 \ no symbol for one, and the reader refuses rather than answering with a number
 \ that would read as a symbol here.
 : ABSENT-KEY ( -- )
-   NDIALECT-OPTKEY:ABSENT NDIALECT:KEY drop ;
+   NDIALECT-OPTSYM:ABSENT NDIALECT:SYM drop ;
 
 : VOCAB-REFUSE-CASES ( -- )
    s" one dialect's vocabulary bound to another dialect's module is refused, because its names are that module's ordinals and name nothing here" T-LABEL

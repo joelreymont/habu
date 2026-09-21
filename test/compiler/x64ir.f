@@ -196,6 +196,45 @@ private
    3 X64M:MACHINE NMACH:WIDTH-OK? TFALSE
    [: 3 X64M:MACHINE NMACH:SLOT-REACH drop ;] E-NMACH TTHROWSQ ;
 
+\ ---- the frame forms the spill rewriter is handed ----------------------------
+\ The rewriter asks the lowering record and never the dialect, so what this
+\ dialect answers is pinned by name: the general pair and the trap are its
+\ own forms, and the four forms src/compiler/native/x64ir.f leaves absent are
+\ absent - the floating pair because nothing this dialect allocates leaves the
+\ floating file, the link pair because the return address lives on the machine
+\ stack. A float slot under this record is refused by
+\ src/compiler/native/spill.f STORE-FORM, which test/compiler/native-regalloc.f
+\ measures on a record with the pair taken out.
+: LOWERING-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b X64IR:LOWERING NDIALECT-LOWERING:UNMAKE
+   {: nm:IR-ID:ir-symbol-id mj:n mi:n
+      gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
+      slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
+      copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      reserve:IR-ID:ir-symbol-id release:IR-ID:ir-symbol-id
+      store:IR-ID:ir-symbol-id load:IR-ID:ir-symbol-id
+      fstore:NDIALECT:optsym fload:NDIALECT:optsym
+      trapop:IR-ID:ir-symbol-id
+      linksave:NDIALECT:optsym linkload:NDIALECT:optsym :}
+   store IR-ID:SYMBOL-LOCAL
+      c b X64IR-OPCODE:STORE X64IR:OPCODE IR-ID:SYMBOL-LOCAL =
+   load IR-ID:SYMBOL-LOCAL
+      c b X64IR-OPCODE:LOAD X64IR:OPCODE IR-ID:SYMBOL-LOCAL =
+   trapop IR-ID:SYMBOL-LOCAL
+      c b X64IR-OPCODE:TRAP X64IR:OPCODE IR-ID:SYMBOL-LOCAL =
+   fstore NDIALECT:HAS?  fload NDIALECT:HAS?
+   linksave NDIALECT:HAS?  linkload NDIALECT:HAS? ;
+
+: LOWERING-CASE ( -- )
+   s" the general frame pair and the trap are named for the spill rewriter" T-LABEL
+   BND [: LOWERING-BODY ;] IR-CTX:WITH-CONTEXT
+   {: st:bool ld:bool tr:bool fs:bool fl:bool ls:bool ll:bool :}
+   st TTRUE ld TTRUE tr TTRUE
+   s" and the floating pair and the link pair are absent" T-LABEL
+   fs TFALSE fl TFALSE ls TFALSE ll TFALSE ;
+
 \ ---- the conditions ----------------------------------------------------------
 \ Each code is the shipped assembler's own word, so this case states WHICH word
 \ each source relation lowers under. A comparison of Habu cells is signed, which
@@ -515,6 +554,7 @@ public
    OPCODE-ORDINAL-CASE
    REGFILE-CASE
    MACHINE-CASE
+   LOWERING-CASE
    COND-CASE
    MOVE-CASE
    TIE-CASE
