@@ -951,7 +951,12 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 
 : CHK-ENUM-REGISTER ( n -- n ) {: k:n :}   \ k at 'enum'; next scan index
    k s" ;ENUM" CHK-BLOCK-COLLECT 0= if
-      drop s" check.f: missing ;ENUM" CHK-E-CHECK CHK-FAIL
+      drop
+      CHK-DECL-CAPTURE
+      [: CHK-ENUM-DO-DEF ;] catch
+      CHK-DECL-FLUSH
+      CHK-DECL-FAIL
+      LINT-LEX:COUNT exit
    then {: nxt:n :}
    k nxt s" ;ENUM" CHK-DECL-RAW-BODY
    CHK-DECL-CAPTURE
@@ -962,7 +967,12 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 
 : CHK-STRUCT-REGISTER ( n -- n ) {: k:n :}   \ k at 'structure'; next scan index
    k s" ;STRUCTURE" CHK-BLOCK-COLLECT 0= if
-      drop s" check.f: missing ;STRUCTURE" CHK-E-CHECK CHK-FAIL
+      drop
+      CHK-DECL-CAPTURE
+      [: CHK-STRUCT-DO-DEF ;] catch
+      CHK-DECL-FLUSH
+      CHK-DECL-FAIL
+      LINT-LEX:COUNT exit
    then {: nxt:n :}
    k nxt s" ;STRUCTURE" CHK-DECL-RAW-BODY
    CHK-DECL-CAPTURE

@@ -1,6 +1,6 @@
 ---
 title: Route unterminated declarations as packets
-status: open
+status: active
 priority: 3
 issue-type: task
 created-at: "2026-07-26T09:02:20.555235+02:00"

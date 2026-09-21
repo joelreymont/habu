@@ -1583,10 +1583,12 @@ create BIG $2000 allot   variable BIG-U
    erru 0 T= ;
 
 : TEST-ENUM-NOEND ( -- )
-   ENUM-NOEND$ DIRECT-STDIN 70 T=
+   ENUM-NOEND$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CAP-ERR erru s" check.f: missing ;ENUM" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CAP-ERR erru s" enoend" CONTAINS? TTRUE
+   CAP-ERR erru s" missing ;ENUM" CONTAINS? TTRUE ;
 
 \ Each case asserts check's OWN exit (70) and its rendered packet, which is what
 \ distinguishes "the nominal pass rejected it" from "the child run happened to
@@ -1654,10 +1656,12 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru2 s" preverify failed" CONTAINS? TTRUE ;
 
 : TEST-STRUCT-NOEND ( -- )
-   STRUCT-NOEND$ DIRECT-STDIN 70 T=
+   STRUCT-NOEND$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CAP-ERR erru s" check.f: missing ;STRUCTURE" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CAP-ERR erru s" snoend" CONTAINS? TTRUE
+   CAP-ERR erru s" missing ;STRUCTURE" CONTAINS? TTRUE ;
 
 : TEST-PROD-NOEND ( -- )
    PROD-NOEND$ DIRECT-STDIN 70 T=
@@ -1691,7 +1695,8 @@ create BIG $2000 allot   variable BIG-U
    ENUM-CLI-RUN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CAP-ERR erru s" check.f: missing ;ENUM" CONTAINS? TTRUE ;
+   CAP-ERR erru s" bad enum declaration 'enoend'" CONTAINS? TTRUE
+   CAP-ERR erru s" missing ;ENUM" CONTAINS? TTRUE ;
 
 : VREC-PARTIAL-TEST ( -- )
    VREC-PARTIAL$ DIRECT-JSON-STDIN 70 T=
