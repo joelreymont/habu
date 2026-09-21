@@ -67,6 +67,14 @@ public
 \ a fact x64ir.f already owns.
 : MACHINE ( -- NMACH:mach )   ROW NMACH:BY-ID ;
 
+\ ---- the register the running engine keeps its data-stack pointer in ---------
+\ The one door a pass emitting an access to the caller's stack asks at, the twin
+\ of A64M:DSTACK-GPR - there the number comes from the engine's own arm64
+\ declaration, here from the machine dialect's reserved set
+\ (src/compiler/native/x64ir.f R-DSP), because no x86-64 engine declares one yet.
+\ This file reports that register, it does not decide it.
+: DSTACK-GPR ( -- n )   X64IR:DSTACK-GPR ;
+
 private
 get-current prot-wid-add
 

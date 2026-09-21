@@ -1274,6 +1274,21 @@ public
 -8773 constant E-X64SEL-FIXED   \ a form that needs an operand in a register the machine names and the allocator cannot yet be told to place: a shift whose count is not a literal reads rcx, and a divide reads and writes rdx:rax
 -8774 constant E-X64SEL-MACHINE \ a routine contract whose machine is not the one this backend lowers for
 
+\ Native x86-64 instruction emission (package X64EMIT): -8780..-8799.
+\
+\ The straight-line slice writes ONE block of ONE function and nothing that needs
+\ a pass it has not got, so its boundary is two codes: a FORM outside the slice
+\ and a module SHAPE outside it. The other four are the ones every emitter has:
+\ an assignment that is not this module's accepted one, a module that is not the
+\ bound one, an attribute the dialect declares and the operation does not carry,
+\ and an opcode that is none of this dialect's.
+-8780 constant E-X64EMIT-FORM   \ an operation outside the straight-line slice: a branch, a call, a trap, a divide, a select, a shift by cl, a negate, a frame access or a code address - each needs a layout, a relocation site, a fixed register or a prologue that this slice has not got - or a literal that opens a relocation site, which it records nowhere
+-8781 constant E-X64EMIT-SHAPE  \ a module outside the straight-line slice: not exactly one function, not exactly one block, a block that is empty or does not end in its only return, or a body holding a call site or a frame
+-8782 constant E-X64EMIT-ACCEPT \ no accepted register assignment at all, or one accepted for a different module
+-8783 constant E-X64EMIT-MODULE \ emission before the machine dialect's identities were bound, a frozen module that is not the bound one, or a builder of another dialect or schema version
+-8784 constant E-X64EMIT-ATTR   \ an operation carrying no attribute under the key the dialect declares for its form
+-8785 constant E-X64EMIT-OPCODE \ an operation whose opcode is none of the machine dialect's family
+
 \ Embedded instruction constructors (compiler growth region).
 -8830 constant E-X64ASM-OPERAND
 -8840 constant E-A32ASM-OPERAND

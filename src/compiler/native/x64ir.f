@@ -330,6 +330,12 @@ public
 \ reserved set above is.
 : SP-GPR ( -- n )        R-RSP ;
 
+\ ---- the register the running engine keeps its data-stack pointer in ---------
+\ r12, for the same reason SP-GPR is here: the reserved set above is this file's,
+\ so the number is stated once and read from src/arch/x86-64/machine.f, which is
+\ where a pass asks for it (X64M:DSTACK-GPR, the twin of A64M:DSTACK-GPR).
+: DSTACK-GPR ( -- n )    R-DSP ;
+
 \ ---- this machine's register files, for the passes that are not about it ------
 \ The register allocator is linear scan and not an x86-64 pass, so it reads this
 \ description instead of the numbers around it. Sixteen general registers, seven

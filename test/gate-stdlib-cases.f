@@ -297,6 +297,12 @@ SUITE compiler-x64-regalloc
    test/compiler/x64-regalloc.f
 ;SUITE
 
+\ The x86-64 bytes themselves: src/compiler/native/emit-x64.f over the modules
+\ the two suites above select and accept, pinned against llvm-mc vectors.
+SUITE compiler-x64-emit
+   test/compiler/x64-emit.f
+;SUITE
+
 SUITE compiler-tic6x-asm
    test/compiler/tic6x-asm.f
    test/compiler/tic6x-facts.f
