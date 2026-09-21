@@ -28,41 +28,41 @@ engine/primitive-count	8	0.0
 engine/primitive-records	9984	0.2
 source/baked	0	0.0
 aot/framing-cells	128	0.0
-aot/code-blob	1822716	47.9
-aot/dictionary-records	160920	4.2
-aot/call-sites	149148	3.9
-aot/name-pool	87280	2.2
-aot/data-sites	76708	2.0
-aot/address-cells	268232	7.0
-aot/data-cell-bitmap	130912	3.4
-aot/data-cell-values	843476	22.1
+aot/code-blob	1821108	47.9
+aot/dictionary-records	160500	4.2
+aot/call-sites	149052	3.9
+aot/name-pool	87112	2.2
+aot/data-sites	76624	2.0
+aot/address-cells	267912	7.0
+aot/data-cell-bitmap	130792	3.4
+aot/data-cell-values	839044	22.0
 aot/code-sites	36	0.0
 aot/named-code-sites	0	0.0
 aot/code-spans	67520	1.7
 aot/boot-run-entries	4	0.0
 aot/protected-wordlists	672	0.0
 aot/checker-sidecar	0	0.0
-image/text-pad	50100	1.3
+image/text-pad	57348	1.5
 container/rw-segment	192	0.0
 total	3801280	100.0
 
 dictionary the image ships
 class	records	record bytes	name bytes	code bytes
 global	4861	97220	58245	466152
-package-public	2977	59540	30182	267968
+package-public	2957	59140	30019	266360
 package-private	11	220	114	1684
 unmapped-wordlist	0	0	0	0
-package rows	197	3940	2277	0
+package rows	196	3920	2265	0
 name pool entries reachable only from private records, bytes 114
 name pool entries reachable only from named code sites, bytes 0
 name pool entries nothing in the image references, bytes 606
 
 baked call sites
-  sites 12429, bound to seeded primitives 12429, to payload records 0, left as names 0
+  sites 12421, bound to seeded primitives 12421, to payload records 0, left as names 0
   distinct bound callees 75
 
 reachability from the dictionary-surface roots
-  reachable	7848	735504 code bytes
+  reachable	7828	733896 code bytes
   unreachable	1	300 code bytes, 20 record bytes, 12 name bytes
   package-private	1	20	300
   package	records	code bytes
@@ -70,9 +70,9 @@ reachability from the dictionary-surface roots
 
 reachability from the engine-entry roots
   reachable	3507	528864 code bytes
-  unreachable	4342	206940 code bytes, 86840 record bytes, 48411 name bytes
+  unreachable	4322	205332 code bytes, 86440 record bytes, 48258 name bytes
   global	3048	60960	122468
-  package-public	1293	25860	84172
+  package-public	1273	25460	82564
   package-private	1	20	300
   package	records	code bytes
   IR-ATTR	70	13244
@@ -88,31 +88,31 @@ reachability from the engine-entry roots
   A64ASM	46	1932
   TYPE-DECL	20	1772
   NTAPE	11	1680
-  DATA-CLAIMS	20	1608
   NSTR	10	1400
   IR-OP	22	1296
-  (114 more packages)
+  PRIM-SPEC	31	1292
+  (113 more packages)
 
-captured DATA heap: 8378912 bytes of span, 303468 present cells in 130909 bitmap bytes, 974385 bytes of image
-  owners 968, unowned value bytes 52252, unowned cells 8575
+captured DATA heap: 8371360 bytes of span, 302541 present cells in 130791 bitmap bytes, 969833 bytes of image
+  owners 963, unowned value bytes 52197, unowned cells 8562
   owner	offset	extent	cells	bytes	image cost
-  DONE	4178216	4200696	251545	429255	494879
-  SYM-STR-BOOT	1817328	393216	31142	280273	286417
-  STR-MIN-I64$	3210984	944000	56	317	15067
+  DONE	4170712	4200648	251241	428676	494299
+  SYM-STR-BOOT	1817328	393216	31096	279864	286008
+  STR-MIN-I64$	3203480	944000	56	317	15067
   EC-RV-BOOT	769424	10240	1280	12800	12960
   EC-TV-BOOT	759184	10240	1280	12800	12960
   RVT-BOOT	707984	10240	1280	12800	12960
   TVT-BOOT	697744	10240	1280	12800	12960
-  REQUIRE-PATHS	2609416	524800	443	3571	11771
+  REQUIRE-PATHS	2601912	524800	443	3571	11771
   SYMS-BOOT	1161968	655360	0	0	10240
   TDECL-PROT-WID-ARMED	2550520	8520	731	6378	6511
   RDP	658000	39720	1433	5329	5949
   PES	2213720	12288	1496	2738	2930
   DFERS	2226488	65536	200	1169	2193
-  NAMES	2600800	4096	174	1562	1626
   NORET-BOOT	2296728	98304	0	0	1536
-  NAMES-U	2604896	1288	161	1434	1454
-  (470 more owners)
+  RBF-NAME-BOOT	2422312	71936	10	40	1164
+  SPA-BOOT	963760	65536	0	0	1024
+  (465 more owners)
 <!-- ENGINE-SIZE-ROWS-END -->
 `tools/engine-size.f` is the command line; `tools/image-size-lib.f` is the walk,
 in a library because `tools/hb-build.f` runs it too. It walks the image file
