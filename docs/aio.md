@@ -54,6 +54,7 @@ words. A submission with no loop running is `E-AIO-STATE`.
 | `AIO:GROUP-` | `( AIO:ticket AIO:group -- )` | never |
 | `AIO:GROUP-COUNT` | `( AIO:group -- n )` | never |
 | `AIO:GROUP-MAX` | `( -- n )` | never; the tickets one group holds |
+| `AIO:MAX-OPS` | `( -- n )` | never; the records: operations in flight, a poll with a deadline holding two |
 | `AIO:AWAIT-ANY` | `( AIO:group -- AIO:ticket AIO:outcome )` | until one of them has ended |
 
 `AIO:outcome` is a layout, so no caller reads a result without deciding what to

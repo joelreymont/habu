@@ -1062,6 +1062,14 @@ public
 : GROUP-MAX ( -- n )
    GROUP-MAX ;
 
+\ The records, which is the ceiling on operations in flight at once: a poll with
+\ a deadline holds two (its own and its link timeout's), every other operation
+\ one, a cancel one until its own completion. Past it a submission is
+\ E-AIO-FULL. A program that parks a known number of tasks in waits can refuse
+\ a count that cannot fit before it starts them.
+: MAX-OPS ( -- n )
+   MAX-OPS ;
+
 \ The first ticket of the group whose operation has ended, with its outcome. The
 \ ticket leaves the group and its record is released, exactly as AWAIT does; the
 \ others stay. An empty group has nothing to wait for and is E-AIO-GROUP.

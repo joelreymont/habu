@@ -357,8 +357,9 @@ TASK:MIN-STACK TASK:TASK FAN7
 
 \ Every record in flight, and then one more. The pipe is what releases them:
 \ with no record left there is none for a cancel either, which is the honest
-\ shape of a full table.
+\ shape of a full table. The exported ceiling is the table's size.
 : CASE-FULL ( -- )
+   AIO:MAX-OPS FULL-N T=
    P-R P-W PIPE-OPEN
    FULL-N 0 ?do
       P-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD i FULL-TICKETS !
