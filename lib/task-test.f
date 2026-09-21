@@ -873,6 +873,32 @@ variable JOIN-TWICE-RC
    ['] TASK-THROW-WORK JOIN-BAD-CLEAN TASK:ACTIVATE
    JOIN-BAD-CLEAN TASK:JOIN E-TASK-STATE JOIN-ERR= ;
 
+variable HALTED-SEEN
+variable HALTED-PARKED
+TASK:MIN-STACK TASK:TASK HALTED-TASK
+
+: HALTED-WORK ( -- )
+   1 HALTED-PARKED atomic!
+   begin
+      TASK:STOP
+      TASK:HALTED? if 1 HALTED-SEEN atomic! then
+      TASK:PAUSE
+   again ;
+
+\ TASK:HALT wakes its target out of TASK:STOP, and what the target finds there
+\ is its own halt: a STOP loop reads it to give up what it holds before the
+\ TASK:PAUSE that ends the task. The main thread has no TCB and is never halted.
+: TASK-TEST-HALTED ( -- )
+   0 HALTED-SEEN !
+   0 HALTED-PARKED !
+   TASK:HALTED? TFALSE
+   ['] HALTED-WORK HALTED-TASK TASK:ACTIVATE
+   HALTED-PARKED 1 APP-WAIT-CELL
+   HALTED-TASK TASK:HALT
+   HALTED-TASK APP-WAIT-DONE
+   HALTED-SEEN @ 1 T=
+   HALTED-TASK TASK:KILL ;
+
 \ A halted task leaves at TASK:PAUSE instead of through the runner: that ending
 \ runs the cleanup and releases the joiner too.
 : TASK-TEST-JOIN-HALTED ( -- )
@@ -1248,6 +1274,7 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
    TASK-TEST-JOIN-SILENT
    TASK-TEST-JOIN-CLEANUP
    TASK-TEST-JOIN-CLEANUP-THROWS
+   TASK-TEST-HALTED
    TASK-TEST-JOIN-HALTED
    TASK-TEST-JOIN-REFUSED
    TASK-TEST-SLEEP-MAIN

@@ -1395,6 +1395,7 @@ public
 -9232 constant E-CURL-STATE
 -9233 constant E-CURL-RESULT
 -9234 constant E-CURL-OPERAND
+-9235 constant E-CURL-CAPACITY     \ no transfer record free: the multiplexed table is full
 
 \ Authenticated encryption and HMAC over libcrypto (package CRYPTO):
 \ -9270..-9279. After package DB (-9250..-9259); -9240..-9249 is

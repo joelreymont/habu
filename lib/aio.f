@@ -819,6 +819,11 @@ public
 : GROUP-COUNT ( group -- n )
    GROUP>N G-COUNT@ ;
 
+\ The tickets one group holds, so a caller that fills a group itself can stop
+\ before GROUP+ refuses.
+: GROUP-MAX ( -- n )
+   GROUP-MAX ;
+
 \ The first ticket of the group whose operation has ended, with its outcome. The
 \ ticket leaves the group and its record is released, exactly as AWAIT does; the
 \ others stay. An empty group has nothing to wait for and is E-AIO-GROUP.

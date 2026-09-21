@@ -17,6 +17,8 @@ require lib/process-env.f
 require lib/ffi-abi.f
 require lib/image-lifecycle.f
 require lib/task.f
+require lib/fs-list.f                   \ the /proc/self/task entries the loop cases count
+require lib/aio.f                       \ the loop the multiplexed transfers wait on
 require lib/net/tcp4.f
 require lib/net/curl.f
 
@@ -27,7 +29,7 @@ private
 CAST: BLEN>N ( NUM:byte-len -- n )
 
 $7F000001 constant LOOPBACK
-8 constant BACKLOG
+$40 constant BACKLOG                    \ the concurrent case connects MANY-N times at once
 $2000 constant BODY-CAP
 $1000 constant REQ-CAP
 $400 constant RES-CAP
@@ -399,9 +401,11 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    conn SERVE-MISSING ;
 
 
+\ The count moves atomically because a case reads it WHILE the server task is
+\ serving: the cancel case waits for its own request to arrive before ending it.
 : SERVE-ONE ( TCP4:connection -- ) {: conn:TCP4:connection :}
    conn REQ-READ 0= if conn TCP4:CLOSE PEER-STATUS exit then
-   1 SERVER-HITS +!
+   1 SERVER-HITS atomic-add drop
    conn ROUTE ;
 
 
@@ -840,11 +844,306 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    LOW-SPEED-PAIRS ;
 
 
+\ ---- many transfers on one task ----------------------------------------------
+\ Every wait below is bounded, so a transfer the loop never answers is a FAIL
+\ and not a hung suite.
+
+2000 constant WAIT-MS                   \ the bound on every wait in these cases
+5 constant SETTLE-MS                    \ grace for a request to reach the server
+$20 constant MANY-N                     \ the concurrent transfers of case one
+$40 constant MANY-CAP                   \ one span each, far past the six-byte body
+4 constant STALL-GROUP                  \ one stalled transfer and three healthy ones
+
+create MANY-BUF MANY-N MANY-CAP * allot
+
+TEST-ALIGN8
+variable THREAD-N
+variable BASE-THREADS
+variable DURING-THREADS
+variable HALT-PARKED
+variable HALT-RC
+variable OWNER-RC
+
+MANY-N TYPED-BUFFER MANY-HANDLES CURL:handle
+TYPED-VARIABLE COLD-HANDLE CURL:handle
+TYPED-VARIABLE EXTRA-HANDLE CURL:handle
+TYPED-VARIABLE OWNER-HANDLE CURL:handle
+TYPED-VARIABLE HALT-HANDLE CURL:handle
+
+TASK:MIN-STACK TASK:TASK OWNER-TASK
+TASK:MIN-STACK TASK:TASK HALT-TASK
+
+
+: THREAD-TALLY ( ptr u8 n -- )
+   2drop 1 THREAD-N atomic-add drop ;
+
+
+\ The live threads of this process, counted from its own task directory.
+: THREADS ( -- n )
+   0 THREAD-N !
+   s" /proc/self/task" [: THREAD-TALLY ;] FS-LIST:EACH
+   THREAD-N @ ;
+
+
+: REACHED? ( ptr n n -- bool ) {: cell:ptr want:n :}
+   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      cell atomic@ want >= if true exit then
+      mono-ns deadline > if false exit then
+      TASK:PAUSE
+   again ;
+
+
+: ENDED? ( ptr n -- bool ) {: tcb:ptr :}
+   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      tcb TASK:DONE? if true exit then
+      mono-ns deadline > if false exit then
+      TASK:PAUSE
+   again ;
+
+
+\ An abandoned record is given back by the loop and not by the task that left
+\ it, so the stop is retried to a bound rather than asserted on the first try.
+: STOPPED? ( -- bool )
+   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      [: CURL:LOOP-STOP ;] catch 0= if true exit then
+      mono-ns deadline > if false exit then
+      TASK:PAUSE
+   again ;
+
+
+: WAIT-HIT ( n -- ) {: before:n :}
+   SERVER-HITS before 1+ REACHED? 0= if E-PROC-TIMEOUT throw then ;
+
+
+\ The loop's answer for one handle, recorded exactly as FETCH records PERFORM's,
+\ so the two paths are compared field by field and not by their spelling.
+: AWAIT-ONE ( CURL:handle -- ) {: subject:CURL:handle :}
+   subject CURL:AWAIT
+   MATCH CURL:fetch-result
+      response OF RECORD-RESPONSE ENDOF
+      truncated OF RECORD-TRUNCATED ENDOF
+      failed OF RECORD-FAILED ENDOF
+   ;MATCH ;
+
+
+: DROP-FETCH ( CURL:fetch-result -- )
+   MATCH CURL:fetch-result
+      response OF 2drop ENDOF
+      truncated OF 2drop ENDOF
+      failed OF drop ENDOF
+   ;MATCH ;
+
+
+: MULTI-FETCH ( CURL:handle len -- ) {: subject:CURL:handle capacity:len :}
+   RESULT-RESET
+   subject BODY-BUF capacity CURL:START EXPECT-OK
+   subject AWAIT-ONE ;
+
+
+\ One request through PERFORM and the same one through the loop: the answers
+\ must agree, status, length and bytes.
+: PARITY-WHOLE ( -- )
+   PATH-HELLO$ GET-READY {: one:CURL:handle :}
+   one BODY-CAP >LEN FETCH
+   one CURL:CLEANUP
+   s" PERFORM answers 200 with the fixture's bytes" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   BODY$ HELLO$ T$=
+   LAST-STATUS @ {: status:n :}
+   LAST-LEN @ {: u:n :}
+   PATH-HELLO$ GET-READY {: two:CURL:handle :}
+   two BODY-CAP >LEN MULTI-FETCH
+   two CURL:CLEANUP
+   s" START and AWAIT answer the same fetch-result PERFORM did" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ status T=
+   LAST-LEN @ u T=
+   BODY$ HELLO$ T$= ;
+
+
+\ A span too short truncates on both paths, with the WHOLE body's length.
+: PARITY-TRUNCATED ( -- )
+   PATH-HELLO$ GET-READY {: one:CURL:handle :}
+   one 3 >LEN FETCH
+   one CURL:CLEANUP
+   LAST-KIND @ {: kind:n :}
+   LAST-LEN @ {: u:n :}
+   PATH-HELLO$ GET-READY {: two:CURL:handle :}
+   two 3 >LEN MULTI-FETCH
+   two CURL:CLEANUP
+   s" a short span truncates through the loop as it does through PERFORM" T-LABEL
+   kind KIND-TRUNCATED T=
+   LAST-KIND @ KIND-TRUNCATED T=
+   LAST-LEN @ u T=
+   BODY-BUF 3 s" hel" T$= ;
+
+
+: MANY-SPAN ( n -- ptr u8 ) {: idx:n :}
+   MANY-BUF idx MANY-CAP * + ;
+
+
+: MANY-START ( n -- ) {: idx:n :}
+   PATH-HELLO$ GET-READY {: subject:CURL:handle :}
+   subject idx MANY-HANDLES !
+   subject idx MANY-SPAN MANY-CAP >LEN CURL:START EXPECT-OK ;
+
+
+: MANY-CHECK ( n -- ) {: idx:n :}
+   idx MANY-HANDLES @ {: subject:CURL:handle :}
+   subject AWAIT-ONE
+   subject CURL:CLEANUP
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   idx MANY-SPAN LAST-LEN @ HELLO$ T$= ;
+
+
+: EXTRA-START ( -- )
+   EXTRA-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK ;
+
+
+\ Thirty-two transfers in flight at once, awaited in order. The thread count is
+\ the claim: the CURL loop and the AIO loop are the whole cost of all of them.
+: CASE-MANY ( -- )
+   MANY-N 0 ?do i MANY-START loop
+   THREADS DURING-THREADS !
+   PATH-HELLO$ GET-READY EXTRA-HANDLE !
+   s" a START with every transfer record claimed is refused" T-LABEL
+   [: EXTRA-START ;] CURL:E-CAPACITY TTHROWSQ
+   EXTRA-HANDLE @ CURL:CLEANUP
+   MANY-N 0 ?do i MANY-CHECK loop
+   s" thirty-two transfers cost the CURL loop and the AIO loop alone" T-LABEL
+   DURING-THREADS @ BASE-THREADS @ 2 + T= ;
+
+
+\ One transfer the server never answers, ended by its own ceiling, while the
+\ others on the same loop answer 200: a transfer's failure is its own.
+: CASE-STALLED ( -- )
+   PATH-STALL$ GET-READY {: bad:CURL:handle :}
+   bad STALL-MS >MS CURL:TIMEOUT! EXPECT-OK
+   RESULT-RESET
+   bad BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   STALL-GROUP 1- 0 ?do i MANY-START loop
+   bad AWAIT-ONE
+   bad CURL:CLEANUP
+   s" a stalled transfer ends as CURLE_OPERATION_TIMEDOUT and alone" T-LABEL
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 28 T=
+   STALL-GROUP 1- 0 ?do i MANY-CHECK loop ;
+
+
+\ The server holds this path open and answers nothing, so the transfer is really
+\ in flight when it is cancelled - the hit count is what says its request
+\ arrived - and nothing but the cancel can end it inside the ten-second ceiling.
+: CASE-CANCEL ( -- )
+   SERVER-HITS atomic@ {: before:n :}
+   PATH-STALL$ GET-READY {: subject:CURL:handle :}
+   RESULT-RESET
+   subject BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   before WAIT-HIT
+   subject CURL:CANCEL
+   subject AWAIT-ONE
+   subject CURL:CLEANUP
+   s" a cancelled transfer in flight ends as CURLE_ABORTED_BY_CALLBACK" T-LABEL
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 42 T= ;
+
+
+: OWNER-WORK ( -- )
+   [: OWNER-HANDLE @ CURL:AWAIT DROP-FETCH ;] catch OWNER-RC ! ;
+
+
+\ A transfer belongs to the task that started it, the loop will not stop while
+\ one is in flight, and the record is gone once its answer has been taken.
+: CASE-OWNER ( -- )
+   0 OWNER-RC !
+   PATH-HELLO$ GET-READY OWNER-HANDLE !
+   RESULT-RESET
+   OWNER-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   s" the loop refuses to stop while a transfer is in flight" T-LABEL
+   [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
+   ['] OWNER-WORK OWNER-TASK TASK:ACTIVATE
+   OWNER-TASK ENDED? TTRUE
+   OWNER-TASK TASK:KILL
+   s" a transfer is awaited by the task that started it, and once" T-LABEL
+   OWNER-RC @ CURL:E-STATE T=
+   OWNER-HANDLE @ AWAIT-ONE
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   [: OWNER-HANDLE @ CURL:AWAIT DROP-FETCH ;] CURL:E-STATE TTHROWSQ
+   OWNER-HANDLE @ CURL:CLEANUP ;
+
+
+: HALT-WORK ( -- )
+   HALT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
+   MATCH CURL:status
+      ok OF ENDOF
+      failed OF CURL:CODE>N HALT-RC ! ENDOF
+   ;MATCH
+   1 HALT-PARKED atomic!
+   HALT-HANDLE @ CURL:AWAIT DROP-FETCH ;
+
+
+\ A task halted while it waits ends at its PAUSE and abandons its record; the
+\ loop gives that record back, which is what lets the loop stop afterwards.
+: CASE-HALTED ( -- )
+   0 HALT-PARKED !
+   0 HALT-RC !
+   PATH-STALL$ GET-READY HALT-HANDLE !
+   ['] HALT-WORK HALT-TASK TASK:ACTIVATE
+   HALT-PARKED 1 REACHED? TTRUE
+   SETTLE-MS TASK:SLEEP
+   HALT-TASK TASK:HALT
+   HALT-TASK ENDED? TTRUE
+   HALT-TASK TASK:KILL
+   s" a submitter halted in AWAIT ends and the loop stops after it" T-LABEL
+   HALT-RC @ 0 T=
+   STOPPED? TTRUE
+   HALT-HANDLE @ CURL:CLEANUP ;
+
+
+\ The loop opens again on an empty table and carries a transfer as before.
+: CASE-RESTART ( -- )
+   CURL:LOOP-START EXPECT-OK
+   PATH-HELLO$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN MULTI-FETCH
+   subject CURL:CLEANUP
+   s" the loop starts again after a stop and carries a transfer" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   BODY$ HELLO$ T$=
+   CURL:LOOP-STOP ;
+
+
+: START-COLD ( -- )
+   COLD-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK ;
+
+
+: TEST-MULTI ( -- )
+   PATH-HELLO$ GET-READY COLD-HANDLE !
+   s" a transfer started before the loop is running is refused" T-LABEL
+   [: START-COLD ;] CURL:E-STATE TTHROWSQ
+   COLD-HANDLE @ CURL:CLEANUP
+   CURL:LOOP-START EXPECT-OK
+   s" a second LOOP-START is refused" T-LABEL
+   [: CURL:LOOP-START EXPECT-OK ;] CURL:E-STATE TTHROWSQ
+   PARITY-WHOLE
+   PARITY-TRUNCATED
+   CASE-MANY
+   CASE-STALLED
+   CASE-CANCEL
+   CASE-OWNER
+   CASE-HALTED
+   CASE-RESTART ;
+
+
 : TEST-SERVER ( -- )
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS @ 12 T= ;
+   SERVER-HITS atomic@ 56 T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
@@ -911,6 +1210,10 @@ public
    TEST-NO-URL
    TEST-FILE-SCHEME
    TEST-REFUSALS
+   THREADS BASE-THREADS !
+   AIO:LOOP-START
+   TEST-MULTI
+   AIO:LOOP-STOP
    OPT-IN
    TEARDOWN
    TEST-SERVER

@@ -100,6 +100,98 @@ status is NOT a failure: a 404 is a `response` carrying 404.
 `CLEANUP` destroys the handle and frees its header list; neither is ever left
 allocated. The handle is dead afterwards and must not be used again.
 
+## Many transfers on one task
+
+`PERFORM` holds its task for the whole transfer, so ten transfers that way cost
+ten threads parked in libcurl. The words below are the other shape: ONE
+package-owned task drives every transfer, and a task that starts one is free
+until it asks for the answer.
+
+| Operation | Inputs | Result |
+| --- | --- | --- |
+| `LOOP-START` | | `status` |
+| `START` | Handle, writable byte span | `status` |
+| `AWAIT` | Handle | `fetch-result` |
+| `CANCEL` | Handle | |
+| `LOOP-STOP` | | |
+
+The loop task parks in [AIO](aio.md), not in libcurl. One turn is: take the
+first AIO ticket of the loop's group that ended; drain the wake pipe and scan
+the transfer records if that was the wake ticket, forget the timer if it was the
+timer, free an fd's slot if it was a poll; call `curl_multi_perform` and take
+every `CURLMSG_DONE` from `curl_multi_info_read`; then ask `curl_multi_fdset`
+which descriptors libcurl is waiting on and `curl_multi_timeout` how long it may
+wait, and rebuild the tickets from those answers. A descriptor still wanted with
+the mask its ticket holds keeps that ticket; one whose mask changed or that left
+the sets is `AIO:CANCEL`led and armed again if it comes back; the exception set
+is asked for as readable and writable together. The multi timeout becomes one
+`AIO:TIMEOUT` ticket — 100 ms when libcurl answers -1, never more than 1000 ms,
+and never less than 1 — re-armed when it fires and replaced when libcurl asks
+for a shorter one. libcurl's other event shape,
+`curl_multi_socket_action` with `CURLMOPT_SOCKETFUNCTION` and
+`CURLMOPT_TIMERFUNCTION`, is callbacks, and Habu hands libcurl no callback — the
+same rule `PERFORM`'s memstream answers.
+
+`AIO:LOOP-START` is the program's job and has to have happened first: a
+`LOOP-START` with no AIO loop running answers AIO's own `E-AIO-STATE`. The wake
+pipe is what `START`, `CANCEL` and `LOOP-STOP` write one byte to after they have
+marked a record; the loop holds one `AIO:POLL-ADD` on its read end, and a byte
+that arrives between the read and the scan costs one extra turn, never a missed
+record.
+
+Every per-handle option — `URL!`, `METHOD!`, `HEADER+`, `BODY!`,
+`COOKIE-FILE!`, `COOKIE-JAR!`, `TIMEOUT!`, `LOW-SPEED!`, `FOLLOW!` and the
+scheme restriction — is set before `START` and holds for that transfer alone, so
+one transfer's timeout, stall or failure ends that transfer and nothing else.
+
+From `START` until `AWAIT` answers, the handle and the span belong to the loop:
+no other task may touch either, and nothing outside the loop asks libcurl about
+the handle. That is why a waiter finds its own transfer by scanning the
+package's records for its handle rather than calling `curl_easy_getinfo` on a
+handle the loop may be driving — `CURLOPT_PRIVATE` already carries that handle's
+header list. A second `START` on a handle already in flight is `CURL:E-STATE`,
+and so are `AWAIT` and `CANCEL` on a handle with none, and an `AWAIT` from a
+task that did not start it.
+
+`AWAIT` answers the fetch-result `PERFORM` would have answered, with the same
+`response`, `truncated` and `failed` meanings, and it is what gives the transfer
+record back: every started transfer is awaited exactly once, cancelled ones
+included. The wait is a `TASK:STOP` loop, so it costs no CPU and the main thread
+may wait too. A `TASK:HALT` while it waits ends the calling task at its next
+`TASK:PAUSE`, and the record is abandoned first: the loop takes the handle out,
+drops the body and frees the record without waking anybody, which is what keeps
+the loop from waking a TCB the join has released. No `TASK:AT-EXIT` is
+registered — AIO already holds that slot for a task that submits.
+
+`CANCEL` ends one early — the loop takes the handle out of the multi handle,
+drops whatever body it had collected and answers the waiter `failed` with
+`CURLE_ABORTED_BY_CALLBACK` (42) — and a transfer that finished first keeps its
+result, so a cancel that loses that race changes nothing.
+
+`LOOP-STOP` refuses with `CURL:E-STATE` while any record is not free, exactly as
+`AIO:LOOP-STOP` refuses a ring the kernel still owns: await or cancel-and-await
+everything first. It then wakes the loop, joins it, destroys the multi handle
+and closes the pipe, and rethrows whatever ended the loop. Every ticket the loop
+submitted is cancelled and awaited before it returns, so the AIO loop can be
+stopped after it. A second `LOOP-START`, and a `LOOP-STOP` with no loop running,
+are `CURL:E-STATE`. After a stop the loop can be started again.
+
+The table holds `MAX-TRANSFERS` (32) transfers at once and a `START` past that
+is `CURL:E-CAPACITY`. Thirty-two rather than the sixty-four a record table alone
+would allow: one AIO group holds `AIO:GROUP-MAX` (64) tickets, two of them are
+the wake pipe's and the timer's, and a transfer can hold more than one
+descriptor while it resolves and connects. When the sets still want more tickets
+than the group has room for, the descriptors left over are not armed that turn
+and the timer is capped at 100 ms instead, so the loop asks again: a bounded
+delay, never a hang. An fd at or above `FD_SETSIZE` cannot appear in an fd_set
+at all, so the sets also bound the loop at 1024 descriptors and that ceiling is
+libcurl's own.
+
+A multi call that refuses the handle it was given is a contract violation: the
+loop ends every transfer in flight as `failed` with 42 so no owner is left
+parked, gives its tickets back, and `CURL:E-RESULT` is rethrown from
+`LOOP-STOP`.
+
 ## Failures
 
 `CURL:E-PLATFORM` rejects a non-Linux target before anything is allocated.
@@ -111,8 +203,10 @@ low-speed value outside its range, and a URL, method, path or header line
 containing a NUL, which would otherwise be silently cut short at the C string
 boundary.
 `CURL:E-RESULT` reports a libcurl contract violation, such as a status outside
-`0..999` after a successful transfer. A missing libcurl symbol
-is package FFI's `E-FFI-DLSYM`, named where the first call stands.
+`0..999` after a successful transfer, or a multi call that refuses the handle it
+was given. `CURL:E-CAPACITY` rejects a `START` with no transfer record free. A
+missing libcurl symbol is package FFI's `E-FFI-DLSYM`, named where the first
+call stands.
 
 ## Declarations
 
@@ -158,8 +252,23 @@ finishes it whole and the same limit alone still ends the stalled path, a handle
 with no URL, a `file://` URL to a readable file that is refused with its bytes
 never reaching the buffer, and the refusals: a dead handle, a NUL inside a URL,
 a low-speed rate below zero and a window past the C long ceiling, against a
-handle that takes both the disabling pair and a real one. A last case checks the
-server task itself served every request and reported no fault.
+handle that takes both the disabling pair and a real one.
+
+The loop's own cases follow, with `AIO:LOOP-START` run first because a live task
+forbids compilation: a `START` before `LOOP-START` and a second `LOOP-START`
+refused with `E-STATE`; the same request answered identically by `PERFORM` and
+by `START`/`AWAIT`, whole and against a span too short for it; thirty-two
+transfers in flight at once, each with its own span, where the thread count read
+from `/proc/self/task` during the run is the count before plus two — the CURL
+loop and the AIO loop — and a thirty-third `START` is `E-CAPACITY`; one transfer
+the server never answers ending as 28 under its own `TIMEOUT!` while three
+others on the same loop answer 200; a transfer cancelled while the server holds
+it open, which answers `failed` with 42; a transfer another task may not await,
+a loop that refuses to stop while it is in flight, and a second `AWAIT` of it
+refused; a submitter task halted while parked in `AWAIT`, after which the loop
+stops once it has taken the abandoned record back; and the loop started again,
+carrying one more transfer. A last case checks the server task itself served
+every request and reported no fault.
 
 Setting `HABU_NET_TESTS=1` adds one request to `https://example.com`, which is
 the only case that leaves the machine and the only one that exercises TLS and

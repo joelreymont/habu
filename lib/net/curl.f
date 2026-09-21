@@ -5,12 +5,16 @@
 \ back its own info, buffer and length, and the request and response spans are
 \ caller-owned. The one-time global init flags (GLOBAL-DONE,
 \ GLOBAL-REGISTERED) are PROCESS-WIDE, which is what curl_global_init requires.
-\ See docs/threads.md.
+\ So is the multiplexed transfer table at the end of this file: one loop task
+\ owns the multi handle and the records, and a record is claimed atomically by
+\ whichever task starts a transfer. See docs/threads.md.
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/type/deftype.f
 require lib/image-lifecycle.f
 require lib/task.f
+require lib/aio.f                         \ the loop waits on AIO tickets
+require lib/adt/result.f                  \ TASK:JOIN's answer, read by LOOP-STOP
 
 package CURL
 public
@@ -39,6 +43,7 @@ E-CURL-OPERAND constant E-OPERAND
 E-CURL-PLATFORM constant E-PLATFORM
 E-CURL-STATE constant E-STATE
 E-CURL-RESULT constant E-RESULT
+E-CURL-CAPACITY constant E-CAPACITY
 
 private
 
@@ -117,6 +122,38 @@ FUNCTION: GETINFO-CELL curl_easy_getinfo ( n n ptr u8 -- n )
 ;FUNCTION
 
 
+\ libcurl's multi interface, the transfer driver the loop at the end of this
+\ file runs on. CURLM* is opaque like CURL*, every answer is a CURLMcode, and
+\ each out-parameter is a C int, so each line is checkable against
+\ /usr/include/curl/multi.h on sight. curl_multi_info_read answers a CURLMsg*
+\ or zero, which is foreign memory this package copies before it reads, and
+\ curl_multi_fdset fills three fd_sets the CALLER cleared, which is why each of
+\ them is declared as the whole FD_SETSIZE bitmap it writes into.
+FUNCTION: MULTI-INIT curl_multi_init ( -- n ) ;FUNCTION
+FUNCTION: MULTI-CLEANUP curl_multi_cleanup ( n -- n ) ;FUNCTION
+FUNCTION: MULTI-ADD curl_multi_add_handle ( n n -- n ) ;FUNCTION
+FUNCTION: MULTI-REMOVE curl_multi_remove_handle ( n n -- n ) ;FUNCTION
+
+FUNCTION: MULTI-PERFORM curl_multi_perform ( n ptr u8 -- n )
+   1 $04 WRITES-BYTES                     \ int *running_handles
+;FUNCTION
+
+FUNCTION: MULTI-INFO-READ curl_multi_info_read ( n ptr u8 -- n )
+   1 $04 WRITES-BYTES                     \ int *msgs_in_queue
+;FUNCTION
+
+FUNCTION: MULTI-FDSET curl_multi_fdset ( n ptr u8 ptr u8 ptr u8 ptr u8 -- n )
+   1 $80 WRITES-BYTES                     \ fd_set *read_fd_set
+   2 $80 WRITES-BYTES                     \ fd_set *write_fd_set
+   3 $80 WRITES-BYTES                     \ fd_set *exc_fd_set
+   4 $04 WRITES-BYTES                     \ int *max_fd
+;FUNCTION
+
+FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- n )
+   1 $08 WRITES-BYTES                     \ long *milliseconds
+;FUNCTION
+
+
 \ The process's own libc. Habu cannot hand libcurl a callback into checked code,
 \ and none is needed: libcurl's default write callback is fwrite, so
 \ CURLOPT_WRITEDATA takes an open_memstream stream and memcpy moves the finished
@@ -145,6 +182,18 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
 
 : LE64@ ( ptr u8 -- n ) {: source :}
    0 CELL-BYTES 0 do source 7 i - + c@ swap 8 lshift or loop ;
+
+
+\ A C int, which is what every multi out-parameter and both CURLMsg enums are.
+: LE32@ ( ptr u8 -- n ) {: source :}
+   source c@ source $01 + c@ 8 lshift or
+   source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
+
+
+\ The same four bytes read as the signed int they are: curl_multi_fdset reports
+\ an empty set as max_fd -1.
+: LE32S@ ( ptr u8 -- n )
+   LE32@ dup $80000000 >= if $100000000 - then ;
 
 
 : CELL-CLEAR ( ptr u8 -- ) {: target :}
@@ -223,17 +272,21 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
    easy old list HEADER-STORE ;
 
 
-: STREAM-OPEN ( -- n )
-   BUF-CELL CELL-CLEAR
-   LEN-CELL CELL-CLEAR
-   BUF-CELL LEN-CELL MEMSTREAM ;
+\ The two cells open_memstream publishes the finished buffer and its length in
+\ are the CALLER'S, not this word's: PERFORM passes its own task's pair, while a
+\ multiplexed transfer passes its record's, because the task that closes that
+\ stream is the loop and not the task that opened it.
+: STREAM-OPEN ( ptr u8 ptr u8 -- n ) {: buf len :}
+   buf CELL-CLEAR
+   len CELL-CLEAR
+   buf len MEMSTREAM ;
 
 
 \ open_memstream publishes its buffer and length when the stream closes; the
 \ buffer is the caller's to free from then on.
-: STREAM-TAKE ( n -- n n ) {: stream:n :}
+: STREAM-TAKE ( n ptr u8 ptr u8 -- n n ) {: stream:n buf len :}
    stream STREAM-CLOSE drop
-   BUF-CELL LE64@ LEN-CELL LE64@ ;
+   buf LE64@ len LE64@ ;
 
 
 : WRITE-DATA-CLEAR ( n -- ) {: easy:n :}
@@ -410,10 +463,12 @@ public
 : PERFORM ( handle ptr u8 len -- fetch-result ) {: subject:handle target capacity:len :}
    subject HANDLE-CELL {: easy:n :}
    capacity LEN>N 1 MAX-BYTES WITHIN-RANGE
-   STREAM-OPEN dup 0= if drop CURLE-OUT-OF-MEMORY FETCH-FAILED exit then
+   BUF-CELL LEN-CELL STREAM-OPEN dup 0= if
+      drop CURLE-OUT-OF-MEMORY FETCH-FAILED exit
+   then
    {: stream:n :}
    easy stream TRANSFER {: rc:n :}
-   stream STREAM-TAKE {: source:n u:n :}
+   stream BUF-CELL LEN-CELL STREAM-TAKE {: source:n u:n :}
    easy WRITE-DATA-CLEAR
    rc CURLE-OK <> if source RELEASE rc FETCH-FAILED exit then
    target capacity source u BODY-TAKE
@@ -429,5 +484,845 @@ public
    easy EASY-CLEANUP
    list 0= if exit then
    list SLIST-FREE ;
+
+private
+
+\ ---- many transfers on one task ----------------------------------------------
+\ PERFORM holds its task for a whole transfer, so ten transfers that way cost
+\ ten threads parked in libcurl. The words below are the other shape: ONE
+\ package-owned task drives libcurl's multi interface and a task that starts a
+\ transfer is free until it asks for the answer. That loop task parks in package
+\ AIO and not in libcurl: after every curl_multi_perform it asks
+\ curl_multi_fdset which descriptors libcurl is waiting on and curl_multi_timeout
+\ how long it may wait, turns those into AIO tickets, and takes the first one
+\ that ends. No CURLMOPT_SOCKETFUNCTION and no CURLMOPT_TIMERFUNCTION: those are
+\ callbacks, and Habu hands libcurl no callback - the same rule PERFORM's
+\ memstream answers.
+
+$20 constant MAX-TRANSFERS                \ transfers in flight at once
+$400 constant FD-SETSIZE                  \ an fd_set holds bits 0..1023
+$80 constant FD-SET-BYTES                 \ those bits, eight to the byte
+$40 constant WAKE-CHUNK                   \ bytes taken off the wake pipe at once
+100 constant IDLE-MS                      \ the turn to take when libcurl names none
+1000 constant LONGEST-MS                  \ the longest turn to take at all
+1 constant SHORTEST-MS                    \ and the shortest, so zero is not a spin
+
+0 constant CURLM-OK                       \ CURLM_OK
+1 constant MSG-DONE                       \ CURLMSG_DONE
+42 constant CURLE-ABORTED                 \ CURLE_ABORTED_BY_CALLBACK
+
+\ struct CURLMsg {int msg; CURL *easy_handle; union {void *whatever; CURLcode
+\ result;} data;}, /usr/include/curl/multi.h, on AArch64 with its int padded.
+$00 constant MSG.KIND
+$08 constant MSG.EASY
+$10 constant MSG.RESULT
+$18 constant MSG-BYTES
+
+\ A record's life. Only the submitter moves FREE -> CLAIMING, and only with one
+\ atomic-cas; every other move is made under the facility below.
+0 constant STATE-FREE                     \ nobody owns this record
+1 constant STATE-CLAIMING                 \ a submitter owns it and is filling it
+2 constant STATE-CLAIMED                  \ filled; the loop has not added it yet
+3 constant STATE-RUNNING                  \ the loop added its handle to the multi handle
+4 constant STATE-CANCEL                   \ the owner asked for it to end early
+5 constant STATE-ABANDONED                \ the owner was halted; the loop frees it
+6 constant STATE-DONE                     \ the result is stored and the owner woken
+
+0 constant KIND-RESPONSE                  \ which fetch-result AWAIT builds
+1 constant KIND-TRUNCATED
+2 constant KIND-FAILED
+
+BEGIN-STRUCTURE REC-BYTES
+   CELL +FIELD R.STATE
+   CELL +FIELD R.EASY
+   CELL +FIELD R.CAP
+   CELL +FIELD R.STREAM
+   CELL +FIELD R.ADDED                    \ the handle is in the multi handle
+   CELL +FIELD R.KIND
+   CELL +FIELD R.STATUS
+   CELL +FIELD R.LEN
+   CELL +FIELD R.CODE
+END-STRUCTURE
+
+: CURL-ALIGN8 ( -- )
+   here FFI:>CELL 7 and dup 0= if drop exit then
+   8 swap - allot ;
+
+: ZERO-CELLS, ( n -- )
+   0 ?do 0 , loop ;
+
+CURL-ALIGN8
+create REC-CELLS MAX-TRANSFERS REC-BYTES * 8 / ZERO-CELLS,
+
+\ The owner as the TCB pointer TASK:WAKE takes and the span as the address it
+\ is, both in declared rows, so this module needs no address cast of its own.
+MAX-TRANSFERS TYPED-BUFFER REC-OWNER ptr n
+MAX-TRANSFERS TYPED-BUFFER REC-TARGETS ptr u8
+
+\ Two cells per record for open_memstream's buffer and length, because the loop
+\ is what closes the stream and the opening task's row is not where it can read.
+CURL-ALIGN8
+create REC-STREAM-CELLS MAX-TRANSFERS 2 * ZERO-CELLS,
+
+\ The three fd_sets libcurl fills, the fds an armed ticket already covers, the
+\ int and long out-parameters of the multi calls, one copied CURLMsg, and the
+\ wake pipe's two ends.
+CURL-ALIGN8
+create SET-READ FD-SET-BYTES allot
+CURL-ALIGN8
+create SET-WRITE FD-SET-BYTES allot
+CURL-ALIGN8
+create SET-EXC FD-SET-BYTES allot
+CURL-ALIGN8
+create SET-KEPT FD-SETSIZE allot
+CURL-ALIGN8
+create MULTI-STAGE $20 allot
+CURL-ALIGN8
+create MSG-BUF MSG-BYTES allot
+CURL-ALIGN8
+create WAKE-BUF WAKE-CHUNK allot
+CURL-ALIGN8
+create WAKE-BYTE $01 c,
+
+\ One ticket per descriptor libcurl wants, in slots a zero mask says are free.
+CURL-ALIGN8
+create FD-FDS AIO:GROUP-MAX ZERO-CELLS,
+CURL-ALIGN8
+create FD-MASKS AIO:GROUP-MAX ZERO-CELLS,
+AIO:GROUP-MAX TYPED-BUFFER FD-TICKETS AIO:ticket
+
+CURL-ALIGN8
+variable MULTI-CELL                       \ the CURLM* the loop drives
+variable LOOP-LIVE                        \ atomic: a loop is running
+variable STOP-FLAG                        \ atomic: the loop must end
+variable LOCK-READY                       \ the facility has been initialized once
+variable LOOP-THROW                       \ what ended the loop, reported by LOOP-STOP
+variable LOOP-MRC                         \ the CURLMcode the loop's own body ended on
+variable WAKE-R
+variable WAKE-W
+variable TIMER-MS                         \ the ms the pending timer holds, -1 for none
+variable SHORT-TURN                       \ the sets wanted more tickets than there was room for
+
+TASK:FACILITY CURL-LOCK
+TASK:MIN-STACK TASK:TASK LOOP-TASK
+AIO:GROUP LOOP-GROUP
+TYPED-VARIABLE WAKE-TICKET AIO:ticket
+TYPED-VARIABLE TIMER-TICKET AIO:ticket
+
+\ A ticket is matched against the ones this loop holds, never minted here: the
+\ projection out of AIO's nominal is what a comparison needs and all it needs.
+CAST: TICKET>N ( AIO:ticket -- n )
+
+: SAME-TICKET? ( AIO:ticket AIO:ticket -- bool ) {: a:AIO:ticket b:AIO:ticket :}
+   a TICKET>N b TICKET>N = ;
+
+: COUNT-CELL ( -- ptr u8 )    MULTI-STAGE ;
+: MAXFD-CELL ( -- ptr u8 )    MULTI-STAGE $08 + ;
+: TIMEOUT-CELL ( -- ptr u8 )  MULTI-STAGE $10 + ;
+
+
+\ ---- the records -------------------------------------------------------------
+
+: REC-CHECK ( n -- n ) {: idx:n :}
+   idx 0 < idx MAX-TRANSFERS >= or if E-OPERAND throw then
+   idx ;
+
+
+: REC ( n -- ptr n ) REC-CHECK {: idx:n :}
+   REC-CELLS CELL-VIEW idx REC-BYTES * + ;
+
+
+: REC-BUF-CELL ( n -- ptr u8 ) REC-CHECK {: idx:n :}
+   REC-STREAM-CELLS idx $10 * + ;
+
+
+: REC-LEN-CELL ( n -- ptr u8 ) REC-CHECK {: idx:n :}
+   REC-STREAM-CELLS idx $10 * + $08 + ;
+
+
+: REC-STATE@ ( n -- n )     REC R.STATE atomic@ ;
+: REC-EASY@ ( n -- n )      REC R.EASY @ ;
+: REC-CAP@ ( n -- n )       REC R.CAP @ ;
+: REC-STREAM@ ( n -- n )    REC R.STREAM @ ;
+: REC-TARGET@ ( n -- ptr u8 ) REC-CHECK REC-TARGETS @ ;
+: REC-OWNER@ ( n -- ptr n ) REC-CHECK REC-OWNER @ ;
+
+
+: REC-STATE! ( n n -- ) {: state:n idx:n :}
+   state idx REC R.STATE atomic! ;
+
+
+\ One claim wins: the state cell moves FREE -> CLAIMING in one step, so two
+\ tasks starting a transfer at the same moment are handed different records.
+\ CLAIMING is a state the loop passes over, so a record is never added to the
+\ multi handle before the submitter has finished filling it.
+: REC-CLAIM ( -- n )
+   MAX-TRANSFERS 0 ?do
+      STATE-FREE STATE-CLAIMING i REC R.STATE atomic-cas STATE-FREE = if
+         i unloop exit
+      then
+   loop
+   -1 ;
+
+
+\ A record is free again only after its handle is cleared, so a scan can never
+\ match a record whose transfer is over.
+: REC-RELEASE ( n -- ) {: idx:n :}
+   0 idx REC R.EASY !
+   0 idx REC R.STREAM !
+   0 idx REC R.ADDED !
+   STATE-FREE idx REC-STATE! ;
+
+
+: TABLE-CLEAR ( -- )
+   MAX-TRANSFERS 0 ?do i REC-RELEASE loop ;
+
+
+\ The record a handle is in, or -1. A handle is in at most one record at a time
+\ - START refuses a second one - so the first match is the only match. This is
+\ how a task finds its own transfer: asking libcurl about a handle the loop may
+\ be driving is exactly what it must not do.
+: REC-FIND ( n -- n ) {: easy:n :}
+   MAX-TRANSFERS 0 ?do
+      i REC-STATE@ STATE-FREE <> if
+         i REC-EASY@ easy = if i unloop exit then
+      then
+   loop
+   -1 ;
+
+
+: ANY-BUSY? ( -- bool )
+   MAX-TRANSFERS 0 ?do
+      i REC-STATE@ STATE-FREE <> if true unloop exit then
+   loop
+   false ;
+
+
+: REC-FILL ( n n ptr u8 n n -- ) {: idx:n easy:n target capacity:n stream:n :}
+   easy idx REC R.EASY !
+   capacity idx REC R.CAP !
+   stream idx REC R.STREAM !
+   0 idx REC R.ADDED !
+   target idx REC-CHECK REC-TARGETS !
+   TASK:SELF idx REC-CHECK REC-OWNER !
+   KIND-FAILED idx REC R.KIND !
+   0 idx REC R.STATUS !
+   0 idx REC R.LEN !
+   CURLE-ABORTED idx REC R.CODE ! ;
+
+
+\ ---- the wake pipe -----------------------------------------------------------
+\ One byte says "a record changed": a START, a CANCEL, an abandoned record or
+\ the stop. The loop holds one POLL-ADD ticket on the read end, and after it
+\ reads whatever is there it scans the table, so a byte that arrives between the
+\ read and the scan costs one extra turn and never a missed record.
+
+: WAKE-POKE ( -- )
+   WAKE-W @ WAKE-BYTE 1 write drop ;
+
+
+: WAKE-DRAIN ( -- )
+   WAKE-R @ WAKE-BUF WAKE-CHUNK read drop ;
+
+
+: PIPE-OPEN ( -- n )
+   pipe {: r:n w:n rc:n :}
+   rc 0 <> if rc exit then
+   r WAKE-R !
+   w WAKE-W !
+   0 ;
+
+
+: PIPE-CLOSE ( -- )
+   WAKE-R @ close-rc drop
+   WAKE-W @ close-rc drop
+   0 WAKE-R !
+   0 WAKE-W ! ;
+
+
+\ ---- the loop's side of a record ---------------------------------------------
+
+: REC-STREAM-TAKE ( n -- n n ) {: idx:n :}
+   idx REC-STREAM@ idx REC-BUF-CELL idx REC-LEN-CELL STREAM-TAKE ;
+
+
+\ The stream is closed and whatever it collected is dropped: the handle keeps no
+\ pointer to a closed stream and the buffer is nobody's after this.
+: STREAM-DROP ( n -- ) {: idx:n :}
+   idx REC-STREAM@ 0= if exit then
+   idx REC-STREAM-TAKE {: source:n u:n :}
+   idx REC-EASY@ WRITE-DATA-CLEAR
+   0 idx REC R.STREAM !
+   source RELEASE ;
+
+
+: FAILED-STORE ( n n -- ) {: idx:n rc:n :}
+   KIND-FAILED idx REC R.KIND !
+   rc idx REC R.CODE ! ;
+
+
+\ FETCH-RESULT's decision, stored as fields because the value belongs to the
+\ task that waits: the WHOLE body's length either way, and truncated when only
+\ capacity bytes of it were copied.
+: RESULT-STORE ( n n n -- ) {: idx:n easy:n u:n :}
+   easy STATUS-READ HTTP-STATUS>N idx REC R.STATUS !
+   u idx REC R.LEN !
+   u idx REC-CAP@ > if KIND-TRUNCATED idx REC R.KIND ! exit then
+   KIND-RESPONSE idx REC R.KIND ! ;
+
+
+\ The state store is the barrier: every field above is written before it, and
+\ AWAIT reads them after its wait.
+: SETTLE ( n -- ) {: idx:n :}
+   STATE-DONE idx REC-STATE!
+   idx REC-OWNER@ TASK:WAKE ;
+
+
+: ADD-ONE ( n -- n ) {: idx:n :}
+   MULTI-CELL atomic@ idx REC-EASY@ MULTI-ADD dup CURLM-OK <> if exit then drop
+   1 idx REC R.ADDED !
+   STATE-RUNNING idx REC-STATE!
+   CURLM-OK ;
+
+
+: REMOVE-ONE ( n -- n ) {: idx:n :}
+   idx REC R.ADDED @ 0= if CURLM-OK exit then
+   MULTI-CELL atomic@ idx REC-EASY@ MULTI-REMOVE dup CURLM-OK <> if exit then drop
+   0 idx REC R.ADDED !
+   CURLM-OK ;
+
+
+\ A finished transfer, copied into the owner's span exactly as PERFORM does. An
+\ owner that was halted while it waited gets nothing written anywhere: its
+\ record is released and nobody is woken, which is what keeps this loop from
+\ waking a TCB the join has released.
+: FINISH ( n n -- n ) {: idx:n rc:n :}
+   idx REMOVE-ONE dup CURLM-OK <> if exit then drop
+   idx REC-STREAM-TAKE {: source:n u:n :}
+   idx REC-EASY@ WRITE-DATA-CLEAR
+   0 idx REC R.STREAM !
+   idx REC-STATE@ STATE-ABANDONED = if
+      source RELEASE idx REC-RELEASE CURLM-OK exit
+   then
+   rc CURLE-OK <> if
+      source RELEASE
+      idx rc FAILED-STORE
+      idx SETTLE
+      CURLM-OK exit
+   then
+   idx REC-TARGET@ idx REC-CAP@ >LEN source u BODY-TAKE
+   source RELEASE
+   idx idx REC-EASY@ u RESULT-STORE
+   idx SETTLE
+   CURLM-OK ;
+
+
+\ The owner asked for this transfer to end: libcurl's own code for a transfer an
+\ application ended is the answer it gets.
+: CANCEL-RUN ( n -- n ) {: idx:n :}
+   idx REMOVE-ONE dup CURLM-OK <> if exit then drop
+   idx STREAM-DROP
+   idx CURLE-ABORTED FAILED-STORE
+   idx SETTLE
+   CURLM-OK ;
+
+
+: ABANDON-RUN ( n -- n ) {: idx:n :}
+   idx REMOVE-ONE dup CURLM-OK <> if exit then drop
+   idx STREAM-DROP
+   idx REC-RELEASE
+   CURLM-OK ;
+
+
+: SERVICE-ONE ( n -- n ) {: idx:n :}
+   idx REC-STATE@ {: st:n :}
+   st STATE-CLAIMED = if idx ADD-ONE exit then
+   st STATE-CANCEL = if idx CANCEL-RUN exit then
+   st STATE-ABANDONED = if idx ABANDON-RUN exit then
+   CURLM-OK ;
+
+
+: SERVICE-RECORDS ( -- n )
+   MAX-TRANSFERS 0 ?do
+      i SERVICE-ONE dup CURLM-OK <> if unloop exit then drop
+   loop
+   CURLM-OK ;
+
+
+\ CURLMsg is libcurl's memory, so the struct is copied into this loop's own
+\ bytes with the same bounded memcpy the body copy uses and read from the copy.
+: MSG-TAKE ( n -- n ) {: msg:n :}
+   MSG-BUF msg MSG-BYTES COPY-OUT drop
+   MSG-BUF MSG.KIND + LE32@ MSG-DONE <> if CURLM-OK exit then
+   MSG-BUF MSG.EASY + LE64@ {: easy:n :}
+   MSG-BUF MSG.RESULT + LE32@ {: rc:n :}
+   easy REC-FIND dup 0 < if drop CURLM-OK exit then
+   rc FINISH ;
+
+
+: REAP ( -- n )
+   begin
+      MULTI-CELL atomic@ COUNT-CELL MULTI-INFO-READ dup 0= if drop CURLM-OK exit then
+      MSG-TAKE dup CURLM-OK <> if exit then drop
+   again ;
+
+
+: TRANSFERS-RUN ( -- n )
+   MULTI-CELL atomic@ COUNT-CELL MULTI-PERFORM dup CURLM-OK <> if exit then drop
+   REAP ;
+
+
+\ Every record access but the claim runs under this one facility, and the two
+\ locked bodies answer a CURLMcode rather than throwing, so a refusal never
+\ leaves it held.
+: LOCKED-SERVICE ( -- n )
+   CURL-LOCK TASK:GET
+   SERVICE-RECORDS
+   CURL-LOCK TASK:RELEASE ;
+
+
+: LOCKED-TRANSFERS ( -- n )
+   CURL-LOCK TASK:GET
+   TRANSFERS-RUN
+   CURL-LOCK TASK:RELEASE ;
+
+
+\ ---- the descriptors libcurl is waiting on -----------------------------------
+\ An fd_set is a bitmap of FD_SETSIZE bits, bit i in byte i/8, which is the same
+\ byte whatever the word size the C library reads it in. An fd at or above
+\ FD_SETSIZE cannot appear in one at all, so the sets bound this loop at 1024
+\ descriptors and that ceiling is libcurl's own.
+
+: SET-CLEAR ( ptr u8 -- ) {: target :}
+   FD-SET-BYTES 0 do 0 target i + c! loop ;
+
+
+: SET-BIT? ( ptr u8 n -- bool ) {: target fd:n :}
+   fd 0 < fd FD-SETSIZE >= or if false exit then
+   target fd 8 / + c@ 1 fd 7 and lshift and 0 <> ;
+
+
+: KEPT-CLEAR ( n -- ) {: maxfd:n :}
+   maxfd 1 + 0 ?do 0 SET-KEPT i + c! loop ;
+
+
+: KEPT! ( n -- ) {: fd:n :}
+   1 SET-KEPT fd + c! ;
+
+
+: KEPT? ( n -- bool ) {: fd:n :}
+   SET-KEPT fd + c@ 0 <> ;
+
+
+\ The mask an fd is wanted with. An exception is neither readable nor writable
+\ to the kernel this loop polls with, so it is asked for as both.
+: WANT-MASK ( n -- n ) {: fd:n :}
+   SET-EXC fd SET-BIT? if AIO:READABLE AIO:WRITABLE or exit then
+   0
+   SET-READ fd SET-BIT? if AIO:READABLE or then
+   SET-WRITE fd SET-BIT? if AIO:WRITABLE or then ;
+
+
+: FD-FD@ ( n -- n ) {: slot:n :}
+   FD-FDS CELL-VIEW slot cells + @ ;
+
+
+: FD-FD! ( n n -- ) {: fd:n slot:n :}
+   fd FD-FDS CELL-VIEW slot cells + ! ;
+
+
+: FD-MASK@ ( n -- n ) {: slot:n :}
+   FD-MASKS CELL-VIEW slot cells + @ ;
+
+
+: FD-MASK! ( n n -- ) {: mask:n slot:n :}
+   mask FD-MASKS CELL-VIEW slot cells + ! ;
+
+
+: FD-TABLE-CLEAR ( -- )
+   AIO:GROUP-MAX 0 ?do 0 i FD-MASK! -1 i FD-FD! loop ;
+
+
+: FD-FREE-SLOT ( -- n )
+   AIO:GROUP-MAX 0 ?do i FD-MASK@ 0= if i unloop exit then loop
+   -1 ;
+
+
+: FD-SLOT-OF ( AIO:ticket -- n ) {: t:AIO:ticket :}
+   AIO:GROUP-MAX 0 ?do
+      i FD-MASK@ 0 <> if
+         i FD-TICKETS @ t SAME-TICKET? if i unloop exit then
+      then
+   loop
+   -1 ;
+
+
+: FD-RELEASE ( n -- ) {: slot:n :}
+   0 slot FD-MASK!
+   -1 slot FD-FD! ;
+
+
+\ A ticket this loop no longer wants. The cancel leaves it in the group until
+\ AWAIT-ANY hands it back, where it matches no slot and the turn ignores it.
+: FD-DROP ( n -- ) {: slot:n :}
+   slot FD-TICKETS @ AIO:CANCEL
+   slot FD-RELEASE ;
+
+
+\ Two of the group's tickets are the wake pipe's and the timer's, so arming
+\ stops two short of the group's own ceiling. An fd left unarmed is not a hang:
+\ the turn below shortens the timer and the loop asks again.
+: FD-ARM ( n n -- ) {: fd:n mask:n :}
+   LOOP-GROUP AIO:GROUP-COUNT AIO:GROUP-MAX 2 - >= if 1 SHORT-TURN ! exit then
+   FD-FREE-SLOT dup 0 < if drop 1 SHORT-TURN ! exit then
+   {: slot:n :}
+   fd >FD mask -1 >MS AIO:POLL-ADD {: t:AIO:ticket :}
+   t LOOP-GROUP AIO:GROUP+
+   t slot FD-TICKETS !
+   fd slot FD-FD!
+   mask slot FD-MASK! ;
+
+
+: SETS-READ ( -- n n )                    \ ( -- CURLMcode max-fd )
+   SET-READ SET-CLEAR
+   SET-WRITE SET-CLEAR
+   SET-EXC SET-CLEAR
+   MAXFD-CELL CELL-CLEAR
+   MULTI-CELL atomic@ SET-READ SET-WRITE SET-EXC MAXFD-CELL MULTI-FDSET
+   dup CURLM-OK <> if -1 exit then drop
+   CURLM-OK MAXFD-CELL LE32S@ ;
+
+
+\ An fd still wanted with the mask its ticket holds keeps that ticket; one whose
+\ mask changed, or that left the sets, gives it up.
+: SLOT-REVIEW ( n -- ) {: slot:n :}
+   slot FD-MASK@ dup 0= if drop exit then {: mask:n :}
+   slot FD-FD@ {: fd:n :}
+   fd WANT-MASK mask <> if slot FD-DROP exit then
+   fd KEPT! ;
+
+
+: FD-REVIEW ( n -- ) {: fd:n :}
+   fd KEPT? if exit then
+   fd WANT-MASK dup 0= if drop exit then
+   fd swap FD-ARM ;
+
+
+: SETS-REBUILD ( -- n )
+   SETS-READ {: mrc:n maxfd:n :}
+   mrc CURLM-OK <> if mrc exit then
+   maxfd KEPT-CLEAR
+   AIO:GROUP-MAX 0 ?do i SLOT-REVIEW loop
+   maxfd 1 + 0 ?do i FD-REVIEW loop
+   CURLM-OK ;
+
+
+\ ---- the time libcurl is waiting for -----------------------------------------
+
+: WANT-MS ( -- n n )                      \ ( -- CURLMcode ms )
+   TIMEOUT-CELL CELL-CLEAR
+   MULTI-CELL atomic@ TIMEOUT-CELL MULTI-TIMEOUT dup CURLM-OK <> if IDLE-MS exit then
+   drop
+   TIMEOUT-CELL LE64@ {: ms:n :}
+   ms 0 < if CURLM-OK IDLE-MS exit then
+   CURLM-OK ms SHORTEST-MS max LONGEST-MS min ;
+
+
+: TIMER-ARM ( n -- ) {: ms:n :}
+   ms >MS AIO:TIMEOUT {: t:AIO:ticket :}
+   t LOOP-GROUP AIO:GROUP+
+   t TIMER-TICKET !
+   ms TIMER-MS ! ;
+
+
+\ One timer ticket at a time. A shorter answer than the pending one replaces it;
+\ a longer one waits, because the pending timer fires first and asks again.
+: TIMER-REVIEW ( -- n )
+   WANT-MS {: mrc:n want:n :}
+   mrc CURLM-OK <> if mrc exit then
+   SHORT-TURN @ 0 <> if want IDLE-MS min else want then {: ms:n :}
+   TIMER-MS @ 0 < if ms TIMER-ARM CURLM-OK exit then
+   ms TIMER-MS @ >= if CURLM-OK exit then
+   LOOP-GROUP AIO:GROUP-COUNT AIO:GROUP-MAX 1 - >= if CURLM-OK exit then
+   TIMER-TICKET @ AIO:CANCEL
+   -1 TIMER-MS !
+   ms TIMER-ARM
+   CURLM-OK ;
+
+
+: WAKE-ARM ( -- )
+   WAKE-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD {: t:AIO:ticket :}
+   t LOOP-GROUP AIO:GROUP+
+   t WAKE-TICKET ! ;
+
+
+\ ---- the loop ----------------------------------------------------------------
+
+: OUTCOME-DROP ( AIO:outcome -- )
+   MATCH AIO:outcome
+      ready OF drop ENDOF
+      timed-out OF ENDOF
+      cancelled OF ENDOF
+      refused OF drop ENDOF
+   ;MATCH ;
+
+
+\ Whatever ended, the loop answers it: the wake pipe is drained and the table
+\ scanned, a fired timer is forgotten so the review below arms the next one, a
+\ poll that ended frees its slot for the review to arm again, and a ticket no
+\ slot owns is one this loop cancelled and is done with.
+: TURN-ANSWER ( AIO:ticket -- n ) {: t:AIO:ticket :}
+   t WAKE-TICKET @ SAME-TICKET? if WAKE-DRAIN WAKE-ARM LOCKED-SERVICE exit then
+   t TIMER-TICKET @ SAME-TICKET? if -1 TIMER-MS ! CURLM-OK exit then
+   t FD-SLOT-OF dup 0 >= if FD-RELEASE CURLM-OK exit then
+   drop CURLM-OK ;
+
+
+: TURN ( -- n )
+   LOOP-GROUP AIO:AWAIT-ANY OUTCOME-DROP
+   TURN-ANSWER dup CURLM-OK <> if exit then drop
+   LOCKED-TRANSFERS dup CURLM-OK <> if exit then drop
+   0 SHORT-TURN !
+   SETS-REBUILD dup CURLM-OK <> if exit then drop
+   TIMER-REVIEW ;
+
+
+: LOOP-RUN ( -- n )
+   WAKE-ARM
+   IDLE-MS TIMER-ARM
+   LOCKED-TRANSFERS dup CURLM-OK <> if exit then drop
+   SETS-REBUILD dup CURLM-OK <> if exit then drop
+   begin
+      STOP-FLAG atomic@ 0 <> if CURLM-OK exit then
+      TURN dup CURLM-OK <> if exit then drop
+   again ;
+
+
+\ A multi call that refuses the handle it was given is a contract violation, and
+\ the transfers in flight are ended here rather than left with an owner parked
+\ on a loop that is gone.
+: FAIL-ONE ( n -- ) {: idx:n :}
+   idx REC-STATE@ {: st:n :}
+   st STATE-FREE = st STATE-DONE = or st STATE-CLAIMING = or if exit then
+   idx REMOVE-ONE drop
+   idx STREAM-DROP
+   st STATE-ABANDONED = if idx REC-RELEASE exit then
+   idx CURLE-ABORTED FAILED-STORE
+   idx SETTLE ;
+
+
+: FAIL-ALL ( -- )
+   CURL-LOCK TASK:GET
+   MAX-TRANSFERS 0 ?do i FAIL-ONE loop
+   CURL-LOCK TASK:RELEASE ;
+
+
+\ Every ticket this loop submitted is ended and handed back before the task
+\ returns: a record still in flight is what AIO:LOOP-STOP refuses, and a ticket
+\ nobody awaits is a record nobody frees.
+: GROUP-DRAIN ( -- )
+   AIO:GROUP-MAX 0 ?do i FD-MASK@ 0 <> if i FD-DROP then loop
+   WAKE-TICKET @ AIO:CANCEL
+   TIMER-MS @ 0 >= if TIMER-TICKET @ AIO:CANCEL -1 TIMER-MS ! then
+   begin
+      LOOP-GROUP AIO:GROUP-COUNT 0= if exit then
+      LOOP-GROUP AIO:AWAIT-ANY OUTCOME-DROP drop
+   again ;
+
+
+: LOOP-RUN-STORE ( -- )
+   LOOP-RUN LOOP-MRC ! ;
+
+
+\ However the loop ends - a multi call that refused, or a throw out of AIO - no
+\ owner is left parked on a loop that is gone: every transfer in flight is ended
+\ first and what ended the loop is the task's answer, which LOOP-STOP rethrows.
+\ A loop that ended by a throw leaves its tickets to AIO's own per-task cleanup,
+\ because the ring is what just refused.
+: LOOP-BODY ( -- )
+   CURLM-OK LOOP-MRC !
+   [: LOOP-RUN-STORE ;] catch {: rc:n :}
+   LOOP-MRC @ {: mrc:n :}
+   rc 0 <> mrc CURLM-OK <> or if FAIL-ALL then
+   rc 0 <> if rc throw then
+   GROUP-DRAIN
+   mrc CURLM-OK <> if E-RESULT throw then
+   0 TASK:RETURN ;
+
+
+\ ---- a transfer's own steps --------------------------------------------------
+
+\ The handle is written into the record before the facility is given back, so a
+\ second START on it - from this task or another - already finds it in flight.
+: CLAIM-BODY ( n -- n n ) {: easy:n :}    \ ( easy -- rc idx )
+   easy REC-FIND 0 >= if E-STATE -1 exit then
+   REC-CLAIM dup 0 < if drop E-CAPACITY -1 exit then
+   {: idx:n :}
+   easy idx REC R.EASY !
+   0 idx ;
+
+
+: START-CLAIM ( n -- n )
+   CURL-LOCK TASK:GET
+   CLAIM-BODY
+   CURL-LOCK TASK:RELEASE
+   {: rc:n idx:n :}
+   rc 0 <> if rc throw then
+   idx ;
+
+
+: OWNED-INDEX ( n -- n ) {: easy:n :}
+   CURL-LOCK TASK:GET
+   easy REC-FIND
+   CURL-LOCK TASK:RELEASE
+   dup 0 < if drop E-STATE throw then
+   {: idx:n :}
+   idx REC-OWNER@ FFI:>CELL TASK:SELF-N <> if E-STATE throw then
+   idx ;
+
+
+: RESULT-BUILD ( n n n n -- fetch-result ) {: kind:n status:n u:n rc:n :}
+   kind KIND-FAILED = if rc >CODE CURL-FETCH--RESULT:failed exit then
+   kind KIND-TRUNCATED = if
+      status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:truncated exit
+   then
+   status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:response ;
+
+
+: RESULT-TAKE ( n -- fetch-result ) {: idx:n :}
+   CURL-LOCK TASK:GET
+   idx REC R.KIND @ idx REC R.STATUS @ idx REC R.LEN @ idx REC R.CODE @
+   idx REC-RELEASE
+   CURL-LOCK TASK:RELEASE
+   RESULT-BUILD ;
+
+
+\ The owner is gone: the record is the loop's to end and nobody is to be woken.
+: ABANDON ( n -- ) {: idx:n :}
+   CURL-LOCK TASK:GET
+   STATE-ABANDONED idx REC-STATE!
+   CURL-LOCK TASK:RELEASE
+   WAKE-POKE ;
+
+
+: CANCEL-MARK ( n -- ) {: idx:n :}
+   idx REC-STATE@ {: st:n :}
+   st STATE-CLAIMED = st STATE-RUNNING = or 0= if exit then
+   STATE-CANCEL idx REC-STATE! ;
+
+public
+
+\ Creates the multi handle, the wake pipe and the one task that drives every
+\ multiplexed transfer. AIO's own loop must already be running - starting it is
+\ the program's job, and a LOOP-START without it answers AIO's refusal by name -
+\ and a second start is E-STATE. A host that refuses the wake pipe is answered
+\ the way libcurl answers exhaustion, with CURLE_OUT_OF_MEMORY.
+: LOOP-START ( -- status )
+   PLATFORM
+   LOOP-LIVE atomic@ 0 <> if E-STATE throw then
+   0 >MS AIO:TIMEOUT AIO:AWAIT OUTCOME-DROP
+   GLOBAL-READY dup CURLE-OK <> if CODE>STATUS exit then drop
+   LOCK-READY @ 0= if CURL-LOCK TASK:FACILITY-INIT 1 LOCK-READY ! then
+   PIPE-OPEN 0 <> if OUT-OF-MEMORY exit then
+   MULTI-INIT dup 0= if drop PIPE-CLOSE OUT-OF-MEMORY exit then
+   MULTI-CELL atomic!
+   TABLE-CLEAR
+   FD-TABLE-CLEAR
+   -1 TIMER-MS !
+   0 SHORT-TURN !
+   0 LOOP-THROW !
+   0 STOP-FLAG atomic!
+   ['] LOOP-BODY LOOP-TASK TASK:ACTIVATE
+   1 LOOP-LIVE atomic!
+   CURL-STATUS:ok ;
+
+
+\ Ends the loop and gives the multi handle and the pipe back. Every transfer
+\ must have been awaited first: a record that is not free is E-STATE, exactly as
+\ AIO:LOOP-STOP refuses a ring the kernel still owns. What ended the loop is
+\ rethrown here. After a stop the loop can be started again.
+: LOOP-STOP ( -- )
+   LOOP-LIVE atomic@ 0= if E-STATE throw then
+   ANY-BUSY? if E-STATE throw then
+   0 LOOP-LIVE atomic!
+   1 STOP-FLAG atomic!
+   WAKE-POKE
+   LOOP-TASK TASK:JOIN MATCH result
+      ok OF drop ENDOF
+      err OF LOOP-THROW ! ENDOF
+   ;MATCH
+   MULTI-CELL atomic@ MULTI-CLEANUP {: mrc:n :}
+   0 MULTI-CELL atomic!
+   PIPE-CLOSE
+   LOOP-THROW @ {: rc:n :}
+   rc 0 <> if rc throw then
+   mrc CURLM-OK <> if E-RESULT throw then ;
+
+
+\ Hands one prepared handle and one writable span to the loop and answers as
+\ soon as the record is queued. Every per-handle option - URL!, METHOD!,
+\ HEADER+, BODY!, COOKIE-FILE!, COOKIE-JAR!, TIMEOUT!, LOW-SPEED!, FOLLOW! and
+\ the scheme restriction - is set before this and holds for that transfer alone.
+\ From here until AWAIT answers, the handle and the span belong to the loop: no
+\ other task may touch either. A START with no loop running, and a second START
+\ on a handle already in flight, are E-STATE; a table with no record free is
+\ E-CAPACITY.
+: START ( handle ptr u8 len -- status ) {: subject:handle target capacity:len :}
+   subject HANDLE-CELL {: easy:n :}
+   LOOP-LIVE atomic@ 0= if E-STATE throw then
+   capacity LEN>N 1 MAX-BYTES WITHIN-RANGE
+   easy START-CLAIM {: idx:n :}
+   idx REC-BUF-CELL idx REC-LEN-CELL STREAM-OPEN dup 0= if
+      drop idx REC-RELEASE OUT-OF-MEMORY exit
+   then
+   {: stream:n :}
+   idx easy target capacity LEN>N stream REC-FILL
+   easy OPT-WRITE-DATA stream SETOPT-NUM dup CURLE-OK <> if
+      idx STREAM-DROP
+      idx REC-RELEASE
+      CODE>STATUS exit
+   then drop
+   STATE-CLAIMED idx REC-STATE!
+   WAKE-POKE
+   CURL-STATUS:ok ;
+
+
+\ Waits for that handle's transfer and answers the same fetch-result PERFORM
+\ would have. It is what gives the record back, so every started transfer is
+\ awaited exactly once, cancelled ones included. A handle with no transfer in
+\ flight, and one another task started, are E-STATE.
+\
+\ The wait is a TASK:STOP loop, so it costs no CPU and the main thread may wait
+\ too. A TASK:HALT while it waits ends the calling task at the PAUSE below, and
+\ the record is abandoned first: the loop frees it and wakes nobody, which is
+\ what keeps the loop from waking a TCB the join has released. No TASK:AT-EXIT
+\ is registered here - AIO already holds that slot for a task that submits.
+: AWAIT ( handle -- fetch-result ) {: subject:handle :}
+   subject HANDLE-CELL OWNED-INDEX {: idx:n :}
+   begin
+      idx REC-STATE@ STATE-DONE = if idx RESULT-TAKE exit then
+      TASK:STOP
+      TASK:HALTED? if
+         idx ABANDON
+         TASK:PAUSE
+         CURLE-ABORTED FETCH-FAILED exit
+      then
+      TASK:PAUSE
+   again ;
+
+
+\ Ends a transfer early: the loop takes the handle out, drops whatever body it
+\ had and answers its owner with CURLE_ABORTED_BY_CALLBACK, the code libcurl
+\ uses for a transfer an application ended. A transfer that has already finished
+\ keeps its result, so a cancel that loses that race changes nothing. AWAIT is
+\ still what collects the answer and frees the record. A handle with no transfer
+\ in flight is E-STATE.
+: CANCEL ( handle -- ) {: subject:handle :}
+   subject HANDLE-CELL {: easy:n :}
+   CURL-LOCK TASK:GET
+   easy REC-FIND dup 0 >= if dup CANCEL-MARK then
+   CURL-LOCK TASK:RELEASE
+   0 < if E-STATE throw then
+   WAKE-POKE ;
 
 ;package

@@ -1150,6 +1150,14 @@ TASK-MIN-STACK constant MIN-STACK
 : PAUSE ( -- )
    PAUSE ;
 
+\ True while a TASK:HALT this task has not yet observed is pending. A STOP loop
+\ reads it after every STOP, so a wait of its own can give its resources back
+\ before the TASK:PAUSE that ends the task. The main thread has no TCB, is never
+\ halted, and answers false.
+: HALTED? ( -- bool )
+   TASK-SELF-N dup 0= if drop false exit then
+   TASK-N>PTR TASK-STOP@ 0 <> ;
+
 \ Parks the calling task for at least ms milliseconds and returns as soon after
 \ that as the scheduler allows, from the main task or from a worker. It burns no
 \ CPU: the task is in the kernel rather than in a PAUSE loop, and it holds

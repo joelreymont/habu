@@ -232,7 +232,7 @@ read the source to find out. There are three:
 | `lib/process.f` | task-local | `$4A0` row: the NUL-path staging buffer, the three-slot pollfd array and the per-call capture slots (pids, descriptors, lengths, deadline, wait status). `PROC-REAP-ARM` is the one process-wide part: an installed policy, not per-call state. The layers above it — `lib/process-command.f`'s argv/env tables and its 128K/32K/32K capture buffers, `lib/process-cwd.f`'s path buffer — are still process-wide |
 | `lib/net/tcp4.f` | task-local | `$20` row: sockaddr, socklen, pollfd |
 | `lib/net/udp4.f` | task-local | `$20` row: endpoint and poll storage |
-| `lib/net/curl.f` | task-local | `$18` row: per-call staging |
+| `lib/net/curl.f` | task-local (`PERFORM` and the option setters) / process-wide (the multiplexed loop) | `$18` row: per-call staging. `CURL:LOOP-START`'s table of 32 transfer records, its fd and ticket tables, its wake pipe and the multi handle are one set for the image, driven by one package-owned task; a record is claimed atomically and every other record access runs under one `TASK:FACILITY`, so any number of tasks may `START` and `AWAIT` at once |
 | `lib/serial.f` | task-local | `$60` row: termios and per-call staging |
 | `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) | the input and output indices are per-task DATA cells `TASK-REGION-INIT` copies; the rows and their eight operations are shared |
 
