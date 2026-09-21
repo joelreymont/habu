@@ -1428,10 +1428,6 @@ SUITE address-cell-rollback
    test/address-cell-rollback.f
 ;SUITE
 
-SUITE repl-address-cell-rollback
-   test/repl-address-cell-rollback.f
-;SUITE
-
 SUITE address-cell-rollback-aot
    test/compiler/aot-mode.f
    test/address-cell-rollback.f
@@ -1788,6 +1784,13 @@ SUITE native-gate-dictionary
 ;SUITE
 
 GROUP SEQ native-serial-gates
+
+\ The PTY REPL fixture starts and reaps eight engine children. Keep it in the
+\ idle serial group so the fixed 20 s child-reap budget is not consumed by a
+\ saturated suite pool.
+SUITE repl-address-cell-rollback
+   test/repl-address-cell-rollback.f
+;SUITE
 
 SUITE native-gate-diagnostics
    test/gate-diagnostics.f
