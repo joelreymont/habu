@@ -1190,6 +1190,18 @@ variable LONG-J
    outu 0 T=
    erru 0 T= ;
 
+: CHECK-TOOL-SOURCE ( ptr u8 n -- )
+   CHECK-ARGV-START
+   CHECK-ARG+
+   CHECK-CAPTURE 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: TEST-IMAGE-TOOL-SOURCES ( -- )
+   s" tools/engine-size.f" CHECK-TOOL-SOURCE
+   s" tools/imgdump.f" CHECK-TOOL-SOURCE ;
+
 : EXPECT-PROVIDED-LIST ( n n n -- )
    64 T= {: outu:n erru:n :}
    outu 0 T=
@@ -2142,6 +2154,7 @@ POISON-RECORD
    s" check/package-missing-name" [: FAM-NONAME-TEST ;] CASE-RUN
    s" check/require-facade" [: TEST-REQUIRE-FACADE ;] CASE-RUN
    s" check/included-dep" [: TEST-INCLUDED-DEP ;] CASE-RUN
+   s" check/image-tool-sources" [: TEST-IMAGE-TOOL-SOURCES ;] CASE-RUN
    s" check/source-list-all-errors" [: LIST-ALL-TEST ;] CASE-RUN
    CLEANUP-RUN
    T-REPORT

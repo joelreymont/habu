@@ -52,7 +52,10 @@ variable CMP-BAD-IDX  variable CMP-BAD-U  variable CMP-BAD-L
 variable PCV
 variable NUM-I  variable NUM-ACC  variable NUM-DIG
 
-DICT-CAP TYPED-BUFFER A-NAME-P-SLOT ptr u8   \ one dictionary name start per row
+\ TYPED-BUFFER's count is source-checked as a decimal literal.  DICT-CAP is
+\ the same fixed image ABI value at runtime; keep the allocation and bounds
+\ readers on that named constant and pin the declaration's numeric extent here.
+65536 TYPED-BUFFER A-NAME-P-SLOT ptr u8   \ one dictionary name start per row
 create A-NAME-U DICT-CAP cells allot
 create A-START DICT-CAP cells allot
 create A-LEN DICT-CAP cells allot

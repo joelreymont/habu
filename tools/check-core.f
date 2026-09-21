@@ -571,7 +571,12 @@ private
    CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-C ;
 
 : CHK-APPEND-REQUIRED ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu >LEN CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-QPATH
+   \ Boot-owned dependencies are recorded portably relative to the current
+   \ tree.  Materializing their canonical absolute spelling makes the child
+   \ miss its boot row and reload a family such as option; paths outside the
+   \ tree remain absolute and retain their distinct application identity.
+   path pathu SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE
+   >LEN CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-QPATH
    CHK-SP CHK-EXP-C
    s" required" CHK-EXP-APP
    CHK-LF CHK-EXP-C ;
@@ -1057,7 +1062,20 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    label labelu CHK-LABEL!
    path pathu CHK-RUN-NOMINAL-FILE ;
 
+: CHK-TARGET-LAYOUT-ACTIVE? ( ptr u8 n -- bool ) {: path:ptr pathu:n :}
+   path pathu s" src/os/linux/layout.f" LINT-STR= if HB-TARGET-LINUX? exit then
+   path pathu s" src/os/macos/layout.f" LINT-STR= if HB-TARGET-MACOS? exit then
+   path pathu s" src/os/linux-x86-64/layout.f" LINT-STR= if
+      HB-TARGET-LINUX-X86-64? exit
+   then
+   true ;
+
 : CHK-DEP-PRELOAD? ( n -- bool ) {: id:n :}
+   \ Discovery deliberately over-approximates guarded loaders.  The three
+   \ executable layouts cannot share a checker scope: each publishes the same
+   \ global names, while only the current target branch is loadable.
+   id CHK-DEP$ SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE
+   CHK-TARGET-LAYOUT-ACTIVE? 0= if false exit then
    id CHK-DEP$ RESOLVE nip nip 0= ;
 
 : CHK-RUN-NOMINAL-ID ( n -- ) {: id:n :}
