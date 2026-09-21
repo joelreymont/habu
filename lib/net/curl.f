@@ -57,6 +57,8 @@ OPT-OBJECT 36 + constant OPT-METHOD       \ CURLOPT_CUSTOMREQUEST
 OPT-OBJECT 82 + constant OPT-COOKIE-JAR   \ CURLOPT_COOKIEJAR
 OPT-OBJECT 103 + constant OPT-PRIVATE     \ CURLOPT_PRIVATE
 OPT-OBJECT 165 + constant OPT-COPY-BODY   \ CURLOPT_COPYPOSTFIELDS
+OPT-LONG 19 + constant OPT-LOW-SPEED-LIMIT \ CURLOPT_LOW_SPEED_LIMIT
+OPT-LONG 20 + constant OPT-LOW-SPEED-TIME  \ CURLOPT_LOW_SPEED_TIME
 OPT-LONG 52 + constant OPT-FOLLOW         \ CURLOPT_FOLLOWLOCATION
 OPT-LONG 60 + constant OPT-BODY-SIZE      \ CURLOPT_POSTFIELDSIZE
 OPT-LONG 99 + constant OPT-NO-SIGNAL      \ CURLOPT_NOSIGNAL
@@ -77,7 +79,7 @@ PROTO-HTTP PROTO-HTTPS or constant PROTO-WEB
 
 $4000000 constant MAX-BYTES               \ request body and response capacity
 $10000 constant MAX-TEXT                  \ one URL, method, path or header line
-$7FFFFFFF constant MAX-TIMEOUT            \ CURLOPT_TIMEOUT_MS takes a C long
+$7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
 999 constant MAX-STATUS
 $08 constant CELL-BYTES
 
@@ -380,6 +382,20 @@ public
 : TIMEOUT! ( handle ms -- status ) {: subject:handle limit:ms :}
    limit MS>N 0 MAX-TIMEOUT WITHIN-RANGE
    subject OPT-TIMEOUT-MS limit MS>N SET-NUM-RAW CODE>STATUS ;
+
+
+\ A stall test, not a ceiling: the transfer is ended only while it stays below
+\ `rate` bytes per second for `seconds` seconds, so a document that arrives
+\ slowly but never stops still finishes. TIMEOUT!'s limit on the whole transfer
+\ is separate and unchanged. Zero in either value removes the test. The rate is
+\ set first, and a failure there is answered before the window is touched.
+: LOW-SPEED! ( handle n n -- status ) {: subject:handle rate:n seconds:n :}
+   rate 0 MAX-TIMEOUT WITHIN-RANGE
+   seconds 0 MAX-TIMEOUT WITHIN-RANGE
+   subject OPT-LOW-SPEED-LIMIT rate SET-NUM-RAW dup CURLE-OK <> if
+      CODE>STATUS exit
+   then drop
+   subject OPT-LOW-SPEED-TIME seconds SET-NUM-RAW CODE>STATUS ;
 
 
 : FOLLOW! ( handle bool -- status ) {: subject:handle on:bool :}

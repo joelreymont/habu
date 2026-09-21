@@ -28,6 +28,7 @@ Byte spans are `ptr u8 n`; a response capacity is `ptr u8 len`.
 | `COOKIE-FILE!` | Handle, borrowed path | `status` |
 | `COOKIE-JAR!` | Handle, borrowed path | `status` |
 | `TIMEOUT!` | Handle, `ms` | `status` |
+| `LOW-SPEED!` | Handle, bytes a second, seconds | `status` |
 | `FOLLOW!` | Handle, `bool` | `status` |
 | `PERFORM` | Handle, writable byte span | `fetch-result`, described below |
 | `CLEANUP` | Handle | |
@@ -60,6 +61,17 @@ stored cookies. `COOKIE-JAR!` names the file the whole cookie store is written t
 when the handle is cleaned up.
 
 `TIMEOUT!` bounds the WHOLE transfer, not one read. Zero removes the bound.
+
+`LOW-SPEED!` is the other rule, a stall test rather than a ceiling: the transfer
+is ended only while it stays below a rate, in bytes a second, for a number of
+seconds (`CURLOPT_LOW_SPEED_LIMIT` and `CURLOPT_LOW_SPEED_TIME`). A document that
+arrives slowly but never stops therefore finishes, however large it is, while a
+peer that stops sending is dropped after the window instead of after the whole
+transfer's limit. The two are independent: a handle may carry both, and zero in
+either low-speed value removes the test. Both values are C longs, `0..2147483647`,
+and the rate is set first: a failure there is answered before the window is
+touched. A transfer ended by the stall test fails with
+`CURLE_OPERATION_TIMEDOUT` (28), the code `TIMEOUT!` also yields.
 
 ## Performing a request
 
@@ -94,9 +106,10 @@ allocated. The handle is dead afterwards and must not be used again.
 `CURL:E-STATE` rejects a handle that was never opened. A handle used after
 `CLEANUP` is a use-after-free the nominal type does not prevent: the value is
 still nonzero, so treat `CLEANUP` as the end of that handle's life.
-`CURL:E-OPERAND` rejects a bad argument: a capacity, body size or timeout
-outside its range, and a URL, method, path or header line containing a NUL,
-which would otherwise be silently cut short at the C string boundary.
+`CURL:E-OPERAND` rejects a bad argument: a capacity, body size, timeout or
+low-speed value outside its range, and a URL, method, path or header line
+containing a NUL, which would otherwise be silently cut short at the C string
+boundary.
 `CURL:E-RESULT` reports a libcurl contract violation, such as a status outside
 `0..999` after a successful transfer. A missing libcurl symbol
 is package FFI's `E-FFI-DLSYM`, named where the first call stands.
@@ -138,10 +151,15 @@ The cases are a GET with the fixture's exact bytes and its `Content-Length`, a
 `If-Modified-Since` out of the request, a POST with headers and a body and a
 custom `DELETE` (both 501), a `Set-Cookie` that round trips through the jar file
 and comes back on a second request, a truncated response, a path the server
-accepts and never answers so only `TIMEOUT!` can end it, a handle with no URL, a
-`file://` URL to a readable file that is refused with its bytes never reaching
-the buffer, and the two refusals. A last case checks the server task itself
-served every request and reported no fault.
+accepts and never answers so only `TIMEOUT!` can end it, a path it serves in
+timed chunks — slow, about 640 bytes a second, but never stalled — where a
+whole-transfer ceiling loses the body while `LOW-SPEED!` under that rate
+finishes it whole and the same limit alone still ends the stalled path, a handle
+with no URL, a `file://` URL to a readable file that is refused with its bytes
+never reaching the buffer, and the refusals: a dead handle, a NUL inside a URL,
+a low-speed rate below zero and a window past the C long ceiling, against a
+handle that takes both the disabling pair and a real one. A last case checks the
+server task itself served every request and reported no fault.
 
 Setting `HABU_NET_TESTS=1` adds one request to `https://example.com`, which is
 the only case that leaves the machine and the only one that exercises TLS and

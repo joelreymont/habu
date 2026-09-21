@@ -37,6 +37,15 @@ $1000 constant READY-TRIES              \ TASK:PAUSE turns before the listener i
 500 constant STALL-MS                   \ well under the stall path's forever
 $2710 constant REQUEST-MS               \ 10 s: a loopback request that slow is broken
 $FE constant FILL-BYTE                  \ the sentinel a refused transfer must not overwrite
+$300 constant DRIBBLE-U                 \ the dribble body, served whole but slowly
+$40 constant DRIBBLE-STEP               \ bytes per timed write
+100 constant DRIBBLE-GAP-MS             \ 12 steps: 1.3 s at about 640 bytes a second
+$61 constant DRIBBLE-BYTE               \ the body's filler, never the sentinel
+1000000 constant NS-PER-MS
+10 constant LOW-RATE                    \ bytes a second, far under the dribble's own
+1 constant LOW-SECONDS                  \ the shortest window libcurl measures
+5000 constant STALL-MOST-MS             \ half REQUEST-MS: the stall test ended it, not the ceiling
+$80000000 constant OVER-LONG            \ one past the C long ceiling CURL checks
 
 create ROOT-BUF FS-PATH-CAP allot
 create FILE-BUF FS-PATH-CAP allot
@@ -46,6 +55,7 @@ create REQ-BUF REQ-CAP allot
 create RES-BUF RES-CAP allot
 create JAR-TEXT-BUF RES-CAP allot
 create NUM-BUF NUM-CAP allot
+create DRIBBLE-BUF DRIBBLE-U allot
 
 : TEST-ALIGN8 ( -- )
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
@@ -88,6 +98,12 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : PATH-HELLO$ ( -- ptr u8 n ) s" /hello.txt" ;
 : PATH-COOKIE$ ( -- ptr u8 n ) s" /cookie" ;
 : PATH-STALL$ ( -- ptr u8 n ) s" /stall" ;
+: PATH-DRIBBLE$ ( -- ptr u8 n ) s" /dribble" ;
+: DRIBBLE$ ( -- ptr u8 n ) DRIBBLE-BUF DRIBBLE-U ;
+
+
+: DRIBBLE-FILL ( -- )
+   DRIBBLE-U 0 do DRIBBLE-BYTE DRIBBLE-BUF i + c! loop ;
 
 
 \ ---- the request the server task reads ---------------------------------------
@@ -297,6 +313,46 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    conn TCP4:CLOSE PEER-STATUS ;
 
 
+\ The head carries the WHOLE body's length, so nothing about this response is
+\ chunked or short: only its bytes are late.
+: DRIBBLE-HEAD ( -- )
+   RES-RESET
+   s" 200 OK" STATUS-LINE
+   s" Content-Type: text/plain" RES+ CRLF+
+   s" Content-Length: " RES+ DRIBBLE-U RES-NUM CRLF+
+   s" Connection: close" RES+ CRLF+ CRLF+ ;
+
+
+\ A client that already gave up answers this write with its own errno, which is
+\ its departure and not a fault of this server.
+: DRIBBLE-STEP! ( TCP4:connection n -- bool ) {: conn:TCP4:connection at:n :}
+   conn DRIBBLE-BUF at + DRIBBLE-STEP TCP4:TRANSFER-BYTES TCP4:WRITE
+   MATCH TCP4:status
+      ok OF true ENDOF
+      failed OF drop false ENDOF
+   ;MATCH ;
+
+
+\ Steady and slow, never stalled: every gap is far shorter than a low-speed
+\ window, so no stall test under this rate ends the transfer and only a limit on
+\ the WHOLE transfer can.
+: DRIBBLE-BODY ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   0 begin dup DRIBBLE-U < while
+      DRIBBLE-GAP-MS >MS TASK:SLEEP
+      dup conn swap DRIBBLE-STEP! 0= if drop exit then
+      DRIBBLE-STEP +
+   repeat drop ;
+
+
+: SERVE-DRIBBLE ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   DRIBBLE-HEAD
+   conn RES-BUF RES-U @ TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
+   conn DRIBBLE-BODY
+   conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS
+   conn DRAIN
+   conn TCP4:CLOSE PEER-STATUS ;
+
+
 : SERVE-HELLO ( TCP4:connection -- ) {: conn:TCP4:connection :}
    s" If-Modified-Since:" REQ-HAS-CI? if
       s" 304 Not Modified" RESPOND-EMPTY
@@ -337,6 +393,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" POST" METHOD-IS? if conn SERVE-UNIMPLEMENTED exit then
    s" DELETE" METHOD-IS? if conn SERVE-UNIMPLEMENTED exit then
    PATH-STALL$ PATH-IS? if conn SERVE-STALL exit then
+   PATH-DRIBBLE$ PATH-IS? if conn SERVE-DRIBBLE exit then
    PATH-HELLO$ PATH-IS? if conn SERVE-HELLO exit then
    PATH-COOKIE$ PATH-IS? if conn SERVE-COOKIE exit then
    conn SERVE-MISSING ;
@@ -665,6 +722,57 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    LAST-CODE @ 28 T= ;
 
 
+\ The ceiling TIMEOUT! sets ends a transfer that is slow but perfectly alive:
+\ exactly the loss a low-speed limit exists to avoid.
+: DRIBBLE-CEILING ( -- )
+   PATH-DRIBBLE$ GET-READY {: subject:CURL:handle :}
+   subject STALL-MS >MS CURL:TIMEOUT! EXPECT-OK
+   subject BODY-CAP >LEN FETCH
+   subject CURL:CLEANUP
+   s" a whole-transfer ceiling ends the dribble though it never stalled" T-LABEL
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 28 T= ;
+
+
+\ The same dribble under a low-speed limit far below its rate finishes whole:
+\ the stall test tolerates slow, and only slow.
+: DRIBBLE-LOW-SPEED ( -- )
+   PATH-DRIBBLE$ GET-READY {: subject:CURL:handle :}
+   subject LOW-RATE LOW-SECONDS CURL:LOW-SPEED! EXPECT-OK
+   subject BODY-CAP >LEN FETCH
+   subject CURL:CLEANUP
+   s" a low-speed limit under the dribble's rate lets it finish whole" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   LAST-LEN @ DRIBBLE-U T=
+   BODY$ DRIBBLE$ T$= ;
+
+
+: ELAPSED-MS ( n -- n ) {: started:n :}
+   mono-ns started - NS-PER-MS / ;
+
+
+\ A transfer that never moves a byte is what the stall test must end, and the
+\ elapsed time is what says it did: the handle's own ceiling is REQUEST-MS away.
+: STALL-LOW-SPEED ( -- )
+   PATH-STALL$ GET-READY {: subject:CURL:handle :}
+   subject 1 LOW-SECONDS CURL:LOW-SPEED! EXPECT-OK
+   mono-ns {: started:n :}
+   subject BODY-CAP >LEN FETCH
+   started ELAPSED-MS {: elapsed:n :}
+   subject CURL:CLEANUP
+   s" a stalled transfer ends under the low-speed limit alone" T-LABEL
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 28 T=
+   elapsed STALL-MOST-MS < TTRUE ;
+
+
+: TEST-LOW-SPEED ( -- )
+   DRIBBLE-CEILING
+   DRIBBLE-LOW-SPEED
+   STALL-LOW-SPEED ;
+
+
 : TEST-NO-URL ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject BODY-CAP >LEN FETCH
@@ -699,18 +807,44 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    subject CURL:CLEANUP ;
 
 
+: LOW-SPEED-RATE ( -- )
+   OPEN-HANDLE {: subject:CURL:handle :}
+   subject -1 LOW-SECONDS CURL:LOW-SPEED! EXPECT-OK
+   subject CURL:CLEANUP ;
+
+
+: LOW-SPEED-WINDOW ( -- )
+   OPEN-HANDLE {: subject:CURL:handle :}
+   subject LOW-RATE OVER-LONG CURL:LOW-SPEED! EXPECT-OK
+   subject CURL:CLEANUP ;
+
+
+\ Zero in both values is libcurl's own spelling for "no stall test at all".
+: LOW-SPEED-PAIRS ( -- )
+   OPEN-HANDLE {: subject:CURL:handle :}
+   subject 0 0 CURL:LOW-SPEED! EXPECT-OK
+   subject LOW-RATE 30 CURL:LOW-SPEED! EXPECT-OK
+   subject CURL:CLEANUP ;
+
+
 : TEST-REFUSALS ( -- )
    s" a handle that was never opened is refused" T-LABEL
    [: NULL-HANDLE ;] CURL:E-STATE TTHROWSQ
    s" a NUL inside a URL is refused, never silently cut" T-LABEL
-   [: EMBEDDED-NUL ;] CURL:E-OPERAND TTHROWSQ ;
+   [: EMBEDDED-NUL ;] CURL:E-OPERAND TTHROWSQ
+   s" a low-speed rate below zero is refused" T-LABEL
+   [: LOW-SPEED-RATE ;] CURL:E-OPERAND TTHROWSQ
+   s" a low-speed window past the C long ceiling is refused" T-LABEL
+   [: LOW-SPEED-WINDOW ;] CURL:E-OPERAND TTHROWSQ
+   s" a handle takes the disabling pair and a real one" T-LABEL
+   LOW-SPEED-PAIRS ;
 
 
 : TEST-SERVER ( -- )
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS @ 9 T= ;
+   SERVER-HITS @ 12 T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
@@ -739,6 +873,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : PREPARE ( -- )
    MAKE-ROOT
    WRITE-FIXTURES
+   DRIBBLE-FILL
    START-SERVER ;
 
 
@@ -772,6 +907,7 @@ public
    TEST-COOKIES
    TEST-TRUNCATED
    TEST-TIMEOUT
+   TEST-LOW-SPEED
    TEST-NO-URL
    TEST-FILE-SCHEME
    TEST-REFUSALS
