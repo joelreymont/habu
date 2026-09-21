@@ -30,17 +30,16 @@
 \ the contract names no place, so the module is the body the source selected to
 \ and every value in it is one the allocator is free to place.
 \
-\ WHY NOT X64ABI:LEAF, WHICH IS THE DATA-STACK CONVENTION. The validator
-\ re-derives where the data-stack pointer has to STAND over the body
-\ (regalloc-verify.f VDPLACE-CK) and refuses a module standing anywhere else.
-\ That derivation is A64SEL's placement policy: stand at the position the most
-\ boundary transfers name, so the pointer moves once. X64SEL places it at the
-\ entry instead - it takes every argument's bytes at the entry and publishes
-\ every result's at the exit - and is refused with E-A64RAV-DSTACK for a leaf
-\ as small as `( a b -- n ) -`, measured. Neither pass is reading the wrong
-\ machine there: they disagree about a policy that no vocabulary states, so an
-\ x86-64 routine under the data-stack convention needs that disagreement
-\ settled first (dot habu-bind-the-register-623e83ff records it).
+\ AND X64ABI:LEAF, WHICH IS THE DATA-STACK CONVENTION. Where the data-stack
+\ pointer STANDS over a body is the SELECTOR's policy and not something either
+\ later pass can derive from the module: A64SEL surveys the boundary transfers
+\ and stands where the fewest need an adjustment, X64SEL takes every argument's
+\ bytes at the entry and publishes every result's at the exit. The dialect is
+\ what states which of the two it is - the vocabulary's `stand` field, `survey`
+\ for a64ir and `entry` for x64ir (dialect.f NDIALECT:dstand) - and
+\ regalloc-verify.f VDPLACE-CK measures a module against the policy its dialect
+\ states rather than re-deriving one of them. The leaf case below is that fact
+\ measured.
 \
 \ ONE FIXTURE PER CONTEXT, and the refusing case runs inside an enclosing one:
 \ an abandoned context gives its registry slots back only when a live enclosing
@@ -230,6 +229,28 @@ create TXT
    m LEAF A64RAV:ACCEPT
    m ;
 
+\ ---- and the same body under the data-stack convention -----------------------
+\ The other contract of this machine: the interface is two caller cells in and
+\ one out, so the selector writes the boundary and the validator has a stand to
+\ measure. It is x86-64's own policy that is measured, because the vocabulary
+\ x64ir builds states `entry` and the validator reads it there.
+: DLEAF ( -- NEFF:routine )
+   X64ABI:SCRATCH 2 1 X64ABI:LEAF ;
+
+: DSTACK-SELECTED ( -- IR-BUILD:module )
+   CC BB X64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   X64-BUILDER {: xb:IR-BUILD:builder :}
+   CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
+   CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
+   CC m xb DLEAF X64SEL:SELECT ;
+
+: DSTACK-ALLOCATED ( -- IR-BUILD:module )
+   DSTACK-SELECTED {: m:IR-BUILD:module :}
+   CC m DLEAF A64RA:ALLOCATE
+   m DLEAF A64RAV:ACCEPT
+   m ;
+
 \ ---- the cases ---------------------------------------------------------------
 : DIFF-BODY ( IR-CTX:ctx -- n n n n n bool )
    HIR-MOD
@@ -239,6 +260,20 @@ create TXT
    0 A64RAV:REG@
    1 A64RAV:REG@
    2 A64RAV:REG@
+   A64RA:PLAN-N
+   A64RAV:ACCEPTED? ;
+
+\ The boundary is three memory tokens and a fourth the publish leaves, so the
+\ values the allocator places are the two loaded arguments and the difference:
+\ 1, 3 and 5. The other four are tokens and REG@ refuses them by class.
+: DSTACK-BODY ( IR-CTX:ctx -- n n n n n bool )
+   HIR-MOD
+   BUILD-DIFF
+   DSTACK-ALLOCATED drop
+   A64RA:VALUES
+   1 A64RAV:REG@
+   3 A64RAV:REG@
+   5 A64RAV:REG@
    A64RA:PLAN-N
    A64RAV:ACCEPTED? ;
 
@@ -267,9 +302,19 @@ create TXT
 : WRONG-VOCAB ( -- )
    ABND [: WRONG-VOCAB-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ The key this dialect does not have, asked for anyway. x64ir declares the
+\ write-back key ABSENT because x86-64 has no write-back addressing and interns
+\ no symbol for one, and the reader refuses rather than answering with a number
+\ that would read as a symbol here.
+: ABSENT-KEY ( -- )
+   NDIALECT-OPTKEY:ABSENT NDIALECT:KEY drop ;
+
 : VOCAB-REFUSE-CASES ( -- )
    s" one dialect's vocabulary bound to another dialect's module is refused, because its names are that module's ordinals and name nothing here" T-LABEL
-   [: WRONG-VOCAB ;] E-A64RA-MODULE TTHROWSQ ;
+   [: WRONG-VOCAB ;] E-A64RA-MODULE TTHROWSQ
+
+   s" a key the dialect declared absent is refused rather than answered: x64ir says `absent` for the write-back key every data-stack case above reads through" T-LABEL
+   [: ABSENT-KEY ;] E-NDIALECT TTHROWSQ ;
 
 \ A refusing case runs INSIDE an enclosing context: an abandoned context gives
 \ its registry slots back only when a live enclosing context leaves normally.
@@ -287,6 +332,10 @@ public
    s" the copy a two-address form needs takes a register of its own: the allocator found it by the vocabulary's own copy opcode, x64.mov" T-LABEL
    WBND [: SQUARE-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 0 T= 1 T= 1 T= 0 T= 3 T=
+
+   s" the same leaf under the data-stack convention allocates and is accepted: the validator measures the stand against the `entry` policy x64ir states, where re-deriving A64SEL's survey refused this module with E-A64RAV-DSTACK" T-LABEL
+   WBND [: DSTACK-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 0 T= 0 T= 1 T= 0 T= 7 T=
 
    WBND [: GROUP-VOCAB ;] IR-CTX:WITH-CONTEXT
 

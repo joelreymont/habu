@@ -53,6 +53,11 @@
 \ adjustment at all and the pointer therefore has to stand where it was entered.
 \ A cell already pushed is then at a NEGATIVE displacement, which this machine
 \ addresses as readily as a positive one (x64ir.f DSLOT).
+\
+\ That policy is not this file's private habit: x64ir.f VOCABULARY states it as
+\ the dialect's `stand` field (NDIALECT:dstand `entry`, src/compiler/native/
+\ dialect.f), and regalloc-verify.f VDPLACE-CK checks a module against the
+\ stated policy rather than re-deriving the ARM64 survey.
 
 require lib/prelude.f
 require lib/errors.f

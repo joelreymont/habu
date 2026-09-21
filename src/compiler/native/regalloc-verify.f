@@ -128,13 +128,17 @@ variable V-DSTACK                    \ whether the contract declares the data-st
 
 : FUN ( -- IR-ID:ir-fun-id )         0 S-FUN @ ;
 
-\ The two facts the dialect states rather than this pass assuming them: the
-\ bytes one frame access moves, and whether the dialect names a transfer that
-\ moves the data-stack pointer in the access itself.
+\ The three facts the dialect states rather than this pass assuming them: the
+\ bytes one frame access moves, whether the dialect names a transfer that moves
+\ the data-stack pointer in the access itself, and where its selector stands
+\ that pointer over a body. The write-back key is held as the optional value the
+\ dialect stated, absent and all: a binding that declares none stores `absent`
+\ over whatever the last one named, so no other dialect's ordinal can be left
+\ sitting where a symbol would be read.
 variable BND-SLOTW                   \ bytes per frame slot, from the vocabulary
 0 BND-SLOTW !
-variable BND-WB                      \ 1 when the dialect has a write-back key
-0 BND-WB !
+1 TYPED-BUFFER BND-DWB NDIALECT:optkey
+1 TYPED-BUFFER BND-STAND NDIALECT:dstand
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
@@ -144,7 +148,6 @@ variable BND-WB                      \ 1 when the dialect has a write-back key
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DSLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-DWB IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
@@ -259,8 +262,8 @@ variable FPO-RUN                     \ where the next predecessor run starts
 \ no symbol to look for.
 : DWB-OF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   BND-WB @ 0= if NOSLOT exit then
-   id 0 BND-DWB @ ATTR-INT ;
+   0 BND-DWB @ NDIALECT:HAS-KEY? 0= if NOSLOT exit then
+   id  0 BND-DWB @ NDIALECT:KEY  ATTR-INT ;
 
 \ A transfer that carries the pointer move in its own encoding. The two fused
 \ forms are the only operations this dialect gives that key, so this pass tells
@@ -2136,14 +2139,36 @@ DKEEP-HOOK-DEFAULT
    c VD-BEST !
    k VD-BCOST ! ;
 
-: VDPLACE-CK ( -- )
-   \ VDTAIL-CK already requires the callee's position for a tail transfer.
-   V-TAIL @ 0<> if exit then
-   VD-REQ-OVER @ 0<> if exit then
+\ The `survey` policy re-derived: the place the fewest boundary transfers need
+\ an adjustment from, which is the one src/compiler/native/select.f chose.
+: VDPLACE-SURVEY-CK ( -- )
    0 VD-BEST !
    0 VDPLACE-COST VD-BCOST !
    VD-REQ-N @ 0 ?do  i cells VD-REQ + @ VDPLACE-TRY  loop
    VD-BEST @ VD-STAND @ <> if E-A64RAV-DSTACK throw then ;
+
+\ The `entry` policy checked: the entry transfer takes every argument's bytes,
+\ so the body stands at the base that transfer leaves the pointer at. That base
+\ is zero in the offsets VDSTAND-AT measures - the entry position less every
+\ byte taken there - and a module whose entry took fewer bytes stands somewhere
+\ else and is refused. Measured on `( a b -- n ) -` selected by X64SEL: the
+\ entry `x64.dtake` moves all 16 bytes of a 16-byte interface.
+0 constant DSTAND-BASE
+
+: VDPLACE-ENTRY-CK ( -- )
+   VD-STAND @ DSTAND-BASE <> if E-A64RAV-DSTACK throw then ;
+
+\ Which of the two the module is measured against is the DIALECT's word, from
+\ the vocabulary this pass was bound with: a selector's placement policy is not
+\ something the other selector's rule can be applied to.
+: VDPLACE-CK ( -- )
+   \ VDTAIL-CK already requires the callee's position for a tail transfer.
+   V-TAIL @ 0<> if exit then
+   VD-REQ-OVER @ 0<> if exit then
+   0 BND-STAND @ MATCH NDIALECT:dstand
+      survey OF VDPLACE-SURVEY-CK ENDOF
+      entry  OF VDPLACE-ENTRY-CK ENDOF
+   ;MATCH ;
 
 \ Which of the two shapes this module has to have is the CONTRACT's declaration:
 \ a register-convention routine touches the caller's stack nowhere.
@@ -2345,7 +2370,10 @@ public
 \ dialect built (src/compiler/native/dialect.f) - the same value the allocator
 \ was bound with, so the two passes read one module by one set of names. What
 \ this pass never asks about is in it for the allocator: an address lane is a
-\ spill decision and this pass re-derives the ranges rather than the plan.
+\ spill decision and this pass re-derives the ranges rather than the plan. The
+\ stand is the other way round - where the data-stack pointer stands over a body
+\ is the selector's policy, and reading it here is what lets one validator be
+\ true of two selectors instead of re-deriving one of them.
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NDIALECT:vocab -- )
    NDIALECT-VOCAB:UNMAKE
    {: nm:IR-ID:ir-symbol-id mj:n mi:n arch:CTARGET:arch
@@ -2356,7 +2384,7 @@ public
       entry:IR-ID:ir-symbol-id trap:IR-ID:ir-symbol-id
       addr:IR-ID:ir-symbol-id shift:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
-      lanes:n slotw:n :}
+      lanes:n slotw:n stand:NDIALECT:dstand :}
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b nm mj mi DIALECT-CK
    b IR-BUILD:MODULE@ 0 BND-MOD !
@@ -2368,15 +2396,11 @@ public
    dslot 0 BND-DSLOT !
    dbytes 0 BND-DBYTES !
    dback 0 BND-DBACK !
-   wb NDIALECT:HAS-KEY? if
-      wb NDIALECT:KEY 0 BND-DWB !
-      1 BND-WB !
-   else
-      0 BND-WB !
-   then
+   wb 0 BND-DWB !
    entry 0 BND-ENTRY !
    trap 0 BND-TRAP !
    slotw BND-SLOTW !
+   stand 0 BND-STAND !
    BOUND-YES BND-MODE ! ;
 
 \ ---- the check ---------------------------------------------------------------

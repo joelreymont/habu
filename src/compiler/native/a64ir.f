@@ -987,6 +987,10 @@ public
 \ insertion, and that the transfer forms can move the data-stack pointer in the
 \ access itself. Every symbol below is this MODULE's ordinal, so the value is
 \ built per module and consumed by the binding that asked for it.
+\
+\ The stand is `survey` because that is what src/compiler/native/select.f does:
+\ it surveys the body's boundary transfers and stands the pointer where the
+\ fewest of them need an adjustment.
 : VOCABULARY ( IR-CTX:ctx IR-BUILD:builder -- NDIALECT:vocab )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b NAME IR-BUILD:INTERN-SYMBOL
@@ -1001,6 +1005,7 @@ public
    c b A64IR-OPCODE:MOV OPCODE
    c b A64IR-OPCODE:MOVZ OPCODE
    HALVES SLOT-WIDTH
+   NDIALECT-DSTAND:SURVEY
    NDIALECT-VOCAB:MAKE ;
 
 private

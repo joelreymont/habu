@@ -34,6 +34,9 @@
 \                      through spill insertion; x86-64 writes one instruction,
 \                      and a run of one has no lane arithmetic at all.
 \   slot-width       - the bytes one frame access moves.
+\   stand            - where the dialect's SELECTOR stands the data-stack
+\                      pointer over a body, which the validator checks a module
+\                      against instead of re-deriving one selector's policy.
 \
 \ WHY A VALUE AND NOT A TABLE. Every name in it is one MODULE's ordinal - a
 \ symbol id carries the module it was interned in - so a vocabulary is only
@@ -59,9 +62,29 @@ SUMTYPE optkey 0
    VARIANT present IR-ID:ir-symbol-id ;VARIANT
 ;SUMTYPE
 
+\ ---- where a dialect's selector stands the data-stack pointer ----------------
+\ The pointer is a register and stands at ONE place for a whole body, but WHICH
+\ place is the SELECTOR's policy rather than anything a later pass can derive
+\ from the module: two selectors that both lower correctly stand in different
+\ places, and a validator that re-derives one of them refuses the other's
+\ modules.
+\
+\ `survey` is src/compiler/native/select.f's: the pointer stands where the
+\ fewest boundary transfers need an adjustment, which is a place the body's own
+\ call sites decide and a reader has to re-derive.
+\
+\ `entry` is src/compiler/native/select-x64.f's: the entry transfer takes every
+\ argument's bytes at once, so the body stands at the base that transfer leaves
+\ it at and the exit publishes every result's - one adjustment at each end and
+\ none in between.
+SUMTYPE dstand 0
+   VARIANT survey ;VARIANT
+   VARIANT entry ;VARIANT
+;SUMTYPE
+
 \ ---- one dialect's vocabulary ------------------------------------------------
 \ The order is the order a binding reads it in: who you are, what machine, the
-\ types, the keys, the opcodes, the shape.
+\ types, the keys, the opcodes, the shape, and the policy the selector states.
 STRUCTURE vocab 0
    FIELD name IR-ID:ir-symbol-id
    FIELD major n
@@ -84,6 +107,7 @@ STRUCTURE vocab 0
    FIELD remat IR-ID:ir-symbol-id
    FIELD lanes n
    FIELD slot-width n
+   FIELD stand dstand
 ;STRUCTURE
 
 \ ---- reading the one field that may be missing --------------------------------

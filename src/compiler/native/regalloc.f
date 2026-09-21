@@ -87,12 +87,14 @@ NREGFILE:REG-MAX constant REGS-MAX
 
 -1 constant NOPOS
 
-\ The four keys that say an operation reaches the CALLER's data stack.
-4 constant DKEYS-N
+\ The three keys every dialect has that say an operation reaches the CALLER's
+\ data stack. The fourth - the write-back key - is the one a dialect may not
+\ have, and it is held as the optional value it is rather than as a table slot
+\ that would keep the last dialect's symbol when this one declares none.
+3 constant DKEYS-N
 0 constant DK-SLOT
 1 constant DK-BYTES
 2 constant DK-BACK
-3 constant DK-WB
 
 -1 constant NOBODY
 
@@ -136,8 +138,6 @@ variable OUTS-N
 \ names a transfer that moves the data-stack pointer in the access itself.
 variable BND-LANES                   \ address-carrier instructions, 1 or more
 1 BND-LANES !
-variable BND-WB                      \ 1 when the dialect has a write-back key
-0 BND-WB !
 
 \ The machine the bound dialect lowers for, which is what a module's own
 \ compilation contract has to agree with before a register is placed.
@@ -156,6 +156,10 @@ variable BND-WB                      \ 1 when the dialect has a write-back key
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
 DKEYS-N TYPED-BUFFER BND-DKEY IR-ID:ir-symbol-id
+\ The write-back key as the dialect stated it, absent and all: a binding that
+\ declares none stores `absent` over whatever the last one named, so no other
+\ dialect's ordinal can be left sitting where a symbol would be read.
+1 TYPED-BUFFER BND-DWB NDIALECT:optkey
 
 1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER S-POOL NEFF:gprs
@@ -514,8 +518,8 @@ variable SHORT-FUN                           \ the function whose scan ran short
 \ look for.
 : DWB-OF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   BND-WB @ 0= if NOATTR exit then
-   id DK-WB BND-DKEY @ ATTR-INT-OF ;
+   0 BND-DWB @ NDIALECT:HAS-KEY? 0= if NOATTR exit then
+   id  0 BND-DWB @ NDIALECT:KEY  ATTR-INT-OF ;
 
 \ An operation that TRANSFERS one cell of the caller's stack. It names the cell
 \ by its own slot, or - in the fused forms of a dialect that has them, which
@@ -2153,6 +2157,11 @@ public
 \ machine beneath it is named after. A binding refused after that point leaves
 \ the tables holding a machine no allocation can reach: the mode stays unbound
 \ and WALK refuses before it reads them.
+\
+\ One field is named here and used nowhere: the STAND is where the dialect's
+\ selector puts the data-stack pointer, which regalloc-verify.f checks a module
+\ against and this pass has no decision to make about. A value is unmade whole,
+\ so it is bound and left.
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NMACH:mach NDIALECT:vocab -- )
    BND-MODE @ BOUND-YES = if E-A64RA-BIND throw then
    NDIALECT-VOCAB:UNMAKE
@@ -2164,16 +2173,23 @@ public
       entry:IR-ID:ir-symbol-id trap:IR-ID:ir-symbol-id
       addr:IR-ID:ir-symbol-id shift:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
-      lanes:n slotw:n :}
+      lanes:n slotw:n stand:NDIALECT:dstand :}
    NMACH:ID {: row:n :}
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   \ WHOSE vocabulary this is comes first: a value of another dialect is refused
+   \ as the foreign value it is, and not for whichever of its numbers happens to
+   \ disagree with this machine.
+   c b nm mj mi DIALECT-CK
    row RF-MACH-N !
    row NMACH:BY-ID NMACH:REGFILE RF-FILE!
    \ One width or two passes disagreeing about where a spill lives: the slots
    \ this walk lays out are the machine's, and the validator measures them
    \ against the dialect's.
    slotw RF-SLOT-WIDTH <> if E-A64RA-BIND throw then
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b nm mj mi DIALECT-CK
+   \ An address literal is at least one instruction: LANE-BITS divides by this
+   \ number, and a dialect that answered zero would be dividing the machine's
+   \ own word by nothing.
+   lanes 1 < if E-A64RA-BIND throw then
    b IR-BUILD:MODULE@ 0 BND-MOD !
    arch 0 BND-ARCH !
    gpr 0 BND-TYP !
@@ -2184,12 +2200,7 @@ public
    dslot  DK-SLOT BND-DKEY !
    dbytes DK-BYTES BND-DKEY !
    dback  DK-BACK BND-DKEY !
-   wb NDIALECT:HAS-KEY? if
-      wb NDIALECT:KEY DK-WB BND-DKEY !
-      1 BND-WB !
-   else
-      0 BND-WB !
-   then
+   wb 0 BND-DWB !
    entry 0 BND-ENTRY !
    trap 0 BND-TRAP !
    copy 0 BND-COPY !
