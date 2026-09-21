@@ -41,10 +41,11 @@ dots land; do not merge them.
 
 ## Earlier integration state
 
-Updated 2026-09-18 01:20 by hazel. Integrated line head: the commit that
-closes `habu-add-the-x86-56726659`; arm64 engine `bin/hb` sha256
-`fa4980358806e3ca` (3,997,888 bytes). **All four arm64-side dots are closed;
-the Intel agent starts at `habu-lower-hir-to-6bf80d33`.**
+Updated 2026-09-21 by hazel. Integrated line head: the commit that closes
+`habu-spill-and-drive-cfcad183`; the arm64 engine `bin/hb` is the chain's
+release build of that head (its rows are in docs/engine-size.md). **All four
+arm64-side dots are closed; the Intel agent starts at
+`habu-lower-hir-to-6bf80d33`.**
 
 | Dot | Work | Runs on | State |
 | --- | --- | --- | --- |
@@ -53,7 +54,8 @@ the Intel agent starts at `habu-lower-hir-to-6bf80d33`.**
 | `habu-add-the-x86-56726659` | `src/os/linux-x86-64/` seam, ELF64, target contract, emitters | arm64 host (hazel) | landed d55021af + 5e05cbfd + d1961798 (closed) |
 | `habu-parameterise-the-alloc-7efbe7a1` | register-file description for regalloc/spill/prune | arm64 host (hazel) | landed 50ee6a3c |
 | `habu-bind-compiler-targets-ff970b99` | backend registry + pass dispatch | arm64 host (hazel) | landed 0901e61c + ddc1412d (closed) |
-| `habu-lower-hir-to-6bf80d33` | `x64ir.f`, `select-x64.f`, `emit-x64.f` | arm64 host (hazel) | `x64ir.f` + backend row, selection slice A, two-address copies, the allocator bound to a dialect vocabulary (cdafb56f), the straight-line emitter slice of `emit-x64.f` (bebc61f4: one block, no calls, no frame, bytes pinned against llvm-mc) the data-stack stand (`habu-agree-the-x86-b4c4de5e`, db640e7a, closed) the fixed-register operands (`habu-place-the-fixed-3347ae15`: schema f87602b1, lowering + allocator 74cba68c, closed) and the tie copies by liveness (`habu-copy-tied-x86-579536b1`, d4a419cc, closed; `select-x64.f` is not in the baked closure, so its proof is the loaded suites) landed; open: spill + pass rows (`habu-spill-and-drive-cfcad183`), the emitter's layout/rel32/call/trap slices and the `shl`/`shr`/`idiv` renders, fusing and floats |
+| `habu-lower-hir-to-6bf80d33` | `x64ir.f`, `select-x64.f`, `emit-x64.f` | arm64 host (hazel) | `x64ir.f` + backend row, selection slice A, two-address copies, the allocator bound to a dialect vocabulary (cdafb56f), the straight-line emitter slice of `emit-x64.f` (bebc61f4: one block, no calls, no frame, bytes pinned against llvm-mc) the data-stack stand (`habu-agree-the-x86-b4c4de5e`, db640e7a, closed) the fixed-register operands (`habu-place-the-fixed-3347ae15`: schema f87602b1, lowering + allocator 74cba68c, closed) and the tie copies by liveness (`habu-copy-tied-x86-579536b1`, d4a419cc, closed; `select-x64.f` is not in the baked closure, so its proof is the loaded suites) and the spill + pass rows (`habu-spill-and-drive-cfcad183`, next row, closed) landed; open: the emitter's layout/rel32/call/trap slices and `emit-x64.f` as the placing stage that fills the emit and retire rows, the `shl`/`shr`/`idiv` renders, fusing and floats |
+| `habu-spill-and-drive-cfcad183` | shared spill pass over any dialect, `src/arch/x86-64/passes.f` pass rows, `test/compiler/x64-chain.f` | arm64 host (hazel) | landed 27bc97f1 (`spill.f` binds the dialect's `NDIALECT:lowering` record and ensure quotation; items 1-2 superseded) + e41c9a75 (`X64PASS`: declare, select, prune as a pass-through, fixpoint through the shared pass, release, prototype, forget, prepare; emit and retire answer `E-CTGT-UNLOADED` until `emit-x64.f` places a routine; the chain test measures 8 stores / 8 loads over slots 0-24, frame 32) (closed) |
 | `habu-cross-build-the-d25a959d` | cross-build entry + device-peer gate | alder | open |
 | `habu-port-the-ffi-676f745d` | SysV FFI, task entry, traps | alder | open |
 | `habu-self-host-the-ccc31e78` | fixpoint on the Intel machine, release artifact | Intel agent | open |
@@ -255,12 +257,14 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
   allocatable set; `test/compiler/native-regalloc.f` already drives the
   allocator with that shape. The pool type is target-neutral now
   (`NEFF:gprs` over an `NMACH:mach`, `src/arch/x86-64/machine.f` for this
-  machine); what is NOT is `spill.f`/`prune.f`, which are instruction-form
-  code over the A64 dialect, so the lowering dot supplies its own dialect
-  before a SPILLED x86_64 function can be lowered.
-  `test/compiler/x64-regalloc.f` allocates and validates real x86_64
-  leaves through `X64IR:VOCABULARY` and `X64M:MACHINE`; a function that
-  needs no spill plan needs neither of those two passes.
+  machine), and so is `spill.f` since 27bc97f1: it binds the dialect's
+  `NDIALECT:lowering` record and an ensure quotation, and
+  `src/arch/x86-64/passes.f` lowers x86_64 spills through it (e41c9a75).
+  `prune.f` is still instruction-form code over the A64 dialect and rewrites
+  nothing on the corpus, so the x86_64 prune row hands the module back
+  untouched. `test/compiler/x64-regalloc.f` allocates and validates real
+  x86_64 leaves through `X64IR:VOCABULARY` and `X64M:MACHINE`;
+  `test/compiler/x64-chain.f` drives a spilled one through the rows.
 
 ### OS seam, ELF64, contract, site kind, emitters (`habu-add-the-x86-56726659`, lines d55021af + 5e05cbfd + d1961798, engine fa498035)
 
