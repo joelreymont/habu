@@ -367,6 +367,11 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BF-BOOT-ROOT$ EXISTS? TFALSE ;
 
 : BFT-TEST-CANDIDATE-BOOT ( -- )
+   \ Keep the source checks beside the copied-tree execution: the child run
+   \ below is the regression for duplicate STORE, tier-1 bad-arch/crash, and
+   \ the missing active recovery signature.
+   BF-BOOT-PROGRAM$ s" require src/core/quotation-storage.f" CONTAINS? TTRUE
+   BF-BOOT-PROGRAM$ s" CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?" CONTAINS? TTRUE
    BFT-ROOT s" candidate-boot" BFT-CP-BUF JOIN-PATH
    BFT-CP-BUF swap 2dup MAKE-DIRS BF-TMP!
    BFT-ENG-A BF-ENGINE!

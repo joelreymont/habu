@@ -477,13 +477,16 @@ would cause duplicate definitions after relocation.
 
 The two chains and their comparison point:
 
-- **Native chain** — the current `bin/hb`, which reproduces itself at the native
-  fixpoint (`install --force` is byte-identical). This is the reference.
+- **Native chain** — the current `bin/hb`, which reproduces itself through
+  `tools/native-build.f` at the native fixpoint. This is the release reference.
 - **Gforth chain** — `tools/bootstrap.sh HABU_BOOTSTRAP_CHECK_ONLY=1` emits a raw
   seed engine `hb-stdin` via Gforth; the audit then runs the native fixpoint
   refresh on that seed (the exact `install --force` step the full recovery runs
   after `mv hb-stdin bin/hb`), re-targeted to a scratch engine path via
-  `HABU_FIXPOINT_ENGINE` so the checkout's `bin/hb` is never replaced.
+  `HABU_FIXPOINT_ENGINE` so the checkout's `bin/hb` is never replaced. The
+  fixpoint install verb is a recovery/development route; it is not a
+  release-equivalence proof and must not replace the native product without its
+  copied-tree preflight and the serial gate.
 
 DDC compares **at the fixpoint**: the Gforth chain's refreshed engine must be
 byte-identical to the native `bin/hb`. It does **not** diff the raw `hb-stdin`
@@ -496,7 +499,7 @@ diverges by design. The native fixpoint refresh re-captures the AOT blob from th
 canonical small engine (identical layout regardless of Gforth-vs-native lineage),
 which erases the dead host addresses; the two chains then converge byte-for-byte.
 
-Ensure `bin/hb` is a fresh native fixpoint before the audit, then run it (the
+Ensure `bin/hb` is a fresh native fixpoint with `tools/native-build.f` before the audit, then run it (the
 Gforth chain needs `gforth` on `PATH` or `GFORTH` set, per Requirements above):
 
 ```sh

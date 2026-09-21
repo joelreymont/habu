@@ -1775,7 +1775,11 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
    s" lib" [: BF-BOOT-COPY ;] WALK-FILES ;
 
 : BF-BOOT-PROGRAM$ ( -- ptr u8 n )
-   S\" require src/compiler/native/compiler.f\n1 set-tier\n: BF-CANDIDATE-INC ( n -- n ) 1+ ;\n41 BF-CANDIDATE-INC . cr\n" ;
+   \ This copied-tree smoke exercises the three install-route failures:
+   \ quotation-storage must be provided without a duplicate STORE, the tier-1
+   \ compiler must run INC and print 42, and the active recovery signature must
+   \ still compile. Any bad arch tag or tier-1 crash makes the child fail.
+   S\" require src/core/quotation-storage.f\nrequire src/compiler/native/compiler.f\n1 set-tier\nTRUSTED: BF-CANDIDATE-RECOVERY ( -- bool ) CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? ;\nBF-CANDIDATE-RECOVERY drop\n: BF-CANDIDATE-INC ( n -- n ) 1+ ;\n41 BF-CANDIDATE-INC . cr\n" ;
 
 : BF-BOOT-RESULT ( result<pcap:captured,pcap:failed> -- n n n )
    MATCH result
