@@ -25,9 +25,9 @@
 \
 \ THE LIST IS AT THE BOTTOM OF THIS FILE. A cell is on it because it is NAMED
 \ there - never because of its value, its address, or the file it lives in.
-\ aot-closure.f CLAIMED-CELL? admits a named cell - the cell an owned claim names,
-\ any byte a carried claim declares - and refuses every other cell below the
-\ window with the diagnostic it always gave; aot-lib.f EMIT-OWNED-CELLS emits the
+\ aot-closure.f CLAIMED-CELL? admits the bytes a claim declares - one cell, or
+\ the buffer a length names - and refuses every other cell below the window with
+\ the diagnostic it always gave; aot-lib.f EMIT-OWNED-CELLS emits the
 \ initialisation each claim declares. One table, two readers, so the walker and
 \ the entry cannot disagree about a cell.
 \
@@ -44,6 +44,7 @@
 \ that links - which is this one. It is the linker's question in any case: which
 \ engine cells a stripped entry may own is AOT policy, and src/core and src/os do
 \ not otherwise know that AOT exists.
+require src/core/util.f
 require src/os/env-base.f
 require src/core/dynamic-storage.f
 require src/core/sha256.f
@@ -74,9 +75,12 @@ variable COUNT
 \ IS the address, by ordinary checked pointer arithmetic; nothing here holds a
 \ pointer in a raw cell (dot habu-refuse-a-ptr-5ad2734e).
 \
-\ EVERY CLAIM CARRIES A BYTE LENGTH: one cell for the kinds that name a single
-\ cell, the declared extent for CARRIED, which is the only kind whose length is
-\ read (the bytes to copy, and the range a spelled address is mapped through).
+\ EVERY CLAIM CARRIES A BYTE LENGTH AND EVERY READER READS IT: one cell for the
+\ kinds that name a single cell, the declared extent for CARRIED and
+\ FRESH-BYTES. The length is the claim's EXTENT - aot-closure.f CLAIMED-AT?
+\ admits [cell, cell + length) whatever the kind, because a buffer is reached at
+\ an interior offset as often as at its head - and for CARRIED it is also the
+\ bytes to copy and the range a spelled address is mapped through.
 : CLAIM ( ptr a n n -- ) {: c:ptr k:n len:n :}
    COUNT @ MAX-CELLS >= if s" aot: owned-cell list exceeds its table" 74 die then
    c BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N +  COUNT @ cells OFFS + !
@@ -91,6 +95,15 @@ public
 \ publishes nothing for it: either the word that reads it writes it first within
 \ one call, or zero is the empty state this engine itself boots with.
 : FRESH ( ptr a -- ) 0 8 CLAIM ;
+
+\ A BUFFER owned by the same rule, with its span declared: the entry publishes
+\ nothing here either, and every address inside the declared bytes is admitted
+\ because a buffer is reached at an interior offset as often as at its head. The
+\ length is the declaration, as it is for CARRIED: nothing here measures a
+\ `create` body from the dictionary.
+: FRESH-BYTES ( ptr a n -- ) {: c:ptr len:n :}
+   len 0 <= if s" aot: a fresh claim needs a positive byte length" 74 die then
+   c 0 len CLAIM ;
 
 \ The entry publishes this image's own DATA base in the cell - the value the
 \ declaring file stores into it when the engine loads.
@@ -223,6 +236,11 @@ private
 \   SHA-W        BE32!, BE64! and BYTE>HEX store the value before reading it.
 \   SHA-N        ZFILL, BMOVE and SHA-TAKE-TAIL store the count before reading it.
 \   SHA-TL, SHA-UB     SHA-PAD stores both at entry before reading them.
+\ PZB (src/core/util.f) is the tree's one path scratch, claimed fresh with its
+\ PATH-CAP + 1 bytes: PATHZ writes the caller's path and its NUL into it and
+\ PATH0 hands it to the caller within that one call, so every byte it reads it
+\ wrote first.
+\
 \ src/core/sha256.f declares no package, so the list names its cells directly and
 \ that file needs no word of its own: the DYNAMIC-STORAGE:OWNED-CELLS detour
 \ below exists only because those three cells are private to their package.
@@ -254,7 +272,8 @@ private
    SHA-NEED FRESH  SHA-NBLK FRESH  SHA-FD FRESH  SHA-RD FRESH
    SHA-BLEN FRESH  SHA-BLOCK-A FRESH  SHA-P FRESH  SHA-SRC FRESH
    SHA-DST FRESH  SHA-OUT FRESH  SHA-W FRESH  SHA-N FRESH
-   SHA-TL FRESH  SHA-UB FRESH ;
+   SHA-TL FRESH  SHA-UB FRESH
+   PZB PATH-CAP 1 + FRESH-BYTES ;
 
 LIST
 ;package

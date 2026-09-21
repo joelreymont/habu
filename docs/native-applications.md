@@ -122,15 +122,25 @@ in. Each entry declares how the entry initialises it:
 | the registry head, count and lock | `src/core/dynamic-storage.f` | fresh | nothing: a runtime instance with no mapping, no members and an open lock is correct, and that is the zero a fresh anonymous mapping holds |
 | the `WITH-BYTES` scope stack | `lib/memory.f` | fresh | nothing: depth zero with no cached mapping is the same fresh state |
 | `RBASE-CELL` | `src/habu/layout.f` | text base | the entry stores this image's own text content base — the address of its first instruction — which `rbase` answers and the engine's own entry writes at boot |
+| `PZB` | `src/core/util.f` | fresh bytes, `PATH-CAP` + 1 | nothing: it is the one path scratch, and `PATHZ` writes the caller's path and its NUL into it before `PATH0` hands it to `open` inside that one call |
 
 A **fresh** claim emits no instruction at all — `EMIT-DATA-REGION-MAP` has just
 mapped DATA anonymously, so the cell already holds the zero the claim declares
-correct. An **image-base** claim gets one store of `x20`, an **entry-xt** claim
-one store of the entry root's own address, and a **text-base** claim one store
-of the image's own code base. Both readers work from
+correct. `FRESH-BYTES` is the same claim over a **buffer**, named with its byte
+length, for scratch that is written before it is read within one call. An
+**image-base** claim gets one store of `x20`, an **entry-xt** claim one store of
+the entry root's own address, and a **text-base** claim one store of the image's
+own code base. Both readers work from
 that one table: `src/habu/aot-lib.f EMIT-OWNED-CELLS` emits what each claim
-declares, and `src/habu/aot-closure.f OWNED-CELL?` admits exactly the same
+declares, and `src/habu/aot-closure.f CLAIMED-CELL?` admits exactly the same
 addresses, so the entry and the walker cannot disagree about a cell.
+
+**A claim's length is its extent, whatever its kind.** `CLAIMED-AT?` admits
+`[cell, cell + length)` — one cell for the kinds that name a single cell, the
+declared span for a carried table or a fresh buffer — because a buffer is
+reached at an interior offset as often as at its head: `PATHZ` writes its NUL at
+`PZB + u`. The bytes *next* to a claim are refused as loudly as ever; the range
+rule admits what a claim declares and never its neighbours.
 
 The list lives with the linker and not beside the cells it names, because a
 claim is a DATA offset and **an offset computed while the engine's own prefix
@@ -183,12 +193,18 @@ a claim reaching into the capture window fails with *aot: a carried claim
 reaches into the capture window* — the window is restored on its own and a copy
 of part of it would never be read. The scratch cells and buffers of
 `src/core/sha256.f` are claimed **fresh** by the same list, each after reading
-the word that writes it before it reads it. A baked table on no list still
-refuses: `src/core/util.f`'s `PZB`, reached through `PATH0`, is the nearest miss
-(`HBT-STRIPPED-UNCARRIED-TABLE`) — a table travels because the list names it,
-never because it is a table. One program that prints, parses and hashes, with
-its stdout pinned to `42`, `123` and the FIPS-180 digest of `abc`, is
-`HBT-STRIPPED-PRINT-PARSE-HASH`.
+the word that writes it before it reads it, and so is `src/core/util.f`'s `PZB`
+— with `FRESH-BYTES` and its `PATH-CAP` + 1 bytes, because `PATH0` hands `open`
+the buffer itself. Until it was claimed, *every* path a stripped image opened
+was refused at `caller=PATH0 target=PZB`, which is where Tender's three entry
+points stopped; `HBT-STRIPPED-OPEN-PATH` is that reproducer, and it now opens
+`/dev/null` and prints. A baked table on no list still refuses:
+`src/os/env-base.f`'s `TPB`, the `TMP-PATH` buffer, reached through
+`TMP-PATH-COPY-SRC`, is the nearest miss (`HBT-STRIPPED-UNCARRIED-TABLE`) — a
+table travels because the list names it, never because it is a table and never
+because the buffer in the file beside it is claimed. One program that prints,
+parses and hashes, with its stdout pinned to `42`, `123` and the FIPS-180 digest
+of `abc`, is `HBT-STRIPPED-PRINT-PARSE-HASH`.
 
 **A stripped image can call a foreign function.** A `FUNCTION:` declaration
 resolves its symbol at the *first call*, so no address the builder resolved ever
@@ -255,7 +271,7 @@ offset and the value:
 - a declared cell whose value is not the code of any word the image can carry.
 - a **declared DATA cell** holding an engine address no claim names — the map
   above has nothing to rewrite it to (`HBT-STRIPPED-CACHED-UNOWNED` pins it on a
-  cell holding `PZB`).
+  cell holding `TPB`).
 
 ## Capturing an existing dictionary
 

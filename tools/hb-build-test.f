@@ -115,6 +115,8 @@ variable HBT-PTRC-SRC-U
 variable HBT-PTRC-OUT-U
 variable HBT-PTRU-SRC-U
 variable HBT-PTRU-OUT-U
+variable HBT-OPENP-SRC-U
+variable HBT-OPENP-OUT-U
 create HBT-LIB-SRC-BUF FS-PATH-CAP allot
 create HBT-LIB-OUT-BUF FS-PATH-CAP allot
 create HBT-LIB-DIR-BUF FS-PATH-CAP allot
@@ -132,6 +134,8 @@ create HBT-PTRC-SRC-BUF FS-PATH-CAP allot
 create HBT-PTRC-OUT-BUF FS-PATH-CAP allot
 create HBT-PTRU-SRC-BUF FS-PATH-CAP allot
 create HBT-PTRU-OUT-BUF FS-PATH-CAP allot
+create HBT-OPENP-SRC-BUF FS-PATH-CAP allot
+create HBT-OPENP-OUT-BUF FS-PATH-CAP allot
 \ The quoted-path fixture below owns the writer's bytes; json-write holds none.
 6 constant HBT-ESCAPE-MAX
 FS-PATH-CAP HBT-ESCAPE-MAX * 2 + constant HBT-QUOTE-CAP
@@ -324,6 +328,12 @@ create HBT-EXP-HEX2 64 allot
 : HBT-PTRU-OUT ( -- ptr u8 n )
    HBT-PTRU-OUT-BUF HBT-PTRU-OUT-U @ ;
 
+: HBT-OPENP-SRC ( -- ptr u8 n )
+   HBT-OPENP-SRC-BUF HBT-OPENP-SRC-U @ ;
+
+: HBT-OPENP-OUT ( -- ptr u8 n )
+   HBT-OPENP-OUT-BUF HBT-OPENP-OUT-U @ ;
+
 \ An application that touches a PERSISTENT CELL of each library it requires:
 \ lib/string.f's builder, lib/fs-mutate.f's copy state (FS-MUT-COPY-IN) and
 \ lib/fs.f's walk stacks (FS-DEPTH, FS-WALK-BUF). Those cells are what the maker
@@ -397,12 +407,13 @@ create HBT-EXP-HEX2 64 allot
    SB$ ;
 
 \ ... and a baked `create` TABLE that no claim names is refused exactly as
-\ before. PZB is src/core/util.f's shared path0 scratch, the same shape as the
-\ carried digit tables and reached by PATH0, which any program can call - so the
-\ carried kind makes a table travel because the list NAMES it, never because it
-\ is a table.
+\ before. TPB is src/os/env-base.f's TMP-PATH buffer, the same shape as the
+\ carried digit tables and as the claimed path scratch, and TMP-PATH-COPY-SRC
+\ spells its address before any other engine data - so a table travels because
+\ the list NAMES it, never because it is a table and never because a table in
+\ the same file, or in the file next to it, is claimed.
 : HBT-TABLE-SRC$ ( -- ptr u8 n )
-   S\" : MAIN ( -- ) s\" /tmp/x\" PATH0 1 type cr ;\n" ;
+   S\" : MAIN ( -- ) s\" x\" TMP-PATH-COPY-SRC ;\n" ;
 
 \ A DECLARED CELL THAT HOLDS A CARRIED TABLE'S ADDRESS, stored at BUILD time. The
 \ cell travels in the window like any other byte, so before src/habu/aot-closure.f
@@ -430,14 +441,32 @@ create HBT-EXP-HEX2 64 allot
    SB$ ;
 
 \ ... and a declared cell holding a baked table NO claim names is refused by the
-\ cell that holds it. PZB is the same table HBT-STRIPPED-UNCARRIED-TABLE reaches
-\ through PATH0, so the two cases differ only in how the address got into the
-\ image: spelled in code, or stored in a declared cell at build time.
+\ cell that holds it. TPB is the same table HBT-STRIPPED-UNCARRIED-TABLE reaches
+\ through TMP-PATH-COPY-SRC, so the two cases differ only in how the address got
+\ into the image: spelled in code, or stored in a declared cell at build time.
 : HBT-PTRU-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" PERSISTED-PTR-VARIABLE PTRU-CACHED\nPZB PTRU-CACHED !\n" SB-APPEND
+   S\" PERSISTED-PTR-VARIABLE PTRU-CACHED\nTPB PTRU-CACHED !\n" SB-APPEND
    S\" : MAIN ( -- ) PTRU-CACHED @ 1 type cr ;\n" SB-APPEND
    SB$ ;
+
+\ OPENING A FILE BY PATH, the smallest program that reaches the engine's path
+\ scratch: PATH0 (src/core/util.f) zero-terminates the path into PZB and hands
+\ `open` that buffer, so PATH0's compiled code spells out an address below every
+\ window. Reported from Tender, where it refused every entry point before
+\ anything else - `caller=PATH0 target=PZB` - and answered by the FRESH-BYTES
+\ claim in src/habu/aot-owned-cells.f. The printed line runs AFTER the close, so
+\ the pinned stdout proves the image opened and closed the file rather than
+\ merely exiting zero.
+: HBT-OPENP-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" variable FD\n: MAIN ( -- )\n   s\" /dev/null\" PATH0 0 0 open FD !\n" SB-APPEND
+   S\"    FD @ 0 < IF s\" openpath: cannot open /dev/null\" 74 die THEN\n" SB-APPEND
+   S\"    FD @ close\n   s\" opened\" type cr ;\n" SB-APPEND
+   SB$ ;
+
+: HBT-OPENP-EXPECTED$ ( -- ptr u8 n )
+   S\" opened\n" ;
 
 \ A PROGRAM WHOSE CLOSURE IS ITS OWN SIZE. HBT-CHAIN-N words, each calling the
 \ next and reaching no library, are exactly HBT-CHAIN-N + 1 closure members, so
@@ -527,6 +556,8 @@ create HBT-EXP-HEX2 64 allot
    HBT-ROOT s" ptrcell" HBT-PTRC-OUT-BUF HBT-PTRC-OUT-U HBT-PATH!
    HBT-ROOT s" ptrunowned.f" HBT-PTRU-SRC-BUF HBT-PTRU-SRC-U HBT-PATH!
    HBT-ROOT s" ptrunowned" HBT-PTRU-OUT-BUF HBT-PTRU-OUT-U HBT-PATH!
+   HBT-ROOT s" openpath.f" HBT-OPENP-SRC-BUF HBT-OPENP-SRC-U HBT-PATH!
+   HBT-ROOT s" openpath" HBT-OPENP-OUT-BUF HBT-OPENP-OUT-U HBT-PATH!
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
@@ -940,6 +971,30 @@ create READER-STATE JR:STORAGE-BYTES allot
    errn 0 T=
    HBT-RUN-OUT outn HBT-CHAIN-EXPECTED$ T$= ;
 
+\ ... a stripped image OPENS A FILE BY PATH, because the path scratch PATH0
+\ terminates into is claimed fresh with its byte length. Before that claim this
+\ program - Tender's minimal reproducer - was refused with `outside the restored
+\ span caller=PATH0 target=PZB`, and so was every entry point that reaches a file.
+: HBT-STRIPPED-OPEN-PATH ( -- )
+   HBT-OPENP-SRC HBT-OPENP-SRC$ WRITE-ALL
+   HBT-OPENP-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-OPENP-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-OPENP-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
+   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
+   brc 0 T=
+   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-OPENP-OUT FILE? TTRUE
+   HBT-OPENP-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-OPENP-EXPECTED$ T$=
+   HBT-OPENP-OUT HBT-REMOVE-FILE? ;
+
 \ ... while a baked create table on no list is refused however much it looks like
 \ the carried ones.
 : HBT-STRIPPED-UNCARRIED-TABLE ( -- )
@@ -952,8 +1007,8 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-RUN-HB-BUILD {: tout:n terr:n trc:n :}
    trc 0 <> TTRUE
    HBT-ERR terr s" outside the restored span" CONTAINS? TTRUE
-   HBT-ERR terr s" caller=PATH0" CONTAINS? TTRUE
-   HBT-ERR terr s" target=PZB" CONTAINS? TTRUE
+   HBT-ERR terr s" caller=TMP-PATH-COPY-SRC" CONTAINS? TTRUE
+   HBT-ERR terr s" target=TPB" CONTAINS? TTRUE
    HBT-TABLE-OUT FILE? TFALSE ;
 
 \ ... and a DECLARED CELL that holds a carried table's address is mapped to the
@@ -1666,6 +1721,7 @@ public
    HBT-STRIPPED-UNOWNED-CELL
    HBT-STRIPPED-PRINT-PARSE-HASH
    HBT-STRIPPED-CHAIN
+   HBT-STRIPPED-OPEN-PATH
    HBT-STRIPPED-UNCARRIED-TABLE
    HBT-STRIPPED-CACHED-CARRIED
    HBT-STRIPPED-CACHED-UNOWNED

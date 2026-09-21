@@ -554,6 +554,28 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
 : IN-WINDOW? ( n -- bool ) {: v:n :}
    v BLOB-SRC @ >= v BLOB-END @ <= and ;
 
+\ A CLAIM'S DECLARED BYTES, WHATEVER ITS KIND. src/habu/aot-owned-cells.f is the
+\ list; a cell is on it because it is NAMED there, and the length it declares is
+\ its extent: [cell, cell + length), one cell for the kinds that name a single
+\ cell and the declared span for a carried table or a fresh buffer. A BUFFER IS
+\ REACHED AT AN INTERIOR OFFSET AS OFTEN AS AT ITS HEAD - src/core/util.f PATHZ
+\ writes the NUL at PZB + u - so a claim that admitted only its first address
+\ would refuse the same buffer one instruction later. A value that merely lands
+\ in the engine's DATA below the window, or in the same file as a claimed cell,
+\ or in the bytes NEXT to one, is refused exactly as before: with PZB claimed
+\ for PATH-CAP + 1 bytes, a program spelling PZB + 8 links and one spelling RDP
+\ - util.f's next record, at PZB + 1032 - is still refused by that name.
+\ Relocation preserves
+\ a claimed address because DATA is one MAP_FIXED mapping at DATA-VA in the
+\ engine and in the image alike, and src/habu/aot-lib.f EMIT-OWNED-CELLS reads
+\ this same table to publish what each claim declares - so the two cannot
+\ disagree about one cell.
+\ ONE PREDICATE FOR EVERY ROAD BELOW, because the carried map answers an address
+\ with the copy and the refusal check must admit exactly what the map answered
+\ for.
+: CLAIMED-AT? ( n n -- bool ) {: i:n v:n :}
+   v i AOT-OWNED:AT >=  v i AOT-OWNED:AT i AOT-OWNED:LEN + < and ;
+
 \ AN ADDRESS INSIDE A CARRIED CLAIM'S BYTES NAMES THE COPY. src/habu/aot-lib.f
 \ CARRY-CELLS has already copied [cell, cell+length) into the window's carried run
 \ and recorded where, so the image's code reads the bytes it restores and not the
@@ -563,30 +585,16 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
 \ walk hands a re-interned literal.
 : CARRIED-IN? ( n n -- bool ) {: i:n v:n :}
    i AOT-OWNED:CARRIED? 0= if false exit then
-   v i AOT-OWNED:AT >=  v i AOT-OWNED:AT i AOT-OWNED:LEN + < and ;
+   i v CLAIMED-AT? ;
 
 : CARRIED-TARGET ( n -- n ) {: v:n :}                 \ the copy's address, or -1
    AOT-OWNED:N 0 ?do
       i v CARRIED-IN? if i AOT-OWNED:DEST v i AOT-OWNED:AT - + unloop exit then
    loop -1 ;
 
-\ AN ENGINE RUNTIME CELL THE STRIPPED ENTRY OWNS OR CARRIES, ADMITTED BY ITS
-\ DECLARATION. src/habu/aot-owned-cells.f is the list; a cell is on it because it
-\ is named there. An owned claim admits its cell's own address and nothing else -
-\ a value that merely lands in the engine's DATA below the window, or in the same
-\ file as a claimed cell, is refused exactly as before - and a carried claim
-\ admits every address inside its declared bytes, because that whole range maps
-\ to the copy. Relocation preserves an owned address because DATA is one
-\ MAP_FIXED mapping at DATA-VA in the engine and in the image alike, and
-\ src/habu/aot-lib.f EMIT-OWNED-CELLS reads this same table to publish what each
-\ claim declares - so the two cannot disagree about one cell.
-\ ONE PREDICATE FOR BOTH KINDS, because both roads below ask it: the map answers
-\ a carried address with the copy, and the refusal check must admit exactly what
-\ the map answered for.
-: CLAIMED-AT? ( n n -- bool ) {: i:n v:n :}
-   i AOT-OWNED:CARRIED? if i v CARRIED-IN? exit then
-   v i AOT-OWNED:AT = ;
-
+\ AN ENGINE ADDRESS THE STRIPPED ENTRY OWNS OR CARRIES, ADMITTED BY ITS
+\ DECLARATION: any claim whose declared bytes cover it, by the one predicate
+\ above.
 : CLAIMED-CELL? ( n -- bool ) {: v:n :}
    AOT-OWNED:N 0 ?do
       i v CLAIMED-AT? if true unloop exit then
