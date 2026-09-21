@@ -1069,6 +1069,10 @@ SUITE compiler-compile-floor
    test/compiler/compile-floor.f
 ;SUITE
 
+SUITE compiler-compile-floor-gate
+   test/compile-floor-gate.f
+;SUITE
+
 SUITE codegen-role
    tools/codegen-role-test.f
 ;SUITE
