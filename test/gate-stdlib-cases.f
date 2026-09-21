@@ -262,6 +262,10 @@ SUITE compiler-native-effect
    test/compiler/native-effect.f
 ;SUITE
 
+SUITE compiler-native-colon
+   test/compiler/native-colon.f
+;SUITE
+
 \ The target/policy binding: src/compiler/digest.f, target.f, numeric-policy.f
 \ and binding.f through their public words. It is the acceptance suite
 \ habu-bind-compiler-target-b3dfa307 is answered by, and a suite that answers a
