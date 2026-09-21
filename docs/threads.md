@@ -51,7 +51,9 @@ TASK:SELF            ( -- ptr a )
 TASK:SELF-N          ( -- n )
 TASK:PAUSE           ( -- )            \ yield; worker exits if HALT requested
 TASK:SLEEP           ( ms -- )         \ park this task for a duration
-TASK:HALT            ( ptr a -- )      \ request stop at next PAUSE
+TASK:STOP            ( -- )            \ park this task until somebody WAKEs it
+TASK:WAKE            ( ptr a -- )      \ post that task's own wake-up
+TASK:HALT            ( ptr a -- )      \ request stop at next PAUSE; wakes the target
 TASK:KILL            ( ptr a -- )      \ join/release task memory
 TASK:DONE?           ( ptr a -- bool )
 TASK:THROW@          ( ptr a -- n )    \ uncaught throw code, 0 if none
@@ -91,6 +93,50 @@ and is observed by `TASK:PAUSE`.
 The surface tracks the SwiftForth multitasking words captured in
 `docs/swiftforth-task-api.md`. Habu keeps the task body typed by passing an XT to
 `TASK:ACTIVATE` instead of parsing a following source body.
+
+## STOP and WAKE
+
+A task that waits for another task or for a completion loop parks on its OWN
+wake-up: `TASK:STOP` blocks on the semaphore in the calling task's TCB and
+`TASK:WAKE` posts the semaphore of the task it names. Nothing is shared between
+the two ends but the TCB, so one loop can serve any number of waiters — which a
+pooled semaphore cannot, since the pool holds `$40` records.
+
+| Word | Effect | Blocks |
+| --- | --- | --- |
+| `TASK:STOP` | `( -- )` | until somebody WAKEs this task |
+| `TASK:WAKE` | `( ptr a -- )` | never |
+
+**WAKE is a hint, STOP waits for a hint, and the caller re-checks its own state
+after every STOP.** The park is a counting semaphore, so a WAKE that arrives
+before the STOP is not lost: the STOP it precedes returns at once. It also means
+a STOP takes one hint whoever posted it and whatever they meant by it, so a
+wake-up is never evidence that the state the caller wants has arrived:
+
+```forth
+: AWAIT-READY ( -- )
+   begin
+      READY @ 0 <> if exit then          \ the caller's own state, re-read
+      TASK:STOP                          \ a hint; not the answer
+   again ;
+```
+
+- The main thread has no TCB — `TASK:SELF` answers the null TCB there and
+  `TASK:SELF-N` answers zero — so its STOP parks on one main record package
+  `TASK` owns, and `TASK:WAKE` of the null TCB posts that record. A program with
+  no tasks of its own can therefore wait on a loop too.
+- The park record is created with the task and destroyed with its memory, like
+  the mailbox and the done semaphore. A `TASK:WAKE` of a task that was never
+  activated, one that is only prepared, and one that has ended are all
+  `E-TASK-STATE`: the count would sit in a record the task's next activation is
+  not entitled to.
+- A stopped task observes no `TASK:HALT`, exactly as a sleeping or a
+  semaphore-blocked one does not. So `TASK:HALT` wakes its target itself: the
+  task returns from its STOP, re-checks as above, and ends at its next
+  `TASK:PAUSE`. **A STOP loop that must answer a halt calls `TASK:PAUSE` in that
+  loop**; one that never pauses is ended only by `TASK:KILL`'s join.
+- The count is not cleared by `TASK:ACTIVATE`: a task reactivated without being
+  released can see one stale hint, which the re-check above absorbs.
 
 ## Joins and cleanups
 

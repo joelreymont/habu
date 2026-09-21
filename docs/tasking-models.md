@@ -201,7 +201,7 @@ For `habu-decide-the-cooperative-b463cc1c`. One public surface, two kernels:
 | --- | --- | --- |
 | `TASK`, `PREPARE` (build), `ACTIVATE` (xt), `SELF`, `+USER`, `HIS` | yes | yes |
 | `PAUSE` | cancel point and `sched_yield` | store `WAKE` in own `STATUS`, run the ring |
-| `STOP`, `WAKE ( tcb -- )` | block on the task's halt semaphore; `WAKE` posts it | store `SLEEP`/`WAKE` in `STATUS` |
+| `STOP`, `WAKE ( tcb -- )` | landed: block on the task's own park semaphore in its TCB; `WAKE` posts it, and `WAKE` of the null TCB posts the main thread's one park ([threads.md](threads.md) "STOP and WAKE") | store `SLEEP`/`WAKE` in `STATUS` |
 | `FACILITY`, `GET`, `RELEASE`, `GRAB` | owner-tracked mutex | owner in the facility cell, spin with `PAUSE` |
 | `SEMAPHORE`, `WAIT`, `SIGNAL` | POSIX semaphore | counter plus `STOP`/`WAKE` of the first waiter |
 | `SEND-MESSAGE`, `GET-MESSAGE`, `MSG?` | one-cell mailbox blocking on the semaphore | one-cell mailbox blocking with `STOP` |

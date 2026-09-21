@@ -7,6 +7,7 @@ require lib/test.f
 require lib/process.f
 require lib/process-argv.f
 require lib/task.f
+require src/habu/task-abi.f       \ the baked TCB size this suite pins
 require lib/adt/result.f          \ the join's answer is MATCHed here
 require lib/test/outcome.f
 require test/checker-assert.f
@@ -1039,6 +1040,163 @@ FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- n )
    SLEEP-KILLED TASK:KILL
    mono-ns t0 - SLEEP-LEAST-NS >= TTRUE ;
 
+\ ---- STOP and WAKE -----------------------------------------------------------
+\ WAKE is a hint and STOP waits for one, so every case here re-checks its own
+\ cell after the STOP returns instead of treating the wake-up as the message.
+16 constant STOP-ITEM-N
+2000 constant STOP-HINT-MS           \ a lost hint parks forever: the bound makes that a FAIL
+5 constant STOP-PARK-MS              \ grace for the target to reach its STOP
+
+TASK:MIN-STACK TASK:TASK STOP-PROD
+TASK:MIN-STACK TASK:TASK STOP-CONS
+TASK:MIN-STACK TASK:TASK STOP-EARLY
+TASK:MIN-STACK TASK:TASK STOP-HALTED
+TASK:MIN-STACK TASK:TASK STOP-WAKER
+TASK:MIN-STACK TASK:TASK STOP-IDLE
+TASK:MIN-STACK TASK:TASK STOP-ENDED
+TASK:SEMAPHORE STOP-GATE
+
+TASK-TEST-ALIGN8
+variable STOP-SLOT
+variable STOP-TAKEN
+variable STOP-EARLY-DONE
+variable STOP-PARKED
+variable STOP-WAKED
+PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared as one
+
+: STOP-MAIN-TCB@ ( -- ptr n )
+   STOP-MAIN-TCB @ ;
+
+: STOP-WAIT-SLOT ( n -- ) {: want:n :}
+   begin
+      STOP-SLOT atomic@ want = if exit then
+      TASK:STOP
+   again ;
+
+\ True when the cell reached the value inside STOP-HINT-MS, false when the wait
+\ ran out - a hint that was dropped is a failed case, not a hung suite.
+: STOP-REACHED? ( ptr n n -- bool ) {: cell:ptr want:n :}
+   mono-ns STOP-HINT-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      cell atomic@ want = if 0 0= exit then
+      mono-ns deadline > if 0 0= 0= exit then
+      TASK:PAUSE
+   again ;
+
+: STOP-PROD-WORK ( -- )
+   STOP-ITEM-N 1 + 1 ?do
+      0 STOP-WAIT-SLOT
+      i STOP-SLOT atomic!
+      STOP-CONS TASK:WAKE
+   loop ;
+
+\ The consumer wakes the producer for the next item but not after the last one:
+\ the producer has nothing left to wait for and a WAKE of a task that has ended
+\ is E-TASK-STATE.
+: STOP-CONS-WORK ( -- )
+   STOP-ITEM-N 1 + 1 ?do
+      i STOP-WAIT-SLOT
+      1 STOP-TAKEN atomic-add drop
+      0 STOP-SLOT atomic!
+      i STOP-ITEM-N < if STOP-PROD TASK:WAKE then
+   loop ;
+
+\ Two tasks hand one cell back and forth with no semaphore between them: each
+\ parks on its OWN wake-up and the other names it by TCB.
+: TASK-TEST-STOP-PIPE ( -- )
+   0 STOP-SLOT ! 0 STOP-TAKEN !
+   ['] STOP-CONS-WORK STOP-CONS TASK:ACTIVATE
+   ['] STOP-PROD-WORK STOP-PROD TASK:ACTIVATE
+   STOP-PROD APP-WAIT-DONE
+   STOP-CONS APP-WAIT-DONE
+   STOP-TAKEN @ STOP-ITEM-N T=
+   STOP-PROD TASK:THROW@ 0 T=
+   STOP-CONS TASK:THROW@ 0 T=
+   STOP-PROD TASK:KILL
+   STOP-CONS TASK:KILL ;
+
+\ The worker is parked in a SEMAPHORE, not in its STOP, when the WAKE arrives:
+\ it cannot leave TASK:WAIT before the signal, and the signal comes after the
+\ wake. So the hint strictly precedes the STOP, and the count is what makes the
+\ STOP return without a second WAKE ever being posted.
+: STOP-EARLY-WORK ( -- )
+   STOP-GATE TASK:WAIT
+   TASK:STOP
+   1 STOP-EARLY-DONE atomic! ;
+
+: TASK-TEST-STOP-EARLY ( -- )
+   0 STOP-EARLY-DONE !
+   0 STOP-GATE TASK:SEMAPHORE-INIT
+   ['] STOP-EARLY-WORK STOP-EARLY TASK:ACTIVATE
+   STOP-EARLY TASK:WAKE
+   STOP-GATE TASK:SIGNAL
+   STOP-EARLY-DONE 1 STOP-REACHED? TTRUE
+   STOP-EARLY APP-WAIT-DONE
+   STOP-EARLY TASK:THROW@ 0 T=
+   STOP-EARLY TASK:KILL
+   STOP-GATE TASK:SEMAPHORE-DESTROY ;
+
+\ A STOP loop that must also answer TASK:HALT pauses in the loop: the halt wakes
+\ the task, the STOP returns, and the PAUSE after it ends the task through the
+\ same TASK-END as any other ending - so the cleanup still runs.
+: STOP-HALTED-WORK ( -- )
+   1 STOP-PARKED atomic!
+   begin TASK:STOP TASK:PAUSE again ;
+
+: TASK-TEST-STOP-HALT ( -- )
+   0 STOP-PARKED !
+   ['] JOIN-MARK STOP-HALTED TASK:AT-EXIT
+   ['] STOP-HALTED-WORK STOP-HALTED TASK:ACTIVATE
+   STOP-PARKED 1 STOP-REACHED? TTRUE
+   STOP-PARK-MS TASK:SLEEP
+   STOP-HALTED TASK:HALT
+   STOP-HALTED APP-WAIT-DONE
+   STOP-HALTED TASK:DONE? TTRUE
+   STOP-HALTED TASK-EXIT-MARK TASK:HIS @ 1 T=
+   STOP-HALTED TASK:KILL ;
+
+\ The main thread has no TCB, so its STOP parks on package TASK's one main
+\ record and the worker wakes it through the null TCB TASK:SELF answers there.
+: STOP-WAKER-WORK ( -- )
+   1 STOP-WAKED atomic!
+   STOP-MAIN-TCB@ TASK:WAKE ;
+
+: TASK-TEST-STOP-MAIN ( -- )
+   0 STOP-WAKED !
+   TASK:SELF-N 0 T=
+   TASK:SELF STOP-MAIN-TCB !
+   ['] STOP-WAKER-WORK STOP-WAKER TASK:ACTIVATE
+   TASK:STOP
+   STOP-WAKED @ 1 T=
+   STOP-WAKER APP-WAIT-DONE
+   STOP-WAKER TASK:THROW@ 0 T=
+   STOP-WAKER TASK:KILL ;
+
+\ A task with no run has nothing to hint at: the count would sit in a record its
+\ next activation is not entitled to.
+: TASK-TEST-STOP-REFUSED ( -- )
+   [: STOP-IDLE TASK:WAKE ;] E-TASK-STATE TTHROWSQ
+   STOP-IDLE TASK:PREPARE
+   [: STOP-IDLE TASK:WAKE ;] E-TASK-STATE TTHROWSQ
+   STOP-IDLE TASK:KILL
+   ['] TASK-OK-WORK STOP-ENDED TASK:ACTIVATE
+   STOP-ENDED APP-WAIT-DONE
+   [: STOP-ENDED TASK:WAKE ;] E-TASK-STATE TTHROWSQ
+   STOP-ENDED TASK:KILL ;
+
+\ The park record is one more TASK-SEMAPHORE-BYTES row of the baked TCB, so the
+\ size the engine and this library agree on is pinned here.
+: TASK-TEST-STOP-TYPES ( -- )
+   TASK-ABI:TCB-BYTES $170 T=
+   s" TASK-STOP-OK ( -- ) TASK:STOP"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-STOP-N ( -- n ) TASK:STOP"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-WAKE-OK ( ptr n -- ) TASK:WAKE"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-WAKE-RAW ( n -- ) TASK:WAKE"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : TASK-TEST-RUN ( -- )
    T-RESET
    TASK-TEST-CALLBACK-TYPES
@@ -1097,6 +1255,12 @@ FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- n )
    TASK-TEST-SLEEP-EDGES
    TASK-TEST-SLEEP-CONCURRENT
    TASK-TEST-SLEEP-KILL
+   TASK-TEST-STOP-TYPES
+   TASK-TEST-STOP-PIPE
+   TASK-TEST-STOP-EARLY
+   TASK-TEST-STOP-HALT
+   TASK-TEST-STOP-MAIN
+   TASK-TEST-STOP-REFUSED
    T-REPORT ;
 
 TASK-TEST-RUN

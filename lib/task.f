@@ -83,6 +83,7 @@ BEGIN-STRUCTURE TASK-TCB-SIZE
    CELL +FIELD TCB.MSG-PENDING
    TASK-SEMAPHORE-BYTES +FIELD TCB.MSG-FREE
    TASK-SEMAPHORE-BYTES +FIELD TCB.MSG-FULL
+   TASK-SEMAPHORE-BYTES +FIELD TCB.PARK
    CELL +FIELD TCB.RESULT
    CELL +FIELD TCB.RESULT-SET
    CELL +FIELD TCB.JOINER
@@ -114,6 +115,7 @@ END-STRUCTURE
    origin TCB.MSG-PENDING origin TASK-ABI:MSG-PENDING-OFF TASK-TCB-OFFSET
    origin TCB.MSG-FREE origin TASK-ABI:MSG-FREE-OFF TASK-TCB-OFFSET
    origin TCB.MSG-FULL origin TASK-ABI:MSG-FULL-OFF TASK-TCB-OFFSET
+   origin TCB.PARK origin TASK-ABI:PARK-OFF TASK-TCB-OFFSET
    origin TCB.RESULT origin TASK-ABI:RESULT-OFF TASK-TCB-OFFSET
    origin TCB.RESULT-SET origin TASK-ABI:RESULT-SET-OFF TASK-TCB-OFFSET
    origin TCB.JOINER origin TASK-ABI:JOINER-OFF TASK-TCB-OFFSET
@@ -487,6 +489,73 @@ create TASK-SEM-POOL
    s SEM-DESTROY
    SEM-POOL-RELEASE ;
 
+\ ---- the task's own wake-up --------------------------------------------------
+\ TASK:STOP parks the calling task on the semaphore in its own TCB and TASK:WAKE
+\ posts that semaphore. WAKE is a HINT: the count makes a WAKE that arrives
+\ before the STOP one the STOP does not wait for, and a STOP takes one hint
+\ whoever posted it, so the caller re-checks its own state after every STOP
+\ instead of believing the wake-up meant what it hoped. That is what lets one
+\ loop complete work for many tasks - it wakes an owner by its TCB and holds no
+\ semaphore per waiter, which the pool could not do past TASK-SEM-POOL-N.
+: TASK-PARK-SEM ( ptr n -- sem )
+   TCB.PARK SEM-AT ;
+
+\ Created with the task and destroyed with its memory, exactly like the mailbox
+\ and the done semaphore.
+: PARK-INIT ( ptr n -- ) {: tcb:ptr :}
+   0 tcb TASK-PARK-SEM SEM-INIT ;
+
+: PARK-DESTROY ( ptr n -- ) {: tcb:ptr :}
+   tcb TASK-PARK-SEM SEM-DESTROY ;
+
+\ The main thread has no TCB - TASK:SELF answers the null TCB there - so its
+\ park is this one record and a WAKE of the null TCB posts it, which is what
+\ lets a program with no tasks of its own wait on a loop too. It is initialized
+\ on first use rather than at load time because unnamed POSIX semaphores are a
+\ Linux facility (SEM-HOST-CHECK) and this file still loads on Darwin; the
+\ handshake is TASK-SYMBOLS', so two tasks waking the main thread at the same
+\ moment initialize the record once.
+TASK-ALIGN8
+create MAIN-PARK-REC TASK-SEMAPHORE-BYTES 8 / TASK-ZERO-CELLS,
+TASK-ALIGN8
+variable MAIN-PARK-READY
+
+: MAIN-PARK ( -- sem )
+   MAIN-PARK-REC CELL-VIEW SEM-AT ;
+
+: MAIN-PARK-INIT ( -- )
+   begin
+      MAIN-PARK-READY atomic@ 2 = if exit then
+      0 1 MAIN-PARK-READY atomic-cas 0= if
+         [: 0 MAIN-PARK SEM-INIT ;] catch dup 0 <> if
+            0 MAIN-PARK-READY atomic! throw
+         then drop
+         2 MAIN-PARK-READY atomic! exit
+      then
+   again ;
+
+\ The calling thread's park: the record in its own TCB, or the main one.
+: PARK-SELF ( -- sem )
+   TASK-SELF-N dup 0= if
+      drop MAIN-PARK-INIT MAIN-PARK exit
+   then
+   TASK-N>PTR TASK-PARK-SEM ;
+
+\ Blocks inside the host call like every other wait here, so a stopped task
+\ burns no CPU and observes no TASK:HALT until something wakes it - which is why
+\ TASK:HALT wakes its target itself.
+: TASK-STOP ( -- )
+   PARK-SELF SEM-WAIT ;
+
+\ A task that was never activated, one that is only constructed and one that has
+\ ended have no run to hint at: the count would sit in a record its next
+\ activation is not entitled to, so all three are refused.
+: TASK-WAKE ( ptr n -- ) {: tcb:ptr :}
+   tcb FFI:>CELL 0= if MAIN-PARK-INIT MAIN-PARK SEM-SIGNAL exit then
+   tcb TASK-STATE@ {: st:n :}
+   st TASK-RUNNING <> st TASK-HALT-REQ <> and if E-TASK-STATE throw then
+   tcb TASK-PARK-SEM SEM-SIGNAL ;
+
 \ ---- the per-task mailbox ----------------------------------------------------
 \ VFX's one-cell mailbox (docs/tasking-models.md section 3) with the semaphores
 \ above in place of its PAUSE loop: the slot-free semaphore holds the single
@@ -645,6 +714,7 @@ variable TASK-EXIT-N
 
 : TASK-RELEASE-MEM ( ptr n -- ) {: tcb:ptr :}
    tcb MBOX-DESTROY
+   tcb PARK-DESTROY
    tcb DONE-DESTROY
    tcb TCB.STACK-U @ 0 <> if
       tcb TCB.STACK @ tcb TCB.STACK-U @ MEM-RELEASE-GUARDED
@@ -736,6 +806,7 @@ variable TASK-EXIT-N
    0 tcb TCB.STOP !
    tcb TASK-REGION-INIT
    tcb MBOX-INIT
+   tcb PARK-INIT
    tcb DONE-INIT
    TASK-CONSTRUCTED tcb TASK-STATE! ;
 
@@ -809,9 +880,16 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
    drop
    SCHED-YIELD-CALL TASK-RC0 ;
 
-: HALT ( ptr n -- )
-   TASK-HALT-REQ over TASK-STATE!
-   1 swap TASK-STOP! ;
+\ The request is observed at TASK:PAUSE, so a task parked in TASK:STOP would not
+\ see it until somebody else woke it. HALT wakes it itself: the task returns from
+\ its STOP, re-checks its state as the hint protocol requires, and ends at its
+\ next PAUSE. Only a task that was running has a park to post - the state is read
+\ before the request overwrites it.
+: HALT ( ptr n -- ) {: tcb:ptr :}
+   tcb TASK-STATE@ {: st:n :}
+   TASK-HALT-REQ tcb TASK-STATE!
+   1 tcb TASK-STOP!
+   st TASK-RUNNING = st TASK-HALT-REQ = or if tcb TASK-WAKE then ;
 
 : TASK-KILL ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-STATE@ TASK-EMPTY = if exit then
@@ -1081,6 +1159,31 @@ TASK-MIN-STACK constant MIN-STACK
 : SLEEP ( ms -- )
    TASK-SLEEP ;
 
+\ ---- the task's own wake-up --------------------------------------------------
+\ Parks the calling task until somebody WAKEs it, from a worker or from the main
+\ thread, which parks on the one main record instead of a TCB. It burns no CPU
+\ and observes no TASK:HALT while it is parked - TASK:HALT wakes its target, so a
+\ halted task returns from its STOP and ends at its next TASK:PAUSE.
+\
+\ WAKE is a HINT, not a message: the count keeps a WAKE that arrives before the
+\ STOP, so no hint is lost, but a STOP takes one hint whoever posted it. A caller
+\ re-checks its own state after every STOP and stops again if the state it waits
+\ for has not arrived:
+\
+\    begin  MY-STATE @ DONE = if exit then  TASK:STOP  again
+\
+\ A loop that must also answer TASK:HALT calls TASK:PAUSE in that loop.
+: STOP ( -- )
+   TASK-STOP ;
+
+\ Posts the named task's park. The null TCB - what TASK:SELF answers on the main
+\ thread - posts the main thread's park. A task that was never activated, one
+\ that is only prepared and one that has ended are E-TASK-STATE.
+: WAKE ( ptr n -- )
+   TASK-WAKE ;
+
+\ Requests the stop the target observes at its next TASK:PAUSE, and wakes it so
+\ a task parked in TASK:STOP gets there.
 : HALT ( ptr n -- )
    HALT ;
 
