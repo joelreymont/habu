@@ -45,6 +45,7 @@
 \ engine cells a stripped entry may own is AOT policy, and src/core and src/os do
 \ not otherwise know that AOT exists.
 require src/core/util.f
+require lib/image-lifecycle.f
 require src/os/env-base.f
 require src/core/dynamic-storage.f
 require src/core/sha256.f
@@ -236,6 +237,16 @@ private
 \   SHA-W        BE32!, BE64! and BYTE>HEX store the value before reading it.
 \   SHA-N        ZFILL, BMOVE and SHA-TAKE-TAIL store the count before reading it.
 \   SHA-TL, SHA-UB     SHA-PAD stores both at entry before reading them.
+\ THE IMAGE-LIFECYCLE REGISTRY (lib/image-lifecycle.f) is the second site a
+\ stripped image is refused at, once the path scratch below lets it open a file:
+\ its private lock and two counters, claimed fresh for the reason the
+\ DYNAMIC-STORAGE registry's three cells are - a new process has registered
+\ nothing, so an open lock and two zero counts are its correct start, and that is
+\ the zero a fresh anonymous mapping holds. IMAGE-LIFECYCLE:COUNT takes the lock
+\ and reads both counters, which is how a program reaches all three; the HOOKS
+\ buffer and the PERSISTENT table are deliberately not on the list, because the
+\ only code that spells them stores a quotation through `xt!` and no stripped
+\ image carries that (the reason is with the word that hands these out).
 \ PZB (src/core/util.f) is the tree's one path scratch, claimed fresh with its
 \ PATH-CAP + 1 bytes: PATHZ writes the caller's path and its NUL into it and
 \ PATH0 hands it to the caller within that one call, so every byte it reads it
@@ -261,6 +272,7 @@ private
    ENV-QU FRESH
    [: FRESH ;] DYNAMIC-STORAGE:OWNED-CELLS
    [: FRESH ;] MEM:OWNED-CELLS
+   [: FRESH ;] IMAGE-LIFECYCLE:OWNED-CELLS
    data-base APP-ENTRY:XT-CELL + ENTRY-XT
    data-base RBASE-CELL + TEXT-BASE
    STR-MAX-I64$ STR-I64-DIGITS CARRIED

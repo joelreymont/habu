@@ -79,4 +79,33 @@ public
    PERSISTENT-N @
    begin dup 0 > while 1- dup PERSISTENT @ execute repeat drop ;
 
+\ THE THREE CELLS A STRIPPED IMAGE READS THIS REGISTRY THROUGH, handed one at a
+\ time to a claim the caller supplies. This file is baked into the engine, so
+\ every cell it declares sits below any capture window; COUNT above takes the
+\ lock and reads both counters, so its compiled code spells these three
+\ addresses and an image whose closure reaches it named them. That is the
+\ refusal every Tender entry point stopped at once the path scratch let it open
+\ a file (measured: `caller=<unknown> value=13964713400 target=<unknown>`, the
+\ same integer from a program whose only call was UNICODE:CASEFOLD=, which
+\ registers its cleanup on first use).
+\ THE ZERO OF A FRESH MAPPING IS THE CORRECT START FOR ALL THREE. A new process
+\ has registered nothing: an open lock and two zero counts. Declaration-time
+\ registrations belong to the process that made them - the builder ran them
+\ while it loaded the program - so an image that starts with an empty registry
+\ is not missing state, it is a new instance of it.
+\ HOOKS AND PERSISTENT ARE NOT HANDED OUT, because no stripped image can reach
+\ them: APPEND stores a quotation into a declared cell, which lowers through
+\ `xt!`, and `xt!` needs the engine's address-cell table that a stripped image
+\ does not carry (measured: a program calling REGISTER or PREPARE is refused
+\ with `aot: PC-relative target removed or outside closure site=xt!`). A claim
+\ admits every address it declares, so those two wait for a program that can
+\ reach them.
+\ THE NAMING HAPPENS HERE BECAUSE THE CELLS ARE DECLARED HERE, exactly as in
+\ src/core/dynamic-storage.f: the AOT list admits a cell only by name, these are
+\ private, and this word hands out these three and nothing else.
+: OWNED-CELLS ( [ ptr u8 -- ] -- ) {: claim :}
+   N BYTE-VIEW claim execute
+   PERSISTENT-N BYTE-VIEW claim execute
+   MUTEX BYTE-VIEW claim execute ;
+
 ;package

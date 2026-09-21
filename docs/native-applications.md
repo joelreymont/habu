@@ -181,9 +181,9 @@ nothing below the window is written.
 
 **The carried run travels in every stripped image.** The copies are made for
 every link, whether the program reaches them or not, and the blob ships every
-non-zero byte of the window: a hello-world image carries 390 written data bytes,
-64 of them its own (measured by removing the copy from `CARRY-CELLS` on this
-engine). The 326 bytes of difference are the four claims' non-zero content. The
+non-zero byte of the window: a hello-world image carries 473 written data bytes
+and no zero ones (measured on this engine, from the build's own report — `data
+473 written + 0 zero` — and `HBT-SIZE-AOT` pins the same shape). The
 run itself is `CARRY-BYTES` = 1024 bytes and the four claims use 624 of it
 (`STR-MAX-I64$` and `STR-MIN-I64$` at `STR-I64-DIGITS` = 19 bytes each, rounded
 up to a cell, `KK` at 64 cells and `HH0` at 8 cells); what no claim uses stays
@@ -198,13 +198,38 @@ the word that writes it before it reads it, and so is `src/core/util.f`'s `PZB`
 the buffer itself. Until it was claimed, *every* path a stripped image opened
 was refused at `caller=PATH0 target=PZB`, which is where Tender's three entry
 points stopped; `HBT-STRIPPED-OPEN-PATH` is that reproducer, and it now opens
-`/dev/null` and prints. A baked table on no list still refuses:
+`/dev/null` and prints. The site every entry point stopped at next is
+`lib/image-lifecycle.f`'s hook registry, reached by any library that registers
+its cleanup on first use: its lock and its two hook counters are claimed
+**fresh**, because a new process has registered nothing, and
+`HBT-STRIPPED-LIFECYCLE-REGISTRY` reads the count out of a stripped image. That
+file's `HOOKS` buffer and `PERSISTENT` table are deliberately not claimed, so
+*registering* a hook at run time is still refused — at the `HOOKS` control head,
+now named (`caller=STORE+376 target=DICT+56`). Claiming those two as well moves
+the refusal one step and no further: `APPEND` stores a quotation into a declared
+cell, which lowers through `xt!`, and `xt!` needs the engine's address-cell
+table, so the image is refused with *aot: PC-relative target removed or outside
+closure site=xt!* (both measured). A claim admits every address it declares, so
+those two wait for a program that can reach them. A baked table on no list still refuses:
 `src/os/env-base.f`'s `TPB`, the `TMP-PATH` buffer, reached through
 `TMP-PATH-COPY-SRC`, is the nearest miss (`HBT-STRIPPED-UNCARRIED-TABLE`) — a
 table travels because the list names it, never because it is a table and never
 because the buffer in the file beside it is claimed. One program that prints,
 parses and hashes, with its stdout pinned to `42`, `123` and the FIPS-180 digest
 of `abc`, is `HBT-STRIPPED-PRINT-PARSE-HASH`.
+
+**The span refusal names a site no record names.** Both `caller=` and `target=`
+are dictionary records, and neither is always there: a member whose name the
+engine build stripped arrives with `XREF-NULL` for its record (`aot-closure.f
+ADD-SPAN-CLO`), and an address interior to a buffer is spelled by no record's
+code at all. The refusal then names the nearest record *below* — the site as
+`NAME+off` from the record whose code starts closest below it, the target as
+`NAME+off` from the nearest data any record spells — and the `+off` is what says
+this is a neighbour and not the owner: `caller=STORE+748 target=COUNT+8` is the
+image-lifecycle lock as it read before the claim. Ownership keeps its exact rule
+(`ADDRESS-OWNER`, `DATA-CELL-OWNER`, and so the cell refusals, which name the
+word whose data the cell *is*): a walk that guessed would carry another word's
+bytes. A value no record spells at all stays `<unknown>`.
 
 **A stripped image can call a foreign function.** A `FUNCTION:` declaration
 resolves its symbol at the *first call*, so no address the builder resolved ever

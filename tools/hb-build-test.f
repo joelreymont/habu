@@ -117,6 +117,8 @@ variable HBT-PTRU-SRC-U
 variable HBT-PTRU-OUT-U
 variable HBT-OPENP-SRC-U
 variable HBT-OPENP-OUT-U
+variable HBT-LIFE-SRC-U
+variable HBT-LIFE-OUT-U
 create HBT-LIB-SRC-BUF FS-PATH-CAP allot
 create HBT-LIB-OUT-BUF FS-PATH-CAP allot
 create HBT-LIB-DIR-BUF FS-PATH-CAP allot
@@ -136,6 +138,8 @@ create HBT-PTRU-SRC-BUF FS-PATH-CAP allot
 create HBT-PTRU-OUT-BUF FS-PATH-CAP allot
 create HBT-OPENP-SRC-BUF FS-PATH-CAP allot
 create HBT-OPENP-OUT-BUF FS-PATH-CAP allot
+create HBT-LIFE-SRC-BUF FS-PATH-CAP allot
+create HBT-LIFE-OUT-BUF FS-PATH-CAP allot
 \ The quoted-path fixture below owns the writer's bytes; json-write holds none.
 6 constant HBT-ESCAPE-MAX
 FS-PATH-CAP HBT-ESCAPE-MAX * 2 + constant HBT-QUOTE-CAP
@@ -334,6 +338,12 @@ create HBT-EXP-HEX2 64 allot
 : HBT-OPENP-OUT ( -- ptr u8 n )
    HBT-OPENP-OUT-BUF HBT-OPENP-OUT-U @ ;
 
+: HBT-LIFE-SRC ( -- ptr u8 n )
+   HBT-LIFE-SRC-BUF HBT-LIFE-SRC-U @ ;
+
+: HBT-LIFE-OUT ( -- ptr u8 n )
+   HBT-LIFE-OUT-BUF HBT-LIFE-OUT-U @ ;
+
 \ An application that touches a PERSISTENT CELL of each library it requires:
 \ lib/string.f's builder, lib/fs-mutate.f's copy state (FS-MUT-COPY-IN) and
 \ lib/fs.f's walk stacks (FS-DEPTH, FS-WALK-BUF). Those cells are what the maker
@@ -468,6 +478,26 @@ create HBT-EXP-HEX2 64 allot
 : HBT-OPENP-EXPECTED$ ( -- ptr u8 n )
    S\" opened\n" ;
 
+\ READING THE IMAGE-LIFECYCLE REGISTRY, the second site a stripped image is
+\ refused at and the smallest program that reaches it: IMAGE-LIFECYCLE:COUNT
+\ takes the registry's private lock and reads both hook counters, so its
+\ compiled code spells three baked cells below every window. Before the fresh
+\ claims in src/habu/aot-owned-cells.f this program - and every image whose
+\ libraries register a cleanup hook on first use, which is how Tender's server
+\ and scraper reached it - was refused at `value=13964713400` with neither name
+\ (the refusal now reads `caller=STORE+748 target=COUNT+8`, the neighbour form).
+\ The printed count is the proof the claims are right and not merely quiet: a
+\ new process has registered nothing, and the lock the count is read under has
+\ to be free for the image to print at all.
+: HBT-LIFE-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require lib/image-lifecycle.f\n: MAIN ( -- )\n" SB-APPEND
+   S\"    IMAGE-LIFECYCLE:COUNT 0 = if s\" hooks=0\" type cr then ;\n" SB-APPEND
+   SB$ ;
+
+: HBT-LIFE-EXPECTED$ ( -- ptr u8 n )
+   S\" hooks=0\n" ;
+
 \ A PROGRAM WHOSE CLOSURE IS ITS OWN SIZE. HBT-CHAIN-N words, each calling the
 \ next and reaching no library, are exactly HBT-CHAIN-N + 1 closure members, so
 \ this fixture measures the table sizing and nothing else. 1100 is past the 1024
@@ -558,6 +588,8 @@ create HBT-EXP-HEX2 64 allot
    HBT-ROOT s" ptrunowned" HBT-PTRU-OUT-BUF HBT-PTRU-OUT-U HBT-PATH!
    HBT-ROOT s" openpath.f" HBT-OPENP-SRC-BUF HBT-OPENP-SRC-U HBT-PATH!
    HBT-ROOT s" openpath" HBT-OPENP-OUT-BUF HBT-OPENP-OUT-U HBT-PATH!
+   HBT-ROOT s" lifecycle.f" HBT-LIFE-SRC-BUF HBT-LIFE-SRC-U HBT-PATH!
+   HBT-ROOT s" lifecycle" HBT-LIFE-OUT-BUF HBT-LIFE-OUT-U HBT-PATH!
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
@@ -994,6 +1026,28 @@ create READER-STATE JR:STORAGE-BYTES allot
    errn 0 T=
    HBT-RUN-OUT outn HBT-OPENP-EXPECTED$ T$=
    HBT-OPENP-OUT HBT-REMOVE-FILE? ;
+
+\ ... a stripped image READS THE IMAGE-LIFECYCLE REGISTRY, because its lock and
+\ its two hook counters are claimed fresh: a new process has registered nothing.
+: HBT-STRIPPED-LIFECYCLE-REGISTRY ( -- )
+   HBT-LIFE-SRC HBT-LIFE-SRC$ WRITE-ALL
+   HBT-LIFE-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-LIFE-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-LIFE-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
+   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
+   brc 0 T=
+   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-LIFE-OUT FILE? TTRUE
+   HBT-LIFE-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-LIFE-EXPECTED$ T$=
+   HBT-LIFE-OUT HBT-REMOVE-FILE? ;
 
 \ ... while a baked create table on no list is refused however much it looks like
 \ the carried ones.
@@ -1722,6 +1776,7 @@ public
    HBT-STRIPPED-PRINT-PARSE-HASH
    HBT-STRIPPED-CHAIN
    HBT-STRIPPED-OPEN-PATH
+   HBT-STRIPPED-LIFECYCLE-REGISTRY
    HBT-STRIPPED-UNCARRIED-TABLE
    HBT-STRIPPED-CACHED-CARRIED
    HBT-STRIPPED-CACHED-UNOWNED

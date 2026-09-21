@@ -27,6 +27,22 @@ get-current constant SAT-WID
 : SAT-REC ( -- ptr n ) 0 REC ;
 : SAT-SITE ( -- ptr u8 ) SAT-REC REC-CODE-PTR@ ;
 
+\ A numeric DATA address, the domain every recorded chain value and every claim
+\ lives in: the byte distance from the dictionary base plus that base as a
+\ number, which is how the linker turns a site pointer back into an offset.
+: SAT-DATA-N ( ptr u8 -- n ) {: a:ptr :}
+   a AOT-DBASE@ BYTE-VIEW - AOT-DBASE-N + ;
+
+\ The site of a member NOTHING NAMED, which is what a span member carries when
+\ the build stripped the word's name, paired with a real code address inside a
+\ word whose record is right here.
+: SAT-UNNAMED-SITE ( -- ptr n ptr u8 )
+   XREF-NULL  s" SAT-DECODE" SAT-WID XREF-FIND-WL REC-CODE-PTR@ 4 + ;
+
+\ ... and an address inside a buffer, which no record spells: the chain the
+\ file's own code compiles spells SAT-CHAIN and adds the offset at run time.
+: SAT-INTERIOR ( -- n ) SAT-CHAIN SAT-DATA-N 8 + ;
+
 : SAT-OWNER ( -- )
    s" SAT-DECODE" SAT-WID XREF-FIND-WL {: r:ptr :}
    r XREF-FOUND? TTRUE
@@ -35,8 +51,31 @@ get-current constant SAT-WID
    s" instruction interiors are not callable addresses" T-LABEL
    r XREF-START 1+ ADDRESS-OWNER XREF-FOUND? TFALSE ;
 
+\ THE TWO NEIGHBOUR RULES, which name a site and a target no record spells. They
+\ are reading aids for the span refusal alone: the ownership answers above keep
+\ their exact rule, and the tests for them stand beside these.
+: SAT-NEIGHBOUR ( -- )
+   s" SAT-DECODE" SAT-WID XREF-FIND-WL {: r:ptr :}
+   r REC-CODE-PTR@ CODE-NEIGHBOUR r = TTRUE
+   r REC-CODE-PTR@ 4 + CODE-NEIGHBOUR r = TTRUE
+   s" the byte below an entry belongs to the record before it" T-LABEL
+   r REC-CODE-PTR@ 1- CODE-NEIGHBOUR r <> TTRUE
+   s" SAT-CHAIN" SAT-WID XREF-FIND-WL {: c:ptr :}
+   SAT-CHAIN SAT-DATA-N {: at:n :}
+   at DATA-CELL-OWNER c = TTRUE
+   s" a byte inside the buffer is spelled by no record" T-LABEL
+   SAT-INTERIOR DATA-CELL-OWNER XREF-FOUND? TFALSE
+   SAT-INTERIOR DATA-NEIGHBOUR {: near:ptr nat:n :}
+   near c = TTRUE
+   nat at = TTRUE
+   s" a value below every spelled address has no neighbour" T-LABEL
+   1 DATA-NEIGHBOUR {: low:ptr lat:n :}
+   low XREF-FOUND? TFALSE
+   lat -1 T= ;
+
 : SAT-VALID ( -- )
    SAT-OWNER
+   SAT-NEIGHBOUR
    DATA-VA VA>N DATA-ADDRESS? TTRUE
    DATA-VA VA>N DATA-SIZE + DATA-ADDRESS? TTRUE
    DATA-VA VA>N DATA-SIZE + 1+ DATA-ADDRESS? TFALSE
@@ -79,6 +118,12 @@ get-current constant SAT-WID
       s" aot: address refers to data outside the restored span caller=" SAT-REFUSED
    s" 100 BLOB-SRC ! 116 BLOB-END ! SAT-REC SAT-SITE 117 DATA-ADDRESS!"
       s" aot: address refers to data outside the restored span caller=" SAT-REFUSED
+   s" 100 BLOB-SRC ! 116 BLOB-END ! SAT-UNNAMED-SITE 99 DATA-ADDRESS!"
+      s" caller=SAT-DECODE+4" SAT-REFUSED
+   s" 100 BLOB-SRC ! 116 BLOB-END ! SAT-REC SAT-SITE 99 DATA-ADDRESS!"
+      s" target=<unknown>" SAT-REFUSED
+   s" 100 BLOB-SRC ! 116 BLOB-END ! SAT-REC SAT-SITE SAT-INTERIOR DATA-ADDRESS!"
+      s" target=SAT-CHAIN+8" SAT-REFUSED
    s" 0 31 EMIT-CODE-ADDRESS"
       s" aot: code address cannot use the zero register" SAT-REFUSED ;
 

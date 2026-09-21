@@ -369,6 +369,34 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
       then
    loop XREF-NULL ;
 
+\ THE RECORD WHOSE CODE STARTS NEAREST BELOW AN ADDRESS - A READING AID, NEVER
+\ OWNERSHIP. ADDRESS-OWNER above stays exact-entry-then-recorded-span, because a
+\ walk that guessed would hand one word's code to another and the closure would
+\ carry the wrong bytes. A REFUSAL is read by a person who has to find the
+\ instruction, and the site of a span refusal is often code no record names at
+\ all: an engine word whose name the build stripped arrives as a span member with
+\ XREF-NULL for its record (ADD-SPAN-CLO), and `caller=<unknown>` leaves the
+\ reader nothing to open. So the span refusal - and only it - names the record
+\ that starts closest below the site and spells the distance in bytes,
+\ `NAME+off`: the `+off` is what says this is the neighbour above which the site
+\ lies and not the word that owns it. Namespace records hold wordlist ids where a
+\ word record holds its code span, so they are skipped here as they are above.
+variable NB-IX
+: CODE-NEIGHBOUR ( ptr u8 -- ptr n ) {: site:ptr :}
+   -1 NB-IX !
+   ndict@ 0 ?do
+      i REC {: r:ptr :}
+      r REC-WID@ -1 <> if
+         site r REC-CODE-PTR@ >= if
+            NB-IX @ 0 < if i NB-IX ! else
+               r REC-CODE-PTR@ NB-IX @ REC REC-CODE-PTR@ > if i NB-IX ! then
+            then
+         then
+      then
+   loop
+   NB-IX @ 0 < if XREF-NULL exit then
+   NB-IX @ REC ;
+
 \ A cell holds a code/dict pointer iff its value lands in a LIVE engine extent the
 \ dictionary records: the dict-record array [AOT-DBASE@, +ndict@*DREC) or the emitted
 \ code span [AOT-DBASE@+DICT-SIZE, AOT-CP@). Both bounds are recorded live extents, so a
@@ -444,6 +472,47 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
          i REC v REC-CELL-SITE? if i REC unloop exit then
       then
    loop XREF-NULL ;
+
+\ THE GREATEST DATA ADDRESS THIS RECORD'S CODE SPELLS AT OR BELOW A VALUE, or -1
+\ for a record that spells none. The same chain walk REC-CELL-SITE? makes, asked
+\ the other question: not "is this the cell" but "how close from below does this
+\ record get", which is the only name an address NO record spells exactly can be
+\ given. A chain that spells a code address is not an answer here - the question
+\ is which data the value is interior to - so the value domain is checked before
+\ the distance.
+variable CB-AT
+: REC-CELL-BELOW ( ptr n n -- n ) {: r:ptr v:n :}
+   -1 CB-AT !
+   r REC-CODE-PTR@ {: p:ptr :}
+   r REC-BYTES ADDR-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
+      p i 4 * + ADDRESS-SITE? if
+         p i 4 * +  p i 4 * + ADDR-CHAIN-BYTES + ADDRESS-CHAIN? if
+            p i 4 * + CHAINV {: w:n :}
+            w DATA-ADDRESS?  w v <= and  w CB-AT @ > and if w CB-AT ! then
+         then
+      then
+   loop CB-AT @ ;
+
+\ ... and the record that gets nearest, with the address it spells. The span
+\ refusal names an unspelled target `NAME+off` from this pair, for the same
+\ reason CODE-NEIGHBOUR names its site: a buffer reached at a field offset, or a
+\ buffer whose own record the build stripped, is data with no exact spelling
+\ anywhere and `target=<unknown>` says nothing a program can be edited by. The
+\ CELL refusals keep DATA-CELL-OWNER's exact answer - they name the word whose
+\ data the cell IS, which is a claim about ownership and not a direction to look
+\ in.
+variable DN-IX  variable DN-AT
+: DATA-NEIGHBOUR ( n -- ptr n n ) {: v:n :}
+   -1 DN-IX !  -1 DN-AT !
+   ndict@ 0 ?do
+      i REC {: r:ptr :}
+      r REC-WID@ -1 <> if
+         r v REC-CELL-BELOW {: w:n :}
+         w DN-AT @ > if w DN-AT !  i DN-IX ! then
+      then
+   loop
+   DN-IX @ 0 < if XREF-NULL -1 exit then
+   DN-IX @ REC DN-AT @ ;
 
 \ A PERSISTENT CELL THE STRIPPED IMAGE CANNOT CARRY, named the way dot
 \ habu-name-the-cell-740feb52 settled it: the word whose data the cell is, the
@@ -528,12 +597,31 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
 \ the recorded cell - plus the value, the word whose data that value is, and the
 \ span it had to fall in. Without the target name the value is an address the
 \ program has no way to recognise.
+\ THE SITE, NAMED EVEN WHERE NO RECORD NAMES IT. The record that named the member
+\ answers when there is one; otherwise the neighbour below it does, as `NAME+off`.
+: CALLER-TXT ( ptr n ptr u8 -- ) {: owner:ptr site:ptr :}
+   owner XREF-FOUND? if owner AEREC-TXT exit then
+   site CODE-NEIGHBOUR {: near:ptr :}
+   near XREF-FOUND? 0= if near AEREC-TXT exit then
+   near AEREC-TXT  43 AE1  site near REC-CODE-PTR@ - AEJNUM ;
+
+\ ... and the target the same way: the word whose data the value is when a record
+\ spells it exactly, else the nearest spelled data below it as `NAME+off`. A
+\ value no record spells at all - nothing in the dictionary reaches that low -
+\ stays `<unknown>`, which is then the whole truth about it.
+: TARGET-TXT ( n -- ) {: v:n :}
+   v DATA-CELL-OWNER {: exact:ptr :}
+   exact XREF-FOUND? if exact AEREC-TXT exit then
+   v DATA-NEIGHBOUR {: near:ptr at:n :}
+   near XREF-FOUND? 0= if near AEREC-TXT exit then
+   near AEREC-TXT  43 AE1  v at - AEJNUM ;
+
 : REFUSE-DATA-SPAN ( ptr n ptr u8 n -- ) {: owner:ptr site:ptr v:n :}
    s" aot: address refers to data outside the restored span caller=" AETXT
-   owner AEREC-TXT
+   owner site CALLER-TXT
    s"  region-off=" AETXT site AOT-DBASE@ BYTE-VIEW - AEJNUM
    s"  value=" AETXT v AEJNUM
-   s"  target=" AETXT v DATA-CELL-OWNER AEREC-TXT
+   s"  target=" AETXT v TARGET-TXT
    s"  span=[" AETXT BLOB-SRC @ AEJNUM
    44 AE1 BLOB-END @ AEJNUM
    93 AE1 10 AE1
