@@ -438,6 +438,27 @@ refresh that retires the by-name arm of dot `habu-retire-the-pre-a37792de`.
 
 ## DDC Audit (Diverse Double-Compiling)
 
+## Chain orchestration
+
+The generation decision is checked Habu code, not policy hidden in a shell
+loop. `tools/chain-plan-build.f` asks jj for one revision's changed paths and
+passes the captured list to `tools/chain-plan.f`; the shell launcher supplies
+only the revision and repository root. It classifies the result from the native
+builder's discovered source closure. Changes to
+the compiler, checker, prefix, or a closure member report `engine`; tests,
+documentation, and libraries outside that closure report `focused`. Unknown
+source prefixes are engine inputs and therefore fail closed. `focused` is a
+classification for a reviewed scheduler policy, not proof that an engine can
+be reused; the chain runner remains the authority until that policy has its
+own gate evidence.
+
+`tools/chain-run.f` owns the product chain. It builds the first generation from
+the selected host, the second from that product, and the third only when the
+first pair differs. A failed build or a non-fixpoint is an error, so a queue
+cannot infer success from a log line. A shell launcher may still snapshot a jj
+revision and pass its paths, but it does not decide what to build or whether a
+chain succeeded.
+
 `tools/ddc-verify.f` is the explicit (never per-commit) trust audit: it builds
 `bin/hb` two independent ways and requires byte-identical output. A seed backdoor
 would have to be mirrored in both the Gforth host and the native seed to survive
