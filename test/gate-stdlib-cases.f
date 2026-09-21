@@ -316,6 +316,13 @@ SUITE compiler-x64-emit
    test/compiler/x64-emit.f
 ;SUITE
 
+\ The x86-64 pass chain: the rows src/arch/x86-64/passes.f installs in
+\ src/compiler/native/backend.f, driven as src/compiler/native/compiler.f drives
+\ them, with the shared spill pass lowering the allocator's plan.
+SUITE compiler-x64-chain
+   test/compiler/x64-chain.f
+;SUITE
+
 SUITE compiler-tic6x-asm
    test/compiler/tic6x-asm.f
    test/compiler/tic6x-facts.f
