@@ -1,7 +1,11 @@
 # Where the engine's bytes go
 
-`bin/hb` is 3,997,888 bytes. This is what they are, measured rather than
-estimated, and what the measurement says about making the engine smaller.
+The block between the `ENGINE-SIZE-ROWS` markers below is the tool's output
+for the `bin/hb` this tree ships, regenerated at every landing;
+`tools/engine-size-doc-test.f` fails the gate when the two differ. The prose
+and tables after it read one engine, named under the block, and say what the
+measurement means for making the engine smaller; their figures stand still
+while the block moves with the engine.
 [Where an application image's bytes go](#where-an-application-images-bytes-go)
 asks the same question of what `tools/hb-build.f` writes, which is a much
 larger file and a different answer.
@@ -12,15 +16,113 @@ Reproduce it with the tool that produced every number below:
 bin/hb --load tools/engine-size.f -- bin/hb
 ```
 
+<!-- ENGINE-SIZE-ROWS-BEGIN -->
+class	bytes	percent
+elf/header	64	0.0
+elf/program-headers	224	0.0
+elf/dynamic-metadata	189	0.0
+elf/header-pad	3619	0.0
+engine/code	128964	3.3
+engine/primitive-names	184	0.0
+engine/primitive-count	8	0.0
+engine/primitive-records	9984	0.2
+source/baked	0	0.0
+aot/framing-cells	128	0.0
+aot/code-blob	1822716	47.9
+aot/dictionary-records	160920	4.2
+aot/call-sites	149148	3.9
+aot/name-pool	87280	2.2
+aot/data-sites	76708	2.0
+aot/address-cells	268232	7.0
+aot/data-cell-bitmap	130912	3.4
+aot/data-cell-values	843476	22.1
+aot/code-sites	36	0.0
+aot/named-code-sites	0	0.0
+aot/code-spans	67520	1.7
+aot/boot-run-entries	4	0.0
+aot/protected-wordlists	672	0.0
+aot/checker-sidecar	0	0.0
+image/text-pad	50100	1.3
+container/rw-segment	192	0.0
+total	3801280	100.0
+
+dictionary the image ships
+class	records	record bytes	name bytes	code bytes
+global	4861	97220	58245	466152
+package-public	2977	59540	30182	267968
+package-private	11	220	114	1684
+unmapped-wordlist	0	0	0	0
+package rows	197	3940	2277	0
+name pool entries reachable only from private records, bytes 114
+name pool entries reachable only from named code sites, bytes 0
+name pool entries nothing in the image references, bytes 606
+
+baked call sites
+  sites 12429, bound to seeded primitives 12429, to payload records 0, left as names 0
+  distinct bound callees 75
+
+reachability from the dictionary-surface roots
+  reachable	7848	735504 code bytes
+  unreachable	1	300 code bytes, 20 record bytes, 12 name bytes
+  package-private	1	20	300
+  package	records	code bytes
+  NSTR	1	300
+
+reachability from the engine-entry roots
+  reachable	3507	528864 code bytes
+  unreachable	4342	206940 code bytes, 86840 record bytes, 48411 name bytes
+  global	3048	60960	122468
+  package-public	1293	25860	84172
+  package-private	1	20	300
+  package	records	code bytes
+  IR-ATTR	70	13244
+  IR-SCHEMA	51	5820
+  TFAM	89	4232
+  IR-TYPE	23	4152
+  NEFF	30	3876
+  NUM	47	3832
+  A64IR	13	3668
+  IR-BUILD	40	2500
+  IR-FUN	23	2260
+  HIR	11	2240
+  A64ASM	46	1932
+  TYPE-DECL	20	1772
+  NTAPE	11	1680
+  DATA-CLAIMS	20	1608
+  NSTR	10	1400
+  IR-OP	22	1296
+  (114 more packages)
+
+captured DATA heap: 8378912 bytes of span, 303468 present cells in 130909 bitmap bytes, 974385 bytes of image
+  owners 968, unowned value bytes 52252, unowned cells 8575
+  owner	offset	extent	cells	bytes	image cost
+  DONE	4178216	4200696	251545	429255	494879
+  SYM-STR-BOOT	1817328	393216	31142	280273	286417
+  STR-MIN-I64$	3210984	944000	56	317	15067
+  EC-RV-BOOT	769424	10240	1280	12800	12960
+  EC-TV-BOOT	759184	10240	1280	12800	12960
+  RVT-BOOT	707984	10240	1280	12800	12960
+  TVT-BOOT	697744	10240	1280	12800	12960
+  REQUIRE-PATHS	2609416	524800	443	3571	11771
+  SYMS-BOOT	1161968	655360	0	0	10240
+  TDECL-PROT-WID-ARMED	2550520	8520	731	6378	6511
+  RDP	658000	39720	1433	5329	5949
+  PES	2213720	12288	1496	2738	2930
+  DFERS	2226488	65536	200	1169	2193
+  NAMES	2600800	4096	174	1562	1626
+  NORET-BOOT	2296728	98304	0	0	1536
+  NAMES-U	2604896	1288	161	1434	1454
+  (470 more owners)
+<!-- ENGINE-SIZE-ROWS-END -->
 `tools/engine-size.f` is the command line; `tools/image-size-lib.f` is the walk,
 in a library because `tools/hb-build.f` runs it too. It walks the image file
 itself, reads which of the three image classes the file is out of the file, and
 refuses to print a budget unless the classes it names add up to the file's own
 length, so the table is an accounting identity, not a set of estimates.
-Everything in the engine sections is the engine this tree ships in `bin/hb`,
-sha256
-`dda84ddbd31532e571524677bc4727b61d147c702d7b91d66c0a9d6741c0400f`,
-3,997,888 bytes.
+The block above is the engine this tree ships in `bin/hb`. Everything in the
+prose and tables below reads the engine of sha256
+`91715a33e5cff0b0b876322fb360ede4f030a1f3ed59c722ca53206ee0b68bc9`,
+3,735,744 bytes.
 
 ## The budget
 
@@ -30,34 +132,34 @@ sha256
 | `elf/program-headers` | 224 | 0.0 | four program headers |
 | `elf/dynamic-metadata` | 189 | 0.0 | PT_INTERP, hash, dynsym, dynstr, relocations |
 | `elf/header-pad` | 3,619 | 0.0 | zero pad up to the code offset |
-| `engine/code` | 129,036 | 3.2 | every instruction the engine emitters bake: boot, primitives, the interpreter's assembly half |
+| `engine/code` | 128,964 | 3.4 | every instruction the engine emitters bake: boot, primitives, the interpreter's assembly half |
 | `engine/primitive-names` | 184 | 0.0 | the primitive names too long to sit in a record |
 | `engine/primitive-count` | 8 | 0.0 | the count cell in front of the seeded table |
-| `engine/primitive-records` | 10,032 | 0.2 | 209 boot-seeded dictionary records, 48 B each |
+| `engine/primitive-records` | 9,984 | 0.2 | 209 boot-seeded dictionary records, 48 B each |
 | `source/baked` | 0 | 0.0 | an application image bakes its source here; an engine bakes none |
 | `aot/framing-cells` | 128 | 0.0 | the payload's sixteen count cells |
-| `aot/code-blob` | 1,768,036 | 44.2 | the captured native code of everything written in Habu |
-| `aot/dictionary-records` | 156,080 | 3.9 | 7,804 compact records, 20 B each |
-| `aot/call-sites` | 141,504 | 3.5 | 11,792 call sites, each a blob offset, the callee's target and its scope, 12 B |
-| `aot/name-pool` | 84,680 | 2.1 | the deduplicated `[len][bytes]` name pool |
-| `aot/data-sites` | 74,896 | 1.8 | 18,724 DATA literals the boot rebases |
-| `aot/address-cells` | 260,456 | 6.5 | 32,557 declared address cells |
-| `aot/data-cell-bitmap` | 130,416 | 3.4 | one bit per 8-byte cell of the captured DATA window |
-| `aot/data-cell-values` | 834,156 | 22.3 | one unsigned LEB128 per present cell, in cell order |
+| `aot/code-blob` | 1,813,172 | 48.5 | the captured native code of everything written in Habu |
+| `aot/dictionary-records` | 160,620 | 4.2 | 7,835 compact records, 20 B each |
+| `aot/call-sites` | 148,704 | 3.9 | 12,392 call sites, each a blob offset, the callee's target and its scope, 12 B |
+| `aot/name-pool` | 87,112 | 2.3 | the deduplicated `[len][bytes]` name pool |
+| `aot/data-sites` | 76,552 | 2.0 | 18,724 DATA literals the boot rebases |
+| `aot/address-cells` | 267,112 | 7.1 | 32,557 declared address cells |
+| `aot/data-cell-bitmap` | 130,868 | 3.5 | one bit per 8-byte cell of the captured DATA window |
+| `aot/data-cell-values` | 839,516 | 22.4 | one unsigned LEB128 per present cell, in cell order |
 | `aot/code-sites` | 36 | 0.0 | 9 code literals |
 | `aot/named-code-sites` | 0 | 0.0 | none in this engine |
-| `aot/code-spans` | 65,792 | 1.6 | 8,224 `(blob offset, code span)` rows for the words the image ships no record for, 8 B |
+| `aot/code-spans` | 67,072 | 1.7 | 8,224 `(blob offset, code span)` rows for the words the image ships no record for, 8 B |
 | `aot/boot-run-entries` | 4 | 0.0 | the boot-run entry list, empty in an engine image |
-| `aot/protected-wordlists` | 624 | 0.0 | 156 sealed wordlist ids |
+| `aot/protected-wordlists` | 668 | 0.0 | 156 sealed wordlist ids |
 | `aot/checker-sidecar` | 0 | 0.0 | absent: this engine bakes a seeded runtime |
-| `image/text-pad` | 45,200 | 1.1 | zero pad rounding the text segment to 64 KB |
+| `image/text-pad` | 752 | 0.0 | zero pad rounding the text segment to 64 KB |
 | `container/rw-segment` | 192 | 0.0 | DYNAMIC plus the two loader slots |
-| **total** | **3,997,888** | **100.0** | |
+| **total** | **3,735,744** | **100.0** |
 
 Five facts follow from the table.
 
 **Two fifths of the engine is the code of everything written in Habu**
-(`aot/code-blob`, 1,768,036 bytes, 44.2%). That is the compiler, the checker,
+(`aot/code-blob`, 1,813,172 bytes, 48.5%). That is the compiler, the checker,
 the loader, the library and the tools the prefix carries. The records the image
 still ships own 708,820 bytes of it; the rest is the code of words that travel
 without a record, accounted for by the 8,224 rows of `aot/code-spans` — eight
@@ -111,15 +213,15 @@ An owner is also a record the image still carries, and private records no longer
 travel, so a private table is invisible here and its bytes charge to the nearest
 shipped name below it.
 
-The heap is 8,355,632 bytes of span holding 301,860 present cells in 130,545
-bitmap bytes, 970,158 bytes of image, across 968 owners, with 52,171 value bytes
-in 8,558 cells below the first owner.
+The heap is 8,376,216 bytes of span holding 302,187 present cells in 130,867
+bitmap bytes, 970,382 bytes of image, across 968 owners, with 52,217 value bytes
+in 8,571 cells below the first owner.
 
 | owner | offset | extent | cells | bytes | image cost |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `DONE` | 4,175,568 | 4,180,064 | 250,138 | 427,117 | 492,418 |
-| `SYM-STR-BOOT` | 1,817,328 | 393,216 | 30,959 | 278,623 | 284,767 |
-| `STR-MIN-I64$` | 3,210,984 | 941,352 | 56 | 317 | 15,026 |
+| `DONE` | 4,175,576 | 4,200,640 | 250,421 | 426,706 | 492,329 |
+| `SYM-STR-BOOT` | 1,817,328 | 393,216 | 30,987 | 278,877 | 285,021 |
+| `STR-MIN-I64$` | 3,210,984 | 941,360 | 56 | 317 | 15,026 |
 | `EC-RV-BOOT` | 769,424 | 10,240 | 1,280 | 12,800 | 12,960 |
 | `EC-TV-BOOT` | 759,184 | 10,240 | 1,280 | 12,800 | 12,960 |
 | `RVT-BOOT` | 707,984 | 10,240 | 1,280 | 12,800 | 12,960 |
@@ -145,8 +247,8 @@ cells in 941,352 bytes of span, 317 bytes of value against 14,709 of bitmap.
 
 `DONE` (`src/habu/repl.f`) is a global variable in the REPL, and the last owner
 whose record the image still ships, so the row is the heap above every named
-table the census can still see: 4.18 MB of span holding 250,138 present cells
-that encode to 427,117 bytes, which cost 492,418 bytes of image — 13.2% of the
+table the census can still see: 4.20 MB of span holding 250,421 present cells
+that encode to 426,706 bytes, which cost 492,329 bytes of image — 13.2% of the
 engine, one row. Two
 things land in it. The packages that load after the REPL keep their tables here,
 because their private records were dropped at capture. And the checker's baked
@@ -174,11 +276,11 @@ symbol stores are 295,007 bytes of image between them, down from 357,305.
 
 | class | records | record bytes | name bytes | code bytes |
 | --- | ---: | ---: | ---: | ---: |
-| global | 4,727 | 94,540 | 56,510 | 453,980 |
-| package-public | 2,880 | 57,600 | 29,136 | 253,156 |
+| global | 4,860 | 97,200 | 58,227 | 466,140 |
+| package-public | 2,964 | 59,280 | 30,044 | 266,512 |
 | package-private | 11 | 220 | 114 | 1,684 |
 | unmapped-wordlist | 0 | 0 | 0 | 0 |
-| package rows | 186 | 3,720 | 2,173 | 0 |
+| package rows | 196 | 3,920 | 2,261 | 0 |
 
 Names are deduplicated, so the name bytes above double-count a name two records
 share. The exclusive figures the tool prints are small now: 114 bytes of name
@@ -190,14 +292,14 @@ engine this document last described, which still carried 8,021 of them; eleven
 remain, holding 220 bytes of record and 114 bytes of name, and their code —
 along with the code of every other record the capture dropped — travels in
 `aot/code-spans`. What is left is 240,760 bytes of records plus names, 6.0% of
-the engine, for 7,804 records. In the file it is 20 bytes per record; at boot it
+the engine, for 7,835 records. In the file it is 20 bytes per record; at boot it
 is 48, so the same dictionary costs 374,592 bytes of dictionary region plus its
 hash index once the engine is up.
 
 ## The baked call sites
 
 ```
-  sites 11792, bound to seeded primitives 11792, to payload records 0, left as names 0
+  sites 12392, bound to seeded primitives 12392, to payload records 0, left as names 0
   distinct bound callees 75
 ```
 
@@ -211,7 +313,7 @@ builds (`src/habu/habu2.f` `EMIT-AOT-SITES`). The boot loads `dict[k][0]` and
 subtracts: no lookup, no name, no sealed-WID gate, because nothing is resolved
 against the booting engine's dictionary any more.
 
-All 11,792 sites name one of 75 engine primitives; a call between two captured
+All 12,392 sites name one of 75 engine primitives; a call between two captured
 words needs no site at all, because the blob moves rigidly and keeps its own
 displacements. The row is three u32 — blob offset, target, scope — and stays
 twelve bytes wide because the width is a property of the section, not of the
@@ -245,7 +347,7 @@ program can name it):
 
 | | records | code bytes | record bytes | name bytes |
 | --- | ---: | ---: | ---: | ---: |
-| reachable | 7,617 | 708,520 | | |
+| reachable | 7,832 | 734,712 | | |
 | unreachable | 1 | 300 | 20 | 12 |
 
 One record, package-private, in `NSTR`. The 2,861 unreachable private records
@@ -259,13 +361,13 @@ entry words and the code addresses its DATA cells hold):
 
 | | records | code bytes | record bytes | name bytes |
 | --- | ---: | ---: | ---: | ---: |
-| reachable | 3,398 | 506,520 | | |
-| unreachable | 4,220 | 202,300 | 84,400 | 47,174 |
+| reachable | 3,499 | 528,100 | | |
+| unreachable | 4,335 | 206,224 | 86,700 | 48,326 |
 
 | class | records | record bytes | code bytes |
 | --- | ---: | ---: | ---: |
-| global | 2,961 | 59,220 | 121,068 |
-| package-public | 1,258 | 25,160 | 80,932 |
+| global | 3,047 | 60,940 | 122,456 |
+| package-public | 1,287 | 25,740 | 83,468 |
 | package-private | 1 | 20 | 300 |
 
 Their top owners:
@@ -273,18 +375,18 @@ Their top owners:
 | package | file | records | code bytes |
 | --- | --- | ---: | ---: |
 | IR-ATTR | `src/compiler/ir/attr.f` | 70 | 13,244 |
-| IR-SCHEMA | `src/compiler/ir/schema.f` | 46 | 5,324 |
-| TFAM | `src/core/type-family.f` | 87 | 4,208 |
+| IR-SCHEMA | `src/compiler/ir/schema.f` | 46 | 5,236 |
+| TFAM | `src/core/type-family.f` | 89 | 4,232 |
 | IR-TYPE | `src/compiler/ir/type.f` | 23 | 4,152 |
-| NUM | `lib/num-types.f` | 47 | 3,760 |
-| A64IR | `src/compiler/native/a64ir.f` | 12 | 3,632 |
-| NEFF | `src/compiler/native-effect.f` | 39 | 3,308 |
-| IR-BUILD | `src/compiler/ir/build.f` | 40 | 2,520 |
+| NUM | `lib/num-types.f` | 47 | 3,832 |
+| A64IR | `src/compiler/native/a64ir.f` | 13 | 3,668 |
+| NEFF | `src/compiler/native-effect.f` | 30 | 3,876 |
+| IR-BUILD | `src/compiler/ir/build.f` | 40 | 2,500 |
 | IR-FUN | `src/compiler/ir/fun.f` | 23 | 2,260 |
 | HIR | `src/compiler/native/hir.f` | 11 | 2,240 |
-| A64ASM | `src/arch/arm64/asm.f` | 45 | 1,916 |
+| A64ASM | `src/arch/arm64/asm.f` | 46 | 1,932 |
 | TYPE-DECL | `src/core/sumtype.f` | 20 | 1,772 |
-| NTAPE | `src/compiler/native/tape.f` | 11 | 1,716 |
+| NTAPE | `src/compiler/native/tape.f` | 11 | 1,680 |
 | DATA-CLAIMS | `src/habu/layout.f` | 20 | 1,608 |
 | IR-OP | `src/compiler/ir/op.f` | 22 | 1,296 |
 | PRIM-SPEC | `src/habu/prims.f` | 29 | 1,268 |

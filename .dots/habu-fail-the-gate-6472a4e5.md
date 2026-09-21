@@ -1,6 +1,6 @@
 ---
 title: Fail the gate when docs/engine-size.md drifts from the engine
-status: open
+status: active
 priority: 3
 issue-type: task
 created-at: "2026-09-17T17:20:32.571466+03:00"

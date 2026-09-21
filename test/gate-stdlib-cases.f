@@ -74,6 +74,7 @@ SUITE imgdump-compare
 
 SUITE engine-size-fixtures
    tools/engine-size-test.f
+   tools/engine-size-doc-test.f
 ;SUITE
 
 SUITE two-generation-fixtures
