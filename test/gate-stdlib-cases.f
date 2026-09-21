@@ -1210,6 +1210,10 @@ SUITE tail-pure-fixtures
    tools/image-bytes-test.f
 ;SUITE
 
+SUITE bootstrap-strip-fixtures
+   tools/bootstrap-strip-test.f
+;SUITE
+
 \ The x86_64 seam is written and exercised from this aarch64 host: the ELF64
 \ writer, the mov r64, imm64 relocation site and the x86-64 target contract.
 \ Its own suite because it loads src/os/linux-x86-64/elf.f, which spells the
