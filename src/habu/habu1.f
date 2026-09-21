@@ -59,6 +59,7 @@ $F2E00009 constant W-MOVK3
 \ Pass-2 transaction cells are defined as one protected band in layout.f.
 \ --- primitive registry (build-side, for the seed dictionary) ---
 require src/habu/primitive-registry.f
+require src/habu/data-claims.f
 require src/habu/arith-abi.f            \ E-DIV-ZERO, the dividing bodies' refusal
 require src/habu/task-abi.f
 require src/habu/code-span.f

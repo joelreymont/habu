@@ -1894,6 +1894,10 @@ SUITE protection-span
    test/protection-span.f
 ;SUITE
 
+SUITE data-claims-build
+   test/data-claims-build.f
+;SUITE
+
 SUITE code-window
    test/code-window.f
 ;SUITE

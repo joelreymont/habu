@@ -223,7 +223,7 @@ third generation is byte-identical.
 `TASK:+USER` hands out offsets from `USER-BAND:START` ($5300) up to
 `USER-BAND:END` — **9104 bytes for the whole image**. The band is one declared
 run of the per-task header with no engine cell inside it, which
-`src/habu/layout.f`'s DATA-CLAIMS assertion checks at engine build time, and
+`src/habu/data-claims.f`'s assertion checks at engine build time, and
 the declared bands directly above it are `FS-ABI` (1328 bytes), `FMT-ABI`
 (56 bytes) and `STRING-ABI` (1032 bytes), none of which is part of it.
 

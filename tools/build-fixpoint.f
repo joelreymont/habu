@@ -1053,12 +1053,16 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-BOOT-CORE ;
 
 \ The verifier reads the emitted buffer and does not follow require. Include
-\ the required build modules at their dependency boundaries: code-origin calls
+\ the required build modules at their dependency boundaries, in habu1.f's own
+\ require order: data-claims.f before BAND-CLAIM-AT reads its rows (a module
+\ habu1.f requires but this list omits certifies as `undefined word`, which is
+\ how the DATA-CLAIMS split first failed here); code-origin calls
 \ ENGINE-HELPER, so its source belongs after that package in habu1.f.
 : BF-CODE-ORIGIN-REQUIRE$ ( -- ptr u8 n ) s" require src/habu/code-origin.f" ;
 
 : BF-APPEND-HABU1 ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/habu/primitive-registry.f" BF-APPEND-MODULE
+   out outu s" src/habu/data-claims.f" BF-APPEND-MODULE
    out outu s" src/habu/arith-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/task-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/habu1.f" BF-CODE-ORIGIN-REQUIRE$ BF-APPEND-SOURCE-BEFORE

@@ -884,10 +884,13 @@ package BUILD-FIXPOINT
    BFT-READ-BUF u s" CAPTURE-RANGE," VERIFY:DEFINES? TTRUE
    BFT-READ-BUF u s" SB-FIX" VERIFY:DEFINES? TTRUE
    BFT-READ-BUF u s\" s\" src/habu/primitive-registry.f\" provided" BFT-FIND BFT-FOUND {: prim:n :}
-   BFT-READ-BUF u prim s" package ENGINE-HELPER" BFT-FIND-AFTER BFT-FOUND {: helper:n :}
+   BFT-READ-BUF u prim s" package DATA-CLAIMS" BFT-FIND-AFTER BFT-FOUND {: claims:n :}
+   BFT-READ-BUF u claims s\" s\" src/habu/data-claims.f\" provided" BFT-FIND-AFTER BFT-FOUND {: claimsfact:n :}
+   BFT-READ-BUF u claimsfact s" package ENGINE-HELPER" BFT-FIND-AFTER BFT-FOUND {: helper:n :}
    BFT-READ-BUF u helper s" : EMIT-HELPERS " BFT-FIND-AFTER BFT-FOUND {: origin:n :}
    BFT-READ-BUF u origin s\" s\" src/habu/code-origin.f\" provided" BFT-FIND-AFTER BFT-FOUND {: fact:n :}
-   BFT-READ-BUF u fact s" require src/habu/code-origin.f" BFT-FIND-AFTER BFT-FOUND drop
+   BFT-READ-BUF u fact s" require src/habu/code-origin.f" BFT-FIND-AFTER BFT-FOUND {: req:n :}
+   BFT-READ-BUF u req s" : BAND-CLAIM-AT " BFT-FIND-AFTER BFT-FOUND drop
    BFT-READ-BUF u s" ENUM option 1" BFT-FIND BFT-FOUND {: opt:n :}
    BFT-READ-BUF u opt s\" s\" lib/adt/option.f\" provided" BFT-FIND-AFTER BFT-FOUND {: optfact:n :}
    BFT-READ-BUF u optfact s" NEWTYPE byte-len 0" BFT-FIND-AFTER BFT-FOUND {: num:n :}
