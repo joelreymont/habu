@@ -171,6 +171,30 @@ create TXT
    CC BB IR-BUILD:END-BLOCK drop
    CC BB IR-BUILD:END-FUN drop ;
 
+: BLOCK-ID ( n -- IR-ID:ir-block-id )
+   {: k:n :}
+   BB IR-BUILD:MODULE-KEY k IR-ID:PACK-BLOCK ;
+
+: BLOCK+ ( -- )
+   CC BB IR-BUILD:END-BLOCK drop
+   CC BB IR-BUILD:BEGIN-BLOCK
+   CC BB  OPEN-ST OPEN-LN SPN  IR-BUILD:SET-BLOCK-SPAN ;
+
+: BRZ2 ( IR-ID:ir-value-id n n -- )
+   {: f:IR-ID:ir-value-id z:n o:n :}
+   HIR-OPCODE:BRZ CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB f IR-BUILD:ADD-OPERAND
+   CC BB z BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB o BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: BR1 ( IR-ID:ir-value-id n -- )
+   {: v:IR-ID:ir-value-id t:n :}
+   HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
 \ ---- the shapes --------------------------------------------------------------
 \ `: LEAF ( a b -- n ) - ;` - two arguments that die at the subtraction, which is
 \ two-address and destroys the first of them. Nothing is copied.
@@ -222,6 +246,26 @@ create TXT
    ARG+ {: x:IR-ID:ir-value-id :}
    ARG+ {: y:IR-ID:ir-value-id :}
    HIR-OPCODE:DIV x y BINOP RET1
+   CLOSE-FUN ;
+
+\ `B0(x, c0): br B1(c0); B1(c): t = add x c; brz t -> B2 / B3; B2: ret t; B3: br
+\ B1(t)` - the loop whose header adds a value defined above it. `x` lives across
+\ the backedge and the add is two-address, so the two ends of the tie overlap
+\ unless selection copied `x` first: where it does not, this allocation is
+\ refused with E-A64RA-TIE over a module nothing is wrong with.
+: BUILD-LOOP ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: c0:IR-ID:ir-value-id :}
+   c0 1 BR1
+   BLOCK+
+   ARG+ {: c:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD x c BINOP {: t:IR-ID:ir-value-id :}
+   t 2 3 BRZ2
+   BLOCK+
+   t RET1
+   BLOCK+
+   t 1 BR1
    CLOSE-FUN ;
 
 \ ---- running selection, allocation and validation ----------------------------
@@ -586,6 +630,15 @@ $1000 constant THROW-STAND
    4 A64RAV:REG@
    A64RAV:ACCEPTED? ;
 
+\ The loop above through the same two passes: the copy selection inserts for a
+\ value live around the backedge is what makes the tie satisfiable, and the
+\ allocation the module gets is one the validator accepts.
+: LOOP-BODY ( IR-CTX:ctx -- bool )
+   HIR-MOD
+   BUILD-LOOP
+   ALLOCATED drop
+   A64RAV:ACCEPTED? ;
+
 \ ---- the vocabulary is one module's, and only that module's ------------------
 \ Every name in a vocabulary is an ordinal of the module it was interned in, so
 \ a vocabulary handed to another module's binding names nothing there. The
@@ -658,6 +711,10 @@ public
    s" a division the selector lowered places the dividend's copy in rax, the divisor out of rax and rdx, and the remainder nothing reads in rdx" T-LABEL
    WBND [: DIVIDE-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 2 T= 0 T= 0 T= 1 T= 0 T=
+
+   s" a value read once inside a loop and live around its backedge allocates: selection copied the operand the add destroys, and a tie whose ends overlap is what this allocator refuses rather than repairs" T-LABEL
+   WBND [: LOOP-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE
 
    WBND [: GROUP-VOCAB ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-FIXED ;] IR-CTX:WITH-CONTEXT

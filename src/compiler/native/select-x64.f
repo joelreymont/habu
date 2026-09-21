@@ -23,9 +23,14 @@
 \ a must-share constraint and REFUSES a pair whose ends cannot share a register
 \ (regalloc.f MB-TIE1 throws E-A64RA-TIE); it inserts nothing. Making every tie
 \ satisfiable is therefore this pass's work: operand 0 is copied into a fresh
-\ value with `x64.mov` first whenever anything but this operand reads it, which
-\ is counted over the whole function. The allocator coalesces the copies it can
-\ (MB-COPY?), so a copy that was not needed costs nothing after allocation.
+\ value with `x64.mov` first whenever it is still LIVE AFTER the operation. That
+\ is a question about the CONTROL FLOW GRAPH and not about how many operands
+\ name the value: a value defined above a loop and read ONCE inside it is read
+\ again by the next pass through the header, and no operand of the backedge
+\ names it. So this pass computes live-in and live-out over the function's
+\ blocks before it walks them ("which values are live where" below) and the tie
+\ decision reads them. The allocator coalesces the copies it can (MB-COPY?), so
+\ a copy that was not needed costs nothing after allocation.
 \
 \ TWO. A LITERAL IN THE SECOND OPERAND IS PART OF THE INSTRUCTION. x86-64 ALU
 \ and compare forms carry a signed imm32, so `8 +` is one instruction and not
@@ -113,12 +118,33 @@ DYNAMIC-BUFFER D-ORDER IR-ID:ir-value-id
 DYNAMIC-BUFFER D-ORDER-SET-BUF n
 : D-ORDER-SET ( -- ptr n ) 0 D-ORDER-SET-BUF ;
 
+\ The liveness planes: one bit per value, per block, in each of the four sets
+\ the backward dataflow keeps, and one set of the same width for the values a
+\ block has already defined while it is being read. A block's set is only as
+\ wide as the FUNCTION's own value span (LWORDS), so what each function clears
+\ and iterates is its own size; the reservation is the module's worst case,
+\ because nothing tells the walk which function is the widest before it meets
+\ it.
+64 constant SET-BITS
+0 constant P-IN
+1 constant P-OUT
+2 constant P-USE
+3 constant P-DEF
+4 constant PLANES
+: SETC ( -- n ) VMAX SET-BITS 1- + SET-BITS / ;
+DYNAMIC-BUFFER LIVE-BUF n
+: LIVE-SETS ( -- ptr n ) 0 LIVE-BUF ;
+DYNAMIC-BUFFER DEFSET-BUF n
+: DEFSET ( -- ptr n ) 0 DEFSET-BUF ;
+
 : RESERVE-SCRATCH ( -- )
    SCRATCH-SIZES!
    VMAX VMAP-RESERVE
    VMAX VSET-BUF-RESERVE
    BMAX D-ORDER-RESERVE
-   BMAX D-ORDER-SET-BUF-RESERVE ;
+   BMAX D-ORDER-SET-BUF-RESERVE
+   PLANES BMAX * SETC * LIVE-BUF-RESERVE
+   SETC DEFSET-BUF-RESERVE ;
 
 \ ---- the bound source dialect ------------------------------------------------
 HIR-OPCODE:CONST    HIR:ORD constant O-CONST
@@ -188,6 +214,8 @@ variable V-BASE                      \ first value owned by the function being s
 variable V-LIMIT                     \ one past its last value
 variable R-BASE                      \ where this function's blocks start in the module
 variable R-NEWBASE                   \ and where they start in the module being built
+variable LIVE-WORDS                  \ cells in one block's value set, this function
+variable LIVE-CHANGED                \ whether the last dataflow pass moved a set
 
 here CELL 1- and CELL swap - CELL 1- and allot
 create NAMEBUF NAME-CAP allot
@@ -735,13 +763,165 @@ create NAMEBUF NAME-CAP allot
    v LIT-VALUE {: k:n :}
    k 0 >=  k X64IR:SHIFT-LIMIT <  and ;
 
+\ ---- which values are live where ---------------------------------------------
+\ The copy a two-address form needs turns on whether its operand is live after
+\ the operation, so the function's liveness is computed before its blocks are
+\ walked. It is the ordinary backward dataflow:
+\
+\    live-in(B)  = reads(B) ∪ (live-out(B) − defs(B))
+\    live-out(B) = ∪ live-in(S) over B's successors
+\
+\ where defs(B) is B's block arguments together with the results of its
+\ operations, and reads(B) is the operands it reads before defining them. A
+\ terminator is an operation of its own block, so the values an edge carries are
+\ reads of the block the branch is IN and not of the block it goes to. Blocks
+\ are visited backwards because that is the direction the answers flow, and the
+\ iteration stops when no set has moved: the sets only grow and there are
+\ finitely many values and blocks, so it terminates.
+\
+\ The allocator computes the same thing over the MACHINE module (regalloc.f
+\ MB-LIVENESS) and cannot be asked for it here: it runs after this pass, over
+\ the module this decision has already shaped.
+: BLOCK-ORD-CK ( n -- n )
+   dup 0 < over BMAX >= or if E-X64SEL-CAP throw then ;
+
+\ The blocks of the source function map one for one, so a block of the MODULE
+\ becomes an ordinal of the FUNCTION by taking its base off.
+: BLOCK-ORD ( IR-ID:ir-block-id -- n )
+   IR-ID:BLOCK-LOCAL  R-BASE @ -  BLOCK-ORD-CK ;
+
+: LWORDS ( -- n ) LIVE-WORDS @ ;
+
+: LWORDS! ( -- )
+   V-LIMIT @ V-BASE @ -  SET-BITS 1- +  SET-BITS /  1 max  LIVE-WORDS ! ;
+
+: BIT-CELL ( n -- n )    SET-BITS / ;
+: BIT-MASK ( n -- n )    SET-BITS mod 1 swap lshift ;
+
+: LIVE-IX ( n n n -- n )
+   {: pl:n b:n w:n :}
+   pl BMAX * b +  LWORDS *  w + ;
+
+: LIVE@ ( n n n -- n )   LIVE-IX cells LIVE-SETS + @ ;
+
+: LIVE! ( n n n n -- )
+   {: val:n pl:n b:n w:n :}
+   val  pl b w LIVE-IX cells LIVE-SETS + ! ;
+
+: LIVE-HAS? ( n n n -- bool )
+   {: pl:n b:n v:n :}
+   pl b v BIT-CELL LIVE@  v BIT-MASK and 0<> ;
+
+: LIVE-SET ( n n n -- )
+   {: pl:n b:n v:n :}
+   pl b v BIT-CELL LIVE@  v BIT-MASK or  pl b v BIT-CELL LIVE! ;
+
+\ What the block being read has defined so far: a use under a definition in the
+\ same block is not a read of what arrives at the block.
+: DEFS-CLEAR ( -- )
+   LWORDS 0 ?do 0 i cells DEFSET + ! loop ;
+
+: DEFS-HAS? ( n -- bool )
+   {: v:n :}
+   v BIT-CELL cells DEFSET + @  v BIT-MASK and 0<> ;
+
+: DEFS-SET ( n -- )
+   {: v:n :}
+   v BIT-CELL cells DEFSET + @  v BIT-MASK or
+   v BIT-CELL cells DEFSET + ! ;
+
+: LIVE-CLEAR1 ( n n -- )
+   {: pl:n b:n :}
+   LWORDS 0 ?do 0 pl b i LIVE! loop ;
+
+: LIVE-CLEAR ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 0 ?do
+      P-IN i LIVE-CLEAR1   P-OUT i LIVE-CLEAR1
+      P-USE i LIVE-CLEAR1  P-DEF i LIVE-CLEAR1
+   loop ;
+
+: LIVE-USE1 ( n IR-ID:ir-value-id -- )
+   {: b:n v:IR-ID:ir-value-id :}
+   v VSLOT {: k:n :}
+   k DEFS-HAS? if exit then
+   P-USE b k LIVE-SET ;
+
+: LIVE-DEF1 ( n IR-ID:ir-value-id -- )
+   {: b:n v:IR-ID:ir-value-id :}
+   v VSLOT {: k:n :}
+   P-DEF b k LIVE-SET
+   k DEFS-SET ;
+
+: LIVE-OP-UD ( n IR-ID:ir-op-id -- )
+   {: b:n id:IR-ID:ir-op-id :}
+   id OPERANDS-OF 0 ?do b  id i OPERAND-AT  LIVE-USE1 loop
+   id RESULTS-OF 0 ?do  b  id i RESULT-AT   LIVE-DEF1 loop ;
+
+: LIVE-BLOCK-UD ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   DEFS-CLEAR
+   bk ARG-COUNT 0 ?do b  bk i ARG-AT  LIVE-DEF1 loop
+   bk OP-COUNT 0 ?do  b  bk i OP-AT   LIVE-OP-UD loop ;
+
+: LIVE-OUT-ADD ( n n -- )
+   {: b:n s:n :}
+   LWORDS 0 ?do
+      P-OUT b i LIVE@  P-IN s i LIVE@ or  P-OUT b i LIVE!
+   loop ;
+
+\ A repeated edge repeats a successor; a meet over sets is idempotent over that.
+: LIVE-OUT! ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   LWORDS 0 ?do 0 P-OUT b i LIVE! loop
+   f b BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   t SUCCS-OF 0 ?do
+      b  t i SUCC-AT BLOCK-ORD  LIVE-OUT-ADD
+   loop ;
+
+: LIVE-IN1 ( n n -- bool )
+   {: b:n w:n :}
+   P-USE b w LIVE@   P-OUT b w LIVE@  P-DEF b w LIVE@ invert and   or {: nv:n :}
+   nv  P-IN b w LIVE@ = if false exit then
+   nv P-IN b w LIVE!
+   true ;
+
+: LIVE-IN! ( n -- bool )
+   {: b:n :}
+   false
+   LWORDS 0 ?do b i LIVE-IN1 or loop ;
+
+: LIVE-PASS1 ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b LIVE-OUT!
+   b LIVE-IN! if 1 LIVE-CHANGED ! then ;
+
+: LIVENESS! ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   LWORDS!
+   f LIVE-CLEAR
+   f BLOCK-COUNT 0 ?do f i LIVE-BLOCK-UD loop
+   begin
+      0 LIVE-CHANGED !
+      f BLOCK-COUNT 0 ?do
+         f  f BLOCK-COUNT 1- i -  LIVE-PASS1
+      loop
+      LIVE-CHANGED @ 0=
+   until ;
+
+\ Whether the value leaves the block being selected alive.
+: LIVE-OUT? ( IR-ID:ir-value-id -- bool )
+   {: v:IR-ID:ir-value-id :}
+   P-OUT  BLK BLOCK-ORD  v VSLOT  LIVE-HAS? ;
+
 \ ---- counting what reads a value ---------------------------------------------
-\ How many operands of the whole function name a value. Two rules read this: a
+\ How many operands of the whole function name a value. Two answers read this: a
 \ literal becomes no instruction of its own only when every use of it folds into
-\ one, and a two-address form may destroy its first operand only when this use
-\ is the value's only one. A use later in this block and a use in any other
-\ block are one answer here: nothing is computed about where a value dies,
-\ only whether a use exists that is not the operand being asked about.
+\ one, and a tail site may carry nothing anything reads again. A use later in
+\ this block and a use in any other block are one answer here: nothing is
+\ computed about where a value dies, only whether a use exists that is not the
+\ operand being asked about.
 : OP-USES ( IR-ID:ir-value-id IR-ID:ir-op-id -- n )
    {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id :}
    0
@@ -763,13 +943,48 @@ create NAMEBUF NAME-CAP allot
 \ Operand 0 is the one the instruction overwrites and the schema ties the result
 \ to it. The allocator refuses a tie whose ends cannot share a register
 \ (regalloc.f MB-TIE1) instead of repairing it, so the operand a form is about
-\ to destroy is copied here unless this operation is its only reader: a second
-\ operand naming the same value - `dup +` - and a use anywhere else in the
-\ function both count. The copy is `x64.mov` into a fresh value, and the
-\ allocator coalesces the ones whose ends can share a register after all.
+\ to destroy is copied here whenever it is LIVE AFTER this operation, which is
+\ three questions in one: another operand of this operation names it (`dup +`),
+\ a later operation of this block reads it, or it is live out of this block. The
+\ last of the three is the one a count of uses cannot answer - a value read once
+\ inside a loop is read again when the backedge brings control round, and no
+\ operand of that branch names it. The copy is `x64.mov` into a fresh value, and
+\ the allocator coalesces the ones whose ends can share a register after all.
+
+\ From operand k on, so that the destroyed operand can ask about the others.
+: OP-READS-FROM? ( IR-ID:ir-value-id IR-ID:ir-op-id n -- bool )
+   {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id k:n :}
+   false
+   id OPERANDS-OF k ?do
+      id i OPERAND-AT v SAME-VALUE? if drop true leave then
+   loop ;
+
+\ Where the operation being selected stands in the block being selected. The
+\ walk is at this operation, so the block really holds it.
+: OP-POSITION ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   -1
+   BLK OP-COUNT 0 ?do
+      BLK i OP-AT IR-ID:OP-LOCAL  id IR-ID:OP-LOCAL = if drop i leave then
+   loop
+   dup 0 < if E-X64SEL-SHAPE throw then ;
+
+: READ-BELOW? ( IR-ID:ir-value-id IR-ID:ir-op-id -- bool )
+   {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id :}
+   false
+   BLK OP-COUNT  id OP-POSITION 1+ ?do
+      v  BLK i OP-AT  0 OP-READS-FROM? if drop true leave then
+   loop ;
+
+: LIVE-AFTER? ( IR-ID:ir-value-id IR-ID:ir-op-id -- bool )
+   {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id :}
+   v id 1 OP-READS-FROM? if true exit then
+   v id READ-BELOW? if true exit then
+   v LIVE-OUT? ;
+
 : TIED-OPERAND ( IR-ID:ir-op-id -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-AT VALUE-USES 1 > if  id  id 0 OPERAND  EMIT-COPY exit then
+   id 0 OPERAND-AT  id LIVE-AFTER? if  id  id 0 OPERAND  EMIT-COPY exit then
    id 0 OPERAND ;
 
 : EMIT-BINARY ( IR-ID:ir-op-id X64IR:opcode -- )
@@ -1015,9 +1230,6 @@ create NAMEBUF NAME-CAP allot
 \ Every data-stack access threads one order, so a block takes the order its
 \ edges stated. The machine two-way branch carries no operands, so an order two
 \ paths differ on cannot be handed over as an argument here.
-: BLOCK-ORD-CK ( n -- n )
-   dup 0 < over BMAX >= or if E-X64SEL-CAP throw then ;
-
 : ORDER-ARG? ( n -- bool )
    {: b:n :}
    false
@@ -1061,7 +1273,7 @@ create NAMEBUF NAME-CAP allot
 \ The blocks of the source function map one for one, so a successor's ordinal
 \ rides across and only the module base changes.
 : SUCC-IDX ( IR-ID:ir-op-id n -- n )
-   SUCC-AT IR-ID:BLOCK-LOCAL  R-BASE @ -  BLOCK-ORD-CK ;
+   SUCC-AT BLOCK-ORD ;
 
 : SUCCESSOR-ORD+ ( n -- )
    {: b:n :}
@@ -1439,6 +1651,7 @@ create NAMEBUF NAME-CAP allot
    VCLEAR
    ORDER-CLEAR
    f R-BASE!
+   f LIVENESS!
    DPLACE
    n 0 ?do
       f i WALK-BLOCK

@@ -486,10 +486,17 @@ manifest's prefix rows, so a row that moves here moves there too.
 The other side of that cost: a file the manifest bakes is answered from the
 baked copy, so editing it and re-running `bin/hb --load` changes nothing — a
 deliberate syntax error in `src/compiler/ir/context.f` loads clean. That covers
-the whole tier-1 compiler under `src/compiler/`, the checker and its declarers
-under `src/core/`, `src/habu/`, and the libraries the manifest names
-(`lib/errors.f`, `lib/string.f`, `lib/memory.f` among them); an edit there is
-proved only by the generation chain, never by loading the file.
+what those entry points require: the ARM64 compiler chain under
+`src/compiler/`, the checker and its declarers under `src/core/`, `src/habu/`,
+and the libraries the manifest names (`lib/errors.f`, `lib/string.f`,
+`lib/memory.f` among them); an edit there is proved only by the generation
+chain, never by loading the file.
+
+A file under those same directories that the closure does NOT reach is not
+baked, and an edit to it takes effect through `require` with no rebuild at all.
+The x86-64 backend is one: `A64SEL:BOUND?` answers at the prompt where
+`X64SEL:BOUND?` is `E-UNDEFINED`, and an engine built over an edit to
+`src/compiler/native/select-x64.f` is byte-identical to one built without it.
 
 The stdin build's captured compiler closure records tree paths relative to the
 build root. Those paths also become the product's provided-file registrations;

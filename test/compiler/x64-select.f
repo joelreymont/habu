@@ -21,9 +21,11 @@
 \   asserts both operations and both successors, so the fusing slice that comes
 \   next changes this case deliberately rather than silently.
 \ - THE COPY A TWO-ADDRESS FORM NEEDS. `add rd, rs` destroys rd, so an operand
-\   anything else in the function reads is copied with `x64.mov` before the
-\   form, and an operand this operation is the last reader of is not. ARM64's
-\   three-register forms destroy nothing, so no ARM64 fixture measures it.
+\   that is still LIVE after the form is copied with `x64.mov` before it, and an
+\   operand the form is the last reader of is not. Liveness and not a use count:
+\   the loop case below reads its operand once and still needs the copy, because
+\   the backedge brings control round to read it again. ARM64's three-register
+\   forms destroy nothing, so no ARM64 fixture measures it.
 \ - THE COPY A FIXED REGISTER NEEDS. `shl r64, cl` reads its count from rcx and
 \   `idiv r64` its dividend from rax, so the count and the dividend are copied
 \   with `x64.mov` ALWAYS - the copy is the value the allocator places in the
@@ -353,6 +355,39 @@ $400 constant CALLEE-ENTRY           \ an address; nothing here branches to it
    s 1 BR1
    BLOCK+
    ARG+ RET1
+   CLOSE-FUN ;
+
+\ A loop whose header reads a value defined ABOVE it: `B0(x, c0): br B1(c0);
+\ B1(c): t = add x c; brz t -> B2 / B3; B2: ret t; B3: br B1(t)`. The add is the
+\ only operand in the function that names `x`, and the backedge carries `t` and
+\ not `x`, so no count of textual uses can see that the next pass through the
+\ header reads `x` again. The add may not destroy it.
+: BUILD-LOOP ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: c0:IR-ID:ir-value-id :}
+   c0 1 BR1
+   BLOCK+
+   ARG+ {: c:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD x c BINOP {: t:IR-ID:ir-value-id :}
+   t 2 3 BRZ2
+   BLOCK+
+   t RET1
+   BLOCK+
+   t 1 BR1
+   CLOSE-FUN ;
+
+\ The same two blocks with nothing re-entering the second: `B0(x, c0): br
+\ B1(c0); B1(c): t = add x c; ret t`. The add IS the last reader of `x` here and
+\ takes it as operand 0 with no copy at all, which the operation count pins.
+: BUILD-STRAIGHT ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: c0:IR-ID:ir-value-id :}
+   c0 1 BR1
+   BLOCK+
+   ARG+ {: c:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD x c BINOP RET1
    CLOSE-FUN ;
 
 \ `: ZERO? ( n -- bool ) 0= ;` - the comparison against a literal, which is one
@@ -941,6 +976,40 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    WBND [: CARRY-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE 1 T= 1 T= TTRUE TTRUE TTRUE TTRUE TTRUE 4 T= 2 T= ;
 
+\ ---- the operand a loop reads again -----------------------------------------
+\ The header's own block, which is where the answer differs: the add is preceded
+\ by the copy of `x`, its operand 0 IS that copy and is NOT `x`, and the count
+\ says the copy is really there.
+: LOOP-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
+   HIR-MOD
+   BUILD-LOOP
+   SELECTED READ!
+   1 BOPS
+   1 0 s" x64.mov" BOPCODE-IS?
+   1 0 0 BOPERAND@  0 0 BARG@ SAME-VALUE?
+   1 1 s" x64.add" BOPCODE-IS?
+   1 1 0 BOPERAND@  1 0 0 BRESULT@ SAME-VALUE?
+   1 1 0 BOPERAND@  0 0 BARG@ SAME-VALUE? ;
+
+: LOOP-CASE ( -- )
+   s" a value the backedge brings the header round to read again is copied, though one operand of the function names it" T-LABEL
+   WBND [: LOOP-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TTRUE TTRUE TTRUE 3 T= ;
+
+: STRAIGHT-BODY ( IR-CTX:ctx -- n bool bool bool )
+   HIR-MOD
+   BUILD-STRAIGHT
+   SELECTED READ!
+   1 BOPS
+   1 0 s" x64.add" BOPCODE-IS?
+   1 0 0 BOPERAND@  0 0 BARG@ SAME-VALUE?
+   1 0 1 BOPERAND@  1 0 BARG@ SAME-VALUE? ;
+
+: STRAIGHT-CASE ( -- )
+   s" the same value read once with no path back to the reader is the form's own operand and costs no copy" T-LABEL
+   WBND [: STRAIGHT-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE 2 T= ;
+
 \ ---- the data-stack boundary ------------------------------------------------
 : PASS-BODY ( IR-CTX:ctx -- n n bool n bool n bool n bool n bool n )
    HIR-MOD
@@ -1227,6 +1296,8 @@ public
    BRANCH-CASE
    COND-CASE
    CARRY-CASE
+   LOOP-CASE
+   STRAIGHT-CASE
    ZEROP-CASE
    PASS-CASE
    FRAME-CASE
