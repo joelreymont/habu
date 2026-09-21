@@ -9,34 +9,49 @@
 \ `llvm-mc -triple=x86_64 -disassemble` read the pinned string back (LLVM 22.1.8,
 \ 2026-09-21); every line was then re-assembled with
 \ `llvm-mc -triple=x86_64 -show-encoding` and answered exactly the bytes pinned
-\ here. That agreement is not free: src/arch/x86-64/asm.f implements exactly one
-\ encoding per operation and none of llvm-mc's preferred short forms (05 id for
-\ `add rax`, D1 /n for a shift by one), so the fixtures below fold their
-\ immediates onto the SECOND argument and shift by a count other than one, and
-\ no case here names rax as the destination of an immediate form.
+\ here, WITH THE ONE EXCEPTION NAMED BELOW. That agreement is not free:
+\ src/arch/x86-64/asm.f implements exactly one encoding per operation and none
+\ of llvm-mc's preferred short forms (05 id for `add rax`, D1 /n for a shift by
+\ one, 83 /n ib for an ALU immediate that fits a signed byte), so the fixtures
+\ below fold their immediates onto the SECOND argument, shift by a count other
+\ than one, name rax as the destination of no immediate form, and hold every
+\ folded literal outside a signed byte.
 \
-\ THE FIXTURES ARE THE REGISTER-CONVENTION LEAF x64-regalloc.f allocates: the
-\ contract names no place, so the module is the body alone and every value in it
-\ is one the allocator is free to place. ONE FIXTURE PER CONTEXT, and the
+\ THE EXCEPTION IS THE DATA-STACK ADJUSTMENT, which no fixture can dodge: a
+\ pointer move is a small multiple of eight and therefore always fits the byte
+\ form llvm-mc prefers, while `x64.dtake` and `x64.dpublish` are the imm32 add
+\ and subtract of this dialect whatever the distance (emit-x64.f PUT-DMOVE).
+\ llvm-mc DISASSEMBLES the pinned 49 81 ec 10 00 00 00 as the `subq $16, %r12`
+\ its `mc:` line gives, and re-ASSEMBLES that line as the four-byte
+\ 49 83 ec 10: on those lines - the `subq` and the `addq` on %r12 in the last
+\ two cases - the instruction agrees and the encoding is the longer one this
+\ encoder has.
+\
+\ THE FIXTURES ARE THE TWO CONTRACTS x64-regalloc.f ALLOCATES UNDER. Most are
+\ the REGISTER-convention leaf: the contract names no place, so the module is
+\ the body alone and every value in it is one the allocator is free to place.
+\ The last two are the DATA-STACK convention (X64ABI:LEAF), where the interface
+\ is caller cells and the selector writes the boundary itself - the only shape
+\ the four data-stack crossings and the four addressed forms appear in, because
+\ the order an addressed form needs is the one the entry's `x64.dtake` minted
+\ and the exit's `x64.dpublish` consumes. ONE FIXTURE PER CONTEXT, and the
 \ refusing cases run inside an enclosing one, for the reason that suite gives.
 \
-\ WHAT THIS SUITE CANNOT PIN YET, AND MEASURES INSTEAD. Eight forms this emitter
-\ writes have no byte string here, because no module that holds them is accepted
-\ today and neither refusal is this pass's:
+\ WHAT THIS SUITE DOES NOT PIN. Every form this emitter writes now has a byte
+\ string here. What is left unmeasured is a byte no module of this slice can
+\ produce, and each of them is a later slice's:
 \
-\ - x64.dtake, dload, dstore and dpublish live only in DATA-STACK-convention
-\   routines (X64ABI:LEAF), and the validator refuses an x86-64 module under that
-\   convention: it re-derives where the data-stack pointer has to STAND from
-\   A64SEL's placement policy, and X64SEL stands it at the entry instead
-\   (test/compiler/x64-regalloc.f states the disagreement; dot
-\   habu-bind-the-register-623e83ff records it).
-\ - x64.aload, astore, abload and abstore need a memory order, and a
-\   register-convention leaf mints one in its RETURN block that nothing reads,
-\   which the validator refuses for its own reason (E-A64RAV-ORDER, measured in
-\   the case below).
-\
-\ Nothing here works around the validator to reach them: the bytes are pinned
-\ once the module shapes that hold them are accepted.
+\ - THE REGISTERS ABOVE rdx. The pool is rax, rcx, rdx, rsi, rdi and r8..r11
+\   (x64ir.f RESERVED-MASK), and no fixture here is wide enough for the
+\   allocator to reach past rdx, so no pinned byte sets REX.R or REX.B for an
+\   operand and none names the spl/bpl/sil/dil byte registers.
+\ - A DATA-STACK DISPLACEMENT OUTSIDE disp8, or a negative one. `x64.dslot` is
+\   signed and reaches disp32 (x64ir.f DSLOT), which wants a contract of more
+\   than sixteen cells or a routine that leaves through its callee - and a
+\   routine that calls is E-X64EMIT-SHAPE here.
+\ - THE FRAME AND THE BRANCH. `x64.reserve`, `release`, `store` and `load` need
+\   a prologue and a branch needs a layout, and both are refused by name in the
+\   cases below.
 
 require lib/test.f
 require lib/byte-buffer.f
@@ -230,6 +245,15 @@ create TXT
 : ARG-MEM+ ( -- IR-ID:ir-value-id )
    CC BB MEMT IR-BUILD:ADD-BLOCK-ARG ;
 
+\ The order a routine mints for ITSELF. `hir.mem` is the source operation that
+\ has one, and under the data-stack convention the selector answers it with the
+\ token the entry's `x64.dtake` already made (select-x64.f EMIT-MEM), so a
+\ data-stack routine needs no mem-typed argument to address memory.
+: MEM0 ( -- IR-ID:ir-value-id )
+   HIR-OPCODE:MEM BODY-ST BODY-LN OPEN-OP
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
 : LOAD1 ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id IR-ID:ir-value-id )
    {: o:HIR:opcode a:IR-ID:ir-value-id k:IR-ID:ir-value-id :}
    o BODY-ST BODY-LN OPEN-OP
@@ -368,6 +392,20 @@ create TXT
    MEM-SIGN OPEN-FUN-SIG
    ARG+ {: a:IR-ID:ir-value-id :}
    ARG-MEM+ {: k0:IR-ID:ir-value-id :}
+   HIR-OPCODE:LOAD a k0 LOAD1 {: v:IR-ID:ir-value-id k1:IR-ID:ir-value-id :}
+   HIR-OPCODE:BLOAD a k1 LOAD1 {: w:IR-ID:ir-value-id k2:IR-ID:ir-value-id :}
+   HIR-OPCODE:STORE v a k2 STORE1 {: k3:IR-ID:ir-value-id :}
+   HIR-OPCODE:BSTORE w a k3 STORE1 drop
+   w RET1
+   CLOSE-FUN ;
+
+\ `( a -- n )` under the data-stack convention: the same four addressed forms
+\ over an address the routine took off the data stack, with the memory order
+\ minted inside the body instead of arriving as an argument.
+: BUILD-DADDRESSED ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   MEM0 {: k0:IR-ID:ir-value-id :}
    HIR-OPCODE:LOAD a k0 LOAD1 {: v:IR-ID:ir-value-id k1:IR-ID:ir-value-id :}
    HIR-OPCODE:BLOAD a k1 LOAD1 {: w:IR-ID:ir-value-id k2:IR-ID:ir-value-id :}
    HIR-OPCODE:STORE v a k2 STORE1 {: k3:IR-ID:ir-value-id :}
@@ -520,6 +558,38 @@ create TXT
 : EMITTED ( -- )
    ALLOCATED SINK X64EMIT:EMIT ;
 
+\ ---- and the same passes under the data-stack convention ---------------------
+\ The other contract of this machine, the one test/compiler/x64-regalloc.f
+\ allocates and the validator accepts: the interface is caller cells in and out,
+\ so the selector writes the boundary itself. Nothing arrives in a register -
+\ the entry takes the pointer and loads every cell the contract lists, and the
+\ exit stores every result and publishes. The first case through here is the
+\ subtraction the first case of the file pins under the other contract, so what
+\ its longer byte string adds is the boundary and nothing else.
+: DLEAF ( n n -- NEFF:routine )
+   {: in:n out:n :}
+   X64ABI:SCRATCH in out X64ABI:LEAF ;
+
+: DSTACK-SELECTED ( n n -- IR-BUILD:module )
+   {: in:n out:n :}
+   CC BB X64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   X64-BUILDER {: xb:IR-BUILD:builder :}
+   CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
+   CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
+   CC xb X64EMIT:BIND-DIALECT
+   CC m xb in out DLEAF X64SEL:SELECT ;
+
+: DSTACK-ALLOCATED ( n n -- IR-BUILD:module )
+   {: in:n out:n :}
+   in out DSTACK-SELECTED {: m:IR-BUILD:module :}
+   CC m in out DLEAF A64RA:ALLOCATE
+   m in out DLEAF A64RAV:ACCEPT
+   m ;
+
+: DSTACK-EMITTED ( n n -- )
+   DSTACK-ALLOCATED SINK X64EMIT:EMIT ;
+
 \ A call site is refused for the module's SHAPE, which is asked before any
 \ assignment, so this module needs none.
 : CALLER-EMIT ( -- )
@@ -546,15 +616,17 @@ create TXT
 : CMPSETI-BYTES ( IR-CTX:ctx -- )  HIR-MOD BUILD-CMPSETI EMITTED ;
 : MOVI-BYTES ( IR-CTX:ctx -- )     HIR-MOD BUILD-MOVI EMITTED ;
 
-\ ---- the boundary this slice measures rather than claims ---------------------
-\ The four addressed forms are dispatched and encoded here, and NO module that
-\ holds them is accepted yet - which is why none of their bytes is pinned above.
-\ A register-convention leaf mints the memory order in its RETURN block and
-\ nothing reads the order it ends with, and the validator refuses exactly that
-\ (regalloc-verify.f ORDER-VALUE-CK). The data-stack convention that would
-\ consume it is refused for its own reason, the placement disagreement
-\ test/compiler/x64-regalloc.f records. The refusal is measured here so this
-\ file's header states a fact and not a belief.
+: DDIFF-BYTES ( IR-CTX:ctx -- )    HIR-MOD BUILD-DIFF 2 1 DSTACK-EMITTED ;
+: DADDR-BYTES ( IR-CTX:ctx -- )    HIR-MOD BUILD-DADDRESSED 1 1 DSTACK-EMITTED ;
+
+\ ---- why the addressed pins are taken under the data-stack convention --------
+\ The same four forms in a REGISTER-convention leaf are not accepted, so their
+\ bytes could not be pinned there. The order such a routine is handed arrives as
+\ an argument and the one its last store answers is read by nothing - a register
+\ convention has no publish to consume it - and the validator refuses exactly
+\ that (regalloc-verify.f ORDER-VALUE-CK). Under the data-stack convention the
+\ exit's `x64.dpublish` reads the order the body ends with, which is why
+\ DADDR-BYTES above is accepted and this is not.
 : ADDRESSED-ACCEPT ( -- )
    ALLOCATED drop ;
 
@@ -579,7 +651,7 @@ create TXT
 : ADDRESSED-CASES ( IR-CTX:ctx -- )
    HIR-MOD
    BUILD-ADDRESSED
-   s" the four addressed forms have no accepted module to reach them through yet: a memory order a register-convention leaf mints in its return block is read by nothing, and the validator refuses it" T-LABEL
+   s" the same four forms under the REGISTER convention are refused: nothing reads the order the last store answers, there being no publish" T-LABEL
    [: ADDRESSED-ACCEPT ;] E-A64RAV-ORDER TTHROWSQ ;
 
 \ The two machine-dialect modules, in the context they were built in.
@@ -680,6 +752,30 @@ public
    \ mc: addq %rcx, %rax
    \ mc: retq
    s" 48b900000000010000004801c8c3" X=
+
+   s" the same difference under the data-stack convention: the pointer taken, both cells loaded, the result stored and published" T-LABEL
+   WBND [: DDIFF-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: subq $16, %r12
+   \ mc: movq (%r12), %rax
+   \ mc: movq 8(%r12), %rcx
+   \ mc: subq %rcx, %rax
+   \ mc: movq %rax, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: retq
+   s" 4981ec10000000498b0424498b4c24084829c8498904244981c408000000c3" X=
+
+   s" the four addressed forms, over an address the routine took off the data stack" T-LABEL
+   WBND [: DADDR-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: subq $8, %r12
+   \ mc: movq (%r12), %rax
+   \ mc: movq (%rax), %rcx
+   \ mc: movzbq (%rax), %rdx
+   \ mc: movq %rcx, (%rax)
+   \ mc: movb %dl, (%rax)
+   \ mc: movq %rdx, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: retq
+   s" 4981ec08000000498b0424488b08480fb6104889088810498914244981c408000000c3" X=
 
    WBND [: ADDRESSED-CASES ;] IR-CTX:WITH-CONTEXT
    WBND [: MACHINE-REFUSE-CASES ;] IR-CTX:WITH-CONTEXT
