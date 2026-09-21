@@ -120,6 +120,9 @@ create BODY-BUF BODYBUF-CAP allot
    2dup NORMAL-STRING-OPENER? IF 2drop 0 0= EXIT THEN
    ESCAPED-STRING-OPENER? ;
 
+: PRINT-OPENER? ( ptr u8 n -- bool )
+   s" .(" CORE-STR= ;
+
 : SKIP-ESCAPED-QUOTE ( -- )
    0 FOUND !
    begin SCAN-I @ SOURCE-U @ < while
@@ -157,11 +160,12 @@ create BODY-BUF BODYBUF-CAP allot
       dup 0= IF EXIT THEN
       2dup 1 = swap c@ 92 = and IF 2drop 10 SKIP-PAST ELSE
       2dup 1 = swap c@ 40 = and IF 2drop 41 SKIP-PAST ELSE
+      2dup PRINT-OPENER? IF 2drop 41 SKIP-PAST ELSE
       SKIP-STRINGS @ 0= 0= IF
          2dup ESCAPED-STRING-OPENER? IF 2drop SKIP-ESCAPED-QUOTE 4 RECORD-SKIPPED-STRING ELSE
          2dup NORMAL-STRING-OPENER? IF 2drop 34 SKIP-PAST 3 RECORD-SKIPPED-STRING ELSE EXIT THEN THEN
       ELSE EXIT THEN
-      THEN THEN
+      THEN THEN THEN
    AGAIN ;
 
 : NEXT-SCAN ( -- ptr u8 n )

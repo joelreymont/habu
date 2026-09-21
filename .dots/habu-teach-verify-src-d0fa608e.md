@@ -1,6 +1,6 @@
 ---
 title: Teach verify-source the print-paren
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-07-28T22:56:11.553598+02:00"

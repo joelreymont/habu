@@ -949,6 +949,15 @@ variable LONG-J
 : TEST-GOOD ( -- )
    [: GOOD$ VERIFY:SOURCE-BUF ;] catch 0 T= ;
 
+: PRINT-PARITY$ ( -- ptr u8 n )
+   s" .( loud ) : CKP ( -- ) ;" ;
+
+: TEST-PRINT-PARITY ( -- )
+   [: PRINT-PARITY$ VERIFY:SOURCE-BUF ;] catch 0 T=
+   PRINT-PARITY$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= TTRUE
+   LINT-LEX:COUNT 5 T= ;
+
 : TEST-PRELUDE-HOOK ( -- )
    s" : CKT-PRELUDE-GOOD ( i64 -- i64 ) dup * ;"
    PRELUDE-EVAL$ DIRECT-STDIN 0 T=
@@ -2075,6 +2084,7 @@ POISON-RECORD
    s" check/retired-globals" [: TEST-RETIRED-GLOBALS ;] CASE-RUN
    s" check/global-mutation" [: TEST-GLOBAL-MUTATION ;] CASE-RUN
    s" check/good" [: TEST-GOOD ;] CASE-RUN
+   s" check/print-parity" [: TEST-PRINT-PARITY ;] CASE-RUN
    s" check/prelude-hook-public" [: TEST-PRELUDE-HOOK ;] CASE-RUN
    s" check/layout-buffer" [: TEST-LAYOUT-BUFFER ;] CASE-RUN
    s" check/file-label" [: TEST-FILE-LABEL ;] CASE-RUN
