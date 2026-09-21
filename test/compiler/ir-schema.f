@@ -26,7 +26,7 @@ private
 \ The row shape src/compiler/ir/schema.f commits to, mirrored here so a fixture
 \ can append a raw row past that package's constructors and prove the decoders
 \ still hold. A change to the layout must change this mirror too.
-24 constant ROW-CELLS
+26 constant ROW-CELLS
 0 constant F-NAME
 3 constant F-OPTAIL
 6 constant F-RSTAIL
@@ -779,6 +779,109 @@ private
 : TIE-IDX-RUN ( -- )
    BND [: TIE-IDX-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ One fixture per way a fixed register can be wrong, each staged inside a schema
+\ that is legal apart from the fixed entry, so the refusal is that entry's own.
+\ Case 0 is the legal one: this form's operand 0 is in register 1 and its result
+\ 0 in register 2, which is the shape a machine dialect declares for a form
+\ whose operand and result fields the instruction names itself.
+: FIX-OPS ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
+   {: c:IR-CTX:ctx tp:IR-ARENA:arena tr:IR-ARENA:arena key:IR-ID:ir-module-key k:n :}
+   k 3 = if c tp tr key I64 IR-SCHEMA:ADD-OPERAND-TAIL exit then
+   c tp tr key I64 IR-SCHEMA:ADD-OPERAND ;
+
+: FIX-DECL ( n -- )
+   {: k:n :}
+   k 1 = if IR--SCHEMA-SIDE:OPERAND 1 1 IR-SCHEMA:ADD-FIXED exit then
+   k 2 = if
+      IR--SCHEMA-SIDE:OPERAND 0 1 IR-SCHEMA:ADD-FIXED
+      IR--SCHEMA-SIDE:OPERAND 0 2 IR-SCHEMA:ADD-FIXED exit
+   then
+   k 3 = if IR--SCHEMA-SIDE:OPERAND 0 1 IR-SCHEMA:ADD-FIXED exit then
+   k 4 = if IR--SCHEMA-SIDE:OPERAND 0 -1 IR-SCHEMA:ADD-FIXED exit then
+   k 5 = if IR--SCHEMA-SIDE:RESULT -1 1 IR-SCHEMA:ADD-FIXED exit then
+   IR--SCHEMA-SIDE:OPERAND 0 1 IR-SCHEMA:ADD-FIXED
+   IR--SCHEMA-SIDE:RESULT 0 2 IR-SCHEMA:ADD-FIXED ;
+
+: FIX-STAGE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
+   {: c:IR-CTX:ctx sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena key:IR-ID:ir-module-key k:n :}
+   c sp sr key V-BASE OP-SYM IR-SCHEMA:BEGIN-OP
+   c tp tr key k FIX-OPS
+   c tp tr key I64 IR-SCHEMA:ADD-RESULT
+   k FIX-DECL
+   false 0 0 IR-SCHEMA:SET-CONTROL
+   IR-SCHEMA:SET-PURE
+   false IR-SCHEMA:SET-TRAP
+   CTARGET-ARCH:AARCH64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET
+   c sp sr key V-BASE RULE-SYM IR-SCHEMA:SET-RULE
+   c sp sr key V-BASE REND-SYM IR-SCHEMA:SET-RENDERER ;
+
+: FIX-BODY ( n IR-CTX:ctx -- )
+   {: k:n c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
+   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
+   c sp sr key V-BASE TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c sp sr tp tr key k FIX-STAGE
+   c a r key sr tr IR-SCHEMA:DEFINE ;
+
+: FIX-RUN ( n -- )
+   BND [: FIX-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ The declared fixed registers read back through the live readers and, once the
+\ module is frozen, through the view readers, which is the pair a register
+\ allocator uses.
+: FIX-READ-BODY ( IR-CTX:ctx -- bool n n bool n n )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
+   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
+   c sp sr key V-BASE TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c sp sr tp tr key 0 FIX-STAGE
+   c a r key sr tr IR-SCHEMA:DEFINE
+   c sp sr key V-BASE OP-SYM {: op:IR-ID:ir-symbol-id :}
+   a r op 0 IR-SCHEMA:FIXED-SIDE@ IR--SCHEMA-SIDE:OPERAND IR--SCHEMA-SIDE:EQ
+   a r op 0 IR-SCHEMA:FIXED-ORDINAL@
+   a r op 0 IR-SCHEMA:FIXED-REG@
+   a IR-ARENA:FREEZE {: pv:IR-ARENA:view :}
+   r IR-ARENA:FREEZE {: rv:IR-ARENA:view :}
+   pv rv op 1 IR-SCHEMA:FFIXED-SIDE@ IR--SCHEMA-SIDE:RESULT IR--SCHEMA-SIDE:EQ
+   pv rv op 1 IR-SCHEMA:FFIXED-ORDINAL@
+   pv rv op 1 IR-SCHEMA:FFIXED-REG@ ;
+
+: FIX-COUNT-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
+   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
+   c sp sr key V-BASE TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c sp sr tp tr key 0 FIX-STAGE
+   c a r key sr tr IR-SCHEMA:DEFINE
+   c sp sr tp tr key V-NAME STAGE
+   c a r key sr tr IR-SCHEMA:DEFINE
+   c sp sr key V-BASE OP-SYM {: op:IR-ID:ir-symbol-id :}
+   r op IR-SCHEMA:FIXED-COUNT@
+   r  c sp sr key V-NAME OP-SYM  IR-SCHEMA:FIXED-COUNT@ ;
+
+: FIX-CASES ( -- )
+   s" a form that fixes an operand and a result to two registers defines" T-LABEL
+   0 FIX-RUN
+   s" the declared fixed registers read back live and through the frozen views" T-LABEL
+   BND [: FIX-READ-BODY ;] IR-CTX:WITH-CONTEXT
+   2 T= 0 T= TTRUE 1 T= 0 T= TTRUE
+   s" a form that fixes nothing answers zero, which is every form that predates the list" T-LABEL
+   BND [: FIX-COUNT-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 2 T=
+   s" a fixed register naming an operand past the operand list rejects" T-LABEL
+   [: 1 FIX-RUN ;] E-IR-SCHEMA-FIXED TTHROWSQ
+   s" fixing one operand field to two registers rejects" T-LABEL
+   [: 2 FIX-RUN ;] E-IR-SCHEMA-FIXED TTHROWSQ
+   s" a fixed register onto the variadic operand tail rejects, because a tail names no one field" T-LABEL
+   [: 3 FIX-RUN ;] E-IR-SCHEMA-FIXED TTHROWSQ
+   s" a negative register, which no register file numbers, rejects" T-LABEL
+   [: 4 FIX-RUN ;] E-IR-SCHEMA-FIXED TTHROWSQ
+   s" a negative fixed ordinal rejects" T-LABEL
+   [: 5 FIX-RUN ;] E-IR-SCHEMA-FIXED TTHROWSQ ;
+
 : TIE-CASES ( -- )
    s" a result tied to an operand of the same type defines" T-LABEL
    0 TIE-RUN
@@ -1418,7 +1521,8 @@ private
 
 : HARNESS-TIE ( IR-CTX:ctx -- )
    drop
-   TIE-CASES ;
+   TIE-CASES
+   FIX-CASES ;
 
 : HARNESS-TARGET ( IR-CTX:ctx -- )
    drop

@@ -181,6 +181,14 @@ X64ASM:C-NE X64ASM:CONDITION>N constant COND-NE
 14 constant R-DICT                   \ r14, the dictionary
 15 constant R-CODE                   \ r15, the code pointer
 
+\ The three the fixed-register forms below name. Each number is TAKEN from the
+\ shipped assembler's own register word, the way the condition codes above are,
+\ so the dialect and the encoder cannot drift and no register number is written
+\ twice in this tree.
+X64ASM:RAX X64ASM:R64>N constant R-RAX
+X64ASM:RCX X64ASM:R64>N constant R-RCX
+X64ASM:RDX X64ASM:R64>N constant R-RDX
+
 : RESERVED-MASK ( -- n )
    1 R-RBX lshift
    1 R-RSP lshift or
@@ -978,11 +986,10 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ THE COUNT IS IN ONE REGISTER AND THE MACHINE NAMES IT. `shl r64, cl` reads the
-\ count from rcx and nowhere else, so operand 1 of this form must be assigned
-\ register 1. That obligation is the selector's to satisfy and the emitter's to
-\ refuse; the dialect states it here because the schema has no way to declare a
-\ fixed register on an operand today, and a form whose constraint is written
-\ only in a pass is a constraint the next pass does not know.
+\ count from rcx and nowhere else, so operand 1 of this form is FIXED to rcx.
+\ The schema states that obligation the way it states the tie - as a property of
+\ the form - so the allocator places the count there and the validator re-derives
+\ it, and neither pass has to know which opcode this is.
 : DEF-SHIFT-CL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id X64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:X64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -990,6 +997,7 @@ private
    t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-RESULT
    0 0 IR-SCHEMA:ADD-TIE
+   IR--SCHEMA-SIDE:OPERAND 1 R-RCX IR-SCHEMA:ADD-FIXED
    PURE-VALUE
    TOTAL
    TARGET
@@ -1015,8 +1023,11 @@ private
 \ over the trap the engine's `/` carries - and it may raise, because the machine
 \ raises #DE on a zero divisor and on MIN-INT / -1.
 \
-\ The dividend must be in rax and the remainder comes back in rdx: the same
-\ fixed-register obligation DEF-SHIFT-CL states, for the same reason.
+\ Four register fields of this form are the machine's own and not the
+\ allocator's: the dividend is operand 0 in rax, the quotient is result 0 in rax
+\ and the remainder result 1 in rdx, which the schema declares beside the
+\ operand types. Only the divisor is free, and a value live across this
+\ operation may not be in rax or rdx, because the instruction writes both.
 : DEF-IDIV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b X64IR-OPCODE:IDIV OPCODE IR-SCHEMA:BEGIN-OP
@@ -1024,6 +1035,9 @@ private
    t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-RESULT
    t IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-SIDE:OPERAND 0 R-RAX IR-SCHEMA:ADD-FIXED
+   IR--SCHEMA-SIDE:RESULT  0 R-RAX IR-SCHEMA:ADD-FIXED
+   IR--SCHEMA-SIDE:RESULT  1 R-RDX IR-SCHEMA:ADD-FIXED
    PURE-VALUE
    true IR-SCHEMA:SET-TRAP
    TARGET

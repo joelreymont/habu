@@ -726,6 +726,30 @@ variable FPO-RUN                     \ where the next predecessor run starts
       loop
    loop ;
 
+\ A form that names a PARTICULAR register for one of its fields - the count
+\ `shl r64, cl` reads, the rdx:rax `idiv r64` divides - has it declared in the
+\ schema, and the assignment either put that value there or it did not. The
+\ register is re-derived from the form here rather than taken from the
+\ allocator's answer, which is what makes this a check.
+: OP-FIX-CK ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id i:n :}
+   V-SCHP VW V-SCHR VW  id OPCODE-AT  i IR-SCHEMA:FFIXED-ORDINAL@ {: ord:n :}
+   V-SCHP VW V-SCHR VW  id OPCODE-AT  i IR-SCHEMA:FFIXED-REG@ {: r:n :}
+   V-SCHP VW V-SCHR VW  id OPCODE-AT  i IR-SCHEMA:FFIXED-SIDE@
+   IR--SCHEMA-SIDE:RESULT IR--SCHEMA-SIDE:EQ
+   if id ord RESULT-AT SLOT else id ord OPERAND-AT SLOT then
+   A64RA:CLAIM@ r <> if E-A64RAV-FIXED throw then ;
+
+: FIX-CK ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT {: n:n :}
+   n 0 ?do
+      bk i OP-AT {: id:IR-ID:ir-op-id :}
+      V-SCHR VW id OPCODE-AT IR-SCHEMA:FFIXED-COUNT@ 0 ?do
+         id i OP-FIX-CK
+      loop
+   loop ;
+
 \ ---- the routine's declared registers ------------------------------------------
 : REG-POSITIONS ( NEFF:placeseq -- n )
    {: s:NEFF:placeseq :}
@@ -2218,7 +2242,11 @@ DKEEP-HOOK-DEFAULT
 \ ---- the whole re-derivation -------------------------------------------------
 : VBLOCK-CKS ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   V-BLKS @ 0 ?do f i BLOCK-AT TIE-CK loop
+   V-BLKS @ 0 ?do
+      f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+      bk TIE-CK
+      bk FIX-CK
+   loop
    f FLOW-CK ;
 
 : VCLOB-BLOCK ( IR-ID:ir-fun-id n -- )

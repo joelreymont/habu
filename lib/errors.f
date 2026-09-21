@@ -624,6 +624,7 @@ public
 -8013 constant E-IR-SCHEMA-DIGEST  \ a presented schema-table digest does not match the recomputed one
 -8014 constant E-IR-SCHEMA-VERSION \ a schema major or minor version outside the accepted range
 -8015 constant E-IR-SCHEMA-TIE     \ a tied operand declaration naming no fixed entry, a mismatched type, or a field tied twice
+-8016 constant E-IR-SCHEMA-FIXED   \ a fixed-register declaration naming no fixed entry of its side's list, a field fixed twice, or a register no file numbers
 
 \ Compiler operation and value store (package IR-OP): -8020..-8039
 -8020 constant E-IR-OP-STATE     \ an operation store failed its header, row-shape, window, or stored-code recheck
@@ -939,8 +940,8 @@ public
 \ what the register allocator and its validator add: whether the allocation this
 \ machine module needs can honour that declaration, and whether the finished
 \ assignment does. Both packages' own blocks were full when the binding landed.
--8460 constant E-A64RA-FIXED     \ a declared argument or result register the allocation cannot honour: more declared positions than the routine has arguments or returned values, a register outside the set the routine may write, one value returned at two declared positions, or a declared register already held where it has to be taken
--8461 constant E-A64RAV-FIXED    \ an assignment that does not put a declared argument or returned value where the contract declares it, or one made for a contract declaring more positions than the module has
+-8460 constant E-A64RA-FIXED     \ a declared argument, result or schema-fixed operand register the allocation cannot honour: more declared positions than the routine has arguments or returned values, a register outside the set the routine may write, one value returned at two declared positions, one class declared into two registers, or a declared register already held where it has to be taken
+-8461 constant E-A64RAV-FIXED    \ an assignment that does not put a declared argument, returned value or schema-fixed operand or result where the contract or the form declares it, or one made for a contract declaring more positions than the module has
 
 \ Native ARM64 data-stack calling convention: -8480..-8499
 \

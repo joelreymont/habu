@@ -251,6 +251,189 @@ create TXT
    m DLEAF A64RAV:ACCEPT
    m ;
 
+\ ---- the forms whose registers the MACHINE names -----------------------------
+\ `shl r64, cl` reads its count from rcx and `idiv r64` divides rdx:rax into rax
+\ and rdx, which x64ir declares in the schema as fixed registers beside the
+\ operand types. The selector does not lower either shape yet (select-x64.f
+\ refuses a variable shift and a division by name), so these modules are built
+\ straight into the machine dialect - the way native-regalloc.f builds the
+\ shapes its own selector never produces - and what they measure is the
+\ allocator honouring a constraint it reads out of the schema.
+: X64-MOD ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN
+   IR-BUILD:PLAN-DEFAULT
+   c X64IR:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c 0 W-CTX !
+   b 0 W-BLD !
+   c b X64M:MACHINE  c b X64IR:VOCABULARY  A64RA:BIND-DIALECT
+   c b  c b X64IR:VOCABULARY  A64RAV:BIND-DIALECT
+   c b X64IR:REGISTER
+   c b TXT TXT-N IR-BUILD:ADD-SOURCE 0 W-SRC ! ;
+
+: M-OPEN ( X64IR:opcode -- )
+   {: o:X64IR:opcode :}
+   CC BB  CC BB o X64IR:OPCODE  IR-BUILD:BEGIN-OP
+   CC BB  BODY-ST BODY-LN SPN  IR-BUILD:SET-OP-SPAN ;
+
+: M-RESULT+ ( -- )
+   CC BB  CC BB X64IR:GPR-TYPE  IR-BUILD:ADD-RESULT ;
+
+: M-MOVI ( n -- IR-ID:ir-value-id )
+   {: imm:n :}
+   X64IR-OPCODE:MOVI M-OPEN
+   M-RESULT+
+   CC BB  CC BB X64IR:KEY-IMM   CC BB imm X64IR:IMM-ATTR  IR-BUILD:ADD-ATTR
+   CC BB  CC BB X64IR:KEY-ADDR
+      CC BB HIR:ADDR-NONE X64IR:ADDR-ATTR  IR-BUILD:ADD-ATTR
+   CLOSE-VALUE ;
+
+: M-BIN ( X64IR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: o:X64IR:opcode x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   o M-OPEN
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   CLOSE-VALUE ;
+
+: M-SHL ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   X64IR-OPCODE:SHL -rot M-BIN ;
+
+: M-ADD ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   X64IR-OPCODE:ADD -rot M-BIN ;
+
+: M-IDIV ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id IR-ID:ir-value-id )
+   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   X64IR-OPCODE:IDIV M-OPEN
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   M-RESULT+
+   CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC BB id 0 IR-BUILD:OP-RESULT@
+   CC BB id 1 IR-BUILD:OP-RESULT@ ;
+
+: M-RET ( IR-ID:ir-value-id -- )
+   {: v:IR-ID:ir-value-id :}
+   X64IR-OPCODE:RET M-OPEN
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB IR-BUILD:END-OP drop ;
+
+: M-ALLOCATED ( -- IR-BUILD:module )
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC m LEAF A64RA:ALLOCATE
+   m LEAF A64RAV:ACCEPT
+   m ;
+
+: M-ALLOCATE ( -- )
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC m LEAF A64RA:ALLOCATE ;
+
+\ A variable shift over a count nothing else reads: the count is placed in rcx
+\ because the form fixes it there, and the value shifted takes the lowest free
+\ register as anything else would.
+: SHL-BODY ( IR-CTX:ctx -- n n bool )
+   X64-MOD
+   0 1 OPEN-FUN
+   $40 M-MOVI {: v:IR-ID:ir-value-id :}
+   3 M-MOVI {: c:IR-ID:ir-value-id :}
+   v c M-SHL M-RET
+   CLOSE-FUN
+   M-ALLOCATED drop
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
+\ A division with a THIRD value live across it. The dividend is fixed to rax and
+\ the two results to rax and rdx, so the divisor and the value that has to
+\ survive the instruction may be in neither: the divisor takes rcx because rax
+\ is already the dividend's, and the value live across is kept out of rax and
+\ rdx because the operation it crosses writes both - a fixed result destroys its
+\ register exactly as a call destroys the ones it may.
+: IDIV-BODY ( IR-CTX:ctx -- n n n n n bool )
+   X64-MOD
+   0 1 OPEN-FUN
+   100 M-MOVI {: d:IR-ID:ir-value-id :}
+   7 M-MOVI {: v:IR-ID:ir-value-id :}
+   9 M-MOVI {: k:IR-ID:ir-value-id :}
+   d v M-IDIV {: q:IR-ID:ir-value-id r:IR-ID:ir-value-id :}
+   q r M-ADD {: s1:IR-ID:ir-value-id :}
+   s1 k M-ADD M-RET
+   CLOSE-FUN
+   M-ALLOCATED drop
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@
+   4 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
+\ Two counts, both fixed to rcx, live over one interval. One register cannot
+\ hold both, and this lane inserts no copy: the allocation is refused by name.
+\ The copy that makes such a pair satisfiable is the selector's.
+: TWO-COUNTS-BODY ( IR-CTX:ctx -- )
+   X64-MOD
+   0 1 OPEN-FUN
+   $40 M-MOVI {: v:IR-ID:ir-value-id :}
+   3 M-MOVI {: c1:IR-ID:ir-value-id :}
+   5 M-MOVI {: c2:IR-ID:ir-value-id :}
+   v c1 M-SHL {: s1:IR-ID:ir-value-id :}
+   s1 c2 M-SHL M-RET
+   CLOSE-FUN
+   M-ALLOCATE ;
+
+\ A form of this module's own table that fixes its operand to rbx, the register
+\ the running engine keeps its interpreter in and the routine's pool therefore
+\ does not hold. The schema stores any register a file could number; WHICH file
+\ and which of its registers this routine may write is known here, and the
+\ allocator refuses.
+: RESERVED-SCHEMA ( -- IR-ID:ir-symbol-id )
+   CC BB s" x64.keepbx" IR-BUILD:INTERN-SYMBOL {: op:IR-ID:ir-symbol-id :}
+   op IR-SCHEMA:BEGIN-OP
+   CC BB X64IR:GPR-TYPE IR-SCHEMA:ADD-OPERAND
+   CC BB X64IR:GPR-TYPE IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-SIDE:OPERAND 0 X64ASM:RBX X64ASM:R64>N IR-SCHEMA:ADD-FIXED
+   false 0 0 IR-SCHEMA:SET-CONTROL
+   IR-SCHEMA:SET-PURE
+   false IR-SCHEMA:SET-TRAP
+   CTARGET-ARCH:X86-64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET
+   CC BB s" x64.rule.keepbx" IR-BUILD:INTERN-SYMBOL IR-SCHEMA:SET-RULE
+   CC BB s" x64.render.keepbx" IR-BUILD:INTERN-SYMBOL IR-SCHEMA:SET-RENDERER
+   CC BB IR-BUILD:DEFINE-OP
+   op ;
+
+: M-UNARY ( IR-ID:ir-symbol-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: op:IR-ID:ir-symbol-id v:IR-ID:ir-value-id :}
+   CC BB op IR-BUILD:BEGIN-OP
+   CC BB  BODY-ST BODY-LN SPN  IR-BUILD:SET-OP-SPAN
+   CC BB v IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   CLOSE-VALUE ;
+
+: RESERVED-BODY ( IR-CTX:ctx -- )
+   X64-MOD
+   RESERVED-SCHEMA {: op:IR-ID:ir-symbol-id :}
+   0 1 OPEN-FUN
+   7 M-MOVI {: a:IR-ID:ir-value-id :}
+   op a M-UNARY M-RET
+   CLOSE-FUN
+   M-ALLOCATE ;
+
+: TWO-COUNTS ( -- )
+   WBND [: TWO-COUNTS-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: RESERVED-FIX ( -- )
+   WBND [: RESERVED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: FIXED-REFUSE-CASES ( -- )
+   s" two values that both demand the count register over one interval are refused: one register holds one value and this pass inserts no copy" T-LABEL
+   [: TWO-COUNTS ;] E-A64RA-FIXED TTHROWSQ
+
+   s" a form fixing an operand to a register the routine may not write is refused where the file is known, which is not the schema" T-LABEL
+   [: RESERVED-FIX ;] E-A64RA-FIXED TTHROWSQ ;
+
+: GROUP-FIXED ( IR-CTX:ctx -- )       drop FIXED-REFUSE-CASES ;
+
 \ ---- the cases ---------------------------------------------------------------
 : DIFF-BODY ( IR-CTX:ctx -- n n n n n bool )
    HIR-MOD
@@ -337,7 +520,16 @@ public
    WBND [: DSTACK-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 0 T= 0 T= 1 T= 0 T= 7 T=
 
+   s" the count of a variable shift is placed in rcx because the form fixes it there, and the value shifted takes the lowest free register" T-LABEL
+   WBND [: SHL-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 1 T= 0 T=
+
+   s" a division puts its dividend and quotient in rax and its remainder in rdx, and a value live across it is placed in neither" T-LABEL
+   WBND [: IDIV-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 2 T= 0 T= 6 T= 1 T= 0 T=
+
    WBND [: GROUP-VOCAB ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-FIXED ;] IR-CTX:WITH-CONTEXT
 
    T-REPORT ;
 

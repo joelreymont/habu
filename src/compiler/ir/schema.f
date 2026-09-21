@@ -46,6 +46,7 @@
 \   semantic rule identifier symbol         - design line 242
 \   renderer identifier symbol              - design line 243
 \   tied operand list and count             - see the note below
+\   fixed register list and count           - see the note below
 \ Design line 234 asks for arity RULES rather than a bare count, so an operand
 \ or result list is a fixed sequence of types optionally ending in a variadic
 \ tail: the last listed type then describes every further operand or result.
@@ -109,6 +110,27 @@
 \ one value; and no result and no operand may be tied twice, because one field
 \ cannot hold two values and two fields cannot be one. A terminator therefore
 \ cannot tie anything at all - it has no results to tie.
+\
+\ A FIXED REGISTER BELONGS TO THE FORM TOO. Some forms do not merely name one
+\ register field twice: they name a PARTICULAR register. `shl r64, cl` reads its
+\ count from rcx and nowhere else, and `idiv r64` divides rdx:rax and leaves the
+\ quotient in rax and the remainder in rdx. That is a property of the form in
+\ exactly the way a tie is, so a schema declares it the same way: a list of
+\ fixed entries, each naming a SIDE (an operand or a result), the ordinal on
+\ that side, and the register number the field is fixed to. The default is no
+\ entry, so a form that declares none has none, and every row that predates the
+\ list is unchanged in meaning. A fixed entry is checked whole at definition and
+\ rejects with E-IR-SCHEMA-FIXED: the ordinal must name a fixed entry of its own
+\ side's list and never a variadic tail, for the tie's reason - a tail stands for
+\ a run and names no single register field; no side and ordinal may be fixed
+\ twice, because one field is in one register; and the register must be a number
+\ a register file can have at all, which here means not negative. WHICH file,
+\ and which of its registers the routine being compiled may write, is a question
+\ this layer cannot answer and does not ask: the number is the form's own, and
+\ the register allocator that binds a dialect to a machine refuses a fixed
+\ register outside the routine's pool by name (src/compiler/native/regalloc.f,
+\ E-A64RA-FIXED). A schema table therefore stays free of any dependency on the
+\ native layer, which is what lets this file sit under every dialect.
 \
 \ TARGET LEGALITY COMES FROM THE BINDING. Design line 241 records the legal
 \ target capabilities and design line 541 makes the freeze check "target-specific
@@ -212,6 +234,14 @@ ENUM alias DERIVE eq
    unrestricted
 ;ENUM
 
+\ Which of a form's two ordered lists an entry of the fixed-register list names.
+\ A register field is an operand's or a result's, and the ordinal alone cannot
+\ say which, so the side is declared with it.
+ENUM side DERIVE eq
+   operand
+   result
+;ENUM
+
 private
 
 \ The one raw crossing this package needs: one-way projections of the sealed
@@ -261,7 +291,9 @@ $53435231 constant SCR-MAGIC         \ "SCR1": the row-table header format tag
 21 constant OFF-REND                 \ design line 243
 22 constant OFF-TIST                 \ the tied-operand list
 23 constant OFF-TIN
-24 constant ROW-CELLS
+24 constant OFF-FXST                 \ the fixed-register list
+25 constant OFF-FXN
+26 constant ROW-CELLS
 
 \ A tie is stored as a pair of cells, the result ordinal then the operand
 \ ordinal, so a stored tie list is twice as many cells as it holds ties.
@@ -271,6 +303,17 @@ $53435231 constant SCR-MAGIC         \ "SCR1": the row-table header format tag
 
 : TIE-CELLS ( n -- n )
    TIE-PAIR * ;
+
+\ A fixed register is stored as three cells - the side code, the ordinal on that
+\ side, then the register - so a stored fixed list is three times as many cells
+\ as it holds entries.
+3 constant FIX-TRIPLE
+0 constant FIX-SIDE                  \ the side code of a stored triple
+1 constant FIX-ORD                   \ the ordinal on that side
+2 constant FIX-REG                   \ the register the field is fixed to
+
+: FIX-CELLS ( n -- n )
+   FIX-TRIPLE * ;
 
 public
 256 constant CAP-MAX                 \ committed opcodes per dialect table
@@ -293,6 +336,9 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 0 constant AL-UNALIASED
 1 constant AL-GROUPED
 2 constant AL-UNRESTRICTED
+
+0 constant FX-OPERAND
+1 constant FX-RESULT
 
 0 constant DM-DATA
 1 constant DM-DICT
@@ -328,6 +374,12 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
       unaliased    OF AL-UNALIASED ENDOF
       grouped      OF AL-GROUPED ENDOF
       unrestricted OF AL-UNRESTRICTED ENDOF
+   ;MATCH ;
+
+: SIDE-CODE ( IR-SCHEMA:side -- n )
+   MATCH side
+      operand OF FX-OPERAND ENDOF
+      result  OF FX-RESULT ENDOF
    ;MATCH ;
 
 : DOM-CODE ( IR-TYPE:domain -- n )
@@ -381,6 +433,13 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
       E-IR-SCHEMA-STATE throw
    endcase ;
 
+: N>SIDE ( n -- IR-SCHEMA:side )
+   case
+      FX-OPERAND of IR--SCHEMA-SIDE:OPERAND endof
+      FX-RESULT  of IR--SCHEMA-SIDE:RESULT endof
+      E-IR-SCHEMA-STATE throw
+   endcase ;
+
 : N>DOM ( n -- IR-TYPE:domain )
    case
       DM-DATA of IR--TYPE-DOMAIN:DATA-MEM endof
@@ -430,7 +489,7 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 \ twins that used to run down this file collapse into one set, because a reader
 \ carries the state it was opened against and refuses the other with the error
 \ the handle would have given - the only thing the two entry points still differ
-\ in is OPEN-LIVE against OPEN. THE ROW IS WHY: a record is twenty-four cells
+\ in is OPEN-LIVE against OPEN. THE ROW IS WHY: a record is twenty-six cells
 \ found by a name scan, and a digest resolved a store for every one of them.
 
 \ ---- headers and shape -------------------------------------------------------
@@ -572,19 +631,22 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 1 constant MODE-OPEN
 -1 constant UNSET
 
-\ The four staged lists share one pair of arrays, addressed by a list index and
+\ The five staged lists share one set of arrays, addressed by a list index and
 \ a fixed segment base, because a Habu word cannot take a storage array as an
-\ argument: one indexed pair keeps the append, validate, and copy helpers shared
-\ instead of written out four times. Each entry occupies one slot of each array:
+\ argument: one indexed set keeps the append, validate, and copy helpers shared
+\ instead of written out five times. Each entry occupies one slot of each array:
 \ the first holds the entry's ordinal, and the second its companion cell - the
-\ owning module serial for the three identity lists, and the tied operand
-\ ordinal for the tie list, whose entries are two ordinals of this schema rather
-\ than an identity of the module.
-4 constant LIST#
+\ owning module serial for the three identity lists, the tied operand ordinal
+\ for the tie list, whose entries are two ordinals of this schema rather than an
+\ identity of the module, and the fixed ordinal for the fixed-register list. The
+\ third array is the fixed list's alone: its entry is a triple and the other
+\ four lists never touch the cell.
+5 constant LIST#
 0 constant L-OP
 1 constant L-RS
 2 constant L-AT
 3 constant L-TI
+4 constant L-FX
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable STG-MODE
@@ -609,6 +671,7 @@ variable STG-REND
 variable STG-RENDO
 create STG-V LIST# ARITY-MAX * cells allot
 create STG-O LIST# ARITY-MAX * cells allot
+create STG-W LIST# ARITY-MAX * cells allot
 create STG-N LIST# cells allot
 create STG-T LIST# cells allot
 
@@ -623,6 +686,12 @@ create STG-T LIST# cells allot
 
 : SO! ( n n -- )
    cells STG-O + ! ;
+
+: SW@ ( n -- n )
+   cells STG-W + @ ;
+
+: SW! ( n n -- )
+   cells STG-W + ! ;
 
 : SN@ ( n -- n )
    cells STG-N + @ ;
@@ -685,6 +754,17 @@ create STG-T LIST# cells allot
    owner l SEG n + SO!
    n 1+ l SN! ;
 
+\ The fixed list's own appender: its entry is a triple, so it writes the third
+\ array the other four lists leave alone.
+: FIX+ ( n n n -- )
+   {: sd:n ord:n reg:n :}
+   L-FX LIST-ROOM
+   L-FX SN@ {: n:n :}
+   sd L-FX SEG n + SV!
+   ord L-FX SEG n + SO!
+   reg L-FX SEG n + SW!
+   n 1+ L-FX SN! ;
+
 : TYPE+ ( n IR-ID:ir-type-id -- )
    {: l:n t:IR-ID:ir-type-id :}
    STG-OPEN-CK
@@ -729,13 +809,18 @@ create STG-T LIST# cells allot
    L-OP ST@ 0<> L-OP SN@ 0= and if E-IR-SCHEMA-ARITY throw then
    L-RS ST@ 0<> L-RS SN@ 0= and if E-IR-SCHEMA-ARITY throw then ;
 
-\ A tied ordinal names one fixed entry of its list. A variadic tail stands for
-\ every further operand or result, so it names no single register field and
-\ cannot be tied.
-: FIXED-CK ( n n -- )
+\ A tied or fixed ordinal names one fixed entry of its list. A variadic tail
+\ stands for every further operand or result, so it names no single register
+\ field and can be neither tied nor fixed. The rule is one test and the two
+\ declarations that ask it report under their own names.
+: ORD-FIXED? ( n n -- bool )
    {: l:n ord:n :}
-   ord 0 < ord l SN@ >= or if E-IR-SCHEMA-TIE throw then
-   l ST@ 0<> ord l SN@ 1- = and if E-IR-SCHEMA-TIE throw then ;
+   ord 0 < ord l SN@ >= or if false exit then
+   l ST@ 0<> ord l SN@ 1- = and if false exit then
+   true ;
+
+: FIXED-CK ( n n -- )
+   ORD-FIXED? 0= if E-IR-SCHEMA-TIE throw then ;
 
 \ One register holds one value, so the tied result and the tied operand have to
 \ be the same type of the same module.
@@ -761,6 +846,38 @@ create STG-T LIST# cells allot
       L-OP op FIXED-CK
       rs op TIE-TYPE-CK
       i TIE-ONCE-CK
+   loop ;
+
+\ Which of the two staged lists a side names.
+: FX-LIST ( n -- n )
+   FX-RESULT = if L-RS else L-OP then ;
+
+: FX-ORD-CK ( n n -- )
+   ORD-FIXED? 0= if E-IR-SCHEMA-FIXED throw then ;
+
+\ No side and ordinal may be fixed twice: one register field is in one register,
+\ and a form that names two for it names neither.
+: FIX-ONCE-CK ( n -- )
+   {: k:n :}
+   k 0 ?do
+      L-FX SEG k + SV@  L-FX SEG i + SV@  =
+      L-FX SEG k + SO@  L-FX SEG i + SO@  =  and
+      if E-IR-SCHEMA-FIXED throw then
+   loop ;
+
+\ The register is the form's own number in its own file, and which file that is
+\ belongs to the layer that knows the machine: what a schema can say is that no
+\ file numbers a register below zero.
+: FIX-REG-CK ( n -- )
+   0 < if E-IR-SCHEMA-FIXED throw then ;
+
+: FIXES-CK ( -- )
+   L-FX SN@ 0 ?do
+      L-FX SEG i + SV@ {: sd:n :}
+      L-FX SEG i + SO@ {: ord:n :}
+      sd FX-LIST ord FX-ORD-CK
+      L-FX SEG i + SW@ FIX-REG-CK
+      i FIX-ONCE-CK
    loop ;
 
 \ Design lines 236, 237, 531, 532: control-flow edges belong to the block's one
@@ -810,15 +927,17 @@ create STG-T LIST# cells allot
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader :}
    rr CNT rr HC-CAP IR-ARENA:RD@ >= if E-IR-SCHEMA-CAP throw then
    pr PCELLS L-OP SN@ + L-RS SN@ + L-AT SN@ + L-TI SN@ TIE-CELLS +
+      L-FX SN@ FIX-CELLS +
    pr PC-CAP IR-ARENA:RD@ > if E-IR-SCHEMA-CAP throw then ;
 
-\ The pool cells one definition writes: three plain lists and the two-cell tie
-\ list. The room check above and the reservation below both count them, so the
-\ number the ceiling was checked against is the number that gets allocated.
+\ The pool cells one definition writes: three plain lists, the two-cell tie list
+\ and the three-cell fixed list. The room check above and the reservation below
+\ both count them, so the number the ceiling was checked against is the number
+\ that gets allocated.
 : STAGED-CELLS ( -- n )
-   L-OP SN@ L-RS SN@ + L-AT SN@ + L-TI SN@ TIE-CELLS + ;
+   L-OP SN@ L-RS SN@ + L-AT SN@ + L-TI SN@ TIE-CELLS + L-FX SN@ FIX-CELLS + ;
 
-\ A definition writes four pool windows and then one row, so both arenas are
+\ A definition writes five pool windows and then one row, so both arenas are
 \ reserved here, before the first of them is touched. Reserving after the room
 \ check keeps this table's own named capacity error ahead of the arena's.
 : ROOM-TAKE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena -- )
@@ -851,8 +970,19 @@ create STG-T LIST# cells allot
    loop
    st ;
 
-: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena n n n n -- )
-   {: c:IR-CTX:ctx r:IR-ARENA:arena opst:n rsst:n atst:n tist:n :}
+\ The fixed list is three cells per entry, so it has an appender of its own too.
+: FIX-LIST-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader -- n )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena pr:IR-ARENA:reader :}
+   pr PCELLS {: st:n :}
+   L-FX SN@ 0 ?do
+      c a L-FX SEG i + SV@ CELL+
+      c a L-FX SEG i + SO@ CELL+
+      c a L-FX SEG i + SW@ CELL+
+   loop
+   st ;
+
+: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena n n n n n -- )
+   {: c:IR-CTX:ctx r:IR-ARENA:arena opst:n rsst:n atst:n tist:n fxst:n :}
    c r STG-NAME @ CELL+
    c r opst CELL+   c r L-OP SN@ CELL+   c r L-OP ST@ CELL+
    c r rsst CELL+   c r L-RS SN@ CELL+   c r L-RS ST@ CELL+
@@ -864,7 +994,8 @@ create STG-T LIST# cells allot
    c r STG-ARCH @ CELL+   c r STG-FEAT @ CELL+
    c r STG-TERM @ CELL+
    c r STG-RULE @ CELL+   c r STG-REND @ CELL+
-   c r tist CELL+   c r L-TI SN@ CELL+ ;
+   c r tist CELL+   c r L-TI SN@ CELL+
+   c r fxst CELL+   c r L-FX SN@ CELL+ ;
 
 \ ---- creation checks ---------------------------------------------------------
 : ROW-CAP-OK ( n -- )
@@ -953,6 +1084,16 @@ public
    {: rs:n op:n :}
    STG-OPEN-CK
    L-TI rs op ORD+ ;
+
+\ This operand or result field of the instruction form is the named register and
+\ no other - the count `shl r64, cl` reads, the rdx:rax `idiv r64` divides. The
+\ side says which list the ordinal counts in and the register is the form's own
+\ number in its own file; the ordinals are checked against the finished lists at
+\ DEFINE, so the lists may be declared in any order around this.
+: ADD-FIXED ( IR-SCHEMA:side n n -- )
+   {: sd:IR-SCHEMA:side ord:n reg:n :}
+   STG-OPEN-CK
+   sd SIDE-CODE ord reg FIX+ ;
 
 \ Design line 479: an attribute key this opcode requires.
 : ADD-ATTR ( IR-ID:ir-symbol-id -- )
@@ -1054,6 +1195,7 @@ public
    ARITY-CK
    TERM-CK
    TIES-CK
+   FIXES-CK
    syr key STG-NAME @ STG-NAMEO @ STG-SYM-CK
    syr key STG-RULE @ STG-RULEO @ STG-SYM-CK
    syr key STG-REND @ STG-RENDO @ STG-SYM-CK
@@ -1068,7 +1210,8 @@ public
    c a pr L-RS LIST-ADD {: rsst:n :}
    c a pr L-AT LIST-ADD {: atst:n :}
    c a pr TIE-LIST-ADD {: tist:n :}
-   c r opst rsst atst tist ROW-ADD ;
+   c a pr FIX-LIST-ADD {: fxst:n :}
+   c r opst rsst atst tist fxst ROW-ADD ;
 
 \ ---- table readers -----------------------------------------------------------
 : SCHEMAS ( IR-ARENA:arena -- n )
@@ -1138,6 +1281,11 @@ public
 \ most forms name every register field once.
 : TIES ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    OFF-TIN LFLD ;
+
+\ How many register fields this form fixes. Zero is the default and the common
+\ answer: most forms take whatever register the allocator gives them.
+: FIXED-COUNT@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   OFF-FXN LFLD ;
 
 : ATTR-EXT? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    OFF-ATEXT LFLD N>BOOL ;
@@ -1212,6 +1360,16 @@ private
    i 0 < i ln >= or if E-IR-SCHEMA-BOUND throw then
    pr st i TIE-CELLS + col + PC@ ORD-OK ;
 
+\ One cell of one stored fixed entry, revalidated the same way: the whole fixed
+\ list is FIX-TRIPLE cells per entry, and the index counts entries.
+: FWIN@ ( IR-ARENA:reader IR-ARENA:reader n n n -- n )
+   {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n i:n col:n :}
+   rr l OFF-FXST RC@ {: st:n :}
+   rr l OFF-FXN RC@ {: ln:n :}
+   pr PCELLS st ln FIX-CELLS WIN-CK-N
+   i 0 < i ln >= or if E-IR-SCHEMA-BOUND throw then
+   pr st i FIX-CELLS + col + PC@ ORD-OK ;
+
 public
 
 : OPERAND@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-symbol-id n -- IR-ID:ir-type-id )
@@ -1251,10 +1409,34 @@ public
    pr rr PAIR-CK
    pr rr  rr op ROW-OF  i TIE-OP TWIN@ ;
 
+\ The three cells of one fixed entry. The side and the ordinal are this schema's
+\ own lists and the register is the form's own number, so none of them takes the
+\ key either.
+: FIXED-SIDE@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- IR-SCHEMA:side )
+   {: a:IR-ARENA:arena r:IR-ARENA:arena op:IR-ID:ir-symbol-id i:n :}
+   a IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader :}
+   r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
+   pr rr PAIR-CK
+   pr rr  rr op ROW-OF  i FIX-SIDE FWIN@ N>SIDE ;
+
+: FIXED-ORDINAL@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- n )
+   {: a:IR-ARENA:arena r:IR-ARENA:arena op:IR-ID:ir-symbol-id i:n :}
+   a IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader :}
+   r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
+   pr rr PAIR-CK
+   pr rr  rr op ROW-OF  i FIX-ORD FWIN@ ;
+
+: FIXED-REG@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- n )
+   {: a:IR-ARENA:arena r:IR-ARENA:arena op:IR-ID:ir-symbol-id i:n :}
+   a IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader :}
+   r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
+   pr rr PAIR-CK
+   pr rr  rr op ROW-OF  i FIX-REG FWIN@ ;
+
 \ ---- digests (design lines 602, 1716) ----------------------------------------
 private
 
-2 constant PRE-VER                \ this file's canonical preimage version
+3 constant PRE-VER                \ this file's canonical preimage version
 
 0 constant DS-TAG
 1 constant DS-VER
@@ -1279,9 +1461,11 @@ private
 20 constant DS-RULE
 21 constant DS-REND
 22 constant DS-TIN
-23 constant DS-FIX
-\ Three lists of one cell per entry, and the tie list of TIE-PAIR cells each.
-DS-FIX ARITY-MAX 3 * + ARITY-MAX TIE-CELLS + constant DS-SLOTS
+23 constant DS-FXN
+24 constant DS-FIX
+\ Three lists of one cell per entry, the tie list of TIE-PAIR cells each, and
+\ the fixed list of FIX-TRIPLE cells each.
+DS-FIX ARITY-MAX 3 * + ARITY-MAX TIE-CELLS + ARITY-MAX FIX-CELLS + constant DS-SLOTS
 DS-SLOTS CDIGEST:SLOT-BYTES * constant DS-BYTES
 create DPRE DS-BYTES allot
 
@@ -1322,7 +1506,8 @@ create TPRE TS-BYTES allot
    rr l OFF-TERM RC@ DS-TERM DP!
    rr l OFF-RULE RC@ DS-RULE DP!
    rr l OFF-REND RC@ DS-REND DP!
-   rr l OFF-TIN RC@ DS-TIN DP! ;
+   rr l OFF-TIN RC@ DS-TIN DP!
+   rr l OFF-FXN RC@ DS-FXN DP! ;
 
 \ Append one stored list to the preimage and answer the next free slot. The
 \ list's length is already fixed earlier in the preimage, so the concatenation
@@ -1348,6 +1533,19 @@ create TPRE TS-BYTES allot
    loop
    at ln TIE-CELLS + ;
 
+\ The fixed list, all three cells of every entry in declaration order. Its
+\ length is already fixed earlier in the preimage, so this stays injective too.
+: DPRE-FIXES ( IR-ARENA:reader IR-ARENA:reader n n -- n )
+   {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n at:n :}
+   rr l OFF-FXN RC@ {: ln:n :}
+   at ln FIX-CELLS + DS-SLOTS > if E-IR-SCHEMA-STATE throw then
+   ln 0 ?do
+      pr rr l i FIX-SIDE FWIN@  at i FIX-CELLS + DP!
+      pr rr l i FIX-ORD FWIN@   at i FIX-CELLS + FIX-ORD + DP!
+      pr rr l i FIX-REG FWIN@   at i FIX-CELLS + FIX-REG + DP!
+   loop
+   at ln FIX-CELLS + ;
+
 : ROW-DIGEST ( IR-ARENA:reader IR-ARENA:reader n n -- CDIGEST:digest )
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader dia:n l:n :}
    rr dia l DPRE-FIX
@@ -1359,7 +1557,9 @@ create TPRE TS-BYTES allot
    {: at3:n :}
    pr rr l at3 DPRE-TIES
    {: at4:n :}
-   DPRE at4 CDIGEST:SLOT-BYTES * CDIGEST:COMPUTE ;
+   pr rr l at4 DPRE-FIXES
+   {: at5:n :}
+   DPRE at5 CDIGEST:SLOT-BYTES * CDIGEST:COMPUTE ;
 
 \ The table digest is a chain: seed over the header and the row count, then one
 \ fold step per record digest. Deterministic, covers every row, and needs no
@@ -1397,7 +1597,7 @@ public
 
 \ The whole table's digest (design lines 602, 1716).
 \ ONE RESOLUTION FOR THE WHOLE TABLE. The chain folds one record digest per row
-\ and every record reads twenty-four cells and its three lists, so this is the
+\ and every record reads twenty-six cells and its three lists, so this is the
 \ walk the reader exists for: two resolutions, then loads.
 : TABLE-DIGEST ( IR-ARENA:arena IR-ARENA:arena -- CDIGEST:digest )
    {: a:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -1466,6 +1666,9 @@ public
 
 : FTIES ( IR-ARENA:view IR-ID:ir-symbol-id -- n )
    OFF-TIN FFLD ;
+
+: FFIXED-COUNT@ ( IR-ARENA:view IR-ID:ir-symbol-id -- n )
+   OFF-FXN FFLD ;
 
 : FATTR-EXT? ( IR-ARENA:view IR-ID:ir-symbol-id -- bool )
    OFF-ATEXT FFLD N>BOOL ;
@@ -1555,6 +1758,27 @@ public
    rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
    pr rr PAIR-CK
    pr rr  rr op ROW-OF  i TIE-OP TWIN@ ;
+
+: FFIXED-SIDE@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id n -- IR-SCHEMA:side )
+   {: pv:IR-ARENA:view rv:IR-ARENA:view op:IR-ID:ir-symbol-id i:n :}
+   pv IR-ARENA:OPEN {: pr:IR-ARENA:reader :}
+   rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
+   pr rr PAIR-CK
+   pr rr  rr op ROW-OF  i FIX-SIDE FWIN@ N>SIDE ;
+
+: FFIXED-ORDINAL@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id n -- n )
+   {: pv:IR-ARENA:view rv:IR-ARENA:view op:IR-ID:ir-symbol-id i:n :}
+   pv IR-ARENA:OPEN {: pr:IR-ARENA:reader :}
+   rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
+   pr rr PAIR-CK
+   pr rr  rr op ROW-OF  i FIX-ORD FWIN@ ;
+
+: FFIXED-REG@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id n -- n )
+   {: pv:IR-ARENA:view rv:IR-ARENA:view op:IR-ID:ir-symbol-id i:n :}
+   pv IR-ARENA:OPEN {: pr:IR-ARENA:reader :}
+   rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
+   pr rr PAIR-CK
+   pr rr  rr op ROW-OF  i FIX-REG FWIN@ ;
 
 : FDIGEST ( IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id -- CDIGEST:digest )
    {: pv:IR-ARENA:view rv:IR-ARENA:view op:IR-ID:ir-symbol-id :}

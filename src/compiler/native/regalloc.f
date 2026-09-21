@@ -475,6 +475,28 @@ variable SHORT-FUN                           \ the function whose scan ran short
    {: id:IR-ID:ir-op-id i:n :}
    V-SCHP VW V-SCHR VW id OPCODE-AT i IR-SCHEMA:FTIE-OPERAND@ ;
 
+\ The same authority on which register fields a form FIXES to one register of
+\ the machine. A form that fixes none - which is every ARM64 form - answers
+\ zero, and the walks below do nothing at all.
+: FIXES-AT ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   V-SCHR VW id OPCODE-AT IR-SCHEMA:FFIXED-COUNT@ ;
+
+: FIX-SIDE-AT ( IR-ID:ir-op-id n -- IR-SCHEMA:side )
+   {: id:IR-ID:ir-op-id i:n :}
+   V-SCHP VW V-SCHR VW id OPCODE-AT i IR-SCHEMA:FFIXED-SIDE@ ;
+
+: FIX-ORD-AT ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id i:n :}
+   V-SCHP VW V-SCHR VW id OPCODE-AT i IR-SCHEMA:FFIXED-ORDINAL@ ;
+
+: FIX-REG-AT ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id i:n :}
+   V-SCHP VW V-SCHR VW id OPCODE-AT i IR-SCHEMA:FFIXED-REG@ ;
+
+: FIX-RESULT? ( IR-SCHEMA:side -- bool )
+   IR--SCHEMA-SIDE:RESULT IR--SCHEMA-SIDE:EQ ;
+
 \ ---- what a call site destroys -----------------------------------------------
 : ATTR-INT-OF ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
    {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
@@ -809,6 +831,16 @@ DYNAMIC-BUFFER CALL-POS-BUF n
 : CALL-POS ( -- ptr n ) 0 CALL-POS-BUF ;
 variable N-CALLS
 0 N-CALLS !
+\ Every operation whose form fixes a RESULT register, in position order, with
+\ the registers it writes there. A fixed result destroys its register at that
+\ position exactly as a call destroys the ones it may, so this index is read
+\ where the call index is.
+DYNAMIC-BUFFER FIXP-POS-BUF n
+: FIXP-POS ( -- ptr n ) 0 FIXP-POS-BUF ;
+DYNAMIC-BUFFER FIXP-MASK-BUF n
+: FIXP-MASK ( -- ptr n ) 0 FIXP-MASK-BUF ;
+variable N-FIXP
+0 N-FIXP !
 
 : RESERVE-SCRATCH ( -- )
    SCRATCH-SIZES!
@@ -849,6 +881,8 @@ variable N-CALLS
    OMAX BMAX + DUE-HEAD-BUF-RESERVE
    VMAX DUE-NEXT-BUF-RESERVE
    OMAX CALL-POS-BUF-RESERVE
+   OMAX FIXP-POS-BUF-RESERVE
+   OMAX FIXP-MASK-BUF-RESERVE
    ;
 
 : BIT-CELL ( n -- n )    SET-BITS / ;
@@ -1119,6 +1153,51 @@ variable N-CALLS
       k CLS-AT C-TOKEN = if E-A64RA-FIXED throw then
       i cells O-REG + @  D-WANT k DECL!
    loop ;
+
+\ ---- the registers an operation's own form names -----------------------------
+\ A schema-declared fixed register is the same fact about one VALUE that a
+\ contract's declared place is, one operation in rather than one routine in: the
+\ value a form's result field leaves in that register is declared INTO it, and
+\ the value its operand field reads is WANTED there. Both are written in the
+\ contract's own two planes, so a class two declarations disagree about is
+\ refused where a contract's would be (MB-ONE-DECL) and the fixed-first
+\ placement pins them without a rule of its own. What this pass does NOT do is
+\ insert a copy for a value that cannot be pre-coloured; the selector is what
+\ keeps two values that both demand one register apart.
+: MB-FIX-REG-CK ( n -- )
+   {: r:n :}
+   r 0 < r F-GPR RF-SIZE >= or if E-A64RA-FIXED throw then
+   F-GPR r POOL-HAS? 0= if E-A64RA-FIXED throw then ;
+
+: MB-FIXED-VAL ( IR-ID:ir-op-id n IR-SCHEMA:side -- n )
+   {: id:IR-ID:ir-op-id ord:n sd:IR-SCHEMA:side :}
+   sd FIX-RESULT? if id ord RESULT-AT SLOT exit then
+   id ord OPERAND-AT SLOT ;
+
+: MB-FIXED-PLANE ( IR-SCHEMA:side -- n )
+   FIX-RESULT? if D-FIX else D-WANT then ;
+
+: MB-FIXED1 ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id i:n :}
+   id i FIX-REG-AT {: r:n :}
+   r MB-FIX-REG-CK
+   id i FIX-SIDE-AT {: sd:IR-SCHEMA:side :}
+   id  id i FIX-ORD-AT  sd MB-FIXED-VAL {: k:n :}
+   k CLS-AT C-TOKEN = if E-A64RA-FIXED throw then
+   r  sd MB-FIXED-PLANE  k DECL! ;
+
+: MB-FIXED-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id FIXES-AT 0 ?do id i MB-FIXED1 loop ;
+
+: MB-FIXED-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do bk i OP-AT MB-FIXED-OP loop ;
+
+: MB-FIXED ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   N-BLKS @ 0 ?do f i MB-FIXED-BLOCK loop ;
 
 \ Two members declared into two different registers cannot be one class.
 : MB-ONE-DECL ( n n -- n )
@@ -1512,17 +1591,23 @@ variable N-CALLS
    repeat
    drop ;
 
+\ The same bisection over the fixed-result index.
+: MB-FIX-FROM ( n -- n )
+   {: p:n :}
+   0 N-FIXP @
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid cells FIXP-POS + @ p < if mid 1+ hi else lo mid then
+   repeat
+   drop ;
+
 \ The calls it walks are THIS function's: a class belongs to one function, and
 \ the window below is that function's, so the index is entered at the hull and
 \ left at it.
-: MB-FORBID ( n -- n )
-   {: r:n :}
+: MB-FORBID-CALLS ( n n n -- n )
+   {: r:n first:n limit:n :}
    r FILE-AT {: fl:n :}
-   \ No member can cross outside this class's hull. Gaps inside it still need
-   \ MB-CROSSES?, because coalesced members need not cover every position.
-   F-LO @ r cells CL-LO + @ 1+ max {: first:n :}
-   MB-AT @ r cells CL-HI + @ min {: limit:n :}
-   first limit >= if 0 exit then
    0
    N-CALLS @  first MB-CALL-FROM  ?do
       i cells CALL-POS + @ {: p:n :}
@@ -1538,6 +1623,31 @@ variable N-CALLS
          fl POOL-BITS  fl RF-CLOBBERED and  or unloop exit
       then
    loop ;
+
+\ One crossing operation whose form fixes a RESULT register forbids that
+\ register the same way: the instruction writes it whatever is in it, so a value
+\ that has to survive the operation cannot be there. The fixed OPERAND registers
+\ are not forbidden here - the value the form reads out of one is the class that
+\ crosses in the cases that matter, and keeping two such classes apart is the
+\ selector's copy rather than this scan's refusal.
+: MB-FORBID-FIXED ( n n n n -- n )
+   {: r:n first:n limit:n acc:n :}
+   acc
+   N-FIXP @  first MB-FIX-FROM  ?do
+      i cells FIXP-POS + @ {: p:n :}
+      p limit >= if unloop exit then
+      r p MB-CROSSES? if  i cells FIXP-MASK + @ or  then
+   loop ;
+
+: MB-FORBID ( n -- n )
+   {: r:n :}
+   \ No member can cross outside this class's hull. Gaps inside it still need
+   \ MB-CROSSES?, because coalesced members need not cover every position.
+   F-LO @ r cells CL-LO + @ 1+ max {: first:n :}
+   MB-AT @ r cells CL-HI + @ min {: limit:n :}
+   first limit >= if 0 exit then
+   r first limit MB-FORBID-CALLS {: acc:n :}
+   r first limit acc MB-FORBID-FIXED ;
 
 : MB-DUE? ( n n -- bool )
    {: r:n pos:n :}
@@ -1933,6 +2043,7 @@ variable N-CALLS
    k cells F-RET + @ NO-RET <> if
       f  k cells F-RET + @  BLOCK-AT MB-WANT!
    then
+   f MB-FIXED
    N-BLKS @ 0 ?do f i MB-EDGES-OF loop
    f MB-TIES
    f MB-COALESCE ;
@@ -2033,6 +2144,38 @@ variable N-CALLS
             bk i OP-AT CALL-AT? if
                j i OP-POS  N-CALLS @ cells CALL-POS + !
                N-CALLS @ 1+ N-CALLS !
+            then
+         loop
+      loop
+   loop ;
+
+\ The registers one operation's form fixes for its RESULTS, as a mask. An
+\ operation that fixes none answers zero and takes no row in the index.
+: MB-FIX-MASK ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   0
+   id FIXES-AT 0 ?do
+      id i FIX-SIDE-AT FIX-RESULT? if
+         1  id i FIX-REG-AT  lshift or
+      then
+   loop ;
+
+\ Built beside the call index and read by the same scan, for the same reason:
+\ the module's operations do not move under the fit, and the positions are the
+\ module's own.
+: MB-FIX-INDEX ( -- )
+   0 N-FIXP !
+   N-FUNS @ 0 ?do
+      i MB-RELAY
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      N-BLKS @ 0 ?do
+         f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+         bk OP-COUNT 0 ?do
+            bk i OP-AT MB-FIX-MASK {: m:n :}
+            m 0<> if
+               j i OP-POS  N-FIXP @ cells FIXP-POS + !
+               m  N-FIXP @ cells FIXP-MASK + !
+               N-FIXP @ 1+ N-FIXP !
             then
          loop
       loop
@@ -2243,6 +2386,7 @@ public
    MB-CLASSES
    MB-USES
    MB-CALL-INDEX
+   MB-FIX-INDEX
    MB-KIND-CLEAR
    MB-SIZES
    MB-DECLS!
@@ -2402,6 +2546,7 @@ public
 : RESET-SCRATCH ( -- )
    0 N-EVICTED !
    0 N-CALLS !
+   0 N-FIXP !
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
