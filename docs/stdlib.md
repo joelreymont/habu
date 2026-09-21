@@ -761,6 +761,7 @@ JR:INIT       ( ptr a n ptr u8 n -- JR:reader )
 JR:CLOSE      ( JR:reader -- )
 JR:TOKEN      ( JR:reader -- JR:reader n )
 JR:SPAN$      ( JR:reader -- JR:reader ptr u8 n )
+JR:VALUE-SPAN$ ( JR:reader -- JR:reader ptr u8 n )
 JR:NEXT       ( JR:reader -- JR:reader n )
 JR:INT        ( JR:reader -- JR:reader n )
 JR:FLOAT      ( JR:reader -- JR:reader r )
@@ -775,6 +776,9 @@ decodes the current string into non-null caller storage and rejects negative or
 insufficient capacity with `E-JR-STATE`. `NEXT` accepts a string token only
 after validating every escape, UTF-16 surrogate pair, and raw UTF-8 scalar.
 Token kinds remain the public `JR:T-*` constants.
+VALUE-SPAN$ is valid on an object or array opener; it returns the borrowed raw
+source bytes from that opener through its matching close and leaves the reader
+positioned after the value.
 `FIND-KEY` is valid only while positioned to search the current object. It
 captures that object's depth, skips each unmatched value completely, and stops
 at the matching object close; array, top-level scalar, and after-key phases

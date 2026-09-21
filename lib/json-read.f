@@ -14,7 +14,7 @@
 \ throw in the -3900..-3999 JSON-reader block.
 \
 \ The parser lives in `package JR`. External callers use the qualified public API
-\ (JR:INIT, JR:CLOSE, JR:NEXT, JR:TOKEN, JR:SPAN$, JR:INT, JR:FLOAT, JR:STR,
+\ (JR:INIT, JR:CLOSE, JR:NEXT, JR:TOKEN, JR:SPAN$, JR:VALUE-SPAN$, JR:INT, JR:FLOAT, JR:STR,
 \ JR:SKIP-VALUE, JR:FIND-KEY) and the qualified token kinds (JR:T-OBJ ..
 \ JR:T-END). Callers allocate JR:STORAGE-BYTES at a cell-aligned address and keep
 \ both storage and source live and exclusive until CLOSE. The byte constants,
@@ -860,6 +860,16 @@ public
 
 : SKIP-VALUE ( JR:reader -- JR:reader )
    READER>STATE drop SKIP-INNER ;
+
+: VALUE-SPAN-INNER ( ptr n -- ptr u8 n ) {: state:ptr :}
+   state KIND-OFF + @ OPENER? 0= if E-JR-STATE throw then
+   state TOK-AT-OFF + @ {: start:n :}
+   state SKIP-INNER
+   state SRC-IDX ptr-field @ start +
+   state POS-OFF + @ start - ;
+
+: VALUE-SPAN$ ( JR:reader -- JR:reader ptr u8 n )
+   READER>STATE drop VALUE-SPAN-INNER ;
 
 : FIND-KEY ( JR:reader ptr u8 n -- JR:reader bool ) {: key:ptr len:n :}
    READER>STATE drop key len FIND-INNER ;

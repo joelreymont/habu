@@ -188,6 +188,9 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    JRT-RBRACE SB-APPEND-C
    SB$ ;
 
+: JRT-VALUE-SPAN$ ( -- ptr u8 n )
+   s\" {\"a\":[1,{\"b\":true}],\"c\":0}" ;
+
 : JRT-FIND$ ( -- ptr u8 n )
    SB-RESET
    JRT-LBRACE SB-APPEND-C
@@ -330,6 +333,23 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    JR:NEXT JR:T-KEY T= s" c" JRT-STR=
    JR:NEXT JR:T-STR T= s" x" JRT-STR=
    JR:NEXT JR:T-OBJ-END T=
+   JR:NEXT JR:T-END T=
+   JR:CLOSE ;
+
+: JRT-TEST-VALUE-SPAN ( -- )
+   JRT-VALUE-SPAN$ JRT-OPEN-A
+   JR:NEXT JR:T-OBJ T=
+   JR:NEXT JR:T-KEY T= s" a" JRT-STR=
+   JR:NEXT JR:T-ARR T=
+   JR:VALUE-SPAN$ s\" [1,{\"b\":true}]" T$=
+   JR:NEXT JR:T-KEY T= s" c" JRT-STR=
+   JR:NEXT JR:T-INT T= JR:INT 0 T=
+   JR:NEXT JR:T-OBJ-END T=
+   JR:NEXT JR:T-END T=
+   JR:CLOSE
+   JRT-VALUE-SPAN$ JRT-OPEN-A
+   JR:NEXT JR:T-OBJ T=
+   JR:VALUE-SPAN$ s\" {\"a\":[1,{\"b\":true}],\"c\":0}" T$=
    JR:NEXT JR:T-END T=
    JR:CLOSE ;
 
@@ -729,6 +749,7 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
 : JRT-BAD-STATE ( -- )
    JRT-HI-SRC$ JRT-OPEN-A JR:NEXT drop JR:INT drop JR:CLOSE ;
 
+
 : JRT-BAD-STR-NULL ( -- )
    JRT-HI-SRC$ JRT-OPEN-A JR:NEXT drop JRT-ZERO-U8 2 JR:STR drop JR:CLOSE ;
 
@@ -784,6 +805,7 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    JRT-TEST-STR-EXACT
    JRT-TEST-EMPTY
    JRT-TEST-NESTED
+   JRT-TEST-VALUE-SPAN
    JRT-TEST-WS
    JRT-TEST-DEEP
    JRT-TEST-END-SPAN
