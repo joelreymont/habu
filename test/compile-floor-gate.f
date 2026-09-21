@@ -8,8 +8,9 @@
 \ core the gate pool saturates - and the smallest numbers (search, move) get
 \ about 2x because a few microseconds of timer granularity is a large share of
 \ them. A doubled compile or corpus cost is red. The child output is printed on
-\ every run, so the gate log is the history. Lower a budget when a floor dot
-\ lands and the new ten-run maximum is known.
+\ every run: the pool keeps it for a red suite, and a standalone run (`bin/hb
+\ --load test/compile-floor-gate.f`) shows the numbers on a green engine. Lower
+\ a budget when a floor dot lands and the new ten-run maximum is known.
 \
 \ The pinned core is the slow bound of this machine: the same suite unpinned in
 \ a workspace at load average 5 measured trivial-t1 378 us and tier-0 arith
