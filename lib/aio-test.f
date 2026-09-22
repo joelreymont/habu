@@ -17,6 +17,29 @@ require lib/net/tcp4.f            \ the loopback listener ACCEPT and CONNECT run
 require test/checker-assert.f     \ the effect candidates the public words refuse
 require lib/aio.f
 
+\ White-box helpers: reopen the module's package so both definitions below are
+\ compiled with AIO's private submission plumbing visible - the
+\ published-but-unconsumed count and the entry NOP-STAGE publishes. They are
+\ the test's own words and not AIO's: a qualified definition lands in the
+\ wordlist it names, so these two go to AIO-TEST, which calls them bare, and
+\ AIO's public surface gains nothing for being tested.
+package AIO
+
+\ One OP-NOP published and nobody entered for: NOP-STAGE's entry without its
+\ io_uring_enter, so the ring carries an entry the kernel has not been asked to
+\ take. Its user_data is MAX-OPS, which no record answers to, so COMPLETE drops
+\ the completion it gets once some submission takes it.
+: AIO-TEST:PLANT-NOP ( -- )
+   AIO-LOCK TASK:GET
+   SQ-SLOT dup OP-NOP MAX-OPS SQE-COMMON SQ-PUBLISH
+   AIO-LOCK TASK:RELEASE ;
+
+\ The entries in the submission ring the kernel has not consumed.
+: AIO-TEST:PENDING ( -- n )
+   SQ-PENDING ;
+
+;package
+
 package AIO-TEST
 
 1000000 constant NS-PER-MS
@@ -229,6 +252,34 @@ TASK:MIN-STACK TASK:TASK FAN7
    SETTLE-MS TASK:SLEEP
    LONE-TICKET @ AIO:CANCEL
    LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
+   P-R P-W PIPE-CLOSE ;
+
+\ ---- 19 and 20: an entry nobody entered for ---------------------------------
+\ The kernel takes submission entries from the ring's head, not from the
+\ submitter's own slot, so a submission is judged by the ring draining and not
+\ by a return that matches the count this submitter published. The planted NOP
+\ is the entry a refused enter leaves behind: the count has to be zero right
+\ after the next submission, which is what says that submission's own entry
+\ reached the kernel. Both cases assert the count before the await, because a
+\ submission that left its entry in the ring has nobody to submit it - the
+\ loop's wait asks for nothing - and the await would hang instead of failing.
+: CASE-PLANTED-TIMER ( -- )
+   PENDING 0 T=
+   PLANT-NOP
+   PENDING 1 T=
+   TIMER-MS >MS AIO:TIMEOUT LONE-TICKET !
+   PENDING 0 T=
+   LONE-TICKET @ AWAIT>N MARK-TIMED-OUT T= ;
+
+\ A poll with a deadline publishes two entries, so the stale one leaves three in
+\ the ring and the submitter's count would have covered two of them.
+: CASE-PLANTED-POLL ( -- )
+   P-R P-W PIPE-OPEN
+   PLANT-NOP
+   PENDING 1 T=
+   P-R @ >FD AIO:READABLE SILENT-MS >MS AIO:POLL-ADD LONE-TICKET !
+   PENDING 0 T=
+   LONE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
    P-R P-W PIPE-CLOSE ;
 
 \ ---- 7: the first of a group, and the rest cancelled ------------------------
@@ -763,6 +814,8 @@ CAST: XFER>N ( AIO:xfer -- n )
    CASE-TIMER
    CASE-POLL-DEADLINE
    CASE-CANCEL
+   CASE-PLANTED-TIMER
+   CASE-PLANTED-POLL
    CASE-AWAIT-ANY
    CASE-FAN
    CASE-OWNER-REFUSAL

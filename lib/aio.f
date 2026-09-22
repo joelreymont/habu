@@ -427,10 +427,16 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    0 0= 0= ;
 
 \ ---- submission --------------------------------------------------------------
-\ Room for one more SQE. The indexes are 32-bit and wrap, so the difference is
-\ taken in 32 bits too.
+\ The entries published but not yet consumed by the kernel. The indexes are
+\ 32-bit and wrap, so the difference is taken in 32 bits too. The tail is
+\ written only by submitters, which hold AIO-LOCK, and the head only by the
+\ kernel, so a submitter under the facility reads an exact count.
+: SQ-PENDING ( -- n )
+   SQ-TAIL@ SQ-HEAD@ - $FFFFFFFF and ;
+
+\ Room for that many more SQEs.
 : SQ-ROOM? ( n -- bool ) {: want:n :}
-   SQ-TAIL@ SQ-HEAD@ - $FFFFFFFF and want + SQ-ENTRIES-N @ <= ;
+   SQ-PENDING want + SQ-ENTRIES-N @ <= ;
 
 : SQ-SLOT ( -- n )
    SQ-TAIL@ SQ-MASK @ and ;
@@ -449,22 +455,35 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 : ENTER-CALL ( n n n -- n ) {: submit:n least:n flags:n :}
    NR-ENTER RING-FD @ submit least flags 0 0 URING-ENTER-CALL ;
 
-\ Zero when the kernel took every entry, else the code to throw.
-: ENTER-SUBMIT ( n -- n ) {: want:n :}
-   want 0 0 ENTER-CALL {: rc:n :}
-   rc want = if 0 exit then
-   s" aio: io_uring_enter errno " DIAG-ERRNO
+\ Asks for every entry still in the ring, not just this submitter's: the kernel
+\ takes entries from the head, so an entry an earlier enter left behind is this
+\ call's to submit too, and a submitter that asked for its own count alone would
+\ be told its entry went in when the kernel had taken somebody else's. The
+\ answer is the ring drained, which is what says this submission reached the
+\ kernel; a short take leaves entries behind and is E-AIO-ENTER. The errno line
+\ is only worth printing when the call itself was refused. Every caller holds
+\ AIO-LOCK - the stage words are the locked bodies below, SCRUB and LOOP-STOP
+\ take the facility around theirs - so no other submitter moves the tail across
+\ the call.
+: ENTER-SUBMIT ( -- n )
+   SQ-PENDING 0 0 ENTER-CALL {: rc:n :}
+   SQ-PENDING 0= if 0 exit then
+   rc 0 < if s" aio: io_uring_enter errno " DIAG-ERRNO then
    E-AIO-ENTER ;
 
-\ If the kernel refused the submission the entries may or may not have been
-\ taken, so the record is forgotten rather than freed: a completion that still
-\ arrives releases it, and nothing reuses a record the kernel may still own.
-: SUBMIT-OR-FORGET ( n n -- n ) {: want:n idx:n :}
-   want ENTER-SUBMIT dup 0= if exit then
+\ An entry the enter did not take is still in the ring, and this record's entry
+\ may or may not be the one, so the record is forgotten rather than freed: a
+\ completion that still arrives releases it, and nothing reuses a record the
+\ kernel may still own. What stays behind goes in with the next enter from
+\ anyone, so a forgotten record's operation may yet run.
+: SUBMIT-OR-FORGET ( n -- n ) {: idx:n :}
+   ENTER-SUBMIT dup 0= if exit then
    STATE-FORGET idx REC REC.STATE atomic! ;
 
-\ The loop's wait. A signal cuts it short without completing anything, so EINTR
-\ is retried rather than reported.
+\ The loop's wait. It submits nothing and does not hold the facility: draining
+\ what is published is the submitter's job, and the loop only collects. A signal
+\ cuts the wait short without completing anything, so EINTR is retried rather
+\ than reported.
 : ENTER-WAIT ( -- )
    begin
       0 1 ENTER-GETEVENTS ENTER-CALL 0 >= if exit then
@@ -677,7 +696,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    link idx REC REC.PEER !
    SQ-SLOT dup idx f events SQE-POLL dup SQE-LINK! SQ-PUBLISH
    SQ-SLOT dup link ms OP-LINK-TIMEOUT SQE-TIMEOUT SQ-PUBLISH
-   2 idx SUBMIT-OR-FORGET idx ;
+   idx SUBMIT-OR-FORGET idx ;
 
 : POLL-STAGE ( n n n -- n n ) {: f:n events:n ms:n :}
    1 SQ-ROOM? 0= if E-AIO-FULL -1 exit then
@@ -686,7 +705,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    ms 0 < if
       idx KIND-POLL 1 REC-ARM
       SQ-SLOT dup idx f events SQE-POLL SQ-PUBLISH
-      1 idx SUBMIT-OR-FORGET idx exit
+      idx SUBMIT-OR-FORGET idx exit
    then
    f events ms idx POLL-LINKED ;
 
@@ -696,7 +715,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    idx 0 < if E-AIO-FULL -1 exit then
    idx KIND-TIMEOUT 1 REC-ARM
    SQ-SLOT dup idx ms OP-TIMEOUT SQE-TIMEOUT SQ-PUBLISH
-   1 idx SUBMIT-OR-FORGET idx ;
+   idx SUBMIT-OR-FORGET idx ;
 
 : XFER-OP ( n -- n ) {: kind:n :}
    kind KIND-READ = if OP-READ exit then OP-WRITE ;
@@ -707,12 +726,18 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ A transfer is one SQE on one record, and the record takes the caller's
 \ allocation with it: the two rows and REC.HOLD are written before the entry is
 \ published. The two E-AIO-FULL exits above happen before any entry is written,
-\ so there the allocation is still the caller's. A refused io_uring_enter is
-\ not that case: the entry is in the ring, the kernel may or may not have taken
-\ it, and a published entry it did not take is consumed by the next
-\ io_uring_enter from anyone. So E-AIO-ENTER keeps the allocation - the record
-\ is forgotten, and its late completion releases the bytes through REC-DISCARD,
-\ exactly the FORGET rule. No test provokes E-AIO-ENTER; this comment holds it.
+\ so there the allocation is still the caller's. An enter that left the ring
+\ un-drained is not that case: the entry is in the ring, the kernel may or may
+\ not have taken it, and a published entry it did not take is consumed by the
+\ next io_uring_enter from anyone. So E-AIO-ENTER keeps the allocation - the
+\ record is forgotten, and its late completion releases the bytes through
+\ REC-DISCARD, exactly the FORGET rule. No test provokes E-AIO-ENTER: without
+\ SQPOLL the kernel refuses a non-empty submission only on a completion
+\ overflow it cannot flush (-EBUSY) or on a dead ring, and this ring's CQ holds
+\ two entries per record ($200 CQEs over $100 records), so neither a refused nor
+\ a partial enter can be reached through the public surface. lib/aio-test.f
+\ plants an entry nobody entered for and pins that the next submission takes it,
+\ which is the rule's effect; this comment holds the refusal branch itself.
 : XFER-STAGE ( n ptr u8 NUM:alloc-byte-len n n n -- n n )
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
    1 SQ-ROOM? 0= if E-AIO-FULL -1 exit then
@@ -725,7 +750,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    SQ-SLOT dup idx kind XFER-OP f count off SQE-RW
    dup buf SQE-BUF!
    SQ-PUBLISH
-   1 idx SUBMIT-OR-FORGET idx ;
+   idx SUBMIT-OR-FORGET idx ;
 
 \ An accept or a connect: one SQE on one record and no memory of the caller's
 \ that this module owns. The bytes a connect names stay the caller's, and the
@@ -738,7 +763,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    SQ-SLOT dup idx kind SOCK-OP f addr off SQE-SOCK
    kind KIND-ACCEPT = if dup ACCEPT-FLAGS SQE-OPFLAGS! then
    SQ-PUBLISH
-   1 idx SUBMIT-OR-FORGET idx ;
+   idx SUBMIT-OR-FORGET idx ;
 
 \ A cancel is submitted on a record nobody waits for, so its own completion
 \ frees it; the operation it names completes cancelled on its own record.
@@ -749,12 +774,12 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    idx KIND-CANCEL 1 REC-ARM
    STATE-FORGET idx REC REC.STATE atomic!
    SQ-SLOT dup idx target SQE-CANCEL SQ-PUBLISH
-   1 ENTER-SUBMIT ;
+   ENTER-SUBMIT ;
 
 : NOP-STAGE ( -- n )
    1 SQ-ROOM? 0= if E-AIO-FULL exit then
    SQ-SLOT dup OP-NOP MAX-OPS SQE-COMMON SQ-PUBLISH
-   1 ENTER-SUBMIT ;
+   ENTER-SUBMIT ;
 
 \ ---- the cleanup a submitting task registers ---------------------------------
 \ Without it a task that ends while one of its operations is in flight would be

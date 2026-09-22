@@ -147,7 +147,11 @@ lands, hand `AIO:READ` an allocation and forget the pointer.
   not take is consumed by the next one from anyone, so the kernel may yet run
   it. The transfer keeps the allocation and the loop releases it when that late
   completion arrives. A program that catches `E-AIO-ENTER` must not touch or
-  release those bytes.
+  release those bytes. Because the kernel takes entries from the ring's head and
+  not from the submitter's slot, every submission's `io_uring_enter` asks for
+  every entry still in the ring, so the entry left behind goes in with the next
+  submission from anyone; that submission is judged by the ring having drained
+  and not by the count it published itself.
 - `AIO:AWAIT-XFER` takes a transfer once, and only while the record is still the
   one its handle was minted over. The generation check runs before the record is
   taken, which is what keeps a stale handle from freeing a record another
