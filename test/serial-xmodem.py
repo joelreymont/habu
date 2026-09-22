@@ -13,6 +13,7 @@ from xmodem import packet
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = '''
+require lib/aio.f
 require lib/fs.f
 package SXMODEM-TEST
 using XMODEM
@@ -118,6 +119,7 @@ class Checks:
 s" {source}" {len(data)} INPUT-READ
 OUTPUT 16 BYTES INIT
 : RUN ( -- )
+   AIO:LOOP-START
    s" {os.ttyname(slave)}" OPEN-HANDLE {{: handle:SERIAL:handle :}}
    handle {wait if ack_wait is None else ack_wait} >MS {wait} >MS SESSION SERIAL-XMODEM:INIT
    {'handle CLOSE-HANDLE' if close_before else ''}
@@ -125,7 +127,8 @@ OUTPUT 16 BYTES INIT
    {call} REPORT
    s" {output}" OUTPUT SPAN$ BLEN>N WRITE-ALL
    SESSION SERIAL-XMODEM:DISPOSE {'handle CLOSE-HANDLE' if not close_before else ''}
-   INPUT DISPOSE OUTPUT DISPOSE ;
+   INPUT DISPOSE OUTPUT DISPOSE
+   AIO:LOOP-STOP ;
 RUN
 ;package
 '''
@@ -500,14 +503,16 @@ TASK:MIN-STACK TASK:TASK WORKER1
 : WORK1 ( -- ) s" {names[1]}" SESSION1 OUTPUT1 SOURCE1 177 WORK ;
 
 
-: WAIT-DONE ( ptr a -- ) {{: worker:ptr :}}
+: WAIT-DONE ( ptr n -- ) {{: worker:ptr :}}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat ;
 
 
 : RUN ( -- )
+   AIO:LOOP-START
    ['] WORK0 WORKER0 TASK:ACTIVATE ['] WORK1 WORKER1 TASK:ACTIVATE
    WORKER0 WAIT-DONE WORKER1 WAIT-DONE
-   WORKER0 TASK:KILL WORKER1 TASK:KILL DONE atomic@ . ;
+   WORKER0 TASK:KILL WORKER1 TASK:KILL DONE atomic@ .
+   AIO:LOOP-STOP ;
 RUN
 ;package
 '''

@@ -12,6 +12,7 @@ require lib/test.f
 require lib/process.f
 require lib/task.f
 require lib/ffi-abi.f
+require lib/aio.f
 require lib/signal.f
 require src/habu/layout.f
 
@@ -221,6 +222,22 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
    s" a second INIT without RELEASE is refused by name" T-LABEL
    [: SIGNAL:INIT ;] E-SIGNAL-STATE TTHROWSQ ;
 
+\ ---- case two and a half: the window waits on the loop -----------------------
+\ The facility is armed and the loop is not: WAIT and PENDING? say so by name
+\ instead of falling back to a thread parked in poll(2). A COLD facility still
+\ names E-SIGNAL-STATE (case one), because NEED-READY runs before the wait.
+
+: NO-LOOP-CASE ( -- )
+   AIO:LOOP-STOP
+
+   s" WAIT with the loop stopped is refused by name" T-LABEL
+   [: QUIET-MS >MS SIGNAL:WAIT drop ;] E-AIO-STATE TTHROWSQ
+
+   s" ... and so is PENDING?, which asks the same question with a zero window" T-LABEL
+   [: SIGNAL:PENDING? drop ;] E-AIO-STATE TTHROWSQ
+
+   AIO:LOOP-START ;
+
 \ ---- case three: what CATCH installed ----------------------------------------
 
 : CAUGHT-CASE ( -- )
@@ -336,9 +353,10 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
    RAISE-WAIT-MS >MS SIGNAL:WAIT SIGNAL:SIGUSR1 WANT-SIGNAL ;
 
 \ ---- case nine: two tasks WAIT, one signal ------------------------------------
-\ Both tasks are inside one WAIT window when the signal lands, so both polls
-\ report POLLIN and only one of them finds four bytes left to read. The loser's
-\ read is refused, it re-polls against the deadline it already had, and its own
+\ Both tasks are inside one WAIT window when the signal lands, so both waits are
+\ answered with POLLIN and only one of them finds four bytes left to read. Both
+\ wait on the one loop, which costs neither task a thread parked in poll(2).
+\ The loser's read is refused, it waits again against the deadline it had, and its own
 \ window closes on a timeout. With a BLOCKING read end the loser parks in read
 \ until the NEXT signal instead, which turns a race into a task that never
 \ finishes the window it was given - so DONE? is asserted, not assumed.
@@ -442,11 +460,13 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
    [: SIGNAL:FD drop ;] E-SIGNAL-STATE TTHROWSQ ;
 
 \ ---- case twelve: a read end closed behind the facility's back ---------------
-\ Not a state a caller reaches politely - it is the one thing a non-blocking
-\ read end must never do, which is re-read a descriptor poll refuses until the
-\ deadline runs out. poll counts POLLNVAL as ready, so a WAIT that only looked
-\ at the count would spin there and a PENDING? that only looked at the count
-\ would answer true; both read the revents.
+\ Not a state a caller reaches politely - it is the one thing a wait on that
+\ read end must never do, which is re-ask a descriptor the kernel will not poll
+\ until the deadline runs out. The loop answers it on the REFUSED arm: the
+\ descriptor number no longer names anything, so io_uring refuses the POLL-ADD
+\ with EBADF rather than completing it with POLLNVAL, and READABLE-WITHIN? names
+\ the poll for both. A wait that only counted an outcome would spin here and a
+\ PENDING? that only counted one would answer true.
 
 : BROKEN-CASE ( -- )
    SIGNAL:INIT
@@ -463,13 +483,17 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
 
 public
 
+\ The loop is started after the last definition (a live task forbids
+\ compilation) and stopped at the end; every WAIT and PENDING? below runs on it.
 : RUN ( -- )
    T-RESET
+   AIO:LOOP-START
    HOST-CASE
    COLD-CASE
    SIGNAL:INIT
    KEEP-FD-WORD
    ARMED-CASE
+   NO-LOOP-CASE
    SIGNAL:SIGUSR1 SIGNAL:CATCH
    SIGNAL:SIGUSR2 SIGNAL:CATCH
    CAUGHT-CASE
@@ -482,6 +506,7 @@ public
    OWNER-CASE
    RELEASE-CASE
    BROKEN-CASE
+   AIO:LOOP-STOP
    T-REPORT ;
 
 ;package

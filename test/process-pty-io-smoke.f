@@ -22,6 +22,7 @@
 
 require lib/process-pty-io.f
 require lib/prelude.f
+require lib/aio.f
 require lib/test.f
 require test/checker-assert.f
 
@@ -108,8 +109,10 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
    then
    cpid PROC-WAIT-STATUS drop ;                    \ reap the zombie
 
-\ A gated target stays alive beyond the 100 ms deadline. A 1 kHz
-\ profiler interrupts its watch poll; that must neither throw nor renew time.
+\ A gated target stays alive beyond the 100 ms deadline. A 1 kHz profiler storms
+\ the process while its watch wait is on the AIO loop; a signal reaches no
+\ thread parked in poll(2) any more, so it must neither throw, shorten the wait
+\ nor renew time.
 : SIGNAL-WATCH ( -- )
    PROC-ARGV-RESET
    TRUE-PATH PROCESS-PTY:SPAWN
@@ -123,8 +126,8 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
    elapsed 90000000 >= TTRUE
    elapsed 1000000000 < TTRUE ;
 
-\ Drive the same interrupted wait through the terminal's data descriptor,
-\ first a quiet deadline, then real bytes. No input is written to echo back.
+\ Drive the same storm through the terminal's data descriptor, first a quiet
+\ deadline, then real bytes. No input is written to echo back.
 : SIGNAL-OUTPUT ( -- )
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
@@ -134,7 +137,7 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
    mono-ns {: started:n :}
    SIGNAL-BYTES 64 100 PROCESS-PTY:AWAIT-BYTES {: quiet:n :}
    mono-ns started - {: elapsed:n :}
-   \ Negative poll timeouts stay unbounded even after a signal.
+   \ A negative timeout is POLL-ADD's own unbounded wait, signals or not.
    SIGNAL-BYTES 64 -1 PROCESS-PTY:AWAIT-BYTES {: got:n :}
    prof-off
    PROCESS-PTY:TEARDOWN
@@ -143,14 +146,26 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
    elapsed 1000000000 < TTRUE
    SIGNAL-BYTES got s" habu-pty-eintr" T$= ;
 
+\ AWAIT with the loop stopped is E-AIO-STATE, like every other wait on the loop,
+\ but this suite cannot pin it: the refusal has to happen on a spawned handle,
+\ the handle is linear and does not cross the throw a refusal assertion catches,
+\ and the supervised set it strands keeps the gate runner's capture pipe open
+\ through its still-gated target child (measured: the runner waits on that pipe
+\ forever). lib/serial-test.f, lib/pty-test.f and lib/signal-test.f pin the
+\ refusal on the three packages whose waits carry no linear token.
+\
+\ The loop is started after the last definition (a live task forbids
+\ compilation) and stopped at the end.
 : RUN ( -- )
    T-RESET
+   AIO:LOOP-START
    LIFECYCLE
    BALANCE
    STATIC
    DEAD-WATCH
    SIGNAL-WATCH
    SIGNAL-OUTPUT
+   AIO:LOOP-STOP
    T-REPORT
    s" process-pty-io-smoke: ok" type cr ;
 

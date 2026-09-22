@@ -14,6 +14,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = '''
+require lib/aio.f
 require lib/serial.f
 package SERIAL-TEST
 CAST: BLEN>N ( NUM:byte-len -- n )
@@ -143,6 +144,7 @@ int main(void) {
 def binary_io(habu, output):
     body = '''
 : RUN ( -- )
+   AIO:LOOP-START
    s" /dev/null" 115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
       opened OF SERIAL:CLOSE OK -1 throw ENDOF
       failed OF SERIAL:ERRNO>N 25 <> if -1 throw then ENDOF
@@ -167,7 +169,8 @@ def binary_io(habu, output):
    handle BODY 1 SERIAL:BYTES 0 >MS SERIAL:WRITE REPORT
    handle SERIAL:CLOSE MATCH SERIAL:status
       ok OF -1 throw ENDOF failed OF SERIAL:ERRNO>N . ENDOF
-   ;MATCH ;
+   ;MATCH
+   AIO:LOOP-STOP ;
 RUN
 '''
 
@@ -202,6 +205,7 @@ RUN
 def partial_write(habu, output):
     body = '''
 : RUN ( -- )
+   AIO:LOOP-START
    1048576 0 do i $FF and BODY i + c! loop
    s" DEVICE" OPEN {: handle:SERIAL:handle :}
    handle READY
@@ -215,7 +219,8 @@ def partial_write(habu, output):
          failed OF SERIAL:ERRNO>N throw ENDOF
       ;MATCH
    until
-   . handle SERIAL:CLOSE OK ;
+   . handle SERIAL:CLOSE OK
+   AIO:LOOP-STOP ;
 RUN
 '''
     def peer(master, slave, pid):
@@ -230,11 +235,13 @@ RUN
 def disconnect(habu, output):
     body = '''
 : RUN ( -- )
+   AIO:LOOP-START
    s" DEVICE" OPEN {: handle:SERIAL:handle :}
    handle READY
    handle BODY 1 SERIAL:BYTES 2000 >MS SERIAL:READ REPORT
    handle BODY 1 SERIAL:BYTES 0 >MS SERIAL:WRITE REPORT
-   handle SERIAL:CLOSE OK ;
+   handle SERIAL:CLOSE OK
+   AIO:LOOP-STOP ;
 RUN
 '''
     # Close the master while Habu waits, to exercise real terminal hangup.
@@ -292,16 +299,18 @@ TASK:MIN-STACK TASK:TASK WORKER1
 : WORK1 ( -- ) s" {paths[1]}" {speeds[1]} BODY1 177 11 WORK ;
 
 
-: WAIT-DONE ( ptr a -- ) {{: worker:ptr :}}
+: WAIT-DONE ( ptr n -- ) {{: worker:ptr :}}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat ;
 
 
 : RUN ( -- )
+   AIO:LOOP-START
    ['] WORK0 WORKER0 TASK:ACTIVATE
    ['] WORK1 WORKER1 TASK:ACTIVATE
    WORKER0 WAIT-DONE WORKER1 WAIT-DONE
    WORKER0 TASK:KILL WORKER1 TASK:KILL
-   DONE atomic@ . ;
+   DONE atomic@ .
+   AIO:LOOP-STOP ;
 RUN
 '''
         def serve():

@@ -31,10 +31,14 @@ The loop is started explicitly because a live task forbids compilation
 ([threads.md](threads.md)): the program decides when it has finished defining
 words. A submission with no loop running is `E-AIO-STATE`.
 
-`lib/net/tcp4.f` and `lib/net/udp4.f` are the loop's first library callers:
-every `TCP4` readiness question and every `UDP4:RECEIVE` that has to wait is one
-`POLL-ADD` and one `AWAIT` here ([tcp4.md](tcp4.md), [udp4.md](udp4.md)), so a
-program that uses either starts the loop before its first wait.
+`lib/net/tcp4.f`, `lib/net/udp4.f`, `lib/serial.f`, `lib/pty.f`,
+`lib/process-pty-io.f` and `lib/signal.f` are the loop's library callers: every
+`TCP4` readiness question, every `UDP4:RECEIVE` that has to wait, every
+`SERIAL:READ` and `SERIAL:WRITE`, every `PTY:READ`, `PROCESS-PTY:AWAIT` and
+`AWAIT-BYTES`, and `SIGNAL:WAIT` and `SIGNAL:PENDING?` is one `POLL-ADD` and one
+`AWAIT` here ([tcp4.md](tcp4.md), [udp4.md](udp4.md), [serial.md](serial.md),
+[signal.md](signal.md), [process-pty.md](process-pty.md)), so a program that
+uses any of them starts the loop before its first wait.
 
 ## The surface
 

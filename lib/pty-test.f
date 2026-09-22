@@ -1,15 +1,22 @@
 \ pty-test.f - a pseudoterminal pair carries bytes both ways.
 \
+\ PTY:READ waits on the AIO loop, so RUN starts the loop after the last
+\ definition (a live task forbids compilation) and stops it at the end.
+\
 \ Run: bin/hb --load lib/pty-test.f
+require lib/errors.f
 require lib/test.f
 require lib/string.f
 require lib/fs.f
+require lib/aio.f
 require lib/pty.f
 
 package PTY-TEST
 
 create SLAVE PTY:SLAVE-PATH-CAP allot
+create SPARE PTY:SLAVE-PATH-CAP allot
 create BUF 32 allot
+variable SPARE-MASTER
 
 \ The slave end, opened the way a device driver under test opens a serial port.
 : SLAVE-FD ( n -- n ) {: u:n :}
@@ -21,7 +28,7 @@ create BUF 32 allot
    SLAVE 9 s" /dev/pts/" STR= TTRUE
    u SLAVE-FD {: s:n :}
    s 0 >= TTRUE
-   s" an interrupted empty read waits out its original deadline" T-LABEL
+   s" a signal storm does not shorten a wait the loop owns" T-LABEL
    1000 prof-rate 1000000 prof-on
    mono-ns {: started:n :}
    m BUF 32 100 >MS PTY:READ {: quiet:n :}
@@ -45,9 +52,25 @@ create BUF 32 allot
    s close
    m PTY:CLOSE ;
 
+\ The loop is the program's to start, and no library starts one: a read without
+\ it says so by name instead of falling back to a thread parked in poll(2).
+: STOPPED-READ ( -- )
+   SPARE-MASTER @ PTY:>MASTER BUF 32 100 >MS PTY:READ drop ;
+
+: NO-LOOP ( -- )
+   s" a read with the loop stopped is refused by name" T-LABEL
+   SPARE PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N SPARE-MASTER !
+   AIO:LOOP-STOP
+   [: STOPPED-READ ;] E-AIO-STATE TTHROWSQ
+   AIO:LOOP-START
+   SPARE-MASTER @ PTY:>MASTER PTY:CLOSE ;
+
 : RUN ( -- )
    T-RESET
+   AIO:LOOP-START
    SLAVE PTY:SLAVE-PATH-CAP PTY:OPEN PAIR
+   NO-LOOP
+   AIO:LOOP-STOP
    T-REPORT
    s" pty-test: ok" type cr ;
 

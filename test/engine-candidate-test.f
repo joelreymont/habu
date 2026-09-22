@@ -22,6 +22,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/engine-id.f
 require lib/engine-candidate.f
+require lib/aio.f
 require lib/process-pty-io.f
 
 package ENGINE-CANDIDATE-TEST
@@ -109,8 +110,12 @@ create ERR   IO-CAP  allot
    DEADLINE-MS PROCESS-PTY:AWAIT TTRUE
    PROCESS-PTY:TEARDOWN ;
 
+\ SUPERVISE-RESOLVED's PROCESS-PTY:AWAIT waits on the AIO loop, so the loop runs
+\ for the body of RUN: it is started after the last definition, because a live
+\ task forbids compilation.
 : RUN ( -- )
    T-RESET
+   AIO:LOOP-START
    SETUP
    OVERRIDE-RESOLVES
    SELF-RESOLVES
@@ -118,6 +123,7 @@ create ERR   IO-CAP  allot
    FALLBACK-TO-SELF
    SUPERVISE-RESOLVED
    CLEANUP-RUN
+   AIO:LOOP-STOP
    T-REPORT
    s" engine-candidate-test: ok" type cr ;
 

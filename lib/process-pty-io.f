@@ -34,11 +34,17 @@
 \ makes the exit observable on both backends (Linux pidfd_open and macOS
 \ kqueue/NOTE_EXIT); test/proc-watch-smoke.f owns the already-dead-race behavior.
 
+\ AWAIT and AWAIT-BYTES wait on the AIO loop (docs/aio.md): one POLL-ADD for the
+\ milliseconds the caller named, -1 for no deadline, and one AWAIT. A program
+\ calls AIO:LOOP-START before the first of them; a wait with no loop running is
+\ E-AIO-STATE. The forked children never touch the ring; see IO-BUILD.
+
 require lib/process-pty-handle.f
 require lib/process-fork.f
 require lib/process-argv.f
 require lib/process.f
 require lib/pty.f
+require lib/aio.f
 require lib/prelude.f
 
 package PROCESS-PTY
@@ -116,15 +122,33 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
 \ ---- poll one watch descriptor ----------------------------------------------
 \ True only when the descriptor reports a clean readable exit; a POLLERR/POLLNVAL
 \ revent means the descriptor is broken and must not masquerade as an exit.
-: IO-POLL-READY? ( fd n -- bool ) {: wfd:fd ms:n :}
-   ms >MS PROC-DEADLINE-AT {: deadline:n :}
-   wfd POLLIN PROC-PFD!
-   1 ms deadline PROC-POLL-RESTART {: rc:n :}
-   rc 0 < if E-PROC-OUTPUT throw then
-   rc 0= if false exit then
-   0 >IDX PROC-PFD-REVENTS {: ev:n :}
+: IO-WATCH-EVENT? ( n -- bool ) {: ev:n :}
    ev POLLERR POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
    ev POLLIN and 0 <> ;
+
+\ What the master had to give once the loop answered: the bytes read, or -1 for
+\ a hang-up or an end of file. POLLNVAL is a broken descriptor, not an exit.
+: IO-READ-READY ( n fd ptr u8 n -- n ) {: ev:n m:fd buf:ptr cap:n :}
+   ev POLLNVAL and 0 <> if E-PROC-OUTPUT throw then
+   ev POLLIN and 0= if -1 exit then
+   m FD>N buf cap read {: got:n :}
+   got 0 > if got exit then
+   -1 ;
+
+\ One POLL-ADD on the AIO loop for the milliseconds the caller named, and one
+\ AWAIT; the deadline is the poll's own linked timeout, so a signal no longer
+\ cuts the watch short and there is nothing to restart. `cancelled` cannot
+\ arrive - nothing here cancels, the ticket never leaves this word, and the
+\ cleanup AIO registers on a submitting task runs only after that task has
+\ ended - so it is a broken foreign result.
+: IO-POLL-READY? ( fd n -- bool ) {: wfd:fd ms:n :}
+   wfd AIO:READABLE ms >MS AIO:POLL-ADD AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF IO-WATCH-EVENT? ENDOF
+      timed-out OF false ENDOF
+      cancelled OF E-PROC-OUTPUT throw ENDOF
+      refused OF drop E-PROC-OUTPUT throw ENDOF
+   ;MATCH ;
 
 \ ---- child bodies (each ends in die; never returns) -------------------------
 \ A lifecycle-helper child closes every inherited descriptor but the one keepalive
@@ -228,6 +252,16 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
 
 \ Forks come before the watches so the children never inherit a lifetime-watch
 \ descriptor; child-only pipe ends close in the parent right after.
+\
+\ None of the three children touches the AIO ring, whether or not the loop is
+\ running in the parent. A helper child closes every inherited descriptor but
+\ its one keepalive read end (PROC-FORK:CLOSE-EXCEPT2 walks 0..MAXFD), so the
+\ ring descriptor is gone in it, and it then reads that end and ends in `die`,
+\ which the engine compiles to one write(2) of its message and exit_group
+\ (src/habu/habu1.f BDIE): no registered cleanup, no AT-EXIT, nothing that could
+\ reach the loop or the ring's mappings. The target child closes 3..MAXFD and
+\ execs, and io_uring_setup's descriptor is close-on-exec by the kernel's own
+\ rule, so it survives neither path.
 : IO-BUILD ( -- )
    IO-TTY @ if IO-MK-TTY else IO-MK-STDIO then
    IO-MK-HOLDS
@@ -334,23 +368,20 @@ public
 \ Wait up to ms for the target's output and read what is there into the buffer:
 \ the byte count, 0 when nothing arrived in time, -1 once the target's side is
 \ gone (hang-up or end of file). A broken descriptor throws, and so does an
-\ empty buffer, which could otherwise only masquerade as a hang-up.
+\ empty buffer, which could otherwise only masquerade as a hang-up. The wait is
+\ one POLL-ADD on the AIO loop and one AWAIT, with ms -1 the unbounded wait
+\ POLL-ADD spells the same way; `cancelled` cannot arrive, for the reason
+\ IO-POLL-READY? gives.
 : AWAIT-BYTES ( process-pty-handle ptr u8 n n -- process-pty-handle n ) {: buf:ptr cap:n ms:n :}
    cap 0 <= if E-PROC-OUTPUT throw then
    HANDLE-MASTER@ {: m:fd :}
-   ms >MS PROC-DEADLINE-AT {: deadline:n :}
-   m POLLIN PROC-PFD!
-   1 ms deadline PROC-POLL-RESTART {: rc:n :}
-   rc 0 < if E-PROC-OUTPUT throw then
-   rc 0= if 0 exit then
-   0 >IDX PROC-PFD-REVENTS {: ev:n :}
-   ev POLLNVAL and 0 <> if E-PROC-OUTPUT throw then
-   ev POLLIN and 0 <> if
-      m FD>N buf cap read {: got:n :}
-      got 0 > if got exit then
-      -1 exit
-   then
-   -1 ;
+   m AIO:READABLE ms >MS AIO:POLL-ADD AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF m buf cap IO-READ-READY ENDOF
+      timed-out OF 0 ENDOF
+      cancelled OF E-PROC-OUTPUT throw ENDOF
+      refused OF drop E-PROC-OUTPUT throw ENDOF
+   ;MATCH ;
 
 \ Release the target to exec. Idempotent once the gate is spent.
 : LAUNCH ( process-pty-handle -- process-pty-handle )

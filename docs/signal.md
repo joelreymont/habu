@@ -39,9 +39,13 @@ MATCH SIGNAL:signal-result
 
 `INIT` opens a pipe, sets close-on-exec and `O_NONBLOCK` on both ends and arms
 the fd word with the write end. `CATCH` then installs the stub for one signal.
-`WAIT` polls the read end and reads the number; `FD` hands the read end to a
+`WAIT` waits on the read end and reads the number; `FD` hands the read end to a
 program that would rather poll it beside its own sockets, and `PENDING?`
-answers whether one is waiting without consuming it. `RELEASE`
+answers whether one is waiting without consuming it. Both wait through the AIO
+loop ([aio.md](aio.md)) - one `AIO:POLL-ADD` for the window, `PENDING?`'s being
+zero-length, and one `AIO:AWAIT` - so a program calls `AIO:LOOP-START` before
+its first `WAIT` or `PENDING?`, and either with no loop running is
+`E-AIO-STATE`. `RELEASE`
 clears the fd word first — so a signal delivered during the teardown is
 absorbed rather than written to a descriptor that is about to close — then
 restores `SIG_DFL` for every signal `CATCH` installed and closes both ends.

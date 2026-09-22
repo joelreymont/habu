@@ -25,7 +25,7 @@ Paths must contain 1–4095 bytes, without embedded NUL. `OPEN8N1` creates a
 nonblocking descriptor with `O_NOCTTY` and close-on-exec. It requires the normal
 `N_TTY` line discipline, disables parity, extra stop bits, echo, input/output
 translations and software/hardware flow control, and enables `CLOCAL`, `CREAD`
-and eight data bits. `VMIN=1` and `VTIME=0`; readiness polling supplies the wait.
+and eight data bits. `VMIN=1` and `VTIME=0`; the AIO loop supplies the wait.
 The previous `HUPCL` setting is retained. No explicit modem-line changes or
 queue flushes are performed.
 
@@ -60,8 +60,15 @@ messages and advance spans after short transfers. A successful write is not
 proof that data reached the peer. Capacity/length must be positive; zero-byte
 operations are rejected.
 
+Every wait is one `AIO:POLL-ADD` and one `AIO:AWAIT` ([aio.md](aio.md)), so
+`AIO:LOOP-START` must precede the first `READ` or `WRITE` and a wait with no
+loop running is `E-AIO-STATE`.
+
 Timeouts are `0..2147483647` milliseconds. Zero makes an immediate readiness
-attempt. Interrupted polls and readiness races retain a monotonic deadline.
+attempt, which a port that already has bytes still answers, because the kernel
+serves the poll before its zero-length linked timer is armed. Readiness races
+retain a monotonic deadline; a signal no longer cuts a wait short, since no
+thread is parked in `poll(2)` for one to interrupt.
 Scheduling delays and driver behavior can extend elapsed time; this is not a
 real-time bound. Calls that assemble several chunks should use one overall
 deadline if they require a bounded transaction.
@@ -84,9 +91,9 @@ is covered by the existing transport tests; it does not prove this integration.
 
 ## Implementation and checks
 
-Eight small private `TRUSTED:` bindings describe exact libc calls through
-Habu's bounded FFI: `open`, two typed `ioctl` operations, `read`, `write`, `poll`,
-`close`, and `__errno_location`. C `int` returns are normalized from 32 bits;
+Seven small private `TRUSTED:` bindings describe exact libc calls through
+Habu's bounded FFI: `open`, two typed `ioctl` operations, `read`, `write`,
+`close`, and `__errno_location`. The wait is not among them: it is the loop's. C `int` returns are normalized from 32 bits;
 `ssize_t` retains 64 bits. Writable extents are explicit. All configuration,
 validation, argument preparation and result normalization is checked Habu.
 The trusted bodies contain only fixed foreign calls and have no locals.
@@ -98,7 +105,8 @@ This is intentionally a Linux ABI, not a portable libc `struct termios` layout.
 Other operating systems are rejected. Supporting another host ABI requires its
 own bindings and tests.
 
-Termios and poll scratch storage is task-local. Each open allocates and releases
+Termios scratch storage is task-local: the working record and the saved one,
+`$58` in all. Each open allocates and releases
 its own NUL-terminated path. A synchronized first call publishes libc symbols
 borrowed through [`RTLD_DEFAULT`](https://man7.org/linux/man-pages/man3/dlsym.3.html).
 The native executable already depends on libc; this module acquires no library

@@ -1,11 +1,17 @@
 \ Raw serial byte streams on Linux AArch64, through bounded libc bindings.
 \
 \ STORAGE CLASS. TASK-LOCAL for everything a call runs through: the termios
-\ struct, the saved termios and the pollfd are one $60 TASK:+USER row, so each
-\ task drives its own port, and the byte spans READ and WRITE take are
-\ caller-owned. The resolved libc symbols and their one-time registration
-\ flags are PROCESS-WIDE, as symbol resolution should be.
+\ struct and the saved termios are one $58 TASK:+USER row, so each task drives
+\ its own port, and the byte spans READ and WRITE take are caller-owned. The
+\ resolved libc symbols and their one-time registration flags are PROCESS-WIDE,
+\ as symbol resolution should be.
 \ See docs/threads.md.
+\
+\ The wait is the AIO loop's (docs/aio.md): every READ and WRITE readiness
+\ question is one POLL-ADD for the time left on its deadline and one AWAIT, so
+\ no thread parks in poll(2) and a signal no longer cuts the wait short. A
+\ program calls AIO:LOOP-START before its first READ or WRITE; a wait with no
+\ loop running is E-AIO-STATE.
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/type/deftype.f
@@ -13,6 +19,7 @@ require lib/num-types.f
 require lib/task.f
 require lib/image-lifecycle.f
 require lib/memory.f
+require lib/aio.f
 
 package SERIAL
 public
@@ -58,7 +65,6 @@ variable FN-OPEN
 variable FN-IOCTL
 variable FN-READ
 variable FN-WRITE
-variable FN-POLL
 variable FN-CLOSE
 variable FN-ERRNO
 here FFI:>CELL 7 and 8 swap - 7 and allot
@@ -67,10 +73,10 @@ variable REGISTERED
 create SYMBOL-NAME $20 allot
 
 \ No per-operation buffer is process-global; independent tasks may use ports.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $60 TASK:+USER IO-STORAGE drop
+\ Two 44-byte kernel termios2 records and nothing else: the wait is the loop's.
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $58 TASK:+USER IO-STORAGE drop
 : TERM ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
 : SAVED ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $2C + ;
-: POLLFD ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $58 + ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -111,7 +117,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 \ them needs no foreign call. Caller-owned descriptors must already be closed.
 : RESET-SYMBOLS ( -- )
    0 FN-OPEN ! 0 FN-IOCTL ! 0 FN-READ !
-   0 FN-WRITE ! 0 FN-POLL ! 0 FN-CLOSE !
+   0 FN-WRITE ! 0 FN-CLOSE !
    0 FN-ERRNO !
    0 REGISTERED ! 0 READY atomic! ;
 
@@ -135,7 +141,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : LOAD-SYMBOLS ( -- )
    s" open" SYMBOL FN-OPEN ! s" ioctl" SYMBOL FN-IOCTL !
    s" read" SYMBOL FN-READ ! s" write" SYMBOL FN-WRITE !
-   s" poll" SYMBOL FN-POLL ! s" close" SYMBOL FN-CLOSE !
+   s" close" SYMBOL FN-CLOSE !
    s" __errno_location" SYMBOL FN-ERRNO ! ;
 
 
@@ -150,9 +156,10 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    again ;
 
 
-\ Exact Linux AArch64 libc schemas. ioctl's requests have separate pointer
-\ directions and an explicit 44-byte kernel termios2 layout. errno is a
-\ libc-owned, thread-local C int. Retirement owner: checked foreign bindings.
+\ Exact Linux AArch64 libc schemas, seven of them. ioctl's requests have
+\ separate pointer directions and an explicit 44-byte kernel termios2 layout.
+\ errno is a libc-owned, thread-local C int. The wait is not among them: it is
+\ AIO's. Retirement owner: checked foreign bindings.
 \ test/serial.py covers these boundaries through real kernel pseudoterminals.
 TRUSTED: ERRNO-POINTER ( -- ptr u8 )
    FFI:ARGS FFI:REG-LENS 0 FN-ERRNO @ ffi-call-bounded ;
@@ -210,16 +217,6 @@ TRUSTED: WRITE-CALL ( -- n )
    FFI:RESET handle HANDLE>N 0 FFI:VALUE!
    bytes 1 FFI:READABLE! size BLEN>N 2 FFI:VALUE!
    WRITE-CALL ;
-
-
-TRUSTED: POLL-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 3 FN-POLL @ ffi-call-bounded ;
-
-
-: POLL-RAW ( ms -- n ) {: timeout:ms :}
-   FFI:RESET POLLFD $08 0 FFI:WRITABLE! 1 1 FFI:VALUE!
-   timeout MS>N 2 FFI:VALUE!
-   POLL-CALL C-INT ;
 
 
 TRUSTED: CLOSE-CALL ( -- n )
@@ -283,18 +280,25 @@ TRUSTED: CLOSE-CALL ( -- n )
 : RETRY? ( errno -- bool ) ERRNO>N dup 4 = swap 11 = or ;
 
 
-\ Positive poll event bits, zero timeout, or negative errno. EINTR keeps the
-\ original deadline. Each operation can always make one immediate poll.
+\ Positive event bits, zero for the deadline, or a negative errno. One POLL-ADD
+\ on the AIO loop for the time this operation has left, then one AWAIT: the
+\ deadline is the poll's own linked timeout, so a signal no longer cuts the wait
+\ short and there is nothing to restart. The answered bits keep the POLLNVAL
+\ rule, though a descriptor the kernel refuses outright now arrives as EBADF on
+\ the refused arm instead of as POLLNVAL on the ready one. The loop must be
+\ running: a wait without AIO:LOOP-START is E-AIO-STATE. `cancelled` cannot
+\ arrive here - nothing in this module cancels, the ticket never leaves this
+\ word, and the cleanup AIO registers on a submitting task runs only after that
+\ task has ended - so it is a broken foreign result, exactly like an impossible
+\ termios read-back.
 : AWAIT ( handle n ns -- n ) {: handle:handle events:n deadline:ns :}
-   handle HANDLE>N POLLFD LE32! events POLLFD $04 + LE32!
-   begin
-      deadline REMAINING POLL-RAW dup 0 >= if
-         0= if 0 exit then
-         POLLFD $04 + LE32@ 16 rshift dup $20 and 0 <> if drop -9 then exit
-      then drop
-      LAST-ERROR dup ERRNO>N 4 <> if ERRNO>N negate exit then drop
-      deadline REMAINING MS>N 0= if 0 exit then
-   again ;
+   handle HANDLE>N >FD events deadline REMAINING AIO:POLL-ADD AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF dup $20 and 0 <> if drop -9 then ENDOF
+      timed-out OF 0 ENDOF
+      cancelled OF E-RESULT throw ENDOF
+      refused OF negate ENDOF
+   ;MATCH ;
 
 
 : TRANSFERRED ( n NUM:byte-len -- io-result ) {: actual:n capacity:NUM:byte-len :}
@@ -331,7 +335,7 @@ public
    {: handle:handle bytes capacity:NUM:byte-len timeout:ms :}
    handle capacity CHECK-IO timeout DEADLINE {: deadline:ns :}
    begin
-      handle 1 deadline AWAIT {: events:n :}
+      handle AIO:READABLE deadline AWAIT {: events:n :}
       events 0 < if events negate >ERRNO SERIAL-IO--RESULT:failed exit then
       events 0= if SERIAL-IO--RESULT:timeout exit then
       handle bytes capacity READ-RAW dup 0 > if capacity TRANSFERRED exit then
@@ -348,7 +352,7 @@ public
    {: handle:handle bytes size:NUM:byte-len timeout:ms :}
    handle size CHECK-IO timeout DEADLINE {: deadline:ns :}
    begin
-      handle 4 deadline AWAIT {: events:n :}
+      handle AIO:WRITABLE deadline AWAIT {: events:n :}
       events 0 < if events negate >ERRNO SERIAL-IO--RESULT:failed exit then
       events 0= if SERIAL-IO--RESULT:timeout exit then
       handle bytes size WRITE-RAW dup 0 > if size TRANSFERRED exit then

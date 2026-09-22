@@ -10,14 +10,18 @@
 \ unlocks the same device with TIOCPTYGRANT/TIOCPTYUNLK and asks TIOCPTYGNAME
 \ for the name. A host that is neither is E-PROC-HOST. The request numbers are
 \ private: a caller that needs a pair calls OPEN instead of repeating them.
-\ Only the raw open, ioctl, read, write, poll and close primitives are
-\ involved; no libc symbol is borrowed.
+\ Only the raw open, ioctl, read, write and close primitives are involved; no
+\ libc symbol is borrowed.
+\
+\ READ waits on the AIO loop (docs/aio.md): one POLL-ADD for the window it was
+\ given and one AWAIT, so no thread parks in poll(2). A program calls
+\ AIO:LOOP-START before its first READ; a wait with no loop is E-AIO-STATE.
 \
 \ Load after lib/errors.f and lib/fs.f.
 require lib/errors.f
 require lib/type/deftype.f
 require lib/fs.f
-require lib/process.f
+require lib/aio.f
 
 package PTY
 public
@@ -101,6 +105,12 @@ variable WRITTEN
    HB-TARGET-MACOS? if m path NAME-MACOS exit then
    m close E-PROC-HOST throw ;
 
+
+\ What the master had to give once the loop answered that it was readable.
+: READ-READY ( master ptr u8 n -- n ) {: m:master bytes cap:n :}
+   m MASTER>N bytes cap read {: got:n :}
+   got 0 < if E-IO throw then got ;
+
 public
 
 \ Open a pseudoterminal pair on either target: the master descriptor, and the
@@ -116,14 +126,19 @@ public
 
 
 \ One chunk after at most ms of waiting; zero means nothing arrived in time.
+\ The window is the poll's own linked timeout, so a signal no longer cuts it
+\ short and there is nothing to restart. `cancelled` cannot arrive - nothing
+\ here cancels, the ticket never leaves this word, and the cleanup AIO registers
+\ on a submitting task runs only after that task has ended - so it is a broken
+\ foreign result.
 : READ ( master ptr u8 n ms -- n ) {: m:master bytes cap:n timeout:ms :}
-   timeout PROC-DEADLINE-AT {: deadline:n :}
-   m MASTER>N >FD POLLIN PROC-PFD!
-   1 timeout MS>N deadline PROC-POLL-RESTART {: ready:n :}
-   ready 0 < if E-IO throw then
-   ready 0= if 0 exit then
-   m MASTER>N bytes cap read {: got:n :}
-   got 0 < if E-IO throw then got ;
+   m MASTER>N >FD AIO:READABLE timeout AIO:POLL-ADD AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF drop m bytes cap READ-READY ENDOF
+      timed-out OF 0 ENDOF
+      cancelled OF E-IO throw ENDOF
+      refused OF drop E-IO throw ENDOF
+   ;MATCH ;
 
 
 : WRITE ( master ptr u8 n -- ) {: m:master bytes size:n :}

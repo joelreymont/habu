@@ -1615,6 +1615,11 @@ SUITE pty
    lib/pty-test.f
 ;SUITE
 
+\ Raw serial streams over a pty pair: the loop supplies every wait.
+SUITE serial
+   lib/serial-test.f
+;SUITE
+
 \ The pty test harness's buffer: the compaction, the span search and the
 \ never-seen facts, driven without a child; plus the two cases that need one,
 \ the spawn's abort path and the bounded reap of a wedged child.

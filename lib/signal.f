@@ -25,7 +25,8 @@
 \ Load after lib/process.f.
 
 s" lib/errors.f" required
-s" lib/process.f" required                \ the pipe, the pollfd row and PROC-POLL-RESTART
+s" lib/process.f" required                \ the pipe words, POLLIN, PROC-NO-FD, close-rc and the two deadline helpers
+s" lib/aio.f" required                    \ the loop the WAIT window runs on
 s" lib/task.f" required                   \ TASK:+USER carries the staging span, TASK:SELF-N the owner
 s" lib/ffi-abi.f" required                \ sigaction is declared here, not assumed
 s" lib/image-lifecycle.f" required        \ a restored image is a different process
@@ -197,8 +198,9 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
    sig SA-ACT SA-OLD SIGACTION-CALL 0 <> if E-SIGNAL-INSTALL throw then ;
 
 \ SA_RESTART so the read, write and wait calls a program is blocked in resume
-\ after a caught signal. poll(2) restarts for nobody and reports -EINTR, which
-\ is why WAIT owns a deadline of its own.
+\ after a caught signal. The WAIT window no longer needs it: the wait is a
+\ POLL-ADD on the AIO loop, and a signal reaches no thread parked in poll(2).
+\ WAIT still owns a deadline, for the lost race rather than for -EINTR.
 : INSTALL-STUB ( n -- ) {: sig:n :}
    SA-ACT SA-BUF-BYTES ZERO-BYTES
    STUB-A @ SA-HANDLER!
@@ -248,40 +250,29 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
    w close-rc {: wrc:n :}
    rrc 0 <> wrc 0 <> or if E-SIGNAL-CLOSE throw then ;
 
-\ ---- polling the read end ----------------------------------------------------
+\ ---- waiting on the read end -------------------------------------------------
 
-: PFD-ARM ( -- )
-   READ-FD POLLIN PROC-PFD! ;
-
-\ No deadline to restart against, so an interrupted zero-wait poll is simply
-\ asked again: the stub has already written by the time the call reports -EINTR.
-: POLL-NOW ( -- n )
-   begin
-      PFD-ARM
-      1 0 PROC-POLL-ONCE {: rc :}
-      rc EINTR# negate <> if rc exit then
-   again ;
-
-\ One poll of the read end for `left` milliseconds, restarting a -EINTR against
-\ the absolute deadline the caller owns. The two arguments are not redundant:
-\ the first poll of a window is given the window as the caller spelled it, and
-\ only a poll that follows something re-derives what is left, because
-\ PROC-LEFT-MS floors and would shave a millisecond off a window nothing had
-\ yet consumed.
-: POLL-UNTIL ( n n -- n ) {: left deadline :}
-   PFD-ARM
-   1 left deadline PROC-POLL-RESTART ;
-
-: POLL-RC ( n -- n ) {: rc :}
-   rc 0 < if E-SIGNAL-POLL throw then
-   rc ;
-
-\ What the one pollfd slot reported. A refused read is only ever the lost race
-\ when POLLIN put the bytes there in the first place; POLLNVAL - a read end
-\ closed behind the facility's back - and a bare POLLERR are counted by poll as
-\ ready and would otherwise be re-read against the deadline forever.
-: PFD-READABLE? ( -- bool )
-   0 >IDX PROC-PFD-REVENTS POLLIN and 0 <> ;
+\ One window of the read end, waited out on the AIO loop: a POLL-ADD for ms with
+\ the deadline as the poll's own linked timeout, and an AWAIT. A signal reaches
+\ no thread parked here, so there is no -EINTR to restart.
+\
+\ A refused read is only ever the lost race when POLLIN put the bytes there in
+\ the first place, so the answered bits are read and not just counted: POLLNVAL,
+\ and a bare POLLERR, are a read end gone behind the facility's back and would
+\ otherwise be re-read against the deadline forever. The kernel answers that
+\ state two ways now - as those bits when it still has the descriptor, and as a
+\ refused poll (EBADF) when the number no longer names one - and both name the
+\ poll. `cancelled` cannot arrive: nothing here cancels, the ticket never leaves
+\ this word, and the cleanup AIO registers on a submitting task runs only after
+\ that task has ended.
+: READABLE-WITHIN? ( ms -- bool ) {: window:ms :}
+   READ-FD AIO:READABLE window AIO:POLL-ADD AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF POLLIN and 0= if E-SIGNAL-POLL throw then true ENDOF
+      timed-out OF false ENDOF
+      cancelled OF E-SIGNAL-POLL throw ENDOF
+      refused OF drop E-SIGNAL-POLL throw ENDOF
+   ;MATCH ;
 
 \ Four bytes is under PIPE_BUF, so the pipe takes the number whole or not at
 \ all: a short read is a torn number the stub guarantees against, not a partial
@@ -367,34 +358,34 @@ public
    NEED-READY
    READ-FD ;
 
-\ Readable now, without consuming. "Ready" is not "readable": poll counts
-\ POLLNVAL and POLLERR too, and answering true for a read end that is gone would
-\ send a caller into the WAIT that names it. The same revents test WAIT makes.
+\ Readable now, without consuming: a zero-length window, which the kernel serves
+\ inline for a descriptor that is already ready. "Ready" is not "readable": a
+\ read end that is gone is the refusal READABLE-WITHIN? names, never a true that
+\ would send a caller into the WAIT that names it.
 : PENDING? ( -- bool )
    NEED-READY
-   POLL-NOW POLL-RC 0= if false exit then
-   PFD-READABLE? 0= if E-SIGNAL-POLL throw then
-   true ;
+   0 >MS READABLE-WITHIN? ;
 
 \ The next signal number, or the closing of the window. One deadline is set from
-\ the ms this call was given and every poll inside it runs against that one
-\ deadline: the poll restarts there on -EINTR, and a read another task won
-\ re-polls there too. So neither a signal storm nor a lost race can push one
-\ WAIT past the milliseconds it was given, and a window that runs out while the
-\ race is being lost answers timeout.
-: WAIT ( ms -- signal-result ) {: ms :}
+\ the ms this call was given and every wait inside it runs against that one
+\ deadline: a read another task won re-polls there. So a lost race cannot push
+\ one WAIT past the milliseconds it was given, and a window that runs out while
+\ the race is being lost answers timeout. The two spellings are not redundant:
+\ the first wait is given the window as the caller spelled it, and only a wait
+\ that follows something re-derives what is left, because PROC-LEFT-MS floors
+\ and would shave a millisecond off a window nothing had yet consumed.
+: WAIT ( ms -- signal-result ) {: window:ms :}
    NEED-READY
-   ms PROC-DEADLINE-AT {: deadline :}
-   ms MS>N                                         \ milliseconds left to poll for
+   window PROC-DEADLINE-AT {: deadline :}
+   window                                          \ milliseconds left to wait for
    begin
-      dup deadline POLL-UNTIL POLL-RC 0= if
+      dup READABLE-WITHIN? 0= if
          drop SIGNAL-SIGNAL--RESULT:timeout exit
       then
-      PFD-READABLE? 0= if E-SIGNAL-POLL throw then
       SIGNO@ dup SIGNO-REFUSED <> if
          nip SIGNAL-SIGNAL--RESULT:signal exit
       then
-      2drop deadline PROC-LEFT-MS MS>N
+      2drop deadline PROC-LEFT-MS
    again ;
 
 \ The fd word is cleared FIRST, so a signal delivered during the restore is

@@ -22,6 +22,7 @@
 require lib/process-pty-io.f
 require lib/pty-harness.f
 require lib/prelude.f
+require lib/aio.f
 require lib/test.f
 
 package PTY-TTY-SMOKE
@@ -245,13 +246,18 @@ variable QUIET-N
 
 public
 
+\ AWAIT and AWAIT-BYTES wait on the AIO loop, so the loop runs for the body of
+\ RUN: it is started after the last definition, because a live task forbids
+\ compilation.
 : RUN ( -- )
    T-RESET
+   AIO:LOOP-START
    PIPE-STOPS
    TTY-RECOVERS
    ECHO-PROMPT-REJECTED
    TTY-LAYOUT
    TTY-STACK-RECOVERS
+   AIO:LOOP-STOP
    T-REPORT
    s" process-pty-tty-smoke: ok" type cr ;
 
