@@ -34,6 +34,10 @@ successful runs remove it.
   on stdin — it looks like a hang, rc 124 under a timeout. Pipe `< /dev/null`,
   and give a spawned build child `/dev/null` stdin rather than letting it
   inherit one.
+- A suite that throws through a linear `PROCESS-PTY` handle strands its gated
+  target child, which holds the runner's capture pipe, and the runner waits
+  forever (measured with `test/process-pty-io-smoke.f`). Pin such a refusal in
+  the library's own suite, never in a gated smoke file.
 - A CLI tool that reads the ambient argv (`SCRIPT-ARGV$`) is never `include`d
   into a shared image: it would read the harness's argv. Run it spawned, and
   keep its assertion in an argv-free `-test.f`.
