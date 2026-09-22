@@ -39,8 +39,6 @@
 \ changing the generated accessor set at the sealed generative storage boundary
 \ (src/core/layout-buffer.f). A span over a nominal element is already reachable
 \ today - hand a TYPED-BUFFER accessor result to SPAN:MAKE.
-\
-\ Load after lib/errors.f and lib/memory.f.
 
 require lib/errors.f
 require lib/memory.f

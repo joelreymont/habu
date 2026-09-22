@@ -1,6 +1,4 @@
 \ object-link.f - checked object symbol validation.
-\
-\ Load after lib/object.f.
 
 require lib/errors.f
 require lib/string.f

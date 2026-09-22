@@ -16,8 +16,7 @@
 \ READ waits on the AIO loop (docs/aio.md): one POLL-ADD for the window it was
 \ given and one AWAIT, so no thread parks in poll(2). A program calls
 \ AIO:LOOP-START before its first READ; a wait with no loop is E-AIO-STATE.
-\
-\ Load after lib/errors.f and lib/fs.f.
+
 require lib/errors.f
 require lib/type/deftype.f
 require lib/fs.f

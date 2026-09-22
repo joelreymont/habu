@@ -1,5 +1,4 @@
 \ fs-root.f - checked filesystem root readiness predicates.
-\ Load after lib/errors.f and lib/fs.f.
 
 require lib/errors.f
 require lib/string.f

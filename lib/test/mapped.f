@@ -14,8 +14,6 @@
 \ is open: the descriptor keeps the inode alive for the run and no file is left
 \ behind. Its contents are never read, so concurrent test processes cannot
 \ disturb each other.
-\
-\ Load after lib/errors.f, lib/fs.f and lib/fs-mutate.f.
 
 require lib/errors.f
 require lib/fs.f

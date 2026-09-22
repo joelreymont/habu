@@ -1,8 +1,8 @@
 \ gate-pool.f - checked bounded process pool for native tests.
-\
-\ Load after lib/process-env.f and lib/test/runner.f.
 
 require lib/process-fork.f
+require lib/process-env.f
+require lib/test/runner.f
 require tools/why-threw.f
 
 using WHY-THREW                          \ the fork-throw self-identifying report

@@ -1,7 +1,6 @@
 \ process-argv.f - checked argv process helpers.
-\
-\ Load after lib/errors.f, lib/memory.f, and lib/process.f.
 
+s" lib/errors.f" required
 s" lib/memory.f" required
 s" lib/process.f" required
 require lib/image-lifecycle.f

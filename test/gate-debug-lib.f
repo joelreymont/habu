@@ -1,8 +1,7 @@
 \ gate-debug.f - checked runner for prop/debug gate checks.
-\
-\ Load after test/gate-common.f.
 
 require tools/jitdump-core.f
+require test/gate-common.f
 
 using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
 

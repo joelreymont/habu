@@ -1,5 +1,4 @@
 \ hashmap-test.f - coverage for HM:HASH64 / HM:PROBE / HM:CLEAR.
-\ Load after lib/errors.f lib/string.f lib/test.f lib/hashmap.f.
 
 require lib/errors.f
 require lib/string.f

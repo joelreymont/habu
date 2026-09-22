@@ -1,6 +1,4 @@
 \ object-cache.f - checked content-addressed object file store.
-\
-\ Load after lib/object.f and lib/fs-mutate.f.
 
 require lib/errors.f
 require lib/string.f

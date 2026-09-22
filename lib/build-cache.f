@@ -1,6 +1,4 @@
 \ build-cache.f - canonical checked build-cache root selection.
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-root.f, and
-\ lib/fs-mutate.f.
 
 require lib/errors.f
 require lib/string.f

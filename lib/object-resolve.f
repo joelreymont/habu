@@ -1,6 +1,4 @@
 \ object-resolve.f - checked source+ABI resolver over OBJIDX and OBJSTORE.
-\
-\ Load after lib/object-index.f and lib/object-cache.f.
 
 require lib/errors.f
 require lib/string.f

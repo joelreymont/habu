@@ -1,7 +1,4 @@
 \ object.f - checked object-record codec for future linkable Habu builds.
-\
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, and
-\ lib/content-key.f.
 
 require lib/errors.f
 require lib/string.f

@@ -1,8 +1,11 @@
 \ runner.f - checked native test runner foundation.
-\
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, and lib/process-argv.f.
 
+require lib/errors.f
+require lib/string.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
 require lib/test/record.f
 require lib/fmt.f                        \ FMT:.INT - one-line number text, shared builder untouched
 

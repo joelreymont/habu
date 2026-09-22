@@ -1,6 +1,10 @@
 \ gate-build-common.f - checked helpers for native hb-build tests.
-\
-\ Load after test/gate-common.f and lib/memory.f.
+
+require lib/memory.f
+require tools/json.f
+require tools/gate-json-assert-core.f
+require tools/aot-call-report-lib.f
+require test/gate-common.f
 
 $FEEDFACF constant GB-MH-MAGIC64
 $19 constant GB-LC-SEGMENT-64

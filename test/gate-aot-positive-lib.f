@@ -1,8 +1,8 @@
 \ gate-aot-positive.f - checked runner for positive hb-build AOT checks.
-\
-\ Load after test/gate-build-common.f and test/gate-build-hbb.f.
 
 require test/gate-pool.f
+require test/gate-build-common.f
+require test/gate-build-hbb.f
 require test/gate-aot-image.f
 
 package AOT-POSITIVE

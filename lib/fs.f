@@ -1,7 +1,5 @@
 \ fs.f - checked filesystem helpers.
 \
-\ Load after lib/errors.f and lib/string.f.
-\
 \ STORAGE CLASS. TASK-LOCAL for everything one call threads: the per-call slots
 \ (FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR), the NUL-padded path
 \ buffer FS-PATHZ-BUF, the stat buffer FS-STAT-BUF and the read probe are the

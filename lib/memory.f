@@ -1,7 +1,5 @@
 \ memory.f - checked OS-backed byte buffers.
 \
-\ Load after lib/errors.f.
-\
 \ STORAGE CLASS. CALLER-OWNED: every mapping ALLOC-BYTES, ALLOC-CELLS,
 \ ALLOC-64K and ALLOC-GUARDED hand back belongs to the caller, who releases it,
 \ and the module keeps nothing about it. The one exception is WITH-BYTES: its

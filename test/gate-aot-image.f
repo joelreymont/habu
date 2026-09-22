@@ -1,6 +1,11 @@
 \ Read stripped code, excluding restored DATA and executable-segment padding.
-\ Load after gate-build-common.f and aot-call-report-lib.f.
+
+require lib/errors.f
+require lib/fs.f
 require src/arch/arm64/asm.f
+require tools/aot-call-report-lib.f      \ REPORT-JSON-BUFFER for CODE-REPORT
+require test/gate-build-common.f
+require test/gate-build-hbb.f            \ its hb-build chain loads the target's SYS-* stencils
 
 package AOT-IMAGE
 using A64ASM

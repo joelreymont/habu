@@ -1,7 +1,6 @@
 \ gate-diagnostics-entry-lib.f - one serial diagnostic test.
-\
-\ Load after test/gate-diagnostics-lib.f.
 
+require test/gate-diagnostics-lib.f
 require test/gate-diagnostics-all-strict-lib.f
 
 package GATE-DIAGNOSTICS

@@ -12,8 +12,6 @@
 \ the later coupled ctor/MATCH codegen emits calls to BOX-ALLOC / BOX-TAG! /
 \ BOX-PAY! / BOX-DEREF-TAG / BOX-PAY@. It performs NO POLICY accept, NO checker
 \ width change, and NO codegen.
-\
-\ Load after lib/errors.f and lib/memory.f.
 
 require lib/errors.f
 require lib/memory.f

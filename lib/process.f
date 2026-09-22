@@ -7,8 +7,6 @@
 \ spans the capture and POLL words take are caller-owned. The PROC-REAP-ARM
 \ vector is process-wide: it is one installed policy, not per-call state.
 \ See docs/threads.md.
-\
-\ Load after lib/errors.f.
 
 s" lib/errors.f" required
 s" lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switchover wave B)

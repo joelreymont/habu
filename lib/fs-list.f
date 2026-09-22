@@ -5,8 +5,7 @@
 \ order, so two listings of the same directory compare equal. Only the raw
 \ open-rd, getdirentries64 and close primitives are involved; the record
 \ decoding is shared with the walker in lib/fs.f.
-\
-\ Load after lib/errors.f and lib/fs.f.
+
 require lib/errors.f
 require lib/fs.f
 

@@ -1,6 +1,4 @@
 \ object-index.f - checked source-to-object key index.
-\
-\ Load after lib/content-key.f and lib/fs-mutate.f.
 
 require lib/errors.f
 require lib/string.f

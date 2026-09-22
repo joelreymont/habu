@@ -5,8 +5,6 @@
 \ committed golden under test/golden/. --update-golden (scanned from
 \ SCRIPT-ARGV by GOLD:INIT) rewrites the golden instead of comparing, and a
 \ mismatch prints the first differing byte plus a window of both sides.
-\
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, and lib/fs-mutate.f.
 
 require lib/errors.f
 require lib/string.f

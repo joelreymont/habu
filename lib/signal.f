@@ -21,8 +21,6 @@
 \ A third target reaches no arm and INIT refuses it with E-PROC-HOST rather than
 \ installing the stub for whatever signal the Linux numbers happen to name
 \ there. macOS is selected for but untested: no macOS host runs this suite.
-\
-\ Load after lib/process.f.
 
 s" lib/errors.f" required
 s" lib/process.f" required                \ the pipe words, POLLIN, PROC-NO-FD, close-rc and the two deadline helpers

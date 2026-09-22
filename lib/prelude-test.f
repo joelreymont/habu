@@ -1,5 +1,4 @@
 \ prelude-test.f - coverage for the prelude conveniences.
-\ Load after lib/errors.f lib/string.f lib/test.f lib/float.f lib/prelude.f.
 
 require lib/errors.f
 require lib/string.f

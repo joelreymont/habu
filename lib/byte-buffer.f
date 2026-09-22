@@ -26,8 +26,6 @@
 \ then goes through SPAN:U8! / SPAN:COPY and is bounds-checked against the owned
 \ reach, so the module has no unchecked byte copy left. DATA-FIELD's cast is the
 \ pointer field's, unchanged and still BUF-private.
-\
-\ Load after lib/errors.f, lib/memory.f and lib/span.f.
 
 require lib/errors.f
 require lib/memory.f

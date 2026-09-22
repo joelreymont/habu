@@ -1,9 +1,10 @@
 \ gate-aot-negative.f - checked runner for AOT closure rejection checks.
-\
-\ Load after lib/source.f, tools/json.f, tools/gate-json-assert-core.f,
-\ test/gate-common-lib.f, and src/habu/aot-closure.f.
 
 require src/habu/aot-closure.f
+require lib/source.f
+require tools/json.f
+require tools/gate-json-assert-core.f
+require test/gate-common.f
 
 LOWER-CERT-HOOK:INSTALL
 

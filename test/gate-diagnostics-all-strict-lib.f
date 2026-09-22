@@ -1,8 +1,7 @@
 \ gate-diagnostics-all-strict-lib.f - SARIF assertion for diagnostics.
-\
-\ Load after test/gate-diagnostics-lib.f.
 
 require tools/diag-to-sarif-core.f
+require test/gate-diagnostics-lib.f
 
 package GATE-DIAGNOSTICS
 

@@ -9,8 +9,6 @@
 \ file (FILE-SIZE -> MEM-ALLOC-64K-SPAN, the proven idiom), so a test can never
 \ under-size again, and CHECK-FIT fails closed with a diagnostic naming the file
 \ and sizes if a source ever exceeds the generous ceiling.
-\
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/test.f.
 
 require lib/errors.f
 require lib/string.f
