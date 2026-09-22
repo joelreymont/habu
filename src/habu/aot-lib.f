@@ -887,6 +887,16 @@ variable RP  variable RE
       REPEAT
       WI @ 1+ WI ! REPEAT ;
 
+\ Keep the linker's own refusal context visible when it is run directly. The
+\ hb-build parent repeats the same facts after image-size walks the finished
+\ image, but a direct AOT maker has no parent to explain the window budget.
+: REPORT-DATA-USAGE ( -- )
+   s" aot data: " type
+   BLOB-LEN @ .
+   s"  bytes used / " type
+   DATA-SIZE .
+   s"  DATA-SIZE" type cr ;
+
 public
 
 \ The span is already latched: tools/aot-build-core.f calls AOT-DATA-SPAN the moment
@@ -901,6 +911,7 @@ public
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !  LBL LTEXT !
    LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !   \ the stripped image carries both handlers too
    EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-CRASH-CODE  EMIT-DATA-BLOB  EMIT-XT-ROWS
+   REPORT-DATA-USAGE
    AOT-WRITE-OBJ
    s" hb-prog" AOT-OUT DRV-EMIT-IMAGE ;
 

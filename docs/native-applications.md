@@ -80,6 +80,15 @@ image is usually the build's own compiler rather than the application: the maker
 child loads the tier-1 optimizer from source before your program, and the
 snapshot keeps it.
 
+The build follows the size line with `hb-build data: U bytes used / C DATA-SIZE
+(M free)`. `U` is the logical DATA window span restored by the image, `C` is
+the target's fixed DATA ceiling, and `M` is the remaining address-space margin;
+the sparse file bytes are still itemised separately as written and zero-filled
+data. `DATA-CAPACITY-BYTES` is the host layout's `DATA-SIZE`; a cross-target
+image reports its target mapping ceiling. `--report-json` carries the same pair under `data_usage`, so a build
+driver can reject a near-ceiling image before its runtime allocations make the
+margin disappear.
+
 ## Stripped images and persistent execution tokens
 
 Without `--repl` the same driver builds a *stripped* image: only the closure of

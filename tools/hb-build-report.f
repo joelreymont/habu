@@ -37,6 +37,12 @@ variable SIZE-DATA
 variable SIZE-DATA-ZERO
 variable SIZE-PAD
 variable SIZE-OTHER
+\ The image-size walk also knows the DATA window's logical span and the
+\ target's fixed DATA ceiling. Keep those facts beside the file-size classes:
+\ a written/zero byte total alone cannot tell a build how much address space
+\ remains before DATA-SIZE.
+variable DATA-USAGE
+variable DATA-LIMIT
 
 \ Worst case one cache_root byte becomes \u00XX, plus the fixed keys and values.
 6 constant REPORT-ESCAPE-MAX
@@ -139,7 +145,9 @@ public
    0 SIZE-DATA !
    0 SIZE-DATA-ZERO !
    0 SIZE-PAD !
-   0 SIZE-OTHER ! ;
+   0 SIZE-OTHER !
+   0 DATA-USAGE !
+   0 DATA-LIMIT ! ;
 
 : VALID? ( -- bool )
    COMPLETE? ;
@@ -171,6 +179,11 @@ public
    dzero SIZE-DATA-ZERO !
    pad SIZE-PAD !
    other SIZE-OTHER ! ;
+
+: CAPTURE-DATA ( n n -- ) {: used:n limit:n :}
+   used 0 < limit 0 < or used limit > or if E-BUILD-STATUS throw then
+   used DATA-USAGE !
+   limit DATA-LIMIT ! ;
 
 : CACHE-ROOT$ ( -- ptr u8 n )
    REQUIRE-COMPLETE
@@ -226,6 +239,11 @@ public
    s" data_zero_filled" SIZE-DATA-ZERO @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
    s" padding" SIZE-PAD @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
    s" other" SIZE-OTHER @ JSON-WRITE:FIELD-U
+   JSON-WRITE:OBJECT-END JSON-WRITE:COMMA
+   s" data_usage" JSON-WRITE:KEY
+   JSON-WRITE:OBJECT-START
+   s" used" DATA-USAGE @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" limit" DATA-LIMIT @ JSON-WRITE:FIELD-U
    JSON-WRITE:OBJECT-END
    JSON-WRITE:OBJECT-END
    JSON-WRITE:$ ;

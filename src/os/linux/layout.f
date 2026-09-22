@@ -7,7 +7,7 @@
 $1000 constant IMAGE-TEXT-CONTENT-ADJ
 0 constant IMAGE-TEXT-TRAILER-ADJ
 $340000000 constant DATA-VA
-$2000000 constant DATA-SIZE
+$2000000 constant DATA-SIZE \\ fixed host layout DATA mapping ceiling; target images report their own ceiling
 $1000 constant CODE-OFF
 $B0 constant LINUX-DLOPEN-SLOT-OFF
 $B8 constant LINUX-DLSYM-SLOT-OFF

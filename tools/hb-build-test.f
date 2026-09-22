@@ -847,6 +847,15 @@ create READER-STATE JR:STORAGE-BYTES allot
    s" elapsed_ns" JR:FIND-KEY TTRUE
    JR:TOKEN JR:T-INT T=
    JR:INT 0 >= TTRUE
+   s" data_usage" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-OBJ T=
+   s" used" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
+   JR:INT 0 >= TTRUE
+   s" limit" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
+   JR:INT 0 > TTRUE
+   JR:NEXT JR:T-OBJ-END T=
    JR:CLOSE ;
 
 : HBT-REPL-EXPECTED$ ( -- ptr u8 n )

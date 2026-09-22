@@ -2211,6 +2211,8 @@ public
 : NAME-BYTES ( -- n ) BK-NAMES @ ;
 : DATA-WRITTEN ( -- n ) BK-DATA @ ;
 : DATA-ZERO ( -- n ) BK-DZERO @ ;
+: DATA-SPAN-BYTES ( -- n ) DATA-SPAN @ ;
+: DATA-CAPACITY-BYTES ( -- n ) DATA-SIZE ;
 : PAD-BYTES ( -- n ) BK-PAD @ ;
 : OTHER-BYTES ( -- n ) BK-OTHER ;
 
