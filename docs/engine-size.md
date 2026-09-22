@@ -22,7 +22,7 @@ elf/header	64	0.0
 elf/program-headers	224	0.0
 elf/dynamic-metadata	189	0.0
 elf/header-pad	3619	0.0
-engine/code	128956	3.3
+engine/code	129004	3.3
 engine/primitive-names	184	0.0
 engine/primitive-count	8	0.0
 engine/primitive-records	10080	0.2
@@ -35,14 +35,14 @@ aot/name-pool	87252	2.2
 aot/data-sites	76940	2.0
 aot/address-cells	268256	7.0
 aot/data-cell-bitmap	130792	3.4
-aot/data-cell-values	842620	22.1
+aot/data-cell-values	842532	22.1
 aot/code-sites	36	0.0
 aot/named-code-sites	0	0.0
 aot/code-spans	67568	1.7
 aot/boot-run-entries	4	0.0
 aot/protected-wordlists	676	0.0
 aot/checker-sidecar	0	0.0
-image/text-pad	47168	1.2
+image/text-pad	47208	1.2
 container/rw-segment	192	0.0
 total	3801280	100.0
 
@@ -131,8 +131,8 @@ reachability from the engine-entry roots
     674856	564
     561976	552
 
-captured DATA heap: 8371104 bytes of span, 303932 present cells in 130792 bitmap bytes, 973411 bytes of image
-  owners 963, unowned value bytes 52273, unowned cells 8573
+captured DATA heap: 8371104 bytes of span, 303921 present cells in 130792 bitmap bytes, 973324 bytes of image
+  owners 963, unowned value bytes 52186, unowned cells 8562
   owner	offset	extent	cells	bytes	image cost
   DONE	4170296	4200808	252542	431665	497296
   SYM-STR-BOOT	1817328	393216	31148	280329	286473
