@@ -728,6 +728,10 @@ SUITE compiler-native-code-span
    test/compiler/native-code-span.f
 ;SUITE
 
+SUITE compiler-aot-nested-body
+   test/compiler/aot-nested-body.f
+;SUITE
+
 SUITE compiler-native-quot-scope
    test/compiler/native-quot-scope.f
 ;SUITE

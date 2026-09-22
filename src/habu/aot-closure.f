@@ -993,6 +993,67 @@ variable BODY-END
 
 : XT-CELL-ROOTS ( -- )  XTC-N @ 0 ?do i XT-CELL-ROOT loop ;
 
+\ A NESTED BODY IS CARRIED ONCE, WHICH IS WHAT MAKES THE MEMBERS DISJOINT. No two
+\ members share a byte, so ONE member answers for an address and aot-lib.f
+\ OLD>NEW maps a target by containment alone. Two anonymous bodies of ONE record
+\ are what would break that under tier 1: the lower one runs to the record's end
+\ (ADD-BODY-CLO above) and so HOLDS the higher one's code, and both are members
+\ when two declared xt cells name them. This pass drops the contained one. The
+\ cell that named it resolves through the container at its own offset into it,
+\ which is a real instruction in the copy COPY-COMPACT-BLOB emits for the
+\ container - the same bytes the dropped copy would have held. Keeping both put
+\ that code in the image twice and left the inner cell's row pointing into
+\ whichever copy the walk reached first, which is the discovery order and not a
+\ decision. Dropping the CONTAINER is never the answer: the code between the two
+\ bodies would be missing from the image altogether.
+\ WHAT THE PASS VISITS IS BOUNDED, because the link is linear in the closure's
+\ size. A body is added by XT-CELL-ROOT alone - before the walk, at most one row
+\ per declared xt cell (the capacity comment below) - so a contained body is one
+\ of the rows 1..XTC-N, row 0 being MAIN's record, and dropping a row only moves
+\ rows down. Its container NAMES THE SAME RECORD, whether it is that record's own
+\ member or a sibling body of it, because a body and a record both arrive with
+\ the record the address resolved through (ADD-BODY-CLO, ADD-REC-CLO). One scan
+\ of the closure per candidate row is therefore enough: O(XTC-N x NCLO), never
+\ quadratic in NCLO.
+\ A PARTIAL OVERLAP CANNOT ARISE, so containment is the whole rule: BODY-END-SCAN
+\ ends a body at the smallest recorded chain value above it INSIDE its record, so
+\ two bodies of one record are disjoint or share their end; a record contains its
+\ own bodies; and a stripped span names a word the image ships no record for.
+\ ONE RECORD IS CONTAINED IN ANOTHER, and no linkable closure holds both: a
+\ `;does` companion runs from its clause to its emission's end (measured: a
+\ `create , does>` definer's record is [26247860,26247960) and its companion's
+\ [26247936,26247960)), and reaching the definer means calling `create`, which
+\ the link refuses - an entry calling such a definer dies exit 70 "stripped AOT
+\ unsupported word 'create' called by ...", while an entry reaching only the
+\ created word carries the companion alone. Any overlap this pass leaves is
+\ therefore a defect in the table rather than a shape to compact away, and
+\ aot-lib.f MEMBER-ORDER refuses it by name.
+variable CLO-NI  variable CLO-NJ  variable CLO-NK   \ the candidate row, the scan, the shift
+: CLO-INSIDE? ( n n -- bool ) {: b:n c:n :}         \ row b's extent inside row c's?
+   b c = IF false EXIT THEN
+   b CLO-REC@ c CLO-REC@ = IF
+      b CLO-AT c CLO-AT >=
+      b CLO-AT b CLO-BYTES +  c CLO-AT c CLO-BYTES +  <=  and
+   ELSE false THEN ;
+: CLO-CONTAINED? ( n -- bool ) {: b:n :}            \ ... inside any other member's
+   0 CLO-NJ !
+   BEGIN CLO-NJ @ NCLO @ < WHILE
+      b CLO-NJ @ CLO-INSIDE? IF true EXIT THEN
+      CLO-NJ @ 1+ CLO-NJ ! REPEAT  false ;
+: DROP-CLO-ROW ( n -- ) {: b:n :}                   \ remove row b, compacting the columns
+   b CLO-NK !
+   BEGIN CLO-NK @ 1+ NCLO @ < WHILE
+      CLO-NK @ 1+ CLO-AT     CLO-NK @ CLO !
+      CLO-NK @ 1+ CLO-BYTES  CLO-NK @ CLO-LEN !
+      CLO-NK @ 1+ CLO-REC@   CLO-NK @ CLO-REC !
+      CLO-NK @ 1+ CLO-NK ! REPEAT
+   NCLO @ 1- NCLO ! ;
+: DROP-NESTED-CLO ( -- )
+   1 CLO-NI !
+   BEGIN CLO-NI @ NCLO @ <  CLO-NI @ XTC-N @ <=  and WHILE
+      CLO-NI @ CLO-CONTAINED? IF CLO-NI @ DROP-CLO-ROW ELSE CLO-NI @ 1+ CLO-NI ! THEN
+   REPEAT ;
+
 \ THE CAPACITY IS A BOUND THE LINKER ALREADY KNOWS, which is why the tables can
 \ be allocated per program. A member IS its entry (ADD-CLO dedups on it), and
 \ every entry the walk can offer is one of three: a dictionary record's code
@@ -1037,7 +1098,8 @@ variable BODY-END
 : CLOSURE  CLO-CAPACITY CLO-TABLES
    0 NCLO !  FINDMAIN dup 0= IF drop NO-ENTRY-DIE THEN  dup ROOTREC !  ADD-REC-CLO
    XT-CELL-ROOTS
-   0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ SCAN-MEMBER  WI @ 1+ WI ! REPEAT ;
+   0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ SCAN-MEMBER  WI @ 1+ WI ! REPEAT
+   DROP-NESTED-CLO ;
 
 ;using
 ;package
