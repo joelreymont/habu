@@ -1,4 +1,18 @@
 \ native-tail.f - production tail calls with live names and wide results.
+\
+\ THE TIER IS THIS FILE'S OWN PRECONDITION. A tail call is lowered by the
+\ optimizing compiler, so every shape row below - the branch out, the absent
+\ trailing return, the call count - is a tier-1 fact. At the default tier the
+\ same bodies keep their last call and their return, and fourteen assertions
+\ fail (measured: SHAPE-CASE and QUOT-CASE, `expected 2 got 3` on NTL-LEN's
+\ calls). The gate's adapter prepends test/compiler/aot-mode.f to every
+\ `test/compiler/native-*.f` row (test/gate-stdlib-lib.f SUITE-AOT?), which is
+\ why the suite was green under test/run.f and red on its own; the tier is a
+\ property of the code under test, not of the runner, so the file selects it
+\ and `bin/hb --load test/compiler/native-tail.f` measures the same code.
+\ Only what is compiled after this line belongs to the tier, so it stands
+\ before the requires, exactly where the prepended load put it.
+1 set-tier
 
 require lib/errors.f
 require lib/string.f
