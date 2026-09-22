@@ -50,6 +50,7 @@ uses any of them starts the loop before its first wait.
 | --- | --- | --- |
 | `AIO:LOOP-START` | `( -- )` | never; a second start is `E-AIO-STATE` |
 | `AIO:LOOP-STOP` | `( -- )` | until the loop task has ended |
+| `AIO:LOOP-RUNNING?` | `( -- bool )` | never |
 | `AIO:READABLE` | `( -- n )` | never; `POLLIN` |
 | `AIO:WRITABLE` | `( -- n )` | never; `POLLOUT` |
 | `AIO:POLL-ADD` | `( fd n ms -- AIO:ticket )` | never; `ms` -1 for no deadline |

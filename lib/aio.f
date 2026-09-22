@@ -947,6 +947,12 @@ public
    RING-UNMAP
    0 RING-LIVE ! ;
 
+\ True between a LOOP-START that returned and the LOOP-STOP that gives the ring
+\ back - the same state every submission below checks, so a caller can refuse by
+\ name instead of catching E-AIO-STATE from the first wait it makes.
+: LOOP-RUNNING? ( -- bool )
+   RING-LIVE @ 0 <> ;
+
 \ Waits for a descriptor to carry one of the events in the mask. ms is a
 \ deadline in milliseconds, linked to the poll as an IORING_OP_LINK_TIMEOUT, or
 \ -1 for no deadline. A submission with no loop running is E-AIO-STATE; no free
