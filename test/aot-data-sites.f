@@ -17,6 +17,13 @@ package AOT-CAPTURE
 public
 : SITE-TEST-DATA+ ( n -- ) ACAP-ADD-DSITE ;
 : SITE-TEST-CODE+ ( n -- ) ACAP-ADD-CSITE ;
+: SITE-TEST-NORMALIZE ( -- ) ACAP-NORMALIZE-DSITES ;
+: SITE-TEST-HELD? ( n -- bool ) ACAP-DSITE-HELD? ;
+\ ACAP-DEFER-SITE's last line, over the two words it composes. The word itself
+\ takes a live dictionary record and reads the defer trailer at its body, which a
+\ blob this fixture builds cannot stand in for; what is pinned here is the guard.
+: SITE-TEST-DEFER+ ( n -- ) {: site:n :}
+   site ACAP-DSITE-HELD? 0= if site ACAP-ADD-DSITE then ;
 ;package
 
 package AOT-FILE
@@ -119,6 +126,73 @@ create KEY 32 allot
    s" the section budget admits a full code band" T-LABEL
    AOT-SECTION-CAP AOT-FILE:SITE-TEST-BAND-BYTES >= TTRUE ;
 
+\ --- the window-relative DATA coordinate --------------------------------------
+\ ACAP-NORMALIZE-DSITES rewrites every listed DATA site into the coordinate the
+\ seed restores: stored = value - d0 + (d0 and 7), and the capture base is left
+\ holding that residue alone. The restore side is EM-AOT-RELOC-DATA in
+\ src/habu/habu2.f: it advances the seeded DP to the next address carrying the
+\ capture base's own residue and adds one delta to every site, so
+\ restored = stored + delta with delta a multiple of 8 - which is what keeps each
+\ captured cell as aligned as it was captured. Both site kinds and all eight
+\ residues are fed known values here, rather than re-derived from live memory as
+\ test/aot-artifact-rows.f does.
+$1000 constant NORM-BASE      \ 8-aligned, so d0's residue is exactly the one added
+3 constant NORM-CELLS
+48 constant NORM-CHAIN-OFF    \ above the cells, 4-byte aligned, 16 bytes wide
+3 constant NORM-CHAIN-K       \ the chain carries d0 + 8 * this
+: NORM-CELL-OFF ( n -- n ) 8 * 16 + ;
+
+\ Cell k holds d0 + 8k (k = 0 included: a value AT the base), and the chain holds
+\ d0 + 8 * NORM-CHAIN-K, so every site is a whole number of cells above the base.
+\ A cell site carries AOT-DSITE-CELL, a chain site does not - the flag the DATA
+\ sweep gives each kind (ACAP-SCAN-DSITES, ACAP-DEFER-SITE).
+: NORM-SITES ( n -- ) {: r:n :}
+   CLEAR-COUNTS
+   NORM-BASE r + AOT-DATA-D0 !  64 AOT-DATA-SIZE !
+   NORM-CELLS 0 ?do
+      NORM-BASE r + i 8 * +  AOT-BLOB-BUF@ i NORM-CELL-OFF + CELL-VIEW !
+      i NORM-CELL-OFF AOT-DSITE-CELL or AOT-CAPTURE:SITE-TEST-DATA+
+   loop
+   AOT-BLOB-BUF@ NORM-CHAIN-OFF + {: p:ptr :}
+   $D2800009 p U32!        $F2A00009 p 4 + U32!
+   $F2C00009 p 8 + U32!    $F2E00009 p 12 + U32!
+   p NORM-BASE r + NORM-CHAIN-K 8 * + SNAP-RELOC:SET-CHAIN
+   NORM-CHAIN-OFF AOT-CAPTURE:SITE-TEST-DATA+ ;
+
+: NORM-SHIFTED ( n -- ) {: r:n :}
+   s" cell site: stored = value - d0 + (d0 and 7)" T-LABEL
+   NORM-CELLS 0 ?do
+      AOT-BLOB-BUF@ i NORM-CELL-OFF + CELL-VIEW @  i 8 * r +  T=
+   loop
+   s" chain site: the same coordinate, re-encoded into the chain" T-LABEL
+   AOT-BLOB-BUF@ NORM-CHAIN-OFF + SNAP-RELOC:CHAINV  NORM-CHAIN-K 8 * r +  T=
+   s" the capture base keeps its 8-residue, so the seed's delta stays a multiple of 8" T-LABEL
+   AOT-DATA-D0 @ r T= ;
+
+: ?NORMALIZE ( -- )
+   8 0 ?do  i NORM-SITES  AOT-CAPTURE:SITE-TEST-NORMALIZE  i NORM-SHIFTED  loop ;
+
+\ A deferred word's trailer is one DATA address reached once per alias, and
+\ ACAP-NORMALIZE-DSITES shifts every row it is given - so the second sighting
+\ must not add a row. A row is the offset AND its kind bit, so a listed cell's
+\ offset asked as the other kind is not held.
+: ?HELD-DUPLICATE ( -- )
+   5 NORM-SITES
+   0 NORM-CELL-OFF AOT-DSITE-CELL or {: site:n :}
+   s" a listed cell site is held" T-LABEL
+   site AOT-CAPTURE:SITE-TEST-HELD? TTRUE
+   s" an unlisted offset is not held" T-LABEL
+   NORM-CELLS NORM-CELL-OFF AOT-DSITE-CELL or AOT-CAPTURE:SITE-TEST-HELD? TFALSE
+   s" the kind bit belongs to the row" T-LABEL
+   0 NORM-CELL-OFF AOT-CAPTURE:SITE-TEST-HELD? TFALSE
+   AOT-DSITE-N @ {: rows:n :}
+   site AOT-CAPTURE:SITE-TEST-DEFER+
+   s" an aliased trailer is listed once" T-LABEL
+   AOT-DSITE-N @ rows T=
+   AOT-CAPTURE:SITE-TEST-NORMALIZE
+   5 NORM-SHIFTED                   \ ... and is therefore shifted once, not twice
+   RELEASE ;
+
 : TRANSFER ( AOT-OWNED:capture -- )
    RELEASE
    dup AOT-FILE:IMPORT CHECK
@@ -192,6 +266,10 @@ create KEY 32 allot
    GAP
    AOT-DSITE-MAX AOT-DSITE-RESERVE CHECK
    DSITE-STORAGE-RELEASE
+   \ Last, because both build their own site list over the capture state the
+   \ transfers above read.
+   ?NORMALIZE
+   ?HELD-DUPLICATE
    T-REPORT
    s" aot-data-sites: ok" type cr ;
 
