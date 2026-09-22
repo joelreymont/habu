@@ -528,15 +528,38 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    s" EMIT-WINDOW-OVER"   s" icode: code buffer overflow" TEST-DIAG
    s" EMIT-WINDOW-PARKED" s" icode: code buffer overflow" TEST-DIAG ;
 
+\ A reach refusal names the site, so the whole message is held here, both paths
+\ of each kind, exactly as the build log would show it. Every number is one the
+\ fixture above constructs: the site and target are ASM-CP and the label's bind
+\ position in bytes, delta is target - site, and the limit is the field's own
+\ exclusive bound (REL26-HI and REL19-HI in words, ADR-HI already in bytes).
+\ The forward cases refuse in the deferred patch, where the site is the fixup's
+\ recorded word and the target is the bind; the backward cases refuse at the
+\ instruction, where the site is ASM-CP and the target is the bound label.
 : TEST-REACH-DIAG ( -- )
-   s" EMIT-REL19-FAR-FWD"  s" icode: cond branch out of reach" TEST-DIAG
-   s" EMIT-REL19-FAR-BACK" s" icode: cond branch out of reach" TEST-DIAG
-   s" EMIT-REL26-FAR-FWD"  s" icode: branch out of reach" TEST-DIAG
-   s" EMIT-REL26-FAR-BACK" s" icode: branch out of reach" TEST-DIAG
-   s" EMIT-ADR-FAR-FWD"    s" icode: adr out of reach" TEST-DIAG
-   s" EMIT-ADR-FAR-BACK"   s" icode: adr out of reach" TEST-DIAG
+   s" EMIT-REL19-FAR-FWD"  s" icode: cond branch out of reach site=0 target=1048576 delta=1048576 limit=1048576" TEST-DIAG
+   s" EMIT-REL19-FAR-BACK" s" icode: cond branch out of reach site=1048580 target=0 delta=-1048580 limit=1048576" TEST-DIAG
+   s" EMIT-REL26-FAR-FWD"  s" icode: branch out of reach site=0 target=134217728 delta=134217728 limit=134217728" TEST-DIAG
+   s" EMIT-REL26-FAR-BACK" s" icode: branch out of reach site=0 target=-134217732 delta=-134217732 limit=134217728" TEST-DIAG
+   s" EMIT-ADR-FAR-FWD"    s" icode: adr out of reach site=0 target=1048576 delta=1048576 limit=1048576" TEST-DIAG
+   s" EMIT-ADR-FAR-BACK"   s" icode: adr out of reach site=1048580 target=0 delta=-1048580 limit=1048576" TEST-DIAG
    s" EMIT-LOFF-OVER-FWD"  s" icode: label offset out of reach" TEST-DIAG
    s" EMIT-LOFF-OVER-BACK" s" icode: label offset out of reach" TEST-DIAG ;
+
+\ Those numbers go through icode.f's own signed-decimal writer, which exists
+\ because the file loads before lib/. The reach fixtures only ever hand it
+\ window-sized numbers, so its one hard case is held here instead: MIN-N has no
+\ positive magnitude, so it renders from -(v+1) with a carry, and a carry that
+\ failed to clear or propagate would show on -1, -10 and the two bounds.
+: TEST-REACH-NUMBER$ ( -- )
+   0 IDEC$ s" 0" T$=
+   7 IDEC$ s" 7" T$=
+   -1 IDEC$ s" -1" T$=
+   -10 IDEC$ s" -10" T$=
+   ADR-HI IDEC$ s" 1048576" T$=
+   0 ADR-HI - IDEC$ s" -1048576" T$=
+   STR-MAX-I64 IDEC$ s" 9223372036854775807" T$=
+   STR-MIN-I64 IDEC$ s" -9223372036854775808" T$= ;
 
 : MAIN ( -- )
    T-RESET
@@ -555,6 +578,7 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    TEST-CORRUPT
    TEST-BADKIND
    TEST-REACH-DIAG
+   TEST-REACH-NUMBER$
    TEST-WINDOW-DERIVED
    TEST-WINDOW-ADMITS
    TEST-WINDOW-REFUSES

@@ -316,11 +316,114 @@ variable FX-NEW
 : REL19-OK? ( n -- bool )  dup REL19-LO >=  swap REL19-HI <  and ;   \ cond/CBZ/CBNZ word delta in reach?
 : ADR-OK?   ( n -- bool )  dup ADR-LO   >=  swap ADR-HI   <  and ;   \ ADR byte delta in reach?
 
-: ?REL26 ( n -- n )  dup REL26-OK? if exit then  s" icode: branch out of reach" ICODE-EXIT-RC die ;
+\ ---- what a reach refusal names ----------------------------------------------
+\ A refusal that prints only its class costs a bisect of the whole assembly to
+\ place: the standalone tender build died `icode: adr out of reach` after fifty
+\ seconds of assembling with nothing else on stderr (dot
+\ habu-name-the-site-03a33e54). Each reach refusal below therefore carries four
+\ numbers after its existing text - the emitting site's byte offset from the
+\ code base, the byte offset it has to reach, the signed byte distance between
+\ them, and the field's exclusive bound - as ONE message through the same die
+\ and the same exit code. Both paths that can refuse set the first two
+\ immediately before the check, in this file's variable style: the immediate
+\ backward sites in BR-EMIT and ADR, from ASM-CP and the bound label's LBLP
+\ entry, the deferred ones in FX-PATCH from the fixup's FXS slot and the label
+\ being bound.
+variable I-RSITE                    \ byte offset of the instruction under assembly
+variable I-RTARGET                  \ byte offset it has to reach
+variable I-RDELTA                   \ signed byte distance it would need
+variable I-RLIMIT                   \ the field's exclusive bound, in bytes
 
-: ?REL19 ( n -- n )  dup REL19-OK? if exit then  s" icode: cond branch out of reach" ICODE-EXIT-RC die ;
+\ THE NUMBER WRITER IS THIS FILE'S OWN. icode.f is the fifth file of the boot
+\ prefix (tools/bootstrap.sh), so lib/fmt.f's renderers do not exist yet and a
+\ refusal may not wait for them: the conversion is here, private, and built from
+\ nothing but arithmetic and this file's own byte cursor.
+$14 constant IDEC-CAP               \ -9223372036854775808: nineteen digits and a sign
+$30 constant IDEC-ZERO
+$2D constant IDEC-MINUS
+create IDEC-BUF IDEC-CAP allot
+variable IDEC-V                     \ magnitude left to render, never negative
+variable IDEC-CY                    \ 1 while a negative value's borrowed +1 is pending
+variable IDEC-NEG
+variable IDEC-D
+variable IDEC-N                     \ fill cursor: digits land backwards from the end
 
-: ?ADR ( n -- n )  dup ADR-OK? if exit then  s" icode: adr out of reach" ICODE-EXIT-RC die ;
+: IDEC-PUT ( n -- )                 \ one character, backwards from the buffer's end
+   IDEC-N @ 1 - IDEC-N !
+   IDEC-BUF IDEC-N @ CODE-BYTE+ c! ;
+
+\ MIN-N has no positive twin, so a negative v renders from -(v+1) and a pending
+\ +1: each digit is that value's digit plus the carry, and the carry clears at
+\ the first digit below nine. `/` and `mod` then see non-negative values only,
+\ which is what makes the recovery seed's Forth and the native engine render a
+\ number alike whatever they do with a negative dividend.
+: IDEC-DIGIT ( -- )
+   IDEC-V @ 10 mod IDEC-CY @ + IDEC-D !
+   IDEC-D @ 10 = IF 0 IDEC-D ! ELSE 0 IDEC-CY ! THEN
+   IDEC-D @ IDEC-ZERO + IDEC-PUT
+   IDEC-V @ 10 / IDEC-V ! ;
+
+: IDEC-SET ( n -- )
+   IDEC-V !  IDEC-CAP IDEC-N !
+   IDEC-V @ 0 < IF  0 IDEC-V @ 1 + -  IDEC-V !  1 IDEC-CY !  1 IDEC-NEG !
+   ELSE  0 IDEC-CY !  0 IDEC-NEG !  THEN ;
+
+: IDEC$ ( n -- ptr u8 n )           \ signed decimal of n, in the buffer above
+   IDEC-SET
+   BEGIN IDEC-DIGIT  IDEC-V @ 0 = IDEC-CY @ 0 = and UNTIL
+   IDEC-NEG @ 0 <> IF IDEC-MINUS IDEC-PUT THEN
+   IDEC-BUF IDEC-N @ CODE-BYTE+  IDEC-CAP IDEC-N @ - ;
+
+\ The line is composed before it is written because `die` takes one span, and a
+\ refusal split into several writes would interleave with whatever else holds
+\ the build's stderr. The cap is derived from the parts, and outgrowing it is a
+\ refusal of its own rather than a truncated line (src/habu/aot-file.f MSG+
+\ answers the same question the same way).
+$20 constant IMSG-PREFIX-CAP        \ `icode: cond branch out of reach` is the longest
+$8 constant IMSG-LABEL-CAP          \ ` target=` is the longest field label
+4 constant IMSG-FIELDS
+IMSG-PREFIX-CAP IMSG-FIELDS IMSG-LABEL-CAP IDEC-CAP + * + constant IMSG-CAP
+create IMSG-BUF IMSG-CAP allot
+variable IMSG-N
+PTR-VARIABLE IMSG-A
+variable IMSG-U
+variable IMSG-V
+
+: IMSG-A@ ( -- ptr u8 ) IMSG-A @ ;
+
+: IMSG+ ( ptr u8 n -- )
+   IMSG-U ! IMSG-A !
+   IMSG-N @ IMSG-U @ + IMSG-CAP > if
+      s" icode: a reach refusal outgrew its own message buffer" ICODE-EXIT-RC die
+   then
+   0 BEGIN dup IMSG-U @ < WHILE
+      dup IMSG-A@ swap CODE-BYTE+ c@  IMSG-BUF IMSG-N @ CODE-BYTE+ c!
+      IMSG-N @ 1 + IMSG-N !
+      1 +
+   REPEAT drop ;
+
+: IMSG-FIELD ( ptr u8 n n -- )      \ one field label and its number
+   IMSG-V !  IMSG+  IMSG-V @ IDEC$ IMSG+ ;
+
+: REACH-DIE ( ptr u8 n -- )         \ the class, its four numbers, this file's exit code
+   0 IMSG-N !  IMSG+
+   s"  site="   I-RSITE   @ IMSG-FIELD
+   s"  target=" I-RTARGET @ IMSG-FIELD
+   s"  delta="  I-RDELTA  @ IMSG-FIELD
+   s"  limit="  I-RLIMIT  @ IMSG-FIELD
+   IMSG-BUF IMSG-N @ ICODE-EXIT-RC die ;
+
+: ?REL26 ( n -- n )  dup REL26-OK? if exit then
+   dup $4 * I-RDELTA !  REL26-HI $4 * I-RLIMIT !
+   s" icode: branch out of reach" REACH-DIE ;
+
+: ?REL19 ( n -- n )  dup REL19-OK? if exit then
+   dup $4 * I-RDELTA !  REL19-HI $4 * I-RLIMIT !
+   s" icode: cond branch out of reach" REACH-DIE ;
+
+: ?ADR ( n -- n )  dup ADR-OK? if exit then
+   dup I-RDELTA !  ADR-HI I-RLIMIT !
+   s" icode: adr out of reach" REACH-DIE ;
 \ label-offset bound: LOFF, below carries a label's byte offset from the code
 \ base — a NON-NEGATIVE absolute position, not a signed delta around a site — in
 \ the two 16-bit immediate lanes of a movz/movk pair. So its bound is that pair's
@@ -344,7 +447,8 @@ variable BBASE  variable BKIND
    LABEL>N I-LBL !                    \ BBASE/BKIND set; emits + records if fwd
    I-LBL @ cells LBLP + @  dup 0 < IF              \ pos on stack (0< isn't a standalone prim)
      drop  ASM-CP @ I-LBL @ >LABEL BKIND @ FX+  BBASE @ EMITW
-   ELSE  ASM-CP @ -  BKIND @ FX-B26 = IF ?REL26 D26 ELSE ?REL19 D19 THEN  BBASE @ or EMITW  THEN ;
+   ELSE  dup $4 * I-RTARGET !  ASM-CP @ $4 * I-RSITE !          \ named before the check
+     ASM-CP @ -  BKIND @ FX-B26 = IF ?REL26 D26 ELSE ?REL19 D19 THEN  BBASE @ or EMITW  THEN ;
 
 \ The base word of a branch is the asm.fs encoder applied to a zero delta —
 \ the same shape ADR, below already uses. Going through the encoder keeps one
@@ -370,7 +474,8 @@ variable BBASE  variable BKIND
    LABEL>N I-LBL ! I-RD !
    I-LBL @ cells LBLP + @ dup 0 < IF
      drop  ASM-CP @ I-LBL @ >LABEL FX-ADR FX+  I-RD @ 0 ENC-ADR EMITW
-   ELSE  ASM-CP @ - $4 *  ?ADR  I-RD @ swap ENC-ADR EMITW  THEN ;
+   ELSE  dup $4 * I-RTARGET !  ASM-CP @ $4 * I-RSITE !          \ named before the check
+     ASM-CP @ - $4 *  ?ADR  I-RD @ swap ENC-ADR EMITW  THEN ;
 
 \ movz rd, #lo16 / movk rd, #hi16, lsl 16: rd = the label's byte offset from the
 \ code base (FX-LOFF fixup when forward). The caller adds the base the running
@@ -416,6 +521,8 @@ variable LBI
 
 : FX-PATCH ( -- )
    LBI @ cells FXK + @ FX-LOFF = if FX-LOFF-PATCH exit then
+   LBI @ cells FXS + @ $4 * I-RSITE !            \ the deferred site, named before the check
+   ASM-CP @ $4 * I-RTARGET !                     \ the label this bind is placing
    ASM-CP @ LBI @ cells FXS + @ -                \ delta = here - site (words)
    LBI @ cells FXK + @ FX-ENC                    \ delta -> patch bits by validated kind (or die)
    LBI @ cells FXS + @ PATCH ;
