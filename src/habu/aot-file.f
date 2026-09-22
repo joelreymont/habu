@@ -81,6 +81,15 @@
 \ version 9 artifact has records where a version 10 reader expects none and no
 \ spans at all, so it is refused by name on its own version rather than read.
 \
+\ WHAT VERSION 12 CHANGES, with no section moved at all. A record's wid field and
+\ a package row's two wid cells stopped being the capturing engine's own numbers
+\ and became offsets from their window's first wordlist, one-based
+\ (src/habu/aot-decl.f WID-REL-BASE, src/habu/aot-capture.f ACAP-REL-WID). Same
+\ sections, same widths, same count - and no reader can tell the two apart by
+\ looking, which is exactly why the version says it. A version 11 artifact merged
+\ by this reader would have every wid rebased as though the building host's base
+\ were 1, and the records would name wordlists nothing created.
+\
 \ THREE OF THE SECTIONS ARE THE CHECKER'S, not the seed's. The signature rows and
 \ the strings they name are src/core/checker.f's signature pool, carried verbatim
 \ so nothing is re-encoded on the way through; the type registry is one opaque
@@ -141,7 +150,7 @@ using AOT-BUF
 using AOT-WINDOW
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-11 constant VERSION  \ the window's DATA runs as (gap, length) varint rows
+12 constant VERSION  \ record and package WIDs as window offsets, one-based
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -977,7 +986,7 @@ variable H-XTSITE variable H-BOOTRUN variable H-PWIN   variable H-SPAN
 variable H-CSPAN                     \ the host's code-span rows
 variable H-SIG    variable H-SIGSTR  variable H-REG
 variable H-CELLS  variable H-BMLEN   variable H-CEND    variable H-VALS
-variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
+variable A-D0     variable A-B0      variable A-SPAN
 variable A-DSPAN                     \ the artifact's own window DATA span
 variable H-DATA-R                    \ where the artifact's window begins inside the merged one
 
@@ -1081,10 +1090,12 @@ DYNAMIC-BUFFER HOST-REG n
 : SEC-AT ( n -- ptr u8 ) {: k:n :} k SEC-PTR k BASE@ + ;
 : SEC-ROWS ( n -- n ) {: k:n :} k ROW-LEN@ k SEC-ROW / ;
 
+\ The scalar at 16 is the artifact window's own first wid, which READ restores
+\ into the live capture's base. A MERGE has no use for it: the rows it moves
+\ carry offsets, and the offsets move by the host's span alone (REWID).
 : SCALARS@ ( -- )
    SCAL U64@ A-D0 !
    SCAL 8 + U64@ A-B0 !
-   SCAL 16 + U64@ A-W0 !
    SCAL 24 + U64@ A-SPAN !
    SCAL 32 + U64@ dup ?SPAN A-DSPAN ! ;
 
@@ -1140,20 +1151,23 @@ DYNAMIC-BUFFER HOST-REG n
 : NAME. ( n -- ) {: noff:n :}
    AOT-NAMES-BUF@ noff 1+ +  AOT-NAMES-BUF@ noff + c@  type ;
 
-\ A captured wid is a window coordinate: 0 is the global wordlist and means the
-\ same thing in every process, and an in-window id continues the host's window
-\ instead of restarting it. An id the artifact's own window did not create has no
-\ counterpart here, so it is refused by name rather than rebased into whatever
+\ A captured wid is a window offset (src/habu/aot-decl.f WID-REL-BASE): 0 is the
+\ global wordlist and means the same thing in every process, and every other one
+\ counts from its own window's first wordlist. The merge appends the artifact's
+\ wordlists after the host's, so its offsets move up by the host's span and by
+\ nothing else - neither window's base is in the arithmetic, because neither
+\ window put one in its rows. An offset the artifact's own span does not hold has
+\ no counterpart here, so it is refused by name rather than rebased into whatever
 \ this host keeps at that number.
 : REWID ( n n -- n ) {: noff:n w:n :}
    w 0= if 0 exit then
-   w A-W0 @ >= w A-W0 @ A-SPAN @ + < and if
-      AOT-WID-W0 @ H-SPAN @ + w + A-W0 @ - exit
+   w WID-REL-BASE >= w A-SPAN @ WID-REL-BASE + < and if
+      H-SPAN @ w + exit
    then
    s" aot-file: merged record " type noff NAME.
-   s"  names wordlist " type w .
+   s"  names wordlist offset " type w .
    s" , which its own window did not create; that window allocated [" type
-   A-W0 @ .  s" ," type A-W0 @ A-SPAN @ + .  s" )" type cr
+   WID-REL-BASE .  s" ," type A-SPAN @ WID-REL-BASE + .  s" )" type cr
    s" aot-file: a merged record names a wid its window did not create" DIE
    0 ;
 
@@ -1177,10 +1191,13 @@ DYNAMIC-BUFFER HOST-REG n
       then
    loop ;
 
-\ A call site's third field is a SCOPE, and only one of its four kinds moves: a
-\ window coordinate continues the host's window, exactly as a record's wid does.
-\ A layout constant and the QUALIFIED marker are the same number in every engine
-\ and in every merge, so REWID's own pass-through is what leaves them alone.
+\ A call site's third field is a SCOPE, and none of the kinds a capture can write
+\ moves: a layout constant and the QUALIFIED marker are the same number in every
+\ engine and in every merge. The kind that would move - a wordlist the capture's
+\ own window created - has no form in this format, because the layout constants
+\ occupy the small numbers a window offset would spell; the capture refuses to
+\ write one (src/habu/aot-capture.f ACAP-SITE-SCOPE) and a file that carries one
+\ anyway is refused here rather than rebased as though it were a record's offset.
 : SCOPE-FIXED? ( n -- bool ) {: w:n :}      \ the same number in every engine, so no merge moves it
    w WID-QUAL = if 0 0= exit then
    w FIRST-DYNAMIC-WID < ;
@@ -1190,7 +1207,12 @@ DYNAMIC-BUFFER HOST-REG n
    S-SITES SEC-ROWS 0 ?do
       p i SITE-ROW * + {: r:ptr :}
       r 8 + U32@ {: w:n :}
-      w SCOPE-FIXED? 0= if  r 4 + U32@ w REWID  r 8 + U32!  then
+      w SCOPE-FIXED? 0= if
+         s" aot-file: merged call site " type r 4 + U32@ NAME.
+         s"  carries scope " type w .
+         s" , which no capture writes; a site scope holds no window coordinate" type cr
+         s" aot-file: a merged call site names a wordlist the format cannot move" DIE
+      then
    loop ;
 
 

@@ -431,10 +431,14 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 \ name is last and needs no quoting.
 \    rec    capture-order index, 0-based and dense
 \    named  1 when the image kept this name, 0 when it stripped it
-\    start  code offset in the payload blob, build-time
+\    start  code offset in the payload blob, build-time - or, on a package row,
+\           the package's public wordlist as the image carries it
 \    len    raw CODE-SPAN length: bit 31 means an exact byte span; otherwise
 \           the final instruction follows the body (decode with CODE-SPAN:BYTES)
-\    wid    wordlist id, or -1 for a package row
+\           - or, on a package row, its private wordlist, 0 when it has none
+\    wid    the record's wordlist as the image carries it - its one-based offset
+\           from the window's first wordlist (src/habu/aot-decl.f WID-REL-BASE),
+\           0 for the global wordlist, or -1 for a package row
 \    name   the definition's name, as the capture saw it
 create NAMES-PATH OUTPUT-CAP allot
 variable NAMES-PATH-U

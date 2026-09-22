@@ -264,6 +264,18 @@ variable AOT-DATA-D0    variable AOT-DATA-SIZE
 \ coordinate the same way a blob offset is: only wid 0, the global wordlist, means
 \ the same thing in two processes, so the seed maps an in-window wid to
 \ T0 + (wid - W0) and refuses every other non-zero wid by name.
+\
+\ THE ROWS STORE THE OFFSET, NOT THE ID, and these two cells are the capturing
+\ process's own and do not travel. W0 is whatever the BUILDING engine had already
+\ allocated when the window opened, so a row that stored an id would carry that
+\ engine's history: measured, an engine built from a tree with one package more
+\ than its host wrote 3305 different wid bytes for the same tree. A row therefore
+\ holds `wid - W0 + WID-REL-BASE`, wid 0 holds 0, and the payload's own base cell
+\ (habu2.f AOT-WINDOW:LWIDW0) is that constant. One-based, because the window's
+\ FIRST wordlist is one records name and a zero-based offset would spell it the
+\ way the global wordlist is spelled. The protected-wordlist rows are offsets
+\ too, and zero-based: that table lists ids and has no marker to collide with.
+1 constant WID-REL-BASE
 variable AOT-WID-W0    variable AOT-WID-SPAN
 \ The window's DATA SPAN, and the offsets the seed must not take from its content.
 \ Reserving the span zeroed was right only while every byte in it was zero. It is

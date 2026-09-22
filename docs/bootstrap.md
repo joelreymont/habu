@@ -253,27 +253,51 @@ boundaries and sidecar parser without launching a build chain on every gate.
 
 Three facts decide how a change reaches the fixpoint:
 
-- **A compiler change takes two generations.** The image a build captures
-  carries layout constants from the engine that built it, so gen1 inherits the
-  building engine's layout and gen2 == gen3 is the fixpoint; `cmp gen1 gen2` is
-  not the test. Building the *unmodified* tree twice with the new compiler must
-  return the shipped engine byte for byte — the direct proof that codegen did
-  not change. A gate proves the engine it spawns: `test/gate-stdlib-lib.f`
+- **A codegen change takes two generations, and nothing else does.** gen1 is
+  compiled by the HOST's compiler, so a change to what the compiler emits first
+  reaches the code *gen1* compiles — which is gen2, making gen2 == gen3 the
+  fixpoint and `cmp gen1 gen2` the wrong test for it. A change anywhere else —
+  a capture rule, the image emitter, a library word, any source the window
+  compiles — is already in gen1, so **gen1 == gen2 is the expected result** and
+  a difference there says the change reached codegen after all. Building the
+  *unmodified* tree with the new engine must return the shipped engine byte for
+  byte either way. A gate proves the engine it spawns: `test/gate-stdlib-lib.f`
   runs `bin/hb` from the checkout by name (`HABU_UNDER_TEST` reaches the child
   as an environment variable only), so run the full gate from a tree whose own
   `bin/hb` is the new engine.
-  - *A baked declaration that mints a wordlist moves every wid the next
-    generation bakes.* A product numbers its wordlists in the window of the
-    engine that built it, so an engine built from a tree with one more
-    `STRUCTURE` than the host bakes every package and record wid one higher:
-    gen1 and gen2 differ in the wid columns alone (each package row's public
-    and private wid, each record's wid) and gen2 == gen3 still holds.
-    Measured with `require lib/prelude.f  wordlist . cr` under each engine: a
-    package costs 2, a `STRUCTURE` 1, a `TYPED-VARIABLE` 0 and a `require` of
-    already baked source 0; a tree with one extra trivial `STRUCTURE` moves
-    every wid by 2. Such a change is proved neutral through the `.names`
-    sidecar: every WORD row keeps its start and length and only the wid column
-    and the package rows move.
+  - *The image does not inherit its host's layout constants.* Every
+    address-bearing fixed slot the capture holds is translated from the host's
+    slot offset to the tree's (`tools/native-emit.f` `TRANSLATE-FIXED`, which
+    refuses anything that is not a known slot of the same kind). Measured: an
+    engine whose fixed-band offsets are 12 bytes off this tree's — 20 `MOVZ`
+    instructions and 822,565 differing bytes against the shipped engine — built
+    this tree's engine byte for byte.
+  - *A wordlist id is a window offset, so a declaration that mints one moves
+    nothing.* A record's wid field and a package row's public and private wid
+    hold `wid - W0 + 1`, the offset from the window's first wordlist
+    (`src/habu/aot-decl.f` `WID-REL-BASE`); the payload's base cell is that
+    constant, the seed adds the booting engine's own `WIDN`
+    (`src/habu/habu2.f` `AOT-WINDOW:REBASE-WID,`), and the protected-wordlist
+    rows travel as offsets too, zero-based. Measured on the change that made it
+    so: an engine built from a tree with one extra `package` — two wordlists
+    more in its window than the shipped engine has — then built the unmodified
+    tree into a byte-identical engine with a byte-identical `.names` sidecar,
+    where before that change the same experiment moved 3308 bytes (3305 of wid
+    fields, the base cell, and two DATA cells that held a wid). A wordlist
+    count still differs per tree — `require lib/prelude.f  wordlist . cr` under
+    each engine: a `package` costs 2, a `STRUCTURE` 1, a `TYPED-VARIABLE` 0 and
+    a `require` of already baked source 0 — it just no longer reaches a
+    product.
+  - *A name a pre-window build file calls comes from the HOST.*
+    `tools/native-build.f` loads its own prefix from the tree
+    (`src/habu/aot-decl.f`, `aot-capture.f`, `aot-file.f` and the rest), but
+    every engine name those files resolve is the host's: the window that
+    compiles the tree's `src/` has not opened yet. A constant added to
+    `src/habu/layout.f` and called from `aot-file.f` therefore dies in the host,
+    `E-UNDEFINED` … `ncomp: cannot compile <word>`, rc 70, one stage before the
+    engine that would carry it. Declare such a name in the build-host source
+    the build does load — `aot-decl.f` is where the payload's own constants
+    live — and the landing stays one stage.
 - **A new engine primitive that boot-prefix source calls lands in two
   stages.** The host compiles the prefix and resolves the name in its own
   dictionary, so stage 1 emits and registers the primitive with its

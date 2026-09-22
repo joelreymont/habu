@@ -5096,7 +5096,10 @@ public
 \ Rebase one captured wid in xw into the wid space of the engine being booted, or
 \ branch to `bad`. A captured wid is a WINDOW coordinate: 0 is the global
 \ wordlist, which means the same thing in every process and passes through, and
-\ every other one must lie in [W0, W0+span) and becomes WIDN + (wid - W0). WIDN is
+\ every other one is its one-based offset from the window's first wordlist
+\ (src/habu/aot-decl.f WID-REL-BASE), so subtracting the baked LWIDW0 - which is
+\ that constant and not any engine's number - gives an offset that must be below
+\ the span, and adding WIDN gives this engine's id. WIDN is
 \ read per wid because the pass advances it exactly once, after the loop, so every
 \ read in the loop answers the same number: the target's base.
 : REBASE-WID, ( n n n label -- ) {: w:n s1:n s2:n bad:label :}
@@ -5311,12 +5314,13 @@ public
       25 21 8 LDRW,                                  \ x25 = callee scope u32 (survives the lookup)
       5 WID-QUAL LIT64,  25 5 CMP,  C-EQ pqual BCOND,
       25 FIRST-DYNAMIC-WID CMPI,  C-CC pscope BCOND, \ layout constant: this number in every engine
-      6 7 AOT-WINDOW:LWIDW0 LABEL@ TADR,  6 6 0 LDR,
-      25 25 6 SUB,                                   \ window-relative
-      6 7 AOT-WINDOW:LWIDSPAN LABEL@ TADR,  6 6 0 LDR,
-      25 6 CMP,  C-CS pbad BCOND,                    \ one unsigned test refuses both sides
-      7 DATA WIDN-CELL LDR,  7 7 6 SUB,              \ x7 = T0; the records pass moved WIDN past the window
-      25 25 7 ADD,
+      \ NOTHING A CAPTURE WRITES REACHES HERE. The column cannot carry a window
+      \ coordinate while the test above reads 1 and 2 as wordlists
+      \ (OWNER-API-PRI-WID is 2), so aot-capture.f ACAP-SITE-SCOPE refuses an
+      \ in-window scope instead of baking one and aot-file.f refuses a merged
+      \ one; a column that still spells one is corrupt and is refused, never
+      \ rebased into whatever this engine keeps at that number.
+      pbad B,
    pscope LBL,
       0 9 0 ADDI,  1 10 0 ADDI,  2 25 0 ADDI,
       WLFIND:LENTRY LABEL@ BL,                       \ x11 = xt or 0, x12 = the row
@@ -10423,7 +10427,11 @@ variable CUR
    AOT-SPAN:LCOUNT LABEL@ LBL,  AOT-SPAN:N @ DCQ,
    AOT-SPAN:LROWS LABEL@ LBL,  AOT-SPAN:EMIT-ROWS
    LAOTBOOTRUN LABEL@ LBL,  AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ 1 + BYTES,   \ +1 = live 0 terminator
-   AOT-WINDOW:LWIDW0 LABEL@ LBL,  AOT-WID-W0 @ DCQ,
+   \ The base every captured wid is stored against, and it is a CONSTANT: the
+   \ rows already hold their offset from the window's first wordlist
+   \ (aot-capture.f ACAP-REL-WID), so the capturing engine's own W0 has nothing
+   \ left to say here and does not travel.
+   AOT-WINDOW:LWIDW0 LABEL@ LBL,  WID-REL-BASE DCQ,
    AOT-WINDOW:LWIDSPAN LABEL@ LBL,  AOT-WID-SPAN @ DCQ,
    AOT-WINDOW:LNPWIN LABEL@ LBL,  AOT-PWIN-N @ DCQ,
    AOT-WINDOW:LPWIN LABEL@ LBL,  AOT-WINDOW:EMIT-PWIN

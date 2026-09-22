@@ -136,7 +136,6 @@ variable XREF-FU
    NULL-PTR XREF-A !  NULL-PTR XREF-B !  0 XREF-U !  0 XREF-V !
    NULL-PTR XREF-SN !  0 XREF-SU !
    NULL-PTR XREF-FN !  0 XREF-FU ! ;
-variable XREF-WID
 variable XREF-IDX
 variable XREF-NV
 
@@ -246,22 +245,22 @@ INSTALL
 
 ;package
 
-: XREF-FIND-WL ( ptr u8 n n -- ptr n )
-   XREF-WID ! XREF-FU ! XREF-FN!
+: XREF-FIND-WL ( ptr u8 n n -- ptr n ) {: a:ptr u:n wid:n :}
+   u XREF-FU !  a XREF-FN!
    ndict@ 1-
    begin dup 0 >= while
-      dup XREF-REC XREF-WORDLIST XREF-WID @ = if
+      dup XREF-REC XREF-WORDLIST wid = if
          dup XREF-REC XREF-FN@ XREF-FU @ XREF-MATCH? if XREF-REC exit then
       then
       1-
    repeat drop
    XREF-NULL ;
 
-: XREF-FIND-WL-INDEX ( ptr u8 n n -- n )
-   XREF-WID ! XREF-FU ! XREF-FN!
+: XREF-FIND-WL-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n wid:n :}
+   u XREF-FU !  a XREF-FN!
    ndict@ 1-
    begin dup 0 >= while
-      dup XREF-REC XREF-WORDLIST XREF-WID @ = if
+      dup XREF-REC XREF-WORDLIST wid = if
          dup XREF-REC XREF-FN@ XREF-FU @ XREF-MATCH? if exit then
       then
       1-
@@ -269,7 +268,6 @@ INSTALL
    -1 ;
 
 variable XREF-QI
-variable XREF-QWID
 
 : XREF-QUAL-INDEX ( ptr u8 n -- n )
    XREF-SU ! XREF-SN!
@@ -289,15 +287,15 @@ variable XREF-QWID
    XREF-IDX ! XREF-SU ! XREF-SN!
    XREF-SN@ XREF-IDX @ XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop XREF-NULL exit then
-   XREF-START XREF-QWID !
-   XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  XREF-QWID @  XREF-FIND-WL ;
+   XREF-START {: qwid:n :}
+   XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL ;
 
 : XREF-FIND-QUALIFIED-INDEX ( ptr u8 n n -- n )
    XREF-IDX ! XREF-SU ! XREF-SN!
    XREF-SN@ XREF-IDX @ XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop -1 exit then
-   XREF-START XREF-QWID !
-   XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  XREF-QWID @  XREF-FIND-WL-INDEX ;
+   XREF-START {: qwid:n :}
+   XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL-INDEX ;
 
 : XREF-FIND ( ptr u8 n -- ptr n )
    XREF-QUAL-INDEX
@@ -407,11 +405,11 @@ TRUSTED: XREF-PATCH32 ( n ptr n -- )
    $4 XREF-REC+ -1 swap XREF-PATCH32
    drop ;
 
-: XREF-RETIRE-WL ( ptr u8 n n -- )
-   XREF-WID ! XREF-FU ! XREF-FN!
+: XREF-RETIRE-WL ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
+   u XREF-FU !  a XREF-FN!
    ndict@ 1-
    begin dup 0 >= while
-      dup XREF-REC XREF-WORDLIST XREF-WID @ = if
+      dup XREF-REC XREF-WORDLIST wid = if
          dup XREF-REC XREF-FN@ XREF-FU @ XREF-MATCH? if
             dup XREF-REC XREF-RETIRE
          then

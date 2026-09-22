@@ -229,16 +229,17 @@ create DRV-CH 1 allot
 \ Optional wid-window forges (dot habu-rebase-captured-wids-54dec421). The seed
 \ rebases every captured wid through the baked window, and refuses one the window
 \ does not contain - on either side. The capture refuses such a record at capture
-\ time, so corrupt the emitted scalar AFTER the normal writer. Raising the base
-\ puts every captured wid BELOW the window;
-\ shrinking the span puts them past its end. Both need a fixture that captures a
+\ time, so corrupt the emitted scalar AFTER the normal writer. The baked base is
+\ the constant every captured offset counts from (src/habu/aot-decl.f
+\ AOT-BUF:WID-REL-BASE), so raising it puts the first N offsets below the
+\ window; shrinking the span puts them past its end. Both need a fixture that captures a
 \ non-zero wid at all - the REPL sources define no package, so HABU_AOT_GATE
 \ supplies the package these are combined with.
 : WID-FORGE-LINE ( -- )
    s" HABU_AOT_WID_SKEW" GETENV {: v:ptr vu:n :}
    vu 0 > if
-      s" AOT-BUF:AOT-WID-W0 @ " DRV+  v vu DRV+
-      s"  + AOT-BUF:AOT-WID-W0 @ AOT-WINDOW:LWIDW0 LABEL@ PATCH-CELL" DRV-LINE
+      s" AOT-BUF:WID-REL-BASE " DRV+  v vu DRV+
+      s"  + AOT-BUF:WID-REL-BASE AOT-WINDOW:LWIDW0 LABEL@ PATCH-CELL" DRV-LINE
    then
    s" HABU_AOT_WID_SPAN" GETENV {: p:ptr pu:n :}
    pu 0 > if

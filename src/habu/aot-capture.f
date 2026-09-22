@@ -411,6 +411,35 @@ variable ACAP-NIDX-PM                                        \ pool-proof mismat
    w AOT-WID-W0 @ < if 0 0= 0= exit then
    w AOT-WID-W0 @ AOT-WID-SPAN @ + < ;
 
+\ ... and this is the form it travels in. THE WINDOW'S OWN NUMBERING IS THE ONLY
+\ ONE THE PAYLOAD CARRIES: a record ships `wid - W0 + WID-REL-BASE`, wid 0 ships
+\ as 0, and the seed adds the booting engine's WIDN back (habu2.f
+\ AOT-WINDOW:REBASE-WID,, whose base cell LWIDW0 is baked as WID-REL-BASE). The
+\ host's own W0 is a number of the building process - measured: an engine built
+\ from a tree with one more package than its host moved every wid field, 3305
+\ bytes of one image, for a difference in the HOST and none in the tree. The
+\ three fields are here: an ordinary record's [40], and a package row's [0] and
+\ [8]. ACAP-EXPAND-REC inverts this against the host's W0, because the proof it
+\ feeds compares with the host's own 48-byte record; the seed inverts it against
+\ the target's WIDN, which is the whole point of storing an offset.
+\ The protected-wordlist rows (ACAP-PWIN-CAPTURE) are relative too, and
+\ zero-based: that table is a list of ids with no marker value to collide with.
+: ACAP-REL-WID ( n -- n ) {: w:n :}
+   w 0= if 0 exit then
+   w AOT-WID-W0 @ - WID-REL-BASE + ;
+
+: ACAP-ABS-WID ( n -- n ) {: r:n :}               \ ... in the capturing host's own space
+   r 0= if 0 exit then
+   r WID-REL-BASE - AOT-WID-W0 @ + ;
+
+\ A package row's first two cells hold its public and private WID where an
+\ ordinary record holds a code span, so one predicate decides both directions.
+: ACAP-WID-FIELD ( n bool -- n ) {: w:n pkg:bool :}
+   pkg if w ACAP-REL-WID else w then ;
+
+: ACAP-ABS-WID-FIELD ( n bool -- n ) {: r:n pkg:bool :}
+   pkg if r ACAP-ABS-WID else r then ;
+
 : ACAP-?WID ( ptr u8 n -- ) {: v:ptr w:n :}
    w ACAP-WID-IN? if exit then
    s" aot-capture: window record " type
@@ -625,11 +654,31 @@ variable ACAP-P
    s" , which its window did not create and no package publishes" type cr
    s" aot-capture: call site into a wordlist the seed cannot name" 74 die ;
 
+\ THE SCOPE COLUMN IS NOT WINDOW-RELATIVE, and it cannot be while a layout
+\ constant shares its numbers: a scope below FIRST-DYNAMIC-WID passes through as
+\ itself (OWNER-API-PRI-WID is 2, and sites really carry it), so the offsets 1
+\ and 2 a record's field spells would be read as those wordlists. An in-window
+\ scope therefore has no form the payload can carry, and a build that could make
+\ one ends here rather than baking a scope the seed resolves in the wrong
+\ wordlist. NOTHING PRODUCES ONE TODAY and the reason is structural, not a
+\ count: a site exists only for a callee OUTSIDE the copied blob (ACAP-SITE-HERE,
+\ ACAP-BRANCH-HERE) and the band then requires it to sit below the prelude mark,
+\ so a site's callee is always a record that predates the window - and a record
+\ that predates the window is in a wordlist that predates it too, which is below
+\ W0 and not in the window. Measured beside it: all 12516 sites of a whole-tree
+\ image carry scope 0.
+: ACAP-REFUSE-WIN-SCOPE ( n n -- ) {: k:n w:n :}
+   s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
+   s"  calls " type k ACAP-NAME.
+   s"  in wordlist " type w .
+   s" , which its own window created; a call site carries no window coordinate" type cr
+   s" aot-capture: call site scope inside the capture window" 74 die ;
+
 : ACAP-SITE-SCOPE ( n -- ptr u8 n n ) {: k:n :}   \ callee record -> name, scope
    k AOT-REC AOT-RNPTR  k AOT-REC AOT-RNLEN {: a:ptr u:n :}
    k AOT-REC AOT-RWID {: w:n :}
    w 0 >= w FIRST-DYNAMIC-WID < and if a u w exit then
-   w ACAP-WID-IN? if a u w exit then
+   w ACAP-WID-IN? if k w ACAP-REFUSE-WIN-SCOPE then
    w ACAP-PKG-PUB {: p:n :}
    p 0 < if k w ACAP-REFUSE-SCOPE then
    p AOT-REC AOT-RNPTR  p AOT-REC AOT-RNLEN  a u ACAP-QUAL$  WID-QUAL ;
@@ -849,8 +898,9 @@ variable ACAP-REC-ALL
    v ACAP-REC-EXT? {: ext:bool :}                          \ name out of line (DNAME-EXT)
    v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
    ext 0= len 16 > and if s" aot-capture: rec name too long for inline" 74 die then
-   pkg if $FFFFFFFF else v 40 + ACAP-W32@ then {: wid:n :} \ package marker or full ordinary u32 WID
-   v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}
+   pkg if $FFFFFFFF else v 40 + ACAP-W32@ ACAP-REL-WID then {: wid:n :} \ package marker or window-relative u32 WID
+   v ACAP-W32@ pkg ACAP-WID-FIELD {: start:n :}            \ a package row's [0]/[8] are WIDs, not a code span
+   v 8 + ACAP-W32@ pkg ACAP-WID-FIELD {: clen:n :}
    k ACAP-NAMED? {: named:bool :}
    named if 1 else 0 then  k cells ACAP-NAMED-BIT + !
    named 0= if
@@ -876,7 +926,11 @@ variable ACAP-REC-ALL
 
 \ Expand a compact AOT-CREC-ROW record to a 48B dict record image -- the field
 \ reconstruction EM-AOT-REGISTER-RECS runs at boot. Ordinary [0] remains a blob
-\ offset for the build-time inverse proof; boot adds CP. Package [0]/[8] stay raw.
+\ offset for the build-time inverse proof; boot adds CP. The two coordinates the
+\ row stores are inverted the same way, in the capturing host's space and not the
+\ target's: every wid field takes ACAP-ABS-WID, which adds this window's W0 back
+\ where the seed adds the booting engine's WIDN. The proof this feeds compares
+\ the result with the host's own record, so the host's numbers are what it owes.
 \ ONE CELL IS NOT MODELLED, AND CANNOT BE. For an EXT-named record the boot pass
 \ stores the RUNTIME address of the pool entry's bytes in [24], and that address
 \ exists only in the engine being booted -- the same reason the code literals
@@ -886,8 +940,9 @@ variable ACAP-REC-ALL
 \ pointer's proof is a boot, and it is a direct one - EM-AOT-BOOTRUN resolves an
 \ entry word through LFIND, which reads exactly this cell for an EXT name.
 : ACAP-EXPAND-REC ( ptr u8 ptr u8 -- ) {: c:ptr s:ptr :}      \ c=compact record, s=48B out
-   c ACAP-W32@ s AOT-N-C!                                     \ [0..8) = blob-off or package public WID
-   c 4 + ACAP-W32@ s 8 + AOT-N-C!                             \ [8..16) = code len or package private WID
+   c 16 + ACAP-W32@ $FFFFFFFF = {: pkg:bool :}                \ the marker, read before the fields it types
+   c ACAP-W32@ pkg ACAP-ABS-WID-FIELD s AOT-N-C!              \ [0..8) = blob-off or package public WID
+   c 4 + ACAP-W32@ pkg ACAP-ABS-WID-FIELD s 8 + AOT-N-C!      \ [8..16) = code len or package private WID
    c 8 + ACAP-W32@ {: noff:n :}                               \ name-off u32
    AOT-NAMES-BUF@ noff + c@ {: len:n :}                       \ len = pool[entry]
    c 12 + c@ {: flags:n :}
@@ -898,8 +953,8 @@ variable ACAP-REC-ALL
    flags 2 and 0= if                                          \ inline name: the bytes live in the record
       len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop
    then
-   c 16 + ACAP-W32@ dup $FFFFFFFF = if drop -1 then
-   s 40 + AOT-N-C! ;                                          \ package marker sign-extends; ordinary wid stays u32
+   pkg if -1 else c 16 + ACAP-W32@ ACAP-ABS-WID then
+   s 40 + AOT-N-C! ;                                          \ package marker sign-extends; ordinary wid is the host's again
 variable ACAP-RECMM                                           \ record-proof mismatch count
 \ The pooled name a record will resolve to at boot IS the name the host record
 \ carries: same length byte, same bytes. This is what stands in for comparing an
@@ -1649,16 +1704,28 @@ public
 : MAP-NAME$ ( n -- ptr u8 n )
    ACAP-REC-NAME$ ;
 
-: MAP-START ( n -- n )                             \ code blob offset, build-time
-   ACAP-REC-DST ACAP-W32@ ;
+\ A PACKAGE ROW SPENDS THESE TWO CELLS ON WIDS, so both take the image's form
+\ here for the same reason MAP-WID does: the map names the payload's rows, and a
+\ sidecar carrying the building engine's ids makes two builds of one tree on two
+\ hosts differ in 197 rows of a file neither tree wrote (measured, and the only
+\ thing left differing when the image itself had stopped).
+: MAP-PKG? ( n -- bool )
+   ACAP-REC-DST CELL-VIEW AOT-RWID -1 = ;
 
-: MAP-LEN ( n -- n )                               \ code length in bytes
-   ACAP-REC-DST 8 + ACAP-W32@ ;
+: MAP-START ( n -- n )                             \ code blob offset, or a package's public wid
+   dup ACAP-REC-DST ACAP-W32@ swap MAP-PKG? ACAP-WID-FIELD ;
 
-: MAP-WID ( n -- n )                               \ wordlist id, or -1 for a package row
+: MAP-LEN ( n -- n )                               \ code length in bytes, or a package's private wid
+   dup ACAP-REC-DST 8 + ACAP-W32@ swap MAP-PKG? ACAP-WID-FIELD ;
+
+\ The wid the IMAGE carries, not the host's own id: the map names the payload's
+\ records, so a reader that asks it about a record and the record itself must
+\ agree, and a sidecar full of the building engine's ids would make two builds of
+\ one tree on two hosts differ in a file neither tree wrote.
+: MAP-WID ( n -- n )                               \ window offset, or -1 for a package row
    ACAP-REC-DST {: v:ptr :}
    v CELL-VIEW AOT-RWID -1 = if -1 exit then
-   v 40 + ACAP-W32@ ;
+   v 40 + ACAP-W32@ ACAP-REL-WID ;
 
 : BOOTRUN+ ( ptr u8 n -- ) {: a:ptr u:n :}
    u 255 > if s" aot-capture: boot-run name too long" 74 die then
@@ -1938,11 +2005,14 @@ private
 \ it writes into record #0 is discarded before the real capture. Fail-closed via
 \ die: pre-widening ACAP-COMPACT-RECS died on wid>255; the u16->u32 wid field now
 \ lets it survive, and ACAP-PROVE-RECS confirms expand(compact)==verbatim including
-\ the [40] wid. ACAP-EXPAND-REC is the EXACT model of the boot-time
-\ EM-AOT-REGISTER-RECS unpack, so this also guards that inverse.
+\ the [40] wid. ACAP-EXPAND-REC models the boot-time EM-AOT-REGISTER-RECS unpack
+\ field for field, so this also guards that inverse - and the stored wid is the
+\ window offset, which is why the expected number below is not the wid.
 : ACAP-WID-SELFTEST ( -- )
    ACAP-POOL-RESET                                  \ fresh dedup pool for the synthetic record
-   0 ACAP-REC-DST {: d:ptr :}                        \ verbatim 48B dict record #0
+   AOT-WID-W0 @ {: w0:n :}                           \ the real one is latched per capture (ACAP-BAND!)
+   300 AOT-WID-W0 !                                  \ a base of its own, so the stored offset is neither
+   0 ACAP-REC-DST {: d:ptr :}                        \ the wid nor small: 1000 - 300 + 1 = 701
    0 d AOT-N-C!                                      \ [0..8)   xt/blob-off = 0
    8 d 8 + AOT-N-C!                                  \ [8..16)  end = 8
    3 d 16 + AOT-N-C!                                 \ [16]     flags(0)<<60 | name-len(3)
@@ -1954,13 +2024,14 @@ private
    ACAP-PROVE-RECS                                   \ expand==verbatim, field-for-field (incl [40] wid)
    AOT-REC-N @ 1 <> if
       s" aot-capture: wid>255 self-test: the synthetic record did not ship" 74 die then
-   0 ACAP-CREC-DST 16 + ACAP-W32@ 1000 <> if
+   0 ACAP-CREC-DST 16 + ACAP-W32@ 701 <> if
       s" aot-capture: wid>255 self-test: compact wid corrupted" 74 die then
    8 CODE-SPAN:EXACT d 8 + AOT-N-C!
    1 AOT-REC-N !
    ACAP-COMPACT-RECS ACAP-PROVE-RECS
    0 ACAP-CREC-DST 4 + ACAP-W32@ 8 CODE-SPAN:EXACT <> if
       s" aot-capture: full code span corrupted" 74 die then
+   w0 AOT-WID-W0 !
    0 AOT-REC-N !  0 AOT-SPAN:N !  ACAP-POOL-RESET ;  \ leave buffers clean for the real capture
 
 \ --- build-time regression: the pool index answers what the linear pool walk
