@@ -1,5 +1,8 @@
 \ A caught DATA-allocation refusal cannot retain the registrar mutex.
-require test/compiler/aot-mode.f
+\ Tier 1 first: the caught refusal and the mutex it must release belong to the
+\ optimizing backend's PERSIST, compiled from the registrar required below.
+1 set-tier
+
 require lib/test.f
 require src/habu/address-cells.f
 

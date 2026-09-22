@@ -1,6 +1,9 @@
 \ native-string.f - a string literal, compiled by the native chain and run.
 
-require test/compiler/aot-mode.f
+\ Tier 1 first: one address per interned body, and code that does not grow with
+\ the string, are facts of the optimizing compiler's literal emission.
+1 set-tier
+
 require lib/test.f
 require lib/string.f
 require src/compiler/native/compiler.f

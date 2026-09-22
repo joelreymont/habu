@@ -1,7 +1,9 @@
 \ native-trap.f - checked tests for the terminator that does not return.
 
-\ Emission assertions require the optimizing tier, including standalone loads.
-require test/compiler/aot-mode.f
+\ Tier 1 first: the emitted bytes each case counts - no frame move, no return,
+\ the branch to the shared trap routine - are the optimizing compiler's.
+1 set-tier
+
 require lib/test.f
 require lib/string.f
 require lib/process.f

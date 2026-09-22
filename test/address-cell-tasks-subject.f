@@ -1,5 +1,8 @@
 \ Concurrent first stores of both declared pointer kinds, with real growth.
-require test/compiler/aot-mode.f
+\ Tier 1 first: the concurrent stores under test are lowered by the optimizing
+\ backend; the parent spawns this file with no tier of its own.
+1 set-tier
+
 require lib/test.f
 require lib/task.f
 require src/habu/address-cells.f

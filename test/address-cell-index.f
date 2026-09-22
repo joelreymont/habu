@@ -1,5 +1,8 @@
 \ Exact ordered rows survive indexed collisions, growth and owner invalidation.
-require test/compiler/aot-mode.f
+\ Tier 1 first: the rows read here are what a quotation store registers under
+\ the optimizing backend, which also compiles the registrar required below.
+1 set-tier
+
 require lib/test.f
 require src/habu/address-cells.f
 

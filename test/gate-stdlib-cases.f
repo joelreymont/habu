@@ -214,7 +214,6 @@ SUITE compiler-native-feed
 ;SUITE
 
 SUITE compiler-native-tape-owner
-   test/compiler/aot-mode.f
    test/compiler/native-tape-owner.f
 ;SUITE
 

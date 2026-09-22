@@ -1,8 +1,10 @@
+\ Tier 1 first: quotation-store lowering belongs to the optimizing backend
+\ under test.
+1 set-tier
+
 require lib/test.f
 require lib/task.f
 require lib/image-lifecycle.f
-\ Quotation-store lowering belongs to the optimizing backend under test.
-require test/compiler/aot-mode.f
 
 package IMAGE-LIFECYCLE-TASK-TEST
 private
