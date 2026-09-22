@@ -9,6 +9,8 @@
 \ owns the multi handle and the records, and a record is claimed atomically by
 \ whichever task starts a transfer. See docs/threads.md.
 require lib/errors.f
+require lib/string.f                      \ BUFFER:, the transfer table's byte rows
+require lib/le.f                          \ the foreign cells are little-endian
 require lib/ffi-abi.f
 require lib/type/deftype.f
 require lib/image-lifecycle.f
@@ -180,22 +182,9 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
    value minimum < value maximum > or if E-OPERAND throw then ;
 
 
-: LE64@ ( ptr u8 -- n ) {: source :}
-   0 CELL-BYTES 0 do source 7 i - + c@ swap 8 lshift or loop ;
-
-
-\ A C int, which is what every multi out-parameter and both CURLMsg enums are.
-: LE32@ ( ptr u8 -- n ) {: source :}
-   source c@ source $01 + c@ 8 lshift or
-   source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
-
-
-\ The same four bytes read as the signed int they are: curl_multi_fdset reports
-\ an empty set as max_fd -1.
-: LE32S@ ( ptr u8 -- n )
-   LE32@ dup $80000000 >= if $100000000 - then ;
-
-
+\ Every foreign cell here is little-endian and LE: reads it: LE:U64@ for a
+\ pointer or a C long, LE:U32@ for the C int every multi out-parameter and both
+\ CURLMsg enums are.
 : CELL-CLEAR ( ptr u8 -- ) {: target :}
    CELL-BYTES 0 do 0 target i + c! loop ;
 
@@ -249,7 +238,7 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
 : HEADERS-CELL ( n -- n ) {: easy:n :}
    INFO-CELL CELL-CLEAR
    easy INFO-PRIVATE INFO-CELL GETINFO-CELL CURLE-OK <> if E-RESULT throw then
-   INFO-CELL LE64@ ;
+   INFO-CELL LE:U64@ ;
 
 
 \ A list this call created and could not publish is freed here; an appended-to
@@ -286,7 +275,7 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
 \ buffer is the caller's to free from then on.
 : STREAM-TAKE ( n ptr u8 ptr u8 -- n n ) {: stream:n buf len :}
    stream STREAM-CLOSE drop
-   buf LE64@ len LE64@ ;
+   buf LE:U64@ len LE:U64@ ;
 
 
 : WRITE-DATA-CLEAR ( n -- ) {: easy:n :}
@@ -301,7 +290,7 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
 : STATUS-READ ( n -- http-status ) {: easy:n :}
    INFO-CELL CELL-CLEAR
    easy INFO-STATUS INFO-CELL GETINFO-CELL CURLE-OK <> if E-RESULT throw then
-   INFO-CELL LE64@ dup 0 MAX-STATUS WITHIN-RANGE >HTTP-STATUS ;
+   INFO-CELL LE:U64@ dup 0 MAX-STATUS WITHIN-RANGE >HTTP-STATUS ;
 
 
 : BODY-COPY ( ptr u8 n n -- ) {: target source:n u:n :}
@@ -544,15 +533,12 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD R.CODE
 END-STRUCTURE
 
-: CURL-ALIGN8 ( -- )
-   here FFI:>CELL 7 and dup 0= if drop exit then
-   8 swap - allot ;
-
-: ZERO-CELLS, ( n -- )
-   0 ?do 0 , loop ;
-
-CURL-ALIGN8
-create REC-CELLS MAX-TRANSFERS REC-BYTES * 8 / ZERO-CELLS,
+\ One record per transfer, in cells the loop reads with atomic@ and atomic!.
+\ BUFFER: and TYPED-BUFFER both allot zeroed storage on a cell-rounded address,
+\ which is the alignment every row below wants - the atomic record fields, and
+\ the fd_sets, the CURLMsg copy and the out-parameter cells libcurl reads and
+\ writes as aligned C objects.
+MAX-TRANSFERS REC-BYTES * 8 / TYPED-BUFFER REC-CELLS n
 
 \ The owner as the TCB pointer TASK:WAKE takes and the span as the address it
 \ is, both in declared rows, so this module needs no address cast of its own.
@@ -561,37 +547,27 @@ MAX-TRANSFERS TYPED-BUFFER REC-TARGETS ptr u8
 
 \ Two cells per record for open_memstream's buffer and length, because the loop
 \ is what closes the stream and the opening task's row is not where it can read.
-CURL-ALIGN8
-create REC-STREAM-CELLS MAX-TRANSFERS 2 * ZERO-CELLS,
+\ The FFI writes them, so the row is bytes.
+MAX-TRANSFERS 2 * cells BUFFER: REC-STREAM-CELLS
 
 \ The three fd_sets libcurl fills, the fds an armed ticket already covers, the
 \ int and long out-parameters of the multi calls, one copied CURLMsg, and the
 \ wake pipe's two ends.
-CURL-ALIGN8
-create SET-READ FD-SET-BYTES allot
-CURL-ALIGN8
-create SET-WRITE FD-SET-BYTES allot
-CURL-ALIGN8
-create SET-EXC FD-SET-BYTES allot
-CURL-ALIGN8
-create SET-KEPT FD-SETSIZE allot
-CURL-ALIGN8
-create MULTI-STAGE $20 allot
-CURL-ALIGN8
-create MSG-BUF MSG-BYTES allot
-CURL-ALIGN8
-create WAKE-BUF WAKE-CHUNK allot
-CURL-ALIGN8
+FD-SET-BYTES BUFFER: SET-READ
+FD-SET-BYTES BUFFER: SET-WRITE
+FD-SET-BYTES BUFFER: SET-EXC
+FD-SETSIZE BUFFER: SET-KEPT
+$20 BUFFER: MULTI-STAGE
+MSG-BYTES BUFFER: MSG-BUF
+WAKE-CHUNK BUFFER: WAKE-BUF
 create WAKE-BYTE $01 c,
 
 \ One ticket per descriptor libcurl wants, in slots a zero mask says are free.
-CURL-ALIGN8
-create FD-FDS AIO:GROUP-MAX ZERO-CELLS,
-CURL-ALIGN8
-create FD-MASKS AIO:GROUP-MAX ZERO-CELLS,
+\ A slot holds the descriptor itself, or -1 for none, so the row is plain cells.
+AIO:GROUP-MAX TYPED-BUFFER FD-FDS n
+AIO:GROUP-MAX TYPED-BUFFER FD-MASKS n
 AIO:GROUP-MAX TYPED-BUFFER FD-TICKETS AIO:ticket
 
-CURL-ALIGN8
 variable MULTI-CELL                       \ the CURLM* the loop drives
 variable LOOP-LIVE                        \ atomic: a loop is running
 variable STOP-FLAG                        \ atomic: the loop must end
@@ -629,7 +605,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 
 : REC ( n -- ptr n ) REC-CHECK {: idx:n :}
-   REC-CELLS CELL-VIEW idx REC-BYTES * + ;
+   idx REC-BYTES * 8 / REC-CELLS ;
 
 
 : REC-BUF-CELL ( n -- ptr u8 ) REC-CHECK {: idx:n :}
@@ -853,9 +829,9 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ bytes with the same bounded memcpy the body copy uses and read from the copy.
 : MSG-TAKE ( n -- n ) {: msg:n :}
    MSG-BUF msg MSG-BYTES COPY-OUT drop
-   MSG-BUF MSG.KIND + LE32@ MSG-DONE <> if CURLM-OK exit then
-   MSG-BUF MSG.EASY + LE64@ {: easy:n :}
-   MSG-BUF MSG.RESULT + LE32@ {: rc:n :}
+   MSG-BUF MSG.KIND + LE:U32@ MSG-DONE <> if CURLM-OK exit then
+   MSG-BUF MSG.EASY + LE:U64@ {: easy:n :}
+   MSG-BUF MSG.RESULT + LE:U32@ {: rc:n :}
    easy REC-FIND dup 0 < if drop CURLM-OK exit then
    rc FINISH ;
 
@@ -923,20 +899,18 @@ CAST: TICKET>N ( AIO:ticket -- n )
    SET-WRITE fd SET-BIT? if AIO:WRITABLE or then ;
 
 
-: FD-FD@ ( n -- n ) {: slot:n :}
-   FD-FDS CELL-VIEW slot cells + @ ;
+: FD-FD@ ( n -- n ) FD-FDS @ ;
 
 
 : FD-FD! ( n n -- ) {: fd:n slot:n :}
-   fd FD-FDS CELL-VIEW slot cells + ! ;
+   fd slot FD-FDS ! ;
 
 
-: FD-MASK@ ( n -- n ) {: slot:n :}
-   FD-MASKS CELL-VIEW slot cells + @ ;
+: FD-MASK@ ( n -- n ) FD-MASKS @ ;
 
 
 : FD-MASK! ( n n -- ) {: mask:n slot:n :}
-   mask FD-MASKS CELL-VIEW slot cells + ! ;
+   mask slot FD-MASKS ! ;
 
 
 : FD-TABLE-CLEAR ( -- )
@@ -983,6 +957,8 @@ CAST: TICKET>N ( AIO:ticket -- n )
    mask slot FD-MASK! ;
 
 
+\ max_fd is the one foreign int read signed: curl_multi_fdset reports an empty
+\ set as -1.
 : SETS-READ ( -- n n )                    \ ( -- CURLMcode max-fd )
    SET-READ SET-CLEAR
    SET-WRITE SET-CLEAR
@@ -990,7 +966,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
    MAXFD-CELL CELL-CLEAR
    MULTI-CELL atomic@ SET-READ SET-WRITE SET-EXC MAXFD-CELL MULTI-FDSET
    dup CURLM-OK <> if -1 exit then drop
-   CURLM-OK MAXFD-CELL LE32S@ ;
+   CURLM-OK MAXFD-CELL LE:S32@ ;
 
 
 \ An fd still wanted with the mask its ticket holds keeps that ticket; one whose
@@ -1023,7 +999,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
    TIMEOUT-CELL CELL-CLEAR
    MULTI-CELL atomic@ TIMEOUT-CELL MULTI-TIMEOUT dup CURLM-OK <> if IDLE-MS exit then
    drop
-   TIMEOUT-CELL LE64@ {: ms:n :}
+   TIMEOUT-CELL LE:U64@ {: ms:n :}
    ms 0 < if CURLM-OK IDLE-MS exit then
    CURLM-OK ms SHORTEST-MS max LONGEST-MS min ;
 
