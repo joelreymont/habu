@@ -226,8 +226,11 @@ PTR-VARIABLE SQE-BASE
 TASK:FACILITY AIO-LOCK
 TASK:MIN-STACK TASK:TASK AIO-LOOP
 
-\ Set once per task, at its first submission: the cleanup below is registered
-\ then and not before, so a program that never submits keeps its own TASK:AT-EXIT.
+\ Set at a task's first submission: the cleanup below is registered then and not
+\ before, so a program that never submits registers nothing of AIO's. That
+\ registration is one entry in the task's TASK:AT-EXIT chain and leaves the
+\ task's own cleanups where they are; this cell is what keeps a submitting task
+\ from walking the chain again at every later submission.
 TASK:#USER CELL TASK:+USER AIO-REGISTERED drop
 
 $40 constant DIAG-CAP
@@ -724,7 +727,9 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 
 \ ---- the cleanup a submitting task registers ---------------------------------
 \ Without it a task that ends while one of its operations is in flight would be
-\ woken by the loop through a TCB whose memory the join has released.
+\ woken by the loop through a TCB whose memory the join has released. It is one
+\ entry in that task's TASK:AT-EXIT chain, so a task that submits keeps its own
+\ cleanups: they run beside this one, newest registration first.
 : TRY-CANCEL ( n -- ) {: target:n :}
    target CANCEL-STAGE drop ;
 

@@ -1296,7 +1296,7 @@ public
 \ too. A TASK:HALT while it waits ends the calling task at the PAUSE below, and
 \ the record is abandoned first: the loop frees it and wakes nobody, which is
 \ what keeps the loop from waking a TCB the join has released. No TASK:AT-EXIT
-\ is registered here - AIO already holds that slot for a task that submits.
+\ is registered here - the abandon in this wait is what a halted waiter needs.
 : AWAIT ( handle -- fetch-result ) {: subject:handle :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    begin

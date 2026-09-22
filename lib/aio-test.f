@@ -61,6 +61,8 @@ variable XFER-PATH-U
 variable XFER-FD
 variable XFER-OWNER-RC
 variable XFER-FORGET-DONE
+variable OWN-EXIT-MARK
+variable OWN-EXIT-DONE
 
 create POKE-BYTE $41 c,
 AIO-TEST-ALIGN8
@@ -97,6 +99,7 @@ TASK:MIN-STACK TASK:TASK OWNER-TASK
 TASK:MIN-STACK TASK:TASK HALT-TASK
 TASK:MIN-STACK TASK:TASK XFER-OWNER-TASK
 TASK:MIN-STACK TASK:TASK XFER-FORGET-TASK
+TASK:MIN-STACK TASK:TASK OWN-EXIT-TASK
 TASK:MIN-STACK TASK:TASK FAN0
 TASK:MIN-STACK TASK:TASK FAN1
 TASK:MIN-STACK TASK:TASK FAN2
@@ -585,6 +588,33 @@ TASK:MIN-STACK TASK:TASK FAN7
    P-R P-W PIPE-CLOSE
    AIO:LOOP-START ;
 
+\ ---- 17: a task's own cleanup beside AIO's ----------------------------------
+\ The registration AIO makes at the first submission is one entry in the task's
+\ TASK:AT-EXIT chain, so the cleanup the task registered before submitting runs
+\ too: the mark is set once, and AIO's own cleanup still cancelled and forgot the
+\ poll the task left in flight, which is what lets the loop stop with no record
+\ busy. The mark counts rather than latches, so a cleanup run twice is a FAIL.
+: OWN-EXIT-MARK+ ( -- )
+   1 OWN-EXIT-MARK atomic-add drop ;
+
+: OWN-EXIT-WORK ( -- )
+   ['] OWN-EXIT-MARK+ TASK:SELF TASK:AT-EXIT
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD TICKET-DROP
+   1 OWN-EXIT-DONE atomic! ;
+
+: CASE-OWN-EXIT ( -- )
+   0 OWN-EXIT-MARK !
+   0 OWN-EXIT-DONE !
+   P-R P-W PIPE-OPEN
+   ['] OWN-EXIT-WORK OWN-EXIT-TASK TASK:ACTIVATE
+   OWN-EXIT-DONE 1 REACHED? TTRUE
+   OWN-EXIT-TASK ENDED? TTRUE
+   OWN-EXIT-TASK TASK:KILL
+   OWN-EXIT-MARK @ 1 T=
+   STOPPED? TTRUE
+   P-R P-W PIPE-CLOSE
+   AIO:LOOP-START ;
+
 \ ---- 10: a task halted while parked in AWAIT --------------------------------
 \ Its cleanup cancels and forgets the operation, so the loop never wakes a TCB
 \ the join has released and the ring goes idle without it.
@@ -664,6 +694,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    CASE-XFER-BOUNDS
    CASE-XFER-STATE
    CASE-XFER-FORGOTTEN
+   CASE-OWN-EXIT
    CASE-HALTED-AWAIT
    CASE-RESTART
    T-REPORT ;

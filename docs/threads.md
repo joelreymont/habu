@@ -74,7 +74,7 @@ TASK:THROW@          ( ptr a -- n )    \ uncaught throw code, 0 if none
 
 TASK:RETURN          ( n -- )          \ the worker's answer, from inside the task
 TASK:JOIN            ( ptr a -- result<n,n> ) \ wait for the end, take the outcome
-TASK:AT-EXIT         ( [ -- ] ptr a -- )      \ cleanup run in the task when it ends
+TASK:AT-EXIT         ( [ -- ] ptr a -- )      \ add a cleanup run in the task when it ends
 
 TASK:#USER           ( -- n )
 TASK:+USER           ( n n -- n )      \ define task-local user variable
@@ -213,19 +213,24 @@ read an outcome without deciding what to do about the failing arm.
   `E-TASK-JOIN`. So is a second joiner of a live task - the right to join is
   claimed in one atomic step, so the loser is refused rather than waiting for a
   signal the winner has taken.
-- `TASK:AT-EXIT` registers ONE cleanup quotation for that task, run in the task's
-  own thread when it ends, before the join is released. All three endings run it:
-  the body returning, the body throwing, and a halted body leaving at
-  `TASK:PAUSE`. Registering again replaces it, and the registration belongs to
-  the task definition, so it also serves the task's next activation.
-- A throw inside a cleanup never leaves the task and never ends the process: it
-  becomes the task's error when the body left none, and is dropped when the body
-  already failed, so the first failure is the one the join reports.
+- `TASK:AT-EXIT` adds a cleanup quotation to that task's chain, run in the task's
+  own thread when it ends, before the join is released. All three endings run the
+  chain: the body returning, the body throwing, and a halted body leaving at
+  `TASK:PAUSE`. It runs newest registration first; a quotation the task already
+  holds is not registered a second time; and a registration belongs to the task
+  definition, so it also serves the task's next activation.
+- A throw inside a cleanup never leaves the task and never ends the process: the
+  first cleanup that throws becomes the task's error when the body left none, a
+  later throwing cleanup is dropped, and one is dropped altogether when the body
+  already failed - so the first failure is the one the join reports. Every
+  cleanup in the chain runs whatever the ones before it did.
 - The cleanup quotations live in a typed row inside package TASK, stored as
   quotations into storage declared to hold them - the checker's proven-quotation
-  store, not a cell cast back to code. The row holds `$40` registrations for one
-  image; a task registering past that is `E-TASK-EXIT-TABLE`. A slot belongs to
-  its task for the life of the image, so the row cannot leak.
+  store, not a cell cast back to code - with a scalar row beside it linking each
+  task's chain. The rows hold `$80` registrations for one image; a task
+  registering past that is `E-TASK-EXIT-TABLE`. A row belongs to its (task,
+  quotation) pair for the life of the image, so the row cannot leak and needs no
+  free list.
 - The same POSIX rule as everything else here: end a task's joiners before you
   kill it. `TASK:KILL` destroys the semaphore a joiner may be parked in.
 

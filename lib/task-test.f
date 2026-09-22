@@ -88,6 +88,9 @@ TASK:MIN-STACK TASK:TASK JOIN-CLEAN
 TASK:MIN-STACK TASK:TASK JOIN-BAD-CLEAN
 TASK:MIN-STACK TASK:TASK JOIN-HALT
 TASK:MIN-STACK TASK:TASK JOIN-IDLE
+TASK:MIN-STACK TASK:TASK JOIN-CHAIN        \ a registration is for the life of the
+TASK:MIN-STACK TASK:TASK JOIN-SAME         \ image, so each chain case owns a task
+TASK:MIN-STACK TASK:TASK JOIN-CHAIN-BAD
 TASK:MIN-STACK TASK:TASK BUILD-A
 TASK:MIN-STACK TASK:TASK BUILD-B
 TASK:MIN-STACK TASK:TASK SLEEP-WORKER
@@ -804,6 +807,14 @@ variable JOIN-TWICE-RC
 : JOIN-MARK ( -- )
    TASK-EXIT-MARK @ 1 + TASK-EXIT-MARK ! ;
 
+\ Each of these folds its own number into the mark, so the mark reads as the
+\ order the chain ran them in and not merely as the set that ran.
+: JOIN-ORDER1 ( -- )
+   TASK-EXIT-MARK @ 10 * 1 + TASK-EXIT-MARK ! ;
+
+: JOIN-ORDER2 ( -- )
+   TASK-EXIT-MARK @ 10 * 2 + TASK-EXIT-MARK ! ;
+
 : JOIN-UNWRAP ( result<n,n> -- n n )     \ the payload, then 0 for ok and 1 for err
    MATCH result ok OF 0 ENDOF err OF 1 ENDOF ;MATCH ;
 
@@ -872,6 +883,42 @@ variable JOIN-TWICE-RC
    JOIN-BAD-CLEAN TASK:JOIN E-TASK-USER JOIN-ERR=
    ['] TASK-THROW-WORK JOIN-BAD-CLEAN TASK:ACTIVATE
    JOIN-BAD-CLEAN TASK:JOIN E-TASK-STATE JOIN-ERR= ;
+
+\ Registration is additive: both cleanups run, newest registration first. The
+\ mark is 21 - ORDER2 ran into an empty mark and ORDER1 folded itself into what
+\ ORDER2 left - so the case reads the ORDER and not just that both ran.
+: TASK-TEST-EXIT-CHAIN ( -- )
+   ['] JOIN-ORDER1 JOIN-CHAIN TASK:AT-EXIT
+   ['] JOIN-ORDER2 JOIN-CHAIN TASK:AT-EXIT
+   ['] JOIN-AGAIN-WORK JOIN-CHAIN TASK:ACTIVATE
+   JOIN-CHAIN APP-WAIT-DONE
+   JOIN-CHAIN TASK-EXIT-MARK TASK:HIS @ 21 T=
+   JOIN-CHAIN TASK:JOIN JOIN-AGAIN-N JOIN-OK= ;
+
+\ The same quotation is one registration however often it is made: the chain
+\ holds it once, so the mark counts one run and the storage takes one row.
+: TASK-TEST-EXIT-SAME ( -- )
+   ['] JOIN-MARK JOIN-SAME TASK:AT-EXIT
+   ['] JOIN-MARK JOIN-SAME TASK:AT-EXIT
+   ['] JOIN-AGAIN-WORK JOIN-SAME TASK:ACTIVATE
+   JOIN-SAME APP-WAIT-DONE
+   JOIN-SAME TASK-EXIT-MARK TASK:HIS @ 1 T=
+   JOIN-SAME TASK:JOIN JOIN-AGAIN-N JOIN-OK= ;
+
+\ A throwing cleanup ends nothing else in the chain: the one registered before it
+\ runs after it and sets its mark, the first throw is the task's error when the
+\ body left none, and a body that already failed keeps its own code.
+: TASK-TEST-EXIT-CHAIN-THROWS ( -- )
+   ['] JOIN-MARK JOIN-CHAIN-BAD TASK:AT-EXIT
+   [: E-TASK-USER throw ;] JOIN-CHAIN-BAD TASK:AT-EXIT
+   ['] JOIN-VALUE-WORK JOIN-CHAIN-BAD TASK:ACTIVATE
+   JOIN-CHAIN-BAD APP-WAIT-DONE
+   JOIN-CHAIN-BAD TASK-EXIT-MARK TASK:HIS @ 1 T=
+   JOIN-CHAIN-BAD TASK:JOIN E-TASK-USER JOIN-ERR=
+   ['] TASK-THROW-WORK JOIN-CHAIN-BAD TASK:ACTIVATE
+   JOIN-CHAIN-BAD APP-WAIT-DONE
+   JOIN-CHAIN-BAD TASK-EXIT-MARK TASK:HIS @ 1 T=
+   JOIN-CHAIN-BAD TASK:JOIN E-TASK-STATE JOIN-ERR= ;
 
 variable HALTED-SEEN
 variable HALTED-PARKED
@@ -1384,6 +1431,9 @@ variable KILL-RACE-LEFT
    TASK-TEST-JOIN-SILENT
    TASK-TEST-JOIN-CLEANUP
    TASK-TEST-JOIN-CLEANUP-THROWS
+   TASK-TEST-EXIT-CHAIN
+   TASK-TEST-EXIT-SAME
+   TASK-TEST-EXIT-CHAIN-THROWS
    TASK-TEST-HALTED
    TASK-TEST-JOIN-HALTED
    TASK-TEST-JOIN-REFUSED

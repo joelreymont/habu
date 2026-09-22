@@ -161,7 +161,7 @@ may wait too. A `TASK:HALT` while it waits ends the calling task at its next
 `TASK:PAUSE`, and the record is abandoned first: the loop takes the handle out,
 drops the body and frees the record without waking anybody, which is what keeps
 the loop from waking a TCB the join has released. No `TASK:AT-EXIT` is
-registered — AIO already holds that slot for a task that submits.
+registered — the abandon in that wait is what a halted waiter needs.
 
 `CANCEL` ends one early — the loop takes the handle out of the multi handle,
 drops whatever body it had collected and answers the waiter `failed` with

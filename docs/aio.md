@@ -168,13 +168,13 @@ in an await.
 The main thread has no TCB and parks on package `TASK`'s one main record, so a
 program with no tasks of its own can await too.
 
-**A task that submits gives up its own `TASK:AT-EXIT`.** At its first
+**`AIO`'s cleanup is one registration in the task's chain.** At its first
 submission `AIO` registers a cleanup on the calling task, and `TASK:AT-EXIT`
-holds one quotation per task, so a cleanup the task registers afterwards
-replaces `AIO`'s and one it registered before is replaced by it. The cleanup
-cancels and forgets that task's operations in flight, which is what keeps the
-loop from waking a TCB whose memory the join has released; a task that both
-submits and needs a cleanup of its own has to call that cleanup from its body.
+chains the cleanups a task registers, so the program's own cleanups stand beside
+it and the chain runs newest first - a task that submits keeps them whether it
+registered them before that first submission or after. The cleanup cancels and
+forgets that task's operations in flight, which is what keeps the loop from
+waking a TCB whose memory the join has released.
 
 ## Trust boundaries
 

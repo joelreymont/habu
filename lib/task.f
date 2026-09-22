@@ -620,17 +620,32 @@ variable MAIN-PARK-READY
 \ memory, so the answer survives the release the join performs - the same reason
 \ TASK:THROW@ still answers after a TASK:KILL.
 
-\ One cleanup quotation per task that registers one, in this package's own typed
-\ row. The quotation is stored AS a quotation into storage declared to hold one,
-\ which is what makes the store the checker's proven-quotation store instead of a
-\ cell this module would have to cast back to code. A slot belongs to its task
-\ for the life of the image and registering again replaces the quotation in it,
-\ so the row cannot leak and needs no free list. TCB.EXIT-SLOT holds the slot
-\ plus one; zero is "this task has no cleanup".
-$40 constant TASK-EXIT-MAX
+\ The cleanups a task has registered, as a chain of rows in this package's own
+\ storage. Each quotation is stored AS a quotation into storage declared to hold
+\ one, which is what makes the store the checker's proven-quotation store instead
+\ of a cell this module would have to cast back to code. TASK-EXIT-LINK holds,
+\ for each row, the next row of the same task's chain plus one; zero ends the
+\ chain. TCB.EXIT-SLOT holds the HEAD row plus one; zero is "this task has no
+\ cleanup". A row belongs to one (task, quotation) pair for the life of the
+\ image - a registration serves the task's later activations and the same
+\ quotation is never given a second row - so the rows cannot leak and need no
+\ free list.
+$80 constant TASK-EXIT-MAX
 TASK-EXIT-MAX TYPED-BUFFER TASK-EXIT-QT [ -- ]
 TASK-ALIGN8
+create TASK-EXIT-LINK TASK-EXIT-MAX TASK-ZERO-CELLS,
+TASK-ALIGN8
 variable TASK-EXIT-N
+TASK-ALIGN8
+variable TASK-EXIT-LOCK
+
+\ The one cell a registration compares against. The checker refuses `=` on two
+\ quotations (E-MISMATCH, "expected n n actual [ -- ] [ -- ]"), while a quotation
+\ in declared storage reads as a cell through the views, and the same `['] W`
+\ stored twice reads the same cell. The incoming quotation goes here to be read
+\ as that cell, so this scratch - not the chain - is what registration has to
+\ take a lock for.
+TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 
 : TASK-DONE-SEM ( ptr n -- sem )
    TCB.DONE SEM-AT ;
@@ -666,35 +681,86 @@ variable TASK-EXIT-N
 : TASK-EXIT-SLOT@ ( ptr n -- n )
    TCB.EXIT-SLOT @ ;
 
-\ A slot no task holds yet. The counter moves in one atomic step, so two tasks
-\ registering at the same moment are handed different slots; past the end of the
-\ row there is no slot to hand out.
+: TASK-EXIT-LINK-AT ( n -- ptr n ) {: idx:n :}
+   TASK-EXIT-LINK CELL-VIEW idx cells + ;
+
+: TASK-EXIT-QT-CELL ( n -- n )
+   TASK-EXIT-QT BYTE-VIEW CELL-VIEW @ ;
+
+\ Registration only, and only for the scratch cell above: TASK-RUN-EXIT reads
+\ the chain without it.
+: TASK-EXIT-LOCK-GET ( -- )
+   begin 0 1 TASK-EXIT-LOCK atomic-cas 0= until ;
+
+: TASK-EXIT-UNLOCK ( -- )
+   0 TASK-EXIT-LOCK atomic! ;
+
+\ A row no chain holds yet. The counter moves in one atomic step, and the caller
+\ holds the registration lock, so the row it is handed is its own; past the end
+\ of the storage there is no row to hand out. The lock is released before that
+\ refusal leaves, so a full table costs the registration and not every later one.
 : TASK-EXIT-NEXT ( -- n )
    1 TASK-EXIT-N atomic-add {: idx:n :}
-   idx TASK-EXIT-MAX >= if E-TASK-EXIT-TABLE throw then
+   idx TASK-EXIT-MAX >= if TASK-EXIT-UNLOCK E-TASK-EXIT-TABLE throw then
    idx ;
 
-\ The quotation is in its slot before the TCB names that slot, so a task ending
-\ while its first cleanup is being registered runs the old one or the new one -
-\ never an empty slot.
+\ True when the task's chain already holds the quotation in the scratch cell.
+: TASK-EXIT-HELD? ( ptr n -- bool ) {: tcb:ptr :}
+   TASK-EXIT-SCRATCH BYTE-VIEW CELL-VIEW @ {: want:n :}
+   tcb TASK-EXIT-SLOT@
+   begin dup 0 <> while
+      1 -
+      dup TASK-EXIT-QT-CELL want = if drop true exit then
+      TASK-EXIT-LINK-AT @
+   repeat
+   drop false ;
+
+\ Registration is additive: the task keeps every cleanup it registers and the
+\ chain runs newest first. A quotation the task already holds is not registered
+\ twice - AIO registers its scrub at each activation's first submission, so a
+\ second row per activation would exhaust the storage. The quotation is in its
+\ row, and that row's link names the old head, before the TCB names the row, so a
+\ task ending while a thread registers on it runs the whole old chain or the
+\ whole new one, never a half-built row. The head is published with atomic! -
+\ a store-release (STLR), src/habu/habu1.f BATSTORE - which is what makes that
+\ true on a machine whose plain stores to different addresses may become visible
+\ out of order: every store of the row and its link is visible before the head
+\ that names them. TASK-RUN-EXIT needs no fence in return, because its loads of
+\ the row and the link are addressed FROM the head it read. The lock covers the
+\ scratch cell the comparison goes through, so two threads registering on one
+\ task at the same moment - AIO from the task itself, the program from the
+\ thread that started it - both land.
 : TASK-AT-EXIT ( [ -- ] ptr n -- ) {: q tcb:ptr :}
-   tcb TASK-EXIT-SLOT@ {: slot:n :}
-   slot 0 <> if q slot 1 - TASK-EXIT-QT ! exit then
+   TASK-EXIT-LOCK-GET
+   q TASK-EXIT-SCRATCH !
+   tcb TASK-EXIT-HELD? if TASK-EXIT-UNLOCK exit then
    TASK-EXIT-NEXT {: idx:n :}
    q idx TASK-EXIT-QT !
-   idx 1 + tcb TCB.EXIT-SLOT ! ;
+   tcb TASK-EXIT-SLOT@ idx TASK-EXIT-LINK-AT !
+   idx 1 + tcb TCB.EXIT-SLOT atomic!
+   TASK-EXIT-UNLOCK ;
 
-\ The cleanup runs in the task's own thread, after the body has returned or its
-\ throw has been recorded. A cleanup that throws ends nothing else: its code
-\ becomes the task's error when the body left none, and is dropped when the body
-\ already failed, so the first failure is the one the join reports.
-: TASK-RUN-EXIT ( -- )
-   TASK-SELF {: self:ptr :}
-   self TASK-EXIT-SLOT@ dup 0= if drop exit then
-   1 - TASK-EXIT-QT @ catch {: rc:n :}
+\ A cleanup that throws ends nothing else: its code becomes the task's error when
+\ the body left none, and is dropped when the body already failed or an earlier
+\ cleanup already threw, so the FIRST failure is the one the join reports.
+: TASK-RUN-EXIT-ONE ( n -- )
+   TASK-EXIT-QT @ catch {: rc:n :}
    rc 0= if exit then
+   TASK-SELF {: self:ptr :}
    self TASK-THROW@ 0 <> if exit then
    rc self TASK-THROW! ;
+
+\ The cleanups run in the task's own thread, after the body has returned or its
+\ throw has been recorded, newest registration first. Every one of them runs,
+\ whatever the ones before it did.
+: TASK-RUN-EXIT ( -- )
+   TASK-SELF TASK-EXIT-SLOT@
+   begin dup 0 <> while
+      1 -
+      dup TASK-RUN-EXIT-ONE
+      TASK-EXIT-LINK-AT @
+   repeat
+   drop ;
 
 \ Every way a task's thread ends passes here: the body returning, the body
 \ throwing, and a halted body leaving at TASK:PAUSE. The signal is last, so a
