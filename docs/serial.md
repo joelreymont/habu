@@ -60,8 +60,8 @@ messages and advance spans after short transfers. A successful write is not
 proof that data reached the peer. Capacity/length must be positive; zero-byte
 operations are rejected.
 
-Every wait is one `AIO:POLL-ADD` and one `AIO:AWAIT` ([aio.md](aio.md)), so
-`AIO:LOOP-START` must precede the first `READ` or `WRITE` and a wait with no
+Every wait is one `AIO:POLL` and one `AIO:AWAIT` ([aio.md](aio.md)), so
+`AIO:START` must precede the first `READ` or `WRITE` and a wait with no
 loop running is `E-AIO-STATE`.
 
 Timeouts are `0..2147483647` milliseconds. Zero makes an immediate readiness

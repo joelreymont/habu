@@ -251,13 +251,13 @@ public
 \ compilation.
 : RUN ( -- )
    T-RESET
-   AIO:LOOP-START
+   AIO:START
    PIPE-STOPS
    TTY-RECOVERS
    ECHO-PROMPT-REJECTED
    TTY-LAYOUT
    TTY-STACK-RECOVERS
-   AIO:LOOP-STOP
+   AIO:STOP
    T-REPORT
    s" process-pty-tty-smoke: ok" type cr ;
 

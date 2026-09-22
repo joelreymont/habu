@@ -115,7 +115,7 @@ create ERR   IO-CAP  allot
 \ task forbids compilation.
 : RUN ( -- )
    T-RESET
-   AIO:LOOP-START
+   AIO:START
    SETUP
    OVERRIDE-RESOLVES
    SELF-RESOLVES
@@ -123,7 +123,7 @@ create ERR   IO-CAP  allot
    FALLBACK-TO-SELF
    SUPERVISE-RESOLVED
    CLEANUP-RUN
-   AIO:LOOP-STOP
+   AIO:STOP
    T-REPORT
    s" engine-candidate-test: ok" type cr ;
 

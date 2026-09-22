@@ -145,9 +145,9 @@ Both modes share the handle lifecycle (`LAUNCH`, `ALIVE?`, `AWAIT`, `SIGNAL`,
   marker, the `-1`, or the clock.
 
 `AWAIT` and `AWAIT-BYTES` wait on the AIO loop ([aio.md](aio.md)): one
-`AIO:POLL-ADD` for the milliseconds the caller named and one `AIO:AWAIT`, with
-`-1` the unbounded wait `POLL-ADD` spells the same way. A program calls
-`AIO:LOOP-START` before the first of them, and a wait with no loop running is
+`AIO:POLL` for the milliseconds the caller named and one `AIO:AWAIT`, with
+`-1` the unbounded wait `POLL` spells the same way. A program calls
+`AIO:START` before the first of them, and a wait with no loop running is
 `E-AIO-STATE`.
 
 The slave is opened `O_NOCTTY`, so a session-leading supervisor without a

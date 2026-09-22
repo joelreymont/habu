@@ -228,7 +228,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
 \ names E-SIGNAL-STATE (case one), because NEED-READY runs before the wait.
 
 : NO-LOOP-CASE ( -- )
-   AIO:LOOP-STOP
+   AIO:STOP
 
    s" WAIT with the loop stopped is refused by name" T-LABEL
    [: QUIET-MS >MS SIGNAL:WAIT drop ;] E-AIO-STATE TTHROWSQ
@@ -236,7 +236,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
    s" ... and so is PENDING?, which asks the same question with a zero window" T-LABEL
    [: SIGNAL:PENDING? drop ;] E-AIO-STATE TTHROWSQ
 
-   AIO:LOOP-START ;
+   AIO:START ;
 
 \ ---- case three: what CATCH installed ----------------------------------------
 
@@ -463,7 +463,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
 \ Not a state a caller reaches politely - it is the one thing a wait on that
 \ read end must never do, which is re-ask a descriptor the kernel will not poll
 \ until the deadline runs out. The loop answers it on the REFUSED arm: the
-\ descriptor number no longer names anything, so io_uring refuses the POLL-ADD
+\ descriptor number no longer names anything, so io_uring refuses the POLL
 \ with EBADF rather than completing it with POLLNVAL, and READABLE-WITHIN? names
 \ the poll for both. A wait that only counted an outcome would spin here and a
 \ PENDING? that only counted one would answer true.
@@ -487,7 +487,7 @@ public
 \ compilation) and stopped at the end; every WAIT and PENDING? below runs on it.
 : RUN ( -- )
    T-RESET
-   AIO:LOOP-START
+   AIO:START
    HOST-CASE
    COLD-CASE
    SIGNAL:INIT
@@ -506,7 +506,7 @@ public
    OWNER-CASE
    RELEASE-CASE
    BROKEN-CASE
-   AIO:LOOP-STOP
+   AIO:STOP
    T-REPORT ;
 
 ;package

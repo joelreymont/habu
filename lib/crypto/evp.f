@@ -2,6 +2,7 @@
 require lib/errors.f
 require lib/prelude.f                      \ true / false
 require lib/ffi-abi.f
+require lib/le.f                           \ the C int out-parameters below
 require lib/type/deftype.f
 require lib/task.f
 
@@ -145,18 +146,13 @@ TASK:#USER 7 + CELL-ALIGN and STORAGE-BYTES TASK:+USER EVP-STORAGE drop
    EVP-STORAGE BYTE-VIEW MAC-LEN-OFF + ;
 
 
-\ A C int out-parameter, little-endian on both targets.
-: LE32@ ( ptr u8 -- n ) {: source :}
-   source c@ source $01 + c@ 8 lshift or
-   source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
-
-
+\ A C int out-parameter, little-endian on both targets (lib/le.f).
 : OUTL@ ( -- n )
-   OUTL-BUF LE32@ ;
+   OUTL-BUF LE:U32@ ;
 
 
 : MAC-LEN@ ( -- n )
-   MAC-LEN-BUF LE32@ ;
+   MAC-LEN-BUF LE:U32@ ;
 
 
 : WITHIN-RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}

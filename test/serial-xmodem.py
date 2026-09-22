@@ -119,7 +119,7 @@ class Checks:
 s" {source}" {len(data)} INPUT-READ
 OUTPUT 16 BYTES INIT
 : RUN ( -- )
-   AIO:LOOP-START
+   AIO:START
    s" {os.ttyname(slave)}" OPEN-HANDLE {{: handle:SERIAL:handle :}}
    handle {wait if ack_wait is None else ack_wait} >MS {wait} >MS SESSION SERIAL-XMODEM:INIT
    {'handle CLOSE-HANDLE' if close_before else ''}
@@ -128,7 +128,7 @@ OUTPUT 16 BYTES INIT
    s" {output}" OUTPUT SPAN$ BLEN>N WRITE-ALL
    SESSION SERIAL-XMODEM:DISPOSE {'handle CLOSE-HANDLE' if not close_before else ''}
    INPUT DISPOSE OUTPUT DISPOSE
-   AIO:LOOP-STOP ;
+   AIO:STOP ;
 RUN
 ;package
 '''
@@ -508,11 +508,11 @@ TASK:MIN-STACK TASK:TASK WORKER1
 
 
 : RUN ( -- )
-   AIO:LOOP-START
+   AIO:START
    ['] WORK0 WORKER0 TASK:ACTIVATE ['] WORK1 WORKER1 TASK:ACTIVATE
    WORKER0 WAIT-DONE WORKER1 WAIT-DONE
    WORKER0 TASK:KILL WORKER1 TASK:KILL DONE atomic@ .
-   AIO:LOOP-STOP ;
+   AIO:STOP ;
 RUN
 ;package
 '''

@@ -5,7 +5,7 @@ The current implementation supports Habu on Linux AArch64 with glibc. It
 contains no application protocol, framing, name resolution, or connection
 policy. Other operating systems are rejected before opening a socket. Every
 readiness wait runs on the AIO loop ([aio.md](aio.md)), so a program that asks
-one starts the loop with `AIO:LOOP-START` first.
+one starts the loop with `AIO:START` first.
 
 ## Values and operations
 
@@ -100,11 +100,11 @@ deadline:
 those also answer immediately; the following `READ` reports which it was.
 
 **All four questions run on the AIO loop** ([aio.md](aio.md)): each one submits
-a single `AIO:POLL-ADD` for the descriptor with the caller's timeout as the
+a single `AIO:POLL` for the descriptor with the caller's timeout as the
 poll's own linked deadline and awaits it, so a task waiting for its peer costs
 no CPU and no thread of its own — only its own socket and its own task-local
 endpoint row, and other tasks keep running. The program starts the loop:
-`AIO:LOOP-START` must have run before the first wait, and a wait without it is
+`AIO:START` must have run before the first wait, and a wait without it is
 `E-AIO-STATE`; there is no fallback to `poll(2)`. Because the deadline belongs
 to the operation the kernel is running, a signal no longer cuts the wait short
 and nothing has to be resumed. A timeout of zero asks the question with a

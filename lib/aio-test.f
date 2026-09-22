@@ -27,11 +27,11 @@ package AIO
 
 \ One OP-NOP published and nobody entered for: NOP-STAGE's entry without its
 \ io_uring_enter, so the ring carries an entry the kernel has not been asked to
-\ take. Its user_data is MAX-OPS, which no record answers to, so COMPLETE drops
+\ take. Its user_data is OPS-MAX, which no record answers to, so COMPLETE drops
 \ the completion it gets once some submission takes it.
 : AIO-TEST:PLANT-NOP ( -- )
    AIO-LOCK TASK:GET
-   SQ-SLOT dup OP-NOP MAX-OPS SQE-COMMON SQ-PUBLISH
+   SQ-SLOT dup OP-NOP OPS-MAX SQE-COMMON SQ-PUBLISH
    AIO-LOCK TASK:RELEASE ;
 
 \ The entries in the submission ring the kernel has not consumed.
@@ -50,7 +50,7 @@ package AIO-TEST
 8 constant FAN-TASKS
 8 constant FAN-EACH
 FAN-TASKS FAN-EACH * constant FAN-N
-$100 constant FULL-N                 \ AIO's MAX-OPS: the record table's size
+$100 constant FULL-N                 \ AIO's OPS-MAX: the record table's size
 4 constant ANY-N
 
 -1 constant MARK-TIMED-OUT
@@ -199,14 +199,14 @@ TASK:MIN-STACK TASK:TASK FAN7
 : STOPPED? ( -- bool )
    mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
    begin
-      [: AIO:LOOP-STOP ;] catch 0= if 0 0= exit then
+      [: AIO:STOP ;] catch 0= if 0 0= exit then
       mono-ns deadline > if 0 0= 0= exit then
       TASK:PAUSE
    again ;
 
 \ ---- 1: a task polls, the main thread writes --------------------------------
 : C1-WORK ( -- )
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD AWAIT>N C1-GOT ! ;
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL AWAIT>N C1-GOT ! ;
 
 : CASE-READABLE ( -- )
    0 C1-GOT !
@@ -224,7 +224,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 : CASE-ALREADY-READY ( -- )
    P-R P-W PIPE-OPEN
    P-W @ POKE
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD LONE-TICKET !
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
    SETTLE-MS TASK:SLEEP
    LONE-TICKET @ AWAIT>N C2-GOT !
    C2-GOT @ AIO:READABLE and AIO:READABLE T=
@@ -241,14 +241,14 @@ TASK:MIN-STACK TASK:TASK FAN7
 : CASE-POLL-DEADLINE ( -- )
    P-R P-W PIPE-OPEN
    mono-ns {: t0:n :}
-   P-R @ >FD AIO:READABLE SILENT-MS >MS AIO:POLL-ADD AWAIT>N MARK-TIMED-OUT T=
+   P-R @ >FD AIO:READABLE SILENT-MS >MS AIO:POLL AWAIT>N MARK-TIMED-OUT T=
    mono-ns t0 - SILENT-MS NS-PER-MS * >= TTRUE
    P-R P-W PIPE-CLOSE ;
 
 \ ---- 5: a cancelled poll ----------------------------------------------------
 : CASE-CANCEL ( -- )
    P-R P-W PIPE-OPEN
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD LONE-TICKET !
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
    SETTLE-MS TASK:SLEEP
    LONE-TICKET @ AIO:CANCEL
    LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
@@ -277,7 +277,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    P-R P-W PIPE-OPEN
    PLANT-NOP
    PENDING 1 T=
-   P-R @ >FD AIO:READABLE SILENT-MS >MS AIO:POLL-ADD LONE-TICKET !
+   P-R @ >FD AIO:READABLE SILENT-MS >MS AIO:POLL LONE-TICKET !
    PENDING 0 T=
    LONE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
    P-R P-W PIPE-CLOSE ;
@@ -297,7 +297,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 
 : ANY-ARM ( n -- ) {: i:n :}
    ANY-R CELL-VIEW i SLOT ANY-W CELL-VIEW i SLOT PIPE-OPEN
-   ANY-R CELL-VIEW i SLOT @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD i ANY-TICKETS !
+   ANY-R CELL-VIEW i SLOT @ >FD AIO:READABLE -1 >MS AIO:POLL i ANY-TICKETS !
    i ANY-TICKETS @ ANY-GROUP AIO:GROUP+ ;
 
 : CASE-AWAIT-ANY ( -- )
@@ -321,7 +321,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 
 : FAN-WORK ( n -- ) {: id:n :}
    FAN-EACH 0 ?do
-      id FAN-R@ >FD AIO:READABLE -1 >MS AIO:POLL-ADD
+      id FAN-R@ >FD AIO:READABLE -1 >MS AIO:POLL
       id FAN-EACH * i + FAN-TICKETS !
    loop
    1 FAN-ARMED atomic-add drop
@@ -380,10 +380,10 @@ TASK:MIN-STACK TASK:TASK FAN7
 
 : CASE-STOPPED-REFUSAL ( -- )
    [: TIMER-MS >MS AIO:TIMEOUT TICKET-DROP ;] E-AIO-STATE TTHROWSQ
-   [: AIO:LOOP-STOP ;] E-AIO-STATE TTHROWSQ ;
+   [: AIO:STOP ;] E-AIO-STATE TTHROWSQ ;
 
 : CASE-START-TWICE ( -- )
-   [: AIO:LOOP-START ;] E-AIO-STATE TTHROWSQ ;
+   [: AIO:START ;] E-AIO-STATE TTHROWSQ ;
 
 : OWNER-WORK ( -- )
    [: LONE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] catch OWNER-RC ! ;
@@ -391,7 +391,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 : CASE-OWNER-REFUSAL ( -- )
    0 OWNER-RC !
    P-R P-W PIPE-OPEN
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD LONE-TICKET !
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
    ['] OWNER-WORK OWNER-TASK TASK:ACTIVATE
    OWNER-TASK ENDED? TTRUE
    OWNER-RC @ E-AIO-STATE T=
@@ -407,8 +407,8 @@ TASK:MIN-STACK TASK:TASK FAN7
 
 : CASE-BUSY ( -- )
    P-R P-W PIPE-OPEN
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD LONE-TICKET !
-   [: AIO:LOOP-STOP ;] E-AIO-BUSY TTHROWSQ
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
+   [: AIO:STOP ;] E-AIO-BUSY TTHROWSQ
    LONE-TICKET @ AIO:CANCEL
    LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
    P-R P-W PIPE-CLOSE ;
@@ -417,12 +417,12 @@ TASK:MIN-STACK TASK:TASK FAN7
 \ with no record left there is none for a cancel either, which is the honest
 \ shape of a full table. The exported ceiling is the table's size.
 : CASE-FULL ( -- )
-   AIO:MAX-OPS FULL-N T=
+   AIO:OPS-MAX FULL-N T=
    P-R P-W PIPE-OPEN
    FULL-N 0 ?do
-      P-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD i FULL-TICKETS !
+      P-R @ >FD AIO:READABLE -1 >MS AIO:POLL i FULL-TICKETS !
    loop
-   [: P-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD TICKET-DROP ;] E-AIO-FULL TTHROWSQ
+   [: P-R @ >FD AIO:READABLE -1 >MS AIO:POLL TICKET-DROP ;] E-AIO-FULL TTHROWSQ
    P-W @ POKE
    0 FAN-READY !
    FULL-N 0 ?do
@@ -634,12 +634,12 @@ CAST: TICKET>N ( AIO:ticket -- n )
 CAST: XFER>N ( AIO:xfer -- n )
 
 : HANDLE-IDX ( n -- n )
-   AIO:MAX-OPS mod ;
+   AIO:OPS-MAX mod ;
 
 \ Two handles over one record, one generation apart.
 : REUSED ( n n -- ) {: live:n stale:n :}
    live HANDLE-IDX stale HANDLE-IDX T=
-   live stale - AIO:MAX-OPS T= ;
+   live stale - AIO:OPS-MAX T= ;
 
 : CASE-STALE-TICKET ( -- )
    SETTLE-MS TASK:SLEEP
@@ -702,7 +702,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    P-R @ >FD buf cap XFER-N 0 AIO:READ XFER-TICKET-DROP
    1 XFER-FORGET-DONE atomic! ;
 
-\ Two things are observable. The ring goes idle, so LOOP-STOP is not E-AIO-BUSY:
+\ Two things are observable. The ring goes idle, so STOP is not E-AIO-BUSY:
 \ the record came back. And a write(2) out of the pages the transfer held is
 \ EFAULT instead of a byte into the pipe: the mapping is gone.
 : CASE-XFER-FORGOTTEN ( -- )
@@ -715,7 +715,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    STOPPED? TTRUE
    P-W @ FORGET-PTR @ 1 write 0 < TTRUE
    P-R P-W PIPE-CLOSE
-   AIO:LOOP-START ;
+   AIO:START ;
 
 \ ---- 17: a task's own cleanup beside AIO's ----------------------------------
 \ The registration AIO makes at the first submission is one entry in the task's
@@ -728,7 +728,7 @@ CAST: XFER>N ( AIO:xfer -- n )
 
 : OWN-EXIT-WORK ( -- )
    ['] OWN-EXIT-MARK+ TASK:SELF TASK:AT-EXIT
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD TICKET-DROP
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL TICKET-DROP
    1 OWN-EXIT-DONE atomic! ;
 
 : CASE-OWN-EXIT ( -- )
@@ -742,13 +742,13 @@ CAST: XFER>N ( AIO:xfer -- n )
    OWN-EXIT-MARK @ 1 T=
    STOPPED? TTRUE
    P-R P-W PIPE-CLOSE
-   AIO:LOOP-START ;
+   AIO:START ;
 
 \ ---- 10: a task halted while parked in AWAIT --------------------------------
 \ Its cleanup cancels and forgets the operation, so the loop never wakes a TCB
 \ the join has released and the ring goes idle without it.
 : HALT-WORK ( -- )
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD LONE-TICKET !
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
    1 HALT-PARKED atomic!
    LONE-TICKET @ AWAIT>N drop ;
 
@@ -766,18 +766,18 @@ CAST: XFER>N ( AIO:xfer -- n )
 
 \ ---- 11: the ring opens again ------------------------------------------------
 : CASE-RESTART ( -- )
-   AIO:LOOP-RUNNING? TFALSE
-   AIO:LOOP-START
-   AIO:LOOP-RUNNING? TTRUE
+   AIO:RUNNING? TFALSE
+   AIO:START
+   AIO:RUNNING? TTRUE
    1 >MS AIO:TIMEOUT AWAIT>N MARK-TIMED-OUT T=
-   AIO:LOOP-STOP
-   AIO:LOOP-RUNNING? TFALSE
+   AIO:STOP
+   AIO:RUNNING? TFALSE
    [: TIMER-MS >MS AIO:TIMEOUT TICKET-DROP ;] E-AIO-STATE TTHROWSQ ;
 
 : AIO-TEST-TYPES ( -- )
-   s" AIO-POLL-OK ( fd n ms -- AIO:ticket ) AIO:POLL-ADD"
+   s" AIO-POLL-OK ( fd n ms -- AIO:ticket ) AIO:POLL"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" AIO-POLL-RAW ( n n n -- AIO:ticket ) AIO:POLL-ADD"
+   s" AIO-POLL-RAW ( n n n -- AIO:ticket ) AIO:POLL"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" AIO-AWAIT-OK ( AIO:ticket -- AIO:outcome ) AIO:AWAIT"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -807,7 +807,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    THREADS BASE-THREADS !
    AIO-TEST-TYPES
    CASE-STOPPED-REFUSAL
-   AIO:LOOP-START
+   AIO:START
    CASE-START-TWICE
    CASE-READABLE
    CASE-ALREADY-READY

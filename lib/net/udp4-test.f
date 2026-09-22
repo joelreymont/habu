@@ -251,22 +251,22 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
 : T-NO-LOOP ( -- )
    s" a RECEIVE that must wait with the loop stopped is refused by name" T-LABEL
    OPEN-PAIR
-   AIO:LOOP-STOP
+   AIO:STOP
    [: STOPPED-RECEIVE ;] E-AIO-STATE TTHROWSQ
-   AIO:LOOP-START
+   AIO:START
    CLOSE-PAIR ;
 
 
 : RUN ( -- )
    T-RESET
-   AIO:LOOP-START
+   AIO:START
    T-DATAGRAM
    T-TIMEOUT
    T-ZERO-TIMEOUT
    T-TRUNCATED
    T-PARKED-RECEIVE
    T-NO-LOOP
-   AIO:LOOP-STOP
+   AIO:STOP
    T-REPORT
    s" udp4-test: ok" type cr ;
 

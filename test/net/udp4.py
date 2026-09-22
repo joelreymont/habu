@@ -113,9 +113,9 @@ def exchange(habu, output):
       ok OF -1 throw ENDOF
       failed OF ERRNO>N . ENDOF
    ;MATCH ;
-AIO:LOOP-START
+AIO:START
 RUN
-AIO:LOOP-STOP
+AIO:STOP
 ;package
 ''')
         packets = [b'hello\0UDP', bytes(range(64)), b'', b'Z' * 65507]
@@ -236,9 +236,9 @@ TASK:MIN-STACK TASK:TASK WORKER1
    WORKER0 WAIT-DONE WORKER1 WAIT-DONE
    WORKER0 TASK:KILL WORKER1 TASK:KILL
    DONE atomic@ . ;
-AIO:LOOP-START
+AIO:START
 RUN
-AIO:LOOP-STOP
+AIO:STOP
 '''
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(serve)

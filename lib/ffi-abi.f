@@ -14,6 +14,7 @@
 s" lib/errors.f" required
 s" lib/string.f" required
 s" lib/image-lifecycle.f" required
+s" lib/le.f" required                     \ the four-byte C int this package reads back
 
 package FFI
 
@@ -304,11 +305,6 @@ variable FN-REGISTERED
    dup 0= if E-FFI-DLSYM throw then
    dup idx FN-ADDR! ;
 
-\ errno's cell, and any other four-byte C int this package reads back.
-: LE32@ ( ptr u8 -- n ) {: source:ptr :}
-   source c@ source $01 + c@ 8 lshift or
-   source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
-
 variable ERRNO-FN-CELL
 
 : ERRNO-FN ( -- n ) ERRNO-FN-CELL @ ;
@@ -464,7 +460,7 @@ public
 \ defined after this package closes. libc's location is thread-local and the
 \ value is a four-byte C int.
 : ERRNO ( -- n )
-   RESET ERRNO-FN CALL-PTR LE32@ ;
+   RESET ERRNO-FN CALL-PTR LE:U32@ ;
 
 \ This package's own row, registered as the file loads. It defines nothing, so
 \ it stays in the public section and the wordlist seal below is unchanged.

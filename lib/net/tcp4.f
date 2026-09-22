@@ -6,14 +6,15 @@
 \ take are caller-owned. See docs/threads.md.
 \
 \ Every readiness wait runs on the AIO loop (docs/aio.md): WAIT-READY submits one
-\ POLL-ADD and awaits it, so a waiting task costs no thread of its own. A program
-\ calls AIO:LOOP-START before its first wait; a wait with no loop is E-AIO-STATE.
+\ POLL and awaits it, so a waiting task costs no thread of its own. A program
+\ calls AIO:START before its first wait; a wait with no loop is E-AIO-STATE.
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/type/deftype.f
 require lib/num-types.f
 require lib/task.f
 require lib/aio.f
+require lib/le.f                  \ the socklen cell the endpoint carries
 
 package TCP4
 public
@@ -137,15 +138,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    U32-MASK and dup $80000000 and 0 <> if $100000000 - then ;
 
 
-: LE32! ( n ptr u8 -- ) {: value:n target :}
-   4 0 do value i 8 * rshift $FF and target i + c! loop ;
-
-
-: LE32@ ( ptr u8 -- n ) {: source :}
-   source c@ source $01 + c@ 8 lshift or
-   source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
-
-
 : BE16! ( n ptr u8 -- ) {: value:n target :}
    value 8 rshift $FF and target c! value $FF and target $01 + c! ;
 
@@ -175,11 +167,11 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : ENDPOINT-OUTPUT ( -- )
-   CLEAR-ENDPOINT SOCKADDR-BYTES ADDRLEN LE32! ;
+   CLEAR-ENDPOINT SOCKADDR-BYTES ADDRLEN LE:U32! ;
 
 
 : ENDPOINT@ ( -- address port )
-   ADDRLEN LE32@ SOCKADDR-BYTES <> if E-RESULT throw then
+   ADDRLEN LE:U32@ SOCKADDR-BYTES <> if E-RESULT throw then
    SOCKADDR c@ 2 <> SOCKADDR $01 + c@ 0 <> or if E-RESULT throw then
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
@@ -296,14 +288,14 @@ FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n )
 \ deadline is the poll's own linked timeout, so a signal no longer cuts the wait
 \ short and there is nothing to restart; a zero timeout asks the question with a
 \ zero-length link, which still answers `ready` for a descriptor already ready.
-\ The loop must be running: a wait without AIO:LOOP-START is E-AIO-STATE.
+\ The loop must be running: a wait without AIO:START is E-AIO-STATE.
 \ `cancelled` cannot arrive here - nothing in this module cancels, the ticket
 \ never leaves this word, and the cleanup AIO registers on a submitting task runs
 \ only after that task has ended - so it is a broken foreign result, exactly like
 \ a sockaddr this module did not write.
 : WAIT-READY ( n ms -- ready-result ) {: fd:n timeout:ms :}
    timeout MS>N 0 MAX-TIMEOUT WITHIN-RANGE INIT
-   fd >FD AIO:READABLE timeout AIO:POLL-ADD AIO:AWAIT
+   fd >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF REVENTS>READY ENDOF
       timed-out OF TCP4-READY--RESULT:idle ENDOF

@@ -137,7 +137,7 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
    mono-ns {: started:n :}
    SIGNAL-BYTES 64 100 PROCESS-PTY:AWAIT-BYTES {: quiet:n :}
    mono-ns started - {: elapsed:n :}
-   \ A negative timeout is POLL-ADD's own unbounded wait, signals or not.
+   \ A negative timeout is POLL's own unbounded wait, signals or not.
    SIGNAL-BYTES 64 -1 PROCESS-PTY:AWAIT-BYTES {: got:n :}
    prof-off
    PROCESS-PTY:TEARDOWN
@@ -158,14 +158,14 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
 \ compilation) and stopped at the end.
 : RUN ( -- )
    T-RESET
-   AIO:LOOP-START
+   AIO:START
    LIFECYCLE
    BALANCE
    STATIC
    DEAD-WATCH
    SIGNAL-WATCH
    SIGNAL-OUTPUT
-   AIO:LOOP-STOP
+   AIO:STOP
    T-REPORT
    s" process-pty-io-smoke: ok" type cr ;
 

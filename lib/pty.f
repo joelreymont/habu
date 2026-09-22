@@ -13,9 +13,9 @@
 \ Only the raw open, ioctl, read, write and close primitives are involved; no
 \ libc symbol is borrowed.
 \
-\ READ waits on the AIO loop (docs/aio.md): one POLL-ADD for the window it was
+\ READ waits on the AIO loop (docs/aio.md): one POLL for the window it was
 \ given and one AWAIT, so no thread parks in poll(2). A program calls
-\ AIO:LOOP-START before its first READ; a wait with no loop is E-AIO-STATE.
+\ AIO:START before its first READ; a wait with no loop is E-AIO-STATE.
 
 require lib/errors.f
 require lib/type/deftype.f
@@ -131,7 +131,7 @@ public
 \ on a submitting task runs only after that task has ended - so it is a broken
 \ foreign result.
 : READ ( master ptr u8 n ms -- n ) {: m:master bytes cap:n timeout:ms :}
-   m MASTER>N >FD AIO:READABLE timeout AIO:POLL-ADD AIO:AWAIT
+   m MASTER>N >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF drop m bytes cap READ-READY ENDOF
       timed-out OF 0 ENDOF

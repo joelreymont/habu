@@ -34,9 +34,9 @@
 \ makes the exit observable on both backends (Linux pidfd_open and macOS
 \ kqueue/NOTE_EXIT); test/proc-watch-smoke.f owns the already-dead-race behavior.
 
-\ AWAIT and AWAIT-BYTES wait on the AIO loop (docs/aio.md): one POLL-ADD for the
+\ AWAIT and AWAIT-BYTES wait on the AIO loop (docs/aio.md): one POLL for the
 \ milliseconds the caller named, -1 for no deadline, and one AWAIT. A program
-\ calls AIO:LOOP-START before the first of them; a wait with no loop running is
+\ calls AIO:START before the first of them; a wait with no loop running is
 \ E-AIO-STATE. The forked children never touch the ring; see IO-BUILD.
 
 require lib/process-pty-handle.f
@@ -135,14 +135,14 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
    got 0 > if got exit then
    -1 ;
 
-\ One POLL-ADD on the AIO loop for the milliseconds the caller named, and one
+\ One POLL on the AIO loop for the milliseconds the caller named, and one
 \ AWAIT; the deadline is the poll's own linked timeout, so a signal no longer
 \ cuts the watch short and there is nothing to restart. `cancelled` cannot
 \ arrive - nothing here cancels, the ticket never leaves this word, and the
 \ cleanup AIO registers on a submitting task runs only after that task has
 \ ended - so it is a broken foreign result.
 : IO-POLL-READY? ( fd n -- bool ) {: wfd:fd ms:n :}
-   wfd AIO:READABLE ms >MS AIO:POLL-ADD AIO:AWAIT
+   wfd AIO:READABLE ms >MS AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF IO-WATCH-EVENT? ENDOF
       timed-out OF false ENDOF
@@ -369,13 +369,13 @@ public
 \ the byte count, 0 when nothing arrived in time, -1 once the target's side is
 \ gone (hang-up or end of file). A broken descriptor throws, and so does an
 \ empty buffer, which could otherwise only masquerade as a hang-up. The wait is
-\ one POLL-ADD on the AIO loop and one AWAIT, with ms -1 the unbounded wait
-\ POLL-ADD spells the same way; `cancelled` cannot arrive, for the reason
+\ one POLL on the AIO loop and one AWAIT, with ms -1 the unbounded wait
+\ POLL spells the same way; `cancelled` cannot arrive, for the reason
 \ IO-POLL-READY? gives.
 : AWAIT-BYTES ( process-pty-handle ptr u8 n n -- process-pty-handle n ) {: buf:ptr cap:n ms:n :}
    cap 0 <= if E-PROC-OUTPUT throw then
    HANDLE-MASTER@ {: m:fd :}
-   m AIO:READABLE ms >MS AIO:POLL-ADD AIO:AWAIT
+   m AIO:READABLE ms >MS AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF m buf cap IO-READ-READY ENDOF
       timed-out OF 0 ENDOF

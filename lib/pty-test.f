@@ -60,17 +60,17 @@ variable SPARE-MASTER
 : NO-LOOP ( -- )
    s" a read with the loop stopped is refused by name" T-LABEL
    SPARE PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N SPARE-MASTER !
-   AIO:LOOP-STOP
+   AIO:STOP
    [: STOPPED-READ ;] E-AIO-STATE TTHROWSQ
-   AIO:LOOP-START
+   AIO:START
    SPARE-MASTER @ PTY:>MASTER PTY:CLOSE ;
 
 : RUN ( -- )
    T-RESET
-   AIO:LOOP-START
+   AIO:START
    SLAVE PTY:SLAVE-PATH-CAP PTY:OPEN PAIR
    NO-LOOP
-   AIO:LOOP-STOP
+   AIO:STOP
    T-REPORT
    s" pty-test: ok" type cr ;
 

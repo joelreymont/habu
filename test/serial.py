@@ -144,7 +144,7 @@ int main(void) {
 def binary_io(habu, output):
     body = '''
 : RUN ( -- )
-   AIO:LOOP-START
+   AIO:START
    s" /dev/null" 115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
       opened OF SERIAL:CLOSE OK -1 throw ENDOF
       failed OF SERIAL:ERRNO>N 25 <> if -1 throw then ENDOF
@@ -170,7 +170,7 @@ def binary_io(habu, output):
    handle SERIAL:CLOSE MATCH SERIAL:status
       ok OF -1 throw ENDOF failed OF SERIAL:ERRNO>N . ENDOF
    ;MATCH
-   AIO:LOOP-STOP ;
+   AIO:STOP ;
 RUN
 '''
 
@@ -205,7 +205,7 @@ RUN
 def partial_write(habu, output):
     body = '''
 : RUN ( -- )
-   AIO:LOOP-START
+   AIO:START
    1048576 0 do i $FF and BODY i + c! loop
    s" DEVICE" OPEN {: handle:SERIAL:handle :}
    handle READY
@@ -220,7 +220,7 @@ def partial_write(habu, output):
       ;MATCH
    until
    . handle SERIAL:CLOSE OK
-   AIO:LOOP-STOP ;
+   AIO:STOP ;
 RUN
 '''
     def peer(master, slave, pid):
@@ -235,13 +235,13 @@ RUN
 def disconnect(habu, output):
     body = '''
 : RUN ( -- )
-   AIO:LOOP-START
+   AIO:START
    s" DEVICE" OPEN {: handle:SERIAL:handle :}
    handle READY
    handle BODY 1 SERIAL:BYTES 2000 >MS SERIAL:READ REPORT
    handle BODY 1 SERIAL:BYTES 0 >MS SERIAL:WRITE REPORT
    handle SERIAL:CLOSE OK
-   AIO:LOOP-STOP ;
+   AIO:STOP ;
 RUN
 '''
     # Close the master while Habu waits, to exercise real terminal hangup.
@@ -304,13 +304,13 @@ TASK:MIN-STACK TASK:TASK WORKER1
 
 
 : RUN ( -- )
-   AIO:LOOP-START
+   AIO:START
    ['] WORK0 WORKER0 TASK:ACTIVATE
    ['] WORK1 WORKER1 TASK:ACTIVATE
    WORKER0 WAIT-DONE WORKER1 WAIT-DONE
    WORKER0 TASK:KILL WORKER1 TASK:KILL
    DONE atomic@ .
-   AIO:LOOP-STOP ;
+   AIO:STOP ;
 RUN
 '''
         def serve():

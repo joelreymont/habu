@@ -21,9 +21,9 @@ tell apart from a live handle - names a generation no record has, and every word
 that takes a handle refuses it with `E-AIO-STATE`.
 
 ```forth
-AIO:LOOP-START                                   \ once, after compilation
+AIO:START                                        \ once, after compilation
 : SERVE ( -- )                                   \ inside a task
-   FD AIO:READABLE 500 >MS AIO:POLL-ADD          \ a poll with a deadline
+   FD AIO:READABLE 500 >MS AIO:POLL              \ a poll with a deadline
    AIO:AWAIT MATCH AIO:outcome
       ready     OF DRAIN-INPUT ENDOF             \ the revents the kernel gave
       timed-out OF RETRY ENDOF
@@ -47,7 +47,7 @@ everything first and starts the loop last. A submission with no loop running is
 `lib/process-pty-io.f` and `lib/signal.f` are the loop's library callers: every
 `TCP4` readiness question, every `UDP4:RECEIVE` that has to wait, every
 `SERIAL:READ` and `SERIAL:WRITE`, every `PTY:READ`, `PROCESS-PTY:AWAIT` and
-`AWAIT-BYTES`, and `SIGNAL:WAIT` and `SIGNAL:PENDING?` is one `POLL-ADD` and one
+`AWAIT-BYTES`, and `SIGNAL:WAIT` and `SIGNAL:PENDING?` is one `POLL` and one
 `AWAIT` here ([tcp4.md](tcp4.md), [udp4.md](udp4.md), [serial.md](serial.md),
 [signal.md](signal.md), [process-pty.md](process-pty.md)), so a program that
 uses any of them starts the loop before its first wait.
@@ -56,12 +56,12 @@ uses any of them starts the loop before its first wait.
 
 | Word | Effect | Blocks |
 | --- | --- | --- |
-| `AIO:LOOP-START` | `( -- )` | never; a second start is `E-AIO-STATE` |
-| `AIO:LOOP-STOP` | `( -- )` | until the loop task has ended |
-| `AIO:LOOP-RUNNING?` | `( -- bool )` | never |
+| `AIO:START` | `( -- )` | never; a second start is `E-AIO-STATE` |
+| `AIO:STOP` | `( -- )` | until the loop task has ended |
+| `AIO:RUNNING?` | `( -- bool )` | never |
 | `AIO:READABLE` | `( -- n )` | never; `POLLIN` |
 | `AIO:WRITABLE` | `( -- n )` | never; `POLLOUT` |
-| `AIO:POLL-ADD` | `( fd n ms -- AIO:ticket )` | never; `ms` -1 for no deadline |
+| `AIO:POLL` | `( fd n ms -- AIO:ticket )` | never; `ms` -1 for no deadline |
 | `AIO:TIMEOUT` | `( ms -- AIO:ticket )` | never |
 | `AIO:CANCEL` | `( AIO:ticket -- )` | never |
 | `AIO:AWAIT` | `( AIO:ticket -- AIO:outcome )` | until that operation has ended |
@@ -76,7 +76,7 @@ uses any of them starts the loop before its first wait.
 | `AIO:GROUP-` | `( AIO:ticket AIO:group -- )` | never |
 | `AIO:GROUP-COUNT` | `( AIO:group -- n )` | never |
 | `AIO:GROUP-MAX` | `( -- n )` | never; the tickets one group holds |
-| `AIO:MAX-OPS` | `( -- n )` | never; the records: operations in flight, a poll with a deadline holding two |
+| `AIO:OPS-MAX` | `( -- n )` | never; the records: operations in flight, a poll with a deadline holding two |
 | `AIO:AWAIT-ANY` | `( AIO:group -- AIO:ticket AIO:outcome )` | until one of them has ended |
 
 `AIO:outcome` is a layout, so no caller reads a result without deciding what to
@@ -85,7 +85,7 @@ do about every arm:
 | arm | when |
 | --- | --- |
 | `ready ( n )` | the operation succeeded; for a poll the revents mask, for a `READ` or a `WRITE` the bytes moved, for an `ACCEPT` the new descriptor |
-| `timed-out` | a `TIMEOUT` fired (`-ETIME`), or a `POLL-ADD` ended by its own deadline |
+| `timed-out` | a `TIMEOUT` fired (`-ETIME`), or a `POLL` ended by its own deadline |
 | `cancelled` | an `AIO:CANCEL` ended it (`-ECANCELED`) |
 | `refused ( n )` | any other `-errno`, as a positive number |
 
@@ -98,7 +98,7 @@ do about every arm:
   cell it was given, so a ticket the group never held is `E-AIO-GROUP` whether
   it is stale or live, and a member whose record was reused can still be taken
   out of the group.
-- `AIO:POLL-ADD` with `ms` at or above zero links an `IORING_OP_LINK_TIMEOUT`
+- `AIO:POLL` with `ms` at or above zero links an `IORING_OP_LINK_TIMEOUT`
   behind the poll with `IOSQE_IO_LINK`. The kernel posts both completions - the
   poll's `-ECANCELED` and the timeout's `-ETIME` - so the record owes two and
   settles on the last of them, whichever order they arrive in. That is what
@@ -108,7 +108,7 @@ do about every arm:
 - `AIO:AWAIT-ANY` answers the first ticket of the group whose operation has
   ended, and that ticket leaves the group. The others stay. An empty group is
   `E-AIO-GROUP`, and so is a `GROUP-` of a ticket the group does not hold.
-- `AIO:LOOP-STOP` refuses with `E-AIO-BUSY` while any record is still in flight:
+- `AIO:STOP` refuses with `E-AIO-BUSY` while any record is still in flight:
   unmapping a ring the kernel still owns is not something a caller may ask for.
   Await or cancel everything first. After a stop the ring can be started again.
 
@@ -224,9 +224,9 @@ Two, both small and both in this module.
    process by name instead of throwing.
 
 Everything else - the SQE and CQE fields, the ring indexes, the record table,
-the group rows - is ordinary checked Habu over little-endian byte accessors.
-The submission tail store and the completion head store follow a `fence`, and
-the completion tail read is followed by one.
+the group rows - is ordinary checked Habu over `lib/le.f`'s little-endian byte
+accessors. The submission tail store and the completion head store follow a
+`fence`, and the completion tail read is followed by one.
 
 ## Storage and limits
 
@@ -263,7 +263,7 @@ offset below `-1`, or a socket address length that is not positive.
   An offset of `-1` on a `READ` or a `WRITE` - use and advance the descriptor's
   own position - is io_uring's own rule for those two operations; it is measured
   in `lib/aio-test.f` on the kernel the suite runs on and not against the floor.
-  A `POLL-ADD` with a deadline of zero links a zero-length timeout, and it still
+  A `POLL` with a deadline of zero links a zero-length timeout, and it still
   answers `ready` for a descriptor that is already ready because the kernel
   serves the poll inline before the linked timer is armed: measured 200 of 200
   each way on the running kernel and pinned by the zero-timeout questions of

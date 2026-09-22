@@ -132,10 +132,10 @@ for a shorter one. libcurl's other event shape,
 `CURLMOPT_TIMERFUNCTION`, is callbacks, and Habu hands libcurl no callback — the
 same rule `PERFORM`'s memstream answers.
 
-`AIO:LOOP-START` is the program's job and has to have happened first: a
+`AIO:START` is the program's job and has to have happened first: a
 `LOOP-START` with no AIO loop running answers AIO's own `E-AIO-STATE`. The wake
 pipe is what `START`, `CANCEL` and `LOOP-STOP` write one byte to after they have
-marked a record; the loop holds one `AIO:POLL-ADD` on its read end, and a byte
+marked a record; the loop holds one `AIO:POLL` on its read end, and a byte
 that arrives between the read and the scan costs one extra turn, never a missed
 record.
 
@@ -169,7 +169,7 @@ drops whatever body it had collected and answers the waiter `failed` with
 result, so a cancel that loses that race changes nothing.
 
 `LOOP-STOP` refuses with `CURL:E-STATE` while any record is not free, exactly as
-`AIO:LOOP-STOP` refuses a ring the kernel still owns: await or cancel-and-await
+`AIO:STOP` refuses a ring the kernel still owns: await or cancel-and-await
 everything first. It then wakes the loop, joins it, destroys the multi handle
 and closes the pipe, and rethrows whatever ended the loop. Every ticket the loop
 submitted is cancelled and awaited before it returns, so the AIO loop can be
@@ -254,7 +254,7 @@ never reaching the buffer, and the refusals: a dead handle, a NUL inside a URL,
 a low-speed rate below zero and a window past the C long ceiling, against a
 handle that takes both the disabling pair and a real one.
 
-The loop's own cases follow, with `AIO:LOOP-START` run first because a live task
+The loop's own cases follow, with `AIO:START` run first because a live task
 forbids compilation: a `START` before `LOOP-START` and a second `LOOP-START`
 refused with `E-STATE`; the same request answered identically by `PERFORM` and
 by `START`/`AWAIT`, whole and against a span too short for it; thirty-two

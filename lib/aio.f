@@ -17,6 +17,8 @@
 
 require lib/errors.f
 require lib/memory.f
+require lib/string.f               \ BUFFER:, the record and group tables
+require lib/le.f                   \ the ring and SQE fields are little-endian
 require lib/ffi-abi.f
 require lib/codegen.f             \ the one stderr line a refused syscall prints
 require lib/num-types.f           \ the ms role the timeouts carry
@@ -54,6 +56,20 @@ SUMTYPE outcome 0
    VARIANT refused n ;VARIANT
 ;SUMTYPE
 
+\ The two capacities, public because a caller sizes its own work against them
+\ and private below because every record and group word is bounded by them.
+
+\ The records, which is the ceiling on operations in flight at once: a poll with
+\ a deadline holds two (its own and its link timeout's), every other operation
+\ one, a cancel one until its own completion. Past it a submission is
+\ E-AIO-FULL. A program that parks a known number of tasks in waits can refuse
+\ a count that cannot fit before it starts them.
+$100 constant OPS-MAX
+
+\ The tickets one group holds, so a caller that fills a group itself can stop
+\ before GROUP+ refuses.
+$40 constant GROUP-MAX
+
 private
 
 CAST: >TICKET ( n -- ticket )
@@ -75,10 +91,11 @@ CAST: ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
 425 constant NR-SETUP
 426 constant NR-ENTER
 
+\ The ring is sized for the public OPS-MAX above: one submission entry per
+\ operation in flight and two completion entries per record, because a linked
+\ pair posts two.
 $100 constant AIO-ENTRIES           \ 256 submission entries
-$200 constant AIO-CQ-ENTRIES        \ 512 completion entries: a linked pair posts two
-$100 constant MAX-OPS               \ records, one per operation in flight
-$40 constant GROUP-MAX              \ tickets one group holds
+$200 constant AIO-CQ-ENTRIES        \ 512 completion entries
 $10 constant GROUP-DEFS             \ GROUP definitions one image holds
 
 8 constant SETUP-CQSIZE             \ IORING_SETUP_CQSIZE
@@ -158,6 +175,18 @@ $7D constant ERR-CANCELED           \ ECANCELED 125
 6 constant KIND-ACCEPT
 7 constant KIND-CONNECT
 
+\ The io_uring opcode each kind submits, one row per kind in the kinds' own
+\ order, so a stage that takes its kind as an argument reads the opcode off the
+\ table instead of branching, and a new kind is a row here and a constant above.
+create KIND-OPS
+   OP-POLL-ADD ,  OP-TIMEOUT ,  OP-ASYNC-CANCEL ,  OP-LINK-TIMEOUT ,
+   OP-READ ,  OP-WRITE ,  OP-ACCEPT ,  OP-CONNECT ,
+
+: KIND>OP ( n -- n ) {: kind:n :}
+   kind KIND-POLL < kind KIND-CONNECT > or
+      if s" aio: operation kind" E-AIO-STATE die then
+   KIND-OPS kind cells + @ ;
+
 BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.STATE
    CELL +FIELD REC.RES
@@ -171,27 +200,18 @@ BEGIN-STRUCTURE REC-BYTES
    SPEC-BYTES +FIELD REC.SPEC       \ the timespec a TIMEOUT or a link submits
 END-STRUCTURE
 
-: AIO-ALIGN8 ( -- )
-   here FFI:>CELL 7 and dup 0= if drop exit then
-   8 swap - allot ;
-
-: ZERO-CELLS, ( n -- )
-   0 ?do 0 , loop ;
-
-AIO-ALIGN8
-create AIO-RECS MAX-OPS REC-BYTES * 8 / ZERO-CELLS,
-AIO-ALIGN8
-create AIO-GROUPS GROUP-DEFS GROUP-MAX 1 + * ZERO-CELLS,
-AIO-ALIGN8
-create PARAMS PARAMS-BYTES allot
-AIO-ALIGN8
+\ BUFFER: allots a zeroed buffer on a cell-rounded address, which is the
+\ alignment the record states need: REC.STATE is read and written with
+\ atomic@ / atomic! / atomic-cas, and those want their cell aligned.
+OPS-MAX REC-BYTES * BUFFER: AIO-RECS
+GROUP-DEFS GROUP-MAX 1 + * cells BUFFER: AIO-GROUPS
+PARAMS-BYTES BUFFER: PARAMS
 create NL-BYTE $0A c,
-AIO-ALIGN8
 
 \ The owner of each record as the TCB pointer TASK:WAKE takes. A declared row,
 \ so an owner is stored and read as a pointer and this module needs no address
 \ cast of its own to wake one.
-MAX-OPS TYPED-BUFFER REC-OWNER ptr n
+OPS-MAX TYPED-BUFFER REC-OWNER ptr n
 
 \ The allocation a transfer record holds, in its own typed rows: the pointer
 \ MEM:ALLOC-BYTES answered and the extent it answered with it. Neither is a
@@ -201,8 +221,8 @@ MAX-OPS TYPED-BUFFER REC-OWNER ptr n
 \ once an entry is in the ring the kernel may run it whether or not the
 \ io_uring_enter that offered it was refused; TAKE-XFER clears it when the
 \ caller gets the pair back, and REC-DISCARD when the loop releases the pair.
-MAX-OPS TYPED-BUFFER REC-BUF ptr u8
-MAX-OPS TYPED-BUFFER REC-BUF-LEN NUM:alloc-byte-len
+OPS-MAX TYPED-BUFFER REC-BUF ptr u8
+OPS-MAX TYPED-BUFFER REC-BUF-LEN NUM:alloc-byte-len
 
 variable GROUP-N
 variable RING-FD
@@ -263,25 +283,11 @@ FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
    2 NL-BYTE 1 write drop ;
 
 \ ---- little-endian field access ----------------------------------------------
-\ Every ring and SQE field is a fixed-width little-endian integer, so it is read
-\ and written a byte at a time rather than with a cell store that would depend
-\ on the host's width and alignment rules.
-: LE32@ ( ptr u8 -- n ) {: p :}
-   p c@  p 1 + c@ 8 lshift or  p 2 + c@ $10 lshift or  p 3 + c@ $18 lshift or ;
-
-: LE32! ( n ptr u8 -- ) {: v:n p :}
-   4 0 do v i 8 * rshift $FF and p i + c! loop ;
-
-: LE64@ ( ptr u8 -- n ) {: p :}
-   0 8 0 do p i + c@ i 8 * lshift or loop ;
-
-: LE64! ( n ptr u8 -- ) {: v:n p :}
-   8 0 do v i 8 * rshift $FF and p i + c! loop ;
-
-\ A CQE's res is a signed 32-bit result: zero or more is an answer, less is the
+\ Every ring and SQE field is a fixed-width little-endian integer at a byte
+\ offset, so lib/le.f's accessors read and write it a byte at a time rather than
+\ with a cell store that would depend on the host's width and alignment rules. A
+\ CQE's res is the signed one, LE:S32@: zero or more is an answer, less is the
 \ negated errno.
-: LE32-S@ ( ptr u8 -- n )
-   LE32@ dup $80000000 < if exit then $100000000 - ;
 
 \ ---- the module's one address crossing ---------------------------------------
 \ An address the kernel has just mapped for this ring, as the byte pointer of
@@ -309,38 +315,38 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    SQE-BASE @ SQES-LEN @ slot SQE-BYTES * SQE-BYTES MAP-AT ;
 
 : SQ-TAIL@ ( -- n )
-   SQ-TAIL-OFF @ 4 SQ-AT LE32@ ;
+   SQ-TAIL-OFF @ 4 SQ-AT LE:U32@ ;
 
 : SQ-TAIL! ( n -- )
-   SQ-TAIL-OFF @ 4 SQ-AT LE32! ;
+   SQ-TAIL-OFF @ 4 SQ-AT LE:U32! ;
 
 : SQ-HEAD@ ( -- n )
-   SQ-HEAD-OFF @ 4 SQ-AT LE32@ ;
+   SQ-HEAD-OFF @ 4 SQ-AT LE:U32@ ;
 
 : CQ-HEAD@ ( -- n )
-   CQ-HEAD-OFF @ 4 CQ-AT LE32@ ;
+   CQ-HEAD-OFF @ 4 CQ-AT LE:U32@ ;
 
 : CQ-HEAD! ( n -- )
-   CQ-HEAD-OFF @ 4 CQ-AT LE32! ;
+   CQ-HEAD-OFF @ 4 CQ-AT LE:U32! ;
 
 \ The tail the kernel published. The fence after the read is what makes the
 \ entries below it visible to this thread.
 : CQ-TAIL-ACQUIRE ( -- n )
-   CQ-TAIL-OFF @ 4 CQ-AT LE32@ fence ;
+   CQ-TAIL-OFF @ 4 CQ-AT LE:U32@ fence ;
 
 : CQE-AT ( n -- ptr u8 ) {: head:n :}
    CQ-CQES-OFF @ head CQ-MASK @ and CQE-BYTES * + CQE-BYTES CQ-AT ;
 
 \ ---- records -----------------------------------------------------------------
 : REC ( n -- ptr n ) {: idx:n :}
-   idx 0 < idx MAX-OPS >= or if s" aio: record index" E-AIO-STATE die then
+   idx 0 < idx OPS-MAX >= or if s" aio: record index" E-AIO-STATE die then
    AIO-RECS CELL-VIEW idx REC-BYTES * + ;
 
 : REC-STATE@ ( n -- n )
    REC REC.STATE atomic@ ;
 
 \ ---- handles -----------------------------------------------------------------
-\ A ticket and an xfer are `gen MAX-OPS * idx +`: the record they name and the
+\ A ticket and an xfer are `gen OPS-MAX * idx +`: the record they name and the
 \ generation that record carried when the handle was minted. REC-FREE bumps the
 \ generation, so a handle kept past its record's reuse names a generation no
 \ record has and OWNED-CHECK refuses it - which the index and the owner alone
@@ -348,21 +354,21 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ The generation is unbounded and the product wraps modularly, which is fine: a
 \ generation only has to differ from the ones live handles still carry, and one
 \ record would have to be freed 2^55 times in one run for the product to leave
-\ the cell. Division here is symmetric (-1 MAX-OPS mod is -1), so a handle that
+\ the cell. Division here is symmetric (-1 OPS-MAX mod is -1), so a handle that
 \ did wrap past the top decodes to a negative index, which OWNED-CHECK refuses.
 \ A mint reads the record's generation after the facility is released, which is
 \ safe: between the stage and the mint the record is submitted and this task's,
 \ and REC-FREE reaches a record only as its owner's TAKE, as the last completion
 \ of a forgotten one, as a link record, as a staging failure that mints nothing,
-\ or as LOOP-START clearing the whole table.
+\ or as START clearing the whole table.
 : IDX>HANDLE ( n -- n ) {: idx:n :}
-   idx REC REC.GEN @ MAX-OPS * idx + ;
+   idx REC REC.GEN @ OPS-MAX * idx + ;
 
 : HANDLE>IDX ( n -- n )
-   MAX-OPS mod ;
+   OPS-MAX mod ;
 
 : HANDLE>GEN ( n -- n )
-   MAX-OPS / ;
+   OPS-MAX / ;
 
 : AIO-NULL ( -- ptr n )
    NULL$ drop CELL-VIEW ;
@@ -405,7 +411,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ tasks submitting at the same moment are handed different records. -1 when the
 \ table is full.
 : REC-CLAIM ( -- n )
-   MAX-OPS 0 ?do
+   OPS-MAX 0 ?do
       STATE-FREE STATE-SUBMITTED i REC REC.STATE atomic-cas STATE-FREE = if
          i unloop exit
       then
@@ -421,7 +427,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    TASK:SELF idx REC-OWNER ! ;
 
 : ANY-BUSY? ( -- bool )
-   MAX-OPS 0 ?do
+   OPS-MAX 0 ?do
       i REC-STATE@ STATE-FREE <> if 0 0= unloop exit then
    loop
    0 0= 0= ;
@@ -448,7 +454,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ fence between them is what makes the kernel see a whole entry when it sees the
 \ new tail.
 : SQ-PUBLISH ( n -- ) {: slot:n :}
-   slot SQ-ARRAY-OFF @ slot 4 * + 4 SQ-AT LE32!
+   slot SQ-ARRAY-OFF @ slot 4 * + 4 SQ-AT LE:U32!
    fence
    SQ-TAIL@ 1 + $FFFFFFFF and SQ-TAIL! ;
 
@@ -462,9 +468,9 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ answer is the ring drained, which is what says this submission reached the
 \ kernel; a short take leaves entries behind and is E-AIO-ENTER. The errno line
 \ is only worth printing when the call itself was refused. Every caller holds
-\ AIO-LOCK - the stage words are the locked bodies below, SCRUB and LOOP-STOP
-\ take the facility around theirs - so no other submitter moves the tail across
-\ the call.
+\ AIO-LOCK - the stage words are the locked bodies below, SCRUB and STOP take
+\ the facility around theirs - so no other submitter moves the tail across the
+\ call.
 : ENTER-SUBMIT ( -- n )
    SQ-PENDING 0 0 ENTER-CALL {: rc:n :}
    SQ-PENDING 0= if 0 exit then
@@ -494,8 +500,8 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    again ;
 
 : SPEC! ( n ptr u8 -- ) {: ms:n spec :}
-   ms MS-PER-S / spec LE64!
-   ms MS-PER-S mod NS-PER-MS * spec SPEC-NSEC + LE64! ;
+   ms MS-PER-S / spec LE:U64!
+   ms MS-PER-S mod NS-PER-MS * spec SPEC-NSEC + LE:U64! ;
 
 \ ---- the operations, as SQEs --------------------------------------------
 \ Each writes one cleared SQE at the given slot and publishes it. None of them
@@ -503,23 +509,23 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 : SQE-COMMON ( n n n -- ) {: slot:n op:n id:n :}
    slot SQE-CLEAR
    op slot SQE-AT c!
-   id slot SQE-AT SQE-USER-DATA + LE64! ;
+   id slot SQE-AT SQE-USER-DATA + LE:U64! ;
 
 : SQE-POLL ( n n n n -- ) {: slot:n id:n f:n events:n :}
    slot OP-POLL-ADD id SQE-COMMON
-   f slot SQE-AT SQE-FD + LE32!
-   events slot SQE-AT SQE-OPFLAGS + LE32! ;
+   f slot SQE-AT SQE-FD + LE:U32!
+   events slot SQE-AT SQE-OPFLAGS + LE:U32! ;
 
 : SQE-TIMEOUT ( n n n n -- ) {: slot:n id:n ms:n op:n :}
    slot op id SQE-COMMON
    ms id REC REC.SPEC BYTE-VIEW SPEC!
-   id REC REC.SPEC FFI:>CELL slot SQE-AT SQE-ADDR + LE64!
-   1 slot SQE-AT SQE-LEN + LE32! ;
+   id REC REC.SPEC FFI:>CELL slot SQE-AT SQE-ADDR + LE:U64!
+   1 slot SQE-AT SQE-LEN + LE:U32! ;
 
 : SQE-CANCEL ( n n n -- ) {: slot:n id:n target:n :}
    slot OP-ASYNC-CANCEL id SQE-COMMON
-   -1 slot SQE-AT SQE-FD + LE32!
-   target slot SQE-AT SQE-ADDR + LE64! ;
+   -1 slot SQE-AT SQE-FD + LE:U32!
+   target slot SQE-AT SQE-ADDR + LE:U64! ;
 
 : SQE-LINK! ( n -- ) {: slot:n :}
    SQE-IO-LINK slot SQE-AT SQE-FLAGS + c! ;
@@ -529,26 +535,26 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ which is io_uring's "use and advance this file's own position".
 : SQE-RW ( n n n n n n -- ) {: slot:n id:n op:n f:n count:n off:n :}
    slot op id SQE-COMMON
-   f slot SQE-AT SQE-FD + LE32!
-   count slot SQE-AT SQE-LEN + LE32!
-   off slot SQE-AT SQE-OFF + LE64! ;
+   f slot SQE-AT SQE-FD + LE:U32!
+   count slot SQE-AT SQE-LEN + LE:U32!
+   off slot SQE-AT SQE-OFF + LE:U64! ;
 
 : SQE-BUF! ( n ptr u8 -- ) {: slot:n buf :}
-   buf FFI:>CELL slot SQE-AT SQE-ADDR + LE64! ;
+   buf FFI:>CELL slot SQE-AT SQE-ADDR + LE:U64! ;
 
 \ IORING_OP_ACCEPT with addr and addr2 both zero asks for no peer address, so
 \ nothing of the caller's has to stay alive for it. IORING_OP_CONNECT puts the
 \ sockaddr in addr and its length in the addr2 half of the off field.
 : SQE-SOCK ( n n n n n n -- ) {: slot:n id:n op:n f:n addr:n off:n :}
    slot op id SQE-COMMON
-   f slot SQE-AT SQE-FD + LE32!
-   addr slot SQE-AT SQE-ADDR + LE64!
-   off slot SQE-AT SQE-OFF + LE64! ;
+   f slot SQE-AT SQE-FD + LE:U32!
+   addr slot SQE-AT SQE-ADDR + LE:U64!
+   off slot SQE-AT SQE-OFF + LE:U64! ;
 
 \ The SQE's per-operation flag word, which an accept uses for the flags it wants
 \ on the new descriptor - the same word SQE-POLL writes its event mask into.
 : SQE-OPFLAGS! ( n n -- ) {: slot:n v:n :}
-   v slot SQE-AT SQE-OPFLAGS + LE32! ;
+   v slot SQE-AT SQE-OPFLAGS + LE:U32! ;
 
 \ ---- completion --------------------------------------------------------------
 \ A record owes one completion, or two when a poll carries a link timeout. The
@@ -576,10 +582,10 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ is submitted or forgotten until its last completion), so it ends the process
 \ by name like the other defects here.
 : COMPLETE ( ptr u8 -- ) {: cqe :}
-   cqe LE64@ {: id:n :}
-   cqe CQE-RES + LE32-S@ {: res:n :}
-   cqe CQE-FLAGS + LE32@ {: fl:n :}
-   id 0 < id MAX-OPS >= or if exit then
+   cqe LE:U64@ {: id:n :}
+   cqe CQE-RES + LE:S32@ {: res:n :}
+   cqe CQE-FLAGS + LE:U32@ {: fl:n :}
+   id 0 < id OPS-MAX >= or if exit then
    id REC-STATE@ STATE-FREE = if s" aio: completion of a free record" E-AIO-STATE die then
    id REC REC.KIND @ KIND-LINK = if id res COMPLETE-LINK exit then
    res id REC REC.RES !
@@ -614,25 +620,25 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    PARAMS-BYTES 0 ?do 0 PARAMS i + c! loop ;
 
 : P-SQ@ ( n -- n ) {: off:n :}
-   PARAMS P-SQ-OFF + off + LE32@ ;
+   PARAMS P-SQ-OFF + off + LE:U32@ ;
 
 : P-CQ@ ( n -- n ) {: off:n :}
-   PARAMS P-CQ-OFF + off + LE32@ ;
+   PARAMS P-CQ-OFF + off + LE:U32@ ;
 
 : RING-MAP ( n n -- n ) {: bytes:n off:n :}
    MEM-ADDR-ANY bytes MEM-PROT-RW MEM-MAP-SHARED RING-FD @ off mmap ;
 
 : P-SQ-N ( -- n )
-   PARAMS P-SQ-ENTRIES + LE32@ ;
+   PARAMS P-SQ-ENTRIES + LE:U32@ ;
 
 : P-CQ-N ( -- n )
-   PARAMS P-CQ-ENTRIES + LE32@ ;
+   PARAMS P-CQ-ENTRIES + LE:U32@ ;
 
 \ The masks live in the rings themselves, so they are read once the mappings
 \ exist; the entry counts are what io_uring_params answered.
 : RING-OFFSETS ( -- )
-   RO-MASK P-SQ@ 4 SQ-AT LE32@ SQ-MASK !
-   RO-MASK P-CQ@ 4 CQ-AT LE32@ CQ-MASK ! ;
+   RO-MASK P-SQ@ 4 SQ-AT LE:U32@ SQ-MASK !
+   RO-MASK P-CQ@ 4 CQ-AT LE:U32@ CQ-MASK ! ;
 
 \ The three mappings the kernel publishes for a ring: the submission ring, the
 \ completion ring and the submission entries. Their lengths come from the entry
@@ -660,8 +666,8 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 
 : RING-SETUP ( -- )
    PARAMS-CLEAR
-   SETUP-CQSIZE PARAMS P-FLAGS + LE32!
-   AIO-CQ-ENTRIES PARAMS P-CQ-ENTRIES + LE32!
+   SETUP-CQSIZE PARAMS P-FLAGS + LE:U32!
+   AIO-CQ-ENTRIES PARAMS P-CQ-ENTRIES + LE:U32!
    NR-SETUP AIO-ENTRIES PARAMS URING-SETUP-CALL {: fd:n :}
    fd 0 < if s" aio: io_uring_setup errno " DIAG-ERRNO E-AIO-SETUP throw then
    fd RING-FD !
@@ -677,11 +683,20 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    0 RING-FD ! ;
 
 : RECS-CLEAR ( -- )
-   MAX-OPS 0 ?do i REC-FREE loop ;
+   OPS-MAX 0 ?do i REC-FREE loop ;
 
 \ ---- the public operations' locked bodies ------------------------------------
 \ Each answers a code instead of throwing, because it runs with the facility
 \ held and a throw would leave it locked. The caller releases and then throws.
+
+\ The prologue every single-SQE stage shares: room for one more entry and a free
+\ record to put it on, or -1. It gives nothing back, because a stage that cannot
+\ claim has claimed nothing, and each caller answers E-AIO-FULL in the shape its
+\ own word returns.
+: CLAIM-ONE ( -- n )
+   1 SQ-ROOM? 0= if -1 exit then
+   REC-CLAIM ;
+
 \ A poll with no deadline is one SQE on one record. A poll with one carries an
 \ IORING_OP_LINK_TIMEOUT behind IOSQE_IO_LINK, on a second record whose only job
 \ is to say which of the two ended the wait: the kernel always posts both CQEs,
@@ -699,8 +714,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    idx SUBMIT-OR-FORGET idx ;
 
 : POLL-STAGE ( n n n -- n n ) {: f:n events:n ms:n :}
-   1 SQ-ROOM? 0= if E-AIO-FULL -1 exit then
-   REC-CLAIM {: idx:n :}
+   CLAIM-ONE {: idx:n :}
    idx 0 < if E-AIO-FULL -1 exit then
    ms 0 < if
       idx KIND-POLL 1 REC-ARM
@@ -710,18 +724,11 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    f events ms idx POLL-LINKED ;
 
 : TIMEOUT-STAGE ( n -- n n ) {: ms:n :}
-   1 SQ-ROOM? 0= if E-AIO-FULL -1 exit then
-   REC-CLAIM {: idx:n :}
+   CLAIM-ONE {: idx:n :}
    idx 0 < if E-AIO-FULL -1 exit then
    idx KIND-TIMEOUT 1 REC-ARM
    SQ-SLOT dup idx ms OP-TIMEOUT SQE-TIMEOUT SQ-PUBLISH
    idx SUBMIT-OR-FORGET idx ;
-
-: XFER-OP ( n -- n ) {: kind:n :}
-   kind KIND-READ = if OP-READ exit then OP-WRITE ;
-
-: SOCK-OP ( n -- n ) {: kind:n :}
-   kind KIND-ACCEPT = if OP-ACCEPT exit then OP-CONNECT ;
 
 \ A transfer is one SQE on one record, and the record takes the caller's
 \ allocation with it: the two rows and REC.HOLD are written before the entry is
@@ -740,14 +747,13 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ which is the rule's effect; this comment holds the refusal branch itself.
 : XFER-STAGE ( n ptr u8 NUM:alloc-byte-len n n n -- n n )
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
-   1 SQ-ROOM? 0= if E-AIO-FULL -1 exit then
-   REC-CLAIM {: idx:n :}
+   CLAIM-ONE {: idx:n :}
    idx 0 < if E-AIO-FULL -1 exit then
    idx kind 1 REC-ARM
    buf idx REC-BUF !
    cap idx REC-BUF-LEN !
    1 idx REC REC.HOLD !
-   SQ-SLOT dup idx kind XFER-OP f count off SQE-RW
+   SQ-SLOT dup idx kind KIND>OP f count off SQE-RW
    dup buf SQE-BUF!
    SQ-PUBLISH
    idx SUBMIT-OR-FORGET idx ;
@@ -756,11 +762,10 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ that this module owns. The bytes a connect names stay the caller's, and the
 \ caller keeps them unchanged until the outcome is taken (docs/aio.md).
 : SOCK-STAGE ( n n n n -- n n ) {: f:n addr:n off:n kind:n :}
-   1 SQ-ROOM? 0= if E-AIO-FULL -1 exit then
-   REC-CLAIM {: idx:n :}
+   CLAIM-ONE {: idx:n :}
    idx 0 < if E-AIO-FULL -1 exit then
    idx kind 1 REC-ARM
-   SQ-SLOT dup idx kind SOCK-OP f addr off SQE-SOCK
+   SQ-SLOT dup idx kind KIND>OP f addr off SQE-SOCK
    kind KIND-ACCEPT = if dup ACCEPT-FLAGS SQE-OPFLAGS! then
    SQ-PUBLISH
    idx SUBMIT-OR-FORGET idx ;
@@ -768,8 +773,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ A cancel is submitted on a record nobody waits for, so its own completion
 \ frees it; the operation it names completes cancelled on its own record.
 : CANCEL-STAGE ( n -- n ) {: target:n :}
-   1 SQ-ROOM? 0= if E-AIO-FULL exit then
-   REC-CLAIM {: idx:n :}
+   CLAIM-ONE {: idx:n :}
    idx 0 < if E-AIO-FULL exit then
    idx KIND-CANCEL 1 REC-ARM
    STATE-FORGET idx REC REC.STATE atomic!
@@ -778,7 +782,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 
 : NOP-STAGE ( -- n )
    1 SQ-ROOM? 0= if E-AIO-FULL exit then
-   SQ-SLOT dup OP-NOP MAX-OPS SQE-COMMON SQ-PUBLISH
+   SQ-SLOT dup OP-NOP OPS-MAX SQE-COMMON SQ-PUBLISH
    ENTER-SUBMIT ;
 
 \ ---- the cleanup a submitting task registers ---------------------------------
@@ -801,7 +805,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    RING-LIVE @ 0= if exit then
    TASK:SELF-N dup 0= if drop exit then {: me:n :}
    AIO-LOCK TASK:GET
-   MAX-OPS 0 ?do i me SCRUB-ONE loop
+   OPS-MAX 0 ?do i me SCRUB-ONE loop
    AIO-LOCK TASK:RELEASE ;
 
 : ENSURE-SCRUB ( -- )
@@ -844,7 +848,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ record and a generation the record no longer carries are all E-AIO-STATE.
 : OWNED-CHECK ( n -- n ) {: h:n :}
    h HANDLE>IDX {: idx:n :}
-   idx 0 < idx MAX-OPS >= or if E-AIO-STATE throw then
+   idx 0 < idx OPS-MAX >= or if E-AIO-STATE throw then
    idx REC-STATE@ STATE-FREE = if E-AIO-STATE throw then
    idx REC-OWNER @ FFI:>CELL TASK:SELF-N <> if E-AIO-STATE throw then
    h HANDLE>GEN idx REC REC.GEN @ <> if E-AIO-STATE throw then
@@ -869,6 +873,20 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 : RUNNING-CHECK ( -- )
    RING-LIVE @ 0= if E-AIO-STATE throw then ;
 
+\ What a submission does around its staging word. A stage answers a code instead
+\ of throwing because it runs with the facility held, so the throw belongs here,
+\ after the release; the index it answers beside that code is what mints the
+\ handle the caller gets back.
+: SUBMIT-ENTER ( -- )
+   RUNNING-CHECK
+   ENSURE-SCRUB
+   AIO-LOCK TASK:GET ;
+
+: SUBMIT-LEAVE ( n n -- n ) {: rc:n idx:n :}
+   AIO-LOCK TASK:RELEASE
+   rc 0 <> if rc throw then
+   idx IDX>HANDLE ;
+
 \ One cancel body for both handles: the public words differ only in the type
 \ they take apart, so neither of them has to name a record index.
 : CANCEL-HANDLE ( n -- ) {: h:n :}
@@ -891,23 +909,13 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ apart, in the record and in the SQE.
 : XFER-SUBMIT ( n ptr u8 NUM:alloc-byte-len n n n -- xfer )
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
-   RUNNING-CHECK
    count cap off XFER-BOUNDS
-   ENSURE-SCRUB
-   AIO-LOCK TASK:GET
-   f buf cap count off kind XFER-STAGE {: rc:n idx:n :}
-   AIO-LOCK TASK:RELEASE
-   rc 0 <> if rc throw then
-   idx IDX>HANDLE >XFER ;
+   SUBMIT-ENTER
+   f buf cap count off kind XFER-STAGE SUBMIT-LEAVE >XFER ;
 
 : SOCK-SUBMIT ( n n n n -- ticket ) {: f:n addr:n off:n kind:n :}
-   RUNNING-CHECK
-   ENSURE-SCRUB
-   AIO-LOCK TASK:GET
-   f addr off kind SOCK-STAGE {: rc:n idx:n :}
-   AIO-LOCK TASK:RELEASE
-   rc 0 <> if rc throw then
-   idx IDX>HANDLE >TICKET ;
+   SUBMIT-ENTER
+   f addr off kind SOCK-STAGE SUBMIT-LEAVE >TICKET ;
 
 \ ---- groups ------------------------------------------------------------------
 : G-ROW ( n -- ptr n ) {: g:n :}
@@ -975,7 +983,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 
 public
 
-\ The two event masks a POLL-ADD takes; they are POLLIN and POLLOUT, so they
+\ The two event masks a POLL takes; they are POLLIN and POLLOUT, so they
 \ combine with `or` and come back in the `ready` arm as the kernel's revents.
 : READABLE ( -- n )
    EV-READABLE ;
@@ -986,7 +994,7 @@ public
 \ Opens the ring and starts the completion task. A live task forbids
 \ compilation (docs/threads.md), so a program starts the loop after it has
 \ finished defining words and not at load time. A second start is E-AIO-STATE.
-: LOOP-START ( -- )
+: START ( -- )
    RING-LIVE @ 0 <> if E-AIO-STATE throw then
    RING-READY @ 0= if AIO-LOCK TASK:FACILITY-INIT 1 RING-READY ! then
    RECS-CLEAR
@@ -999,7 +1007,7 @@ public
 \ cancelled and drained first: a record still in flight is E-AIO-BUSY, because
 \ unmapping the ring under the kernel is not a thing a caller can be allowed to
 \ ask for. The NOP is what wakes the loop out of its blocking wait.
-: LOOP-STOP ( -- )
+: STOP ( -- )
    RUNNING-CHECK
    ANY-BUSY? if E-AIO-BUSY throw then
    1 RING-STOP atomic!
@@ -1014,35 +1022,25 @@ public
    RING-UNMAP
    0 RING-LIVE ! ;
 
-\ True between a LOOP-START that returned and the LOOP-STOP that gives the ring
-\ back - the same state every submission below checks, so a caller can refuse by
-\ name instead of catching E-AIO-STATE from the first wait it makes.
-: LOOP-RUNNING? ( -- bool )
+\ True between a START that returned and the STOP that gives the ring back - the
+\ same state every submission below checks, so a caller can refuse by name
+\ instead of catching E-AIO-STATE from the first wait it makes.
+: RUNNING? ( -- bool )
    RING-LIVE @ 0 <> ;
 
 \ Waits for a descriptor to carry one of the events in the mask. ms is a
 \ deadline in milliseconds, linked to the poll as an IORING_OP_LINK_TIMEOUT, or
 \ -1 for no deadline. A submission with no loop running is E-AIO-STATE; no free
 \ record or no room in the submission ring is E-AIO-FULL.
-: POLL-ADD ( fd n ms -- ticket ) {: f:fd events:n timeout:ms :}
-   RUNNING-CHECK
-   ENSURE-SCRUB
-   AIO-LOCK TASK:GET
-   f FD>N events timeout MS>N POLL-STAGE {: rc:n idx:n :}
-   AIO-LOCK TASK:RELEASE
-   rc 0 <> if rc throw then
-   idx IDX>HANDLE >TICKET ;
+: POLL ( fd n ms -- ticket ) {: f:fd events:n timeout:ms :}
+   SUBMIT-ENTER
+   f FD>N events timeout MS>N POLL-STAGE SUBMIT-LEAVE >TICKET ;
 
 \ Fires once, after ms milliseconds. The outcome is timed-out, or cancelled when
 \ a CANCEL reached it first.
 : TIMEOUT ( ms -- ticket ) {: timeout:ms :}
-   RUNNING-CHECK
-   ENSURE-SCRUB
-   AIO-LOCK TASK:GET
-   timeout MS>N TIMEOUT-STAGE {: rc:n idx:n :}
-   AIO-LOCK TASK:RELEASE
-   rc 0 <> if rc throw then
-   idx IDX>HANDLE >TICKET ;
+   SUBMIT-ENTER
+   timeout MS>N TIMEOUT-STAGE SUBMIT-LEAVE >TICKET ;
 
 \ Asks the kernel to end that operation. It does not wait: the ticket still has
 \ to be AWAITed, and answers cancelled once the kernel has ended it.
@@ -1115,7 +1113,6 @@ public
 
 \ Defines one group:  AIO:GROUP WAITERS   \ WAITERS ( -- AIO:group )
 : GROUP ( -- )
-   AIO-ALIGN8
    create G-REGISTER ,
    does> ( -- group ) @ >GROUP ;
 
@@ -1135,19 +1132,6 @@ public
 
 : GROUP-COUNT ( group -- n )
    GROUP>N G-COUNT@ ;
-
-\ The tickets one group holds, so a caller that fills a group itself can stop
-\ before GROUP+ refuses.
-: GROUP-MAX ( -- n )
-   GROUP-MAX ;
-
-\ The records, which is the ceiling on operations in flight at once: a poll with
-\ a deadline holds two (its own and its link timeout's), every other operation
-\ one, a cancel one until its own completion. Past it a submission is
-\ E-AIO-FULL. A program that parks a known number of tasks in waits can refuse
-\ a count that cannot fit before it starts them.
-: MAX-OPS ( -- n )
-   MAX-OPS ;
 
 \ The first ticket of the group whose operation has ended, with its outcome. The
 \ ticket leaves the group and its record is released, exactly as AWAIT does; the

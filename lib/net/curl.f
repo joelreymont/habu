@@ -713,7 +713,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 \ ---- the wake pipe -----------------------------------------------------------
 \ One byte says "a record changed": a START, a CANCEL, an abandoned record or
-\ the stop. The loop holds one POLL-ADD ticket on the read end, and after it
+\ the stop. The loop holds one AIO POLL ticket on the read end, and after it
 \ reads whatever is there it scans the table, so a byte that arrives between the
 \ read and the scan costs one extra turn and never a missed record.
 
@@ -976,7 +976,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
    LOOP-GROUP AIO:GROUP-COUNT AIO:GROUP-MAX 2 - >= if 1 SHORT-TURN ! exit then
    FD-FREE-SLOT dup 0 < if drop 1 SHORT-TURN ! exit then
    {: slot:n :}
-   fd >FD mask -1 >MS AIO:POLL-ADD {: t:AIO:ticket :}
+   fd >FD mask -1 >MS AIO:POLL {: t:AIO:ticket :}
    t LOOP-GROUP AIO:GROUP+
    t slot FD-TICKETS !
    fd slot FD-FD!
@@ -1051,7 +1051,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 
 : WAKE-ARM ( -- )
-   WAKE-R @ >FD AIO:READABLE -1 >MS AIO:POLL-ADD {: t:AIO:ticket :}
+   WAKE-R @ >FD AIO:READABLE -1 >MS AIO:POLL {: t:AIO:ticket :}
    t LOOP-GROUP AIO:GROUP+
    t WAKE-TICKET ! ;
 
@@ -1118,7 +1118,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 
 \ Every ticket this loop submitted is ended and handed back before the task
-\ returns: a record still in flight is what AIO:LOOP-STOP refuses, and a ticket
+\ returns: a record still in flight is what AIO:STOP refuses, and a ticket
 \ nobody awaits is a record nobody frees.
 : GROUP-DRAIN ( -- )
    AIO:GROUP-MAX 0 ?do i FD-MASK@ 0 <> if i FD-DROP then loop
@@ -1239,7 +1239,7 @@ public
 
 \ Ends the loop and gives the multi handle and the pipe back. Every transfer
 \ must have been awaited first: a record that is not free is E-STATE, exactly as
-\ AIO:LOOP-STOP refuses a ring the kernel still owns. What ended the loop is
+\ AIO:STOP refuses a ring the kernel still owns. What ended the loop is
 \ rethrown here. After a stop the loop can be started again.
 : LOOP-STOP ( -- )
    LOOP-LIVE atomic@ 0= if E-STATE throw then

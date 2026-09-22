@@ -197,9 +197,9 @@ TASK:MIN-STACK TASK:TASK READER
 
 : NO-LOOP-CASE ( -- )
    s" a read with the loop stopped is refused by name" T-LABEL
-   AIO:LOOP-STOP
+   AIO:STOP
    [: STOPPED-READ ;] E-AIO-STATE TTHROWSQ
-   AIO:LOOP-START ;
+   AIO:START ;
 
 \ ---- case eight: the handle after CLOSE --------------------------------------
 \ The kernel refuses the poll of a descriptor that names nothing with EBADF, so
@@ -240,7 +240,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   AIO:LOOP-START
+   AIO:START
    OPEN-CASE
    READ-CASE
    IDLE-CASE
@@ -250,7 +250,7 @@ public
    NO-LOOP-CASE
    AFTER-CLOSE-CASE
    HANGUP-CASE
-   AIO:LOOP-STOP
+   AIO:STOP
    T-REPORT
    s" serial-test: ok" type cr ;
 

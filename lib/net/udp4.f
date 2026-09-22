@@ -5,8 +5,8 @@
 \ caller-owned. See docs/threads.md.
 \
 \ The socket is nonblocking and RECEIVE waits on the AIO loop (docs/aio.md): one
-\ POLL-ADD for the time left on its deadline, awaited without parking a thread. A
-\ program calls AIO:LOOP-START before its first RECEIVE that waits; a wait with
+\ POLL for the time left on its deadline, awaited without parking a thread. A
+\ program calls AIO:START before its first RECEIVE that waits; a wait with
 \ no loop is E-AIO-STATE.
 require lib/errors.f
 require lib/ffi-abi.f
@@ -14,6 +14,7 @@ require lib/type/deftype.f
 require lib/num-types.f
 require lib/task.f
 require lib/aio.f
+require lib/le.f                  \ the socklen cell the endpoint carries
 
 package UDP4
 public
@@ -93,15 +94,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    MAX-ADDRESS and dup $80000000 and 0 <> if $100000000 - then ;
 
 
-: LE32! ( n ptr u8 -- ) {: value:n target :}
-   4 0 do value i 8 * rshift $FF and target i + c! loop ;
-
-
-: LE32@ ( ptr u8 -- n ) {: source :}
-   source c@ source $01 + c@ 8 lshift or
-   source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
-
-
 : BE16! ( n ptr u8 -- ) {: value:n target :}
    value 8 rshift $FF and target c! value $FF and target $01 + c! ;
 
@@ -131,11 +123,11 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : ENDPOINT-OUTPUT ( -- )
-   CLEAR-ENDPOINT SOCKADDR-BYTES ADDRLEN LE32! ;
+   CLEAR-ENDPOINT SOCKADDR-BYTES ADDRLEN LE:U32! ;
 
 
 : ENDPOINT@ ( -- address port )
-   ADDRLEN LE32@ SOCKADDR-BYTES <> if E-RESULT throw then
+   ADDRLEN LE:U32@ SOCKADDR-BYTES <> if E-RESULT throw then
    SOCKADDR c@ 2 <> SOCKADDR $01 + c@ 0 <> or if E-RESULT throw then
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
@@ -210,7 +202,7 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
 \ never leaves this word, and the cleanup AIO registers on a submitting task runs
 \ only after that task has ended - so it is a broken foreign result.
 : WAIT-READABLE ( socket ms -- AIO:outcome ) {: socket:socket left:ms :}
-   socket SOCKET>N >FD AIO:READABLE left AIO:POLL-ADD AIO:AWAIT ;
+   socket SOCKET>N >FD AIO:READABLE left AIO:POLL AIO:AWAIT ;
 
 
 : REMAINING ( ns -- ms )
@@ -311,7 +303,7 @@ public
 \ writable span. A truncated result carries the ORIGINAL datagram byte length,
 \ while only capacity bytes were copied. Timeout zero makes one immediate try and
 \ never reaches the loop; any other timeout is an absolute deadline the waits on
-\ the loop share, so AIO:LOOP-START must have run before the first of them.
+\ the loop share, so AIO:START must have run before the first of them.
 : RECEIVE ( socket ptr u8 NUM:byte-len ms -- receive-result )
    {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
    socket CHECK-SOCKET capacity BLEN>N 1 MAX-PAYLOAD WITHIN-RANGE

@@ -8,9 +8,9 @@
 \ See docs/threads.md.
 \
 \ The wait is the AIO loop's (docs/aio.md): every READ and WRITE readiness
-\ question is one POLL-ADD for the time left on its deadline and one AWAIT, so
+\ question is one POLL for the time left on its deadline and one AWAIT, so
 \ no thread parks in poll(2) and a signal no longer cuts the wait short. A
-\ program calls AIO:LOOP-START before its first READ or WRITE; a wait with no
+\ program calls AIO:START before its first READ or WRITE; a wait with no
 \ loop running is E-AIO-STATE.
 require lib/errors.f
 require lib/ffi-abi.f
@@ -280,19 +280,19 @@ TRUSTED: CLOSE-CALL ( -- n )
 : RETRY? ( errno -- bool ) ERRNO>N dup 4 = swap 11 = or ;
 
 
-\ Positive event bits, zero for the deadline, or a negative errno. One POLL-ADD
+\ Positive event bits, zero for the deadline, or a negative errno. One POLL
 \ on the AIO loop for the time this operation has left, then one AWAIT: the
 \ deadline is the poll's own linked timeout, so a signal no longer cuts the wait
 \ short and there is nothing to restart. The answered bits keep the POLLNVAL
 \ rule, though a descriptor the kernel refuses outright now arrives as EBADF on
 \ the refused arm instead of as POLLNVAL on the ready one. The loop must be
-\ running: a wait without AIO:LOOP-START is E-AIO-STATE. `cancelled` cannot
+\ running: a wait without AIO:START is E-AIO-STATE. `cancelled` cannot
 \ arrive here - nothing in this module cancels, the ticket never leaves this
 \ word, and the cleanup AIO registers on a submitting task runs only after that
 \ task has ended - so it is a broken foreign result, exactly like an impossible
 \ termios read-back.
 : AWAIT ( handle n ns -- n ) {: handle:handle events:n deadline:ns :}
-   handle HANDLE>N >FD events deadline REMAINING AIO:POLL-ADD AIO:AWAIT
+   handle HANDLE>N >FD events deadline REMAINING AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF dup $20 and 0 <> if drop -9 then ENDOF
       timed-out OF 0 ENDOF

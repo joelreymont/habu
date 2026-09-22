@@ -197,7 +197,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
 
 \ SA_RESTART so the read, write and wait calls a program is blocked in resume
 \ after a caught signal. The WAIT window no longer needs it: the wait is a
-\ POLL-ADD on the AIO loop, and a signal reaches no thread parked in poll(2).
+\ POLL on the AIO loop, and a signal reaches no thread parked in poll(2).
 \ WAIT still owns a deadline, for the lost race rather than for -EINTR.
 : INSTALL-STUB ( n -- ) {: sig:n :}
    SA-ACT SA-BUF-BYTES ZERO-BYTES
@@ -250,7 +250,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
 
 \ ---- waiting on the read end -------------------------------------------------
 
-\ One window of the read end, waited out on the AIO loop: a POLL-ADD for ms with
+\ One window of the read end, waited out on the AIO loop: a POLL for ms with
 \ the deadline as the poll's own linked timeout, and an AWAIT. A signal reaches
 \ no thread parked here, so there is no -EINTR to restart.
 \
@@ -264,7 +264,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
 \ this word, and the cleanup AIO registers on a submitting task runs only after
 \ that task has ended.
 : READABLE-WITHIN? ( ms -- bool ) {: window:ms :}
-   READ-FD AIO:READABLE window AIO:POLL-ADD AIO:AWAIT
+   READ-FD AIO:READABLE window AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF POLLIN and 0= if E-SIGNAL-POLL throw then true ENDOF
       timed-out OF false ENDOF

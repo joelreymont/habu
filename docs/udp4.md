@@ -6,7 +6,7 @@ contains no application protocol, packet sequencing, device addresses, or
 capture policy. Other operating systems are rejected before opening a socket.
 A `RECEIVE` that has to wait does so on the AIO loop ([aio.md](aio.md)), so a
 program that receives with a non-zero timeout starts the loop with
-`AIO:LOOP-START` first.
+`AIO:START` first.
 
 ## Values and operations
 
@@ -52,7 +52,7 @@ is valid, distinct from timeout. The result requires an exhaustive match:
 Lengths in `truncated` must **not** be used as readable buffer lengths. The
 receiver uses Linux `MSG_TRUNC` to retain the original datagram size.
 The socket is nonblocking, so `RECEIVE` tries `recvfrom` first and waits only
-when there is nothing queued: it submits one `AIO:POLL-ADD` for the
+when there is nothing queued: it submits one `AIO:POLL` for the
 milliseconds left on its absolute deadline and awaits it, so a receiving task
 costs no thread of its own. A wait with no loop running is `E-AIO-STATE`; a
 zero timeout never reaches the loop, since one immediate try is the whole call.
