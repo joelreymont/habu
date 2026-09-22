@@ -122,9 +122,11 @@ create FS-OFFS FS-MAX-DEPTH cells allot
 create FS-RECS FS-MAX-DEPTH cells allot
 
 variable FS-DEPTH
+variable FS-WALK-ACTIVE
 variable FS-CHILD-U
 variable FS-NAME-A
 variable FS-NAME-U
+TYPED-VARIABLE FS-WALK-Q [ ptr u8 n -- ]
 
 \ The walk cursor holds the address of a dirent record inside FS-DIR-BUF, so it
 \ is a declared pointer cell: a plain `variable` publishes an undeclared raw
@@ -211,6 +213,7 @@ TYPED-VARIABLE FS-ENT ptr u8
 
 : FS-THROW-WALK ( n -- ) {: code :}
    FS-CLOSE-WALK
+   0 FS-WALK-ACTIVE !
    code throw ;
 
 : FS-N@ ( -- n )
@@ -234,6 +237,12 @@ TYPED-VARIABLE FS-ENT ptr u8
 : FS-CHECK-JOIN-CAP ( n -- )
    dup FS-PATH-CAP > if E-FS-CAPACITY throw then drop ;
 
+: FS-PATH-UNSAFE? ( ptr u8 n -- bool ) {: a:ptr u :}
+   0 begin dup u < while
+      a over + c@ 0= if drop FS-TRUE exit then
+      1+
+   repeat drop FS-FALSE ;
+
 \ The length gate stays E-FS-PATH: a path longer than FS-PATH-CAP is a bad PATH,
 \ the refusal every fs consumer tests for, and it is the same limit whatever
 \ buffer it is copied into. What the span adds is that the copy and the NUL
@@ -242,6 +251,7 @@ TYPED-VARIABLE FS-ENT ptr u8
 : FS-PATHZ-INTO ( ptr u8 n SPAN:span<u8> -- ptr u8 ) {: a:ptr u dst :}
    u 0 < if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-PATH throw then
+   a u FS-PATH-UNSAFE? if E-FS-PATH-UNSAFE throw then
    a u dst SPAN:COPY
    0 dst u SPAN:U8!
    dst SPAN:$ drop ;
@@ -548,12 +558,21 @@ TYPED-VARIABLE FS-ENT ptr u8
    FS-DEPTH @ 1 + FS-DEPTH !
    FS-CUR-PATH FS-CHILD-U @ SPAN:TAKE SPAN:$ ;
 
+: FS-WALK-INVOKE ( ptr u8 n -- ptr u8 n )
+   2dup FS-WALK-Q @ execute ;
+
+: FS-WALK-CALL-Q ( ptr u8 n [ ptr u8 n -- ] -- )
+   FS-WALK-Q !
+   [: FS-WALK-INVOKE ;] catch {: code:n :}
+   code 0<> if 2drop code FS-THROW-WALK then
+   2drop ;
+
 : FS-ASCEND-PATH ( -- )
    FS-DEPTH @ 1 - FS-DEPTH ! ;
 
 : FS-WALK-PATH ( ptr u8 n [ ptr u8 n -- ] -- ) {: a:ptr u q :}
    a u FS-SKIP-DIR? if exit then
-   a u FILE? if a u q execute exit then
+   a u FILE? if a u q FS-WALK-CALL-Q exit then
    a u DIR? 0= if E-FS-STAT FS-THROW-WALK then
    a u FS-OPEN-WALK-DIR
    begin FS-READ-DIR while
@@ -572,7 +591,11 @@ TYPED-VARIABLE FS-ENT ptr u8
    FS-CLOSE-CUR-DIR ;
 
 : WALK-FILES ( ptr u8 n [ ptr u8 n -- ] -- ) {: a:ptr u q :}
+   FS-WALK-ACTIVE @ 0<> if E-FS-WALK-ACTIVE throw then
    FS-FDS-RESET
    0 FS-DEPTH !
    a u FS-WALK-ROOT!
-   FS-CUR-PATH u SPAN:TAKE SPAN:$ q FS-WALK-PATH ;
+   1 FS-WALK-ACTIVE !
+   FS-CUR-PATH u SPAN:TAKE SPAN:$ q FS-WALK-PATH
+   0 FS-WALK-ACTIVE !
+   ;
