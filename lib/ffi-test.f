@@ -221,6 +221,26 @@ create FFI-T-ERR FFI-T-CAP allot
    erru FFI-T-ERR$ s" habu-ffi-table-probe" CONTAINS? TTRUE
    erru FFI-T-ERR$ s" ZZ-OVER" CONTAINS? TTRUE ;
 
+: FFI-T-LIB-FULL-SRC$ ( -- ptr u8 n )
+   FFI-T-SRC CODEGEN:RESET
+   s\" require lib/ffi-abi.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
+   s\" : ZZ-LIB-FILL ( -- ) FFI:LIBRARY-MAX 1+ 0 ?do\n" FFI-T-SRC+
+   s\"    s\" LIBRARY /tmp/habu-ffi-library-overflow.so\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\" loop\n" FFI-T-SRC+
+   s\"    s\" FUNCTION: ZZ-LIB-OVER habu-ffi-library-probe ( -- n ) ;FUNCTION\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\" ;\nZZ-LIB-FILL\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-LIBRARY-TABLE-FULL ( -- )
+   s" a full library table names the path and pending declaration" T-LABEL
+   FFI-T-LIB-FULL-SRC$ FFI-T-RUN-STDIN FFI-T-UNCAUGHT-RC T-OUTCOME-EXITED=
+   {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru FFI-T-ERR$ E-FFI-LIBRARY-FULL FFI-T-CODE$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ s" /tmp/habu-ffi-library-overflow.so" CONTAINS? TTRUE
+   erru FFI-T-ERR$ s" ZZ-LIB-OVER" CONTAINS? TTRUE
+   erru FFI-T-ERR$ s" habu-ffi-library-probe" CONTAINS? TTRUE ;
+
 : FFI-T-CHECK-PASSES ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
 
@@ -411,6 +431,7 @@ PROCESS-SYMBOLS
    s" CALL0" 0 search-wl 0= TTRUE
 
    FFI-T-TABLE-FULL
+   FFI-T-LIBRARY-TABLE-FULL
    s" foreign symbol cleanup remains armed across captures" T-LABEL
    FFI-T-RECAPTURE ;
 

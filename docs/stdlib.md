@@ -403,6 +403,13 @@ declarer names the Habu word and the C symbol it could not give a row on stderr
 before it throws. `test/five-bindings.f` holds `TCP4`, `CURL`, `DB`, `CRYPTO`
 and `TASK` - 68 rows - in one image and declares past them.
 
+The loaded-library table is a separate named ceiling: `FFI:LIBRARY-MAX` is
+eight paths (832 bytes for path storage and handles), and a `LIBRARY` selection
+retains an overflowing path until the next `FUNCTION:` declaration reports it.
+That declaration throws `E-FFI-LIBRARY-FULL` and names the path, Habu word, and
+C symbol on stderr; `PROCESS-SYMBOLS` selects the process library without
+consuming a path row.
+
 ```forth
 FFI:RESET         ( -- )
 FFI:VALUE!        ( n n -- )

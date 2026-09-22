@@ -218,7 +218,7 @@ $41C8 constant FFI-SCRATCH-END
 
 $100 constant FN-MAX                      \ $100 rows * $48 bytes = $4800 bytes
 $30 constant FN-NAME-CAP                  \ NUL-terminated C symbol
-$08 constant LIB-MAX
+$08 constant LIB-MAX                    \ FFI:LIBRARY-MAX; 8*($60+cell)=832 DATA bytes
 $60 constant LIB-PATH-CAP                 \ NUL-terminated library path
 
 create FN-NAMES FN-MAX FN-NAME-CAP * allot
@@ -403,6 +403,12 @@ public
 \ declaration resolves against.
 : PROCESS ( -- n ) 0 ;
 
+: LIBRARY-MAX ( -- n ) LIB-MAX ;
+
+: LIBRARY-PATH-CAP ( -- n ) LIB-PATH-CAP ;
+
+: LIBRARY-ROOM? ( -- bool ) LIB-N @ LIB-MAX < ;
+
 \ The table's size and whether one more row is left. The declarer asks before it
 \ registers, so a refusal can name the declaration package FFI never sees; the
 \ ceiling is documented in docs/stdlib.md and read from here, never retyped.
@@ -410,8 +416,12 @@ public
 
 : ROOM? ( -- bool ) FN-N @ FN-MAX < ;
 
+\ The path table's own fail-closed guard. The declarer asks LIBRARY-ROOM? first
+\ and holds the overflowing path until the FUNCTION: word and symbol are known,
+\ so its refusal can name all three; a full table reached any other way is
+\ refused here by code alone.
 : LIBRARY-PATH ( ptr u8 n -- n ) {: path:ptr u:n :}
-   LIB-N @ LIB-MAX >= if E-FFI-ARITY throw then
+   LIBRARY-ROOM? 0= if E-FFI-LIBRARY-FULL throw then
    path u PATH-ROOM LIB-N @ LIB-PATH CSTR
    0 LIB-N @ LIB-HANDLE!
    LIB-N @ 1 + dup LIB-N ! ;
@@ -560,6 +570,7 @@ $100 constant DIAG-CAP                    \ the refusal line: two $40 tokens and
 GEN-CAP CODEGEN:BUFFER GEN
 EFF-CAP CODEGEN:BUFFER EFF
 DIAG-CAP CODEGEN:BUFFER DIAG
+FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER LIB-OVERFLOW
 
 create NAME-BUF TOK-CAP allot
 create SYM-BUF TOK-CAP allot
@@ -761,6 +772,20 @@ variable SCOPE-SET                         \ ... and whether one was stated at a
 : DIAG+ ( ptr u8 n -- )
    DIAG CODEGEN:APPEND-STRING ;
 
+: REPORT-LIBRARY-FULL ( -- )
+   DIAG CODEGEN:RESET
+   s" ffi: library table full at " DIAG+
+   FFI:LIBRARY-MAX DIAG CODEGEN:APPEND-DECIMAL
+   s"  rows: no library row for " DIAG+
+   LIB-OVERFLOW CODEGEN:CONTENTS DIAG+
+   s" ; no declaration row for " DIAG+
+   NAME-BUF NAME-U @ DIAG+
+   s"  (symbol " DIAG+
+   SYM-BUF SYM-U @ DIAG+
+   s" )" DIAG+
+   LF-C DIAG CODEGEN:APPEND-BYTE
+   DIAG CODEGEN:CONTENTS DIAG-LINE ;
+
 : REPORT-FULL ( -- )
    DIAG CODEGEN:RESET
    s" ffi: declaration table full at " DIAG+
@@ -779,6 +804,10 @@ variable SCOPE-SET                         \ ... and whether one was stated at a
    E-FFI-TABLE-FULL throw ;
 
 : SLOT ( -- n )
+   CUR-LIB @ -1 = if
+      REPORT-LIBRARY-FULL
+      E-FFI-LIBRARY-FULL throw
+   then
    TABLE-ROOM
    SYM-BUF SYM-U @ CUR-LIB @ INT-N @ FFI:DECLARE ;
 
@@ -864,7 +893,13 @@ public
    src idx ARG-EXT-ARG! ;
 
 : SELECT-LIBRARY ( ptr u8 n -- )
-   FFI:LIBRARY-PATH CUR-LIB !
+   FFI:LIBRARY-ROOM? if
+      FFI:LIBRARY-PATH CUR-LIB !
+   else
+      LIB-OVERFLOW CODEGEN:RESET
+      LIB-OVERFLOW CODEGEN:APPEND-STRING
+      -1 CUR-LIB !
+   then
    RECORD-SCOPE ;
 
 : SELECT-PROCESS ( -- )

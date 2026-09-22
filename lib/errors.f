@@ -167,6 +167,9 @@
 \ FN-MAX: a full one is refused here, naming the Habu word and the C symbol that
 \ found no row. Arity keeps E-FFI-ARITY; this is capacity.
 -3504 constant E-FFI-TABLE-FULL
+\ The library-path table has its own ceiling. The declarer reports the path,
+\ Habu word, and C symbol before throwing this code.
+-3505 constant E-FFI-LIBRARY-FULL
 
 \ Tasking/threads: -3600..-3699
 -3600 constant E-TASK-FIRST
