@@ -593,6 +593,14 @@ After `bin/hb` exists, do not use Gforth for normal work:
 bin/hb --load tools/build-fixpoint-refresh.f -- install
 ```
 
+`install` promotes the stage-2 lineage: `hb-stdin`, the recovery engine the
+check suites run on (about 5.7 MB). That lineage publishes no effect for
+`TRUSTED:` checker internals such as `FIELD-PROJ-CLEAR`, so on it
+`test/field-proj-suite.f` exits 70 with `E-UNDEFINED` and 52 gate rows go red.
+A `bin/hb` that must run the gate is the product image, built as
+[gate.md](gate.md)'s first step (`tools/native-build.f -- <out>` on a private
+host copy) and installed by rename.
+
 `bin/hb --load` selects the host core/checker/env source prefix from the
 running binary. Callers load only the libraries and tool source they need.
 
