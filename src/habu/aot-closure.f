@@ -10,6 +10,9 @@ require src/habu/code-span.f
 \ driver loads on its own and much earlier - before the application's require.
 require src/habu/aot-window-latch.f
 require src/habu/aot-owned-cells.f
+\ The process's own memory map, which CELL-MAPPED? below reads a cell's value
+\ against. It is Linux-specific and requires nothing.
+require src/habu/proc-maps.f
 
 \ This file compiles checked, with raw-pointer boundaries as explicit TRUST rows.
 
@@ -436,6 +439,58 @@ variable NB-IX
    v CELL-DICTPTR? IF true EXIT THEN
    v CELL-CODEPTR? ;
 
+\ A cell holds A POINTER INTO MEMORY THE BUILD MAPPED when its value lands in an
+\ area THIS process holds (src/habu/proc-maps.f, the kernel's own list) that the
+\ image does not hold at the same address. The three readings above are the only
+\ ones the walker had, and each of them names a region an image restores or
+\ relocates; an address a linking process mmapped - lib/memory.f's MEM-ALLOC
+\ buffers, a DYNAMIC-BUFFER, a foreign allocator's arena, a thread stack, the
+\ engine binary's own text and data - is none of them, so it passed as an
+\ integer, shipped in the image and faulted at run time under a different ASLR
+\ layout (dot habu-refuse-a-stripped-92290c75: eight such cells in Tender's
+\ stripped server, SEGV_MAPERR at one of them).
+\ THE FOUR EXCLUSIONS ARE THE AREAS EVERY PROCESS HOLDS BEFORE A PROGRAM RUNS,
+\ three of them where the image holds them too and the fourth where no pointer
+\ can point.
+\ The DATA mapping is MAP_FIXED at DATA-VA in the engine and in the image alike
+\ (src/os/<target>/layout.f) and the claim machinery above answers for its
+\ addresses. The dictionary/code region [dbase, dbase+REGION) is where
+\ CELL-TEXTPTR? classifies by live extent with refusals of its own; it is
+\ excluded WHOLE and not by those extents, because free space inside it - above
+\ the code high-water, or an unused dict slot - is a value the walker has always
+\ read as a datum, and this predicate is not the place to change that. The
+\ third is the executable's own segments: bin/hb and the image it links are both
+\ EXEC-type ELFs at the same fixed load base, so an address in that band means
+\ the same in both - and it is the one band ordinary data lands in, because a
+\ cell holding a string's last three bytes has value s0 + s1<<8 + s2<<16 and any
+\ letter in the third byte puts it inside [0x400000,0x7a4000). Measured: the
+\ four cells of tools/hb-build-test.f HBT-STRIPPED-LIFECYCLE-HOOK's window that
+\ this predicate answers for are 0x796DB2, 0x746961, 0x746965 and 0x646965 -
+\ text, not pointers.
+\ THE FOURTH IS THE BRK AREA, the one the kernel names [heap], and it is excluded
+\ for the opposite reason: NOTHING CAN POINT INTO IT. No Habu word allocates from
+\ the break - every allocation lib/memory.f makes is an mmap, and no file under
+\ src/ or lib/ issues the syscall - so a value that lands there is an integer
+\ whatever it looks like. It is also the widest band ordinary data falls in:
+\ arm64 randomizes the break over a gigabyte above the executable's end, so the
+\ area sits somewhere in [0x7a4000,0x407a4000) and MOVES WITH EVERY BUILD, and
+\ 32-bit-shaped values - a hash, a packed pair of fields, four bytes of a string
+\ - are exactly that size. Measured: tools/hb-build-test.f was refused at an
+\ undeclared cell holding 0x34B12C35 in one build and linked in the next, with
+\ no change to the tree between them.
+: REGION-ADDRESS? ( n -- bool ) {: v:n :}
+   v AOT-DBASE-N >=  v AOT-DBASE-N REGION + < and ;
+
+\ The map is asked FIRST because it answers no for nearly every cell in a
+\ window - one binary search over the areas the kernel listed - and the three
+\ tests beside it only matter for a value that landed in one of them.
+: CELL-MAPPED? ( n -- bool ) {: v:n :}
+   v PROC-MAPS:MAPPED? 0= IF false EXIT THEN
+   v DATA-ADDRESS? IF false EXIT THEN
+   v REGION-ADDRESS? IF false EXIT THEN
+   v PROC-MAPS:SELF-IMAGE? IF false EXIT THEN
+   v PROC-MAPS:HEAP? 0= ;
+
 \ A DATA address as a pointer. An address arrives here as a plain integer (the
 \ value a recorded chain spells out, a scan cursor, a span bound), and DATA is
 \ ONE mapping based at data-base, so the pointer is that base plus the checked
@@ -572,6 +627,19 @@ variable DN-IX  variable DN-AT
    cell v
    s" stripped AOT persistent data holds an undeclared code/dict pointer"
    s" a stripped image relocates only DECLARED xt cells (defer/is/xt!); ' word , declares nothing - bind the cell with a defer or xt!, or use --repl"
+   REFUSE-DATA-CELL ;
+
+\ A POINTER INTO MEMORY THE BUILD MAPPED, by CELL-MAPPED? above. The build's
+\ mappings are the linking process's own: the image starts a new process, which
+\ maps its DATA and its code and nothing else the build had, so the value names
+\ whatever that address happens to hold in the new layout - under ASLR a
+\ different address each build, and no address at all at run time. The fix is
+\ the time the pointer is taken and not the way the cell is declared, so the
+\ suggestion names run time rather than a definer.
+: REFUSE-MAPPED-CELL ( n n -- ) {: cell:n v:n :}
+   cell v
+   s" stripped AOT persistent data holds a pointer into memory the build mapped"
+   s" the image restores no mapping the build made; allocate at run time (in MAIN or an IMAGE-LIFECYCLE hook) and store the pointer then, or use --repl"
    REFUSE-DATA-CELL ;
 
 \ A dictionary-record pointer, declared or not. The image ships code, never
@@ -803,9 +871,17 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
 \ THE CELL'S CAPTURED VALUE: it is stored into the live window cell here, before
 \ aot-lib.f reads the window out into the image's data blob, so the image ships
 \ the mapped address in the cell itself and no second pass patches it.
+\ A DECLARED CELL THAT DOES NOT HOLD A DATA ADDRESS holds something the image
+\ needs no map for - a zero, a scalar, or an address the build mapped, which is
+\ the one of the three the image cannot carry and is refused here by the same
+\ predicate the span scan uses (aot-lib.f AOT-DATA-TEXTPTR-CHECK). A declared
+\ cell is skipped by that scan, so without this row a declared pointer to a
+\ MEM-ALLOC buffer would travel where an undeclared one is refused.
 : XTD-ROW ( n -- ) {: at:n :}
    at DATA-CELL@ {: v:n :}
-   v DATA-ADDRESS? 0= IF exit THEN
+   v DATA-ADDRESS? 0= IF
+      v CELL-MAPPED? IF at v REFUSE-MAPPED-CELL THEN
+      exit THEN
    v MAPPED-DATA {: w:n ok:bool :}
    ok 0= IF at v REFUSE-UNCLAIMED-CELL THEN
    w v <> IF at w DATA-CELL! THEN ;

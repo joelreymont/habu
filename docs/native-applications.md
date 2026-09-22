@@ -269,6 +269,58 @@ because the buffer in the file beside it is claimed. One program that prints,
 parses and hashes, with its stdout pinned to `42`, `123` and the FIPS-180 digest
 of `abc`, is `HBT-STRIPPED-PRINT-PARSE-HASH`.
 
+**A persistent cell holding a pointer into memory the build mapped is refused
+by name.** The walker read a cell's value three ways — a live dictionary record,
+a code address by live extent, a `DATA` address — so a pointer into a mapping
+the build itself made was none of them and passed as an integer: a program that
+took a buffer at load time (`MEM-ALLOC-64K drop BUF !` at the top level) shipped
+an address only the linking process ever held, the same in every run of one
+image, a different one in every build under ASLR, and mapped by nobody once the
+image runs. Tender's stripped server faulted at one of eight such cells before
+any clone, and three builds of one tree differed in exactly those eight values.
+`src/habu/proc-maps.f` reads `/proc/self/maps`, the kernel's own list of the
+process's areas — `mmap` is reached from `lib/memory.f`, `lib/vector.f`,
+`lib/aio.f` and more, and a foreign allocator calls the primitive without
+passing any of them — and `aot-closure.f CELL-MAPPED?` asks it, less the four
+areas a process already holds before its program runs. Three are where the image
+holds them too: the `MAP_FIXED` `DATA` mapping, the dictionary/code region
+whole, and the executable's own segments, because `bin/hb` and the image it
+links are both `EXEC`-type ELFs at the same fixed base and a cell holding a
+string's last three bytes lands in that band whenever the third byte is a letter
+(four cells of `HBT-STRIPPED-LIFECYCLE-HOOK`'s window do). The fourth is the brk
+area the kernel names `[heap]`, excluded because nothing can point into it: no
+Habu word allocates from the break, every allocation `lib/memory.f` makes being
+an `mmap`. It is also where ordinary data lands — arm64 randomizes the break
+over a gigabyte above the executable's end, so the band sits somewhere in
+`[0x7a4000,0x407a4000)`, moves with every build, and swallows 32-bit-shaped
+values: one build of `tools/hb-build-test.f` was refused at an undeclared cell
+holding `0x34B12C35` and the next build of the same tree linked it. Two sites
+ask: `aot-lib.f AOT-DATA-TEXTPTR-CHECK` for an undeclared window
+cell, beside the undeclared code-pointer refusal, and `aot-closure.f XTD-ROW`
+for a declared `DATA` cell — a plain `variable` or `PTR-VARIABLE` meets the
+first, `PERSISTED-PTR-VARIABLE` the second (measured by disabling the span scan:
+the persisted program is still refused and the `variable` one links). The
+refusal reads *stripped AOT persistent data holds a pointer into memory the
+build mapped word=BUF data-off=… value=…*, and its suggestion *the image
+restores no mapping the build made; allocate at run time (in MAIN or an
+IMAGE-LIFECYCLE hook) and store the pointer then, or use --repl*;
+`HBT-STRIPPED-MAPPED-CELL` and `HBT-STRIPPED-MAPPED-DECLARED` are the two
+reproducers. The same allocation inside `MAIN` links, runs and prints a byte
+out of its run-time buffer (`HBT-STRIPPED-MAPPED-LATE`), and one source linked
+twice, each build with a cache root of its own, is the same bytes
+(`HBT-STRIPPED-SAME-TWICE`). The reader is Linux-only: a host without
+`/proc/self/maps` dies by name at the first question instead of answering. A
+mapping freed before the link is no longer listed, so a pointer into it is not
+refused. The residual runs the other way as well: a cell whose integer value
+spells an address inside any mapped area above those four bands — an `mmap`, the
+stack, the vDSO — is refused as a pointer, because a reader of values cannot
+tell a pointer-shaped integer from a pointer. `test/gate-aot-negative.f`'s
+mapped-band fixture pins both answers on the live process: its `[heap]` start is
+mapped and not refused, and a fresh `MEM-ALLOC-64K` address is refused. The map
+is a snapshot taken at the first question, so an area mapped after it is
+invisible; the application takes its buffers as it loads and the walk asks
+afterwards.
+
 **The span refusal names a site no record names.** Both `caller=` and `target=`
 are dictionary records, and neither is always there: a member whose name the
 engine build stripped arrives with `XREF-NULL` for its record (`aot-closure.f

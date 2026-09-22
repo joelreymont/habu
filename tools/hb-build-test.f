@@ -125,6 +125,14 @@ variable HBT-HOOK-SRC-U
 variable HBT-HOOK-OUT-U
 variable HBT-NUMP-SRC-U
 variable HBT-NUMP-OUT-U
+variable HBT-MAPC-SRC-U
+variable HBT-MAPC-OUT-U
+variable HBT-MAPD-SRC-U
+variable HBT-MAPD-OUT-U
+variable HBT-MAPL-SRC-U
+variable HBT-MAPL-OUT-U
+variable HBT-MAPL-OUT2-U
+variable HBT-TWICE-CACHE-U
 create HBT-LIB-SRC-BUF FS-PATH-CAP allot
 create HBT-LIB-OUT-BUF FS-PATH-CAP allot
 create HBT-LIB-DIR-BUF FS-PATH-CAP allot
@@ -152,6 +160,14 @@ create HBT-HOOK-SRC-BUF FS-PATH-CAP allot
 create HBT-HOOK-OUT-BUF FS-PATH-CAP allot
 create HBT-NUMP-SRC-BUF FS-PATH-CAP allot
 create HBT-NUMP-OUT-BUF FS-PATH-CAP allot
+create HBT-MAPC-SRC-BUF FS-PATH-CAP allot
+create HBT-MAPC-OUT-BUF FS-PATH-CAP allot
+create HBT-MAPD-SRC-BUF FS-PATH-CAP allot
+create HBT-MAPD-OUT-BUF FS-PATH-CAP allot
+create HBT-MAPL-SRC-BUF FS-PATH-CAP allot
+create HBT-MAPL-OUT-BUF FS-PATH-CAP allot
+create HBT-MAPL-OUT2-BUF FS-PATH-CAP allot
+create HBT-TWICE-CACHE-BUF FS-PATH-CAP allot
 \ The quoted-path fixture below owns the writer's bytes; json-write holds none.
 6 constant HBT-ESCAPE-MAX
 FS-PATH-CAP HBT-ESCAPE-MAX * 2 + constant HBT-QUOTE-CAP
@@ -373,6 +389,30 @@ create HBT-EXP-HEX2 64 allot
 
 : HBT-NUMP-OUT ( -- ptr u8 n )
    HBT-NUMP-OUT-BUF HBT-NUMP-OUT-U @ ;
+
+: HBT-MAPC-SRC ( -- ptr u8 n )
+   HBT-MAPC-SRC-BUF HBT-MAPC-SRC-U @ ;
+
+: HBT-MAPC-OUT ( -- ptr u8 n )
+   HBT-MAPC-OUT-BUF HBT-MAPC-OUT-U @ ;
+
+: HBT-MAPD-SRC ( -- ptr u8 n )
+   HBT-MAPD-SRC-BUF HBT-MAPD-SRC-U @ ;
+
+: HBT-MAPD-OUT ( -- ptr u8 n )
+   HBT-MAPD-OUT-BUF HBT-MAPD-OUT-U @ ;
+
+: HBT-MAPL-SRC ( -- ptr u8 n )
+   HBT-MAPL-SRC-BUF HBT-MAPL-SRC-U @ ;
+
+: HBT-MAPL-OUT ( -- ptr u8 n )
+   HBT-MAPL-OUT-BUF HBT-MAPL-OUT-U @ ;
+
+: HBT-MAPL-OUT2 ( -- ptr u8 n )
+   HBT-MAPL-OUT2-BUF HBT-MAPL-OUT2-U @ ;
+
+: HBT-TWICE-CACHE ( -- ptr u8 n )
+   HBT-TWICE-CACHE-BUF HBT-TWICE-CACHE-U @ ;
 
 \ An application that touches a PERSISTENT CELL of each library it requires:
 \ lib/string.f's builder, lib/fs-mutate.f's copy state (FS-MUT-COPY-IN) and
@@ -613,6 +653,47 @@ create HBT-EXP-HEX2 64 allot
 : HBT-NUMP-EXPECTED$ ( -- ptr u8 n )
    S\" 42\nint\nfloat\n0\n" ;
 
+\ A POINTER INTO MEMORY THE BUILD MAPPED, which is the class dot
+\ habu-refuse-a-stripped-92290c75 reported from Tender: the program takes a
+\ 64 KB buffer AT LOAD TIME and stores the address in a persistent cell, so the
+\ image carries an address only the linking process ever held - the same in
+\ every run of one image, different in every build under ASLR, and mapped by
+\ nobody when the image runs. Tender's stripped server faulted at one of eight
+\ such cells before any clone. `variable BUF` is the undeclared cell the span
+\ scan meets (src/habu/aot-lib.f AOT-DATA-TEXTPTR-CHECK); the store sits at the
+\ top level, which is where a pointer may enter raw storage at all.
+: HBT-MAPC-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require lib/memory.f\nvariable BUF\nMEM-ALLOC-64K drop BUF !\n" SB-APPEND
+   S\" : MAIN ( -- ) s\" mapped\" type cr ;\n" SB-APPEND
+   SB$ ;
+
+\ ... and the same store into a DECLARED cell, which the span scan skips BY its
+\ declaration: PERSISTED-PTR-VARIABLE registers a DATA row in the engine's
+\ address-cell table, so src/habu/aot-closure.f XTD-ROW is the site that has to
+\ ask. Measured by disabling the span scan on this tree: with it off this
+\ program is still refused and HBT-MAPC-SRC$'s links.
+: HBT-MAPD-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require lib/memory.f\nPERSISTED-PTR-VARIABLE PBUF\n" SB-APPEND
+   S\" MEM-ALLOC-64K drop PBUF !\n: MAIN ( -- ) s\" declared\" type cr ;\n" SB-APPEND
+   SB$ ;
+
+\ ... while the SAME allocation inside MAIN links, runs and prints. The cell
+\ the image carries is the zero it was captured with and the pointer is taken
+\ in the new process, which is what the refusal's suggestion names. The printed
+\ byte is read back out of the run-time buffer, so the pinned line proves the
+\ image reached its own mapping and not merely that it exited zero.
+: HBT-MAPL-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require lib/memory.f\nPTR-VARIABLE BUF\n: MAIN ( -- )\n" SB-APPEND
+   S\"    MEM-ALLOC-64K drop BUF !\n   BUF @ {: p:ptr :}\n" SB-APPEND
+   S\"    65 p c!  p 1 type cr ;\n" SB-APPEND
+   SB$ ;
+
+: HBT-MAPL-EXPECTED$ ( -- ptr u8 n )
+   S\" A\n" ;
+
 \ A PROGRAM WHOSE CLOSURE IS ITS OWN SIZE. HBT-CHAIN-N words, each calling the
 \ next and reaching no library, are exactly HBT-CHAIN-N + 1 closure members, so
 \ this fixture measures the table sizing and nothing else. 1100 is past the 1024
@@ -711,6 +792,15 @@ create HBT-EXP-HEX2 64 allot
    HBT-ROOT s" lifehook" HBT-HOOK-OUT-BUF HBT-HOOK-OUT-U HBT-PATH!
    HBT-ROOT s" numparse.f" HBT-NUMP-SRC-BUF HBT-NUMP-SRC-U HBT-PATH!
    HBT-ROOT s" numparse" HBT-NUMP-OUT-BUF HBT-NUMP-OUT-U HBT-PATH!
+   HBT-ROOT s" mapcell.f" HBT-MAPC-SRC-BUF HBT-MAPC-SRC-U HBT-PATH!
+   HBT-ROOT s" mapcell" HBT-MAPC-OUT-BUF HBT-MAPC-OUT-U HBT-PATH!
+   HBT-ROOT s" mapdecl.f" HBT-MAPD-SRC-BUF HBT-MAPD-SRC-U HBT-PATH!
+   HBT-ROOT s" mapdecl" HBT-MAPD-OUT-BUF HBT-MAPD-OUT-U HBT-PATH!
+   HBT-ROOT s" maplate.f" HBT-MAPL-SRC-BUF HBT-MAPL-SRC-U HBT-PATH!
+   HBT-ROOT s" maplate" HBT-MAPL-OUT-BUF HBT-MAPL-OUT-U HBT-PATH!
+   HBT-ROOT s" maplate2" HBT-MAPL-OUT2-BUF HBT-MAPL-OUT2-U HBT-PATH!
+   HBT-ROOT s" cache-twice" HBT-TWICE-CACHE-BUF HBT-TWICE-CACHE-U HBT-PATH!
+   HBT-TWICE-CACHE MAKE-DIR
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
@@ -730,6 +820,28 @@ create HBT-EXP-HEX2 64 allot
 
 : HBT-ARGV-BASE ( -- )
    HBT-TMP HBT-ARGV-BASE-TMP ;
+
+\ The same argv with a BUILD CACHE OF ITS OWN. Two builds of one source under
+\ one cache root are one link and one copy: the artifact cache answers the
+\ second from the first, so equal bytes would prove nothing about the linker.
+: HBT-ARGV-BASE-CACHE ( ptr u8 n -- ) {: a:ptr u :}
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
+   s" HABU_BUILD_CACHE" >LEN a u >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/hb-build.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
+
+\ The first byte two spans differ at, or -1 for identical. A pinned -1 names the
+\ offset on failure instead of printing two images into the capture.
+: HBT-DIFF-AT ( ptr u8 n ptr u8 n -- n ) {: a:ptr au:n b:ptr bu:n :}
+   au bu min 0 ?do
+      a i + c@  b i + c@ <> if i unloop exit then
+   loop
+   au bu <> if au bu min exit then
+   -1 ;
 
 : HBT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
    MATCH result
@@ -1235,6 +1347,89 @@ create READER-STATE JR:STORAGE-BYTES allot
    errn 0 T=
    HBT-RUN-OUT outn HBT-NUMP-EXPECTED$ T$=
    HBT-NUMP-OUT HBT-REMOVE-FILE? ;
+
+\ A PERSISTENT CELL HOLDING A POINTER INTO MEMORY THE BUILD MAPPED is refused by
+\ the cell that holds it. The value is left out of the pin because it is an mmap
+\ address: it differs in every build, which is the fault itself.
+: HBT-STRIPPED-MAPPED-CELL ( -- )
+   HBT-MAPC-SRC HBT-MAPC-SRC$ WRITE-ALL
+   HBT-MAPC-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-MAPC-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-MAPC-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: cout:n cerr:n crc:n :}
+   crc 0 <> TTRUE
+   HBT-ERR cerr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
+   HBT-ERR cerr s" word=BUF" CONTAINS? TTRUE
+   HBT-ERR cerr s" data-off=" CONTAINS? TTRUE
+   HBT-ERR cerr s" allocate at run time" CONTAINS? TTRUE
+   HBT-MAPC-OUT FILE? TFALSE ;
+
+\ ... and so is one in a DECLARED cell, at the other site and by its own name.
+: HBT-STRIPPED-MAPPED-DECLARED ( -- )
+   HBT-MAPD-SRC HBT-MAPD-SRC$ WRITE-ALL
+   HBT-MAPD-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-MAPD-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-MAPD-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: dout:n derr:n drc:n :}
+   drc 0 <> TTRUE
+   HBT-ERR derr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
+   HBT-ERR derr s" word=PBUF" CONTAINS? TTRUE
+   HBT-MAPD-OUT FILE? TFALSE ;
+
+\ ... while the allocation moved into MAIN links, runs and prints its own byte.
+: HBT-STRIPPED-MAPPED-LATE ( -- )
+   HBT-MAPL-SRC HBT-MAPL-SRC$ WRITE-ALL
+   HBT-MAPL-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-MAPL-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-MAPL-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: lout:n lerr:n lrc:n :}
+   lrc 0 <> if HBT-OUT lout type HBT-ERR lerr type then
+   lrc 0 T=
+   HBT-OUT lout s" hb-build OK" CONTAINS? TTRUE
+   HBT-MAPL-OUT FILE? TTRUE
+   HBT-MAPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-MAPL-EXPECTED$ T$= ;
+
+\ TWO LINKS OF ONE SOURCE ARE THE SAME BYTES. The second build has a cache root
+\ of its own, so the answer is a second link and not a copy of the first. This
+\ is the equality the mapped cell broke: three stripped builds of Tender's
+\ server differed in the middle bytes of eight window cells and nowhere else.
+: HBT-STRIPPED-SAME-TWICE ( -- )
+   HBT-MAPL-SRC HBT-MAPL-SRC$ WRITE-ALL
+   HBT-MAPL-OUT HBT-REMOVE-FILE?
+   HBT-MAPL-OUT2 HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-MAPL-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-MAPL-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: aout:n aerr:n arc:n :}
+   arc 0 <> if HBT-OUT aout type HBT-ERR aerr type then
+   arc 0 T=
+   HBT-TWICE-CACHE HBT-ARGV-BASE-CACHE
+   HBT-MAPL-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-MAPL-OUT2 >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
+   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
+   brc 0 T=
+   HBT-MAPL-OUT2 FILE-SIZE  HBT-MAPL-OUT FILE-SIZE T=
+   HBT-MAPL-OUT FILE-SIZE MEM-ALLOC-64K-SPAN {: abuf:ptr acap:n :}
+   HBT-MAPL-OUT abuf acap READ-ALL {: au:n :}
+   HBT-MAPL-OUT2 FILE-SIZE MEM-ALLOC-64K-SPAN {: bbuf:ptr bcap:n :}
+   HBT-MAPL-OUT2 bbuf bcap READ-ALL {: bu:n :}
+   abuf au bbuf bu HBT-DIFF-AT -1 T=
+   HBT-MAPL-OUT HBT-REMOVE-FILE?
+   HBT-MAPL-OUT2 HBT-REMOVE-FILE? ;
 
 \ ... while a baked create table on no list is refused however much it looks like
 \ the carried ones.
@@ -1967,6 +2162,10 @@ public
    HBT-STRIPPED-LIFECYCLE-REGISTRY
    HBT-STRIPPED-LIFECYCLE-HOOK
    HBT-STRIPPED-NUM-PARSE
+   HBT-STRIPPED-MAPPED-CELL
+   HBT-STRIPPED-MAPPED-DECLARED
+   HBT-STRIPPED-MAPPED-LATE
+   HBT-STRIPPED-SAME-TWICE
    HBT-STRIPPED-UNCARRIED-TABLE
    HBT-STRIPPED-CACHED-CARRIED
    HBT-STRIPPED-CACHED-UNOWNED

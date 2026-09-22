@@ -51,6 +51,41 @@ package AOT-NEGATIVE
    GE-EVAL-FORK-CAPTURE
    s" AOT private direct-branch fixture" GE-EXPECT-OK ;
 
+\ THE BANDS CELL-MAPPED? EXCLUDES, asked of two addresses this process really
+\ holds. The brk area is the one that matters here: arm64 randomizes it over a
+\ gigabyte above the executable's end, so an ORDINARY 32-BIT-SHAPED INTEGER in a
+\ persistent cell lands inside it every few hundred builds and was refused as a
+\ pointer (measured: tools/hb-build-test.f, an undeclared cell holding
+\ 0x34B12C35, refused in one build and linked in the next).
+\ No Habu word allocates from the break - lib/memory.f maps - so nothing in the
+\ band is ever a pointer and the linker excludes it. An mmap address is the
+\ control: it is the class the refusal exists for, and it must still answer yes.
+\ Both addresses are taken inside the fork, where the linker's own copy of
+\ src/habu/proc-maps.f reads that process's map; src/habu/aot-closure.f
+\ CELL-MAPPED? is private, which is why the fixture reopens its package.
+\ THE ALLOCATION COMES FIRST because the map is a snapshot taken at the first
+\ question and an area mapped after it is invisible (measured: with the order
+\ reversed the mmap control answers no). That is the linker's order too - the
+\ application takes its buffers as it loads, and the walk asks afterwards.
+: MAPPED-BAND-SOURCE ( -- )
+   GE-SRC-RESET
+   s" package AOT-LINK" GE-SRC-LINE
+   s\" : ANH-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
+   s" TRUSTED: ANH-ADDR ( ptr u8 -- n ) ;" GE-SRC-LINE
+   s" : ANH-RUN ( -- ) MEM-ALLOC-64K drop ANH-ADDR {: p:n :}" GE-SRC+
+   s"  PROC-MAPS:HEAP-START {: h:n :}" GE-SRC+
+   s\"  h PROC-MAPS:MAPPED? s\" AOT heap start is mapped\" ANH-EXPECT" GE-SRC+
+   s\"  h PROC-MAPS:HEAP? s\" AOT heap start is in the brk band\" ANH-EXPECT" GE-SRC+
+   s\"  h CELL-MAPPED? 0= s\" AOT heap band excluded from build mappings\" ANH-EXPECT" GE-SRC+
+   s\"  p CELL-MAPPED? s\" AOT mmap address is a build mapping\" ANH-EXPECT ;" GE-SRC-LINE
+   s" ANH-RUN" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+: MAPPED-BAND-RUN ( -- )
+   MAPPED-BAND-SOURCE
+   GE-EVAL-FORK-CAPTURE
+   s" AOT mapped-band fixture" GE-EXPECT-OK ;
+
 34 constant DQ
 
 create REPORT-PATH FS-PATH-CAP allot
@@ -218,6 +253,7 @@ public
 : RUN ( -- )
    s" hb-gate-aot-negative" GT-START
    BRANCH-RUN
+   MAPPED-BAND-RUN
    CLOSURE-LIMIT
    CLOSURE-CAPACITY
    MEMBER-OVERLAP
