@@ -1,0 +1,9 @@
+---
+title: Carry the engine number reader into a stripped image
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-22T07:15:31.640922+03:00"
+---
+
+Problem (aspen's re-probe on cc455508, engine ec37691e): tenderd's stripped build (server/entry.f, 'python3 scripts/habu.py build --server --stripped' in ~/Work/Tender at d945db63) is refused 'aot: PC-relative target removed or outside closure site=num-parse target=4293656 target-word=<unknown>', exit 74 after 61 s (log ~/.cache/tender/habu-gaps/stripped-life-hook/strip-server.log). num-parse (src/habu/prims.f:545; emitter src/habu/habu1.f BNUMPARSE :3268) is 'LNUM LABEL@ BL,': the engine's number reader at LNUM, the routine EM-INTERPRET-NUMBER and EM-COMPILE-LITERAL enter, has no dictionary record, so the closure walk (aot-closure.f SCAN-DIRECT: exact record entry or span table) cannot name it and the relocation pass refuses by name. Unlike the (MARK) registrar (e0b71e05, dropped because a stripped image has no reader for its table) the number reader does the work the caller needs at run time, so it must be CARRIED. Acceptance: a stripped program that calls num-parse at run time builds and answers the parsed value; the reader's body is a sealed engine helper record like (PROT-SPAN), spanning exactly its body, that the closure copies with everything the body references (find what LNUM's body reaches - float parsing, tables, the throw route - and carry or refuse each by name); an HBT-STRIPPED-* fixture in tools/hb-build-test.f pins the output; aspen re-measures Tender's server build after integration. Files: src/habu/habu1.f (or where LNUM is emitted), src/habu/aot-closure.f, src/habu/aot-lib.f, tools/hb-build-test.f, docs/native-applications.md. Verify: tools/hb-build-test.f; test/stripped-address.f; test/run.f. Depends: none. Ownership: hazel. Claim: unassigned.
