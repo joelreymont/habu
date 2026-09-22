@@ -3,6 +3,7 @@
 require lib/errors.f
 require lib/fs.f
 require src/arch/arm64/asm.f
+require tools/aot-startup-shape.f        \ the startup's instruction shapes, named once
 require tools/aot-call-report-lib.f      \ REPORT-JSON-BUFFER for CODE-REPORT
 require tools/native-emit.f              \ SYS-EMIT-EXIT/SYS-EMIT-SVC for the built target
 require test/gate-build-common.f
@@ -73,17 +74,15 @@ create CODE-PATH FS-PATH-CAP allot
    off INSTR@ want = IMAGE-CK ;
 
 
-: WIDE-K? ( n n -- bool ) {: word:n reg:n :}
-   word $FF80001F and $F2800000 reg or = ;
-
-
-\ LIT64, emits MOVZ/MOVN followed by at most three MOVK lanes for this rd.
+\ LIT64, emits MOVZ/MOVN followed by at most three MOVK lanes for this rd. Every
+\ instruction shape this file reads is named in tools/aot-startup-shape.f, which
+\ writes them with the emitter's own encoders; this file finds them in an image.
 : SKIP-LITERAL ( n n -- n ) {: off:n reg:n :}
-   off INSTR@ $FF80001F and {: opcode:n :}
-   opcode $D2800000 reg or = opcode $92800000 reg or = or IMAGE-CK
+   off INSTR@ {: w:n :}
+   w reg AOT-STARTUP-SHAPE:MOVZ-RD?  w reg AOT-STARTUP-SHAPE:MOVN-RD? or IMAGE-CK
    off 4 +
    3 0 ?do
-      dup INSTR@ reg WIDE-K? 0= if unloop exit then
+      dup INSTR@ reg AOT-STARTUP-SHAPE:MOVK-RD? 0= if unloop exit then
       4 +
    loop ;
 
@@ -141,43 +140,20 @@ create CODE-PATH FS-PATH-CAP allot
    vend 28 + -26 ENC-B INSTR= ;
 
 
-: ADR-REG? ( n n -- bool ) {: off:n reg:n :}
-   off INSTR@ $9F00001F and $10000000 reg or = ;
-
-
-: ADR-TARGET ( n -- n ) {: off:n :}
-   off INSTR@ {: word:n :}
-   word 29 rshift 3 and word 5 rshift $7FFFF and 2 lshift or
-   $100000 xor $100000 - off + ;
-
-
-\ One movz/movk lane, and the same word with that lane cleared: sf, opc, hw and
-\ Rd say which instruction this is, the sixteen-bit immediate is what the pair
-\ carries.
-: MOVW-LANE ( n -- n )  5 rshift $FFFF and ;
-: MOVW-SHAPE ( n -- n ) $FFE0001F and ;
-
-
-\ THE DATA RESTORE, in the four words src/habu/aot-lib.f TEXT-ADR, emits: the
-\ blob's byte offset from the code base in an LOFF, movz/movk pair, `adr x12` to
-\ the code base itself (LTEXT, bound at text offset zero, which is this image's
-\ entry), and the add that joins them. All four words are pinned because the
-\ first one alone does not identify the sequence: EMIT-OWNED-CELLS opens a
-\ LIT64, of a DATA offset with the same `movz x9`, and it is the `adr x12` and
-\ the add that never follow it.
+\ THE DATA RESTORE, in the four words src/habu/aot-lib.f TEXT-ADR, emits into x9
+\ (AOT-STARTUP-SHAPE:TEXT-ADR-SEQ? names them). The four words are read before
+\ the test rather than one at a time: SCAN-STARTUP stops at the root BL, which
+\ the exit tail follows, so off+12 is inside the range INSTR@ admits at every
+\ offset this walks.
 : DATA-RESTORE? ( n -- bool ) {: off:n :}
-   off INSTR@ MOVW-SHAPE 9 0 0 MOVZHW = 0= if false exit then
-   off 4 + INSTR@ MOVW-SHAPE 9 0 1 MOVKHW = 0= if false exit then
-   off 8 + 12 ADR-REG? 0= if false exit then
-   off 8 + ADR-TARGET CODE-OFF = 0= if false exit then
-   off 12 + INSTR@ 9 12 9 ENC-ADD = ;
+   off INSTR@  off 4 + INSTR@  off 8 + INSTR@  off 12 + INSTR@
+   off CODE-OFF 9 AOT-STARTUP-SHAPE:TEXT-ADR-SEQ? ;
 
 
 \ The pair's two lanes spell the blob's offset from text offset zero, so the
 \ image's file offset for it is that offset past the entry.
 : DATA-BLOB-OFF ( n -- n ) {: off:n :}
-   off INSTR@ MOVW-LANE
-   off 4 + INSTR@ MOVW-LANE 16 lshift or
+   off INSTR@  off 4 + INSTR@ AOT-STARTUP-SHAPE:TEXT-ADR-OFFSET
    CODE-OFF + ;
 
 

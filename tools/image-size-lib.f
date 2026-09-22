@@ -72,6 +72,7 @@ require lib/fmt.f
 require lib/fs.f
 require lib/sort.f
 require src/habu/code-span.f
+require tools/aot-startup-shape.f        \ the startup's instruction shapes, named once
 require tools/image-names.f
 
 \ The engine's own layout is already in the cold prefix; the target executable
@@ -1902,23 +1903,12 @@ variable IP          variable MOVACC
 
 : INSN@ ( n -- n ) U32@ ;
 
-: ADR? ( n -- bool ) {: w:n :}
-   w 24 rshift $9F and $10 = ;
-
-: ADR-RD ( n -- n ) $1F and ;
-
-: ADR-IMM ( n -- n ) {: w:n :}
-   w 5 rshift $7FFFF and 2 lshift  w 29 rshift 3 and or {: imm:n :}
-   imm $100000 >= if imm $200000 - exit then
-   imm ;
-
-: ADR-TARGET ( n n -- n ) {: at:n w:n :}
-   at w ADR-IMM + ;
-
+\ Every instruction shape this file reads is named in tools/aot-startup-shape.f,
+\ which writes them with the emitter's own encoders; this file finds them in an
+\ image, and keeps its own bounds check in front of every fetch.
 : ADR-AT? ( n n -- bool ) {: at:n rd:n :}
    at INSN IN-IMAGE? 0= if false exit then
-   at INSN@ {: w:n :}
-   w ADR? w ADR-RD rd = and ;
+   at INSN@ rd AOT-STARTUP-SHAPE:ADR-RD? ;
 
 \ Does a sparse blob start here? Its own header and bitmap have to walk to a
 \ value payload that ends inside the text, which no run of code bytes does by
@@ -1956,34 +1946,21 @@ variable ROWS-END
    rows-end ACC @ + BLOB-STOP !
    true ;
 
-\ MOVZ/MOVK into x11, 64-bit, the chain src/arch/arm64/asm.f LIT64 emits, and
-\ the immediate lane of one such word placed at its own shift.
-: MOVZ11? ( n -- bool ) $FF80001F and $D280000B = ;
-: MOVK11? ( n -- bool ) $FF80001F and $F280000B = ;
-: MOV-CHUNK ( n -- n ) {: w:n :}
-   w 5 rshift $FFFF and  w 21 rshift 3 and 16 * lshift ;
-
 \ THE BLOB'S ADDRESS IS FOUR WORDS, not one ADR: the startup sits at text offset
 \ zero and the blob is placed after all code, which ADR's +-1 MiB cannot reach in
 \ a large program, so src/habu/aot-lib.f TEXT-ADR, emits the label's byte offset
 \ from the code base in a movz/movk pair, `adr x12` to the base itself (LTEXT,
 \ bound at text offset zero = CODE-OFF) and the add that joins them. All four are
 \ matched because the movz alone is also how EMIT-OWNED-CELLS opens a DATA-offset
-\ literal; only the whole sequence names a label.
-: MOVZ9-LO? ( n -- bool ) $FFE0001F and $D2800009 = ;
-: MOVK9-HI? ( n -- bool ) $FFE0001F and $F2A00009 = ;
-$8B090189 constant ADD-X9-X12-X9
-
+\ literal; only the whole sequence names a label. EMIT-DATA-COPY loads the blob
+\ header into x9, and that is the only site of the four that uses it.
 : TEXT-ADR9? ( n -- bool ) {: at:n :}
    at 4 INSN * IN-IMAGE? 0= if false exit then
-   at INSN@ MOVZ9-LO? 0= if false exit then
-   at INSN + INSN@ MOVK9-HI? 0= if false exit then
-   at 2 INSN * + 12 ADR-AT? 0= if false exit then
-   at 2 INSN * + dup INSN@ ADR-TARGET CODE-OFF <> if false exit then
-   at 3 INSN * + INSN@ ADD-X9-X12-X9 = ;
+   at INSN@  at INSN + INSN@  at 2 INSN * + INSN@  at 3 INSN * + INSN@
+   at CODE-OFF 9 AOT-STARTUP-SHAPE:TEXT-ADR-SEQ? ;
 
 : TEXT-ADR9-TARGET ( n -- n ) {: at:n :}
-   at INSN@ MOV-CHUNK  at INSN + INSN@ MOV-CHUNK or  CODE-OFF + ;
+   at INSN@  at INSN + INSN@ AOT-STARTUP-SHAPE:TEXT-ADR-OFFSET  CODE-OFF + ;
 
 \ The first such sequence whose target walks as a blob is the startup's, because
 \ the startup is the first thing emitted. Every one of them is counted as well,
@@ -2036,20 +2013,23 @@ $D37EF54A constant XTC-LSL2
    at INSN + INSN@ XTC-LSR2 = and
    at 2 INSN * + INSN@ XTC-LSL2 = and ;
 
-\ The chain, then the ADR x12 that must follow it and name this image's code
-\ base: two independent statements about the same place, so a coincidental
-\ three-word match cannot be read as a row count.
+\ The LIT64, chain by which src/habu/aot-lib.f EMIT-XT-CELLS puts the row count
+\ in x11, then the ADR x12 that must follow it and name this image's code base
+\ (EMIT-XT-CELLS' own scratch, a plain ADR, and not a TEXT-ADR, site): two
+\ independent statements about the same place, so a coincidental three-word
+\ match cannot be read as a row count.
 : XTC-COUNT ( n -- n ) {: at:n :}
    at 3 INSN * + IP !
-   IP @ INSN@ MOVZ11? 0= if -1 exit then
-   IP @ INSN@ MOV-CHUNK MOVACC !
+   IP @ INSN@ 11 AOT-STARTUP-SHAPE:MOVZ-RD? 0= if -1 exit then
+   IP @ INSN@ AOT-STARTUP-SHAPE:MOVW-CHUNK MOVACC !
    IP @ INSN + IP !
-   begin IP @ INSN IN-IMAGE? IP @ INSN@ MOVK11? and while
-      MOVACC @ IP @ INSN@ MOV-CHUNK or MOVACC !
+   begin IP @ INSN IN-IMAGE?
+         IP @ INSN@ 11 AOT-STARTUP-SHAPE:MOVK-RD? and while
+      MOVACC @ IP @ INSN@ AOT-STARTUP-SHAPE:MOVW-CHUNK or MOVACC !
       IP @ INSN + IP !
    repeat
    IP @ 12 ADR-AT? 0= if -1 exit then
-   IP @ IP @ INSN@ ADR-TARGET CODE-OFF <> if -1 exit then
+   IP @ INSN@ IP @ AOT-STARTUP-SHAPE:ADR-TARGET CODE-OFF <> if -1 exit then
    MOVACC @ ;
 
 \ A match that does not decode is not the block -- three instructions can occur
