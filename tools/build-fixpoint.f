@@ -1,6 +1,8 @@
 \ build-fixpoint.f - checked self-rebuild orchestration.
 \
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
+\ Load after this list, by design: the caller composes it as one --load line
+\ (tools/bootstrap.sh, tools/hb-build-lib.f), so this file requires none of it.
+\ lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/codesign.f.
 \ The stamp key hashes the engine and the emitted stage sources with the baked
 \ SHA256 words; only the native-chain fold below reaches for lib/content-key.f

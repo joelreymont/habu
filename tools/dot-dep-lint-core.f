@@ -1,9 +1,11 @@
 \ dot-dep-lint-core.f - validate dot blocker references.
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f,
-\ lib/fs-mutate.f, tools/lint/text.f, and tools/lint/intern.f.
 
+require lib/errors.f
+require lib/fs.f
 require lib/vector.f                   \ VEC-HEADER-CELLS; the engine no longer bakes it
 require lib/sort.f
+require tools/lint/text.f
+require tools/lint/intern.f
 
 package DOT-DEP
 using LINT-SPLIT

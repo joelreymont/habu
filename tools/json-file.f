@@ -1,14 +1,16 @@
 \ json-file.f - dynamic JSONL file cursor, package JSONF.
 \
-\ Load after lib/errors.f, lib/memory.f, lib/fs.f, and tools/json.f.
-\
 \ Switchover wave B (dot habu-switchover-wave-b-08482d5b, batch 3): the line
 \ cursor and row reader return option<JSONF:line> / option<JSONF:row> and
 \ option<u8> instead of value+flag sentinels, so every caller MATCHes presence
 \ at the checker boundary. The inner JSONL-* machinery in tools/json.f is the
 \ trusted wrapped layer and is unchanged; JSONF is the checked wrapper.
 
+require lib/errors.f
+require lib/memory.f
+require lib/fs.f
 require lib/adt/option.f
+require tools/json.f
 
 package JSONF
 

@@ -16,9 +16,6 @@
 \
 \ This file only produces the ordered list (BUILD / COUNT / PATH$). Content
 \ hashing and package-scope replay live in the consumers.
-\
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/source.f,
-\ and tools/source-discovery.f.
 
 require lib/errors.f
 require lib/string.f

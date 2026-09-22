@@ -15,8 +15,6 @@
 \ indistinguishable from a genuine claim inside the very region under test.
 \ Composing the text also means the fixtures follow the bounds if they ever
 \ move, instead of silently testing a range nobody uses any more.
-\
-\ Load after lib/test.f and tools/error-code-lint-core.f.
 
 require lib/errors.f
 require lib/string.f

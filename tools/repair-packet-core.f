@@ -1,5 +1,8 @@
 \ repair-packet-core.f - normalize checker JSONL into an LLM repair packet.
-\ Load after lib/errors.f, lib/memory.f, lib/argv.f, and tools/json.f.
+
+require lib/memory.f
+require lib/argv.f
+require tools/json.f
 
 \ Checked CLI packet builder. Raw fd primitives are used through checked effects.
 

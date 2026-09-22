@@ -3,7 +3,6 @@
 \ Enforcing: prints the manifest census and THROWS on any finding. A row in
 \ src/habu/native-runtime.f that no entry point declares and that nothing in the
 \ compiler, JIT or REPL closure requires fails the gate.
-\ Load after tools/manifest-lint-core.f.
 
 require tools/manifest-lint-core.f
 

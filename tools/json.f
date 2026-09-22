@@ -1,7 +1,9 @@
 \ json.f - bounded JSON/JSONL parser and compact writer for Habu tools.
-\ Load after lib/errors.f and lib/memory.f. Parser failures throw named JSON errors.
+\ Parser failures throw named JSON errors.
 
-require lib/adt/result.f                 \ result<root,code> for JSON-PARSE-TRY (switchover wave C)
+require lib/errors.f
+require lib/memory.f
+require lib/adt/result.f               \ result<root,code> for JSON-PARSE-TRY (switchover wave C)
 
 -7100 constant E-JSON-SYNTAX
 -7101 constant E-JSON-CAPACITY

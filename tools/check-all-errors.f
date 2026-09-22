@@ -1,9 +1,7 @@
 \ check-all-errors.f - CLI wrapper for all-errors checker diagnostics.
-\ Load after lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f,
-\ lib/process.f, lib/process-argv.f,
-\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/lint/json-writer.f, tools/lint/source-lex.f,
-\ tools/check-all-errors-core.f, and lib/argv.f.
+
+require lib/argv.f
+require tools/check-all-errors-core.f
 
 package CHECK-ALL-ERRORS-CLI
 private

@@ -1,8 +1,13 @@
 \ seed.f - checked native seed installation helpers.
-\
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, lib/process-argv.f, lib/process-env.f, src/core/sha256.f,
-\ and lib/codesign.f.
+
+require lib/errors.f
+require lib/span.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/codesign.f
+require src/core/sha256.f
 
 64 constant SEED-SHA256-HEX-U
 10000 constant SEED-SMOKE-TIMEOUT-MS
@@ -193,7 +198,7 @@ variable SEED-LAST
    dst dstu SEED-RUN-BUILD-FIXPOINT ;
 
 : SEED-USAGE ( -- )
-   s" usage: hb --load ... tools/seed.f tools/seed-main.f -- /path/to/hb-seed" SEED-USAGE-RC die ;
+   s" usage: hb --load tools/seed-main.f -- /path/to/hb-seed" SEED-USAGE-RC die ;
 
 : SEED-MAIN ( -- )
    SCRIPT-ARGC 1 <> if SEED-USAGE then

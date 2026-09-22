@@ -16,8 +16,6 @@
 \ the way tools/error-code-lint-test.f does: the text stays readable and no
 \ fixture line can be mistaken for a real require row by a reader scanning this
 \ file.
-\
-\ Load after lib/test.f and tools/manifest-lint-core.f.
 
 require lib/errors.f
 require lib/string.f

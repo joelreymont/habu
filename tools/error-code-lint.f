@@ -3,7 +3,6 @@
 \ Enforcing: prints the collision ledger and THROWS on any finding. A negative
 \ code claimed by two different E- names anywhere under the Habu source roots
 \ src/ lib/ tools/ test/ fails the gate.
-\ Load after tools/error-code-lint-core.f.
 
 require lib/errors.f
 require lib/string.f

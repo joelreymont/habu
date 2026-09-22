@@ -1,5 +1,4 @@
 \ hb-build-report.f - typed in-process and wire-format hb-build reports.
-\ Load after lib/json-write.f and lib/build-cache.f.
 \
 \ The JSON writer keeps no state of its own, so this module owns the report
 \ bytes: REPORT-W writes into REPORT-BUF, and a span answered by one report word

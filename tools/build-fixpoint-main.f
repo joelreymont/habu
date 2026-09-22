@@ -1,6 +1,9 @@
 \ build-fixpoint-main.f - CLI entrypoint for tools/build-fixpoint.f.
-\ Load after tools/build-fixpoint.f. BUILD-FIXPOINT:BF-CLI is the fail-closed boundary:
-\ any escaped throw is reported on stderr and exits BF-BUILD-RC.
+\ Load after tools/build-fixpoint.f, by design: tools/bootstrap.sh composes one
+\ --load list for the whole chain, and the guard below reports that list when it
+\ is absent, which a require of a file that itself requires none of the preamble
+\ could not do. BUILD-FIXPOINT:BF-CLI is the fail-closed boundary: any escaped
+\ throw is reported on stderr and exits BF-BUILD-RC.
 
 \ Load-discipline guard, mirroring tools/build-fixpoint.f. Loading this CLI entry
 \ without its full chain (lib preamble + tools/build-fixpoint.f) otherwise dies

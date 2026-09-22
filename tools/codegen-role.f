@@ -21,7 +21,6 @@
 \ names (SZA-I-A, CLOC-MAIN-B, ...) so repeated checks in one session never
 \ redefine a name or reuse an earlier region's checker records.
 \
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f.
 \ Exercised by tools/codegen-role-test.f (gate suite codegen-role).
 
 require lib/errors.f

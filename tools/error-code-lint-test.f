@@ -9,8 +9,6 @@
 \ string body where the scan can see it is not code. The old escaped fixture on
 \ line 57 of this file was itself the shape that fed the live ledger phantom
 \ claims: a `\` written inside a string body.
-\
-\ Load after lib/test.f and tools/error-code-lint-core.f.
 
 require lib/errors.f
 require lib/string.f

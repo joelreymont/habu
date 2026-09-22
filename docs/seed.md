@@ -8,15 +8,10 @@ A trusted native `hb` seed is still a valid alternate trust root when one is
 available. The checked recovery command is run by the seed binary itself:
 
 ```sh
-/path/to/hb-seed --load lib/errors.f lib/string.f lib/fs.f \
-  lib/fs-mutate.f lib/process.f \
-  lib/process-argv.f lib/process-env.f src/core/sha256.f lib/codesign.f \
-  tools/seed.f tools/seed-main.f -- /path/to/hb-seed
+/path/to/hb-seed --load tools/seed-main.f -- /path/to/hb-seed
 
-HABU_SEED_SHA256=<hex> /path/to/hb-seed --load lib/errors.f \
-  lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f \
-  lib/process-env.f src/core/sha256.f lib/codesign.f tools/seed.f \
-  tools/seed-main.f -- /path/to/hb-seed
+HABU_SEED_SHA256=<hex> /path/to/hb-seed --load tools/seed-main.f \
+  -- /path/to/hb-seed
 ```
 
 The seed binary's own `--load` path selects its host core/checker/env source

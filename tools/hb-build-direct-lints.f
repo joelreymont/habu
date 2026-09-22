@@ -1,10 +1,12 @@
 \ hb-build-direct-lints.f - in-process lint hooks for hb-build gate callers.
-\ Load after lint cores and tools/hb-build-lib.f.
 \
 \ The hook install names its target as HB-BUILD-CLI:HOOK rather than
 \ bare: `is` resolves the name it parses through the engine's own lookup, which
 \ does not consult the packages a `using` imported, so a bare target under an
 \ open import fails to resolve (rc 70).
+
+require tools/aot-lint-core.f
+require tools/hb-build-lib.f
 
 package HB-BUILD-DIRECT-LINTS
 using HB-BUILD-CLI

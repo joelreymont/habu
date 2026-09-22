@@ -1,5 +1,4 @@
 \ dot-dep-lint-test.f - checked fixtures for dot dependency lint.
-\ Load after lib/test.f and tools/dot-dep-lint-core.f.
 
 require lib/errors.f
 require lib/string.f
