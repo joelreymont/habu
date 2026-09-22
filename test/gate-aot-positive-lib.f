@@ -273,12 +273,20 @@ variable SELF-SRC-U
 \ leak into the image - which is why MAKER-SELFTEST runs the image it built and
 \ reads its output back. The two synthetic rows are allocated the same way the
 \ walk's are, by asking for the rows about to be written (CLO-TABLES, PLAN-TABLES).
+\ THE ADR CASE re-files member 0 at the assembler cursor the way PLAN-BLOBS does
+\ (its first member starts at ASM-LEN), so the site's new address and its target's
+\ differ by exactly the delta the compiler emitted: `ADR x0, .+4` aimed inside
+\ member 0 comes back from RELOC-W32 as the SAME instruction word, and TNEW is
+\ member 0's new offset plus the target's 4. Both assertions are exact - the
+\ harness recomputes neither the encoding nor the map.
 : SELF-AMAP-DEFS ( -- )
    s" package AOT-LINK" GE-SRC-LINE
    s" create AMAP-CODE 16 allot" GE-SRC-LINE
    s" 8 constant AMAP-SPAN-BYTES" GE-SRC-LINE
    s" 8 constant AMAP-CODE-ROW" GE-SRC-LINE
    s" $40 constant AMAP-M2-OFF" GE-SRC-LINE
+   s" $10000020 constant AMAP-ADR" GE-SRC-LINE        \ ADR x0, .+4
+   s" 4 constant AMAP-ADR-DELTA" GE-SRC-LINE
    s" : AMAP-MEMBER! ( n ptr u8 n -- ) {: i:n code:ptr len:n :}" GE-SRC+
    s"  code i CLO ! len i CLO-LEN ! XREF-NULL i CLO-REC ! ;" GE-SRC-LINE
    s" : AMAP-CLOSURE! ( -- ) 2 CLO-TABLES 2 PLAN-TABLES" GE-SRC+
@@ -290,7 +298,12 @@ variable SELF-SRC-U
    s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-IN-MEMBER -1 =" GE-SRC+
    s\"  s\" AOT closed member range\" AMAP-EXPECT" GE-SRC+
    s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-TARGET AMAP-M2-OFF =" GE-SRC+
-   s\"  s\" AOT adjacent member relocation\" AMAP-EXPECT ;" GE-SRC-LINE
+   s\"  s\" AOT adjacent member relocation\" AMAP-EXPECT" GE-SRC+
+   s"  ASM-LEN 0 NEWOFF !" GE-SRC+
+   s"  0 AMAP-CODE AMAP-ADR RELOC-W32 AMAP-ADR =" GE-SRC+
+   s\"  s\" AOT in-member ADR keeps its delta\" AMAP-EXPECT" GE-SRC+
+   s"  TNEW @ ASM-LEN AMAP-ADR-DELTA + =" GE-SRC+
+   s\"  s\" AOT in-member ADR target\" AMAP-EXPECT ;" GE-SRC-LINE
    s" AMAP-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
@@ -586,6 +599,43 @@ variable SELF-SRC-U
    GB-OUT$ EXISTS? if s" hb-build AOT abs-chain emitted an image" GE-FAIL then
    s" PASS: hb-build AOT abs-chain reject (E-AOT-ABS-CHAIN; copier fails closed on a direct-BL-only violation)" type cr ;
 
+\ An ADR may not reach out of the member its site is in: the only ADR a compiled
+\ body carries is a quotation's address, whose target is a later function of the
+\ same emission and so of the same member (src/habu/aot-lib.f ADR-TARGET!). This
+\ hand-builds the violation - `ADR x0, .+8` in member 0, aimed at member 1's
+\ first byte - and drives the relocator over it inside a real stripped build.
+\ Both synthetic members carry XREF-NULL, the record AEREC-TXT spells
+\ `<unknown>`, so the site and the target word print that name.
+: ADR-MEMBER-SOURCE ( -- )
+   GE-SRC-RESET
+   s" : MAIN ( -- ) ;" GE-SRC-LINE ;
+
+: ADR-MEMBER-SELF-SOURCE ( -- )
+   GE-SRC-RESET
+   s" package AOT-LINK" GE-SRC-LINE
+   s" create AMT-CODE 16 allot" GE-SRC-LINE
+   s" : AMT-RUN ( -- ) 2 CLO-TABLES 2 PLAN-TABLES" GE-SRC+
+   s"  AMT-CODE 0 CLO ! 8 0 CLO-LEN ! XREF-NULL 0 CLO-REC !" GE-SRC+
+   s"  AMT-CODE 8 + 1 CLO ! 8 1 CLO-LEN ! XREF-NULL 1 CLO-REC !" GE-SRC+
+   s"  ASM-LEN 0 NEWOFF ! ASM-LEN 8 + 1 NEWOFF ! 2 NCLO !" GE-SRC+
+   s"  0 AMT-CODE $10000040 RELOC-W32 drop ;" GE-SRC-LINE
+   s" AMT-RUN" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+: ADR-MEMBER ( -- )
+   s" hb-aot-adrmember.f" s" hb-aot-got" s" hb-aot-adrmember-report.json" PATHS
+   ADR-MEMBER-SOURCE GB-WRITE-SRC
+   s" hb-aot-adrmember-maker.f" SELF-SRC!
+   ADR-MEMBER-SELF-SOURCE WRITE-SELF-SRC
+   MAKER-RUN
+   74 s" hb-build AOT cross-member ADR reject rc" GE-EXPECT-RC
+   s" aot: ADR target outside its member site=<unknown> target="
+      s" hb-build AOT cross-member ADR reject site" GE-EXPECT-ERR-HAS
+   s" target-word=<unknown>"
+      s" hb-build AOT cross-member ADR reject target word" GE-EXPECT-ERR-HAS
+   GB-OUT$ EXISTS? if s" hb-build AOT cross-member ADR emitted an image" GE-FAIL then
+   s" PASS: hb-build AOT cross-member ADR reject (named site and target word; relocation fails closed)" type cr ;
+
 \ item 10 slice 5: a preseeded bad-tag object/AOT test entry. A source declaring a
 \ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
 \ and a forged value-stack seed (payload slots + an out-of-range tag), so the
@@ -714,6 +764,7 @@ variable SELF-SRC-U
    LAYOUT-STORE
    LAYOUT-FETCH
    ABS-CHAIN
+   ADR-MEMBER
    GT-CLEANUP ;
 
 : RUN-PRESEED ( -- )

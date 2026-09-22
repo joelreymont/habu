@@ -308,6 +308,11 @@ per cell — the cell's DATA offset and its target's offset in this image's code
 after the image's data blob, and the startup applies them right after restoring
 the window. The word a row names joins the image's closure, and an anonymous
 quotation body is carried on its own, without the initializer that bound it.
+A quotation's address is an `ADR` to a later function of the same emission, and
+a member always holds both ends of it — a record covers the whole emission, and
+an anonymous body runs to its record's end — so the link relocates that `ADR` by
+copying it unchanged. An `ADR` whose target lies in another member is refused by
+name, `aot: ADR target outside its member site=…`, because no emitter makes one.
 
 A cell **declared to hold an address** — `PERSISTED-PTR-VARIABLE` and the other
 `ptr-cell-mark` definers of `src/core/pointer-storage.f` — is mapped the same

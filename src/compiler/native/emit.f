@@ -1174,6 +1174,9 @@ variable CH-AT
    d A64IR:ADR-FITS? 0= if E-A64EMIT-REACH throw then
    rd d ENC-ADR ;
 
+\ Both ends of this delta are inside ONE emission, and the stripped link depends
+\ on that: src/habu/aot-lib.f ADR-TARGET! resolves such an ADR in the member its
+\ site is in and refuses one whose target is anywhere else.
 : PUT-CODEADDR ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id 0 RESULT-REG  id ADR-DELTA  ADR-WORD  APPEND ;

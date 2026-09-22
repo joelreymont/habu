@@ -941,6 +941,12 @@ variable WI
 \ quotation entry a `[: ;]` pushes among them), so the next entry above this one
 \ is the smallest recorded chain value above it inside this record. Nothing here
 \ decides what a body looks like by decoding bytes.
+\ UNDER TIER 1 NO CHAIN MARKS A FUNCTION BOUNDARY - a quotation reference is an
+\ ADR, not a movz/movk chain - so a body runs to its record's end and carries
+\ every function above it. Measured on a word installing two quotations at load
+\ time (`: INSTALL ( -- ) [: INC ;] is A  [: DEC ;] is B ;`): the first body is a
+\ 32-byte member in a 116-byte record, holding its own 16-byte function and the
+\ second quotation's 16 bytes as well.
 variable BODY-END
 : BODY-END-SCAN ( ptr n n -- ) {: r:ptr v:n :}
    r REC-END-N BODY-END !

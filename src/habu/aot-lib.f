@@ -538,6 +538,10 @@ variable BDELTA  variable TNEW
    BDELTA @ 4 / BDELTA !
    BDELTA @ -8192 <  BDELTA @ 8191 > or IF s" aot: rel14 target out of range" 74 die THEN
    BDELTA @ $3FFF and ;
+\ ADR carries a BYTE delta, and its range check is the ENCODER's guard: no
+\ relocated ADR can trip it, because ADR-TARGET! below resolves every site inside
+\ its own member and the plan preserves that member's length, so the delta
+\ arriving here is the one the compiler already fitted.
 : ADRD32 {: site:n target:n :}
    target site - BDELTA !
    BDELTA @ -1048576 <  BDELTA @ 1048575 > or IF s" aot: ADR target out of range" 74 die THEN
@@ -575,6 +579,34 @@ variable BDELTA  variable TNEW
    p  w 5 14 BITS 14 SX 4 * + ;
 : ADRTGT {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
    p  w 5 19 BITS 2 lshift  w 29 2 BITS or 21 SX + ;
+\ AN ADR IS RESOLVED IN ITS OWN MEMBER OR NOT AT ALL, which is the one arm that
+\ does not fall back to OLD>NEW. The only ADR a compiled body carries is a
+\ quotation's code address (src/compiler/native/emit.f PUT-CODEADDR), and its
+\ delta runs from the site to a LATER function of the SAME emission, because the
+\ front end numbers a quotation after the function its `[:` stands in
+\ (src/compiler/native/elaborate.f QOPEN-ROW, QBUILD). One dictionary record
+\ covers a whole emission and a `;does` companion runs from its clause to that
+\ emission's end (src/compiler/native/publish.f PUBLISH-PENDING-DOES), so a
+\ member added through a record holds both ends of every ADR inside it. The only
+\ narrower member is an anonymous body, and it too runs to its record's end,
+\ because a tier-1 quotation reference is an ADR and not an address chain, so
+\ nothing marks a function boundary for aot-closure.f BODY-END-SCAN to stop at.
+\ A target in ANOTHER member is therefore a defect in the emitter or in the walk
+\ and not a program to relocate, and it is named here rather than mapped through
+\ OLD>NEW into a delta the copy was never asked to keep. THE LONG FORM IS NO
+\ ANSWER to such a target: the planner maps every word 1:1 (PLAN-BLOBS above,
+\ "the compacted length is the member's own length"), and ADRP+ADD is two words
+\ where the ADR was one.
+: ADR-TARGET! {: i:n p:ptr w:n :} ( n ptr u8 n -- )
+   p w ADRTGT {: t:ptr :}
+   i t MAP-IN-MEMBER TNEW !
+   TNEW @ -1 = IF
+      s" aot: ADR target outside its member site=" AETXT
+      i CLO-REC@ AEREC-TXT
+      s"  target=" AETXT t CODE-N AEJNUM
+      s"  target-word=" AETXT t CODE-N ADDRESS-OWNER AEREC-TXT
+      10 AE1
+      s" " 74 die THEN ;
 \ A DIRECT BRANCH TO A DECLARATION-ONLY RECORD IS DROPPED RATHER THAN RELOCATED.
 \ The target is resolved here the way the closure walk resolved it - by exact
 \ record entry - so the branch this rewrites is exactly the one the walk left
@@ -605,7 +637,7 @@ variable BDELTA  variable TNEW
       i p w BTGT14 MAP-TARGET!
       w $FFF8001F and  ASM-LEN TNEW @ REL14 5 lshift or EXIT THEN
    w ADR? IF
-      i p w ADRTGT MAP-TARGET!
+      i p w ADR-TARGET!
       w $9F00001F and  ASM-LEN TNEW @ ADRD32 or EXIT THEN
    w ADRP? IF s" aot: ADRP relocation unsupported" 74 die THEN
    w ;
