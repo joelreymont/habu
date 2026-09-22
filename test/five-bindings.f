@@ -1,7 +1,7 @@
 \ five-bindings.f - the five foreign libraries a server binds, in one image.
 \ Run: bin/hb --load test/five-bindings.f
 \
-\ package DB's 18 declarations, CURL's 15, CRYPTO's 19, TCP4's 11 and TASK's 5
+\ package PG's 18 declarations, CURL's 15, CRYPTO's 19, TCP4's 11 and TASK's 5
 \ are 68 rows of the image's ONE declaration table before this file adds its
 \ own. While that table held $40 rows the fifth require threw E-FFI-ARITY
 \ naming nothing, so a server could not seal a cookie jar beside its database,
@@ -13,7 +13,7 @@
 require lib/test.f
 require lib/net/tcp4.f
 require lib/net/curl.f
-require lib/db/pq.f
+require lib/pg.f
 require lib/crypto/evp.f
 require lib/task.f
 
@@ -66,7 +66,7 @@ variable SEALED-N
    s" all five packages are resident in one image" T-LABEL
    TCP4:E-PLATFORM E-TCP4-PLATFORM T=
    CURL:E-PLATFORM E-CURL-PLATFORM T=
-   DB:E-CONNECT E-DB-FIRST T=
+   PG:E-CONNECT E-PG-FIRST T=
    CRYPTO:E-PLATFORM E-CRYPTO-PLATFORM T=
    TASK:MIN-STACK 0 T<> ;
 

@@ -1411,7 +1411,7 @@ public
 -9235 constant E-CURL-CAPACITY     \ no transfer record free: the multiplexed table is full
 
 \ Authenticated encryption and HMAC over libcrypto (package CRYPTO):
-\ -9270..-9279. After package DB (-9250..-9259); -9240..-9249 is
+\ -9270..-9279. After package PG (-9250..-9259); -9240..-9249 is
 \ tools/image-size-lib.f and -9260..-9269 tools/manifest-lint-core.f, both
 \ outside this file.
 -9270 constant E-CRYPTO-FIRST
@@ -1424,12 +1424,12 @@ public
 -9275 constant E-CRYPTO-MAC        \ libcrypto refused the keyed hash, or answered a digest of the wrong width
 -9276 constant E-CRYPTO-PLATFORM   \ libcrypto.so.3 is not the shared-library name this target loads
 
-\ PostgreSQL over libpq (package DB): -9250..-9259. The decade after libcurl;
+\ PostgreSQL over libpq (package PG): -9250..-9259. The decade after libcurl;
 \ -9240..-9249 is tools/image-size-lib.f, outside this file.
--9250 constant E-DB-FIRST
--9259 constant E-DB-LAST
+-9250 constant E-PG-FIRST
+-9259 constant E-PG-LAST
 
-package DB
+package PG
 
 public
 

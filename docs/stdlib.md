@@ -22,7 +22,7 @@ Planned module files:
 - `lib/ffi-abi.f`
 - `lib/zip.f`
 - `lib/net/udp4.f`
-- `lib/db/pq.f`
+- `lib/pg.f`
 - `lib/net/curl.f`
 - `lib/crypto/evp.f`
 - `lib/serial.f`
@@ -400,7 +400,7 @@ five or six libraries at once: `FFI:DECLARATION-MAX` is 256 rows of $48 bytes
 each, $4800 bytes of image data, and `FFI:ROOM?` answers whether another row is
 left. A declaration that finds the table full is `E-FFI-TABLE-FULL`, and the
 declarer names the Habu word and the C symbol it could not give a row on stderr
-before it throws. `test/five-bindings.f` holds `TCP4`, `CURL`, `DB`, `CRYPTO`
+before it throws. `test/five-bindings.f` holds `TCP4`, `CURL`, `PG`, `CRYPTO`
 and `TASK` - 68 rows - in one image and declares past them.
 
 The loaded-library table is a separate named ceiling: `FFI:LIBRARY-MAX` is
@@ -1162,13 +1162,13 @@ Application protocol framing and retry/ordering policy belong above this module.
 
 ## PostgreSQL
 
-`lib/db/pq.f` owns package `DB`: PostgreSQL over libpq, declared through the
-`FUNCTION:` declarer. `DB:connection` and `DB:result` are nominal handles over
+`lib/pg.f` owns package `PG`: PostgreSQL over libpq, declared through the
+`FUNCTION:` declarer. `PG:connection` and `PG:result` are nominal handles over
 a slot registry, never a raw cell; the registry holds the owning task and a
 generation, so a closed connection, a cleared result and a handle from another
-task are refused before any foreign call. `DB:CLEAR` is a result's single
+task are refused before any foreign call. `PG:CLEAR` is a result's single
 consumption point. Parameters are text format and are built per call with
-`DB:PARAMS`, `DB:TEXT+`, `DB:INT+` and `DB:NULL+`; outcomes are ADTs carrying
+`PG:PARAMS`, `PG:TEXT+`, `PG:INT+` and `PG:NULL+`; outcomes are ADTs carrying
 the server's SQLSTATE and message, never a raw `n`. See [db.md](db.md) for the
 vocabulary, the buffer lifetimes, the concurrency rule and a worked example.
 

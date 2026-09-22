@@ -1,7 +1,7 @@
 #!/bin/sh
 # pg-fixture.sh - run a command against a throwaway PostgreSQL cluster.
 #
-#   test/db/pg-fixture.sh build/hb-pq --load lib/db/pq-test.f
+#   test/db/pg-fixture.sh build/hb-pg --load lib/pg-test.f
 #
 # Starts an empty trust-authentication cluster on a free loopback port in a
 # temporary directory, exports HABU_PG_CONNINFO, runs the command, then stops

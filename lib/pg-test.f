@@ -1,24 +1,30 @@
-\ pq-test.f - package DB against a live PostgreSQL server.
+\ pg-test.f - package PG against a live PostgreSQL server.
 \
 \ Run it through the fixture, which starts a throwaway cluster and exports the
 \ conninfo:
 \
-\     test/db/pg-fixture.sh build/hb-pq --load lib/db/pq-test.f
+\     test/db/pg-fixture.sh build/hb-pg --load lib/pg-test.f
 \
 \ Without HABU_PG_CONNINFO in the environment the file prints a named skip and
 \ asserts nothing. It is registered in test/gate-stdlib-cases.f on those terms:
-\ every gate run certifies package DB and prints the skip, and the fixture is
+\ every gate run certifies package PG and prints the skip, and the fixture is
 \ how the module is exercised against a real server.
 
 require lib/test.f
 require lib/task.f
+require lib/aio.f
 require lib/image-lifecycle.f
-require lib/db/pq.f
+require lib/pg.f
 
-package DB-TEST
-using DB
+package PG-TEST
+using PG
 
 -77 constant BOOM                         \ the throw the rolled-back body raises
+20 constant CONNECTIONS
+64 constant RESULTS
+32 constant PARAMETERS
+
+CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 0 constant TAG-OK
 1 constant TAG-ROWS
@@ -29,43 +35,44 @@ using DB
    s" HABU_PG_CONNINFO" GETENV ;
 
 
-: OPEN ( -- DB:connection )
-   CONNINFO$ CONNECT MATCH DB:connect-result
+: OPEN ( -- PG:connection )
+   CONNECTIONS RESULTS PARAMETERS CONFIGURE
+   CONNINFO$ CONNECT MATCH PG:connect-result
       connected OF ENDOF
       refused OF type cr E-CONNECT throw ENDOF
    ;MATCH ;
 
 
 \ ---- outcome readers ------------------------------------------------------
-: OUTCOME-TAG ( DB:result -- n )
-   OUTCOME MATCH DB:outcome
+: OUTCOME-TAG ( PG:result -- n )
+   OUTCOME MATCH PG:outcome
       ok OF TAG-OK ENDOF
       rows OF TAG-ROWS ENDOF
       failed OF 2drop 2drop TAG-FAILED ENDOF
    ;MATCH ;
 
 
-: FAILED-SQLSTATE$ ( DB:result -- ptr u8 n )
-   OUTCOME MATCH DB:outcome
+: FAILED-SQLSTATE$ ( PG:result -- ptr u8 n )
+   OUTCOME MATCH PG:outcome
       ok OF s" <ok>" ENDOF
       rows OF s" <rows>" ENDOF
       failed OF 2drop ENDOF
    ;MATCH ;
 
 
-: FAILED-MESSAGE$ ( DB:result -- ptr u8 n )
-   OUTCOME MATCH DB:outcome
+: FAILED-MESSAGE$ ( PG:result -- ptr u8 n )
+   OUTCOME MATCH PG:outcome
       ok OF s" " ENDOF
       rows OF s" " ENDOF
       failed OF 2swap 2drop ENDOF
    ;MATCH ;
 
 
-: EXEC-TAG ( DB:connection ptr u8 n -- n )
+: EXEC-TAG ( PG:connection ptr u8 n -- n )
    EXEC dup OUTCOME-TAG swap CLEAR ;
 
 
-: EXEC-OK ( DB:connection ptr u8 n -- )
+: EXEC-OK ( PG:connection ptr u8 n -- )
    EXEC-TAG TAG-OK T= ;
 
 
@@ -74,8 +81,8 @@ using DB
 \ message and no connection is left behind.
 : REFUSED-LENGTH ( -- n )
    s" host=127.0.0.1 port=1 dbname=none user=none connect_timeout=2" CONNECT
-   MATCH DB:connect-result
-      connected OF DB:CLOSE 0 ENDOF
+   MATCH PG:connect-result
+      connected OF PG:CLOSE 0 ENDOF
       refused OF nip ENDOF
    ;MATCH ;
 
@@ -84,8 +91,25 @@ using DB
    REFUSED-LENGTH 0 > TTRUE ;
 
 
+\ The application can hold all twenty connections at once, and reaching its
+\ declared limit leaves the existing connections usable and a closed slot reusable.
+: CAPACITY-CASES ( -- )
+   s" application-declared connections remain usable at capacity" T-LABEL
+   CONNECTIONS 0 ?do OPEN i HELD-CONNS ! loop
+   [: OPEN PG:CLOSE ;] E-CAPACITY TTHROWSQ
+   [: CONNECTIONS 1+ RESULTS PARAMETERS CONFIGURE ;] E-CAPACITY TTHROWSQ
+   0 HELD-CONNS @ PG:CLOSE
+   OPEN 0 HELD-CONNS !
+   CONNECTIONS 0 ?do
+      i HELD-CONNS @ {: c :}
+      c s" select 42" EXEC {: r :}
+      r 0 >ROW 0 >COL INT 42 T=
+      r CLEAR c PG:CLOSE
+   loop ;
+
+
 \ ---- schema ---------------------------------------------------------------
-: DDL-CASES ( DB:connection -- DB:connection ) {: c :}
+: DDL-CASES ( PG:connection -- PG:connection ) {: c :}
    c s" set client_min_messages = warning" EXEC-OK
    c s" drop table if exists pqt" EXEC-OK
    c s" create table pqt (id int primary key, label text, note text)" EXEC-OK
@@ -93,7 +117,7 @@ using DB
 
 
 \ ---- parameters -----------------------------------------------------------
-: INSERT-ROW ( DB:connection n ptr u8 n -- ) {: c id:n la:ptr lu:n :}
+: INSERT-ROW ( PG:connection n ptr u8 n -- ) {: c id:n la:ptr lu:n :}
    c PARAMS
    c id INT+
    c la lu TEXT+
@@ -104,7 +128,7 @@ using DB
    CLEAR ;
 
 
-: SELECT-CASES ( DB:connection -- DB:connection ) {: c :}
+: SELECT-CASES ( PG:connection -- PG:connection ) {: c :}
    c PARAMS
    c 1 INT+
    c s" select id, label, note from pqt where id = $1" EXEC {: r :}
@@ -121,14 +145,14 @@ using DB
    c ;
 
 
-: PARAM-CASES ( DB:connection -- DB:connection ) {: c :}
+: PARAM-CASES ( PG:connection -- PG:connection ) {: c :}
    c 1 s" one" INSERT-ROW
    c 2 s" two" INSERT-ROW
    c SELECT-CASES ;
 
 
 \ ---- prepared statements --------------------------------------------------
-: PREPARED-INSERT ( DB:connection n ptr u8 n -- ) {: c id:n la:ptr lu:n :}
+: PREPARED-INSERT ( PG:connection n ptr u8 n -- ) {: c id:n la:ptr lu:n :}
    c PARAMS
    c id INT+
    c la lu TEXT+
@@ -138,7 +162,7 @@ using DB
    CLEAR ;
 
 
-: PREPARED-CASES ( DB:connection -- DB:connection ) {: c :}
+: PREPARED-CASES ( PG:connection -- PG:connection ) {: c :}
    c s" pqt_ins" s" insert into pqt (id, label, note) values ($1, $2, $3)" PREPARE
    dup OUTCOME-TAG TAG-OK T=
    CLEAR
@@ -152,18 +176,18 @@ using DB
 
 
 \ ---- transactions ---------------------------------------------------------
-: TX-BODY ( DB:connection -- DB:connection )
+: TX-BODY ( PG:connection -- PG:connection )
    dup s" insert into pqt (id, label, note) values (900, 'rolled', null)" EXEC
    dup OUTCOME-TAG TAG-OK T=
    CLEAR
    BOOM throw ;
 
 
-: TX-RUN ( DB:connection -- DB:connection )
+: TX-RUN ( PG:connection -- PG:connection )
    dup [: TX-BODY ;] WITH-TRANSACTION ;
 
 
-: COUNT-ID ( DB:connection n -- n ) {: c id:n :}
+: COUNT-ID ( PG:connection n -- n ) {: c id:n :}
    c PARAMS
    c id INT+
    c s" select count(*) from pqt where id = $1" EXEC {: r :}
@@ -172,7 +196,7 @@ using DB
    found ;
 
 
-: ROLLBACK-CASES ( DB:connection -- DB:connection ) {: c :}
+: ROLLBACK-CASES ( PG:connection -- PG:connection ) {: c :}
    c [: TX-RUN ;] catch {: stale code:n :}
    code BOOM T=
    c 900 COUNT-ID 0 T=
@@ -182,13 +206,13 @@ using DB
 \ The parameters are built BEFORE the transaction opens, which is the only way
 \ into a body that may not read the caller's locals: BEGIN must leave the
 \ pending list alone.
-: COMMIT-BODY ( DB:connection -- DB:connection )
+: COMMIT-BODY ( PG:connection -- PG:connection )
    dup s" insert into pqt (id, label, note) values ($1, $2, null)" EXEC
    dup OUTCOME-TAG TAG-OK T=
    CLEAR ;
 
 
-: COMMIT-CASES ( DB:connection -- DB:connection ) {: c :}
+: COMMIT-CASES ( PG:connection -- PG:connection ) {: c :}
    c PARAMS
    c 901 INT+
    c s" kept" TEXT+
@@ -203,7 +227,7 @@ using DB
 
 
 \ ---- failure arms ---------------------------------------------------------
-: UNIQUE-CASES ( DB:connection -- DB:connection ) {: c :}
+: UNIQUE-CASES ( PG:connection -- PG:connection ) {: c :}
    c PARAMS
    c s" insert into pqt (id, label, note) values (1, 'duplicate', null)" EXEC {: r :}
    r OUTCOME-TAG TAG-FAILED T=
@@ -213,15 +237,15 @@ using DB
    c ;
 
 
-: READ-BAD-COLUMN ( DB:result -- DB:result )
+: READ-BAD-COLUMN ( PG:result -- PG:result )
    dup 0 >ROW 99 >COL TEXT$ 2drop ;
 
 
-: READ-BAD-ROW ( DB:result -- DB:result )
+: READ-BAD-ROW ( PG:result -- PG:result )
    dup 99 >ROW 0 >COL TEXT$ 2drop ;
 
 
-: BAD-COLUMN-CASES ( DB:connection -- DB:connection ) {: c :}
+: BAD-COLUMN-CASES ( PG:connection -- PG:connection ) {: c :}
    c PARAMS
    c s" select id from pqt where id = 1" EXEC {: r :}
    r OUTCOME-TAG TAG-ROWS T=
@@ -233,18 +257,18 @@ using DB
    c ;
 
 
-: EXEC-EMPTY ( DB:connection -- DB:connection )
+: EXEC-EMPTY ( PG:connection -- PG:connection )
    dup s" " EXEC CLEAR ;
 
 
-: PREPARE-UNNAMED ( DB:connection -- DB:connection )
+: PREPARE-UNNAMED ( PG:connection -- PG:connection )
    dup s" " EXEC-PREPARED CLEAR ;
 
 
 \ An empty statement would reach the server as PGRES_EMPTY_QUERY, whose result
 \ carries no SQLSTATE and no message at all - measured - so the module refuses
 \ it by name instead.
-: EMPTY-STATEMENT-CASES ( DB:connection -- DB:connection ) {: c :}
+: EMPTY-STATEMENT-CASES ( PG:connection -- PG:connection ) {: c :}
    c [: EXEC-EMPTY ;] catch {: stale-exec code:n :}
    code E-STATEMENT T=
    c [: PREPARE-UNNAMED ;] catch {: stale-name name-code:n :}
@@ -252,15 +276,15 @@ using DB
    c ;
 
 
-: READ-ROWS ( DB:result -- DB:result )
+: READ-ROWS ( PG:result -- PG:result )
    dup ROWS drop ;
 
 
-: CLEAR-AGAIN ( DB:result -- DB:result )
+: CLEAR-AGAIN ( PG:result -- PG:result )
    dup CLEAR ;
 
 
-: CLEARED-CASES ( DB:connection -- DB:connection ) {: c :}
+: CLEARED-CASES ( PG:connection -- PG:connection ) {: c :}
    c PARAMS
    c s" select 1" EXEC {: r :}
    r CLEAR
@@ -294,7 +318,7 @@ variable STMT-U
    BIG-LEN 0 ?do $41 i 26 mod + BIG-BUF BYTE-VIEW i + c! loop ;
 
 
-: BIG-TEXT-CASES ( DB:connection -- DB:connection ) {: c :}
+: BIG-TEXT-CASES ( PG:connection -- PG:connection ) {: c :}
    FILL-BIG
    c s" create table pqtbig (id int primary key, body text)" EXEC-OK
    c PARAMS
@@ -346,7 +370,7 @@ variable STMT-U
    loop ;
 
 
-: BIG-STATEMENT-CASES ( DB:connection -- DB:connection ) {: c :}
+: BIG-STATEMENT-CASES ( PG:connection -- PG:connection ) {: c :}
    c s" create table pqtrow (id int primary key)" EXEC-OK
    BIG-VALUES
    STMT$ nip OLD-STATEMENT-CAP > TTRUE
@@ -359,12 +383,12 @@ variable STMT-U
 
 
 \ ---- the counts that remain bounded ---------------------------------------
-: ADD-PAST-CAP ( DB:connection -- DB:connection )
+: ADD-PAST-CAP ( PG:connection -- PG:connection )
    dup PARAMS
    33 0 ?do dup 1 INT+ loop ;
 
 
-: PARAM-COUNT-CASES ( DB:connection -- DB:connection ) {: c :}
+: PARAM-COUNT-CASES ( PG:connection -- PG:connection ) {: c :}
    c [: ADD-PAST-CAP ;] catch {: stale-param code:n :}
    code E-CAPACITY T=
    c PARAMS
@@ -377,7 +401,7 @@ variable STMT-U
 \ MEASURED: PostgreSQL runs a multi-statement simple query as ONE implicit
 \ transaction, so a failing statement rolls the earlier ones back with it - the
 \ script is atomic even outside WITH-TRANSACTION.
-: MULTI-VIA-EXEC-CASES ( DB:connection -- DB:connection ) {: c :}
+: MULTI-VIA-EXEC-CASES ( PG:connection -- PG:connection ) {: c :}
    c PARAMS
    c s" select 1; select 2" EXEC
    dup OUTCOME-TAG TAG-FAILED T=
@@ -386,7 +410,7 @@ variable STMT-U
    c ;
 
 
-: SCRIPT-OK-CASES ( DB:connection -- DB:connection ) {: c :}
+: SCRIPT-OK-CASES ( PG:connection -- PG:connection ) {: c :}
    c s" drop table if exists pqtscript; create table pqtscript (id int); insert into pqtscript values (7)"
    SCRIPT
    dup OUTCOME-TAG TAG-OK T=
@@ -399,7 +423,7 @@ variable STMT-U
    c ;
 
 
-: SCRIPT-FAIL-CASES ( DB:connection -- DB:connection ) {: c :}
+: SCRIPT-FAIL-CASES ( PG:connection -- PG:connection ) {: c :}
    c s" insert into pqtscript values (8); insert into pqtnosuch values (1)" SCRIPT
    dup OUTCOME-TAG TAG-FAILED T=
    dup FAILED-SQLSTATE$ s" 42P01" T$=
@@ -412,18 +436,18 @@ variable STMT-U
    c ;
 
 
-: SCRIPT-BODY ( DB:connection -- DB:connection )
+: SCRIPT-BODY ( PG:connection -- PG:connection )
    dup s" insert into pqtscript values (9); insert into pqtscript values (10)" SCRIPT
    dup OUTCOME-TAG TAG-OK T=
    CLEAR
    BOOM throw ;
 
 
-: SCRIPT-TX-RUN ( DB:connection -- DB:connection )
+: SCRIPT-TX-RUN ( PG:connection -- PG:connection )
    dup [: SCRIPT-BODY ;] WITH-TRANSACTION ;
 
 
-: SCRIPT-TX-CASES ( DB:connection -- DB:connection ) {: c :}
+: SCRIPT-TX-CASES ( PG:connection -- PG:connection ) {: c :}
    c [: SCRIPT-TX-RUN ;] catch {: stale-tx code:n :}
    code BOOM T=
    c PARAMS
@@ -433,17 +457,17 @@ variable STMT-U
    c ;
 
 
-: SCRIPT-EMPTY ( DB:connection -- DB:connection )
+: SCRIPT-EMPTY ( PG:connection -- PG:connection )
    dup s" " SCRIPT CLEAR ;
 
 
-: SCRIPT-WITH-PARAMS ( DB:connection -- DB:connection )
+: SCRIPT-WITH-PARAMS ( PG:connection -- PG:connection )
    dup PARAMS
    dup 1 INT+
    dup s" select 1" SCRIPT CLEAR ;
 
 
-: SCRIPT-REFUSAL-CASES ( DB:connection -- DB:connection ) {: c :}
+: SCRIPT-REFUSAL-CASES ( PG:connection -- PG:connection ) {: c :}
    c [: SCRIPT-EMPTY ;] catch {: stale-empty code:n :}
    code E-STATEMENT T=
    c [: SCRIPT-WITH-PARAMS ;] catch {: stale-params param-code:n :}
@@ -454,8 +478,8 @@ variable STMT-U
 
 \ ---- slot recycling -------------------------------------------------------
 \ More statements than the registry has result slots: every CLEAR must hand its
-\ slot back or the run ends in DB:E-CAPACITY rather than an assertion.
-: RECYCLE-CASES ( DB:connection -- DB:connection ) {: c :}
+\ slot back or the run ends in PG:E-CAPACITY rather than an assertion.
+: RECYCLE-CASES ( PG:connection -- PG:connection ) {: c :}
    64 0 ?do
       c PARAMS
       c s" select 1" EXEC CLEAR
@@ -473,7 +497,7 @@ variable STMT-U
    OPEN {: c :}
    c PARAMS
    c s" select 1" EXEC {: r :}
-   c DB:CLOSE
+   c PG:CLOSE
    r [: READ-ROWS ;] catch {: stale code:n :}
    code E-CLEARED T= ;
 
@@ -482,7 +506,7 @@ variable STMT-U
 \ A handle laundered into shared typed storage still belongs to the task that
 \ made it. The worker presents the main task's connection and is refused
 \ before any libpq call.
-1 TYPED-BUFFER SHARED-CONN DB:connection
+1 TYPED-BUFFER SHARED-CONN PG:connection
 variable FOREIGN-CODE
 variable FOREIGN-DONE
 TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
@@ -497,7 +521,7 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
    1 FOREIGN-DONE atomic-add drop ;
 
 
-: OWNER-CASES ( DB:connection -- DB:connection ) {: c :}
+: OWNER-CASES ( PG:connection -- PG:connection ) {: c :}
    c 0 SHARED-CONN !
    0 FOREIGN-CODE !
    0 FOREIGN-DONE !
@@ -510,10 +534,9 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
 
 \ ---- image capture --------------------------------------------------------
 \ A restored image runs in another process where the libpq pointers are gone,
-\ so PREPARE retires every handle. This runs LAST: PREPARE also clears package
-\ FFI's symbol cache, and the connection it retires can no longer be closed,
-\ so it is deliberately left to the exiting process.
-: USE-CONN ( DB:connection -- DB:connection )
+\ so PREPARE closes native resources and retires every handle. A new registry
+\ cannot revive a stale handle even when it reuses the same slot number.
+: USE-CONN ( PG:connection -- PG:connection )
    dup PARAMS ;
 
 
@@ -525,7 +548,14 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
    c [: USE-CONN ;] catch {: stale-conn code:n :}
    code E-HANDLE T=
    r [: READ-ROWS ;] catch {: stale-res res-code:n :}
-   res-code E-CLEARED T= ;
+   res-code E-CLEARED T=
+   OPEN {: fresh :}
+   fresh s" select 2" EXEC {: current :}
+   c [: USE-CONN ;] catch {: again-conn again-code:n :}
+   again-code E-HANDLE T=
+   r [: READ-ROWS ;] catch {: again-res again-res-code:n :}
+   again-res-code E-CLEARED T=
+   current CLEAR fresh PG:CLOSE ;
 
 
 \ ---- the live suite -------------------------------------------------------
@@ -550,7 +580,7 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
    CLEARED-CASES
    OWNER-CASES
    RECYCLE-CASES
-   DB:CLOSE
+   PG:CLOSE
    CLOSE-CLEARS-CASES
    IMAGE-CASES
    \ A later connection must arm cleanup for the next capture too.
@@ -559,10 +589,13 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
 
 : MAIN ( -- )
    CONNINFO$ nip 0= if
-      s" pq-test: skipped, HABU_PG_CONNINFO names no server" type cr exit
+      s" pg-test: skipped, HABU_PG_CONNINFO names no server" type cr exit
    then
-   CONNECT-CASES
-   SERVER-CASES ;
+   CONNECTIONS RESULTS PARAMETERS CONFIGURE
+   AIO:START
+   [: CONNECT-CASES CAPACITY-CASES SERVER-CASES ;]
+   [: AIO:STOP ;]
+   finally ;
 
 T-RESET
 MAIN

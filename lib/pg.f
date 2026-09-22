@@ -1,4 +1,4 @@
-\ pq.f - PostgreSQL over libpq, bound through the FFI FUNCTION: declarer.
+\ pg.f - PostgreSQL over libpq, bound through the FFI FUNCTION: declarer.
 \
 \ A connection and a result are nominal handles, never a raw cell: each names a
 \ slot in this module's registry, which holds the libpq pointer, the task that
@@ -14,8 +14,8 @@
 \ statement bytes, every parameter with its NUL terminator, and the paramValues
 \ pointer array. The arena is released as soon as libpq returns, and it belongs
 \ to the connection, so no path leaks it - the next PARAMS, CLOSE and image
-\ capture all release it too. Only COUNTS are bounded, by named constants with
-\ E-CAPACITY at the boundary.
+\ capture all release it too. CONFIGURE declares the connection, result and
+\ parameter counts, with E-CAPACITY at those boundaries.
 \
 \ Parameters are text format throughout, so libpq's paramTypes, paramLengths
 \ and paramFormats are all NULL: the server infers each type, lengths are
@@ -30,9 +30,10 @@ require lib/string.f
 require lib/memory.f
 require lib/type/deftype.f
 require lib/task.f
+require lib/aio.f
 require lib/image-lifecycle.f
 
-package DB
+package PG
 
 public
 
@@ -64,7 +65,10 @@ CAST: >RESULT ( n -- result )
 CAST: RESULT>N ( result -- n )
 
 \ ---- libpq facts, read off /usr/include/libpq-fe.h and postgres_ext.h ------
-0 constant CONNECTION-OK                  \ ConnStatusType
+0 constant PGRES-POLLING-FAILED           \ PostgresPollingStatusType
+1 constant PGRES-POLLING-READING
+2 constant PGRES-POLLING-WRITING
+3 constant PGRES-POLLING-OK
 1 constant PGRES-COMMAND-OK               \ ExecStatusType
 2 constant PGRES-TUPLES-OK
 $43 constant PG-DIAG-SQLSTATE             \ 'C'
@@ -72,46 +76,62 @@ $4D constant PG-DIAG-MESSAGE-PRIMARY      \ 'M'
 0 constant TEXT-RESULT                    \ PQexecParams resultFormat
 
 \ ---- registry storage -----------------------------------------------------
-\ Every ceiling here is a COUNT. Statement and parameter text are bounded only
-\ by the memory the call arena can map.
-$08 constant CONN-CAP
-$20 constant RESULT-CAP
-$20 constant PARAM-CAP
+\ Connection, result and parameter counts belong to the application. There is
+\ no process-wide guessed connection ceiling: CONFIGURE allocates exactly the
+\ registries the caller declares, and a live registry cannot be resized.
 $0400 constant MESSAGE-CAP                \ copied primary server message
 $05 constant SQLSTATE-LEN
 $10 constant VERB-CAP                     \ BEGIN / COMMIT / ROLLBACK, this module's own
 MESSAGE-CAP constant SCAN-CAP             \ bound on a NUL scan of a libpq C string
 $1000 constant ARENA-MIN                  \ smallest call arena worth mapping
-$0100 constant HANDLE-STRIDE              \ handle = generation * HANDLE-STRIDE + slot
+$100000000 constant HANDLE-STRIDE         \ low 32 bits name the registry slot
+$7FFFFFFF constant GENERATION-MAX         \ positive signed handle, high 31 bits
 $FFFFFFFFFFFFFFF8 constant CELL-MASK      \ round an arena offset up to a cell
 -1 constant NO-OFFSET                     \ a NULL parameter has no arena bytes
 -1 constant NO-CONN                       \ RES-CONN of a free or half-claimed slot
 10 constant DEC-BASE
 $30 constant DIGIT-ZERO
 
-create CONN-PG CONN-CAP cells allot
-create CONN-GEN CONN-CAP cells allot
-create CONN-LIVE CONN-CAP cells allot
-create CONN-OWNER CONN-CAP cells allot
-create CONN-TX CONN-CAP cells allot
-create CONN-PARAM-N CONN-CAP cells allot
-create CONN-ARENA CONN-CAP cells allot
-create CONN-ARENA-CAP CONN-CAP cells allot
-create CONN-ARENA-U CONN-CAP cells allot
-create CONN-MESSAGE-U CONN-CAP cells allot
-create CONN-SQLSTATE-U CONN-CAP cells allot
-create CONN-PARAM-OFF CONN-CAP PARAM-CAP * cells allot
-create CONN-VERB CONN-CAP VERB-CAP * allot
-create CONN-MESSAGE CONN-CAP MESSAGE-CAP * allot
-create CONN-SQLSTATE CONN-CAP SQLSTATE-LEN * allot
+TYPED-VARIABLE CONN-CAPACITY n
+TYPED-VARIABLE RESULT-CAPACITY n
+TYPED-VARIABLE PARAM-CAPACITY n
+TYPED-VARIABLE CONFIGURED bool
 
-create RES-PG RESULT-CAP cells allot
-create RES-GEN RESULT-CAP cells allot
-create RES-LIVE RESULT-CAP cells allot
-create RES-OWNER RESULT-CAP cells allot
-create RES-CONN RESULT-CAP cells allot
+DYNAMIC-BUFFER CONN-PG ptr u8
+DYNAMIC-BUFFER CONN-GEN n
+DYNAMIC-BUFFER CONN-LIVE n
+DYNAMIC-BUFFER CONN-OWNER n
+DYNAMIC-BUFFER CONN-TX n
+DYNAMIC-BUFFER CONN-PARAM-N n
+DYNAMIC-BUFFER CONN-ARENA ptr u8
+DYNAMIC-BUFFER CONN-ARENA-CAP n
+DYNAMIC-BUFFER CONN-ARENA-U n
+DYNAMIC-BUFFER CONN-LAST-RESULT ptr u8
+DYNAMIC-BUFFER CONN-MESSAGE-U n
+DYNAMIC-BUFFER CONN-SQLSTATE-U n
+DYNAMIC-BUFFER CONN-PARAM-OFF n
+DYNAMIC-BUFFER CONN-VERB n
+DYNAMIC-BUFFER CONN-MESSAGE n
+DYNAMIC-BUFFER CONN-SQLSTATE n
 
-variable REGISTERED
+DYNAMIC-BUFFER RES-PG ptr u8
+DYNAMIC-BUFFER RES-GEN n
+DYNAMIC-BUFFER RES-LIVE n
+DYNAMIC-BUFFER RES-OWNER n
+DYNAMIC-BUFFER RES-CONN n
+
+TYPED-VARIABLE REGISTERED bool
+
+false CONFIGURED !
+false REGISTERED !
+
+here data-base - negate 7 and allot
+variable GENERATION
+variable CONFIG-MUTEX
+
+: CONN-CAP ( -- n ) CONN-CAPACITY @ ;
+: RESULT-CAP ( -- n ) RESULT-CAPACITY @ ;
+: PARAM-CAP ( -- n ) PARAM-CAPACITY @ ;
 
 
 \ ---- the declared libpq bindings ------------------------------------------
@@ -120,26 +140,33 @@ variable REGISTERED
 \ libpq states. None is written by the callee, so none carries an extent.
 LIBRARY libpq.so.5
 
-FUNCTION: PQ-CONNECTDB PQconnectdb ( ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: PQ-STATUS PQstatus ( ptr u8 -- n ) ;FUNCTION
-FUNCTION: PQ-ERROR-MESSAGE PQerrorMessage ( ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: PQ-FINISH PQfinish ( ptr u8 -- ) ;FUNCTION
-FUNCTION: PQ-EXEC PQexec ( ptr u8 ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: PQ-EXEC-PARAMS PQexecParams
-   ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 ptr u8 n -- ptr u8 ) ;FUNCTION
-FUNCTION: PQ-PREPARE PQprepare ( ptr u8 ptr u8 ptr u8 n ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: PQ-EXEC-PREPARED PQexecPrepared
-   ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 n -- ptr u8 ) ;FUNCTION
-FUNCTION: PQ-RESULT-STATUS PQresultStatus ( ptr u8 -- n ) ;FUNCTION
-FUNCTION: PQ-RESULT-ERROR-FIELD PQresultErrorField ( ptr u8 n -- ptr u8 ) ;FUNCTION
-FUNCTION: PQ-NTUPLES PQntuples ( ptr u8 -- n ) ;FUNCTION
-FUNCTION: PQ-NFIELDS PQnfields ( ptr u8 -- n ) ;FUNCTION
-FUNCTION: PQ-FNAME PQfname ( ptr u8 n -- ptr u8 ) ;FUNCTION
-FUNCTION: PQ-GETVALUE PQgetvalue ( ptr u8 n n -- ptr u8 ) ;FUNCTION
-FUNCTION: PQ-GETISNULL PQgetisnull ( ptr u8 n n -- n ) ;FUNCTION
-FUNCTION: PQ-GETLENGTH PQgetlength ( ptr u8 n n -- n ) ;FUNCTION
-FUNCTION: PQ-CLEAR PQclear ( ptr u8 -- ) ;FUNCTION
-FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-CONNECT-START PQconnectStart ( ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-CONNECT-POLL PQconnectPoll ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-SET-NONBLOCKING PQsetnonblocking ( ptr u8 n -- n ) ;FUNCTION
+FUNCTION: LIB-SOCKET PQsocket ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-ERROR-MESSAGE PQerrorMessage ( ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-FINISH PQfinish ( ptr u8 -- ) ;FUNCTION
+FUNCTION: LIB-SEND-QUERY PQsendQuery ( ptr u8 ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-SEND-QUERY-PARAMS PQsendQueryParams
+   ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 ptr u8 n -- n ) ;FUNCTION
+FUNCTION: LIB-SEND-PREPARE PQsendPrepare
+   ( ptr u8 ptr u8 ptr u8 n ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-SEND-QUERY-PREPARED PQsendQueryPrepared
+   ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 n -- n ) ;FUNCTION
+FUNCTION: LIB-FLUSH PQflush ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-CONSUME-INPUT PQconsumeInput ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-IS-BUSY PQisBusy ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-GET-RESULT PQgetResult ( ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-RESULT-STATUS PQresultStatus ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-RESULT-ERROR-FIELD PQresultErrorField ( ptr u8 n -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-NTUPLES PQntuples ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-NFIELDS PQnfields ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-FNAME PQfname ( ptr u8 n -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-GETVALUE PQgetvalue ( ptr u8 n n -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-GETISNULL PQgetisnull ( ptr u8 n n -- n ) ;FUNCTION
+FUNCTION: LIB-GETLENGTH PQgetlength ( ptr u8 n n -- n ) ;FUNCTION
+FUNCTION: LIB-CLEAR PQclear ( ptr u8 -- ) ;FUNCTION
+FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 
 \ ---- foreign scalars and addresses ----------------------------------------
@@ -156,10 +183,7 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    p FFI:>CELL 0= ;
 
 
-\ A libpq C string states no length, so the scan stops at the NUL or at
-\ SCAN-CAP, whichever comes first, and never reads on. Every caller here reads
-\ a diagnostic or an identifier, so a longer string is truncated rather than
-\ refused: losing the tail of a server message beats losing the message.
+\ Bound scans to the diagnostic buffer; libpq gives these strings no extent.
 : CSTR-LEN ( ptr u8 -- n ) {: p :}
    SCAN-CAP 0 ?do
       p i + c@ 0= if i unloop exit then
@@ -173,13 +197,14 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 \ ---- slot storage ---------------------------------------------------------
 : CONN-CHECK ( n -- ) {: slot:n :}
+   CONFIGURED @ 0= if E-HANDLE throw then
    slot 0 < if E-HANDLE throw then
    slot CONN-CAP >= if E-HANDLE throw then ;
 
 
 : CONN-PG-CELL ( n -- ptr ptr u8 ) {: slot:n :}
    slot CONN-CHECK
-   CONN-PG BYTE-VIEW slot ptr-field ;
+   slot CONN-PG ;
 
 
 : CONN-PG@ ( n -- ptr u8 )   CONN-PG-CELL @ ;
@@ -187,75 +212,84 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 : ARENA-CELL ( n -- ptr ptr u8 ) {: slot:n :}
    slot CONN-CHECK
-   CONN-ARENA BYTE-VIEW slot ptr-field ;
+   slot CONN-ARENA ;
+
+: DRAIN-LAST-CELL ( n -- ptr ptr u8 ) {: slot:n :}
+   slot CONN-CHECK
+   slot CONN-LAST-RESULT ;
+
+: DRAIN-LAST@ ( n -- ptr u8 )   DRAIN-LAST-CELL @ ;
+: DRAIN-LAST! ( ptr u8 n -- ) {: p slot:n :}   p slot DRAIN-LAST-CELL ! ;
 
 
 : ARENA-BASE ( n -- ptr u8 )   ARENA-CELL @ ;
 : ARENA-BASE! ( ptr u8 n -- ) {: p slot:n :}   p slot ARENA-CELL ! ;
 
-: CONN-GEN@ ( n -- n ) {: slot:n :}   slot CONN-CHECK CONN-GEN slot cells + @ ;
-: CONN-GEN! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v CONN-GEN slot cells + ! ;
-: CONN-LIVE-CELL ( n -- ptr n ) {: slot:n :}   slot CONN-CHECK CONN-LIVE slot cells + ;
+: CONN-GEN@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-GEN @ ;
+: CONN-GEN! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-GEN ! ;
+: CONN-LIVE-CELL ( n -- ptr n ) {: slot:n :}   slot CONN-CHECK slot CONN-LIVE ;
 : CONN-LIVE@ ( n -- n )   CONN-LIVE-CELL atomic@ ;
 : CONN-LIVE! ( n n -- ) {: v:n slot:n :}   v slot CONN-LIVE-CELL atomic! ;
-: CONN-OWNER@ ( n -- n ) {: slot:n :}   slot CONN-CHECK CONN-OWNER slot cells + @ ;
-: CONN-OWNER! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v CONN-OWNER slot cells + ! ;
-: CONN-TX@ ( n -- n ) {: slot:n :}   slot CONN-CHECK CONN-TX slot cells + @ ;
-: CONN-TX! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v CONN-TX slot cells + ! ;
-: PARAM-N@ ( n -- n ) {: slot:n :}   slot CONN-CHECK CONN-PARAM-N slot cells + @ ;
-: PARAM-N! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v CONN-PARAM-N slot cells + ! ;
-: ARENA-CAP@ ( n -- n ) {: slot:n :}   slot CONN-CHECK CONN-ARENA-CAP slot cells + @ ;
-: ARENA-CAP! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v CONN-ARENA-CAP slot cells + ! ;
-: ARENA-U@ ( n -- n ) {: slot:n :}   slot CONN-CHECK CONN-ARENA-U slot cells + @ ;
-: ARENA-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v CONN-ARENA-U slot cells + ! ;
-: MESSAGE-U@ ( n -- n ) {: slot:n :}   slot CONN-CHECK CONN-MESSAGE-U slot cells + @ ;
-: MESSAGE-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v CONN-MESSAGE-U slot cells + ! ;
-: SQLSTATE-U@ ( n -- n ) {: slot:n :}   slot CONN-CHECK CONN-SQLSTATE-U slot cells + @ ;
-: SQLSTATE-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v CONN-SQLSTATE-U slot cells + ! ;
+: CONN-OWNER@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-OWNER @ ;
+: CONN-OWNER! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-OWNER ! ;
+: CONN-TX@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-TX @ ;
+: CONN-TX! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-TX ! ;
+: PARAM-N@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-PARAM-N @ ;
+: PARAM-N! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-PARAM-N ! ;
+: ARENA-CAP@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-ARENA-CAP @ ;
+: ARENA-CAP! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-ARENA-CAP ! ;
+: ARENA-U@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-ARENA-U @ ;
+: ARENA-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-ARENA-U ! ;
+: MESSAGE-U@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-MESSAGE-U @ ;
+: MESSAGE-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-MESSAGE-U ! ;
+: SQLSTATE-U@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-SQLSTATE-U @ ;
+: SQLSTATE-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-SQLSTATE-U ! ;
 
-: VERB-BUF ( n -- ptr u8 ) {: slot:n :}   slot CONN-CHECK CONN-VERB slot VERB-CAP * + ;
+: VERB-BUF ( n -- ptr u8 ) {: slot:n :}   slot CONN-CHECK 0 CONN-VERB BYTE-VIEW slot VERB-CAP * + ;
 : MESSAGE-BUF ( n -- ptr u8 ) {: slot:n :}
-   slot CONN-CHECK CONN-MESSAGE slot MESSAGE-CAP * + ;
+   slot CONN-CHECK 0 CONN-MESSAGE BYTE-VIEW slot MESSAGE-CAP * + ;
 : SQLSTATE-BUF ( n -- ptr u8 ) {: slot:n :}
-   slot CONN-CHECK CONN-SQLSTATE slot SQLSTATE-LEN * + ;
+   slot CONN-CHECK 0 CONN-SQLSTATE BYTE-VIEW slot SQLSTATE-LEN * + ;
 
 : PARAM-CHECK ( n -- ) {: idx:n :}
+   CONFIGURED @ 0= if E-CAPACITY throw then
    idx 0 < if E-CAPACITY throw then
    idx PARAM-CAP >= if E-CAPACITY throw then ;
 
 
 : PARAM-OFF@ ( n n -- n ) {: slot:n idx:n :}
    slot CONN-CHECK idx PARAM-CHECK
-   CONN-PARAM-OFF slot PARAM-CAP * idx + cells + @ ;
+   slot PARAM-CAP * idx + CONN-PARAM-OFF @ ;
 
 
 : PARAM-OFF! ( n n n -- ) {: v:n slot:n idx:n :}
    slot CONN-CHECK idx PARAM-CHECK
-   v CONN-PARAM-OFF slot PARAM-CAP * idx + cells + ! ;
+   v slot PARAM-CAP * idx + CONN-PARAM-OFF ! ;
 
 
 : RES-CHECK ( n -- ) {: slot:n :}
+   CONFIGURED @ 0= if E-CLEARED throw then
    slot 0 < if E-HANDLE throw then
    slot RESULT-CAP >= if E-HANDLE throw then ;
 
 
 : RES-PG-CELL ( n -- ptr ptr u8 ) {: slot:n :}
    slot RES-CHECK
-   RES-PG BYTE-VIEW slot ptr-field ;
+   slot RES-PG ;
 
 
 : RES-PG@ ( n -- ptr u8 )   RES-PG-CELL @ ;
 : RES-PG! ( ptr u8 n -- ) {: p slot:n :}   p slot RES-PG-CELL ! ;
 
-: RES-GEN@ ( n -- n ) {: slot:n :}   slot RES-CHECK RES-GEN slot cells + @ ;
-: RES-GEN! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v RES-GEN slot cells + ! ;
-: RES-LIVE-CELL ( n -- ptr n ) {: slot:n :}   slot RES-CHECK RES-LIVE slot cells + ;
+: RES-GEN@ ( n -- n ) {: slot:n :}   slot RES-CHECK slot RES-GEN @ ;
+: RES-GEN! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v slot RES-GEN ! ;
+: RES-LIVE-CELL ( n -- ptr n ) {: slot:n :}   slot RES-CHECK slot RES-LIVE ;
 : RES-LIVE@ ( n -- n )   RES-LIVE-CELL atomic@ ;
 : RES-LIVE! ( n n -- ) {: v:n slot:n :}   v slot RES-LIVE-CELL atomic! ;
-: RES-OWNER@ ( n -- n ) {: slot:n :}   slot RES-CHECK RES-OWNER slot cells + @ ;
-: RES-OWNER! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v RES-OWNER slot cells + ! ;
-: RES-CONN@ ( n -- n ) {: slot:n :}   slot RES-CHECK RES-CONN slot cells + @ ;
-: RES-CONN! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v RES-CONN slot cells + ! ;
+: RES-OWNER@ ( n -- n ) {: slot:n :}   slot RES-CHECK slot RES-OWNER @ ;
+: RES-OWNER! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v slot RES-OWNER ! ;
+: RES-CONN@ ( n -- n ) {: slot:n :}   slot RES-CHECK slot RES-CONN @ ;
+: RES-CONN! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v slot RES-CONN ! ;
 
 
 \ ---- the call arena -------------------------------------------------------
@@ -406,14 +440,17 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    handle HANDLE-STRIDE / ;
 
 
-\ Retiring a slot bumps its generation, so every handle minted from it stops
-\ resolving. That is the linear owner: one CLEAR, one CLOSE, and no second use.
+\ A process-wide generation survives registry release, so allocating the same
+\ slot after image preparation cannot revive a saved handle.
+: NEXT-GENERATION ( -- n )
+   1 GENERATION atomic-add 1+ dup GENERATION-MAX > if E-CAPACITY throw then ;
+
 : BUMP-CONN-GEN ( n -- ) {: slot:n :}
-   slot CONN-GEN@ 1 + slot CONN-GEN! ;
+   NEXT-GENERATION slot CONN-GEN! ;
 
 
 : BUMP-RES-GEN ( n -- ) {: slot:n :}
-   slot RES-GEN@ 1 + slot RES-GEN! ;
+   NEXT-GENERATION slot RES-GEN! ;
 
 
 : CONN-SLOT ( connection -- n ) {: handle:connection :}
@@ -454,6 +491,62 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    E-CAPACITY throw ;
 
 
+\ ---- application-sized registry -----------------------------------------
+\ Reserve once before publishing the registry. DYNAMIC-BUFFER owns allocation,
+\ bounds and release, including cleanup after a partially completed reserve.
+: RELEASE-REGISTRY ( -- )
+   CONN-PG-RELEASE
+   CONN-GEN-RELEASE
+   CONN-LIVE-RELEASE
+   CONN-OWNER-RELEASE
+   CONN-TX-RELEASE
+   CONN-PARAM-N-RELEASE
+   CONN-ARENA-RELEASE
+   CONN-ARENA-CAP-RELEASE
+   CONN-ARENA-U-RELEASE
+   CONN-LAST-RESULT-RELEASE
+   CONN-MESSAGE-U-RELEASE
+   CONN-SQLSTATE-U-RELEASE
+   CONN-PARAM-OFF-RELEASE
+   CONN-VERB-RELEASE
+   CONN-MESSAGE-RELEASE
+   CONN-SQLSTATE-RELEASE
+   RES-PG-RELEASE
+   RES-GEN-RELEASE
+   RES-LIVE-RELEASE
+   RES-OWNER-RELEASE
+   RES-CONN-RELEASE
+   0 CONN-CAPACITY !
+   0 RESULT-CAPACITY !
+   0 PARAM-CAPACITY !
+   false CONFIGURED ! ;
+
+
+: ALLOC-REGISTRY ( -- )
+   CONN-CAP CONN-PG-RESERVE
+   CONN-CAP CONN-GEN-RESERVE
+   CONN-CAP CONN-LIVE-RESERVE
+   CONN-CAP CONN-OWNER-RESERVE
+   CONN-CAP CONN-TX-RESERVE
+   CONN-CAP CONN-PARAM-N-RESERVE
+   CONN-CAP CONN-ARENA-RESERVE
+   CONN-CAP CONN-ARENA-CAP-RESERVE
+   CONN-CAP CONN-ARENA-U-RESERVE
+   CONN-CAP CONN-LAST-RESULT-RESERVE
+   CONN-CAP CONN-MESSAGE-U-RESERVE
+   CONN-CAP CONN-SQLSTATE-U-RESERVE
+   CONN-CAP PARAM-CAP * CONN-PARAM-OFF-RESERVE
+   CONN-CAP VERB-CAP * CELL / CONN-VERB-RESERVE
+   CONN-CAP MESSAGE-CAP * CELL / CONN-MESSAGE-RESERVE
+   CONN-CAP SQLSTATE-LEN * CELL 1- + CELL / CONN-SQLSTATE-RESERVE
+   RESULT-CAP RES-PG-RESERVE
+   RESULT-CAP RES-GEN-RESERVE
+   RESULT-CAP RES-LIVE-RESERVE
+   RESULT-CAP RES-OWNER-RESERVE
+   RESULT-CAP RES-CONN-RESERVE
+   RESULT-CAP 0 ?do NO-CONN i RES-CONN ! loop ;
+
+
 \ ---- image capture --------------------------------------------------------
 \ A restored image runs in another process: its PGconn and PGresult addresses
 \ are gone and its mappings are not its own. Retiring every slot makes the
@@ -461,30 +554,55 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 \ the call arenas the image must not carry. The flag is set only after REGISTER
 \ returns, so a throwing registration stays retryable (docs/forth.md rule).
 : FORGET-HANDLES ( -- )
-   CONN-CAP 0 ?do
-      i CONN-LIVE@ 0 <> if
-         i ARENA-RELEASE
-         i BUMP-CONN-GEN
-         0 i CONN-LIVE!
-      then
-   loop
-   RESULT-CAP 0 ?do
-      i RES-LIVE@ 0 <> if i BUMP-RES-GEN NO-CONN i RES-CONN! 0 i RES-LIVE! then
-   loop
-   0 REGISTERED ! ;
+   CONFIGURED @ if
+      RESULT-CAP 0 ?do
+         i RES-LIVE@ 0 <> if i RES-PG@ LIB-CLEAR then
+      loop
+      CONN-CAP 0 ?do
+         i CONN-LIVE@ 0 <> if
+            i ARENA-RELEASE
+            i DRAIN-LAST@ NULL-ADDR? 0= if i DRAIN-LAST@ LIB-CLEAR then
+            i CONN-PG@ LIB-FINISH
+         then
+      loop
+      RELEASE-REGISTRY
+   then
+   false REGISTERED ! ;
 
 
 : REGISTER-CLEANUP ( -- )
    REGISTERED @ 0= if
       [: FORGET-HANDLES ;] IMAGE-LIFECYCLE:REGISTER
-      1 REGISTERED !
+      true REGISTERED !
    then ;
+
+
+: CONFIGURE-REGISTRY ( n n n -- )
+   {: conns:n results:n params:n :}
+   conns 0 <= results 0 <= or params 0 <= or if E-CAPACITY throw then
+   conns HANDLE-STRIDE >= results HANDLE-STRIDE >= or if E-CAPACITY throw then
+   params MEM-MAX-CELLS conns / > if E-CAPACITY throw then
+   CONFIGURED @ if
+      conns CONN-CAP = results RESULT-CAP = and
+      params PARAM-CAP = and if exit then
+      E-CAPACITY throw
+   then
+   conns CONN-CAPACITY !
+   results RESULT-CAPACITY !
+   params PARAM-CAPACITY !
+   [: ALLOC-REGISTRY REGISTER-CLEANUP ;] catch {: code:n :}
+   code 0<> if RELEASE-REGISTRY code throw then
+   true CONFIGURED ! ;
+
+: CONFIG-LOCK ( -- ) begin 0 1 CONFIG-MUTEX atomic-cas 0= until ;
+: CONFIG-UNLOCK ( -- ) 0 CONFIG-MUTEX atomic! ;
 
 
 \ ---- slot lifecycle -------------------------------------------------------
 : OPEN-CONN-SLOT ( n -- ) {: slot:n :}
    slot BUMP-CONN-GEN
    TASK:SELF-N slot CONN-OWNER!
+   NULL-ARG slot DRAIN-LAST!
    0 slot CONN-TX!
    0 slot MESSAGE-U!
    0 slot SQLSTATE-U!
@@ -497,7 +615,9 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 : RETIRE-CONN-SLOT ( n -- ) {: slot:n :}
    slot ARENA-RELEASE
-   slot BUMP-CONN-GEN
+   NULL-ARG slot CONN-PG!
+   NULL-ARG slot DRAIN-LAST!
+   0 slot CONN-GEN!
    0 slot CONN-TX!
    0 slot CONN-LIVE! ;
 
@@ -515,9 +635,22 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 \ task has just claimed but not yet filled. NO-CONN is what a free or
 \ half-claimed slot reads, which is why the registry starts that way.
 : RETIRE-RES-SLOT ( n -- ) {: slot:n :}
-   slot BUMP-RES-GEN
+   NULL-ARG slot RES-PG!
+   0 slot RES-GEN!
    NO-CONN slot RES-CONN!
    0 slot RES-LIVE! ;
+
+
+: CLOSE-SLOT ( n -- ) {: slot:n :}
+   RESULT-CAP 0 ?do
+      i RES-LIVE@ 0<> i RES-CONN@ slot = and if
+         i RES-PG@ LIB-CLEAR
+         i RETIRE-RES-SLOT
+      then
+   loop
+   slot DRAIN-LAST@ NULL-ADDR? 0= if slot DRAIN-LAST@ LIB-CLEAR then
+   slot CONN-PG@ LIB-FINISH
+   slot RETIRE-CONN-SLOT ;
 
 
 \ ---- server diagnostics ---------------------------------------------------
@@ -542,7 +675,7 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 
 : SQLSTATE-FROM ( n ptr u8 -- ) {: slot:n res :}
-   res PG-DIAG-SQLSTATE PQ-RESULT-ERROR-FIELD {: p :}
+   res PG-DIAG-SQLSTATE LIB-RESULT-ERROR-FIELD {: p :}
    p NULL-ADDR? if 0 slot SQLSTATE-U! exit then
    slot p CSTR$ SQLSTATE! ;
 
@@ -551,9 +684,9 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 \ query, or a status libpq produced without the server - still has libpq's own
 \ connection message, so the failed arm is never silently empty.
 : MESSAGE-FROM ( n ptr u8 -- ) {: slot:n res :}
-   res PG-DIAG-MESSAGE-PRIMARY PQ-RESULT-ERROR-FIELD {: p :}
+   res PG-DIAG-MESSAGE-PRIMARY LIB-RESULT-ERROR-FIELD {: p :}
    p NULL-ADDR? 0= if slot p CSTR$ MESSAGE! exit then
-   slot CONN-PG@ PQ-ERROR-MESSAGE {: q :}
+   slot CONN-PG@ LIB-ERROR-MESSAGE {: q :}
    q NULL-ADDR? if 0 slot MESSAGE-U! exit then
    slot q CSTR$ MESSAGE! ;
 
@@ -561,6 +694,104 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 : DIAGNOSE ( n ptr u8 -- ) {: slot:n res :}
    slot res SQLSTATE-FROM
    slot res MESSAGE-FROM ;
+
+
+\ libpq's nonblocking calls still need a descriptor wait between progress
+\ steps. AIO owns that wait; its current runtime parks the calling task's
+\ pthread until the shared io_uring loop reports readiness.
+: WAIT-SOCKET ( n n -- n ) {: slot:n events:n :}
+   slot CONN-PG@ LIB-SOCKET C-INT {: fd:n :}
+   fd 0 < if E-EXEC throw then
+   fd >FD events -1 >MS AIO:POLL AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF ENDOF
+      timed-out OF E-EXEC throw ENDOF
+      cancelled OF E-EXEC throw ENDOF
+      refused OF drop E-EXEC throw ENDOF
+   ;MATCH ;
+
+
+\ Drive the libpq connection handshake until it either completes or reports a
+\ refusal. The terminal polling status crosses CONNECT's stack-preserving
+\ catch; its saved slot remains the cleanup authority when AIO throws.
+: CONNECT-PROGRESS ( n -- n ) {: slot:n :}
+   begin
+      slot CONN-PG@ LIB-CONNECT-POLL C-INT {: status:n :}
+      status PGRES-POLLING-OK = if status exit then
+      status PGRES-POLLING-READING = if
+         slot AIO:READABLE WAIT-SOCKET drop
+      else
+         status PGRES-POLLING-WRITING = if
+            slot AIO:WRITABLE WAIT-SOCKET drop
+         else
+            status exit
+         then
+      then
+   again ;
+
+
+: COPY-CONN-MESSAGE ( n -- ) {: slot:n :}
+   slot CONN-PG@ LIB-ERROR-MESSAGE {: p :}
+   p NULL-ADDR? 0= if slot p CSTR$ MESSAGE! then ;
+
+
+: FAIL-CONNECTION ( n -- ) {: slot:n :}
+   slot CONN-PG@ {: pg :}
+   pg NULL-ADDR? 0= if
+      slot COPY-CONN-MESSAGE
+      pg LIB-FINISH
+   then
+   slot RETIRE-CONN-SLOT ;
+
+
+: WAIT-INPUT ( n -- )
+   begin
+      dup CONN-PG@ LIB-IS-BUSY C-INT 0= if drop exit then
+      dup AIO:READABLE WAIT-SOCKET drop
+      dup CONN-PG@ LIB-CONSUME-INPUT C-INT 0= if
+         dup COPY-CONN-MESSAGE
+         E-EXEC throw
+      then
+   again ;
+
+
+: FLUSH-QUERY ( n -- )
+   begin
+      dup CONN-PG@ LIB-FLUSH C-INT {: status:n :}
+      status 0= if drop exit then
+      status 1 = if
+         dup AIO:READABLE AIO:WRITABLE or WAIT-SOCKET {: ready:n :}
+         ready AIO:READABLE and 0<> if
+            dup CONN-PG@ LIB-CONSUME-INPUT C-INT 0= if
+               dup COPY-CONN-MESSAGE
+               E-EXEC throw
+            then
+         then
+      else
+         drop E-EXEC throw
+      then
+   again ;
+
+
+: DRAIN-RESULTS ( n -- ptr u8 ) {: slot:n :}
+   NULL-ARG slot DRAIN-LAST!
+   begin
+      slot WAIT-INPUT
+      slot CONN-PG@ LIB-GET-RESULT {: pg :}
+      pg NULL-ADDR? if
+         slot DRAIN-LAST@ {: last :}
+         NULL-ARG slot DRAIN-LAST!
+         last exit
+      then
+      slot DRAIN-LAST@ {: previous :}
+      previous NULL-ADDR? 0= if previous LIB-CLEAR then
+      pg slot DRAIN-LAST!
+   again ;
+
+
+: WAIT-RESULT ( n -- ptr u8 )
+   dup FLUSH-QUERY
+   DRAIN-RESULTS ;
 
 
 \ ---- statement execution --------------------------------------------------
@@ -572,10 +803,39 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot PARAM-ARRAY CLAIM-RES-SLOT ;
 
 
-: TOOK-RESULT ( ptr u8 n n -- result ) {: pg slot:n res:n :}
+: RECEIVE-RESULT ( n n -- n n ) {: slot:n res:n :}
+   slot WAIT-RESULT {: pg :}
+   pg NULL-ADDR? if E-EXEC throw then
+   pg slot res FILL-RES-SLOT drop
+   slot res ;
+
+
+\ A readiness or transport failure must not strand the reserved result slot
+\ or a partial result. The connection is no longer safe for another query.
+: RECEIVE-OWNED ( n n -- result ) {: slot:n res:n :}
+   slot res [: RECEIVE-RESULT ;] catch {: kept:n held:n code:n :}
+   code 0<> if
+      res RES-PG@ LIB-CLEAR
+      res RETIRE-RES-SLOT
+      slot CLOSE-SLOT
+      code throw
+   then
+   res RES-GEN@ res PACK-HANDLE >RESULT ;
+
+
+: SEND-FAILED ( n n -- ) {: slot:n res:n :}
+   res RETIRE-RES-SLOT
+   slot COPY-CONN-MESSAGE
+   E-EXEC throw ;
+
+
+: COMPLETE-RESULT ( n n -- result ) {: slot:n res:n :}
    slot RESET-PARAMS
-   pg NULL-ADDR? if 0 res RES-LIVE! E-EXEC throw then
-   pg slot res FILL-RES-SLOT ;
+   slot res RECEIVE-OWNED ;
+
+
+: COMPLETE-VERB ( n n -- n ) {: slot:n res:n :}
+   slot res RECEIVE-OWNED RESULT-SLOT ;
 
 
 : EXEC-RAW ( n ptr u8 n -- result ) {: slot:n a u:n :}
@@ -584,8 +844,9 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot CLAIM-STATEMENT {: arr-off:n res:n :}
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base sql-off + slot PARAM-N@ NULL-ARG base arr-off +
-   NULL-ARG NULL-ARG TEXT-RESULT PQ-EXEC-PARAMS
-   slot res TOOK-RESULT ;
+   NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PARAMS C-INT {: sent:n :}
+   sent 0= if slot res SEND-FAILED then
+   slot res COMPLETE-RESULT ;
 
 
 : PREPARED-RAW ( n ptr u8 n -- result ) {: slot:n a u:n :}
@@ -594,8 +855,9 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot CLAIM-STATEMENT {: arr-off:n res:n :}
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base name-off + slot PARAM-N@ base arr-off +
-   NULL-ARG NULL-ARG TEXT-RESULT PQ-EXEC-PREPARED
-   slot res TOOK-RESULT ;
+   NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PREPARED C-INT {: sent:n :}
+   sent 0= if slot res SEND-FAILED then
+   slot res COMPLETE-RESULT ;
 
 
 : PREPARE-RAW ( n ptr u8 n ptr u8 n -- result ) {: slot:n na nu:n sa su:n :}
@@ -605,8 +867,9 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    sa su slot ARENA-CSTR {: sql-off:n :}
    CLAIM-RES-SLOT {: res:n :}
    slot ARENA-BASE {: base :}
-   slot CONN-PG@ base name-off + base sql-off + 0 NULL-ARG PQ-PREPARE
-   slot res TOOK-RESULT ;
+   slot CONN-PG@ base name-off + base sql-off + 0 NULL-ARG LIB-SEND-PREPARE C-INT {: sent:n :}
+   sent 0= if slot res SEND-FAILED then
+   slot res COMPLETE-RESULT ;
 
 
 \ The simple-query protocol. It takes no parameters at all, so a pending
@@ -617,16 +880,17 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot PARAM-N@ 0 <> if E-STATEMENT throw then
    a u slot ARENA-CSTR {: off:n :}
    CLAIM-RES-SLOT {: res:n :}
-   slot CONN-PG@ slot ARENA-BASE off + PQ-EXEC
-   slot res TOOK-RESULT ;
+   slot CONN-PG@ slot ARENA-BASE off + LIB-SEND-QUERY C-INT {: sent:n :}
+   sent 0= if slot res SEND-FAILED then
+   slot res COMPLETE-RESULT ;
 
 
 : RESULT-STATUS ( n -- n ) {: slot:n :}
-   slot RES-PG@ PQ-RESULT-STATUS C-INT ;
+   slot RES-PG@ LIB-RESULT-STATUS C-INT ;
 
 
 : CLEAR-SLOT ( n -- ) {: slot:n :}
-   slot RES-PG@ PQ-CLEAR
+   slot RES-PG@ LIB-CLEAR
    slot RETIRE-RES-SLOT ;
 
 
@@ -647,9 +911,9 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot a u VERB-TEXT! {: sql :}
    CLAIM-RES-SLOT {: res:n :}
    slot CONN-PG@ sql 0 NULL-ARG NULL-ARG NULL-ARG NULL-ARG TEXT-RESULT
-   PQ-EXEC-PARAMS {: pg :}
-   pg NULL-ADDR? if 0 res RES-LIVE! E-EXEC throw then
-   pg slot res FILL-RES-SLOT RESULT-SLOT ;
+   LIB-SEND-QUERY-PARAMS C-INT {: sent:n :}
+   sent 0= if slot res SEND-FAILED then
+   slot res COMPLETE-VERB ;
 
 
 \ A transaction verb must succeed or the caller's framing is a lie, so a server
@@ -687,23 +951,23 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    c COL>N {: ci:n :}
    ri 0 < if E-COLUMN throw then
    ci 0 < if E-COLUMN throw then
-   ri res PQ-NTUPLES C-INT >= if E-COLUMN throw then
-   ci res PQ-NFIELDS C-INT >= if E-COLUMN throw then
+   ri res LIB-NTUPLES C-INT >= if E-COLUMN throw then
+   ci res LIB-NFIELDS C-INT >= if E-COLUMN throw then
    slot ri ci ;
 
 
 : VALUE$ ( n n n -- ptr u8 n ) {: slot:n ri:n ci:n :}
    slot RES-PG@ {: res :}
-   res ri ci PQ-GETVALUE
-   res ri ci PQ-GETLENGTH C-INT ;
+   res ri ci LIB-GETVALUE
+   res ri ci LIB-GETLENGTH C-INT ;
 
 
 : CELL-NULL? ( n n n -- bool ) {: slot:n ri:n ci:n :}
-   slot RES-PG@ ri ci PQ-GETISNULL C-INT 0 <> ;
+   slot RES-PG@ ri ci LIB-GETISNULL C-INT 0 <> ;
 
 
 : CMD-COUNT ( n -- n ) {: slot:n :}
-   slot RES-PG@ PQ-CMD-TUPLES CSTR$ {: a u:n :}
+   slot RES-PG@ LIB-CMD-TUPLES CSTR$ {: a u:n :}
    u 0= if 0 exit then
    a u STR>NUMBER? MATCH option
       none OF E-TYPE throw ENDOF
@@ -714,10 +978,10 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 \ ---- the outcome ADT ------------------------------------------------------
 : CLASSIFY ( n n -- outcome ) {: slot:n res:n :}
    res RESULT-STATUS {: status:n :}
-   status PGRES-COMMAND-OK = if DB-OUTCOME:ok exit then
-   status PGRES-TUPLES-OK = if DB-OUTCOME:rows exit then
+   status PGRES-COMMAND-OK = if PG-OUTCOME:ok exit then
+   status PGRES-TUPLES-OK = if PG-OUTCOME:rows exit then
    slot res RES-PG@ DIAGNOSE
-   slot SQLSTATE$ slot MESSAGE$ DB-OUTCOME:failed ;
+   slot SQLSTATE$ slot MESSAGE$ PG-OUTCOME:failed ;
 
 
 \ ---- platform -------------------------------------------------------------
@@ -725,14 +989,13 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    HB-TARGET-LINUX? 0= if E-PLATFORM throw then ;
 
 
-\ Every result slot starts owned by no connection, so CLOSE's scan matches only
-\ a slot some task actually filled.
-: INIT-REGISTRY ( -- )
-   RESULT-CAP 0 ?do NO-CONN i RES-CONN! loop ;
-
-INIT-REGISTRY
-
 public
+
+\ CONFIGURE is the one registry sizing decision. Applications call it before
+\ CONNECT; repeating the same declaration is harmless. A process cannot change
+\ its declaration after use: a different one is refused with E-CAPACITY.
+: CONFIGURE ( n n n -- )
+   CONFIG-LOCK [: CONFIGURE-REGISTRY ;] [: CONFIG-UNLOCK ;] finally ;
 
 \ CONNECT hands back an owned connection the calling task closes exactly once.
 \ The slot is claimed first, so the conninfo it stages and the message a
@@ -745,29 +1008,33 @@ public
    CLAIM-CONN-SLOT {: slot:n :}
    slot OPEN-CONN-SLOT
    a u slot ARENA-CSTR {: off:n :}
-   slot ARENA-BASE off + PQ-CONNECTDB {: pg :}
+   slot ARENA-BASE off + LIB-CONNECT-START {: pg :}
    slot ARENA-RELEASE
    pg NULL-ADDR? if slot RETIRE-CONN-SLOT E-CONNECT throw then
-   pg PQ-STATUS C-INT CONNECTION-OK = if
-      pg slot CONN-PG!
-      slot CONN-HANDLE DB-CONNECT--RESULT:connected exit
+   pg slot CONN-PG!
+   pg 1 LIB-SET-NONBLOCKING C-INT 0<> if
+      slot FAIL-CONNECTION
+      E-CONNECT throw
    then
-   slot pg PQ-ERROR-MESSAGE CSTR$ MESSAGE!
-   pg PQ-FINISH
+   slot [: CONNECT-PROGRESS ;] catch {: status:n code:n :}
+   code 0<> if
+      slot FAIL-CONNECTION
+      code throw
+   then
+   status PGRES-POLLING-OK = if
+      slot CONN-HANDLE PG-CONNECT--RESULT:connected exit
+   then
+   slot COPY-CONN-MESSAGE
    slot MESSAGE$ {: ma mu:n :}
+   slot CONN-PG@ LIB-FINISH
    slot RETIRE-CONN-SLOT
-   ma mu DB-CONNECT--RESULT:refused ;
+   ma mu PG-CONNECT--RESULT:refused ;
 
 
 \ CLOSE clears whatever results the connection still owns, so libpq keeps no
 \ orphan PGresult, then releases the call arena and retires the handle.
 : CLOSE ( connection -- ) {: handle:connection :}
-   handle CONN-SLOT {: slot:n :}
-   RESULT-CAP 0 ?do
-      i RES-LIVE@ 0 <> i RES-CONN@ slot = and if i CLEAR-SLOT then
-   loop
-   slot CONN-PG@ PQ-FINISH
-   slot RETIRE-CONN-SLOT ;
+   handle CONN-SLOT CLOSE-SLOT ;
 
 
 \ PARAMS empties the connection's parameter list and releases its call arena;
@@ -837,11 +1104,11 @@ public
 
 
 : ROWS ( result -- count )
-   RESULT-SLOT RES-PG@ PQ-NTUPLES C-INT >COUNT ;
+   RESULT-SLOT RES-PG@ LIB-NTUPLES C-INT >COUNT ;
 
 
 : COLS ( result -- count )
-   RESULT-SLOT RES-PG@ PQ-NFIELDS C-INT >COUNT ;
+   RESULT-SLOT RES-PG@ LIB-NFIELDS C-INT >COUNT ;
 
 
 : AFFECTED ( result -- count )
@@ -852,8 +1119,8 @@ public
    handle RESULT-SLOT RES-PG@ {: res :}
    c COL>N {: ci:n :}
    ci 0 < if E-COLUMN throw then
-   ci res PQ-NFIELDS C-INT >= if E-COLUMN throw then
-   res ci PQ-FNAME {: p :}
+   ci res LIB-NFIELDS C-INT >= if E-COLUMN throw then
+   res ci LIB-FNAME {: p :}
    p NULL-ADDR? if E-COLUMN throw then
    p CSTR$ ;
 
