@@ -272,7 +272,9 @@ variable SELF-SRC-U
 \ the program, resets NCLO to 0 and refills them), so the synthetic values cannot
 \ leak into the image - which is why MAKER-SELFTEST runs the image it built and
 \ reads its output back. The two synthetic rows are allocated the same way the
-\ walk's are, by asking for the rows about to be written (CLO-TABLES, PLAN-TABLES).
+\ walk's are, by asking for the rows about to be written (CLO-TABLES, PLAN-TABLES),
+\ and the entry order MAP-TARGET binary-searches is built here the way PLAN-BLOBS
+\ builds it, from the rows this fixture just wrote (aot-lib.f MEMBER-ORDER).
 \ THE ADR CASE re-files member 0 at the assembler cursor the way PLAN-BLOBS does
 \ (its first member starts at ASM-LEN), so the site's new address and its target's
 \ differ by exactly the delta the compiler emitted: `ADR x0, .+4` aimed inside
@@ -292,7 +294,7 @@ variable SELF-SRC-U
    s" : AMAP-CLOSURE! ( -- ) 2 CLO-TABLES 2 PLAN-TABLES" GE-SRC+
    s"  0 AMAP-CODE AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
    s"  1 AMAP-CODE AMAP-CODE-ROW + AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
-   s"  0 0 NEWOFF ! AMAP-M2-OFF 1 NEWOFF ! 2 NCLO ! ;" GE-SRC-LINE
+   s"  0 0 NEWOFF ! AMAP-M2-OFF 1 NEWOFF ! 2 NCLO ! MEMBER-ORDER ;" GE-SRC-LINE
    s" : AMAP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
    s" : AMAP-RUN ( -- ) AMAP-CLOSURE!" GE-SRC+
    s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-IN-MEMBER -1 =" GE-SRC+

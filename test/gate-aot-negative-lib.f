@@ -1,6 +1,8 @@
 \ gate-aot-negative.f - checked runner for AOT closure rejection checks.
 
+require src/habu/app-image.f     \ ... and the assembler under it (src/habu/aot-lib.f)
 require src/habu/aot-closure.f
+require src/habu/aot-lib.f       \ MEMBER-ORDER, for the disjointness case below
 require lib/source.f
 require tools/json.f
 require tools/gate-json-assert-core.f
@@ -154,6 +156,38 @@ variable REPORT-U
    s" hb-build closure capacity names the request" GE-EXPECT-ERR-HAS
    s"  = records " s" hb-build closure capacity names its parts" GE-EXPECT-ERR-HAS ;
 
+\ THE DISJOINTNESS INVARIANT, REFUSED BY NAME. aot-lib.f MEMBER-ORDER sorts the
+\ closure members by entry once per link and both member lookups binary-search
+\ that order, which answers for an address only because no two members share a
+\ byte. A walk cannot produce an overlap - the one nesting shape, two bodies of
+\ one record, is dropped at its source (aot-closure.f DROP-NESTED-CLO) - so the
+\ only way to reach the refusal is to fill the rows by hand, which is what this
+\ case does: two members of the same 16 bytes, the second starting four bytes
+\ into the first and ending with it. The refusal spells both members, and their
+\ record is XREF-NULL here, which prints as <unknown> the way a stripped span's
+\ member does.
+: SOURCE-MEMBER-OVERLAP ( -- )
+   GE-SRC-RESET
+   s" package AOT-LINK" GE-SRC-LINE
+   s" create ANT-MEM 16 allot" GE-SRC-LINE
+   s" : ANT-MEMBER! ( n ptr u8 n -- ) {: i:n code:ptr len:n :}" GE-SRC+
+   s"  code i CLO ! len i CLO-LEN ! XREF-NULL i CLO-REC ! ;" GE-SRC-LINE
+   s" : ANT-OVERLAP ( -- ) 2 CLO-TABLES" GE-SRC+
+   s"  0 ANT-MEM 12 ANT-MEMBER!" GE-SRC+
+   s"  1 ANT-MEM 4 + 8 ANT-MEMBER!" GE-SRC+
+   s"  2 NCLO ! MEMBER-ORDER ;" GE-SRC-LINE
+   s" ANT-OVERLAP" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+: MEMBER-OVERLAP ( -- )
+   SOURCE-MEMBER-OVERLAP
+   74 s" aot: closure members overlap"
+   s" hb-build closure member overlap" GE-EVAL-FORK-BAD
+   s" aot: closure members overlap site=<unknown>"
+   s" hb-build closure member overlap names the site" GE-EXPECT-ERR-HAS
+   s"  bytes=12 and=<unknown>"
+   s" hb-build closure member overlap names both members" GE-EXPECT-ERR-HAS ;
+
 \ Kept rejection: patch32 writes the code region, which a stripped binary has
 \ no way to do (its __text is r-x and its code is at the PIE image base, not the
 \ RBASE-VA region patch32 targets). The persistent data region does NOT make this
@@ -186,6 +220,7 @@ public
    BRANCH-RUN
    CLOSURE-LIMIT
    CLOSURE-CAPACITY
+   MEMBER-OVERLAP
    PATCH32
    GT-CLEANUP
    s" PASS: native hb-build AOT negative tests" type cr ;

@@ -53,11 +53,20 @@ variable LTEXT
 \ base in two 16-bit lanes, a non-negative absolute position whose bound is the
 \ pair's 32 bits and not the distance from the site. Four words, 16 bytes,
 \ per converted site: 48 bytes more per image than the four `ADR`s were.
-\ NO FIXTURE BUILDS AN IMAGE PAST THE WINDOW. The link is quadratic in the
-\ closure's member count - OLD>NEW and MEMBER-AT below both scan every member
-\ per relocated instruction - so a >1 MiB band costs minutes at test scale.
-\ tools/hb-build-test.f HBT-STRIPPED-CHAIN runs the converted startup end to
-\ end, and Tender's standalone build is the proof at the scale that needed it.
+\ NO FIXTURE BUILDS AN IMAGE PAST THE WINDOW, and the LINK is no longer what
+\ stops one: MEMBER-ORDER below sorts the closure members by entry once per link
+\ and both lookups binary-search that order, so OLD>NEW and MEMBER-AT no longer
+\ scan every member per relocated instruction. THE COMPILE is what a >1 MiB
+\ fixture costs. Measured on a generated chain of 27,000 words, 1,082,700 bytes
+\ of code in 27,004 closure members: hb-build 51.9 s cold, of which the AOT
+\ maker alone is 42.8 s, and an hb-build of those same 27,000 words behind a
+\ one-member closure - the same compile, no closure to link - is 39.3 s. The
+\ member scans this replaced were 2.4 s of that maker run (45.2 s before) and
+\ 0.5 s of the 13,504-member half of it: four times the cost for twice the
+\ members is the quadratic term, and it is the term that is gone.
+\ tools/hb-build-test.f HBT-STRIPPED-CHAIN runs the converted startup end to end
+\ at 1,104 members, and Tender's standalone build is the proof at the scale that
+\ needed it.
 : TEXT-ADR, ( n n label -- )                      \ ( rd rt label -- ) rd = runtime address of label
    {: rd:n rt:n l:label :}
    rd rt = IF s" aot: TEXT-ADR, destination and scratch are one register" 74 die THEN
@@ -486,14 +495,123 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
    EMIT-CRASH-HANDLER  EMIT-SIGNAL-HANDLER  EMIT-HEX ;
 PTR-VARIABLE CP2  PTR-VARIABLE CEND   \ the copy walk's cursor and its one-past end
 variable NEXT-OFF
+\ --- THE MEMBERS IN ENTRY ORDER, the third per-member column. The closure walk
+\ discovers members in CALL order (aot-closure.f ADD-CLO appends what it reaches),
+\ so the entries in CLO are unordered, and the two lookups below - the exact-entry
+\ one and the one that finds the member covering an address - scanned the whole
+\ closure per relocated instruction, which made the link quadratic in NCLO. This
+\ index is filled once per link, beside NEWOFF and BLEN and for the same NCLO
+\ rows, and both lookups binary-search it.
+\ THE MEMBERS ARE DISJOINT BY CONSTRUCTION, which is what lets ONE position
+\ answer for an address. Two anonymous bodies of one record are the only members
+\ that can nest - under tier 1 the lower one runs to the record's end and holds
+\ the higher one's code - and aot-closure.f DROP-NESTED-CLO drops the contained
+\ one after the walk, at the source of the overlap and with the offset arithmetic
+\ that makes the container answer for it; the closure this file plans never
+\ overlaps. MORD-DISJOINT is the INVARIANT CHECK on that, run once per link over
+\ the sorted order - each member's end at or below the next one's start - and it
+\ names both members' records, entries and lengths rather than picking one of
+\ them, the way the scans it replaced did (they answered the LOWEST index
+\ covering a target, so the discovery order decided). Adjacency is admitted and
+\ is what MAP-IN-MEMBER's >= boundary is about: a target at a member's end
+\ belongs to the next member. A WALK CANNOT REACH THE REFUSAL, so what reaches it
+\ is a table filled by hand - test/gate-aot-negative-lib.f fills two rows, the
+\ second inside the first, and expects exit 74 with the named line. Over real
+\ links: zero overlapping pairs and 27,000 touching ones over the sorted order of
+\ the 27,004-member chain this file's head measures, and every link
+\ tools/hb-build-test.f and the gate's AOT suites make is green with the check in
+\ place.
+DYNAMIC-BUFFER MORD n         \ member indices, ascending by CLO-AT
+variable MOI                                  \ the fill and disjointness cursor
+variable MSR  variable MSC  variable MSN      \ a sift's root, child and heap size
+variable MHI  variable MHE                    \ the heapify and extract cursors
+variable MBLO  variable MBHI  variable MBMID  \ a search's window and its probe
+variable MBP                                  \ ... and the best position it saw
+: MORD-AT ( n -- n ) MORD @ ;                 \ the member at order position p
+: MORD-KEY ( n -- ptr u8 ) MORD-AT CLO-AT ;   \ ... and that member's entry
+: MORD-SWAP ( n n -- ) {: a:n b:n :}
+   a MORD-AT {: x:n :}
+   b MORD-AT a MORD !  x b MORD ! ;
+\ Heapsort: one column, no scratch, no recursion, O(N log N) whatever the walk
+\ order is. THE WALK ORDER IS NOT NEARLY SORTED, and on a chain it is the reverse
+\ - the worst case an insertion sort has. Measured over the closures this file
+\ links: a 27,004-member chain of words each calling the previous descends at
+\ 27,001 of its 27,003 adjacent index pairs (the walk enters the chain at its
+\ tail and works back), and a nine-member library program at 6 of 8. An insertion
+\ sort would be the quadratic this pass exists to remove.
+: MORD-CHILD ( -- )           \ MSC = the larger of the root's two children
+   MSC @ 1+ MSN @ < IF
+      MSC @ MORD-KEY  MSC @ 1+ MORD-KEY  < IF MSC @ 1+ MSC ! THEN THEN ;
+: MORD-SIFT ( n n -- ) {: root:n rows:n :}
+   root MSR !  rows MSN !
+   BEGIN MSR @ 2 * 1+ MSN @ < WHILE
+      MSR @ 2 * 1+ MSC !
+      MORD-CHILD
+      MSR @ MORD-KEY  MSC @ MORD-KEY  < 0= IF EXIT THEN
+      MSR @ MSC @ MORD-SWAP
+      MSC @ MSR !
+   REPEAT ;
+: MORD-SORT ( n -- ) {: rows:n :}
+   rows 2 / 1- MHI !
+   BEGIN MHI @ 0 >= WHILE  MHI @ rows MORD-SIFT  MHI @ 1- MHI !  REPEAT
+   rows 1- MHE !
+   BEGIN MHE @ 0 > WHILE
+      0 MHE @ MORD-SWAP
+      0 MHE @ MORD-SIFT
+      MHE @ 1- MHE !  REPEAT ;
+: MORD-OVERLAP-DIE ( n n -- ) {: a:n b:n :}
+   s" aot: closure members overlap site=" AETXT
+   a CLO-REC@ AEREC-TXT
+   s"  at=" AETXT a CLO-AT CODE-N AEJNUM
+   s"  bytes=" AETXT a CLO-BYTES AEJNUM
+   s"  and=" AETXT b CLO-REC@ AEREC-TXT
+   s"  at=" AETXT b CLO-AT CODE-N AEJNUM
+   s"  bytes=" AETXT b CLO-BYTES AEJNUM
+   10 AE1
+   s" aot: closure members overlap" 74 die ;
+: MORD-DISJOINT ( -- )
+   0 MOI !
+   BEGIN MOI @ 1+ NCLO @ < WHILE
+      MOI @ MORD-KEY MOI @ MORD-AT CLO-BYTES +  MOI @ 1+ MORD-KEY > IF
+         MOI @ MORD-AT  MOI @ 1+ MORD-AT  MORD-OVERLAP-DIE THEN
+      MOI @ 1+ MOI ! REPEAT ;
+\ Fill, sort, assert - once per link, from PLAN-BLOBS, because the closure is
+\ final there and nothing before it asks where a member is or where it lands. A
+\ test that fills the closure tables by hand calls this the way it calls
+\ PLAN-TABLES: the lookups below read no other order.
+\ NOTHING MAY ASK FOR A MEMBER BEFORE THIS RUNS, and nothing in a link does - the
+\ first lookup of a link is in COPY-BLOBS, which is PLAN-BLOBS and then the copy.
+\ A whitebox that asks earlier gets E-LAYOUT-BOUNDS off the unfilled order rather
+\ than an answer, which is the fail-closed direction and how the order is proved
+\ to be what the lookups read (test/compiler/aot-nested-body.f plans first for
+\ that reason; test/compiler/native-code-span.f already did).
+: MEMBER-ORDER ( -- )
+   NCLO @ 1 < IF s" aot: no closure members to order" 74 die THEN
+   NCLO @ MORD-RESERVE
+   0 MOI ! BEGIN MOI @ NCLO @ < WHILE  MOI @ MOI @ MORD !  MOI @ 1+ MOI ! REPEAT
+   NCLO @ MORD-SORT
+   MORD-DISJOINT ;
+: MORD-FIND ( ptr u8 -- n ) {: start:ptr :}   \ the position of this exact entry, or -1
+   0 MBLO !  NCLO @ 1- MBHI !
+   BEGIN MBLO @ MBHI @ <= WHILE
+      MBLO @ MBHI @ + 2 / MBMID !
+      MBMID @ MORD-KEY start = IF MBMID @ EXIT THEN
+      MBMID @ MORD-KEY start < IF MBMID @ 1+ MBLO ! ELSE MBMID @ 1- MBHI ! THEN
+   REPEAT  -1 ;
+: MORD-BELOW ( ptr u8 -- n ) {: t:ptr :}      \ the last position at or below t, or -1
+   0 MBLO !  NCLO @ 1- MBHI !  -1 MBP !
+   BEGIN MBLO @ MBHI @ <= WHILE
+      MBLO @ MBHI @ + 2 / MBMID !
+      t MBMID @ MORD-KEY < IF MBMID @ 1- MBHI !
+      ELSE MBMID @ MBP !  MBMID @ 1+ MBLO ! THEN
+   REPEAT  MBP @ ;
 \ The closure member whose entry this is, or -1. The entry is a member's
 \ identity (aot-closure.f ADD-CLO), so this is what a record pointer or a span
 \ row is resolved through before anything asks where the member is going.
 : MEMBER-AT {: start:ptr :} ( ptr u8 -- n )
-   0 CLO-CX !
-   BEGIN CLO-CX @ NCLO @ < WHILE
-      CLO-CX @ CLO-AT start = IF CLO-CX @ EXIT THEN
-      CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
+   start MORD-FIND {: p:n :}
+   p 0 < IF -1 EXIT THEN
+   p MORD-AT ;
 : MEMBER-NEWOFF ( n -- n ) NEWOFF @ ;
 : CLO-AT-N ( n -- n ) CLO-AT CODE-N ;      \ the same entry, for value-domain arithmetic
 : BCOND? {: w:n :}  w $FF000010 and $54000000 = ;
@@ -506,6 +624,7 @@ variable NEXT-OFF
 \ member's own length.
 : PLAN-BLOBS
    NCLO @ PLAN-TABLES
+   MEMBER-ORDER
    ASM-LEN NEXT-OFF !
    0 WI ! BEGIN WI @ NCLO @ < WHILE
       NEXT-OFF @       WI @ NEWOFF !
@@ -552,11 +671,13 @@ variable BDELTA  variable TNEW
    t i CLO-AT < IF -1 EXIT THEN
    t i CLO-AT i CLO-BYTES + >= IF -1 EXIT THEN
    i MEMBER-NEWOFF  t i CLO-AT -  + ;
+\ THE ONE MEMBER THAT CAN COVER t is the last one whose entry is at or below it
+\ (MEMBER-ORDER above asserted the members are disjoint), so the search answers a
+\ position and MAP-IN-MEMBER answers whether t is inside that member at all.
 : OLD>NEW {: t:ptr :} ( ptr u8 -- n )
-   0 CLO-CX !
-   BEGIN CLO-CX @ NCLO @ < WHILE
-      CLO-CX @ t MAP-IN-MEMBER dup -1 <> IF EXIT THEN drop
-      CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
+   t MORD-BELOW {: p:n :}
+   p 0 < IF -1 EXIT THEN
+   p MORD-AT t MAP-IN-MEMBER ;
 : MAP-TARGET {: i:n t:ptr :} ( n ptr u8 -- n )
    i t MAP-IN-MEMBER dup -1 <> IF EXIT THEN drop  t OLD>NEW ;
 \ A TARGET THE COMPACTED IMAGE HAS NO ADDRESS FOR NAMES ITSELF. The member being
