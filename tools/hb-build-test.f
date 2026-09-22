@@ -105,6 +105,8 @@ variable HBT-CELLS-SRC-U
 variable HBT-CELLS-OUT-U
 variable HBT-UNOWNED-SRC-U
 variable HBT-UNOWNED-OUT-U
+variable HBT-PMK-SRC-U
+variable HBT-PMK-OUT-U
 variable HBT-PPH-SRC-U
 variable HBT-PPH-OUT-U
 variable HBT-TABLE-SRC-U
@@ -130,6 +132,8 @@ create HBT-CELLS-SRC-BUF FS-PATH-CAP allot
 create HBT-CELLS-OUT-BUF FS-PATH-CAP allot
 create HBT-UNOWNED-SRC-BUF FS-PATH-CAP allot
 create HBT-UNOWNED-OUT-BUF FS-PATH-CAP allot
+create HBT-PMK-SRC-BUF FS-PATH-CAP allot
+create HBT-PMK-OUT-BUF FS-PATH-CAP allot
 create HBT-PPH-SRC-BUF FS-PATH-CAP allot
 create HBT-PPH-OUT-BUF FS-PATH-CAP allot
 create HBT-TABLE-SRC-BUF FS-PATH-CAP allot
@@ -310,6 +314,12 @@ create HBT-EXP-HEX2 64 allot
 : HBT-UNOWNED-OUT ( -- ptr u8 n )
    HBT-UNOWNED-OUT-BUF HBT-UNOWNED-OUT-U @ ;
 
+: HBT-PMK-SRC ( -- ptr u8 n )
+   HBT-PMK-SRC-BUF HBT-PMK-SRC-U @ ;
+
+: HBT-PMK-OUT ( -- ptr u8 n )
+   HBT-PMK-OUT-BUF HBT-PMK-OUT-U @ ;
+
 : HBT-PPH-SRC ( -- ptr u8 n )
    HBT-PPH-SRC-BUF HBT-PPH-SRC-U @ ;
 
@@ -409,6 +419,18 @@ create HBT-EXP-HEX2 64 allot
 \ declaration and not about the file, the value or the address.
 : HBT-UNOWNED-SRC$ ( -- ptr u8 n )
    S\" : MAIN ( -- ) s\" x\" TMP-PATH type cr ;\n" ;
+
+\ A PROGRAM THAT REGISTERS A POINTER CELL AT RUN TIME. The definer's own
+\ `ptr-cell-mark` runs at DEFINITION time, on the build host; this program calls
+\ the primitive itself inside MAIN, after storing the address of its own data in
+\ a persisted cell - the one shape in which a stripped image would have to carry
+\ the registrar.
+: HBT-PMK-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" create PMK-OWN 111 c, 107 c,\nPERSISTED-PTR-VARIABLE PMK-CELL\n" SB-APPEND
+   S\" : MAIN ( -- )\n   PMK-OWN PMK-CELL !\n   PMK-CELL ptr-cell-mark\n" SB-APPEND
+   S\"    PMK-CELL @ 2 type cr ;\n" SB-APPEND
+   SB$ ;
 
 \ THE THREE BAKED CONSTANTS AN ORDINARY PROGRAM READS, in one program: printing
 \ an integer reaches lib/fmt.f INT>NUM and its copy of STR-MIN-I64$, parsing one
@@ -669,6 +691,8 @@ create HBT-EXP-HEX2 64 allot
    HBT-ROOT s" cells" HBT-CELLS-OUT-BUF HBT-CELLS-OUT-U HBT-PATH!
    HBT-ROOT s" unowned.f" HBT-UNOWNED-SRC-BUF HBT-UNOWNED-SRC-U HBT-PATH!
    HBT-ROOT s" unowned" HBT-UNOWNED-OUT-BUF HBT-UNOWNED-OUT-U HBT-PATH!
+   HBT-ROOT s" ptrmark.f" HBT-PMK-SRC-BUF HBT-PMK-SRC-U HBT-PATH!
+   HBT-ROOT s" ptrmark" HBT-PMK-OUT-BUF HBT-PMK-OUT-U HBT-PATH!
    HBT-ROOT s" pph.f" HBT-PPH-SRC-BUF HBT-PPH-SRC-U HBT-PATH!
    HBT-ROOT s" pph" HBT-PPH-OUT-BUF HBT-PPH-OUT-U HBT-PATH!
    HBT-ROOT s" table.f" HBT-TABLE-SRC-BUF HBT-TABLE-SRC-U HBT-PATH!
@@ -1055,6 +1079,27 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-ERR nerr s" caller=TMP-PATH" CONTAINS? TTRUE
    HBT-ERR nerr s" target=TPU" CONTAINS? TTRUE
    HBT-UNOWNED-OUT FILE? TFALSE ;
+
+\ ... and the relocator's own arm refuses by name too. `ptr-cell-mark` has a body
+\ of its own (a deref-form prim, src/habu/habu2.f BPTRCELLMARK) holding a BL to
+\ LPTRMARK, an entry INSIDE the (MARK) body and not that record's code ENTRY - so
+\ FINDADDR-PTR resolves nothing, DECLARATION-TARGET? is false, and MAP-TARGET!
+\ (src/habu/aot-lib.f) dies naming the primitive as the site and, through
+\ ADDRESS-OWNER's recorded span, (MARK) as the body the target lands in. Only a
+\ branch to the (MARK) ENTRY - what `xt!` compiles - is dropped as a declaration.
+: HBT-STRIPPED-PTR-MARK ( -- )
+   HBT-PMK-SRC HBT-PMK-SRC$ WRITE-ALL
+   HBT-PMK-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-PMK-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-PMK-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: mout:n merr:n mrc:n :}
+   mrc 0 <> TTRUE
+   HBT-ERR merr s" PC-relative target removed or outside closure" CONTAINS? TTRUE
+   HBT-ERR merr s" site=ptr-cell-mark" CONTAINS? TTRUE
+   HBT-ERR merr s" target-word=(MARK)" CONTAINS? TTRUE
+   HBT-PMK-OUT FILE? TFALSE ;
 
 \ ... a program that PRINTS an integer, PARSES one and HASHES a string builds
 \ stripped, because every baked constant those three reach is carried by name,
@@ -1915,6 +1960,7 @@ public
    HBT-STRIPPED-LIB-STATE
    HBT-STRIPPED-ENGINE-CELLS
    HBT-STRIPPED-UNOWNED-CELL
+   HBT-STRIPPED-PTR-MARK
    HBT-STRIPPED-PRINT-PARSE-HASH
    HBT-STRIPPED-CHAIN
    HBT-STRIPPED-OPEN-PATH
