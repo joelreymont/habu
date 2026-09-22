@@ -249,11 +249,24 @@ variable CARRY-USED
 : SPAN-CELLS ( -- n )
    BLOB-LEN @ AOT-WINDOW:CELL-BYTES 1- + AOT-WINDOW:CELL-BYTES / ;
 
+\ The blob's header: the group count and the stored bitmap bytes, as two u32
+\ (BUILD-SPARSE-DATA below writes them last, over room reserved first). The
+\ reader it frames is emitted above the writer, so the width is named here.
+8 constant SPARSE-HDR
+
 \ A BIT A CELL, IN CELL ORDER, so the destination cursor x13 is the decoder's
 \ whole state between cells: it steps one cell for every bit the bitmap carries,
 \ present or not, and the value cursor x10 advances only where a bit is set. An
 \ all-clear bitmap byte therefore costs one branch and one add for eight cells,
 \ which is what makes a window of mostly `allot`ed room cheap to lay down.
+\ THE BITMAP ITSELF IS GROUPED (src/habu/aot-decl.f AOT-WINDOW:BM-COMPACT): an
+\ all-clear GROUP-BYTES bytes of it is not in the image, and costs one branch and
+\ one add for GROUP-SPAN bytes of DATA. The outer loop walks the presence map's
+\ bits; a set bit runs the byte walk over that group's stored GROUP-BYTES bytes,
+\ a clear one steps the destination past the group. This is the shape
+\ src/habu/habu2.f AOT-WINDOW:APPLY-CELLS runs for the baked window; the two
+\ differ only in where the frame comes from - three labels there, the blob's own
+\ two-u32 header here - and in which registers are free.
 \ x10 ends one past the blob's last value byte, which is where EMIT-XT-CELLS
 \ expects its rows.
 : EMIT-DATA-COPY ( -- )
@@ -261,33 +274,54 @@ variable CARRY-USED
       7 BLOB-END @ LIT64,  7 DATA DP-CELL STR,  exit         \ DP = data base (no user data)
    THEN
    9 12 BLOB-LBL LABEL@ TEXT-ADR,                 \ x9 = sparse header in __text (x12: the loop reloads it below)
-   11 9 0 LDRW,                                   \ x11 = bitmap byte length
-   9 9 4 ADDI,                                    \ x9 = bitmap cursor
-   11 9 11 ADD,                                   \ x11 = one past the bitmap == value payload start
-   10 11 0 ADDI,                                  \ x10 = value cursor
+   11 9 0 LDRW,                                   \ x11 = groups the presence map covers
+   10 9 4 LDRW,                                   \ x10 = bytes of stored bitmap groups
+   9 9 SPARSE-HDR ADDI,                           \ x9 = presence map cursor
+   11 11 7 ADDI,  11 11 3 LSRI,                   \ x11 = ceil(groups / 8) map bytes
+   11 9 11 ADD,                                   \ x11 = one past the presence map
+   17 11 0 ADDI,                                  \ x17 = the stored groups, after the map
+   10 17 10 ADD,                                  \ x10 = value cursor, after the stored groups
    13 BLOB-SRC @ LIT64,                           \ x13 = destination cursor, at the span's base VA
-   LBL LBL LBL LBL LBL LBL
-   {: bmtop:label bmdone:label bittop:label bitdone:label bitnext:label empty:label :}
-   bmtop LBL,
-      9 11 CMP,  C-CS bmdone BCOND,
-      14 9 0 LDRB,  9 9 1 ADDI,                   \ x14 = this byte's eight cells
-      14 empty CBZ,
-      12 AOT-WINDOW:CELL-BITS MOVZ,                          \ x12 = cells left in the byte
-      bittop LBL,
-         12 bitdone CBZ,
-         21 14 1 ANDI,
-         21 bitnext CBZ,
-            15 10 16 22 7 EMIT-VGET               \ x15 = the present cell's value
-            15 13 0 STR,
-         bitnext LBL,
-         14 14 1 LSRI,  13 13 AOT-WINDOW:CELL-BYTES ADDI,  12 12 1 SUBI,
-         bittop B,
-      bitdone LBL,
-      bmtop B,
-   empty LBL,
-      13 13 AOT-WINDOW:BM-BYTE-SPAN ADDI,                    \ eight absent cells: step the destination
-      bmtop B,
-   bmdone LBL,
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: gtop:label gdone:label ptop:label pnext:label absent:label
+      bmtop:label bmdone:label bittop:label bitdone:label bitnext:label empty:label :}
+   gtop LBL,
+      9 11 CMP,  C-CS gdone BCOND,
+      23 9 0 LDRB,  9 9 1 ADDI,                   \ x23 = this byte's eight groups
+      24 8 MOVZ,                                  \ x24 = groups left in the byte
+      ptop LBL,
+         24 gtop CBZ,
+         21 23 1 ANDI,
+         21 absent CBZ,
+            25 AOT-WINDOW:GROUP-BYTES MOVZ,       \ x25 = bitmap bytes left in the group
+            bmtop LBL,
+               25 bmdone CBZ,
+               14 17 0 LDRB,  17 17 1 ADDI,       \ x14 = this byte's eight cells
+               25 25 1 SUBI,
+               14 empty CBZ,
+               12 AOT-WINDOW:CELL-BITS MOVZ,      \ x12 = cells left in the byte
+               bittop LBL,
+                  12 bitdone CBZ,
+                  21 14 1 ANDI,
+                  21 bitnext CBZ,
+                     15 10 16 22 7 EMIT-VGET      \ x15 = the present cell's value
+                     15 13 0 STR,
+                  bitnext LBL,
+                  14 14 1 LSRI,  13 13 AOT-WINDOW:CELL-BYTES ADDI,  12 12 1 SUBI,
+                  bittop B,
+               bitdone LBL,
+               bmtop B,
+            empty LBL,
+               13 13 AOT-WINDOW:BM-BYTE-SPAN ADDI, \ eight absent cells: step the destination
+               bmtop B,
+            bmdone LBL,
+         pnext LBL,
+         23 23 1 LSRI,  24 24 1 SUBI,
+         ptop B,
+   absent LBL,
+      21 AOT-WINDOW:GROUP-SPAN MOVZ,  13 13 21 ADD,  \ an absent group: step the destination
+      pnext B,
+   gdone LBL,
    7 BLOB-SRC @ SPAN-CELLS AOT-WINDOW:CELL-BYTES * + LIT64,
    7 DATA DP-CELL STR, ;                           \ DP = user-end (runtime here/allot base)
 
@@ -328,13 +362,15 @@ variable CARRY-USED
 \ CELLS and one varint per present cell, not as the span. A table `allot`ed at
 \ declared capacity but only partly filled left its unused tail as literal zero
 \ bytes in every earlier image; the restore above maps an anonymous (already
-\ zero) region, so a zero byte never has to travel. Format: [bitmap bytes u32]
-\ [bitmap, one bit a cell, low bit first, trailing absent cells dropped]
-\ [one unsigned LEB128 per present cell, in cell order] - one cursor decodes the
-\ values with no stored cell->value offset, and the header is the bitmap's byte
-\ length because that is what says where the values begin. The bitmap and the
+\ zero) region, so a zero byte never has to travel. Format:
+\ [groups u32][stored bitmap bytes u32][presence map, one bit a group, low bit
+\ first][the present groups, AOT-WINDOW:GROUP-BYTES bytes each in group order,
+\ the last zero-padded][one unsigned LEB128 per present cell, in cell order] -
+\ one cursor decodes the values with no stored cell->value offset, and the two
+\ header numbers are what say where they begin. The bitmap, its grouping and the
 \ varint ARE the AOT-WINDOW encoding aot-capture.f writes for the metabuild seed
-\ (src/habu/aot-decl.f package AOT-WINDOW).
+\ (src/habu/aot-decl.f package AOT-WINDOW, BM-COMPACT for the grouping), so the
+\ blob and the baked window carry one format and one decoder shape.
 \ SPARSE-CAP bounds this file's own encoding buffer and nothing else: it is
 \ generous headroom over the row/byte overhead of a captured DATA span, which is
 \ set by how much data the application declares and not by how long its code is.
@@ -385,7 +421,7 @@ variable BLOB-CV
 \ The bitmap is written in ascending cell order, so extending it is appending
 \ zero bytes, and it stops at the highest present cell.
 : BLOB-BIT! ( n -- ) {: c:n :}
-   c AOT-WINDOW:CELL-BITS / 4 + {: at:n :}
+   c AOT-WINDOW:CELL-BITS / SPARSE-HDR + {: at:n :}
    BEGIN SPARSE-LEN @ at <= WHILE 0 SPARSE-BYTE! REPEAT
    SPARSE-BUF at + c@
    1 c AOT-WINDOW:CELL-BITS mod lshift or
@@ -396,17 +432,26 @@ variable BLOB-CV
    v  SPARSE-BUF SPARSE-LEN @ +  AOT-WINDOW:CELL-V! {: w:n :}
    SPARSE-LEN @ w + SPARSE-LEN ! ;
 
-\ Two passes over the grid, because the bitmap's own length is what says where
-\ the values start and only the first pass knows it.
+\ Two passes over the grid, because where the values start is not known until
+\ the bitmap is built and grouped. The first pass leaves the FLAT bitmap in the
+\ buffer behind the header, BM-COMPACT reads it there and answers the grouped
+\ form, and that form is copied back over it: the flat bytes are this word's
+\ working state and never reach the image.
 : BUILD-SPARSE-DATA ( -- )
    BLOB-SRC @ AOT-WINDOW:CELL-BYTES mod 0<> IF
       s" aot: the captured DATA span does not start on a cell" 74 die THEN
    0 SPARSE-LEN !
-   4 SPARSE-ROOM?  4 SPARSE-LEN !
+   SPARSE-HDR SPARSE-ROOM?  SPARSE-HDR SPARSE-LEN !
    SPAN-CELLS 0 ?do
       i BLOB-CELL@ 0<> IF i BLOB-BIT! THEN
    loop
-   SPARSE-LEN @ 4 -  0 SPARSE-U32!
+   SPARSE-BUF SPARSE-HDR +  SPARSE-LEN @ SPARSE-HDR -  AOT-WINDOW:BM-COMPACT
+   AOT-WINDOW:CBM-GROUPS @  0 SPARSE-U32!
+   AOT-WINDOW:CBM-STORED @  4 SPARSE-U32!
+   SPARSE-HDR SPARSE-LEN !
+   AOT-WINDOW:CBM-LEN 0 ?do
+      AOT-WINDOW:CBM-BUF i + c@ SPARSE-BYTE!
+   loop
    SPAN-CELLS 0 ?do
       i BLOB-CELL@ {: v:n :}
       v 0<> IF v BLOB-V! THEN

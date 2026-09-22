@@ -88,16 +88,22 @@ create CODE-PATH FS-PATH-CAP allot
 
 
 \ Format authority: src/habu/aot-lib.f EMIT-DATA-COPY. The image is SPARSE: a u32
-\ bitmap-byte length, then that many bitmap bytes (one bit a cell, low bit
-\ first), then one unsigned LEB128 per present cell in cell order. Validate the
-\ cursor setup that reads the bitmap length out of the image, the span-base
-\ literal, and the complete bitmap + cell loops that follow the blob's address.
+\ of groups and a u32 of stored bitmap bytes, then the presence map (one bit a
+\ group of 64 bitmap bytes, low bit first), then the groups that map says are
+\ there (64 bytes each, one bit a cell), then one unsigned LEB128 per present
+\ cell in cell order. Validate the cursor setup that derives the map, the stored
+\ groups and the values out of those two counts, the span-base literal, and the
+\ complete group + bitmap + cell loops that follow the blob's address.
 : CHECK-CURSORS ( n -- n ) {: off:n :}
    off      11 9 0 ENC-LDRW INSTR=
-   off 4 +  9 9 4 ENC-ADDI INSTR=
-   off 8 +  11 9 11 ENC-ADD INSTR=
-   off 12 + 10 11 0 ENC-ADDI INSTR=
-   off 16 + 13 SKIP-LITERAL ;
+   off 4 +  10 9 4 ENC-LDRW INSTR=
+   off 8 +  9 9 8 ENC-ADDI INSTR=
+   off 12 + 11 11 7 ENC-ADDI INSTR=
+   off 16 + 11 11 3 ENC-LSRI INSTR=
+   off 20 + 11 9 11 ENC-ADD INSTR=
+   off 24 + 17 11 0 ENC-ADDI INSTR=
+   off 28 + 10 17 10 ENC-ADD INSTR=
+   off 32 + 13 SKIP-LITERAL ;
 
 
 \ One inlined unsigned LEB128 decode, register for register: src/habu/aot-lib.f
@@ -118,18 +124,32 @@ create CODE-PATH FS-PATH-CAP allot
    off 40 + ;
 
 
+\ The outer loop walks the presence map a byte at a time and its eight bits one
+\ at a time; a clear bit steps the destination one group's worth of DATA (4,096
+\ bytes) and a set bit runs the 64-byte walk the group stored. The displacements
+\ are the distance in instructions back to each loop head, so they say the shape
+\ as surely as the opcodes do.
 : CHECK-COPY ( n -- )
    CHECK-CURSORS {: top:n :}
    top       9 11 ENC-CMP INSTR=
-   top 4 +   26 C-CS ENC-BCOND INSTR=
-   top 8 +   14 9 0 ENC-LDRB INSTR=
+   top 4 +   41 C-CS ENC-BCOND INSTR=
+   top 8 +   23 9 0 ENC-LDRB INSTR=
    top 12 +  9 9 1 ENC-ADDI INSTR=
-   top 16 +  14 21 ENC-CBZ INSTR=
-   top 20 +  12 8 0 MOVZHW INSTR=
-   top 24 +  12 18 ENC-CBZ INSTR=
-   top 28 +  21 14 1 >LIMM ENC-ANDI INSTR=
-   top 32 +  21 12 ENC-CBZ INSTR=
-   top 36 +  15 10 16 22 7 CHECK-VGET {: vend:n :}
+   top 16 +  24 8 0 MOVZHW INSTR=
+   top 20 +  24 -5 ENC-CBZ INSTR=
+   top 24 +  21 23 1 >LIMM ENC-ANDI INSTR=
+   top 28 +  21 32 ENC-CBZ INSTR=
+   top 32 +  25 64 0 MOVZHW INSTR=
+   top 36 +  25 27 ENC-CBZ INSTR=
+   top 40 +  14 17 0 ENC-LDRB INSTR=
+   top 44 +  17 17 1 ENC-ADDI INSTR=
+   top 48 +  25 25 1 ENC-SUBI INSTR=
+   top 52 +  14 21 ENC-CBZ INSTR=
+   top 56 +  12 8 0 MOVZHW INSTR=
+   top 60 +  12 18 ENC-CBZ INSTR=
+   top 64 +  21 14 1 >LIMM ENC-ANDI INSTR=
+   top 68 +  21 12 ENC-CBZ INSTR=
+   top 72 +  15 10 16 22 7 CHECK-VGET {: vend:n :}
    vend      15 13 0 ENC-STR INSTR=
    vend 4 +  14 14 1 ENC-LSRI INSTR=
    vend 8 +  13 13 8 ENC-ADDI INSTR=
@@ -137,7 +157,13 @@ create CODE-PATH FS-PATH-CAP allot
    vend 16 + -17 ENC-B INSTR=
    vend 20 + -24 ENC-B INSTR=
    vend 24 + 13 13 64 ENC-ADDI INSTR=
-   vend 28 + -26 ENC-B INSTR= ;
+   vend 28 + -26 ENC-B INSTR=
+   vend 32 + 23 23 1 ENC-LSRI INSTR=
+   vend 36 + 24 24 1 ENC-SUBI INSTR=
+   vend 40 + -33 ENC-B INSTR=
+   vend 44 + 21 4096 0 MOVZHW INSTR=
+   vend 48 + 13 13 21 ENC-ADD INSTR=
+   vend 52 + -5 ENC-B INSTR= ;
 
 
 \ THE DATA RESTORE, in the four words src/habu/aot-lib.f TEXT-ADR, emits into x9

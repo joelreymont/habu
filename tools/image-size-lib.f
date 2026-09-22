@@ -411,6 +411,13 @@ variable DSITE0      variable DSITE-N
 variable XTOFF0      variable XTOFF-N
 variable RUN0        variable RUN-BYTES   variable RUN-N
 variable RUN-AT      variable RUN-PREV
+\ The bitmap's image form is grouped: a presence map over groups of GROUP-BYTES
+\ bitmap bytes, then the present groups' bytes (src/habu/aot-decl.f
+\ AOT-WINDOW:BM-COMPACT). Both walks below fill these - the engine payload's from
+\ its two count cells (RUN0 is its map), a stripped blob's from its own header
+\ (RUN-AT is its map) - and RUN-BYTES stays what the image spends on the bitmap.
+variable RUN-GROUPS  variable RUN-STORED  variable RUN-PMAP
+variable RUN-BM0     variable STORED-AT
 variable RBYTES0     variable RBYTES-LEN
 variable CODE-B0
 variable CSITE0      variable CSITE-N
@@ -441,7 +448,18 @@ AOT-NAMES-CAP constant NAMES-CAP
 \ value bytes - the payload states neither.
 8 constant CELL-BYTES                             \ the DATA cell grid the bitmap covers
 8 constant CELL-BITS                              \ cells one bitmap byte covers
+64 constant GROUP-BYTES                           \ bitmap bytes one presence bit covers
+GROUP-BYTES CELL-BITS * constant GROUP-CELLS      \ cells such a group covers
 10 constant CELL-VMAX                             \ an unsigned LEB128 of a cell is at most ten bytes
+
+\ The map is a bitmap of groups, written like the cell bitmap: group g in bit
+\ g mod 8 of byte g div 8, low bit first, and the trailing bits of its last byte
+\ are clear because a group past the count is one no writer could store.
+: PMAP-BYTES ( n -- n ) {: groups:n :}
+   groups CELL-BITS 1- + CELL-BITS / ;
+
+: GROUP-SET? ( n n -- bool ) {: map:n g:n :}
+   map g CELL-BITS / + U8@  g CELL-BITS mod rshift  1 and 0<> ;
 
 : RUN-VW ( n n -- n ) {: at:n avail:n :}
    avail CELL-VMAX min 0 ?do
@@ -499,18 +517,31 @@ AOT-NAMES-CAP constant NAMES-CAP
 
 \ The bitmap states no count of present cells, so walking it is what counts
 \ them, and their value widths are what the value section that follows is long.
+\ An absent group carries no byte and no present cell, so the walk steps over
+\ its GROUP-CELLS cells; the stored groups are concatenated in group order, which
+\ is why one cursor into them is all the state the outer loop adds. It ends on
+\ the stored bytes the header declares, so a candidate whose presence map and
+\ length disagree is a failed walk rather than a mismeasured image.
 : RUN-BYTES-MEASURE ( -- n )
-   0 ACC !  0 RUN-N !  0 RUN-PREV !
-   RUN-BYTES @ CELL-BITS * 0 ?do
-      RUN0 @ i CELL-BITS / + U8@  i CELL-BITS mod rshift  1 and 0<> if
-         i 1+ CELL-BYTES * {: end:n :}
-         end DATA-SPAN @ > if E-ES-WALK throw then
-         RBYTES0 @ ACC @ +  ETEXT-END RBYTES0 @ ACC @ + -  RUN-V@ {: v:n w:n :}
-         ACC @ w + ACC !
-         end RUN-PREV !
-         RUN-N @ 1+ RUN-N !
+   0 ACC !  0 RUN-N !  0 RUN-PREV !  0 STORED-AT !
+   RUN-GROUPS @ 0 ?do
+      RUN0 @ i GROUP-SET? if
+         i GROUP-CELLS * {: base:n :}
+         GROUP-CELLS 0 ?do
+            RUN-BM0 @ STORED-AT @ + i CELL-BITS / + U8@
+            i CELL-BITS mod rshift  1 and 0<> if
+               base i + 1+ CELL-BYTES * {: end:n :}
+               end DATA-SPAN @ > if E-ES-WALK throw then
+               RBYTES0 @ ACC @ +  ETEXT-END RBYTES0 @ ACC @ + -  RUN-V@ {: v:n w:n :}
+               ACC @ w + ACC !
+               end RUN-PREV !
+               RUN-N @ 1+ RUN-N !
+            then
+         loop
+         STORED-AT @ GROUP-BYTES + STORED-AT !
       then
    loop
+   STORED-AT @ RUN-STORED @ <> if E-ES-WALK throw then
    ACC @ ;
 
 : BOOTRUN-MEASURE ( n -- n ) {: at:n :}
@@ -563,8 +594,12 @@ AOT-NAMES-CAP constant NAMES-CAP
    DSITE-N @ 4 TAKE-ROWS DSITE0 !
    TAKE-CELL ETEXT-END ?BOUND XTOFF-N !
    XTOFF-N @ XTOFF-ROW TAKE-ROWS XTOFF0 !
-   TAKE-CELL ETEXT-END ?BOUND RUN-BYTES !
+   TAKE-CELL ETEXT-END ?BOUND RUN-GROUPS !
+   TAKE-CELL ETEXT-END ?BOUND RUN-STORED !
+   RUN-GROUPS @ PMAP-BYTES RUN-PMAP !
+   RUN-PMAP @ RUN-STORED @ + RUN-BYTES !
    RUN-BYTES @ TAKE-RUN RUN0 !
+   RUN0 @ RUN-PMAP @ + RUN-BM0 !
    CUR @ RBYTES0 !                                \ the values begin where the bitmap ended
    RUN-BYTES-MEASURE RBYTES-LEN !
    RBYTES-LEN @ TAKE-RUN drop
@@ -729,7 +764,9 @@ variable BK-DZERO  variable BK-PAD
    s" aot/data-sites" DSITE0 @ DSITE-N @ 4 * PADDED SPAN B-OTHER ROW
    1 TILE-CELLS
    s" aot/address-cells" XTOFF0 @ XTOFF-N @ XTOFF-ROW * PADDED SPAN B-OTHER ROW
-   1 TILE-CELLS
+   2 TILE-CELLS
+   \ Group count and stored bytes are framing cells, as every other count is;
+   \ this row is the presence map plus the groups that map says are there.
    s" aot/data-cell-bitmap" RUN0 @ RUN-BYTES @ PADDED SPAN B-OTHER ROW
    s" aot/data-cell-values" RBYTES0 @ RBYTES-LEN @ PADDED SPAN B-DATA ROW
    2 TILE-CELLS
@@ -1606,21 +1643,36 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
 
 \ A BITMAP BYTE IS CHARGED WHOLE, to the owner its first cell lands on: the
 \ eight cells it covers cost one byte however many of them are present, and
-\ splitting that byte eight ways would report bits as bytes.
+\ splitting that byte eight ways would report bits as bytes. A presence map byte
+\ is charged the same way over the span its eight groups cover, so every byte the
+\ image spends on the bitmap reaches an owner or the unowned column.
 : CHARGE-BM-BYTE ( n n -- ) {: off:n bytes:n :}
    off OWNER-AT {: k:n :}
    k 0 < if UNOWNED-ROWB @ bytes + UNOWNED-ROWB ! exit then
    k DOVER @ bytes + k DOVER ! ;
 
+\ An absent group costs nothing and is charged to nobody: that is the saving the
+\ grouping exists for, and an owner whose whole span is `allot`ed room shows it
+\ as a bitmap cost that is no longer there.
 : CHARGE-RUNS ( -- )
    0 UNOWNED-BYTES !  0 UNOWNED-RUNS !  0 UNOWNED-ROWB !
-   0 ACC !
-   RUN-BYTES @ CELL-BITS * 0 ?do
-      i CELL-BITS mod 0= if i CELL-BYTES * 1 CHARGE-BM-BYTE then
-      RUN0 @ i CELL-BITS / + U8@  i CELL-BITS mod rshift  1 and 0<> if
-         RBYTES0 @ ACC @ +  ETEXT-END RBYTES0 @ ACC @ + -  RUN-V@ {: v:n w:n :}
-         i CELL-BYTES * w CHARGE-CELL
-         ACC @ w + ACC !
+   0 ACC !  0 STORED-AT !
+   RUN-PMAP @ 0 ?do
+      i CELL-BITS * GROUP-CELLS * CELL-BYTES * 1 CHARGE-BM-BYTE
+   loop
+   RUN-GROUPS @ 0 ?do
+      RUN0 @ i GROUP-SET? if
+         i GROUP-CELLS * {: base:n :}
+         GROUP-CELLS 0 ?do
+            i CELL-BITS mod 0= if base i + CELL-BYTES * 1 CHARGE-BM-BYTE then
+            RUN-BM0 @ STORED-AT @ + i CELL-BITS / + U8@
+            i CELL-BITS mod rshift  1 and 0<> if
+               RBYTES0 @ ACC @ +  ETEXT-END RBYTES0 @ ACC @ + -  RUN-V@ {: v:n w:n :}
+               base i + CELL-BYTES * w CHARGE-CELL
+               ACC @ w + ACC !
+            then
+         loop
+         STORED-AT @ GROUP-BYTES + STORED-AT !
       then
    loop ;
 
@@ -1961,9 +2013,10 @@ variable HEAD-W     variable HEAD-Z
 \ THE BLOB is named by the startup's single code-base-relative address into x9
 \ (EMIT-DATA-COPY loads the sparse header there through src/habu/aot-lib.f
 \ TEXT-ADR,; test/gate-aot-image.f already admits exactly one such sequence in
-\ the startup), and the blob then frames itself: a u32 of encoded row bytes,
-\ that many varint (gap, length) rows, then the bytes those rows describe. The
-\ format is the AOT-WINDOW row (src/habu/aot-decl.f), so RUN-V@ above decodes it.
+\ the startup), and the blob then frames itself: a u32 of groups and a u32 of
+\ stored bitmap bytes, the presence map and those groups, then one varint per
+\ present cell. The format is the AOT-WINDOW encoding (src/habu/aot-decl.f), so
+\ RUN-V@ above decodes a cell and GROUP-SET? reads the map.
 \
 \ THE ROW COUNT is the MOVZ/MOVK chain EMIT-XT-CELLS loads into x11, found
 \ behind the three-instruction idiom that rounds the byte cursor up to the rows'
@@ -1998,28 +2051,45 @@ variable ROWS-END
 
 \ One pass of the AOT-WINDOW bitmap, throwing the walk's own refusal on a cell
 \ the format cannot express, so a candidate offset that is not a blob comes back
-\ as a failed walk rather than as an exit.
+\ as a failed walk rather than as an exit. The map's absent groups are the walk's
+\ own step: a blob whose stored bytes do not meet the groups its map claims is
+\ not a blob.
 : BLOB-ROWS-WALK ( -- )
-   0 ACC !  0 RUN-N !  0 RUN-PREV !
-   ROWS-END @ RUN-AT @ - {: bm:n :}
-   bm CELL-BITS * 0 ?do
-      RUN-AT @ i CELL-BITS / + U8@  i CELL-BITS mod rshift  1 and 0<> if
-         i 1+ CELL-BYTES * {: end:n :}
-         end DATA-SIZE > if E-ES-WALK throw then
-         ROWS-END @ ACC @ +  TEXT-SIZE ROWS-END @ ACC @ + -  RUN-V@ {: v:n w:n :}
-         ACC @ w + ACC !
-         end RUN-PREV !
-         RUN-N @ 1+ RUN-N !
+   0 ACC !  0 RUN-N !  0 RUN-PREV !  0 STORED-AT !
+   RUN-GROUPS @ 0 ?do
+      RUN-AT @ i GROUP-SET? if
+         i GROUP-CELLS * {: base:n :}
+         GROUP-CELLS 0 ?do
+            RUN-BM0 @ STORED-AT @ + i CELL-BITS / + U8@
+            i CELL-BITS mod rshift  1 and 0<> if
+               base i + 1+ CELL-BYTES * {: end:n :}
+               end DATA-SIZE > if E-ES-WALK throw then
+               ROWS-END @ ACC @ +  TEXT-SIZE ROWS-END @ ACC @ + -  RUN-V@ {: v:n w:n :}
+               ACC @ w + ACC !
+               end RUN-PREV !
+               RUN-N @ 1+ RUN-N !
+            then
+         loop
+         STORED-AT @ GROUP-BYTES + STORED-AT !
       then
-   loop ;
+   loop
+   STORED-AT @ RUN-STORED @ <> if E-ES-WALK throw then ;
+
+\ The blob's header, in the order src/habu/aot-lib.f BUILD-SPARSE-DATA writes it.
+8 constant BLOB-HDR
 
 : BLOB-AT? ( n -- bool ) {: at:n :}
-   at 4 IN-IMAGE? 0= if false exit then
-   at U32@ {: rowb:n :}
-   rowb 0 < rowb TEXT-SIZE > or if false exit then
-   at 4 + rowb + {: rows-end:n :}
+   at BLOB-HDR IN-IMAGE? 0= if false exit then
+   at U32@ {: groups:n :}
+   at 4 + U32@ {: stored:n :}
+   groups TEXT-SIZE > stored TEXT-SIZE > or if false exit then
+   groups PMAP-BYTES {: pmap:n :}
+   pmap stored + {: rowb:n :}
+   at BLOB-HDR + rowb + {: rows-end:n :}
    rows-end TEXT-SIZE > if false exit then
-   rows-end ROWS-END !  at 4 + RUN-AT !
+   rows-end ROWS-END !  at BLOB-HDR + RUN-AT !
+   at BLOB-HDR + pmap + RUN-BM0 !
+   groups RUN-GROUPS !  stored RUN-STORED !  pmap RUN-PMAP !
    [: BLOB-ROWS-WALK ;] catch 0<> if false exit then
    rows-end ACC @ + TEXT-SIZE > if false exit then
    rowb BLOB-ROWB !  ACC @ BLOB-CARRIED !  RUN-N @ BLOB-RUNS !
@@ -2176,7 +2246,7 @@ $D37EF54A constant XTC-LSL2
    -1 ZCOL !  BUDGET-BEGIN
    ELF-ROWS
    s" app/code" CODE-OFF BLOB-AT @ CODE-OFF - SPAN B-CODE ROW
-   s" app/data-cell-bitmap" BLOB-AT @ BLOB-RUNS @ 0 > if 4 BLOB-ROWB @ + else 0 then
+   s" app/data-cell-bitmap" BLOB-AT @ BLOB-RUNS @ 0 > if BLOB-HDR BLOB-ROWB @ + else 0 then
       SPAN B-OTHER ROW
    s" app/data-cell-values" BLOB-STOP @ BLOB-CARRIED @ - BLOB-CARRIED @ SPAN B-DATA ROW
    s" app/row-align-pad" BLOB-STOP @ RELOC-AT @ BLOB-STOP @ - SPAN B-PAD ROW

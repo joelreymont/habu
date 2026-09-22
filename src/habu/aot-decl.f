@@ -334,6 +334,8 @@ $1000000 constant SPAN-CAP
 8 constant CELL-BYTES                \ the grid's cell: the DATA cell a declared address sits on
 8 constant CELL-BITS                 \ cells one bitmap byte covers
 CELL-BYTES CELL-BITS * constant BM-BYTE-SPAN
+64 constant GROUP-BYTES              \ bitmap bytes one image presence bit covers
+GROUP-BYTES BM-BYTE-SPAN * constant GROUP-SPAN   \ DATA bytes such a group covers
 10 constant VMAX                     \ an unsigned LEB128 of a whole cell is at most ten bytes
 \ THE GRID IS THE DATA CELL GRID, NOT THE WINDOW'S OWN. Every declared address
 \ cell in the window is eight-byte aligned in DATA - the atomics fault on a
@@ -356,6 +358,73 @@ DYNAMIC-BUFFER BM-STORAGE n
 variable CELL-N                      \ present cells, which the encoded bytes no longer state
 variable BM-LEN                      \ bytes of bitmap, trailing absent cells dropped
 variable CONTENT-END                 \ one past the last present cell: where a merge may pad to
+
+\ ---- the image's second level: a presence bit per GROUP-BYTES bitmap bytes -----
+\ MOST OF THE BITMAP IS ZERO, because most of the span is room `allot`ed and
+\ never written: the release engine's 130,792 bitmap bytes include 69,906 that
+\ are all clear, and they are clear in runs, not singly. A bit per GROUP-BYTES
+\ bytes (512 cells, GROUP-SPAN bytes of DATA) drops a group that holds no present
+\ cell from the image entirely: measured on that engine, 2,044 groups cost a
+\ 256-byte presence map and save 63,360 bytes of bitmap.
+\ THE GROUPING IS AN IMAGE ENCODING, NOT THE CAPTURE FORMAT. The capture, the
+\ artifact sections and a merge keep the flat bitmap, where appending a window is
+\ a concatenation (src/habu/aot-file.f PLACE-WDATA) and a cell's bit is at a
+\ fixed place; this compacts that bitmap once for a writer, and both emitted
+\ readers (src/habu/habu2.f AOT-WINDOW:APPLY-CELLS for the baked window,
+\ src/habu/aot-lib.f EMIT-DATA-COPY for a stripped image) decode it with one
+\ outer loop over the presence bits around the same per-byte walk.
+\ Image form, in both writers:
+\   [groups G][stored bytes S][presence map, ceil(G/8) bytes, group g in bit
+\    g mod 8 of byte g div 8, low bit first][the present groups, GROUP-BYTES
+\    bytes each in group order, the last zero-padded][the values]
+BM-CAP GROUP-BYTES / constant GROUP-CAP
+GROUP-CAP CELL-BITS / constant PMAP-CAP
+PMAP-CAP BM-CAP + constant CBM-CAP
+DYNAMIC-BUFFER CBM-STORAGE n
+: CBM-BUF ( -- ptr u8 )
+   CBM-CAP CELL / CBM-STORAGE-RESERVE
+   0 CBM-STORAGE BYTE-VIEW ;
+variable CBM-GROUPS                  \ groups the presence map covers
+variable CBM-STORED                  \ bytes of stored groups, GROUP-BYTES each
+
+: CBM-PMAP-BYTES ( -- n ) CBM-GROUPS @ CELL-BITS 1- + CELL-BITS / ;
+
+\ The one run the image carries for the bitmap: the presence map and the groups
+\ it says are there. Derived, never stored, so it cannot disagree with them.
+: CBM-LEN ( -- n ) CBM-PMAP-BYTES CBM-STORED @ + ;
+
+: CBM-BIT! ( n -- ) {: g:n :}
+   g CELL-BITS / {: at:n :}
+   CBM-BUF at + c@  1 g CELL-BITS mod lshift or  CBM-BUF at + c! ;
+
+: CBM-BIT@ ( n -- bool ) {: g:n :}
+   CBM-BUF g CELL-BITS / + c@  g CELL-BITS mod rshift  1 and 0<> ;
+
+\ A flat bitmap in, the compact form in CBM-BUF. Two linear passes over the
+\ bitmap bytes: the first says which group holds a present cell, the second
+\ copies those groups out, so no group's bytes are ever read before its bit is
+\ known. It is a function of the bitmap it is handed and holds nothing between
+\ calls, which is why a merge that extends the bitmap needs no invalidation
+\ here - the next accounting rebuilds it (AOT-SECTION:BODY-BYTES).
+: BM-COMPACT ( ptr u8 n -- ) {: bm:ptr len:n :}
+   len GROUP-BYTES 1- + GROUP-BYTES / {: g:n :}
+   g GROUP-CAP > if
+      s" aot: the window bitmap exceeds the AOT group map" 74 die then
+   g CBM-GROUPS !  0 CBM-STORED !
+   CBM-BUF {: buf:ptr :}
+   CBM-PMAP-BYTES {: pm:n :}
+   pm 0 ?do 0 buf i + c! loop
+   len 0 ?do
+      bm i + c@ 0<> if i GROUP-BYTES / CBM-BIT! then
+   loop
+   g GROUP-BYTES * 0 ?do
+      i GROUP-BYTES / CBM-BIT@ if
+         i len < if bm i + c@ else 0 then
+         buf pm + CBM-STORED @ + c!
+         CBM-STORED @ 1+ CBM-STORED !
+      then
+   loop ;
+
 \ A present cell costs its own varint and no more, so this cap answers to the
 \ content: the release engine's window encodes its 300,575 present cells in
 \ 834,153 value bytes, 2.8 bytes a cell, and the arithmetic worst case for that
@@ -648,17 +717,22 @@ public
    count AOT-SECTION-CAP width / > if REFUSE then
    used count width * +BYTES ;
 
-\ Sixteen scalar/count cells frame the common baked section. BYTES, rounds
+\ Seventeen scalar/count cells frame the common baked section. BYTES, rounds
 \ each byte run to four bytes; packed rows already have that alignment.
+\ THE BITMAP IS CHARGED IN ITS IMAGE FORM, which is the grouped one, so this
+\ rebuilds it from the flat capture first: a merge can still have extended that
+\ bitmap after the capture, and src/habu/habu2.f EMIT-AOT-SEED takes this count
+\ immediately before it emits those same bytes.
 : BODY-BYTES ( -- n )
-   16 cells
+   AOT-WINDOW:BM-BUF@ AOT-WINDOW:BM-LEN @ AOT-WINDOW:BM-COMPACT
+   17 cells
    AOT-BLOB-LEN @ +BYTES
    AOT-REC-N @ AOT-CREC-ROW +ROWS
    AOT-SITE-N @ SITE-ROW +ROWS
    AOT-NAMES-LEN @ +BYTES
    AOT-DSITE-N @ 4 +ROWS
    AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-ROW +ROWS
-   AOT-WINDOW:BM-LEN @ +BYTES
+   AOT-WINDOW:CBM-LEN +BYTES
    AOT-WINDOW:VAL-LEN @ +BYTES
    AOT-CSITE-N @ 4 +ROWS
    AOT-XTSITE:N @ 8 +ROWS

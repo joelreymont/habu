@@ -5418,35 +5418,65 @@ public
 \ bitmap carries, present or not, and x25 advances by each value's own width with
 \ no bit carrying an offset into it. An all-clear bitmap byte costs one branch
 \ and one add for eight cells, which is what makes a window of mostly `allot`ed
-\ room cheap to lay down. The bitmap is bounded by its section's byte length, not
-\ by a count, because it ends at the highest present cell.
+\ room cheap to lay down.
+\ THE BITMAP ITSELF IS GROUPED (src/habu/aot-decl.f AOT-WINDOW:BM-COMPACT), so an
+\ all-clear GROUP-BYTES bytes of it is not in the image at all and costs one
+\ branch and one add for GROUP-SPAN bytes of DATA. The outer loop walks the
+\ presence map's bits; a set bit runs the byte walk over that group's stored
+\ bytes, a clear one steps the destination past the group. The map is bounded by
+\ its group count and the last group is padded to GROUP-BYTES, so the byte walk
+\ is a fixed count rather than a section end: the only difference in shape from
+\ src/habu/aot-lib.f EMIT-DATA-COPY, whose stored groups are framed by the same
+\ two numbers read out of the blob's own header instead of out of two labels.
+\ x16 carries the presence map's byte length only until x9 and x23 are derived
+\ from it, and is the groups-left counter for the rest of the loop.
 : APPLY-CELLS ( -- )
-   LBL LBL LBL LBL LBL LBL
-   {: bmtop:label bmdone:label bittop:label bitdone:label bitnext:label empty:label :}
-   23 10 LBMLEN LABEL@ TADR,  23 23 0 LDR,          \ x23 = bitmap byte length
-   21 10 LBM LABEL@ TADR,                           \ x21 = bitmap cursor
-   23 21 23 ADD,                                    \ x23 = one past the bitmap
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: gtop:label gdone:label ptop:label pnext:label absent:label
+      bmtop:label bmdone:label bittop:label bitdone:label bitnext:label empty:label :}
+   23 10 LBMGROUPS LABEL@ TADR,  23 23 0 LDR,       \ x23 = groups the map covers
+   21 10 LBM LABEL@ TADR,                           \ x21 = presence map cursor
+   16 23 7 ADDI,  16 16 3 LSRI,                     \ x16 = ceil(groups / 8) map bytes
+   9 21 16 ADD,                                     \ x9 = the stored groups, after the map
+   23 9 0 ADDI,                                     \ x23 = one past the presence map
    25 10 LVALS LABEL@ TADR,                         \ x25 = value cursor
    13 3 0 ADDI,                                     \ x13 = destination cursor, at the span's base
-   bmtop LBL,  21 23 CMP,  C-CS bmdone BCOND,
-      24 21 0 LDRB,  21 21 1 ADDI,                  \ x24 = this byte's eight cells
-      24 empty CBZ,
-      22 CELL-BITS MOVZ,                            \ x22 = cells left in the byte
-      bittop LBL,
-         22 bitdone CBZ,
-         15 24 1 ANDI,
-         15 bitnext CBZ,
-            15 25 14 12 11 EMIT-VGET                \ x15 = the present cell's value
-            15 13 0 STR,
-         bitnext LBL,
-         24 24 1 LSRI,  13 13 CELL-BYTES ADDI,  22 22 1 SUBI,
-         bittop B,
-      bitdone LBL,
-      bmtop B,
-   empty LBL,
-      13 13 BM-BYTE-SPAN ADDI,                      \ eight absent cells: step the destination
-      bmtop B,
-   bmdone LBL, ;
+   gtop LBL,  21 23 CMP,  C-CS gdone BCOND,
+      7 21 0 LDRB,  21 21 1 ADDI,                   \ x7 = this byte's eight groups
+      16 8 MOVZ,                                    \ x16 = groups left in the byte
+      ptop LBL,
+         16 gtop CBZ,
+         15 7 1 ANDI,
+         15 absent CBZ,
+            17 GROUP-BYTES MOVZ,                    \ x17 = bitmap bytes left in the group
+            bmtop LBL,
+               17 bmdone CBZ,
+               24 9 0 LDRB,  9 9 1 ADDI,            \ x24 = this byte's eight cells
+               17 17 1 SUBI,
+               24 empty CBZ,
+               22 CELL-BITS MOVZ,                   \ x22 = cells left in the byte
+               bittop LBL,
+                  22 bitdone CBZ,
+                  15 24 1 ANDI,
+                  15 bitnext CBZ,
+                     15 25 14 12 11 EMIT-VGET       \ x15 = the present cell's value
+                     15 13 0 STR,
+                  bitnext LBL,
+                  24 24 1 LSRI,  13 13 CELL-BYTES ADDI,  22 22 1 SUBI,
+                  bittop B,
+               bitdone LBL,
+               bmtop B,
+            empty LBL,
+               13 13 BM-BYTE-SPAN ADDI,             \ eight absent cells: step the destination
+               bmtop B,
+            bmdone LBL,
+         pnext LBL,
+         7 7 1 LSRI,  16 16 1 SUBI,
+         ptop B,
+   absent LBL,
+      15 GROUP-SPAN MOVZ,  13 13 15 ADD,            \ an absent group: step the destination
+      pnext B,
+   gdone LBL, ;
 
 \ Heap cell locations move with the captured window; fixed engine cells remain
 \ DATA-relative. The value has a separate null/CODE/DATA/name coordinate.
@@ -10011,7 +10041,8 @@ package LABELS
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
    LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !  LBL LAOTNAMESLEN !
    LBL LAOTNDSITE !  LBL LAOTDSITES !  LBL LAOTDATAD0 !  LBL LAOTDATASIZE !
-   LBL AOT-WINDOW:LBMLEN !  LBL AOT-WINDOW:LBM !  LBL AOT-WINDOW:LVALS !
+   LBL AOT-WINDOW:LBMGROUPS !  LBL AOT-WINDOW:LBMBYTES !
+   LBL AOT-WINDOW:LBM !  LBL AOT-WINDOW:LVALS !
    LBL AOT-WINDOW:LNXTOFF !  LBL AOT-WINDOW:LXTOFFS !
    LBL LAOTNCSITE !  LBL LAOTCSITES !  LBL LAOTCODEB0 !
    LBL AOT-XTSITE:LCOUNT !  LBL AOT-XTSITE:LROWS !
@@ -10318,8 +10349,8 @@ public
 ;package
 package AOT-WINDOW
 public
-: EMIT-BM ( -- )   \ the presence bitmap, one bit a cell, low bit first
-   BM-LEN @ 0 > IF BM-BUF@ BM-LEN @ BYTES, THEN ;
+: EMIT-BM ( -- )   \ the presence map over the groups, then the present groups
+   CBM-LEN 0 > IF CBM-BUF CBM-LEN BYTES, THEN ;
 : EMIT-VALS ( -- )   \ one unsigned LEB128 per present cell, in cell order
    VAL-LEN @ 0 > IF VAL-BUF@ VAL-LEN @ BYTES, THEN ;
 : EMIT-XTOFFS ( -- )   \ packed (cell offset, typed target) u32 rows
@@ -10416,7 +10447,8 @@ variable CUR
    LAOTDSITES LABEL@ LBL,  EMIT-AOT-DSITES
    AOT-WINDOW:LNXTOFF LABEL@ LBL,  AOT-WINDOW:XTOFF-N @ DCQ,
    AOT-WINDOW:LXTOFFS LABEL@ LBL,  AOT-WINDOW:EMIT-XTOFFS
-   AOT-WINDOW:LBMLEN LABEL@ LBL,  AOT-WINDOW:BM-LEN @ DCQ,
+   AOT-WINDOW:LBMGROUPS LABEL@ LBL,  AOT-WINDOW:CBM-GROUPS @ DCQ,
+   AOT-WINDOW:LBMBYTES LABEL@ LBL,  AOT-WINDOW:CBM-STORED @ DCQ,
    AOT-WINDOW:LBM LABEL@ LBL,  AOT-WINDOW:EMIT-BM
    AOT-WINDOW:LVALS LABEL@ LBL,  AOT-WINDOW:EMIT-VALS
    LAOTCODEB0 LABEL@ LBL,  AOT-CODE-B0 @ DCQ,

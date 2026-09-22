@@ -216,7 +216,11 @@ variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATA
 \ section emitters, boot routines) is in src/habu/habu2.f under the same package.
 package AOT-WINDOW
 public
-variable LBMLEN  variable LBM  variable LVALS  variable LNXTOFF  variable LXTOFFS
+\ LBMGROUPS and LBMBYTES frame the grouped bitmap LBM carries: the groups the
+\ presence map covers and the bytes the present ones take (src/habu/aot-decl.f
+\ AOT-WINDOW:BM-COMPACT).
+variable LBMGROUPS  variable LBMBYTES  variable LBM  variable LVALS
+variable LNXTOFF  variable LXTOFFS
 \ The window's wordlist base and span, and the window-relative ids it sealed. The
 \ seed rebases every captured wid through the first pair and applies the third
 \ after that rebase, which is the only moment the target's own base is known.

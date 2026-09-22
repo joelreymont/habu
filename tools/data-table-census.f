@@ -37,14 +37,19 @@
 \ counts the bytes inside the extent that are not zero. `runs` and `cost` model
 \ what the capture would charge for the extent, so they follow the scanners
 \ (aot-capture.f ACAP-SCAN-SEG, aot-lib.f BUILD-SPARSE-DATA) rather than the raw
-\ content: the extent is cells, every cell costs one bitmap bit, and a cell that
-\ holds anything costs the unsigned LEB128 of its value as well. `cost` is those
-\ value bytes plus the extent's own bitmap bytes. A table of cells holding small
-\ numbers still costs more than its non-zero bytes;
+\ content: a cell that holds anything costs the unsigned LEB128 of its value, and
+\ the bitmap travels in groups - AOT-WINDOW:GROUP-SPAN bytes of the extent whose
+\ cells are all zero cost nothing at all, and one that holds any cell costs its
+\ whole AOT-WINDOW:GROUP-BYTES of bitmap (src/habu/aot-decl.f BM-COMPACT).
+\ `cost` is those value bytes plus the groups the extent keeps. A table of cells
+\ holding small numbers still costs more than its non-zero bytes;
 \ sort on this column rather than on non-zero.
 \
 \ Runs are counted inside one owner's extent, so an owner boundary splits a run
 \ the capture would keep whole. That over-counts by at most one row per owner.
+\ Groups are counted from the extent's own base rather than from the capture
+\ base the image's map is aligned to, so two neighbours sharing a group are each
+\ charged for it: at most one group per owner boundary.
 
 \ The boot DP, latched before this tool's own requires allocate anything. The
 \ census covers [0, DP0); everything the tool itself allots lands above it.
@@ -122,18 +127,26 @@ variable CV
    loop
    CV @ ;
 
+\ The group a present cell puts in the image, charged once: the cells walk in
+\ ascending order, so a group is charged when the walk first enters it.
+variable GRP-LAST
+
 : SCAN ( n n -- ) {: base:n len:n :}
-   0 NZ !  0 FILL !  0 RUNS !  0 PAY !  0 ROWB !
+   0 NZ !  0 FILL !  0 RUNS !  0 PAY !  0 ROWB !  -1 GRP-LAST !
    len 0 ?do
       base i + HEAP@ c@ 0<> if  NZ @ 1+ NZ !  i 1+ FILL !  then
    loop
    len AOT-WINDOW:CELL-BYTES 1- + AOT-WINDOW:CELL-BYTES / {: cells:n :}
-   cells AOT-WINDOW:CELL-BITS 1- + AOT-WINDOW:CELL-BITS / ROWB !
    cells 0 ?do
       base i len CELL@ {: v:n :}
       v 0<> if
          RUNS @ 1+ RUNS !
          PAY @ v AOT-WINDOW:CELL-VLEN + PAY !
+         i AOT-WINDOW:CELL-BYTES * AOT-WINDOW:GROUP-SPAN / {: g:n :}
+         g GRP-LAST @ <> if
+            ROWB @ AOT-WINDOW:GROUP-BYTES + ROWB !
+            g GRP-LAST !
+         then
       then
    loop ;
 
