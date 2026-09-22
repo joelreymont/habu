@@ -489,6 +489,10 @@ SUITE stripped-quotation
    test/stripped-quotation.f
 ;SUITE
 
+SUITE stripped-lifecycle-prepare
+   test/stripped-lifecycle-prepare.f
+;SUITE
+
 SUITE stripped-address
    test/stripped-address.f
 ;SUITE

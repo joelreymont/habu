@@ -6,6 +6,7 @@
 \ src/habu/app-image.f, and the eight lib modules app-image-core.f requires. A
 \ module the application already loaded is shared in the harmless direction: the
 \ linker uses the application's copy, at build time only.
+require lib/image-lifecycle.f
 require src/habu/app-image.f
 require src/os/script-argv.f
 require src/habu/aot-decl.f
@@ -46,9 +47,22 @@ private
    then ;
 
 
+\ THE LIFECYCLE CALLBACKS RUN HERE, BEFORE THE CAPTURE READS THE APPLICATION'S
+\ DATA. A registrant holds process-local state - lib/task.f's eight dlsym cells,
+\ a mapped buffer, an open session - taken by THIS process while the application
+\ loaded, and the image restores none of it. src/habu/snap.f RETIRE-AND-PERSIST
+\ runs PREPARE first for the snapshot path and src/habu/native-runtime.f
+\ CAPTURE-PREPARE does the same for the engine build; the stripped link did not,
+\ so an application whose load-time code took a foreign address was refused with
+\ `stripped AOT persistent data holds a pointer into memory the build mapped
+\ word=MUNMAP-XT` (test/stripped-lifecycle-prepare.f). Last before LINK, not
+\ earlier: phase two loads the linker above the latched span and shares whatever
+\ lib modules the application itself loaded, so a cache released any sooner
+\ could be taken again inside the span.
 : NATIVE-BUILD ( -- )
    AOT-WINDOW-LATCHED
    LINK-OPTIONS
+   IMAGE-LIFECYCLE:PREPARE
    LINK ;
 
 public
