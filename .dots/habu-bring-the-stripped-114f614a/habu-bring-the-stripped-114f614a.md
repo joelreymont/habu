@@ -1,6 +1,6 @@
 ---
 title: Bring the stripped tenderd under 500 KB
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-09-22T11:30:53.082560+03:00"
