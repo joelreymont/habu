@@ -1,0 +1,9 @@
+---
+title: Decide the tier of the 60 native rows now run at tier 0
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-22T07:56:18.186982+03:00"
+---
+
+Problem (measured by the tier-prepend lane, landed 2716d8bd; sweep in ~/.cache/hazel/tier-sweep-2026-09-22.txt): until that commit the runner prepended test/compiler/aot-mode.f to every test/compiler/native-*.f row, so all 77 ran at tier 1 under test/run.f and none at tier 0. The lane gave 1 set-tier only to the 13 rows red at tier 0; 64 rows are green at both tiers and four of those select the tier inside the file (native-tail, -trap, -string, -rename-rows), so these 60 now run at the default tier only and the gate no longer measures the optimizing compiler's lowering of what they exercise: a64ir address-spill again arm-frame-order case chain code-span colon create-does dead-path declaration-diagnostic dictionary-append dictionary-publish dictionary-record div-refusal dstack-alias edge-permutation effect elaborate emit eval exit feed fetch-check fetch-snapshot fetch-terms finally fused-moves generated-constructor generic-calls hir identity-spill internal-call j layout-control leave literals local-ambiguity local-case locals-scope loop-frame-order many-locals match order-exit plusloop prefix-declarations product-locals provider-rows quot-scope regalloc select session stored-quot string-forms switch tail-owner tape tick wide-mem word-binding (each test/compiler/native-<name>.f). Acceptance: for each of the 60, either 1 set-tier before its requires with a one-line reason (its subject is the optimizing compiler's emission or execution), or a -aot twin row in test/gate-stdlib-cases.f when both tiers are the subject, or a comment stating the row is tier-neutral by design; test/run.f green; docs/gate.md's rule unchanged. Files: test/compiler/native-*.f, test/gate-stdlib-cases.f. Depends: none. Ownership: hazel (gate/test load path). Claim: unassigned.
