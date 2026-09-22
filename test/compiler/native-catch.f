@@ -1,4 +1,7 @@
 \ native-catch.f - production `catch` compilation.
+\ Tier 1 first: the `catch` lowering asserted below is the optimizing
+\ compiler's (48 rows fail at the default tier).
+1 set-tier
 
 require lib/test.f
 require lib/prelude.f

@@ -21,7 +21,11 @@
 \ engine, whose captured dispatch cells arrive trapped, needs the first install of
 \ the session to refill them.
 \
-\ Run: bin/hb --load test/compiler/aot-mode.f test/compiler/native-tape-owner.f
+\ Run: bin/hb --load test/compiler/native-tape-owner.f
+\
+\ Tier 1 first: the observer the claims below read is armed by the optimizing
+\ compiler, so INSTALLED-BY is a tier-1 fact (1 row fails at the default tier).
+1 set-tier
 
 require lib/test.f
 require lib/errors.f

@@ -1,4 +1,7 @@
 \ codegen-tail-probe.f - reading calls and exits from production emission.
+\ Tier 1 first: the call and exit counts read below are the optimizing
+\ compiler's emission (15 rows fail at the default tier).
+1 set-tier
 
 require lib/prelude.f
 require lib/test.f

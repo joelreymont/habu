@@ -1,4 +1,8 @@
 \ Tail transfers keep the callee's stack position even when another is cheaper.
+\ Tier 1 first: a tail transfer is lowered only by the optimizing compiler, so
+\ the placement asserted below is a tier-1 fact (1 row fails at the default tier).
+1 set-tier
+
 require lib/test.f
 require tools/codegen-tail-probe.f
 

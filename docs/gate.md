@@ -30,6 +30,11 @@ successful runs remove it.
   closes its `package` before `T-REPORT`; a later suite otherwise dies exit 75
   with a bare token, one or two suites after the culprit. Fixture identities
   carry the test's own tag so two suites never intern one name.
+- A suite whose assertions depend on the compiler tier selects it itself:
+  `1 set-tier` before its requires, because only code compiled after that line
+  belongs to the tier. The runner prepends nothing, so every row measures what
+  `bin/hb --load <file>` measures. `test/compiler/aot-mode.f` is only for a
+  caller that runs one unchanged file at both tiers (the `*-aot` twin rows).
 - `bin/hb file.f` (no `--load`) drops to a REPL after a clean load and blocks
   on stdin — it looks like a hang, rc 124 under a timeout. Pipe `< /dev/null`,
   and give a spawned build child `/dev/null` stdin rather than letting it

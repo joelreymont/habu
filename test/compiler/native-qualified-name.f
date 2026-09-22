@@ -5,6 +5,9 @@
 \ ordinary colon path in both directions: a RESULT:OK-shaped definition must
 \ compile, and a pending record moved to another package with the same tail must
 \ fail at the compiler's name-identity gate rather than pass on its tail alone.
+\ Tier 1 first: that gate is the optimizing compiler's - at the default tier
+\ the rehomed record passes it and the file dies on its own diagnostic.
+1 set-tier
 
 require src/compiler/native/compiler.f
 

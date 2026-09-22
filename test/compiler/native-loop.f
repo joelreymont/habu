@@ -1,4 +1,7 @@
 \ native-loop.f - production counted-loop folding and execution.
+\ Tier 1 first: counted-loop folding is the optimizing compiler's, so the
+\ inventory below is a tier-1 fact (13 rows fail at the default tier).
+1 set-tier
 
 require lib/test.f
 require lib/prelude.f

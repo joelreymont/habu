@@ -1,4 +1,7 @@
 \ native-defer.f - production compilation of `[: … ;] is FOO`.
+\ Tier 1 first: the deferred-target refusals asserted below are the optimizing
+\ compiler's (2 rows fail at the default tier).
+1 set-tier
 
 require src/habu/address-cells.f
 require lib/test.f

@@ -4,6 +4,9 @@
 \ what these cases read is the whole production chain's answer for an ordinary
 \ definition: the instructions a body compiles to, and the body's own value when
 \ it runs.
+\ Tier 1 first: instruction selection is the optimizing compiler's, so every
+\ folded pair below is a tier-1 fact (25 rows fail at the default tier).
+1 set-tier
 
 require lib/test.f
 require lib/prelude.f

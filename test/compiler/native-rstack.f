@@ -1,4 +1,7 @@
 \ native-rstack.f - production return-stack operations across control-flow seams.
+\ Tier 1 first: those seams are the optimizing compiler's, so the results below
+\ are tier-1 facts (2 rows fail at the default tier).
+1 set-tier
 
 require test/compiler/native-eval-fixture.f
 require lib/errors.f

@@ -1,4 +1,7 @@
 \ native-exec.f - production compilation of `execute`.
+\ Tier 1 first: the emitted shape of `execute` asserted below is the optimizing
+\ compiler's (2 rows fail at the default tier).
+1 set-tier
 
 require lib/test.f
 require src/compiler/native/compiler.f

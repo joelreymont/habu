@@ -53,22 +53,15 @@ variable WB-U
 : SUITE-RUN-ASYNC ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu:n timeout:n label:ptr labelu:n :}
    path pathu label labelu timeout GT-POOL-START ;
 
-
-
-: SUITE-AOT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" test/compiler/codegen-tail-probe.f" STR= if true exit then
-   a u s" test/compiler/native-" STARTS-WITH?
-   a u s" .f" ENDS-WITH? and ;
-
-: SUITE-ARG+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SUITE-AOT? if
-      s" test/compiler/aot-mode.f" >LEN PROC-ARGV+
-   then
-   a u >LEN PROC-ARGV+ ;
-
+\ Every argv entry goes through as written. The runner used to prepend
+\ test/compiler/aot-mode.f - `1 set-tier` - to every `test/compiler/native-*.f`
+\ row, so a suite whose assertions are tier-1 facts was green here and red on
+\ its own. The tier belongs to the code under test: such a file selects it
+\ before its requires, and every row now measures what `bin/hb --load <file>`
+\ measures.
 : SUITE-HB ( -- )
    PROC-ARGV-RESET
-   s" --load" SUITE-ARG+ ;
+   s" --load" >LEN PROC-ARGV+ ;
 
 \ The product engine, spelled twice for two different readers. The SPAWN is
 \ relative, the way every other spawn of it in the tree is: the gate already has
@@ -135,7 +128,7 @@ variable WB-U
    [: SUITE-FINISH ;] TEST:TEARDOWN!
    [: GT-POOL-DRAIN-SOFT ;] TEST:DRAIN!
    [: SUITE-HB ;] TEST:ARGS-BEGIN!
-   [: SUITE-ARG+ ;] TEST:ARG+!
+   [: >LEN PROC-ARGV+ ;] TEST:ARG+!
    [: SUITE-HB-RUN ;] TEST:RUNNER!
    [: SUITE-WB-RUN ;] TEST:WHITEBOX-RUNNER!
    [: SUITE-HB-RUN-STDIN ;] TEST:STDIN-RUNNER! ;
