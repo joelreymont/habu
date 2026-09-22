@@ -2,6 +2,9 @@
 \ Run: bin/hb --load lib/test/suite-test.f
 
 require lib/test.f
+require lib/string.f
+require lib/process.f
+require lib/test/subject.f
 
 package TEST-FRAMEWORK-TEST
 
@@ -196,6 +199,49 @@ package TEST
 : T-ITEM-OVERFLOW ( -- )
    ITEM-ALLOC drop ;
 
+\ Row-refusal cases run in disposable SUBJECT forks. A row parser reads the live
+\ input stream, so a bad row cannot be staged in this file without swallowing the
+\ assertions after it, and the refusal ends the process it runs in.
+2048 constant T-SUBJ-CAP
+30000 constant T-SUBJ-TIMEOUT-MS
+67 constant T-THROW-RC      \ engine uncaught-throw exit; measured: a bare `-4201 throw` in a SUBJECT fork exits 67
+
+create T-SUBJ-OUT T-SUBJ-CAP allot
+create T-SUBJ-ERR T-SUBJ-CAP allot
+variable T-SUBJ-OUT-U
+variable T-SUBJ-ERR-U
+variable T-SUBJ-EXITED
+variable T-SUBJ-RC
+
+: T-SUBJ-STORE! ( len len outcome -- )
+   MATCH outcome
+     exited OF T-SUBJ-RC ! 0 0= T-SUBJ-EXITED ! ENDOF
+     signaled OF T-SUBJ-RC ! 0 0= 0= T-SUBJ-EXITED ! ENDOF
+     timeout OF 0 T-SUBJ-RC ! 0 0= 0= T-SUBJ-EXITED ! ENDOF
+   ;MATCH
+   LEN>N T-SUBJ-ERR-U !  LEN>N T-SUBJ-OUT-U ! ;
+
+: T-SUBJ-OUT$ ( -- ptr u8 n )
+   T-SUBJ-OUT T-SUBJ-OUT-U @ ;
+
+: T-SUBJ-ERR$ ( -- ptr u8 n )
+   T-SUBJ-ERR T-SUBJ-ERR-U @ ;
+
+: T-RUN-SUBJECT ( ptr u8 n -- )
+   T-SUBJ-OUT T-SUBJ-CAP >LEN T-SUBJ-ERR T-SUBJ-CAP >LEN
+   T-SUBJ-TIMEOUT-MS >MS SUBJECT:RUN T-SUBJ-STORE! ;
+
+\ The refusal names the row on stdout (OVERSIZE's manner) and leaves E-SUITE-ROW
+\ uncaught, so the child dies before it can register or run anything further.
+: T-ROW-REFUSED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
+   src srcu T-RUN-SUBJECT
+   T-SUBJ-EXITED @ TTRUE
+   T-SUBJ-RC @ T-THROW-RC T=
+   T-SUBJ-OUT$ s" test: row " CONTAINS? TTRUE
+   T-SUBJ-OUT$ name nameu CONTAINS? TTRUE
+   T-SUBJ-OUT$ s"  has no ;SUITE" CONTAINS? TTRUE
+   T-SUBJ-ERR$ s" hb: uncaught throw code -4202" CONTAINS? TTRUE ;   \ -4202 is E-SUITE-ROW
+
 T-RESET
 
 \ terminator recognizer: qualified TEST:;SUITE and bare ;SUITE (under `using TEST`)
@@ -219,6 +265,43 @@ s" PARA"        RESERVED-NAME? TTRUE
 s" alpha"       RESERVED-NAME? TFALSE
 ' T-NAME-KW    E-SUITE-NAME TTHROWS
 ' T-NAME-EMPTY E-SUITE-NAME TTHROWS
+
+\ A row opener is never an argument, bare or TEST:-qualified, in any case. The
+\ terminator is tested before this one, and SEQ/PARA open nothing.
+s" SUITE"             ROW-KEYWORD? TTRUE
+s" TEST:;GROUP"       ROW-KEYWORD? TTRUE
+s" test:suite-stdin"  ROW-KEYWORD? TTRUE
+s" ;SUITE"            ROW-KEYWORD? TFALSE
+s" a.f"               ROW-KEYWORD? TFALSE
+s" seq"               ROW-KEYWORD? TFALSE
+
+\ Chain FH: an os-memory row without ;SUITE took `SUITE shadow-lint <paths>` as
+\ its own arguments, so the shadow-lint row was never registered and the suite
+\ count fell by one with nothing naming the missing terminator. The row now
+\ refuses by name and never reaches the count.
+s" TEST:RESET TEST:SUITE os-memory a.f TEST:SUITE next b.f TEST:;SUITE TEST:ITEMS-REGISTERED ."
+s" os-memory" T-ROW-REFUSED
+T-SUBJ-OUT$ s" 1" CONTAINS? TFALSE
+
+\ Same text with the terminator restored: both rows register.
+s" TEST:RESET TEST:SUITE os-memory a.f TEST:;SUITE TEST:SUITE next b.f TEST:;SUITE TEST:ITEMS-REGISTERED ."
+T-RUN-SUBJECT
+T-SUBJ-EXITED @ TTRUE
+T-SUBJ-RC @ 0 T=
+T-SUBJ-OUT$ s" 2" CONTAINS? TTRUE
+
+\ A row that reaches the end of input is the same refusal.
+s" TEST:RESET TEST:SUITE row-eof a.f" s" row-eof" T-ROW-REFUSED
+
+\ One case per remaining row keyword.
+s" TEST:RESET TEST:SUITE row-wb a.f TEST:WHITEBOX-SUITE next b.f TEST:;SUITE"
+s" row-wb" T-ROW-REFUSED
+s" TEST:RESET TEST:SUITE row-stdin a.f TEST:SUITE-STDIN next DATA b.f TEST:;SUITE"
+s" row-stdin" T-ROW-REFUSED
+s" TEST:RESET TEST:SUITE row-group a.f TEST:GROUP SEQ g TEST:;SUITE"
+s" row-group" T-ROW-REFUSED
+s" TEST:RESET TEST:SUITE row-endgroup a.f TEST:;GROUP"
+s" row-endgroup" T-ROW-REFUSED
 
 \ positive end-to-end: SEQ and PARA groups set the mode (read via GROUP-MODE@)
 RESET

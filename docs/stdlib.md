@@ -2229,8 +2229,13 @@ install typed hooks with `TEST:SETUP!`, `TEST:TEARDOWN!`, `TEST:DRAIN!`,
 `TEST:GROUP SEQ name` or `TEST:GROUP PARA name` (the `SEQ`/`PARA` mode is a
 mandatory positional token before the group name), define `TEST:SUITE` or
 `TEST:SUITE-STDIN` entries, close each entry with `TEST:;SUITE`, close the group
-with `TEST:;GROUP`, and execute once with `TEST:RUN`. Fixture helper words should
-live in a private package, not global stemmed names.
+with `TEST:;GROUP`, and execute once with `TEST:RUN`. An entry ends at
+`TEST:;SUITE` and nowhere else: a row whose argument list reaches the next row's
+keyword (`SUITE`, `WHITEBOX-SUITE`, `SUITE-STDIN`, `GROUP`, `;GROUP`, bare or
+`TEST:`-qualified) or the end of input is refused by name — `test: row <name>
+has no ;SUITE`, `E-SUITE-ROW` — so a missing terminator can no longer hand one
+row's arguments to the row after it. Fixture helper words should live in a
+private package, not global stemmed names.
 `lib/property.f` owns deterministic PRNG state, seed/count bounds, bounded
 source buffers, modeled generator depth, and token-tail shrinking utilities.
 Property execution may call an audited `evaluate` boundary for generated checked

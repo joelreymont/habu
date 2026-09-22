@@ -267,6 +267,7 @@ public
 -4299 constant E-SUITE-LAST
 -4200 constant E-SUITE-MODE   \ GROUP mode token missing or not SEQ/PARA
 -4201 constant E-SUITE-NAME   \ GROUP name missing or a reserved DSL keyword
+-4202 constant E-SUITE-ROW    \ row argument list ran into a row keyword or the end of input (no ;SUITE)
 
 \ Evaluation grader: -4300..-4399
 -4300 constant E-EVAL-FIRST

@@ -145,7 +145,11 @@ defer WHITEBOX-RUNNER ( ptr u8 n -- )
 : GROUP-MODE@ ( n -- n )
    GROUP-MODES swap GROUP-CELL @ ;
 
-: PARSE-NAME ( -- ptr u8 n )
+\ A token that must be there. Never name it `parse-name`: the wordlist is
+\ case-insensitive, so a private PARSE-NAME shadows the engine's word for every
+\ later definition in this package — which is how PARSE-ARGS' end-of-input
+\ branch became unreachable (E-STR-BOUNDS from here, never the row refusal).
+: REQUIRED-NAME ( -- ptr u8 n )
    parse-name dup 0= if 2drop E-STR-BOUNDS throw then ;
 
 : RESERVED-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -169,14 +173,29 @@ defer WHITEBOX-RUNNER ( ptr u8 n -- )
    2dup RESERVED-NAME? if 2drop E-SUITE-NAME throw then ;
 
 : MODE-TOKEN ( -- n )
-   parse-name MODE-OF ;
+   REQUIRED-NAME MODE-OF ;
 
 : NAME-TOKEN ( -- ptr u8 n )
-   parse-name CHECK-NAME ;
+   REQUIRED-NAME CHECK-NAME ;
 
 : ;SUITE? ( ptr u8 n -- bool )              \ suite terminator: qualified TEST:;SUITE or bare ;SUITE under `using TEST`
    2dup s" TEST:;SUITE" STR= if 2drop TRUE exit then
    s" ;SUITE" STR= ;
+
+: UNQUALIFIED ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ token without its TEST: qualifier
+   u 5 > if a 5 s" TEST:" STR=CI if a 5 + u 5 - exit then then
+   a u ;
+
+\ A row opener, bare or TEST:-qualified. Such a token can never be an argument:
+\ the row before it was never closed, so its argument list ran on into this row.
+\ SEQ/PARA are absent on purpose — they are mode tokens, reserved only as names.
+: ROW-KEYWORD? ( ptr u8 n -- bool )
+   UNQUALIFIED {: a:ptr u:n :}
+   a u s" SUITE"          STR=CI
+   a u s" WHITEBOX-SUITE" STR=CI or
+   a u s" SUITE-STDIN"    STR=CI or
+   a u s" GROUP"          STR=CI or
+   a u s" ;GROUP"         STR=CI or ;
 
 : ITEM-ALLOC ( -- n )
    ITEM-N @ ITEM-MAX >= if E-TBL-BOUNDS throw then
@@ -218,15 +237,22 @@ defer WHITEBOX-RUNNER ( ptr u8 n -- )
    ARG-U @ ITEM-ARG-OFFS id ITEM-CELL !
    0 ITEM-ARG-COUNTS id ITEM-CELL ! ;
 
+: ROW-UNTERMINATED ( n -- ) {: id:n :}
+   s" test: row " type id ITEM-NAME$ type s"  has no ;SUITE" type cr
+   E-SUITE-ROW throw ;
+
+\ One token of a row's argument list. A row ends at ;SUITE and nowhere else, so
+\ the end of input and a row keyword are both the missing terminator, named.
+: ARG-TOKEN ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
+   a u ;SUITE? if -1 DEF-ID ! exit then
+   u 0= if id ROW-UNTERMINATED then
+   a u ROW-KEYWORD? if id ROW-UNTERMINATED then
+   a u id ITEM-ADD-ARG ;
+
 : PARSE-ARGS ( n -- ) {: id:n :}
    0 DEF-ID !
    begin DEF-ID @ 0= while
-      parse-name dup 0= if 2drop E-FS-CAPACITY throw then
-      2dup ;SUITE? if
-         2drop -1 DEF-ID !
-      else
-         id ITEM-ADD-ARG
-      then
+      parse-name id ARG-TOKEN
    repeat ;
 
 : ITEM-ADD ( n ptr u8 n ptr u8 n -- ) {: kind:n name:ptr nameu:n inptr:ptr inu:n :}
@@ -372,18 +398,18 @@ public
    0 GROUP-CUR ! ;
 
 : SUITE ( -- )
-   PARSE-NAME {: name:ptr nameu:n :}
+   REQUIRED-NAME {: name:ptr nameu:n :}
    ITEM-FILE name nameu s" " ITEM-ADD ;
 
 \ A suite whose body reaches inside the engine: same registration as SUITE, run
 \ on the adapter's whitebox engine instead of the product one.
 : WHITEBOX-SUITE ( -- )
-   PARSE-NAME {: name:ptr nameu:n :}
+   REQUIRED-NAME {: name:ptr nameu:n :}
    ITEM-WHITEBOX name nameu s" " ITEM-ADD ;
 
 : SUITE-STDIN ( -- )
-   PARSE-NAME {: name:ptr nameu:n :}
-   PARSE-NAME {: inptr:ptr inu:n :}
+   REQUIRED-NAME {: name:ptr nameu:n :}
+   REQUIRED-NAME {: inptr:ptr inu:n :}
    ITEM-STDIN name nameu inptr inu ITEM-ADD ;
 
 : ;SUITE ( -- )
