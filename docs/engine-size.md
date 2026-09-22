@@ -28,27 +28,27 @@ engine/primitive-count	8	0.0
 engine/primitive-records	10080	0.2
 source/baked	0	0.0
 aot/framing-cells	128	0.0
-aot/code-blob	1825268	48.0
-aot/dictionary-records	160780	4.2
+aot/code-blob	1825324	48.0
+aot/dictionary-records	160840	4.2
 aot/call-sites	150132	3.9
-aot/name-pool	87232	2.2
+aot/name-pool	87280	2.2
 aot/data-sites	76892	2.0
-aot/address-cells	268224	7.0
+aot/address-cells	268272	7.0
 aot/data-cell-bitmap	130792	3.4
-aot/data-cell-values	842440	22.1
+aot/data-cell-values	842600	22.1
 aot/code-sites	36	0.0
 aot/named-code-sites	0	0.0
 aot/code-spans	67568	1.7
 aot/boot-run-entries	4	0.0
 aot/protected-wordlists	676	0.0
 aot/checker-sidecar	0	0.0
-image/text-pad	47604	1.2
+image/text-pad	47232	1.2
 container/rw-segment	192	0.0
 total	3801280	100.0
 
 dictionary the image ships
 class	records	record bytes	name bytes	code bytes
-global	4868	97360	58333	466216
+global	4871	97420	58381	466252
 package-public	2963	59260	30072	267948
 package-private	11	220	114	1684
 unmapped-wordlist	0	0	0	0
@@ -62,7 +62,7 @@ baked call sites
   distinct bound callees 75
 
 reachability from the dictionary-surface roots
-  reachable	7841	735548 code bytes
+  reachable	7844	735584 code bytes
   unreachable	1	300 code bytes, 20 record bytes, 12 name bytes
   package-private	1	20	300
   package	records	code bytes
@@ -72,25 +72,25 @@ reachability from the dictionary-surface roots
   largest unreachable spans (blob offset, bytes, optional sidecar name)
     7436	864
     5588	500
-    840620	468
-    791404	388
-    1209872	372
-    792124	364
+    840676	468
+    791460	388
+    1209928	372
+    792180	364
     722644	364
     570556	268
-    1812948	256
+    1813004	256
     452232	256
     7076	240
     6088	232
-    840376	224
-    791792	224
-    792508	216
-    793028	204
+    840432	224
+    791848	224
+    792564	216
+    793084	204
 
 reachability from the engine-entry roots
   reachable	3358	511048 code bytes
-  unreachable	4484	224800 code bytes, 89680 record bytes, 50020 name bytes
-  global	3108	62160	129380
+  unreachable	4487	224836 code bytes, 89740 record bytes, 50068 name bytes
+  global	3111	62220	129416
   package-public	1375	27500	95120
   package-private	1	20	300
   package	records	code bytes
@@ -114,15 +114,15 @@ reachability from the engine-entry roots
   spans reachable	4728	888492 code bytes
   spans unreachable	3718	166792 code bytes
   largest unreachable spans (blob offset, bytes, optional sidecar name)
-    956572	3240
-    886660	1968
-    915260	1200
+    956628	3240
+    886716	1968
+    915316	1200
     7436	864
     564852	856
     640652	768
     568312	692
     672860	680
-    917380	648
+    917436	648
     712172	628
     682856	576
     675896	576
@@ -131,11 +131,11 @@ reachability from the engine-entry roots
     674856	564
     561976	552
 
-captured DATA heap: 8371088 bytes of span, 303883 present cells in 130792 bitmap bytes, 973230 bytes of image
+captured DATA heap: 8371088 bytes of span, 303943 present cells in 130792 bitmap bytes, 973392 bytes of image
   owners 961, unowned value bytes 52186, unowned cells 8562
   owner	offset	extent	cells	bytes	image cost
-  DONE	4170280	4200808	252508	431594	497225
-  SYM-STR-BOOT	1817328	393216	31146	280310	286454
+  DONE	4170280	4200808	252562	431706	497337
+  SYM-STR-BOOT	1817328	393216	31152	280360	286504
   STR-MIN-I64$	3203464	944000	56	317	15067
   EC-RV-BOOT	769424	10240	1280	12800	12960
   EC-TV-BOOT	759184	10240	1280	12800	12960
