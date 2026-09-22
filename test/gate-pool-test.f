@@ -595,6 +595,62 @@ variable GPT-FC-DONE-U
    GPT-CT-EXPECT
    GT-CLEANUP ;
 
+\ A SUITE-LESS POOL USER REAPS ITS OWN ROOT (GT-POOL-FALLBACK-REMOVE).
+\ A pool user with no GT-START - test/nf-path-test.f run standalone is the one
+\ in the tree - captures into GT-POOL-FALLBACK-ROOT$, a directory the process
+\ makes for itself and no runner cleanup knows about. Only its own drain can
+\ remove it, so the pin is a spawned child that is such a user: it copies the
+\ root before each drain and prints whether both directories went. The parent
+\ is a suite, so its own root stays the runner's.
+\
+\ The child runs two pools because the root is memoised: the second round has
+\ to build and capture into a root of its own, and a drain that removed the
+\ directory without clearing the memo would red the child on E-FS-OPEN.
+$400 constant GPT-FR-CAP
+create GPT-FR-SRC GPT-FR-CAP allot
+variable GPT-FR-U
+
+: GPT-FR+ ( ptr u8 n -- )   GPT-FR-SRC GPT-FR-CAP GPT-FR-U BUF-APPEND ;
+
+: GPT-FR-SRC$ ( -- ptr u8 n )
+   GPT-FR-U BUF-RESET
+   S\" require test/gate-pool.f\n" GPT-FR+
+   S\" create FR-ROOT FS-PATH-CAP allot\nvariable FR-ROOT-U\n" GPT-FR+
+   S\" : FR-SAVE ( ptr u8 n -- ) {: a:ptr u:n :}\n" GPT-FR+
+   S\"    a FR-ROOT u BYTE-COPY u FR-ROOT-U ! ;\n" GPT-FR+
+   S\" : FR-ROUND ( -- )\n" GPT-FR+
+   S\"    GT-POOL-RESET\n" GPT-FR+
+   S\"    s\" /usr/bin/true\" s\" fallback probe\" 4000 GT-POOL-START\n" GPT-FR+
+   S\"    GT-POOL-FALLBACK-ROOT$ FR-SAVE\n" GPT-FR+
+   S\"    GT-POOL-DRAIN ;\n" GPT-FR+
+   S\" : FR-GONE? ( -- bool )\n" GPT-FR+
+   S\"    FR-ROOT FR-ROOT-U @ EXISTS? 0= ;\n" GPT-FR+
+   S\" : FR-MAIN ( -- )\n" GPT-FR+
+   S\"    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING\n" GPT-FR+
+   S\"    FR-ROUND FR-GONE?\n" GPT-FR+
+   S\"    FR-ROUND FR-GONE? and if\n" GPT-FR+
+   S\"       s\" fallback root: gone\" type cr\n" GPT-FR+
+   S\"    else\n" GPT-FR+
+   S\"       s\" fallback root: kept\" type cr\n" GPT-FR+
+   S\"    then ;\n" GPT-FR+
+   S\" FR-MAIN\n" GPT-FR+
+   GPT-FR-SRC GPT-FR-U @ ;
+
+: GPT-FR-CASE ( -- )
+   s" gate-pool-fallback-root" GT-START
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   GT-POOL-RED-RESET
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   GPT-HB$ s" fallback root worker" GPT-FR-SRC$ GPT-TIMEOUT-MS GT-POOL-START-STDIN
+   GT-POOL-DRAIN-SOFT
+   s" fallback root: the child captured under two pools and exited clean" T-LABEL
+   GT-POOL-RED# 0 T=
+   s" fallback root: each of the child's drains removed the root it made" T-LABEL
+   0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ s" fallback root: gone" CONTAINS? TTRUE
+   GT-CLEANUP ;
+
 \ The reader takes the engine's report and nothing shaped merely like it. Its
 \ input is a captured stderr tail, so every fixture here is one.
 : GPT-UNCAUGHT-CASE ( -- )
@@ -672,6 +728,7 @@ variable GPT-FC-DONE-U
    GPT-FC-CASE
    GPT-STDIN-CASE
    GPT-CHILD-TMP-CASE
+   GPT-FR-CASE
    GPT-UNCAUGHT-CASE
    GPT-INNER-TIMEOUT-CASE
    GPT-BATTERY-REPORT

@@ -680,6 +680,23 @@ GT-POOL-ABORT-KILL!
    GT-ROOT-U @ 0 > if GT-ROOT exit then
    GT-POOL-FALLBACK-ROOT$ ;
 
+\ The fallback root belongs to the process, not to one pool: the memo above
+\ builds it once and GT-POOL-RESET keeps it, so every pool a suite-less user
+\ runs captures into the same directory until a drain removes it.
+\ A suite's root is the runner's (GT-START registers it with CLEANUP-TREE+),
+\ so this exits when there is one. Absence is tolerated the way
+\ GT-POOL-CHILD-TMP-REMOVE tolerates it. Clearing the memo is what lets a
+\ later pool in the same process capture again: it rebuilds a fresh root with
+\ MAKE-DIRS, where a stale memo would open the captures under a removed
+\ directory (E-FS-OPEN).
+: GT-POOL-FALLBACK-REMOVE ( -- )
+   GT-ROOT-U @ 0 > if exit then
+   GT-POOL-FALLBACK-U @ 0 <= if exit then
+   GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ EXISTS? if
+      GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ REMOVE-TREE
+   then
+   0 GT-POOL-FALLBACK-U ! ;
+
 : GT-POOL-CAPTURE-PATH! ( idx n -- ) {: idx:idx stream:n :}
    GT-POOL-CAPTURE-ROOT$
    idx GT-POOL-SEQ-PTR @ stream GT-POOL-STREAM-SUFFIX$ GT-POOL-CAPTURE-NAME
@@ -1222,14 +1239,20 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
 
 \ The report is on stdout before the tree goes; the die ends the process, so
 \ the cleanup has to run in front of it or the pool root outlives every red
-\ run (that is where the leaked gate-pool-test-battery trees came from).
+\ run (that is where the leaked gate-pool-test-battery trees came from). The
+\ fallback root goes last for the same reason the report goes first: the red
+\ lines rebuild their capture paths under it (GT-POOL-RED-STREAM$).
 : GT-POOL-RED-DIE ( -- )
    GT-POOL-RED-REPORT
    GT-CLEANUP
+   GT-POOL-FALLBACK-REMOVE
    s" test pool failed" 1 die ;
 
+\ Green path: every slot has retired and nothing reads the captures after this,
+\ so the suite-less user's root goes here.
 : GT-POOL-DRAIN ( -- )
    GT-POOL-DRAIN-SOFT
-   GT-POOL-RED# 0 > if GT-POOL-RED-DIE then ;
+   GT-POOL-RED# 0 > if GT-POOL-RED-DIE then
+   GT-POOL-FALLBACK-REMOVE ;
 
 ;using
