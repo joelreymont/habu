@@ -106,6 +106,14 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    mode modeu >LEN PROC-ARGV+
    RUN-CHILD ;
 
+: RUN-COMPACT-REFUSAL ( ptr u8 n -- ) {: mode:ptr modeu:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/aot-capture-compact.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   mode modeu >LEN PROC-ARGV+
+   RUN-CHILD ;
+
 : RUN-DATA-SITES ( ptr u8 n ptr u8 n -- )
    {: mode:ptr modeu:n transport:ptr transportu:n :}
    PROC-ARGV-RESET
@@ -368,6 +376,19 @@ create HOST-PATH FS-PATH-CAP allot variable HOST-PATH-U
    s" overflow" RUN-OWNED-CAPTURE
    $4B ROW-RC
    s" scalars runs past the payload" ERR-SAID?
+   s" origin-native" RUN-OWNED-CAPTURE
+   0 ROW-RC
+   s" owned-capture: original window verified" SAID?
+   s" origin-size" RUN-OWNED-CAPTURE
+   100 ROW-RC
+   s" copied code differs from the compacted window extent" ERR-SAID?
+   s" origin-jit" RUN-OWNED-CAPTURE
+   100 ROW-RC
+   s" captured code lacks native provenance" ERR-SAID?
+   s" adrp" RUN-COMPACT-REFUSAL $4A ROW-RC
+   s" page-relative or literal-pool instruction unsupported" ERR-SAID?
+   s" literal" RUN-COMPACT-REFUSAL $4A ROW-RC
+   s" page-relative or literal-pool instruction unsupported" ERR-SAID?
    PROBE-DATA-SITES
    PROBE-ADDRESS-STORAGE
    PROBE-PRODUCER-ROWS ;

@@ -1483,6 +1483,10 @@ SUITE aot-chain-capture
    test/aot-chain-capture-suite.f
 ;SUITE
 
+SUITE aot-capture-compact
+   test/aot-capture-compact.f
+;SUITE
+
 SUITE aot-named-cells
    test/aot-named-cells.f
 ;SUITE

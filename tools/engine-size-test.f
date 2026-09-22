@@ -111,7 +111,8 @@ private
    COLLECT-DEAD
    DEAD-TOTAL @ 0 T=
    COLLECT-DEAD-SPANS
-   DEAD-SN @ 0 > TTRUE ;
+   s" capture removes anonymous spans unreachable from the shipped surface" T-LABEL
+   DEAD-SN @ 0 T= ;
 
 \ The sidecar is written beside a stand-in image path in a private temp dir, so
 \ two runs of this fixture never read or remove each other's map.

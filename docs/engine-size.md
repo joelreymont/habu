@@ -21,30 +21,30 @@ class	bytes	percent
 elf/header	64	0.0
 elf/program-headers	224	0.0
 elf/dynamic-metadata	200	0.0
-elf/header-pad	3608	0.0
-engine/code	129016	3.4
+elf/header-pad	3608	0.1
+engine/code	129016	3.5
 engine/primitive-names	184	0.0
 engine/primitive-count	8	0.0
 engine/primitive-records	10080	0.2
 source/baked	0	0.0
 aot/framing-cells	136	0.0
-aot/code-blob	1825324	48.8
-aot/dictionary-records	160840	4.3
-aot/call-sites	150132	4.0
-aot/name-pool	87280	2.3
-aot/data-sites	76892	2.0
-aot/address-cells	268272	7.1
+aot/code-blob	1758868	48.7
+aot/dictionary-records	160840	4.4
+aot/call-sites	148668	4.1
+aot/name-pool	87280	2.4
+aot/data-sites	70296	1.9
+aot/address-cells	268272	7.4
 aot/data-cell-bitmap	67712	1.8
-aot/data-cell-values	842600	22.5
-aot/code-sites	36	0.0
+aot/data-cell-values	842600	23.3
+aot/code-sites	32	0.0
 aot/named-code-sites	0	0.0
-aot/code-spans	67568	1.8
+aot/code-spans	42624	1.1
 aot/boot-run-entries	4	0.0
 aot/protected-wordlists	676	0.0
 aot/checker-sidecar	0	0.0
-image/text-pad	44696	1.1
+image/text-pad	13088	0.3
 container/rw-segment	192	0.0
-total	3735744	100.0
+total	3604672	100.0
 
 dictionary the image ships
 class	records	record bytes	name bytes	code bytes
@@ -58,39 +58,22 @@ name pool entries reachable only from named code sites, bytes 0
 name pool entries nothing in the image references, bytes 606
 
 baked call sites
-  sites 12511, bound to seeded primitives 12511, to payload records 0, left as names 0
-  distinct bound callees 75
+  sites 12389, bound to seeded primitives 12389, to payload records 0, left as names 0
+  distinct bound callees 72
 
 reachability from the dictionary-surface roots
   reachable	7845	735884 code bytes
   unreachable	0	0 code bytes, 0 record bytes, 0 name bytes
-  fall-through edges modeled	1323
-  spans reachable	5550	997240 code bytes
-  spans unreachable	2896	58044 code bytes
-  largest unreachable spans (blob offset, bytes, optional sidecar name)
-    7436	864
-    5588	500
-    722644	364
-    1813004	256
-    452232	256
-    7076	240
-    6088	232
-    793084	204
-    8616	204
-    1824956	180
-    792780	176
-    791184	168
-    367632	168
-    871196	152
-    793624	152
-    8344	136
+  fall-through edges modeled	1264
+  spans reachable	5328	988804 code bytes
+  spans unreachable	0	0 code bytes
 
 reachability from the engine-entry roots
-  reachable	3961	572112 code bytes
-  unreachable	3884	163772 code bytes, 77680 record bytes, 39414 name bytes
-  fall-through edges modeled	1316
-  global	2696	53920	82480
-  package-public	1187	23740	80992
+  reachable	3968	572220 code bytes
+  unreachable	3877	163664 code bytes, 77540 record bytes, 39353 name bytes
+  fall-through edges modeled	1257
+  global	2695	53900	82468
+  package-public	1181	23620	80896
   package-private	1	20	300
   package	records	code bytes
   IR-ATTR	59	10056
@@ -100,7 +83,7 @@ reachability from the engine-entry roots
   A64IR	13	3668
   NUM	40	3416
   NMACH	8	3324
-  TFAM	80	3128
+  TFAM	77	3092
   SOURCE-ROOT	13	2408
   IR-FUN	23	2260
   HIR	11	2240
@@ -110,25 +93,25 @@ reachability from the engine-entry roots
   NSTR	10	1400
   IR-OP	22	1296
   (119 more packages)
-  spans reachable	5124	928780 code bytes
-  spans unreachable	3322	126504 code bytes
+  spans reachable	4904	920368 code bytes
+  spans unreachable	424	68436 code bytes
   largest unreachable spans (blob offset, bytes, optional sidecar name)
-    956628	3240
-    886716	1968
-    915316	1200
-    7436	864
-    640652	768
-    672860	680
-    917436	648
-    712172	628
-    682856	576
-    675896	576
-    687692	572
-    674856	564
-    664340	544
-    916908	528
-    1138924	512
-    5588	500
+    925796	3240
+    858796	1968
+    885332	1200
+    625512	768
+    655688	680
+    887452	648
+    693988	628
+    665216	576
+    658724	576
+    670052	572
+    657684	564
+    647672	544
+    886924	528
+    1101532	512
+    1102324	496
+    734512	496
 
 captured DATA heap: 8371088 bytes of span, 303943 present cells in 67712 bitmap bytes, 910312 bytes of image
   owners 961, unowned value bytes 52186, unowned cells 8562

@@ -73,9 +73,8 @@ TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;
    p ACAP-W32@ $FC000000 and $94000000 = ;
 : ACAP-BRANCH? ( ptr u8 -- bool ) {: p:ptr :}
    p ACAP-W32@ $FC000000 and $14000000 = ;
-\ The window's own code, as the copy holds it. The blob moves rigidly — the seed
-\ copies it whole and the merge appends it whole — so a branch that lands inside
-\ it keeps its displacement and needs no name.
+\ The window's own code, as the copy holds it. Internal targets need no name;
+\ the capture compactor retargets them before the seed copies the final blob.
 : ACAP-IN-CODE? ( n -- bool ) {: t:n :}
    t AOT-CODE-B0 @ < if 0 0= 0= exit then
    t AOT-CODE-B0 @ AOT-BLOB-LEN @ + < ;
@@ -351,6 +350,18 @@ variable ACAP-NIDX-PM                                        \ pool-proof mismat
 \ The SCOPE is the wordlist the seed searches the name in, and ACAP-SITE-SCOPE
 \ below is the only producer of a value for it.
 : ACAP-SITE-ROW ( n -- ptr u8 ) SITE-ROW * AOT-SITE-BUF@ + ;
+
+\ The reach pass below needs to distinguish an external B/BL (which was
+\ canonicalised to zero), an in-window code literal, and raw metadata. Keep
+\ their kind beside the blob, indexed by the original instruction offset. The
+\ buffer is build-host scratch and never enters the captured payload.
+DYNAMIC-BUFFER ACAP-GSITE n
+: ACAP-GSITE! ( n n -- ) {: kind:n off:n :}
+   off 0< if s" aot-capture: negative code-site offset" 74 die then
+   off AOT-BLOB-LEN @ >= if s" aot-capture: code-site offset exceeds blob" 74 die then
+   kind off 4 / ACAP-GSITE ! ;
+: ACAP-GSITE@ ( n -- n ) 4 / ACAP-GSITE @ ;
+
 : ACAP-ADD-SITE ( n ptr u8 n n -- ) {: boff:n a:ptr u:n w:n :}
    AOT-SITE-N @ AOT-SITE-MAX >= if s" aot-capture: too many call sites" 74 die then
    a u ACAP-POOL-ADD {: noff:n :}
@@ -766,8 +777,8 @@ variable ACAP-PKG-MEMO-PUB
 \ the interpreter never finds one, and since the call sites carry a record index
 \ instead of a name (habu2.f EMIT-AOT-SITES) nothing in the payload looks one up
 \ either. Its record - 20 bytes here, 48 in the booted dictionary, and its name
-\ in the pool - therefore buys nothing any caller can use. THE CODE STAYS: the
-\ word is still called, by a displacement the blob carries.
+\ in the pool - therefore buys nothing any caller can use. Its code stays only
+\ when the reach graph finds a caller or a declared code address.
 \
 \ WHAT STAYS, AS A RULE AND NOT A LIST. A record ships when the payload ITSELF
 \ names it, and the payload says so in three tables of its own: the boot-run
@@ -872,22 +883,399 @@ variable ACAP-BP
    a u ACAP-XTSITE-NAMES? if true exit then
    a u ACAP-BOOTRUN-NAMES? ;
 
-\ THE ROW GOES WITH THE NAME, AND THE SPAN GOES ON WITHOUT IT. A record is what
-\ makes a word reachable - the interpreter, a reopened package and XREF-FIND all
-\ arrive through one - so a word no scope can name buys no caller anything and
-\ its record does not travel at all: not the 20 bytes here, not the 48 in the
-\ booted dictionary, not its pool entry. THE CODE STAYS, called by a
-\ displacement the blob carries, and exactly one reader still has to account for
-\ it: src/habu/aot-closure.f retargets every PC-relative branch when hb-build
-\ shakes an application out of this image, and a displacement landing in a span
-\ nothing accounts for has nowhere to go ("aot: PC-relative target removed or
-\ outside closure"). That account is an 8-byte AOT-SPAN row - the blob offset and
-\ the raw code span, the two u32 the compact row would have opened with, and
-\ nothing else. The build writes every name it stripped to <image>.names beside
-\ the engine (tools/native-build-core.f), so a tool that has to name this code
-\ still can.
-create ACAP-NAMED-BIT AOT-REC-MAX cells allot   \ per record: 1 shipped a row, 0 shipped a span
+\ An unnamed but reachable body retains an 8-byte AOT-SPAN row (blob offset,
+\ raw code span). The application linker needs that extent when it copies and
+\ retargets the body. An unreachable body carries neither code nor metadata.
+\ The sidecar names both: a removed body's start is -1, never an old coordinate
+\ that could accidentally name different code after compaction.
+create ACAP-NAMED-BIT AOT-REC-MAX cells allot   \ per record: 1 retains its name
 variable ACAP-REC-ALL
+
+\ --- the capture-side reach model ---------------------------------------------
+\ ACAP-NAMED-BIT says which records retain a dictionary row. It is not enough
+\ to decide which anonymous spans travel: a PC-relative reference, a code
+\ literal in DATA, or ordinary fall-through can keep an unnamed body alive. These buffers
+\ are host-only scratch. They are deliberately separate from AOT-SPAN and the
+\ payload so a proof failure cannot silently change the artifact.
+DYNAMIC-BUFFER ACAP-GMARK n
+DYNAMIC-BUFFER ACAP-GOWNER n
+DYNAMIC-BUFFER ACAP-GMAP n
+DYNAMIC-BUFFER ACAP-GWORK n
+variable ACAP-GWORK-N
+variable ACAP-GOLDLEN
+variable ACAP-GNEWLEN
+variable ACAP-GACC
+variable ACAP-GRAPH-READY
+
+: ACAP-GRAPH-START ( n -- n ) ACAP-REC-DST ACAP-W32@ ;
+: ACAP-GRAPH-END ( n -- n ) {: k:n :}
+   k ACAP-GRAPH-START
+   k ACAP-REC-DST 8 + ACAP-W32@ {: raw:n :}
+   raw CODE-SPAN:BYTES + ;
+
+: ACAP-GRAPH-MARK-REC ( n -- ) {: k:n :}
+   k ACAP-GMARK @ 0<> if exit then
+   1 k ACAP-GMARK !
+   k ACAP-GRAPH-END 4 / k ACAP-GRAPH-START 4 / ?do
+      1 i ACAP-GMAP !
+   loop
+   k ACAP-GWORK-N @ ACAP-GWORK !
+   ACAP-GWORK-N @ 1+ ACAP-GWORK-N ! ;
+
+: ACAP-GRAPH-CODE? ( n -- bool )
+   ACAP-REC-DST CELL-VIEW AOT-RWID -1 = 0= ;
+
+: ACAP-GRAPH-OWNER! ( n n -- ) {: k:n slot:n :}
+   slot ACAP-GOWNER @ {: old:n :}
+   old 0= if k 1+ slot ACAP-GOWNER ! exit then
+   \ Aliases need one body. Choose the covering record reaching furthest, so
+   \ a code-cell target at a shared entry preserves every alias's full extent.
+   k ACAP-GRAPH-END old 1- ACAP-GRAPH-END > if
+      k 1+ slot ACAP-GOWNER !
+   then ;
+
+: ACAP-GRAPH-RAW-SPAN ( n n -- ) {: off:n size:n :}
+   off 0< size 0< or off size + AOT-BLOB-LEN @ > or if
+      s" aot-capture: raw metadata outside copied code" 74 die
+   then
+   off size + 3 + 4 / off 4 / ?do
+      3 i ACAP-GSITE !
+   loop ;
+
+: ACAP-GRAPH-RAW-NAME ( ptr n -- ) {: rec:ptr :}
+   rec AOT-REXT? 0= if exit then
+   rec AOT-RNPTR AOT-CODE-B0 @ AOT-N>U8 - {: off:n :}
+   off 0< off AOT-BLOB-LEN @ >= or if exit then
+   off rec AOT-RNLEN ACAP-GRAPH-RAW-SPAN ;
+
+: ACAP-GRAPH-RAW-RECORD ( ptr n -- ) {: rec:ptr :}
+   rec ACAP-GRAPH-RAW-NAME
+   rec AOT-RWID DICT-WL:NAMESPACE = if exit then
+   rec AOT-RXT rec AOT-RBODY + AOT-CODE-B0 @ - {: off:n :}
+   off 0< off 16 + AOT-BLOB-LEN @ > or if exit then
+   AOT-BLOB-BUF@ off + CELL-VIEW AOT-CELL@ DEFER-MAGIC = if
+      off 16 ACAP-GRAPH-RAW-SPAN
+   then ;
+
+: ACAP-GRAPH-RAW-CELLS ( -- )
+   AOT-DSITE-N @ 0 ?do
+      i 4 * AOT-DSITE-BUF@ + ACAP-W32@ {: site:n :}
+      site AOT-DSITE-CELL and 0<> if
+         site AOT-DSITE-OFF-MASK and {: off:n :}
+         off 8 ACAP-GRAPH-RAW-SPAN
+         off 8 >= if
+            AOT-BLOB-BUF@ off 8 - + CELL-VIEW AOT-CELL@ DEFER-MAGIC = if
+               off 8 - 8 ACAP-GRAPH-RAW-SPAN
+            then
+         then
+      then
+   loop ;
+
+: ACAP-GRAPH-INDEX-RECS ( -- )
+   ACAP-REC-ALL @ ACAP-GMARK-RESERVE
+   ACAP-REC-ALL @ ACAP-GWORK-RESERVE
+   AOT-BLOB-LEN @ 4 / ACAP-GOWNER-RESERVE
+   AOT-BLOB-LEN @ 4 / ACAP-GMAP-RESERVE
+   ACAP-REC-ALL @ 0 ?do 0 i ACAP-GMARK ! loop
+   AOT-BLOB-LEN @ 4 / 0 ?do
+      0 i ACAP-GOWNER ! 0 i ACAP-GMAP !
+   loop
+   ACAP-REC-ALL @ 0 ?do
+      i {: k:n :}
+      k ACAP-GRAPH-CODE? if
+         k ACAP-GRAPH-START {: start:n :}
+         k ACAP-GRAPH-END {: end:n :}
+         start 0< start 3 and 0<> or end AOT-BLOB-LEN @ > or if
+            s" aot-capture: dictionary span outside copied code" 74 die
+         then
+         end 4 / start 4 / ?do k i ACAP-GRAPH-OWNER! loop
+      then
+   loop ;
+
+: ACAP-GRAPH-MARK-OFF ( n -- ) {: off:n :}
+   off 0< off AOT-BLOB-LEN @ >= or if exit then
+   off 4 / ACAP-GOWNER @ {: owner:n :}
+   owner 0<> if owner 1- ACAP-GRAPH-MARK-REC then ;
+
+$FFFFFC1F constant ACAP-GRET-MASK
+$D65F0000 constant ACAP-GRET
+$D61F0000 constant ACAP-GBR-REG
+$D69F0000 constant ACAP-GERET
+$D6BF0000 constant ACAP-GDRPS
+$FFE0001F constant ACAP-GBRK-MASK
+$D4200000 constant ACAP-GBRK
+$FC000000 constant ACAP-GBR-TERM-MASK
+$14000000 constant ACAP-GBR-TERM
+
+: ACAP-GRAPH-TERMINAL? ( n -- bool ) {: w:n :}
+   w ACAP-GRET-MASK and ACAP-GRET =
+   w ACAP-GRET-MASK and ACAP-GBR-REG = or
+   w ACAP-GRET-MASK and ACAP-GERET = or
+   w ACAP-GRET-MASK and ACAP-GDRPS = or
+   w ACAP-GBRK-MASK and ACAP-GBRK = or
+   w ACAP-GBR-TERM-MASK and ACAP-GBR-TERM = or ;
+
+: ACAP-GRAPH-W32@ ( n -- n ) AOT-BLOB-BUF@ swap + ACAP-W32@ ;
+: ACAP-GRAPH-BRANCH? ( n -- bool ) {: w:n :}
+   w $FC000000 and $14000000 =
+   w $FC000000 and $94000000 = or ;
+: ACAP-GRAPH-TARGET ( n n -- n ) {: off:n w:n :}
+   w $3FFFFFF and $2000000 xor $2000000 - 2 lshift off + ;
+
+\ The native emitter uses direct branches and ADR, never page-relative or
+\ literal-pool addressing. Refuse the latter rather than copy a stale delta.
+\ The kind is the signed displacement width; ADR alone has a byte delta.
+: ACAP-GRAPH-PC-KIND ( n -- n ) {: w:n :}
+   w ACAP-GRAPH-BRANCH? if 26 exit then
+   w $FF000010 and $54000000 =
+   w $7E000000 and $34000000 = or if 19 exit then
+   w $7E000000 and $36000000 = if 14 exit then
+   w $9F000000 and $10000000 = if 21 exit then
+   w $9F000000 and $90000000 =
+   w $3B000000 and $18000000 = or if
+      s" aot-capture: page-relative or literal-pool instruction unsupported" 74 die
+   then
+   0 ;
+
+: ACAP-GRAPH-PC-TARGET ( n n n -- n ) {: off:n w:n kind:n :}
+   kind 26 = if off w ACAP-GRAPH-TARGET exit then
+   kind 21 = if
+      w 5 rshift $7FFFF and 2 lshift w 29 rshift 3 and or
+      $100000 xor $100000 - off + exit
+   then
+   1 kind 1- lshift {: sign:n :}
+   w 5 rshift sign 2 * 1- and sign xor sign - 4 * off + ;
+
+: ACAP-GRAPH-PC-WORD ( n n n -- n ) {: w:n kind:n delta:n :}
+   kind 26 = if w $FC000000 and delta 4 / $3FFFFFF and or exit then
+   kind 19 = if w $FF00001F and delta 4 / $7FFFF and 5 lshift or exit then
+   kind 14 = if w $FFF8001F and delta 4 / $3FFF and 5 lshift or exit then
+   w $9F00001F and delta 3 and 29 lshift or
+   delta 2 rshift $7FFFF and 5 lshift or ;
+
+\ C-DIE-BAD-TAG skips padded message bytes, then writes them with MOVZ x0,2;
+\ ADR x1,first-byte; MOVZ x2,length. The byte length must account for the
+\ entire skipped interval before those bytes are classified as data.
+: ACAP-GRAPH-DIAG? ( n n -- bool ) {: at:n end:n :}
+   end 12 + AOT-BLOB-LEN @ > if false exit then
+   end ACAP-GRAPH-W32@ $D2800040 <> if false exit then
+   end 4 + ACAP-GRAPH-W32@ {: adr:n :}
+   adr $9F00001F and $10000001 <> if false exit then
+   end 4 + adr 21 ACAP-GRAPH-PC-TARGET at 4 + <> if false exit then
+   end 8 + ACAP-GRAPH-W32@ {: len:n :}
+   len $FFE0001F and $D2800002 <> if false exit then
+   len 5 rshift $FFFF and 3 + -4 and end at 4 + - = ;
+
+\ The bootstrap compiler's C-SDQ/C-CQ and escaped forms emit exactly
+\ B after-bytes; padded bytes; ADR x9,first-byte; STR x9,[x19],#8. The target
+\ and the address must agree before the skipped interval is treated as data.
+\ Tier 1 interns its literals in DATA and has no such in-code interval.
+: ACAP-GRAPH-RAW-STRING ( n -- ) {: at:n :}
+   at ACAP-GSITE@ 3 = if exit then
+   at ACAP-GRAPH-W32@ {: w:n :}
+   w $FC000000 and $14000000 <> if exit then
+   at w ACAP-GRAPH-TARGET {: end:n :}
+   end at 4 + <= end 8 + AOT-BLOB-LEN @ > or if exit then
+   at end ACAP-GRAPH-DIAG? if
+      at 4 + end at 4 + - ACAP-GRAPH-RAW-SPAN exit
+   then
+   end ACAP-GRAPH-W32@ {: adr:n :}
+   adr $9F00001F and $10000009 <> if exit then
+   end 4 + ACAP-GRAPH-W32@ $F8008669 <> if exit then
+   end adr 21 ACAP-GRAPH-PC-TARGET at 4 + <> if exit then
+   at 4 + end at 4 + - ACAP-GRAPH-RAW-SPAN ;
+
+: ACAP-GRAPH-SITES ( -- )
+   AOT-BLOB-LEN @ 4 / ACAP-GSITE-RESERVE
+   AOT-BLOB-LEN @ 4 / 0 ?do 0 i ACAP-GSITE ! loop
+   AOT-SITE-N @ 0 ?do 1 i ACAP-SITE-ROW ACAP-W32@ ACAP-GSITE! loop
+   AOT-CSITE-N @ 0 ?do
+      2 AOT-DSITE-N @ i + 4 * AOT-DSITE-BUF@ + ACAP-W32@ ACAP-GSITE!
+   loop
+   ACAP-GRAPH-RAW-CELLS
+   \ Include retired records: undefine removes a name, not its old CP bytes.
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do i AOT-REC ACAP-GRAPH-RAW-RECORD loop
+   AOT-BLOB-LEN @ 4 / 0 ?do i 4 * ACAP-GRAPH-RAW-STRING loop ;
+
+: ACAP-GRAPH-INDEX ( -- )
+   ACAP-GRAPH-SITES ACAP-GRAPH-INDEX-RECS ;
+
+: ACAP-GRAPH-LIVE? ( n -- bool ) {: k:n :}
+   ACAP-GRAPH-READY @ 0= if true exit then
+   k ACAP-GMARK @ 0<> ;
+
+: ACAP-GRAPH-SCAN-AT ( n -- ) {: at:n :}
+   at ACAP-GSITE@ 3 = if exit then
+   at ACAP-GRAPH-W32@ {: w:n :}
+   w ACAP-GRAPH-PC-KIND {: kind:n :}
+   kind 0<> at ACAP-GSITE@ 1 <> and if
+      at w kind ACAP-GRAPH-PC-TARGET ACAP-GRAPH-MARK-OFF
+   then
+   at ACAP-GSITE@ 2 = if
+      AOT-BLOB-BUF@ at + SNAP-RELOC:CHAINV ACAP-GRAPH-MARK-OFF
+   then ;
+
+: ACAP-GRAPH-SWEEP-ONE ( n -- ) {: k:n :}
+   k ACAP-GRAPH-START {: from:n :}
+   k ACAP-GRAPH-END {: to:n :}
+   from begin dup to < while
+      dup ACAP-GRAPH-SCAN-AT 4 +
+   repeat drop
+   to 4 - ACAP-GRAPH-W32@ ACAP-GRAPH-TERMINAL? 0= if
+      to ACAP-GRAPH-MARK-OFF
+   then ;
+
+: ACAP-GRAPH-SWEEP ( -- )
+   begin ACAP-GWORK-N @ 0 > while
+      ACAP-GWORK-N @ 1- ACAP-GWORK-N !
+      ACAP-GWORK-N @ ACAP-GWORK @ ACAP-GRAPH-SWEEP-ONE
+   repeat ;
+
+\ Bytes between dictionary bodies remain in the payload for conservative
+\ compatibility. They can still contain a branch emitted by a body whose row
+\ was not recorded (padding, a declaration trailer, or an old assembler seam),
+\ so their edges and nonterminal continuations must seed the same graph.
+: ACAP-GRAPH-SWEEP-GAP ( n -- ) {: at:n :}
+   at ACAP-GSITE@ 3 = if exit then
+   at 4 / ACAP-GOWNER @ 0= if
+      at ACAP-GRAPH-SCAN-AT
+      at 4 + AOT-BLOB-LEN @ < if
+         at 4 / 1+ ACAP-GOWNER @ 0<> if
+            at ACAP-GRAPH-W32@ ACAP-GRAPH-TERMINAL? 0= if
+               at 4 + ACAP-GRAPH-MARK-OFF
+            then
+         then
+      then
+   then ;
+
+: ACAP-GRAPH-SWEEP-GAPS ( -- )
+   AOT-BLOB-LEN @ 4 / 0 ?do i 4 * ACAP-GRAPH-SWEEP-GAP loop ;
+
+: ACAP-GRAPH-MAP@ ( n -- n ) {: off:n :}
+   off 0< off ACAP-GOLDLEN @ >= or if -1 exit then
+   off 4 / ACAP-GMAP @ dup 0 >= if off 3 and + then ;
+
+: ACAP-GRAPH-BUILD-MAP ( -- )
+   AOT-BLOB-LEN @ ACAP-GOLDLEN !
+   0 ACAP-GNEWLEN !
+   ACAP-GOLDLEN @ 4 / 0 ?do
+      i 4 * {: off:n :}
+      i ACAP-GOWNER @ 0= i ACAP-GMAP @ 0<> or if
+         ACAP-GNEWLEN @ i ACAP-GMAP !
+         ACAP-GNEWLEN @ 4 + ACAP-GNEWLEN !
+      else
+         -1 i ACAP-GMAP !
+      then
+   loop ;
+
+: ACAP-GRAPH-COPY-BLOB ( -- )
+   ACAP-GOLDLEN @ 4 / 0 ?do
+      i 4 * {: old:n :}
+      old ACAP-GRAPH-MAP@ dup 0 >= if {: new:n :}
+         4 0 ?do
+            AOT-BLOB-BUF@ old + i + c@
+            AOT-BLOB-BUF@ new + i + c!
+         loop
+      else drop then
+   loop
+   ACAP-GNEWLEN @ AOT-BLOB-LEN ! ;
+
+: ACAP-GRAPH-PATCH-BRANCH ( n -- ) {: old:n :}
+   old ACAP-GSITE@ 0<> if exit then
+   old ACAP-GRAPH-MAP@ dup 0 < if drop exit then {: new:n :}
+   AOT-BLOB-BUF@ new + ACAP-W32@ {: w:n :}
+   w ACAP-GRAPH-PC-KIND {: kind:n :}
+   kind 0= if exit then
+   old w kind ACAP-GRAPH-PC-TARGET ACAP-GRAPH-MAP@ {: target:n :}
+   target 0 < if
+      s" aot-capture: PC-relative target removed or outside window" 74 die
+   then
+   \ Removing intervals preserves order and can only shorten a displacement;
+   \ the instruction's original range therefore still fits, including ADR.
+   w kind target new - ACAP-GRAPH-PC-WORD AOT-BLOB-BUF@ new + AOT-P32! ;
+
+: ACAP-GRAPH-PATCH-CODE-SITE ( n -- ) {: old:n :}
+   old ACAP-GSITE@ 2 <> if exit then
+   old ACAP-GRAPH-MAP@ dup 0 < if drop exit then {: new:n :}
+   AOT-BLOB-BUF@ new + SNAP-RELOC:CHAINV ACAP-GRAPH-MAP@ {: target:n :}
+   target 0 < if
+      s" aot-capture: live code literal targets a removed span" 74 die
+   then
+   AOT-BLOB-BUF@ new + target SNAP-RELOC:SET-CHAIN ;
+
+: ACAP-GRAPH-PATCH ( -- )
+   ACAP-GOLDLEN @ 4 / 0 ?do
+      i 4 * dup ACAP-GRAPH-PATCH-BRANCH
+      dup ACAP-GRAPH-PATCH-CODE-SITE drop
+   loop ;
+
+: ACAP-GRAPH-REMAP-RECS ( -- )
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-REC-DST {: v:ptr :}
+      v CELL-VIEW AOT-RWID -1 <> if
+         v ACAP-W32@ ACAP-GRAPH-MAP@ dup 0 >= if v AOT-P32! else drop then
+      then
+   loop ;
+
+: ACAP-GRAPH-REMAP-SITES ( -- )
+   0 ACAP-GACC !
+   AOT-SITE-N @ 0 ?do
+      i ACAP-SITE-ROW {: src:ptr :}
+      src ACAP-W32@ ACAP-GRAPH-MAP@ {: new:n :}
+      new 0 >= if
+         ACAP-GACC @ ACAP-SITE-ROW {: dst:ptr :}
+         new dst AOT-P32!
+         src 4 + ACAP-W32@ dst 4 + AOT-P32!
+         src 8 + ACAP-W32@ dst 8 + AOT-P32!
+         ACAP-GACC @ 1+ ACAP-GACC !
+      then
+   loop
+   ACAP-GACC @ AOT-SITE-N ! ;
+
+: ACAP-GRAPH-REMAP-DSITES ( -- )
+   AOT-DSITE-N @ {: olddn:n :}
+   AOT-CSITE-N @ {: oldcn:n :}
+   0 ACAP-GACC !
+   olddn 0 ?do
+      i 4 * AOT-DSITE-BUF@ + ACAP-W32@ {: row:n :}
+      row AOT-DSITE-OFF-MASK and ACAP-GRAPH-MAP@ {: new:n :}
+      new 0 >= if
+         row AOT-DSITE-CELL and new or ACAP-GACC @ 4 * AOT-DSITE-BUF@ + AOT-P32!
+         ACAP-GACC @ 1+ ACAP-GACC !
+      then
+   loop
+   ACAP-GACC @ {: newdn:n :}
+   0 ACAP-GACC !
+   oldcn 0 ?do
+      olddn i + 4 * AOT-DSITE-BUF@ + ACAP-W32@ {: row:n :}
+      row ACAP-GRAPH-MAP@ {: new:n :}
+      new 0 >= if
+         new ACAP-GACC @ newdn + 4 * AOT-DSITE-BUF@ + AOT-P32!
+         ACAP-GACC @ 1+ ACAP-GACC !
+      then
+   loop
+   newdn AOT-DSITE-N !
+   ACAP-GACC @ AOT-CSITE-N ! ;
+
+: ACAP-GRAPH-REMAP-XTSITES ( -- )
+   0 ACAP-GACC !
+   AOT-XTSITE:N @ 0 ?do
+      AOT-XTSITE:BUF@ i 8 * + {: src:ptr :}
+      src ACAP-W32@ ACAP-GRAPH-MAP@ {: new:n :}
+      new 0 >= if
+         ACAP-GACC @ 8 * AOT-XTSITE:BUF@ + {: dst:ptr :}
+         new dst AOT-P32!
+         src 4 + ACAP-W32@ dst 4 + AOT-P32!
+         ACAP-GACC @ 1+ ACAP-GACC !
+      then
+   loop
+   ACAP-GACC @ AOT-XTSITE:N ! ;
+
+: ACAP-GRAPH-REMAP ( -- )
+   ACAP-GRAPH-REMAP-RECS
+   ACAP-GRAPH-REMAP-SITES
+   ACAP-GRAPH-REMAP-DSITES
+   ACAP-GRAPH-REMAP-XTSITES ;
 
 : ACAP-SPAN-ROW ( n -- ptr u8 ) AOT-SPAN:ROW * AOT-SPAN:BUF@ + ;
 
@@ -916,7 +1304,12 @@ variable ACAP-REC-ALL
    pkg if $FFFFFFFF else v 40 + ACAP-W32@ ACAP-REL-WID then {: wid:n :} \ package marker or window-relative u32 WID
    v ACAP-W32@ pkg ACAP-WID-FIELD {: start:n :}            \ a package row's [0]/[8] are WIDs, not a code span
    v 8 + ACAP-W32@ pkg ACAP-WID-FIELD {: clen:n :}
-   k ACAP-NAMED? {: named:bool :}
+   ACAP-GRAPH-READY @ if k cells ACAP-NAMED-BIT + @ 0<> else k ACAP-NAMED? then
+   {: named:bool :}
+   named 0= k ACAP-GRAPH-LIVE? 0= and if
+      0 k cells ACAP-NAMED-BIT + !
+      exit
+   then
    named if 1 else 0 then  k cells ACAP-NAMED-BIT + !
    named 0= if
       pkg if s" aot-capture: a package row carries no code span" 74 die then
@@ -1017,8 +1410,10 @@ variable ACAP-PROVE-SX                                        \ span-row cursor
    ACAP-REC-ALL @ 0 ?do
       i ACAP-REC-DST {: v:ptr :}                              \ the record this row was made from
       i cells ACAP-NAMED-BIT + @ 0= if
-         ACAP-PROVE-SX @ v ACAP-PROVE-SPAN
-         ACAP-PROVE-SX @ 1+ ACAP-PROVE-SX !
+         i ACAP-GRAPH-LIVE? if
+            ACAP-PROVE-SX @ v ACAP-PROVE-SPAN
+            ACAP-PROVE-SX @ 1+ ACAP-PROVE-SX !
+         then
       else
          i v s ACAP-PROVE-ROW
       then
@@ -1177,8 +1572,8 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 
 \ --- scan the copied blob for call sites; record + canonicalize each ---
 \ TWO OPCODES REACH A WORD FROM OUTSIDE IT AND BOTH TRAVEL BY NAME. A BL is
-\ every ordinary call. A B is ordinary control flow, inside the word that emitted
-\ it, where the rigid blob move keeps it exact — except for one producer:
+\ every ordinary call. A B is ordinary control flow, inside the window that
+\ emitted it — except for one producer:
 \ LDOESPATCH plants `b D` at a created word's RET, and D is the does>-clause of
 \ the DEFINING word. When that definer sits outside the window, its displacement
 \ measures against code the target does not have, and three chain words came to
@@ -1189,8 +1584,8 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ record is refused BY NAME here — not counted into AOT-UNRES-N the way an
 \ unresolved BL is, because a call to a word the capture kept in source is a word
 \ nobody baked, while a branch with no name is a jump into whatever the delta
-\ lands on. The in-window Bs stay verbatim: 4852 of them on the compiler chain,
-\ and making each a name lookup would buy nothing a rigid move does not give.
+\ lands on. In-window branches are retargeted by the compactor; they do not
+\ need a name lookup.
 : ACAP-SITE-ADD ( n -- ) {: k:n :}
    ACAP-P @ k ACAP-SITE-BAND                          \ ... and the target has this name
    k ACAP-SITE-SCOPE {: a:ptr u:n w:n :}
@@ -1220,8 +1615,10 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 : ACAP-SCAN-CALLS ( -- )
    0 ACAP-P !
    begin ACAP-P @ 4 + AOT-BLOB-LEN @ <= while
-      AOT-BLOB-BUF@ ACAP-P @ + ACAP-CALL? if ACAP-SITE-HERE then
-      AOT-BLOB-BUF@ ACAP-P @ + ACAP-BRANCH? if ACAP-BRANCH-HERE then
+      ACAP-P @ ACAP-GSITE@ 3 <> if
+         AOT-BLOB-BUF@ ACAP-P @ + ACAP-CALL? if ACAP-SITE-HERE then
+         AOT-BLOB-BUF@ ACAP-P @ + ACAP-BRANCH? if ACAP-BRANCH-HERE then
+      then
       ACAP-P @ 4 + ACAP-P !
    repeat ;
 
@@ -1534,6 +1931,38 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    v lo hi ACAP-TARGET-OFFSET
    k ACAP-XTCELL-DATA? if AOT-WINDOW:XTOFF-DATA-TAG or then ;
 
+: ACAP-GRAPH-ROOTS ( -- )
+   0 ACAP-GWORK-N !
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-NAMED? dup i cells ACAP-NAMED-BIT + ! if
+         i ACAP-GRAPH-CODE? if
+            i ACAP-GRAPH-MARK-REC
+         then
+      then
+   loop
+   \ Every declared code cell is a root even when its owning definition is
+   \ private: the DATA row is part of the captured ABI.
+   ACAP-XTCELL-ROWS 0 ?do
+      i ACAP-XTCELL-DATA? 0= if
+         i ACAP-XTCELL-AT AOT-CELL@ {: target:n :}
+         target AOT-CODE-B0 @ >=
+         target AOT-CODE-B0 @ AOT-BLOB-LEN @ + < and if
+            target AOT-CODE-B0 @ - ACAP-GRAPH-MARK-OFF
+         then
+      then
+   loop ;
+
+: ACAP-GRAPH-REMAP-XTOFF ( -- )
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      i ACAP-XTMETA@ {: meta:n :}
+      meta AOT-WINDOW:XTOFF-KIND-MASK and 0= meta AOT-WINDOW:XTOFF-VALUE-MASK and 0<> and if
+         meta AOT-WINDOW:XTOFF-VALUE-MASK and 1- ACAP-GRAPH-MAP@ dup 0 < if
+            s" aot-capture: declared code cell targets a removed span" 74 die
+         then
+         1+ i AOT-WINDOW:XTOFF-ROW * AOT-WINDOW:XTOFF-BUF@ + 4 + AOT-P32!
+      then
+   loop ;
+
 \ --- the window's present cells -------------------------------------------------
 \ ONE BIT A CELL, AND A VARINT FOR EVERY CELL THAT HOLDS SOMETHING. The values go
 \ into their own section in CELL ORDER, so a bit needs no offset into them: the
@@ -1702,6 +2131,15 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 \ nothing else. ---
 public
 
+\ Translate a live window code address to its compacted payload coordinate.
+: CODE-OFFSET ( n -- n )
+   ACAP-W-B0 @ - ACAP-GRAPH-MAP@ ;
+
+\ The provenance query covers the entire source window, including removed
+\ bodies. The byte copy owns a separate, exact output extent after compaction.
+: CODE-WINDOW ( -- n n n )
+   ACAP-W-B0 @ dup ACAP-GOLDLEN @ + ACAP-GNEWLEN @ ;
+
 \ ---- the build-side name map ---------------------------------------------------
 \ Every record the capture SAW, shipped or not, read back by capture order. The
 \ image keeps the names it can be asked for and strips the rest, so a tool that
@@ -1727,7 +2165,10 @@ public
 : MAP-PKG? ( n -- bool )
    ACAP-REC-DST CELL-VIEW AOT-RWID -1 = ;
 
-: MAP-START ( n -- n )                             \ code blob offset, or a package's public wid
+: MAP-START ( n -- n )                             \ code offset (-1 if removed), or package public wid
+   dup MAP-PKG? 0= if
+      dup MAP-NAMED 0= over ACAP-GRAPH-LIVE? 0= and if drop -1 exit then
+   then
    dup ACAP-REC-DST ACAP-W32@ swap MAP-PKG? ACAP-WID-FIELD ;
 
 : MAP-LEN ( n -- n )                               \ code length in bytes, or a package's private wid
@@ -1861,7 +2302,7 @@ private
    0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
    0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  0 AOT-SPAN:N !
    AOT-WINDOW:WINDOW-RESET
-   0 AOT-XTSITE:N !  0 AOT-PWIN-N !
+   0 AOT-XTSITE:N !  0 AOT-PWIN-N !  0 ACAP-GRAPH-READY !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 public
 
@@ -1985,14 +2426,31 @@ TRUSTED: ACAP-ADDRESS ( ptr u8 -- n ) ;
    ACAP-TIDX-PROVE                              \ ... which answers what the scan answers
    bstart bend ACAP-COPY-BLOB
    rend rstart ?do i bstart ACAP-ADD-REC loop
+   AOT-REC-N @ ACAP-REC-ALL !
    ACAP-AUDIT-WIDS
+   ACAP-GRAPH-SITES
    ACAP-SCAN-CALLS
    bstart bend d0 d1 ACAP-SCAN-DSITES
    bstart bend d0 d1 ACAP-SCAN-DEFER-SITES
    bstart bend ACAP-SCAN-CSITES
+   bstart bend d0 d1 ACAP-RELEASE-DYNAMIC
+   bstart bend d0 d1 ACAP-BAKE-DATA
+   \ The code-site pass uses a zero base while canonicalising DATA chains.
+   \ Reachability roots still inspect the live declared XT addresses, so restore
+   \ the capture base before translating those addresses to blob offsets.
+   bstart AOT-CODE-B0 !
+   ACAP-GRAPH-INDEX
+   ACAP-GRAPH-ROOTS
+   ACAP-GRAPH-SWEEP  -1 ACAP-GRAPH-READY !
+   ACAP-GRAPH-SWEEP-GAPS
+   ACAP-GRAPH-SWEEP
+   ACAP-GRAPH-BUILD-MAP
+   ACAP-GRAPH-COPY-BLOB
+   ACAP-GRAPH-PATCH
+   ACAP-GRAPH-REMAP
+   ACAP-GRAPH-REMAP-XTOFF
+   0 AOT-CODE-B0 !                              \ the payload and merge contract use canonical zero
    ACAP-NORMALIZE-DSITES
-   bstart bend d0 d1 ACAP-RELEASE-DYNAMIC      \ no dynamic-storage mapping may reach the bytes below
-   bstart bend d0 d1 ACAP-BAKE-DATA            \ DATA bytes plus every declared address cell
    ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
    ACAP-PROVE-RECS                              \ fail-closed inverse proof
    ACAP-NIDX-PROVE                              \ ... and the pool index answers every entry

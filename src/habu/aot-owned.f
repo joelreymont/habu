@@ -55,14 +55,15 @@ public
 : OWN ( -- AOT-OWNED:capture ) -1 OWN-AS ;
 
 \ Called immediately after the real capture audits, with its frozen live code
-\ bounds. Only the explicit bootstrap entry can carry an unknown origin; it
-\ cannot turn a JIT or invalid answer into a native claim.
-: OWN-WINDOW ( n n [ n n -- n ] bool -- AOT-OWNED:capture )
-   {: first:n end:n query bootstrap:bool :}
+\ bounds and the compactor's exact copied extent. Provenance still covers the
+\ full original window: deleting a JIT body cannot make a mixed window native.
+\ Only the explicit bootstrap entry can carry an unknown origin.
+: OWN-WINDOW ( n n n [ n n -- n ] bool -- AOT-OWNED:capture )
+   {: first:n end:n copied:n query bootstrap:bool :}
    first 0 < end first < or if
       s" aot-owned: invalid live code window" AOT-OWNED:ORIGIN-REFUSE then
-   end first - AOT-BLOB-LEN @ <> if
-      s" aot-owned: copied code differs from the frozen window extent" AOT-OWNED:ORIGIN-REFUSE then
+   copied 0 < copied end first - > or copied AOT-BLOB-LEN @ <> or if
+      s" aot-owned: copied code differs from the compacted window extent" AOT-OWNED:ORIGIN-REFUSE then
    first end query execute {: origin:n :}
    origin 1 = if 1 OWN-AS exit then
    origin -1 = bootstrap and if OWN exit then

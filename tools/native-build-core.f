@@ -351,8 +351,9 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 : WRITE-OWNED ( AOT-OWNED:capture -- AOT-OWNED:capture )
    dup WRITE-TARGET ;
 
-: EMIT-TEMP ( [ n n -- n ] bool -- )
-   AOT-ARM:B0 @ AOT-ARM:B1 @ 2swap AOT-FILE:OWN-WINDOW ['] WRITE-OWNED catch {: rc:n :}
+: EMIT-TEMP ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
+   AOT-CAPTURE:CODE-WINDOW query bootstrap AOT-FILE:OWN-WINDOW
+   ['] WRITE-OWNED catch {: rc:n :}
    AOT-OWNED:CLOSE
    rc 0<> if rc throw then
    TEMP$ CHMOD-X ;

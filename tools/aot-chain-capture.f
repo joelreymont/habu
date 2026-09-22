@@ -316,7 +316,7 @@ variable NAME-COUNT
    then
    target 0= if 0 else
       target lo < target hi >= or if ROW-REFUSE then
-      target lo - 1+
+      data? if target lo - 1+ else target AOT-CAPTURE:CODE-OFFSET 1+ then
    then
    data? if AOT-WINDOW:XTOFF-DATA-TAG or then {: meta:n :}
    loc meta ?EXACT-ROW ;
