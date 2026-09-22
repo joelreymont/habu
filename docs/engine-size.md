@@ -25,7 +25,7 @@ elf/header-pad	3619	0.0
 engine/code	128956	3.3
 engine/primitive-names	184	0.0
 engine/primitive-count	8	0.0
-engine/primitive-records	10032	0.2
+engine/primitive-records	10080	0.2
 source/baked	0	0.0
 aot/framing-cells	128	0.0
 aot/code-blob	1825312	48.0
@@ -42,7 +42,7 @@ aot/code-spans	67568	1.7
 aot/boot-run-entries	4	0.0
 aot/protected-wordlists	676	0.0
 aot/checker-sidecar	0	0.0
-image/text-pad	47216	1.2
+image/text-pad	47168	1.2
 container/rw-segment	192	0.0
 total	3801280	100.0
 
