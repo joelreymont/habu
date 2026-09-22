@@ -29,7 +29,11 @@ measured in `lib/aio-test.f` by counting `/proc/self/task` during the run.
 
 The loop is started explicitly because a live task forbids compilation
 ([threads.md](threads.md)): the program decides when it has finished defining
-words. A submission with no loop running is `E-AIO-STATE`.
+words. The loop task is no exception: it runs `lib/aio.f`'s code, which sits in
+the 64K unit a later definition flips non-executable whenever `lib/aio.f` was
+the last thing compiled (measured in threads.md), so a program defines
+everything first and starts the loop last. A submission with no loop running is
+`E-AIO-STATE`.
 
 `lib/net/tcp4.f`, `lib/net/udp4.f`, `lib/serial.f`, `lib/pty.f`,
 `lib/process-pty-io.f` and `lib/signal.f` are the loop's library callers: every

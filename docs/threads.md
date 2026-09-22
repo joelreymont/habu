@@ -23,10 +23,24 @@ region are shared read-only while tasks are live. Each task gets:
 
 Compilation and dictionary mutation are forbidden while any task is live.
 Compiler and dictionary mutation paths check `TASKS-LIVE-CELL` and exit with
-code `$4F`, printing the rejected token. This bounds what a remote REPL can do:
-a REPL served over a connection ([genio.md](genio.md)) can evaluate while worker
-tasks run, but a colon definition sent to it is dictionary mutation and ends the
-process. Define first, then start the tasks. Linux fatal exits use `exit_group`
+code `$4F`, printing the rejected token. What the ban protects is the code
+band's W^X flip: a definition holds the band writable from its colon to the `;`
+flush, and the flip is aligned outward to the `PROT-PAGE-MAX` unit (`$10000`,
+`src/habu/layout.f`), so every word already compiled in the 64K unit that holds
+the code pointer loses execute permission while the definition is open, and a
+task running one of them faults. Measured with the live count reset by hand:
+`lib/aio.f` loaded last, its loop task and one client task ticking 1 ms
+timeouts, then 2000 empty definitions - SIGSEGV at a pc 14.7K below the code
+pointer, inside `lib/aio.f`; with 32K of definitions between `lib/aio.f` and the
+loop start the code pointer sat in the next unit and the same run survived 21
+client rounds. No task is exempt, the AIO loop task included: an exemption would
+have to keep every live task's code out of the unit the code pointer is in,
+which no later definition can promise, and the forget paths (`cp!`, `ndict!`)
+free code under a task that may be running it. This bounds what a remote REPL
+can do: a REPL served over a connection ([genio.md](genio.md)) can evaluate
+while worker tasks run, but a colon definition sent to it is dictionary mutation
+and ends the process. Define first, then start the tasks, the AIO loop last
+([aio.md](aio.md)). Linux fatal exits use `exit_group`
 (`94`), not thread-local `exit` (`93`), so an error in any thread terminates the
 whole process instead of leaving worker threads behind.
 

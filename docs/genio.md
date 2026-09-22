@@ -184,8 +184,8 @@ dev dev [: SERVE ;] GENIO:WITH-IO
 dictionary mutation, and Habu forbids that while any task is live: the engine
 exits `$4F` naming the rejected token (see [threads.md](threads.md)). A remote
 REPL on a server that is running worker tasks can therefore evaluate but not
-define. That is a restriction of Habu's tasking model, not of this layer, and it
-is why [`lib/genio-test.f`](../lib/genio-test.f) holds both ends of its
+define. That is a restriction of Habu's tasking model, not of this layer - the
+W^X unit a definition flips, measured in threads.md - and it is why [`lib/genio-test.f`](../lib/genio-test.f) holds both ends of its
 connection in the main task.
 
 ## Images
