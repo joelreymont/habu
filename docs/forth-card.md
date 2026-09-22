@@ -47,19 +47,17 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
 `len`, `fd`, `rc`), never role prose like `( got want -- )`.
 
 - A string is `ptr u8 n`, a cell address `ptr a`, `n` only a genuine scalar.
-  `ptr a` needs a body that keeps the pointee parametric; read the cell as a
-  number and declare `ptr n`, or it is `E-NONPARAMETRIC-EFFECT`. `ptr u8` is a
-  byte span — `c@`/`c!`; cell `@` on it is `E-MISMATCH`.
+  `ptr a` needs a body that keeps the pointee parametric — a `ptr` local admits
+  `@` and `!`, but `: F ( ptr a -- n ) {: p:ptr :} p @ ;` is
+  `E-NONPARAMETRIC-EFFECT` because `a` is specialised; read the cell as a
+  number and declare `( ptr n -- n )`. `ptr u8` is a byte span — `c@`/`c!`;
+  cell `@` on it is `E-MISMATCH`.
 - Integers widen when lossless (`u8 → u16 → u32 → n`); roles (`idx`, `len`,
   `fd`) never widen. Booleans are real `bool`s: `0 0=`, never a raw `0`/`-1`.
 - Locals `{: a b:ptr :}` bind left to right from the deepest item, so
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
   lives on the stack or in a cell. Names are at most 16 bytes, 64 per
   definition, block-scoped, bindable after a closed early-exit guard.
-- **A `{: p:ptr :}` local admits cell `@` and `!`**. The restriction is on
-  the **declared** pointee:
-  `: F ( ptr a -- n ) {: p:ptr :} p @ ;` is `E-NONPARAMETRIC-EFFECT` because `a`
-  is specialised, while `( ptr n -- n )` certifies.
 - Bind multi-cell values whole: `{: p :}` or `{: r:res<n,n> :}` (arity checked).
   Destructure only to compute; pass the whole local between words.
 - Quotations `[: … ;]` are xts, not closures. The token `[ in -- out ]` works as
