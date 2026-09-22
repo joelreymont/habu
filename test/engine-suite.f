@@ -79,8 +79,10 @@ variable T-LABEL-U
    T-LABEL-CLEAR ;
 
 \ A registered engine helper is sealed system-private: search-wl must never
-\ surface (PROT-SPAN) or (LP2VEXEC) in any wordlist, so no checked program can
-\ name or call it.
+\ surface (PROT-SPAN), (LP2VEXEC) or (NUM) in any wordlist, so no checked
+\ program can name or call it. (NUM) is the engine's number reader, which
+\ `num-parse` reaches by a direct branch; the record exists so an ahead-of-time
+\ image can carry the reader, not so source can name it.
 using TFAM
 
 package ENGINE-SUITE
@@ -94,6 +96,9 @@ package ENGINE-SUITE
 : LP2VEXEC-WID-HIDDEN? ( n -- bool )
    s" (LP2VEXEC)" rot search-wl 0= ;
 
+: NUM-WID-HIDDEN? ( n -- bool )
+   s" (NUM)" rot search-wl 0= ;
+
 public
 
 : PROT-SPAN-HIDDEN? ( -- bool )
@@ -103,6 +108,10 @@ public
 : LP2VEXEC-HIDDEN? ( -- bool )
    OWNER-PUBLIC-WID LP2VEXEC-WID-HIDDEN?
    OWNER-PRIVATE-WID LP2VEXEC-WID-HIDDEN? and ;
+
+: NUM-HIDDEN? ( -- bool )
+   OWNER-PUBLIC-WID NUM-WID-HIDDEN?
+   OWNER-PRIVATE-WID NUM-WID-HIDDEN? and ;
 
 ;package
 
@@ -126,6 +135,8 @@ s" (PROT-SPAN)" 0 search-wl 0 T=
 ENGINE-SUITE:PROT-SPAN-HIDDEN? -1 T=
 s" (LP2VEXEC)" 0 search-wl 0 T=
 ENGINE-SUITE:LP2VEXEC-HIDDEN? -1 T=
+s" (NUM)" 0 search-wl 0 T=
+ENGINE-SUITE:NUM-HIDDEN? -1 T=
 
 5 dup * 25 T=
 1 2 3 rot + + 6 T=

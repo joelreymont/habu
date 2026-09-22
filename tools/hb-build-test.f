@@ -121,6 +121,8 @@ variable HBT-LIFE-SRC-U
 variable HBT-LIFE-OUT-U
 variable HBT-HOOK-SRC-U
 variable HBT-HOOK-OUT-U
+variable HBT-NUMP-SRC-U
+variable HBT-NUMP-OUT-U
 create HBT-LIB-SRC-BUF FS-PATH-CAP allot
 create HBT-LIB-OUT-BUF FS-PATH-CAP allot
 create HBT-LIB-DIR-BUF FS-PATH-CAP allot
@@ -144,6 +146,8 @@ create HBT-LIFE-SRC-BUF FS-PATH-CAP allot
 create HBT-LIFE-OUT-BUF FS-PATH-CAP allot
 create HBT-HOOK-SRC-BUF FS-PATH-CAP allot
 create HBT-HOOK-OUT-BUF FS-PATH-CAP allot
+create HBT-NUMP-SRC-BUF FS-PATH-CAP allot
+create HBT-NUMP-OUT-BUF FS-PATH-CAP allot
 \ The quoted-path fixture below owns the writer's bytes; json-write holds none.
 6 constant HBT-ESCAPE-MAX
 FS-PATH-CAP HBT-ESCAPE-MAX * 2 + constant HBT-QUOTE-CAP
@@ -354,6 +358,12 @@ create HBT-EXP-HEX2 64 allot
 : HBT-HOOK-OUT ( -- ptr u8 n )
    HBT-HOOK-OUT-BUF HBT-HOOK-OUT-U @ ;
 
+: HBT-NUMP-SRC ( -- ptr u8 n )
+   HBT-NUMP-SRC-BUF HBT-NUMP-SRC-U @ ;
+
+: HBT-NUMP-OUT ( -- ptr u8 n )
+   HBT-NUMP-OUT-BUF HBT-NUMP-OUT-U @ ;
+
 \ An application that touches a PERSISTENT CELL of each library it requires:
 \ lib/string.f's builder, lib/fs-mutate.f's copy state (FS-MUT-COPY-IN) and
 \ lib/fs.f's walk stacks (FS-DEPTH, FS-WALK-BUF). Those cells are what the maker
@@ -552,6 +562,35 @@ create HBT-EXP-HEX2 64 allot
    s" hook=p" SB-APPEND 10 SB-APPEND-C
    SB$ ;
 
+\ PARSING A NUMBER AT RUN TIME. `num-parse` is `bl LNUM` (src/habu/habu1.f
+\ BNUMPARSE) and LNUM is the engine's own number reader, which had no
+\ dictionary record: the closure walk follows a direct branch only to a
+\ record's exact entry, so this program was refused
+\ `aot: PC-relative target removed or outside closure site=num-parse
+\ target=4293656 target-word=<unknown>` (exit 74, measured on engine
+\ ec37691e, the refusal Tender's stripped server stopped at). The reader is
+\ now the sealed (NUM) engine helper and is CARRIED, not dropped like (MARK):
+\ its body branches only within itself and touches only the caller's bytes,
+\ so the image gets the 480-byte record and parses at run time.
+\ THE THREE ANSWERS ARE THE READER'S OWN: `42` is the value with the float
+\ flag clear, `1.5` sets it, and `12a` - a spelling the reader refuses - is
+\ the pair of ANDs in BNUMPARSE answering zero with both flags false, which
+\ is why the last line is `0` and not `12`.
+: HBT-NUMP-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require lib/fmt.f\n: MAIN ( -- )\n" SB-APPEND
+   S\"    s\" 42\" num-parse {: v:n flt:bool ok:bool :}\n" SB-APPEND
+   S\"    ok if v FMT:.INT cr then\n" SB-APPEND
+   S\"    flt if s\" float\" type cr else s\" int\" type cr then\n" SB-APPEND
+   S\"    s\" 1.5\" num-parse {: v2:n f2:bool ok2:bool :}\n" SB-APPEND
+   S\"    f2 if s\" float\" type cr else s\" int\" type cr then\n" SB-APPEND
+   S\"    s\" 12a\" num-parse {: v3:n f3:bool ok3:bool :}\n" SB-APPEND
+   S\"    ok3 if s\" num\" type cr else v3 FMT:.INT cr then ;\n" SB-APPEND
+   SB$ ;
+
+: HBT-NUMP-EXPECTED$ ( -- ptr u8 n )
+   S\" 42\nint\nfloat\n0\n" ;
+
 \ A PROGRAM WHOSE CLOSURE IS ITS OWN SIZE. HBT-CHAIN-N words, each calling the
 \ next and reaching no library, are exactly HBT-CHAIN-N + 1 closure members, so
 \ this fixture measures the table sizing and nothing else. 1100 is past the 1024
@@ -646,6 +685,8 @@ create HBT-EXP-HEX2 64 allot
    HBT-ROOT s" lifecycle" HBT-LIFE-OUT-BUF HBT-LIFE-OUT-U HBT-PATH!
    HBT-ROOT s" lifehook.f" HBT-HOOK-SRC-BUF HBT-HOOK-SRC-U HBT-PATH!
    HBT-ROOT s" lifehook" HBT-HOOK-OUT-BUF HBT-HOOK-OUT-U HBT-PATH!
+   HBT-ROOT s" numparse.f" HBT-NUMP-SRC-BUF HBT-NUMP-SRC-U HBT-PATH!
+   HBT-ROOT s" numparse" HBT-NUMP-OUT-BUF HBT-NUMP-OUT-U HBT-PATH!
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
@@ -1127,6 +1168,28 @@ create READER-STATE JR:STORAGE-BYTES allot
    errn 0 T=
    HBT-RUN-OUT outn HBT-HOOK-EXPECTED$ T$=
    HBT-HOOK-OUT HBT-REMOVE-FILE? ;
+
+\ ... and PARSES A NUMBER, carrying the engine's number reader. The refusal
+\ this replaced and the three pinned answers are with HBT-NUMP-SRC$ above.
+: HBT-STRIPPED-NUM-PARSE ( -- )
+   HBT-NUMP-SRC HBT-NUMP-SRC$ WRITE-ALL
+   HBT-NUMP-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-NUMP-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-NUMP-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
+   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
+   brc 0 T=
+   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-NUMP-OUT FILE? TTRUE
+   HBT-NUMP-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-NUMP-EXPECTED$ T$=
+   HBT-NUMP-OUT HBT-REMOVE-FILE? ;
 
 \ ... while a baked create table on no list is refused however much it looks like
 \ the carried ones.
@@ -1857,6 +1920,7 @@ public
    HBT-STRIPPED-OPEN-PATH
    HBT-STRIPPED-LIFECYCLE-REGISTRY
    HBT-STRIPPED-LIFECYCLE-HOOK
+   HBT-STRIPPED-NUM-PARSE
    HBT-STRIPPED-UNCARRIED-TABLE
    HBT-STRIPPED-CACHED-CARRIED
    HBT-STRIPPED-CACHED-UNOWNED

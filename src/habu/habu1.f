@@ -4480,7 +4480,21 @@ variable FIND-HMATCH
    17 NUM-DONE LABEL@ CBNZ,                                   \ a complete overflowed integer never becomes a name
    11 11 13 MUL,  12 1 MOVZ, ;
 
+\ The engine's number reader ( x9=address, x10=length -> x11 value, x2 float?,
+\ x12 read a number? ), registered as the sealed (NUM) engine helper for the
+\ reason (PROT-SPAN) is: `num-parse` (BNUMPARSE above) reaches it by a direct
+\ BL, and the ahead-of-time closure walker follows such a branch only to a
+\ record's EXACT code entry (aot-closure.f FINDADDR-PTR), so without a record
+\ the linker has no name for the target and refuses the image. Here the
+\ registration also CARRIES it, which is the opposite of (MARK) (habu2.f): the
+\ reader does the work `num-parse` needs at run time, and its body reaches
+\ nothing outside [start, end) - every branch targets a NUM-* label in it, the
+\ radix is an immediate, the float finish is inline SCVTF/FDIV/FADD, and the
+\ only memory it touches is the caller's bytes - so the closure copies the body
+\ and rewrites its internal branches with no further claim.
 : EMIT-NUM ( -- )
+   LBL {: end:label :}
+   s" (NUM)" LNUM LABEL@ LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
    LNUM LABEL@ LBL,
    LBL NUM-DONE !
    LBL NUM-NDOLL !
@@ -4512,7 +4526,8 @@ variable FIND-HMATCH
    2 NUM-LINT LABEL@ CBZ,
    C-NUM-FLOAT-FINISH
    NUM-LINT LABEL@ LBL,  C-NUM-INT-FINISH
-   NUM-DONE LABEL@ LBL,  RET, ;
+   NUM-DONE LABEL@ LBL,  RET,
+   end LBL, ;
 
 package ENGINE-EMIT
 using ENGINE-PRIMS

@@ -224,7 +224,17 @@ protection guard and all — untouched. The rule is keyed on the *target* being
 the registrar, never on the member that calls it, so every other unmapped branch
 still dies by name. `HBT-STRIPPED-LIFECYCLE-HOOK` is the reproducer: it registers
 through both entries, calls a library that registers its cleanup on first use,
-and prints from each hook at exit. A baked table on no list still refuses:
+and prints from each hook at exit. **`(NUM)` is the opposite case**: the
+engine's number reader, which `num-parse` reaches by the same kind of direct
+branch, is a sealed helper record that the closure **carries**, because the
+reader does the work the caller needs at run time and its body reaches nothing
+outside itself — every branch targets a label inside it, the radix is an
+immediate, the float finish is inline, and the only memory it touches is the
+caller's bytes. A stripped image that parses a number therefore grows by the
+reader's 480 bytes and answers the parsed value; without the record it was
+refused at `site=num-parse target-word=<unknown>`, which is where Tender's
+stripped server stopped, and `HBT-STRIPPED-NUM-PARSE` is that reproducer.
+A baked table on no list still refuses:
 `src/os/env-base.f`'s `TPB`, the `TMP-PATH` buffer, reached through
 `TMP-PATH-COPY-SRC`, is the nearest miss (`HBT-STRIPPED-UNCARRIED-TABLE`) — a
 table travels because the list names it, never because it is a table and never
