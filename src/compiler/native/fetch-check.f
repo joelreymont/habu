@@ -11,7 +11,7 @@ private
    s" hb: bad layout descriptor" 76 die ;
 
 : BAD-TAG ( -- )
-   S\" hb: bad layout tag\n" ENGINE-ERROR:BAD-TAG die ;
+   s" hb: bad layout tag" ENGINE-ERROR:BAD-TAG die ;
 
 \ Every certified limit is positive; a negative cell is above that domain when
 \ read unsigned, including the all-bits-set representation.

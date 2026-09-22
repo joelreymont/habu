@@ -497,6 +497,7 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    CODE-CAP-WORDS ASM-CP !
    WINDOW-FILL EMITW ;
 
+\ die writes its message as one line, so every want below ends in one newline.
 : TEST-DIAG ( ptr u8 n ptr u8 n -- )
    {: source:ptr sourceu:n want:ptr wantu:n :}
    source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
@@ -508,25 +509,25 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    ERR erru want wantu T$= ;
 
 : TEST-OVERFLOW ( -- )
-   s" EMIT-OVERFLOW" s" icode: out of fixups" TEST-DIAG ;
+   s" EMIT-OVERFLOW" S\" icode: out of fixups\n" TEST-DIAG ;
 
 : TEST-CORRUPT ( -- )
-   s" EMIT-CORRUPT-LOW" s" icode: fixup free list corrupt" TEST-DIAG
-   s" EMIT-CORRUPT-FUTURE" s" icode: fixup free list corrupt" TEST-DIAG ;
+   s" EMIT-CORRUPT-LOW" S\" icode: fixup free list corrupt\n" TEST-DIAG
+   s" EMIT-CORRUPT-FUTURE" S\" icode: fixup free list corrupt\n" TEST-DIAG ;
 
 : TEST-REDEFINE ( -- )
    0 0= 0= TEST-REBIND-AT
    0 0= TEST-REBIND-AT
-   s" 0 0<> EMIT-REDEFINE" s" icode: label redefined" TEST-DIAG
-   s" 0 0= EMIT-REDEFINE" s" icode: label redefined" TEST-DIAG ;
+   s" 0 0<> EMIT-REDEFINE" S\" icode: label redefined\n" TEST-DIAG
+   s" 0 0= EMIT-REDEFINE" S\" icode: label redefined\n" TEST-DIAG ;
 
 : TEST-BADKIND ( -- )
-   s" EMIT-BADKIND" s" icode: invalid fixup kind" TEST-DIAG
-   s" EMIT-BADKIND-PATCH" s" icode: invalid fixup kind" TEST-DIAG ;
+   s" EMIT-BADKIND" S\" icode: invalid fixup kind\n" TEST-DIAG
+   s" EMIT-BADKIND-PATCH" S\" icode: invalid fixup kind\n" TEST-DIAG ;
 
 : TEST-WINDOW-REFUSES ( -- )
-   s" EMIT-WINDOW-OVER"   s" icode: code buffer overflow" TEST-DIAG
-   s" EMIT-WINDOW-PARKED" s" icode: code buffer overflow" TEST-DIAG ;
+   s" EMIT-WINDOW-OVER"   S\" icode: code buffer overflow\n" TEST-DIAG
+   s" EMIT-WINDOW-PARKED" S\" icode: code buffer overflow\n" TEST-DIAG ;
 
 \ A reach refusal names the site, so the whole message is held here, both paths
 \ of each kind, exactly as the build log would show it. Every number is one the
@@ -537,14 +538,14 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
 \ recorded word and the target is the bind; the backward cases refuse at the
 \ instruction, where the site is ASM-CP and the target is the bound label.
 : TEST-REACH-DIAG ( -- )
-   s" EMIT-REL19-FAR-FWD"  s" icode: cond branch out of reach site=0 target=1048576 delta=1048576 limit=1048576" TEST-DIAG
-   s" EMIT-REL19-FAR-BACK" s" icode: cond branch out of reach site=1048580 target=0 delta=-1048580 limit=1048576" TEST-DIAG
-   s" EMIT-REL26-FAR-FWD"  s" icode: branch out of reach site=0 target=134217728 delta=134217728 limit=134217728" TEST-DIAG
-   s" EMIT-REL26-FAR-BACK" s" icode: branch out of reach site=0 target=-134217732 delta=-134217732 limit=134217728" TEST-DIAG
-   s" EMIT-ADR-FAR-FWD"    s" icode: adr out of reach site=0 target=1048576 delta=1048576 limit=1048576" TEST-DIAG
-   s" EMIT-ADR-FAR-BACK"   s" icode: adr out of reach site=1048580 target=0 delta=-1048580 limit=1048576" TEST-DIAG
-   s" EMIT-LOFF-OVER-FWD"  s" icode: label offset out of reach" TEST-DIAG
-   s" EMIT-LOFF-OVER-BACK" s" icode: label offset out of reach" TEST-DIAG ;
+   s" EMIT-REL19-FAR-FWD"  S\" icode: cond branch out of reach site=0 target=1048576 delta=1048576 limit=1048576\n" TEST-DIAG
+   s" EMIT-REL19-FAR-BACK" S\" icode: cond branch out of reach site=1048580 target=0 delta=-1048580 limit=1048576\n" TEST-DIAG
+   s" EMIT-REL26-FAR-FWD"  S\" icode: branch out of reach site=0 target=134217728 delta=134217728 limit=134217728\n" TEST-DIAG
+   s" EMIT-REL26-FAR-BACK" S\" icode: branch out of reach site=0 target=-134217732 delta=-134217732 limit=134217728\n" TEST-DIAG
+   s" EMIT-ADR-FAR-FWD"    S\" icode: adr out of reach site=0 target=1048576 delta=1048576 limit=1048576\n" TEST-DIAG
+   s" EMIT-ADR-FAR-BACK"   S\" icode: adr out of reach site=1048580 target=0 delta=-1048580 limit=1048576\n" TEST-DIAG
+   s" EMIT-LOFF-OVER-FWD"  S\" icode: label offset out of reach\n" TEST-DIAG
+   s" EMIT-LOFF-OVER-BACK" S\" icode: label offset out of reach\n" TEST-DIAG ;
 
 \ Those numbers go through icode.f's own signed-decimal writer, which exists
 \ because the file loads before lib/. The reach fixtures only ever hand it

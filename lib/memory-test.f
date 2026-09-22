@@ -461,7 +461,7 @@ create CAP-ERR CAP allot
    LEN>N {: erru:n :}
    LEN>N {: outu:n :}
    outu 0 T=
-   CAP-ERR erru s" memory: unmap failed" T$= ;
+   CAP-ERR erru S\" memory: unmap failed\n" T$= ;   \ die ends the message with one newline
 
 : RELEASE-SRC ( -- ptr u8 n )
    s" package MFR : RUN ( -- ) MEM:ALLOC-64K swap 1 + swap MEM:RELEASE-BYTES ; ' RUN ;package catch $53 emit" ;

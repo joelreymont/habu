@@ -60,13 +60,13 @@ public
 : OWN-WINDOW ( n n [ n n -- n ] bool -- AOT-OWNED:capture )
    {: first:n end:n query bootstrap:bool :}
    first 0 < end first < or if
-      S\" aot-owned: invalid live code window\n" AOT-OWNED:ORIGIN-REFUSE then
+      s" aot-owned: invalid live code window" AOT-OWNED:ORIGIN-REFUSE then
    end first - AOT-BLOB-LEN @ <> if
-      S\" aot-owned: copied code differs from the frozen window extent\n" AOT-OWNED:ORIGIN-REFUSE then
+      s" aot-owned: copied code differs from the frozen window extent" AOT-OWNED:ORIGIN-REFUSE then
    first end query execute {: origin:n :}
    origin 1 = if 1 OWN-AS exit then
    origin -1 = bootstrap and if OWN exit then
-   S\" aot-owned: captured code lacks native provenance\n" AOT-OWNED:ORIGIN-REFUSE ;
+   s" aot-owned: captured code lacks native provenance" AOT-OWNED:ORIGIN-REFUSE ;
 
 : IMPORT ( AOT-OWNED:capture -- )
    AOT-OWNED:BYTES$ {: src:ptr size:n :}

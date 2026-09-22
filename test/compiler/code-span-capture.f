@@ -45,7 +45,7 @@ create SPAN-ERR $100 allot
    SPAN-OUT $100 >LEN SPAN-ERR $100 >LEN 1000 >MS SUBJECT:RUN
    74 T-OUTCOME-EXITED= {: outu:len erru:len :}
    outu LEN>N 0 T=
-   SPAN-ERR erru LEN>N s" hb: malformed dictionary code length" T$= ;
+   SPAN-ERR erru LEN>N S\" hb: malformed dictionary code length\n" T$= ;
 
 : SPAN-CAPTURE-RUN ( -- )
    T-RESET

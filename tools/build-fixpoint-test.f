@@ -1290,7 +1290,7 @@ variable BAD-N
    EXPECT-OK
    BFT-STAGE2 SRC-BUF 1 APPEND-FILE
    STAGE2-DRIVER RUN-BUILD
-   s" stage2: source exceeds buffer" EXPECT-74
+   S\" stage2: source exceeds buffer\n" EXPECT-74
    BF-TMP-RESET ;
 
 : MAKER-SOURCE ( -- ptr u8 n )
@@ -1320,7 +1320,7 @@ variable BAD-N
    EXPECT-OK
    MAKER-SOURCE SRC-BUF 1 APPEND-FILE
    MAKER-DRIVER RUN-BUILD
-   s" maker: source exceeds buffer" EXPECT-74
+   S\" maker: source exceeds buffer\n" EXPECT-74
    BF-TMP-RESET ;
 
 : BFT-TEST-TMP-OVERRIDE ( -- )

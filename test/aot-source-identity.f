@@ -101,7 +101,7 @@ public
    s" AOT-SOURCE-TEST:LOAD-SOURCE" 70 CHILD
    ERR swap s" SRCBOUND:RIGHT" CONTAINS? TTRUE drop
    s" AOT-SOURCE-TEST:READ-ARTIFACT" 75 CHILD
-   ERR swap s" aot-file: the chain sources have changed since this capture" T$= 0 T=
+   ERR swap S\" aot-file: the chain sources have changed since this capture\n" T$= 0 T=
    ART$ ART-AFTER SHA256-FILE 0 T=
    ART-BEFORE 32 ART-AFTER 32 STR= TTRUE
    CLEANUP-RUN T-REPORT ;

@@ -25,7 +25,7 @@ here SLOTS - 2 cells / constant ROWS
 : KIND ( ptr n n -- n ) SLOT cell+ @ ;
 
 : REFUSE ( -- )
-   S\" native-build: incompatible fixed engine layout\n" 74 die ;
+   s" native-build: incompatible fixed engine layout" 74 die ;
 
 : COUNT-CHECK ( n -- ) ROWS <> if REFUSE then ;
 

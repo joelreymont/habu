@@ -396,7 +396,7 @@ variable TG-COL-NAME
    n 0 <> if TG-FAIL-RC throw then ;
 
 : TG-USAGE ( -- )
-   S\" two-gen: expected [seed], --same-host [seed], or --compare file-a file-b\n"
+   s" two-gen: expected [seed], --same-host [seed], or --compare file-a file-b"
    TG-FAIL-RC die ;
 
 : TG-RUN ( -- )

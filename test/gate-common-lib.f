@@ -252,6 +252,10 @@ variable GE-EVAL-SRC-U
 : GE-EXPECT-OUT-HAS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n label:ptr labelu:n :}
    GT-OUT$ want wantu CONTAINS? 0= if label labelu GE-FAIL then ;
 
+\ The whole of stderr, byte for byte - the check a one-line diagnostic asks for.
+: GE-EXPECT-ERR ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n label:ptr labelu:n :}
+   GT-ERR$ want wantu STR= 0= if label labelu GE-FAIL then ;
+
 : GE-EXPECT-ERR-HAS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n label:ptr labelu:n :}
    GT-ERR$ want wantu CONTAINS? 0= if label labelu GE-FAIL then ;
 

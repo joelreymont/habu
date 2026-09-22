@@ -1799,14 +1799,29 @@ variable SZA-I
 : BTYPE ( -- )
    2 G-POP  1 G-POP  G-OUT ;
 
-\ die ( ptr u8 n n -- ): write the message to fd 2, then exit. The requested rc is
+10 constant DIE-NL                 \ the one byte that ends every die message
+
+\ die ( ptr u8 n n -- ): write the message to fd 2 as ONE LINE - the span and then
+\ one newline - and exit. An EMPTY span writes nothing at all, so a site that has
+\ already ended its own report with a newline passes `s" "` and adds no blank line,
+\ and a parent reporting the child's exit on the same stream never continues the
+\ child's last line. The newline byte lives in a 16-byte frame on the machine
+\ stack, so the message needs no label and no ADR. The requested rc is
 \ honored when kernel-representable ([0,255]; 0 stays the deliberate success exit,
 \ DRV-EXIT-OK); any other rc would be silently masked to `rc & 0xFF` (a negative
 \ throw code re-used as rc could exit 0 - the DRV-FAIL second masked layer of the
 \ BTHROW no-handler class), so it maps to the deterministic UNCAUGHT-RC instead.
+\ x7 holds the rc across both syscalls; the kernel returns only x0.
 : BDIE ( -- )
    LBL {: lfixed:label :}
-   7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
+   LBL {: quiet:label :}
+   7 G-POP  2 G-POP  1 G-POP
+   2 quiet CBZ,
+      0 2 MOVZ,  NR-WRITE SYS,
+      SP SP $10 SUBI,  A DIE-NL MOVZ,  A SP 0 STRB,
+      0 2 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      SP SP $10 ADDI,
+   quiet LBL,
    0 7 0 ADDI,
    7 0 CMPI,    C-LT lfixed BCOND,
    7 255 CMPI,  C-GT lfixed BCOND,

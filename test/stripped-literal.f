@@ -43,7 +43,7 @@ variable IMAGE-U
    IMAGE$ TIMEOUT-MS GE-RUN-ENV
    71 s" stripped retained literal error path" GE-EXPECT-RC
    GT-OUT$ nip 0<> if s" stripped retained literal stdout" GE-FAIL then
-   GT-ERR$ s" memory: unmap failed" STR= 0= if
+   GT-ERR$ S\" memory: unmap failed\n" STR= 0= if
       s" stripped retained literal exact stderr" GE-FAIL
    then ;
 

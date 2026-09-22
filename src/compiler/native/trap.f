@@ -84,10 +84,12 @@ variable FOUND
 \ ---- the message -------------------------------------------------------------
 \ The tag form writes the exact bytes the engine's own inline trap writes, so a
 \ compiled MATCH and an interpreted one end the process saying the same thing.
-5 constant SFX-N                     \ " tag\n"
-10 constant NSFX-N                   \ " returned\n"
-8 NAME-CAP + SFX-N + constant TAG-MSG-CAP        \ "hb: bad " + name + " tag\n"
-4 NAME-CAP + NSFX-N + constant NORET-MSG-CAP     \ "hb: " + name + " returned\n"
+\ The trailing newline of those bytes is die's, written for every non-empty
+\ message (src/habu/habu1.f BDIE); the engine's inline trap carries its own.
+4 constant SFX-N                     \ " tag"
+9 constant NSFX-N                    \ " returned"
+8 NAME-CAP + SFX-N + constant TAG-MSG-CAP        \ "hb: bad " + name + " tag"
+4 NAME-CAP + NSFX-N + constant NORET-MSG-CAP     \ "hb: " + name + " returned"
 
 create MSG TAG-MSG-CAP NORET-MSG-CAP max allot
 
@@ -98,12 +100,12 @@ create MSG TAG-MSG-CAP NORET-MSG-CAP max allot
 : TAG-MSG ( n -- n ) {: k:n :}
    s" hb: bad " 0 PUT$ {: a:n :}
    k ROW$ a PUT$ {: b:n :}
-   S\" \x20tag\n" b PUT$ ;
+   S\" \x20tag" b PUT$ ;
 
 : NORET-MSG ( n -- n ) {: k:n :}
    s" hb: " 0 PUT$ {: a:n :}
    k ROW$ a PUT$ {: b:n :}
-   S\" \x20returned\n" b PUT$ ;
+   S\" \x20returned" b PUT$ ;
 
 public
 

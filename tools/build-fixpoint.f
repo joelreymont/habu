@@ -51,7 +51,7 @@ $2F constant BF-SLASH
 \ word now.
 : BF-NEED-PREAMBLE ( -- )
    s" FS-PATH-CAP" CHECKER-RESOLVES? if exit then
-   S\" build-fixpoint: missing required load; --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb\n" BF-USAGE-RC die ;
+   s" build-fixpoint: missing required load; --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb" BF-USAGE-RC die ;
 BF-NEED-PREAMBLE
 
 \ THE HOST CAPABILITY THE EMITTED REWIND NEEDS. The stage source rewinds to the
@@ -2179,7 +2179,6 @@ variable BF-FAIL-N
    s" build-fixpoint: failed: uncaught throw code " BF-FAIL+
    rc BF-FAIL-CODE+
    rc BF-FAIL-NAME+
-   BF-LF BF-FAIL-C+
    BF-FAIL-BUF BF-FAIL-U @ BF-BUILD-RC die ;
 
 variable BF-CLI-RAN

@@ -281,7 +281,7 @@ TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
       AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + CELL-VIEW @ $FFFFFFFF and
       dup AOT-WINDOW:XTOFF-WINDOW-TAG and 0= if
          HOST-HEAP-START CELL - > if
-            S\" native-build: captured fixed address belongs to the retired host heap\n" BUILD-RC die
+            s" native-build: captured fixed address belongs to the retired host heap" BUILD-RC die
          then
       else drop then
    loop ;
@@ -329,16 +329,16 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 
 : SOURCE-WRITER ( -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    s" NATIVE-EMIT:WRITE" XREF-FIND dup XREF-FOUND? 0= if
-      drop S\" native-build: source writer missing\n" BUILD-RC die
+      drop s" native-build: source writer missing" BUILD-RC die
    then
    dup XREF-RETIRED? if
-      drop S\" native-build: source writer retired\n" BUILD-RC die
+      drop s" native-build: source writer retired" BUILD-RC die
    then
    XREF-START {: xt:n :}
    \ Resolve after loading: neither the retained host nor captured target owns
    \ this writer. It was compiled above the frozen target window.
    xt 0= xt AOT-ARM:B1 @ < or xt cp@ >= or if
-      S\" native-build: writer does not belong to the source load\n" BUILD-RC die
+      s" native-build: writer does not belong to the source load" BUILD-RC die
    then
    xt WRITER-XT ;
 
@@ -461,7 +461,7 @@ variable NAMES-U
 
 : NAMES+ ( ptr u8 n -- ) {: a:ptr u:n :}
    NAMES-U @ u + NAMES-CAP @ > if
-      S\" native-build: name map buffer overflow\n" BUILD-RC die
+      s" native-build: name map buffer overflow" BUILD-RC die
    then
    a  NAMES-A@ NAMES-U @ +  u BYTE-COPY
    NAMES-U @ u + NAMES-U ! ;
@@ -567,13 +567,13 @@ public
    CLASS-SEALED CLASS-WANTED !
    SCRIPT-ARGC 2 < if exit then
    1 SCRIPT-ARGV$ WHITEBOX-ARG$ STR= 0= if
-      S\" native-build: the only second argument is `whitebox`\n" BUILD-RC die
+      s" native-build: the only second argument is `whitebox`" BUILD-RC die
    then
    CLASS-WHITEBOX CLASS-WANTED ! ;
 
 : RUN ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
    SCRIPT-ARGC 1 < SCRIPT-ARGC 2 > or if
-      S\" native-build: one explicit output path is required, then an optional `whitebox`\n" BUILD-RC die
+      s" native-build: one explicit output path is required, then an optional `whitebox`" BUILD-RC die
    then
    CLASS-ARG!
    0 SCRIPT-ARGV$ query bootstrap RUN-PATH-RC {: rc:n :}

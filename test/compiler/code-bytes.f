@@ -56,7 +56,7 @@ private
    OUT CAP >LEN ERR CAP >LEN 1000 >MS SUBJECT:RUN
    74 T-OUTCOME-EXITED= {: outu:len erru:len :}
    outu LEN>N 0 T=
-   ERR erru LEN>N s" hb: span outside the code region" T$= ;
+   ERR erru LEN>N S\" hb: span outside the code region\n" T$= ;
 
 : RUN ( -- )
    T-RESET

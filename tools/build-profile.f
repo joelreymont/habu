@@ -43,7 +43,7 @@ variable REPORT-FD
    SCRIPT-ARGC 3 = ;
 
 : USAGE ( -- )
-   S\" usage: bin/hb --load tools/build-profile.f -- <engine-out> <text-report> <json-report>\n"
+   s" usage: bin/hb --load tools/build-profile.f -- <engine-out> <text-report> <json-report>"
    E-BUILD-PROFILE-IO die ;
 
 : ENGINE$ ( -- ptr u8 n )   0 SCRIPT-ARGV$ ;

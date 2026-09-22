@@ -63,6 +63,22 @@ variable GE-SCRIPT-U
    SB$ s" caught throw control output" GE-EXPECT-OUT
    s" PASS: uncaught top-level throw exits are reported, never masked" type cr ;
 
+\ die writes its message as ONE LINE and exits: the span, then exactly one
+\ newline (src/habu/habu1.f BDIE). An EMPTY span writes NOTHING, so a site that
+\ already ended its own report with `cr` passes `s" "` and adds no blank line.
+\ The rule is what keeps a parent that reports the child's exit on the same
+\ stream from continuing the child's last line (dot habu-die-writes-its).
+: GE-DIE-LINE ( -- )
+   S\" s\q boom\q 7 die" 7 s" die exits with its own rc" RUNTIME-RUNNER:LINE-RC
+   S\" boom\n" s" die ends its message with one newline" GE-EXPECT-ERR
+   S\" s\q \q 7 die" 7 s" empty die span exits with its own rc" RUNTIME-RUNNER:LINE-RC
+   s" " s" an empty die span writes nothing" GE-EXPECT-ERR
+   S\" s\q report line\q type cr s\q \q 74 die" 74
+      s" reported die exits with its own rc" RUNTIME-RUNNER:LINE-RC
+   S\" report line\n" s" a report ending in cr keeps its one line" GE-EXPECT-OUT
+   s" " s" a reported die adds no second line" GE-EXPECT-ERR
+   s" PASS: die writes one line; an empty span writes nothing" type cr ;
+
 \ Interpret-mode transports of a wide layout bundle SILENTLY CORRUPTED: the
 \ top-level stack ops move one physical cell, so a TRUSTED-seeded 2-cell
 \ bundle followed by `dup . . . .` printed the tag twice and then read below
@@ -1319,6 +1335,7 @@ public
 
 : RUN ( -- )
    GE-UNCAUGHT-THROW
+   GE-DIE-LINE
    GE-INTERP-LAYOUT
    WIDE-FETCH:RUN
    GE-DICT-FULL

@@ -46,7 +46,7 @@ create ERR 256 allot
    OUT 256 >LEN ERR 256 >LEN 1000 >MS SUBJECT:RUN
    76 T-OUTCOME-EXITED= {: outu:len erru:len :}
    outu LEN>N 0 T=
-   ERR erru LEN>N s" hb: bad layout descriptor" T$= ;
+   ERR erru LEN>N S\" hb: bad layout descriptor\n" T$= ;
 
 public
 

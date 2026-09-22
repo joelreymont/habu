@@ -873,6 +873,9 @@ boundary cases are contracts every backend answers alike.
   track the gap.
 - **`die` consumes a real message and code**, `( ptr u8 n n -- )`, never `0 0`
   as a fake string; model exits as no-return only at certified wrappers.
+- **`die` writes its message as one line**: the span and then exactly one
+  newline, so a message never carries its own `\n`; an empty span writes
+  nothing, which is what a site passes after ending its own report with `cr`.
 - **A word that never returns ends its branch.** After a call whose body ends in
   `die`, the checker refuses an `exit` in the same `if`:
 

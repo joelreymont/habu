@@ -26,11 +26,11 @@ public
 
    s" overlapping claims still refuse and name both rows" T-LABEL
    s" require src/habu/data-claims.f HND-CELL DATA-CLAIMS:TAB ! DATA-CLAIMS:CLAIMS-ASSERT"
-   76 s" layout: DATA-CLAIMS overlap: DP-CELL and HND-CELL" EXPECT
+   76 S\" layout: DATA-CLAIMS overlap: DP-CELL and HND-CELL\n" EXPECT
 
    s" the image writer still checks the guarded band's declared extent" T-LABEL
    s" require src/habu/data-claims.f : DC-BAD-BAND ( -- ) DATA-CLAIMS:COUNT-ROWS 0 ?do i DATA-CLAIMS:ROW-OFF FRIEND-ARENA = if 1 DATA-CLAIMS:TAB i DATA-CLAIMS:ROW-CELLS * 1+ cells + ! unloop exit then loop ; DC-BAD-BAND require tools/native-emit.f"
-   76 s" habu1: PROT-GUARD band length differs from its claim: FRIEND-ARENA" EXPECT
+   76 S\" habu1: PROT-GUARD band length differs from its claim: FRIEND-ARENA\n" EXPECT
    T-REPORT ;
 
 ;package
