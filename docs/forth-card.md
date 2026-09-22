@@ -124,6 +124,7 @@ Every form loaded and its accessor effect certified.
 |---|---|---|
 | `variable V` | a raw scalar, role or atom cell | `V @` / `V !`; `( -- ptr a )` is not declarable |
 | `create B 256 allot` | static dictionary storage | `B`, pointee bound by the use (`B 4 type`, `B @`) |
+| `n BUFFER: B` | a fixed zeroed byte row | `( -- ptr u8 )`; bytes are never a `TYPED-BUFFER` element |
 | `PTR-VARIABLE P` | a global slot holding an address | `( -- ptr ptr a )`; callers declare the pointee: `: F ( -- ptr u8 ) P @ ;` |
 | `TYPED-VARIABLE V t` | one typed cell or record | `( -- ptr t )` |
 | `TYPED-VARIABLE V ptr t` | a cell holding an address of `t` | `( -- ptr ptr t )` |

@@ -1214,6 +1214,14 @@ Build and environment rules are in [bootstrap.md](bootstrap.md) and
 Each of these was measured on the engine; the fact that proved it is beside
 the rule.
 
+- **A `TYPED-BUFFER` element is a storage type, never bare `u8`.**
+  `2 TYPED-BUFFER TB u8` throws `E-LAYOUT-BUFFER` (7121) from
+  `STORAGE-VALIDATE`; a byte row is `n BUFFER: B` (lib/string.f),
+  `( -- ptr u8 )`. `create … allot`, `BUFFER:` and `TYPED-BUFFER` all allot
+  zeroed space on a cell-rounded address (measured: after `create A 1 allot
+  create B`, `B FFI:>CELL 7 and` is 0 and the bytes read back zero), so a row
+  a foreign call reads as an aligned C object needs no alignment word of its
+  own (lib/net/curl.f's fd_sets and out-parameter cells).
 - **A local binds in the spelling it was declared in; word lookup stays
   case-insensitive.** `{: text :}` reads `text` as the local and `TEXT` as the
   word, and the same local hides the word `TEXT` from the definition it is
