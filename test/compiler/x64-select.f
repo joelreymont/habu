@@ -1011,7 +1011,13 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    TTRUE TTRUE TTRUE 2 T= ;
 
 \ ---- the data-stack boundary ------------------------------------------------
-: PASS-BODY ( IR-CTX:ctx -- n n bool n bool n bool n bool n bool n )
+\ A routine that hands its argument straight back leaves it in the cell it was
+\ entered in: the result's cell already holds the value the exit would store, so
+\ the store is left out - the validator refuses that store by name - and with no
+\ store nothing reads the argument out of a register, so the entry load goes
+\ too. The take and the publish are the whole boundary, and they stay: the
+\ pointer still moves over the arguments and still publishes the results.
+: PASS-BODY ( IR-CTX:ctx -- n n bool n bool n bool n )
    HIR-MOD
    BUILD-PASS
    1 1 SELECTED-LEAF READ!
@@ -1019,19 +1025,15 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    ARGS-N
    0 s" x64.dtake" OPCODE-IS?
    0 0 ATTR-INT
-   1 s" x64.dload" OPCODE-IS?
+   1 s" x64.dpublish" OPCODE-IS?
    1 0 ATTR-INT
-   2 s" x64.dstore" OPCODE-IS?
-   2 0 ATTR-INT
-   3 s" x64.dpublish" OPCODE-IS?
-   3 0 ATTR-INT
-   4 s" x64.ret" OPCODE-IS?
-   4 OPERANDS ;
+   2 s" x64.ret" OPCODE-IS?
+   2 OPERANDS ;
 
 : PASS-CASE ( -- )
-   s" the boundary is a take, a load per argument, a store per result and a publish" T-LABEL
+   s" the boundary of a routine that hands its argument back is the take and the publish alone" T-LABEL
    WBND [: PASS-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= TTRUE 8 T= TTRUE 0 T= TTRUE 0 T= TTRUE 8 T= TTRUE 0 T= 5 T= ;
+   0 T= TTRUE 8 T= TTRUE 8 T= TTRUE 0 T= 3 T= ;
 
 : FRAME-BODY ( IR-CTX:ctx -- n bool n bool n bool )
    HIR-MOD
@@ -1040,73 +1042,100 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    OPS
    0 s" x64.reserve" OPCODE-IS?
    0 0 ATTR-INT
-   5 s" x64.release" OPCODE-IS?
-   5 0 ATTR-INT
-   6 s" x64.ret" OPCODE-IS? ;
+   3 s" x64.release" OPCODE-IS?
+   3 0 ATTR-INT
+   4 s" x64.ret" OPCODE-IS? ;
 
 : FRAME-CASE ( -- )
    s" a routine with spills reserves at the entry and releases before the return" T-LABEL
    WBND [: FRAME-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE 16 T= TTRUE 16 T= TTRUE 7 T= ;
+   TTRUE 16 T= TTRUE 16 T= TTRUE 5 T= ;
 
-: MEMOPS-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
+\ The boundary where the value really moves: the argument is read out of its
+\ cell into a register, and what the body computed is a different value from the
+\ one the result's cell holds, so the exit stores it and publishes the pointer.
+: MEMOPS-BODY ( IR-CTX:ctx -- n bool n bool bool bool bool bool bool n bool n bool )
    HIR-MOD
    BUILD-MEMOPS
    1 1 SELECTED-LEAF READ!
    OPS
+   1 s" x64.dload" OPCODE-IS?
+   1 0 ATTR-INT
    2 s" x64.movi" OPCODE-IS?
    3 s" x64.astore" OPCODE-IS?
    4 s" x64.aload" OPCODE-IS?
    5 s" x64.abstore" OPCODE-IS?
-   6 s" x64.abload" OPCODE-IS? ;
+   6 s" x64.abload" OPCODE-IS?
+   7 s" x64.dstore" OPCODE-IS?
+   7 0 ATTR-INT
+   8 s" x64.dpublish" OPCODE-IS?
+   8 0 ATTR-INT
+   9 s" x64.ret" OPCODE-IS? ;
 
 : MEMOPS-CASE ( -- )
-   s" the addressed loads and stores select to the forms of their width" T-LABEL
+   s" the addressed loads and stores select to the forms of their width, between a load per argument and a store per result" T-LABEL
    WBND [: MEMOPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE 10 T= ;
+   TTRUE 8 T= TTRUE 0 T= TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 0 T= TTRUE 10 T= ;
 
 \ ---- the call ---------------------------------------------------------------
-: CALL-BODY ( IR-CTX:ctx -- n bool bool bool bool n bool n bool n bool bool )
+\ WHAT THE RESIDENCY MAP TAKES OUT OF A CALL SITE. The entry loaded the argument
+\ out of cell 0 and this site passes that same value in cell 0, so the store is
+\ left out: a store into a cell that still holds the value stored is what
+\ regalloc-verify.f refuses by name (E-A64RAV-DKEEP), not a saving. Cell 1 is
+\ the carried value and is written. On the way back, the carried value's result
+\ has no reader, so only the answer is loaded. The site was four transfers
+\ around the call and is two, and the count is asserted because a selection that
+\ stopped eliding would carry these same opcodes at other indices.
+: CALL-BODY ( IR-CTX:ctx -- n bool n bool n bool bool n bool n bool n bool n bool n bool bool )
    HIR-MOD
    BUILD-CALLER
    1 1 SELECTED-CALL READ!
    OPS
+   1 s" x64.dload" OPCODE-IS?
+   1 0 ATTR-INT
    2 s" x64.dstore" OPCODE-IS?
-   3 s" x64.dstore" OPCODE-IS?
-   4 s" x64.wordcall" OPCODE-IS?
-   4 0 s" x64.dbytes" ATTR-KEY-IS?
+   2 0 ATTR-INT
+   3 s" x64.wordcall" OPCODE-IS?
+   3 0 s" x64.dbytes" ATTR-KEY-IS?
+   3 0 ATTR-INT
+   3 1 s" x64.dback" ATTR-KEY-IS?
+   3 1 ATTR-INT
+   3 2 s" x64.entry" ATTR-KEY-IS?
+   3 2 ATTR-INT
+   4 s" x64.dload" OPCODE-IS?
    4 0 ATTR-INT
-   4 1 s" x64.dback" ATTR-KEY-IS?
-   4 1 ATTR-INT
-   4 2 s" x64.entry" ATTR-KEY-IS?
-   4 2 ATTR-INT
-   5 s" x64.dload" OPCODE-IS?
-   6 s" x64.dload" OPCODE-IS? ;
+   5 s" x64.dstore" OPCODE-IS?
+   5 0 ATTR-INT
+   6 s" x64.dpublish" OPCODE-IS?
+   7 s" x64.ret" OPCODE-IS? ;
 
 : CALL-CASE ( -- )
-   s" a call publishes what it passes, calls, and takes the answers back" T-LABEL
+   s" a call writes only the cells that do not already hold the value, calls, and takes back only what is read" T-LABEL
    WBND [: CALL-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE CALLEE-ENTRY T= TTRUE 16 T= TTRUE 16 T=
-   TTRUE TTRUE TTRUE TTRUE 10 T= ;
+   TTRUE TTRUE 0 T= TTRUE 8 T= TTRUE
+   CALLEE-ENTRY T= TTRUE 16 T= TTRUE 16 T= TTRUE
+   TTRUE 8 T= TTRUE 0 T= TTRUE 8 T= ;
 
-: TAIL-BODY ( IR-CTX:ctx -- n bool n bool n bool n bool n )
+\ The same body where control leaves through the callee: the pointer never
+\ moves, so the argument is already in the cell the callee reads it from and the
+\ site stores nothing at all. With no store, nothing reads the argument out of a
+\ register either, so the entry load goes too and the whole routine is the take
+\ and the branch. It was four operations - take, load, store, branch - and the
+\ store was the one the validator refused (test/compiler/x64-regalloc.f).
+: TAIL-BODY ( IR-CTX:ctx -- n bool n bool n )
    HIR-MOD
    BUILD-CALLER
    1 1 SELECTED-TAIL READ!
    OPS
    0 s" x64.dtake" OPCODE-IS?
    0 0 ATTR-INT
-   1 s" x64.dload" OPCODE-IS?
-   1 0 ATTR-INT
-   2 s" x64.dstore" OPCODE-IS?
-   2 0 ATTR-INT
-   3 s" x64.tailcall" OPCODE-IS?
-   3 0 ATTR-INT ;
+   1 s" x64.tailcall" OPCODE-IS?
+   1 0 ATTR-INT ;
 
 : TAIL-CASE ( -- )
-   s" a routine that leaves through its callee never moves the pointer" T-LABEL
+   s" a routine that leaves through its callee never moves the pointer and re-stores nothing" T-LABEL
    WBND [: TAIL-BODY ;] IR-CTX:WITH-CONTEXT
-   CALLEE-ENTRY T= TTRUE -8 T= TTRUE -8 T= TTRUE 0 T= TTRUE 4 T= ;
+   CALLEE-ENTRY T= TTRUE 0 T= TTRUE 2 T= ;
 
 \ ---- the contracts a compiled word is written under -------------------------
 \ src/arch/x86-64/abi.f, read back off the routines it builds. The three fields

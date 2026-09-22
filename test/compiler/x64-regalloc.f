@@ -94,6 +94,8 @@ create TXT
 15 constant CLOSE-ST                 \ the closing `;`
 1 constant CLOSE-LN
 
+$400 constant CALLEE-ENTRY           \ the address the tail case leaves through
+
 \ ---- the module a fixture builds into ----------------------------------------
 1 TYPED-BUFFER W-CTX IR-CTX:ctx
 1 TYPED-BUFFER W-BLD IR-BUILD:builder
@@ -109,6 +111,9 @@ create TXT
 
 : CELLT ( -- IR-ID:ir-type-id )
    CC BB IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;
+
+: MEMT ( -- IR-ID:ir-type-id )
+   CC BB HIR:MEM-TYPE ;
 
 : HIR-MOD ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -268,6 +273,42 @@ create TXT
    t 1 BR1
    CLOSE-FUN ;
 
+: MEM0 ( -- IR-ID:ir-value-id )
+   HIR-OPCODE:MEM BODY-ST BODY-LN OPEN-OP
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+: WCALL-ATTRS ( n n n -- )
+   {: e:n in:n out:n :}
+   CC BB  CC BB HIR:KEY-ENTRY  CC BB e IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-IN     CC BB in IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-OUT    CC BB out IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR ;
+
+\ One call to a one-in one-out callee, carrying one value besides its argument.
+\ Its operands are the memory order, the carried value and the argument, and its
+\ results are the order, the carried value again and the callee's answer.
+: WCALL1 ( IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-op-id )
+   {: tok:IR-ID:ir-value-id live:IR-ID:ir-value-id arg:IR-ID:ir-value-id :}
+   HIR-OPCODE:WORDCALL BODY-ST BODY-LN OPEN-OP
+   CC BB tok IR-BUILD:ADD-OPERAND
+   CC BB live IR-BUILD:ADD-OPERAND
+   CC BB arg IR-BUILD:ADD-OPERAND
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CALLEE-ENTRY 1 1 WCALL-ATTRS
+   CC BB IR-BUILD:END-OP ;
+
+\ `: LEAF ( n -- n ) CALLEE ;` - the routine that leaves through its callee.
+\ Nothing the site carries is read again, which is what a tail branch needs.
+: BUILD-CALLER ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   MEM0 {: tok:IR-ID:ir-value-id :}
+   tok a a WCALL1 {: id:IR-ID:ir-op-id :}
+   CC BB id 2 IR-BUILD:OP-RESULT@ RET1
+   CLOSE-FUN ;
+
 \ ---- running selection, allocation and validation ----------------------------
 : X64-BUILDER ( -- IR-BUILD:builder )
    IR-BUILD:PLAN-BEGIN
@@ -327,6 +368,26 @@ create TXT
    DSTACK-SELECTED {: m:IR-BUILD:module :}
    CC m DLEAF A64RA:ALLOCATE
    m DLEAF A64RAV:ACCEPT
+   m ;
+
+\ ---- and the contract a routine leaves through its callee under --------------
+\ One cell in and one out, control leaving through the callee: the pointer never
+\ moves, so every cell the callee reads is a cell this routine was entered with.
+: DTAIL ( -- NEFF:routine )
+   X64ABI:SCRATCH 1 1 X64ABI:TAIL ;
+
+: TAIL-SELECTED ( -- IR-BUILD:module )
+   CC BB X64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   X64-BUILDER {: xb:IR-BUILD:builder :}
+   CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
+   CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
+   CC m xb DTAIL X64SEL:SELECT ;
+
+: TAIL-ALLOCATED ( -- IR-BUILD:module )
+   TAIL-SELECTED {: m:IR-BUILD:module :}
+   CC m DTAIL A64RA:ALLOCATE
+   m DTAIL A64RAV:ACCEPT
    m ;
 
 \ ---- the forms whose registers the MACHINE names -----------------------------
@@ -571,6 +632,31 @@ $1000 constant THROW-STAND
    A64RA:PLAN-N
    A64RAV:ACCEPTED? ;
 
+\ The routine that leaves through its callee, through the same two passes. The
+\ entry loads the argument out of cell 0 and the call site passes it in cell 0
+\ again, so a selector that re-stores it writes a value the cell already holds
+\ and the validator refuses the module by name: this case threw
+\ E-A64RAV-DKEEP (-8611) at that store until X64SEL:CALL-SAVE read the residency
+\ map. With the store elided the load has no reader either, so the whole body is
+\ the take and the branch.
+: TAIL-BODY ( IR-CTX:ctx -- bool )
+   HIR-MOD
+   BUILD-CALLER
+   TAIL-ALLOCATED drop
+   A64RAV:ACCEPTED? ;
+
+\ The loop under the data-stack convention, where the residency of a cell is a
+\ MEET over the block's predecessors and not a block-local memory: the backedge
+\ carries the header's argument round, so what cell 1 holds at the header is
+\ what both edges say it holds. The validator keeps the same map over the same
+\ graph and refuses an emission that disagrees with it, which is what this case
+\ holds the selector's own fixpoint to.
+: DLOOP-BODY ( IR-CTX:ctx -- bool )
+   HIR-MOD
+   BUILD-LOOP
+   DSTACK-ALLOCATED drop
+   A64RAV:ACCEPTED? ;
+
 : SQUARE-BODY ( IR-CTX:ctx -- n n n n n bool )
    HIR-MOD
    BUILD-SQUARE
@@ -687,6 +773,14 @@ public
    s" the same leaf under the data-stack convention allocates and is accepted: the validator measures the stand against the `entry` policy x64ir states, where re-deriving A64SEL's survey refused this module with E-A64RAV-DSTACK" T-LABEL
    WBND [: DSTACK-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 0 T= 0 T= 1 T= 0 T= 7 T=
+
+   s" a routine that leaves through its callee allocates and is accepted: the argument stays in the cell it was entered in, and a store of a value the cell already holds is what the validator refuses" T-LABEL
+   WBND [: TAIL-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE
+
+   s" a loop under the data-stack convention allocates and is accepted: which value a cell holds at the header is the meet of both edges, and the validator keeps that same map over the same graph" T-LABEL
+   WBND [: DLOOP-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE
 
    s" the count of a variable shift is placed in rcx because the form fixes it there, and the value shifted takes the lowest free register" T-LABEL
    WBND [: SHL-BODY ;] IR-CTX:WITH-CONTEXT

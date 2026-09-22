@@ -118,6 +118,29 @@ DYNAMIC-BUFFER D-ORDER IR-ID:ir-value-id
 DYNAMIC-BUFFER D-ORDER-SET-BUF n
 : D-ORDER-SET ( -- ptr n ) 0 D-ORDER-SET-BUF ;
 
+\ ---- what the data-stack residency pass answers ------------------------------
+\ A slot of the caller's data stack holds a value of the source module, and this
+\ is the window that fact is tracked over: past it, never resident. The pass is
+\ A64SEL's (select.f, "which slot holds which value"), COPIED and not shared:
+\ the ARM64 chain requires select.f alone and this file is its own package with
+\ its own buffers, so moving the machinery into one place would move the ARM64
+\ selector, which nothing here is allowed to do.
+64 constant DSLOT-MAX                \ slots one routine's residency is tracked over
+-1 constant DNONE                    \ this slot holds nothing this pass can name
+-2 constant DANY                     \ nothing has been said about this slot yet
+63 constant DELIDE-MAX               \ store positions one run's elision mask holds
+
+DYNAMIC-BUFFER D-IN-BUF n
+: D-IN ( -- ptr n ) 0 D-IN-BUF ;
+DYNAMIC-BUFFER D-OUT-BUF n
+: D-OUT ( -- ptr n ) 0 D-OUT-BUF ;
+DYNAMIC-BUFFER D-NEED-BUF n
+: D-NEED ( -- ptr n ) 0 D-NEED-BUF ;
+here CELL 1- and CELL swap - CELL 1- and allot
+create D-CUR DSLOT-MAX cells allot   \ the running answer inside one block
+create D-MEET DSLOT-MAX cells allot  \ the meet of one block's predecessors
+variable D-MOVED                     \ a fixpoint round changed something
+
 \ The liveness planes: one bit per value, per block, in each of the four sets
 \ the backward dataflow keeps, and one set of the same width for the values a
 \ block has already defined while it is being read. A block's set is only as
@@ -143,6 +166,9 @@ DYNAMIC-BUFFER DEFSET-BUF n
    VMAX VSET-BUF-RESERVE
    BMAX D-ORDER-RESERVE
    BMAX D-ORDER-SET-BUF-RESERVE
+   BMAX DSLOT-MAX * D-IN-BUF-RESERVE
+   BMAX DSLOT-MAX * D-OUT-BUF-RESERVE
+   VMAX D-NEED-BUF-RESERVE
    PLANES BMAX * SETC * LIVE-BUF-RESERVE
    SETC DEFSET-BUF-RESERVE ;
 
@@ -162,6 +188,7 @@ HIR-OPCODE:GT       HIR:ORD constant O-GT
 HIR-OPCODE:GE       HIR:ORD constant O-GE
 HIR-OPCODE:EQUAL    HIR:ORD constant O-EQUAL
 HIR-OPCODE:NE       HIR:ORD constant O-NE
+HIR-OPCODE:BR       HIR:ORD constant O-BR
 HIR-OPCODE:BRZ      HIR:ORD constant O-BRZ
 HIR-OPCODE:CALL     HIR:ORD constant O-CALL
 HIR-OPCODE:WORDCALL HIR:ORD constant O-WORDCALL
@@ -325,6 +352,43 @@ create NAMEBUF NAME-CAP allot
 \ interned - never a position or an opcode.
 : TOKEN? ( IR-ID:ir-value-id -- bool )
    VALUE-TYPE-AT  0 BND-MEM @  SAME-TYPE? ;
+
+\ ---- the residency answers, read back ----------------------------------------
+: DSLOT-CK ( n -- n )
+   dup 0 < if E-X64SEL-CAP throw then ;
+
+: DIN-WINDOW? ( n -- bool )
+   DSLOT-CK DSLOT-MAX < ;
+
+: DRES@ ( n -- n )
+   dup DIN-WINDOW? 0= if drop DNONE exit then
+   cells D-CUR + @ ;
+
+: DRES! ( IR-ID:ir-value-id n -- )
+   {: v:IR-ID:ir-value-id s:n :}
+   s DIN-WINDOW? 0= if exit then
+   v VSLOT s cells D-CUR + ! ;
+
+\ Whether the cell already held it, which is the whole of what makes a store
+\ droppable.
+: DPUT? ( IR-ID:ir-value-id n -- bool )
+   {: v:IR-ID:ir-value-id s:n :}
+   s DRES@  v VSLOT =  {: had:bool :}
+   v s DRES!
+   had ;
+
+: DKILL ( -- )
+   DSLOT-MAX 0 ?do DNONE i cells D-CUR + ! loop ;
+
+\ A memory order holds no register and is never dropped.
+: DNEED? ( IR-ID:ir-value-id -- bool )
+   dup TOKEN? if drop true exit then
+   VSLOT cells D-NEED + @ 0<> ;
+
+: DNEED+ ( IR-ID:ir-value-id -- )
+   dup DNEED? if drop exit then
+   VSLOT cells D-NEED + 1 swap !
+   1 D-MOVED ! ;
 
 \ ---- staging one machine operation -------------------------------------------
 \ Every machine operation carries the span of the source operation it selects
@@ -596,6 +660,13 @@ create NAMEBUF NAME-CAP allot
    i kk < if id i 1+ RESULT-AT exit then
    id m i + 1+ RESULT-AT ;
 
+\ ---- the residency of one call site ------------------------------------------
+\ One bit per position of the store run, set where the cell already held it.
+: DBIT? ( n n -- bool )
+   {: mask:n i:n :}
+   i DELIDE-MAX >= if false exit then
+   mask 1 i lshift and 0<> ;
+
 \ ---- selecting a call --------------------------------------------------------
 : EMIT-CALL-OP ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id give:n back:n :}
@@ -619,44 +690,50 @@ create NAMEBUF NAME-CAP allot
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
 
-\ Every live value and every argument is written to its cell. There is no
-\ residency analysis in this slice, so a cell that already held the value is
-\ written again; leaving one out is a rewrite over this shape and not a
-\ different lowering.
-: CALL-SAVE ( IR-ID:ir-op-id n n n -- )
-   {: id:IR-ID:ir-op-id kk:n m:n a:n :}
+\ Every live value and every argument is written to its cell, EXCEPT the ones the
+\ cell already holds. The mask is the residency pass's answer for this site, one
+\ bit per position of the store run (DSAVE-XFER below, handed over by RULE), and
+\ a store of a value its cell still holds is not an optimisation to leave out: it
+\ is what regalloc-verify.f VDSTORE-CK refuses by name (E-A64RAV-DKEEP).
+: CALL-SAVE ( IR-ID:ir-op-id n n n n -- )
+   {: id:IR-ID:ir-op-id kk:n m:n a:n mask:n :}
    kk a + {: n:n :}
    n 0 ?do
-      id  id kk m i DSAVE-VAL VOF  i X64IR:SLOT-WIDTH *  EMIT-DSTORE
+      mask i DBIT? 0= if
+         id  id kk m i DSAVE-VAL VOF  i X64IR:SLOT-WIDTH *  EMIT-DSTORE
+      then
    loop ;
 
+\ And only the values something reads out of a register are taken back: a load
+\ whose result has no use is the other half of the same refusal.
 : CALL-RESTORE ( IR-ID:ir-op-id n n n -- )
    {: id:IR-ID:ir-op-id kk:n m:n r:n :}
    kk r + {: n:n :}
    n 0 ?do
-      id kk m i DBACK-VAL
-      id  i X64IR:SLOT-WIDTH *  EMIT-DLOAD
-      VBIND
+      id kk m i DBACK-VAL {: v:IR-ID:ir-value-id :}
+      v DNEED? if
+         v  id  i X64IR:SLOT-WIDTH *  EMIT-DLOAD  VBIND
+      then
    loop
    id 0 RESULT-AT  TOK  VBIND
    N-CALLS @ 1+ N-CALLS ! ;
 
-: EMIT-CALL ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+: EMIT-CALL ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
    DSTACK? 0= if E-X64SEL-CALL throw then
    id SELF-SHAPE {: a:n r:n kk:n m:n :}
    id 0 OPERAND TOK!
-   id kk m a CALL-SAVE
+   id kk m a mask CALL-SAVE
    id  kk a + X64IR:SLOT-WIDTH * DPLACED
        kk r + X64IR:SLOT-WIDTH * DPLACED  EMIT-CALL-OP
    id kk m r CALL-RESTORE ;
 
-: EMIT-WORD-CALL ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+: EMIT-WORD-CALL ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
    DSTACK? 0= if E-X64SEL-CALL throw then
    id SITE-SHAPE {: a:n r:n kk:n m:n :}
    id 0 OPERAND TOK!
-   id kk m a CALL-SAVE
+   id kk m a mask CALL-SAVE
    id  kk a + X64IR:SLOT-WIDTH * DPLACED
        kk r + X64IR:SLOT-WIDTH * DPLACED
    id WORD-ENTRY EMIT-WORDCALL-OP
@@ -681,21 +758,21 @@ create NAMEBUF NAME-CAP allot
    CTX BLD IR-BUILD:END-OP drop ;
 
 \ The epilogue stands in FRONT of the branch and not after it.
-: EMIT-TAIL-CALL ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+: EMIT-TAIL-CALL ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
    DSTACK? 0= if E-X64SEL-CALL throw then
    id SITE-SHAPE {: a:n r:n kk:n m:n :}
    a r TAIL-CK
    id 0 OPERAND TOK!
-   id kk m a CALL-SAVE
+   id kk m a mask CALL-SAVE
    id EPILOGUE
    id  id WORD-ENTRY  EMIT-TAIL-BR
    N-TAILS @ 1+ N-TAILS ! ;
 
-: EMIT-CALL-OR-TAIL ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id TAIL-OP? if id EMIT-TAIL-CALL exit then
-   id EMIT-WORD-CALL ;
+: EMIT-CALL-OR-TAIL ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
+   id TAIL-OP? if id mask EMIT-TAIL-CALL exit then
+   id mask EMIT-WORD-CALL ;
 
 \ ---- leaving through the routine that ends the process -----------------------
 \ The trap registry resolves diagnostics at compile time; only die is needed in
@@ -1199,18 +1276,20 @@ create NAMEBUF NAME-CAP allot
 \ Under the data-stack convention every result is stored to its cell and the
 \ pointer published; under a register convention the values still live where
 \ control leaves become the return's own operands.
-: EMIT-EXIT ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+: EMIT-EXIT ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
    OUTS SLOT-POSITIONS {: r:n :}
    id OPERANDS-OF r <> if E-X64SEL-PLACE throw then
    r 0 ?do
-      id  id i OPERAND  OUTS i NEFF:SEQ-SLOT@ X64IR:SLOT-WIDTH *  EMIT-DSTORE
+      mask i DBIT? 0= if
+         id  id i OPERAND  OUTS i NEFF:SEQ-SLOT@ X64IR:SLOT-WIDTH *  EMIT-DSTORE
+      then
    loop
    id  r X64IR:SLOT-WIDTH * DPLACED  EMIT-DPUBLISH ;
 
-: EMIT-RETURN ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   DSTACK? if id EMIT-EXIT then
+: EMIT-RETURN ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
+   DSTACK? if id mask EMIT-EXIT then
    id EPILOGUE
    id X64IR-OPCODE:RET OPEN
    DSTACK? 0= if
@@ -1221,10 +1300,10 @@ create NAMEBUF NAME-CAP allot
    then
    CTX BLD IR-BUILD:END-OP drop ;
 
-: EMIT-RETURN-OR-TAILED ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+: EMIT-RETURN-OR-TAILED ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
    TAIL-HERE? if exit then
-   id EMIT-RETURN ;
+   id mask EMIT-RETURN ;
 
 \ ---- the order a block is entered with ---------------------------------------
 \ Every data-stack access threads one order, so a block takes the order its
@@ -1331,6 +1410,286 @@ create NAMEBUF NAME-CAP allot
    id 1 SUCCESSOR+
    CTX BLD IR-BUILD:END-OP drop ;
 
+\ ---- which slot holds which value, over the whole routine ---------------------
+\ A slot of the caller's data stack holds a value of the source module. The
+\ answer is a FIXPOINT over the control-flow graph and not a block-local memory,
+\ because that is what the validator holds the emission to: regalloc-verify.f
+\ keeps the same map over the same graph (VDRES-FIX) and refuses a store into a
+\ cell that still holds the value stored (VDSTORE-CK, DKEEP-SAME) and a load
+\ nothing reads (VDLOAD-CK, DKEEP-DEAD). A rule that elided fewer stores than
+\ the fixpoint sees as redundant would be REFUSED and not merely slower.
+: DIN-AT ( n n -- n )
+   {: b:n s:n :}
+   s DIN-WINDOW? 0= if DNONE exit then
+   b BLOCK-ORD-CK DSLOT-MAX * s + cells D-IN + @ ;
+
+: DIN-AT! ( n n n -- )
+   {: v:n b:n s:n :}
+   s DIN-WINDOW? 0= if exit then
+   v  b BLOCK-ORD-CK DSLOT-MAX * s + cells D-IN + ! ;
+
+: DOUT-AT ( n n -- n )
+   {: b:n s:n :}
+   s DIN-WINDOW? 0= if DNONE exit then
+   b BLOCK-ORD-CK DSLOT-MAX * s + cells D-OUT + @ ;
+
+: DOUT-AT! ( n n n -- )
+   {: v:n b:n s:n :}
+   s DIN-WINDOW? 0= if exit then
+   v  b BLOCK-ORD-CK DSLOT-MAX * s + cells D-OUT + ! ;
+
+: DCUR<IN ( n -- )
+   {: b:n :}
+   DSLOT-MAX 0 ?do  b i DIN-AT  i cells D-CUR + !  loop ;
+
+: DOUT<CUR ( n -- )
+   {: b:n :}
+   DSLOT-MAX 0 ?do  i cells D-CUR + @  b i DOUT-AT!  loop ;
+
+\ ---- the effect of one source operation on the map ---------------------------
+\ Every walk over a block's operations goes through DOP-XFER, so the fixpoint,
+\ the need pass and the emission read one transfer.
+: DSAVE-XFER ( IR-ID:ir-op-id n n n -- n )
+   {: id:IR-ID:ir-op-id kk:n m:n a:n :}
+   0
+   kk a + 0 ?do
+      id kk m i DSAVE-VAL  i  DPUT? if
+         i DELIDE-MAX < if 1 i lshift or then
+      then
+   loop ;
+
+\ Every slot the callee could have written stops holding anything this routine
+\ can name.
+: DBACK-XFER ( IR-ID:ir-op-id n n n -- )
+   {: id:IR-ID:ir-op-id kk:n m:n r:n :}
+   DKILL
+   kk r + 0 ?do
+      id kk m i DBACK-VAL  i  DRES!
+   loop ;
+
+: DEXIT-XFER ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id r:n :}
+   id OPERANDS-OF r <> if E-X64SEL-PLACE throw then
+   0
+   r 0 ?do
+      id i OPERAND-AT  OUTS i NEFF:SEQ-SLOT@  DPUT? if
+         i DELIDE-MAX < if 1 i lshift or then
+      then
+   loop ;
+
+: DCALL-XFER ( IR-ID:ir-op-id n n n n -- n )
+   {: id:IR-ID:ir-op-id a:n r:n kk:n m:n :}
+   id kk m a DSAVE-XFER {: mask:n :}
+   id kk m r DBACK-XFER
+   mask ;
+
+\ An addressed store has no arm: it destroys nothing this map holds. A trap
+\ writes the cells die reads and is a TERMINATOR (hir.f), so nothing that could
+\ read the map follows it.
+: DOP-XFER ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT {: s:n :}
+   s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
+   s O-WORDCALL = if id  id SITE-SHAPE  DCALL-XFER exit then
+   s O-RETURN = if
+      DSTACK? 0= if 0 exit then
+      id  OUTS SLOT-POSITIONS  DEXIT-XFER exit
+   then
+   0 ;
+
+: DXFER-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   b DCUR<IN
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do  bk i OP-AT DOP-XFER drop  loop
+   b DOUT<CUR ;
+
+\ ---- the meet, and the translation that makes it exact -----------------------
+: DMEET1 ( n n -- n )
+   {: a:n b:n :}
+   a DANY = if b exit then
+   b DANY = if a exit then
+   a b = if a exit then
+   DNONE ;
+
+\ Function inputs retain their value across every loop turn. Other names need
+\ an edge argument to identify the value carried into the next turn.
+: DENTRY-VALUE? ( n -- bool ) {: v:n :}
+   false
+   ARGS SLOT-POSITIONS 0 ?do
+      0 ARGS i NEFF:SEQ-SLOT@ DIN-AT v = if drop true leave then
+   loop ;
+
+: DXLATE ( IR-ID:ir-op-id IR-ID:ir-block-id bool n -- n )
+   {: t:IR-ID:ir-op-id tb:IR-ID:ir-block-id back:bool v:n :}
+   v 0 < if v exit then
+   tb ARG-COUNT {: k:n :}
+   DANY
+   t OP-SLOT O-BR = if
+      t OPERANDS-OF k = if
+         k 0 ?do
+            t i OPERAND-AT VSLOT v = if
+               drop  tb i ARG-AT VSLOT  leave
+            then
+         loop
+      then
+   then
+   dup DANY <> if exit then
+   drop
+   back if v DENTRY-VALUE? 0= if DNONE exit then then
+   v ;
+
+: DMEET-EDGE ( IR-ID:ir-op-id IR-ID:ir-block-id n n -- )
+   {: t:IR-ID:ir-op-id tb:IR-ID:ir-block-id p:n b:n :}
+   b p <= {: back:bool :}
+   DSLOT-MAX 0 ?do
+      i cells D-MEET + @
+      t tb  back  p i DOUT-AT  DXLATE
+      DMEET1
+      i cells D-MEET + !
+   loop ;
+
+: DEDGE? ( IR-ID:ir-op-id n -- bool )
+   {: t:IR-ID:ir-op-id b:n :}
+   false
+   t SUCCS-OF 0 ?do
+      t i SUCC-IDX b = if drop true leave then
+   loop ;
+
+: DMEET-FROM ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id p:n b:n :}
+   f p BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   t b DEDGE? 0= if exit then
+   t  f b BLOCK-AT  p b DMEET-EDGE ;
+
+: DIN-SET? ( n n n -- bool )
+   {: v:n b:n s:n :}
+   b s DIN-AT v = if false exit then
+   v b s DIN-AT!
+   true ;
+
+: DMEET-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   DSLOT-MAX 0 ?do DANY i cells D-MEET + ! loop
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   f BLOCK-COUNT {: n:n :}
+   bk PRED-COUNT 0 ?do
+      bk i PRED-AT IR-ID:BLOCK-LOCAL R-BASE @ - {: p:n :}
+      p 0 >= p n < and if f p b DMEET-FROM then
+   loop
+   DSLOT-MAX 0 ?do
+      i cells D-MEET + @  b i DIN-SET? if 1 D-MOVED ! then
+   loop ;
+
+\ ---- the entry map, and the fixpoint over the rest ---------------------------
+: DIN-ANY ( n -- )
+   {: b:n :}
+   DSLOT-MAX 0 ?do DANY b i DIN-AT! loop ;
+
+: DENTRY-IN ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   DSLOT-MAX 0 ?do DNONE 0 i DIN-AT! loop
+   DSTACK? 0= if exit then
+   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   ARGS SLOT-POSITIONS {: a:n :}
+   bk ARG-COUNT a <> if E-X64SEL-PLACE throw then
+   a 0 ?do
+      bk i ARG-AT VSLOT  0  ARGS i NEFF:SEQ-SLOT@  DIN-AT!
+   loop ;
+
+: DIN-INIT ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 1 ?do i DIN-ANY loop
+   f DENTRY-IN ;
+
+: DRES-ROUND ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   \ The entry is fixed. Let later blocks read this round's earlier outputs.
+   f BLOCK-COUNT 1 ?do  f i DMEET-BLOCK  f i DXFER-BLOCK  loop ;
+
+\ Every cell starts at "nothing said", may name one value, and may then fall to
+\ "nothing", so the descent has a bounded number of rounds.
+: DRES-ROUNDS ( -- n ) BMAX DSLOT-MAX * 2 * 2 + ;
+
+: DRES-FIX ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f DIN-INIT
+   f BLOCK-COUNT 0 ?do f i DXFER-BLOCK loop
+   0
+   begin
+      1 D-MOVED !
+      dup DRES-ROUNDS >= if E-X64SEL-CAP throw then
+      0 D-MOVED !
+      f DRES-ROUND
+      1+
+      D-MOVED @ 0=
+   until
+   drop ;
+
+\ ---- which values reach a register -------------------------------------------
+: DNEED-CLEAR ( -- )
+   VMAX 0 ?do 0 i cells D-NEED + ! loop ;
+
+\ The routine's own interface is not this pass's to change.
+: DNEED-ENTRY ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   DSTACK? if exit then
+   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk ARG-COUNT 0 ?do bk i ARG-AT DNEED+ loop ;
+
+: DNEED-OPERANDS ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id OPERANDS-OF 0 ?do id i OPERAND-AT DNEED+ loop ;
+
+\ A value the site writes down needs a register to be written out of; one whose
+\ store was elided does not. The values the site takes BACK are named by whoever
+\ reads them, which is the ordinary operand rule.
+: DNEED-CALL ( IR-ID:ir-op-id n n n n n -- )
+   {: id:IR-ID:ir-op-id mask:n a:n r:n kk:n m:n :}
+   id 0 OPERAND-AT DNEED+
+   kk a + 0 ?do
+      mask i DBIT? 0= if id kk m i DSAVE-VAL DNEED+ then
+   loop ;
+
+: DNEED-EXIT ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
+   DSTACK? 0= if id DNEED-OPERANDS exit then
+   OUTS SLOT-POSITIONS 0 ?do
+      mask i DBIT? 0= if id i OPERAND-AT DNEED+ then
+   loop ;
+
+\ A branch's operands are read like any other: this machine builds EVERY block
+\ argument (OPEN-ARGS), so an edge carries every value it names.
+: DNEED-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id DOP-XFER {: mask:n :}
+   id OP-SLOT {: s:n :}
+   s O-CALL = if id mask  id SELF-SHAPE  DNEED-CALL exit then
+   s O-WORDCALL = if id mask  id SITE-SHAPE  DNEED-CALL exit then
+   s O-RETURN = if id mask DNEED-EXIT exit then
+   id DNEED-OPERANDS ;
+
+: DNEED-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   b DCUR<IN
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do  bk i OP-AT DNEED-OP  loop ;
+
+: DNEED-FIX ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   DNEED-CLEAR
+   f DNEED-ENTRY
+   begin
+      0 D-MOVED !
+      f BLOCK-COUNT 0 ?do f i DNEED-BLOCK loop
+      D-MOVED @ 0=
+   until ;
+
+: DRESIDENCY ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f DRES-FIX
+   f DNEED-FIX ;
+
 \ ---- the selection table -----------------------------------------------------
 \ The selector may not lower a may-trap source operation to a form that does not
 \ reproduce the trap. x86-64's add, sub and imul wrap exactly as ARM64's do, so
@@ -1393,10 +1752,13 @@ create NAMEBUF NAME-CAP allot
    o ;
 
 \ ---- one source operation, lowered -------------------------------------------
+\ The transfer is applied HERE and once, and the mask it answers is this site's
+\ residency: the boundary rules are the only ones that read it.
 : RULE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
    sym OPCODE-SLOT HIR:NTH  sym TRAP-CK
+   id DOP-XFER {: mask:n :}
    MATCH HIR:opcode
       const  OF id EMIT-CONST ENDOF
       add    OF id X64IR-OPCODE:ADD X64IR-OPCODE:ADDI BINARY-RULE ENDOF
@@ -1422,9 +1784,9 @@ create NAMEBUF NAME-CAP allot
       bstore OF id X64IR-OPCODE:ABSTORE EMIT-ASTORE ENDOF
       br     OF id EMIT-BR ENDOF
       brz    OF id EMIT-BRZ ENDOF
-      call   OF id EMIT-CALL ENDOF
-      wordcall OF id EMIT-CALL-OR-TAIL ENDOF
-      return OF id EMIT-RETURN-OR-TAILED ENDOF
+      call   OF id mask EMIT-CALL ENDOF
+      wordcall OF id mask EMIT-CALL-OR-TAIL ENDOF
+      return OF id mask EMIT-RETURN-OR-TAILED ENDOF
       trap   OF id EMIT-TRAP ENDOF
       fconst   OF E-X64SEL-FLOAT throw ENDOF
       fadd     OF E-X64SEL-FLOAT throw ENDOF
@@ -1531,7 +1893,9 @@ create NAMEBUF NAME-CAP allot
 
 \ Under the data-stack convention the entry block takes no argument at all,
 \ because nothing arrives in a register: the pointer is taken and every
-\ argument the contract lists is loaded out of its cell.
+\ argument something reads out of a register is loaded out of its cell. An
+\ argument nothing reads is not loaded: the validator refuses a load whose
+\ result has no use as readily as a redundant store.
 : OPEN-DARGS ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    ARGS SLOT-POSITIONS {: a:n :}
@@ -1541,9 +1905,10 @@ create NAMEBUF NAME-CAP allot
    at  a X64IR:SLOT-WIDTH * DPLACED  EMIT-DTAKE
    0 ORDER-EDGE!
    a 0 ?do
-      bk i ARG-AT
-      at  ARGS i NEFF:SEQ-SLOT@ X64IR:SLOT-WIDTH *  EMIT-DLOAD
-      VBIND
+      bk i ARG-AT {: v:IR-ID:ir-value-id :}
+      v DNEED? if
+         v  at  ARGS i NEFF:SEQ-SLOT@ X64IR:SLOT-WIDTH *  EMIT-DLOAD  VBIND
+      then
    loop ;
 
 \ Only the entry block carries the routine's interface.
@@ -1626,6 +1991,7 @@ create NAMEBUF NAME-CAP allot
 \ read in another is ordinary.
 : WALK-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id ord:n :}
+   ord DCUR<IN
    f ord BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk ord OPEN-BLOCK
    bk 0 S-BLK !
@@ -1652,6 +2018,7 @@ create NAMEBUF NAME-CAP allot
    ORDER-CLEAR
    f R-BASE!
    f LIVENESS!
+   f DRESIDENCY
    DPLACE
    n 0 ?do
       f i WALK-BLOCK
