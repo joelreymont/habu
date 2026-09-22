@@ -164,10 +164,15 @@ variable AOT-BLOB-LEN
 \ the absolute ceiling one can reach and any bound under it refuses a window the
 \ dictionary itself would hold. The line here read 16384 "because the chain
 \ needs ~6554"; the chain had grown to 16382 records by the time the next
-\ twenty definitions in src/ hit the bound, and what a build over it reports is
-\ `aot-capture: too many records`, which names neither the file nor the
-\ definition that crossed it. This is that bound doubled, measured at 16402
-\ records for the build that first exceeded it.
+\ twenty definitions in src/ hit the bound. This is that bound doubled, measured
+\ at 16402 records for the build that first exceeded it. A build that crosses it
+\ prints the captured count, this bound and the name of the record being added
+\ before it dies `aot-capture: too many records` (ACAP-REC-REFUSE in
+\ src/habu/aot-capture.f); a record carries no file, so that name is the whole
+\ locator the refusal has. test/aot-capture-bound.f pins those lines over a
+\ private copy of this file with the bound lowered; because AOT-SIG-MAX below is
+\ this same constant, a lowered bound refuses a window of checked words at the
+\ signature buffer first, and that fixture's window is packages.
 32768 constant AOT-REC-MAX
 \ AOT-REC-BUF holds three regions (all viewed via AOT-REC-BUF@, no extra TRUST):
 \   [0 .. MAX*48)              verbatim 48B dict records (capture source of truth)

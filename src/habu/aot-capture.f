@@ -360,9 +360,24 @@ variable ACAP-NIDX-PM                                        \ pool-proof mismat
 
 \ --- records: copy host record (48 bytes), rebase ordinary [0] xt to blob offset ---
 : ACAP-REC-DST ( n -- ptr u8 ) 48 * AOT-REC-BUF@ swap + ;
+
+\ A record is xt, flags/name-len, inline name and wid and carries no file of its
+\ own, so the name of the definition being added is the whole locator this
+\ refusal can give. ACAP-NAME. prints the same pair and is defined below this
+\ site, which is why the two accessors are read here.
+\ THREE LINES, NOT ONE: the engine's `.` ends its line (measured: `1 . 2 .`
+\ writes "1\n2\n"), and the only formatter that renders a number mid-line,
+\ lib/fmt.f FMT:.U, is not in the engine - requiring it here would put a library
+\ in front of every window a build opens. Each line carries the prefix instead.
+: ACAP-REC-REFUSE ( n -- ) {: k:n :}
+   s" aot-capture: records captured " type AOT-REC-N @ .
+   s" aot-capture: record bound " type AOT-REC-MAX .
+   s" aot-capture: adding " type k AOT-REC AOT-RNPTR k AOT-REC AOT-RNLEN type cr
+   s" aot-capture: too many records" 74 die ;
+
 : ACAP-ADD-REC ( n n -- ) {: k:n bstart:n :}
    k AOT-REC AOT-RWID DICT-WL:RETIRED = if exit then
-   AOT-REC-N @ AOT-REC-MAX >= if s" aot-capture: too many records" 74 die then
+   AOT-REC-N @ AOT-REC-MAX >= if k ACAP-REC-REFUSE then
    k AOT-REC AOT-A>U8 {: src:ptr :}
    AOT-REC-N @ ACAP-REC-DST {: d:ptr :}
    48 0 ?do src i + c@  d i + c!  loop                        \ verbatim 48-byte copy

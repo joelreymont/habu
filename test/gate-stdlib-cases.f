@@ -2005,6 +2005,10 @@ SUITE dynamic-buffer-capture
    test/dynamic-buffer-capture.f
 ;SUITE
 
+SUITE aot-capture-bound
+   test/aot-capture-bound.f
+;SUITE
+
 SUITE dynamic-buffer-tasks
    test/dynamic-buffer-tasks.f
 ;SUITE
