@@ -1,9 +1,0 @@
----
-title: "Require the tools files' own dependencies"
-status: open
-priority: 3
-issue-type: task
-created-at: "2026-09-22T06:03:08.268518+03:00"
----
-
-Problem (measured by the gate-requires lane, landed 225a093a): tools/cli-run.f, tools/check-core.f, tools/check-all-errors-core.f, tools/gate-json-assert-core.f, tools/json-only-core.f, tools/aot-call-report-lib.f and tools/hb-build-lib.f carry 'Load after' headers and require none of what they name (tools/build-fixpoint.f does so by design: its guard says the --load list is caller-composed), so test/gate-build-hbb.f, test/gate-dictionary-lib.f and test/gate-diagnostics-lib.f now carry those preambles (up to 26 requires) behind a comment saying why. A second member of the family: tools/native-emit.f LOAD-SYS includes src/os/<target>/sys.f and the hb-build chain loads it again, so 'require tools/native-emit.f' in test/gate-aot-image.f made test/compiler/aot-xt-cells.f die with 'duplicate definition: MAP-ANON-PRIVATE at src/os/linux/sys.f:6'; gate-aot-image.f therefore requires test/gate-build-hbb.f for the SYS-EMIT-EXIT / SYS-EMIT-SVC stencils it uses at :184-185. Acceptance: each listed tools file requires its own dependencies in the card's order and loads standalone; sys.f is loaded once through require so a gate file can require the stencils it uses; the three gate helpers' preamble blocks shrink to their direct dependencies and their comments go; rg -n 'Load after' tools --glob '*.f' finds only build-fixpoint.f's by-design note; test/run.f green. Files: tools/cli-run.f, tools/check-core.f, tools/check-all-errors-core.f, tools/gate-json-assert-core.f, tools/json-only-core.f, tools/aot-call-report-lib.f, tools/hb-build-lib.f, tools/native-emit.f, test/gate-build-hbb.f, test/gate-dictionary-lib.f, test/gate-diagnostics-lib.f, test/gate-aot-image.f. Depends: none. Ownership: hazel (gate/test load path). Claim: unassigned.
