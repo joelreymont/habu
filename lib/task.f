@@ -923,6 +923,8 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
    0 tcb TCB.STOP !
    0 tcb TASK-THROW!
    tcb TASK-OUTCOME-RESET
+   \ The state the new thread inherits: this store precedes the create and the
+   \ entry adds none of its own, so a HALT in the create window stands.
    TASK-RUNNING tcb TASK-STATE!
    TASK-LIVE+
    tcb TASK-PTHREAD-CREATE-RC dup 0 <> if

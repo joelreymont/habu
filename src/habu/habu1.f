@@ -2060,6 +2060,11 @@ variable SZA-I
 \ argument is the TASK-ABI descriptor; the body enters that task's VM state.
 \ Preserve the complete base AAPCS64 callee-save set, including d8..d15:
 \ https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst
+\ It writes two cells of the task's own: the TCB address into the task's data
+\ region, and DONE into the status once the body returns. RUNNING is not among
+\ them - ACTIVATE stores it before pthread_create (lib/task.f), which orders it
+\ before this code runs, so a store here could only land after a TASK:HALT that
+\ took the cell RUNNING -> HALT-REQ in the create window and put RUNNING back.
 : BTASK-ENTRY ( -- )
    LBL LBL {: entry:label done:label :}
    A entry ADR, A G-PUSH done B,
@@ -2076,7 +2081,6 @@ variable SZA-I
    NDICT 0 TASK-ABI:NDICT-OFF LDR,
    CP 0 TASK-ABI:CP-OFF LDR,
    0 DATA TASK-TCB-CELL STR,
-   10 TASK-ABI:RUNNING MOVZ, 10 0 TASK-ABI:STATUS-OFF STR,
    9 BLR,
    9 DATA TASK-TCB-CELL LDR,
    10 TASK-ABI:DONE MOVZ, 10 9 TASK-ABI:STATUS-OFF STR,

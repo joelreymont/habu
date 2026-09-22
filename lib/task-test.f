@@ -1285,6 +1285,7 @@ TASK:MIN-STACK TASK:TASK KILL-ENDED
 TASK:MIN-STACK TASK:TASK HALT-ENDED
 TASK:MIN-STACK TASK:TASK HALT-IDLE
 TASK:MIN-STACK TASK:TASK KILL-RACE-TASK
+TASK:MIN-STACK TASK:TASK ENTRY-RACE-TASK
 
 TASK-TEST-ALIGN8
 variable ENDED-RAN
@@ -1292,10 +1293,16 @@ variable KILL-RACE-GO
 variable KILL-RACE-ENDING
 variable KILL-RACE-THREW
 variable KILL-RACE-LEFT
+variable ENTRY-RACE-RUNNING
+variable ENTRY-RACE-PENDING
 
 \ Measured on this host (aarch64, idle): 3000 rounds of activate / stop / wait
 \ for the body's flag / KILL took 207 ms, 184 ms and 157 ms over three runs.
 3000 constant KILL-RACE-ROUNDS
+
+\ Enough activations for the create window to be hit repeatedly: the window
+\ cannot be forced, so the case takes many short rounds instead of one timed one.
+400 constant ENTRY-RACE-ROUNDS
 
 \ The count dictionary mutation is refused on. A task a KILL failed to release
 \ stays in it for the life of the image, so this is the cell the reported
@@ -1380,6 +1387,46 @@ variable KILL-RACE-LEFT
    KILL-RACE-LEFT @ 0 T=
    TASK-LIVE-COUNT base T= ;
 
+\ The create window. ACTIVATE stores RUNNING and only then creates the thread, so
+\ a TASK:HALT with nothing in between takes the cell RUNNING -> HALT-REQ at or
+\ near the moment the new thread starts. From the HALT's return until the DONE
+\ store the state must read HALT-REQ or DONE; a RUNNING there is a store that
+\ landed after the request, and the pthread entry used to make one - on the engine
+\ before that store went, all ten runs of this case saw RUNNING (1531 to 8133
+\ reads of the 400 rounds), and all ten runs after it saw none. The HALT-REQ reads
+\ are counted too, so a case that stopped reading inside the window - and would
+\ pass whatever the entry writes - fails instead: the window is deep enough to be
+\ read tens of times per round (11287 to 14281 reads over the 400 here).
+\
+\ The state cell is TASK's own: TASK-STATE@ is private and the package seals both
+\ its wordlists, so reopening it for a reader dies at load with the package name
+\ (exit 84, ENGINE-ERROR:SEAL-PACKAGE). Read the cell at the offset
+\ src/habu/task-abi.f publishes for exactly this kind of foreign reader - the
+\ engine's own entry reads it there, and TASK-TCB-LAYOUT-CHECK pins the two to
+\ the same place.
+: ENTRY-RACE-STATE@ ( -- n )
+   ENTRY-RACE-TASK BYTE-VIEW TASK-ABI:STATUS-OFF + CELL-VIEW @ ;
+
+: ENTRY-RACE-ROUND ( -- )
+   ['] TASK-PAUSER ENTRY-RACE-TASK TASK:ACTIVATE
+   ENTRY-RACE-TASK TASK:HALT
+   begin
+      ENTRY-RACE-STATE@
+      dup TASK-ABI:RUNNING = if 1 ENTRY-RACE-RUNNING +! then
+      dup TASK-ABI:HALT-REQ = if 1 ENTRY-RACE-PENDING +! then
+      TASK-ABI:DONE = dup 0= if TASK:PAUSE then
+   until
+   ENTRY-RACE-TASK TASK:KILL ;
+
+: TASK-TEST-ENTRY-RACE ( -- )
+   0 ENTRY-RACE-RUNNING !
+   0 ENTRY-RACE-PENDING !
+   TASK-LIVE-COUNT {: base:n :}
+   ENTRY-RACE-ROUNDS 0 do ENTRY-RACE-ROUND loop
+   ENTRY-RACE-RUNNING @ 0 T=
+   ENTRY-RACE-PENDING @ 0 <> TTRUE
+   TASK-LIVE-COUNT base T= ;
+
 : TASK-TEST-RUN ( -- )
    T-RESET
    TASK-TEST-CALLBACK-TYPES
@@ -1452,6 +1499,7 @@ variable KILL-RACE-LEFT
    TASK-TEST-HALT-ENDED
    TASK-TEST-HALT-IDLE
    TASK-TEST-KILL-RACE
+   TASK-TEST-ENTRY-RACE
    T-REPORT ;
 
 TASK-TEST-RUN
