@@ -30,6 +30,14 @@ successful runs remove it.
   closes its `package` before `T-REPORT`; a later suite otherwise dies exit 75
   with a bare token, one or two suites after the culprit. Fixture identities
   carry the test's own tag so two suites never intern one name.
+- A `WHITEBOX-SUITE` row is the gate-only kind: the runner hands it the gate's
+  private copy of the unsealed engine (`test/whitebox-engine.f`) because such a
+  file reaches inside the engine, and the sealed `bin/hb` refuses those tokens
+  — standalone such a file exits 70 with `hb: internal engine word: <TOKEN>`
+  (measured on `test/whitebox-engine-suite.f`). A file that only *spawns* a
+  child needing the unsealed engine is not of that kind: it names one itself
+  with `WHITEBOX-ENGINE:PROVIDE` (`test/compiler/native-checker-prefix.f`) and
+  stays a plain `SUITE`, green on its own.
 - A suite whose assertions depend on the compiler tier selects it itself:
   `1 set-tier` before its requires, because only code compiled after that line
   belongs to the tier. The runner prepends nothing, so every row measures what

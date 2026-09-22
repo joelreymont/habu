@@ -748,7 +748,7 @@ SUITE compiler-native-generated-constructor-aot
    test/compiler/native-generated-constructor.f
 ;SUITE
 
-WHITEBOX-SUITE compiler-native-checker-prefix
+SUITE compiler-native-checker-prefix
    test/compiler/native-checker-prefix.f
 ;SUITE
 
