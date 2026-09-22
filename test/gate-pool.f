@@ -48,6 +48,8 @@ create GT-POOL-OUT-PATHS GT-POOL-MAX FS-PATH-CAP * allot
 create GT-POOL-ERR-PATHS GT-POOL-MAX FS-PATH-CAP * allot
 create GT-POOL-OUT-PATH-US GT-POOL-MAX cells allot
 create GT-POOL-ERR-PATH-US GT-POOL-MAX cells allot
+create GT-POOL-TMP-PATHS GT-POOL-MAX FS-PATH-CAP * allot
+create GT-POOL-TMP-PATH-US GT-POOL-MAX cells allot
 create GT-POOL-OUT-FDS GT-POOL-MAX cells allot
 create GT-POOL-ERR-FDS GT-POOL-MAX cells allot
 create GT-POOL-OUT-TOTALS GT-POOL-MAX cells allot
@@ -271,6 +273,17 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-ERR-PATH-U-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-ERR-PATH-US + ;
 
+: GT-POOL-TMP-PATH-BUF ( idx -- ptr u8 )
+   IDX>N FS-PATH-CAP * GT-POOL-TMP-PATHS + ;
+
+: GT-POOL-TMP-PATH-U-PTR ( idx -- ptr n )
+   IDX>N cells GT-POOL-TMP-PATH-US + ;
+
+\ The scratch directory this pool made for a SPAWNED slot's child, empty for a
+\ forked slot, which shares the parent's image and gets no directory of its own.
+: GT-POOL-TMP$ ( idx -- ptr u8 n ) {: idx:idx :}
+   idx GT-POOL-TMP-PATH-BUF idx GT-POOL-TMP-PATH-U-PTR @ ;
+
 : GT-POOL-OUT-FILE$ ( idx -- ptr u8 n ) {: idx:idx :}
    idx GT-POOL-OUT-PATH-BUF idx GT-POOL-OUT-PATH-U-PTR @ ;
 
@@ -417,6 +430,7 @@ GT-POOL-ABORT-KILL!
    0 idx GT-POOL-ERR-TOTAL-PTR !
    0 idx GT-POOL-OUT-PATH-U-PTR !
    0 idx GT-POOL-ERR-PATH-U-PTR !
+   0 idx GT-POOL-TMP-PATH-U-PTR !
    0 idx GT-POOL-SEQ-PTR !
    0 idx GT-POOL-WAITS-PTR !
    0 idx GT-POOL-SAT-LIVE-PTR !
@@ -690,6 +704,56 @@ GT-POOL-ABORT-KILL!
    idx 0 GT-POOL-CAPTURE-FD!
    idx 1 GT-POOL-CAPTURE-FD! ;
 
+\ THE POOL OWNS ITS SPAWNED CHILDREN'S SCRATCH. Each gets a directory of its
+\ own beside its capture files, named HB_TMP in its environment, and the PARENT
+\ removes it when the slot retires. A child the pool killed - a timeout, a
+\ group kill - never reaches its own CLEANUP-RUN, so its temp trees survived it
+\ and nothing ever removed them; under HB_TMP they now go with the directory,
+\ and so does anything its own children left. PROC-ENV-SET, not PROC-ENV+,
+\ because the caller has already inherited its environment into the table and
+\ an inherited HB_TMP has to be replaced rather than shadowed.
+\
+\ Forked slots never call this: a forked worker shares the parent's image, gets
+\ no environment of its own, and must not be handed a directory whose removal
+\ would touch the parent's tree.
+\
+\ An HB_TMP row already in the caller's table is one of two things: the copy
+\ PROC-ENV-INHERIT-MISSING took from this process's own environment, which is
+\ the pool's to replace, or a value the caller chose for its child - a scratch
+\ root the caller owns and reaps (test/nf-path-test.f hands each build a root
+\ of a chosen length and byte content) - which stays, and then the slot gets no
+\ directory at all.
+: GT-POOL-ENV-HB-TMP-OWN? ( -- bool )
+   s" HB_TMP=" {: k:ptr ku:n :}
+   s" HB_TMP" >LEN PROC-ENV-NAME-IDX {: i:n :}
+   i 0 < if false exit then
+   i >IDX PROC-ENV-SLOT @ {: z:ptr :}
+   z ku BYTE+ z ZLEN ku -
+   s" HB_TMP" GETENV STR= 0= ;
+
+: GT-POOL-CHILD-TMP! ( idx -- ) {: idx:idx :}
+   GT-POOL-ENV-HB-TMP-OWN? if 0 idx GT-POOL-TMP-PATH-U-PTR ! exit then
+   GT-POOL-CAPTURE-ROOT$
+   idx GT-POOL-SEQ-PTR @ s" -tmp" GT-POOL-CAPTURE-NAME
+   idx GT-POOL-TMP-PATH-BUF JOIN-PATH idx GT-POOL-TMP-PATH-U-PTR !
+   idx GT-POOL-TMP$ MAKE-DIRS
+   s" HB_TMP" >LEN idx GT-POOL-TMP$ >LEN PROC-ENV-SET ;
+
+\ Absence is tolerated: the directory is gone already when a child removed it
+\ itself, and a forked slot never had one.
+: GT-POOL-CHILD-TMP-REMOVE ( idx -- ) {: idx:idx :}
+   idx GT-POOL-TMP-PATH-U-PTR @ 0 <= if exit then
+   idx GT-POOL-TMP$ EXISTS? 0= if exit then
+   idx GT-POOL-TMP$ REMOVE-TREE ;
+
+\ The one place a slot leaves the live set, whatever its outcome was: a reap
+\ (exited or signaled) or a timeout the pool killed. The child's scratch goes
+\ here, after the kill, so nothing is still writing into it.
+: GT-POOL-RETIRE-SLOT ( idx -- ) {: idx:idx :}
+   idx GT-POOL-CHILD-TMP-REMOVE
+   1 idx GT-POOL-DONE-PTR !
+   GT-POOL-LIVE @ 1- GT-POOL-LIVE ! ;
+
 : GT-POOL-RED-CHECK ( n -- n ) {: i:n :}
    i 0 < if E-TBL-BOUNDS throw then
    i GT-POOL-RED-MAX >= if E-TBL-BOUNDS throw then
@@ -828,6 +892,7 @@ GT-POOL-ABORT-KILL!
 
 : GT-POOL-START-SLOT ( ptr u8 n ptr u8 n n idx -- ) {: path:ptr pathu label:ptr labelu timeout idx :}
    label labelu timeout idx GT-POOL-OPEN-SLOT
+   idx GT-POOL-CHILD-TMP!
    idx path pathu GT-POOL-SPAWN
    GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
 
@@ -850,6 +915,7 @@ GT-POOL-ABORT-KILL!
 : GT-POOL-START-STDIN-SLOT ( ptr u8 n ptr u8 n ptr u8 n n idx -- )
    {: path:ptr pathu label:ptr labelu bytes:ptr byten timeout idx :}
    label labelu timeout idx GT-POOL-OPEN-SLOT
+   idx GT-POOL-CHILD-TMP!
    PIPE-PAIR {: r w :}
    r FD-CLOEXEC!
    w FD-CLOEXEC!
@@ -1079,8 +1145,7 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
    -1 >PID idx GT-POOL-PID-PTR !
    idx GT-POOL-KILL-REAPER
    idx GT-POOL-CLOSE-CAPTURE
-   1 idx GT-POOL-DONE-PTR !
-   GT-POOL-LIVE @ 1- GT-POOL-LIVE !
+   idx GT-POOL-RETIRE-SLOT
    idx GT-POOL-OK? if idx GT-POOL-PASS-LINE exit then
    idx GT-POOL-FAIL ;
 
@@ -1108,8 +1173,7 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
    \ hang clue) reach the tail and capture file before the fds are closed.
    GT-POOL-POLL-BUILD  GT-POOL-POLL drop  idx GT-POOL-DRAIN-SLOT
    idx GT-POOL-KILL-SLOT
-   1 idx GT-POOL-DONE-PTR !
-   GT-POOL-LIVE @ 1- GT-POOL-LIVE !
+   idx GT-POOL-RETIRE-SLOT
    idx GT-POOL-FAIL ;
 
 : GT-POOL-CHECK-TIMEOUTS ( -- )
@@ -1156,8 +1220,12 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
       GT-POOL-STEP
    repeat ;
 
+\ The report is on stdout before the tree goes; the die ends the process, so
+\ the cleanup has to run in front of it or the pool root outlives every red
+\ run (that is where the leaked gate-pool-test-battery trees came from).
 : GT-POOL-RED-DIE ( -- )
    GT-POOL-RED-REPORT
+   GT-CLEANUP
    s" test pool failed" 1 die ;
 
 : GT-POOL-DRAIN ( -- )

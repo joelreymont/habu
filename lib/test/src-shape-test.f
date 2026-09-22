@@ -31,8 +31,10 @@ variable SST-PATH-U
    a dst u BYTE-COPY
    u lenp ! ;
 
+\ The fixture tree is registered the moment it exists, so the run's own
+\ CLEANUP-RUN below removes it however the assertions come out.
 : SST-SETUP ( -- )
-   s" habu-src-shape" TMPDIR-MKDIR SST-DIR-BUF SST-DIR-U SST-STORE
+   s" habu-src-shape" HB-TMP-MKDIR 2dup CLEANUP-TREE+ SST-DIR-BUF SST-DIR-U SST-STORE
    SST-DIR$ s" fixture.f" SST-PATH-BUF JOIN-PATH SST-PATH-U !
    SST-PATH$ SST-FIXTURE$ WRITE-ALL ;
 
@@ -77,6 +79,7 @@ variable SST-PATH-U
    SST-CHECK-FIT-CASES
    SST-LOAD-CASES
    SST-RELEASE-CASES
+   CLEANUP-RUN                           \ before T-REPORT, which dies on a red count
    T-REPORT
    s" src-shape-test: ok" type cr ;
 

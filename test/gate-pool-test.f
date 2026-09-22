@@ -534,6 +534,67 @@ variable GPT-FC-DONE-U
    0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ s" gate-pool stdin worker" CONTAINS? TTRUE
    GT-CLEANUP ;
 
+\ THE POOL OWNS ITS SPAWNED CHILDREN'S SCRATCH (gate-pool.f GT-POOL-CHILD-TMP!).
+\ Each spawned child is given a directory of its own as HB_TMP, so the tree it
+\ makes the ordinary way - lib/fs-mutate.f HB-TMP-MKDIR - lands inside it, and
+\ the pool removes that directory when the slot retires. The killed child is
+\ the case nothing else covers: it never reaches a cleanup of its own, so
+\ before this the tree it made outlived every run.
+\
+\ Each child prints the path it made; the slot's capture is how the parent
+\ learns it, exactly as the timeout battery reads the hang sentinel.
+3000 constant GPT-CT-TIMEOUT-MS
+
+: GPT-CT-GREEN-SRC$ ( -- ptr u8 n )
+   S\" require lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" HB-TMP-MKDIR type cr ;\nW\n" ;
+
+: GPT-CT-HANG-SRC$ ( -- ptr u8 n )
+   S\" require lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" HB-TMP-MKDIR type cr begin 0 0= 0= until ;\nW\n" ;
+
+: GPT-CT-PRINTED$ ( -- ptr u8 n )        \ slot 0's captured line, without its newline
+   0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ {: a:ptr u:n :}
+   u 0 > if
+      a u 1- BYTE+ c@ STR-LF = if a u 1- exit then
+   then
+   a u ;
+
+\ The environment is inherited first, HB_TMP and all: the pool's own row has to
+\ REPLACE an inherited one, not queue up behind it, or the child resolves the
+\ caller's HB_TMP and makes its tree outside the slot's directory. A row the
+\ caller set to a value of its own is the opposite case and stays; that one is
+\ checked where it is needed, test/nf-path-test.f (a 97-byte root reaches the
+\ build unchanged).
+: GPT-CT-RUN ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   GT-POOL-RED-RESET
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   GPT-HB$ label labelu src srcu GPT-CT-TIMEOUT-MS GT-POOL-START-STDIN
+   GT-POOL-DRAIN-SOFT ;
+
+: GPT-CT-EXPECT ( -- )
+   s" child tmp: the slot was given a scratch directory" T-LABEL
+   0 >IDX GT-POOL-TMP-PATH-U-PTR @ 0 > TTRUE
+   s" child tmp: the child made its tree under that directory" T-LABEL
+   GPT-CT-PRINTED$ 0 >IDX GT-POOL-TMP$ STARTS-WITH? TTRUE
+   s" child tmp: the child's tree is gone after the drain" T-LABEL
+   GPT-CT-PRINTED$ EXISTS? TFALSE
+   s" child tmp: the slot's scratch directory is gone too" T-LABEL
+   0 >IDX GT-POOL-TMP$ EXISTS? TFALSE ;
+
+: GPT-CHILD-TMP-CASE ( -- )
+   s" gate-pool-child-tmp" GT-START
+   GPT-CT-HANG-SRC$ s" child tmp kill worker" GPT-CT-RUN
+   s" child tmp: the hung child died on its slot deadline" T-LABEL
+   0 >IDX GT-POOL-TIMED-OUT-PTR @ TTRUE
+   GPT-CT-EXPECT
+   GPT-CT-GREEN-SRC$ s" child tmp green worker" GPT-CT-RUN
+   s" child tmp: the green child exited clean" T-LABEL
+   GT-POOL-RED# 0 T=
+   GPT-CT-EXPECT
+   GT-CLEANUP ;
+
 \ The reader takes the engine's report and nothing shaped merely like it. Its
 \ input is a captured stderr tail, so every fixture here is one.
 : GPT-UNCAUGHT-CASE ( -- )
@@ -610,6 +671,7 @@ variable GPT-FC-DONE-U
    GPT-EXTERNAL-KILL-CASE
    GPT-FC-CASE
    GPT-STDIN-CASE
+   GPT-CHILD-TMP-CASE
    GPT-UNCAUGHT-CASE
    GPT-INNER-TIMEOUT-CASE
    GPT-BATTERY-REPORT

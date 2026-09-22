@@ -281,6 +281,17 @@ public
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
    prefix prefixu MAKE-TEMP-DIR ;
 
+\ The one base resolver for a process that was handed a scratch root. HB_TMP
+\ names a directory the caller owns and will remove; a temp tree made under it
+\ therefore goes away with it, even for a process that is killed before it can
+\ run its own CLEANUP-RUN. With no HB_TMP the tree falls back to TMPDIR (then
+\ /tmp), which nobody reaps - so a maker that leaks there leaks for good.
+: HB-TMP-MKDIR ( ptr u8 n -- ptr u8 n ) {: prefix:ptr prefixu :}
+   s" HB_TMP" GETENV dup 0= if
+      2drop prefix prefixu TMPDIR-MKDIR exit
+   then
+   prefix prefixu MAKE-TEMP-DIR ;
+
 : CLEANUP-RESET ( -- )
    0 FS-MUT-CLEANUP-N ! ;
 

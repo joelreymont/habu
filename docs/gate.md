@@ -20,8 +20,24 @@ bin/hb --load test/run.f
 files through the tree's `bin/hb`; there is no second test inventory.
 
 Failures print the suite label, exit outcome, and captured stdout and stderr.
-On failure, the full capture files remain under the printed temporary root;
-successful runs remove it.
+The run removes its temporary root whether it is green or red — a red run used
+to keep the whole tree, and `/tmp` filled with one root per red run — so the
+printed tail and the truncation line's byte count are what a finished red run
+leaves; the capture file each `stdout-file:` line names is readable only while
+the run is still going. To keep a run's trees, give it its own `HB_TMP`: every
+maker (the pool root, each spawned child's scratch, `hb-build`'s private build
+directory) goes under it when it is set, and under `TMPDIR` or `/tmp` when it
+is not.
+
+The pool makes one scratch directory per spawned child and hands it to the
+child as `HB_TMP`, then removes it when that slot retires — exited, signaled or
+timed out. A child the pool kills cannot clean up after itself; the parent
+does, and whatever the child (or its own children) put under `HB_TMP` goes with
+the directory. An `HB_TMP` row the caller put in the child's environment itself
+— a value other than the pool process's own, which `PROC-ENV-INHERIT-MISSING`
+copies — is the caller's scratch to own and reap: the pool leaves the row and
+gives that slot no directory (`test/nf-path-test.f` hands each build a root of
+a chosen length; a pool path in front of it would overflow `NF-PATH-CAP`).
 
 ## How a suite runs, and what that demands of its files
 

@@ -313,15 +313,17 @@ variable HBB-ELAPSED-NS
    HBB-SRC$ FILE? 0= if s" hb-build: no such source" HBB-NOINPUT-RC die then
    HBB-SRC$ HBB-PATH-HAS-DQ? if s" hb-build: source path contains a double quote" HBB-USAGE-RC die then ;
 
-: HBB-ENV-TMP? ( -- bool )
-   s" HB_TMP" GETENV dup 0= if 2drop HBB-FALSE exit then
+\ A caller's HB_TMP has to be usable before HB-TMP-MKDIR builds under it: a
+\ plain file there is a caller mistake and dies loudly, a missing directory is
+\ made. Which base a tree lands in is HB-TMP-MKDIR's answer, not this word's.
+: HBB-CHECK-ENV-TMP ( -- )
+   s" HB_TMP" GETENV dup 0= if 2drop exit then
    2dup EXISTS? if
       2dup DIR? 0= if s" hb-build: HB_TMP is not a directory" HBB-USAGE-RC die then
    else
       2dup MAKE-DIR
    then
-   BF-TMP!
-   HBB-TRUE ;
+   2drop ;
 
 \ Every build gets a private directory. The engine's build mode writes fixed
 \ names into the HB_TMP it is handed (src/habu/aot-lib.f `hb-aot-got`,
@@ -332,10 +334,8 @@ variable HBB-ELAPSED-NS
 : HBB-PREPARE-TMP ( -- )
    BF-TMP-RESET
    CLEANUP-RESET
-   HBB-ENV-TMP? if
-      BF-TMP$ s" hb-build-native" MAKE-TEMP-DIR 2dup BF-TMP! CLEANUP-TREE+ exit
-   then
-   s" hb-build-native" TMPDIR-MKDIR 2dup BF-TMP! CLEANUP-TREE+ ;
+   HBB-CHECK-ENV-TMP
+   s" hb-build-native" HB-TMP-MKDIR 2dup BF-TMP! CLEANUP-TREE+ ;
 
 : HBB-PREPARE-CACHE ( -- )
    BUILD-CACHE:RESOLVE drop 2drop ;

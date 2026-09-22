@@ -84,7 +84,7 @@ variable GT-TAIL-U
    GT-RESET
    CLEANUP-RESET
    0 GT-ROOT-U !
-   prefix prefixu TMPDIR-MKDIR GT-COPY-ROOT!
+   prefix prefixu HB-TMP-MKDIR GT-COPY-ROOT!
    GT-ROOT CLEANUP-TREE+ ;
 
 : GT-CLEANUP ( -- )

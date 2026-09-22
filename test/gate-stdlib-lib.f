@@ -115,13 +115,19 @@ variable WB-U
 \ The pool drains softly between groups, so every registered suite runs
 \ whatever went red before it; the complete red set is reported here, once,
 \ with each suite's exit code, and decides the exit status.
+\
+\ The report is complete before the tree goes: every red row's output and its
+\ capture-file names are already on stdout, so the cleanup takes nothing the
+\ reader still needs. It runs BEFORE the red die, which ends the process - a
+\ red gate used to leave its whole pool root, and a run per red is how /tmp
+\ filled with habu-native-suite trees.
 : SUITE-FINISH ( n -- ) {: rc:n :}
    s" suites: ran " type TEST:ITEMS-RUN GT-U-TYPE
    s"  of " type TEST:ITEMS-REGISTERED GT-U-TYPE cr
    GT-POOL-RED-REPORT
+   GT-CLEANUP
    rc 0 <> if exit then                 \ the body threw: the framework rethrows that code
-   GT-POOL-RED# 0 > if s" test pool failed" 1 die then
-   GT-CLEANUP ;
+   GT-POOL-RED# 0 > if s" test pool failed" 1 die then ;
 
 : SUITE-INSTALL-HOOKS ( -- )
    [: SUITE-SETUP ;] TEST:SETUP!
