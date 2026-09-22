@@ -58,6 +58,16 @@ The native REPL build compiles the current source into a fresh running image.
 It does not use the AOT maker or artifact caches. The existing build report
 therefore records no cache source and no cache hits for `--repl`.
 
+### Process page size
+
+`OS-MEMORY:PAGE-SIZE` reports the current process's host page size through the
+checked `getpagesize` binding. It is a runtime fact for mapping descriptions;
+it does not replace Habu's fixed `STACK-ABI:PAGE-BYTES` guard-window contract or
+change allocation growth. The query resolves again after image preparation, so
+an image never carries a process-owned function address. The Linux AArch64 path
+is covered by `lib/os-memory-test.f`; macOS and x86-64 are supported by the
+same process-symbol contract but are not exercised on this host.
+
 Every build prints one line saying where the bytes of the image it just wrote
 went, `--size-report` prints the whole table and `--report-json` carries the
 same numbers in the report object's `size` field. A `--repl` image is mostly

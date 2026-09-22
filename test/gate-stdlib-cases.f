@@ -2,6 +2,10 @@ STDLIB-GATE:MAIN
 
 using TEST
 
+SUITE os-memory
+   lib/os-memory-test.f
+;SUITE
+
 SUITE shadow-lint
    tools/lint/shadow-lint.f
    tools/lint/shadow-lint-test.f
