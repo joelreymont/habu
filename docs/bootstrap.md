@@ -307,6 +307,18 @@ Three facts decide how a change reaches the fixpoint:
   shape: the callee's `PRIM:`/`PPRIM:` row must exist in the host first, or an
   old host dies at `--load` of the build tool with `ncomp: cannot compile
   <word>`.
+- **A new `lib/errors.f` code or `src/habu/layout.f` band that `lib/fs.f`
+  reads lands through a stage host.** `tools/native-build-core.f` requires
+  `lib/fs.f` from the tree, and the host resolves its names against its own
+  baked `lib/errors.f` and layout, so a code the tree just minted dies in the
+  host, `E-UNDEFINED … undefined word '<code>'`, `ncomp: cannot compile
+  <word>`, rc 70, before any target work (measured: `E-FS-WALK-ACTIVE` in
+  `WALK-FILES`). Build a stage engine from the host's own tree plus the new
+  declarations alone, then build the tree with that engine. A library the
+  engine bakes and no build file loads — `lib/string.f`, `lib/fmt.f`,
+  `lib/errors.f` itself — is compiled by the target build after the tree's
+  declarations and needs no stage; when nothing else the image bakes changed,
+  the stage and the tree's engine are byte-identical.
 - **The recovery prologue and `prefix-rewind.f` rewind to different points.**
   `tools/bootstrap.sh`'s boot-hide text reloads the whole core prefix, so it
   rewinds the dictionary to the prefix's *first* record and the signature
