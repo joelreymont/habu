@@ -310,7 +310,7 @@ variable FX
 DYNAMIC-BUFFER CLO ptr u8      \ each member's code entry
 DYNAMIC-BUFFER CLO-LEN n       \ ... its code length in bytes
 DYNAMIC-BUFFER CLO-REC ptr n   \ ... and the record that named it, or XREF-NULL
-variable NCLO  variable CLO-CX
+variable NCLO
 PTR-VARIABLE ROOTREC
 variable CLO-CAP     \ rows allocated, 0 until the tables are sized
 variable CLO-REQ     \ a limit a program lowered by hand, or 0 for the capacity
@@ -318,8 +318,80 @@ variable CLO-LIMIT   \ ... and the one ADD-CLO enforces, resolved at the sizing
 : CLO-AT ( n -- ptr u8 ) CLO @ ;
 : CLO-BYTES ( n -- n ) CLO-LEN @ ;
 : CLO-REC@ ( n -- ptr n ) CLO-REC @ ;
+
+\ --- THE WALK ASKS TWO QUESTIONS ABOUT A CODE ADDRESS, and both are indexed
+\ here: is this entry already a member (IN-CLO?, once per call the walk follows)
+\ and which record starts at it (FINDADDR-PTR below, once per instruction of
+\ every member). Both were scans over everything, so each cost the whole table
+\ per question and the walk was quadratic: on a 27,000-word chain IN-CLO? made
+\ 364,594,512 comparisons over 27,005 calls and FINDADDR-PTR 587,777,056 over
+\ 27,004. Indexed, the same chain takes 1.3 slots per IN-CLO? call and 2.7 per
+\ FINDADDR-PTR, and linking its 27,004-member closure stopped costing
+\ measurable time: the maker went from 43.0 s to 32.1 s, which is what the same
+\ words behind a one-member closure compile in.
+\ AN INDEX IS A TABLE OF ROW NUMBERS AND NO KEY COLUMN: a slot's key is read
+\ back through the row it names - a member's entry through CLO-AT, a record's
+\ through REC-CODE-PTR@ - so the index cannot disagree with the column it
+\ indexes, and open addressing with linear probing needs nothing else. There is
+\ no deletion: rows are appended while the walk runs, and the one pass that
+\ removes rows (DROP-NESTED-CLO) rebuilds the set from the rows that survive.
+\ THE TABLE CANNOT FILL. Its capacity is the power of two at or above twice the
+\ rows it can hold - the closure capacity for the members, ndict@ for the
+\ records - so the load factor stays at or below a half and a probe is O(1)
+\ expected. A wrap would mean capacity and row bound disagree, which is a defect
+\ in this file rather than a program's fault, so an insert that wraps refuses by
+\ name the way CLO-OVERFLOW-DIE does instead of looping.
+\ THE HASH DECIDES THE PROBE ORDER, NEVER AN ANSWER: the answer is always the
+\ row whose key matches, in the order the table was filled. It is a fixed
+\ multiplicative hash - the entry's distance from the dictionary base without
+\ its two alignment bits, times an odd constant, read above the product's low
+\ half - with no per-run value in it, so no image can depend on it.
+-1 constant IX-FREE                    \ a slot naming no row
+$9E3779B97F4A7C15 constant IX-MUL      \ odd: the 64-bit golden-ratio multiplier
+variable IX-CX
+: IX-CAPACITY ( n -- n ) {: rows:n :}  \ a power of two, at least twice the rows
+   1 IX-CX !
+   BEGIN IX-CX @ rows 2 * < WHILE IX-CX @ 2 * IX-CX ! REPEAT
+   IX-CX @ ;
+: IX-SLOT ( ptr u8 n -- n ) {: e:ptr mask:n :}   \ the first slot for a code entry
+   e AOT-DBASE@ BYTE-VIEW - 2 rshift  IX-MUL *  32 rshift  mask and ;
+
+\ The members, indexed by entry. THE ENTRY IS THE IDENTITY (the table comment
+\ above): a second record naming one span asks the set about that span's entry
+\ and finds the member already there, so the blob is still copied once. A
+\ fixture that writes rows by hand instead of walking never asks, and the set it
+\ leaves empty answers nothing.
+DYNAMIC-BUFFER CLO-SET n       \ the member row whose entry lands in each slot
+variable CLO-MASK              \ ... the set's capacity minus one
+variable CLO-SX                \ ... the probe's slot
+variable CLO-ROW               \ ... and the row that slot named
+variable CLO-PROBE  variable CLO-RI
+: CLO-SET-EMPTY ( -- )
+   0 CLO-SX !
+   BEGIN CLO-SX @ CLO-MASK @ <= WHILE  IX-FREE CLO-SX @ CLO-SET !  CLO-SX @ 1+ CLO-SX ! REPEAT ;
+: CLO-SET-SIZE ( n -- ) {: rows:n :}
+   rows IX-CAPACITY 1- CLO-MASK !
+   CLO-MASK @ 1+ CLO-SET-RESERVE
+   CLO-SET-EMPTY ;
 : IN-CLO? {: start:ptr :} ( ptr u8 -- bool )
-   0 CLO-CX ! BEGIN CLO-CX @ NCLO @ < WHILE CLO-CX @ CLO-AT start = IF 0 0= exit THEN CLO-CX @ 1+ CLO-CX ! REPEAT 0 0= 0= ;
+   start CLO-MASK @ IX-SLOT CLO-SX !
+   BEGIN CLO-SX @ CLO-SET @ dup CLO-ROW ! IX-FREE <> WHILE
+      CLO-ROW @ CLO-AT start = IF true exit THEN
+      CLO-SX @ 1+ CLO-MASK @ and CLO-SX !
+   REPEAT false ;
+: CLO-SET+ ( n -- ) {: row:n :}        \ index a row whose entry the set lacks
+   row CLO-AT CLO-MASK @ IX-SLOT CLO-SX !
+   0 CLO-PROBE !
+   BEGIN CLO-SX @ CLO-SET @ IX-FREE <> WHILE
+      CLO-PROBE @ 1+ dup CLO-PROBE ! CLO-MASK @ > IF
+         s" aot: closure member index full" 74 die THEN
+      CLO-SX @ 1+ CLO-MASK @ and CLO-SX !
+   REPEAT
+   row CLO-SX @ CLO-SET ! ;
+: CLO-SET-REBUILD ( -- )               \ ... every row again, after rows moved
+   CLO-SET-EMPTY
+   0 CLO-RI !
+   BEGIN CLO-RI @ NCLO @ < WHILE  CLO-RI @ CLO-SET+  CLO-RI @ 1+ CLO-RI ! REPEAT ;
 : CLO-OVERFLOW-JSON {: r:ptr :} ( ptr a -- )
    123 AE1
    s" schema_version" AEJKEY 1 AEJNUM 44 AE1
@@ -352,6 +424,7 @@ variable CLO-LIMIT   \ ... and the one ADD-CLO enforces, resolved at the sizing
    start NCLO @ CLO !
    len NCLO @ CLO-LEN !
    r NCLO @ CLO-REC !
+   NCLO @ CLO-SET+
    NCLO @ 1+ NCLO ! ;
 PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past end
 : ADD-REC-CLO ( ptr n -- ) {: r:ptr :}
@@ -363,12 +436,53 @@ PTR-VARIABLE SP2  PTR-VARIABLE SEND   \ a member's scan cursor and its one-past 
    callee AOT-UNSAFE? if caller callee AOT-UNSAFE-DIE then
    callee ADD-REC-CLO ;
 
-\ Resolve a call target (a code address) to its record by EXACT code entry: scan the
-\ dict records and match on the code-entry pointer directly (REC-CODE-PTR@) so a
+\ Resolve a call target (a code address) to its record by EXACT code entry: probe the
+\ record index and match on the code-entry pointer directly (REC-CODE-PTR@) so a
 \ direct-BL target needs no address-to-cell cast. Ordinary words and registered engine
 \ helpers both carry a record; a non-entry address matches nothing (fails closed later).
-: FINDADDR-PTR ( ptr u8 -- ptr n ) {: t:ptr :}  0 FX !
-   BEGIN FX @ ndict@ < WHILE  FX @ REC REC-CODE-PTR@ t = IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
+\ THE FIRST RECORD WINS, which is what the scan this replaced answered and what
+\ two records sharing one entry need: `EXPORT` publishes a second name for one
+\ execution token, and the walk must reach the same record either way, so an
+\ insert that meets its own entry keeps the row already there.
+\ THE INDEX HOLDS RECORD ROWS 0..ndict@ AND IS VALID FOR EXACTLY THAT COUNT.
+\ One build serves a whole link - aot-lib.f LINK runs with the application
+\ loaded and the dictionary closed, so ndict@ cannot move under it - and the
+\ count is the test: a caller that defines words between two questions (the gate
+\ fixtures ask FINDADDR-PTR directly, with no closure tables sized) gets an
+\ index rebuilt for the dictionary it is asking about. The count starts at 0 and
+\ a dictionary holding this word holds at least one record, so the first
+\ question always builds. The one word that lowers the count, public `ndict!`,
+\ belongs to the property-test harness and never links.
+DYNAMIC-BUFFER REC-BY-ENTRY n  \ the first record row whose entry lands in each slot
+variable REC-IX-MASK           \ ... the index's capacity minus one
+variable REC-IX-N              \ ... the record count it was built at, 0 until built
+variable REC-SX  variable REC-ROW  variable REC-PROBE
+: REC-IX+ ( n -- ) {: row:n :}
+   row REC REC-CODE-PTR@ {: e:ptr :}
+   e REC-IX-MASK @ IX-SLOT REC-SX !
+   0 REC-PROBE !
+   BEGIN REC-SX @ REC-BY-ENTRY @ dup REC-ROW ! IX-FREE <> WHILE
+      REC-ROW @ REC REC-CODE-PTR@ e = IF exit THEN
+      REC-PROBE @ 1+ dup REC-PROBE ! REC-IX-MASK @ > IF
+         s" aot: closure record index full" 74 die THEN
+      REC-SX @ 1+ REC-IX-MASK @ and REC-SX !
+   REPEAT
+   row REC-SX @ REC-BY-ENTRY ! ;
+: REC-IX-BUILD ( -- )
+   ndict@ IX-CAPACITY 1- REC-IX-MASK !
+   REC-IX-MASK @ 1+ REC-BY-ENTRY-RESERVE
+   0 REC-SX !
+   BEGIN REC-SX @ REC-IX-MASK @ <= WHILE
+      IX-FREE REC-SX @ REC-BY-ENTRY !  REC-SX @ 1+ REC-SX ! REPEAT
+   0 FX ! BEGIN FX @ ndict@ < WHILE  FX @ REC-IX+  FX @ 1+ FX ! REPEAT
+   ndict@ REC-IX-N ! ;
+: FINDADDR-PTR ( ptr u8 -- ptr n ) {: t:ptr :}
+   REC-IX-N @ ndict@ <> IF REC-IX-BUILD THEN
+   t REC-IX-MASK @ IX-SLOT REC-SX !
+   BEGIN REC-SX @ REC-BY-ENTRY @ dup REC-ROW ! IX-FREE <> WHILE
+      REC-ROW @ REC REC-CODE-PTR@ t = IF REC-ROW @ REC exit THEN
+      REC-SX @ 1+ REC-IX-MASK @ and REC-SX !
+   REPEAT  XREF-NULL ;
 
 \ Ticks may name engine-text entries; anonymous bodies can be interior to their
 \ owner's emission. Use exact entry identity first, then the recorded span
@@ -1146,11 +1260,15 @@ variable CLO-NI  variable CLO-NJ  variable CLO-NK   \ the candidate row, the sca
       CLO-NK @ 1+ CLO-REC@   CLO-NK @ CLO-REC !
       CLO-NK @ 1+ CLO-NK ! REPEAT
    NCLO @ 1- NCLO ! ;
+\ The compaction moves rows, and the membership index names rows, so the pass
+\ ends by indexing the rows that survive: the set and the columns say the same
+\ thing whether or not anything asks again.
 : DROP-NESTED-CLO ( -- )
    1 CLO-NI !
    BEGIN CLO-NI @ NCLO @ <  CLO-NI @ XTC-N @ <=  and WHILE
       CLO-NI @ CLO-CONTAINED? IF CLO-NI @ DROP-CLO-ROW ELSE CLO-NI @ 1+ CLO-NI ! THEN
-   REPEAT ;
+   REPEAT
+   CLO-SET-REBUILD ;
 
 \ THE CAPACITY IS A BOUND THE LINKER ALREADY KNOWS, which is why the tables can
 \ be allocated per program. A member IS its entry (ADD-CLO dedups on it), and
@@ -1190,6 +1308,7 @@ variable CLO-NI  variable CLO-NJ  variable CLO-NK   \ the candidate row, the sca
 : CLO-TABLES ( n -- ) {: rows:n :}
    rows 1 < IF s" aot: closure capacity below 1" 74 die THEN
    rows CLO-RESERVE  rows CLO-LEN-RESERVE  rows CLO-REC-RESERVE
+   rows CLO-SET-SIZE
    rows CLO-CAP !
    CLO-LIMIT-RESOLVE ;
 

@@ -732,6 +732,10 @@ SUITE compiler-aot-nested-body
    test/compiler/aot-nested-body.f
 ;SUITE
 
+SUITE compiler-aot-closure-index
+   test/compiler/aot-closure-index.f
+;SUITE
+
 SUITE compiler-native-quot-scope
    test/compiler/native-quot-scope.f
 ;SUITE
