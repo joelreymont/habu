@@ -1,4 +1,8 @@
 \ native-dead-path.f - production compilation of calls that do not return.
+\ Tier 1 first: what these bodies prove is that the optimizing compiler accepts
+\ and publishes shapes whose every path ends; the default tier compiles them
+\ with the other compiler and the question is never asked.
+1 set-tier
 
 require lib/prelude.f
 require lib/errors.f

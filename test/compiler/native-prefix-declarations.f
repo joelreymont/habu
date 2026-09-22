@@ -1,4 +1,6 @@
 \ Standalone process: retain the compiler while replacing its dictionary prefix.
+\ Tier-neutral by design: the subject is the dictionary prefix a reset retains
+\ and the checker that survives it; no compiler tier moves that boundary.
 require src/core/prefix-boundary.f
 : PF-OLD-SIGNATURE ( -- bool ) 0 0= ;
 

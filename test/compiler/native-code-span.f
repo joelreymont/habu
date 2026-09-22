@@ -5,7 +5,10 @@ require src/habu/aot-decl.f
 require src/habu/aot-closure.f
 require src/habu/aot-lib.f
 
+\ Tier 1 first: the spans asserted are the bytes the optimizing compiler lays
+\ down for each record.
 1 set-tier
+
 package CODE-SPAN-FIXTURE
 public
 : SPIN-A ( -- ) begin again ;

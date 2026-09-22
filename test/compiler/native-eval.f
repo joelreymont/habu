@@ -1,4 +1,6 @@
 \ The engine evaluation boundary retains the explicit caller's stack contract.
+\ Tier-neutral by design: the boundary asserted is the engine's `evaluate` and
+\ the checker's contract for it, which no compiler tier moves.
 require lib/test.f
 
 package NATIVE-EVAL-TEST

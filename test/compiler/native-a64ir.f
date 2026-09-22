@@ -23,6 +23,9 @@
 \ The trapping binding below is therefore the one the schema is read under, so
 \ "no form of this dialect traps" is measured where it could most easily have
 \ been copied from the unit instead.
+\ Tier-neutral by design: the dialect is registered and read back through its
+\ own API, so the tier this file loads under decides how its own definitions
+\ compile and nothing it asserts.
 
 require lib/test.f
 require src/compiler/native-effect.f

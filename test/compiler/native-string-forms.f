@@ -1,4 +1,6 @@
 \ Preserve string behavior through the checker reader and the native source tape.
+\ Tier-neutral by design: the subject program starts with `1 set-tier`, so it is
+\ compiled by the optimizing compiler whatever tier this row runs at.
 require test/gate-common.f
 
 package NSTRING-FORMS-TEST

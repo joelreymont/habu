@@ -19,6 +19,8 @@
 \ EVERY CASE RUNS IN A CHILD PROCESS. `set-tier` is engine-global state, and a
 \ suite that selected tier 1 in this process would decide for every file loaded
 \ after it.
+\ Tier-neutral by design: every case runs in a child whose own source names the
+\ tier, so the tier of this row selects nothing.
 
 require lib/errors.f
 require lib/string.f

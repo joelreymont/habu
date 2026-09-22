@@ -8,6 +8,8 @@
 \ EMIT-LOC-FIND, src/compiler/native/elaborate.f LOCAL-OF) must not disagree:
 \ two of them disagreeing is a body the checker certifies and the compiler
 \ compiles differently, which is the one failure no diagnostic would name.
+\ Tier-neutral by design: each subject is compiled in a child this file runs at
+\ tier 0 and at tier 1, so the tier of this row selects nothing.
 require lib/errors.f
 require lib/string.f
 require lib/test.f

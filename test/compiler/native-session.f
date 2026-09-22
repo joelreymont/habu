@@ -17,6 +17,8 @@
 \ Every case is a real child process at tier 1. A session is process-wide state
 \ and there is no in-process way to ask a fresh process for its first
 \ definition.
+\ Tier-neutral by design: every session under test is a child whose own source
+\ sets its tier, so the tier of this row selects nothing.
 
 require lib/errors.f
 require lib/string.f

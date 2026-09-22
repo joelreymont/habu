@@ -41,6 +41,9 @@
 \ compile is E-HIR-UNMODELED, and a tape of another module is E-NTAPE-OWNER.
 \ Character literals, live else-after-exit and local shadowing have production
 \ coverage in native-literals.f, native-exit.f and native-locals-scope.f.
+\ Tier-neutral by design: the elaborator runs over tapes this file builds and
+\ the operations asserted are the ones it wrote, not the ones this file was
+\ compiled to.
 
 require lib/errors.f
 require lib/test.f

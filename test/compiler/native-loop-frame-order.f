@@ -1,6 +1,10 @@
 \ A conditional loop carries two six-cell values through calls and an early
 \ exit. Spill rewriting must reuse a frame-order argument whose consumer is
 \ beyond a conditional edge; duplicating it fails allocation with E-A64RA-EDGE.
+\ Tier 1 first: the reused frame-order argument - duplicating it fails with
+\ E-A64RA-EDGE - is the optimizing compiler's spill rewriting.
+1 set-tier
+
 require lib/test.f
 package NSP
 public

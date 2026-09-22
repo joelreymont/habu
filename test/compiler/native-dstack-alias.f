@@ -1,4 +1,7 @@
 \ native-dstack-alias.f - production data-stack residency under aliasing.
+\ Tier 1 first: the residency and the surviving external call are read out of the
+\ production routine's own emitted instructions (tools/codegen-tail-probe.f).
+1 set-tier
 
 require lib/prelude.f
 require lib/errors.f

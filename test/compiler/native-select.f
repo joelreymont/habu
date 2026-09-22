@@ -38,6 +38,8 @@
 \ context, and a refusing case runs inside an enclosing one because an abandoned
 \ context gives its registry slots back only when a live enclosing context leaves
 \ normally (src/compiler/ir/context.f, the note on stale handles).
+\ Tier-neutral by design: the selector runs over modules this file builds, so
+\ what it produces does not depend on how this file was compiled.
 
 require lib/test.f
 require src/compiler/native/select.f

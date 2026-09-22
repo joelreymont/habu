@@ -398,7 +398,17 @@ SUITE compiler-native-finally
    test/compiler/native-finally.f
 ;SUITE
 
+SUITE compiler-native-finally-aot
+   test/compiler/aot-mode.f
+   test/compiler/native-finally.f
+;SUITE
+
 SUITE compiler-native-layout-control
+   test/compiler/native-layout-control.f
+;SUITE
+
+SUITE compiler-native-layout-control-aot
+   test/compiler/aot-mode.f
    test/compiler/native-layout-control.f
 ;SUITE
 
@@ -509,6 +519,11 @@ SUITE compiler-native-generic-calls
    test/compiler/native-generic-calls.f
 ;SUITE
 
+SUITE compiler-native-generic-calls-aot
+   test/compiler/aot-mode.f
+   test/compiler/native-generic-calls.f
+;SUITE
+
 SUITE compiler-native-provider-rows
    test/compiler/native-provider-rows.f
 ;SUITE
@@ -518,6 +533,11 @@ SUITE compiler-native-internal-call
 ;SUITE
 
 SUITE compiler-native-stored-quot
+   test/compiler/native-stored-quot.f
+;SUITE
+
+SUITE compiler-native-stored-quot-aot
+   test/compiler/aot-mode.f
    test/compiler/native-stored-quot.f
 ;SUITE
 
@@ -550,6 +570,11 @@ SUITE process-image
 ;SUITE
 
 SUITE compiler-native-many-locals
+   test/compiler/native-many-locals.f
+;SUITE
+
+SUITE compiler-native-many-locals-aot
+   test/compiler/aot-mode.f
    test/compiler/native-many-locals.f
 ;SUITE
 
@@ -586,6 +611,11 @@ SUITE compiler-native-edge-permutation
 ;SUITE
 
 SUITE compiler-native-switch
+   test/compiler/native-switch.f
+;SUITE
+
+SUITE compiler-native-switch-aot
+   test/compiler/aot-mode.f
    test/compiler/native-switch.f
 ;SUITE
 
@@ -629,6 +659,11 @@ SUITE compiler-native-locals-scope
    test/compiler/native-locals-scope.f
 ;SUITE
 
+SUITE compiler-native-locals-scope-aot
+   test/compiler/aot-mode.f
+   test/compiler/native-locals-scope.f
+;SUITE
+
 SUITE compiler-native-local-case
    test/compiler/native-local-case.f
 ;SUITE
@@ -641,7 +676,17 @@ SUITE compiler-native-product-locals
    test/compiler/native-product-locals.f
 ;SUITE
 
+SUITE compiler-native-product-locals-aot
+   test/compiler/aot-mode.f
+   test/compiler/native-product-locals.f
+;SUITE
+
 SUITE compiler-native-word-binding
+   test/compiler/native-word-binding.f
+;SUITE
+
+SUITE compiler-native-word-binding-aot
+   test/compiler/aot-mode.f
    test/compiler/native-word-binding.f
 ;SUITE
 
@@ -677,7 +722,17 @@ SUITE compiler-native-quot-scope
    test/compiler/native-quot-scope.f
 ;SUITE
 
+SUITE compiler-native-quot-scope-aot
+   test/compiler/aot-mode.f
+   test/compiler/native-quot-scope.f
+;SUITE
+
 SUITE compiler-native-chain
+   test/compiler/native-chain.f
+;SUITE
+
+SUITE compiler-native-chain-aot
+   test/compiler/aot-mode.f
    test/compiler/native-chain.f
 ;SUITE
 
@@ -686,6 +741,11 @@ SUITE compiler-native-qualified-name
 ;SUITE
 
 SUITE compiler-native-generated-constructor
+   test/compiler/native-generated-constructor.f
+;SUITE
+
+SUITE compiler-native-generated-constructor-aot
+   test/compiler/aot-mode.f
    test/compiler/native-generated-constructor.f
 ;SUITE
 
@@ -701,11 +761,26 @@ SUITE compiler-native-exit
    test/compiler/native-exit.f
 ;SUITE
 
+SUITE compiler-native-exit-aot
+   test/compiler/aot-mode.f
+   test/compiler/native-exit.f
+;SUITE
+
 SUITE compiler-native-tick
    test/compiler/native-tick.f
 ;SUITE
 
+SUITE compiler-native-tick-aot
+   test/compiler/aot-mode.f
+   test/compiler/native-tick.f
+;SUITE
+
 SUITE compiler-native-literals
+   test/compiler/native-literals.f
+;SUITE
+
+SUITE compiler-native-literals-aot
+   test/compiler/aot-mode.f
    test/compiler/native-literals.f
 ;SUITE
 
@@ -733,6 +808,11 @@ SUITE compiler-native-match
    test/compiler/native-match.f
 ;SUITE
 
+SUITE compiler-native-match-aot
+   test/compiler/aot-mode.f
+   test/compiler/native-match.f
+;SUITE
+
 SUITE compiler-native-case
    test/compiler/native-case.f
 ;SUITE
@@ -745,7 +825,17 @@ SUITE compiler-native-wide-mem
    test/compiler/native-wide-mem.f
 ;SUITE
 
+SUITE compiler-native-wide-mem-aot
+   test/compiler/aot-mode.f
+   test/compiler/native-wide-mem.f
+;SUITE
+
 SUITE compiler-native-fetch-terms
+   test/compiler/native-fetch-terms.f
+;SUITE
+
+SUITE compiler-native-fetch-terms-aot
+   test/compiler/aot-mode.f
    test/compiler/native-fetch-terms.f
 ;SUITE
 
@@ -1428,6 +1518,11 @@ SUITE signal-stub
 ;SUITE
 
 SUITE compiler-native-create-does
+   test/compiler/native-create-does.f
+;SUITE
+
+SUITE compiler-native-create-does-aot
+   test/compiler/aot-mode.f
    test/compiler/native-create-does.f
 ;SUITE
 

@@ -1,4 +1,8 @@
 \ Spilled DATA addresses must stay intact through their four move-wide lanes.
+\ Tier 1 first: an address class spills only in the optimizing compiler, so
+\ the four move-wide lanes this loop forces exist at tier 1 alone.
+1 set-tier
+
 require lib/test.f
 
 package ADDRESS-SPILL-TEST

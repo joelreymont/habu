@@ -1,7 +1,10 @@
 \ Publication must make each completed native record immediately searchable.
 require lib/test.f
 
+\ Tier 1 first: a native record is what the optimizing compiler publishes, so
+\ the index this file reads is only filled by it.
 1 set-tier
+
 package NDICT-PUBLISH-TEST
 
 TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;

@@ -1,4 +1,8 @@
 \ Tail-call liveness must read the function currently being selected.
+\ Tier 1 first: the tail-call liveness scan that must read the function being
+\ selected runs in the optimizing compiler only.
+1 set-tier
+
 require lib/test.f
 
 package TAIL-OWNER-TEST

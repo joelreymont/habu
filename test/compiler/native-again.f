@@ -1,4 +1,7 @@
 \ native-again.f - production `begin ... again` compilation.
+\ Tier 1 first: the retained back edge each case reads is the emitted code of
+\ the optimizing compiler (tools/codegen-loop-inventory.f).
+1 set-tier
 
 require test/compiler/native-eval-fixture.f
 require lib/test.f

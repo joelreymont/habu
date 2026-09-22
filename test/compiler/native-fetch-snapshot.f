@@ -1,4 +1,6 @@
 \ Each source body owns a copied certificate before another scan can replace it.
+\ Tier-neutral by design: the checker's own capture is driven over explicit
+\ source text, so the certificates asserted belong to no compiled body here.
 require src/compiler/native/fetch.f
 require lib/test.f
 

@@ -1,4 +1,6 @@
 \ Diagnostic recovery preserves the transaction error and the caller's stack.
+\ Tier-neutral by design: the transaction is driven through its own API and the
+\ recovery asserted is the transaction's, not a compiled body's.
 require lib/test.f
 require src/core/declaration-transaction.f
 

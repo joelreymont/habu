@@ -1,4 +1,6 @@
 \ Published named rows stay reusable after quotation inference.
+\ Tier-neutral by design: each subject is compiled in a child this file runs at
+\ both tiers, so the tier of this row selects nothing.
 require lib/errors.f
 require lib/string.f
 require lib/test.f

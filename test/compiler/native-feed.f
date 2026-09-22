@@ -1,6 +1,8 @@
 \ Reader-to-tape unit tests. CHECK! drives the real checker reader over explicit
 \ reconstructed definition text. Normal compilation owns its own feed unit;
 \ the ordinary compiled fixtures below also exercise source reconstruction.
+\ Tier-neutral by design: the reader is driven directly over explicit text, so
+\ the rows asserted are the same at either tier.
 require lib/test.f
 require src/compiler/native/feed.f
 

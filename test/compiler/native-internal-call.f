@@ -1,4 +1,6 @@
 \ Internal engine calls use the compiler's authorization, not public lookup.
+\ Tier-neutral by design: each subject is compiled in a child this file runs at
+\ both tiers, so the tier of this row selects nothing.
 require lib/test.f
 require lib/test/subject.f
 require test/checker-assert.f

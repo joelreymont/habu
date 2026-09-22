@@ -88,6 +88,9 @@
 \ context, and a refusing case runs inside an enclosing one because an abandoned
 \ context gives its registry slots back only when a live enclosing context leaves
 \ normally.
+\ Tier-neutral by design: the allocator and its validator run over modules this
+\ file builds, so the assignment asserted is theirs and not this file's own
+\ compilation.
 
 require lib/test.f
 require src/compiler/native/select.f

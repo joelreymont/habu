@@ -1,4 +1,6 @@
 \ Exercise the same CASE source through both real compiler tiers.
+\ Tier-neutral by design: each subject is compiled in a child this file runs at
+\ tier 0 and at tier 1, so the tier of this row selects nothing.
 require lib/test.f
 require lib/test/subject.f
 require lib/test/outcome.f

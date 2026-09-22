@@ -14,6 +14,8 @@
 \ out-of-range pick each reject with their own named code; and the model applied
 \ to a sealed source tape reads an integer literal as a literal, a name by its
 \ spelling, and refuses a token kind the subset does not model.
+\ Tier-neutral by design: the dialect and its source-word model are read back
+\ through their own API, so the tier this file loads under changes no row.
 
 require lib/test.f
 require test/checker-assert.f

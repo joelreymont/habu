@@ -1,5 +1,7 @@
 \ A local binding must win over equally named public words imported from two
 \ packages. The native prior-binding pass runs before the local table exists.
+\ Tier-neutral by design: each subject is compiled in a child this file runs at
+\ tier 0 and at tier 1, so the tier of this row selects nothing.
 require lib/errors.f
 require lib/string.f
 require lib/test.f

@@ -44,6 +44,9 @@
 \    own index arithmetic and its own legality rules, not by the module under
 \    test, and the row count is asserted, so a rule that silently widened shows up
 \    as a changed legal-domain size.
+\ Tier-neutral by design: the schema words are called directly and every bound
+\ is asserted against the assembler's own constant, so the tier this file loads
+\ under changes no answer below.
 
 require lib/test.f
 require lib/string.f

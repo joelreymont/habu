@@ -1,4 +1,6 @@
 \ Frozen descriptor checks retain the JIT's active-variant and unsigned rules.
+\ Tier-neutral by design: the descriptor check is called directly on hand-built
+\ descriptors, and the cases that need a compiler run in a child of their own.
 require src/compiler/native/fetch-check.f
 require lib/test.f
 require lib/test/outcome.f

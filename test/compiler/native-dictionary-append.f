@@ -1,4 +1,6 @@
 \ The publication primitive is internal, typed, and requires a native owner.
+\ Tier-neutral by design: each case runs in a child whose own source selects
+\ tier 1, so the tier of this row selects nothing.
 require lib/test.f
 require lib/test/subject.f
 

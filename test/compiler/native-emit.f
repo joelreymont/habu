@@ -47,6 +47,9 @@
 \ modules is too. Every case therefore runs in its own context, and a refusing
 \ case runs inside an enclosing one because an abandoned context gives its
 \ registry slots back only when a live enclosing context leaves normally.
+\ Tier-neutral by design: the emitter is driven module by module through its own
+\ API, so the bytes asserted come from those calls and not from the compiler
+\ that compiled this file.
 
 require lib/test.f
 require src/compiler/native/select.f
