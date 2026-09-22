@@ -1,6 +1,7 @@
 \ Address-chain admission in the real native stripped linker. Process children
 \ test die paths; the executable regression lives in stripped-quotation.f.
 require lib/test.f
+require lib/string.f
 require test/gate-common.f
 require tools/aot-build.f
 
@@ -97,6 +98,58 @@ get-current constant SAT-WID
    SAT-REC SAT-SITE 116 DATA-ADDRESS!
    100 BLOB-END ! SAT-REC SAT-SITE 100 DATA-ADDRESS! ;
 
+\ A numeric code address back to the pointer every code writer carries, the
+\ inverse of aot-closure.f CODE-N and the code-domain twin of SAT-DATA-N above.
+\ It is compared, never read: MAP-TARGET! answers for addresses its closure has
+\ no member for, and one below every member is one of them.
+: SAT-CODE-PTR ( n -- ptr u8 ) {: at:n :}
+   AOT-DBASE@ BYTE-VIEW  at AOT-DBASE-N -  + ;
+
+\ ONE SYNTHETIC CLOSURE MEMBER, filled the way test/gate-aot-positive-lib.f's
+\ AMAP case fills the walk's own tables - the rows asked for through CLO-TABLES
+\ and PLAN-TABLES, then the entry order MAP-TARGET searches built by the real
+\ MEMBER-ORDER - so the refusals below come out of the real writer. Member 0 is
+\ SAT-REC's code, four bytes of it, so every target below names a code address
+\ the member does not cover and MAP-TARGET has nothing to map it to. It
+\ scribbles on the live tables and so runs in a forked child only, which is what
+\ SAT-REFUSED gives each body.
+: SAT-ONE-MEMBER ( -- )
+   1 CLO-TABLES 1 PLAN-TABLES
+   SAT-SITE 0 CLO !  4 0 CLO-LEN !  SAT-REC 0 CLO-REC !
+   0 0 NEWOFF !  1 NCLO ! MEMBER-ORDER ;
+
+\ THE THREE ANSWERS A REFUSED CODE TARGET CAN HAVE: the record that owns it, the
+\ record below it as `NAME+off`, and `<unknown>`. The neighbour case needs an
+\ address no record owns with a record below it, and the unaligned one is what
+\ this tree can pin: a record's span ends exactly where the next record's entry
+\ begins (measured - SAT-DECODE's entry plus its REC-BYTES is owned by the next
+\ record), so the only aligned address no record owns lies past the LAST
+\ record's span, at an offset that is that word's compiled length and moves with
+\ any edit. ADDRESS-OWNER refuses an unaligned address outright (SAT-OWNER
+\ above), and an ADR is the writer that meets one, its delta being in bytes
+\ where a branch target is 4-byte aligned (aot-lib.f ADR-TARGET!).
+: SAT-MAP-TARGET ( ptr u8 -- ) {: t:ptr :}
+   SAT-ONE-MEMBER  0 t MAP-TARGET! ;
+: SAT-TARGET-OWNED ( -- )
+   s" SAT-DECODE" SAT-WID XREF-FIND-WL REC-CODE-PTR@ 4 + SAT-MAP-TARGET ;
+: SAT-TARGET-NEAR ( -- )
+   s" SAT-DECODE" SAT-WID XREF-FIND-WL REC-CODE-PTR@ 1+ SAT-MAP-TARGET ;
+: SAT-TARGET-LOW ( -- )
+   1 SAT-CODE-PTR SAT-MAP-TARGET ;
+\ `<unknown>` for the OTHER reason it is given: a target ABOVE every record,
+\ which is what a DATA address is. SAT-CHAIN is a buffer gigabytes above the
+\ last word's code, and the record below it would be named with a region-sized
+\ offset (test/gate-aot-positive-lib.f ADR-MEMBER caught exactly that).
+: SAT-TARGET-DATA ( -- )
+   SAT-CHAIN SAT-MAP-TARGET ;
+
+\ `target-word=` ends the refusal's line, so a needle that stops at the name
+\ matches a `NAME+off` answer too. The exact-owner case asks for the name AND
+\ the newline behind it, which is the only thing that says no `+off` was
+\ printed.
+: SAT-EOL$ ( ptr u8 n -- ptr u8 n )
+   SB-RESET  SB-APPEND  GE-SB-LF  SB$ ;
+
 : SAT-REFUSED ( ptr u8 n ptr u8 n -- )
    {: body:ptr bodyu:n message:ptr messageu:n :}
    GE-SRC-RESET
@@ -125,7 +178,17 @@ get-current constant SAT-WID
    s" 100 BLOB-SRC ! 116 BLOB-END ! SAT-REC SAT-SITE SAT-INTERIOR DATA-ADDRESS!"
       s" target=SAT-CHAIN+8" SAT-REFUSED
    s" 0 31 EMIT-CODE-ADDRESS"
-      s" aot: code address cannot use the zero register" SAT-REFUSED ;
+      s" aot: code address cannot use the zero register" SAT-REFUSED
+   s" SAT-TARGET-OWNED"
+      s" aot: PC-relative target removed or outside closure site=" SAT-REFUSED
+   s" SAT-TARGET-OWNED"
+      s" target-word=SAT-DECODE" SAT-EOL$ SAT-REFUSED
+   s" SAT-TARGET-NEAR"
+      s" target-word=SAT-DECODE+1" SAT-REFUSED
+   s" SAT-TARGET-LOW"
+      s" target-word=<unknown>" SAT-REFUSED
+   s" SAT-TARGET-DATA"
+      s" target-word=<unknown>" SAT-REFUSED ;
 
 public
 : SAT-RUN ( -- )

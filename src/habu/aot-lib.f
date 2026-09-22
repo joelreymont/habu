@@ -687,13 +687,17 @@ variable BDELTA  variable TNEW
 \ address the closure walk never reached, and the word that owns it - when the
 \ building dictionary still knows one - says what was not carried. Without those
 \ three facts the refusal is a bare sentence and the next case costs a bisection.
+\ A target NO record owns is named by the record below it, `NAME+off`, the rule
+\ the span refusal's site is named by (aot-closure.f CODE-ADDR-TXT): the target of
+\ a branch into a stripped word, and any target an exact owner cannot be found
+\ for, is otherwise a bare address the reader has nothing to open.
 : MAP-TARGET! {: i:n t:ptr :} ( n ptr u8 -- )
    i t MAP-TARGET TNEW !
    TNEW @ -1 = IF
       s" aot: PC-relative target removed or outside closure site=" AETXT
       i CLO-REC@ AEREC-TXT
       s"  target=" AETXT t CODE-N AEJNUM
-      s"  target-word=" AETXT t CODE-N ADDRESS-OWNER AEREC-TXT
+      s"  target-word=" AETXT t CODE-N ADDRESS-OWNER t CODE-ADDR-TXT
       10 AE1
       s" " 74 die THEN ;
 : BTGT19 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
@@ -719,7 +723,10 @@ variable BDELTA  variable TNEW
 \ OLD>NEW into a delta the copy was never asked to keep. THE LONG FORM IS NO
 \ ANSWER to such a target: the planner maps every word 1:1 (PLAN-BLOBS above,
 \ "the compacted length is the member's own length"), and ADRP+ADD is two words
-\ where the ADR was one.
+\ where the ADR was one. ITS TARGET IS NAMED THE WAY MAP-TARGET!'s is, and an ADR
+\ is the writer that meets an UNALIGNED target: its delta is in bytes where a
+\ branch target is always 4-byte aligned, and ADDRESS-OWNER answers no owner for
+\ an unaligned address, so the record below it is all there is to name.
 : ADR-TARGET! {: i:n p:ptr w:n :} ( n ptr u8 n -- )
    p w ADRTGT {: t:ptr :}
    i t MAP-IN-MEMBER TNEW !
@@ -727,7 +734,7 @@ variable BDELTA  variable TNEW
       s" aot: ADR target outside its member site=" AETXT
       i CLO-REC@ AEREC-TXT
       s"  target=" AETXT t CODE-N AEJNUM
-      s"  target-word=" AETXT t CODE-N ADDRESS-OWNER AEREC-TXT
+      s"  target-word=" AETXT t CODE-N ADDRESS-OWNER t CODE-ADDR-TXT
       10 AE1
       s" " 74 die THEN ;
 \ A DIRECT BRANCH TO A DECLARATION-ONLY RECORD IS DROPPED RATHER THAN RELOCATED.

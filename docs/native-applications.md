@@ -332,7 +332,15 @@ this is a neighbour and not the owner: `caller=STORE+748 target=COUNT+8` is the
 image-lifecycle lock as it read before the claim. Ownership keeps its exact rule
 (`ADDRESS-OWNER`, `DATA-CELL-OWNER`, and so the cell refusals, which name the
 word whose data the cell *is*): a walk that guessed would carry another word's
-bytes. A value no record spells at all stays `<unknown>`.
+bytes. A value no record spells at all stays `<unknown>`. The two code
+refusals — `aot: PC-relative target removed or outside closure` and `aot: ADR
+target outside its member` — name their `target-word=` by that same rule:
+`ADDRESS-OWNER`'s record when it owns the target, else the record below it as
+`NAME+off`, else `<unknown>`; an ADR is the writer that meets an unaligned
+target, and `ADDRESS-OWNER` answers no owner for one. A code address is only
+named from below when recorded code also starts *above* it, because that is
+what puts it in the gap a stripped word's code occupies: a target above every
+record is data, and `NAME+13950258700` says less than `<unknown>`.
 
 **A stripped image can call a foreign function.** A `FUNCTION:` declaration
 resolves its symbol at the *first call*, so no address the builder resolved ever
