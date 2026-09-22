@@ -110,7 +110,8 @@ variable ILEN
 
 : IN-IMAGE? ( n n -- bool ) {: off:n len:n :}
    off 0 < len 0 < or if false exit then
-   off len + ILEN @ <= ;
+   off ILEN @ > if false exit then
+   len ILEN @ off - <= ;
 
 : ?RANGE ( n n -- )
    IN-IMAGE? 0= if E-ES-WALK throw then ;
@@ -138,8 +139,19 @@ variable ZACC
    len 0 ?do  at i + U8@ 0= if ZACC @ 1+ ZACC ! then  loop
    ZACC @ ;
 
-\ A class that is one contiguous span answers both its numbers at once.
+\ The budget walks physical spans in file order, even when the report groups
+\ several disjoint spans into one class. Totals alone cannot detect an overlap
+\ paired with an equally large omission.
+variable TILE-END
+
+: TILE ( n n -- ) {: at:n len:n :}
+   at len ?RANGE
+   at TILE-END @ <> if E-ES-WALK throw then
+   at len + TILE-END ! ;
+
+\ A contiguous class proves its place before answering both numbers.
 : SPAN ( n n -- n n ) {: at:n len:n :}
+   at len TILE
    len  at len ZEROS ;
 
 : READ-IMAGE ( ptr u8 n -- ) {: path:ptr pathu:n :}
@@ -170,6 +182,7 @@ $34 constant ELF-EHSIZE-OFF
 $36 constant ELF-PHENTSIZE-OFF
 $38 constant ELF-PHNUM-OFF
 $40 constant ELF-EHDR-BYTES
+56 constant ELF-PHDR-BYTES
 
 : U16@ ( n -- n ) {: off:n :}
    off U32@ $FFFF and ;
@@ -206,6 +219,9 @@ variable ETEXT-N
 : RW-BYTES ( -- n ) PHDR2 32 + U64@ ;
 
 : CHECK-SEGMENTS ( -- )
+   ELF-EHSIZE-OFF U16@ ELF-EHDR-BYTES <>
+   ELF-PHENTSIZE-OFF U16@ ELF-PHDR-BYTES <> or if E-ES-WALK throw then
+   ELF-PHNUM-OFF U16@ CODE-OFF ELF-EHDR-BYTES - ELF-PHDR-BYTES / > if E-ES-WALK throw then
    ELF-PHNUM-OFF U16@ 2 < if
       s" image-size: image has no RW segment" RC die
    then
@@ -215,6 +231,8 @@ variable ETEXT-N
    RW-OFF TEXT-SIZE <> if
       s" image-size: the RW segment does not follow the text segment" RC die
    then
+   ELF-EHDR-BYTES U32@ 1 <>
+   ELF-EHDR-BYTES 8 + U64@ 0<> or if E-ES-WALK throw then
    TEXT-SIZE RW-BYTES + ILEN @ <> if
       s" image-size: file length is not its two segments" RC die
    then ;
@@ -222,8 +240,54 @@ variable ETEXT-N
 : PHDR-END ( -- n )
    ELF-EHDR-BYTES  ELF-PHNUM-OFF U16@ ELF-PHENTSIZE-OFF U16@ * + ;
 
-\ The header page's tail is zero padding. Its live extent is read out of the file
-\ rather than out of the builder's constants: this tool reports what an image IS.
+\ The dynamic writer's PT_INTERP and DT_* records describe the header objects,
+\ including their trailing zeros. The final RELA addend is normally all zero;
+\ scanning for a nonzero byte charged eleven bytes of it to padding.
+: PHDR-FIND ( n -- n ) {: kind:n :}
+   ELF-PHNUM-OFF U16@ 0 ?do
+      ELF-EHDR-BYTES i ELF-PHDR-BYTES * + {: at:n :}
+      at U32@ kind = if at unloop exit then
+   loop E-ES-WALK throw ;
+
+: PHDR-RANGE ( n -- n n )
+   PHDR-FIND dup 8 + U64@ swap 32 + U64@ ;
+
+: DYNAMIC@ ( n -- n ) {: tag:n :}
+   2 PHDR-RANGE {: at:n len:n :}
+   at len ?RANGE
+   len 16 mod 0<> if E-ES-WALK throw then
+   len 16 / 0 ?do
+      at i 16 * + {: row:n :}
+      row U64@ 0= if E-ES-WALK throw then
+      row U64@ tag = if row 8 + U64@ unloop exit then
+   loop E-ES-WALK throw ;
+
+: META-END ( n n -- n ) {: at:n len:n :}
+   at PHDR-END < at CODE-OFF > or len 0 < or if E-ES-WALK throw then
+   len CODE-OFF at - > if E-ES-WALK throw then
+   at len ?RANGE at len + ;
+
+: META-OFF ( n -- n ) {: va:n :}
+   ELF-EHDR-BYTES 16 + U64@ {: base:n :}
+   base 0 < va base < or if E-ES-WALK throw then
+   va base - dup 0 META-END drop ;
+
+: META-VA-END ( n n -- n ) {: len:n :}
+   META-OFF len META-END ;
+
+: ELF-META-END ( -- n )
+   3 PHDR-RANGE META-END
+   4 DYNAMIC@ META-OFF {: hash:n :}
+   hash 8 META-END drop
+   hash 4 + U32@ {: chains:n :}
+   hash hash U32@ chains + 2 + 4 * META-END max
+   11 DYNAMIC@ 24 <> if E-ES-WALK throw then
+   6 DYNAMIC@ chains 24 * META-VA-END max
+   5 DYNAMIC@ 10 DYNAMIC@ META-VA-END max
+   7 DYNAMIC@ 8 DYNAMIC@ META-VA-END max ;
+
+\ Code-only tails still have an instruction boundary proof: no A64 encoding
+\ leaves a zero top byte, so the last nonzero byte rounds to the final word.
 : LAST-NONZERO ( n n -- n ) {: from:n to:n :}
    to begin dup from > while
       dup 1- U8@ 0<> if exit then
@@ -619,12 +683,16 @@ variable BK-DZERO  variable BK-PAD
    TOTAL @ SHARE cr ;
 
 : SUMS? ( -- )
+   TILE-END @ ILEN @ <> if E-ES-WALK throw then
    TOTAL @ ILEN @ <> if
       s" image-size: classes do not sum to the file length" RC die
    then ;
 
 : BUDGET-BEGIN ( -- )
-   0 TOTAL !  0 TOTAL-ZERO !  BUCKETS-RESET  HEADINGS ;
+   0 TILE-END !  0 TOTAL !  0 TOTAL-ZERO !  BUCKETS-RESET  HEADINGS ;
+
+: TILE-CELLS ( n -- )
+   8 * TILE-END @ swap TILE ;
 
 : PADDED ( n -- n ) dup PAD4 + ;
 
@@ -635,7 +703,7 @@ variable BK-DZERO  variable BK-PAD
 : ELF-ROWS ( -- )
    s" elf/header" 0 ELF-EHDR-BYTES SPAN B-OTHER ROW
    s" elf/program-headers" ELF-EHDR-BYTES PHDR-END ELF-EHDR-BYTES - SPAN B-OTHER ROW
-   PHDR-END CODE-OFF LAST-NONZERO {: meta:n :}
+   ELF-META-END {: meta:n :}
    s" elf/dynamic-metadata" PHDR-END meta PHDR-END - SPAN B-OTHER ROW
    s" elf/header-pad" meta CODE-OFF meta - SPAN B-PAD ROW ;
 
@@ -649,25 +717,36 @@ variable BK-DZERO  variable BK-PAD
    s" engine/primitive-records" PDICT @ PDICT-N @ PREC * SPAN B-NAMES ROW
    s" source/baked" DICT-END AOT0 @ DICT-END - SPAN B-OTHER ROW
    s" aot/framing-cells" FRAME-CELLS @ 8 * FRAME-ZERO @ B-OTHER ROW
+   1 TILE-CELLS
    s" aot/code-blob" BLOB-OFF @ BLOB-LEN @ PADDED SPAN B-CODE ROW
+   1 TILE-CELLS
    s" aot/dictionary-records" REC0 @ REC-N @ AOT-CREC-ROW * PADDED SPAN B-NAMES ROW
+   1 TILE-CELLS
    s" aot/call-sites" SITE0 @ SITE-N @ SITE-ROW * PADDED SPAN B-OTHER ROW
+   1 TILE-CELLS
    s" aot/name-pool" NAMES0 @ NAMES-LEN @ PADDED SPAN B-NAMES ROW
+   3 TILE-CELLS
    s" aot/data-sites" DSITE0 @ DSITE-N @ 4 * PADDED SPAN B-OTHER ROW
+   1 TILE-CELLS
    s" aot/address-cells" XTOFF0 @ XTOFF-N @ XTOFF-ROW * PADDED SPAN B-OTHER ROW
+   1 TILE-CELLS
    s" aot/data-cell-bitmap" RUN0 @ RUN-BYTES @ PADDED SPAN B-OTHER ROW
    s" aot/data-cell-values" RBYTES0 @ RBYTES-LEN @ PADDED SPAN B-DATA ROW
+   2 TILE-CELLS
    s" aot/code-sites" CSITE0 @ CSITE-N @ 4 * PADDED SPAN B-OTHER ROW
+   1 TILE-CELLS
    s" aot/named-code-sites" XTSITE0 @ XTSITE-N @ XTSITE-ROW * PADDED SPAN B-OTHER ROW
+   1 TILE-CELLS
    s" aot/code-spans" SPAN0 @ SPAN-N @ SPAN-ROW * PADDED SPAN B-CODE ROW
    s" aot/boot-run-entries" BOOTRUN0 @ BOOTRUN-LEN @ PADDED SPAN B-OTHER ROW
+   3 TILE-CELLS
    s" aot/protected-wordlists" PWIN0 @ PWIN-N @ 4 * PADDED SPAN B-OTHER ROW
    \ The sidecar's own count cell is one of the cells above, so this row is the
    \ two runs it frames and nothing else. Adding the cell here as well made the
    \ classes over-count by eight bytes on any image that carries a sidecar, and
    \ the sum-to-length refusal turned that into a walk that would not report.
    s" aot/checker-sidecar" SIG-LEN @ 0 > SIGNAME-LEN @ 0 > or
-      if SIG0 @  SIG-LEN @ PADDED SIGNAME-LEN @ PADDED +
+      if 1 TILE-CELLS SIG0 @  SIG-LEN @ PADDED SIGNAME-LEN @ PADDED +
       else AOT-END @ 0 then SPAN B-OTHER ROW ;
 
 : RW-ROW ( -- )
@@ -1848,6 +1927,8 @@ variable HEAD-W     variable HEAD-Z
    s" region/dict-records" REG-OFF @ recs SPAN B-NAMES ROW
    s" region/dict-unused" REG-OFF @ recs + CFSTK-OFF recs - SPAN B-NAMES ROW
    s" region/cf-stack" REG-OFF @ CFSTK-OFF + DICT-SIZE CFSTK-OFF - SPAN B-OTHER ROW
+   \ CHECK-BAND proves the three disjoint classes partition this physical span.
+   BAND0 BAND-BYTES TILE
    s" region/record-names" BAND-NAMES @ BAND-NZERO @ B-NAMES ROW
    s" region/code-band" BAND-CODE @ BAND-CZERO @ B-CODE ROW
    s" region/code-unowned" BAND-FREE @ BAND-FZERO @ B-CODE ROW ;

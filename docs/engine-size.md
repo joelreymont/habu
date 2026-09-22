@@ -155,8 +155,12 @@ captured DATA heap: 8371104 bytes of span, 303921 present cells in 130792 bitmap
 `tools/engine-size.f` is the command line; `tools/image-size-lib.f` is the walk,
 in a library because `tools/hb-build.f` runs it too. It walks the image file
 itself, reads which of the three image classes the file is out of the file, and
-refuses to print a budget unless the classes it names add up to the file's own
-length, so the table is an accounting identity, not a set of estimates.
+refuses a budget unless the physical spans behind its classes meet in file order
+and cover the entire file, and the class totals add up to that length. Framing
+cells are checked at their interleaved positions before being reported as one
+class; the snapshot's three band classes partition one checked span. The header
+metadata extent comes from the program headers and dynamic entries, including
+trailing zero fields, rather than from scanning for the last nonzero byte.
 The block above is the engine this tree ships in `bin/hb`. Everything in the
 prose and tables below reads the engine of sha256
 `91715a33e5cff0b0b876322fb360ede4f030a1f3ed59c722ca53206ee0b68bc9`,

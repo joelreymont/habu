@@ -12,6 +12,35 @@ private
    CODE-BYTES NAME-BYTES + DATA-WRITTEN + DATA-ZERO + PAD-BYTES + OTHER-BYTES +
    ILEN @ T= ;
 
+: EST-OVERLAP ( -- )
+   REC0 @ SITE0 ! -1 QUIET ! BUDGET ;
+
+: EST-GAP ( -- )
+   SITE0 @ 1+ SITE0 ! -1 QUIET ! BUDGET ;
+
+: EST-OVERFLOW ( -- )
+   $7FFFFFFFFFFFFFFF 1 ?RANGE ;
+
+: EST-TILING ( -- )
+   s" equal-size overlap and gap cannot pass the budget identity" T-LABEL
+   s" bin/hb" MEASURE [: EST-OVERLAP ;] E-ES-WALK TTHROWSQ
+   s" bin/hb" MEASURE [: EST-GAP ;] E-ES-WALK TTHROWSQ
+   s" an overflowing range is refused before any image access" T-LABEL
+   [: EST-OVERFLOW ;] E-ES-WALK TTHROWSQ
+   0 QUIET ! ;
+
+: EST-METADATA ( -- )
+   s" header metadata includes the final RELA addend, including its zero bytes" T-LABEL
+   s" bin/hb" MEASURE
+   PHDR-END 288 T= ELF-META-END 488 T=
+   \ Alter the last metadata byte in this private copy. Its declared extent
+   \ remains the same for both values; only the zero count may change.
+   1 IMG@ 487 + c! ELF-META-END 488 T=
+   0 IMG@ 487 + c! ELF-META-END 488 T=
+   s" dynamic metadata lengths cannot wrap or run into the code page" T-LABEL
+   [: $4001B8 $7FFFFFFFFFFFFFFF META-VA-END drop ;] E-ES-WALK TTHROWSQ
+   [: $4001B8 CODE-OFF META-VA-END drop ;] E-ES-WALK TTHROWSQ ;
+
 : EST-SIDECAR ( -- )
    s" bin/hb" MEASURE
    CLASS$ s" engine" T$=
@@ -22,7 +51,7 @@ private
    AOT0 @ WALK-AT AOT-END !
    SIG-LEN @ 0 T= SIGNAME-LEN @ 0 T=
    FRAME-CELLS @ {: frames:n :}
-   -1 QUIET ! BUDGET-BEGIN ENGINE-ROWS
+   -1 QUIET ! BUDGET-BEGIN CODE-OFF TILE-END ! ENGINE-ROWS
    TOTAL @ {: before:n :}
    \ Add a seven-byte payload, padding to four-byte alignment and installer name.
    \ This models the install image's framing, not an executable checker table.
@@ -41,7 +70,7 @@ private
    SIG-LEN @ 7 T= SIGNAME-LEN @ u T=
    SIG0 @ at 8 + T= SIGNAME0 @ at 16 + T=
    AOT-END @ at size + T=
-   BUDGET-BEGIN ENGINE-ROWS 0 QUIET !
+   BUDGET-BEGIN CODE-OFF TILE-END ! ENGINE-ROWS 0 QUIET !
    TOTAL @ before size + T= ;
 
 : EST-SPAN-REACH ( -- )
@@ -80,6 +109,8 @@ variable EST-MAP-U
 
 : EST-MAIN ( -- )
    T-RESET
+   EST-TILING
+   EST-METADATA
    EST-SIDECAR
    EST-SPAN-REACH
    EST-SPAN-SIDECAR
