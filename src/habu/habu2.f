@@ -698,7 +698,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    done LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
-\ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
+\ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH-X11 pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
 : G-INSTALL-TRAP ( -- )
    9 LTRAPH LABEL@ ADR,  9 C-SIGACTION-FRAME
@@ -6954,7 +6954,11 @@ ardone LBL,
    \ the stub armed carries that program's descriptor number, which names nothing
    \ this process ever opened.
    9 DATA SIGNAL-ABI:FD-CELL STR,
-   G-INSTALL-CRASH
+   \ The engine's own handler is baked beside this startup, so ADR reaches it and
+   \ every generation of every build chain measures that. A stripped image's
+   \ handler is not: src/habu/aot-lib.f EMIT-ENTRY loads the same register with
+   \ TEXT-ADR, instead, which is why the installer takes the address in x11.
+   11 LCRASHH LABEL@ ADR,  G-INSTALL-CRASH-X11
    G-INSTALL-TRAP
    \ Publish the baked signal stub and the address of the word it reads, so a
    \ program installs the stub and arms it without spelling either (layout.f

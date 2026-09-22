@@ -1187,6 +1187,10 @@ SUITE aot-section-reach
    tools/aot-section-reach-lint-test.f
 ;SUITE
 
+SUITE aot-startup-reach
+   tools/aot-startup-reach-lint-test.f
+;SUITE
+
 \ lib/memory-test.f is not here: its WITH-BYTES frame audit reopens package MEM
 \ and reads the frame cells directly, which no shipped image has a name for.
 WHITEBOX-SUITE memory

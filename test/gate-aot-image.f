@@ -92,7 +92,7 @@ create CODE-PATH FS-PATH-CAP allot
 \ bitmap-byte length, then that many bitmap bytes (one bit a cell, low bit
 \ first), then one unsigned LEB128 per present cell in cell order. Validate the
 \ cursor setup that reads the bitmap length out of the image, the span-base
-\ literal, and the complete bitmap + cell loops after ADR x9.
+\ literal, and the complete bitmap + cell loops that follow the blob's address.
 : CHECK-CURSORS ( n -- n ) {: off:n :}
    off      11 9 0 ENC-LDRW INSTR=
    off 4 +  9 9 4 ENC-ADDI INSTR=
@@ -120,7 +120,7 @@ create CODE-PATH FS-PATH-CAP allot
 
 
 : CHECK-COPY ( n -- )
-   4 + CHECK-CURSORS {: top:n :}
+   CHECK-CURSORS {: top:n :}
    top       9 11 ENC-CMP INSTR=
    top 4 +   26 C-CS ENC-BCOND INSTR=
    top 8 +   14 9 0 ENC-LDRB INSTR=
@@ -141,8 +141,8 @@ create CODE-PATH FS-PATH-CAP allot
    vend 28 + -26 ENC-B INSTR= ;
 
 
-: ADR-X9? ( n -- bool )
-   $9F00001F and $10000009 = ;
+: ADR-REG? ( n n -- bool ) {: off:n reg:n :}
+   off INSTR@ $9F00001F and $10000000 reg or = ;
 
 
 : ADR-TARGET ( n -- n ) {: off:n :}
@@ -151,14 +151,44 @@ create CODE-PATH FS-PATH-CAP allot
    $100000 xor $100000 - off + ;
 
 
+\ One movz/movk lane, and the same word with that lane cleared: sf, opc, hw and
+\ Rd say which instruction this is, the sixteen-bit immediate is what the pair
+\ carries.
+: MOVW-LANE ( n -- n )  5 rshift $FFFF and ;
+: MOVW-SHAPE ( n -- n ) $FFE0001F and ;
+
+
+\ THE DATA RESTORE, in the four words src/habu/aot-lib.f TEXT-ADR, emits: the
+\ blob's byte offset from the code base in an LOFF, movz/movk pair, `adr x12` to
+\ the code base itself (LTEXT, bound at text offset zero, which is this image's
+\ entry), and the add that joins them. All four words are pinned because the
+\ first one alone does not identify the sequence: EMIT-OWNED-CELLS opens a
+\ LIT64, of a DATA offset with the same `movz x9`, and it is the `adr x12` and
+\ the add that never follow it.
+: DATA-RESTORE? ( n -- bool ) {: off:n :}
+   off INSTR@ MOVW-SHAPE 9 0 0 MOVZHW = 0= if false exit then
+   off 4 + INSTR@ MOVW-SHAPE 9 0 1 MOVKHW = 0= if false exit then
+   off 8 + 12 ADR-REG? 0= if false exit then
+   off 8 + ADR-TARGET CODE-OFF = 0= if false exit then
+   off 12 + INSTR@ 9 12 9 ENC-ADD = ;
+
+
+\ The pair's two lanes spell the blob's offset from text offset zero, so the
+\ image's file offset for it is that offset past the entry.
+: DATA-BLOB-OFF ( n -- n ) {: off:n :}
+   off INSTR@ MOVW-LANE
+   off 4 + INSTR@ MOVW-LANE 16 lshift or
+   CODE-OFF + ;
+
+
 : SCAN-STARTUP ( n -- )
    0 DATA-COUNT !
    begin
       dup INSTR@ BL? 0=
    while
-      dup INSTR@ ADR-X9? if
-         dup CHECK-COPY
-         dup ADR-TARGET DATA-OFF !
+      dup DATA-RESTORE? if
+         dup 16 + CHECK-COPY
+         dup DATA-BLOB-OFF DATA-OFF !
          1 DATA-COUNT +!
       then
       4 +

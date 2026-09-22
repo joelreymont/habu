@@ -1876,9 +1876,10 @@ variable HEAD-W     variable HEAD-Z
 \ relocation row per declared address cell. Nothing in the file frames that last
 \ pair, so the walk takes the emitter's own two statements about them.
 \
-\ THE BLOB is named by the startup's single `ADR x9` (EMIT-DATA-COPY loads the
-\ sparse header into x9; test/gate-aot-image.f already admits exactly one ADR x9
-\ in the startup), and the blob then frames itself: a u32 of encoded row bytes,
+\ THE BLOB is named by the startup's single code-base-relative address into x9
+\ (EMIT-DATA-COPY loads the sparse header there through src/habu/aot-lib.f
+\ TEXT-ADR,; test/gate-aot-image.f already admits exactly one such sequence in
+\ the startup), and the blob then frames itself: a u32 of encoded row bytes,
 \ that many varint (gap, length) rows, then the bytes those rows describe. The
 \ format is the AOT-WINDOW row (src/habu/aot-decl.f), so RUN-V@ above decodes it.
 \
@@ -1894,7 +1895,7 @@ variable HEAD-W     variable HEAD-Z
 variable BLOB-AT     variable BLOB-ROWB   variable BLOB-RUNS
 variable BLOB-CARRIED  variable BLOB-SPAN variable BLOB-STOP
 variable RELOC-AT    variable RELOC-N     variable APP-END
-variable ADR9-N      variable ADR9-PRE
+variable BLOBADR-N   variable BLOBADR-PRE
 variable IP          variable MOVACC
 
 4 constant INSN
@@ -1955,47 +1956,73 @@ variable ROWS-END
    rows-end ACC @ + BLOB-STOP !
    true ;
 
-\ The first ADR x9 whose target walks as a blob is the startup's, because the
-\ startup is the first thing emitted. Every ADR x9 is counted as well, so an
-\ image that HAS one and whose blob does not walk is refused instead of falling
-\ back to the code-only shape and quietly absorbing the blob into app/code: a
-\ fallback that still sums is a wrong answer wearing the identity's clothes.
+\ MOVZ/MOVK into x11, 64-bit, the chain src/arch/arm64/asm.f LIT64 emits, and
+\ the immediate lane of one such word placed at its own shift.
+: MOVZ11? ( n -- bool ) $FF80001F and $D280000B = ;
+: MOVK11? ( n -- bool ) $FF80001F and $F280000B = ;
+: MOV-CHUNK ( n -- n ) {: w:n :}
+   w 5 rshift $FFFF and  w 21 rshift 3 and 16 * lshift ;
+
+\ THE BLOB'S ADDRESS IS FOUR WORDS, not one ADR: the startup sits at text offset
+\ zero and the blob is placed after all code, which ADR's +-1 MiB cannot reach in
+\ a large program, so src/habu/aot-lib.f TEXT-ADR, emits the label's byte offset
+\ from the code base in a movz/movk pair, `adr x12` to the base itself (LTEXT,
+\ bound at text offset zero = CODE-OFF) and the add that joins them. All four are
+\ matched because the movz alone is also how EMIT-OWNED-CELLS opens a DATA-offset
+\ literal; only the whole sequence names a label.
+: MOVZ9-LO? ( n -- bool ) $FFE0001F and $D2800009 = ;
+: MOVK9-HI? ( n -- bool ) $FFE0001F and $F2A00009 = ;
+$8B090189 constant ADD-X9-X12-X9
+
+: TEXT-ADR9? ( n -- bool ) {: at:n :}
+   at 4 INSN * IN-IMAGE? 0= if false exit then
+   at INSN@ MOVZ9-LO? 0= if false exit then
+   at INSN + INSN@ MOVK9-HI? 0= if false exit then
+   at 2 INSN * + 12 ADR-AT? 0= if false exit then
+   at 2 INSN * + dup INSN@ ADR-TARGET CODE-OFF <> if false exit then
+   at 3 INSN * + INSN@ ADD-X9-X12-X9 = ;
+
+: TEXT-ADR9-TARGET ( n -- n ) {: at:n :}
+   at INSN@ MOV-CHUNK  at INSN + INSN@ MOV-CHUNK or  CODE-OFF + ;
+
+\ The first such sequence whose target walks as a blob is the startup's, because
+\ the startup is the first thing emitted. Every one of them is counted as well,
+\ so an image that HAS one and whose blob does not walk is refused instead of
+\ falling back to the code-only shape and quietly absorbing the blob into
+\ app/code: a fallback that still sums is a wrong answer wearing the identity's
+\ clothes.
 : FIND-BLOB ( -- )
-   -1 BLOB-AT !  0 ADR9-N !
+   -1 BLOB-AT !  0 BLOBADR-N !
    CODE-OFF IP !
    begin IP @ INSN + TEXT-SIZE <= while
-      IP @ 9 ADR-AT? if
-         ADR9-N @ 1+ ADR9-N !
+      IP @ TEXT-ADR9? if
+         BLOBADR-N @ 1+ BLOBADR-N !
          BLOB-AT @ 0 < if
-            IP @ IP @ INSN@ ADR-TARGET {: t:n :}
+            IP @ TEXT-ADR9-TARGET {: t:n :}
             t IP @ > t 3 and 0= and t BLOB-AT? and if t BLOB-AT ! then
          then
       then
       IP @ INSN + IP !
    repeat
    BLOB-AT @ 0 < if
-      ADR9-N @ 0 > if
-         s" image-size: this image's ADR x9 names no sparse DATA blob" RC die
+      BLOBADR-N @ 0 > if
+         s" image-size: this image's code base + offset names no sparse DATA blob" RC die
       then
       exit
    then
    \ ... and in the startup it is the ONLY one, which is what makes the first
-   \ one the answer rather than the first of several candidates.
-   0 ADR9-PRE !
+   \ one the answer rather than the first of several candidates. The other three
+   \ TEXT-ADR, sites load x11, not x9.
+   0 BLOBADR-PRE !
    CODE-OFF IP !
    begin IP @ INSN + BLOB-AT @ <= while
-      IP @ 9 ADR-AT? if ADR9-PRE @ 1+ ADR9-PRE ! then
+      IP @ TEXT-ADR9? if BLOBADR-PRE @ 1+ BLOBADR-PRE ! then
       IP @ INSN + IP !
    repeat
-   ADR9-PRE @ 1 <> if
-      s" image-size: stripped image startup does not hold exactly one ADR x9" RC die
+   BLOBADR-PRE @ 1 <> if
+      s" image-size: stripped image startup does not hold exactly one blob address" RC die
    then ;
 
-\ MOVZ/MOVK into x11, 64-bit, the chain src/arch/arm64/asm.f LIT64 emits.
-: MOVZ11? ( n -- bool ) $FF80001F and $D280000B = ;
-: MOVK11? ( n -- bool ) $FF80001F and $F280000B = ;
-: MOV-CHUNK ( n -- n ) {: w:n :}
-   w 5 rshift $FFFF and  w 21 rshift 3 and 16 * lshift ;
 
 \ ADD x10,x10,#3 / LSR x10,x10,#2 / LSL x10,x10,#2: the byte cursor rounded up
 \ to the four-byte boundary the rows sit on (src/habu/aot-lib.f EMIT-XT-CELLS).
@@ -2056,8 +2083,8 @@ $D37EF54A constant XTC-LSL2
       then
    loop ;
 
-\ A program whose capture window is empty emits no blob and therefore no ADR x9,
-\ and EMIT-XT-CELLS refuses declared address cells without one, so such an image
+\ A program whose capture window is empty emits no blob and therefore no blob
+\ address, and EMIT-XT-CELLS refuses declared address cells without one, so such an image
 \ is code and nothing else. Here -- and ONLY here -- the last non-zero byte is a
 \ sound content end: what it ends is an A64 instruction word, and no A64
 \ encoding has a zero top byte, so rounding it up to the instruction boundary

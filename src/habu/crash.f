@@ -267,11 +267,15 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 : C-SIGACTION-FRAME-DONE ( -- )
    SP SP $40 ADDI, ;
 
-\ The handler address travels in x11, not x9: a stripped image's startup is
-\ pinned by test/gate-aot-image.f, which finds the DATA restore by its ADR x9,
-\ and this installer runs in that startup before the restore.
-: G-INSTALL-CRASH ( -- )
-   11 LCRASHH LABEL@ ADR,  11 C-SIGACTION-FRAME
+\ THE CALLER LOADS x11 WITH THE HANDLER'S ADDRESS, because the two callers cannot
+\ load it the same way. The engine bakes LCRASHH within ADR's ±1 MiB of its own
+\ startup (habu2.f EM-STARTUP-RUNTIME-STATE, measured at every engine build),
+\ while a stripped image places the handler after the whole copied code band and
+\ has to go through aot-lib.f TEXT-ADR,. Nothing else in this file addresses a
+\ label outside its own definition, which is what tools/aot-startup-reach-lint.f
+\ checks.
+: G-INSTALL-CRASH-X11 ( -- )                     \ x11 = the crash handler's address
+   11 C-SIGACTION-FRAME
    HB-TARGET-LINUX? IF
       4 INSTALL-SIGACT  5 INSTALL-SIGACT  7 INSTALL-SIGACT  8 INSTALL-SIGACT  11 INSTALL-SIGACT
    ELSE

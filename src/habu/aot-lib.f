@@ -32,6 +32,39 @@ variable MLBL
 \ The label at text offset zero: the image's own code base, which the declared
 \ xt cells are restored against. It costs no bytes and is placed by EMIT-ENTRY.
 variable LTEXT
+
+\ ADDRESS A LABEL THE STARTUP CANNOT REACH WITH ADR. `adr` carries a signed
+\ 21-bit byte delta (src/arch/arm64/icode.f ?ADR, ±1 MiB), and the startup sits
+\ at text offset zero while the labels below bind past the whole copied code
+\ band: the entry word (MLBL, inside the band), the crash handler, the signal
+\ stub and the sparse data blob (all after it). Tender's standalone closure is
+\ 1.36 MB of code, so those four are the only sites in an emitted image that
+\ cross the window - a copied member's own body never enters ?ADR (COPY-COMPACT-BLOB
+\ emits its words raw and RELOC-W32 re-encodes a member's ADR with its own
+\ refusal), and DATA and string references travel as movz/movk chains.
+\ THE BASE IS LTEXT, NOT THE TEXT-BASE CLAIM. src/habu/habu2.f TADR, reads the
+\ running image's code base out of DATA RBASE-CELL, which the startup itself has
+\ to publish first: EMIT-OWNED-CELLS stores the claims in claim order and the
+\ ENTRY-XT claim (aot-owned-cells.f:279) comes before the TEXT-BASE one (:280),
+\ so at the first of these four sites the cell is still zero. LTEXT is bound at
+\ text offset zero, behind every startup site, so `ADR` reaches it by
+\ construction and it holds exactly the value site EMIT-OWNED-CELLS publishes
+\ into RBASE-CELL. LOFF, then carries the target's own byte offset from that
+\ base in two 16-bit lanes, a non-negative absolute position whose bound is the
+\ pair's 32 bits and not the distance from the site. Four words, 16 bytes,
+\ per converted site: 48 bytes more per image than the four `ADR`s were.
+\ NO FIXTURE BUILDS AN IMAGE PAST THE WINDOW. The link is quadratic in the
+\ closure's member count - OLD>NEW and MEMBER-AT below both scan every member
+\ per relocated instruction - so a >1 MiB band costs minutes at test scale.
+\ tools/hb-build-test.f HBT-STRIPPED-CHAIN runs the converted startup end to
+\ end, and Tender's standalone build is the proof at the scale that needed it.
+: TEXT-ADR, ( n n label -- )                      \ ( rd rt label -- ) rd = runtime address of label
+   {: rd:n rt:n l:label :}
+   rd rt = IF s" aot: TEXT-ADR, destination and scratch are one register" 74 die THEN
+   rd l LOFF,                                     \ rd = the label's byte offset from text offset zero
+   rt LTEXT LABEL@ ADR,                           \ rt = this image's code base
+   rd rt rd ADD, ;
+
 \ The planning columns, parallel to aot-closure.f's closure tables: where each
 \ member lands in the compacted __text and how many bytes were planned for it.
 \ Both hold counts. PLAN-BLOBS allocates them for the members the walk actually
@@ -50,7 +83,6 @@ DYNAMIC-BUFFER BLEN n     \ ... and the bytes planned for it
 \ dereferences it, the one cell it reads goes through aot-closure.f DATA-CELL@,
 \ which is where a DATA address becomes a pointer again.
 variable DSCAN
-$F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB range
 
 \ THE CARRIED CELLS, COPIED INTO THE WINDOW BEFORE ANYTHING READS OR MAPS IT.
 \ Each claim named CARRIED in src/habu/aot-owned-cells.f is copied, by its
@@ -126,7 +158,7 @@ variable CARRY-USED
 \ it, because a stripped image's entry IS a process entry: argc at [sp], argv one
 \ cell above, envp one past argv's NULL terminator. THIS RUNS FIRST, before any
 \ other emitted instruction: it is the only point at which SP still names the
-\ kernel's frame (G-INSTALL-CRASH builds a frame of its own below it) and x0-x2
+\ kernel's frame (G-INSTALL-CRASH-X11 builds a frame of its own below it) and x0-x2
 \ still hold the macOS entry's own three arguments. Nothing between here and
 \ EMIT-OWNED-CELLS touches x13-x15 - STACK-GUARD:EMIT-MAP works in x0-x6/x9/x10,
 \ and a Linux syscall returns in x0 and preserves the rest.
@@ -160,9 +192,11 @@ variable CARRY-USED
 \ An ENTRY-XT claim gets the address of the word this image starts, which is the
 \ label the root call below branches to, and a TEXT-BASE claim this image's own
 \ code base (LTEXT, the label at text offset zero - the value the engine's entry
-\ stores with EM-DATA-INIT). Both travel with ADR into x11 rather than x9:
-\ test/gate-aot-image.f finds the DATA restore by its ADR x9 and admits exactly
-\ one in the startup, the same reason G-INSTALL-CRASH's address travels in x11.
+\ stores with EM-DATA-INIT). The entry word binds inside the copied code band, so
+\ it goes through TEXT-ADR, with x12 as the scratch - dead here, because
+\ EMIT-OWNED-CELLS stores the argc/argv/envp registers out before its loop and
+\ holds nothing else across an iteration. LTEXT is the base TEXT-ADR, itself
+\ reaches, so its own site keeps ADR,.
 : OWNED-PUBLISHED? ( n -- bool ) {: k:n :}
    k AOT-OWNED:IMAGE-BASE?  k AOT-OWNED:ENTRY-XT? or  k AOT-OWNED:TEXT-BASE? or ;
 : EMIT-OWNED-CELLS ( -- )
@@ -172,7 +206,7 @@ variable CARRY-USED
          9 i AOT-OWNED:AT DATA-VA VA>N - LIT64,   \ x9 = the cell's DATA offset
          9 DATA 9 ADD,                            \ ... the cell itself
          i AOT-OWNED:ENTRY-XT? IF
-            11 MLBL LABEL@ ADR,                   \ x11 = this image's entry word
+            11 12 MLBL LABEL@ TEXT-ADR,           \ x11 = this image's entry word
             11 9 0 STR,                           \ *cell = the entry it starts at
          ELSE i AOT-OWNED:TEXT-BASE? IF
             11 LTEXT LABEL@ ADR,                  \ x11 = this image's code base
@@ -215,7 +249,7 @@ variable CARRY-USED
    BLOB-LEN @ 0= IF
       7 BLOB-END @ LIT64,  7 DATA DP-CELL STR,  exit         \ DP = data base (no user data)
    THEN
-   9 BLOB-LBL LABEL@ ADR,                         \ x9 = sparse header in __text
+   9 12 BLOB-LBL LABEL@ TEXT-ADR,                 \ x9 = sparse header in __text (x12: the loop reloads it below)
    11 9 0 LDRW,                                   \ x11 = bitmap byte length
    9 9 4 ADDI,                                    \ x9 = bitmap cursor
    11 9 11 ADD,                                   \ x11 = one past the bitmap == value payload start
@@ -255,9 +289,10 @@ variable CARRY-USED
 \ THE ROWS NEED NO ADDRESS OF THEIR OWN. The copy loop's byte cursor x10 ends one
 \ past the blob's last payload byte, which is where the rows begin (BYTES, pads
 \ the blob to the four-byte boundary they sit on), so the startup adds no second
-\ ADR ahead of the root call: test/gate-aot-image.f admits exactly one ADR x9 in
-\ the startup and ends the reported code range at the blob, and rows placed past
-\ the blob are outside that range rather than read as instructions.
+\ address-of-the-blob sequence ahead of the root call: test/gate-aot-image.f
+\ admits exactly one of them in the startup and ends the reported code range at
+\ the blob, and rows placed past the blob are outside that range rather than read
+\ as instructions.
 \ The cell is x20-relative (DATA is mapped MAP_FIXED, so its offset is the same
 \ number the declaration carries) and the value is relative to the image's own
 \ code base, which is the label at text offset zero.
@@ -289,10 +324,12 @@ variable CARRY-USED
 \ length because that is what says where the values begin. The bitmap and the
 \ varint ARE the AOT-WINDOW encoding aot-capture.f writes for the metabuild seed
 \ (src/habu/aot-decl.f package AOT-WINDOW).
-\ SPARSE-CAP is generous headroom over the row/byte overhead of a span already
-\ expected to stay near AOT-DATA-BLOB-MAX; a span that still overflows it dies
-\ closed by name instead of corrupting the buffer.
-AOT-DATA-BLOB-MAX 2 * constant SPARSE-CAP
+\ SPARSE-CAP bounds this file's own encoding buffer and nothing else: it is
+\ generous headroom over the row/byte overhead of a captured DATA span, which is
+\ set by how much data the application declares and not by how long its code is.
+\ A span that still overflows it dies closed by name instead of corrupting the
+\ buffer.
+$1E0000 constant SPARSE-CAP
 create SPARSE-BUF SPARSE-CAP allot   variable SPARSE-LEN
 
 : SPARSE-ROOM? ( n -- )
@@ -368,8 +405,6 @@ variable BLOB-CV
 \ at the four-byte boundary BYTES, pads to.
 : EMIT-DATA-BLOB ( -- )                            \ place the sparse blob after all code
    BLOB-LEN @ 0= IF exit THEN
-   ASM-LEN AOT-DATA-BLOB-MAX > IF
-      s" aot: data blob too far for ADR (program too large); split program" 74 die THEN
    BUILD-SPARSE-DATA
    BLOB-LBL LABEL@ LBL,
    SPARSE-BUF SPARSE-LEN @ BYTES, ;
@@ -409,11 +444,11 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
 \ here), which begins at DATA-START and cannot reach a header cell -- so the fd
 \ word this image starts with is the mapping's own zero. A SNAPSHOT copies DATA
 \ from offset zero (snap-lib.f SND-COPY), which is why the engine clears it.
-\ The address travels in x11 for the reason G-INSTALL-CRASH's does -
-\ test/gate-aot-image.f finds the DATA restore by its ADR x9 and admits exactly
-\ one in the startup.
+\ The stub binds after the copied code and after the crash handler, so its
+\ address comes from TEXT-ADR, (x12 is the scratch; nothing in this word holds
+\ it).
 : EMIT-SIGNAL-PUBLISH ( -- )
-   11 LSIGH LABEL@ ADR,  11 DATA SIGNAL-ABI:STUB-CELL STR,
+   11 12 LSIGH LABEL@ TEXT-ADR,  11 DATA SIGNAL-ABI:STUB-CELL STR,
    11 DATA-VA VA>N SIGNAL-ABI:FD-CELL + LIT64,  11 DATA SIGNAL-ABI:FD-PTR-CELL STR, ;
 
 \ A stripped image runs the same three guarded VM stacks as the engine, and
@@ -432,7 +467,10 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
    10 DATA STACK-ABI:RETURN-BASE-CELL STR,
    STACK-ABI:LOOP-BYTES 10 STACK-GUARD:EMIT-MAP
    10 DATA STACK-ABI:LOOP-BASE-CELL STR,
-   G-INSTALL-CRASH                               \ name a guard-page fault instead of dumping SIGSEGV
+   \ Name a guard-page fault instead of dumping SIGSEGV. The handler follows the
+   \ copied code (EMIT-CRASH-CODE below), so its address comes from TEXT-ADR,;
+   \ x12 is dead here, the two mapped stack bases above travel in x10.
+   11 12 LCRASHH LABEL@ TEXT-ADR,  G-INSTALL-CRASH-X11
    EMIT-DATA-COPY                                \ restore persistent data + DP
    EMIT-XT-CELLS                                 \ ... and the tokens its declared cells hold
    EMIT-SIGNAL-PUBLISH                           \ this image's stub address and fd word
@@ -442,8 +480,8 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
 
 \ The handler body and its hex printer follow the copied code, so the root
 \ closure record stays the first word after the startup (test/gate-aot-image.f
-\ pins that) and the entry's ADR to the handler spans at most the code, which
-\ EMIT-DATA-BLOB already bounds for the data blob placed after them.
+\ pins that). Nothing bounds how far past the startup they land: the entry
+\ addresses them with TEXT-ADR,, whose LOFF, lanes span the whole code buffer.
 : EMIT-CRASH-CODE ( -- )
    EMIT-CRASH-HANDLER  EMIT-SIGNAL-HANDLER  EMIT-HEX ;
 PTR-VARIABLE CP2  PTR-VARIABLE CEND   \ the copy walk's cursor and its one-past end

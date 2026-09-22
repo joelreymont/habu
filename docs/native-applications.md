@@ -80,6 +80,23 @@ a unit run it under `MemoryDenyWriteExecute`.
 bin/hb --load tools/hb-build.f -- app.f -o app
 ```
 
+**The startup addresses its four far labels through the code base.** The fixed
+entry `src/habu/aot-lib.f` emits sits at text offset zero and has to name four
+things that bind past the copied code: the entry word, the crash handler, the
+signal stub and the sparse data blob. `adr` reaches ±1 MiB, and a program whose
+closure is larger than that puts all four out of reach — Tender's standalone
+build died `icode: adr out of reach site=844 target=1363312`, 844 bytes into the
+startup for a label 1.36 MB later. Each of the four now goes through `TEXT-ADR,`:
+the label's byte offset from the code base in a movz/movk pair, `adr` to `LTEXT`
+at text offset zero, and an add — sixteen bytes a site, forty-eight more per
+image, and no bound on how far the label may be. The base is `LTEXT` and not the
+`TEXT-BASE` claim's cell, because the startup publishes that cell itself and the
+first of these four sites runs before the store. Nothing else in an emitted image
+crosses the window: a copied body's own instructions are re-encoded by the
+linker's relocation with its own refusal, and data and string references travel
+as movz/movk chains. `tools/aot-startup-reach-lint.f` keeps the rule — an
+emitter may only `ADR,` a label its own definition binds.
+
 ### What the window contains
 
 The maker child opens the capture window **before anything the application can
