@@ -145,6 +145,7 @@ One field vocabulary across both is not attempted: SQL columns and fixed
 fields are different things and pretending otherwise would cost more than
 two small vocabularies.
 
-Concurrency rule for the SQL layer: one connection per task, statements never
-cross tasks (the linear owner enforces it), and the server's write path is a
+Concurrency rule for the SQL layer: each connection belongs to one task;
+a task may advance several connections, and results never cross tasks (the
+owner check enforces it). The server's write path is a
 single task fed by the queue from C5. Storage format is the database's own.

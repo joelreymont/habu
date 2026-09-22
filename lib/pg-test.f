@@ -17,6 +17,16 @@ require lib/image-lifecycle.f
 require lib/pg.f
 
 package PG-TEST
+
+TYPED-VARIABLE POLL-FD n
+
+\ Resolve the OS primitive before importing PG's POLL.
+: READY? ( fd n -- bool ) {: socket:fd events:n :}
+   events 32 lshift socket FD>N $FFFFFFFF and or POLL-FD !
+   POLL-FD 1 0 poll {: count:n :}
+   count 0 < if PG:E-EXEC throw then
+   count 0 > ;
+
 using PG
 
 -77 constant BOOM                         \ the throw the rolled-back body raises
@@ -25,6 +35,8 @@ using PG
 32 constant PARAMETERS
 
 CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
+RESULTS TYPED-BUFFER HELD-RESULTS PG:result
+10000000000 constant PROGRESS-NS
 
 0 constant TAG-OK
 1 constant TAG-ROWS
@@ -106,6 +118,88 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
       r 0 >ROW 0 >COL INT 42 T=
       r CLEAR c PG:CLOSE
    loop ;
+
+
+\ These helpers run before the AIO loop starts. A single task advances both
+\ connections; a progress call that waits cannot let that task release the lock.
+: CHECK-PROGRESS ( n -- ) {: deadline:n :}
+   mono-ns deadline > if E-EXEC throw then
+   TASK:PAUSE ;
+
+: AWAIT-READY ( fd n n -- ) {: socket:fd events:n deadline:n :}
+   begin
+      socket events READY? if exit then
+      deadline CHECK-PROGRESS
+   again ;
+
+: OPEN-POLL ( -- PG:connection )
+   CONNINFO$ CONNECT-START {: c :}
+   mono-ns PROGRESS-NS + {: deadline:n :}
+   begin
+      c PG:POLL MATCH PG:progress
+         waiting OF deadline AWAIT-READY ENDOF
+         connected OF exit ENDOF
+         refused OF 2drop E-CONNECT throw ENDOF
+         completed OF CLEAR E-CONNECT throw ENDOF
+      ;MATCH
+      deadline CHECK-PROGRESS
+   again ;
+
+: RESULT-POLL ( PG:connection -- PG:result ) {: c :}
+   mono-ns PROGRESS-NS + {: deadline:n :}
+   begin
+      c PG:POLL MATCH PG:progress
+         waiting OF deadline AWAIT-READY ENDOF
+         completed OF exit ENDOF
+         connected OF drop E-EXEC throw ENDOF
+         refused OF 2drop E-EXEC throw ENDOF
+      ;MATCH
+      deadline CHECK-PROGRESS
+   again ;
+
+: POLL-EXEC ( PG:connection ptr u8 n -- PG:result ) {: c a:ptr u:n :}
+   c a u SEND c RESULT-POLL ;
+
+: BUSY-SEND ( PG:connection -- PG:connection )
+   dup s" select 2" SEND ;
+
+: PROGRESS-CASES ( -- )
+   s" one task releases a lock another query is waiting for" T-LABEL
+   OPEN-POLL {: holder :}
+   OPEN-POLL {: waiter :}
+   holder s" select pg_advisory_lock(987654)" POLL-EXEC CLEAR
+   waiter s" set statement_timeout = '10s'" POLL-EXEC CLEAR
+   waiter s" select pg_advisory_lock(987654)" SEND
+   waiter PG:POLL MATCH PG:progress
+      waiting OF 2drop true ENDOF
+      completed OF CLEAR false ENDOF
+      connected OF drop false ENDOF
+      refused OF 2drop false ENDOF
+   ;MATCH TTRUE
+   waiter [: BUSY-SEND ;] catch {: held code:n :}
+   code E-STATEMENT T=
+   holder s" select pg_advisory_unlock(987654)::int" POLL-EXEC {: unlocked :}
+   unlocked 0 >ROW 0 >COL INT 1 T=
+   unlocked CLEAR
+   waiter RESULT-POLL {: acquired :}
+   acquired OUTCOME-TAG TAG-ROWS T=
+   acquired CLEAR
+   \ Closing with a query in flight releases its reserved result as well.
+   holder s" select pg_advisory_lock(987654)" SEND
+   holder PG:CLOSE
+   waiter s" select pg_advisory_unlock(987654)::int" POLL-EXEC CLEAR
+   waiter PG:CLOSE ;
+
+: RESULT-CAPACITY-CASES ( -- )
+   s" closed pending queries leave the declared result capacity available" T-LABEL
+   OPEN-POLL {: c :}
+   RESULTS 0 ?do
+      c s" select 7" POLL-EXEC i HELD-RESULTS !
+   loop
+   c [: BUSY-SEND ;] catch {: held code:n :}
+   code E-CAPACITY T=
+   RESULTS 0 ?do i HELD-RESULTS @ CLEAR loop
+   c PG:CLOSE ;
 
 
 \ ---- schema ---------------------------------------------------------------
@@ -592,6 +686,8 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
       s" pg-test: skipped, HABU_PG_CONNINFO names no server" type cr exit
    then
    CONNECTIONS RESULTS PARAMETERS CONFIGURE
+   PROGRESS-CASES
+   RESULT-CAPACITY-CASES
    AIO:START
    [: CONNECT-CASES CAPACITY-CASES SERVER-CASES ;]
    [: AIO:STOP ;]

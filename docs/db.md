@@ -9,8 +9,7 @@ programs, the polyFORTH record kit later for targets.
 
 A connection and a result are nominal cell families, `PG:connection` and
 `PG:result`. Their converters stay private, so no caller can fabricate one; a
-handle is only ever what `PG:CONNECT`, `PG:EXEC`, `PG:PREPARE` or
-`PG:EXEC-PREPARED` returned.
+handle comes from starting a connection or completing an operation through PG.
 
 Behind each handle is a slot in the module's registry holding the libpq
 pointer, the owning task and a generation. Every entry point resolves the
@@ -42,14 +41,16 @@ there is no fixed eight-connection table. Repeating the same declaration is
 safe, including from another task; a different declaration is refused until
 image preparation releases the registry. Configure again in the new process.
 
-`CONNECT` and the query words use libpq's nonblocking send/poll operations and
-wait for socket readiness through the running AIO loop. Start `AIO:START`
-before the first connection and stop it after database work has drained.
-Habu currently parks the calling task's pthread in `AIO:AWAIT`: these convenience
-words do not provide thread-free suspension.
+`CONNECT-START`, `SEND` and `POLL` let one task advance multiple connections.
+The caller owns the readiness loop and operation deadlines. `CONNECT`, `EXEC`
+and the other convenience words compose the same operations with `AWAIT`,
+which waits through AIO. For those conveniences, start `AIO:START` before
+connecting and stop it after database work drains. Habu currently parks the
+calling task's pthread in `AIO:AWAIT`; only the progress interface lets a
+dispatcher keep servicing other connections on that task.
 
-The rule from [database-models.md](database-models.md) is one connection per
-task and results that never cross tasks. The registry enforces it: `CONNECT`
+The rule from [database-models.md](database-models.md) is one owner per
+connection and results that never cross tasks. The registry enforces it: connection startup
 records the calling task and every later word refuses a handle presented by any
 other task with `PG:E-HANDLE`. A task that needs two databases opens two
 connections; two tasks never share one. The parameter list, the call arena and
@@ -69,6 +70,14 @@ reaching a freed address.
 PG:CONFIGURE        ( n n n -- )  \ connection, result and parameter capacities
 PG:CONNECT          ( ptr u8 n -- PG:connect-result )
 PG:CLOSE            ( PG:connection -- )
+
+PG:CONNECT-START    ( ptr u8 n -- PG:connection )
+PG:SEND             ( PG:connection ptr u8 n -- )
+PG:SEND-SCRIPT      ( PG:connection ptr u8 n -- )
+PG:SEND-PREPARE     ( PG:connection ptr u8 n ptr u8 n -- )
+PG:SEND-PREPARED    ( PG:connection ptr u8 n -- )
+PG:POLL             ( PG:connection -- PG:progress )
+PG:AWAIT            ( PG:connection -- PG:progress )
 
 PG:PARAMS           ( PG:connection -- )
 PG:TEXT+            ( PG:connection ptr u8 n -- )
@@ -97,6 +106,39 @@ PG:>COL  ( n -- PG:col )   PG:COL>N ( PG:col -- n )
 
 `PG:row` and `PG:col` are distinct nominals, so a transposed
 `PG:TEXT$` argument pair is a checker rejection rather than a wrong cell.
+
+### Dispatcher progress
+
+```forth
+SUMTYPE progress 0
+   VARIANT waiting fd n ;VARIANT           \ descriptor, AIO readiness mask
+   VARIANT connected connection ;VARIANT
+   VARIANT completed result ;VARIANT
+   VARIANT refused ptr u8 n ;VARIANT       \ connection attempt failed
+;SUMTYPE
+```
+
+Start with `CONNECT-START`, then call `POLL`. A `waiting` result supplies the
+descriptor and `AIO:READABLE`/`AIO:WRITABLE` mask to register in the caller's
+loop. Call `POLL` again once that readiness arrives; use the newly returned
+descriptor each time, since libpq may replace it while connecting. The first
+step also supplies the writable readiness libpq requires before its first
+connection poll. `connected` permits a `SEND` operation; `completed` hands
+the result to the caller for `OUTCOME`, reading and `CLEAR`. These words do
+not start an AIO loop or wait inside PG.
+
+Only one operation may be pending on a connection. Parameter changes and a
+second send are refused with `E-STATEMENT` until the pending operation ends.
+Sends copy their statement and parameters before returning, so callers may
+reuse their input storage. `CLOSE` can abandon a connecting or busy handle;
+it also releases the pending result reservation. On a transport failure PG
+closes that connection and throws `E-EXEC`. A SQL rejection instead completes
+with a result whose `OUTCOME` carries the server diagnostic.
+
+Use a Unix socket or numeric `hostaddr` to avoid DNS resolution blocking
+connection startup. The dispatcher must enforce connection deadlines itself:
+libpq ignores `connect_timeout` during asynchronous connection polling.
+These are libpq's [connection polling requirements](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PQCONNECTSTARTPARAMS).
 
 ### Outcomes
 
@@ -195,7 +237,7 @@ example below does it.
 | Code | Meaning |
 | --- | --- |
 | `PG:E-CONNECT` | libpq could not build a connection at all |
-| `PG:E-EXEC` | libpq returned no result, or a transaction verb the server rejected |
+| `PG:E-EXEC` | a transport/readiness failure, no result, or a rejected transaction verb |
 | `PG:E-COLUMN` | a row or column index outside the result |
 | `PG:E-TYPE` | a column read as a type its bytes are not, including `PG:INT` of NULL |
 | `PG:E-CLEARED` | a result used after `PG:CLEAR`, or cleared a second time |
@@ -203,7 +245,7 @@ example below does it.
 | `PG:E-HANDLE` | a handle another task owns, or one an image restore invalidated |
 | `PG:E-CAPACITY` | more live connections, results or parameters than the module stores |
 | `PG:E-PLATFORM` | `libpq.so.5` is not the shared-library name this target loads |
-| `PG:E-STATEMENT` | an empty statement text or prepared-statement name, or a `PG:SCRIPT` with parameters pending |
+| `PG:E-STATEMENT` | an empty statement/name, script parameters, or an operation invalid for the connection's current phase |
 
 The block is `-9250..-9259` in `lib/errors.f`.
 
@@ -258,6 +300,11 @@ removes the cluster:
 ```sh
 test/db/pg-fixture.sh build/hb-pg --load lib/pg-test.f
 ```
+
+The dispatcher case uses two real connections from one task: a query waits on
+an advisory lock, the same task releases it through the other connection, and
+the first query completes. It also closes a pending query and then fills the
+declared result registry, checking that cancellation did not leak a slot.
 
 Without `HABU_PG_CONNINFO` the test prints `pg-test: skipped, HABU_PG_CONNINFO
 names no server` and asserts nothing. It is registered in

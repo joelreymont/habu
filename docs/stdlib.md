@@ -401,7 +401,7 @@ each, $4800 bytes of image data, and `FFI:ROOM?` answers whether another row is
 left. A declaration that finds the table full is `E-FFI-TABLE-FULL`, and the
 declarer names the Habu word and the C symbol it could not give a row on stderr
 before it throws. `test/five-bindings.f` holds `TCP4`, `CURL`, `PG`, `CRYPTO`
-and `TASK` - 68 rows - in one image and declares past them.
+and `TASK` in one image and declares past their combined bindings.
 
 The loaded-library table is a separate named ceiling: `FFI:LIBRARY-MAX` is
 eight paths (832 bytes for path storage and handles), and a `LIBRARY` selection

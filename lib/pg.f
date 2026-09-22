@@ -57,6 +57,15 @@ SUMTYPE outcome 0
    VARIANT failed ptr u8 n ptr u8 n ;VARIANT
 ;SUMTYPE
 
+\ A dispatcher registers the waiting descriptor and event mask with its own
+\ loop, then calls POLL again. No progress step waits for socket readiness.
+SUMTYPE progress 0
+   VARIANT waiting fd n ;VARIANT
+   VARIANT connected connection ;VARIANT
+   VARIANT completed result ;VARIANT
+   VARIANT refused ptr u8 n ;VARIANT
+;SUMTYPE
+
 private
 
 CAST: >CONNECTION ( n -- connection )
@@ -69,6 +78,9 @@ CAST: RESULT>N ( result -- n )
 1 constant PGRES-POLLING-READING
 2 constant PGRES-POLLING-WRITING
 3 constant PGRES-POLLING-OK
+1 constant CONNECTION-BAD
+1 constant CONNECT-FIRST
+2 constant CONNECT-POLLING
 1 constant PGRES-COMMAND-OK               \ ExecStatusType
 2 constant PGRES-TUPLES-OK
 $43 constant PG-DIAG-SQLSTATE             \ 'C'
@@ -107,6 +119,8 @@ DYNAMIC-BUFFER CONN-ARENA ptr u8
 DYNAMIC-BUFFER CONN-ARENA-CAP n
 DYNAMIC-BUFFER CONN-ARENA-U n
 DYNAMIC-BUFFER CONN-LAST-RESULT ptr u8
+DYNAMIC-BUFFER CONN-PENDING n
+DYNAMIC-BUFFER CONN-CONNECTING n
 DYNAMIC-BUFFER CONN-MESSAGE-U n
 DYNAMIC-BUFFER CONN-SQLSTATE-U n
 DYNAMIC-BUFFER CONN-PARAM-OFF n
@@ -142,6 +156,7 @@ LIBRARY libpq.so.5
 
 FUNCTION: LIB-CONNECT-START PQconnectStart ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-CONNECT-POLL PQconnectPoll ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-STATUS PQstatus ( ptr u8 -- n ) ;FUNCTION
 FUNCTION: LIB-SET-NONBLOCKING PQsetnonblocking ( ptr u8 n -- n ) ;FUNCTION
 FUNCTION: LIB-SOCKET PQsocket ( ptr u8 -- n ) ;FUNCTION
 FUNCTION: LIB-ERROR-MESSAGE PQerrorMessage ( ptr u8 -- ptr u8 ) ;FUNCTION
@@ -220,6 +235,14 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 : DRAIN-LAST@ ( n -- ptr u8 )   DRAIN-LAST-CELL @ ;
 : DRAIN-LAST! ( ptr u8 n -- ) {: p slot:n :}   p slot DRAIN-LAST-CELL ! ;
+
+: PENDING@ ( n -- n ) CONN-PENDING @ ;
+: PENDING! ( n n -- ) CONN-PENDING ! ;
+: CONNECTING@ ( n -- n ) CONN-CONNECTING @ ;
+: CONNECTING! ( n n -- ) CONN-CONNECTING ! ;
+
+: IDLE-CHECK ( n -- ) {: slot:n :}
+   slot PENDING@ 0<> slot CONNECTING@ 0<> or if E-STATEMENT throw then ;
 
 
 : ARENA-BASE ( n -- ptr u8 )   ARENA-CELL @ ;
@@ -505,6 +528,8 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    CONN-ARENA-CAP-RELEASE
    CONN-ARENA-U-RELEASE
    CONN-LAST-RESULT-RELEASE
+   CONN-PENDING-RELEASE
+   CONN-CONNECTING-RELEASE
    CONN-MESSAGE-U-RELEASE
    CONN-SQLSTATE-U-RELEASE
    CONN-PARAM-OFF-RELEASE
@@ -533,6 +558,8 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    CONN-CAP CONN-ARENA-CAP-RESERVE
    CONN-CAP CONN-ARENA-U-RESERVE
    CONN-CAP CONN-LAST-RESULT-RESERVE
+   CONN-CAP CONN-PENDING-RESERVE
+   CONN-CAP CONN-CONNECTING-RESERVE
    CONN-CAP CONN-MESSAGE-U-RESERVE
    CONN-CAP CONN-SQLSTATE-U-RESERVE
    CONN-CAP PARAM-CAP * CONN-PARAM-OFF-RESERVE
@@ -603,6 +630,8 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot BUMP-CONN-GEN
    TASK:SELF-N slot CONN-OWNER!
    NULL-ARG slot DRAIN-LAST!
+   0 slot PENDING!
+   0 slot CONNECTING!
    0 slot CONN-TX!
    0 slot MESSAGE-U!
    0 slot SQLSTATE-U!
@@ -617,6 +646,8 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot ARENA-RELEASE
    NULL-ARG slot CONN-PG!
    NULL-ARG slot DRAIN-LAST!
+   0 slot PENDING!
+   0 slot CONNECTING!
    0 slot CONN-GEN!
    0 slot CONN-TX!
    0 slot CONN-LIVE! ;
@@ -696,102 +727,126 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot res MESSAGE-FROM ;
 
 
-\ libpq's nonblocking calls still need a descriptor wait between progress
-\ steps. AIO owns that wait; its current runtime parks the calling task's
-\ pthread until the shared io_uring loop reports readiness.
-: WAIT-SOCKET ( n n -- n ) {: slot:n events:n :}
-   slot CONN-PG@ LIB-SOCKET C-INT {: fd:n :}
-   fd 0 < if E-EXEC throw then
-   fd >FD events -1 >MS AIO:POLL AIO:AWAIT
-   MATCH AIO:outcome
-      ready OF ENDOF
-      timed-out OF E-EXEC throw ENDOF
-      cancelled OF E-EXEC throw ENDOF
-      refused OF drop E-EXEC throw ENDOF
-   ;MATCH ;
-
-
-\ Drive the libpq connection handshake until it either completes or reports a
-\ refusal. The terminal polling status crosses CONNECT's stack-preserving
-\ catch; its saved slot remains the cleanup authority when AIO throws.
-: CONNECT-PROGRESS ( n -- n ) {: slot:n :}
-   begin
-      slot CONN-PG@ LIB-CONNECT-POLL C-INT {: status:n :}
-      status PGRES-POLLING-OK = if status exit then
-      status PGRES-POLLING-READING = if
-         slot AIO:READABLE WAIT-SOCKET drop
-      else
-         status PGRES-POLLING-WRITING = if
-            slot AIO:WRITABLE WAIT-SOCKET drop
-         else
-            status exit
-         then
-      then
-   again ;
-
-
+\ ---- nonblocking progress ------------------------------------------------
 : COPY-CONN-MESSAGE ( n -- ) {: slot:n :}
    slot CONN-PG@ LIB-ERROR-MESSAGE {: p :}
    p NULL-ADDR? 0= if slot p CSTR$ MESSAGE! then ;
 
 
 : FAIL-CONNECTION ( n -- ) {: slot:n :}
-   slot CONN-PG@ {: pg :}
-   pg NULL-ADDR? 0= if
-      slot COPY-CONN-MESSAGE
-      pg LIB-FINISH
+   slot COPY-CONN-MESSAGE
+   slot CLOSE-SLOT ;
+
+
+: WAITING ( n n -- progress ) {: slot:n events:n :}
+   slot CONN-PG@ LIB-SOCKET C-INT {: socket:n :}
+   socket 0 < if slot FAIL-CONNECTION E-EXEC throw then
+   socket >FD events PG-PROGRESS:waiting ;
+
+
+: CONNECT-REFUSED ( n -- progress ) {: slot:n :}
+   slot COPY-CONN-MESSAGE
+   slot MESSAGE$ {: ma:ptr mu:n :}
+   slot CLOSE-SLOT
+   ma mu PG-PROGRESS:refused ;
+
+
+: POLL-CONNECT ( n -- progress ) {: slot:n :}
+   \ libpq requires writable readiness before the first PQconnectPoll too.
+   slot CONNECTING@ CONNECT-FIRST = if
+      slot CONN-PG@ LIB-STATUS C-INT CONNECTION-BAD = if
+         slot CONNECT-REFUSED exit
+      then
+      CONNECT-POLLING slot CONNECTING!
+      slot AIO:WRITABLE WAITING exit
    then
-   slot RETIRE-CONN-SLOT ;
+   slot CONN-PG@ LIB-CONNECT-POLL C-INT {: status:n :}
+   status PGRES-POLLING-READING = if slot AIO:READABLE WAITING exit then
+   status PGRES-POLLING-WRITING = if slot AIO:WRITABLE WAITING exit then
+   status PGRES-POLLING-OK = if
+      0 slot CONNECTING!
+      slot CONN-HANDLE PG-PROGRESS:connected exit
+   then
+   slot CONNECT-REFUSED ;
 
 
-: WAIT-INPUT ( n -- )
-   begin
-      dup CONN-PG@ LIB-IS-BUSY C-INT 0= if drop exit then
-      dup AIO:READABLE WAIT-SOCKET drop
-      dup CONN-PG@ LIB-CONSUME-INPUT C-INT 0= if
-         dup COPY-CONN-MESSAGE
-         E-EXEC throw
-      then
-   again ;
+: ARM-QUERY ( n n -- ) {: slot:n res:n :}
+   slot res RES-CONN!
+   res 1+ slot PENDING!
+   NULL-ARG slot DRAIN-LAST! ;
 
 
-: FLUSH-QUERY ( n -- )
-   begin
-      dup CONN-PG@ LIB-FLUSH C-INT {: status:n :}
-      status 0= if drop exit then
-      status 1 = if
-         dup AIO:READABLE AIO:WRITABLE or WAIT-SOCKET {: ready:n :}
-         ready AIO:READABLE and 0<> if
-            dup CONN-PG@ LIB-CONSUME-INPUT C-INT 0= if
-               dup COPY-CONN-MESSAGE
-               E-EXEC throw
-            then
-         then
-      else
-         drop E-EXEC throw
-      then
-   again ;
-
-
-: DRAIN-RESULTS ( n -- ptr u8 ) {: slot:n :}
+: QUERY-DONE ( n -- progress ) {: slot:n :}
+   slot PENDING@ 1- {: res:n :}
+   slot DRAIN-LAST@ {: pg :}
+   pg NULL-ADDR? if slot FAIL-CONNECTION E-EXEC throw then
    NULL-ARG slot DRAIN-LAST!
+   0 slot PENDING!
+   pg slot res FILL-RES-SLOT PG-PROGRESS:completed ;
+
+
+\ Consume whatever is available, flush without waiting, and drain only while
+\ PQisBusy promises PQgetResult cannot block. The last result survives across
+\ progress calls; all preceding results are released as a script advances.
+: POLL-QUERY ( n -- progress ) {: slot:n :}
+   slot CONN-PG@ LIB-CONSUME-INPUT C-INT 0= if
+      slot FAIL-CONNECTION E-EXEC throw
+   then
+   slot CONN-PG@ LIB-FLUSH C-INT {: flushing:n :}
+   flushing 0 < if slot FAIL-CONNECTION E-EXEC throw then
+   flushing 0<> if slot AIO:READABLE AIO:WRITABLE or WAITING exit then
    begin
-      slot WAIT-INPUT
-      slot CONN-PG@ LIB-GET-RESULT {: pg :}
-      pg NULL-ADDR? if
-         slot DRAIN-LAST@ {: last :}
-         NULL-ARG slot DRAIN-LAST!
-         last exit
+      slot CONN-PG@ LIB-IS-BUSY C-INT 0<> if
+         slot AIO:READABLE WAITING exit
       then
+      slot CONN-PG@ LIB-GET-RESULT {: pg :}
+      pg NULL-ADDR? if slot QUERY-DONE exit then
       slot DRAIN-LAST@ {: previous :}
       previous NULL-ADDR? 0= if previous LIB-CLEAR then
       pg slot DRAIN-LAST!
    again ;
 
 
-: WAIT-RESULT ( n -- ptr u8 )
-   dup FLUSH-QUERY
-   DRAIN-RESULTS ;
+: POLL-SLOT ( n -- progress ) {: slot:n :}
+   slot CONNECTING@ 0<> if slot POLL-CONNECT exit then
+   slot PENDING@ 0= if E-STATEMENT throw then
+   slot POLL-QUERY ;
+
+
+\ Only the convenience words wait. A dispatcher consumes progress directly.
+\ Habu's AWAIT parks the calling pthread, so this is not a coroutine suspension.
+: WAIT-EVENT ( fd n -- fd n ) {: socket:fd events:n :}
+   socket events -1 >MS AIO:POLL AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF drop ENDOF
+      timed-out OF E-EXEC throw ENDOF
+      cancelled OF E-EXEC throw ENDOF
+      refused OF drop E-EXEC throw ENDOF
+   ;MATCH
+   socket events ;
+
+
+: WAIT-PROGRESS ( n -- progress ) {: slot:n :}
+   begin
+      slot POLL-SLOT MATCH progress
+         waiting OF
+            [: WAIT-EVENT ;] catch {: socket:fd events:n code:n :}
+            code 0<> if slot CLOSE-SLOT code throw then
+         ENDOF
+         connected OF PG-PROGRESS:connected exit ENDOF
+         completed OF PG-PROGRESS:completed exit ENDOF
+         refused OF PG-PROGRESS:refused exit ENDOF
+      ;MATCH
+   again ;
+
+
+: WAIT-QUERY ( n -- result )
+   WAIT-PROGRESS MATCH progress
+      completed OF ENDOF
+      connected OF drop E-EXEC throw ENDOF
+      refused OF 2drop E-EXEC throw ENDOF
+      waiting OF 2drop E-EXEC throw ENDOF
+   ;MATCH ;
 
 
 \ ---- statement execution --------------------------------------------------
@@ -803,42 +858,14 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot PARAM-ARRAY CLAIM-RES-SLOT ;
 
 
-: RECEIVE-RESULT ( n n -- n n ) {: slot:n res:n :}
-   slot WAIT-RESULT {: pg :}
-   pg NULL-ADDR? if E-EXEC throw then
-   pg slot res FILL-RES-SLOT drop
-   slot res ;
-
-
-\ A readiness or transport failure must not strand the reserved result slot
-\ or a partial result. The connection is no longer safe for another query.
-: RECEIVE-OWNED ( n n -- result ) {: slot:n res:n :}
-   slot res [: RECEIVE-RESULT ;] catch {: kept:n held:n code:n :}
-   code 0<> if
-      res RES-PG@ LIB-CLEAR
-      res RETIRE-RES-SLOT
-      slot CLOSE-SLOT
-      code throw
-   then
-   res RES-GEN@ res PACK-HANDLE >RESULT ;
-
-
 : SEND-FAILED ( n n -- ) {: slot:n res:n :}
    res RETIRE-RES-SLOT
    slot COPY-CONN-MESSAGE
    E-EXEC throw ;
 
 
-: COMPLETE-RESULT ( n n -- result ) {: slot:n res:n :}
-   slot RESET-PARAMS
-   slot res RECEIVE-OWNED ;
-
-
-: COMPLETE-VERB ( n n -- n ) {: slot:n res:n :}
-   slot res RECEIVE-OWNED RESULT-SLOT ;
-
-
-: EXEC-RAW ( n ptr u8 n -- result ) {: slot:n a u:n :}
+: EXEC-START ( n ptr u8 n -- ) {: slot:n a u:n :}
+   slot IDLE-CHECK
    u 0 <= if E-STATEMENT throw then
    a u slot ARENA-CSTR {: sql-off:n :}
    slot CLAIM-STATEMENT {: arr-off:n res:n :}
@@ -846,10 +873,12 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot CONN-PG@ base sql-off + slot PARAM-N@ NULL-ARG base arr-off +
    NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PARAMS C-INT {: sent:n :}
    sent 0= if slot res SEND-FAILED then
-   slot res COMPLETE-RESULT ;
+   slot res ARM-QUERY
+   slot RESET-PARAMS ;
 
 
-: PREPARED-RAW ( n ptr u8 n -- result ) {: slot:n a u:n :}
+: PREPARED-START ( n ptr u8 n -- ) {: slot:n a u:n :}
+   slot IDLE-CHECK
    u 0 <= if E-STATEMENT throw then
    a u slot ARENA-CSTR {: name-off:n :}
    slot CLAIM-STATEMENT {: arr-off:n res:n :}
@@ -857,10 +886,12 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot CONN-PG@ base name-off + slot PARAM-N@ base arr-off +
    NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PREPARED C-INT {: sent:n :}
    sent 0= if slot res SEND-FAILED then
-   slot res COMPLETE-RESULT ;
+   slot res ARM-QUERY
+   slot RESET-PARAMS ;
 
 
-: PREPARE-RAW ( n ptr u8 n ptr u8 n -- result ) {: slot:n na nu:n sa su:n :}
+: PREPARE-START ( n ptr u8 n ptr u8 n -- ) {: slot:n na nu:n sa su:n :}
+   slot IDLE-CHECK
    nu 0 <= if E-STATEMENT throw then
    su 0 <= if E-STATEMENT throw then
    na nu slot ARENA-CSTR {: name-off:n :}
@@ -869,20 +900,23 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base name-off + base sql-off + 0 NULL-ARG LIB-SEND-PREPARE C-INT {: sent:n :}
    sent 0= if slot res SEND-FAILED then
-   slot res COMPLETE-RESULT ;
+   slot res ARM-QUERY
+   slot RESET-PARAMS ;
 
 
 \ The simple-query protocol. It takes no parameters at all, so a pending
 \ parameter list is a caller error with nowhere to go: refusing it by name
 \ beats dropping the values the caller believes it bound.
-: SCRIPT-RAW ( n ptr u8 n -- result ) {: slot:n a u:n :}
+: SCRIPT-START ( n ptr u8 n -- ) {: slot:n a u:n :}
+   slot IDLE-CHECK
    u 0 <= if E-STATEMENT throw then
    slot PARAM-N@ 0 <> if E-STATEMENT throw then
    a u slot ARENA-CSTR {: off:n :}
    CLAIM-RES-SLOT {: res:n :}
    slot CONN-PG@ slot ARENA-BASE off + LIB-SEND-QUERY C-INT {: sent:n :}
    sent 0= if slot res SEND-FAILED then
-   slot res COMPLETE-RESULT ;
+   slot res ARM-QUERY
+   slot RESET-PARAMS ;
 
 
 : RESULT-STATUS ( n -- n ) {: slot:n :}
@@ -908,12 +942,14 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 
 : RUN-VERB ( n ptr u8 n -- n ) {: slot:n a u:n :}
+   slot IDLE-CHECK
    slot a u VERB-TEXT! {: sql :}
    CLAIM-RES-SLOT {: res:n :}
    slot CONN-PG@ sql 0 NULL-ARG NULL-ARG NULL-ARG NULL-ARG TEXT-RESULT
    LIB-SEND-QUERY-PARAMS C-INT {: sent:n :}
    sent 0= if slot res SEND-FAILED then
-   slot res COMPLETE-VERB ;
+   slot res ARM-QUERY
+   slot WAIT-QUERY RESULT-SLOT ;
 
 
 \ A transaction verb must succeed or the caller's framing is a lie, so a server
@@ -997,12 +1033,13 @@ public
 : CONFIGURE ( n n n -- )
    CONFIG-LOCK [: CONFIGURE-REGISTRY ;] [: CONFIG-UNLOCK ;] finally ;
 
-\ CONNECT hands back an owned connection the calling task closes exactly once.
+\ CONNECT-START hands back an attempt owned by the calling task. POLL advances
+\ it to connected or refused; CLOSE abandons it at any earlier point.
 \ The slot is claimed first, so the conninfo it stages and the message a
 \ refusal copies back are its own and no concurrent CONNECT shares them. A
 \ refusal releases the slot, and those message bytes stay readable until the
 \ next CONNECT takes it.
-: CONNECT ( ptr u8 n -- connect-result ) {: a u:n :}
+: CONNECT-START ( ptr u8 n -- connection ) {: a u:n :}
    INIT
    REGISTER-CLEANUP
    CLAIM-CONN-SLOT {: slot:n :}
@@ -1016,19 +1053,25 @@ public
       slot FAIL-CONNECTION
       E-CONNECT throw
    then
-   slot [: CONNECT-PROGRESS ;] catch {: status:n code:n :}
-   code 0<> if
-      slot FAIL-CONNECTION
-      code throw
-   then
-   status PGRES-POLLING-OK = if
-      slot CONN-HANDLE PG-CONNECT--RESULT:connected exit
-   then
-   slot COPY-CONN-MESSAGE
-   slot MESSAGE$ {: ma mu:n :}
-   slot CONN-PG@ LIB-FINISH
-   slot RETIRE-CONN-SLOT
-   ma mu PG-CONNECT--RESULT:refused ;
+   CONNECT-FIRST slot CONNECTING!
+   slot CONN-HANDLE ;
+
+
+: POLL ( connection -- progress )
+   CONN-SLOT POLL-SLOT ;
+
+
+: AWAIT ( connection -- progress )
+   CONN-SLOT WAIT-PROGRESS ;
+
+
+: CONNECT ( ptr u8 n -- connect-result )
+   CONNECT-START AWAIT MATCH progress
+      connected OF PG-CONNECT--RESULT:connected ENDOF
+      refused OF PG-CONNECT--RESULT:refused ENDOF
+      waiting OF 2drop E-CONNECT throw ENDOF
+      completed OF drop E-CONNECT throw ENDOF
+   ;MATCH ;
 
 
 \ CLOSE clears whatever results the connection still owns, so libpq keeps no
@@ -1041,29 +1084,50 @@ public
 \ TEXT+, INT+ and NULL+ append in $1, $2, ... order. EXEC and EXEC-PREPARED
 \ consume the list and leave it empty, so no call inherits another's parameters.
 : PARAMS ( connection -- )
-   CONN-SLOT RESET-PARAMS ;
+   CONN-SLOT dup IDLE-CHECK RESET-PARAMS ;
 
 
 : TEXT+ ( connection ptr u8 n -- ) {: handle:connection a u:n :}
    handle CONN-SLOT {: slot:n :}
+   slot IDLE-CHECK
    slot PARAM-ROOM
    a u slot ARENA-CSTR slot PARAM-OFF+ ;
 
 
 : INT+ ( connection n -- ) {: handle:connection value:n :}
    handle CONN-SLOT {: slot:n :}
+   slot IDLE-CHECK
    slot PARAM-ROOM
    value slot ARENA-INT slot PARAM-OFF+ ;
 
 
 : NULL+ ( connection -- ) {: handle:connection :}
    handle CONN-SLOT {: slot:n :}
+   slot IDLE-CHECK
    slot PARAM-ROOM
    NO-OFFSET slot PARAM-OFF+ ;
 
 
+: SEND ( connection ptr u8 n -- ) {: handle:connection a u:n :}
+   handle CONN-SLOT a u EXEC-START ;
+
+
+: SEND-SCRIPT ( connection ptr u8 n -- ) {: handle:connection a u:n :}
+   handle CONN-SLOT a u SCRIPT-START ;
+
+
+: SEND-PREPARE ( connection ptr u8 n ptr u8 n -- )
+   {: handle:connection na nu:n sa su:n :}
+   handle CONN-SLOT na nu sa su PREPARE-START ;
+
+
+: SEND-PREPARED ( connection ptr u8 n -- ) {: handle:connection a u:n :}
+   handle CONN-SLOT a u PREPARED-START ;
+
+
 : EXEC ( connection ptr u8 n -- result ) {: handle:connection a u:n :}
-   handle CONN-SLOT a u EXEC-RAW ;
+   handle a u SEND
+   handle CONN-SLOT WAIT-QUERY ;
 
 
 \ SCRIPT runs a whole script - a migration file, several statements in one
@@ -1073,16 +1137,19 @@ public
 \ failing statement abandons the rest, so the outcome ADT covers it unchanged.
 \ EXEC stays the default, because it is the one that takes parameters.
 : SCRIPT ( connection ptr u8 n -- result ) {: handle:connection a u:n :}
-   handle CONN-SLOT a u SCRIPT-RAW ;
+   handle a u SEND-SCRIPT
+   handle CONN-SLOT WAIT-QUERY ;
 
 
 : PREPARE ( connection ptr u8 n ptr u8 n -- result )
    {: handle:connection na nu:n sa su:n :}
-   handle CONN-SLOT na nu sa su PREPARE-RAW ;
+   handle na nu sa su SEND-PREPARE
+   handle CONN-SLOT WAIT-QUERY ;
 
 
 : EXEC-PREPARED ( connection ptr u8 n -- result ) {: handle:connection a u:n :}
-   handle CONN-SLOT a u PREPARED-RAW ;
+   handle a u SEND-PREPARED
+   handle CONN-SLOT WAIT-QUERY ;
 
 
 \ The body receives the connection and returns it, which is what lets it cross
