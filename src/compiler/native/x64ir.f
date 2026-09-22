@@ -786,10 +786,10 @@ public
 \ NO write-back key - x86-64 has no write-back addressing, so no transfer form
 \ moves the data-stack pointer in its own encoding and no symbol names one.
 \
-\ The stand is `entry` because that is what src/compiler/native/select-x64.f
-\ does: the entry transfer takes every argument's bytes at once, so the body
-\ stands at the base that transfer leaves the pointer at and never moves it
-\ again until the exit publishes.
+\ The stand is `entry-base` because that is what
+\ src/compiler/native/select-x64.f does: the entry transfer takes every
+\ argument's bytes at once, so the body stands at the base that transfer leaves
+\ the pointer at and never moves it again until the exit publishes.
 
 : VOCABULARY ( IR-CTX:ctx IR-BUILD:builder -- NDIALECT:vocab )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
@@ -805,7 +805,7 @@ public
    c b X64IR-OPCODE:MOV OPCODE
    c b X64IR-OPCODE:MOVI OPCODE
    ADDR-LANES SLOT-WIDTH
-   NDIALECT-DSTAND:ENTRY
+   NDIALECT-DSTAND:ENTRY-BASE
    NDIALECT-VOCAB:MAKE ;
 
 \ ---- what this dialect tells the spill rewriter about itself ------------------

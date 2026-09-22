@@ -265,8 +265,8 @@ DYNAMIC-BUFFER D-ORDER IR-ID:ir-value-id
 \ choice is this dialect's policy and a64ir.f VOCABULARY states it as the
 \ `stand` field of the vocabulary (NDIALECT:dstand `survey`,
 \ src/compiler/native/dialect.f), which is what regalloc-verify.f VDPLACE-CK
-\ re-derives a module against - the x86-64 selector states `entry` there and is
-\ measured against its own policy.
+\ re-derives a module against - the x86-64 selector states `entry-base` there
+\ and is measured against its own policy.
 256 constant DREQ-MAX                \ places one routine's survey holds
 
 here CELL 1- and CELL swap - CELL 1- and allot

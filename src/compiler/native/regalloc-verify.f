@@ -2171,15 +2171,15 @@ DKEEP-HOOK-DEFAULT
    VD-REQ-N @ 0 ?do  i cells VD-REQ + @ VDPLACE-TRY  loop
    VD-BEST @ VD-STAND @ <> if E-A64RAV-DSTACK throw then ;
 
-\ The `entry` policy checked: the entry transfer takes every argument's bytes,
-\ so the body stands at the base that transfer leaves the pointer at. That base
-\ is zero in the offsets VDSTAND-AT measures - the entry position less every
-\ byte taken there - and a module whose entry took fewer bytes stands somewhere
-\ else and is refused. Measured on `( a b -- n ) -` selected by X64SEL: the
-\ entry `x64.dtake` moves all 16 bytes of a 16-byte interface.
+\ The `entry-base` policy checked: the entry transfer takes every argument's
+\ bytes, so the body stands at the base that transfer leaves the pointer at.
+\ That base is zero in the offsets VDSTAND-AT measures - the entry position less
+\ every byte taken there - and a module whose entry took fewer bytes stands
+\ somewhere else and is refused. Measured on `( a b -- n ) -` selected by
+\ X64SEL: the entry `x64.dtake` moves all 16 bytes of a 16-byte interface.
 0 constant DSTAND-BASE
 
-: VDPLACE-ENTRY-CK ( -- )
+: VDPLACE-ENTRY-BASE-CK ( -- )
    VD-STAND @ DSTAND-BASE <> if E-A64RAV-DSTACK throw then ;
 
 \ Which of the two the module is measured against is the DIALECT's word, from
@@ -2190,8 +2190,8 @@ DKEEP-HOOK-DEFAULT
    V-TAIL @ 0<> if exit then
    VD-REQ-OVER @ 0<> if exit then
    0 BND-STAND @ MATCH NDIALECT:dstand
-      survey OF VDPLACE-SURVEY-CK ENDOF
-      entry  OF VDPLACE-ENTRY-CK ENDOF
+      survey     OF VDPLACE-SURVEY-CK ENDOF
+      entry-base OF VDPLACE-ENTRY-BASE-CK ENDOF
    ;MATCH ;
 
 \ Which of the two shapes this module has to have is the CONTRACT's declaration:

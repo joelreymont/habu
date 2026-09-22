@@ -36,7 +36,7 @@
 \ and stands where the fewest need an adjustment, X64SEL takes every argument's
 \ bytes at the entry and publishes every result's at the exit. The dialect is
 \ what states which of the two it is - the vocabulary's `stand` field, `survey`
-\ for a64ir and `entry` for x64ir (dialect.f NDIALECT:dstand) - and
+\ for a64ir and `entry-base` for x64ir (dialect.f NDIALECT:dstand) - and
 \ regalloc-verify.f VDPLACE-CK measures a module against the policy its dialect
 \ states rather than re-deriving one of them. The leaf case below is that fact
 \ measured.
@@ -352,7 +352,7 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 \ The other contract of this machine: the interface is two caller cells in and
 \ one out, so the selector writes the boundary and the validator has a stand to
 \ measure. It is x86-64's own policy that is measured, because the vocabulary
-\ x64ir builds states `entry` and the validator reads it there.
+\ x64ir builds states `entry-base` and the validator reads it there.
 : DLEAF ( -- NEFF:routine )
    X64ABI:SCRATCH 2 1 X64ABI:LEAF ;
 
@@ -770,7 +770,7 @@ public
    WBND [: SQUARE-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 0 T= 1 T= 1 T= 0 T= 3 T=
 
-   s" the same leaf under the data-stack convention allocates and is accepted: the validator measures the stand against the `entry` policy x64ir states, where re-deriving A64SEL's survey refused this module with E-A64RAV-DSTACK" T-LABEL
+   s" the same leaf under the data-stack convention allocates and is accepted: the validator measures the stand against the `entry-base` policy x64ir states, where re-deriving A64SEL's survey refused this module with E-A64RAV-DSTACK" T-LABEL
    WBND [: DSTACK-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 0 T= 0 T= 1 T= 0 T= 7 T=
 

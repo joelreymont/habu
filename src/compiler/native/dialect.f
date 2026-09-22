@@ -87,13 +87,14 @@ SUMTYPE optsym 0
 \ fewest boundary transfers need an adjustment, which is a place the body's own
 \ call sites decide and a reader has to re-derive.
 \
-\ `entry` is src/compiler/native/select-x64.f's: the entry transfer takes every
-\ argument's bytes at once, so the body stands at the base that transfer leaves
-\ it at and the exit publishes every result's - one adjustment at each end and
-\ none in between.
+\ `entry-base` is src/compiler/native/select-x64.f's: the entry transfer takes
+\ every argument's bytes at once, so the body stands at the BASE that transfer
+\ leaves the pointer at and the exit publishes every result's - one adjustment
+\ at each end and none in between. The name says the place, not the moment: the
+\ body stands there for its whole length, not only at the entry.
 SUMTYPE dstand 0
    VARIANT survey ;VARIANT
-   VARIANT entry ;VARIANT
+   VARIANT entry-base ;VARIANT
 ;SUMTYPE
 
 \ ---- one dialect's vocabulary ------------------------------------------------
