@@ -1,19 +1,11 @@
 \ gate-build-hbb.f - checked in-process hb-build helpers for positive AOT gates.
 
-\ tools/build-fixpoint.f requires none of its lib preamble by design - its
-\ --load list is caller-composed - so this file names that preamble here.
-require lib/errors.f
-require lib/string.f
-require lib/memory.f
 require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/codesign.f
-require tools/build-fixpoint.f
-require tools/cli-run.f
 require tools/hb-build-lib.f
+\ tools/build-fixpoint.f requires none of its lib preamble by design - its
+\ --load list is caller-composed - and hb-build-lib.f above composes it, so
+\ this require of the BF-TMP surface must stay below that line.
+require tools/build-fixpoint.f
 require test/gate-build-common.f
 
 using BUILD-FIXPOINT                     \ the build tmp root

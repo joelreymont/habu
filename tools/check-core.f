@@ -1,14 +1,29 @@
 \ check-core.f - reusable Habu-native checked engine core.
-\ Load after lib/date.f, lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f,
-\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/lint/json-writer.f, tools/lint/source-lex.f,
-\ tools/diag-origin-core.f, tools/json.f, tools/json-only-core.f,
-\ tools/checked-boundary-lint-core.f, tools/reserved-name-lint-core.f,
-\ tools/check-all-errors-core.f (which loads verify-source.f), and lib/argv.f.
-\ The dependency-closure producer (whole-file ordered loader events) and its
-\ dynamic-tail manifest are required below.
 
+require lib/date.f
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/vector.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/source.f
+require lib/argv.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/lint/json-writer.f
+require tools/lint/source-lex.f
+require tools/json.f
+require tools/json-only-core.f
+require tools/diag-origin-core.f
+require tools/checked-boundary-lint-core.f
+require tools/reserved-name-lint-core.f
+require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
+\ The dependency-closure producer (whole-file ordered loader events) and its
+\ dynamic-tail manifest.
 require tools/dynamic-tail-manifest.f
 require tools/source-discovery.f
 

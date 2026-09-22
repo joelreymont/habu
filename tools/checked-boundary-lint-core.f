@@ -1,7 +1,10 @@
 \ checked-boundary-lint-core.f - forbid broad unchecked definitions.
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, and
-\ tools/lint/json-writer.f.
 
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/fs.f
+require tools/lint/json-writer.f
 require tools/hook-sites.f                     \ single registry of audited hook identities
 
 package CHECKED-BOUNDARY-LINT

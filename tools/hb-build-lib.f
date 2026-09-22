@@ -1,16 +1,27 @@
 \ hb-build-lib.f - native AOT/REPL build CLI library.
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f,
-\ lib/memory.f, lib/source.f, lib/codesign.f, lib/content-key.f,
-\ lib/object-resolve.f, lib/build-cache.f, lib/json-write.f,
-\ tools/hb-build-report.f, tools/object-image.f, tools/build-fixpoint.f,
-\ tools/image-size-lib.f and tools/cli-run.f.
 
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
+require lib/source.f
+require lib/build.f
+require lib/codesign.f
+require lib/content-key.f
 require lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer
 require lib/string-roles.f               \ package STR: the typed string surface
 require lib/object-resolve.f
 require lib/build-cache.f
 require lib/json-write.f
+\ tools/build-fixpoint.f is the caller-composed depth-0 --load entry: it
+\ requires none of the lib preamble its header names, so the lib requires
+\ above are also its load list and must precede this line.
+require tools/build-fixpoint.f
+require tools/cli-run.f
 require tools/hb-build-report.f
 require tools/object-image.f
 require tools/event-closure-lib.f

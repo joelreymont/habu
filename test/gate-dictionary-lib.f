@@ -1,14 +1,6 @@
 \ gate-dictionary.f - checked runner for dictionary and checker contracts.
 
 require lib/fs.f
-require lib/vector.f
-\ tools/check-all-errors-core.f names its load list in its header and requires
-\ none of it; lib/vector.f and the lint files here are that preamble.
-require tools/lint/text.f
-require tools/lint/token.f
-require tools/lint/lib.f
-require tools/lint/json-writer.f
-require tools/lint/source-lex.f
 require tools/check-all-errors-core.f
 require test/gate-common.f
 

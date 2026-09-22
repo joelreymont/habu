@@ -1,5 +1,9 @@
-\ json-writer.f - small emit-only JSON writer for native lints.
-\ Load after tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f. This is intentionally smaller than tools/json.f.
+\ json-writer.f - small emit-only JSON writer for native lints. This is
+\ intentionally smaller than tools/json.f.
+
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
 
 $4000 constant LJW-CAP
 32 constant LJW-NUM-CAP

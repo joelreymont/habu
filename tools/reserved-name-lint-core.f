@@ -6,10 +6,16 @@
 \ or $hex ($FF) - is unreachable. Names with a dot-digit tail (U.0) are also
 \ rejected: one inserted space turns the tail into a float literal, and
 \ generators misread them as float spellings (the lib/fmt.f .0/U.0 incident).
-\
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
-\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/lint/json-writer.f, and tools/lint/source-lex.f.
+
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/fs.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/lint/json-writer.f
+require tools/lint/source-lex.f
 
 package RESERVED-NAME-LINT
 private

@@ -1,6 +1,11 @@
 \ diag-origin-core.f - inject checker diagnostic origin markers before definitions.
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, tools/lint/text.f,
-\ tools/lint/token.f, and tools/lint/lib.f.
+
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
 
 $40000 constant DO-FILE-CAP
 32 constant DO-NUM-CAP

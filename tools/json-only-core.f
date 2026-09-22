@@ -1,5 +1,8 @@
 \ json-only-core.f - JSON diagnostic line filter core.
-\ Load after lib/errors.f, lib/memory.f, and tools/json.f.
+
+require lib/errors.f
+require lib/memory.f
+require tools/json.f
 
 \ Checked filter. Raw fd primitives are used through checked effects.
 

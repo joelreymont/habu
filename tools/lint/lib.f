@@ -1,5 +1,7 @@
 \ lib.f - shared scanner foundation for native lint tools.
-\ Load after tools/lint/text.f and tools/lint/token.f.
+
+require tools/lint/text.f
+require tools/lint/token.f
 
 \ ---- named scanners replacing the former regex use-cases ------------------
 \ Scanner captures remain in shared cells for scanner callers; scanner logic is

@@ -1,6 +1,4 @@
 \ object-image.f - build-internal native image writer for linked OBJ text.
-\
-\ Load after lib/object-link.f and src/habu/driver-io.f.
 
 require lib/errors.f
 require lib/string.f
@@ -26,42 +24,44 @@ require src/arch/arm64/mnem.f
 \ below answers "is driver-io.f loaded", which is a different question.
 require src/habu/fdio.f
 
-: OBJIMG-WORD? ( ptr u8 n -- bool )
-   XREF-FIND 0= 0= ;
-
+\ The target sources below are `require`d for the reason the encoders above
+\ are: a word probe ("is SYS, / BUILD-IMAGE / DRV-WRITE-IMAGE defined?") asks
+\ whether some file defined that word, and an `include` behind a false probe
+\ loads a file a second time. tools/native-emit.f `require`s the same target
+\ sys.f, elf.f, sign.f, image-bytes.f and driver-io.f, so an image holding both
+\ died with `duplicate definition: MAP-ANON-PRIVATE at src/os/linux/sys.f:6`
+\ (test/compiler/aot-xt-cells.f). The require registry is the one record of
+\ what this image loaded, and it is keyed by path, so both sites now share it.
 : OBJIMG-LOAD-SYS ( -- )
-   s" SYS," OBJIMG-WORD? if exit then
-   HB-TARGET-LINUX? if s" src/os/linux/sys.f" included exit then
-   HB-TARGET-MACOS? if s" src/os/macos/sys.f" included exit then
-   HB-TARGET-LINUX-X86-64? if s" src/os/linux-x86-64/sys.f" included exit then
+   HB-TARGET-LINUX? if s" src/os/linux/sys.f" required exit then
+   HB-TARGET-MACOS? if s" src/os/macos/sys.f" required exit then
+   HB-TARGET-LINUX-X86-64? if s" src/os/linux-x86-64/sys.f" required exit then
    E-OBJ-SCHEMA throw ;
 
 : OBJIMG-LOAD-TARGET-IMAGE ( -- )
    HB-TARGET-LINUX? if
-      s" src/os/linux/elf.f" included
-      s" src/os/linux/sign.f" included
+      s" src/os/linux/elf.f" required
+      s" src/os/linux/sign.f" required
       exit
    then
    HB-TARGET-MACOS? if
-      s" src/os/macos/macho.f" included
-      s" src/os/macos/sign2.f" included
+      s" src/os/macos/macho.f" required
+      s" src/os/macos/sign2.f" required
       exit
    then
    HB-TARGET-LINUX-X86-64? if
-      s" src/os/linux-x86-64/elf.f" included
-      s" src/os/linux-x86-64/sign.f" included
+      s" src/os/linux-x86-64/elf.f" required
+      s" src/os/linux-x86-64/sign.f" required
       exit
    then
    E-OBJ-SCHEMA throw ;
 
 : OBJIMG-LOAD-IMAGE ( -- )
-   s" BUILD-IMAGE" OBJIMG-WORD? if exit then
-   s" src/os/image-bytes.f" included
+   s" src/os/image-bytes.f" required
    OBJIMG-LOAD-TARGET-IMAGE ;
 
 : OBJIMG-LOAD-DRIVER ( -- )
-   s" DRV-WRITE-IMAGE" OBJIMG-WORD? if exit then
-   s" src/habu/driver-io.f" included ;
+   s" src/habu/driver-io.f" required ;
 
 OBJIMG-LOAD-SYS
 OBJIMG-LOAD-IMAGE
