@@ -12,6 +12,14 @@ drains the ring and, for each operation that finished, stores its result and
 the await is a `TASK:STOP` loop over the record's state, so it costs no CPU and
 no thread of its own.
 
+An `AIO:ticket` and an `AIO:xfer` are nominal cells over the index of the record
+the operation holds **and the generation that record carried when the handle was
+minted**; both converters are private, so no caller mints one. Releasing a
+record bumps its generation, so a handle kept past its record's reuse - even a
+reuse by the task that holds the handle, which the index and the owner cannot
+tell apart from a live handle - names a generation no record has, and every word
+that takes a handle refuses it with `E-AIO-STATE`.
+
 ```forth
 AIO:LOOP-START                                   \ once, after compilation
 : SERVE ( -- )                                   \ inside a task
@@ -83,7 +91,13 @@ do about every arm:
 
 - A ticket belongs to the task that submitted it: an `AIO:AWAIT` from another
   task is `E-AIO-STATE`, and so is a second await of the same ticket - the first
-  one released the record.
+  one released the record - and so is an await of a ticket whose record has
+  since been claimed by another operation. `AIO:CANCEL`, `AIO:CANCEL-XFER`,
+  `AIO:GROUP+` and the scan `AIO:AWAIT-ANY` makes over its group refuse a stale
+  handle the same way. A `GROUP-` is the exception: the group holds the handle
+  cell it was given, so a ticket the group never held is `E-AIO-GROUP` whether
+  it is stale or live, and a member whose record was reused can still be taken
+  out of the group.
 - `AIO:POLL-ADD` with `ms` at or above zero links an `IORING_OP_LINK_TIMEOUT`
   behind the poll with `IOSQE_IO_LINK`. The kernel posts both completions - the
   poll's `-ECANCELED` and the timeout's `-ETIME` - so the record owes two and
@@ -134,6 +148,14 @@ lands, hand `AIO:READ` an allocation and forget the pointer.
   it. The transfer keeps the allocation and the loop releases it when that late
   completion arrives. A program that catches `E-AIO-ENTER` must not touch or
   release those bytes.
+- `AIO:AWAIT-XFER` takes a transfer once, and only while the record is still the
+  one its handle was minted over. The generation check runs before the record is
+  taken, which is what keeps a stale handle from freeing a record another
+  operation is using: a stale `AIO:ticket` over a record that now holds a
+  transfer would otherwise clear `REC.HOLD` without releasing the bytes, and a
+  stale `AIO:xfer` over a record that now holds a poll or a timer would answer a
+  null pointer with an extent row of its own. Both are `E-AIO-STATE` and both
+  directions are pinned in `lib/aio-test.f`.
 - `AIO:CANCEL-XFER` is `AIO:CANCEL` for a transfer, and just as much a request:
   a cancel of a `READ` on a regular file may lose the race and the outcome is
   then `ready`, because such a read can be served before it is ever cancellable.

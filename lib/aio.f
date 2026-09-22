@@ -27,8 +27,10 @@ package AIO
 public
 
 \ The handle a submission answers with: a nominal cell over the index of a
-\ record this package owns, never an address. Both converters are private, so
-\ no caller can mint a ticket over a record it did not submit.
+\ record this package owns and the generation that record carried when the
+\ handle was minted, never an address. Both converters are private, so no
+\ caller can mint a ticket over a record it did not submit, and a handle kept
+\ past its record's reuse names a generation no record has: E-AIO-STATE.
 NEWTYPE ticket 0
 
 \ A set of tickets one AWAIT-ANY waits on, as the index of a row this package
@@ -165,6 +167,7 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.PEER             \ the link's record, or -1
    CELL +FIELD REC.TIMED-OUT        \ the link fired, so -ECANCELED means timed out
    CELL +FIELD REC.HOLD             \ this record owns the allocation in its two rows
+   CELL +FIELD REC.GEN              \ the handle's other half, bumped by REC-FREE
    SPEC-BYTES +FIELD REC.SPEC       \ the timespec a TIMEOUT or a link submits
 END-STRUCTURE
 
@@ -336,6 +339,31 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 : REC-STATE@ ( n -- n )
    REC REC.STATE atomic@ ;
 
+\ ---- handles -----------------------------------------------------------------
+\ A ticket and an xfer are `gen MAX-OPS * idx +`: the record they name and the
+\ generation that record carried when the handle was minted. REC-FREE bumps the
+\ generation, so a handle kept past its record's reuse names a generation no
+\ record has and OWNED-CHECK refuses it - which the index and the owner alone
+\ cannot do, because a record reclaimed by the same task has both of them right.
+\ The generation is unbounded and the product wraps modularly, which is fine: a
+\ generation only has to differ from the ones live handles still carry, and one
+\ record would have to be freed 2^55 times in one run for the product to leave
+\ the cell. Division here is symmetric (-1 MAX-OPS mod is -1), so a handle that
+\ did wrap past the top decodes to a negative index, which OWNED-CHECK refuses.
+\ A mint reads the record's generation after the facility is released, which is
+\ safe: between the stage and the mint the record is submitted and this task's,
+\ and REC-FREE reaches a record only as its owner's TAKE, as the last completion
+\ of a forgotten one, as a link record, as a staging failure that mints nothing,
+\ or as LOOP-START clearing the whole table.
+: IDX>HANDLE ( n -- n ) {: idx:n :}
+   idx REC REC.GEN @ MAX-OPS * idx + ;
+
+: HANDLE>IDX ( n -- n )
+   MAX-OPS mod ;
+
+: HANDLE>GEN ( n -- n )
+   MAX-OPS / ;
+
 : AIO-NULL ( -- ptr n )
    NULL$ drop CELL-VIEW ;
 
@@ -346,11 +374,14 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 \ the pair is readable and nothing in this package mints an alloc-byte-len to
 \ clear the extent row with. A record whose HOLD is zero never has its extent
 \ read.
+\ The generation is bumped here and nowhere else, before the state goes free, so
+\ every handle over this record is stale from the moment somebody can claim it.
 : REC-FREE ( n -- ) {: idx:n :}
    idx REC {: r:ptr :}
    0 r REC.RES ! 0 r REC.FLAGS ! 0 r REC.TIMED-OUT !
    0 r REC.PENDING ! -1 r REC.PEER ! KIND-POLL r REC.KIND !
    0 r REC.HOLD !
+   r REC.GEN @ 1 + r REC.GEN !
    AIO-NULL-BYTES idx REC-BUF !
    AIO-NULL idx REC-OWNER !
    STATE-FREE r REC.STATE atomic! ;
@@ -783,10 +814,16 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    idx REC-FREE
    AIO-LOCK TASK:RELEASE ;
 
-: OWNED-CHECK ( n -- ) {: idx:n :}
+\ The one boundary between a public handle and a record index: a handle goes in
+\ and the index it names comes out. A bad range, a free record, another task's
+\ record and a generation the record no longer carries are all E-AIO-STATE.
+: OWNED-CHECK ( n -- n ) {: h:n :}
+   h HANDLE>IDX {: idx:n :}
    idx 0 < idx MAX-OPS >= or if E-AIO-STATE throw then
    idx REC-STATE@ STATE-FREE = if E-AIO-STATE throw then
-   idx REC-OWNER @ FFI:>CELL TASK:SELF-N <> if E-AIO-STATE throw then ;
+   idx REC-OWNER @ FFI:>CELL TASK:SELF-N <> if E-AIO-STATE throw then
+   h HANDLE>GEN idx REC REC.GEN @ <> if E-AIO-STATE throw then
+   idx ;
 
 \ The wait: a hint returns the task to its own state, which is the record's.
 \ The PAUSE is what lets a TASK:HALT end a task parked here, exactly as
@@ -809,9 +846,9 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
 
 \ One cancel body for both handles: the public words differ only in the type
 \ they take apart, so neither of them has to name a record index.
-: CANCEL-IDX ( n -- ) {: idx:n :}
+: CANCEL-HANDLE ( n -- ) {: h:n :}
    RUNNING-CHECK
-   idx OWNED-CHECK
+   h OWNED-CHECK {: idx:n :}
    AIO-LOCK TASK:GET
    idx CANCEL-STAGE {: rc:n :}
    AIO-LOCK TASK:RELEASE
@@ -836,7 +873,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    f buf cap count off kind XFER-STAGE {: rc:n idx:n :}
    AIO-LOCK TASK:RELEASE
    rc 0 <> if rc throw then
-   idx >XFER ;
+   idx IDX>HANDLE >XFER ;
 
 : SOCK-SUBMIT ( n n n n -- ticket ) {: f:n addr:n off:n kind:n :}
    RUNNING-CHECK
@@ -845,7 +882,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    f addr off kind SOCK-STAGE {: rc:n idx:n :}
    AIO-LOCK TASK:RELEASE
    rc 0 <> if rc throw then
-   idx >TICKET ;
+   idx IDX>HANDLE >TICKET ;
 
 \ ---- groups ------------------------------------------------------------------
 : G-ROW ( n -- ptr n ) {: g:n :}
@@ -862,16 +899,19 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    i 0 < i GROUP-MAX >= or if E-AIO-GROUP throw then
    g G-ROW i 1 + cells + ;
 
-: G-FIND ( n n -- n ) {: g:n idx:n :}
+\ A slot holds the handle cell the caller gave GROUP+, not the record index, so
+\ a stale ticket matches nothing the group holds and GROUP- of one is
+\ E-AIO-GROUP.
+: G-FIND ( n n -- n ) {: g:n h:n :}
    g G-COUNT@ 0 ?do
-      g i G-SLOT @ idx = if i unloop exit then
+      g i G-SLOT @ h = if i unloop exit then
    loop
    -1 ;
 
-: G-ADD ( n n -- ) {: g:n idx:n :}
+: G-ADD ( n n -- ) {: g:n h:n :}
    g G-COUNT@ {: n:n :}
    n GROUP-MAX >= if E-AIO-GROUP throw then
-   idx g n G-SLOT !
+   h g n G-SLOT !
    n 1 + g G-COUNT! ;
 
 : G-REMOVE-AT ( n n -- ) {: g:n at:n :}
@@ -884,18 +924,20 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    GROUP-N @ dup 1 + GROUP-N ! ;
 
 \ The first ticket of the group whose record is done, or -1. Every ticket in the
-\ group must belong to the calling task.
+\ group must belong to the calling task and still name the record it was minted
+\ over, which is what OWNED-CHECK answers the index for.
 : G-READY ( n -- n ) {: g:n :}
    g G-COUNT@ 0 ?do
-      g i G-SLOT @ OWNED-CHECK
-      g i G-SLOT @ REC-STATE@ STATE-DONE = if i unloop exit then
+      g i G-SLOT @ OWNED-CHECK REC-STATE@ STATE-DONE = if i unloop exit then
    loop
    -1 ;
 
+\ The ticket the caller gets back is the slot's own handle cell, so it is the
+\ one GROUP+ was given; the record it is taken by is the index inside it.
 : G-TAKE-AT ( n n -- ticket outcome ) {: g:n at:n :}
-   g at G-SLOT @ {: idx:n :}
+   g at G-SLOT @ {: h:n :}
    g at G-REMOVE-AT
-   idx >TICKET idx TAKE ;
+   h >TICKET h HANDLE>IDX TAKE ;
 
 : AWAIT-GROUP ( n -- ticket outcome ) {: g:n :}
    g G-COUNT@ 0= if E-AIO-GROUP throw then
@@ -964,7 +1006,7 @@ public
    f FD>N events timeout MS>N POLL-STAGE {: rc:n idx:n :}
    AIO-LOCK TASK:RELEASE
    rc 0 <> if rc throw then
-   idx >TICKET ;
+   idx IDX>HANDLE >TICKET ;
 
 \ Fires once, after ms milliseconds. The outcome is timed-out, or cancelled when
 \ a CANCEL reached it first.
@@ -975,28 +1017,27 @@ public
    timeout MS>N TIMEOUT-STAGE {: rc:n idx:n :}
    AIO-LOCK TASK:RELEASE
    rc 0 <> if rc throw then
-   idx >TICKET ;
+   idx IDX>HANDLE >TICKET ;
 
 \ Asks the kernel to end that operation. It does not wait: the ticket still has
 \ to be AWAITed, and answers cancelled once the kernel has ended it.
 : CANCEL ( ticket -- )
-   TICKET>N CANCEL-IDX ;
+   TICKET>N CANCEL-HANDLE ;
 
 \ The same for a transfer. A cancel of a READ on a regular file may lose the
 \ race and the outcome is then ready, because such a read can be served without
 \ ever becoming cancellable; a cancel is a request, not a guarantee.
 : CANCEL-XFER ( xfer -- )
-   XFER>N CANCEL-IDX ;
+   XFER>N CANCEL-HANDLE ;
 
 \ Blocks until that operation has ended and answers its outcome, releasing the
 \ record. Only the task that submitted the ticket may await it, and only once:
-\ a ticket whose record is free, and one another task owns, are E-AIO-STATE.
+\ a ticket whose record is free, one another task owns, and one whose record has
+\ since been reused - even by this task - are E-AIO-STATE.
 \ The wait is a TASK:STOP loop, so the main thread may await too.
 : AWAIT ( ticket -- outcome ) {: t:ticket :}
    RUNNING-CHECK
-   t TICKET>N {: idx:n :}
-   idx OWNED-CHECK
-   idx AWAIT-ONE ;
+   t TICKET>N OWNED-CHECK AWAIT-ONE ;
 
 \ ---- the completion operations -----------------------------------------------
 \ READ and WRITE hand the transfer a MEM allocation - the pointer and the extent
@@ -1040,13 +1081,12 @@ public
 
 \ Waits for that transfer and answers the allocation with its outcome, in that
 \ order. This is the only word that gives the bytes back. Only the task that
-\ submitted the transfer may await it, and only once: both are E-AIO-STATE,
-\ exactly as for a ticket.
+\ submitted the transfer may await it, and only once, and only while its record
+\ is still the one it was minted over: all three are E-AIO-STATE, exactly as for
+\ a ticket.
 : AWAIT-XFER ( xfer -- ptr u8 NUM:alloc-byte-len outcome ) {: x:xfer :}
    RUNNING-CHECK
-   x XFER>N {: idx:n :}
-   idx OWNED-CHECK
-   idx AWAIT-XFER-ONE ;
+   x XFER>N OWNED-CHECK AWAIT-XFER-ONE ;
 
 \ Defines one group:  AIO:GROUP WAITERS   \ WAITERS ( -- AIO:group )
 : GROUP ( -- )
@@ -1055,11 +1095,14 @@ public
    does> ( -- group ) @ >GROUP ;
 
 : GROUP+ ( ticket group -- ) {: t:ticket g:group :}
-   t TICKET>N {: idx:n :}
-   idx OWNED-CHECK
-   g GROUP>N idx G-ADD ;
+   t TICKET>N {: h:n :}
+   h OWNED-CHECK drop
+   g GROUP>N h G-ADD ;
 
-\ A ticket the group does not hold is E-AIO-GROUP.
+\ The group holds the handle cell GROUP+ was given, so this matches the caller's
+\ handle exactly: a ticket the group never held is E-AIO-GROUP whether it is
+\ stale or live, and a member whose record has since been reused can still be
+\ taken out of the group.
 : GROUP- ( ticket group -- ) {: t:ticket g:group :}
    g GROUP>N t TICKET>N G-FIND {: at:n :}
    at 0 < if E-AIO-GROUP throw then

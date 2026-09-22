@@ -86,6 +86,10 @@ FULL-N TYPED-BUFFER FULL-TICKETS AIO:ticket
 TYPED-VARIABLE ANY-CUR AIO:ticket
 TYPED-VARIABLE LONE-TICKET AIO:ticket
 TYPED-VARIABLE LONE-XFER AIO:xfer
+TYPED-VARIABLE STALE-TICKET AIO:ticket  \ a handle whose record has been reused,
+TYPED-VARIABLE STALE-XFER AIO:xfer      \ and the live operation now on it
+TYPED-VARIABLE LIVE-TICKET AIO:ticket
+TYPED-VARIABLE LIVE-XFER AIO:xfer
 TYPED-VARIABLE XB-PTR ptr u8          \ an allocation a quotation has to reach, and
 TYPED-VARIABLE XB-CAP NUM:alloc-byte-len   \ so cannot hold in a local of its own
 TYPED-VARIABLE FORGET-PTR ptr u8
@@ -563,6 +567,80 @@ TASK:MIN-STACK TASK:TASK FAN7
    [: LONE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] E-AIO-STATE TTHROWSQ
    P-R P-W PIPE-CLOSE ;
 
+\ ---- 17: a handle kept past its record's reuse ------------------------------
+\ A handle is the record's index and the generation that record carried when the
+\ handle was minted, and REC-FREE bumps the generation, so a handle whose record
+\ this very task has reclaimed is E-AIO-STATE - the one case the index and the
+\ owner cannot tell apart from a live handle. The three cases reuse the record
+\ on purpose: the settle each of them starts with leaves nothing of an earlier
+\ case in flight, the claim takes the lowest free record, and nothing frees a
+\ record between the await and the next submission, so the second operation
+\ lands on the record the first one just gave back. Each case asserts that
+\ before it asserts a refusal.
+\ Projecting a foreign nominal out is allowed anywhere; minting one is not, so
+\ these two read a handle without being able to make one.
+CAST: TICKET>N ( AIO:ticket -- n )
+CAST: XFER>N ( AIO:xfer -- n )
+
+: HANDLE-IDX ( n -- n )
+   AIO:MAX-OPS mod ;
+
+\ Two handles over one record, one generation apart.
+: REUSED ( n n -- ) {: live:n stale:n :}
+   live HANDLE-IDX stale HANDLE-IDX T=
+   live stale - AIO:MAX-OPS T= ;
+
+: CASE-STALE-TICKET ( -- )
+   SETTLE-MS TASK:SLEEP
+   1 >MS AIO:TIMEOUT STALE-TICKET !
+   STALE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
+   1 >MS AIO:TIMEOUT LIVE-TICKET !
+   LIVE-TICKET @ TICKET>N STALE-TICKET @ TICKET>N REUSED
+   [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
+   [: STALE-TICKET @ ANY-GROUP AIO:GROUP+ ;] E-AIO-STATE TTHROWSQ
+   [: STALE-TICKET @ ANY-GROUP AIO:GROUP- ;] E-AIO-GROUP TTHROWSQ
+   ANY-GROUP AIO:GROUP-COUNT 0 T=
+   LIVE-TICKET @ AWAIT>N MARK-TIMED-OUT T= ;
+
+\ The record now holds a timer, whose buffer rows are null: without the
+\ generation this AWAIT-XFER would hand back that null pointer with the extent
+\ row of a transfer that ended long ago.
+: CASE-STALE-XFER ( -- )
+   P-R P-W PIPE-OPEN
+   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
+   SETTLE-MS TASK:SLEEP
+   P-R @ >FD buf cap XFER-N 0 AIO:READ STALE-XFER !
+   P-W @ POKE
+   STALE-XFER @ AIO:AWAIT-XFER {: rb rcap:NUM:alloc-byte-len out:AIO:outcome :}
+   out OUTCOME>N 1 T=
+   rb rcap MEM:RELEASE-BYTES
+   1 >MS AIO:TIMEOUT LIVE-TICKET !
+   LIVE-TICKET @ TICKET>N STALE-XFER @ XFER>N REUSED
+   [: STALE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] E-AIO-STATE TTHROWSQ
+   LIVE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
+   P-R P-W PIPE-CLOSE ;
+
+\ The other order, which is where the allocation would leak: the record a stale
+\ ticket names now holds a transfer that owns a MEM allocation. The refusal is
+\ in OWNED-CHECK and AWAIT reaches TAKE only after it, so the record is not
+\ freed under the transfer's feet and REC.HOLD is not cleared without a
+\ RELEASE-BYTES - the bytes come back out of AWAIT-XFER below, which is the only
+\ word that answers them, and this case releases them itself.
+: CASE-STALE-OVER-XFER ( -- )
+   P-R P-W PIPE-OPEN
+   SETTLE-MS TASK:SLEEP
+   1 >MS AIO:TIMEOUT STALE-TICKET !
+   STALE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
+   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
+   P-R @ >FD buf cap XFER-N 0 AIO:READ LIVE-XFER !
+   LIVE-XFER @ XFER>N STALE-TICKET @ TICKET>N REUSED
+   [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
+   P-W @ POKE
+   LIVE-XFER @ AIO:AWAIT-XFER {: rb rcap:NUM:alloc-byte-len out:AIO:outcome :}
+   out OUTCOME>N 1 T=
+   rb rcap MEM:RELEASE-BYTES
+   P-R P-W PIPE-CLOSE ;
+
 \ ---- 16: a transfer its task never awaited ----------------------------------
 \ The task ends with the READ in flight; its cleanup forgets and cancels it, and
 \ the loop releases the allocation when the kernel's completion arrives - not
@@ -689,6 +767,9 @@ TASK:MIN-STACK TASK:TASK FAN7
    CASE-FAN
    CASE-OWNER-REFUSAL
    CASE-AWAIT-TWICE
+   CASE-STALE-TICKET
+   CASE-STALE-XFER
+   CASE-STALE-OVER-XFER
    CASE-BUSY
    CASE-FULL
    CASE-XFER-FILE
