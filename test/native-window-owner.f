@@ -14,18 +14,14 @@
 \     left its retained checker answering window certifications: that refused
 \     the first case and resolved this one in a package the window cannot see.
 \
-\ HABU_UNDER_TEST picks the host engine (lib/engine-candidate.f), so the same
-\ three cases run under the gate's own bin/hb and, pointed at one, under a
-\ bootstrap seed.
-\
 \ Run: bin/hb --load test/native-window-owner.f
 
 require lib/test.f
+require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
-require lib/engine-id.f
-require lib/engine-candidate.f
+require test/whitebox-child.f
 
 package NW-OWNER-TEST
 
@@ -34,6 +30,13 @@ $4000 constant IO-CAP
 
 create OUT IO-CAP allot
 create ERR IO-CAP allot
+
+\ Every child here reopens the engine's native build window, which the sealed
+\ product refuses: `hb: internal engine word: DECLARATIONS`, exit 70. So they
+\ all run on the engine test/whitebox-child.f names.
+: PREPARE ( -- )
+   CLEANUP-RESET
+   s" native-window-owner" WHITEBOX-CHILD:PROVIDE ;
 
 : CHILD$ ( -- ptr u8 n ) s" test/native-window-owner-child.f" ;
 
@@ -46,8 +49,7 @@ create ERR IO-CAP allot
    CHILD$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    fx fxu >LEN PROC-ARGV+
-   PROC-ENV-RESET
-   PROC-ENV-INHERIT-MISSING ;
+   WHITEBOX-CHILD:ENV! ;
 
 : TIER1-ARGS! ( ptr u8 n -- ) {: fx:ptr fxu:n :}
    PROC-ARGV-RESET
@@ -56,12 +58,11 @@ create ERR IO-CAP allot
    CHILD$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    fx fxu >LEN PROC-ARGV+
-   PROC-ENV-RESET
-   PROC-ENV-INHERIT-MISSING ;
+   WHITEBOX-CHILD:ENV! ;
 
 : WINDOW-IS ( ptr u8 n ptr u8 n -- ) {: fx:ptr fxu:n want:ptr wantu:n :}
    fx fxu ARGS!
-   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN DEADLINE-MS >MS
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN DEADLINE-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    rc 0 <> if ERR erru LEN>N type cr then
    rc 0 T=
@@ -89,7 +90,7 @@ create ERR IO-CAP allot
 600000 constant TIER1-DEADLINE-MS
 
 : WINDOW-TIER1-RESULT ( ptr u8 n -- ) {: want:ptr wantu:n :}
-   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
    TIER1-DEADLINE-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    rc 0 <> if ERR erru LEN>N type cr then
@@ -124,8 +125,7 @@ create ERR IO-CAP allot
 : WINDOW-SOURCE-JIT ( ptr u8 n -- )
    ARGS! WINDOW-SOURCE-DEPS ;
 
-: RUN ( -- )
-   T-RESET
+: CASES ( -- )
    s" test/native-window-cast-ok.f"       S\" window: 0\n"    WINDOW-IS
    s" test/native-window-cast-bad.f"      S\" window: 7131\n" WINDOW-IS
    s" test/native-window-cast-host-bad.f" S\" window: 7131\n" WINDOW-IS
@@ -136,7 +136,11 @@ create ERR IO-CAP allot
    s" test/native-window-owner-family.f" WINDOW-SOURCE
    s" test/native-window-owner-fixed.f" WINDOW-SOURCE
    s" test/native-window-tape-detach.f" WINDOW-SOURCE
-   s" test/native-window-owner-payload.f" WINDOW-SOURCE
+   s" test/native-window-owner-payload.f" WINDOW-SOURCE ;
+
+: RUN ( -- )
+   T-RESET
+   [: PREPARE CASES ;] [: CLEANUP-RUN ;] finally
    T-REPORT
    s" native-window-owner: ok" type cr ;
 

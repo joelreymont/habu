@@ -1,10 +1,11 @@
 \ Build once, then run and recapture outside the source checkout.
 require lib/test.f
+require lib/fs.f
 require lib/fs-mutate.f
 require lib/memory.f
 require lib/process-cwd.f
-require lib/engine-candidate.f
 require lib/pty.f
+require test/whitebox-child.f
 
 package APP-IMAGE-TEST
 
@@ -32,6 +33,10 @@ variable REFUSE-U
 : STARTUP$ ( -- ptr u8 n ) STARTUP-BUF STARTUP-U @ ;
 : REFUSE$ ( -- ptr u8 n ) REFUSE-BUF REFUSE-U @ ;
 
+\ A child reopens the engine's build window - test/address-cell-cap-grown.f
+\ rewinds the source window - which the sealed product refuses: `hb: internal
+\ engine word: DECLARATIONS`, exit 70. So every spawn here runs on the engine
+\ test/whitebox-child.f names, in the temp root this file already owns.
 : PREPARE ( -- )
    CLEANUP-RESET
    s" app-image-test" TMPDIR-MKDIR {: path:ptr size:n :}
@@ -41,7 +46,8 @@ variable REFUSE-U
    ROOT$ s" second" SECOND-BUF JOIN-PATH SECOND-U !
    ROOT$ s" third" THIRD-BUF JOIN-PATH THIRD-U !
    ROOT$ s" startup" STARTUP-BUF JOIN-PATH STARTUP-U !
-   ROOT$ s" refuse-jit.f" REFUSE-BUF JOIN-PATH REFUSE-U ! ;
+   ROOT$ s" refuse-jit.f" REFUSE-BUF JOIN-PATH REFUSE-U !
+   ROOT$ WHITEBOX-CHILD:PROVIDE-IN ;
 
 : RESULT ( result<pcap:captured,pcap:failed> -- n n n )
    MATCH result
@@ -66,8 +72,8 @@ variable REFUSE-U
 \ prove that code emitted before the selection was native.
 : CHECK-BUILD-TIER ( -- )
    PROC-ARGV-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN
+   WHITEBOX-CHILD:ENV!
+   WHITEBOX-CHILD:ENGINE$ >LEN
    S\" variable IMAGE-LOAD-START cp@ IMAGE-LOAD-START !\nrequire src/habu/app-image.f\nIMAGE-LOAD-START @ cp@ code-origin . cr tier@ . cr\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN
@@ -77,8 +83,8 @@ variable REFUSE-U
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN
+   WHITEBOX-CHILD:ENV!
+   WHITEBOX-CHILD:ENGINE$ >LEN
    S\" require src/habu/app-image.f\nrequire test/app-image-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN drop
@@ -92,8 +98,8 @@ variable REFUSE-U
    s" --" >LEN PROC-ARGV+
    REFUSE$ >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN
+   WHITEBOX-CHILD:ENV!
+   WHITEBOX-CHILD:ENGINE$ >LEN
    S\" require tools/app-build.f\nAPP-BUILD:RUN\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n erru:n rc:n :}
@@ -110,13 +116,13 @@ variable REFUSE-U
 
 : CHECK-APPLICATION ( ptr u8 n -- )
    PROC-ARGV-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
+   WHITEBOX-CHILD:ENV!
    S\" APP-IMAGE-SUBJECT:SCRATCH-CLEAN\nAPP-IMAGE-SUBJECT:RUN . cr\n: FRESH-INCREMENT ( n -- n ) 1+ ;\nAPP-IMAGE-SUBJECT:RUN FRESH-INCREMENT . cr\n" RUN-INPUT CLEAN
    OUT swap S\" 43\n\n44\n\n" T$= ;
 
 : CHECK-REJECTION ( -- )
    PROC-ARGV-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
+   WHITEBOX-CHILD:ENV!
    IMAGE$ S\" : FRESH-BAD ( n -- n ) 0= ;\n" RUN-INPUT
    {: outu:n erru:n rc:n :}
    rc 70 T= outu 0 T=
@@ -128,7 +134,7 @@ variable REFUSE-U
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    target targetu >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
+   WHITEBOX-CHILD:ENV!
    source sourceu S\" APP-IMAGE-SUBJECT:SCRATCH-CLEAN\nAPP-IMAGE-SUBJECT:RUN drop\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" RUN-INPUT CLEAN drop
    target targetu EXECUTABLE? TTRUE ;
 
@@ -160,21 +166,21 @@ variable REFUSE-U
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    STARTUP$ >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
+   WHITEBOX-CHILD:ENV!
    IMAGE$
    S\" 1 set-tier\npackage IMAGE-START-TEST\nvariable STARTS\n: MAIN ( -- ) 1 STARTS +! STARTS @ . cr SCRIPT-ARGC . cr SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ type cr loop SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ s\q quit\q STR= if s\q \q 0 die then 0 SCRIPT-ARGV$ s\q throw\q STR= if -123 throw then 0 SCRIPT-ARGV$ s\q eval-throw\q STR= if s\q -124 throw\q INCLUDE-EVALUATE then then ;\n' MAIN\n;package\nAPP-IMAGE:START!\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    RUN-INPUT CLEAN drop
    STARTUP$ EXECUTABLE? TTRUE ;
 
 : CHECK-STARTUP ( -- )
-   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   PROC-ARGV-ENV-RESET WHITEBOX-CHILD:ENV!
    STARTUP$ S\" APP-IMAGE-SUBJECT:RUN . cr\n" RUN-INPUT CLEAN
    OUT swap S\" 1\n\n0\n\n43\n\n" T$= ;
 
 : STARTUP-ARGS ( -- )
    s" alpha" >LEN PROC-ARGV+
    s" two words" >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
+   WHITEBOX-CHILD:ENV!
    STARTUP$ S\" APP-IMAGE-SUBJECT:RUN . cr\n" RUN-INPUT CLEAN
    OUT swap S\" 1\n\n2\n\nalpha\ntwo words\n43\n\n" T$= ;
 
@@ -184,7 +190,7 @@ variable REFUSE-U
 
 : CHECK-STARTUP-EXIT ( -- )
    PROC-ARGV-ENV-RESET
-   s" quit" >LEN PROC-ARGV+ PROC-ENV-INHERIT-MISSING
+   s" quit" >LEN PROC-ARGV+ WHITEBOX-CHILD:ENV!
    STARTUP$ s" STARTUP-SHOULD-NOT-EXECUTE" RUN-INPUT CLEAN
    OUT swap S\" 1\n\n1\n\nquit\n" T$= ;
 
@@ -204,7 +210,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
 
 : CHECK-STARTUP-THROW ( ptr u8 n ptr u8 n -- )
    {: arg:ptr argu:n diagnostic:ptr diagnosticu:n :}
-   PROC-ARGV-ENV-RESET arg argu >LEN PROC-ARGV+ PROC-ENV-INHERIT-MISSING
+   PROC-ARGV-ENV-RESET arg argu >LEN PROC-ARGV+ WHITEBOX-CHILD:ENV!
    OPEN-PTY {: master:n slave:n :}
    PIPE-PAIR {: reader writer :}
    STARTUP$ >LEN slave >FD writer writer PROC-SPAWN-ARGV-ENV-IO {: child :}
@@ -238,8 +244,8 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
 : CHECK-ADDRESS-OWNER ( -- )
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+ SECOND$ >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN
+   WHITEBOX-CHILD:ENV!
+   WHITEBOX-CHILD:ENGINE$ >LEN
    S\" require src/habu/app-image.f\nrequire test/address-cell-cap-grown.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN drop
@@ -247,8 +253,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    0 0 <> RUN-ADDRESS-OWNER
    0 0 = RUN-ADDRESS-OWNER ;
 
-: RUN ( -- )
-   T-RESET PREPARE
+: CASES ( -- )
    CHECK-BUILD-TIER
    CHECK-BUILD-SCOPE
    BUILD
@@ -261,8 +266,11 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    CHECK-STARTUP-ARGS
    CHECK-STARTUP-EXIT
    CHECK-STARTUP-THROWS
-   CHECK-ADDRESS-OWNER
-   CLEANUP-RUN
+   CHECK-ADDRESS-OWNER ;
+
+: RUN ( -- )
+   T-RESET
+   [: PREPARE CASES ;] [: CLEANUP-RUN ;] finally
    T-REPORT ;
 
 RUN

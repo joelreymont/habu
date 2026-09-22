@@ -1,16 +1,23 @@
 \ The current checker and production sealing pass own both child tiers.
 require lib/test.f
+require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
-require lib/engine-id.f
-require lib/engine-candidate.f
+require test/whitebox-child.f
 
 package FIELD-BOUNDARY-SUITE
 
 $4000 constant IO-CAP
 create OUT IO-CAP allot
 create ERR IO-CAP allot
+
+\ The child runs test/native-window-owner-child.f, which reopens the engine's
+\ build window: `hb: internal engine word: DECLARATIONS`, exit 70 on the sealed
+\ product. So it runs on the engine test/whitebox-child.f names.
+: PREPARE ( -- )
+   CLEANUP-RESET
+   s" field-proj-boundary" WHITEBOX-CHILD:PROVIDE ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
@@ -44,7 +51,7 @@ create ERR IO-CAP allot
    s" test/field-proj-boundary-prepare.f" ARG
    native if s" test/compiler/aot-mode.f" ARG then
    prefix if s" test/field-proj-native-owner.f" ARG then
-   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
+   WHITEBOX-CHILD:ENV! ;
 
 \ The native case compiles the window's whole core prefix through the
 \ optimizing chain, which is minutes on a loaded box (test/native-window-owner.f
@@ -52,7 +59,7 @@ create ERR IO-CAP allot
 600000 constant DEADLINE-MS
 
 : RESULT ( -- )
-   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN DEADLINE-MS >MS
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN DEADLINE-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N S\" ok\nfield boundary: ok\nwindow: 0\n" STR= 0= rc 0 <> or
@@ -62,13 +69,16 @@ create ERR IO-CAP allot
    ERR erru LEN>N s" trust-boundary primitive" CONTAINS? TTRUE
    ERR erru LEN>N s" hb: internal engine word: FIELD-PROJ!" CONTAINS? TTRUE ;
 
-: RUN ( -- )
-   T-RESET
+: CASES ( -- )
    0 0= 0= dup ARGS RESULT
    0 0= 0 0= 0= ARGS RESULT
    \ The retained product owner must also accept the new checker at tier 1.
    \ Starting tier 1 only after owner transfer cannot exercise this boundary.
-   0 0= dup ARGS RESULT
+   0 0= dup ARGS RESULT ;
+
+: RUN ( -- )
+   T-RESET
+   [: PREPARE CASES ;] [: CLEANUP-RUN ;] finally
    T-REPORT ;
 
 RUN

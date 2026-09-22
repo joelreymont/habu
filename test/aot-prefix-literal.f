@@ -1,11 +1,11 @@
 \ Checked source capture, file read, and fresh native boot of prefix CODE literals.
 require lib/test.f
+require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
-require lib/engine-id.f
-require lib/engine-candidate.f
+require test/whitebox-child.f
 
 package PREFIX-LITERAL-SUITE
 
@@ -24,6 +24,15 @@ variable COMMAND-N
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 : MODE$ ( -- ptr u8 n ) MODE-TEXT MODE-U @ ;
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+
+
+\ The producer runs test/native-window-owner-child.f, which reopens the engine's
+\ build window: `hb: internal engine word: DECLARATIONS`, exit 70 on the sealed
+\ product. So every child runs on the engine test/whitebox-child.f names, in a
+\ root of its own so the per-case roots stay free to be thrown away.
+: PREPARE ( -- )
+   CLEANUP-RESET
+   s" aot-prefix-literal" WHITEBOX-CHILD:PROVIDE ;
 
 
 : CASE-SETUP ( ptr u8 n -- ) {: mode:ptr modeu:n :}
@@ -62,22 +71,23 @@ variable COMMAND-N
    PROC-ENV-RESET
    s" HABU_LITERAL_MODE" >LEN MODE$ >LEN PROC-ENV+
    s" HABU_LITERAL_ARTIFACT" >LEN ART$ >LEN PROC-ENV+
-   s" HABU_LITERAL_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
+   s" HABU_LITERAL_ENGINE" >LEN WHITEBOX-CHILD:ENGINE$ >LEN PROC-ENV+
+   WHITEBOX-CHILD:ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 
 : READER-ARGS ( -- )
    PROC-ARGV-RESET
    s" --load" ARG s" test/aot-prefix-literal-reader.f" ARG s" --" ARG
-   ART$ ARG IMAGE$ ARG ENGINE-CANDIDATE:PATH$ ARG
-   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
+   ART$ ARG IMAGE$ ARG WHITEBOX-CHILD:ENGINE$ ARG
+   WHITEBOX-CHILD:ENV! ;
 
 
 : CONSUMER-ARGS ( -- )
    PROC-ARGV-RESET
    s" --load" ARG s" test/aot-prefix-literal-consumer.f" ARG
    s" --" ARG MODE$ ARG
-   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
+   WHITEBOX-CHILD:ENV! ;
 
 
 : ZTYPE ( ptr u8 -- )
@@ -122,33 +132,36 @@ variable COMMAND-N
 
 : ACCEPT ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n name:ptr nameu:n :}
    mode modeu CASE-SETUP PRODUCER-ARGS
-   ENGINE-CANDIDATE:PATH$ 0 s" prefix-literal: captured" CHILD 0= if exit then
+   WHITEBOX-CHILD:ENGINE$ 0 s" prefix-literal: captured" CHILD 0= if exit then
    OUT PROC-OUT-LEN @ name nameu CONTAINS? TTRUE
    OUT PROC-OUT-LEN @ S\" window: 0\n" CONTAINS? TTRUE
    ART$ EXISTS? TTRUE
    READER-ARGS
-   ENGINE-CANDIDATE:PATH$ 0 s" prefix-literal: baked" CHILD 0= if exit then
+   WHITEBOX-CHILD:ENGINE$ 0 s" prefix-literal: baked" CHILD 0= if exit then
    CONSUMER-ARGS
    IMAGE$ 0 s" prefix-literal: exact identity and execution passed" CHILD drop ;
 
 
 : REFUSE ( ptr u8 n -- )
    CASE-SETUP PRODUCER-ARGS
-   ENGINE-CANDIDATE:PATH$ 74
+   WHITEBOX-CHILD:ENGINE$ 74
    s" aot-capture: recorded address site outside both window spans" CHILD drop
    ART$ EXISTS? TFALSE ;
 
 
-: RUN ( -- )
-   T-RESET CLEANUP-RESET
+: CASES ( -- )
    s" global" S\" named=ASCII-UPPER\n" ACCEPT
    s" public" S\" named=PREFIX-MARK:REQ\n" ACCEPT
    s" public-collision" S\" named=PREFIX-MARK:REQ\n" ACCEPT
    s" private" REFUSE
    s" prelude" REFUSE
    s" shadow" REFUSE
-   s" nonentry" REFUSE
-   CLEANUP-RUN T-REPORT ;
+   s" nonentry" REFUSE ;
+
+: RUN ( -- )
+   T-RESET
+   [: PREPARE CASES ;] [: CLEANUP-RUN ;] finally
+   T-REPORT ;
 
 RUN
 ;package

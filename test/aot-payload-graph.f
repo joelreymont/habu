@@ -1,11 +1,11 @@
 \ Supported graph metadata survives source-effect destruction and a fresh boot.
 require lib/test.f
+require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
-require lib/engine-id.f
-require lib/engine-candidate.f
+require test/whitebox-child.f
 
 package PAYLOAD-GRAPH-SUITE
 
@@ -19,11 +19,17 @@ variable IMAGE-U
 
 : ART$ ( -- ptr u8 n ) ART ART-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
+
+\ The child runs test/native-window-owner-child.f, which reopens the engine's
+\ build window: `hb: internal engine word: DECLARATIONS`, exit 70 on the sealed
+\ product. So every child runs on the engine test/whitebox-child.f names, in the
+\ temp root this file already owns.
 : SETUP ( -- )
    s" habu-payload-graph" TMPDIR-MKDIR {: path:ptr u:n :}
    path u CLEANUP-TREE+
    path u s" metadata.aot" ART JOIN-PATH ART-U !
-   path u s" hb-partial" IMAGE JOIN-PATH IMAGE-U ! ;
+   path u s" hb-partial" IMAGE JOIN-PATH IMAGE-U !
+   path u WHITEBOX-CHILD:PROVIDE-IN ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
@@ -55,13 +61,14 @@ variable IMAGE-U
    s" lib/prelude.f" ARG
    PROC-ENV-RESET
    s" HABU_PAYLOAD_TEST_ARTIFACT" >LEN ART$ >LEN PROC-ENV+
-   s" HABU_PAYLOAD_TEST_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
+   s" HABU_PAYLOAD_TEST_ENGINE" >LEN WHITEBOX-CHILD:ENGINE$ >LEN PROC-ENV+
+   WHITEBOX-CHILD:ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 : CASE-RUN ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n diagnostic:ptr diagnosticu:n :}
    s" test/aot-payload-graph-child.f" ARGS
    s" HABU_PAYLOAD_TEST_MODE" >LEN mode modeu >LEN PROC-ENV-SET
-   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    modeu 0= if
@@ -106,29 +113,28 @@ variable IMAGE-U
 : CONSUMER-ARGS ( -- )
    PROC-ARGV-RESET
    s" --load" ARG s" test/aot-payload-native-consumer.f" ARG
-   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
+   WHITEBOX-CHILD:ENV! ;
 
 
 : FRESH-NATIVE ( -- )
    s" imported definitions are absent from the original engine" T-LABEL
    CONSUMER-ARGS
-   ENGINE-CANDIDATE:PATH$ 70 s" E-UNDEFINED: PAYLOAD-NATIVE:BUMP" CHILD drop
+   WHITEBOX-CHILD:ENGINE$ 70 s" E-UNDEFINED: PAYLOAD-NATIVE:BUMP" CHILD drop
    s" a native producer writes a portable two-cell family and verified effects" T-LABEL
    s" test/aot-payload-native-producer.f" ARGS
-   ENGINE-CANDIDATE:PATH$ 0 s" native graph artifact written" CHILD 0= if exit then
+   WHITEBOX-CHILD:ENGINE$ 0 s" native graph artifact written" CHILD 0= if exit then
    s" a fresh reader bakes the exited producer's artifact" T-LABEL
    PROC-ARGV-RESET
    s" --load" ARG s" test/aot-payload-native-reader.f" ARG s" --" ARG
-   ART$ ARG IMAGE$ ARG ENGINE-CANDIDATE:PATH$ ARG
-   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ 0 s" native graph artifact baked" CHILD 0= if exit then
+   ART$ ARG IMAGE$ ARG WHITEBOX-CHILD:ENGINE$ ARG
+   WHITEBOX-CHILD:ENV!
+   WHITEBOX-CHILD:ENGINE$ 0 s" native graph artifact baked" CHILD 0= if exit then
    s" a fresh boot executes imported code and compiles typed dependents" T-LABEL
    CONSUMER-ARGS
    IMAGE$ 0 s" native graph fresh consumer: ok" CHILD drop ;
 
 
-: RUN ( -- )
-   T-RESET SETUP
+: CASES ( -- )
    s" " s" " CASE-RUN
    FRESH-NATIVE
    s" length" BAD-GRAPH
@@ -141,8 +147,12 @@ variable IMAGE-U
    s" scalar-zero" s" checker: captured row width disagrees with its type" CASE-RUN
    s" wide-width" s" checker: captured row width disagrees with its type" CASE-RUN
    s" logical-width" s" checker: captured row width disagrees with its type" CASE-RUN
-   s" producer-scalar-zero" s" checker: captured row width disagrees with its type" CASE-RUN
-   CLEANUP-RUN T-REPORT ;
+   s" producer-scalar-zero" s" checker: captured row width disagrees with its type" CASE-RUN ;
+
+: RUN ( -- )
+   T-RESET
+   [: SETUP CASES ;] [: CLEANUP-RUN ;] finally
+   T-REPORT ;
 
 RUN
 ;package

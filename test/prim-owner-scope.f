@@ -22,10 +22,11 @@
 
 require lib/test.f
 require lib/string.f
+require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
-require lib/engine-candidate.f
+require test/whitebox-child.f
 
 package PRIM-OWNER-SCOPE-SUITE
 
@@ -36,13 +37,20 @@ $0A constant LF-C
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
+\ The child runs test/native-window-owner-child.f, which reopens the engine's
+\ build window: `hb: internal engine word: DECLARATIONS`, exit 70 on the sealed
+\ product. So it runs on the engine test/whitebox-child.f names.
+: PREPARE ( -- )
+   CLEANUP-RESET
+   s" prim-owner-scope" WHITEBOX-CHILD:PROVIDE ;
+
 : ARGS ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/native-window-owner-child.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" test/prim-owner-scope-child.f" >LEN PROC-ARGV+
-   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
+   WHITEBOX-CHILD:ENV! ;
 
 : CASE+ ( ptr u8 n ptr u8 n -- ) {: la:ptr lu:n va:ptr vu:n :}
    s" prim-owner: " SB-APPEND
@@ -101,10 +109,9 @@ create ERR IO-CAP allot
    s" window: 0" SB-APPEND LF-C SB-APPEND-C
    SB$ ;
 
-: RUN ( -- )
-   T-RESET
+: CHECK ( -- )
    ARGS
-   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    rc 0 <> if OUT outu LEN>N type ERR erru LEN>N type cr then
@@ -116,7 +123,11 @@ create ERR IO-CAP allot
    ERR erru LEN>N s" 'addrmap-set' is a trust-boundary primitive" CONTAINS? TTRUE
    s" the FFI rows reject by the same named capability boundary" T-LABEL
    ERR erru LEN>N s" 'ffi-call-bounded' is a trust-boundary primitive" CONTAINS? TTRUE
-   ERR erru LEN>N s" 'FFI-CELL>PTR' is a trust-boundary primitive" CONTAINS? TTRUE
+   ERR erru LEN>N s" 'FFI-CELL>PTR' is a trust-boundary primitive" CONTAINS? TTRUE ;
+
+: RUN ( -- )
+   T-RESET
+   [: PREPARE CHECK ;] [: CLEANUP-RUN ;] finally
    T-REPORT ;
 
 RUN

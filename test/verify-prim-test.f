@@ -18,10 +18,19 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/codesign.f
 require lib/test/outcome.f
-require lib/engine-candidate.f            \ the engine under test, not a fixed bin/hb
+require test/whitebox-child.f
 require src/habu/verify-source.f
 
 package VERIFY-PRIM-TEST
+
+\ The cold child runs through test/native-window-owner-child.f, which reopens
+\ the engine's build window: `hb: internal engine word: DECLARATIONS`, exit 70
+\ on the sealed product. So both child kinds run on the engine
+\ test/whitebox-child.f names, and its root is torn down by name: the groups
+\ below own the shared cleanup list and CLEANUP-RESET it between them, so the
+\ registration PROVIDE makes does not survive to be run.
+: WB-PREPARE ( -- )
+   s" habu-verify-prim-engine" WHITEBOX-CHILD:PROVIDE ;
 
 $2000 constant DIAG-MAX
 $22 constant QUOTE-C
@@ -404,7 +413,7 @@ variable ROOT-U
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    path pathu PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ >LEN out outcap err errcap timeout RUN-ARGV-CAPTURE
+   WHITEBOX-CHILD:ENGINE$ >LEN out outcap err errcap timeout RUN-ARGV-CAPTURE
    CAPTURE> ;
 
 : RUN-COLD-CHILD ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n )
@@ -414,7 +423,7 @@ variable ROOT-U
    s" test/native-window-owner-child.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    path pathu PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ >LEN out outcap err errcap timeout RUN-ARGV-CAPTURE
+   WHITEBOX-CHILD:ENGINE$ >LEN out outcap err errcap timeout RUN-ARGV-CAPTURE
    CAPTURE> ;
 
 : ADD-NORMAL-LIT ( -- )
@@ -645,8 +654,7 @@ variable ROOT-U
    MISSING-NORMAL-QUOTE
    MISSING-ESCAPED-QUOTE ;
 
-: RUN ( -- )
-   T-RESET
+: CASES ( -- )
    TEST-PRIM-CONTENT
    TEST-ROLES
    TEST-ATTACHED
@@ -656,7 +664,11 @@ variable ROOT-U
    TEST-CASE-TRUSTED
    TEST-POSITIVE
    PRODUCTION-DIFFERENTIAL
-   TEST-FAIL-CLOSED
+   TEST-FAIL-CLOSED ;
+
+: RUN ( -- )
+   T-RESET
+   [: WB-PREPARE CASES ;] [: WHITEBOX-CHILD:REMOVE ;] finally
    T-REPORT ;
 
 RUN

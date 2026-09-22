@@ -423,7 +423,7 @@ SUITE compiler-native-prefix-declarations
    test/compiler/native-prefix-declarations.f
 ;SUITE
 
-WHITEBOX-SUITE primitive-trust
+SUITE primitive-trust
    test/primitive-trust.f
 ;SUITE
 
@@ -446,15 +446,18 @@ SUITE print-min-int
 \ builds once per gate, never on bin/hb. Declare one when the suite reaches
 \ inside the engine it tests - a reopened engine package, a pre-hook global, a
 \ ticked internal word - and say here which of those it needs.
-\ test/internal-word-gate.f and test/compiler/ir-id.f stay on the product engine
-\ on purpose: they pin the refusals this engine does not have.
+\ test/internal-word-gate.f stays on the product engine on purpose: it pins the
+\ refusals this engine does not have. test/compiler/ir-id.f does not - it is the
+\ compiler-ir-id row above, because its FAMILY-SURFACE and PUBLIC-SURFACE cases
+\ read the engine's own TFAM and XREF tables (standalone on bin/hb: rc 1, 26
+\ failures).
 WHITEBOX-SUITE whitebox-engine
    test/whitebox-engine-suite.f
 ;SUITE
 
 \ PRIM: / PPRIM: / CLOSE-PRIVATE are sealed in the product image, which is why
 \ this suite drove its fixture through a from-source child window.
-WHITEBOX-SUITE prim-owner-scope
+SUITE prim-owner-scope
    test/prim-owner-scope.f
 ;SUITE
 
@@ -462,11 +465,11 @@ SUITE checker-effect-authority
    test/checker-effect-authority.f
 ;SUITE
 
-WHITEBOX-SUITE native-window-owner
+SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE
 
-WHITEBOX-SUITE loop-obligations
+SUITE loop-obligations
    test/loop-obligations.f
 ;SUITE
 
@@ -552,7 +555,7 @@ SUITE native-resource-image
    test/native-resource-image.f
 ;SUITE
 
-WHITEBOX-SUITE app-image
+SUITE app-image
    test/app-image.f
 ;SUITE
 
@@ -1340,7 +1343,7 @@ SUITE checker-replay-pkg-state
    test/checker-replay-pkg-state.f
 ;SUITE
 
-WHITEBOX-SUITE verify-prim
+SUITE verify-prim
    test/verify-prim-test.f
 ;SUITE
 
@@ -1348,7 +1351,7 @@ SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
 
-WHITEBOX-SUITE defer-history
+SUITE defer-history
    test/defer-history.f
 ;SUITE
 
@@ -1488,19 +1491,19 @@ SUITE aot-cell-values
    test/aot-cell-values.f
 ;SUITE
 
-WHITEBOX-SUITE aot-registry-identity
+SUITE aot-registry-identity
    test/aot-registry-identity.f
 ;SUITE
 
-WHITEBOX-SUITE aot-payload-graph
+SUITE aot-payload-graph
    test/aot-payload-graph.f
 ;SUITE
 
-WHITEBOX-SUITE aot-prefix-literal
+SUITE aot-prefix-literal
    test/aot-prefix-literal.f
 ;SUITE
 
-WHITEBOX-SUITE aot-payload-unsupported
+SUITE aot-payload-unsupported
    test/aot-payload-unsupported.f
 ;SUITE
 
@@ -2066,7 +2069,7 @@ SUITE field-proj
    test/field-proj-suite.f
 ;SUITE
 
-WHITEBOX-SUITE field-proj-boundary
+SUITE field-proj-boundary
    test/field-proj-boundary.f
 ;SUITE
 

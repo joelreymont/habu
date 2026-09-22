@@ -36,8 +36,8 @@ successful runs remove it.
   — standalone such a file exits 70 with `hb: internal engine word: <TOKEN>`
   (measured on `test/whitebox-engine-suite.f`). A file that only *spawns* a
   child needing the unsealed engine is not of that kind: it names one itself
-  with `WHITEBOX-ENGINE:PROVIDE` (`test/compiler/native-checker-prefix.f`) and
-  stays a plain `SUITE`, green on its own.
+  through `test/whitebox-child.f` (`PROVIDE`, `ENGINE$`, `ENV!`) and stays a
+  plain `SUITE`, green on its own.
 - A suite whose assertions depend on the compiler tier selects it itself:
   `1 set-tier` before its requires, because only code compiled after that line
   belongs to the tier. The runner prepends nothing, so every row measures what

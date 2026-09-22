@@ -1,16 +1,23 @@
 \ Exercise current registry source through the real replacement-owner load.
 require lib/test.f
+require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
-require lib/engine-id.f
-require lib/engine-candidate.f
+require test/whitebox-child.f
 
 package REGISTRY-IDENTITY-SUITE
 
 $4000 constant IO-CAP
 create OUT IO-CAP allot
 create ERR IO-CAP allot
+
+\ The child runs test/native-window-owner-child.f, which reopens the engine's
+\ build window: `hb: internal engine word: DECLARATIONS`, exit 70 on the sealed
+\ product. So it runs on the engine test/whitebox-child.f names.
+: PREPARE ( -- )
+   CLEANUP-RESET
+   s" aot-registry-identity" WHITEBOX-CHILD:PROVIDE ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
@@ -41,11 +48,11 @@ create ERR IO-CAP allot
    s" src/core/sha256.f" ARG
    s" src/habu/code-span.f" ARG
    s" lib/prelude.f" ARG
-   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
+   WHITEBOX-CHILD:ENV! ;
 
-: RUN ( -- )
-   T-RESET ARGS
-   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
+: CHECK ( -- )
+   ARGS
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    rc 0 <>
@@ -53,7 +60,11 @@ create ERR IO-CAP allot
    if OUT outu LEN>N type ERR erru LEN>N type cr then
    rc 0 T=
    OUT outu LEN>N S\" registry identity and refusal atomicity: ok\nwindow: 0\n" T$=
-   erru LEN>N 0 T=
+   erru LEN>N 0 T= ;
+
+: RUN ( -- )
+   T-RESET
+   [: PREPARE CHECK ;] [: CLEANUP-RUN ;] finally
    T-REPORT ;
 
 RUN
