@@ -22,13 +22,14 @@
 \ the moment it is written. LIMGEND joins them because it is bound after the
 \ section, past everything the section can grow into.
 \
-\ Structure, not text: the scan runs on the shared string-aware lexer
+\ Structure, not text: the three-token shape, the qualified-name tail rule and
+\ the label table live in tools/lint/label-triple.f, shared with the sibling
+\ startup lint and stated there. The scan runs on the shared string-aware lexer
 \ (tools/lint/source-lex.f), so the same three tokens inside a comment, inside a
 \ string literal, or in the wrong order are not a binding and not a reference.
 \ tools/aot-section-reach-lint-test.f pins each of those.
 \
-\ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f \
-\        tools/lint/source-lex.f tools/aot-section-reach-lint.f
+\ Run: bin/hb --load tools/aot-section-reach-lint.f
 
 require lib/errors.f
 require lib/string.f
@@ -38,6 +39,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
+require tools/lint/label-triple.f
 
 package AOT-REACH-LINT
 
@@ -46,88 +48,37 @@ package AOT-REACH-LINT
 
 create AR-SLAB LINT-SLAB:CELLS cells allot
 
-\ The section binds 27 labels today; the cap is generous and its overflow is a
-\ named refusal rather than a silent truncation, because a dropped member is a
-\ member this lint stops checking.
-$40 constant LMAX
-$400 constant NAMES-CAP
-create NAMES NAMES-CAP allot   variable NEND
-create NOFF LMAX cells allot   create NLEN LMAX cells allot   variable N#
-
 variable BAD  variable LI  variable IN-SECT
 
 : RESET ( -- )
-   0 N# !  0 NEND !  LINT-FALSE IN-SECT ! ;
+   LINT-LABEL-TRIPLE:RESET  LINT-FALSE IN-SECT ! ;
 
+\ The section binds 33 labels today, well inside the shared table's cap. Its
+\ overflow is this named refusal rather than a silent truncation, because a
+\ dropped member is a member this lint stops checking.
 : CAP-FAIL ( -- )
    s" aot-section-reach-lint: more section labels than LMAX" 1 die ;
 
-: ADD-LABEL ( ptr u8 n -- ) {: a:ptr u:n :}
-   N# @ LMAX >=  NEND @ u + NAMES-CAP >  or IF CAP-FAIL THEN
-   a  NAMES NEND @ +  u LINT-BMOVE
-   NEND @ NOFF N# @ cells + !   u NLEN N# @ cells + !
-   NEND @ u + NEND !   N# @ 1+ N# ! ;
-
-: LABEL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 begin dup N# @ < while
-      dup cells NOFF + @ NAMES +  over cells NLEN + @  a u LINT-STR=CI
-      IF drop LINT-TRUE exit THEN
-      1+
-   repeat drop LINT-FALSE ;
-
-\ The tail of a qualified name: the bytes after the last INTERIOR colon. A token
-\ that starts or ends with ':' is an ordinary word (docs/forth.md § Naming), and
-\ the bare `:` definer must not read as an empty tail, so both keep the whole
-\ token. A site may spell a section label bare inside its own package
-\ (`LROWS`) or qualified from outside (`AOT-XTSITE:LROWS`); comparing tails is
-\ what makes those one name.
-: TAIL ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u 2 < IF a u exit THEN
-   u 1- begin dup 1 > while
-      dup a + c@ 58 = IF  dup 1+ a +  u rot -  1-  exit THEN
-      1-
-   repeat drop a u ;
-
-\ MEASURED UNREACHABLE, KEPT ON PURPOSE. Dropping this kind test changes no
-\ verdict in any fixture, and it cannot: the lexer never turns the inside of a
-\ comment or a string into tokens at all, and the tokens it does emit for them
-\ carry their own delimiters in the span - a paren comment's token text is
-\ `( ... )` and a primitive-axiom row's is the whole row - so none of them can
-\ equal a bare label name. What keeps the hidden-text fixtures honest is
-\ therefore the lexer, not this line. It stays because a lint's business is to
-\ fail closed on a shape it did not expect, and the set of token kinds is
-\ source-lex.f's to change, not this file's to assume.
-: WORD? ( n -- bool ) {: k:n :}
-   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
-
-: LEX-WORD= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k WORD? LINT-NOT IF LINT-FALSE exit THEN
-   k LINT-LEX:TOKEN a u LINT-STR=CI ;
-
-\ Token k is a WORD and k+1 / k+2 are the two words given: the three-token shape
-\ `NAME LABEL@ <closer>`. Both roles are pinned, so the same three tokens in any
-\ other order are neither a binding nor a reference.
-: TRIPLE? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k 2 + LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
-   k WORD? LINT-NOT IF LINT-FALSE exit THEN
-   k 1+ s" LABEL@" LEX-WORD= LINT-NOT IF LINT-FALSE exit THEN
-   k 2 + a u LEX-WORD= ;
+: ADD-LABEL ( ptr u8 n -- )
+   LINT-LABEL-TRIPLE:ADD-LABEL LINT-NOT IF CAP-FAIL THEN ;
 
 \ ---- pass 1: the section's own labels ---------------------------------------
 \ IN-SECT opens on the `: EMIT-AOT-SEED` pair and closes on the definition's `;`.
 \ Both are whole WORD tokens, so neither can be forged from prose.
 : SECT-OPEN? ( n -- bool ) {: k:n :}
    k 1+ LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
-   k s" :" LEX-WORD= LINT-NOT IF LINT-FALSE exit THEN
-   k 1+ s" EMIT-AOT-SEED" LEX-WORD= ;
+   k s" :" LINT-LABEL-TRIPLE:LEX-WORD= LINT-NOT IF LINT-FALSE exit THEN
+   k 1+ s" EMIT-AOT-SEED" LINT-LABEL-TRIPLE:LEX-WORD= ;
 
 : COLLECT-TOKEN ( n -- ) {: k:n :}
    IN-SECT @ LINT-NOT IF
       k SECT-OPEN? IF LINT-TRUE IN-SECT ! THEN
       exit
    THEN
-   k s" ;" LEX-WORD= IF LINT-FALSE IN-SECT ! exit THEN
-   k s" LBL," TRIPLE? IF k LINT-LEX:TOKEN TAIL ADD-LABEL THEN ;
+   k s" ;" LINT-LABEL-TRIPLE:LEX-WORD= IF LINT-FALSE IN-SECT ! exit THEN
+   k s" LBL," LINT-LABEL-TRIPLE:TRIPLE? IF
+      k LINT-LEX:TOKEN LINT-LABEL-TRIPLE:TAIL ADD-LABEL
+   THEN ;
 
 : COLLECT ( -- )
    0 LI !
@@ -144,8 +95,9 @@ variable BAD  variable LI  variable IN-SECT
    BAD @ 1+ BAD ! ;
 
 : CHECK-TOKEN ( ptr u8 n n -- ) {: pa:ptr pu:n k:n :}
-   k s" ADR," TRIPLE? LINT-NOT IF exit THEN
-   k LINT-LEX:TOKEN TAIL LABEL? IF pa pu k REPORT THEN ;
+   k s" ADR," LINT-LABEL-TRIPLE:TRIPLE? LINT-NOT IF exit THEN
+   k LINT-LEX:TOKEN LINT-LABEL-TRIPLE:TAIL LINT-LABEL-TRIPLE:LABEL?
+   IF pa pu k REPORT THEN ;
 
 : CHECK ( ptr u8 n -- ) {: pa:ptr pu:n :}
    0 LI !
@@ -182,7 +134,7 @@ public
    pa pu AR-SLAB LINT-SLAB:LOAD
    pa pu  AR-SLAB LINT-SLAB:TEXT  SCAN-SOURCE ;
 
-: LABELS-FOUND ( -- n ) N# @ ;
+: LABELS-FOUND ( -- n ) LINT-LABEL-TRIPLE:LABELS ;
 : FINDINGS ( -- n ) BAD @ ;
 : FINDINGS-RESET ( -- ) 0 BAD ! ;
 
@@ -195,7 +147,7 @@ private
       s" aot-section-reach-lint: " type BAD @ LINT-MAIN-N$ type s"  finding(s)" type cr
       s" aot-section-reach-lint: ADR, into the AOT payload section" 1 die
    THEN
-   s" aot-section-reach-lint: clean (" type N# @ LINT-MAIN-N$ type s"  section label(s) checked)" type cr ;
+   s" aot-section-reach-lint: clean (" type LABELS-FOUND LINT-MAIN-N$ type s"  section label(s) checked)" type cr ;
 MAIN
 
 ;package

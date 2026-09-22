@@ -35,7 +35,9 @@
 \ through a call — is a dataflow the lexer cannot do. The rule this lint enforces
 \ is the one that can be read off three adjacent tokens.
 \
-\ Structure, not text: the scan runs on the shared string-aware lexer
+\ Structure, not text: the three-token shape, the qualified-name tail rule and
+\ the label table live in tools/lint/label-triple.f, shared with the sibling
+\ section lint and stated there. The scan runs on the shared string-aware lexer
 \ (tools/lint/source-lex.f), so the same three tokens inside a comment, inside a
 \ string literal, or in the wrong order are not a binding and not a reference.
 \ tools/aot-startup-reach-lint-test.f pins each of those.
@@ -50,6 +52,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
+require tools/lint/label-triple.f
 
 package AOT-STARTUP-REACH-LINT
 
@@ -58,69 +61,17 @@ package AOT-STARTUP-REACH-LINT
 
 create AS-SLAB LINT-SLAB:CELLS cells allot
 
-\ The largest definition in the scanned files binds eight labels; the cap is
-\ generous and its overflow is a named refusal rather than a silent truncation,
-\ because a dropped binding turns a clean site into a finding and the reverse
-\ can never happen.
-$40 constant LMAX
-$400 constant NAMES-CAP
-create NAMES NAMES-CAP allot   variable NEND
-create NOFF LMAX cells allot   create NLEN LMAX cells allot   variable N#
-
 variable BAD  variable LI  variable DEND
 
-: RESET ( -- )
-   0 N# !  0 NEND ! ;
-
+\ The largest definition in the scanned files binds eight labels, well inside
+\ the shared table's cap. Its overflow is this named refusal rather than a
+\ silent truncation, because a dropped binding turns a clean site into a finding
+\ and the reverse can never happen.
 : CAP-FAIL ( -- )
    s" aot-startup-reach-lint: more labels in one definition than LMAX" 1 die ;
 
-: ADD-LABEL ( ptr u8 n -- ) {: a:ptr u:n :}
-   N# @ LMAX >=  NEND @ u + NAMES-CAP >  or IF CAP-FAIL THEN
-   a  NAMES NEND @ +  u LINT-BMOVE
-   NEND @ NOFF N# @ cells + !   u NLEN N# @ cells + !
-   NEND @ u + NEND !   N# @ 1+ N# ! ;
-
-: LABEL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 begin dup N# @ < while
-      dup cells NOFF + @ NAMES +  over cells NLEN + @  a u LINT-STR=CI
-      IF drop LINT-TRUE exit THEN
-      1+
-   repeat drop LINT-FALSE ;
-
-\ The tail of a qualified name: the bytes after the last INTERIOR colon. A token
-\ that starts or ends with ':' is an ordinary word (docs/forth.md § Naming), and
-\ the bare `:` definer must not read as an empty tail, so both keep the whole
-\ token. An emitter may spell a label bare inside its own package or qualified
-\ from outside (`BP-CALLER:LBPLH`); comparing tails is what makes those one name.
-: TAIL ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u 2 < IF a u exit THEN
-   u 1- begin dup 1 > while
-      dup a + c@ 58 = IF  dup 1+ a +  u rot -  1-  exit THEN
-      1-
-   repeat drop a u ;
-
-\ MEASURED UNREACHABLE, KEPT ON PURPOSE, for the reason
-\ tools/aot-section-reach-lint.f states: the lexer never turns the inside of a
-\ comment or a string into a bare word token, so this test changes no verdict in
-\ any fixture. It stays because the set of token kinds is source-lex.f's to
-\ change, not this file's to assume.
-: WORD? ( n -- bool ) {: k:n :}
-   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
-
-: LEX-WORD= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k WORD? LINT-NOT IF LINT-FALSE exit THEN
-   k LINT-LEX:TOKEN a u LINT-STR=CI ;
-
-\ Token k is a WORD and k+1 / k+2 are the two words given: the three-token shape
-\ `NAME LABEL@ <closer>`. Both roles are pinned, so the same three tokens in any
-\ other order are neither a binding nor a reference, and `TEXT-ADR,` is not
-\ `ADR,`.
-: TRIPLE? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k 2 + LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
-   k WORD? LINT-NOT IF LINT-FALSE exit THEN
-   k 1+ s" LABEL@" LEX-WORD= LINT-NOT IF LINT-FALSE exit THEN
-   k 2 + a u LEX-WORD= ;
+: ADD-LABEL ( ptr u8 n -- )
+   LINT-LABEL-TRIPLE:ADD-LABEL LINT-NOT IF CAP-FAIL THEN ;
 
 \ ---- definition boundaries ---------------------------------------------------
 \ A definition opens on the `:` definer followed by a name and closes on the next
@@ -128,19 +79,21 @@ variable BAD  variable LI  variable DEND
 \ `;package` / `;using` / `;SUITE` are other words entirely.
 : DEF-OPEN? ( n -- bool ) {: k:n :}
    k 1+ LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
-   k s" :" LEX-WORD= LINT-NOT IF LINT-FALSE exit THEN
-   k 1+ WORD? ;
+   k s" :" LINT-LABEL-TRIPLE:LEX-WORD= LINT-NOT IF LINT-FALSE exit THEN
+   k 1+ LINT-LABEL-TRIPLE:WORD? ;
 
 : DEF-END ( n -- n ) {: k:n :}
    k 1+ begin dup LINT-LEX:COUNT < while
-      dup s" ;" LEX-WORD= IF exit THEN
+      dup s" ;" LINT-LABEL-TRIPLE:LEX-WORD= IF exit THEN
       1+
    repeat ;
 
 \ ---- the two passes, run per definition --------------------------------------
 : COLLECT-RANGE ( n n -- ) {: s:n e:n :}
    e s ?do
-      i s" LBL," TRIPLE? IF i LINT-LEX:TOKEN TAIL ADD-LABEL THEN
+      i s" LBL," LINT-LABEL-TRIPLE:TRIPLE? IF
+         i LINT-LEX:TOKEN LINT-LABEL-TRIPLE:TAIL ADD-LABEL
+      THEN
    loop ;
 
 : REPORT ( ptr u8 n n -- ) {: pa:ptr pu:n k:n :}
@@ -150,9 +103,9 @@ variable BAD  variable LI  variable DEND
    BAD @ 1+ BAD ! ;
 
 : CHECK-TOKEN ( ptr u8 n n -- ) {: pa:ptr pu:n k:n :}
-   k s" ADR," TRIPLE? LINT-NOT IF exit THEN
-   k LINT-LEX:TOKEN TAIL s" LTEXT" LINT-STR=CI IF exit THEN
-   k LINT-LEX:TOKEN TAIL LABEL? IF exit THEN
+   k s" ADR," LINT-LABEL-TRIPLE:TRIPLE? LINT-NOT IF exit THEN
+   k LINT-LEX:TOKEN LINT-LABEL-TRIPLE:TAIL s" LTEXT" LINT-STR=CI IF exit THEN
+   k LINT-LEX:TOKEN LINT-LABEL-TRIPLE:TAIL LINT-LABEL-TRIPLE:LABEL? IF exit THEN
    pa pu k REPORT ;
 
 : CHECK-RANGE ( ptr u8 n n n -- ) {: pa:ptr pu:n s:n e:n :}
@@ -177,12 +130,12 @@ public
    begin LI @ LINT-LEX:COUNT < while
       LI @ DEF-OPEN? IF
          LI @ DEF-END DEND !
-         RESET
+         LINT-LABEL-TRIPLE:RESET
          LI @ DEND @ COLLECT-RANGE
          pa pu LI @ DEND @ CHECK-RANGE
          DEND @ LI !
       ELSE
-         RESET                                   \ no enclosing definition, no bindings
+         LINT-LABEL-TRIPLE:RESET                 \ no enclosing definition, no bindings
          pa pu LI @ CHECK-TOKEN
       THEN
       LI @ 1+ LI !
