@@ -20,3 +20,17 @@ support; the remaining rows need a runtime-root check before removal. The
 reachability walk is conservative about gaps and relocation rows, but the
 capture-side compactor still has to preserve direct fall-through and every
 declared code-cell root before it can drop a span.
+
+The next reach-model proof adds the capture's explicit `NSTR:IMPORT-ROWS`
+name-only root (`tools/native-build-core.f TARGET-IMPORTER`) and follows code
+fall-through at the boundaries of indexed bodies and unowned gaps. On the same
+3,801,280-byte release engine this removes the false 300-byte dead dictionary
+record and changes the surface floor to 2,896 anonymous spans / 58,044 code
+bytes; 1,323 fall-through edges are modeled. The terminal decoder treats only
+unconditional `B` as ending a body: `BL` is a call and falls through to its
+return address. This is a census correction, not a binary reduction. Before/after
+dictionary and span candidates have no direct kept-to-dead B/BL edge after the
+explicit root is added; capture compaction still needs the offset/relocation
+proof and three-generation/full-gate validation. Focused proof:
+engine-size-fixtures (both files in one load) and hb-build-test are green on a
+private release-engine copy.

@@ -1201,6 +1201,15 @@ $7C000000 constant BR-MASK
 $14000000 constant BR-OP                          \ B and BL differ only in the link bit
 $3FFFFFF constant BR-IMM
 $2000000 constant BR-SIGN
+$FFFFFC1F constant RET-MASK                      \ RET/BR/ERET/DRPS, ignoring the register
+$D65F0000 constant RET-OP
+$D61F0000 constant BR-REG-OP
+$D69F0000 constant ERET-OP
+$D6BF0000 constant DRPS-OP
+$FFE0001F constant BRK-MASK
+$D4200000 constant BRK-OP
+$FC000000 constant BR-TERM-MASK                   \ keep BL's link bit: BL returns to the next instruction
+$14000000 constant BR-TERM-OP                    \ only unconditional B terminates a body
 $C0000000 constant XTOFF-KIND                     \ 00 CODE, 01 named CODE, 10 DATA
 $3FFFFFFF constant XTOFF-VALUE
 
@@ -1212,10 +1221,24 @@ DYNAMIC-BUFFER WORK n
 variable CODE-N     variable WORK-N     variable REACH-N    variable REACH-CODE
 variable REACH-SN   variable REACH-SCODE
 variable LO         variable HI         variable IDXV       variable GAP
+variable FALL-N                                      \ modeled fall-through edges
 
 : BLOB-W32@ ( n -- n ) BLOB-OFF @ + U32@ ;
 : SPAN-START ( n -- n ) SPAN-ROW * SPAN0 @ + U32@ ;
 : SPAN-BYTES ( n -- n ) SPAN-ROW * SPAN0 @ + 4 + U32@ CODE-SPAN:BYTES ;
+
+: TERMINAL-W32? ( n -- bool ) {: w:n :}
+   w RET-MASK and RET-OP =
+   w RET-MASK and BR-REG-OP = or
+   w RET-MASK and ERET-OP = or
+   w RET-MASK and DRPS-OP = or
+   w BRK-MASK and BRK-OP = or
+   w BR-TERM-MASK and BR-TERM-OP = or ;
+
+: FALLTHROUGH? ( n -- bool ) {: at:n :}
+   at 0 <= if false exit then
+   at BLOB-LEN @ >= if false exit then
+   at 4 - BLOB-W32@ TERMINAL-W32? 0= ;
 
 \ A graph member is either a dictionary record or an anonymous span row. The
 \ latter's ID follows the records. Sorting the combined index puts every body
@@ -1296,6 +1319,9 @@ variable LO         variable HI         variable IDXV       variable GAP
       off i REND @ < if i RSTART @ MARK-ENTRY then
    loop ;
 
+: MARK-FALLTHROUGH ( n -- ) {: at:n :}
+   at 0 >= at BLOB-LEN @ < and if at MARK-SPAN then ;
+
 : SCAN-AT ( n -- ) {: at:n :}
    at BLOB-W32@ {: w:n :}
    w BR-MASK and BR-OP <> if exit then
@@ -1312,6 +1338,10 @@ variable LO         variable HI         variable IDXV       variable GAP
       WORK-N @ 1- WORK-N !
       WORK-N @ WORK @ {: j:n :}
       j RSTART @ j REND @ SCAN-SPAN
+      j REND @ FALLTHROUGH? if
+         FALL-N @ 1+ FALL-N !
+         j REND @ MARK-FALLTHROUGH
+      then
    repeat ;
 
 \ A four-instruction MOVZ/MOVK chain, the one form an address literal takes
@@ -1347,16 +1377,51 @@ variable LO         variable HI         variable IDXV       variable GAP
       then
    loop ;
 
+\ The capture has one deliberate name-only keep outside the language surface:
+\ tools/native-build-core.f resolves NSTR:IMPORT-ROWS after the target package is
+\ loaded. It is a private word, so a surface-only census would call its record
+\ dead and, after a compactor removed its span, the next native build would fail
+\ at TARGET-IMPORTER. Keep this root explicit and qualified by its package rather
+\ than widening the surface root set or adding a broad private-name allowlist.
+: ROOT-PKG-WORD ( ptr u8 n ptr u8 n -- ) {: pkg:ptr pkgu:n name:ptr nameu:n :}
+   REC-N @ 0 ?do
+      i CREC-PKG? 0= i REC-ROLE ROLE-PRIVATE = and if
+         i REC-WID WPKG @ {: p:n :}
+         p REC-NAME {: pa:n pu:n :}
+         pu pkgu = pa pu pkg pkgu IMAGE-STR= and if
+            i CREC-NAME {: na:n nu:n :}
+            nu nameu = na nu name nameu IMAGE-STR= and if
+               i CREC-START MARK-ENTRY
+            then
+         then
+      then
+   loop ;
+
+: ROOTS-CAPTURE ( -- )
+   s" NSTR" s" IMPORT-ROWS" ROOT-PKG-WORD ;
+
 \ Only bytes outside both the record and stripped-span indices are roots.
 \ Scanning an unreachable span here would root all of its callees by mistake.
 : SCAN-UNOWNED ( -- )
    0 GAP !
    CODE-N @ 0 ?do
       i RSTART @ {: at:n :}
-      at GAP @ > if GAP @ at SCAN-SPAN then
+      at GAP @ > if
+         GAP @ at SCAN-SPAN
+         at FALLTHROUGH? if
+            FALL-N @ 1+ FALL-N !
+            at MARK-FALLTHROUGH
+         then
+      then
       i REND @ GAP @ max GAP !
    loop
-   GAP @ BLOB-LEN @ < if GAP @ BLOB-LEN @ SCAN-SPAN then ;
+   GAP @ BLOB-LEN @ < if
+      GAP @ BLOB-LEN @ SCAN-SPAN
+      BLOB-LEN @ FALLTHROUGH? if
+         FALL-N @ 1+ FALL-N !
+         BLOB-LEN @ MARK-FALLTHROUGH
+      then
+   then ;
 
 : ROOT-XTOFF ( n -- ) {: row:n :}
    row 4 + U32@ {: tgt:n :}
@@ -1397,7 +1462,7 @@ variable LO         variable HI         variable IDXV       variable GAP
 : REACH-RESET ( -- )
    REC-N @ SPAN-N @ + 0 ?do 0 i MARK ! loop
    0 WORK-N ! 0 REACH-N ! 0 REACH-CODE !
-   0 REACH-SN ! 0 REACH-SCODE ! ;
+   0 REACH-SN ! 0 REACH-SCODE ! 0 FALL-N ! ;
 
 \ ---- what nothing reaches ------------------------------------------------------
 DYNAMIC-BUFFER DEAD-N n                           \ unreachable records per package row
@@ -1541,6 +1606,7 @@ $FFFF constant ROW-MASK
    s"   unreachable" type TAB DEAD-TOTAL @ FMT:.U TAB DEAD-BYTES @ FMT:.U
    s"  code bytes, " type DEAD-TOTAL @ AOT-CREC-ROW * FMT:.U s"  record bytes, " type
    DEAD-NAMES @ FMT:.U s"  name bytes" type cr
+   s"   fall-through edges modeled" type TAB FALL-N @ FMT:.U cr
    ROLE-GLOBAL .ROLE-DEAD
    ROLE-PUBLIC .ROLE-DEAD
    ROLE-PRIVATE .ROLE-DEAD
@@ -1549,7 +1615,7 @@ $FFFF constant ROW-MASK
    .SPAN-ROWS ;
 
 : CENSUS-SURFACE ( -- )
-   REACH-RESET  ROOTS-SURFACE  ROOTS-ENTRY  SWEEP
+   REACH-RESET  ROOTS-SURFACE  ROOTS-CAPTURE  ROOTS-ENTRY  SWEEP
    s" dictionary-surface" REPORT-REACH ;
 
 : CENSUS-ENTRY ( -- )

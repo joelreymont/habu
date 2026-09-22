@@ -73,12 +73,43 @@ private
    BUDGET-BEGIN CODE-OFF TILE-END ! ENGINE-ROWS 0 QUIET !
    TOTAL @ before size + T= ;
 
+: EST-W32! ( n n -- ) {: w:n off:n :}
+   4 0 ?do w i 8 * rshift $FF and IMG@ off i + + c! loop ;
+
+\ Three one-instruction bodies: call/jump to the third, return, return.
+\ A BL returns into the second body; the same displacement in B does not.
+: EST-FALLTHROUGH ( -- )
+   8 IMG-RESERVE 40 ILEN !
+   0 BLOB-OFF ! 12 BLOB-LEN ! 0 REC-N ! 3 SPAN-N ! 16 SPAN0 !
+   3 0 ?do
+      i 4 * 16 i 8 * + EST-W32!
+      4 CODE-SPAN:EXACT 20 i 8 * + EST-W32!
+   loop
+   $D65F03C0 4 EST-W32! $D65F03C0 8 EST-W32!
+   BUILD-CODE-INDEX
+   s" a call at a body boundary reaches its callee and its continuation" T-LABEL
+   $94000002 0 EST-W32!
+   REACH-RESET 0 MARK-ENTRY SWEEP
+   REACH-SN @ 3 T= FALL-N @ 1 T=
+   s" an unconditional jump has no return continuation" T-LABEL
+   $14000002 0 EST-W32!
+   REACH-RESET 0 MARK-ENTRY SWEEP
+   REACH-SN @ 2 T= 1 MARK @ 0 T= FALL-N @ 0 T=
+   s" a call in an unowned gap also reaches its continuation" T-LABEL
+   $94000002 0 EST-W32!
+   2 SPAN-N ! 24 SPAN0 ! BUILD-CODE-INDEX
+   REACH-RESET SCAN-UNOWNED SWEEP
+   REACH-SN @ 2 T= FALL-N @ 1 T= ;
+
 : EST-SPAN-REACH ( -- )
    s" bin/hb" MEASURE
    BUILD-CODE-INDEX
    SPAN-N @ 0 > TTRUE
-   REACH-RESET ROOTS-SURFACE SWEEP
+   REACH-RESET ROOTS-SURFACE ROOTS-CAPTURE ROOTS-ENTRY SWEEP
    REACH-SN @ 0 > TTRUE
+   FALL-N @ 0 > TTRUE
+   COLLECT-DEAD
+   DEAD-TOTAL @ 0 T=
    COLLECT-DEAD-SPANS
    DEAD-SN @ 0 > TTRUE ;
 
@@ -143,6 +174,7 @@ variable EST-WID-SEEN                   \ ... and the non-zero ones walked
    EST-TILING
    EST-METADATA
    EST-SIDECAR
+   EST-FALLTHROUGH
    EST-SPAN-REACH
    EST-SPAN-SIDECAR
    T-REPORT ;

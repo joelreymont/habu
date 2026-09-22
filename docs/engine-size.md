@@ -62,74 +62,73 @@ baked call sites
   distinct bound callees 75
 
 reachability from the dictionary-surface roots
-  reachable	7844	735584 code bytes
-  unreachable	1	300 code bytes, 20 record bytes, 12 name bytes
-  package-private	1	20	300
-  package	records	code bytes
-  NSTR	1	300
-  spans reachable	5326	988196 code bytes
-  spans unreachable	3120	67088 code bytes
+  reachable	7845	735884 code bytes
+  unreachable	0	0 code bytes, 0 record bytes, 0 name bytes
+  fall-through edges modeled	1323
+  spans reachable	5550	997240 code bytes
+  spans unreachable	2896	58044 code bytes
   largest unreachable spans (blob offset, bytes, optional sidecar name)
     7436	864
     5588	500
-    840676	468
-    791460	388
-    1209928	372
-    792180	364
     722644	364
-    570556	268
     1813004	256
     452232	256
     7076	240
     6088	232
-    840432	224
-    791848	224
-    792564	216
     793084	204
+    8616	204
+    1824956	180
+    792780	176
+    791184	168
+    367632	168
+    871196	152
+    793624	152
+    8344	136
 
 reachability from the engine-entry roots
-  reachable	3358	511048 code bytes
-  unreachable	4487	224836 code bytes, 89740 record bytes, 50068 name bytes
-  global	3111	62220	129416
-  package-public	1375	27500	95120
+  reachable	3961	572112 code bytes
+  unreachable	3884	163772 code bytes, 77680 record bytes, 39414 name bytes
+  fall-through edges modeled	1316
+  global	2696	53920	82480
+  package-public	1187	23740	80992
   package-private	1	20	300
   package	records	code bytes
-  IR-ATTR	70	13244
-  TFAM	103	7476
+  IR-ATTR	59	10056
   IR-SCHEMA	51	5820
   IR-TYPE	23	4152
-  NUM	48	3916
   NEFF	30	3876
   A64IR	13	3668
+  NUM	40	3416
   NMACH	8	3324
-  SOURCE-ROOT	15	3216
-  IR-BUILD	40	2500
-  TYPE-DECL	29	2444
+  TFAM	80	3128
+  SOURCE-ROOT	13	2408
   IR-FUN	23	2260
   HIR	11	2240
   A64ASM	46	1932
   NTAPE	11	1680
+  IR-BUILD	29	1664
   NSTR	10	1400
-  (121 more packages)
-  spans reachable	4728	888492 code bytes
-  spans unreachable	3718	166792 code bytes
+  IR-OP	22	1296
+  (119 more packages)
+  spans reachable	5124	928780 code bytes
+  spans unreachable	3322	126504 code bytes
   largest unreachable spans (blob offset, bytes, optional sidecar name)
     956628	3240
     886716	1968
     915316	1200
     7436	864
-    564852	856
     640652	768
-    568312	692
     672860	680
     917436	648
     712172	628
     682856	576
     675896	576
     687692	572
-    705872	564
     674856	564
-    561976	552
+    664340	544
+    916908	528
+    1138924	512
+    5588	500
 
 captured DATA heap: 8371088 bytes of span, 303943 present cells in 67712 bitmap bytes, 910312 bytes of image
   owners 961, unowned value bytes 52186, unowned cells 8562
