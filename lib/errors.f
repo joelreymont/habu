@@ -1282,18 +1282,26 @@ public
 
 \ Native x86-64 instruction emission (package X64EMIT): -8780..-8799.
 \
-\ The straight-line slice writes ONE block of ONE function and nothing that needs
-\ a pass it has not got, so its boundary is two codes: a FORM outside the slice
-\ and a module SHAPE outside it. The other four are the ones every emitter has:
-\ an assignment that is not this module's accepted one, a module that is not the
-\ bound one, an attribute the dialect declares and the operation does not carry,
-\ and an opcode that is none of this dialect's.
--8780 constant E-X64EMIT-FORM   \ an operation outside the straight-line slice: a branch, a call, a trap, a divide, a select, a shift by cl, a negate, a frame access or a code address - each needs a layout, a relocation site, a fixed register or a prologue that this slice has not got - or a literal that opens a relocation site, which it records nowhere
--8781 constant E-X64EMIT-SHAPE  \ a module outside the straight-line slice: not exactly one function, not exactly one block, a block that is empty or does not end in its only return, or a body holding a call site or a frame
+\ The emitter owns its byte sink, lays every block out in BYTES and places the
+\ emission at a slot the caller names, so its boundary is the state machine
+\ around one emission - bound, placed, sealed, retired - and the two ways a
+\ layout can be wrong: a cursor that disagrees with the measured start, and a
+\ displacement no rel32 holds. The rest are the ones every emitter has: a form
+\ it does not render, a module shape it cannot write, an assignment that is not
+\ this module's accepted one, a module that is not the bound one, an attribute
+\ the dialect declares and the operation does not carry, and an opcode that is
+\ none of this dialect's.
+-8780 constant E-X64EMIT-FORM   \ an operation this emitter does not render: a variable shift, a divide, a negate, a select, a frame access, a trap, a code address, or a float form the dialect does not declare - each needs a fixed register, a prologue or a lowering this emitter has not got
+-8781 constant E-X64EMIT-SHAPE  \ a module this emitter cannot write: no function at all, a function ordinal outside the module, an empty block, a block that does not end in a terminator, or a terminator that is not its block's last operation
 -8782 constant E-X64EMIT-ACCEPT \ no accepted register assignment at all, or one accepted for a different module
 -8783 constant E-X64EMIT-MODULE \ emission before the machine dialect's identities were bound, a frozen module that is not the bound one, or a builder of another dialect or schema version
 -8784 constant E-X64EMIT-ATTR   \ an operation carrying no attribute under the key the dialect declares for its form
 -8785 constant E-X64EMIT-OPCODE \ an operation whose opcode is none of the machine dialect's family
+-8786 constant E-X64EMIT-STATE  \ a reader asked about an emission that has not been sealed, or one a later run replaced, or an emission asked for before the placement it measures its calls from
+-8787 constant E-X64EMIT-PLACE  \ a placement that is not a slot this machine's routines start at: a second placement over a live one, a negative slot, or one off the machine's stack alignment
+-8788 constant E-X64EMIT-LAYOUT \ the bytes written and the bytes the layout measured disagree: the writer reached a block or a function at an offset the measuring pass did not put it at, or ended the emission at a different length
+-8789 constant E-X64EMIT-BOUND  \ a block, function or address-site index at or past the count the sealed emission holds
+-8790 constant E-X64EMIT-REACH  \ a branch, call or tail branch whose displacement is outside the signed thirty-two bits a rel32 field holds
 
 \ Embedded instruction constructors (compiler growth region).
 -8830 constant E-X64ASM-OPERAND

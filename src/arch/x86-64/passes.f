@@ -19,19 +19,19 @@
 \ rebuilding renumbers values and a routine that gained nothing would still come
 \ out with other bytes.
 \
-\ TWO ROWS ARE LEFT UNFILLED, AND EACH REFUSES BY NAME.
+\ EMISSION IS THIS BACKEND'S LAST ROW AND IT IS FILLED. src/compiler/native/
+\ emit-x64.f owns its byte sink, lays every block of the accepted module out in
+\ BYTES, resolves every displacement against the slot this row is handed, and
+\ seals a byte image with the list of the relocatable literals in it. RETIRE
+\ gives that image and the placement back, and is nonthrowing because the driver
+\ calls it on the refusing path too. WHAT NO ROW HERE DOES IS PUBLISH: this host
+\ has no x86-64 code region to write into (src/compiler/native/publish.f names
+\ A64EMIT throughout), so the sealed image is read back by a cross-build image
+\ writer and not by NPUB.
 \
-\ - EMIT. src/compiler/native/emit-x64.f writes the bytes of one accepted
-\   straight-line leaf into a byte sink the caller owns; it is not yet a stage
-\   that places a routine at a slot in the code region, which is what this row
-\   holds. Until it is, an emit request for x86-64 answers the same refusal an
-\   architecture with no backend gets, rather than reaching an empty cell.
-\ - RETIRE, which gives back what emission held: there is nothing yet to hold.
-\
-\ So declare, select, prune and the lowering fixpoint run end to end in the
-\ order src/compiler/native/compiler.f runs them, and a definition for this
-\ machine is refused at the emit stage; test/compiler/x64-chain.f drives that
-\ chain through this table.
+\ So declare, select, prune, the lowering fixpoint, emit and retire all run in
+\ the order src/compiler/native/compiler.f runs them;
+\ test/compiler/x64-chain.f drives that chain through this table.
 \
 \ HIR LOOP FOLDING TRAVELS WITH SELECTION for the reason the ARM64 file gives:
 \ the fold rewrites the module the selector is bound to as its source, so the
@@ -54,6 +54,7 @@ require src/compiler/native/select-x64.f
 require src/compiler/native/spill.f
 require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
+require src/compiler/native/emit-x64.f
 require src/compiler/native/prof.f
 require src/arch/x86-64/backend.f
 require src/arch/x86-64/abi.f
@@ -115,14 +116,17 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    IR-BUILD:PLAN-DEFAULT
    c HIR:NEW-BUILDER ;
 
-\ The allocator, its validator and the shared spill pass, bound to the module a
-\ stage is about to write. Selection and each lowering turn both mint a machine
-\ module, and every pass that reads or writes one names that module's own
-\ symbols - which is why this is an act and not a one-time setup.
+\ The allocator, its validator, the emitter and the shared spill pass, bound to
+\ the module a stage is about to write. Selection and each lowering turn both
+\ mint a machine module, and every pass that reads or writes one names that
+\ module's own symbols - which is why this is an act and not a one-time setup.
+\ The emitter is bound here too: the module it writes is whichever one the
+\ fixpoint stopped on, and only the turn that minted it can hand it its symbols.
 : BIND-MACHINE ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b X64M:MACHINE  c b X64IR:VOCABULARY  A64RA:BIND-DIALECT
-   c b  c b X64IR:VOCABULARY  A64RAV:BIND-DIALECT ;
+   c b  c b X64IR:VOCABULARY  A64RAV:BIND-DIALECT
+   c b X64EMIT:BIND-DIALECT ;
 
 : BIND-SPILL ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
@@ -221,6 +225,18 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
       swap IR-BUILD:RETIRE
    repeat ;
 
+\ ---- emission ----------------------------------------------------------------
+\ Declared for every definition and not only one that calls, so the slot this
+\ routine really claims is the one its own displacements are measured from. The
+\ spill binding is given back first: the fixpoint above leaves it standing when
+\ its last turn lowered.
+: EMIT ( IR-CTX:ctx IR-BUILD:module n -- )
+   {: c:IR-CTX:ctx m:IR-BUILD:module at:n :}
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
+   m ROUTINE A64RAV:ACCEPT
+   at X64EMIT:PLACE-AT
+   c m X64EMIT:EMIT ;
+
 \ ---- what this backend holds between definitions -----------------------------
 \ Caught INSIDE the context so it always leaves the ordinary way and gives its
 \ arenas back. Each pass is asked about ITSELF, so this cannot get out of step.
@@ -228,11 +244,14 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    NLOOP:BOUND? if NLOOP:RELEASE then
    X64SEL:BOUND? if X64SEL:RELEASE then
    A64RA:BOUND? if A64RA:RELEASE then
-   A64SPILL:BOUND? if A64SPILL:RELEASE then ;
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
+   X64EMIT:BOUND? if X64EMIT:RELEASE then ;
 
 \ The registry releases buffers immediately before DATA copy. Reset the pass
 \ reservations here so a restored compiler sizes them again on use.
 : PREPARE ( -- )
+   X64EMIT:CAPTURE-PREPARE
+   X64EMIT:RESET-SCRATCH
    A64SPILL:RESET-SCRATCH
    A64RAV:RESET-SCRATCH
    A64RA:RESET-SCRATCH
@@ -245,14 +264,15 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
 public
 
 \ The row this backend fills as it loads, stage by stage. src/arch/x86-64/
-\ backend.f has already claimed the registry row these are stored beside. The
-\ stages it has no pass for are left at the table's own refusal.
+\ backend.f has already claimed the registry row these are stored beside.
 : INSTALL ( -- )
    ARCH [: DECLARE ;] NBACK:DECLARE!
    ARCH [: SELECT ;] NBACK:SELECT!
    ARCH [: PRUNE ;] NBACK:PRUNE!
    ARCH [: FIXPOINT ;] NBACK:FIXPOINT!
+   ARCH [: EMIT ;] NBACK:EMIT!
    ARCH [: RELEASE ;] NBACK:RELEASE!
+   ARCH [: X64EMIT:RETIRE ;] NBACK:RETIRE!
    ARCH [: X64IR:PROTOTYPE ;] NBACK:PROTOTYPE!
    ARCH [: X64IR:PROTOTYPE-CLEAR ;] NBACK:FORGET!
    ARCH [: PREPARE ;] NBACK:PREPARE! ;

@@ -16,18 +16,18 @@
 \
 \ PRUNE IS A PASS-THROUGH HERE: src/compiler/native/prune.f rewrites nothing on
 \ the corpus and this machine has no prune pass, so the row answers the module
-\ it was given, and one case pins that by identity. TWO ROWS OF THIS BACKEND
-\ ARE UNFILLED AND BOTH ANSWER E-CTGT-UNLOADED: emit, because
-\ src/compiler/native/emit-x64.f writes bytes into a byte sink the caller owns
-\ and is not yet the stage that places a routine at a slot in the code region,
-\ and retire, which gives back what emission held. The last case pins the emit
-\ refusal, which is also what says the x86-64 chain is one row from being
-\ reachable end to end from src/compiler/native/compiler.f: declare, select,
-\ prune and the fixpoint run in the driver's own order and emit refuses.
+\ it was given, and one case pins that by identity. EVERY ROW OF THIS BACKEND IS
+\ NOW FILLED: the last case runs the driver's whole order - declare, select,
+\ prune, fixpoint, emit at a named slot, retire - and reads the sealed image back
+\ off the emitter, which is what says the x86-64 chain is reachable end to end
+\ from src/compiler/native/compiler.f. What the driver does with those bytes is
+\ another stage's: this host's publisher takes ARM64 words only, so an x86-64
+\ emission is a cross-build's input and is published nowhere here.
 \
-\ ONE FIXTURE PER CONTEXT, and the refusing case runs inside an enclosing one:
-\ an abandoned context gives its registry slots back only when a live enclosing
-\ context leaves normally (src/compiler/ir/context.f, the note on stale handles).
+\ ONE FIXTURE PER CONTEXT, and each case gives the passes it bound back through
+\ the release row before its context leaves: a context that dies holding them
+\ gives its registry slots back only when a live enclosing one leaves normally
+\ (src/compiler/ir/context.f, the note on stale handles).
 
 require lib/test.f
 require lib/string.f
@@ -330,27 +330,53 @@ variable FRAME-BYTES                 \ the size the reserve carries
    CC NBACK:RELEASE
    N-STORE @  N-LOAD @  N-RESERVE @  plan  same  ok ;
 
-\ ---- the row this backend leaves to the table's own refusal -------------------
-: EMIT-REFUSE-BODY ( IR-CTX:ctx -- )
+\ ---- the two rows that finish a definition -----------------------------------
+\ A SLOT THE PUBLISHER COULD REALLY NAME: whole multiples of X64IR:SP-ALIGN are
+\ the unit a code region hands out, and this one is not zero, so the emission is
+\ measured from a placement that is not the number an unplaced one would use.
+X64IR:SP-ALIGN 4 * constant EMIT-SLOT
+
+: HEX-DIGIT ( n -- n ) {: c:n :}
+   c 48 >= c 57 <= and if c 48 - exit then
+   c 97 >= c 102 <= and 0= if E-X64EMIT-FORM throw then
+   c 97 - 10 + ;
+
+: HEX-BYTE ( ptr u8 n -- n ) {: a:ptr i:n :}
+   a i 2 * + c@ HEX-DIGIT 4 lshift
+   a i 2 * 1 + + c@ HEX-DIGIT or ;
+
+: SPAN=HEX? ( ptr u8 n ptr u8 n -- bool ) {: da:ptr dlen:n ea:ptr eu:n :}
+   dlen eu 2 / <> if false exit then
+   dlen 0 ?do
+      ea i HEX-BYTE da i + c@ <> if false unloop exit then
+   loop
+   true ;
+
+\ The same image test/compiler/x64-emit.f pins for this routine under this
+\ contract, read back off the row instead of off the emitter: what the chain adds
+\ is the placement and the driver's own order, not other bytes.
+: DIFF-IMAGE? ( -- bool )
+   X64EMIT:BYTES X64EMIT:SIZE
+   s" 4981ec10000000498b0424498b4c24084829c8498904244981c408000000c3" SPAN=HEX? ;
+
+\ The driver's last two calls in the order src/compiler/native/compiler.f makes
+\ them: emit at the slot the publisher named, then retire inside the dying
+\ context. Retire runs there on the accepting path AND on the refusing one, so
+\ it is called twice here: the second has nothing left to give back and is
+\ nonetheless harmless.
+: PLACED-BODY ( IR-CTX:ctx -- n n bool bool )
    HIR-MOD
    BUILD-DIFF
    2 1 CHAIN {: m:IR-BUILD:module :}
-   CC m 0 NBACK:EMIT ;
-
-: EMIT-REFUSE ( -- )
-   WBND [: EMIT-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-\ A REFUSED COMPILATION LEAVES ITS PASSES BOUND, and the context they were
-\ bound under dies with it: the run below gives them back through the row the
-\ enclosing context resolves to, which is the act src/compiler/native/compiler.f
-\ ends a failed definition with. A selection after a refusal that was not
-\ released binds the spill pass over a live binding and is refused with
-\ E-A64SPILL-BIND before it reaches the row being measured.
-: GROUP-ROWS ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" an emit request for x86-64 answers the refusal an architecture with no backend gets: emit-x64.f writes bytes into a caller's sink and is not yet the stage that places a routine" T-LABEL
-   [: EMIT-REFUSE ;] E-CTGT-UNLOADED TTHROWSQ
-   c NBACK:RELEASE ;
+   CC m EMIT-SLOT NBACK:EMIT
+   X64EMIT:SIZE {: sz:n :}
+   X64EMIT:BLOCKS {: blocks:n :}
+   DIFF-IMAGE? {: same:bool :}
+   CC NBACK:RETIRE
+   CC NBACK:RETIRE
+   X64EMIT:SEALED? 0= {: gone:bool :}
+   CC NBACK:RELEASE
+   sz blocks same gone ;
 
 public
 
@@ -369,7 +395,9 @@ public
    WBND [: UNCHANGED-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE 0 T= 0 T= 0 T= 0 T=
 
-   WBND [: GROUP-ROWS ;] IR-CTX:WITH-CONTEXT
+   s" the last two rows: the chain's module is placed at the slot the driver names and comes back sealed as the bytes x64-emit.f pins for it, and retiring gives the emission back twice over" T-LABEL
+   WBND [: PLACED-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 1 T= 31 T=
 
    T-REPORT ;
 
