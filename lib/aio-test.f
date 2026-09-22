@@ -567,7 +567,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    [: LONE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] E-AIO-STATE TTHROWSQ
    P-R P-W PIPE-CLOSE ;
 
-\ ---- 17: a handle kept past its record's reuse ------------------------------
+\ ---- 18: a handle kept past its record's reuse ------------------------------
 \ A handle is the record's index and the generation that record carried when the
 \ handle was minted, and REC-FREE bumps the generation, so a handle whose record
 \ this very task has reclaimed is E-AIO-STATE - the one case the index and the
