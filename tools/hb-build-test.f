@@ -119,6 +119,8 @@ variable HBT-OPENP-SRC-U
 variable HBT-OPENP-OUT-U
 variable HBT-LIFE-SRC-U
 variable HBT-LIFE-OUT-U
+variable HBT-HOOK-SRC-U
+variable HBT-HOOK-OUT-U
 create HBT-LIB-SRC-BUF FS-PATH-CAP allot
 create HBT-LIB-OUT-BUF FS-PATH-CAP allot
 create HBT-LIB-DIR-BUF FS-PATH-CAP allot
@@ -140,6 +142,8 @@ create HBT-OPENP-SRC-BUF FS-PATH-CAP allot
 create HBT-OPENP-OUT-BUF FS-PATH-CAP allot
 create HBT-LIFE-SRC-BUF FS-PATH-CAP allot
 create HBT-LIFE-OUT-BUF FS-PATH-CAP allot
+create HBT-HOOK-SRC-BUF FS-PATH-CAP allot
+create HBT-HOOK-OUT-BUF FS-PATH-CAP allot
 \ The quoted-path fixture below owns the writer's bytes; json-write holds none.
 6 constant HBT-ESCAPE-MAX
 FS-PATH-CAP HBT-ESCAPE-MAX * 2 + constant HBT-QUOTE-CAP
@@ -344,6 +348,12 @@ create HBT-EXP-HEX2 64 allot
 : HBT-LIFE-OUT ( -- ptr u8 n )
    HBT-LIFE-OUT-BUF HBT-LIFE-OUT-U @ ;
 
+: HBT-HOOK-SRC ( -- ptr u8 n )
+   HBT-HOOK-SRC-BUF HBT-HOOK-SRC-U @ ;
+
+: HBT-HOOK-OUT ( -- ptr u8 n )
+   HBT-HOOK-OUT-BUF HBT-HOOK-OUT-U @ ;
+
 \ An application that touches a PERSISTENT CELL of each library it requires:
 \ lib/string.f's builder, lib/fs-mutate.f's copy state (FS-MUT-COPY-IN) and
 \ lib/fs.f's walk stacks (FS-DEPTH, FS-WALK-BUF). Those cells are what the maker
@@ -498,6 +508,50 @@ create HBT-EXP-HEX2 64 allot
 : HBT-LIFE-EXPECTED$ ( -- ptr u8 n )
    S\" hooks=0\n" ;
 
+\ ... and REGISTERING one, which is the store the read above only counted.
+\ IMAGE-LIFECYCLE:REGISTER appends a quotation to the HOOKS buffer and
+\ REGISTER-PERSISTENT to the PERSISTENT table; both are quotation stores into a
+\ declared cell, which the optimizing tier lowers through QUOTATION-STORAGE:STORE
+\ and so through `xt!`. `xt!` stores the token and then calls the engine's
+\ address-cell registrar, and that call is what refused this program: with the
+\ two table bases unclaimed at `caller=STORE+424 target=DICT+56`, and with them
+\ claimed at `aot: PC-relative target removed or outside closure site=xt!`. A
+\ stripped image has no reader for the address-cell table, so the linker drops
+\ the declaration and keeps the store (src/habu/aot-closure.f AOT-DECLARATION?).
+\ PROC-ARGV-BUF is a REAL first-use registrant - lib/process-argv.f registers its
+\ RELEASE hook the first time the argv buffer is taken - so the program reaches
+\ the store the way Tender's server and scraper do, and not only through its own
+\ two calls.
+\ THE PINNED ORDER IS WHAT PREPARE PRODUCES: the HOOKS buffer from the last
+\ registration down to the first (`hook=b` before `hook=a`, with the silent
+\ RELEASE hook ahead of both), then the PERSISTENT table the same way, because
+\ reverse order releases dependents before what they depend on. `count=4` is
+\ three of the image's own registrations plus that RELEASE hook, out of a
+\ registry that started empty. Nothing else runs PREPARE in a stripped image -
+\ the entry is `bl MAIN; exit(0)` - so MAIN calls it, after printing `exit`.
+: HBT-HOOK-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require lib/image-lifecycle.f\nrequire lib/process-argv.f\n" SB-APPEND
+   S\" require lib/fmt.f\n: HOOK-A ( -- ) s\" hook=a\" type cr ;\n" SB-APPEND
+   S\" : HOOK-B ( -- ) s\" hook=b\" type cr ;\n" SB-APPEND
+   S\" : HOOK-P ( -- ) s\" hook=p\" type cr ;\n: MAIN ( -- )\n" SB-APPEND
+   S\"    [: HOOK-A ;] IMAGE-LIFECYCLE:REGISTER\n" SB-APPEND
+   S\"    [: HOOK-B ;] IMAGE-LIFECYCLE:REGISTER\n" SB-APPEND
+   S\"    [: HOOK-P ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT\n" SB-APPEND
+   S\"    PROC-ARGV-BUF drop\n" SB-APPEND
+   S\"    s\" count=\" type IMAGE-LIFECYCLE:COUNT FMT:.INT cr\n" SB-APPEND
+   S\"    s\" exit\" type cr\n   IMAGE-LIFECYCLE:PREPARE ;\n" SB-APPEND
+   SB$ ;
+
+: HBT-HOOK-EXPECTED$ ( -- ptr u8 n )
+   SB-RESET
+   s" count=4" SB-APPEND 10 SB-APPEND-C
+   s" exit" SB-APPEND 10 SB-APPEND-C
+   s" hook=b" SB-APPEND 10 SB-APPEND-C
+   s" hook=a" SB-APPEND 10 SB-APPEND-C
+   s" hook=p" SB-APPEND 10 SB-APPEND-C
+   SB$ ;
+
 \ A PROGRAM WHOSE CLOSURE IS ITS OWN SIZE. HBT-CHAIN-N words, each calling the
 \ next and reaching no library, are exactly HBT-CHAIN-N + 1 closure members, so
 \ this fixture measures the table sizing and nothing else. 1100 is past the 1024
@@ -590,6 +644,8 @@ create HBT-EXP-HEX2 64 allot
    HBT-ROOT s" openpath" HBT-OPENP-OUT-BUF HBT-OPENP-OUT-U HBT-PATH!
    HBT-ROOT s" lifecycle.f" HBT-LIFE-SRC-BUF HBT-LIFE-SRC-U HBT-PATH!
    HBT-ROOT s" lifecycle" HBT-LIFE-OUT-BUF HBT-LIFE-OUT-U HBT-PATH!
+   HBT-ROOT s" lifehook.f" HBT-HOOK-SRC-BUF HBT-HOOK-SRC-U HBT-PATH!
+   HBT-ROOT s" lifehook" HBT-HOOK-OUT-BUF HBT-HOOK-OUT-U HBT-PATH!
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
@@ -1048,6 +1104,29 @@ create READER-STATE JR:STORAGE-BYTES allot
    errn 0 T=
    HBT-RUN-OUT outn HBT-LIFE-EXPECTED$ T$=
    HBT-LIFE-OUT HBT-REMOVE-FILE? ;
+
+\ ... and REGISTERS a hook, runs it at exit and prints from it. The refusals this
+\ replaced, the reason the declaration half of `xt!` is dropped and the reason
+\ the printed order is the one pinned are all with HBT-HOOK-SRC$ above.
+: HBT-STRIPPED-LIFECYCLE-HOOK ( -- )
+   HBT-HOOK-SRC HBT-HOOK-SRC$ WRITE-ALL
+   HBT-HOOK-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-HOOK-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-HOOK-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
+   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
+   brc 0 T=
+   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-HOOK-OUT FILE? TTRUE
+   HBT-HOOK-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-HOOK-EXPECTED$ T$=
+   HBT-HOOK-OUT HBT-REMOVE-FILE? ;
 
 \ ... while a baked create table on no list is refused however much it looks like
 \ the carried ones.
@@ -1777,6 +1856,7 @@ public
    HBT-STRIPPED-CHAIN
    HBT-STRIPPED-OPEN-PATH
    HBT-STRIPPED-LIFECYCLE-REGISTRY
+   HBT-STRIPPED-LIFECYCLE-HOOK
    HBT-STRIPPED-UNCARRIED-TABLE
    HBT-STRIPPED-CACHED-CARRIED
    HBT-STRIPPED-CACHED-UNOWNED

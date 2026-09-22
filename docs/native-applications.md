@@ -202,15 +202,29 @@ points stopped; `HBT-STRIPPED-OPEN-PATH` is that reproducer, and it now opens
 `lib/image-lifecycle.f`'s hook registry, reached by any library that registers
 its cleanup on first use: its lock and its two hook counters are claimed
 **fresh**, because a new process has registered nothing, and
-`HBT-STRIPPED-LIFECYCLE-REGISTRY` reads the count out of a stripped image. That
-file's `HOOKS` buffer and `PERSISTENT` table are deliberately not claimed, so
-*registering* a hook at run time is still refused — at the `HOOKS` control head,
-now named (`caller=STORE+376 target=DICT+56`). Claiming those two as well moves
-the refusal one step and no further: `APPEND` stores a quotation into a declared
-cell, which lowers through `xt!`, and `xt!` needs the engine's address-cell
-table, so the image is refused with *aot: PC-relative target removed or outside
-closure site=xt!* (both measured). A claim admits every address it declares, so
-those two wait for a program that can reach them. A baked table on no list still refuses:
+`HBT-STRIPPED-LIFECYCLE-REGISTRY` reads the count out of a stripped image, and
+that file's `HOOKS` buffer head and `PERSISTENT` table base are claimed **fresh**
+beside them — the bases only, because both accessors compute their slot by
+arithmetic and no code spells a cell behind either — so a stripped image
+*registers* a hook as well as counting one. Before those two claims the store
+was refused at the `HOOKS` control head (`caller=STORE+424 target=DICT+56`), and
+with them it moved exactly one step: `APPEND` stores a quotation into a declared
+cell, which lowers through `xt!`, and `xt!` stores the token and then calls the
+engine's address-cell registrar to declare the cell, which left the image refused
+with *aot: PC-relative target removed or outside closure site=xt!* (both
+measured). **A stripped image drops that declaration.** Every reader of the
+address-cell table — the snapshot writer, the loader's relocation pass and the
+AOT capture — is machinery a stripped image does not carry; its only restore pass
+is the linker-computed `EMIT-XT-CELLS` above, and the registrar would refuse the
+zero table header of its fresh `DATA` in any case. So the registrar is a sealed
+engine helper record, `(MARK)`; the closure walk does not follow a branch to it
+(`aot-closure.f AOT-DECLARATION?`) and the relocation pass writes a `NOP` over
+the call (`aot-lib.f RELOC-W32`), leaving the store — `BSTORE`'s store,
+protection guard and all — untouched. The rule is keyed on the *target* being
+the registrar, never on the member that calls it, so every other unmapped branch
+still dies by name. `HBT-STRIPPED-LIFECYCLE-HOOK` is the reproducer: it registers
+through both entries, calls a library that registers its cleanup on first use,
+and prints from each hook at exit. A baked table on no list still refuses:
 `src/os/env-base.f`'s `TPB`, the `TMP-PATH` buffer, reached through
 `TMP-PATH-COPY-SRC`, is the nearest miss (`HBT-STRIPPED-UNCARRIED-TABLE`) — a
 table travels because the list names it, never because it is a table and never
@@ -254,7 +268,9 @@ was **declared** to hold a token:
   into. A binding made at load time therefore survives the strip.
 - `xt!` declares a cell a checked word computed at run time. The optimizing tier
   selects it for a proven quotation store, so an ordinary `!` of a quotation into
-  a persistent cell declares that cell too (see the tier note below).
+  a persistent cell declares that cell too (see the tier note below). In a
+  stripped image only the store half runs: the declaration call is dropped at
+  link, because such an image has no address-cell table to declare into.
 
 The declaration is the only authority. Nothing reads a cell as a code address
 because its value happens to land in a code range: an ordinary integer can hold

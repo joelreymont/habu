@@ -164,6 +164,22 @@ s" MAIN" ENTRY-NAME!
    r s" addrmap-set" REC-NAME= IF 0 0= EXIT THEN
    r s" xref-retarget" REC-NAME= IF 0 0= EXIT THEN
    0 0= 0= ;
+\ THE ONE RECORD A CALL IS DROPPED TO RATHER THAN FOLLOWED. (MARK) is the
+\ address-cell registrar (habu2.f EMIT-MARK): `xt!` stores the token into the
+\ cell and BLs it to DECLARE that cell as holding a code address, for readers a
+\ stripped image does not have - the snapshot writer, the loader's relocation
+\ pass (habu2.f EMIT-XT) and the AOT capture (aot-capture.f) all read the
+\ address-cell table, and a stripped image's only restore pass is the
+\ linker-computed EMIT-XT-CELLS (aot-lib.f). The registrar would die on the zero
+\ address-cell header of its fresh DATA in any case (habu2.f MARK-HEADER). So
+\ the declaration half of `xt!` has nothing to declare to in such an image and
+\ is dropped at link (aot-lib.f RELOC-W32 writes a NOP), while the store half -
+\ BSTORE's store, protection guard and all - is carried unchanged. A
+\ declaration-only record is never a closure member, so the walk below does not
+\ follow the branch. The rule is keyed on the TARGET being the registrar, never
+\ on the name of the member that calls it.
+: AOT-DECLARATION? {: r:ptr :} ( ptr a -- bool )
+   r s" (MARK)" REC-NAME= ;
 create AECH 1 allot
 : AE1 {: c:n :}  c AECH c!  2 AECH 1 write drop ;
 : AETXT {: a:ptr u:n :} ( ptr u8 n -- )
@@ -862,13 +878,18 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
 \ are never followed.
 \ A callee the image ships no record for answers from the span table instead,
 \ and an entry neither table knows is left where the relocation pass will refuse
-\ it by name.
+\ it by name. A target that resolves to a declaration-only record is neither: it
+\ is never a member, because the relocation pass drops the call (AOT-DECLARATION?
+\ above).
 : SCAN-DIRECT ( ptr n ptr u8 ptr u8 ptr u8 -- ) {: caller:ptr p:ptr mstart:ptr mend:ptr :}
    p AOT-W32@ dup DIRECT? 0= if drop exit then
    p swap TARGET {: t:ptr :}
    t mstart >= t mend < and if exit then
    t FINDADDR-PTR {: callee:ptr :}
-   callee XREF-FOUND? if caller callee SCAN-CALLEE exit then
+   callee XREF-FOUND? if
+      callee AOT-DECLARATION? if exit then
+      caller callee SCAN-CALLEE exit
+   then
    t SPAN-AT-ENTRY {: k:n :}
    k 0 >= if k ADD-SPAN-CLO then ;
 

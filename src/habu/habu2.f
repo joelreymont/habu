@@ -6182,12 +6182,23 @@ ardone LBL,
    2 XTMSG-LEN MOVZ, NR-WRITE SYS,
    0 XTCELL-RC MOVZ, NR-EXIT-GROUP SYS, ;
 
+\ The address-cell registrar, registered as the sealed (MARK) engine helper for
+\ the reason (PROT-SPAN) is: `xt!` (BXTSTORE below) reaches it by a direct BL,
+\ and the ahead-of-time closure walker follows such a branch only to a record's
+\ EXACT code entry (aot-closure.f FINDADDR-PTR), so without a record the linker
+\ has no name for the target and refuses the image. The record spans
+\ [LMARK, end), which covers the LPTRMARK entry inside the same body. Registering
+\ it does not carry it: a stripped image has no reader for the table this body
+\ maintains, so aot-closure.f AOT-DECLARATION? drops the call at link.
 : EMIT-MARK ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: common:label lookup:label full:label band:label kind:label
       ret:label shape:label mapped:label ready:label grow:label copy:label
       copied:label publish:label rebuild:label hit:label missing:label :}
-   LMARK LABEL@ LBL, MARK-SAVE
+   LMARK LABEL@ {: start:label :}
+   LBL {: end:label :}
+   s" (MARK)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   start LBL, MARK-SAVE
    15 0 MOVZ, common B,
    LPTRMARK LABEL@ LBL, MARK-SAVE
    15 XTCELL-DATA-TAG LIT64,
@@ -6286,7 +6297,8 @@ ardone LBL,
    kind LBL,
       1 LXTKINDMSG LABEL@ ADR, 0 2 MOVZ, 2 XTKINDMSG-LEN MOVZ, NR-WRITE SYS,
       0 XTKIND-RC MOVZ, NR-EXIT-GROUP SYS,
-   ret LBL, MARK-UNLOCK MARK-RESTORE ;
+   ret LBL, MARK-UNLOCK MARK-RESTORE
+   end LBL, ;
 
 \ The cold seed has already registered cells when snapshot restore begins.
 \ Release THAT live mapping before the DATA copy can overwrite its pointer.

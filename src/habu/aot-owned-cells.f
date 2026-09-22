@@ -239,14 +239,17 @@ private
 \   SHA-TL, SHA-UB     SHA-PAD stores both at entry before reading them.
 \ THE IMAGE-LIFECYCLE REGISTRY (lib/image-lifecycle.f) is the second site a
 \ stripped image is refused at, once the path scratch below lets it open a file:
-\ its private lock and two counters, claimed fresh for the reason the
-\ DYNAMIC-STORAGE registry's three cells are - a new process has registered
-\ nothing, so an open lock and two zero counts are its correct start, and that is
-\ the zero a fresh anonymous mapping holds. IMAGE-LIFECYCLE:COUNT takes the lock
-\ and reads both counters, which is how a program reaches all three; the HOOKS
-\ buffer and the PERSISTENT table are deliberately not on the list, because the
-\ only code that spells them stores a quotation through `xt!` and no stripped
-\ image carries that (the reason is with the word that hands these out).
+\ its private lock, its two counters and the bases of its two hook tables,
+\ claimed fresh for the reason the DYNAMIC-STORAGE registry's three cells are - a
+\ new process has registered nothing, so an open lock, two zero counts, no hook
+\ mapping and an empty persistent table are its correct start, and that is the
+\ zero a fresh anonymous mapping holds. IMAGE-LIFECYCLE:COUNT takes the lock and
+\ reads both counters; REGISTER, REGISTER-PERSISTENT and PREPARE spell the two
+\ bases, and nothing spells a cell behind either base, because both accessors
+\ compute the slot by arithmetic. Registering stores a quotation through `xt!`,
+\ whose declaration half a stripped image drops at link (aot-closure.f
+\ AOT-DECLARATION?); before that drop the claims below would have admitted the
+\ cells and the build was still refused at `site=xt!`.
 \ PZB (src/core/util.f) is the tree's one path scratch, claimed fresh with its
 \ PATH-CAP + 1 bytes: PATHZ writes the caller's path and its NUL into it and
 \ PATH0 hands it to the caller within that one call, so every byte it reads it

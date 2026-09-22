@@ -537,10 +537,26 @@ variable BDELTA  variable TNEW
    p  w 5 14 BITS 14 SX 4 * + ;
 : ADRTGT {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
    p  w 5 19 BITS 2 lshift  w 29 2 BITS or 21 SX + ;
+\ A DIRECT BRANCH TO A DECLARATION-ONLY RECORD IS DROPPED RATHER THAN RELOCATED.
+\ The target is resolved here the way the closure walk resolved it - by exact
+\ record entry - so the branch this rewrites is exactly the one the walk left
+\ out of the closure, and the instruction becomes a NOP. Today that record is
+\ (MARK), the address-cell registrar `xt!` calls to declare the cell it just
+\ stored into: a stripped image carries no reader for that table, so the store
+\ stands and the declaration goes away (aot-closure.f AOT-DECLARATION? holds the
+\ rule and the evidence). Every other unmapped target still dies by name in
+\ MAP-TARGET!, and the drop is keyed on the target, never on the calling member.
+: DECLARATION-TARGET? ( ptr u8 -- bool ) {: t:ptr :}
+   t FINDADDR-PTR {: callee:ptr :}
+   callee XREF-FOUND? 0= IF AOT-FALSE EXIT THEN
+   callee AOT-DECLARATION? ;
+: RELOC-DIRECT ( n ptr u8 n -- n ) {: i:n p:ptr w:n :}
+   p w TARGET {: t:ptr :}
+   t DECLARATION-TARGET? IF ENC-NOP EXIT THEN
+   i t MAP-TARGET!
+   w $FC000000 and  ASM-LEN TNEW @ REL26 or ;
 : RELOC-W32 {: i:n p:ptr w:n :} ( n ptr u8 n -- n )
-   w DIRECT? IF
-      i p w TARGET MAP-TARGET!
-      w $FC000000 and  ASM-LEN TNEW @ REL26 or EXIT THEN
+   w DIRECT? IF i p w RELOC-DIRECT EXIT THEN
    w BCOND? IF
       i p w BTGT19 MAP-TARGET!
       w $FF00001F and  ASM-LEN TNEW @ REL19 5 lshift or EXIT THEN
