@@ -59,6 +59,15 @@ TRUSTED: PRIMITIVE-XT ( -- [ n -- n ] )
 : CODE-LIKE-BITS? ( -- bool )
    SAVED-CELL @ CODE-LIKE-BITS xor $D65F03EA = ;
 
+\ The empty quotation is this record's last function, so its one RET is the
+\ instruction the recorded length leaves out (publish.f RECORDED-LEN). The
+\ member the link measures re-adds it (aot-closure.f REC-BYTES through
+\ CODE-SPAN:BYTES), so the ADR target lies inside the member, not at its end.
+defer EMPTY-HOOK ( -- )
+
+: INSTALL-EMPTY ( -- )
+   [: ;] is EMPTY-HOOK ;
+
 public
 
 : RUN ( -- )
@@ -69,6 +78,7 @@ public
    SAVED-DEPTH? EXPECT
    DATA? EXPECT
    CODE-LIKE-BITS? EXPECT
+   INSTALL-EMPTY EMPTY-HOOK
    s" stripped-quotation: ok" type cr ;
 
 ;package
