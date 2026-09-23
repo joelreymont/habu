@@ -1,9 +1,11 @@
 ---
 title: Preserve exceptional stack types across catch and payload restoration
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-13T21:26:24.684087+03:00"
+closed-at: "2026-09-23T15:54:27.552564+03:00"
+close-reason: "Landed as Type the cells a caught throw leaves stale: a caught throw leaves every window cell the callee cannot vouch for as stale<type>, typed use is E-STALE-READ, a multicell bundle is one stale value, callee evidence folds intact masks (self-describing persisted fields), T-STALE tag 8 with the model row; test/catch-stale-suite.f, test/compiler/native-catch.f. Follow-ups: c2923193 (callee evidence at the call site), 00fe3689 (tick route), 5d11e31f (raw store), a5e208f4 (render width)."
 ---
 
 Claim: agent=hazel workspace=.jj-ws/hazel-catch-stale, based on 45608866.
