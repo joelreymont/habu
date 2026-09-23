@@ -743,12 +743,25 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
    repeat
    drop -1 ;
 
+: CAN-INVERT? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id SLOT-AT TAIL-SUCC 1 <> if false exit then
+   id SLOT-AT O-BRZ = if true exit then
+   \ AL/NV do not have complementary conditions.
+   id COND-OF 14 < ;
+
 : FOLLOWER ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT TAIL-BLOCK {: s:n :}
-   s 0 < if NEXT-UNLAID exit then
-   s LAID? if NEXT-UNLAID exit then
-   s ;
+   s 0 >= if s LAID? 0= if s exit then then
+   \ If the preferred arm is already placed (including a cold tail), trace
+   \ the other arm before starting an unrelated block's trace.
+   f b BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   t CAN-INVERT? if
+      t 0 SUCC-BLOCK GOTO-OF {: other:n :}
+      other LAID? 0= if other exit then
+   then
+   NEXT-UNLAID ;
 
 \ A routine every path of which traps has no return for the emission to end on,
 \ so no block is pinned last and the trace decides the whole order.
@@ -767,8 +780,14 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
 
 \ Asked in POSITIONS and answered about ORDINALS, so nothing here depends on
 \ where any block starts - which is what lets the layout ask it.
+: SWAP-SUCCS? ( IR-ID:ir-op-id n -- bool )
+   {: id:IR-ID:ir-op-id home:n :}
+   id CAN-INVERT? 0= if false exit then
+   id 0 SUCC-BLOCK GOTO-OF POS-OF home POS-OF 1+ = ;
+
 : FALL-THRU? ( IR-ID:ir-op-id n -- bool )
    {: id:IR-ID:ir-op-id home:n :}
+   id home SWAP-SUCCS? if true exit then
    id SLOT-AT TAIL-SUCC {: s:n :}
    s 0 < if false exit then
    id s SUCC-BLOCK GOTO-OF POS-OF  home POS-OF 1+ = ;
@@ -958,6 +977,43 @@ variable CH-AT
       f  i 1- AT-POS  FOLLOWER  i LAY
    loop ;
 
+\ B-KEEP is 0 for unreachable, 1 for normal, 2 for a path ending only in traps.
+\ Include a diagnostic's dispatch blocks: leaving those before the return would
+\ still put error handling on the successful path. Cycles remain conservative.
+: COLD? ( n -- bool ) cells B-KEEP + @ 2 = ;
+
+: COLD-TERM? ( IR-ID:ir-fun-id n -- bool )
+   BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   t SLOT-AT O-TRAP = if true exit then
+   t SUCCS-OF 0= if false exit then
+   t SUCCS-OF 0 ?do
+      t i SUCC-BLOCK GOTO-OF COLD? 0= if false unloop exit then
+   loop
+   true ;
+
+: MARK-COLD ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   begin
+      0
+      N-BLK @ 0 ?do
+         N-BLK @ 1- i - {: b:n :}
+         b KEPT? b COLD? 0= and if
+            f b COLD-TERM? if 2 b cells B-KEEP + ! 1+ then
+         then
+      loop
+      0=
+   until ;
+
+\ Pre-place cold blocks after the successful return. FOLLOWER traces only the
+\ remaining normal blocks; descending ordinals preserve the cold source order.
+: LAY-COLD ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id last:n :}
+   last
+   f BLOCK-COUNT 0 ?do
+      f BLOCK-COUNT 1- i - {: b:n :}
+      b COLD? if b over LAY 1- then
+   loop ;
+
 : ORDER-BLOCKS ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f BLOCK-COUNT {: n:n :}
@@ -973,11 +1029,13 @@ variable CH-AT
    n 0 ?do  -1 i cells B-PLACE + !  loop
    r NO-RET = if f k ORDER-NO-RET exit then
    r KEPT? 0= if E-A64EMIT-SHAPE throw then
-   r k 1- LAY
+   f MARK-COLD
+   f k 1- LAY-COLD {: last:n :}
+   r last LAY
    k 1 = if exit then
    r 0= if E-A64EMIT-SHAPE throw then
    0 0 LAY
-   k 1- 1 ?do
+   last 1 ?do
       f  i 1- AT-POS  FOLLOWER  i LAY
    loop ;
 
@@ -1021,9 +1079,20 @@ variable CH-AT
 
 : PUT-BRZ ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
-   id  id 0 OPERAND-REG  id 0 SUCC-BLOCK GOTO-OF DELTA  BZ-WORD  APPEND
+   id  id 0 OPERAND-REG
+   id id home SWAP-SUCCS? if 1 else 0 then SUCC-BLOCK GOTO-OF DELTA BZ-WORD
+   id home SWAP-SUCCS? if $01000000 xor then APPEND
    id home FALL-THRU? if exit then
    id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
+
+\ Invert the condition, not the comparison's operands: this also preserves
+\ the unordered floating-point edge when the opposite successor falls through.
+: PUT-COND-BR ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id home:n :}
+   id  id id home SWAP-SUCCS? if 1 else 0 then SUCC-BLOCK GOTO-OF DELTA
+   id COND-OF id home SWAP-SUCCS? if 1 xor then BCOND-WORD APPEND
+   id home FALL-THRU? if exit then
+   id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD APPEND ;
 
 \ The comparison writes only the flags and the branch beside it reads them
 \ there, so no register is written. The conditional's displacement is measured
@@ -1031,32 +1100,24 @@ variable CH-AT
 : PUT-CMPBR ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-CMP  APPEND
-   id  id 0 SUCC-BLOCK GOTO-OF DELTA  id COND-OF  BCOND-WORD  APPEND
-   id home FALL-THRU? if exit then
-   id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
+   id home PUT-COND-BR ;
 
 : PUT-CMPBRI ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG id OFF-IMM ENC-CMPI  APPEND
-   id  id 0 SUCC-BLOCK GOTO-OF DELTA  id COND-OF  BCOND-WORD  APPEND
-   id home FALL-THRU? if exit then
-   id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
+   id home PUT-COND-BR ;
 
 \ The Fcmp raises the unordered condition for a NaN and the conditions selection
 \ names are all false under it, so control reaches the SECOND successor.
 : PUT-FCMPBR ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-FCMP  APPEND
-   id  id 0 SUCC-BLOCK GOTO-OF DELTA  id COND-OF  BCOND-WORD  APPEND
-   id home FALL-THRU? if exit then
-   id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
+   id home PUT-COND-BR ;
 
 : PUT-FCMPBRZ ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG ENC-FCMP0  APPEND
-   id  id 0 SUCC-BLOCK GOTO-OF DELTA  id COND-OF  BCOND-WORD  APPEND
-   id home FALL-THRU? if exit then
-   id  id 1 SUCC-BLOCK GOTO-OF DELTA B-WORD  APPEND ;
+   id home PUT-COND-BR ;
 
 \ Compare, set one on the condition, negate - because a Habu flag is all bits
 \ set. It is the sequence the engine's own emitter uses.
@@ -1764,7 +1825,7 @@ variable SCAN-K
    ST @ ST-SEALED = ;
 
 \ A routine that returns on one path and traps on another does both: it may not
-\ be copied, AND its emission ends in the return the recorded length leaves out.
+\ be copied. TRAILING-RETURN? separately selects legacy versus exact span length.
 : LEAVES-BY-BRANCH? ( -- bool )
    SEAL-CK EM-TAIL @ 0<> ;
 

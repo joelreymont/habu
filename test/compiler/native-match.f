@@ -575,8 +575,9 @@ RUN-DYNAMIC-CASES
 
 \ ---- emitted dispatch shape --------------------------------------------------
 
-\ Source compilation retires its temporary emission. Inspect the code committed
-\ to the dictionary; its recorded length omits a trailing return instruction.
+\ Source compilation retires its temporary emission. Inspect the full committed
+\ span: legacy lengths omit a trailing RET; exact spans can put cold traps after
+\ the return. XREF-CODE-BYTES accounts for either representation.
 variable CODE-BASE
 variable CODE-LEN
 
@@ -584,7 +585,7 @@ variable CODE-LEN
    get-current XREF-FIND-WL {: rec:ptr :}
    rec XREF-FOUND? 0= if s" native-match: missing published code" 76 die then
    rec XREF-START CODE-BASE !
-   rec XREF-LEN CODE-LEN ! ;
+   rec XREF-CODE-BYTES CODE-LEN ! ;
 
 TRUSTED: CODE-WORD@ ( n -- n )
    INSN-BYTES * CODE-BASE @ + @ $FFFFFFFF and ;
@@ -595,6 +596,11 @@ TRUSTED: CODE-WORD@ ( n -- n )
    CODE-INSNS 0 ?do
       i CODE-WORD@ NBR:COND? if true unloop exit then
    loop false ;
+
+: CODE-RETURNS ( -- n )
+   0 CODE-INSNS 0 ?do
+      i CODE-WORD@ NBR:RET? if 1+ then
+   loop ;
 
 : TRAP-BR? ( n n -- bool ) {: k:n t:n :}
    k CODE-WORD@ NBR:BL? 0= if false exit then
@@ -613,6 +619,8 @@ variable EMIT-RET
 variable EMIT-TRAPS
 variable UNW-SIZE
 variable QUAD-SIZE
+variable UNW-RET
+variable QUAD-RET
 
 : PROBE-HUE$ ( -- ptr u8 n )
    s" : PROBE-HUE ( hue -- n ) MATCH hue red OF 10 ENDOF green OF 20 ENDOF blue OF 30 ENDOF ;MATCH ;" ;
@@ -627,10 +635,12 @@ variable QUAD-SIZE
    PROBE-HUE$ TRY EMIT-RC !
    s" PROBE-HUE" CODE!
    CODE-BRANCHES? if 1 else 0 then EMIT-BRANCH !
-   CODE-INSNS CODE-WORD@ NBR:RET? if 1 else 0 then EMIT-RET !
+   CODE-RETURNS EMIT-RET !
    TRAP-BRANCHES EMIT-TRAPS !
-   PROBE-UNW$ TRY drop s" PROBE-UNW" CODE! CODE-LEN @ UNW-SIZE !
-   PROBE-QUAD$ TRY drop s" PROBE-QUAD" CODE! CODE-LEN @ QUAD-SIZE ! ;
+   PROBE-UNW$ TRY drop s" PROBE-UNW" CODE!
+   CODE-LEN @ UNW-SIZE ! CODE-RETURNS UNW-RET !
+   PROBE-QUAD$ TRY drop s" PROBE-QUAD" CODE!
+   CODE-LEN @ QUAD-SIZE ! CODE-RETURNS QUAD-RET ! ;
 
 \ These instruction assertions describe optimizing emission. Other cases keep
 \ the caller's tier, including when the suite is loaded directly from the REPL.
@@ -828,6 +838,8 @@ CAPTURE-NATIVE-EMISSION
    EMIT-RC @ 0 T=
    EMIT-BRANCH @ 1 T=
    EMIT-RET @ 1 T=
+   UNW-RET @ 1 T=
+   QUAD-RET @ 1 T=
    EMIT-TRAPS @ 1 T=
 
    s" dispatch code stays bounded and grows with its arm count" T-LABEL

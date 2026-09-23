@@ -373,6 +373,26 @@ $D65F03C0 constant RET-WORD
       i CODE-WORD@ RET-WORD = if 1+ then
    loop ;
 
+\ Both successor orders must put the successful return before the trap, with
+\ no unconditional jump over diagnostic code on that successful path.
+: HOT-RETURN ( -- )
+   RETS-IN-EMISSION 1 T=
+   LAST-IS-BRANCH? TTRUE
+   A64EMIT:TRAILING-RETURN? TFALSE
+   0
+   CODE-INSNS 0 ?do
+      i CODE-WORD@ {: w:n :}
+      w RET-WORD = if leave then
+      w B-MASK and B-OP = if 1+ then
+   loop
+   0 T= ;
+
+: COLD-LAYOUT-CASE ( -- )
+   s" a cold second successor follows the successful return" T-LABEL
+   RUN-MIXED HOT-RETURN
+   s" a cold first successor follows the successful return" T-LABEL
+   RUN-SWAP HOT-RETURN ;
+
 \ How many instructions of the emission move the data-stack pointer. Both forms
 \ are an add or a subtract of an immediate whose source and destination are that
 \ one register, which is what the placement survey's answer is spent on.
@@ -590,6 +610,62 @@ variable CHILD-RC
 
    EMISSION-CODE ;
 
+\ An earlier exit block must not interrupt the guard's successful trace.
+public
+: NT-GUARD ( n -- n )
+   dup 0= if 1+ exit then
+   dup 1 = if E-A-EMPTY throw then
+   2 * ;
+
+: NT-LT ( n n -- n ) < if E-A-EMPTY throw then 42 ;
+: NT-FLT ( r r -- n ) f< if E-A-EMPTY throw then 42 ;
+: NT-FZERO ( r -- n ) f0< if E-A-EMPTY throw then 42 ;
+: NT-COLD-SELECT ( n -- n )
+   dup 0= if drop 42 exit then
+   dup 1 = if drop E-A-EMPTY throw then
+   drop E-A-BOUNDS throw ;
+private
+
+: COMPILED-GUARD-CASE ( -- )
+   s" a guard continues into its normal successor before an earlier exit" T-LABEL
+   s" NTRAP-TEST:NT-GUARD" RECORD-CODE
+   0
+   CODE-INSNS 0 ?do
+      i CODE-WORD@ B-MASK and B-OP = if 1+ then
+   loop
+   1 T=                          \ only the earlier exit jumps to the epilogue
+   EMISSION-CODE
+   0 NT-GUARD 1 T= 2 NT-GUARD 4 T=
+   [: 1 NT-GUARD drop ;] E-A-EMPTY TTHROWSQ
+
+   s" inverted register comparisons keep both integer edges" T-LABEL
+   2 1 NT-LT 42 T= 1 1 NT-LT 42 T=
+   [: 1 2 NT-LT drop ;] E-A-EMPTY TTHROWSQ
+
+   s" inverted float guards preserve the unordered edge" T-LABEL
+   2.0 1.0 NT-FLT 42 T=
+   [: 1.0 2.0 NT-FLT drop ;] E-A-EMPTY TTHROWSQ
+   0.0 0.0 f/ 1.0 NT-FLT 42 T=
+   1.0 0.0 0.0 f/ NT-FLT 42 T=
+   0.0 NT-FZERO 42 T=
+   [: -1.0 NT-FZERO drop ;] E-A-EMPTY TTHROWSQ
+   0.0 0.0 f/ NT-FZERO 42 T= ;
+
+: COLD-DISPATCH-CASE ( -- )
+   s" choosing an error also belongs after the successful return" T-LABEL
+   s" NTRAP-TEST:NT-COLD-SELECT" RECORD-CODE
+   0
+   CODE-INSNS 0 ?do
+      i CODE-WORD@ {: w:n :}
+      w RET-WORD = if leave then
+      w B-MASK and B-OP = if 1+ then
+   loop
+   0 T=
+   EMISSION-CODE
+   0 NT-COLD-SELECT 42 T=
+   [: 1 NT-COLD-SELECT drop ;] E-A-EMPTY TTHROWSQ
+   [: 2 NT-COLD-SELECT drop ;] E-A-BOUNDS TTHROWSQ ;
+
 \ The two claims about a routine with no return: the emission ends in the branch
 \ that leaves, and there is no return instruction ANYWHERE in it. The second is
 \ what "no epilogue" means as bytes - a routine that still gave the frame back or
@@ -669,6 +745,7 @@ public
    [: RUN-SUCC ;] E-IR-OP-ARITY TTHROWSQ
 
    \ ---- what the emission and the placement really are ----
+   COLD-LAYOUT-CASE
    DEAD-BYTES-CASE
    VOID-PLACE-CASE
    SHARED-TARGET-CASE
@@ -676,6 +753,8 @@ public
    \ ---- what a routine compiled from source is as bytes ----
    COMPILED-DEAD-BYTES-CASE
    COMPILED-CALL-BYTES-CASE
+   COMPILED-GUARD-CASE
+   COLD-DISPATCH-CASE
 
    \ ---- and the whole of it, in a process that dies ----
    NORET-CASE

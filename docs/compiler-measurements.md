@@ -1,17 +1,62 @@
 # Does the optimizing tier pay for itself?
 
-Measured 2026-09-16 on Omarchy/Asahi aarch64 (M2 Max, 12 cores: cpu0-3 at
-capacity 561, cpu4-11 at 1024), against the release engine
-`/tmp/hazel-release/hb`, 5,832,896 bytes, sha256 `7e490c6031cc317c…`. Every
-number below was taken with that engine; the tools are
-`tools/tier-census.f`, `tools/tier-census-join.f`, `tools/tier-dump.f` and
-`tools/tier-bench.f`, plus the existing `tools/compile-floor.f`.
+The optimizer removes substantial call and frame traffic, but its code-size
+work is unfinished. The latest comparison below supersedes the original
+**3.9%** growth claim. Historical profiles retain their own engine, corpus and
+load measurements; their percentages are not current performance guarantees.
 
-**Answer: yes, decisively, at run time — and the bloat is real but small and
-has one cause.** On the same 1,772 words, tier 1 halves the call count and runs
-1.1x to 9.3x faster, while emitting 3.9 percent more bytes and costing 24x the
-compile time. Every byte of the growth, and more, is inline relocatable-address
-stencils on cold guard paths.
+## Current size comparison: cold error paths
+
+The same 13 source entries now load 2,265 definitions. The before engine
+(`c9a6154f49349fa0…`) includes compact DATA address carriers and capture's fatal
+call boundary; the after engine (`ed6ea4d59d15a8f9…`) additionally places blocks
+that can only trap after the successful return. Generations 2 and 3 of the
+after engine are byte-identical. This comparison changes only the block layout
+and its branch conditions; both census processes load the same source.
+
+| metric | tier 0, either engine | tier 1 before | tier 1 after |
+|---|---:|---:|---:|
+| words | 2,265 | 2,265 | 2,265 |
+| bytes | 168,484 | 186,880 | 185,908 |
+| instructions | 42,121 | 46,720 | 46,477 |
+| `bl` | 11,315 | 5,672 | 5,672 |
+| `ldr` via sp | 4,998 | 4,789 | 4,789 |
+| `str` via sp | 3,132 | 2,991 | 2,991 |
+| register moves | 40 | 135 | 135 |
+| `movk` | 567 | 3,848 | 3,848 |
+
+The layout removes a net **243 instructions, 972 bytes (0.52%)**, without
+changing calls, frame traffic or literal counts. Tier 0's two census reports
+are identical. `BUILD:STEP-RC@` is the sole growing word, 92 to 96 bytes: its
+invalid-tag path needs a branch past the return; its valid paths retain the
+same instructions and branch count. The complete engine's AOT code falls
+1,655,368 to 1,651,012 bytes. Both files remain **3,539,136 bytes**, because
+padding absorbs the change. These are full compiler/REPL engines, not stripped
+Tender application images.
+
+Tier 1 remains **17,424 bytes (10.34%) larger** than tier 0. Moving diagnostic
+blocks does not delete their instructions or literals. The corpus still has
+1,903 DATA address sites at tier 1 against 260 at tier 0; each now costs three
+instructions instead of four. Reducing those extra materializations is still
+required by `habu-outline-cold-throw-a6529379`; this change does not close it.
+The carrier comparison also found a placement-sensitive search slowdown,
+tracked on that dot rather than hidden by padding the benchmark.
+
+Reading the declared address sites through `NSTR:OWNER-ROW` separates the
+remaining costs: 776 of the 1,903 DATA sites name literal bodies; 519 name
+non-return fallback messages, covering only 16 distinct messages. Of those,
+432 say `hb: throw returned` and nine say `hb: die returned`. `DEAD-END` in
+`elaborate.f` emits these fallbacks after calls marked non-returning. The
+engine's `BTHROW` unwinds or exits on every path, including a zero code; its
+ordinary return is unreachable. This identifies a concrete next reduction:
+an authenticated primitive can terminate control directly, while a user word
+with the same spelling must retain its own behavior. It is a measurement and
+design direction, not an optimization already made by the cold layout.
+
+The tools are `tools/tier-census.f`, `tools/tier-census-join.f`,
+`tools/tier-dump.f`, `tools/tier-bench.f` and `tools/compile-floor.f`.
+The machine is Omarchy/Asahi aarch64, M2 Max, 12 cores (cpu0-3 capacity 561,
+cpu4-11 capacity 1024).
 
 ## 0. Anonymous stripped-code reachability
 
@@ -54,7 +99,11 @@ the load average is quoted with every one, and every timing run is pinned to a
 performance core (`taskset -c 8`), because an unpinned run that lands on cpu0-3
 reads 1.6x slow and that difference is larger than several of the results.
 
-## 1. Code size per word
+## 1. Original code-size baseline
+
+This table used engine `7e490c6031cc317c…`, 5,832,896 bytes, and the original
+1,772-word corpus. It records the finding that motivated the work; use the
+current comparison above for the remaining size difference.
 
 Corpus totals, `tools/tier-census-join.f`:
 
@@ -112,85 +161,89 @@ tier 0: **24,336 bytes of extra address materialization against a net growth of
 6,676**. Tier 1's folding and inlining are saving about 17,700 bytes elsewhere
 and spending 24,300 putting addresses inline.
 
-### Three words side by side
+### Three words re-dumped with the current engine
 
-`ARRAY:A-LEN`, whose whole source is `dup 0 < if E-A-BOUNDS throw then >LEN ;`
-— 60 bytes at tier 0, 96 at tier 1:
+These are fresh `tier-dump.f` results from `ed6ea4d59d15a8f9…`, with the whole
+13-entry corpus loaded at each tier. `sp` counts frame loads plus stores.
 
-```
-tier 0 (60 B, 15 instructions)          tier 1 (96 B, 24 instructions)
-  sub  sp, sp, #0x10                      sub  sp, sp, #0x10
-  str  x30, [sp]                          str  x30, [sp]
-  bl   <guard>                            ldur x0, [x19, #-8]
-  mov  x16, #0x0                          cmp  x0, #0x0
-  str  x16, [x19]                         b.lt 0x18
-  add  x19, x19, #0x8                     b    0x54          <- hot path ends
-  bl   <check>                          0x18: mov  x0, #-2001   <- cold throw
-  sub  x19, x19, #0x8                     str  x0, [x19]         path, inline
-  ldr  x9, [x19]                          add  x19, x19, #0x8
-  cbz  x9, 0x30                           bl   <throw>
-  bl   <throw ctx>                        mov  x0, #0x3a98     \
-  bl   <throw>                            movk x0, #0x4080,16   | one address,
-0x30:                                     movk x0, #0x3, 32     | four
-  ldr  x30, [sp]                          movk x0, #0x0, 48    /  instructions
-  add  sp, sp, #0x10                      mov  x1, #0x13
-  ret                                     mov  x2, #0x58
-                                          stur x0, [x19, #-8]
-                                          str  x1, [x19]
-                                          str  x2, [x19, #8]
-                                          add  x19, x19, #0x10
-                                          bl   <diagnose>
-                                        0x54:
-                                          ldr  x30, [sp]
-                                          add  sp, sp, #0x10
-                                          ret
-```
+| word | tier 0 bytes | tier 1 before layout | tier 1 after | `bl` 0 / 1 | `sp` 0 / 1 |
+|---|---:|---:|---:|---:|---:|
+| `ARRAY:A-LEN` | 44 | 80 | 76 | 4 / 2 | 2 / 2 |
+| `SOURCE-QPATH-CHECK` | 36 | 84 | 80 | 4 / 3 | 2 / 2 |
+| `DECODE-LEAD` | 396 | 200 | 200 | 20 / 6 | 29 / 2 |
 
-Tier 1's hot path is nine instructions and no call; tier 0's is thirteen with
-two calls. Tier 1 is unambiguously the better code to *run*. It is larger only
-because fifteen instructions of never-taken diagnostic sit between the test and
-the epilogue, forcing an extra unconditional branch on the hot path as well.
+`ARRAY:A-LEN` checks `dup 0 < if E-A-BOUNDS throw then >LEN`. Its normal
+path now falls through to the return in six instructions, without a call:
 
-`SOURCE-QPATH-CHECK` (`SOURCE-PATH-SAFE? 0= if E-FS-PATH-UNSAFE throw then ;`)
-is the same shape at 48 → 112 bytes, with 60 of the 112 on the cold path, and it
-also shows a second, smaller defect: tier 1 opens with
-
-```
-  sub  x19, x19, #0x10
-  add  x19, x19, #0x10
+```asm
+tier 0 (44 B)                         tier 1 (76 B)
+  str  x30, [sp, #-16]!                 str  x30, [sp, #-16]!
+  bl   <dup>                            ldur x0, [x19, #-8]
+  mov  x16, #0                          cmp  x0, #0
+  str  x16, [x19], #8                   b.lt 0x18
+  bl   <less-than>                       ldr  x30, [sp], #16
+  ldr  x9, [x19, #-8]!                  ret
+  cbz  x9, 0x24                      0x18:
+  bl   <throw context>                  mov  x0, #-2001
+  bl   <throw>                          str  x0, [x19], #8
+0x24:                                    bl   <throw>
+  ldr  x30, [sp], #16                   mov  x0, #0x300000000
+  ret                                    movk x0, #0x4060, lsl #16
+                                         movk x0, #0x3b50
+                                         mov  x1, #18
+                                         mov  x2, #88
+                                         stur x0, [x19, #-8]
+                                         str  x1, [x19]
+                                         str  x2, [x19, #8]
+                                         add  x19, x19, #16
+                                         bl   <fatal diagnostic>
 ```
 
-a data-stack adjustment undone immediately, with nothing between — the
-data-stack twin of the frame-slot identity copy `regalloc.f MB-IDENTITY-COPY?`
-already drops.
+The 52-byte failure arm remains after the return: 12 bytes push the error and
+call `throw`, followed by 40 bytes that refuse if that certified non-returning
+call unexpectedly returns. The guard can fail; only the fallback is a violated
+certificate path. The new layout removes one branch, not that fallback or its
+three-instruction address carrier.
 
-`UTF8:DECODE-LEAD` is the win, 532 → 208 bytes, frame traffic 29 → 2. Tier 0
-spills all four locals to the frame and calls out for every comparison:
+`SOURCE-QPATH-CHECK` has the same improvement. Its current tier-1 prefix is:
 
-```
-tier 0                                  tier 1
-  sub  sp, sp, #0x20                      sub  x19, x19, #0x8
-  sub  x19, x19, #0x8                     ldur x0, [x19, #-8]
-  ldr  x9, [x19]                          ldr  x1, [x19]
-  str  x9, [sp]                           cmp  x1, #0x80
-  sub  x19, x19, #0x8                     b.lt 0x60
-  ldr  x9, [x19]                          mov  x2, x0
-  str  x9, [sp, #8]                       mov  x3, x1
-  ... two more locals spilled ...         cmp  x3, #0xc0
-  ldr  x9, [sp]                           b.lt 0x78
-  str  x9, [x19]                          mov  x0, x2
-  add  x19, x19, #0x8                     mov  x1, x3
-  bl   <ASCII-LIMIT>                      cmp  x1, #0xe0
-  bl   <less-than>                        b.lt 0x8c
-  ...                                     ...
+```asm
+  str  x30, [sp, #-16]!
+  bl   <SOURCE-PATH-SAFE?>
+  ldr  x0, [x19, #-8]!
+  cmp  x0, #0
+  b.eq 0x1c
+  ldr  x30, [sp], #16
+  ret
+0x1c:                         // remaining 52 bytes report E-FS-PATH-UNSAFE
 ```
 
-Everything stays in registers and the constants fold into the compare
-immediates. The four `mov` shuffles visible there are a residue the coalescer
-missed, but the census falsifies them as a priority: 126 such moves in the whole
-corpus, about 350 bytes.
+The redundant data-stack subtract/add described by the original dump is
+already gone through `d187f629`; the cold layout removes another four bytes.
 
-## 2. Run time
+`DECODE-LEAD` keeps the existing register and immediate-comparison win. The
+cold layout changes neither its size nor its call/frame counts:
+
+```asm
+tier 0 (396 B)                        tier 1 (200 B)
+  str  x30, [sp, #-16]!                 str  x30, [sp, #-16]!
+  sub  sp, sp, #32                      sub  x19, x19, #8
+  ldr  x9, [x19, #-8]!                  ldur x0, [x19, #-8]
+  str  x9, [sp]                         ldr  x1, [x19]
+  ldr  x9, [x19, #-8]!                  cmp  x1, #0x80
+  str  x9, [sp, #8]                     b.lt 0x5c
+  ... two more locals spilled ...       mov  x2, x0
+  ldr  x9, [sp]                         mov  x3, x1
+  str  x9, [x19], #8                    cmp  x3, #0xc0
+  bl   <ASCII-LIMIT>                     b.lt 0x74
+  bl   <less-than>                       ...
+```
+
+Four register shuffles remain in this word. The whole current tier-1 corpus
+contains 135 register moves, 540 bytes even if every one could be removed;
+address materialization is still the larger size opportunity.
+
+## 2. Original run-time baseline
 
 `tools/tier-bench.f`, six benchmarks over code compiled at the selected tier,
 plus `harness` (the timing loop itself over an empty body, so the driver's own
@@ -1497,39 +1550,30 @@ slot per definer.
 
 ## Verdict and the ranked fixes
 
-Tier 1 pays for itself. It halves the calls, wins every run-time benchmark by
-1.1x to 9.3x, and costs 3.9 percent more bytes and 24x the compile time. The
-compile-time multiplier is the real price, and the tree already pays it only
-where it matters — the boot prefix compiles at tier 0 and executables are forced
-to tier 1. The bloat Joel sees is real, has one dominant cause, and is worth
-fixing on its own terms, because the same defect that adds the bytes also puts
-cold code between a hot test and its epilogue.
+The current census keeps the optimizer's call reduction but still shows a
+10.34% byte excess. The original runtime and compile-time ratios describe the
+original engine, not this one. The cold-layout comparison removes branches
+without erasing the much larger literal cost.
 
-1. **Outline the cold throw path** (`src/compiler/native/elaborate.f`,
-   `emit.f`). A guarded word lays its whole diagnostic tail inline: 15 of
-   `ARRAY:A-LEN`'s 24 instructions, 60 of `SOURCE-QPATH-CHECK`'s 112 bytes. It
-   is also what puts the address stencils there — corpus-wide 1,521 extra
-   four-instruction stencils, 24,336 bytes, against a total regression of 6,676.
-   Moving those blocks past the epilogue removes the growth, removes the extra
-   unconditional branch on the hot path, and shortens every guarded word in the
-   tree.
-2. **Replace the four-instruction `MOVZ`/`MOVK` address stencil.** 5,366 `movk`
-   at tier 1 against 805 at tier 0 is 21,464 bytes, 12 percent of all tier-1
-   code, to materialize pointers a literal pool or an `ADRP`/`ADD` pair would
-   carry in 8. The stencil exists so a later pass can recognize and rewrite the
-   address (`docs/compiler-ir-design.md`), so this is a real format change and
-   the AOT capture path has to agree — which is why it ranks second even though
-   it is the larger single number.
-3. **Extend the identity-copy elision to the data-stack pointer.**
-   `regalloc.f MB-IDENTITY-COPY?` drops a frame-slot copy onto itself; the same
-   shape survives on `x19`, where `SOURCE-QPATH-CHECK` opens
-   `sub x19,#0x10` / `add x19,#0x10` with nothing between. Small — a few hundred
-   bytes corpus-wide — but it is the identical defect in a second place and the
-   fix is understood.
+1. **Remove redundant non-return fallbacks, then reduce remaining address
+   materialization.** The 432 repeated `throw returned` fallback sites give
+   the first concrete target. Prove the captured callee is the engine
+   primitive before eliminating its fallback; a spelling is insufficient.
+   DATA carriers are now three instructions (`d232781e`), but tier 1 still
+   emits 1,643 more of them than tier 0. Further sharing or shortening needs
+   capture and relocation proof. Moving a block past the return alone cannot
+   deliver the dot's size target.
+2. **Resolve placement-sensitive performance with evidence.** The compact
+   carrier comparison found unchanged search instructions with an 11.3%
+   timing difference at their new addresses. Controlled placement changes
+   reproduce it; the hardware cause is not established. No padding workaround
+   is shipped.
+3. **Price fused data-stack transfers when choosing placement.** Section 9's
+   remaining placement-model issue is `1f61860d`. Adjacent opposite stack
+   adjustments are already combined by `d187f629`; do not repeat that fix.
 
-Not worth doing: register-to-register move elimination. `UTF8:DECODE-LEAD` makes
-it look like a pattern, but the census counts 126 such moves in 1,772 words,
-about 350 bytes.
+Register moves are at most 540 bytes on the current corpus, before deciding
+which are redundant. They rank below the remaining address materialization.
 
 ## Reproducing
 
