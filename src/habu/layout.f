@@ -1372,11 +1372,47 @@ STAT-OFF STAT-BYTES + constant PROBE-OFF
 PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 ;package
 
+\ FS-MUT-ABI is lib/fs-mutate.f's per-call path scratch: the second NUL-padded
+\ path every two-path syscall stages (rename, symlink, the stream copy's
+\ destination), the temporary name MAKE-TEMP-DIR builds AND RETURNS a span into,
+\ and ATOMIC-WRITE-FILE's `.tmp` sibling. It is here for FS-ABI's reason, one
+\ file further out: tools/native-build-core.f requires lib/fs-mutate.f to BUILD
+\ the engine, so `require lib/task.f` there would load the task runtime into the
+\ build tool ahead of the target. It costs the same bootstrap - an engine that
+\ predates this band dies `E-UNDEFINED: FS-MUT-ABI:PATHZ2-BYTES`, rc 70, at
+\ --load of the build tool - so it lands through a stage engine built from this
+\ declaration alone.
+\
+\ TWO THINGS STAY PROCESS-WIDE ON PURPOSE. The 8 KiB copy buffer is not here:
+\ 3080 + 8192 does not fit the 7408 bytes USER-BAND had free, and COPY-FILE /
+\ COPY-FILE-STREAM are the module's one single-task pair, which its header and
+\ docs/threads.md say. Neither is the cleanup registry, 64 paths of it: that is
+\ a PROCESS exit registry, not per-call scratch - every task registers into the
+\ one table and the process runs it once.
+\
+\ Sized the way FS-ABI above is: every member at its measured width, BYTES the
+\ member sum rounded up to the cell the base needs - 3073 bytes of members in a
+\ 3080-byte extent. No cell lives in this band, so nothing here needs the base's
+\ alignment; the rounding is the band's only slack.
+package FS-MUT-ABI
+public
+1025 constant PATHZ2-BYTES              \ lib/fs.f FS-PATHZ-CAP = FS-PATH-CAP + 1
+1024 constant ATOMIC-BYTES              \ lib/fs.f FS-PATH-CAP
+1024 constant TMP-BYTES                 \ lib/fs.f FS-PATH-CAP
+PATHZ2-BYTES ATOMIC-BYTES + TMP-BYTES + constant MEMBER-BYTES
+MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
+FS-ABI:START constant END
+END BYTES - constant START
+START constant PATHZ2-OFF
+PATHZ2-OFF PATHZ2-BYTES + constant ATOMIC-OFF
+ATOMIC-OFF ATOMIC-BYTES + constant TMP-OFF
+;package
+
 \ USER-BAND is what lib/task.f `TASK:+USER` hands out, base and bound both.
 package USER-BAND
 public
 TXN-STATE-OFF TXN-STATE-LEN + constant START
-FS-ABI:START constant END
+FS-MUT-ABI:START constant END
 ;package
 
 \ --- Pre-trust defer pending table (dot habu-engine-pre-trust-77410827) ---

@@ -1,5 +1,21 @@
 \ fs-mutate.f - checked filesystem mutation helpers.
 \
+\ STORAGE CLASS. TASK-LOCAL for the paths one call stages: the second NUL-padded
+\ path FS-MUT-PATHZ2-BUF (RENAME-FILE's, MAKE-SYMLINK's and the stream copy's
+\ destination), ATOMIC-WRITE-FILE's `.tmp` sibling FS-MUT-ATOMIC-PATH and
+\ MAKE-TEMP-DIR's FS-MUT-TMP-PATH - the one this module RETURNS a span into -
+\ are the FS-MUT-ABI band of the per-task DATA region, so two tasks renaming,
+\ symlinking, writing atomically or making a temporary directory at once share
+\ nothing and neither can replace the other's returned path. The descriptors,
+\ cursors and lengths COPY-FILE-STREAM threads are LOCALS of the call.
+\ PROCESS-WIDE: the 8 KiB FS-MUT-COPY-BUF, so COPY-FILE and COPY-FILE-STREAM are
+\ this module's one SINGLE-TASK pair (8192 bytes is more than the whole per-task
+\ band could carry; a second task that must copy needs its own buffer); and the
+\ cleanup registry, which is a PROCESS exit registry and not per-call scratch -
+\ REGISTERING is safe from any task, because a registration claims its slot with
+\ one atomic-add and writes only that slot, and the RUN belongs to the process.
+\ See docs/threads.md.
+\
 \ Every buffer this module owns - the second NUL-padded path, the copy buffer,
 \ the atomic and temp path builders and the cleanup path stack - is a span, so
 \ the copies into them are bounded by the buffer's own reach (E-SPAN-CAPACITY,
@@ -29,20 +45,43 @@ $2D constant FS-MUT-DASH
 $2E constant FS-MUT-DOT
 $2F constant FS-MUT-SLASH
 
-FS-PATHZ-CAP SPAN-BUFFER: FS-MUT-PATHZ2-BUF
 FS-MUT-COPY-CAP SPAN-BUFFER: FS-MUT-COPY-BUF
-FS-PATH-CAP SPAN-BUFFER: FS-MUT-ATOMIC-PATH
-FS-PATH-CAP SPAN-BUFFER: FS-MUT-TMP-PATH
 FS-MUT-CLEANUP-MAX FS-PATH-CAP * SPAN-BUFFER: FS-MUT-CLEANUP-PATHS
 create FS-MUT-CLEANUP-US FS-MUT-CLEANUP-MAX cells allot
 create FS-MUT-CLEANUP-KINDS FS-MUT-CLEANUP-MAX cells allot
 
-variable FS-MUT-COPY-IN
-variable FS-MUT-COPY-OUT
-variable FS-MUT-COPY-RD
-variable FS-MUT-COPY-WR
-variable FS-MUT-COPY-OFF
 variable FS-MUT-CLEANUP-N
+
+\ THE STAGED PATHS ARE TASK-LOCAL, in the FS-MUT-ABI band of the per-task DATA
+\ region: every accessor reads `data-base`, which is the RUNNING task's region,
+\ so the path MAKE-TEMP-DIR hands back stays this task's until it calls again,
+\ and two tasks in RENAME-FILE, MAKE-SYMLINK or ATOMIC-WRITE-FILE at once share
+\ nothing. The band is declared in src/habu/layout.f below FS-ABI and asserted
+\ there against every other DATA claim. It is a declared band and not TASK:+USER
+\ rows for lib/fs.f's reason: tools/native-build-core.f requires this file to
+\ build the engine, so a `require lib/task.f` here would load the task runtime
+\ into the build tool. A region is a fresh zeroed mapping, so a new task's paths
+\ start empty exactly as the old SPAN-BUFFERs did.
+\
+\ layout.f is loaded before this file and cannot see FS-PATHZ-CAP or
+\ FS-PATH-CAP, so the band states those widths and this executes the agreement
+\ once at load.
+: FS-MUT-BAND-AGREE ( -- )
+   FS-PATHZ-CAP FS-MUT-ABI:PATHZ2-BYTES <> if E-FS-BAND throw then
+   FS-PATH-CAP FS-MUT-ABI:ATOMIC-BYTES <> if E-FS-BAND throw then
+   FS-PATH-CAP FS-MUT-ABI:TMP-BYTES <> if E-FS-BAND throw then ;
+FS-MUT-BAND-AGREE
+
+\ Each reach is the band width FS-MUT-BAND-AGREE asserted against layout.f, so
+\ the span says exactly what this task's region holds.
+: FS-MUT-PATHZ2-BUF ( -- SPAN:span<u8> )
+   data-base FS-MUT-ABI:PATHZ2-OFF + BYTE-VIEW FS-PATHZ-CAP SPAN:MAKE ;
+
+: FS-MUT-ATOMIC-PATH ( -- SPAN:span<u8> )
+   data-base FS-MUT-ABI:ATOMIC-OFF + BYTE-VIEW FS-PATH-CAP SPAN:MAKE ;
+
+: FS-MUT-TMP-PATH ( -- SPAN:span<u8> )
+   data-base FS-MUT-ABI:TMP-OFF + BYTE-VIEW FS-PATH-CAP SPAN:MAKE ;
 
 create FS-MUT-ATOMIC-SUFFIX
    FS-MUT-DOT c, 116 c, 109 c, 112 c,
@@ -173,65 +212,73 @@ public
    dest FD>N 0 TRUNCATE-CALL 0<> if E-FS-IO throw then ;
 ;package
 
-: FS-MUT-COPY-RESET ( -- )
-   -1 FS-MUT-COPY-IN !
-   -1 FS-MUT-COPY-OUT ! ;
+\ THE STREAM COPY'S STATE IS THE CALL'S. The two descriptors, the read and write
+\ counts and the write cursor were cells of this module; they are locals and
+\ stack values now, so nothing here is left for a second task to find. A
+\ descriptor a helper must close on its error path is therefore a PARAMETER: -1
+\ stands for "not open yet", which is what CLOSE-COPY-FD skips.
+: FS-MUT-CLOSE-COPY-FD ( n -- ) {: fd :}
+   fd 0 >= if fd close then ;
 
-: FS-MUT-CLOSE-COPY-FD ( ptr n -- ) {: p:ptr :}
-   p @ dup 0 >= if close else drop then
-   -1 p ! ;
+: FS-MUT-COPY-THROW ( n n n -- ) {: in out code :}
+   in FS-MUT-CLOSE-COPY-FD
+   out FS-MUT-CLOSE-COPY-FD
+   code throw ;
 
-: FS-MUT-COPY-THROW ( n -- )
-   FS-MUT-COPY-IN FS-MUT-CLOSE-COPY-FD
-   FS-MUT-COPY-OUT FS-MUT-CLOSE-COPY-FD
-   throw ;
+: FS-MUT-COPY-OPEN-SRC ( ptr u8 n -- n ) {: src:ptr srcu :}
+   src srcu FS-PATHZ open-rd {: in :}
+   in 0 < if E-FS-OPEN throw then
+   in ;
 
-: FS-MUT-COPY-OPEN-SRC ( ptr u8 n -- ) {: src:ptr srcu :}
-   src srcu FS-PATHZ open-rd FS-MUT-COPY-IN !
-   FS-MUT-COPY-IN @ 0 < if E-FS-OPEN FS-MUT-COPY-THROW then ;
+\ Stack-preserving under `catch`: the two descriptors are the quotation's
+\ declared window and no path of this body consumes them, so the caller may drop
+\ them and read its own locals after the catch.
+: FS-MUT-COPY-PREPARE-DST ( n n -- n n )
+   2dup >FD swap >FD swap FS-COPY:PREPARE-DST ;
 
-: FS-MUT-COPY-CHECK-DST ( ptr u8 n -- ) {: dst:ptr dstu :}
+: FS-MUT-COPY-OPEN-DST ( n ptr u8 n -- n ) {: in dst:ptr dstu :}
    dst dstu EXISTS? if
-      dst dstu FILE? 0= if E-FS-OPEN FS-MUT-COPY-THROW then
-   then ;
-
-: FS-MUT-COPY-PREPARE-DST ( -- )
-   FS-MUT-COPY-IN @ >FD FS-MUT-COPY-OUT @ >FD FS-COPY:PREPARE-DST ;
-
-: FS-MUT-COPY-OPEN-DST ( ptr u8 n -- ) {: dst:ptr dstu :}
-   dst dstu FS-MUT-COPY-CHECK-DST
+      dst dstu FILE? 0= if in -1 E-FS-OPEN FS-MUT-COPY-THROW then
+   then
    dst dstu FS-MUT-PATHZ2
-   FS-O-WRONLY FS-O-CREAT or FS-MODE-0644 open FS-MUT-COPY-OUT !
-   FS-MUT-COPY-OUT @ 0 < if E-FS-OPEN FS-MUT-COPY-THROW then
+   FS-O-WRONLY FS-O-CREAT or FS-MODE-0644 open {: out :}
+   out 0 < if in -1 E-FS-OPEN FS-MUT-COPY-THROW then
    \ Opening must not truncate until the descriptor identities differ.
-   [: FS-MUT-COPY-PREPARE-DST ;] catch
-   dup 0<> if FS-MUT-COPY-THROW else drop then ;
+   in out [: FS-MUT-COPY-PREPARE-DST ;] catch {: code :}
+   2drop
+   code 0<> if in out code FS-MUT-COPY-THROW then
+   out ;
 
-: FS-MUT-COPY-WRITE-CHUNK ( n -- ) {: u :}
-   0 FS-MUT-COPY-OFF !
-   begin FS-MUT-COPY-OFF @ u < while
-      FS-MUT-COPY-OUT @
-      FS-MUT-COPY-BUF FS-MUT-COPY-OFF @ SPAN:SKIP  u FS-MUT-COPY-OFF @ - SPAN:TAKE SPAN:$
-      write FS-MUT-COPY-WR !
-      FS-MUT-COPY-WR @ 0 <= if E-FS-IO FS-MUT-COPY-THROW then
-      FS-MUT-COPY-WR @ u FS-MUT-COPY-OFF @ - > if E-FS-IO FS-MUT-COPY-THROW then
-      FS-MUT-COPY-OFF @ FS-MUT-COPY-WR @ + FS-MUT-COPY-OFF !
-   repeat ;
+\ The write cursor is the deepest argument, so a loop can leave it on the stack
+\ and hand the call its three known values on top.
+: FS-MUT-COPY-WRITE-ONE ( n n n n -- n ) {: off in out u :}
+   out FS-MUT-COPY-BUF off SPAN:SKIP  u off - SPAN:TAKE SPAN:$ write {: wr :}
+   wr 0 <= if in out E-FS-IO FS-MUT-COPY-THROW then
+   wr u off - > if in out E-FS-IO FS-MUT-COPY-THROW then
+   off wr + ;
+
+: FS-MUT-COPY-WRITE-CHUNK ( n n n -- ) {: u in out :}
+   0 begin dup u < while
+      in out u FS-MUT-COPY-WRITE-ONE
+   repeat drop ;
+
+: FS-MUT-COPY-READ-ONE ( n n -- n ) {: in out :}
+   in FS-MUT-COPY-BUF SPAN:$ read {: rd :}
+   rd 0 < if in out E-FS-IO FS-MUT-COPY-THROW then
+   rd FS-MUT-COPY-CAP > if in out E-FS-IO FS-MUT-COPY-THROW then
+   rd ;
+
+: FS-MUT-COPY-PUMP ( n n -- ) {: in out :}
+   begin in out FS-MUT-COPY-READ-ONE dup 0 > while
+      in out FS-MUT-COPY-WRITE-CHUNK
+   repeat drop ;
 
 : COPY-FILE-STREAM ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
-   FS-MUT-COPY-RESET
-   src srcu FS-MUT-COPY-OPEN-SRC
-   dst dstu FS-MUT-COPY-OPEN-DST
-   begin
-      FS-MUT-COPY-IN @ FS-MUT-COPY-BUF SPAN:$ read FS-MUT-COPY-RD !
-      FS-MUT-COPY-RD @ 0 < if E-FS-IO FS-MUT-COPY-THROW then
-      FS-MUT-COPY-RD @ FS-MUT-COPY-CAP > if E-FS-IO FS-MUT-COPY-THROW then
-      FS-MUT-COPY-RD @ 0 >
-   while
-      FS-MUT-COPY-RD @ FS-MUT-COPY-WRITE-CHUNK
-   repeat
-   FS-MUT-COPY-IN FS-MUT-CLOSE-COPY-FD
-   FS-MUT-COPY-OUT FS-MUT-CLOSE-COPY-FD ;
+   src srcu FS-MUT-COPY-OPEN-SRC {: in :}
+   in dst dstu FS-MUT-COPY-OPEN-DST {: out :}
+   in out FS-MUT-COPY-PUMP
+   in FS-MUT-CLOSE-COPY-FD
+   out FS-MUT-CLOSE-COPY-FD ;
 
 : ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
    path pathu FS-MUT-ATOMIC-SUFFIX 4 FS-MUT-ATOMIC-PATH FS-MUT-SUFFIX-PATH {: tempu :}
@@ -402,17 +449,30 @@ TRUSTED: FS-MUT-ARM-EXIT ( -- )
    FS-MUT-EXIT-PREV !
    ['] CLEANUP-AT-EXIT swap ! ;
 
+\ REGISTRATION IS SAFE FROM ANY TASK although the table is the process's: the
+\ slot is claimed with one atomic-add on the count - `atomic-add` is an engine
+\ primitive (src/habu/prims.f), so this needs no lib/task.f - and the claimer
+\ writes nothing but the slot it was handed. The count is what CLEANUP-RUN walks
+\ down from, so a claim past the table's end is GIVEN BACK before the refusal;
+\ otherwise a refused 65th path would leave a count no run could walk. The
+\ claimed slot's length is zeroed before the copy, so a slot claimed by a
+\ registration that then throws is empty rather than whatever the last round
+\ left there, and CLEANUP-RUN steps over it.
 : FS-MUT-CLEANUP+ ( ptr u8 n n -- ) {: a:ptr u kind :}
    FS-MUT-ARM-EXIT
-   FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-MAX >= if E-FS-CAPACITY throw then
    u 0 < if E-FS-PATH throw then
    kind FS-MUT-CLEANUP-FILE <>
    kind FS-MUT-CLEANUP-DIR <> and
    kind FS-MUT-CLEANUP-TREE <> and if E-FS-IO throw then
-   a u FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-SLOT SPAN:COPY
-   u FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-U-PTR !
-   kind FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-KIND-PTR !
-   FS-MUT-CLEANUP-N @ 1 + FS-MUT-CLEANUP-N ! ;
+   1 FS-MUT-CLEANUP-N atomic-add {: idx :}
+   idx FS-MUT-CLEANUP-MAX >= if
+      -1 FS-MUT-CLEANUP-N atomic-add drop
+      E-FS-CAPACITY throw
+   then
+   0 idx FS-MUT-CLEANUP-U-PTR !
+   a u idx FS-MUT-CLEANUP-SLOT SPAN:COPY
+   kind idx FS-MUT-CLEANUP-KIND-PTR !
+   u idx FS-MUT-CLEANUP-U-PTR ! ;
 
 : CLEANUP+ ( ptr u8 n -- )
    FS-MUT-CLEANUP-FILE FS-MUT-CLEANUP+ ;

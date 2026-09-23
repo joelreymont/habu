@@ -253,6 +253,7 @@ read the source to find out. There are three:
 | `lib/string.f` | task-local (SB) / caller-owned (`BUF-*`) | `SB-BUF` and `SB-LEN` are the STRING-ABI band of the per-task region; `BUF-RESET`/`BUF-APPEND`/`BUF-APPEND-C`/`BUF-LEN@` take the caller's buffer, capacity and length cell, for when two tasks must share one |
 | `lib/fmt.f` | task-local | the integer render buffer and the `POW10I`/`SB-FRAC` scratch cells are the FMT-ABI band of the per-task region; they append into string's SB, which is task-local too, so two tasks formatting at once share nothing |
 | `lib/fs.f` | task-local (the per-call slots) / process-wide (the walk stack) | the descriptor, length, offset, path and stat buffer are the FS-ABI band of the per-task region, so any number of tasks may be in `READ-ALL`, `FILE-SIZE` or an `FS-*` predicate at once; `WALK-FILES`'s two stacks are fifteen times that band and stay shared, so it is still single-task; the data spans `READ-ALL`/`READ-LINK`/`WRITE-ALL` take are caller-owned |
+| `lib/fs-mutate.f` | task-local (the staged paths) / process-wide (the copy buffer, the cleanup registry) | the second NUL-padded path, `ATOMIC-WRITE-FILE`'s `.tmp` sibling and the name `MAKE-TEMP-DIR` builds and RETURNS a span into are the FS-MUT-ABI band of the per-task region, so two tasks renaming, symlinking, writing atomically or making a temporary directory at once share nothing and neither can replace the other's returned path; `COPY-FILE-STREAM`'s descriptors, counts and write cursor are locals of the call. The 8 KiB copy buffer is one set for the image, so `COPY-FILE` and `COPY-FILE-STREAM` are single-task. The cleanup registry is the PROCESS's: registering is safe from any task, because the slot is claimed with one `atomic-add` and the claimer writes only that slot, and `CLEANUP-RUN` belongs to the process |
 | `lib/json-write.f` | caller-owned | the caller declares the writer (`TYPED-VARIABLE W JSON-WRITE:writer`) and the bytes `JSON-WRITE:OPEN` binds it to; no module state |
 | `lib/json-read.f` | caller-owned | no module state; the caller allots `JR:STORAGE-BYTES` and owns the source span |
 | `lib/memory.f` | caller-owned | every mapping belongs to its caller; `WITH-BYTES`'s scope stack is the one process-wide part |
@@ -277,9 +278,10 @@ Which of the two a library reaches for is forced, not preferred:
   `lib/fmt.f` could have taken rows - it has no cycle, and an engine built that
   way compiles - but `src/habu/habu2.f` requires it for number text, so a
   require would have pulled pthread, mmap and the FFI staging tables into the
-  base image for 52 bytes of scratch. `lib/fs.f` is not baked at all, but
-  `tools/native-build-core.f` requires it to BUILD the engine, so a require
-  there loads the task runtime into the build tool ahead of the target.
+  base image for 52 bytes of scratch. `lib/fs.f` and `lib/fs-mutate.f` are not
+  baked at all, but `tools/native-build-core.f` requires both to BUILD the
+  engine, so a require there loads the task runtime into the build tool ahead
+  of the target.
 - A module LOADED LATER takes **`TASK:+USER` rows** out of USER-BAND, the way
   `lib/net/tcp4.f`, `udp4`, `curl`, `serial` and `genio` do.
 
@@ -291,21 +293,23 @@ checked engine that `tools/build-fixpoint-refresh.f -- install` writes recompile
 the cold prefix at every launch, and that engine cannot run the native build on
 this base. So an engine that predates a band cannot compile the module reading
 it. `lib/fs.f` is the first such module: its build tool dies `E-UNDEFINED:
-FS-ABI:STAT-BYTES`, rc 70, before any target work. Build one engine from the
-layout and error declarations alone, build the tree with that engine, and the
-third generation is byte-identical.
+FS-ABI:STAT-BYTES`, rc 70, before any target work. `lib/fs-mutate.f` is the
+second, and dies the same way on `FS-MUT-ABI:PATHZ2-BYTES`. Build one engine
+from the layout and error declarations alone, build the tree with that engine,
+and the third generation is byte-identical.
 
 ### The arena a task-local row comes from
 
 `TASK:+USER` hands out offsets from `USER-BAND:START` ($5300) up to
-`USER-BAND:END` — **9104 bytes for the whole image**. The band is one declared
+`USER-BAND:END` — **6024 bytes for the whole image**. The band is one declared
 run of the per-task header with no engine cell inside it, which
 `src/habu/data-claims.f`'s assertion checks at engine build time, and
-the declared bands directly above it are `FS-ABI` (1328 bytes), `FMT-ABI`
-(56 bytes) and `STRING-ABI` (1032 bytes), none of which is part of it.
+the declared bands directly above it are `FS-MUT-ABI` (3080 bytes), `FS-ABI`
+(1328 bytes), `FMT-ABI` (56 bytes) and `STRING-ABI` (1032 bytes), none of which
+is part of it.
 
-The libraries above claim 1664 of those 9104 bytes when one image loads them
-all — `lib/process.f`'s $4A0 row is the large one — so **7440 bytes are free**. A row
+The libraries above claim 1696 of those 6024 bytes when one image loads them
+all — `lib/process.f`'s $4A0 row is the large one — so **4328 bytes are free**. A row
 that would cross
 `USER-BAND:END` is `E-TASK-USER` at its definition, not a store into whatever
 lies above. Budget accordingly.

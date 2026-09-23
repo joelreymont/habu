@@ -6,8 +6,10 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require lib/fs.f
+require lib/span.f
 require lib/fs-mutate.f
 require lib/process-env.f
+require lib/task.f                              \ the two-task rows at the end
 
 variable FMT-ROOT-U
 variable FMT-REMOVE-U
@@ -578,6 +580,206 @@ public
 
 ;package
 
+\ ---- two tasks inside one module word at once ---------------------------------
+\ Every row here runs the same module word in both tasks and asserts what the
+\ other task could not disturb. T1 is the shape of the witnessed failure - a
+\ task's RETURNED temporary directory path replaced by another task's - and is
+\ red on an engine whose fs-mutate.f stages that name process-wide. The paths
+\ T4 registers are left in the registry on purpose: FMT-TEST-CLEANUP's
+\ CLEANUP-RUN removes them, above the root it removes last.
+package FMT-TASKS
+private
+
+$10000 constant STACK-BYTES
+STACK-BYTES TASK:TASK WORKER-A
+STACK-BYTES TASK:TASK WORKER-B
+
+20 constant ROUNDS
+200 constant SWAPS
+16 constant REGS
+5000000000 constant WAIT-NS
+
+variable A-READY
+variable B-DONE
+variable T1-BAD
+FS-PATH-CAP SPAN-BUFFER: A-TMP
+FS-PATH-CAP SPAN-BUFFER: B-TMP
+variable A-TMP-U
+variable B-TMP-U
+FS-PATH-CAP SPAN-BUFFER: A-REG
+FS-PATH-CAP SPAN-BUFFER: B-REG
+FS-PATH-CAP SPAN-BUFFER: M-REG
+
+create P-A1 FS-PATH-CAP allot   variable P-A1-U
+create P-A2 FS-PATH-CAP allot   variable P-A2-U
+create P-B1 FS-PATH-CAP allot   variable P-B1-U
+create P-B2 FS-PATH-CAP allot   variable P-B2-U
+create P-AW FS-PATH-CAP allot   variable P-AW-U
+create P-BW FS-PATH-CAP allot   variable P-BW-U
+
+: A1$ ( -- ptr u8 n ) P-A1 P-A1-U @ ;
+: A2$ ( -- ptr u8 n ) P-A2 P-A2-U @ ;
+: B1$ ( -- ptr u8 n ) P-B1 P-B1-U @ ;
+: B2$ ( -- ptr u8 n ) P-B2 P-B2-U @ ;
+: AW$ ( -- ptr u8 n ) P-AW P-AW-U @ ;
+: BW$ ( -- ptr u8 n ) P-BW P-BW-U @ ;
+: A-BODY$ ( -- ptr u8 n ) s" task-a wrote this" ;
+: B-BODY$ ( -- ptr u8 n ) s" b" ;
+
+: PATHS! ( -- )
+   FMT-ROOT$ s" task-a-1.txt" P-A1 JOIN-PATH P-A1-U !
+   FMT-ROOT$ s" task-a-2.txt" P-A2 JOIN-PATH P-A2-U !
+   FMT-ROOT$ s" task-b-1.txt" P-B1 JOIN-PATH P-B1-U !
+   FMT-ROOT$ s" task-b-2.txt" P-B2 JOIN-PATH P-B2-U !
+   FMT-ROOT$ s" task-a-atomic.txt" P-AW JOIN-PATH P-AW-U !
+   FMT-ROOT$ s" task-b-atomic.txt" P-BW JOIN-PATH P-BW-U ! ;
+
+: FILE-IS? ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu body:ptr bodyu :}
+   path pathu FMT-READ-BUF 64 READ-ALL bodyu T=
+   FMT-READ-BUF bodyu body bodyu T$= ;
+
+: JOIN-OK ( ptr n -- )
+   TASK:JOIN MATCH result
+      ok OF 0 T= ENDOF
+      err OF 0 T= ENDOF
+   ;MATCH ;
+
+\ A task waits for its peer's round counter rather than a flag, so no round has
+\ to clear what the next one sets. A peer that never arrives ends the row with a
+\ thrown code its JOIN reports, instead of hanging the suite.
+: WAIT-FOR ( ptr n n -- ) {: flag want :}
+   mono-ns WAIT-NS + {: deadline :}
+   begin flag atomic@ want < while
+      mono-ns deadline >= if E-FS-IO throw then
+      1 >MS TASK:SLEEP
+   repeat ;
+
+: A-TMP$ ( -- ptr u8 n ) A-TMP A-TMP-U @ SPAN:TAKE SPAN:$ ;
+: B-TMP$ ( -- ptr u8 n ) B-TMP B-TMP-U @ SPAN:TAKE SPAN:$ ;
+
+\ A keeps a copy of the path MAKE-TEMP-DIR handed it, waits until B has made one
+\ of its own, and only then reads the span it is still holding.
+: T1-A-ROUND ( n -- ) {: round :}
+   FMT-ROOT$ s" race-a" MAKE-TEMP-DIR {: path:ptr u :}
+   path u A-TMP SPAN:COPY  u A-TMP-U !
+   round A-READY atomic!
+   B-DONE round WAIT-FOR
+   path u A-TMP$ STR= 0= if 1 T1-BAD atomic-add drop then
+   A-TMP$ REMOVE-DIR ;
+
+: T1-B-ROUND ( n -- ) {: round :}
+   A-READY round WAIT-FOR
+   FMT-ROOT$ s" race-b" MAKE-TEMP-DIR {: path:ptr u :}
+   path u B-TMP SPAN:COPY  u B-TMP-U !
+   round B-DONE atomic!
+   B-TMP$ REMOVE-DIR ;
+
+: T1-A ( -- ) ROUNDS 0 ?do i 1+ T1-A-ROUND loop 0 TASK:RETURN ;
+: T1-B ( -- ) ROUNDS 0 ?do i 1+ T1-B-ROUND loop 0 TASK:RETURN ;
+
+: T1-RUN ( -- )
+   0 A-READY !  0 B-DONE !  0 T1-BAD !
+   ['] T1-A WORKER-A TASK:ACTIVATE
+   ['] T1-B WORKER-B TASK:ACTIVATE
+   WORKER-A JOIN-OK
+   WORKER-B JOIN-OK
+   s" another task cannot replace my returned temporary directory path" T-LABEL
+   T1-BAD @ 0 T= ;
+
+\ An even round moves the file out, an odd one moves it back, so SWAPS rounds
+\ end where they started.
+: T2-ROUND ( n ptr u8 n ptr u8 n -- ) {: round p1:ptr p1u p2:ptr p2u :}
+   round 1 and 0= if p1 p1u p2 p2u RENAME-FILE else p2 p2u p1 p1u RENAME-FILE then ;
+
+: T2-A ( -- ) SWAPS 0 ?do i A1$ A2$ T2-ROUND loop 0 TASK:RETURN ;
+: T2-B ( -- ) SWAPS 0 ?do i B1$ B2$ T2-ROUND loop 0 TASK:RETURN ;
+
+: T2-RUN ( -- )
+   A1$ A-BODY$ WRITE-ALL
+   B1$ B-BODY$ WRITE-ALL
+   ['] T2-A WORKER-A TASK:ACTIVATE
+   ['] T2-B WORKER-B TASK:ACTIVATE
+   WORKER-A JOIN-OK
+   WORKER-B JOIN-OK
+   s" two tasks renaming at once each moved only their own file" T-LABEL
+   A1$ A-BODY$ FILE-IS?
+   B1$ B-BODY$ FILE-IS?
+   A2$ EXISTS? TFALSE
+   B2$ EXISTS? TFALSE
+   A1$ REMOVE-FILE
+   B1$ REMOVE-FILE ;
+
+: T3-A ( -- ) SWAPS 0 ?do AW$ A-BODY$ ATOMIC-WRITE-FILE loop 0 TASK:RETURN ;
+: T3-B ( -- ) SWAPS 0 ?do BW$ B-BODY$ ATOMIC-WRITE-FILE loop 0 TASK:RETURN ;
+
+: T3-RUN ( -- )
+   ['] T3-A WORKER-A TASK:ACTIVATE
+   ['] T3-B WORKER-B TASK:ACTIVATE
+   WORKER-A JOIN-OK
+   WORKER-B JOIN-OK
+   s" two tasks writing atomically at once each kept their own contents" T-LABEL
+   AW$ A-BODY$ FILE-IS?
+   BW$ B-BODY$ FILE-IS?
+   AW$ REMOVE-FILE
+   BW$ REMOVE-FILE ;
+
+: REG-NAME ( n n SPAN:span<u8> -- ptr u8 n ) {: which i dst :}
+   SB-RESET
+   FMT-ROOT$ SB-APPEND
+   s" /reg-" SB-APPEND
+   97 which + SB-APPEND-C
+   s" -" SB-APPEND
+   i FS-MUT-SB-U
+   SB$ {: a:ptr u :}
+   a u dst SPAN:COPY
+   dst u SPAN:TAKE SPAN:$ ;
+
+: T4-REG-ONE ( n n SPAN:span<u8> -- ) {: which i dst :}
+   which i dst REG-NAME {: a:ptr u :}
+   a u s" reg" WRITE-ALL
+   a u CLEANUP+ ;
+
+: T4-A ( -- ) REGS 0 ?do 0 i A-REG T4-REG-ONE loop 0 TASK:RETURN ;
+: T4-B ( -- ) REGS 0 ?do 1 i B-REG T4-REG-ONE loop 0 TASK:RETURN ;
+
+: SLOT$ ( n -- ptr u8 n ) {: idx :}
+   idx FS-MUT-CLEANUP-SLOT idx FS-MUT-CLEANUP-U-PTR @ SPAN:TAKE SPAN:$ ;
+
+: COUNT-SLOTS ( ptr u8 n n -- n ) {: a:ptr u base :}
+   0 REGS 2 * 0 ?do
+      base i + SLOT$ a u STR= if 1+ then
+   loop ;
+
+: CHECK-ONE ( n n n -- ) {: which i base :}
+   which i M-REG REG-NAME base COUNT-SLOTS 1 T= ;
+
+: T4-RUN ( -- )
+   FS-MUT-CLEANUP-N @ {: base :}
+   ['] T4-A WORKER-A TASK:ACTIVATE
+   ['] T4-B WORKER-B TASK:ACTIVATE
+   WORKER-A JOIN-OK
+   WORKER-B JOIN-OK
+   s" every registration from either task claimed a slot of its own" T-LABEL
+   FS-MUT-CLEANUP-N @ base REGS 2 * + T=
+   REGS 2 * 0 ?do
+      i REGS / i REGS mod base CHECK-ONE
+   loop ;
+
+public
+
+: RUN ( -- )
+   s" the fs-mutate band is carved directly below FS-ABI" T-LABEL
+   FS-MUT-ABI:BYTES 3080 T=
+   FS-MUT-ABI:END FS-ABI:START T=
+   FS-MUT-ABI:START USER-BAND:END T=
+   PATHS!
+   T1-RUN
+   T2-RUN
+   T3-RUN
+   T4-RUN ;
+
+;package
+
 : FMT-TEST-CLEANUP ( -- )
    FMT-WRITE-TREE
    FMT-TREE CLEANUP-TREE+
@@ -639,6 +841,7 @@ public
    FMT-TEST-REMOVE-TREE
    FMT-SPECIAL:RUN
    FMT-TEST-REMOVE-TREE-SYMLINK-DIR
+   FMT-TASKS:RUN
    FMT-TEST-CLEANUP
    T-REPORT
    s" fs-mutate-test: ok" type cr ;

@@ -68,8 +68,8 @@ the caller holds a `TASK:FACILITY` across the whole sequence), **task-local**
 (a `TASK:+USER` row or a per-task DATA cell, so any number of tasks may use it
 at once), or **caller-owned** (the caller supplies the storage). A new module
 declares its class in its header; [threads.md](threads.md) carries the table
-and the size of the band a `TASK:+USER` row comes from, which is 9104 bytes
-for the whole image with 7440 free once the libraries above have claimed
+and the size of the band a `TASK:+USER` row comes from, which is 6024 bytes
+for the whole image with 4328 free once the libraries above have claimed
 theirs.
 
 | module | class |
@@ -77,6 +77,7 @@ theirs.
 | `lib/string.f` | task-local (the SB builder, STRING-ABI band) / caller-owned (the `BUF-*` family) |
 | `lib/fmt.f` | task-local (the render buffer and its scratch cells, FMT-ABI band) |
 | `lib/fs.f` | task-local (the per-call slots, FS-ABI band) / process-wide (the walk stack) |
+| `lib/fs-mutate.f` | task-local (the staged paths, FS-MUT-ABI band; the stream copy's descriptors and cursors) / process-wide (the copy buffer, so the two copy words are single-task; the cleanup registry, which any task may register into) |
 | `lib/json-write.f` | caller-owned |
 | `lib/json-read.f` | caller-owned |
 | `lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |

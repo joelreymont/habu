@@ -77,7 +77,7 @@ package HB-BUILD-CLI
    HBT-NUMP-OUT-BUF HBT-NUMP-OUT-U @ ;
 
 \ An application that touches a PERSISTENT CELL of each library it requires:
-\ lib/string.f's builder, lib/fs-mutate.f's copy state (FS-MUT-COPY-IN) and
+\ lib/string.f's builder, lib/fs-mutate.f's copy buffer (FS-MUT-COPY-BUF) and
 \ lib/fs.f's walk stacks (FS-DEPTH, FS-WALK-BUF). Those cells are what the maker
 \ used to own before the application was read - it required app-image.f, and so
 \ lib/fs.f and lib/fs-mutate.f, before opening the capture window - which put them
@@ -316,7 +316,8 @@ package HB-BUILD-CLI
 \ when the capture window opens, so the application's own require closure is the
 \ only library content inside the restored span. Measured before this held:
 \ `caller=WALK-FILES target=FS-DEPTH` and `caller=COPY-FILE-STREAM
-\ target=FS-MUT-COPY-IN` refused this very program.
+\ target=FS-MUT-COPY-IN` refused this very program - the copy descriptors are
+\ locals of the call now, and the copy BUFFER is the cell that stands there.
 : HBT-STRIPPED-LIB-STATE ( -- )
    HBT-LIB-DIR MAKE-DIR
    s" a.txt" s" one" HBT-LIB-FILE!
