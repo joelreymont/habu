@@ -794,6 +794,17 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 : TASK-MUNMAP-SPAN ( ptr n n -- )
    MUNMAP-CALL TASK-RC0 ;
 
+\ AN EMPTY TCB HOLDS NOTHING THIS PROCESS TOOK. The four mappings go back to the
+\ system, and the five cells cleared last are what the run itself acquired: the
+\ pthread_t pthread_create stored, the value the join wrote, and PREPARE's record
+\ of this process's data base, record count and code end. An image restores none
+\ of them, and a stripped link refuses a captured cell holding one - the first of
+\ them unnamed, because a `create … does>` body spells only cell 0 and the
+\ refusal has no name for the rest (measured on a load-time activate/join/kill:
+\ `holds a pointer into memory the build mapped word=<unknown> data-off=12219368`
+\ for TCB.THREAD, then `holds an undeclared code/dict pointer` for TCB.DBASE).
+\ Clearing them changes no run: ACTIVATE writes THREAD again, the join writes RET
+\ and PREPARE writes the other three.
 : TASK-RELEASE-MEM ( ptr n -- ) {: tcb:ptr :}
    tcb MBOX-DESTROY
    tcb PARK-DESTROY
@@ -817,6 +828,87 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
       tcb TCB.REGION @ tcb TCB.REGION-U @ TASK-MUNMAP-SPAN
       TASK-NULL tcb TCB.REGION !
       0 tcb TCB.REGION-U !
+   then
+   0 tcb TCB.THREAD !
+   0 tcb TCB.RET !
+   0 tcb TCB.DBASE !
+   0 tcb TCB.NDICT !
+   0 tcb TCB.CP ! ;
+
+\ ---- every declared TCB, and the sweep a capture runs over them ---------------
+\ ONE HEAD REACHES EVERY TCB THE PROGRAM DECLARED, because a capture has to reach
+\ them all: a task that was prepared holds this process's mappings and a task
+\ that is running holds its thread, and an image restores neither. The head is a
+\ declared pointer cell, so the stripped link relocates it through its data map;
+\ each TCB's link is the raw cell one past its body, holding the previous TCB's
+\ address, and 0 ends the chain. Both kinds of cell sit in the capture window,
+\ which an image restores at the addresses it was captured from, so an
+\ undeclared cell holding one of those addresses is shipped verbatim
+\ (src/habu/aot-lib.f SCAN-DATA-CELL refuses a text pointer and a pointer into
+\ memory the build mapped; a window address is neither). A TCB address is not an
+\ offset from `dbase@` either - measured on this engine, the window is at
+\ $340000000 and `dbase@` at $1410000 - so the link holds the address itself.
+PERSISTED-PTR-VARIABLE TASK-CHAIN
+
+: TASK-CHAIN@ ( -- ptr n )
+   TASK-CHAIN @ ;
+
+: TASK-CHAIN! ( ptr n -- )
+   TASK-CHAIN ! ;
+
+\ The link cell sits one cell past TCB.DONE. Nothing after the TCB belongs to
+\ TASK-ABI, so the layout check above answers for the structure unchanged.
+: TASK-LINK@ ( ptr n -- n )
+   TASK-TCB-BYTES + @ ;
+
+\ A PREPARED TASK IS RELEASED AT CAPTURE, the same rule RESET-SYMBOLS keeps for
+\ the dlsym cells: process-local state is dropped here and taken afresh by the
+\ next operation, which for a task is the ACTIVATE that prepares it again. An
+\ ACTIVATED task is the program's defect - a thread cannot be carried by an image
+\ - so this names the module, the state and the field the linker would otherwise
+\ refuse with no name for it. `die` and not `throw`: a hook may throw and PREPARE
+\ propagates it, but hb-build would then end on a bare code, while the linker's
+\ own refusals print their reason and exit (src/habu/aot-closure.f
+\ REFUSE-DATA-CELL).
+: TASK-SWEEP-ONE ( ptr n -- ) {: tcb:ptr :}
+   tcb TASK-STATE@ {: st:n :}
+   st TASK-EMPTY = if exit then
+   st TASK-CONSTRUCTED = if
+      tcb TASK-RELEASE-MEM
+      TASK-EMPTY tcb TASK-STATE!
+      exit
+   then
+   s" task: activated task at capture - kill it before the build or snapshot captures (TCB.THREAD)"
+   E-TASK-STATE die ;
+
+variable SWEEP-ARMED
+
+\ The flag is cleared last, so a walk that threw part way - TASK-RELEASE-MEM
+\ answers a refusing munmap with E-TASK-THREAD - leaves the hook registered for
+\ the retry IMAGE-LIFECYCLE:PREPARE keeps a throwing callback for.
+: TASK-CAPTURE-SWEEP ( -- )
+   TASK-CHAIN@ FFI:>CELL
+   begin dup 0 <> while
+      TASK-N>PTR dup TASK-SWEEP-ONE TASK-LINK@
+   repeat
+   drop
+   0 SWEEP-ARMED ! ;
+
+\ THE SWEEP IS A ONE-SHOT CLEANUP, ARMED BY THE WORD THAT TAKES WHAT IT GIVES
+\ BACK. It munmaps, so it has to run in the phase lib/image-lifecycle.f reserves
+\ for cleanup that calls foreign functions, before the persistent hooks forget
+\ their addresses: registered with REGISTER-PERSISTENT it ran after
+\ RESET-SYMBOLS instead, re-resolved munmap through TASK-SYMBOLS, and the build
+\ then refused this module's own cell (measured on a subject that only PREPAREs:
+\ `holds a pointer into memory the build mapped word=MUNMAP-XT`). A run of the
+\ sweep disarms it, and the next PREPARE - in this process or in the restored
+\ image - arms it again, so an image that captures again sweeps again. Two owners
+\ preparing at once may register two hooks; the second walk finds every task
+\ EMPTY and does nothing.
+: TASK-ARM-SWEEP ( -- )
+   SWEEP-ARMED @ 0= if
+      [: TASK-CAPTURE-SWEEP ;] IMAGE-LIFECYCLE:REGISTER
+      1 SWEEP-ARMED !
    then ;
 
 : TASK-COPY-CELL ( ptr n ptr n n -- )
@@ -874,6 +966,7 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
    want STACK-ABI:PAGE-BYTES 1 - + STACK-ABI:PAGE-BYTES negate and ;
 
 : PREPARE ( ptr n -- ) {: tcb:ptr :}
+   TASK-ARM-SWEEP
    tcb TASK-CONSTRUCTED? if exit then
    tcb TCB.SIZE @ TASK-CHECK-SIZE
    tcb TCB.SIZE @ TASK-STACK-BYTES MEM-ALLOC-GUARDED tcb TCB.STACK-U ! tcb TCB.STACK !
@@ -1083,11 +1176,17 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
 
 \ CREATE/DOES> publishes a typed TCB address, outside checker inference.
 \ Retirement owner: habu-typed-defining-words-aa224eb5.
+\
+\ The body is still TASK-TCB-BYTES; the cell after it is this TCB's chain link,
+\ taking the head the definition found and leaving its own address there.
 TRUSTED: TASK ( n -- )
    dup TASK-CHECK-SIZE
    TASK-ALIGN8
    create
+      here CELL-VIEW >r
       ,  TASK-TCB-BYTES 8 / 1 - 0 do 0 , loop
+      TASK-CHAIN@ FFI:>CELL ,
+      r> TASK-CHAIN!
    does> ( -- ptr n ) ;
 
 : #USER ( -- n )

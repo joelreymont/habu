@@ -15,11 +15,19 @@ variable RAN
 
 : STEP ( -- ) 1 RAN +! ;
 
-\ TASK:PAUSE on the main thread is sched_yield and nothing else (lib/task.f
-\ PAUSE), so it reaches TASK-SYMBOLS - the point of this line - while leaving no
-\ mapping behind: an activated worker's TCB keeps its stack pointer past the
-\ join, and that cell, which no lifecycle hook owns, would be refused first.
-TASK:PAUSE
+: CYCLE ( -- )
+   0 RAN !
+   ['] STEP WORKER TASK:ACTIVATE
+   begin WORKER TASK:DONE? 0= while TASK:PAUSE repeat
+   WORKER TASK:KILL ;
+
+\ A WHOLE TASK CYCLE AT LOAD, which is both halves of this subject: it caches the
+\ maker's dlsym addresses in the eight XT cells, and it leaves behind the TCB a
+\ killed task leaves - mappings returned and the five process-local cells cleared
+\ (lib/task.f TASK-RELEASE-MEM). Before that clear the stripped link refused this
+\ file at the TCB cell holding the pthread_t, which no lifecycle hook owned and
+\ which a `create … does>` body gives the refusal no name for.
+CYCLE
 
 public
 
@@ -27,10 +35,7 @@ public
 \ capture zeroed have to be reloaded by this operation, and a stale one would
 \ fail the activation instead.
 : RUN ( -- )
-   0 RAN !
-   ['] STEP WORKER TASK:ACTIVATE
-   begin WORKER TASK:DONE? 0= while TASK:PAUSE repeat
-   WORKER TASK:KILL
+   CYCLE
    RAN @ 1 <> if
       s" stripped-lifecycle-prepare: worker did not run" FAILURE-RC die
    then

@@ -571,6 +571,17 @@ JOBS QUEUE:DESTROY
   order. A task's outcome rows and its cleanup registration live in the TCB, which
   outlives the thread's memory; its stacks, region, mailbox and done semaphore go
   with that memory when a join or a kill releases it.
+- A released TCB holds no address this process took: the thread handle, the
+  join's answer and the data base, record count and code end `TASK:PREPARE`
+  recorded are cleared with the memory, and the next prepare writes them again.
+  That is what lets a program that ran a task while it loaded be captured -
+  `hb-build`'s stripped link refuses a captured cell holding an address only the
+  building process ever held.
+- A capture runs `IMAGE-LIFECYCLE:PREPARE`, where `lib/task.f` sweeps every TCB
+  the program declared: a prepared task is released and left EMPTY, and its next
+  `TASK:ACTIVATE` prepares again, while a task still activated ends the capture
+  with `task: activated task at capture` - no image carries a thread. Kill your
+  tasks before a build or a snapshot captures.
 
 ## Tests
 
