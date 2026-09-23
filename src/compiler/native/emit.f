@@ -14,8 +14,9 @@
 \ by the layout that counts and by the writer that appends, with CURSOR-CK
 \ holding the two together: a trailing branch to the block laid out next
 \ (FALL-THRU?), a copy into its own register (COPY?), and a data-stack
-\ adjustment of nothing. An elided instruction gets NO source-map row, because
-\ row k describes the instruction WORD@ k answers.
+\ adjustment of nothing. Adjacent data-stack adjustments are combined before
+\ either pass, without changing the accepted IR. An elided instruction gets NO
+\ source-map row, because row k describes the instruction WORD@ k answers.
 \
 \ Block zero is written first and the block control leaves through last.
 \ Publication explicitly distinguishes a trailing RET slot from a full span.
@@ -229,6 +230,13 @@ variable N-LAID                        \ how many blocks the order actually hold
 DYNAMIC-BUFFER F-START-BUF n
 : F-START ( -- ptr n ) 0 F-START-BUF ;
 
+\ Two signed distances per operation: before and after its other instructions.
+\ Calls have both; take/publish have only the first and no other instruction.
+DYNAMIC-BUFFER D-MOVES n
+: DHEAD ( IR-ID:ir-op-id -- n ) IR-ID:OP-LOCAL 2 * ;
+: DHEAD@ ( IR-ID:ir-op-id -- n ) DHEAD D-MOVES @ ;
+: DTAIL@ ( IR-ID:ir-op-id -- n ) DHEAD 1+ D-MOVES @ ;
+
 : RESERVE-SCRATCH ( -- )
    SCRATCH-SIZES!
    INSN-CAP INSN-BYTES * CELL 1- + CELL / CODE-BUF-RESERVE
@@ -244,6 +252,7 @@ DYNAMIC-BUFFER F-START-BUF n
    BMAX B-GOTO-BUF-RESERVE
    BMAX B-KEEP-BUF-RESERVE
    FMAX F-START-BUF-RESERVE
+   OMAX 2 * D-MOVES-RESERVE
    ;
 variable N-FUNS                        \ how many functions the emission holds
 
@@ -773,16 +782,43 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
    id COPY? 0= if false exit then
    id 0 RESULT-REG  id 0 OPERAND-REG  = ;
 
-: DZERO1 ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
-   {: id:IR-ID:ir-op-id key:IR-ID:ir-symbol-id :}
-   id key ATTR-HAS? 0= if 0 exit then
-   id key ATTR-INT 0= if 1 exit then
-   0 ;
+\ Only adjacent moves within one block combine. Every other operation is a
+\ barrier, including memory transfers, calls and branches. Keep both moves if
+\ their sum does not fit one immediate; optimization must not add a refusal.
+: D-MERGE ( n n -- n )
+   {: prev:n slot:n :}
+   slot D-MOVES @ 0= if prev exit then
+   prev 0 >= if
+      prev D-MOVES @ slot D-MOVES @ + {: sum:n :}
+      sum abs A64IR:OFF-LIMIT <= if
+         0 prev D-MOVES !
+         sum slot D-MOVES !
+      then
+   then
+   slot ;
+
+: PLAN-DOP ( n IR-ID:ir-op-id -- n )
+   {: prev:n id:IR-ID:ir-op-id :}
+   id SLOT-AT {: k:n :}
+   id DHEAD {: slot:n :}
+   0 slot D-MOVES !  0 slot 1+ D-MOVES !
+   id 0 BND-DBYTES @ ATTR-HAS? if
+      id DBYTES-SIZE
+      k O-DTAKE = if negate then
+      slot D-MOVES !
+   then
+   id 0 BND-DBACK @ ATTR-HAS? if
+      id DBACK-SIZE negate slot 1+ D-MOVES !
+   then
+   prev slot D-MERGE
+   k O-DTAKE = k O-DPUBLISH = or if exit then
+   drop -1 slot 1+ D-MERGE ;
 
 : DZERO-MOVES ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   id 0 BND-DBYTES @ DZERO1
-   id 0 BND-DBACK @ DZERO1 + ;
+   0
+   id 0 BND-DBYTES @ ATTR-HAS? if id DHEAD@ 0= if 1+ then then
+   id 0 BND-DBACK @ ATTR-HAS? if id DTAIL@ 0= if 1+ then then ;
 
 \ The selector's prologue is a reserve opening the entry block with the link
 \ save right behind it; nothing else produces that pair. A reserve the spill
@@ -1113,11 +1149,11 @@ variable CH-AT
 
 : PUT-DTAKE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id  id DBYTES-SIZE negate  PUT-DMOVE ;
+   id  id DHEAD@  PUT-DMOVE ;
 
 : PUT-DPUBLISH ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id  id DBYTES-SIZE  PUT-DMOVE ;
+   id  id DHEAD@  PUT-DMOVE ;
 
 \ A self-call is RECURSE, which names the DEFINITION and not the body the token
 \ stands in - so it goes to function zero of this emission, which is the
@@ -1142,9 +1178,9 @@ variable CH-AT
 
 : PUT-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id  id DBYTES-SIZE  PUT-DMOVE
+   id  id DHEAD@  PUT-DMOVE
    id  SELF-FUN FUN-START  N-INS @ -  BL-WORD  APPEND
-   id  id DBACK-SIZE negate  PUT-DMOVE ;
+   id  id DTAIL@  PUT-DMOVE ;
 
 \ ---- calling another word ----------------------------------------------------
 \ Both ends are instruction aligned by construction, so the subtraction is a
@@ -1159,9 +1195,9 @@ variable CH-AT
 
 : PUT-WORD-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id  id DBYTES-SIZE  PUT-DMOVE
+   id  id DHEAD@  PUT-DMOVE
    id  id WORD-DELTA BL-WORD  APPEND
-   id  id DBACK-SIZE negate  PUT-DMOVE ;
+   id  id DTAIL@  PUT-DMOVE ;
 
 \ In BYTES, which is the unit this field counts - the branch fields count
 \ instructions.
@@ -1201,7 +1237,7 @@ variable CH-AT
 \ routine, so nothing the trap routine writes can be read by anybody.
 : PUT-TRAP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id  id DBYTES-SIZE  PUT-DMOVE
+   id  id DHEAD@  PUT-DMOVE
    \ die lives in engine text; the link is dead because it exits the process.
    id  id TRAP-ADDR EXT-DELTA  BL-WORD  APPEND ;
 
@@ -1590,6 +1626,17 @@ public
 : SHAPES-CK ( -- )
    N-FUNS @ 0 ?do i FUN-AT SHAPE-CK loop ;
 
+: PLAN-DMOVES ( -- )
+   N-FUNS @ 0 ?do
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      f BLOCK-COUNT 0 ?do
+         f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+         -1
+         bk OP-COUNT 0 ?do bk i OP-AT PLAN-DOP loop
+         drop
+      loop
+   loop ;
+
 : MEASURE ( -- )
    0
    N-FUNS @ 0 ?do
@@ -1679,6 +1726,7 @@ variable SCAN-K
    FUNS-CK
    SHAPES-CK
    m ALLOC-CK
+   PLAN-DMOVES
    MEASURE
    WRITE-ALL
    WRITES-CK

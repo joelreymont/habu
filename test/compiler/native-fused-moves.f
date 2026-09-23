@@ -49,6 +49,12 @@ public
 : FM-FPOP ( r -- ) 0 s>f f< 0= if 1 throw then ;
 : FM-SRC ( -- n ) 7 ;
 : FM-PRUNED ( -- n ) FM-SRC 0 > if 5 else 5 then ;
+: FM-SUM ( n n -- n ) + 1+ ;
+: FM-TWICE ( n -- n ) 2 * ;
+: FM-PAIR ( n n -- n ) FM-SUM FM-TWICE ;
+: FM-THREE ( n -- n n n ) dup 1+ over 2 + ;
+: FM-MERGE ( n -- n ) FM-THREE drop FM-EXCH drop FM-CALLEE ;
+: FM-BRANCH ( n bool -- n ) if FM-CALLEE else FM-TWICE then ;
 
 private
 
@@ -180,6 +186,20 @@ variable MISSING
    s" NATIVE-FUSED-MOVES:FM-CALL" NO-MOVES
    99 7 FM-CALL 8 T= 8 T= 99 T= ;
 
+\ No transfer reads the temporary pointer position between these calls. The
+\ first pair cancels; dropping a returned cell in the second leaves a net take.
+: ADJUST-CASE ( -- )
+   s" consecutive calls do not undo and redo the same stack adjustment" T-LABEL
+   s" NATIVE-FUSED-MOVES:FM-PAIR" NO-MOVES
+   73 4 5 FM-PAIR 20 T= 73 T=
+   s" adjacent unequal stack adjustments become their net distance" T-LABEL
+   s" NATIVE-FUSED-MOVES:FM-MERGE" K-ADD COUNT-FORM 0 T=
+   s" NATIVE-FUSED-MOVES:FM-MERGE" K-SUB COUNT-FORM 2 T=
+   74 6 FM-MERGE 8 T= 74 T=
+   s" stack adjustment plans stay within each branch" T-LABEL
+   75 6 true FM-BRANCH 7 T= 75 T=
+   76 6 false FM-BRANCH 12 T= 76 T= ;
+
 \ THE PRUNER'S CASE, and the one that says a fused transfer is not a load with
 \ an extra field. Both arms of `FM-PRUNED` hand the join the same value, so the
 \ if-conversion writes no comparison at all and the cell the call returned is
@@ -219,6 +239,7 @@ public
    GUARD-CASE
    EXCH-CASE
    CALL-CASE
+   ADJUST-CASE
    PRUNE-CASE
    FLOAT-CASE
    s" every word under test has a dictionary record" T-LABEL
