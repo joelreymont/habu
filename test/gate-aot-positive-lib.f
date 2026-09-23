@@ -726,6 +726,7 @@ variable SELF-SRC-U
    s" 1 LAYOUT-BUFFER MEM res<n,n>" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : HLP ( res<n,n> -- n ) 0 MEM ! 0 MEM @ MATCH res ok OF ENDOF err OF ENDOF ;MATCH ;" GE-SRC-LINE
+   S\" : HLP-DROP ( res<n,n> -- ) 0 MEM ! 0 MEM @ drop s\" fetch-drop: marker\" type ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" : MAIN ( -- ) ;" GE-SRC-LINE ;
 
@@ -744,11 +745,21 @@ variable SELF-SRC-U
    PRESEED-FETCH-ARM
    s" hb-build AOT preseed bad-tag fetch build" GB-HBB-BUILD-OUT ;
 
+\ HLP-DROP fetches the same forged value and drops it: a lowering that elided
+\ the unused load would take the tag walk with it and print the marker.
+: PRESEED-FETCH-DROP-BUILD ( -- )
+   GB-WRITE-SRC
+   GB-HBB-PREPARE
+   s" AOT-LAYOUT-FETCH-BAD:HLP-DROP" HBB-PRESEED-ENTRY!
+   PRESEED-FETCH-SEED$ HBB-PRESEED-SEED!
+   s" hb-build AOT preseed dropped bad-tag fetch build" GB-HBB-BUILD-OUT ;
+
 : FETCH-RUN-BAD ( ptr u8 n -- ) {: label:ptr labelu:n :}
    GE-HB-RESET
    GB-OUT$ GE-TIMEOUT-MS GE-RUN-ENV
    85 label labelu GE-EXPECT-RC
-   s" hb: bad layout tag" label labelu GE-EXPECT-ERR-HAS ;
+   s" hb: bad layout tag" label labelu GE-EXPECT-ERR-HAS
+   s" " label labelu GE-EXPECT-OUT ;
 
 : PRESEED-FETCH ( -- )
    s" hb-aot-preseed-fetch.f" s" hb-aot-preseed-fetch" s" hb-aot-preseed-fetch-report.json" PATHS
@@ -758,7 +769,9 @@ variable SELF-SRC-U
    PRESEED-FETCH-BUILD
    s" hb-build AOT preseed bad-tag fetch run" FETCH-RUN-BAD
    s" hb-build AOT preseed bad-tag fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
-   s" PASS: hb-build AOT preseeded bad-tag fetch (rc 85 hb: bad layout tag via NFETCH-CHECK:TAGS in a stripped image)" type cr ;
+   PRESEED-FETCH-DROP-BUILD
+   s" hb-build AOT preseed dropped bad-tag fetch run" FETCH-RUN-BAD
+   s" PASS: hb-build AOT preseeded bad-tag fetch (rc 85 hb: bad layout tag via NFETCH-CHECK:TAGS in a stripped image, used and dropped)" type cr ;
 
 : RUN-BUNDLE-DATA ( -- )
    s" hb-gate-aot-bundle-data" GT-START

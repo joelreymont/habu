@@ -279,12 +279,25 @@ private
    ENGINE-ERROR:BAD-TAG s" narrow forged tag dies with ENGINE-ERROR:BAD-TAG" GE-EXPECT-RC
    s" hb: bad layout tag" s" narrow forged tag reaches the fetch guard" GE-EXPECT-ERR-HAS ;
 
+\ The fetched value is dropped, so a lowering that elided an unused load would
+\ take the tag walk with it and print the marker.
+: BAD-DROP ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   SRC
+   S\" : GO ( -- ) 1 GWN-BAD 1 GWN-AT @ drop s\" dropped-forge: marker\" type ;  GO" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   ENGINE-ERROR:BAD-TAG s" dropped forged tag dies with ENGINE-ERROR:BAD-TAG" GE-EXPECT-RC
+   s" hb: bad layout tag" s" dropped forged tag reaches the fetch guard" GE-EXPECT-ERR-HAS
+   s" " s" dropped forged tag prints no marker" GE-EXPECT-OUT ;
+
 public
 
 : RUN ( -- )
    ROUND
    BAD-WIDE
    BAD-NARROW
+   BAD-DROP
    s" PASS: wide-instantiation fetch validates its own tag cell; forged tags still die there" type cr ;
 
 ;package
