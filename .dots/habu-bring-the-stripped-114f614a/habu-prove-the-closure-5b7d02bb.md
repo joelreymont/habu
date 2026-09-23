@@ -85,3 +85,16 @@ pointer and relocation consistently. No name-based deletion or unchecked
 pointer assumption. This dot stays active for that fix and the production
 Tender remeasurement after bcb472b5; the ordinary word-grain and package probes
 are complete.
+
+Priority evidence for this remaining DATA-root gap: a read-only query after
+the valid prepared image was written rebuilt the graph from MAIN while
+ignoring ALL thirteen stored quotation roots. No image was produced from that
+incomplete graph. It removes at most 124 members / 17,124 body bytes (0.92% of
+this image's code): SCRAPE 16,776, SECRETS 320, global words 28. Much of that
+bound is necessary runtime behavior: `server/scrape/ingest.f:1544` reads the
+nine RUN-QT slots for TASK:ACTIVATE, `server/secrets.f:48/55/62` calls MEMORY-*
+defers, and `lib/process.f:309` calls PROC-REAP-ARM. Thus this gap cannot explain
+the server's roughly 1.86 MB of code; broader code-generation work remains the
+size priority. Probe, root list and removed-member table are `root-bound*` in
+the current-pair evidence directory. The reduced unused-cell defect remains
+valid and open.
