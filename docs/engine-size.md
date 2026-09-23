@@ -22,7 +22,7 @@ elf/header	64	0.0
 elf/program-headers	224	0.0
 elf/dynamic-metadata	200	0.0
 elf/header-pad	3608	0.1
-engine/code	129308	3.5
+engine/code	129332	3.5
 engine/primitive-names	184	0.0
 engine/primitive-count	8	0.0
 engine/primitive-records	10128	0.2
@@ -42,7 +42,7 @@ aot/code-spans	42672	1.1
 aot/boot-run-entries	4	0.0
 aot/protected-wordlists	676	0.0
 aot/checker-sidecar	0	0.0
-image/text-pad	30708	0.8
+image/text-pad	30684	0.8
 container/rw-segment	192	0.0
 total	3604672	100.0
 
