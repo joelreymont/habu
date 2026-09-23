@@ -49,6 +49,7 @@ require lib/image-lifecycle.f
 require src/os/env-base.f
 require src/core/dynamic-storage.f
 require src/core/sha256.f
+require src/core/type-family-sha.f
 require lib/memory.f
 require lib/string.f
 require src/habu/layout.f
@@ -215,31 +216,23 @@ private
 \
 \ SHA-256 (src/core/sha256.f) is baked for the same reason and splits both ways.
 \ KK (64 round constants) and HH0 (the 8 initial hash values) are read-only
-\ tables SHA-BLOCK and SHA256-BEGIN read and nothing writes: carried. What is
-\ left of that file below the window is three pieces of scratch this engine's own
-\ boot leaves at zero - a digest in progress is the CALLER's span now, and every
-\ cursor the words once kept in a cell of their own is a local. Each was read for
-\ the fact that justifies its claim - written before read within one call, or
-\ zero is its empty start:
-\   SHA-CTX0     the one static context the process-wide one-shot words share
-\                (SHA256-RESET/UPDATE/FINAL, SHA256). Every one of them calls
-\                SHA256-BEGIN first, which writes all eight hash words from HH0
-\                and zeroes the tail count and the total; inside the span only
-\                the first TAIL-U tail bytes are ever read and SHA256-FEED moves
-\                them in before it raises that count, SHA-BLOCK writes WS[0..15]
-\                from the block and WS[16..63] from those before the compression
-\                loop reads one, and SHA-PAD zero-fills all $80 bytes of PBLK and
-\                writes the tail and the length into it before SHA-BLOCK reads
-\                it.
-\   SHA-FCTX0    the one static FILE context, which SHA256-FILE and
-\                SHA256-FILE-HEX pass to the reentrant SHA256-FILE-IN. Its digest
-\                context is written by the SHA256-BEGIN that word opens with; its
-\                read buffer is read only up to the count `read` answered; its
-\                path scratch is written by PATHZ before the open reads it; and
-\                its digest slot is written by SHA256-END before SHA256>HEX reads
-\                it.
-\   SHA-DIGEST   TF-SHA16 (src/core/type-family-sha.f) fills it through SHA256
-\                before reading the first eight bytes back.
+\ tables SHA-BLOCK and SHA256-BEGIN read and nothing writes: carried. That file
+\ keeps no cell at all now - a digest in progress is the CALLER's span, every
+\ cursor the words once kept in a cell of their own is a local, and a caller's
+\ context travels inside that caller's own window. What is left below the window
+\ is the two statics src/core/type-family-sha.f keeps for the checker, each read
+\ for the fact that justifies its claim - written before read within one call:
+\   TF-SHA-CTX   the checker's own digest context, which TF-SHA16 passes to
+\                SHA256-IN. That word calls SHA256-BEGIN first, which writes all
+\                eight hash words from HH0 and zeroes the tail count and the
+\                total; inside the span only the first TAIL-U tail bytes are ever
+\                read and SHA256-FEED moves them in before it raises that count,
+\                SHA-BLOCK writes WS[0..15] from the block and WS[16..63] from
+\                those before the compression loop reads one, and SHA-PAD
+\                zero-fills all $80 bytes of PBLK and writes the tail and the
+\                length into it before SHA-BLOCK reads it.
+\   SHA-DIGEST   TF-SHA16 fills it through SHA256-IN before reading the first
+\                eight bytes back.
 \ THE IMAGE-LIFECYCLE REGISTRY (lib/image-lifecycle.f) is the second site a
 \ stripped image is refused at, once the path scratch below lets it open a file:
 \ its private lock, its two counters and the bases of its two hook tables,
@@ -258,9 +251,9 @@ private
 \ PATH0 hands it to the caller within that one call, so every byte it reads it
 \ wrote first.
 \
-\ src/core/sha256.f declares no package, so the list names its cells directly and
-\ that file needs no word of its own: the DYNAMIC-STORAGE:OWNED-CELLS detour
-\ below exists only because those three cells are private to their package.
+\ src/core/type-family-sha.f declares no package, so the list names its two cells
+\ directly and that file needs no word of its own: the DYNAMIC-STORAGE:OWNED-CELLS
+\ detour below exists only because those three cells are private to their package.
 \
 \ NOT ON THE LIST, and refused as loudly as before, is every other engine cell
 \ below the window. src/os/env-base.f's own TMP-PATH cursors and buffer (TPB, TPP,
@@ -286,7 +279,7 @@ private
    STR-MIN-I64$ STR-I64-DIGITS CARRIED
    KK  64 cells CARRIED
    HH0  8 cells CARRIED
-   SHA-CTX0 FRESH  SHA-FCTX0 FRESH  SHA-DIGEST FRESH
+   TF-SHA-CTX FRESH  SHA-DIGEST FRESH
    PZB PATH-CAP 1 + FRESH-BYTES ;
 
 LIST

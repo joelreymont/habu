@@ -14,10 +14,11 @@ using AOT-WINDOW
 
 create HASH-BEFORE 32 allot
 create HASH-AFTER 32 allot
+create SHA-CTX SHA256-CTX-BYTES allot   \ this fixture's digest context
 
 : HASH ( AOT-OWNED:capture ptr u8 -- ) {: digest:ptr :}
-   AOT-OWNED:BYTES$
-   SHA256-RESET SHA256-UPDATE digest SHA256-FINAL ;
+   AOT-OWNED:BYTES$ {: a:ptr u:n :}
+   SHA-CTX a u digest SHA256-IN ;
 
 : SOURCE ( -- )
    AOT-IDENT:RESET

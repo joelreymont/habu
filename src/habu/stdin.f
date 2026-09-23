@@ -102,6 +102,7 @@ $100 constant APATH-CAP           \ src/habu/aot-ident.f's per-path cap, same re
 create ART-P APATH-CAP allot   variable ART-U
 create ENG-P APATH-CAP allot   variable ENG-U
 create PROD 32 allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this driver's own file-digest context
 
 : PATH-COPY ( ptr u8 n ptr u8 -- ) {: a:ptr u:n d:ptr :}
    u APATH-CAP > IF s" hb: artifact path exceeds the driver's buffer" 74 die THEN
@@ -154,7 +155,7 @@ PTR-VARIABLE DP0
    ENG-U @ 0= IF
       s" hb: an artifact was declared with no engine to key it against" 74 die
    THEN
-   ENG-P ENG-U @ PROD SHA256-FILE 0 <> IF
+   FSHA-CTX ENG-P ENG-U @ PROD SHA256-FILE-IN 0 <> IF
       s" hb: cannot hash the engine that produced the artifact" 74 die
    THEN
    PROD ART-P ART-U @ AOT-FILE:MERGE ;

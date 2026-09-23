@@ -22,6 +22,7 @@ package NAMED-CELLS-CAPTURE
 using AOT-BUF
 using AOT-WINDOW
 create KEY 32 allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 
 : U32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
@@ -57,7 +58,7 @@ create KEY 32 allot
    s" test/aot-named-cells-init.f" AOT-IDENT:PATH+
    s" NAMED-CELLS-WINDOW:CHECK" AOT-CAPTURE:BOOTRUN+
    FORGE-NAME
-   1 SCRIPT-ARGV$ KEY SHA256-FILE 0<> if 79 throw then
+   FSHA-CTX 1 SCRIPT-ARGV$ KEY SHA256-FILE-IN 0<> if 79 throw then
    KEY 0 SCRIPT-ARGV$ AOT-FILE:WRITE ;
 RUN
 ;using

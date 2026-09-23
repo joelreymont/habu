@@ -100,6 +100,7 @@ $4C constant REFUSE-RC
 
 create KEY SHA-BYTES allot
 create SHA-A SHA-BYTES allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 DYNAMIC-BUFFER SAVED-XTOFF-STORAGE n
 : SAVED-XTOFFS ( -- ptr u8 ) 0 SAVED-XTOFF-STORAGE BYTE-VIEW ;
 variable SAVED-XTOFF-N
@@ -113,12 +114,12 @@ variable SAVED-XTOFF-N
 
 \ The engine running this, by the relative path the suite spawns it with;
 \ lib/engine-id.f answers the same question with a resolved path and cannot be
-\ loaded here. SHA256-FILE's status is checked, so a run from the wrong directory
+\ loaded here. SHA256-FILE-IN's status is checked, so a run from the wrong directory
 \ refuses by name instead of writing a key of zeroes into the header.
 : ENGINE$ ( -- ptr u8 n ) s" bin/hb" ;
 
 : KEY! ( -- )
-   ENGINE$ KEY SHA256-FILE 0 = if exit then
+   FSHA-CTX ENGINE$ KEY SHA256-FILE-IN 0 = if exit then
    s" aot-artifact-roundtrip: cannot hash the engine that is running" REFUSE-RC die ;
 
 \ The chain digest READ re-derives from disk, so the list has to name files that

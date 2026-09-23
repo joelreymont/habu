@@ -69,6 +69,7 @@ package NAMED-CELLS-TEST
 using AOT-BUF
 using AOT-WINDOW
 create KEY 32 allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 create ROOT FS-PATH-CAP allot variable ROOT-U
 create ART FS-PATH-CAP allot variable ART-U
 create BAD-ART FS-PATH-CAP allot variable BAD-ART-U
@@ -234,7 +235,7 @@ private
    path ROOT size BYTE-COPY size ROOT-U ! path size CLEANUP-TREE+
    path size s" window.aot" ART JOIN-PATH ART-U !
    path size s" malformed.aot" BAD-ART JOIN-PATH BAD-ART-U !
-   ENGINE-ID:PATH$ KEY SHA256-FILE 0 T=
+   FSHA-CTX ENGINE-ID:PATH$ KEY SHA256-FILE-IN 0 T=
    NAMED-CELLS-WINDOW:CHECK
    7 NAMED-CELLS-WINDOW:ALIAS-SLOT @ execute 10 T=
    CAPTURE NAMES SAVE

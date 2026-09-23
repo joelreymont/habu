@@ -15,7 +15,7 @@
 \ Every other helper, the whole cache/index/compaction machinery, and all
 \ buffers are package-private.
 \
-\ Requires SHA256 words; native bin/hb already carries src/core/sha256.f.
+\ Requires the SHA-256 words; native bin/hb already carries src/core/sha256.f.
 \ Needs SORT:SORT! for the path-ordered lookup index and RENAME-FILE for the
 \ atomic compacting writer, so both modules are pulled in explicitly.
 
@@ -77,6 +77,8 @@ create CK-FOLD-U CK-FOLD-N cells allot
 create CK-FOLD-G CK-FOLD-N cells allot
 create CK-DG 40 allot
 create CK-FILE-DG 40 allot
+create CK-SHA-CTX SHA256-CTX-BYTES allot        \ this package's digest context
+create CK-FSHA-CTX SHA256-FILE-CTX-BYTES allot  \ ... and its file-digest context
 create CK-FILE-HEX 80 allot
 create CK-CACHE-PATH-BUF FS-PATH-CAP allot
 create CK-ROW-BUF CK-ROW-CAP allot
@@ -699,7 +701,7 @@ private
    -1 CK-CACHE-DIRTY ! ;
 
 : CK-FILE-DIGEST! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CK-FILE-DG SHA256-FILE dup 0 <> if throw then drop ;
+   CK-FSHA-CTX a u CK-FILE-DG SHA256-FILE-IN dup 0 <> if throw then drop ;
 
 public
 
@@ -728,7 +730,7 @@ public
 \ compacted, so a run against a bloated cache self-heals on save.
 : FINAL ( fold ptr u8 -- ) {: f:fold dst:ptr :}
    f CK-LIVE {: s:n :}
-   s CK-SLOT-BUF s CK-SLOT-U@ dst SHA256
+   CK-SHA-CTX s CK-SLOT-BUF s CK-SLOT-U@ dst SHA256-IN
    f CK-CLOSE
    CK-CACHE-SAVE ;
 

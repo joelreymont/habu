@@ -49,6 +49,7 @@ create DDC-B-BUF DDC-BIN-CAP allot
 create DDC-A-HEX DDC-HEX-CAP allot
 create DDC-B-HEX DDC-HEX-CAP allot
 create DDC-DIG 32 allot
+create DDC-SHA-CTX SHA256-CTX-BYTES allot   \ this tool's digest context
 create DDC-OUT DDC-CAP-OUT allot
 create DDC-ERR DDC-CAP-OUT allot
 variable DDC-A-U
@@ -79,9 +80,9 @@ variable DDC-B-U
 : DDC-SAME? ( -- bool )
    DDC-FIRST-DIFF -1 = ;
 
-\ SHA256 hex of a loaded buffer into a 64-char out buffer.
+\ SHA-256 hex of a loaded buffer into a 64-char out buffer.
 : DDC-BUF-HEX ( ptr u8 n ptr u8 -- ) {: a:ptr u:n out:ptr :}
-   a u DDC-DIG SHA256
+   DDC-SHA-CTX a u DDC-DIG SHA256-IN
    DDC-DIG out SHA256>HEX ;
 
 : DDC-U. ( n -- ) {: n:n :}

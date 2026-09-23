@@ -37,6 +37,7 @@ $1000 constant FIELD-CAP
 
 DYNAMIC-BUFFER STORAGE n
 create DG 40 allot
+create SHA-CTX SHA256-CTX-BYTES allot   \ this package's digest context
 
 variable OUT-LEN
 variable SOURCE?
@@ -521,7 +522,7 @@ public
    u OUT-LEN ! ;
 
 : KEY-HEX ( ptr u8 -- ) {: dst:ptr :}
-   BYTES$ DG SHA256
+   SHA-CTX BYTES$ DG SHA256-IN
    CONTENT-KEY:OPEN
    s" habu-object-record-key" CONTENT-KEY:TEXT+
    DG DIGEST+

@@ -11,6 +11,7 @@ require lib/codesign.f
 package NATIVE-FIXTURE-WRITE
 
 create KEY 32 allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 
 : WRITER-NATIVE ( -- )
    s" NATIVE-EMIT:WRITE" XREF-FIND {: rec:ptr :}
@@ -22,7 +23,7 @@ create KEY 32 allot
    SCRIPT-ARGC 1 = if exit then
    SCRIPT-ARGC 3 <> if
       s" native-fixture: expected output [artifact producer]" 64 die then
-   2 SCRIPT-ARGV$ KEY SHA256-FILE 0<> if 79 throw then
+   FSHA-CTX 2 SCRIPT-ARGV$ KEY SHA256-FILE-IN 0<> if 79 throw then
    KEY 1 SCRIPT-ARGV$ AOT-FILE:READ ;
 
 : WRITE-OWNED ( AOT-OWNED:capture -- AOT-OWNED:capture )

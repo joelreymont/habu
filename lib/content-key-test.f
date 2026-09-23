@@ -46,6 +46,7 @@ create CKT-SEQ-B 80 allot
 create CKT-INT-A 80 allot
 create CKT-INT-B 80 allot
 create CKT-READ CKT-READ-CAP allot
+create CKT-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 create CKT-DG 40 allot
 create CKT-DGHEX 80 allot
 create CKT-BUILD CKT-BUILD-CAP allot
@@ -123,7 +124,7 @@ create CKT-BADCACHE FS-PATH-CAP allot
    64 0 DO STR-ZERO CKT-BUILD-C+ LOOP ;
 
 : CKT-DIGEST! ( -- )
-   CKT-SRC$ CKT-DG SHA256-FILE dup 0 <> if throw then drop
+   CKT-FSHA-CTX CKT-SRC$ CKT-DG SHA256-FILE-IN dup 0 <> if throw then drop
    CKT-DG CKT-DGHEX SHA256>HEX ;
 
 \ The exact current row for src.f: real size/mtime/ctime and the real digest.

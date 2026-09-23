@@ -84,6 +84,7 @@ using AOT-ARM
 using AOT-CAPTURE
 using SNAP-RELOC
 create KEY 32 allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 create CHAIN 16 allot
 variable CHAIN-SITE
 
@@ -138,7 +139,7 @@ using AOT-IDENT
    ROWS
    AOT-IDENT:RESET
    s" test/aot-prefix-literal-producer.f" PATH+
-   s" HABU_LITERAL_ENGINE" GETENV KEY SHA256-FILE 0 EQ
+   FSHA-CTX s" HABU_LITERAL_ENGINE" GETENV KEY SHA256-FILE-IN 0 EQ
    KEY s" HABU_LITERAL_ARTIFACT" GETENV AOT-FILE:WRITE
    s" prefix-literal: captured" type cr ;
 ;using

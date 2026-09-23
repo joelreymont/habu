@@ -44,6 +44,7 @@ create SOURCE FS-PATH-CAP allot variable SOURCE-U
 create ART FS-PATH-CAP allot variable ART-U
 create BAD-ART FS-PATH-CAP allot variable BAD-ART-U
 create KEY 32 allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : SOURCE$ ( -- ptr u8 n ) SOURCE SOURCE-U @ ;
@@ -113,7 +114,7 @@ create OUT IO-CAP allot create ERR IO-CAP allot
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
    AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
    AOT-IDENT:RESET SOURCE$ AOT-IDENT:PATH+
-   ENGINE-ID:PATH$ KEY SHA256-FILE 0 T=
+   FSHA-CTX ENGINE-ID:PATH$ KEY SHA256-FILE-IN 0 T=
    AOT-SIG-N @ WORDS T=
    AOT-SIG-STR-LEN @ $40000 > TTRUE ;
 

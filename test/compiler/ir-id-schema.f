@@ -569,12 +569,13 @@ $40 constant DIGEST-HEX-LEN
 private
 
 create DIGEST-RAW DIGEST-BYTES allot
+create SHA-CTX SHA256-CTX-BYTES allot   \ this proof's digest context
 create DIGEST-HEX DIGEST-HEX-LEN allot
 
 public
 
 : DIGEST-HEX$ ( -- ptr u8 n )
-   BYTES$ DIGEST-RAW SHA256
+   SHA-CTX BYTES$ DIGEST-RAW SHA256-IN
    DIGEST-RAW DIGEST-HEX SHA256>HEX
    DIGEST-HEX DIGEST-HEX-LEN ;
 

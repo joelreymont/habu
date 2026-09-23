@@ -41,6 +41,7 @@ create PATH-B CAP allot
 create PATH-C CAP allot
 create PATH-D CAP allot
 create ENG-A DG-LEN allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 create ENG-B DG-LEN allot
 create CHILD-OUT $4000 allot
 create CHILD-ERR $4000 allot
@@ -87,7 +88,7 @@ variable SEAL-SEEN?
    ROOT$ a u dst JOIN-PATH up ! ;
 
 : ENGINE-DIGEST! ( ptr u8 -- ) {: dst:ptr :}
-   ENGINE-CANDIDATE:PATH$ dst SHA256-FILE dup 0 <> if throw then drop ;
+   FSHA-CTX ENGINE-CANDIDATE:PATH$ dst SHA256-FILE-IN dup 0 <> if throw then drop ;
 
 \ One closure member into the copy. A manifested file keeps its own pathname -
 \ discovery recognizes it by that pathname and tolerates its unreadable loader

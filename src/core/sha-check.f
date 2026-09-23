@@ -3,6 +3,7 @@
 \ 100-byte): '0' iff all match. Used by the native gate. (no emit in the
 \ standalone -> output via '.'; vectors are canonical test fixtures.)
 create DG 32 allot
+create SHA-CHECK-CTX SHA256-CTX-BYTES allot   \ this check's own digest context
 create VABC 97 c, 98 c, 99 c, 
 create EABC 186 c, 120 c, 22 c, 191 c, 143 c, 1 c, 207 c, 234 c, 65 c, 65 c, 64 c, 222 c, 93 c, 174 c, 34 c, 35 c, 176 c, 3 c, 97 c, 163 c, 150 c, 23 c, 122 c, 156 c, 180 c, 16 c, 255 c, 97 c, 242 c, 0 c, 21 c, 173 c, 
 create V56 97 c, 98 c, 99 c, 100 c, 98 c, 99 c, 100 c, 101 c, 99 c, 100 c, 101 c, 102 c, 100 c, 101 c, 102 c, 103 c, 101 c, 102 c, 103 c, 104 c, 102 c, 103 c, 104 c, 105 c, 103 c, 104 c, 105 c, 106 c, 104 c, 105 c, 106 c, 107 c, 105 c, 106 c, 107 c, 108 c, 106 c, 107 c, 108 c, 109 c, 107 c, 108 c, 109 c, 110 c, 108 c, 109 c, 110 c, 111 c, 109 c, 110 c, 111 c, 112 c, 110 c, 111 c, 112 c, 113 c, 
@@ -12,7 +13,7 @@ create E100 40 c, 22 c, 89 c, 120 c, 136 c, 228 c, 160 c, 211 c, 163 c, 107 c, 1
 
 : DIFF {: e :} 0 32 0 DO DG i + c@ e i + c@ <> if drop 1 then LOOP ;
 
-: CHK {: a u e :} a u DG SHA256 e DIFF ;
+: CHK {: a u e :} SHA-CHECK-CTX a u DG SHA256-IN e DIFF ;
 
 : RUN VABC 3 EABC CHK  V56 56 E56 CHK  V100 100 E100 CHK  + +  . ;
 RUN

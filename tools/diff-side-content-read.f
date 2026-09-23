@@ -22,6 +22,7 @@ variable SELECT-STEPS
 variable VIEW-VALID
 
 create CHECK-DIGEST $20 allot
+create CHECK-SHA-CTX SHA256-CTX-BYTES allot   \ the reader's own digest context
 
 : VIEW-A@ ( -- ptr u8 )
    VIEW-A @ ;
@@ -85,7 +86,7 @@ create CHECK-DIGEST $20 allot
       off SIDE-DIGEST$ ZERO-DIGEST $20 STR= 0= if E-SIDE-DIGEST throw then
    else
       size 0= if
-         s" " CHECK-DIGEST SHA256
+         CHECK-SHA-CTX s" " CHECK-DIGEST SHA256-IN
          off SIDE-DIGEST$ CHECK-DIGEST $20 STR= 0= if E-SIDE-DIGEST throw then
       then
    then ;
@@ -135,11 +136,11 @@ create CHECK-DIGEST $20 allot
    32 $20 BYTES$ off 32 + $20 BYTES$ STR= 0= if E-SIDE-DIGEST throw then ;
 
 : DIGEST-CHECK ( -- )
-   SHA256-RESET
-   VIEW-A@ 32 SHA256-UPDATE
-   ZERO-DIGEST $20 SHA256-UPDATE
-   VIEW-A@ 64 + TRAILER-OFF @ 64 - SHA256-UPDATE
-   CHECK-DIGEST SHA256-FINAL
+   CHECK-SHA-CTX SHA256-BEGIN
+   CHECK-SHA-CTX VIEW-A@ 32 SHA256-FEED
+   CHECK-SHA-CTX ZERO-DIGEST $20 SHA256-FEED
+   CHECK-SHA-CTX VIEW-A@ 64 + TRAILER-OFF @ 64 - SHA256-FEED
+   CHECK-SHA-CTX CHECK-DIGEST SHA256-END
    CHECK-DIGEST $20 32 $20 BYTES$ STR= 0= if E-SIDE-DIGEST throw then ;
 
 : ROWS-CHECK ( -- )
@@ -216,7 +217,7 @@ public
    artifact artifactu VALIDATE {: count:n :}
    false VIEW-VALID !
    64 U64@ metau <> if E-SIDE-DIGEST throw then
-   meta metau CHECK-DIGEST SHA256
+   CHECK-SHA-CTX meta metau CHECK-DIGEST SHA256-IN
    CHECK-DIGEST $20 72 $20 BYTES$ STR= 0= if E-SIDE-DIGEST throw then
    true VIEW-VALID !
    count ;

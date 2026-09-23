@@ -36,7 +36,7 @@
 \ WHAT THIS FILE DOES NOT OWN: the producer identity. Both sides read it, but from
 \ different places — a capture running in a booted engine asks lib/engine-id.f for
 \ the content key of the binary it is running, and the metabuild recomputes
-\ SHA256-FILE over the engine it just emitted. One fact, two independent readings,
+\ SHA256-FILE-IN over the engine it just emitted. One fact, two independent readings,
 \ compared for equality; neither belongs to the closure.
 \
 \ ENGINE PRIMITIVES ONLY (SHA256*, PATH0, open/read/close, the include registry),
@@ -61,8 +61,11 @@ $4A constant REFUSE-RC
 create PATHS MAX PATH-CAP * allot
 create LENS  MAX cells allot
 create CHUNK-BUF CHUNK allot
-\ The engine SHA state is shared. Finish each file before hashing the framed
-\ list; this bounded scratch is recomputed on every call, never a content cache.
+\ This file's own digest context: one digest is open at a time here, so every
+\ file's content digest is finished before the framed list is hashed through the
+\ same context. FILE-DIGESTS is bounded scratch recomputed on every call, never a
+\ content cache.
+create SHA-CTX SHA256-CTX-BYTES allot
 create FILE-DIGESTS MAX 32 * allot
 create FRAME-WORD 8 allot
 variable N
@@ -125,20 +128,20 @@ variable RD
       then
       RD @ 0 >
    while
-      CHUNK-BUF RD @ SHA256-UPDATE
+      SHA-CTX CHUNK-BUF RD @ SHA256-FEED
    repeat
    fd close ;
 
 : FILE-DIGEST ( n -- ) {: ix:n :}
-   SHA256-RESET
+   SHA-CTX SHA256-BEGIN
    ix FEED
-   FILE-DIGESTS ix 32 * + SHA256-FINAL ;
+   SHA-CTX FILE-DIGESTS ix 32 * + SHA256-END ;
 
 \ Framing integers are unsigned little-endian cells, independent of host byte
 \ order. Counts and path lengths were bounded when the closure was recorded.
 : FEED-U64 ( n -- ) {: value:n :}
    8 0 ?do value i 8 * rshift $FF and FRAME-WORD i + c! loop
-   FRAME-WORD 8 SHA256-UPDATE ;
+   SHA-CTX FRAME-WORD 8 SHA256-FEED ;
 
 public
 
@@ -151,14 +154,14 @@ public
       s" aot-ident: chain digest asked for before the closure was latched" REFUSE-RC die
    then
    N @ 0 ?do i FILE-DIGEST loop
-   SHA256-RESET
-   s" Habu AOT source closure" SHA256-UPDATE
+   SHA-CTX SHA256-BEGIN
+   SHA-CTX s" Habu AOT source closure" SHA256-FEED
    2 FEED-U64
    N @ FEED-U64
    N @ 0 ?do
-      i PATH$ dup FEED-U64 SHA256-UPDATE
-      FILE-DIGESTS i 32 * + 32 SHA256-UPDATE
+      SHA-CTX i PATH$ dup FEED-U64 SHA256-FEED
+      SHA-CTX FILE-DIGESTS i 32 * + 32 SHA256-FEED
    loop
-   out SHA256-FINAL ;
+   SHA-CTX out SHA256-END ;
 
 ;package

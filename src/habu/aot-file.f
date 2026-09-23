@@ -211,6 +211,9 @@ create TBL SEC-N ROW-BYTES * allot
 create SCAL SCAL-BYTES allot
 create CBUF CLOSURE-CAP allot        \ the closure list, assembled or read back
 create CHUNK-BUF CHUNK allot
+\ This file's own digest context. One artifact is written or read at a time here,
+\ and the digest each pass opens is finished by the same pass, so one is enough.
+create SHA-CTX SHA256-CTX-BYTES allot
 create PAYSHA SHA-BYTES allot        \ the payload digest this process computed
 create FILESHA SHA-BYTES allot       \ sha256 of the whole file WRITE just wrote
 create DERIVED SHA-BYTES allot       \ the chain digest re-derived from disk
@@ -497,12 +500,12 @@ create BASE SEC-N cells allot
 \ The payload digest, over exactly the bytes the write is about to hand over and
 \ in exactly that order: the table, then every section.
 : PAYLOAD-DIGEST ( -- )
-   SHA256-RESET
-   TBL SEC-N ROW-BYTES * SHA256-UPDATE
+   SHA-CTX SHA256-BEGIN
+   SHA-CTX TBL SEC-N ROW-BYTES * SHA256-FEED
    SEC-N 0 ?do
-      i SEC-LEN 0 > if i SEC-PTR i BASE@ + i SEC-LEN SHA256-UPDATE then
+      i SEC-LEN 0 > if SHA-CTX i SEC-PTR i BASE@ + i SEC-LEN SHA256-FEED then
    loop
-   PAYSHA SHA256-FINAL ;
+   SHA-CTX PAYSHA SHA256-END ;
 
 : BUILD-HEADER ( ptr u8 -- ) {: prod:ptr :}
    HDR-BYTES 0 ?do 0 HDR i + c! loop
@@ -523,11 +526,11 @@ create BASE SEC-N cells allot
 
 : PUT ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if exit then
-   a u SHA256-UPDATE
+   SHA-CTX a u SHA256-FEED
    FD @ a u FDIO:WALL ;
 
 : WRITE-BODY ( -- )
-   SHA256-RESET
+   SHA-CTX SHA256-BEGIN
    HDR HDR-BYTES PUT
    TBL SEC-N ROW-BYTES * PUT
    \ Empty sections may have no allocated buffer. Do not request its first
@@ -535,7 +538,7 @@ create BASE SEC-N cells allot
    SEC-N 0 ?do
       i SEC-LEN 0 > if i SEC-PTR i BASE@ + i SEC-LEN PUT then
    loop
-   FILESHA SHA256-FINAL ;
+   SHA-CTX FILESHA SHA256-END ;
 
 public
 
@@ -607,15 +610,15 @@ private
 \ buffer, and refuse before any section is parsed. A file with bytes left over
 \ after the payload is refused too - the header's length is the whole story.
 : VERIFY-PAYLOAD ( -- )
-   SHA256-RESET
+   SHA-CTX SHA256-BEGIN
    PAYLEN @ LEFT !
    begin LEFT @ 0 > while
       LEFT @ CHUNK < if LEFT @ else CHUNK then {: want:n :}
       CHUNK-BUF want GET
-      CHUNK-BUF want SHA256-UPDATE
+      SHA-CTX CHUNK-BUF want SHA256-FEED
       LEFT @ want - LEFT !
    repeat
-   PAYSHA SHA256-FINAL
+   SHA-CTX PAYSHA SHA256-END
    FD @ CHUNK-BUF 1 read RD !
    RD @ 0 > if
       FD @ close
@@ -674,7 +677,7 @@ private
    k RESERVE-SECTION
    k ROW-LEN@ 0= if exit then
    k SEC-PTR k BASE@ + k ROW-LEN@ GET
-   k SEC-PTR k BASE@ + k ROW-LEN@ SHA256-UPDATE ;
+   SHA-CTX k SEC-PTR k BASE@ + k ROW-LEN@ SHA256-FEED ;
 
 \ ---- the window's runs, which the table's own shape cannot state --------------
 \ ?TABLE divides a section by its row width, and a varint row has none: the rows
@@ -885,7 +888,7 @@ variable NAME-BOUNDARY-LEN
 \ between the passes, and a reader that filled less than it claimed the table
 \ said. Skipping one section reds here (measured).
 : ?PAYLOAD-AGAIN ( -- )
-   PAYSHA SHA256-FINAL
+   SHA-CTX PAYSHA SHA256-END
    PAYSHA HDR O-PAYSHA + SHA-BYTES BYTES= if exit then
    s" aot-file: the second pass did not read the payload the first pass verified" DIE ;
 
@@ -910,9 +913,9 @@ variable NAME-BOUNDARY-LEN
    FD @ close
    path pathu OPEN-RD
    CHUNK-BUF HDR-BYTES GET
-   SHA256-RESET
+   SHA-CTX SHA256-BEGIN
    TBL SEC-N ROW-BYTES * GET
-   TBL SEC-N ROW-BYTES * SHA256-UPDATE
+   SHA-CTX TBL SEC-N ROW-BYTES * SHA256-FEED
    ?TABLE
    S-CLOSURE ROW-LEN@ CLEN !
    S-SCALARS SCAL-BYTES ?EXACT ;

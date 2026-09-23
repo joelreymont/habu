@@ -147,6 +147,8 @@ create BF-REC-STAGE-DG 40 allot
 create BF-REC-STDIN-DG 40 allot
 create BF-CERT-DIAG BF-CERT-DIAG-CAP allot
 create BF-STAMP-BUF BF-STAMP-CAP allot
+create BF-SHA-CTX SHA256-CTX-BYTES allot        \ this tool's digest context
+create BF-FSHA-CTX SHA256-FILE-CTX-BYTES allot  \ ... and its file-digest context
 create BF-STAMP-PATH-BUF FS-PATH-CAP allot
 create BF-STAMP-DIR-BUF FS-PATH-CAP allot
 create BF-STAMP-DEF-BUF FS-PATH-CAP allot
@@ -618,9 +620,9 @@ package BUILD-FIXPOINT
 : BF-PIN-DIG@ ( n -- ptr u8 )
    BF-STAMP-DG-U * BF-PIN-DIGS + ;
 
-: BF-PIN-COMPUTE ( ptr u8 n -- )
-   2dup BF-PIN-KEYBUF SHA256
-   BF-PIN-DIGBUF SHA256-FILE dup 0 <> if throw then drop ;
+: BF-PIN-COMPUTE ( ptr u8 n -- ) {: a:ptr u:n :}
+   BF-SHA-CTX a u BF-PIN-KEYBUF SHA256-IN
+   BF-FSHA-CTX a u BF-PIN-DIGBUF SHA256-FILE-IN dup 0 <> if throw then drop ;
 
 : BF-PIN-MATCH? ( n -- bool ) {: row:n :}
    BF-PIN-KEYBUF BF-STAMP-DG-U row BF-PIN-KEY@ BF-STAMP-DG-U STR= ;
@@ -1380,7 +1382,7 @@ package BUILD-FIXPOINT
    s"   assembled = " type stg . ;
 
 : BF-SRC-DIGEST ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dg:ptr :}
-   a u BF-A$ dg SHA256-FILE dup 0 <> if throw then drop ;
+   BF-FSHA-CTX a u BF-A$ dg SHA256-FILE-IN dup 0 <> if throw then drop ;
 
 : BF-STAGE2-DIGEST ( ptr u8 -- ) {: dg:ptr :}
    s" stage2-src" dg BF-SRC-DIGEST ;
@@ -1531,7 +1533,7 @@ variable BF-DRV-R
    s" hb-host" BF-A$ art artu BF-RUN-CAPTURE BF-RC0 ;
 
 : BF-ART-DIGEST ( ptr u8 n ptr u8 -- ) {: p:ptr u:n dg:ptr :}
-   p u dg SHA256-FILE dup 0 <> if throw then drop ;
+   BF-FSHA-CTX p u dg SHA256-FILE-IN dup 0 <> if throw then drop ;
 
 : BF-ART-MATCH? ( -- bool )
    BF-ART-A$ BF-ART-DG-A BF-ART-DIGEST
@@ -1938,7 +1940,7 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
    dg BF-STAMP-DG-U BF-STAMP-FRAG+ ;
 
 : BF-STAMP-ENGINE+ ( -- )
-   BF-ENGINE$ BF-STAMP-DG SHA256-FILE dup 0 <> if throw then drop
+   BF-FSHA-CTX BF-ENGINE$ BF-STAMP-DG SHA256-FILE-IN dup 0 <> if throw then drop
    s" engine" BF-STAMP-DG BF-STAMP-DG+ ;
 
 \ ---------------------------------------------------------------------------
@@ -2028,7 +2030,7 @@ variable CHAIN-I
    s" stdin-src" BF-STAMP-DG BF-STAMP-DG+ ;
 
 : BF-STAMP-KEY-END ( -- )
-   BF-STAMP-BUF BF-STAMP-U @ BF-STAMP-DG SHA256
+   BF-SHA-CTX BF-STAMP-BUF BF-STAMP-U @ BF-STAMP-DG SHA256-IN
    BF-STAMP-DG BF-STAMP-KEY SHA256>HEX ;
 
 : BF-STAMP-KEY! ( -- )

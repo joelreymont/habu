@@ -97,6 +97,7 @@ variable MARK
 variable SAVED-CHECK
 variable SAVED-TIER
 create KEY 32 allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 public
 
 : EQ ( n n -- )
@@ -220,7 +221,7 @@ TRUSTED: INSTALL ( -- )
    WINDOW$ CAPTURE
    RESET
    s" src/core/checker.f" PATH+
-   s" bin/hb" KEY SHA256-FILE 0 <> IF 79 throw THEN
+   FSHA-CTX s" bin/hb" KEY SHA256-FILE-IN 0 <> IF 79 throw THEN
    \ File READ/WRITE remain qualified because the OS primitives have these names.
    KEY ART$ AOT-FILE:WRITE
    AOT-SIG-BUF@ AOT-SIG-N @ SIG-ROW * ASIG-GRAPH-ZERO

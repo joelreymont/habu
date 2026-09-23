@@ -20,6 +20,7 @@ $1D       constant LC-CODE-SIG
 $1000     constant CS-PAGE
 32        constant CS-HASH
 variable  SIG-DOFF
+create CS-SHA-CTX SHA256-CTX-BYTES allot   \ this signer's own digest context
 
 : NCSLOTS ( -- n )   SIG-DOFF @ CS-PAGE 1 - +  CS-PAGE / ;
 
@@ -81,7 +82,7 @@ variable CSI
    CD-HDR,
    SIGA@ SIGU @ M-LEN M-BE-BYTES-LEN  0 M-BE8
    0 CSI ! begin CSI @ NCSLOTS < while
-     MBUF CSI @ CS-PAGE * +  CSI @ CS-SLOT-SIZE  M-BE-PTR  SHA256  CS-HASH M-LEN M-BE-SKIP
+     CS-SHA-CTX  MBUF CSI @ CS-PAGE * +  CSI @ CS-SLOT-SIZE  M-BE-PTR  SHA256-IN  CS-HASH M-LEN M-BE-SKIP
      CSI @ 1 + CSI ! repeat
    M-BE-HERE MLEN! ;
 : CODESIG2 ( img -- img )

@@ -16,6 +16,7 @@ private
 64 constant SHA256-HEX-LENGTH
 create INPUT-DIGEST SHA256-HEX-LENGTH allot
 create OUTPUT-LOCK SHA256-HEX-LENGTH 1+ allot
+create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest context
 
 : UNICODE-PATH$ ( -- ptr u8 n )
    s" data/unicode/16.0.0/UnicodeData.txt" ;
@@ -37,7 +38,7 @@ create OUTPUT-LOCK SHA256-HEX-LENGTH 1+ allot
 
 : VERIFY-FILE-DIGEST ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n want:ptr wantu:n :}
    wantu SHA256-HEX-LENGTH <> if E-DIGEST throw then
-   path pathu INPUT-DIGEST SHA256-FILE-HEX 0 <> if E-DIGEST throw then
+   UC-FSHA-CTX path pathu INPUT-DIGEST SHA256-FILE-HEX-IN 0 <> if E-DIGEST throw then
    INPUT-DIGEST SHA256-HEX-LENGTH want wantu STR= 0= if E-DIGEST throw then ;
 
 : CHECK-INPUT-DIGESTS ( -- )
@@ -132,7 +133,7 @@ create OUTPUT-LOCK SHA256-HEX-LENGTH 1+ allot
    s" ;package" OUT-LINE ;
 
 : WRITE-OUTPUT-LOCK ( -- )
-   OUTPUT-PATH$ OUTPUT-LOCK SHA256-FILE-HEX 0 <> if E-DIGEST throw then
+   UC-FSHA-CTX OUTPUT-PATH$ OUTPUT-LOCK SHA256-FILE-HEX-IN 0 <> if E-DIGEST throw then
    OUTPUT-LINE-FEED OUTPUT-LOCK SHA256-HEX-LENGTH + c!
    OUTPUT-LOCK-PATH$ OUTPUT-LOCK SHA256-HEX-LENGTH 1+ ATOMIC-WRITE-FILE ;
 

@@ -22,6 +22,7 @@ require src/core/sha256.f
 12 constant SEED-SMOKE-IN-U
 
 create SEED-SHA-HEX SEED-SHA256-HEX-U allot
+create SEED-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest context
 FS-PATH-CAP SPAN-BUFFER: SEED-TMP-PATH     \ FS-MUT-SUFFIX-PATH's destination is a span
 create SEED-SMOKE-OUT SEED-SMOKE-OUT-CAP allot
 create SEED-SMOKE-ERR SEED-SMOKE-ERR-CAP allot
@@ -81,7 +82,7 @@ variable SEED-LAST
 
 : SEED-VERIFY-SHA256 ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu expect:ptr expectu :}
    expect expectu SEED-HEX64? 0= if E-BUILD-SOURCE throw then
-   path pathu SEED-SHA-HEX SHA256-FILE-HEX SEED-SHA-RC0
+   SEED-FSHA-CTX path pathu SEED-SHA-HEX SHA256-FILE-HEX-IN SEED-SHA-RC0
    SEED-SHA-HEX SEED-SHA256-HEX-U expect expectu SEED-HEX= 0= if
       E-BUILD-SOURCE throw
    then ;

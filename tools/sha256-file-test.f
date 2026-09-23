@@ -25,6 +25,11 @@ create SFT-CTX-B SHA256-CTX-BYTES allot
 create SFT-CTX-C SHA256-CTX-BYTES allot
 create SFT-ODD 1 allot            \ R6: one byte, so the next `create` has to align
 create SFT-CTX-D SHA256-CTX-BYTES allot
+create SFT-CTX-ONE SHA256-CTX-BYTES allot   \ the row's own one-shot context
+create SFT-CTX-S1 SHA256-CTX-BYTES allot    \ S1: one context per task
+create SFT-CTX-S2 SHA256-CTX-BYTES allot
+create SFT-DG-S1 32 allot
+create SFT-DG-S2 32 allot
 create SFT-FCTX-A SHA256-FILE-CTX-BYTES allot
 create SFT-FCTX-B SHA256-FILE-CTX-BYTES allot
 create SFT-BIG SFT-BIG-LEN allot
@@ -90,7 +95,7 @@ variable SFT-EDGE-U
    loop ;
 
 : SFT-SHA-HEX= ( ptr u8 n ptr u8 n -- ) {: a:ptr u expect:ptr eu :}
-   a u SFT-DG-A SHA256
+   SFT-CTX-ONE a u SFT-DG-A SHA256-IN
    SFT-DG-A SFT-HEX-A SHA256>HEX
    SFT-HEX-A 64 expect eu T$= ;
 
@@ -106,17 +111,17 @@ variable SFT-EDGE-U
    s" 2816597888e4a0d3a36b82b83316ab32680eb8f00f8cd3b904d681246d285a0e" SFT-SHA-HEX= ;
 
 : SFT-TEST-INCREMENTAL ( -- )
-   SHA256-RESET
-   s" a" SHA256-UPDATE
-   s" bc" SHA256-UPDATE
-   SFT-DG-A SHA256-FINAL
-   s" abc" SFT-DG-B SHA256
+   SFT-CTX-A SHA256-BEGIN
+   SFT-CTX-A s" a" SHA256-FEED
+   SFT-CTX-A s" bc" SHA256-FEED
+   SFT-CTX-A SFT-DG-A SHA256-END
+   SFT-CTX-ONE s" abc" SFT-DG-B SHA256-IN
    SFT-DG-A 32 SFT-DG-B 32 T$= ;
 
 \ ---- contexts -----------------------------------------------------------------
 \ A digest in progress lives in the caller's span, so these rows hold two and
 \ three of them at once and each one answers for its own bytes. Every digest is
-\ compared against the one-shot SHA256 of the same bytes.
+\ compared against the one-shot SHA256-IN of the same bytes.
 
 : SFT-DIGEST= ( ptr u8 ptr u8 -- ) {: got want :}   \ two $20-byte digests, as hex
    got SFT-HEX-A SHA256>HEX
@@ -124,7 +129,7 @@ variable SFT-EDGE-U
    SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
 
 : SFT-ONE-SHOT= ( ptr u8 ptr u8 n -- ) {: got a u:n :}
-   a u SFT-DG-E SHA256
+   SFT-CTX-ONE a u SFT-DG-E SHA256-IN
    got SFT-DG-E SFT-DIGEST= ;
 
 : SFT-FEED-PIECES ( ptr u8 ptr u8 n n -- ) {: ctx a u:n piece:n :}
@@ -208,8 +213,8 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 : SFT-TEST-TASKS ( -- )
    SFT-FILL-BIG
    SFT-FILL-BIG1
-   SFT-BIG SFT-BIG-LEN SFT-DG-C SHA256
-   SFT-BIG1 SFT-BIG-LEN SFT-DG-D SHA256
+   SFT-CTX-ONE SFT-BIG SFT-BIG-LEN SFT-DG-C SHA256-IN
+   SFT-CTX-ONE SFT-BIG1 SFT-BIG-LEN SFT-DG-D SHA256-IN
    SFT-TASK-ROUNDS 0 ?do
       ['] SFT-WORK-A SFT-TASK-A TASK:ACTIVATE
       ['] SFT-WORK-B SFT-TASK-B TASK:ACTIVATE
@@ -217,6 +222,33 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
       SFT-TASK-B TASK:JOIN SFT-JOIN-OK
       SFT-DG-A SFT-DG-C SFT-DIGEST=
       SFT-DG-B SFT-DG-D SFT-DIGEST=
+   loop ;
+
+: SFT-S1-WORK-A ( -- )
+   SFT-CTX-S1 SFT-BIG SFT-BIG-LEN SFT-DG-S1 SHA256-IN
+   0 TASK:RETURN ;
+
+: SFT-S1-WORK-B ( -- )
+   SFT-CTX-S2 SFT-BIG1 SFT-BIG-LEN SFT-DG-S2 SHA256-IN
+   0 TASK:RETURN ;
+
+\ S1. The scenario of /home/joel/.cache/tender/habu-gaps/sha-call-state, on
+\ contexts: two tasks run a whole one-shot digest of different bytes at the same
+\ time, each through a context of its own, and each answers its own input's
+\ single-task digest. Both tasks on ONE context fails this row (measured: the
+\ second task's BEGIN throws the first task's digest away).
+: SFT-TEST-TASKS-ONE-SHOT ( -- )
+   SFT-FILL-BIG
+   SFT-FILL-BIG1
+   SFT-CTX-ONE SFT-BIG SFT-BIG-LEN SFT-DG-C SHA256-IN
+   SFT-CTX-ONE SFT-BIG1 SFT-BIG-LEN SFT-DG-D SHA256-IN
+   SFT-TASK-ROUNDS 0 ?do
+      ['] SFT-S1-WORK-A SFT-TASK-A TASK:ACTIVATE
+      ['] SFT-S1-WORK-B SFT-TASK-B TASK:ACTIVATE
+      SFT-TASK-A TASK:JOIN SFT-JOIN-OK
+      SFT-TASK-B TASK:JOIN SFT-JOIN-OK
+      SFT-DG-S1 SFT-DG-C SFT-DIGEST=
+      SFT-DG-S2 SFT-DG-D SFT-DIGEST=
    loop ;
 
 \ R4. The layout is a promise to every caller that allocates a context, so the
@@ -253,15 +285,15 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 : SFT-TEST-FILE ( -- )
    SFT-FILL-BIG
    SFT-FILE$ SFT-BIG SFT-BIG-LEN WRITE-ALL
-   SFT-BIG SFT-BIG-LEN SFT-DG-A SHA256
-   SFT-FILE$ SFT-DG-B SHA256-FILE 0 T=
+   SFT-CTX-ONE SFT-BIG SFT-BIG-LEN SFT-DG-A SHA256-IN
+   SFT-FCTX-A SFT-FILE$ SFT-DG-B SHA256-FILE-IN 0 T=
    SFT-DG-A 32 SFT-DG-B 32 T$=
    SFT-DG-A SFT-HEX-A SHA256>HEX
-   SFT-FILE$ SFT-HEX-B SHA256-FILE-HEX 0 T=
+   SFT-FCTX-A SFT-FILE$ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
    SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
 
 : SFT-TEST-MISSING ( -- )
-   SFT-MISSING$ SFT-DG-A SHA256-FILE SHA-E-OPEN T= ;
+   SFT-FCTX-A SFT-MISSING$ SFT-DG-A SHA256-FILE-IN SHA-E-OPEN T= ;
 
 \ R7. A file context is the caller's span too: the -IN words answer exactly what
 \ the one-shot wrappers answer over the same file, and a missing file answers
@@ -271,11 +303,11 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-FILL-BIG
    SFT-FILE$ SFT-BIG SFT-BIG-LEN WRITE-ALL
    SFT-FCTX-A SFT-FILE$ SFT-DG-A SHA256-FILE-IN 0 T=
-   SFT-FILE$ SFT-DG-B SHA256-FILE 0 T=
+   SFT-FCTX-B SFT-FILE$ SFT-DG-B SHA256-FILE-IN 0 T=
    SFT-DG-A SFT-DG-B SFT-DIGEST=
    SFT-DG-A SFT-BIG SFT-BIG-LEN SFT-ONE-SHOT=
    SFT-FCTX-A SFT-FILE$ SFT-HEX-A SHA256-FILE-HEX-IN 0 T=
-   SFT-FILE$ SFT-HEX-B SHA256-FILE-HEX 0 T=
+   SFT-FCTX-B SFT-FILE$ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
    SFT-HEX-A 64 SFT-HEX-B 64 T$=
    SFT-FCTX-A SFT-MISSING$ SFT-DG-A SHA256-FILE-IN SHA-E-OPEN T= ;
 
@@ -295,8 +327,8 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-FILL-BIG1
    SFT-FILE$ SFT-BIG SFT-BIG-LEN WRITE-ALL
    SFT-FILE1$ SFT-BIG1 SFT-BIG-LEN WRITE-ALL
-   SFT-BIG SFT-BIG-LEN SFT-DG-C SHA256
-   SFT-BIG1 SFT-BIG-LEN SFT-DG-D SHA256
+   SFT-CTX-ONE SFT-BIG SFT-BIG-LEN SFT-DG-C SHA256-IN
+   SFT-CTX-ONE SFT-BIG1 SFT-BIG-LEN SFT-DG-D SHA256-IN
    SFT-TASK-ROUNDS 0 ?do
       ['] SFT-FILE-WORK-A SFT-TASK-A TASK:ACTIVATE
       ['] SFT-FILE-WORK-B SFT-TASK-B TASK:ACTIVATE
@@ -321,9 +353,9 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-DEEP-U @ 256 > TTRUE
    SFT-FILL-A100
    SFT-DEEP$ SFT-A100 100 WRITE-ALL
-   SFT-A100 100 SFT-DG-A SHA256
+   SFT-CTX-ONE SFT-A100 100 SFT-DG-A SHA256-IN
    SFT-DG-A SFT-HEX-A SHA256>HEX
-   SFT-DEEP$ SFT-HEX-B SHA256-FILE-HEX 0 T=
+   SFT-FCTX-A SFT-DEEP$ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
    SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
 
 \ The top of the range: a path of exactly FS-PATH-CAP bytes, built from
@@ -350,9 +382,9 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-EDGE-U @ FS-PATH-CAP T=
    SFT-FILL-A100
    SFT-EDGE-B SFT-EDGE-U @ SFT-A100 100 WRITE-ALL
-   SFT-A100 100 SFT-DG-A SHA256
+   SFT-CTX-ONE SFT-A100 100 SFT-DG-A SHA256-IN
    SFT-DG-A SFT-HEX-A SHA256>HEX
-   SFT-EDGE-B SFT-EDGE-U @ SFT-HEX-B SHA256-FILE-HEX 0 T=
+   SFT-FCTX-A SFT-EDGE-B SFT-EDGE-U @ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
    SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
 
 : SFT-MAIN ( -- )
@@ -364,6 +396,7 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-TEST-INTERLEAVED
    SFT-TEST-CONTEXT-COPY
    SFT-TEST-TASKS
+   SFT-TEST-TASKS-ONE-SHOT
    SFT-TEST-ALIGNED-CREATE
    SFT-TEST-HEX
    SFT-TEST-FILE

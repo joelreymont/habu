@@ -33,6 +33,7 @@ variable VERIFY-PENDING
 variable VERIFY-PENDING-LO
 variable VERIFY-PENDING-BIT
 create DIGEST-HEX 64 allot
+create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest context
 create OUTPUT-LOCK 65 allot
 
 : FALSE-VALUE ( -- bool )   0 0= 0= ;
@@ -208,7 +209,7 @@ create OUTPUT-LOCK 65 allot
 
 : CHECK-DIGEST ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n want:ptr wantu:n :}
    wantu 64 <> if UNICODE-CLASS-TOOL:E-DIGEST throw then
-   path pathu DIGEST-HEX SHA256-FILE-HEX 0 <> if UNICODE-CLASS-TOOL:E-DIGEST throw then
+   UCV-FSHA-CTX path pathu DIGEST-HEX SHA256-FILE-HEX-IN 0 <> if UNICODE-CLASS-TOOL:E-DIGEST throw then
    DIGEST-HEX 64 want wantu STR= 0= if UNICODE-CLASS-TOOL:E-DIGEST throw then ;
 
 : CHECK-DIGESTS ( -- )

@@ -28,7 +28,7 @@ require lib/errors.f
 require lib/string.f
 
 \ ENVP-BASE / ENVP / ZLEN (src/os/env-base.f), HB-TARGET-* (src/os/<t>/target.f),
-\ readlink + SHA256-FILE-HEX + BYTE-COPY are engine-provided (startup prefix / baked).
+\ readlink + SHA256-FILE-HEX-IN + BYTE-COPY are engine-provided (startup prefix / baked).
 
 package ENGINE-ID
 
@@ -37,6 +37,7 @@ package ENGINE-ID
 
 create EID-PATH EID-PATH-CAP allot   variable EID-PATH-U   variable EID-PATH-DONE
 create EID-KEY  EID-KEY-LEN  allot   variable EID-KEY-DONE
+create EID-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this package's file-digest context
 variable EID-I                        \ apple[] scan cursor
 
 \ NUL-terminated "/proc/self/exe" for readlink (Linux)
@@ -88,7 +89,7 @@ public
 
 : KEY$ ( -- ptr u8 n )                   \ SHA-256 hex content key over the binary
    EID-KEY-DONE @ 0= if
-      PATH$ EID-KEY SHA256-FILE-HEX 0 <> if E-ENGINE-KEY throw then
+      EID-FSHA-CTX PATH$ EID-KEY SHA256-FILE-HEX-IN 0 <> if E-ENGINE-KEY throw then
       -1 EID-KEY-DONE !
    then
    EID-KEY EID-KEY-LEN ;

@@ -137,8 +137,9 @@ package HB-BUILD-CLI
 \ THE THREE BAKED CONSTANTS AN ORDINARY PROGRAM READS, in one program: printing
 \ an integer reaches lib/fmt.f INT>NUM and its copy of STR-MIN-I64$, parsing one
 \ reaches STR-PARSE-POS and STR-MAX-I64$, hashing reaches SHA-256's KK and HH0
-\ and every scratch cell in src/core/sha256.f. All of those live in baked files,
-\ below every capture window, and each one of them refused this program before
+\ in src/core/sha256.f, whose digest context is this program's own. Those tables
+\ live in baked files, below every capture window, and each one of them refused
+\ this program before
 \ src/habu/aot-owned-cells.f named them (measured: caller=INT>NUM
 \ target=STR-MIN-I64$, caller=STR-PARSE-POS target=STR-MAX-I64$, caller=SHA256
 \ target=SHA-U). The digest is SHA-256 of "abc" from FIPS-180, so the pinned
@@ -148,9 +149,10 @@ package HB-BUILD-CLI
 : HBT-PPH-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require lib/fmt.f\ncreate PPH-DIG $20 allot\ncreate PPH-HEX $40 allot\n" SB-APPEND
+   S\" create PPH-CTX SHA256-CTX-BYTES allot\n" SB-APPEND
    S\" : MAIN ( -- )\n   42 FMT:.INT cr\n   s\" 123\" STR-PARSE-POS MATCH option\n" SB-APPEND
    S\"      none OF s\" none\" type cr ENDOF\n     some OF FMT:.INT cr ENDOF\n   ;MATCH\n" SB-APPEND
-   S\"    s\" abc\" PPH-DIG SHA256\n   PPH-DIG PPH-HEX SHA256>HEX\n   PPH-HEX $40 type cr ;\n" SB-APPEND
+   S\"    PPH-CTX s\" abc\" PPH-DIG SHA256-IN\n   PPH-DIG PPH-HEX SHA256>HEX\n   PPH-HEX $40 type cr ;\n" SB-APPEND
    SB$ ;
 
 : HBT-PPH-EXPECTED$ ( -- ptr u8 n )

@@ -447,6 +447,7 @@ variable NAME-COUNT
 \ so a read that stops short leaves poison inside the span it claimed to fill.
 
 create PROD 32 allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest context
 create SHA-A 32 allot
 create AHEX 64 allot
 $A5 constant POISON-BYTE
@@ -510,7 +511,7 @@ $A5 constant POISON-BYTE
    REFUSE-RC die ;
 
 : ARTIFACT ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   ENGINE-ID:PATH$ PROD SHA256-FILE 0 <> if
+   FSHA-CTX ENGINE-ID:PATH$ PROD SHA256-FILE-IN 0 <> if
       s" aot-chain-capture: cannot hash the engine that is running" REFUSE-RC die
    then
    PROD path pathu AOT-FILE:WRITE

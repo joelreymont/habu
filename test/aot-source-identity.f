@@ -25,6 +25,7 @@ create JOINED 256 allot
 create KEY 32 allot
 create BEFORE 32 allot create AFTER 32 allot
 create ART-BEFORE 32 allot create ART-AFTER 32 allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 $1000 constant IO-CAP
 create OUT IO-CAP allot create ERR IO-CAP allot
 
@@ -48,7 +49,7 @@ create OUT IO-CAP allot create ERR IO-CAP allot
    ROOT$ s" source.aot" ART-BUF JOIN-PATH ART-U !
    LEFT$ LEFT-SOURCE$ WRITE-ALL
    RIGHT$ RIGHT-SOURCE$ WRITE-ALL
-   ENGINE-ID:PATH$ KEY SHA256-FILE 0 T= ;
+   FSHA-CTX ENGINE-ID:PATH$ KEY SHA256-FILE-IN 0 T= ;
 
 : MOVE-BOUNDARY ( -- )
    LEFT-SOURCE$ JOINED swap BYTE-COPY
@@ -94,7 +95,7 @@ public
    s" AOT-SOURCE-TEST:LOAD-SOURCE" 0 CHILD
    0 T= OUT swap S\" 3\n" T$=
    BEFORE SOURCE-KEY ARTIFACT
-   ART$ ART-BEFORE SHA256-FILE 0 T=
+   FSHA-CTX ART$ ART-BEFORE SHA256-FILE-IN 0 T=
    s" AOT-SOURCE-TEST:READ-ARTIFACT" 0 CHILD 0 T= 0 T=
    MOVE-BOUNDARY AFTER SOURCE-KEY
    BEFORE 32 AFTER 32 STR= 0= TTRUE
@@ -102,7 +103,7 @@ public
    ERR swap s" SRCBOUND:RIGHT" CONTAINS? TTRUE drop
    s" AOT-SOURCE-TEST:READ-ARTIFACT" 75 CHILD
    ERR swap S\" aot-file: the chain sources have changed since this capture\n" T$= 0 T=
-   ART$ ART-AFTER SHA256-FILE 0 T=
+   FSHA-CTX ART$ ART-AFTER SHA256-FILE-IN 0 T=
    ART-BEFORE 32 ART-AFTER 32 STR= TTRUE
    CLEANUP-RUN T-REPORT ;
 

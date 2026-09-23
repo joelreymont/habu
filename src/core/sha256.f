@@ -41,11 +41,10 @@
 \ and the path scratch, so SHA256-FILE-IN and SHA256-FILE-HEX-IN hash two files
 \ in two tasks at once by holding one each.
 \
-\ SHA256-RESET / SHA256-UPDATE / SHA256-FINAL and SHA256 are the process-wide
-\ one-shot form over the one static context SHA-CTX0, and SHA256-FILE /
-\ SHA256-FILE-HEX are the one-shot form of the file words over the one static
-\ file context SHA-FCTX0: they are for a caller that hashes one thing at a time
-\ in one thread.
+\ SHA256-IN is BEGIN, FEED and END in one call for a caller that already holds
+\ every byte; it takes the same context. THIS FILE KEEPS NO DIGEST STATE OF ITS
+\ OWN — no static context, no shared digest buffer — so a digest belongs to the
+\ caller that declared the span it runs in and no second caller can disturb it.
 $FFFFFFFF constant W32
 
 : M32 ( n -- n )
@@ -111,10 +110,6 @@ SHA256-CTX-BYTES constant SHA-FILE-DG-OFF
 SHA-FILE-DG-OFF $20 + constant SHA-FILE-IO-OFF
 SHA-FILE-IO-OFF SHA-IO-CAP + constant SHA-FILE-PATH-OFF
 SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
-
-\ TF-SHA16 (src/core/type-family-sha.f) hashes into this one: it renders the
-\ first eight bytes of a one-shot digest, so it is process-wide like SHA256.
-create SHA-DIGEST $20 allot
 
 : BE32@ ( ptr u8 -- n )
    dup 0 ZBYTE@ 24 lshift  over 1 ZBYTE@ 16 lshift or
@@ -271,24 +266,12 @@ create SHA-DIGEST $20 allot
    nblk 1 > if ctx ctx SHA-PBLK-A $40 ZPTR+ SHA-BLOCK then
    8 0 DO  cv i SHA-H@  out i 4 * ZPTR+ BE32!  LOOP ;
 
-\ THE PROCESS-WIDE ONE-SHOT CONTEXT. SHA256-RESET/UPDATE/FINAL and SHA256 hash
-\ through it, so one digest at a time in one thread; a caller that needs two
-\ holds two contexts of its own and calls BEGIN/FEED/END.
-create SHA-CTX0 SHA256-CTX-BYTES allot
-
-: SHA256-RESET ( -- )
-   SHA-CTX0 SHA256-BEGIN ;
-
-: SHA256-UPDATE ( ptr u8 n -- ) {: a u:n :}
-   SHA-CTX0 a u SHA256-FEED ;
-
-: SHA256-FINAL ( ptr u8 -- )
-   SHA-CTX0 swap SHA256-END ;
-
-: SHA256 ( ptr u8 n ptr u8 -- ) {: a u:n out :}
-   SHA-CTX0 SHA256-BEGIN
-   SHA-CTX0 a u SHA256-FEED
-   SHA-CTX0 out SHA256-END ;
+\ The whole message at once, through the caller's context: the same three words
+\ a streaming caller spells, for a caller that has nothing to stream.
+: SHA256-IN ( ptr u8 ptr u8 n ptr u8 -- ) {: ctx a u:n out :}
+   ctx SHA256-BEGIN
+   ctx a u SHA256-FEED
+   ctx out SHA256-END ;
 
 : NIB>HEX ( n -- n )
    dup 10 < if $30 + else $57 + then ;
@@ -337,19 +320,3 @@ create SHA-CTX0 SHA256-CTX-BYTES allot
    rc 0 <> if rc exit then
    dg out SHA256>HEX
    0 ;
-
-\ THE PROCESS-WIDE ONE-SHOT FILE CONTEXT, what SHA-IO and the shared digest
-\ scratch were: one file at a time in one thread.
-create SHA-FCTX0 SHA256-FILE-CTX-BYTES allot
-
-: SHA256-FILE ( ptr u8 n ptr u8 -- n ) {: a u:n out :}
-   SHA-FCTX0 a u out SHA256-FILE-IN ;
-
-: SHA256-FILE-HEX ( ptr u8 n ptr u8 -- n ) {: a u:n out :}
-   SHA-FCTX0 a u out SHA256-FILE-HEX-IN ;
-
-\ SHA is process-wide scratch. A completed operation owns no caller buffer, and
-\ no cell here holds one any more - every cursor the words once kept is a local
-\ now - so capture has only the one-shot context to return to its empty start.
-: SHA256-SNAPSHOT-PREPARE ( -- )
-   SHA256-RESET ;

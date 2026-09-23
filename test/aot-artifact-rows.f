@@ -19,10 +19,10 @@ package AOT-FILE
 
 \ Forge only the old version and half-row cases, with honest lengths and digest.
 : ROW-TEST-DIGEST ( -- )
-   SHA256-RESET
-   TBL SEC-N ROW-BYTES * SHA256-UPDATE
-   SEC-N 0 ?do i SEC-PTR i BASE@ + i ROW-LEN@ SHA256-UPDATE loop
-   PAYSHA SHA256-FINAL ;
+   SHA-CTX SHA256-BEGIN
+   SHA-CTX TBL SEC-N ROW-BYTES * SHA256-FEED
+   SEC-N 0 ?do SHA-CTX i SEC-PTR i BASE@ + i ROW-LEN@ SHA256-FEED loop
+   SHA-CTX PAYSHA SHA256-END ;
 
 
 : ROW-TEST-SHORTEN ( -- )
@@ -45,7 +45,7 @@ public
    short 0= if 8 HDR O-VERSION + U64! then
    path pathu PATH0 1537 493 open FD !
    FD @ 0 < if s" artifact-row-test: cannot write forged file" DIE then
-   SHA256-RESET
+   SHA-CTX SHA256-BEGIN
    HDR HDR-BYTES PUT
    TBL SEC-N ROW-BYTES * PUT
    SEC-N 0 ?do i SEC-PTR i BASE@ + i ROW-LEN@ PUT loop

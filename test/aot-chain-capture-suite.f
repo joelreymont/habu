@@ -60,6 +60,7 @@ variable RC
 create ROOT-BUF FS-PATH-CAP allot   variable ROOT-U
 create ART-BUF FS-PATH-CAP allot    variable ART-U
 create HDR HDR-BYTES allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this suite's file-digest context
 create PROD-HEX HEX-LEN allot        \ sha256(bin/hb), taken here
 create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
 
@@ -211,7 +212,7 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
 \ The producer key, hashed here rather than believed.
 : PROBE-PRODUCER ( -- )
    s" bin/hb hashes at the path this suite reads it from" T-LABEL
-   HB$ PROD-HEX SHA256-FILE-HEX 0 T=
+   FSHA-CTX HB$ PROD-HEX SHA256-FILE-HEX-IN 0 T=
    s" the artifact names that hash as its producer" T-LABEL
    HDR O-PRODUCER + ART-HEX SHA256>HEX
    ART-HEX HEX-LEN  PROD-HEX HEX-LEN  T$= ;

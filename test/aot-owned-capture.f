@@ -30,6 +30,7 @@ using AOT-WINDOW
 
 create BEFORE 32 allot
 create AFTER 32 allot
+create SHA-CTX SHA256-CTX-BYTES allot   \ this fixture's digest context
 
 : ORIGIN ( n n -- n ) {: first:n end:n :}
    first AOT-ARM:B0 @ T= end AOT-ARM:B1 @ T=
@@ -44,8 +45,8 @@ create AFTER 32 allot
    s" owned-capture: original window verified" type cr ;
 
 : HASH ( AOT-OWNED:capture ptr u8 -- ) {: digest:ptr :}
-   AOT-OWNED:BYTES$
-   SHA256-RESET SHA256-UPDATE digest SHA256-FINAL ;
+   AOT-OWNED:BYTES$ {: a:ptr u:n :}
+   SHA-CTX a u digest SHA256-IN ;
 
 \ These are the capture buffers' own mappings. Releasing them after OWN tests
 \ the transfer's lifetime without disturbing the compiler's other live stores.

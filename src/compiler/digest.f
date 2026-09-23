@@ -70,6 +70,7 @@ private
 32 constant OUT-BYTES
 
 create DG OUT-BYTES allot
+create SHA-CTX SHA256-CTX-BYTES allot   \ this package's digest context
 
 \ The host memory order is independent of the compilation target. An aligned
 \ native cell is a canonical slot only on an eight-byte little-endian host.
@@ -138,8 +139,8 @@ public
    n 0 ?do 0 dst i SLOT! loop ;
 
 \ SHA-256 over exactly the caller's preimage bytes, read out as four words.
-: COMPUTE ( ptr u8 n -- CDIGEST:digest )
-   DG SHA256
+: COMPUTE ( ptr u8 n -- CDIGEST:digest ) {: a u:n :}
+   SHA-CTX a u DG SHA256-IN
    DG 0 SLOT@  DG 1 SLOT@  DG 2 SLOT@  DG 3 SLOT@
    CDIGEST-DIGEST:MAKE ;
 

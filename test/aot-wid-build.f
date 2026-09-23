@@ -813,6 +813,7 @@ create DRV-CH 1 allot
 : ARTIFACT-WRITE ( -- )
    s" package AOT-WID-PRODUCER" DRV-LINE
    s" create KEY 32 allot" DRV-LINE
+   s" create FSHA-CTX SHA256-FILE-CTX-BYTES allot" DRV-LINE
    s" : WRITE ( -- )" DRV-LINE
    s"    AOT-IDENT:RESET" DRV-LINE
    HB-TARGET-LINUX? if
@@ -824,7 +825,7 @@ create DRV-CH 1 allot
    S\"    s\" src/habu/debug-watch.f\" AOT-IDENT:PATH+" DRV-LINE
    S\"    s\" src/habu/stepper.f\" AOT-IDENT:PATH+" DRV-LINE
    S\"    s\" src/habu/debug.f\" AOT-IDENT:PATH+" DRV-LINE
-   s"    1 SCRIPT-ARGV$ KEY SHA256-FILE 0<> if 79 throw then" DRV-LINE
+   s"    FSHA-CTX 1 SCRIPT-ARGV$ KEY SHA256-FILE-IN 0<> if 79 throw then" DRV-LINE
    s"    KEY 0 SCRIPT-ARGV$ AOT-FILE:WRITE ;" DRV-LINE
    s" WRITE" DRV-LINE
    s" ;package" DRV-LINE ;

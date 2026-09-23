@@ -61,6 +61,7 @@ AOT-ARM:WINDOW-CLOSE
 
 package PAYLOAD-NATIVE-PRODUCER
 create KEY 32 allot
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 
 : EQ ( n n -- ) <> if 79 throw then ;
 
@@ -71,7 +72,7 @@ create KEY 32 allot
    AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
    AOT-IDENT:RESET
    s" test/aot-payload-native-producer.f" AOT-IDENT:PATH+
-   s" HABU_PAYLOAD_TEST_ENGINE" GETENV KEY SHA256-FILE 0 EQ
+   FSHA-CTX s" HABU_PAYLOAD_TEST_ENGINE" GETENV KEY SHA256-FILE-IN 0 EQ
    KEY s" HABU_PAYLOAD_TEST_ARTIFACT" GETENV AOT-FILE:WRITE
    s" native graph artifact written" type cr ;
 

@@ -28,6 +28,7 @@ create HBT-AOT-HEX 80 allot
 create HBT-SRC-KEY 80 allot
 create HBT-KEY-A 64 allot
 create HBT-KEY-B 64 allot
+create HBT-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 
 create HBT-REPORT-BUF FS-PATH-CAP allot
 variable HBT-EXP-SRC-U
@@ -787,7 +788,7 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-REMOVE-ARTIFACT ;
 
 : HBT-EXP-HASH ( ptr u8 -- ) {: hex:ptr :}
-   HBT-EXP-OUT HBT-EXP-DG SHA256-FILE 0 T=
+   HBT-FSHA-CTX HBT-EXP-OUT HBT-EXP-DG SHA256-FILE-IN 0 T=
    HBT-EXP-DG hex SHA256>HEX ;
 
 : HBT-EXP-RUN ( -- )
