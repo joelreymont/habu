@@ -78,11 +78,28 @@ package CERTIFY-DYNAMIC-BUFFER
    s" the same accessor over a bare cell is refused" T-LABEL
    s" C11 ( n -- ptr n ) CDBP" CDB-VERDICT REFUSED T= ;
 
-\ ---- 5. the certified effects are the ones the definer really has ------------
+\ ---- 5. the byte element ----------------------------------------------------
+\ The certify path is a second gate on the same admissibility (checker.f
+\ CHECKER-DYNAMIC-INFO, reached from CHECKER-DEFDYNAMIC-BUFFER): without it a
+\ byte buffer loads and every later word that calls one of its three published
+\ words is E-UNDEFINED at certify.
+: CDB-SECTION-BYTE ( -- )
+   s" DYNAMIC-BUFFER CDBB u8" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" the byte accessor certifies as ( n -- ptr u8 )" T-LABEL
+   s" C12 ( n -- ptr u8 ) CDBB" CDB-VERDICT ACCEPTED T=
+   s" the byte accessor over a bare cell is refused" T-LABEL
+   s" C13 ( n -- ptr n ) CDBB" CDB-VERDICT REFUSED T=
+   s" the byte -RESERVE certifies as ( n -- )" T-LABEL
+   s" C14 ( n -- ) CDBB-RESERVE" CDB-VERDICT ACCEPTED T= ;
+
+\ ---- 6. the certified effects are the ones the definer really has ------------
 DYNAMIC-BUFFER CDB-LIVE n
+DYNAMIC-BUFFER CDB-BYTES u8
 
 : CDB-PUT ( n n -- ) {: i:n v:n :} v i CDB-LIVE ! ;
 : CDB-GET ( n -- n ) CDB-LIVE @ ;
+: CDB-BYTE-PUT ( n n -- ) {: i:n v:n :} v i CDB-BYTES c! ;
+: CDB-BYTE-GET ( n -- n ) CDB-BYTES c@ ;
 
 : CDB-SECTION-LIVE ( -- )
    8 CDB-LIVE-RESERVE
@@ -97,13 +114,31 @@ DYNAMIC-BUFFER CDB-LIVE n
    0 CDB-GET 42 T=
    CDB-LIVE-RELEASE ;
 
+\ The same live check on a byte buffer: its first and last byte survive a
+\ growing reserve, so the certified `( n -- ptr u8 )` is the address of byte i.
+: CDB-SECTION-LIVE-BYTES ( -- )
+   100 CDB-BYTES-RESERVE
+   0 3 CDB-BYTE-PUT
+   99 5 CDB-BYTE-PUT
+   s" the live byte buffer round-trips its first byte" T-LABEL
+   0 CDB-BYTE-GET 3 T=
+   s" the live byte buffer round-trips its last byte" T-LABEL
+   99 CDB-BYTE-GET 5 T=
+   s" a growing reserve keeps every byte" T-LABEL
+   100000 CDB-BYTES-RESERVE
+   0 CDB-BYTE-GET 3 T=
+   99 CDB-BYTE-GET 5 T=
+   CDB-BYTES-RELEASE ;
+
 : MAIN ( -- )
    T-RESET
    CDB-SECTION-PUBLISHED
    CDB-SECTION-UNPUBLISHED
    CDB-SECTION-AOT-SHAPE
    CDB-SECTION-TYPED-POINTEE
+   CDB-SECTION-BYTE
    CDB-SECTION-LIVE
+   CDB-SECTION-LIVE-BYTES
    T-REPORT ;
 
 MAIN

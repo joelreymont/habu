@@ -1068,8 +1068,9 @@ passing suite.
   label, phase, executable and argv/load list, outcome kind/code, named rc when
   known, capture bytes/capacity and captured stdout/stderr. Throw-on-timeout
   capture belongs only in a unit test asserting that throw.
-- **`DYNAMIC-BUFFER NAME Type` for growing typed tables**: same stored types as
-  `TYPED-BUFFER`, closed non-linear layouts included. `count NAME-RESERVE`
+- **`DYNAMIC-BUFFER NAME Type` for growing typed tables**: the stored types of
+  `TYPED-BUFFER`, closed non-linear layouts included, **and `u8`** — the
+  growable byte row, which no other definer offers. `count NAME-RESERVE`
   allocates at least that many elements and keeps contents; `index NAME`
   answers `ptr Type`, rejecting negative and beyond-capacity indices; a smaller
   reserve keeps the allocation; growth may move it, so retain indices and
@@ -1078,7 +1079,11 @@ passing suite.
   the requested count: a column whose zero is a default is cleared over the
   newly exposed range by the reserving word. `NAME-RELEASE` frees the mapping
   and is safe to repeat. Mappings are transient: release before saving an
-  image; image-retained values use dictionary storage.
+  image; image-retained values use dictionary storage. With element `u8` the
+  element is a BYTE: `index NAME` is `( n -- ptr u8 )` at byte `index`, read
+  and written with `c@` / `c!` and never with cell `@`, and `count
+  NAME-RESERVE` counts bytes. Every capacity stays a whole number of cells, so
+  a byte row's bound is its request rounded up to a cell.
 - **Large tool bundles are supported.** Never split tools to dodge DATA
   pressure. `create … allot` is dictionary-sized static storage; runtime-sized
   buffers use `lib/memory.f` (`MEM-ALLOC-BYTES`, `MEM-ALLOC-64K-BUFFERS`),
@@ -1232,7 +1237,14 @@ the rule.
 - **A `TYPED-BUFFER` element is a storage type, never bare `u8`.**
   `2 TYPED-BUFFER TB u8` throws `E-LAYOUT-BUFFER` (7121) from
   `STORAGE-VALIDATE`; a byte row is `n BUFFER: B` (lib/string.f),
-  `( -- ptr u8 )`. `create … allot`, `BUFFER:` and `TYPED-BUFFER` all allot
+  `( -- ptr u8 )`. A fixed element is a whole allotted cell, and a stored `u8`
+  would mint a `ptr u8` that cell `@` cannot read. **`DYNAMIC-BUFFER` is the
+  one definer that does take `u8`**, because it allots no element storage and
+  scales the index by the element's own width: `DYNAMIC-BUFFER BYTES u8` loads
+  and `0 BYTES c@` reads byte 0 (test/dynamic-buffer.f), while
+  `DYNAMIC-BUFFER X u16` still throws 7121 — `u8` is the only sub-cell type
+  with accessors of its own.
+  `create … allot`, `BUFFER:` and `TYPED-BUFFER` all allot
   zeroed space on a cell-rounded address (measured: after `create A 1 allot
   create B`, `B FFI:>CELL 7 and` is 0 and the bytes read back zero), so a row
   a foreign call reads as an aligned C object needs no alignment word of its

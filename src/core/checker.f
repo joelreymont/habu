@@ -4698,6 +4698,10 @@ variable LBI-BAD
 \ operator its own declaration implies, while the definer still allots a whole
 \ cell for it. Inside a POINTER chain they stay admissible, which is the shape
 \ the span cells actually hold: `ptr u8` stored yields `( -- ptr ptr u8 )`.
+\ THE DYNAMIC DEFINER IS THE EXCEPTION, through CHECKER-DYNAMIC-INFO below: its
+\ element is a byte and not a whole allotted cell, because its accessor scales
+\ the index by the element's own width, so a `u8` element mints `ptr u8` AT BYTE
+\ i — exactly what c@ and c! take.
 : STORAGE-SUBCELL-CON? ( n -- bool ) {: c:n :}   \ con addresses bytes, not a whole cell
    c CC-U8 = c CC-U16 = or c CC-U32 = or c CC-CHAR = or ;
 : STORAGE-STRUCT-CON? ( n -- bool ) {: t:n :}   \ resolved term is a closed one-cell structural con
@@ -4715,16 +4719,18 @@ variable LBI-BAD
 : STORAGE-TYPED-PTR? ( n -- bool )   \ resolved term is a closed typed pointer
    dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
    PTR>INNER T-RES STORAGE-PTR-POINTEE-OK? ;
-: CHECKER-STORAGE-INFO ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: STORAGE-RESOLVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ one closed stored-type token, resolved into LBI-T
    NEW
    SGBAD-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
    a SB!  u SL !  0 SI !
-   NEXT-SIG-TOK dup 0= IF 2drop 0 RES-FALSE EXIT THEN
+   NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
    NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
-   SGBAD @ 0 <> LBI-BAD @ 0 <> or IF 0 RES-FALSE EXIT THEN
-   LBI-T @ HIDDEN-PARAM? IF 0 RES-FALSE EXIT THEN
+   SGBAD @ 0 <> LBI-BAD @ 0 <> or IF RES-FALSE EXIT THEN
+   LBI-T @ HIDDEN-PARAM? 0= ;
+
+: STORAGE-CELL-W ( -- n bool )   \ width in CELLS of the term STORAGE-RESOLVE? left in LBI-T
    LBI-T @ TAG T-QUOT = IF 1 RES-TRUE EXIT THEN       \ closed xt<effect> cell: one code cell (dot habu-typed-xt-storage-ddad4af8)
    LBI-T @ STORAGE-STRUCT-CON? IF 1 RES-TRUE EXIT THEN   \ closed structural cell: one cell (dot habu-typed-storage-sweep-b2cd1a61)
    LBI-T @ NOM-SCALAR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
@@ -4732,6 +4738,28 @@ variable LBI-BAD
    LBI-T @ LAYOUT-PARAM? 0= IF 0 RES-FALSE EXIT THEN
    LBI-T @ LAYOUT-MEM-OK? 0= IF 0 RES-FALSE EXIT THEN
    LBI-T @ T-WIDTH RES-TRUE ;
+
+: CHECKER-STORAGE-INFO ( ptr u8 n -- n bool )
+   STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
+   STORAGE-CELL-W ;
+
+\ Admissibility for the DYNAMIC definer (src/core/layout-buffer.f DBUF-VALIDATE),
+\ answered in BYTES because that definer's accessor scales the index by the
+\ element width rather than allotting a cell per element. It is
+\ CHECKER-STORAGE-INFO's surface, widened by the byte con alone: `u8` is the one
+\ sub-cell con the language has accessors for (c@ `( ptr u8 -- n )` and c!
+\ `( n ptr u8 -- )`), so a stored `u8` mints a `ptr u8` its own operators read.
+\ `u16`, `u32` and `char` have no accessor pair of their own, so they stay
+\ refused here exactly as they are for TYPED-BUFFER.
+: STORAGE-BYTE-CON? ( n -- bool ) {: t:n :}   \ resolved term is the byte con u8
+   t TAG T-CON <> IF RES-FALSE EXIT THEN
+   t PAY CC-U8 = ;
+
+: CHECKER-DYNAMIC-INFO ( ptr u8 n -- n bool )
+   STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
+   LBI-T @ STORAGE-BYTE-CON? IF 1 RES-TRUE EXIT THEN
+   STORAGE-CELL-W 0= IF drop 0 RES-FALSE EXIT THEN
+   CELL * RES-TRUE ;
 
 : VREC-ROOM ( -- )
    VREC-ENSURE ;
@@ -7915,6 +7943,7 @@ PRIM: CHECKER-DEFSUM-NOEND PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN
 PRIM: CHECKER-DEFPRODUCT PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-LAYOUT-INFO PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: CHECKER-STORAGE-INFO PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: CHECKER-DYNAMIC-INFO PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: CHECKER-DEFLAYOUT-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN
    PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -10012,7 +10041,7 @@ variable LBUF-NM-I
    ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
    name nameu CHECKER-LBUF-NAME-GUARD
-   type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   type typeu CHECKER-DYNAMIC-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
    drop                                    \ two control cells: the extent is dynamic
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
    name nameu s" -RESERVE" s" n --" CHECKER-DEFDYNAMIC-NAME

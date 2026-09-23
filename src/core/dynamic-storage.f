@@ -28,13 +28,28 @@ $40 constant REG-INIT
    count MAX-BYTES width / > if E-SIZE throw then
    count width * ;
 
+\ EVERY CAPACITY IS A WHOLE NUMBER OF CELLS, and this is where that is made
+\ true. COPY moves a capacity cell by cell, so a capacity that is not a cell
+\ multiple loses its tail: a byte element reserving 100 bytes would map 100 and
+\ the next growth would copy 100 CELL / = 12 cells and drop the last four.
+\ Rounding up costs nothing - the mapping is page-granular - and the accessor
+\ bounds by CAP / width, so the rounded capacity is the bound, which is the
+\ documented rule (bounds by capacity, not by the requested count).
+: CELL-CEIL ( n -- n ) {: bytes:n :}
+   bytes CELL mod {: part:n :}
+   part 0= if bytes exit then
+   CELL part - {: pad:n :}
+   bytes MAX-BYTES pad - > if E-SIZE throw then
+   bytes pad + ;
+
 : CAPACITY ( n n -- n ) {: need:n old:n :}
-   old MAX-BYTES 2 / > if need exit then
-   need old 2 * 64 max max ;
+   old MAX-BYTES 2 / > if need CELL-CEIL exit then
+   need old 2 * 64 max max CELL-CEIL ;
 
 \ Both regions hold the same element type — an abandoned mapping and its
 \ replacement, or the old and new registry — so the copy stays parametric in it
-\ and a buffer of pointers moves its cells as pointers.
+\ and a buffer of pointers moves its cells as pointers. The byte count is a
+\ whole number of cells: CAPACITY rounds every capacity up to one.
 : COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr bytes:n :}
    bytes CELL / 0 ?do src i cells + @ dst i cells + ! loop ;
 

@@ -128,7 +128,7 @@ Every form loaded and its accessor effect certified.
 | `TYPED-VARIABLE V ptr t` | a cell holding an address of `t` | `( -- ptr ptr t )` |
 | `n TYPED-BUFFER TB t` | a fixed array of `t` | `( n -- ptr t )` |
 | `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
-| `DYNAMIC-BUFFER DB t` | a growable mapped array | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire pointers, release before an image save |
+| `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
 | `STRUCTURE p 0 FIELD x n … ;STRUCTURE` | a by-value record, at most 32 cells | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled |
 

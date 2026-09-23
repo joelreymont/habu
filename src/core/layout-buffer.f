@@ -524,6 +524,19 @@ PRIM: TYPED-VARIABLE PRIM;
 \ numbers, so the accessor reads the capacity through an explicit cell view of
 \ the head rather than through its pointer type — the same record layout, the
 \ same compiled add-and-load, since both views are type-level only.
+\ THE DYNAMIC ELEMENT WIDTH IS BYTES, where LBUF-W holds cells: this definer
+\ allots no element storage, it scales the accessor's index and the reserve by
+\ the width, and DYNAMIC-STORAGE:RESERVE has always taken its width in bytes.
+\ A byte element is therefore expressible here and nowhere else, which is what
+\ CHECKER-DYNAMIC-INFO admits over CHECKER-STORAGE-INFO; every element the cell
+\ definers admit keeps the generated source it had, since DBUF-W is then
+\ exactly LBUF-W cells.
+variable DBUF-W
+
+: DBUF-VALIDATE ( ptr u8 n -- ) {: type:ptr typeu:n :}
+   type typeu CHECKER-DYNAMIC-INFO 0= if drop E-LAYOUT-BUFFER throw then
+   DBUF-W ! ;
+
 : DBUF-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
    {: name:ptr nameu:n type:ptr typeu:n :}
    LBUF-CLEAR
@@ -532,13 +545,13 @@ PRIM: TYPED-VARIABLE PRIM;
    s"  ( n -- ptr " LBUF-APP type typeu LBUF-APP
    s"  ) {: i:n :} i 0 < if " LBUF-APP E-LAYOUT-BOUNDS LBUF-DEC,
    s"  throw then i " LBUF-APP name nameu LBUF-BASE,
-   s"  cell+ byte-view cell-view @ " LBUF-APP LBUF-W @ cells LBUF-DEC,
+   s"  cell+ byte-view cell-view @ " LBUF-APP DBUF-W @ LBUF-DEC,
    s"  / >= if " LBUF-APP E-LAYOUT-BOUNDS LBUF-DEC,
    s"  throw then " LBUF-APP name nameu LBUF-BASE,
-   s"  @ i " LBUF-APP LBUF-W @ cells LBUF-DEC,
+   s"  @ i " LBUF-APP DBUF-W @ LBUF-DEC,
    s"  * + ; : " LBUF-APP name nameu LBUF-APP
    s" -RESERVE ( n -- ) " LBUF-APP name nameu LBUF-BASE,
-   s"  " LBUF-APP LBUF-W @ cells LBUF-DEC,
+   s"  " LBUF-APP DBUF-W @ LBUF-DEC,
    s"  DYNAMIC-STORAGE:RESERVE ; : " LBUF-APP name nameu LBUF-APP
    s" -RELEASE ( -- ) " LBUF-APP name nameu LBUF-BASE,
    s"  DYNAMIC-STORAGE:RELEASE ;" LBUF-APP
@@ -569,7 +582,7 @@ PRIM: TYPED-VARIABLE PRIM;
    name nameu LBUF-BASE-GUARD
    name nameu s" -RESERVE" DBUF-SUFFIX-GUARD
    name nameu s" -RELEASE" DBUF-SUFFIX-GUARD
-   1 type typeu STORAGE-VALIDATE
+   type typeu DBUF-VALIDATE
    3 cells LBUF-BYTES !
    LBUF-ALIGN
    here {: base:ptr :}
