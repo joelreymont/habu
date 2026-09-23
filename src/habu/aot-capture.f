@@ -20,6 +20,7 @@
 
 require src/habu/address-cells.f
 require src/habu/code-span.f
+require src/habu/terminal-call.f
 
 package AOT-CAPTURE
 
@@ -1094,28 +1095,26 @@ $14000000 constant ACAP-GBR-TERM
    end adr 21 ACAP-GRAPH-PC-TARGET at 4 + <> if exit then
    at 4 + end at 4 + - ACAP-GRAPH-RAW-SPAN ;
 
-\ Scope plus spelling is not enough: undefine can replace a global with source
-\ code. The primitive must still live in this engine's executable text, as the
-\ address-cell version probe requires. Resolve once per site-table rebuild.
-: ACAP-DIE-PRIMITIVE? ( -- bool )
-   s" die" 0 search-wl {: xt:n :}
-   AOT-LIVE-DATA RBASE-CELL + AOT-CELL@ {: base:n :}
-   xt base < if false exit then
-   base CODE-OFF - IMAGE-TEXT-SIZE-OFF + AOT-N>U8 CELL-VIEW @
-   IMAGE-TEXT-CONTENT-ADJ - xt base - > ;
+\ Capture and elaboration agree on the engine calls with no continuation.
+\ Resolve once per site-table rebuild, before walking either records or gaps.
+: ACAP-TERMINAL-PRIMITIVE? ( ptr u8 n -- bool )
+   2dup 0 search-wl TERMINAL-CALL:BOUND? ;
 
-: ACAP-DIE-SITE? ( ptr u8 -- bool ) {: row:ptr :}
+: ACAP-TERMINAL-SITE? ( ptr u8 bool bool -- bool )
+   {: row:ptr fatal:bool unwinds:bool :}
    row 8 + ACAP-W32@ 0<> if false exit then
    row 4 + ACAP-W32@ AOT-NAMES-BUF@ + {: name:ptr :}
-   name 1+ name c@ s" die" CORE-STR=CI ;
+   name 1+ name c@ s" die" CORE-STR=CI if fatal exit then
+   name 1+ name c@ s" throw" CORE-STR=CI unwinds and ;
 
 : ACAP-GRAPH-SITES ( -- )
-   ACAP-DIE-PRIMITIVE? {: fatal:bool :}
+   s" die" ACAP-TERMINAL-PRIMITIVE? {: fatal:bool :}
+   s" throw" ACAP-TERMINAL-PRIMITIVE? {: unwinds:bool :}
    AOT-BLOB-LEN @ 4 / ACAP-GSITE-RESERVE
    AOT-BLOB-LEN @ 4 / 0 ?do 0 i ACAP-GSITE ! loop
    AOT-SITE-N @ 0 ?do
       i ACAP-SITE-ROW {: row:ptr :}
-      fatal row ACAP-DIE-SITE? and if 4 else 1 then
+      row fatal unwinds ACAP-TERMINAL-SITE? if 4 else 1 then
       row ACAP-W32@ ACAP-GSITE!
    loop
    AOT-CSITE-N @ 0 ?do

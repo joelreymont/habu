@@ -411,6 +411,21 @@ $400 constant CALLEE-ENTRY           \ an address; nothing here branches to it
    CC BB MEMT IR-BUILD:ADD-RESULT
    CLOSE-VALUE ;
 
+\ A terminal call consumes its resident argument and a newly computed value;
+\ the selector must publish both without manufacturing a return continuation.
+: BUILD-TERMINAL ( -- )
+   1 0 OPEN-FUN
+   ARG+ {: arg:IR-ID:ir-value-id :}
+   MEM0 {: token:IR-ID:ir-value-id :}
+   7 CONSTOP {: extra:IR-ID:ir-value-id :}
+   HIR-OPCODE:TERMINAL BODY-ST BODY-LN OPEN-OP
+   CC BB token IR-BUILD:ADD-OPERAND
+   CC BB arg IR-BUILD:ADD-OPERAND
+   CC BB extra IR-BUILD:ADD-OPERAND
+   CC BB CC BB HIR:KEY-ENTRY CC BB CALLEE-ENTRY IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   CC BB IR-BUILD:END-OP drop
+   CLOSE-FUN ;
+
 : STORE1 ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: o:HIR:opcode v:IR-ID:ir-value-id a:IR-ID:ir-value-id k:IR-ID:ir-value-id :}
    o BODY-ST BODY-LN OPEN-OP
@@ -580,6 +595,11 @@ $400 constant CALLEE-ENTRY           \ an address; nothing here branches to it
    CC BB X64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    CC m X64-BUILDER  X64ABI:SCRATCH in out X64ABI:TAIL  X64SEL:SELECT ;
+
+: SELECTED-NORET ( -- IR-BUILD:module )
+   CC BB X64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC m X64-BUILDER X64ABI:SCRATCH 1 0 0 X64ABI:NORET-FRAMED X64SEL:SELECT ;
 
 : SELECTED-A64 ( -- IR-BUILD:module )
    CC BB X64SEL:BIND-SOURCE
@@ -1297,6 +1317,15 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    s" a memory operation needs the data-stack order this convention has none of" T-LABEL
    [: MEM-REG ;] E-X64SEL-MEM TTHROWSQ ;
 
+: TERMINAL-BODY ( IR-CTX:ctx -- )
+   HIR-MOD BUILD-TERMINAL SELECTED-NORET READ!
+   OPS 1- {: last:n :}
+   last s" x64.trap" OPCODE-IS? TTRUE
+   last 0 s" x64.trap-entry" ATTR-KEY-IS? TTRUE
+   last 0 ATTR-INT CALLEE-ENTRY T=
+   last 1 s" x64.dbytes" ATTR-KEY-IS? TTRUE
+   last 1 ATTR-INT 16 T= ;
+
 \ A refusing case runs INSIDE an enclosing context: an abandoned context gives
 \ its registry slots back only when a live enclosing context leaves normally.
 : GROUP-BIND ( IR-CTX:ctx -- )        drop BIND-REFUSE-CASES ;
@@ -1311,6 +1340,8 @@ public
 
 : RUN ( -- )
    T-RESET
+   s" terminal calls retain their target and publish their arguments" T-LABEL
+   WBND [: TERMINAL-BODY ;] IR-CTX:WITH-CONTEXT
    LIT-CASE
    SQUARE-CASE
    REUSE-CASE

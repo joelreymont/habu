@@ -3136,6 +3136,21 @@ create DN-BUF DN-CAP allot
    back o oglue CALL-CLOSE
    LIT-RESET ;
 
+\ Publish the whole live row just as a call does, but create no return values
+\ or fallback diagnostic: these engine primitives have no returning edge.
+: STAGE-TERMINAL ( n n n -- )
+   {: ix:n entry:n in:n :}
+   in 0 CALL-LIVE drop
+   ix CALL-CROSS
+   CTX BLD HIR-OPCODE:TERMINAL HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
+   CTX BLD VW MKEY ix op OPEN
+   CALL-OPERANDS+
+   CTX BLD CTX BLD HIR:KEY-ENTRY
+   CTX BLD entry IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   CTX BLD IR-BUILD:END-OP drop
+   CLOSE-BLOCK
+   PATH-DEAD PATH-END ! ;
+
 
 : EMIT-PRINTED-STRING ( n -- ) {: ix:n :}
    s" type" NDICT:CALL-TARGET {: entry:n :}
@@ -3161,6 +3176,9 @@ create DN-BUF DN-CAP allot
    else
       a o ix NDICT:CALL-GLUE nip
    then {: in:n out:n glue:n :}
+   r sy HIR-WORD:TERMINAL? if
+      ix r sy HIR-WORD:ENTRY@ in STAGE-TERMINAL exit
+   then
    ix  r sy HIR-WORD:ENTRY@
    in out glue STAGE-WCALL
    ix out QRESULTS-FILL
@@ -3881,6 +3899,7 @@ public
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MEANING@ HIR-MEANING:CALLABLE HIR-MEANING:EQ 0= if false exit then
+   r sy HIR-WORD:TERMINAL? if false exit then
    r sy HIR-WORD:CALLEE-IN@ IN-N @ <> if false exit then
    r sy HIR-WORD:CALLEE-OUT@ OUT-N @ = ;
 

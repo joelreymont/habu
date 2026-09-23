@@ -192,6 +192,7 @@ HIR-OPCODE:BR       HIR:ORD constant O-BR
 HIR-OPCODE:BRZ      HIR:ORD constant O-BRZ
 HIR-OPCODE:CALL     HIR:ORD constant O-CALL
 HIR-OPCODE:WORDCALL HIR:ORD constant O-WORDCALL
+HIR-OPCODE:TERMINAL HIR:ORD constant O-TERMINAL
 HIR-OPCODE:TRAP     HIR:ORD constant O-TRAP
 
 0 constant BOUND-NO
@@ -800,6 +801,14 @@ create NAMEBUF NAME-CAP allot
       id  id i OPERAND  i X64IR:SLOT-WIDTH *  EMIT-DSTORE
    loop
    id  TRAP-CELLS X64IR:SLOT-WIDTH * DPLACED  TRAP-ENTRY  EMIT-TRAP-BR ;
+
+: EMIT-TERMINAL ( IR-ID:ir-op-id n -- ) {: id:IR-ID:ir-op-id mask:n :}
+   DSTACK? 0= if E-X64SEL-TRAP throw then
+   id OPERANDS-OF 1- {: args:n :}
+   id 0 OPERAND TOK!
+   id 0 0 args mask CALL-SAVE
+   id args X64IR:SLOT-WIDTH * DPLACED id WORD-ENTRY EMIT-TRAP-BR
+   N-CALLS @ 1+ N-CALLS ! ;
 
 \ ---- selecting a constant ----------------------------------------------------
 \ One instruction whatever the cell holds: `mov r64, imm64`, with `x64.addr`
@@ -1491,6 +1500,7 @@ create NAMEBUF NAME-CAP allot
    id OP-SLOT {: s:n :}
    s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
    s O-WORDCALL = if id  id SITE-SHAPE  DCALL-XFER exit then
+   s O-TERMINAL = if id 0 0 id OPERANDS-OF 1- DSAVE-XFER exit then
    s O-RETURN = if
       DSTACK? 0= if 0 exit then
       id  OUTS SLOT-POSITIONS  DEXIT-XFER exit
@@ -1666,6 +1676,7 @@ create NAMEBUF NAME-CAP allot
    id OP-SLOT {: s:n :}
    s O-CALL = if id mask  id SELF-SHAPE  DNEED-CALL exit then
    s O-WORDCALL = if id mask  id SITE-SHAPE  DNEED-CALL exit then
+   s O-TERMINAL = if id mask id OPERANDS-OF 1- 0 0 0 DNEED-CALL exit then
    s O-RETURN = if id mask DNEED-EXIT exit then
    id DNEED-OPERANDS ;
 
@@ -1722,6 +1733,7 @@ create NAMEBUF NAME-CAP allot
       brz    OF false ENDOF
       call   OF true  ENDOF
       wordcall OF true ENDOF
+      terminal OF true ENDOF
       return OF false ENDOF
       trap   OF true  ENDOF
       fconst   OF false ENDOF
@@ -1786,6 +1798,7 @@ create NAMEBUF NAME-CAP allot
       brz    OF id EMIT-BRZ ENDOF
       call   OF id mask EMIT-CALL ENDOF
       wordcall OF id mask EMIT-CALL-OR-TAIL ENDOF
+      terminal OF id mask EMIT-TERMINAL ENDOF
       return OF id mask EMIT-RETURN-OR-TAILED ENDOF
       trap   OF id EMIT-TRAP ENDOF
       fconst   OF E-X64SEL-FLOAT throw ENDOF

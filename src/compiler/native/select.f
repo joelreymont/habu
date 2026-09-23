@@ -84,6 +84,7 @@ HIR-OPCODE:FEQ      HIR:ORD constant O-FEQ
 HIR-OPCODE:FLTZ     HIR:ORD constant O-FLTZ
 HIR-OPCODE:FEQZ     HIR:ORD constant O-FEQZ
 HIR-OPCODE:TRAP     HIR:ORD constant O-TRAP
+HIR-OPCODE:TERMINAL HIR:ORD constant O-TERMINAL
 HIR-OPCODE:ADD      HIR:ORD constant O-ADD
 HIR-OPCODE:SUB      HIR:ORD constant O-SUB
 HIR-OPCODE:MUL      HIR:ORD constant O-MUL
@@ -1380,6 +1381,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
       brz    OF A64SEL-CMPKIND:NONE ENDOF
       call   OF A64SEL-CMPKIND:NONE ENDOF
       wordcall OF A64SEL-CMPKIND:NONE ENDOF
+      terminal OF A64SEL-CMPKIND:NONE ENDOF
       return OF A64SEL-CMPKIND:NONE ENDOF
       trap   OF A64SEL-CMPKIND:NONE ENDOF
       fconst   OF A64SEL-CMPKIND:NONE ENDOF
@@ -1660,6 +1662,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       brz    OF false ENDOF
       call   OF true  ENDOF
       wordcall OF true ENDOF
+      terminal OF true ENDOF
       return OF false ENDOF
       trap   OF true  ENDOF
       fconst   OF false ENDOF
@@ -2590,23 +2593,30 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 
 \ A call site with nothing to save and nothing to take back. Its publish rides
 \ the last store by the same rule every other run's does.
-3 constant TRAP-CELLS                \ the address, the length and the exit code
-
-: EMIT-TRAP ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+: EMIT-TRAP ( IR-ID:ir-op-id n n n -- )
+   {: id:IR-ID:ir-op-id skip:n entry:n mask:n :}
    DSTACK? 0= if E-A64SEL-TRAP throw then
-   TRAP-CELLS 0 SAVE-RIDER {: rider:n :}
-   TRAP-CELLS 0 ?do
-      id  id i OPERAND
-      i rider = if
-         TRAP-CELLS A64IR:SLOT-WIDTH *  A64IR-OPCODE:DPUSH  EMIT-DPUSH
-      else
-         i A64IR:SLOT-WIDTH *  false DSTORE-FORM  EMIT-DSTORE
+   id OPERANDS-OF skip - {: n:n :}
+   n mask SAVE-RIDER {: rider:n :}
+   n 0 ?do
+      mask i DBIT? 0= if
+         id  id i skip + OPERAND
+         i rider = if
+            n A64IR:SLOT-WIDTH *  A64IR-OPCODE:DPUSH  EMIT-DPUSH
+         else
+            i A64IR:SLOT-WIDTH *  false DSTORE-FORM  EMIT-DSTORE
+         then
       then
    loop
-   id  TRAP-CELLS A64IR:SLOT-WIDTH * rider 0 >= SITE-MOVE
-   TRAP-ENTRY EMIT-TRAP-BR
+   id  n A64IR:SLOT-WIDTH * rider 0 >= SITE-MOVE
+   entry EMIT-TRAP-BR
    N-TRAPS @ 1+ N-TRAPS ! ;
+
+: EMIT-TERMINAL ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id mask:n :}
+   id 0 OPERAND TOK!
+   id 1 id WORD-ENTRY mask EMIT-TRAP
+   N-CALLS @ 1+ N-CALLS ! ;
 
 : EMIT-CALL-OR-TAIL ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id mask:n :}
@@ -2680,6 +2690,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    id OP-SLOT {: s:n :}
    s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
    s O-WORDCALL = if id  id SITE-SHAPE  DCALL-XFER exit then
+   s O-TERMINAL = if id 0 0 id OPERANDS-OF 1- DSAVE-XFER exit then
    s O-RETURN = if
       DSTACK? 0= if 0 exit then
       id  OUTS SLOT-POSITIONS  DEXIT-XFER exit
@@ -2721,7 +2732,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       call   OF id mask EMIT-CALL ENDOF
       wordcall OF id mask EMIT-CALL-OR-TAIL ENDOF
       return OF id mask EMIT-RETURN-OR-TAILED ENDOF
-      trap   OF id EMIT-TRAP ENDOF
+      trap   OF id 0 TRAP-ENTRY 0 EMIT-TRAP ENDOF
+      terminal OF id mask EMIT-TERMINAL ENDOF
       fconst   OF id EMIT-FCONST ENDOF
       fadd     OF id A64IR-OPCODE:FADD EMIT-FBINARY ENDOF
       fsub     OF id A64IR-OPCODE:FSUB EMIT-FBINARY ENDOF
@@ -2938,6 +2950,7 @@ create D-MEET DSLOT-MAX cells allot
    s O-BR = if exit then
    s O-CALL = if id mask  id SELF-SHAPE  DNEED-CALL exit then
    s O-WORDCALL = if id mask  id SITE-SHAPE  DNEED-CALL exit then
+   s O-TERMINAL = if id mask id OPERANDS-OF 1- 0 0 0 DNEED-CALL exit then
    s O-RETURN = if id mask DNEED-EXIT exit then
    s O-TRAP = if id DNEED-OPERANDS exit then
    id DNEED-OPERANDS ;
@@ -2996,10 +3009,6 @@ create D-MEET DSLOT-MAX cells allot
    kk a + A64IR:SLOT-WIDTH * DREQ+
    kk r + A64IR:SLOT-WIDTH * DREQ+ ;
 
-\ A trap places the diagnostic address, length and exit code for die.
-: DPLACE-TRAP ( -- )
-   3 A64IR:SLOT-WIDTH * DREQ+ ;
-
 \ A routine with two returns would publish twice.
 : DPLACE-RETURN ( -- )
    D-RETS @ 1+ D-RETS !
@@ -3011,7 +3020,8 @@ create D-MEET DSLOT-MAX cells allot
    id OP-SLOT {: s:n :}
    s O-CALL = if id SELF-SHAPE DPLACE-CALL exit then
    s O-WORDCALL = if id SITE-SHAPE DPLACE-CALL exit then
-   s O-TRAP = if DPLACE-TRAP exit then
+   s O-TRAP = if id OPERANDS-OF A64IR:SLOT-WIDTH * DREQ+ exit then
+   s O-TERMINAL = if id OPERANDS-OF 1- A64IR:SLOT-WIDTH * DREQ+ exit then
    s O-RETURN = if DPLACE-RETURN then ;
 
 : DPLACE-BLOCK ( IR-ID:ir-fun-id n -- )

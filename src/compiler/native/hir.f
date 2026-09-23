@@ -95,6 +95,7 @@ ENUM opcode DERIVE eq
    realint
    bitsreal
    realbits
+   terminal
 ;ENUM
 
 \ One member per Habu control word. `mid-while` and `mid-else` end their block
@@ -225,7 +226,7 @@ public
 \ Every consumer compares the version exactly, so a table with a new required
 \ attribute and one without are two different tables.
 0 constant MAJOR
-5 constant MINOR
+6 constant MINOR
 
 private
 
@@ -261,6 +262,7 @@ private
       brz    OF s" hir.brz"    ENDOF
       call   OF s" hir.call"   ENDOF
       wordcall OF s" hir.wordcall" ENDOF
+      terminal OF s" hir.terminal" ENDOF
       quot   OF s" hir.quot"   ENDOF
       return OF s" hir.return" ENDOF
       trap   OF s" hir.trap"   ENDOF
@@ -291,7 +293,7 @@ public
 
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ These are the stable codes stored by HIR-WORD, not enum representation.
-46 constant OPCODES
+47 constant OPCODES
 
 : ORD ( HIR:opcode -- n )
    MATCH opcode
@@ -341,6 +343,7 @@ public
       feqz     OF 43 ENDOF
       trap     OF 44 ENDOF
       quot     OF 45 ENDOF
+      terminal OF 46 ENDOF
    ;MATCH ;
 
 : NTH ( n -- HIR:opcode )
@@ -391,6 +394,7 @@ public
       43 of HIR-OPCODE:FEQZ     endof
       44 of HIR-OPCODE:TRAP     endof
       45 of HIR-OPCODE:QUOT     endof
+      46 of HIR-OPCODE:TERMINAL endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -610,6 +614,7 @@ private
       brz    OF s" hir.rule.brz"    ENDOF
       call   OF s" hir.rule.call"   ENDOF
       wordcall OF s" hir.rule.wordcall" ENDOF
+      terminal OF s" hir.rule.terminal" ENDOF
       quot   OF s" hir.rule.quot"   ENDOF
       return OF s" hir.rule.return" ENDOF
       trap   OF s" hir.rule.trap"   ENDOF
@@ -661,6 +666,7 @@ private
       brz    OF s" hir.render.brz"    ENDOF
       call   OF s" hir.render.call"   ENDOF
       wordcall OF s" hir.render.wordcall" ENDOF
+      terminal OF s" hir.render.terminal" ENDOF
       quot   OF s" hir.render.quot"   ENDOF
       return OF s" hir.render.return" ENDOF
       trap   OF s" hir.render.trap"   ENDOF
@@ -926,6 +932,22 @@ private
    c b HIR-OPCODE:WORDCALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ An authenticated engine primitive ends control without answering a row. It
+\ still observes memory and receives the live data-stack values in order.
+: DEF-TERMINAL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:TERMINAL OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND-TAIL
+   c b KEY-ENTRY IR-SCHEMA:ADD-ATTR
+   true 0 0 IR-SCHEMA:SET-CONTROL
+   IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNRESTRICTED
+   IR--SCHEMA-EFFECT:READ-WRITE IR-SCHEMA:SET-MEMORY
+   true IR-SCHEMA:SET-TRAP
+   c TARGET
+   c b HIR-OPCODE:TERMINAL NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ One cell out, because a schema names ONE result type and the tree's
 \ quotations have four different signatures; which routine it is rides in an
 \ attribute, as the callee's ORDINAL, because the body is not emitted yet.
@@ -1124,6 +1146,7 @@ public
    c b t DEF-BRZ
    c b t k DEF-CALL
    c b t k DEF-WORDCALL
+   c b t k DEF-TERMINAL
    c b t DEF-QUOT
    c b t DEF-RETURN
    c b t DEF-TRAP
@@ -1177,6 +1200,7 @@ private
       brz       OF c b c b CELL-TYPE DEF-BRZ ENDOF
       call      OF c b c b CELL-TYPE c b MEM-TYPE DEF-CALL ENDOF
       wordcall  OF c b c b CELL-TYPE c b MEM-TYPE DEF-WORDCALL ENDOF
+      terminal  OF c b c b CELL-TYPE c b MEM-TYPE DEF-TERMINAL ENDOF
       quot      OF c b c b CELL-TYPE DEF-QUOT ENDOF
       return    OF c b c b CELL-TYPE DEF-RETURN ENDOF
       trap      OF c b c b CELL-TYPE DEF-TRAP ENDOF

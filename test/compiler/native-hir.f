@@ -139,6 +139,7 @@ private
    s" the stored HIR ordinal is independent of enum declaration order" T-LABEL
    HIR-OPCODE:RETURN HIR:ORD 4 T=
    HIR-OPCODE:QUOT HIR:ORD 45 T=
+   HIR-OPCODE:TERMINAL HIR:ORD 46 T=
    s" HIR opcode ordinals below the vocabulary are refused" T-LABEL
    [: OPCODE-NTH-LOW ;] E-HIR-OPCODE TTHROWSQ
    s" HIR opcode ordinals above the vocabulary are refused" T-LABEL
@@ -197,7 +198,7 @@ private
    s" registration defines the eighteen opcodes the subset started with" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE 46 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE 47 T= ;
 
 \ The nine that complete the comparison and bitwise vocabulary. `invert` is the
 \ one unary operation of the subset and is asked for beside the eight binary
@@ -248,7 +249,7 @@ private
 : NAMED-CASE ( -- )
    s" the schema table carries the dialect's own name and version" T-LABEL
    BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   5 T= 0 T= TTRUE ;
+   6 T= 0 T= TTRUE ;
 
 \ Every field the arithmetic schema declares, read back off the frozen table.
 : ARITH-BODY ( IR-CTX:ctx -- n bool n bool n n n bool bool bool bool bool bool )
@@ -993,6 +994,47 @@ $4000 constant CALLEE-ENTRY          \ an instruction address, four-byte aligned
    BND [: CALLABLE-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE CALLEE-OUT T= CALLEE-IN T= CALLEE-ENTRY T= ;
 
+: TERMINAL-MODEL-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b 4 HIR-WORD:PICK-CELLS WORDS-NEW
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b s" throw" HIR-WORD:KEY-SPELL {: th:IR-ID:ir-symbol-id :}
+   c b p r th HIR-WORD:RESOLVE-CALLABLE TTRUE
+   r th HIR-WORD:CALLEE-DEAD? TTRUE
+   r th HIR-WORD:TERMINAL? TTRUE
+   c b s" die" HIR-WORD:KEY-SPELL {: di:IR-ID:ir-symbol-id :}
+   c b p r di HIR-WORD:RESOLVE-CALLABLE TTRUE
+   r di HIR-WORD:TERMINAL? TTRUE
+   c b s" STATED-DEAD" HIR-WORD:KEY-SPELL {: sy:IR-ID:ir-symbol-id :}
+   c b r sy CALLEE-ENTRY 0 0 NDICT:GLUE-NONE true HIR-WORD:DECLARE-BOUND-CALLABLE
+   r sy HIR-WORD:CALLEE-DEAD? TTRUE
+   r sy HIR-WORD:TERMINAL? TFALSE
+   c b s" STATED-THROW" HIR-WORD:KEY-SPELL {: named:IR-ID:ir-symbol-id :}
+   c b r named s" throw" NDICT:CALL-TARGET 1 0 NDICT:GLUE-NONE true
+   HIR-WORD:DECLARE-BOUND-CALLABLE
+   r named HIR-WORD:TERMINAL? TFALSE ;
+
+: TERMINAL-SCHEMA-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b HIR-OPCODE:TERMINAL HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rows:IR-ARENA:view :}
+   rows op IR-SCHEMA:FOPERANDS 2 T=
+   rows op IR-SCHEMA:FOPERAND-TAIL? TTRUE
+   rows op IR-SCHEMA:FRESULTS 0 T=
+   rows op IR-SCHEMA:FRESULT-TAIL? TFALSE
+   rows op IR-SCHEMA:FSUCCESSORS 0 T=
+   rows op IR-SCHEMA:FTERMINATOR? TTRUE
+   rows op IR-SCHEMA:FTRAPS? TTRUE
+   rows op IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:READ-WRITE IR--SCHEMA-EFFECT:EQ TTRUE ;
+
+: TERMINAL-CASE ( -- )
+   s" only resolved engine primitives are terminal, not stated contracts" T-LABEL
+   BND [: TERMINAL-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
+   s" a terminal call orders memory and has no results or successors" T-LABEL
+   BND [: TERMINAL-SCHEMA-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 \ ---- what a callable declaration and a callable row refuse -------------------
 \ Four refusals, all measured inside ONE context. Each of them throws, and a
 \ throw that unwound out of a context would strand the arenas that context had
@@ -1662,7 +1704,7 @@ variable BC-OUT
    BND [: FORGE-MEAN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : FORGE-OPCODE-BODY ( IR-CTX:ctx -- )
-   1 46 0 0 FORGE
+   1 HIR:OPCODES 0 0 FORGE
    {: p:IR-ARENA:arena r:IR-ARENA:arena w:IR-ID:ir-symbol-id key:IR-ID:ir-module-key :}
    r w HIR-WORD:OPCODE@ drop ;
 
@@ -2238,6 +2280,7 @@ variable BC-OUT
    DROP2-CASE
    MEMWORD-CASE
    CALLABLE-CASE
+   TERMINAL-CASE
    RENAME-CASE
    MEAN-CASE
    LOCALS-MEAN-CASE

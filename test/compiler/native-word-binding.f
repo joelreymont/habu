@@ -7,11 +7,15 @@ public
 : CELLS ( -- n ) 4 ;
 : + ( n n -- n ) drop ;
 : DUP ( n -- n n ) 42 ;
+: throw ( n -- n ) 1+ ;
+: die ( n -- n ) 1+ 1+ ;
 
 : COUNT-OK? ( n -- bool ) CELLS = ;
 : FIRST ( n n -- n ) + ;
 : PAIR ( n -- n n ) DUP ;
 : MIXED-PAIR ( n -- n n ) dUp ;
+: THROW-RETURNS ( n -- n ) throw ;
+: DIE-RETURNS ( n -- n ) die ;
 
 ;package
 
@@ -65,6 +69,8 @@ private
    17 29 NATIVE-BOUND-PUBLIC:FIRST 17 T=
    7 NATIVE-BOUND-PUBLIC:PAIR 42 T= 7 T=
    8 NATIVE-BOUND-PUBLIC:MIXED-PAIR 42 T= 8 T=
+   41 NATIVE-BOUND-PUBLIC:THROW-RETURNS 42 T=
+   40 NATIVE-BOUND-PUBLIC:DIE-RETURNS 42 T=
    NATIVE-BOUND-PRIVATE:COUNT 9 T=
    NATIVE-BOUND-PUBLIC:CELLS 4 T=
    s" global intrinsic bindings remain available outside those packages" T-LABEL

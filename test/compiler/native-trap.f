@@ -393,6 +393,15 @@ $D65F03C0 constant RET-WORD
    s" a cold first successor follows the successful return" T-LABEL
    RUN-SWAP HOT-RETURN ;
 
+: BRANCHES-TO ( n -- n )
+   {: target:n :}
+   0 CODE-INSNS 0 ?do
+      i CODE-WORD@ {: w:n :}
+      w B-WORD? if
+         CODE-PLACEMENT i w B-DISP + INSN-BYTES * + target = if 1+ then
+      then
+   loop ;
+
 \ How many instructions of the emission move the data-stack pointer. Both forms
 \ are an add or a subtract of an immediate whose source and destination are that
 \ one register, which is what the placement survey's answer is spent on.
@@ -508,13 +517,14 @@ variable CHILD-OUT-N
 variable CHILD-ERR-N
 variable CHILD-RC
 
-: CHILD-ARGV ( -- )
+: CHILD-ARGV ( ptr u8 n -- )
+   {: file:ptr u:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/compiler/aot-mode.f" >LEN PROC-ARGV+
-   s" test/compiler/native-trap-noret.f" >LEN PROC-ARGV+ ;
+   file u >LEN PROC-ARGV+ ;
 
-: CHILD-RUN ( -- )
+: CHILD-RUN ( ptr u8 n -- )
    CHILD-ARGV
    ENGINE-CANDIDATE:PATH$ >LEN
    OUT-BUF CAP-CAP >LEN
@@ -553,7 +563,7 @@ variable CHILD-RC
    [: s" " NTRAP:NO-RETURN drop ;] E-NTRAP-NAME TTHROWSQ
 
    s" the no-return exit is ENGINE-ERROR:CODE-CERT, not the bad-tag one" T-LABEL
-   CHILD-RUN
+   s" test/compiler/native-trap-noret.f" CHILD-RUN
    CHILD-RC @ ENGINE-ERROR:CODE-CERT T=
 
    s" and the diagnostic names the word that came back" T-LABEL
@@ -561,6 +571,25 @@ variable CHILD-RC
 
    s" and says nothing about a tag" T-LABEL
    CHILD-ERR$ s" tag" CONTAINS? TFALSE ;
+
+: REBIND-CASE ( -- )
+   s" a global source replacement of throw or die still returns" T-LABEL
+   s" test/compiler/native-terminal-rebind.f" CHILD-RUN
+   CHILD-RC @ 0 T= ;
+
+public
+: DIE-PRIMITIVE ( -- ) s" terminal die" 71 die ;
+private
+
+: PRIMITIVE-DIE-CASE ( -- )
+   s" die has one terminal transfer and no returned-callee fallback" T-LABEL
+   s" NTRAP-TEST:DIE-PRIMITIVE" RECORD-CODE
+   s" die" NDICT:CALL-TARGET BRANCHES-TO 1 T=
+   RETS-IN-EMISSION 0 T=
+   EMISSION-CODE
+   s" test/compiler/native-terminal-die.f" CHILD-RUN
+   CHILD-RC @ 71 T=
+   CHILD-ERR$ s" terminal die" CONTAINS? TTRUE ;
 
 \ ---- what a compiled all-dead routine is as bytes ----------------------------
 \ The contract says no frame and no saved return address; this is that read off
@@ -581,14 +610,34 @@ variable CHILD-RC
    s" and carries no return at all" T-LABEL
    RETS-IN-EMISSION 0 T=
 
-   s" while it still enters through the caller's data stack" T-LABEL
-   DMOVES-IN-EMISSION 0 T<>
+   s" replacing the consumed input needs no data-stack pointer move" T-LABEL
+   DMOVES-IN-EMISSION 0 T=
 
-   s" and it leaves by branching to the shared trap routine" T-LABEL
+   s" and it leaves at throw without a returned-callee fallback" T-LABEL
    LAST-IS-BRANCH? TTRUE
-   LAST-TARGET  NTRAP:ROUTINE$ NDICT:CALL-TARGET  T=
+   LAST-TARGET  s" throw" NDICT:CALL-TARGET  T=
+
+   s" the replacement cell reaches throw with the expected error code" T-LABEL
+   s" : NTB-RUN ( -- ) 0 NTB ; ' NTB-RUN E-A-EMPTY TTHROWS" EV
 
    EMISSION-CODE ;
+
+variable ZERO-CONTINUED
+defer ZERO-THROW ( n -- )
+
+: ZERO-BODY ( -- ) 0 ZERO-THROW 1 ZERO-CONTINUED ! ;
+
+: PRIMITIVE-THROW-CASE ( -- )
+   s" even zero throw unwinds instead of continuing at its caller" T-LABEL
+   0 ZERO-CONTINUED !
+   [: throw ;] is ZERO-THROW
+   [: ZERO-BODY ;] 0 TTHROWSQ
+   ZERO-CONTINUED @ 0 T=
+   s" a compiled guard keeps its successful and throwing paths" T-LABEL
+   s" : NT-GUARD ( n -- n ) dup 0< if E-A-EMPTY throw then 1+ ;" EV
+   s" 41 NT-GUARD 42 T=" EV
+   s" : NT-REFUSE ( -- ) -1 NT-GUARD drop ;" EV
+   s" ' NT-REFUSE E-A-EMPTY TTHROWS" EV ;
 
 \ The same routine's calling sibling, which is the contrast that makes the case
 \ above say something: a body that calls and DOES come back takes a frame and
@@ -755,9 +804,12 @@ public
    COMPILED-CALL-BYTES-CASE
    COMPILED-GUARD-CASE
    COLD-DISPATCH-CASE
+   PRIMITIVE-THROW-CASE
+   PRIMITIVE-DIE-CASE
 
    \ ---- and the whole of it, in a process that dies ----
    NORET-CASE
+   REBIND-CASE
 
    T-REPORT ;
 

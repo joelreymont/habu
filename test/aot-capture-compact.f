@@ -11,9 +11,10 @@ require src/habu/aot-capture.f
 package CGT-USER
 public
 : die ( n -- n ) 1+ ;
+: throw ( n -- n ) 1+ ;
 ;package
 
-\ Tier 1 emits the fatal primitive as the last BL of an all-dead definition.
+\ Tier 1 ends this definition at the engine throw; there is no fallback die.
 1 set-tier
 ndict@ here AOT-CAPTURE:PRELUDE-MARK
 AOT-ARM:WINDOW-OPEN
@@ -133,22 +134,29 @@ using AOT-BUF
 : CGT-EXTERNALS ( -- )
    s" the fatal primitive has no continuation" T-LABEL
    s" die" 0 false CGT-EXTERNAL
+   s" the engine throw has no continuation, including for code zero" T-LABEL
+   s" throw" 0 false CGT-EXTERNAL
    s" an ordinary external call keeps its continuation" T-LABEL
    s" emit" 0 true CGT-EXTERNAL
    s" a qualified user word called die can return" T-LABEL
    s" CGT-USER:die" WID-QUAL true CGT-EXTERNAL
-   41 CGT-USER:die 42 T= ;
+   41 CGT-USER:die 42 T=
+   s" a qualified user word called throw can return" T-LABEL
+   s" CGT-USER:throw" WID-QUAL true CGT-EXTERNAL
+   41 CGT-USER:throw 42 T= ;
 
 \ A source definition may replace the global spelling too. This isolated test
 \ runs last; already compiled diagnostics still call the original primitive.
-TRUSTED: CGT-SHADOW-DIE ( -- )
-   s" undefine die : die ( ptr u8 n n -- ) 2drop drop ;" evaluate ;
+TRUSTED: CGT-SHADOW-PRIMITIVES ( -- )
+   s" undefine die : die ( ptr u8 n n -- ) 2drop drop ;" evaluate
+   s" undefine throw : throw ( n -- ) drop ;" evaluate ;
 
 public
 : CGT-SHADOW ( -- )
    s" the global spelling alone does not establish a primitive" T-LABEL
-   CGT-SHADOW-DIE
+   CGT-SHADOW-PRIMITIVES
    s" die" 0 true CGT-EXTERNAL
+   s" throw" 0 true CGT-EXTERNAL
    ACAP-RESET ;
 private
 

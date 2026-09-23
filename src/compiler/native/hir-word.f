@@ -28,6 +28,8 @@ require src/compiler/ir/symbol.f
 require src/compiler/native/tape.f
 require src/compiler/native/hir.f
 require src/compiler/native/dict.f
+require src/habu/layout.f
+require src/habu/terminal-call.f
 
 package HIR-WORD
 public
@@ -80,6 +82,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
 \ is a refusal where a finer answer would have compiled.
 0 constant COMES-BACK
 1 constant NO-RETURN
+2 constant TERMINAL
 
 : NORET-CODE ( bool -- n )
    if NO-RETURN else COMES-BACK then ;
@@ -866,6 +869,15 @@ public
    STG-TAKE
    c p r  c b id BKEY-CK  RENAME-ROW ;
 
+private
+
+: RESOLVED-NORET ( ptr u8 n n -- n )
+   {: a:ptr u:n entry:n :}
+   a u NDICT:SPELL-DEAD? 0= if COMES-BACK exit then
+   a u entry TERMINAL-CALL:BOUND? if TERMINAL else NO-RETURN then ;
+
+public
+
 \ Resolve a callable and its definer kind together. Only a CAST: declaration
 \ gets the identity rename; ordinary empty or effect-compatible words remain
 \ calls. Missing or unsupported effects still leave the token unmodeled.
@@ -881,8 +893,8 @@ public
    neutral 0= if false exit then
    glue NDICT:GLUE-UNKNOWN = if false exit then
    kind DKIND:CAST = if c b p r id DECLARE-BOUND-CAST true exit then
-   FIX-NAME u NDICT:SPELL-DEAD? {: dead:bool :}
-   c r  c b id BKEY-CK  entry in out glue  dead NORET-CODE  CALLABLE-ROW
+   c r  c b id BKEY-CK  entry in out glue
+   FIX-NAME u entry RESOLVED-NORET CALLABLE-ROW
    true ;
 
 \ ---- reading -----------------------------------------------------------------
@@ -1059,7 +1071,14 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 : CALLEE-DEAD? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:CALLABLE ROW-AS {: ra:IR-ARENA:arena l:n :}
-   ra l OFF-DEAD RC@ NO-RETURN = ;
+   ra l OFF-DEAD RC@ COMES-BACK <> ;
+
+\ Only live dictionary resolution can prove this stronger fact. A caller's
+\ stated no-return contract still gets the diagnostic if its callee returns.
+: TERMINAL? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:CALLABLE ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-DEAD RC@ TERMINAL = ;
 
 \ Which control action a structured control word is.
 : CTRL@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:ctrl )
