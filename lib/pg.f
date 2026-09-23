@@ -830,7 +830,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    begin
       slot POLL-SLOT MATCH progress
          waiting OF
-            [: WAIT-EVENT ;] catch {: socket:fd events:n code:n :}
+            [: WAIT-EVENT ;] catch {: code:n :} 2drop   \ the waiting payload is stale after a caught throw and unused
             code 0<> if slot CLOSE-SLOT code throw then
          ENDOF
          connected OF PG-PROGRESS:connected exit ENDOF
