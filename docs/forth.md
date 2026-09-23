@@ -1345,6 +1345,17 @@ the rule.
   pushed, and a nominal handle cannot cross `catch` as a quotation's result —
   a one-slot `TYPED-BUFFER` holds it. `TTHROWSQ` runs a `( -- )` quotation.
   (Measured in Tender.)
+- **A quotation-typed LOCAL cannot be caught; the same quotation on the stack
+  can.** `: F ( ptr u8 n [ ptr u8 n -- ] -- ) {: a u q :} a u q catch … ;` is
+  refused — `hook: non-certified definition: f at 'catch'`, rc 70 — because
+  the thing being caught has to be a literal quotation. What is admitted is a
+  preserving word that takes the callback as an ORDINARY STACK ARGUMENT, with
+  the literal quotation around it:
+  `: INV ( ptr u8 n [ ptr u8 n -- ] -- ptr u8 n [ ptr u8 n -- ] ) {: a u q :}
+  a u q execute a u q ;` under `[: INV ;] catch`, which answers the callback's
+  thrown code (measured: -777). So a combinator that must catch its callback
+  needs no cell to park it in (lib/fs.f's walk), and `drop` on the
+  quotation-typed value afterwards is admitted.
 - **`catch` restores the DEPTH of both stacks and never their contents**, so a
   cell in the caught quotation's window — its declared fixed input prefix, on
   either stack — keeps its input type only when every throw path of that body

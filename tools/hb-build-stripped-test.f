@@ -78,7 +78,7 @@ package HB-BUILD-CLI
 
 \ An application that touches a PERSISTENT CELL of each library it requires:
 \ lib/string.f's builder, lib/fs-mutate.f's copy buffer (FS-MUT-COPY-BUF) and
-\ lib/fs.f's walk stacks (FS-DEPTH, FS-WALK-BUF). Those cells are what the maker
+\ lib/fs.f's static walk context (FS-WALK-CTX0). Those cells are what the maker
 \ used to own before the application was read - it required app-image.f, and so
 \ lib/fs.f and lib/fs-mutate.f, before opening the capture window - which put them
 \ below the span and refused the image. The walked directory is spliced in as a

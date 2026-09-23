@@ -8,6 +8,7 @@ require lib/test.f
 require lib/fs.f
 require lib/span.f
 require lib/fs-mutate.f
+require lib/memory.f                            \ the walk contexts the last two rows own
 require lib/process-env.f
 require lib/task.f                              \ the two-task rows at the end
 
@@ -616,6 +617,22 @@ create P-B1 FS-PATH-CAP allot   variable P-B1-U
 create P-B2 FS-PATH-CAP allot   variable P-B2-U
 create P-AW FS-PATH-CAP allot   variable P-AW-U
 create P-BW FS-PATH-CAP allot   variable P-BW-U
+create P-RA FS-PATH-CAP allot   variable P-RA-U
+create P-RAS FS-PATH-CAP allot  variable P-RAS-U
+create P-RAF FS-PATH-CAP allot  variable P-RAF-U
+create P-RAG FS-PATH-CAP allot  variable P-RAG-U
+create P-RB FS-PATH-CAP allot   variable P-RB-U
+create P-RBS FS-PATH-CAP allot  variable P-RBS-U
+create P-RBF FS-PATH-CAP allot  variable P-RBF-U
+create P-RBG FS-PATH-CAP allot  variable P-RBG-U
+create P-KEEP FS-PATH-CAP allot variable P-KEEP-U
+create P-W5 FS-PATH-CAP allot   variable P-W5-U
+create P-W5S FS-PATH-CAP allot  variable P-W5S-U
+create P-W5F1 FS-PATH-CAP allot variable P-W5F1-U
+create P-W5F2 FS-PATH-CAP allot variable P-W5F2-U
+create P-W5D FS-PATH-CAP allot  variable P-W5D-U
+create P-W5DS FS-PATH-CAP allot variable P-W5DS-U
+create P-W5DF FS-PATH-CAP allot variable P-W5DF-U
 
 : A1$ ( -- ptr u8 n ) P-A1 P-A1-U @ ;
 : A2$ ( -- ptr u8 n ) P-A2 P-A2-U @ ;
@@ -623,6 +640,22 @@ create P-BW FS-PATH-CAP allot   variable P-BW-U
 : B2$ ( -- ptr u8 n ) P-B2 P-B2-U @ ;
 : AW$ ( -- ptr u8 n ) P-AW P-AW-U @ ;
 : BW$ ( -- ptr u8 n ) P-BW P-BW-U @ ;
+: RA$ ( -- ptr u8 n ) P-RA P-RA-U @ ;
+: RAS$ ( -- ptr u8 n ) P-RAS P-RAS-U @ ;
+: RAF$ ( -- ptr u8 n ) P-RAF P-RAF-U @ ;
+: RAG$ ( -- ptr u8 n ) P-RAG P-RAG-U @ ;
+: RB$ ( -- ptr u8 n ) P-RB P-RB-U @ ;
+: RBS$ ( -- ptr u8 n ) P-RBS P-RBS-U @ ;
+: RBF$ ( -- ptr u8 n ) P-RBF P-RBF-U @ ;
+: RBG$ ( -- ptr u8 n ) P-RBG P-RBG-U @ ;
+: KEEP$ ( -- ptr u8 n ) P-KEEP P-KEEP-U @ ;
+: W5$ ( -- ptr u8 n ) P-W5 P-W5-U @ ;
+: W5S$ ( -- ptr u8 n ) P-W5S P-W5S-U @ ;
+: W5F1$ ( -- ptr u8 n ) P-W5F1 P-W5F1-U @ ;
+: W5F2$ ( -- ptr u8 n ) P-W5F2 P-W5F2-U @ ;
+: W5D$ ( -- ptr u8 n ) P-W5D P-W5D-U @ ;
+: W5DS$ ( -- ptr u8 n ) P-W5DS P-W5DS-U @ ;
+: W5DF$ ( -- ptr u8 n ) P-W5DF P-W5DF-U @ ;
 : A-BODY$ ( -- ptr u8 n ) s" task-a wrote this" ;
 : B-BODY$ ( -- ptr u8 n ) s" b" ;
 
@@ -632,7 +665,23 @@ create P-BW FS-PATH-CAP allot   variable P-BW-U
    FMT-ROOT$ s" task-b-1.txt" P-B1 JOIN-PATH P-B1-U !
    FMT-ROOT$ s" task-b-2.txt" P-B2 JOIN-PATH P-B2-U !
    FMT-ROOT$ s" task-a-atomic.txt" P-AW JOIN-PATH P-AW-U !
-   FMT-ROOT$ s" task-b-atomic.txt" P-BW JOIN-PATH P-BW-U ! ;
+   FMT-ROOT$ s" task-b-atomic.txt" P-BW JOIN-PATH P-BW-U !
+   FMT-ROOT$ s" rmt-a" P-RA JOIN-PATH P-RA-U !
+   RA$ s" sub" P-RAS JOIN-PATH P-RAS-U !
+   RA$ s" f.txt" P-RAF JOIN-PATH P-RAF-U !
+   RAS$ s" g.txt" P-RAG JOIN-PATH P-RAG-U !
+   FMT-ROOT$ s" rmt-b" P-RB JOIN-PATH P-RB-U !
+   RB$ s" sub" P-RBS JOIN-PATH P-RBS-U !
+   RB$ s" f.txt" P-RBF JOIN-PATH P-RBF-U !
+   RBS$ s" g.txt" P-RBG JOIN-PATH P-RBG-U !
+   FMT-ROOT$ s" rmt-keep.txt" P-KEEP JOIN-PATH P-KEEP-U !
+   FMT-ROOT$ s" w5" P-W5 JOIN-PATH P-W5-U !
+   W5$ s" sub" P-W5S JOIN-PATH P-W5S-U !
+   W5$ s" f-1.txt" P-W5F1 JOIN-PATH P-W5F1-U !
+   W5S$ s" f-2.txt" P-W5F2 JOIN-PATH P-W5F2-U !
+   FMT-ROOT$ s" w5-doomed" P-W5D JOIN-PATH P-W5D-U !
+   W5D$ s" sub" P-W5DS JOIN-PATH P-W5DS-U !
+   W5DS$ s" x.txt" P-W5DF JOIN-PATH P-W5DF-U ! ;
 
 : FILE-IS? ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu body:ptr bodyu :}
    path pathu FMT-READ-BUF 64 READ-ALL bodyu T=
@@ -765,6 +814,83 @@ create P-BW FS-PATH-CAP allot   variable P-BW-U
       i REGS / i REGS mod base CHECK-ONE
    loop ;
 
+\ ---- the walk context is the caller's ----------------------------------------
+\ Two tasks remove two trees at once, each through a context of its own, and a
+\ WALK-FILES-IN callback removes a subtree through a SECOND context while its
+\ walk stands on the first. Both were impossible while the walk stacks were one
+\ set for the image: the two removals crossed each other's depth and path slot,
+\ and a removal inside a callback clobbered the walk it ran under.
+PTR-VARIABLE CTX-A-P
+PTR-VARIABLE CTX-B-P
+variable T6-SEEN
+variable T6-BAD
+
+: CTX-A ( -- ptr u8 ) CTX-A-P @ ;
+: CTX-B ( -- ptr u8 ) CTX-B-P @ ;
+
+: CTXS! ( -- )
+   FS-WALK-BYTES MEM-ALLOC-BYTES drop CTX-A-P !
+   FS-WALK-BYTES MEM-ALLOC-BYTES drop CTX-B-P ! ;
+
+: A-TREE! ( -- )
+   RA$ MAKE-DIR  RAS$ MAKE-DIR
+   RAF$ A-BODY$ WRITE-ALL  RAG$ A-BODY$ WRITE-ALL ;
+
+: B-TREE! ( -- )
+   RB$ MAKE-DIR  RBS$ MAKE-DIR
+   RBF$ B-BODY$ WRITE-ALL  RBG$ B-BODY$ WRITE-ALL ;
+
+: T5-A ( -- ) ROUNDS 0 ?do A-TREE! CTX-A RA$ REMOVE-TREE-IN loop 0 TASK:RETURN ;
+: T5-B ( -- ) ROUNDS 0 ?do B-TREE! CTX-B RB$ REMOVE-TREE-IN loop 0 TASK:RETURN ;
+
+: T5-RUN ( -- )
+   KEEP$ s" keep" WRITE-ALL
+   ['] T5-A WORKER-A TASK:ACTIVATE
+   ['] T5-B WORKER-B TASK:ACTIVATE
+   WORKER-A JOIN-OK
+   WORKER-B JOIN-OK
+   s" two tasks removing trees at once each removed only its own" T-LABEL
+   RA$ EXISTS? TFALSE
+   RB$ EXISTS? TFALSE
+   KEEP$ FILE? TTRUE
+   KEEP$ REMOVE-FILE ;
+
+\ THE REMOVED TREE IS NOT THE WALKED ONE, and it cannot be: a walk holds the
+\ directory it is reading OPEN, and `getdirentries64` on the descriptor of a
+\ directory that has since been removed answers -1 here, which the walk reports
+\ as E-FS-DIR (measured). Two walks in flight must therefore cover disjoint
+\ trees - which is exactly what a second context is for. What this row proves is
+\ that the removal moves no part of the walk's own state: every path the
+\ callback is handed still starts at the walked root, and both of its files are
+\ still found after a whole tree went away underneath a second context.
+: UNDER? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u ra:ptr ru :}
+   u ru <= if false exit then
+   a ru ra ru STR= ;
+
+: T6-CB ( ptr u8 n -- ) {: a:ptr u :}
+   a u W5$ UNDER? 0= if 1 T6-BAD +! then
+   T6-SEEN @ 0= if CTX-B W5D$ REMOVE-TREE-IN then
+   1 T6-SEEN +! ;
+
+: T6-TREES! ( -- )
+   W5$ MAKE-DIR  W5S$ MAKE-DIR
+   W5F1$ s" 1" WRITE-ALL  W5F2$ s" 2" WRITE-ALL
+   W5D$ MAKE-DIR  W5DS$ MAKE-DIR  W5DF$ s" x" WRITE-ALL ;
+
+: T6-RUN ( -- )
+   T6-TREES!
+   0 T6-SEEN !  0 T6-BAD !
+   CTX-A W5$ [: T6-CB ;] WALK-FILES-IN
+   s" a callback removed a tree through a second context, the walk stood" T-LABEL
+   T6-BAD @ 0 T=
+   T6-SEEN @ 2 T=
+   W5D$ EXISTS? TFALSE
+   W5F1$ FILE? TTRUE
+   W5F2$ FILE? TTRUE
+   CTX-A FS-WALK-ACTIVE@ 0 T=
+   CTX-A W5$ REMOVE-TREE-IN
+   W5$ EXISTS? TFALSE ;
+
 public
 
 : RUN ( -- )
@@ -773,10 +899,13 @@ public
    FS-MUT-ABI:END FS-ABI:START T=
    FS-MUT-ABI:START USER-BAND:END T=
    PATHS!
+   CTXS!
    T1-RUN
    T2-RUN
    T3-RUN
-   T4-RUN ;
+   T4-RUN
+   T5-RUN
+   T6-RUN ;
 
 ;package
 

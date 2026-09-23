@@ -6,6 +6,7 @@ require lib/string.f
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/memory.f                \ the walk contexts the two-context rows own
 require lib/task.f                  \ two tasks through READ-ALL / FILE-SIZE at once
 
 1 constant FS-TEST-EX-FAIL
@@ -39,6 +40,9 @@ variable FS-TEST-PAR-B-U
 variable FS-TEST-PAR-BAD
 variable FS-TEST-PAR-DONE
 variable FS-TEST-PAR-READY
+variable FS-TEST-WA-U
+variable FS-TEST-WB-U
+variable FS-TEST-WB-SUB-U
 variable FS-TEST-ROOT-U
 variable FS-TEST-ALPHA-U
 variable FS-TEST-CHILD-U
@@ -60,6 +64,9 @@ create FS-TEST-PAR-SEED FS-TEST-PAR-CAP allot
 create FS-TEST-PAR-A-DATA FS-TEST-PAR-CAP allot
 create FS-TEST-PAR-B-DATA FS-TEST-PAR-CAP allot
 create FS-TEST-BASE-BUF FS-PATH-CAP allot
+create FS-TEST-WA-BUF FS-PATH-CAP allot
+create FS-TEST-WB-BUF FS-PATH-CAP allot
+create FS-TEST-WB-SUB-BUF FS-PATH-CAP allot
 create FS-TEST-ROOT-BUF FS-PATH-CAP allot
 create FS-TEST-ALPHA-BUF FS-PATH-CAP allot
 create FS-TEST-CHILD-BUF FS-PATH-CAP allot
@@ -126,6 +133,17 @@ create FS-TEST-U64
 : FS-TEST-ROOT ( -- ptr u8 n )
    FS-TEST-ROOT-BUF FS-TEST-ROOT-U @ ;
 
+\ The two trees the two-context rows walk: separate roots, so a path from one
+\ walk can never pass the other's prefix check.
+: FS-TEST-WA ( -- ptr u8 n )
+   FS-TEST-WA-BUF FS-TEST-WA-U @ ;
+
+: FS-TEST-WB ( -- ptr u8 n )
+   FS-TEST-WB-BUF FS-TEST-WB-U @ ;
+
+: FS-TEST-WB-SUB ( -- ptr u8 n )
+   FS-TEST-WB-SUB-BUF FS-TEST-WB-SUB-U @ ;
+
 : FS-TEST-ALPHA ( -- ptr u8 n )
    FS-TEST-ALPHA-BUF FS-TEST-ALPHA-U @ ;
 
@@ -175,6 +193,9 @@ create FS-TEST-U64
    FS-TEST-ROOT s" .dots" FS-TEST-ROOT-DOTS-BUF FS-TEST-ROOT-DOTS-U FS-TEST-PATH!
    FS-TEST-ALPHA s" .git" FS-TEST-ALPHA-GIT-BUF FS-TEST-ALPHA-GIT-U FS-TEST-PATH!
    FS-TEST-CHILD s" .dots" FS-TEST-CHILD-DOTS-BUF FS-TEST-CHILD-DOTS-U FS-TEST-PATH!
+   FS-TEST-BASE s" walk-a" FS-TEST-WA-BUF FS-TEST-WA-U FS-TEST-PATH!
+   FS-TEST-BASE s" walk-b" FS-TEST-WB-BUF FS-TEST-WB-U FS-TEST-PATH!
+   FS-TEST-WB s" sub" FS-TEST-WB-SUB-BUF FS-TEST-WB-SUB-U FS-TEST-PATH!
    FS-TEST-BASE s" deep" FS-TEST-DEEP-BUF FS-TEST-DEEP-U FS-TEST-PATH!
    FS-TEST-BASE s" io.txt" FS-TEST-IO-BUF FS-TEST-IO-U FS-TEST-PATH!
    FS-TEST-BASE s" big.txt" FS-TEST-BIG-BUF FS-TEST-BIG-U FS-TEST-PATH!
@@ -183,10 +204,17 @@ create FS-TEST-U64
 : FS-TEST-MAKE-REGISTERED-DIR ( ptr u8 n -- )
    2dup MAKE-DIR CLEANUP-DIR+ ;
 
-: FS-TEST-WRITE-CHILD ( ptr u8 n ptr u8 n ptr u8 n -- ) {: pa:ptr pu na:ptr nu data:ptr datau :}
+: FS-TEST-WRITE-PLAIN ( ptr u8 n ptr u8 n ptr u8 n -- n ) {: pa:ptr pu na:ptr nu data:ptr datau :}
    pa pu na nu FS-TEST-OUT JOIN-PATH {: pathu :}
    FS-TEST-OUT pathu data datau WRITE-ALL
-   FS-TEST-OUT pathu CLEANUP+ ;
+   pathu ;
+
+\ THE CLEANUP REGISTRY IS EXACTLY FULL at the end of this fixture
+\ (FS-MUT-CLEANUP-MAX slots, measured), so anything added here has to give one
+\ back: the two walk trees the context rows own take none and FS-TEST-CLEANUP
+\ removes them by hand.
+: FS-TEST-WRITE-CHILD ( ptr u8 n ptr u8 n ptr u8 n -- )
+   FS-TEST-WRITE-PLAIN FS-TEST-OUT swap CLEANUP+ ;
 
 : FS-TEST-MAKE-WALK-DIRS ( -- )
    FS-TEST-ROOT FS-TEST-MAKE-REGISTERED-DIR
@@ -198,6 +226,11 @@ create FS-TEST-U64
    FS-TEST-ALPHA-GIT FS-TEST-MAKE-REGISTERED-DIR
    FS-TEST-CHILD-DOTS FS-TEST-MAKE-REGISTERED-DIR ;
 
+: FS-TEST-MAKE-WALK-TREES ( -- )
+   FS-TEST-WA MAKE-DIR
+   FS-TEST-WB MAKE-DIR
+   FS-TEST-WB-SUB MAKE-DIR ;
+
 : FS-TEST-WRITE-WALK-FILES ( -- )
    FS-TEST-CHILD s" deep.txt" s" " FS-TEST-WRITE-CHILD
    FS-TEST-ALPHA s" zz-after.txt" s" " FS-TEST-WRITE-CHILD
@@ -207,6 +240,13 @@ create FS-TEST-U64
    FS-TEST-ROOT-DOTS s" ignored.txt" s" " FS-TEST-WRITE-CHILD
    FS-TEST-ALPHA-GIT s" ignored.txt" s" " FS-TEST-WRITE-CHILD
    FS-TEST-CHILD-DOTS s" ignored.txt" s" " FS-TEST-WRITE-CHILD ;
+
+: FS-TEST-WRITE-WALK-TREE-FILES ( -- )
+   FS-TEST-WA s" a1.txt" s" " FS-TEST-WRITE-PLAIN drop
+   FS-TEST-WA s" a2.txt" s" " FS-TEST-WRITE-PLAIN drop
+   FS-TEST-WB s" b1.txt" s" " FS-TEST-WRITE-PLAIN drop
+   FS-TEST-WB s" b2.txt" s" " FS-TEST-WRITE-PLAIN drop
+   FS-TEST-WB-SUB s" b3.txt" s" " FS-TEST-WRITE-PLAIN drop ;
 
 : FS-TEST-DEEP-COMP ( n -- ptr u8 n )
    SB-RESET
@@ -236,6 +276,8 @@ create FS-TEST-U64
    FS-TEST-BASE CLEANUP-DIR+
    FS-TEST-MAKE-WALK-DIRS
    FS-TEST-WRITE-WALK-FILES
+   FS-TEST-MAKE-WALK-TREES
+   FS-TEST-WRITE-WALK-TREE-FILES
    FS-TEST-BIG-PATH s" abcd" WRITE-ALL
    FS-TEST-BIG-PATH CLEANUP+
    FS-TEST-EMPTY-PATH s" " WRITE-ALL
@@ -394,6 +436,117 @@ create FS-TEST-U64
 : FS-TEST-WALK-NEST ( -- )
    FS-TEST-ROOT [: FS-TEST-WALK-NEST-CB ;] WALK-FILES ;
 
+\ ---- the walk is the caller's bytes ------------------------------------------
+\ Two tasks walk two trees at once, each through a context of its own, and a
+\ callback walks a second tree through a second context while its own walk
+\ stands. Both rows were impossible while the state was process-wide: the
+\ second walk either refused with E-FS-WALK-ACTIVE or crossed the first one's
+\ depth, path slot and dirent block. A crossed path slot is what the prefix
+\ check catches - every path a callback is handed must start with its own root.
+\ The contexts are MAPPED, not allotted, because caller-owned means the caller
+\ decides where the bytes live.
+20 constant FS-TEST-WALK-ROUNDS
+2 constant FS-TEST-WA-FILES
+3 constant FS-TEST-WB-FILES
+165144 constant FS-TEST-WALK-BYTES
+
+PTR-VARIABLE FS-TEST-CTX-A-P
+PTR-VARIABLE FS-TEST-CTX-B-P
+variable FS-TEST-WA-N
+variable FS-TEST-WB-N
+variable FS-TEST-WALK-BAD
+variable FS-TEST-WALK-READY
+TASK:MIN-STACK TASK:TASK FS-TEST-WALK-A-TASK
+TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
+
+: FS-TEST-CTX-A ( -- ptr u8 )
+   FS-TEST-CTX-A-P @ ;
+
+: FS-TEST-CTX-B ( -- ptr u8 )
+   FS-TEST-CTX-B-P @ ;
+
+: FS-TEST-CTXS! ( -- )
+   FS-WALK-BYTES MEM-ALLOC-BYTES drop FS-TEST-CTX-A-P !
+   FS-WALK-BYTES MEM-ALLOC-BYTES drop FS-TEST-CTX-B-P ! ;
+
+: FS-TEST-UNDER? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u ra:ptr ru :}
+   u ru <= if FS-FALSE exit then
+   a ru ra ru STR= ;
+
+: FS-TEST-WA-CB ( ptr u8 n -- ) {: a:ptr u :}
+   a u FS-TEST-WA FS-TEST-UNDER? 0= if 1 FS-TEST-WALK-BAD atomic-add drop then
+   1 FS-TEST-WA-N atomic-add drop ;
+
+: FS-TEST-WB-CB ( ptr u8 n -- ) {: a:ptr u :}
+   a u FS-TEST-WB FS-TEST-UNDER? 0= if 1 FS-TEST-WALK-BAD atomic-add drop then
+   1 FS-TEST-WB-N atomic-add drop ;
+
+\ Both tasks are JOINED rather than watched through a done counter: a walk that
+\ throws - E-FS-WALK-ACTIVE is what a shared context answers - then ends the row
+\ red with its code instead of hanging the suite on a counter that never
+\ arrives.
+: FS-TEST-WALK-WORK-A ( -- )
+   1 FS-TEST-WALK-READY atomic-add drop
+   begin FS-TEST-WALK-READY atomic@ 2 < while TASK:PAUSE repeat
+   FS-TEST-WALK-ROUNDS 0 do
+      FS-TEST-CTX-A FS-TEST-WA [: FS-TEST-WA-CB ;] WALK-FILES-IN
+   loop
+   0 TASK:RETURN ;
+
+: FS-TEST-WALK-WORK-B ( -- )
+   1 FS-TEST-WALK-READY atomic-add drop
+   begin FS-TEST-WALK-READY atomic@ 2 < while TASK:PAUSE repeat
+   FS-TEST-WALK-ROUNDS 0 do
+      FS-TEST-CTX-B FS-TEST-WB [: FS-TEST-WB-CB ;] WALK-FILES-IN
+   loop
+   0 TASK:RETURN ;
+
+: FS-TEST-WALK-COUNTS-RESET ( -- )
+   0 FS-TEST-WA-N !  0 FS-TEST-WB-N !  0 FS-TEST-WALK-BAD ! ;
+
+: FS-TEST-JOIN-OK ( ptr n -- )
+   TASK:JOIN MATCH result
+      ok OF 0 FS-TEST= ENDOF
+      err OF 0 FS-TEST= ENDOF
+   ;MATCH ;
+
+: FS-TEST-WALK-PARALLEL ( -- )
+   FS-TEST-WALK-COUNTS-RESET
+   0 FS-TEST-WALK-READY !
+   ['] FS-TEST-WALK-WORK-A FS-TEST-WALK-A-TASK TASK:ACTIVATE
+   ['] FS-TEST-WALK-WORK-B FS-TEST-WALK-B-TASK TASK:ACTIVATE
+   FS-TEST-WALK-A-TASK FS-TEST-JOIN-OK
+   FS-TEST-WALK-B-TASK FS-TEST-JOIN-OK
+   FS-TEST-WALK-BAD @ 0 FS-TEST=
+   FS-TEST-WA-N @ FS-TEST-WA-FILES FS-TEST-WALK-ROUNDS * FS-TEST=
+   FS-TEST-WB-N @ FS-TEST-WB-FILES FS-TEST-WALK-ROUNDS * FS-TEST=
+   FS-TEST-CTX-A FS-WALK-ACTIVE@ 0 FS-TEST=
+   FS-TEST-CTX-B FS-WALK-ACTIVE@ 0 FS-TEST= ;
+
+: FS-TEST-WALK-SECOND-CB ( ptr u8 n -- )
+   2drop FS-TEST-CTX-B FS-TEST-WB [: FS-TEST-WB-CB ;] WALK-FILES-IN ;
+
+: FS-TEST-WALK-NESTED-CTX ( -- )
+   FS-TEST-WALK-COUNTS-RESET
+   FS-TEST-CTX-A FS-TEST-WA [: FS-TEST-WALK-SECOND-CB ;] WALK-FILES-IN
+   FS-TEST-WALK-BAD @ 0 FS-TEST=
+   FS-TEST-WB-N @ FS-TEST-WA-FILES FS-TEST-WB-FILES * FS-TEST=
+   FS-TEST-CTX-A FS-WALK-ACTIVE@ 0 FS-TEST=
+   FS-TEST-CTX-B FS-WALK-ACTIVE@ 0 FS-TEST= ;
+
+: FS-TEST-WALK-SAME-CTX-CB ( ptr u8 n -- )
+   2drop FS-TEST-CTX-A FS-TEST-WA [: 2drop ;] WALK-FILES-IN ;
+
+: FS-TEST-WALK-SAME-CTX ( -- )
+   FS-TEST-CTX-A FS-TEST-WA [: FS-TEST-WALK-SAME-CTX-CB ;] WALK-FILES-IN ;
+
+\ The context is a plain span of scalars and bytes, so its size is a number the
+\ caller allots or maps: pin it, and pin that it is a whole number of cells -
+\ the cell view of the scalars would read across a boundary otherwise.
+: FS-TEST-WALK-CONTEXT ( -- )
+   FS-WALK-BYTES FS-TEST-WALK-BYTES FS-TEST=
+   FS-WALK-BYTES 1 cells mod 0 FS-TEST= ;
+
 
 : FS-TEST-NUL-EXISTS ( -- )
    S\" /tmp/habu-fs-unsafe\x00tail" EXISTS? drop ;
@@ -481,6 +634,8 @@ create FS-TEST-U64
    s" fs-test: failures" FS-TEST-EX-FAIL die ;
 
 : FS-TEST-CLEANUP ( -- )
+   FS-TEST-WA REMOVE-TREE
+   FS-TEST-WB REMOVE-TREE
    CLEANUP-RUN
    FS-TEST-BASE EXISTS? FS-TEST-FALSE ;
 
@@ -575,7 +730,13 @@ TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
    FS-TEST-FREE-FD before FS-TEST= 
    FS-TEST-FREE-FD {: nested:n :}
    [: FS-TEST-WALK-NEST ;] E-FS-WALK-ACTIVE TTHROWSQ
-   FS-TEST-FREE-FD nested FS-TEST= ;
+   FS-TEST-FREE-FD nested FS-TEST=
+   \ The same refusal per context, and the outer walk still gives its
+   \ descriptors back on the way out.
+   FS-TEST-FREE-FD {: same:n :}
+   [: FS-TEST-WALK-SAME-CTX ;] E-FS-WALK-ACTIVE TTHROWSQ
+   FS-TEST-FREE-FD same FS-TEST=
+   FS-TEST-CTX-A FS-WALK-ACTIVE@ 0 FS-TEST= ;
 
 
 : FS-TEST-RACED-REFUSAL ( -- )
@@ -617,6 +778,10 @@ TASK:MIN-STACK TASK:TASK FS-TEST-RACE-TASK
    FS-TEST-BASENAME
    FS-TEST-JOIN
    FS-TEST-WALK
+   FS-TEST-CTXS!
+   FS-TEST-WALK-CONTEXT
+   FS-TEST-WALK-NESTED-CTX
+   FS-TEST-WALK-PARALLEL
    FS-TEST-WALK-THROW-CLOSES
    FS-TEST-IO
    FS-TEST-PARALLEL

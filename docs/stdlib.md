@@ -1255,6 +1255,7 @@ MKDIR-MODE              ( ptr u8 n n -- )
 MAKE-DIR                ( ptr u8 n -- )
 REMOVE-DIR              ( ptr u8 n -- )
 REMOVE-TREE             ( ptr u8 n -- )
+REMOVE-TREE-IN          ( ptr u8 ptr u8 n -- )
 MAKE-DIRS               ( ptr u8 n -- )
 COPY-FILE               ( ptr u8 n ptr u8 n n -- )
 COPY-FILE-STREAM        ( ptr u8 n ptr u8 n -- )
@@ -1270,22 +1271,32 @@ CLEANUP-RUN             ( -- )
 FS-SKIP-DIR?            ( ptr u8 n -- bool )
 FS-SKIP-SELF-ENTRY?     ( ptr u8 n -- bool )
 FS-SKIP-ENTRY?          ( ptr u8 n -- bool )
-FS-CHECK-WALK-DESCEND   ( -- )
-FS-OPEN-WALK-DIR        ( ptr u8 n -- )
-FS-CLOSE-CUR-DIR        ( -- )
-FS-DIR-BLOCK-BEGIN      ( -- )
-FS-DIR-MORE?            ( -- bool )
-FS-LOAD-ENTRY           ( -- )
-FS-ADVANCE-ENTRY        ( -- )
-FS-DESCEND-PATH         ( ptr u8 n ptr u8 n -- ptr u8 n )
-FS-ASCEND-PATH          ( -- )
-FS-WALK-PATH            ( ptr u8 n [ ptr u8 n -- ] -- )
-WALK-FILES   ( ptr u8 n [ ptr u8 n -- ] -- )
+FS-CHECK-WALK-DESCEND   ( ptr u8 -- )
+FS-OPEN-WALK-DIR        ( ptr u8 ptr u8 n -- )
+FS-CLOSE-CUR-DIR        ( ptr u8 -- )
+FS-DIR-BLOCK-BEGIN      ( ptr u8 -- )
+FS-DIR-MORE?            ( ptr u8 -- bool )
+FS-LOAD-ENTRY           ( ptr u8 -- ptr u8 )
+FS-ADVANCE-ENTRY        ( ptr u8 -- )
+FS-DESCEND-PATH         ( ptr u8 n ptr u8 ptr u8 n -- ptr u8 ptr u8 n )
+FS-ASCEND-PATH          ( ptr u8 -- )
+FS-WALK-PATH            ( ptr u8 ptr u8 n [ ptr u8 n -- ] -- )
+FS-WALK-BYTES           ( -- n )
+WALK-FILES-IN           ( ptr u8 ptr u8 n [ ptr u8 n -- ] -- )
+WALK-FILES              ( ptr u8 n [ ptr u8 n -- ] -- )
 ```
 
-`WALK-FILES` walks regular files depth-first, skips `.git`, `.jj`, and
-`.dots`, uses per-depth buffers, and closes active directory descriptors before
-throwing explicit filesystem errors.
+`WALK-FILES-IN` walks regular files depth-first, skips `.git`, `.jj`, and
+`.dots`, and closes the directory descriptors it opened however the walk ends.
+Its first argument is the WALK CONTEXT: a writable, cell-aligned span of
+`FS-WALK-BYTES` the caller owns, holding the depth, the per-depth descriptors
+and the per-depth path and dirent buffers. A task walks by holding one, so any
+number of walks run at once, and a callback walks (or removes) a second tree
+through a SECOND context; re-entering a context that is already walking is
+`E-FS-WALK-ACTIVE`. Two walks in flight must cover disjoint trees, because
+`getdirentries64` on the descriptor of a directory removed meanwhile answers
+-1 and the walk reports `E-FS-DIR`. `WALK-FILES` and `REMOVE-TREE` are the
+one-context forms over the static `FS-WALK-CTX0` and are single-task.
 
 `READ-ALL` reads a regular file into caller storage and returns the byte count.
 The caller supplies the explicit output cap. Files larger than the cap throw

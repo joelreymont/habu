@@ -8,6 +8,12 @@
 \ symlinking, writing atomically or making a temporary directory at once share
 \ nothing and neither can replace the other's returned path. The descriptors,
 \ cursors and lengths COPY-FILE-STREAM threads are LOCALS of the call.
+\ CALLER-OWNED: the tree removal. REMOVE-TREE-IN walks the context the caller
+\ supplies - a span of lib/fs.f's FS-WALK-BYTES - so two tasks remove two trees
+\ at once by holding one each, and a WALK-FILES-IN callback removes a subtree
+\ through a SECOND context while its walk stands. REMOVE-TREE is the
+\ one-context form over the static FS-WALK-CTX0 and is therefore SINGLE-TASK,
+\ and it shares that one context with WALK-FILES.
 \ PROCESS-WIDE: the 8 KiB FS-MUT-COPY-BUF, so COPY-FILE and COPY-FILE-STREAM are
 \ this module's one SINGLE-TASK pair (8192 bytes is more than the whole per-task
 \ band could carry; a second task that must copy needs its own buffer); and the
@@ -141,43 +147,57 @@ create FS-MUT-ATOMIC-SUFFIX
 : REMOVE-DIR ( ptr u8 n -- ) {: a:ptr u :}
    a u FS-PATHZ rmdir 0 < if E-FS-IO throw then ;
 
-: FS-MUT-REMOVE-FILE-WALK ( ptr u8 n -- ) {: a:ptr u :}
-   a u FS-PATHZ unlink 0 < if E-FS-IO FS-THROW-WALK then ;
-
-: FS-MUT-REMOVE-DIR-WALK ( ptr u8 n -- ) {: a:ptr u :}
-   a u FS-PATHZ rmdir 0 < if E-FS-IO FS-THROW-WALK then ;
-
-: FS-MUT-REMOVE-TREE-PATH ( ptr u8 n -- ) {: a:ptr u :}
-   a u SYMLINK? if a u FS-MUT-REMOVE-FILE-WALK exit then
+\ The removal walks the caller's context, so the error paths throw plainly:
+\ REMOVE-TREE-IN closes whatever descriptors that context still holds, however
+\ the traversal ended. REMOVE-FILE and REMOVE-DIR are exactly the unlink and
+\ rmdir this loop needs, and the same E-FS-IO.
+: FS-MUT-REMOVE-TREE-PATH ( ptr u8 ptr u8 n -- ) {: ctx:ptr a:ptr u :}
+   a u SYMLINK? if a u REMOVE-FILE exit then
    a u EXISTS? 0= if exit then
    \ Only a directory is traversed; every other inode belongs to unlink.
-   a u FS-TRY-LSTAT 0= if E-FS-STAT FS-THROW-WALK then
+   a u FS-TRY-LSTAT 0= if E-FS-STAT throw then
    FS-STAT-MODE@ S-IFMT and S-IFDIR <> if
-      a u FS-MUT-REMOVE-FILE-WALK exit
+      a u REMOVE-FILE exit
    then
-   a u FS-OPEN-WALK-DIR
-   begin FS-READ-DIR while
-      FS-DIR-BLOCK-BEGIN
-      begin FS-DIR-MORE? while
-         FS-LOAD-ENTRY
-         FS-ENT @ FS-DIRENT-NAME 2dup FS-SKIP-SELF-ENTRY? if
+   ctx a u FS-OPEN-WALK-DIR
+   begin ctx FS-READ-DIR while
+      ctx FS-DIR-BLOCK-BEGIN
+      begin ctx FS-DIR-MORE? while
+         ctx FS-LOAD-ENTRY FS-DIRENT-NAME 2dup FS-SKIP-SELF-ENTRY? if
             2drop
          else
-            a u 2swap FS-DESCEND-PATH RECURSE
-            FS-ASCEND-PATH
+            ctx a u FS-DESCEND-PATH RECURSE
+            ctx FS-ASCEND-PATH
          then
-         FS-ADVANCE-ENTRY
+         ctx FS-ADVANCE-ENTRY
       repeat
    repeat
-   FS-CLOSE-CUR-DIR
-   a u FS-MUT-REMOVE-DIR-WALK ;
+   ctx FS-CLOSE-CUR-DIR
+   a u REMOVE-DIR ;
+
+\ Caught as a whole, the way lib/fs.f catches FS-WALK-RUN, so one site closes
+\ the descriptors for every way out.
+: FS-MUT-REMOVE-RUN ( ptr u8 ptr u8 n -- ptr u8 ptr u8 n ) {: ctx:ptr a:ptr u :}
+   ctx a u FS-MUT-REMOVE-TREE-PATH
+   ctx a u ;
+
+\ The context is the caller's, so two tasks remove two trees at once by holding
+\ one each. It does NOT claim FS-WALK-ACTIVE: the process exit hook removes
+\ trees through CLEANUP-RUN whatever a task was doing, and a flag would refuse
+\ it there. A removal through the context a live walk owns still clobbers that
+\ walk - pass a second context, which is what these words are for.
+: REMOVE-TREE-IN ( ptr u8 ptr u8 n -- ) {: ctx:ptr a:ptr u :}
+   u 0 <= if E-FS-PATH throw then
+   ctx FS-FDS-RESET
+   0 ctx FS-WALK-DEPTH!
+   ctx a u FS-WALK-ROOT!
+   ctx  ctx FS-CUR-PATH u SPAN:TAKE SPAN:$  [: FS-MUT-REMOVE-RUN ;] catch {: code:n :}
+   2drop drop
+   ctx FS-CLOSE-WALK
+   code 0<> if code throw then ;
 
 : REMOVE-TREE ( ptr u8 n -- ) {: a:ptr u :}
-   u 0 <= if E-FS-PATH throw then
-   FS-FDS-RESET
-   0 FS-DEPTH !
-   a u FS-WALK-ROOT!
-   FS-CUR-PATH u SPAN:TAKE SPAN:$ FS-MUT-REMOVE-TREE-PATH ;
+   FS-WALK-CTX0 a u REMOVE-TREE-IN ;
 
 : FS-MUT-MKDIR-ONE ( ptr u8 n -- ) {: a:ptr u :}
    a u FS-PATHZ FS-MUT-MODE-DIR mkdir {: rc :}
