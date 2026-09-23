@@ -278,10 +278,117 @@ create BODY-BUF BODYBUF-CAP allot
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF TOKEN-A @ TOKEN-U @ SKIP-STRING-REST THEN ;
 
 \ Verifier trust rows below cover recursive checker entrypoints, checker-owned
-\ mode state, dynamic signature publication, and raw-definer mode.
+\ mode state, dynamic signature publication, raw-definer mode, and the scope's
+\ own name resolution.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: CHECK-BODY ( ptr u8 n -- n )
    CHECK! dup 1 = JSON-DIAGS @ 0= and DIAG-QUIET @ 0= and IF DIAGXT THEN ;
+
+\ The scope's two questions about a name, asked of the checker that owns the
+\ scope: RECORD-SYM? names the symbol a definition in THIS source is recorded
+\ under (0 when it never was) and FIND-SYM resolves a USE through the open
+\ package's private and public wordlists, the global wordlist and the used
+\ publics - the same chain a body token resolves through, so a qualified
+\ `CODEGEN:BUFFER-E` and a bare `BUFFER-E` under `using CODEGEN` answer one
+\ symbol.
+TRUSTED: RECORD-SYM? ( ptr u8 n -- n ) CHECKER-RECORD-SYM? ;
+TRUSTED: FIND-SYM ( ptr u8 n -- n ) CHECKER-FIND-ACTIVE-SYM ;
+
+\ ---- the definers this pre-pass learns from the sources it reads -------------
+\ A `create … does>` definition IS a definer, and the effect of every word it
+\ creates is the clause's declared one. That is the row the ENGINE publishes for
+\ such a word at run time: src/habu/habu2.f DOESPATCH:EMIT hands the parsed
+\ clause signature (CRSIG) to LASTC-TRUST:PUBLISH, which registers it through
+\ the checker's `trust-raw` (src/core/checker.f TRUST-RAW) - the raw-variable
+\ seal RAW-TRUST-NEXT below brackets its own registration with. So a row learned
+\ here is the row the load path records, not a permissive default.
+\
+\ WHY LEARNED AND NOT LISTED. RECORD-DEFINER?'s table names the CORE definers.
+\ lib owns nine `does>` definers of its own (lib/codegen.f BUFFER-E, lib/queue.f,
+\ lib/span.f twice, lib/aio.f, lib/string.f, lib/task.f three times); adding rows
+\ for them would put library names in the engine and miss the next one. Measured
+\ before this table existed: `tools/check.f lib/process-env-test.f` refused with
+\ E-UNDEFINED for PROC-ENV-DIAG, created at lib/process-env.f:93 by
+\ `PROC-ENV-DIAG-CAP CODEGEN:BUFFER PROC-ENV-DIAG`, and `tools/check.f
+\ lib/queue.f` refused NG-BUFFER, created at lib/type/deftype.f:60.
+\
+\ A ROW IS KEYED BY THE CHECKER'S SYMBOL ID for the definer's name, so every
+\ spelling that names the definer resolves through the scope chain the checker
+\ already owns (FIND-SYM above) instead of through a second name table here.
+\ Those ids are the checker's, and a rewound scope truncates them, so the
+\ candidate scope this file opens (SOURCE-BUF) releases the rows recorded inside
+\ it: no row outlives the ids it names.
+\ BOTH TABLES ARE `create … allot`, AND THE ROW TABLE IS NOT A TYPED-BUFFER. This
+\ file is itself preverified - tools/build-fixpoint-test.f certifies it through
+\ VERIFY:SOURCE-BUF - and the count of a `TYPED-BUFFER` line is read from the
+\ TEXT by RECORD-TYPED-BUFFER above, which hands it to the checker's
+\ CHECKER-LBUF-COUNT?: decimal digits only. Measured, `DEFINER-CAP TYPED-BUFFER
+\ DEFINER-SYM n` certifies as E-CHECKER-LAYOUT-BUFFER (7121) because the token is
+\ a constant's name. A decimal literal would certify and then state the capacity
+\ twice; one `constant` and two allots state it once.
+\ The bound is a scope's, not a file's: a preverified require closure holds
+\ several sources in one candidate scope, and the largest single file in the tree
+\ carries 28 `does>` today.
+128 constant DEFINER-CAP                   \ definer rows
+64 constant DEFINER-SIG-SLOT               \ one clause signature: [len][bytes]
+create DEFINER-SYM DEFINER-CAP cells allot
+create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
+variable DEFINER-N
+
+: DEFINER-SYM@ ( n -- n ) DEFINER-SYM {: row:n a:ptr :}
+   row cells a + @ ;
+
+: DEFINER-SYM! ( n n -- ) DEFINER-SYM {: sym:n row:n a:ptr :}
+   sym row cells a + ! ;
+
+: DEFINER-MARK ( -- n ) DEFINER-N @ ;
+
+: DEFINER-RELEASE ( n -- ) DEFINER-N ! ;
+
+: DEFINER-SLOT ( n -- ptr u8 ) {: row:n :}
+   DEFINER-SIG BYTE-VIEW row DEFINER-SIG-SLOT * + ;
+
+: DEFINER-SIG@ ( n -- ptr u8 n ) {: row:n :}
+   row DEFINER-SLOT 1 +  row DEFINER-SLOT c@ ;
+
+\ The checker's own "offset+1, 0 = none" answer shape, for the same reason: a
+\ row index of 0 is a real row.
+: DEFINER-FIND ( n -- n ) {: sym:n :}         \ sym's row + 1, 0 = no such definer
+   sym 0= IF 0 EXIT THEN
+   0 BEGIN dup DEFINER-N @ < WHILE
+      dup DEFINER-SYM@ sym = IF 1 + EXIT THEN
+      1 +
+   REPEAT drop 0 ;
+
+: DEFINER-ROW ( n -- n ) {: sym:n :}          \ sym's row, appended when it is new
+   sym DEFINER-FIND dup 0<> IF 1 - EXIT THEN drop
+   DEFINER-N @ DEFINER-CAP >= IF s" verify-source: too many does> definers" 74 die THEN
+   DEFINER-N @ {: row:n :}
+   sym row DEFINER-SYM!
+   row 1 + DEFINER-N !
+   row ;
+
+\ Record `sig` as the effect the definer named by `sym` creates. A name already
+\ in the table keeps one row and takes the newer effect, which is what the run
+\ time does: a replacement clause replaces the old created-word effect.
+: DEFINER-ADD ( ptr u8 n n -- ) {: sig:ptr sigu:n sym:n :}
+   sym 0= IF EXIT THEN                        \ never recorded: nothing to hang it on
+   sigu DEFINER-SIG-SLOT 1 - > IF s" verify-source: does> signature too long" 74 die THEN
+   sym DEFINER-ROW DEFINER-SLOT {: slot:ptr :}
+   sigu slot c!
+   0 BEGIN dup sigu < WHILE
+      dup sig + c@  over slot 1 + + c!
+      1 +
+   REPEAT drop ;
+
+\ The effect a token's definer gives the word it creates, answered as a string
+\ whose ZERO LENGTH means "not a learned definer" - the same shape NEXT-RAW ends
+\ a source with. The empty table answers before asking the scope anything, so a
+\ source that uses no such definer pays one cell read per token.
+: DEFINER-EFFECT ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   DEFINER-N @ 0= IF SOURCE@ 0 EXIT THEN
+   a u FIND-SYM DEFINER-FIND dup 0= IF drop SOURCE@ 0 EXIT THEN
+   1 - DEFINER-SIG@ ;
 
 : MULTI-ERR-MODE? ( -- bool ) MULTI-ERR @ 0<> ;
 
@@ -291,30 +398,113 @@ TRUSTED: CHECK-BODY ( ptr u8 n -- n )
 \ definition. Verdict-1 (uncheckable) still throws in BOTH modes: MULTI-ERR-N
 \ counts verdict-0 only, so continuing past uncheckables would let an
 \ all-uncheckable file exit 0 - fail-open.
-: VERIFY-BODY ( -- )
+\ The verdict is answered rather than swallowed because a created effect is a
+\ fact about a definition the checker ACCEPTED: a refused body records nothing.
+: VERIFY-BODY ( -- bool )                     \ true = this body certified
    BODY-BUF BODY-U @ CHECK-BODY {: v:n :}
-   v -1 = IF EXIT THEN
-   v 0 = MULTI-ERR-MODE? and IF EXIT THEN
+   v -1 = IF 0 0= EXIT THEN
+   v 0 = MULTI-ERR-MODE? and IF 0 0= 0= EXIT THEN
    70 throw ;
 
 TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
    CHECK-DOES! ;
 
-: VERIFY-DOES-BODY ( ptr u8 n -- ) {: sig:ptr sigu:n :}
+: VERIFY-DOES-BODY ( ptr u8 n -- bool ) {: sig:ptr sigu:n :}
    BODY-BUF BODY-U @ sig sigu CHECK-DOES-BODY {: v:n :}
-   v -1 = IF EXIT THEN
-   v 0 = MULTI-ERR-MODE? and IF EXIT THEN
+   v -1 = IF 0 0= EXIT THEN
+   v 0 = MULTI-ERR-MODE? and IF 0 0= 0= EXIT THEN
    70 throw ;
 
+\ ---- the two rules that put a definition in the table above ------------------
+\ The definition's own name, pinned by VERIFY-DEFINITION before its body is
+\ scanned: a created effect is recorded on the definition's own entry, so the
+\ recorders below ask the scope for that entry once the body has certified.
+PTR-VARIABLE DEF-NAME-A
+variable DEF-NAME-U
+variable WRAP-DEFINERS                        \ definer calls in this body …
+variable WRAP-CTL                             \ … and whether the line ever bent
+PTR-VARIABLE WRAP-SIG-A
+variable WRAP-SIG-U
+
+: DEF-NAME! ( -- )
+   TOKEN-U @ DEF-NAME-U !  TOKEN-A @ DEF-NAME-A ! ;
+
+: WRAP-RESET ( -- )
+   0 WRAP-DEFINERS !  0 WRAP-CTL !
+   NULL-PTR WRAP-SIG-A !  0 WRAP-SIG-U ! ;
+
+: DEFINER-RECORD ( ptr u8 n -- )
+   DEF-NAME-A @ DEF-NAME-U @ RECORD-SYM? DEFINER-ADD ;
+
+\ The tokens a straight line has none of. The checker's own classifier
+\ (src/core/checker.f CF-TOK?) cannot be reused for the question: it is the
+\ control-flow DISPATCHER and pushes a frame for every token it recognises, so
+\ asking it would move the checker's state. These are its token list, plus the
+\ compile-time brackets a definer call must not hide behind.
+: WRAP-COND-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" if" CORE-STR=
+   a u s" else" CORE-STR= or
+   a u s" then" CORE-STR= or
+   a u s" case" CORE-STR= or
+   a u s" of" CORE-STR= or
+   a u s" endof" CORE-STR= or
+   a u s" endcase" CORE-STR= or ;
+
+: WRAP-LOOP-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" begin" CORE-STR=
+   a u s" while" CORE-STR= or
+   a u s" repeat" CORE-STR= or
+   a u s" until" CORE-STR= or
+   a u s" again" CORE-STR= or
+   a u s" do" CORE-STR= or
+   a u s" ?do" CORE-STR= or
+   a u s" loop" CORE-STR= or
+   a u s" +loop" CORE-STR= or
+   a u s" leave" CORE-STR= or
+   a u s" exit" CORE-STR= or ;
+
+: WRAP-BRACKET-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" [:" CORE-STR=
+   a u s" ;]" CORE-STR= or
+   a u s" [" CORE-STR= or
+   a u s" ]" CORE-STR= or
+   a u s" postpone" CORE-STR= or
+   a u s" recurse" CORE-STR= or ;
+
+: WRAP-CTL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u WRAP-COND-TOK?
+   a u WRAP-LOOP-TOK? or
+   a u WRAP-BRACKET-TOK? or ;
+
+\ Observe one body token for the straight-line-wrapper rule. A body whose tokens
+\ hold EXACTLY ONE definer call and no control flow, quotation or bracket creates
+\ whatever that definer creates - `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE
+\ BUFFER-E ;` (lib/codegen.f) is the shape. Two definer calls, a conditional
+\ definer or a definer inside a quotation record nothing, and the created word
+\ then stays unknown exactly as it is today.
+: WRAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   WRAP-CTL @ IF EXIT THEN
+   a u WRAP-CTL-TOK? IF -1 WRAP-CTL ! EXIT THEN
+   a u DEFINER-EFFECT dup 0= IF 2drop EXIT THEN
+   WRAP-SIG-U !  WRAP-SIG-A !
+   WRAP-DEFINERS @ 1 + WRAP-DEFINERS ! ;
+
+: VERIFY-WRAPPER ( -- )
+   WRAP-CTL @ IF EXIT THEN
+   WRAP-DEFINERS @ 1 <> IF EXIT THEN
+   WRAP-SIG-A @ WRAP-SIG-U @ DEFINER-RECORD ;
+
 : VERIFY-DOES ( -- )
-   VERIFY-BODY
+   VERIFY-BODY {: ok:bool :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    0 BODY-U !
    BEGIN
       BODY!
       TOKEN-U @ 0= IF s" verify-source: unterminated does body" 74 die THEN
       BODY-U @ 0= if TOKEN-ORIGIN! then
-      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF sig sigu VERIFY-DOES-BODY EXIT THEN
+      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
+         sig sigu VERIFY-DOES-BODY ok and IF sig sigu DEFINER-RECORD THEN EXIT
+      THEN
       APPEND-BODY-TOKEN
    AGAIN ;
 
@@ -832,6 +1022,11 @@ PTR-VARIABLE STG-START
    a u s" trust" STR=CI IF RECORD-TRUST 0 0= EXIT THEN
    a u s" immediate" STR=CI IF 0 0= EXIT THEN
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
+   \ … and last, a definer this pre-pass learned from a `does>` definition
+   \ earlier in the closure. The created word is the NEXT token, as it is for
+   \ `constant` above - the definer's own arguments precede it - and the effect
+   \ is the clause's, registered with the same raw seal the storage definers use.
+   a u DEFINER-EFFECT dup 0<> IF RAW-TRUST-NEXT 0 0= EXIT THEN 2drop
    0 0= 0= ;
 
 : VERIFY-DEFINITION ( -- )
@@ -839,13 +1034,16 @@ PTR-VARIABLE STG-START
    BODY!
    TOKEN-U @ 0= if s" verify-source: missing word name" 74 die then
    TOKEN-ORIGIN!
+   DEF-NAME!
+   WRAP-RESET
    TOKEN-A @ TOKEN-U @ BODY-APPEND
    MAYBE-SIGNATURE
    BEGIN
       BODY!
       TOKEN-U @ 0= IF s" verify-source: unterminated definition" 74 die THEN
-      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF VERIFY-BODY EXIT THEN
+      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF VERIFY-BODY IF VERIFY-WRAPPER THEN EXIT THEN
       TOKEN-A @ TOKEN-U @ s" does>" CORE-STR= IF VERIFY-DOES EXIT THEN
+      TOKEN-A @ TOKEN-U @ WRAP-TOKEN
       APPEND-BODY-TOKEN
    AGAIN ;
 
@@ -880,10 +1078,14 @@ public
    SOURCE-AT!
    RUN ;
 
+\ The definer rows recorded inside this scope go with it: CHECKER-CANDIDATE-
+\ SCOPE-DONE rewinds the checker's symbol table, and a row names a symbol by id.
 : SOURCE-BUF ( ptr u8 n -- )
    SOURCE!
    CHECKER-CANDIDATE-SCOPE-START
+   DEFINER-MARK
    [: RUN ;] catch
+   swap DEFINER-RELEASE
    CHECKER-CANDIDATE-SCOPE-DONE
    THROW-RESULT ;
 

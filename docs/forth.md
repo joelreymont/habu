@@ -1237,6 +1237,15 @@ the rule.
   create B`, `B FFI:>CELL 7 and` is 0 and the bytes read back zero), so a row
   a foreign call reads as an aligned C object needs no alignment word of its
   own (lib/net/curl.f's fd_sets and out-parameter cells).
+- **A `TYPED-BUFFER` count is a decimal literal, not a constant's name.** The
+  source pre-verifier reads the count as TEXT (`verify-source.f`
+  `RECORD-TYPED-BUFFER` hands the previous token to the checker's
+  `CHECKER-LBUF-COUNT?`, which accepts decimal digits only), so a line the
+  engine loads happily is refused when the file is checked: measured,
+  `64 constant LB-CAP  LB-CAP TYPED-BUFFER LB-ROWS n` makes `tools/check.f`
+  throw 7121 (rc 67) while `64 TYPED-BUFFER LB-ROWS n` passes. `$hex` is
+  refused too. A table sized from a constant uses `create NAME CAP cells allot`
+  and reads through a `ptr` local.
 - **A local binds in the spelling it was declared in; word lookup stays
   case-insensitive.** `{: text :}` reads `text` as the local and `TEXT` as the
   word, and the same local hides the word `TEXT` from the definition it is

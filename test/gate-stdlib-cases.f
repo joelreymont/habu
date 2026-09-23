@@ -1309,6 +1309,10 @@ SUITE certify-dynamic-buffer
    test/certify-dynamic-buffer.f
 ;SUITE
 
+SUITE certify-does-definer
+   test/certify-does-definer.f
+;SUITE
+
 SUITE certify-generated
    test/certify-generated.f
 ;SUITE
