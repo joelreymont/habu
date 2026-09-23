@@ -16,7 +16,61 @@ raises code to 2,976 bytes. The code result is consistent with word-grain
 reachability. The unreachable literal still adds DATA bytes (464 to 480), so
 data reachability is not yet proven word-granular. `--size-report` also shows that the current stripped report has image-wide code/data classes, not a per-package code table; the requested Tender package split therefore needs a report change or a separate attribution probe.
 
-Current owner: alder, workspace `.jj-ws/alder-closure-attribution`.
+Current owner: alder, workspace `.jj-ws/alder-data-root`.
+
+Current priority: fix DATA reachability before snapshot compression. The defect
+is broader than quotation-cell roots. On Habu 806f0654 / engine SHA256
+274f9bea9aa8a047ccefb2de3d80ab45a82fe24230f17a63be6a067bdb383cbd,
+an empty MAIN has 2,444 code bytes, 464 carried DATA bytes and a 65,728-byte file.
+Adding a private 65,536-byte array filled with byte 65 at load time, which MAIN
+never reaches, leaves code at 2,444 but raises carried DATA to 74,192 and the
+file to 131,264. Both stripped builds and executables exit 0. The 73,728-byte
+DATA growth is exactly 8,192 unused cells encoded in nine bytes each. No
+quotation or stored code pointer is involved. BUILD-SPARSE-DATA in aot-lib.f
+walks every nonzero cell in the latched application window, independently of
+code reachability. The existing sparse encoding does not remove dead DATA.
+
+The root fix must emit reachable DATA objects and literals, following declared
+pointer/quotation edges and retaining unknown escapes conservatively. It must
+preserve interior pointers, aliases, mutable reachable arrays, initial contents,
+and all relocation rows consistently. Do not clear a table merely because its
+current values look unused, shrink a runtime limit, or compress the same dead
+objects. Acceptance includes the unused-array reduction above and the existing
+unused quotation-cell fixture, with positive cases for reachable aliases and
+interior addresses. The compiler/checker seams remain Hazel-owned.
+
+Normal current Tender default server build, from a private export of feb55f7d
+on that same Habu pair: 2,228,416 bytes = code 2,037,592 / names 0 / DATA
+143,113 / padding 34,573 / other 13,138. SHA256
+dc85225bfbb485b2c154e37017602c389a5d9c8e74242fd0558566d4cb27b03f.
+The restored DATA extent is 5,821,808 bytes. An offline decode partitions all
+143,113 value bytes exactly: NSTR owner header 17, literal row tables 12,554,
+literal arena 117,295, remaining DATA 13,247. The pool reserves 655,408 bytes
+(40 header + 131,072 row tables + 524,296 arena); its 3,174 literals use
+103,865 body bytes. These are all interned literals, not a measured live-only
+set. The stripped runtime has no compiler lookup use for the row tables.
+
+The remaining 5,166,400 bytes of DATA address extent include fixed application
+columns and library scratch. Examples checked against declarations: four
+212,992-byte DOC-OF/CODE-OF/MAIN-OF/HELD-OF arrays for 13 run slots, and
+PROC-CMD's fixed argument/environment/input/output/error buffers. Zero
+reservations already contribute no value payload and start as demand-zero
+pages; reducing them is not equivalent to saving that many file or resident
+bytes. Generated code is 91.4% of the current file, so code generation remains
+the main route toward the parent's 500 KB target.
+
+Aspen confirms that Tender already defaults the server to stripped and reports
+green binary DB/HTTP and MemoryDenyWriteExecute migrate/serve checks on this
+Habu pin; their logs were read in stripped-default-lane. The independent run
+above verifies the current source's normal build and size. It does not claim a
+new independent database gate or a speed comparison across source versions.
+
+Evidence and checked Habu probes:
+`~/.cache/habu/data-root/source-806f0654/` (README.md, current-build.log,
+current-size.txt, strip-data.tsv, window-census.tsv, empty-size.txt,
+unused-size.txt, and the sources and executables). The census's nearest named
+word is only a locator: anonymous pools and does> storage between named
+variables must be attributed from their actual declarations, not that label.
 
 The package measurement is complete for Tender `08a1c3b6` with its specified
 Habu source `cedar/pg` `df231977` and engine SHA256

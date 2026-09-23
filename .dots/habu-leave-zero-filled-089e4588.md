@@ -13,6 +13,31 @@ the measured server capture/write costs about 45 ms, not the reported minutes.
 Ownership: snapshot writer. Claim: Alder. Hazel reviews before landing and
 the integration chain runs the full gate.
 
+Held at Joel's direction. Candidate 7289a859 must not be duplicated or chained
+while the deployment shape and allocation causes are addressed. Tender's
+server now defaults to stripped; its current feb55f7d / Habu 806f0654 build is
+2,228,416 bytes with 143,113 carried DATA bytes and no dictionary. The earlier
+16,777,408-byte candidate server and its roughly 6 MB encoded DATA were a
+full REPL snapshot, not the deployment product. Root DATA reachability work
+and its unused initialized-array reduction are on 5b7d02bb.
+
+The dense baseline snapshot's final compiler registries were read offline:
+SYMS reserves 2,621,440 bytes for 65,536 rows with 33,319 used; USIGS reserves
+4,521,984 with 4,519,552 content bytes; NORET reserves 1,179,648 with
+1,144,440 used. A symbol table's capacity, live compiler metadata and an
+application's runtime storage are different causes and must not be called
+one 6 MB preallocation. Old APH 2 MiB and IMC 4 MiB page reservations are
+already RUN-MAPPED allocations in the current Tender source. The snapshot
+census assigns unnamed storage to its preceding named word: CONN-LIVE's
+10 MB interval was largely these persisted registries, not a connection buffer.
+
+Hazel's source review also found an unresolved donor-format bug in 7289a859:
+ENCODE-DATA compares two source constants, so its supposed old-donor guard
+cannot detect an old running engine. Loading the new maker source on that
+donor can write a v10 image that its baked loader refuses (exit 79). Resolve
+the actual donor-format contract before this held change can be accepted;
+the finding has not been waived or fixed by this evidence update.
+
 This incorporates habu-store-the-snapshot-203a86a0, closed as a duplicate.
 No separate snapshot codec implementation belongs on that dot.
 
