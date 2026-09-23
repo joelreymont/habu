@@ -94,41 +94,51 @@ create BT-TOP-DIE-SRC-BUF FS-PATH-CAP allot
 : BT-NOART ( -- ptr u8 n )
    BT-ROOT s" noart.bin" ARTIFACT ;
 
-: BT-SHEBANG ( -- )
-   s" #!/usr/bin/env bin/hb" SB-APPEND
-   10 SB-APPEND-C ;
-
-: BT-SB-C, ( n -- )
-   FS-MUT-SB-U
-   s"  c, " SB-APPEND ;
-
-: BT-SB-BYTES ( ptr u8 n -- ) {: a:ptr u :}
-   0 begin dup u < while
-      dup a + c@ BT-SB-C,
-      1+
-   repeat drop ;
-
-: BT-SB-PATH ( ptr u8 n -- )
-   s" create P " SB-APPEND
-   BT-SB-BYTES
-   0 BT-SB-C, ;
-
-: BT-SB-ARTIFACT-DATA ( -- )
-   s" create BT-ART-BUF 97 c, 114 c, 116 c, 105 c, 102 c, 97 c, 99 c, 116 c, " SB-APPEND ;
+: BT-SHEBANG$ ( -- ptr u8 n )
+   S\" #!/usr/bin/env bin/hb\n" ;
 
 : BT-SCRIPT$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    SB-RESET
-   BT-SHEBANG
+   BT-SHEBANG$ SB-APPEND
    a u SB-APPEND
    SB$ ;
 
-: BT-OK-SCRIPT$ ( -- ptr u8 n )
+\ The artifact-writing command embeds its output path one `c,` per byte, up
+\ to seven bytes of source per path byte, so its buffer is sized by the path
+\ capacity and not by the shared string builder: the scratch root lives under
+\ HB_TMP, and the gate pool's 98-byte HB_TMP overflowed SB-CAP (E-STR-CAPACITY)
+\ where a 94-byte one fit. The 256 covers the script's fixed text.
+FS-PATH-CAP 7 * 256 + constant BT-SCRIPT-CAP
+create BT-SCRIPT-BUF BT-SCRIPT-CAP allot
+TYPED-VARIABLE BT-SCRIPT-LEN len
+
+: BT-SCRIPT+ ( ptr u8 n -- )
+   BT-SCRIPT-BUF BT-SCRIPT-CAP BT-SCRIPT-LEN BUF-APPEND ;
+
+: BT-SCRIPT-C, ( n -- )
    SB-RESET
-   BT-SHEBANG
-   BT-ART BT-SB-PATH
-   BT-SB-ARTIFACT-DATA
-   s" P 1537 420 open dup BT-ART-BUF 8 write drop close" SB-APPEND
-   SB$ ;
+   FS-MUT-SB-U
+   s"  c, " SB-APPEND
+   SB$ BT-SCRIPT+ ;
+
+: BT-SCRIPT-BYTES ( ptr u8 n -- ) {: a:ptr u :}
+   0 begin dup u < while
+      dup a + c@ BT-SCRIPT-C,
+      1+
+   repeat drop ;
+
+: BT-SCRIPT-PATH ( ptr u8 n -- )
+   s" create P " BT-SCRIPT+
+   BT-SCRIPT-BYTES
+   0 BT-SCRIPT-C, ;
+
+: BT-OK-SCRIPT$ ( -- ptr u8 n )
+   BT-SCRIPT-LEN BUF-RESET
+   BT-SHEBANG$ BT-SCRIPT+
+   BT-ART BT-SCRIPT-PATH
+   s" create BT-ART-BUF 97 c, 114 c, 116 c, 105 c, 102 c, 97 c, 99 c, 116 c, " BT-SCRIPT+
+   s" P 1537 420 open dup BT-ART-BUF 8 write drop close" BT-SCRIPT+
+   BT-SCRIPT-BUF BT-SCRIPT-LEN BUF-LEN@ ;
 
 : BT-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
    path pathu src srcu WRITE-ALL
