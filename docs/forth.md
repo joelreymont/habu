@@ -1359,9 +1359,20 @@ the rule.
   pushes them back restores the cells but records nothing, because the locals
   frame owns a fresh base row and the terms at its throw edge are not the
   caller's. The edge is not part
-  of a quotation's TYPE, so it survives only on a literal: `['] W catch`, and
-  `catch` of a quotation parameter, of a typed `xt<effect>` cell or of a
-  `defer`, keep the window typed even when the target throws.
+  of a quotation's TYPE, so it travels on a TERM: a literal's, and the one
+  `['] W` pushes, which takes W's own edge with W's own evidence. `['] WMAYBE
+  catch` keeps the address typed while `['] WSWAPT catch`, R1's body as a
+  callee, stales what it swapped — per declared input and in W's own
+  orientation, since a recorded bit already counts from the top of the row the
+  catch measures. A tick bound to a local in the same body is that same term
+  and keeps the edge. What stays outside the rule is the route whose term is a
+  fresh instance of a DECLARED type: `catch` of a quotation parameter, of a
+  typed `xt<effect>` cell or of a `defer` keeps the window typed even when the
+  target throws. A tick of a callee that never RETURNS is unchanged too: it
+  takes the edge but not the dead flag, because a body with no result row and
+  a tick's own routine ABI are what the native elaborator cannot reconcile
+  (`E-NELAB-QUOT`, named on the `[']`), so that catch is still the fit-check
+  against W's declared output row.
 - **A LINEAR handle cannot cross a quotation-literal `catch` at all.** Reading
   it afterwards is `E-STALE-READ` (`expected: XML:reader actual:
   stale<XML:reader>`) and dropping it is the pre-existing linear refusal — a
@@ -1372,7 +1383,9 @@ the rule.
   that work: open the handle INSIDE the caught body (`lib/xml-test.f BAD`), or,
   where the case needs the handle to SURVIVE the caught failure, name the body
   and call `['] WORD catch` (`lib/byte-edit-test.f`, `lib/xml-test.f`
-  `CAPACITY-AND-STATE`, `lib/json-read-test.f JRT-CATCH-BAD`). A MULTICELL
+  `CAPACITY-AND-STATE`, `lib/json-read-test.f JRT-CATCH-BAD`) — which survives
+  exactly while WORD's own throw paths leave the handle where they found it,
+  the evidence the tick carries. A MULTICELL
   bundle is not the same: staleness belongs to the value, not to the W hidden
   cells that carry it, so an `option<pt>` window comes back as ONE
   `stale<option<pt>>` — one `drop` removes it, `nip`/`swap` move it, an untyped

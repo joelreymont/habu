@@ -13571,6 +13571,39 @@ variable IS-PEND-U                   \ and its length
 : BTICK-PUSH ( n -- )                    \ push one row term (xt<effect> quot or plain n)
    DCUR @ MK-PUSH DCUR ! ;
 
+\ THE EDGE A TICKED CALLEE CARRIES. `['] W` names a body, so the term it pushes
+\ takes the exceptional edge W's own definition proved, exactly as the `[: W ;]`
+\ literal's term does: the has-edge flag from W's control word and the intact
+\ masks the NORET store recorded for it. W IS that body, so its masks need no
+\ recomposition — a mask bit counts from the TOP of W's declared input row, and
+\ that row (instantiated by EFF-QUOT) is this term's own din, which is the
+\ window RSCATCH measures the mask against (CWIN-DTERMS / ROW-STALE-TOP).
+\ A symbol with no entry, or one whose flags carry no CTL-THROW, answers 0 and
+\ the term stays edge-free — including a recovery record, which a failed body
+\ appends with no control claims at all. The edge is not part of the quotation
+\ TYPE: it lives on this one term and does not survive a typed `xt<effect>`
+\ cell, a quotation parameter or a `defer`, whose terms are fresh instances of
+\ a declared type (test/xt-cell-test.f, test/xt-effect-test.f pin that).
+\
+\ THE DEAD FLAG IS NOT TAKEN, and the tick keeps modelling W's declared
+\ fall-through as reachable. A quotation whose fall-through is dead publishes no
+\ result row to its site (CWIN-OUT = CELLS-NONE), and the native elaborator
+\ turns that into the body's own calling convention: for a LITERAL it is the
+\ function it is about to emit, but for a tick the row already carries the
+\ declared ABI of an existing routine and the two disagree, which
+\ src/compiler/native/elaborate.f QFILL refuses (E-NELAB-QUOT, named on the
+\ `[']`). Taking the flag here would certify `['] WDEAD catch` and leave `hb`
+\ unable to compile it — measured on `['] W ['] CLEAN finally` (AOT) and on
+\ `( ptr u8 -- n ) ['] WDEAD catch {: v code:n :} code`. A tick of a
+\ never-returning callee therefore stays what it has always been: the fit-check
+\ against its declared output row, refusing the non-preserving ones.
+: BTICK-EDGE ( n n -- n ) {: q:n sym:n :}
+   sym CTL-WORD-SYM {: ctl:n :}
+   ctl XFER-FLAGS CTL-THROW and 0= IF q EXIT THEN
+   q RES-TRUE  RES-FALSE
+   ctl XFER-DMASK XMASK  ctl XFER-RMASK XMASK  QX!
+   q ;
+
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push xt<effect(W)> or a plain n
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
@@ -13580,7 +13613,7 @@ variable IS-PEND-U                   \ and its length
          FEP @ RECOVERY-ROW? 0= IF -1 CAPREQ ! 0 OK ! -1 FAILSET ! EXIT THEN
          RES-TRUE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
       THEN
-      FEP @ EFF-QUOT BTICK-PUSH
+      FEP @ EFF-QUOT FEP @ USIG-SYM@ BTICK-EDGE BTICK-PUSH
    ELSE PE-N BTICK-PUSH THEN ;
 
 \ --- item 12 layout stack-op typing (docs/type-families.md §17) --------------

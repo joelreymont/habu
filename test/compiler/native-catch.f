@@ -327,14 +327,19 @@ PRODUCT point 0
    [: ;] catch {: rc:n :}
    READ-BUNDLES rc ;
 
-\ The contents measurement of a MULTICELL window is the one thing a quotation
-\ LITERAL can no longer express: READ-BUNDLES reads the bundles the throwing
-\ body may have written, and the literal route brings the window back as one
-\ `stale<option<point<>>>` (test/catch-stale-suite.f). An exceptional edge is not
-\ part of a quotation's TYPE, so `['] W catch` keeps the window typed and the
-\ measurement below stays exact.
+\ The contents measurement of a MULTICELL window is what a quotation LITERAL
+\ cannot express: the literal route brings the window back as one
+\ `stale<option<point<>>>` (test/catch-stale-suite.f). `['] W catch` takes W's
+\ OWN throw-edge evidence (the tick route), so the window is typed exactly when
+\ every throw path of W left it where it was: BUNDLE-KEPT builds a bundle and
+\ drops it before throwing, leaving the caller's option in place, and the
+\ measurement below reads it back through the throw path. BUNDLE-THROW, which
+\ replaces the option, stales it on this route too (CATCH-STALE-DROP).
+: BUNDLE-KEPT ( option<point> -- option<point> )
+   SOME-POINT drop -79 throw ;
+
 : CATCH-DEAD ( point option<point> -- n n n )
-   ['] BUNDLE-THROW catch {: rc:n :}
+   ['] BUNDLE-KEPT catch {: rc:n :}
    READ-BUNDLES rc ;
 
 : CATCH-EMPTY-THROW ( point option<point> -- n n n )
@@ -445,7 +450,7 @@ public
    0 T= 42 T= 8 T=
    3 5 NCA--FIXTURE-POINT:MAKE NCA-FIXTURE:NO-POINT
    NCA-FIXTURE:CATCH-DEAD
-   -79 T= 42 T= 8 T=
+   -79 T= 0 T= 8 T=
    3 5 NCA--FIXTURE-POINT:MAKE NCA-FIXTURE:NO-POINT
    [: NCA-FIXTURE:BUNDLE-ID ;] NCA-FIXTURE:CATCH-BUNDLE
    0 T= 0 T= 8 T=

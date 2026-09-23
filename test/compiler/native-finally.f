@@ -53,8 +53,13 @@ variable CLEANED
    6 7 NFIN-POINT:MAKE KEPT CHECK-POSE NFIN-POINT:UNMAKE 7 T= 6 T=
    CLEANED @ 4 T=
    s" a throwing body still runs cleanup and restores its stack depth" T-LABEL
-   1 2 NFIN-POINT:MAKE ['] THROWING catch -71 T=
-   NFIN-POINT:UNMAKE 25 T= 17 T=
+   \ THROWING's body drops the point it was given and builds another before it
+   \ throws, so `['] THROWING catch` takes that evidence and the window comes
+   \ back as one stale bundle (test/catch-stale-suite.f, "the tick route"): it
+   \ drops in one, and the sentinel underneath proves the depth `catch` restored
+   \ is exactly the window's width.
+   42 1 2 NFIN-POINT:MAKE ['] THROWING catch -71 T=
+   drop 42 T=
    CLEANED @ 5 T=
    s" cleanup throws after a body with a grouped result" T-LABEL
    8 9 NFIN-POINT:MAKE ['] CLEANUP-THROWS catch -72 T=

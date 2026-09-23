@@ -17,11 +17,13 @@
 \ stale rule to apply, so only the refusal rows failed on it. The file passes on
 \ the engine this rule and the callee evidence below are built into.
 \
-\ Boundary this rule does NOT cover: the exceptional edge is not part of a
-\ quotation's TYPE, so it survives only on a quotation literal. `['] W catch`,
-\ `catch` of a quotation parameter, of a typed `xt<effect>` cell and of a
-\ `defer` all keep the window typed even when W throws - measured, and the
-\ reason R1's twin `['] SWAP-THROW catch` still certifies.
+\ The exceptional edge is not part of a quotation's TYPE, so it travels on a
+\ TERM: a quotation literal's, and the one `['] W` pushes, which takes W's own
+\ edge with W's own evidence ("the tick route" below, where R1's twin
+\ `['] WSWAPT catch` is refused for R1's reason). The routes this rule still
+\ does NOT cover are the ones whose term is a fresh instance of a DECLARED
+\ type - `catch` of a quotation parameter, of a typed `xt<effect>` cell and of
+\ a `defer` - and they keep the window typed even when the target throws.
 
 require lib/errors.f
 require lib/string.f
@@ -274,6 +276,68 @@ PRODUCT cspt 0
    code2 E-CS-BOOM T=
    q CS-BUF = TTRUE ;
 
+\ ---- the tick route ----------------------------------------------------------
+\ `['] W` pushes a term of W's declared effect, and W IS the body a catch of
+\ that term runs, so the term carries the edge W's own definition proved -
+\ exactly what the `[: W ;]` literal's term carries. Nothing is recomposed: a
+\ recorded bit counts from the TOP of W's declared input row, and that row IS
+\ the pushed term's window, which is what the catch measures the mask against.
+\ T4 and T5 are the two halves of that orientation, per cell and in W's order.
+\ A word with no throw edge records nothing and its tick carries nothing.
+\
+\ The edge still is not part of the quotation TYPE, so the two routes whose
+\ term is a fresh instance of a DECLARED type keep the window typed even when
+\ the target throws: the typed `xt<effect>` cell (T9) and the quotation
+\ parameter (T10), with the direct tick of that same callee (T3) refused beside
+\ them. `['] DEF catch` for a `defer` is the same boundary - the defer's symbol
+\ records no body's evidence (test/xt-cell-test.f GC4). A tick bound to a LOCAL
+\ in the same body is the very term the tick pushed, and keeps its edge (T7,T8).
+: WREPL ( ptr u8 -- ptr u8 ) drop CS-BUF E-CS-BOOM throw ;  \ same type, another cell
+TYPED-VARIABLE CS-XT [ ptr u8 -- ptr u8 ]
+: CS-CATCHP ( ptr u8 [ ptr u8 -- ptr u8 ] -- ptr u8 n ) catch ;
+: CS-TRT ( ptr u8 -- ptr u8 n ) ['] WMAYBE catch ;
+
+: CS-SECTION-TICK ( -- )
+   \ R1's twin: the body is a callee now, and the tick carries its evidence
+   s" T1 ( n ptr u8 -- n ptr u8 n ) ['] WSWAPT catch" CS-CODE<
+   CS-STALE?  CS-CODE-END
+   \ R6's twin: the callee that only READS its input keeps the address typed
+   s" T2 ( ptr u8 -- ptr u8 n ) ['] WMAYBE catch" CHECK-QUIET-CANDIDATE! -1 T=
+   \ the callee that replaces it does not, and the refusal names the read
+   s" T3 ( ptr u8 -- n ) ['] WREPL catch {: v code:n :} v c@" CS-CODE<
+   CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END
+   \ per cell, as C6/C7: WKEEPTOP keeps the top of its window ...
+   s" T4 ( ptr u8 n -- n ) ['] WKEEPTOP catch {: code:n :} nip"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   \ ... and the cell below it is stale, named on the token that reads it
+   s" T5 ( ptr u8 n -- n ) ['] WKEEPTOP catch {: code:n :} drop c@" CS-CODE<
+   CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END
+   \ C4's twin: a callee that bound its input to a local proved nothing
+   s" T6 ( ptr u8 -- ptr u8 n ) ['] WBIND catch" CS-CODE<
+   CS-STALE?  CS-CODE-END
+   \ the local-bound tick: the same term, so the same edge
+   s" T7 ( ptr u8 -- ptr u8 n ) ['] WREPL {: x :} x catch" CS-CODE<
+   CS-STALE?  CS-CODE-END
+   s" T8 ( ptr u8 -- ptr u8 n ) ['] WMAYBE {: x :} x catch" CHECK-QUIET-CANDIDATE! -1 T=
+   \ the boundary: the cell read and the parameter are fresh instances of the
+   \ declared xt type, which carries no edge, so both still certify
+   s" T9 ( ptr u8 -- n ) ['] WREPL CS-XT ! CS-XT @ catch {: v code:n :} v c@"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" T10 ( ptr u8 -- n ) ['] WREPL CS-CATCHP {: v code:n :} v c@"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   \ a callee that never returns is fit-checked against its declared output row
+   \ as it always was: WBOOM leaves nothing where its window was, and THAT is
+   \ the refusal - not the stale rule, which would need the dead flag the tick
+   \ deliberately does not take (src/core/checker.f BTICK-EDGE)
+   s" T11 ( ptr u8 -- n ) ['] WBOOM catch {: v code:n :} code" CS-CODE<
+   s\" \"code\":\"E-STALE-READ\"" DIAG-BUFFER$ 2swap CONTAINS? TFALSE
+   CS-CODE-END
+   \ and the intact cell is honest at run time through the tick as well: WMAYBE
+   \ reads the byte and throws, and the catch hands back the address pushed here
+   CS-BUF CS-TRT {: r code3:n :}
+   code3 E-CS-BOOM T=
+   r CS-BUF = TTRUE ;
+
 : RUN ( -- )
    T-RESET
    CS-SECTION-REPRODUCERS
@@ -285,6 +349,7 @@ PRODUCT cspt 0
    CS-SECTION-ADMITS
    CS-SECTION-BUNDLES
    CS-SECTION-RUNTIME
+   CS-SECTION-TICK
    T-REPORT ;
 
 RUN
