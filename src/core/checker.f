@@ -3118,9 +3118,45 @@ variable QTT  variable QD2  variable QR2
 48 constant XMASK-BITS          \ window cells a mask can speak for
 $FFFFFFFFFFFF constant XMASK-ALL         \ 2^48-1: every window cell intact
 
+\ A mask built by XMASK-OF carries ones above its base row's width, for cells
+\ that do not exist; a mask about to be STORED is cut to the width it speaks for
+\ so the recorded word is as small as the fact it holds. Nothing reads the cut
+\ bits: a call consults exactly the positions it popped, which is the callee's
+\ declared input count.
+: XMASK-LOW ( n n -- n ) {: mask:n k:n :}
+   k XMASK-BITS >= IF mask EXIT THEN
+   mask 1 k lshift 1 - and ;
+
+\ A SYMBOL'S CONTROL WORD, ONE CELL. The control flags live in bits 0-15 and a
+\ defer flag in bit 16 -- the shape the owner-ABI handover (CHECKED-ROW /
+\ TRANSFER-ROW) has always travelled in. The intact masks ride above them, 20
+\ bits each, and the NORET store keeps its entries in this same shape, so the
+\ fact a definition proved about its inputs reaches a later engine without a
+\ wider record or a second cell. Twenty is what fits beside the flags with room
+\ to spare: a word with more than 20 declared inputs keeps no evidence for the
+\ deeper ones, which is the conservative answer, and it is the one a producer
+\ that never heard of masks gives by leaving those bits zero.
+20 constant XFER-MASK-BITS
+$FFFFF constant XFER-MASK-ALL
+20 constant XFER-DMASK-SHIFT
+40 constant XFER-RMASK-SHIFT
+$1FFFF constant XFER-FLAG-MASK       \ the control flags plus the defer bit
+
+: XFER-PACK ( n n n -- n ) {: flags:n dmask:n rmask:n :}
+   flags XFER-FLAG-MASK and
+   dmask XFER-MASK-ALL and XFER-DMASK-SHIFT lshift or
+   rmask XFER-MASK-ALL and XFER-RMASK-SHIFT lshift or ;
+
+: XFER-FLAGS ( n -- n ) XFER-FLAG-MASK and ;
+: XFER-DMASK ( n -- n ) XFER-DMASK-SHIFT rshift XFER-MASK-ALL and ;
+: XFER-RMASK ( n -- n ) XFER-RMASK-SHIFT rshift XFER-MASK-ALL and ;
+
 variable XM-I   variable XM-ACC   variable XS-I
 variable XC-A   variable XC-B
 variable XE-PD  variable XE-PR       \ the rows a token step started from
+\ QDEPTH — the quotation nesting of the walk (CF-QUOT/CF-SEMIQ) — is declared
+\ here because which row a mask's bits index depends on it: see XBASE-D.
+variable QDEPTH
 
 : ROW-TERMS ( n -- n )          \ fixed entries in a row (terms, not cells)
    0 swap
@@ -3167,6 +3203,22 @@ variable XE-PD  variable XE-PR       \ the rows a token step started from
    REPEAT
    2drop XM-ACC @ ;
 
+\ WHICH ROW A MASK'S BITS INDEX. Inside a quotation body it is BROW, the base
+\ the window grows on. At definition level it is the DECLARED input row: a
+\ signature is parsed onto a base of its own (PSIG's PD-BASE), so the live rows
+\ of a body do not descend from the bare row NEW made and an edge measured
+\ against that one is not comparable at all. The bare row is still the answer
+\ where nothing was declared (k = 0 claims nothing a caller can use) and where
+\ the declared row IS the base row, which is how a DOES> body is set up
+\ (CHECK-DOES! puts its own input row in BROW and never records masks).
+: XBASE-D ( -- n )
+   QDEPTH @ 0=  SGSEEN @ 0 <>  and IF SGIN @ ELSE BROW @ THEN ;
+
+\ A signature with no `| rin -- rout` clause leaves SGRIN 0 (CHECK-RESET zeroes
+\ it and only a return clause fills it) and its sealed base row IS RBROW.
+: XBASE-R ( -- n )
+   QDEPTH @ 0=  SGRIN @ 0 <>  and IF SGRIN @ ELSE RBROW @ THEN ;
+
 \ The row a throwing TOKEN leaves: its inputs are popped and its outputs are not
 \ pushed yet, and the token step has already run by the time the edge is taken.
 \ Both the pre-op and the post-op row are the same chain below the token's own
@@ -3185,16 +3237,57 @@ variable XE-PD  variable XE-PR       \ the rows a token step started from
    REPEAT
    XC-A @ ;
 
-: THROW-EDGE ( n n -- )         \ exceptional data row, exceptional return row
-   {: xd:n xr:n :}
-   xd BROW @ XMASK-OF {: dm:n :}
-   xr RBROW @ XMASK-OF {: rm:n :}
+\ THE EDGE A THROWING CALL LEAVES. `ROW-COMMON pre post` is what popping the
+\ callee's own declared inputs leaves of the caller's row, and nothing below it
+\ is within the callee's reach. The popped cells are the question, and the
+\ callee's own record answers it: `keep` bit i -- counted from the TOP of its
+\ declared input row, which is the top of `pre` -- says every throw path of its
+\ body left input i where it was, so the cell `catch`'s depth restore hands back
+\ still holds what the caller put there.
+\
+\ The edge is therefore `pre` measured against the base with the popped and NOT
+\ kept window positions cleared. Window position j holds `pre` position j + s,
+\ s = ROW-TERMS pre - ROW-TERMS base: both count from the top and the two rows
+\ end in the same tail. With keep = 0 this is exactly `XMASK-OF common base`,
+\ the rule before any evidence existed: XMASK-OF's own skip clears the top
+\ (ROW-TERMS base - ROW-TERMS common) positions, which is the same set
+\ { j : 0 <= j + s < popped }, and below the popped region `pre` and `common`
+\ are the same row nodes and compare the same.
+variable XM-K
+: CALL-EDGE-MASK ( n n n n -- n ) {: pre:n post:n keep:n base:n :}
+   pre base XMASK-OF XM-ACC !
+   XM-ACC @ 0= IF 0 EXIT THEN                \ not comparable, or nothing intact
+   base ROW-TERMS {: k:n :}
+   pre ROW-TERMS {: p:n :}
+   p  pre post ROW-COMMON ROW-TERMS -  {: popped:n :}
+   p k - {: s:n :}
+   0 XM-I !
+   BEGIN XM-I @ k < WHILE
+      XM-I @ s + XM-K !
+      XM-K @ 0 >=  XM-K @ popped <  and IF
+         XM-K @ XMASK-BITS >= IF XM-I @ XM-CLEAR ELSE   \ no bit speaks for it
+            1 XM-K @ lshift keep and 0= IF XM-I @ XM-CLEAR THEN
+         THEN
+      THEN
+      XM-I @ 1 + XM-I !
+   REPEAT
+   XM-ACC @ ;
+
+: THROW-EDGE ( n n -- )         \ intact data mask, intact return mask
+   {: dm:n rm:n :}
    THSET @ IF
       THDMASK @ dm and THDMASK !  THRMASK @ rm and THRMASK !
    ELSE
       dm THDMASK !  rm THRMASK !
    THEN
    -1 THSET ! ;
+
+\ The edge a token leaves that proves nothing about the cells it popped: the
+\ exceptional rows measured against the bases, as every edge was before a callee
+\ could carry evidence.
+: THROW-EDGE-ROWS ( n n -- )    \ exceptional data row, exceptional return row
+   {: xd:n xr:n :}
+   xd XBASE-D XMASK-OF  xr XBASE-R XMASK-OF  THROW-EDGE ;
 
 \ A quotation whose declared rows name a concrete linear con is an explicit
 \ linear consumer/producer (checked when it was built): its net count change is
@@ -3295,7 +3388,7 @@ variable QAPP-N
         \ A callee may overwrite every cell it was given before it throws and can
         \ reach nothing below them, so its exceptional row is the live row with
         \ its declared inputs popped and nothing pushed.
-        DCUR @ CWIN-DTERMS @ ROW-SKIP  RCUR @ CWIN-RTERMS @ ROW-SKIP  THROW-EDGE
+        DCUR @ CWIN-DTERMS @ ROW-SKIP  RCUR @ CWIN-RTERMS @ ROW-SKIP  THROW-EDGE-ROWS
      THEN
      QTT @ Q>XDEAD IF
         -1 DEADP !
@@ -3429,7 +3522,7 @@ variable RSRET
    -1 CWIN-KIND !
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
-   cleanup Q>XHAS IF DCUR @ RCUR @ THROW-EDGE THEN   \ a cleanup borrows nothing: its own entry row
+   cleanup Q>XHAS IF DCUR @ RCUR @ THROW-EDGE-ROWS THEN   \ a cleanup borrows nothing: its own entry row
    cleanup Q>XDEAD IF -1 DEADP ! THEN ;
 
 variable RSH
@@ -9835,6 +9928,14 @@ $8 constant EFFECT-EXTERNAL
 \ figure NORET-SNAPSHOT-CAP is written against.
 $18000 constant NORET-INIT-CAP
 
+\ The FLAG cell holds the symbol's whole control word in the XFER-PACK format:
+\ the flags below and, above them, which of the word's DECLARED inputs every
+\ throw path of its body left where they were — bit j counted from the TOP of
+\ the declared input row, the same order XMASK-OF builds. The masks mean
+\ something only when the flags carry CTL-THROW; a word with no throw edge
+\ records 0 0, which is what a caller's edge already assumes. One cell, so the
+\ entry stays three cells wide (test/engine-suite.f pins that), a snapshot keeps
+\ its size and the facts travel to the owner ABI without re-encoding.
 0 constant NORET-SYM-CELL
 1 constant NORET-FLAG-CELL
 2 constant NORET-SYMPREV-CELL
@@ -9863,7 +9964,7 @@ NORET-LAYOUT-ASSERT
 create NORET-BOOT NORET-INIT-CAP allot
 PERSISTED-PTR-VARIABLE NORET-P   variable NORET-CAP-U   variable NORET-END
 NORET-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !   0 NORET-BOOT !
-variable NORET-FLAG
+variable NORET-CTL      \ the packed control word NORET-SCAN-SYM last read
 variable NORET-GROW-CAP   PTR-VARIABLE NORET-GROW-NEXT
 
 : NORETS ( -- ptr u8 ) NORET-P @ ;
@@ -10323,7 +10424,7 @@ REG-EXT-AOT-DEFAULTS
 : NORET-REC ( -- ptr n )
    NORET-END @ NORET-CELL ;
 
-: NORET-FLAG@ ( ptr n -- n )
+: NORET-CTL@ ( ptr n -- n )
    NORET.FLAG @ ;
 
 \ HIDX-CTL-SYNC ( -- ) : flush the cache when NORETS rewound below a cached
@@ -10337,25 +10438,30 @@ REG-EXT-AOT-DEFAULTS
 \ A 0 symbol is not a fact about any word — CTL-FLAGS-SYM answers 0 for it
 \ without ever reading the store — and its SYM cell is the store terminator, so
 \ writing one would hide every entry appended after it. Record nothing.
-: NORET-ADD-SYM {: sym:n flag:n :}
+: NORET-ADD-SYM {: sym:n flag:n dmask:n rmask:n :}
    sym 0= IF EXIT THEN
+   flag dmask rmask XFER-PACK {: ctl:n :}
    HIDX-CTL-SYNC
    NRX-ENSURE                    \ NRX-LINK writes into the mapping: same precondition
    NORET-END @ NORET-ENTRY + CELL + NORET-ENSURE
    sym NORET-REC NORET.SYM !
-   flag NORET-REC NORET.FLAG !
+   ctl NORET-REC NORET.FLAG !
    0 NORET-REC NORET.SYMPREV !
    NORET-END @ sym NRX-LINK
    NORET-END @ NORET-ENTRY + NORET-END !
    NORET-TERM
    NRX-STAMP                     \ NORET-ENSURE may have moved the store
    HIDX-VALID @ IF
-      flag sym HIDX-CTL!
+      ctl sym HIDX-CTL!         \ the cache holds the same packed word the store does
       NORET-END @ HIDX-CTL-DEP+
    THEN ;
 
+\ The name-keyed appender records NO intact evidence: every caller of it has
+\ none to give (the axioms below, an undefine, a body that failed to check, a
+\ test pinning a flag). A definition that proved some of its inputs intact
+\ appends through NORET-ADD-SYM with the masks it measured.
 : NORET-ADD {: a:ptr u:n flag:n :}
-   a u CHECKER-RECORD-SYM flag NORET-ADD-SYM ;
+   a u CHECKER-RECORD-SYM flag 0 0 NORET-ADD-SYM ;
 
 \ The two path-ending words the engine owns. `throw` leaves through the catch
 \ edge, so it carries both flags; `die` ends the process and is dead only. They
@@ -10389,31 +10495,46 @@ NORET-END @ constant NORET-PRIM-END
 
 variable NORET-FMEND
 
-\ NORET-SCAN-SYM ( n -- ) : NORET-FLAG = the newest flag for sym (later wins, 0
-\ when the symbol has no entry); NORET-FMEND = that entry's end offset (the cache
-\ dependency). Older entries are shadowed by the newest one and cannot change
-\ either value, so the per-symbol head answers both in one load.
+\ NORET-SCAN-SYM ( n -- ) : NORET-CTL = the newest packed control word for sym
+\ (later wins, 0 when the symbol has no entry); NORET-FMEND = that entry's end
+\ offset (the cache dependency). Older entries are shadowed by the newest one and
+\ cannot change either value, so the per-symbol head answers both in one load.
 : NORET-SCAN-SYM {: sym:n :}
-   0 NORET-FLAG !
+   0 NORET-CTL !
    0 NORET-FMEND !
    sym NORET-NEWEST dup 0= IF drop EXIT THEN
    1 - {: off:n :}
-   off NORET-CELL NORET-FLAG@ NORET-FLAG !
+   off NORET-CELL NORET-CTL@ NORET-CTL !
    off NORET-ENTRY + NORET-FMEND ! ;
 
-: CTL-FLAGS-SYM {: sym:n :}
+\ The symbol's whole control word: the flags and the intact masks in the one
+\ cell the store keeps them in, so the cached word serves both readers below.
+: CTL-WORD-SYM {: sym:n :}
    sym 0= IF 0 EXIT THEN
    HIDX-ENSURE
    HIDX-CTL-SYNC
    sym HIDX-CTL@ IF EXIT THEN
    drop
    sym NORET-SCAN-SYM
-   NORET-FLAG @ sym HIDX-CTL!
+   NORET-CTL @ sym HIDX-CTL!
    NORET-FMEND @ HIDX-CTL-DEP+
-   NORET-FLAG @ ;
+   NORET-CTL @ ;
+
+: CTL-WORD {: a:ptr u:n :}
+   a u CHECKER-FIND-ACTIVE-SYM CTL-WORD-SYM ;
+
+: CTL-FLAGS-SYM ( n -- n ) CTL-WORD-SYM XFER-FLAGS ;
 
 : CTL-FLAGS {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM CTL-FLAGS-SYM ;
+
+\ The intact masks of the same word: which of the callee's declared inputs every
+\ throw path of its body left where they were. Asked only by a token that takes
+\ a throw edge.
+: CTL-MASKS-SYM ( n -- n n ) CTL-WORD-SYM dup XFER-DMASK swap XFER-RMASK ;
+
+: CTL-MASKS ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   a u CHECKER-FIND-ACTIVE-SYM CTL-MASKS-SYM ;
 
 : EFFECT-EXTERNAL-SYM? ( n -- bool )
    CTL-FLAGS-SYM EFFECT-EXTERNAL and 0 <> ;
@@ -10429,11 +10550,14 @@ variable NORET-FMEND
 
 package CHECKER-EFFECT-AUTHORITY
 private
+\ Later-wins: an entry appended for the authority bit alone must carry the
+\ symbol's existing masks forward, or it would silently retract evidence the
+\ definition end recorded a moment earlier.
 : STORE ( n bool -- ) {: sym:n external:bool :}
    sym CTL-FLAGS-SYM {: old:n :}
    old EFFECT-EXTERNAL invert and
    external IF EFFECT-EXTERNAL or THEN {: flags:n :}
-   old flags <> IF sym flags NORET-ADD-SYM THEN ;
+   old flags <> IF sym flags sym CTL-MASKS-SYM NORET-ADD-SYM THEN ;
 : INSTALL ( -- ) [: STORE ;] is PUBLISH-XT ;
 INSTALL
 get-current prot-wid-add
@@ -10465,7 +10589,8 @@ get-current prot-wid-add
 \ M5: OR CTL-BARRIER into a symbol's control flags (append later-wins, preserving
 \ any dead/throw already recorded), then arm the E-ADD-EFFECT hook.
 : PTX-BARRIER-SET ( n -- ) {: sym:n :}
-   sym CTL-FLAGS-SYM CTL-BARRIER or sym swap NORET-ADD-SYM ;
+   sym CTL-FLAGS-SYM CTL-BARRIER or {: flags:n :}
+   sym flags sym CTL-MASKS-SYM NORET-ADD-SYM ;   \ masks forward: see STORE
 : PTX-BARRIER-SET-INSTALL ( -- ) [: PTX-BARRIER-SET ;] is PTX-BARRIER-SET-XT ;
 PTX-BARRIER-SET-INSTALL
 
@@ -10500,6 +10625,15 @@ variable CURSYM
 
 : THROW-CUR? ( -- bool )
    CTL-FLAGS-CUR CTL-THROW and 0 <> ;
+
+\ The edge the token the walk just applied leaves, with whatever its own body
+\ proved about the inputs it was given (CALL-EDGE-MASK). A symbol with no entry
+\ answers 0 0 and the edge is the conservative one: every input overwritten.
+: CALL-THROW-EDGE ( -- )
+   CURSYM @ CTL-MASKS-SYM {: dk:n rk:n :}
+   XE-PD @ DCUR @ dk XBASE-D CALL-EDGE-MASK
+   XE-PR @ RCUR @ rk XBASE-R CALL-EDGE-MASK
+   THROW-EDGE ;
 
 \ M5: current token is a block collective (CTL-BARRIER, set by E-ADD-EFFECT). The
 \ classification helpers (ROW-HAS-FAM?/PTX-BARRIER-ROWS?) live above E-ADD-EFFECT.
@@ -10721,10 +10855,13 @@ variable UNSAFE-SYM-N
    ta tu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN ;
 
+\ An export is the same xt under another tail, so the evidence its body proved
+\ about its declared inputs is the exported name's too.
 : EXPORT-META-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-DEFER IF a u EXPORT-TAIL$ DFER-ADD THEN
    a u CTL-FLAGS {: ctl:n :}
-   a u EXPORT-TAIL$ ctl NORET-ADD ;
+   a u CTL-MASKS {: dm:n rm:n :}
+   a u EXPORT-TAIL$ CHECKER-RECORD-SYM ctl dm rm NORET-ADD-SYM ;
 
 : CHECKER-EXPORT ( ptr u8 n -- ) {: a:ptr u:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
@@ -11549,7 +11686,6 @@ defer LOCSHOWXT ( ptr u8 n n -- )
 : LOCSHOW-DEFAULT ( -- ) [: 2drop drop ;] is LOCSHOWXT ;
 LOCSHOW-DEFAULT
 variable #CFC
-variable QDEPTH
 
 variable LCO
 
@@ -12678,6 +12814,7 @@ variable DIAG-QUIET
    [: ;] is DIAGXT ;
 DIAG-HOOK-DEFAULTS
 variable CTLNEW
+variable CTLDNEW   variable CTLRNEW   \ the intact masks recorded beside them
 \ the engine folds A-Z in keyword and dict matching — fold every token the same
 \ way (into a scratch copy: the source text may live in the read-only image).
 variable TKFU
@@ -13658,9 +13795,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    THEN   \ live immediate with a usig: wrong-certificate reject (p5)
    DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
    TKF TKFU @ DO-TOK
-   OK @ IF THROW-CUR? IF
-      XE-PD @ DCUR @ ROW-COMMON  XE-PR @ RCUR @ ROW-COMMON  THROW-EDGE
-   THEN THEN
+   OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN
    OK @ IF DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF a u REJECT-DIVBAR THEN THEN THEN
    STRING-PAYLOAD-STEP
@@ -14405,6 +14540,9 @@ defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
    src E-PTR 0 ASIG-GRAPH-PTR EFF-REC USIGS-COPY
    ASIG-GRAPH-MAGIC 0 ASIG-GRAPH-PTR ER.ACTIVE !
    0 0 ASIG-GRAPH-PTR ER.SYMPREV !
+   \ Flags and defer only: CK-GRAPH-REC refuses an ER.SYM outside $1000F, so a
+   \ captured graph carries no intact masks and a seeded signature's callee is
+   \ read back with none. Widening that word is a version of this format.
    sym CTL-FLAGS-SYM
    sym DFER-FIND-SYM IF ASIG-GRAPH-DEFER or THEN
    0 ASIG-GRAPH-PTR ER.SYM !
@@ -14870,7 +15008,7 @@ ASIG-GRAPH-CHECK-INSTALL
    base bytes + UEND ! rec E-REC-FINISH USX-STAMP
    base UEND @ UIX-REC-ADD UIX-STAMP
    HIDX-VALID @ IF base 1+ sym HIDX-EFF! UEND @ HIDX-EFF-DEP+ THEN
-   sym source ER.SYM @ ASIG-GRAPH-DEFER invert and NORET-ADD-SYM
+   sym source ER.SYM @ ASIG-GRAPH-DEFER invert and 0 0 NORET-ADD-SYM
    sym source ER.SYM @ ASIG-GRAPH-DEFER and 0 <> DFER-ADD-SYM
    was CHECKER-REC-SYM ! ;
 
@@ -15383,8 +15521,19 @@ variable CTOR-PEND-I
       0 CTLNEW !
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
       THSET @ IF CTLNEW @ CTL-THROW or CTLNEW ! THEN
-      NMA @ NMU @ CTL-FLAGS CTLNEW @ <> IF
-         NMA @ NMU @ CTLNEW @ NORET-ADD
+      \ The body's folded evidence, which is about the DECLARED input rows the
+      \ edges were measured against (XBASE-D): with no declared signature there
+      \ is no such row and nothing is claimed.
+      THSET @ CHECK-SIG? and IF
+         THDMASK @ XBASE-D ROW-TERMS XMASK-LOW
+         THRMASK @ XBASE-R ROW-TERMS XMASK-LOW
+      ELSE 0 0 THEN
+      CTLRNEW !  CTLDNEW !
+      \ One word holds both, so one comparison decides whether this definition
+      \ says anything the store does not already hold about the name.
+      NMA @ NMU @ CTL-WORD
+      CTLNEW @ CTLDNEW @ CTLRNEW @ XFER-PACK <> IF
+         NMA @ NMU @ CHECKER-RECORD-SYM CTLNEW @ CTLDNEW @ CTLRNEW @ NORET-ADD-SYM
       THEN
       CHECK-SIG? IF
          SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-PARSED
@@ -16220,7 +16369,8 @@ $10000 constant TRANSFER-DEFER
    off 1- E-PTR {: rec:ptr :}
    rec ER.ACTIVE @ 0= if NULL-PTR NULL-PTR NULL-PTR 0 RES-TRUE exit then
    id CTL-FLAGS-SYM
-   id DFER-FIND-SYM if TRANSFER-DEFER or then {: flags:n :}
+   id DFER-FIND-SYM if TRANSFER-DEFER or then
+   id CTL-MASKS-SYM XFER-PACK {: flags:n :}
    USIGS rec id SYM-ROW flags RES-TRUE ;
 
 : CON-NAME ( n -- ptr u8 n ) CT-NAME$ ;
@@ -16251,10 +16401,11 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    sym SYM.NAME-A @ sym SYM.NAME-U @ SYM-INTERN ;
 
 : TRANSFER-ROW ( ptr u8 ptr u8 ptr u8 n -- )
-   {: pool:ptr rec:ptr name:ptr flags:n :}
+   {: pool:ptr rec:ptr name:ptr packed:n :}
    rec 0= if exit then
    name TRANSFER-SYMBOL {: sym:n :}
    sym USIG-NEWEST 0= 0= if exit then
+   packed XFER-FLAGS {: flags:n :}
    NEW rec E-INST-RESET
    rec ER.DIN @ pool E-INST-FROM
    rec ER.DOUT @ pool E-INST-FROM
@@ -16262,7 +16413,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    rec ER.ROUT @ pool E-INST-FROM
    sym CHECKER-REC-SYM !
    rec ER.HASR @ 0= 0= flags EFFECT-EXTERNAL and 0 <> E-ADD-EFFECT
-   sym flags TRANSFER-DEFER invert and NORET-ADD-SYM
+   sym flags TRANSFER-DEFER invert and  packed XFER-DMASK  packed XFER-RMASK  NORET-ADD-SYM
    sym flags TRANSFER-DEFER and 0= 0= DFER-ADD-SYM ;
 
 : TRANSFER-ROWS ( -- )

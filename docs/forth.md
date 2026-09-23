@@ -1333,7 +1333,13 @@ the rule.
   `SWAP-THROW ( n ptr u8 -- n ptr u8 n ) [: swap -99 throw ;] catch` certified
   and returned (address, 17, -99) where its signature said (n, ptr u8, n), and
   the caller's `{: value code :}` then read an integer as a pointer.
-  `test/catch-stale-suite.f` pins the rows. A stale cell may be moved, dropped
+  `test/catch-stale-suite.f` pins the rows. A CALLEE carries its own evidence:
+  the checker records per definition which declared inputs every throw path of
+  its body left where they were, so `( ptr u8 -- ptr u8 n ) [: WMAYBE ;] catch`
+  over `: WMAYBE ( ptr u8 -- ptr u8 ) dup c@ 0= IF E-CS-BOOM throw THEN ;`
+  keeps the address typed while the same catch of a body that drops it, swaps
+  it, binds it to a local or overwrites it on one arm still stales it. A stale
+  cell may be moved, dropped
   or bound to an untyped local; `@`, `c@`, arithmetic, a typed local and the
   definition's own declared output refuse it, and no refinement un-stales one —
   the migration is to bind the value to a local BEFORE the catch, or to drop
@@ -1343,10 +1349,16 @@ the rule.
   `( n -- n n ) [: drop 5 -99 throw ;] catch` is refused too — the value the
   body left is a different term, and binding the variable to compare types
   would make a quotation monomorphic wherever it is merely executed. A called
-  word that throws counts as overwriting every input it declared, because it
-  may rewrite them all before it throws and can reach nothing below them:
-  `( ptr u8 -- ptr u8 n ) [: W ;] catch` is refused for a `W ( ptr u8 -- )`
-  with any throw edge, whether or not `W` writes the cell. The edge is not part
+  word that throws counts as overwriting every input it declared unless its own
+  body proved otherwise, because it may rewrite them all before it throws and
+  can reach nothing below them: `( ptr u8 -- ptr u8 n ) [: W ;] catch` is
+  refused for a `W ( ptr u8 -- )` that drops, swaps or rebuilds the cell on any
+  throw path — one such arm clears the evidence for all of them — and the
+  evidence covers at most the top 20 declared inputs, a deeper one being
+  reported not intact. Its limit: a callee that BINDS its inputs to locals and
+  pushes them back restores the cells but records nothing, because the locals
+  frame owns a fresh base row and the terms at its throw edge are not the
+  caller's. The edge is not part
   of a quotation's TYPE, so it survives only on a literal: `['] W catch`, and
   `catch` of a quotation parameter, of a typed `xt<effect>` cell or of a
   `defer`, keep the window typed even when the target throws.

@@ -12,8 +12,10 @@
 \
 \ Every refused row below was ACCEPTED by the engine before this rule
 \ (3da80b23) except R4 and R5, which it refused as an ordinary type mismatch
-\ without naming the reason; each row says which. Measured: this file fails 16
-\ assertions on 3da80b23 and passes on the engine this rule is built into.
+\ without naming the reason; each row says which. That engine accepted the
+\ CERTIFIED rows too - R6, R8, C1, C6 and the runtime ones - for want of any
+\ stale rule to apply, so only the refusal rows failed on it. The file passes on
+\ the engine this rule and the callee evidence below are built into.
 \
 \ Boundary this rule does NOT cover: the exceptional edge is not part of a
 \ quotation's TYPE, so it survives only on a quotation literal. `['] W catch`,
@@ -40,6 +42,28 @@ variable CS-TICK
 : CLEANMAYBE ( -- ) CS-TICK @ 0= IF E-CS-BOOM throw THEN ;       \ a cleanup that may throw
 : FINBODY ( ptr u8 -- ptr u8 ) dup c@ drop ;
 : FINW ( ptr u8 -- ptr u8 ) [: FINBODY ;] [: CLEANMAYBE ;] finally ;
+
+\ ---- callees whose own throw paths say what they did with their inputs ------
+: WMAYBE2 ( ptr u8 -- ptr u8 )            \ two throw paths, both leave the cell
+   dup c@ 0= IF E-CS-BOOM throw THEN
+   dup c@ 65 = IF E-CS-BOOM throw THEN ;
+: WPARTLY ( ptr u8 -- ptr u8 )            \ two throw paths, one of them overwrote it first
+   dup c@ 0= IF E-CS-BOOM throw THEN
+   dup c@ 65 = IF drop 5 E-CS-BOOM throw THEN ;
+: WSWAPT ( n ptr u8 -- n ptr u8 ) swap E-CS-BOOM throw ;   \ R1's body as a callee
+: WBIND ( ptr u8 -- ptr u8 ) {: p :} p drop E-CS-BOOM throw ; \ the input went into the frame
+: WKEEPTOP ( ptr u8 n -- ptr u8 n )       \ keeps the top cell, replaces the one below it
+   swap drop 5 swap E-CS-BOOM throw ;
+: WRSWAP ( n | ptr u8 -- n | ptr u8 ) r> swap >r E-CS-BOOM throw ;  \ R2's body as a callee
+
+\ Checker-internal readers probed at top level go through named trusted shims
+\ (the type-export-suite boundary): CTL-MASKS is the store's own answer for a
+\ word, XFER-PACK the one cell those facts travel in.
+TRUSTED: CS-CTL-MASKS ( ptr u8 n -- n n ) CTL-MASKS ;
+TRUSTED: CS-XPACK ( n n n -- n ) XFER-PACK ;
+TRUSTED: CS-XFLAGS ( n -- n ) XFER-FLAGS ;
+TRUSTED: CS-XDMASK ( n -- n ) XFER-DMASK ;
+TRUSTED: CS-XRMASK ( n -- n ) XFER-RMASK ;
 
 \ ---- the refusal shape: a candidate with JSON diagnostics captured ----------
 create CS-DBUF 8192 allot
@@ -77,19 +101,21 @@ create CS-DBUF 8192 allot
    CS-STALE?  CS-CODE-END ;
 
 \ ---- where a throw edge comes from ------------------------------------------
-\ A callee that throws counts as overwriting every input it declared: it may
-\ rewrite them all before it throws and can reach nothing below them. WMAYBE
-\ only READS its input, and the rule still refuses - that conservative edge is
-\ this lane's cost, and the evidence a callee could retain is the next one.
+\ A callee that throws counts as overwriting every input it declared UNLESS its
+\ own body proved otherwise: the checker records, per definition, which declared
+\ inputs every throw path of that body left where they were, and a call takes
+\ the edge with those cells kept. WMAYBE only READS its input, so R6 certifies;
+\ the callee rows below are where that evidence is measured.
 : CS-SECTION-EDGES ( -- )
-   s" R6 ( ptr u8 -- ptr u8 n ) [: WMAYBE ;] catch" CS-CODE<
-   CS-STALE?  CS-CODE-END
+   s" R6 ( ptr u8 -- ptr u8 n ) [: WMAYBE ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ a `finally` cleanup that throws is a throw edge of the word that runs it
    s" R7 ( ptr u8 -- ptr u8 n ) [: FINW ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END
-   \ a join: the loop needs the cell's type on the back edge, and no refinement
-   \ ever un-stales a cell
-   s" R8 ( ptr u8 -- ptr u8 ) begin [: WMAYBE ;] catch 0= until" CS-CODE<
+   \ a join: the loop needs the cell's type on the back edge, and WMAYBE's
+   \ evidence is what carries it there (with WBOOM in its place this is refused,
+   \ and no refinement ever un-stales a cell)
+   s" R8 ( ptr u8 -- ptr u8 ) begin [: WMAYBE ;] catch 0= until" CHECK-QUIET-CANDIDATE! -1 T=
+   s" R8B ( ptr u8 -- ptr u8 ) begin [: WBOOM CS-BUF ;] catch 0= until" CS-CODE<
    CS-CODE-END
    \ A quotation literal infers its window on a fresh row, so at the edge the
    \ window cell is still an unbound variable and a rewrite with a value of the
@@ -100,6 +126,66 @@ create CS-DBUF 8192 allot
    \ after it.
    s" R9 ( n -- n n ) [: drop 5 -99 throw ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END ;
+
+\ ---- what a callee's own body proves about the inputs it was given ----------
+\ The evidence is per DECLARED input, folded with AND over every throw path of
+\ the callee's body and measured the same way a quotation's is: the cell at that
+\ position is still THE SAME TERM at the edge. A cell that went into a locals
+\ frame is gone from the row (the frame owns a fresh base), a cell the body
+\ swapped or replaced is a different term, and one arm that overwrites is enough
+\ to clear the bit for every path.
+: CS-SECTION-CALLEES ( -- )
+   \ both throw paths leave the input where it was
+   s" C1 ( ptr u8 -- ptr u8 n ) [: WMAYBE2 ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
+   \ one of the two overwrote it
+   s" C2 ( ptr u8 -- ptr u8 n ) [: WPARTLY ;] catch" CS-CODE<
+   CS-STALE?  CS-CODE-END
+   \ R1's body as a callee: the throw path swapped the two cells
+   s" C3 ( n ptr u8 -- n ptr u8 n ) [: WSWAPT ;] catch" CS-CODE<
+   CS-STALE?  CS-CODE-END
+   \ the input was bound to a local: the cells the callee was given are spent
+   s" C4 ( ptr u8 -- ptr u8 n ) [: WBIND ;] catch" CS-CODE<
+   CS-STALE?  CS-CODE-END
+   \ R2's body as a callee: the return-stack twin
+   s" C5 ( n | ptr u8 -- n n | ptr u8 ) [: WRSWAP ;] catch" CS-CODE<
+   CS-STALE?  CS-CODE-END
+   \ per cell, not per word: WKEEPTOP keeps the top of its window and not the
+   \ cell below it, so the `n` comes back typed ...
+   s" C6 ( ptr u8 n -- n ) [: WKEEPTOP ;] catch {: code:n :} nip"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   \ ... and reading the cell below it is E-STALE-READ on the token that reads
+   s" C7 ( ptr u8 n -- n ) [: WKEEPTOP ;] catch {: code:n :} drop c@" CS-CODE<
+   CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END ;
+
+\ The masks the checker recorded for those same fixtures, read out of its store.
+\ Bit 0 is the TOP declared input and the mask is cut to the width the signature
+\ declared - a bit above it would speak for a cell that does not exist - so each
+\ row names the whole recorded word.
+: CS-SECTION-RECORDED ( -- )
+   s" WMAYBE" CS-CTL-MASKS drop 1 T=              \ one declared input, left alone
+   s" WMAYBE2" CS-CTL-MASKS drop 1 T=
+   s" WBOOM" CS-CTL-MASKS drop 0 T=
+   s" WPARTLY" CS-CTL-MASKS drop 0 T=
+   s" WBIND" CS-CTL-MASKS drop 0 T=
+   s" WSWAPT" CS-CTL-MASKS drop 0 T=              \ two inputs, the throw path swapped them
+   s" WKEEPTOP" CS-CTL-MASKS drop 1 T=            \ top kept, the cell below it not
+   s" WRSWAP" CS-CTL-MASKS 0 T= 0 T=              \ the return cell was moved, and so was the data one
+   \ a word with no throw edge at all records nothing: its call takes no edge
+   s" WKEEP" CS-CTL-MASKS 0 T= 0 T= ;
+
+\ The one cell a symbol's control facts travel in (the owner-ABI handover and
+\ the captured signature graph): the flags keep the low bits and the masks ride
+\ above them, 20 bits each, so a mask wider than that arrives truncated - which
+\ is the conservative direction.
+: CS-SECTION-XFER ( -- )
+   $1000A $ABCDE $12345 CS-XPACK {: packed:n :}
+   packed CS-XFLAGS $1000A T=
+   packed CS-XDMASK $ABCDE T=
+   packed CS-XRMASK $12345 T=
+   $2 $FFFFFFFFFFFF $FFFFFFFFFFFF CS-XPACK {: wide:n :}
+   wide CS-XFLAGS $2 T=
+   wide CS-XDMASK $FFFFF T=
+   wide CS-XRMASK $FFFFF T= ;
 
 \ ---- what the rule still admits ---------------------------------------------
 : CS-SECTION-ADMITS ( -- )
@@ -175,16 +261,27 @@ PRODUCT cspt 0
 16 BUFFER: CS-BUF
 : CS-RT ( ptr u8 -- ptr u8 n ) [: dup c@ drop E-CS-BOOM throw ;] catch ;
 
+: CS-CRT ( ptr u8 -- ptr u8 n ) [: WMAYBE ;] catch ;   \ the same, through a CALLEE
+
 : CS-SECTION-RUNTIME ( -- )
    CS-BUF CS-RT {: p code:n :}
    code E-CS-BOOM T=
-   p CS-BUF = TTRUE ;
+   p CS-BUF = TTRUE
+   \ WMAYBE reads the zero byte and throws without touching the address: the
+   \ catch hands back the address the caller pushed, which is what its evidence
+   \ promised the checker
+   CS-BUF CS-CRT {: q code2:n :}
+   code2 E-CS-BOOM T=
+   q CS-BUF = TTRUE ;
 
 : RUN ( -- )
    T-RESET
    CS-SECTION-REPRODUCERS
    CS-SECTION-READS
    CS-SECTION-EDGES
+   CS-SECTION-CALLEES
+   CS-SECTION-RECORDED
+   CS-SECTION-XFER
    CS-SECTION-ADMITS
    CS-SECTION-BUNDLES
    CS-SECTION-RUNTIME

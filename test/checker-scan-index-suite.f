@@ -103,14 +103,14 @@ TYPED-VARIABLE SCX-NU n
 TRUSTED: SCX-SYM-INTERN ( -- n ) s" " SYM-GLOBAL SCX-NA @ SCX-NU @ SYM-INTERN ;
 
 \ the two scans the dot names, read directly: SCAN-USIGS-SYM leaves its answer
-\ in FEP/FMEND and NORET-SCAN-SYM in NORET-FLAG, and the memoizing entry points
+\ in FEP/FMEND and NORET-SCAN-SYM in NORET-CTL, and the memoizing entry points
 \ above them can hide a wrong answer behind a cache hit.
 TRUSTED: SCX-SCAN-USIG ( n -- ) SCAN-USIGS-SYM ;
 TRUSTED: SCX-FEP-HIT? ( -- bool ) FEP-HIT? ;
 TRUSTED: SCX-FEP-MINI ( -- n ) FEP @ ER.MINI @ ;
 : SCX-FMEND ( -- n ) FMEND @ ;
 TRUSTED: SCX-SCAN-NORET ( n -- ) NORET-SCAN-SYM ;
-: SCX-NORET-FLAG ( -- n ) NORET-FLAG @ ;
+TRUSTED: SCX-NORET-FLAGS ( -- n ) NORET-CTL @ XFER-FLAGS ;   \ the control word's flag bits
 
 \ Each index carries the store end it was last made exact at. A rollback that
 \ repaired the index in place leaves that mark at or below the store's new end;
@@ -204,7 +204,7 @@ s" SCXT" SCX-ACTIVE-SYM IX !
 IX @ SCX-NORET-NEWEST 0 <> TTRUE               \ the differential below is not vacuous
 IX @ SCX-NORET-NEWEST  IX @ SCX-NORET-NEWEST-LINEAR T=
 IX @ SCX-SCAN-NORET
-SCX-NORET-FLAG CTL-THROW and 0 T=              \ the scan reports the LATEST entry's flags
+SCX-NORET-FLAGS CTL-THROW and 0 T=              \ the scan reports the LATEST entry's flags
 
 \ 1e. an entry the store cannot key. CHECKER-RECORD-SYM answers 0 for a token it
 \     cannot resolve, and a NORETS entry keyed 0 is indistinguishable from the
@@ -354,7 +354,7 @@ SCX-CAND-START
 SCX-MARKS-EXACT                                      \ read FIRST: a lookup would rebuild
 s" SCXT" SCX-ACTIVE-SYM IX !
 IX @ SCX-SCAN-NORET
-SCX-NORET-FLAG CTL-DEAD and 0 T=                     \ the entry below the frame answers
+SCX-NORET-FLAGS CTL-DEAD and 0 T=                     \ the entry below the frame answers
 s" SCXT" SCX-CTL-FLAGS CTL-DEAD and 0 T=
 SCX-DIFF-ALL
 
