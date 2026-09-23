@@ -1,0 +1,9 @@
+---
+title: Check typed storage stores at the top level
+status: open
+priority: 3
+issue-type: task
+created-at: "2026-09-23T11:30:21.005778+03:00"
+---
+
+Problem: the top level is the unchecked door for storage of every declared type, measured on the int-cells lane engine d0e7b996: TYPED-VARIABLE V n then ' FOO V ! at the top level is admitted (prints a code address, rc 0) while the same store inside a definition is refused (in store: at '!' expected: n ptr n actual: [ -- ] ptr n); variable V then ' FOO V ! at the top level is admitted too. docs/effects.md states that raw storage never holds an address, which holds inside definitions only (the HBT-STRIPPED-MAPPED-CELL comment in tools/hb-build-stripped-cells-test.f names the door). Because the door is open for raw and typed cells alike, the stripped closure scan (SCAN-DATA-CELL, src/habu/aot-lib.f) must keep classifying every non-string data cell by value, and a plain integer whose value looks like an address (Tender integer.f, 24997232) stays refused. Language decision for Joel: either the checker types top-level stores as it types stores inside definitions, after which the scan may skip cells declared n by their table row, or the door stays and docs/effects.md states the top-level exception. Acceptance: one of the two, pinned by the measured programs above: a refused typed top-level store and the scan skipping n cells for the first; a doc line plus the admitted row and the value-scan refusal pinned for the second. Files: the checker under src/habu/, src/habu/aot-lib.f, docs/effects.md, docs/forth-card.md, test/compiler/aot-data-cell-refusals.f. Verify: bin/hb --load test/compiler/aot-data-cell-refusals.f tools/hb-build-stripped-cells-test.f and the checker suite the decision names. Depends: none. Ownership: undecided until Joel picks the rule. Claim: unassigned.
