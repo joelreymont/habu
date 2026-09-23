@@ -61,6 +61,10 @@ seed; the release copy for other agents is `/tmp/hazel-release/hb`.
   proved nothing. Install it the way the host installs toolchains (`brew install
   rocq` on macOS) and re-run; do not add skip logic. Verify with
   `bin/hb --load test/compiler/ir-id-proof.f`, which must print `test: ok`.
+  A `rocq` from a user-space opam switch resolves through `$HOME/.opam`, so a
+  suite run under a scratch `HOME` (a lane's `env -i` line) must link `.opam`
+  into that `HOME`; without it the seven gates fail with rc 127 before any
+  obligation is checked.
 - GB10 device gates (sm_121a) **require** the pinned 13.3 `ptxas` in
   `~/.habu/toolchain/ptxas-13.3.33`: since `habu-enforce-pinned-ptxas-4598a743`,
   an sm_121 assemble fails closed (`E-PTXTC-STALE`/`E-PTXTC-DIGEST`) unless the
