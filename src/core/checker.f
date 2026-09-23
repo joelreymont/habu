@@ -6736,6 +6736,38 @@ variable DOESPEND  0 DOESPEND !
    DOESPEND @ 2 = IF DOESEFF @ ELSE 0 THEN
    DOES-EFF-CLEAR ;
 
+\ WRAPN/WRAPC/WRAPBENT: the same fact about a WRAPPER of a definer, learned
+\ where every certified body is walked. `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE
+\ BUFFER-E ;` (lib/codegen.f) creates whatever BUFFER-E creates, because calling
+\ it reaches that one definer call on every path: the walk counts the definer
+\ calls a body makes (WRAPN, with WRAPC the created effect of the last one) and
+\ notes whether the line ever bent away from a straight one (WRAPBENT — any
+\ control frame, quotation, `exit`, `leave` or `recurse`; `[` and `]` are
+\ UNSAFE-TOK? and refuse the body). Exactly one call and no bend is the rule.
+\
+\ THE WALK IS WHERE THE RULE BELONGS, because a wrapper compiled in this process
+\ has no text for anyone else to read: the source pre-verifier learns a wrapper
+\ of a definer it READ from that text (verify-source WRAP-TOKEN), and a definer
+\ it read carries no CREATES cell to inherit, so the two rules never overlap.
+\
+\ The latch discipline is DOESEFF's: a fact belongs to the record of the body
+\ that armed it and to no other, so WRAP-TAKE always clears and every walk that
+\ is not a definition's own body clears too (CHECK-RESET at every body start,
+\ CHECK-DOES-RUN at a clause's end, CHECK-CANDIDATE-DONE at a candidate's).
+\ A candidate is refused by the take as well as cleared after it: its own record
+\ is truncated when the scope ends, so the fact has nothing to be written
+\ against, and the next real record is not the candidate's heir either.
+variable WRAPN     0 WRAPN !
+variable WRAPC     0 WRAPC !
+variable WRAPBENT  0 WRAPBENT !
+
+: WRAP-CLEAR ( -- )
+   0 WRAPN !  0 WRAPC !  0 WRAPBENT ! ;
+
+: WRAP-TAKE ( -- n )                        \ the created effect a straight-line wrapper inherits
+   WRAPN @ 1 =  WRAPBENT @ 0=  and  CHK-CAND @ 0=  and IF WRAPC @ ELSE 0 THEN
+   WRAP-CLEAR ;
+
 \ RECW: latch holding the wide? verdict of the LAST effect record, stored by
 \ VALUE at the single record choke point (E-ADD-EFFECT) so a stale value from
 \ a candidate/rolled-back check is always overwritten by the current record
@@ -10671,20 +10703,24 @@ variable NORET-FMEND
 package CHECKER-EFFECT-AUTHORITY
 private
 \ The publish tail of E-ADD-EFFECT, and so the one place a user record's
-\ per-symbol facts are written — which is why the created-word latch is
-\ consumed HERE and nowhere else: the record whose publication takes the latch
-\ is the record whose symbol the fact belongs to. The take is unconditional so
-\ that a latch can never outlive one record, and the VALUE is kept only for a
+\ per-symbol facts are written — which is why the created-word latches are
+\ consumed HERE and nowhere else: the record whose publication takes a latch
+\ is the record whose symbol the fact belongs to. Both takes are unconditional
+\ so that a latch can never outlive one record, and the VALUE is kept only for a
 \ certified record: a rejected definition re-recorded in multi-error mode
 \ (CHECK, source authority) publishes with external false and must teach the
 \ checker nothing about what it would have created.
+\
+\ A DEFINER'S OWN CLAUSE WINS over the wrapper rule, which is only reached when
+\ the record is not a definer's: a definer whose body also calls a definer arms
+\ both latches, and what it creates is what its own `does>` clause declared.
 \
 \ Later-wins: an entry appended for the authority bit alone must carry the
 \ symbol's existing masks forward, or it would silently retract evidence the
 \ definition end recorded a moment earlier.
 : STORE ( n bool -- ) {: sym:n external:bool :}
-   DOES-EFF-TAKE {: latched:n :}
-   external IF latched ELSE 0 THEN {: creates:n :}
+   DOES-EFF-TAKE WRAP-TAKE {: latched:n wrapped:n :}
+   external IF latched 0 <> IF latched ELSE wrapped THEN ELSE 0 THEN {: creates:n :}
    sym CTL-FLAGS-SYM {: old:n :}
    old EFFECT-EXTERNAL invert and
    external IF EFFECT-EXTERNAL or THEN {: flags:n :}
@@ -10700,8 +10736,9 @@ get-current prot-wid-add
 \ A definer the source pre-verifier READ is in its own table with the clause
 \ text (verify-source DEFINER-EFFECT); a definer that is RESIDENT — compiled in
 \ this process, its clause never scanned — is known only here, through the latch
-\ above. These three words are that store's whole surface, and the pre-pass is
-\ their only caller.
+\ above — a definer's own clause through DOESEFF, a straight-line wrapper of one
+\ through WRAPC. These two words are that store's whole surface, and the pre-pass
+\ is their only caller.
 \
 \ THE CREATED WORD IS REGISTERED FROM THE ROWS, not from re-parsed text, because
 \ the rows are what the clause certified: instantiating them keeps each type
@@ -10722,16 +10759,6 @@ get-current prot-wid-add
    na nu CHECKER-REC-NAME!
    rec ER.HASR @ 0 <> RES-TRUE E-ADD-EFFECT
    RES-TRUE ;
-
-\ A straight-line wrapper creates whatever the definer it calls creates, and the
-\ pre-pass proves that about a body it read. The fact is stored against the
-\ wrapper's own symbol, so every later reader — this file's and the pre-pass's —
-\ asks one question of one store; the wrapper's own flags and intact masks go
-\ forward with it, because only the newest entry is read.
-: CHECKER-CREATES-COPY ( n n -- ) {: wsym:n dsym:n :}
-   dsym CHECKER-CREATES-SYM? {: creates:n :}
-   creates 0= IF EXIT THEN
-   wsym  wsym CTL-FLAGS-SYM  wsym CTL-MASKS-SYM  creates NORET-APPEND ;
 
 \ A PRIM declaration grants its own effect, never an ABI-only user row's shape.
 \ Trusted-only is a checked-call restriction; explicit REG-PROTECT still owns
@@ -11427,6 +11454,11 @@ variable WF-I
    a u CELL-MEMORY-TOK? IF EXIT THEN
    a u RAW-FIELD-TOK? IF EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM CURSYM !
+   \ a call to a definer, counted for the straight-line-wrapper rule above. One
+   \ per-symbol head load, on the resolved symbol: a tick is not a call here
+   \ (BTICK-TOK never reaches this word) and the create-family tokens leave
+   \ through DEFINER-TOK before it, so neither is counted.
+   CURSYM @ NORET-CREATES@ dup 0 <> IF WRAPC !  WRAPN @ 1 + WRAPN ! ELSE drop THEN
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
    CURSYM @ CTOR-STEP-XT IF EXIT THEN              \ direct-layout generated-constructor call -> seeded step (default rejects pre-registry)
@@ -12222,7 +12254,11 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF-CASE-RET! ( n n -- ) {: row:n idx:n :}
    row idx CF-ROW CF.RB ! ;
 
+\ Every frame kind bends the line, quotations (CF-QUOT, which opens its nested
+\ inference through this word) included: the straight-line-wrapper rule above
+\ takes nothing from a body that pushed one.
 : CF-PUSH {: k s0 s1 r0 r1 :}
+   -1 WRAPBENT !
    #CFC @ 31 > IF -1 UNCK ! ELSE
      #CFC @ CF-ROW {: rec:ptr :}
      k rec CF.KND !  s0 rec CF.SA !  s1 rec CF.SB !
@@ -12366,6 +12402,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    h LIN-EFF-PASS ;
 
 : CF-RECURSE
+   -1 WRAPBENT !
    RECURSE-CACHE? IF RECEFF @ E-PTR CF-RECURSE-EFF
    ELSE -1 UNCK ! THEN ;
 
@@ -12494,6 +12531,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
      ELSE CF-FAIL THEN THEN THEN ;
 
 : CF-EXIT ( -- )
+   -1 WRAPBENT !
    CF-LOOPS @ 0 <> IF CF-FAIL EXIT THEN
    XSET @ IF  DCUR @ XROW @ UNIFY OK @ and OK !
               RCUR @ XRROW @ UNIFY OK @ and OK !
@@ -12584,6 +12622,7 @@ variable LVDO  variable LVDN
 \ (= the DO-point row CF.SA, since the body is stack-neutral); likewise the return
 \ row. Then the path to `loop` is dead (CF-LOOP revives the live loop exit).
 : CF-LEAVE
+   -1 WRAPBENT !
    CF-FINDDO
    LVDO @ 0< IF CF-FAIL ELSE
      LVDO @ CF-LOOP-BIT LVDO @ CF-ROW CF.LA @ or CF-LOOPS=
@@ -15324,6 +15363,7 @@ ASIG-GRAPH-CHECK-INSTALL
    RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
+   WRAP-CLEAR
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
    0 CF-LOOPS !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
@@ -16241,6 +16281,7 @@ TYPES-DEFAULTS
 : CHECK-CANDIDATE-DONE ( n -- n )
    -1 PIMM-STREAM !    \ back to the engine-stream default (hook loads)
    0 BIND-HORIZON !
+   WRAP-CLEAR          \ a candidate body armed like any other; the next real record is not its heir
    RBF-POP ;
 
 PTR-VARIABLE CAND-A   variable CAND-U   variable CAND-VERDICT
@@ -16602,6 +16643,10 @@ package CHECKER-REG
    CHECK-VERDICT dup DVERD !
    dup -1 = IF CALL-FINALIZE THEN
    CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN
+   \ A clause body is walked like any other but is nobody's definition body, and
+   \ the next record after it is the CREATED word's (CHECKER-RECORD-CREATED,
+   \ which never CHECK-RESETs), so what this walk armed dies here.
+   WRAP-CLEAR
    ba bu DVERD @ CHECKER-CERT:PRODUCE ;
 
 \ THE TWO FRONT ENDS ARE TWO WORDS, because only one of them may latch. The

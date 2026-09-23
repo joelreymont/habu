@@ -298,15 +298,16 @@ TRUSTED: RECORD-SYM? ( ptr u8 n -- n ) CHECKER-RECORD-SYM? ;
 \ definition's own check, which resolves the same token straight after.
 TRUSTED: FIND-SYM ( ptr u8 n -- n ) CHECKER-FIND-QUIET-SYM ;
 
-\ The same three questions about a definer this pre-pass never read - one
-\ compiled in THIS process, whose clause the checker certified at its `;` and
-\ whose created-word effect it kept (src/core/checker.f DOES-EFF-LATCH! and the
-\ NORETS entry's CREATES cell). The effect stays where the checker built it: it
-\ is handed over as a record, not as text, so the type variables the clause
-\ declared keep the raw-definer seal the engine's own `trust-raw` gives them.
+\ The same two questions about a definer this pre-pass never read - one compiled
+\ in THIS process, whose clause the checker certified at its `;` and whose
+\ created-word effect it kept (src/core/checker.f DOES-EFF-LATCH! and the NORETS
+\ entry's CREATES cell), or a straight-line wrapper of such a definer, which the
+\ checker's own body walk records against the wrapper's symbol the same way. The
+\ effect stays where the checker built it: it is handed over as a record, not as
+\ text, so the type variables the clause declared keep the raw-definer seal the
+\ engine's own `trust-raw` gives them.
 TRUSTED: CREATES-SYM? ( n -- n ) CHECKER-CREATES-SYM? ;
 TRUSTED: RECORD-CREATED ( ptr u8 n n -- bool ) CHECKER-RECORD-CREATED ;
-TRUSTED: CREATES-COPY ( n n -- ) CHECKER-CREATES-COPY ;
 
 \ ---- the definers this pre-pass learns from the sources it reads -------------
 \ A `create … does>` definition IS a definer, and the effect of every word it
@@ -445,14 +446,13 @@ variable WRAP-DEFINERS                        \ definer calls in this body …
 variable WRAP-CTL                             \ … and whether the line ever bent
 PTR-VARIABLE WRAP-SIG-A
 variable WRAP-SIG-U
-variable WRAP-DEF-SYM                         \ … or, for a resident definer, its symbol
 
 : DEF-NAME! ( -- )
    TOKEN-U @ DEF-NAME-U !  TOKEN-A @ DEF-NAME-A ! ;
 
 : WRAP-RESET ( -- )
    0 WRAP-DEFINERS !  0 WRAP-CTL !
-   NULL-PTR WRAP-SIG-A !  0 WRAP-SIG-U !  0 WRAP-DEF-SYM ! ;
+   NULL-PTR WRAP-SIG-A !  0 WRAP-SIG-U ! ;
 
 : DEFINER-RECORD ( ptr u8 n -- )
    DEF-NAME-A @ DEF-NAME-U @ RECORD-SYM? DEFINER-ADD ;
@@ -503,10 +503,16 @@ variable WRAP-DEF-SYM                         \ … or, for a resident definer, 
 \ BUFFER-E ;` (lib/codegen.f) is the shape. Two definer calls, a conditional
 \ definer or a definer inside a quotation record nothing, and the created word
 \ then stays unknown exactly as it is today.
-\ A RESIDENT definer counts here exactly like a read one. It is remembered by
-\ SYMBOL rather than by text because that is how the checker holds what it
-\ creates, and the wrapper then inherits the same record instead of a copy of a
-\ copy of a signature.
+\
+\ ONLY A DEFINER THIS PRE-PASS READ is counted here, and that is the whole split
+\ between this rule and the checker's. A wrapper of a RESIDENT definer is learned
+\ by the body walk instead (src/core/checker.f WRAPN/WRAPC/WRAPBENT), which sees
+\ this very body - VERIFY-BODY checks it under the wrapper's own symbol - and
+\ every other certified body besides, read or not. A definer this pre-pass read
+\ has nothing for that walk to find: its clause goes through
+\ CHECKER-SOURCE-DOES!, which latches no created effect, so its symbol carries no
+\ CREATES cell and only the table below knows what it makes. The two rules meet
+\ at neither end: the walk answers for resident definers, the text for read ones.
 : WRAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    WRAP-CTL @ IF EXIT THEN
    a u WRAP-CTL-TOK? IF -1 WRAP-CTL ! EXIT THEN
@@ -514,17 +520,12 @@ variable WRAP-DEF-SYM                         \ … or, for a resident definer, 
       WRAP-SIG-U !  WRAP-SIG-A !
       WRAP-DEFINERS @ 1 + WRAP-DEFINERS !  EXIT
    THEN
-   2drop
-   a u FIND-SYM {: dsym:n :}
-   dsym CREATES-SYM? 0= IF EXIT THEN
-   dsym WRAP-DEF-SYM !
-   WRAP-DEFINERS @ 1 + WRAP-DEFINERS ! ;
+   2drop ;
 
 : VERIFY-WRAPPER ( -- )
    WRAP-CTL @ IF EXIT THEN
    WRAP-DEFINERS @ 1 <> IF EXIT THEN
-   WRAP-SIG-U @ 0<> IF WRAP-SIG-A @ WRAP-SIG-U @ DEFINER-RECORD EXIT THEN
-   DEF-NAME-A @ DEF-NAME-U @ RECORD-SYM? WRAP-DEF-SYM @ CREATES-COPY ;
+   WRAP-SIG-A @ WRAP-SIG-U @ DEFINER-RECORD ;
 
 : VERIFY-DOES ( -- )
    VERIFY-BODY {: ok:bool :}

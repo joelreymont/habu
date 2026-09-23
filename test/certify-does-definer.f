@@ -48,8 +48,18 @@ package CERTIFY-DOES-DEFINER
 \ file's scanner never reads their text, so what they create is known only
 \ through the store the checker wrote when it certified their clause.
 : CDD-RES-D ( n -- ) create , does> ( -- ptr n ) ;
-: CDD-RES-W ( -- ) 3 CDD-RES-D ;          \ a RESIDENT wrapper: still unknown, pinned below
+: CDD-RES-W ( -- ) 3 CDD-RES-D ;          \ a RESIDENT wrapper: known through the checker's walk
 : CDD-RES-P ( n -- n ) 1 + ;              \ the plain definition right after a definer
+
+\ The resident twins of C10-C12: the walk counts definer calls and notes any
+\ bend, so these three are wrappers of nothing at all.
+: CDD-RES-IFW ( n -- ) dup 0= if drop 1 then CDD-RES-D ;
+: CDD-RES-TWOW ( n n -- ) CDD-RES-D CDD-RES-D ;
+: CDD-RES-QW ( n -- ) drop [: 5 CDD-RES-D ;] drop ;
+
+\ A resident definer whose CLAUSE calls a definer: its own clause is what it
+\ creates, and the clause walk leaves nothing for the next record.
+: CDD-RES-CD ( n -- ) create , does> ( -- ) drop 3 CDD-RES-D ;
 
 -1 constant ACCEPTED
 0 constant REFUSED
@@ -162,8 +172,17 @@ TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
    s" a source-read wrapper of a resident definer creates what it creates" T-LABEL
    s" C19 ( -- ptr n ) CDD-RES-WRAPMADE" CDD-VERDICT ACCEPTED T=
    s\" CDD-RES-W CDD-RES-WMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
-   s" a RESIDENT wrapper is still unknown (the next worker's row)" T-LABEL
-   s" C20 ( -- ptr n ) CDD-RES-WMADE" CDD-VERDICT UNRESOLVED T= ;
+   s" a RESIDENT wrapper creates what its definer creates (the walk's row)" T-LABEL
+   s" C20 ( -- ptr n ) CDD-RES-WMADE" CDD-VERDICT ACCEPTED T=
+   s\" 2 CDD-RES-IFW CDD-RES-CONDMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a resident definer behind a conditional records nothing" T-LABEL
+   s" C25 ( -- ptr n ) CDD-RES-CONDMADE" CDD-VERDICT UNRESOLVED T=
+   s\" 3 4 CDD-RES-TWOW CDD-RES-TWICEMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" two resident definer calls in one body record nothing" T-LABEL
+   s" C26 ( -- ptr n ) CDD-RES-TWICEMADE" CDD-VERDICT UNRESOLVED T=
+   s\" 6 CDD-RES-QW CDD-RES-QUOTMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a resident definer inside a quotation records nothing" T-LABEL
+   s" C27 ( -- ptr n ) CDD-RES-QUOTMADE" CDD-VERDICT UNRESOLVED T= ;
 
 : CDD-SECTION-LATCH ( -- )
    s\" 5 CDD-RES-P CDD-PL-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
@@ -180,6 +199,35 @@ TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
    s" and leaves nothing for the next definition to inherit" T-LABEL
    s" C23 ( -- ptr n ) CDD-AFTER-MADE" CDD-VERDICT UNRESOLVED T= ;
 
+\ ---- 7. the wrapper latch's lifetime ----------------------------------------
+\ The wrapper fact is learned by the body WALK, and three walks are not a
+\ definition's own body: a candidate, a `does>` clause, and the definer body
+\ whose own clause already says what it creates. Each row below is a record
+\ published right after one of those walks, and each must be untouched by it.
+: CDD-SECTION-WRAP-LATCH ( -- )
+   s" a candidate body may be a wrapper shape and still teach nothing" T-LABEL
+   s" C28 ( n -- ) CDD-RES-D" CDD-VERDICT ACCEPTED T=
+   s\" 7 CDD-RES-D CDD-CAND-ONE\nCDD-CAND-ONE CDD-CAND-TWO\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" the next created word certifies as the clause effect" T-LABEL
+   s" C29 ( -- ptr n ) CDD-CAND-ONE" CDD-VERDICT ACCEPTED T=
+   s" and is no definer itself: the candidate walk left nothing to inherit" T-LABEL
+   s" C30 ( -- ptr n ) CDD-CAND-TWO" CDD-VERDICT UNRESOLVED T=
+   s\" 5 CDD-RES-CD CDD-CD-MADE\nCDD-CD-MADE CDD-CD-X\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a definer whose clause calls a definer creates its OWN clause" T-LABEL
+   s" C31 ( -- ) CDD-CD-MADE" CDD-VERDICT ACCEPTED T=
+   s" and not the row the definer that clause calls creates" T-LABEL
+   s" C32 ( -- ptr n ) CDD-CD-MADE" CDD-VERDICT REFUSED T=
+   s" what that clause created is no definer either" T-LABEL
+   s" C33 ( -- ptr n ) CDD-CD-X" CDD-VERDICT UNRESOLVED T=
+   \ The same clause in SOURCE order, which is the order that could inherit: the
+   \ pre-pass checks the definer's body first and the clause last, so the next
+   \ record published is the created word's (verify-source CREATED-TRUST-NEXT?).
+   s\" : CDD-SRC-CD ( n -- ) create , does> ( -- ) drop 3 CDD-RES-D ;\n5 CDD-SRC-CD CDD-SRC-MADE\nCDD-SRC-MADE CDD-SRC-X\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a clause read from source arms nothing the created word takes" T-LABEL
+   s" C34 ( -- ptr n ) CDD-SRC-X" CDD-VERDICT UNRESOLVED T= ;
+
 : MAIN ( -- )
    T-RESET
    CDD-SECTION-DEFINER
@@ -188,6 +236,7 @@ TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
    CDD-SECTION-LIVE
    CDD-SECTION-RESIDENT
    CDD-SECTION-LATCH
+   CDD-SECTION-WRAP-LATCH
    T-REPORT ;
 
 MAIN
