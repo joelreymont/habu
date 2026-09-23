@@ -265,7 +265,7 @@ private
 \ ---- making Rocq answer ------------------------------------------------------
 
 : SCRATCH-DIR ( -- ptr u8 n )
-   s" habu-reloc-parity" TMPDIR-MKDIR ;
+   s" habu-reloc-parity" HB-TMP-MKDIR ;
 
 : OBLIGATION-ROW ( n -- ) {: k:n :}
    k PROOF-MANIFEST:THEOREM$ k PROOF-MANIFEST:TYPE$ RELOC-ROCQ:STATEMENT+

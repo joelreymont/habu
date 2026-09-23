@@ -25,7 +25,7 @@ variable WANT-ENV-N
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" process-wide-image" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" process-wide-image" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" restored" IMAGE-BUF JOIN-PATH IMAGE-U ! ;

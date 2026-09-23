@@ -93,7 +93,7 @@ variable EST-MAP-U
    s" bin/hb" MEASURE
    BUILD-CODE-INDEX
    CLEANUP-RESET
-   s" habu-image-size" TMPDIR-MKDIR {: root:ptr rootu:n :}
+   s" habu-image-size" HB-TMP-MKDIR {: root:ptr rootu:n :}
    root rootu CLEANUP-TREE+
    root rootu s" hb" EST-IMG JOIN-PATH EST-IMG-U !
    root rootu s" hb.names" EST-MAP JOIN-PATH EST-MAP-U !

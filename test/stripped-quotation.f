@@ -25,7 +25,7 @@ variable IMAGE-U
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" stripped-quotation" TMPDIR-MKDIR {: path:ptr pathu:n :}
+   s" stripped-quotation" HB-TMP-MKDIR {: path:ptr pathu:n :}
    path ROOT-BUF pathu BYTE-COPY pathu ROOT-U !
    ROOT$ CLEANUP-TREE+
    SOURCE-ROOT:CURRENT$ s" stripped-quotation-subject.f"

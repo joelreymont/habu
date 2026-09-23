@@ -153,7 +153,7 @@ variable IDT-DECOY-U
 
 : IDT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-imgdump-test" TMPDIR-MKDIR IDT-ROOT IDT-ROOT-U IDT-COPY!
+   s" habu-imgdump-test" HB-TMP-MKDIR IDT-ROOT IDT-ROOT-U IDT-COPY!
    IDT-ROOT$ CLEANUP-TREE+
    IDT-ROOT$ s" a.img" IDT-A JOIN-PATH IDT-A-U !
    IDT-ROOT$ s" same.img" IDT-SAME JOIN-PATH IDT-SAME-U !

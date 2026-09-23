@@ -31,7 +31,7 @@ create KEY3 80 allot
    s" 0000000000000000000000000000000000000000000000000000000000000000" ;
 
 : SETUP ( -- )
-   s" habu-object-index" TMPDIR-MKDIR 2dup CLEANUP-TREE+ OBJIDX:ROOT! ;
+   s" habu-object-index" HB-TMP-MKDIR 2dup CLEANUP-TREE+ OBJIDX:ROOT! ;
 
 : SOURCE-KEY1! ( -- )
    SRC$ s" macos-aarch64" s" checker-effect-v1" s" hb-arm64-v1" KEY1 OBJIDX:SOURCE-KEY-HEX ;

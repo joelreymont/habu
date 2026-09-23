@@ -94,7 +94,7 @@ create OUT BUF-CAP allot
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-aot-lint" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-aot-lint" HB-TMP-MKDIR {: a:ptr u:n :}
    a u ROOT-BUF ROOT-U COPY!
    ROOT CLEANUP-DIR+
    ROOT s" good.f" GOOD-BUF JOIN-PATH GOOD-U !

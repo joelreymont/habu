@@ -18,7 +18,7 @@ variable TGT-B-U
 
 : TGT-PREP ( -- )
    CLEANUP-RESET
-   s" habu-two-generation" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-two-generation" HB-TMP-MKDIR {: a:ptr u:n :}
    a TGT-ROOT u BYTE-COPY u TGT-ROOT-U !
    TGT-ROOT$ CLEANUP-TREE+
    TGT-ROOT$ s" a" TGT-A JOIN-PATH TGT-A-U !

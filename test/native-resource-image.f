@@ -29,7 +29,7 @@ variable ZIP-U
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" native-resource-image" TMPDIR-MKDIR {: path:ptr bytes:n :}
+   s" native-resource-image" HB-TMP-MKDIR {: path:ptr bytes:n :}
    path ROOT-BUF bytes BYTE-COPY bytes ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" application" IMAGE-BUF JOIN-PATH IMAGE-U !

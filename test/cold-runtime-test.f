@@ -61,7 +61,7 @@ create CR-ERR CR-CAP allot
 
 : CR-SETUP ( -- )
    CLEANUP-RESET
-   s" habu-cold-runtime" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-cold-runtime" HB-TMP-MKDIR {: a:ptr u:n :}
    a CR-ROOT u BYTE-COPY
    u CR-ROOT-U !
    CR-ROOT$ CLEANUP-TREE+

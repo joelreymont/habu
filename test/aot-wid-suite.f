@@ -181,7 +181,7 @@ create COLD-DST FS-PATH-CAP allot
 
 : SETUP ( -- )
    CLEANUP-RESET
-   s" habu-aot-wid" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-aot-wid" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" hb-pwid" HBPWID-BUF JOIN-PATH HBPWID-U !
@@ -196,7 +196,7 @@ create COLD-DST FS-PATH-CAP allot
 \ Each refusal build gets its own tree, so "no engine appeared" is a statement
 \ about that build and not about a leftover from the good one.
 : REFUSE-SETUP ( -- )
-   s" habu-aot-wid-refuse" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-aot-wid-refuse" HB-TMP-MKDIR {: a:ptr u:n :}
    a REFUSE-BUF u BYTE-COPY  u REFUSE-U !
    REFUSE-ROOT$ CLEANUP-TREE+
    REFUSE-ROOT$ s" hb-pwid" REFUSE-HB-BUF JOIN-PATH REFUSE-HB-U ! ;
@@ -204,7 +204,7 @@ create COLD-DST FS-PATH-CAP allot
 \ Same rule for each boot-gate mode: its own tree, so the engine a probe boots
 \ can only be the one that mode's build wrote.
 : GATE-SETUP ( -- )
-   s" habu-aot-wid-gate" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-aot-wid-gate" HB-TMP-MKDIR {: a:ptr u:n :}
    a GATE-BUF u BYTE-COPY  u GATE-U !
    GATE-ROOT$ CLEANUP-TREE+
    GATE-ROOT$ s" hb-pwid" GATE-HB-BUF JOIN-PATH GATE-HB-U ! ;

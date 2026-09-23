@@ -31,7 +31,7 @@ TRUSTED: LINK-CALL ( n -- n ) >r ARGS REG-LENS 2 r> ffi-call-bounded ;
 
 
 : SETUP ( -- )
-   s" fs-identity" TMPDIR-MKDIR {: directory bytes:n :}
+   s" fs-identity" HB-TMP-MKDIR {: directory bytes:n :}
    directory ROOT bytes BYTE-COPY bytes ROOT-SIZE !
    0 s" original" PATH s" same content" WRITE-ALL
    1 s" different" PATH s" same content" WRITE-ALL

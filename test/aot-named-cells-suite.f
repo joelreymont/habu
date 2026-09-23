@@ -49,7 +49,7 @@ variable CHILD-KIND variable CHILD-CODE variable CHILD-ARGC
 : LIVE ( -- ) OUT OUT-U @ s" named-cells: live" CONTAINS? TTRUE ;
 
 : SETUP ( -- )
-   s" habu-named-cells-image" TMPDIR-MKDIR {: path:ptr size:n :}
+   s" habu-named-cells-image" HB-TMP-MKDIR {: path:ptr size:n :}
    path ROOT size BYTE-COPY size ROOT-U ! ROOT$ CLEANUP-TREE+
    ROOT$ s" hb-cold" COLD JOIN-PATH COLD-U !
    ROOT$ s" window.aot" ART JOIN-PATH ART-U !

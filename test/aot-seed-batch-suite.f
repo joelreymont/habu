@@ -100,7 +100,7 @@ create PROG-BUF FS-PATH-CAP allot   variable PROG-U
 
 : SETUP ( -- )
    CLEANUP-RESET
-   s" habu-aot-seed-batch" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-aot-seed-batch" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" prog.f" PROG-BUF JOIN-PATH PROG-U ! ;

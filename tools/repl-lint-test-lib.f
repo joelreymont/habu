@@ -96,7 +96,7 @@ create RLT-ERR RLT-CAP allot
 
 : RLT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-repl-lint" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-repl-lint" HB-TMP-MKDIR {: a:ptr u:n :}
    a u RLT-ROOT-BUF RLT-ROOT-U RLT-COPY!
    RLT-ROOT CLEANUP-TREE+
    RLT-ROOT s" src/habu" RLT-SRC-DIR-BUF RLT-SRC-DIR-U RLT-PATH!

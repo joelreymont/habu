@@ -243,7 +243,7 @@ variable LAST-ERR-U
 
 : FRESH-ROOT ( -- )
    CLEANUP-RESET
-   s" habu-pre-trust-defer" TMPDIR-MKDIR {: a:ptr u:n :}  a ROOT-BUF u BYTE-COPY  u ROOT-U !
+   s" habu-pre-trust-defer" HB-TMP-MKDIR {: a:ptr u:n :}  a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    COPY-SRC-TREE
    BUILD-COLD ;

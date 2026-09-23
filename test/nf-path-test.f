@@ -67,6 +67,12 @@ create ERR CAP allot
    OVERFLOW-ROOT ROOT-U @ 1 + OVERFLOW-ROOT-U PAD-X
    OVERFLOW-ROOT-U OVERFLOW-U ! ;
 
+\ The one fixture root in the tree that is not HB-TMP-MKDIR's answer. LONG-ROOT!
+\ pads this root to exactly LONG-ROOT-U bytes, so a base of that length or more
+\ cannot produce the path at all, and under the pool HB_TMP is the slot
+\ directory - <suite root>/pool-<pid>-<seq>-tmp, 97 bytes measured - which makes
+\ SETUP throw E-FS-CAPACITY before the first build. TMPDIR, then /tmp, is the
+\ shortest base a run can offer; CLEANUP-TREE+ below removes the tree.
 : SETUP ( -- )
    CLEANUP-RESET
    s" habu-nf-path" TMPDIR-MKDIR {: a:ptr u:n :}

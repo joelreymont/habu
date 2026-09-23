@@ -474,7 +474,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 \ suites make one.
 : XFER-FILE! ( -- )
    XFER-PAT PAT-FILL
-   s" habu-aio" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-aio" HB-TMP-MKDIR {: a:ptr u :}
    a u s" xfer.bin" XFER-PATH-BUF JOIN-PATH XFER-PATH-U !
    XFER-PATH XFER-PAT XFER-N WRITE-ALL ;
 

@@ -23,7 +23,7 @@ variable SECOND-U
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" process-image-test" TMPDIR-MKDIR {: path:ptr size:n :}
+   s" process-image-test" HB-TMP-MKDIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" first" FIRST-BUF JOIN-PATH FIRST-U !

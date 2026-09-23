@@ -276,7 +276,7 @@ create EMPTY 1 allot
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-tokstream" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-tokstream" HB-TMP-MKDIR {: a:ptr u:n :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+

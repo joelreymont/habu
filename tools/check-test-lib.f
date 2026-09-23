@@ -428,7 +428,7 @@ variable START-NS
    CLI-HB CLI-HB-U @ ;
 
 : CLI-SETUP ( -- )
-   s" habu-check-missing-engine" TMPDIR-MKDIR
+   s" habu-check-missing-engine" HB-TMP-MKDIR
    CLI-ROOT CLI-ROOT-U PATH-COPY!
    CLI-ROOT$ CLEANUP-TREE+
    s" lib" CLI-LINK+
@@ -468,6 +468,9 @@ variable START-NS
    mode modeu >LEN PROC-ARGV+
    PROC-ENV-RESET
    s" TMPDIR" >LEN CLEANUP-TMP$ >LEN PROC-ENV+
+   \ The checker's scratch resolves through HB-TMP-MKDIR, so the test-owned
+   \ root must be the child's HB_TMP too, or an inherited pool slot takes it.
+   s" HB_TMP" >LEN CLEANUP-TMP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    HB$ >LEN CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
    CHILD-HANG-MS >MS RUN-ARGV-ENV-CAPTURE
@@ -933,7 +936,7 @@ variable LONG-J
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-check-test" TMPDIR-MKDIR TMP-ROOT TMP-ROOT-U PATH-COPY!
+   s" habu-check-test" HB-TMP-MKDIR TMP-ROOT TMP-ROOT-U PATH-COPY!
    ROOT$ CLEANUP-TREE+
    ROOT$ s" bad.f" BAD-PATH JOIN-PATH BAD-U !
    ROOT$ s" direct-source.f" DIRECT-PATH JOIN-PATH DIRECT-U !

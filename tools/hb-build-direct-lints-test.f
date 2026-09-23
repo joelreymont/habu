@@ -88,7 +88,7 @@ variable MISSING-U
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-direct-lints" TMPDIR-MKDIR ROOT!
+   s" habu-direct-lints" HB-TMP-MKDIR ROOT!
    ROOT$ CLEANUP-DIR+
    ROOT$ s" good.f" GOOD-BUF JOIN-PATH GOOD-U !
    ROOT$ s" aot-bad.f" AOT-BAD-BUF JOIN-PATH AOT-BAD-U !

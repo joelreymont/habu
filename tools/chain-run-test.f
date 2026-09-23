@@ -26,7 +26,7 @@ create BIG-B 32769 allot
 
 : PREP ( -- )
    CLEANUP-RESET
-   s" chain-run-test" TMPDIR-MKDIR ROOT ROOT-U COPY!
+   s" chain-run-test" HB-TMP-MKDIR ROOT ROOT-U COPY!
    ROOT$ CLEANUP-TREE+
    ROOT$ s" a" JOIN A A-U COPY!
    ROOT$ s" b" JOIN B B-U COPY!

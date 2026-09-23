@@ -40,7 +40,7 @@ create OUT IO-CAP allot create ERR IO-CAP allot
    S\" package SRCBOUND public : RIGHT ( -- n ) 2 ; ;package\n" ;
 
 : SETUP ( -- )
-   s" hb-source-identity" TMPDIR-MKDIR {: root:ptr size:n :}
+   s" hb-source-identity" HB-TMP-MKDIR {: root:ptr size:n :}
    root ROOT-BUF size BYTE-COPY size ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" left.f" LEFT-BUF JOIN-PATH LEFT-U !

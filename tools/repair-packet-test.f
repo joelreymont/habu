@@ -132,7 +132,7 @@ create PACKET-BUF FS-PATH-CAP allot
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-repair-packet" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-repair-packet" HB-TMP-MKDIR {: a:ptr u :}
    a u ROOT-BUF ROOT-U COPY!
    ROOT CLEANUP-TREE+ ;
 

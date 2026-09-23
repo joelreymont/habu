@@ -148,7 +148,7 @@ variable PST-NUM-U
 
 : PST-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-public-signatures" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-public-signatures" HB-TMP-MKDIR {: a:ptr u :}
    a u PST-ROOT-BUF PST-ROOT-U PST-COPY!
    PST-ROOT CLEANUP-DIR+
    PST-ROOT s" public-signatures-fixture.f" PST-FIX-BUF JOIN-PATH PST-FIX-U !

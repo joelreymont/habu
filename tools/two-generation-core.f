@@ -106,7 +106,7 @@ variable TG-COL-NAME
    s" HB_TMP" GETENV dup 0<> if
       s" hb-generations" MAKE-TEMP-DIR
    else
-      2drop s" hb-generations" TMPDIR-MKDIR
+      2drop s" hb-generations" HB-TMP-MKDIR
    then ;
 
 : TG-MKDIRS ( -- )

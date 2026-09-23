@@ -59,7 +59,7 @@ variable PCT-I
 
 : PCT-SETUP-ROOT ( -- )
    CLEANUP-RESET
-   s" hb-process-cwd" TMPDIR-MKDIR {: root:ptr rootu :}
+   s" hb-process-cwd" HB-TMP-MKDIR {: root:ptr rootu :}
    root PCT-ROOT rootu BYTE-COPY
    rootu PCT-ROOT-U !
    PCT-ROOT PCT-ROOT-U @ CLEANUP-TREE+

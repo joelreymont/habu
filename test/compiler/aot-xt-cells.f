@@ -46,7 +46,7 @@ variable IMAGE-U
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" aot-xt-cells" TMPDIR-MKDIR {: path:ptr pathu:n :}
+   s" aot-xt-cells" HB-TMP-MKDIR {: path:ptr pathu:n :}
    path ROOT-BUF pathu BYTE-COPY pathu ROOT-U !
    ROOT$ CLEANUP-TREE+
    SOURCE-ROOT:CURRENT$ s" aot-xt-cells-subject.f"

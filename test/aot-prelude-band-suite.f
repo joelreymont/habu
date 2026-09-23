@@ -81,7 +81,7 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
 
 : SETUP ( -- )
-   s" habu-aot-band" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-aot-band" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+ ;
 

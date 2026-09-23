@@ -163,7 +163,7 @@ create FS-TEST-U64
    FS-TEST-EMPTY-BUF FS-TEST-EMPTY-U @ ;
 
 : FS-TEST-BASE! ( -- )
-   s" habu-fs" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-fs" HB-TMP-MKDIR {: a:ptr u :}
    a u FS-TEST-BASE-BUF FS-TEST-BASE-U FS-TEST-COPY! ;
 
 : FS-TEST-PATHS! ( -- )

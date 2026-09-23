@@ -119,7 +119,7 @@ $7E constant ROOT-C
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-build-cache" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-build-cache" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY
    u ROOT-U !
    ROOT$ CLEANUP-TREE+

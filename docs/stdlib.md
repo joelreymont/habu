@@ -1314,7 +1314,11 @@ itself and never descends into the target.
 
 `MAKE-TEMP-DIR` creates a private unique directory under an explicit base path,
 retrying bounded deterministic candidates if a name already exists.
-`TMPDIR-MKDIR` uses `$TMPDIR` or `/tmp`. Cleanup registrations copy counted
+`TMPDIR-MKDIR` uses `$TMPDIR` or `/tmp`. Fixtures and makers call
+`HB-TMP-MKDIR`, which is `TMPDIR-MKDIR` under a base of `$HB_TMP` when the
+caller handed the process one: that directory is the caller's to reap, so a
+tree made under it goes away even with the process killed before its own
+`CLEANUP-RUN`. Cleanup registrations copy counted
 paths into owned storage and `CLEANUP-RUN` removes them in reverse order, so
 nested directory cleanups can register parent before child and still remove child first.
 `CLEANUP-TREE+` registers a recursive tree cleanup for temporary workspaces.

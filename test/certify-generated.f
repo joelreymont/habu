@@ -24,7 +24,7 @@ public
 
 : RUN ( -- )
    T-RESET CLEANUP-RESET
-   s" habu-certify-generated" TMPDIR-MKDIR {: root:ptr u:n :}
+   s" habu-certify-generated" HB-TMP-MKDIR {: root:ptr u:n :}
    root u CLEANUP-TREE+
    root u BUILD-FIXPOINT:BF-TMP!
    root u s" stage2-src" SOURCE JOIN-PATH SOURCE-U !

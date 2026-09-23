@@ -28,7 +28,7 @@ create TEXT-BYTES 1 c, 2 c, 3 c,
    s" 0000000000000000000000000000000000000000000000000000000000000000" ;
 
 : SETUP ( -- )
-   s" habu-object-cache" TMPDIR-MKDIR 2dup CLEANUP-TREE+ ROOT! ;
+   s" habu-object-cache" HB-TMP-MKDIR 2dup CLEANUP-TREE+ ROOT! ;
 
 : BUILD ( -- )
    RESET

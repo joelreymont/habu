@@ -130,7 +130,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
 
 : SETUP ( -- )
    CLEANUP-RESET
-   s" habu-aot-span" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-aot-span" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" hb-pwid" HBPWID-BUF JOIN-PATH HBPWID-U ! ;

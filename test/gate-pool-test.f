@@ -456,7 +456,7 @@ variable GPT-FC-DONE-U
    base baseu name nameu dst JOIN-PATH up ! ;
 
 : GPT-FC-PATHS! ( -- )
-   s" hb-fork-cleanup" TMPDIR-MKDIR GPT-FC-EV!
+   s" hb-fork-cleanup" HB-TMP-MKDIR GPT-FC-EV!
    GPT-FC-EV$ s" parent" GPT-FC-PARENT GPT-FC-PARENT-U GPT-FC-SUB!
    GPT-FC-PARENT$ s" keep" GPT-FC-PARENT-FILE GPT-FC-PARENT-FILE-U GPT-FC-SUB!
    GPT-FC-EV$ s" child" GPT-FC-CHILD GPT-FC-CHILD-U GPT-FC-SUB!

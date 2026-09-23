@@ -8,7 +8,7 @@ package GT-TEST
 
 : SETUP ( -- )
    CLEANUP-RESET
-   s" habu-golden" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-golden" HB-TMP-MKDIR {: a:ptr u:n :}
    a u CLEANUP-TREE+
    a u GOLD:ROOT!
    GOLD:REDACT-CLEAR

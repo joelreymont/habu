@@ -252,7 +252,7 @@ create XPK-EMPTY 1 allot
 
 : XPK-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-export-pkg" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-export-pkg" HB-TMP-MKDIR {: a:ptr u:n :}
    a u XPK-ROOT-BUF XPK-ROOT-U XPK-COPY!
    XPK-ROOT CLEANUP-TREE+
    XPK-ROOT s" forge.f" XPK-CHILD-BUF JOIN-PATH XPK-CHILD-U ! ;

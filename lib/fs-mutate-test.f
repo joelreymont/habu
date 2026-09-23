@@ -186,6 +186,10 @@ create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
 : FMT-TEMP-BASE ( -- ptr u8 n )
    FMT-ROOT$ ;
 
+\ Not HB-TMP-MKDIR: REMOVE-SPECIAL-TREE binds a real Unix socket under this
+\ root, and sun_path holds 107 bytes. A pool slot HB_TMP is 97 bytes on its
+\ own (measured: the listener never binds, WAIT-LISTENER throws E-FS-IO), so
+\ the root takes the short base TMPDIR, then /tmp, and FMT-REMOVE! reaps it.
 : FMT-ROOT! ( -- )
    s" habu-fs-mutate" TMPDIR-MKDIR {: a:ptr u :}
    a FMT-ROOT-BUF u BYTE-COPY
@@ -424,7 +428,7 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
 : FMT-TEST-TEMPS ( -- )
    FMT-TEMP-BASE s" one" MAKE-TEMP-DIR 2dup DIR? TTRUE CLEANUP-DIR+
    FMT-TEMP-BASE s" two" MAKE-TEMP-DIR 2dup DIR? TTRUE CLEANUP-DIR+
-   s" habu-fs-mut" TMPDIR-MKDIR 2dup DIR? TTRUE CLEANUP-DIR+ ;
+   s" habu-fs-mut" HB-TMP-MKDIR 2dup DIR? TTRUE CLEANUP-DIR+ ;
 
 : FMT-TEST-TEMP-COLLISION ( -- )
    FMT-TEMP-BASE s" collide" FMT-TMP-SEED 0 FS-MUT-BUILD-TEMP-TRY

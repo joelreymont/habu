@@ -74,7 +74,7 @@ variable ECT-I
 
 : ECT-PREP ( -- )
    CLEANUP-RESET
-   s" habu-event-closure-test" TMPDIR-MKDIR SOURCE-ROOT:CANONICAL TTRUE {: a:ptr u:n :}
+   s" habu-event-closure-test" HB-TMP-MKDIR SOURCE-ROOT:CANONICAL TTRUE {: a:ptr u:n :}
    a ECT-ROOT u BYTE-COPY  u ECT-ROOT-U !
    ECT-ROOT$ CLEANUP-TREE+
    s" entry.f" ECT-ENTRY ECT-ENTRY-U ECT-MK

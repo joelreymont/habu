@@ -36,7 +36,7 @@ create TEXT 64 allot
    SOURCE DEST COPY-FILE-STREAM DEST CONTENT SOURCE CONTENT ;
 
 : SETUP ( -- )
-   s" habu-copy-alias" TMPDIR-MKDIR {: a u :}
+   s" habu-copy-alias" HB-TMP-MKDIR {: a u :}
    a ROOT u BYTE-COPY u ROOT-U !
    SOURCE s" must survive" WRITE-ALL
    SOURCE FS-PATHZ HARD FS-MUT-PATHZ2 LINK-CALL 0 T=

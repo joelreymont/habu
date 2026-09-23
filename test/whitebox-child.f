@@ -48,7 +48,7 @@ public
    ENGINE$ WHITEBOX-ENGINE:PROVIDE ;
 
 : PROVIDE ( ptr u8 n -- )
-   TMPDIR-MKDIR {: root:ptr rootu:n :}
+   HB-TMP-MKDIR {: root:ptr rootu:n :}
    root ROOT-BUF rootu BYTE-COPY rootu ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ PROVIDE-IN ;

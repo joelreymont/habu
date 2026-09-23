@@ -35,7 +35,7 @@ create LONG-BUF LONG-CAP allot
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-json-file" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-json-file" HB-TMP-MKDIR {: a:ptr u:n :}
    a u ROOT-BUF ROOT-U COPY!
    ROOT$ CLEANUP-TREE+
    ROOT$ s" rows.jsonl" IN-BUF JOIN-PATH IN-U !

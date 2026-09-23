@@ -41,7 +41,7 @@ variable IMAGE-U
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" stripped-sparse-data" TMPDIR-MKDIR {: path:ptr pathu:n :}
+   s" stripped-sparse-data" HB-TMP-MKDIR {: path:ptr pathu:n :}
    path ROOT-BUF pathu BYTE-COPY pathu ROOT-U !
    ROOT$ CLEANUP-TREE+
    SOURCE-ROOT:CURRENT$ s" stripped-sparse-data-subject.f"

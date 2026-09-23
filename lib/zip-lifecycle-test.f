@@ -28,7 +28,7 @@ variable OWNER-RESULT
 
 
 : LIFECYCLE-SETUP ( -- )
-   s" habu-zip-lifecycle" TMPDIR-MKDIR {: directory bytes:n :}
+   s" habu-zip-lifecycle" HB-TMP-MKDIR {: directory bytes:n :}
    directory BASE bytes BYTE-COPY bytes BASE-LEN !
    BASE bytes CLEANUP-TREE+
    INPUT$ ZIP-TEST:ORIGINAL$ WRITE-ALL ;

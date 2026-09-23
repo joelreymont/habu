@@ -113,7 +113,7 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
 \ One tree per build, each registered for cleanup, so "the image exists" is a
 \ statement about the build that just ran and never about a leftover.
 : SETUP ( -- )
-   s" habu-aot-wide" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-aot-wide" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" hb-pwid" HB-BUF JOIN-PATH HB-U ! ;

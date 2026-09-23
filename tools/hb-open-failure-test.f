@@ -55,7 +55,7 @@ variable HOF-EXE-U
 \ Copy the built engine into a fresh empty temp dir and mark it executable.
 : HOF-SETUP ( -- )
    CLEANUP-RESET
-   s" hb-open-failure" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" hb-open-failure" HB-TMP-MKDIR {: a:ptr u:n :}
    a HOF-ROOT u BYTE-COPY
    u HOF-ROOT-U !
    HOF-ROOT$ CLEANUP-TREE+

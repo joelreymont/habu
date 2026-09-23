@@ -55,7 +55,7 @@ create TEXT-BYTES 1 c, 2 c, 3 c,
    s" 1111111111111111111111111111111111111111111111111111111111111111" ;
 
 : SETUP ( -- )
-   s" habu-object-resolve" TMPDIR-MKDIR 2dup CLEANUP-TREE+ OBJRES:ROOT! ;
+   s" habu-object-resolve" HB-TMP-MKDIR 2dup CLEANUP-TREE+ OBJRES:ROOT! ;
 
 : BUILD ( ptr u8 n -- ) {: src:ptr srcu:n :}
    OBJ:RESET

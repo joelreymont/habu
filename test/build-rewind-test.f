@@ -101,7 +101,7 @@ create BR-ERR   BR-CAP allot
 
 : BR-SETUP ( -- )
    CLEANUP-RESET
-   s" habu-build-rewind" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-build-rewind" HB-TMP-MKDIR {: a:ptr u:n :}
    a BR-ROOT u BYTE-COPY
    u BR-ROOT-U !
    BR-ROOT$ CLEANUP-TREE+

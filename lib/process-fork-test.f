@@ -103,7 +103,7 @@ variable OWN-U
    base baseu name nameu dst JOIN-PATH up ! ;
 
 : PATHS! ( -- )
-   s" hb-fork-cleanup" TMPDIR-MKDIR FIX-ROOT!
+   s" hb-fork-cleanup" HB-TMP-MKDIR FIX-ROOT!
    FIX-ROOT$ s" keep" KEEP KEEP-U SUB!
    KEEP$ s" file" KEEP-FILE KEEP-FILE-U SUB!
    FIX-ROOT$ s" own" OWN OWN-U SUB! ;

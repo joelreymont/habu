@@ -1383,7 +1383,7 @@ create QNAME QNAME-CAP allot
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-iwg" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-iwg" HB-TMP-MKDIR {: a:ptr u:n :}
    a u ROOT-BUF ROOT-U COPY!
    ROOT CLEANUP-TREE+
    ROOT s" forge.f" CHILD-BUF JOIN-PATH CHILD-U ! ;

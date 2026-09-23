@@ -749,7 +749,7 @@ create HBT-EXP-HEX2 64 allot
 
 : HBT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-hb-build" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-hb-build" HB-TMP-MKDIR {: a:ptr u :}
    a u HBT-ROOT-BUF HBT-ROOT-U HBT-COPY!
    HBT-ROOT CLEANUP-TREE+
    HBT-ROOT s" hbtmp" HBT-TMP-BUF HBT-TMP-U HBT-PATH!

@@ -39,7 +39,7 @@ variable REFUSE-U
 \ test/whitebox-child.f names, in the temp root this file already owns.
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" app-image-test" TMPDIR-MKDIR {: path:ptr size:n :}
+   s" app-image-test" HB-TMP-MKDIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" application" IMAGE-BUF JOIN-PATH IMAGE-U !

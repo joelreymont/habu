@@ -111,7 +111,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
 
 : HCT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-cli-contracts" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-cli-contracts" HB-TMP-MKDIR {: a:ptr u :}
    a u HCT-ROOT-BUF HCT-ROOT-U HCT-COPY!
    HCT-ROOT CLEANUP-TREE+
    HCT-ROOT s" stdin-data-tool.f" HCT-CHILD-BUF JOIN-PATH HCT-CHILD-U !

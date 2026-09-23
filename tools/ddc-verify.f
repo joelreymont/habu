@@ -198,8 +198,8 @@ variable DDC-FXP-U
 
 : DDC-VERIFY ( -- n )
    DDC-REQUIRE-BOOTSTRAP
-   s" habu-ddc-gf" TMPDIR-MKDIR DDC-GF-ROOT!
-   s" habu-ddc-rf" TMPDIR-MKDIR DDC-RF-ROOT!
+   s" habu-ddc-gf" HB-TMP-MKDIR DDC-GF-ROOT!
+   s" habu-ddc-rf" HB-TMP-MKDIR DDC-RF-ROOT!
    DDC-RUN-GFORTH
    DDC-RUN-REFRESH
    DDC-FXP$ s" bin/hb" DDC-LOAD

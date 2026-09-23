@@ -206,7 +206,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-build-fixpoint" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-build-fixpoint" HB-TMP-MKDIR {: a:ptr u :}
    a u BFT-ROOT-BUF BFT-ROOT-U BFT-COPY!
    BFT-ROOT CLEANUP-TREE+
    BFT-ROOT s" hb-new" BFT-HB-NEW-BUF BFT-HB-NEW-U BFT-PATH!
@@ -580,7 +580,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-STALE-PAYLOAD BFT-READ-BUF u APPEND-FILE ;
 
 : BFT-STALE-PATHS! ( -- )
-   s" habu-bft-stale" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-bft-stale" HB-TMP-MKDIR {: a:ptr u:n :}
    a u BFT-STALE-BUF BFT-STALE-U BFT-COPY!
    BFT-STALE CLEANUP-TREE+
    BFT-STALE s" bin/hb" BFT-STALE-HB-BUF BFT-STALE-HB-U BFT-PATH!

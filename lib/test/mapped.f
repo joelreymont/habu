@@ -31,7 +31,7 @@ variable SINK-FD
    u ;
 
 : OPEN-SINK ( -- n )
-   s" habu-mapped" TMPDIR-MKDIR DIR! {: du:n :}
+   s" habu-mapped" HB-TMP-MKDIR DIR! {: du:n :}
    SINK-DIR du s" sink" SINK-PATH JOIN-PATH {: u:n :}
    SINK-PATH u FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open {: fd:n :}
    fd 0 < if E-FS-OPEN throw then

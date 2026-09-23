@@ -208,15 +208,15 @@ variable WALKED
    WALKED @ 0 T<> ;
 
 \ ---- the same rows, asked from a directory that is not a Habu tree ------------
-\ A FRESH temp directory, never $TMPDIR itself: a stray `src` symlink left behind
-\ in a shared temp directory would otherwise decide these cases. Measured on this
-\ machine - /tmp/src pointed into an unrelated checkout, and the refusal below
-\ named that checkout instead of the CWD, because CANONICAL resolves an existing
-\ prefix physically and a symlink is an existing prefix.
+\ A FRESH temp directory, never the temp base itself: a stray `src` symlink left
+\ behind in a shared temp directory would otherwise decide these cases. Measured
+\ on this machine - /tmp/src pointed into an unrelated checkout, and the refusal
+\ below named that checkout instead of the CWD, because CANONICAL resolves an
+\ existing prefix physically and a symlink is an existing prefix.
 
 : PREP-OUTSIDE ( -- )
    CLEANUP-RESET
-   s" habu-boot-row" TMPDIR-MKDIR CANONICAL TTRUE {: a:ptr u:n :}
+   s" habu-boot-row" HB-TMP-MKDIR CANONICAL TTRUE {: a:ptr u:n :}
    a OUTSIDE u BYTE-COPY u OUTSIDE-U !
    OUTSIDE$ CLEANUP-TREE+ ;
 

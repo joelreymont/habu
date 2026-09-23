@@ -148,16 +148,16 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 
 \ CWD!: the child runs from the given directory, proved by a relative-path
 \ effect (cat of a file that exists only there), so a symlinked or slash-ended
-\ TMPDIR cannot fake a mismatch; the directory is registered for cleanup before
-\ the run so a throw does not leak it. A missing directory is refused before
-\ any spawn.
+\ temp base cannot fake a mismatch; the directory is registered for cleanup
+\ before the run so a throw does not leak it. A missing directory is refused
+\ before any spawn.
 create PCMDT-DIR 256 allot   variable PCMDT-DIR-U
 create PCMDT-REL 512 allot   variable PCMDT-REL-U
 : PCMDT-CWD-BODY$ ( -- ptr u8 n )  s" from the private directory" ;
 
 : PCMDT-RUN-CWD ( -- )
    CLEANUP-RESET
-   s" hb-proc-cmd-cwd" TMPDIR-MKDIR {: d:ptr du :}
+   s" hb-proc-cmd-cwd" HB-TMP-MKDIR {: d:ptr du :}
    d du CLEANUP-TREE+
    du 256 <= TTRUE
    du 256 > if CLEANUP-RUN exit then

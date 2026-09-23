@@ -178,7 +178,7 @@ variable EXT-ERR-A
 
 : EXT-PREPARE-ROOT ( -- )
    CLEANUP-RESET
-   s" habu-examples" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-examples" HB-TMP-MKDIR {: a:ptr u :}
    a u EXT-TEMP-BUF EXT-TEMP-U EXT-COPY!
    EXT-TEMP CLEANUP-TREE+
    EXT-TEMP s" files" EXT-FILES-BUF JOIN-PATH EXT-FILES-U !

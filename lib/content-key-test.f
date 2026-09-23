@@ -71,7 +71,7 @@ create CKT-BADCACHE FS-PATH-CAP allot
 
 : CKT-SETUP ( -- )
    CLEANUP-RESET
-   s" habu-content-key" TMPDIR-MKDIR CKT-ROOT CKT-ROOT-U CKT-COPY!
+   s" habu-content-key" HB-TMP-MKDIR CKT-ROOT CKT-ROOT-U CKT-COPY!
    CKT-ROOT$ CLEANUP-TREE+
    CKT-ROOT$ s" src.f" CKT-SRC CKT-SRC-U CKT-PATH!
    CKT-ROOT$ s" content-key.cache" CKT-CACHE CKT-CACHE-U CKT-PATH!

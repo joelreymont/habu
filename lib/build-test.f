@@ -75,7 +75,7 @@ create BT-TOP-DIE-SRC-BUF FS-PATH-CAP allot
    BT-TOP-DIE-SRC-BUF BT-TOP-DIE-SRC-U @ ;
 
 : BT-ROOT! ( -- )
-   s" habu-build" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-build" HB-TMP-MKDIR {: a:ptr u :}
    a u BT-ROOT-BUF BT-ROOT-U BT-COPY! ;
 
 : BT-PATHS! ( -- )

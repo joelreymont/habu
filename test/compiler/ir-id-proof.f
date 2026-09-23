@@ -529,7 +529,7 @@ private
 \ ---- phase 8: making Rocq answer ---------------------------------------------
 
 : SCRATCH-DIR ( -- ptr u8 n )
-   s" habu-ir-id-parity" TMPDIR-MKDIR ;
+   s" habu-ir-id-parity" HB-TMP-MKDIR ;
 
 \ What one manifest row asks Rocq: prove that this name still states this, and
 \ then report what that proof rests on.

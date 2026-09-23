@@ -246,7 +246,7 @@ private
 \ ---- making Rocq answer ------------------------------------------------------
 
 : SCRATCH-DIR ( -- ptr u8 n )
-   s" habu-ir-structure-parity" TMPDIR-MKDIR ;
+   s" habu-ir-structure-parity" HB-TMP-MKDIR ;
 
 : OBLIGATION-ROW ( n -- ) {: k:n :}
    k PROOF-MANIFEST:THEOREM$ k PROOF-MANIFEST:TYPE$ COMPILER-STRUCT-ROCQ:STATEMENT+

@@ -76,7 +76,7 @@ variable LA-DANGLING-LINK-U
 
 : LA-SETUP ( -- )
    CLEANUP-RESET
-   s" habu-load-argv" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-load-argv" HB-TMP-MKDIR {: a:ptr u:n :}
    a LA-ROOT u BYTE-COPY
    u LA-ROOT-U !
    LA-ROOT$ CLEANUP-TREE+

@@ -45,7 +45,7 @@ DYNAMIC-BUFFER PADDING n
 
 : SETUP ( -- )
    CLEANUP-RESET
-   s" habu-object-image" TMPDIR-MKDIR 2dup CLEANUP-TREE+
+   s" habu-object-image" HB-TMP-MKDIR 2dup CLEANUP-TREE+
    ROOT ROOT-U COPY-PATH
    ROOT$ s" obj-exit" EXE JOIN-PATH EXE-U ! ;
 

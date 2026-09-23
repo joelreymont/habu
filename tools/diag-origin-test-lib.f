@@ -69,7 +69,7 @@ create DGT-ERR DGT-BUF-CAP allot
 
 : DGT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-diag-origin" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-diag-origin" HB-TMP-MKDIR {: a:ptr u:n :}
    a u DGT-ROOT-BUF DGT-ROOT-U DGT-COPY!
    DGT-ROOT CLEANUP-DIR+
    DGT-ROOT s" input.f" DGT-IN-BUF JOIN-PATH DGT-IN-U !

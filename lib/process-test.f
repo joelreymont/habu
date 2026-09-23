@@ -88,7 +88,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    ;MATCH ;
 
 : PT-ROOT! ( -- )
-   s" habu-process" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-process" HB-TMP-MKDIR {: a:ptr u :}
    a u PT-ROOT-BUF PT-ROOT-U PT-COPY! ;
 
 : PT-PATHS! ( -- )

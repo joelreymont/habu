@@ -58,7 +58,7 @@ create CST-ENSURE-BUF FS-PATH-CAP allot
 
 : CST-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-codesign" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-codesign" HB-TMP-MKDIR {: a:ptr u :}
    a u CST-ROOT-BUF CST-ROOT-U CST-COPY!
    CST-ROOT CLEANUP-TREE+
    CST-ROOT s" promote-src.sh" CST-SCRIPT-SRC-BUF CST-SCRIPT-SRC-U CST-PATH!

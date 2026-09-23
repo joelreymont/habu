@@ -129,7 +129,7 @@ variable NUM-U
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-reserved-name-lint" TMPDIR-MKDIR ROOT ROOT-U COPY!
+   s" habu-reserved-name-lint" HB-TMP-MKDIR ROOT ROOT-U COPY!
    ROOT$ CLEANUP-TREE+
    ROOT$ s" good.f" GOOD JOIN-PATH GOOD-U !
    ROOT$ s" bad.f" BAD JOIN-PATH BAD-U !

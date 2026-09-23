@@ -61,7 +61,7 @@ variable IMDT-LDRB-U
 
 : IMDT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-imagedisasm-test" TMPDIR-MKDIR IMDT-ROOT IMDT-ROOT-U IMDT-COPY!
+   s" habu-imagedisasm-test" HB-TMP-MKDIR IMDT-ROOT IMDT-ROOT-U IMDT-COPY!
    IMDT-ROOT$ CLEANUP-TREE+
    IMDT-ROOT$ s" ret.bin" IMDT-RET JOIN-PATH IMDT-RET-U !
    IMDT-ROOT$ s" ldrb.bin" IMDT-LDRB JOIN-PATH IMDT-LDRB-U !

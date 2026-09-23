@@ -239,7 +239,7 @@ private
 \ ---- making Rocq answer ------------------------------------------------------
 
 : SCRATCH-DIR ( -- ptr u8 n )
-   s" habu-insn-parity" TMPDIR-MKDIR ;
+   s" habu-insn-parity" HB-TMP-MKDIR ;
 
 : OBLIGATION-ROW ( n -- ) {: k:n :}
    k PROOF-MANIFEST:THEOREM$ k PROOF-MANIFEST:TYPE$ COMPILER-INSN-ROCQ:STATEMENT+

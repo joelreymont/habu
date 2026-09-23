@@ -394,7 +394,7 @@ variable ROOT-U
 
 : PREP-CHILD ( ptr u8 n -- ptr u8 len ) {: row:ptr rowu:n :}
    CLEANUP-RESET
-   s" habu-verify-prim" TMPDIR-MKDIR {: root:ptr rootu:n :}
+   s" habu-verify-prim" HB-TMP-MKDIR {: root:ptr rootu:n :}
    root rootu CLEANUP-DIR+
    root rootu s" miss.f" PATH-BUF JOIN-PATH >LEN {: pathu:len :}
    PATH-BUF pathu LEN>N CLEANUP+
@@ -546,7 +546,7 @@ variable ROOT-U
 : PRODUCTION-DIFFERENTIAL ( -- )
    s" native cold-load and VERIFY:SOURCE-BUF accept the same exact row corpus" T-LABEL
    CLEANUP-RESET
-   s" habu-verify-prim-diff" TMPDIR-MKDIR {: root:ptr rootu:n :}
+   s" habu-verify-prim-diff" HB-TMP-MKDIR {: root:ptr rootu:n :}
    root rootu CLEANUP-DIR+
    root rootu DIFFERENTIAL-PATHS
    WRITE-CORPUS
@@ -561,7 +561,7 @@ variable ROOT-U
    srcu CORPUS-MAX > if E-STR-CAPACITY throw then
    src CORPUS-A srcu BYTE-COPY
    CLEANUP-RESET
-   s" habu-verify-prim-source" TMPDIR-MKDIR {: root:ptr rootu:n :}
+   s" habu-verify-prim-source" HB-TMP-MKDIR {: root:ptr rootu:n :}
    root rootu CLEANUP-DIR+
    root rootu s" source.f" NATIVE-PATH JOIN-PATH NATIVE-U !
    root rootu s" driver.f" DRIVER-PATH JOIN-PATH DRIVER-U !

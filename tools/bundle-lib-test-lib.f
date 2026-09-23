@@ -81,7 +81,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 
 : BLTT-PREPARE ( -- )
    CLEANUP-RESET
-   s" hb-bundle-lib" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" hb-bundle-lib" HB-TMP-MKDIR {: a:ptr u:n :}
    a u BLTT-ROOT-BUF BLTT-ROOT-U BLTT-COPY!
    BLTT-ROOT CLEANUP-DIR+
    BLTT-ROOT s" driver.f" BLTT-DRIVER-BUF BLTT-DRIVER-U BLTT-PATH!

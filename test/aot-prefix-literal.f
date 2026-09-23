@@ -38,7 +38,7 @@ variable COMMAND-N
 : CASE-SETUP ( ptr u8 n -- ) {: mode:ptr modeu:n :}
    mode modeu T-LABEL
    mode MODE-TEXT modeu BYTE-COPY modeu MODE-U !
-   s" habu-prefix-literal" TMPDIR-MKDIR {: root:ptr u:n :}
+   s" habu-prefix-literal" HB-TMP-MKDIR {: root:ptr u:n :}
    root u CLEANUP-TREE+
    root u s" capture.aot" ART JOIN-PATH ART-U !
    root u s" hb-literal" IMAGE JOIN-PATH IMAGE-U ! ;

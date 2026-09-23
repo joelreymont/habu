@@ -319,7 +319,7 @@ variable SMOKE-DIR-U
    absoluteu TEMP-SUFFIX$ nip + TEMP-U ! ;
 
 : SMOKE-DIR! ( -- )
-   s" hb-native-smoke" TMPDIR-MKDIR {: path:ptr size:n :}
+   s" hb-native-smoke" HB-TMP-MKDIR {: path:ptr size:n :}
    path size CLEANUP-TREE+
    path SMOKE-DIR size BYTE-COPY size SMOKE-DIR-U ! ;
 

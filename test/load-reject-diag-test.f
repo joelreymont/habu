@@ -146,7 +146,7 @@ variable RC
 
 : ROOT! ( -- )
    CLEANUP-RESET
-   s" habu-load-reject-diag" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-load-reject-diag" HB-TMP-MKDIR {: a:ptr u:n :}
    a BASE u BYTE-COPY
    u BASE-U !
    BASE$ CLEANUP-TREE+ ;

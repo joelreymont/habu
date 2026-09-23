@@ -50,7 +50,7 @@ create ERR   IO-CAP  allot
 \ ---- fixtures ---------------------------------------------------------------
 : SETUP ( -- )
    CLEANUP-RESET
-   s" hb-engine-candidate" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" hb-engine-candidate" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
    ROOT ROOT-U @ CLEANUP-TREE+
    ROOT ROOT-U @ s" plain"    PLAIN JOIN-PATH PLAIN-U !

@@ -19,7 +19,7 @@ variable FLT-SEEN-BYTES
    FLT-ROOT-BUF FLT-ROOT-U @ ;
 
 : FLT-ROOT! ( -- )
-   s" habu-fs-list" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-fs-list" HB-TMP-MKDIR {: a:ptr u:n :}
    a FLT-ROOT-BUF u BYTE-COPY
    u FLT-ROOT-U ! ;
 

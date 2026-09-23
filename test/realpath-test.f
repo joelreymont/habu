@@ -48,7 +48,7 @@ variable LINK-N
 
 
 : SYMLINK ( -- )
-   s" habu-realpath" TMPDIR-MKDIR {: root:ptr rootu:n :}
+   s" habu-realpath" HB-TMP-MKDIR {: root:ptr rootu:n :}
    root rootu CLEANUP-TREE+
    root rootu s" target.f" TARGET JOIN-PATH TARGET-N !
    root rootu s" alias.f" LINK JOIN-PATH LINK-N !

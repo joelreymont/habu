@@ -72,7 +72,7 @@ variable HBT-MULTI-MAIN-U
 
 : HBT-PREPARE ( -- )
    CLEANUP-RESET
-   s" hb-baseline-contracts" TMPDIR-MKDIR HBT-ROOT HBT-ROOT-U HBT-COPY!
+   s" hb-baseline-contracts" HB-TMP-MKDIR HBT-ROOT HBT-ROOT-U HBT-COPY!
    HBT-ROOT$ CLEANUP-TREE+
    HBT-ROOT$ s" script-mode.f" HBT-SCRIPT JOIN-PATH HBT-SCRIPT-U !
    HBT-ROOT$ s" multi-a.f" HBT-MULTI-A JOIN-PATH HBT-MULTI-A-U !

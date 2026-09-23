@@ -276,7 +276,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 
 : SPK-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-seal-pkg" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-seal-pkg" HB-TMP-MKDIR {: a:ptr u:n :}
    a u SPK-ROOT-BUF SPK-ROOT-U SPK-COPY!
    SPK-ROOT CLEANUP-TREE+
    SPK-ROOT s" forge.f" SPK-CHILD-BUF JOIN-PATH SPK-CHILD-U ! ;

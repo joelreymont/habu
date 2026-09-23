@@ -431,7 +431,7 @@ create TRH-EMPTY 1 allot
 
 : TRH-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-trh" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-trh" HB-TMP-MKDIR {: a:ptr u:n :}
    a u TRH-ROOT-BUF TRH-ROOT-U TRH-COPY!
    TRH-ROOT CLEANUP-TREE+
    TRH-ROOT s" forge.f" TRH-CHILD-BUF JOIN-PATH TRH-CHILD-U ! ;

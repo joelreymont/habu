@@ -21,7 +21,7 @@ variable IMAGE-N
 : BYTES ( -- ptr u8 ) 0 IMAGE-STORAGE BYTE-VIEW ;
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" address-cell-tasks" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" address-cell-tasks" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" restored" IMAGE-BUF JOIN-PATH IMAGE-U ! ;

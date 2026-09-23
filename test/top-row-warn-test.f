@@ -235,7 +235,7 @@ variable TW-CNT
 
 : TW-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-tw" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-tw" HB-TMP-MKDIR {: a:ptr u:n :}
    a u TW-ROOT-BUF TW-ROOT-U TW-COPY!
    TW-ROOT CLEANUP-TREE+
    TW-ROOT s" probe.f" TW-CHILD-BUF JOIN-PATH TW-CHILD-U ! ;

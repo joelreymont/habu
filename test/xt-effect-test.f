@@ -227,7 +227,7 @@ variable XE-CNT
 
 : XE-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-xe" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-xe" HB-TMP-MKDIR {: a:ptr u:n :}
    a u XE-ROOT-BUF XE-ROOT-U XE-COPY!
    XE-ROOT CLEANUP-TREE+
    XE-ROOT s" cand.f" XE-CHILD-BUF JOIN-PATH XE-CHILD-U ! ;

@@ -56,7 +56,7 @@ create KEY 32 allot
 public
 : GENERATE ( -- )
    T-RESET CLEANUP-RESET
-   s" habu-effect-pool" TMPDIR-MKDIR {: path:ptr u:n :}
+   s" habu-effect-pool" HB-TMP-MKDIR {: path:ptr u:n :}
    path ROOT u BYTE-COPY u ROOT-U ! ROOT$ CLEANUP-TREE+
    ROOT$ s" definitions.f" SOURCE JOIN-PATH SOURCE-U !
    ROOT$ s" effects.aot" ART JOIN-PATH ART-U !

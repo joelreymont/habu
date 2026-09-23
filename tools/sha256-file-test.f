@@ -48,7 +48,7 @@ variable SFT-EDGE-U
 
 : SFT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-sha256-file-test" TMPDIR-MKDIR SFT-ROOT SFT-ROOT-U SFT-COPY!
+   s" habu-sha256-file-test" HB-TMP-MKDIR SFT-ROOT SFT-ROOT-U SFT-COPY!
    SFT-ROOT$ CLEANUP-TREE+
    SFT-ROOT$ s" big.bin" SFT-FILE JOIN-PATH SFT-FILE-U !
    SFT-ROOT$ s" missing.bin" SFT-MISSING JOIN-PATH SFT-MISSING-U ! ;

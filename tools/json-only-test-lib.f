@@ -59,7 +59,7 @@ variable JOT-ERR-A
 
 : JOT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-json-only" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-json-only" HB-TMP-MKDIR {: a:ptr u:n :}
    a u JOT-ROOT-BUF JOT-ROOT-U JOT-COPY!
    JOT-ROOT CLEANUP-DIR+
    JOT-ROOT s" stderr.in" JOT-IN-BUF JOIN-PATH JOT-IN-U !

@@ -43,7 +43,7 @@ variable SDT-SRC-U
 
 : SDT-PREP ( -- )
    CLEANUP-RESET
-   s" habu-source-discovery-test" TMPDIR-MKDIR SDT-ROOT SDT-ROOT-U SDT-COPY!
+   s" habu-source-discovery-test" HB-TMP-MKDIR SDT-ROOT SDT-ROOT-U SDT-COPY!
    SDT-ROOT$ CLEANUP-TREE+ ;
 
 : SDT-WRITE-ENTRY ( ptr u8 n ptr u8 n -- )

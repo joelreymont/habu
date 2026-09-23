@@ -157,7 +157,7 @@ create ERR BUF-CAP allot
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-check-repair-hints" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-check-repair-hints" HB-TMP-MKDIR {: a:ptr u :}
    a u ROOT-BUF ROOT-U COPY!
    ROOT CLEANUP-DIR+
    ROOT s" input.f" SRC-BUF SRC-U PATH!

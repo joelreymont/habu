@@ -37,7 +37,7 @@ create SOURCE SIZE allot
 : RUN ( -- )
    T-RESET
    SIZE 0 ?do i 255 and SOURCE i + c! loop
-   s" habu-slab" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-slab" HB-TMP-MKDIR {: a:ptr u :}
    a DIR u BYTE-COPY u DIR-U !
    DIR DIR-U @ s" source" PATH JOIN-PATH PATH-U !
    [: GROW ;] [: CLEAN ;] finally

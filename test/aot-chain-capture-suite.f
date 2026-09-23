@@ -72,7 +72,7 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
 \ One tree per run, registered for cleanup, so "the artifact exists" is a statement
 \ about the capture that just ran and never about a leftover.
 : SETUP ( -- )
-   s" habu-aot-chain" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-aot-chain" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" small.aot" ART-BUF JOIN-PATH ART-U ! ;

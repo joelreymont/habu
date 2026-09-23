@@ -198,7 +198,7 @@ create DIAG-BUF FS-PATH-CAP allot
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" hb-repair-schema" TMPDIR-MKDIR {: a:ptr u :}
+   s" hb-repair-schema" HB-TMP-MKDIR {: a:ptr u :}
    a u ROOT-BUF ROOT-U COPY!
    ROOT CLEANUP-TREE+
    ROOT s" bad.f" SRC-BUF SRC-U PATH!

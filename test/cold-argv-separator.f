@@ -70,7 +70,7 @@ create CS-ERR CS-CAP allot
 
 : CS-SETUP ( -- )
    CLEANUP-RESET
-   s" habu-cold-sep" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-cold-sep" HB-TMP-MKDIR {: a:ptr u:n :}
    a CS-ROOT u BYTE-COPY
    u CS-ROOT-U !
    CS-ROOT$ CLEANUP-TREE+
