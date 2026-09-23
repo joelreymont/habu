@@ -8,13 +8,25 @@ require src/habu/aot-decl.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
 
+package CGT-USER
+public
+: die ( n -- n ) 1+ ;
+;package
+
+\ Tier 1 emits the fatal primitive as the last BL of an all-dead definition.
+1 set-tier
 ndict@ here AOT-CAPTURE:PRELUDE-MARK
 AOT-ARM:WINDOW-OPEN
+NSTR:WINDOW-OPEN
 package CGT-WINDOW
 : DEAD ( -- n ) 17 ;
 : CALLEE ( n -- n ) 1+ ;
 public
 : LIVE ( n -- n ) CALLEE ;
+: FATAL ( -- ) E-A-EMPTY throw ;
+private
+: AFTER-FATAL ( -- n ) 173 ;
+public
 variable ABCX-LONG-METADATA
 variable ABCT-LONG-METADATA
 variable ABCP-LONG-METADATA
@@ -38,6 +50,7 @@ using AOT-BUF
    s" DEAD" CGT-FIND dup MAP-NAMED 0 T= MAP-START -1 T=
    s" CALLEE" CGT-FIND dup MAP-NAMED 0 T= MAP-START 0 >= TTRUE
    s" LIVE" CGT-FIND dup MAP-NAMED 1 T= MAP-START 0 >= TTRUE
+   s" AFTER-FATAL" CGT-FIND dup MAP-NAMED 0 T= MAP-START -1 T=
    AOT-BLOB-LEN @ AOT-ARM:B1 @ AOT-ARM:B0 @ - < TTRUE
    CODE-WINDOW {: first:n end:n size:n :}
    first AOT-ARM:B0 @ T= end AOT-ARM:B1 @ T= size AOT-BLOB-LEN @ T= ;
@@ -105,6 +118,39 @@ using AOT-BUF
    -1 ACAP-GRAPH-READY !
    2 ACAP-GRAPH-LIVE? TFALSE
    4 ACAP-GRAPH-LIVE? TTRUE 5 ACAP-GRAPH-LIVE? TFALSE ;
+
+: CGT-EXTERNAL ( ptr u8 n n bool -- )
+   {: name:ptr size:n scope:n continues:bool :}
+   CGT-SETUP
+   $94000000 AOT-BLOB-BUF@ AOT-P32!       \ canonical external BL, target in its row
+   0 name size scope ACAP-ADD-SITE
+   ACAP-GRAPH-INDEX
+   1 ACAP-GRAPH-MARK-REC ACAP-GRAPH-SWEEP
+   -1 ACAP-GRAPH-READY !
+   continues if 2 ACAP-GRAPH-LIVE? TTRUE else 2 ACAP-GRAPH-LIVE? TFALSE then
+   4 ACAP-GRAPH-LIVE? TFALSE ;
+
+: CGT-EXTERNALS ( -- )
+   s" the fatal primitive has no continuation" T-LABEL
+   s" die" 0 false CGT-EXTERNAL
+   s" an ordinary external call keeps its continuation" T-LABEL
+   s" emit" 0 true CGT-EXTERNAL
+   s" a qualified user word called die can return" T-LABEL
+   s" CGT-USER:die" WID-QUAL true CGT-EXTERNAL
+   41 CGT-USER:die 42 T= ;
+
+\ A source definition may replace the global spelling too. This isolated test
+\ runs last; already compiled diagnostics still call the original primitive.
+TRUSTED: CGT-SHADOW-DIE ( -- )
+   s" undefine die : die ( ptr u8 n n -- ) 2drop drop ;" evaluate ;
+
+public
+: CGT-SHADOW ( -- )
+   s" the global spelling alone does not establish a primitive" T-LABEL
+   CGT-SHADOW-DIE
+   s" die" 0 true CGT-EXTERNAL
+   ACAP-RESET ;
+private
 
 : CGT-PC-REL ( n n -- ) {: before:n after:n :}
    CGT-SETUP
@@ -271,6 +317,7 @@ using AOT-BUF
    CGT-REAL
    CGT-SETUP CGT-INDEX CGT-CALL CGT-NAME-MOVE
    CGT-SETUP CGT-INDEX CGT-JUMP
+   CGT-EXTERNALS
    CGT-PC-RELS
    CGT-PC-BACKS
    CGT-SETUP CGT-GAP
@@ -278,9 +325,12 @@ using AOT-BUF
    CGT-METADATA
    CGT-STRING
    CGT-DIAGNOSTIC
-   ACAP-RESET
-   T-REPORT ;
+   ACAP-RESET ;
 
 CGT-MAIN
 ;using
 ;package
+
+\ Evaluate the global replacement outside the authenticated package context.
+AOT-CAPTURE:CGT-SHADOW
+T-REPORT

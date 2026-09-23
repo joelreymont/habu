@@ -352,7 +352,8 @@ variable ACAP-NIDX-PM                                        \ pool-proof mismat
 : ACAP-SITE-ROW ( n -- ptr u8 ) SITE-ROW * AOT-SITE-BUF@ + ;
 
 \ The reach pass below needs to distinguish an external B/BL (which was
-\ canonicalised to zero), an in-window code literal, and raw metadata. Keep
+\ canonicalised to zero), an in-window code literal, and raw metadata. Kind 4
+\ is an external call to the fatal engine primitive, with no continuation. Keep
 \ their kind beside the blob, indexed by the original instruction offset. The
 \ buffer is build-host scratch and never enters the captured payload.
 DYNAMIC-BUFFER ACAP-GSITE n
@@ -1085,10 +1086,30 @@ $14000000 constant ACAP-GBR-TERM
    end adr 21 ACAP-GRAPH-PC-TARGET at 4 + <> if exit then
    at 4 + end at 4 + - ACAP-GRAPH-RAW-SPAN ;
 
+\ Scope plus spelling is not enough: undefine can replace a global with source
+\ code. The primitive must still live in this engine's executable text, as the
+\ address-cell version probe requires. Resolve once per site-table rebuild.
+: ACAP-DIE-PRIMITIVE? ( -- bool )
+   s" die" 0 search-wl {: xt:n :}
+   AOT-LIVE-DATA RBASE-CELL + AOT-CELL@ {: base:n :}
+   xt base < if false exit then
+   base CODE-OFF - IMAGE-TEXT-SIZE-OFF + AOT-N>U8 CELL-VIEW @
+   IMAGE-TEXT-CONTENT-ADJ - xt base - > ;
+
+: ACAP-DIE-SITE? ( ptr u8 -- bool ) {: row:ptr :}
+   row 8 + ACAP-W32@ 0<> if false exit then
+   row 4 + ACAP-W32@ AOT-NAMES-BUF@ + {: name:ptr :}
+   name 1+ name c@ s" die" CORE-STR=CI ;
+
 : ACAP-GRAPH-SITES ( -- )
+   ACAP-DIE-PRIMITIVE? {: fatal:bool :}
    AOT-BLOB-LEN @ 4 / ACAP-GSITE-RESERVE
    AOT-BLOB-LEN @ 4 / 0 ?do 0 i ACAP-GSITE ! loop
-   AOT-SITE-N @ 0 ?do 1 i ACAP-SITE-ROW ACAP-W32@ ACAP-GSITE! loop
+   AOT-SITE-N @ 0 ?do
+      i ACAP-SITE-ROW {: row:ptr :}
+      fatal row ACAP-DIE-SITE? and if 4 else 1 then
+      row ACAP-W32@ ACAP-GSITE!
+   loop
    AOT-CSITE-N @ 0 ?do
       2 AOT-DSITE-N @ i + 4 * AOT-DSITE-BUF@ + ACAP-W32@ ACAP-GSITE!
    loop
@@ -1105,15 +1126,20 @@ $14000000 constant ACAP-GBR-TERM
    k ACAP-GMARK @ 0<> ;
 
 : ACAP-GRAPH-SCAN-AT ( n -- ) {: at:n :}
-   at ACAP-GSITE@ 3 = if exit then
+   at ACAP-GSITE@ {: site:n :}
+   site 3 = if exit then
    at ACAP-GRAPH-W32@ {: w:n :}
    w ACAP-GRAPH-PC-KIND {: kind:n :}
-   kind 0<> at ACAP-GSITE@ 1 <> and if
+   kind 0<> site 1 <> and site 4 <> and if
       at w kind ACAP-GRAPH-PC-TARGET ACAP-GRAPH-MARK-OFF
    then
    at ACAP-GSITE@ 2 = if
       AOT-BLOB-BUF@ at + SNAP-RELOC:CHAINV ACAP-GRAPH-MARK-OFF
    then ;
+
+: ACAP-GRAPH-ENDS? ( n -- bool ) {: at:n :}
+   at ACAP-GSITE@ 4 = if true exit then
+   at ACAP-GRAPH-W32@ ACAP-GRAPH-TERMINAL? ;
 
 : ACAP-GRAPH-SWEEP-ONE ( n -- ) {: k:n :}
    k ACAP-GRAPH-START {: from:n :}
@@ -1121,7 +1147,7 @@ $14000000 constant ACAP-GBR-TERM
    from begin dup to < while
       dup ACAP-GRAPH-SCAN-AT 4 +
    repeat drop
-   to 4 - ACAP-GRAPH-W32@ ACAP-GRAPH-TERMINAL? 0= if
+   to 4 - ACAP-GRAPH-ENDS? 0= if
       to ACAP-GRAPH-MARK-OFF
    then ;
 
@@ -1141,7 +1167,7 @@ $14000000 constant ACAP-GBR-TERM
       at ACAP-GRAPH-SCAN-AT
       at 4 + AOT-BLOB-LEN @ < if
          at 4 / 1+ ACAP-GOWNER @ 0<> if
-            at ACAP-GRAPH-W32@ ACAP-GRAPH-TERMINAL? 0= if
+            at ACAP-GRAPH-ENDS? 0= if
                at 4 + ACAP-GRAPH-MARK-OFF
             then
          then
