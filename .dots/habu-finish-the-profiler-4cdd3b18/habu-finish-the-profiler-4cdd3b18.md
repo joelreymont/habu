@@ -28,3 +28,11 @@ but those flat counts do not identify the calling algorithm. Tender continues
 its own phase counters; this feature is not blocking its work or evidence of an
 engine bottleneck. Calibrate sampling overhead in a paired run; the existing
 PC-index task `habu-idx-profiler-pc-45b4c841` owns the per-tick dictionary scan.
+
+Verified on 45608866 with engine 3da80b23: the complete native-gate-debug row
+passes. It pins package-qualified profiler rows and callers, an explicit unknown
+caller, prof-off preserving readable counters, prof-reset and JSON. Those
+profiler requests are implemented. The remaining breakpoint refusal is tracked
+by child habu-refuse-breakpoints-outside-e3de0ba2; it reproduces a crash on a
+real engine-text primitive and keeps the fix outside the engine protection path.
+Evidence: ~/.cache/habu/profiler-verification/source-45608866/.

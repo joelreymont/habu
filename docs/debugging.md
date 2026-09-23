@@ -124,6 +124,10 @@ prim (RW→store→RX→isync, atomic from JIT-resident code). A full
 Forth-predicate conditional would need signal-safe deferred evaluation; the
 supported conditional breakpoint mechanism is skip-count (`BPN`).
 
+Targets must be instruction-aligned addresses in the live compiled code region.
+Engine-text primitives such as `atomic-cas` are refused with `E-BP-TARGET`
+before changing the breakpoint table or page permissions.
+
 `cp@` is stable only inside a compiled word: the interpreter compiles each
 top-level line into a transient buffer at `cp@`, so a top-level `cp@ patch32`
 clobbers the executing line (SIGILL). Write a runtime stub at `cp@` from inside

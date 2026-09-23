@@ -14,6 +14,11 @@ require src/habu/stepper.f
 8 constant MAXBP
 $D4200000 constant BRK0
 
+\ Debugger-owned refusal range, outside the library and build-tool ranges.
+-9300 constant E-BP-FIRST
+-9309 constant E-BP-LAST
+-9300 constant E-BP-TARGET
+
 : W32@ ( ptr u8 -- n ) {: a :}
    a c@  a 1 + c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
 
@@ -70,6 +75,12 @@ TRUSTED: BP-XT>PTR ( n -- ptr u8 )
    BRK0 xt BP-PATCH32 ;
 
 : BPADD ( n n -- ) {: xt ctrl :}
+   \ patch32 runs in engine text while opening the target's pages RW. An
+   \ engine-text target can remove X from the patcher itself. Only the live
+   \ compiled region is supported; refuse before publishing a slot or patching.
+   xt dbase@ DICT-SIZE + <  xt cp@ 4 - > or  xt 3 and 0<> or if
+      E-BP-TARGET throw
+   then
    xt BP-XT>PTR ctrl BPADD-PTR ;
 
 : BP+ ( n -- )    0 BPADD ;                  \ one-shot
