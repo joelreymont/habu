@@ -1,9 +1,11 @@
 ---
 title: Validate frozen fetch descriptor structure only once
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-09-22T20:46:02.580160+03:00"
+created-at: "\"2026-09-22T20:46:02.580160+03:00\""
+closed-at: "2026-09-23T10:05:37.065385+03:00"
+close-reason: "implemented as 243f0fb4 (dup 6b6a4894), reviewed by hazel: frozen is a nominal cell family with private casts (forgery refused E-CAST-OWNER), the pointer bridge is NULL-PTR BYTE-VIEW; timings (ns/call) scalar CHECK 68.6 to TAGS 27.5, nested 305.8 to 122.5, CHECK itself +3.4. Untested boundary: the stripped-image code-bytes before/after (5268 both) were measured on the tools/hb-build.f CLI path where the image never carries NFETCH-CHECK; the gate in-process build does carry it; no shrink claim. Chain FO tree bd10e2fc"
 ---
 
 Problem: src/compiler/native/fetch.f KEEP validates each fetch descriptor with NFETCH-CHECK:SHAPE before interning its bytes in NSTR. src/compiler/native/elaborate.f VALIDATE-FETCH nevertheless emits NFETCH-CHECK:CHECK for every typed fetch, and fetch-check.f CHECK walks the same immutable descriptor through SHAPE again before checking the current value. That repeats structural validation at runtime; changing value tags still need their checks. Source verified on hazel/integration 1ba6e264. In the private compacted engine 3c7570bd6cad2943fc1fd3d48112323d9ff02a4119d23198ceb462de85a618ee, SHAPE alone is 596 bytes plus its validation callees. Acceptance: establish the immutable descriptor boundary; compiled fetches validate structure once at construction and only value tags at runtime, without weakening the public CHECK malformed-descriptor refusal or invalid-tag rejection (including a fetched value immediately dropped). Preserve nested/parametric/unaligned descriptor fixtures, run the owning native-fetch and stripped rows, compare code bytes and paired timings, then generation proof and the full gate. No release-mode flag or unchecked arbitrary-pointer entry. Files: src/compiler/native/fetch.f, fetch-check.f, elaborate.f and their existing fixtures. Ownership: Hazel compiler lane; Alder supplies the reduction. This is separate from compile-time scalar type checking and the cold-throw layout dot.
