@@ -110,10 +110,177 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
 : PTT-ROW-SIZE ( -- )
    PROC-STORAGE-BYTES 1184 T= ;
 
+\ ---- two tasks, two commands ------------------------------------------------
+\ The shape the shared command could not survive: task A states its arguments,
+\ task B states its own in between, and A's run must still be A's command. With
+\ one process-wide command A ran B's arguments (dot habu-give-proc-cmd-c1f51174,
+\ reproducer habu-gaps/process-call-state/repro.f). Two declared contexts are
+\ two sets of storage, so the interleave is no longer a race at all - and this
+\ file's other rows keep proving that the lib/process.f capture row underneath
+\ them is already per task.
+20 constant PTT-ROUNDS
+5000 constant PTT-RUN-MS
+5000000000 constant PTT-WAIT-NS          \ one handshake wait: 5 s
+
+CMD:COMMAND PTT-CMD-A
+CMD:COMMAND PTT-CMD-B
+
+TASK:MIN-STACK TASK:TASK PTT-A
+TASK:MIN-STACK TASK:TASK PTT-B
+
+variable PTT-A-READY                     \ rounds task A has stated its arguments for
+variable PTT-B-DONE                      \ rounds task B has run its own command for
+
+: PTT-WAIT ( ptr n n -- ) {: flag want :}
+   mono-ns PTT-WAIT-NS + {: until:n :}
+   begin flag atomic@ want < while
+      mono-ns until >= if E-PROC-TIMEOUT throw then
+      1 >MS TASK:SLEEP
+   repeat ;
+
+\ Runs INSIDE a worker, so it asserts nothing: a bad completion throws and the
+\ join reports the code; a wrong capture is counted and returned.
+: PTT-PRINT ( ptr ptr u8 -- ) {: h:ptr :}
+   h s" /usr/bin/printf" >LEN PTT-RUN-MS >MS CMD:RUN-OUTCOME
+   MATCH outcome
+      exited OF 0<> if E-PROC-OUTPUT throw then ENDOF
+      signaled OF drop E-PROC-OUTPUT throw ENDOF
+      timeout OF E-PROC-OUTPUT throw ENDOF
+   ;MATCH ;
+
+\ ( bad round -- bad round+1 ): the counter rides the stack because a local
+\ binds once per definition, so a round cannot bind one of its own.
+: PTT-A-ROUND ( n n -- n n ) {: bad:n r:n :}
+   PTT-CMD-A CMD:RESET
+   PTT-CMD-A s" alpha" >LEN CMD:ARG+
+   r 1 + PTT-A-READY atomic!
+   PTT-B-DONE r 1 + PTT-WAIT
+   PTT-CMD-A PTT-PRINT
+   PTT-CMD-A CMD:OUT$ s" alpha" STR= if bad else bad 1 + then
+   r 1 + ;
+
+: PTT-A-BODY ( -- )
+   0 0 begin dup PTT-ROUNDS < while
+      PTT-A-ROUND
+   repeat drop TASK:RETURN ;
+
+: PTT-B-ROUND ( n n -- n n ) {: bad:n r:n :}
+   PTT-A-READY r 1 + PTT-WAIT
+   PTT-CMD-B CMD:RESET
+   PTT-CMD-B s" beta" >LEN CMD:ARG+
+   PTT-CMD-B PTT-PRINT
+   PTT-CMD-B CMD:OUT$ s" beta" STR= {: kept:bool :}
+   r 1 + PTT-B-DONE atomic!
+   kept if bad else bad 1 + then
+   r 1 + ;
+
+: PTT-B-BODY ( -- )
+   0 0 begin dup PTT-ROUNDS < while
+      PTT-B-ROUND
+   repeat drop TASK:RETURN ;
+
+: PTT-JOIN-ZERO ( ptr n -- )
+   TASK:JOIN MATCH result
+     ok  OF 0 T= ENDOF                            \ rounds whose capture was not its own
+     err OF 0 T= ENDOF                            \ the worker threw; its code is not 0
+   ;MATCH ;
+
+: PTT-TWO-COMMANDS ( -- )
+   0 PTT-A-READY !  0 PTT-B-DONE !
+   ['] PTT-A-BODY PTT-A TASK:ACTIVATE
+   ['] PTT-B-BODY PTT-B TASK:ACTIVATE
+   PTT-A PTT-JOIN-ZERO
+   PTT-B PTT-JOIN-ZERO ;
+
+\ ---- four tasks, four commands ----------------------------------------------
+\ Each task holds its own environment row and its own stdin across a run, so
+\ every part of a context the tasks could have shared is read back per task.
+CMD:COMMAND PTT-CMD-0
+CMD:COMMAND PTT-CMD-1
+CMD:COMMAND PTT-CMD-2
+CMD:COMMAND PTT-CMD-3
+
+TASK:MIN-STACK TASK:TASK PTT-T0
+TASK:MIN-STACK TASK:TASK PTT-T1
+TASK:MIN-STACK TASK:TASK PTT-T2
+TASK:MIN-STACK TASK:TASK PTT-T3
+
+: PTT-SLOT ( n -- ptr ptr u8 ) {: ix:n :}
+   ix 0 = if PTT-CMD-0 exit then
+   ix 1 = if PTT-CMD-1 exit then
+   ix 2 = if PTT-CMD-2 exit then
+   PTT-CMD-3 ;
+
+: PTT-VALUE$ ( n -- ptr u8 n ) {: ix:n :}
+   ix 0 = if s" zero" exit then
+   ix 1 = if s" one" exit then
+   ix 2 = if s" two" exit then
+   s" three" ;
+
+: PTT-ENV-OUT$ ( n -- ptr u8 n ) {: ix:n :}
+   ix 0 = if S\" HABU_CMD_TASK=zero\n" exit then
+   ix 1 = if S\" HABU_CMD_TASK=one\n" exit then
+   ix 2 = if S\" HABU_CMD_TASK=two\n" exit then
+   S\" HABU_CMD_TASK=three\n" ;
+
+: PTT-STDIN$ ( n -- ptr u8 n ) {: ix:n :}
+   ix 0 = if s" stdin for zero" exit then
+   ix 1 = if s" stdin for one" exit then
+   ix 2 = if s" stdin for two" exit then
+   s" stdin for three" ;
+
+: PTT-RUN-OK ( ptr ptr u8 ptr u8 len -- ) {: h:ptr path:ptr pathu:len :}
+   h path pathu PTT-RUN-MS >MS CMD:RUN-RC
+   MATCH result
+     ok  OF drop ENDOF
+     err OF throw ENDOF
+   ;MATCH ;
+
+: PTT-ENV-ROUND ( n n -- n ) {: bad:n ix:n :}
+   ix PTT-SLOT CMD:RESET
+   ix PTT-SLOT CMD:ENV-HERMETIC
+   ix PTT-SLOT s" HABU_CMD_TASK" >LEN ix PTT-VALUE$ >LEN CMD:ENV+
+   ix PTT-SLOT s" /usr/bin/env" >LEN PTT-RUN-OK
+   ix PTT-SLOT CMD:OUT$ ix PTT-ENV-OUT$ STR= if bad else bad 1 + then ;
+
+: PTT-STDIN-ROUND ( n n -- n ) {: bad:n ix:n :}
+   ix PTT-SLOT CMD:RESET
+   ix PTT-SLOT ix PTT-STDIN$ >LEN CMD:IN!
+   ix PTT-SLOT s" /bin/cat" >LEN PTT-RUN-OK
+   ix PTT-SLOT CMD:OUT$ ix PTT-STDIN$ STR= if bad else bad 1 + then ;
+
+: PTT-T-ROUND ( n n n -- n n ) {: bad:n r:n ix:n :}
+   bad ix PTT-ENV-ROUND ix PTT-STDIN-ROUND
+   r 1 + ;
+
+: PTT-T-RUN ( n -- n ) {: ix:n :}
+   0 0 begin dup PTT-ROUNDS < while
+      ix PTT-T-ROUND
+   repeat drop ;
+
+: PTT-T0-BODY ( -- ) 0 PTT-T-RUN TASK:RETURN ;
+: PTT-T1-BODY ( -- ) 1 PTT-T-RUN TASK:RETURN ;
+: PTT-T2-BODY ( -- ) 2 PTT-T-RUN TASK:RETURN ;
+: PTT-T3-BODY ( -- ) 3 PTT-T-RUN TASK:RETURN ;
+
+: PTT-FOUR-COMMANDS ( -- )
+   ['] PTT-T0-BODY PTT-T0 TASK:ACTIVATE
+   ['] PTT-T1-BODY PTT-T1 TASK:ACTIVATE
+   ['] PTT-T2-BODY PTT-T2 TASK:ACTIVATE
+   ['] PTT-T3-BODY PTT-T3 TASK:ACTIVATE
+   PTT-T0 PTT-JOIN-ZERO
+   PTT-T1 PTT-JOIN-ZERO
+   PTT-T2 PTT-JOIN-ZERO
+   PTT-T3 PTT-JOIN-ZERO ;
+
 : PROCESS-TASK-TEST-MAIN ( -- )
    T-RESET
    PTT-ROW-SIZE
    PTT-CONCURRENT-CAPTURE-AND-POLL
+   s" a task's own command arguments survive another task's" T-LABEL
+   PTT-TWO-COMMANDS
+   s" four tasks keep their own environment row and stdin" T-LABEL
+   PTT-FOUR-COMMANDS
    T-REPORT
    s" process-task-test: ok" type cr ;
 

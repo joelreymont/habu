@@ -683,13 +683,20 @@ PROC-REAP-ARM-DEFAULT
    PROC-CLOSE-ALL-CAPTURE-FDS
    PROC-CAPTURE-OUTCOME@ ;
 
-: PROC-SPAWN-CAPTURE ( ptr u8 -- )
-   PROC-CAPTURE-NULL-INPUT PROC-OUT-W @ >FD PROC-ERR-W @ >FD PROC-SPAWN-RAW {: pid :}
+\ Adopt a capture child the caller just spawned: a failed spawn closes the
+\ capture descriptors and throws, a live one becomes this task's capture pid and
+\ the child's ends of the three pipes are closed here. Every spawn shape shares
+\ this tail, so a spawn word is only its primitive call plus this.
+: PROC-CAPTURE-ADOPT-SPAWN ( pid -- ) {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-CAPTURE-PID!
    PROC-IN-R PROC-CLOSE-CELL
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
+
+: PROC-SPAWN-CAPTURE ( ptr u8 -- )
+   PROC-CAPTURE-NULL-INPUT PROC-OUT-W @ >FD PROC-ERR-W @ >FD PROC-SPAWN-RAW
+   PROC-CAPTURE-ADOPT-SPAWN ;
 
 : RUN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}

@@ -82,7 +82,7 @@ theirs.
 | `lib/json-read.f` | caller-owned |
 | `lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |
 | `lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` vector) |
-| `lib/process-command.f` | process-wide |
+| `lib/process-command.f` | caller-owned (`CMD` contexts) / process-wide (the `PROC-CMD` surface over one static context) |
 | `lib/process-cwd.f` | process-wide |
 | `lib/net/tcp4.f` | task-local |
 | `lib/net/udp4.f` | task-local |
@@ -1940,47 +1940,63 @@ fresh storage and register cleanup again when used after restore. Ordinary
 `PROC-ARGV-RESET` and `PROC-ENV-RESET` still retain capacity for reuse within the
 current process; capture does not preserve a prepared argv or environment.
 
-`lib/process-command.f` adds a checked command-owned runner above argv/env. It
-keeps separate command arg, env, stdin, stdout, stderr, and outcome storage, then
-transfers that state into the existing `lib/process-argv.f`/`lib/process-env.f`
-spawn wrappers for one run. The primitive spawn calls stay in those existing
-audited boundaries.
+`lib/process-command.f` adds a checked command runner above argv/env. A command
+is a CALLER-OWNED context: `CMD:COMMAND NAME` declares one and publishes `NAME`
+as its handle, a `CMD:VEC-CELLS`-cell `PTR-U8-TABLE` whose cell 0 holds the
+`CMD:BYTES`-byte region the declaration allots and whose other cells are the
+child's argv and envp vectors. Arguments and environment rows are copied into
+that region and their addresses installed straight into those vectors, so a run
+spawns from the context's own storage and writes no `lib/process-argv.f` or
+`lib/process-env.f` staging. `CMD:BIND` pairs a caller's own storage
+(`CMD:BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES` and
+`CMD:VEC-CELLS >COUNT MEM-ALLOC-CELLS`) with the same surface.
 
 ```forth
-PROC-CMD-RESET       ( -- )
-PROC-CMD-ARG+        ( ptr u8 len -- )
-PROC-CMD-ENV-ENTRY+  ( ptr u8 len -- )
-PROC-CMD-ENV+        ( ptr u8 len ptr u8 len -- )
-PROC-CMD-ENV-INHERIT ( -- )
-PROC-CMD-ENV-HERMETIC ( -- )
-PROC-CMD-IN-RESET    ( -- )
-PROC-CMD-IN!         ( ptr u8 len -- )
-PROC-CMD:WIPE        ( -- )
-PROC-CMD-RUN-OUTCOME ( ptr u8 len ms -- n n )
-PROC-CMD-RUN-RC      ( ptr u8 len ms -- result<n,n> )
-PROC-CMD-OUT$        ( -- ptr u8 n )
-PROC-CMD-ERR$        ( -- ptr u8 n )
-PROC-CMD-OUTCOME@    ( -- n n )
-PROC-CMD-RC@         ( -- result<n,n> )
+CMD:COMMAND NAME                \ declares NAME ( -- ptr ptr u8 )
+CMD:BIND         ( ptr u8 ptr ptr u8 -- )
+CMD:RESET        ( ptr ptr u8 -- )
+CMD:WIPE         ( ptr ptr u8 -- )
+CMD:ARG+         ( ptr ptr u8 ptr u8 len -- )
+CMD:ENV-ENTRY+   ( ptr ptr u8 ptr u8 len -- )
+CMD:ENV+         ( ptr ptr u8 ptr u8 len ptr u8 len -- )
+CMD:ENV-HERMETIC ( ptr ptr u8 -- )
+CMD:IN!          ( ptr ptr u8 ptr u8 len -- )
+CMD:CWD!         ( ptr ptr u8 ptr u8 len -- )
+CMD:RUN-OUTCOME  ( ptr ptr u8 ptr u8 len ms -- outcome )
+CMD:RUN-RC       ( ptr ptr u8 ptr u8 len ms -- result<n,n> )
+CMD:OUT$         ( ptr ptr u8 -- ptr u8 n )
+CMD:ERR$         ( ptr ptr u8 -- ptr u8 n )
+CMD:OUTCOME@     ( ptr ptr u8 -- outcome )
+CMD:RC@          ( ptr ptr u8 -- result<n,n> )
 ```
 
-Call `PROC-CMD-RESET`, append extra args with `PROC-CMD-ARG+`, append explicit
-environment entries with `PROC-CMD-ENV+` or `PROC-CMD-ENV-ENTRY+`, optionally
-replace the default inherited environment with `PROC-CMD-ENV-HERMETIC`, and set
-bounded stdin with `PROC-CMD-IN!`. A command's own table holds only the rows it
-states for itself, up to `PROC-ENV-EXTRA`; the parent's environment is added by
-`PROC-ENV-INHERIT-MISSING` in the envp-sized table described above.
-`PROC-CMD-RUN-OUTCOME` validates the path and
-timeout before transferring state into the lower-level argv/env buffers, captures
-bounded stdout/stderr into command-owned buffers, stores the decomposed outcome, and returns
-that same outcome pair. `PROC-CMD-RUN-RC` wraps the `PROC-OUTCOME>RC` completion
-in a `result<n,n>` (ok on a clean exit, err carrying the nonzero code) for
-callers that branch on success/failure. `PROC-CMD-OUT$`, `PROC-CMD-ERR$`,
-`PROC-CMD-OUTCOME@`, and `PROC-CMD-RC@` expose the stored result after the run.
-`PROC-CMD:WIPE` explicitly zero-fills the full stdin, stdout and stderr staging
-buffers and clears their lengths, including after a refused run. `RESET` only
-resets lengths and state; no run wipes implicitly. Wiping leaves the command's
-arguments, environment, working directory and recorded outcome intact.
+`package PROC-CMD` is the same surface without the handle, over one static
+context it declares itself: `PROC-CMD:RESET`, `PROC-CMD:WIPE`, `PROC-CMD:ARG+`,
+`PROC-CMD:ENV-ENTRY+`, `PROC-CMD:ENV+`, `PROC-CMD:ENV-HERMETIC`, `PROC-CMD:IN!`,
+`PROC-CMD:CWD!`, `PROC-CMD:RUN-OUTCOME`, `PROC-CMD:RUN-RC`, `PROC-CMD:OUT$`,
+`PROC-CMD:ERR$`, `PROC-CMD:OUTCOME@`, `PROC-CMD:RC@`. Those callers share one
+command, so they are single-task; a task that must not share one declares its
+own.
+
+Call `RESET`, append extra args with `ARG+`, append explicit environment entries
+with `ENV+` or `ENV-ENTRY+`, optionally replace the default inherited
+environment with `ENV-HERMETIC`, and set bounded stdin with `IN!`. The context
+holds up to `CMD:ARG-MAX` arguments and, in `CMD:ENV-ROWS` envp cells, the rows
+it states for itself plus the inherited ones; inheritance appends ADDRESSES —
+each `PROC-ENV-DEFAULT+` row where that read-only policy table holds it, then
+every parent entry whose name is not already in the vector, where the parent's
+own environment holds it — so only the caller's rows occupy the context's bytes.
+A row past `CMD:ENV-ROWS` names the ceiling and the row on stderr and throws
+`E-PROC-ENV`. `RUN-OUTCOME` validates the path and timeout, prepares the two
+vectors, captures bounded stdout/stderr into the context's buffers, stores the
+decomposed outcome and returns it. `RUN-RC` wraps the `PROC-OUTCOME>RC`
+completion in a `result<n,n>` (ok on a clean exit, err carrying the nonzero
+code) for callers that branch on success/failure. `OUT$`, `ERR$`, `OUTCOME@` and
+`RC@` expose the stored result after the run. `WIPE` explicitly zero-fills the
+full stdin, stdout and stderr buffers and clears their lengths, including after
+a refused run. `RESET` only resets lengths and state; no run wipes implicitly.
+Wiping leaves the command's arguments, environment, working directory and
+recorded outcome intact.
 
 `lib/process-cwd.f` is a post-env layer for running prepared argv/envp children
 with a child-only working directory. It uses the native

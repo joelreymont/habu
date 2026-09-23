@@ -1,12 +1,16 @@
 \ process-cwd.f - checked argv/env/cwd process helpers.
 \
 \ STORAGE CLASS. PROCESS-WIDE. The working-directory copy buffer is one buffer
-\ for the image, so one task at a time prepares a cwd child, even though the
-\ lib/process.f row underneath it is per task. See docs/threads.md.
+\ for the image, so one task at a time prepares a cwd child through the
+\ RUN-ARGV-ENV-CWD-* entries, even though the lib/process.f row underneath them
+\ is per task. A caller that owns its own cwd bytes (lib/process-command.f's
+\ command contexts) calls SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE instead and
+\ touches nothing here. See docs/threads.md.
 \
 \ The module lives in `package PROC-CWD`. External callers use the qualified public
 \ API (PROC-CWD:SPAWN-ARGV-ENV-CWD-RAW, PROC-CWD:CWDZ, PROC-CWD:ARGV-ENV-CWD-RESET,
-\ PROC-CWD:SPAWN-ARGV-ENV-CWD-IO, PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE,
+\ PROC-CWD:SPAWN-ARGV-ENV-CWD-IO, PROC-CWD:SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE,
+\ PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE,
 \ PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE,
 \ PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME); the working-directory copy buffer and
 \ the intermediate capture-spawn/wait helpers are package-private.
@@ -60,16 +64,22 @@ private
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
-: PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
+public
+
+\ The spawn alone, resetting no process-wide staging: a caller that owns its own
+\ argv, envp and cwd storage (lib/process-command.f) passes them here and adopts
+\ the child itself.
+: SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE ( ptr u8 ptr a ptr a ptr u8 -- pid )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}
    pathz argv envp cwdz PROC-IN-R @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
-   SPAWN-ARGV-ENV-CWD-RAW {: pid:pid :}
+   SPAWN-ARGV-ENV-CWD-RAW ;
+
+private
+
+: PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
+   SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE {: pid:pid :}
    ARGV-ENV-CWD-RESET
-   pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
-   pid PROC-CAPTURE-PID!
-   PROC-IN-R PROC-CLOSE-CELL
-   PROC-OUT-W PROC-CLOSE-CELL
-   PROC-ERR-W PROC-CLOSE-CELL ;
+   pid PROC-CAPTURE-ADOPT-SPAWN ;
 
 public
 

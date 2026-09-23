@@ -340,16 +340,24 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    au LEN>N bv LEN>N <> if PROC-ENV-FALSE exit then
    a au LEN>N b bv LEN>N STR= ;
 
-: PROC-ENV-SLOT-NAME? ( ptr u8 len idx -- bool ) {: a:ptr u idx :}
-   idx PROC-ENV-SLOT @ {: z:ptr :}
+\ The name scan reads ANY envp vector: the table below passes its own base and
+\ count, and lib/process-command.f's caller-owned contexts pass theirs, so one
+\ scan serves both and neither reaches into the other's rows.
+: PROC-ENV-VEC-NAME? ( n ptr u8 len ptr ptr u8 -- bool ) {: i:n a:ptr u:len tab:ptr :}
+   i cells tab + @ {: z:ptr :}
    a u z z ZLEN >LEN PROC-ENV-SAME-NAME? ;
 
-: PROC-ENV-NAME-IDX ( ptr u8 len -- n ) {: a:ptr u:len :}
-   0 begin dup PROC-ENV-N @ COUNT>N < while
-      dup >IDX PROC-ENV-I !
-      a u PROC-ENV-I @ PROC-ENV-SLOT-NAME? if exit then
+: PROC-ENV-VEC-NAME-IDX ( ptr u8 len ptr ptr u8 n -- n ) {: a:ptr u:len tab:ptr rows:n :}
+   0 begin dup rows < while
+      dup a u tab PROC-ENV-VEC-NAME? if exit then
       1+
    repeat drop -1 ;
+
+: PROC-ENV-VEC-HAS-NAME? ( ptr u8 len ptr ptr u8 n -- bool )
+   PROC-ENV-VEC-NAME-IDX 0 >= ;
+
+: PROC-ENV-NAME-IDX ( ptr u8 len -- n ) {: a:ptr u:len :}
+   a u PROC-ENV-TABLE PROC-ENV-N @ COUNT>N PROC-ENV-VEC-NAME-IDX ;
 
 : PROC-ENV-HAS-NAME? ( ptr u8 len -- bool )
    PROC-ENV-NAME-IDX 0 >= ;
@@ -460,15 +468,20 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
-: PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
+\ The spawn alone, resetting no process-wide staging: a caller that owns its own
+\ argv and envp vectors (lib/process-command.f) passes them here and adopts the
+\ child itself. The wrapper below keeps the staging reset for the callers that
+\ built their vectors in this module's tables, and keeps it ahead of the failed
+\ spawn's throw so a refused spawn cannot leave rows for the next one.
+: PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE-CORE ( ptr u8 ptr a ptr a -- pid )
+   {: pathz:ptr argv:ptr envp:ptr :}
    pathz argv envp PROC-IN-R @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
-   PROC-SPAWN-ARGV-ENV-RAW {: pid :}
+   PROC-SPAWN-ARGV-ENV-RAW ;
+
+: PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 ptr a ptr a -- )
+   PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE-CORE {: pid :}
    PROC-ARGV-ENV-RESET
-   pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
-   pid PROC-CAPTURE-PID!
-   PROC-IN-R PROC-CLOSE-CELL
-   PROC-OUT-W PROC-CLOSE-CELL
-   PROC-ERR-W PROC-CLOSE-CELL ;
+   pid PROC-CAPTURE-ADOPT-SPAWN ;
 
 : RUN-ARGV-ENV-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
