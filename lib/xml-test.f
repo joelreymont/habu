@@ -222,11 +222,8 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ exceptional edge is not part of a quotation's TYPE, so that route keeps the
 \ window typed until the callee-evidence lane (dot c2923193) lets the checker
 \ prove the handle intact.
-\ ATTR-RESET is XML's own word and needs no body of its own, but `['] ATTR-RESET`
-\ on the bare name a `using` import resolved is a SIGSEGV at run time - on this
-\ engine and on the one before this lane. `['] XML:ATTR-RESET` runs, and so does
-\ this wrapper, which is the shape of every other body here.
-: ATTR-RESET-ONE ( XML:reader -- XML:reader ) ATTR-RESET ;
+\ ATTR-RESET already has that shape and is ticked by its bare name, the one a
+\ `using` import resolves (src/habu/habu2.f C-BTICK).
 : NEXT-ONE ( XML:reader -- XML:reader ) NEXT drop ;
 : ATTR-NEXT-ONE ( XML:reader -- XML:reader ) ATTR-NEXT drop ;
 : NAME-READ ( XML:reader -- XML:reader ) NAME$ 2drop ;
@@ -257,7 +254,7 @@ CAST: TOKEN>N ( XML:kind -- n )
    s" <a xmlns:p='u' xmlns:q='v'><b xmlns:r='w'/></a>" OPEN DRAIN XML:CLOSE
    s" <a q='x'/>" OPEN
    ['] ATTR-NEXT-ONE catch E-STATE T=
-   ['] ATTR-RESET-ONE catch E-STATE T=
+   ['] ATTR-RESET catch E-STATE T=
    ['] NAME-READ catch E-STATE T=
    ['] ATTR-RAW-READ catch E-STATE T=
    ['] ATTR-VALUE-READ catch E-STATE T=

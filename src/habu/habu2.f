@@ -103,6 +103,7 @@ variable LSRCRD   variable LSRCRDP   variable LSHBANG   variable LOPENERR   vari
 variable LUNCAUGHT   variable LUNCMSG   \ uncaught-top-level-throw reporter + its fd-2 message
 variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ reporter branch + itoa labels
 24 constant UNCMSG-LEN   \ byte length of "hb: uncaught throw code " (LUNCMSG)
+variable LUNDEF   \ undefined-token reject; declared with its fellow diagnostics because C-BTICK, emitted long before the MAIN label block, branches to it
 variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-effect reject + its message + shared recovery tail
 33 constant WIDEMSG-LEN   \ byte length of "hb: interpret-mode layout value: " (LWIDEMSG)
 variable LINTERNAL   variable LINTMSG   \ interpret-mode internal-word reject (DNAME-INT) + its message
@@ -4522,14 +4523,32 @@ variable LTOPHOOK
 \ `execute` then runs: `['] SCHEMA-REG:SCH-N V !` in a colon body handed the
 \ protected registry cell's address to a bare `V @ execute` (measured; the case is
 \ test/internal-word-gate.f LAUNDER-CASES).
+\ Resolution is EM-COMPILE-CALL's: LFIND, then the used packages' publics, then
+\ LUNDEF. A miss used to compile NOTHING - no literal, no diagnostic - so a bare
+\ name only a `using` import resolves left the body one cell short and the later
+\ `catch`/`execute` ran whatever was on top (`['] W` under `using P`: rc 102,
+\ "stack bounds exceeded (data)"; test/xt-effect-test.f XE-USING).
+\ C-TICK's OTHER gate, DNAME-WIDE, does NOT belong here: it exists because an
+\ interpret-level tick lands a multi-cell bundle on the untyped interpret stack,
+\ and a body's tick hands the address to a CHECKED consumer instead. Measured:
+\ with that gate here, `: NAMED ( -- point angle side ) ['] BODY ['] CLEAN
+\ finally ;` (test/compiler/native-finally.f, BODY produces a PRODUCT) died
+\ "hb: interpret-mode layout value: BODY", rc 70 - a certified program refused.
 : C-BTICK ( -- )
-   LBL {: bk :}
+   LBL LBL LBL {: bk:label usedtry:label found:label :}
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `['] RESERVED:tail` once sealed (TFAM 2b-iii)
    LBCAP LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 bk CBZ,
+   13 usedtry CBZ,                                       \ open-scope + global miss -> try used publics (`['] W` under a `using`)
+   found LBL,
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ DNAME-INT: C-TICK's gate, at the only other place a name becomes an address
-   C-CODE-ADDR  bk LBL, ;
+   C-CODE-ADDR
+   bk B,
+   usedtry LBL,
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,   \ used-publics resolution (ambiguity dies; region-flip handled inside)
+      13 LUNDEF LABEL@ CBZ,                              \ nothing resolves it -> undefined here, never a silent no-op
+      found B,
+   bk LBL, ;
 
 \ ---- item 12 slice 3b: pass-2 width-aware recompile, certificate side ------
 \ A definition whose certified check recorded any wider-than-cell width fact is
@@ -4918,7 +4937,7 @@ variable CF-DEF-GUARD
    hxt execute  lmainlbl B,
    CFSK LABEL@ LBL, ;
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
-variable LMAIN  variable LEXIT  variable LCOMPILE  variable LUNDEF
+variable LMAIN  variable LEXIT  variable LCOMPILE   \ LUNDEF is declared up with the diagnostics block
 variable LUNDERFLOW           \ top-level data-stack underflow diagnostic entry (guard at LMAIN boundary)
 variable LARITY               \ pre-exec arity guard for deref/execute prims (interpret-find BL -> EMIT-ARITY-GUARD)
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF

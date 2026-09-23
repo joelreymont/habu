@@ -193,6 +193,92 @@ variable XE-CNT
    s" ['] A + (scalar sink) rejects: the tick is a quotation, not a number" T-LABEL
    s" v9:<<REJ>>" XE-HAS ;
 
+\ ---- `[']` of a using-imported bare name (src/habu/habu2.f C-BTICK) ----------
+\ C-BTICK resolves its token the way the compile path resolves a call: LFIND,
+\ then the used packages' publics (LFINDUSED), then the undefined diagnostic.
+\ Its miss branch used to compile NOTHING - no literal, no diagnostic - so a bare
+\ name only a `using` import resolved left the body one cell short and the later
+\ `execute`/`catch` ran whatever was on top; the engine before this change dies
+\ rc 134 on the first row of XE-USING-PROG$. Both programs run in a child, so a
+\ regression is a red row here and not a crashed suite.
+94 constant XE-AMB-RC       \ ENGINE-ERROR:USING-AMBIGUOUS, the compile path's own exit
+70 constant XE-UNDEF-RC
+
+: XE-USING-PRELUDE ( -- )
+   SB-RESET
+   s" require lib/errors.f" XE-LINE
+   s" require lib/string.f" XE-LINE
+   s" package XEU-P" XE-LINE
+   s" public" XE-LINE
+   s" : XEU-W ( n -- n ) 1 + ;" XE-LINE
+   s" ;package" XE-LINE
+   s" using XEU-P" XE-LINE ;
+
+\ The bare tick and the qualified tick of one word, through execute, catch, a
+\ local binding, and the plain drop. Each row prints "<tag>:<value>".
+: XE-USING-PROG$ ( -- ptr u8 n )
+   XE-USING-PRELUDE
+   s" package XEU-T" XE-LINE
+   s" : XEU-BARE ( n -- n ) ['] XEU-W execute ;" XE-LINE
+   s" : XEU-QUAL ( n -- n ) ['] XEU-P:XEU-W execute ;" XE-LINE
+   s" : XEU-CBARE ( n -- n n ) ['] XEU-W catch ;" XE-LINE
+   s" : XEU-CQUAL ( n -- n n ) ['] XEU-P:XEU-W catch ;" XE-LINE
+   s" : XEU-LOCAL ( n -- n ) ['] XEU-W {: v q :} v q execute ;" XE-LINE
+   s" : XEU-DROP ( -- n ) 7 ['] XEU-W drop ;" XE-LINE
+   s" : XEU-DROPQ ( -- n ) 7 ['] XEU-P:XEU-W drop ;" XE-LINE
+   S\" .\" u1:\" 6 XEU-BARE ." XE-LINE
+   S\" .\" u2:\" 6 XEU-QUAL ." XE-LINE
+   S\" 6 XEU-CBARE .\" u3rc:\" . .\" u3:\" ." XE-LINE
+   S\" 6 XEU-CQUAL .\" u4rc:\" . .\" u4:\" ." XE-LINE
+   S\" .\" u5:\" 6 XEU-LOCAL ." XE-LINE
+   S\" .\" u6:\" XEU-DROP ." XE-LINE
+   S\" .\" u7:\" XEU-DROPQ ." XE-LINE
+   s" ;package" XE-LINE
+   SB$ ;
+
+\ Two used packages exporting one tail, and one body line to compile against
+\ them: the refusals a tick shares with a call.
+: XE-AMB-PROG$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   s" require lib/errors.f" XE-LINE
+   s" package XEU-A  public  : XEU-W ( n -- n ) 1 + ;  ;package" XE-LINE
+   s" package XEU-B  public  : XEU-W ( n -- n ) 2 + ;  ;package" XE-LINE
+   s" using XEU-A" XE-LINE
+   s" using XEU-B" XE-LINE
+   s" package XEU-AMB" XE-LINE
+   a u XE-LINE
+   s" ;package" XE-LINE
+   SB$ ;
+
+: XE-AMB-SAID ( -- )                     \ the compile path's ambiguity diagnostic, on stderr
+   XE-ERR$ s" hb: ambiguous bare word resolves in multiple used packages: XEU-W"
+   CONTAINS? TTRUE ;
+
+: XE-USING ( -- )
+   XE-USING-PROG$ XE-RUN
+   s" a body ticking a using-imported bare name runs to the end (rc 0)" T-LABEL
+   XE-EXITED @ TTRUE  XE-RC @ 0 T=
+   s" ['] XEU-W execute and ['] XEU-P:XEU-W execute give the same 7" T-LABEL
+   s" u1:7" XE-HAS  s" u2:7" XE-HAS
+   s" both ticks catch to 0 with the same 7" T-LABEL
+   s" u3rc:0" XE-HAS  s" u3:7" XE-HAS  s" u4rc:0" XE-HAS  s" u4:7" XE-HAS
+   s" a bare-name tick bound to a local executes" T-LABEL
+   s" u5:7" XE-HAS
+   s" the probe's shape: ['] XEU-W drop and ['] XEU-P:XEU-W drop both leave 7" T-LABEL
+   s" u6:7" XE-HAS  s" u7:7" XE-HAS ;
+
+: XE-USING-REFUSED ( -- )
+   s" ['] of a bare name two used packages export dies rc 94" T-LABEL
+   s" : XEU-TICK ( -- n ) 7 ['] XEU-W drop ;" XE-AMB-PROG$ XE-RUN
+   XE-EXITED @ TTRUE  XE-RC @ XE-AMB-RC T=  XE-AMB-SAID
+   s" a CALL of that bare name dies the same way (same message, same rc)" T-LABEL
+   s" : XEU-CALL ( -- n ) 7 XEU-W ;" XE-AMB-PROG$ XE-RUN
+   XE-EXITED @ TTRUE  XE-RC @ XE-AMB-RC T=  XE-AMB-SAID
+   s" ['] of a name nothing resolves is undefined, never a silent no-op" T-LABEL
+   s" : XEU-NONE ( -- n ) 7 ['] XEU-NOSUCH drop ;" XE-AMB-PROG$ XE-RUN
+   XE-EXITED @ TTRUE  XE-RC @ XE-UNDEF-RC T=
+   XE-ERR$ s" E-UNDEFINED: XEU-NOSUCH" CONTAINS? TTRUE ;
+
 \ ---- tier-1 interop + tier-2 pre-arm (top-row tracker, unchanged) ------------
 : XE-EXEC$ ( -- ptr u8 n )               \ ' FOO2 execute on an empty stack
    SB-RESET
@@ -240,6 +326,8 @@ variable XE-CNT
    T-RESET
    XE-PREPARE
    XE-VALUES
+   XE-USING
+   XE-USING-REFUSED
    XE-TIER1
    XE-TIER2
    XE-CLEANUP
