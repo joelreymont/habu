@@ -2223,7 +2223,7 @@ package BUILD-FIXPOINT
 \ habu-make-load-consult-85c88fb3) every named file sat at depth 1 and the
 \ dispatch went silently inert - the exact footgun below, restored. The loader
 \ records which paths the command line named, so ask that. The verb gate keeps a co-loaded tool that consumes its own
-\ `--`-flag args (e.g. tools/hb-build.f under tools/hb-build-test.f, loaded at
+\ `--`-flag args (e.g. tools/hb-build.f under tools/hb-build-test-lib.f, loaded at
 \ depth 0 alongside this file) from being hijacked, and BF-CLI is idempotent so
 \ calls from either explicit entry wrapper cannot double-build.
 : BF-CLI-VERB-ARG0? ( -- bool )

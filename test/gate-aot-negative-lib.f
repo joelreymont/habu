@@ -55,8 +55,9 @@ package AOT-NEGATIVE
 \ holds. The brk area is the one that matters here: arm64 randomizes it over a
 \ gigabyte above the executable's end, so an ORDINARY 32-BIT-SHAPED INTEGER in a
 \ persistent cell lands inside it every few hundred builds and was refused as a
-\ pointer (measured: tools/hb-build-test.f, an undeclared cell holding
-\ 0x34B12C35, refused in one build and linked in the next).
+\ pointer (measured: the hb-build fixture, tools/hb-build-test.f and the two
+\ stripped rows beside it, an undeclared cell holding 0x34B12C35, refused in
+\ one build and linked in the next).
 \ No Habu word allocates from the break - lib/memory.f maps - so nothing in the
 \ band is ever a pointer and the linker excludes it. An mmap address is the
 \ control: it is the class the refusal exists for, and it must still answer yes.

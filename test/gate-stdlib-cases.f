@@ -1711,11 +1711,29 @@ SUITE cold-runtime
    test/cold-runtime-test.f
 ;SUITE
 
+\ ONE FIXTURE, THREE ROWS. tools/hb-build-test.f used to run the stripped-image
+\ groups as well, and the row took 353-355 s of the 360 s SUITE-TIMEOUT-MS slot
+\ its child gets: three of five full runs reported kind=TIMEOUT-UNDER-LOAD for
+\ it while other suites ran beside it, every other row green. A row keeps at
+\ least twice its measured time in headroom - under half of SUITE-TIMEOUT-MS -
+\ and the seconds below were measured one row at a time on this engine. Move a
+\ group between the row files rather than letting one row grow past that.
+\ 130-133 s
 SUITE hb-build-fixtures
    tools/hb-build-test.f
    lib/build-cache-test.f
    lib/codesign-test.f
    tools/hb-build-direct-lints-test.f
+;SUITE
+
+\ 116-117 s
+SUITE hb-build-stripped
+   tools/hb-build-stripped-test.f
+;SUITE
+
+\ 108-118 s
+SUITE hb-build-stripped-cells
+   tools/hb-build-stripped-cells-test.f
 ;SUITE
 
 SUITE gate-pool

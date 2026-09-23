@@ -572,7 +572,8 @@ variable SELF-SRC-U
 \ application is now compiled BEFORE the linker is loaded - the capture window opens first -
 \ so it has to run where MAKER-SELFTEST's checks run: a file the maker's stdin requires
 \ after tools/aot-build.f. hb-build's own propagation of a maker die, non-zero rc with the
-\ diagnostic on stderr, is tools/hb-build-test.f HBT-STRIPPED-BELOW-WINDOW's assertion.
+\ diagnostic on stderr, is tools/hb-build-stripped-test.f
+\ HBT-STRIPPED-UNOWNED-CELL's assertion.
 : ABS-CHAIN-SOURCE ( -- )
    GE-SRC-RESET
    s" : MAIN ( -- ) ;" GE-SRC-LINE ;

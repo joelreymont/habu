@@ -273,7 +273,7 @@ calls by real user-source files loaded through `--load`:
   (installs a custom checker hook — HOOK-CELL); `MARK/FORGET` use `cp@/ndict@/ndict!/cp!`.
 - `test/gate-aot-negative-lib.f:8`, `test/engine-suite.f:1191,1206,1234` — `set-check`.
 - `test/atomics-smoke.f`, `lib/task-test.f`, `lib/ffi-abi-test.f`, `lib/ffi-test.f`,
-  `tools/hb-build-test.f` — atomics / `patch32`.
+  `tools/hb-build-test-lib.f` — atomics / `patch32`.
 - `tools/xref-test.f` — `LATEST`, `XREF-WORDLIST/-NAME$`, `search-wl`.
 - `tools/jitdump-core.f:31` — `get-current search-wl`.
 - Dict-introspection live-call files that would break under a broad A:

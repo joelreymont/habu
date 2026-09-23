@@ -186,7 +186,8 @@ package is unreachable from outside it by any spelling.
 So a stripped image reads its environment: `: MAIN ( -- ) s" HOME" GETENV type
 cr ;` with no `require` at all builds, runs and prints the variable, explicitly
 set or inherited through `PROC-ENV-INHERIT-MISSING`, and `MEM:WITH-BYTES`
-allocates in the same image (`tools/hb-build-test.f HBT-STRIPPED-ENGINE-CELLS`).
+allocates in the same image
+(`tools/hb-build-stripped-test.f HBT-STRIPPED-ENGINE-CELLS`).
 Every other engine cell is refused as loudly as before — `env-base.f`'s own
 `TMP-PATH` cursors are the nearest miss: same file, same transient character, no
 claim, so a stripped program calling `TMP-PATH` still gets *outside the restored
@@ -293,8 +294,9 @@ Habu word allocates from the break, every allocation `lib/memory.f` makes being
 an `mmap`. It is also where ordinary data lands — arm64 randomizes the break
 over a gigabyte above the executable's end, so the band sits somewhere in
 `[0x7a4000,0x407a4000)`, moves with every build, and swallows 32-bit-shaped
-values: one build of `tools/hb-build-test.f` was refused at an undeclared cell
-holding `0x34B12C35` and the next build of the same tree linked it. Two sites
+values: one build of the hb-build fixture (`tools/hb-build-test.f` and the two
+stripped rows beside it) was refused at an undeclared cell holding
+`0x34B12C35` and the next build of the same tree linked it. Two sites
 ask: `aot-lib.f AOT-DATA-TEXTPTR-CHECK` for an undeclared window
 cell, beside the undeclared code-pointer refusal, and `aot-closure.f XTD-ROW`
 for a declared `DATA` cell — a plain `variable` or `PTR-VARIABLE` meets the
@@ -395,9 +397,10 @@ cell before the window is read out, so the image ships it in the cell's own
 captured bytes and no startup pass patches it. Without that map a cell holding
 `STR-MAX-I64$` at build time shipped the engine's address and the image printed
 nineteen NUL bytes out of its zero-filled mapping
-(`tools/hb-build-test.f HBT-STRIPPED-CACHED-CARRIED`). A bare `PTR-VARIABLE` is
-scratch by declaration — it joins no relocation table — so a build-time address
-left in one is not mapped and not refused; use the persisted definer for a
+(`tools/hb-build-stripped-cells-test.f HBT-STRIPPED-CACHED-CARRIED`). A bare
+`PTR-VARIABLE` is scratch by declaration — it joins no relocation table — so a
+build-time address left in one is not mapped and not refused; use the
+persisted definer for a
 pointer that must survive the strip.
 
 Five things are still refused by name, each naming the word, the cell's DATA
