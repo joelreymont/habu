@@ -1,9 +1,49 @@
 ---
 title: Raise the per-definition body text capacity
-status: open
+status: active
 priority: 3
 issue-type: task
 created-at: "2026-09-18T09:02:58.024196+03:00"
 ---
 
-Problem: a definition's captured body text is bounded by BODYBUF-CAP = 8000 bytes (src/habu/layout.f, the engine's BODY-TEXT capture buffer at DATA+$800), shared by the checker's BODY-BUF (src/habu/verify-source.f E-VS-BODY-CAP) and the native compiler's TEXT-CAP (src/compiler/native/compiler.f E-NCOMP-TEXT); measured 2026-09-18 by the capacity lane: 7972 bytes of body text loads, 7973 refuses, so a definition holding nine 900-byte string literals (aspen/Tender) cannot exist; the refusal is being named by habu-name-the-per-56a594f3, but the ceiling stays. The buffer is boxed in the DATA header (RPKG-CUR at $2780 leaves 62 bytes), so growing it relocates the RPKG/CMM/DOESB/TRUSTED/PKGRESYNC/HIDX/PROT cell band: a DATA-offset ABI change that needs a bridging generation (LESSONS 'a new word in a prefix seam file needs a bridging generation' and the staged-host rule). Acceptance: the capacity chosen with a reason (a multiple that covers realistic literal tables, e.g. 64 KiB) and moved out of the header box (a dedicated region or a mapped buffer), the three layers reading one constant, the bridging landing recorded, the named refusal's regression re-pinned at the new cap, engine size before and after (docs/engine-size.md), byte fixpoint, bootstrap check, test/run.f. Files: src/habu/layout.f, src/habu/habu1.f (EMIT-BCAP), src/habu/verify-source.f, src/compiler/native/compiler.f, bootstrap/cg/*.fs mirrors, docs/. Verify: the regression at the new cap; fixpoint; tools/bootstrap.sh check; test/run.f. Depends: habu-name-the-per-56a594f3. Ownership: engine layout. Claim: unassigned.
+Problem: BODYBUF-CAP is 8000 bytes. The engine's captured definition body
+lives at DATA+$800, boxed in by the header cells above it. VERIFY:BODY-BUF
+and NCOMP:TEXT-CAP already derive their sizes from that same constant.
+The named overflow refusal is implemented; the small capacity remains.
+Ownership: engine layout. Claim: Alder; layout seam awaiting Hazel's review.
+
+Current reproduction on 806f0654 / engine 274f9bea: nine 900-byte string
+literals refuse rc 71, naming NINE-LITERALS, capacity 8000 and needed 8214.
+The complete source is 8239 bytes. Evidence and the Habu source generator:
+~/.cache/habu/body-cap/source-806f0654/.
+
+Proposed implementation: reserve BODYBUF-CAP + 2 bytes in a dedicated DATA
+band after TIER-PROV:END, align the new DATA-START to a cell, and use 64 KiB
+for the shared cap. This covers the measured literal table with headroom
+without moving any other existing header cell. Keep BODYBUF in the existing
+protected-band table: it is protected today, despite an old pending-defer
+comment calling the BODYBUF class unguarded. A static reserved band keeps
+the current snapshot semantics and needs no new process-owned pointer,
+mapping or capture hook.
+
+All body-buffer address emitters must materialize its new offset rather than
+use the 12-bit ADDI form. Capacity loads must also represent 65536 rather than
+use the 16-bit MOVZ form. Apply the same changes to the Gforth mirror. The
+hosted emitter reads its host's baked layout (habu2.f EM-LAYOUT documents the
+existing boundary), so the first product is a bridge; promote only after
+the new-layout generations converge. No compiler/checker source change is
+proposed: their existing allocations and bounds read BODYBUF-CAP already.
+
+Acceptance: the nine-literal program executes; the runtime regression still
+admits exactly the cap and refuses cap + 1 by name; the replay fixture grows
+its source capacity from the shared bound; writes into the relocated buffer
+remain refused. Record actual engine size and relevant compile/startup costs.
+Three private generations with gen2 == gen3, check-only bootstrap, every
+owning registry row (including the bootstrap readers), then the integration
+gate. Rebase implementation onto the current integrated head before editing
+the engine; do not integrate this proposal as an implemented fix.
+
+Expected files: src/habu/layout.f, habu1.f and habu2.f; bootstrap/cg/forth.fs;
+the capacity/protection/replay fixtures and relevant docs. Verify-source and
+native/compiler.f are read-only consumers unless measurement proves another
+change is needed and its owner releases that seam.
