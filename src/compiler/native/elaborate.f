@@ -3340,18 +3340,25 @@ create DN-BUF DN-CAP allot
 
 \ The original address remains on the vector while the validator consumes a
 \ duplicate and the immutable descriptor. Its call precedes every value load.
+\
+\ The fact exists only because NFETCH:KEEP ran NFETCH-CHECK:SHAPE over exactly
+\ these bytes before interning them, and NSTR bytes are immutable, so this call
+\ is the compiler's own trusted producer of a frozen descriptor: the staged
+\ address literal stands for the value NFETCH-CHECK:FREEZE would return. No
+\ checked source can reach TAGS with a raw address, because the casts that mint
+\ a frozen value are private to NFETCH-CHECK. The recorded byte length and width
+\ still decide whether a check is emitted at all and that the fact matches the
+\ token's width, but neither is passed any more.
 : VALIDATE-FETCH ( n -- ) {: ix:n :}
    VW ix TOK-OFF NFETCH:AT {: address:n bytes:n width:n :}
    bytes 0= if exit then
    width VW ix TOK-CELLS <> if E-NELAB-BUNDLE throw then
    VN @ 1 < if E-NELAB-UNDER throw then
-   s" NFETCH-CHECK:CHECK" NDICT:CALL-TARGET {: entry:n :}
+   s" NFETCH-CHECK:TAGS" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if E-HIR-UNMODELED throw then
    VN @ 1- VAT VPUSH
    ix address HIR:ADDR-DATA EMIT-KIND-LIT
-   ix bytes EMIT-LIT
-   ix width EMIT-LIT
-   ix entry 4 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 \ ---- the words that are a short sequence of operations ------------------------
 \ Each of these was an engine primitive the elaborator CALLED, and each body is

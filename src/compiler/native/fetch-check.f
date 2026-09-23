@@ -5,7 +5,19 @@ require src/core/engine-error.f
 require src/compiler/digest.f
 
 package NFETCH-CHECK
+public
+
+\ A descriptor whose structure SHAPE has already accepted. FREEZE is its only
+\ producer and the casts below are private, so a frozen value is a witness that
+\ the tag walk may read the descriptor's cells without bounding them again. The
+\ checker has no term for the integer a pointer is, so the witness carries the
+\ sanctioned pointer-minus-pointer distance from the null address.
+NEWTYPE frozen 0
+
 private
+
+CAST: >FROZEN ( n -- frozen )
+CAST: FROZEN>N ( frozen -- n )
 
 : BAD-DESCRIPTOR ( -- )
    s" hb: bad layout descriptor" 76 die ;
@@ -78,11 +90,20 @@ public
    checks 0 ?do data count rot width SHAPE-ROW loop
    count <> if BAD-DESCRIPTOR then ;
 
-: CHECK ( ptr u8 ptr u8 n n -- )
-   {: base:ptr data:ptr bytes:n width:n :}
+: FREEZE ( ptr u8 n n -- frozen ) {: data:ptr bytes:n width:n :}
    data bytes width SHAPE
+   data NULL-PTR BYTE-VIEW - >FROZEN ;
+
+\ The tag walk alone: every index it reads was bounded when FREEZE ran SHAPE
+\ over these very bytes.
+: TAGS ( ptr u8 frozen -- ) {: base:ptr desc:frozen :}
+   NULL-PTR BYTE-VIEW desc FROZEN>N + {: data:ptr :}
    1
    data 0 CDIGEST:SLOT@ 0 ?do base data rot RUN-ROW loop
    drop ;
+
+: CHECK ( ptr u8 ptr u8 n n -- )
+   {: base:ptr data:ptr bytes:n width:n :}
+   base data bytes width FREEZE TAGS ;
 
 ;package

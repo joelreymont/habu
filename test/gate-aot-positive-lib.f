@@ -704,15 +704,17 @@ variable SELF-SRC-U
    s" hb-build AOT preseed normal-MAIN still exits 0" GB-RUN-OUT
    s" PASS: hb-build AOT preseeded bad-tag entry (rc 85 hb: bad gemt tag; three-key lockstep; object relink)" type cr ;
 
-\ Preseeded bad-tag FETCH: proves LP2VEXEC's own invalid-tag diagnostic fires
-\ correctly in a stripped image after the relocation fix. HLP stores a preseeded
-\ layout value then reads it back through `@`; the forged seed carries an
-\ out-of-range tag (res tags are 0..1, seed tag 5), so the wide fetch reaches
-\ LP2VEXEC's invalid path, which writes "hb: bad layout tag\n" and exits
-\ ENGINE-ERROR:BAD-TAG (85). Because the message is inlined inside the registered
-\ LP2VEXEC record, its ADR is relocated with the copied helper and the diagnostic
-\ is byte-identical to the engine's in the stripped image. The SAME source built
-\ normally (entry MAIN) exits 0.
+\ Preseeded bad-tag FETCH: proves the compiled fetch's own invalid-tag diagnostic
+\ fires correctly in a stripped image after the relocation fix. HLP stores a
+\ preseeded layout value then reads it back through `@`; the forged seed carries
+\ an out-of-range tag (res tags are 0..1, seed tag 5), so the tag walk the
+\ elaborator stages ahead of the wide load rejects it, writes
+\ "hb: bad layout tag\n" and exits ENGINE-ERROR:BAD-TAG (85). The diagnostic is
+\ NFETCH-CHECK's, not the engine's own (LP2VEXEC) helper: renaming
+\ NFETCH-CHECK:BAD-TAG's message in a probe engine changes exactly this row's
+\ stderr, because src/compiler/native/elaborate.f VALIDATE-FETCH emits the
+\ NFETCH-CHECK:TAGS call before the value load. The SAME source built normally
+\ (entry MAIN) exits 0.
 : PRESEED-FETCH-SRC ( -- )                 \ matched family + fetch helper + trivial MAIN
    GE-SRC-RESET
    s" package AOT-LAYOUT-FETCH-BAD" GE-SRC-LINE
@@ -755,7 +757,7 @@ variable SELF-SRC-U
    PRESEED-FETCH-BUILD
    s" hb-build AOT preseed bad-tag fetch run" FETCH-RUN-BAD
    s" hb-build AOT preseed bad-tag fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
-   s" PASS: hb-build AOT preseeded bad-tag fetch (rc 85 hb: bad layout tag via LP2VEXEC in a stripped image)" type cr ;
+   s" PASS: hb-build AOT preseeded bad-tag fetch (rc 85 hb: bad layout tag via NFETCH-CHECK:TAGS in a stripped image)" type cr ;
 
 : RUN-BUNDLE-DATA ( -- )
    s" hb-gate-aot-bundle-data" GT-START
