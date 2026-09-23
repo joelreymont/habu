@@ -22,7 +22,7 @@ elf/header	64	0.0
 elf/program-headers	224	0.0
 elf/dynamic-metadata	200	0.0
 elf/header-pad	3608	0.1
-engine/code	129104	3.5
+engine/code	129864	3.6
 engine/primitive-names	184	0.0
 engine/primitive-count	8	0.0
 engine/primitive-records	10128	0.2
@@ -42,7 +42,7 @@ aot/code-spans	42624	1.1
 aot/boot-run-entries	4	0.0
 aot/protected-wordlists	676	0.0
 aot/checker-sidecar	0	0.0
-image/text-pad	11272	0.3
+image/text-pad	10512	0.2
 container/rw-segment	192	0.0
 total	3604672	100.0
 
@@ -515,13 +515,14 @@ Measured against this engine, so the numbers are bounds, not hopes:
 ## Where an application image's bytes go
 
 `tools/hb-build.f` writes two other image classes, and the question "why is this
-application 24 MB on an engine of 4 MB" is not answered by either the code or
-the dictionary. It is answered by the zero bytes.
+application 24 MB on an engine of 4 MB" needs the application's code,
+dictionary and stored DATA measured separately. Dense snapshots included large
+zero-filled DATA holes; the grouped encoding removes those bytes.
 
 Every class below is reported with a **zero** column beside its byte count,
-because the difference between what an image carries and what it says is the
-whole story for a snapshot. The classes still have to sum to the file's length
-or nothing is printed.
+so stored padding and metadata remain visible. Decoded DATA owner extents can
+be larger than the compressed file. The physical classes still have to sum to
+the file's length or nothing is printed.
 
 The worked example is this application, built with the engine above:
 
@@ -553,6 +554,48 @@ public
 ```
 
 ### A `--repl` snapshot image
+
+Current writers support v10: DATA uses the engine's grouped cell bitmap and
+unsigned LEB128 codec when its padded image is smaller. Otherwise the writer keeps v9. The
+dictionary and code region remain raw in both formats. For v10 the report
+separates `data/framing`, `data/cells` and `data/alignment`; DATA owner rows
+describe restored nonzero and zero bytes, not compressed file bytes.
+
+The controlled comparison uses Tender `4de21b0c` on Habu `806f0654`, before
+and after snapshot compression:
+
+| product | dense bytes | compressed bytes | reduction |
+| --- | ---: | ---: | ---: |
+| Tender server | 43,516,096 | 16,777,408 | 61.4% |
+| Tender standalone | 29,163,712 | 15,663,296 | 46.3% |
+| Habu engine | 3,604,672 | 3,604,672 | unchanged |
+
+In a quiet slot, 51 process starts averaged 34.90 ms before and 31.19 ms after
+for the server's `--help` path; engine startup averaged 12.72 and 12.80 ms,
+within measurement noise. These are warm-file-cache startup measurements,
+not serving throughput. The loader copies restored DATA in full cells with a
+byte tail; byte-at-a-time copying had made the first compressed candidate
+slower to start. Dense input keeps v9 when compression does not reduce the
+rounded file size.
+
+Stopped at process exit after the same `--help` path, server RSS was 83,472 KiB
+before and 57,392 KiB after; peak RSS was 83,472 and 71,168 KiB. This measures
+image startup residency, including scratch decode, rather than a running
+database-backed service.
+
+Both trees passed the same 502-suite gate: 455.95 s before and 484.36 s after,
+with user CPU time rising from 1747.71 to 1846.48 s. The new compression row
+passed separately. An unrelated job briefly overlapped the candidate run, so
+the wall-time increase is not an isolated measurement. These gate timings
+precede the final emitter refactor: separating its bitmap-group loop removes
+about 0.64 s of compiler work per stripped maker, with identical output bytes.
+A fresh small stripped build then takes 11.00 -> 11.63 s wall and
+10.86 -> 11.50 s user CPU; LINK itself remains about 20 ms. The remaining
+tool-compilation cost is recorded alongside the file-size and startup gains.
+The final three engine generations are identical to the gated engine; the
+refactor's codec, compression, capture and recovery-bootstrap checks pass.
+
+The following worked example records the older dense-v9 layout:
 
 ```
 bin/hb --load tools/hb-build.f -- --repl app.f -o app-repl
@@ -586,15 +629,14 @@ zero.** The engine travels whole — 3,997,696 bytes, the same text a baked engi
 carries, which is why the engine's own walkers measure it unchanged — and the
 snapshot adds 19,922,944 bytes on top. 16,072,765 of those are zero.
 
-**The DATA window is copied verbatim, zeros included.** It is 62.1% of the file
-and 86% of it is zero. `src/habu/snap-lib.f` writes `[data-base, DP)` as bytes,
-so a table `allot`ed at its declared capacity and filled a tenth of the way
-travels at full size, and a store laid out with interleaved zero cells travels
-as those cells. Nothing compresses it and nothing skips it: a restore is a
-`read` into the window. This is the lever, and it is the same lever the engine's
-`aot/data-cell-*` sections describe from the other side — the AOT capture does
-encode cells, which is why the engine pays under 1 MB for a 8.3 MB heap while
-the snapshot pays 14.9 MB for a 14.9 MB one.
+**Dense v9 copied DATA verbatim, zeros included.** In this baseline it accounts
+for 62.1% of the file and 86% of it is zero. V10 removes absent cells with the
+same grammar as the engine's `aot/data-cell-*` sections. Its stored extent
+starts with the decoded length; the loader decodes into anonymous scratch,
+checks the address-cell and protected-wordlist headers, then copies over live
+DATA including zeros. The address-cell schema and the 48-byte trailer geometry
+are unchanged. The trailer records the stored extent so relocation and
+recapture do not mistake decoded bytes for bytes in the executable.
 
 **The dictionary slot array is the second lever, at 2,680,032 bytes of nothing.**
 `DICT-CAP` is 65,536 records and this application publishes 9,702; the other

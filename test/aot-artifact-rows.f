@@ -225,9 +225,9 @@ variable CHAIN-VALUE
    \ grid both windows share - and, because HOST-DATA is one cell past a bitmap
    \ byte, strictly above it, which is the pad PLACE-WDATA had to write.
    MERGED-DATA @ HOST-DATA >= ASSERT
-   MERGED-DATA @ HOST-DATA - BM-BYTE-SPAN < ASSERT
-   MERGED-DATA @ BM-BYTE-SPAN mod 0= ASSERT
-   HOST-D0 @ MERGED-DATA @ + ART-D0 @ - CELL-BYTES mod 0= ASSERT
+   MERGED-DATA @ HOST-DATA - IMAGE-CELLS:BM-BYTE-SPAN < ASSERT
+   MERGED-DATA @ IMAGE-CELLS:BM-BYTE-SPAN mod 0= ASSERT
+   HOST-D0 @ MERGED-DATA @ + ART-D0 @ - IMAGE-CELLS:CELL-BYTES mod 0= ASSERT
    MERGED-DATA @ HOST-DATA > ASSERT
    AOT-BLOB-LEN @ ART-BLOB @ HOST-BLOB + = ASSERT
    AOT-DATA-SIZE @ ART-DATA @ MERGED-DATA @ + = ASSERT
@@ -254,12 +254,12 @@ variable CHAIN-VALUE
 : MERGED-CELLS= ( -- )
    ART-CELLS @ 0 > RUN-ASSERT
    0 MCELL-AT !  0 MCELL-END !  0 MCELL-N !
-   BM-LEN @ CELL-BITS * 0 ?do
-      BM-BUF@ i CELL-BITS / + c@  i CELL-BITS mod rshift  1 and 0<> if
-         VAL-BUF@ MCELL-AT @ +  VAL-LEN @ MCELL-AT @ -  CELL-V@ {: v:n w:n :}
+   BM-LEN @ IMAGE-CELLS:CELL-BITS * 0 ?do
+      BM-BUF@ i IMAGE-CELLS:CELL-BITS / + c@  i IMAGE-CELLS:CELL-BITS mod rshift  1 and 0<> if
+         VAL-BUF@ MCELL-AT @ +  VAL-LEN @ MCELL-AT @ -  IMAGE-CELLS:CELL-V@ {: v:n w:n :}
          w 0 > RUN-ASSERT
          MCELL-AT @ w + MCELL-AT !
-         i 1+ CELL-BYTES * MCELL-END !
+         i 1+ IMAGE-CELLS:CELL-BYTES * MCELL-END !
          MCELL-N @ 1+ MCELL-N !
       then
    loop

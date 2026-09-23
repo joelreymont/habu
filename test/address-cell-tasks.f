@@ -4,6 +4,7 @@ require lib/fs-mutate.f
 require lib/engine-candidate.f
 require lib/codesign.f
 require src/habu/address-cells.f
+require test/snapshot-file.f
 package ADDRESS-CELL-TASK-TEST
 using ADDRESS-CELLS
 $10000 constant CAP
@@ -14,11 +15,8 @@ create ROOT-BUF FS-PATH-CAP allot
 create IMAGE-BUF FS-PATH-CAP allot
 variable ROOT-U
 variable IMAGE-U
-DYNAMIC-BUFFER IMAGE-STORAGE n
-variable IMAGE-N
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
-: BYTES ( -- ptr u8 ) 0 IMAGE-STORAGE BYTE-VIEW ;
 : PREPARE ( -- )
    CLEANUP-RESET
    s" address-cell-tasks" HB-TMP-MKDIR {: a:ptr u:n :}
@@ -55,24 +53,17 @@ variable IMAGE-N
    S\" require src/habu/app-image.f\nrequire test/address-cell-tasks-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    EXEC 0 T=
    IMAGE$ EXECUTABLE? TTRUE ;
-: CELL@ ( n -- n ) {: off:n :}
-   0 8 0 ?do BYTES off i + + c@ i 8 * lshift or loop ;
 : POISON-CAPTURED-LOCK ( -- )
-   IMAGE$ FILE-SIZE dup IMAGE-N ! 7 + CELL / IMAGE-STORAGE-RESERVE
-   IMAGE$ BYTES IMAGE-N @ READ-ALL IMAGE-N @ T=
-   IMAGE-TEXT-SIZE-OFF CELL@ IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - {: tr:n :}
-   tr SNAP-TRL-VERSION + CELL@ SNAPSHOT-VERSION T=
-   tr tr SNAP-TRL-DATALEN + CELL@ - LOCK-CELL + {: off:n :}
-   off CELL@ 0 T=
-   1 BYTES off + c!
+   IMAGE$ SNAPSHOT-FILE:READ-IMAGE
+   SNAPSHOT-FILE:FORMAT SNAP-FORMAT-VERSION T=
+   LOCK-CELL SNAPSHOT-FILE:CELL@ 0 T=
+   LOCK-CELL 1 SNAPSHOT-FILE:BYTE!
    \ Process index pointers are never carried. A damaged incoming value must
    \ still be cleared without dereferencing it after the DATA copy.
-   tr tr SNAP-TRL-DATALEN + CELL@ - INDEX-CELL + {: index-off:n :}
-   index-off CELL@ 0 T=
-   1 BYTES index-off + c!
-   IMAGE$ BYTES IMAGE-N @ WRITE-ALL
-   IMAGE-STORAGE-RELEASE
-   IMAGE$ CODESIGN:FORCE ;
+   INDEX-CELL SNAPSHOT-FILE:CELL@ 0 T=
+   INDEX-CELL 1 SNAPSHOT-FILE:BYTE!
+   IMAGE$ SNAPSHOT-FILE:WRITE
+   SNAPSHOT-FILE:RELEASE ;
 : RESTORED ( -- )
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    IMAGE$ S\" ADDRESS-CELL-TASKS:RUN\n" EXEC CHECK-OUTPUT ;
@@ -81,7 +72,7 @@ variable IMAGE-N
    FRESH BUILD
    s" captured mutex and index cells do not retain process ownership" T-LABEL
    POISON-CAPTURED-LOCK RESTORED ;
-: CLEANUP ( -- ) IMAGE-STORAGE-RELEASE CLEANUP-RUN ;
+: CLEANUP ( -- ) SNAPSHOT-FILE:RELEASE CLEANUP-RUN ;
 : RUN ( -- )
    T-RESET PREPARE
    [: CHECK ;] [: CLEANUP ;] finally

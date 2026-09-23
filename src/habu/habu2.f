@@ -6,6 +6,7 @@
 require lib/fmt.f
 require src/habu/address-cells.f
 require src/habu/code-span.f
+require src/habu/image-cell-arm64.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 \ The AOT capture buffers, their caps and the section budget are src/habu/aot-decl.f,
@@ -5429,24 +5430,6 @@ public
       15 14 0 STRB,  14 14 1 ADDI,  z1 B,
    z1done LBL, ;
 
-private
-
-\ ONE UNSIGNED LEB128 VARINT, INLINE: seven bits a byte from the cursor `cur`,
-\ low group first, until a byte arrives with its high bit clear. `acc` answers
-\ the value, `cur` is advanced past it, and `b`, `g` and `sh` are clobbered.
-\ This is src/habu/aot-decl.f AOT-WINDOW:CELL-V! read backwards, and the same
-\ grammar src/habu/aot-lib.f EMIT-VGET decodes for a stripped image's own DATA.
-: EMIT-VGET ( n n n n n -- ) {: acc:n cur:n b:n g:n sh:n :}
-   LBL {: vtop:label :}
-   acc 0 MOVZ,  sh 0 MOVZ,
-   vtop LBL,
-      b cur 0 LDRB,  cur cur 1 ADDI,
-      g b $7F ANDI,  g g sh LSLV,  acc acc g ORR,
-      sh sh 7 ADDI,
-      g b $80 ANDI,  g vtop CBNZ, ;
-
-public
-
 \ ONE BIT A CELL, and the values of the present cells are concatenated in CELL
 \ ORDER, so both cursors only ever advance: x13 steps one cell for every bit the
 \ bitmap carries, present or not, and x25 advances by each value's own width with
@@ -5465,9 +5448,6 @@ public
 \ x16 carries the presence map's byte length only until x9 and x23 are derived
 \ from it, and is the groups-left counter for the rest of the loop.
 : APPLY-CELLS ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: gtop:label gdone:label ptop:label pnext:label absent:label
-      bmtop:label bmdone:label bittop:label bitdone:label bitnext:label empty:label :}
    23 10 LBMGROUPS LABEL@ TADR,  23 23 0 LDR,       \ x23 = groups the map covers
    21 10 LBM LABEL@ TADR,                           \ x21 = presence map cursor
    16 23 7 ADDI,  16 16 3 LSRI,                     \ x16 = ceil(groups / 8) map bytes
@@ -5475,42 +5455,7 @@ public
    23 9 0 ADDI,                                     \ x23 = one past the presence map
    25 10 LVALS LABEL@ TADR,                         \ x25 = value cursor
    13 3 0 ADDI,                                     \ x13 = destination cursor, at the span's base
-   gtop LBL,  21 23 CMP,  C-CS gdone BCOND,
-      7 21 0 LDRB,  21 21 1 ADDI,                   \ x7 = this byte's eight groups
-      16 8 MOVZ,                                    \ x16 = groups left in the byte
-      ptop LBL,
-         16 gtop CBZ,
-         15 7 1 ANDI,
-         15 absent CBZ,
-            17 GROUP-BYTES MOVZ,                    \ x17 = bitmap bytes left in the group
-            bmtop LBL,
-               17 bmdone CBZ,
-               24 9 0 LDRB,  9 9 1 ADDI,            \ x24 = this byte's eight cells
-               17 17 1 SUBI,
-               24 empty CBZ,
-               22 CELL-BITS MOVZ,                   \ x22 = cells left in the byte
-               bittop LBL,
-                  22 bitdone CBZ,
-                  15 24 1 ANDI,
-                  15 bitnext CBZ,
-                     15 25 14 12 11 EMIT-VGET       \ x15 = the present cell's value
-                     15 13 0 STR,
-                  bitnext LBL,
-                  24 24 1 LSRI,  13 13 CELL-BYTES ADDI,  22 22 1 SUBI,
-                  bittop B,
-               bitdone LBL,
-               bmtop B,
-            empty LBL,
-               13 13 BM-BYTE-SPAN ADDI,             \ eight absent cells: step the destination
-               bmtop B,
-            bmdone LBL,
-         pnext LBL,
-         7 7 1 LSRI,  16 16 1 SUBI,
-         ptop B,
-   absent LBL,
-      15 GROUP-SPAN MOVZ,  13 13 15 ADD,            \ an absent group: step the destination
-      pnext B,
-   gdone LBL, ;
+   21 23 9 25 13  7 16 17 24 22 15 15 14 12 11 IMAGE-CELL-ARM64:COPY, ;
 
 \ Heap cell locations move with the captured window; fixed engine cells remain
 \ DATA-relative. The value has a separate null/CODE/DATA/name coordinate.
@@ -5945,12 +5890,18 @@ $47E0 constant HEAP-START-OFF
    sc1d LBL, ;
 
 : EM-SNAPSHOT-COPY-DATA ( -- )
-   LBL LBL {: sc2 sc2d :}
-   8 12 7 SUB,  13 DATA 0 ADDI,  14 0 MOVZ,
-   sc2 LBL,  14 7 CMP,  C-GE sc2d BCOND,
-      3 8 14 ADD,  3 3 0 LDRB,  4 13 14 ADD,  3 4 0 STRB,
-      14 14 1 ADDI,  sc2 B,
-   sc2d LBL, ;
+   LBL LBL LBL {: cells tail done :}
+   \ x8 names validated dense bytes, from the image or decoded scratch.
+   \ Full cells need one load/store each. A dense source can be unaligned;
+   \ ARM64 permits that, but no load may cross the validated decoded extent.
+   13 7 3 LSRI,  13 13 3 LSLI,  14 0 MOVZ,
+   cells LBL,  14 13 CMP,  C-CS tail BCOND,
+      3 8 14 ADD,  3 3 0 LDR,  4 DATA 14 ADD,  3 4 0 STR,
+      14 14 8 ADDI,  cells B,
+   tail LBL,  14 7 CMP,  C-CS done BCOND,
+      3 8 14 ADD,  3 3 0 LDRB,  4 DATA 14 ADD,  3 4 0 STRB,
+      14 14 1 ADDI,  tail B,
+   done LBL, ;
 
 \ Region walks are BL-callable and parameterized so the loader (live
 \ region) and the snapshot writer (scratch copy) share ONE implementation:
@@ -6756,12 +6707,11 @@ ardone LBL,
    9 DATA PROT:RLO STR,  9 DATA PROT:RHI STR,  9 DATA PROT:CF STR,
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH LABEL@ BL, ;
 
-\ Strict v9 header admission before DATA copying or row relocation. x7 and x12
-\ retain the payload length and trailer address for the following owner checks.
+\ The unchanged address-cell header is checked in decoded DATA before copying
+\ or relocation. x7 is its extent and x10 its source, for both outer formats.
 : EM-SNAPSHOT-VALIDATE-ADDRESS-CELLS ( label -- ) {: bad:label :}
    5 SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:HEADER-BYTES + LIT64,
    7 5 CMP, C-CC bad BCOND,
-   10 12 7 SUB,
    8 SNAP-RELOC:XTCELL-N-CELL LIT64, 8 10 8 ADD,
    13 8 ADDRESS-CELLS:MAGIC-FIELD LDR,
    5 ADDRESS-CELLS:MAGIC LIT64, 13 5 CMP, C-NE bad BCOND,
@@ -6776,7 +6726,6 @@ ardone LBL,
    LBL LBL LBL LBL LBL
    {: prot-loop:label prot-max:label prot-inner:label prot-next:label widn:label :}
    5 PROT-BITS-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
-   10 12 7 SUB,                                     \ x10 = snapshot DATA source
    11 10 PROT-REG-TAG-CELL LDR,
    5 PROT-REG-TAG LIT64,  11 5 CMP,  C-NE bad BCOND, \ the image's band must be a bitmap
    12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,            \ x12 = &image bitmap[0]
@@ -6803,8 +6752,51 @@ ardone LBL,
    6 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
    6 17 CMP,  C-LS bad BCOND, ;
 
+\ The restore frame keeps physical and decoded extents distinct:
+\ 0 region bytes, 8 stored DATA bytes, 16 text bytes, 24 trailer, 32 ndict,
+\ 40 old text base, 48 live text base, 56 decoded source, 64 decoded bytes,
+\ 72 scratch mapping (zero for dense), 80 format then return stack,
+\ 88 loop stack, 96 argc, 104 argv, 112 envp. No live DATA is changed here.
+: EM-SNAPSHOT-DECODE ( label -- ) {: bad:label :}
+   LBL LBL LBL LBL {: done:label mapok:label bitsok:label pad:label :}
+   14 SP 80 LDR,
+   14 ADDRESS-CELLS:SNAPSHOT-VERSION CMPI, C-EQ done BCOND,
+   7 SP 8 LDR, 7 16 CMPI, C-CC bad BCOND,
+   12 SP 56 LDR, 1 12 0 LDR,
+   5 DATA-SIZE LIT64, 1 5 CMP, C-HI bad BCOND, 1 bad CBZ,
+   1 SP 64 STR,
+   0 0 MOVZ, 2 3 MOVZ, 3 MAP-ANON-PRIVATE LIT64, 4 0 MOVN, 5 0 MOVZ,
+   NR-MMAP SYS, C-CS bad BCOND, 0 bad CBZ,
+   12 SP 56 LDR,
+   0 SP 56 STR, 0 SP 72 STR,
+   13 0 0 ADDI, 7 SP 64 LDR, 1 13 7 ADD,
+   0 SP 24 LDR,                                \ encoded end, including pad
+   16 12 8 LDRW, 17 12 12 LDRW,
+   2 7 IMAGE-CELLS:GROUP-SPAN 1- ADDI, 2 2 12 LSRI,
+   16 2 CMP, C-HI bad BCOND,
+   2 17 IMAGE-CELLS:GROUP-BYTES 1- ANDI, 2 bad CBNZ,
+   21 12 16 ADDI,
+   2 16 7 ADDI, 2 2 3 LSRI,
+   23 21 2 ADD, 9 23 0 ADDI, 25 9 17 ADD,
+   25 0 CMP, C-HI bad BCOND,
+   16 mapok CBZ,
+      2 16 1 SUBI, 4 2 3 LSRI, 4 21 4 ADD, 4 4 0 LDRB,
+      5 2 7 ANDI, 2 1 MOVZ, 2 2 5 LSLV,
+      5 4 2 AND, 5 bad CBZ,                     \ last group must be present
+      5 16 7 ANDI, 5 bitsok CBZ,
+      4 4 5 LSRV, 4 bad CBNZ,                   \ unused map bits are zero
+      bitsok LBL,
+   mapok LBL,
+   21 23 9 25 13  7 16 17 24 22 15 15 14 12 11 bad
+      IMAGE-CELL-ARM64:CHECKED-COPY,
+   2 0 25 SUB, 5 PROT-PAGE-MAX LIT64,
+   2 5 CMP, C-CS bad BCOND,
+   pad LBL, 25 0 CMP, C-EQ done BCOND,
+      14 25 0 LDRB, 14 bad CBNZ, 25 25 1 ADDI, pad B,
+   done LBL, ;
+
 \ ---- AOT snapshot? (trailer at the end of our own __text). If present:
-\ restore both regions verbatim (fixed VAs keep region addresses valid),
+\ decode DATA into scratch, validate and copy (fixed VAs keep addresses valid),
 \ relocate engine-text call chains (the only ASLR-movers), boot WARM. ----
 : EM-SNAPSHOT-RESTORE ( -- )
    LBL LBL LBL LBL LBL LBL LBL
@@ -6840,38 +6832,43 @@ ardone LBL,
    snomag B,
    snpresent LBL,
    \ The owner-role registry is required for checked qualified lookup. A v0-v2
-   \ image has no trustworthy owner semantics, so the legacy trailer and every
-   \ version other than the current format fail closed as unsupported.
+   \ image has no trustworthy owner semantics. Admit the dense address-header
+   \ format and the current compressed outer format; refuse other versions.
    5 SNAP-MAGIC LIT64,
    13 12 SNAP-TRL-BYTES SUBI,  14 13 0 LDR,  14 5 CMP,  C-EQ snnew BCOND,       \ x13 = versioned trailer base?
    13 12 SNAP-TRL-LEGACY-BYTES SUBI,  14 13 0 LDR,  14 5 CMP,  C-NE snbad BCOND, \ authenticated snapshot payload without magic is corrupt
    snbadver B,                                                     \ legacy v0 cannot carry owner roles
    snnew LBL,
       14 13 SNAP-TRL-VERSION LDR,                                  \ x14 = image format version
-      5 ADDRESS-CELLS:SNAPSHOT-VERSION MOVZ,  14 5 CMP,  C-NE snbadver BCOND,
+      5 ADDRESS-CELLS:SNAPSHOT-VERSION MOVZ, 14 5 CMP, C-EQ snhave BCOND,
+      5 SNAP-FORMAT-VERSION MOVZ, 14 5 CMP, C-NE snbadver BCOND,
    snhave LBL,
       12 13 0 ADDI,                                                \ x12 = resolved trailer base
    21 12 SNAP-TRL-TBASE LDR,                        \ x21 = snapshot-time text base
    15 12 SNAP-TRL-NDICT LDR,                        \ x15 = ndict
    6 12 SNAP-TRL-REGLEN LDR,                        \ x6 = region payload len
-   7 12 SNAP-TRL-DATALEN LDR,                       \ x7 = data payload len
+   7 12 SNAP-TRL-DATALEN LDR,                       \ x7 = stored DATA bytes
    \ corrupt/truncated trailer must never smear the regions: exit 79
-   5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
-   5 DICT-SIZE LIT64,  6 5 CMP,  C-LT snbad BCOND,
-   5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
-   5 DICT-CAP LIT64,  15 5 CMP,  C-GT snbad BCOND,
-   SP SP 64 SUBI,
+   5 REGION LIT64, 6 5 CMP, C-HI snbad BCOND,
+   5 DICT-SIZE LIT64, 6 5 CMP, C-CC snbad BCOND,
+   5 DATA-SIZE LIT64, 7 5 CMP, C-HI snbad BCOND, 7 snbad CBZ,
+   5 DICT-CAP LIT64, 15 5 CMP, C-HI snbad BCOND,
+   5 11 SNAP-TRL-BYTES SUBI, 7 5 CMP, C-HI snbad BCOND,
+   5 5 7 SUB, 6 5 CMP, C-HI snbad BCOND,
+   SP SP 128 SUBI,
    6 SP 0 STR,  7 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
    15 SP 32 STR,  21 SP 40 STR,  25 SP 48 STR,
+   10 12 7 SUB, 10 SP 56 STR, 7 SP 64 STR,
+   5 0 MOVZ, 5 SP 72 STR, 14 SP 80 STR,
+   snbad EM-SNAPSHOT-DECODE
+   10 SP 56 LDR, 7 SP 64 LDR,
    snbad EM-SNAPSHOT-VALIDATE-ADDRESS-CELLS
+   10 SP 56 LDR, 7 SP 64 LDR,
    snbad EM-SNAPSHOT-VALIDATE-WIDS
    \ Seeding the native runtime has already closed its dictionary/code pages
    \ RX. Restore replaces that region from engine text, then the ordinary
    \ startup RX flush closes it again before any restored word executes.
    2 3 MOVZ,  0 DBASE 0 ADDI,  1 REGION LIT64,  LPROT LABEL@ BL,
-   6 SP 0 LDR,  7 SP 8 LDR,  11 SP 16 LDR,  12 SP 24 LDR,
-   15 SP 32 LDR,  21 SP 40 LDR,  25 SP 48 LDR,
-   SP SP 64 ADDI,
    snok B,
    snbad LBL,                                                              \ corrupt/truncated trailer: label the fd-2 diagnostic before exit 79
       1 LSNAPBAD LABEL@ ADR,  0 2 MOVZ,  2 SNAPBAD-MSG-LEN MOVZ,  NR-WRITE SYS,
@@ -6888,19 +6885,28 @@ ardone LBL,
    \ they ride the machine stack across it and are republished beside XDS below.
    \ x13 is the copy loops' own scratch; x11 holds the snapshot text size the
    \ text pass below still needs, and x9/x10/x0 carry argc/argv/envp.
-   SP SP 16 SUBI,
-   13 DATA STACK-ABI:RETURN-BASE-CELL LDR,  13 SP 0 STR,
-   13 DATA STACK-ABI:LOOP-BASE-CELL LDR,    13 SP 8 STR,
+   9 SP 96 STR, 10 SP 104 STR, 0 SP 112 STR,
+   13 DATA STACK-ABI:RETURN-BASE-CELL LDR, 13 SP 80 STR,
+   13 DATA STACK-ABI:LOOP-BASE-CELL LDR, 13 SP 88 STR,
+   6 SP 0 LDR, 7 SP 8 LDR, 12 SP 24 LDR,
    8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
    EM-SNAPSHOT-COPY-CODE
+   8 SP 56 LDR, 7 SP 64 LDR,
    EM-SNAPSHOT-COPY-DATA
+   LBL {: released:label :}
+   0 SP 72 LDR, 0 released CBZ,
+      1 SP 64 LDR, NR-MUNMAP SYS, 0 snbad CBNZ,
+   released LBL,
+   6 SP 0 LDR, 7 SP 8 LDR, 11 SP 16 LDR,
+   15 SP 32 LDR, 21 SP 40 LDR, 25 SP 48 LDR,
+   9 SP 96 LDR, 10 SP 104 LDR, 0 SP 112 LDR,
    5 0 MOVZ, 5 DATA ADDRESS-CELLS:INDEX-CELL STR,
    25 DATA RBASE-CELL STR,                          \ live values over stale copies
    XDS DATA STACK-ABI:BASE-CELL STR,
    5 STACK-ABI:BOOT-BYTES LIT64,  5 DATA STACK-ABI:CAP-CELL STR,
-   13 SP 0 LDR,  13 DATA STACK-ABI:RETURN-BASE-CELL STR,
-   13 SP 8 LDR,  13 DATA STACK-ABI:LOOP-BASE-CELL STR,
-   SP SP 16 ADDI,
+   13 SP 80 LDR, 13 DATA STACK-ABI:RETURN-BASE-CELL STR,
+   13 SP 88 LDR, 13 DATA STACK-ABI:LOOP-BASE-CELL STR,
+   SP SP 128 ADDI,
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,

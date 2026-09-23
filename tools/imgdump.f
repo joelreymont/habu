@@ -9,6 +9,7 @@
 
 require lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
 require src/habu/code-span.f
+require src/habu/snapshot-data.f
 
 : IMG-FALSE ( -- bool )
    0 0= 0= ;
@@ -35,6 +36,8 @@ create IPATH IPATH-CAP 1 + allot
 create ISTAT 144 allot
 variable TOFF  variable IMG-TBASE  variable TNDICT  variable TREG  variable TDATA
 variable ROFF  variable HAS-SNAP
+DYNAMIC-BUFFER DECODED-DATA n
+variable DECODED-SIZE
 variable RUNV  variable BESTO  variable BESTN
 \ No-trailer only: the base added to a raw dict-record xt field. A snapshot's
 \ xt fields are already canonical/absolute (SNAP-CORE?, PTR>OFF); a baked
@@ -191,7 +194,7 @@ private
 : SNAP-CORE? {: o :} ( n -- bool )
    o SNAP-TRL-BYTES + IL @ > if IMG-FALSE exit then
    o I@ SNAP-MAGIC = 0= if IMG-FALSE exit then
-   o SNAP-TRL-VERSION + I@ SNAP-FORMAT-VERSION = 0= if IMG-FALSE exit then
+   o SNAP-TRL-VERSION + I@ SNAPSHOT-DATA:VERSION? 0= if IMG-FALSE exit then
    o SNAP-TRL-NDICT + I@ 1 < if IMG-FALSE exit then
    o SNAP-TRL-NDICT + I@ DICT-CAP > if IMG-FALSE exit then
    o SNAP-TRL-REGLEN + I@ 0 <= if IMG-FALSE exit then
@@ -552,8 +555,16 @@ private
      none OF IMG-USAGE ENDOF
      some OF ENDOF
    ;MATCH {: off:n :}
-   off 0 < off 8 + TDATA @ > or if s" imgdump: data offset out of range" 74 die then
-   TOFF @ TDATA @ - off + I@ . ;
+   IB@ TOFF @ TDATA @ - + TDATA @ TOFF @ SNAP-TRL-VERSION + I@
+      SNAPSHOT-DATA:EXTENT DECODED-SIZE !
+   off 0 < off DECODED-SIZE @ 8 - > or if
+      s" imgdump: data offset out of range" 74 die then
+   DECODED-SIZE @ 7 + CELL / DECODED-DATA-RESERVE
+   IB@ TOFF @ TDATA @ - + TDATA @ TOFF @ SNAP-TRL-VERSION + I@
+      0 DECODED-DATA BYTE-VIEW DECODED-SIZE @ SNAPSHOT-DATA:READ 0= if
+      s" imgdump: malformed snapshot DATA" 74 die then
+   0 DECODED-DATA BYTE-VIEW off + CELL-VIEW @ .
+   DECODED-DATA-RELEASE ;
 
 \ Print snapshot dictionary and payload sizes.
 : SNAP-INFO ( -- )
@@ -561,7 +572,10 @@ private
    HAS-SNAP @ 0= if s" no-snapshot" type cr exit then
    s" ndict " type TNDICT @ . cr
    s" region " type TREG @ h. cr
-   s" data " type TDATA @ h. cr ;
+   s" data " type
+   IB@ TOFF @ TDATA @ - + TDATA @ TOFF @ SNAP-TRL-VERSION + I@
+      SNAPSHOT-DATA:EXTENT h. cr
+   s" stored-data " type TDATA @ h. cr ;
 
 : MAIN ( -- )
    SCRIPT-ARGC 3 >= if 0 SCRIPT-ARGV$ s" --pc" CORE-STR= if PC-IMG exit then then

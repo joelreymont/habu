@@ -696,7 +696,7 @@ variable RN-AT   variable RN-END   variable RN-SUM   variable RN-COUNT
 \ left of the section, so a varint that runs off its end is a malformation here
 \ and never a read past it.
 : WIN-V ( n n -- n n ) {: at:n avail:n :}
-   VAL-BUF@ at + avail CELL-V@ {: v:n w:n :}
+   VAL-BUF@ at + avail IMAGE-CELLS:CELL-V@ {: v:n w:n :}
    w 0<> if v w exit then
    s" aot-file: a window DATA cell value is not a well-formed varint" DIE
    0 0 ;
@@ -797,9 +797,9 @@ variable NAME-BOUNDARY-LEN
    S-WVALS BASE@ RN-AT !
    S-WVALS BASE@ S-WVALS ROW-LEN@ + {: stop:n :}
    0 RN-END !  0 RN-SUM !  0 RN-COUNT !
-   len CELL-BITS * 0 ?do
-      BM-BUF@ at +  i CELL-BITS / + c@  i CELL-BITS mod rshift  1 and 0<> if
-         i 1+ CELL-BYTES * {: end:n :}
+   len IMAGE-CELLS:CELL-BITS * 0 ?do
+      BM-BUF@ at +  i IMAGE-CELLS:CELL-BITS / + c@  i IMAGE-CELLS:CELL-BITS mod rshift  1 and 0<> if
+         i 1+ IMAGE-CELLS:CELL-BYTES * {: end:n :}
          end span > if
             s" aot-file: a window DATA cell reaches past the window DATA span" DIE
          then
@@ -1120,12 +1120,12 @@ DYNAMIC-BUFFER HOST-REG n
 \ first, so it is already read when the window's own section comes up.
 : PLACE-WDATA ( -- )
    SCALARS@
-   A-D0 @ CELL-BYTES mod  AOT-DATA-D0 @ CELL-BYTES mod or 0<> if
+   A-D0 @ IMAGE-CELLS:CELL-BYTES mod  AOT-DATA-D0 @ IMAGE-CELLS:CELL-BYTES mod or 0<> if
       s" aot-file: a captured DATA window base is not cell-aligned" DIE then
-   H-DATA @ BM-BYTE-SPAN 1- + BM-BYTE-SPAN / BM-BYTE-SPAN * H-DATA-R !
+   H-DATA @ IMAGE-CELLS:BM-BYTE-SPAN 1- + IMAGE-CELLS:BM-BYTE-SPAN / IMAGE-CELLS:BM-BYTE-SPAN * H-DATA-R !
    H-CEND @ H-DATA-R @ > if
       s" aot-file: the host window's own cells reach into the merge pad" DIE then
-   H-DATA-R @ BM-BYTE-SPAN / {: bmbase:n :}
+   H-DATA-R @ IMAGE-CELLS:BM-BYTE-SPAN / {: bmbase:n :}
    bmbase BM-CAP > if
       S-WDATA s" is larger than the buffer it fills" SECT-DIE then
    begin H-BMLEN @ bmbase < while

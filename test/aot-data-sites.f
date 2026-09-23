@@ -240,7 +240,7 @@ $1000 constant NORM-BASE      \ 8-aligned, so d0's residue is exactly the one ad
       then
    then
    AOT-DATA-SIZE @ SPAN-VALUE
-   2 SCRIPT-ARGV$ s" merge" STR= if BM-BYTE-SPAN + then T=
+   2 SCRIPT-ARGV$ s" merge" STR= if IMAGE-CELLS:BM-BYTE-SPAN + then T=
    T-REPORT
    s" aot-data-sites: span ok" type cr ;
 

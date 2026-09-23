@@ -21,6 +21,7 @@ require lib/fs.f
 require lib/codesign.f
 require src/habu/address-cells.f
 require src/habu/stack-abi.f
+require src/habu/image-cells.f
 
 package SNAP
 
@@ -51,6 +52,8 @@ variable OUTPUT-U
 create TRL SNAP-TRL-BYTES allot
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SNL  variable SFTS  variable SPAD  variable SFD
+variable SDW  variable SVER
+PTR-VARIABLE SDC-P
 \ These views expose the raw snapshot source and dictionary/data buffer cells.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 : STB@ STB @ ;
@@ -61,7 +64,7 @@ s" STB-CELL@" s" -- ptr n" TRUST
 s" SDB@" s" -- ptr u8" TRUST
 
 : SIZE! ( -- )
-   STSZ @ SCL @ + SDL @ + SNAP-TRL-BYTES + SNL ! ;   \ the format-versioned trailer
+   STSZ @ SCL @ + SDW @ + SNAP-TRL-BYTES + SNL ! ;
 
 : HDR! ( -- snap )
    SNL @ BUILD-SNAP-HDR SFTS ! ;
@@ -76,9 +79,11 @@ s" SDB@" s" -- ptr u8" TRUST
 : ABSORB-PAD ( -- snap )
    SIZE!
    PAD! STALE
-   SDL @ SPAD @ + SDL !
+   SDW @ SPAD @ + SDW !
    SIZE!
-   SDL @ DATA-SIZE > if s" snap: data payload exceeds image DATA" 74 die then
+   SVER @ ADDRESS-CELLS:SNAPSHOT-VERSION <= if
+      SDW @ DATA-SIZE > if s" snap: data payload exceeds image DATA" 74 die then
+   then
    HDR! ;
 
 : RESET-BUF ( -- )
@@ -110,7 +115,7 @@ s" SDB@" s" -- ptr u8" TRUST
    end trailer SNAP-TRL-REGLEN + CELL-VIEW @ TEXT-CUT
    trailer SNAP-TRL-DATALEN + CELL-VIEW @ TEXT-CUT ;
 
-: HDR ( -- snap )
+: LATCH ( -- )
    RESET-BUF
    \ The builder's x20 register constant is XREG-RBASE so it does not shadow
    \ the `rbase` primitive; read the saved text base straight from its cell.
@@ -118,8 +123,8 @@ s" SDB@" s" -- ptr u8" TRUST
    ENGINE-TEXT-SIZE STSZ !
    dbase@ SDB !
    cp@ SDB @ - SCL !                      \ region payload (dict + compiled code)
-   here data-base - SDL !                 \ data payload (through DP)
-   ABSORB-PAD ;
+   here data-base - SDL !                 \ decoded DATA, through DP
+   SDL @ 0 <= SDL @ DATA-SIZE > or if BAD-SOURCE then ;
 
 
 \ ---- canonical-base persistence ----
@@ -169,7 +174,8 @@ TRUSTED: SND-PTR ( -- ptr u8 ) SND-N @ ;
 
 : SND-ALLOC ( -- )
    SND-N @ 0 <> if exit then
-   0 SDL @ SNC-PROT-RW SNC-MAP-ANON -1 0 mmap
+   \ Padding is fresh zero storage, never bytes past the latched DP.
+   0 SDL @ PROT-PAGE-MAX + SNC-PROT-RW SNC-MAP-ANON -1 0 mmap
    dup 0 < if s" snap: data scratch mmap failed" 74 die then
    SND-N ! ;
 
@@ -335,6 +341,37 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    SNC-COPY
    SNC-CANON ;
 
+\ Compare the actual rounded text extents, including alignment. Choosing the
+\ smaller unrounded stream alone can compress into the same-sized image.
+: PADDED-TEXT ( n -- n )
+   SDW ! SIZE! HDR! STALE SFTS @ ;
+
+: ENCODE-DATA ( -- )
+   ADDRESS-CELLS:SNAPSHOT-FORMAT SVER !
+   SDL @ SDW !
+   \ A source-loaded writer must not give an old donor a new payload grammar.
+   SNAP-FORMAT-VERSION ADDRESS-CELLS:SNAPSHOT-VERSION <= if exit then
+   SDL @ IMAGE-CELLS:BM-BYTE-SPAN 1- + IMAGE-CELLS:BM-BYTE-SPAN / {: flat:n :}
+   flat IMAGE-CELLS:GROUP-BYTES 1- + IMAGE-CELLS:GROUP-BYTES / {: capg:n :}
+   flat capg IMAGE-CELLS:PMAP-BYTES + capg IMAGE-CELLS:GROUP-BYTES * +
+      MEM-ALLOC-BYTES {: work:ptr worku:n :}
+   work flat + {: compact:ptr :}
+   SND-PTR SDL @ work IMAGE-CELLS:BITMAP! {: bmu:n values:n :}
+   work bmu compact IMAGE-CELLS:BM! {: groups:n stored:n :}
+   groups IMAGE-CELLS:PMAP-BYTES stored + {: bitmap:n :}
+   16 bitmap + values + {: encoded:n :}
+   SDL @ PADDED-TEXT encoded PADDED-TEXT > if
+      encoded PROT-PAGE-MAX + MEM-ALLOC-BYTES drop SDC-P !
+      SDL @ SDC-P @ CELL-VIEW !
+      groups SDC-P @ 8 + IMAGE-CELLS:U32!
+      stored SDC-P @ 12 + IMAGE-CELLS:U32!
+      compact SDC-P @ 16 + bitmap BYTE-COPY
+      SND-PTR SDL @ SDC-P @ 16 + bitmap + IMAGE-CELLS:VALUES!
+         values <> if s" snap: DATA changed during encoding" 74 die then
+      encoded SDW ! SNAP-FORMAT-VERSION SVER !
+   else SDL @ SDW ! then
+   work worku munmap 0<> if E-MEM-UNMAP throw then ;
+
 ;package
 
 \ ---- test-only final-close fault seam ----
@@ -376,8 +413,8 @@ package SNAP
    \ older fields sit where the legacy trailer put them, which is what lets the
    \ loader tell a legacy image apart from a corrupt one.
    SNAP-MAGIC TRL !  0 TRL SNAP-TRL-TBASE + !  ndict@ TRL SNAP-TRL-NDICT + !
-   SCL @ TRL SNAP-TRL-REGLEN + !  SDL @ TRL SNAP-TRL-DATALEN + !
-   ADDRESS-CELLS:SNAPSHOT-FORMAT TRL SNAP-TRL-VERSION + !
+   SCL @ TRL SNAP-TRL-REGLEN + !  SDW @ TRL SNAP-TRL-DATALEN + !
+   SVER @ TRL SNAP-TRL-VERSION + !
    \ stream: header, engine text, region, data, trailer, zero pad
    OUT-PATH PATH0 1537 493 open SFD !
    SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
@@ -387,7 +424,8 @@ package SNAP
    SFD @ hdr CODE-OFF FDIO:WALL
    SFD @ STB@ STSZ @ FDIO:WALL
    SFD @ SNC-PTR SCL @ FDIO:WALL
-   SFD @ SND-PTR SDL @ FDIO:WALL
+   SVER @ ADDRESS-CELLS:SNAPSHOT-VERSION > if SDC-P @ else SND-PTR then
+   SFD @ swap SDW @ FDIO:WALL
    SFD @ TRL 48 FDIO:WALL
    SFD @ extra SNAP-EXTRA-SIZE FDIO:WALL
    SFD @ SNAP-CLOSE-SEAM:RUN
@@ -423,9 +461,11 @@ public
       then
    else 2drop then
    ADDRESS-CELLS:PERSIST
-   HDR
+   LATCH
    CANON-REGION
    CANON-DATA
+   ENCODE-DATA
+   ABSORB-PAD
    WRITE-IMAGE
    OUT-PATH CODESIGN:ENSURE
    DRV-EXIT-OK ;

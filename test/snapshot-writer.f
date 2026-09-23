@@ -11,6 +11,7 @@ require lib/fs-mutate.f
 require lib/process-env.f
 require lib/engine-candidate.f
 require lib/codesign.f
+require test/snapshot-file.f
 
 package SNAP-WRITER-TEST
 
@@ -63,7 +64,8 @@ variable IMGU
    a u FILE-SIZE {: sz:n :}
    sz MEM-ALLOC-BYTES drop IMGP !
    a u IMG sz READ-ALL IMGU !
-   IMGU @ sz <> if s" snapshot writer short read" 74 die then ;
+   IMGU @ sz <> if s" snapshot writer short read" 74 die then
+   a u SNAPSHOT-FILE:READ-IMAGE ;
 
 : U64@ ( n -- n ) {: k:n :}
    0
@@ -92,15 +94,15 @@ variable IMGU
 \ return stack (the canary constants inverted) must not appear anywhere in the
 \ persisted DATA payload.
 : STACK-BASES-ZERO? ( -- bool )
-   DATA-OFF STACK-ABI:RETURN-BASE-CELL + U64@ 0=
-   DATA-OFF STACK-ABI:LOOP-BASE-CELL + U64@ 0= and ;
+   STACK-ABI:RETURN-BASE-CELL SNAPSHOT-FILE:CELL@ 0=
+   STACK-ABI:LOOP-BASE-CELL SNAPSHOT-FILE:CELL@ 0= and ;
 
 : DATA-LEN ( -- n )
    TRAILER-OFF SNAP-TRL-DATALEN + U64@ ;
 
 : CANARIES-ABSENT? ( -- bool )
-   DATA-OFF DATA-LEN + 8 - DATA-OFF ?do
-      i U64@ {: v:n :}
+   SNAPSHOT-FILE:SIZE 8 - 0 ?do
+      i SNAPSHOT-FILE:CELL@ {: v:n :}
       v SNAP-WRITER-POISON:LO-CANARY invert = v SNAP-WRITER-POISON:HI-CANARY invert = or if
          false unloop exit
       then
@@ -204,10 +206,10 @@ variable IMGU
 variable BAND-WID
 
 : BAND-TAG ( -- n )
-   DATA-OFF PROT-REG-TAG-CELL + U64@ ;
+   PROT-REG-TAG-CELL SNAPSHOT-FILE:CELL@ ;
 
 : BAND-BIT? ( n -- bool ) {: wid:n :}
-   DATA-OFF PROT-BITS-OFF + wid 8 / + U8@
+   PROT-BITS-OFF wid 8 / + SNAPSHOT-FILE:BYTE@
    wid 7 and rshift 1 and 0= 0= ;
 
 \ The lowest wordlist THIS IMAGE records as protected, skipping the two that
@@ -231,8 +233,7 @@ variable BAND-WID
 
 \ ---- doctored-band legs ----------------------------------------------------
 : WRITE-BAND-COPY ( -- )
-   BAD-BAND$ IMG IMGU @ WRITE-ALL
-   BAD-BAND$ CODESIGN:FORCE ;
+   BAD-BAND$ SNAPSHOT-FILE:WRITE ;
 
 : RUN-BAND-COPY ( -- )
    PROC-ARGV-RESET
@@ -242,18 +243,18 @@ variable BAND-WID
 \ Doctor one byte of the persisted image, run the result, restore the byte so the
 \ later imgdump probes still see the image the writer produced.
 : DOCTOR-BYTE ( n n -- ) {: off:n val:n :}
-   off U8@ {: orig:n :}
-   off val U8!
+   off SNAPSHOT-FILE:BYTE@ {: orig:n :}
+   off val SNAPSHOT-FILE:BYTE!
    WRITE-BAND-COPY
    RUN-BAND-COPY
-   off orig U8! ;
+   off orig SNAPSHOT-FILE:BYTE! ;
 
 : DOCTOR-TAG ( -- )
-   DATA-OFF PROT-REG-TAG-CELL + 0 DOCTOR-BYTE ;
+   PROT-REG-TAG-CELL 0 DOCTOR-BYTE ;
 
 : DOCTOR-WID0 ( -- )
-   DATA-OFF PROT-BITS-OFF + {: off:n :}
-   off  off U8@ 1 or  DOCTOR-BYTE ;
+   PROT-BITS-OFF {: off:n :}
+   off off SNAPSHOT-FILE:BYTE@ 1 or DOCTOR-BYTE ;
 
 : ASSERT-BAND-REFUSED ( -- )
    EXITED @ TTRUE
@@ -266,16 +267,16 @@ variable BAND-WID
    8 0 ?do off i + value i 8 * rshift $FF and U8! loop ;
 
 : DOCTOR-ADDRESS-CELL ( n n -- ) {: field:n value:n :}
-   DATA-OFF SNAP-RELOC:XTCELL-N-CELL + field + {: off:n :}
-   off U64@ {: old:n :}
-   off value CELL! WRITE-BAND-COPY RUN-BAND-COPY
-   off old CELL! ASSERT-BAND-REFUSED ;
+   SNAP-RELOC:XTCELL-N-CELL field + {: off:n :}
+   off SNAPSHOT-FILE:CELL@ {: old:n :}
+   off value SNAPSHOT-FILE:CELL! WRITE-BAND-COPY RUN-BAND-COPY
+   off old SNAPSHOT-FILE:CELL! ASSERT-BAND-REFUSED ;
 
 : ADDRESS-HEADER-CASE ( -- )
    s" snapshots carry the v9 address-vector header" T-LABEL
-   TRAILER-OFF SNAP-TRL-VERSION + U64@ ADDRESS-CELLS:SNAPSHOT-VERSION T=
-   DATA-OFF SNAP-RELOC:XTCELL-N-CELL + ADDRESS-CELLS:MAGIC-FIELD +
-      U64@ ADDRESS-CELLS:MAGIC T=
+   TRAILER-OFF SNAP-TRL-VERSION + U64@ SNAP-FORMAT-VERSION T=
+   SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:MAGIC-FIELD +
+      SNAPSHOT-FILE:CELL@ ADDRESS-CELLS:MAGIC T=
    s" malformed new headers never select the legacy row layout" T-LABEL
    ADDRESS-CELLS:MAGIC-FIELD 0 DOCTOR-ADDRESS-CELL
    ADDRESS-CELLS:MODE-FIELD 1 DOCTOR-ADDRESS-CELL
@@ -283,12 +284,12 @@ variable BAND-WID
    ADDRESS-CELLS:CAP-FIELD -1 DOCTOR-ADDRESS-CELL
    ADDRESS-CELLS:CAP-FIELD ADDRESS-CELLS:MAX-ROWS 1+ DOCTOR-ADDRESS-CELL
    0 -1 DOCTOR-ADDRESS-CELL
-   0 DATA-OFF SNAP-RELOC:XTCELL-N-CELL + ADDRESS-CELLS:CAP-FIELD +
-      U64@ 1+ DOCTOR-ADDRESS-CELL
+   0 SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:CAP-FIELD +
+      SNAPSHOT-FILE:CELL@ 1+ DOCTOR-ADDRESS-CELL
    ADDRESS-CELLS:BASE-FIELD
-      TRAILER-OFF SNAP-TRL-DATALEN + U64@ 1+ DOCTOR-ADDRESS-CELL
+      SNAPSHOT-FILE:SIZE 1+ DOCTOR-ADDRESS-CELL
    ADDRESS-CELLS:BASE-FIELD
-      TRAILER-OFF SNAP-TRL-DATALEN + U64@ 8 - DOCTOR-ADDRESS-CELL ;
+      SNAPSHOT-FILE:SIZE 8 - DOCTOR-ADDRESS-CELL ;
 
 : WARM-CASE ( -- )
    ADDRESS-HEADER-CASE
@@ -360,6 +361,7 @@ public
    T-RESET
    CLEANUP-RESET
    [: BODY ;] catch {: code:n :}
+   SNAPSHOT-FILE:RELEASE
    CLEANUP-RUN
    code 0 <> if code throw then
    T-REPORT

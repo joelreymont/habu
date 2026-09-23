@@ -391,8 +391,8 @@ create READER-STATE JR:STORAGE-BYTES allot
 \ returning at all is the sum-to-length proof; these cases pin that the sum is
 \ the file's REAL length (not a number the walk invented), that the summary's
 \ six terms plus `other` are the same total, and the one fact that separates the
-\ two application classes -- a snapshot writes its zero bytes and a stripped
-\ image never does.
+\ two application classes: snapshot metadata may contain zero bytes, while
+\ stripped DATA's nonzero runs contain none.
 : HBT-SIZE-SUM ( -- n )
    IMAGE-SIZE:CODE-BYTES IMAGE-SIZE:NAME-BYTES +
    IMAGE-SIZE:DATA-WRITTEN + IMAGE-SIZE:DATA-ZERO +
@@ -406,10 +406,10 @@ create READER-STATE JR:STORAGE-BYTES allot
 : HBT-SIZE-REPL ( -- )
    HBT-REPL-OUT HBT-SIZE-MEASURE
    IMAGE-SIZE:CLASS$ s" repl-snapshot" T$=
-   \ A snapshot copies its DATA window verbatim, zeros included, and they are
-   \ most of the image: the class exists and is never empty.
+   \ Bitmap/varint metadata can contain zeros, but the absent DATA cells no
+   \ longer dominate this sparse snapshot's stored bytes.
    IMAGE-SIZE:DATA-ZERO 0 > TTRUE
-   IMAGE-SIZE:DATA-ZERO IMAGE-SIZE:DATA-WRITTEN > TTRUE
+   IMAGE-SIZE:DATA-ZERO IMAGE-SIZE:DATA-WRITTEN < TTRUE
    IMAGE-SIZE:CODE-BYTES 0 > TTRUE
    IMAGE-SIZE:NAME-BYTES 0 > TTRUE
    \ The region payload is attributed and not just classified: the code band

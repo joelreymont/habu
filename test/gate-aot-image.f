@@ -106,8 +106,8 @@ create CODE-PATH FS-PATH-CAP allot
    off 32 + 13 SKIP-LITERAL ;
 
 
-\ One inlined unsigned LEB128 decode, register for register: src/habu/aot-lib.f
-\ EMIT-VGET, which is what makes a cell's value variable width. The registers
+\ One inlined unsigned LEB128 decode, register for register: the shared
+\ IMAGE-CELL-ARM64:VALUE, makes a cell's value variable width. The registers
 \ are arguments because the two loops that inline it hold their cursors in
 \ different ones.
 : CHECK-VGET ( n n n n n n -- n ) {: off:n acc:n cur:n b:n g:n sh:n :}

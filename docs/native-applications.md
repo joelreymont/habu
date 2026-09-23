@@ -83,9 +83,12 @@ same process-symbol contract but are not exercised on this host.
 
 Every build prints one line saying where the bytes of the image it just wrote
 went, `--size-report` prints the whole table and `--report-json` carries the
-same numbers in the report object's `size` field. A `--repl` image is mostly
-zero bytes — it copies the DATA window verbatim and the dictionary slot array
-whole — which is a property of the format and not of your program; [Where an
+same numbers in the report object's `size` field. A `--repl` image encodes DATA
+with the engine's grouped cell bitmap and unsigned LEB128 values when that
+makes the padded file smaller. Dense DATA keeps the v9 representation; compressed
+DATA uses v10, with the same 48-byte trailer and address-cell schema. Restore
+validates decoded scratch before copying it over live DATA, including zeros.
+The dictionary slot array and code band still travel whole. [Where an
 application image's bytes go](engine-size.md#where-an-application-images-bytes-go)
 measures both classes and says what moves the number. It attributes the code
 band by package and the DATA window by owner, and the answer for a `--repl`

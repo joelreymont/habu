@@ -38,9 +38,9 @@
 \ what the capture would charge for the extent, so they follow the scanners
 \ (aot-capture.f ACAP-SCAN-SEG, aot-lib.f BUILD-SPARSE-DATA) rather than the raw
 \ content: a cell that holds anything costs the unsigned LEB128 of its value, and
-\ the bitmap travels in groups - AOT-WINDOW:GROUP-SPAN bytes of the extent whose
+\ the bitmap travels in groups - IMAGE-CELLS:GROUP-SPAN bytes of the extent whose
 \ cells are all zero cost nothing at all, and one that holds any cell costs its
-\ whole AOT-WINDOW:GROUP-BYTES of bitmap (src/habu/aot-decl.f BM-COMPACT).
+\ whole IMAGE-CELLS:GROUP-BYTES of bitmap (src/habu/aot-decl.f BM-COMPACT).
 \ `cost` is those value bytes plus the groups the extent keeps. A table of cells
 \ holding small numbers still costs more than its non-zero bytes;
 \ sort on this column rather than on non-zero.
@@ -119,8 +119,8 @@ variable CV
 
 : CELL@ ( n n n -- n ) {: base:n c:n len:n :}
    0 CV !
-   AOT-WINDOW:CELL-BYTES 0 ?do
-      c AOT-WINDOW:CELL-BYTES * i + {: off:n :}
+   IMAGE-CELLS:CELL-BYTES 0 ?do
+      c IMAGE-CELLS:CELL-BYTES * i + {: off:n :}
       off len < if
          base off + HEAP@ c@  i 8 * lshift  CV @ or  CV !
       then
@@ -136,15 +136,15 @@ variable GRP-LAST
    len 0 ?do
       base i + HEAP@ c@ 0<> if  NZ @ 1+ NZ !  i 1+ FILL !  then
    loop
-   len AOT-WINDOW:CELL-BYTES 1- + AOT-WINDOW:CELL-BYTES / {: cells:n :}
+   len IMAGE-CELLS:CELL-BYTES 1- + IMAGE-CELLS:CELL-BYTES / {: cells:n :}
    cells 0 ?do
       base i len CELL@ {: v:n :}
       v 0<> if
          RUNS @ 1+ RUNS !
-         PAY @ v AOT-WINDOW:CELL-VLEN + PAY !
-         i AOT-WINDOW:CELL-BYTES * AOT-WINDOW:GROUP-SPAN / {: g:n :}
+         PAY @ v IMAGE-CELLS:CELL-VLEN + PAY !
+         i IMAGE-CELLS:CELL-BYTES * IMAGE-CELLS:GROUP-SPAN / {: g:n :}
          g GRP-LAST @ <> if
-            ROWB @ AOT-WINDOW:GROUP-BYTES + ROWB !
+            ROWB @ IMAGE-CELLS:GROUP-BYTES + ROWB !
             g GRP-LAST !
          then
       then

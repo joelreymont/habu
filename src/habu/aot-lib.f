@@ -8,6 +8,7 @@ require src/habu/stack-abi.f
 require src/habu/rt.f
 require src/habu/crash.f
 require src/habu/aot-decl.f
+require src/habu/image-cell-arm64.f
 require src/habu/aot-window-latch.f
 require src/habu/aot-owned-cells.f
 
@@ -246,26 +247,12 @@ variable CARRY-USED
       THEN
    loop ;
 
-\ ONE UNSIGNED LEB128 VARINT, INLINE: seven bits a byte from the cursor `cur`,
-\ low group first, until a byte arrives with its high bit clear. `acc` answers
-\ the value, `cur` is advanced past it, and `b`, `g` and `sh` are clobbered.
-\ This is src/habu/aot-decl.f AOT-WINDOW:CELL-V! read backwards, and the same
-\ grammar src/habu/habu2.f AOT-WINDOW:APPLY-CELLS decodes for the baked window.
-: EMIT-VGET ( n n n n n -- ) {: acc:n cur:n b:n g:n sh:n :}
-   LBL {: vtop:label :}
-   acc 0 MOVZ,  sh 0 MOVZ,
-   vtop LBL,
-      b cur 0 LDRB,  cur cur 1 ADDI,
-      g b $7F ANDI,  g g sh LSLV,  acc acc g ORR,
-      sh sh 7 ADDI,
-      g b $80 ANDI,  g vtop CBNZ, ;
-
 \ The span in whole cells: the grid the bitmap covers. The last cell may reach
 \ above the latched span end, and the writer reads those bytes as the zeros they
 \ are, so the image's own DP is this rounded end and nothing is ever stored
 \ above it.
 : SPAN-CELLS ( -- n )
-   BLOB-LEN @ AOT-WINDOW:CELL-BYTES 1- + AOT-WINDOW:CELL-BYTES / ;
+   BLOB-LEN @ IMAGE-CELLS:CELL-BYTES 1- + IMAGE-CELLS:CELL-BYTES / ;
 
 \ The blob's header: the group count and the stored bitmap bytes, as two u32
 \ (BUILD-SPARSE-DATA below writes them last, over room reserved first). The
@@ -300,47 +287,8 @@ variable CARRY-USED
    17 11 0 ADDI,                                  \ x17 = the stored groups, after the map
    10 17 10 ADD,                                  \ x10 = value cursor, after the stored groups
    13 BLOB-SRC @ LIT64,                           \ x13 = destination cursor, at the span's base VA
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: gtop:label gdone:label ptop:label pnext:label absent:label
-      bmtop:label bmdone:label bittop:label bitdone:label bitnext:label empty:label :}
-   gtop LBL,
-      9 11 CMP,  C-CS gdone BCOND,
-      23 9 0 LDRB,  9 9 1 ADDI,                   \ x23 = this byte's eight groups
-      24 8 MOVZ,                                  \ x24 = groups left in the byte
-      ptop LBL,
-         24 gtop CBZ,
-         21 23 1 ANDI,
-         21 absent CBZ,
-            25 AOT-WINDOW:GROUP-BYTES MOVZ,       \ x25 = bitmap bytes left in the group
-            bmtop LBL,
-               25 bmdone CBZ,
-               14 17 0 LDRB,  17 17 1 ADDI,       \ x14 = this byte's eight cells
-               25 25 1 SUBI,
-               14 empty CBZ,
-               12 AOT-WINDOW:CELL-BITS MOVZ,      \ x12 = cells left in the byte
-               bittop LBL,
-                  12 bitdone CBZ,
-                  21 14 1 ANDI,
-                  21 bitnext CBZ,
-                     15 10 16 22 7 EMIT-VGET      \ x15 = the present cell's value
-                     15 13 0 STR,
-                  bitnext LBL,
-                  14 14 1 LSRI,  13 13 AOT-WINDOW:CELL-BYTES ADDI,  12 12 1 SUBI,
-                  bittop B,
-               bitdone LBL,
-               bmtop B,
-            empty LBL,
-               13 13 AOT-WINDOW:BM-BYTE-SPAN ADDI, \ eight absent cells: step the destination
-               bmtop B,
-            bmdone LBL,
-         pnext LBL,
-         23 23 1 LSRI,  24 24 1 SUBI,
-         ptop B,
-   absent LBL,
-      21 AOT-WINDOW:GROUP-SPAN MOVZ,  13 13 21 ADD,  \ an absent group: step the destination
-      pnext B,
-   gdone LBL,
-   7 BLOB-SRC @ SPAN-CELLS AOT-WINDOW:CELL-BYTES * + LIT64,
+   9 11 17 10 13  23 24 25 14 12 21 15 16 22 7 IMAGE-CELL-ARM64:COPY,
+   7 BLOB-SRC @ SPAN-CELLS IMAGE-CELLS:CELL-BYTES * + LIT64,
    7 DATA DP-CELL STR, ;                           \ DP = user-end (runtime here/allot base)
 
 \ ---- the declared xt cells: what the copy alone cannot restore -----------------
@@ -382,7 +330,7 @@ variable CARRY-USED
 \ bytes in every earlier image; the restore above maps an anonymous (already
 \ zero) region, so a zero byte never has to travel. Format:
 \ [groups u32][stored bitmap bytes u32][presence map, one bit a group, low bit
-\ first][the present groups, AOT-WINDOW:GROUP-BYTES bytes each in group order,
+\ first][the present groups, IMAGE-CELLS:GROUP-BYTES bytes each in group order,
 \ the last zero-padded][one unsigned LEB128 per present cell, in cell order] -
 \ one cursor decodes the values with no stored cell->value offset, and the two
 \ header numbers are what say where they begin. The bitmap, its grouping and the
@@ -428,8 +376,8 @@ variable BLOB-CV
 
 : BLOB-CELL@ ( n -- n ) {: c:n :}
    0 BLOB-CV !
-   AOT-WINDOW:CELL-BYTES 0 ?do
-      c AOT-WINDOW:CELL-BYTES * i + {: off:n :}
+   IMAGE-CELLS:CELL-BYTES 0 ?do
+      c IMAGE-CELLS:CELL-BYTES * i + {: off:n :}
       off BLOB-LEN @ < IF
          BLOB-SRC@ off + c@  i 8 * lshift  BLOB-CV @ or  BLOB-CV !
       THEN
@@ -439,15 +387,15 @@ variable BLOB-CV
 \ The bitmap is written in ascending cell order, so extending it is appending
 \ zero bytes, and it stops at the highest present cell.
 : BLOB-BIT! ( n -- ) {: c:n :}
-   c AOT-WINDOW:CELL-BITS / SPARSE-HDR + {: at:n :}
+   c IMAGE-CELLS:CELL-BITS / SPARSE-HDR + {: at:n :}
    BEGIN SPARSE-LEN @ at <= WHILE 0 SPARSE-BYTE! REPEAT
    SPARSE-BUF at + c@
-   1 c AOT-WINDOW:CELL-BITS mod lshift or
+   1 c IMAGE-CELLS:CELL-BITS mod lshift or
    SPARSE-BUF at + c! ;
 
 : BLOB-V! ( n -- ) {: v:n :}
-   AOT-WINDOW:VMAX SPARSE-ROOM?
-   v  SPARSE-BUF SPARSE-LEN @ +  AOT-WINDOW:CELL-V! {: w:n :}
+   IMAGE-CELLS:VMAX SPARSE-ROOM?
+   v  SPARSE-BUF SPARSE-LEN @ +  IMAGE-CELLS:CELL-V! {: w:n :}
    SPARSE-LEN @ w + SPARSE-LEN ! ;
 
 \ Two passes over the grid, because where the values start is not known until
@@ -456,7 +404,7 @@ variable BLOB-CV
 \ form, and that form is copied back over it: the flat bytes are this word's
 \ working state and never reach the image.
 : BUILD-SPARSE-DATA ( -- )
-   BLOB-SRC @ AOT-WINDOW:CELL-BYTES mod 0<> IF
+   BLOB-SRC @ IMAGE-CELLS:CELL-BYTES mod 0<> IF
       s" aot: the captured DATA span does not start on a cell" 74 die THEN
    0 SPARSE-LEN !
    SPARSE-HDR SPARSE-ROOM?  SPARSE-HDR SPARSE-LEN !

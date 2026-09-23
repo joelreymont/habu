@@ -1405,6 +1405,10 @@ SUITE snapshot-writer
    test/snapshot-writer.f
 ;SUITE
 
+SUITE snapshot-compression
+   test/snapshot-compression.f
+;SUITE
+
 SUITE stdlib-standalone-load
    test/stdlib-standalone-load.f
 ;SUITE

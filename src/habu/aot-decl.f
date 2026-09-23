@@ -1,3 +1,5 @@
+require src/habu/image-cells.f
+
 \ aot-decl.f — the AOT capture format's storage: every buffer the capture fills,
 \ every cap that bounds it, and the code-window budget derived from those caps.
 \
@@ -331,12 +333,6 @@ $1000000 constant SPAN-CAP
 \   (d) a per-4-KiB-page choice between (a) and (b)             843,675
 \ (d) is 9.4% of the DATA class below (b) and costs two decoders and a tag byte
 \ a page, so the one encoding is (b).
-8 constant CELL-BYTES                \ the grid's cell: the DATA cell a declared address sits on
-8 constant CELL-BITS                 \ cells one bitmap byte covers
-CELL-BYTES CELL-BITS * constant BM-BYTE-SPAN
-64 constant GROUP-BYTES              \ bitmap bytes one image presence bit covers
-GROUP-BYTES BM-BYTE-SPAN * constant GROUP-SPAN   \ DATA bytes such a group covers
-10 constant VMAX                     \ an unsigned LEB128 of a whole cell is at most ten bytes
 \ THE GRID IS THE DATA CELL GRID, NOT THE WINDOW'S OWN. Every declared address
 \ cell in the window is eight-byte aligned in DATA - the atomics fault on a
 \ misaligned cell - and each must fall on exactly one grid cell, because the
@@ -350,7 +346,7 @@ GROUP-BYTES BM-BYTE-SPAN * constant GROUP-SPAN   \ DATA bytes such a group cover
 \ The bitmap's byte ceiling is the span cap's own arithmetic, so a window this
 \ refuses is one no engine could reserve. Measured: 130,417 bytes for the
 \ release engine's 8,346,672-byte window.
-SPAN-CAP BM-BYTE-SPAN / constant BM-CAP
+SPAN-CAP IMAGE-CELLS:BM-BYTE-SPAN / constant BM-CAP
 DYNAMIC-BUFFER BM-STORAGE n
 : BM-BUF ( -- ptr u8 )
    BM-CAP CELL / BM-STORAGE-RESERVE
@@ -359,11 +355,11 @@ variable CELL-N                      \ present cells, which the encoded bytes no
 variable BM-LEN                      \ bytes of bitmap, trailing absent cells dropped
 variable CONTENT-END                 \ one past the last present cell: where a merge may pad to
 
-\ ---- the image's second level: a presence bit per GROUP-BYTES bitmap bytes -----
+\ ---- the image's second level: a presence bit per IMAGE-CELLS:GROUP-BYTES bitmap bytes -----
 \ MOST OF THE BITMAP IS ZERO, because most of the span is room `allot`ed and
 \ never written: the release engine's 130,792 bitmap bytes include 69,906 that
-\ are all clear, and they are clear in runs, not singly. A bit per GROUP-BYTES
-\ bytes (512 cells, GROUP-SPAN bytes of DATA) drops a group that holds no present
+\ are all clear, and they are clear in runs, not singly. A bit per IMAGE-CELLS:GROUP-BYTES
+\ bytes (512 cells, IMAGE-CELLS:GROUP-SPAN bytes of DATA) drops a group that holds no present
 \ cell from the image entirely: measured on that engine, 2,044 groups cost a
 \ 256-byte presence map and save 63,360 bytes of bitmap.
 \ THE GROUPING IS AN IMAGE ENCODING, NOT THE CAPTURE FORMAT. The capture, the
@@ -375,30 +371,23 @@ variable CONTENT-END                 \ one past the last present cell: where a m
 \ outer loop over the presence bits around the same per-byte walk.
 \ Image form, in both writers:
 \   [groups G][stored bytes S][presence map, ceil(G/8) bytes, group g in bit
-\    g mod 8 of byte g div 8, low bit first][the present groups, GROUP-BYTES
+\    g mod 8 of byte g div 8, low bit first][the present groups, IMAGE-CELLS:GROUP-BYTES
 \    bytes each in group order, the last zero-padded][the values]
-BM-CAP GROUP-BYTES / constant GROUP-CAP
-GROUP-CAP CELL-BITS / constant PMAP-CAP
+BM-CAP IMAGE-CELLS:GROUP-BYTES / constant GROUP-CAP
+GROUP-CAP IMAGE-CELLS:CELL-BITS / constant PMAP-CAP
 PMAP-CAP BM-CAP + constant CBM-CAP
 DYNAMIC-BUFFER CBM-STORAGE n
 : CBM-BUF ( -- ptr u8 )
    CBM-CAP CELL / CBM-STORAGE-RESERVE
    0 CBM-STORAGE BYTE-VIEW ;
 variable CBM-GROUPS                  \ groups the presence map covers
-variable CBM-STORED                  \ bytes of stored groups, GROUP-BYTES each
+variable CBM-STORED                  \ bytes of stored groups, IMAGE-CELLS:GROUP-BYTES each
 
-: CBM-PMAP-BYTES ( -- n ) CBM-GROUPS @ CELL-BITS 1- + CELL-BITS / ;
+: CBM-PMAP-BYTES ( -- n ) CBM-GROUPS @ IMAGE-CELLS:CELL-BITS 1- + IMAGE-CELLS:CELL-BITS / ;
 
 \ The one run the image carries for the bitmap: the presence map and the groups
 \ it says are there. Derived, never stored, so it cannot disagree with them.
 : CBM-LEN ( -- n ) CBM-PMAP-BYTES CBM-STORED @ + ;
-
-: CBM-BIT! ( n -- ) {: g:n :}
-   g CELL-BITS / {: at:n :}
-   CBM-BUF at + c@  1 g CELL-BITS mod lshift or  CBM-BUF at + c! ;
-
-: CBM-BIT@ ( n -- bool ) {: g:n :}
-   CBM-BUF g CELL-BITS / + c@  g CELL-BITS mod rshift  1 and 0<> ;
 
 \ A flat bitmap in, the compact form in CBM-BUF. Two linear passes over the
 \ bitmap bytes: the first says which group holds a present cell, the second
@@ -407,28 +396,15 @@ variable CBM-STORED                  \ bytes of stored groups, GROUP-BYTES each
 \ calls, which is why a merge that extends the bitmap needs no invalidation
 \ here - the next accounting rebuilds it (AOT-SECTION:BODY-BYTES).
 : BM-COMPACT ( ptr u8 n -- ) {: bm:ptr len:n :}
-   len GROUP-BYTES 1- + GROUP-BYTES / {: g:n :}
+   len IMAGE-CELLS:GROUP-BYTES 1- + IMAGE-CELLS:GROUP-BYTES / {: g:n :}
    g GROUP-CAP > if
       s" aot: the window bitmap exceeds the AOT group map" 74 die then
-   g CBM-GROUPS !  0 CBM-STORED !
-   CBM-BUF {: buf:ptr :}
-   CBM-PMAP-BYTES {: pm:n :}
-   pm 0 ?do 0 buf i + c! loop
-   len 0 ?do
-      bm i + c@ 0<> if i GROUP-BYTES / CBM-BIT! then
-   loop
-   g GROUP-BYTES * 0 ?do
-      i GROUP-BYTES / CBM-BIT@ if
-         i len < if bm i + c@ else 0 then
-         buf pm + CBM-STORED @ + c!
-         CBM-STORED @ 1+ CBM-STORED !
-      then
-   loop ;
+   bm len CBM-BUF IMAGE-CELLS:BM! CBM-STORED ! CBM-GROUPS ! ;
 
 \ A present cell costs its own varint and no more, so this cap answers to the
 \ content: the release engine's window encodes its 300,575 present cells in
 \ 834,153 value bytes, 2.8 bytes a cell, and the arithmetic worst case for that
-\ many cells is VMAX each. $400000 leaves 5x over the measured figure and covers
+\ many cells is IMAGE-CELLS:VMAX each. $400000 leaves 5x over the measured figure and covers
 \ a window of 419,430 pointer-valued cells, which is 3.3 MB of live cells.
 \ Overflow is refused by name.
 $400000 constant VAL-CAP
@@ -443,59 +419,6 @@ variable VAL-LEN
 : WINDOW-RESET ( -- )
    0 CELL-N !  0 BM-LEN !  0 CONTENT-END !  0 VAL-LEN ! ;
 
-\ ---- the value codec, and the only Forth that writes or reads this varint -----
-\ A CELL'S VALUE IS AN UNSIGNED LEB128: seven bits a byte, low group first, high
-\ bit set while more groups follow. The two emitted decoders (src/habu/habu2.f
-\ AOT-WINDOW:APPLY-CELLS for the baked window, src/habu/aot-lib.f EMIT-DATA-COPY
-\ for a stripped image's own DATA) are this same grammar in ARM64, and
-\ tools/engine-size.f mirrors it for the same reason it mirrors the row widths:
-\ it reads images in a booted engine that cannot load this build-side file.
-\ A VALUE IS A WHOLE CELL, so every bit pattern a cell can hold is a field this
-\ format expresses: an address, a small count and a cell of packed bytes alike.
-\ A negative Habu cell is the unsigned value with bit 63 set and encodes in VMAX
-\ bytes, the widest this format has.
-: CELL-VLEN ( n -- n ) {: v:n :}
-   VMAX 1 ?do
-      v i 7 * rshift 0= if i unloop exit then
-   loop
-   VMAX ;
-
-: CELL-V! ( n ptr u8 -- n ) {: v:n p:ptr :}   \ answers the bytes written
-   v CELL-VLEN {: w:n :}
-   w 0 ?do
-      v i 7 * rshift $7F and {: g:n :}
-      i 1+ w < if g $80 or else g then  p i + c!
-   loop
-   w ;
-
-\ The width, or 0 for a varint that does not end within `avail`, runs past VMAX,
-\ or wastes a byte on a zero high group - one encoding per value, so a round trip
-\ through this format is an identity rather than a resemblance.
-private
-
-: CELL-VW@ ( ptr u8 n -- n ) {: p:ptr avail:n :}
-   avail VMAX min 0 ?do
-      p i + c@ $80 and 0= if
-         i 1+ {: w:n :}
-         w 1 > p w 1- + c@ 0= and if 0 unloop exit then
-         w unloop exit
-      then
-   loop
-   0 ;
-
-: CELL-VV@ ( ptr u8 n -- n ) {: p:ptr w:n :}
-   0 w 0 ?do  p i + c@ $7F and  i 7 * lshift or  loop ;
-
-public
-
-\ Value and width, with a width of 0 for every malformation above. The tenth
-\ group holds bit 63 alone, so a tenth byte above one is a value no cell held.
-: CELL-V@ ( ptr u8 n -- n n ) {: p:ptr avail:n :}
-   p avail CELL-VW@ {: w:n :}
-   w 0= if 0 0 exit then
-   w VMAX = p VMAX 1- + c@ 1 > and if 0 0 exit then
-   p w CELL-VV@ {: v:n :}
-   v w ;
 \ Address rows grow independently of the engine's declaration registry. The
 \ artifact's aggregate byte budget, checked before copy or emission, is the
 \ limit; this single-section ceiling also bounds each allocation request.

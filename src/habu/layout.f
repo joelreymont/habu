@@ -91,7 +91,9 @@ $48425350414E5321 constant SNAP-MAGIC
 \ required in both directions.
 \ Version 8 adds the persisted application startup execution token.
 \ Version 9 stores the address-cell vector through a checked DATA-relative header.
-9 constant SNAP-FORMAT-VERSION
+\ Version 10 optionally stores grouped cell DATA. Dense version 9 remains
+\ readable; the writer chooses by final image size. The address-row ABI is 1.
+10 constant SNAP-FORMAT-VERSION
 
 \ --- snapshot trailer geometry: the single owner ----------------------------
 \ The trailer is the last thing in the authenticated text extent, so its base is

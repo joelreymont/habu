@@ -16,18 +16,51 @@ the integration chain runs the full gate.
 This incorporates habu-store-the-snapshot-203a86a0, closed as a duplicate.
 No separate snapshot codec implementation belongs on that dot.
 
-Measured baseline: frozen Tender 4de21b0c, published PG source 133d7cf8 / engine
-a7eb1731, built in private copies. Server image 43,712,704 B, snapshot DATA
-32,827,688 B; standalone image 29,360,320 B, DATA 19,091,448 B. These are the
-two current build targets; the old request for three images is obsolete.
-Calculated existing grouped-codec payloads are 4,995,407 / 4,482,520 B;
-maximal byte runs are 5,734,773 / 4,157,601 B. Trimming only trailing zeros
-saves 287,652 / 3,945 B. Including extent framing and alignment predicts about
-15.93 / 14.81 MB products before decoder growth; these are estimates, not
-completed compressed images. The values alone exceed AOT's 4 MiB VAL-CAP on
-both subjects, so snapshot scratch must be sized from its encoded content.
-Evidence: ~/.cache/habu/snapshot-design/source-45608866/ and
-~/.cache/habu/link-time/source-45608866/.
+Implemented in .jj-ws/alder-snapshot-compression on 806f0654. The shared pure
+IMAGE-CELLS module owns bitmap grouping and canonical cell varints; one ARM64
+projection serves baked, stripped and snapshot startup. Snapshot framing is
+separate, with no address-cell ABI change. Old AOT/stripped decoder stencils
+remain unchanged. Extraction also fixes CELL-V@ reading a tenth byte even for
+a one-byte value: the guarded-page fixture was red before and is green now.
+
+Controlled comparison: frozen Tender 4de21b0c on Habu 806f0654 / engine
+274f9bea, using private source, engines, HOME, XDG_CACHE_HOME and HB_TMP.
+Server image: 43,516,096 -> 16,777,408 B (61.4% smaller). Standalone:
+29,163,712 -> 15,663,296 B (46.3% smaller). The engine stays 3,604,672 B.
+Snapshot scratch is sized from actual content; the server's stored DATA is
+6,081,940 B for 32,851,489 decoded bytes, beyond AOT's fixed value-buffer cap.
+The earlier projections on the old PG pair are superseded by these products.
+
+In the quiet startup comparison, 51 runs averaged 12.716622 -> 12.804586 ms
+for the engine (within noise), and 34.902446 -> 31.193486 ms for server --help.
+The first compressed candidate took 38.920216 ms; full-cell DATA copying with
+a byte tail removed that regression. These are warm-file-cache starts, not
+serving throughput. At exit_group after --help, RSS is 83,472 -> 57,392 KiB;
+peak RSS is 83,472 -> 71,168 KiB. No database-serving RSS claim is made.
+
+Final three private generations are byte-identical, SHA256
+3417b6322da994163c75fcb527d26ccc638981cb7422632628905efb6fbb0851.
+Check-only bootstrap passes. The compression fixture pins canonical identical
+captures, the million-byte hole, zeros overwriting a nonzero baked digit table,
+dense fallback/admission, corrupt framing/varints/padding and recapture.
+The artifact-row fixtures use the extracted codec's qualified names; their
+owning aot-chain-capture row passes after the full gate exposed the stale names.
+Both completed gates pass 502/502 on the same registry; the new compression
+row passes separately and is included in the committed registry. Baseline:
+455.95 s wall / 1747.71 s user. Candidate: 484.36 s wall / 1846.48 s user,
+6.2% more wall time and 5.7% more user CPU. An unrelated Odin job briefly
+overlapped the candidate run, so the wall comparison is not fully isolated;
+the CPU increase remains a measured cost and is not dismissed as load noise.
+Those gate timings precede the final emitter refactor. The shared
+COPY-INNER, alone took 713 ms to compile; extracting its bitmap-group loop
+cuts maker dependency loading from 4.706 to 4.069 s (baseline 3.785 s).
+LINK stays about 20 ms. A fresh small stripped build now takes
+11.004 -> 11.631 s wall and 10.859 -> 11.498 s user CPU; its image is
+byte-identical. Final-tree factor1/factor2/factor3 are also identical to the
+gated engine above. Recovery bootstrap, aot-cell-values, snapshot-compression
+and aot-chain-capture pass after the refactor. No compiler/checker changes.
+Evidence: ~/.cache/habu/snapshot-design/source-806f0654/paired/ (README, products,
+hashes, commands, focused checks, startup, RSS and gate logs).
 
 Accepted design and required verification:
 

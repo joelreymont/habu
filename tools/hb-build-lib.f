@@ -507,6 +507,9 @@ HBB-INSTALL-CHILD-LINT
    s" src/habu/fdio.f" HBB-KEY-FILE+
    s" src/habu/driver-io.f" HBB-KEY-FILE+
    s" src/habu/aot-decl.f" HBB-KEY-FILE+
+   s" src/habu/image-cells.f" HBB-KEY-FILE+
+   s" src/habu/image-cell-arm64.f" HBB-KEY-FILE+
+   s" src/habu/snapshot-data.f" HBB-KEY-FILE+
    s" src/habu/aot-window-latch.f" HBB-KEY-FILE+
    s" src/habu/aot-closure.f" HBB-KEY-FILE+
    s" src/habu/aot-lib.f" HBB-KEY-FILE+ ;

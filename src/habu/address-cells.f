@@ -6,6 +6,8 @@ package ADDRESS-CELLS
 public
 
 1 constant ABI-VERSION
+\ The dense snapshot geometry that introduced this header. Compression changes
+\ the outer format, not this schema or its compatible dense representation.
 9 constant SNAPSHOT-VERSION
 \ Process mutex in fixed image DATA, outside the header and row backing. The
 \ MATCH stack ends before $1A0; $1A0 remains the seal fixture's poke cell, and

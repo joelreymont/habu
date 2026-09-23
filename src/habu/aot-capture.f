@@ -1988,15 +1988,15 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
    repeat ;
 
 : ACAP-ADD-CELL ( n n -- ) {: c:n v:n :}
-   c AOT-WINDOW:CELL-BITS / ACAP-BM-EXTEND
-   AOT-WINDOW:BM-BUF@ c AOT-WINDOW:CELL-BITS / + c@
-   1 c AOT-WINDOW:CELL-BITS mod lshift or
-   AOT-WINDOW:BM-BUF@ c AOT-WINDOW:CELL-BITS / + c!
-   AOT-WINDOW:VAL-LEN @ AOT-WINDOW:VMAX + AOT-WINDOW:VAL-CAP > if
+   c IMAGE-CELLS:CELL-BITS / ACAP-BM-EXTEND
+   AOT-WINDOW:BM-BUF@ c IMAGE-CELLS:CELL-BITS / + c@
+   1 c IMAGE-CELLS:CELL-BITS mod lshift or
+   AOT-WINDOW:BM-BUF@ c IMAGE-CELLS:CELL-BITS / + c!
+   AOT-WINDOW:VAL-LEN @ IMAGE-CELLS:VMAX + AOT-WINDOW:VAL-CAP > if
       s" aot-capture: the window DATA cells exceed the AOT value buffer" 74 die then
-   v  AOT-WINDOW:VAL-BUF@ AOT-WINDOW:VAL-LEN @ +  AOT-WINDOW:CELL-V! {: w:n :}
+   v  AOT-WINDOW:VAL-BUF@ AOT-WINDOW:VAL-LEN @ +  IMAGE-CELLS:CELL-V! {: w:n :}
    AOT-WINDOW:VAL-LEN @ w + AOT-WINDOW:VAL-LEN !
-   c 1+ AOT-WINDOW:CELL-BYTES * AOT-WINDOW:CONTENT-END !
+   c 1+ IMAGE-CELLS:CELL-BYTES * AOT-WINDOW:CONTENT-END !
    AOT-WINDOW:CELL-N @ 1+ AOT-WINDOW:CELL-N ! ;
 
 \ A CELL'S VALUE, AND THE SPAN IS WHAT BOUNDS THE READ. The span was rounded up
@@ -2005,8 +2005,8 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 \ the zeros the seed will leave there.
 : ACAP-CELL@ ( n n -- n ) {: d0:n c:n :}
    0 ACAP-CV !
-   AOT-WINDOW:CELL-BYTES 0 ?do
-      c AOT-WINDOW:CELL-BYTES * i + {: off:n :}
+   IMAGE-CELLS:CELL-BYTES 0 ?do
+      c IMAGE-CELLS:CELL-BYTES * i + {: off:n :}
       off ACAP-WLEN @ < if
          d0 off + AOT-N>U8 c@  i 8 * lshift  ACAP-CV @ or  ACAP-CV !
       then
@@ -2019,7 +2019,7 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 \ bounds are cell multiples: the window base is cell-aligned, every declared
 \ cell is checked against the grid, and the span was rounded up to a whole cell.
 : ACAP-SCAN-SEG ( n n n -- ) {: d0:n from:n to:n :}
-   to AOT-WINDOW:CELL-BYTES /  from AOT-WINDOW:CELL-BYTES / ?do
+   to IMAGE-CELLS:CELL-BYTES /  from IMAGE-CELLS:CELL-BYTES / ?do
       d0 i ACAP-CELL@ {: v:n :}
       v 0<> if i v ACAP-ADD-CELL then
    loop ;
@@ -2047,7 +2047,7 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
    begin ACAP-RQ @ len < while
       ACAP-RQ @ len ACAP-NEXT-CELL ACAP-RN !
       d0 ACAP-RQ @ ACAP-RN @ ACAP-SCAN-SEG
-      ACAP-RN @ AOT-WINDOW:CELL-BYTES + ACAP-RQ !
+      ACAP-RN @ IMAGE-CELLS:CELL-BYTES + ACAP-RQ !
    repeat ;
 
 \ Where the seed will find this cell: a window offset under the window tag for a
@@ -2094,11 +2094,11 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
    d1 d0 - {: len:n :}
    len AOT-WINDOW:SPAN-CAP > if
       s" aot-capture: DATA window exceeds the AOT window span cap" 74 die then
-   d0 AOT-WINDOW:CELL-BYTES mod 0<> if
+   d0 IMAGE-CELLS:CELL-BYTES mod 0<> if
       s" aot-capture: the captured DATA window base is not cell-aligned" 74 die then
    len ACAP-WLEN !
-   len AOT-WINDOW:CELL-BYTES 1- +
-   AOT-WINDOW:CELL-BYTES / AOT-WINDOW:CELL-BYTES * {: rlen:n :}
+   len IMAGE-CELLS:CELL-BYTES 1- +
+   IMAGE-CELLS:CELL-BYTES / IMAGE-CELLS:CELL-BYTES * {: rlen:n :}
    rlen AOT-WINDOW:SPAN-CAP > if
       s" aot-capture: DATA window exceeds the AOT window span cap" 74 die then
    rlen AOT-DATA-SIZE !
@@ -2108,7 +2108,7 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
       celloff ACAP-XTCELL-CELL-CHECK
       celloff d0off - {: woff:n :}
       woff len ACAP-CLASSIFY-XTCELL
-      woff 0 >= woff len < and  woff AOT-WINDOW:CELL-BYTES mod 0<> and if
+      woff 0 >= woff len < and  woff IMAGE-CELLS:CELL-BYTES mod 0<> and if
          woff ACAP-XTCELL-GRID then
       woff 0 >= woff len < and
       i b0 b1 d0 d1 ACAP-XTCELL-TARGET-IN? or if

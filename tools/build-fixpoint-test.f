@@ -21,6 +21,7 @@ require lib/build.f
 require lib/codesign.f
 require tools/build-fixpoint.f
 require lib/test/mapped.f
+require test/snapshot-file.f
 require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
 
 \ This fixture drives the tool's internals - the emitted stage sources, the
@@ -1009,12 +1010,6 @@ package BUILD-FIXPOINT
 : TRAILER-OFF ( -- n )
    IMAGE-TEXT-SIZE-OFF U64@ IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - ;
 
-: DATA-OFF ( -- n )
-   TRAILER-OFF dup SNAP-TRL-DATALEN + U64@ - ;
-
-: HOOK-OFF ( -- n )
-   DATA-OFF ENGINE-SNAP-XT-CELL + ;
-
 : BFT-DOCTOR-WRITE ( -- )
    s" hb-doctored" BF-REMOVE-TMP
    s" hb-doctored" BF-A$ BFT-BYTES BFT-BYTES-N @ WRITE-ALL
@@ -1087,28 +1082,30 @@ variable BFT-DOC-CODE
    eu LEN>N BFT-DOC-ERR-U ! ;
 
 : RAW ( -- )
-   HOOK-OFF {: off:n :}
+   ENGINE-SNAP-XT-CELL {: off:n :}
    off 0 >= TTRUE
-   off 8 + TRAILER-OFF <= TTRUE
-   off U64@ 0 T= ;
+   off 8 + SNAPSHOT-FILE:SIZE <= TTRUE
+   off SNAPSHOT-FILE:CELL@ 0 T= ;
 
 : STARTUP ( -- )
-   HOOK-OFF {: off:n :}
-   off BFT-BYTE@ {: orig:n :}
-   FORGE off BFT-BYTE!
-   off U64@ 0= TFALSE
-   BFT-DOCTOR-WRITE
+   ENGINE-SNAP-XT-CELL {: off:n :}
+   off SNAPSHOT-FILE:BYTE@ {: orig:n :}
+   off FORGE SNAPSHOT-FILE:BYTE!
+   off SNAPSHOT-FILE:CELL@ 0= TFALSE
+   s" hb-doctored" BF-A$ SNAPSHOT-FILE:WRITE
    s" hb-doctored" BF-CODESIGN-VERIFY-TMP
    PROBE!
    PROBE-CAPTURE
-   orig off BFT-BYTE!
+   off orig SNAPSHOT-FILE:BYTE!
    BFT-DOC-EXITED @ TTRUE
    BFT-DOC-ERR$ BFT-EMPTY$ T$=
    BFT-DOC-CODE @ 0 T= ;
 
 : VERIFY-IMAGE ( -- )
+   s" hb-snap0" BF-A$ SNAPSHOT-FILE:READ-IMAGE
    RAW
-   STARTUP ;
+   STARTUP
+   SNAPSHOT-FILE:RELEASE ;
 
 : TEST-TRAILER ( -- )
    BFT-ROOT BF-TMP!

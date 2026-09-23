@@ -50,8 +50,8 @@
 \ this file walks both, because "where is the size going" was asked of them and
 \ not of the engine.
 \   --repl   a SNAPSHOT: the whole donor engine's text, then the live region
-\            (the dictionary slot array and the code band) and the DATA window
-\            copied verbatim, then the 48-byte trailer that says how long the
+\            (the dictionary slot array and the code band), encoded or dense
+\            DATA, then the 48-byte trailer that says how long the stored
 \            two payloads are (src/habu/snap-lib.f writes it, src/habu/habu2.f
 \            EM-SNAPSHOT-RESTORE reads it, src/habu/layout.f owns its geometry).
 \            The engine half is bit-for-bit a baked engine, so the walkers above
@@ -60,11 +60,10 @@
 \   stripped no dictionary, no compiler, no trailer: an entry, the closure of
 \            MAIN, the crash handlers, the DATA window as sparse non-zero runs,
 \            and one 8-byte relocation row per declared address cell.
-\ VERBATIM IS THE WHOLE STORY. A snapshot writes its zero bytes -- the unused
-\ dictionary slots, the untouched tail of every table -- and they are most of
-\ the file, so every class here carries a ZERO column beside its byte count and
-\ the two are reported apart. A stripped image carries no zero byte at all: its
-\ runs describe a span far larger than the file.
+\ Snapshot region bytes still include unused dictionary slots. DATA uses the
+\ grouped cell codec when it makes a smaller image, or dense v9 otherwise.
+\ Physical byte classes tile the file; owner rows describe decoded DATA and
+\ report its nonzero/zero bytes separately from the encoded file cost.
 \
 \ Run: <engine> --load tools/engine-size.f -- <image>
 
@@ -72,6 +71,8 @@ require lib/fmt.f
 require lib/fs.f
 require lib/sort.f
 require src/habu/code-span.f
+require src/habu/image-cells.f
+require src/habu/snapshot-data.f
 require tools/aot-startup-shape.f        \ the startup's instruction shapes, named once
 require tools/image-names.f
 
@@ -127,10 +128,8 @@ variable ILEN
 : U64@ ( n -- n ) {: off:n :}
    off U32@  off 4 + U32@ 32 lshift or ;
 
-\ How many bytes of a span are zero. An application image writes its DATA window
-\ verbatim, zeros included, so this is the difference between what an image
-\ CARRIES and what it SAYS, and every class is reported with it beside the byte
-\ count rather than folded into one number.
+\ Zero bytes physically present in a file span. Decoded snapshot owner rows
+\ use SNAP-ZEROS instead: their extent can be larger than the stored bytes.
 variable ZACC
 
 : ZEROS ( n n -- n ) {: at:n len:n :}
@@ -441,46 +440,18 @@ $80000000 constant SITE-NAME-TAG                  \ target is a name-pool offset
 8 constant XTSITE-ROW                             \ blob-off u32, name-off u32
 8 constant SPAN-ROW                               \ blob-off u32, raw code span u32
 AOT-NAMES-CAP constant NAMES-CAP
-\ The window's cells have no row width to mirror: the payload is a presence
-\ bitmap, one bit a cell, and one unsigned LEB128 per present cell. This decode
-\ mirrors src/habu/aot-decl.f AOT-WINDOW:CELL-V@ for the same reason the widths
-\ above are mirrored, and it is what counts the present cells and sums their
-\ value bytes - the payload states neither.
-8 constant CELL-BYTES                             \ the DATA cell grid the bitmap covers
-8 constant CELL-BITS                              \ cells one bitmap byte covers
-64 constant GROUP-BYTES                           \ bitmap bytes one presence bit covers
-GROUP-BYTES CELL-BITS * constant GROUP-CELLS      \ cells such a group covers
-10 constant CELL-VMAX                             \ an unsigned LEB128 of a cell is at most ten bytes
-
-\ The map is a bitmap of groups, written like the cell bitmap: group g in bit
-\ g mod 8 of byte g div 8, low bit first, and the trailing bits of its last byte
-\ are clear because a group past the count is one no writer could store.
-: PMAP-BYTES ( n -- n ) {: groups:n :}
-   groups CELL-BITS 1- + CELL-BITS / ;
+\ The codec loads independently of build-side storage and assembler state.
+using IMAGE-CELLS
 
 : GROUP-SET? ( n n -- bool ) {: map:n g:n :}
    map g CELL-BITS / + U8@  g CELL-BITS mod rshift  1 and 0<> ;
 
-: RUN-VW ( n n -- n ) {: at:n avail:n :}
-   avail CELL-VMAX min 0 ?do
-      at i + U8@ $80 and 0= if
-         i 1+ {: w:n :}
-         w 1 > at w 1- + U8@ 0= and if 0 unloop exit then
-         w unloop exit
-      then
-   loop
-   0 ;
-
-: RUN-VV ( n n -- n ) {: at:n w:n :}
-   0 w 0 ?do  at i + U8@ $7F and  i 7 * lshift or  loop ;
-
 \ Value and width, and a walk that cannot decode a row is a walk that did not
 \ land - the refusal every other malformation here raises.
 : RUN-V@ ( n n -- n n ) {: at:n avail:n :}
-   at avail RUN-VW {: w:n :}
+   at avail ?RANGE
+   IMG@ at + avail CELL-V@ {: v:n w:n :}
    w 0= if E-ES-WALK throw then
-   w CELL-VMAX = at CELL-VMAX 1- + U8@ 1 > and if E-ES-WALK throw then
-   at w RUN-VV {: v:n :}
    v w ;
 
 \ The count cells are the payload's only class that is not one contiguous span,
@@ -811,6 +782,8 @@ variable BK-DZERO  variable BK-PAD
 variable TRL-OFF     variable NDICT-N
 variable REG-LEN     variable DAT-LEN
 variable REG-OFF     variable DAT-OFF
+variable DAT-STORED  variable DAT-USED  variable DAT-VERSION
+DYNAMIC-BUFFER SNAP-DATA n
 variable TBASE                                    \ the writing run's text base
 
 : TRAILER-OFF ( -- n )
@@ -830,12 +803,12 @@ variable TBASE                                    \ the writing run's text base
 
 : READ-TRAILER ( -- )
    TRAILER-OFF TRL-OFF !
-   TRL-OFF @ SNAP-TRL-VERSION + U64@ SNAP-FORMAT-VERSION =
+   TRL-OFF @ SNAP-TRL-VERSION + U64@ dup DAT-VERSION ! SNAPSHOT-DATA:VERSION?
       s" image-size: snapshot format version is not the one this engine writes" ?TRL
    TRL-OFF @ SNAP-TRL-TBASE + U64@ TBASE !
    TRL-OFF @ SNAP-TRL-NDICT + U64@ NDICT-N !
    TRL-OFF @ SNAP-TRL-REGLEN + U64@ REG-LEN !
-   TRL-OFF @ SNAP-TRL-DATALEN + U64@ DAT-LEN !
+   TRL-OFF @ SNAP-TRL-DATALEN + U64@ dup DAT-STORED ! DAT-LEN !
    NDICT-N @ 1 >= NDICT-N @ DICT-CAP <= and
       s" image-size: snapshot record count is outside the dictionary" ?TRL
    NDICT-N @ DREC * CFSTK-OFF <=
@@ -859,6 +832,13 @@ variable TBASE                                    \ the writing run's text base
       s" image-size: the snapshot's payloads do not begin on the donor engine's text boundary" ?TRL
    r REG-OFF !
    r REG-LEN @ + DAT-OFF !
+   DAT-OFF @ DAT-STORED @ ?RANGE
+   IMG@ DAT-OFF @ + DAT-STORED @ DAT-VERSION @ SNAPSHOT-DATA:EXTENT
+      dup 0 > s" image-size: invalid snapshot DATA extent" ?TRL DAT-LEN !
+   DAT-LEN @ CELL 1- + CELL / SNAP-DATA-RESERVE
+   IMG@ DAT-OFF @ + DAT-STORED @ DAT-VERSION @
+      0 SNAP-DATA BYTE-VIEW DAT-LEN @ SNAPSHOT-DATA:READ
+      dup 0 > s" image-size: malformed snapshot DATA" ?TRL DAT-USED !
    \ The engine half ends where the region payload begins: every baked walker
    \ above is bounded by this and not by the file's own text extent.
    r ETEXT-N ! ;
@@ -1626,8 +1606,8 @@ $FFFF constant ROW-MASK
 \ Shared by the two image classes that carry DATA at all. A baked engine carries
 \ the window as the payload's non-zero runs, each with an (offset, length)
 \ header, so a table of cells holding small numbers costs MORE in header rows
-\ than in bytes; a snapshot carries the window verbatim, where a cell costs its
-\ bytes whatever it holds. tools/data-table-census.f asks this question of a
+\ than in bytes. Snapshot owners describe the restored window, independent
+\ of its dense or compressed encoding. tools/data-table-census.f asks this of a
 \ LIVE heap; this asks it of the shipped image, where the cost is real.
 \ An owner is a record the definer stamped DKIND:ADDR (create/variable): no
 \ other record kind owns DATA. Its address is the MOVZ/MOVK chain its body
@@ -1648,9 +1628,9 @@ $FFFF constant ROW-MASK
 DYNAMIC-BUFFER DOWNER n                           \ (DATA offset, record) packed, ascending
 DYNAMIC-BUFFER DBYTES n                           \ content bytes charged to each owner
 DYNAMIC-BUFFER DRUNS n                            \ run rows charged to each owner (engine)
-\ What the image spends on the owner BESIDE its content, so that DBYTES + DOVER
-\ is the owner's image cost in either class: the bytes the engine's run rows
-\ encode to, and the zero bytes a snapshot's window carries verbatim.
+\ Engine owners charge encoded metadata beside their values. Snapshot owners
+\ report restored nonzero and zero bytes; their sum is the decoded extent,
+\ not a share of the compressed file (bitmap groups can cross owner boundaries).
 DYNAMIC-BUFFER DOVER n
 DYNAMIC-BUFFER DCOST n                            \ (cost, owner) packed, for the ranking
 variable DOWN-N     variable DCOST-N
@@ -1975,20 +1955,24 @@ $10000 constant BAND-NAME                         \ the row is a name, not code
    then ;
 
 \ ---- a --repl application: the DATA window, by owner ---------------------------
-\ Verbatim is what makes this simple: the window is written as it stood, so an
-\ owner's image cost IS its extent, and the only question left is how much of
-\ that extent carries anything. No run rows to charge, and the engine's
-\ three-way sum becomes a two-way one.
+\ Attribute the decoded window, regardless of the outer encoding. Its owner
+\ extents partition restored nonzero and zero bytes; file costs are reported
+\ separately because one bitmap group can cover several owners.
 variable HEAD-W     variable HEAD-Z
+
+: SNAP-ZEROS ( n n -- n ) {: off:n len:n :}
+   off 0 < len 0 < or off DAT-LEN @ > or if E-ES-WALK throw then
+   len DAT-LEN @ off - > if E-ES-WALK throw then
+   0 len 0 ?do 0 SNAP-DATA BYTE-VIEW off + i + c@ 0= if 1+ then loop ;
 
 : CHARGE-WINDOW ( -- )
    DOWN-N @ 0 > if 0 DOWN-OFF else DAT-LEN @ then {: head:n :}
-   DAT-OFF @ head ZEROS {: hz:n :}
+   0 head SNAP-ZEROS {: hz:n :}
    hz HEAD-Z !  head hz - HEAD-W !
    DOWN-N @ 0 ?do
       i OWNER-END i DOWN-OFF - {: ext:n :}
       ext 0 < if s" image-size: DATA owners do not advance" RC die then
-      DAT-OFF @ i DOWN-OFF + ext ZEROS {: z:n :}
+      i DOWN-OFF ext SNAP-ZEROS {: z:n :}
       ext z - i DBYTES !  z i DOVER !
    loop ;
 
@@ -2006,12 +1990,12 @@ variable HEAD-W     variable HEAD-Z
    row .NAME ;
 
 : REPORT-WINDOW ( -- )
-   cr s" the DATA window by owner" type cr
+   cr s" the restored DATA window by owner" type cr
    s"   owners " type DOWN-N @ FMT:.U
    s" , below the first one " type HEAD-W @ HEAD-Z @ + FMT:.U s"  bytes (" type
    HEAD-Z @ FMT:.U s"  zero)" type cr
    s"   owner" type TAB s" package" type TAB s" offset" type TAB s" extent" type TAB
-   s" written" type TAB s" zero" type cr
+   s" nonzero" type TAB s" zero" type cr
    DCOST-N @ TOP-ROWS min 0 ?do
       i DCOST @ ROW-MASK and {: k:n :}
       s"   " type k DOWN-REC .NAME TAB  k DOWN-REC .OWNER-PKG TAB
@@ -2038,7 +2022,8 @@ variable HEAD-W     variable HEAD-Z
 : SNAP-ATTRIBUTE ( -- )
    BUILD-WID-MAP
    COLLECT-BAND  CHARGE-BAND  CHECK-BAND  RANK-PKGS
-   COLLECT-OWNERS  CHARGE-WINDOW  CHECK-WINDOW  RANK-OWNERS ;
+   COLLECT-OWNERS  CHARGE-WINDOW  CHECK-WINDOW  RANK-OWNERS
+   SNAP-DATA-RELEASE ;
 
 : REGION-ROWS ( -- )
    NDICT-N @ DREC * {: recs:n :}
@@ -2057,7 +2042,13 @@ variable HEAD-W     variable HEAD-Z
    ENGINE-ROWS
    s" engine/text-pad" AOT-END @ ETEXT-END AOT-END @ - SPAN B-PAD ROW
    REGION-ROWS
-   s" data/window" DAT-OFF @ DAT-LEN @ SPAN B-DATA ROW
+   DAT-VERSION @ ADDRESS-CELLS:SNAPSHOT-VERSION = if
+      s" data/window" DAT-OFF @ DAT-STORED @ SPAN B-DATA ROW
+   else
+      s" data/framing" DAT-OFF @ 16 SPAN B-OTHER ROW
+      s" data/cells" DAT-OFF @ 16 + DAT-USED @ 16 - SPAN B-DATA ROW
+      s" data/alignment" DAT-OFF @ DAT-USED @ + DAT-STORED @ DAT-USED @ - SPAN B-PAD ROW
+   then
    s" snapshot/trailer" TRL-OFF @ SNAP-TRL-BYTES SPAN B-OTHER ROW
    RW-ROW
    SUMS?
@@ -2065,8 +2056,10 @@ variable HEAD-W     variable HEAD-Z
 
 : SNAP-NOTES ( -- )
    cr s" the application's own half: " type
-   REG-LEN @ DAT-LEN @ + SNAP-TRL-BYTES + FMT:.U s"  bytes, " type
+   REG-LEN @ DAT-STORED @ + SNAP-TRL-BYTES + FMT:.U s"  bytes, " type
    NDICT-N @ FMT:.U s"  dictionary records" type cr
+   s" restored DATA " type DAT-LEN @ FMT:.U s"  bytes from " type
+   DAT-STORED @ FMT:.U s"  stored bytes" type cr
    REPORT-BAND
    REPORT-WINDOW ;
 
@@ -2465,4 +2458,5 @@ public
    0 SCRIPT-ARGV$ MEASURE
    REPORT ;
 
+;using
 ;package
