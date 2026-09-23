@@ -26,7 +26,30 @@ require lib/string.f
 require lib/test.f
 require src/habu/verify-source.f
 
+\ The resident package definer of section 5, compiled by the ENGINE: its two
+\ spellings - qualified, and bare under `using` - are what a source can name it
+\ by, and both have to reach the one row.
+package CDD-RESP
+public
+: CDD-RP-D ( n -- ) create , does> ( -- ptr n ) ;
+;package
+
+\ An export of that definer: the same xt under another tail, and the tail is a
+\ symbol of its own, so what the definer creates has to be copied to it
+\ (checker.f EXPORT-META-COPY) or the exported spelling knows nothing.
+package CDD-RESX
+public
+EXPORT CDD-RESP:CDD-RP-D
+;package
+
 package CERTIFY-DOES-DEFINER
+
+\ The rest of section 5's fixtures, also compiled by the engine here: this
+\ file's scanner never reads their text, so what they create is known only
+\ through the store the checker wrote when it certified their clause.
+: CDD-RES-D ( n -- ) create , does> ( -- ptr n ) ;
+: CDD-RES-W ( -- ) 3 CDD-RES-D ;          \ a RESIDENT wrapper: still unknown, pinned below
+: CDD-RES-P ( n -- n ) 1 + ;              \ the plain definition right after a definer
 
 -1 constant ACCEPTED
 0 constant REFUSED
@@ -102,12 +125,69 @@ package CERTIFY-DOES-DEFINER
    s" the created word holds what the definer stored" T-LABEL
    CDD-LIVE-READ 8 T= ;
 
+\ ---- 5. a definer the scanner never read ------------------------------------
+\ CDD-RES-D and CDD-RESP:CDD-RP-D above were compiled by the engine in this
+\ process: no text of theirs ever reached the scanner, and before the checker
+\ kept what a certified clause creates, a source using one of them left its
+\ created word E-UNDEFINED at the first typed use - measured, `bin/hb
+\ tools/check.f lib/queue.f` refused NG-BUFFER, created at lib/type/deftype.f:61
+\ by the resident CODEGEN:BUFFER-E.
+\
+\ THE LAST ROWS ARE THE LATCH'S LIFETIME, and they are here because the store is
+\ written between two checker entry points rather than by one of them. The
+\ engine checks a clause and then the definer's own body; the scanner checks the
+\ body and then the clause. Either order must leave a plain definition with
+\ nothing, and a refused clause must leave nothing at all. The refusal row makes
+\ the engine print its own `does> at <file>:1` line on stderr before it throws:
+\ that line IS the refusal being measured, not a test failure.
+TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
+
+: CDD-SECTION-RESIDENT ( -- )
+   s\" 8 CDD-RES-D CDD-RES-ONE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a resident definer's created word certifies as the clause effect" T-LABEL
+   s" C15 ( -- ptr n ) CDD-RES-ONE" CDD-VERDICT ACCEPTED T=
+   s" and is refused against a bare cell" T-LABEL
+   s" C16 ( -- n ) CDD-RES-ONE" CDD-VERDICT REFUSED T=
+   s\" 8 CDD-RESP:CDD-RP-D CDD-RP-QUAL\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s\" using CDD-RESP\n7 CDD-RP-D CDD-RP-BARE\n;using\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" the qualified spelling of a resident package definer certifies" T-LABEL
+   s" C17 ( -- ptr n ) CDD-RP-QUAL" CDD-VERDICT ACCEPTED T=
+   s" the bare spelling under `using` names the same definer" T-LABEL
+   s" C18 ( -- ptr n ) CDD-RP-BARE" CDD-VERDICT ACCEPTED T=
+   s\" 9 CDD-RESX:CDD-RP-D CDD-RP-EXPORTED\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" an exported definer creates what the definer creates" T-LABEL
+   s" C24 ( -- ptr n ) CDD-RP-EXPORTED" CDD-VERDICT ACCEPTED T=
+   s\" : CDD-RES-WRAP ( -- ) 3 CDD-RES-D ;\nCDD-RES-WRAP CDD-RES-WRAPMADE\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a source-read wrapper of a resident definer creates what it creates" T-LABEL
+   s" C19 ( -- ptr n ) CDD-RES-WRAPMADE" CDD-VERDICT ACCEPTED T=
+   s\" CDD-RES-W CDD-RES-WMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a RESIDENT wrapper is still unknown (the next worker's row)" T-LABEL
+   s" C20 ( -- ptr n ) CDD-RES-WMADE" CDD-VERDICT UNRESOLVED T= ;
+
+: CDD-SECTION-LATCH ( -- )
+   s\" 5 CDD-RES-P CDD-PL-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" engine order: the definition after a definer creates nothing" T-LABEL
+   s" C21 ( -- ptr n ) CDD-PL-MADE" CDD-VERDICT UNRESOLVED T=
+   s\" : CDD-SO-D ( n -- ) create , does> ( -- ptr n ) ;\n: CDD-SO-P ( n -- n ) 1 + ;\n5 CDD-SO-P CDD-SO-MADE\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" source order: the definition after a definer creates nothing" T-LABEL
+   s" C22 ( -- ptr n ) CDD-SO-MADE" CDD-VERDICT UNRESOLVED T=
+   s" a clause its body contradicts is refused" T-LABEL
+   [: s\" : CDD-RES-BAD ( n -- ) create , does> ( -- n ) ;\n" CDD-EVAL ;] 70 TTHROWSQ
+   s\" : CDD-RES-AFTER ( n -- n ) 2 * ;\n" CDD-EVAL
+   s\" 6 CDD-RES-AFTER CDD-AFTER-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" and leaves nothing for the next definition to inherit" T-LABEL
+   s" C23 ( -- ptr n ) CDD-AFTER-MADE" CDD-VERDICT UNRESOLVED T= ;
+
 : MAIN ( -- )
    T-RESET
    CDD-SECTION-DEFINER
    CDD-SECTION-WRAPPER
    CDD-SECTION-NOT-A-WRAPPER
    CDD-SECTION-LIVE
+   CDD-SECTION-RESIDENT
+   CDD-SECTION-LATCH
    T-REPORT ;
 
 MAIN

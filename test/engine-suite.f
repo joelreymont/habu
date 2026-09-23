@@ -1175,7 +1175,8 @@ TRUSTED: TR-NORET-LAYOUT-RAW ( -- n n n bool )
    NORET-ENTRY NORET-ENTRY-ALIGN NORET-ENTRY-PTR-MASK
    TR-REG-REC NORET.SYM TR-REG-REC NORET-SYM-OFF + =
    TR-REG-REC NORET.FLAG TR-REG-REC NORET-FLAG-OFF + = and
-   TR-REG-REC NORET.SYMPREV TR-REG-REC NORET-SYMPREV-OFF + = and ;
+   TR-REG-REC NORET.SYMPREV TR-REG-REC NORET-SYMPREV-OFF + = and
+   TR-REG-REC NORET.CREATES TR-REG-REC NORET-CREATES-OFF + = and ;
 
 ;package
 
@@ -1233,10 +1234,12 @@ public
    stride 2 cells T=  align $8 T=  mask 0 T=
    ok TR-BOOL= ;
 
+\ Four cells: (sym, flags) and the two the store carries beside them - the
+\ per-symbol back-link and the effect a `does>` definer gives what it creates.
 : TR-NORET-LAYOUT ( -- )
    TR-NORET-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" control-record-layout" T-LABEL
-   stride 3 cells T=  align $8 T=  mask 0 T=
+   stride 4 cells T=  align $8 T=  mask 0 T=
    ok TR-BOOL= ;
 
 ;package

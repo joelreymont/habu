@@ -151,7 +151,55 @@ variable SRC-U
    S\" package CVO-P\npublic\n: RUN ( n -- n n ) CVO-F ;\n;package\n" VERDICT 70 T=
    DIAG$ s" run" CONTAINS? TTRUE ;
 
+\ ---- the quiet resolver ------------------------------------------------------
+\ The scan asks of every token it reads "does this name a definer?", and it asks
+\ the resolver the rows above measure. That resolver answers two questions with
+\ a refusal rather than a symbol — a bare tail two used packages export
+\ (E-USING-AMBIGUOUS) and one a global and a used public both claim
+\ (E-USING-SHADOW-GLOBAL) — and both belong to the definition being checked, not
+\ to a question about a token, so the quiet form (checker.f
+\ CHECKER-FIND-QUIET-SYM) answers 0 for them and lets the check that follows
+\ name the refusal, exactly as USING-CASE above still measures it doing.
+\
+\ IT DEFERS THOSE TWO CODES AND NO OTHER. The probes below run while the very
+\ `using` scopes the rows above verify are open, so the two resolvers are asked
+\ the same live question and answer it differently. The rethrow leg cannot be
+\ driven from here: CHECKER-FIND-ACTIVE-SYM throws nothing but those two codes
+\ (CHECKER-USED-SYM and CHECKER-USED-SHADOW are its only throw sites), so what a
+\ third code would meet is pinned at the classifier the quiet form uses.
+\ The shadow probe makes the resolver print its own `bare 'CVR-F' is ambiguous
+\ under using` line on stderr, once per ask: that line IS the refusal being
+\ measured, not a test failure.
+TRUSTED: QUIET-SYM ( ptr u8 n -- n ) CHECKER-FIND-QUIET-SYM ;
+TRUSTED: ACTIVE-SYM ( ptr u8 n -- n ) CHECKER-FIND-ACTIVE-SYM ;
+TRUSTED: QUIET-DEFERS? ( n -- bool ) FQSYM-DEFERRED? ;
+
+variable AMBIG-QUIET    variable AMBIG-ACTIVE
+variable SHADOW-QUIET   variable SHADOW-ACTIVE
+
+: QUIET-CASE ( -- )
+   s" the quiet resolver answers 0 where the authoritative one refuses" T-LABEL
+   AMBIG-ACTIVE @ 7144 T=
+   AMBIG-QUIET @ 0 T=
+   SHADOW-ACTIVE @ 7141 T=
+   SHADOW-QUIET @ 0 T=
+   s" and defers those two codes only" T-LABEL
+   7144 QUIET-DEFERS? TTRUE
+   7141 QUIET-DEFERS? TTRUE
+   7121 QUIET-DEFERS? TFALSE
+   70 QUIET-DEFERS? TFALSE ;
+
 public
+
+\ Asked with CVR-V and CVR-W both used: the tail both export.
+: PROBE-AMBIGUOUS ( -- )
+   s" CVR-H" QUIET-SYM AMBIG-QUIET !
+   [: s" CVR-H" ACTIVE-SYM drop ;] catch AMBIG-ACTIVE ! ;
+
+\ Asked with CVR-U used: the tail it exports beside the global of that name.
+: PROBE-SHADOW ( -- )
+   s" CVR-F" QUIET-SYM SHADOW-QUIET !
+   [: s" CVR-F" ACTIVE-SYM drop ;] catch SHADOW-ACTIVE ! ;
 
 : RUN ( -- )
    LOADED-CASE
@@ -160,9 +208,21 @@ public
    DEPENDENCY-CASE
    PASS-CASE
    USING-CASE
-   REJECT-CASE ;
+   REJECT-CASE
+   QUIET-CASE ;
 
 ;package
+
+\ The two resolvers must be asked inside a live `using` scope, which only the
+\ top level can open.
+using CVR-V
+using CVR-W
+CVO-TEST:PROBE-AMBIGUOUS
+;using
+;using
+using CVR-U
+CVO-TEST:PROBE-SHADOW
+;using
 
 T-RESET
 CVO-TEST:RUN

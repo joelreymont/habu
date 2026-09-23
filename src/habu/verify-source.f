@@ -292,7 +292,21 @@ TRUSTED: CHECK-BODY ( ptr u8 n -- n )
 \ `CODEGEN:BUFFER-E` and a bare `BUFFER-E` under `using CODEGEN` answer one
 \ symbol.
 TRUSTED: RECORD-SYM? ( ptr u8 n -- n ) CHECKER-RECORD-SYM? ;
-TRUSTED: FIND-SYM ( ptr u8 n -- n ) CHECKER-FIND-ACTIVE-SYM ;
+\ FIND-SYM is the QUIET resolver: this scan asks it of tokens it is only
+\ classifying, and the two refusals the authoritative resolver owns (a used
+\ public shadowing a global, a tail two used packages both export) belong to the
+\ definition's own check, which resolves the same token straight after.
+TRUSTED: FIND-SYM ( ptr u8 n -- n ) CHECKER-FIND-QUIET-SYM ;
+
+\ The same three questions about a definer this pre-pass never read - one
+\ compiled in THIS process, whose clause the checker certified at its `;` and
+\ whose created-word effect it kept (src/core/checker.f DOES-EFF-LATCH! and the
+\ NORETS entry's CREATES cell). The effect stays where the checker built it: it
+\ is handed over as a record, not as text, so the type variables the clause
+\ declared keep the raw-definer seal the engine's own `trust-raw` gives them.
+TRUSTED: CREATES-SYM? ( n -- n ) CHECKER-CREATES-SYM? ;
+TRUSTED: RECORD-CREATED ( ptr u8 n n -- bool ) CHECKER-RECORD-CREATED ;
+TRUSTED: CREATES-COPY ( n n -- ) CHECKER-CREATES-COPY ;
 
 \ ---- the definers this pre-pass learns from the sources it reads -------------
 \ A `create … does>` definition IS a definer, and the effect of every word it
@@ -406,8 +420,14 @@ variable DEFINER-N
    v 0 = MULTI-ERR-MODE? and IF 0 0= 0= EXIT THEN
    70 throw ;
 
+\ The pre-pass's own does>-clause entry point. It is not the engine's
+\ CHECK-DOES!: this scan reaches a clause AFTER the definer's own body has been
+\ checked and recorded, so the checker must not latch the created effect here -
+\ the next record belongs to the next definition. What this scan learns about a
+\ definer it READ goes into the table above instead (src/core/checker.f
+\ CHECKER-SOURCE-DOES! carries the reason).
 TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
-   CHECK-DOES! ;
+   CHECKER-SOURCE-DOES! ;
 
 : VERIFY-DOES-BODY ( ptr u8 n -- bool ) {: sig:ptr sigu:n :}
    BODY-BUF BODY-U @ sig sigu CHECK-DOES-BODY {: v:n :}
@@ -425,13 +445,14 @@ variable WRAP-DEFINERS                        \ definer calls in this body …
 variable WRAP-CTL                             \ … and whether the line ever bent
 PTR-VARIABLE WRAP-SIG-A
 variable WRAP-SIG-U
+variable WRAP-DEF-SYM                         \ … or, for a resident definer, its symbol
 
 : DEF-NAME! ( -- )
    TOKEN-U @ DEF-NAME-U !  TOKEN-A @ DEF-NAME-A ! ;
 
 : WRAP-RESET ( -- )
    0 WRAP-DEFINERS !  0 WRAP-CTL !
-   NULL-PTR WRAP-SIG-A !  0 WRAP-SIG-U ! ;
+   NULL-PTR WRAP-SIG-A !  0 WRAP-SIG-U !  0 WRAP-DEF-SYM ! ;
 
 : DEFINER-RECORD ( ptr u8 n -- )
    DEF-NAME-A @ DEF-NAME-U @ RECORD-SYM? DEFINER-ADD ;
@@ -482,17 +503,28 @@ variable WRAP-SIG-U
 \ BUFFER-E ;` (lib/codegen.f) is the shape. Two definer calls, a conditional
 \ definer or a definer inside a quotation record nothing, and the created word
 \ then stays unknown exactly as it is today.
+\ A RESIDENT definer counts here exactly like a read one. It is remembered by
+\ SYMBOL rather than by text because that is how the checker holds what it
+\ creates, and the wrapper then inherits the same record instead of a copy of a
+\ copy of a signature.
 : WRAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    WRAP-CTL @ IF EXIT THEN
    a u WRAP-CTL-TOK? IF -1 WRAP-CTL ! EXIT THEN
-   a u DEFINER-EFFECT dup 0= IF 2drop EXIT THEN
-   WRAP-SIG-U !  WRAP-SIG-A !
+   a u DEFINER-EFFECT dup 0<> IF
+      WRAP-SIG-U !  WRAP-SIG-A !
+      WRAP-DEFINERS @ 1 + WRAP-DEFINERS !  EXIT
+   THEN
+   2drop
+   a u FIND-SYM {: dsym:n :}
+   dsym CREATES-SYM? 0= IF EXIT THEN
+   dsym WRAP-DEF-SYM !
    WRAP-DEFINERS @ 1 + WRAP-DEFINERS ! ;
 
 : VERIFY-WRAPPER ( -- )
    WRAP-CTL @ IF EXIT THEN
    WRAP-DEFINERS @ 1 <> IF EXIT THEN
-   WRAP-SIG-A @ WRAP-SIG-U @ DEFINER-RECORD ;
+   WRAP-SIG-U @ 0<> IF WRAP-SIG-A @ WRAP-SIG-U @ DEFINER-RECORD EXIT THEN
+   DEF-NAME-A @ DEF-NAME-U @ RECORD-SYM? WRAP-DEF-SYM @ CREATES-COPY ;
 
 : VERIFY-DOES ( -- )
    VERIFY-BODY {: ok:bool :}
@@ -572,6 +604,19 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    -1 SIG-RAW-MODE!
    sig sigu DECL-SIGNATURE
    0 SIG-RAW-MODE! ;
+
+\ CREATED-TRUST-NEXT?: RAW-TRUST-NEXT's twin for a definer the checker knows and
+\ this pre-pass never read. The row is the checker's own certified one, so there
+\ is no signature text to re-parse and no seal to re-apply here; what is left is
+\ the same shape - the created word is the NEXT token - and the same answer.
+\ THE TOKEN IS TESTED BEFORE THE NAME IS TAKEN: NEXT-SCAN consumes a token, and
+\ a token that is not a definer must leave the scan exactly where it was.
+: CREATED-TRUST-NEXT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u FIND-SYM {: dsym:n :}
+   dsym CREATES-SYM? 0= IF 0 0= 0= EXIT THEN
+   NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing defining-word name" 74 die THEN
+   name nameu dsym RECORD-CREATED ;
 
 : TRUST-DEFER-SIGNATURE ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu REQUIRE-SIGNATURE DECL-SIGNATURE
@@ -1027,6 +1072,11 @@ PTR-VARIABLE STG-START
    \ `constant` above - the definer's own arguments precede it - and the effect
    \ is the clause's, registered with the same raw seal the storage definers use.
    a u DEFINER-EFFECT dup 0<> IF RAW-TRUST-NEXT 0 0= EXIT THEN 2drop
+   \ … and last of all, a definer this pre-pass never read: one compiled in the
+   \ checking process itself, whose clause the checker certified and kept. The
+   \ token resolves through the same FIND-SYM every other name does, so the
+   \ qualified and the bare-under-`using` spelling reach the one row.
+   a u CREATED-TRUST-NEXT? IF 0 0= EXIT THEN
    0 0= 0= ;
 
 : VERIFY-DEFINITION ( -- )

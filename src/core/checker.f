@@ -6687,6 +6687,55 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
      P>REST
    REPEAT drop ;
 
+\ DOESEFF: latch holding the effect a `create … does>` definer gives the words
+\ it creates — the clause signature, already parsed and certified against the
+\ clause body by CHECK-DOES! (below), built there into an ordinary anonymous
+\ effect record and held here as that record's offset+1.
+\
+\ WHY A LATCH AT ALL. The two facts arrive at the checker through two entry
+\ points and neither carries the other's half: CHECK-DOES! is given the clause
+\ body and the clause signature but NOT the definer's name, and the definer's
+\ own body check learns the name and records the effect but never sees the
+\ clause. The engine runs them back to back for one definition — the clause
+\ first, because CHECK-DOES! resets the publication latches, then the definer's
+\ own body (habu2.f EM-COMPILE-PUBLISH-TRUSTED) — so the created-word effect
+\ crosses from the first to the second exactly the way RECW and RECMI below
+\ cross from a record to the publish tail: by value, through one latch.
+\
+\ DOESPEND IS WHAT MAKES IT FAIL CLOSED, and it has to, because the SOURCE
+\ pre-verifier runs the same two entry points in the OTHER order (verify-source
+\ VERIFY-DOES checks the definer's own body, then the clause), so a latch left
+\ armed there would be consumed by the NEXT definition's record and would teach
+\ the checker that an ordinary word creates something. The state machine admits
+\ only the engine's order:
+\   0  nothing latched
+\   1  a clause certified: the NEXT body check is the definer's own
+\   2  that body check is under way; its record — and only its record — takes it
+\ Every body check steps the machine (DOES-EFF-STEP, CHECK-RESET): 1 becomes 2
+\ and ANY other state clears, so a second check, a rejected definer body or a
+\ source-order clause never reaches a record. The record step takes state 2 and
+\ clears (DOES-EFF-TAKE, the E-ADD-EFFECT publish tail), a refused clause clears
+\ instead of arming, and REC-WIDE-PUBLISH below clears whatever a definition's
+\ publication left, which is what closes the native compiler's two-pass path:
+\ its second `;` re-runs CHECK-DOES! with no body check and no record after it
+\ (habu2.f EM-P2-CHECK-DEFINER), so that latch must die with that definition.
+variable DOESEFF   0 DOESEFF !
+variable DOESPEND  0 DOESPEND !
+
+: DOES-EFF-CLEAR ( -- )
+   0 DOESEFF !  0 DOESPEND ! ;
+
+: DOES-EFF-ARM ( n -- ) {: off:n :}         \ the created effect's record offset+1
+   off DOESEFF !  1 DOESPEND ! ;
+
+: DOES-EFF-STEP ( -- )
+   DOESPEND @ 1 = IF 2 DOESPEND ! EXIT THEN
+   DOES-EFF-CLEAR ;
+
+: DOES-EFF-TAKE ( -- n )                    \ the created effect of the record being published
+   DOESPEND @ 2 = IF DOESEFF @ ELSE 0 THEN
+   DOES-EFF-CLEAR ;
+
 \ RECW: latch holding the wide? verdict of the LAST effect record, stored by
 \ VALUE at the single record choke point (E-ADD-EFFECT) so a stale value from
 \ a candidate/rolled-back check is always overwritten by the current record
@@ -6698,7 +6747,8 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 variable RECW   0 RECW !
 : REC-WIDE-PUBLISH ( -- )
    RECW @ 0 <> IF wide-mark THEN
-   0 RECW ! ;
+   0 RECW !
+   DOES-EFF-CLEAR ;                   \ no definition's clause outlives its own publication
 
 \ RECMI: latch holding the din cell count of the LAST effect record — the
 \ certified minimum input arity (dot habu-habu-certified-words-84e84eaf).
@@ -8826,6 +8876,38 @@ variable CHECKER-QBAD-TOK
    THEN drop
    a u CHECKER-USED-BIND ;                   \ engine-authoritative: no earlier scope may claim the tail
 
+\ CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n ) : the same resolution, for a caller
+\ that is only ASKING — the source pre-verifier, of every token it scans, "does
+\ this name a definer?". The resolver above owns two refusals (a used public
+\ shadowing a global, a bare tail two used packages both export) and they belong
+\ to the definition being checked, not to a speculative question about a token:
+\ measured, asking it of every body token turned test/checker-verify-order.f's
+\ legal later-public case into E-USING-AMBIGUOUS (7144) during the SCAN, ahead
+\ of the check that decides it. A name this word cannot resolve is simply not a
+\ definer here; the body check that follows resolves the same token with the
+\ same authority it always had, and names the refusal then.
+\
+\ EXACTLY THOSE TWO CODES ARE SWALLOWED. A quiet ask defers the refusals that
+\ belong to the definition's own check; it does not make the resolver
+\ infallible. Anything else the resolution throws — a malformed qualified name,
+\ an arena or capacity failure, a bug — is not an answer about this token and
+\ is rethrown, so the pre-pass reports it where it happened instead of silently
+\ classifying the token as "not a definer".
+PTR-VARIABLE FQSYM-A   variable FQSYM-U   variable FQSYM
+
+: FQSYM-RUN ( -- )
+   FQSYM-A @ FQSYM-U @ CHECKER-FIND-ACTIVE-SYM FQSYM ! ;
+
+: FQSYM-DEFERRED? ( n -- bool ) {: code:n :}
+   code E-USING-SHADOW-GLOBAL =  code E-USING-AMBIGUOUS =  or ;
+
+: CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a FQSYM-A !  u FQSYM-U !  0 FQSYM !
+   ['] FQSYM-RUN catch {: code:n :}
+   code 0= IF FQSYM @ EXIT THEN
+   code FQSYM-DEFERRED? 0= IF code throw THEN
+   0 ;
+
 \ CHECKER-FIND-USIG-SYM ( n -- bool ) : FEP = current active record for sym.
 \ Cache value: record offset+1, 0 = none/deleted; a miss re-derives from the
 \ arena scan and memoizes both the answer and its watermark dependency.
@@ -9922,39 +10004,48 @@ variable LBUF-NM-I
 \ Positive provenance: this binding's effect was explicitly declared or its
 \ check was enforced. An ABI-only or old producer row carries no grant.
 $8 constant EFFECT-EXTERNAL
-\ $18000 not $10000: the entry carries a third cell (NORET.SYMPREV, the
-\ per-symbol back-link that makes NORET-SCAN-SYM sublinear), so the byte cap is
-\ scaled with it and the store still holds the same number of entries — the
-\ figure NORET-SNAPSHOT-CAP is written against.
-$18000 constant NORET-INIT-CAP
+\ $20000 not $10000: the entry carries two cells beyond (sym, flags) — the
+\ back-link and the created-word effect below — so the byte cap is scaled with
+\ them and the store still holds the same number of entries.
+$20000 constant NORET-INIT-CAP
 
-\ The FLAG cell holds the symbol's whole control word in the XFER-PACK format:
-\ the flags below and, above them, which of the word's DECLARED inputs every
-\ throw path of its body left where they were — bit j counted from the TOP of
-\ the declared input row, the same order XMASK-OF builds. The masks mean
-\ something only when the flags carry CTL-THROW; a word with no throw edge
-\ records 0 0, which is what a caller's edge already assumes. One cell, so the
-\ entry stays three cells wide (test/engine-suite.f pins that), a snapshot keeps
-\ its size and the facts travel to the owner ABI without re-encoding.
+\ THE ENTRY IS FOUR CELLS, and this is where they are stated.
+\   SYM      the symbol the facts are about; 0 terminates the store.
+\   FLAG     the symbol's whole CONTROL WORD in the XFER-PACK format: the flags
+\            below and, above them, which of the word's DECLARED inputs every
+\            throw path of its body left where they were — bit j counted from
+\            the TOP of the declared input row, the same order XMASK-OF builds.
+\            The masks mean something only when the flags carry CTL-THROW; a
+\            word with no throw edge records 0 0, which is what a caller's edge
+\            already assumes. One cell, so a snapshot keeps its size and the
+\            facts travel to the owner ABI without re-encoding.
+\   SYMPREV  the per-symbol back-link that makes NORET-SCAN-SYM sublinear.
+\   CREATES  the effect a `create … does>` definer gives every word it creates,
+\            as an effect-record offset+1, 0 when the symbol is not a definer.
+\ test/engine-suite.f pins the four.
 0 constant NORET-SYM-CELL
 1 constant NORET-FLAG-CELL
 2 constant NORET-SYMPREV-CELL
+3 constant NORET-CREATES-CELL
 $0 constant NORET-SYM-OFF
 $8 constant NORET-FLAG-OFF
 $10 constant NORET-SYMPREV-OFF
-$18 constant NORET-ENTRY
+$18 constant NORET-CREATES-OFF
+$20 constant NORET-ENTRY
 $8 constant NORET-ENTRY-ALIGN
 0 constant NORET-ENTRY-PTR-MASK
 
 : NORET.SYM ( ptr a -- ptr a ) NORET-SYM-OFF + ;
 : NORET.FLAG ( ptr a -- ptr a ) NORET-FLAG-OFF + ;
 : NORET.SYMPREV ( ptr a -- ptr a ) NORET-SYMPREV-OFF + ;
+: NORET.CREATES ( ptr a -- ptr a ) NORET-CREATES-OFF + ;
 
 : NORET-LAYOUT-ASSERT ( -- )
    NORET-SYM-CELL cells NORET-SYM-OFF CHECKER-RECORD-LAYOUT=
    NORET-FLAG-CELL cells NORET-FLAG-OFF CHECKER-RECORD-LAYOUT=
    NORET-SYMPREV-CELL cells NORET-SYMPREV-OFF CHECKER-RECORD-LAYOUT=
-   NORET-SYMPREV-OFF CELL + NORET-ENTRY CHECKER-RECORD-LAYOUT=
+   NORET-CREATES-CELL cells NORET-CREATES-OFF CHECKER-RECORD-LAYOUT=
+   NORET-CREATES-OFF CELL + NORET-ENTRY CHECKER-RECORD-LAYOUT=
    CELL NORET-ENTRY-ALIGN CHECKER-RECORD-LAYOUT=
    NORET-ENTRY NORET-ENTRY-ALIGN mod 0 CHECKER-RECORD-LAYOUT=
    NORET-ENTRY-PTR-MASK 0 CHECKER-RECORD-LAYOUT= ;
@@ -10427,18 +10518,36 @@ REG-EXT-AOT-DEFAULTS
 : NORET-CTL@ ( ptr n -- n )
    NORET.FLAG @ ;
 
+\ NORET-CREATES@ ( n -- n ) : the effect sym's definer gives the words it
+\ creates, as an effect-record offset+1, 0 when sym is not a definer. Read from
+\ the NEWEST entry like the flags beside it, so a redefinition that publishes no
+\ created effect retires the old one instead of leaving a fact behind. Not
+\ cached in HIDX, which holds the packed control word: the per-symbol head
+\ already answers this one in a single load, which is all an append's
+\ carry-forward and a pre-pass token that resolved to a definer need.
+: NORET-CREATES@ ( n -- n ) {: sym:n :}
+   sym 0= IF 0 EXIT THEN
+   sym NORET-NEWEST dup 0= IF drop 0 EXIT THEN
+   1 - NORET-CELL NORET.CREATES @ ;
+
 \ HIDX-CTL-SYNC ( -- ) : flush the cache when NORETS rewound below a cached
 \ dependency. The store swap paths (persist/reset) keep values or rewind END.
 : HIDX-CTL-SYNC
    NORET-END @ HIDX-CTL-HI @ < IF HIDX-EPOCH+ THEN ;
 
-\ NORET-ADD syncs first for the same reason as E-REC-START: it is the only
+\ NORET-APPEND syncs first for the same reason as E-REC-START: it is the only
 \ NORETS appender, and appending over a rewound tail must flush stale flags
 \ before the new entry masks the rewind.
 \ A 0 symbol is not a fact about any word — CTL-FLAGS-SYM answers 0 for it
 \ without ever reading the store — and its SYM cell is the store terminator, so
 \ writing one would hide every entry appended after it. Record nothing.
-: NORET-ADD-SYM {: sym:n flag:n dmask:n rmask:n :}
+\ THE ENTRY CARRIES EVERY FACT THE STORE KEEPS, so every appender goes through
+\ this one word and each carries forward the facts it has nothing to say about.
+\ Newest-entry-wins is what makes the store readable in one load, and an
+\ appender that wrote only its own part would retire the rest by silence: a
+\ definition records its flags and its intact masks, and on the same record the
+\ effect authority appends its provenance flag and the created-word effect.
+: NORET-APPEND {: sym:n flag:n dmask:n rmask:n creates:n :}
    sym 0= IF EXIT THEN
    flag dmask rmask XFER-PACK {: ctl:n :}
    HIDX-CTL-SYNC
@@ -10447,6 +10556,7 @@ REG-EXT-AOT-DEFAULTS
    sym NORET-REC NORET.SYM !
    ctl NORET-REC NORET.FLAG !
    0 NORET-REC NORET.SYMPREV !
+   creates NORET-REC NORET.CREATES !
    NORET-END @ sym NRX-LINK
    NORET-END @ NORET-ENTRY + NORET-END !
    NORET-TERM
@@ -10456,10 +10566,16 @@ REG-EXT-AOT-DEFAULTS
       NORET-END @ HIDX-CTL-DEP+
    THEN ;
 
+\ The flags-and-masks appender: what a definition, a transfer or a barrier has
+\ to say. None of them says anything about what the symbol creates, so that
+\ fact is carried forward from the symbol's newest entry.
+: NORET-ADD-SYM {: sym:n flag:n dmask:n rmask:n :}
+   sym flag dmask rmask sym NORET-CREATES@ NORET-APPEND ;
+
 \ The name-keyed appender records NO intact evidence: every caller of it has
-\ none to give (the axioms below, an undefine, a body that failed to check, a
-\ test pinning a flag). A definition that proved some of its inputs intact
-\ appends through NORET-ADD-SYM with the masks it measured.
+\ none to give (the axioms below, a body that failed to check, a test pinning a
+\ flag). A definition that proved some of its inputs intact appends through
+\ NORET-ADD-SYM with the masks it measured.
 : NORET-ADD {: a:ptr u:n flag:n :}
    a u CHECKER-RECORD-SYM flag 0 0 NORET-ADD-SYM ;
 
@@ -10483,12 +10599,16 @@ REG-EXT-AOT-DEFAULTS
 NORET-AXIOMS
 NORET-END @ constant NORET-PRIM-END
 
+\ Undefining retires every fact the name carried, the created-word effect with
+\ them: the entry is appended through NORET-APPEND rather than NORET-ADD-SYM
+\ precisely because the carry-forward there would keep a definer's created
+\ effect alive under a name that no longer exists.
 : CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-UNDEFINE-GUARD
    a u CHECKER-RECORD-NAME {: name:ptr nameu:n :}
    name nameu USIG-DELETE
    name nameu DFER-DELETE
-   name nameu 0 NORET-ADD ;
+   name nameu CHECKER-RECORD-SYM 0 0 0 0 NORET-APPEND ;
 
 : CHECKER-DEFLINEAR ( ptr u8 n -- )
    CT-ADD-LINEAR ;
@@ -10550,18 +10670,68 @@ variable NORET-FMEND
 
 package CHECKER-EFFECT-AUTHORITY
 private
+\ The publish tail of E-ADD-EFFECT, and so the one place a user record's
+\ per-symbol facts are written — which is why the created-word latch is
+\ consumed HERE and nowhere else: the record whose publication takes the latch
+\ is the record whose symbol the fact belongs to. The take is unconditional so
+\ that a latch can never outlive one record, and the VALUE is kept only for a
+\ certified record: a rejected definition re-recorded in multi-error mode
+\ (CHECK, source authority) publishes with external false and must teach the
+\ checker nothing about what it would have created.
+\
 \ Later-wins: an entry appended for the authority bit alone must carry the
 \ symbol's existing masks forward, or it would silently retract evidence the
 \ definition end recorded a moment earlier.
 : STORE ( n bool -- ) {: sym:n external:bool :}
+   DOES-EFF-TAKE {: latched:n :}
+   external IF latched ELSE 0 THEN {: creates:n :}
    sym CTL-FLAGS-SYM {: old:n :}
    old EFFECT-EXTERNAL invert and
    external IF EFFECT-EXTERNAL or THEN {: flags:n :}
-   old flags <> IF sym flags sym CTL-MASKS-SYM NORET-ADD-SYM THEN ;
+   old flags <>  creates sym NORET-CREATES@ <>  or IF
+      sym flags sym CTL-MASKS-SYM creates NORET-APPEND
+   THEN ;
 : INSTALL ( -- ) [: STORE ;] is PUBLISH-XT ;
 INSTALL
 get-current prot-wid-add
 ;package
+
+\ ---- what a definer creates, asked about a resident definer -------------------
+\ A definer the source pre-verifier READ is in its own table with the clause
+\ text (verify-source DEFINER-EFFECT); a definer that is RESIDENT — compiled in
+\ this process, its clause never scanned — is known only here, through the latch
+\ above. These three words are that store's whole surface, and the pre-pass is
+\ their only caller.
+\
+\ THE CREATED WORD IS REGISTERED FROM THE ROWS, not from re-parsed text, because
+\ the rows are what the clause certified: instantiating them keeps each type
+\ variable's kind (E-INST-FROM restores the persisted TVK-RAW a raw definer
+\ minted), which is exactly the seal `trust-raw` puts on a created word at run
+\ time, and it keeps a family the clause named without re-resolving that name in
+\ a scope that is not the definer's.
+: CHECKER-CREATES-SYM? ( n -- n )           \ sym's created effect, offset+1, 0 = not a definer
+   NORET-CREATES@ ;
+
+: CHECKER-RECORD-CREATED ( ptr u8 n n -- bool ) {: na:ptr nu:n dsym:n :}
+   dsym CHECKER-CREATES-SYM? dup 0= IF drop RES-FALSE EXIT THEN
+   1 - E-PTR {: rec:ptr :}
+   NEW
+   rec E-INST-RESET
+   rec ER.DIN @ E-INST  rec ER.DOUT @ E-INST
+   rec ER.RIN @ E-INST  rec ER.ROUT @ E-INST
+   na nu CHECKER-REC-NAME!
+   rec ER.HASR @ 0 <> RES-TRUE E-ADD-EFFECT
+   RES-TRUE ;
+
+\ A straight-line wrapper creates whatever the definer it calls creates, and the
+\ pre-pass proves that about a body it read. The fact is stored against the
+\ wrapper's own symbol, so every later reader — this file's and the pre-pass's —
+\ asks one question of one store; the wrapper's own flags and intact masks go
+\ forward with it, because only the newest entry is read.
+: CHECKER-CREATES-COPY ( n n -- ) {: wsym:n dsym:n :}
+   dsym CHECKER-CREATES-SYM? {: creates:n :}
+   creates 0= IF EXIT THEN
+   wsym  wsym CTL-FLAGS-SYM  wsym CTL-MASKS-SYM  creates NORET-APPEND ;
 
 \ A PRIM declaration grants its own effect, never an ABI-only user row's shape.
 \ Trusted-only is a checked-call restriction; explicit REG-PROTECT still owns
@@ -10855,13 +11025,17 @@ variable UNSAFE-SYM-N
    ta tu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN ;
 
-\ An export is the same xt under another tail, so the evidence its body proved
-\ about its declared inputs is the exported name's too.
+\ An export is the same xt under another tail, so every fact the store holds
+\ about it is the exported name's too: the evidence its body proved about its
+\ declared inputs, and the words it creates if it is a definer. The exported
+\ tail is a symbol of its own and carries nothing forward, so all three are
+\ copied here.
 : EXPORT-META-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-DEFER IF a u EXPORT-TAIL$ DFER-ADD THEN
    a u CTL-FLAGS {: ctl:n :}
    a u CTL-MASKS {: dm:n rm:n :}
-   a u EXPORT-TAIL$ CHECKER-RECORD-SYM ctl dm rm NORET-ADD-SYM ;
+   a u CHECKER-FIND-ACTIVE-SYM NORET-CREATES@ {: creates:n :}
+   a u EXPORT-TAIL$ CHECKER-RECORD-SYM ctl dm rm creates NORET-APPEND ;
 
 : CHECKER-EXPORT ( ptr u8 n -- ) {: a:ptr u:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
@@ -15167,7 +15341,8 @@ ASIG-GRAPH-CHECK-INSTALL
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !
    ASIG-MISS-CLEAR                     \ the queue always describes the pass just run
-   0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
+   0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !
+   DOES-EFF-STEP ;                     \ only the check that FOLLOWS a clause is its definer's
 
 \ ---- reporting one token to the source-tape observer ---------------------------
 \ WHY THE REPORT MOVED BEHIND THE JUDGEMENT. A string literal's body is not known
@@ -16360,12 +16535,53 @@ package CHECKER-REG
 ;package
 
 
+\ DOES-EFF-LATCH! ( sig-a sig-u -- ) : the tail of CHECK-DOES! below, and the
+\ only writer of the DOESEFF latch. The clause has been certified against the
+\ clause body by then, so what is left to record is the effect the created WORD
+\ carries — the clause signature itself.
+\
+\ IT PARSES THE SIGNATURE A SECOND TIME, for two reasons. The rows the check
+\ leaves in SGIN/SGOUT have been unified with the body it just verified, so a
+\ clause declaring a variable would be latched at whatever the body happened to
+\ produce instead of at what it declared; and this parse runs under the
+\ raw-definer seal, which is what `trust-raw` (TRUST-RAW above) puts on every
+\ created word at run time, so the record holds the same TVK-RAW variables the
+\ engine's own registration of this definer's words would hold.
+\
+\ THE RECORD IS ANONYMOUS. It is not an effect OF the definer — the definer's
+\ own effect is recorded moments later by its body's publication — so it is
+\ built with CHECKER-REC-SYM 0 and no cache update, the way SIG-EFF-CACHE!
+\ builds the recurse cache: sym 0 keeps it out of every per-symbol lookup.
+\
+\ A CANDIDATE SCOPE LATCHES NOTHING. Its records are truncated when the scope
+\ ends (CHECK-CANDIDATE-DONE), so an offset stored from inside one would name a
+\ record that no longer exists. That is a fact about the RECORD, not about the
+\ caller: the source pre-verifier has its own entry point below and never
+\ reaches this word at all.
+: DOES-EFF-LATCH! ( ptr u8 n -- ) {: sa:ptr su:n :}
+   DOES-EFF-CLEAR                            \ a refused clause latches nothing
+   DVERD @ -1 <> IF EXIT THEN
+   CHK-CAND @ 0 <> IF EXIT THEN
+   CHECKER-REC-SYM @ {: was:n :}
+   0 CHECKER-REC-SYM !
+   NEW
+   SGBAD-CLEAR
+   RES-TRUE SIG-RAW-DEFINER!
+   sa su PARSE-SIG-RAW
+   RES-FALSE SIG-RAW-DEFINER!
+   SGBAD @ 0 <> IF
+      2drop 2drop  was CHECKER-REC-SYM !  EXIT     \ unresolvable family: no row, no latch
+   THEN
+   SGHASR @ E-BUILD-EFFECT {: off:n :}
+   was CHECKER-REC-SYM !
+   off 1 + DOES-EFF-ARM ;
+
 \ CHECK-DOES! ( body-a body-u sig-a sig-u -- verdict ) verifies a DOES> body
 \ against a created-word runtime effect.  If the created word is declared
 \ `( in -- out )`, the DOES> body must type as `( in ptr a -- out )`: the native
 \ CREATE stub pushes the created word's data-field address before branching to
 \ the DOES> body.
-: CHECK-DOES! {: ba bu sa su :}
+: CHECK-DOES-RUN {: ba bu sa su :}
    ba bu CHECK-RESET
    0 TOK0 !
    sa su PARSE-SIG-RAW RAW-SIG!
@@ -16387,6 +16603,25 @@ package CHECKER-REG
    dup -1 = IF CALL-FINALIZE THEN
    CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN
    ba bu DVERD @ CHECKER-CERT:PRODUCE ;
+
+\ THE TWO FRONT ENDS ARE TWO WORDS, because only one of them may latch. The
+\ ENGINE reaches CHECK-DOES! at the `;` of a definition it is compiling, BEFORE
+\ that definition's own body is checked and recorded, so the created-word effect
+\ it certifies here belongs to the record that follows. The SOURCE pre-verifier
+\ reaches the clause AFTER the definer's own body (verify-source VERIFY-DOES):
+\ the next record it publishes belongs to the NEXT definition, and a latch left
+\ armed here would be taken by it — measured, a conditional wrapper in
+\ test/certify-does-definer.f section 3 was handed the preceding definer's
+\ clause. So the pre-verifier's entry point cannot arm the latch at all, and
+\ clears it instead; what the pre-pass learns from a source it READ it learns
+\ from the text, in its own table.
+: CHECK-DOES! {: ba bu sa su :}
+   ba bu sa su CHECK-DOES-RUN
+   sa su DOES-EFF-LATCH! ;            \ last: that parse reopens the term arena
+
+: CHECKER-SOURCE-DOES! {: ba bu sa su :}
+   ba bu sa su CHECK-DOES-RUN
+   DOES-EFF-CLEAR ;
 
 \ The retained compiler checked the replacement prefix before its new hooks
 \ existed. Transfer those actual graphs into the new owner before enabling

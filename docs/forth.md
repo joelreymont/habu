@@ -1245,7 +1245,22 @@ the rule.
   `64 constant LB-CAP  LB-CAP TYPED-BUFFER LB-ROWS n` makes `tools/check.f`
   throw 7121 (rc 67) while `64 TYPED-BUFFER LB-ROWS n` passes. `$hex` is
   refused too. A table sized from a constant uses `create NAME CAP cells allot`
-  and reads through a `ptr` local.
+  and reads through a `ptr` local. An expression is refused for the same
+  reason: `Q-MAX Q-SEM-N * TYPED-BUFFER Q-SEMS TASK:sem` (lib/queue.f:42) is
+  what `tools/check.f lib/queue.f` throws 7121 on today.
+- **A `create … does>` definer teaches the checker what its words are, whether
+  or not its text was read.** A definer the source pre-verifier READ is learned
+  from the clause text (`verify-source.f` `DEFINER-EFFECT`); a definer that is
+  RESIDENT — compiled in the checking process, its text never scanned — is
+  known because the checker latches the created-word effect when it certifies
+  the clause at the definer's `;` and stores it against the definer's symbol
+  (`checker.f` `DOES-EFF-LATCH!`, the NORETS entry's CREATES cell). Measured:
+  `NG-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NG-BUFFER`
+  (lib/type/deftype.f:61) left `NG-BUFFER` `E-UNDEFINED` at its first typed use
+  before the latch and certifies after it. A straight-line wrapper read from
+  source inherits the same row; a RESIDENT wrapper
+  (`CODEGEN:BUFFER` around `BUFFER-E`) is still unknown, which is what
+  `tools/check.f lib/process-env-test.f` refuses `PROC-ENV-DIAG` for.
 - **A local binds in the spelling it was declared in; word lookup stays
   case-insensitive.** `{: text :}` reads `text` as the local and `TEXT` as the
   word, and the same local hides the word `TEXT` from the definition it is
