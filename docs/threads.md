@@ -113,6 +113,11 @@ activated or is only prepared is a no-op that leaves its state alone. Only
 `TASK:WAKE` refuses an ended task - a hint would sit in a record the next
 activation is not entitled to.
 
+The ending task release-publishes `DONE` and `TASK:DONE?` is an acquire load of
+it, so an owner that sees it true without joining sees every write the body made
+before it ended; `TASK:HALT`'s request and the worker's stop read are that same
+pair the other way round.
+
 The surface tracks the SwiftForth multitasking words captured in
 `docs/swiftforth-task-api.md`. Habu keeps the task body typed by passing an XT to
 `TASK:ACTIVATE` instead of parsing a following source body.

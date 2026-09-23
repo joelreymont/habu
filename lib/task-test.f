@@ -8,6 +8,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/task.f
 require src/habu/task-abi.f       \ the baked TCB size this suite pins
+require src/habu/xref.f           \ XREF-N>U8: the byte view the entry is read through
 require lib/adt/result.f          \ the join's answer is MATCHed here
 require lib/test/outcome.f
 require test/checker-assert.f
@@ -1427,6 +1428,98 @@ variable ENTRY-RACE-PENDING
    ENTRY-RACE-PENDING @ 0 <> TTRUE
    TASK-LIVE-COUNT base T= ;
 
+\ ---- the release/acquire pair on the status cell ------------------------------
+\
+\ THE DETERMINISTIC PIN. A task ends by publishing DONE, and the publication has
+\ to be a store-release or an owner that only polls TASK:DONE? has no edge to the
+\ body's writes. The store is emitted by the engine (src/habu/habu1.f
+\ BTASK-ENTRY), so the fact is in the entry's instructions and this case reads
+\ them: from the address `task-entry` answers to the first RET, decoding the two
+\ words that can stand at the DONE site. Reading the code is what makes it a pin
+\ - a release that turned back into a plain store fails here every run, while the
+\ visibility case below can only fail when the hardware reorders.
+\
+\ A64 encodings, both with Rn in bits 9:5 and Rt in bits 4:0:
+\   STLR Xt,[Xn]         1100 1000 1001 1111 1111 11nn nnnt tttt   (no offset)
+\   STR  Xt,[Xn,#imm]    1111 1001 00ii iiii iiii iinn nnnt tttt   (imm scaled by 8)
+$FFFFFC00 constant W-STLR-MASK                    \ everything but Rn and Rt
+$C89FFC00 constant W-STLR-BITS
+$C89FFC00 11 5 lshift or 10 or constant W-STLR-DONE        \ STLR x10,[x11]
+$F9000000 TASK-ABI:STATUS-OFF 8 / 10 lshift or 9 5 lshift or 10 or
+   constant W-STR-DONE-PLAIN                               \ STR x10,[x9,#STATUS-OFF]
+$D65F03C0 constant W-RET
+
+\ The entry is 57 instruction words. The cap is the "this is not the entry"
+\ bound, not a measurement: a walk that runs past it read the wrong address.
+128 constant ENTRY-WORD-CAP
+
+\ A foreign C entry address, the way lib/task.f takes it for pthread_create.
+TRUSTED: TASK-ENTRY-ADDR ( -- n ) task-entry ;
+
+: ENTRY-W32@ ( n -- n ) {: a:n :}
+   a XREF-N>U8 {: p:ptr :}
+   p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
+
+variable ENTRY-STLR-ANY               \ release stores of any shape
+variable ENTRY-STLR-DONE              \ STLR x10,[x11] - the DONE publication
+variable ENTRY-STR-PLAIN              \ the plain store it replaced
+variable ENTRY-WORDS
+
+: ENTRY-SCAN ( -- )
+   0 ENTRY-STLR-ANY !  0 ENTRY-STLR-DONE !  0 ENTRY-STR-PLAIN !  0 ENTRY-WORDS !
+   TASK-ENTRY-ADDR {: base:n :}
+   ENTRY-WORD-CAP 0 do
+      base i 4 * + ENTRY-W32@
+      dup W-STLR-MASK and W-STLR-BITS = if 1 ENTRY-STLR-ANY +! then
+      dup W-STLR-DONE = if 1 ENTRY-STLR-DONE +! then
+      dup W-STR-DONE-PLAIN = if 1 ENTRY-STR-PLAIN +! then
+      i 1 + ENTRY-WORDS !
+      W-RET = if unloop exit then
+   loop
+   s" task-test: no RET within the pthread entry's bound" 76 die ;
+
+: TASK-TEST-ENTRY-RELEASE ( -- )
+   ENTRY-SCAN
+   s" the pthread entry publishes DONE with STLR x10,[x11]" T-LABEL
+   ENTRY-STLR-DONE @ 1 T=
+   s" ... and that release is the entry's only one" T-LABEL
+   ENTRY-STLR-ANY @ 1 T=
+   s" ... so no plain STR puts DONE in the status cell" T-LABEL
+   ENTRY-STR-PLAIN @ 0 T=
+   s" ... all of it inside the entry's bounded span" T-LABEL
+   ENTRY-WORDS @ ENTRY-WORD-CAP < TTRUE ;
+
+TASK:MIN-STACK TASK:TASK DONE-PUB-TASK
+
+TASK-TEST-ALIGN8
+variable DONE-PUB-WANT                \ the round's value, staged before the activation
+variable DONE-PUB-CELL                \ the worker's payload
+variable DONE-PUB-MISSES
+
+\ THE OBSERVABLE HALF. The payload is a plain cell written with a plain store and
+\ read with a plain load: the only thing that carries it from the worker to the
+\ owner is the release/acquire pair on the status cell. The owner never joins
+\ before it reads - a join would order the payload by itself and prove nothing -
+\ and the KILL that ends the round comes after the read.
+: DONE-PUB-WORK ( -- )
+   DONE-PUB-WANT @ DONE-PUB-CELL ! ;
+
+: DONE-PUB-ROUND ( n -- ) {: want:n :}
+   0 DONE-PUB-CELL !
+   want DONE-PUB-WANT !
+   ['] DONE-PUB-WORK DONE-PUB-TASK TASK:ACTIVATE
+   DONE-PUB-TASK APP-WAIT-DONE
+   DONE-PUB-CELL @ want <> if 1 DONE-PUB-MISSES +! then
+   DONE-PUB-TASK TASK:KILL ;
+
+: TASK-TEST-DONE-PUBLISH ( -- )
+   0 DONE-PUB-MISSES !
+   TASK-LIVE-COUNT {: base:n :}
+   ENTRY-RACE-ROUNDS 0 do i 1 + DONE-PUB-ROUND loop
+   s" a body's write is visible to an owner that only polled DONE?" T-LABEL
+   DONE-PUB-MISSES @ 0 T=
+   TASK-LIVE-COUNT base T= ;
+
 : TASK-TEST-RUN ( -- )
    T-RESET
    TASK-TEST-CALLBACK-TYPES
@@ -1500,6 +1593,8 @@ variable ENTRY-RACE-PENDING
    TASK-TEST-HALT-IDLE
    TASK-TEST-KILL-RACE
    TASK-TEST-ENTRY-RACE
+   TASK-TEST-ENTRY-RELEASE
+   TASK-TEST-DONE-PUBLISH
    T-REPORT ;
 
 TASK-TEST-RUN

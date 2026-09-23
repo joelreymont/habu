@@ -342,9 +342,19 @@ FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- n )
    dup TASK-MIN-STACK < if E-TASK-SIZE throw then
    drop ;
 
+\ The status cell is read across threads - DONE?, ACTIVATE's refusals, TASK-KILL
+\ and TASK-JOIN-CHECK all read it from the owner while the worker is still
+\ moving it - so the read is an acquire load. The ending task publishes DONE
+\ with the matching release store (the entry's STLR, src/habu/habu1.f
+\ BTASK-ENTRY, and PAUSE's halted exit below), which is what makes an owner that
+\ only polls DONE? see every write the body made before it ended.
 : TASK-STATE@ ( ptr n -- n )
-   TCB.STATUS @ ;
+   TCB.STATUS atomic@ ;
 
+\ The owner's store, and only the owner's: PREPARE and ACTIVATE write it before
+\ pthread_create, which orders it into the new thread, and TASK-JOIN-RELEASE and
+\ TASK-KILL write it after the join or on a task that has no thread at all. A
+\ worker never reaches here - it publishes its own DONE with a release store.
 : TASK-STATE! ( n ptr n -- )
    TCB.STATUS ! ;
 
@@ -875,6 +885,10 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
    dbase@ tcb TCB.DBASE !
    ndict@ tcb TCB.NDICT !
    cp@ tcb TCB.CP !
+   \ This clear and ACTIVATE's are plain stores on purpose: both run in the
+   \ owner's thread before pthread_create, which orders everything written here
+   \ into the new thread. There is no reader to release to yet - TASK-STOP! is
+   \ for the flag once a thread exists to see it.
    0 tcb TCB.STOP !
    tcb TASK-REGION-INIT
    tcb MBOX-INIT
@@ -934,21 +948,29 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
    then
    drop ;
 
+\ The stop flag crosses threads the other way: HALT sets it from the owner and
+\ the worker reads it at its next PAUSE, so the write is a release store and the
+\ read an acquire load. PAUSE's own clear rides the same pair - one flag, one
+\ pair of accessors - and a self-write costs nothing to publish.
 : TASK-STOP@ ( ptr n -- n )
-   TCB.STOP @ ;
+   TCB.STOP atomic@ ;
 
 : TASK-STOP! ( n ptr n -- )
-   TCB.STOP ! ;
+   TCB.STOP atomic! ;
 
 \ A halted task leaves here rather than through the runner, so this is the third
 \ way a task ends and it runs the same TASK-END. The stop flag is cleared first:
 \ a cleanup that pauses must yield, not re-enter the exit it is part of.
+\
+\ The DONE goes out with the same release the entry's STLR makes for a body that
+\ returned: this is the worker's own thread publishing its last state, and every
+\ write it made - the body's and TASK-END's cleanup - precedes it.
 : PAUSE ( -- )
    TASK-SELF-N dup 0= if drop SCHED-YIELD-CALL TASK-RC0 exit then
    TASK-N>PTR dup TASK-STOP@ 0 <> if
          0 over TASK-STOP!
          TASK-END
-         TASK-DONE over TASK-STATE!
+         TASK-DONE over TCB.STATUS atomic!
          0 PTHREAD-EXIT-CALL
    then
    drop

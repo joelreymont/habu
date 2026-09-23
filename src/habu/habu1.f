@@ -2102,6 +2102,15 @@ variable SZA-I
 \ them - ACTIVATE stores it before pthread_create (lib/task.f), which orders it
 \ before this code runs, so a store here could only land after a TASK:HALT that
 \ took the cell RUNNING -> HALT-REQ in the create window and put RUNNING back.
+\
+\ DONE is RELEASE-PUBLISHED, with the STLR that backs atomic! (BATSTORE above):
+\ it is the last write this task makes to anything another thread reads, so
+\ everything the body wrote precedes it. STLR carries no offset, so the status
+\ address is formed first - x11 is free here, the body has returned and x9 was
+\ just reloaded.
+\ An owner that only polls TASK:DONE? - lib/task.f TASK-STATE@, an acquire load
+\ - therefore sees the body's writes without joining; pthread_join is no longer
+\ the only edge.
 : BTASK-ENTRY ( -- )
    LBL LBL {: entry:label done:label :}
    A entry ADR, A G-PUSH done B,
@@ -2120,7 +2129,7 @@ variable SZA-I
    0 DATA TASK-TCB-CELL STR,
    9 BLR,
    9 DATA TASK-TCB-CELL LDR,
-   10 TASK-ABI:DONE MOVZ, 10 9 TASK-ABI:STATUS-OFF STR,
+   10 TASK-ABI:DONE MOVZ, 11 9 TASK-ABI:STATUS-OFF ADDI,  10 11 STLR,
    0 0 MOVZ,
    16 8 do i SP i 8 - cells $60 + ENC-LDRD EMITW loop
    29 19 do i SP i 19 - cells LDR, loop
