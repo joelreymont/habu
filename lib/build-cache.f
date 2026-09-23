@@ -65,6 +65,12 @@ variable CAUSE-CODE
    then
    SELECT-A@ ;
 
+\ RESET frees the span so the next selection allocates from nothing: a growth
+\ measured after RESET does not depend on the roots this process selected before.
+: SELECT-FREE ( -- )
+   SELECT-CAP @ {: cap:n :}
+   cap 0 > if SELECT-A@ cap SELECT-RELEASE 0 SELECT-CAP ! then ;
+
 : SELECT-BYTES ( -- ptr u8 n )
    SELECT-A@ SELECT-U @ ;
 
@@ -206,6 +212,7 @@ public
 : RESET ( -- )
    0 ROOT-U !
    0 SELECT-U !
+   SELECT-FREE
    construct source none SOURCE!
    FALSE OVERRIDE? !
    FALSE READY? !

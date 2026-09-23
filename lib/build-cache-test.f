@@ -372,9 +372,11 @@ $7E constant ROOT-C
    JR:CLOSE ;
 
 \ A longer root grows the select buffer; each growth must leave exactly ONE live
-\ span. Runs first, while the buffer is still unallocated, so 16 -> 128 -> 384
-\ are three genuine growth steps; the `<>` assertions fail loudly rather than
-\ passing vacuously if a reorder ever leaves a larger buffer behind.
+\ span, and RESET must free the span. The gate loads this file after
+\ tools/hb-build-test.f in one process, which has already selected a root longer
+\ than 128 bytes under a pool-slot HB_TMP; only because RESET frees the buffer
+\ are 16 -> 128 -> 384 three genuine growth steps, and the `<>` assertions fail
+\ loudly rather than passing vacuously if a larger buffer is ever left behind.
 : CHECK-GROWTH-RELEASE ( -- )
    BUILD-CACHE:RESET
    MAX-ROOT 16 BUILD-CACHE:ROOT!
@@ -388,7 +390,9 @@ $7E constant ROOT-C
    BUILD-CACHE:SELECTED-ROOT$ drop {: p2:ptr :}
    p1 p2 <> TTRUE
    p1 MAPPED:LIVE? TFALSE
-   p2 MAPPED:LIVE? TTRUE ;
+   p2 MAPPED:LIVE? TTRUE
+   BUILD-CACHE:RESET
+   p2 MAPPED:LIVE? TFALSE ;
 
 : CHECK-ERROR-REPORT ( -- )
    BUILD-CACHE:RESET
