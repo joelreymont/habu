@@ -2171,12 +2171,41 @@ variable ROWS-END
 : TEXT-ADR9-TARGET ( n -- n ) {: at:n :}
    at INSN@  at INSN + INSN@ AOT-STARTUP-SHAPE:TEXT-ADR-OFFSET  CODE-OFF + ;
 
+\ THE OTHER STATEMENT THE STARTUP MAKES ABOUT ITS DATA: the head of the copy
+\ loop itself (AOT-STARTUP-SHAPE:COPY-LOOP-HEAD?), which src/habu/aot-lib.f
+\ EMIT-DATA-COPY emits only when it has a blob to copy. It is read when the four
+\ words above are NOT found, so an image whose blob address this file can no
+\ longer recognise is refused by name instead of passing for code-only: the
+\ address sequence and the loop are one emitter's two halves, and an image that
+\ has the second without the first is one this reader does not understand.
+variable COPY-AT
+
+: COPY-LOOP-AT? ( n -- bool ) {: at:n :}
+   at 3 INSN * IN-IMAGE? 0= if false exit then
+   at INSN@  at INSN + INSN@  at 2 INSN * + INSN@
+   AOT-STARTUP-SHAPE:COPY-LOOP-HEAD? ;
+
+: FIND-COPY-LOOP ( -- bool )
+   -1 COPY-AT !
+   CODE-OFF IP !
+   begin IP @ 3 INSN * + TEXT-SIZE <=  COPY-AT @ 0 < and while
+      IP @ COPY-LOOP-AT? if IP @ COPY-AT ! then
+      IP @ INSN + IP !
+   repeat
+   COPY-AT @ 0 >= ;
+
 \ The first such sequence whose target walks as a blob is the startup's, because
 \ the startup is the first thing emitted. Every one of them is counted as well,
 \ so an image that HAS one and whose blob does not walk is refused instead of
 \ falling back to the code-only shape and quietly absorbing the blob into
 \ app/code: a fallback that still sums is a wrong answer wearing the identity's
 \ clothes.
+\ NO SEQUENCE AT ALL IS NOT THE SAME AS NO BLOB. It is the code-only shape only
+\ when the startup carries no copy loop either; with a loop the image restores a
+\ DATA span this reader can no longer locate, and the code-only answer would be
+\ the same wrong answer in the same clothes - one that reports the blob's bytes
+\ as code and `data 0 written`. That is what a drifted TEXT-ADR, shape does to
+\ this file, and it is refused rather than reported.
 : FIND-BLOB ( -- )
    -1 BLOB-AT !  0 BLOBADR-N !
    CODE-OFF IP !
@@ -2193,6 +2222,9 @@ variable ROWS-END
    BLOB-AT @ 0 < if
       BLOBADR-N @ 0 > if
          s" image-size: this image's code base + offset names no sparse DATA blob" RC die
+      then
+      FIND-COPY-LOOP if
+         s" image-size: the startup copies a DATA blob but no code base + offset sequence names it" RC die
       then
       exit
    then
@@ -2273,13 +2305,18 @@ $D37EF54A constant XTC-LSL2
    loop ;
 
 \ A program whose capture window is empty emits no blob and therefore no blob
-\ address, and EMIT-XT-CELLS refuses declared address cells without one, so such an image
-\ is code and nothing else. Here -- and ONLY here -- the last non-zero byte is a
-\ sound content end: what it ends is an A64 instruction word, and no A64
-\ encoding has a zero top byte, so rounding it up to the instruction boundary
-\ recovers exactly the trailing zero bytes of the final instruction. The same
-\ reasoning does not hold one line further down, where the content ends in a
-\ relocation row whose target really can leave two zero bytes behind it.
+\ address AND NO COPY LOOP (src/habu/aot-lib.f EMIT-DATA-COPY's BLOB-LEN 0 arm
+\ emits the span-end literal and the DP store alone), and EMIT-XT-CELLS refuses
+\ declared address cells without one, so such an image is code and nothing else.
+\ FIND-BLOB reaches here for an image with neither the address nor the loop; one
+\ that has the loop is refused there, because for it the count below would end
+\ the content past a DATA blob read as code.
+\ Here -- and ONLY here -- the last non-zero byte is a sound content end: what
+\ it ends is an A64 instruction word, and no A64 encoding has a zero top byte, so
+\ rounding it up to the instruction boundary recovers exactly the trailing zero
+\ bytes of the final instruction. The same reasoning does not hold one line
+\ further down, where the content ends in a relocation row whose target really
+\ can leave two zero bytes behind it.
 : STRIP-CODE-ONLY ( -- )
    CODE-OFF TEXT-SIZE LAST-NONZERO dup PAD4 + {: end:n :}
    end APP-END !  end BLOB-AT !  end BLOB-STOP !  end RELOC-AT !

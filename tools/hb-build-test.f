@@ -46,6 +46,16 @@ create HBT-EXP-DG 32 allot
 create HBT-EXP-HEX1 64 allot
 create HBT-EXP-HEX2 64 allot
 
+\ The two images the lost-blob case measures: a byte-for-byte copy of a built
+\ one, and the same copy with a single word of its startup rewritten.
+variable HBT-LOST-CPY-U
+variable HBT-LOST-OUT-U
+create HBT-LOST-CPY-BUF FS-PATH-CAP allot
+create HBT-LOST-OUT-BUF FS-PATH-CAP allot
+variable HBT-SEQ-AT      \ the startup's x9 code-base + offset sequence, or -1
+variable HBT-SEQ-N       \ how many the image holds
+variable HBT-SEQ-IP      \ that scan's cursor
+
 : HBT-NEW-TMP ( -- ptr u8 n )
    HBT-NEW-TMP-BUF HBT-NEW-TMP-U @ ;
 
@@ -447,6 +457,100 @@ create READER-STATE JR:STORAGE-BYTES allot
    IMAGE-SIZE:REGION-NAMES 0 T=
    IMAGE-SIZE:REGION-UNOWNED 0 T=
    IMAGE-SIZE:DATA-OWNERS 0 T=
+   HBT-REMOVE-ARTIFACT
+   HBT-REMOVE-AOT-OUT
+   BF-TMP-RESET ;
+
+\ ---- an image that copies a DATA blob this reader cannot locate ---------------
+\ tools/image-size-lib.f FIND-BLOB reads the blob's address out of the startup's
+\ four-word src/habu/aot-lib.f TEXT-ADR, sequence into x9. An image whose
+\ sequence it no longer recognises has none to count, and that used to be the
+\ empty-capture-window shape: the tool reported the blob and the rows as code
+\ with `data 0 written` and exited 0. It now looks for the copy loop as well,
+\ which no empty window emits, and refuses by name.
+\ The subject is one word of a REAL image: the sequence's `adr x12` -- the code
+\ base its offset is added to -- rewritten to `adr x13`, which is what a drifted
+\ scratch register looks like to this reader. The control is the same image
+\ written back unpatched and measured green, so the refusal is that word's and
+\ not the copy's.
+: HBT-LOST-CPY ( -- ptr u8 n )
+   HBT-LOST-CPY-BUF HBT-LOST-CPY-U @ ;
+
+: HBT-LOST-OUT ( -- ptr u8 n )
+   HBT-LOST-OUT-BUF HBT-LOST-OUT-U @ ;
+
+: HBT-IMG-U32@ ( ptr u8 n -- n ) {: a:ptr off:n :}
+   a off + c@
+   a off 1+ + c@ 8 lshift or
+   a off 2 + + c@ 16 lshift or
+   a off 3 + + c@ 24 lshift or ;
+
+: HBT-IMG-U32! ( n ptr u8 n -- ) {: w:n a:ptr off:n :}
+   w $FF and a off + c!
+   w 8 rshift $FF and a off 1+ + c!
+   w 16 rshift $FF and a off 2 + + c!
+   w 24 rshift $FF and a off 3 + + c! ;
+
+\ The image, read whole: the patch is one word inside it and the file is written
+\ back from the same bytes, so a copy that is not faithful cannot pass as one.
+: HBT-AOT-IMAGE$ ( -- ptr u8 n )
+   HBT-AOT-OUT FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   HBT-AOT-OUT buf cap READ-ALL {: u:n :}
+   buf u ;
+
+\ Every x9 sequence in the file, by the shape module's own test, so the case
+\ patches what the tool reads rather than a word it believes is there.
+: HBT-SCAN-TEXT-ADR9 ( ptr u8 n -- ) {: a:ptr u:n :}
+   -1 HBT-SEQ-AT !  0 HBT-SEQ-N !  CODE-OFF HBT-SEQ-IP !
+   begin HBT-SEQ-IP @ 16 + u <= while
+      a HBT-SEQ-IP @ HBT-IMG-U32@
+      a HBT-SEQ-IP @ 4 + HBT-IMG-U32@
+      a HBT-SEQ-IP @ 8 + HBT-IMG-U32@
+      a HBT-SEQ-IP @ 12 + HBT-IMG-U32@
+      HBT-SEQ-IP @ CODE-OFF 9 AOT-STARTUP-SHAPE:TEXT-ADR-SEQ? if
+         HBT-SEQ-N @ 1+ HBT-SEQ-N !
+         HBT-SEQ-AT @ 0 < if HBT-SEQ-IP @ HBT-SEQ-AT ! then
+      then
+      HBT-SEQ-IP @ 4 + HBT-SEQ-IP !
+   repeat ;
+
+\ Measured by the tool itself, in a child: the refusal is a `die` and ends the
+\ process, which is the behaviour under test.
+: HBT-MEASURE-CHILD ( ptr u8 n -- n n n ) {: img:ptr imgu:n :}
+   PROC-ARGV-ENV-RESET
+   s" --load" HBT-ARG+
+   s" tools/engine-size.f" HBT-ARG+
+   s" --" HBT-ARG+
+   img imgu HBT-ARG+
+   PROC-ENV-INHERIT-MISSING
+   HBT-RUN-HB-BUILD ;
+
+: HBT-SIZE-AOT-LOST-BLOB ( -- )
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-ROOT s" lostcopy" HBT-LOST-CPY-BUF HBT-LOST-CPY-U HBT-PATH!
+   HBT-ROOT s" lostblob" HBT-LOST-OUT-BUF HBT-LOST-OUT-U HBT-PATH!
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBB-BUILD
+   HBT-AOT-IMAGE$ {: a:ptr u:n :}
+   a u HBT-SCAN-TEXT-ADR9
+   HBT-SEQ-N @ 1 T=
+   HBT-LOST-CPY a u WRITE-ALL
+   HBT-LOST-CPY HBT-MEASURE-CHILD {: outu:n erru:n rc:n :}
+   HBT-ERR erru HBT-EMPTY$ T$=
+   rc 0 T=
+   HBT-OUT outu s" restored DATA window: " CONTAINS? TTRUE
+   13 CODE-OFF HBT-SEQ-AT @ 8 + - A64ASM:ENC-ADR
+   a HBT-SEQ-AT @ 8 + HBT-IMG-U32!
+   HBT-LOST-OUT a u WRITE-ALL
+   HBT-LOST-OUT HBT-MEASURE-CHILD {: outu2:n erru2:n rc2:n :}
+   rc2 0 T<>
+   HBT-ERR erru2
+   s" image-size: the startup copies a DATA blob but no code base + offset sequence names it"
+   CONTAINS? TTRUE
+   HBT-LOST-CPY HBT-REMOVE-FILE?
+   HBT-LOST-OUT HBT-REMOVE-FILE?
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    BF-TMP-RESET ;
@@ -938,6 +1042,7 @@ public
    BUILD-AOT-DOES-EMPTY
    BUILD-AOT-FFI
    HBT-SIZE-AOT
+   HBT-SIZE-AOT-LOST-BLOB
    BUILD-AOT-PRESEED
    HBT-AOT-JIT-REJECT
    HBT-BUILD-AOT-OBJECT-HIT

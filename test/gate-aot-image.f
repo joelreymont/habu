@@ -129,11 +129,13 @@ create CODE-PATH FS-PATH-CAP allot
 \ bytes) and a set bit runs the 64-byte walk the group stored. The displacements
 \ are the distance in instructions back to each loop head, so they say the shape
 \ as surely as the opcodes do.
+\ Its first three words are AOT-STARTUP-SHAPE:COPY-LOOP-HEAD?, because
+\ tools/image-size-lib.f reads the same three to tell an image that copies a
+\ blob from one that carries code alone.
 : CHECK-COPY ( n -- )
    CHECK-CURSORS {: top:n :}
-   top       9 11 ENC-CMP INSTR=
-   top 4 +   41 C-CS ENC-BCOND INSTR=
-   top 8 +   23 9 0 ENC-LDRB INSTR=
+   top INSTR@  top 4 + INSTR@  top 8 + INSTR@
+   AOT-STARTUP-SHAPE:COPY-LOOP-HEAD? IMAGE-CK
    top 12 +  9 9 1 ENC-ADDI INSTR=
    top 16 +  24 8 0 MOVZHW INSTR=
    top 20 +  24 -5 ENC-CBZ INSTR=
