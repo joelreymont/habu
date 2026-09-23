@@ -1,5 +1,5 @@
-\ Retained library literals must survive stripped linking; mutable pre-window
-\ DATA must still refuse. Exercise both through the real native build driver.
+\ Literal bodies survive stripped linking; compiler lookup tables and mutable
+\ pre-window DATA must refuse. Exercise the real native build driver.
 require test/gate-common.f
 require lib/engine-candidate.f
 
@@ -65,12 +65,29 @@ variable IMAGE-U
       s" stripped mutable pre-window DATA diagnostic" GE-EXPECT-ERR-HAS
    IMAGE$ EXISTS? if s" stripped mutable DATA emitted an image" GE-FAIL then ;
 
+: REFUSE-COMPILER-ROWS ( -- )
+   S\" PERSISTED-PTR-VARIABLE SLT-COMPILER-ROWS\n: MAIN ( -- ) SLT-COMPILER-ROWS @ @ . ;\nNSTR:SOURCE-ROWS SLT-COMPILER-ROWS ! drop 2drop\n" WRITE-SUBJECT
+   GE-HB-RESET
+   ENGINE-CANDIDATE:PATH$ GE-ARGV+
+   s" --" GE-ARG+ SUBJECT$ GE-ARG+ s" 0" GE-ARG+
+   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+   ENGINE-CANDIDATE:PATH$
+   S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
+   TIMEOUT-MS GE-RUN-STDIN
+   70 s" stripped compiler literal rows refusal" GE-EXPECT-RC
+   s" declared data cell holds an engine address outside the restored span"
+      s" stripped compiler literal rows stay outside the window" GE-EXPECT-ERR-HAS
+   s" word=SLT-COMPILER-ROWS"
+      s" stripped compiler literal rows name the retaining cell" GE-EXPECT-ERR-HAS
+   IMAGE$ EXISTS? if s" stripped compiler rows emitted an image" GE-FAIL then ;
+
 : BODY ( -- )
    PREPARE
    BUILD-LITERAL
    RUN-LITERAL
    REFUSE-MUTABLE
-   s" PASS: stripped retained literals and mutable DATA refusal" type cr ;
+   REFUSE-COMPILER-ROWS
+   s" PASS: stripped literal bodies and compiler DATA refusal" type cr ;
 
 : RUN ( -- )
    [: BODY ;] [: GT-CLEANUP ;] finally ;

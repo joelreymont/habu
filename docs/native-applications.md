@@ -132,6 +132,12 @@ linker, `src/habu/app-image.f` and the eight `lib` modules it pulls in, which al
 land above the span. A module the application has already loaded is shared in the
 harmless direction: the linker uses the application's copy, at build time only.
 
+The literal pool opens before the window, whose first byte is the pool's body
+arena. Literal bytes belong to the application; the owner and row tables used
+by the compiler to intern and relocate them do not. `NSTR:SOURCE-ROWS` exposes
+those tables to the engine build driver, not to a stripped runtime. Persisting
+one of its table pointers refuses at link time and names the retaining cell.
+
 The application therefore sees **only what it requires itself**. Nothing is
 preloaded on its behalf any more, so a program that used a `lib` word without
 requiring its module — which the maker's own eight modules used to supply — now

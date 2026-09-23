@@ -51,10 +51,12 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
 : HERE-N ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + ;
 
 : AOT-DATA-START ( -- )
-   HERE-N BLOB-SRC !
-   \ The retained compiler must intern this application's strings and trap
-   \ messages inside the span the stripped image restores.
-   NSTR:WINDOW-OPEN ;
+   NSTR:WINDOW-OPEN
+   \ The application owns the literal bodies, not the compiler's lookup tables.
+   \ NEW-POOL places its owner and row tables before the arena. Start at the
+   \ arena so the tables stay outside capture like the compiler's ACTIVE-P.
+   \ A saved SOURCE-ROWS pointer then takes the ordinary unrestored-DATA refusal.
+   NSTR:SOURCE-SPAN drop data-base BYTE-VIEW - DATA-VA VA>N + BLOB-SRC ! ;
 
 \ Latch the application span before loading the linker. tools/aot-build.f saves
 \ its active NSTR owner, opens a separate pool for the linker, and switches back
