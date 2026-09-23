@@ -479,21 +479,46 @@ variable GE-NEST-J
 \ the top PROF-CNT-BYTES of the DATA region (layout.f). DP-CHECK (habu1.f) caps the
 \ heap at DATA-SIZE - PROF-CNT-BYTES so a large allot + prof-on can never let profiler
 \ writes corrupt user data (dot habu-bound-profiler-counter-235c5f48). Over-bound fails
-\ closed NAMED "hb: data space out of range" on fd 2 (catchable rc-76 throw inside
-\ evaluate, exit 76 at top level). RED discriminator: on the unfixed base an allot one
-\ byte INTO the band SUCCEEDS silently (rc 0, no message) and clobbers a counter.
-\ `data-base`/`DATA-SIZE`/`PROF-CNT-BYTES`/`here` are runtime words, so the boundary is
-\ computed against the live band base.
+\ closed NAMED "hb: data space out of range: DP <dp> of <cap> bytes" on fd 2 (catchable
+\ rc-76 throw inside evaluate, exit 76 at top level). RED discriminator: on the unfixed
+\ base an allot one byte INTO the band SUCCEEDS silently (rc 0, no message) and clobbers
+\ a counter. `data-base`/`DATA-SIZE`/`PROF-CNT-BYTES`/`here` are runtime words, so the
+\ boundary is computed against the live band base.
+\ The two numbers are the whole point of the line (dot habu-name-the-ceiling-98ca1f47:
+\ the label alone made a consumer rebuild the engine to read its own ceiling), so both
+\ rows assert the WHOLE of stderr against the line composed from the same constants.
+\ The child reads its program from stdin, so no source file is open and the LCOMPILEDIE
+\ tail ends the line with the newline alone; a file-loaded refusal ends ` at <path>:<line>`.
+: GE-DATA-DIAG$ ( n -- ptr u8 n ) {: dp:n :}
+   SB-RESET
+   s" hb: data space out of range: DP " SB-APPEND
+   dp FMT:SB-U
+   s"  of " SB-APPEND
+   DATA-SIZE PROF-CNT-BYTES - FMT:SB-U
+   s"  bytes" SB-APPEND
+   GE-SB-LF
+   SB$ ;
+
 : GE-DATA-FULL ( -- )
-   \ one byte past the band base rejects (base: succeeds silently — the RED discriminator)
+   \ one byte past the band base rejects (base: succeeds silently — the RED discriminator).
+   \ The refused DP is the one the program asked for: `here` is the DP the allot starts
+   \ from and the count carries it to cap + 1, so the line reads DP cap+1 of cap bytes.
    s" data-base DATA-SIZE PROF-CNT-BYTES - + here - 1+ allot"
       76 s" data-space over-band exit rc" RUNTIME-RUNNER:LINE-RC
-   s" hb: data space out of range" s" data-space over-band diagnostic" GE-EXPECT-ERR-HAS
+   DATA-SIZE PROF-CNT-BYTES - 1+ GE-DATA-DIAG$
+      s" data-space over-band diagnostic" GE-EXPECT-ERR
    \ allot ending EXACTLY at the band base (DP == DATA + DATA-SIZE - PROF-CNT-BYTES, the
    \ max the <= bound admits) must SUCCEED and exit clean.
    s" data-base DATA-SIZE PROF-CNT-BYTES - + here - allot"
       0 s" data-space band-base allot succeeds" RUNTIME-RUNNER:LINE-RC
-   s" PASS: data-space profiler-band cap is labeled + off-by-one boundary holds" type cr ;
+   \ the definer sink states ITS candidate: from the band base a `variable` advances the
+   \ DP one cell (the create rounding is already a no-op at the cell-aligned base), so the
+   \ same line reports cap + 8. A second sink, a second register carrying the candidate.
+   s" data-base DATA-SIZE PROF-CNT-BYTES - + here - allot  variable GEDVAR"
+      76 s" data-space definer-sink exit rc" RUNTIME-RUNNER:LINE-RC
+   DATA-SIZE PROF-CNT-BYTES - 8 + GE-DATA-DIAG$
+      s" data-space definer-sink diagnostic" GE-EXPECT-ERR
+   s" PASS: data-space cap names the refused DP and the ceiling + off-by-one boundary holds" type cr ;
 
 : GE-DIV-TRAP ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n label:ptr labelu:n :}

@@ -890,7 +890,7 @@ boundary cases are contracts every backend answers alike.
 
 ## Engine limits ordinary source reaches
 
-Three ceilings are reachable from plain Habu rather than a runaway; each refuses
+Four ceilings are reachable from plain Habu rather than a runaway; each refuses
 by name with the count it saw and the ceiling, and none truncates.
 
 - **A definition's captured source text: `BODYBUF-CAP`, 8000 bytes**
@@ -911,6 +911,18 @@ by name with the count it saw and the ceiling, and none truncates.
   (`src/habu/layout.f`), the JIT's value-stack snapshot frames per definition.
   Past it: `hb: BEGIN nesting full at 28 frames: <name> needs <depth>`, rc 75.
   Factor the inner loops into their own words.
+- **Data space: `DATA-SIZE - PROF-CNT-BYTES`**, 33,030,080 bytes on
+  linux-aarch64 (`src/os/linux/layout.f`, `src/habu/layout.f`; the top
+  `PROF-CNT-BYTES` of the region are the profiler counter band, and `DATA-SIZE`
+  is the host's). `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and
+  interpret-mode string literals all advance the DP through `DP-CHECK`
+  (`src/habu/habu1.f`). Past it:
+  `hb: data space out of range: DP <dp> of <cap> bytes`, rc 76, catchable inside
+  `evaluate`, both numbers offsets from `data-base`. No definition is named: no
+  DP sink runs while a colon body compiles, so the refusal reports the line it
+  came from (` at <path>:<line>`, added when a source file is open). Repair:
+  hold bulk data in `MEM:ALLOC-BYTES` or a `DYNAMIC-BUFFER`, which map their own
+  pages, not in the dictionary.
 
 ## Constants
 

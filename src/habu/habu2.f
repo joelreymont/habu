@@ -123,8 +123,6 @@ variable LCSTR   variable LCSTRMSG   \ counted-string >255 reject (C-ICQ/C-EICQ/
 37 constant CSTRMSG-LEN    \ byte length of "hb: counted string too long (max 255)" (LCSTRMSG); previously a bare silent 76 shared with C-SIG-BAD
 variable LDEFKWGUARD  variable LDEFKWFAIL  variable LDEFKWMSG   \ definition-name wall generated from the compile-keyword dispatch rows
 49 constant DEFKWMSG-LEN    \ byte length of the definition-name diagnostic (LDEFKWMSG)
-variable LDPBADMSG   \ DP-heap bound reject (habu1.f DP-CHECK, allot/,/c,/definer sinks) fd-2 message (dot habu-dictionary-allot-past-4e5c3c2b); label LDPBAD declared in habu1.f forward-ref block
-27 constant DPBADMSG-LEN    \ byte length of "hb: data space out of range" (LDPBADMSG); LDPBAD appends a newline. Was a bare silent exit_group(76)
 \ Capacity refusals that have a COUNT to state. A ceiling reached with nothing
 \ but an exit code costs the caller the whole measurement (LESSONS 2026-09-17):
 \ one line naming what filled up, the ceiling and the count is the fix, and
@@ -138,9 +136,13 @@ variable LDIAGU     \ ( x9 = value ) unsigned decimal on fd 2, no newline (dot h
 variable LDIAGDEF   \ ( -- ) the open definition's name on fd 2 (first token of the body buffer)
 variable LBCAPFULLMSG   variable LBCAPUNIT   \ per-definition body-capture overflow (habu1.f EMIT-BCAP at BODYBUF-CAP); label LBCAPFULL declared in habu1.f forward-ref block (dot habu-name-the-per-56a594f3)
 variable LSNAPNESTMSG   variable LSNAPUNIT   \ BEGIN-nesting overflow (jit.f EMIT-SNAP-NEST-CHECK at JIT-SNAP:FRAMES); label LSNAPNEST declared in jit.f
+variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject (habu1.f DP-CHECK, allot/,/c,/definer sinks): the head, the " of " before the ceiling and the " bytes" that ends the line; label LDPBAD declared in habu1.f forward-ref block (dots habu-dictionary-allot-past-4e5c3c2b, habu-name-the-ceiling-98ca1f47)
 variable LDIAGNEEDS     \ the shared " needs " between the ceiling and the count
 variable LQNEST   variable LQNESTMSG   \ a second `[:` while one is open (J-QUOT at QPATCH-CELL); LDIAGDEF names the definition (dot habu-name-the-nested-6a8e1b28)
 
+: DPBAD-MSG$ ( -- ptr u8 n )     s" hb: data space out of range: DP " ;
+: DPBAD-OF$ ( -- ptr u8 n )      s"  of " ;
+: DPBAD-UNIT$ ( -- ptr u8 n )    s"  bytes" ;
 : BCAPFULL-MSG$ ( -- ptr u8 n )  s" hb: definition body text full at " ;
 : BCAP-UNIT$ ( -- ptr u8 n )     s"  bytes: " ;
 : SNAPNEST-MSG$ ( -- ptr u8 n )  s" hb: BEGIN nesting full at " ;
@@ -148,6 +150,9 @@ variable LQNEST   variable LQNESTMSG   \ a second `[:` while one is open (J-QUOT
 : DIAG-NEEDS$ ( -- ptr u8 n )    s"  needs " ;
 : QNEST-MSG$ ( -- ptr u8 n )     s" hb: a quotation may not open inside a quotation: " ;
 
+: DPBADMSG-LEN ( -- n )      DPBAD-MSG$ nip ;
+: DPBAD-OF-LEN ( -- n )      DPBAD-OF$ nip ;
+: DPBAD-UNIT-LEN ( -- n )    DPBAD-UNIT$ nip ;
 : BCAPFULL-MSG-LEN ( -- n )  BCAPFULL-MSG$ nip ;
 : BCAP-UNIT-LEN ( -- n )     BCAP-UNIT$ nip ;
 : SNAPNEST-MSG-LEN ( -- n )  SNAPNEST-MSG$ nip ;
@@ -586,7 +591,9 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LLOCWIDEMSG LABEL@ LBL, s" hb: local name over 16 bytes: " BYTES,             \ LOCWIDEMSG-LEN bytes; LLOCWIDE appends the declaration token + newline
    LLOCMANYMSG LABEL@ LBL, s" hb: more than 64 locals in one definition: " BYTES, \ LOCMANYMSG-LEN bytes; LLOCMANY appends the declaration token + newline
    LCSTRMSG LABEL@ LBL, s" hb: counted string too long (max 255)" BYTES,        \ CSTRMSG-LEN bytes; LCSTR appends a newline (fixed label: names the constraint at a glance)
-   LDPBADMSG LABEL@ LBL, s" hb: data space out of range" BYTES,                 \ DPBADMSG-LEN bytes; LDPBAD appends a newline (DP-heap allot bound)
+   LDPBADMSG LABEL@ LBL, DPBAD-MSG$ BYTES,                               \ LDPBAD appends the refused DP, " of ", the ceiling and " bytes" (DP-heap allot bound)
+   LDPBADOF LABEL@ LBL, DPBAD-OF$ BYTES,
+   LDPBADUNIT LABEL@ LBL, DPBAD-UNIT$ BYTES,
    LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
    LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
    LBCAPFULLMSG LABEL@ LBL, BCAPFULL-MSG$ BYTES,                         \ EM-BODY-CAP-DIE appends the ceiling, the unit, the definition, " needs ", the count, newline
@@ -9464,8 +9471,23 @@ public
    \ then routes through the SAME LCOMPILEDIE tail with x0=76: a catchable throw inside
    \ evaluate (DP rolled back, no partial write — DP-CHECK precedes the DP store), a
    \ fail-closed exit 76 at top level. No new exit code (76 is the pre-existing raw code).
+   \ The label alone still cost the caller the measurement (dot habu-name-the-ceiling-98ca1f47:
+   \ Tender's `build --server` refused after ~29 MB of application data and a ten-minute gate
+   \ run was the only way to read the ceiling), so the line carries the two numbers the
+   \ capacity standard above demands: the refused DP and the ceiling DP-CHECK enforces, both
+   \ as offsets from data-base, both through LDIAGU. x15 holds the candidate DP, moved there
+   \ by the DP-CHECK refusal arm (habu1.f) because the sinks hold it in x7, x11 or x14.
+   \ NO DEFINITION IS NAMED: no DP sink runs while a colon body compiles (compile-mode string
+   \ literals go to the code region), so the body buffer LDIAGDEF reads holds the LAST
+   \ definer's name at every one of these sinks — measured: after `: F ( -- ) 1 drop ;`
+   \ BODYLEN-CELL is 16 over "F ( -- ) 1 drop " — and a stale name is worse than none. The
+   \ LCOMPILEDIE tail's ` at <path>:<line>` already names the refusing line.
    LDPBAD LABEL@ LBL,
    0 2 MOVZ,  1 LDPBADMSG LABEL@ ADR,  2 DPBADMSG-LEN MOVZ,  NR-WRITE SYS,
+   9 15 DATA SUB,  LDIAGU LABEL@ BL,                        \ the refused DP, from data-base
+   0 2 MOVZ,  1 LDPBADOF LABEL@ ADR,  2 DPBAD-OF-LEN MOVZ,  NR-WRITE SYS,
+   9 DATA-SIZE PROF-CNT-BYTES - LIT64,  LDIAGU LABEL@ BL,   \ the ceiling DP-CHECK enforces
+   0 2 MOVZ,  1 LDPBADUNIT LABEL@ ADR,  2 DPBAD-UNIT-LEN MOVZ,  NR-WRITE SYS,
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 \ LDIAGU ( x9 = value ): unsigned decimal on fd 2, no newline. The diagnostic
@@ -10150,7 +10172,7 @@ package LABELS
    LBL LCFCAP !  LBL LCFCAPMSG !
    LBL LLOCWIDE !  LBL LLOCWIDEMSG !  LBL LLOCMANY !  LBL LLOCMANYMSG !
    LBL LCSTR !  LBL LCSTRMSG !
-   LBL LDPBAD !  LBL LDPBADMSG !
+   LBL LDPBAD !  LBL LDPBADMSG !  LBL LDPBADOF !  LBL LDPBADUNIT !
    LBL LDIAGU !  LBL LDIAGDEF !  LBL LDIAGNEEDS !
    LBL LBCAPFULL !  LBL LBCAPFULLMSG !  LBL LBCAPUNIT !
    LBL LSNAPNEST !  LBL LSNAPNESTMSG !  LBL LSNAPUNIT !

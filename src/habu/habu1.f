@@ -1768,22 +1768,30 @@ variable SZA-I
 \ PROF-CNT-BYTES bytes are the profiler counter band (layout.f); capping the heap
 \ below it keeps a large allot + prof-on from corrupting user data with profiler
 \ writes (dot habu-bound-profiler-counter-235c5f48). Out of range routes to LDPBAD
-\ (habu2.f EM-COMPILE-DIE): named "hb: data space out of range" fd-2 diagnostic,
-\ then rc 76 via LCOMPILEDIE -- a catchable throw inside evaluate (DP rolled back,
-\ nothing written past the region since this check precedes every DP store), a
-\ fail-closed exit 76 at top level. Was a bare silent exit_group(76) with no
-\ diagnostic (dot habu-dictionary-allot-past-4e5c3c2b).
+\ (habu2.f EM-COMPILE-DIE): a "hb: data space out of range: DP <dp> of <cap> bytes"
+\ fd-2 diagnostic, then rc 76 via LCOMPILEDIE -- a catchable throw inside evaluate
+\ (DP rolled back, nothing written past the region since this check precedes every
+\ DP store), a fail-closed exit 76 at top level. Was a bare silent exit_group(76)
+\ with no diagnostic (dot habu-dictionary-allot-past-4e5c3c2b), then a bare label
+\ with no numbers (dot habu-name-the-ceiling-98ca1f47).
+\ EVERY SITE HANDS THE DIAGNOSTIC THE CANDIDATE IN x15: the sinks hold it in x7
+\ (BALLOT/BALIGN/C-VARIABLE/C-DEFER-CELL), x11 (BCOMMA/BCCOMMA/LCREATE) or x14
+\ (the interpret-mode string copies and C-PARSE-CREATED-SIG), so the refusal arm
+\ moves it into the one register LDPBAD reads. x15 is free there: the sites that
+\ carry a live x15 across the check (the string copies' literal base) need it only
+\ on the arm that returns, and it survives both the diagnostic's write syscalls
+\ (the kernel preserves x2-x15) and LDIAGU, which LCOMPILEDIE relies on too.
 : DP-CHECK ( n -- )
    DP-REG !
    LBL DP-LOW !
    LBL DP-HIGH !
    5 DATA-START LIT64,  5 DATA 5 ADD,
    DP-REG @ 5 CMP,  C-GE DP-LOW LABEL@ BCOND,
-      LDPBAD LABEL@ B,
+      15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
    DP-LOW LABEL@ LBL,
    5 DATA-SIZE PROF-CNT-BYTES - LIT64,  5 DATA 5 ADD,
    DP-REG @ 5 CMP,  C-LE DP-HIGH LABEL@ BCOND,
-      LDPBAD LABEL@ B,
+      15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
    DP-HIGH LABEL@ LBL, ;
 
 : BALLOT ( -- )
