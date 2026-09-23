@@ -263,6 +263,16 @@ $27E8 constant COMPILE-PREFLIGHT-CELL \ checker-owned hook run before source-def
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 3 cells constant ENGINE-HOOK-LEN
 $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors src/habu/layout.f)
+\ The process-exit vector, at the offset src/habu/layout.f gives it: an xt the
+\ seed calls once, with the cell cleared first, before the exit_group of each
+\ deliberate exit (BDIE, the uncaught top-level throw, the normal top-level
+\ exit). A fresh DATA mapping reads zero, which is "no hook". Unlike TOP-HOOK-CELL
+\ this one IS mirrored: lib/fs-mutate.f arms it from ordinary library code, so a
+\ program the seed runs would otherwise leave its registered temp trees behind
+\ where the native engine removes them. The seed has no address-cell table
+\ (BADDRESSCELLSVERSION below), so nothing declares the cell here; the seed's own
+\ snapshot format relocates nothing, exactly as it does not for xt!.
+$2818 constant EXIT-HOOK-CELL
 $5000 constant TXN-STATE-OFF
 \ The DECLARED extent, mirroring src/habu/layout.f: the transaction cells end
 \ at TXN-LIVE-W-OFF + TXN-LIVE-W-CAP cells ($5300). It was $3000, which made
@@ -1223,10 +1233,27 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 \ The requested rc is honored when kernel-representable ([0,255]; 0 stays the
 \ deliberate success exit); anything else would be silently masked to `rc & 0xFF`,
 \ so it maps to UNCAUGHT-RC instead (mirrors src/habu/habu1.f BDIE).
+\ The process-exit vector (EXIT-HOOK-CELL), inline at each of the three
+\ deliberate exits. Inline and not a shared leaf: three sites, six instructions,
+\ and no forward label to thread through this file's emission order. The cell is
+\ CLEARED BEFORE THE CALL, so a hook that dies re-enters an exit path with the
+\ vector already empty and cannot recurse. x0 (the exit code) is saved across the
+\ call; LR is not, because no site here returns. Mirrors src/habu/habu2.f
+\ EMIT-EXITHOOK.
+: C-EXIT-HOOK ( -- )
+   LBL {: nohk :}
+   9 DATA EXIT-HOOK-CELL LDR,  9 nohk CBZ,
+   SP SP 16 SUBI,  0 SP 0 STR,
+   10 0 MOVZ,  10 DATA EXIT-HOOK-CELL STR,
+   9 BLR,
+   0 SP 0 LDR,  SP SP 16 ADDI,
+   nohk LBL, ;
+
 : BDIE ( -- )
    LBL {: lfixed :}
    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
    0 7 0 ADDI,
+   C-EXIT-HOOK  7 0 0 ADDI,              \ the hook owns every caller-saved register; x7 comes back from x0
    7 0 CMPI,    C-LT lfixed BCOND,
    7 255 CMPI,  C-GT lfixed BCOND,
    NR-EXIT-GROUP SYS,
@@ -1451,6 +1478,7 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
    LBL {: lfixed :}
    0 9 0 ADDI,                           \ deterministic UNCAUGHT-RC, never the silently masked code
                                          \ (mirrors src/habu/habu1.f BTHROW THROW-NOREC-FB)
+   C-EXIT-HOOK  9 0 0 ADDI,              \ one call serves both legs; x9 comes back from the preserved x0
    9 1 CMPI,    C-LT lfixed BCOND,
    9 255 CMPI,  C-GT lfixed BCOND,
    NR-EXIT-GROUP SYS,
@@ -7567,7 +7595,7 @@ variable P2SK
    0 1 MOVZ,  1 LOKS @ ADR,  2 4 MOVZ,  NR-WRITE SYS,
    lmain EMIT-REPL-READ
    LRBYE @ LBL,
-   0 0 MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 0 MOVZ,  C-EXIT-HOOK  NR-EXIT-GROUP SYS, ;   \ the deliberate success exit runs the exit hook
 
 \ ---- MAIN: startup (data stack + mmap + seed dict) then the outer interpreter ----
 : EMIT-MAIN ( -- )

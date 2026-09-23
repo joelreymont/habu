@@ -10,6 +10,7 @@
 \
 require lib/errors.f
 require lib/string.f
+require lib/fmt.f
 require lib/fs.f
 require lib/fs-identity.f
 require lib/span.f
@@ -295,26 +296,6 @@ public
 : CLEANUP-RESET ( -- )
    0 FS-MUT-CLEANUP-N ! ;
 
-: FS-MUT-CLEANUP+ ( ptr u8 n n -- ) {: a:ptr u kind :}
-   FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-MAX >= if E-FS-CAPACITY throw then
-   u 0 < if E-FS-PATH throw then
-   kind FS-MUT-CLEANUP-FILE <>
-   kind FS-MUT-CLEANUP-DIR <> and
-   kind FS-MUT-CLEANUP-TREE <> and if E-FS-IO throw then
-   a u FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-SLOT SPAN:COPY
-   u FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-U-PTR !
-   kind FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-KIND-PTR !
-   FS-MUT-CLEANUP-N @ 1 + FS-MUT-CLEANUP-N ! ;
-
-: CLEANUP+ ( ptr u8 n -- )
-   FS-MUT-CLEANUP-FILE FS-MUT-CLEANUP+ ;
-
-: CLEANUP-DIR+ ( ptr u8 n -- )
-   FS-MUT-CLEANUP-DIR FS-MUT-CLEANUP+ ;
-
-: CLEANUP-TREE+ ( ptr u8 n -- )
-   FS-MUT-CLEANUP-TREE FS-MUT-CLEANUP+ ;
-
 : FS-MUT-CLEANUP-REMOVE ( n -- ) {: idx :}
    idx FS-MUT-CLEANUP-SLOT idx FS-MUT-CLEANUP-U-PTR @ SPAN:TAKE SPAN:$ {: a:ptr u :}
    idx FS-MUT-CLEANUP-KIND-PTR @ {: kind :}
@@ -334,3 +315,110 @@ public
       1 - dup FS-MUT-CLEANUP-REMOVE
    repeat drop
    CLEANUP-RESET ;
+
+\ ---- the registry runs at process exit ---------------------------------------
+\ The table above is walked by CLEANUP-RUN, and an explicit CLEANUP-RUN used to
+\ be the only thing that emptied it: a `die`, an uncaught top-level throw or a
+\ test report that dies left every registered path on disk. The engine carries a
+\ process-exit vector for exactly this (src/habu/layout.f EXIT-HOOK-CELL): it
+\ calls the armed word once, with the vector already cleared, immediately before
+\ the exit_group of a normal top-level exit, a `die`, an uncaught throw, or a
+\ stripped application's return from MAIN.
+\
+\ THE REGISTRY IS PER PROCESS. A restored image starts with an empty table and
+\ the relocated vector, so CLEANUP-AT-EXIT walks nothing there until that
+\ process registers a path of its own.
+\
+\ A removal that fails is REPORTED, never swallowed. CLEANUP-RUN throws on a
+\ path it cannot remove, and the process is already on its way out, so the code
+\ goes to fd 2 as one line and the exit code the process is carrying is left
+\ alone - the engine preserves it across the call. The line is assembled in the
+\ shared string builder and the code rendered by fmt, although both live in
+\ engine bands below a stripped image's DATA window: a stripped image maps
+\ those bands fresh and zeroed, which is all a render buffer needs. Measured: a
+\ stripped MAIN that requires lib/fmt.f prints -2105 through both FMT:.INT and
+\ SB-RESET FMT:SB-INT SB$. The builder is reset here because the process is
+\ exiting and nothing that ran before this line reads it again.
+: FS-MUT-EXIT-REPORT ( n -- ) {: code :}
+   SB-RESET
+   s" hb: cleanup at exit threw " SB-APPEND
+   code FMT:SB-INT
+   S\" \n" SB-APPEND
+   2 SB$ write drop ;
+
+\ This file's ONE raw boundary is FS-MUT-ARM-EXIT below: the exit vector is a
+\ fixed engine DATA cell holding a code pointer, reached through `data-base` the
+\ way src/habu/snap.f reads ENGINE-SNAP-XT-CELL. Arming is the only place an
+\ opaque xt is handled; calling one back is ordinary checked code, because the
+\ saved vector lands in a typed xt cell.
+\
+\ THE VECTOR IS A CHAIN, not a claim. Arming finds one of three states: zero,
+\ and ours goes in; already ours, and nothing happens; FOREIGN - some other
+\ component owns the process's single exit slot - and that vector is saved here
+\ before ours replaces it, so registering a path never costs the process the
+\ hook it already had, and a process whose slot was taken still gets its
+\ registry run. CLEANUP-AT-EXIT calls the saved vector last, after the registry:
+\ the paths this file was asked to remove are gone before foreign code runs.
+\
+\ The saved vector is PUT BACK TO THE NO-OP BEFORE IT IS CALLED, for the reason
+\ the engine clears its cell before calling us: a chained hook that registers a
+\ path of its own re-arms the engine cell and then dies, which re-enters
+\ CLEANUP-AT-EXIT, and it has to find the chain empty there rather than itself.
+\
+\ REGISTERING is what arms it, not loading this file: a stripped application
+\ restores no engine cell, so its vector is the fresh mapping's zero until its
+\ own CLEANUP+ call fills it, and a process that registers nothing has nothing
+\ to run and leaves the vector exactly where it found it.
+\
+\ The chain cell is a TYPED xt cell holding a word that is always callable, not
+\ a raw cell holding an xt or zero. Both halves are load-bearing: the native
+\ compiler needs the convention of the call it is compiling, and a raw cell's
+\ value carries none (`ncomp: cannot compile FS-MUT-EXIT-CHAIN at execute`,
+\ E-NELAB-QUOT, when a stripped image's closure reaches this word); and a cell
+\ that is never empty needs no zero test on an exit path, where a stray zero
+\ would be a jump to address 0 rather than a caught error.
+: FS-MUT-EXIT-NONE ( -- ) ;
+
+TYPED-VARIABLE FS-MUT-EXIT-PREV [ -- ]
+
+: FS-MUT-EXIT-INIT ( -- )
+   [: FS-MUT-EXIT-NONE ;] FS-MUT-EXIT-PREV ! ;
+FS-MUT-EXIT-INIT
+
+: FS-MUT-EXIT-CHAIN ( -- )
+   FS-MUT-EXIT-PREV @
+   [: FS-MUT-EXIT-NONE ;] FS-MUT-EXIT-PREV !
+   execute ;
+
+: CLEANUP-AT-EXIT ( -- )
+   [: CLEANUP-RUN ;] catch {: code :}
+   code 0<> if code FS-MUT-EXIT-REPORT then
+   FS-MUT-EXIT-CHAIN ;
+
+TRUSTED: FS-MUT-ARM-EXIT ( -- )
+   data-base EXIT-HOOK-CELL + dup @
+   dup 0= if drop ['] CLEANUP-AT-EXIT swap ! exit then
+   dup ['] CLEANUP-AT-EXIT = if 2drop exit then
+   FS-MUT-EXIT-PREV !
+   ['] CLEANUP-AT-EXIT swap ! ;
+
+: FS-MUT-CLEANUP+ ( ptr u8 n n -- ) {: a:ptr u kind :}
+   FS-MUT-ARM-EXIT
+   FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-MAX >= if E-FS-CAPACITY throw then
+   u 0 < if E-FS-PATH throw then
+   kind FS-MUT-CLEANUP-FILE <>
+   kind FS-MUT-CLEANUP-DIR <> and
+   kind FS-MUT-CLEANUP-TREE <> and if E-FS-IO throw then
+   a u FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-SLOT SPAN:COPY
+   u FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-U-PTR !
+   kind FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-KIND-PTR !
+   FS-MUT-CLEANUP-N @ 1 + FS-MUT-CLEANUP-N ! ;
+
+: CLEANUP+ ( ptr u8 n -- )
+   FS-MUT-CLEANUP-FILE FS-MUT-CLEANUP+ ;
+
+: CLEANUP-DIR+ ( ptr u8 n -- )
+   FS-MUT-CLEANUP-DIR FS-MUT-CLEANUP+ ;
+
+: CLEANUP-TREE+ ( ptr u8 n -- )
+   FS-MUT-CLEANUP-TREE FS-MUT-CLEANUP+ ;

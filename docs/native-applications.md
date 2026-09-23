@@ -47,6 +47,19 @@ has no record to write it, so its entry publishes the claim itself
 (`src/habu/aot-owned-cells.f`). Left unpublished the cell reads zero, the image
 answers as the engine would and its FIRST argument disappears.
 
+A separate vector runs program code on the way *out*. The engine calls the xt in
+`EXIT-HOOK-CELL` (`src/habu/layout.f`) once, with the cell cleared before the
+call, immediately before the `exit_group` of a deliberate exit: the normal
+top-level exit, `die`, and an uncaught top-level throw. A stripped image has no
+engine label to call, so its entry emits the same sequence inline and runs it
+before its own `exit(0)` — returning from `MAIN` fires the hook. The engine's
+fail-closed exits (`ENGINE-ERROR:*`, rc 70/74/75/76) do not call it; a broken
+engine runs no program code. The exit code is preserved across the call, and a
+hook that dies or throws cannot recurse, because the cell is already empty when
+it runs. `lib/fs-mutate.f` is the one library that arms it: registering a
+cleanup path installs `CLEANUP-AT-EXIT`, and a vector another component holds is
+chained rather than replaced.
+
 Application source is loaded once during the build. Top-level initialization
 runs then; it is not replayed at startup. Put work that needs the new process,
 such as opening a window or socket, in `MAIN` or a word it calls. If build-time

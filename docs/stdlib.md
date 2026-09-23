@@ -1338,6 +1338,20 @@ nested directory cleanups can register parent before child and still remove chil
 Keeping these words outside core `lib/fs.f` keeps path inspection/read helpers
 separate from mutation and cleanup policy.
 
+The registry also runs at process exit, so a `die`, an uncaught top-level throw
+or a test report that dies removes the registered paths instead of leaving them
+on disk. Registering is what arms it: every `CLEANUP+`, `CLEANUP-DIR+` and
+`CLEANUP-TREE+` stores `CLEANUP-AT-EXIT` in the engine's process-exit vector
+(`EXIT-HOOK-CELL`, see [Native applications](native-applications.md)), and a
+vector another component already holds is saved and CHAINED — the registry runs
+first and calls that hook last, once, so taking the slot costs no one their
+hook. The registry is per process: a restored image and a stripped image start
+with an empty table and run nothing until that process registers a path. A
+removal that fails is reported, not swallowed: `CLEANUP-AT-EXIT` writes one
+`hb: cleanup at exit threw <code>` line to fd 2 (a non-empty directory
+registered with `CLEANUP-DIR+` gives `E-FS-IO` (-2105)) and leaves the exit code the
+process is carrying untouched.
+
 `lib/fs-list.f` (package `FS-LIST`) lists one directory's entry names for test
 harnesses that assert what an output directory holds. `EACH` hands every name
 except `.` and `..` to a quotation in directory order; `NAMES` writes the names

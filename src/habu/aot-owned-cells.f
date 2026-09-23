@@ -177,6 +177,17 @@ private
 \ meaning. Left at the mapping's zero the image answered the engine's source-list
 \ convention and reported its SECOND argument as argument 0.
 \
+\ EXIT-HOOK-CELL (src/habu/layout.f) is the process-exit vector the stripped
+\ entry calls before its own exit(0). ZERO IS ITS CORRECT START - a new process
+\ has registered no hook - and the library that wants one arms it inside the
+\ running image: lib/fs-mutate.f stores its exit hook from the same CLEANUP+
+\ call that registers a path, so an application that registers nothing leaves
+\ the vector at the mapping's zero and exits exactly as it did before. The claim
+\ is what lets a stripped image NAME the cell: without it the arm word's
+\ `data-base EXIT-HOOK-CELL +` is an address below the window and the image is
+\ refused, so a stripped application could register a temp tree and never clean
+\ it - the very leak the vector exists to close.
+\
 \ RBASE-CELL (src/habu/layout.f) is the live text CONTENT base - the address of
 \ the image's first instruction, which the engine's own entry stores at boot
 \ (src/habu/habu2.f EM-DATA-INIT) and the `rbase` primitive reads back. It is a
@@ -277,6 +288,7 @@ private
    [: FRESH ;] MEM:OWNED-CELLS
    [: FRESH ;] IMAGE-LIFECYCLE:OWNED-CELLS
    data-base APP-ENTRY:XT-CELL + ENTRY-XT
+   data-base EXIT-HOOK-CELL + FRESH
    data-base RBASE-CELL + TEXT-BASE
    STR-MAX-I64$ STR-I64-DIGITS CARRIED
    STR-MIN-I64$ STR-I64-DIGITS CARRIED

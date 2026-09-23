@@ -1752,6 +1752,10 @@ SUITE fs-mutate
    lib/fs-mutate-test.f
 ;SUITE
 
+SUITE exit-hook
+   test/exit-hook-test.f
+;SUITE
+
 SUITE fs-copy-alias
    lib/fs-copy-alias-test.f
 ;SUITE

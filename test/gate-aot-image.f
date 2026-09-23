@@ -209,18 +209,31 @@ create CODE-PATH FS-PATH-CAP allot
    a 3 + c@ 24 lshift or ;
 
 
+\ The process-exit hook follows the root call (src/habu/aot-lib.f
+\ EMIT-EXIT-HOOK): load the vector, skip an empty one, clear it, call it. The
+\ CBZ lands on the exit tail's first instruction.
+: EXIT-HOOK-END ( -- n )
+   ROOT-CALL @ 4 +  9 DATA EXIT-HOOK-CELL ENC-LDR INSTR=
+   ROOT-CALL @ 8 +  9 4 ENC-CBZ INSTR=
+   ROOT-CALL @ 12 + 10 0 0 MOVZHW INSTR=
+   ROOT-CALL @ 16 + 10 DATA EXIT-HOOK-CELL ENC-STR INSTR=
+   ROOT-CALL @ 20 + 9 ENC-BLR INSTR=
+   ROOT-CALL @ 24 + ;
+
+
 : STARTUP-END ( -- n )
+   EXIT-HOOK-END {: tail:n :}
    \ The exit syscall tail is emitted even though a successful exit never
    \ returns to its Linux errno reconciliation instructions.
-   ROOT-CALL @ 4 + 0 0 0 MOVZHW INSTR=
-   ROOT-CALL @ 8 + SYS-EMIT-EXIT STENCIL-W INSTR=
-   ROOT-CALL @ 12 + SYS-EMIT-SVC STENCIL-W INSTR=
+   tail      0 0 0 MOVZHW INSTR=
+   tail 4 +  SYS-EMIT-EXIT STENCIL-W INSTR=
+   tail 8 +  SYS-EMIT-SVC STENCIL-W INSTR=
    HB-TARGET-LINUX? if
-      ROOT-CALL @ 16 + 16 $FFE 0 MOVNHW INSTR=
-      ROOT-CALL @ 20 + 0 16 ENC-CMP INSTR=
-      ROOT-CALL @ $18 + exit
+      tail 12 + 16 $FFE 0 MOVNHW INSTR=
+      tail 16 + 0 16 ENC-CMP INSTR=
+      tail 20 + exit
    then
-   ROOT-CALL @ $10 + ;
+   tail 12 + ;
 
 
 : CHECK-CODE-END ( -- )

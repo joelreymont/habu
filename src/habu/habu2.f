@@ -4371,6 +4371,40 @@ variable LTOPHOOK
    9 BLR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
+\ ---- the process-exit hook (layout.f EXIT-HOOK-CELL) ------------------------
+\ LEXITHOOK: the shared exit trampoline, BL-called with the exit code in x0 from
+\ every DELIBERATE exit - LRBYE (EM-COMPILE-EXIT), BDIE (habu1.f) and LUNCAUGHT
+\ below. A stripped application's entry has no engine label to call, so it emits
+\ this same sequence inline (src/habu/aot-lib.f EMIT-EXIT-HOOK). No hook is one
+\ load and a CBZ, so an uninstalled vector costs two instructions on the way out.
+\ THE CELL IS CLEARED BEFORE THE CALL. A hook that dies or throws re-enters an
+\ exit path, and it has to find the vector empty there rather than itself.
+\ The hook's effect is ( -- ) and it runs on the data stack AS IT STANDS, with no
+\ reset to S0: BDIE may be running on a task thread whose stack is its own, and
+\ every caller reaches here with a valid XDS. x0 (the exit code) and LR are saved
+\ across it; the hook is ordinary compiled code, so every other caller-saved
+\ register is the caller's to re-derive afterwards.
+\ A SEALED ENGINE HELPER, for the reason (LREPLROUTE) is one: `die` reaches this
+\ routine by a DIRECT BL from a prim body (habu1.f BDIE), and a stripped image
+\ relocates such a call by resolving its target to a record's code entry
+\ (aot-closure.f FINDADDR-PTR). With no record the callee never enters the
+\ closure and the linker refuses the branch - `aot: PC-relative target removed or
+\ outside closure site=die`, exit 74, for every application whose closure reaches
+\ `die`. The record is system-private, so no word search sees the name.
+: EMIT-EXITHOOK ( -- )
+   LBL LBL {: nohk:label end:label :}
+   LEXITHOOK LABEL@ {: start:label :}
+   s" (LEXITHOOK)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   start LBL,
+   9 DATA EXIT-HOOK-CELL LDR,  9 nohk CBZ,
+   SP SP 16 SUBI,  30 SP 0 STR,  0 SP 8 STR,
+   10 0 MOVZ,  10 DATA EXIT-HOOK-CELL STR,
+   9 BLR,
+   0 SP 8 LDR,  30 SP 0 LDR,  SP SP 16 ADDI,
+   nohk LBL,
+   RET,
+   end LBL, ;
+
 : C-ISDQ ( -- )
    C-QUOTE-START
    C-QUOTE-SCAN
@@ -6916,6 +6950,7 @@ ardone LBL,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
+   9 DATA EXIT-HOOK-CELL STR,            \ no process-exit hook until something arms it
    \ Tier 0 is the cold default: a session that selects nothing runs the JIT.
    \ Stored rather than left to the zeroed DATA page, so the default is a line
    \ someone can find and change, next to the dispatch it selects.
@@ -6931,7 +6966,7 @@ ardone LBL,
    9 ADDRESS-CELLS:BOOT-OFF LIT64, 9 10 ADDRESS-CELLS:BASE-FIELD STR,
    9 ADDRESS-CELLS:BOOT-CAP LIT64, 9 10 ADDRESS-CELLS:CAP-FIELD STR,
    9 0 MOVZ, 9 10 ADDRESS-CELLS:MODE-FIELD STR,
-   \ The three hooks and the compiler-dispatch cell hold execution tokens once something installs
+   \ The four hooks and the compiler-dispatch cell hold execution tokens once something installs
    \ them, so they are address cells like a deferred word's dispatch cell. They are
    \ declared here, by name, on the cold path only: a restored image already
    \ carries the declarations the writing run made, and re-declaring is not the
@@ -6939,6 +6974,7 @@ ardone LBL,
    HOOK-CELL SNAP-RELOC:MARK-CELL
    COMPILE-PREFLIGHT-CELL SNAP-RELOC:MARK-CELL
    TOP-HOOK-CELL SNAP-RELOC:MARK-CELL
+   EXIT-HOOK-CELL SNAP-RELOC:MARK-CELL
    NCOMP-DISPATCH:XT-CELL SNAP-RELOC:MARK-CELL
    APP-ENTRY:XT-CELL SNAP-RELOC:MARK-CELL
    9 DATA NCOMP-DISPATCH:DECL-CELL ADDI,  SNAP-RELOC:LPTRMARK LABEL@ BL,
@@ -9194,6 +9230,11 @@ public
    LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
    15 9 0 ADDI,                                        \ x15 = code (survives writes; x9-x14 are itoa scratch)
    0 9 0 ADDI,                                         \ x0 = code for the passthrough exit
+   \ One call serves both legs below: the hook runs before the representable-code
+   \ exit and before the reported UNCAUGHT-RC one. x0 is the trampoline's to
+   \ preserve; x9 and x15 are re-derived from it because the hook is ordinary
+   \ compiled code and owns every caller-saved register.
+   LEXITHOOK LABEL@ BL,  9 0 0 ADDI,  15 0 0 ADDI,
    9 1 CMPI,    C-LT LUNCRPT LABEL@ BCOND,
    9 255 CMPI,  C-GT LUNCRPT LABEL@ BCOND,
    NR-EXIT-GROUP SYS,                                  \ representable deliberate code: exit(code) as before
@@ -9621,7 +9662,7 @@ public
    1 LOKS LABEL@ ADR,  2 4 MOVZ,  G-OUT
    EM-REPL-READ
    LRBYE LABEL@ LBL,
-   0 0 MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 0 MOVZ,  LEXITHOOK LABEL@ BL,  NR-EXIT-GROUP SYS, ;   \ the deliberate success exit runs the exit hook
 
 \ Top-level data-stack underflow diagnostic. Reached from the LMAIN depth-floor
 \ guard when the just-interpreted word left XDS below S0 (proven underflow) and
@@ -10097,7 +10138,7 @@ package LABELS
 : RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !  LBL LREPLROUTE !  LBL LGENIOOUT !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
-   LBL LEX0 !  LBL LUN0 !  LBL LEVALREC !
+   LBL LEX0 !  LBL LUN0 !  LBL LEVALREC !  LBL LEXITHOOK !
    LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
    LBL LSRCRD !  LBL LSRCRDP !  LBL LSHBANG !  LBL LOPENERR !  LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
@@ -10559,7 +10600,8 @@ variable PTC-I   variable PTC-J
    EMIT-QUALIFY-DEF
    EMIT-STORE-DEF-NAME
    EMIT-NUM
-   EMIT-TOPHOOK ;
+   EMIT-TOPHOOK
+   EMIT-EXITHOOK ;
 
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE

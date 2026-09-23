@@ -513,6 +513,22 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
 \ pages its only diagnostic WAS the per-transfer check. Without the handler the
 \ guard page would be a bare SIGSEGV; with it, the overflow is the same named
 \ `hb: stack bounds exceeded (<which>)` and STACK-BOUNDS exit the engine gives.
+\ The process-exit vector (src/habu/layout.f EXIT-HOOK-CELL), inline. A stripped
+\ image has no engine label to call - habu2.f EMIT-EXITHOOK's trampoline is
+\ engine text, and this entry is the whole of this image's exit path - and after
+\ the root call every register but the VM's is dead, so the sequence needs
+\ neither a frame nor a saved exit code. THE CELL IS CLEARED BEFORE THE CALL,
+\ exactly as the engine's trampoline clears it: a hook that dies re-enters an
+\ exit path and must find the vector empty. An image that arms nothing pays one
+\ load and a CBZ. The image gate reads this sequence instruction by instruction
+\ between the root call and the exit tail (test/gate-aot-image.f EXIT-HOOK-END).
+: EMIT-EXIT-HOOK ( -- )
+   LBL {: nohk:label :}
+   9 DATA EXIT-HOOK-CELL LDR,  9 nohk CBZ,
+   10 0 MOVZ,  10 DATA EXIT-HOOK-CELL STR,
+   9 BLR,
+   nohk LBL, ;
+
 : EMIT-ENTRY
    LTEXT LABEL@ LBL,                             \ text offset zero: this image's code base
    EMIT-ENTRY-ARGS                               \ argc/argv/envp into x13/x14/x15, off the untouched kernel frame
@@ -532,6 +548,7 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
    EMIT-SIGNAL-PUBLISH                           \ this image's stub address and fd word
    EMIT-SEED                                     \ push preseeded value-stack cells (empty for MAIN)
    MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)
+   EMIT-EXIT-HOOK                                \ whatever the application armed on its way out
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;               \ exit(0)
 
 \ The handler body and its hex printer follow the copied code, so the root

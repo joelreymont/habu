@@ -12,6 +12,7 @@ create SLOTS
    COMPILE-PREFLIGHT-CELL ,             0 ,
    TOP-HOOK-CELL ,                      0 ,
    ENGINE-SNAP-XT-CELL ,                0 ,
+   EXIT-HOOK-CELL ,                     0 ,
    NCOMP-DISPATCH:XT-CELL ,              0 ,
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
    NCOMP-DISPATCH:TARGET-DECL-CELL ,     1 ,

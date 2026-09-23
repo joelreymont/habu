@@ -1161,6 +1161,31 @@ $27F0 constant TOP-HOOK-CELL
 $27F8 constant ENGINE-SNAP-XT-CELL
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 3 cells constant ENGINE-HOOK-LEN
+\ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine
+\ calls it once with the exit code in x0, the cell cleared FIRST, immediately
+\ before the exit_group of a DELIBERATE program exit: the normal top-level exit
+\ (habu2.f EM-COMPILE-EXIT, LRBYE), `die` (habu1.f BDIE), the uncaught top-level
+\ throw (habu2.f LUNCAUGHT) and a stripped application's own exit(0)
+\ (src/habu/aot-lib.f EMIT-ENTRY). The engine's fail-closed exits - every
+\ ENGINE-ERROR:* rc and the 70/74/75/76 band - do NOT call it: a broken engine
+\ must not run program code. Clearing before the call is what stops a hook that
+\ dies or throws from re-entering itself; the exit path it lands in finds the
+\ vector empty. The hook's effect is ( -- ) and it runs on the data stack as it
+\ stands, because `die` may be running on a task thread whose stack is its own.
+\ It holds a code pointer, so it is declared for snapshot relocation beside the
+\ other hook cells (habu2.f EM-DATA-INIT SNAP-RELOC:MARK-CELL) and carries the
+\ tools/native-layout.f row every declared engine cell below the heap floor
+\ needs. A stripped image claims it FRESH (src/habu/aot-owned-cells.f): a new
+\ process has no hook, and the library that wants one arms it at runtime.
+\ It is NOT in the ENGINE-HOOK-OFF band above. Those three are the checker's
+\ crown jewels, sealed against a post-seal raw store; this vector is armed by
+\ ordinary library code (lib/fs-mutate.f) long after the seal. $2818 is the next
+\ free cell of the $2800..$3000 free header band, after SRCLOC's three above -
+\ swept for a claimant across src lib tools test bootstrap - below $7FF8 so the
+\ engine names it with a `DATA <off> LDR/STR` 12-bit scaled immediate, and below
+\ DATA-START so no compiled source can reach it by allot and DATA-START does not
+\ move.
+$2818 constant EXIT-HOOK-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

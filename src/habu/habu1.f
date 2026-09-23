@@ -198,6 +198,10 @@ variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bo
 \ primitives one lane added is a call wired to the wrong word.
 variable SEEDED-PRIM-N
 variable LREPLROUTE
+\ The process-exit vector's trampoline (habu2.f EMIT-EXITHOOK, layout.f
+\ EXIT-HOOK-CELL). Declared here, like LREPLROUTE, because BDIE below calls it
+\ and a label variable habu2.f declares does not exist while this file loads.
+variable LEXITHOOK
 \ The region's write bands track dictionary-record, control-flow and code spans.
 \ EMIT-PROT-WINDOW supplies the bodies; definition, publication and patch
 \ brackets in this file and habu2.f are their callers.
@@ -1827,6 +1831,12 @@ variable SZA-I
       SP SP $10 ADDI,
    quiet LBL,
    0 7 0 ADDI,
+   \ The message is already out; run the process-exit hook (layout.f
+   \ EXIT-HOOK-CELL) before the exit itself. The code travels in x0, which the
+   \ trampoline preserves, and x7 is re-derived from it because the hook is
+   \ ordinary compiled code and owns every caller-saved register. BDIE never
+   \ returns, so the clobbered LR costs nothing.
+   LEXITHOOK LABEL@ BL,  7 0 0 ADDI,
    7 0 CMPI,    C-LT lfixed BCOND,
    7 255 CMPI,  C-GT lfixed BCOND,
    NR-EXIT-GROUP SYS,
