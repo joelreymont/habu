@@ -532,11 +532,18 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
 : JRT-BAD-ADVANCE ( JR:reader -- JR:reader )
    JR:NEXT drop ;
 
+\ The reader must survive the caught failure - both of these hand it back and the
+\ caller reads it. A quotation literal leaves it `stale<JR:reader>` (`catch`
+\ restores the DEPTH of both stacks and never their contents) and a linear cell
+\ can be neither read nor dropped, so the caught body is a name reached by `[']`:
+\ an exceptional edge is not part of a quotation's TYPE, so that route keeps the
+\ window typed until the callee-evidence lane (dot c2923193) lets the checker
+\ prove the handle intact.
 : JRT-CATCH-BAD ( JR:reader -- JR:reader )
-   [: JRT-BAD-ADVANCE ;] catch E-JR-MALFORMED T= ;
+   ['] JRT-BAD-ADVANCE catch E-JR-MALFORMED T= ;
 
 : JRT-NESTED-CATCH-BAD ( JR:reader -- JR:reader )
-   [: JRT-CATCH-BAD ;] catch 0 T= ;
+   ['] JRT-CATCH-BAD catch 0 T= ;
 
 : JRT-TEST-CATCH-ISOLATION ( -- )
    s" [7,8]" JRT-OPEN-A

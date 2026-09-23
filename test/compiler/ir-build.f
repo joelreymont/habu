@@ -528,18 +528,22 @@ create VW-BUF VW-CAP allot
    c IR-CTX:SCRATCH-USED {: scr0:n :}
    b IR-BUILD:OPS {: ops0:n :}
    b IR-BUILD:SYMBOLS {: sym0:n :}
-   c b [: RF-FREEZE ;] catch {: c2:IR-CTX:ctx b2:IR-BUILD:builder rc:n :}
+   \ The two cells the caught body was handed come back stale (`catch` restores
+   \ the DEPTH of both stacks, never their contents): the context and the
+   \ builder this case goes on reading are the locals bound before it.
+   c b [: RF-FREEZE ;] catch {: rc:n :}
+   2drop
    rc
    c IR-CTX:MINTED mint0 -
    c IR-CTX:SCRATCH-USED scr0 -
-   b2 IR-BUILD:OPS ops0 -
-   b2 IR-BUILD:SYMBOLS sym0 -
-   b2 IR-BUILD:LIVE?
-   c b2 IR-BUILD:ABANDON-OP
-   c b2 K-RET OP+ drop
-   c b2 IR-BUILD:END-BLOCK drop
-   c b2 IR-BUILD:END-FUN drop
-   c2 b2 IR-BUILD:FREEZE IR-BUILD:FROZEN? ;
+   b IR-BUILD:OPS ops0 -
+   b IR-BUILD:SYMBOLS sym0 -
+   b IR-BUILD:LIVE?
+   c b IR-BUILD:ABANDON-OP
+   c b K-RET OP+ drop
+   c b IR-BUILD:END-BLOCK drop
+   c b IR-BUILD:END-FUN drop
+   c b IR-BUILD:FREEZE IR-BUILD:FROZEN? ;
 
 : REFUSE-CASE ( -- )
    s" a freeze refused for an open record publishes nothing" T-LABEL
@@ -943,10 +947,11 @@ create VW-BUF VW-CAP allot
    {: c:IR-CTX:ctx :}
    CEIL-PLAN c s" hir" 1 0 IR-BUILD:NEW-BUILDER {: b:IR-BUILD:builder :}
    c b s" two" IR-BUILD:INTERN-SYMBOL drop
-   c b [: CEIL-THIRD ;] catch {: c2:IR-CTX:ctx b2:IR-BUILD:builder rc:n :}
+   c b [: CEIL-THIRD ;] catch {: rc:n :}
+   2drop
    rc
-   b2 IR-BUILD:SYMBOLS
-   c2 b2 IR-BUILD:FREEZE IR-BUILD:FROZEN? ;
+   b IR-BUILD:SYMBOLS
+   c b IR-BUILD:FREEZE IR-BUILD:FROZEN? ;
 
 : CEILING-CASE ( -- )
    s" a table at its committed ceiling refuses and stays freezable" T-LABEL
@@ -1380,16 +1385,16 @@ create VW-BUF VW-CAP allot
    {: rb:IR-BUILD:builder :}
    c rb s" x" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL 1 =
    rb IR-BUILD:SYMBOLS 2 =
-   c rb [: CF-MISS ;] catch
-   {: rc:IR-CTX:ctx rb2:IR-BUILD:builder rerr:n :}
+   c rb [: CF-MISS ;] catch {: rerr:n :}
+   2drop
    rerr E-IR-SYM-CAP =
-   rb2 IR-BUILD:SYMBOLS 2 =
+   rb IR-BUILD:SYMBOLS 2 =
 
    3 9 CLONE-PLAN
    c s" hir" 1 0 pa pr IR-BUILD:NEW-BUILDER-FROM
    {: bb:IR-BUILD:builder :}
-   c bb [: CF-MISS ;] catch
-   {: bc:IR-CTX:ctx bb2:IR-BUILD:builder berr:n :}
+   c bb [: CF-MISS ;] catch {: berr:n :}
+   2drop
    berr E-IR-SYM-BYTES =
    pr IR-SYM:SYMBOLS 2 = ;
 
@@ -1486,7 +1491,8 @@ create VW-BUF VW-CAP allot
    first 1 CURSOR-READ
    second 2 CURSOR-READ
    first IR-BUILD:FKEY 0 IR-ID:PACK-FUN
-   [: CURSOR-BAD-OWNER ;] catch {: held:IR-ID:ir-fun-id rc:n :}
+   [: CURSOR-BAD-OWNER ;] catch {: rc:n :}
+   drop
    rc E-IR-FUN-OWNER T=
    [: CURSOR-PAST ;] E-IR-FUN-BOUND TTHROWSQ
    first 1 CURSOR-READ

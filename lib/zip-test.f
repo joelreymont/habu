@@ -71,10 +71,10 @@ create PAYLOAD $20 allot
 : TRY-COMMIT ( ZIP:archive -- ZIP:archive ) dup COMMIT ;
 
 : REJECT-INDICES ( -- )
-   INPUT$ ZIP:OPEN
-   [: NEGATIVE-INDEX ;] catch E-ENTRY T=
-   [: LARGE-INDEX ;] catch E-ENTRY T=
-   ZIP:CLOSE ;
+   INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
+   archive [: NEGATIVE-INDEX ;] catch E-ENTRY T= drop
+   archive [: LARGE-INDEX ;] catch E-ENTRY T= drop
+   archive ZIP:CLOSE ;
 
 : REJECT-HANDLES ( -- )
    INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
@@ -108,8 +108,9 @@ create PAYLOAD $20 allot
    dup 0 ENTRY over swap ZIP:READ 2drop ;
 
 : CRC-FAILURE ( -- )
-   CORRUPT-FIXTURE s" corrupt.zip" PATH$ ZIP:OPEN
-   [: READ-CORRUPT ;] catch E-READ T= ZIP:CLOSE ;
+   CORRUPT-FIXTURE s" corrupt.zip" PATH$ ZIP:OPEN {: archive:ZIP:archive :}
+   archive [: READ-CORRUPT ;] catch E-READ T= drop
+   archive ZIP:CLOSE ;
 
 : FILL-PAYLOAD ( -- ) s" replacement" PAYLOAD swap BYTE-COPY ;
 

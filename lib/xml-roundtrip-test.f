@@ -106,9 +106,19 @@ variable TEMPLATE
 : DRAIN ( XML:reader -- XML:reader )
    begin NEXT TOKEN>N XML-KIND:EOF TOKEN>N <> while repeat ;
 
+: NEXT-AFTER ( XML:reader -- XML:reader )
+   NEXT drop ;
+
+\ The reader must survive the caught failure: this case reads it afterwards and
+\ closes it. A quotation literal leaves it `stale<XML:reader>` - `catch` restores
+\ the DEPTH of both stacks and never their contents - and a linear cell can be
+\ neither read nor dropped, so the body is named and reached by `[']`: the
+\ exceptional edge is not part of a quotation's TYPE, so that route keeps the
+\ window typed until the callee-evidence lane (dot c2923193) lets the checker
+\ prove the handle intact.
 : REJECTS ( ptr u8 n -- )
-   OPEN [: DRAIN ;] catch 0<> TTRUE
-   [: NEXT drop ;] catch E-STATE T=
+   OPEN ['] DRAIN catch 0<> TTRUE
+   ['] NEXT-AFTER catch E-STATE T=
    XML:CLOSE ;
 
 : RANDOM-REJECTION ( n -- )

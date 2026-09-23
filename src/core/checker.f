@@ -143,6 +143,13 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 0 constant T-CON   1 constant T-VAR   2 constant T-PTR
 3 constant S-ROW   4 constant S-PUSH
 5 constant T-QUOT  6 constant T-ATOM  7 constant T-PARAM
+\ T-STALE wraps the type a cell HAD before a caught throw path may have
+\ overwritten it (`catch` restores stack DEPTH, never contents). The eight
+\ original tags filled a 3-bit field, so the field is four bits wide: every term
+\ id is `payload << TAG-SHIFT | tag`, and TAG-SHIFT/TAG-MASK are the only two
+\ places that width is written down.
+8 constant T-STALE
+4 constant TAG-SHIFT   $F constant TAG-MASK
 -1 constant UNBOUND
 \ Trusted checker internals below are confined to raw mmap-result refinements,
 \ typed views/nulls over checker arenas, and one raw effect query.
@@ -358,15 +365,15 @@ TVINIT
    k2 TVK-OFF = IF k1 TVK-NULL = IF TVK-DBASE ELSE k1 THEN EXIT THEN
    k1 TVK-RANK k2 TVK-RANK >= IF k1 ELSE k2 THEN ;
 
-: TAG 7 and ;
+: TAG TAG-MASK and ;
 
-: PAY 3 rshift ;
+: PAY TAG-SHIFT rshift ;
 
-: MK-CON 3 lshift ;
+: MK-CON TAG-SHIFT lshift ;
 
-: MK-VAR 3 lshift T-VAR or ;
+: MK-VAR TAG-SHIFT lshift T-VAR or ;
 
-: MK-ROW 3 lshift S-ROW or ;
+: MK-ROW TAG-SHIFT lshift S-ROW or ;
 
 
 : RVK-QUOT? ( n -- bool ) TVK@ RVK-QUOT = ;
@@ -396,10 +403,33 @@ PTRA-BOOT PTRA-P !   MAXPTR-INIT PTR-CAP !
 : MK-PTR ( n -- n )
    PTRN @ 1 + PTR-ENSURE
    PTRN @ cells PTRA + !
-   PTRN @ 3 lshift T-PTR or
+   PTRN @ TAG-SHIFT lshift T-PTR or
    PTRN @ 1 + PTRN ! ;
 
 : PTR>INNER PAY cells PTRA + @ ;
+
+\ --- stale terms: the wrapper a caught throw leaves behind ---------------------
+\ `stale<t>` is the type of a cell that sat in a caught quotation's window and
+\ that some throw path of that body may have overwritten: the engine restores the
+\ stack DEPTH a `catch` was entered at and never the CONTENTS, so the cell is a
+\ machine word of no known type. It wraps its old type the way T-PTR wraps a
+\ pointee, so a diagnostic can still say WHICH type was lost. Its arena is a
+\ per-definition scratch store like PTRA (counter reset in NEW, buffer repointed
+\ at snapshot, height saved and restored by a prim-overload trial). The three
+\ words that read it need T-RES and sit just below it.
+1024 constant MAXSTALE-INIT     \ stale terms (grows on demand)
+create STLA-BOOT MAXSTALE-INIT cells allot   variable STLN
+PERSISTED-PTR-VARIABLE STLA-P   variable STL-CAP
+STLA-BOOT STLA-P !   MAXSTALE-INIT STL-CAP !
+: STLA ( -- ptr n ) STLA-P @ ;
+
+: STL-ENSURE ( n -- ) {: need:n :}
+   need STL-CAP @ <= IF exit THEN
+   need STL-CAP @ 2 * max {: nc:n :}
+   STLA-P @ STL-CAP @ cells nc cells ARENA-BYTES-GROW STLA-P !
+   nc STL-CAP ! ;
+
+: STALE>INNER ( n -- n ) PAY cells STLA + @ ;
 
 \ --- unification trail: TV!/RV! record each speculative var binding here so a
 \ failed prim-overload trial undoes them by popping+unbinding (TRIAL-REST) instead
@@ -544,15 +574,31 @@ QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
    0 QEN @ cells QXNA + !
    0 QEN @ cells QXDA + !
    0 QEN @ cells QXRA + !
-   QEN @ 3 lshift T-QUOT or  QEN @ 1 + QEN ! ;
+   QEN @ TAG-SHIFT lshift T-QUOT or  QEN @ 1 + QEN ! ;
 : Q>DIN  PAY 32 * QEA + @ ;
 : Q>DOUT PAY 32 * QEA + 8 + @ ;
 : Q>RIN  PAY 32 * QEA + 16 + @ ;
 : Q>ROUT PAY 32 * QEA + 24 + @ ;
 : Q>XHAS ( n -- bool ) PAY cells QXHA + @ 0 <> ;
 : Q>XDEAD ( n -- bool ) PAY cells QXNA + @ 0 <> ;
-: Q>XDOUT PAY cells QXDA + @ ;
-: Q>XROUT PAY cells QXRA + @ ;
+
+\ The two exceptional slots hold the INTACT MASKS of the quotation's window (see
+\ THROW-EDGE), stored with a self-describing low tag. Until this rule they held
+\ a data/return ROW id, and the persistence and freshening copies below carry
+\ these slots through unchanged -- including a record written by an OLDER engine
+\ and read back through E-INST-FROM, where there is no format version to consult.
+\ A row term's tag is always S-ROW or S-PUSH, so a field whose low bits are
+\ neither (T-QUOT's tag, which no row can carry) is the only shape this format
+\ writes, and anything else reads as "no cell proved intact" -- the conservative
+\ answer, never a mask made of somebody else's pointer bits.
+T-QUOT constant XMASK-MARK
+: XMASK ( n -- n ) TAG-SHIFT lshift XMASK-MARK or ;      \ mask -> stored field
+: XMASK> ( n -- n ) dup TAG XMASK-MARK = IF PAY ELSE drop 0 THEN ;
+
+: Q>XDFIELD ( n -- n ) PAY cells QXDA + @ ;   \ the slots verbatim, for the copies
+: Q>XRFIELD ( n -- n ) PAY cells QXRA + @ ;
+: Q>XDMASK ( n -- n ) Q>XDFIELD XMASK> ;      \ window cells every throw path left intact
+: Q>XRMASK ( n -- n ) Q>XRFIELD XMASK> ;
 : Q-FLAG>N ( bool -- n ) IF -1 ELSE 0 THEN ;
 : QX! ( n bool bool n n -- ) {: q:n xhas:bool xdead:bool xd:n xr:n :}
    xhas Q-FLAG>N q PAY cells QXHA + !
@@ -628,7 +674,7 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
    a ATOMN @ ATOMA-FIELD !
    u ATOMN @ cells ATOMU + !
    k ATOMN @ cells ATOMK + !
-   ATOMN @ 3 lshift T-ATOM or
+   ATOMN @ TAG-SHIFT lshift T-ATOM or
    ATOMN @ 1 + ATOMN ! ;
 : MK-ATOM ( ptr u8 n -- n )
    0 MK-ATOM-K ;
@@ -1184,7 +1230,7 @@ UK-EXACT UNIFY-KIND !
    REPEAT drop
    argc PARG-N @ + PARG-N !
    base PARAM-SCR-N !
-   PARAMN @ 3 lshift T-PARAM or
+   PARAMN @ TAG-SHIFT lshift T-PARAM or
    PARAMN @ 1 + PARAMN ! ;
 
 4096 constant MAXPUSH-INIT     \ push records (engine-sized bodies need hundreds; grows on demand)
@@ -1203,7 +1249,7 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
    SPN @ 2 * cells SPA + {: a:ptr :}
    a 8 + !
    a !
-   SPN @ 3 lshift S-PUSH or
+   SPN @ TAG-SHIFT lshift S-PUSH or
    SPN @ 1 + SPN ! ;
 
 : P>TYPE PAY 2 * cells SPA + @ ;
@@ -1348,6 +1394,21 @@ PTX-BARRIER-DEFAULT
    dup R-RES-WALK {: root:n :}
    root R-COMPRESS
    root ;
+
+\ The two readers of the stale arena declared above. Idempotent: a cell two
+\ nested catches both leave stale is stale once, so the wrapper never nests and
+\ one STALE>INNER always reaches the real type. T-UNSTALE answers that type,
+\ which is what every width / occurs / linear question is really asking.
+: MK-STALE ( n -- n )
+   T-RES dup TAG T-STALE = IF EXIT THEN
+   STLN @ 1 + STL-ENSURE
+   STLN @ cells STLA + !
+   STLN @ TAG-SHIFT lshift T-STALE or
+   STLN @ 1 + STLN ! ;
+
+: T-UNSTALE ( n -- n )
+   T-RES dup TAG T-STALE = IF STALE>INNER T-RES THEN ;
+
 \ MAXUWL sizes five parallel worklist arrays (UWL and the four per-pair flag
 \ tables below), 40 bytes of boot DP per cell. Unlike the arenas this one has no
 \ grow path - U-PUSH refuses by name when it is full - so the cut keeps a wide
@@ -1820,6 +1881,7 @@ variable TWALK-D
    drop
    t T-RES {: x:n :}
    x TAG T-VAR = IF any IF RES-TRUE ELSE x PAY v = THEN EXIT THEN
+   x TAG T-STALE = IF v x STALE>INNER any TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-PTR = IF v x PTR>INNER any TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
       v x Q>DIN any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
@@ -1849,8 +1911,9 @@ variable TWALK-D
 \ family-id, so a layout cell unifying with the SAME family (the PARAM-PAIR-ARGS
 \ arm) flows fine; only a var/con/ptr/atom pairing reaches this guard.
 : LAYOUT-PARAM? ( n -- bool ) {: t:n :}
-   t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
-   t T-RES PARAM>FAM dup 0 < IF drop RES-FALSE EXIT THEN
+   t T-UNSTALE {: r:n :}                    \ a stale cell is still a cell of its family
+   r TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   r PARAM>FAM dup 0 < IF drop RES-FALSE EXIT THEN
    TFAM-LAYOUT?* ;
 : LAYOUT-EITHER? ( n n -- bool ) {: t1:n t2:n :}
    t1 LAYOUT-PARAM? IF RES-TRUE EXIT THEN
@@ -1881,7 +1944,7 @@ variable TWALK-D
 \ instantiation equals the declared width); type-family.f rebinds the hook to the
 \ arg-aware TFAM-INST-WIDTH@. This is the type-level fact the WF- surface records.
 : T-WIDTH ( n -- n ) {: t:n :}
-   t T-RES {: r:n :}
+   t T-UNSTALE {: r:n :}                         \ a stale cell occupies what it occupied
    r TAG T-PARAM <> IF 1 EXIT THEN
    r PARAM>FAM {: fam:n :}
    fam 0 < IF 1 EXIT THEN
@@ -1896,12 +1959,27 @@ variable TWALK-D
 \ pairs only with the SAME family AND slot and never binds a var/con/ptr/atom
 \ (docs §10), enforced in U-TYPE below. Whole-bundle transports move the W-cell
 \ group by direct row surgery (XPORT-STEP?, further down).
+\ THE PHYSICAL QUESTIONS SEE THROUGH A STALE WRAPPER, AND THE TYPE QUESTION DOES
+\ NOT. `catch` wraps each window cell it cannot vouch for one cell at a time
+\ (ROW-STALE-FROM), so an option<pt> window on the live row is THREE stale cells.
+\ Which family, which slot, how wide, is it hidden - those are questions about
+\ the cell, and a cell a throw left stale is still that hidden cell; answered on
+\ the wrapper instead, every group walker (XG-READ-GROUP, LOGHID-AT?,
+\ WF-POS-RECORD, locals capture, the renderer's compaction) stops seeing a group
+\ and a W-cell bundle becomes W cells no single `drop` can remove. U-TYPE keeps
+\ the type question: a stale cell pairs with a var or an equally stale cell and
+\ nothing else, so every typed use of the group is still E-STALE-READ.
 : HIDDEN-PARAM? ( n -- bool ) {: t:n :}     \ resolved term is a hidden physical field
-   t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
-   t T-RES PARAM>HID 0 > ;
+   t T-UNSTALE {: r:n :}
+   r TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   r PARAM>HID 0 > ;
 : HIDDEN-SLOT@ ( n -- n ) {: t:n :}         \ physical slot index; dies on a non-hidden term
    t HIDDEN-PARAM? 0= IF s" checker: hidden-slot@ on non-hidden param" 76 die THEN
-   t T-RES PARAM>HID 1 - ;
+   t T-UNSTALE PARAM>HID 1 - ;
+\ the family a row cell belongs to, stale or not: the group walkers pair it with
+\ the questions above, and a raw PARAM>FAM on a wrapper reads the stale arena
+\ index as a param index (a fail-OPEN garbage family).
+: CELL>FAM ( n -- n ) T-UNSTALE PARAM>FAM ;
 
 \ ---- the one authority for a row's width in stack cells ------------------------
 \ ROW-TERM-CELLS and ROW-CELLS sit HIGH IN THE FILE because three passes far
@@ -1961,15 +2039,19 @@ variable TWALK-D
 \ MK-LOGICAL ( n -- n ) : the logical family term for a resolved hidden field —
 \ same name/family-id/arg terms, PARAMHID 0. Renderer compaction folds a full
 \ hidden run back to this logical type (docs §20); checking never consumes it.
+\ A STALE cell's logical type is stale: the wrapper belongs to the value, not to
+\ the physical cell, so a group `catch` left stale prints stale<option<pt>> and
+\ never three cells.
 : MK-LOGICAL ( n -- n ) {: src0:n :}
-   src0 T-RES {: src:n :}
+   src0 T-UNSTALE {: src:n :}
    src HIDDEN-PARAM? 0= IF s" checker: mk-logical on non-hidden param" 76 die THEN
    PARAM-SCR-N @ {: base:n :}
    0 BEGIN dup src PARAM>ARGC < WHILE
       src over PARAM>ARG PARAM-SCR+
       1 +
    REPEAT drop
-   base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM ;
+   base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: lg:n :}
+   src0 T-RES TAG T-STALE = IF lg MK-STALE ELSE lg THEN ;
 \ LAYOUT-PUSH-FIELDS ( n n -- n ) : push `type:n`'s W hidden fields onto `row:n`
 \ in physical order — slot0 deepest, tag (W-1) on top (docs §5). Slice 3b calls
 \ this from PUSH-LOGICAL; in slice 3a only the new fixtures drive it.
@@ -2220,6 +2302,11 @@ variable BASE-PTR-HIT
 \ because the E-RAW-CELL-PTR family answers it with its own reason and its own
 \ repair class: the repair is a declared code cell, not a declared pointer cell.
 variable RAW-EXEC-HIT
+\ A `stale<t>` met a type this token's unify demanded, so the token READ a cell a
+\ caught throw may have overwritten. Latched the same way and named the same way
+\ (CELL-DIAG!), because the answer is also a rule and not a shape mismatch: the
+\ cell has no type left to read.
+variable STALE-HIT
 
 \ `xt!` IS THE SANCTIONED CODE-CELL MINT, and it is exempt from FENCE-EXEC for
 \ the same reason LAYOUT-INTRO is exempt from the nominal rules: it is the one
@@ -2379,9 +2466,19 @@ variable XT-DECL
       PARAM-I @ 1 + PARAM-I !
    REPEAT ;
 
+\ A stale cell may be MOVED and DROPPED (both meet a plain type variable, which
+\ binds to the wrapper) and it may meet an equally stale cell at a control-flow
+\ join, where the two lost types have to agree. Nothing else: reaching this last
+\ arm with a stale on either side is a READ of the cell, and it is named rather
+\ than reported as a shape mismatch.
+: STALE-NOTE ( n n -- n n )
+   2dup TAG T-STALE =  swap TAG T-STALE =  or IF -1 STALE-HIT ! THEN ;
+
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
    2dup = IF 2drop ELSE
+   over TAG T-STALE =  over TAG T-STALE =  and IF
+     over STALE>INNER over STALE>INNER PAIR 2drop ELSE
    over TAG T-QUOT =  over TAG T-QUOT =  and IF
      \ Inputs flow INTO a quotation from whoever executes it, so the din and rin
      \ pairs are pushed flipped: the expected effect's inputs take the actual
@@ -2399,7 +2496,11 @@ variable XT-DECL
    2dup FIELD-COERCE? IF 2drop ELSE
    over TAG T-PARAM =  over TAG T-PARAM =  and IF
      2dup PARAM-HID-OK? IF 2dup PARAM-PAIR-ARGS 2drop ELSE U-FAIL THEN ELSE   \ item 12 slice-3a: hidden field pairs only same-family same-slot
-   2dup LAYOUT-BLOCK? IF U-FAIL ELSE   \ item 12: only a whole-bundle transport op may bind a layout cell
+   2dup LAYOUT-BLOCK? IF STALE-NOTE U-FAIL ELSE   \ item 12: only a whole-bundle transport op may bind a layout cell
+                                       \ a stale layout cell reaches here (its family answers
+                                       \ through the wrapper): a typed use of the bundle, named
+                                       \ E-STALE-READ through STALE-NOTE's latch, which CELL-DIAG!
+                                       \ (below) reads before any rule about WHICH type it is
    over ISVAR IF
      over PAY over TY-OCC? IF U-FAIL ELSE
        over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY TV! THEN THEN ELSE   \ raw discipline: RAW var rejects nominal/atom/layout
@@ -2408,7 +2509,7 @@ variable XT-DECL
        over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY TV! THEN THEN ELSE
    over TAG T-CON =  over TAG T-CON =  and IF
      2dup CON-OK? IF 2drop ELSE U-FAIL THEN
-   ELSE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+   ELSE STALE-NOTE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 \ --- logical<->hidden bundle coercion (item 11 slice 1, docs §18-19). A stored
 \ effect keeps a parametric layout value as ONE logical cell whenever an arg is
@@ -2430,7 +2531,7 @@ variable XT-DECL
    tl TAG T-PARAM = 0= IF RES-FALSE EXIT THEN
    tl HIDDEN-PARAM? IF RES-FALSE EXIT THEN
    tl LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
-   th PARAM>FAM tl PARAM>FAM = 0= IF RES-FALSE EXIT THEN
+   th CELL>FAM tl PARAM>FAM = 0= IF RES-FALSE EXIT THEN   \ th may be a stale window cell
    th HIDDEN-SLOT@ th T-WIDTH 1 - = ;   \ whole group: tag on top (arg-aware bundle width)
 : LOGHID-EXPAND ( n n -- ) {: rh:n rl:n :}   \ expand rl's logical top, re-pair rows
    rl P>TYPE T-RES {: tl:n :}
@@ -2521,13 +2622,16 @@ variable FV
    REPEAT drop ;
 variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
-variable THDROW  variable THRROW  variable THSET
+\ THDMASK/THRMASK: the running AND-fold of the intact masks of every throw edge
+\ of the body being checked (THROW-EDGE). THSET says whether any edge was seen,
+\ and only then do the masks mean anything.
+variable THDMASK  variable THRMASK  variable THSET
 variable XROW  variable XRROW  variable XSET  variable DEADP
 variable DEADERR  PTR-VARIABLE DEADTA  variable DEADTU
 
 : NEW ( -- )
    0 CALL-ARMED !  0 CALL-HIT !
-   -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !
+   -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !  0 STLN !
    0 LAYOUT-XPORT !  0 LAYOUT-INTRO !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
    RIGID-RESET
@@ -2673,6 +2777,9 @@ variable LTC-P
 : LIN-TYPE-COUNT* ( n -- n ) {: t:n :}
    t T-RES TAG case
       T-CON of t LIN-CON? IF 1 ELSE 0 THEN endof
+      \ A linear cell a throw left stale is still the caller's to account for:
+      \ the stale wrapper hides the type, never the ownership.
+      T-STALE of t T-RES STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER endof
       T-PTR of 0 endof
       T-QUOT of 0 endof
       T-ATOM of 0 endof
@@ -2757,6 +2864,7 @@ variable LTC-P
 29 constant MD-NULL-PTR       \ a nominal or a pointer read through NULL-PTR (BASE-BLOCK?); same E-RAW-CELL-PTR code, prose names the null
 30 constant MD-DBASE-PTR      \ the same through data-base, at any pointee depth; same E-RAW-CELL-PTR code, prose names the DATA region
 31 constant MD-RAW-EXEC       \ an execution token met an undeclared cell or a base address (FENCE-EXEC); same E-RAW-CELL-PTR code, its own prose and repair class
+32 constant MD-STALE-READ     \ a token read a cell `catch` left stale (U-TYPE met a T-STALE)
 
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
@@ -2783,6 +2891,7 @@ variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 \ open. The base-address refusal names itself exactly as the raw one does
 \ (BASE-BLOCK?).
 : CELL-DIAG! ( -- )
+   STALE-HIT @ IF MD-STALE-READ MDIAG! THEN    \ a cell with no type left to read answers before any rule about which type it is
    RAW-EXEC-HIT @ IF MD-RAW-EXEC MDIAG! THEN   \ the executable value first: it is the one rule that names a base and a raw cell alike
    RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
    BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN   \ the base-address refusals name themselves the same way (BASE-BLOCK?),
@@ -2988,8 +3097,103 @@ variable CDT-ROW
    OK @ IF LIN-CHECK THEN ;
 variable QTT  variable QD2  variable QR2
 
-: THROW-EDGE ( -- )
-   THSET @ 0= IF DCUR @ THDROW !  RCUR @ THRROW ! THEN
+\ ---- what a throw path leaves of the window it was entered with ---------------
+\ `catch` puts the two stacks back to the DEPTH it was entered at and never to
+\ their CONTENTS, so every cell of the caught quotation's window -- its declared
+\ fixed input prefix, the cells CWIN-IN counts -- is only still worth its input
+\ type if EVERY throw path of that body provably left it alone. What is recorded
+\ per body is therefore one INTACT MASK per stack: bit j, counted from the TOP of
+\ the window, is set while every edge so far left window cell j where it was.
+\
+\ WHY FROM THE TOP. A quotation body starts on a fresh open row and its window
+\ grows DOWNWARD as the body pops: the window is only final at `;]`. A cell the
+\ body pops AFTER an edge was below that edge's stack pointer and could not have
+\ been touched before it, so it is intact at that edge by construction -- and
+\ counting from the top keeps every bit already recorded pointing at the same
+\ cell while the window deepens underneath it.
+\
+\ Bits above the recorded width mean "intact" too (same argument), so a window
+\ wider than the mask, or a row the edge cannot be compared against at all,
+\ records a zero: nothing proved, everything stale.
+48 constant XMASK-BITS          \ window cells a mask can speak for
+$FFFFFFFFFFFF constant XMASK-ALL         \ 2^48-1: every window cell intact
+
+variable XM-I   variable XM-ACC   variable XS-I
+variable XC-A   variable XC-B
+variable XE-PD  variable XE-PR       \ the rows a token step started from
+
+: ROW-TERMS ( n -- n )          \ fixed entries in a row (terms, not cells)
+   0 swap
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      P>REST swap 1 + swap
+   REPEAT drop ;
+
+: ROW-SKIP ( n n -- n ) {: r:n cnt:n :}      \ the row with its top cnt entries dropped
+   0 XS-I !  r
+   BEGIN XS-I @ cnt < WHILE
+      R-RES P>REST  XS-I @ 1 + XS-I !
+   REPEAT ;
+
+: XM-CLEAR ( n -- )             \ mark window position j stale in the mask being built
+   1 swap lshift invert XM-ACC @ and XM-ACC ! ;
+
+\ The mask an edge contributes: `x` is the exceptional row (the live row with the
+\ throwing token's inputs already popped and its outputs not yet pushed) and `b`
+\ is the body's base row, whose fixed entries are the window known so far. Both
+\ end in the same tail because every row in a body descends from that base by
+\ pushes and pops; an edge whose row does not is not comparable and proves
+\ nothing. Position j is intact when the exceptional row still holds a cell at
+\ that depth and it is THE SAME TERM: identity, not unification, because the
+\ window cells of a quotation literal are unbound variables until the catch site
+\ fits them, and a unification that binds one would be the checker choosing a
+\ type for the caller rather than finding one.
+: XMASK-OF ( n n -- n ) {: x:n b:n :}
+   x ROW-TAIL b ROW-TAIL <> IF 0 EXIT THEN
+   b ROW-TERMS {: k:n :}
+   k 0= IF XMASK-ALL EXIT THEN
+   k XMASK-BITS > IF 0 EXIT THEN
+   x ROW-TERMS {: m:n :}
+   XMASK-ALL XM-ACC !
+   k m - 0 max {: skb:n :}
+   b skb ROW-SKIP  x m k - 0 max ROW-SKIP    \ ( bs xs ) aligned on the shared tail
+   0 XM-I !
+   BEGIN XM-I @ skb < WHILE                  \ consumed below the edge: no cell to keep
+      XM-I @ XM-CLEAR  XM-I @ 1 + XM-I !
+   REPEAT
+   BEGIN XM-I @ k < WHILE
+      over R-RES P>TYPE T-RES  over R-RES P>TYPE T-RES  <> IF XM-I @ XM-CLEAR THEN
+      swap R-RES P>REST swap  R-RES P>REST
+      XM-I @ 1 + XM-I !
+   REPEAT
+   2drop XM-ACC @ ;
+
+\ The row a throwing TOKEN leaves: its inputs are popped and its outputs are not
+\ pushed yet, and the token step has already run by the time the edge is taken.
+\ Both the pre-op and the post-op row are the same chain below the token's own
+\ cells, so the deepest row node the two share IS that row -- no declared input
+\ count has to be recovered. Aligning the two by length puts the shared part at
+\ the same offset in both, so the first node they agree on starts it.
+: ROW-COMMON ( n n -- n ) {: pre:n post:n :}
+   pre ROW-TERMS {: p:n :}
+   post ROW-TERMS {: q:n :}
+   pre p q - 0 max ROW-SKIP XC-A !
+   post q p - 0 max ROW-SKIP XC-B !
+   BEGIN XC-A @ R-RES XC-B @ R-RES <>
+         XC-A @ R-RES TAG S-PUSH = and WHILE
+      XC-A @ R-RES P>REST XC-A !
+      XC-B @ R-RES P>REST XC-B !
+   REPEAT
+   XC-A @ ;
+
+: THROW-EDGE ( n n -- )         \ exceptional data row, exceptional return row
+   {: xd:n xr:n :}
+   xd BROW @ XMASK-OF {: dm:n :}
+   xr RBROW @ XMASK-OF {: rm:n :}
+   THSET @ IF
+      THDMASK @ dm and THDMASK !  THRMASK @ rm and THRMASK !
+   ELSE
+      dm THDMASK !  rm THRMASK !
+   THEN
    -1 THSET ! ;
 
 \ A quotation whose declared rows name a concrete linear con is an explicit
@@ -3010,11 +3214,18 @@ variable CWIN-HIT
 variable CWIN-IN
 variable CWIN-OUT
 variable CWIN-KIND                  \ 0 catch, 1 execute, -1 finally
+variable CWIN-DTERMS  variable CWIN-RTERMS   \ the window in row terms (mask positions)
 variable FINALLY-CLEANUP-OUT
 
 : QUOT-WINDOW ( n -- ) {: kind:n :}
    kind CWIN-KIND !
    QTT @ Q>DIN ROW-CELLS CWIN-IN !
+   \ The same window counted in TERMS, which is what a mask bit indexes and what
+   \ the exceptional row of an applied quotation has to skip. Measured here for
+   \ the same reason CWIN-IN is: after UNIFY-IN the quotation's own tail IS the
+   \ live row and its fixed prefix can no longer be told from the caller's stack.
+   QTT @ Q>DIN ROW-TERMS CWIN-DTERMS !
+   QTT @ Q>RIN ROW-TERMS CWIN-RTERMS !
    QTT @ Q>XDEAD IF CELLS-NONE ELSE QTT @ Q>DOUT ROW-CELLS THEN CWIN-OUT !
    \ Preserve execute's value boundaries before unification extends the rows.
    \ Final call metadata resolves the copied terms to their concrete widths.
@@ -3054,7 +3265,7 @@ variable QAPP-N
    0 QAPP-N !
    q Q>DIN QAPP-ROW q Q>DOUT QAPP-ROW
    q Q>RIN QAPP-ROW q Q>ROUT QAPP-ROW MK-QUOT {: fresh:n :}
-   fresh q Q>XHAS q Q>XDEAD q Q>XDOUT q Q>XROUT QX!
+   fresh q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
    fresh ;
 
 : QUOT-TAIL-MARK ( n -- )
@@ -3081,7 +3292,10 @@ variable QAPP-N
      DCUR @ QTT @ Q>DIN  UNIFY-IN OK @ and OK !
      RCUR @ QTT @ Q>RIN  UNIFY-IN OK @ and OK !
      QTT @ Q>XHAS IF
-        THROW-EDGE
+        \ A callee may overwrite every cell it was given before it throws and can
+        \ reach nothing below them, so its exceptional row is the live row with
+        \ its declared inputs popped and nothing pushed.
+        DCUR @ CWIN-DTERMS @ ROW-SKIP  RCUR @ CWIN-RTERMS @ ROW-SKIP  THROW-EDGE
      THEN
      QTT @ Q>XDEAD IF
         -1 DEADP !
@@ -3126,6 +3340,34 @@ variable RSRET
 \ output row to measure and CELLS-NONE is what is recorded - not a zero, which is
 \ a real width a window-0 body has.
 
+\ ---- what the catch site hands back --------------------------------------------
+\ The fit-check above proves the caught body takes and leaves the same stack; it
+\ does NOT prove the throw paths leave the cells they were given. Each window cell
+\ the folded mask does not vouch for becomes `stale<t>` on the live row, which is
+\ the type of a cell that may be moved, dropped or bound to an untyped local and
+\ whose READ is refused by name. The throw code `catch` itself pushes is a plain
+\ `n` and is added after.
+\ A mask bit counts from the TOP of the window, so the rewrite walks DOWN to the
+\ window's bottom and rebuilds the entries above it on the way out: the entry at
+\ depth d takes bit d, and a depth past the mask's reach was never vouched for.
+\ Two base cases end the walk - the counted window, and a term that is not a push
+\ (the row's tail, so there is no further window entry to rewrite). The walk is
+\ as deep as the window is wide, which is why there is no scratch row and no
+\ width a rewrite quietly declines.
+: ROW-STALE-FROM ( n n n n -- n ) {: row:n cnt:n d:n mask:n :}
+   cnt 0= IF row EXIT THEN
+   row R-RES {: r:n :}
+   r TAG S-PUSH <> IF row EXIT THEN
+   r P>REST  cnt 1 -  d 1 +  mask RECURSE {: rest:n :}
+   r P>TYPE {: t:n :}
+   d XMASK-BITS >= IF t MK-STALE ELSE
+      mask 1 d lshift and 0= IF t MK-STALE ELSE t THEN
+   THEN
+   rest MK-PUSH ;
+
+: ROW-STALE-TOP ( n n n -- n ) {: row:n cnt:n mask:n :}
+   row cnt 0 mask ROW-STALE-FROM ;
+
 : RSCATCH   \ catch: stack-preserving quotation -> same stack plus throw code
    \ Catchable `throw` is not process no-return. The checker tracks throw paths
    \ as an exceptional edge owned by `catch`; `die` remains separate no-return
@@ -3145,6 +3387,10 @@ variable RSRET
      ELSE
         DCUR @ QTT @ Q>DOUT  UNIFY-IN OK @ and OK !
         RCUR @ QTT @ Q>ROUT  UNIFY-IN OK @ and OK !
+     THEN
+     QTT @ Q>XHAS OK @ and IF
+        DCUR @ CWIN-DTERMS @ QTT @ Q>XDMASK ROW-STALE-TOP DCUR !
+        RCUR @ CWIN-RTERMS @ QTT @ Q>XRMASK ROW-STALE-TOP RCUR !
      THEN
    ELSE QTT @ TAG T-VAR = IF
      \ Opaque xt: the caught value is a bare type variable, i.e. an xt of unknown
@@ -3183,7 +3429,7 @@ variable RSRET
    -1 CWIN-KIND !
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
-   cleanup Q>XHAS IF THROW-EDGE THEN
+   cleanup Q>XHAS IF DCUR @ RCUR @ THROW-EDGE THEN   \ a cleanup borrows nothing: its own entry row
    cleanup Q>XDEAD IF -1 DEADP ! THEN ;
 
 variable RSH
@@ -3555,8 +3801,8 @@ variable VRC-RVN
          x VREC-RES Q>ROUT RECURSE node VN.D!
          x VREC-RES Q>XHAS Q-FLAG>N node VN.E!
          x VREC-RES Q>XDEAD Q-FLAG>N node VN.F!
-         x VREC-RES Q>XDOUT node VN.G!
-         x VREC-RES Q>XROUT node VN.H!
+         x VREC-RES Q>XDFIELD node VN.G!
+         x VREC-RES Q>XRFIELD node VN.H!
          node
       endof
       T-ATOM of
@@ -5995,8 +6241,8 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
          x E-RES Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.D !
          x E-RES Q>XHAS Q-FLAG>N r@ E-PTR EN.E !
          x E-RES Q>XDEAD Q-FLAG>N r@ E-PTR EN.F !
-         x E-RES Q>XDOUT r@ E-PTR EN.G !
-         x E-RES Q>XROUT r@ E-PTR EN.H !
+         x E-RES Q>XDFIELD r@ E-PTR EN.G !
+         x E-RES Q>XRFIELD r@ E-PTR EN.H !
          r>
       endof
       T-ATOM of
@@ -8997,7 +9243,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    t T-RES dup TAG T-QUOT <> IF drop t EXIT THEN {: q:n :}
    q Q>DIN CALL-SPINE-COPY q Q>DOUT CALL-SPINE-COPY
    q Q>RIN q Q>ROUT MK-QUOT {: copy:n :}
-   copy q Q>XHAS q Q>XDEAD q Q>XDOUT q Q>XROUT QX!
+   copy q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
    copy ;
 
 : CALL-ROW-COPY ( n -- n )
@@ -9822,6 +10068,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 : DECOUPLED-ARENA-SNAP-RESET ( -- )
    SPA-P SPA-BOOT MAXPUSH-INIT 2 * ARENA-SNAP-BOOT       MAXPUSH-INIT SPA-CAP !
    PTRA-P PTRA-BOOT MAXPTR-INIT ARENA-SNAP-BOOT          MAXPTR-INIT PTR-CAP !
+   STLA-P STLA-BOOT MAXSTALE-INIT ARENA-SNAP-BOOT        MAXSTALE-INIT STL-CAP !
    QEA-P QEA-BOOT MAXQE-INIT 4 * ARENA-SNAP-BOOT
    QXDA-P QXDA-BOOT MAXQE-INIT ARENA-SNAP-BOOT           QXRA-P QXRA-BOOT MAXQE-INIT ARENA-SNAP-BOOT
    QXHA-P QXHA-BOOT MAXQE-INIT ARENA-SNAP-BOOT           QXNA-P QXNA-BOOT MAXQE-INIT ARENA-SNAP-BOOT
@@ -10494,7 +10741,7 @@ variable UNSAFE-SYM-N
 
 \ Trial save/restore: a prim-overload trial saves the scalar cursors below and the
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
-variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN
+variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN  variable SV-STLN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
 variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-DF-ACT  variable SV-DF-EXP
 variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG
@@ -10503,12 +10750,12 @@ PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
 variable SV-SGBAD-AR-DECL  variable SV-SGBAD-AR-GOT
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
-variable SV-THDROW  variable SV-THRROW  variable SV-THSET
+variable SV-THDMASK  variable SV-THRMASK  variable SV-THSET
 variable SV-TRAIL
 
 : TRIAL-SAVE
    FV @ SV-FV !  TRAIL-N @ SV-TRAIL !     \ trail height is the per-TRY-EFF mark
-   SPN @ SV-SPN !  QEN @ SV-QEN !  PTRN @ SV-PTRN !
+   SPN @ SV-SPN !  QEN @ SV-QEN !  PTRN @ SV-PTRN !  STLN @ SV-STLN !
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !
    DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !  DPOS @ SV-DPOS !
@@ -10518,7 +10765,7 @@ variable SV-TRAIL
    SGBAD-AR-DECL @ SV-SGBAD-AR-DECL !  SGBAD-AR-GOT @ SV-SGBAD-AR-GOT !
    SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
    SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
-   THDROW @ SV-THDROW !  THRROW @ SV-THRROW !  THSET @ SV-THSET ! ;
+   THDMASK @ SV-THDMASK !  THRMASK @ SV-THRMASK !  THSET @ SV-THSET ! ;
 
 : TRIAL-CLEAR-NEW
    SV-FV @ BEGIN dup FV @ < WHILE
@@ -10538,12 +10785,12 @@ variable SV-TRAIL
    SV-TRAIL @ TRAIL-UNWIND       \ undo speculative binds in both pools
    TRIAL-CLEAR-NEW               \ new-var backstop (cells never bound via TV!/RV!)
    SV-FV @ FV !
-   SV-SPN @ SPN !  SV-QEN @ QEN !  SV-PTRN @ PTRN !
+   SV-SPN @ SPN !  SV-QEN @ QEN !  SV-PTRN @ PTRN !  SV-STLN @ STLN !
    SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !
    SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
    SV-MDIAG @ MDIAG !                     \ a reason raised by an abandoned candidate is abandoned too
-   SV-THDROW @ THDROW !  SV-THRROW @ THRROW !  SV-THSET @ THSET !
+   SV-THDMASK @ THDMASK !  SV-THRMASK @ THRMASK !  SV-THSET @ THSET !
    TRIAL-REST-SG ;
 
 variable TSEEN  variable TSOK  variable TFA
@@ -10908,12 +11155,12 @@ variable WF-I
 : WF-POS-RECORD ( n -- n ) {: node:n :}
    node P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? IF
-      t PARAM>FAM {: fam:n :}
+      t CELL>FAM {: fam:n :}                    \ a stale window cell is still this family's
       t T-WIDTH {: w:n :}                       \ arg-aware bundle width (fact + row drop)
       WF-POS-I @  fam  w  WF-ADD
       node  w  ROW-DROP-N EXIT
    THEN
-   t LAYOUT-PARAM? IF WF-POS-I @  t PARAM>FAM  t T-WIDTH  WF-ADD THEN
+   t LAYOUT-PARAM? IF WF-POS-I @  t CELL>FAM  t T-WIDTH  WF-ADD THEN
    node P>REST ;
 
 : WF-ROW-SCAN ( n n -- ) {: row:n k:n :}   \ record facts for the top-k logical positions of row
@@ -11015,13 +11262,13 @@ variable XG-N   variable XG-TN   variable XG-ROW
    node TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN
    node P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? 0= IF s" checker: hidden group cell not hidden" 76 die THEN
-   t PARAM>FAM fam <> IF s" checker: hidden group family mismatch" 76 die THEN
+   t CELL>FAM fam <> IF s" checker: hidden group family mismatch" 76 die THEN
    t HIDDEN-SLOT@ slot <> IF s" checker: hidden group slot mismatch" 76 die THEN
-   t XG-T+
+   t XG-T+                     \ the cell term as it is: a stale wrapper travels with its cell
    node P>REST XG-ROW ! ;
 
 : XG-READ-HID ( n -- ) {: t:n :}   \ read the whole W-cell group whose resolved tag is t
-   t PARAM>FAM {: fam:n :}
+   t CELL>FAM {: fam:n :}
    t T-WIDTH {: w:n :}                          \ arg-aware bundle width
    t HIDDEN-SLOT@ w 1 - <> IF s" checker: hidden tag not on group top" 76 die THEN
    w 1 - BEGIN dup 0 >= WHILE
@@ -11487,13 +11734,18 @@ variable LCO
 \ LOC-PUSH-REF ( n -- ) : push local idx's binding. A bundle local (LOCW > 1)
 \ re-expands its whole group — slot0 deepest up to the stored tag term on top
 \ (docs §5); a scalar local pushes its var/term with the deferred-linear taint.
+\ A STALE bundle re-pushes stale in EVERY cell: the captured cells were all
+\ wrapped, MK-HIDDEN mints from the family term the wrapper hides, and a payload
+\ cell minted plain would launder the value a throw path may have overwritten.
 : LOC-PUSH-REF ( n -- ) {: idx:n :}
    idx cells LOCW + @ {: w:n :}
    idx cells LOCTV + @ {: t:n :}
    w 1 > IF
+      t T-UNSTALE {: lt:n :}
+      t T-RES TAG T-STALE = {: stale:bool :}
       DCUR @
       0 BEGIN dup w 1 - < WHILE
-         dup t swap MK-HIDDEN rot MK-PUSH swap
+         dup lt swap MK-HIDDEN  stale IF MK-STALE THEN  rot MK-PUSH swap
          1 +
       REPEAT drop
       t swap MK-PUSH DCUR !
@@ -12035,7 +12287,7 @@ variable LVDO  variable LVDN
    0 CF-LOOPS !
    XROW @ CF-TOP CF.XRO !  XRROW @ CF-TOP CF.XRR !
    XSET @ CF-TOP CF.XST !  DEADP @ CF-TOP CF.XDP !
-   THDROW @ CF-TOP CF.TXD !  THRROW @ CF-TOP CF.TXR !
+   THDMASK @ CF-TOP CF.TXD !  THRMASK @ CF-TOP CF.TXR !
    THSET @ CF-TOP CF.TXS !
    0 XSET !  0 DEADP !  0 THSET !
    QDEPTH @ 1 + QDEPTH !
@@ -12053,10 +12305,10 @@ variable QTMP
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
      \ A literal infers its fixed window before its implicit tails generalize.
      QTMP @ QUOT-ROWS-GENERALIZE
-     QTMP @ THSET @ DEADP @ XSET @ 0= and THDROW @ THRROW @ QX!
+     QTMP @ THSET @ DEADP @ XSET @ 0= and THDMASK @ XMASK THRMASK @ XMASK QX!
      CF-TOP CF.XRO @ XROW !  CF-TOP CF.XRR @ XRROW !
      CF-TOP CF.XST @ XSET !  CF-TOP CF.XDP @ DEADP !  \ restore outer exit state
-     CF-TOP CF.TXD @ THDROW !  CF-TOP CF.TXR @ THRROW !
+     CF-TOP CF.TXD @ THDMASK !  CF-TOP CF.TXR @ THRMASK !
      CF-TOP CF.TXS @ THSET !
      CF@LA CF-LOOPS !
      QDEPTH @ 1 - QDEPTH !
@@ -12243,8 +12495,9 @@ variable MTCH-W                      \ the bundle width the walk below really co
 : MATCH-SCRUT-CELL? ( n n n -- bool ) {: fam:n w:n j:n :}   \ one bundle level, top-down
    MTCH-ROW @ R-RES TAG S-PUSH <> IF RES-FALSE EXIT THEN
    MTCH-ROW @ R-RES P>TYPE T-RES {: t:n :}
+   t TAG T-STALE = IF RES-FALSE EXIT THEN   \ a match READS the bundle: no stale cell in it
    t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
-   t PARAM>FAM fam <> IF RES-FALSE EXIT THEN
+   t CELL>FAM fam <> IF RES-FALSE EXIT THEN
    t HIDDEN-SLOT@  w 1 - j -  <> IF RES-FALSE EXIT THEN
    j 0 = IF t MTCH-TAGT ! THEN
    MTCH-ROW @ R-RES P>REST MTCH-ROW !
@@ -12264,8 +12517,9 @@ variable MTCH-W                      \ the bundle width the walk below really co
    QDEPTH @ 0 > IF MD-QUOT MDIAG! EXIT THEN
    DCUR @ R-RES TAG S-PUSH <> IF MD-SCRUT MDIAG! EXIT THEN
    DCUR @ R-RES P>TYPE T-RES {: t:n :}
+   t TAG T-STALE = IF MD-STALE-READ MDIAG! EXIT THEN   \ the scrutinee is a cell `catch` left stale
    t LAYOUT-PARAM? 0= IF MD-SCRUT MDIAG! EXIT THEN
-   t PARAM>FAM fam <> IF MD-FAM-MISMATCH MDIAG! EXIT THEN
+   t CELL>FAM fam <> IF MD-FAM-MISMATCH MDIAG! EXIT THEN
    t HIDDEN-PARAM? 0= IF MD-OPEN-ARGS MDIAG! EXIT THEN
    MD-SCRUT MDIAG! ;
 
@@ -13372,7 +13626,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
-   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !
    TKF TKFU @ s" xt!" CORE-STR= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
    TKF TKFU @ LAYOUT-XPORT-TOK? LAYOUT-XPORT !    \ transport op? layout value moves whole
    TOK0 @ IF NAME-TOK ELSE
@@ -13402,8 +13656,11 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF
       a u FAIL-PIN! REJECT-IMMEDIATE
    THEN   \ live immediate with a usig: wrong-certificate reject (p5)
+   DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
    TKF TKFU @ DO-TOK
-   OK @ IF THROW-CUR? IF THROW-EDGE THEN THEN
+   OK @ IF THROW-CUR? IF
+      XE-PD @ DCUR @ ROW-COMMON  XE-PR @ RCUR @ ROW-COMMON  THROW-EDGE
+   THEN THEN
    OK @ IF DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF a u REJECT-DIVBAR THEN THEN THEN
    STRING-PAYLOAD-STEP
@@ -13426,7 +13683,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    \ because TRY-PRIMS applies candidate rows in turn (`V @ cell+` raises one on
    \ the `ptr a -- ptr a` row and then succeeds on `n -- n`) and the next token
    \ must start clean.
-   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 XT-DECL !
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 XT-DECL !
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -14732,7 +14989,7 @@ ASIG-GRAPH-CHECK-INSTALL
    NULL-PTR SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
-   0 THDROW !  0 THRROW !  0 THSET !
+   0 THDMASK !  0 THRMASK !  0 THSET !
    SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 NP-ORIG-N !  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
@@ -15845,7 +16102,7 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
 \ term is a logical value of its own and answers 0.
 : CD-TERM-SLOT ( n -- n ) {: t:n :}
    t HIDDEN-PARAM? 0= IF 0 EXIT THEN
-   t T-RES PARAM>HID ;
+   t HIDDEN-SLOT@ 1 + ;
 
 \ Walk one row head (top) first, recording each term's slot, and answer the
 \ row's fixed term count. Terms past the cap are counted and not recorded.

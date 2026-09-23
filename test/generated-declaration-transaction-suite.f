@@ -720,7 +720,8 @@ INSTALL-NESTED
    2dup FULL-REGISTER ;
 
 : FULL-REGISTER-CATCH ( n n -- n )
-   [: FULL-REGISTER-KEEP ;] catch {: a:n b:n code:n :}
+   [: FULL-REGISTER-KEEP ;] catch {: code:n :}
+   2drop
    code ;
 
 : FULL-SAVE-BYTES ( -- )

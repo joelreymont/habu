@@ -1208,7 +1208,10 @@ Build and environment rules are in [bootstrap.md](bootstrap.md) and
 - **`catch` restores the stack depth, not the values.** On a throw
   `nv ' WORD catch` leaves `( x code )` where `x` is whatever the callee left in
   that cell; keep every handle to release in your own locals and read only the
-  code (`state doc 0 [: WORK ;] catch CLOSE` closed a garbage handle).
+  code (`state doc 0 [: WORK ;] catch CLOSE` closed a garbage handle). The
+  checker names that read now — the cell comes back `stale<t>`, see **`catch`
+  restores the DEPTH of both stacks** under "Rules learned by refusal" — but
+  only for a caught quotation LITERAL.
 - **A `SORT:SORT!` comparator receives raw cells**; nominal pointer views are
   re-cast on both arguments inside it.
 - **Emitted primitive leafness follows emitted control flow**: `FPRIM-L` only
@@ -1312,6 +1315,50 @@ the rule.
   pushed, and a nominal handle cannot cross `catch` as a quotation's result —
   a one-slot `TYPED-BUFFER` holds it. `TTHROWSQ` runs a `( -- )` quotation.
   (Measured in Tender.)
+- **`catch` restores the DEPTH of both stacks and never their contents**, so a
+  cell in the caught quotation's window — its declared fixed input prefix, on
+  either stack — keeps its input type only when every throw path of that body
+  provably left it untouched. Every other window cell is `stale<t>` after the
+  catch, and reading one is `E-STALE-READ` (repair class
+  `keep_value_before_catch`), named on the token that reads it. The fact:
+  `SWAP-THROW ( n ptr u8 -- n ptr u8 n ) [: swap -99 throw ;] catch` certified
+  and returned (address, 17, -99) where its signature said (n, ptr u8, n), and
+  the caller's `{: value code :}` then read an integer as a pointer.
+  `test/catch-stale-suite.f` pins the rows. A stale cell may be moved, dropped
+  or bound to an untyped local; `@`, `c@`, arithmetic, a typed local and the
+  definition's own declared output refuse it, and no refinement un-stales one —
+  the migration is to bind the value to a local BEFORE the catch, or to drop
+  the cell. The evidence is the identity of the row's term at the throw edge,
+  not unification: a quotation literal infers its window on a fresh row, so
+  until the catch site fits it the window cells are unbound variables, and
+  `( n -- n n ) [: drop 5 -99 throw ;] catch` is refused too — the value the
+  body left is a different term, and binding the variable to compare types
+  would make a quotation monomorphic wherever it is merely executed. A called
+  word that throws counts as overwriting every input it declared, because it
+  may rewrite them all before it throws and can reach nothing below them:
+  `( ptr u8 -- ptr u8 n ) [: W ;] catch` is refused for a `W ( ptr u8 -- )`
+  with any throw edge, whether or not `W` writes the cell. The edge is not part
+  of a quotation's TYPE, so it survives only on a literal: `['] W catch`, and
+  `catch` of a quotation parameter, of a typed `xt<effect>` cell or of a
+  `defer`, keep the window typed even when the target throws.
+- **A LINEAR handle cannot cross a quotation-literal `catch` at all.** Reading
+  it afterwards is `E-STALE-READ` (`expected: XML:reader actual:
+  stale<XML:reader>`) and dropping it is the pre-existing linear refusal — a
+  linear cell may not be dropped, with or without a catch — so the cell can be
+  neither read nor dropped, and `TYPED-VARIABLE V XML:reader` and
+  `1 TYPED-BUFFER V XML:reader` both throw **7121** at the declaration, so the
+  `TYPED-BUFFER` route above does not apply to a linear nominal. The two shapes
+  that work: open the handle INSIDE the caught body (`lib/xml-test.f BAD`), or,
+  where the case needs the handle to SURVIVE the caught failure, name the body
+  and call `['] WORD catch` (`lib/byte-edit-test.f`, `lib/xml-test.f`
+  `CAPACITY-AND-STATE`, `lib/json-read-test.f JRT-CATCH-BAD`). A MULTICELL
+  bundle is not the same: staleness belongs to the value, not to the W hidden
+  cells that carry it, so an `option<pt>` window comes back as ONE
+  `stale<option<pt>>` — one `drop` removes it, `nip`/`swap` move it, an untyped
+  local holds it and gives it back stale, and every typed use (a word input, a
+  typed local, a `MATCH`) is `E-STALE-READ` naming the logical type
+  (`test/catch-stale-suite.f CS-SECTION-BUNDLES`,
+  `test/compiler/native-catch.f CATCH-STALE-DROP`).
 
 ## Spans: a pointer that carries its reach
 

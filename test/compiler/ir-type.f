@@ -340,8 +340,11 @@ create CBUF 64 allot
    32 0 ?do
       ti IR-TYPE:FN-PARAM
    loop
-   ti [: dup IR-TYPE:FN-PARAM ;] catch
-   {: ti2:IR-ID:ir-type-id rc:n :}
+   \ `catch` restores the DEPTH of both stacks and never their contents, so the
+   \ cells the caught body was handed come back stale; this case reads the
+   \ locals bound before the catch instead.
+   ti [: dup IR-TYPE:FN-PARAM ;] catch {: rc:n :}
+   drop
    rc
    c a r key IR-TYPE:QUOT IR-ID:TYPE-LOCAL ;
 
@@ -360,11 +363,11 @@ create CBUF 64 allot
    c a ra keya I64 {: ta:IR-ID:ir-type-id :}
    IR-TYPE:FN-BEGIN
    ta IR-TYPE:FN-PARAM
-   c b rb keyb [: STG-END4 ;] catch
-   {: c2:IR-CTX:ctx b2:IR-ARENA:arena rb2:IR-ARENA:arena k2:IR-ID:ir-module-key rc:n :}
+   c b rb keyb [: STG-END4 ;] catch {: rc:n :}
+   2drop 2drop
    rc
-   c2 b2 rb2 k2 [: STG-END4 ;] catch
-   {: c3:IR-CTX:ctx b3:IR-ARENA:arena rb3:IR-ARENA:arena k3:IR-ID:ir-module-key rc2:n :}
+   c b rb keyb [: STG-END4 ;] catch {: rc2:n :}
+   2drop 2drop
    rc2 ;
 
 : STG-CASES ( -- )
@@ -428,11 +431,11 @@ create CBUF 64 allot
    c 2 8 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
    c a r key I64 drop
    c a r key U8 drop
-   c a r key [: CAPF-THIRD ;] catch
-   {: c2:IR-CTX:ctx a2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key rc:n :}
+   c a r key [: CAPF-THIRD ;] catch {: rc:n :}
+   2drop 2drop
    rc
-   r2 IR-TYPE:TYPES
-   c2 a2 r2 key2 I64 IR-ID:TYPE-LOCAL ;
+   r IR-TYPE:TYPES
+   c a r key I64 IR-ID:TYPE-LOCAL ;
 
 : POOLF-NEXT ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key :}
@@ -451,13 +454,13 @@ create CBUF 64 allot
    ti IR-TYPE:FN-PARAM
    ti IR-TYPE:FN-PARAM
    c a r key IR-TYPE:QUOT {: f0:IR-ID:ir-type-id :}
-   c a r key [: POOLF-NEXT ;] catch
-   {: c2:IR-CTX:ctx a2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key rc:n :}
+   c a r key [: POOLF-NEXT ;] catch {: rc:n :}
+   2drop 2drop
    rc
    IR-TYPE:FN-BEGIN
    ti IR-TYPE:FN-PARAM
    ti IR-TYPE:FN-PARAM
-   c2 a2 r2 key2 IR-TYPE:QUOT IR-ID:TYPE-LOCAL
+   c a r key IR-TYPE:QUOT IR-ID:TYPE-LOCAL
    f0 IR-ID:TYPE-LOCAL ;
 
 : CAP-CASES ( -- )

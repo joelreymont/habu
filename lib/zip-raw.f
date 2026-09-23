@@ -482,9 +482,13 @@ $14 constant LOCATOR-BYTES
    node TEMP-LIVE @ 0= if exit then
    node TEMP-FD @ 0 >= if node TEMP-FD @ close then
    node TEMP-PTR @ node TEMP-LEN @ FS-PATHZ unlink drop 0 node TEMP-LIVE ! ;
-: COMMIT-RAW ( ptr n -- )
-   dup DIRTY @ 0= if drop exit then
-   [: COMMIT-WORK ;] catch {: node:ptr code:n :}
+\ `catch` restores the DEPTH of both stacks and never their contents, so the
+\ node the caught body was handed comes back stale and the cleanup below must
+\ use the handle this word already holds.
+: COMMIT-RAW ( ptr n -- ) {: node:ptr :}
+   node DIRTY @ 0= if exit then
+   node [: COMMIT-WORK ;] catch {: code:n :}
+   drop
    code 0 <> if node TEMP-CLEANUP E-COMMIT throw then ;
 
 ;using

@@ -165,10 +165,14 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    {: c:IR-CTX:ctx :}
    c 4 IR-ARENA:NEW {: a:IR-ARENA:arena :}
    c a 4 GROW-FILL
-   c a [: OV-FIFTH ;] catch {: c2:IR-CTX:ctx a2:IR-ARENA:arena rc:n :}
+   \ `catch` restores the DEPTH of both stacks and never their contents, so the
+   \ cells the caught body was handed come back stale; this case reads the
+   \ locals bound before the catch instead.
+   c a [: OV-FIFTH ;] catch {: rc:n :}
+   2drop
    rc
-   a2 IR-ARENA:USED
-   a2 a2 3 IR-ARENA:NTH IR-ARENA:PEEK ;
+   a IR-ARENA:USED
+   a a 3 IR-ARENA:NTH IR-ARENA:PEEK ;
 
 : OV-CASES ( -- )
    s" the fifth append into a four-cell ceiling is a named overflow" T-LABEL

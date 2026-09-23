@@ -2213,10 +2213,15 @@ public
    drop ;
 
 : TDECL-CTOR-WORDS-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )   \ generate one live family's constructors
+   \ `catch` restores the DEPTH of both stacks and never their contents, so the
+   \ five cells the body was handed come back stale: the family this word
+   \ answers with is kept in a local BEFORE the catch, and the cells the
+   \ generation left are dropped.
+   dup {: fam:n :}
    [: TDECL-GEN-BODY ;] catch {: rc:n :}
    CTOR-PEND-CLEAR
    rc 0 <> IF rc throw THEN
-   {: ctx:n qn qr qc fam:n :}
+   2drop 2drop drop
    fam ;
 
 \ The legacy SUMTYPE / ENUM / PRODUCT definers below announce the family they

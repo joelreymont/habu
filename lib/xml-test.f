@@ -63,10 +63,15 @@ CAST: TOKEN>N ( XML:kind -- n )
 : DRAIN ( XML:reader -- XML:reader )
    begin NEXT TOKEN>N XML-KIND:EOF TOKEN>N <> while repeat ;
 
+\ The reader is opened INSIDE the caught body, the way BAD-INIT below already
+\ does it: `catch` restores the DEPTH of both stacks and never their contents, so
+\ a reader opened before the catch comes back `stale<XML:reader>` and a linear
+\ cell can be neither read nor dropped. What the throw path leaves open here is
+\ the file's own static storage, which the next OPEN re-initialises.
 : BAD ( ptr u8 n n -- )
    {: expected:n :}
-   OPEN [: DRAIN ;] catch expected T=
-   XML:CLOSE ;
+   [: 2dup OPEN DRAIN XML:CLOSE ;] catch expected T=
+   2drop ;
 
 : BAD-INIT ( ptr u8 n n -- )
    {: expected:n :}
@@ -209,31 +214,62 @@ CAST: TOKEN>N ( XML:kind -- n )
    s\" <a>\xF4\x90\x80\x80</a>" E-UTF8 BAD
    s\" <a>\z</a>" E-SCALAR BAD ;
 
+\ ---- the caught bodies of the recovery cases --------------------------------
+\ Every case below reads the reader after the catch, so the handle must SURVIVE
+\ the caught failure. A quotation literal leaves it `stale<XML:reader>` - `catch`
+\ restores the DEPTH of both stacks and never their contents - and a linear cell
+\ can be neither read nor dropped, so each body is a name reached by `[']`: an
+\ exceptional edge is not part of a quotation's TYPE, so that route keeps the
+\ window typed until the callee-evidence lane (dot c2923193) lets the checker
+\ prove the handle intact.
+\ ATTR-RESET is XML's own word and needs no body of its own, but `['] ATTR-RESET`
+\ on the bare name a `using` import resolved is a SIGSEGV at run time - on this
+\ engine and on the one before this lane. `['] XML:ATTR-RESET` runs, and so does
+\ this wrapper, which is the shape of every other body here.
+: ATTR-RESET-ONE ( XML:reader -- XML:reader ) ATTR-RESET ;
+: NEXT-ONE ( XML:reader -- XML:reader ) NEXT drop ;
+: ATTR-NEXT-ONE ( XML:reader -- XML:reader ) ATTR-NEXT drop ;
+: NAME-READ ( XML:reader -- XML:reader ) NAME$ 2drop ;
+: ATTR-NAME-READ ( XML:reader -- XML:reader ) ATTR-NAME$ 2drop ;
+: ATTR-RAW-READ ( XML:reader -- XML:reader ) ATTR-RAW 2drop ;
+: ATTR-VALUE-READ ( XML:reader -- XML:reader ) ATTR-VALUE 2drop ;
+: ATTR-VALUE$-READ ( XML:reader -- XML:reader ) ATTR-VALUE$ 2drop ;
+: CONTENT-READ ( XML:reader -- XML:reader ) CONTENT 2drop ;
+: TEXT-FULL ( XML:reader -- XML:reader ) TEXT-BUF TEXT-CAP TEXT drop ;
+: TEXT-TINY ( XML:reader -- XML:reader ) TEXT-BUF 1 TEXT drop ;
+: TEXT-ALIASED ( XML:reader -- XML:reader ) STORAGE BYTE-VIEW TEXT-CAP TEXT drop ;
+: URI-TINY ( XML:reader -- XML:reader ) TEXT-BUF 4 URI drop ;
+: URI-ALIASED ( XML:reader -- XML:reader ) STORAGE BYTE-VIEW TEXT-CAP URI drop ;
+: ATTR-URI-TINY ( XML:reader -- XML:reader ) TEXT-BUF 4 ATTR-URI drop ;
+: ATTR-URI-ALIASED ( XML:reader -- XML:reader ) STORAGE BYTE-VIEW TEXT-CAP ATTR-URI drop ;
+: ATTR-TEXT-TINY ( XML:reader -- XML:reader ) TEXT-BUF 1 ATTR-TEXT drop ;
+: ATTR-TEXT-ALIASED ( XML:reader -- XML:reader ) STORAGE BYTE-VIEW TEXT-CAP ATTR-TEXT drop ;
+
 : CAPACITY-AND-STATE ( -- )
    TINY 1 STORAGE-BYTES s" <a><b/></a>" INIT
-   [: DRAIN ;] catch E-DEPTH T=
-   [: NEXT drop ;] catch E-STATE T=
+   ['] DRAIN catch E-DEPTH T=
+   ['] NEXT-ONE catch E-STATE T=
    XML:CLOSE
    TINY 1 STORAGE-BYTES s" <a q='1' r='2'/>" INIT
-   [: DRAIN ;] catch E-ATTRIBUTES T= XML:CLOSE
+   ['] DRAIN catch E-ATTRIBUTES T= XML:CLOSE
    SMALL 2 STORAGE-BYTES s" <a xmlns:p='u' xmlns:q='v'><b xmlns:r='w'/></a>" INIT
-   [: DRAIN ;] catch E-NAMESPACES T= XML:CLOSE
+   ['] DRAIN catch E-NAMESPACES T= XML:CLOSE
    s" <a xmlns:p='u' xmlns:q='v'><b xmlns:r='w'/></a>" OPEN DRAIN XML:CLOSE
    s" <a q='x'/>" OPEN
-   [: ATTR-NEXT drop ;] catch E-STATE T=
-   [: ATTR-RESET ;] catch E-STATE T=
-   [: NAME$ 2drop ;] catch E-STATE T=
-   [: ATTR-RAW 2drop ;] catch E-STATE T=
-   [: ATTR-VALUE 2drop ;] catch E-STATE T=
-   [: ATTR-VALUE$ 2drop ;] catch E-STATE T=
+   ['] ATTR-NEXT-ONE catch E-STATE T=
+   ['] ATTR-RESET-ONE catch E-STATE T=
+   ['] NAME-READ catch E-STATE T=
+   ['] ATTR-RAW-READ catch E-STATE T=
+   ['] ATTR-VALUE-READ catch E-STATE T=
+   ['] ATTR-VALUE$-READ catch E-STATE T=
    XML-KIND:START NEXT=
-   [: CONTENT 2drop ;] catch E-STATE T=
-   [: TEXT-BUF TEXT-CAP TEXT drop ;] catch E-STATE T=
+   ['] CONTENT-READ catch E-STATE T=
+   ['] TEXT-FULL catch E-STATE T=
    s" a" NAME=
-   [: ATTR-NAME$ 2drop ;] catch E-STATE T=
+   ['] ATTR-NAME-READ catch E-STATE T=
    ATTR-NEXT TTRUE s" q" ATTR-NAME=
    ATTR-NEXT TFALSE
-   [: ATTR-NAME$ 2drop ;] catch E-STATE T=
+   ['] ATTR-NAME-READ catch E-STATE T=
    XML:CLOSE ;
 
 : NESTED+ ( ptr u8 n -- )
@@ -252,20 +288,20 @@ CAST: TOKEN>N ( XML:kind -- n )
    $5A TEXT-BUF c!
    s" <a>long&amp;text</a>" OPEN
    NEXT drop NEXT drop
-   [: TEXT-BUF 1 TEXT drop ;] catch E-CAPACITY T=
+   ['] TEXT-TINY catch E-CAPACITY T=
    TEXT-BUF c@ $5A T=
    s" long&text" TEXT=
-   [: STORAGE BYTE-VIEW TEXT-CAP TEXT drop ;] catch E-ALIAS T=
+   ['] TEXT-ALIASED catch E-ALIAS T=
    s" long&text" TEXT=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
 : URI-CAPACITY-RECOVERY ( -- )
    $5A TEXT-BUF c!
    s" <p:a xmlns:p='urn:&#97;'/>" OPEN NEXT drop
-   [: TEXT-BUF 4 URI drop ;] catch E-CAPACITY T=
+   ['] URI-TINY catch E-CAPACITY T=
    TEXT-BUF c@ $5A T=
    s" p:a" NAME= s" urn:a" URI=
-   [: STORAGE BYTE-VIEW TEXT-CAP URI drop ;] catch E-ALIAS T=
+   ['] URI-ALIASED catch E-ALIAS T=
    s" urn:a" URI=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
@@ -273,16 +309,16 @@ CAST: TOKEN>N ( XML:kind -- n )
    s" <p:a xmlns:p='urn:&#97;' p:q='long&amp;text'/>" OPEN NEXT drop
    ATTR-NEXT TTRUE ATTR-NEXT TTRUE
    $5A TEXT-BUF c!
-   [: TEXT-BUF 4 ATTR-URI drop ;] catch E-CAPACITY T=
+   ['] ATTR-URI-TINY catch E-CAPACITY T=
    TEXT-BUF c@ $5A T=
    s" p:q" ATTR-NAME= s" urn:a" ATTR-URI=
-   [: STORAGE BYTE-VIEW TEXT-CAP ATTR-URI drop ;] catch E-ALIAS T=
+   ['] ATTR-URI-ALIASED catch E-ALIAS T=
    s" urn:a" ATTR-URI=
    $5A TEXT-BUF c!
-   [: TEXT-BUF 1 ATTR-TEXT drop ;] catch E-CAPACITY T=
+   ['] ATTR-TEXT-TINY catch E-CAPACITY T=
    TEXT-BUF c@ $5A T=
    s" p:q" ATTR-NAME= s" long&text" ATTR-TEXT=
-   [: STORAGE BYTE-VIEW TEXT-CAP ATTR-TEXT drop ;] catch E-ALIAS T=
+   ['] ATTR-TEXT-ALIASED catch E-ALIAS T=
    s" long&text" ATTR-TEXT=
    ATTR-VALUE$ s" long&amp;text" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;

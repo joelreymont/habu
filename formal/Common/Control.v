@@ -521,9 +521,14 @@ Definition fresh_id (s : st) : nat * st := (st_fv s, put_fv s (S (st_fv s))).
    that expanded is now W CELLS on the row, so counting each cell would
    multiply the resource by its width; the arm therefore counts a HIDDEN field
    only at the TAG — slot W-1, the top of the group — and a still-LOGICAL
-   layout cell exactly once.  Every other slot of a bundle counts 0. *)
+   layout cell exactly once.  Every other slot of a bundle counts 0.
+
+   The stale arm (checker.f:2780) counts the cell the wrapper hides: a linear
+   handle a caught throw left stale is still the caller's to account for, because
+   the wrapper hides the TYPE and never the ownership.  `unstale` is the whole
+   arm since the wrapper never nests. *)
 Definition lin_ty (e : fenv) (s : subst) (t : ty) : nat :=
-  match resolve_ty s t with
+  match unstale (resolve_ty s t) with
   | TCon c => if linear_conb c then 1 else 0
   | TFam _ _ _ as p =>
       let r := resolve_ty s p in
@@ -607,6 +612,9 @@ Fixpoint mv_ty (v : tyvar) (pol : bool) (t : ty) : mpair :=
   | TQuot _ _ (Eff a b c d) =>
       madd (madd (mv_row v (negb pol) a) (mv_row v pol b))
            (madd (mv_row v (negb pol) c) (mv_row v pol d))
+  (* A wrapper is not a quotation either, so nothing flips: the cell counts
+     wherever the type it lost counted. *)
+  | TStale u => mv_ty v pol u
   end
 with mv_args (v : tyvar) (pol : bool) (l : tys) : mpair :=
   match l with
@@ -644,6 +652,7 @@ Fixpoint vars_ty (t : ty) (acc : list tyvar) : list tyvar :=
   | TPtr u => vars_ty u acc
   | TQuot _ _ (Eff a b c d) =>
       vars_row a (vars_row b (vars_row c (vars_row d acc)))
+  | TStale u => vars_ty u acc
   end
 with vars_args (l : tys) (acc : list tyvar) : list tyvar :=
   match l with TNil => acc | TCons u rest => vars_ty u (vars_args rest acc) end
@@ -1794,7 +1803,19 @@ Definition do_exec (s : st) : st :=
    certifies, `: X4 ( i64 -- i64 ) [: BEGIN MK-N DROP-N AGAIN ;] catch ;`
    certifies, and `: X4b ( i64 -- i64 n ) [: BEGIN MK-N DROP-N AGAIN ;]
    catch ;` is refused with `at 'catch' expected: i64 n actual: i64` — no code
-   was pushed. *)
+   was pushed.
+
+   ONE DECISION OF THE REAL `RSCATCH` IS OUTSIDE THIS FRAGMENT.  `catch` puts the
+   two stacks back to the DEPTH it was entered at and never to their contents, so
+   the checker rewrites every window cell the body's folded intact masks
+   (`Q>XDMASK` / `Q>XRMASK`) do not vouch for into `Effects.TStale` of its input
+   type (`ROW-STALE-TOP`, checker.f:3367-3368), and reading one afterwards is
+   `E-STALE-READ`.  The window here keeps its types, which is the checker's answer
+   only for a body whose every throw path provably left the cells alone — so this
+   model ACCEPTS programs the checker refuses for that reason, and
+   `test/catch-stale-suite.f` is what pins them.  Modelling the rewrite means
+   modelling the masks, which means modelling where a throw edge is taken inside a
+   body; that is a change to the throw-edge model, not an arm here. *)
 Definition do_catch (s : st) : st :=
   let (t, s) := pop_xt s in
   match t with

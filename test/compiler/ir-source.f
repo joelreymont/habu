@@ -352,11 +352,14 @@ private
    c 2 REG-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena :}
    c a key s" one" IR-SOURCE:REGISTER drop
    c a key s" two" IR-SOURCE:REGISTER {: s1:IR-ID:ir-source-id :}
-   c a key [: CAP-THIRD ;] catch
-   {: c2:IR-CTX:ctx a2:IR-ARENA:arena key2:IR-ID:ir-module-key rc:n :}
+   \ `catch` restores the DEPTH of both stacks and never their contents, so the
+   \ cells the caught body was handed come back stale; this case reads the
+   \ locals bound before the catch instead.
+   c a key [: CAP-THIRD ;] catch {: rc:n :}
+   2drop drop
    rc
-   a2 IR-SOURCE:SOURCES
-   a2 s1 IR-SOURCE:LEN@ ;
+   a IR-SOURCE:SOURCES
+   a s1 IR-SOURCE:LEN@ ;
 
 : CAP-CASES ( -- )
    s" a zero registry capacity is rejected at creation" T-LABEL

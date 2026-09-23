@@ -646,8 +646,14 @@ catchable `throw` paths:
   enclosing `catch`.
 - `catch` consumes an execution token / quotation. Its normal path requires the
   quotation to be stack-preserving on both data and return stacks, then pushes a
-  throw code (`0` for normal completion). Its exceptional path restores the stack
-  shape that existed before invoking the quotation, then pushes the thrown code.
+  throw code (`0` for normal completion). Its exceptional path restores the
+  DEPTH of both stacks and never their contents, so a cell of the quotation's
+  window — its declared fixed input prefix — that a throw path may have
+  overwritten comes back as `stale<t>`: it may be moved, dropped or bound to an
+  untyped local, and reading it is `E-STALE-READ` (repair class
+  `keep_value_before_catch`). A cell every throw path provably left untouched
+  keeps its type. forth.md "Rules learned by refusal" carries the evidence rule,
+  the migration and the boundary; `test/catch-stale-suite.f` pins the rows.
 
 This model is the reason a checked guard may be written directly:
 

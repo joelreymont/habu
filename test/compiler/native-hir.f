@@ -659,13 +659,16 @@ private
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b 4 HIR-WORD:PICK-CELLS WORDS-NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   c b p r [: TORN-REG ;] catch
-   {: c2:IR-CTX:ctx b2:IR-BUILD:builder p2:IR-ARENA:arena r2:IR-ARENA:arena rc:n :}
+   \ `catch` restores the DEPTH of both stacks and never their contents, so the
+   \ cells the caught body was handed come back stale; this case reads the
+   \ locals bound before the catch instead.
+   c b p r [: TORN-REG ;] catch {: rc:n :}
+   2drop 2drop
    rc
-   r2 HIR-WORD:MODELED
-   r2 c2 b2 s" +" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
+   r HIR-WORD:MODELED
+   r c b s" +" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
       HIR-OPCODE:ADD HIR-OPCODE:EQ
-   r2 c2 b2 s" /" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
+   r c b s" /" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
       HIR-OPCODE:DIV HIR-OPCODE:EQ ;
 
 : TORN-CASE ( -- )

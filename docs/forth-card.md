@@ -82,7 +82,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | an `if` arm or loop body that changes depth | `E-MISMATCH` at `then`/`repeat` |
 | a local read or declared inside `[: … ;]` | `E-BAD-LOCAL-SHAPE`, rc 75 |
 | a second `[:` while one is open | **rc 75, bare `[:` on stderr, no code** |
-| a non-preserving `[: G ;] catch`; `i`/`leave` outside a loop; `exit` in a loop without `unloop` | `E-REJECTED` |
+| a non-preserving `[: G ;] catch`, a read of what its throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-REJECTED`, `E-STALE-READ` |
 | `exit` after a word ending in `die` | `E-DEAD-CODE` |
 | `: I ( -- ) ;` | `E-RESERVED-DEFINITION` |
 | `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 67 |
@@ -146,10 +146,10 @@ publish raw storage: scalars, roles and atoms only. A pointer in either
 direction, an execution token, and `ptr-field` over such a base, is refused.
 
 ```forth
-variable V                                \ E-RAW-CELL-PTR at the fetch,
-: PEEK ( n -- n ) V ! V @ @ ;             \ repair class declare_pointer_cell
+variable V                    \ E-RAW-CELL-PTR at the fetch,
+: PEEK ( n -- n ) V ! V @ @ ; \ repair class declare_pointer_cell
 
-PTR-VARIABLE V                            \ the declared twin certifies
+PTR-VARIABLE V                \ the declared twin certifies
 : PEEK ( -- ptr u8 ) V @ ;
 ```
 

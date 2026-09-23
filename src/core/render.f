@@ -233,19 +233,26 @@ REG-SCRATCH-SNAP-INSTALL
 \ hidden field, walk the whole run (tag W-1 on top down to slot0, one family).
 \ true: row below the full W-cell run (compact to the logical type). false:
 \ lone/malformed run — row below the single cell (render the '@' form).
-variable HRC  variable HRI  variable HRF
+\ HRS: does the run just walked hold a cell `catch` left stale? A stale group is
+\ ONE stale logical value — a throw path that clobbered any one of its payload
+\ cells left the whole value unusable — so the compaction below wraps the logical
+\ type once and the row prints `stale<option<pt>>`, never three cells.
+variable HRC  variable HRI  variable HRF  variable HRS
 : HID-RUN-CELL? ( n n n -- bool ) {: node:n fam:n slot:n :}
    node TAG S-PUSH <> IF RES-FALSE EXIT THEN
    node P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
-   t PARAM>FAM fam <> IF RES-FALSE EXIT THEN
-   t HIDDEN-SLOT@ slot = ;
+   t CELL>FAM fam <> IF RES-FALSE EXIT THEN
+   t HIDDEN-SLOT@ slot <> IF RES-FALSE EXIT THEN
+   t TAG T-STALE = IF -1 HRS ! THEN
+   RES-TRUE ;
 : HID-RUN-REST ( n -- n bool ) {: node:n :}
    node P>TYPE T-RES {: t:n :}
-   t PARAM>FAM {: fam:n :}
+   t CELL>FAM {: fam:n :}
    fam TFAM-WIDTH@* {: w:n :}
    t HIDDEN-SLOT@ w 1 - <> IF node P>REST RES-FALSE EXIT THEN
    node HRC !  -1 HRF !
+   t TAG T-STALE = IF -1 ELSE 0 THEN HRS !
    w 1 - HRI !
    BEGIN HRI @ 0 >  HRF @ 0 <>  and WHILE
       HRC @ P>REST R-RES  fam  HRI @ 1 -  HID-RUN-CELL? IF
@@ -285,9 +292,10 @@ create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render p
       x R-RES dup TAG S-PUSH = IF                 \ ( node )
          dup P>TYPE T-RES HIDDEN-PARAM? IF        \ hidden run: compact or '@' form (docs §20)
             dup HID-RUN-REST IF                   \ ( node rest ) full run -> logical type
-               dup R-RES TAG S-PUSH = IF dup d 1 RECURSE 32 EMIT1 THEN
-               drop
-               P>TYPE T-RES MK-LOGICAL d 0 RECURSE
+               swap P>TYPE T-RES MK-LOGICAL        \ read HRS before a nested run resets it
+               HRS @ IF MK-STALE THEN              \ ( rest logical )
+               swap dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
+               d 0 RECURSE
             ELSE                                  \ ( node rest ) lone/malformed -> '@' cell
                drop
                dup P>REST dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
@@ -305,6 +313,13 @@ create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render p
       T-VAR of r PAY LET-OF EMIT1 endof
       T-CON of r PAY CON-OUT endof
       T-PTR of s" ptr " RSTR  r PTR>INNER d 0 RECURSE endof
+      \ A cell a caught throw may have overwritten. It names the type it lost so
+      \ the diagnostic can say which one, and it sets RQM so REC-SIG never
+      \ records a row carrying one: `stale<...>` is not a declarable type.
+      T-STALE of
+        1 RQM !
+        s" stale<" RSTR  r STALE>INNER d 0 RECURSE  62 EMIT1
+      endof
       T-QUOT of
         d QDEPTH-MAX <  r d QANCESTOR? 0=  and IF
            r d cells QPATH + !
@@ -352,7 +367,7 @@ variable RSHOW-DST
    BEGIN R-RES dup TAG S-PUSH = WHILE          \ no locals inside the loop
      dup P>TYPE T-RES HIDDEN-PARAM? IF
         dup HID-RUN-REST IF
-           swap P>TYPE T-RES MK-LOGICAL RBUF+
+           swap P>TYPE T-RES MK-LOGICAL  HRS @ IF MK-STALE THEN  RBUF+
         ELSE
            swap P>TYPE RBUF+
         THEN
@@ -479,6 +494,7 @@ variable MDV-I   variable MDV-F
       MD-DBASE-PTR    of s" E-RAW-CELL-PTR" endof
       MD-RAW-FIELD    of s" E-RAW-CELL-PTR" endof
       MD-RAW-EXEC     of s" E-RAW-CELL-PTR" endof
+      MD-STALE-READ   of s" E-STALE-READ" endof
       MD-UNDERFLOW    of s" E-INPUT-UNDERFLOW" endof
       MD-RIGID-REGION of s" E-RIGID-REGION-MISMATCH" endof
       MD-RIGID-EXTENT of s" E-RIGID-EXTENT-MISMATCH" endof
@@ -511,6 +527,7 @@ variable MDV-I   variable MDV-F
       MD-DBASE-PTR    of s" declare_pointer_cell" endof
       MD-RAW-FIELD    of s" declare_pointer_cell" endof
       MD-RAW-EXEC     of s" declare_xt_cell" endof
+      MD-STALE-READ   of s" keep_value_before_catch" endof
       MD-UNDERFLOW    of s" supply_missing_input" endof
       MD-RIGID-REGION of s" fix_host_region" endof
       MD-RIGID-EXTENT of s" fix_host_extent" endof
@@ -549,6 +566,7 @@ variable MDV-I   variable MDV-F
       MD-RIGID-GEN    of s" This index or borrow is from an earlier mutation generation; the container was mutated since. Re-derive the index after the mutation." endof
       MD-RIGID-XDOM   of s" A host region, an extent, and a mutation generation are distinct identities that never interchange. Supply the identity the position requires." endof
       MD-UNDERFLOW    of s" Push the missing inputs before the call, or declare them in the signature; a definition may not consume below its declared inputs." endof
+      MD-STALE-READ   of s" `catch` puts the stacks back to the DEPTH it was entered at and never to their contents, so a cell the caught body may have written on a throw path holds an unknown machine word afterwards. Bind the value to a local BEFORE the catch and use the local, or drop the cell. A stale cell may still be moved, dropped, or bound to an untyped local." endof
       s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
    endcase ;
 
@@ -580,6 +598,7 @@ variable MDV-I   variable MDV-F
       MD-DBASE-PTR    of s" base address: a cell reached from data-base, or from a pointer computed off NULL-PTR, holds a plain value at every pointee depth, never a nominal type or a pointer" endof
       MD-RAW-FIELD    of s" ptr-field: base is an undeclared raw storage cell, not a declared pointer cell" endof
       MD-RAW-EXEC     of s" raw storage cell: an undeclared cell cannot hold an execution token / a quotation" endof
+      MD-STALE-READ   of s" stale cell: this reads a cell `catch` left stale (a throw path of the caught body may have overwritten it)" endof
       MD-RIGID-REGION of s" rigid host: region mismatch (different allocation)" endof
       MD-RIGID-EXTENT of s" rigid host: extent mismatch (different bounds identity)" endof
       MD-RIGID-GEN    of s" rigid host: stale mutation generation" endof

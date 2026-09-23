@@ -865,12 +865,15 @@ private
    key S-SEED STG-VALS
    c tp tr key S-SEED STG-RES
    c sp sr ap ar key S-SEED STG-ATT
-   c p v r key qr tr ar sa [: OVF-TRY ;] catch
-   {: c2:IR-CTX:ctx p2:IR-ARENA:arena v2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key qr2:IR-ARENA:arena tr2:IR-ARENA:arena ar2:IR-ARENA:arena sa2:IR-ARENA:arena rc:n :}
+   \ `catch` restores the DEPTH of both stacks and never their contents, so the
+   \ nine cells the caught body was handed come back stale; the locals bound
+   \ before the catch are the handles this case reads.
+   c p v r key qr tr ar sa [: OVF-TRY ;] catch {: rc:n :}
+   2drop 2drop 2drop 2drop drop
    rc
-   r2 IR-OP:OPS
-   v2 IR-OP:VALUES
-   p2 IR-OP:POOL-CELLS ;
+   r IR-OP:OPS
+   v IR-OP:VALUES
+   p IR-OP:POOL-CELLS ;
 
 : OVF-CASE ( n -- )
    BND [: OVF-BODY ;] IR-CTX:WITH-CONTEXT

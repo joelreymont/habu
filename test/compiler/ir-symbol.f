@@ -312,11 +312,14 @@ create CBUF 32 allot
    {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
    c a r key s" one" IR-SYM:INTERN drop
    c a r key s" two" IR-SYM:INTERN drop
-   c a r key [: CAPF-THIRD ;] catch
-   {: c2:IR-CTX:ctx a2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key rc:n :}
+   \ `catch` restores the DEPTH of both stacks and never their contents, so the
+   \ cells the caught body was handed come back stale; this case reads the
+   \ locals bound before the catch instead.
+   c a r key [: CAPF-THIRD ;] catch {: rc:n :}
+   2drop 2drop
    rc
-   r2 IR-SYM:SYMBOLS
-   c2 a2 r2 key2 s" one" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL ;
+   r IR-SYM:SYMBOLS
+   c a r key s" one" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL ;
 
 : POOLF-NINTH ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key :}
@@ -328,11 +331,11 @@ create CBUF 32 allot
    c 8 8 TAB-NEW
    {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
    c a r key s" 12345678" IR-SYM:INTERN drop
-   c a r key [: POOLF-NINTH ;] catch
-   {: c2:IR-CTX:ctx a2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key rc:n :}
+   c a r key [: POOLF-NINTH ;] catch {: rc:n :}
+   2drop 2drop
    rc
-   r2 IR-SYM:SYMBOLS
-   c2 a2 r2 key2 s" 12345678" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL ;
+   r IR-SYM:SYMBOLS
+   c a r key s" 12345678" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL ;
 
 : CAP-CASES ( -- )
    s" a zero symbol capacity is rejected at creation" T-LABEL
@@ -560,8 +563,10 @@ create CBUF 32 allot
    TD-VIEW-CASE ;
 
 \ ---- an interner cloned from a prototype -------------------------------------
-\ Keep the attempted clone inputs below CATCH so a refusal can be inspected
-\ against the still-live prototype and the context's allocation cursor.
+\ The attempted clone inputs ride the stack into the caught body and come back
+\ stale (`catch` restores the DEPTH of both stacks, never their contents), so
+\ the refusal is inspected against the locals bound before the catch: the
+\ still-live prototype and the context's allocation cursor.
 : CLONE-TRY ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena n n -- IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena n n )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key pa:IR-ARENA:arena pr:IR-ARENA:arena
       scap:n bcap:n :}
@@ -577,19 +582,17 @@ create CBUF 32 allot
 
    c IR-CTX:NEW-MODULE drop {: rk:IR-ID:ir-module-key :}
    c IR-CTX:SCRATCH-USED {: rs0:n :}
-   c rk pa pr 1 9 [: CLONE-TRY ;] catch
-   {: rc:IR-CTX:ctx rkey:IR-ID:ir-module-key rpa:IR-ARENA:arena
-      rpr:IR-ARENA:arena rsc:n rbc:n rerr:n :}
+   c rk pa pr 1 9 [: CLONE-TRY ;] catch {: rerr:n :}
+   2drop 2drop 2drop
    rerr E-IR-SYM-CAP =
-   rc IR-CTX:SCRATCH-USED rs0 =
+   c IR-CTX:SCRATCH-USED rs0 =
 
    c IR-CTX:NEW-MODULE drop {: bk:IR-ID:ir-module-key :}
    c IR-CTX:SCRATCH-USED {: bs0:n :}
-   c bk pa pr 2 8 [: CLONE-TRY ;] catch
-   {: bc:IR-CTX:ctx bkey:IR-ID:ir-module-key bpa:IR-ARENA:arena
-      bpr:IR-ARENA:arena bsc:n bbc:n berr:n :}
+   c bk pa pr 2 8 [: CLONE-TRY ;] catch {: berr:n :}
+   2drop 2drop 2drop
    berr E-IR-SYM-BYTES =
-   bc IR-CTX:SCRATCH-USED bs0 =
+   c IR-CTX:SCRATCH-USED bs0 =
    pr IR-SYM:SYMBOLS 2 = ;
 
 : CLONE-REFUSE-CASE ( -- )
@@ -615,20 +618,18 @@ create CBUF 32 allot
    rr IR-SYM:SYMBOLS 2 =
    c ra rr rk s" x" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 1 =
    rr IR-SYM:SYMBOLS 2 =
-   c ra rr rk [: CLONE-MISS ;] catch
-   {: rc:IR-CTX:ctx ra2:IR-ARENA:arena rr2:IR-ARENA:arena
-      rk2:IR-ID:ir-module-key rerr:n :}
+   c ra rr rk [: CLONE-MISS ;] catch {: rerr:n :}
+   2drop 2drop
    rerr E-IR-SYM-CAP =
-   rr2 IR-SYM:SYMBOLS 2 =
+   rr IR-SYM:SYMBOLS 2 =
 
    c IR-CTX:NEW-MODULE drop {: bk:IR-ID:ir-module-key :}
    c bk pa pr 3 9 IR-SYM:NEW-FROM
    {: ba:IR-ARENA:arena br:IR-ARENA:arena :}
-   c ba br bk [: CLONE-MISS ;] catch
-   {: bc:IR-CTX:ctx ba2:IR-ARENA:arena br2:IR-ARENA:arena
-      bk2:IR-ID:ir-module-key berr:n :}
+   c ba br bk [: CLONE-MISS ;] catch {: berr:n :}
+   2drop 2drop
    berr E-IR-SYM-BYTES =
-   br2 IR-SYM:SYMBOLS 2 = ;
+   br IR-SYM:SYMBOLS 2 = ;
 
 : CLONE-EXACT-CASE ( -- )
    s" an exact-fit clone keeps duplicates and enforces its future ceilings" T-LABEL
@@ -858,16 +859,15 @@ create CBUF 32 allot
    c a r key 0 4 MANY-ADD
    c IR-CTX:SCRATCH-USED {: before:n :}
    r IR-SYM:LOOKUP-PROBES {: probes:n :}
-   c a r key [: CAPF-THIRD ;] catch
-   {: c2:IR-CTX:ctx a2:IR-ARENA:arena r2:IR-ARENA:arena
-      key2:IR-ID:ir-module-key rc:n :}
+   c a r key [: CAPF-THIRD ;] catch {: rc:n :}
+   2drop 2drop
    rc error T=
-   c2 IR-CTX:SCRATCH-USED before T=
-   r2 IR-SYM:SYMBOLS 4 T=
-   r2 IR-SYM:LOOKUP-PROBES probes T=
-   c2 a2 r2 key2 4 MANY-HITS
+   c IR-CTX:SCRATCH-USED before T=
+   r IR-SYM:SYMBOLS 4 T=
+   r IR-SYM:LOOKUP-PROBES probes T=
+   c a r key 4 MANY-HITS
    error E-IR-SYM-BYTES = if
-      c2 a2 r2 key2 s" " IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 4 T=
+      c a r key s" " IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 4 T=
    then ;
 
 
@@ -901,9 +901,8 @@ create CBUF 32 allot
    c 4 32 TAB-NEW
    {: newkey:IR-ID:ir-module-key newa:IR-ARENA:arena newr:IR-ARENA:arena :}
    c newa newr newkey s" replacement" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 0 T=
-   c key a r [: STALE-TRY ;] catch
-   {: oldc:IR-CTX:ctx oldk:IR-ID:ir-module-key olda:IR-ARENA:arena
-      oldr:IR-ARENA:arena rc:n :}
+   c key a r [: STALE-TRY ;] catch {: rc:n :}
+   2drop 2drop
    rc E-IR-ARENA-STALE T=
    c newa newr newkey s" replacement" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 0 T=
    newr IR-ARENA:FREEZE IR-ARENA:RETIRE ;

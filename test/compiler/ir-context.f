@@ -205,12 +205,17 @@ $80000 constant TMAP-BYTES           \ independent allocation probe size
 : OA-USE ( IR-CTX:ctx -- IR-CTX:ctx )
    dup IR-CTX:MINTED drop ;
 
+\ `catch` restores the DEPTH of both stacks and never their contents, so the
+\ handle the caught body was handed comes back stale: the case reads it from the
+\ local it bound before the catch, which holds that same handle.
 : OWNER-CASE ( -- )
    s" a caught failure still names the owning context" T-LABEL
-   DEAD-CTX dup IR-CTX:SERIAL {: s:n :}
-   [: OA-USE ;] catch
+   DEAD-CTX {: c:IR-CTX:ctx :}
+   c IR-CTX:SERIAL {: s:n :}
+   c [: OA-USE ;] catch
    E-IR-CTX-STALE T=
-   IR-CTX:SERIAL s T=
+   drop
+   c IR-CTX:SERIAL s T=
    s 0 > TTRUE ;
 
 \ ---- scratch ownership -------------------------------------------------------

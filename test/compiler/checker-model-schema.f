@@ -26,7 +26,7 @@
 \      constructor. `CT-NONE` has no constructor: it is the absence of a class,
 \      and the model has no constructor for an absence.
 \
-\   3. The term tags. `T-CON` .. `T-PARAM` and `S-ROW` / `S-PUSH` are the
+\   3. The term tags. `T-CON` .. `T-STALE` and `S-ROW` / `S-PUSH` are the
 \      checker's whole term and stack vocabulary, and each names the
 \      `Effects.ty` or `Effects.stack` constructor that stands for it.
 \
@@ -278,9 +278,10 @@ variable VEC-N
 \
 \ `T-ATOM` is the rigid host identity, and its row is now filled in like every
 \ other: `Effects.TAtom` carries the domain and the id `ATOM-OK?` decides on.
-\ The gate then holds the checker to exactly eight tags and the model to
-\ exactly those eight, and a ninth tag on either side is a new row somebody has
-\ to write here first.
+\ `T-STALE` is the wrapper a caught throw leaves on a window cell it cannot
+\ vouch for, and `Effects.TStale` carries the type that cell lost. The gate then
+\ holds the checker to exactly nine tags and the model to exactly those nine,
+\ and a tenth tag on either side is a new row somebody has to write here first.
 
 : TAG-ROW ( ptr u8 n n ptr u8 n ptr u8 n ptr u8 n -- )
    {: wa:ptr wu:n code:n ca:ptr cu:n pa:ptr pu:n sa:ptr su:n :}
@@ -299,7 +300,8 @@ variable VEC-N
    s" S-PUSH"  4 s" SPush" s" SPush _ _"    s" stack" TAG-ROW
    s" T-QUOT"  5 s" TQuot" s" TQuot _ _ _"  s" ty"    TAG-ROW
    s" T-ATOM"  6 s" TAtom" s" TAtom _ _"    s" ty"    TAG-ROW
-   s" T-PARAM" 7 s" TFam"  s" TFam _ _ _"   s" ty"    TAG-ROW ;
+   s" T-PARAM" 7 s" TFam"  s" TFam _ _ _"   s" ty"    TAG-ROW
+   s" T-STALE" 8 s" TStale" s" TStale _"    s" ty"    TAG-ROW ;
 
 \ ---- 4. the control-flow dispatch table (`CF-TOK?`) --------------------------
 \ In the order `CF-TOK?` tests them. The handler column is the token run that

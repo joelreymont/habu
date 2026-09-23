@@ -32,7 +32,7 @@
 \     exhaustive match over `Effects.con`: a constructor nobody wrote a row for
 \     leaves that match non-exhaustive and Rocq refuses the file;
 \   - a term tag added on either side, through the same pair of devices over
-\     `T-CON` .. `T-PARAM`, `S-ROW` / `S-PUSH` and `Effects.ty` /
+\     `T-CON` .. `T-STALE`, `S-ROW` / `S-PUSH` and `Effects.ty` /
 \     `Effects.stack`;
 \   - a control opener or closer added to, removed from, reordered in, or
 \     rewired inside `CF-TOK?`, through the token-by-token walk over its body,

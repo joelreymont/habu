@@ -321,18 +321,22 @@ private
    CBIND:BIND ;
 
 \ A caught quotation cannot read the enclosing word's locals, so each step
-\ carries everything it needs on the data stack and hands its answer back in the
-\ slot it was given. The slot keeps the -1 it went in with when the step throws.
+\ carries everything it needs on the data stack and writes its answer to ANS,
+\ which the runner preset: `catch` restores the DEPTH of both stacks and never
+\ their contents, so no stack slot can carry a value out of a body that threw.
+\ The cells the step was handed come back stale from the catch and are dropped.
+variable ANS
 
-: SYM-TRY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key ptr u8 n n -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key ptr u8 n n )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key p:ptr u:n slot:n :}
-   c a r key p u IR-SYM:INTERN IR-ID:SYMBOL-LOCAL {: got:n :}
-   c a r key p u got ;
+: SYM-TRY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key ptr u8 n -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key ptr u8 n )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key p:ptr u:n :}
+   c a r key p u IR-SYM:INTERN IR-ID:SYMBOL-LOCAL ANS !
+   c a r key p u ;
 
 : SYM-STEP ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key ptr u8 n -- n n )
-   -1 [: SYM-TRY ;] catch {: rc:n :}
-   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key p:ptr u:n got:n :}
-   rc got ;
+   -1 ANS !
+   [: SYM-TRY ;] catch {: rc:n :}
+   2drop 2drop 2drop
+   rc ANS @ ;
 
 : TY-MAKE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- IR-ID:ir-type-id )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key ki:n :}
@@ -342,25 +346,27 @@ private
    c a r key ki TY-ARG-A SPACE-AT
       key ki TY-ARG-B IR-ID:PACK-TYPE IR-TYPE:POINTER ;
 
-: TY-TRY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n n -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n n )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key ki:n slot:n :}
-   c a r key ki TY-MAKE IR-ID:TYPE-LOCAL {: got:n :}
-   c a r key ki got ;
+: TY-TRY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key ki:n :}
+   c a r key ki TY-MAKE IR-ID:TYPE-LOCAL ANS !
+   c a r key ki ;
 
 : TY-STEP ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- n n )
-   -1 [: TY-TRY ;] catch {: rc:n :}
-   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key ki:n got:n :}
-   rc got ;
+   -1 ANS !
+   [: TY-TRY ;] catch {: rc:n :}
+   2drop 2drop drop
+   rc ANS @ ;
 
-: AT-TRY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n n -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n n )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key ki:n slot:n :}
-   c a r key ki AT-KEY IR-ATTR:INT IR-ID:ATTR-LOCAL {: got:n :}
-   c a r key ki got ;
+: AT-TRY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key ki:n :}
+   c a r key ki AT-KEY IR-ATTR:INT IR-ID:ATTR-LOCAL ANS !
+   c a r key ki ;
 
 : AT-STEP ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- n n )
-   -1 [: AT-TRY ;] catch {: rc:n :}
-   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key ki:n got:n :}
-   rc got ;
+   -1 ANS !
+   [: AT-TRY ;] catch {: rc:n :}
+   2drop 2drop drop
+   rc ANS @ ;
 
 \ ---- one step's two assertions -----------------------------------------------
 

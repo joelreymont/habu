@@ -1333,6 +1333,10 @@ SUITE xt-cell
    test/xt-cell-test.f
 ;SUITE
 
+SUITE catch-stale
+   test/catch-stale-suite.f
+;SUITE
+
 SUITE effect-read-api
    test/effect-read-api-test.f
 ;SUITE

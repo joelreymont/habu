@@ -923,11 +923,14 @@ private
    c key sp sr br N-HELP FUN-OPEN
    c tp tr key L-IMP V-EXPORT C-HABU FUN-DECL
    c sa key A-SPAN IR-FUN:SET-FUN-SPAN
-   c fp fr br key sr tr ar sa [: OVF-TRY ;] catch
-   {: c2:IR-CTX:ctx fp2:IR-ARENA:arena fr2:IR-ARENA:arena br2:IR-ARENA:arena key2:IR-ID:ir-module-key sr2:IR-ARENA:arena tr2:IR-ARENA:arena ar2:IR-ARENA:arena sa2:IR-ARENA:arena rc:n :}
+   \ The nine cells the caught body was handed come back stale (`catch` restores
+   \ the DEPTH of both stacks, never their contents); the arenas this case reads
+   \ are the locals bound before it.
+   c fp fr br key sr tr ar sa [: OVF-TRY ;] catch {: rc:n :}
+   2drop 2drop 2drop 2drop drop
    rc
-   fr2 IR-FUN:FUNS
-   br2 IR-FUN:BLOCKS ;
+   fr IR-FUN:FUNS
+   br IR-FUN:BLOCKS ;
 
 : OVF-BLK-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}

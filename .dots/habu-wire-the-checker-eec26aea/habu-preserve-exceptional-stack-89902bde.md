@@ -1,10 +1,15 @@
 ---
 title: Preserve exceptional stack types across catch and payload restoration
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-09-13T21:26:24.684087+03:00"
 ---
+
+Claim: agent=hazel workspace=.jj-ws/hazel-catch-stale, based on 45608866.
+First lane: the conservative rule (window cells a throw path may have
+overwritten become `stale<t>` after catch; reads refused by name); the
+retained callee evidence is the second lane.
 
 Confirmed 2026-09-13 by payload_resume under the current fresh source-checker owner in .jj-ws/cedar-owner-payload. CHECK! accepts both:
 - SWAP-THROW ( n ptr u8 -- n ptr u8 n ) [: swap -99 throw ;] catch

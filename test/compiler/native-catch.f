@@ -45,9 +45,13 @@ private
 \ switches to compiling - the signature is not a token at all, and the closing
 \ `;` is gone before the checker sees anything.
 
-\ 0 NCA-W1  1 [:  2 drop  3 5  4 throw  5 ;]  6 catch
+\ The body touches its window cell and leaves it where it was, because a body
+\ that overwrites the cell it was handed hands back a `stale<n>` the definition's
+\ declared output refuses (test/catch-stale-suite.f). What this fixture is for is
+\ the recorded window of a body that never returns, and that is unchanged.
+\ 0 NCA-W1  1 [:  2 dup  3 drop  4 5  5 throw  6 ;]  7 catch
 : SRC-DEAD ( -- )
-   s" : NCA-W1 ( n -- n n ) [: drop 5 throw ;] catch ;" NCA-TEST:EV ;
+   s" : NCA-W1 ( n -- n n ) [: dup drop 5 throw ;] catch ;" NCA-TEST:EV ;
 
 \ 0 NCA-W2  1 [:  2 1+  3 ;]  4 catch
 : SRC-LIVE ( -- )
@@ -110,9 +114,9 @@ public
 : DEAD-CASE ( -- )
    s" a caught body that never returns publishes its window and no output" T-LABEL
    SCANNED
-   6 WIN-IN 1 T=
-   6 WIN-OUT NDICT:CATCH-NONE T=
-   8 SITES 1 T= ;
+   7 WIN-IN 1 T=
+   7 WIN-OUT NDICT:CATCH-NONE T=
+   9 SITES 1 T= ;
 
 : LIVE-CASE ( -- )
    s" a caught body that returns publishes both, and they are the same width" T-LABEL
@@ -211,8 +215,14 @@ public
 : NCA-WIDE ( n -- n )
    drop 1 2 3 4 dup 3 > if 7 throw then drop drop drop ;
 
+\ The contents measurement is the one thing a quotation LITERAL can no longer
+\ express: a checked program may not READ the window cell a throwing body may
+\ have written - it comes back `stale<n>` (test/catch-stale-suite.f). An
+\ exceptional edge is not part of a quotation's TYPE, so `['] W catch` keeps the
+\ window typed and the measurement below stays exact. The callee-evidence lane
+\ (dot c2923193) is what would give the literal the same proof.
 : NCA-D1 ( n -- n n )
-   [: NCA-CLOB ;] catch ;
+   ['] NCA-CLOB catch ;
 
 : NCA-D2 ( n -- n n )
    [: NCA-OK1 ;] catch ;
@@ -230,11 +240,16 @@ public
 : NCA-D5 ( n -- n )
    3 0 ?do [: NCA-OK1 ;] catch drop loop ;
 
-: NCA-D6 ( n -- n n )
-   [: NCA-DEEP1 ;] catch ;
+\ A callee that throws counts as overwriting every input it declared, whether or
+\ not it writes one: it may rewrite them all before it throws. NCA-DEEP1 leaves
+\ the cell alone and NCA-WIDE clobbers it, and under a quotation literal both
+\ windows come back stale - so these two assert the code the throw carried out of
+\ two and three frames down, and drop the cell.
+: NCA-D6 ( n -- n )
+   [: NCA-DEEP1 ;] catch nip ;
 
-: NCA-D7 ( n -- n n )
-   [: NCA-WIDE ;] catch ;
+: NCA-D7 ( n -- n )
+   [: NCA-WIDE ;] catch nip ;
 
 \ Two catches in one definition whose windows are two different widths, and the
 \ shape a latched export would compile wrongly: the first takes two cells and the
@@ -253,11 +268,13 @@ public
 \ data value does - src/compiler/native/elaborate.f R-OPERANDS+ and R-RESULTS@
 \ are inside CALL-OPERANDS+ and CALL-CLOSE, which is the staging DO-CATCH goes
 \ through - so what these two measure is that the seam really is the ordinary one
-\ and not a special case: the parked 42 comes back whether the body threw or not,
-\ while the window cell under it answers 5 on the throwing path and 8 on the
-\ other.
-: NCA-PT ( n -- n n n )
-   42 >r [: NCA-CLOB ;] catch r> ;
+\ and not a special case: the parked 42 comes back whether the body threw or not.
+\ The parked cell is BELOW the caught body's return window, which is empty, so
+\ the depth restore never reaches it and it stays typed; the DATA window cell of
+\ the throwing twin comes back stale and is dropped, while the non-throwing twin
+\ keeps it and still answers 8.
+: NCA-PT ( n -- n n )
+   42 >r [: NCA-CLOB ;] catch nip r> ;
 
 : NCA-PN ( n -- n n n )
    42 >r [: NCA-OK1 ;] catch r> ;
@@ -310,13 +327,31 @@ PRODUCT point 0
    [: ;] catch {: rc:n :}
    READ-BUNDLES rc ;
 
+\ The contents measurement of a MULTICELL window is the one thing a quotation
+\ LITERAL can no longer express: READ-BUNDLES reads the bundles the throwing
+\ body may have written, and the literal route brings the window back as one
+\ `stale<option<point<>>>` (test/catch-stale-suite.f). An exceptional edge is not
+\ part of a quotation's TYPE, so `['] W catch` keeps the window typed and the
+\ measurement below stays exact.
 : CATCH-DEAD ( point option<point> -- n n n )
-   [: BUNDLE-THROW ;] catch {: rc:n :}
+   ['] BUNDLE-THROW catch {: rc:n :}
    READ-BUNDLES rc ;
 
 : CATCH-EMPTY-THROW ( point option<point> -- n n n )
    [: -80 throw ;] catch {: rc:n :}
    READ-BUNDLES rc ;
+
+\ What the literal route DOES express: a stale bundle is one value of the width
+\ the elaborator gives it. One `drop` removes the whole group, and `nip` takes
+\ the scalar out from under it - the checker's side of both rows is
+\ test/catch-stale-suite.f (B1, B7).
+: CATCH-STALE-DROP ( point option<point> -- n )
+   [: BUNDLE-THROW ;] catch {: rc:n :}
+   drop drop rc ;
+
+: CATCH-STALE-NIP ( n option<point> -- n )
+   [: BUNDLE-THROW ;] catch {: rc:n :}
+   nip drop rc ;
 
 \ Tender's OPEN keeps an archive beside option<document>, catches a reader,
 \ binds the result code, cleans up, then matches the surviving option.
@@ -375,14 +410,12 @@ public
    7 NCA-FIXTURE:NCA-D5 10 T= ;
 
 : DEEP-CASE ( -- )
-   s" a throw from two frames below the catch, and the same body not throwing" T-LABEL
-   7 NCA-FIXTURE:NCA-D6 {: du:n dr:n :}
-   dr 11 T=  du 7 T= ;
+   s" a throw from two frames below the catch" T-LABEL
+   7 NCA-FIXTURE:NCA-D6 11 T= ;
 
 : WIDEN-CASE ( -- )
    s" a body that leaves more cells than it took before it throws" T-LABEL
-   7 NCA-FIXTURE:NCA-D7 {: wu:n wr:n :}
-   wr 7 T=  wu 1 T= ;
+   7 NCA-FIXTURE:NCA-D7 7 T= ;
 
 : TWO-WINDOW-CASE ( -- )
    s" two catches with different windows keep separate stack shapes" T-LABEL
@@ -400,8 +433,8 @@ public
 
 : PARKED-CASE ( -- )
    s" a value parked across the catch comes back, on both paths" T-LABEL
-   7 NCA-FIXTURE:NCA-PT {: tu:n tr:n tp:n :}
-   tp 42 T=  tr 9 T=  tu 5 T=
+   7 NCA-FIXTURE:NCA-PT {: tr:n tp:n :}
+   tp 42 T=  tr 9 T=
    7 NCA-FIXTURE:NCA-PN {: nu:n nr:n np:n :}
    np 42 T=  nr 0 T=  nu 8 T= ;
 
@@ -416,6 +449,10 @@ public
    3 5 NCA--FIXTURE-POINT:MAKE NCA-FIXTURE:NO-POINT
    [: NCA-FIXTURE:BUNDLE-ID ;] NCA-FIXTURE:CATCH-BUNDLE
    0 T= 0 T= 8 T=
+   s" a stale multicell window is ONE value: one drop moves it, nip moves it" T-LABEL
+   3 5 NCA--FIXTURE-POINT:MAKE NCA-FIXTURE:SOME-POINT
+   NCA-FIXTURE:CATCH-STALE-DROP -79 T=
+   8 NCA-FIXTURE:SOME-POINT NCA-FIXTURE:CATCH-STALE-NIP -79 T=
    s" a zero-window catch leaves both bundles intact" T-LABEL
    3 5 NCA--FIXTURE-POINT:MAKE NCA-FIXTURE:SOME-POINT
    NCA-FIXTURE:CATCH-EMPTY 0 T= 42 T= 8 T=
@@ -433,7 +470,7 @@ public
 \ ---- what production compilation still refuses -------------------------------
 : NORET-BODY-CASE ( -- )
    s" catch compiles both throwing and returning bodies" T-LABEL
-   [: s" : NCA-NR1 ( n -- n n ) [: drop 5 throw ;] catch ;" NCA-TEST:EV ;]
+   [: s" : NCA-NR1 ( n -- n n ) [: dup drop 5 throw ;] catch ;" NCA-TEST:EV ;]
    0 TTHROWSQ
    [: s" : NCA-NR2 ( n -- n n ) [: 1+ ;] catch ;" NCA-TEST:EV ;]
    0 TTHROWSQ ;

@@ -634,15 +634,19 @@ private
    c b IR-BUILD:END-FUN drop
    c IR-CTX:MINTED {: mint0:n :}
    b IR-BUILD:OPS {: ops0:n :}
-   c b [: RF-FREEZE ;] catch {: c2:IR-CTX:ctx b2:IR-BUILD:builder rc:n :}
+   \ The two cells the caught body was handed come back stale (`catch` restores
+   \ the DEPTH of both stacks, never their contents): the context and the
+   \ builder this case goes on reading are the locals bound before it.
+   c b [: RF-FREEZE ;] catch {: rc:n :}
+   2drop
    rc
-   b2 IR-BUILD:OPS ops0 -
-   c2 IR-CTX:MINTED mint0 -
-   b2 IR-BUILD:LIVE?
-   b2 IR-BUILD:ABORT
-   c2 MK {: b3:IR-BUILD:builder :}
-   c2 b3 LEGAL
-   c2 b3 IR-BUILD:FREEZE IR-BUILD:FROZEN? ;
+   b IR-BUILD:OPS ops0 -
+   c IR-CTX:MINTED mint0 -
+   b IR-BUILD:LIVE?
+   b IR-BUILD:ABORT
+   c MK {: b3:IR-BUILD:builder :}
+   c b3 LEGAL
+   c b3 IR-BUILD:FREEZE IR-BUILD:FROZEN? ;
 
 \ The refusal leaves the builder live, adds no operation, and mints no module
 \ identity of its own, and the verifier still accepts the next legal module.

@@ -509,17 +509,42 @@ Inductive ty : Type :=
      slots, and `QX!` (checker.f:310-314) fills them at `;]`:
        `Q>XHAS`  (checker.f:306) — the body has a throw edge;
        `Q>XDEAD` (checker.f:307) — the body has NO normal return;
-       `Q>XDOUT` / `Q>XROUT` (checker.f:308-309) — the rows at the first throw.
+       `Q>XDMASK` / `Q>XRMASK` (checker.f:600-601) — the AND-folded INTACT MASKS
+       of the body's window over every throw edge it has.
      The two BOOLEANS decide programs: `RSEXEC` (checker.f:2015-2021) raises the
      caller's throw edge on `Q>XHAS` and KILLS the caller's path on `Q>XDEAD`
      INSTEAD of installing the quotation's output rows, and `RSCATCH`
      (checker.f:2051-2052) uses both to decide whether a throw code is pushed
      at all.  Carrying only the rows makes a model of `execute` unsound in the
-     accepting direction, so they live here.  The two ROWS decide nothing: they
-     are read only by the image serialisers (checker.f:2433-2434, 4197-4198),
-     so they are deliberately not carried.
+     accepting direction, so they live here.  The two MASKS are what `RSCATCH`
+     stales the window by (`TStale` below), and this fragment does not model that
+     rewrite, so they are deliberately not carried.
      Flag order: xhas, then xdead. *)
   | TQuot : bool -> bool -> eff -> ty
+  (* T-STALE: the type a cell HAD before a caught throw path may have
+     overwritten it.  `MK-STALE` (checker.f:1402-1407) wraps the term a `catch`
+     cannot vouch for, `STALE>INNER` (checker.f:432) gives it back, and
+     `T-UNSTALE` (checker.f:1409-1410) answers the wrapped term, which is what
+     every PHYSICAL question about the cell asks — its family, its hidden slot,
+     its width — because a cell a throw left stale is still that cell.  The
+     wrapper never nests: `MK-STALE` of a stale term is that same term, so one
+     `STALE>INNER` always reaches the real type.
+
+     Two facts about it are carried here.  A stale term has the WIDTH of the
+     term it wraps (`t_width_fuel` below sees through it, as `T-WIDTH`
+     checker.f:1946-1950 does), so a stale multicell bundle is ONE value of its
+     own width and never W cells nobody can drop.  And in unification it pairs
+     with a type VARIABLE — which is how a stale cell is moved, dropped or bound
+     to an untyped local — or with an EQUALLY STALE term, whose two wrapped types
+     then have to agree; every other pairing is a READ of a cell with no type
+     left to read and is refused by name (`U-TYPE`'s two `STALE-NOTE` arms,
+     checker.f:2474-2510, reported as `E-STALE-READ`).
+
+     What nothing here does is BUILD one.  The window rewrite `catch` performs
+     (`ROW-STALE-FROM`, checker.f:3356-3365, over the folded intact masks above)
+     is outside this fragment, and `Control.do_catch` says so where it models
+     `catch`. *)
+  | TStale : ty -> ty
 with tys : Type :=
   | TNil : tys
   | TCons : ty -> tys -> tys
@@ -542,6 +567,11 @@ Fixpoint args_list (l : tys) : list ty :=
 Definition fam0 (f : nat) : ty := TFam f 0 TNil.
 Definition fam_app (f : nat) (args : list ty) : ty := TFam f 0 (args_of args).
 Definition fam_hid (f slot : nat) (args : list ty) : ty := TFam f (S slot) (args_of args).
+
+(* `T-UNSTALE`, checker.f:1409-1410: the term a stale cell hides.  ONE level is
+   the whole walk, because `MK-STALE` never wraps a wrapper (checker.f:1403). *)
+Definition unstale (t : ty) : ty :=
+  match t with TStale u => u | _ => t end.
 
 (* The overwhelmingly common quotation: a body with a normal return and no
    throw edge.  Every quotation `MK-QUOT` builds starts this way (checker.f:297-
@@ -586,6 +616,7 @@ Fixpoint ty_size (t : ty) : nat :=
   | TFam _ _ args => S (args_size args)
   | TPtr u => S (ty_size u)
   | TQuot _ _ e => S (eff_size e)
+  | TStale u => S (ty_size u)
   end
 with args_size (l : tys) : nat :=
   match l with TNil => 0 | TCons u rest => S (ty_size u + args_size rest) end
@@ -626,6 +657,11 @@ Fixpoint ty_eqb (a b : ty) : bool :=
      (checker.f:1586), which likewise separates them. *)
   | TQuot h1 d1 x, TQuot h2 d2 y =>
       Bool.eqb h1 h2 && Bool.eqb d1 d2 && eff_eqb x y
+  (* Two stale cells are the same term when they lost the same type.  The
+     checker's fast path never says so — `MK-STALE` mints a fresh arena entry
+     per wrapped cell, so two wrappers are two ids — and `U-TYPE`'s stale arm
+     pairs the two wrapped types instead, which succeeds on exactly these. *)
+  | TStale x, TStale y => ty_eqb x y
   | _, _ => false
   end
 with args_eqb (a b : tys) : bool :=
@@ -777,6 +813,9 @@ Fixpoint zonk_ty_fuel (fuel : nat) (s : subst) (t : ty) : ty :=
       | TQuot h dd (Eff a b c d) =>
           TQuot h dd (Eff (zonk_row_fuel f s a) (zonk_row_fuel f s b)
                           (zonk_row_fuel f s c) (zonk_row_fuel f s d))
+      (* The wrapper travels with its cell: what a substitution can still reach
+         is the type the cell lost. *)
+      | TStale u => TStale (zonk_ty_fuel f s u)
       end
   end
 with zonk_row_fuel (fuel : nat) (s : subst) (x : stack) : stack :=
@@ -820,6 +859,10 @@ Fixpoint ty_occ_fuel (fuel : nat) (s : subst) (v : tyvar) (t : ty) : bool :=
       | TQuot _ _ (Eff a b c d) =>
           ty_occ_row_fuel f s v a || ty_occ_row_fuel f s v b
           || ty_occ_row_fuel f s v c || ty_occ_row_fuel f s v d
+      (* `TY-OCC?`'s stale arm, checker.f:1884: a variable can hide in the type
+         the cell lost, and binding it to the wrapper would be cyclic all the
+         same. *)
+      | TStale u => ty_occ_fuel f s v u
       end
   end
 with ty_occ_row_fuel (fuel : nat) (s : subst) (v : tyvar) (x : stack) : bool :=
@@ -990,6 +1033,10 @@ Fixpoint t_width_fuel (fuel : nat) (e : fenv) (s : subst) (t : ty) : nat :=
                 | TkCell | TkEvidence => 1
                 end
           end
+      (* `T-WIDTH` asks `T-UNSTALE` (checker.f:1947): a cell a throw left stale
+         occupies exactly what it occupied, so a stale bundle is ONE value of the
+         instantiated width its family gives it. *)
+      | TStale u => t_width_fuel f e s u
       | _ => 1
       end
   end.
@@ -1084,6 +1131,17 @@ Fixpoint raw_ok_fuel (fuel : nat) (s : subst) (t : ty) : option subst :=
          and deferred xts. *)
       | TAtom _ _ => Some s
       | TQuot _ _ _ => Some s    (* the engine legitimately raw-stores xts *)
+      (* `FENCE-WHY` (checker.f:2345-2356) tests the tag against var, family,
+         con, pointer and quotation and answers `FENCE-OK` for everything else,
+         so a stale cell reaches the same admission an atom does.  This is the
+         code's answer and the only place it is written down: the stale rule
+         refuses a cell's TYPED uses and says nothing about a raw cell.  It is a
+         route AROUND the rule, and it is measured:
+           `( ptr u8 -- n ) [: WBOOM ;] catch {: v code:n :} v V ! V @ 1 +`
+         certifies over a `variable V` and a `WBOOM ( ptr u8 -- )` that throws —
+         the store takes the stale cell and the fetch hands back a plain raw
+         cell. *)
+      | TStale _ => Some s
       end
   end.
 
@@ -1181,6 +1239,12 @@ Definition u_ty (e : fenv) (k : ukind) (s : subst) (strict : bool) (a b : ty)
   if ty_eqb ra rb then Some (s, [])
   else
     match ra, rb with
+    (* `U-TYPE`'s stale arm, checker.f:2480-2481, and it comes FIRST for the same
+       reason the T-PARAM arm comes before the variable arms: two cells a caught
+       throw left stale meet at a control-flow join, and what has to agree there
+       is the two types they lost.  Every other pairing of a stale cell but a
+       variable falls to the last arm, which refuses it and names the read. *)
+    | TStale x, TStale y => Some (s, [UTy strict x y])
     (* `U-TYPE`'s quotation arm pairs the four ROWS and nothing else
        (checker.f:1587-1591): the control flags are not unified, so a quotation
        variable bound to a throwing quotation keeps THAT term's flags. *)
@@ -1365,6 +1429,7 @@ Fixpoint slots_ty (acc : list (dom * nat)) (t : ty) : list (dom * nat) :=
   | TFam _ _ args => slots_args acc args
   | TPtr u => slots_ty acc u
   | TQuot _ _ e => slots_eff acc e
+  | TStale u => slots_ty acc u
   end
 with slots_args (acc : list (dom * nat)) (l : tys) : list (dom * nat) :=
   match l with
@@ -1427,6 +1492,7 @@ Fixpoint shift_ty (m : amap) (d : nat) (t : ty) : ty :=
   | TFam f h args => TFam f h (shift_args m d args)
   | TPtr u => TPtr (shift_ty m d u)
   | TQuot h dd e => TQuot h dd (shift_eff m d e)
+  | TStale u => TStale (shift_ty m d u)
   end
 with shift_args (m : amap) (d : nat) (l : tys) : tys :=
   match l with
@@ -1452,6 +1518,7 @@ Fixpoint max_ty (t : ty) : nat :=
   | TFam _ _ args => max_args args
   | TPtr u => max_ty u
   | TQuot _ _ e => max_eff e
+  | TStale u => max_ty u
   end
 with max_args (l : tys) : nat :=
   match l with TNil => 0 | TCons u rest => Nat.max (max_ty u) (max_args rest) end

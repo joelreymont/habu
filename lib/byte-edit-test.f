@@ -58,20 +58,42 @@ create BINARY-INSERT $7F c, 0 c,
    0 >OFF 2 >LEN s" " REPLACE
    s" " RESULT= EDIT:CLOSE ;
 
+\ ---- the caught bodies of the failure cases ---------------------------------
+\ Every case below reads the editor after the catch, so the handle must SURVIVE
+\ the caught failure. A quotation literal leaves it `stale<EDIT:editor>` -
+\ `catch` restores the DEPTH of both stacks and never their contents - and a
+\ linear cell can be neither read nor dropped, so each body is a name reached by
+\ `[']`: an exceptional edge is not part of a quotation's TYPE, so that route
+\ keeps the window typed until the callee-evidence lane (dot c2923193) lets the
+\ checker prove the handle intact.
+: REPLACE-NEG-OFF ( EDIT:editor -- EDIT:editor ) -1 >OFF 1 >LEN s" x" REPLACE ;
+: REPLACE-PAST-END ( EDIT:editor -- EDIT:editor ) 4 >OFF 0 >LEN s" x" REPLACE ;
+: REPLACE-PAST-LEN ( EDIT:editor -- EDIT:editor ) 1 >OFF 3 >LEN s" x" REPLACE ;
+: REPLACE-NEG-LEN ( EDIT:editor -- EDIT:editor ) 1 >OFF -1 >LEN s" x" REPLACE ;
+: REPLACE-NEG-SIZE ( EDIT:editor -- EDIT:editor ) 1 >OFF 1 >LEN s" x" drop -1 REPLACE ;
+: REPLACE-INSIDE-LAST ( EDIT:editor -- EDIT:editor ) 3 >OFF 1 >LEN s" Y" REPLACE ;
+: REPLACE-BEFORE-LAST ( EDIT:editor -- EDIT:editor ) 0 >OFF 1 >LEN s" Y" REPLACE ;
+: REPLACE-NO-ROOM ( EDIT:editor -- EDIT:editor ) 0 >OFF 0 >LEN s" x" REPLACE ;
+: REPLACE-FROM-STORAGE ( EDIT:editor -- EDIT:editor ) 0 >OFF 0 >LEN STORAGE BYTE-VIEW 1 REPLACE ;
+: WRITE-TINY ( EDIT:editor -- EDIT:editor ) OUTPUT 1 EDIT:WRITE drop ;
+: WRITE-SOURCE ( EDIT:editor -- EDIT:editor ) BINARY 4 EDIT:WRITE drop ;
+: WRITE-STORAGE ( EDIT:editor -- EDIT:editor ) STORAGE BYTE-VIEW OUTPUT-CAP EDIT:WRITE drop ;
+: WRITE-OUTPUT ( EDIT:editor -- EDIT:editor ) OUTPUT OUTPUT-CAP EDIT:WRITE drop ;
+
 : BAD-RANGES ( -- )
    s" abc" OPEN
-   [: -1 >OFF 1 >LEN s" x" REPLACE ;] catch E-RANGE T=
-   [: 4 >OFF 0 >LEN s" x" REPLACE ;] catch E-RANGE T=
-   [: 1 >OFF 3 >LEN s" x" REPLACE ;] catch E-RANGE T=
-   [: 1 >OFF -1 >LEN s" x" REPLACE ;] catch E-RANGE T=
-   [: 1 >OFF 1 >LEN s" x" drop -1 REPLACE ;] catch E-RANGE T=
+   ['] REPLACE-NEG-OFF catch E-RANGE T=
+   ['] REPLACE-PAST-END catch E-RANGE T=
+   ['] REPLACE-PAST-LEN catch E-RANGE T=
+   ['] REPLACE-NEG-LEN catch E-RANGE T=
+   ['] REPLACE-NEG-SIZE catch E-RANGE T=
    s" abc" RESULT= EDIT:CLOSE ;
 
 : BAD-ORDER ( -- )
    s" abcdef" OPEN
    2 >OFF 2 >LEN s" X" REPLACE
-   [: 3 >OFF 1 >LEN s" Y" REPLACE ;] catch E-ORDER T=
-   [: 0 >OFF 1 >LEN s" Y" REPLACE ;] catch E-ORDER T=
+   ['] REPLACE-INSIDE-LAST catch E-ORDER T=
+   ['] REPLACE-BEFORE-LAST catch E-ORDER T=
    s" abXef" RESULT=
    4 >OFF 1 >LEN s" Z" REPLACE
    s" abXZf" RESULT= EDIT:CLOSE ;
@@ -80,22 +102,22 @@ create BINARY-INSERT $7F c, 0 c,
    $5A OUTPUT c!
    s" abc" OPEN
    1 >OFF 1 >LEN s" long replacement" REPLACE
-   [: OUTPUT 1 EDIT:WRITE drop ;] catch E-CAPACITY T=
+   ['] WRITE-TINY catch E-CAPACITY T=
    OUTPUT c@ $5A T=
    s" along replacementc" RESULT= EDIT:CLOSE ;
 
 : CAPACITY-FAILURE ( -- )
    ZERO-STORAGE 0 STORAGE-BYTES s" abc" INIT
-   [: 0 >OFF 0 >LEN s" x" REPLACE ;] catch E-CAPACITY T=
+   ['] REPLACE-NO-ROOM catch E-CAPACITY T=
    s" abc" RESULT= EDIT:CLOSE ;
 
 : ALIAS-FAILURES ( -- )
    BINARY 4 OPEN
-   [: BINARY 4 EDIT:WRITE drop ;] catch E-ALIAS T=
-   [: STORAGE BYTE-VIEW OUTPUT-CAP EDIT:WRITE drop ;] catch E-ALIAS T=
-   [: 0 >OFF 0 >LEN STORAGE BYTE-VIEW 1 REPLACE ;] catch E-ALIAS T=
+   ['] WRITE-SOURCE catch E-ALIAS T=
+   ['] WRITE-STORAGE catch E-ALIAS T=
+   ['] REPLACE-FROM-STORAGE catch E-ALIAS T=
    0 >OFF 0 >LEN OUTPUT 1 REPLACE
-   [: OUTPUT OUTPUT-CAP EDIT:WRITE drop ;] catch E-ALIAS T=
+   ['] WRITE-OUTPUT catch E-ALIAS T=
    EDIT:CLOSE ;
 
 : CHECKED-OWNERSHIP ( -- )

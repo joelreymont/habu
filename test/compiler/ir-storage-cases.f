@@ -14,6 +14,12 @@ private
 1 constant SCRATCH-CEIL
 variable CUR
 variable CCUR
+\ The answer of a caught step. A quotation cannot read the enclosing word's
+\ locals and `catch` restores the DEPTH of both stacks and never their contents,
+\ so no stack slot can carry a value out of a body that threw: the cell holds the
+\ -1 it was preset with when the step throws, and the step's own answer when it
+\ does not.
+variable ANS
 TYPED-VARIABLE IX IR-ARENA:cell-id
 TYPED-VARIABLE VW IR-ARENA:view
 
@@ -73,16 +79,18 @@ TYPED-VARIABLE VW IR-ARENA:view
    t IR-ARENA:ABORT 0 ;
 
 \ A caught quotation cannot read the enclosing word's locals, so the step carries
-\ everything it needs on the data stack and hands its answer back in the slot it
-\ was given. The slot keeps the -1 it went in with when the step throws.
-: STEP-TRY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena n n -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena n n )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena b:IR-ARENA:arena st:n slot:n :}
-   c a b st  c a b st DO-OP ;
+\ everything it needs on the data stack and writes its answer to ANS, which the
+\ runner preset. The cells it was handed come back stale from the catch and are
+\ dropped.
+: STEP-TRY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena n -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena n )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena b:IR-ARENA:arena st:n :}
+   c a b st  c a b st DO-OP ANS ! ;
 
 : STEP-RUN ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena n -- n n )
-   -1 [: STEP-TRY ;] catch {: rc:n :}
-   {: c:IR-CTX:ctx a:IR-ARENA:arena b:IR-ARENA:arena st:n got:n :}
-   rc got ;
+   -1 ANS !
+   [: STEP-TRY ;] catch {: rc:n :}
+   2drop 2drop
+   rc ANS @ ;
 
 : STEP-CHECK ( n n n -- ) {: st:n rc:n got:n :}
    s" the storage word reaches the answer the shared vector row records" T-LABEL
@@ -123,14 +131,15 @@ TYPED-VARIABLE VW IR-ARENA:view
    op COP-MINTED <> if E-CST-ROW throw then
    c IR-CTX:MINTED ;
 
-: CSTEP-TRY ( IR-CTX:ctx n n -- IR-CTX:ctx n n )
-   {: c:IR-CTX:ctx st:n slot:n :}
-   c st  c st CDO-OP ;
+: CSTEP-TRY ( IR-CTX:ctx n -- IR-CTX:ctx n )
+   {: c:IR-CTX:ctx st:n :}
+   c st  c st CDO-OP ANS ! ;
 
 : CSTEP-RUN ( IR-CTX:ctx n -- n n )
-   -1 [: CSTEP-TRY ;] catch {: rc:n :}
-   {: c:IR-CTX:ctx st:n got:n :}
-   rc got ;
+   -1 ANS !
+   [: CSTEP-TRY ;] catch {: rc:n :}
+   2drop
+   rc ANS @ ;
 
 : CSTEP-CHECK ( n n n -- ) {: st:n rc:n got:n :}
    s" the context word reaches the answer the shared vector row records" T-LABEL

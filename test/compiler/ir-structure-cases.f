@@ -307,8 +307,11 @@ private
 
 \ ---- driving one value-store step --------------------------------------------
 \ A caught quotation cannot read the enclosing word's locals, so each step
-\ carries everything it needs on the data stack and hands its answer back in the
-\ slot it was given. The slot keeps the -1 it went in with when the step throws.
+\ carries everything it needs on the data stack and writes its answer to ANS,
+\ which the runner preset: `catch` restores the DEPTH of both stacks and never
+\ their contents, so no stack slot can carry a value out of a body that threw.
+\ The cells the step was handed come back stale from the catch and are dropped.
+variable ANS
 
 : STAGE-OPERANDS ( IR-ID:ir-module-key n -- ) {: key:IR-ID:ir-module-key st:n :}
    st SS-OPN@ 0 ?do
@@ -321,19 +324,20 @@ private
       c tp tr key I64 IR-OP:ADD-RESULT
    loop ;
 
-: SSA-TRY ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena n n -- IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena n n )
-   {: c:IR-CTX:ctx key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena st:n slot:n :}
+: SSA-TRY ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena n -- IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena n )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena st:n :}
    c sp sr key K-VAR OPC-SYM IR-OP:BEGIN-OP
    c sa key A-SPAN IR-OP:SET-SPAN
    key st STAGE-OPERANDS
    c tp tr key st STAGE-RESULTS
-   c p v r key qr tr ar sa IR-OP:END-OP IR-ID:OP-LOCAL {: got:n :}
-   c key sp sr tp tr ar sa qr p v r st got ;
+   c p v r key qr tr ar sa IR-OP:END-OP IR-ID:OP-LOCAL ANS !
+   c key sp sr tp tr ar sa qr p v r st ;
 
 : SSA-STEP ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena n -- n n )
-   -1 [: SSA-TRY ;] catch {: rc:n :}
-   {: c:IR-CTX:ctx key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena st:n got:n :}
-   rc got ;
+   -1 ANS !
+   [: SSA-TRY ;] catch {: rc:n :}
+   2drop 2drop 2drop 2drop 2drop 2drop drop
+   rc ANS @ ;
 
 \ ---- driving one block step --------------------------------------------------
 
@@ -343,16 +347,17 @@ private
    c sa key A-SPAN IR-OP:SET-SPAN
    c p v r key qr tr ar sa IR-OP:END-OP drop ;
 
-: BLK-TRY ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena n -- IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena n )
-   {: c:IR-CTX:ctx key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena slot:n :}
+: BLK-TRY ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c sa key A-SPAN IR-FUN:SET-BLOCK-SPAN
-   c br fr key v r qr sa IR-FUN:END-BLOCK IR-ID:BLOCK-LOCAL {: got:n :}
-   c key sp sr tp tr ar sa qr p v r fr br got ;
+   c br fr key v r qr sa IR-FUN:END-BLOCK IR-ID:BLOCK-LOCAL ANS !
+   c key sp sr tp tr ar sa qr p v r fr br ;
 
 : BLK-END ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- n n )
-   -1 [: BLK-TRY ;] catch {: rc:n :}
-   {: c:IR-CTX:ctx key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena got:n :}
-   rc got ;
+   -1 ANS !
+   [: BLK-TRY ;] catch {: rc:n :}
+   2drop 2drop 2drop 2drop 2drop 2drop 2drop
+   rc ANS @ ;
 
 \ ---- one step's two assertions -----------------------------------------------
 
@@ -373,14 +378,16 @@ private
 \ itself: a start that lands on the wrong cell, or an operand arm of the tiling
 \ that stopped comparing, changes what comes back. Reading happens after the
 \ last step so the row is read against the finished table.
-: OPERAND-TRY ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n n -- IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n n )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n slot:n :}
-   p r key id i  p r key id i IR-OP:OPERAND@ IR-ID:VALUE-LOCAL ;
+: OPERAND-TRY ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   p r key id i IR-OP:OPERAND@ IR-ID:VALUE-LOCAL ANS !
+   p r key id i ;
 
 : OPERAND-GET ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- n n )
-   -1 [: OPERAND-TRY ;] catch {: rc:n :}
-   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n got:n :}
-   rc got ;
+   -1 ANS !
+   [: OPERAND-TRY ;] catch {: rc:n :}
+   2drop 2drop drop
+   rc ANS @ ;
 
 : OPERAND-BACK ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n want:n :}

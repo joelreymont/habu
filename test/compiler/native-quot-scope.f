@@ -32,10 +32,20 @@ public
 \ THE PRODUCTION SHAPE, END TO END. The code into a name, a decision on it, and
 \ the throw passed on unchanged - which is how the tree writes a catch: twenty of
 \ the forty catch sites in src and lib are written this way, and until this lane
-\ the caught body could not CALL anything.
+\ the caught body could not CALL anything. `catch` restores the DEPTH of both
+\ stacks and never their contents, so the answer cannot ride the stack out of a
+\ body that may have thrown: the body writes it to a cell, and the cell the body
+\ was handed comes back stale and is dropped.
+variable QSC-ANS
+
+: QSC-BAD-ANS ( n -- n )
+   dup QSC-BAD QSC-ANS ! ;
+
 : QSC-P ( n -- n )
-   [: QSC-BAD ;] catch {: rc:n :}
-   rc 0 <> if rc throw then ;
+   [: QSC-BAD-ANS ;] catch {: rc:n :}
+   drop
+   rc 0 <> if rc throw then
+   QSC-ANS @ ;
 
 \ The dot's own reproducer, weighted. `lim` is spent before the call and `k`
 \ after it, so `k` is the one that has to survive the call and `lim` is the one
@@ -47,9 +57,13 @@ public
 \ The same shape with the code kept as data, so a caller can measure the
 \ throwing path as well: the value the window holds afterwards is the runtime's
 \ answer about a caught throw, and the name added to it is this file's subject.
+\ Reading that value is exactly what the stale rule refuses on a quotation
+\ LITERAL, so the measurement is taken through the route the rule leaves open -
+\ an exceptional edge is not part of a quotation's TYPE, so `['] W catch` keeps
+\ the window typed (test/catch-stale-suite.f pins both sides).
 : QSC-T ( n n -- n n )
    {: k:n lim:n :}
-   lim 5 * [: QSC-BAD ;] catch {: rc:n :}
+   lim 5 * ['] QSC-BAD catch {: rc:n :}
    k 3 * +  rc ;
 
 \ TWO names live across the same call, both read after it, each weighted

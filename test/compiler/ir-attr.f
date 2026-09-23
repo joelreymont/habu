@@ -604,11 +604,14 @@ create CBUF 256 allot
    c 8 16 TAB-NEW {: keyb:IR-ID:ir-module-key b:IR-ARENA:arena rb:IR-ARENA:arena :}
    IR-ATTR:IL-BEGIN
    1 IR-ATTR:IL-ADD
-   c a ra keyb [: STG-END4 ;] catch
-   {: c2:IR-CTX:ctx a2:IR-ARENA:arena ra2:IR-ARENA:arena k2:IR-ID:ir-module-key rc:n :}
+   \ `catch` restores the DEPTH of both stacks and never their contents, so the
+   \ cells the caught body was handed come back stale; this case reads the
+   \ locals bound before the catch instead.
+   c a ra keyb [: STG-END4 ;] catch {: rc:n :}
+   2drop 2drop
    rc
-   c2 a2 ra2 k2 [: STG-END4 ;] catch
-   {: c3:IR-CTX:ctx a3:IR-ARENA:arena ra3:IR-ARENA:arena k3:IR-ID:ir-module-key rc2:n :}
+   c a ra keyb [: STG-END4 ;] catch {: rc2:n :}
+   2drop 2drop
    rc2 ;
 
 : STG-CASES ( -- )
@@ -674,11 +677,11 @@ create CBUF 256 allot
    c 2 16 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
    c a r key 11 IR-ATTR:INT drop
    c a r key 22 IR-ATTR:INT drop
-   c a r key [: CAPF-THIRD ;] catch
-   {: c2:IR-CTX:ctx a2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key rc:n :}
+   c a r key [: CAPF-THIRD ;] catch {: rc:n :}
+   2drop 2drop
    rc
-   r2 IR-ATTR:ATTRS
-   c2 a2 r2 key2 11 IR-ATTR:INT IR-ID:ATTR-LOCAL ;
+   r IR-ATTR:ATTRS
+   c a r key 11 IR-ATTR:INT IR-ID:ATTR-LOCAL ;
 
 : POOLF-NEXT ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key :}
@@ -695,13 +698,13 @@ create CBUF 256 allot
    1 IR-ATTR:IL-ADD
    2 IR-ATTR:IL-ADD
    c a r key IR-ATTR:INT-LIST {: l0:IR-ID:ir-attr-id :}
-   c a r key [: POOLF-NEXT ;] catch
-   {: c2:IR-CTX:ctx a2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key rc:n :}
+   c a r key [: POOLF-NEXT ;] catch {: rc:n :}
+   2drop 2drop
    rc
    IR-ATTR:IL-BEGIN
    1 IR-ATTR:IL-ADD
    2 IR-ATTR:IL-ADD
-   c2 a2 r2 key2 IR-ATTR:INT-LIST IR-ID:ATTR-LOCAL
+   c a r key IR-ATTR:INT-LIST IR-ID:ATTR-LOCAL
    l0 IR-ID:ATTR-LOCAL ;
 
 : CAP-CASES ( -- )
