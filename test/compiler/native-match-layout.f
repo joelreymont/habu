@@ -81,15 +81,16 @@ BIND
 \ - no ordinal, no table, no emitted byte. The four fused data-stack forms went
 \ in beside `dpublish` (dot habu-fuse-tier-1), which is why the two below sit
 \ four higher than they did while `movz` and `store`, declared before them, do
-\ not move. The last one is not a literal: `codeaddr` closes the declaration, so
-\ its tag is one less than the number of opcodes the dialect says it has, and
-\ that pair drifts apart only if a member and its ordinal row disagree.
+\ not move. The two address forms close the declaration: `codeaddr` precedes
+\ `dataaddr`, so their tags are two and one below the dialect's opcode count.
+\ These pairs drift apart only if a member and its ordinal row disagree.
 : OPCODE-CASE ( -- )
-   s" the compiler's eighty-arm opcode declaration compiles and executes" T-LABEL
+   s" the compiler's opcode declaration compiles and executes" T-LABEL
    NMXC-OPCODE:MOVZ NMXC-OPCODE:TAG 0 T=
    NMXC-OPCODE:STORE NMXC-OPCODE:TAG 13 T=
    NMXC-OPCODE:FCMPBR NMXC-OPCODE:TAG 60 T=
-   NMXC-OPCODE:CODEADDR NMXC-OPCODE:TAG A64IR:OPCODES 1- T=
+   NMXC-OPCODE:CODEADDR NMXC-OPCODE:TAG A64IR:OPCODES 2 - T=
+   NMXC-OPCODE:DATAADDR NMXC-OPCODE:TAG A64IR:OPCODES 1- T=
    NMXC-OPCODE:CODEADDR NMXC-OPCODE:CODEADDR NMXC-OPCODE:EQ TTRUE
    NMXC-OPCODE:MOVZ NMXC-OPCODE:CODEADDR NMXC-OPCODE:EQ TFALSE ;
 
