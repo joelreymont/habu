@@ -215,39 +215,31 @@ private
 \
 \ SHA-256 (src/core/sha256.f) is baked for the same reason and splits both ways.
 \ KK (64 round constants) and HH0 (the 8 initial hash values) are read-only
-\ tables SHA-BLOCK and SHA-INIT read and nothing writes: carried. Everything else
-\ in that file is scratch this engine's own boot leaves at zero, and each cell
-\ below was read for the fact that justifies its claim - written before read
-\ within one call, or zero is its empty start:
-\   H     SHA-INIT writes all eight from HH0 before SHA-BLOCK reads one, and
-\         SHA256 and SHA256-FILE both call SHA256-RESET first.
-\   WS    SHA-BLOCK writes WS[0..15] from the block and WS[16..63] from those
-\         before the compression loop reads one.
-\   SHA-TAIL     only SHA-TAIL-U bytes are ever read, and SHA256-UPDATE moves
-\                them in before it raises that count.
-\   SHA-IO       SHA256-FILE reads the file into it and hashes SHA-RD bytes of it.
-\   SHA-DIGEST   SHA256-FILE-HEX fills it through SHA256-FINAL before SHA256>HEX
-\                reads it.
-\   PBLK         SHA-PAD zero-fills all $80 bytes, copies the tail in and writes
-\                the length before SHA-BLOCK reads it.
-\   SHA-TAIL-U, SHA-TOTAL   SHA256-RESET writes zero into both, which is also the
-\                           empty start a fresh mapping gives.
-\   SHA-A, SHA-U            SHA256 and SHA256-UPDATE store the caller's span
-\                           before any read.
-\   SHA-NEED     SHA256-UPDATE writes it in the branch that reads it.
-\   SHA-NBLK     SHA256-FINAL stores SHA-PAD's block count before reading it.
-\   SHA-FD, SHA-RD   SHA256-FILE stores open's and read's results before reading
-\                    them, and SHA-CLOSE runs only inside that call.
-\   SHA-BLEN     SHA-PAD writes it before reading it.
-\   SHA-BLOCK-A  SHA-BLOCK stores the block pointer at entry before reading it.
-\   SHA-P        BE32!, BE64!, ZFILL, BYTE>HEX and SHA256-FILE store their
-\                destination before reading it.
-\   SHA-SRC, SHA-DST   BMOVE, SHA-PAD and SHA256>HEX store both before reading.
-\   SHA-OUT      SHA256, SHA256-FINAL and SHA256-FILE store the caller's digest
-\                buffer before reading it.
-\   SHA-W        BE32!, BE64! and BYTE>HEX store the value before reading it.
-\   SHA-N        ZFILL, BMOVE and SHA-TAKE-TAIL store the count before reading it.
-\   SHA-TL, SHA-UB     SHA-PAD stores both at entry before reading them.
+\ tables SHA-BLOCK and SHA256-BEGIN read and nothing writes: carried. What is
+\ left of that file below the window is three pieces of scratch this engine's own
+\ boot leaves at zero - a digest in progress is the CALLER's span now, and every
+\ cursor the words once kept in a cell of their own is a local. Each was read for
+\ the fact that justifies its claim - written before read within one call, or
+\ zero is its empty start:
+\   SHA-CTX0     the one static context the process-wide one-shot words share
+\                (SHA256-RESET/UPDATE/FINAL, SHA256). Every one of them calls
+\                SHA256-BEGIN first, which writes all eight hash words from HH0
+\                and zeroes the tail count and the total; inside the span only
+\                the first TAIL-U tail bytes are ever read and SHA256-FEED moves
+\                them in before it raises that count, SHA-BLOCK writes WS[0..15]
+\                from the block and WS[16..63] from those before the compression
+\                loop reads one, and SHA-PAD zero-fills all $80 bytes of PBLK and
+\                writes the tail and the length into it before SHA-BLOCK reads
+\                it.
+\   SHA-FCTX0    the one static FILE context, which SHA256-FILE and
+\                SHA256-FILE-HEX pass to the reentrant SHA256-FILE-IN. Its digest
+\                context is written by the SHA256-BEGIN that word opens with; its
+\                read buffer is read only up to the count `read` answered; its
+\                path scratch is written by PATHZ before the open reads it; and
+\                its digest slot is written by SHA256-END before SHA256>HEX reads
+\                it.
+\   SHA-DIGEST   TF-SHA16 (src/core/type-family-sha.f) fills it through SHA256
+\                before reading the first eight bytes back.
 \ THE IMAGE-LIFECYCLE REGISTRY (lib/image-lifecycle.f) is the second site a
 \ stripped image is refused at, once the path scratch below lets it open a file:
 \ its private lock, its two counters and the bases of its two hook tables,
@@ -294,12 +286,7 @@ private
    STR-MIN-I64$ STR-I64-DIGITS CARRIED
    KK  64 cells CARRIED
    HH0  8 cells CARRIED
-   H FRESH  WS FRESH  SHA-TAIL FRESH  SHA-IO FRESH  SHA-DIGEST FRESH  PBLK FRESH
-   SHA-TAIL-U FRESH  SHA-TOTAL FRESH  SHA-A FRESH  SHA-U FRESH
-   SHA-NEED FRESH  SHA-NBLK FRESH  SHA-FD FRESH  SHA-RD FRESH
-   SHA-BLEN FRESH  SHA-BLOCK-A FRESH  SHA-P FRESH  SHA-SRC FRESH
-   SHA-DST FRESH  SHA-OUT FRESH  SHA-W FRESH  SHA-N FRESH
-   SHA-TL FRESH  SHA-UB FRESH
+   SHA-CTX0 FRESH  SHA-FCTX0 FRESH  SHA-DIGEST FRESH
    PZB PATH-CAP 1 + FRESH-BYTES ;
 
 LIST

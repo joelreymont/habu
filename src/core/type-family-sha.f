@@ -6,10 +6,9 @@
 \ hash exist. TF-SHA16 writes the first 16 lowercase hex digits of SHA-256 over
 \ (ptr,n) — the exact prefix SHA256>HEX renders — into the 16-byte output.
 
-: TF-SHA16 ( ptr u8 n ptr u8 -- )
-   >r  SHA-DIGEST SHA256
-   r> SHA-DST!  SHA-DIGEST SHA-SRC!
-   8 0 do  SHA-SRC@ i ZBYTE@  SHA-DST@ i 2 * ZPTR+  BYTE>HEX  loop ;
+: TF-SHA16 ( ptr u8 n ptr u8 -- ) {: a u:n out :}
+   a u SHA-DIGEST SHA256
+   8 0 do  SHA-DIGEST i ZBYTE@  out i 2 * ZPTR+  BYTE>HEX  loop ;
 
 : TF-SHA16-INSTALL ( -- )
    [: TF-SHA16 ;] is TF-SHA16-XT ;

@@ -1085,11 +1085,16 @@ variable CANDIDATE-VERDICT
    s" P:H ." GE-SRC-LINE
    $46 s" P:H" s" package hides private qualified word" RUN-BAD-CHILD
    GE-SRC-RESET
+   \ The private word needs a name no global owns. While the engine still had a
+   \ global H (a sha256.f cell), this case spelled it H and the child refused
+   \ BAD on that cell's type - `at 'H' expected: n actual: ptr a` - without ever
+   \ reaching package visibility. A name outside every wordlist gets the
+   \ refusal the case is named for.
    s" package P" GE-SRC-LINE
-   s" : H ( -- n ) 1 ;" GE-SRC-LINE
+   s" : GD-PRIV ( -- n ) 1 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
-   s" : BAD ( -- n ) H ;" GE-SRC-LINE
-   $46 s" at 'H'" s" package rejects private checked call" RUN-BAD-CHILD
+   s" : BAD ( -- n ) GD-PRIV ;" GE-SRC-LINE
+   $46 s" E-UNDEFINED: GD-PRIV" s" package rejects private checked call" RUN-BAD-CHILD
    GE-SRC-RESET
    s" package P" GE-SRC-LINE
    s" public" GE-SRC-LINE

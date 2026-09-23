@@ -7,6 +7,17 @@ is rejected with `CRYPTO:E-PLATFORM` before anything is allocated. Habu already
 has SHA-256 in the engine — this package adds the two primitives SHA-256 alone
 cannot provide: an authenticated cipher and a keyed MAC.
 
+The engine's own digest streams through a context the caller owns: a span of
+`SHA256-CTX-BYTES` bytes passed to `SHA256-BEGIN`, `SHA256-FEED` and
+`SHA256-END`, one per digest, so two tasks hash at once by holding one each.
+Hashing a file is the same bargain one level up: `SHA256-FILE-IN` and
+`SHA256-FILE-HEX-IN` take a FILE CONTEXT, a span of `SHA256-FILE-CTX-BYTES`
+holding a digest context, the digest, the read buffer and the path, so two tasks
+digest two files at once by holding one each. `SHA256-RESET` / `SHA256-UPDATE` /
+`SHA256-FINAL` and `SHA256`, and `SHA256-FILE` / `SHA256-FILE-HEX`, are the
+process-wide one-shot form of the two over one static context each: not for
+concurrent use.
+
 The package carries no key management: no derivation, no rotation, no storage
 format, no nonce counter. It moves one message.
 
