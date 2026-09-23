@@ -132,6 +132,24 @@ CROSS-BUILD from a working arm64 engine - the OS seam and image writer are
 ordinary Habu, so an arm64 engine can write the x86_64 image - and a native
 x86_64 recovery chain is later work (docs/x86-64.md).
 
+The compiler and image writer can be checked on an x86-64 device before the
+complete engine exists. With `HOST` naming a private copy of the integrated
+arm64 engine and `TMP` a private output directory, build the peer fixtures:
+
+```sh
+HB_TMP="$TMP" "$HOST" --load test/x86-64-peer-image.f
+```
+
+The `x86-64-peer-image` gate row checks that the ELF contains the actual HIR
+pass chain's emitted routine. Copy `hb-x64-peer` and `hb-x64-peer-negative`
+from `TMP` to a scratch directory on the Linux/x86-64 peer and run both there.
+The first must exit **0**; the deliberately wrong first arithmetic expectation
+in the second must exit **21**. Other statuses fail the device check. The
+executables check signed subtraction and wraparound, the data and machine
+stack positions, reserved registers, and the OS seam's getpid/invalid-close
+result and carry flag. Building them on arm64 alone does not prove those
+runtime properties, and neither executable is a complete Habu engine.
+
 `tools/bootstrap.sh` does the whole recovery and installs exactly one file:
 `bin/hb`.
 

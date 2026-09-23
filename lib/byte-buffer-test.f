@@ -245,6 +245,10 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 
 : BUFT-RUN ( -- )
    T-RESET
+   s" shared byte-length conversions admit zero and the full nonnegative range" T-LABEL
+   0 BUF:N>BLEN BUF:BLEN>N 0 T=
+   MEM-MAX-N BUF:N>BLEN BUF:BLEN>N MEM-MAX-N T=
+   [: -1 BUF:N>BLEN drop ;] E-BUF-BOUNDS TTHROWSQ
    BUFT-GROW
    BUFT-APPEND-SPAN
    BUFT-RESERVE

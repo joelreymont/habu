@@ -43,17 +43,7 @@ private
 2 constant GROWTH                         \ capacity doubling factor
 MEM-MAX-N constant MAX-BYTES              \ largest byte extent (one cell); the doubling-overflow ceiling
 
-\ ---- representation projection (BUF's only retype, and it is checked) ----------
-\ Reads a validated `byte-len`'s raw cell to store the header capacity/length cell,
-\ to size the allocation, and to drive the byte-copy/pointer arithmetic - all of
-\ which still consume a bare `n`. BUF-private, no public export; there is no public
-\ inverse, so a length/offset role cannot round-trip through a raw cell by accident.
-\ Deleting the projection outright waits on habu-build-exact-modular-44f4c2dc.
-CAST: BLEN>N ( NUM:byte-len -- n )
-
-\ ---- n -> byte-len: the read/derived cell is provably nonnegative (SET-LEN keeps
-\ len >= 0, INIT keeps cap > 0), so the refusal arms are unreachable invariants
-\ (E-BUF-BOUNDS; mirrors VEC's OK-ITEM-COUNT / MEM's E-MEM-TOTALITY discipline).
+\ Shared byte-length conversion: callers use the same refusal as the buffer.
 : OK-BLEN ( NUM:numeric-result<NUM:byte-len> -- NUM:byte-len )
    MATCH NUM:numeric-result
       ok OF ENDOF                              negative OF E-BUF-BOUNDS throw ENDOF
@@ -61,7 +51,13 @@ CAST: BLEN>N ( NUM:byte-len -- n )
       underflow OF E-BUF-BOUNDS throw ENDOF     bad-alignment OF E-BUF-BOUNDS throw ENDOF
       misaligned OF E-BUF-BOUNDS throw ENDOF
    ;MATCH ;
+
+public
+\ Project a validated length for byte-offset arithmetic; the inverse validates
+\ the raw count and throws E-BUF-BOUNDS on a negative value. Zero is a length.
+CAST: BLEN>N ( NUM:byte-len -- n )
 : N>BLEN ( n -- NUM:byte-len )  NUM:BYTE-LEN OK-BLEN ;
+private
 
 \ ---- header field access ------------------------------------------------------
 : DATA-FIELD ( ptr a -- ptr ptr u8 )  DATA-OFF ptr-field ;

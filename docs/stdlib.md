@@ -549,6 +549,19 @@ BYTE-COPY       ( ptr u8 ptr u8 n -- )
 access. The resulting `ptr u8` supports `c@` and `c!`; checked code rejects
 cell-sized `@` and `!` through that view.
 
+## Byte buffer
+
+`lib/byte-buffer.f` (package `BUF`) owns a growable byte buffer whose lengths
+and capacities are `NUM:byte-len`. Its shared scalar conversions are:
+
+```forth
+BUF:BLEN>N ( NUM:byte-len -- n )
+BUF:N>BLEN ( n -- NUM:byte-len )
+```
+
+`N>BLEN` accepts nonnegative counts, including zero, and throws `E-BUF-BOUNDS`
+on a negative count. `BLEN>N` projects a validated length for byte arithmetic.
+
 ## Bounded pointers (spans)
 
 `lib/span.f` (package `SPAN`) pairs a base pointer with the reach behind it, so a

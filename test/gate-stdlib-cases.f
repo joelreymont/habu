@@ -1248,6 +1248,12 @@ SUITE x86-64-emit
    test/x86-64-emit.f
 ;SUITE
 
+\ Build executable peer fixtures through the real pass chain and ELF writer.
+\ Execution on the x86-64 peer is a separate device check (docs/bootstrap.md).
+SUITE x86-64-peer-image
+   test/x86-64-peer-image.f
+;SUITE
+
 SUITE xml-byte-edits
    lib/xml-test.f
    lib/byte-edit-test.f
