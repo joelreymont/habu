@@ -1,8 +1,7 @@
 \ icode.fs — ICode: SwiftForth-style "assembly in Forth". Mnemonics append
-\ abstract instructions (5-cell records: op a b c d) to an IR buffer; opt.fs
-\ rewrites the IR (peephole); asm.fs encodes it to ARM64 machine code.
-\ Registers/immediates/labels are record FIELDS — optimization and register
-\ allocation rewrite structured instructions, never patch bytes. TRUSTED:.
+\ abstract instructions (5-cell records: op a b c d) to an IR buffer;
+\ asm.fs encodes the records to ARM64 machine code. Registers, immediates and
+\ labels are record fields. TRUSTED:.
 
 s" cg: icode overflow" exception constant E-IC-OVERFLOW
 s" cg: label overflow" exception constant E-LBL-OVERFLOW

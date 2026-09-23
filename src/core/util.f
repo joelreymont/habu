@@ -1,5 +1,4 @@
-\ util.fs — shared in-subset helpers for the selfhost layer. Load FIRST (before
-\ walk.fs / checker.fs / vs.fs, which all use CORE-STR=).
+\ util.f — shared helpers for the checked core. Load before src/core/checker.f.
 
 \ First source-prefix record. Its dictionary index is resolved
 \ by CORE-PREFIX in the running engine: a captured ndict value would describe

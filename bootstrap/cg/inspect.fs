@@ -2,7 +2,7 @@
 \ definition, so it is safe to call from the gforth REPL. (At the interpret
 \ level, compile-only words — `[']`, `i` inside a loop, `{: :}` locals, and
 \ `>r`/`r@` straddling `do`/`loop` — silently read garbage. Do NOT hand-roll
-\ diagnostics out of those; call these instead. See LESSONS.md § Debugging.)
+\ diagnostics out of those; call these instead. See docs/debugging.md.)
 \
 \ Drives the ICode assembler (asm.fs) + disassembler (disasm.fs). Assemble the
 \ *current* ICODE buffer into a private scratch area so SCODE/CODELEN (used by

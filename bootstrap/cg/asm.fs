@@ -132,8 +132,7 @@ CHECKING-ON? off   \ logical-immediate encode/encoders are metaprogramming (bit 
 
 : ENC-EORI ( i -- )  $D2000000 RRI EMITW ;
 \ encodeBitMasks (ENC-LOGIMM, all element sizes) lives in icode.fs now — the
-\ ANDI,/ORRI,/EORI, mnemonics take PLAIN masks and encode at build time;
-\ regstack.fs still probes ENC-LOGIMM to pick the #imm form.
+\ ANDI,/ORRI,/EORI, mnemonics take PLAIN masks and encode at build time.
 CHECKING-ON? on
 
 : ENC-LSLV ( R i64 -- R )  $9AC02000 RRR EMITW ;

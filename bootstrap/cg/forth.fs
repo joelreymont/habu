@@ -7,7 +7,7 @@
 \ bodies (no BL/BLR/BR/RET/ADR inside, meat <= INL-MAX) which are inlined.
 \ Literals compile to a movz/movk + push stencil. W^X: the region is mmap'd RW,
 \ toggled RW->RX at `;` (mprotect + DC CVAU / IC IVAU flush) so the word is
-\ callable, and back to RW at the next `:`.  See docs/forth.md, LESSONS.md.
+\ callable, and back to RW at the next `:`. See docs/forth.md and docs/debugging.md.
 \
 \ Registers (emitted program):
 \   x19=XDS data stack   x20=RBASE __TEXT base   x21=INP  x22=INE  (input cursor/end)
@@ -79,7 +79,7 @@ $400000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ  \ native mirror src/habu/layout.f
 
 require exec.fs
-require templ.fs           \ g-push, XDS(=19)
+19 constant XDS  31 constant SP
 require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
 \ crash.fs's guard-page classification reads STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS
 \ (below), so it is required after that block, not immediately here -- see the
@@ -125,7 +125,7 @@ $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii
 94 constant ENGINE-ERROR:USING-AMBIGUOUS  \ bare tail resolves in more than one used public wordlist
 102 constant ENGINE-ERROR:STACK-BOUNDS
 \ Explicit recovery mirror of src/habu/stack-abi.f, exercised by the parity
-\ fixture. Gforth's standalone templ.fs owns a different stack arrangement.
+\ fixture.
 \
 \ EVERY VM STACK IS A GUARDED MAPPING now, never a band inside the DATA
 \ header: STACK-GUARD:EMIT-MAP maps cap+3*PAGE-BYTES PROT_NONE, then remaps
@@ -692,8 +692,7 @@ previous definitions
 
 \ The engine's own data-stack moves, one instruction each: Xds points just past
 \ the top cell, so a push stores at it and then advances it and a pop retreats
-\ it and then loads. These shadow templ.fs's pair on purpose -- this file emits
-\ the ENGINE's primitives -- and both spell the same two instructions.
+\ it and then loads.
 \ MIRROR of src/habu/rt.f.
 : G-PUSH ( reg -- ) XDS 8 STR-POST, ;
 : G-POP ( reg -- ) XDS -8 LDR-PRE, ;
@@ -7588,7 +7587,7 @@ variable P2SK
       LMAIN EMIT-DEF-KW-GUARD ;                         \ after exit: BL-only helper, never main-loop fall-through
 
 : EMIT-RESET-BUILDER ( -- )
-   ICODE-RESET  CF-RESET  0 #PL !  0 PNP !  0 CF-DEF-GUARD !  0 CF-DEF-LMAIN ! ;
+   ICODE-RESET  0 #PL !  0 PNP !  0 CF-DEF-GUARD !  0 CF-DEF-LMAIN ! ;
 
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LFINDUSED !  LBL LNUM !  LBL LDICT !  LBL LSRC !
