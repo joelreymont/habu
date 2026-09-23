@@ -17,6 +17,7 @@ package AOT-CAPTURE
 public
 : SITE-TEST-DATA+ ( n -- ) ACAP-ADD-DSITE ;
 : SITE-TEST-CODE+ ( n -- ) ACAP-ADD-CSITE ;
+: SITE-TEST-CODE-SCAN ( n n -- ) ACAP-SCAN-CSITES ;
 : SITE-TEST-NORMALIZE ( -- ) ACAP-NORMALIZE-DSITES ;
 : SITE-TEST-HELD? ( n -- bool ) ACAP-DSITE-HELD? ;
 \ ACAP-DEFER-SITE's last line, over the two words it composes. The word itself
@@ -85,6 +86,24 @@ create KEY 32 allot
    0 AOT-XTSITE:N ! 0 AOT-BOOTRUN-LEN ! 0 AOT-PWIN-N !
    0 AOT-SIG-N ! 0 AOT-SIG-STR-LEN ! 0 AOT-REG-LEN ! ;
 
+TRUSTED: MARK-TEST-SITE ( n -- ) addrmap-set ;
+
+\ A corrupt DATA carrier cannot become a four-word CODE site. Mark free region
+\ space only; this child exits immediately after the isolated capture scan.
+: BAD-CODE-CARRIER ( -- )
+   CLEAR-COUNTS
+   12 AOT-BLOB-LEN !
+   AOT-BLOB-BUF@ {: p:ptr :}
+   $D2C00009 p U32! $F2A00009 p 4 + U32! $F2800009 p 8 + U32!
+   $D503201F p 12 + U32!
+   cp@ {: base:n :}
+   p base SNAP-RELOC:DATA-CHAIN-BYTES SNAP-RELOC:SET-CHAIN-VALUE
+   base MARK-TEST-SITE
+   base base 12 + AOT-CAPTURE:SITE-TEST-CODE-SCAN
+   s" the compact carrier must not overwrite the following word" T-LABEL
+   p 12 + U32@ $D503201F T=
+   T-REPORT ;
+
 : SOURCE ( -- )
    CLEAR-COUNTS AOT-IDENT:RESET
    s" src/habu/aot-decl.f" AOT-IDENT:PATH+
@@ -136,10 +155,11 @@ create KEY 32 allot
 \ captured cell as aligned as it was captured. Both site kinds and all eight
 \ residues are fed known values here, rather than re-derived from live memory as
 \ test/aot-artifact-rows.f does.
-$1000 constant NORM-BASE      \ 8-aligned, so d0's residue is exactly the one added
+DATA-VA VA>N $1000 + constant NORM-BASE
 3 constant NORM-CELLS
 48 constant NORM-CHAIN-OFF    \ above the cells, 4-byte aligned, 16 bytes wide
 3 constant NORM-CHAIN-K       \ the chain carries d0 + 8 * this
+64 constant NORM-REL-OFF
 : NORM-CELL-OFF ( n -- n ) 8 * 16 + ;
 
 \ Cell k holds d0 + 8k (k = 0 included: a value AT the base), and the chain holds
@@ -148,6 +168,7 @@ $1000 constant NORM-BASE      \ 8-aligned, so d0's residue is exactly the one ad
 \ sweep gives each kind (ACAP-SCAN-DSITES, ACAP-DEFER-SITE).
 : NORM-SITES ( n -- ) {: r:n :}
    CLEAR-COUNTS
+   NORM-REL-OFF SNAP-RELOC:DATA-CHAIN-BYTES + AOT-BLOB-LEN !
    NORM-BASE r + AOT-DATA-D0 !  64 AOT-DATA-SIZE !
    NORM-CELLS 0 ?do
       NORM-BASE r + i 8 * +  AOT-BLOB-BUF@ i NORM-CELL-OFF + CELL-VIEW !
@@ -157,7 +178,12 @@ $1000 constant NORM-BASE      \ 8-aligned, so d0's residue is exactly the one ad
    $D2800009 p U32!        $F2A00009 p 4 + U32!
    $F2C00009 p 8 + U32!    $F2E00009 p 12 + U32!
    p NORM-BASE r + NORM-CHAIN-K 8 * + SNAP-RELOC:SET-CHAIN
-   NORM-CHAIN-OFF AOT-CAPTURE:SITE-TEST-DATA+ ;
+   NORM-CHAIN-OFF AOT-CAPTURE:SITE-TEST-DATA+
+   AOT-BLOB-BUF@ NORM-REL-OFF + {: rel:ptr :}
+   $D2C00005 rel U32!  $F2A00005 rel 4 + U32!
+   $F2800005 rel 8 + U32!
+   rel NORM-BASE r + 32 + SNAP-RELOC:DATA-CHAIN-BYTES SNAP-RELOC:SET-CHAIN-VALUE
+   NORM-REL-OFF AOT-CAPTURE:SITE-TEST-DATA+ ;
 
 : NORM-SHIFTED ( n -- ) {: r:n :}
    s" cell site: stored = value - d0 + (d0 and 7)" T-LABEL
@@ -166,6 +192,8 @@ $1000 constant NORM-BASE      \ 8-aligned, so d0's residue is exactly the one ad
    loop
    s" chain site: the same coordinate, re-encoded into the chain" T-LABEL
    AOT-BLOB-BUF@ NORM-CHAIN-OFF + SNAP-RELOC:CHAINV  NORM-CHAIN-K 8 * r +  T=
+   s" the short DATA carrier stores the same window coordinate" T-LABEL
+   AOT-BLOB-BUF@ NORM-REL-OFF + SNAP-RELOC:DATA-CHAIN-BYTES SNAP-RELOC:CHAIN-VALUE 32 r + T=
    s" the capture base keeps its 8-residue, so the seed's delta stays a multiple of 8" T-LABEL
    AOT-DATA-D0 @ r T= ;
 
@@ -247,6 +275,7 @@ $1000 constant NORM-BASE      \ 8-aligned, so d0's residue is exactly the one ad
 : RUN ( -- )
    T-RESET
    ?BAND-BUDGET
+   1 SCRIPT-ARGV$ s" bad-code-carrier" STR= if BAD-CODE-CARRIER exit then
    1 SCRIPT-ARGV$ 5 min s" span-" STR= if SPAN-CASE exit then
    1 SCRIPT-ARGV$ s" reserve-overflow" STR= if
       $7FFFFFFFFFFFFFFF AOT-DSITE-RESERVE exit then

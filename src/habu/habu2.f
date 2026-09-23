@@ -20,8 +20,8 @@ using AOT-BUF
 \ shared minimal MOVZ/MOVN+MOVK synthesizer (LVMOVK, via LVLITPUSH) and materialize into
 \ x16 -- never the fixed four-instruction x9 chain the AOT relocation recognises -- so a
 \ scalar whose value numerically lands inside a DATA/CODE address range can never be
-\ mistaken for an address. DATA/CODE addresses keep the fixed four-instruction x9 chain
-\ (constant width preserves the boot-reloc patch space) and flow only through the
+\ mistaken for an address. CODE addresses keep four lanes; DATA addresses use a
+\ three-half shared address. Both have fixed relocation space and use the
 \ dedicated C-DATA-ADDR* / C-CODE-ADDR words, which name the relocation kind at the site.
 
 \ scalar-push: minimal chain + push (LVLITPUSH synthesizes x16, then pushes it).
@@ -43,6 +43,21 @@ using AOT-BUF
 : C-ADDR-PUSH ( -- )
    C-ADDR-RAW
    9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
+
+\ Shared DATA must not use x20, which changes per task. Both fixed DATA mappings
+\ fit three halves; high-to-low order distinguishes these from full addresses.
+: C-DATA-RAW ( -- )
+   DATA-VA VA>N DATA-SIZE + $FFFFFFFFFFFF > if C-ADDR-RAW exit then
+   LBL LBL {: absolute:label done:label :}
+   5 DATA-VA VA>N LIT64,  6 11 5 SUB,  5 DATA-SIZE LIT64,
+   6 5 CMP,  C-HI absolute BCOND,
+   5 $FFFF MOVZ,
+   7 11 32 LSRI,  7 7 5 AND,  7 7 5 LSLI,  8 SNAP-RELOC:DATA-MOVZ2 9 or LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   7 11 16 LSRI,  7 7 5 AND,  7 7 5 LSLI,  8 W-MOVK1 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   7 11 5 AND,  7 7 5 LSLI,  8 SNAP-RELOC:DATA-MOVK0 9 or LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   done B,
+   absolute LBL, C-ADDR-RAW
+   done LBL, ;
 \ The three words that NAME the relocation kind of a chain, and the compile-mode
 \ CALL-or-INLINE emitter, are defined further down, right after the snapshot-
 \ relocation labels. All four record a site through SNAP-RELOC:MARK-SITE: the
@@ -228,9 +243,8 @@ $25 constant BL-OP-HI
 ;package
 
 \ ---- the three words that name a chain's relocation kind ---------------------
-\ Same instruction shape for all three; what differs is what the address means,
-\ which is why the kind is decided here, at the emit site, and never later by
-\ looking at the bytes.
+\ The kind is decided here, at the emit site. DATA uses its three-half carrier;
+\ CODE retains the absolute one. Neither shape alone makes bytes an address.
 \
 \ ALL THREE RECORD THEIR SITE, AND THE MAP ANSWERS ONE QUESTION: WHERE A CHAIN
 \ STARTS. It used to answer only for code addresses, and the DATA ones were left
@@ -278,11 +292,12 @@ $25 constant BL-OP-HI
 \ between the chain and the push that consumes x9.
 : C-DATA-ADDR ( -- )
    SNAP-RELOC:MARK-SITE
-   C-ADDR-PUSH ;
+   C-DATA-RAW
+   9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
 \ raw DATA-region address into x9, no push (the defer dispatch-cell address).
 : C-DATA-ADDR-RAW ( -- )
    SNAP-RELOC:MARK-SITE
-   C-ADDR-RAW ;
+   C-DATA-RAW ;
 \ push a CODE address (quotation entry xt or ['] target xt). The word it
 \ names lives in the JIT region or in the engine's loaded __text, and neither of
 \ those is at the same address in the run that restores a snapshot image, so the
@@ -5615,8 +5630,9 @@ public
 \ residue, and from there the whole window arrives with every cell exactly as
 \ aligned as it was captured. It costs at most seven bytes of DATA once per boot.
 : EM-AOT-RELOC-DATA ( -- )
-   LBL LBL LBL LBL LBL LBL
-   {: dloop:label drdone:label ok:label msg:label chain:label next:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: dloop:label drdone:label ok:label msg:label chain:label next:label
+      absolute:label mark:label :}
    3 DATA DP-CELL LDR,                              \ x3 = seed DP (abs) = REPL DATA base at boot
    5 10 LAOTDATAD0 LABEL@ TADR,  5 5 0 LDR,         \ x5 = canonical DATA base (capture base's 8-residue)
    6 5 3 SUB,  6 6 7 ANDI,  3 3 6 ADD,              \ ... and DP up to that base's own 8-residue
@@ -5642,6 +5658,20 @@ public
       7 chain CBZ,
          11 9 0 LDR,  11 11 6 ADD,  11 9 0 STR,  next B,
       chain LBL,
+      \ The short DATA carrier starts at half 2 and ends at half 0.
+      10 9 0 LDRW,  5 SNAP-RELOC:ADDR-OPC-MASK LIT64,  10 10 5 AND,
+      14 10 SNAP-RELOC:ADDR-RD-MASK ANDI,
+      5 SNAP-RELOC:DATA-MOVZ2 LIT64,  5 5 14 ORR,
+      10 5 CMP,  C-NE absolute BCOND,
+      10 9 0 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  11 10 32 LSLI,
+      10 9 4 LDRW,   10 10 5 LSRI,  10 10 5 AND,  10 10 16 LSLI,  11 11 10 ORR,
+      10 9 8 LDRW,   10 10 5 LSRI,  10 10 5 AND,  11 11 10 ORR,
+      11 11 6 ADD,
+      10 9 0 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 0 STRW,
+      10 9 4 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
+      10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 0 ADDI,   5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
+      mark B,
+      absolute LBL,
       10 9 0 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  11 10 0 ADDI,
       10 9 4 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 16 LSLI,  11 11 10 ORR,
       10 9 8 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 32 LSLI,  11 11 10 ORR,
@@ -5651,6 +5681,7 @@ public
       10 9 4 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
       10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
       10 9 12 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,  14 11 48 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 12 STRW,
+      mark LBL,
       \ A later capture or stripped link still needs the DATA site's provenance.
       \ The shared recorder clobbers x6; retain this pass's live DATA delta.
       SP SP 16 SUBI,  6 SP 0 STR,
@@ -6481,7 +6512,7 @@ ardone LBL,
       0 XTBAND-RC MOVZ,  NR-EXIT-GROUP SYS,
    done LBL,  RET, ;
 
-\ Record the four-instruction MOVZ/MOVK address chain whose first word is in x9.
+\ Record the MOVZ/MOVK address carrier whose first word is in x9.
 \ Compile handlers supply CP before emission; seed relocation supplies its site.
 \ Preserve x11, the literal value held by compile and seed callers. Both callers
 \ have no live x30 across this call; compile handlers also call LCEMIT afterward.
@@ -6522,8 +6553,8 @@ ardone LBL,
 \ Clobbers x2, x3, x4, x5, x6, x7, x9, x10, x12, x13, x14; x8, x11, x21, x22 and
 \ x25 survive for the caller.
 : EMIT-ADDRS ( -- )
-   LBL LBL LBL LBL LBL LBL {: sal:label sadone:label sanext:label
-                              sabit:label sabnext:label sabad:label :}
+   LBL LBL LBL LBL LBL LBL LBL {: sal:label sadone:label sanext:label
+                              sabit:label sabnext:label sabad:label full:label :}
    LADDRS LABEL@ LBL,
    6 ADDRMAP-OFF LIT64,  6 DATA 6 ADD,              \ x6 = address-literal map base
    13 11 31 ADDI,  13 13 5 LSRI,                    \ x13 = map bytes covering the image (rounded up)
@@ -6537,7 +6568,7 @@ ardone LBL,
       sabit LBL,  5 sanext CBZ,                     \ every remaining bit is clear
          14 5 1 ANDI,  14 sabnext CBZ,
             14 4 2 LSLI,                            \ x14 = chain's byte offset within the region
-            3 14 ADDR-CHAIN-BYTES ADDI,             \ the whole chain has to be inside the payload
+            3 14 DATA-CHAIN-BYTES ADDI,             \ the shortest carrier must fit before its words are read
             3 11 CMP,  C-HI sabnext BCOND,          \ past this payload: not part of the image being patched
             14 8 14 ADD,                            \ x14 = chain address
             \ a recorded site must still be the chain. Anything else means the map
@@ -6548,6 +6579,17 @@ ardone LBL,
             \ refused as firmly as four words that are not move-wide at all.
             9 14 0 LDRW,   9 9 7 AND,
             3 9 ADDR-RD-MASK ANDI,
+            10 DATA-MOVZ2 LIT64,  10 10 3 ORR,
+            9 10 CMP,  C-NE full BCOND,
+            \ A shared DATA address is validated but never CODE-rebased.
+            9 14 4 LDRW,  9 9 7 AND,
+            10 $F2A00000 LIT64,  10 10 3 ORR,  9 10 CMP,  C-NE sabad BCOND,
+            9 14 8 LDRW,  9 9 7 AND,
+            10 DATA-MOVK0 LIT64,  10 10 3 ORR,  9 10 CMP,  C-NE sabad BCOND,
+            sabnext B,
+            full LBL,
+            10 4 2 LSLI,  10 10 ADDR-CHAIN-BYTES ADDI,
+            10 11 CMP,  C-HI sabad BCOND,
             10 W-MOVZ0 LIT64,  10 10 ADDR-RD-BITS LSRI,  10 10 ADDR-RD-BITS LSLI,  10 10 3 ORR,
             9 10 CMP,  C-NE sabad BCOND,
             9 14 4 LDRW,   9 9 7 AND,

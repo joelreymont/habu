@@ -100,9 +100,9 @@ variable LBUF-BYTES
 \ EVERY GENERATED ACCESSOR ADDRESSES ITS STORAGE THROUGH A `create`d WORD, and
 \ that is a relocation statement, not a style choice.
 \
-\ The engine has exactly one relocatable form for a DATA address: the fixed
-\ four-instruction movz/movk x9 chain that habu2.f C-DATA-ADDR emits for
-\ `create`/`variable` and records in the address map (SNAP-RELOC:MARK-SITE).
+\ A DATA address uses the recorded carrier that habu2.f C-DATA-ADDR emits for
+\ `create`/`variable` (SNAP-RELOC:MARK-SITE): a three-half shared DATA address,
+\ or the full absolute chain on an older host.
 \ Every pass that MOVES persisted DATA - the snapshot restore, the AOT seed's
 \ EM-AOT-RELOC-DATA, and aot-file.f's MERGE - rewrites those chains by one delta
 \ and touches nothing else. A scalar literal is emitted through a different path

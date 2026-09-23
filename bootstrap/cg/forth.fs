@@ -2349,8 +2349,8 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 \ shared minimal MOVZ/MOVN+MOVK synthesizer (LVMOVK, via LVLITPUSH) and materialize into
 \ x16 -- never the fixed four-instruction x9 chain the AOT relocation recognises -- so a
 \ scalar whose value numerically lands inside a DATA/CODE address range can never be
-\ mistaken for an address. DATA/CODE addresses keep the fixed four-instruction x9 chain
-\ (constant width preserves the boot-reloc patch space) and flow only through the
+\ mistaken for an address. CODE addresses keep four lanes; DATA addresses use a
+\ three-half shared address. Both have fixed relocation space and use the
 \ dedicated C-DATA-ADDR* / C-CODE-ADDR words, which name the relocation kind at the site.
 
 \ scalar-push: minimal chain + push (LVLITPUSH synthesizes x16, then pushes it).
@@ -2375,10 +2375,23 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 : C-ADDR-PUSH ( -- )
    C-ADDR-RAW
    9 W-PUSH9 LIT64,  LCEMIT @ BL, ;
+: C-DATA-RAW ( -- )
+   DATA-VA DATA-SIZE + $FFFFFFFFFFFF > if C-ADDR-RAW exit then
+   LBL LBL { absolute done }
+   5 DATA-VA LIT64,  6 11 5 SUB,  5 DATA-SIZE LIT64,
+   6 5 CMP,  C-HI absolute BCOND,
+   5 $FFFF MOVZ,
+   7 11 32 LSRI,  7 7 5 AND,  7 7 5 LSLI,  8 $D2C00009 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
+   7 11 16 LSRI,  7 7 5 AND,  7 7 5 LSLI,  8 W-MOVK1 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
+   7 11 5 AND,  7 7 5 LSLI,  8 $F2800009 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
+   done B,
+   absolute LBL, C-ADDR-RAW
+   done LBL, ;
 \ push a DATA-region address (create/variable data field).
-: C-DATA-ADDR ( -- )  C-ADDR-PUSH ;
+: C-DATA-ADDR ( -- )
+   C-DATA-RAW 9 W-PUSH9 LIT64, LCEMIT @ BL, ;
 \ raw DATA-region address into x9, no push (the defer dispatch-cell address).
-: C-DATA-ADDR-RAW ( -- )  C-ADDR-RAW ;
+: C-DATA-ADDR-RAW ( -- )  C-DATA-RAW ;
 \ push a CODE-region address (quotation entry xt or ['] target xt).
 : C-CODE-ADDR ( -- )  C-ADDR-PUSH ;
 

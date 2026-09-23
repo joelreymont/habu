@@ -188,7 +188,7 @@ private
    c b A64IR-OPCODE:CODEADDR A64IR:OPCODE {: ca:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:FLAGI A64IR:OPCODE {: gi:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:CMPBRI A64IR:OPCODE {: bi:IR-ID:ir-symbol-id :}
-   b IR-BUILD:SCHEMAS 80 T=
+   b IR-BUILD:SCHEMAS 81 T=
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv z IR-SCHEMA:FDEFINED? TTRUE
    rv k IR-SCHEMA:FDEFINED? TTRUE
@@ -278,7 +278,7 @@ private
 : NAMED-CASE ( -- )
    s" the schema table carries the dialect's own name and version" T-LABEL
    BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   12 T= 0 T= TTRUE ;
+   13 T= 0 T= TTRUE ;
 
 \ The spellings themselves, because every reference this dialect stores is a
 \ symbol and a renamed opcode would still read back through the same accessor.

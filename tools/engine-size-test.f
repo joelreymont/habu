@@ -76,6 +76,15 @@ private
 : EST-W32! ( n n -- ) {: w:n off:n :}
    4 0 ?do w i 8 * rshift $FF and IMG@ off i + + c! loop ;
 
+: EST-DATA-CARRIER ( -- )
+   s" the DATA owner decoder accepts the compact carrier at the image end" T-LABEL
+   4 IMG-RESERVE 12 ILEN !
+   $D2C00069 0 EST-W32! $F2A80009 4 EST-W32! $F2802469 8 EST-W32!
+   0 CHAIN? TTRUE 0 CHAIN-VALUE $340000123 T=
+   s" mismatched registers and truncated carriers are refused" T-LABEL
+   $F2802468 8 EST-W32! 0 CHAIN? TFALSE
+   $F2802469 8 EST-W32! 11 ILEN ! 0 CHAIN? TFALSE ;
+
 \ Three one-instruction bodies: call/jump to the third, return, return.
 \ A BL returns into the second body; the same displacement in B does not.
 : EST-FALLTHROUGH ( -- )
@@ -171,6 +180,7 @@ variable EST-WID-SEEN                   \ ... and the non-zero ones walked
 
 : EST-MAIN ( -- )
    T-RESET
+   EST-DATA-CARRIER
    EST-WID-FORM
    EST-TILING
    EST-METADATA

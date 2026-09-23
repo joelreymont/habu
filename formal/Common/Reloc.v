@@ -1,5 +1,11 @@
 (* Habu.Common.Reloc — a model of the snapshot relocation round trip.
 
+   Scope limit: the address-literal model below covers only the four-word
+   carrier and its four-word walk stride. It does not model the three-word
+   DATA branch shipped by SNAP-RELOC:EMIT-ADDRS. The DATA-CHAINS cases in
+   test/compiler/reloc-cases.f are the only check of that branch against the
+   shipped instruction sequence; the theorems here make no claim about it.
+
    A snapshot image has to boot in a process that is not the one that wrote
    it.  The run that writes an image and the run that restores it get the
    engine's loaded __text base from the loader and the JIT region's base from
@@ -24,8 +30,8 @@
        move independently between the two runs.  Those sites too are RECORDED
        when the chain is created (the address-literal map in
        src/habu/layout.f, package SNAP-RELOC), never recognised afterwards:
-       the sibling DATA literals share the chain's exact shape, so no decode
-       of region bytes could tell the two apart.
+       full-width sibling DATA literals can share the chain's exact shape, so
+       the instruction shape alone does not establish its relocation kind.
 
    For all three classes the writer rewrites the value into a CANONICAL form
    and the loader rewrites it again for the run it is actually in.  This file

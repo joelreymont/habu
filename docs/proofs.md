@@ -27,6 +27,10 @@ through the native paths in `test/compiler/ir-context.f`, `ir-arena.f` and
 `ir-storage-manifest.f`.
 
 `formal/Common/Reloc.v` proves round trips for recorded sites in its model.
+Its address-literal model covers only the four-word carrier and that carrier's
+four-word walk stride. It does not model the three-word DATA branch now shipped
+in `SNAP-RELOC:EMIT-ADDRS`; `test/compiler/reloc-cases.f` `DATA-CHAINS` is the
+only check of that branch against the shipped instruction sequence.
 The relocation tests compare selected vectors with the shipped instruction
 sequences using a mnemonic interpreter; they do not prove that every address
 producer records its sites, nor execute the address-cell writer in that model

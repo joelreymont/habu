@@ -2536,15 +2536,15 @@ public
    12 1 MOVZ,  12 12 10 LSLV,
    13 11 0 LDRB,  13 13 12 ORR,  13 11 0 STRB, ;
 
-\ addrmap-set ( addr -- ): record the four-instruction MOVZ/MOVK chain that
+\ addrmap-set ( addr -- ): record the MOVZ/MOVK address carrier that
 \ starts at `addr` as an address literal, the same way the engine's own
 \ C-CODE-ADDR records one (habu2.f EMIT-ADDR-SITE).
 \
 \ WHY IT IS THE SAME MAP AND NOT A SECOND ONE. What the relocation passes need to
 \ know is WHERE a chain starts, and that question has one answer whatever kind of
 \ address the chain carries: an address of code, or an address of the DATA region.
-\ Both are four move-wide words into one register, indistinguishable in the bytes,
-\ and both are found by the identical bit scan. The KIND is the thing that differs,
+\ Both write move-wide halves into one register and are found by the same bit
+\ scan; their widths may differ. The KIND is the thing that differs,
 \ and it does not belong here - a kind is per relocation window and is written
 \ beside the window (src/compiler/native/publish.f), while this bit is a permanent
 \ property of the region word it names. A second band would have cost REGION/32

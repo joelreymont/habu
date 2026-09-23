@@ -312,9 +312,9 @@ TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
 
 : BWM-TEST-DEFER ( -- )
    s" BWM-DEF" BWM-XT {: xt:n :}
-   xt 36 BWM-W32  $46455201 BWM=              \ DEFER-MAGIC low word: meta trailer sits at addr+clen
-   xt 40 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
-   xt 44 + BWM-RD64 BWM-RD64 BWM-FRESH !      \ the fresh dispatch cell's value: the unset target
+   xt 32 BWM-W32  $46455201 BWM=              \ eight instructions, including the three-word DATA carrier
+   xt 36 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
+   xt 40 + BWM-RD64 BWM-RD64 BWM-FRESH !      \ the fresh dispatch cell's value: the unset target
    BWM-FRESH @ BWM-NONZERO                    \ fail closed before any is: never a null cell
    BWM-DEF-A  BWM-CALL-DEF 42 BWM=            \ is installs a target -> dispatch returns 42
    BWM-DEF-B  BWM-CALL-DEF 99 BWM= ;          \ a second is re-points -> 99
@@ -339,9 +339,9 @@ defer BWM-CDEF ( -- n )
 
 : BWM-TEST-CDEFER ( -- )
    s" BWM-CDEF" BWM-XT {: xt:n :}
-   xt 36 BWM-W32  $46455201 BWM=              \ DEFER-MAGIC low word: meta trailer sits at addr+clen
-   xt 40 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
-   xt 44 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
+   xt 32 BWM-W32  $46455201 BWM=              \ the same eight-instruction shared-DATA dispatch
+   xt 36 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
+   xt 40 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
    BWM-FRESH @ BWM=                           \ = the same unset target the trusted defer held
    BWM-CDEF-A  BWM-CALL-CDEF 42 BWM=          \ checked is installs a target -> dispatch returns 42
    BWM-CDEF-B  BWM-CALL-CDEF 99 BWM= ;        \ a second checked is re-points -> 99

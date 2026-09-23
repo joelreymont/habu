@@ -44,7 +44,7 @@ $8000 constant CAP
 32 constant O-PAYLEN
 40 constant O-PRODUCER
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order
-12 constant VERSION
+13 constant VERSION
 18 constant SECTIONS
 64 constant HEX-LEN
 
@@ -347,6 +347,8 @@ create HOST-PATH FS-PATH-CAP allot variable HOST-PATH-U
 : PROBE-DATA-SITES ( -- )
    s" sites" s" file" RUN-DATA-SITES 0 ROW-RC
    s" aot-data-sites: ok" SAID?
+   s" bad-code-carrier" s" file" RUN-DATA-SITES REFUSE-RC ROW-RC
+   s" DATA carrier lies in the CODE band" ERR-SAID?
    s" reserve-overflow" s" file" RUN-DATA-SITES REFUSE-RC ROW-RC
    s" relocation site count exceeds the code blob bound" ERR-SAID?
    s" reserve-limit" s" file" RUN-DATA-SITES REFUSE-RC ROW-RC

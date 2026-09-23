@@ -90,6 +90,8 @@ require tools/image-names.f
 ES-LOAD-TARGET-LAYOUT
 undefine ES-LOAD-TARGET-LAYOUT
 
+require src/habu/address-carrier.f
+
 package IMAGE-SIZE
 
 74 constant RC
@@ -1344,28 +1346,18 @@ variable FALL-N                                      \ modeled fall-through edge
       then
    repeat ;
 
-\ A four-instruction MOVZ/MOVK chain, the one form an address literal takes
-\ (src/habu/aot-closure.f ADDRESS-CHAIN?, src/habu/layout.f SNAP-RELOC, whose
-\ two relocation passes rewrite exactly these four immediates). It is read at a
-\ FILE OFFSET, so the same decode answers for a chain in the baked code blob and
-\ for one in a snapshot's region.
-: CHAIN? ( n -- bool ) {: at:n :}
-   at 16 IN-IMAGE? 0= if false exit then
-   at U32@ $FF800000 and $D2800000 <> if false exit then     \ MOVZ x?, #imm16
-   at U32@ $1F and {: rd:n :}
-   4 1 ?do
-      at i 4 * + U32@ $FF800000 and $F2800000 <> if false unloop exit then
-      at i 4 * + U32@ $1F and rd <> if false unloop exit then \ MOVK x?, #imm16, LSL k
-   loop
-   true ;
+\ A file offset becomes a bounded span for the same decoder the linker uses.
+\ Both the baked blob and a snapshot's region carry this address grammar.
+: CHAIN-SIZE ( n -- n ) {: at:n :}
+   at 0 IN-IMAGE? 0= if 0 exit then
+   IMG@ at + IMG@ ILEN @ + SNAP-RELOC:CHAIN-SIZE ;
+
+: CHAIN? ( n -- bool ) CHAIN-SIZE 0<> ;
 
 : CHAIN-VALUE ( n -- n ) {: at:n :}
-   0 ACC !
-   4 0 ?do
-      at i 4 * + U32@ {: w:n :}
-      ACC @  w 5 rshift $FFFF and  w 21 rshift 3 and 16 * lshift  or ACC !
-   loop
-   ACC @ ;
+   at CHAIN-SIZE {: size:n :}
+   size 0= if s" image-size: malformed address carrier" RC die then
+   IMG@ at + size SNAP-RELOC:CHAIN-VALUE ;
 
 : ROOT-NAME ( n n -- ) {: at:n len:n :}
    REC-N @ 0 ?do

@@ -6,7 +6,8 @@ package ADDRESS-CELLS
 public
 
 1 constant ABI-VERSION
-9 constant SNAPSHOT-VERSION
+\ Outer image version, including region-code grammar. The row storage ABI stays 1.
+10 constant SNAPSHOT-VERSION
 \ Process mutex in fixed image DATA, outside the header and row backing. The
 \ MATCH stack ends before $1A0; $1A0 remains the seal fixture's poke cell, and
 \ CMFAM starts at $1B0. Task USER storage is USER-BAND, far above at $5300.

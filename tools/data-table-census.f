@@ -19,10 +19,10 @@
 \ allotted above it before the first `create`. Both carry wid -1.
 \
 \ HOW A BASE IS READ. No record slot holds the address a `create`d word pushes.
-\ Its body is EMIT-CREATE's own (src/habu/habu2.f): the fixed four-instruction
-\ MOVZ/MOVK chain, then the push stencil and RET. So the address is read back
+\ Its body is EMIT-CREATE's own (src/habu/habu2.f): a recorded MOVZ/MOVK
+\ carrier, then the push stencil and RET. So the address is read back
 \ out of that chain with the decoder its emitter's relocation pass uses,
-\ SNAP-RELOC:CHAINV. The DKIND:ADDR stamp is what makes that read sound - it
+\ SNAP-RELOC:CHAIN-VALUE. The DKIND:ADDR stamp is what makes that read sound - it
 \ says the body is still the definer's own, and `does>` clears it in the same
 \ window it patches the RET into a clause branch. A decoded value outside the
 \ DATA region ends the census by name rather than naming a wrong owner.
@@ -88,7 +88,10 @@ $FFFFFFFF constant IDX-MASK
 
 \ The address the record's body pushes, as a DATA offset.
 : REC-OFF ( ptr n -- n ) {: rec:ptr :}
-   rec XREF-START-SLOT XREF-PTR@ SNAP-RELOC:CHAINV DATA-VA VA>N - {: off:n :}
+   rec XREF-START-SLOT XREF-PTR@ {: p:ptr :}
+   p p rec XREF-CODE-BYTES + SNAP-RELOC:CHAIN-SIZE {: size:n :}
+   size 0= if s" data-table-census: malformed DKIND:ADDR body" 74 die then
+   p size SNAP-RELOC:CHAIN-VALUE DATA-VA VA>N - {: off:n :}
    off 0 < off DATA-SIZE >= or if
       s" data-table-census: DKIND:ADDR body decodes outside DATA" 74 die then
    off ;

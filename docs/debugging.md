@@ -203,9 +203,9 @@ answers the question from the dictionary instead. It prints two maps:
 - `SNAP-HEAP-OWNER:DUMP` — `<heap offset> <name>` for every word that owns a
   piece of the DP heap. The owner of a drifting offset is the last line whose
   offset is not greater than it. A word is recognised as a heap owner by the one
-  fixed shape `create`/`variable` compiles (the four-instruction MOVZ/MOVK x9
-  address chain, the push stencil, a return, code length 24), and the address it
-  owns is read out of the chain's immediate fields.
+  `DKIND:ADDR` stamp `create`/`variable` publishes; the address it owns is read
+  with the shared, bounded `SNAP-RELOC` carrier decoder. A word that merely uses
+  that address is not an owner.
 - `SNAP-HEAP-OWNER:CODE-MAP` — `<JIT region offset> <code length> <name>` for
   every word that has code, headed by the region base and heap top this run got,
   so a program counter caught by a debugger watchpoint turns into a name.
@@ -229,10 +229,9 @@ The heap map that produced the owner table in dot
 offsets `cmp -l` reports between two images built from one `hb-stdin` and one
 `hb-snap-src` named every drifting cell above the engine-reserved band.
 
-For the same reason it cannot be loaded on its own: it reads the dictionary
-through `src/habu/xref.f` and the instruction encodings through
-`src/habu/habu1.f`, and the snapshot builder inlines both rather than
-`require`-ing them, so the tool must not `require` them either.
+It reads the live dictionary through the engine's `src/habu/xref.f` surface and
+loads the pure grammar from `src/habu/address-carrier.f`; image inspection does
+not need the capture buffers or assembler state in `aot-decl.f`.
 
 ## Is this heap cell a persisted pointer or a live one — the ASLR intersect
 
@@ -284,10 +283,10 @@ Two ways this class hides:
   fresh one. The defect is still there; only the accident is. Removing a
   redundant load is therefore a change that can expose persisted-pointer bugs
   anywhere in the tree, and this intersect is how to check.
-- **The owner map does not name it.** `snap-heap-owner` recognises only the
-  engine's own fixed x9 address chain, so a cell inside a natively compiled
-  `create` shows up attributed to whatever recognised owner lies below it, with a
-  large offset. Treat a big offset as "unnamed", not as that word's field.
+- **The owner map does not name it.** `snap-heap-owner` lists live records still
+  stamped `DKIND:ADDR`; `does>` clears that stamp. An unnamed cell may therefore
+  fall far above the preceding owner. Treat a big offset as "unnamed", not as
+  that word's field.
 
 ## Stage0 mirror vs native engine — which engine is actually running
 

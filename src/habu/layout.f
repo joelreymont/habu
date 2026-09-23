@@ -91,7 +91,10 @@ $48425350414E5321 constant SNAP-MAGIC
 \ required in both directions.
 \ Version 8 adds the persisted application startup execution token.
 \ Version 9 stores the address-cell vector through a checked DATA-relative header.
-9 constant SNAP-FORMAT-VERSION
+\ Version 10 admits the three-word shared DATA address carrier in region code.
+\ A format-9 loader would call its valid carrier a corrupt address map (rc 97);
+\ reject that engine/image pairing at version admission (rc 80) instead.
+10 constant SNAP-FORMAT-VERSION
 
 \ --- snapshot trailer geometry: the single owner ----------------------------
 \ The trailer is the last thing in the authenticated text extent, so its base is
@@ -1467,9 +1470,9 @@ public
 \ stops instead.
 96 constant XTCELL-RC
 \ Exit status for a corrupt address-literal map: the loader found a recorded
-\ address-literal site that does not hold the four-instruction MOVZ/MOVK chain the
+\ address-literal site that does not hold the MOVZ/MOVK carrier the
 \ compiler emits there, so the image's region bytes and its literal map come from
-\ different builds or one of them is damaged. Rewriting the four immediates anyway
+\ different builds or one of them is damaged. Rewriting its immediates anyway
 \ would plant a wild address in live code, so the image is refused.
 97 constant ADDRMAP-RC
 \ Exit status for a declared address cell that does not lie inside DATA. Every row
@@ -1507,10 +1510,10 @@ USE-BAND-END constant CALLMAP-OFF
 CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 
 \ Address-literal map: the same shape as the call map, one bit per four-byte word
-\ of the JIT region, recording the FIRST word of every four-instruction MOVZ/MOVK
-\ chain the compiler builds an execution token with. Those are the quotation entry
-\ address a `[: ... ;]` pushes and the target a `[']` pushes; the
-\ chain names a word's code, which lives either inside the region or in the
+\ of the JIT region, recording the FIRST word of every address carrier. A CODE
+\ carrier has four move-wide halves; shared DATA normally uses three. CODE
+\ includes the quotation entry a `[: ... ;]` pushes and the target a `[']`
+\ pushes. It names a word's code, which lives either inside the region or in the
 \ engine's loaded __text, and neither of those keeps its address between the run
 \ that writes a snapshot image and the run that restores it.
 \ A separate map rather than a second bit in the call map: a call site and a chain

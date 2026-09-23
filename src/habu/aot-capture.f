@@ -1727,9 +1727,12 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 : ACAP-SCAN-DSITES ( n n n n -- ) {: bstart:n bend:n d0:n d1:n :}
    d0 AOT-DATA-D0 !  d1 d0 - AOT-DATA-SIZE !
    0 ACAP-P !
-   begin ACAP-P @ SNAP-RELOC:ADDR-CHAIN-BYTES + AOT-BLOB-LEN @ <= while
+   begin ACAP-P @ 4 + AOT-BLOB-LEN @ <= while
       bstart ACAP-P @ ACAP-CHAIN-BIT? if
-         AOT-BLOB-BUF@ ACAP-P @ + SNAP-RELOC:CHAINV {: v:n :}
+         AOT-BLOB-BUF@ ACAP-P @ + {: p:ptr :}
+         p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + SNAP-RELOC:CHAIN-SIZE {: size:n :}
+         size 0= if s" aot-capture: malformed recorded address chain" 74 die then
+         p size SNAP-RELOC:CHAIN-VALUE {: v:n :}
          v d0 >= v d1 < and if
             ACAP-P @ ACAP-ADD-DSITE
          else
@@ -1785,10 +1788,19 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 : ACAP-SCAN-CSITES ( n n -- ) {: bstart:n bend:n :}
    0 AOT-CODE-B0 !                                      \ canonical code base 0
    0 ACAP-P !
-   begin ACAP-P @ SNAP-RELOC:ADDR-CHAIN-BYTES + AOT-BLOB-LEN @ <= while
+   begin ACAP-P @ 4 + AOT-BLOB-LEN @ <= while
       bstart ACAP-P @ ACAP-CHAIN-BIT? if
-         AOT-BLOB-BUF@ ACAP-P @ + SNAP-RELOC:CHAINV {: v:n :}
+         AOT-BLOB-BUF@ ACAP-P @ + {: p:ptr :}
+         p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + SNAP-RELOC:CHAIN-SIZE {: size:n :}
+         size 0= if s" aot-capture: malformed recorded address chain" 74 die then
+         p size SNAP-RELOC:CHAIN-VALUE {: v:n :}
          v bstart >= v bend < and if
+            \ Live shared DATA is in the fixed DATA mapping, disjoint from
+            \ this JIT CODE window. A short carrier here is corrupt, not a
+            \ CODE literal: all later CODE-site passes require four words.
+            size SNAP-RELOC:DATA-CHAIN-BYTES = if
+               s" aot-capture: DATA carrier lies in the CODE band" 74 die
+            then
             ACAP-P @ ACAP-ADD-CSITE
             AOT-BLOB-BUF@ ACAP-P @ +  v bstart -  SNAP-RELOC:SET-CHAIN
          then
@@ -1808,7 +1820,8 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
       site AOT-DSITE-CELL and 0<> if
          p CELL-VIEW @ d0 - base + p AOT-N-C!
       else
-         p p SNAP-RELOC:CHAINV d0 - base + SNAP-RELOC:SET-CHAIN
+         p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + SNAP-RELOC:CHAIN-SIZE {: size:n :}
+         p p size SNAP-RELOC:CHAIN-VALUE d0 - base + size SNAP-RELOC:SET-CHAIN-VALUE
       then
    loop
    base AOT-DATA-D0 ! ;

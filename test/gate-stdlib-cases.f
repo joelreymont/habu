@@ -1501,6 +1501,11 @@ SUITE aot-capture-compact
    test/aot-capture-compact.f
 ;SUITE
 
+SUITE data-address-codec
+   test/data-address-codec.f
+   tools/snap-heap-owner-test.f
+;SUITE
+
 SUITE aot-named-cells
    test/aot-named-cells.f
 ;SUITE

@@ -10,7 +10,7 @@ public
 : ROW-TEST-DATA-VALUE ( n -- n ) {: site:n :}
    AOT-ARM:B0 @ site AOT-BUF:AOT-DSITE-OFF-MASK and + AOT-N>U8 {: p:ptr :}
    site AOT-BUF:AOT-DSITE-CELL and 0<> if p CELL-VIEW @
-   else p SNAP-RELOC:CHAINV then
+   else p p AOT-ARM:B1 @ AOT-N>U8 SNAP-RELOC:CHAIN-SIZE SNAP-RELOC:CHAIN-VALUE then
    AOT-ARM:D0 @ - AOT-ARM:D0 @ 7 and + ;
 
 ;package
@@ -120,6 +120,9 @@ variable CHAIN-VALUE
 : DSITE@ ( n -- n )
    4 * AOT-DSITE-BUF@ + U32@ ;
 
+: CHAIN-VALUE@ ( ptr u8 -- n ) {: p:ptr :}
+   p p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + SNAP-RELOC:CHAIN-SIZE SNAP-RELOC:CHAIN-VALUE ;
+
 
 : SAVE-DSITES ( -- )
    AOT-DATA-D0 @ AOT-ARM:D0 @ 7 and = ASSERT
@@ -131,13 +134,13 @@ variable CHAIN-VALUE
          AOT-BLOB-BUF@ site AOT-DSITE-OFF-MASK and + U64@
       else
          i CHAIN-INDEX ! site CHAIN-SITE !
-         AOT-BLOB-BUF@ site + SNAP-RELOC:CHAINV
+         AOT-BLOB-BUF@ site + CHAIN-VALUE@
       then
       site AOT-CAPTURE:ROW-TEST-DATA-VALUE = ASSERT
    loop
    RAW-INDEX @ 0 >= CHAIN-INDEX @ 0 >= and ASSERT
    AOT-BLOB-BUF@ RAW-SITE @ AOT-DSITE-OFF-MASK and + U64@ RAW-VALUE !
-   AOT-BLOB-BUF@ CHAIN-SITE @ + SNAP-RELOC:CHAINV CHAIN-VALUE ! ;
+   AOT-BLOB-BUF@ CHAIN-SITE @ + CHAIN-VALUE@ CHAIN-VALUE ! ;
 
 
 : ROW-AT ( n -- ptr u8 )
@@ -280,7 +283,7 @@ variable CHAIN-VALUE
    CHAIN-INDEX @ DSITE@ CHAIN-SITE @ HOST-BLOB + = ASSERT
    AOT-BLOB-BUF@ RAW-SITE @ AOT-DSITE-OFF-MASK and + HOST-BLOB + U64@
    RAW-VALUE @ REBASED-DATA = ASSERT
-   AOT-BLOB-BUF@ CHAIN-SITE @ + HOST-BLOB + SNAP-RELOC:CHAINV
+   AOT-BLOB-BUF@ CHAIN-SITE @ + HOST-BLOB + CHAIN-VALUE@
    CHAIN-VALUE @ REBASED-DATA = ASSERT ;
 
 
@@ -329,7 +332,7 @@ variable CHAIN-VALUE
       RAW-INDEX @ 4 * AOT-DSITE-BUF@ + U32! true exit
    then
    s" bad-chain-site" CASE? if
-      ART-BLOB @ SNAP-RELOC:ADDR-CHAIN-BYTES - 1+
+      ART-BLOB @ SNAP-RELOC:DATA-CHAIN-BYTES - 1+
       CHAIN-INDEX @ 4 * AOT-DSITE-BUF@ + U32! true exit
    then
    false ;

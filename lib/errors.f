@@ -849,6 +849,7 @@ public
 -8346 constant E-A64IR-MASK     \ a mask the logical immediate forms cannot carry: the field holds a rotated contiguous run of ones repeating at a power-of-two element width, which excludes zero, all ones, and every run that is broken
 -8347 constant E-A64IR-FUN      \ a function ordinal the address-of-a-function form cannot name: negative, so it denotes no function of any emission. WHICH emission it must be a function of is the emitter's fact and not the dialect's, and is refused there
 -8348 constant E-A64IR-OPCODE   \ an ordinal outside the machine dialect's closed opcode vocabulary
+-8349 constant E-A64IR-DATA     \ a DATA offset outside the mapping or its resulting address beyond 48 bits
 
 \ Native ARM64 instruction selection (package A64SEL): -8360..-8379
 \

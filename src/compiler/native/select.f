@@ -1090,8 +1090,8 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    loop ;
 
 \ ---- the carrier a relocation pass can find and rewrite -----------------------
-\ An ADDRESS chain is ALWAYS four lanes whatever its halves are, because the
-\ relocation pass rewrites four immediates and may not decode region bytes.
+\ The absolute carrier keeps four lanes for CODE and addresses outside DATA.
+\ Shared DATA addresses use one indivisible three-half operation below.
 : MATERIALISE-ADDR ( IR-ID:ir-op-id n n -- )
    {: id:IR-ID:ir-op-id v:n kind:n :}
    id A64IR-OPCODE:MOVZ  v 0 A64IR:HALF-OF  0 A64IR:HALF-SHIFT  false
@@ -1101,9 +1101,23 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
       kind MOVE-WIDE
    loop ;
 
-\ An address takes the fixed carrier; an ordinary number takes the shorter chain.
+: MATERIALISE-DATA ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id off:n :}
+   id A64IR-OPCODE:DATAADDR OPEN
+   RESULT+
+   CTX BLD CTX BLD A64IR:KEY-DATA-OFFSET
+   CTX BLD off A64IR:DATA-OFFSET-ATTR IR-BUILD:ADD-ATTR
+   CLOSE-VALUE ;
+
+\ Address kind chooses a recorded carrier; scalars use an unrecorded minimal chain.
 : MATERIALISE ( IR-ID:ir-op-id n n -- )
    {: id:IR-ID:ir-op-id v:n kind:n :}
+   kind A64IR:ADDR-DATA = if
+      v DATA-VA VA>N - {: off:n :}
+      off 0 >= off DATA-SIZE <= and v $FFFFFFFFFFFF <= and if
+         id off MATERIALISE-DATA exit
+      then
+   then
    kind A64IR:ADDR-NONE <> if id v kind MATERIALISE-ADDR exit then
    v MOVN-COST  v MOVZ-COST  < if id v MATERIALISE-N exit then
    id v MATERIALISE-Z ;

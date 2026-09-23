@@ -1122,6 +1122,8 @@ variable BFT-DOC-CODE
    tr SNAP-TRL-VERSION + BFT-BYTE@ SNAP-FORMAT-VERSION T=
    tr SNAP-TRL-VERSION + 2 BFT-DOCTORED-CAPTURE
    80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
+   tr SNAP-TRL-VERSION + 9 BFT-DOCTORED-CAPTURE
+   80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
    tr SNAP-TRL-VERSION + $FF BFT-DOCTORED-CAPTURE
    80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
    \ +4/+3: a MIDDLE byte of the 8-byte field keeps the value positive but

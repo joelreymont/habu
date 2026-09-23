@@ -125,6 +125,7 @@ SRC_COMMON=(
   src/habu/regalloc.f
   src/habu/jit.f
   src/habu/fdio.f
+  src/habu/address-carrier.f
   src/habu/aot-decl.f
   src/habu/aot-ident.f
   src/habu/habu2.f

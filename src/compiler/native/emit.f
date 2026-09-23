@@ -100,6 +100,7 @@ A64IR-OPCODE:RESERVE   A64IR:ORD constant O-RESERVE
 A64IR-OPCODE:RELEASE   A64IR:ORD constant O-RELEASE
 A64IR-OPCODE:LINKSAVE  A64IR:ORD constant O-LINKSAVE
 A64IR-OPCODE:LINKLOAD  A64IR:ORD constant O-LINKLOAD
+A64IR-OPCODE:DATAADDR  A64IR:ORD constant O-DATAADDR
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -174,6 +175,7 @@ variable EM-PLACE                    \ and what it is
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IMM IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-DATA-OFF IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ADDR IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SH IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
@@ -325,6 +327,7 @@ variable N-FUNS                        \ how many functions the emission holds
 
 : ADDR-OF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
+   id SLOT-AT O-DATAADDR = if A64IR:ADDR-DATA exit then
    id 0 BND-ADDR @ ATTR-HAS? 0= if A64IR:ADDR-NONE exit then
    id 0 BND-ADDR @ ATTR-INT ;
 
@@ -664,6 +667,7 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
 \ the eight conditional selects, which are two.
 : INSNS-OF ( n -- n )
    {: k:n :}
+   k O-DATAADDR = if 3 exit then
    k O-SELZ = if 2 exit then
    k O-CMPSEL = if 2 exit then
    k O-SELZD = if 2 exit then
@@ -1317,6 +1321,14 @@ ARITH-ABI:E-DIV-ZERO invert constant DIV-CODE-IMM  \ the code as a Movn carries 
    id  id WORD-FMOVDD  APPEND ;
 
 \ ---- one operation, as the instructions it is --------------------------------
+: PUT-DATAADDR ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 BND-DATA-OFF @ ATTR-INT A64IR:DATA-OFFSET DATA-VA VA>N + {: addr:n :}
+   id 0 RESULT-REG {: rd:n :}
+   id rd addr 2 A64IR:HALF-OF 2 MOVZHW APPEND
+   id rd addr 1 A64IR:HALF-OF 1 MOVKHW APPEND
+   id rd addr 0 A64IR:HALF-OF 0 MOVKHW APPEND ;
+
 : PUT-OP ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT A64IR:NTH
@@ -1401,6 +1413,7 @@ ARITH-ABI:E-DIV-ZERO invert constant DIV-CODE-IMM  \ the code as a Movn carries 
       tailcall  OF id PUT-TAILCALL ENDOF
       trap      OF id PUT-TRAP ENDOF
       codeaddr  OF id PUT-CODEADDR ENDOF
+      dataaddr  OF id PUT-DATAADDR ENDOF
    ;MATCH ;
 
 \ ---- the shape this leaf emits from ------------------------------------------
@@ -1562,6 +1575,7 @@ public
    c b DIALECT-CK
    c b 0 BND-OP A64IR:OPCODES A64IR:BIND-OPCODES! 0 BND-MOD !
    c b A64IR:KEY-IMM    0 BND-IMM !
+   c b A64IR:KEY-DATA-OFFSET 0 BND-DATA-OFF !
    c b A64IR:KEY-SHIFT  0 BND-SH !
    c b A64IR:KEY-ADDR   0 BND-ADDR !
    c b A64IR:KEY-SLOT   0 BND-SLOT !
@@ -1660,11 +1674,10 @@ public
    loop ;
 
 \ ---- where this emission's address chains start ------------------------------
-\ One chain is four instructions, so the bound is derived rather than chosen.
-\ A site is admitted only for four consecutive lanes of one kind writing the
-\ same register. Scanning one carrier at a time keeps two adjacent chains
-\ distinct even when the allocator reuses their register.
-: SITE-CEIL ( -- n ) INSN-CAP A64IR:HALVES / ;
+\ DATA carriers have three instructions; full absolute carriers have four.
+\ Every instruction must retain the address kind and destination. The decoder
+\ runs only at such a declared site, never over numeric lookalikes.
+: SITE-CEIL ( -- n ) INSN-CAP 3 / ;
 DYNAMIC-BUFFER SITES-BUF n
 : SITES ( -- ptr n ) 0 SITES-BUF ;
 variable N-SITES
@@ -1674,12 +1687,24 @@ variable N-SITES
    k cells M-ADDR + @ kind =
    k cells M-ARD + @ rd = and ;
 
-: CHAIN-CK ( n -- )
-   {: k:n :}
-   k A64IR:HALVES + N-INS @ > if E-A64EMIT-ADDR throw then
+: CHAIN-LANES ( n -- n ) {: k:n :}
+   k 3 + N-INS @ <= if
+      k cells M-ADDR + @ A64IR:ADDR-DATA = if
+         k cells M-ARD + @ {: rd:n :}
+         k INSN-BYTES * {: off:n :}
+         off BYTE@ off 1+ BYTE@ 8 lshift or
+         off 2 + BYTE@ 16 lshift or off 3 + BYTE@ 24 lshift or
+         $FFE0001F and $D2C00000 rd or = if 3 exit then
+      then
+   then
+   A64IR:HALVES ;
+
+: CHAIN-CK ( n n -- )
+   {: k:n lanes:n :}
+   k lanes + N-INS @ > if E-A64EMIT-ADDR throw then
    k cells M-ADDR + @ {: kind:n :}
    k cells M-ARD + @ {: rd:n :}
-   A64IR:HALVES 0 ?do
+   lanes 0 ?do
       k i + kind rd ADDR-LANE? 0= if E-A64EMIT-ADDR throw then
    loop ;
 
@@ -1699,9 +1724,10 @@ variable SCAN-K
       SCAN-K @ cells M-ADDR + @ A64IR:ADDR-NONE = if
          SCAN-K @ 1+ SCAN-K !
       else
-         SCAN-K @ CHAIN-CK
+         SCAN-K @ CHAIN-LANES {: lanes:n :}
+         SCAN-K @ lanes CHAIN-CK
          SCAN-K @ SITE+
-         SCAN-K @ A64IR:HALVES + SCAN-K !
+         SCAN-K @ lanes + SCAN-K !
       then
    repeat ;
 

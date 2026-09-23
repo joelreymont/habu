@@ -54,20 +54,14 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
    data-base ADDRMAP-OFF + off 5 rshift + BYTE-VIEW c@
    off 2 rshift 7 and rshift 1 and 0<> ;
 
-\ MOVZ #lo; MOVK #hi,lsl16/32/48. Keep opcode, shift and register bits;
-\ only the four immediate fields may differ. CHAINV itself is only a decoder.
+\ The shared grammar admits the compact DATA and full absolute carriers.
 : ADDRESS-CHAIN? ( ptr u8 ptr u8 -- bool ) {: p:ptr e:ptr :}
-   p e > if false exit then
-   e p - ADDR-CHAIN-BYTES < if false exit then
-   p AOT-W32@ ADDR-RD-MASK and {: rd:n :}
-   p AOT-W32@ ADDR-OPC-MASK and $D2800000 rd or =
-   p 4 + AOT-W32@ ADDR-OPC-MASK and $F2A00000 rd or = and
-   p 8 + AOT-W32@ ADDR-OPC-MASK and $F2C00000 rd or = and
-   p 12 + AOT-W32@ ADDR-OPC-MASK and $F2E00000 rd or = and ;
+   p e CHAIN-SIZE 0<> ;
 
 : ADDRESS-VALUE ( ptr u8 ptr u8 -- n ) {: p:ptr e:ptr :}
-   p e ADDRESS-CHAIN? 0= if s" aot: malformed recorded address chain" 74 die then
-   p CHAINV ;
+   p e CHAIN-SIZE {: size:n :}
+   size 0= if s" aot: malformed recorded address chain" 74 die then
+   p size CHAIN-VALUE ;
 
 : DATA-ADDRESS? ( n -- bool ) {: v:n :}
    \ The outer mapping has the same stable one-past address as a captured span.
@@ -684,10 +678,10 @@ variable NB-IX
 \ unnamed rather than being attributed to the nearest word below it.
 : REC-CELL-SITE? ( ptr n n -- bool ) {: r:ptr v:n :}
    r REC-CODE-PTR@ {: p:ptr :}
-   r REC-BYTES ADDR-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
+   r REC-BYTES DATA-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
       p i 4 * + ADDRESS-SITE? if
-         p i 4 * +  p i 4 * + ADDR-CHAIN-BYTES + ADDRESS-CHAIN? if
-            p i 4 * + CHAINV v = if true unloop exit then
+         p i 4 * +  p r REC-BYTES + ADDRESS-CHAIN? if
+            p i 4 * + p r REC-BYTES + ADDRESS-VALUE v = if true unloop exit then
          then
       then
    loop false ;
@@ -711,10 +705,10 @@ variable CB-AT
 : REC-CELL-BELOW ( ptr n n -- n ) {: r:ptr v:n :}
    -1 CB-AT !
    r REC-CODE-PTR@ {: p:ptr :}
-   r REC-BYTES ADDR-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
+   r REC-BYTES DATA-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
       p i 4 * + ADDRESS-SITE? if
-         p i 4 * +  p i 4 * + ADDR-CHAIN-BYTES + ADDRESS-CHAIN? if
-            p i 4 * + CHAINV {: w:n :}
+         p i 4 * +  p r REC-BYTES + ADDRESS-CHAIN? if
+            p i 4 * + p r REC-BYTES + ADDRESS-VALUE {: w:n :}
             w DATA-ADDRESS?  w v <= and  w CB-AT @ > and if w CB-AT ! then
          then
       then
@@ -1091,7 +1085,7 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
 : SCAN-ADDRESS ( ptr n ptr u8 ptr u8 -- ) {: caller:ptr p:ptr e:ptr :}
    p ADDRESS-SITE? 0= if exit then
    p e ADDRESS-CHAIN? 0= if caller p e REFUSE-ADDRESS-SITE then
-   p CHAINV {: v:n :}
+   p e ADDRESS-VALUE {: v:n :}
    v DATA-ADDRESS? if
       caller p v DATA-TARGET drop exit
    then
@@ -1187,10 +1181,11 @@ variable BODY-END
 : BODY-END-SCAN ( ptr n n -- ) {: r:ptr v:n :}
    r REC-END-N BODY-END !
    r REC-CODE-PTR@ {: p:ptr :}
-   r REC-BYTES ADDR-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
+   r REC-BYTES DATA-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
       p i 4 * + ADDRESS-SITE? if
-         p i 4 * +  p i 4 * + ADDR-CHAIN-BYTES + ADDRESS-CHAIN? if
-            p i 4 * + CHAINV dup v > over BODY-END @ < and if BODY-END ! else drop then
+         p i 4 * +  p r REC-BYTES + ADDRESS-CHAIN? if
+            p i 4 * + p r REC-BYTES + ADDRESS-VALUE
+            dup v > over BODY-END @ < and if BODY-END ! else drop then
          then
       then
    loop ;

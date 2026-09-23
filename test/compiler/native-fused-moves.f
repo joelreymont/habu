@@ -49,6 +49,8 @@ public
 : FM-FPOP ( r -- ) 0 s>f f< 0= if 1 throw then ;
 : FM-SRC ( -- n ) 7 ;
 : FM-PRUNED ( -- n ) FM-SRC 0 > if 5 else 5 then ;
+variable FM-CELL
+: FM-PRUNED-DATA ( -- n ) FM-SRC 0 > if 5 else 5 then FM-CELL @ + ;
 : FM-SUM ( n n -- n ) + 1+ ;
 : FM-TWICE ( n -- n ) 2 * ;
 : FM-PAIR ( n n -- n ) FM-SUM FM-TWICE ;
@@ -215,7 +217,9 @@ variable MISSING
    s" NATIVE-FUSED-MOVES:FM-PRUNED" K-SUB COUNT-FORM 1 T=
    s" NATIVE-FUSED-MOVES:FM-PRUNED" K-ADD COUNT-FORM 0 T=
    s" NATIVE-FUSED-MOVES:FM-PRUNED" K-PUSH COUNT-FORM 1 T=
-   55 FM-PRUNED 5 T= 55 T= ;
+   55 FM-PRUNED 5 T= 55 T=
+   s" pruning a dead transfer preserves the DATA address attribute" T-LABEL
+   37 FM-CELL ! 55 FM-PRUNED-DATA 42 T= 55 T= ;
 
 \ The same two moves in the other register file.
 : FLOAT-CASE ( -- )

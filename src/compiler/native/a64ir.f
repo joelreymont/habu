@@ -123,6 +123,7 @@ ENUM opcode DERIVE eq
    flagi
    cmpbri
    codeaddr
+   dataaddr
 ;ENUM
 
 \ One condition per SOURCE relation, so a lowering is never an operand order in
@@ -214,7 +215,7 @@ public
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables.
 0 constant MAJOR
-12 constant MINOR
+13 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )      XBITS ;
@@ -233,6 +234,10 @@ public
    {: i:n :}
    i 0 < i HALVES-N >= or if E-A64IR-SHIFT throw then
    i HALF-N * ;
+
+: DATA-OFFSET ( n -- n )
+   dup 0 < over DATA-SIZE > or
+   over DATA-VA VA>N + $FFFFFFFFFFFF > or if E-A64IR-DATA throw then ;
 
 \ A small enumeration rather than a flag, so the CODE kind is a new member.
 0 constant ADDR-NONE
@@ -483,6 +488,7 @@ private
       flagi     OF s" a64.flagi"    ENDOF
       cmpbri    OF s" a64.cmpbri"   ENDOF
       codeaddr  OF s" a64.codeaddr" ENDOF
+      dataaddr  OF s" a64.dataaddr" ENDOF
    ;MATCH ;
 
 public
@@ -490,7 +496,7 @@ public
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ These ordinals predate the enum declaration order and are kept stable for the
 \ native passes that store them in their own tables.
-80 constant OPCODES
+81 constant OPCODES
 
 : ORD ( A64IR:opcode -- n )
    MATCH opcode
@@ -574,6 +580,7 @@ public
       dpop      OF 77 ENDOF
       fdpush    OF 78 ENDOF
       fdpop     OF 79 ENDOF
+      dataaddr  OF 80 ENDOF
    ;MATCH ;
 
 : NTH ( n -- A64IR:opcode )
@@ -658,6 +665,7 @@ public
       77 of A64IR-OPCODE:DPOP      endof
       78 of A64IR-OPCODE:FDPUSH    endof
       79 of A64IR-OPCODE:FDPOP     endof
+      80 of A64IR-OPCODE:DATAADDR  endof
       E-A64IR-OPCODE throw
    endcase ;
 
@@ -682,7 +690,8 @@ private
 13 constant K-COND
 14 constant K-DWB
 15 constant K-THROW-ENTRY
-16 constant KEYS
+16 constant K-DATA-OFFSET
+17 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -702,6 +711,7 @@ private
       K-COND       of s" a64.cond" endof
       K-DWB        of s" a64.dwb" endof
       K-THROW-ENTRY of s" a64.throw-entry" endof
+      K-DATA-OFFSET of s" a64.data-offset" endof
       E-A64IR-DIALECT throw
    endcase ;
 
@@ -873,6 +883,12 @@ public
 
 : KEY-IMM ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-IMM KEY-BIND ;
+
+: KEY-DATA-OFFSET ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-DATA-OFFSET KEY-BIND ;
+
+: DATA-OFFSET-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   DATA-OFFSET IR-BUILD:INTERN-INT-ATTR ;
 
 : KEY-SHIFT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-SHIFT KEY-BIND ;
@@ -1127,6 +1143,7 @@ private
       flagi     OF s" a64.rule.flagi"    ENDOF
       cmpbri    OF s" a64.rule.cmpbri"   ENDOF
       codeaddr  OF s" a64.rule.codeaddr" ENDOF
+      dataaddr  OF s" a64.rule.dataaddr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1212,6 +1229,7 @@ private
       flagi     OF s" a64.render.flagi"    ENDOF
       cmpbri    OF s" a64.render.cmpbri"   ENDOF
       codeaddr  OF s" a64.render.codeaddr" ENDOF
+      dataaddr  OF s" a64.render.dataaddr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1248,6 +1266,19 @@ private
    TOTAL
    TARGET
    c b A64IR-OPCODE:CODEADDR NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ One operation, so spill insertion cannot split the relocatable carrier.
+\ Its result is a shared pointer, independent of the task-local DATA register.
+: DEF-DATAADDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:DATAADDR OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-DATA-OFFSET IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:DATAADDR NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 : DEF-MOVN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
@@ -2099,6 +2130,7 @@ public
    c b k DEF-LNKLDR
    c b t DEF-RET
    c b t DEF-CODEADDR
+   c b t DEF-DATAADDR
    c b FPR-TYPE {: f:IR-ID:ir-type-id :}
    c b f A64IR-OPCODE:FADD DEF-FBINARY
    c b f A64IR-OPCODE:FSUB DEF-FBINARY
@@ -2186,6 +2218,7 @@ private
       linkload  OF c b c b MEM-TYPE DEF-LNKLDR ENDOF
       ret       OF c b c b GPR-TYPE DEF-RET ENDOF
       codeaddr  OF c b c b GPR-TYPE DEF-CODEADDR ENDOF
+      dataaddr  OF c b c b GPR-TYPE DEF-DATAADDR ENDOF
       fadd      OF c b c b FPR-TYPE A64IR-OPCODE:FADD DEF-FBINARY ENDOF
       fsub      OF c b c b FPR-TYPE A64IR-OPCODE:FSUB DEF-FBINARY ENDOF
       fmul      OF c b c b FPR-TYPE A64IR-OPCODE:FMUL DEF-FBINARY ENDOF

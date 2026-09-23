@@ -19,7 +19,8 @@
 \ stores, which is what a spill, a reload and a local access all cost.
 \ `mov0`/`mov1` are register-to-register moves, the cost of a copy whose two
 \ ends the allocator gave different registers; `mvk0`/`mvk1` are the keep-moves
-\ of the four-instruction stencil every relocatable address is pinned to.
+\ in literal materialisation, including two per compact DATA address and three
+\ per full absolute address.
 
 require lib/errors.f
 require lib/string.f

@@ -95,13 +95,9 @@ public
 : SCAFFOLD-FILE$ ( -- ptr u8 n )
    s" src/habu/habu1.f" ;
 
-\ The four-lane chain's SHAPE constants moved out of the second emitter file when
-\ the AOT format's declarations got one owner: a capture running inside bin/hb has
-\ to recognise the same chain the emitter's relocation pass reads back, and a shape
-\ read two ways is a shape that drifts. They are package SNAP-RELOC's public
-\ surface there, exactly as they were here, so these rows follow the definition.
+\ Follow the pure carrier module shared by the emitter, capture and inspection.
 : DECL-FILE$ ( -- ptr u8 n )
-   s" src/habu/aot-decl.f" ;
+   s" src/habu/address-carrier.f" ;
 
 \ ---- 1. the pinned band constants --------------------------------------------
 \ Each row is a shipped constant and the model definition that mirrors it. The

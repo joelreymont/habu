@@ -55,10 +55,9 @@
 \ (`orr xD,xzr,xS`), which is what a copy between two allocation classes costs
 \ once neither end lives in the frame - the register-level twin of the
 \ frame-slot copy that src/compiler/native/regalloc.f MB-IDENTITY-COPY? already
-\ drops. `movk` counts the 64-bit keep-moves that finish a relocatable address:
-\ docs/compiler-ir-design.md pins every such address to a fixed four-instruction
-\ MOVZ/MOVK stencil so a later pass can recognize it, so one inline pointer
-\ costs 16 bytes and `movk` over three is the number of them.
+\ drops. `movk` counts all 64-bit keep-moves. An absolute address has three;
+\ a compact DATA carrier has two; scalars can have them too. This column is
+\ therefore instruction traffic, not a count of address sites.
 
 require src/habu/code-bytes.f
 

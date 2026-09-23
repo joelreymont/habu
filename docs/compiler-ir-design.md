@@ -71,7 +71,7 @@ The native compiler is currently a direct machine-code generator.
 
 Several mechanisms demonstrate that machine code is being used as an intermediate representation even though it has no explicit type:
 
-- relocatable addresses use a fixed four-instruction `MOVZ`/`MOVK` stencil so a later pass can recognize and rewrite them;
+- declared address sites use fixed carriers: four `MOVZ`/`MOVK` instructions for CODE, or three high-to-low halves for shared DATA; capture and stripped linking rewrite the declared sites. Shared addresses cannot use x20, which is task-local;
 - call inlining scans already emitted instruction words, rejects selected branch, call, return, and ADR encodings, then copies the remaining machine words;
 - control-flow words such as `IF`, `ELSE`, `LOOP`, `+LOOP`, `EXIT`, `DOES>`, and quotations directly construct instruction words and branch placeholders;
 - some instruction sequences appear as decimal or hexadecimal instruction constants rather than typed AArch64 operations;

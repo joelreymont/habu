@@ -9,6 +9,7 @@ require lib/string.f
 require lib/test.f
 require src/habu/layout.f
 require src/habu/address-cells.f
+require src/habu/address-carrier.f
 require test/compiler/ir-id-source.f
 require test/compiler/reloc-schema.f
 require test/compiler/reloc-vm.f
@@ -155,7 +156,7 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    s" ADDRMSG-LEN" s" ADDRMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
    s" XTBANDMSG-LEN" s" XTBANDMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+ ;
 
-\ The four-lane chain's SHAPE is declared in src/habu/aot-decl.f, because a capture
+\ The carrier's SHAPE is declared in src/habu/address-carrier.f, because a capture
 \ running inside bin/hb has to recognise the same chain this emitter's relocation
 \ pass reads back. The machine binds those five from the file that declares them,
 \ so the scan follows the definition rather than a copy kept here.
@@ -164,6 +165,9 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    s" ADDR-OPC-MASK" s" ADDR-OPC-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
    s" ADDR-IMM-MASK" s" ADDR-IMM-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
    s" ADDR-CHAIN-BYTES" s" ADDR-CHAIN-BYTES" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" DATA-CHAIN-BYTES" s" DATA-CHAIN-BYTES" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" DATA-MOVZ2" SNAP-RELOC:DATA-MOVZ2 RELOC-VM:SYM+
+   s" DATA-MOVK0" SNAP-RELOC:DATA-MOVK0 RELOC-VM:SYM+
    s" ADDR-RD-MASK" s" ADDR-RD-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
    s" ADDR-RD-BITS" s" ADDR-RD-BITS" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+ ;
 
@@ -477,6 +481,34 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    RELOC-VM:INSTRUCTIONS 0 > TTRUE
    AROWS 0 ?do i CHAIN-ROW loop ;
 
+\ The DATA carrier is validated by the shipped pass and left unchanged even
+\ when its immediate fields numerically lie inside the moving CODE band.
+: DATA-CHAIN-CASE ( n n -- ) {: rd:n bad:n :}
+   RELOC-VM:SEG-RESET
+   VM-DATA SNAP-RELOC:ADDRMAP-OFF + AMAP-AT AMAP-BYTES RELOC-VM:SEG+
+   VM-REGION IMG-AT 12 RELOC-VM:SEG+
+   $D2C00000 rd or VM-REGION 4 RELOC-VM:POKE
+   $F2A00000 rd or VM-REGION 4 + 4 RELOC-VM:POKE
+   $F2800400 rd or bad xor {: last:n :}
+   last VM-REGION 8 + 4 RELOC-VM:POKE
+   0 AMAP-BIT
+   CLEAR-REGS
+   VM-REGION 8 RELOC-VM:R! 12 11 RELOC-VM:R!
+   0 21 RELOC-VM:R! $10000 22 RELOC-VM:R! $80000 25 RELOC-VM:R!
+   VM-DATA DATA RELOC-VM:R!
+   RELOC-VM:RUN
+   bad 0= if
+      RELOC-VM:HALT-CODE 0 T=
+      VM-REGION 4 RELOC-VM:PEEK $D2C00000 rd or T=
+      VM-REGION 8 + 4 RELOC-VM:PEEK last T=
+   else RELOC-VM:HALT-CODE SNAP-RELOC:ADDRMAP-RC T= then ;
+
+: DATA-CHAINS ( -- )
+   s" DATA carriers ending at the image boundary are not CODE-relocated" T-LABEL
+   19 0 ?do i 0 DATA-CHAIN-CASE loop
+   s" wrong DATA carrier register, halfword and opcode are refused" T-LABEL
+   9 1 DATA-CHAIN-CASE 9 $200000 DATA-CHAIN-CASE 9 $20000000 DATA-CHAIN-CASE ;
+
 public
 
 : HABU-SIDE ( -- )
@@ -486,7 +518,8 @@ public
    PHASE-CALLS
    PHASE-BASE-FREE
    PHASE-XT
-   PHASE-ADDRS ;
+   PHASE-ADDRS
+   DATA-CHAINS ;
 
 ;using
 ;package

@@ -150,7 +150,7 @@ using AOT-BUF
 using AOT-WINDOW
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-12 constant VERSION  \ record and package WIDs as window offsets, one-based
+13 constant VERSION  \ DATA sites may hold a three-half address carrier
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -1286,26 +1286,35 @@ DYNAMIC-BUFFER HOST-REG n
    s" aot-file: a merged DATA literal is outside the artifact's DATA window" DIE ;
 
 
+: DSITE-CHAIN-SIZE ( ptr u8 -- n )
+   AOT-BLOB-BUF@ H-BLOB @ + S-BLOB ROW-LEN@ + SNAP-RELOC:CHAIN-SIZE ;
+
 : DSITE-AT ( n -- ptr u8 )
    {: site:n :}
    site AOT-DSITE-OFF-MASK and {: off:n :}
-   site AOT-DSITE-CELL and 0<> if 8 else SNAP-RELOC:ADDR-CHAIN-BYTES then
+   site AOT-DSITE-CELL and 0<> if 8 else SNAP-RELOC:DATA-CHAIN-BYTES then
    off + S-BLOB ROW-LEN@ > if
       s" aot-file: a DATA relocation site reaches past its blob" DIE
    then
-   AOT-BLOB-BUF@ H-BLOB @ + off + ;
+   AOT-BLOB-BUF@ H-BLOB @ + off + {: p:ptr :}
+   site AOT-DSITE-CELL and 0= if
+      p DSITE-CHAIN-SIZE 0= if
+         s" aot-file: malformed DATA relocation chain" DIE
+      then
+   then
+   p ;
 
 
 : DSITE-VALUE ( ptr u8 n -- n )
    {: p site:n :}
    site AOT-DSITE-CELL and 0<> if p U64@ exit then
-   p SNAP-RELOC:CHAINV ;
+   p p DSITE-CHAIN-SIZE SNAP-RELOC:CHAIN-VALUE ;
 
 
 : DSITE-VALUE! ( ptr u8 n n -- )
    {: p value:n site:n :}
    site AOT-DSITE-CELL and 0<> if value p U64! exit then
-   p value SNAP-RELOC:SET-CHAIN ;
+   p value p DSITE-CHAIN-SIZE SNAP-RELOC:SET-CHAIN-VALUE ;
 
 
 : MERGED-DSITE ( n -- n )
