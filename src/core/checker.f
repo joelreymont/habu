@@ -10744,6 +10744,10 @@ private
 \ the record is not a definer's: a definer whose body also calls a definer arms
 \ both latches, and what it creates is what its own `does>` clause declared.
 \
+\ A TRUSTED definer's clause reaches this word too. It has no body check of its
+\ own to step the latch, so TRUST-DECL steps it at the publication instead and
+\ the take below sees the same state 2 a checked definer's record does.
+\
 \ Later-wins: an entry appended for the authority bit alone must carry the
 \ symbol's existing masks forward, or it would silently retract evidence the
 \ definition end recorded a moment earlier.
@@ -13410,7 +13414,20 @@ s" <input>" DIAG-FILE!
 \ must never consult the dictionary, and `trust` may only start doing so once
 \ nothing but source reaches it. That is why the retarget below lands a stage
 \ ahead of the check on TRUST.
+\ A TRUSTED DEFINER'S CLAUSE IS TAKEN HERE, by stepping the latch the clause
+\ armed. `TRUSTED: D ( … ) create … does> ( … ) ;` runs CHECK-DOES! at its `;`
+\ like every other definer (habu2.f EM-COMPILE-PUBLISH-TRUSTED calls it ahead of
+\ the trusted branch), so the created-word effect is latched — but a trusted
+\ definition has no body check of its own to step the latch past state 1, and the
+\ record that follows is its OWN. This step is that missing one: the registration
+\ below then reaches CHECKER-EFFECT-AUTHORITY STORE in state 2, and the clause
+\ lands on the trusted symbol's CREATES cell through the one writer of that cell.
+\ Before it, the state-1 latch was taken for nothing and cleared right here (the
+\ take in STORE), so `TASK:TASK T1` left T1 undefined for the source pre-verifier.
+\ The step is unconditional, like every other: a latch in any other state dies
+\ here rather than waiting for a record that is not its definer's.
 : TRUST-DECL {: na:ptr nu:n sa:ptr su:n :}
+   DOES-EFF-STEP
    na nu sa su TRUST-USIG! ;
 package CHECKER-REG
 ' TRUST-DECL DECLARATIONS EFFECT-OFF + xt!

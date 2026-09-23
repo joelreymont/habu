@@ -13,7 +13,9 @@
 \
 \ Sections 1-3 measure the learned row through the pre-pass; section 4 runs the
 \ same definer for real, so the row the engine publishes and the row the scanner
-\ learns are pinned against each other rather than against one authority.
+\ learns are pinned against each other rather than against one authority. Section
+\ 8 asks both of a `TRUSTED:` definer, whose body is asserted but whose clause is
+\ still the declaration both paths record.
 \
 \ WHAT IS DELIBERATELY NOT LEARNED. A definer call the body reaches only
 \ conditionally, twice, or inside a quotation says nothing about what the
@@ -60,6 +62,15 @@ package CERTIFY-DOES-DEFINER
 \ A resident definer whose CLAUSE calls a definer: its own clause is what it
 \ creates, and the clause walk leaves nothing for the next record.
 : CDD-RES-CD ( n -- ) create , does> ( -- ) drop 3 CDD-RES-D ;
+
+\ Section 8's resident fixtures: a TRUSTED definer, its straight-line wrapper and
+\ the plain definition right after it. A trusted definition's body is asserted,
+\ so it has no body check of its own between the clause and the publication that
+\ records what it creates - lib/task.f TASK and its public wrapper `: TASK TASK ;`
+\ are the production shape.
+TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
+: CDD-TRES-W ( -- ) 3 CDD-TRES-D ;
+: CDD-TRES-P ( n -- n ) 1 + ;
 
 -1 constant ACCEPTED
 0 constant REFUSED
@@ -228,6 +239,57 @@ TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
    s" a clause read from source arms nothing the created word takes" T-LABEL
    s" C34 ( -- ptr n ) CDD-SRC-X" CDD-VERDICT UNRESOLVED T= ;
 
+\ ---- 8. a TRUSTED definer, on both paths ------------------------------------
+\ `TRUSTED:` changes nothing about what a `does>` clause declares: the engine
+\ runs CHECK-DOES! at the `;` of a trusted definition too (habu2.f
+\ EM-COMPILE-PUBLISH-TRUSTED, ahead of DEF-TRUST:REGISTER), and the created word
+\ gets the clause's row at creation time. What used to be lost was the fact that
+\ the DEFINER creates it: the scanner skipped a trusted body blind, and the
+\ engine's latch was cleared unread at a trusted publication because such a
+\ definition has no body check to step it. Measured before the fix, `tools/check.f`
+\ on `TASK:MIN-STACK TASK:TASK T1  : F ( -- ptr n ) T1 ;` refused T1 as
+\ E-UNDEFINED with the require (read) and without it (resident).
+: CDD-SECTION-TRUSTED ( -- )
+   s\" TRUSTED: CDD-TD ( n -- ) create , does> ( -- ptr n ) ;\n5 CDD-TD CDD-TD-ONE\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a read trusted definer's created word certifies as the clause effect" T-LABEL
+   s" C35 ( -- ptr n ) CDD-TD-ONE" CDD-VERDICT ACCEPTED T=
+   s" and is refused against a bare cell" T-LABEL
+   s" C36 ( -- n ) CDD-TD-ONE" CDD-VERDICT REFUSED T=
+   s\" : CDD-TDW ( n -- ) CDD-TD ;\n5 CDD-TDW CDD-TD-WRAPPED\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a checked wrapper of a read trusted definer creates the same" T-LABEL
+   s" C37 ( -- ptr n ) CDD-TD-WRAPPED" CDD-VERDICT ACCEPTED T=
+   s\" : CDD-TD-P ( n -- n ) 1 + ;\n5 CDD-TD-P CDD-TD-PMADE\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" the definition after a trusted definer creates nothing" T-LABEL
+   s" C38 ( -- ptr n ) CDD-TD-PMADE" CDD-VERDICT UNRESOLVED T=
+   s\" 8 CDD-TRES-D CDD-TRES-ONE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a resident trusted definer's created word certifies the same way" T-LABEL
+   s" C39 ( -- ptr n ) CDD-TRES-ONE" CDD-VERDICT ACCEPTED T=
+   s" and is refused against a bare cell" T-LABEL
+   s" C40 ( -- n ) CDD-TRES-ONE" CDD-VERDICT REFUSED T=
+   s\" CDD-TRES-W CDD-TRES-WMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a resident wrapper of a trusted definer creates what it creates" T-LABEL
+   s" C41 ( -- ptr n ) CDD-TRES-WMADE" CDD-VERDICT ACCEPTED T=
+   s\" 5 CDD-TRES-P CDD-TRES-PMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" and the definition published after it inherits nothing" T-LABEL
+   s" C42 ( -- ptr n ) CDD-TRES-PMADE" CDD-VERDICT UNRESOLVED T= ;
+
+\ The same trusted definer run for real, as section 4 runs the checked one: the
+\ row here is the engine's own, published at creation time.
+8 CDD-TRES-D CDD-TRES-LIVE
+
+: CDD-TRES-READ ( -- n ) CDD-TRES-LIVE @ ;
+
+: CDD-SECTION-TRUSTED-LIVE ( -- )
+   s" the trusted definer's created word holds what it stored" T-LABEL
+   CDD-TRES-READ 8 T=
+   s" and the engine's own row certifies the clause effect" T-LABEL
+   s" C43 ( -- ptr n ) CDD-TRES-LIVE" CDD-VERDICT ACCEPTED T=
+   s" and refuses the bare cell" T-LABEL
+   s" C44 ( -- n ) CDD-TRES-LIVE" CDD-VERDICT REFUSED T= ;
+
 : MAIN ( -- )
    T-RESET
    CDD-SECTION-DEFINER
@@ -237,6 +299,8 @@ TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
    CDD-SECTION-RESIDENT
    CDD-SECTION-LATCH
    CDD-SECTION-WRAP-LATCH
+   CDD-SECTION-TRUSTED
+   CDD-SECTION-TRUSTED-LIVE
    T-REPORT ;
 
 MAIN

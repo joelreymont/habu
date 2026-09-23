@@ -311,8 +311,10 @@ TRUSTED: RECORD-CREATED ( ptr u8 n n -- bool ) CHECKER-RECORD-CREATED ;
 
 \ ---- the definers this pre-pass learns from the sources it reads -------------
 \ A `create … does>` definition IS a definer, and the effect of every word it
-\ creates is the clause's declared one. That is the row the ENGINE publishes for
-\ such a word at run time: src/habu/habu2.f DOESPATCH:EMIT hands the parsed
+\ creates is the clause's declared one - a `TRUSTED:` definer included, whose
+\ body is asserted but whose clause is still a declaration (SCAN-TRUSTED-BODY).
+\ That is the row the ENGINE publishes for such a word at run time:
+\ src/habu/habu2.f DOESPATCH:EMIT hands the parsed
 \ clause signature (CRSIG) to LASTC-TRUST:PUBLISH, which registers it through
 \ the checker's `trust-raw` (src/core/checker.f TRUST-RAW) - the raw-variable
 \ seal RAW-TRUST-NEXT below brackets its own registration with. So a row learned
@@ -454,8 +456,11 @@ variable WRAP-SIG-U
    0 WRAP-DEFINERS !  0 WRAP-CTL !
    NULL-PTR WRAP-SIG-A !  0 WRAP-SIG-U ! ;
 
+: DEFINER-RECORD-AS ( ptr u8 n ptr u8 n -- ) {: sig:ptr sigu:n na:ptr nu:n :}
+   sig sigu na nu RECORD-SYM? DEFINER-ADD ;
+
 : DEFINER-RECORD ( ptr u8 n -- )
-   DEF-NAME-A @ DEF-NAME-U @ RECORD-SYM? DEFINER-ADD ;
+   DEF-NAME-A @ DEF-NAME-U @ DEFINER-RECORD-AS ;
 
 \ The tokens a straight line has none of. The checker's own classifier
 \ (src/core/checker.f CF-TOK?) cannot be reused for the question: it is the
@@ -628,19 +633,37 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    nameu 0= IF s" verify-source: missing defer name" 74 die THEN
    name nameu TRUST-DEFER-SIGNATURE ;
 
-: SKIP-TRUSTED-BODY ( -- )
+\ A trusted body is ASSERTED, never verified - but its `does>` clause is a
+\ DECLARATION, and what it declares is the effect the load path gives every word
+\ the definer creates: habu2.f EM-COMPILE-PUBLISH-TRUSTED runs CHECK-DOES! at the
+\ `;` of a trusted definition, ahead of the trusted branch, and the clause it
+\ certifies lands on the definer's CREATES cell (src/core/checker.f TRUST-DECL).
+\ So this scan takes the clause signature and learns the definer from it, exactly
+\ as VERIFY-DOES learns a checked one, and skips every token of the body as it
+\ always has: nothing inside a trusted body is checked here. Measured on the
+\ previous commit, with a module holding `TRUSTED: TD ( n -- ) create , does>
+\ ( -- ptr n ) ;`, a source requiring it and writing `5 MOD:TD W` left W
+\ E-UNDEFINED at its first typed use; it is the effect mismatch it deserves now.
+\ A `does>` inside a string is no clause: the string opener leaves through
+\ SKIP-BODY-TOKEN below, which consumes its rest (src/compiler/native/
+\ checker-owner.f says `s" does> split"` in eight trusted bodies).
+: SCAN-TRUSTED-BODY ( ptr u8 n -- ) {: na:ptr nu:n :}
    BEGIN
       BODY!
       TOKEN-U @ 0= IF s" verify-source: unterminated trusted definition" 74 die THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
-      SKIP-BODY-TOKEN
+      TOKEN-A @ TOKEN-U @ s" does>" CORE-STR= IF
+         REQUIRE-SIGNATURE na nu DEFINER-RECORD-AS
+      ELSE
+         SKIP-BODY-TOKEN
+      THEN
    AGAIN ;
 
 : TRUSTED-DEFINITION ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing trusted name" 74 die THEN
    name nameu REQUIRE-SIGNATURE DECL-SIGNATURE
-   SKIP-TRUSTED-BODY ;
+   name nameu SCAN-TRUSTED-BODY ;
 
 \ A cast has no body and no `;`, so unlike TRUSTED-DEFINITION above there is
 \ nothing to skip: the declaration ends at its closing paren. Registration goes

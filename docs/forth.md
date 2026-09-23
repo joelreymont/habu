@@ -1278,7 +1278,16 @@ the rule.
   `BUFFER-E` is a definer too. Measured: `tools/check.f lib/process-env-test.f`
   refused `PROC-ENV-DIAG` (created by `PROC-ENV-DIAG-CAP CODEGEN:BUFFER
   PROC-ENV-DIAG`, lib/process-env.f:93) before the walk learned it and passes
-  after.
+  after. `TRUSTED:` changes neither answer: a trusted body is asserted, not
+  checked, but its `does>` clause is still the declaration both paths record —
+  the scanner reads the clause out of the trusted body
+  (`verify-source.f` `SCAN-TRUSTED-BODY`) and the engine takes the latch at the
+  trusted publication, which has no body check of its own (`checker.f`
+  `TRUST-DECL`). Measured: with a `TRUSTED: TD ( n -- ) create , does>
+  ( -- ptr n ) ;` in a required module, `5 MOD:TD W  : G ( -- n ) W ;` refused
+  `W` as `E-UNDEFINED` before and is the `E-MISMATCH` the effect deserves after;
+  `TASK:MIN-STACK TASK:TASK T1  : F ( -- ptr n ) T1 ;` refused `T1` as
+  `E-UNDEFINED` before and passes after.
 - **A local binds in the spelling it was declared in; word lookup stays
   case-insensitive.** `{: text :}` reads `text` as the local and `TEXT` as the
   word, and the same local hides the word `TEXT` from the definition it is
