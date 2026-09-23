@@ -82,9 +82,9 @@ cells and relocates their values. A fix must prove the initial cell cannot be
 observed from entry/startup, follow reachable DATA references and declared
 pointer edges, retain unknown aliases/escapes, and omit a dead cell's carried
 pointer and relocation consistently. No name-based deletion or unchecked
-pointer assumption. This dot stays active for that fix and the production
-Tender remeasurement after bcb472b5; the ordinary word-grain and package probes
-are complete.
+pointer assumption. This dot stays active for that fix; the ordinary
+word-grain and package probes are complete. The production remeasurement
+after bcb472b5 is recorded below.
 
 Priority evidence for this remaining DATA-root gap: a read-only query after
 the valid prepared image was written rebuilt the graph from MAIN while
@@ -98,3 +98,23 @@ the server's roughly 1.86 MB of code; broader code-generation work remains the
 size priority. Probe, root list and removed-member table are `root-bound*` in
 the current-pair evidence directory. The reduced unused-cell defect remains
 valid and open.
+
+Production driver remeasurement completed on frozen Tender 4de21b0c with
+Cedar's reconciled PG/PREPARE source 36f8d059d8d3 and engine SHA256
+f42251c47062ea0595f2e933d22a2f627c03f01447c54218919948d9b7e05794.
+Private exported source and engine copies ran the unmodified command
+`python3 scripts/habu.py build --server --stripped -o <private-output>`:
+rc 0, 63.50 s wall / 62.99 s user / 0.30 s system. No diagnostic PREPARE
+injection. Result: 2,162,880 B, including 1,951,640 code, 140,178 carried
+DATA, 58,062 padding and 13,000 other bytes. SHA256
+98783b66ee385867e59c5e6d832f948aed98d0e1791b2d38139f4f1ff2234d47.
+The executable reaches its usage dispatcher and returns the expected rc 2
+for --help; this does not prove server/HTTP/database readiness.
+
+Evidence: ~/.cache/habu/closure-grain/source-4de21b0c-engine-f42251c4/.
+The image has the same size classes as the prepared old-pair diagnostic on
+this Tender source, but different code bytes; no byte identity or speedup
+claim is made. Cedar's pending download tree on Tender 985a866a still refuses
+an undeclared pointer on this Habu pair, a separate application revision under
+Cedar/Aspen investigation. The unused quotation-cell root defect above remains
+open; the production PREPARE remeasurement is no longer outstanding.
