@@ -62,6 +62,18 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
 : HBT-MAPL-OUT2 ( -- ptr u8 n )
    HBT-MAPL-OUT2-BUF HBT-MAPL-OUT2-U @ ;
 
+: HBT-LITB-SRC ( -- ptr u8 n )
+   HBT-LITB-SRC-BUF HBT-LITB-SRC-U @ ;
+
+: HBT-LITB-OUT ( -- ptr u8 n )
+   HBT-LITB-OUT-BUF HBT-LITB-OUT-U @ ;
+
+: HBT-LITC-SRC ( -- ptr u8 n )
+   HBT-LITC-SRC-BUF HBT-LITC-SRC-U @ ;
+
+: HBT-LITC-OUT ( -- ptr u8 n )
+   HBT-LITC-OUT-BUF HBT-LITC-OUT-U @ ;
+
 \ ... and a baked `create` TABLE that no claim names is refused exactly as
 \ before. TPB is src/os/env-base.f's TMP-PATH buffer, the same shape as the
 \ carried digit tables and as the claimed path scratch, and TMP-PATH-COPY-SRC
@@ -146,6 +158,67 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
 
 : HBT-MAPL-EXPECTED$ ( -- ptr u8 n )
    S\" A\n" ;
+
+\ A STRING LITERAL'S BODY IS DECLARED TEXT, and the span scan skips its cells by
+\ that declaration the way it skips a declared address cell by the engine's
+\ address-cell table: src/compiler/native/string.f writes one row per interned
+\ body when it places the bytes, and src/habu/aot-closure.f CELL-LITERAL? reads
+\ those rows - never the bytes - for every cell src/habu/aot-lib.f SCAN-DATA-CELL
+\ is about to refuse. Tender's stripped server is the case: `s" {pm}"` and the
+\ 01 byte after it, read as one aligned cell, spelled an address inside the
+\ emitted code span and the build refused the word that owns the body (AUTH
+\ ROLE-LITERAL$, dot habu-link-int-cells-45328a4d).
+\ THE PATTERN IS EIGHT BYTES: 97 98 113 1 0 0 0 0 spells 24208481 = 0x01716261,
+\ which is inside [dbase + DICT-SIZE, cp) on this engine - dbase 21037056, code
+\ low bound 24186880, cp 26020584, measured in an hb-build child.
+\ THE BODY REPEATS IT AT ALL EIGHT PHASES because the scan's cells are aligned to
+\ the capture window and the pool places a body at whatever offset it has reached:
+\ block k is k NUL bytes, the pattern, then 8-k NUL bytes, so exactly one of the
+\ eight blocks puts the pattern on an aligned cell whatever offset the body got.
+: HBT-LIT-NUL ( -- )
+   S\" \\z" SB-APPEND ;
+
+: HBT-LIT-PAT ( -- )
+   S\" \\x61\\x62\\x71\\x01\\z\\z\\z\\z" SB-APPEND ;
+
+: HBT-LIT-BLOCK ( n -- ) {: k:n :}
+   k 0 ?do HBT-LIT-NUL loop
+   HBT-LIT-PAT
+   8 k - 0 ?do HBT-LIT-NUL loop ;
+
+: HBT-LITB-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" : LIT$ ( -- ptr u8 n ) S\\\q " SB-APPEND
+   8 0 ?do i HBT-LIT-BLOCK loop
+   S\" \q ;\n" SB-APPEND
+   S\" : MAIN ( -- ) LIT$ {: a:ptr u:n :} u . cr 8 0 ?do a i + c@ . loop cr ;\n" SB-APPEND
+   SB$ ;
+
+\ The image prints the body's length and its first eight bytes, so the pinned
+\ lines say the bytes the scan skipped travelled into the image unchanged and not
+\ merely that the link stopped refusing them.
+: HBT-LITB-EXPECTED$ ( -- ptr u8 n )
+   SB-RESET
+   s" 128" SB-APPEND 10 SB-APPEND-C 10 SB-APPEND-C
+   s" 97" SB-APPEND 10 SB-APPEND-C
+   s" 98" SB-APPEND 10 SB-APPEND-C
+   s" 113" SB-APPEND 10 SB-APPEND-C
+   s" 1" SB-APPEND 10 SB-APPEND-C
+   s" 0" SB-APPEND 10 SB-APPEND-C
+   s" 0" SB-APPEND 10 SB-APPEND-C
+   s" 0" SB-APPEND 10 SB-APPEND-C
+   s" 0" SB-APPEND 10 SB-APPEND-C
+   10 SB-APPEND-C
+   SB$ ;
+
+\ ... and THE SAME EIGHT BYTES IN A `create` CELL are refused as before. This is
+\ the control that keeps the row above honest: raw storage carries no declaration
+\ about its contents, so the value is still read as the code pointer it spells,
+\ and a build that stopped refusing it would say the pattern had drifted out of
+\ the emitted code span - in which case the row above proves nothing and this one
+\ goes red instead of both passing on a value nothing classifies.
+: HBT-LITC-SRC$ ( -- ptr u8 n )
+   S\" create LIT-CELL 24208481 ,\n: MAIN ( -- ) LIT-CELL @ . cr ;\n" ;
 
 : HBT-LARGE-CHUNK! ( -- )
    HBT-LARGE-CHUNK-U 0 ?do 32 HBT-LARGE-CHUNK i + c! loop ;
@@ -319,6 +392,42 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
    HBT-ERR uerr s" word=PTRU-CACHED" CONTAINS? TTRUE
    HBT-PTRU-OUT FILE? TFALSE ;
 
+\ THE CONTROL FIRST, then the body: the refusal is what proves the pattern lands
+\ in the emitted code span of a build on this engine, and the link that follows
+\ is then a statement about the declaration and not about the value.
+: HBT-STRIPPED-LITERAL-BODY ( -- )
+   HBT-LITC-SRC HBT-LITC-SRC$ WRITE-ALL
+   HBT-LITC-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-LITC-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-LITC-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: cout:n cerr:n crc:n :}
+   crc 70 T=
+   HBT-ERR cerr s" holds an undeclared code/dict pointer" CONTAINS? TTRUE
+   HBT-ERR cerr s" word=LIT-CELL" CONTAINS? TTRUE
+   HBT-ERR cerr s" value=24208481" CONTAINS? TTRUE
+   HBT-LITC-OUT FILE? TFALSE
+
+   HBT-LITB-SRC HBT-LITB-SRC$ WRITE-ALL
+   HBT-LITB-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-LITB-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-LITB-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
+   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
+   brc 0 T=
+   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-LITB-OUT FILE? TTRUE
+   HBT-LITB-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-LITB-EXPECTED$ T$=
+   HBT-LITB-OUT HBT-REMOVE-FILE? ;
+
 : HBT-CLI-LARGE-SOURCE ( -- )
    HBT-LARGE-CHUNK!
    HBT-REPL-SRC HBT-REPL-SRC$ HBT-WRITE-LARGE
@@ -373,6 +482,7 @@ public
    HBT-STRIPPED-UNCARRIED-TABLE
    HBT-STRIPPED-CACHED-CARRIED
    HBT-STRIPPED-CACHED-UNOWNED
+   HBT-STRIPPED-LITERAL-BODY
    HBT-CLI-LARGE-SOURCE
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE

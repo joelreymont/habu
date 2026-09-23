@@ -135,20 +135,38 @@ variable CARRY-USED
 \ ONE predicate aot-closure.f publishes (CELL-TEXTPTR?, by live engine extents).
 \ A declared xt cell is relocated instead (COLLECT-XT-CELLS above it, EMIT-XT-ROWS
 \ below), and it is skipped here by its declaration and not by its value, so the
-\ two answers cannot disagree about one cell. What is left is a code or dictionary
-\ pointer no declaration accounts for - a `' word ,` table - and the scan reports
-\ the first one with the three facts a program has to be edited by: its owning
-\ word, its DATA offset and the pointer it holds.
+\ two answers cannot disagree about one cell. A STRING LITERAL'S BODY is the other
+\ declaration the window carries: its bytes are characters by the row the compiler
+\ wrote when it placed them (aot-closure.f CELL-LITERAL?), so they are skipped
+\ here for the same reason and by the same rule. What is left is a code or
+\ dictionary pointer no declaration accounts for - a `' word ,` table - and the
+\ scan reports the first one with the three facts a program has to be edited by:
+\ its owning word, its DATA offset and the pointer it holds.
+\ RAW AND TYPED STORAGE BOTH STAY UNDER THE VALUE SCAN. Inside a definition the
+\ checker refuses a pointer or a token in either kind of cell, but the top level
+\ is not certified: `variable V ' FOO V !` and `TYPED-VARIABLE V n ' FOO V !`
+\ both bake a code address (measured on this engine), so no storage declaration
+\ says what a baked cell holds until the top level checks typed stores. A
+\ literal body has no such door: nothing stores into it.
+\ ONE CELL, JUDGED BY WHAT DECLARED ITS BYTES. The value decides only WHICH
+\ refusal a cell would draw; whether it draws one at all is the declaration's
+\ answer, so the second declaration - the compiler's literal rows
+\ (aot-closure.f CELL-LITERAL?) - is asked before either refusal and not after.
+\ It is asked SECOND because the row walk costs a pass over the pools while the
+\ two extent tests are arithmetic: a cell whose value is neither a live engine
+\ extent nor a mapping is data on any reading and needs no declaration to say so.
+: SCAN-DATA-CELL ( n -- ) {: at:n :}
+   at DATA-CELL@ {: v:n :}
+   v CELL-TEXTPTR? v CELL-MAPPED? or 0= IF exit THEN
+   at CELL-LITERAL? IF exit THEN
+   v CELL-TEXTPTR? IF at v REFUSE-UNDECLARED-CELL THEN
+   v CELL-MAPPED? IF at v REFUSE-MAPPED-CELL THEN ;
+
 : AOT-DATA-TEXTPTR-CHECK ( -- )
    XTC-REWIND
    BLOB-SRC @ DSCAN !
    BEGIN DSCAN @ 8 + BLOB-END @ <= WHILE
-      DSCAN @ XTC-DECLARED? 0= IF
-         DSCAN @ DATA-CELL@ CELL-TEXTPTR? IF
-            DSCAN @ DSCAN @ DATA-CELL@ REFUSE-UNDECLARED-CELL THEN
-         DSCAN @ DATA-CELL@ CELL-MAPPED? IF
-            DSCAN @ DSCAN @ DATA-CELL@ REFUSE-MAPPED-CELL THEN
-      THEN
+      DSCAN @ XTC-DECLARED? 0= IF DSCAN @ SCAN-DATA-CELL THEN
       DSCAN @ 8 + DSCAN !
    REPEAT ;
 

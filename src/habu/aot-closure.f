@@ -623,6 +623,30 @@ variable NB-IX
    v PROC-MAPS:SELF-IMAGE? IF false EXIT THEN
    v PROC-MAPS:HEAP? 0= ;
 
+\ THE EIGHT BYTES AT THIS ADDRESS ARE A STRING LITERAL'S BODY, by the compiler's
+\ own row table - the registry MAPPED-DATA below already re-interns a literal
+\ address through (src/compiler/native/string.f, one row per interned body, rows
+\ written where the body is placed and read here without touching the bytes).
+\ THIS IS A DECLARATION AND NOT A READING OF THE VALUE: a body is the text of an
+\ `s"`, so the eight bytes it covers are characters, and no form in the language
+\ puts an address in them - `s" …"` hands out `ptr u8 n` and the bytes are
+\ immutable. A value those characters happen to spell is therefore a character
+\ sequence whatever extent it lands in, which is what the span scan needs to know
+\ before it reads one as a pointer: `s" {pm}"` followed by an 01 byte reads as
+\ 0x017D6D707B, and a body whose window offset makes four printable bytes and a
+\ 01 an aligned cell lands inside the emitted code span on any build whose region
+\ sits there (dot habu-link-int-cells-45328a4d: Tender's AUTH ROLE-LITERAL$).
+\ EVERY BYTE OF THE CELL IS ASKED ABOUT, not only its first: the scan's cells are
+\ aligned to the window and a body starts wherever the pool placed it, so a cell
+\ can begin in the bytes before a body and still cover its characters.
+: LITERAL-BYTE? ( n -- bool ) {: at:n :}
+   at NSTR:OWNER-ROW {: body:ptr size:n owned:bool :}
+   owned ;
+: CELL-LITERAL? ( n -- bool ) {: at:n :}
+   8 0 ?do
+      at i + LITERAL-BYTE? IF true unloop exit THEN
+   loop false ;
+
 \ A DATA address as a pointer. An address arrives here as a plain integer (the
 \ value a recorded chain spells out, a scan cursor, a span bound), and DATA is
 \ ONE mapping based at data-base, so the pointer is that base plus the checked
