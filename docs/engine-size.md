@@ -28,28 +28,28 @@ engine/primitive-count	8	0.0
 engine/primitive-records	10128	0.2
 source/baked	0	0.0
 aot/framing-cells	136	0.0
-aot/code-blob	1655252	46.7
-aot/dictionary-records	163040	4.6
+aot/code-blob	1655028	46.7
+aot/dictionary-records	162920	4.6
 aot/call-sites	149184	4.2
-aot/name-pool	88660	2.5
-aot/data-sites	70580	1.9
-aot/address-cells	270312	7.6
-aot/data-cell-bitmap	71116	2.0
-aot/data-cell-values	852084	24.0
+aot/name-pool	88588	2.5
+aot/data-sites	70556	1.9
+aot/address-cells	270232	7.6
+aot/data-cell-bitmap	71052	2.0
+aot/data-cell-values	851912	24.0
 aot/code-sites	36	0.0
 aot/named-code-sites	0	0.0
 aot/code-spans	42680	1.2
 aot/boot-run-entries	4	0.0
 aot/protected-wordlists	676	0.0
 aot/checker-sidecar	0	0.0
-image/text-pad	30680	0.8
+image/text-pad	31436	0.8
 container/rw-segment	192	0.0
 total	3539136	100.0
 
 dictionary the image ships
 class	records	record bytes	name bytes	code bytes
-global	4962	99240	59600	438544
-package-public	2981	59620	30257	254852
+global	4956	99120	59527	438292
+package-public	2981	59620	30257	254880
 package-private	11	220	114	1596
 unmapped-wordlist	0	0	0	0
 package rows	198	3960	2294	0
@@ -62,17 +62,17 @@ baked call sites
   distinct bound callees 72
 
 reachability from the dictionary-surface roots
-  reachable	7954	694992 code bytes
+  reachable	7948	694768 code bytes
   unreachable	0	0 code bytes, 0 record bytes, 0 name bytes
   fall-through edges modeled	1274
   spans reachable	5335	926396 code bytes
   spans unreachable	0	0 code bytes
 
 reachability from the engine-entry roots
-  reachable	4031	542348 code bytes
-  unreachable	3923	152644 code bytes, 78460 record bytes, 39868 name bytes
+  reachable	4030	542368 code bytes
+  unreachable	3918	152400 code bytes, 78360 record bytes, 39805 name bytes
   fall-through edges modeled	1267
-  global	2730	54600	75444
+  global	2725	54500	75200
   package-public	1192	23840	76916
   package-private	1	20	284
   package	records	code bytes
@@ -96,28 +96,28 @@ reachability from the engine-entry roots
   spans reachable	4911	862416 code bytes
   spans unreachable	424	63980 code bytes
   largest unreachable spans (blob offset, bytes, optional sidecar name)
-    873428	3184
-    808872	1836
-    834216	1200
+    873204	3184
+    808648	1836
+    833992	1200
     589812	712
-    836328	644
+    836104	644
     617572	584
     653308	540
-    835804	524
+    835580	524
     620280	524
     630532	520
     626200	508
     619356	496
-    1038544	484
-    690048	480
+    1038320	484
+    689796	480
     610204	480
-    1037812	456
+    1037588	456
 
-captured DATA heap: 8676392 bytes of span, 305956 present cells in 71113 bitmap bytes, 923195 bytes of image
-  owners 967, unowned value bytes 52793, unowned cells 8649
+captured DATA heap: 8671240 bytes of span, 305897 present cells in 71049 bitmap bytes, 922958 bytes of image
+  owners 966, unowned value bytes 52793, unowned cells 8649
   owner	offset	extent	cells	bytes	image cost
-  DONE	4213272	4463120	254256	438496	496319
-  SYM-STR-BOOT	1825640	393216	31375	282371	286351
+  DONE	4208120	4463120	254203	438383	496159
+  SYM-STR-BOOT	1825640	393216	31368	282311	286291
   EC-RV-BOOT	769424	10240	1280	12800	12960
   EC-TV-BOOT	759184	10240	1280	12800	12960
   RVT-BOOT	707984	10240	1280	12800	12960
@@ -128,11 +128,11 @@ captured DATA heap: 8676392 bytes of span, 305956 present cells in 71113 bitmap 
   PES	2222072	12288	1496	2738	2931
   DFERS	2234840	65536	200	1169	1299
   DISC-TOK-U	3236840	768	94	838	850
-  STR-MIN-I64$	3246352	944088	56	317	756
+  STR-MIN-I64$	3240416	944872	56	317	774
   EI-AK	2219024	512	64	640	648
   STGT-START	2610696	23768	169	212	584
   VRDEF-I	2639120	2296	117	544	580
-  (443 more owners)
+  (442 more owners)
 <!-- ENGINE-SIZE-ROWS-END -->
 `tools/engine-size.f` is the command line; `tools/image-size-lib.f` is the walk,
 in a library because `tools/hb-build.f` runs it too. It walks the image file
