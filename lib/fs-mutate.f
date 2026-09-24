@@ -2,7 +2,8 @@
 \
 \ STORAGE CLASS. TASK-LOCAL for the paths one call stages: the second NUL-padded
 \ path FS-MUT-PATHZ2-BUF (RENAME-FILE's, MAKE-SYMLINK's and the stream copy's
-\ destination), ATOMIC-WRITE-FILE's `.tmp` sibling FS-MUT-ATOMIC-PATH and
+\ destination), ATOMIC-WRITE-FILE's unique `.tmp-*` sibling
+\ FS-MUT-ATOMIC-PATH, and
 \ MAKE-TEMP-DIR's FS-MUT-TMP-PATH - the one this module RETURNS a span into -
 \ are the FS-MUT-ABI band of the per-task DATA region, so two tasks renaming,
 \ symlinking, writing atomically or making a temporary directory at once share
@@ -43,6 +44,7 @@ $FFF constant FS-MUT-MODE-PERM
 493 constant FS-MUT-MODE-DIR
 8192 constant FS-MUT-COPY-CAP
 64 constant FS-MUT-CLEANUP-MAX
+64 constant FS-MUT-ATOMIC-RETRIES
 64 constant FS-MUT-TMP-RETRIES
 0 constant FS-MUT-CLEANUP-FILE
 1 constant FS-MUT-CLEANUP-DIR
@@ -89,23 +91,8 @@ FS-MUT-BAND-AGREE
 : FS-MUT-TMP-PATH ( -- SPAN:span<u8> )
    data-base FS-MUT-ABI:TMP-OFF + BYTE-VIEW FS-PATH-CAP SPAN:MAKE ;
 
-create FS-MUT-ATOMIC-SUFFIX
-   FS-MUT-DOT c, 116 c, 109 c, 112 c,
-
 : FS-MUT-PATHZ2 ( ptr u8 n -- ptr u8 )
    FS-MUT-PATHZ2-BUF FS-PATHZ-INTO ;
-
-\ The destination is the caller's span, so the capacity comparison is gone: a
-\ base plus suffix longer than the destination is refused by the copy itself.
-: FS-MUT-CHECK-SUFFIX-LENS ( n n -- ) {: u su :}
-   u 0 < if E-FS-PATH throw then
-   su 0 < if E-FS-PATH throw then ;
-
-: FS-MUT-SUFFIX-PATH ( ptr u8 n ptr u8 n SPAN:span<u8> -- n ) {: a:ptr u s:ptr su dst :}
-   u su FS-MUT-CHECK-SUFFIX-LENS
-   a u dst SPAN:COPY
-   s su dst u SPAN:SKIP SPAN:COPY
-   u su + ;
 
 : FS-MUT-CLEANUP-SLOT ( n -- SPAN:span<u8> ) {: idx :}
    idx 0 < if E-FS-CAPACITY throw then
@@ -300,16 +287,118 @@ public
    in FS-MUT-CLOSE-COPY-FD
    out FS-MUT-CLOSE-COPY-FD ;
 
-: ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
-   path pathu FS-MUT-ATOMIC-SUFFIX 4 FS-MUT-ATOMIC-PATH FS-MUT-SUFFIX-PATH {: tempu :}
-   FS-MUT-ATOMIC-PATH tempu SPAN:TAKE SPAN:$ {: temp:ptr tu :}
-   temp tu src srcu WRITE-ALL
-   temp tu path pathu RENAME-FILE ;
-
 : FS-MUT-SB-U ( n -- ) {: n :}
    n 0 < if E-FS-PATH throw then
    n 10 >= if n 10 / RECURSE then
    n 10 mod 48 + SB-APPEND-C ;
+
+: FS-MUT-U-DIGITS ( n -- n ) {: n :}
+   n 0 < if E-FS-PATH throw then
+   n 10 < if 1 exit then
+   n 10 / RECURSE 1+ ;
+
+: FS-MUT-ATOMIC-U+ ( n SPAN:span<u8> n -- n ) {: value:n dst off:n :}
+   value 0 < if E-FS-PATH throw then
+   value 10 >= if value 10 / dst off RECURSE else off then {: next:n :}
+   value 10 mod 48 + dst next SPAN:U8!
+   next 1+ ;
+
+: FS-MUT-PATH-COLLISION? ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u EXISTS? if 0 0= exit then
+   a u SYMLINK? ;
+
+: FS-MUT-BUILD-ATOMIC-TMP ( ptr u8 n n n -- ptr u8 n ) {: path:ptr pathu seed attempt :}
+   pathu 0 < if E-FS-PATH throw then
+   pathu 6 + seed FS-MUT-U-DIGITS + attempt FS-MUT-U-DIGITS +
+   FS-PATH-CAP > if E-SPAN-CAPACITY throw then
+   FS-MUT-ATOMIC-PATH {: dst :}
+   path pathu dst SPAN:COPY
+   s" .tmp-" dst pathu SPAN:SKIP SPAN:COPY
+   seed dst pathu 5 + FS-MUT-ATOMIC-U+ {: off:n :}
+   FS-MUT-DASH dst off SPAN:U8!
+   attempt dst off 1+ FS-MUT-ATOMIC-U+ {: u:n :}
+   dst u SPAN:TAKE SPAN:$ ;
+
+package FS-ATOMIC
+PROCESS-SYMBOLS
+FUNCTION: OPEN-CALL open ( ptr u8 n n -- n ) 2 VARIADIC ;FUNCTION
+FUNCTION: CLOSE-CALL close ( n -- n ) ;FUNCTION
+
+: OPEN-FLAGS ( -- n )
+   HB-TARGET-LINUX? if $C1 exit then
+   HB-TARGET-MACOS? if $A01 exit then
+   E-FS-OPEN throw ;
+
+public
+
+\ Habu's portable `open` flags do not include O_EXCL. This narrow libc call
+\ selects the host flag while keeping exclusive creation in one syscall.
+: OPEN-EXCLUSIVE ( ptr u8 -- n )
+   OPEN-FLAGS FS-MODE-0644 OPEN-CALL ;
+
+: CLOSE-FD ( n -- n )
+   CLOSE-CALL ;
+;package
+
+: FS-MUT-ATOMIC-OPEN-CANDIDATE ( ptr u8 n -- n ) {: path:ptr pathu :}
+   path pathu FS-PATHZ FS-ATOMIC:OPEN-EXCLUSIVE {: fd :}
+   fd 0 >= if fd exit then
+   path pathu FS-MUT-PATH-COLLISION? if -1 exit then
+   E-FS-OPEN throw ;
+
+: FS-MUT-ATOMIC-RESERVE ( ptr u8 n n -- ptr u8 n n ) {: path:ptr pathu seed :}
+   0 begin dup FS-MUT-ATOMIC-RETRIES < while
+      dup {: attempt:n :}
+      path pathu seed attempt FS-MUT-BUILD-ATOMIC-TMP
+      2dup FS-MUT-ATOMIC-OPEN-CANDIDATE {: fd:n :}
+      fd 0 >= if rot drop fd exit then
+      2drop 1+
+   repeat drop
+   E-FS-IO throw ;
+
+: FS-MUT-ATOMIC-WRITE-FD ( n ptr u8 n -- ) {: fd src:ptr srcu :}
+   0 begin dup srcu < while
+      {: off:n :}
+      fd src off + srcu off - write {: wr:n :}
+      wr 0 <= if E-FS-IO throw then
+      wr srcu off - > if E-FS-IO throw then
+      off wr +
+   repeat drop ;
+
+: FS-MUT-ATOMIC-WRITE-RUN ( n ptr u8 n -- n ptr u8 n ) {: fd src:ptr srcu :}
+   fd src srcu FS-MUT-ATOMIC-WRITE-FD
+   fd src srcu ;
+
+: FS-MUT-ATOMIC-RENAME-RUN ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
+   {: temp:ptr tempu path:ptr pathu :}
+   temp tempu path pathu RENAME-FILE
+   temp tempu path pathu ;
+
+: FS-MUT-ATOMIC-CLEAN-TEMP ( ptr u8 n -- ) {: temp:ptr tempu :}
+   temp tempu FS-MUT-PATH-COLLISION? if temp tempu REMOVE-FILE then ;
+
+: FS-MUT-ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu src:ptr srcu seed :}
+   srcu 0 < if E-FS-CAPACITY throw then
+   path pathu seed FS-MUT-ATOMIC-RESERVE {: temp:ptr tempu fd :}
+   fd src srcu [: FS-MUT-ATOMIC-WRITE-RUN ;] catch {: write-code:n :}
+   2drop drop
+   \ Close exactly once, before publish. A failed close may already have freed
+   \ the descriptor, so retrying it could close an unrelated recycled fd.
+   fd FS-ATOMIC:CLOSE-FD {: close-code:n :}
+   write-code 0<> close-code 0<> or if
+      temp tempu FS-MUT-ATOMIC-CLEAN-TEMP
+      close-code 0<> if E-FS-IO throw then
+      write-code throw
+   then
+   temp tempu path pathu [: FS-MUT-ATOMIC-RENAME-RUN ;] catch {: rename-code:n :}
+   2drop 2drop
+   rename-code 0<> if
+      temp tempu FS-MUT-ATOMIC-CLEAN-TEMP
+      rename-code throw
+   then ;
+
+: ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
+   path pathu src srcu mono-ns getpid xor FS-MUT-ATOMIC-WRITE-SEED ;
 
 : FS-MUT-BUILD-TEMP-TRY ( ptr u8 n ptr u8 n n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed attempt :}
    SB-RESET
@@ -325,8 +414,7 @@ public
    FS-MUT-TMP-PATH u SPAN:TAKE SPAN:$ ;
 
 : FS-MUT-TMP-COLLISION? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u EXISTS? if 0 0= exit then
-   a u SYMLINK? ;
+   a u FS-MUT-PATH-COLLISION? ;
 
 : FS-MUT-MKDIR-CANDIDATE? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u FS-PATHZ FS-MUT-MODE-PRIVATE-DIR mkdir {: rc :}
