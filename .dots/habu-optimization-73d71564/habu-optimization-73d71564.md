@@ -10,6 +10,9 @@ Reduce Habu engine and application size, unnecessary generated instructions,
 startup storage, and compiler/build cost. This parent collects existing work;
 child IDs, status, dependencies and historical evidence are preserved.
 Remeasure historical claims on the current product before implementation.
+Record confirmed findings in an existing matching dot or a new bounded dot
+before fixing them. Update evidence and acceptance before an implementation
+claim; an RCA or candidate saving is not completed implementation.
 
 Dots 0.6.4 renders one parent level reliably. Keep these tasks as direct
 children. The Tender size campaign remains recorded in
@@ -39,6 +42,29 @@ Reproduce the physical budget with
 
 There is no baked source text. Total padding is 25,660 bytes. The captured
 DATA span is 8,671,320 bytes; zero cells are already omitted from the file.
+
+## Tracked RCA work
+
+The native code linker selects a code/dictionary closure, while persistent
+checker capture copies mutable registries without that selection. Startup
+copies and links the native payload. Track corrections at those owners:
+
+| Finding | Implementation dot |
+|---|---|
+| 8,502 private symbols remain without dictionary entries | [Prune checker metadata](habu-drop-private-signatures-974304d0.md) |
+| 2,080 internal dictionary records and their names remain | [Strip internal names](habu-strip-the-names-89d6524a.md) |
+| 9,638 zero-displacement calls use 12-byte target rows | [Bind primitive calls](habu-bind-primitive-calls-a45cdb44.md) |
+| Repeated package strings and absolute string pointers | [Intern names and use offsets](habu-store-checker-names-70a89ffb.md) |
+| Older effect and control records persist wholesale | [Compact checker histories](habu-compact-checker-histories-3a1ce692.md) |
+| 20,825 effect headers represent 1,766 semantic tuples | [Share effect headers](habu-share-effect-headers-d26ffc89.md) |
+| Four reconstructible UNBOUND arrays cost 51,840 bytes | [Initialize checker scratch](habu-init-checker-scratch-4c2afab4.md) |
+
+Header representation follows history compaction through a tracker dependency.
+The other tasks are independently investigable; serialize shared checker edits.
+The existing DATA-reachability owner remains
+habu-prove-the-closure-5b7d02bb. No implementation is claimed by this index.
+The current downstream readiness check is Maki; older task text naming other
+applications does not expand this optimization work.
 
 ## Priorities supported by current evidence
 
