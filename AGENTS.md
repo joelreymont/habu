@@ -7,8 +7,12 @@ belong in the language core.
 
 ## Working
 
-- Choose the simplest effective approach. Work directly or delegate bounded
-  tasks when useful; there is no required agent chain or fixed review round.
+- Use parallel agents for independent work when it materially helps completion.
+  The task authorizes bounded delegation without a separate user request.
+  Keep small or tightly coupled work direct, with no fixed agent chain.
+  Define each worker's ownership and acceptance checks before starting it.
+  Editing workers use isolated `.jj-ws/<task>` workspaces; the integrator owns
+  review, integration, verification and cleanup.
 - Infer routine details and complete authorized work. Ask only for a material
   missing choice or additional authority. User instructions take precedence.
 - Use plain English. Keep changes focused and remove obsolete machinery when
