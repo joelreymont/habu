@@ -1785,7 +1785,9 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
    s" lib" [: BF-BOOT-COPY ;] WALK-FILES ;
 
 : BF-BOOT-PROGRAM$ ( -- ptr u8 n )
-   S\" require src/compiler/native/compiler.f\n1 set-tier\n: BF-CANDIDATE-INC ( n -- n ) 1+ ;\n41 BF-CANDIDATE-INC . cr\n" ;
+   \ Exercise provided quotation storage in the copied tree before the
+   \ candidate replaces the working engine.
+   S\" require src/core/quotation-storage.f\nrequire src/compiler/native/compiler.f\n1 set-tier\n: BF-CANDIDATE-INC ( n -- n ) 1+ ;\n41 BF-CANDIDATE-INC . cr\n" ;
 
 : BF-BOOT-RESULT ( result<pcap:captured,pcap:failed> -- n n n )
    MATCH result

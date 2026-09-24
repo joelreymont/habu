@@ -573,33 +573,36 @@ would cause duplicate definitions after relocation.
 
 The two chains and their comparison point:
 
-- **Native chain** — the current `bin/hb`, which reproduces itself at the native
-  fixpoint (`install --force` is byte-identical). This is the reference.
+- **Native chain** — the current `bin/hb`, which reproduces itself through
+  `tools/native-build.f` at the native fixpoint. This is the release reference.
 - **Gforth chain** — `tools/bootstrap.sh HABU_BOOTSTRAP_CHECK_ONLY=1` emits a raw
   seed engine `hb-stdin` via Gforth; the audit then runs the native fixpoint
   refresh on that seed (the exact `install --force` step the full recovery runs
   after `mv hb-stdin bin/hb`), re-targeted to a scratch engine path via
-  `HABU_FIXPOINT_ENGINE` so the checkout's `bin/hb` is never replaced.
+  `HABU_FIXPOINT_ENGINE` so the checkout's `bin/hb` is never replaced. The
+  fixpoint install verb is a recovery/development route; it is not a
+  release-equivalence proof and must not replace the native product without its
+  copied-tree preflight and the native gate.
 
-DDC compares **at the fixpoint**: the Gforth chain's refreshed engine must be
-byte-identical to the native `bin/hb`. It does **not** diff the raw `hb-stdin`
-seed directly. The raw seed is captured by a Gforth-lineage stage whose live REPL
-sits at different absolute addresses than the native host, so its baked AOT-REPL
-blob carries that host's `movz/movk` address immediates (currently ~542 `__text`
-bytes plus the downstream code signature). `EM-SEED-AOT` re-relocates those bytes
-at boot — they are dead yet host-dependent, so a raw seed-vs-fixpoint diff
-diverges by design. The native fixpoint refresh re-captures the AOT blob from the
-canonical small engine (identical layout regardless of Gforth-vs-native lineage),
-which erases the dead host addresses; the two chains then converge byte-for-byte.
+The DDC driver compares the Gforth chain's refreshed engine with the current
+native `bin/hb`; byte identity is the audit's requirement, not an established
+property of the recovery route. The source-only recovery product still lacks
+the active signature for `CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?`: compiling a
+tier-1 trusted caller throws `E-HIR-UNMODELED` (-8286), while the native product
+compiles and executes it. The copied-tree install smoke checks quotation-storage
+registration and a tier-1 arithmetic call; it does not qualify that missing
+signature or establish release equivalence.
 
-Ensure `bin/hb` is a fresh native fixpoint before the audit, then run it (the
-Gforth chain needs `gforth` on `PATH` or `GFORTH` set, per Requirements above):
+The audit does not compare the raw `hb-stdin` seed directly. Its captured REPL
+can retain the Gforth host's address immediates. The recovery refresh captures
+the REPL again in the small engine, removing that source of byte differences.
+The final comparison must still pass before claiming convergence.
+
+Keep `bin/hb` as the qualified native product described above when running the
+audit. The Gforth chain needs `gforth` on `PATH` or `GFORTH` set, per Requirements
+above:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f \
-  tools/build-fixpoint.f tools/build-fixpoint-main.f -- install --force
-
 HABU_ALLOW_BOOTSTRAP=1 GFORTH="${GFORTH:-$HOME/.local/bin/gforth}" bin/hb --load \
   lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
   lib/process.f lib/process-argv.f lib/process-env.f \
