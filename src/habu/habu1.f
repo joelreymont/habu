@@ -1889,10 +1889,12 @@ variable SZA-I
 
 \ Fresh anonymous storage has no prior element type. The caller chooses the
 \ pointee type; the OS boundary returns a null pointer and -1 on failure.
+\ Darwin accepts a zero-length mmap; an empty extent owns no storage here.
 : BMAPANON ( -- )                      \ ( bytes -- ptr a ior )
    LBL {: failed:label :}
    LBL {: done:label :}
    1 G-POP
+   1 0 CMPI,  C-LE failed BCOND,
    0 0 MOVZ,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,
    4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,  C-CS failed BCOND,

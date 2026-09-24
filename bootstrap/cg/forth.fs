@@ -1315,6 +1315,7 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 : BMAPANON ( -- )
    LBL LBL {: failed done :}
    1 G-POP
+   1 0 CMPI,  C-LE failed BCOND,
    0 0 MOVZ,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,
    4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,  C-CS failed BCOND,
