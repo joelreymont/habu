@@ -1,7 +1,7 @@
-\ Raw serial byte streams on Linux AArch64, through bounded libc bindings.
+\ Raw serial byte streams on Linux and macOS, through bounded libc bindings.
 \
 \ STORAGE CLASS. TASK-LOCAL for everything a call runs through: the termios
-\ struct and the saved termios are one $58 TASK:+USER row, so each task drives
+\ struct and the saved termios are one task-local row, so each task drives
 \ its own port, and the byte spans READ and WRITE take are caller-owned. The
 \ resolved libc symbols and their one-time registration flags are PROCESS-WIDE,
 \ as symbol resolution should be.
@@ -14,6 +14,7 @@
 \ loop running is E-AIO-STATE.
 require lib/errors.f
 require lib/ffi-abi.f
+require lib/le.f
 require lib/type/deftype.f
 require lib/num-types.f
 require lib/task.f
@@ -53,10 +54,10 @@ E-SERIAL-RESULT constant E-RESULT
 
 private
 
-$2C constant TERM-BYTES
-$80902 constant OPEN-FLAGS       \ O_RDWR | O_NONBLOCK | O_NOCTTY | O_CLOEXEC.
-$802C542A constant GET-TERM      \ TCGETS2: kernel termios2, not libc termios.
-$402C542B constant SET-TERM      \ TCSETS2: immediate, without flushing queues.
+: TERM-BYTES ( -- n ) HB-TARGET-MACOS? if 72 else $2C then ;
+: OPEN-FLAGS ( -- n ) HB-TARGET-MACOS? if $1020006 else $80902 then ; \ O_RDWR | O_NONBLOCK | O_NOCTTY | O_CLOEXEC.
+: GET-TERM ( -- n ) HB-TARGET-MACOS? if $40487413 else $802C542A then ; \ TIOCGETA / TCGETS2.
+: SET-TERM ( -- n ) HB-TARGET-MACOS? if $80487414 else $402C542B then ; \ TIOCSETA / TCSETS2, no queue flush.
 $100F100F constant BAUD-MASK
 $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 1000000 constant NS-PER-MS
@@ -73,10 +74,10 @@ variable REGISTERED
 create SYMBOL-NAME $20 allot
 
 \ No per-operation buffer is process-global; independent tasks may use ports.
-\ Two 44-byte kernel termios2 records and nothing else: the wait is the loop's.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $58 TASK:+USER IO-STORAGE drop
+\ Two records: Darwin's 72-byte termios or Linux's 44-byte termios2.
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 144 TASK:+USER IO-STORAGE drop
 : TERM ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
-: SAVED ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $2C + ;
+: SAVED ( -- ptr u8 ) IO-STORAGE BYTE-VIEW 72 + ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -132,9 +133,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 \ RTLD_DEFAULT borrows process symbols; the native executable already needs
-\ libc.so.6. No library reference is acquired or retained by this module.
+\ libc on either target. No library reference is acquired or retained by this module.
 : SYMBOL ( ptr u8 n -- n )
-   SYMBOL-NAME FFI:CSTR 0 SYMBOL-NAME FFI:DLSYM
+   SYMBOL-NAME FFI:CSTR HB-TARGET-MACOS? if -2 else 0 then SYMBOL-NAME FFI:DLSYM
    dup 0= if E-SYMBOL throw then ;
 
 
@@ -142,11 +143,10 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    s" open" SYMBOL FN-OPEN ! s" ioctl" SYMBOL FN-IOCTL !
    s" read" SYMBOL FN-READ ! s" write" SYMBOL FN-WRITE !
    s" close" SYMBOL FN-CLOSE !
-   s" __errno_location" SYMBOL FN-ERRNO ! ;
+   HB-TARGET-MACOS? if s" __error" else s" __errno_location" then SYMBOL FN-ERRNO ! ;
 
 
 : INIT ( -- )
-   HB-TARGET-LINUX? 0= if E-PLATFORM throw then
    begin
       READY atomic@ 2 = if exit then
       0 1 READY atomic-cas 0= if
@@ -156,8 +156,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    again ;
 
 
-\ Exact Linux AArch64 libc schemas, seven of them. ioctl's requests have
-\ separate pointer directions and an explicit 44-byte kernel termios2 layout.
+\ libc calls use separate pointer directions and target-specific termios
+\ extents. Darwin ioctl passes its variadic pointer on the stack.
 \ errno is a libc-owned, thread-local C int. The wait is not among them: it is
 \ AIO's. Retirement owner: checked foreign bindings.
 \ test/serial.py covers these boundaries through real kernel pseudoterminals.
@@ -178,22 +178,27 @@ TRUSTED: OPEN-CALL ( -- n )
 
 
 TRUSTED: GET-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 3 FN-IOCTL @ ffi-call-bounded ;
+   HB-TARGET-MACOS? if
+      FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
+      1 FN-IOCTL @ ffi-call-abi-bounded
+   else FFI:ARGS FFI:REG-LENS 3 FN-IOCTL @ ffi-call-bounded then ;
 
 
 : GET-RAW ( handle ptr u8 -- n ) {: handle:handle target :}
    FFI:RESET handle HANDLE>N 0 FFI:VALUE! GET-TERM 1 FFI:VALUE!
-   target TERM-BYTES 2 FFI:WRITABLE!
+   HB-TARGET-MACOS? if target TERM-BYTES 0 FFI:STACK-WRITABLE!
+   else target TERM-BYTES 2 FFI:WRITABLE! then
    GET-CALL C-INT ;
 
 
 TRUSTED: SET-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 3 FN-IOCTL @ ffi-call-bounded ;
+   GET-CALL ;
 
 
 : SET-RAW ( handle ptr u8 -- n ) {: handle:handle source :}
    FFI:RESET handle HANDLE>N 0 FFI:VALUE! SET-TERM 1 FFI:VALUE!
-   source 2 FFI:READABLE!
+   HB-TARGET-MACOS? if source 0 FFI:STACK-READABLE!
+   else source 2 FFI:READABLE! then
    SET-CALL C-INT ;
 
 
@@ -237,7 +242,21 @@ TRUSTED: CLOSE-CALL ( -- n )
    path extent MEM:RELEASE-BYTES ;
 
 
+: MAC-RAW! ( baud -- ) {: baud:baud :}
+   TERM-BYTES 0 do SAVED i + c@ TERM i + c! loop
+   0 TERM LE:U64! 0 TERM 8 + LE:U64! 0 TERM 24 + LE:U64!
+   SAVED 16 + LE:U64@ $4000 and $8B00 or TERM 16 + LE:U64!
+   1 TERM 48 + c! 0 TERM 49 + c!
+   baud BAUD>N TERM 56 + LE:U64! baud BAUD>N TERM 64 + LE:U64! ;
+
+: MAC-RAW? ( baud -- bool ) {: baud:baud :}
+   TERM LE:U64@ 0= TERM 8 + LE:U64@ 0= and TERM 24 + LE:U64@ 0= and
+   TERM 16 + LE:U64@ $4000 invert and $8B00 = and
+   TERM 48 + c@ 1 = and TERM 49 + c@ 0= and
+   TERM 56 + LE:U64@ baud BAUD>N = and TERM 64 + LE:U64@ baud BAUD>N = and ;
+
 : RAW! ( baud -- ) {: baud:baud :}
+   HB-TARGET-MACOS? if baud MAC-RAW! exit then
    \ Preserve HUPCL; all other framing and flow settings are explicit.
    TERM-BYTES 0 do SAVED i + c@ TERM i + c! loop
    0 TERM LE32! 0 TERM $04 + LE32! 0 TERM $0C + LE32!
@@ -247,6 +266,7 @@ TRUSTED: CLOSE-CALL ( -- n )
 
 
 : RAW? ( baud -- bool ) {: baud:baud :}
+   HB-TARGET-MACOS? if baud MAC-RAW? exit then
    TERM LE32@ 0= TERM $04 + LE32@ 0= and TERM $0C + LE32@ 0= and
    TERM $08 + LE32@ BAUD-MASK invert and $400 invert and $8B0 = and
    TERM $10 + c@ 0= and
@@ -256,7 +276,9 @@ TRUSTED: CLOSE-CALL ( -- n )
 
 : CONFIGURE ( handle baud -- open-result ) {: handle:handle baud:baud :}
    handle SAVED GET-RAW 0 < if LAST-ERROR SERIAL-OPEN--RESULT:failed exit then
-   SAVED $10 + c@ 0 <> if SERIAL-OPEN--RESULT:unsupported exit then
+   HB-TARGET-LINUX? if
+      SAVED $10 + c@ 0 <> if SERIAL-OPEN--RESULT:unsupported exit then
+   then
    baud RAW!
    handle TERM SET-RAW 0 < if
       LAST-ERROR handle SAVED SET-RAW drop SERIAL-OPEN--RESULT:failed exit
@@ -277,7 +299,7 @@ TRUSTED: CLOSE-CALL ( -- n )
    NS-PER-MS 1 - + NS-PER-MS / >MS ;
 
 
-: RETRY? ( errno -- bool ) ERRNO>N dup 4 = swap 11 = or ;
+: RETRY? ( errno -- bool ) ERRNO>N dup 4 = swap HB-TARGET-MACOS? if 35 else 11 then = or ;
 
 
 \ Positive event bits, zero for the deadline, or a negative errno. One POLL

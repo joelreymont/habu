@@ -1,7 +1,7 @@
 # Raw serial streams
 
 [`lib/serial.f`](../lib/serial.f) provides the generic `SERIAL` package for
-Linux AArch64 with glibc. It opens raw 8N1 terminal streams with numeric baud
+Linux and macOS AArch64. It opens raw 8N1 terminal streams with numeric baud
 rates and exposes partial byte transfers with finite waits. Application command
 framing, retries, boot sequences, and flash policy belong to callers.
 
@@ -17,13 +17,13 @@ framing, retries, boot sequences, and flash policy belong to callers.
 | `CLOSE` | Handle | `status`: `ok` or `failed errno` |
 
 A byte span is `ptr u8 NUM:byte-len`. The `SERIAL:handle`, `SERIAL:baud`,
-and `SERIAL:errno` types are distinct. Errno values retain positive Linux error
+and `SERIAL:errno` types are distinct. Errno values retain positive host error
 numbers. Raw nominal converters such as `>BAUD` are not validators; each public
 operation checks its operands before I/O.
 
 Paths must contain 1–4095 bytes, without embedded NUL. `OPEN8N1` creates a
-nonblocking descriptor with `O_NOCTTY` and close-on-exec. It requires the normal
-`N_TTY` line discipline, disables parity, extra stop bits, echo, input/output
+nonblocking descriptor with `O_NOCTTY` and close-on-exec. On Linux it requires the normal
+`N_TTY` line discipline. On both targets it disables parity, extra stop bits, echo, input/output
 translations and software/hardware flow control, and enables `CLOCAL`, `CREAD`
 and eight data bits. `VMIN=1` and `VTIME=0`; the AIO loop supplies the wait.
 The previous `HUPCL` setting is retained. No explicit modem-line changes or
@@ -31,7 +31,9 @@ queue flushes are performed.
 
 Both reported baud rates and the raw settings are read back after configuration.
 `unsupported` means the line discipline or resulting settings do not meet this
-contract. Unsupported terminal ioctls and other OS failures return `failed`.
+contract. Linux uses the kernel's numeric termios2 rates; macOS uses numeric
+termios speeds and accepts the rates supported by the terminal driver.
+Unsupported terminal ioctls and other OS failures return `failed`.
 On configuration failure the library attempts to restore the original settings
 and closes its descriptor, preserving the first error. Restoration is best
 effort; an unplugged device may already be unavailable. Opening a serial device
@@ -65,8 +67,7 @@ Every wait is one `AIO:POLL` and one `AIO:AWAIT` ([aio.md](aio.md)), so
 loop running is `E-AIO-STATE`.
 
 Timeouts are `0..2147483647` milliseconds. Zero makes an immediate readiness
-attempt, which a port that already has bytes still answers, because the kernel
-serves the poll before its zero-length linked timer is armed. Readiness races
+attempt, which a port that already has bytes still answers, because readiness is served before the deadline. Readiness races
 retain a monotonic deadline; a signal no longer cuts a wait short, since no
 thread is parked in `poll(2)` for one to interrupt.
 Scheduling delays and driver behavior can extend elapsed time; this is not a
