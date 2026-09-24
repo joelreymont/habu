@@ -10,7 +10,7 @@ require lib/string.f
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/task.f
-require lib/fs-list.f              \ the /proc/self/task entries the parked case counts
+require test/host-threads.f
 require lib/aio.f                  \ the loop every readiness wait runs on
 require lib/net/tcp4.f
 
@@ -21,7 +21,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 $7F000001 constant LOOPBACK
 4 constant BACKLOG
 $09 constant EBADF                 \ a transfer through a closed descriptor
-$6F constant ECONNREFUSED          \ nobody listens on that port
+: ECONNREFUSED ( -- n ) HB-TARGET-MACOS? if 61 else $6F then ;
 $20 constant BUF-CAP
 $40 constant POLL-TRIES
 
@@ -53,7 +53,6 @@ variable PROBE-CONNECTION
 variable PROBE-PORT
 variable CLIENT-FD
 variable PEER-FD
-variable THREAD-N
 variable BASE-THREADS
 variable PARKED-THREADS
 variable PARK-ARMED
@@ -214,17 +213,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
 
 \ ---- the parked waiter -------------------------------------------------------
 
-: THREAD-TALLY ( ptr u8 n -- )
-   2drop 1 THREAD-N atomic-add drop ;
-
-
-\ The live threads of this process, counted from its own task directory, the way
-\ lib/aio-test.f counts them for the fan-out.
-: THREADS ( -- n )
-   0 THREAD-N !
-   s" /proc/self/task" [: THREAD-TALLY ;] FS-LIST:EACH
-   THREAD-N @ ;
-
+: THREADS ( -- n ) TEST-HOST:THREADS ;
 
 : REACHED? ( ptr n n -- bool ) {: cell:ptr want:n :}
    mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}

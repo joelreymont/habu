@@ -1,4 +1,4 @@
-\ Linux AArch64 IPv4 datagrams through exact, bounded libc bindings.
+\ Linux and Darwin AArch64 IPv4 datagrams through exact, bounded libc bindings.
 \
 \ STORAGE CLASS. TASK-LOCAL. The endpoint storage is one $18 TASK:+USER row, so
 \ each task holds its own, and the datagram spans the transfer words take are
@@ -9,6 +9,7 @@
 \ program calls AIO:START before its first RECEIVE that waits; a wait with
 \ no loop is E-AIO-STATE.
 require lib/errors.f
+require lib/memory.f
 require lib/ffi-abi.f
 require lib/type/deftype.f
 require lib/num-types.f
@@ -56,7 +57,7 @@ $10 constant SOCKADDR-BYTES
 $FFFF constant MAX-PORT
 $FFFFFFFF constant MAX-ADDRESS
 $FFE3 constant MAX-PAYLOAD
-$80802 constant SOCKET-FLAGS       \ SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC.
+: SOCKET-FLAGS ( -- n ) HB-TARGET-MACOS? if 2 else $80802 then ;       \ SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC.
 $20 constant MSG-TRUNC
 1000000 constant NS-PER-MS
 
@@ -118,7 +119,10 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    address ADDRESS>N 0 MAX-ADDRESS WITHIN-RANGE
    port PORT>N 0 MAX-PORT WITHIN-RANGE
    CLEAR-ENDPOINT
-   2 SOCKADDR c! port PORT>N SOCKADDR $02 + BE16!
+   HB-TARGET-MACOS? if
+      SOCKADDR-BYTES SOCKADDR c! 2 SOCKADDR 1+ c!
+   else 2 SOCKADDR c! then
+   port PORT>N SOCKADDR $02 + BE16!
    address ADDRESS>N SOCKADDR $04 + BE32! ;
 
 
@@ -128,7 +132,10 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 : ENDPOINT@ ( -- address port )
    ADDRLEN LE:U32@ SOCKADDR-BYTES <> if E-RESULT throw then
-   SOCKADDR c@ 2 <> SOCKADDR $01 + c@ 0 <> or if E-RESULT throw then
+   HB-TARGET-MACOS? if
+      SOCKADDR c@ SOCKADDR-BYTES <> SOCKADDR 1+ c@ 2 <> or
+   else SOCKADDR c@ 2 <> SOCKADDR 1+ c@ 0 <> or then
+   if E-RESULT throw then
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
 
@@ -157,20 +164,17 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
    5 $04 WRITES-BYTES                     \ socklen_t
 ;FUNCTION
 
-\ The platform gate. Symbol resolution is package FFI's now, so there is no
-\ publication to synchronize and no cached address to invalidate here.
-: INIT ( -- )
-   HB-TARGET-LINUX? 0= if E-PLATFORM throw then ;
-
-
-\ errno's pointer is libc-owned, thread-local, and its value a four-byte C int;
-\ package FFI owns that binding for every consumer.
 : LAST-ERROR ( -- errno )
    FFI:ERRNO >ERRNO ;
 
 
 : SOCKET-RAW ( -- n )
-   2 SOCKET-FLAGS 0 SOCKET-CALL C-INT ;
+   2 SOCKET-FLAGS 0 SOCKET-CALL C-INT {: fd:n :}
+   fd 0 < HB-TARGET-MACOS? 0= or if fd exit then
+   \ Fresh sockets have no status flags to preserve. Darwin uses O_NONBLOCK=4.
+   fd 2 1 fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
+   fd 4 4 fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
+   fd ;
 
 
 : BIND-RAW ( socket -- n ) {: socket:socket :}
@@ -191,10 +195,22 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
    SOCKADDR SOCKADDR-BYTES SEND-CALL ;
 
 
-: RECEIVE-RAW ( socket ptr u8 NUM:byte-len -- n )
+: DARWIN-RECEIVE ( socket ptr u8 NUM:byte-len -- n errno )
    {: socket:socket bytes capacity:NUM:byte-len :}
+   \ BSD recvfrom does not report the original size after truncation. Read one
+   \ complete IPv4 datagram, then copy the prefix promised to the caller.
+   MAX-PAYLOAD MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: buf:ptr extent:NUM:alloc-byte-len :}
+   socket SOCKET>N buf MAX-PAYLOAD 0 SOCKADDR ADDRLEN RECEIVE-CALL {: got:n :}
+   LAST-ERROR {: error:errno :}
+   got 0 >= if buf bytes got capacity BLEN>N min BYTE-COPY then
+   buf extent MEM:RELEASE-BYTES
+   got error ;
+
+: RECEIVE-RAW ( socket ptr u8 NUM:byte-len -- n errno )
+   {: socket:socket bytes capacity:NUM:byte-len :}
+   HB-TARGET-MACOS? if socket bytes capacity DARWIN-RECEIVE exit then
    socket SOCKET>N bytes capacity BLEN>N MSG-TRUNC
-   SOCKADDR ADDRLEN RECEIVE-CALL ;
+   SOCKADDR ADDRLEN RECEIVE-CALL LAST-ERROR ;
 
 
 \ The wait between two tries: one poll on the AIO loop for the time this
@@ -211,7 +227,7 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
 
 
 : RETRY? ( errno -- bool )
-   ERRNO>N dup 4 = swap 11 = or ;
+   ERRNO>N dup 4 = swap HB-TARGET-MACOS? if 35 else 11 then = or ;
 
 
 : RECEIVED ( n NUM:byte-len -- receive-result ) {: actual:n capacity:NUM:byte-len :}
@@ -276,7 +292,7 @@ public
 \ BIND returns an owned nonblocking socket; the caller closes it exactly once.
 \ Address is a numeric IPv4 address (e.g. $7F000001); port zero asks the OS.
 : BIND ( address port -- open-result )
-   INIT ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR UDP4-OPEN--RESULT:failed exit then
+   ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR UDP4-OPEN--RESULT:failed exit then
    >SOCKET {: socket:socket :}
    socket BIND-RAW 0 < if
       LAST-ERROR socket CLOSE-RAW drop UDP4-OPEN--RESULT:failed
@@ -284,7 +300,7 @@ public
 
 
 : LOCAL ( socket -- endpoint-result ) {: socket:socket :}
-   socket CHECK-SOCKET INIT ENDPOINT-OUTPUT
+   socket CHECK-SOCKET ENDPOINT-OUTPUT
    socket LOCAL-RAW 0 < if LAST-ERROR UDP4-ENDPOINT--RESULT:failed
    else ENDPOINT@ UDP4-ENDPOINT--RESULT:endpoint then ;
 
@@ -294,7 +310,7 @@ public
 : SEND ( socket address port ptr u8 NUM:byte-len -- status )
    {: socket:socket address:address port:port bytes size:NUM:byte-len :}
    socket CHECK-SOCKET size BLEN>N 0 MAX-PAYLOAD WITHIN-RANGE
-   INIT address port ENDPOINT!
+   address port ENDPOINT!
    socket bytes size SEND-RAW dup 0 < if drop LAST-ERROR UDP4-STATUS:failed exit then
    size BLEN>N <> if E-RESULT throw then UDP4-STATUS:ok ;
 
@@ -307,13 +323,12 @@ public
 : RECEIVE ( socket ptr u8 NUM:byte-len ms -- receive-result )
    {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
    socket CHECK-SOCKET capacity BLEN>N 1 MAX-PAYLOAD WITHIN-RANGE
-   timeout MS>N 0 $7FFFFFFF WITHIN-RANGE INIT
+   timeout MS>N 0 $7FFFFFFF WITHIN-RANGE
    mono-ns timeout MS>N NS-PER-MS * + >NS {: deadline:ns :}
    begin
-      ENDPOINT-OUTPUT socket bytes capacity RECEIVE-RAW dup 0 >= if
-         capacity RECEIVED exit
-      then drop
-      LAST-ERROR dup RETRY? 0= if UDP4-RECEIVE--RESULT:failed exit then drop
+      ENDPOINT-OUTPUT socket bytes capacity RECEIVE-RAW {: got:n error:errno :}
+      got 0 >= if got capacity RECEIVED exit then
+      error dup RETRY? 0= if UDP4-RECEIVE--RESULT:failed exit then drop
       deadline REMAINING dup MS>N 0= if drop UDP4-RECEIVE--RESULT:timeout exit then
       socket swap WAIT-READABLE
       MATCH AIO:outcome
@@ -327,7 +342,7 @@ public
 
 \ On Linux, close consumes the descriptor even if interrupted. Never retry it.
 : CLOSE ( socket -- status )
-   dup CHECK-SOCKET INIT CLOSE-RAW 0 < if LAST-ERROR UDP4-STATUS:failed else UDP4-STATUS:ok then ;
+   dup CHECK-SOCKET CLOSE-RAW 0 < if LAST-ERROR UDP4-STATUS:failed else UDP4-STATUS:ok then ;
 
 
 ;package

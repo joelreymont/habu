@@ -1,4 +1,4 @@
-\ Linux AArch64 IPv4 stream sockets through exact, bounded libc bindings.
+\ Linux and Darwin AArch64 IPv4 stream sockets through exact, bounded libc bindings.
 \
 \ STORAGE CLASS. TASK-LOCAL. The endpoint storage is one $18 TASK:+USER row, so
 \ each task holds its own sockaddr and socklen and any number of tasks may bind,
@@ -86,9 +86,9 @@ $FFFFFFFF constant MAX-ADDRESS
 $FFFFFFFF constant U32-MASK
 $7FFFF000 constant MAX-TRANSFER    \ Linux transfers at most this many bytes per call.
 $1000 constant MAX-BACKLOG         \ Linux SOMAXCONN.
-$80001 constant SOCKET-FLAGS       \ SOCK_STREAM | SOCK_CLOEXEC.
+: SOCKET-FLAGS ( -- n ) HB-TARGET-MACOS? if 1 else $80001 then ;       \ SOCK_STREAM | SOCK_CLOEXEC.
 $80000 constant ACCEPT-FLAGS       \ SOCK_CLOEXEC on the accepted connection.
-$4000 constant MSG-NOSIGNAL        \ A write to a closed peer fails; it never signals.
+: MSG-NOSIGNAL ( -- n ) HB-TARGET-MACOS? if $80000 else $4000 then ;        \ A write to a closed peer fails; it never signals.
 $39 constant POLL-DONE             \ POLLIN|POLLERR|POLLHUP|POLLNVAL: a read will not block.
 $7FFFFFFF constant MAX-TIMEOUT     \ the widest deadline this module accepts, in milliseconds.
 4 constant EINTR
@@ -162,7 +162,10 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    address ADDRESS>N 0 MAX-ADDRESS WITHIN-RANGE
    port PORT>N 0 MAX-PORT WITHIN-RANGE
    CLEAR-ENDPOINT
-   2 SOCKADDR c! port PORT>N SOCKADDR $02 + BE16!
+   HB-TARGET-MACOS? if
+      SOCKADDR-BYTES SOCKADDR c! 2 SOCKADDR 1+ c!
+   else 2 SOCKADDR c! then
+   port PORT>N SOCKADDR $02 + BE16!
    address ADDRESS>N SOCKADDR $04 + BE32! ;
 
 
@@ -172,7 +175,10 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 : ENDPOINT@ ( -- address port )
    ADDRLEN LE:U32@ SOCKADDR-BYTES <> if E-RESULT throw then
-   SOCKADDR c@ 2 <> SOCKADDR $01 + c@ 0 <> or if E-RESULT throw then
+   HB-TARGET-MACOS? if
+      SOCKADDR c@ SOCKADDR-BYTES <> SOCKADDR 1+ c@ 2 <> or
+   else SOCKADDR c@ 2 <> SOCKADDR 1+ c@ 0 <> or then
+   if E-RESULT throw then
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
 
@@ -201,6 +207,11 @@ FUNCTION: SEND-CALL send ( n ptr u8 n n -- n ) ;FUNCTION
 FUNCTION: SHUTDOWN-CALL shutdown ( n n -- n ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- n ) ;FUNCTION
 
+FUNCTION: DARWIN-ACCEPT accept ( n ptr u8 ptr u8 -- n )
+   1 $10 WRITES-BYTES
+   2 $04 WRITES-BYTES
+;FUNCTION
+
 FUNCTION: ACCEPT-CALL accept4 ( n ptr u8 ptr u8 n -- n )
    1 $10 WRITES-BYTES                     \ sockaddr_in
    2 $04 WRITES-BYTES                     \ socklen_t
@@ -216,14 +227,6 @@ FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n )
 ;FUNCTION
 
 
-\ The platform gate. Symbol resolution is package FFI's now, so there is no
-\ publication to synchronize and no cached address to invalidate here.
-: INIT ( -- )
-   HB-TARGET-LINUX? 0= if E-PLATFORM throw then ;
-
-
-\ errno's pointer is libc-owned, thread-local, and its value a four-byte C int;
-\ package FFI owns that binding for every consumer.
 : LAST-ERROR ( -- errno )
    FFI:ERRNO >ERRNO ;
 
@@ -232,8 +235,13 @@ FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n )
    ERRNO>N EINTR = ;
 
 
+: OWN-SOCKET ( n -- n ) {: fd:n :}
+   fd 0 < HB-TARGET-MACOS? 0= or if fd exit then
+   fd 2 1 fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
+   fd ;
+
 : SOCKET-RAW ( -- n )
-   2 SOCKET-FLAGS 0 SOCKET-CALL C-INT ;
+   2 SOCKET-FLAGS 0 SOCKET-CALL C-INT OWN-SOCKET ;
 
 
 : BIND-RAW ( n -- n ) {: fd:n :}
@@ -245,7 +253,8 @@ FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n )
 
 
 : ACCEPT-RAW ( n -- n ) {: fd:n :}
-   fd SOCKADDR ADDRLEN ACCEPT-FLAGS ACCEPT-CALL C-INT ;
+   HB-TARGET-MACOS? if fd SOCKADDR ADDRLEN DARWIN-ACCEPT
+   else fd SOCKADDR ADDRLEN ACCEPT-FLAGS ACCEPT-CALL then C-INT OWN-SOCKET ;
 
 
 : CONNECT-RAW ( n -- n ) {: fd:n :}
@@ -294,7 +303,7 @@ FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n )
 \ only after that task has ended - so it is a broken foreign result, exactly like
 \ a sockaddr this module did not write.
 : WAIT-READY ( n ms -- ready-result ) {: fd:n timeout:ms :}
-   timeout MS>N 0 MAX-TIMEOUT WITHIN-RANGE INIT
+   timeout MS>N 0 MAX-TIMEOUT WITHIN-RANGE
    fd >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF REVENTS>READY ENDOF
@@ -374,7 +383,7 @@ public
 \ BIND returns an owned listener; the caller closes it exactly once. Port zero
 \ asks the OS for an ephemeral port, which LOCAL then reports.
 : BIND ( address port -- bind-result )
-   INIT ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-BIND--RESULT:failed exit then
+   ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-BIND--RESULT:failed exit then
    {: fd:n :}
    fd BIND-RAW 0 < if
       LAST-ERROR fd CLOSE-RAW drop TCP4-BIND--RESULT:failed
@@ -384,12 +393,12 @@ public
 \ The backlog is the queue of connections completed but not yet accepted; Linux
 \ caps it at SOMAXCONN.
 : LISTEN ( listener n -- status ) {: lis:listener backlog:n :}
-   backlog 1 MAX-BACKLOG WITHIN-RANGE INIT
+   backlog 1 MAX-BACKLOG WITHIN-RANGE
    lis LISTENER-FD backlog LISTEN-RAW RC>STATUS ;
 
 
 : LOCAL ( listener -- endpoint-result )
-   LISTENER-FD INIT ENDPOINT-OUTPUT
+   LISTENER-FD ENDPOINT-OUTPUT
    LOCAL-RAW 0 < if LAST-ERROR TCP4-ENDPOINT--RESULT:failed
    else ENDPOINT@ TCP4-ENDPOINT--RESULT:endpoint then ;
 
@@ -397,13 +406,13 @@ public
 \ Blocks until a connection arrives. The accepted connection is owned by the
 \ caller and closed separately from the listener. Use PENDING? to avoid waiting.
 : ACCEPT ( listener -- accept-result )
-   LISTENER-FD INIT ACCEPT-LOOP ;
+   LISTENER-FD ACCEPT-LOOP ;
 
 
 \ Blocks until the handshake completes or the OS refuses it. A refused peer
 \ answers failed with ECONNREFUSED; the failed socket is closed here.
 : CONNECT ( address port -- connect-result )
-   INIT ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-CONNECT--RESULT:failed exit then
+   ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-CONNECT--RESULT:failed exit then
    {: fd:n :}
    fd CONNECT-RAW 0 < if
       LAST-ERROR fd CLOSE-RAW drop TCP4-CONNECT--RESULT:failed
@@ -414,7 +423,7 @@ public
 \ The caller owns the writable span. `closed` carries zero bytes.
 : READ ( connection ptr u8 NUM:byte-len -- read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
-   capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE INIT
+   capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
    conn CONNECTION-FD bytes capacity BLEN>N READ-CHUNK ;
 
 
@@ -422,7 +431,7 @@ public
 \ `closed` carrying the bytes already written into the span.
 : READ-EXACT ( connection ptr u8 NUM:byte-len -- read-result )
    {: conn:connection bytes want:NUM:byte-len :}
-   want BLEN>N 1 MAX-TRANSFER WITHIN-RANGE INIT
+   want BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
    0
    begin
       dup want BLEN>N < 0= if drop want TCP4-READ--RESULT:data exit then
@@ -439,7 +448,7 @@ public
 \ write may have transmitted part of the span; the stream is then unusable.
 : WRITE ( connection ptr u8 NUM:byte-len -- status )
    {: conn:connection bytes size:NUM:byte-len :}
-   size BLEN>N 0 MAX-TRANSFER WITHIN-RANGE INIT
+   size BLEN>N 0 MAX-TRANSFER WITHIN-RANGE
    0
    begin
       dup size BLEN>N < 0= if drop TCP4-STATUS:ok exit then
@@ -478,16 +487,16 @@ public
 \ Half-closes the stream in one or both directions; the descriptor stays open
 \ until CLOSE. Shutting down sending sends the peer the end of stream.
 : SHUTDOWN ( connection direction -- status ) {: conn:connection how:direction :}
-   conn CONNECTION-FD INIT how SHUT-CODE SHUTDOWN-RAW RC>STATUS ;
+   conn CONNECTION-FD how SHUT-CODE SHUTDOWN-RAW RC>STATUS ;
 
 
 \ On Linux, close consumes the descriptor even if interrupted. Never retry it.
 : CLOSE ( connection -- status )
-   CONNECTION-FD INIT CLOSE-RAW RC>STATUS ;
+   CONNECTION-FD CLOSE-RAW RC>STATUS ;
 
 
 : CLOSE-LISTENER ( listener -- status )
-   LISTENER-FD INIT CLOSE-RAW RC>STATUS ;
+   LISTENER-FD CLOSE-RAW RC>STATUS ;
 
 \ ---- the descriptor seam -----------------------------------------------------
 \ The three words an asynchronous caller needs and this module's own blocking
@@ -506,7 +515,7 @@ public
 \ the flags this module's own BIND and CONNECT ask for. The caller owns it and
 \ closes it with CLOSE.
 : SOCKET ( -- socket-result )
-   INIT SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-SOCKET--RESULT:failed exit then
+   SOCKET-RAW dup 0 < if drop LAST-ERROR TCP4-SOCKET--RESULT:failed exit then
    >CONNECTION TCP4-SOCKET--RESULT:opened ;
 
 ;package

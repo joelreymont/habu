@@ -17,7 +17,7 @@ require lib/process-env.f
 require lib/ffi-abi.f
 require lib/image-lifecycle.f
 require lib/task.f
-require lib/fs-list.f                   \ the /proc/self/task entries the loop cases count
+require test/host-threads.f
 require lib/aio.f                       \ the loop the multiplexed transfers wait on
 require lib/net/tcp4.f
 require lib/net/curl.f
@@ -857,7 +857,6 @@ $40 constant MANY-CAP                   \ one span each, far past the six-byte b
 create MANY-BUF MANY-N MANY-CAP * allot
 
 TEST-ALIGN8
-variable THREAD-N
 variable BASE-THREADS
 variable DURING-THREADS
 variable HALT-PARKED
@@ -874,16 +873,7 @@ TASK:MIN-STACK TASK:TASK OWNER-TASK
 TASK:MIN-STACK TASK:TASK HALT-TASK
 
 
-: THREAD-TALLY ( ptr u8 n -- )
-   2drop 1 THREAD-N atomic-add drop ;
-
-
-\ The live threads of this process, counted from its own task directory.
-: THREADS ( -- n )
-   0 THREAD-N !
-   s" /proc/self/task" [: THREAD-TALLY ;] FS-LIST:EACH
-   THREAD-N @ ;
-
+: THREADS ( -- n ) TEST-HOST:THREADS ;
 
 : REACHED? ( ptr n n -- bool ) {: cell:ptr want:n :}
    mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}

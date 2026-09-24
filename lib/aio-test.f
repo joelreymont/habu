@@ -11,7 +11,7 @@ require lib/test.f
 require lib/task.f
 require lib/memory.f              \ the allocations the transfers own
 require lib/num-types.f           \ the alloc-byte-len those allocations carry
-require lib/fs-list.f             \ the /proc/self/task entries the fan-out counts
+require test/host-threads.f
 require lib/fs-mutate.f           \ the temporary directory the READ file lives in
 require lib/net/tcp4.f            \ the loopback listener ACCEPT and CONNECT run on
 require test/checker-assert.f     \ the effect candidates the public words refuse
@@ -69,7 +69,6 @@ $10 constant SOCKADDR-N              \ sockaddr_in, as lib/net/udp4.f lays it ou
 
 AIO-TEST-ALIGN8
 variable BASE-THREADS
-variable THREAD-N
 variable C1-GOT
 variable C2-GOT
 variable OWNER-RC
@@ -168,14 +167,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 : SLOT ( ptr n n -- ptr n ) {: base:ptr idx:n :}
    base idx cells + ;
 
-: THREAD-TALLY ( ptr u8 n -- )
-   2drop 1 THREAD-N atomic-add drop ;
-
-\ The live threads of this process, counted from its own task directory.
-: THREADS ( -- n )
-   0 THREAD-N !
-   s" /proc/self/task" [: THREAD-TALLY ;] FS-LIST:EACH
-   THREAD-N @ ;
+: THREADS ( -- n ) TEST-HOST:THREADS ;
 
 : REACHED? ( ptr n n -- bool ) {: cell:ptr want:n :}
    mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}

@@ -32,6 +32,7 @@ $80 constant BUF-CAP
 
 create SEND-BUF BUF-CAP allot
 create RECV-BUF BUF-CAP allot
+create READY-POLL 0 ,
 
 : TEST-ALIGN8 ( -- )
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
@@ -186,8 +187,8 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
 
 \ A zero timeout is one immediate try: it never reaches the loop, so it answers
 \ before any deadline could have been waited out. The queued datagram is the
-\ same call's other answer - a loopback send has already delivered it when
-\ sendto returns.
+\ same call's other answer. sendto only promises acceptance, so poll witnesses
+\ delivery before the test asks for an immediate receive.
 : T-ZERO-TIMEOUT ( -- )
    s" a zero timeout on an idle socket answers timeout without waiting" T-LABEL
    PAT-FILL
@@ -197,6 +198,8 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    start ELAPSED-MS NO-WAIT-MS < TTRUE
    s" and a zero timeout with a datagram queued answers it" T-LABEL
    SEND-PAYLOAD
+   SOCK-B @ 1 32 lshift or READY-POLL !
+   READY-POLL 1 WAIT-MS poll 1 T=
    BUF-CAP 0 RECEIVE-B PAYLOAD-N LOOPBACK PORT-A @ WANT-PACKET
    PAYLOAD-N PAT-CHECK TTRUE
    CLOSE-PAIR ;

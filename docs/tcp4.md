@@ -1,7 +1,7 @@
 # IPv4 TCP sockets
 
 [`lib/net/tcp4.f`](../lib/net/tcp4.f) provides generic IPv4 stream socket I/O.
-The current implementation supports Habu on Linux AArch64 with glibc. It
+The current implementation supports Habu on Linux and macOS AArch64. It
 contains no application protocol, framing, name resolution, or connection
 policy. Other operating systems are rejected before opening a socket. Every
 readiness wait runs on the AIO loop ([aio.md](aio.md)), so a program that asks
@@ -18,7 +18,7 @@ that ceiling is the most Linux moves in one transfer.
 Addresses and ports are converted to network byte order only at the foreign
 boundary. A listening socket and a connected stream are **different types**:
 `TCP4:listener` accepts, `TCP4:connection` carries bytes, and neither stands in
-for the other. `TCP4:errno` preserves the positive Linux error number. Raw
+for the other. `TCP4:errno` preserves the positive host error number. Raw
 nominal conversion words are not validators.
 
 | Operation | Inputs | Result |

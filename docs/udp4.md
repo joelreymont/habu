@@ -1,7 +1,7 @@
 # IPv4 UDP sockets
 
 [`lib/net/udp4.f`](../lib/net/udp4.f) provides generic IPv4 UDP socket I/O.
-The current implementation supports Habu on Linux AArch64 with glibc. It
+The current implementation supports Habu on Linux and macOS AArch64. It
 contains no application protocol, packet sequencing, device addresses, or
 capture policy. Other operating systems are rejected before opening a socket.
 A `RECEIVE` that has to wait does so on the AIO loop ([aio.md](aio.md)), so a
@@ -19,7 +19,7 @@ whitespace, or redundant leading zeros. It returns the same address type.
 `PAYLOAD-BYTES` validates `0..65507` and returns `NUM:byte-len`.
 Addresses and ports are converted to network byte order only at the foreign
 boundary. A `UDP4:socket` is a distinct handle type; `UDP4:errno` preserves
-the positive Linux error number. Raw nominal conversion words are not validators.
+the positive host error number. Raw nominal conversion words are not validators.
 
 | Operation | Inputs | Result |
 | --- | --- | --- |
@@ -50,7 +50,9 @@ is valid, distinct from timeout. The result requires an exhaustive match:
 | `failed` | Errno | OS receive failure, or the errno the loop reported for the wait |
 
 Lengths in `truncated` must **not** be used as readable buffer lengths. The
-receiver uses Linux `MSG_TRUNC` to retain the original datagram size.
+receiver uses Linux `MSG_TRUNC` to retain the original datagram size. On
+macOS it receives into a temporary maximum-size IPv4 datagram buffer, then
+copies the caller's prefix and reports the original size.
 The socket is nonblocking, so `RECEIVE` tries `recvfrom` first and waits only
 when there is nothing queued: it submits one `AIO:POLL` for the
 milliseconds left on its absolute deadline and awaits it, so a receiving task
