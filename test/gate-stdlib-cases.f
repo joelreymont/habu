@@ -1955,6 +1955,10 @@ SUITE native-gate-dictionary
    test/gate-dictionary.f
 ;SUITE
 
+SUITE proc-maps
+   test/proc-maps.f
+;SUITE
+
 GROUP SEQ native-serial-gates
 
 \ The PTY REPL fixture starts and reaps eight engine children. Keep it in the

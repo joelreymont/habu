@@ -1,7 +1,8 @@
 \ proc-maps.f - the memory areas THIS process holds, enumerated by its kernel.
 \
 \ Linux reads /proc/self/maps; macOS walks mach_vm_region_recurse, descending
-\ into submaps. Neither target invents an address range when the query fails.
+\ into submaps and omitting permanently inaccessible reservations. Neither
+\ target invents an address range when the query fails.
 \ Its caller is src/habu/aot-closure.f CELL-MAPPED?, which asks whether a
 \ persistent cell holds an address the linking process mapped.
 \
@@ -197,6 +198,8 @@ variable BS-LO  variable BS-HI  variable BS-MID  variable BS-AT
 \ https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/vm_region.h
 64 constant MACH-INFO-BYTES
 16 constant MACH-INFO-COUNT
+0 constant MACH-PROT-OFF
+4 constant MACH-MAX-PROT-OFF
 48 constant MACH-SUBMAP-OFF
 1 constant MACH-END                    \ KERN_INVALID_ADDRESS: no later region
 8 BUFFER: MACH-ADDR
@@ -215,6 +218,16 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
    5 4 WRITES-BYTES
 ;FUNCTION
 
+\ Darwin reserves large address bands with both current and maximum protection
+\ VM_PROT_NONE. They cannot contain accessible memory, even after vm_protect;
+\ treating one as an allocation refused the FFI name bytes "close" in a
+\ stripped image. Check both permissions rather than the reservation's address
+\ or tag: an ordinary PROT_NONE allocation retains nonzero maximum permissions
+\ and must remain in the map. test/proc-maps.f creates and checks both kinds.
+: MACH-ACCESSIBLE? ( -- bool )
+   MACH-INFO MACH-PROT-OFF + LE:U32@
+   MACH-INFO MACH-MAX-PROT-OFF + LE:U32@ or 0<> ;
+
 : MACOS-RELOAD ( -- )
    MACH-SELF {: task:n :}
    0 MACH-ADDR LE:U64!  0 MACH-DEPTH LE:U32!
@@ -231,7 +244,7 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
       ELSE
          MACH-ADDR LE:U64@ {: lo:n :}
          lo MACH-SIZE LE:U64@ + {: hi:n :}
-         lo hi 0 0 ROW+
+         MACH-ACCESSIBLE? IF lo hi 0 0 ROW+ THEN
          hi MACH-ADDR LE:U64!
       THEN
    AGAIN ;

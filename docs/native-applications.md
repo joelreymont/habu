@@ -298,8 +298,14 @@ an address only the linking process ever held, the same in every run of one
 image, a different one in every build under ASLR, and mapped by nobody once the
 image runs. Tender's stripped server faulted at one of eight such cells before
 any clone, and three builds of one tree differed in exactly those eight values.
-`src/habu/proc-maps.f` reads `/proc/self/maps`, the kernel's own list of the
-process's areas — `mmap` is reached from `lib/memory.f`, `lib/vector.f`,
+`src/habu/proc-maps.f` reads `/proc/self/maps` on Linux and walks
+`mach_vm_region_recurse` on macOS, using the kernel's own list of the
+process's areas. macOS reservations with both current and maximum protection
+`VM_PROT_NONE` are omitted: they cannot contain accessible memory. An ordinary
+`PROT_NONE` allocation retains nonzero maximum permissions and is still checked;
+`test/proc-maps.f` creates both kinds and verifies the distinction. macOS images
+use ASLR, so their segments have no fixed-executable exemption, and macOS has no
+Linux `[heap]` exemption. `mmap` is reached from `lib/memory.f`, `lib/vector.f`,
 `lib/aio.f` and more, and a foreign allocator calls the primitive without
 passing any of them — and `aot-closure.f CELL-MAPPED?` asks it, less the four
 areas a process already holds before its program runs. Three are where the image
