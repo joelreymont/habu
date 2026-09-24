@@ -358,7 +358,7 @@ variable LPTOPROW
 \ program.
 variable LPPRELUDE      variable LPERRORS       variable LPOPTION
 variable LPNUMTYPES     variable LPNUMARITH     variable LPSTRING
-variable LPMEMORY
+variable LPMEMORY       variable LPQUOTSTORE    variable LPIMAGELIFE
 variable LCHKSNAPTOKEN
 variable SRC-SFAIL
 
@@ -1084,6 +1084,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
       PFX-COMMON LPNUMARITH s" lib/num-arithmetic.f" row execute
       PFX-COMMON LPSTRING s" lib/string.f" row execute
       PFX-COMMON LPMEMORY s" lib/memory.f" row execute
+      PFX-COMMON LPQUOTSTORE s" src/core/quotation-storage.f" row execute
+      PFX-COMMON LPIMAGELIFE s" lib/image-lifecycle.f" row execute
    then ;
 
 : PFX-LOAD-CHECKER-FILES ( -- )
@@ -1100,7 +1102,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-LOAD-DECL-FILES
    PFX-LOAD-CORE-FILES ;
 
-\ The boot stdlib (dot habu-seed-the-stdlib-d8e3a757). These eight files are the
+\ The boot stdlib (dot habu-seed-the-stdlib-d8e3a757). These files are the
 \ checked surface the tree already requires everywhere - lib/string.f alone has
 \ 548 requiring files, lib/errors.f 472 - so every program used to pay for its
 \ own copy. Loading them once here makes each of those requires a registry
@@ -1110,12 +1112,15 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 \ errors have no requires; adt/option.f is a bare ENUM; num-types.f is the
 \ role NEWTYPEs and num-arithmetic.f requires it; string.f requires errors,
 \ adt/option and num-arithmetic; memory.f requires errors and
-\ num-arithmetic; vector.f requires errors and memory. Three of them spell
+\ num-arithmetic; image-lifecycle requires prelude and quotation-storage. The
+\ lifecycle registry belongs below the compiler capture window: capture tooling
+\ can register its own FFI cleanup after the window closes, and that callback
+\ must not become a target of the window's declared CODE cells. Some files spell
 \ the dependency as `s" path" required` rather than the `require` keyword, so
 \ the graph has to be read from the files and not grepped for one spelling.
 \
 \ Unlike every other prefix file these DO carry require lines, so the provide
-\ rows for the eight must reach the registry BEFORE the first file text is read
+\ rows must reach the registry BEFORE the first file text is read
 \ - otherwise the first `required` inside a file re-reads a file this table
 \ already loaded and the boot dies on a duplicate definition. That is what
 \ PFX-LOAD-STDLIB-COLD orders, and why the block cannot simply be appended to
@@ -10309,7 +10314,7 @@ package LABELS
    LBL LPTOPROW !
    LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !
    LBL LPNUMTYPES !  LBL LPNUMARITH !  LBL LPSTRING !
-   LBL LPMEMORY !
+   LBL LPMEMORY !  LBL LPQUOTSTORE !  LBL LPIMAGELIFE !
    LBL PFX-CHAIN:LTAB !
    LBL LCHKSNAPTOKEN ! ;
 
