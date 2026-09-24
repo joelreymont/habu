@@ -92,7 +92,7 @@ tar -xzf gforth-0.7.9_20260610.tar.gz
 cd gforth-0.7.9_20260610
 ./autogen.sh
 UNSUITABLE_CC=none ./configure --prefix="$HOME/.local/gforth"
-make -j"$(sysctl -n hw.ncpu)" gforth-itc gforth-light.fi
+ENGINE=./gforth-itc make -j"$(sysctl -n hw.ncpu)" gforth-itc gforth.fi GEN=gforth-itc
 ```
 
 If `gforth-fast` is not installed, point `GFORTH` at a tiny wrapper around the
@@ -101,11 +101,13 @@ snapshot interpreter and image:
 ```sh
 #!/bin/sh
 exec /path/to/gforth-0.7.9_20260610/gforth-itc \
-  -i /path/to/gforth-0.7.9_20260610/gforth-light.fi "$@"
+  -i /path/to/gforth-0.7.9_20260610/gforth.fi "$@"
 ```
 
-`tools/bootstrap.sh` only requires the `GFORTH` command to pass the locals probe.
-It does not require that Gforth was installed globally.
+The full `gforth.fi` image supplies `getpid`, which the recovery test harness
+uses. The light image passes the locals probe but cannot run that harness.
+The indirect-threaded engine avoids relying on Clang's unsupported register
+allocation options. Gforth does not need to be installed globally.
 
 ## No-Binary Recovery
 

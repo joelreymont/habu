@@ -1,11 +1,6 @@
-\ macho.fs — emit a minimal dynamic macOS ARM64 Mach-O executable, in Forth.
-\ Layout: header + 6 load commands (PAGEZERO, TEXT+__text, LINKEDIT, DYLINKER,
-\ MAIN, LOAD_DYLIB libSystem), header slack to 0x1000, the ICode-assembled code
-\ at 0x1000, padded to the content-aligned TEXT size. This is the canonical UNSIGNED binary;
-\ sign.fs is a post-pass that rewrites the header to add LC_CODE_SIGNATURE + an
-\ embedded ad-hoc signature (replacing external `codesign`), exactly as codesign
-\ does. The drift guard compares this unsigned artifact. Static binaries are
-\ SIGKILLed (AMFI); this is dynamic, dyld-loaded, zero C. See docs/macho.md.
+\ macho.fs — dynamic macOS ARM64 seed image. Mirrors src/os/macos/macho.f:
+\ __TEXT, a __DATA_CONST page with dlopen/dlsym slots, and chained fixups in
+\ __LINKEDIT. sign.fs appends the ad-hoc signature. See docs/macho.md.
 
 require asm.fs
 require image.fs
@@ -23,9 +18,11 @@ $19       constant LC-SEG64
 $0E       constant LC-DYLINKER
 $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
+$80000034 constant LC-DYLD-CHAINED-FIXUPS
+$4000     constant DATA-CONST-SIZE
+104       constant MACHO-FIXUPS-SIZE
 $100000000 constant VMBASE
 $1000     constant CODE-OFF          \ entry file offset (slack below for codesign)
-$200000   constant LE-VMSIZE         \ __LINKEDIT VM window; sign.fs re-patches it
 
 variable CODELEN
 variable SCODE   variable SCODE-CAP   \ assembled-code scratch, grown to the emission
@@ -33,9 +30,7 @@ variable SCODE   variable SCODE-CAP   \ assembled-code scratch, grown to the emi
 \ __TEXT follows the emitted program: PASS1 sizes the scratch buffer, PASS2 fills
 \ it, and TEXTSZ carries that length into the load commands. There is no fixed
 \ text page; an image is bounded by instruction reach, which asm.fs checks per
-\ instruction (?ADR, ?REL19, ?REL26), and by nothing else. One constant used to
-\ serve both as that page and as the __LINKEDIT VM window above -- two unrelated
-\ facts under one name -- so the window keeps its own name and the page is gone.
+\ instruction (?ADR, ?REL19, ?REL26).
 \ Same rule and same shape as bootstrap/cg/elf.fs.
 : ASM-CODE ( -- )
    PASS1  WPOS @ 4 *  SCODE SCODE-CAP BUF-FIT
@@ -46,12 +41,15 @@ variable SCODE   variable SCODE-CAP   \ assembled-code scratch, grown to the emi
 
 variable LE-OFF                       \ file offset of the __LINKEDIT LC (for sign.fs post-pass)
 
-: SEG, ( name$ vmaddr vmsize fileoff filesize prot nsects extrasz -- )
-   {: addr u vma vmsz foff fsz prot nsects extra :}
+: SEGX, ( name$ vmaddr vmsize fileoff filesize prot nsects extrasz flags -- )
+   {: addr u vma vmsz foff fsz prot nsects extra flags :}
    LC-SEG64 M32   72 extra + M32
    addr u M-NAME16
    vma M64  vmsz M64  foff M64  fsz M64
-   prot M32  prot M32  nsects M32  0 M32 ;
+   prot M32  prot M32  nsects M32  flags M32 ;
+
+: SEG, ( name$ vmaddr vmsize fileoff filesize prot nsects extrasz -- )
+   0 SEGX, ;
 
 : SECT, ( name$ seg$ addr size offset align flags -- )
    {: na nu sa su addr size off al fl :}
@@ -84,20 +82,41 @@ variable NCMDS                        \ load commands counted as emitted
    NCMDS @  MBUF 16 +  l!
    M-HERE MH-HDR-SZ -  MBUF 20 +  l! ;
 
-: BUILD-MACHO ( -- )                 \ assumes ICODE holds the program
-   ASM-CODE  TEXTSZ M-FIT  M-RESET  0 NCMDS !
+: MACHO-GOT, ( -- )
+   0 M32  $80100000 M32
+   1 M32  $80000000 M32 ;
+
+: MACHO-FIXUPS, ( segoff -- ) {: segoff :}
+   0 M32  $20 M32  $50 M32  $58 M32
+   2 M32  1 M32  0 M32
+   4 M-ZEROS
+   4 M32  0 M32  0 M32  $18 M32  0 M32
+   4 M-ZEROS
+   $18 M32  $4000 M16  6 M16
+   segoff M64  0 M32  1 M16  0 M16
+   $201 M32  $1201 M32
+   0 M8  s" _dlopen" M-BYTES 0 M8  s" _dlsym" M-BYTES 0 M8 ;
+
+: BUILD-MACHO ( -- )
+   ASM-CODE
+   TEXTSZ DATA-CONST-SIZE + {: linkoff :}
+   linkoff MACHO-FIXUPS-SIZE + M-FIT  M-RESET  0 NCMDS !
    MH-HDR,
    s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
    s" __TEXT" VMBASE TEXTSZ 0 TEXTSZ 5 1 80 SEG,  LC+
       s" __text" s" __TEXT" VMBASE CODE-OFF + CODELEN @ CODE-OFF 2 $80000400 SECT,
-   M-HERE LE-OFF !                    \ remember __LINKEDIT LC offset for the sign post-pass
-   s" __LINKEDIT" VMBASE TEXTSZ + LE-VMSIZE TEXTSZ 0 1 0 0 SEG,  LC+
+   s" __DATA_CONST" VMBASE TEXTSZ + DATA-CONST-SIZE TEXTSZ DATA-CONST-SIZE 3 1 80 $10 SEGX,  LC+
+      s" __got" s" __DATA_CONST" VMBASE TEXTSZ + 16 TEXTSZ 3 6 SECT,
+   M-HERE LE-OFF !
+   s" __LINKEDIT" VMBASE linkoff + $4000 linkoff MACHO-FIXUPS-SIZE 1 0 0 SEG,  LC+
+   LC-DYLD-CHAINED-FIXUPS M32  16 M32  linkoff M32  MACHO-FIXUPS-SIZE M32  LC+
    DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
-   PATCH-HDR                          \ derive ncmds/sizeofcmds (no frozen magic)
-   CODE-OFF M-PAD                    \ header slack (room for the post-pass LC_CODE_SIGNATURE)
-   SCODE @ CODELEN @ M-BYTES         \ copy assembled code
-   TEXTSZ M-PAD                        \ pad file to content-aligned TEXT size
+   PATCH-HDR
+   CODE-OFF M-PAD
+   SCODE @ CODELEN @ M-BYTES
+   TEXTSZ M-PAD
+   MACHO-GOT,  DATA-CONST-SIZE 16 - M-ZEROS
+   TEXTSZ MACHO-FIXUPS,
    M-HERE MLEN ! ;
 
-\ the target-neutral driver entry: another OS swaps in an ELF builder here
 : BUILD-IMAGE ( -- )  BUILD-MACHO ;

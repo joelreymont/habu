@@ -75,8 +75,8 @@ $00020400 constant CD-VERSION                \ supports execSeg fields
 \ Grow __LINKEDIT (LC at LE-OFF) to cover the appended signature.
 : PATCH-LINKEDIT ( -- )
    LE-OFF @ {: le :}
-   SB-SIZE $4000 ALN  le 32 + HX!             \ vmsize (page-aligned)
-   SB-SIZE            le 48 + HX! ;            \ filesize
+   MACHO-FIXUPS-SIZE SB-SIZE + $4000 ALN  le 32 + HX!             \ vmsize (page-aligned)
+   MACHO-FIXUPS-SIZE SB-SIZE +  le 48 + HX! ;            \ filesize
 
 \ Write the CodeDirectory header (88 bytes, version 0x20400) at the cursor.
 : CD-HDR, ( -- )
@@ -93,7 +93,7 @@ $00020400 constant CD-VERSION                \ supports execSeg fields
 \ CODESIG ( -- ) : self-sign the finished unsigned MBUF in place. Hashes the file
 \ pages [0,codeLimit) — all strictly below the signature, so no self-reference.
 : CODESIG ( -- )
-   MLEN @ SIG-DOFF !                          \ codeLimit = current file end (= TEXTSZ)
+   MLEN @ SIG-DOFF !                          \ codeLimit = current file end (text, GOT and fixups)
    SIG-DOFF @ SB-SIZE + M-FIT                 \ the image grows by its own signature
    ADD-CODESIG-LC  PATCH-LINKEDIT
    SIG-DOFF @ SC !
@@ -102,7 +102,7 @@ $00020400 constant CD-VERSION                \ supports execSeg fields
    CD-HDR,
    SIG-ID 2@ BSTR  0 B8                       \ identifier + NUL
    NCSLOTS 0 ?do  CS-HASH B-ROOM
-      MBUF i CS-PAGE * +  CS-PAGE  MBUF SC @ +  SHA256  CS-HASH SC +!  loop
+      MBUF i CS-PAGE * +  SIG-DOFF @ i CS-PAGE * - CS-PAGE min  MBUF SC @ +  SHA256  CS-HASH SC +!  loop
    SC @ MLEN ! ;
 
 : SIGN-IMAGE ( -- )  CODESIG ;

@@ -19,8 +19,6 @@
 26 constant DBASE  27 constant NDICT  28 constant CP
 
 $2000000 constant REGION      \ fixed 32 MiB dictionary/code budget; mirrors src/habu/layout.f
-$300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
-$340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 3 constant SNAP-FORMAT-VERSION
 \ Trailer geometry, mirroring src/habu/layout.f. The recovery seed carries its
@@ -79,6 +77,17 @@ $400000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ  \ native mirror src/habu/layout.f
 
 require exec.fs
+
+\ Seed snapshots use fixed region addresses. Keep the macOS seed outside the
+\ dyld shared cache; its data base matches src/os/macos/layout.f. Linux keeps
+\ the original seed layout. Calls in this seed use absolute addresses.
+HB-TARGET-MACOS? [IF]
+$40000000000 constant RBASE-VA
+$44000000000 constant DATA-VA
+[ELSE]
+$300000000 constant RBASE-VA
+$340000000 constant DATA-VA
+[THEN]
 19 constant XDS  31 constant SP
 require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
 \ crash.fs's guard-page classification reads STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS
@@ -1313,23 +1322,9 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
    failed LBL,  0 0 MOVZ,  1 0 MOVN,
    done LBL,  0 G-PUSH  1 G-PUSH ;
 
-\ realpath ( pathz dst cap -- n ): the native word (src/habu/habu1.f PATH-OS:EMIT)
-\ calls libc realpath through this image's loader slot. A seed image has no
-\ interpreter and no loader slot -- bootstrap/cg/elf.fs and macho.fs emit a static
-\ image -- so there is no libc realpath to reach. The seed still has to answer:
-\ src/core/include.f resolves every `require` and `provided` through CWD-INIT,
-\ and the engine sources the seed compiles require prefix files by name
-\ (src/habu/rt.f requires src/habu/stack-abi.f), which used to end hb-stage0
-\ with a silent INCLUDE-IO-RC exit. So the Linux seed canonicalizes lexically:
-\ an absolute path is taken as it is, any other path is the kernel's getcwd
-\ joined with one "/", and the result is normalized in place - empty and "."
-\ segments vanish, ".." removes the segment before it and never climbs above
-\ the root. include.f spells roots as "<root>/." and joins them itself, so the
-\ normalization is what makes its registry keys agree. No symlink resolution:
-\ the checkout a seed runs in has none in the paths it names.
-\ The macOS seed keeps the native word's own -1 ("resolution/loader failure"):
-\ that image has no getcwd syscall, and include.f fails closed on -1.
-\ -2 keeps its native meaning: no room for the complete C string.
+\ Linux's static seed resolves checkout paths lexically. macOS uses libc
+\ realpath through the same loader slot as the native image.
+HB-TARGET-LINUX? [IF]
 : BREALPATH-JOIN ( label label label -- )   \ dst[0..x13) = absolute spelling, x13 its length
    {: short fail joined :}
    LBL LBL LBL {: abs join copy :}
@@ -1384,7 +1379,6 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 : BREALPATH ( -- )
    2 G-POP  1 G-POP  0 G-POP                        \ x0 = pathz, x1 = dst, x2 = cap
    LBL LBL LBL LBL LBL LBL {: joined normalized nonempty short fail out :}
-   HB-TARGET-LINUX? IF
       9 0 0 ADDI,  10 1 0 ADDI,  11 2 0 ADDI,       \ x9 path, x10 dst, x11 cap
       short fail joined BREALPATH-JOIN
       joined LBL,  12 0 MOVZ,  15 10 13 ADD,  12 15 0 STRB,
@@ -1396,9 +1390,59 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
       short LBL,  0 1 MOVN,  out B,
       fail LBL,  0 0 MOVN,
       out LBL,  0 G-PUSH
-   ELSE
-      0 0 MOVN,  0 G-PUSH
-   THEN ;
+   ;
+
+[ELSE]
+
+: BPATH-DLSYM ( -- )
+   16 DATA RBASE-CELL LDR,  15 CODE-OFF LIT64,  16 16 15 SUB,
+   17 16 IMAGE-TEXT-SIZE-OFF LDR,
+   15 CODE-OFF LIT64,  17 17 15 ADD,  15 $3FFF LIT64,
+   17 17 15 ADD,  15 $3FFF invert LIT64,  17 17 15 AND,
+   16 16 17 ADD,  16 16 8 LDR,
+   0 1 MOVN,  16 BLR, ;
+
+\ libc owns the temporary result; free it on success and capacity refusal.
+: BREALPATH ( -- )
+   LBL LBL LBL LBL {: badcap failed short done :}
+   LBL LBL LBL LBL {: count counted copy release :}
+   2 G-POP  1 G-POP  0 G-POP
+   SP SP 80 SUBI,
+   0 SP 0 STR,  1 SP 8 STR,  2 SP 16 STR,
+   2 0 CMPI,  C-LE badcap BCOND,
+   1 2 GUARD-SPAN
+   9 $65657266 LIT64,  9 SP 56 STR,
+   9 $687461706C616572 LIT64,  9 SP 64 STR,
+   9 0 MOVZ,  9 SP 72 STR,
+   1 SP 56 ADDI,  BPATH-DLSYM
+   0 failed CBZ,  0 SP 24 STR,
+   1 SP 64 ADDI,  BPATH-DLSYM
+   0 failed CBZ,  16 0 0 ADDI,
+   0 SP 0 LDR,  1 0 MOVZ,  16 BLR,
+   0 failed CBZ,  0 SP 40 STR,
+   9 0 0 ADDI,  10 0 MOVZ,
+   count LBL,
+      11 9 0 LDRB,  11 counted CBZ,
+      9 9 1 ADDI,  10 10 1 ADDI,  count B,
+   counted LBL,
+   10 SP 48 STR,  12 SP 16 LDR,
+   10 12 CMP,  C-CS short BCOND,
+   9 SP 40 LDR,  11 10 1 ADDI,  10 SP 8 LDR,
+   copy LBL,
+      12 9 0 LDRB,  12 10 0 STRB,
+      9 9 1 ADDI,  10 10 1 ADDI,  11 11 1 SUBI,
+      11 copy CBNZ,
+   release LBL,
+   0 SP 40 LDR,  16 SP 24 LDR,  16 BLR,
+   0 SP 48 LDR,  done B,
+   short LBL,
+   9 1 MOVN,  9 SP 48 STR,  release B,
+   badcap LBL,  0 1 MOVN,  done B,
+   failed LBL,  0 0 MOVN,
+   done LBL,
+   SP SP 80 ADDI,  0 G-PUSH ;
+
+[THEN]
 
 : C-FLUSH-X9-LINE ( -- )
    9 DCCVAU,  DSB-ISH,  9 ICIVAU,  DSB-ISH,  ISB, ;
@@ -1847,7 +1891,7 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
    s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
    s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" map-anon" ['] BMAPANON FPRIM-L
-   s" realpath" ['] BREALPATH FPRIM-L
+   s" realpath" ['] BREALPATH FPRIM
    s" mmap" ['] BMMAP FPRIM-L   s" munmap" ['] BMUNMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
    s" reloc-maps-clear" ['] BRELOCMAPSCLEAR FPRIM-L
    s" close" ['] BCLOSE FPRIM-L
