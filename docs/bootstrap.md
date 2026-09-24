@@ -619,19 +619,21 @@ differing offset before trusting either binary; do not paper over it in the tool
 
 ## Refresh `bin/hb`
 
-After `bin/hb` exists, do not use Gforth for normal work:
+After `bin/hb` exists, use it as the host for normal native builds. Build a
+private product image with `tools/native-build.f -- <out>` and qualify that
+image against its matching source tree as described in [gate.md](gate.md).
+Promote the verified product to `bin/hb` only after the gate passes.
+
+The separate stage-2 recovery/development refresh is:
 
 ```sh
 bin/hb --load tools/build-fixpoint-refresh.f -- install
 ```
 
-`install` promotes the stage-2 lineage: `hb-stdin`, the recovery engine the
-check suites run on (about 5.7 MB). That lineage publishes no effect for
-`TRUSTED:` checker internals such as `FIELD-PROJ-CLEAR`, so on it
-`test/field-proj-suite.f` exits 70 with `E-UNDEFINED` and 52 gate rows go red.
-A `bin/hb` that must run the gate is the product image, built as
-[gate.md](gate.md)'s first step (`tools/native-build.f -- <out>` on a private
-host copy) and installed by rename.
+`install` promotes `hb-stdin`, the source-only recovery engine. It does not
+qualify that engine as the native product. In particular, its checked access
+to internal compiler signatures differs from the captured runtime. Use
+`HABU_FIXPOINT_ENGINE` to keep this route isolated from a verified product.
 
 `bin/hb --load` selects the host core/checker/env source prefix from the
 running binary. Callers load only the libraries and tool source they need.
@@ -668,6 +670,25 @@ Append `--force` to bypass the stamp and rebuild unconditionally; proof flows
 (`tools/seed.f`, `tools/bootstrap.sh`) always pass `--force`. `-- all` only
 writes the stamp when its product is byte-identical to `bin/hb`.
 
+## Stable local command
+
+Keep the checkout's `bin/hb` for development. Install a verified product and
+its matching sources under `~/.local/lib/habu/<revision>/`, with `current`
+selecting that version and `~/.local/bin/hb` pointing to `current/bin/hb`.
+Changing the checkout then leaves dependent projects on the verified version.
+
+Libraries loaded from source must match the installed engine. Habu resolves
+application paths from the application's root and library paths from the
+working directory; run source-based tools from the selected installed tree:
+
+```sh
+cd ~/.local/lib/habu/current
+~/.local/bin/hb --load /absolute/path/to/maki/maki.f
+```
+
+Retain the previous version when promoting a new verified release so switching
+`current` back restores both the binary and its sources.
+
 ## Warm Dev Snapshot
 
 For a hot edit/check loop, build a warm snapshot engine with the same command
@@ -679,9 +700,8 @@ the checker stays fail-closed (a bad definition exits 70). `hb-new` is a
 local dev artifact: it is never installed as `bin/hb`, never used as a gate
 or candidate launcher, and must be rebuilt after source changes.
 
-If a device tool (`maki/eval/device.f`, `maki/gpu.f`, `tools/ptx/*`) errors with a
-cryptic missing-primitive name such as `ffi-call-abi`, the running `bin/hb` predates a
-native FFI primitive — **refresh it with the command above.**
+If a tool fails on a missing native primitive such as `ffi-call-abi`, rebuild
+and qualify the native product against its matching sources.
 
 Run the gate after bootstrap or refresh:
 
@@ -695,10 +715,11 @@ capture root.
 It intentionally does not run LLM benchmark fixtures or require JavaScript,
 Python, Rust, TypeScript, or model runtimes.
 
-The test suite runs directly in the small `bin/hb` engine; it does not bake a
+The test suite runs directly in the product `bin/hb` engine; it does not bake a
 top-level test-suite snapshot and it does not use checker/tool snapshot images
-as launchers. Build and install the exact tree first with the refresh command
-above. Generated snapshot images are local artifacts and must not be committed.
+as launchers. Build the exact tree first with `tools/native-build.f` and follow
+[gate.md](gate.md). Generated snapshot images are local artifacts and must not
+be committed.
 
 ## Future Port Checklist
 
