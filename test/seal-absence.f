@@ -78,7 +78,6 @@ CAST: SAB-BO>RAW ( NUM:byte-off -- n )   \ next offset for the raw-shaped return
 $80000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~257 KB + headroom)
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)
 92 constant SAB-BSLASH                  \ ASCII '\' — the line-comment introducer
-14 constant SAB-GUARD-PINS              \ prior 11 sites + atomic!, atomic-cas and atomic-add destination guards
 2 constant SAB-SEAL-PINS                \ EMIT-SEAL-FRIEND code sites: 1 def + the one seal every entry path runs
 6 constant SAB-PROVIDE-PINS             \ PFX-PROVIDE-FILES code sites: 1 def + the pipe, file, repl and baked entries
 2 constant SAB-CHKDEFER-PINS            \ CHECKER-DEFER code sites: C-CALL-CHECKER-DEFER def + C-DEFER call
@@ -197,9 +196,46 @@ variable SAB-NAMES-LEN
    repeat 2drop drop
    SAB-TOT @ ;
 
+\ Check a guard inside its owning definition. An unrelated new guard neither
+\ breaks this check nor compensates for a deleted sink guard. Definition names
+\ include the colon and a trailing space so a longer word cannot match.
+\ Each conditional implementation must close with its own guard.
+variable SAB-IN-SINK
+variable SAB-SINK-GUARD
+variable SAB-SINK-N
+variable SAB-GUARDED-N
+
+: SAB-SINK-GUARDED? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n name:ptr nu:n guard:ptr gu:n :}
+   0 SAB-LSTART !  0 SAB-IN-SINK !  0 SAB-SINK-GUARD !
+   0 SAB-SINK-N !  0 SAB-GUARDED-N !
+   begin
+      a u STR-LF SAB-LSTART @ SAB-SPLIT-NEXT
+   while
+      SAB-LSTART !
+      2dup SAB-CODE-LEN nip TRIM {: line:ptr cu:n :}
+      line cu s" : " STARTS-WITH? if
+         line cu name nu STARTS-WITH? SAB-IN-SINK !
+         SAB-IN-SINK @ if
+            1 SAB-SINK-N +!  0 SAB-SINK-GUARD !
+         then
+      then
+      SAB-IN-SINK @ if
+         line cu s" ;" FIND-SUB MATCH option
+            none OF cu ENDOF
+            some OF 0 SAB-IN-SINK ! IDX>N ENDOF
+         ;MATCH
+         line swap guard gu CONTAINS? if -1 SAB-SINK-GUARD ! then
+         SAB-IN-SINK @ 0= SAB-SINK-GUARD @ 0<> and if
+            1 SAB-GUARDED-N +!
+         then
+      then
+   repeat 2drop drop
+   SAB-SINK-N @ 0 > SAB-SINK-N @ SAB-GUARDED-N @ = and ;
+
 \ These formerly absent sinks now back the cold storage lock. Pin each
-\ exact eight-byte destination guard as well as the total: an unrelated new
-\ GUARD-SPAN must not compensate for a deleted or misdirected atomic guard.
+\ exact eight-byte destination guard: an unrelated new GUARD-SPAN must not
+\ compensate for a deleted or misdirected atomic guard.
 : SAB-ATSTORE-GUARDED? ( ptr u8 n -- bool )
    s" B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  A B STLR," SAB-COUNT-CODE 1 = ;
 
@@ -296,6 +332,24 @@ variable SAB-READY
    SAB-SELF-GUARD-OK
    SAB-SELF-COMMENT-OK
    SAB-SELF-EACH
+   s" sink guard belongs to the named definition" T-LABEL
+   s\" : WANT ( -- ) A 7 GUARD-SPAN ;\n: OTHER ( -- ) B 7 GUARD-SPAN ;"
+   s" : WANT " s" A 7 GUARD-SPAN" SAB-SINK-GUARDED? TTRUE
+   s\" : WANT ( -- ) ;\n: OTHER ( -- ) A 7 GUARD-SPAN ;"
+   s" : WANT " s" A 7 GUARD-SPAN" SAB-SINK-GUARDED? TFALSE
+   s" : WANT ( -- ) ; : OTHER ( -- ) A 7 GUARD-SPAN ;"
+   s" : WANT " s" A 7 GUARD-SPAN" SAB-SINK-GUARDED? TFALSE
+   s\" : WANT ( -- ) \\ A 7 GUARD-SPAN\n;"
+   s" : WANT " s" A 7 GUARD-SPAN" SAB-SINK-GUARDED? TFALSE
+   s" : WANT ( -- ) B 7 GUARD-SPAN ;"
+   s" : WANT " s" A 7 GUARD-SPAN" SAB-SINK-GUARDED? TFALSE
+   s" every conditional implementation owns its guard" T-LABEL
+   s\" : WANT ( -- ) ;\n: WANT ( -- ) A 7 GUARD-SPAN ;"
+   s" : WANT " s" A 7 GUARD-SPAN" SAB-SINK-GUARDED? TFALSE
+   s\" : WANT ( -- ) A 7 GUARD-SPAN ;\n: WANT ( -- ) ;"
+   s" : WANT " s" A 7 GUARD-SPAN" SAB-SINK-GUARDED? TFALSE
+   s\" : WANT ( -- ) A 7 GUARD-SPAN ;\n: WANT ( -- ) A 7 GUARD-SPAN ;"
+   s" : WANT " s" A 7 GUARD-SPAN" SAB-SINK-GUARDED? TTRUE
    s" atomic guard pins reject missing and wrong destinations" T-LABEL
    s" B G-POP A G-POP  7 8 MOVZ,  A B STLR," SAB-ATSTORE-GUARDED? 0= TTRUE
    s" B G-POP A G-POP  7 8 MOVZ,  A 7 GUARD-SPAN  A B STLR," SAB-ATSTORE-GUARDED? 0= TTRUE
@@ -318,9 +372,23 @@ variable SAB-READY
    0 SAB-REPORT? !
    SAB-VIOL# @ 0 T= ;
 
+: SAB-SINK ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n guard:ptr gu:n :}
+   name nu T-LABEL
+   SAB-FORTH$ name nu guard gu SAB-SINK-GUARDED? TTRUE ;
+
 : SAB-REAL-GUARDS ( -- )
-   s" stage0 raw-store/syscall GUARD-SPAN sinks stay present" T-LABEL
-   SAB-FORTH$ s" GUARD-SPAN" SAB-COUNT-CODE SAB-GUARD-PINS T=
+   s" : BCPSET " s" A 7 GUARD-SPAN" SAB-SINK
+   s" : BNDSET " s" B 7 GUARD-SPAN" SAB-SINK
+   s" : BSTORE " s" B 7 GUARD-SPAN" SAB-SINK
+   s" : BPLUSSTORE " s" B 7 GUARD-SPAN" SAB-SINK
+   s" : BCSTORE " s" B 7 GUARD-SPAN" SAB-SINK
+   s" : BREAD " s" 1 2 GUARD-SPAN" SAB-SINK
+   s" : BIOCTL " s" 2 PROT-GUARD" SAB-SINK
+   s" : BMMAP " s" 0 1 GUARD-SPAN" SAB-SINK
+   s" : BMUNMAP " s" 0 1 GUARD-SPAN" SAB-SINK
+   s" : BREALPATH " s" 1 2 GUARD-SPAN" SAB-SINK
+   s" : BPATCH32 " s" A 7 GUARD-SPAN" SAB-SINK
+   s" : EMIT-PROT " s" 10 11 GUARD-SPAN" SAB-SINK
    s" stage0 atomic stores guard their exact destinations" T-LABEL
    SAB-FORTH$ SAB-ATSTORE-GUARDED? TTRUE
    SAB-FORTH$ SAB-ATCAS-GUARDED? TTRUE

@@ -1380,6 +1380,8 @@ HB-TARGET-LINUX? [IF]
 : BREALPATH ( -- )
    2 G-POP  1 G-POP  0 G-POP                        \ x0 = pathz, x1 = dst, x2 = cap
    LBL LBL LBL LBL LBL LBL {: joined normalized nonempty short fail out :}
+      2 0 CMPI,  C-LE short BCOND,
+      1 2 GUARD-SPAN                              \ GETCWD and normalization both write dst
       9 0 0 ADDI,  10 1 0 ADDI,  11 2 0 ADDI,       \ x9 path, x10 dst, x11 cap
       short fail joined BREALPATH-JOIN
       joined LBL,  12 0 MOVZ,  15 10 13 ADD,  12 15 0 STRB,
