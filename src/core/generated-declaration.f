@@ -761,10 +761,10 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 \ ED-CLOSE's gate and the public OWNS?.
 \
 \ It matters because sumtype.f's TDPLAN-NAME+ answers a second plan row for a
-\ live constructor with `76 die`, which kills the process outright: no throw, no
-\ unwind, no rollback. A caller that arms an already-generated family must be
-\ refused here, by a named throw the transaction can roll back, rather than
-\ reaching that die. The production path never trips it — ED-CLOSE arms a family
+\ live constructor with E-TDECL-NAME, and a caller that arms an already-generated
+\ family must be refused here, by a named throw the transaction can roll back,
+\ rather than reaching the duplicate row. The production path never trips it —
+\ ED-CLOSE arms a family
 \ whose variant rows were created moments earlier — so this is a boundary guard,
 \ and test/enum-decl-suite.f §20g drives it directly.
 : GENERATED? ( n -- bool ) {: fam:n :}

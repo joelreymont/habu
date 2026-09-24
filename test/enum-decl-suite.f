@@ -598,6 +598,7 @@ variable CT-DICT   variable CT-CP   variable CT-FAM
 
 : CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
 TRUSTED: CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
+TRUSTED: PENDING ( -- n ) CTOR-PEND-COUNT @ ;
 : DICT-RECS ( -- n ) ndict@ ;
 : DICT-CODE ( -- n ) cp@ ;
 TRUSTED: ARM-RC ( n -- n ) ['] GENERATED-DECL-CTOR:ARM catch ;
@@ -741,12 +742,42 @@ s" ENUM-DECL:ED-RUN rollctor2 0 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
 s" rollctor" FAMID 0 T=                               \ the family itself never landed
 s" rollctor2" FAMID 0 T=
 
+\ A later constructor collides after the first has entered the generation plan.
+\ The whole declaration must roll back; the unrelated word that owns the
+\ colliding name remains callable.
+: ROLLCOLL:TAKEN ( -- n ) 37 ;
+s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM"
+   TYPE-DECL:E-TDECL-NAME enum-ctor-test:CTOR-REJECT
+enum-ctor-test:PENDING 0 T=
+GENERATED-DECL:DEPTH 0 T=
+s" rollcoll" FAMID 0 T=
+s" RC-FRESH ( -- n ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! 1 T=
+ROLLCOLL:TAKEN 37 T=
+\ Rollback also removes protection of the generated package and leaves the
+\ namespace available for a corrected declaration using the same family name.
+undefine ROLLCOLL:TAKEN
+s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM" EV
+s" RC-VALID ( -- rollcoll ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ PRODUCT make/unmake uses the pending constructor authority queue. A collision
+\ on UNMAKE occurs after MAKE was queued, and must clear that authority too.
+: ROLLP:UNMAKE ( -- n ) 41 ;
+s" STRUCTURE rollp 0 FIELD value n ;STRUCTURE"
+   TYPE-DECL:E-TDECL-NAME enum-ctor-test:CTOR-REJECT
+enum-ctor-test:PENDING 0 T=
+GENERATED-DECL:DEPTH 0 T=
+s" rollp" FAMID 0 T=
+s" RP-MAKE ( n -- n ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! 1 T=
+ROLLP:UNMAKE 41 T=
+undefine ROLLP:UNMAKE
+s" STRUCTURE rollp 0 FIELD value n ;STRUCTURE" EV
+s" RP-VALID ( n -- rollp ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+
 \ 20g. Arming a family whose constructors are already live is refused by name.
 \      This is the boundary that keeps a caller away from sumtype.f's
 \      TDPLAN-NAME+ duplicate guard, which answers a second plan row for a live
-\      word with `76 die` — a process exit that no transaction can roll back and
-\      no `catch` can see (test/enum-ctor-collide-bad.f pins that behaviour where
-\      it can still be observed). The check is an existence test on the variant
+\      word with E-TDECL-NAME so the declaration transaction can roll back. The
+\      check is an existence test on the variant
 \      row's recorded constructor symbol, so it is independent of the kind and
 \      visibility gate: msgctor still OWNS? its constructors, and its published
 \      words survive the refused transaction untouched.
@@ -761,7 +792,7 @@ s" R2 ( n n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! -1 T=
 \ the depth clause cannot be what fired, because ARM-IN-TX runs inside a live
 \ GENERATED-DECL:RUN, and the kind clause cannot be what fired, because OWNS? is
 \ true for this same family. Deleting the already-generated clause reds this
-\ block and puts sumtype.f's die back within reach of ARM.
+\ block and lets ARM reach the named collision refusal again.
 
 \ ---------------------------------------------------------------------------
 \ 21. POLICY packed-tag bakes the memory ABI descriptor (docs §22.2). The

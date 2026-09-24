@@ -1230,7 +1230,7 @@ private
    0
    BEGIN dup TDPLAN-N @ < WHILE
       dup TDPLAN-SYM@ sym = IF
-         drop s" sumtype: duplicate generated declaration name" 76 die
+         TDGEN-NA @ TDGEN-NU @ s" generated declaration name already defined" E-TDECL-NAME TDECL-THROW
       THEN
       1 +
    REPEAT
@@ -1268,7 +1268,7 @@ private
 
 : TDPLAN-NAME+ ( -- n )
    TDGEN-NA @ TDGEN-NU @ CHECKER-DEFINED-HERE? IF
-      s" sumtype: generated declaration already defined" 76 die
+      TDGEN-NA @ TDGEN-NU @ s" generated declaration already defined" E-TDECL-NAME TDECL-THROW
    THEN
    TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM dup TDPLAN-SYM+ ;
 
