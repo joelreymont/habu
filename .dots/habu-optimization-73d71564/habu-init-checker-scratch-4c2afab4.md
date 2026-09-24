@@ -1,9 +1,11 @@
 ---
 title: Initialize checker scratch after image restore
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-24T17:18:43.268422+02:00"
+closed-at: "2026-09-24T21:27:09.832484+02:00"
+close-reason: Use zero sentinels for all four scratch maps. Independent review, native byte fixpoint, 490/490 native suites and Maki routing/export pass. Isolated file saving 49536 bytes; integrated engine 2972407 bytes. Evidence ~/.cache/tmp/habu-opt-names-scratch/RESULTS.md.
 ---
 
 TVT-BOOT, RVT-BOOT, EC-TV-BOOT and EC-RV-BOOT persist 5,120 UNBOUND (-1) cells. Their 40,960 raw bytes become 51,200 value bytes plus 640 bitmap bytes. They are per-definition scratch, but TV-SNAP-RESET deliberately leaves them UNBOUND while clearing high-water counters; later reset code clears only used prefixes. Simply capturing zeros is incorrect.

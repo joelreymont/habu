@@ -219,9 +219,10 @@ TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
 \ TV arena: the typevar pool plus every var-id-indexed map grows in lockstep
 \ under one shared cap so a fresh var id is a valid index into all of them.
 \ MAXTV-INIT sizes TWELVE var-id arrays (the eleven below plus render.f SEEN),
-\ so every cell of it costs 96 bytes of boot DP, and four of them - TVT, RVT,
-\ EC-TV, EC-RV - are UNBOUND-filled at the capture seam, which is $FF in every
-\ byte, so those four also cost 32 image bytes per cell. Measured high-water of
+\ so every cell of it costs 96 bytes of boot DP. TVT, RVT, EC-TV and EC-RV store
+\ logical values plus one: zero means UNBOUND, including after image restore.
+\ Capture clears these transient maps instead of persisting -1 in every cell.
+\ Measured high-water of
 \ FV over a whole self-build: 1112 vars in one definition (the pool resets per
 \ definition). 1280 leaves 15% headroom over that mark. A workload above it
 \ grows the arena exactly as it does today: test/type-decl-suite.f already peaks
@@ -270,9 +271,8 @@ TV-ARENA-BOOT
    nb oc nc ARENA-CELLS-UNBOUND
    nb pv ! ;
 
-\ TVK grows like TV-GROW-ONE but its fresh tail is TVK-ANY (0), not UNBOUND: an
-\ un-raised var id is always ANY.
-: TVK-GROW-ONE ( ptr ptr n n n -- ) {: pv:ptr oc:n nc:n :}
+\ Binding maps have a zero unbound sentinel; TVK-ANY is zero too.
+: TV-GROW-ZERO ( ptr ptr n n n -- ) {: pv:ptr oc:n nc:n :}
    nc cells ARENA-ALLOC {: nb:ptr :}
    pv @ BYTE-VIEW nb BYTE-VIEW oc cells ARENA-COPY
    nb oc nc ARENA-CELLS-ZERO
@@ -281,12 +281,12 @@ TV-ARENA-BOOT
 : TV-GROW ( n -- ) {: need:n :}
    need TV-CAP @ 2 * max {: nc:n :}   \ geometric: at least double
    TV-CAP @ {: oc:n :}
-   TVT-P oc nc TV-GROW-ONE       RVT-P oc nc TV-GROW-ONE
+   TVT-P oc nc TV-GROW-ZERO      RVT-P oc nc TV-GROW-ZERO
    VRC-TV-P oc nc TV-GROW-ONE    VRC-RV-P oc nc TV-GROW-ONE
    VRI-TV-P oc nc TV-GROW-ONE    VRI-RV-P oc nc TV-GROW-ONE
-   EC-TV-P oc nc TV-GROW-ONE     EC-RV-P oc nc TV-GROW-ONE
+   EC-TV-P oc nc TV-GROW-ZERO    EC-RV-P oc nc TV-GROW-ZERO
    EI-TV-P oc nc TV-GROW-ONE     EI-RV-P oc nc TV-GROW-ONE
-   TVK-P oc nc TVK-GROW-ONE
+   TVK-P oc nc TV-GROW-ZERO
    nc TV-CAP ! ;
 
 : TV-ENSURE ( n -- ) {: need:n :}   \ ensure cap >= need
@@ -295,8 +295,8 @@ TV-ARENA-BOOT
 
 : TVINIT   \ unbind every type and row var (one-time load init; NEW uses TV-RESET)
    0 BEGIN
-     dup cells TVT + UNBOUND swap !
-     dup cells RVT + UNBOUND swap !
+     dup cells TVT + 0 swap !
+     dup cells RVT + 0 swap !
      dup cells TVK + 0 swap !
      1 + dup MAXTV 1 - >
    UNTIL drop ;
@@ -466,8 +466,8 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
       TRAIL-N @ 1 - TRAIL-N !
       TRAIL-N @ cells TRAIL + @ {: e:n :}
       e 7 and {: tag:n :}   e 3 rshift {: id:n :}
-      tag 0= IF UNBOUND id cells TVT + ! ELSE
-      tag 1 = IF UNBOUND id cells RVT + ! ELSE
+      tag 0= IF 0 id cells TVT + ! ELSE
+      tag 1 = IF 0 id cells RVT + ! ELSE
       tag TRAIL-KIND-OF
       id cells TVK + ! THEN THEN
    REPEAT ;
@@ -537,13 +537,15 @@ LTNT-BOOT LTNT-P !   LTNT-INIT LTNT-CAP !   0 LTNT-N !
 variable TRIAL-DEPTH   0 TRIAL-DEPTH !
 variable TCMP                            \ path-compression walk cursor
 
-: TV@ cells TVT + @ ;
+\ Only storage uses the +1 encoding. Logical terms (including term zero) and
+\ UNBOUND stay unchanged in unification and persisted effect records.
+: TV@ cells TVT + @ 1- ;
 
-: TV! ( n n -- ) dup 0 TRAIL-PUSH  cells TVT + ! ;
+: TV! ( n n -- ) dup 0 TRAIL-PUSH  swap 1+ swap cells TVT + ! ;
 
-: RV@ cells RVT + @ ;
+: RV@ cells RVT + @ 1- ;
 
-: RV! ( n n -- ) dup 1 TRAIL-PUSH  cells RVT + ! ;
+: RV! ( n n -- ) dup 1 TRAIL-PUSH  swap 1+ swap cells RVT + ! ;
 256 constant MAXQE-INIT        \ quotation effects (din dout rin rout per record); grows on demand
 create QEA-BOOT MAXQE-INIT 32 * allot
 create QXDA-BOOT MAXQE-INIT cells allot   create QXRA-BOOT MAXQE-INIT cells allot
@@ -1364,7 +1366,7 @@ PTX-BARRIER-DEFAULT
    TCMP !
    BEGIN TCMP @ T-BOUND-VAR? WHILE
       TCMP @ PAY TV@ {: nxt:n :}
-      root TCMP @ PAY cells TVT + !
+      root 1+ TCMP @ PAY cells TVT + !
       nxt TCMP !
    REPEAT ;
 
@@ -1385,7 +1387,7 @@ PTX-BARRIER-DEFAULT
    TCMP !
    BEGIN TCMP @ R-BOUND-VAR? WHILE
       TCMP @ PAY RV@ {: nxt:n :}
-      root TCMP @ PAY cells RVT + !
+      root 1+ TCMP @ PAY cells RVT + !
       nxt TCMP !
    REPEAT ;
 
@@ -2615,8 +2617,8 @@ variable FV
 \ TRIAL-REST clears its own FV delta).
 : TV-RESET
    0 BEGIN dup FV @ < WHILE
-     dup cells TVT + UNBOUND swap !
-     dup cells RVT + UNBOUND swap !
+     dup cells TVT + 0 swap !
+     dup cells RVT + 0 swap !
      dup cells TVK + 0 swap !
      1 +
    REPEAT drop ;
@@ -5802,15 +5804,15 @@ variable EC-RV-HW
    repeat drop ;
 
 \ one-time load init; E-COPY-MAPS-RESET clears only the high-water span
-EC-TV MAXTV E-MAP-CLEAR   0 EC-TV-HW !
-EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
+EC-TV 0 MAXTV ARENA-CELLS-ZERO   0 EC-TV-HW !
+EC-RV 0 MAXTV ARENA-CELLS-ZERO   0 EC-RV-HW !
 \ EI-AK is the same shape and needs the same init: a high-water reset restores
 \ only what was written, so every cell above the mark has to be UNBOUND already.
 EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
 
 : E-COPY-MAPS-RESET ( -- )
-   EC-TV EC-TV-HW @ E-MAP-CLEAR
-   EC-RV EC-RV-HW @ E-MAP-CLEAR
+   EC-TV 0 EC-TV-HW @ ARENA-CELLS-ZERO
+   EC-RV 0 EC-RV-HW @ ARENA-CELLS-ZERO
    0 EC-TV-HW !
    0 EC-RV-HW !
    0 EC-TVN !
@@ -5824,18 +5826,18 @@ EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
    0 EI-AK-HW ! ;
 
 : E-TV-ID ( n -- n ) {: id:n :}
-   id cells EC-TV + dup @ UNBOUND = if
-      EC-TVN @ over !
+   id cells EC-TV + dup @ 0= if
+      EC-TVN @ 1+ over !
       EC-TVN @ 1+ EC-TVN !
       id 1+ EC-TV-HW @ max EC-TV-HW !
-   then @ ;
+   then @ 1- ;
 
 : E-RV-ID ( n -- n ) {: id:n :}
-   id cells EC-RV + dup @ UNBOUND = if
-      EC-RVN @ over !
+   id cells EC-RV + dup @ 0= if
+      EC-RVN @ 1+ over !
       EC-RVN @ 1+ EC-RVN !
       id 1+ EC-RV-HW @ max EC-RV-HW !
-   then @ ;
+   then @ 1- ;
 
 : E-OFF ( ptr u8 -- n )
    USIGS - ;
@@ -10275,17 +10277,19 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ (rebuilt per definition), so no live content is lost, but the boot buffers
 \ may still hold stale pre-grow entries — so fully re-establish a clean map
 \ state: zero FV (a grown FV would drive an out-of-boot-bounds TV-RESET), and
-\ UNBOUND-clear the high-water-reset EC maps (a zeroed EC-TV-HW would otherwise
-\ leave those stale boot entries uncleared, corrupting the next compare).
+\ clear the high-water-reset EC maps (a zeroed EC-TV-HW would otherwise leave
+\ those stale boot entries uncleared, corrupting the next compare). Their zero
+\ unbound representation is valid immediately, including in the capturing
+\ process, and needs no initialization hook after DATA/pointer restoration.
 : TV-SNAP-RESET ( -- )
    TV-ARENA-BOOT
    MAXTV-INIT TV-CAP !
    0 FV !
-   TVT-BOOT 0 MAXTV-INIT ARENA-CELLS-UNBOUND   \ FV=0 means TV-RESET clears nothing,
-   RVT-BOOT 0 MAXTV-INIT ARENA-CELLS-UNBOUND   \ so unbind the boot pool ourselves
+   TVT-BOOT 0 MAXTV-INIT ARENA-CELLS-ZERO      \ FV=0 means TV-RESET clears nothing,
+   RVT-BOOT 0 MAXTV-INIT ARENA-CELLS-ZERO      \ so unbind the boot pool ourselves
    TVK-BOOT 0 MAXTV-INIT ARENA-CELLS-ZERO      \ and reset var kinds to TVK-ANY
-   EC-TV MAXTV-INIT E-MAP-CLEAR   0 EC-TV-HW !
-   EC-RV MAXTV-INIT E-MAP-CLEAR   0 EC-RV-HW ! ;
+   EC-TV 0 MAXTV-INIT ARENA-CELLS-ZERO   0 EC-TV-HW !
+   EC-RV 0 MAXTV-INIT ARENA-CELLS-ZERO   0 EC-RV-HW ! ;
 
 \ ARENA-SNAP-BOOT ( pvar boot cells -- ) : restore one scratch arena to its boot
 \ buffer AND empty that buffer, in one step so neither can be done without the
@@ -11140,7 +11144,7 @@ variable SV-TRAIL
 
 : TRIAL-CLEAR-NEW
    SV-FV @ BEGIN dup FV @ < WHILE
-      UNBOUND over cells TVT + !  UNBOUND over cells RVT + !
+      0 over cells TVT + !  0 over cells RVT + !
       0 over cells TVK + !
       1 +
    REPEAT drop ;

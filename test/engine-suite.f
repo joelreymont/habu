@@ -1329,28 +1329,29 @@ TR-TRAIL-CAP @ TRAIL-CAP !  TRAIL-BOOT TRAIL-P !  TR-TRAIL-RESET
 \ permanent var pointing at a cleared trial var. Build a v0->v1->v2->CON chain by
 \ hand and observe both behaviors, then restore the var pool.
 variable TC-V0  variable TC-V1  variable TC-V2  variable TC-CON  variable TC-FV
+variable TC-TRAIL
 TRUSTED: TR-PATHCOMP-WHITEBOX ( -- )
    FV @ TC-FV !
+   TRAIL-N @ TC-TRAIL !
    FRESH MK-VAR TC-V0 !   FRESH MK-VAR TC-V1 !   FRESH MK-VAR TC-V2 !   7 MK-CON TC-CON !
-   TC-V1 @ TC-V0 @ PAY cells TVT + !     \ v0 -> v1
-   TC-V2 @ TC-V1 @ PAY cells TVT + !     \ v1 -> v2
-   TC-CON @ TC-V2 @ PAY cells TVT + !    \ v2 -> CON
+   TC-V1 @ TC-V0 @ PAY TV!     \ v0 -> v1
+   TC-V2 @ TC-V1 @ PAY TV!     \ v1 -> v2
+   TC-CON @ TC-V2 @ PAY TV!    \ v2 -> CON
    0 TRIAL-DEPTH !
    s" pathcomp-resolves" T-LABEL
    TC-V0 @ T-RES TC-CON @ T=
    s" pathcomp-compressed" T-LABEL
-   TC-V0 @ PAY cells TVT + @ TC-CON @ T=  \ v0 now points directly at CON
-   TC-V1 @ TC-V0 @ PAY cells TVT + !      \ rebuild the chain
-   TC-V2 @ TC-V1 @ PAY cells TVT + !
-   TC-CON @ TC-V2 @ PAY cells TVT + !
+   TC-V0 @ PAY TV@ TC-CON @ T=  \ v0 now points directly at CON
+   TC-V1 @ TC-V0 @ PAY TV!      \ rebuild the chain
+   TC-V2 @ TC-V1 @ PAY TV!
+   TC-CON @ TC-V2 @ PAY TV!
    1 TRIAL-DEPTH !
    s" pathcomp-trial-resolves" T-LABEL
    TC-V0 @ T-RES TC-CON @ T=
    s" pathcomp-trial-not-compressed" T-LABEL
-   TC-V0 @ PAY cells TVT + @ TC-V1 @ T=   \ inside a trial: still -> v1, not compressed
+   TC-V0 @ PAY TV@ TC-V1 @ T=   \ inside a trial: still -> v1, not compressed
    0 TRIAL-DEPTH !
-   UNBOUND TC-V0 @ PAY cells TVT + !  UNBOUND TC-V1 @ PAY cells TVT + !
-   UNBOUND TC-V2 @ PAY cells TVT + !  TC-FV @ FV ! ;
+   TC-TRAIL @ TRAIL-UNWIND  TC-FV @ FV ! ;
 LOWER-CERT-HOOK:INSTALL
 TR-PATHCOMP-WHITEBOX
 s" COK-POSTDEC ( a -- a ) dup drop" T-CHECK-PASSES
