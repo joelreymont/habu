@@ -28,7 +28,7 @@ engine/primitive-count	8	0.0
 engine/primitive-records	10128	0.2
 source/baked	0	0.0
 aot/framing-cells	136	0.0
-aot/code-blob	1655660	46.7
+aot/code-blob	1655732	46.7
 aot/dictionary-records	163040	4.6
 aot/call-sites	149256	4.2
 aot/name-pool	88680	2.5
@@ -42,13 +42,13 @@ aot/code-spans	42688	1.2
 aot/boot-run-entries	4	0.0
 aot/protected-wordlists	676	0.0
 aot/checker-sidecar	0	0.0
-image/text-pad	30016	0.8
+image/text-pad	29944	0.8
 container/rw-segment	192	0.0
 total	3539136	100.0
 
 dictionary the image ships
 class	records	record bytes	name bytes	code bytes
-global	4962	99240	59619	438708
+global	4962	99240	59619	438780
 package-public	2981	59620	30257	254880
 package-private	11	220	114	1596
 unmapped-wordlist	0	0	0	0
@@ -62,14 +62,14 @@ baked call sites
   distinct bound callees 72
 
 reachability from the dictionary-surface roots
-  reachable	7954	695184 code bytes
+  reachable	7954	695256 code bytes
   unreachable	0	0 code bytes, 0 record bytes, 0 name bytes
   fall-through edges modeled	1276
   spans reachable	5336	926572 code bytes
   spans unreachable	0	0 code bytes
 
 reachability from the engine-entry roots
-  reachable	4034	542688 code bytes
+  reachable	4034	542760 code bytes
   unreachable	3920	152496 code bytes, 78400 record bytes, 39826 name bytes
   fall-through edges modeled	1269
   global	2727	54540	75296
@@ -96,22 +96,22 @@ reachability from the engine-entry roots
   spans reachable	4912	862592 code bytes
   spans unreachable	424	63980 code bytes
   largest unreachable spans (blob offset, bytes, optional sidecar name)
-    873836	3184
-    809280	1836
-    834624	1200
-    590268	712
-    836736	644
-    618028	584
-    653764	540
-    836212	524
-    620736	524
-    630988	520
-    626656	508
-    619812	496
-    1038952	484
-    690428	480
-    610660	480
-    1038220	456
+    873908	3184
+    809352	1836
+    834696	1200
+    590340	712
+    836808	644
+    618100	584
+    653836	540
+    836284	524
+    620808	524
+    631060	520
+    626728	508
+    619884	496
+    1039024	484
+    690500	480
+    610732	480
+    1038292	456
 
 captured DATA heap: 8671248 bytes of span, 305997 present cells in 71113 bitmap bytes, 923323 bytes of image
   owners 967, unowned value bytes 52793, unowned cells 8649
