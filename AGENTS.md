@@ -1,8 +1,8 @@
 # Habu — checked Forth
 
 Habu is a general-purpose Forth with a native compiler and a stack-effect type
-checker. [Loom](../loom) is GPU model CAD; [Maki](../maki) is PCB CAD. Both are
-separate applications. Application-specific policy and model workflows do not
+checker. [Maki](../maki) is a separate PCB CAD application.
+Application-specific policy and model workflows do not
 belong in the language core.
 
 ## Working
@@ -23,6 +23,12 @@ belong in the language core.
   rebuilds an undescribed working copy, and the lost tree comes back from
   `jj op log` (`jj --at-op <op> log -r <change>`, `jj restore --from <commit>`),
   never from `jj op restore` while peers are live.
+- Temporary workspaces need no bookmark. The integrator owns cleanup: verify
+  every task change is integrated or explicitly retained, run the required
+  checks, and push `master`; then delete its local and remote task bookmarks,
+  `jj workspace forget` the workspace and `trash` its directory. Never infer
+  equivalence from commit subjects alone. Finish by checking the bookmark and
+  workspace inventories; retain only active work with a stated reason.
 - A gate and its push never share one unconditional command chain: run the
   gate, read its exit code on its own line, then push.
 - Use dots only when the task calls for them; they are not a gate for coding,
