@@ -108,7 +108,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $18 TASK:+USER IO-STORAGE drop
 \ one declaration per ARGUMENT SHAPE is exact, and the two shapes share a symbol
 \ under different Habu names. INIT's platform gate is what keeps that true:
 \ Apple's ARM64 variant passes variadic arguments on the stack instead.
-LIBRARY libcurl.so.4
+VERSIONED-LIBRARY curl 4
 
 FUNCTION: GLOBAL-INIT curl_global_init ( n -- n ) ;FUNCTION
 FUNCTION: EASY-INIT curl_easy_init ( -- n ) ;FUNCTION

@@ -374,7 +374,7 @@ mutable function-pointer cell.
 A binding is a declaration:
 
 ```forth
-LIBRARY libc.so.6                       \ or PROCESS-SYMBOLS for RTLD_DEFAULT
+VERSIONED-LIBRARY z 1                   \ libz.so.1 here, libz.1.dylib on macOS
 FUNCTION: WRITE-ONE write_one ( ptr u8 n -- n )
    0 $08 WRITES-BYTES                   \ argument 0 is written, eight bytes
 ;FUNCTION
@@ -385,11 +385,20 @@ The declared effect is the generated word's effect and decides the staging:
 `FFI:READABLE!` unless a clause names it written - `idx len WRITES-BYTES` for a
 fixed width, `idx arg WRITES-ARG` when another argument carries the length. The
 clauses are words the interpreter runs between the two keywords, so their
-numbers are ordinary literals. `LIBRARY` and `PROCESS-SYMBOLS` select for the
+numbers are ordinary literals. `VERSIONED-LIBRARY`, `LIBRARY` and
+`PROCESS-SYMBOLS` select for the
 declarations that follow and the selection belongs to the scope that states it -
 the package section, or the global scope, the declarations land in. There is no
 default: a declaration with no selection in its own scope is `E-FFI-LIBRARY`, so
-one file cannot inherit the library another happened to select. A checked caller
+one file cannot inherit the library another happened to select. A soname is
+spelled per target and neither spelling exists on the other system, so
+`VERSIONED-LIBRARY <name> <version>` renders the one this build loads -
+`lib<name>.so.<version>` on Linux, `lib<name>.<version>.dylib` on macOS, through
+`FFI:LIBRARY-NAME$ ( ptr u8 n n ptr n -- ptr u8 n )`. Its last argument is a
+caller-owned `CODEGEN:BUFFER`; the returned span remains valid until that caller
+reuses its buffer. Modules that dlopen by hand call it directly. `LIBRARY` takes one literal, for an absolute path or a name
+that carries no version, and a literal spelled in the other target's convention
+is `E-FFI-LIBRARY` with a stderr line naming it and this target. A checked caller
 cannot reclassify an argument or
 change its extent; an absent symbol is `E-FFI-DLSYM` at the first call, never at
 the declaration; and `FFI:ERRNO ( -- n )` is the one errno binding every

@@ -15,6 +15,8 @@ s" lib/errors.f" required
 s" lib/string.f" required
 s" lib/image-lifecycle.f" required
 s" lib/le.f" required                     \ the four-byte C int this package reads back
+s" lib/adt/option.f" required             \ option<n> - the version token VERSIONED-LIBRARY parses
+s" lib/codegen.f" required                \ the rendered library name and the declarer's buffers
 
 package FFI
 
@@ -221,6 +223,8 @@ $100 constant FN-MAX                      \ $100 rows * $48 bytes = $4800 bytes
 $30 constant FN-NAME-CAP                  \ NUL-terminated C symbol
 $08 constant LIB-MAX                    \ FFI:LIBRARY-MAX; 8*($60+cell)=832 DATA bytes
 $60 constant LIB-PATH-CAP                 \ NUL-terminated library path
+$20 constant LIB-BASE-CAP                 \ the base name LIBRARY-NAME$ renders around
+9999 constant LIB-VERSION-MAX             \ ... and its soname version
 
 create FN-NAMES FN-MAX FN-NAME-CAP * allot
 create FN-ADDRS FN-MAX cells allot
@@ -228,6 +232,7 @@ create FN-LIBS FN-MAX cells allot
 create FN-ARGCS FN-MAX cells allot
 create LIB-PATHS LIB-MAX LIB-PATH-CAP * allot
 create LIB-HANDLES LIB-MAX cells allot
+
 variable FN-N
 variable LIB-N
 variable FN-REGISTERED
@@ -324,6 +329,15 @@ variable ERRNO-FN-CELL
    u LIB-PATH-CAP 1 - > if E-FFI-SYNTAX throw then
    u ;
 
+\ LIBRARY-NAME$'s two inputs, refused by the same code an over-long path is.
+: BASE-CHECK ( n -- ) {: u:n :}
+   u 0 <= if E-FFI-SYNTAX throw then
+   u LIB-BASE-CAP > if E-FFI-SYNTAX throw then ;
+
+: VERSION-CHECK ( n -- ) {: version:n :}
+   version 0 < if E-FFI-SYNTAX throw then
+   version LIB-VERSION-MAX > if E-FFI-SYNTAX throw then ;
+
 public
 
 : BUF-OFF ( -- n ) FFI-BUF-OFF ;
@@ -413,6 +427,24 @@ public
 
 : LIBRARY-PATH-CAP ( -- n ) LIB-PATH-CAP ;
 
+\ Render into the caller's CODEGEN buffer; the caller owns the returned span.
+\ Independent callers can build names without sharing mutable scratch storage.
+: LIBRARY-NAME$ ( ptr u8 n n ptr n -- ptr u8 n ) {: base:ptr u:n version:n buf:ptr :}
+   u BASE-CHECK
+   version VERSION-CHECK
+   buf CODEGEN:RESET
+   s" lib" buf CODEGEN:APPEND-STRING
+   base u buf CODEGEN:APPEND-STRING
+   HB-TARGET-MACOS? if
+      s" ." buf CODEGEN:APPEND-STRING
+      version buf CODEGEN:APPEND-DECIMAL
+      s" .dylib" buf CODEGEN:APPEND-STRING
+   else
+      s" .so." buf CODEGEN:APPEND-STRING
+      version buf CODEGEN:APPEND-DECIMAL
+   then
+   buf CODEGEN:CONTENTS ;
+
 : LIBRARY-ROOM? ( -- bool ) LIB-N @ LIB-MAX < ;
 
 \ The table's size and whether one more row is left. The declarer asks before it
@@ -481,7 +513,9 @@ get-current prot-wid-add
 \ ---------------------------------------------------------------------------
 \ FUNCTION: - declare a foreign function, get a checked word.
 \
-\     LIBRARY libm.so.6                       \ or PROCESS-SYMBOLS (RTLD_DEFAULT)
+\     VERSIONED-LIBRARY z 1                   \ libz.so.1 here, libz.1.dylib on macOS
+\     FUNCTION: CRC-CALL crc32 ( n ptr u8 n -- n ) ;FUNCTION
+\     LIBRARY /usr/lib/libSystem.B.dylib      \ a literal, or PROCESS-SYMBOLS (RTLD_DEFAULT)
 \     FUNCTION: SQRT-CALL sqrt ( r -- r ) ;FUNCTION
 \     FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- n )
 \        1 $10 WRITES-BYTES                   \ sockaddr_in
@@ -503,8 +537,13 @@ get-current prot-wid-add
 \ Convert a nominal at the call site: a declaration speaks the C function's own
 \ types.
 \
-\ LIBRARY or PROCESS-SYMBOLS selects the library for the declarations that
-\ follow, and THE SELECTION BELONGS TO THE SCOPE THAT STATES IT - the package
+\ VERSIONED-LIBRARY, LIBRARY or PROCESS-SYMBOLS selects the library for the
+\ declarations that follow. VERSIONED-LIBRARY takes a base name and a soname
+\ version and renders the spelling THIS TARGET loads (FFI:LIBRARY-NAME$); a
+\ soname is the usual case and neither spelling exists on the other system.
+\ LIBRARY takes one literal, for an absolute path or a name that carries no
+\ version, and refuses a literal spelled in the other target's convention.
+\ THE SELECTION BELONGS TO THE SCOPE THAT STATES IT - the package
 \ section, or the global scope, the declarations land in. There is no default:
 \ a declaration with no selection in its own scope is E-FFI-LIBRARY, so a file
 \ cannot inherit the library a previously loaded file happened to select and
@@ -535,8 +574,6 @@ get-current prot-wid-add
 \ lib/ffi-test.f asserts DEPTH across a declaration. When
 \ habu-retire-the-audited-85c43acf lands, this crossing moves to that mechanism
 \ and nothing else here changes.
-
-s" lib/codegen.f" required
 
 package FFI-DECL
 
@@ -571,6 +608,7 @@ $100 constant DIAG-CAP                    \ the refusal line: two $40 tokens and
 
 -1 constant NO-EXT
 
+FFI:LIBRARY-PATH-CAP 1 - CODEGEN:BUFFER LIB-NAME
 GEN-CAP CODEGEN:BUFFER GEN
 EFF-CAP CODEGEN:BUFFER EFF
 DIAG-CAP CODEGEN:BUFFER DIAG
@@ -579,9 +617,11 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER LIB-OVERFLOW
 create NAME-BUF TOK-CAP allot
 create SYM-BUF TOK-CAP allot
 create TOK-BUF TOK-CAP allot
+create BASE-BUF TOK-CAP allot
 variable NAME-U
 variable SYM-U
 variable TOK-U
+variable BASE-U
 
 create ARG-KIND ARG-MAX cells allot
 create ARG-REG ARG-MAX cells allot
@@ -625,6 +665,19 @@ variable SCOPE-SET                         \ ... and whether one was stated at a
    TOK$ {: a:ptr u:n :}
    a SYM-BUF u BYTE-COPY
    u SYM-U ! ;
+
+\ VERSIONED-LIBRARY's two tokens. The base name is copied out of the token
+\ buffer because reading the version token overwrites it.
+: BASE! ( -- )
+   TOK$ {: a:ptr u:n :}
+   a BASE-BUF u BYTE-COPY
+   u BASE-U ! ;
+
+: TOK>VERSION ( -- n )
+   TOK$ STR-PARSE-POS MATCH option
+      none OF E-FFI-SYNTAX throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
 
 \ ---- the declared effect ---------------------------------------------------
 
@@ -790,6 +843,42 @@ variable SCOPE-SET                         \ ... and whether one was stated at a
    LF-C DIAG CODEGEN:APPEND-BYTE
    DIAG CODEGEN:CONTENTS DIAG-LINE ;
 
+\ A library name spelled in the OTHER target's convention cannot resolve on this
+\ one, and dlopen would only say so at the first call, in whatever module the
+\ declaration belongs to. It is refused where it is stated instead, and the line
+\ names the path and the target this build loads for, the way the table-full
+\ line names its path. A rendered name passes by construction, so the guard
+\ costs a literal row nothing.
+: TARGET$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" macos" exit then s" linux" ;
+
+: BASENAME ( ptr u8 n -- ptr u8 n ) {: path:ptr u:n :}
+   0 u 0 ?do path i + c@ [char] / = if drop i 1+ then loop
+   {: start:n :} path start + u start - ;
+
+: FOREIGN-SPELLING? ( ptr u8 n -- bool )
+   BASENAME {: path:ptr u:n :}
+   HB-TARGET-MACOS? if
+      path u s" .dylib" ENDS-WITH? if false exit then
+      path u s" .so" ENDS-WITH? path u s" .so." CONTAINS? or exit
+   then
+   path u s" .dylib" ENDS-WITH? ;
+
+: REPORT-LIBRARY-TARGET ( ptr u8 n -- ) {: path:ptr u:n :}
+   DIAG CODEGEN:RESET
+   s" ffi: library " DIAG+
+   path u DIAG+
+   s"  is spelled for the other target; this build loads for " DIAG+
+   TARGET$ DIAG+
+   s" : name it with VERSIONED-LIBRARY" DIAG+
+   LF-C DIAG CODEGEN:APPEND-BYTE
+   DIAG CODEGEN:CONTENTS DIAG-LINE ;
+
+: CHECK-SPELLING ( ptr u8 n -- ) {: path:ptr u:n :}
+   path u FOREIGN-SPELLING? 0= if exit then
+   path u REPORT-LIBRARY-TARGET
+   E-FFI-LIBRARY throw ;
+
 : REPORT-FULL ( -- )
    DIAG CODEGEN:RESET
    s" ffi: declaration table full at " DIAG+
@@ -896,15 +985,25 @@ public
    src ARG-KIND@ K-VALUE <> if REFUSE then
    src idx ARG-EXT-ARG! ;
 
-: SELECT-LIBRARY ( ptr u8 n -- )
+: SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
+   path u CHECK-SPELLING
    FFI:LIBRARY-ROOM? if
-      FFI:LIBRARY-PATH CUR-LIB !
+      path u FFI:LIBRARY-PATH CUR-LIB !
    else
       LIB-OVERFLOW CODEGEN:RESET
-      LIB-OVERFLOW CODEGEN:APPEND-STRING
+      path u LIB-OVERFLOW CODEGEN:APPEND-STRING
       -1 CUR-LIB !
    then
    RECORD-SCOPE ;
+
+\ The versioned form's own selection: two tokens, rendered for this target and
+\ then taken through the literal form's path, so the scope recording and the
+\ table guard are shared and a rendered name reaches dlopen the way a literal
+\ one does.
+: SELECT-VERSIONED-LIBRARY ( -- )
+   TOK@ BASE!
+   TOK@ TOK>VERSION {: version:n :}
+   BASE-BUF BASE-U @ version LIB-NAME FFI:LIBRARY-NAME$ SELECT-LIBRARY ;
 
 : SELECT-PROCESS ( -- )
    FFI:PROCESS CUR-LIB !
@@ -918,6 +1017,9 @@ public
 \ their ( -- ) rows do not model, so they are top-level-interpret-only.
 : LIBRARY ( -- )
    parse-name FFI-DECL:SELECT-LIBRARY ;
+
+: VERSIONED-LIBRARY ( -- )
+   FFI-DECL:SELECT-VERSIONED-LIBRARY ;
 
 : PROCESS-SYMBOLS ( -- )
    FFI-DECL:SELECT-PROCESS ;

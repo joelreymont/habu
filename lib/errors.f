@@ -1385,7 +1385,7 @@ public
 -9273 constant E-CRYPTO-TAG        \ the tag did not authenticate the ciphertext and its associated data
 -9274 constant E-CRYPTO-RANDOM     \ the random generator reported failure
 -9275 constant E-CRYPTO-MAC        \ libcrypto refused the keyed hash, or answered a digest of the wrong width
--9276 constant E-CRYPTO-PLATFORM   \ libcrypto.so.3 is not the shared-library name this target loads
+-9276 constant E-CRYPTO-PLATFORM   \ this module is qualified on Linux only, and refuses a foreign target before it binds
 
 \ PostgreSQL over libpq (package PG): -9250..-9259. The decade after libcurl;
 \ -9240..-9249 is tools/image-size-lib.f, outside this file.
@@ -1404,7 +1404,7 @@ public
 -9255 constant E-TRANSACTION  \ a WITH-TRANSACTION inside another one on the same connection
 -9256 constant E-HANDLE       \ a handle another task owns, or one an image restore invalidated
 -9257 constant E-CAPACITY     \ more live connections, results or parameters than this module stores
--9258 constant E-PLATFORM     \ libpq.so.5 is not the shared-library name this target loads
+-9258 constant E-PLATFORM     \ this module is qualified on Linux only, and refuses a foreign target before it binds
 -9259 constant E-STATEMENT    \ an empty statement text or prepared-statement name
 
 ;package

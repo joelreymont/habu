@@ -221,11 +221,13 @@ create FFI-T-ERR FFI-T-CAP allot
    erru FFI-T-ERR$ s" habu-ffi-table-probe" CONTAINS? TTRUE
    erru FFI-T-ERR$ s" ZZ-OVER" CONTAINS? TTRUE ;
 
+\ The overflowing path carries no extension: it stands for a literal LIBRARY row
+\ on either target, which the spelling rule below leaves alone.
 : FFI-T-LIB-FULL-SRC$ ( -- ptr u8 n )
    FFI-T-SRC CODEGEN:RESET
    s\" require lib/ffi-abi.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
    s\" : ZZ-LIB-FILL ( -- ) FFI:LIBRARY-MAX 1+ 0 ?do\n" FFI-T-SRC+
-   s\"    s\" LIBRARY /tmp/habu-ffi-library-overflow.so\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\"    s\" LIBRARY /tmp/habu-ffi-library-overflow\" INCLUDE-EVALUATE\n" FFI-T-SRC+
    s\" loop\n" FFI-T-SRC+
    s\"    s\" FUNCTION: ZZ-LIB-OVER habu-ffi-library-probe ( -- n ) ;FUNCTION\" INCLUDE-EVALUATE\n" FFI-T-SRC+
    s\" ;\nZZ-LIB-FILL\n" FFI-T-SRC+
@@ -237,7 +239,7 @@ create FFI-T-ERR FFI-T-CAP allot
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-LIBRARY-FULL FFI-T-CODE$ CONTAINS? TTRUE
-   erru FFI-T-ERR$ s" /tmp/habu-ffi-library-overflow.so" CONTAINS? TTRUE
+   erru FFI-T-ERR$ s" /tmp/habu-ffi-library-overflow" CONTAINS? TTRUE
    erru FFI-T-ERR$ s" ZZ-LIB-OVER" CONTAINS? TTRUE
    erru FFI-T-ERR$ s" habu-ffi-library-probe" CONTAINS? TTRUE ;
 
@@ -329,6 +331,54 @@ TRUSTED: FFI-T-X8-ABI-CALL ( ptr a -- n ) {: out:ptr :}
 FFI-T-SELECT-MATH
 FUNCTION: FFI-T-SQRT-CALL sqrt ( r -- r ) ;FUNCTION
 PROCESS-SYMBOLS
+
+\ A library selected by base name and soname version: libz.so.1 here and
+\ libz.1.dylib on macOS both exist, so the symbol resolves through the rendered
+\ selection at the first call on either target.
+VERSIONED-LIBRARY z 1
+FUNCTION: FFI-T-VERSIONED-CRC crc32 ( n ptr u8 n -- n ) ;FUNCTION
+PROCESS-SYMBOLS
+
+: FFI-T-VERSIONED-CALL ( -- )
+   0 s" a" FFI-T-VERSIONED-CRC $E8B7BE43 T= ;
+
+\ The rendered name itself, byte for byte on this target.
+FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-A
+FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
+
+: FFI-T-PQ-NAME$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" libpq.5.dylib" exit then s" libpq.so.5" ;
+
+\ A base name past LIB-BASE-CAP: refused by name, never rendered short.
+: FFI-T-LONG-BASE ( -- )
+   s" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" 5 FFI-T-NAME-A FFI:LIBRARY-NAME$ 2drop ;
+
+\ A literal spelled in the OTHER target's convention names no file here, so the
+\ declarer refuses it where it is stated. The refusal ends the load, which is
+\ why it is measured in a child the way the table ceilings are.
+: FFI-T-FOREIGN-NAME$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" libx.so.5" exit then s" libx.5.dylib" ;
+
+: FFI-T-TARGET$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" macos" exit then s" linux" ;
+
+: FFI-T-FOREIGN-SRC$ ( -- ptr u8 n )
+   FFI-T-SRC CODEGEN:RESET
+   s\" require lib/ffi-abi.f\n" FFI-T-SRC+
+   s\" : ZZ-FOREIGN ( -- ) s\" LIBRARY " FFI-T-SRC+
+   FFI-T-FOREIGN-NAME$ FFI-T-SRC+
+   s\" \" INCLUDE-EVALUATE ;\nZZ-FOREIGN\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-FOREIGN-LIBRARY ( -- )
+   s" a library name spelled for the other target is refused by name" T-LABEL
+   FFI-T-FOREIGN-SRC$ FFI-T-RUN-STDIN FFI-T-UNCAUGHT-RC T-OUTCOME-EXITED=
+   {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru FFI-T-ERR$ E-FFI-LIBRARY FFI-T-CODE$ CONTAINS? TTRUE
+   s" the refusal names the rejected name and this target" T-LABEL
+   erru FFI-T-ERR$ FFI-T-FOREIGN-NAME$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ FFI-T-TARGET$ CONTAINS? TTRUE ;
 
 \ The declaration's hook stays armed: calls after a capture must have their
 \ process-owned addresses forgotten by every later capture as well.
@@ -430,8 +480,20 @@ PROCESS-SYMBOLS
    s" FFI:" 0 search-wl 0= TTRUE
    s" CALL0" 0 search-wl 0= TTRUE
 
+   s" a library name renders this target's soname spelling" T-LABEL
+   s" pq" 5 FFI-T-NAME-A FFI:LIBRARY-NAME$
+   s" z" 1 FFI-T-NAME-B FFI:LIBRARY-NAME$ 2drop
+   FFI-T-PQ-NAME$ T$=
+   HB-TARGET-MACOS? if s" /opt/build.so.cache/libx.1.dylib"
+   else s" /opt/build.dylib/libx.so.1" then FFI-DECL:SELECT-LIBRARY
+   FFI-DECL:SELECT-PROCESS
+   [: FFI-T-LONG-BASE ;] E-FFI-SYNTAX TTHROWSQ
+   s" a declaration through the versioned form resolves its symbol" T-LABEL
+   FFI-T-VERSIONED-CALL
+
    FFI-T-TABLE-FULL
    FFI-T-LIBRARY-TABLE-FULL
+   FFI-T-FOREIGN-LIBRARY
    s" foreign symbol cleanup remains armed across captures" T-LABEL
    FFI-T-RECAPTURE ;
 

@@ -7,6 +7,7 @@ package ZIP
 using FFI
 
 $40 constant SYMBOL-BYTES
+FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER NAME-BUF
 create SYMBOL SYMBOL-BYTES allot
 variable LIBRARY
 variable INITIALIZED
@@ -26,7 +27,7 @@ variable CLOSE-FD-FN
    SYMBOL CSTR SYMBOL ;
 
 : LIBRARY-OPEN ( -- )
-   s" libzip.so.5" SYMBOL! NOW DLOPEN
+   s" zip" 5 NAME-BUF LIBRARY-NAME$ SYMBOL! NOW DLOPEN
    dup 0= if E-LIBRARY throw then LIBRARY ! ;
 
 : SYMBOL-FIND ( ptr u8 n -- n )

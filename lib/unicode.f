@@ -36,9 +36,12 @@ private
    size VALID-LENGTH
    0 begin dup size < while source size rot NEXT-SCALAR repeat drop ;
 
+\ The soname this target loads, NUL-terminated for dlopen.
+FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER NAME-BUF
+create LIBRARY-NAME LIBRARY-PATH-CAP allot
+
 : LIBRARY$ ( -- ptr u8 )
-   HB-TARGET-MACOS? if s\" libunistring.5.dylib\z" drop
-   else s\" libunistring.so.5\z" drop then ;
+   s" unistring" 5 NAME-BUF LIBRARY-NAME$ LIBRARY-NAME CSTR LIBRARY-NAME ;
 
 variable LIBRARY
 variable COMPARE-XT

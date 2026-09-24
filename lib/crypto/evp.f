@@ -58,7 +58,7 @@ $7FFFFFFF constant MAX-SPAN               \ every length this package passes is 
 \ NULL output; EVP_CIPHER_CTX_ctrl writes the tag out for one selector and reads
 \ it in for another. A NULL is a `n` argument because the bounded call guards
 \ exactly the span a `ptr u8` declares, and a declaration states one extent.
-LIBRARY libcrypto.so.3
+VERSIONED-LIBRARY crypto 3
 
 FUNCTION: CTX-NEW EVP_CIPHER_CTX_new ( -- n ) ;FUNCTION
 FUNCTION: CTX-FREE EVP_CIPHER_CTX_free ( n -- ) ;FUNCTION
@@ -167,8 +167,10 @@ TASK:#USER 7 + CELL-ALIGN and STORAGE-BYTES TASK:+USER EVP-STORAGE drop
    u 0 ?do 0 target i + c! loop ;
 
 
-\ libcrypto.so.3 is the soname this target loads; a Mach-O host installs
-\ libcrypto.3.dylib and would otherwise fail deep inside the loader.
+\ The soname is rendered for whichever target this build is (libcrypto.so.3 here,
+\ libcrypto.3.dylib on a Mach-O host), so the name is no longer what this gate
+\ is about: the module is qualified on Linux and refuses any other target here,
+\ before a binding resolves.
 : PLATFORM ( -- )
    HB-TARGET-LINUX? 0= if E-PLATFORM throw then ;
 

@@ -152,7 +152,7 @@ variable CONFIG-MUTEX
 \ Every pointer is `ptr u8`: a PGconn, a PGresult and a C string are all
 \ foreign-owned addresses this side only passes back or reads with the width
 \ libpq states. None is written by the callee, so none carries an extent.
-LIBRARY libpq.so.5
+VERSIONED-LIBRARY pq 5
 
 FUNCTION: LIB-CONNECT-START PQconnectStart ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-CONNECT-POLL PQconnectPoll ( ptr u8 -- n ) ;FUNCTION

@@ -244,7 +244,7 @@ example below does it.
 | `PG:E-TRANSACTION` | a `PG:WITH-TRANSACTION` inside another one |
 | `PG:E-HANDLE` | a handle another task owns, or one an image restore invalidated |
 | `PG:E-CAPACITY` | more live connections, results or parameters than the module stores |
-| `PG:E-PLATFORM` | `libpq.so.5` is not the shared-library name this target loads |
+| `PG:E-PLATFORM` | this module is qualified on Linux only, and refuses a foreign target before it binds |
 | `PG:E-STATEMENT` | an empty statement/name, script parameters, or an operation invalid for the connection's current phase |
 
 The block is `-9250..-9259` in `lib/errors.f`.
