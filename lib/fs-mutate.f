@@ -336,7 +336,8 @@ public
 
 : FS-MUT-MAKE-TEMP-DIR-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed :}
    0 begin dup FS-MUT-TMP-RETRIES < while
-      base baseu prefix prefixu seed over FS-MUT-BUILD-TEMP-TRY
+      dup {: attempt:n :}
+      base baseu prefix prefixu seed attempt FS-MUT-BUILD-TEMP-TRY
       2dup FS-MUT-MKDIR-CANDIDATE? if rot drop exit then
       2drop 1+
    repeat drop
