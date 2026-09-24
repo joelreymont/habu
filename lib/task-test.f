@@ -19,19 +19,13 @@ package TASK-TEST
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
 
 \ ---- what the sleeping cases measure -----------------------------------------
-1 constant RUSAGE-THREAD             \ the CALLING thread's CPU time, not the process's
-$90 constant RUSAGE-BYTES            \ struct rusage: two timevals and fourteen longs
-0 constant RU-UTIME-OFF
-$10 constant RU-STIME-OFF
+$10 constant THREAD-CLOCK-BYTES       \ struct timespec on LP64
 1000000 constant US-PER-S
 1000000 constant NS-PER-MS
 50 constant SLEEP-MS                 \ the duration every sleeping case asks for
 SLEEP-MS NS-PER-MS * constant SLEEP-LEAST-NS
-\ Scheduler slack: the machine is shared, so a woken task is not always the next
-\ one to run. The upper bound catches a sleep that waited out a DIFFERENT
-\ duration, not one the scheduler was late to resume.
-100 constant SLEEP-SLACK-MS
-SLEEP-MS SLEEP-SLACK-MS + NS-PER-MS * constant SLEEP-MOST-NS
+\ nanosleep promises a minimum duration. Scheduling and Darwin timer coalescing
+\ can delay the return; the suite timeout bounds liveness, not this measurement.
 5000 constant SLEEP-CPU-US           \ a PAUSE loop over the same 50 ms costs ten times this
 1000000 constant SLEEP-ZERO-NS       \ a zero sleep never enters the kernel
 \ The concurrent case sleeps longer than the timed ones: a gate host running
@@ -55,7 +49,7 @@ CELL TASK:+USER TASK-USER-CELL
 CELL TASK:+USER TASK-LOCAL-ID
 CELL TASK:+USER TASK-LOCAL-FFI
 CELL TASK:+USER TASK-EXIT-MARK
-RUSAGE-BYTES TASK:+USER TASK-RUSAGE
+THREAD-CLOCK-BYTES TASK:+USER TASK-CLOCK
 drop
 
 TASK:MIN-STACK TASK:TASK WORKER-A
@@ -1009,22 +1003,17 @@ TASK:MIN-STACK TASK:TASK HALTED-TASK
 
 PROCESS-SYMBOLS
 
-FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- n )
-   1 RUSAGE-BYTES WRITES-BYTES
+FUNCTION: THREAD-CLOCK clock_gettime ( n ptr u8 -- n )
+   1 THREAD-CLOCK-BYTES WRITES-BYTES
 ;FUNCTION
 
-\ struct timeval as microseconds.
-: TV-US ( ptr n -- n ) {: tv:ptr :}
-   tv @ US-PER-S *  tv CELL + @ + ;
-
-\ The CALLING task's own CPU time, user plus system. RUSAGE_THREAD, not
-\ RUSAGE_SELF: a worker must measure itself and not the tasks running beside it.
-\ The buffer is a TASK:+USER row for the same reason.
+\ Measure only this OS thread, including when other Habu tasks are running.
 : THREAD-US ( -- n )
-   RUSAGE-THREAD TASK-RUSAGE BYTE-VIEW RESOURCE-USAGE
+   HB-TARGET-MACOS? if 16 else 3 then
+   TASK-CLOCK BYTE-VIEW THREAD-CLOCK
    0 <> if E-TASK-THREAD throw then
-   TASK-RUSAGE RU-UTIME-OFF + TV-US
-   TASK-RUSAGE RU-STIME-OFF + TV-US + ;
+   TASK-CLOCK @ US-PER-S *
+   TASK-CLOCK CELL + @ 1000 / + ;
 
 \ One sleep, measured from inside whichever task takes it: the wall time it
 \ spanned and the CPU time it cost that task.
@@ -1037,7 +1026,6 @@ FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- n )
 
 : SLEEP-CHECK ( n n -- ) {: elapsed:n cpu:n :}
    elapsed SLEEP-LEAST-NS >= TTRUE
-   elapsed SLEEP-MOST-NS < TTRUE
    cpu SLEEP-CPU-US < TTRUE ;
 
 : TASK-TEST-SLEEP-MAIN ( -- )

@@ -367,7 +367,8 @@ require lib/task.f
 
 ## Semaphores
 
-`TASK:SEMAPHORE` defines a counted semaphore over an unnamed POSIX semaphore,
+`TASK:SEMAPHORE` defines a counted semaphore over Linux's unnamed POSIX
+semaphores or Darwin's Mach semaphores,
 taking the SwiftForth word names and the VFX counted semantics
 ([tasking-models.md](tasking-models.md) sections 1 and 3). It is the blocking
 primitive the facility and `TASK:PAUSE` do not provide: a task that waits for
@@ -408,11 +409,13 @@ ITEMS TASK:SEMAPHORE-DESTROY
 - A waiting task is parked in the host call, so it observes no `TASK:HALT` until
   something signals it. `TASK:KILL` on a task blocked in `TASK:WAIT` will not
   return; signal the task, then kill it.
-- Unnamed POSIX semaphores are a Linux facility. Darwin's `sem_init` is a
-  deprecated `ENOSYS` stub - which is why SwiftForth opens NAMED semaphores
-  there - so `TASK:SEMAPHORE-INIT` throws `E-TASK-SEM-HOST` off Linux. That
-  branch is unexercised: the suite runs on Linux, so nothing here has ever
-  taken it. Darwin support means `sem_open`, not a fix to this guard.
+- Darwin stores a Mach semaphore port in the record and destroys it with the
+  owning task port. Wait retries `KERN_ABORTED`; try-wait uses a zero
+  `mach_timespec_t` and treats `KERN_OPERATION_TIMED_OUT` as an empty count.
+  This avoids Darwin's unsupported `sem_init` and preserves destruction after
+  consuming an initial count. The ABI is declared in the SDK's
+  `mach/semaphore.h` and `mach/task.h`; see Apple's
+  [synchronization primitives](https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/KernelProgramming/synchronization/synchronization.html).
 - A signal delivered while a task is parked interrupts `sem_wait` with `EINTR`
   and consumes no count, so `TASK:WAIT` retries; any other failure is
   `E-TASK-THREAD`.
@@ -469,9 +472,8 @@ the task and destroyed when it ends.
   never throws, so a task that was never activated simply holds no message.
 - The mailbox is created by `TASK:PREPARE` and destroyed with the task's memory,
   so messages do not survive a `TASK:KILL` and a reactivated task starts with an
-  empty mailbox. Because the mailbox is part of a task, `TASK:PREPARE` needs the
-  unnamed POSIX semaphores above: on a host without them it throws
-  `E-TASK-SEM-HOST` rather than creating a task that cannot receive.
+  empty mailbox. `TASK:PREPARE` creates the mailbox through the same host
+  semaphore backend as explicit semaphores.
 - Ending a task ends its mailbox, and POSIX leaves destroying a semaphore with
   blocked waiters undefined: end a task's senders before the task, exactly as the
   semaphore section requires of its waiters.

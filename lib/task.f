@@ -3,6 +3,7 @@
 s" lib/errors.f" required
 s" lib/memory.f" required
 s" lib/ffi-abi.f" required
+require lib/le.f
 s" lib/image-lifecycle.f" required
 s" lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
 s" lib/adt/result.f" required     \ TASK:JOIN answers result<n,n>
@@ -35,7 +36,7 @@ $80 constant TASK-MUTEX-BYTES
 0 constant TASK-FACILITY-OWNER-OFF
 $8 constant TASK-FACILITY-MUTEX-OFF
 TASK-FACILITY-MUTEX-OFF TASK-MUTEX-BYTES + constant TASK-FACILITY-BYTES
-$20 constant TASK-SEM-BYTES              \ sem_t on an LP64 host
+$20 constant TASK-SEM-BYTES              \ Linux sem_t or Darwin Mach port storage
 $7FFFFFFF constant TASK-SEM-MAX          \ SEM_VALUE_MAX
 $04 constant TASK-EINTR
 $0B constant TASK-EAGAIN
@@ -289,7 +290,7 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
    mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
    FFI:ARGS FFI:REG-LENS 1 MUTEX-UNLOCK-XT @ ffi-call-bounded ;
 
-\ ---- unnamed POSIX semaphore bindings ----------------------------------------
+\ ---- host semaphore bindings ----------------------------------------
 \ Declared rather than hand-staged: these four arrived after the FUNCTION:
 \ declarer, so package FFI owns their symbol resolution and their bounded
 \ staging and this module states only the C prototypes. The single pointer
@@ -324,6 +325,21 @@ FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- n )
 FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- n )
    0 TASK-SEM-BYTES WRITES-BYTES
 ;FUNCTION
+
+\ Darwin's unnamed POSIX semaphore entry points are ENOSYS stubs. A Mach
+\ semaphore is a process-owned port name stored in the same record. Its wait
+\ result is a kernel return code, never errno; a zero timespec tries once.
+14 constant MACH-ABORTED
+49 constant MACH-TIMED-OUT
+0 constant MACH-FIFO
+FUNCTION: MACH-TASK task_self_trap ( -- n ) ;FUNCTION
+FUNCTION: MACH-SEM-CREATE semaphore_create ( n ptr u8 n n -- n )
+   1 4 WRITES-BYTES
+;FUNCTION
+FUNCTION: MACH-SEM-DESTROY semaphore_destroy ( n n -- n ) ;FUNCTION
+FUNCTION: MACH-SEM-WAIT semaphore_wait ( n -- n ) ;FUNCTION
+FUNCTION: MACH-SEM-SIGNAL semaphore_signal ( n -- n ) ;FUNCTION
+FUNCTION: MACH-SEM-TRY semaphore_timedwait ( n n -- n ) ;FUNCTION
 
 \ nanosleep is the other call here that blocks on purpose: it parks the calling
 \ thread until a time arrives rather than until something happens. The first
@@ -396,20 +412,17 @@ FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- n )
 : SEM-CHECK ( sem -- )
    SEM-LIVE? 0= if E-TASK-SEM-STATE throw then ;
 
-\ Unnamed POSIX semaphores are a Linux facility: Darwin's sem_init is a
-\ deprecated ENOSYS stub, which is why SwiftForth opens named semaphores there
-\ (docs/tasking-models.md section 1).
-: SEM-HOST-CHECK ( -- )
-   HB-TARGET-LINUX? 0= if E-TASK-SEM-HOST throw then ;
-
 : SEM-COUNT-CHECK ( n -- ) {: value:n :}
    value 0 < value TASK-SEM-MAX > or if E-TASK-SEM-COUNT throw then ;
 
 : SEM-INIT ( n sem -- ) {: value:n s:sem :}
-   SEM-HOST-CHECK
    value SEM-COUNT-CHECK
    s SEM-LIVE? if E-TASK-SEM-STATE throw then
-   s SEM-OBJ 0 value SEM-INIT-CALL TASK-RC0
+   HB-TARGET-MACOS? if
+      MACH-TASK s SEM-OBJ MACH-FIFO value MACH-SEM-CREATE TASK-RC0
+   else
+      s SEM-OBJ 0 value SEM-INIT-CALL TASK-RC0
+   then
    s SEM>N s SEM-GUARD atomic! ;
 
 \ POSIX leaves destroying a semaphore that still has blocked waiters undefined,
@@ -417,12 +430,24 @@ FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- n )
 : SEM-DESTROY ( sem -- ) {: s:sem :}
    s SEM-LIVE? 0= if exit then
    0 s SEM-GUARD atomic!
-   s SEM-OBJ SEM-DESTROY-CALL TASK-RC0 ;
+   HB-TARGET-MACOS? if
+      MACH-TASK s SEM-OBJ LE:U32@ MACH-SEM-DESTROY TASK-RC0
+      0 s SEM-OBJ LE:U32!
+   else s SEM-OBJ SEM-DESTROY-CALL TASK-RC0 then ;
 
 \ Blocks inside the host call, so a waiting task needs no PAUSE loop - and
 \ observes no TASK:HALT - until it is signalled. A signal interrupts the wait
 \ without consuming a count, so EINTR retries.
+: MACH-WAIT ( sem -- ) {: s:sem :}
+   begin
+      s SEM-CHECK
+      s SEM-OBJ LE:U32@ MACH-SEM-WAIT
+      dup 0= if drop exit then
+      MACH-ABORTED <> if E-TASK-THREAD throw then
+   again ;
+
 : SEM-WAIT ( sem -- ) {: s:sem :}
+   HB-TARGET-MACOS? if s MACH-WAIT exit then
    begin
       s SEM-CHECK
       s SEM-OBJ SEM-WAIT-CALL 0= if exit then
@@ -431,11 +456,22 @@ FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- n )
 
 : SEM-SIGNAL ( sem -- ) {: s:sem :}
    s SEM-CHECK
-   s SEM-OBJ SEM-POST-CALL TASK-RC0 ;
+   HB-TARGET-MACOS? if s SEM-OBJ LE:U32@ MACH-SEM-SIGNAL
+   else s SEM-OBJ SEM-POST-CALL then TASK-RC0 ;
 
 \ The decrement that never blocks: true when it took a count, false when the
 \ count was zero. EAGAIN is that answer, EINTR retries as SEM-WAIT does.
+: MACH-TRY-WAIT ( sem -- bool ) {: s:sem :}
+   begin
+      s SEM-CHECK
+      s SEM-OBJ LE:U32@ 0 MACH-SEM-TRY
+      dup 0= if drop true exit then
+      dup MACH-TIMED-OUT = if drop false exit then
+      MACH-ABORTED <> if E-TASK-THREAD throw then
+   again ;
+
 : SEM-TRY-WAIT ( sem -- bool ) {: s:sem :}
+   HB-TARGET-MACOS? if s MACH-TRY-WAIT exit then
    begin
       s SEM-CHECK
       s SEM-OBJ SEM-TRYWAIT-CALL 0= if 0 0= exit then
@@ -521,9 +557,8 @@ create TASK-SEM-POOL
 \ The main thread has no TCB - TASK:SELF answers the null TCB there - so its
 \ park is this one record and a WAKE of the null TCB posts it, which is what
 \ lets a program with no tasks of its own wait on a loop too. It is initialized
-\ on first use rather than at load time because unnamed POSIX semaphores are a
-\ Linux facility (SEM-HOST-CHECK) and this file still loads on Darwin; the
-\ handshake is TASK-SYMBOLS', so two tasks waking the main thread at the same
+\ on first use. The handshake is TASK-SYMBOLS', so two tasks waking the main
+\ thread at the same
 \ moment initialize the record once.
 TASK-ALIGN8
 create MAIN-PARK-REC TASK-SEMAPHORE-BYTES 8 / TASK-ZERO-CELLS,
@@ -1477,7 +1512,7 @@ TASK-MIN-STACK constant MIN-STACK
 : SEMAPHORE ( -- )
    SEMAPHORE ;
 
-\ n is the initial count, 0..SEM_VALUE_MAX. Linux only.
+\ n is the initial count, 0..SEM_VALUE_MAX, on either host backend.
 : SEMAPHORE-INIT ( n sem -- )
    SEM-INIT ;
 
