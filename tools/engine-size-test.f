@@ -30,8 +30,11 @@ private
    0 QUIET ! ;
 
 : EST-METADATA ( -- )
-   s" header metadata includes the final RELA addend, including its zero bytes" T-LABEL
    s" bin/hb" MEASURE
+   \ RELA and the dynamic table are ELF-specific. The general tiling tests
+   \ above exercise both containers, including all Mach-O load-command spans.
+   MACHO @ if exit then
+   s" header metadata includes the final RELA addend, including its zero bytes" T-LABEL
    PHDR-END 288 T= ELF-META-END 488 T=
    \ Alter the last metadata byte in this private copy. Its declared extent
    \ remains the same for both values; only the zero count may change.

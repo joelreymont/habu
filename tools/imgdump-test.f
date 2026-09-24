@@ -233,8 +233,21 @@ variable IDT-DECOY-U
    then
    r ;
 
-: IDT-XT$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}   \ live xt as --pc's decimal argument
-   a u IDT-REC XREF-START
+variable IDT-SLIDE
+DYNAMIC-BUFFER IDT-SELF u8
+
+: IDT-IMAGE-BASE ( -- )
+   0 IDT-SLIDE !
+   HB-TARGET-MACOS? 0= if exit then
+   s" bin/hb" FILE-SIZE {: size:n :}
+   size IDT-SELF-RESERVE
+   s" bin/hb" 0 IDT-SELF size READ-ALL size T=
+   0 IDT-SELF size MACHO-READ:OPEN
+   rbase MACHO-READ:TEXT-VA - IDT-SLIDE !
+   IDT-SELF-RELEASE ;
+
+: IDT-XT$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}   \ file-coordinate pc
+   a u IDT-REC XREF-START IDT-SLIDE @ -
    SB-RESET FMT:SB-U SB$ ;
 
 \ The whole line --pc must print for that word, in imgdump's own $hex spelling:
@@ -244,7 +257,7 @@ variable IDT-DECOY-U
    a u IDT-REC {: r:ptr :}
    a u SB-APPEND
    32 SB-APPEND-C
-   r XREF-START IMAGE-DUMP:HEX$ SB-APPEND
+   r XREF-START IDT-SLIDE @ - IMAGE-DUMP:HEX$ SB-APPEND
    32 SB-APPEND-C
    r XREF-CODE-BYTES IMAGE-DUMP:HEX$ SB-APPEND
    10 SB-APPEND-C ;
@@ -315,6 +328,7 @@ variable IDT-DECOY-U
 \ answered nearly any pc. `+` is that first record; `evaluate` is not.
 : IDT-TEST-BAKED-PC ( -- )
    s" imgdump --pc batches addresses on bin/hb itself" T-LABEL
+   IDT-IMAGE-BASE
    IDT-ARGV-BASE
    s" --pc" IDT-ARG+ s" bin/hb" IDT-ARG+
    s" +" IDT-XT$ IDT-ARG+

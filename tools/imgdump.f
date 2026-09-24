@@ -9,6 +9,7 @@
 
 require lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
 require src/habu/code-span.f
+require tools/macho-read.f
 
 : IMG-FALSE ( -- bool )
    0 0= 0= ;
@@ -29,6 +30,7 @@ package IMAGE-DUMP
 
 TYPED-VARIABLE IB ptr u8                     \ image buffer
 variable IL                                  \ image length
+variable MACHO
 variable IFD
 1024 constant IPATH-CAP
 create IPATH IPATH-CAP 1 + allot
@@ -97,7 +99,9 @@ TRUSTED: IMG-MMAP-PTR ( n -- ptr u8 )
    0 ISZ @ 1 2 IFD @ 0 mmap
    IMG-MMAP-PTR IB!
    IFD @ close
-   ISZ @ IL ! ;
+   ISZ @ IL !
+   IB@ IL @ MACHO-READ:MAGIC? MACHO !
+   MACHO @ if IB@ IL @ MACHO-READ:OPEN then ;
 
 : READ-IMG
    IMG-PATH$ READ-IMG-PATH ;
@@ -208,7 +212,9 @@ private
 
 : FIND-SNAPSHOT ( -- bool )
    -1 TOFF !
-   IMAGE-TEXT-SIZE-OFF I@ IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - {: off:n :}
+   IL @ 104 < if IMG-FALSE exit then
+   MACHO @ if MACHO-READ:TEXT-END else 96 I@ then
+      SNAP-TRL-BYTES - {: off:n :}
    off 0 < if IMG-FALSE exit then
    off SNAP? 0= if IMG-FALSE exit then
    off TOFF !
@@ -356,6 +362,9 @@ private
    ELF-TYPE-OFF I@ $FFFF and ELF-ET-EXEC = ;
 
 : NO-SNAP-XTBASE ( -- n )
+   \ Mach-O reports the section's preferred virtual addresses. Runtime PCs
+   \ must have their ASLR slide removed before they are compared to the file.
+   MACHO @ if MACHO-READ:TEXT-VA exit then
    ELF-FIXED-BASE? 0= if
       s" imgdump: no snapshot trailer and image is not a fixed-base arm64 ELF executable; refusing to guess the dictionary base" 74 die
    then

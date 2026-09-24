@@ -162,6 +162,12 @@ bin/hb --load tools/imgdump.f -- bin/hb
 bin/hb --load tools/imgdump.f -- old-hb new-hb
 ```
 
+For a baked Mach-O image, `imgdump` reports the preferred virtual addresses
+recorded in its `__text` section. Remove the process's ASLR slide from a live
+PC before passing it to `--pc`. Snapshot records use their persisted canonical
+coordinates. `tools/engine-size.f` reads Mach-O load commands and accounts for
+the GOT, chained fixups, code signature and padding as well as the payload.
+
 ## Which word owns this address — `tools/code-owner.f`
 
 A debugger stop, a crash dump and a breakpoint all hand back raw addresses in the

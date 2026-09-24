@@ -74,6 +74,7 @@ require lib/sort.f
 require src/habu/code-span.f
 require tools/aot-startup-shape.f        \ the startup's instruction shapes, named once
 require tools/image-names.f
+require tools/macho-read.f
 
 \ The engine's own layout is already in the cold prefix; the target executable
 \ layout (CODE-OFF, IMAGE-TEXT-SIZE-OFF) is not. tools/imgdump.f loads it the
@@ -95,6 +96,7 @@ require src/habu/address-carrier.f
 package IMAGE-SIZE
 
 74 constant RC
+4 constant INSN
 
 \ The walk's own refusal. Thrown, never died: the payload search probes many
 \ offsets and every wrong one must come back as a failed walk, not as an exit.
@@ -196,8 +198,10 @@ $40 constant ELF-EHDR-BYTES
    ELF-MACHINE-OFF U16@ ELF-EM-AARCH64 <> if false exit then
    ELF-TYPE-OFF U16@ ELF-ET-EXEC = ;
 
+variable MACHO
+
 : TEXT-SIZE ( -- n )
-   IMAGE-TEXT-SIZE-OFF U64@ ;
+   MACHO @ if MACHO-READ:TEXT-END else 96 U64@ then ;
 
 \ Where the ENGINE's own text content ends, which is not the same number as the
 \ file's text extent once an application image appends payloads of its own. A
@@ -738,6 +742,13 @@ variable BK-DZERO  variable BK-PAD
 
 \ The ELF header page, which every image class begins with.
 : ELF-ROWS ( -- )
+   MACHO @ if
+      s" macho/header" 0 32 SPAN B-OTHER ROW
+      s" macho/load-commands" 32 MACHO-READ:COMMANDS-END 32 - SPAN B-OTHER ROW
+      s" macho/header-pad" MACHO-READ:COMMANDS-END
+         CODE-OFF MACHO-READ:COMMANDS-END - SPAN B-PAD ROW
+      exit
+   then
    s" elf/header" 0 ELF-EHDR-BYTES SPAN B-OTHER ROW
    s" elf/program-headers" ELF-EHDR-BYTES PHDR-END ELF-EHDR-BYTES - SPAN B-OTHER ROW
    ELF-META-END {: meta:n :}
@@ -789,6 +800,17 @@ variable BK-DZERO  variable BK-PAD
       else AOT-END @ 0 then SPAN B-OTHER ROW ;
 
 : RW-ROW ( -- )
+   MACHO @ if
+      s" macho/text-pad" TEXT-SIZE MACHO-READ:TEXT-LIMIT TEXT-SIZE - SPAN B-PAD ROW
+      s" macho/got" MACHO-READ:DATA-OFF MACHO-READ:GOT-BYTES SPAN B-OTHER ROW
+      s" macho/data-pad" MACHO-READ:DATA-OFF MACHO-READ:GOT-BYTES +
+         MACHO-READ:DATA-BYTES MACHO-READ:GOT-BYTES - SPAN B-PAD ROW
+      s" macho/chained-fixups" MACHO-READ:FIXUPS-OFF MACHO-READ:FIXUPS-BYTES SPAN B-OTHER ROW
+      s" macho/signature-pad" MACHO-READ:FIXUPS-OFF MACHO-READ:FIXUPS-BYTES +
+         MACHO-READ:SIGN-OFF over - SPAN B-PAD ROW
+      s" macho/code-signature" MACHO-READ:SIGN-OFF MACHO-READ:SIGN-BYTES SPAN B-OTHER ROW
+      exit
+   then
    s" container/rw-segment" TEXT-SIZE ILEN @ TEXT-SIZE - SPAN B-OTHER ROW ;
 
 : BUDGET ( -- )
@@ -816,7 +838,7 @@ variable REG-OFF     variable DAT-OFF
 variable TBASE                                    \ the writing run's text base
 
 : TRAILER-OFF ( -- n )
-   TEXT-SIZE IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - ;
+   TEXT-SIZE SNAP-TRL-BYTES - ;
 
 \ The trailer is the last thing inside the authenticated text extent, so a
 \ snapshot announces itself at a fixed place and nothing has to be searched for.
@@ -857,7 +879,7 @@ variable TBASE                                    \ the writing run's text base
    \ trailer whose lengths were edited into a refusal. Without this, moving
    \ REGLEN by a page slides the boundary through the donor's zero text pad,
    \ where the classes still sum and the table is still wrong.
-   r PROT-PAGE-MAX mod 0=
+   r MACHO @ if INSN else PROT-PAGE-MAX then mod 0=
       s" image-size: the snapshot's payloads do not begin on the donor engine's text boundary" ?TRL
    r REG-OFF !
    r REG-LEN @ + DAT-OFF !
@@ -2091,7 +2113,6 @@ variable RELOC-AT    variable RELOC-N     variable APP-END
 variable BLOBADR-N   variable BLOBADR-PRE
 variable IP          variable MOVACC
 
-4 constant INSN
 
 : INSN@ ( n -- n ) U32@ ;
 
@@ -2445,8 +2466,13 @@ public
 \ table is written to a counting row printer first.
 : MEASURE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu READ-IMAGE
-   BAKED-ELF? 0= if s" image-size: not a fixed-base arm64 image" RC die then
-   CHECK-SEGMENTS
+   IMG@ ILEN @ MACHO-READ:MAGIC? MACHO !
+   MACHO @ if
+      IMG@ ILEN @ MACHO-READ:OPEN
+   else
+      BAKED-ELF? 0= if s" image-size: not an ARM64 Habu executable" RC die then
+      CHECK-SEGMENTS
+   then
    CLASSIFY
    WALK
    path pathu IMAGE-NAMES:LOAD
