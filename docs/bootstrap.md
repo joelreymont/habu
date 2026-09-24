@@ -48,6 +48,13 @@ seed; the release copy for other agents is `/tmp/hazel-release/hb`.
 ## Requirements
 
 - macOS ARM64 or Linux AArch64.
+- The macOS library tests use Homebrew `libzip`, `libunistring`, `openssl@3`,
+  `libpq`, and `socat`. Generated Mach-O executables carry runpaths for
+  `/opt/homebrew/lib` and the keg-only `/opt/homebrew/opt/libpq/lib`; system
+  libraries retain dyld's normal lookup. This applies to recovery engines,
+  product engines, and application images. Other library installations can use
+  dyld's `DYLD_FALLBACK_LIBRARY_PATH` at launch. Runpaths follow Apple's
+  [dynamic-library loading rules](https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/DynamicLibraryUsageGuidelines.html).
 - Linux gates require a working devpts setup: `/dev/ptmx`, `/dev/pts`, and PTY
   ioctls must be available to the user running the gate.
 - Gforth with `{:` locals support. Homebrew `gforth` 0.7.3 is too old.
