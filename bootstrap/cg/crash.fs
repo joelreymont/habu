@@ -192,7 +192,7 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 : CRS-LOOP$ ( -- a u ) s\" hb: stack bounds exceeded (loop)\n" ;
 
 11 constant CRASH-SIGSEGV
-7  constant CRASH-SIGBUS
+: CRASH-SIGBUS ( -- n )  HB-TARGET-LINUX? IF 7 ELSE 10 THEN ;
 
 \ x24 = DATA, x25 = fault address, x11 = PAGE-BYTES, x12 = PAGE-BYTES-1.
 \ CRS-CAPCELL is a header offset to read the capacity from, or 0 to use
