@@ -36,7 +36,7 @@ variable CLOSE-FD-FN
 
 
 : GLOBAL-SYMBOL-FIND ( ptr u8 n -- n )
-   SYMBOL! 0 swap DLSYM
+   SYMBOL! HB-TARGET-MACOS? if -2 else 0 then swap DLSYM
    dup 0= if E-LIBRARY throw then ;
 
 

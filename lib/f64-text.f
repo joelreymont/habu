@@ -1,4 +1,4 @@
-\ Exact finite binary64 text on glibc. No task yields while thread-local locale
+\ Exact finite binary64 text on glibc and Darwin libc. No task yields while thread-local locale
 \ or rounding state is borrowed. Caller output is copied only after success.
 \ PARSE accepts complete signed decimal/exponent syntax, rejects padding, hex,
 \ nonfinite values and trailing bytes, and preserves subnormals and signed zero.
@@ -46,7 +46,8 @@ variable SETROUND-FN
 
 
 : LIBRARY-OPEN ( -- )
-   s" m" 6 NAME-BUF LIBRARY-NAME$ CSTRING NOW DLOPEN
+   HB-TARGET-MACOS? if s" /usr/lib/libSystem.B.dylib"
+   else s" m" 6 NAME-BUF LIBRARY-NAME$ then CSTRING NOW DLOPEN
    dup 0= if E-NATIVE throw then LIBRARY ! ;
 
 
@@ -55,7 +56,7 @@ variable SETROUND-FN
 
 
 : GLOBAL-SYMBOL-FIND ( ptr u8 n -- n )
-   CSTRING 0 swap DLSYM dup 0= if E-NATIVE throw then ;
+   CSTRING HB-TARGET-MACOS? if -2 else 0 then swap DLSYM dup 0= if E-NATIVE throw then ;
 
 
 TRUSTED: DLCLOSE-CALL ( -- n )
@@ -103,7 +104,7 @@ TRUSTED: FREE-CALL ( -- )
 TRUSTED: NEWLOCALE-CALL ( -- n ) ARGS REG-LENS 3 NEWLOCALE-FN @ ffi-call-bounded ;
 : NEW-LOCALE ( -- n )
    s" C" CSTRING {: name:ptr :}
-   RESET 2 0 VALUE! name 1 READABLE! 0 2 VALUE! NEWLOCALE-CALL ;
+   RESET HB-TARGET-MACOS? if 16 else 2 then 0 VALUE! name 1 READABLE! 0 2 VALUE! NEWLOCALE-CALL ;
 
 TRUSTED: USELOCALE-CALL ( -- n ) ARGS REG-LENS 1 USELOCALE-FN @ ffi-call-bounded ;
 : USE-LOCALE ( n -- n ) RESET 0 VALUE! USELOCALE-CALL ;
@@ -122,7 +123,7 @@ TRUSTED: SETROUND-CALL ( -- n ) ARGS REG-LENS 1 SETROUND-FN @ ffi-call-bounded ;
    s" newlocale" SYMBOL-FIND NEWLOCALE-FN !
    s" uselocale" SYMBOL-FIND USELOCALE-FN !
    s" strtod_l" SYMBOL-FIND STRTOD-FN !
-   s" strfromd" SYMBOL-FIND STRFROM-FN !
+   HB-TARGET-MACOS? if s" snprintf_l" else s" strfromd" then SYMBOL-FIND STRFROM-FN !
    s" fegetround" SYMBOL-FIND GETROUND-FN !
    s" fesetround" SYMBOL-FIND SETROUND-FN !
    C-LOCALE @ 0= if
@@ -139,10 +140,13 @@ TRUSTED: STRTOD-CALL ( -- r )
    RESET 0 READABLE! 0 1 VALUE! C-LOCALE @ 2 VALUE! STRTOD-CALL ;
 
 TRUSTED: STRFROM-CALL ( -- n )
-   ARGS FLOATS STACK REG-LENS STACK-LENS 0 STRFROM-FN @ ffi-call-abi-bounded ;
+   ARGS FLOATS STACK REG-LENS STACK-LENS
+   HB-TARGET-MACOS? if 1 else 0 then STRFROM-FN @ ffi-call-abi-bounded ;
 : C-FORMAT ( r ptr u8 ptr u8 -- n ) {: value:r out:ptr format:ptr :}
    RESET out NATIVE-BYTES 0 WRITABLE! NATIVE-BYTES 1 VALUE!
-   format 2 READABLE! value 0 FLOAT! STRFROM-CALL ;
+   HB-TARGET-MACOS? if
+      C-LOCALE @ 2 VALUE! format 3 READABLE! value 0 STACK-FLOAT!
+   else format 2 READABLE! value 0 FLOAT! then STRFROM-CALL ;
 
 : FINITE? ( r -- bool ) IEEE754:F64>BITS EXPONENT-MASK and EXPONENT-MASK <> ;
 : FREE-WORK ( ptr u8 n -- ) BYTES-ALLOC-LEN RELEASE-BYTES ;

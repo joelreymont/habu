@@ -1020,11 +1020,6 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot SQLSTATE$ slot MESSAGE$ PG-OUTCOME:failed ;
 
 
-\ ---- platform -------------------------------------------------------------
-: INIT ( -- )
-   HB-TARGET-LINUX? 0= if E-PLATFORM throw then ;
-
-
 public
 
 \ CONFIGURE is the one registry sizing decision. Applications call it before
@@ -1040,7 +1035,6 @@ public
 \ refusal releases the slot, and those message bytes stay readable until the
 \ next CONNECT takes it.
 : CONNECT-START ( ptr u8 n -- connection ) {: a u:n :}
-   INIT
    REGISTER-CLEANUP
    CLAIM-CONN-SLOT {: slot:n :}
    slot OPEN-CONN-SLOT

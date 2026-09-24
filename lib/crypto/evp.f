@@ -167,14 +167,6 @@ TASK:#USER 7 + CELL-ALIGN and STORAGE-BYTES TASK:+USER EVP-STORAGE drop
    u 0 ?do 0 target i + c! loop ;
 
 
-\ The soname is rendered for whichever target this build is (libcrypto.so.3 here,
-\ libcrypto.3.dylib on a Mach-O host), so the name is no longer what this gate
-\ is about: the module is qualified on Linux and refuses any other target here,
-\ before a binding resolves.
-: PLATFORM ( -- )
-   HB-TARGET-LINUX? 0= if E-PLATFORM throw then ;
-
-
 : CTX@ ( -- n )
    CTX-SLOT @ ;
 
@@ -300,7 +292,6 @@ public
 \ Fill the span with cryptographically strong bytes. An empty span is a caller
 \ mistake, not a no-op.
 : RANDOM-BYTES ( ptr u8 n -- ) {: out u:n :}
-   PLATFORM
    u 1 MAX-SPAN WITHIN-RANGE
    out u RAND-BYTES OSSL-OK <> if E-RANDOM throw then ;
 
@@ -311,7 +302,6 @@ public
 \ associated data is authenticated in place, never copied into the output.
 : SEAL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n )
    {: key ku:n nonce nu:n aad au:n plain pu:n out ou:n :}
-   PLATFORM
    ku nu au pu ou SEAL-OPERANDS
    E-SEAL CTX-OPEN
    key nonce aad au plain pu out
@@ -324,7 +314,6 @@ public
 \ answers `failed` with the output cleared; no partial plaintext is ever visible.
 : UNSEAL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- unseal-result )
    {: key ku:n nonce nu:n aad au:n cipher cu:n out ou:n :}
-   PLATFORM
    ku nu au cu ou UNSEAL-OPERANDS
    E-OPEN CTX-OPEN
    key nonce aad au cipher cu out
@@ -334,7 +323,6 @@ public
 \ HMAC-SHA-256 of the message under the key, into a span of at least MAC-BYTES.
 \ The key may be any length; libcrypto folds a long one with SHA-256 itself.
 : HMAC-SHA256 ( ptr u8 n ptr u8 n ptr u8 n -- ) {: key ku:n msg mu:n out ou:n :}
-   PLATFORM
    ku SPAN-LEN
    mu SPAN-LEN
    ou MAC-BYTES < if E-OPERAND throw then
@@ -343,7 +331,6 @@ public
 
 \ HMAC-SHA-1 has the same span contract, with a MAC1-BYTES digest.
 : HMAC-SHA1 ( ptr u8 n ptr u8 n ptr u8 n -- ) {: key ku:n msg mu:n out ou:n :}
-   PLATFORM
    ku SPAN-LEN
    mu SPAN-LEN
    ou MAC1-BYTES < if E-OPERAND throw then
