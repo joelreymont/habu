@@ -398,7 +398,13 @@ spelled per target and neither spelling exists on the other system, so
 caller-owned `CODEGEN:BUFFER`; the returned span remains valid until that caller
 reuses its buffer. Modules that dlopen by hand call it directly. `LIBRARY` takes one literal, for an absolute path or a name
 that carries no version, and a literal spelled in the other target's convention
-is `E-FFI-LIBRARY` with a stderr line naming it and this target. A checked caller
+is `E-FFI-LIBRARY` with a stderr line naming it and this target. Inside a `FUNCTION:` declaration, `n VARIADIC` states the number of fixed
+arguments. Each additional argument still appears in the typed effect and keeps
+its writable extent. Darwin ARM64 places these arguments in eight-byte stack
+slots; Linux AAPCS64 uses the usual registers. See Apple's
+[ARM64 calling convention](https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms).
+The current variadic declaration supports integer, void and floating results;
+pointer results remain refused when a stack argument is required. A checked caller
 cannot reclassify an argument or
 change its extent; an absent symbol is `E-FFI-DLSYM` at the first call, never at
 the declaration; and `FFI:ERRNO ( -- n )` is the one errno binding every

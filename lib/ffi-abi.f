@@ -214,12 +214,12 @@ $41C8 constant FFI-SCRATCH-END
 \ legitimately binds five or six: the Tender server holds TCP4's 11 rows,
 \ libcurl's 15, libpq's 18, libcrypto's 19 and task's 5 at once, 68 before it
 \ declares anything of its own, and each later milestone adds foreign surface.
-\ A row costs FN-NAME-CAP bytes of symbol plus three cells (address, library,
-\ argc) = $48 bytes, so the whole table is FN-MAX * $48 = $4800 bytes of image
+\ A row costs FN-NAME-CAP bytes of symbol plus four cells (address, library,
+\ argc, spill count) = $50 bytes, so the table is FN-MAX * $50 = $5000 bytes of image
 \ data. A declaration past the last row is E-FFI-TABLE-FULL, not a wrap or a
 \ silent drop.
 
-$100 constant FN-MAX                      \ $100 rows * $48 bytes = $4800 bytes
+$100 constant FN-MAX                      \ $100 rows * $50 bytes = $5000 bytes
 $30 constant FN-NAME-CAP                  \ NUL-terminated C symbol
 $08 constant LIB-MAX                    \ FFI:LIBRARY-MAX; 8*($60+cell)=832 DATA bytes
 $60 constant LIB-PATH-CAP                 \ NUL-terminated library path
@@ -230,6 +230,7 @@ create FN-NAMES FN-MAX FN-NAME-CAP * allot
 create FN-ADDRS FN-MAX cells allot
 create FN-LIBS FN-MAX cells allot
 create FN-ARGCS FN-MAX cells allot
+create FN-SPILLS FN-MAX cells allot
 create LIB-PATHS LIB-MAX LIB-PATH-CAP * allot
 create LIB-HANDLES LIB-MAX cells allot
 
@@ -255,6 +256,9 @@ variable FN-REGISTERED
 : FN-LIB@ ( n -- n ) {: idx:n :}
    idx FN-CHECK
    FN-LIBS idx cells + @ ;
+
+: FN-SPILL@ ( n -- n ) {: idx:n :}
+   idx FN-CHECK FN-SPILLS idx cells + @ ;
 
 : FN-ARGC@ ( n -- n ) {: idx:n :}
    idx FN-CHECK
@@ -467,16 +471,20 @@ public
 \ The table's own fail-closed guard. The declarer refuses first, with the word
 \ and symbol in its diagnostic; this stands for every other caller and for the
 \ errno row below, and it is what keeps a full table from being overrun.
-: DECLARE ( ptr u8 n n n -- n ) {: name:ptr u:n lib:n argc:n :}
+: DECLARE-SPILLED ( ptr u8 n n n n -- n ) {: name:ptr u:n lib:n argc:n spills:n :}
    ROOM? 0= if E-FFI-TABLE-FULL throw then
    lib LIB-N @ 1 + FFI-CHECK-INDEX
    argc FFI-MAX-ARGS FFI-CHECK-COUNT
+   spills FFI-MAX-ARGS FFI-CHECK-COUNT
+   spills FN-SPILLS FN-N @ cells + !
    name u NAME-ROOM FN-N @ FN-NAME CSTR
    lib FN-LIBS FN-N @ cells + !
    argc FN-ARGCS FN-N @ cells + !
    0 FN-N @ FN-ADDR!
    REGISTER-CLEANUP
    FN-N @ dup 1 + FN-N ! ;
+
+: DECLARE ( ptr u8 n n n -- n ) 0 DECLARE-SPILLED ;
 
 \ The staged call. The row's index is the only thing a caller names, so a
 \ checked body cannot reach an address the declarations did not publish.
@@ -491,12 +499,12 @@ public
 : CALL-ABI ( n -- n ) {: idx:n :}
    idx FN-RESOLVE {: fn:n :}
    FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
-   0 fn ffi-call-abi-bounded ;
+   idx FN-SPILL@ fn ffi-call-abi-bounded ;
 
 : CALL-ABI-R ( n -- r ) {: idx:n :}
    idx FN-RESOLVE {: fn:n :}
    FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
-   0 fn ffi-call-abi-r-bounded ;
+   idx FN-SPILL@ fn ffi-call-abi-r-bounded ;
 
 \ errno is this package's own binding, written by hand because the declarer is
 \ defined after this package closes. libc's location is thread-local and the
@@ -632,6 +640,8 @@ variable INT-N
 variable FLT-N
 variable RES-KIND
 variable CALL-KIND
+variable VAR-START
+variable STACK-N
 variable CUR-LIB
 variable OPEN                              \ a declaration is between FUNCTION: and ;FUNCTION
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
@@ -756,7 +766,22 @@ variable SCOPE-SET                         \ ... and whether one was stated at a
    INT-N @ REG-MAX > if E-FFI-ARITY throw then
    FLT-N @ REG-MAX > if E-FFI-ARITY throw then ;
 
+: PLAN-SPILLS ( -- )
+   0 STACK-N !
+   VAR-START @ 0 < HB-TARGET-MACOS? 0= or if exit then
+   ARG-N @ VAR-START @ - STACK-N !
+   0 INT-N ! 0 FLT-N !
+   VAR-START @ 0 ?do
+      i ARG-KIND@ K-FLOAT = if 1 FLT-N +! else 1 INT-N +! then
+   loop
+   REG-ROOM ;
+
 : PLAN-CALL ( -- )
+   PLAN-SPILLS
+   STACK-N @ 0 > if
+      RES-KIND @ R-POINTER = if E-FFI-ARITY throw then
+      RES-KIND @ R-FLOAT = if C-ABI-R else C-ABI then CALL-KIND ! exit
+   then
    RES-KIND @ R-FLOAT = if REG-ROOM C-ABI-R CALL-KIND ! exit then
    FLT-N @ 0 > if
       RES-KIND @ R-POINTER = if E-FFI-ARITY throw then
@@ -802,7 +827,21 @@ variable SCOPE-SET                         \ ... and whether one was stated at a
    i ARG-EXT-ARG@ NO-EXT <> if i STAGE-WRITABLE exit then
    i STAGE-READABLE ;
 
+: STACK-POS ( n -- ) VAR-START @ - GEN-N ;
+: STAGE-SPILL ( n -- ) {: i:n :}
+   i GEN-ARG GEN-SP
+   i ARG-KIND@ K-FLOAT = if
+      i STACK-POS s"  FFI:STACK-FLOAT! " GEN+ exit then
+   i ARG-KIND@ K-VALUE = if
+      i STACK-POS s"  FFI:STACK-VALUE! " GEN+ exit then
+   i ARG-EXT@ NO-EXT <> i ARG-EXT-ARG@ NO-EXT <> or if
+      i ARG-EXT@ NO-EXT <> if i ARG-EXT@ GEN-N else i ARG-EXT-ARG@ GEN-ARG then
+      GEN-SP i STACK-POS s"  FFI:STACK-WRITABLE! " GEN+ exit
+   then
+   i STACK-POS s"  FFI:STACK-READABLE! " GEN+ ;
+
 : STAGE-ONE ( n -- ) {: i:n :}
+   STACK-N @ 0 > i VAR-START @ >= and if i STAGE-SPILL exit then
    i ARG-KIND@ K-FLOAT = if i STAGE-FLOAT exit then
    i ARG-KIND@ K-VALUE = if i STAGE-VALUE exit then
    i STAGE-POINTER ;
@@ -902,7 +941,7 @@ variable SCOPE-SET                         \ ... and whether one was stated at a
       E-FFI-LIBRARY-FULL throw
    then
    TABLE-ROOM
-   SYM-BUF SYM-U @ CUR-LIB @ INT-N @ FFI:DECLARE ;
+   SYM-BUF SYM-U @ CUR-LIB @ INT-N @ STACK-N @ FFI:DECLARE-SPILLED ;
 
 : EMIT ( -- )
    GEN CODEGEN:RESET
@@ -942,7 +981,7 @@ public
 : OPEN-FUNCTION ( -- )
    CHECK-SCOPE
    OPEN @ 0 <> if E-FFI-SYNTAX throw then
-   0 ARG-N ! 0 INT-N ! 0 FLT-N !
+   0 ARG-N ! 0 INT-N ! 0 FLT-N ! -1 VAR-START ! 0 STACK-N !
    R-NONE RES-KIND !
    TOK@ NAME!
    TOK@ SYM!
@@ -970,6 +1009,12 @@ public
    idx ARG-KIND@ K-POINTER <> if REFUSE then
    idx ARG-EXT@ NO-EXT <> if REFUSE then
    idx ARG-EXT-ARG@ NO-EXT <> if REFUSE then ;
+
+: SET-VARIADIC ( n -- ) {: fixed:n :}
+   OPEN @ 0= if REFUSE then
+   VAR-START @ -1 <> if REFUSE then
+   fixed 1 < fixed ARG-N @ > or if REFUSE then
+   fixed VAR-START ! ;
 
 \ Argument idx is written by the callee: the bounded call guards exactly the
 \ span named here, a fixed width or the argument that carries the length.
@@ -1032,6 +1077,8 @@ public
 
 : WRITES-ARG ( n n -- )
    FFI-DECL:WRITE-LENGTH-ARG ;
+
+: VARIADIC ( n -- ) FFI-DECL:SET-VARIADIC ;
 
 : ;FUNCTION ( -- )
    FFI-DECL:CLOSE-FUNCTION ;

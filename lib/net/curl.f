@@ -1,4 +1,4 @@
-\ Linux AArch64 HTTPS client over libcurl's easy interface.
+\ AArch64 HTTPS client over libcurl's easy interface.
 \
 \ STORAGE CLASS. TASK-LOCAL for everything a call runs through: the three
 \ foreign out-parameter cells are one $18 TASK:+USER row, so each task reads
@@ -103,23 +103,21 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $18 TASK:+USER IO-STORAGE drop
 \ nominal handle types wrap. Only a span Habu or the callee really reads or
 \ writes is declared `ptr u8`.
 \
-\ curl_easy_setopt and curl_easy_getinfo are variadic. On Linux AAPCS64 a
-\ variadic integer or pointer argument uses the same register as a fixed one, so
-\ one declaration per ARGUMENT SHAPE is exact, and the two shapes share a symbol
-\ under different Habu names. INIT's platform gate is what keeps that true:
-\ Apple's ARM64 variant passes variadic arguments on the stack instead.
+\ The two fixed arguments precede a variadic value. VARIADIC selects Apple's
+\ stack convention or Linux's register convention and preserves pointer extents.
 VERSIONED-LIBRARY curl 4
 
 FUNCTION: GLOBAL-INIT curl_global_init ( n -- n ) ;FUNCTION
 FUNCTION: EASY-INIT curl_easy_init ( -- n ) ;FUNCTION
 FUNCTION: EASY-CLEANUP curl_easy_cleanup ( n -- ) ;FUNCTION
 FUNCTION: EASY-PERFORM curl_easy_perform ( n -- n ) ;FUNCTION
-FUNCTION: SETOPT-NUM curl_easy_setopt ( n n n -- n ) ;FUNCTION
-FUNCTION: SETOPT-SPAN curl_easy_setopt ( n n ptr u8 -- n ) ;FUNCTION
+FUNCTION: SETOPT-NUM curl_easy_setopt ( n n n -- n ) 2 VARIADIC ;FUNCTION
+FUNCTION: SETOPT-SPAN curl_easy_setopt ( n n ptr u8 -- n ) 2 VARIADIC ;FUNCTION
 FUNCTION: SLIST-APPEND curl_slist_append ( n n -- n ) ;FUNCTION
 FUNCTION: SLIST-FREE curl_slist_free_all ( n -- ) ;FUNCTION
 
 FUNCTION: GETINFO-CELL curl_easy_getinfo ( n n ptr u8 -- n )
+   2 VARIADIC
    2 $08 WRITES-BYTES                     \ one C long, or one char*
 ;FUNCTION
 
@@ -187,10 +185,6 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
 \ CURLMsg enums are.
 : CELL-CLEAR ( ptr u8 -- ) {: target :}
    CELL-BYTES 0 do 0 target i + c! loop ;
-
-
-: PLATFORM ( -- )
-   HB-TARGET-LINUX? 0= if E-PLATFORM throw then ;
 
 
 : HANDLE-CELL ( handle -- n ) {: subject:handle :}
@@ -370,7 +364,6 @@ public
 \ A handle that cannot be initialised or configured is cleaned up before INIT
 \ answers, so a failure never leaves one allocated.
 : INIT ( -- init-result )
-   PLATFORM
    GLOBAL-READY dup CURLE-OK <> if >CODE CURL-INIT--RESULT:failed exit then drop
    EASY-INIT dup 0= if
       drop CURLE-FAILED-INIT >CODE CURL-INIT--RESULT:failed exit
@@ -1194,7 +1187,6 @@ public
 \ and a second start is E-STATE. A host that refuses the wake pipe is answered
 \ the way libcurl answers exhaustion, with CURLE_OUT_OF_MEMORY.
 : LOOP-START ( -- status )
-   PLATFORM
    LOOP-LIVE atomic@ 0 <> if E-STATE throw then
    0 >MS AIO:TIMEOUT AIO:AWAIT OUTCOME-DROP
    GLOBAL-READY dup CURLE-OK <> if CODE>STATUS exit then drop

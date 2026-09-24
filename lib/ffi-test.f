@@ -113,6 +113,10 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
    s" FUNCTION: FFI-T-X5 getpid ( ptr u8 -- n ) 3 $10 WRITES-BYTES ;FUNCTION" INCLUDE-EVALUATE ;
 : FFI-T-BAD-FLOAT-ARITY ( -- )
    s" FUNCTION: FFI-T-X6 getpid ( r r r r r r r r r -- r ) ;FUNCTION" INCLUDE-EVALUATE ;
+: FFI-T-BAD-VARARG ( -- )
+   s" FUNCTION: FFI-T-XV getpid ( n -- n ) 2 VARIADIC ;FUNCTION" INCLUDE-EVALUATE ;
+: FFI-T-NO-FIXED ( -- )
+   s" FUNCTION: FFI-T-XZ getpid ( n -- n ) 0 VARIADIC ;FUNCTION" INCLUDE-EVALUATE ;
 \ A library selection belongs to the scope that states it, and there is no
 \ default: a declaration in a scope that never stated one is refused by name,
 \ so a file cannot inherit the library the previously loaded file selected.
@@ -332,6 +336,16 @@ FFI-T-SELECT-MATH
 FUNCTION: FFI-T-SQRT-CALL sqrt ( r -- r ) ;FUNCTION
 PROCESS-SYMBOLS
 
+\ The same declaration exercises Apple's stack varargs and Linux's registers.
+FUNCTION: FFI-T-PRINTF snprintf ( ptr u8 n ptr u8 n r ptr u8 -- n )
+   3 VARIADIC
+   0 1 WRITES-ARG
+;FUNCTION
+64 BUFFER: FFI-T-PRINT-BUF
+: FFI-T-VARARGS ( -- )
+   FFI-T-PRINT-BUF 64 s\" %ld %.1f %s\z" drop 42 1.5 s\" ok\z" drop FFI-T-PRINTF
+   FFI-T-PRINT-BUF swap s" 42 1.5 ok" T$= ;
+
 \ A library selected by base name and soname version: libz.so.1 here and
 \ libz.1.dylib on macOS both exist, so the symbol resolves through the rendered
 \ selection at the first call on either target.
@@ -452,6 +466,8 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-BAD-EXTENT-ARG ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-EXTENT-INDEX ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-FLOAT-ARITY ;] E-FFI-ARITY TTHROWSQ
+   [: FFI-T-BAD-VARARG ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-NO-FIXED ;] E-FFI-SYNTAX TTHROWSQ
    s" a library selection is scoped to the scope that states it" T-LABEL
    FFI-T-SCOPE-BEFORE FFI-T-DEPTH!
    [: FFI-T-NO-LIBRARY ;] E-FFI-LIBRARY TTHROWSQ
@@ -490,6 +506,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-LONG-BASE ;] E-FFI-SYNTAX TTHROWSQ
    s" a declaration through the versioned form resolves its symbol" T-LABEL
    FFI-T-VERSIONED-CALL
+   FFI-T-VARARGS
 
    FFI-T-TABLE-FULL
    FFI-T-LIBRARY-TABLE-FULL
