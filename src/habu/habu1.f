@@ -1905,23 +1905,6 @@ variable SZA-I
    0 1 PROT-GUARD:CALL             \ trap an unmap aimed at any protected engine band
    NR-MUNMAP SYS,  SYS-PUSH ;
 
-: BFORK ( -- )                     \ ( -- pid|-1 ) parent gets pid, child gets 0
-   HB-TARGET-LINUX? IF
-      0 17 MOVZ,  1 0 MOVZ,  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,
-      NR-FORK SYS,  SYS-PUSH
-      exit
-   THEN
-   LBL {: ok:label :}
-   LBL {: done:label :}
-   NR-FORK SYS,
-   9 C-CS CSET,  9 ok CBZ,
-      0 0 MOVN,  done B,
-   ok LBL,
-   1 done CBZ,
-      0 0 MOVZ,
-   done LBL,
-   0 G-PUSH ;
-
 : BGETPID ( -- )                   \ ( -- pid ) never fails; x0 holds the caller's pid
    NR-GETPID SYS,  SYS-PUSH ;
 
@@ -2216,7 +2199,7 @@ variable SZA-I
    4 0 MOVZ,  5 0 MOVZ,
    NR-READLINKAT SYS,  SYS-PUSH ;
 
-package PATH-OS
+package LIBC-OS
 
 \ Read this process's loader slot, as src/os/*/layout.f DLSYM-SLOT does.
 \ Neither a library handle nor a resolved function survives this call.
@@ -2239,7 +2222,7 @@ public
 \ libc allocates its realpath result. Only a fitting result, including its NUL,
 \ reaches dst; free runs after both success and insufficient capacity.
 \ -1 = resolution/loader failure, -2 = no room for the complete C string.
-: EMIT ( -- )
+: REALPATH ( -- )
    LBL LBL LBL LBL {: badcap:label failed:label short:label done:label :}
    LBL LBL LBL LBL {: count:label counted:label copy:label release:label :}
    2 G-POP  1 G-POP  0 G-POP
@@ -2277,6 +2260,26 @@ public
    failed LBL,  0 0 MOVN,
    done LBL,
    SP SP 80 ADDI,  0 G-PUSH ;
+
+\ Darwin's libc fork reinitializes libSystem's child state, including Mach
+\ reply ports. A raw syscall child can execute Habu but subsequent Mach VM
+\ queries fail; the same query succeeds after libc fork. Linux keeps clone.
+: FORK ( -- )                         \ ( -- pid|-1 )
+   HB-TARGET-LINUX? IF
+      0 17 MOVZ,  1 0 MOVZ,  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,
+      NR-FORK SYS,  SYS-PUSH
+      exit
+   THEN
+   LBL LBL {: failed:label done:label :}
+   SP SP 16 SUBI,
+   9 $6B726F66 LIT64,  9 SP 0 STR,    \ "fork" + NUL
+   1 SP 0 ADDI,  DLSYM
+   0 failed CBZ,  16 0 0 ADDI,  16 BLR,
+   0 0 32 LSLI,  0 0 32 ASRI,        \ signed pid_t -> Habu cell
+   done B,
+   failed LBL,  0 0 MOVN,
+   done LBL,
+   SP SP 16 ADDI,  0 G-PUSH ;
 
 ;package
 
@@ -3387,7 +3390,7 @@ public
    s" spawn-argv-io" ['] BSPAWNARGVIO FPRIM-L
    s" spawn-argv-env-io" ['] BSPAWNARGVENVIO FPRIM-L
    s" spawn-argv-env-cwd-io" ['] BSPAWNARGVENVCWDIO FPRIM-L
-   s" fork" ['] BFORK FPRIM-L
+   s" fork" ['] LIBC-OS:FORK FPRIM
    s" wait-status" ['] BWAITSTATUS FPRIM-L ;
 
 package ENGINE-EMIT
@@ -3438,7 +3441,7 @@ package ENGINE-EMIT
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
    s" symlink" ['] BSYMLINK FPRIM-L   s" readlink" ['] BREADLINK FPRIM
-   s" realpath" ['] PATH-OS:EMIT 3 GDEREF-F
+   s" realpath" ['] LIBC-OS:REALPATH 3 GDEREF-F
    s" mkdir" ['] BMKDIR FPRIM-L     s" rmdir" ['] BRMDIR FPRIM-L
    s" stat64" ['] BSTAT64 FPRIM   s" lstat64" ['] BLSTAT64 FPRIM
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM
