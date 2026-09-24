@@ -46,6 +46,13 @@ private
       3 SCRIPT-ARGV$ NATIVE-SEED
    then ;
 
+\ Read the map after resource cleanup but before FFI forgets its addresses.
+\ On Darwin RELOAD calls Mach through the shared FFI table, which may be
+\ application data. A lazy first query from LINK repopulates that table after
+\ PREPARE and then refuses the pointer it just stored. FFI registered its
+\ persistent hook when proc-maps required it; reverse order runs this one first.
+' PROC-MAPS:RELOAD IMAGE-LIFECYCLE:REGISTER-PERSISTENT
+
 
 \ THE LIFECYCLE CALLBACKS RUN HERE, BEFORE THE CAPTURE READS THE APPLICATION'S
 \ DATA. A registrant holds process-local state - lib/task.f's eight dlsym cells,
