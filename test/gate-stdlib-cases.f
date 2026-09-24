@@ -2099,6 +2099,10 @@ SUITE field-proj
    test/field-proj-suite.f
 ;SUITE
 
+WHITEBOX-SUITE field-proj-errors
+   test/field-proj-errors.f
+;SUITE
+
 SUITE field-proj-boundary
    test/field-proj-boundary.f
 ;SUITE

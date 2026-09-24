@@ -4632,13 +4632,14 @@ private
 \ the sealed friend hook, exactly like TFAM-MATCH-PAY / TFAM-CONSTRUCT-STEP.
 variable FPRJ-TERM   variable FPRJ-OK
 variable FPRJ-FID    variable FPRJ-OFF   variable FPRJ-FAM
+variable FPRJ-FFAM
 \ Inner validation reads the request from the FPRJ-* cells (so the caught
-\ quotation stays stack-neutral for `catch`), may throw E-PF-ID on an uncommitted
-\ field id, and publishes the instantiated field type + verdict into FPRJ-TERM /
-\ FPRJ-OK.
-: TFAM-FIELD-PROJ-DO ( -- )
-   0 FPRJ-OK !  0 FPRJ-TERM !
-   FPRJ-FID @ TYPE-FIELD:FAMILY@ {: ffam:n :}
+\ quotation stays stack-neutral for `catch`). Only the committed field-family
+\ lookup is caught below; an E-PF-ID there means the expected absent field, and
+\ every other error propagates. The body publishes the instantiated field type
+\ + verdict into FPRJ-TERM / FPRJ-OK.
+: TFAM-FIELD-PROJ-DO ( n -- )
+   {: ffam:n :}
    ffam FPRJ-FAM @ PARAM>FAM <> IF EXIT THEN                    \ field not owned by the input family
    FPRJ-OFF @ FPRJ-FID @ TYPE-FIELD:BYTE-OFF@ <> IF EXIT THEN   \ baked offset disagrees with the committed offset (forged access)
    FPRJ-FID @ TYPE-FIELD:FLAGS@ PF-FLAGS-NONE <> IF EXIT THEN   \ non-addressable field role (niche/boxed/custom): no projection
@@ -4650,7 +4651,10 @@ variable FPRJ-FID    variable FPRJ-OFF   variable FPRJ-FAM
    -1 FPRJ-OK ! ;
 : TFAM-FIELD-PROJ ( n n n -- n bool )   \ fid off famterm -- fieldterm ok
    FPRJ-FAM !  FPRJ-OFF !  FPRJ-FID !
-   [: TFAM-FIELD-PROJ-DO ;] catch drop           \ E-PF-ID (uncommitted id) -> ok stays 0
+   0 FPRJ-OK !  0 FPRJ-TERM !
+   [: FPRJ-FID @ TYPE-FIELD:FAMILY@ FPRJ-FFAM ! ;] catch
+   dup 0= IF drop FPRJ-FFAM @ TFAM-FIELD-PROJ-DO
+   ELSE dup E-PF-ID = IF drop ELSE throw THEN THEN
    FPRJ-TERM @ FPRJ-OK @ 0= 0= ;                  \ ok as a boolean flag
 
 \ The width condition above is fail-closed defence on the ARMING boundary, like
