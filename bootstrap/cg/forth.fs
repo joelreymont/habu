@@ -599,7 +599,7 @@ variable LKWIMM
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywords (mirrors src/habu/habu2.f)
 variable LKWTRUSTED variable LKWTRUSTDECL variable LKWTRUSTRAW variable LKWCHKDOES variable LKWKERNEL
-variable LKWCAST variable LKWDEFCAST variable LCASTNONAME variable LCOLONNONAME   \ definition-name diagnostics (mirrors src/habu/habu2.f)
+variable LKWCAST variable LKWDEFCAST variable LCASTNONAME variable LCOLONNONAME variable LKEYNONAME   \ definition-name diagnostics (mirrors src/habu/habu2.f)
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
 variable LKWEXPORT
 variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
@@ -3519,6 +3519,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWDEFCAST @ LBL, s" checker-defcast" BYTES,
    LCASTNONAME @ LBL, s" hb: cast: missing name after " BYTES,
    LCOLONNONAME @ LBL, s" hb: : missing definition name after " BYTES,
+   LKEYNONAME @ LBL, s" hb: reader keyword needs a name: " BYTES,
    LKWKERNEL @ LBL, s" kernel:" BYTES,
    LKWTRUSTDECL @ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW @ LBL, s" trust-raw" BYTES,
    LKWCHKDOES @ LBL, s" check-does!" BYTES,
@@ -4455,6 +4456,16 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,
    12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR, ;
 
+\ Reader keywords that need an operand share this diagnostic path.
+\ LTOK's zero result means the stream ended; do not reuse the
+\ previous TKA/TKL bytes as a definition name. The caller supplies the baked
+\ keyword label so the message remains correct even when the input ended first.
+: C-DIE-KEYWORD-NAME ( addr n -- ) {: kw kwlen :}
+   0 2 MOVZ,  1 LKEYNONAME @ ADR,  2 33 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 kw @ ADR,  2 kwlen MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 $4A MOVZ,  NR-EXIT-GROUP SYS, ;
+
 \ CREATE as a BL-able routine: the interpret keyword AND the runtime `create`
 \ prim share it, so defining words (`: CONST create , does> @ ;`) work.
 \ LCREATE ( x15=top-level? ): the hook KIND record (`NAME create` -> sig -- n)
@@ -4466,6 +4477,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SP SP 16 SUBI,  30 SP 0 STR,  15 SP 8 STR,
    2 3 MOVZ,  LPROT @ BL,                               \ region -> RW
    LTOK @ BL,                                            \ read NAME
+   LBL {: named :}
+   0 named CBNZ,
+      LKWCREATE 6 C-DIE-KEYWORD-NAME
+   named LBL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
    C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot
@@ -4495,6 +4510,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ survives the name copy), then emit a literal-push body via C-LIT (x11=n).
 : C-CONSTANT ( -- )
    2 3 MOVZ,  LPROT @ BL,  LTOK @ BL,
+   LBL {: named :}
+   0 named CBNZ,
+      LKWCONST 8 C-DIE-KEYWORD-NAME
+   named LBL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
    C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
@@ -4520,18 +4539,35 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 \ CHAR NAME (interpret): push NAME's first byte. [CHAR] NAME (compile): bake it
 \ as a VS constant (folds like any literal).
-: C-CHAR ( -- )   LTOK @ BL,  9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH ;
+: C-CHAR ( -- )
+   LTOK @ BL,
+   LBL {: named :}
+   0 named CBNZ,
+      LKWCHAR 4 C-DIE-KEYWORD-NAME
+   named LBL,
+   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH ;
 
 \ [char] C consumes a second token like ['] does, so its operand needs the same
 \ body-capture append as native C-BCHAR (src/habu/habu2.f); src/core/type-family.f
 \ compiles `[char] T` in a checked body and is refused without it.
-: C-BCHAR ( -- )   LTOK @ BL,  LBCAP @ BL,  11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC @ BL, ;
+: C-BCHAR ( -- )
+   LTOK @ BL,
+   LBL {: named :}
+   0 named CBNZ,
+      LKWBCHAR 6 C-DIE-KEYWORD-NAME
+   named LBL,
+   LBCAP @ BL,
+   11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC @ BL, ;
 
 \ ' NAME (interpret): find NAME, push its code address. ['] NAME (compile): bake
 \ the address as a literal push into the word being compiled (via c-lit, x11=addr).
 : C-TICK ( -- )
-   LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   LBL LBL LBL LBL {: tk twide usedtry found :}
+   LTOK @ BL,
+   LBL LBL LBL LBL LBL {: tk twide usedtry found named :}
+   0 named CBNZ,
+      LKWTICK 1 C-DIE-KEYWORD-NAME
+   named LBL,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 usedtry CBZ,                      \ open-scope + global miss -> try the used publics (` ' SUITE` under a `using`)
    found LBL,
    14 13 8 ANDI,  14 twide CBNZ,        \ DNAME-WIDE gate (mirror of native C-TICK; inert in stage0)
@@ -4549,9 +4585,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ reading `['] <next token>`, so the tick takes its effect from whatever followed
 \ the name and every `s" x" ['] W FPRIM-L` row in src/habu/habu1.f is refused.
 : C-BTICK ( -- )
-   LTOK @ BL,  LBCAP @ BL,
+   LTOK @ BL,
+   LBL {: named :}
+   0 named CBNZ,
+      LKWBTICK 3 C-DIE-KEYWORD-NAME
+   named LBL,
+   LBCAP @ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   LBL {: bk :}  13 bk CBZ,  C-CODE-ADDR  bk LBL, ;
+   13 bk CBZ,  C-CODE-ADDR  bk LBL, ;
 
 : C-LBRACE-GUARDS ( -- )
    LBL {: qlok :}
@@ -7709,7 +7750,7 @@ variable P2SK
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL LKWTRUSTDECL !  LBL LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
-   LBL LKWCAST !  LBL LKWDEFCAST !  LBL LCASTNONAME !  LBL LCOLONNONAME !
+   LBL LKWCAST !  LBL LKWDEFCAST !  LBL LCASTNONAME !  LBL LCOLONNONAME !  LBL LKEYNONAME !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !

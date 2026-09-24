@@ -2167,8 +2167,10 @@ variable LKWCAST
 variable LKWDEFCAST
 variable LCASTNONAME
 variable LCOLONNONAME
+variable LKEYNONAME
 29 constant CASTNONAME-LEN       \ "hb: cast: missing name after "
 36 constant COLONNONAME-LEN      \ "hb: : missing definition name after "
+33 constant KEYNONAME-LEN        \ "hb: reader keyword needs a name: "
 
 : EMIT ( -- )
    LKWIF LABEL@ LBL,     s" if"     BYTES,    LKWTHEN LABEL@ LBL,   s" then"   BYTES,
@@ -2202,6 +2204,7 @@ variable LCOLONNONAME
    LKWDEFCAST LABEL@ LBL, s" checker-defcast" BYTES,
    LCASTNONAME LABEL@ LBL, s" hb: cast: missing name after " BYTES,
    LCOLONNONAME LABEL@ LBL, s" hb: : missing definition name after " BYTES,
+   LKEYNONAME LABEL@ LBL, s" hb: reader keyword needs a name: " BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUSTDECL LABEL@ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, s" hb: is: parsing words resolve outside using-imports; qualify the target" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  NCOMP-EMIT:LUNSET LABEL@ LBL, S\" hb: native compiler dispatch unset\n" BYTES,  NCOMP-EMIT:LNEUTRAL LABEL@ LBL, s" NEUTRAL-PARSE-IMM?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
@@ -3664,12 +3667,26 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 
 : C-STORE-DEF-NAME ( -- )  LSTOREDEFNAME LABEL@ BL, ;    \ call the one shared helper
 
+\ Reader keywords that need an operand share this diagnostic path.
+\ LTOK's zero result means the stream ended; do not reuse the
+\ previous TKA/TKL bytes as a definition name. The caller supplies the baked
+\ keyword label so the message remains correct even when the input ended before
+\ a token was written.
+: C-DIE-KEYWORD-NAME ( label n -- ) {: kw:label kwlen:n :}
+   0 2 MOVZ,  1 KWDATA:LKEYNONAME LABEL@ ADR,  2 KWDATA:KEYNONAME-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 kw ADR,  2 kwlen MOVZ,  NR-WRITE SYS,
+   0 $4A MOVZ,  LCOMPILEDIE LABEL@ B, ;
+
 : EMIT-CREATE ( -- )
    LBL {: nokind :}
    LCREATE LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  15 SP 8 STR,
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    LTOK LABEL@ BL,
+   LBL {: named:label :}
+   0 named CBNZ,
+      LKWCREATE LABEL@ 6 C-DIE-KEYWORD-NAME
+   named LBL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,   \ seed "NAME " for the hook
    C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
@@ -3713,6 +3730,10 @@ package INTERP-EMIT
 : C-CONSTANT ( -- )
    C-TASK-LIVE-GUARD
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,  LTOK LABEL@ BL,
+   LBL {: named:label :}
+   0 named CBNZ,
+      LKWCONST LABEL@ 8 C-DIE-KEYWORD-NAME
+   named LBL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,   \ seed "NAME " for the hook
    C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
@@ -3764,7 +3785,7 @@ package INTERP-EMIT
 
 : C-TRUSTED ( -- )
    C-TASK-LIVE-GUARD
-   LBL LBL LBL {: cpok ndok done :}
+   LBL LBL LBL {: cpok ndok named :}
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
       C-DIE-CODE-FULL
@@ -3772,7 +3793,10 @@ package INTERP-EMIT
    9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
       C-DIE-DICT-FULL
    ndok LBL,
-   LTOK LABEL@ BL,  0 done CBZ,
+   LTOK LABEL@ BL,
+   0 named CBNZ,
+      LKWTRUSTED LABEL@ 8 C-DIE-KEYWORD-NAME
+   named LBL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
    LBCAP LABEL@ BL,
    C-QUALIFY-DEF
@@ -3794,8 +3818,7 @@ package INTERP-EMIT
    12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
    12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
-   NCOMP-EMIT:TIER-COLON-DISPATCH
-   done LBL, ;
+   NCOMP-EMIT:TIER-COLON-DISPATCH ;
 
 \ The second end of every definition's publish, emitted by the `;` tail below and
 \ by the cast declarer just under here. It sits this early because the cast has
@@ -4507,17 +4530,31 @@ variable LTOPHOOK
    1 17 10 SUB,  2 10 0 ADDI,  G-OUT ;
 
 : C-CHAR ( -- )
-   LTOK LABEL@ BL,  LBCAP LABEL@ BL,
+   LTOK LABEL@ BL,
+   LBL {: named:label :}
+   0 named CBNZ,
+      LKWCHAR LABEL@ 4 C-DIE-KEYWORD-NAME
+   named LBL,
+   LBCAP LABEL@ BL,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH
    TOP-EV-CHAR C-TOPHOOK-LIT ;
 
 : C-BCHAR ( -- )
-   LTOK LABEL@ BL,  LBCAP LABEL@ BL,
+   LTOK LABEL@ BL,
+   LBL {: named:label :}
+   0 named CBNZ,
+      LKWBCHAR LABEL@ 6 C-DIE-KEYWORD-NAME
+   named LBL,
+   LBCAP LABEL@ BL,
    11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC LABEL@ BL, ;
 
 : C-TICK ( -- )
-   LBL LBL LBL {: tk:label usedtry:label found:label :}
-   LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `' RESERVED:tail` once sealed (TFAM 2b-iii)
+   LBL LBL LBL LBL {: tk:label usedtry:label found:label named:label :}
+   LTOK LABEL@ BL,
+   0 named CBNZ,
+      LKWTICK LABEL@ 1 C-DIE-KEYWORD-NAME
+   named LBL,
+   C-QUALIFY-SEAL-GUARD                                 \ reject `' RESERVED:tail` once sealed (TFAM 2b-iii)
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,                                       \ open-scope + global miss -> try used publics (` ' SUITE` under a `using`)
    found LBL,
@@ -4550,8 +4587,12 @@ variable LTOPHOOK
 \ finally ;` (test/compiler/native-finally.f, BODY produces a PRODUCT) died
 \ "hb: interpret-mode layout value: BODY", rc 70 - a certified program refused.
 : C-BTICK ( -- )
-   LBL LBL LBL {: bk:label usedtry:label found:label :}
-   LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `['] RESERVED:tail` once sealed (TFAM 2b-iii)
+   LBL LBL LBL LBL {: bk:label usedtry:label found:label named:label :}
+   LTOK LABEL@ BL,
+   0 named CBNZ,
+      LKWBTICK LABEL@ 3 C-DIE-KEYWORD-NAME
+   named LBL,
+   C-QUALIFY-SEAL-GUARD                                 \ reject `['] RESERVED:tail` once sealed (TFAM 2b-iii)
    LBCAP LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,                                       \ open-scope + global miss -> try used publics (`['] W` under a `using`)
@@ -10203,7 +10244,7 @@ package LABELS
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL KWDATA:LKWTRUSTDECL !  LBL KWDATA:LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
-   LBL KWDATA:LKWCAST !  LBL KWDATA:LKWDEFCAST !  LBL KWDATA:LCASTNONAME !  LBL KWDATA:LCOLONNONAME !
+   LBL KWDATA:LKWCAST !  LBL KWDATA:LKWDEFCAST !  LBL KWDATA:LCASTNONAME !  LBL KWDATA:LCOLONNONAME !  LBL KWDATA:LKEYNONAME !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !

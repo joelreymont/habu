@@ -306,6 +306,27 @@ CN-CHILD:ERR$ s" E-UNDEFINED: ;" CONTAINS? -1 T=
 \ closed, and says which keyword and where.
 s" cast:" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
 CN-CHILD:ERR$ s" hb: cast: missing name after" CONTAINS? -1 T=
+
+\ Required reader operands fail before stale token bytes can be consumed.
+\ These are child checks because the reader exits after its diagnostic.
+s" create"   CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: create" CONTAINS? -1 T=
+s" trusted:" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: trusted:" CONTAINS? -1 T=
+s" variable" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+\ `variable` shares the CREATE emitter, so its stable diagnostic names the
+\ implementation keyword that owns the common name reader.
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: create" CONTAINS? -1 T=
+s" constant" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: constant" CONTAINS? -1 T=
+s" char"     CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: char" CONTAINS? -1 T=
+s" : x [char]" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: [char]" CONTAINS? -1 T=
+s" '"        CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: '" CONTAINS? -1 T=
+s" : x [']"   CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: [']" CONTAINS? -1 T=
 package CN
 
 \ the cast: declarer used inside a checked body is rejected unsafe (verdict 0);
