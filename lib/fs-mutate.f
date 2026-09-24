@@ -94,6 +94,14 @@ FS-MUT-BAND-AGREE
 : FS-MUT-PATHZ2 ( ptr u8 n -- ptr u8 )
    FS-MUT-PATHZ2-BUF FS-PATHZ-INTO ;
 
+\ Build and seed tools append to paths in caller-owned bounded storage.
+: FS-MUT-SUFFIX-PATH ( ptr u8 n ptr u8 n SPAN:span<u8> -- n ) {: a:ptr u s:ptr su dst :}
+   u 0 < if E-FS-PATH throw then
+   su 0 < if E-FS-PATH throw then
+   a u dst SPAN:COPY
+   s su dst u SPAN:SKIP SPAN:COPY
+   u su + ;
+
 : FS-MUT-CLEANUP-SLOT ( n -- SPAN:span<u8> ) {: idx :}
    idx 0 < if E-FS-CAPACITY throw then
    idx FS-MUT-CLEANUP-MAX >= if E-FS-CAPACITY throw then
