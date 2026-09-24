@@ -38,9 +38,8 @@ belong in the language core.
 - Use dots only when the task calls for them; they are not a gate for coding,
   commits, reviews or ordinary communication. `dot off` archives the file and
   orphans every `blocks:` edge naming it — search `.dots/` for the id first and
-  sweep the edges in the same commit. Agents talk through Herdr session
-  messaging; there is no blackboard. Do not post messages on the user's behalf
-  without authorization.
+  sweep the edges in the same commit. Use the session's agent messaging for
+  coordination. Do not post messages on the user's behalf without authorization.
 
 ## Language and implementation
 
@@ -86,12 +85,3 @@ belong in the language core.
   before adding. There is no LESSONS.md. Reference material belongs in
   `docs/`. No mandatory ledgers, claim choreography, mutation campaigns or
   ritual response templates.
-
-## Session start in Herdr
-
-- Herdr forgets a pane's agent name when Herdr or the machine restarts. When a
-  session starts with `HERDR_ENV=1`, look up your pane (`$HERDR_PANE_ID`) in
-  `herdr agent list`; if it has no `name`, name yourself before other work:
-  `herdr agent rename "$HERDR_PANE_ID" <name>`.
-- Use the name your memory records for you. If it records none, pick any name
-  no live agent has and save it to memory so the next start restores it.
