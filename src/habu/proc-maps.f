@@ -1,8 +1,7 @@
-\ proc-maps.f - the memory areas THIS process holds, read from /proc/self/maps.
+\ proc-maps.f - the memory areas THIS process holds, enumerated by its kernel.
 \
-\ LINUX ONLY. /proc/self/maps is the kernel's own list of the calling process's
-\ virtual memory areas and this file reads nothing else, so a host without that
-\ file has no answer here and the reader dies by name rather than inventing one.
+\ Linux reads /proc/self/maps; macOS walks mach_vm_region_recurse, descending
+\ into submaps. Neither target invents an address range when the query fails.
 \ Its caller is src/habu/aot-closure.f CELL-MAPPED?, which asks whether a
 \ persistent cell holds an address the linking process mapped.
 \
@@ -15,7 +14,7 @@
 \ holds, whoever made it. NO VALUE-RANGE GUESS LIVES HERE: an address is mapped
 \ only because the kernel listed the area it falls in.
 \
-\ EACH AREA IS TAGGED WITH WHETHER OUR OWN EXECUTABLE BACKS IT, by comparing the
+\ ON LINUX EACH AREA IS TAGGED WITH WHETHER OUR OWN EXECUTABLE BACKS IT, comparing the
 \ line's pathname field with `readlink /proc/self/exe`. That is the one area
 \ class whose ADDRESS is not the kernel's choice: bin/hb and the images it links
 \ are both EXEC-type ELFs loaded at the same fixed base (0x400000, measured on
@@ -25,6 +24,8 @@
 \ whenever the third byte is a letter. Every other area - anonymous or another
 \ file - sits where the kernel put it for this run alone. The caller decides
 \ what to do with the tag; this file only reports it.
+\ macOS Mach-O images use ASLR: their mappings have neither this exemption nor
+\ Linux's brk exemption below, so both tags are false for Darwin regions.
 \
 \ THE BRK AREA IS TAGGED TOO, by the kernel's own name for it, `[heap]`. Its
 \ ADDRESS is not the kernel's choice in a second way: arm64 randomizes the break
@@ -58,6 +59,9 @@
 \ address order, which is what makes the lookup a binary search. A file that
 \ broke that order would silently break the search, so the reader refuses it
 \ rather than sorting bytes whose shape it has already stopped trusting.
+
+require lib/ffi-abi.f
+require lib/le.f
 
 package PROC-MAPS
 
@@ -96,10 +100,10 @@ variable LOADED
 variable BS-LO  variable BS-HI  variable BS-MID  variable BS-AT
 
 : ROW+ ( n n n n -- ) {: lo:n hi:n self:n heap:n :}
-   hi lo < IF s" proc-maps: /proc/self/maps area ends below its start" FAIL-RC die THEN
+   hi lo <= IF s" proc-maps: area has no ascending extent" FAIL-RC die THEN
    EXT-N @ 0 > IF
       lo EXT-N @ 1- EXT-HI @ < IF
-         s" proc-maps: /proc/self/maps areas are not in ascending order" FAIL-RC die THEN
+         s" proc-maps: areas are not in ascending order" FAIL-RC die THEN
    THEN
    EXT-N @ 1+ EXT-LO-RESERVE
    EXT-N @ 1+ EXT-HI-RESERVE
@@ -187,6 +191,60 @@ variable BS-LO  variable BS-HI  variable BS-MID  variable BS-AT
    EXE-U @ 0 <= IF s" proc-maps: cannot read /proc/self/exe" FAIL-RC die THEN
    EXE-U @ PATH-CAP >= IF s" proc-maps: /proc/self/exe is longer than PATH_MAX" FAIL-RC die THEN ;
 
+\ Darwin's v0 vm_region_submap_info_64 is 64 bytes, packed to four bytes;
+\ is_submap is the four-byte boolean at offset 48. Asking for v0 avoids a
+\ dependency on newer accounting fields. See mach/vm_region.h in the SDK and
+\ https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/vm_region.h
+64 constant MACH-INFO-BYTES
+16 constant MACH-INFO-COUNT
+48 constant MACH-SUBMAP-OFF
+1 constant MACH-END                    \ KERN_INVALID_ADDRESS: no later region
+8 BUFFER: MACH-ADDR
+8 BUFFER: MACH-SIZE
+4 BUFFER: MACH-DEPTH
+4 BUFFER: MACH-COUNT
+MACH-INFO-BYTES BUFFER: MACH-INFO
+
+PROCESS-SYMBOLS
+FUNCTION: MACH-SELF task_self_trap ( -- n ) ;FUNCTION
+FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr u8 -- n )
+   1 8 WRITES-BYTES
+   2 8 WRITES-BYTES
+   3 4 WRITES-BYTES
+   4 MACH-INFO-BYTES WRITES-BYTES
+   5 4 WRITES-BYTES
+;FUNCTION
+
+: MACOS-RELOAD ( -- )
+   MACH-SELF {: task:n :}
+   0 MACH-ADDR LE:U64!  0 MACH-DEPTH LE:U32!
+   BEGIN
+      MACH-INFO-COUNT MACH-COUNT LE:U32!
+      task MACH-ADDR MACH-SIZE MACH-DEPTH MACH-INFO MACH-COUNT MACH-REGION
+      {: code:n :}
+      code MACH-END = IF EXIT THEN
+      code 0<> IF s" proc-maps: mach_vm_region_recurse failed" FAIL-RC die THEN
+      MACH-COUNT LE:U32@ MACH-INFO-COUNT < IF
+         s" proc-maps: truncated Mach region information" FAIL-RC die THEN
+      MACH-INFO MACH-SUBMAP-OFF + LE:U32@ 0<> IF
+         MACH-DEPTH LE:U32@ 1+ MACH-DEPTH LE:U32!
+      ELSE
+         MACH-ADDR LE:U64@ {: lo:n :}
+         lo MACH-SIZE LE:U64@ + {: hi:n :}
+         lo hi 0 0 ROW+
+         hi MACH-ADDR LE:U64!
+      THEN
+   AGAIN ;
+
+: LINUX-RELOAD ( -- )
+   EXE-PATH!
+   s\" /proc/self/maps\z" drop open-rd FD !
+   FD @ 0 < IF s" proc-maps: cannot open /proc/self/maps" FAIL-RC die THEN
+   ST-LO ST !  0 ACC !
+   SLURP
+   FD @ close
+   ST @ ST-LO <> IF s" proc-maps: /proc/self/maps ended inside a line" FAIL-RC die THEN ;
+
 \ The area this value is interior to, or -1. [start, end): the end is the next
 \ area's start, or a hole, and belongs to neither.
 : ROW-AT ( n -- n ) {: v:n :}
@@ -210,14 +268,9 @@ public
 \ READ THE MAP NOW. Every earlier row is dropped: the answer is the process's
 \ areas at the moment of the call and nothing older.
 : RELOAD ( -- )
-   EXE-PATH!
-   s\" /proc/self/maps\z" drop open-rd FD !
-   FD @ 0 < IF s" proc-maps: cannot open /proc/self/maps" FAIL-RC die THEN
-   0 EXT-N !  ST-LO ST !  0 ACC !
-   SLURP
-   FD @ close
-   ST @ ST-LO <> IF s" proc-maps: /proc/self/maps ended inside a line" FAIL-RC die THEN
-   EXT-N @ 0 = IF s" proc-maps: /proc/self/maps listed no area" FAIL-RC die THEN
+   false LOADED !  0 EXT-N !
+   HB-TARGET-MACOS? IF MACOS-RELOAD ELSE LINUX-RELOAD THEN
+   EXT-N @ 0 = IF s" proc-maps: kernel listed no area" FAIL-RC die THEN
    true LOADED ! ;
 
 : EXTENTS ( -- n ) EXT-N @ ;      \ areas the last read found

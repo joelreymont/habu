@@ -24,3 +24,10 @@ The relocation tests compare selected vectors with shipped instruction
 sequences using a mnemonic interpreter. They do not establish that every
 address producer records its sites. Actual writer and restored-image behavior
 is tested separately in `test/snapshot-writer.f` and `test/app-image.f`.
+
+Stripped-image pointer checks query the linking process's kernel memory map:
+`/proc/self/maps` on Linux and `mach_vm_region_recurse` on macOS. The Darwin
+reader follows submaps using the SDK's v0 `vm_region_submap_info_64` layout;
+see Apple's [region contract](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/vm_region.h).
+Mach-O mappings receive no fixed-image or Linux `brk` exemption. The query
+detects live mapped addresses, not pointers into memory already unmapped.

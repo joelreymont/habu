@@ -11,7 +11,7 @@ require src/habu/code-span.f
 require src/habu/aot-window-latch.f
 require src/habu/aot-owned-cells.f
 \ The process's own memory map, which CELL-MAPPED? below reads a cell's value
-\ against. It is Linux-specific and requires nothing.
+\ against. Linux reads /proc; macOS enumerates Mach VM regions.
 require src/habu/proc-maps.f
 
 \ This file compiles checked, with raw-pointer boundaries as explicit TRUST rows.
@@ -585,14 +585,15 @@ variable NB-IX
 \ excluded WHOLE and not by those extents, because free space inside it - above
 \ the code high-water, or an unused dict slot - is a value the walker has always
 \ read as a datum, and this predicate is not the place to change that. The
-\ third is the executable's own segments: bin/hb and the image it links are both
+\ third is the Linux executable's own segments: bin/hb and the image it links are both
 \ EXEC-type ELFs at the same fixed load base, so an address in that band means
 \ the same in both - and it is the one band ordinary data lands in, because a
 \ cell holding a string's last three bytes has value s0 + s1<<8 + s2<<16 and any
 \ letter in the third byte puts it inside [0x400000,0x7a4000). Measured: the
 \ four cells of tools/hb-build-test.f HBT-STRIPPED-LIFECYCLE-HOOK's window that
 \ this predicate answers for are 0x796DB2, 0x746961, 0x746965 and 0x646965 -
-\ text, not pointers.
+\ text, not pointers. Mach-O images are position-independent, so their segments
+\ carry no self-image exemption.
 \ THE FOURTH IS THE BRK AREA, the one the kernel names [heap], and it is excluded
 \ for the opposite reason: NOTHING CAN POINT INTO IT. No Habu word allocates from
 \ the break - every allocation lib/memory.f makes is an mmap, and no file under

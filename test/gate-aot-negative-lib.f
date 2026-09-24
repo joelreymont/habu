@@ -74,10 +74,13 @@ package AOT-NEGATIVE
    s\" : ANH-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
    s" TRUSTED: ANH-ADDR ( ptr u8 -- n ) ;" GE-SRC-LINE
    s" : ANH-RUN ( -- ) MEM-ALLOC-64K drop ANH-ADDR {: p:n :}" GE-SRC+
+   HB-TARGET-LINUX? if
    s"  PROC-MAPS:HEAP-START {: h:n :}" GE-SRC+
    s\"  h PROC-MAPS:MAPPED? s\" AOT heap start is mapped\" ANH-EXPECT" GE-SRC+
    s\"  h PROC-MAPS:HEAP? s\" AOT heap start is in the brk band\" ANH-EXPECT" GE-SRC+
    s\"  h CELL-MAPPED? 0= s\" AOT heap band excluded from build mappings\" ANH-EXPECT" GE-SRC+
+   then
+   s\"  p PROC-MAPS:HEAP? 0= s\" AOT mmap address is outside the brk band\" ANH-EXPECT" GE-SRC+
    s\"  p CELL-MAPPED? s\" AOT mmap address is a build mapping\" ANH-EXPECT ;" GE-SRC-LINE
    s" ANH-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
