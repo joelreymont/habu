@@ -5130,15 +5130,12 @@ USIGS-RUNTIME-INIT
 
 \ SYM-CAP is a live power-of-2 cap (HIDX masks by SYM-CAP 1 -). It grows
 \ geometrically; the HIDX table (sized/masked by SYM-CAP) is rebuilt — rehashed —
-\ at the new cap on the next lookup. SYM-STR relocation rebases the PKG-A/NAME-A
-\ pointers of every existing record.
+\ at the new cap on the next lookup. PKG-A/NAME-A hold offsets into SYM-STR,
+\ like CT's and VREC's name columns, so moving the pool changes only its base.
 $4000 constant SYM-CAP-INIT     \ symbol table records (grows on demand, pow2)
-\ Measured high-water of SYM-STR-U at the capture seam of a self-build: 235,830
-\ bytes, and 255,709 over every checker suite. $60000 leaves 67% headroom over
-\ the seam mark. Staying above it matters more than the last byte saved: once
-\ the prefix outgrows this pool the capture copies the used span into fresh
-\ image DATA (REG-PERSIST-MOVE) and the dead boot buffer stays, so crossing it
-\ costs DP rather than saving it.
+\ Keep the boot pool above the self-build's live span: once the prefix outgrows
+\ it, capture copies the used span into fresh image DATA (REG-PERSIST-MOVE) and
+\ the dead boot buffer stays, so crossing it costs DP rather than saving it.
 $60000 constant SYM-STR-INIT    \ symbol string pool (grows on demand)
 variable SYM-CAP-V   SYM-CAP-INIT SYM-CAP-V !
 : SYM-CAP ( -- n ) SYM-CAP-V @ ;
@@ -5161,16 +5158,16 @@ $18 constant SYM-NAME-U-OFF
 $20 constant SYM-VIS-OFF
 $28 constant SYM-REC
 $8 constant SYM-REC-ALIGN
-$5 constant SYM-REC-PTR-MASK
+0 constant SYM-REC-PTR-MASK
 
-: SYM.PKG-A ( ptr u8 -- ptr ptr u8 )
-   SYM-PKG-A-CELL ptr-field ;
+: SYM.PKG-A ( ptr u8 -- ptr n )
+   SYM-PKG-A-OFF + CELL-VIEW ;
 
 : SYM.PKG-U ( ptr u8 -- ptr n )
    SYM-PKG-U-OFF + CELL-VIEW ;
 
-: SYM.NAME-A ( ptr u8 -- ptr ptr u8 )
-   SYM-NAME-A-CELL ptr-field ;
+: SYM.NAME-A ( ptr u8 -- ptr n )
+   SYM-NAME-A-OFF + CELL-VIEW ;
 
 : SYM.NAME-U ( ptr u8 -- ptr n )
    SYM-NAME-U-OFF + CELL-VIEW ;
@@ -5200,19 +5197,17 @@ $5 constant SYM-REC-PTR-MASK
    SYM-REC SYM-REC-ALIGN mod 0 CHECKER-RECORD-LAYOUT= ;
 
 : SYM-LAYOUT-META ( -- )
-   1 SYM-PKG-A-CELL lshift
-   1 SYM-NAME-A-CELL lshift or
-   SYM-REC-PTR-MASK CHECKER-RECORD-LAYOUT= ;
+   0 SYM-REC-PTR-MASK CHECKER-RECORD-LAYOUT= ;
 
-: SYM-LAYOUT-PTRS ( -- )
-   here dup SYM.PKG-A swap SYM-PKG-A-CELL ptr-field = CHECKER-RECORD-LAYOUT?
-   here dup SYM.NAME-A swap SYM-NAME-A-CELL ptr-field = CHECKER-RECORD-LAYOUT? ;
+: SYM-LAYOUT-FIELDS ( -- )
+   here dup SYM.PKG-A swap SYM-PKG-A-OFF CHECKER-RECORD-FIELD=
+   here dup SYM.NAME-A swap SYM-NAME-A-OFF CHECKER-RECORD-FIELD= ;
 
 : SYM-LAYOUT-ASSERT ( -- )
    SYM-LAYOUT-OFFSETS
    SYM-LAYOUT-SIZE
    SYM-LAYOUT-META
-   SYM-LAYOUT-PTRS ;
+   SYM-LAYOUT-FIELDS ;
 
 SYM-LAYOUT-ASSERT
 
@@ -5223,8 +5218,6 @@ PERSISTED-PTR-VARIABLE SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
 variable SYM-N
 variable SYM-STR-U
 variable SYM-PRIM-END
-variable SYM-I
-PTR-VARIABLE SYM-DST
 variable SYM-ID
 
 : SYMS ( -- ptr u8 ) SYMS-P @ ;
@@ -5236,60 +5229,53 @@ variable SYM-ID
 : SYM-ROW ( n -- ptr u8 )
    SYM-REC * SYMS + ;
 
-: SYM-PKG-A-FIELD ( n -- ptr ptr u8 )
+: SYM-PKG-A-FIELD ( n -- ptr n )
    SYM-ROW SYM.PKG-A ;
 
-: SYM-NAME-A-FIELD ( n -- ptr ptr u8 )
+: SYM-NAME-A-FIELD ( n -- ptr n )
    SYM-ROW SYM.NAME-A ;
 
-: SYM-DST@ ( -- ptr u8 )
-   SYM-DST @ ;
-
-: SYM-DST! ( ptr u8 -- )
-   SYM-DST ! ;
-
 : SYM-PKG$ ( n -- ptr u8 n )
-   dup SYM-PKG-A-FIELD @
+   dup SYM-PKG-A-FIELD @ SYM-STR swap +
    swap SYM-ROW SYM.PKG-U @ ;
 
 : SYM-NAME$ ( n -- ptr u8 n )
-   dup SYM-NAME-A-FIELD @
+   dup SYM-NAME-A-FIELD @ SYM-STR swap +
    swap SYM-ROW SYM.NAME-U @ ;
-
-\ SYM-STR-REBASE ( delta -- ) : a SYM-STR relocation moved the pool by delta; add
-\ it to the PKG-A/NAME-A pointer of every existing record so lookups still resolve.
-: SYM-STR-REBASE ( n -- ) {: delta:n :}
-   1 SYM-I !
-   begin SYM-I @ SYM-N @ < while
-      SYM-I @ SYM-PKG-A-FIELD {: pf:ptr :}   pf @ delta + pf !
-      SYM-I @ SYM-NAME-A-FIELD {: nf:ptr :}  nf @ delta + nf !
-      SYM-I @ 1 + SYM-I !
-   repeat ;
 
 : SYM-STR-GROW ( n -- ) {: need:n :}
    need SYM-STR-CAP-V @ 2 * max {: nc:n :}
-   SYM-STR-P @ {: old:ptr :}
-   old SYM-STR-CAP-V @ nc ARENA-BYTES-GROW {: new:ptr :}
-   new SYM-STR-P !   nc SYM-STR-CAP-V !
-   new old - SYM-STR-REBASE ;
+   SYM-STR-P @ SYM-STR-CAP-V @ nc ARENA-BYTES-GROW SYM-STR-P !
+   nc SYM-STR-CAP-V ! ;
 
 : SYM-STR-ENSURE ( n -- ) {: add:n :}   \ ensure room for `add` more string bytes
    SYM-STR-U @ add + SYM-STR-CAP-V @ <= IF exit THEN
    SYM-STR-U @ add + SYM-STR-GROW ;
 
-: SYM-STR-NEED ( n -- )
-   SYM-STR-ENSURE ;
-
-: SYM-COPY-FOLD ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u SYM-STR-NEED
-   SYM-STR SYM-STR-U @ + SYM-DST!
-   0 SYM-I !
-   begin SYM-I @ u < while
-      a SYM-I @ + c@ SYM-FOLD-C SYM-DST@ SYM-I @ + c!
-      SYM-I @ 1 + SYM-I !
-   repeat
+: SYM-COPY-FOLD ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   u SYM-STR-ENSURE
+   SYM-STR-U @ {: off:n :}
+   SYM-STR off + {: dst:ptr :}
+   u 0 ?do a i + c@ SYM-FOLD-C dst i + c! loop
    SYM-STR-U @ u + SYM-STR-U !
-   SYM-DST@ u ;
+   off u ;
+
+\ SOURCE-ROW crosses checker owners, including an older retained checker. Its
+\ five-cell wire row still carries pointers, independent of SYMS storage. The
+\ caller consumes it before asking for another row; capture clears the view.
+create SYM-XFER SYM-REC allot
+
+: SYM-XFER.PKG-A ( ptr u8 -- ptr ptr u8 ) SYM-PKG-A-CELL ptr-field ;
+: SYM-XFER.NAME-A ( ptr u8 -- ptr ptr u8 ) SYM-NAME-A-CELL ptr-field ;
+
+: SYM-XFER-CLEAR ( -- )
+   SYM-XFER CELL-VIEW 0 SYM-REC CELL / ARENA-CELLS-ZERO ;
+
+: SYM-XFER-ROW ( n -- ptr u8 ) {: id:n :}
+   id SYM-PKG$ SYM-XFER SYM.PKG-U ! SYM-XFER SYM-XFER.PKG-A !
+   id SYM-NAME$ SYM-XFER SYM.NAME-U ! SYM-XFER SYM-XFER.NAME-A !
+   id SYM-ROW SYM.VIS @ SYM-XFER SYM.VIS !
+   SYM-XFER ;
 
 : SYM-MATCH? ( ptr u8 n n ptr u8 n n -- bool )
    {: pkg pkgu:n vis:n name nameu:n id:n :}
@@ -5334,7 +5320,11 @@ variable SYM-ID
 \ (+1) whose generated constructor is that symbol. It is keyed by symbol id like
 \ everything else in this mapping, which is why it is sized and dropped here.
 12 constant HT-SVX
-13 constant HIDX-TABLES
+\ The package-only chains share spellings across visibility and name keys.
+\ They contain every live symbol, so the same LIFO retirement removes them.
+13 constant HT-PKG-BKT
+14 constant HT-PKG-NEXT
+15 constant HIDX-TABLES
 $CBF29CE484222325 constant HIDX-FNV-BASIS
 $100000001B3 constant HIDX-FNV-PRIME
 PTR-VARIABLE HIDX-MEM
@@ -5420,6 +5410,10 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
 : HIDX-BKT ( n -- ptr n )
    HT-BKT HIDX-CELL ;
 
+: HIDX-PKG-BKT ( ptr u8 n -- ptr n )
+   HIDX-FNV-BASIS HIDX-H ! HIDX-H$
+   HIDX-H @ SYM-CAP 1 - and HT-PKG-BKT HIDX-CELL ;
+
 : HIDX-ROW-HASH ( n -- n ) {: id:n :}
    id SYM-PKG$ id SYM-ROW SYM.VIS @ id SYM-NAME$ HIDX-HASH ;
 
@@ -5433,12 +5427,18 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
    id HIDX-EP0
    id HIDX-ROW-HASH HIDX-BKT {: b:ptr :}
    b @ id HT-NEXT HIDX-CELL !
-   id b ! ;
+   id b !
+   id SYM-PKG$ HIDX-PKG-BKT {: pb:ptr :}
+   pb @ id HT-PKG-NEXT HIDX-CELL !
+   id pb ! ;
 
 : HIDX-SYM-POP ( n -- ) {: id:n :}
    id HIDX-ROW-HASH HIDX-BKT {: b:ptr :}
    b @ id <> IF s" checker: symbol index corrupt" 76 die THEN
-   id HT-NEXT HIDX-CELL @ b ! ;
+   id HT-NEXT HIDX-CELL @ b !
+   id SYM-PKG$ HIDX-PKG-BKT {: pb:ptr :}
+   pb @ id <> IF s" checker: package index corrupt" 76 die THEN
+   id HT-PKG-NEXT HIDX-CELL @ pb ! ;
 
 \ HIDX-SYMS-RETIRE ( n -- ) : pop rows [n, SYM-N) before a scope restores SYM-N.
 : HIDX-SYMS-RETIRE {: keep:n :}
@@ -5480,6 +5480,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 : HIDX-BKT-CLEAR ( -- )
    0 begin dup SYM-CAP < while
       0 over HT-BKT HIDX-CELL !
+      0 over HT-PKG-BKT HIDX-CELL !
       1 +
    repeat drop ;
 
@@ -5558,14 +5559,24 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    repeat
    0 RES-FALSE ;
 
+: SYM-PKG-INTERN ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   u 0= IF 0 0 EXIT THEN
+   HIDX-ENSURE
+   a u HIDX-PKG-BKT @
+   begin dup 0 <> while
+      dup SYM-PKG$ a u SYM-STR=CI IF SYM-PKG-A-FIELD @ u EXIT THEN
+      HT-PKG-NEXT HIDX-CELL @
+   repeat drop
+   a u SYM-COPY-FOLD ;
+
 : SYM-PKG! ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
-   a u SYM-COPY-FOLD {: dst:ptr len:n :}
-   dst id SYM-PKG-A-FIELD !
+   a u SYM-PKG-INTERN {: off:n len:n :}
+   off id SYM-PKG-A-FIELD !
    len id SYM-ROW SYM.PKG-U ! ;
 
 : SYM-NAME! ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
-   a u SYM-COPY-FOLD {: dst:ptr len:n :}
-   dst id SYM-NAME-A-FIELD !
+   a u SYM-COPY-FOLD {: off:n len:n :}
+   off id SYM-NAME-A-FIELD !
    len id SYM-ROW SYM.NAME-U ! ;
 
 : SYM-SET ( ptr u8 n n ptr u8 n n -- ) {: pkg pkgu:n vis:n name nameu:n id:n :}
@@ -5581,7 +5592,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 : SYM-GROW ( n -- ) {: need:n :}
    need SYM-CAP-NEXT {: nc:n :}
    SYMS-P @ SYM-CAP-V @ SYM-REC * nc SYM-REC * ARENA-BYTES-GROW
-   \ The copied table is retired; its old pointers must not enter image DATA.
+   \ The copied table is retired; its old rows must not enter image DATA.
    SYMS-P @ CELL-VIEW 0 SYM-CAP-V @ SYM-REC * CELL / ARENA-CELLS-ZERO
    SYMS-P !
    nc SYM-CAP-V !
@@ -5595,8 +5606,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 : SYM-INTERN ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n name nameu:n :}
    pkg pkgu vis name nameu SYM-FIND IF EXIT THEN drop
    SYM-ENSURE
-   pkgu nameu + SYM-STR-ENSURE   \ reserve the whole record's strings up front so
-                                  \ no mid-SYM-SET grow relocates and dangles PKG-A
+   pkgu nameu + SYM-STR-ENSURE
    SYM-N @ SYM-ID !
    pkg pkgu vis name nameu SYM-ID @ SYM-SET
    SYM-ID @ 1 + SYM-N !
@@ -10347,10 +10357,9 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ survive into a built image (later checked loads reference persisted signatures).
 \ A complete store already in image DATA survives the copy, including one
 \ persisted by an earlier capture. A grown store lives in process-local mmap,
-\ so bake it into fresh image DATA (here-allot + copy). The CT and VREC record
-\ and node arrays name their string pool by OFFSET, so the pool may be persisted
-\ last and moved with nothing to fix up afterwards. SYM's records still hold
-\ pointers, and the string pool's relocation delta rebases them.
+\ so bake it into fresh image DATA (here-allot + copy). CT, VREC and SYM records
+\ name their string pools by offset, so each pool may be persisted last and
+\ moved with nothing to fix up afterwards.
 \ THE DELTA TRAVELS ON THE STACK AND IS NEVER PARKED IN A DATA CELL. One of its
 \ two terms is the grown store's process-local mmap address, so a cell holding it
 \ differs between two builds of the same source, and the AOT capture bakes that
@@ -10423,16 +10432,9 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 
 : SYM-SNAPSHOT-PERSIST ( -- )      \ HIDX is dropped by HIDX-RESET; rebuilt on restore
    SYMS-P SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
-   SYM-STR-P SYM-STR-U @ SYM-STR-CAP-V @ REG-PERSIST-MOVE {: moved:n grown:bool :}
-   grown 0= IF EXIT THEN
-   SYM-STR-U @ SYM-STR-CAP-V !
-   moved SYM-STR-REBASE ;
-
-: SYM-SNAPSHOT-MARK-POINTERS ( -- )
-   SYM-N @ 1 ?do
-      i SYM-PKG-A-FIELD ptr-cell-mark
-      i SYM-NAME-A-FIELD ptr-cell-mark
-   loop ;
+   SYM-STR-P SYM-STR-U @ SYM-STR-CAP-V @ REG-PERSIST-MOVE nip IF
+      SYM-STR-U @ SYM-STR-CAP-V !
+   THEN ;
 
 \ Friend-only extension hook: the package-scoped TFAM/SCHEMA registries live in
 \ files loaded after checker.f (src/core/type-schema.f, src/core/type-family.f),
@@ -10555,7 +10557,7 @@ REG-EXT-AOT-DEFAULTS
    SGBAD-CLEAR
    NULL-PTR SB !  0 SL !  0 SI !  NULL-PTR SS !
    NULL-PTR PKA !  0 PKU !  PKRESET
-   NULL-PTR SYM-DST !
+   SYM-XFER-CLEAR
    FIELD-PROJ-SCRATCH-RESET
    NULL-PTR DEADTA !  0 DEADTU !
    NULL-PTR SGA !  0 SGU !
@@ -10573,8 +10575,8 @@ REG-EXT-AOT-DEFAULTS
    CT-NAME-A CTN @ CT-CAP-V @ ARENA-CELLS-ZERO   \ name offsets, so zero retires a row
    VREC-NAME-A VREC-N @ VREC-CAP-V @ ARENA-CELLS-ZERO
    SYM-CAP-V @ SYM-N @ ?do
-      NULL-PTR i SYM-PKG-A-FIELD !
-      NULL-PTR i SYM-NAME-A-FIELD !
+      0 i SYM-PKG-A-FIELD !
+      0 i SYM-NAME-A-FIELD !
    loop ;
 
 : NORET-REC ( -- ptr n )
@@ -16734,7 +16736,7 @@ $10000 constant TRANSFER-DEFER
    id CTL-FLAGS-SYM
    id DFER-FIND-SYM if TRANSFER-DEFER or then
    id CTL-MASKS-SYM XFER-PACK {: flags:n :}
-   USIGS rec id SYM-ROW flags RES-TRUE ;
+   USIGS rec id SYM-XFER-ROW flags RES-TRUE ;
 
 : CON-NAME ( n -- ptr u8 n ) CT-NAME$ ;
 
@@ -16760,8 +16762,8 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    owner SOURCE-CON-OFF + CELL-VIEW @ is SOURCE-CON-NAME ;
 
 : TRANSFER-SYMBOL ( ptr u8 -- n ) {: sym:ptr :}
-   sym SYM.PKG-A @ sym SYM.PKG-U @ sym SYM.VIS @
-   sym SYM.NAME-A @ sym SYM.NAME-U @ SYM-INTERN ;
+   sym SYM-XFER.PKG-A @ sym SYM.PKG-U @ sym SYM.VIS @
+   sym SYM-XFER.NAME-A @ sym SYM.NAME-U @ SYM-INTERN ;
 
 : TRANSFER-ROW ( ptr u8 ptr u8 ptr u8 n -- )
    {: pool:ptr rec:ptr name:ptr packed:n :}
@@ -16817,8 +16819,8 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    NULL-PTR UNJ-A !  0 UNJ-U ! ;
 
 \ One capture seam owns the order: scrub transient stores before persistence
-\ copies any grown registry, persist the live rows and mark the pointers among
-\ them (SYM's; CT's and VREC's names are offsets and need no marking), then clear
+\ copies any grown registry, persist the live rows (all three name stores use
+\ offsets and need no pointer marking), then clear
 \ the later checker scopes that are declared below the registry implementation.
 : CHECKER-CAPTURE-PREPARE ( -- )
    CHECKER-TAPE:DETACH
@@ -16835,7 +16837,6 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    CT-SNAPSHOT-PERSIST
    VREC-SNAPSHOT-PERSIST
    SYM-SNAPSHOT-PERSIST
-   SYM-SNAPSHOT-MARK-POINTERS
    USIGS-SNAPSHOT-PERSIST
    USX-RESET
    UIX-RESET                            \ process-local mmap: never bake its address

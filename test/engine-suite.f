@@ -964,10 +964,9 @@ PARAM-CAP @ MAXPARAM-INIT =  and  -1 T=
 \ --- growable registries (CT / VREC / SYMS): crossing each init cap mid-run no
 \ longer dies, a relocating grow preserves lookups (SYMS rehashes its HIDX index),
 \ and a grown store persists into fresh image DATA with its names still resolving
-\ - CT and VREC name the pool by offset, SYMS rebases its record pointers. Each
+\ - CT, VREC and SYMS name the pool by offset. Each
 \ test lowers the live cap to force a grow, then restores the store to its baked
-\ boot buffer (record arrays grow to mmap first, so a SYMS rebase never touches
-\ the pristine boot buffer).
+\ boot buffer.
 variable TR-HERE
 \ ---- CT registry ----
 variable TR-CTN  variable TR-CTU  variable TR-CTC  variable TR-CTSC
@@ -1056,7 +1055,7 @@ TRUSTED: TR-VREC-WHITEBOX ( -- )
    TR-VFN @ VREC-FIELD-N !  TR-VFC @ VREC-FIELD-CAP-V ! ;
 LOWER-CERT-HOOK:INSTALL
 TR-VREC-WHITEBOX
-\ ---- SYMS registry: record array grow rehashes HIDX; string pool grow rebases ----
+\ ---- SYMS registry: record array grow rehashes HIDX; string offsets survive ----
 variable TR-SC  variable TR-SSC  variable TR-SN  variable TR-SSU
 variable TR-SP  variable TR-SSP  variable TR-SID0 variable TR-SID1
 variable TR-S-LC variable TR-S-STRLC
@@ -1084,7 +1083,7 @@ TRUSTED: TR-SYMS-WHITEBOX ( -- )
    s" tgpkg" SYM-GLOBAL s" SYMGROWTHREE" SYM-INTERN drop
    s" syms-str-grow" T-LABEL
    SYM-STR-CAP-V @ TR-S-STRLC @ > -1 T=
-   s" syms-str-grow-rebase-find" T-LABEL
+   s" syms-str-grow-find" T-LABEL
    s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND -1 T= TR-SID0 @ T=
    here TR-HERE !
    SYM-SNAPSHOT-PERSIST
@@ -1207,7 +1206,7 @@ public
    s" sym-record-layout" T-LABEL
    stride 5 cells T=
    align $8 T=
-   mask $5 T=
+   mask 0 T=
    ok TR-BOOL= ;
 
 : TR-EFF-REC-LAYOUT ( -- )

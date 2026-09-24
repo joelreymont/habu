@@ -143,8 +143,8 @@ cells are checked at their interleaved positions before being reported as one
 class; the snapshot's three band classes partition one checked span. The header
 metadata extent comes from the program headers and dynamic entries, including
 trailing zero fields, rather than from scanning for the last nonzero byte.
-The block above is the engine this tree ships in `bin/hb`. Everything in the
-prose and tables below reads the engine of sha256
+The historical examples above and below describe different Linux builds.
+The prose and tables below use the engine of sha256
 `91715a33e5cff0b0b876322fb360ede4f030a1f3ed59c722ca53206ee0b68bc9`,
 3,735,744 bytes.
 
@@ -383,11 +383,13 @@ them — a maker or application image with boot-run entries.
 
 ## What nothing reaches
 
-A stripped application gets the closure walk (`src/habu/aot-closure.f`); the
-engine does not, so every word the build ever compiled ships. The tool marks
-from roots over the same call graph — direct `B`/`BL` edges in the baked code
-plus the code addresses the payload's relocation tables name — with two root
-sets, because "dead" means two different things.
+A stripped application gets the closure walk in `src/habu/aot-closure.f`.
+Native engine capture also traces and compacts its code graph, in
+`src/habu/aot-capture.f`. Its dictionary surface remains a root because the
+interpreter must resolve words used by programs loaded later. The size tool
+independently marks direct `B`/`BL` edges and the code addresses named by the
+payload's relocation tables, using two root sets. The historical tables below
+illustrate that distinction; run the tool for the current image's counts.
 
 **Dictionary surface** (every global and package-public word is a root, since a
 program can name it):
@@ -397,11 +399,10 @@ program can name it):
 | reachable | 7,832 | 734,712 | | |
 | unreachable | 1 | 300 | 20 | 12 |
 
-One record, package-private, in `NSTR`. The 2,861 unreachable private records
-this walk used to find are not hiding: the capture no longer ships them. The
-walk is weaker than it was, too — the code those records owned is now code no
-record owns, and every such span is scanned as a root — so the empty row says
-less than it would have.
+This historical sample leaves one package-private record in `NSTR` unreachable.
+Code whose dictionary record was removed travels in anonymous code spans;
+the current census reports those spans separately. Dictionary counts alone
+therefore do not account for all retained code.
 
 **Engine entry** (only the engine's own entry points are roots: its boot-run
 entry words and the code addresses its DATA cells hold):

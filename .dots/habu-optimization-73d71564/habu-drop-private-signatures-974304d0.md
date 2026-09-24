@@ -37,6 +37,29 @@ Independent string representation work is habu-store-checker-names-70a89ffb.
 Temporary reproduction: habu-symbol-retention-audit.f and habu-effect-rca.f
 under ~/.cache/tmp. No implementation is claimed.
 
+## Source reconstruction constraint
+
+A real tier-1 capture of private `1 constant HIDDEN` and public
+`KEPT ( n -- n ) HIDDEN +` retains neither the constant's name nor its body.
+Nevertheless, `VERIFY:SOURCE-BUF` can check KEPT's source alone while HIDDEN's
+checker symbol remains. Retiring that symbol makes the same source fail with
+E-UNDEFINED; compiled KEPT still returns the expected value. Supplying the
+complete source or restoring the symbol restores verification. Dictionary and
+native-code roots therefore do not cover current source reconstruction.
+
+Preserve that behavior with source-dependency roots, including constants
+eliminated during lowering. Removing live private metadata without those roots
+would change the reconstruction contract. No native self-build failure was
+demonstrated by this probe. A narrower candidate is already-retired symbols
+without registry/checkpoint roots; its savings remain unmeasured.
+
+Preserve rooted effect histories and source-order horizons. Shared effect nodes
+can outlive the header that introduced them; clearing that header's roots would
+hide those nodes from UIX rebuild. Exact dictionary selection must also precede
+any metadata sweep: LOAD-TARGET calls CHECKER-CAPTURE-PREPARE before compilation
+finishes. Repeatable probes and observed limits are in
+`~/.cache/tmp/habu-opt-names-scratch/prune-design/results.md`.
+
 ## Earlier task context
 
 Problem: the checker user-signature store (USIGS-USER, 1.96 MB of the image as sparse runs) and the symbol tables (SYMS-BOOT, SYM-STR-BOOT, 571 KB) carry an entry for every one of the engine 15,470 words, but 8,022 are package-private and, once every captured package is sealed, no REPL source can name them, so their signatures and symbols are dead weight in every engine and every application image. Acceptance: at capture, after the seal, the signature and symbol entries of private words of sealed packages are removed (or never captured) with the tables compacted, keeping every entry the public surface, the keep-set and the checker own bookkeeping need; the checker still checks user code against every public word and refuses private names as undefined; engine-size.f reports the store and symbol bytes before and after; byte fixpoint; full gate and stripped-application suites green; Radar and Tender green on the result. Files: src/core/checker.f (capture-time compaction), src/habu/aot-capture.f, tools/engine-size.f. Verify: tools/engine-size.f; tools/native-build.f fixpoint; test/run.f; downstream suites. Depends: the seal child. Ownership: checker capture. Claim: unassigned. Parent: the ship-only-the-surface epic.
