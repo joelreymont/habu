@@ -568,12 +568,22 @@ variable MAIN-PARK-READY
 : MAIN-PARK ( -- sem )
    MAIN-PARK-REC CELL-VIEW SEM-AT ;
 
+\ This semaphore belongs to the running process, including Darwin's Mach port.
+\ Capturing a warm main task must leave the next process an uninitialised park.
+: MAIN-PARK-RESET ( -- )
+   MAIN-PARK SEM-DESTROY
+   0 MAIN-PARK-READY atomic! ;
+
+: MAIN-PARK-CREATE ( -- )
+   0 MAIN-PARK SEM-INIT
+   [: MAIN-PARK-RESET ;] IMAGE-LIFECYCLE:REGISTER ;
+
 : MAIN-PARK-INIT ( -- )
    begin
       MAIN-PARK-READY atomic@ 2 = if exit then
       0 1 MAIN-PARK-READY atomic-cas 0= if
-         [: 0 MAIN-PARK SEM-INIT ;] catch dup 0 <> if
-            0 MAIN-PARK-READY atomic! throw
+         [: MAIN-PARK-CREATE ;] catch dup 0 <> if
+            MAIN-PARK-RESET throw
          then drop
          2 MAIN-PARK-READY atomic! exit
       then
