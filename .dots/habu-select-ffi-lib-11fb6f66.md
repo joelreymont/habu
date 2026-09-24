@@ -1,0 +1,9 @@
+---
+title: Select FFI library names per platform
+status: open
+priority: 3
+issue-type: task
+created-at: "2026-09-24T10:23:25.493267+03:00"
+---
+
+lib/ffi-abi.f LIBRARY parses one literal name (FFI-DECL:SELECT-LIBRARY -> FFI:LIBRARY-PATH, dlopened as given), and three declarations spell a Linux soname: lib/pg.f:155 `LIBRARY libpq.so.5`, lib/net/curl.f:111 `LIBRARY libcurl.so.4`, lib/crypto/evp.f:61 `LIBRARY libcrypto.so.3`; lib/zip-ffi.f LIBRARY-OPEN dlopens `libzip.so.5` by hand. On macOS aarch64 those names do not exist (libpq.5.dylib, libcurl.4.dylib, libcrypto.3.dylib, libzip.5.dylib), so every module that binds through them fails at its first dlopen; lib/pg.f:1025 and lib/serial.f:149 already throw E-PLATFORM off Linux for other reasons. The precedent is lib/unicode.f LIBRARY$: HB-TARGET-MACOS? picks `libunistring.5.dylib`, else `libunistring.so.5`. Found by cedar while recording macOS bring-up blockers for Tender (2026-09-24); Tender secrets/keyring.f also shells out to /usr/bin/secret-tool over DBus, which is Tender side and not this dot. Fix: give LIBRARY a per-target form (the base name plus the version, rendered as lib<name>.so.<v> on Linux and lib<name>.<v>.dylib on macOS by HB-TARGET-MACOS?, or two literals selected the way LIBRARY$ does) and move the four sites to it; no symlink or search-path workaround. Acceptance: the four modules dlopen on both targets (lib/ffi-test.f or the module tests run on each), and a LIBRARY row naming a bare soname on the wrong target is refused or rendered, never silently unresolved. Files: lib/ffi-abi.f, lib/ffi-decl.f, lib/pg.f, lib/net/curl.f, lib/crypto/evp.f, lib/zip-ffi.f. Verify: lib/ffi-test.f, lib/pg-test.f, lib/net/curl-test.f, lib/crypto/evp-test.f, lib/zip-test.f on Linux; the macOS run is the new machine. Depends: none. Ownership: hazel (pg.f edits with cedar). Claim: unassigned.
