@@ -918,6 +918,21 @@ using IR-BUILD
    VGLUE @ in VGLUE-LOW IN-GLUE @ <> if E-NELAB-JOIN throw then
    OUT-GLUE @ VGLUE ! ;
 
+\ A TRUSTED: definition's declared row IS the assertion about its results: the
+\ checker records that signature without walking the body, so the result cells
+\ the body leaves take the declared grouping.  A checked body is the opposite
+\ case - the checker walked it, so the grouping the body itself built is the
+\ fact its return states - and keeps EMIT-RETURN's strict glue check.
+\ EMPTY-FRAME-RESHAPE above is the precedent: the same cells under a different
+\ logical grouping, adopted only where an authority states it.  A count that
+\ disagrees is untouched and still fails EMIT-RETURN's arity check; the caller
+\ applies this to a colon frame only.
+: TRUSTED-FRAME-RESHAPE ( n -- )
+   {: out:n :}
+   data-base TRUSTED-CELL + @ 0= if exit then
+   VN @ out <> if exit then
+   OUT-GLUE @ VGLUE ! ;
+
 \ ---- the open control structures ----------------------------------------------
 \ Structures one definition may nest.
 32 constant CMAX
@@ -4036,6 +4051,7 @@ private
    dead  EXIT-USED @ 0=  and 0= if
       EXIT-USED @ 0= if BEFORE-RETURN then
       out QRET-FILL
+      FUN-KIND @ FUN-COLON = if out TRUSTED-FRAME-RESHAPE then
       c b v key out EMIT-RETURN
       CLOSE-HELD
    then

@@ -1516,6 +1516,22 @@ variable LK-N
 : LOPSIDED ( -- )
    BND [: LOPSIDED-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ The return's OWN glue check, which the arm cases above never reach: two loose
+\ cells under a row declaring ONE two-cell value. A checked definition keeps
+\ this refusal - only NELAB's TRUSTED-FRAME-RESHAPE lets the declared grouping
+\ stand over the cells a body left, and only when the definition being compiled
+\ is a TRUSTED: one, which this elaboration is not.
+: RGLUE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" RGLUE 0 5" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   0 2 NELAB:FRAME-GLUE!
+   c b v p r 0 2 NELAB:COLON drop ;
+
+: RGLUE ( -- )
+   BND [: RGLUE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : STRAY-INDEX-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    s" STRAY i" TEXT!
@@ -1710,6 +1726,10 @@ variable LK-N
 : LOPSIDED-CASE ( -- )
    s" an arm that changes the stack depth is refused" T-LABEL
    [: LOPSIDED ;] E-NELAB-JOIN TTHROWSQ ;
+
+: RGLUE-CASE ( -- )
+   s" a checked body whose result cells are not grouped as its row declares is refused" T-LABEL
+   [: RGLUE ;] E-NELAB-JOIN TTHROWSQ ;
 
 : STRAY-INDEX-CASE ( -- )
    s" a loop index outside any counted loop is refused" T-LABEL
@@ -3089,6 +3109,7 @@ public
    BND [: drop CROSSED-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop UNCLOSED-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop LOPSIDED-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop RGLUE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop STRAY-INDEX-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop DOUNDER-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop DODBL-CASE ;] IR-CTX:WITH-CONTEXT

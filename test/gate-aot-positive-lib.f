@@ -773,6 +773,52 @@ variable SELF-SRC-U
    s" hb-build AOT preseed dropped bad-tag fetch run" FETCH-RUN-BAD
    s" PASS: hb-build AOT preseeded bad-tag fetch (rc 85 hb: bad layout tag via NFETCH-CHECK:TAGS in a stripped image, used and dropped)" type cr ;
 
+\ A TRUSTED: body answers a family value from loose cells. The checker records
+\ the declared row without walking the body, so the elaborator takes that row
+\ as the grouping of the cells the body left (src/compiler/native/elaborate.f
+\ TRUSTED-FRAME-RESHAPE); before it, hb-build died on GWN-MAKE with
+\ `ncomp: cannot compile` E-NELAB-JOIN - the same width, a different grouping.
+\ Cell order: payload below, tag on top, so `7 1` is the gns arm carrying 7.
+\ The forged row proves the cells are still a checked family value where they
+\ are consumed: tag 5 is outside gwfn's range, and the stripped image dies at
+\ the fetch with NFETCH-CHECK's diagnostic, not at the trusted return.
+: TRUSTED-MAKE-SRC ( -- )
+   GE-SRC-RESET
+   s" ENUM gwfn 0 VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
+   s" package AOT-TRUSTED-MAKE" GE-SRC-LINE
+   s" TRUSTED: GWN-MAKE ( -- gwfn ) 7 1 ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   S\" : RUN ( -- ) GWN-MAKE MATCH gwfn gnn OF 100 ENDOF gns OF ENDOF ;MATCH s\" gns=\" type . ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" : MAIN ( -- ) AOT-TRUSTED-MAKE:RUN ;" GE-SRC-LINE ;
+
+: TRUSTED-MAKE-EXPECT ( -- ptr u8 n )
+   SB-RESET
+   s" gns=7" GE-OUT-LINE
+   SB$ ;
+
+: TRUSTED-FORGE-SRC ( -- )
+   GE-SRC-RESET
+   s" ENUM gwfn 0 VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
+   s" 1 LAYOUT-BUFFER MEM gwfn" GE-SRC-LINE
+   s" package AOT-TRUSTED-FORGE" GE-SRC-LINE
+   s" TRUSTED: GWN-FORGE ( -- gwfn ) 0 5 ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : RUN ( -- ) GWN-FORGE 0 MEM ! 0 MEM @ drop ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" : MAIN ( -- ) AOT-TRUSTED-FORGE:RUN ;" GE-SRC-LINE ;
+
+: TRUSTED-ROW ( -- )
+   s" hb-aot-trusted-make.f" s" hb-aot-trusted-make" s" hb-aot-trusted-make-report.json" PATHS
+   TRUSTED-MAKE-SRC
+   s" hb-build AOT trusted family-row build" GB-HBB-BUILD
+   TRUSTED-MAKE-EXPECT s" hb-build AOT trusted family-row output" GB-RUN-EXPECT
+   s" hb-aot-trusted-forge.f" s" hb-aot-trusted-forge" s" hb-aot-trusted-forge-report.json" PATHS
+   TRUSTED-FORGE-SRC
+   s" hb-build AOT trusted forged-tag build" GB-HBB-BUILD
+   s" hb-build AOT trusted forged-tag run" FETCH-RUN-BAD
+   s" PASS: hb-build AOT trusted family row (loose cells take the declared grouping; a forged tag still dies at the fetch, rc 85)" type cr ;
+
 : RUN-BUNDLE-DATA ( -- )
    s" hb-gate-aot-bundle-data" GT-START
    MAKER-SELFTEST
@@ -789,6 +835,7 @@ variable SELF-SRC-U
    s" hb-gate-aot-preseed" GT-START
    PRESEED
    PRESEED-FETCH
+   TRUSTED-ROW
    GT-CLEANUP ;
 
 : START-BUNDLE-DATA ( -- )

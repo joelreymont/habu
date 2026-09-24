@@ -1288,6 +1288,19 @@ the rule.
   `W` as `E-UNDEFINED` before and is the `E-MISMATCH` the effect deserves after;
   `TASK:MIN-STACK TASK:TASK T1  : F ( -- ptr n ) T1 ;` refused `T1` as
   `E-UNDEFINED` before and passes after.
+- **A `TRUSTED:` body may answer a family value from loose cells; a checked
+  body groups its own result.** The checker records a trusted signature
+  without walking the body, so the native elaborator takes the declared row as
+  the grouping of the cells the body leaves (`elaborate.f`
+  `TRUSTED-FRAME-RESHAPE`): `TRUSTED: GWN-MAKE ( -- gwfn ) 7 1 ;` builds
+  stripped and `MATCH`es as `gns` carrying 7 (test/gate-aot-positive-lib.f
+  `TRUSTED-ROW`); the payload sits below and the tag on top. Before the
+  reshape, hb-build died `ncomp: cannot compile` `E-NELAB-JOIN` (-8503) on
+  that body: the same width, a different grouping. A checked body keeps the
+  strict return check: two loose cells under a row declaring one two-cell
+  value throw `E-NELAB-JOIN` (test/compiler/native-elaborate.f `RGLUE`). A
+  count that disagrees is `E-NELAB-ARITY` either way, and a forged tag is
+  still refused where the value is consumed (`hb: bad layout tag`, rc 85).
 - **A local binds in the spelling it was declared in; word lookup stays
   case-insensitive.** `{: text :}` reads `text` as the local and `TEXT` as the
   word, and the same local hides the word `TEXT` from the definition it is
