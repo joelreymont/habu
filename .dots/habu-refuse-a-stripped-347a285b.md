@@ -1,9 +1,0 @@
----
-title: Refuse a stripped image whose startup names no data span
-status: open
-priority: 3
-issue-type: task
-created-at: "2026-09-22T11:02:26.093041+03:00"
----
-
-Follow-up to habu-read-the-stripped-ed9b4df3 (its third part). tools/image-size-lib.f FIND-BLOB's zero-sequence exit is the empty-capture-window path src/habu/aot-lib.f EMIT-DATA-COPY really emits when BLOB-LEN is 0 (`7 BLOB-END @ LIT64, 7 DATA DP-CELL STR,` and no TEXT-ADR,), so a stripped image with a data span whose TEXT-ADR, shape drifted is reported as code-only and the tool exits 0. Measured on the integrated tree with TEXT-ADR-SCRATCH changed to 13 in tools/aot-startup-shape.f: hb-build --size-report exits 0 with code 13068, data 0 written against the true code 2348, data 465, while test/gate-aot-positive.f goes red (E-BUILD-SOURCE from SCAN-STARTUP's DATA-COUNT check). Two facts rule out the brief's caller-threaded image kind: IMAGE-SIZE:CLASSIFY already reads the kind out of the file (snapshot, engine, stripped) and only a stripped image reaches FIND-BLOB; and refusing zero sequences for every stripped image breaks tools/hb-build-test.f HBT-BUILD-AOT-OBJECT-HIT, whose cached exit object is 20 bytes of code with no TEXT-ADR, sequence at all. Fix: name EMIT-DATA-COPY's empty-window shape (the LIT64 into x7 and the DP-CELL store) in tools/aot-startup-shape.f, and have FIND-BLOB refuse by name (`image-size: the startup names no code base + offset sequence`) an image that has a startup (any TEXT-ADR, sequence, e.g. the crash-handler site) and neither the x9 sequence nor the DP store; about 40-60 lines in the module and image-size-lib, no caller change. Acceptance: the scratch-13 mutation makes the tool exit non-zero by name; HBT-BUILD-AOT-OBJECT-HIT stays green; engine-size on bin/hb and hb-build --size-report on a stripped fixture are byte-identical before and after.
