@@ -197,7 +197,7 @@ private
    s" a moved code-cell target cannot give an unrelated dead body a name" T-LABEL
    s" CGT-WINDOW" DICT-WL:NAMESPACE XREF-FIND-WL AOT-RLEN
    3 ACAP-REC-DST 40 + AOT-N-C!
-   0 3 cells ACAP-NAMED-BIT + !
+   0 3 ACAP-NAMED-BIT !
    3 ACAP-NAMED? TFALSE
    \ Callee offset 16 moved to 8. The dead body's OLD offset is also 8;
    \ recomputing the keep rule in mixed coordinates would resurrect it.

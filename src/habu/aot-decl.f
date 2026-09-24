@@ -463,11 +463,23 @@ create BUF MAX 8 * allot    variable N   \ 8B rows: blob-off u32 + name-off u32
 \ The seed publishes the table's address, this count and the blob's landing base
 \ in the three AOT-SPAN cells layout.f set aside.
 package AOT-SPAN
+private
+\ RESERVED AT FIRST USE, NOT ALLOTTED, and that is the shape every table only
+\ the capture fills now has (REC-STORAGE above is the original). A static
+\ `create BUF MAX ROW * allot` spends MAX * ROW = 262,144 bytes of the build
+\ host's DATA prefix in every process that loads this file, and the prefix is
+\ the DATA below the captured window (AOT-ARM:WINDOW-OPEN takes D0 from `here`),
+\ so those bytes are charged to every build whether or not it captures anything
+\ and they buy the engine nothing. A mapping costs the prefix nothing and the
+\ bound is unchanged, so a lowered AOT-REC-MAX still refuses where it did.
+DYNAMIC-BUFFER STORAGE n
 public
 AOT-BUF:AOT-REC-MAX constant MAX      \ at most one row per window record
 8 constant ROW
-create BUF MAX ROW * allot    variable N
-: BUF@ ( -- ptr u8 ) BUF ;
+variable N
+: BUF@ ( -- ptr u8 )
+   MAX ROW * CELL 1- + CELL / STORAGE-RESERVE
+   0 STORAGE BYTE-VIEW ;
 ;package
 
 package AOT-BUF
@@ -517,7 +529,12 @@ create AOT-PWIN-BUF AOT-PWIN-MAX 4 * allot    variable AOT-PWIN-N   \ packed u32
 \ cannot produce more rows than that.
 16 constant SIG-ROW
 AOT-REC-MAX constant AOT-SIG-MAX
-create AOT-SIG-BUF AOT-SIG-MAX SIG-ROW * allot    variable AOT-SIG-N
+\ AOT-SIG-MAX * SIG-ROW is 524,288 bytes, the largest of the three tables that
+\ only the capture fills, so it is reserved at first use for the reason
+\ AOT-SPAN:BUF@ above carries: a static allot spends those bytes of the build
+\ host's DATA prefix in every process that loads this file.
+DYNAMIC-BUFFER SIG-STORAGE n
+variable AOT-SIG-N
 \ The opaque pool carries verified effect graphs beside its names. Its format
 \ bound is the section budget; allocate only the admitted bytes, like names
 \ and relocation rows, rather than imposing the former text-only size guess.
@@ -548,7 +565,9 @@ create AOT-REG-BUF AOT-REG-CAP allot    variable AOT-REG-LEN
 : AOT-SITE-BUF@ ( -- ptr u8 ) AOT-SITE-BUF ;
 : AOT-NAMES-BUF@ ( -- ptr u8 ) 0 AOT-NAMES-STORAGE BYTE-VIEW ;
 : AOT-DSITE-BUF@ ( -- ptr u8 ) AOT-DSITE-BUF ;
-: AOT-SIG-BUF@ ( -- ptr u8 ) AOT-SIG-BUF ;
+: AOT-SIG-BUF@ ( -- ptr u8 )
+   AOT-SIG-MAX SIG-ROW * CELL 1- + CELL / SIG-STORAGE-RESERVE
+   0 SIG-STORAGE BYTE-VIEW ;
 : AOT-SIG-STR-BUF@ ( -- ptr u8 ) AOT-SIG-STR-BUF ;
 : AOT-REG-BUF@ ( -- ptr u8 ) AOT-REG-BUF ;
 

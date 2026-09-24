@@ -889,7 +889,15 @@ variable ACAP-BP
 \ retargets the body. An unreachable body carries neither code nor metadata.
 \ The sidecar names both: a removed body's start is -1, never an old coordinate
 \ that could accidentally name different code after compaction.
-create ACAP-NAMED-BIT AOT-REC-MAX cells allot   \ per record: 1 retains its name
+\ ONE CELL A RECORD, RESERVED AT FIRST USE. AOT-REC-MAX cells is 262,144 bytes,
+\ and a static allot spends every one of them in the build host's DATA prefix -
+\ the DATA below the captured window - for a table no engine ever carries. The
+\ mapping costs the prefix nothing; the bound is still AOT-REC-MAX, so the
+\ generated accessor refuses an index the capture's own record bound refuses.
+DYNAMIC-BUFFER ACAP-NAMED-STORAGE n
+: ACAP-NAMED-BIT ( n -- ptr n )                 \ record k's cell: 1 retains its name
+   AOT-REC-MAX ACAP-NAMED-STORAGE-RESERVE
+   ACAP-NAMED-STORAGE ;
 variable ACAP-REC-ALL
 
 \ --- the capture-side reach model ---------------------------------------------
@@ -1330,13 +1338,13 @@ $14000000 constant ACAP-GBR-TERM
    pkg if $FFFFFFFF else v 40 + ACAP-W32@ ACAP-REL-WID then {: wid:n :} \ package marker or window-relative u32 WID
    v ACAP-W32@ pkg ACAP-WID-FIELD {: start:n :}            \ a package row's [0]/[8] are WIDs, not a code span
    v 8 + ACAP-W32@ pkg ACAP-WID-FIELD {: clen:n :}
-   ACAP-GRAPH-READY @ if k cells ACAP-NAMED-BIT + @ 0<> else k ACAP-NAMED? then
+   ACAP-GRAPH-READY @ if k ACAP-NAMED-BIT @ 0<> else k ACAP-NAMED? then
    {: named:bool :}
    named 0= k ACAP-GRAPH-LIVE? 0= and if
-      0 k cells ACAP-NAMED-BIT + !
+      0 k ACAP-NAMED-BIT !
       exit
    then
-   named if 1 else 0 then  k cells ACAP-NAMED-BIT + !
+   named if 1 else 0 then  k ACAP-NAMED-BIT !
    named 0= if
       pkg if s" aot-capture: a package row carries no code span" 74 die then
       start clen ACAP-ADD-SPAN exit                        \ 8B: start u32 + raw code span u32
@@ -1435,7 +1443,7 @@ variable ACAP-PROVE-SX                                        \ span-row cursor
    ACAP-REC48@ {: s:ptr :}
    ACAP-REC-ALL @ 0 ?do
       i ACAP-REC-DST {: v:ptr :}                              \ the record this row was made from
-      i cells ACAP-NAMED-BIT + @ 0= if
+      i ACAP-NAMED-BIT @ 0= if
          i ACAP-GRAPH-LIVE? if
             ACAP-PROVE-SX @ v ACAP-PROVE-SPAN
             ACAP-PROVE-SX @ 1+ ACAP-PROVE-SX !
@@ -1973,10 +1981,13 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 : ACAP-GRAPH-ROOTS ( -- )
    0 ACAP-GWORK-N !
    ACAP-REC-ALL @ 0 ?do
-      i ACAP-NAMED? dup i cells ACAP-NAMED-BIT + ! if
+      i ACAP-NAMED? if
+         1 i ACAP-NAMED-BIT !
          i ACAP-GRAPH-CODE? if
             i ACAP-GRAPH-MARK-REC
          then
+      else
+         0 i ACAP-NAMED-BIT !
       then
    loop
    \ Every declared code cell is a root even when its owning definition is
@@ -2191,7 +2202,7 @@ public
    ACAP-REC-ALL @ ;
 
 : MAP-NAMED ( n -- n )                             \ 1 when the image kept the name, 0 when stripped
-   cells ACAP-NAMED-BIT + @ ;
+   ACAP-NAMED-BIT @ ;
 
 : MAP-NAME$ ( n -- ptr u8 n )
    ACAP-REC-NAME$ ;
