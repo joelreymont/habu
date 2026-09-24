@@ -18,6 +18,7 @@ $19       constant LC-SEG64
 $0E       constant LC-DYLINKER
 $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
+$8000001C constant LC-RPATH
 $80000034 constant LC-DYLD-CHAINED-FIXUPS
 $4000     constant DATA-CONST-SIZE
 104       constant MACHO-FIXUPS-SIZE
@@ -69,6 +70,12 @@ variable LE-OFF                       \ file offset of the __LINKEDIT LC (for si
    2 M32  $054C0000 M32  $00010000 M32     \ ts=2, cur=1356.0.0, compat=1.0.0
    s" /usr/lib/libSystem.B.dylib" dup >r bounds ?do i c@ M8 loop  56 24 - r> - M-ZEROS ;
 
+: RPATH, ( a u -- ) {: path u :}
+   u 13 + 7 + -8 and {: size :}
+   LC-RPATH M32 size M32 12 M32
+   path u bounds ?do i c@ M8 loop
+   size 12 - u - M-ZEROS ;
+
 32 constant MH-HDR-SZ                 \ mach_header_64 size
 variable NCMDS                        \ load commands counted as emitted
 
@@ -111,6 +118,8 @@ variable NCMDS                        \ load commands counted as emitted
    s" __LINKEDIT" VMBASE linkoff + $4000 linkoff MACHO-FIXUPS-SIZE 1 0 0 SEG,  LC+
    LC-DYLD-CHAINED-FIXUPS M32  16 M32  linkoff M32  MACHO-FIXUPS-SIZE M32  LC+
    DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
+   s" /opt/homebrew/lib" RPATH, LC+
+   s" /opt/homebrew/opt/libpq/lib" RPATH, LC+
    PATCH-HDR
    CODE-OFF M-PAD
    SCODE @ CODELEN @ M-BYTES

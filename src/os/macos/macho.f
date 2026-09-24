@@ -18,6 +18,7 @@ $19       constant LC-SEG64
 $0E       constant LC-DYLINKER
 $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
+$8000001C constant LC-RPATH
 $80000034 constant LC-DYLD-CHAINED-FIXUPS
 $100000000 constant VMBASE
 \ The maximum generated executable window: everything the assembler can emit,
@@ -123,6 +124,14 @@ variable NCMDS
    a u M-LEN M-BYTES-LEN
    56 24 - u - M-LEN M-ZEROS-LEN ;
 
+\ dyld searches these runpaths for basename dlopen calls. System libraries keep
+\ their normal dyld-cache lookup; Homebrew's arm64 prefix is outside that path.
+: RPATH, ( ptr u8 n -- ) {: path:ptr u:n :}
+   u 13 + 7 + -8 and {: size:n :}
+   LC-RPATH IMG-M32 size IMG-M32 12 IMG-M32
+   path u M-BYTES
+   size 12 - u - M-ZEROS ;
+
 : CHAINED-FIXUPS, ( n -- ) {: linkoff:n :}
    LC-DYLD-CHAINED-FIXUPS IMG-M32
    16 IMG-M32
@@ -183,7 +192,9 @@ variable NCMDS
    textsz LINKOFF CHAINED-FIXUPS,  LC+
    DYLINKER,  LC+
    CODE-OFF MAIN,  LC+
-   DYLIB,  LC+ ;
+   DYLIB,  LC+
+   s" /opt/homebrew/lib" RPATH, LC+
+   s" /opt/homebrew/opt/libpq/lib" RPATH, LC+ ;
 
 : MH-HDR, ( -- )
    MH-MAGIC64 IMG-M32  CPU-ARM64 IMG-M32  0 IMG-M32  MH-EXECUTE IMG-M32
