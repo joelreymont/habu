@@ -4586,7 +4586,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ the name and every `s" x" ['] W FPRIM-L` row in src/habu/habu1.f is refused.
 : C-BTICK ( -- )
    LTOK @ BL,
-   LBL {: named :}
+   LBL LBL {: bk named :}
    0 named CBNZ,
       LKWBTICK 3 C-DIE-KEYWORD-NAME
    named LBL,
