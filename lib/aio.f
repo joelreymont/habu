@@ -1,4 +1,4 @@
-\ aio.f - readiness, timers and cancellation on Linux io_uring.
+\ aio.f - shared asynchronous I/O ownership, with Linux and Darwin backends.
 \
 \ A task waits for a descriptor, a duration or a cancellation without parking
 \ its thread inside the host call: it submits one operation, gets a ticket, and
@@ -13,7 +13,7 @@
 \ task has registered its cleanup. A ticket belongs to the task that submitted
 \ it and only that task may AWAIT it. See docs/threads.md and docs/aio.md.
 \
-\ Linux only: io_uring_setup and io_uring_enter are Linux system calls.
+\ Linux uses io_uring below. Darwin installs lib/aio-macos.f's poll backend.
 
 require lib/errors.f
 require lib/memory.f
@@ -154,8 +154,8 @@ $10 constant SPEC-BYTES             \ struct __kernel_timespec: two __s64
 4 constant EV-WRITABLE              \ POLLOUT
 
 4 constant ERR-INTR                 \ EINTR
-$3E constant ERR-TIME               \ ETIME 62
-$7D constant ERR-CANCELED           \ ECANCELED 125
+: ERR-TIME ( -- n ) HB-TARGET-MACOS? if 101 else $3E then ;               \ ETIME 62
+: ERR-CANCELED ( -- n ) HB-TARGET-MACOS? if 89 else $7D then ;           \ ECANCELED 125
 
 1000 constant MS-PER-S
 1000000 constant NS-PER-MS
@@ -248,6 +248,18 @@ PTR-VARIABLE SQE-BASE
 
 TASK:FACILITY AIO-LOCK
 TASK:MIN-STACK TASK:TASK AIO-LOOP
+
+\ Backend submissions run with AIO-LOCK held and answer a code plus record
+\ index. The common layer retains handles, buffers, generations and ownership.
+defer HOST-POLL ( n n n -- n n )
+defer HOST-TIMEOUT ( n -- n n )
+defer HOST-XFER ( n ptr u8 NUM:alloc-byte-len n n n -- n n )
+defer HOST-SOCKET ( n n n n -- n n )
+defer HOST-CANCEL ( n -- n )
+defer HOST-WAKE ( -- n )
+defer HOST-SETUP ( -- )
+defer HOST-CLOSE ( -- )
+defer HOST-LOOP ( -- )
 
 \ Set at a task's first submission: the cleanup below is registered then and not
 \ before, so a program that never submits registers nothing of AIO's. That
@@ -612,7 +624,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    again ;
 
 : LOOP-BODY ( -- )
-   LOOP-RUN
+   HOST-LOOP
    0 TASK:RETURN ;
 
 \ ---- the ring ----------------------------------------------------------------
@@ -785,13 +797,25 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    SQ-SLOT dup OP-NOP OPS-MAX SQE-COMMON SQ-PUBLISH
    ENTER-SUBMIT ;
 
+: INSTALL-HOST ( -- )
+   ['] POLL-STAGE is HOST-POLL
+   ['] TIMEOUT-STAGE is HOST-TIMEOUT
+   ['] XFER-STAGE is HOST-XFER
+   ['] SOCK-STAGE is HOST-SOCKET
+   ['] CANCEL-STAGE is HOST-CANCEL
+   ['] NOP-STAGE is HOST-WAKE
+   ['] RING-SETUP is HOST-SETUP
+   ['] RING-UNMAP is HOST-CLOSE
+   ['] LOOP-RUN is HOST-LOOP ;
+INSTALL-HOST
+
 \ ---- the cleanup a submitting task registers ---------------------------------
 \ Without it a task that ends while one of its operations is in flight would be
 \ woken by the loop through a TCB whose memory the join has released. It is one
 \ entry in that task's TASK:AT-EXIT chain, so a task that submits keeps its own
 \ cleanups: they run beside this one, newest registration first.
 : TRY-CANCEL ( n -- ) {: target:n :}
-   target CANCEL-STAGE drop ;
+   target HOST-CANCEL drop ;
 
 : SCRUB-ONE ( n n -- ) {: idx:n me:n :}
    idx REC-STATE@ {: st:n :}
@@ -893,7 +917,7 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    RUNNING-CHECK
    h OWNED-CHECK {: idx:n :}
    AIO-LOCK TASK:GET
-   idx CANCEL-STAGE {: rc:n :}
+   idx HOST-CANCEL {: rc:n :}
    AIO-LOCK TASK:RELEASE
    rc 0 <> if rc throw then ;
 
@@ -911,11 +935,11 @@ TRUSTED: AIO-MAPPED>PTR ( n -- ptr u8 ) ;
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
    count cap off XFER-BOUNDS
    SUBMIT-ENTER
-   f buf cap count off kind XFER-STAGE SUBMIT-LEAVE >XFER ;
+   f buf cap count off kind HOST-XFER SUBMIT-LEAVE >XFER ;
 
 : SOCK-SUBMIT ( n n n n -- ticket ) {: f:n addr:n off:n kind:n :}
    SUBMIT-ENTER
-   f addr off kind SOCK-STAGE SUBMIT-LEAVE >TICKET ;
+   f addr off kind HOST-SOCKET SUBMIT-LEAVE >TICKET ;
 
 \ ---- groups ------------------------------------------------------------------
 : G-ROW ( n -- ptr n ) {: g:n :}
@@ -999,7 +1023,7 @@ public
    RING-READY @ 0= if AIO-LOCK TASK:FACILITY-INIT 1 RING-READY ! then
    RECS-CLEAR
    0 RING-STOP atomic!
-   RING-SETUP
+   HOST-SETUP
    1 RING-LIVE !
    ['] LOOP-BODY AIO-LOOP TASK:ACTIVATE ;
 
@@ -1012,14 +1036,14 @@ public
    ANY-BUSY? if E-AIO-BUSY throw then
    1 RING-STOP atomic!
    AIO-LOCK TASK:GET
-   NOP-STAGE {: rc:n :}
+   HOST-WAKE {: rc:n :}
    AIO-LOCK TASK:RELEASE
    rc 0 <> if rc throw then
    AIO-LOOP TASK:JOIN MATCH result
       ok OF drop ENDOF
       err OF throw ENDOF
    ;MATCH
-   RING-UNMAP
+   HOST-CLOSE
    0 RING-LIVE ! ;
 
 \ True between a START that returned and the STOP that gives the ring back - the
@@ -1034,13 +1058,13 @@ public
 \ record or no room in the submission ring is E-AIO-FULL.
 : POLL ( fd n ms -- ticket ) {: f:fd events:n timeout:ms :}
    SUBMIT-ENTER
-   f FD>N events timeout MS>N POLL-STAGE SUBMIT-LEAVE >TICKET ;
+   f FD>N events timeout MS>N HOST-POLL SUBMIT-LEAVE >TICKET ;
 
 \ Fires once, after ms milliseconds. The outcome is timed-out, or cancelled when
 \ a CANCEL reached it first.
 : TIMEOUT ( ms -- ticket ) {: timeout:ms :}
    SUBMIT-ENTER
-   timeout MS>N TIMEOUT-STAGE SUBMIT-LEAVE >TICKET ;
+   timeout MS>N HOST-TIMEOUT SUBMIT-LEAVE >TICKET ;
 
 \ Asks the kernel to end that operation. It does not wait: the ticket still has
 \ to be AWAITed, and answers cancelled once the kernel has ended it.
@@ -1141,3 +1165,11 @@ public
    g GROUP>N AWAIT-GROUP ;
 
 ;package
+
+\ Select after the shared package is complete so the host module can reopen it.
+package AIO-LOAD
+public
+TRUSTED: HOST ( -- )
+   HB-TARGET-MACOS? if s" lib/aio-macos.f" required then ;
+;package
+AIO-LOAD:HOST

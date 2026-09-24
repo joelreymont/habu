@@ -15,6 +15,12 @@
 package LE
 public
 
+: U16@ ( ptr u8 -- n ) {: p :}
+   p c@ p 1 + c@ 8 lshift or ;
+
+: U16! ( n ptr u8 -- ) {: v:n p :}
+   v $FF and p c! v 8 rshift $FF and p 1 + c! ;
+
 : U32@ ( ptr u8 -- n ) {: p :}
    p c@  p 1 + c@ 8 lshift or  p 2 + c@ $10 lshift or  p 3 + c@ $18 lshift or ;
 

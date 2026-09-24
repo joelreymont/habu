@@ -514,10 +514,56 @@ TASK:MIN-STACK TASK:TASK FAN7
    wb wc2 MEM:RELEASE-BYTES
    P-R P-W PIPE-CLOSE ;
 
+\ Empty transfers complete without waiting for readiness. A broken write
+\ reports EPIPE, returns the owned allocation, and never raises SIGPIPE.
+: CASE-XFER-EMPTY-BROKEN ( -- )
+   P-R P-W PIPE-OPEN
+   P-R @ 3 0 fcntl {: oldflags:n :}
+   P-R @ 0 0 0 READ-ONCE 0 T=
+   P-R @ 3 0 fcntl oldflags T=
+   P-R @ close -1 P-R !
+   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
+   P-W @ >FD buf cap 1 0 AIO:WRITE AIO:AWAIT-XFER
+      {: rb rc2:NUM:alloc-byte-len out:AIO:outcome :}
+   out MATCH AIO:outcome
+      ready OF drop false TTRUE ENDOF
+      timed-out OF false TTRUE ENDOF
+      cancelled OF false TTRUE ENDOF
+      refused OF 32 T= ENDOF
+   ;MATCH
+   rb rc2 MEM:RELEASE-BYTES
+   P-R P-W PIPE-CLOSE ;
+
+: CASE-XFER-ALIASES ( -- )
+   P-R P-W PIPE-OPEN
+   P-R @ 0 0 fcntl {: alias:n :}
+   alias 0 >= TTRUE
+   P-R @ 3 0 fcntl {: flags:n :}
+   P-R @ >FD XFER-ALLOC 1 0 AIO:READ {: first:AIO:xfer :}
+   alias >FD XFER-ALLOC 1 0 AIO:READ {: second:AIO:xfer :}
+   first AIO:CANCEL-XFER
+   first AIO:AWAIT-XFER OUTCOME>N MARK-CANCELLED T= MEM:RELEASE-BYTES
+   second AIO:CANCEL-XFER
+   second AIO:AWAIT-XFER OUTCOME>N MARK-CANCELLED T= MEM:RELEASE-BYTES
+   P-R @ 3 0 fcntl flags T=
+   alias close P-R P-W PIPE-CLOSE ;
+
+: CASE-XFER-BAD-FD ( -- )
+   -1 >FD XFER-ALLOC 1 0 AIO:READ AIO:AWAIT-XFER
+   MATCH AIO:outcome
+      ready OF drop false TTRUE ENDOF
+      timed-out OF false TTRUE ENDOF
+      cancelled OF false TTRUE ENDOF
+      refused OF 9 T= ENDOF
+   ;MATCH
+   MEM:RELEASE-BYTES ;
+
 \ ---- 14: a loopback stream, accepted and connected through the ring ---------
 : XFER-SA! ( n n -- ) {: addr:n port:n :}
    SOCKADDR-N 0 ?do 0 XFER-SA i + c! loop
-   2 XFER-SA c!
+   HB-TARGET-MACOS? if
+      SOCKADDR-N XFER-SA c! 2 XFER-SA 1+ c!
+   else 2 XFER-SA c! then
    port 8 rshift $FF and XFER-SA 2 + c!
    port $FF and XFER-SA 3 + c!
    addr $18 rshift $FF and XFER-SA 4 + c!
@@ -806,8 +852,10 @@ CAST: XFER>N ( AIO:xfer -- n )
    CASE-TIMER
    CASE-POLL-DEADLINE
    CASE-CANCEL
-   CASE-PLANTED-TIMER
-   CASE-PLANTED-POLL
+   HB-TARGET-LINUX? if
+      CASE-PLANTED-TIMER
+      CASE-PLANTED-POLL
+   then
    CASE-AWAIT-ANY
    CASE-FAN
    CASE-OWNER-REFUSAL
@@ -819,6 +867,9 @@ CAST: XFER>N ( AIO:xfer -- n )
    CASE-FULL
    CASE-XFER-FILE
    CASE-XFER-PIPE
+   CASE-XFER-EMPTY-BROKEN
+   CASE-XFER-ALIASES
+   CASE-XFER-BAD-FD
    CASE-XFER-STREAM
    CASE-XFER-BOUNDS
    CASE-XFER-STATE

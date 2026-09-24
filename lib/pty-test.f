@@ -23,9 +23,10 @@ variable SPARE-MASTER
    SLAVE u FS-PATHZ PTY:PTY-OPEN-FLAGS 0 open ;
 
 : PAIR ( PTY:master n -- ) {: m:PTY:master u:n :}
-   s" the slave is a pts device" T-LABEL
+   s" the slave is a host pseudoterminal device" T-LABEL
    u 9 > TTRUE
-   SLAVE 9 s" /dev/pts/" STR= TTRUE
+   HB-TARGET-MACOS? if SLAVE 8 s" /dev/tty" STR= TTRUE
+   else SLAVE 9 s" /dev/pts/" STR= TTRUE then
    u SLAVE-FD {: s:n :}
    s 0 >= TTRUE
    s" a signal storm does not shorten a wait the loop owns" T-LABEL

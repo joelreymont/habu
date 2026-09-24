@@ -1,13 +1,13 @@
-# Asynchronous I/O on io_uring
+# Asynchronous I/O
 
 `lib/aio.f` (package `AIO`) lets a task wait for a descriptor, a duration or a
 cancellation, and read, write, accept or connect, without parking its thread
-inside the host call. Linux only.
+inside the host call. Linux uses io_uring; macOS uses a single poll loop.
 
 ## Model
 
 A task **submits** an operation and gets a **ticket**. One completion task
-drains the ring and, for each operation that finished, stores its result and
+collects completions and, for each operation that finished, stores its result and
 `TASK:WAKE`s the task that submitted it. The submitter **awaits** its ticket:
 the await is a `TASK:STOP` loop over the record's state, so it costs no CPU and
 no thread of its own.
@@ -33,7 +33,7 @@ AIO:START                                        \ once, after compilation
 ```
 
 Sixty-four waits from eight tasks cost eight threads and the loop's one -
-measured in `lib/aio-test.f` by counting `/proc/self/task` during the run.
+measured in `lib/aio-test.f` through the host thread count during the run.
 
 The loop is started explicitly because a live task forbids compilation
 ([threads.md](threads.md)): the program decides when it has finished defining
@@ -76,7 +76,7 @@ uses any of them starts the loop before its first wait.
 | `AIO:GROUP-` | `( AIO:ticket AIO:group -- )` | never |
 | `AIO:GROUP-COUNT` | `( AIO:group -- n )` | never |
 | `AIO:GROUP-MAX` | `( -- n )` | never; the tickets one group holds |
-| `AIO:OPS-MAX` | `( -- n )` | never; the records: operations in flight, a poll with a deadline holding two |
+| `AIO:OPS-MAX` | `( -- n )` | never; the records: operations in flight, a Linux poll with a deadline holding two |
 | `AIO:AWAIT-ANY` | `( AIO:group -- AIO:ticket AIO:outcome )` | until one of them has ended |
 
 `AIO:outcome` is a layout, so no caller reads a result without deciding what to
@@ -98,7 +98,7 @@ do about every arm:
   cell it was given, so a ticket the group never held is `E-AIO-GROUP` whether
   it is stale or live, and a member whose record was reused can still be taken
   out of the group.
-- `AIO:POLL` with `ms` at or above zero links an `IORING_OP_LINK_TIMEOUT`
+- On Linux, `AIO:POLL` with `ms` at or above zero links an `IORING_OP_LINK_TIMEOUT`
   behind the poll with `IOSQE_IO_LINK`. The kernel posts both completions - the
   poll's `-ECANCELED` and the timeout's `-ETIME` - so the record owes two and
   settles on the last of them, whichever order they arrive in. That is what
@@ -250,6 +250,29 @@ facility held.
 `E-AIO-GROUP`, `E-AIO-BOUNDS`, the `-9290..-9299` block of `lib/errors.f`.
 `E-AIO-BOUNDS` is a transfer count past its allocation or below zero, a file
 offset below `-1`, or a socket address length that is not positive.
+
+## macOS backend
+
+`lib/aio-macos.f` shares the ticket table, generations, ownership checks,
+groups and task cleanup with the Linux backend. One poll thread watches all
+operations and a nonblocking wake pipe. A snapshot carries each record's
+generation, so cancellation and reuse cannot deliver an old readiness event
+to a new operation. Readiness is processed before a deadline in the same poll,
+including a zero-duration poll. Timers and timed polls each use one record.
+Each poll timeout is capped at the C API's signed 32-bit maximum; a deadline
+beyond the monotonic nanosecond range saturates at the largest representable
+future time.
+
+Transfers, accept and connect borrow the descriptor until completion. Each
+host operation saves the flags, sets `O_NONBLOCK`, suppresses `SIGPIPE`, then
+restores the flags before releasing the facility lock. This also handles
+`dup` aliases, which share file status flags. The caller must keep the descriptor open and must not change
+its flags while an operation is pending. Cancellation settles a pending
+operation under the facility lock before another system call can use it.
+Regular file transfers run on the completion thread using `pread`/`pwrite`
+(or `read`/`write` for offset -1); slow disk I/O can delay other completions
+and submissions that need the facility lock. Pipes and sockets remain
+nonblocking. Accepted sockets are blocking and close-on-exec.
 
 ## Kernel and target floor
 
