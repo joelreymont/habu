@@ -168,48 +168,14 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
 \ 01 byte after it, read as one aligned cell, spelled an address inside the
 \ emitted code span and the build refused the word that owns the body (AUTH
 \ ROLE-LITERAL$, dot habu-link-int-cells-45328a4d).
-\ THE PATTERN IS EIGHT BYTES: 97 98 113 1 0 0 0 0 spells 24208481 = 0x01716261,
-\ which is inside [dbase + DICT-SIZE, cp) on this engine - dbase 21037056, code
-\ low bound 24186880, cp 26020584, measured in an hb-build child.
-\ THE BODY REPEATS IT AT ALL EIGHT PHASES because the scan's cells are aligned to
-\ the capture window and the pool places a body at whatever offset it has reached:
-\ block k is k NUL bytes, the pattern, then 8-k NUL bytes, so exactly one of the
-\ eight blocks puts the pattern on an aligned cell whatever offset the body got.
-: HBT-LIT-NUL ( -- )
-   S\" \\z" SB-APPEND ;
-
-: HBT-LIT-PAT ( -- )
-   S\" \\x61\\x62\\x71\\x01\\z\\z\\z\\z" SB-APPEND ;
-
-: HBT-LIT-BLOCK ( n -- ) {: k:n :}
-   k 0 ?do HBT-LIT-NUL loop
-   HBT-LIT-PAT
-   8 k - 0 ?do HBT-LIT-NUL loop ;
-
+\ The child derives its bytes from a live code address; a fixed Linux address
+\ does not establish this property in a Mach-O builder with ASLR.
 : HBT-LITB-SRC$ ( -- ptr u8 n )
-   SB-RESET
-   S\" : LIT$ ( -- ptr u8 n ) S\\\q " SB-APPEND
-   8 0 ?do i HBT-LIT-BLOCK loop
-   S\" \q ;\n" SB-APPEND
-   S\" : MAIN ( -- ) LIT$ {: a:ptr u:n :} u . cr 8 0 ?do a i + c@ . loop cr ;\n" SB-APPEND
-   SB$ ;
+   S\" require test/stripped-literal-subject.f\n' STRIPPED-LITERAL:ANCHOR STRIPPED-LITERAL:BODY-SOURCE evaluate\n" ;
 
-\ The image prints the body's length and its first eight bytes, so the pinned
-\ lines say the bytes the scan skipped travelled into the image unchanged and not
-\ merely that the link stopped refusing them.
+\ MAIN verifies the length and bytes before printing this witness.
 : HBT-LITB-EXPECTED$ ( -- ptr u8 n )
-   SB-RESET
-   s" 128" SB-APPEND 10 SB-APPEND-C 10 SB-APPEND-C
-   s" 97" SB-APPEND 10 SB-APPEND-C
-   s" 98" SB-APPEND 10 SB-APPEND-C
-   s" 113" SB-APPEND 10 SB-APPEND-C
-   s" 1" SB-APPEND 10 SB-APPEND-C
-   s" 0" SB-APPEND 10 SB-APPEND-C
-   s" 0" SB-APPEND 10 SB-APPEND-C
-   s" 0" SB-APPEND 10 SB-APPEND-C
-   s" 0" SB-APPEND 10 SB-APPEND-C
-   10 SB-APPEND-C
-   SB$ ;
+   S\" literal\n" ;
 
 \ ... and THE SAME EIGHT BYTES IN A `create` CELL are refused as before. This is
 \ the control that keeps the row above honest: raw storage carries no declaration
@@ -218,7 +184,7 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
 \ the emitted code span - in which case the row above proves nothing and this one
 \ goes red instead of both passing on a value nothing classifies.
 : HBT-LITC-SRC$ ( -- ptr u8 n )
-   S\" create LIT-CELL 24208481 ,\n: MAIN ( -- ) LIT-CELL @ . cr ;\n" ;
+   S\" require test/stripped-literal-subject.f\n' STRIPPED-LITERAL:ANCHOR STRIPPED-LITERAL:RAW\n: MAIN ( -- ) STRIPPED-LITERAL:VALUE . cr ;\n" ;
 
 : HBT-LARGE-CHUNK! ( -- )
    HBT-LARGE-CHUNK-U 0 ?do 32 HBT-LARGE-CHUNK i + c! loop ;
@@ -406,7 +372,6 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
    crc 70 T=
    HBT-ERR cerr s" holds an undeclared code/dict pointer" CONTAINS? TTRUE
    HBT-ERR cerr s" word=LIT-CELL" CONTAINS? TTRUE
-   HBT-ERR cerr s" value=24208481" CONTAINS? TTRUE
    HBT-LITC-OUT FILE? TFALSE
 
    HBT-LITB-SRC HBT-LITB-SRC$ WRITE-ALL
