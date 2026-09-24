@@ -143,8 +143,7 @@ SUITE compiler-ir-intern-manifest
    test/compiler/ir-intern-manifest.f
 ;SUITE
 
-\ Each proof manifest directly asserts its obligation rows and schema; the
-\ corresponding proof test below runs Rocq.
+\ These manifests execute the native schema and case checks without a prover.
 SUITE compiler-ir-structure-manifest
    test/compiler/ir-structure-manifest.f
 ;SUITE
@@ -863,43 +862,6 @@ SUITE compiler-native-fetch-terms-aot
 
 SUITE compiler-native-vocab
    test/compiler/native-vocab.f
-;SUITE
-
-\ The identity parity gate compiles formal/Common with the Rocq proof assistant
-\ and spawns child engines through this registry entry.
-SUITE compiler-ir-id-proof
-   test/compiler/ir-id-proof.f
-;SUITE
-
-\ The interning parity test compiles formal/Common/Interning.v with Rocq.
-SUITE compiler-ir-intern-proof
-   test/compiler/ir-intern-proof.f
-;SUITE
-
-\ The structure parity test compiles formal/Common/Structure.v with Rocq.
-SUITE compiler-ir-structure-proof
-   test/compiler/ir-structure-proof.f
-;SUITE
-
-\ The storage and lifetime parity test compiles formal/Common/Storage.v with Rocq.
-SUITE compiler-ir-storage-proof
-   test/compiler/ir-storage-proof.f
-;SUITE
-
-\ The checker model parity test compiles formal/Common/Effects.v and
-\ formal/Common/Control.v with Rocq.
-SUITE checker-model-proof
-   test/compiler/checker-model-proof.f
-;SUITE
-
-\ The snapshot relocation parity test compiles formal/Common/Reloc.v with Rocq.
-SUITE compiler-reloc-proof
-   test/compiler/reloc-proof.f
-;SUITE
-
-\ The instruction-encoding parity test drives Rocq and child engines.
-SUITE compiler-insn-proof
-   test/compiler/insn-proof.f
 ;SUITE
 
 SUITE raw-storage-load-seal

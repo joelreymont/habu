@@ -1,6 +1,6 @@
 \ ir-id-replay.f - child load-path fixture for require replay.
 \
-\ The parity gate runs this in its own `bin/hb` children and looks only at the
+\ The identity manifest test runs this in its own `bin/hb` children and looks only at the
 \ exit status, so every check here throws rather than reporting. It is a real
 \ load path and not a numeric predicate on purpose: what is being proved is a
 \ property of loading, namely that the module allocator is one process-wide

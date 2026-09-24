@@ -43,15 +43,10 @@
 \ from the bytes it stands for, so ROW-MATCH? reads that cell on faith, and it
 \ is the one row cell whose protection is IR-ARENA ownership - only ROW-ADD
 \ writes it, into an arena checked code cannot forge cells into - rather than
-\ a recheck at read time. The consequence splits in two, and
-\ formal/Common/Interning.v proves the halves separately. Soundness does not
-\ depend on the cell: Symbols.sym_row_match_sound holds for an arbitrary
-\ stored filter value, because the byte comparison runs behind the filter
-\ test, so two different symbols never merge into one identity however wrong
-\ that cell is. Completeness does depend on it:
-\ Symbols.sym_row_match_is_byte_equality needs the stored cell to be the
-\ honest filter of the stored bytes before the three-part test is byte
-\ equality. A wrong cell makes lookup pass over a row that does hold the
+\ a recheck at read time. The byte comparison behind the filter prevents two
+\ different symbols from merging even if the filter is wrong. Finding every
+\ equal symbol also requires the stored filter to match its bytes. A wrong
+\ filter makes lookup pass over a row that does hold the
 \ presented bytes and mint a second identity for them, and duplicate rows
 \ would also break the induction over ordinals type.f relies on, which assumes
 \ two rows of one table are structurally equal exactly when they are the same

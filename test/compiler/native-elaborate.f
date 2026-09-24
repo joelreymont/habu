@@ -2097,8 +2097,7 @@ variable LK-N
 \ A GROUP INSIDE A BRANCH IS AN ORDINARY GROUP NOW, which is what dot
 \ habu-scope-a-locals-2faa3d7a landed: its names come into scope at its own
 \ closer and go out again at the structure's, which is the checker's own rule
-\ (src/core/checker.f CF-LOC-REST, formal/Common/Control.v
-\ `every_closer_restores_the_locals_mark`). What the ANSWERS such a body computes
+\ (src/core/checker.f CF-LOC-REST). What the ANSWERS such a body computes
 \ are is measured against the engine in test/compiler/native-locals-scope.f;
 \ what is measured HERE is the module, because the claim is that the group
 \ stages nothing at all - no operation for the declaration, none for the closer

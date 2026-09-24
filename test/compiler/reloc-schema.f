@@ -1,72 +1,5 @@
-\ reloc-schema.f - the shared frozen description of the snapshot relocation
-\ contract.
-\
-\ The module lives in `package RELOC-PROOF`. Its subject is the three emitted
-\ passes that make a snapshot image portable - `SNAP-RELOC:EMIT-CALLS`,
-\ `SNAP-RELOC:EMIT-XT` and `SNAP-RELOC:EMIT-ADDRS` in src/habu/habu2.f, with the
-\ writer's address-cell half `SND-CANON-XT-CELL` in src/habu/snap-lib.f, the
-\ chain's scaffold words in src/habu/habu1.f and the band constants in
-\ src/habu/layout.f - and the machine-checked model of that arithmetic in
-\ `formal/Common/Reloc.v`.
-\
-\ It holds the model constants, producer classes and relocation vector rows:
-\
-\   1. The pinned band constants. The model states REGION-OFF, RBASE-VA,
-\      BL-REACH, REGION, CALLMAP-RC and BL-OP-HI as numbers. Each is frozen here
-\      beside the shipped constant it mirrors, so `test/compiler/reloc-cases.f`
-\      can read the literal out of the shipped source and
-\      `test/compiler/reloc-obligations.f` can ask Rocq whether the model still
-\      holds the same number.
-\
-\   2. The producer classes declared by the model, without claiming an inventory
-\      of the implementation's address-producing helpers.
-\
-\   3. The call vector rows. A row names the region offset the writing run got,
-\      the region offset the restoring run got, and every word of a small
-\      region: whether the call map records it, what it holds, what it must hold
-\      after the writer's pass, and what it must hold after the loader's. These
-\      rows are the one copy. The cases file builds a real region and a real map
-\      band and drives the shipped instruction sequence over them; the
-\      obligations file turns the very same row into a Rocq obligation about
-\      `Habu.Common.Reloc`. Neither side carries a copy.
-\
-\   4. The address-cell vector rows. The same idea for a persisted DATA cell
-\      that was declared to hold a region address: the writing run's region
-\      base, the restoring run's, and each cell's three values.
-\
-\   5. The address-literal chain vector rows. The same idea again for the fixed
-\      four-instruction MOVZ/MOVK chain the compiler bakes into region code for
-\      a quotation's entry address and for the target of a `[']`. A row names
-\      the band the pass is moving - a base, a length
-\      and the base those addresses are moving to - and every slot of a small
-\      region: whether the address map records it, whether one of its four words
-\      is damaged, and the address it carries before the writer's pass, after
-\      it, and after the loader's.
-\
-\ Where the two sides are not literally the same shape, and why that is sound:
-\
-\   - A row writes a call site as a DISPLACEMENT in instruction units, and both
-\     sides build the same word from it the same way: opcode BL-OP-HI in the top
-\     six bits, the displacement masked into the low twenty-six. Neither side
-\     computes a displacement; every one of them is a frozen literal here.
-\   - The shipped pass reports a refusal by writing a diagnostic and exiting
-\     with CALLMAP-RC, and the model reports it as a status beside the partly
-\     rewritten image. A row records the exit status, so the two sides stay
-\     bound at the refusal rather than only agreeing that something failed.
-\   - The shipped pass finds recorded sites through a bitmap indexed by region
-\     word offset. A row carries the recorded flag directly, and the cases file
-\     turns the row's flags into a real map band, so the bitmap indexing is
-\     exercised on the Habu side and left out of the model. That is MODEL GAP 3
-\     in `formal/Common/Reloc.v`.
-\   - A chain row writes an address and a destination register, not four
-\     instruction words, and both sides build the same four words from them the
-\     same way: scaffold word j from src/habu/habu1.f, its register replaced by
-\     the slot's own, with bits 16j..16j+15 of the address at bit five. A damaged
-\     slot replaces one of those words with CHAIN-BAD-WORD, and a mixed slot
-\     gives one lane a different register from the other three. Neither side
-\     computes an address; every one of them is a frozen literal here.
-\
-\ Consumers: `test/compiler/reloc-cases.f`, `test/compiler/reloc-obligations.f`.
+\ reloc-schema.f - Native relocation vectors for emitted instruction sequences.
+\ The mnemonic interpreter checks selected cases, not every address producer.
 
 require lib/prelude.f
 require lib/errors.f
@@ -74,9 +7,6 @@ require lib/string.f
 
 package RELOC-PROOF
 public
-
-: MODEL-FILE$ ( -- ptr u8 n )
-   s" formal/Common/Reloc.v" ;
 
 : EMIT-FILE$ ( -- ptr u8 n )
    s" src/habu/habu2.f" ;
@@ -101,9 +31,7 @@ public
 
 \ ---- 1. the pinned band constants --------------------------------------------
 \ Each row is a shipped constant and the model definition that mirrors it. The
-\ cases file reads the shipped literal structurally; the obligations file asks
-\ Rocq whether the model still carries the same number. Renumber one side and
-\ the two sides disagree.
+\ Site kind values are read from the shipped relocation vocabulary.
 
 16 constant PIN-COUNT
 

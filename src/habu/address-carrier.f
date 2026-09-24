@@ -23,7 +23,7 @@ public
 \ opcode and the shift, which is what the site's register is then put back into.
 \ Accepting any register without the agreement requirement would accept four words
 \ that name four different registers, whose four immediates spell out no address at
-\ all; formal/Common/Reloc.v states both halves.
+\ all.
 $FFE0001F constant ADDR-OPC-MASK
 $FFFF constant ADDR-IMM-MASK
 16 constant ADDR-CHAIN-BYTES
@@ -119,8 +119,7 @@ public
 \ patches the whole value at once: REX.W (with B naming the high register bank),
 \ then B8+rd, then the eight immediate bytes. So the site is ten bytes wide and
 \ its patch is eight bytes at offset two, which is what MOVABS-BYTES,
-\ MOVABS-IMM-OFF and MOVABS-IMM-BYTES say, and what the model in
-\ formal/Common/Reloc.v is asked about.
+\ MOVABS-IMM-OFF and MOVABS-IMM-BYTES say. test/x86-64-seam.f exercises it.
 \
 \ REX.R and REX.X have nothing to name here - the form carries no ModRM and no
 \ SIB byte - so a prefix that sets either is some other instruction, not this

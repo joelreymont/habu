@@ -5,7 +5,8 @@
 **Repository audited:** `joelreymont/habu`  
 **Audit commit:** `eb5742e916978d5c9067218737ce9c62a1af25a4`  
 **Date:** 2026-07-26  
-**Primary proof target:** Rocq, while keeping all IR contracts proof-system-independent
+**Verification:** executable contracts, behavioral tests and generation checks;
+see [proofs.md](proofs.md) for the limits of those claims.
 
 ---
 
@@ -55,7 +56,7 @@ model IR
 
 There should be **one shared IR substrate**, but not one universal operation set. Habu source, tensor graphs, scheduled GPU kernels, PTX, and AArch64 are different languages and should remain different dialects with different invariants and semantics.
 
-The optimizer or autotuner may remain untrusted. Every search-oriented transformation must produce an output and a witness accepted by an independent validator. Stable, deterministic lowering passes may later receive direct Rocq proofs.
+The optimizer or autotuner may remain untrusted. Every search-oriented transformation must produce an output and a witness accepted by an independent validator.
 
 The migration must preserve the current compiler as a shadow oracle until the new path covers the relevant production behavior. It must then retire the old path. Permanent dual compilation is explicitly forbidden.
 
@@ -195,7 +196,7 @@ The first implementation must not attempt any of these.
 - Build a general e-graph optimizer before ordinary SSA simplification and pass validation work.
 - Claim bit-exact equality for reductions, tensor-core operations, approximations, or precision changes that are not bit exact.
 - Keep both old and new compilers as permanent production options.
-- Add Python, Rust, C++, shell logic, LLVM, or MLIR as implementation dependencies. Repository automation and implementation remain checked Habu, except for the existing audited recovery path and the separate Rocq proof tree.
+- Add Python, Rust, C++, shell logic, LLVM, or MLIR as implementation dependencies. Repository automation and implementation remain checked Habu, except for the existing audited recovery path.
 - Preserve old emitted bytes as an architectural constraint. Byte parity is a useful migration oracle for selected slices, not the target design.
 
 ---
@@ -223,7 +224,7 @@ This makes pass composition explicit and prevents an optimizer from leaving half
 
 IR records refer to functions, blocks, operations, values, types, attributes, symbols, and source spans through nominal integer IDs.
 
-No record contains a pointer to another record. Arena growth therefore cannot invalidate references, canonical serialization is straightforward, and Rocq semantics can use finite maps or vectors without modeling host pointer aliasing.
+No record contains a pointer to another record. Arena growth therefore cannot invalidate references, canonical serialization is straightforward, and reference semantics can use finite maps or vectors without modeling host pointer aliasing.
 
 ### 5.3 Closed-world operation schemas
 
@@ -628,7 +629,7 @@ IR:DIFF
 
 Serialization is built as two stages with one authority each, because the list above mixes two different decisions: which order a module's interned rows belong in, and how a sequence of fields becomes bytes. **Canonicalization** (`src/compiler/ir/canon.f`, package `IR-CANON`) owns the first. Given a frozen module it decides the canonical ordinal of every interned symbol, type, attribute and source row, and produces a canonical table: the ordinal of every row, plus a cell stream that is the table order above with every stored reference already rewritten into canonical numbering. **Encoding** (`src/compiler/ir/encode.f`, package `IR-ENCODE`) owns the second. It frames that stream into bytes, adding the magic, the format major and minor version, the eight-byte little-endian field width, the counts and lengths, the full-input consumption rule, and the SHA-256 content digest. So a module's canonical content has exactly one owner and its canonical bytes have exactly one owner, and neither can disagree with the other about what the module is. The encoder never reads inside the payload, so a change to a table's row shape is canonicalization's alone and a change to framing or versioning is the encoder's alone.
 
-Renumbering is the load-bearing part, and a bare permutation is not enough: a pointer type row stores its pointee's module-local ordinal and an attribute row can store a symbol or type ordinal, so sorting the rows without rewriting their contents leaves two equivalent modules with row lists that are not even permutations of each other. `formal/Common/Interning.v` carries that counterexample machine-checked. Only build orders that intern a row after everything it references are admissible, so "the same bytes for any two build orders" means "for any two topological orders of the reference graph".
+Renumbering is the load-bearing part, and a bare permutation is not enough: a pointer type row stores its pointee's module-local ordinal and an attribute row can store a symbol or type ordinal, so sorting the rows without rewriting their contents leaves two equivalent modules with row lists that are not even permutations of each other. Only build orders that intern a row after everything it references are admissible, so "the same bytes for any two build orders" means "for any two topological orders of the reference graph".
 
 The alternative reading, in which canonicalization re-materializes a second module whose tables are already in canonical order, was rejected structurally rather than for convenience: the builder interns the dialect's own name before any caller can intern anything, so a re-materialized module's symbol table always begins with the dialect name and can never be in sorted order. It would also mint a second module identity, re-run the freeze verifier over content already verified, and cost a second full set of arena registry slots per module.
 
@@ -1884,158 +1885,13 @@ Resource estimates and `ptxas` results are optimization facts. Bounds, domain co
 
 ---
 
-## 10. Formal-verification integration
+## 10. Verification contracts
 
-### 10.1 Proof architecture
-
-The Rocq tree should mirror the executable stages:
-
-```text
-formal/
-  Common/
-    Ids.v
-    Tables.v
-    Digest.v
-    Trace.v
-    Memory.v
-    Separation.v
-    Arena.v
-  Habu/
-    Source.v
-    HIR.v
-    SIR.v
-    LIR.v
-    TypeSoundness.v
-  Native/
-    A64IR.v
-    RegallocValidator.v
-    LayoutValidator.v
-    Encoding.v
-    Image.v
-  GPU/
-    Model.v
-    RIR.v
-    FusionValidator.v
-    KIR.v
-    GIR.v
-    ScheduleValidator.v
-    PTX.v
-    PTXOpt.v
-  EndToEnd/
-    Native.v
-    GPU.v
-    Assumptions.v
-```
-
-The executable repository does not depend on Rocq at runtime.
-
-### 10.2 Per-stage proof obligations
-
-Every stage supplies:
-
-1. syntax;
-2. well-formedness;
-3. semantics;
-4. executable validator;
-5. canonical encoding;
-6. pass theorem or validator-soundness theorem.
-
-Conceptually:
-
-```text
-validate-pass input output witness = true
-  ⇒ semantics(output) refines semantics(input)
-```
-
-The end-to-end theorem composes these refinements.
-
-#### Memory, separation, and arena obligations
-
-`Common/Memory.v` models allocation identity, address space, typed contents,
-byte bounds, alignment, permissions, and lifetime, with executable
-load/store/allocate/free semantics. A pointer is valid only for the named live
-allocation, address space, range, alignment, and access permission.
-
-`Common/Separation.v` defines disjoint heap union, shared-read and unique-write
-permissions, operation footprints, and alias/effect composition. It proves
-locality and a frame theorem: an operation changes only its declared footprint,
-and disjoint framed memory remains unchanged. Compiler alias classes and effect
-summaries are sound only when they imply these footprint facts.
-
-`Common/Arena.v` applies the resource model to compiler contexts, builders,
-arenas, marks, growth, abort, freeze, and release. Mutable ownership is unique;
-growth preserves published identities; abort and release consume owned storage
-exactly once; freeze removes mutation authority and produces shareable
-read-only storage.
-
-Native lowering proves refinement from typed source/IR heap actions through the
-target memory model, including allocation identity, bounds, alignment, lifetime,
-and ABI-visible address behavior. GPU proofs keep global, shared, local, and
-parameter spaces distinct, index ownership by thread or block where required,
-and permit overlapping writes only through a declared atomic or reduction
-semantics. Barrier proofs state the ownership transfer across phases; every
-covered kernel proves disjoint writes or the declared synchronization rule and
-therefore race-freedom.
-
-### 10.3 Refinement direction
-
-Use target-behavior inclusion:
-
-```text
-behaviors(target) ⊆ behaviors(source)
-```
-
-For deterministic, well-defined exact programs this often yields equality. Inclusion remains appropriate for source nondeterminism, external calls, traps, and refined undefined behavior.
-
-### 10.4 Numeric refinement
-
-GPU semantics are indexed by numerical policy.
-
-Define separate relations for:
-
-```text
-bit-exact
-ULP bounded
-absolute bounded
-relative bounded
-named mixed-precision policy
-```
-
-A pass theorem names the relation it preserves. The final GPU theorem cannot silently strengthen a bounded policy into exact equality.
-
-### 10.5 Trust and assumptions
-
-Every production trust row eventually becomes one of:
-
-```text
-proved theorem
-instance of a proved generic representation theorem
-validated certificate
-external axiom
-```
-
-The proof gate emits its complete assumptions. CI compares that set to the committed external-assumption manifest and fails on unexpected growth, `Admitted`, or an unbound theorem reference.
-
-### 10.6 Implementation/proof synchronization
-
-Every dialect and witness format has:
-
-```text
-schema name
-major/minor version
-canonical schema manifest
-schema digest
-```
-
-A semantics-changing schema edit increments the major version and requires proof-owner review. A rendering-only extension may increment the minor version if canonical semantics are unchanged.
-
-The implementation branch must expose stable canonical fixtures for the proof branch:
-
-- valid modules;
-- one mutation per rejected invariant;
-- pass input/output/witness triplets;
-- encoding vectors;
-- source-to-output traces.
+Each stage supplies its syntax, invariants, executable validator, canonical
+encoding, and behavioral fixtures. Accepted and rejected programs exercise the
+production load path; generated code is checked through execution and image
+round trips. These checks establish the behavior they exercise, not a formal
+refinement or end-to-end soundness theorem.
 
 ---
 
@@ -2056,25 +1912,11 @@ Migration path:
 
 This can substantially shrink the special builder surface even if the final binary grows temporarily during migration.
 
-### 11.2 Bootstrap theorem
+### 11.2 Bootstrap evidence
 
-The ultimate release proof should connect:
-
-```text
-proved compiler model
-  → verified compiler artifact
-  → concrete bin/hb bytes
-```
-
-The current fixpoint remains valuable:
-
-```text
-verified/reference compiler output
-  = native new compiler output
-  = next-stage output
-```
-
-But fixpoint equality is not substituted for semantic preservation.
+Repeated native builds must reach byte-identical output. Fixpoint equality
+checks reproducibility; it does not establish semantic preservation. Qualify
+that source/engine pair with the native behavioral gate.
 
 ### 11.3 Runtime JIT validation
 
@@ -2085,8 +1927,6 @@ The final JIT path should validate every produced object before making it execut
 - branch/layout validator;
 - encoder/fixup validator;
 - source/effect digest binding.
-
-As proofs land, these validators become the executable checkers justified by Rocq.
 
 ---
 
@@ -2683,19 +2523,6 @@ roofline classification
 ```
 
 A new backend must at least match the old path on the committed correctness corpus before default cutover. Performance cutover requires representative kernels to improve or a documented target-specific reason why a slower kernel is retained.
-
-### 16.6 Formal gates
-
-As proofs land:
-
-- no `Admitted`;
-- complete assumptions report;
-- expected external-axiom manifest;
-- schema digest parity;
-- witness vectors accepted by both executable and Rocq validators;
-- corrupted witnesses rejected;
-- composed native theorem for each covered language slice;
-- composed GPU theorem for each covered operation/schedule slice.
 
 ---
 

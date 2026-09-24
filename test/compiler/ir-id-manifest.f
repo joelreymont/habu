@@ -15,11 +15,13 @@
 \     vector-reachable is actually reached by a row, and every guard it marks as
 \     unreachable is never reached.
 \
-\ Wrong-family rejection and require replay are deliberately not tested here.
-\ They belong to `test/compiler/ir-id.f`, and the schema only names them.
+\ Wrong-family rejection belongs to `test/compiler/ir-id.f`. Child load checks
+\ here also exercise require replay and rejection of a forced source reload.
 
 require lib/test.f
 require lib/fs.f
+require lib/test/outcome.f
+require lib/process-command.f
 require test/compiler/ir-id-schema.f
 
 package IR-ID-MANIFEST-TEST
@@ -206,6 +208,21 @@ variable GUARD-I
       i FIXTURE-PATH$ FILE? TTRUE
    loop ;
 
+: REPLAY-OUTCOME ( bool -- outcome ) {: forced:bool :}
+   PROC-CMD:RESET
+   forced if
+      s" HABU_IR_ID_REPLAY_FORCE" >LEN s" 1" >LEN PROC-CMD:ENV+
+   then
+   s" --load" >LEN PROC-CMD:ARG+
+   s" test/compiler/ir-id-replay.f" >LEN PROC-CMD:ARG+
+   s" bin/hb" >LEN 60000 >MS PROC-CMD:RUN-OUTCOME ;
+
+: REPLAY-COVERAGE ( -- )
+   s" the module allocator survives a require replay in a child load" T-LABEL
+   false REPLAY-OUTCOME 0 T-OUTCOME-EXITED=
+   s" a forced replay of the identity source is refused by the seal" T-LABEL
+   true REPLAY-OUTCOME ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED= ;
+
 public
 
 : RUN ( -- )
@@ -218,6 +235,7 @@ public
    SCALAR-DISCRIMINATION
    GUARD-COVERAGE
    FIXTURE-COVERAGE
+   REPLAY-COVERAGE
    T-REPORT ;
 
 ;using

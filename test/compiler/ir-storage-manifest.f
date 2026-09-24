@@ -1,6 +1,4 @@
-\ Native storage behavior for the shared example rows. Checks arena contents,
-\ counts and named refusals, small scratch allocations, module budgets and depth.
-\ This entry does not inspect source bodies or invoke Rocq.
+\ ir-storage-manifest.f - Run native storage and lifetime cases against the compiler runtime.
 
 require lib/test.f
 require test/compiler/ir-storage-cases.f

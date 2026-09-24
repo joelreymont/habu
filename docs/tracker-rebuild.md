@@ -1,5 +1,9 @@
 # Tracker rebuild of 2026-09-16
 
+This is a historical inventory. Its formal-proof tasks and prover prerequisites
+were retired when the Rocq subsystem was removed; they are not current build or
+release requirements. Use the live dots and [gate.md](gate.md) for current work.
+
 The open tracker was rebuilt around the seven campaigns in [roadmap.md](roadmap.md).
 Every dot outside the protected release line was read against this tree and given one
 verdict. Closed dots left the tree through the ignored archive, as the dot CLI does;

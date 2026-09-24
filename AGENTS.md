@@ -40,7 +40,7 @@ belong in the language core.
   exist by design: `tools/bootstrap.sh`, the no-binary recovery launcher that
   runs when `bin/hb` does not exist, and the device-peer scripts under `test/`
   (serial, XMODEM, UDP and the embedded assembler hosts) that stand in for a
-  foreign machine; `formal/` builds its proofs with rocq's own Makefile.
+  foreign machine.
   Anything else under `tools/` or `test/` that is not Habu is a defect to
   convert.
 - Read [docs/forth-card.md](docs/forth-card.md) before writing Habu. It is the
@@ -66,7 +66,7 @@ belong in the language core.
   for compiler/runtime or broad library changes that need the full suite.
   Documentation, moves and other mechanical changes need proportionate checks.
 - Report actual results and untested boundaries. Never weaken a claim to make a
-  check pass. [docs/proofs.md](docs/proofs.md) explains proof/model limits.
+  check pass. [docs/proofs.md](docs/proofs.md) explains verification limits.
 - A finding goes where it is checked: a test or a code comment if either can
   hold it; [docs/forth.md](docs/forth.md) (its "Rules learned by refusal"
   section) and the card for a language rule; [docs/bootstrap.md](docs/bootstrap.md),

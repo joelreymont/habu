@@ -1,7 +1,5 @@
-\ Relocation vectors run against the shipped emitted instruction sequences.
-\ The same rows also generate the Rocq obligations. These examples do not
-\ establish that every address producer records its sites; real image tests
-\ exercise writer/capture/restore together.
+\ reloc-cases.f - Execute relocation vectors against emitted instruction sequences.
+\ Selected examples do not establish complete relocation coverage.
 
 require lib/prelude.f
 require lib/errors.f
@@ -392,8 +390,7 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
 \ The shipped `SNAP-RELOC:EMIT-ADDRS` is decoded and run the same way the call
 \ pass is, once per leg: the writer's leg moves the live band onto the canonical
 \ sentinel and the loader's moves the sentinel onto the band this run got. Only
-\ the row is shared between this and the Rocq obligations; neither side computes
-\ an address, and the four words of every slot are built from the row's address
+\ the fixture supplies the address; the four words of every slot are built from it
 \ and the scaffold words read out of src/habu/habu1.f.
 
 \ The scaffold for lane j, read out of src/habu/habu1.f, with its destination

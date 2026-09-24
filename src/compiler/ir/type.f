@@ -90,12 +90,8 @@
 \ unchanged is not canonicalization. What two orders agree on is the
 \ denotation of a row - the row unfolded into the structure it references -
 \ never the row content itself, and the denotation is what an encoder has to
-\ preserve. This is machine-checked in formal/Common/Interning.v:
-\ Types.ty_both_orders_admissible builds i8, i16 and pointer-to-i8 in the two
-\ admissible orders and gets the row lists [i8; i16; ptr->0] and
-\ [i16; i8; ptr->1]; Types.structural_rows_not_permutation proves those two
-\ lists are not a permutation of each other; and
-\ Types.ty_denotation_order_independent shows their denotations agree.
+\ preserve. For example, [i8; i16; ptr->0] and [i16; i8; ptr->1] denote the
+\ same types, but their stored row lists are not permutations of each other.
 \
 \ One premise of that statement is easy to miss: not every build order exists.
 \ Because POINTER rejects a pointee ordinal that is not already below the live

@@ -1,88 +1,5 @@
-\ ir-structure-schema.f - the shared frozen description of the operation and
-\ function structure contract.
-\
-\ The module lives in `package COMPILER-STRUCT-PROOF`. Its subject is the two
-\ newest stores of the compiler substrate - `IR-OP` (src/compiler/ir/op.f) and
-\ `IR-FUN` (src/compiler/ir/fun.f) - and the machine-checked model of them in
-\ `formal/Common/Structure.v`.
-\
-\ It holds data and nothing else. Four tables:
-\
-\   1. The build sequences. A sequence names a store kind, the committed
-\      ceilings it runs under, and an ordered list of build steps with the
-\      answer each step must receive: an ordinal, or the exact throw code that
-\      must reject it, together with the two counts the store must end on.
-\      These rows are the one copy. `test/compiler/ir-structure-cases.f` runs
-\      each row through the real `IR-OP` and `IR-FUN` builder words, and
-\      `test/compiler/ir-structure-obligations.f` turns the very same row into a
-\      Rocq obligation about `Habu.Common.Structure`. Neither side carries a
-\      copy of the vectors, so weakening a row asks both sides a weaker question
-\      and deleting one stops both sides asking.
-\
-\      A single-value-store step is one operation: the value ordinals it names
-\      as operands and how many results it mints. A block step is one block: how
-\      many operations were appended while no block was open, how many were
-\      appended inside the block, and which of those is the terminator.
-\
-\   2. The frozen guard bodies. Each is small, each is entirely guard, and each
-\      is the reason one of the model's hypotheses is true of the shipped code:
-\      `OPERANDS-CK` is the strictly-below operand rule, `WIN-STARTS` and
-\      `ROW-ADD` are the append side that lays the four windows down in order,
-\      and `TILE-CK` / `OTILE-CK` / `BTILE-CK` / `ATILE-CK` with `STEP-CK` are
-\      the read side that revalidates the tiling against one neighbouring row.
-\
-\   3. The call-closed guard rows. A guard may be several calls deep - `END-OP`
-\      reaches the strictly-below rule through `OPERANDS-CK`, and `OP@` reaches
-\      the tiling rule through `OTILE-CK` and then `STEP-CK` - so a one-level
-\      token scan of either body finds no guard token at all and passes
-\      vacuously. Every row here therefore records that the guard token occurs
-\      ZERO times in the body directly, and the reader has to reach it by
-\      closing the guard relation under calls. A builder row must also write
-\      rows and must run every guard before its first write; a reader row must
-\      write nothing at all.
-\
-\      The frozen read's row names the PUBLIC read, as IR-FUN's four rows do.
-\      Its tiling check stopped being the private cell reader's when the frozen
-\      row memo landed: `FROW-USE` resolves the row and validates its tiling,
-\      `FWIN@` then reads the eight fields that validation cached, and the
-\      public `FOPERAND@` is what composes the two. Asking `FWIN@` for the
-\      guard now asks a body that cannot reach one by construction. The
-\      behaviour the private pair owes - a malformed tiling refused through the
-\      public read, on a memo hit and a memo miss alike - is `test/compiler/
-\      ir-op.f`'s MEMO-CASES, which drives it through `FOPERAND@`.
-\
-\   4. The terminator field, which the model finds to be derived rather than
-\      recorded: `BROW-ADD` writes `opst opn + 1-` and `TERMINATOR@` recomputes
-\      the same number and rejects anything else. Both bodies are frozen here so
-\      the finding cannot quietly stop being true.
-\
-\ Where the two sides are not literally the same shape, and why that is sound:
-\
-\   - Habu rejects with a named throw and the model rejects with `None`. The row
-\     records the throw code, so the Habu diagnostic and the Rocq decision stay
-\     bound to each other row by row rather than only agreeing that something
-\     failed.
-\   - A Habu operation names an opcode whose schema fixes its arity. The
-\     sequences use one variadic opcode for the value-store rows, so the schema
-\     can never be what rejects a step and the answer is decided by the SSA rule
-\     and the ceilings alone - which is what the model describes.
-\   - The model has no source spans, no module keys and no attribute rows, so
-\     every step declares the one span the store requires and carries no
-\     attribute. Those are Habu.Common.Interning's and Habu.Common.IdLaws'
-\     subjects.
-\   - An attribute entry is a key and a value, so it occupies two pool cells
-\     while the other three window kinds occupy one cell per entry. The model's
-\     `wlen` is a length in POOL CELLS, and the row stores exactly that, so the
-\     stride never reaches the tiling: `TILE-CK` and `FTILE-CK` below are the
-\     same arithmetic they were before attributes were keyed, and `ROW-ADD`
-\     writes `L-AT SN@ AT-CELLS *` because that is the window's cell length.
-\     `ROOM-CK` counts the same product through `STAGED-CELLS`, which is what
-\     keeps the written length inside the pool. Storing the entry count instead
-\     would have made the stored field mean something different from every other
-\     window and made the model's contiguity claim false of the shipped row.
-\
-\ Consumers: `test/compiler/ir-structure-cases.f`,
-\ `test/compiler/ir-structure-obligations.f`.
+\ ir-structure-schema.f - Native operation, value, function and block vectors.
+\ Cases exercise construction, ownership, bounds and frozen-state checks.
 
 require lib/errors.f
 require lib/string.f
@@ -119,7 +36,7 @@ public
 13 constant ROLE-COUNT
 
 \ The role's name, for the label a failing row reports and for the name the
-\ generated Rocq obligation carries.
+\ diagnostic row names.
 : ROLE-NAME$ ( n -- ptr u8 n )
    case
       0 of s" chain" endof
@@ -399,8 +316,6 @@ public
 \ memo before doing that arithmetic over the cached cells: `OFF-OPST` through
 \ `OFF-ATN` are the eight CONSECUTIVE offsets 1..8 of the row (src/compiler/ir/
 \ op.f), so the batched read covers exactly the cells the interleaved reads did.
-\ No hypothesis of `formal/Common/Structure.v` is about which handle a read is
-\ made through, so all seven still make the same claims true.
 
 16 constant GUARD-COUNT
 
@@ -548,8 +463,5 @@ public
 
 : FUN-FILE$ ( -- ptr u8 n )
    s" src/compiler/ir/fun.f" ;
-
-: MODEL-FILE$ ( -- ptr u8 n )
-   s" formal/Common/Structure.v" ;
 
 ;package

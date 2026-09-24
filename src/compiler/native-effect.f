@@ -48,8 +48,7 @@
 \ hold - a file of 32 registers, x30 is the link register, operand 31 is the
 \ stack pointer, the stack is 16-byte aligned, a frame slot is reached by a
 \ twelve-bit offset scaled by the access width, there is no halfword load - was
-\ ARM64's, read off the instruction vocabulary that formal/Common/Insn.v models
-\ and src/arch/arm64/asm.f emits. They are still exactly that, and they are now
+\ ARM64's, read off the instruction vocabulary src/arch/arm64/asm.f emits. They are still exactly that, and they are now
 \ declared where the machine that has them is: src/arch/arm64/machine.f, as one
 \ description src/compiler/native/machine.f judges. A contract NAMES the machine
 \ it is a contract over, in its `mach` field, so every rule below asks that

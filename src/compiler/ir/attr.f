@@ -113,14 +113,9 @@
 \ reference under all three permutations it chose - its own, the symbol
 \ table's and the type table's - and emitting sorted rows unchanged is not
 \ canonicalization. What two orders agree on is the denotation of a row, never
-\ its stored content. The same obligation is machine-checked for the type
-\ table in formal/Common/Interning.v (Types.ty_both_orders_admissible,
-\ Types.structural_rows_not_permutation and
-\ Types.ty_denotation_order_independent, with the general statement restricted
-\ to reference-free keys by MODEL GAP 8); this table stores ordinals the same
-\ way, so it carries the same obligation. As there, the build orders that
-\ exist at all are exactly the topological orders of the reference graph,
-\ because a record value must already be constructed when its record is.
+\ its stored content. This table stores ordinals like the type table, so both
+\ require reference renumbering. Legal build orders are the topological orders
+\ of the reference graph: a record value must exist before its record.
 \
 \ FOREIGN ORDINALS ARE VALIDATED WHERE THEY ARE OWNED. A symbol or type
 \ reference is checked against its owning table at construction, and a reader

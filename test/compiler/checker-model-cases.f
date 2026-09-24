@@ -1,32 +1,4 @@
-\ checker-model-cases.f - the Habu side of the checker parity gate.
-\
-\ The module lives in `package CHECKER-MODEL-CASES`. It asks the SHIPPED
-\ checker, `src/core/checker.f`, the questions the frozen tables in
-\ `package CHECKER-MODEL-PROOF` ask, and asks them in two ways:
-\
-\   - structurally, by reading the checker's own source through the shared
-\     source lexer. The concrete type registry `CT-INIT` and the control-flow
-\     dispatch `CF-TOK?` are tables written as code, and this file walks each
-\     body token by token against the frozen rows. That is how a type or a
-\     control spelling ADDED to the checker and not to the model is caught: the
-\     walk runs out of frozen rows, or finds a row it was not expecting, before
-\     Rocq is asked anything at all;
-\   - behaviourally, by handing each shared program vector to the real
-\     `CHECK-QUIET-CANDIDATE!` and demanding the row's one verdict. The same
-\     row becomes a Rocq obligation in
-\     `test/compiler/checker-model-obligations.f`, so neither side carries a
-\     copy of what the program is or of what it must answer.
-\
-\ Why a structural read and not a runtime probe. Nothing the checker exposes
-\ reports "the whole list of concrete types you registered" or "the whole list
-\ of control spellings you dispatch". A probe can only ask about a name it
-\ already knows, so it can never notice a name nobody wrote down. The source IS
-\ the list, and the shared lexer is the only honest way to read it: it drops
-\ comments, and it hands back a string literal's payload rather than its bytes
-\ as code, so a type name hidden in a comment or a control spelling that only
-\ appears inside a string cannot satisfy a row.
-\
-\ Consumer: `test/compiler/checker-model-proof.f`.
+\ checker-model-cases.f - Exercise checker vocabulary and control-flow vectors through the real checker.
 
 require lib/prelude.f
 require lib/errors.f
@@ -473,11 +445,8 @@ private
 \ its variant does not have, and so is the underflow row. Four rows that assert
 \ nothing look exactly like four rows that pass.
 \
-\ SO IT IS NOT A CALLER'S PROMISE ANY MORE. checker-model-proof.f wrapped its
-\ call in the package and checker-model-manifest.f did not; both files were
-\ internally correct and nothing noticed the disagreement, so the manifest was
-\ red on three rows and vacuously green on four from the day the construct
-\ vectors landed. The phase reads the authority itself now and names the cause.
+\ The phase reads the package authority itself and names a wrong scope before
+\ executing the vectors.
 \
 \ IT ASKS FOR THE PACKAGE AND NOT FOR A CERTIFYING PROBE, deliberately. A probe
 \ that ran a construct and required VCert would also fire if `construct` itself

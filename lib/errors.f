@@ -448,51 +448,27 @@ public
 -6703 constant E-CID-LEX      \ the shared source lexer refused the identity source it was asked to read
 -6704 constant E-CID-DEF      \ a named identity definition is missing, duplicated, or unterminated in that source
 -6705 constant E-CID-CONST    \ a named identity constant is missing, duplicated, or not a literal in that source
--6706 constant E-CID-ROCQ     \ the generated Rocq obligation run did not complete cleanly
--6707 constant E-CID-AXIOM    \ a proof-manifest row is malformed, claims an assumption a gate holds at empty, or does not match the assumption set Rocq reported (package PROOF-MANIFEST, shared by both parity gates)
 -6708 constant E-CID-REPLAY   \ a require replay handed back a module identity the allocator had already issued
 
-\ Frozen compiler interning parity gate (package COMPILER-INTERN-PROOF):
-\ -6800..-6819. The neighbouring block, because this gate is the interning twin
-\ of the identity gate above: it binds formal/Common/Interning.v to the three
-\ interners in src/compiler/ir. Its manifest failures are the shared
-\ E-CID-AXIOM, because both gates read one manifest grammar. Twenty codes; the
-\ next block, -6820..-6839, is the structure gate below.
-\ rest of -6860..-6999 stays unclaimed.
+\ Compiler interning schema checks (package COMPILER-INTERN-PROOF): -6800..-6819.
 -6800 constant E-CIN-FIRST
 -6819 constant E-CIN-LAST
 -6800 constant E-CIN-ROW      \ a shared interning vector index or table slot is outside its declared table
 -6801 constant E-CIN-STRUCT   \ a frozen interner structure - a compared-field list, a check-before-write ordering, or a reference guard - is not what the source carries
 
-\ Frozen compiler structure parity gate (package COMPILER-STRUCT-PROOF):
-\ -6820..-6839. The next block after the interning gate, because this gate is
-\ the third of the same family: it binds formal/Common/Structure.v to the
-\ operation and value store and the function and block store in
-\ src/compiler/ir. Its manifest failures are the shared E-CID-AXIOM, because
-\ all three gates read one manifest grammar. Twenty codes; the rest of
-\ -6840..-6999 stays unclaimed.
+\ Compiler structure schema checks (package COMPILER-STRUCT-PROOF): -6820..-6839.
 -6820 constant E-CIS-FIRST
 -6839 constant E-CIS-LAST
 -6820 constant E-CIS-ROW      \ a shared structure vector index or table slot is outside its declared table
 -6821 constant E-CIS-STRUCT   \ a frozen structure guard - the strictly-below operand rule, a window tiling check, a call-closed guard row, or the derived terminator field - is not what the source carries
 
-\ Frozen compiler storage and lifetime parity gate (package COMPILER-STORE-PROOF):
-\ -6820..-6839. The third gate in this run of three: it binds
-\ formal/Common/Storage.v to the arena and context modules the whole compiler IR
-\ rests on, src/compiler/ir/arena.f and src/compiler/ir/context.f. Like its two
-\ neighbours its manifest failures are the shared E-CID-AXIOM, because all three
-\ gates read one manifest grammar. Twenty codes.
+\ Compiler storage and lifetime checks (package COMPILER-STORE-PROOF): -6840..-6859.
 -6840 constant E-CST-FIRST
 -6859 constant E-CST-LAST
 -6840 constant E-CST-ROW      \ a shared storage vector index or table slot is outside its declared table
 -6841 constant E-CST-STRUCT   \ a frozen storage structure - a pinned capacity constant, a check-before-write ordering, or a lifetime guard body - is not what the source carries
 
-\ Frozen checker model parity gate (package CHECKER-MODEL-PROOF): -6860..-6879.
-\ The next block after the storage gate, and the fifth of the same family: it
-\ binds formal/Common/Effects.v and formal/Common/Control.v to the checker
-\ itself, src/core/checker.f. Like its four neighbours its manifest failures are
-\ the shared E-CID-AXIOM, because all five gates read one manifest grammar.
-\ Twenty codes; the rest of -6880..-6999 stays unclaimed.
+\ Checker behavior and schema checks (package CHECKER-MODEL-PROOF): -6860..-6879.
 -6860 constant E-CMP-FIRST
 -6879 constant E-CMP-LAST
 -6860 constant E-CMP-ROW      \ a shared checker-model vector index or table slot is outside its declared table
@@ -500,27 +476,13 @@ public
 -6862 constant E-CMP-CONTROL  \ the checker's control-flow dispatch table or a control frame kind is not what the frozen table carries
 -6863 constant E-CMP-POOL     \ the frozen schema's own string pool or table is full
 
-\ Frozen instruction-encoding parity gate (package COMPILER-INSN-PROOF):
-\ -6880..-6899. The sixth gate of the same family: it binds
-\ formal/Common/Insn.v to the ARM64 assembler the engine emits through,
-\ src/arch/arm64/asm.f with its mnemonic and label layers in
-\ src/arch/arm64/mnem.f and src/arch/arm64/icode.f. Like its five neighbours
-\ its manifest failures are the shared E-CID-AXIOM, because all six gates read
-\ one manifest grammar. Twenty codes at -6900..-6919; the relocation gate
-\ landed first and holds -6880..-6899; the rest of -6920..-6999 is unclaimed.
+\ Instruction encoding checks (package COMPILER-INSN-PROOF): -6900..-6919.
 -6900 constant E-CIE-FIRST
 -6919 constant E-CIE-LAST
 -6900 constant E-CIE-ROW      \ a shared instruction vector index or table slot is outside its declared table
 -6901 constant E-CIE-FORM     \ an instruction form code no row of the frozen vocabulary names
 
-\ Frozen snapshot relocation parity gate (package RELOC-PROOF): -6880..-6899.
-\ The next block after the checker model gate, and the sixth of the same
-\ family: it binds formal/Common/Reloc.v to the two emitted relocation passes
-\ in src/habu/habu2.f (SNAP-RELOC:EMIT-CALLS and SNAP-RELOC:EMIT-XT), the
-\ writer's address-cell canonicalization in src/habu/snap-lib.f, and the band
-\ constants in src/habu/layout.f. Like its five neighbours its manifest
-\ failures are the shared E-CID-AXIOM, because all six gates read one manifest
-\ grammar. Twenty codes; the rest of -6900..-6999 stays unclaimed.
+\ Snapshot relocation checks (package RELOC-PROOF): -6880..-6899.
 -6880 constant E-CRL-FIRST
 -6899 constant E-CRL-LAST
 -6880 constant E-CRL-ROW      \ a shared relocation vector index or table slot is outside its declared table
@@ -1141,7 +1103,7 @@ public
 -8631 constant E-A64PRUNE-SHAPE  \ a module this pass cannot rewrite: a span naming another source, a block with no operation in it, or a value used before it is defined
 -8633 constant E-A64PRUNE-OPCODE \ an operation whose opcode is none of the machine dialect's family, so this pass has no form to rebuild it as
 -8634 constant E-A64PRUNE-CAP    \ more values in one function than the rewriter's value map holds
--8635 constant E-A64EMIT-ADDEND  \ a multiply-add whose addend register is the zero register: that word IS a plain multiply, which is why formal/Common/Insn.v puts it outside `wf`, so emitting one would be emitting a different instruction than the module says
+-8635 constant E-A64EMIT-ADDEND  \ a multiply-add whose addend register is the zero register: that word is a plain multiply, so emitting one would encode a different operation
 -8636 constant E-NSTR-CAP       \ a string literal this store cannot take: more distinct bodies than its index holds, or more bytes than its arena holds. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
 -8637 constant E-NSTR-BODY      \ a string literal of negative length, which no reader produces and no arena can hold
 -8638 constant E-A64PRUNE-PLAN  \ a rewrite asked for without the scan that plans it, or with a plan sealed for another module. The prune band's own code, taken after the string store's pair rather than before -8630, which belongs to the tail-call band above

@@ -307,8 +307,7 @@ From `docs/x86-64.md`; the arm64 lanes are built on them.
 - Relocation site kind `MOVABS` in `src/habu/aot-decl.f` (package
   `SNAP-RELOC`): 10 bytes, REX.W `B8+r` imm64, patch at offset 2 width 8;
   `MOVABS-SITE?` admits exactly `$48`/`$49` and `B8..BF`; `MOVABSV`,
-  `SET-MOVABS`. `formal/Common/Reloc.v` models it with three theorems
-  (`test/compiler/reloc-axioms.txt` rows). `SNAP-RELOC:MOVABS-IMM-OFF` and
+  `SET-MOVABS`. `SNAP-RELOC:MOVABS-IMM-OFF` and
   `X64ASM:MOV-RI64-IMM-OFF` both say 2, pinned equal by
   `test/x86-64-seam.f`.
 - Tests: `test/x86-64-seam.f` (ELF header by field, MOVABS fixtures,

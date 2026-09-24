@@ -1,28 +1,5 @@
-\ insn-cases.f - the shared instruction rows, asked of the shipped assembler.
-\
-\ The module lives in `package COMPILER-INSN-CASES`. It reads the frozen rows in
-\ `package COMPILER-INSN-PROOF` and drives each one through the REAL emitter
-\ words - `MOVZ,`, `LDRB,`, `BL,`, `BCOND,` and the rest of
-\ `src/arch/arm64/mnem.f` and `src/arch/arm64/icode.f` - into the real code
-\ buffer, then reads the emitted word back out of that buffer through the same
-\ `CW@` accessor the assembler itself writes through. Nothing here re-implements
-\ an encoding: if a row passes, the shipped word really produced that number.
-\
-\ A branch row is emitted against a real label at the row's distance, so a
-\ delta at or below zero goes through the immediate resolve in `BR-EMIT` and a
-\ positive delta goes through the fixup record and the `LBL,` backpatch - the
-\ path the snapshot relocation pass depends on.
-\
-\ Two halves, because one of them ends processes:
-\
-\   - `HABU-SIDE` runs in this engine. It covers the encoding vectors, x18 in
-\     every X-register slot on Linux, the non-X controls, and `>LIMM` bindings.
-\   - `REFUSAL-SIDE` runs field, alignment and mask refusals on every host, plus
-\     the x18 rows on Darwin. Every refusal ends a child process with `die`, so
-\     the parent can judge its exit status.
-\
-\ Consumers: `test/compiler/insn-manifest.f` (the first half only) and
-\ `test/compiler/insn-proof.f` (both, plus the proof assistant).
+\ insn-cases.f - Exercise ARM64 encoding vectors and refusals.
+\ HABU-SIDE runs in-process; REFUSAL-SIDE checks die outcomes in child engines.
 
 require lib/prelude.f
 require lib/errors.f

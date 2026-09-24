@@ -1,56 +1,5 @@
-\ ir-id-schema.f - the frozen canonical description of the IR-0.1 identity design.
-\
-\ The module lives in `package COMPILER-ID-PROOF`. Its subject is the production
-\ identity authority `src/compiler/ir/id.f` (`package IR-ID`). It holds three
-\ things and nothing else:
-\
-\   1. A canonical byte form of the identity design. It names the schema and its
-\      version, the packing widths and bounds, every identity family in
-\      canonical order, the two projection rules, and every named guard with
-\      the error code it throws, the word that owns it, and how that guard can
-\      be reached. The family rows are not transcribed: they are read back from
-\      the live checker type-family registry by owning package and name, so
-\      renaming, adding, removing, or changing a family's arity, kind or
-\      visibility cannot leave the
-\      canonical bytes untouched.
-\   2. The SHA-256 digest of exactly those bytes (`DIGEST-HEX$`) and the
-\      committed frozen value it must equal (`EXPECTED-DIGEST$`). Changing the
-\      design without consciously re-freezing the digest is a test failure.
-\   3. One ordered set of valid and hostile numeric vectors covering every guard
-\      that is numerically reachable through the public `IR-ID` surface, plus
-\      the checked words that run one vector row through that surface. The
-\      vectors are part of the digested bytes, so a hostile row cannot be
-\      weakened or deleted silently either.
-\
-\ How the freeze actually holds. The digest alone would only freeze a
-\ description; on its own a body change in `id.f` could keep the same bytes. The
-\ vectors close that hole from the other side, because every declared width and
-\ bound below is used to BUILD the vector rows rather than being restated by
-\ them: `LOCAL-MAX` is accepted and `LOCAL-MAX 1+` is rejected by the real
-\ packer, `CELL-MAX` is accepted and `-1` rejected by the real scalar
-\ constructors, and `LOCAL-MAX 1+` is a legal bound. Move a constant here and
-\ the running engine rejects the row; move a constant in `id.f` and the same row
-\ fails. The two halves cannot drift apart while both are green.
-\
-\ Not everything a defensive guard checks can be reached from outside `IR-ID`.
-\ A module key and a packed identity cell are unforgeable: the only producers
-\ are `IR-ID:NEW-MODULE` and `IR-ID:PACK-*`, the raw casts are private, and a
-\ `CAST:` into those families from another package is rejected before runtime.
-\ So the two module-serial guards are declared with reachability `sealed-key`,
-\ and serial exhaustion is declared `allocator` because reaching it needs the
-\ whole 2^31-1 serial space. Those three are named here with their owners and
-\ are proved elsewhere: the sealed-cast rejection by the static wrong-family
-\ fixture named in the fixture rows below, and exhaustion by the allocator-laws
-\ leaf. Only the four `vector` guards carry numeric rows, and the manifest is
-\ what says which is which.
-\
-\ Wrong-family rejection and require replay stay out of the numeric tables on
-\ purpose: the first is a static checker fact and the second is a real child
-\ load, and neither is a number. Both are referenced by the fixture rows.
-\
-\ Consumers: the focused test `test/compiler/ir-id-manifest.f`, and later the
-\ Rocq parity gate, which binds these bytes and these vectors to the model in
-\ `formal/Common/`.
+\ ir-id-schema.f - Native compiler identity schema and boundary vectors.
+\ The manifest checks canonical bytes, family coverage and the public identity API.
 
 require lib/errors.f
 require lib/string.f

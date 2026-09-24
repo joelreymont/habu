@@ -1,36 +1,4 @@
-\ ir-intern-cases.f - the Habu half of the interning parity binding.
-\
-\ The module lives in `package COMPILER-INTERN-CASES`. It takes the frozen rows
-\ in `package COMPILER-INTERN-PROOF` and asks the shipped compiler about them,
-\ in four groups:
-\
-\   - the compared-field list of every scan predicate, read structurally out of
-\     the production source rather than matched as text. A predicate reads a
-\     stored cell as `<offset> RC@`, so the reader collects the token before
-\     every `RC@` with the operator three tokens on. Add, drop, reorder, or stop
-\     comparing a field and the extracted list stops equalling the frozen one,
-\     which is the only place the meaning of "the same key" is written down.
-\
-\   - the check-before-write ordering of the four intern paths. The reader first
-\     classifies every definition in the owning file: a definition WRITES if it
-\     carries the arena push token or calls a writer, and it CHECKS CAPACITY if
-\     it carries the committed-capacity token or calls a capacity check. Both
-\     relations are closed under calls, because `IR-SYM:INTERN` pushes two calls
-\     deep and would otherwise contain no push token at all and pass vacuously.
-\     Each intern body must then contain at least one writer, at least one
-\     capacity check, and no capacity check after its first writer.
-\
-\   - the reference guards, frozen whole. They are what makes the model's
-\     `refs_ok` hypothesis true of the shipped code: a pointer's pointee and
-\     every staged function element must already be a constructed row of this
-\     same table, so a reference always points strictly backwards.
-\
-\   - every intern sequence, run through the real `IR-SYM`, `IR-TYPE` and
-\     `IR-ATTR` words. The same rows become Rocq obligations in
-\     `test/compiler/ir-intern-obligations.f`; this file never restates them.
-\
-\ Consumers: `test/compiler/ir-intern-manifest.f` (these four groups alone) and
-\ `test/compiler/ir-intern-proof.f` (these four plus the Rocq half).
+\ ir-intern-cases.f - Exercise the shipped interners against the shared interning schema.
 
 require lib/test.f
 require lib/string.f

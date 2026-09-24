@@ -1,52 +1,5 @@
-\ ir-intern-schema.f - the shared frozen description of the interning contract.
-\
-\ The module lives in `package COMPILER-INTERN-PROOF`. Its subject is the one
-\ behaviour three production interners share - `IR-SYM` (src/compiler/ir/symbol.f),
-\ `IR-TYPE` (src/compiler/ir/type.f) and `IR-ATTR` (src/compiler/ir/attr.f) - and
-\ the machine-checked model of that behaviour in `formal/Common/Interning.v`.
-\
-\ It holds data and nothing else. Three tables:
-\
-\   1. The intern sequences. A sequence names a table kind, a committed ceiling,
-\      and an ordered list of keys with the answer each key must receive: an
-\      ordinal, or the exact throw code that must reject it. These rows are the
-\      one copy. `test/compiler/ir-intern-cases.f` runs each row through the real
-\      `IR-SYM` / `IR-TYPE` / `IR-ATTR` words, and
-\      `test/compiler/ir-intern-obligations.f` turns the very same row into a Rocq
-\      obligation about `Habu.Common.Interning`. Neither side carries a copy of
-\      the vectors, so weakening a row asks both sides a weaker question and
-\      deleting one stops both sides asking.
-\
-\   2. The scan-predicate field lists. What "the same key" means is decided by
-\      which stored cells the scan predicate compares, in order. Adding or
-\      dropping one silently changes identity, so the compared list of each
-\      predicate is frozen here and read back structurally out of the source.
-\
-\   3. The frozen guard bodies and the words whose write ordering is checked.
-\      A capacity check that runs after the first arena push leaves a row behind
-\      on a rejected intern; the model's `ceiling_write_order_counterexample`
-\      exhibits exactly that mutation. The reference guards are what make the
-\      model's `refs_ok` hypothesis true of the shipped code.
-\
-\ Where the two sides are not literally the same shape, and why that is sound:
-\
-\   - A Habu type key is `(kind, width, sign)` or `(kind, space, pointee)` in wire
-\     codes; the model's key is `TInt a b` or `TPtr a b` over plain numbers. What
-\     the shared row holds is the ABSTRACT key - a constructor and two numbers -
-\     and each side maps it injectively into its own vocabulary. The model's
-\     theorems are about when two keys are the same key, so an injective encoding
-\     on each side is exactly what the comparison needs; identical wire codes are
-\     not.
-\   - A Habu attribute integer key is one number. It rides the same abstract
-\     constructor as an integer type, because the model is generic in the key type
-\     and both tables are fixed-cell tables under one ceiling.
-\   - Habu rejects with a named throw and the model rejects with `None`. The row
-\     records the throw code, so the Habu diagnostic and the Rocq decision stay
-\     bound to each other row by row rather than only agreeing that something
-\     failed.
-\
-\ Consumers: `test/compiler/ir-intern-cases.f`,
-\ `test/compiler/ir-intern-obligations.f`.
+\ ir-intern-schema.f - Native symbol, type and attribute interning vectors.
+\ Cases exercise canonical bytes, source guards and production interner behavior.
 
 require lib/errors.f
 require lib/string.f
@@ -79,7 +32,7 @@ public
 7 constant ROLE-COUNT
 
 \ The role's name, for the label a failing row reports and for the name the
-\ generated Rocq obligation carries.
+\ diagnostic row names.
 : ROLE-NAME$ ( n -- ptr u8 n )
    case
       0 of s" duplicate" endof
@@ -434,8 +387,5 @@ public
 
 : TYPE-FILE$ ( -- ptr u8 n )
    s" src/compiler/ir/type.f" ;
-
-: MODEL-FILE$ ( -- ptr u8 n )
-   s" formal/Common/Interning.v" ;
 
 ;package

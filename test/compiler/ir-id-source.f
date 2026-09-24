@@ -1,34 +1,5 @@
-\ ir-id-source.f - structural reader for the production identity source.
-\
-\ The module lives in `package COMPILER-ID-SRC`. Its only job is to answer three
-\ questions about a Forth source text, structurally rather than by substring:
-\
-\   - what is the body of the definition named X, as a normalized token run;
-\   - what literal does the constant named X carry;
-\   - how many times does a given token run occur at top level.
-\
-\ Why it exists. Three facts about `src/compiler/ir/id.f` cannot be reached by
-\ any number from outside `package IR-ID`: the module-zero and module-range
-\ guards need a forged module key, and serial exhaustion needs the whole 2^31-1
-\ serial space. The Rocq allocator model states those three as executable facts,
-\ so the only honest way to bind them to the shipped code is to read the shipped
-\ code's structure. That is what this module gives the parity gate, and the gate
-\ pairs every structural answer with an executable Rocq obligation built from the
-\ same answer, so a changed Habu constant changes what Rocq is asked to prove.
-\
-\ It does not carry its own lexer. `package LINT-LEX` in tools/lint/source-lex.f
-\ is the one shared source lexer for self-hosted tooling: it drops `\` line
-\ comments, emits `( ... )` comments as their own token kind, and swallows the
-\ body of every `s"` / `S\"` / `."` / `c"` literal so a quoted word can never be
-\ mistaken for code. A second private grammar here would be exactly the evasion
-\ route that shared lexer exists to close. Definition openers and closers come
-\ from `package LINT-DEF` for the same reason. Only the name-to-body walk is
-\ local, because no public word yet composes those two; it is a walk over the
-\ shared token table and reads no source bytes of its own.
-\
-\ Every lookup is exact-or-throw: a missing, duplicated, or unterminated
-\ definition and a missing, duplicated, or non-literal constant each raise a
-\ named error rather than answering with a default.
+\ ir-id-source.f - structural source reader for native compiler schema tests.
+\ The shared lexer and definer registry keep comments and strings out of guards.
 
 require lib/prelude.f
 require lib/errors.f
@@ -291,9 +262,7 @@ public
    FOUND @ 1- LINT-LEX:TOKEN LIT@ ;
 
 \ ---- raw token access --------------------------------------------------------
-\ A consumer that reads a source the Forth definition grammar does not describe -
-\ the Rocq proof files, for the declaration inventory - walks the shared lexer's
-\ word tokens through these three words rather than opening the file again.
+\ Schema cases share the lexer's token stream instead of rereading the source.
 
 : TOKENS ( -- n )
    LINT-LEX:COUNT ;

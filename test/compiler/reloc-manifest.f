@@ -1,6 +1,5 @@
-\ Execute relocation vectors against the shipped instruction sequences.
-\ test/compiler/reloc-proof.f separately checks the shared rows and statements
-\ against the Rocq model. Actual image save/relaunch has its own native tests.
+\ reloc-manifest.f - Execute relocation vectors against shipped instruction sequences.
+\ Actual image save/relaunch has separate native tests.
 
 require lib/test.f
 require test/compiler/reloc-cases.f

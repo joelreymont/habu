@@ -2,7 +2,7 @@
 \ every ARM64 routine contract is written against.
 \
 \ WHERE THESE NUMBERS COME FROM. Every bound here is read off the instruction
-\ vocabulary that formal/Common/Insn.v models and src/arch/arm64/asm.f emits, and
+\ vocabulary that src/arch/arm64/asm.f emits, and
 \ test/compiler/native-effect.f pins each one against that source instead of
 \ restating it:
 \   - a register operand is a five-bit field, so a file holds 32 registers;

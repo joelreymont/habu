@@ -1320,11 +1320,8 @@ private
    1 0 ENC-FCMP  1 ENC-FCMP0  = TFALSE ;
 
 \ ---- the one encoder this dialect brought with it ----------------------------
-\ Every other machine form of this dialect encodes through a word the instruction
-\ parity gate already pins against formal/Common/Insn.v. `a64.mvn` does not: its
-\ Orn base was added to src/arch/arm64/asm.f with this dialect's complement and
-\ is not in that model yet (dot habu-model-orn-in-39435de5). So the encoding is
-\ held here, three ways, until the model row lands.
+\ The complement form is checked against an absolute encoding, its relation
+\ to ORR, and the shipped assembler.
 \
 \ THE ABSOLUTE WORD is what says the bits are right at all: `mvn x1, x3` is
 \ 0xAA2303E1 and nothing else. THE RELATION TO Orr is what says WHICH bit makes

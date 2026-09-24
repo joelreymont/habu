@@ -1,117 +1,5 @@
-\ insn-schema.f - the shared frozen description of what the ARM64 assembler emits.
-\
-\ The module lives in `package COMPILER-INSN-PROOF`. Its subject is the shipped
-\ assembler - `src/arch/arm64/asm.f` with the mnemonic layer in
-\ `src/arch/arm64/mnem.f` and the label and branch layer in
-\ `src/arch/arm64/icode.f` - and the machine-checked model of it in
-\ `formal/Common/Insn.v`.
-\
-\ It holds data and nothing else. Four tables:
-\
-\   1. The encoding vectors. A row names a form, its operands as the shipped
-\      mnemonic takes them, and the 32-bit word the ARM64 encoding gives. These
-\      rows are the one copy. `test/compiler/insn-cases.f` drives each row
-\      through the REAL emitter words into the real code buffer and reads the
-\      word back; `test/compiler/insn-obligations.f` turns the very same row
-\      into a Rocq obligation about `Habu.Common.Insn`. Neither side carries a
-\      copy, so weakening a row asks both sides a weaker question and deleting
-\      one stops both sides asking.
-\
-\   2. The out-of-range vectors. Each row is an operand that does not fit the
-\      field the encoder drops it into, or a byte operand that the encoder's
-\      scale division would round down. Every one of them is refused: the
-\      shipped word ends the process with code 72 before any bit is packed, so
-\      each row runs in a child engine and is judged by its exit status. The
-\      Rocq side asks the model whether the same operands are well formed, and
-\      the answer must be no. That is what binds the two bounds together: a
-\      bound the shipped code loosened would emit instead of dying, and a bound
-\      the model loosened would answer `true` here.
-\
-\   3. The x18 vectors. x18 is Darwin platform-reserved and ordinary on Linux.
-\      There is one row for every X-register operand slot of every form: Darwin
-\      must refuse each and Linux must emit each. The non-X controls emit on
-\      both hosts.
-\
-\   4. The logical-immediate vectors. `>LIMM` turns a plain mask into the
-\      packed N:immr:imms the encoding carries. The packing is what the model
-\      covers; the mask synthesis itself is a MODEL GAP, so these rows bind the
-\      two by example on the Habu side and carry the packed value the model
-\      uses.
-\
-\ Where the two sides are not literally the same shape, and why that is sound:
-\
-\   - The model's operands are the MNEMONIC's operands, not the architecture
-\     manual's. A load carries a byte offset because `LDR,` divides by the
-\     access size; `MOVK,` carries a byte shift because it divides by 16, while
-\     the `MOVZ`/`MOVN` rows carry the raw two-bit hw field because `MOVZ,`
-\     fixes it at zero and the wider chain goes through `MOVZHW` directly.
-\   - A branch row carries the instruction-relative delta in WORDS that
-\     `src/arch/arm64/icode.f` computes from a label. The cases file builds a
-\     label at that distance, so a negative delta exercises the immediate
-\     resolve and a positive one exercises the forward fixup and backpatch.
-\
-\ How the bounds are covered, and what is deliberately not covered:
-\
-\   - Every form has one encoding row with all of its operands at their largest
-\     legal value, so a bound that became one too tight fails on that row.
-\   - Every X-register operand slot has an x18 row.
-\   - Every operand that is not a register has an out-of-range row, one per
-\     encoder, because each encoder applies the bound at its own call site.
-\   - A register that is merely too large is one row per way a register reaches
-\     the guard (`XMW3`, `XR3` in each of its three slots, `XRDI` in each of its
-\     two, `XR2` in each of its two, `XR2ND`, and a bare `XREG?`), not one per
-\     slot. The x18 rows already show that every slot reaches `XREG?`; the field
-\     bound then lives inside that one word, so a row per slot would be the same
-\     fact under seventy-six names.
-\   - Three bounds have no row because the shipped mnemonic cannot reach them.
-\     The packed logical immediate is built by `>LIMM`, which never returns a
-\     value outside the field; a branch or ADR displacement is a label distance
-\     that `src/arch/arm64/icode.f` bounds first; and an ADR displacement is a
-\     word position times four, so it can never be misaligned. Each is stated
-\     here rather than left to be discovered.
-\   - Five floating-point forms are in the modelled vocabulary and have rows
-\     like every other. `FCSEL,`, the conditional select of two doubles, is
-\     where the `DR3` field bound in `src/arch/arm64/asm.f` is asked about, one
-\     row per slot. `ENC-LDRD`, `ENC-STRD`, `ENC-LDURD` and `ENC-STURD` are the
-\     D file's memory accesses, and they are where `DRXN` is asked about - one
-\     out-of-range row per encoder for the transfer slot it bounds, and one
-\     reserved-register row per encoder for the base slot it screens.
-\     The other floating-point encoders bound their D-register operands through
-\     `DR2` and `DR3` too and still have no row here: they are not in the
-\     modelled vocabulary, which `formal/Common/Insn.v` records as a MODEL GAP
-\     with its own dot. When that gap closes, those bounds get rows too.
-\   - `FCSEL,` has no refusing reserved-register row and three NON-refusing
-\     ones, and that is the statement rather than an omission: its operands name
-\     D registers, the D file has no platform-reserved member, and `DR3` does
-\     not call `XREG?`. `checked_regs` and `xregs` in the model are both empty
-\     for it, so a row that refused would contradict the shipped code and a
-\     model that listed the operands would fail these rows and
-\     `every_x_register_is_checked` at once.
-\   - The four D-file memory forms have ONE refusing reserved-register row each
-\     and a d18 encoding row each, because they span both files: the base is an
-\     X register and is screened, the transfer is a D register and is not. A
-\     second refusing row on the transfer slot would fail against `SIMD-VECTORS`
-\     reasoning applied to `D-MEMORY-VECTORS`, where d18 must encode; a missing
-\     one on the base would leave `checked_regs` claiming a screen that is not
-\     there.
-\   - `wf` calls a left shift of zero malformed and the shipped encoder does
-\     not refuse it. That is not a missing bound: zero is inside the six-bit
-\     shift field, and the reason the model excludes it is that the word is
-\     also a right shift of zero. `lsli_lsri_alias_at_zero` in
-\     `formal/Common/Insn.v` is where that lives.
-\   - `wf` calls a multiply-add whose addend is register 31 malformed for the
-\     same reason, and again the shipped encoder emits it: that word IS a plain
-\     multiply, so MUL and MADD cannot both name it. `madd_mul_alias_at_xzr` in
-\     `formal/Common/Insn.v` is where THAT lives, and it carries the MSUB half
-\     too - MSUB with the same addend is well formed, because the word it makes
-\     is MNEG and MNEG is not a form here. The vectors below pin both.
-\   - Three forms are modelled and encoded with no caller yet: `SMULH`, `MADD`
-\     and `MSUB`. That order is the discipline rather than dead weight - the
-\     chain's instruction-combining pass may not emit a form the model does not
-\     carry, so the rows land before the pass that will use them.
-\
-\ Consumers: `test/compiler/insn-cases.f`,
-\ `test/compiler/insn-obligations.f`.
+\ insn-schema.f - Native ARM64 encoding vectors and operand/refusal cases.
+\ The schema records expected encodings and each target's reserved-register rule.
 
 require lib/errors.f
 require lib/string.f
@@ -232,9 +120,7 @@ public
 60 constant F-LDURD   61 constant F-STURD
 62 constant FORMS
 
-\ The constructor name in `formal/Common/Insn.v`. It names the form in a
-\ failing row's label and in the generated Rocq obligation, so the two reports
-\ point at the same thing.
+\ The instruction name included in a failing vector's label.
 : FORM-NAME$ ( n -- ptr u8 n )
    case
        0 of s" Movz" endof      1 of s" Movn" endof     2 of s" Movk" endof
@@ -1034,8 +920,5 @@ public
    endcase ;
 
 : LIMM-BADS ( -- n ) 2 ;
-
-: MODEL-FILE$ ( -- ptr u8 n )
-   s" formal/Common/Insn.v" ;
 
 ;package

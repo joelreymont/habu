@@ -19,6 +19,9 @@ bin/hb --load test/run.f
 `test/gate-stdlib-cases.f` is the registry. Each `SUITE` row runs its listed
 files through the tree's `bin/hb`; there is no second test inventory.
 
+The gate runs executable checks without an external theorem prover. Passing it
+establishes only the behavior exercised; see [proofs.md](proofs.md).
+
 Failures print the suite label, exit outcome, and captured stdout and stderr.
 The run removes its temporary root whether it is green or red — a red run used
 to keep the whole tree, and `/tmp` filled with one root per red run — so the

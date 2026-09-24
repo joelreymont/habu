@@ -1,41 +1,4 @@
-\ ir-structure-cases.f - the Habu half of the structure parity binding.
-\
-\ The module lives in `package COMPILER-STRUCT-CASES`. It takes the frozen rows
-\ in `package COMPILER-STRUCT-PROOF` and asks the shipped compiler about them,
-\ in four groups:
-\
-\   - the frozen guard bodies, read out of the production source as normalized
-\     token runs. These are the bodies the model's hypotheses rest on: the
-\     strictly-below operand rule, the four window tiling checks with the step
-\     comparison they share, the append side that lays the four windows down in
-\     order, and the terminator field the model finds to be derived.
-\
-\   - the call-closed guard rows. The reader first classifies every definition
-\     in the owning file: a definition WRITES if it carries the arena push token
-\     or calls a writer, and it GUARDS if it carries the row's guard token or
-\     calls a guard. Both relations are closed under calls, because `END-OP`
-\     reaches the strictly-below rule two calls deep and `OP@` reaches the
-\     tiling rule three calls deep, and a one-level token scan of either body
-\     would find no guard token at all and pass vacuously. Every row asserts
-\     exactly that: the guard token occurs ZERO times in the body itself, and
-\     the call-closed classification still finds the guard. A builder row must
-\     also write rows and run every guard before its first write; a reader row
-\     must write nothing.
-\
-\   - every build sequence, run through the real `IR-OP` and `IR-FUN` builder
-\     words, and then read back: each accepted operation's operands are asked
-\     for again through `IR-OP:OPERAND@`, which revalidates the row's window
-\     tiling before it reads a cell, and must hand back the very ordinals the
-\     sequence gave it. That read is what binds the two words that lay the
-\     windows down to behaviour rather than to their frozen text. The same
-\     rows become Rocq obligations in
-\     `test/compiler/ir-structure-obligations.f`; this file never restates them.
-\
-\   - the coverage of the sequence table itself, so a role or a store that stops
-\     being driven fails here rather than quietly shrinking what the gate asks.
-\
-\ Consumers: `test/compiler/ir-structure-manifest.f` (these four groups alone)
-\ and `test/compiler/ir-structure-proof.f` (these four plus the Rocq half).
+\ ir-structure-cases.f - Exercise compiler structures against the shared construction and guard vectors.
 
 require lib/test.f
 require lib/string.f

@@ -1,88 +1,5 @@
-\ checker-model-schema.f - the shared frozen description of what the checker's
-\ two models are models OF.
-\
-\ The module lives in `package CHECKER-MODEL-PROOF`. Its subject is
-\ `src/core/checker.f` and the two machine-checked models of it,
-\ `formal/Common/Effects.v` (types, stacks, unification, straight-line
-\ composition) and `formal/Common/Control.v` (branches, loops, `case`, `MATCH`,
-\ early return, the throw edge, quotations, locals, linear-once conservation).
-\
-\ It holds data and nothing else. Seven tables:
-\
-\   1. The concrete type vocabulary. One row per type `CT-INIT` registers:
-\      the surface name, the `CC-` code word, the class word, the width in
-\      bits, the sign word, and the `Effects.con` constructor that stands for
-\      it. `test/compiler/checker-model-cases.f` walks `CT-INIT`'s body through
-\      the shared source lexer and asks the shipped checker whether that is
-\      what it registers, and
-\      `test/compiler/checker-model-obligations.f` turns the very same rows into
-\      Rocq obligations about `con_code`, `con_cls`, `con_width` and `con_sgn`.
-\      Neither side carries a copy. This is the table docs/effects.md was
-\      measurably wrong about: it listed eight names where the checker
-\      registers thirty.
-\
-\   2. The class and sign vocabularies the rows above name, each pinned to its
-\      literal in the checker and to its `Effects.cls` / `Effects.sgn`
-\      constructor. `CT-NONE` has no constructor: it is the absence of a class,
-\      and the model has no constructor for an absence.
-\
-\   3. The term tags. `T-CON` .. `T-STALE` and `S-ROW` / `S-PUSH` are the
-\      checker's whole term and stack vocabulary, and each names the
-\      `Effects.ty` or `Effects.stack` constructor that stands for it.
-\
-\   4. The control-flow dispatch table. One row per spelling `CF-TOK?`
-\      recognises, in the order it tests them, with the handler it runs and the
-\      `Control.tok` constructor that stands for it. `do` and `?do` have
-\      separate handlers and constructors because only `?do` has a zero-trip
-\      exit when the entire body returns or throws.
-\
-\   5. The control frame kinds. One row per kind the checker pushes or
-\      mutates, with the exact source run that writes the kind number and a
-\      model token sequence that must leave a frame of that kind on top.
-\
-\   6. The rigid host-identity domains. One row per identity domain a host
-\      allocation can be stamped in, naming the word an atom's name leads with,
-\      the checker word that mints from that domain, the counter variable it
-\      owns, and the `Effects.dom` constructor for it. The guard, the advance
-\      and the per-check restart are derived from the counter's name rather
-\      than written down again.
-\
-\   7. The shared program vectors. One row is one small checked definition: the
-\      Habu source the real checker is asked to certify, the model
-\      configuration and token list the same program is written as, and the ONE
-\      verdict both must answer. The two encodings are necessarily different -
-\      one is text for a token scanner, the other is an already-scanned token
-\      list - but they live in one row and the verdict is written once, so a
-\      row cannot be satisfied by editing only one side. The additional rows
-\      cover loop resources and seven other decisions: the widening
-\      lattice, the control-frame ceiling, `MATCH`'s own depth guard, the
-\      per-step linear conservation count, `construct`, `MATCH`'s scrutinee
-\      pop, and rigid host identities. Before they existed, halving the
-\      ceiling, lowering or deleting the depth guard, making the conservation
-\      count a no-op, letting any two same-class types stand in for each other,
-\      dropping the unterminated-`construct` test at the definition boundary,
-\      letting the scrutinee pop take a bundle of any family of the right
-\      width, or letting two identities from different domains unify on their
-\      numbers each left the whole gate green.
-\
-\ Where the two sides are not literally the same shape, and why that is sound:
-\
-\   - the checker answers -1 certified / 0 refused / 1 unresolvable and the
-\     model answers `VCert` / `VReject` / `VUncheckable`. The row stores the
-\     model's three-way verdict and the cases file maps the checker's answer
-\     into it, so an unresolvable can never be read as a refusal;
-\   - a type's class and sign are numbers in the checker and constructors in the
-\     model. The class and sign tables carry both, so a row names the word the
-\     checker writes and the constructor the model writes, and the numbers are
-\     compared through those two tables rather than transcribed per row;
-\   - the vectors need a prelude of named words with known effects. Those are
-\     the model's `wStep1` .. `wKeepAny` definitions and the Habu definitions in
-\     `test/compiler/checker-model-cases.f`; nothing pins them to each other
-\     directly, because the vectors already do: change either and the verdicts
-\     move apart.
-\
-\ Consumers: `test/compiler/checker-model-cases.f`,
-\ `test/compiler/checker-model-obligations.f`.
+\ checker-model-schema.f - Native checker vocabulary, control-flow and behavior vectors.
+\ Cases read the shipped checker and execute accepted and rejected programs.
 
 require lib/errors.f
 require lib/string.f
@@ -640,15 +557,9 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
 \ Scope note, and it is why the gate runs where it does. `TFAM-CONSTRUCT-FAM`
 \ (src/core/type-family.f) resolves a construct family in the ACTIVE package
 \ only, so these programs certify only when the checker is asked from inside the
-\ package that declared the family. Both runners ask them there:
-\ `test/compiler/checker-model-proof.f` has since these rows landed, and
-\ `test/compiler/checker-model-manifest.f` since the day the divergence was
-\ read. It is no longer left to a runner to remember - the vector phase in
-\ `test/compiler/checker-model-cases.f` reads `CHECKER-AUTH-PACKAGE$` itself and
-\ fails by name, because the manifest asked from top level for a week and what
-\ that looked like was three red rows and four that passed while asserting
-\ nothing: outside the package the REJECT rows below are refused for the missing
-\ family rather than for the rule each one is about.
+\ package that declared the family. checker-model-manifest.f supplies that
+\ scope, and checker-model-cases.f asserts CHECKER-AUTH-PACKAGE$ before asking
+\ the checker, so a missing family cannot make a refusal case pass.
 : BUILD-CONSTRUCT-VECTORS ( -- )
    s" construct_builds_the_bundle_from_the_variant_payload"
       s" CMV19 ( n -- cmres ) construct cmres cmok"
@@ -1100,13 +1011,6 @@ public
 : FRK-CFG$ ( n -- ptr u8 n )     FRK-CFG swap FRK-N @ COL@ STR$ ;
 : FRK-TOKS$ ( n -- ptr u8 n )    FRK-TOKS swap FRK-N @ COL@ STR$ ;
 
-\ The bound the generated obligations run a domain counter at. It is a harness
-\ number and nothing else: the checker's own `RIGID-MAX` is `$4000000000000000`
-\ and the model states every result about the bound for EVERY bound, so what
-\ the obligations have to show is that a domain restarts at 1, hands out its
-\ current value and advances, and REFUSES at whatever bound it is given.
-3 constant DOMAIN-BOUND
-
 : DOMAINS ( -- n )      RGD-N @ ;
 : RGD-WORD$ ( n -- ptr u8 n )   RGD-WORD swap RGD-N @ COL@ STR$ ;
 : RGD-MINT$ ( n -- ptr u8 n )   RGD-MINT swap RGD-N @ COL@ STR$ ;
@@ -1141,22 +1045,6 @@ public
 
 : CHECKER-FILE$ ( -- ptr u8 n )
    s" src/core/checker.f" ;
-
-2 constant MODELS
-
-: MODEL-FILE$ ( n -- ptr u8 n )
-   case
-      0 of s" formal/Common/Effects.v" endof
-      1 of s" formal/Common/Control.v" endof
-      E-CMP-ROW throw
-   endcase ;
-
-: MODEL-PREFIX$ ( n -- ptr u8 n )
-   case
-      0 of s" Habu.Common.Effects." endof
-      1 of s" Habu.Common.Control." endof
-      E-CMP-ROW throw
-   endcase ;
 
 \ The two words whose bodies ARE the tables above: the concrete type registry
 \ and the control-flow dispatch. The cases file walks each body token by token,

@@ -1,8 +1,5 @@
-\ Shared storage examples for the native runtime and the abstract Storage.v
-\ model. Agreement on these rows is not a refinement proof. The model uses a
-\ fixed scratch mapping; the runtime allocates dynamic chunks and releases them
-\ with finally. Chunk growth and normal/throw cleanup are tested by ir-context.f.
-\ No source spelling, private helper body, or allocation constant is pinned.
+\ ir-storage-schema.f - Native compiler storage and lifetime fixture rows.
+\ These finite cases do not establish general lifetime safety.
 
 require lib/errors.f
 require lib/string.f
@@ -11,9 +8,6 @@ require src/compiler/ir/context.f
 
 package COMPILER-STORE-PROOF
 public
-
-: MODEL-FILE$ ( -- ptr u8 n )
-   s" formal/Common/Storage.v" ;
 
 0 constant OP-PUSH          \ append the argument; answers its ordinal
 1 constant OP-PEEK          \ read the cell at the argument ordinal

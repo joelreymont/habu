@@ -154,9 +154,8 @@ public
    w FRD w FRN w FRM ENC-ADD w = ;
 
 \ The multiply-add itself: what a combined pair became. It shares its opcode with
-\ the plain multiply and is told apart by the addend field, exactly as the
-\ decoder in formal/Common/Insn.v tells them apart - so the addend is read out
-\ and put back, and a word whose addend is the zero register reproduces as a
+\ the plain multiply and is told apart by the addend field. The addend is read
+\ out and put back; a word whose addend is the zero register reproduces as a
 \ multiply here and answers false, which is what it is.
 : MADD? ( n -- bool ) {: w:n :}
    w R3-OK? 0= if false exit then
