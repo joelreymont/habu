@@ -8,10 +8,7 @@
 \
 \ The path is an ENGINE-SIDE fact taken from the kernel-provided process image,
 \ not a script guess and not the caller-controlled argv[0]:
-\   macOS  - the apple[] array (contiguous after envp on the entry stack) carries
-\            `executable_path=<exec-path>`, the same source _NSGetExecutablePath
-\            reads. ENVP-CELL is captured at engine startup (src/habu EM-DATA-INIT),
-\            so ENVP-BASE reaches apple[] with no extra syscall.
+\   macOS  - proc_pidpath asks the kernel for the executable's absolute path.
 \   Linux  - /proc/self/exe is the absolute canonical binary path (readlink).
 \ The content key is SHA-256 (hex) of that binary, computed ONCE on first request
 \ and cached, so the durable-only field never weighs on the interactive key path.
@@ -19,13 +16,12 @@
 \ cannot be hashed; never a placeholder (a sometimes-real key would fragment any
 \ engine-keyed store).
 \
-\ The raw self-path read (apple[] pointer walk / readlink syscall) is the one
-\ boundary the checker cannot express (ptr-NULL tests, indexing the startup image
-\ past envp); it lives in the two TRUSTED helpers below. Everything public is
-\ checked.
+\ The Linux readlink primitive is the raw boundary. Darwin uses a bounded
+\ process-symbol binding; neither target depends on the caller's CWD.
 
 require lib/errors.f
 require lib/string.f
+require lib/ffi-abi.f
 
 \ ENVP-BASE / ENVP / ZLEN (src/os/env-base.f), HB-TARGET-* (src/os/<t>/target.f),
 \ readlink + SHA256-FILE-HEX-IN + BYTE-COPY are engine-provided (startup prefix / baked).
@@ -38,7 +34,6 @@ package ENGINE-ID
 create EID-PATH EID-PATH-CAP allot   variable EID-PATH-U   variable EID-PATH-DONE
 create EID-KEY  EID-KEY-LEN  allot   variable EID-KEY-DONE
 create EID-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this package's file-digest context
-variable EID-I                        \ apple[] scan cursor
 
 \ NUL-terminated "/proc/self/exe" for readlink (Linux)
 create EID-PROC-EXE
@@ -46,24 +41,14 @@ create EID-PROC-EXE
    char s c, char e c, char l c, char f c, char / c,
    char e c, char x c, char e c, 0 c,
 
-: EID-EXE-PREFIX$ ( -- ptr u8 n )  s" executable_path=" ;
+PROCESS-SYMBOLS
+FUNCTION: SELF-PATH proc_pidpath ( n ptr u8 n -- n )
+   1 2 WRITES-ARG
+;FUNCTION
 
-\ macOS walks startup apple[] pointers; Linux fills EID-PATH with readlink. Raw
-\ NUL pointers and path-buffer refinement are outside checker inference.
-\ Retirement owner: habu-raw-self-path-4514ffd3.
-TRUSTED: ENGINE-SELF-MACOS ( -- n )      \ apple[] executable_path -> EID-PATH; bytes or 0
-   ENVP-BASE 0= if 0 exit then
-   0 begin dup ENVP 0= 0= while 1+ repeat 1+ EID-I !   \ EID-I = first apple[] index
-   begin EID-I @ ENVP dup 0= 0= while                  \ ( entry )
-      dup ZLEN                                         \ ( entry u )
-      2dup EID-EXE-PREFIX$ STARTS-WITH? if             \ ( entry u )
-         16 - dup 0 <= if 2drop 0 exit then            \ ( entry pu )  pu>0
-         dup EID-PATH-CAP > if 2drop 0 exit then       \ ( entry pu )  pu fits
-         >r 16 + EID-PATH r@ BYTE-COPY r>              \ copy entry+16 -> EID-PATH, keep pu
-         exit
-      then
-      2drop  EID-I @ 1+ EID-I !
-   repeat drop 0 ;
+: ENGINE-SELF-MACOS ( -- n )
+   getpid EID-PATH EID-PATH-CAP SELF-PATH
+   dup 0 <= over EID-PATH-CAP >= or if drop 0 then ;
 
 TRUSTED: ENGINE-SELF-LINUX ( -- n )      \ /proc/self/exe -> EID-PATH; bytes or 0
    EID-PROC-EXE EID-PATH EID-PATH-CAP readlink
