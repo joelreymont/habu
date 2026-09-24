@@ -94,6 +94,7 @@ create CLI-LINK-PATH FS-PATH-CAP allot
 create CLI-HB FS-PATH-CAP allot
 create CAP-OUT-PATH FS-PATH-CAP allot
 create CAP-ERR-PATH FS-PATH-CAP allot
+create ENV-PROBE-PATH FS-PATH-CAP allot
 
 TYPED-VARIABLE OUT-A ptr u8
 TYPED-VARIABLE ERR-A ptr u8
@@ -115,6 +116,7 @@ variable CLI-LINK-U
 variable CLI-HB-U
 variable CAP-OUT-PATH-U
 variable CAP-ERR-PATH-U
+variable ENV-PROBE-U
 variable SAVE-OUT-FD
 variable SAVE-ERR-FD
 variable START-NS
@@ -137,6 +139,9 @@ variable START-NS
 
 : CLEANUP-TMP$ ( -- ptr u8 n )
    CLEANUP-TMP CLEANUP-TMP-U @ ;
+
+: ENV-PROBE$ ( -- ptr u8 n )
+   ENV-PROBE-PATH ENV-PROBE-U @ ;
 
 : LIST$ ( -- ptr u8 n )
    LIST-PATH LIST-U @ ;
@@ -494,6 +499,51 @@ variable START-NS
 : TEST-CLEANUP-FAILURE ( -- )
    s" cleanup" CLEANUP-CHILD-CASE
    s" primary" CLEANUP-CHILD-CASE ;
+
+\ ---- the run stage's environment --------------------------------------------
+\ The tool's run stage spawns the checked program, and a program that resolves
+\ an executable through $PATH or writes under $HB_TMP needs the environment the
+\ tool itself was given. CHECK-CAPTURE spawns the tool without one, so a row
+\ that only read PATH would prove nothing: the tool would have no PATH to pass
+\ on. This row therefore gives the child tool an environment of its own - one
+\ marker row plus this process's - and reads the marker back out of the checked
+\ program's output. An env-less run stage prints an empty marker line instead.
+
+: ENV-MARK$ ( -- ptr u8 n )
+   s" hb-check-env-probe-9f3c" ;
+
+\ Computed the same way in this process and in the checked program, so the two
+\ agree on a host that exports no PATH at all.
+: ENV-PATH-LINE$ ( -- ptr u8 n )
+   s" PATH" GETENV nip 0 > if
+      s" env-path yes" else s" env-path no" then ;
+
+: ENV-PROBE$SRC ( -- ptr u8 n )
+   SB-RESET
+   s\" : CKT-ENV-SHOW ( -- )\n" SB-APPEND
+   s\"    s\q HB_CHECK_ENV_PROBE\q GETENV type cr\n" SB-APPEND
+   s\"    s\q PATH\q GETENV nip 0 > if\n" SB-APPEND
+   s\"       s\q env-path yes\q else s\q env-path no\q then type cr ;\n" SB-APPEND
+   s\" CKT-ENV-SHOW\n" SB-APPEND
+   SB$ ;
+
+: ENV-PROBE-RUN ( -- n n n )
+   ENV-PROBE$ ENV-PROBE$SRC WRITE-ALL
+   CHECK-ARGV-START
+   ENV-PROBE$ CHECK-ARG+
+   PROC-ENV-RESET
+   s" HB_CHECK_ENV_PROBE" >LEN ENV-MARK$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   HB$ >LEN CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
+   CHILD-HANG-MS >MS RUN-ARGV-ENV-CAPTURE
+   CAPTURE>N ;
+
+: TEST-RUN-ENVIRONMENT ( -- )
+   ENV-PROBE-RUN 0 T=
+   {: outu:n erru:n :}
+   erru 0 T=
+   CAP-OUT outu ENV-MARK$ CONTAINS? TTRUE
+   CAP-OUT outu ENV-PATH-LINE$ CONTAINS? TTRUE ;
 
 : HB-LOAD-FWDREF ( -- n n n )
    BAD$ FWDREF$ WRITE-ALL
@@ -947,6 +997,7 @@ variable LONG-J
    ROOT$ s" list-use.f" USE-PATH JOIN-PATH USE-U !
    ROOT$ s" capture-out.txt" CAP-OUT-PATH JOIN-PATH CAP-OUT-PATH-U !
    ROOT$ s" capture-err.txt" CAP-ERR-PATH JOIN-PATH CAP-ERR-PATH-U !
+   ROOT$ s" env-probe.f" ENV-PROBE-PATH JOIN-PATH ENV-PROBE-U !
    BAD$ BAD$SRC WRITE-ALL ;
 
 : TEST-GOOD ( -- )
@@ -2133,6 +2184,7 @@ POISON-RECORD
    s" check/missing-file" [: TEST-MISSING-FILE ;] CASE-RUN
    s" check/missing-engine" [: TEST-MISSING-ENGINE ;] CASE-RUN
    s" check/cleanup-failure" [: TEST-CLEANUP-FAILURE ;] CASE-RUN
+   s" check/run-environment" [: TEST-RUN-ENVIRONMENT ;] CASE-RUN
    s" check/repeat-source-ok" [: TEST-REPEAT-SOURCE-OK ;] CASE-RUN
    s" check/repeat-source-fail" [: TEST-REPEAT-SOURCE-FAIL ;] CASE-RUN
    s" check/repeat-file" [: TEST-REPEAT-FILE ;] CASE-RUN

@@ -9,6 +9,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/process-env.f                \ the run stage spawns with an environment
 require lib/source.f
 require lib/argv.f
 require tools/lint/text.f
@@ -1194,13 +1195,18 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    >LEN PROC-ARGV+ ;
 
 : CHK-LOAD-RESET ( -- )
-   PROC-ARGV-RESET
+   PROC-ARGV-ENV-RESET
    s" --load" CHK-ARG+ ;
 
+\ The checked program runs with check.f's own environment: PATH for a TOOL
+\ lookup, HOME and HB_TMP for a scratch tree. An env-less spawn hands it a
+\ one-NULL envp, and a program that resolves an executable through $PATH then
+\ fails in the run stage while `--load` of the same file passes.
 : CHK-RUN-CAPTURE ( -- )
+   PROC-ENV-INHERIT-MISSING
    CHK-HB$ >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
    CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE MATCH result
+   RUN-ARGV-ENV-CAPTURE MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
              0 CHK-RC !
              erru LEN>N CHK-ERR-U !
