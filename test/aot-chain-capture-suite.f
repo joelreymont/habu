@@ -47,6 +47,8 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order
 13 constant VERSION
 18 constant SECTIONS
 64 constant HEX-LEN
+\ An address-row location has 31 offset bits; its high bit selects window DATA.
+$7FFFFFFF constant LOC-MASK
 
 \ tools/aot-chain-capture.f's refusal code and the sentence the product must die
 \ with, which is a different exit from every undefined-word death.
@@ -255,7 +257,13 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    s" old-version" s" the artifact is not one this engine can read" ROW-REFUSED
    s" short-row" s" address cells is not a whole number of rows" ROW-REFUSED
    s" bad-window" s" address cell reaches past its window DATA span" ROW-REFUSED
-   s" bad-fixed" s" fixed address cell is outside DATA" ROW-REFUSED
+   s" fixed-bound" RUN-ROW-CASE 0 ROW-RC
+   s" address-rows: fixed-bound=ok" SAID?
+   \ Large DATA regions contain every fixed offset the artifact can encode.
+   \ A larger value would truncate into a different row kind on write.
+   SNAP-RELOC:XTCELL-OFF-MAX LOC-MASK < if
+      s" bad-fixed" s" fixed address cell is outside DATA" ROW-REFUSED
+   then
    s" bad-data" s" address cell DATA target is outside its window" ROW-REFUSED
    s" bad-code" s" address cell CODE target is outside its blob" ROW-REFUSED
    s" bad-data-site" s" DATA relocation site reaches past its blob" ROW-REFUSED

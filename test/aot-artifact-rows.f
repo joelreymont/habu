@@ -311,6 +311,9 @@ variable CHAIN-VALUE
 
 
 : FORGE-ROW ( -- )
+   s" fixed-bound" CASE? if
+      SNAP-RELOC:XTCELL-OFF-MAX XTOFF-LOC-MASK min 0 0 ROW! exit
+   then
    s" bad-window" CASE? if
       XTOFF-WINDOW-TAG ART-DATA @ + 7 - 0 0 ROW! exit
    then
@@ -356,7 +359,8 @@ public
       AOTRT:KEY ART$ MERGE exit
    then
    FORGE-ROW
-   WRITE-ARTIFACT READ-ARTIFACT ;
+   WRITE-ARTIFACT READ-ARTIFACT
+   s" fixed-bound" CASE? if s" address-rows: fixed-bound=ok" type cr then ;
 
 ;using
 ;using
