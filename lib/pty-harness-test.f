@@ -190,8 +190,9 @@ variable HIT                       \ did the loop reach the case it was feeding 
 \ PTY-EDITOR-READY has the whole reasoning).
 : STOP-CHILD ( -- )
    BUF-CLEAR
-   127 SEND-BYTE
-   s" habu> " WAIT-FOR TTRUE
+   s" 123 456 + ." SEND-LINE
+   s" 579" WAIT-FOR TTRUE
+   s" 579" s" habu> " WAIT-AFTER TTRUE
    4 SEND-BYTE
    REAP 0 T-OUTCOME-EXITED=
    CLOSE-MASTER ;

@@ -241,7 +241,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 : PTY-SEED-SURFACE ( -- )
    SEED-LINE$ STEP-LN
    SEEDNUM$ EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-ARITH ( -- )
    s" 1 2 + ." STEP-LN
@@ -257,10 +257,10 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 
 : PTY-SQUARE ( -- )
    s" : SQ dup * ;" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" 7 SQ ." STEP-LN
    s" 49" EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 \ Certified word on an empty interpret stack: named underdepth reject, then
 \ the REPL recovers and the next line evaluates (LDIAGRET recovery leg; dot
@@ -272,7 +272,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    s"  ok" REJECT
    s" 6 SQ ." STEP-LN
    s" 36" EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-BACKSPACE ( -- )
    s" 1 2 + .." SEND
@@ -280,7 +280,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    10 SEND-BYTE
    MFD-DRAIN
    s" 3" EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-CANCEL ( -- )
    s" garbage" SEND
@@ -293,7 +293,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 : PTY-EDIT-SEED ( -- )
    s" 5 ." STEP-LN
    s" 5" EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-EDIT-LEFT3 ( -- )
    s" 13 ." SEND
@@ -306,7 +306,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    10 SEND-BYTE
    MFD-DRAIN
    s" 103" EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-EDIT-HOME ( -- )
    PTY-EDIT-SEED
@@ -318,7 +318,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    10 SEND-BYTE
    MFD-DRAIN
    s" 103" EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 \ A line longer than the editor's buffer (dot habu-refuse-a-repl-a58c0eba).
 \ The editor held the line in 256 bytes and dropped every key past 255 with no
@@ -367,7 +367,7 @@ variable PTY-LONG-U
 : PTY-LINE-CAP-CONTINUES ( -- )                \ the session is still a session
    s" 21 3 * ." STEP-LN
    s" 63" EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-LINE-CAP ( -- )
    PTY-LINE-CAP-REFUSED
@@ -379,19 +379,19 @@ variable PTY-LONG-U
 \ stepper loads them here, which is also how a REPL user reaches them.
 : PTY-DEBUGGER-LOAD ( -- )
    s" require src/habu/debug.f" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-BP-SOURCE ( -- )
    s" : SQB dup * ;" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" : IN1 1 + ;" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-BP-ARM-ONESHOT ( -- )
    s" ' SQB BP+" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" ' IN1 BP+" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-BP-RUN-SQ ( -- )
    s" 7 SQB ." STEP-LN
@@ -416,11 +416,11 @@ variable PTY-LONG-U
 
 : PTY-PB-SOURCE ( -- )
    s" : PB dup + ;" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-PB-ARM ( -- )
    s" ' PB BP*" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-PB-FIRST ( -- )
    s" 5 PB ." STEP-LN
@@ -434,7 +434,7 @@ variable PTY-LONG-U
 
 : PTY-PB-CLEAR ( -- )
    s" ' PB BP-" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-BP-PERSISTENT ( -- )
    PTY-PB-SOURCE
@@ -445,17 +445,17 @@ variable PTY-LONG-U
 
 : PTY-WATCH-VAR ( -- )
    s" variable WV" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" 17 WV !" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-WATCH-ADD ( -- )
    s" WV BPW+" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-WATCH-WORD ( -- )
    s" : WID dup WV @ + ;" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-WATCH-SOURCE ( -- )
    PTY-WATCH-VAR
@@ -464,7 +464,7 @@ variable PTY-LONG-U
 
 : PTY-WATCH-ARM ( -- )
    s" ' WID BP+" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-WATCH-RUN ( -- )
    s" 2 WID ." STEP-LN
@@ -475,7 +475,7 @@ variable PTY-LONG-U
 
 : PTY-WATCH-CLEAR ( -- )
    s" WV BPW-" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-WATCHPOINT ( -- )
    PTY-WATCH-SOURCE
@@ -485,7 +485,7 @@ variable PTY-LONG-U
 
 : PTY-BPN-ARM ( -- )
    s" 2 ' PB BPN" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-BPN-SKIP ( -- )
    s" 3 PB ." STEP-LN
@@ -499,7 +499,7 @@ variable PTY-LONG-U
 
 : PTY-BPN-CLEAR ( -- )
    s" ' PB BP-" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-BP-NTH ( -- )
    PTY-BPN-ARM
@@ -510,17 +510,17 @@ variable PTY-LONG-U
 
 : PTY-DEFINE-F0-F2 ( -- )
    s" : F0 0 ;" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" : F1 1 ;" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" : F2 2 ;" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-DEFINE-F3-F4 ( -- )
    s" : F3 3 ;" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" : F4 4 ;" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-DEFINE-F0-F4 ( -- )
    PTY-DEFINE-F0-F2
@@ -528,15 +528,15 @@ variable PTY-LONG-U
 
 : PTY-DEFINE-F5-F6 ( -- )
    s" : F5 5 ;" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" : F6 6 ;" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-DEFINE-F7-F8 ( -- )
    s" : F7 7 ;" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" : F8 8 ;" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-DEFINE-F5-F8 ( -- )
    PTY-DEFINE-F5-F6
@@ -544,17 +544,17 @@ variable PTY-LONG-U
 
 : PTY-BP-F0-F2 ( -- )
    s" ' F0 BP+" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" ' F1 BP+" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" ' F2 BP+" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-BP-F3-F4 ( -- )
    s" ' F3 BP+" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" ' F4 BP+" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-BP-F0-F4 ( -- )
    PTY-BP-F0-F2
@@ -562,13 +562,13 @@ variable PTY-LONG-U
 
 : PTY-BP-F5-F6 ( -- )
    s" ' F5 BP+" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" ' F6 BP+" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-BP-F7-F8 ( -- )
    s" ' F7 BP+" STEP-LN
-   s"  ok" EXPECT
+   s"  ok" PROMPT-AFTER
    s" ' F8 BP+" STEP-LN
    s" table full" EXPECT ;
 
@@ -585,7 +585,7 @@ variable PTY-LONG-U
 : PTY-STEP-BASELINE ( -- )
    s" 5 ." STEP-LN
    s" 5" EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-STEP-TOKENS ( -- )
    s" step 2 3 + ." STEP-LN
@@ -596,7 +596,7 @@ variable PTY-LONG-U
 
 : PTY-STEP-DEFINE ( -- )
    s" step : SD dup * ;" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-STEP-RUN ( -- )
    s" 4 SD ." STEP-LN
@@ -605,7 +605,7 @@ variable PTY-LONG-U
 : PTY-STEP-RECOVER ( -- )
    s" 8 ." STEP-LN
    s" 8" EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-STEPPER ( -- )
    PTY-STEP-BASELINE
@@ -623,7 +623,7 @@ variable PTY-LONG-U
 : PTY-THROW-AFTER ( -- )
    s" 6 ." STEP-LN
    s" 6" EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 \ tty-REPL parity for the LCOMPILEDIE compile-error family (dot
 \ habu-convert-residual-compile-f460b9f2). A recoverable compile die typed at the
@@ -634,7 +634,7 @@ variable PTY-LONG-U
 \ the second line's failure rolls back to that line's start, so PRDUP survives.
 : PTY-COMPILE-DEF ( -- )
    s" : PRDUP ( -- ) ;" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-COMPILE-RECOVER ( -- )
    s" : PRDUP ( -- ) ;" STEP-LN
@@ -645,7 +645,7 @@ variable PTY-LONG-U
 : PTY-COMPILE-AFTER ( -- )
    s" 7 ." STEP-LN
    s" 7" EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-COMPILE-RECOVERY ( -- )
    PTY-COMPILE-DEF
@@ -667,12 +667,12 @@ variable PTY-LONG-U
 
 : PTY-PKGSCOPE-FRESH ( -- )                        \ a dangling PRP would make this `package` nest-reject (no " ok")
    s" package PRQ ;package" STEP-LN
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-PKGSCOPE-GLOBAL ( -- )                       \ the next define lands global and runs; a checked reference confirms checker scope is in step
    s" : PRDONE ( -- n ) 4242 ;  : PRUSE ( -- n ) PRDONE ;  PRUSE ." STEP-LN
    s" 4242" EXPECT
-   s"  ok" EXPECT ;
+   s"  ok" PROMPT-AFTER ;
 
 : PTY-PKGSCOPE-RECOVERY ( -- )
    PTY-PKGSCOPE-FAIL
