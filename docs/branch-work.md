@@ -23,6 +23,8 @@ The prefix for these names is `archive/alder-20260924/alder-`.
 | --- | --- |
 | `codex-aot-enum-wave` | Missing declaration reset/rebinding guards; reset currently succeeds with an open declaration frame. |
 | `experiment/wide-typed-locals` | Experimental affine linear locals with branch and loop consumption tracking. |
+| `claude-vllm-core` | Distinct linear memory-block ownership, checker and gate packaging work; includes the former Codex vLLM branch. |
+| `maki-type-cutover` | Binder declarations and nested namespaces, a different language design from current explicit arity and one-colon qualification. |
 | `experiment/x86-native-20260919` | Intel bootstrap and native execution experiments, including the former Intel bootstrap branch. |
 | `sol-fields-schema-v2` | Additional field-policy validation, provider hook and validation order. |
 | `habu-fields-shared-sol` | Alternative typed field arena and canonical builders. |
@@ -42,15 +44,13 @@ The prefix for these names is `archive/alder-20260924/alder-`.
 ## Historical application and language research
 
 These are retained for value assessment, not included in Maki PCB readiness.
-The old `maki-*` model/ML branches are unrelated to the current PCB application.
+Obsolete GPU/ML application branches have been retired following the extraction
+of that application work from Habu and the decision to focus on Maki PCB CAD.
 
-- `archive/mamushi-body-decls-20260820`,
-  `archive/mamushi-macrofix-20260820`, and
-  `archive/recovered-odin-habu-20260821`: earlier language work. The Mamushi
+- `archive/mamushi-body-decls-20260820` and
+  `archive/mamushi-macrofix-20260820`: earlier language work. The Mamushi
   February fixes remain ancestors of the retained Mamushi tips.
-- `claude-vllm-core`, `codex-gpu-fault-control`, `maki-autograd`, `maki-docs`,
-  `maki-type-cutover`, `zed-attic-autograd-wip`, `zed-attic-default-wc`, and
-  `zed-wip-cuda-driver`: unmerged GPU/ML research. The former Codex vLLM and
-  Maki Adam/attention/GEMM refs are ancestors of these retained tips.
+- `archive/recovered-odin-habu-20260821`: its language fixes are integrated,
+  but the camera/perception application port has no established external copy.
 - `push-tmqoymmutxvp`: application router draft to compare with current Maki.
 - `push-vmznzzmovrmv`: document/report application work outside the language.
