@@ -287,8 +287,13 @@ variable FN-REGISTERED
    then ;
 
 \ Library 0 is RTLD_DEFAULT and has no handle to acquire.
+: PROCESS-HANDLE ( -- n )
+   HB-TARGET-LINUX? if 0 exit then
+   HB-TARGET-MACOS? if -2 exit then
+   E-FFI-LIBRARY throw ;
+
 : LIB-RESOLVE ( n -- n ) {: lib:n :}
-   lib 0= if 0 exit then
+   lib 0= if PROCESS-HANDLE exit then
    lib 1 - {: slot:n :}
    slot LIB-HANDLE@ dup 0 <> if exit then
    drop
@@ -386,6 +391,11 @@ public
 
 private
 
+: ERRNO-SYMBOL$ ( -- ptr u8 n )
+   HB-TARGET-LINUX? if s" __errno_location" exit then
+   HB-TARGET-MACOS? if s" __error" exit then
+   E-FFI-LIBRARY throw ;
+
 get-current prot-wid-add
 
 public
@@ -462,9 +472,7 @@ public
 : ERRNO ( -- n )
    RESET ERRNO-FN CALL-PTR LE:U32@ ;
 
-\ This package's own row, registered as the file loads. It defines nothing, so
-\ it stays in the public section and the wordlist seal below is unchanged.
-s" __errno_location" PROCESS 0 DECLARE ERRNO-FN-CELL !
+ERRNO-SYMBOL$ PROCESS 0 DECLARE ERRNO-FN-CELL !
 
 get-current prot-wid-add
 
