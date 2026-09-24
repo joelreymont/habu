@@ -10,19 +10,13 @@ require lib/engine-id.f
 create EIDT-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 create EIDT-KEY2 EIDT-KEY-LEN allot
 
-: EIDT-PATH ( -- )
-   ENGINE-ID:PATH$ nip 0 > TTRUE                    \ resolves non-empty (else fail-closed throw)
-   ENGINE-ID:PATH$ ENGINE-ID:PATH$ STR= TTRUE ;     \ recorded once, stable across calls
-
 : EIDT-KEY ( -- )
    ENGINE-ID:KEY$ nip EIDT-KEY-LEN T=               \ 64-char hex digest
-   ENGINE-ID:KEY$ ENGINE-ID:KEY$ STR= TTRUE         \ cached, stable across calls
    EIDT-FSHA-CTX ENGINE-ID:PATH$ EIDT-KEY2 SHA256-FILE-HEX-IN 0 T=   \ the binary is hashable at that path
    ENGINE-ID:KEY$ EIDT-KEY2 EIDT-KEY-LEN STR= TTRUE ;  \ cached key == real content hash
 
 : EIDT-MAIN ( -- )
    T-RESET
-   EIDT-PATH
    EIDT-KEY
    T-REPORT ;
 

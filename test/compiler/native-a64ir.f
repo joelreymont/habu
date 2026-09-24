@@ -135,103 +135,6 @@ private
    A64IR:SLOT-WIDTH A64M:SLOT-REACH  IMM12-LIM 1- A64IR:SLOT-WIDTH * T=
    A64IR:SLOT-WIDTH 8 T= ;
 
-\ ---- registration ------------------------------------------------------------
-\ The opcodes, and the count, so "nothing else was defined" is measured rather
-\ than assumed. The eighteen the register conventions use are here; the four that
-\ reach the caller's data stack are checked in DSTACK-SPELL-CASE below, the two
-\ addressed cell forms in ADDR-SHAPE-CASE, the two addressed byte forms in
-\ BYTE-SHAPE-CASE, the fused compare-and-branch in CMPBR-SHAPE-CASE, the two
-\ conditional selects that answer a cell in SELZ-SHAPE-CASE and
-\ CMPSEL-SHAPE-CASE, the two that answer a double in FSEL-SHAPE-CASE, the four
-\ whose flags an Fcmp wrote in FFSEL-SHAPE-CASE, the six that reach memory in the
-\ D file in D-ADDR-SHAPE-CASE and D-SLOT-SHAPE-CASE, the six bitwise and
-\ shift forms in BITWISE-CASE, the two comparisons against an immediate in
-\ CMPI-SHAPE-CASE, and the four that carry a pointer move in their own encoding
-\ in FUSED-SPELL-CASE and FUSED-SHAPE-CASE, and the count covers all of them.
-: COUNT-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:MOVK A64IR:OPCODE {: k:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:MOV A64IR:OPCODE {: v:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:ADD A64IR:OPCODE {: a:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:SUB A64IR:OPCODE {: s:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:MUL A64IR:OPCODE {: u:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:SDIV A64IR:OPCODE {: y:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:STORE A64IR:OPCODE {: w:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:LOAD A64IR:OPCODE {: d:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:RESERVE A64IR:OPCODE {: p:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:RELEASE A64IR:OPCODE {: q:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:FLAG A64IR:OPCODE {: g:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:BR A64IR:OPCODE {: j:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:BRZ A64IR:OPCODE {: n:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:RET A64IR:OPCODE {: t:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:CALL A64IR:OPCODE {: cl:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:LINKSAVE A64IR:OPCODE {: ls:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:LINKLOAD A64IR:OPCODE {: ll:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:CMPBR A64IR:OPCODE {: cb:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:WORDCALL A64IR:OPCODE {: wc:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:TAILCALL A64IR:OPCODE {: tc:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:MADD A64IR:OPCODE {: md:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:ADDI A64IR:OPCODE {: ai:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:SUBI A64IR:OPCODE {: si:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:MOVN A64IR:OPCODE {: mn:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:ANDI A64IR:OPCODE {: an:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:ORRI A64IR:OPCODE {: oi:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:EORI A64IR:OPCODE {: ei:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:FLOAD A64IR:OPCODE {: xl:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:FSTORE A64IR:OPCODE {: xs:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:FALOAD A64IR:OPCODE {: xa:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:FASTORE A64IR:OPCODE {: xb:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:FDLOAD A64IR:OPCODE {: xd:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:FDSTORE A64IR:OPCODE {: xe:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:CODEADDR A64IR:OPCODE {: ca:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:FLAGI A64IR:OPCODE {: gi:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:CMPBRI A64IR:OPCODE {: bi:IR-ID:ir-symbol-id :}
-   b IR-BUILD:SCHEMAS 81 T=
-   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
-   rv z IR-SCHEMA:FDEFINED? TTRUE
-   rv k IR-SCHEMA:FDEFINED? TTRUE
-   rv v IR-SCHEMA:FDEFINED? TTRUE
-   rv a IR-SCHEMA:FDEFINED? TTRUE
-   rv s IR-SCHEMA:FDEFINED? TTRUE
-   rv u IR-SCHEMA:FDEFINED? TTRUE
-   rv y IR-SCHEMA:FDEFINED? TTRUE
-   rv w IR-SCHEMA:FDEFINED? TTRUE
-   rv d IR-SCHEMA:FDEFINED? TTRUE
-   rv p IR-SCHEMA:FDEFINED? TTRUE
-   rv q IR-SCHEMA:FDEFINED? TTRUE
-   rv g IR-SCHEMA:FDEFINED? TTRUE
-   rv j IR-SCHEMA:FDEFINED? TTRUE
-   rv n IR-SCHEMA:FDEFINED? TTRUE
-   rv t IR-SCHEMA:FDEFINED? TTRUE
-   rv cl IR-SCHEMA:FDEFINED? TTRUE
-   rv ls IR-SCHEMA:FDEFINED? TTRUE
-   rv ll IR-SCHEMA:FDEFINED? TTRUE
-   rv cb IR-SCHEMA:FDEFINED? TTRUE
-   rv wc IR-SCHEMA:FDEFINED? TTRUE
-   rv tc IR-SCHEMA:FDEFINED? TTRUE
-   rv md IR-SCHEMA:FDEFINED? TTRUE
-   rv ai IR-SCHEMA:FDEFINED? TTRUE
-   rv si IR-SCHEMA:FDEFINED? TTRUE
-   rv mn IR-SCHEMA:FDEFINED? TTRUE
-   rv an IR-SCHEMA:FDEFINED? TTRUE
-   rv oi IR-SCHEMA:FDEFINED? TTRUE
-   rv ei IR-SCHEMA:FDEFINED? TTRUE
-   rv xl IR-SCHEMA:FDEFINED? TTRUE
-   rv xs IR-SCHEMA:FDEFINED? TTRUE
-   rv xa IR-SCHEMA:FDEFINED? TTRUE
-   rv xb IR-SCHEMA:FDEFINED? TTRUE
-   rv xd IR-SCHEMA:FDEFINED? TTRUE
-   rv xe IR-SCHEMA:FDEFINED? TTRUE
-   rv ca IR-SCHEMA:FDEFINED? TTRUE
-   rv gi IR-SCHEMA:FDEFINED? TTRUE
-   rv bi IR-SCHEMA:FDEFINED? TTRUE ;
-
-: COUNT-CASE ( -- )
-   s" registration defines the machine opcode schemas" T-LABEL
-   BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT ;
-
 \ The six forms the bitwise and shift words lower to. Five are the ordinary
 \ two-register three-operand shape and the sixth, the complement, is the one
 \ that reads one register and writes one - which is what the operand count read
@@ -261,148 +164,6 @@ private
    BND [: BITWISE-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= 2 T=
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
-
-\ The dialect names its own table: a caller never spells the name or the version.
-: NAMED-BODY ( IR-CTX:ctx -- bool n n )
-   {: c:IR-CTX:ctx :}
-   c DIALECT-NEW {: b:IR-BUILD:builder :}
-   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
-   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
-   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
-   pv yv  rv key IR-SCHEMA:FDIALECT@  s" a64" IR-SYM:FEQ?
-   rv IR-SCHEMA:FMAJOR@
-   rv IR-SCHEMA:FMINOR@ ;
-
-: NAMED-CASE ( -- )
-   s" the schema table carries the dialect's own name and version" T-LABEL
-   BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   13 T= 0 T= TTRUE ;
-
-\ The spellings themselves, because every reference this dialect stores is a
-\ symbol and a renamed opcode would still read back through the same accessor.
-: SPELL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:MOVK A64IR:OPCODE {: k:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:ADD A64IR:OPCODE {: a:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:SUB A64IR:OPCODE {: s:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:MUL A64IR:OPCODE {: u:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:RET A64IR:OPCODE {: t:IR-ID:ir-symbol-id :}
-   c b A64IR:KEY-IMM {: ik:IR-ID:ir-symbol-id :}
-   c b A64IR:KEY-SHIFT {: sk:IR-ID:ir-symbol-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
-   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
-   pv yv z s" a64.movz" IR-SYM:FEQ?
-   pv yv k s" a64.movk" IR-SYM:FEQ?
-   pv yv a s" a64.add" IR-SYM:FEQ?
-   pv yv s s" a64.sub" IR-SYM:FEQ?
-   pv yv u s" a64.mul" IR-SYM:FEQ?
-   pv yv t s" a64.ret" IR-SYM:FEQ?
-   pv yv ik s" a64.imm" IR-SYM:FEQ?
-   pv yv sk s" a64.shift" IR-SYM:FEQ? ;
-
-: SPELL-CASE ( -- )
-   s" the arithmetic opcodes and the two move-wide keys are spelled as declared" T-LABEL
-   BND [: SPELL-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
-
-\ The four frame forms and their two keys, spelled the way the instruction
-\ vocabulary spells them. The two the enum cannot spell - `str` and `ldr` are
-\ taken names in this Forth - are named `store` and `load` in the family and keep
-\ the assembler's mnemonic as their symbol, which is what every other reader
-\ sees.
-: FRAME-SPELL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b A64IR-OPCODE:STORE A64IR:OPCODE {: w:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:LOAD A64IR:OPCODE {: d:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:RESERVE A64IR:OPCODE {: p:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:RELEASE A64IR:OPCODE {: q:IR-ID:ir-symbol-id :}
-   c b A64IR:KEY-SLOT {: lk:IR-ID:ir-symbol-id :}
-   c b A64IR:KEY-FRAME {: fk:IR-ID:ir-symbol-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
-   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
-   pv yv w s" a64.str" IR-SYM:FEQ?
-   pv yv d s" a64.ldr" IR-SYM:FEQ?
-   pv yv p s" a64.reserve" IR-SYM:FEQ?
-   pv yv q s" a64.release" IR-SYM:FEQ?
-   pv yv lk s" a64.slot" IR-SYM:FEQ?
-   pv yv fk s" a64.frame" IR-SYM:FEQ? ;
-
-: FRAME-SPELL-CASE ( -- )
-   s" the four frame opcodes and their two keys are spelled as declared" T-LABEL
-   BND [: FRAME-SPELL-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
-
-\ The four data-stack forms and their two keys. They are their own opcodes and
-\ their own keys, not the frame's: a routine reading an argument out of the
-\ caller's stack and a routine reloading a spilled value are two different
-\ accesses counted from two different pointers, and a reader has to be able to
-\ tell them apart without asking which opcode it has.
-: DSTACK-SPELL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b A64IR-OPCODE:DTAKE A64IR:OPCODE {: tk:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:DLOAD A64IR:OPCODE {: ld:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:DSTORE A64IR:OPCODE {: st:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:DPUBLISH A64IR:OPCODE {: pb:IR-ID:ir-symbol-id :}
-   c b A64IR:KEY-DSLOT {: sk:IR-ID:ir-symbol-id :}
-   c b A64IR:KEY-DBYTES {: bk:IR-ID:ir-symbol-id :}
-   b IR-BUILD:SCHEMAS drop
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
-   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
-   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
-   rv tk IR-SCHEMA:FDEFINED?
-   rv ld IR-SCHEMA:FDEFINED?
-   rv st IR-SCHEMA:FDEFINED?
-   rv pb IR-SCHEMA:FDEFINED?
-   pv yv tk s" a64.dtake" IR-SYM:FEQ?
-   pv yv ld s" a64.dload" IR-SYM:FEQ?
-   pv yv sk s" a64.dslot" IR-SYM:FEQ?
-   pv yv bk s" a64.dbytes" IR-SYM:FEQ? ;
-
-: DSTACK-SPELL-CASE ( -- )
-   s" the four data-stack opcodes and their two keys are spelled as declared" T-LABEL
-   BND [: DSTACK-SPELL-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
-
-\ The four forms that carry the pointer move in the transfer itself, and the
-\ key that is the whole of what they hold. THE KEY IS NOT `a64.dbytes`: three
-\ passes tell a move that stands alone from one a transfer carries by asking
-\ which key it is under, and under one key they could not.
-: FUSED-SPELL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b A64IR-OPCODE:DPUSH A64IR:OPCODE {: sh:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:DPOP A64IR:OPCODE {: pp:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:FDPUSH A64IR:OPCODE {: fh:IR-ID:ir-symbol-id :}
-   c b A64IR-OPCODE:FDPOP A64IR:OPCODE {: fp:IR-ID:ir-symbol-id :}
-   c b A64IR:KEY-DWB {: wk:IR-ID:ir-symbol-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
-   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
-   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
-   rv sh IR-SCHEMA:FDEFINED?
-   rv pp IR-SCHEMA:FDEFINED?
-   rv fh IR-SCHEMA:FDEFINED?
-   rv fp IR-SCHEMA:FDEFINED?
-   pv yv sh s" a64.dpush" IR-SYM:FEQ?
-   pv yv pp s" a64.dpop" IR-SYM:FEQ?
-   pv yv fh s" a64.fdpush" IR-SYM:FEQ?
-   pv yv fp s" a64.fdpop" IR-SYM:FEQ?
-   pv yv wk s" a64.dwb" IR-SYM:FEQ? ;
-
-: FUSED-SPELL-CASE ( -- )
-   s" the four fused data-stack opcodes and their key are spelled as declared"
-   T-LABEL
-   BND [: FUSED-SPELL-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
 \ A fused transfer carries ONE attribute and no slot, because the form encodes
 \ the access at the pointer and has no field for an offset - which is the whole
@@ -1802,19 +1563,11 @@ private
 \ abandoned modules to stay inside the arena registry while it is open.
 : GROUP-REGISTER ( IR-CTX:ctx -- )
    drop
-   COUNT-CASE
    BITWISE-CASE
-   ORN-CASE
-   NAMED-CASE
-   SPELL-CASE ;
-
-: GROUP-FRAME-SPELL ( IR-CTX:ctx -- )
-   drop
-   FRAME-SPELL-CASE ;
+   ORN-CASE ;
 
 : GROUP-FUSED ( IR-CTX:ctx -- )
    drop
-   FUSED-SPELL-CASE
    FUSED-SHAPE-CASE ;
 
 : GROUP-DWB-REFUSE ( IR-CTX:ctx -- )
@@ -2158,7 +1911,6 @@ public
    BND [: GROUP-BRANCH ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FCMP ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-REGISTER ;] IR-CTX:WITH-CONTEXT
-   BND [: GROUP-FRAME-SPELL ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FUSED ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-MOV ;] IR-CTX:WITH-CONTEXT

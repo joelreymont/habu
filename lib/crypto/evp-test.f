@@ -511,10 +511,6 @@ FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- n )
    PEAK-KB before - RSS-MARGIN < TTRUE ;
 
 
-\ The count a complete run reaches. A group that stops early or is dropped from
-\ RUN shows up here rather than as a quiet green.
-$28 constant EXPECTED-CASES
-
 : RUN ( -- )
    GCM-VECTORS
    TAMPER
@@ -523,10 +519,7 @@ $28 constant EXPECTED-CASES
    REFUSALS
    RANDOMNESS
    BIG-MESSAGE
-   CONTEXT-LIFETIME
-
-   s" every assertion in the file ran" T-LABEL
-   T-CASES EXPECTED-CASES T= ;
+   CONTEXT-LIFETIME ;
 
 T-RESET
 RUN

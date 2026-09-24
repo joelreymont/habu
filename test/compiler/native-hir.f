@@ -1,19 +1,10 @@
 \ native-hir.f - checked straight-line HIR dialect tests.
 \
-\ Proves the section 7.2 contract of src/compiler/native/hir.f and
-\ src/compiler/native/hir-word.f: registering the dialect defines exactly five
-\ opcodes and every declared field of each one reads back through the frozen
-\ schema table; the may-trap flag follows the compilation unit's overflow policy
-\ instead of being fixed in the dialect; foreign targets retain their binding
-\ and a second registration is refused; the source-word model binds the three
-\ arithmetic words to operations and the six stack words to compile-time
-\ renames that produce no operation; a word the model does not model is refused
-\ by name and a declared boundary names the capability it is waiting for;
-\ reading a row as a meaning it does not have, a forged row, a swapped arena
-\ pair, a foreign module's symbol, a full table, a misused rename stage and an
-\ out-of-range pick each reject with their own named code; and the model applied
-\ to a sealed source tape reads an integer literal as a literal, a name by its
-\ spelling, and refuses a token kind the subset does not model.
+\ Exercises policy-dependent schemas and source-word ownership, memoization and
+\ refusals that ordinary compilation cannot construct: forged rows, swapped
+\ arenas, foreign symbols, full tables, invalid stages and out-of-range picks.
+\ The production load-and-execute flows in native-chain.f, native-vocab.f and
+\ native-rename-rows.f cover arithmetic, control words and stack renames.
 \ Tier-neutral by design: the dialect and its source-word model are read back
 \ through their own API, so the tier this file loads under changes no row.
 
@@ -145,112 +136,6 @@ private
    s" HIR opcode ordinals above the vocabulary are refused" T-LABEL
    [: OPCODE-NTH-HIGH ;] E-HIR-OPCODE TTHROWSQ ;
 
-\ ---- the dialect: what registration defines ----------------------------------
-\ The opcodes, and the count, so "nothing else was defined" is measured rather
-\ than assumed. The family outgrew one case's worth of locals when the
-\ comparison and bitwise vocabulary landed, so it is asked in two: the
-\ eighteen the straight-line subset started with, and the nine that complete
-\ the comparison and bitwise words. The COUNT is asserted once, on the first,
-\ and it is what says the second did not quietly define something else too.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b HIR-OPCODE:CONST HIR:OPCODE {: k:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:ADD HIR:OPCODE {: a:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:SUB HIR:OPCODE {: s:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:MUL HIR:OPCODE {: u:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:DIV HIR:OPCODE {: v:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:LT HIR:OPCODE {: l:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:LE HIR:OPCODE {: e:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:BR HIR:OPCODE {: j:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:BRZ HIR:OPCODE {: z:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:RETURN HIR:OPCODE {: t:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:MEM HIR:OPCODE {: m:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:LOAD HIR:OPCODE {: d:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:STORE HIR:OPCODE {: w:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:BLOAD HIR:OPCODE {: bl:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:BSTORE HIR:OPCODE {: bw:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:EQUAL HIR:OPCODE {: eqs:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:CALL HIR:OPCODE {: cl:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:WORDCALL HIR:OPCODE {: wc:IR-ID:ir-symbol-id :}
-   b IR-BUILD:SCHEMAS
-   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
-   rv k IR-SCHEMA:FDEFINED?
-   rv a IR-SCHEMA:FDEFINED?
-   rv s IR-SCHEMA:FDEFINED?
-   rv u IR-SCHEMA:FDEFINED?
-   rv v IR-SCHEMA:FDEFINED?
-   rv l IR-SCHEMA:FDEFINED?
-   rv e IR-SCHEMA:FDEFINED?
-   rv j IR-SCHEMA:FDEFINED?
-   rv z IR-SCHEMA:FDEFINED?
-   rv t IR-SCHEMA:FDEFINED?
-   rv m IR-SCHEMA:FDEFINED?
-   rv d IR-SCHEMA:FDEFINED?
-   rv w IR-SCHEMA:FDEFINED?
-   rv bl IR-SCHEMA:FDEFINED?
-   rv bw IR-SCHEMA:FDEFINED?
-   rv eqs IR-SCHEMA:FDEFINED?
-   rv cl IR-SCHEMA:FDEFINED?
-   rv wc IR-SCHEMA:FDEFINED? ;
-
-: COUNT-CASE ( -- )
-   s" registration defines the eighteen opcodes the subset started with" T-LABEL
-   BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE 47 T= ;
-
-\ The nine that complete the comparison and bitwise vocabulary. `invert` is the
-\ one unary operation of the subset and is asked for beside the eight binary
-\ ones, because a schema with the wrong number of operands is what would let a
-\ caller stage it as a two-value word.
-: NEWOPS-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b HIR-OPCODE:GT HIR:OPCODE {: g:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:GE HIR:OPCODE {: ge:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:NE HIR:OPCODE {: n:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:AND HIR:OPCODE {: an:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:OR HIR:OPCODE {: o:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:XOR HIR:OPCODE {: x:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:LSHIFT HIR:OPCODE {: ls:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:RSHIFT HIR:OPCODE {: rs:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:INVERT HIR:OPCODE {: iv:IR-ID:ir-symbol-id :}
-   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
-   rv g IR-SCHEMA:FDEFINED?
-   rv ge IR-SCHEMA:FDEFINED?
-   rv n IR-SCHEMA:FDEFINED?
-   rv an IR-SCHEMA:FDEFINED?
-   rv o IR-SCHEMA:FDEFINED?
-   rv x IR-SCHEMA:FDEFINED?
-   rv ls IR-SCHEMA:FDEFINED?
-   rv rs IR-SCHEMA:FDEFINED?
-   rv iv IR-SCHEMA:FDEFINED? ;
-
-: NEWOPS-CASE ( -- )
-   s" registration defines the comparison and bitwise opcodes too" T-LABEL
-   BND [: NEWOPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
-
-\ The dialect names its own table: a caller never spells the name or the
-\ version.
-: NAMED-BODY ( IR-CTX:ctx -- bool n n )
-   {: c:IR-CTX:ctx :}
-   c DIALECT-NEW {: b:IR-BUILD:builder :}
-   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
-   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
-   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
-   pv yv  rv key IR-SCHEMA:FDIALECT@  s" hir" IR-SYM:FEQ?
-   rv IR-SCHEMA:FMAJOR@
-   rv IR-SCHEMA:FMINOR@ ;
-
-: NAMED-CASE ( -- )
-   s" the schema table carries the dialect's own name and version" T-LABEL
-   BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   6 T= 0 T= TTRUE ;
-
 \ Every field the arithmetic schema declares, read back off the frozen table.
 : ARITH-BODY ( IR-CTX:ctx -- n bool n bool n n n bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
@@ -356,53 +241,6 @@ private
    TTRUE TTRUE TTRUE TTRUE TTRUE 1 T= 3 T=
    TTRUE TTRUE TTRUE 2 T= 2 T=
    TTRUE 1 T= 0 T= ;
-
-\ The spellings themselves, because every reference this dialect stores is a
-\ symbol and a renamed opcode would still read back through the same accessor.
-: SPELL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b HIR-OPCODE:CONST HIR:OPCODE {: k:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:ADD HIR:OPCODE {: a:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:SUB HIR:OPCODE {: s:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:MUL HIR:OPCODE {: u:IR-ID:ir-symbol-id :}
-   c b HIR-OPCODE:RETURN HIR:OPCODE {: t:IR-ID:ir-symbol-id :}
-   c b HIR:KEY-VALUE {: vk:IR-ID:ir-symbol-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
-   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
-   pv yv k s" hir.const" IR-SYM:FEQ?
-   pv yv a s" hir.add" IR-SYM:FEQ?
-   pv yv s s" hir.sub" IR-SYM:FEQ?
-   pv yv u s" hir.mul" IR-SYM:FEQ?
-   pv yv t s" hir.return" IR-SYM:FEQ?
-   pv yv vk s" hir.value" IR-SYM:FEQ? ;
-
-: SPELL-CASE ( -- )
-   s" the five opcodes and the value key are spelled as declared" T-LABEL
-   BND [: SPELL-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
-
-\ Design lines 242 and 243: each opcode names its own semantic rule and its own
-\ renderer, and the two are different identities.
-: RULE-BODY ( IR-CTX:ctx -- bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c DIALECT-NEW {: b:IR-BUILD:builder :}
-   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
-   c b HIR-OPCODE:MUL HIR:OPCODE {: u:IR-ID:ir-symbol-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
-   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
-   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
-   pv yv  rv key u IR-SCHEMA:FRULE@  s" hir.rule.mul" IR-SYM:FEQ?
-   pv yv  rv key u IR-SCHEMA:FRENDERER@  s" hir.render.mul" IR-SYM:FEQ?
-   rv key u IR-SCHEMA:FRULE@ IR-ID:SYMBOL-LOCAL
-      rv key u IR-SCHEMA:FRENDERER@ IR-ID:SYMBOL-LOCAL <> ;
-
-: RULE-CASE ( -- )
-   s" an opcode names its own rule and its own renderer" T-LABEL
-   BND [: RULE-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE ;
 
 \ ---- the trap flag is the unit's policy --------------------------------------
 \ Registered under a trapping policy the three arithmetic opcodes may trap;
@@ -636,18 +474,6 @@ private
    c b p r HIR-WORD:REGISTER-WORDS
    b p r ;
 
-: OPS-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   r HIR-WORD:MODELED
-   r c b s" +" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:ADD HIR-OPCODE:EQ
-   r c b s" -" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:SUB HIR-OPCODE:EQ
-   r c b s" *" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:MUL HIR-OPCODE:EQ
-   r c b s" /" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:DIV HIR-OPCODE:EQ
-   r c b s" <" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:LT HIR-OPCODE:EQ
-   r c b s" <=" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:LE HIR-OPCODE:EQ
-   r c b s" =" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:EQUAL HIR-OPCODE:EQ ;
-
 \ A capacity refusal must leave the preceding declarations readable through
 \ the public model API. It does not depend on the context's allocation layout.
 : TORN-REG ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena )
@@ -676,11 +502,6 @@ private
    s" a full word table preserves its first and last accepted declarations" T-LABEL
    BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE 4 T= E-HIR-CAP T= ;
-
-: OPS-CASE ( -- )
-   s" the seven operation words bind to their operations" T-LABEL
-   BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE HIR-WORD:WORDS T= ;
 
 \ The nine float words, each read back off a real model. `f-` binds to hir.fsub
 \ and not to hir.sub, and `s>f` and `f>s` bind to two different crossings: a row
@@ -749,113 +570,6 @@ private
    s" and a float relation the engine has no word for is not in the model" T-LABEL
    [: FCMP-ABSENT ;] E-HIR-UNMODELED TTHROWSQ ;
 
-\ The nine words the comparison and bitwise vocabulary added, each read back off
-\ a real model. `>` binds to hir.gt and NOT to hir.lt: the row says which
-\ relation the word is, and a model that reached `>` by turning `<`'s operands
-\ round would answer hir.lt here.
-: OPS2-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   r c b s" >" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:GT HIR-OPCODE:EQ
-   r c b s" >=" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:GE HIR-OPCODE:EQ
-   r c b s" <>" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:NE HIR-OPCODE:EQ
-   r c b s" and" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:AND HIR-OPCODE:EQ
-   r c b s" or" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:OR HIR-OPCODE:EQ
-   r c b s" xor" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:XOR HIR-OPCODE:EQ
-   r c b s" lshift" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:LSHIFT HIR-OPCODE:EQ
-   r c b s" rshift" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:RSHIFT HIR-OPCODE:EQ
-   r c b s" invert" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:INVERT HIR-OPCODE:EQ ;
-
-: OPS2-CASE ( -- )
-   s" the comparison and bitwise words bind to their own relations" T-LABEL
-   BND [: OPS2-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
-
-\ The three control words the `while`/`repeat` and `else` vocabulary added, read
-\ back off a real model beside the two they stand next to. Each one has a
-\ neighbour it could plausibly have been declared as, and the row is what tells
-\ them apart: `while` is the middle of a loop and NOT the closer `until` is,
-\ `repeat` is a second closer for `begin` and NOT a second opener, and `else` is
-\ the middle of an `if` and NOT the closer `then` is. A registration that bound
-\ any of the three to its neighbour reads back here as that neighbour.
-: CTRL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   r c b s" while" IR-BUILD:INTERN-SYMBOL HIR-WORD:CTRL@
-      HIR-CTRL:MID-WHILE HIR-CTRL:EQ
-   r c b s" repeat" IR-BUILD:INTERN-SYMBOL HIR-WORD:CTRL@
-      HIR-CTRL:CLOSE-REPEAT HIR-CTRL:EQ
-   r c b s" else" IR-BUILD:INTERN-SYMBOL HIR-WORD:CTRL@
-      HIR-CTRL:MID-ELSE HIR-CTRL:EQ
-   r c b s" until" IR-BUILD:INTERN-SYMBOL HIR-WORD:CTRL@
-      HIR-CTRL:CLOSE-UNTIL HIR-CTRL:EQ
-   r c b s" begin" IR-BUILD:INTERN-SYMBOL HIR-WORD:CTRL@
-      HIR-CTRL:OPEN-BEGIN HIR-CTRL:EQ
-   r c b s" then" IR-BUILD:INTERN-SYMBOL HIR-WORD:CTRL@
-      HIR-CTRL:CLOSE-IF HIR-CTRL:EQ
-   r c b s" while" IR-BUILD:INTERN-SYMBOL HIR-WORD:MEANING@
-      HIR-MEANING:CONTROL HIR-MEANING:EQ
-   r c b s" repeat" IR-BUILD:INTERN-SYMBOL HIR-WORD:MEANING@
-      HIR-MEANING:CONTROL HIR-MEANING:EQ ;
-
-: CTRL-CASE ( -- )
-   s" while, repeat and else bind to their own control actions" T-LABEL
-   BND [: CTRL-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
-
-\ `0=` and `cells` are a literal and an operation, exactly as `1-` is, and the
-\ constant each carries is what makes it the word it is: `0=` is an equality
-\ against ZERO and `cells` is a multiplication by EIGHT. Both halves of both
-\ rows are read back, because a row carrying the right opcode with the wrong
-\ constant compiles to a word that computes something else.
-: STEP2-BODY ( IR-CTX:ctx -- bool n bool n )
-   {: c:IR-CTX:ctx :}
-   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   r c b s" 0=" IR-BUILD:INTERN-SYMBOL HIR-WORD:CONST-OPCODE@
-      HIR-OPCODE:EQUAL HIR-OPCODE:EQ
-   r c b s" 0=" IR-BUILD:INTERN-SYMBOL HIR-WORD:CONST-VALUE@
-   r c b s" cells" IR-BUILD:INTERN-SYMBOL HIR-WORD:CONST-OPCODE@
-      HIR-OPCODE:MUL HIR-OPCODE:EQ
-   r c b s" cells" IR-BUILD:INTERN-SYMBOL HIR-WORD:CONST-VALUE@ ;
-
-: STEP2-CASE ( -- )
-   s" 0= is an equality against zero and cells a multiplication by eight" T-LABEL
-   BND [: STEP2-BODY ;] IR-CTX:WITH-CONTEXT
-   8 T= TTRUE 0 T= TTRUE ;
-
-\ `2drop` consumes two values and puts neither back, which is the whole of what
-\ the row says: a pick count of zero over an input count of two.
-: DROP2-BODY ( IR-CTX:ctx -- n n )
-   {: c:IR-CTX:ctx :}
-   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   r c b s" 2drop" IR-BUILD:INTERN-SYMBOL HIR-WORD:INPUTS@
-   r c b s" 2drop" IR-BUILD:INTERN-SYMBOL HIR-WORD:PICKS ;
-
-: DROP2-CASE ( -- )
-   s" 2drop consumes two values and puts neither back" T-LABEL
-   BND [: DROP2-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= 2 T= ;
-
-\ ---- the two halves of a typed locals group ----------------------------------
-\ Neither stages an operation, so what the word model has to say about them is
-\ only which half each one is - and a row read as the other half, or as any
-\ other meaning, is a category error rather than a wrong answer.
-: LOCALS-MEAN-BODY ( IR-CTX:ctx -- bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   r c b s" {:" IR-BUILD:INTERN-SYMBOL HIR-WORD:ADMIT
-      HIR-MEANING:OPEN-LOCALS HIR-MEANING:EQ
-   r c b s" :}" IR-BUILD:INTERN-SYMBOL HIR-WORD:ADMIT
-      HIR-MEANING:CLOSE-LOCALS HIR-MEANING:EQ
-   r c b s" {:" IR-BUILD:INTERN-SYMBOL HIR-WORD:ADMIT
-      HIR-MEANING:CLOSE-LOCALS HIR-MEANING:EQ
-   r c b s" {:" IR-BUILD:INTERN-SYMBOL HIR-WORD:MODELS? ;
-
-: LOCALS-MEAN-CASE ( -- )
-   s" the two halves of a locals group are declared and each is itself" T-LABEL
-   BND [: LOCALS-MEAN-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TFALSE TTRUE TTRUE ;
-
 \ MODELS? is the one reader that answers about a word the table never declared
 \ rather than refusing, which is what a name the PROGRAM chose for a local is.
 : MODELS-BODY ( IR-CTX:ctx -- bool bool )
@@ -869,19 +583,6 @@ private
    BND [: MODELS-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE ;
 
-\ Where a typed local's annotation is cut off. `a:n` declares `a`; an
-\ unannotated local is its whole spelling; and the separator is the FIRST colon,
-\ so a type that carries one of its own keeps the same name.
-: ANN-BODY ( -- n n n )
-   s" a:n" HIR-WORD:LOCAL-NAME-LEN
-   s" a" HIR-WORD:LOCAL-NAME-LEN
-   s" ref:IR-CTX:ctx" HIR-WORD:LOCAL-NAME-LEN ;
-
-: ANN-CASE ( -- )
-   s" a local's name is what stands before its annotation" T-LABEL
-   ANN-BODY
-   3 T= 1 T= 1 T= ;
-
 \ ---- the data word these cases declare ---------------------------------------
 \ A FIXED row no longer carries a number the case chose; it carries what the
 \ engine says the named word pushes. So the cases below have to create a real
@@ -892,26 +593,12 @@ private
 \ record, the assertion hands the name to the interpreter - so their agreement is
 \ a statement and not a restatement.
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
 : CELL-A! ( -- )
    s" CELL-A" 0 search-wl 0<> if exit then
    s" create CELL-A 1 cells allot" EV ;
 
-: CELL-A-ADDR ( -- n )
-   s" CELL-A" EV-N ;
-
-\ ---- the memory words and the data word --------------------------------------
-\ The four memory words bind to the four memory operations - one pair per access
-\ width, because the width is a form of the dialect and not a field of one form,
-\ so `c@` and `@` are different opcodes and not one opcode read two ways - the
-\ increment binds to
-\ an addition of one - which is what makes `1+` one token of source and two
-\ operations rather than an opcode this dialect does not have - and a `create`d
-\ data word is declared by its NAME, the value being the engine's to answer. The
-\ last one is how a definition that mentions a data word compiles at all, so what
-\ is asserted is the value it reads back as and the meaning the gate answers for
-\ it.
+\ ---- a data word asked for the wrong kind of meaning -------------------------
 
 : MODEL-PLUS ( IR-CTX:ctx -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx :}
@@ -922,30 +609,6 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
    c b p r HIR-WORD:REGISTER-WORDS
    c b r  c b s" CELL-A" IR-BUILD:INTERN-SYMBOL  HIR-WORD:DECLARE-FIXED
    b p r ;
-
-: MEMWORD-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c MODEL-PLUS {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   r c b s" CELL-A" HIR-WORD:KEY-SPELL HIR-WORD:FIXED-VALUE@
-   r c b s" CELL-A" HIR-WORD:KEY-SPELL HIR-WORD:ADMIT
-      HIR-MEANING:FIXED HIR-MEANING:EQ
-   r c b s" @" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
-      HIR-OPCODE:LOAD HIR-OPCODE:EQ
-   r c b s" !" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
-      HIR-OPCODE:STORE HIR-OPCODE:EQ
-   r c b s" c@" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
-      HIR-OPCODE:BLOAD HIR-OPCODE:EQ
-   r c b s" c!" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
-      HIR-OPCODE:BSTORE HIR-OPCODE:EQ
-   r c b s" c@" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
-      HIR-OPCODE:LOAD HIR-OPCODE:EQ 0=
-   r c b s" 1+" IR-BUILD:INTERN-SYMBOL HIR-WORD:CONST-OPCODE@
-      HIR-OPCODE:ADD HIR-OPCODE:EQ ;
-
-: MEMWORD-CASE ( -- )
-   s" the memory words, the increment and a data word read back as declared" T-LABEL
-   BND [: MEMWORD-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE CELL-A-ADDR T= ;
 
 \ Asking a data word which operation it is, when its whole meaning is a value.
 : FIXED-CLASS-BODY ( IR-CTX:ctx -- )
@@ -1111,61 +774,6 @@ variable BC-OUT
    T-LABEL
    BND [: CALLABLE-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT
    E-HIR-CALLEE T= E-HIR-CALLEE T= E-HIR-CLASS T= E-HIR-CLASS T= ;
-
-\ One rename, folded into three numbers: how many values it consumes, how many
-\ it puts back, and the whole pick list in order as decimal digits, each pick
-\ plus one, so a single comparison pins the list and its order.
-: REN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena ptr u8 n -- n n n )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
-      a u:n :}
-   c b a u IR-BUILD:INTERN-SYMBOL {: id:IR-ID:ir-symbol-id :}
-   r id HIR-WORD:INPUTS@
-   r id HIR-WORD:PICKS
-   0
-   r id HIR-WORD:PICKS 0 ?do
-      10 * p r id i HIR-WORD:PICK@ 1+ +
-   loop ;
-
-: RENAME-BODY ( IR-CTX:ctx -- n n n n n n n n n n n n n n n n n n )
-   {: c:IR-CTX:ctx :}
-   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   c b p r s" dup" REN
-   c b p r s" drop" REN
-   c b p r s" swap" REN
-   c b p r s" over" REN
-   c b p r s" nip" REN
-   c b p r s" rot" REN ;
-
-\ `nip` consumes two and puts back the one that was on top, so its whole list is
-\ the single depth zero. `rot` consumes a b c and leaves b c a, and its list read
-\ bottom first is the depth of b, the depth of c and the depth of a - 1 0 2,
-\ which REN folds to 213. Neither neighbouring rotation folds to that number:
-\ `-rot` would be 0 2 1 and so 132, and leaving the values alone would be 2 1 0
-\ and so 321.
-: RENAME-CASE ( -- )
-   s" the six stack words are renames with exactly their picks" T-LABEL
-   BND [: RENAME-BODY ;] IR-CTX:WITH-CONTEXT
-   213 T= 3 T= 3 T=
-   1 T= 1 T= 2 T=
-   212 T= 3 T= 2 T=
-   12 T= 2 T= 2 T=
-   0 T= 0 T= 1 T=
-   11 T= 2 T= 1 T= ;
-
-\ A rename is a meaning, not an operation, and an arithmetic word is the other
-\ way round.
-: MEAN-BODY ( IR-CTX:ctx -- bool bool )
-   {: c:IR-CTX:ctx :}
-   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   r c b s" over" IR-BUILD:INTERN-SYMBOL HIR-WORD:ADMIT
-      HIR-MEANING:RENAME HIR-MEANING:EQ
-   r c b s" +" IR-BUILD:INTERN-SYMBOL HIR-WORD:ADMIT
-      HIR-MEANING:OP HIR-MEANING:EQ ;
-
-: MEAN-CASE ( -- )
-   s" the gate answers rename for a stack word and op for an arithmetic one" T-LABEL
-   BND [: MEAN-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE ;
 
 \ ---- a word model without a module builder -----------------------------------
 \ Every refusal below is measured against a light model: a plain module of the
@@ -2240,19 +1848,11 @@ variable BC-OUT
 \ a fixture that throws holds its context until the enclosing harness exits, so
 \ the throwing groups are kept small and every one of their fixtures builds a
 \ light word model rather than a whole module of this dialect.
-: GROUP-DIALECT ( IR-CTX:ctx -- )
-   drop
-   COUNT-CASE
-   NEWOPS-CASE
-   NAMED-CASE ;
-
 : GROUP-SHAPE ( IR-CTX:ctx -- )
    drop
    ARITH-CASE
    SHAPE-CASE
-   MEM-SHAPE-CASE
-   SPELL-CASE
-   RULE-CASE ;
+   MEM-SHAPE-CASE ;
 
 : GROUP-POLICY ( IR-CTX:ctx -- )
    drop
@@ -2270,22 +1870,12 @@ variable BC-OUT
 
 : GROUP-MODEL ( IR-CTX:ctx -- )
    drop
-   OPS-CASE
    FLOAT-OPS-CASE
    FCMP-OPS-CASE
    FCMP-ABSENT-CASE
-   OPS2-CASE
-   CTRL-CASE
-   STEP2-CASE
-   DROP2-CASE
-   MEMWORD-CASE
    CALLABLE-CASE
    TERMINAL-CASE
-   RENAME-CASE
-   MEAN-CASE
-   LOCALS-MEAN-CASE
    MODELS-CASE
-   ANN-CASE
    AT-CASE ;
 
 : GROUP-FIXED-REFUSE ( IR-CTX:ctx -- )
@@ -2571,7 +2161,6 @@ public
    MEMO-CASE
    LAZY-CASE
    OPCODE-ORDINAL-CASE
-   BND [: GROUP-DIALECT ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-POLICY ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-REG-REFUSE ;] IR-CTX:WITH-CONTEXT

@@ -3,19 +3,8 @@
 
 17 constant PE-SEED
 32 constant PE-COUNT
-100 constant PE-BOUND
 6 constant PE-DIGITS
 4 constant PE-MIN-SHRUNK-LEN
-
-: PE-SMALL ( -- n )
-   PE-BOUND PROP:RND% ;
-
-: PE-SQUARE-PROPERTY ( -- )
-   PE-SEED PE-COUNT PROP:RUN-RESET
-   0 begin dup PROP:COUNT@ < while
-      PE-SMALL dup * 0 >= TTRUE
-      1+
-   repeat drop ;
 
 : PE-DIGITS! ( -- )
    PROP:BUF-RESET
@@ -43,7 +32,6 @@
 
 : PE-MAIN ( -- )
    T-RESET
-   PE-SQUARE-PROPERTY
    PE-DIGIT-PROPERTY
    PE-SHRINK-EXAMPLE
    T-REPORT ;

@@ -1,5 +1,5 @@
 \ ir-intern-schema.f - Native symbol, type and attribute interning vectors.
-\ Cases exercise canonical bytes, source guards and production interner behavior.
+\ Cases exercise production interner behavior.
 
 require lib/errors.f
 require lib/string.f
@@ -18,9 +18,7 @@ public
 3 constant KIND-COUNT
 
 \ ---- what each intern sequence is there to show ------------------------------
-\ Every role below must be covered by at least one sequence. The coverage check
-\ in the cases file is what stops a sequence being quietly deleted: the table has
-\ no digest, so the roles are the freeze.
+\ Roles identify the failure mode each sequence exercises.
 
 0 constant ROLE-DUPLICATE   \ interning a key twice answers one ordinal and moves no count
 1 constant ROLE-ORDER-A     \ one insertion order of a key set
@@ -270,122 +268,5 @@ public
 : STEP-KEY@ ( n -- n )     dup STEP-RANGE cells STEP-KEY + @ ;
 : STEP-ORD@ ( n -- n )     dup STEP-RANGE cells STEP-ORD + @ ;
 : STEP-CLASS@ ( n -- n )   dup STEP-RANGE cells STEP-CLASS + @ ;
-
-\ ---- the scan-predicate field lists ------------------------------------------
-\ One row per production scan predicate: the file it lives in, the word, the
-\ ordered list of stored cells it compares with the operator each comparison
-\ uses, and the token its body ends on - the step that actually decides identity.
-\ A predicate reads a stored cell as `<offset> RC@`, so the reader collects the
-\ token before every `RC@` together with the operator three tokens on, and an
-\ added, dropped, reordered, or no-longer-compared field changes the row.
-
-3 constant PRED-COUNT
-
-: PRED-FILE$ ( n -- ptr u8 n )
-   case
-      0 of s" src/compiler/ir/symbol.f" endof
-      1 of s" src/compiler/ir/type.f" endof
-      2 of s" src/compiler/ir/attr.f" endof
-      E-CIN-ROW throw
-   endcase ;
-
-: PRED-WORD$ ( n -- ptr u8 n )
-   case
-      0 of s" ROW-MATCH?" endof
-      1 of s" ROW4-MATCH?" endof
-      2 of s" ROW5-MATCH?" endof
-      E-CIN-ROW throw
-   endcase ;
-
-: PRED-FIELDS$ ( n -- ptr u8 n )
-   case
-      0 of s" OFF-FLT <> OFF-LEN <>" endof
-      1 of s" OFF-KIND <> OFF-A <> OFF-B <> OFF-C =" endof
-      2 of s" OFF-KIND <> OFF-A <> OFF-B <> OFF-C <> OFF-D =" endof
-      E-CIN-ROW throw
-   endcase ;
-
-\ The symbol predicate ends on the byte-compare verify, which is the step that
-\ keeps a filter collision from merging two symbols. The two fixed-cell
-\ predicates end on the last field comparison itself.
-: PRED-VERIFY$ ( n -- ptr u8 n )
-   case
-      0 of s" BYTES-EQ" endof
-      1 of s" =" endof
-      2 of s" =" endof
-      E-CIN-ROW throw
-   endcase ;
-
-\ ---- the words whose write ordering is checked -------------------------------
-\ Every capacity check must run before the first arena push. The push may be
-\ several calls deep - `IR-SYM:INTERN` pushes through `POOL-ADD` and `ROW-ADD` -
-\ so the reader classifies the file's own definitions first and then reads these
-\ four bodies against that classification.
-
-4 constant ORDER-COUNT
-
-: ORDER-FILE$ ( n -- ptr u8 n )
-   case
-      0 of s" src/compiler/ir/symbol.f" endof
-      1 of s" src/compiler/ir/type.f" endof
-      2 of s" src/compiler/ir/type.f" endof
-      3 of s" src/compiler/ir/attr.f" endof
-      E-CIN-ROW throw
-   endcase ;
-
-: ORDER-WORD$ ( n -- ptr u8 n )
-   case
-      0 of s" INTERN" endof
-      1 of s" INTERN4" endof
-      2 of s" FN-END" endof
-      3 of s" INTERN5" endof
-      E-CIN-ROW throw
-   endcase ;
-
-\ The token that writes a cell into an arena, and the token that reads a table's
-\ committed capacity. A definition that carries either, directly or through a
-\ word it calls, is a writer or a capacity check.
-: PUSH-TOKEN$ ( -- ptr u8 n )
-   s" IR-ARENA:PUSH" ;
-
-: CAP-TOKEN$ ( -- ptr u8 n )
-   s" HC-CAP" ;
-
-\ ---- the reference guards ----------------------------------------------------
-\ The model assumes `refs_ok`: every ordinal a key mentions is strictly below the
-\ live count. These are the bodies that make it true of the shipped code, frozen
-\ whole because each is small and each is entirely guard.
-
-4 constant GUARD-COUNT
-
-: GUARD-WORD$ ( n -- ptr u8 n )
-   case
-      0 of s" ID-CK" endof
-      1 of s" ID-CK-N" endof
-      2 of s" STG-REF-CK" endof
-      3 of s" STG-VALIDATE" endof
-      E-CIN-ROW throw
-   endcase ;
-
-: GUARD-BODY$ ( n -- ptr u8 n )
-   case
-      0 of s" {: rr:IR-ARENA:reader id:IR-ID:ir-type-id :} rr RHDR-CK rr HC-SERIAL IR-ARENA:RD@ rr CNT id ID-CK-N" endof
-      1 of s" {: hs:n cnt:n id:IR-ID:ir-type-id :} hs id ID-OWNER-SERIAL SERIAL-CK id IR-ID:TYPE-LOCAL dup cnt >= if E-IR-TYPE-BOUND throw then" endof
-      2 of s" {: hs:n cnt:n os:n loc:n :} os hs <> if E-IR-TYPE-OWNER throw then loc 0 < loc cnt >= or if E-IR-TYPE-BOUND throw then" endof
-      3 of s" {: hs:n cnt:n :} STG-PN @ 0 ?do hs cnt i PO@ i PL@ STG-REF-CK loop STG-RN @ 0 ?do hs cnt i RO@ i RL@ STG-REF-CK loop" endof
-      E-CIN-ROW throw
-   endcase ;
-
-\ The pointer constructor checks the pointee it was handed, not some other
-\ identity, and it does so before it interns.
-: PTEE-CHECK$ ( -- ptr u8 n )
-   s" rr ptee ID-CK" ;
-
-\ The staged-element check is handed the table's live row count as its bound.
-: STAGE-CHECK$ ( -- ptr u8 n )
-   s" key KEY-SERIAL rr CNT STG-VALIDATE" ;
-
-: TYPE-FILE$ ( -- ptr u8 n )
-   s" src/compiler/ir/type.f" ;
 
 ;package

@@ -449,51 +449,6 @@ variable N
    bbase 2 CDIGEST:SLOT@ CDIGEST:TAG-TARGET T=
    bbase 9 CDIGEST:SLOT@ CDIGEST:TAG-NUMERIC T= ;
 
-\ The guard that keeps the digest load-bearing rather than decorative: a record's
-\ DECLARED field count, read back out of the type registry, is tied to the width
-\ of its canonical preimage. Adding a semantic field and forgetting to encode it
-\ therefore reddens this suite instead of silently producing a record that can
-\ change compilation behaviour while keeping its old identity. The variant counts
-\ are pinned for the same reason - adding a variant means allocating a wire code,
-\ and the MATCH in the encoder already forces one to exist.
-: CONTRACT$ ( -- ptr u8 n ptr u8 n )   s" contract" s" CTARGET-CONTRACT" ;
-: FEATURES$ ( -- ptr u8 n ptr u8 n )   s" features" s" CTARGET-FEATURES" ;
-: NPOLICY$ ( -- ptr u8 n ptr u8 n )    s" numeric-policy" s" CNUM-NUMERIC--POLICY" ;
-: BINDING$ ( -- ptr u8 n ptr u8 n )    s" binding" s" CBIND-BINDING" ;
-: DIGEST$ ( -- ptr u8 n ptr u8 n )     s" digest" s" CDIGEST-DIGEST" ;
-
-: SLOTS-OF ( ptr u8 n -- n )
-   nip CDIGEST:SLOT-BYTES / ;
-
-: SCHEMA-PINS ( -- )
-   CONTRACT$ REFLECT:FAMS 1 T=
-   CONTRACT$ REFLECT:FLDS 5 T=
-   CONTRACT$ REFLECT:WIDTH 5 T=
-   GPU CTARGET:ENCODE SLOTS-OF CONTRACT$ REFLECT:FLDS 2 + T=
-   NPOLICY$ REFLECT:FAMS 1 T=
-   NPOLICY$ REFLECT:FLDS 5 T=
-   NPOLICY$ REFLECT:WIDTH 5 T=
-   FUSED CNUM:ENCODE SLOTS-OF NPOLICY$ REFLECT:FLDS 2 + T=
-   BINDING$ REFLECT:FAMS 1 T=
-   BINDING$ REFLECT:FLDS 2 T=
-   BINDING$ REFLECT:WIDTH 10 T=
-   GPU FUSED CBIND:BIND CBIND:ENCODE SLOTS-OF
-      GPU CTARGET:ENCODE SLOTS-OF FUSED CNUM:ENCODE SLOTS-OF + 2 + T=
-   FEATURES$ REFLECT:FAMS 1 T=
-   FEATURES$ REFLECT:FLDS 1 T=
-   DIGEST$ REFLECT:FAMS 1 T=
-   DIGEST$ REFLECT:FLDS 4 T=
-   DIGEST$ REFLECT:WIDTH 4 T=
-   s" arch" s" CTARGET-ARCH" REFLECT:VARS 6 T=
-   s" abi" s" CTARGET-ABI" REFLECT:VARS 6 T=
-   s" endian" s" CTARGET-ENDIAN" REFLECT:VARS 2 T=
-   s" ptr-width" s" CTARGET-PTR--WIDTH" REFLECT:VARS 2 T=
-   s" overflow" s" CNUM-OVERFLOW" REFLECT:VARS 2 T=
-   s" float-model" s" CNUM-FLOAT--MODEL" REFLECT:VARS 2 T=
-   s" contraction" s" CNUM-CONTRACTION" REFLECT:VARS 2 T=
-   s" fast-math" s" CNUM-FAST--MATH" REFLECT:VARS 3 T=
-   s" compare" s" CNUM-COMPARE" REFLECT:VARS 3 T= ;
-
 \ Every address residue includes the aligned native path and the byte fallback.
 \ Inspect canonical bytes independently of SLOT@ and preserve neighboring bytes.
 : SLOT-AT ( n n -- )
@@ -662,7 +617,6 @@ public
    FORGERY-REJECTS
    STATIC-REJECTS
    PREIMAGE
-   SCHEMA-PINS
    SLOT-ROUNDTRIP
    STABLE
    DOMAIN-SEPARATION

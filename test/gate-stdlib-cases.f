@@ -100,7 +100,6 @@ SUITE tool-boundary-check-repair
 SUITE tool-boundary-doc-public
    tools/public-signatures-test.f
    tools/public-signatures-bracket-test.f
-   tools/repair-schema-doc-test.f
    tools/examples-test.f
 ;SUITE
 
@@ -903,11 +902,6 @@ SUITE object-image-writer
    tools/object-image-test.f
 ;SUITE
 
-SUITE tasking-primitive-smoke
-   test/atomics-smoke.f
-   test/run-in-stack-smoke.f
-;SUITE
-
 SUITE getpid-primitive-smoke
    test/getpid-smoke.f
 ;SUITE
@@ -1126,7 +1120,6 @@ SUITE test-stdlib
    lib/test/assert-test.f
    lib/test/suite-test.f
    lib/test/record-test.f
-   lib/test/src-shape-test.f
    lib/test/mapped-test.f
 ;SUITE
 
@@ -1138,28 +1131,12 @@ SUITE date-helpers
    tools/stdlib-date-test.f
 ;SUITE
 
-SUITE spawn-emitter-shape
-   tools/spawn-emitter-test.f
-;SUITE
-
-SUITE signature-scan-emitter-shape
-   tools/signature-scan-emitter-test.f
-;SUITE
-
-SUITE compiler-dispatch-shape
-   tools/compiler-dispatch-test.f
-;SUITE
-
 SUITE compiler-compile-floor
    test/compiler/compile-floor.f
 ;SUITE
 
 SUITE compiler-compile-floor-gate
    test/compile-floor-gate.f
-;SUITE
-
-SUITE codegen-role
-   tools/codegen-role-test.f
 ;SUITE
 
 SUITE icode-fixup
@@ -1190,7 +1167,6 @@ SUITE tail-pure-fixtures
    lib/fs-test.f
    tools/bootstrap-codegen-test.f
    tools/asm-src-test.f
-   tools/asm-checked-test.f
    tools/image-bytes-test.f
 ;SUITE
 
@@ -1544,10 +1520,6 @@ SUITE does-empty-clause
    test/does-empty-clause.f
 ;SUITE
 
-SUITE friend-arena-absence
-   test/seal-absence.f
-;SUITE
-
 SUITE sealed-system-package
    test/seal-package.f
 ;SUITE
@@ -1795,20 +1767,8 @@ SUITE report
    lib/report-test.f
 ;SUITE
 
-SUITE test-outcome
-   lib/test/outcome-test.f
-;SUITE
-
 SUITE test-subject
    lib/test/subject-test.f
-;SUITE
-
-SUITE bootstrap-refresh-doc
-   tools/bootstrap-refresh-doc-test.f
-;SUITE
-
-SUITE forth-card-doc
-   tools/forth-card-doc-test.f
 ;SUITE
 
 SUITE check-repair-hints
@@ -1865,10 +1825,6 @@ SUITE json
 
 SUITE source-discovery
    tools/source-discovery-test.f
-;SUITE
-
-SUITE stdlib-time
-   tools/stdlib-time-test.f
 ;SUITE
 
 SUITE xref

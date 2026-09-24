@@ -777,10 +777,9 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   `tools/tier-census.f` read through it, and `test/compiler/code-bytes.f` is the
   test of its bound. A site that only carries a code address on rather than
   reading through it — `NWALK:SPAN-EACH`, `XREF-START` itself — keeps it a number.
-  Three more cells of the same shape were not code addresses at all and needed no
-  boundary: `tools/codegen-role.f` and `test/icode-fixup-test.f` were re-minting
-  what `CW@` (`src/arch/arm64/icode.f`) already answers as `ptr u8`, so they hold
-  it in a local instead, and `src/arch/arm64/disasm.f` was walking its own
+  `test/icode-fixup-test.f` needs no boundary: `CW@`
+  (`src/arch/arm64/icode.f`) already answers `ptr u8`, held in a local.
+  `src/arch/arm64/disasm.f` was walking its own
   `create`d row table, which is now a declared `PTR-VARIABLE`.
 - **`xt<effect>` storage cells are the typed alternative to raw xt scratch.**
   `TYPED-VARIABLE HK [ in -- out ]` (and `n TYPED-BUFFER HK [ in -- out ]`)

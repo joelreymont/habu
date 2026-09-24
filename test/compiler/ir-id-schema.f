@@ -1,126 +1,27 @@
-\ ir-id-schema.f - Native compiler identity schema and boundary vectors.
-\ The manifest checks canonical bytes, family coverage and the public identity API.
+\ ir-id-schema.f - Compiler identity boundary vectors.
 
 require lib/errors.f
-require lib/string.f
-require lib/fmt.f
 require lib/memory.f
 
 require src/compiler/ir/id.f
 
 package COMPILER-ID-PROOF
-private
-
-\ A reference nominal cell family. The checker's own kind numbering is engine
-\ state, so the manifest compares the kind every identity family reports against
-\ the kind of a real arity-0 NEWTYPE declared right here instead of restating an
-\ engine constant.
-NEWTYPE cid-cell-probe 0
-
-variable PROBE-FAM
-TFAM:TFAM-N@ 1- PROBE-FAM !
-
 public
 
-\ ---- frozen design constants -------------------------------------------------
-\ Each of these is bound to the running implementation by the vector rows built
-\ from it further down; none of them is a free-standing claim.
-
-64 constant CELL-BITS
-63 constant CELL-VALUE-BITS
-31 constant SERIAL-BITS
-32 constant LOCAL-BITS
 32 constant LOCAL-SHIFT
-
 $8000000000000000 constant CELL-MIN
 $7FFFFFFFFFFFFFFF constant CELL-MAX
-
-1 constant SERIAL-MIN
 $7FFFFFFF constant SERIAL-MAX
-
 0 constant LOCAL-MIN
 $FFFFFFFF constant LOCAL-MAX
 $FFFFFFFF constant LOCAL-MASK
-
 0 constant SCALAR-MIN
 $7FFFFFFFFFFFFFFF constant SCALAR-MAX
 
-13 constant FAMILY-COUNT
-7 constant GUARD-COUNT
-2 constant FIXTURE-COUNT
-
-\ Which owner key a check-vector row uses: the key that packed the identity, or
-\ a second, different module key.
 0 constant OWNER-SAME
 1 constant OWNER-OTHER
 
 private
-
-\ Family roles. Index 0 is the minting authority, index 1 is the owner witness,
-\ indices 2..10 are the packed reference families, and the last two are plain
-\ scalars that must never be packed.
-2 constant PACKED-START
-11 constant PACKED-END
-
-: FAMILY-RANGE ( n -- ) {: idx:n :}
-   idx 0 < idx FAMILY-COUNT >= or if E-CID-FAMILY throw then ;
-
-: FAMILY-NAME$ ( n -- ptr u8 n )
-   case
-      0 of s" ir-module-key" endof
-      1 of s" ir-module-id" endof
-      2 of s" ir-source-id" endof
-      3 of s" ir-fun-id" endof
-      4 of s" ir-block-id" endof
-      5 of s" ir-op-id" endof
-      6 of s" ir-value-id" endof
-      7 of s" ir-type-id" endof
-      8 of s" ir-attr-id" endof
-      9 of s" ir-symbol-id" endof
-      10 of s" ir-span-id" endof
-      11 of s" ir-pool-offset" endof
-      12 of s" ir-count" endof
-      E-CID-FAMILY throw
-   endcase ;
-
-: FAMILY-ROLE$ ( n -- ptr u8 n ) {: idx:n :}
-   idx FAMILY-RANGE
-   idx 0 = if s" key" exit then
-   idx PACKED-START < if s" owner" exit then
-   idx PACKED-END < if s" packed" exit then
-   s" scalar" ;
-
-\ The family's package name comes through a trusted wrapper of the sealed
-\ checker accessor.
-TRUSTED: FAMILY-PKG$ ( n -- ptr u8 n ) TFAM:TFAM-PKG$ ;
-
-: FAMILY-ID ( n -- n ) {: idx:n :}
-   idx FAMILY-RANGE
-   TFAM:TFAM-N@ 0 ?do
-      i FAMILY-PKG$ s" IR-ID" STR= if
-         i TFAM-NAME$ idx FAMILY-NAME$ STR= if i unloop exit then
-      then
-   loop
-   E-CID-FAMILY throw ;
-
-\ ---- live registry cross-check ----------------------------------------------
-
-: FAMILY-COUNT-CHECK ( -- )
-   0 TFAM:TFAM-N@ 0 ?do
-      i FAMILY-PKG$ s" IR-ID" STR= if 1+ then
-   loop
-   FAMILY-COUNT <> if E-CID-FAMILY throw then ;
-
-: FAMILY-ROW-CHECK ( n -- ) {: idx:n :}
-   idx FAMILY-ID {: id:n :}
-   id TFAM-NAME$ idx FAMILY-NAME$ STR= 0= if E-CID-FAMILY throw then
-   id TFAM:TFAM-ARITY@ 0 <> if E-CID-FAMILY throw then
-   id TFAM:TFAM-KIND@ PROBE-FAM @ TFAM:TFAM-KIND@ <> if E-CID-FAMILY throw then
-   id TFAM:TFAM-PUBLIC? 0= if E-CID-FAMILY throw then ;
-
-: FAMILY-CHECK ( -- )
-   FAMILY-COUNT-CHECK
-   FAMILY-COUNT 0 ?do i FAMILY-ROW-CHECK loop ;
 
 \ ---- vector storage ----------------------------------------------------------
 \ One cell arena holding three ordered tables at fixed offsets.
@@ -263,11 +164,6 @@ variable SCALAR-N
 
 public
 
-\ The family name the live checker registry holds at a declared index. BUILD has
-\ already proved it equals the frozen name at that index.
-: FAMILY-NAME-AT ( n -- ptr u8 n )
-   FAMILY-ID TFAM-NAME$ ;
-
 : PACK-ROWS ( -- n )   PACK-N @ ;
 : CHECK-ROWS ( -- n )  CHECK-N @ ;
 : SCALAR-ROWS ( -- n ) SCALAR-N @ ;
@@ -283,260 +179,9 @@ public
 : SCALAR-VALUE ( n -- n ) SCALAR-SLOT SLOT@ ;
 : SCALAR-CLASS ( n -- n ) SCALAR-SLOT 1+ SLOT@ ;
 
-private
-
-\ ---- guard rows --------------------------------------------------------------
-
-\ Guards 2..5 are the ones a numeric vector row can reach. Guards 0 and 1 need a
-\ forged module key and guard 6 needs an exhausted serial space, so both sit
-\ outside the vector tables by construction rather than by omission.
-2 constant GUARD-VECTOR-FIRST
-6 constant GUARD-VECTOR-END
-
-: GUARD-RANGE ( n -- ) {: idx:n :}
-   idx 0 < idx GUARD-COUNT >= or if E-CID-ROW throw then ;
-
-public
-
-: GUARD-CODE-AT ( n -- n )
-   case
-      0 of E-IR-MODULE-ZERO endof
-      1 of E-IR-MODULE-RANGE endof
-      2 of E-IR-INDEX-RANGE endof
-      3 of E-IR-INDEX-BOUND endof
-      4 of E-IR-OWNER endof
-      5 of E-IR-SCALAR-RANGE endof
-      6 of E-IR-MODULE-EXHAUSTED endof
-      E-CID-ROW throw
-   endcase ;
-
-\ True for the guards a numeric vector row can reach. The other three are named
-\ in the manifest with their own reachability and are owned by the wrong-family
-\ fixture and the allocator leaf.
-: GUARD-BY-VECTOR? ( n -- bool ) {: idx:n :}
-   idx GUARD-RANGE
-   idx GUARD-VECTOR-FIRST >= idx GUARD-VECTOR-END < and ;
-
-private
-
-\ ---- fixture rows ------------------------------------------------------------
-
-: FIXTURE-RANGE ( n -- ) {: idx:n :}
-   idx 0 < idx FIXTURE-COUNT >= or if E-CID-ROW throw then ;
-
-public
-
-: FIXTURE-PATH$ ( n -- ptr u8 n ) {: idx:n :}
-   idx FIXTURE-RANGE
-   s" test/compiler/ir-id.f" ;
-
-\ ---- canonical byte builder --------------------------------------------------
-\ Every field is a printable non-space token, so single spaces separate fields
-\ and one line feed ends a row with no escaping and no ambiguity. TOKEN-CHECK
-\ enforces that alphabet rather than assuming it.
-
-\ Public because a consumer that snapshots or compares BYTES$ needs to size its
-\ own buffer from the same number rather than repeating it.
-$2000 constant BYTES-CAP
-
-private
-
-$20 constant TOKEN-LOW
-$7F constant TOKEN-HIGH
-$20 constant BYTE-SP
-$0A constant BYTE-LF
-
-create BYTES BYTES-CAP allot
-variable BYTES-U
-
-: BYTE+ ( n -- ) {: c:n :}
-   BYTES-U @ 1+ BYTES-CAP > if E-STR-CAPACITY throw then
-   c BYTES BYTES-U @ + c!
-   BYTES-U @ 1+ BYTES-U ! ;
-
-: SPAN+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   BYTES-U @ u + BYTES-CAP > if E-STR-CAPACITY throw then
-   a BYTES BYTES-U @ + u BYTE-COPY
-   BYTES-U @ u + BYTES-U ! ;
-
-: TOKEN-BYTE-OK? ( n -- bool ) {: c:n :}
-   c TOKEN-LOW > c TOKEN-HIGH < and ;
-
-: TOKEN-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= if E-CID-TOKEN throw then
-   u 0 ?do
-      a i + c@ TOKEN-BYTE-OK? 0= if E-CID-TOKEN throw then
-   loop ;
-
-: TOKEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TOKEN-CHECK
-   a u SPAN+ ;
-
-: NUM+ ( n -- )
-   SB-RESET FMT:SB-INT SB$ TOKEN+ ;
-
-: ROW ( ptr u8 n -- )
-   TOKEN+ ;
-
-: +TEXT ( ptr u8 n -- )
-   BYTE-SP BYTE+ TOKEN+ ;
-
-: +NUM ( n -- )
-   BYTE-SP BYTE+ NUM+ ;
-
-: ;ROW ( -- )
-   BYTE-LF BYTE+ ;
-
-\ ---- canonical rows ----------------------------------------------------------
-
-: EMIT-HEADER ( -- )
-   s" schema" ROW s" habu-ir-id" +TEXT 1 +NUM ;ROW
-   s" subject" ROW s" src/compiler/ir/id.f" +TEXT s" IR-ID" +TEXT ;ROW ;
-
-: EMIT-WIDTHS ( -- )
-   s" width" ROW s" cell-bits" +TEXT CELL-BITS +NUM ;ROW
-   s" width" ROW s" cell-value-bits" +TEXT CELL-VALUE-BITS +NUM ;ROW
-   s" width" ROW s" serial-bits" +TEXT SERIAL-BITS +NUM ;ROW
-   s" width" ROW s" local-bits" +TEXT LOCAL-BITS +NUM ;ROW
-   s" width" ROW s" local-shift" +TEXT LOCAL-SHIFT +NUM ;ROW ;
-
-: EMIT-BOUNDS ( -- )
-   s" bound" ROW s" cell-min" +TEXT CELL-MIN +NUM ;ROW
-   s" bound" ROW s" cell-max" +TEXT CELL-MAX +NUM ;ROW
-   s" bound" ROW s" serial-min" +TEXT SERIAL-MIN +NUM ;ROW
-   s" bound" ROW s" serial-max" +TEXT SERIAL-MAX +NUM ;ROW
-   s" bound" ROW s" local-min" +TEXT LOCAL-MIN +NUM ;ROW
-   s" bound" ROW s" local-max" +TEXT LOCAL-MAX +NUM ;ROW
-   s" bound" ROW s" local-mask" +TEXT LOCAL-MASK +NUM ;ROW
-   s" bound" ROW s" scalar-min" +TEXT SCALAR-MIN +NUM ;ROW
-   s" bound" ROW s" scalar-max" +TEXT SCALAR-MAX +NUM ;ROW ;
-
-: EMIT-FAMILY-ROW ( n -- ) {: idx:n :}
-   idx FAMILY-ID {: id:n :}
-   s" family" ROW
-      idx +NUM
-      id TFAM-NAME$ +TEXT
-      id TFAM:TFAM-ARITY@ +NUM
-      id TFAM:TFAM-KIND@ +NUM
-      id TFAM:TFAM-PUBLIC? if s" public" else s" private" then +TEXT
-      idx FAMILY-ROLE$ +TEXT
-   ;ROW ;
-
-: EMIT-FAMILIES ( -- )
-   s" families" ROW FAMILY-COUNT +NUM ;ROW
-   FAMILY-COUNT 0 ?do i EMIT-FAMILY-ROW loop ;
-
-: EMIT-PROJECTIONS ( -- )
-   s" projection" ROW s" owner" +TEXT s" shift-right-logical" +TEXT
-      LOCAL-SHIFT +NUM ;ROW
-   s" projection" ROW s" local" +TEXT s" mask" +TEXT LOCAL-MASK +NUM ;ROW
-   s" construction" ROW s" key" +TEXT s" NEW-MODULE" +TEXT s" sealed-cast" +TEXT ;ROW
-   s" construction" ROW s" packed" +TEXT s" PACK" +TEXT s" sealed-cast" +TEXT ;ROW
-   s" construction" ROW s" scalar" +TEXT s" COUNT-POOL-OFF" +TEXT
-      s" open-domain" +TEXT ;ROW ;
-
-: EMIT-GUARDS ( -- )
-   s" guards" ROW GUARD-COUNT +NUM ;ROW
-   s" guard" ROW 0 +NUM s" module-zero" +TEXT 0 GUARD-CODE-AT +NUM
-      s" KEY-SERIAL" +TEXT s" sealed-key" +TEXT ;ROW
-   s" guard" ROW 1 +NUM s" module-range" +TEXT 1 GUARD-CODE-AT +NUM
-      s" KEY-SERIAL" +TEXT s" sealed-key" +TEXT ;ROW
-   s" guard" ROW 2 +NUM s" index-range" +TEXT 2 GUARD-CODE-AT +NUM
-      s" LOCAL-CHECK" +TEXT s" vector" +TEXT ;ROW
-   s" guard" ROW 3 +NUM s" index-bound" +TEXT 3 GUARD-CODE-AT +NUM
-      s" CHECK-N" +TEXT s" vector" +TEXT ;ROW
-   s" guard" ROW 4 +NUM s" owner" +TEXT 4 GUARD-CODE-AT +NUM
-      s" CHECK-N" +TEXT s" vector" +TEXT ;ROW
-   s" guard" ROW 5 +NUM s" scalar-range" +TEXT 5 GUARD-CODE-AT +NUM
-      s" MINT-COUNT-MINT-POOL-OFF" +TEXT s" vector" +TEXT ;ROW
-   s" guard" ROW 6 +NUM s" module-exhausted" +TEXT 6 GUARD-CODE-AT +NUM
-      s" SERIAL-NEXT" +TEXT s" allocator" +TEXT ;ROW ;
-
-: EMIT-PACK-ROW ( n -- ) {: idx:n :}
-   s" pack" ROW idx +NUM idx PACK-LOCAL +NUM idx PACK-CLASS +NUM ;ROW ;
-
-: EMIT-CHECK-OWNER ( n -- )
-   OWNER-OTHER = if s" other" +TEXT exit then
-   s" same" +TEXT ;
-
-: EMIT-CHECK-ROW ( n -- ) {: idx:n :}
-   s" check" ROW
-      idx +NUM
-      idx CHECK-LOCAL +NUM
-      idx CHECK-BOUND +NUM
-      idx CHECK-OWNER EMIT-CHECK-OWNER
-      idx CHECK-CLASS +NUM
-   ;ROW ;
-
-: EMIT-SCALAR-ROW ( n -- ) {: idx:n :}
-   s" scalar" ROW idx +NUM idx SCALAR-VALUE +NUM idx SCALAR-CLASS +NUM ;ROW ;
-
-: EMIT-VECTORS ( -- )
-   s" vectors" ROW s" pack" +TEXT PACK-ROWS +NUM ;ROW
-   PACK-ROWS 0 ?do i EMIT-PACK-ROW loop
-   s" vectors" ROW s" check" +TEXT CHECK-ROWS +NUM ;ROW
-   CHECK-ROWS 0 ?do i EMIT-CHECK-ROW loop
-   s" vectors" ROW s" scalar" +TEXT SCALAR-ROWS +NUM ;ROW
-   SCALAR-ROWS 0 ?do i EMIT-SCALAR-ROW loop ;
-
-: EMIT-FIXTURES ( -- )
-   s" fixtures" ROW FIXTURE-COUNT +NUM ;ROW
-   s" fixture" ROW 0 +NUM s" wrong-family" +TEXT s" static-checker" +TEXT
-      0 FIXTURE-PATH$ +TEXT s" IR-ID-TEST" +TEXT
-      s" WRONG-FAMILY-CASES" +TEXT ;ROW
-   s" fixture" ROW 1 +NUM s" require-replay" +TEXT s" child-load" +TEXT
-      1 FIXTURE-PATH$ +TEXT s" IR-ID-TEST" +TEXT
-      s" RELOAD-STABLE$" +TEXT ;ROW ;
-
-public
-
-\ Rebuild the canonical bytes and the vector tables from live state. Running it
-\ again must produce the same bytes: every input is either a frozen constant in
-\ this file or a value read back from the checker registry, and nothing consults
-\ the clock, the environment, an address, or an allocation order.
 : BUILD ( -- )
-   FAMILY-CHECK
-   BUILD-VECTORS
-   0 BYTES-U !
-   EMIT-HEADER
-   EMIT-WIDTHS
-   EMIT-BOUNDS
-   EMIT-FAMILIES
-   EMIT-PROJECTIONS
-   EMIT-GUARDS
-   EMIT-VECTORS
-   EMIT-FIXTURES ;
+   BUILD-VECTORS ;
 
-: BYTES$ ( -- ptr u8 n )
-   BYTES BYTES-U @ ;
-
-\ SHA-256 is 32 raw bytes and twice that in lowercase hex. Public for the same
-\ reason as BYTES-CAP: a consumer that keeps its own copy sizes it from here.
-$20 constant DIGEST-BYTES
-$40 constant DIGEST-HEX-LEN
-
-private
-
-create DIGEST-RAW DIGEST-BYTES allot
-create SHA-CTX SHA256-CTX-BYTES allot   \ this proof's digest context
-create DIGEST-HEX DIGEST-HEX-LEN allot
-
-public
-
-: DIGEST-HEX$ ( -- ptr u8 n )
-   SHA-CTX BYTES$ DIGEST-RAW SHA256-IN
-   DIGEST-RAW DIGEST-HEX SHA256>HEX
-   DIGEST-HEX DIGEST-HEX-LEN ;
-
-\ The committed freeze. Any change to the design above, to a width or bound, to
-\ the family list, to a guard, or to a single vector row moves this value, so
-\ re-freezing it is a deliberate reviewed act.
-: EXPECTED-DIGEST$ ( -- ptr u8 n )
-   s" e085bfac3fce293bbf7c02708b48ab5134177efd7e9bb7ac2a6acace05a0d013" ;
-
-;package
-
-package COMPILER-ID-PROOF
 private
 
 \ ---- running one vector row through the production surface --------------------

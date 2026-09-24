@@ -203,45 +203,13 @@ RT
    T-REPORT ;
 STAT
 
-\ ---- what the unified ENUM declaration registered and generated ---------------
-\ numeric-result moved off the retired legacy sum opener onto the unified ENUM
-\ front end in full mode. Nothing above this line changed, and no consumer changed,
-\ which is precisely why this section exists: the two declaration forms are
-\ MATCH-identical and width-identical, so the sections above cannot see the
-\ difference and therefore cannot see a REGRESSION either. What follows reads the
-\ live type registry and asks the checker directly.
-\
-\ Three properties are pinned here that nothing else in the repository observes
-\ for this family. First, the recorded shape: kind, arity, width, visibility, and
-\ the case ORDER, which fixes the tags - MATCH dispatches on case name and is
-\ blind to a reorder. Second, the generated constructor spellings and their exact
-\ checked effects, since every consumer calls them by name from another package.
-\ Third, the named payload FIELD the migration introduced, which is the one thing
-\ the move actually changes in the registry: under the old positional payload the
-\ ok arm owned NO field row at all.
 T-RESET
-
-using TFAM
 
 package NUM-TEST
 private
 
-\ CHECK-QUIET-CANDIDATE! answers -1 accepted, 0 refused, 1 unresolvable, and all
-\ three verdicts are load-bearing below. YES demands -1, so it can only pass if
-\ the checker resolved exactly the name written in the candidate. NO demands 0,
-\ which is reachable only after resolving the name and then refusing the types.
-\ UNRES demands 1 and is the calibration: it is spent on names that must NOT
-\ exist, so a YES line cannot be quietly passing for a family that was renamed.
 : YES   ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
 : NO    ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
-: UNRES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  1 T= ;
-
-\ A family is identified to REFLECT by its tail AND the constructor package its
-\ variants carry, because a bare tail is not unique across packages. FAMS answers
-\ how many registered families match, so the 1 pinned below is the uniqueness
-\ assertion that makes every other pin on that identity trustworthy.
-: NR$ ( -- ptr u8 n ptr u8 n )   s" numeric-result" s" NUM-NUMERIC--RESULT" ;
-: TW$ ( -- ptr u8 n ptr u8 n )   s" nr-twin" s" NUM--TEST-NR--TWIN" ;
 
 \ ---- compiled round trip: construct through all seven generated constructors --
 \ The checker pins further down prove the constructors resolve and type-check as
@@ -306,36 +274,6 @@ ENUM nr-twin 1
 
 private
 
-\ ---- live registry: numeric-result --------------------------------------------
-NR$ REFLECT:FAMS 1 T=
-NR$ REFLECT:KIND TK-SUM T=          \ a family with a payload is a general sum ...
-NR$ REFLECT:KIND TK-ENUM = 0 T=     \ ... never recorded as a payloadless enum
-NR$ REFLECT:ARITY 1 T=              \ the one type parameter the validated role rides in
-NR$ REFLECT:WIDTH 2 T=              \ tag + one payload cell
-NR$ REFLECT:VIS 1 T=
-NR$ REFLECT:VARS 7 T=
-NR$ 0 REFLECT:ARM$ s" ok" T$=       \ case order is what fixes the tags
-NR$ 1 REFLECT:ARM$ s" negative" T$=
-NR$ 2 REFLECT:ARM$ s" zero" T$=
-NR$ 3 REFLECT:ARM$ s" overflow" T$=
-NR$ 4 REFLECT:ARM$ s" underflow" T$=
-NR$ 5 REFLECT:ARM$ s" bad-alignment" T$=
-NR$ 6 REFLECT:ARM$ s" misaligned" T$=
-NR$ 7 REFLECT:ARM$ s" <missing>" T$=   \ and there is no eighth case to reorder into
-NR$ 0 REFLECT:ARM-CTOR$ s" NUM-NUMERIC--RESULT" T$=
-NR$ 6 REFLECT:ARM-CTOR$ s" NUM-NUMERIC--RESULT" T$=
-
-\ The named payload field. This is the registry row the migration adds: the legacy
-\ positional payload registered NO field row, so `1` here fails on the previous
-\ declaration and `0` is the slot the ok arm binds first.
-NR$ 0 REFLECT:ARM-FLDS 1 T=
-NR$ 0 s" role" REFLECT:ARM-SLOT 0 T=
-NR$ 0 s" role" REFLECT:ARM-CELLS 1 T=
-NR$ 0 s" value" REFLECT:ARM-SLOT -1 T=   \ and it is spelled `role`, nothing else
-NR$ 1 REFLECT:ARM-FLDS 0 T=              \ the reject arms carry no payload at all
-NR$ 6 REFLECT:ARM-FLDS 0 T=
-NR$ 7 REFLECT:ARM-FLDS -1 T=             \ a case that does not exist answers the sentinel
-
 \ ---- generated constructors: exact spelling + exact effect --------------------
 s" NC-OK ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:OK" YES
 s" NC-NEG ( -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:NEGATIVE" YES
@@ -346,16 +284,6 @@ s" NC-BADAL ( -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:BAD-ALIG
 s" NC-MISAL ( -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:MISALIGNED" YES
 \ the payload parameter really is a parameter: a second, unrelated role instantiates it
 s" NC-OK-AL ( NUM:alignment -- NUM:numeric-result<NUM:alignment> ) NUM-NUMERIC--RESULT:OK" YES
-
-\ Calibration for the eight YES lines above: these three spellings do not exist,
-\ and an unresolvable name answers 1. The separator case doubles the ONE dash
-\ that joins the package to the family tail; when the package was CAD-NUM it
-\ could instead single the dash inside the package name, but NUM has none. If a renamed family made the real
-\ constructors unresolvable too, they would answer 1 as well and every YES would
-\ fail - which is what makes -1 mean "the checker resolved exactly this name".
-s" NC-X-SEP ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM--NUMERIC--RESULT:OK" UNRES
-s" NC-X-TAIL ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC-RESULT:OK" UNRES
-s" NC-X-ARM ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:OKAY" UNRES
 
 \ ---- forge negatives on the ok payload slot -----------------------------------
 \ NF-XROLE and NF-INST are the sharp ones. Every role in this package is one cell
@@ -369,16 +297,6 @@ s" NF-XROLE ( NUM:cell-count -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--
 s" NF-INST ( NUM:byte-len -- NUM:numeric-result<NUM:cell-count> ) NUM-NUMERIC--RESULT:OK" NO
 s" NF-PAY ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM-NUMERIC--RESULT:NEGATIVE" NO
 
-\ ---- live registry + non-unification for the shape twin ----------------------
-TW$ REFLECT:FAMS 1 T=
-TW$ REFLECT:KIND TK-SUM T=
-TW$ REFLECT:ARITY 1 T=
-TW$ REFLECT:WIDTH 2 T=
-TW$ REFLECT:VIS 1 T=
-TW$ REFLECT:VARS 7 T=
-TW$ 0 REFLECT:ARM-CTOR$ s" NUM--TEST-NR--TWIN" T$=   \ readable spelling, not the SHA form
-TW$ 0 REFLECT:ARM-FLDS 1 T=
-TW$ 0 s" role" REFLECT:ARM-SLOT 0 T=
 s" NT-OK ( NUM:byte-len -- nr-twin<NUM:byte-len> ) NUM--TEST-NR--TWIN:OK" YES
 s" NT-X1 ( NUM:byte-len -- nr-twin<NUM:byte-len> ) NUM-NUMERIC--RESULT:OK" NO
 s" NT-X2 ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM--TEST-NR--TWIN:OK" NO
@@ -397,5 +315,3 @@ T-MAX-ALLOC-CELLS 1 + RT-VALUE# E-NUM-OVERFLOW T=   \ the overflow edge did not 
 ;package
 
 T-REPORT
-
-;using

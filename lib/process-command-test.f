@@ -353,14 +353,6 @@ CMD:COMMAND PCMDT-CMD
    repeat drop
    PCMDT-CMD s" R" >LEN s" v" >LEN CMD:ENV+ ;
 
-\ The layout is the contract a caller allots against, so a change to it is
-\ deliberate: CMD:BYTES and CMD:VEC-CELLS are pinned here, not derived.
-: PCMDT-LAYOUT ( -- )
-   CMD:BYTES 362624 T=
-   CMD:VEC-CELLS 2306 T=
-   CMD:ARG-MAX 255 T=
-   PROC-CMD:ARG-MAX 255 T= ;
-
 \ A command bound to storage the caller allocated itself: same surface, no
 \ declaration. Both mappings go back before the row returns.
 : PCMDT-BOUND-COMMAND ( -- )
@@ -392,7 +384,6 @@ CMD:COMMAND PCMDT-CMD
    [: PCMDT-BAD-ENV-NAME ;] E-PROC-ENV TTHROWSQ
    [: PCMDT-BAD-ENV-ENTRY ;] E-PROC-ENV TTHROWSQ
    PROC-CMD:TEST-WIPE-AFTER-REFUSAL
-   PCMDT-LAYOUT
    PCMDT-CMD CMD:TEST-WIPE
    PCMDT-CMD PCMDT-H-PRINTF
    PCMDT-CMD PCMDT-H-STDIN

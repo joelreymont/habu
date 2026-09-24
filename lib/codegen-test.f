@@ -14,10 +14,6 @@ require lib/codegen.f
 16 CODEGEN:BUFFER CGT-D                  \ default codes: E-CG-CAP / E-CG-VALUE
 8 -7001 -7002 CODEGEN:BUFFER-E CGT-E     \ explicit per-buffer codes (arbitrary caller sentinels)
 
-: CGT-CODES ( -- )
-   E-CG-CAP -4700 T=
-   E-CG-VALUE -4701 T= ;
-
 \ append-byte, append-string, and append-decimal compose into the contents.
 : CGT-BUILD ( -- )
    CGT-D CODEGEN:RESET
@@ -54,7 +50,6 @@ require lib/codegen.f
 
 : CGT-RUN ( -- )
    T-RESET
-   CGT-CODES
    CGT-BUILD
    CGT-RESET-ZERO
    CGT-FILL

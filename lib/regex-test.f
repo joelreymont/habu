@@ -45,20 +45,6 @@ variable RXT-RX-LEN
    off RXT-B@ RX-TOK-LITERAL T=
    off 1 + RXT-B@ c T= ;
 
-: RXT-TEST-LITERALS ( -- )
-   s" ab" RXT-COMPILE 4 T=
-   0 97 RXT-ASSERT-LIT
-   2 98 RXT-ASSERT-LIT ;
-
-: RXT-TEST-META-TOKENS ( -- )
-   s" .^$?*+" RXT-COMPILE 6 T=
-   0 RXT-B@ RX-TOK-DOT T=
-   1 RXT-B@ RX-TOK-BOL T=
-   2 RXT-B@ RX-TOK-EOL T=
-   3 RXT-B@ RX-TOK-QUESTION T=
-   4 RXT-B@ RX-TOK-STAR T=
-   5 RXT-B@ RX-TOK-PLUS T= ;
-
 : RXT-TEST-TOKEN-TABLES ( -- )
    RX-C-DOT RX-ESCAPABLE? TTRUE
    97 RX-ESCAPABLE? TFALSE
@@ -73,12 +59,6 @@ variable RXT-RX-LEN
      some OF drop 0 0= 0= ENDOF
    ;MATCH TTRUE ;
 
-: RXT-TEST-SINGLE-TOKEN-EMIT ( -- )
-   RX-TOK-DOT 0 >OFF RXT-BUF-PTR RXT-BUF-CAP >LEN 0 >OFF RX-EMIT-SINGLE-TOKEN
-   OFF>N 1 T=
-   OFF>N 1 T=
-   0 RXT-B@ RX-TOK-DOT T= ;
-
 : RXT-TEST-ESCAPES ( -- )
    s" \.\^\$\[\]\?\*\+\\" RXT-COMPILE 18 T=
    0 RX-C-DOT RXT-ASSERT-LIT
@@ -90,19 +70,6 @@ variable RXT-RX-LEN
    12 RX-C-STAR RXT-ASSERT-LIT
    14 RX-C-PLUS RXT-ASSERT-LIT
    16 RX-C-BACKSLASH RXT-ASSERT-LIT ;
-
-: RXT-TEST-CLASSES ( -- )
-   s" [abc][^0-9]" RXT-COMPILE 10 T=
-   0 RXT-B@ RX-TOK-CLASS T=
-   1 RXT-B@ 3 T=
-   2 RXT-B@ 97 T=
-   3 RXT-B@ 98 T=
-   4 RXT-B@ 99 T=
-   5 RXT-B@ RX-TOK-NCLASS T=
-   6 RXT-B@ 3 T=
-   7 RXT-B@ 48 T=
-   8 RXT-B@ RX-C-DASH T=
-   9 RXT-B@ 57 T= ;
 
 : RXT-TEST-CLASS-ESCAPE ( -- )
    s" [a\]b]" RXT-COMPILE 6 T=
@@ -216,17 +183,6 @@ variable RXT-RX-LEN
    s" xabc" RXT-FIND RXT-ASSERT-NOT-FOUND
    s" abc" RXT-FIND 0 3 RXT-ASSERT-FOUND ;
 
-: RXT-FIND-OFF ( ptr u8 n -- n )   \ direct option contract: SOME -> off (as n), NONE -> -1
-   >LEN RXT-BUF-PTR RXT-RX-LEN @ >LEN RX-FIND MATCH option
-     none OF -1 ENDOF
-     some OF RX-HIT:UNMAKE LEN>N drop OFF>N ENDOF
-   ;MATCH ;
-
-: RXT-TEST-FIND-OPTION ( -- )
-   s" a.c" RXT-COMPILE!
-   s" zzaXczz" RXT-FIND-OFF 2 T=       \ SOME hit carries off = 2
-   s" zzz" RXT-FIND-OFF -1 T= ;        \ NONE -> only the sentinel via MATCH
-
 : RXT-TEST-COUNT ( -- )
    s" a+" RXT-COMPILE!
    s" aaabaa" RXT-COUNT 2 T=
@@ -257,12 +213,8 @@ variable RXT-RX-LEN
 
 : RXT-MAIN ( -- )
    T-RESET
-   RXT-TEST-LITERALS
-   RXT-TEST-META-TOKENS
    RXT-TEST-TOKEN-TABLES
-   RXT-TEST-SINGLE-TOKEN-EMIT
    RXT-TEST-ESCAPES
-   RXT-TEST-CLASSES
    RXT-TEST-CLASS-ESCAPE
    RXT-TEST-MATCH-LITERALS
    RXT-TEST-PREFIX-OPTION
@@ -271,7 +223,6 @@ variable RXT-RX-LEN
    RXT-TEST-MATCH-ESCAPED
    RXT-TEST-MATCH-REPEATS
    RXT-TEST-FIND
-   RXT-TEST-FIND-OPTION
    RXT-TEST-COUNT
    RXT-TEST-THROWS
    RXT-REPORT ;

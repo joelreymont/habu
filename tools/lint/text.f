@@ -379,17 +379,6 @@ public
 
 ;package
 : HAS-EXT? ( ptr u8 n ptr u8 n -- bool )  LINT-SUFFIX? ;
-: PATHISH? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u SLASH LINT-INDEX-OF MATCH option
-     none OF LINT-FALSE ENDOF
-     some OF drop LINT-TRUE ENDOF
-   ;MATCH IF LINT-TRUE exit THEN
-   a u s" .md" HAS-EXT? IF LINT-TRUE exit THEN
-   a u s" .sh" HAS-EXT? IF LINT-TRUE exit THEN
-   a u s" .f" HAS-EXT? IF LINT-TRUE exit THEN
-   a u s" .fs" HAS-EXT? IF LINT-TRUE exit THEN
-   a u s" .tsv" HAS-EXT? ;
-
 \ ---- throw-code name registry for CLI failure attribution ------------------
 \ Lint modules register their named throw codes at load (intern/token caps) so
 \ LINT-MAIN (tools/lint/lib.f) can name an uncaught code in its attribution

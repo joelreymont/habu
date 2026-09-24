@@ -592,8 +592,7 @@ Run:
 ```sh
 bin/hb --load lib/task-test.f
 bin/hb --load lib/queue-test.f
-bin/hb --load test/atomics-smoke.f
-bin/hb --load test/run-in-stack-smoke.f
+bin/hb --load test/engine-stack-jit.f
 bin/hb --load lib/process-task-test.f
 ```
 

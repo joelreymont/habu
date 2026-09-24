@@ -2036,12 +2036,12 @@ immutability runtime pin is tracked separately by
 rejections, and W=2/W=3/W=4 memory values. `test/layout-buffer.f` pins the
 generative storage boundary, raw-pointer rejection, bounds, stride, zero image,
 and transactional allocation. `test/type-layout-lower-pending.f`
-pins exact store/fetch instruction sequences and constructor-produced runtime
-round trips. Recovery-chain parity includes the Gforth host mirror in
+executes constructor-produced values through stack, local and memory round
+trips. Recovery-chain parity includes the Gforth host mirror in
 `bootstrap/cg/forth.fs`: its pass-2 width lookup, typed-fetch validator, and
-wide store/fetch emitters build the current native source. The recovered
-`hb-stdin` passes both suites plus compiler dispatch, bootstrap codegen,
-signature-scan emitter, and seal-absence tests.
+wide store/fetch emitters build the current native source. The recovery fixtures
+execute wide memory operations and protected atomic writes through the stage0
+engine in `test/bootstrap-wide-memory.fs`.
 
 **Convenience storage definers (dot habu-nominal-storage-typed).** `TYPED-VARIABLE`
 and `TYPED-BUFFER` add a sound uppercase surface for typed scalar/pointer storage

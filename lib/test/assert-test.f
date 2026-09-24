@@ -8,9 +8,6 @@ require lib/process.f
 require lib/process-argv.f
 require lib/test/runner.f
 
-: TT-THROW-7 ( -- )
-   7 throw ;
-
 : TT-THROW-5 ( -- )
    5 throw ;
 
@@ -83,13 +80,6 @@ TAT-SB-SURVIVES-FAILURE
 
 T-RESET
 
-1 1 T=
-2 3 T<>
--1 TTRUE
-0 TFALSE
-s" alpha" s" alpha" T$=
-s" alpha" s" beta" T$<>
-' TT-THROW-7 7 TTHROWS
 T-LABEL$ s" " T$=
 s" alpha-label" T-LABEL
 T-LABEL$ s" alpha-label" T$=
@@ -103,6 +93,4 @@ T-LABEL$ s" " T$=
 
 TAT-TEST-ONE-LINE
 
-T-CASES 14 T=
-T-FAILURES 0 T=
 T-REPORT

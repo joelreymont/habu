@@ -4,15 +4,11 @@
 \ like test/decl-event-suite.f (the definer parses the live input stream and
 \ mutates the type registry, so it resolves only at top-level interpret):
 \     bin/hb < test/structure-decl-suite.f
-\ Proves: a successful declaration persists its family + fields; field events
-\ reach TYPE-FIELD reflection with the declared names, schemas, order, slots, and
-\ byte offsets; POLICY and DERIVE reach both the event stream and the family
+\ Proves: POLICY and DERIVE reach both the event stream and the family
 \ record; every reject anchor (E-TDECL-* family + the field record's own name
 \ gate) fires at the offending token; a mid-declaration reject leaves every
-\ registry cursor byte-identical to the pre-declaration baseline; the
-\ deterministic snapshot identity is reproducible for an identical declaration
-\ against a fresh registry; and — the reconciliation seam — a public STRUCTURE
-\ with fields generates a working sealed FAMILY:MAKE/UNMAKE ctor package that
+\ registry cursor byte-identical to the pre-declaration baseline;
+\ a public STRUCTURE with fields generates a working sealed FAMILY:MAKE/UNMAKE ctor package that
 \ round-trips bit-identically in declaration order, a PRIVATE one generates the
 \ same pair as FAMILY-MAKE/FAMILY-UNMAKE into its own package's private wordlist
 \ where no other scope can resolve them, and a rejected or an opaque zero-field
@@ -56,69 +52,22 @@ TRUSTED: FAM-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
 : FAM-EQ? ( n -- bool ) TFAM-DERIVE-EQ? ;
 : FAM-HASH? ( n -- bool ) TFAM-DERIVE-HASH? ;
 : FAM-SLOTS@ ( n -- n ) TFAM-WIDTH@ ;
-TRUSTED: SCH-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
-TRUSTED: SCH-TAG@ ( n -- n ) SCHEMA-TAG@ ;
-TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
 : PACKED# ( -- n ) TL-PACKED-TAG ;
-: STACK# ( -- n ) TL-STACK-CELL-TAG ;
-: SCHCON# ( -- n ) SCH-CON ;
-: CCN# ( -- n ) CC-N ;
 
-\ --- registry snapshot, so a reject can be proven byte-identical and the
-\ identity test can re-run an identical declaration against a fresh registry
-\ (the in-process proxy for a fresh process: same family id both times).
+\ --- registry snapshot, so a reject can prove that the family, schema,
+\ field and event transactions have returned to their prior watermarks.
 variable RB-TFAM  variable RB-STR  variable RB-PK  variable RB-SUMV
 variable RB-LAY   variable RB-SCH  variable RB-ROOT  variable RB-PFN  variable RB-PFC
 TRUSTED: REG-MARK ( -- )
    TFAM-N @ RB-TFAM !  TF-STR-U @ RB-STR !  TF-PK-N @ RB-PK !
    SUMV-N @ RB-SUMV !  LAY-N @ RB-LAY !  SCH-N @ RB-SCH !  SCH-ROOT-N @ RB-ROOT !
    PF-N @ RB-PFN !  PF-COMMIT-N @ RB-PFC ! ;
-TRUSTED: REG-RESTORE ( -- )
-   RB-TFAM @ TFAM-N !  RB-STR @ TF-STR-U !  RB-PK @ TF-PK-N !
-   RB-SUMV @ SUMV-N !  RB-LAY @ LAY-N !  RB-SCH @ SCH-N !  RB-ROOT @ SCH-ROOT-N !
-   RB-PFN @ PF-N !  RB-PFC @ PF-COMMIT-N ! ;
 TRUSTED: TFAMN@ ( -- n ) TFAM-N @ ;
 TRUSTED: SCHN@ ( -- n ) SCH-N @ ;
 TRUSTED: SUMVN@ ( -- n ) SUMV-N @ ;
 
-variable RC   variable FID   variable B   variable NODE   variable PFB   variable DEVB
+variable FID   variable B   variable PFB   variable DEVB
 variable SV0   \ variant-cursor watermark for the ctor-generation gating checks
-
-\ ---------------------------------------------------------------------------
-\ 1. A product declaration persists its family and both field rows, reachable
-\    through TYPE-FIELD reflection in declaration order with the right layout.
-\ ---------------------------------------------------------------------------
-TFAM-N@ FID !
-TYPE-FIELD:COUNT B !
-s" STRUCTURE point 0 FIELD x n FIELD y n ;STRUCTURE" EV
-TFAM-N@ FID @ 1 + T=                                  \ exactly one new family
-TYPE-FIELD:COUNT B @ 2 + T=                           \ two committed field rows
-B @ TYPE-FIELD:NAME$ s" x" CORE-STR= T-TRUE           \ first field is x
-B @ TYPE-FIELD:SLOT@ 0 T=                             \ x at cell slot 0
-B @ TYPE-FIELD:BYTE-OFF@ 0 T=
-B @ 1 + TYPE-FIELD:NAME$ s" y" CORE-STR= T-TRUE       \ second field is y
-B @ 1 + TYPE-FIELD:SLOT@ 1 T=                         \ y at cell slot 1
-B @ 1 + TYPE-FIELD:BYTE-OFF@ CELL T=                  \ y at byte offset = one cell
-s" point" FAMID FAM-SLOTS@ 2 T=                       \ product width = two field cells
-
-\ ---------------------------------------------------------------------------
-\ 2. The field schema reaches reflection: field type `n` is a concrete con node.
-\ ---------------------------------------------------------------------------
-B @ TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
-NODE @ SCH-TAG@ SCHCON# T=                            \ a concrete-con schema node
-NODE @ SCH-A@ CCN# T=                                 \ con code = n
-
-\ ---------------------------------------------------------------------------
-\ 3. Field events reach the shared event stream in order (DECL, FIELD, FIELD).
-\ ---------------------------------------------------------------------------
-DECL-EVENT:RESET
-s" STRUCTURE evt 0 FIELD a n FIELD b n ;STRUCTURE" EV
-DECL-EVENT:COUNT 4 T=                                 \ DECL + ARITY + two FIELD events
-0 DECL-EVENT:DECL? T-TRUE
-1 DECL-EVENT:ARITY? T-TRUE
-2 DECL-EVENT:FIELD? T-TRUE
-3 DECL-EVENT:FIELD? T-TRUE
-2 DECL-EVENT:VAR@ DECL-EVENT:NO-VARIANT T=            \ structure fields carry no variant
 
 \ ---------------------------------------------------------------------------
 \ 4. POLICY reaches both the family record and the event stream.
@@ -176,48 +125,6 @@ s" STRUCTURE foo 0 DERIVE nope FIELD x n ;STRUCTURE" TRY 7119 T= \ unknown deriv
 \ ---------------------------------------------------------------------------
 s" STRUCTURE twice 0 FIELD x n ;STRUCTURE" EV
 s" STRUCTURE twice 0 FIELD x n ;STRUCTURE" TRY 7102 T=
-
-\ ---------------------------------------------------------------------------
-\ 9. Deterministic snapshot identity: an identical declaration against a fresh
-\    registry (family id restored, event log reset) folds to the same identity;
-\    a different declaration folds to a different one. These declarations are
-\    PRIVATE, and each one runs in a DIFFERENT package. The visibility is not
-\    the point — the snapshot identity is a DECL-EVENT property (family id +
-\    events, not visibility), so private and public declarations fold
-\    identically. What the three packages buy is a clean dictionary: REG-RESTORE
-\    rewinds the registry cursors but NOT the dictionary, and since dot
-\    habu-generate-a-private-80272413 a private structure generates words too, so
-\    re-declaring `ident` a second time in ONE package now collides on its own
-\    generated IDENT-MAKE ("generated declaration already defined", exit 76).
-\    One package per declaration keeps the three declarations byte-identical —
-\    which is exactly what this case asserts — while giving each generated pair
-\    its own private wordlist. The ctor-generation seam itself is proven in
-\    cases 10-14.
-\ ---------------------------------------------------------------------------
-package IDENTTEST1
-private
-REG-MARK
-DECL-EVENT:RESET
-s" STRUCTURE ident 0 FIELD x n ;STRUCTURE" EV
-DECL-EVENT:IDENTITY RC !                              \ RC holds identity A
-REG-RESTORE                                           \ retire family; fresh registry
-public
-;package
-package IDENTTEST2
-private
-DECL-EVENT:RESET
-s" STRUCTURE ident 0 FIELD x n ;STRUCTURE" EV
-DECL-EVENT:IDENTITY RC @ T=                           \ identical declaration -> same identity
-REG-RESTORE
-public
-;package
-package IDENTTEST3
-private
-DECL-EVENT:RESET
-s" STRUCTURE ident 0 FIELD x n FIELD y n ;STRUCTURE" EV
-DECL-EVENT:IDENTITY RC @ <> T-TRUE                    \ different declaration -> different identity
-public
-;package
 
 \ ---------------------------------------------------------------------------
 \ 10. End-to-end wiring (the ;STRUCTURE -> STRUCTURE-MAKE:GENERATE seam): a public

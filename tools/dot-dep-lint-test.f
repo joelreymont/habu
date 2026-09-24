@@ -65,10 +65,6 @@ variable TEST-UNIQUE-U
 : TEST-ROOT-ERRORS ( -- )
    [: s" " ROOT! ;] E-FS-PATH TTHROWSQ ;
 
-: TEST-DOT-IDS ( -- )
-   s" .dots/habu-example-12345678.md" DDP-DOT-ID$ s" habu-example-12345678" T$=
-   s" .dots/archive/habu-old-87654321.md" DDP-DOT-ID$ s" habu-old-87654321" T$= ;
-
 : TEST-FRONT-MATTER ( -- )
    s" ---" DDP-FM-MARK? TTRUE
    s"  ---  " DDP-FM-MARK? TTRUE
@@ -109,13 +105,6 @@ variable TEST-UNIQUE-U
    TEST-PREPARE-PATHS
    TEST-PREPARE-FILES ;
 
-: TEST-ROOT-PATHS ( -- )
-   TEST-DOTS$ ROOT!
-   TEST-TOP$ ROOT-DOT-PATH? TTRUE
-   TEST-NESTED$ ROOT-DOT-PATH? TTRUE
-   TEST-ARCHIVED$ ROOT-DOT-PATH? TFALSE
-   TEST-DOTS$ ROOT-DOT-PATH? TFALSE ;
-
 : TEST-EXPECTED$ ( -- ptr u8 n )
    SB-RESET
    s" DOT-DEP-DUPLICATE habu-duplicate-12345678: " SB-APPEND
@@ -129,7 +118,6 @@ variable TEST-UNIQUE-U
 
 : TEST-DUPLICATE-FIXTURE ( -- )
    TEST-PREPARE
-   TEST-ROOT-PATHS
    TEST-OUT TEST-OUT-CAP LINT-OUT-BUFFER!
    [: TEST-DOTS$ LINT-ROOT ;] catch {: rc:n :}
    LINT-OUT$ {: out:ptr outu:n :}
@@ -144,7 +132,6 @@ variable TEST-UNIQUE-U
 : TEST-MAIN ( -- )
    T-RESET
    TEST-ROOT-ERRORS
-   TEST-DOT-IDS
    TEST-FRONT-MATTER
    TEST-BLOCKERS
    TEST-DUPLICATE-FIXTURE

@@ -1,4 +1,4 @@
-\ checker-model-manifest.f - Run checker schema and behavior cases in their declaring package.
+\ checker-model-manifest.f - Run checker behavior cases in their declaring package.
 
 require lib/test.f
 require test/compiler/checker-model-cases.f

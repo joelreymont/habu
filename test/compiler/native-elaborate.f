@@ -1,20 +1,9 @@
 \ native-elaborate.f - checked straight-line elaborator tests.
 \
-\ Proves the section 7.2 contract of src/compiler/native/elaborate.f: a sealed
-\ source tape holding one colon definition becomes a function of real HIR
-\ operations in a module that freezes - which runs the whole structural
-\ verifier - and every operation, operand and result reads back off the
-\ published module.
-\
-\ THE MEASUREMENT THIS SUITE EXISTS FOR. `SQUARE dup *` must contain exactly
-\ two operations, a multiply and a return, because `dup` is a compile-time
-\ rename and costs nothing at all. The count is asserted, not described, and so
-\ is the multiply's operand list: both operands are the same block argument,
-\ which is what "the rename produced no operation and no value" means when it is
-\ written down. `rot -` and `nip -` make the same measurement for the two deeper
-\ renames, and they make it with a subtraction, whose operands cannot be
-\ exchanged without changing the answer, so the order a rename puts values back
-\ in is proved rather than described.
+\ Exercises malformed tapes, ownership, source spans, memory ordering and
+\ literal identity through elaboration and the structural verifier. Ordinary
+\ arithmetic and control flow run through native-chain.f and the native loop,
+\ local and rename suites instead of pinning their intermediate operation rows.
 \
 \ WHY NO FIXTURE HERE IS SPELLED `: NAME … ;`. The elaborator reads the tape a
 \ real compilation produces, and the engine hands the checker's reader the
@@ -237,61 +226,6 @@ using NSRC
    m IR-BUILD:FOP-POOL m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY op i
    IR-OP:FSUCCESSOR@ IR-ID:BLOCK-LOCAL ;
 
-\ ---- a rename-heavy word: the op-count proof ---------------------------------
-\ `dup` consumes the one input and puts it back twice, so the multiply's two
-\ operands are the same block argument and no operation is staged for the rename.
-\ Two operations, two values - the argument and the product - and nothing else.
-: SQUARE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool n n )
-   {: c:IR-CTX:ctx :}
-   s" SQUARE dup *" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLK {: blk:IR-ID:ir-block-id :}
-   m blk F-OPS
-   m blk 0 F-OP {: mul:IR-ID:ir-op-id :}
-   m blk 1 F-OP {: ret:IR-ID:ir-op-id :}
-   m mul s" hir.mul" F-OPC?
-   m ret s" hir.return" F-OPC?
-   m mul 0 F-IN  m blk 0 F-ARG SAME?
-   m mul 1 F-IN  m blk 0 F-ARG SAME?
-   m ret 0 F-IN  m mul 0 F-OUT SAME?
-   m F-VALUES
-   m F-TOTAL ;
-
-: SQUARE-CASE ( -- )
-   s" a rename-heavy word compiles to exactly the operations its values need" T-LABEL
-   BND [: SQUARE-BODY ;] IR-CTX:WITH-CONTEXT
-   2 T= 2 T= TTRUE TTRUE TTRUE TTRUE TTRUE 2 T= ;
-
-\ ---- a literal and an operation ----------------------------------------------
-\ Three operations: the constant carrying its value as the attribute the opcode's
-\ schema requires, the addition of the argument and that constant, and the
-\ return.
-: INC-BODY ( IR-CTX:ctx -- n bool bool bool n bool bool )
-   {: c:IR-CTX:ctx :}
-   s" INC5 5 +" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLK {: blk:IR-ID:ir-block-id :}
-   m blk F-OPS
-   m blk 0 F-OP {: k:IR-ID:ir-op-id :}
-   m blk 1 F-OP {: add:IR-ID:ir-op-id :}
-   m k s" hir.const" F-OPC?
-   m add s" hir.add" F-OPC?
-   m  m blk 2 F-OP  s" hir.return" F-OPC?
-   m k 0 F-ATTR
-   m add 0 F-IN  m blk 0 F-ARG SAME?
-   m add 1 F-IN  m k 0 F-OUT SAME? ;
-
-: INC-CASE ( -- )
-   s" a literal and an arithmetic word compile to a constant and an addition" T-LABEL
-   BND [: INC-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE 5 T= TTRUE TTRUE TTRUE 3 T= ;
-
 \ ---- a word that reads and writes memory -------------------------------------
 \ The corpus's cell-bump body, `A ! A @ 1+ dup A !`, with A a `create`d data
 \ word the model names and the engine answers for. What this case measures is the two
@@ -360,144 +294,6 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
    BND [: BUMP-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    1 T= 1 T= 2 T= 1 T= ;
-
-\ ---- a word with two outputs -------------------------------------------------
-\ `over + swap` leaves the sum and the first input, in that order. Two
-\ operations: three renames between them stage nothing, and the return hands
-\ both outputs over bottom first.
-: SUMA-BODY ( IR-CTX:ctx -- n n n bool bool )
-   {: c:IR-CTX:ctx :}
-   s" SUMA over + swap" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 2 2 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLK {: blk:IR-ID:ir-block-id :}
-   m blk F-ARGS
-   m blk F-OPS
-   m blk 0 F-OP {: add:IR-ID:ir-op-id :}
-   m blk 1 F-OP {: ret:IR-ID:ir-op-id :}
-   m ret F-INS
-   m ret 0 F-IN  m add 0 F-OUT SAME?
-   m ret 1 F-IN  m blk 0 F-ARG SAME? ;
-
-: SUMA-CASE ( -- )
-   s" a word with two outputs returns both of them, bottom first" T-LABEL
-   BND [: SUMA-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE 2 T= 2 T= 2 T= ;
-
-\ ---- operand order -----------------------------------------------------------
-\ Subtraction is not commutative, so the order the values enter the operand list
-\ is observable: `swap -` subtracts the first input from the second.
-: DIFF-BODY ( IR-CTX:ctx -- n bool bool bool )
-   {: c:IR-CTX:ctx :}
-   s" DIFF swap -" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 2 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLK {: blk:IR-ID:ir-block-id :}
-   m blk F-OPS
-   m blk 0 F-OP {: sub:IR-ID:ir-op-id :}
-   m sub s" hir.sub" F-OPC?
-   m sub 0 F-IN  m blk 1 F-ARG SAME?
-   m sub 1 F-IN  m blk 0 F-ARG SAME? ;
-
-: DIFF-CASE ( -- )
-   s" a rename decides which value is which operand" T-LABEL
-   BND [: DIFF-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE 2 T= ;
-
-\ ---- the three-value rotation ------------------------------------------------
-\ `rot` ( a b c -- b c a ) is the rename where a wrong order is easiest to write
-\ and hardest to see, so this fixture is built so that only the right one passes.
-\ The body is `rot -`: after the rotation the vector holds b c a, the subtraction
-\ takes the top two with the deeper one as its first operand, and subtraction is
-\ not commutative - so its operands are c and then a, and the word returns b and
-\ the difference. Every other rotation of three values puts a different pair of
-\ block arguments into that operand list, so skewing any one pick index in the
-\ declaration reds this case rather than computing the same answer another way.
-\ And the rotation itself costs nothing: two operations, the subtraction and the
-\ return, is the whole function.
-: ROT3-BODY ( IR-CTX:ctx -- n bool bool bool n bool bool n n )
-   {: c:IR-CTX:ctx :}
-   s" ROT3 rot -" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 3 2 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLK {: blk:IR-ID:ir-block-id :}
-   m blk F-OPS
-   m blk 0 F-OP {: sub:IR-ID:ir-op-id :}
-   m blk 1 F-OP {: ret:IR-ID:ir-op-id :}
-   m sub s" hir.sub" F-OPC?
-   m sub 0 F-IN  m blk 2 F-ARG SAME?
-   m sub 1 F-IN  m blk 0 F-ARG SAME?
-   m ret F-INS
-   m ret 0 F-IN  m blk 1 F-ARG SAME?
-   m ret 1 F-IN  m sub 0 F-OUT SAME?
-   m F-VALUES
-   m F-TOTAL ;
-
-: ROT3-CASE ( -- )
-   s" rot rotates three values and adds no operation at all" T-LABEL
-   BND [: ROT3-BODY ;] IR-CTX:WITH-CONTEXT
-   2 T= 4 T= TTRUE TTRUE 2 T= TTRUE TTRUE TTRUE 2 T= ;
-
-\ ---- dropping the value underneath -------------------------------------------
-\ `nip` ( a b -- b ) consumes two and puts back only the one that was on top, so
-\ in `nip -` the middle input disappears and the subtraction is between the first
-\ input and the third. Putting back the other consumed value instead would
-\ subtract the second input, which is a different operand list, so the single
-\ pick index is pinned here too. Two operations again: the rename adds none.
-: NDIF-BODY ( IR-CTX:ctx -- n bool bool bool bool n n )
-   {: c:IR-CTX:ctx :}
-   s" NDIF nip -" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 3 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLK {: blk:IR-ID:ir-block-id :}
-   m blk F-OPS
-   m blk 0 F-OP {: sub:IR-ID:ir-op-id :}
-   m blk 1 F-OP {: ret:IR-ID:ir-op-id :}
-   m sub s" hir.sub" F-OPC?
-   m sub 0 F-IN  m blk 0 F-ARG SAME?
-   m sub 1 F-IN  m blk 2 F-ARG SAME?
-   m ret 0 F-IN  m sub 0 F-OUT SAME?
-   m F-VALUES
-   m F-TOTAL ;
-
-: NDIF-CASE ( -- )
-   s" nip drops the value underneath and adds no operation at all" T-LABEL
-   BND [: NDIF-BODY ;] IR-CTX:WITH-CONTEXT
-   2 T= 4 T= TTRUE TTRUE TTRUE TTRUE 2 T= ;
-
-\ ---- a definition whose body is empty ----------------------------------------
-\ `: PASS ( n -- n ) ;` records ONE token, the name, and nothing else. There is
-\ no closing token to walk to, so this is the case that proves the tape's end is
-\ what ends the body: an elaborator still looking for a frame word would run off
-\ the tape here instead of returning the argument it was given. One operation,
-\ one value, and the return hands back the block argument itself.
-: PASS-BODY ( IR-CTX:ctx -- n n bool n n )
-   {: c:IR-CTX:ctx :}
-   s" PASS" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   v NTAPE:TOKENS {: toks:n :}
-   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLK {: blk:IR-ID:ir-block-id :}
-   toks
-   m blk F-OPS
-   m  m blk 0 F-OP  0 F-IN  m blk 0 F-ARG SAME?
-   m blk F-ARGS
-   m F-VALUES ;
-
-: PASS-CASE ( -- )
-   s" a definition with an empty body returns its argument and ends at the tape" T-LABEL
-   BND [: PASS-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 1 T= TTRUE 1 T= 1 T= ;
 
 \ ---- the published function --------------------------------------------------
 \ The definition became a function named as the source names it, with the
@@ -1015,47 +811,6 @@ private
    NELAB:REFUSED-ROW 1 T=
    NTAPE-KIND:NAME NELAB:REFUSED-KIND? TTRUE ;
 
-\ ---- the three shapes a control word builds ----------------------------------
-\ Each of these is a real corpus body, elaborated and then measured on the three
-\ things a control construction can get wrong: how many blocks it made, which
-\ block each edge goes to, and what the join takes as its arguments. A module
-\ that reached FREEZE has already been through the whole structural verifier -
-\ dominance, successor-argument counts and types, one terminator per block - so
-\ what is left to assert is the wiring, and the wiring is asserted by ordinal.
-
-\ `MAX2 2dup < if swap then drop`. Four blocks: the entry, the false arm's stub,
-\ the true arm, and the join. The two-way branch hands nothing over and its two
-\ successors are the stub and the true arm IN THAT ORDER - zero first - so a
-\ swapped pair or a flipped polarity is a different pair of ordinals here. Both
-\ arms reach the join with two arguments, because the stack was two deep when the
-\ structure opened and `swap` changed which value is which and not how many.
-: MAX2-BODY ( IR-CTX:ctx -- n bool n n n n n n n )
-   {: c:IR-CTX:ctx :}
-   s" MAX2 2dup < if swap then drop" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 2 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLKS
-   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
-   m f 1 F-BLK-AT {: st:IR-ID:ir-block-id :}
-   m f 2 F-BLK-AT {: th:IR-ID:ir-block-id :}
-   m f 3 F-BLK-AT {: jn:IR-ID:ir-block-id :}
-   m e F-TERM {: t:IR-ID:ir-op-id :}
-   m t s" hir.brz" F-OPC?
-   m t F-SUCCS
-   m t 0 F-SUCC
-   m t 1 F-SUCC
-   m  m st F-TERM  F-INS
-   m  m th F-TERM  F-INS
-   m jn F-ARGS
-   m  m st F-TERM  0 F-SUCC ;
-
-: MAX2-CASE ( -- )
-   s" a two-way branch becomes four blocks wired to one join" T-LABEL
-   BND [: MAX2-BODY ;] IR-CTX:WITH-CONTEXT
-   3 T= 2 T= 2 T= 2 T= 2 T= 1 T= 2 T= TTRUE 4 T= ;
-
 \ ---- where the literal memo may cross a block boundary and where it may not ---
 \ `LITMEMO dup 1 < if 1- then 1-`. The number one is written three times and the
 \ four blocks answer for it differently, which is the whole of the memo's
@@ -1187,258 +942,8 @@ variable LK-N
    HIR:ADDR-DATA T=
    2 T= ;
 
-\ `COUNT-DOWN begin 1- dup 0 <= until`. Four blocks: the entry, the loop header,
-\ the latch and the exit. The header is reached twice - once from the entry and
-\ once from the latch - and takes one argument both times, which is what makes
-\ the loop-carried value a block argument instead of a redefinition. `until`
-\ leaves when the flag is true, so the ZERO successor is the latch and the other
-\ is the exit: reversing them turns the loop inside out and the two ordinals say
-\ so.
-: COUNTDOWN-BODY ( IR-CTX:ctx -- n bool n n n n n n n )
-   {: c:IR-CTX:ctx :}
-   s" COUNT-DOWN begin 1- dup 0 <= until" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLKS
-   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
-   m f 1 F-BLK-AT {: hd:IR-ID:ir-block-id :}
-   m f 2 F-BLK-AT {: la:IR-ID:ir-block-id :}
-   m  m e F-TERM  s" hir.br" F-OPC?
-   m  m e F-TERM  0 F-SUCC
-   m hd F-ARGS
-   m  m hd F-TERM  F-SUCCS
-   m  m hd F-TERM  0 F-SUCC
-   m  m hd F-TERM  1 F-SUCC
-   m  m la F-TERM  0 F-SUCC
-   m  m la F-TERM  F-INS ;
-
-: COUNTDOWN-CASE ( -- )
-   s" a begin-until loop becomes a header its latch branches back to" T-LABEL
-   BND [: COUNTDOWN-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 1 T= 3 T= 2 T= 2 T= 1 T= 1 T= TTRUE 4 T= ;
-
-\ `SUM-TO 0 swap 0 ?do i + loop`. Seven blocks: the entry, the skip stub the
-\ entry test branches to when the loop runs no turns at all, the pre-header, the
-\ header, the exit stub, the latch, and the join both exits meet in. The header
-\ takes three arguments - the accumulator, the index and the limit - because all
-\ three change on every turn, and the index is NOT on the value vector: Forth's
-\ loop parameters are not on the data stack, so the body's `i` reads the header's
-\ argument rather than something the body pushed.
-: SUMTO-BODY ( IR-CTX:ctx -- n n n n n n n n n )
-   {: c:IR-CTX:ctx :}
-   s" SUM-TO 0 swap 0 ?do i + loop" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLKS
-   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
-   m f 1 F-BLK-AT {: sk:IR-ID:ir-block-id :}
-   m f 2 F-BLK-AT {: pr:IR-ID:ir-block-id :}
-   m f 3 F-BLK-AT {: hd:IR-ID:ir-block-id :}
-   m f 4 F-BLK-AT {: xt:IR-ID:ir-block-id :}
-   m f 5 F-BLK-AT {: la:IR-ID:ir-block-id :}
-   m f 6 F-BLK-AT {: jn:IR-ID:ir-block-id :}
-   m  m e F-TERM  0 F-SUCC
-   m  m e F-TERM  1 F-SUCC
-   m  m sk F-TERM  0 F-SUCC
-   m  m pr F-TERM  0 F-SUCC
-   m hd F-ARGS
-   m  m la F-TERM  0 F-SUCC
-   m  m xt F-TERM  0 F-SUCC
-   m jn F-ARGS ;
-
-: SUMTO-CASE ( -- )
-   s" a counted loop becomes a header, a latch and one join for both exits" T-LABEL
-   BND [: SUMTO-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 6 T= 3 T= 3 T= 3 T= 6 T= 2 T= 1 T= 7 T= ;
-
-\ `SUM-TO-D 0 swap 0 do i + loop` - the same loop written with `do`. FIVE blocks
-\ where `?do` has seven, and the two missing ones are exactly the guard's: the
-\ block that tests `limit - start` and the stub it takes when they are equal.
-\ Everything else is the same shape at the same widths - a header taking the
-\ accumulator, the index and the limit, an exit stub, a latch back to the header,
-\ and one join - which is what "`?do` is `do` with a zero-trip guard" means once
-\ it is blocks. The entry block therefore ends on ONE successor here and on a
-\ two-way branch there, and that single ordinal is what says no test was built.
-\
-\ IT IS PINNED BESIDE SUM-TO ON PURPOSE. The two cases share every number but
-\ the block count and the entry's terminator, so a change that gave `do` a guard,
-\ or took `?do`'s away, moves one of them and not the other.
-: SUMTO-DO-BODY ( IR-CTX:ctx -- n n n n n n n n )
-   {: c:IR-CTX:ctx :}
-   s" SUM-TO-D 0 swap 0 do i + loop" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLKS
-   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
-   m f 1 F-BLK-AT {: hd:IR-ID:ir-block-id :}
-   m f 2 F-BLK-AT {: xt:IR-ID:ir-block-id :}
-   m f 3 F-BLK-AT {: la:IR-ID:ir-block-id :}
-   m f 4 F-BLK-AT {: jn:IR-ID:ir-block-id :}
-   m  m e F-TERM  F-SUCCS
-   m  m e F-TERM  0 F-SUCC
-   m hd F-ARGS
-   m  m hd F-TERM  0 F-SUCC
-   m  m hd F-TERM  1 F-SUCC
-   m  m xt F-TERM  0 F-SUCC
-   m  m la F-TERM  0 F-SUCC ;
-
-: SUMTO-DO-CASE ( -- )
-   s" a plain do builds the same loop without the guard block and its stub" T-LABEL
-   BND [: SUMTO-DO-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 4 T= 3 T= 2 T= 3 T= 1 T= 1 T= 5 T= ;
-
-\ `FOREVER begin 1- again`. TWO blocks: the entry and the loop header - and the
-\ absence of a third is the whole of what `again` is. `until` closes the same
-\ loop with a latch and an exit and builds four (COUNTDOWN above); `again` has no
-\ test, so it has no two-way branch and no latch stub, and it has no exit edge,
-\ so no block after the loop is opened. The header's terminator therefore names
-\ ONE successor and that successor is the header itself: the back edge is the
-\ block's own last operation rather than a stub branching to it.
-\
-\ AND THE FUNCTION HAS NO BLOCK CONTROL LEAVES THROUGH, which is pinned here as
-\ the count: two blocks, each with a successor. That is the shape
-\ src/compiler/native/regalloc.f calls NO-RET, and it is what makes a
-\ `begin … again` word a routine with no return convention at all rather than one
-\ whose return nothing branches to.
-: FOREVER-BODY ( IR-CTX:ctx -- n n n n n )
-   {: c:IR-CTX:ctx :}
-   s" FOREVER begin 1- again" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLKS
-   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
-   m f 1 F-BLK-AT {: hd:IR-ID:ir-block-id :}
-   m  m e F-TERM  0 F-SUCC
-   m hd F-ARGS
-   m  m hd F-TERM  F-SUCCS
-   m  m hd F-TERM  0 F-SUCC ;
-
-: FOREVER-CASE ( -- )
-   s" a begin-again loop is a header branching to itself and no block after it" T-LABEL
-   BND [: FOREVER-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 1 T= 1 T= 1 T= 2 T= ;
-
-\ `SUMLV 0 swap 0 ?do i 2 = if leave then i + loop`. TEN blocks: the seven a
-\ `?do` already builds (SUMTO above), plus the three the `if` adds - the stub its
-\ false edge leaves through, the arm the `leave` ends, and the block `then`
-\ opens. The `leave`'s own block IS that arm: it opens no block of its own,
-\ because the block it branches to is one the loop was always going to have.
-\
-\ THE ORDINAL IT BRANCHES TO IS THE LOOP'S JOIN, AND THAT IS WHAT THIS CASE
-\ MEASURES. Block 9 is the block after the loop, and here THREE edges reach it
-\ where two reach it in SUMTO: the skip stub the guard takes when the loop runs
-\ no turns, the exit stub at `loop` (block 7, whose successor is pinned below),
-\ and the `leave` in block 5. A `leave` wired to the latch, to the header, or to
-\ the `if`'s own join would show a different ordinal on the arm's edge while the
-\ exit stub's stayed put, and the join's argument count says what it carries is
-\ the loop's live vector rather than the arm's.
-: SUMLV-BODY ( IR-CTX:ctx -- n n n n n )
-   {: c:IR-CTX:ctx :}
-   s" SUMLV 0 swap 0 ?do i 2 = if leave then i + loop" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLKS
-   m f 5 F-BLK-AT {: arm:IR-ID:ir-block-id :}
-   m f 9 F-BLK-AT {: jn:IR-ID:ir-block-id :}
-   m  m arm F-TERM  F-SUCCS
-   m  m arm F-TERM  0 F-SUCC
-   m jn F-ARGS
-   m f 7 F-BLK-AT {: xt:IR-ID:ir-block-id :}
-   m  m xt F-TERM  0 F-SUCC ;
-
-: SUMLV-CASE ( -- )
-   s" a leave branches out of the loop to the block loop's own exit reaches" T-LABEL
-   BND [: SUMLV-BODY ;] IR-CTX:WITH-CONTEXT
-   9 T= 1 T= 9 T= 1 T= 10 T= ;
-
-\ `WCOUNT begin dup 0 > while 1- repeat`. Five blocks: the entry, the loop
-\ header, the stub the `while` leaves through, the body, and the block after the
-\ loop. THE POLARITY IS THE WHOLE OF WHAT THIS CASE MEASURES, and it is the
-\ opposite of `until`'s: `while` stays in the loop while its flag is TRUE, so the
-\ ZERO successor is the stub out and the other is the body. Turning the two round
-\ compiles a loop that runs exactly when it should not, and the two ordinals here
-\ say which way they are wired. The stub carries the loop's one live value to the
-\ block after the loop, which takes it as an argument, and the body branches back
-\ to the header carrying the value the next turn reads.
-: WCOUNT-BODY ( IR-CTX:ctx -- n n n n n n n n n n )
-   {: c:IR-CTX:ctx :}
-   s" WCOUNT begin dup 0 > while 1- repeat" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLKS
-   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
-   m f 1 F-BLK-AT {: hd:IR-ID:ir-block-id :}
-   m f 2 F-BLK-AT {: st:IR-ID:ir-block-id :}
-   m f 3 F-BLK-AT {: bd:IR-ID:ir-block-id :}
-   m f 4 F-BLK-AT {: xt:IR-ID:ir-block-id :}
-   m  m e F-TERM  0 F-SUCC
-   m hd F-ARGS
-   m  m hd F-TERM  F-SUCCS
-   m  m hd F-TERM  0 F-SUCC
-   m  m hd F-TERM  1 F-SUCC
-   m  m st F-TERM  0 F-SUCC
-   m  m st F-TERM  F-INS
-   m  m bd F-TERM  0 F-SUCC
-   m xt F-ARGS ;
-
-: WCOUNT-CASE ( -- )
-   s" a begin-while-repeat loop leaves through the while and goes round through the repeat" T-LABEL
-   BND [: WCOUNT-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 1 T= 1 T= 4 T= 3 T= 2 T= 2 T= 1 T= 1 T= 5 T= ;
-
-\ `PICK2 2dup > if drop else nip then`. Five blocks: the entry, the stub the
-\ `if`'s false path leaves through, the first arm, the second arm, and the join.
-\ THE STUB LANDS IN THE SECOND ARM AND NOT IN THE JOIN, which is the one thing an
-\ `else` changes about the shape an `if` builds, and the ordinal says so.
-\
-\ AND THE JOIN IS ONE VALUE WIDE WHERE THE STRUCTURE OPENED TWO DEEP. With one
-\ arm the join is also reached by the `if`'s own false stub, so an arm has to
-\ leave the stack as it found it; with two, both edges into the join come from
-\ arms, so a structure whose arms each CONSUME a value and leave one - which is
-\ every `max` ever written - is an ordinary structure. The second arm takes the
-\ two values the stub handed it and the join takes the one both arms left.
-: PICK2-BODY ( IR-CTX:ctx -- n n n n n n n n n )
-   {: c:IR-CTX:ctx :}
-   s" PICK2 2dup > if drop else nip then" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 2 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLKS
-   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
-   m f 1 F-BLK-AT {: st:IR-ID:ir-block-id :}
-   m f 2 F-BLK-AT {: a1:IR-ID:ir-block-id :}
-   m f 3 F-BLK-AT {: a2:IR-ID:ir-block-id :}
-   m f 4 F-BLK-AT {: jn:IR-ID:ir-block-id :}
-   m  m e F-TERM  0 F-SUCC
-   m  m e F-TERM  1 F-SUCC
-   m  m st F-TERM  0 F-SUCC
-   m  m st F-TERM  F-INS
-   m a2 F-ARGS
-   m  m a1 F-TERM  0 F-SUCC
-   m  m a2 F-TERM  0 F-SUCC
-   m jn F-ARGS ;
-
-: PICK2-CASE ( -- )
-   s" an else sends the false path into a second arm and both arms into one join" T-LABEL
-   BND [: PICK2-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 4 T= 4 T= 2 T= 2 T= 3 T= 2 T= 1 T= 5 T= ;
-
-\ `TWOW begin dup 0 > while dup 7 <> while 1- repeat`. TWO `while`s in one loop,
-\ which is ordinary Forth and the reason the block after the loop is named
-\ against the `begin` rather than against a `while`: both of them read the one
+\ Two while exits in one loop share the exit block, indexed against `begin`:
+\ both of them read the one
 \ answer and both of their stubs branch to it, so the block after the loop has
 \ two paths into it and still takes one set of arguments. Seven blocks: the
 \ entry, the header, the first stub, the block between the two tests, the second
@@ -1786,62 +1291,6 @@ variable LK-N
 : ELOPSIDED-CASE ( -- )
    s" two arms that leave different depths are refused" T-LABEL
    [: ELOPSIDED ;] E-NELAB-JOIN TTHROWSQ ;
-
-\ ---- a typed locals frame ----------------------------------------------------
-\ The corpus's LERP, written as the tape carries it: `{:`, one `name:type` token
-\ per local, `:}`, then a body that reads the names. A local is a named SSA
-\ VALUE, so the whole of what this case has to prove is which value each name
-\ ended up meaning - and every one of those answers is an operand identity read
-\ off the published module, not a count.
-\
-\ THE BINDING ORDER IS THE POINT. `{: a b t :}` over a stack holding a, b, t
-\ binds a to the DEEPEST value, so `a` is block argument zero and `t` is block
-\ argument two. `b a -` therefore subtracts argument zero from argument one, and
-\ a subtraction's operands cannot be exchanged without changing the answer - so
-\ a frame that bound the names the other way round reddens here rather than
-\ computing the same number by another route. `t *` then reads argument two, and
-\ the second `a` reads argument zero again, which is what says a name may be
-\ read more than once and still be one value.
-\
-\ AND THE DIVISION'S OPERANDS. `100 /` divides the product by the hundred, in
-\ that order, so operand zero is the multiply's result and operand one is the
-\ constant's. Swapping them is a different program and this says so.
-\
-\ Six operations for nine body tokens: the group stages nothing at all - it is
-\ five of those tokens - and neither does either mention of a local.
-: LERP-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool n )
-   {: c:IR-CTX:ctx :}
-   s" LERP {: a:n b:n t:n :} b a - t * 100 / a +" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 3 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
-   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m f F-BLK {: blk:IR-ID:ir-block-id :}
-   m blk F-OPS
-   m blk 0 F-OP {: sb:IR-ID:ir-op-id :}
-   m blk 1 F-OP {: ml:IR-ID:ir-op-id :}
-   m blk 2 F-OP {: kn:IR-ID:ir-op-id :}
-   m blk 3 F-OP {: dv:IR-ID:ir-op-id :}
-   m blk 4 F-OP {: ad:IR-ID:ir-op-id :}
-   m sb s" hir.sub" F-OPC?
-   m dv s" hir.div" F-OPC?
-   m sb 0 F-IN  m blk 1 F-ARG SAME?
-   m sb 1 F-IN  m blk 0 F-ARG SAME?
-   m ml 0 F-IN  m sb 0 F-OUT SAME?
-   m ml 1 F-IN  m blk 2 F-ARG SAME?
-   m dv 0 F-IN  m ml 0 F-OUT SAME?
-   m dv 1 F-IN  m kn 0 F-OUT SAME?
-   m ad 0 F-IN  m dv 0 F-OUT SAME?
-   m ad 1 F-IN  m blk 0 F-ARG SAME?
-   m F-VALUES ;
-
-: LERP-CASE ( -- )
-   s" a typed locals frame binds the first name to the deepest value" T-LABEL
-   BND [: LERP-BODY ;] IR-CTX:WITH-CONTEXT
-   8 T=
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE
-   6 T= ;
 
 \ ---- a second group names what the first one's names computed ----------------
 \ THE SHAPE THE TREE WRITES CONSTANTLY: bind the arguments, compute, name the
@@ -3077,12 +2526,11 @@ public
 
 : RUN ( -- )
    T-RESET
+   TWOW-CASE
    JOINR-CASE
    JOINC-CASE
-   MAX2-CASE
    LITMEMO-CASE
    LITKIND-CASE
-   LERP-CASE
    TWO-GROUPS-CASE
    PRIMLOC-CASE
    IDXLOC-CASE
@@ -3096,14 +2544,6 @@ public
    BND [: drop QCLOSE-NAME-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop QOPEN-NAME-CASE ;] IR-CTX:WITH-CONTEXT
    BRANCHG-CASE
-   COUNTDOWN-CASE
-   SUMTO-CASE
-   SUMTO-DO-CASE
-   FOREVER-CASE
-   SUMLV-CASE
-   WCOUNT-CASE
-   PICK2-CASE
-   TWOW-CASE
    BND [: drop ORPHAN-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop CROSSED-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop UNCLOSED-CASE ;] IR-CTX:WITH-CONTEXT
@@ -3123,14 +2563,7 @@ public
    BND [: drop STRAYE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop TWOE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop ELOPSIDED-CASE ;] IR-CTX:WITH-CONTEXT
-   SQUARE-CASE
-   INC-CASE
    BUMP-CASE
-   SUMA-CASE
-   DIFF-CASE
-   ROT3-CASE
-   NDIF-CASE
-   PASS-CASE
    FUN-CASE
    BND [: drop UNDEC-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop CHARTOK-CASE ;] IR-CTX:WITH-CONTEXT

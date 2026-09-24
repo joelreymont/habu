@@ -91,13 +91,6 @@ create DGT-ERR DGT-BUF-CAP allot
    expect T-OUTCOME-EXITED=
    LEN>N swap LEN>N swap ;
 
-: DGT-RUN-CORE ( -- n )
-   DGT-IN DGT-OUT DGT-BUF-CAP >LEN DIAG-ORIGIN>BUF LEN>N ;
-
-: DGT-TEST-CORE ( -- )
-   DGT-RUN-CORE {: outu:n :}
-   DGT-OUT outu DGT-WANT$ T$= ;
-
 : DGT-TEST-CLI ( -- )
    DGT-RUN 0 DGT-EXPECT-EXIT {: outu:n erru:n :}
    DGT-OUT outu DGT-WANT$ T$=
@@ -107,7 +100,6 @@ create DGT-ERR DGT-BUF-CAP allot
    T-RESET
    DGT-PREPARE
    DGT-IN DGT-SOURCE$ WRITE-ALL
-   DGT-TEST-CORE
    DGT-TEST-CLI
    CLEANUP-RUN
    DGT-ROOT EXISTS? TFALSE

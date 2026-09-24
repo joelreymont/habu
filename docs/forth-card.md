@@ -202,15 +202,10 @@ forth.md: **Files**, **Packages**.
 
 ## 8 Tests
 
-`require lib/test.f`, keep the fixture in its own package, assert, report.
-
-```forth
-require lib/test.f
-package CARD-TEST
-: MAIN ( -- ) T-RESET  2 2 + 4 T=  [: BOOM ;] -2000 TTHROWSQ  T-REPORT ;
-MAIN
-;package
-```
+Follow the testing policy in [AGENTS.md](../AGENTS.md). Exercise a complete
+feature through its real load/build path and retain a repeatable artifact.
+See `test/aot-chain-capture-suite.f` for a producer, saved image, and consumer
+flow. Use `require lib/test.f` for assertions and keep fixtures package-scoped.
 
 `T=` / `T<>` scalars, `T$=` strings, `TTRUE` / `TFALSE` flags, `TTHROWSQ` /
 `TTHROWS` throw codes. Register it as a `SUITE name … ;SUITE` entry in

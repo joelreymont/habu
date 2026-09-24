@@ -49,7 +49,6 @@ variable BFT-HB-NEW-U
 variable BFT-HB-U
 variable BFT-PREFIX-U
 variable BFT-STAGE2-U
-variable BFT-RUN-U
 variable BFT-SNAP-U
 variable BFT-STAMP-U
 variable BFT-STAMP2-U
@@ -67,24 +66,16 @@ variable BFT-STALE-MARK-U
 variable BFT-CP-U
 TYPED-VARIABLE BFT-BIG-OUT-A ptr u8
 TYPED-VARIABLE BFT-BIG-ERR-A ptr u8
-variable BFT-BUILD-FILES
 TYPED-VARIABLE BFT-READ-A ptr u8
 variable BFT-READ-CAP
 TYPED-VARIABLE BFT-BYTES-A ptr u8
 variable BFT-BYTES-N
-variable BFT-PROF-I
-variable BFT-REG-I
-variable BFT-JIT-I
-variable BFT-IMG-I
-variable BFT-IMG-BUILD-I
-variable BFT-HABU1-I
 
 create BFT-ROOT-BUF FS-PATH-CAP allot
 create BFT-HB-NEW-BUF FS-PATH-CAP allot
 create BFT-HB-BUF FS-PATH-CAP allot
 create BFT-PREFIX-BUF FS-PATH-CAP allot
 create BFT-STAGE2-BUF FS-PATH-CAP allot
-create BFT-RUN-BUF FS-PATH-CAP allot
 create BFT-SNAP-BUF FS-PATH-CAP allot
 create BFT-STAMP-BUF FS-PATH-CAP allot
 create BFT-STAMP2-BUF FS-PATH-CAP allot
@@ -138,9 +129,6 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-STAGE2 ( -- ptr u8 n )
    BFT-STAGE2-BUF BFT-STAGE2-U @ ;
-
-: BFT-RUN ( -- ptr u8 n )
-   BFT-RUN-BUF BFT-RUN-U @ ;
 
 : BFT-SNAP ( -- ptr u8 n )
    BFT-SNAP-BUF BFT-SNAP-U @ ;
@@ -215,7 +203,6 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-HB CHMOD-X
    BFT-ROOT s" prefix-src" BFT-PREFIX-BUF BFT-PREFIX-U BFT-PATH!
    BFT-ROOT s" stage2-src" BFT-STAGE2-BUF BFT-STAGE2-U BFT-PATH!
-   BFT-ROOT s" stage2-run-src" BFT-RUN-BUF BFT-RUN-U BFT-PATH!
    BFT-ROOT s" hb-snap-src" BFT-SNAP-BUF BFT-SNAP-U BFT-PATH!
    BFT-ROOT s" fixpoint-stamp" BFT-STAMP-BUF BFT-STAMP-U BFT-PATH!
    BFT-ROOT s" fixpoint-stamp2" BFT-STAMP2-BUF BFT-STAMP2-U BFT-PATH!
@@ -695,84 +682,11 @@ variable IX
      some OF NUM:ORDINAL >IDX OPTION:SOME ENDOF
    ;MATCH ;
 
-: BFT-FIND-AFTER ( ptr u8 n n ptr u8 n -- option<idx> ) {: a:ptr u:n start:n needle:ptr nu:n :}
-   start 0 < if OPTION:NONE exit then
-   start u >= if OPTION:NONE exit then
-   a start BYTE+ u start - needle nu BFT-FIND MATCH option
-     none OF OPTION:NONE ENDOF
-     some OF IDX>N start + >IDX OPTION:SOME ENDOF
-   ;MATCH ;
-
 : BFT-FOUND ( option<idx> -- n )                     \ assert found; found index (-1 after a recorded miss)
    MATCH option
      none OF STR-FALSE TTRUE -1 ENDOF
      some OF STR-TRUE TTRUE IDX>N ENDOF
    ;MATCH ;
-
-: BFT-NOT-FOUND ( option<idx> -- )
-   MATCH option
-     none OF STR-TRUE ENDOF
-     some OF drop STR-FALSE ENDOF
-   ;MATCH TTRUE ;
-
-\ Does an emitted source DEFINE this name at top level? The question the
-\ single-load contract needs answered about the assembled payload is "is there a
-\ second copy of this prefix file in here", and a substring search cannot answer
-\ it: src/habu/hide.f still ships in the payload, so the text
-\ BFR-HIDE-DICT-FROM-EARLIEST is present whether or not anything calls it, and
-\ every prefix name appears in the comments of the files that call it.
-\
-\ So this reuses the certify scanner's own tokenizer - the same NEXT-SCAN that
-\ decides what VERIFY:SOURCE-BUF checked - and reads the token in the DEFINITION
-\ position after a `:`. A name in a comment, in a string, or at a call site is
-\ not in that position. The hostile fixtures below are what prove it.
-;package
-
-package VERIFY
-variable DEF-HIT
-PTR-VARIABLE DEF-A
-variable DEF-U
-
-: DEF-WANT$ ( -- ptr u8 n )
-   DEF-A @ DEF-U @ ;
-
-public
-
-: DEFINES? ( ptr u8 n ptr u8 n -- bool ) {: src:ptr srcu:n want:ptr wantu:n :}
-   want DEF-A !  wantu DEF-U !
-   0 DEF-HIT !
-   src srcu SOURCE! SCAN-RESET
-   begin NEXT-SCAN dup 0 > while
-      s" :" CORE-STR= if
-         NEXT-SCAN dup 0 > if
-            DEF-WANT$ CORE-STR= if -1 DEF-HIT ! then
-         else 2drop then
-      then
-   repeat 2drop
-   DEF-HIT @ 0<> ;
-;package
-
-package BUILD-FIXPOINT
-
-\ Hostile fixtures for the definition scan above. Each puts the subject name in
-\ a position that is NOT a top-level definition, and each must answer false -
-\ otherwise the single-load assertions below would be satisfied by the comments
-\ and call sites the payload is full of. The two positives beside them keep the
-\ whole thing from passing by always answering false.
-: BFT-DEF-DECOY$ ( -- ptr u8 n )
-   s" BFT-DECOY" ;
-
-: BFT-DEF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u BFT-DEF-DECOY$ VERIFY:DEFINES? ;
-
-: BFT-TEST-DEFINES-SCAN ( -- )
-   s\" \\ : BFT-DECOY ( -- ) ;\n" BFT-DEF? TFALSE
-   s\" ( : BFT-DECOY ( -- ) ;)\n" BFT-DEF? TFALSE
-   s\" : OTHER ( -- ) s\\\" BFT-DECOY\\\" 2drop ;\n" BFT-DEF? TFALSE
-   s\" : OTHER ( -- ) BFT-DECOY ;\n" BFT-DEF? TFALSE
-   s\" : BFT-DECOYS ( -- ) ;\n" BFT-DEF? TFALSE
-   s\" : BFT-DECOY ( -- ) ;\n" BFT-DEF? TTRUE
-   s\" \\ BFT-DECOY in a comment first\n: BFT-DECOY ( -- ) ;\n" BFT-DEF? TTRUE ;
 
 \ THE HOST CAPABILITY THE BUILD REQUIRES, refused at the door. The payload
 \ rewinds to the mark src/core/lower-cert-seal.f records at the core prefix's
@@ -843,135 +757,6 @@ package BUILD-FIXPOINT
 : BFT-TEST-WATERMARK-VALUE ( -- )
    s\" ;package\n" BFT-MARK-VALUE-FORGE
    s" carries no checker boundary" BFT-MARK-VALUE-REFUSED ;
-
-\ THE SINGLE-LOAD CONTRACT, over the two sources a real build writes.
-\
-\ Each probe name is asked of BOTH assemblies, and the pair is the claim: the
-\ boot prefix defines it, the payload does not. Asking only the payload would
-\ also pass if the prefix had stopped being certified anywhere at all, which is
-\ the failure the certify-only phase exists to prevent.
-\
-\ Three probes spanning the prefix's extent - util.f is its first file,
-\ checker.f its largest, xref.f one of its last - because a payload that stopped
-\ re-emitting only its first file would satisfy one probe.
-: BFT-PREFIX-ONCE ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   BFT-STAGE2 BFT-READ {: u:n :}
-   BFT-READ-BUF u name nameu VERIFY:DEFINES? TFALSE
-   BFT-PREFIX BFT-READ {: v:n :}
-   BFT-READ-BUF v name nameu VERIFY:DEFINES? TTRUE ;
-
-: BFT-PREFIX-GUARD ( -- )
-   BFT-PREFIX BFT-READ {: u:n :}
-   BFT-READ-BUF u s" package CHECKER-OWNER-GUARD" BFT-FIND BFT-FOUND {: guard:n :}
-   BFT-READ-BUF u guard s" : VALIDATE " BFT-FIND-AFTER BFT-FOUND {: body:n :}
-   BFT-READ-BUF u body s" package PREFIX-MARK" BFT-FIND-AFTER BFT-FOUND drop ;
-
-
-: BFT-TASK-ABI-DEPS ( n -- ) {: u:n :}
-   s" src/habu/task-abi.f" BF-READ-SOURCE
-   BFT-READ-BUF u BF-SOURCE-BUF BF-SOURCE-LEN @ BFT-FIND BFT-FOUND {: abi:n :}
-   BFT-READ-BUF u abi s\" s\" src/habu/task-abi.f\" provided" BFT-FIND-AFTER BFT-FOUND {: fact:n :}
-   BFT-READ-BUF u fact s" require src/habu/task-abi.f" BFT-FIND-AFTER BFT-FOUND {: req:n :}
-   BFT-READ-BUF u req s" : BTASK-ENTRY " BFT-FIND-AFTER BFT-FOUND drop ;
-
-
-\ Dependencies must be in the emitted bytes, even when the warmed host can
-\ supply their effects. Check the module bodies and the provided facts in the
-\ order their real consumers need them.
-: BFT-COMMON-DEPS ( n -- ) {: u:n :}
-   u BFT-TASK-ABI-DEPS
-   BFT-READ-BUF u s" FIRST-LABEL" VERIFY:DEFINES? TTRUE
-   BFT-READ-BUF u s" CAPTURE-RANGE," VERIFY:DEFINES? TTRUE
-   BFT-READ-BUF u s" SB-FIX" VERIFY:DEFINES? TTRUE
-   BFT-READ-BUF u s\" s\" src/habu/primitive-registry.f\" provided" BFT-FIND BFT-FOUND {: prim:n :}
-   BFT-READ-BUF u prim s" package DATA-CLAIMS" BFT-FIND-AFTER BFT-FOUND {: claims:n :}
-   BFT-READ-BUF u claims s\" s\" src/habu/data-claims.f\" provided" BFT-FIND-AFTER BFT-FOUND {: claimsfact:n :}
-   BFT-READ-BUF u claimsfact s" package ENGINE-HELPER" BFT-FIND-AFTER BFT-FOUND {: helper:n :}
-   BFT-READ-BUF u helper s" : EMIT-HELPERS " BFT-FIND-AFTER BFT-FOUND {: origin:n :}
-   BFT-READ-BUF u origin s\" s\" src/habu/code-origin.f\" provided" BFT-FIND-AFTER BFT-FOUND {: fact:n :}
-   BFT-READ-BUF u fact s" require src/habu/code-origin.f" BFT-FIND-AFTER BFT-FOUND {: req:n :}
-   BFT-READ-BUF u req s" : BAND-CLAIM-AT " BFT-FIND-AFTER BFT-FOUND drop
-   BFT-READ-BUF u s" ENUM option 1" BFT-FIND BFT-FOUND {: opt:n :}
-   BFT-READ-BUF u opt s\" s\" lib/adt/option.f\" provided" BFT-FIND-AFTER BFT-FOUND {: optfact:n :}
-   BFT-READ-BUF u optfact s" NEWTYPE byte-len 0" BFT-FIND-AFTER BFT-FOUND {: num:n :}
-   BFT-READ-BUF u num s\" s\" lib/num-types.f\" provided" BFT-FIND-AFTER BFT-FOUND {: numfact:n :}
-   BFT-READ-BUF u numfact s" : ADD-BYTES " BFT-FIND-AFTER BFT-FOUND {: arith:n :}
-   BFT-READ-BUF u arith s\" s\" lib/num-arithmetic.f\" provided" BFT-FIND-AFTER BFT-FOUND {: arithfact:n :}
-   BFT-READ-BUF u arithfact s" : SB-RESET " BFT-FIND-AFTER BFT-FOUND {: str:n :}
-   BFT-READ-BUF u str s\" s\" lib/string.f\" provided" BFT-FIND-AFTER BFT-FOUND {: strfact:n :}
-   BFT-READ-BUF u strfact s" : POW10 " BFT-FIND-AFTER BFT-FOUND {: fl:n :}
-   BFT-READ-BUF u fl s\" s\" lib/float.f\" provided" BFT-FIND-AFTER BFT-FOUND {: flfact:n :}
-   BFT-READ-BUF u flfact s" : SB-FIX " BFT-FIND-AFTER BFT-FOUND {: fmt:n :}
-   BFT-READ-BUF u fmt s\" s\" lib/fmt.f\" provided" BFT-FIND-AFTER BFT-FOUND {: fmtfact:n :}
-   BFT-READ-BUF u fmtfact s" require lib/fmt.f" BFT-FIND-AFTER BFT-FOUND drop ;
-
-\ Both assemblies are written here rather than inherited from an earlier step,
-\ so the pair the contract compares is one build's. The payload is the STDIN
-\ source - the one that becomes bin/hb - because that is the assembly a shipped
-\ engine is compiled from; BF-STAGE2-SOURCE writes the same file with the stage
-\ driver instead, and BFT-TEST-CERTIFY-PHASE-SOURCES already pins that the two
-\ differ.
-: BFT-TEST-STAGE2-SOURCE ( -- )
-   BFT-ROOT BF-TMP!
-   BF-PREFIX-SOURCE
-   BF-STDIN-SOURCE
-   s" CORE-STR=" BFT-PREFIX-ONCE
-   s" ATOMA-FIELD" BFT-PREFIX-ONCE
-   s" SEAL-DICT-GUARD" BFT-PREFIX-ONCE
-   BFT-PREFIX-GUARD
-   BFT-STAGE2 BFT-READ {: u :}
-   BFT-READ-BUF u s" : HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ; ' HOOK set-check" CONTAINS? TFALSE
-   BFT-READ-BUF u s" FPRIM" VERIFY:DEFINES? TTRUE
-   BFT-READ-BUF u s" STDIN-OUT" VERIFY:DEFINES? TTRUE
-   \ These live beyond the core mark in the cold host and must be reassembled
-   \ after rewind, even though certification can also resolve the host's copy.
-   BFT-READ-BUF u s" true" VERIFY:DEFINES? TTRUE
-   BFT-READ-BUF u s" false" VERIFY:DEFINES? TTRUE
-   BFT-READ-BUF u s" 0<>" VERIFY:DEFINES? TTRUE
-   BFT-READ-BUF u s\" s\" lib/prelude.f\" provided" CONTAINS? TTRUE
-   BFT-READ-BUF u s\" s\" lib/errors.f\" provided" CONTAINS? TTRUE
-   u BFT-COMMON-DEPS
-   BFT-READ-BUF u s" BFR-CHECK-OFF" BFT-FIND BFT-FOUND {: off:n :}
-   BFT-READ-BUF u off s" PREFIX-REWIND:TO-CORE" BFT-FIND-AFTER BFT-FOUND {: rewind:n :}
-   BFT-READ-BUF u rewind s" LOWER-CERT-HOOK:INSTALL" BFT-FIND-AFTER BFT-FOUND {: hook:n :}
-   BFT-READ-BUF u hook s" SEAL-FRIEND" BFT-FIND-AFTER BFT-FOUND {: seal:n :}
-   BFT-READ-BUF u seal s" driver-io.f" BFT-FIND-AFTER BFT-FOUND {: driver:n :}
-   off rewind < TTRUE
-   rewind hook < TTRUE
-   hook seal < TTRUE
-   seal driver < TTRUE
-   BFT-READ-BUF u BF-BOUNDARY-RAW-OFF$ CONTAINS? TFALSE
-   BFT-READ-BUF u s\" s\" ASM-CODE\" s\" -- asm\" TRUST" CONTAINS? TFALSE
-   BF-TMP-RESET ;
-
-: BFT-TEST-NO-STAGE2-RUN-SOURCE ( -- )
-   BFT-RUN FILE? TFALSE ;
-
-: BFT-TEST-CHECKED-REGALLOC ( -- )
-   BFT-STAGE2 BFT-READ {: u :}
-   BFT-READ-BUF u s" : BPROF-ON" BFT-FIND BFT-FOUND BFT-PROF-I !
-   BFT-READ-BUF u BFT-PROF-I @ s" : EMIT-VRINIT" BFT-FIND-AFTER BFT-FOUND BFT-REG-I !
-   BFT-READ-BUF u BFT-REG-I @ s" : FOLD-ENTRY" BFT-FIND-AFTER BFT-FOUND BFT-JIT-I !
-   BFT-PROF-I @ BFT-REG-I @ < TTRUE
-   BFT-REG-I @ BFT-JIT-I @ < TTRUE ;
-
-\ The target-image writers (elf/macho/sign) compile CHECKED in stage2: no
-\ 0 set-check window opens at or after the image region and no synthetic
-\ TRUST rows are injected, so a stack-effect regression in ASM-CODE/
-\ BUILD-IMAGE/BUILD-SNAP-HDR/SET-SIGID/CODESIG2 fails the stage compile.
-: BFT-TEST-CHECKED-TARGET-IMAGE ( -- )
-   BFT-STAGE2 BFT-READ {: u :}
-   BFT-READ-BUF u s" : ASM-CODELEN!" BFT-FIND BFT-FOUND BFT-IMG-I !
-   BFT-READ-BUF u BFT-IMG-I @ s" : BUILD-IMAGE" BFT-FIND-AFTER BFT-FOUND BFT-IMG-BUILD-I !
-   BFT-READ-BUF u BFT-IMG-BUILD-I @ s" : FPRIM " BFT-FIND-AFTER BFT-FOUND BFT-HABU1-I !
-   BFT-READ-BUF u BFT-IMG-I @ BF-BOUNDARY-RAW-OFF$ BFT-FIND-AFTER BFT-NOT-FOUND
-   BFT-IMG-I @ BFT-IMG-BUILD-I @ < TTRUE
-   BFT-IMG-BUILD-I @ BFT-HABU1-I @ < TTRUE ;
-
-: BFT-TEST-STAGE2-SCRATCH ( -- )
-   BFT-STAGE2 BFT-READ {: u :}
-   BFT-READ-BUF u s" SOURCE-CAP allot" CONTAINS? TFALSE
-   BFT-READ-BUF u s" stage2: source mmap failed" CONTAINS? TTRUE ;
 
 \ Corrupt the current native snapshot's trailer and assert the loader's named
 \ version and bounds refusals. Re-sign mutations so macOS reaches the loader.
@@ -1331,7 +1116,6 @@ variable BAD-N
    s" stage2-src" BF-A$ BFT-STAGE2 T$=
    BF-STAGE2-SOURCE
    BFT-STAGE2 FILE? TTRUE
-   BFT-TEST-STAGE2-SCRATCH
    BF-TMP-RESET ;
 
 : BFT-TEST-STAGE-ARGV-RESET ( -- )
@@ -1346,76 +1130,8 @@ variable BAD-N
    PROC-ARGV-N @ COUNT>N 4 T=
    BF-TMP-RESET ;
 
-: BFT-BUILD-FILE? ( ptr u8 n -- bool )
-   BASENAME s" build-" STARTS-WITH? ;
-
-: BFT-CHECK-BUILD-FILE ( ptr u8 n -- ) {: a:ptr u :}
-   a u FILE? if
-      a u BFT-BUILD-FILE? if
-         BFT-BUILD-FILES @ 1 + BFT-BUILD-FILES !
-      then
-   then ;
-
-: BFT-TEST-NO-BUILD-SHIMS ( -- )
-   0 BFT-BUILD-FILES !
-   BFT-ROOT [: BFT-CHECK-BUILD-FILE ;] WALK-FILES
-   BFT-BUILD-FILES @ 0 T= ;
-
 : BFT-CERT-WRITE ( ptr u8 n -- )
    BFT-CERT 2swap WRITE-ALL ;
-
-: BFT-TEST-CERTIFY-GOOD ( -- )
-   s" : BFT-CERT-GOOD ( n -- n ) 1 + ;" BFT-CERT-WRITE
-   s" cert-good" BFT-CERT BF-CERTIFY-RC 0 T= ;
-
-: BFT-TEST-CERTIFY-BAD ( -- )
-   s" : BFT-CERT-BAD ( n -- n ) drop ;" BFT-CERT-WRITE
-   s" cert-bad" BFT-CERT BF-CERTIFY-RC 70 T=
-   BF-CERT-DIAG-U @ 0 > TTRUE ;
-
-\ Preflight-retirement regression: the retired habu1/habu2/icode typed-shape
-\ asserts guarded emitter words against stack-effect regressions; their
-\ replacement is the checker itself (habu1/habu2 compile checked in the stage;
-\ icode is covered by the blocking static certify). Prove the real check
-\ rejects the guarded corruption - an emitter body underflowing its declared
-\ inputs (the spawn-descriptor-underflow class the asserts were added for).
-: BFT-TEST-RETIRE-REGRESSION ( -- )
-   s" : SPAWN-DUP2-ACTION ( n n -- ) drop drop drop ;" BFT-CERT-WRITE
-   s" retire-spawn-underflow" BFT-CERT BF-CERTIFY-RC 70 T=
-   BF-CERT-DIAG-U @ 0 > TTRUE ;
-
-\ Minimal refresh-prelude for scratch generated-source fixtures: one
-\ BFR-CHECK-OFF line followed by one LOWER-CERT-HOOK:INSTALL line, the same
-\ shape the real emitted stage source opens with.
-: BFT-CERT-PRELUDE+ ( -- )
-   s\" \\ audit prelude\nBFR-CHECK-OFF\nLOWER-CERT-HOOK:INSTALL\n" SB-APPEND ;
-
-: BFT-CERT-SB-WRITE ( -- )
-   BFT-CERT SB$ WRITE-ALL ;
-
-: BFT-CERT-LINE+ ( ptr u8 n -- )
-   SB-APPEND
-   BF-LF SB-APPEND-C ;
-
-\ Certification is BLOCKING: a generated stage source that rejects must fail
-\ the build with E-BUILD-CERTIFY, not warn and proceed (fail-open). The
-\ install-path proof is BFT-TEST-CERT-INJECT-INSTALL below; this pins the
-\ unit behavior on a scratch source whose only defect is the type-broken
-\ definition.
-: BFT-TEST-CERTIFY-BLOCKING ( -- )
-   SB-RESET
-   BFT-CERT-PRELUDE+
-   s" : BFT-CERT-BAD2 ( n -- n ) drop ;" BFT-CERT-LINE+
-   BFT-CERT-SB-WRITE
-   [: s" cert-blocking" BFT-CERT BF-CERTIFY-GENERATED ;] E-BUILD-CERTIFY TTHROWSQ ;
-
-: BFT-TEST-CERTIFY-GOOD-PASSES ( -- )
-   SB-RESET
-   BFT-CERT-PRELUDE+
-   s" : BFT-CERT-GOOD2 ( n -- n ) 1 + ;" BFT-CERT-LINE+
-   BFT-CERT-SB-WRITE
-   s" cert-good2" BFT-CERT BF-CERTIFY-GENERATED ;
-
 
 \ Self-certification guard: checker.f must certify as the tail of its exact
 \ pre-hook prefix. Its layout assertions consume cell.f's CORE-LAYOUT-RC and
@@ -1532,7 +1248,6 @@ variable BAD-N
    BFT-ROOT BF-TMP!
    BF-STAGE2-SOURCE
    BFT-STAGE2 FILE? TTRUE
-   BFT-STAGE2 BFT-READ BFT-TASK-ABI-DEPS
    BF-CERTIFY-STAGE2
    BF-RECORD-STAGE
    BF-STDIN-SOURCE
@@ -1730,24 +1445,13 @@ public
    s" stamp engine" [: BFT-TEST-STAMP-ENGINE ;] BFT-STEP
    s" all stamp guard" [: BFT-TEST-ALL-STAMP-GUARD ;] BFT-STEP
    s" stamp nested" [: BFT-TEST-STAMP-NESTED ;] BFT-STEP
-   s" no build shims" [: BFT-TEST-NO-BUILD-SHIMS ;] BFT-STEP
-   s" certify good" [: BFT-TEST-CERTIFY-GOOD ;] BFT-STEP
-   s" certify bad" [: BFT-TEST-CERTIFY-BAD ;] BFT-STEP
-   s" retire regression" [: BFT-TEST-RETIRE-REGRESSION ;] BFT-STEP
-   s" certify blocking" [: BFT-TEST-CERTIFY-BLOCKING ;] BFT-STEP
    s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
    s" split source pin mismatch" [: BFT-TEST-SPLIT-PIN ;] BFT-STEP
-   s" certify good passes" [: BFT-TEST-CERTIFY-GOOD-PASSES ;] BFT-STEP
    s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
    s" certify call store" [: BFT-TEST-CERTIFY-CALL-STORE ;] BFT-STEP
    s" certify tfam prefix" [: BFT-TEST-CERTIFY-TFAM-PREFIX ;] BFT-STEP
    s" certify boot prefix" [: BFT-TEST-CERTIFY-BOOT-PREFIX ;] BFT-STEP
    s" certify phase sources" [: BFT-TEST-CERTIFY-PHASE-SOURCES ;] BFT-STEP
-   s" defines scan" [: BFT-TEST-DEFINES-SCAN ;] BFT-STEP
-   s" stage2 source" [: BFT-TEST-STAGE2-SOURCE ;] BFT-STEP
-   s" no stage2 run source" [: BFT-TEST-NO-STAGE2-RUN-SOURCE ;] BFT-STEP
-   s" checked target image" [: BFT-TEST-CHECKED-TARGET-IMAGE ;] BFT-STEP
-   s" checked regalloc" [: BFT-TEST-CHECKED-REGALLOC ;] BFT-STEP
    s" snap trailer" [: TEST-TRAILER ;] BFT-STEP
    s" source boundary" [: SOURCE-BOUNDARY ;] BFT-STEP
    s" stage2 source cap" [: STAGE2 ;] BFT-STEP

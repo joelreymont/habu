@@ -17,9 +17,6 @@ create NCH-CELL 1 cells allot
 : NCH-SQ ( n -- n )
    dup * ;
 
-: NCH-SQD ( n -- n )
-   dup * ;
-
 : NCH-MAX ( n n -- n )
    2dup < if swap then drop ;
 
@@ -101,7 +98,6 @@ create NCH-CELL 1 cells allot
 : ARITHMETIC-CASE ( -- )
    s" source arithmetic and typed locals execute" T-LABEL
    7 NCH-SQ 49 T= 11 NCH-SQ 121 T=
-   7 NCH-SQD 49 T= 11 NCH-SQD 121 T=
    3 17 40 NCH-LERP 8 T=
    0 100 25 NCH-LERP 25 T=
    -40 0 30 NCH-LERP -28 T= ;

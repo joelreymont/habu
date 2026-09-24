@@ -7,10 +7,6 @@ require lib/test.f
 require lib/fs.f
 require test/checker-assert.f
 
-$20000 constant IBT-CAP
-create IBT-BUF IBT-CAP allot
-variable IBT-LEN
-
 : IBT-IMAGE-BYTES-LOADED? ( -- bool )
    s" M-RESET" XREF-FIND 0= 0= ;
 
@@ -54,21 +50,6 @@ s" MSIZE" s" -- n" TRUST
 
 : IBT-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
-
-: IBT-SOURCE ( -- ptr u8 n )
-   IBT-BUF IBT-LEN @ ;
-
-: IBT-LOAD ( ptr u8 n -- )
-   IBT-BUF IBT-CAP READ-ALL IBT-LEN ! ;
-
-: IBT-HAS? ( ptr u8 n -- bool )
-   IBT-SOURCE 2swap CONTAINS? ;
-
-: IBT-MUST-HAVE ( ptr u8 n -- )
-   IBT-HAS? TTRUE ;
-
-: IBT-MUST-LACK ( ptr u8 n -- )
-   IBT-HAS? 0= TTRUE ;
 
 : IBT-TEST-LITTLE-ENDIAN ( -- )
    M-RESET
@@ -144,35 +125,6 @@ s" MSIZE" s" -- n" TRUST
 
 package IMAGE-BYTES-TEST
 
-: SOURCE-SHAPE ( -- )
-   s" src/os/image-bytes.f" IBT-LOAD
-   s" create MBUF MSIZE allot" IBT-MUST-LACK
-   s" : MBUF ( -- ptr u8 )" IBT-MUST-HAVE
-   s" image-bytes: mmap failed" IBT-MUST-HAVE
-   s" : M-LE32@ ( off -- n )" IBT-MUST-HAVE
-   s" : M-LE64! ( n off -- )" IBT-MUST-HAVE
-   s" : M-BE32 ( n -- )" IBT-MUST-HAVE
-   s" src/os/linux/elf.f" IBT-LOAD
-   s" create MBUF MSIZE allot" IBT-MUST-LACK
-   s" variable MP" IBT-MUST-LACK
-   s" : IMG-M8" IBT-MUST-LACK
-   s" elf: MSIZE below max image" IBT-MUST-HAVE
-   s" src/os/macos/macho.f" IBT-LOAD
-   s" create MBUF MSIZE allot" IBT-MUST-LACK
-   s" variable MP" IBT-MUST-LACK
-   s" : IMG-M8" IBT-MUST-LACK
-   s" variable PHP" IBT-MUST-LACK
-   s" : PL!" IBT-MUST-LACK
-   s" macho: MSIZE below max image" IBT-MUST-HAVE
-   s" src/os/macos/sign2.f" IBT-LOAD
-   s" variable HLP" IBT-MUST-LACK
-   s" : HL@" IBT-MUST-LACK
-   s" : B32" IBT-MUST-LACK
-   s" : BSTR" IBT-MUST-LACK
-   s" M-BE32" IBT-MUST-HAVE
-   s" tools/build-fixpoint.f" IBT-LOAD
-   s" src/os/image-bytes.f" IBT-MUST-HAVE ;
-
 public
 
 : RUN ( -- )
@@ -181,7 +133,6 @@ public
    IBT-TEST-COPY-PAD
    IBT-TEST-BIG-ENDIAN
    IBT-TEST-REFINE-ERRORS
-   SOURCE-SHAPE
    T-REPORT
    s" image-bytes-test: ok" type cr ;
 

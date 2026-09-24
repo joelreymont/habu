@@ -726,39 +726,6 @@ variable ER-REG
       NEFF:ENCODE {: lb:ptr llen:n :}
    lb 10 CDIGEST:SLOT@ 1 T= ;
 
-\ The guard that keeps the digest load-bearing: the record's DECLARED field
-\ count, read back out of the type registry, is tied to the width of its
-\ canonical preimage. Adding a field and forgetting to encode it therefore
-\ reddens this suite instead of quietly producing a record that can change a
-\ compilation while keeping its old identity.
-: ROUTINE$ ( -- ptr u8 n ptr u8 n )  s" routine" s" NEFF-ROUTINE" ;
-: GPRS$ ( -- ptr u8 n ptr u8 n )     s" gprs" s" NEFF-GPRS" ;
-: PLACESEQ$ ( -- ptr u8 n ptr u8 n ) s" placeseq" s" NEFF-PLACESEQ" ;
-: FPRS$ ( -- ptr u8 n ptr u8 n )     s" fprs" s" NEFF-FPRS" ;
-: TRAITS$ ( -- ptr u8 n ptr u8 n )   s" traits" s" NEFF-TRAITS" ;
-
-: SLOTS-OF ( ptr u8 n -- n )
-   nip CDIGEST:SLOT-BYTES / ;
-
-: SCHEMA-PINS ( -- )
-   PLACESEQ$ REFLECT:FAMS 1 T=
-   PLACESEQ$ REFLECT:FLDS 1 T=
-   PLACESEQ$ REFLECT:WIDTH 1 T=
-   ROUTINE$ REFLECT:FAMS 1 T=
-   ROUTINE$ REFLECT:FLDS 14 T=
-   ROUTINE$ REFLECT:WIDTH 14 T=
-   LEAF NEFF:ENCODE SLOTS-OF ROUTINE$ REFLECT:FLDS 2 + T=
-   GPRS$ REFLECT:FAMS 1 T=
-   GPRS$ REFLECT:FLDS 1 T=
-   GPRS$ REFLECT:WIDTH 1 T=
-   FPRS$ REFLECT:FAMS 1 T=
-   FPRS$ REFLECT:FLDS 1 T=
-   TRAITS$ REFLECT:FAMS 1 T=
-   TRAITS$ REFLECT:FLDS 1 T=
-   s" nzcv" s" NEFF-NZCV" REFLECT:VARS 5 T=
-   s" link" s" NEFF-LINK" REFLECT:VARS 3 T=
-   s" control" s" NEFF-CONTROL" REFLECT:VARS 3 T= ;
-
 \ The tag is what keeps a routine contract's digest out of every other compiler
 \ record's space, so it is asserted to be its own value and not a neighbour's.
 : DOMAIN-SEPARATION ( -- )
@@ -933,7 +900,6 @@ public
    READERS
    STATIC-REJECTS
    PREIMAGE
-   SCHEMA-PINS
    DOMAIN-SEPARATION
    STABLE
    COLLECT

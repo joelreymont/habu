@@ -93,16 +93,10 @@ variable EV     variable EVD    variable PFD
 TRUSTED: TWX-CHECKER-FIND-USIG ( ptr u8 n -- bool ) CHECKER-FIND-USIG ;
 TRUSTED: TWX-FRESH ( -- n ) FRESH ;
 TRUSTED: TWX-HIDDEN-PARAM? ( n -- bool ) HIDDEN-PARAM? ;
-TRUSTED: TWX-HIDDEN-SLOT@ ( n -- n ) HIDDEN-SLOT@ ;
-TRUSTED: TWX-LAYOUT-PUSH-FIELDS ( n n -- n ) LAYOUT-PUSH-FIELDS ;
 TRUSTED: TWX-MK-HIDDEN ( n n -- n ) MK-HIDDEN ;
-TRUSTED: TWX-TAG ( n -- n ) TAG ;
 TRUSTED: TWX-MK-CON ( n -- n ) MK-CON ;
 TRUSTED: TWX-MK-VAR ( n -- n ) MK-VAR ;
-TRUSTED: TWX-MK-ROW ( n -- n ) MK-ROW ;
 TRUSTED: TWX-MK-PARAM ( n ptr u8 n n -- n ) MK-PARAM ;
-TRUSTED: TWX-P>TYPE ( n -- n ) P>TYPE ;
-TRUSTED: TWX-P>REST ( n -- n ) P>REST ;
 TRUSTED: TWX-CON-OF ( ptr u8 n -- n ) CON-OF ;
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
@@ -112,14 +106,12 @@ TRUSTED: TWX-PARAM-SCR+ ( n -- ) PARAM-SCR+ ;
 TRUSTED: TWX-PARAM>FAM ( n -- n ) PARAM>FAM ;
 TRUSTED: TWX-PARAM>HID ( n -- n ) PARAM>HID ;
 TRUSTED: TWX-PUSH-LOGICAL ( n n -- n ) PUSH-LOGICAL ;
-TRUSTED: TWX-R-RES ( n -- n ) R-RES ;
 TRUSTED: TWX-SCHEMA-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: TWX-SCHEMA-APP? ( n -- bool ) SCHEMA-APP? ;
 TRUSTED: TWX-SCHEMA-CON? ( n -- bool ) SCHEMA-CON? ;
 TRUSTED: TWX-SCHEMA-PARAM? ( n -- bool ) SCHEMA-PARAM? ;
 TRUSTED: TWX-SCHEMA-PTR? ( n -- bool ) SCHEMA-PTR? ;
 TRUSTED: TWX-SCHEMA-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
-TRUSTED: TWX-SUMV-FAM@ ( n -- n ) SUMV-FAM@ ;
 : TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
 TRUSTED: TWX-SUMV-SCH-COUNT@ ( n -- n ) SUMV-SCH-COUNT@ ;
 TRUSTED: TWX-SUMV-SCH-START@ ( n -- n ) SUMV-SCH-START@ ;
@@ -130,14 +122,11 @@ TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
 TRUSTED: TWX-CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
 TRUSTED: TWX-TFAM-CELL? ( n -- bool ) TFAM-CELL? ;
 TRUSTED: TWX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
-TRUSTED: TWX-TFAM-ENUM? ( n -- bool ) TFAM-ENUM? ;
 TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 TRUSTED: TWX-TFAM-FLD-COUNT@ ( n -- n ) TFAM-FLD-COUNT@ ;
 TRUSTED: TWX-TFAM-FLD-START@ ( n -- n ) TFAM-FLD-START@ ;
 TRUSTED: TWX-TFAM-LAYOUT-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
-TRUSTED: TWX-TFAM-LAYOUT? ( n -- bool ) TFAM-LAYOUT? ;
 TRUSTED: TWX-TFAM-PKG$ ( n -- ptr u8 n ) TFAM-PKG$ ;
-TRUSTED: TWX-TFAM-PRODUCT? ( n -- bool ) TFAM-PRODUCT? ;
 : TWX-TFAM-SLOTS@ ( n -- n ) TFAM-SLOTS@ ;
 TRUSTED: TWX-TFAM-SUM? ( n -- bool ) TFAM-SUM? ;
 TRUSTED: TWX-TFAM-VIS@ ( n -- n ) TFAM-VIS@ ;
@@ -188,15 +177,6 @@ TDIAG-BUF 8192 DIAG-BUFFER!
 \ NEWTYPE: registers a TK-CELL family in the global scope, usable in sigs.
 \ ---------------------------------------------------------------------------
 NEWTYPE tdfoo 2
-s" " s" tdfoo" TWX-TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-ARITY@ 2 T=
-TDF @ TFAM-KIND@ TK-CELL T=
-TDF @ TWX-TFAM-CELL? -1 T=
-TDF @ TWX-TFAM-VIS@ CHECKER-PACKAGE-PUBLIC T=
-TDF @ TWX-TFAM-PKG$ s" " T$=
-TDF @ TFAM-NAME$ s" tdfoo" T$=
-
 s" TDOK-USE ( tdfoo<n,n> -- tdfoo<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDBAD-ARITY ( tdfoo<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDBAD-UPPER ( Tdfoo<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
@@ -251,26 +231,6 @@ SUMTYPE tdres 2
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE
-s" " s" tdres" TWX-TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-KIND@ TK-SUM T=
-TDF @ TWX-TFAM-SUM? -1 T=
-TDF @ TFAM-ARITY@ 2 T=
-\ variant range wired at ;SUMTYPE (census contradiction C6 regression):
-TDF @ TFAM-VAR-COUNT@ 2 T=
-TDF @ TFAM-VAR-START@ TDV0 !
-TDV0 @ TWX-SUMV-FAM@ TDF @ T=
-TDV0 @ SUMV-NAME$ s" ok" T$=
-TDV0 @ TWX-SUMV-TAG@ 0 T=
-TDV0 @ 1 + SUMV-NAME$ s" err" T$=
-TDV0 @ 1 + TWX-SUMV-TAG@ 1 T=
-TDF @ TWX-TFAM-SLOTS@ 1 T=
-\ payload schemas: ok = paramref 0, err = paramref 1, one cell each.
-TDV0 @ TWX-SUMV-SCH-COUNT@ 1 T=
-TDV0 @ TWX-SUMV-PAYCELLS@ 1 T=
-TDV0 @ TWX-SUMV-SCH-START@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-PARAM? -1 T=
-TDV0 @ TWX-SUMV-SCH-START@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 0 T=
-TDV0 @ 1 + TWX-SUMV-SCH-START@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 1 T=
 \ the sum family name is usable in signatures as a logical type expression.
 s" TDOK-RES ( tdres<n,n> -- tdres<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDBAD-RES1 ( tdres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
@@ -402,10 +362,6 @@ SUMTYPE tdmix 2
   VARIANT small a ;VARIANT
   VARIANT big a b n ;VARIANT
 ;SUMTYPE
-s" " s" tdmix" TWX-TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TWX-TFAM-SLOTS@ 3 T=
-
 \ ---------------------------------------------------------------------------
 \ ENUM (item 14, docs §9.3): `ENUM name v0 v1 .. ;ENUM` registers a TK-ENUM
 \ family — a zero-payload sum (arity 0, slots 0) — one bare variant name per
@@ -418,28 +374,6 @@ ENUM tdcolor
   green
   blue
 ;ENUM
-s" " s" tdcolor" TWX-TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-KIND@ TK-ENUM T=
-TDF @ TWX-TFAM-ENUM? -1 T=
-TDF @ TWX-TFAM-SUM? 0 T=
-TDF @ TWX-TFAM-CELL? 0 T=
-TDF @ TFAM-ARITY@ 0 T=
-TDF @ TWX-TFAM-VIS@ CHECKER-PACKAGE-PUBLIC T=
-TDF @ TFAM-VAR-COUNT@ 3 T=
-TDF @ TWX-TFAM-SLOTS@ 0 T=
-\ width is tag-only (docs §18: WIDTH(enum) = tag width = 1).
-TDF @ TFAM-WIDTH@ 1 T=
-TDF @ TFAM-VAR-START@ TDV0 !
-TDV0 @ TWX-SUMV-FAM@ TDF @ T=
-TDV0 @ SUMV-NAME$ s" red" T$=
-TDV0 @ TWX-SUMV-TAG@ 0 T=
-TDV0 @ TWX-SUMV-PAYCELLS@ 0 T=
-TDV0 @ TWX-SUMV-SCH-COUNT@ 0 T=
-TDV0 @ 1 + SUMV-NAME$ s" green" T$=
-TDV0 @ 1 + TWX-SUMV-TAG@ 1 T=
-TDV0 @ 2 + SUMV-NAME$ s" blue" T$=
-TDV0 @ 2 + TWX-SUMV-TAG@ 2 T=
 \ the bare enum tail resolves as a logical type in a signature (arity-0 family).
 s" TDE-ID ( tdcolor -- tdcolor )" CHECK-QUIET-CANDIDATE! -1 T=
 \ generated constructors: TDCOLOR:GREEN ( -- tdcolor ). A raw n is NOT the enum
@@ -453,61 +387,12 @@ s" TDE-MK2 ( n -- tdcolor ) TDCOLOR:RED" CHECK-QUIET-CANDIDATE! 0 T=
 \ ---------------------------------------------------------------------------
 \ PRODUCT (item 15, docs §9.4): `PRODUCT name arity FIELD f t .. ;PRODUCT`
 \ registers a TK-PRODUCT family — a single-shape record with named PF-* field
-\ rows and NO tag. Each `FIELD name type` adds one PF row (family, field tail,
-\ field schema root, physical slot) and one cell of width, so TFAM-SLOTS = field
-\ count and WIDTH(product) = field cells. Metadata only in this slice: the family
-\ resolves in signatures and expands to hidden fields through the generic
-\ TWX-LAYOUT-PUSH-FIELDS (shared with sums/enums), but no constructor is published.
+\ rows and NO tag. It resolves in signatures and transports as a whole bundle.
 \ ---------------------------------------------------------------------------
-DECL-EVENT:COUNT TDT-EVENT:BASE !
 PRODUCT tdpair 2
   FIELD fst a
   FIELD snd b
 ;PRODUCT
-s" " s" tdpair" TWX-TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-KIND@ TK-PRODUCT T=
-TDF @ TWX-TFAM-PRODUCT? -1 T=
-TDF @ TWX-TFAM-SUM? 0 T=
-TDF @ TWX-TFAM-ENUM? 0 T=
-TDF @ TWX-TFAM-CELL? 0 T=
-TDF @ TWX-TFAM-LAYOUT? -1 T=
-TDF @ TFAM-ARITY@ 2 T=
-TDF @ TWX-TFAM-VIS@ CHECKER-PACKAGE-PUBLIC T=
-DECL-EVENT:COUNT TDT-EVENT:BASE @ 4 + T=
-TDT-EVENT:BASE @ DECL-EVENT:DECL? -1 T=
-TDT-EVENT:BASE @ 1 + DECL-EVENT:ARITY? -1 T=
-TDT-EVENT:BASE @ 2 + DECL-EVENT:FIELD? -1 T=
-TDT-EVENT:BASE @ 3 + DECL-EVENT:FIELD? -1 T=
-TDT-EVENT:BASE @ DECL-EVENT:FAMILY@ TDF @ T=
-TDT-EVENT:BASE @ 1 + DECL-EVENT:FAMILY@ TDF @ T=
-TDT-EVENT:BASE @ 1 + DECL-EVENT:VAR@ 2 T=
-\ width = field cells, NO tag (docs §18: WIDTH(product) = sum of field widths).
-TDF @ TWX-TFAM-SLOTS@ 2 T=
-TDF @ TFAM-WIDTH@ 2 T=
-\ two PF field rows, id-keyed by (family, tail), in declaration slot order.
-TDF @ TWX-TFAM-FLD-COUNT@ 2 T=
-TDF @ TYPE-FIELD:NO-VARIANT s" fst" TYPE-FIELD:FIND TDOK ! TDX !
-TDOK @ -1 T=
-TDX @ TYPE-FIELD:FAMILY@ TDF @ T=
-TDX @ TYPE-FIELD:SLOT@ 0 T=
-TDX @ TYPE-FIELD:NAME$ s" fst" T$=
-TDF @ TYPE-FIELD:NO-VARIANT s" snd" TYPE-FIELD:FIND TDOK ! TDY !
-TDOK @ -1 T=
-TDY @ TYPE-FIELD:SLOT@ 1 T=
-\ field schema: fst = paramref 0, snd = paramref 1 (one cell each).
-TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-PARAM? -1 T=
-TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 0 T=
-TDY @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 1 T=
-\ generated-word metadata (item 15): two generator-owned SUMV rows sharing the
-\ field schema range, ctor package derived from the (pkg, tail) identity.
-TDF @ TFAM-VAR-COUNT@ 2 T=
-TDF @ TFAM-VAR-START@ SUMV-NAME$ s" make" T$=
-TDF @ TFAM-VAR-START@ 1 + SUMV-NAME$ s" unmake" T$=
-TDF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" TDPAIR" T$=
-TDF @ TFAM-VAR-START@ TWX-SUMV-PAYCELLS@ 2 T=
-TDF @ TFAM-VAR-START@ TWX-SUMV-SCH-COUNT@ 2 T=
-TDF @ TFAM-VAR-START@ TWX-SUMV-SCH-START@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-PARAM? -1 T=
 \ a concrete-arg product expands to hidden fields in a signature and transports
 \ as ONE whole bundle (dup/drop are width-aware, item 12); identity flows.
 s" TDP-ID ( tdpair<n,n> -- tdpair<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
@@ -523,14 +408,6 @@ PRODUCT tdpoint 0
   FIELD x n
   FIELD y n
 ;PRODUCT
-s" " s" tdpoint" TWX-TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-ARITY@ 0 T=
-TDF @ TWX-TFAM-SLOTS@ 2 T=
-TDF @ TFAM-WIDTH@ 2 T=
-TDF @ TYPE-FIELD:NO-VARIANT s" x" TYPE-FIELD:FIND TDOK ! TDX !   TDOK @ -1 T=
-TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-CON? -1 T=
-TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ CC-N T=
 s" TDPT-ID ( tdpoint -- tdpoint )" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ mixed param + ptr fields: a ptr field is one cell; arity 1 has one param field.
@@ -549,11 +426,7 @@ TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TWX-SCHEMA-A@ s" u8" TWX
 
 \ ---------------------------------------------------------------------------
 \ item 12 (habu-tfam-12), slice 1 — layout-aware generic stack ops. A logical
-\ sum/enum/product layout value is still ONE physical T-PARAM cell at this stage
-\ (item 7 kept it one cell; no TWX-LAYOUT-PUSH-FIELDS expansion, no published
-\ constructors, so a wider-than-one-cell layout value is not even constructible
-\ yet). A WHOLE-BUNDLE transport op moves the value as one logical unit and is
-\ now accepted: dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over,
+\ sum/enum/product layout value moves as one logical unit through dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over,
 \ >r/r>/r@/2>r/2r>/2r@, and locals capture. Every OTHER touch still fails
 \ closed: ?dup (branches on the tag cell), control predicates, higher-order
 \ apply, arithmetic/compare/store, and hidden '@' field names in a public
@@ -779,11 +652,9 @@ s" TDS1-MIX ( tdlight ptr tdcolor -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 \ no n<->enum laundering in either direction.
 s" TDS1-NIN ( n ptr tdcolor -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDS1-NOUT ( ptr tdcolor -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
-\ W > 1 store/fetch certifies and records the operation bundle width at pos 0.
+\ W > 1 store/fetch certifies before the executed round-trips below.
 s" TDS2-WIDE ( tdres<n,n> ptr tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
-WF-N@ 1 T=  0 WF-OFF@ 43 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 2 T=
 s" TDS2-WIDEF ( ptr tdres<n,n> -- tdres<n,n> ) @" CHECK-QUIET-CANDIDATE! -1 T=
-WF-N@ 1 T=  0 WF-OFF@ 44 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 2 T=
 \ wide family mismatch and scalar laundering stay rejected.
 s" TDS2-WMIX ( tdres<n,n> ptr tdmix<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDS2-WNIN ( n ptr tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
@@ -885,13 +756,11 @@ s" TDP4 ( tdprec -- tdcolor ) TDPREC:UNMAKE drop drop" CHECK-QUIET-CANDIDATE! -1
      blue OF 2 ENDOF
    ;MATCH ;
 TDP-CODE 2 T=
-\ Wide PRODUCT memory uses the same family-typed address contract and records
-\ its full W=3 bundle width. A different family or scalar result cannot cross
+\ Wide PRODUCT memory transports its full W=3 bundle. A different family or
+\ scalar result cannot cross
 \ the boundary even when the physical representation is cell-based.
 s" TDP-MEM-S ( tdprec ptr tdprec -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
-WF-N@ 1 T=  0 WF-OFF@ 35 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 3 T=
 s" TDP-MEM-F ( ptr tdprec -- tdprec ) @" CHECK-QUIET-CANDIDATE! -1 T=
-WF-N@ 1 T=  0 WF-OFF@ 35 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 3 T=
 s" TDP-MEM-MIX ( tdprec ptr tdmix<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDP-MEM-N ( ptr tdprec -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
 1 LAYOUT-BUFFER TDP-BUF tdprec
@@ -1036,47 +905,6 @@ s" " s" tdfoo" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-WIDTH@ 1 T=
 
-\ --- item 12 slice-2: per-token width facts (the emitter fact surface). One
-\ row per LAYOUT operand of a transport op / locals capture: (raw source offset,
-\ operand position 0=top, family-id, registry logical width). Absence = every
-\ operand one cell. Offsets are byte positions in the checked body buffer.
-\ The table is per-CHECK scratch, read here right after each verdict.
-s" " s" tdres" TWX-TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-s" " s" tdmix" TWX-TFAM-FIND-IN TDOK ! TDX !
-TDOK @ -1 T=
-s" WF1 ( tdres<n,n> n -- n tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! -1 T=
-WF-N@ 1 T=
-0 WF-OFF@ 37 T=
-0 WF-POS@ 1 T=
-0 WF-FAM@ TDF @ T=
-0 WF-WIDTH@ 2 T=
-\ no layout operands -> no facts.
-s" WF2 ( n n -- n n ) swap" CHECK-QUIET-CANDIDATE! -1 T=
-WF-N@ 0 T=
-\ two layout operands at one op -> one fact per operand, top position first.
-s" WF3 ( tdres<n,n> tdmix<n,n> -- tdmix<n,n> tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! -1 T=
-WF-N@ 2 T=
-0 WF-POS@ 0 T=
-0 WF-FAM@ TDX @ T=
-0 WF-WIDTH@ 4 T=
-1 WF-POS@ 1 T=
-1 WF-FAM@ TDF @ T=
-1 WF-WIDTH@ 2 T=
-\ return-stack transfers record from the row each op consumes (>r data, r> return).
-s" WF4 ( tdres<n,n> -- tdres<n,n> ) >r r>" CHECK-QUIET-CANDIDATE! -1 T=
-WF-N@ 2 T=
-0 WF-OFF@ 33 T=
-1 WF-OFF@ 36 T=
-0 WF-WIDTH@ 2 T=
-1 WF-WIDTH@ 2 T=
-\ locals capture records the whole group at the :} token.
-s" WF5 ( tdres<n,n> n -- n ) {: x y:n :} y" CHECK-QUIET-CANDIDATE! -1 T=
-WF-N@ 1 T=
-0 WF-OFF@ 35 T=
-0 WF-POS@ 1 T=
-0 WF-FAM@ TDF @ T=
-0 WF-WIDTH@ 2 T=
 \ facts are per-CHECK scratch: a rejected def may still record rows for tokens
 \ past the reject (never consumed — emitters read facts only for certified
 \ defs); the NEXT check resets the table, so no stale row can leak forward.
@@ -1084,12 +912,6 @@ s" WF6 ( tdres<n,n> -- ) ?dup drop drop" CHECK-QUIET-CANDIDATE! 0 T=
 WF-N@ 1 T=
 s" WF7 ( n -- n )" CHECK-QUIET-CANDIDATE! -1 T=
 WF-N@ 0 T=
-\ the fact surface is checker-modeled: checked consumers (slice-3 emit helpers)
-\ certify against the PRIM rows.
-s" TDWF-CHK ( -- n ) WF-N@" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDWF-CHK2 ( n -- n ) WF-WIDTH@" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDWF-CHK3 ( n -- n ) TFAM-WIDTH@" CHECK-QUIET-CANDIDATE! -1 T=
-
 \ ---------------------------------------------------------------------------
 \ package-scoped declarations: family rows carry the active package and the
 \ active visibility mode. Plain user packages — no reserved package is opened.
@@ -1960,16 +1782,11 @@ s" TDTOK2" TWX-CHECKER-FIND-USIG -1 T=
 DIAG-BUFFER-OFF
 
 \ ---------------------------------------------------------------------------
-\ item 12 slice-3a: hidden-field substrate (inert). Drives the new checker
-\ substrate at TOP-LEVEL interpret (registry words resolve here; new never runs,
-\ so the terms built below survive across every assert). No CHECK runs after the
-\ first term is built. TWX-LAYOUT-PUSH-FIELDS is NOT wired into TWX-PUSH-LOGICAL yet, so
-\ every check above this section already proved user-visible behavior unchanged.
+\ Hidden-field unification boundaries. Terms survive because no CHECK runs
+\ between construction and the final unification.
 \ ---------------------------------------------------------------------------
 variable TD3F    variable TD3M    variable TD3OK
 variable TD3LOG  variable TD3MLOG
-variable TD3H0   variable TD3H1
-variable TD3ROW  variable TD3CUR
 
 \ resolve the tdres (width 2) and tdmix (width 4) families declared above.
 s" " s" tdres" TWX-TFAM-FIND-IN TD3OK ! TD3F !
@@ -1986,28 +1803,6 @@ s" tdres" TD3F @ TWX-MK-PARAM  TD3LOG !
 TD3LOG @ TWX-HIDDEN-PARAM? 0 T=
 TD3LOG @ TWX-PARAM>HID 0 T=
 TD3LOG @ TWX-PARAM>FAM TD3F @ T=
-
-\ mint hidden fields for slot 0 (payload) and slot 1 (tag = W-1).
-TD3LOG @ 0 TWX-MK-HIDDEN TD3H0 !
-TD3LOG @ 1 TWX-MK-HIDDEN TD3H1 !
-TD3H0 @ TWX-HIDDEN-PARAM? -1 T=
-TD3H1 @ TWX-HIDDEN-PARAM? -1 T=
-TD3H0 @ TWX-HIDDEN-SLOT@ 0 T=
-TD3H1 @ TWX-HIDDEN-SLOT@ 1 T=
-TD3H0 @ TWX-PARAM>HID 1 T=          \ slot+1 encoding
-TD3H1 @ TWX-PARAM>HID 2 T=
-TD3H0 @ TWX-PARAM>FAM TD3F @ T=
-TD3H1 @ TWX-PARAM>FAM TD3F @ T=
-
-\ TWX-LAYOUT-PUSH-FIELDS on an empty fresh row pushes exactly W=2 cells, tag on top,
-\ slot0 deepest (docs §5). Walk top-down: W-1 (tag), then 0, then the base var.
-TWX-FRESH TWX-MK-ROW  TD3ROW !
-TD3LOG @ TD3ROW @ TWX-LAYOUT-PUSH-FIELDS  TD3CUR !
-TD3CUR @ TWX-R-RES TWX-TAG S-PUSH T=                                  \ top cell present
-TD3CUR @ TWX-R-RES TWX-P>TYPE TWX-HIDDEN-SLOT@ 1 T=                       \ ...is the tag (slot W-1)
-TD3CUR @ TWX-R-RES TWX-P>REST TWX-R-RES TWX-TAG S-PUSH T=                     \ next cell present
-TD3CUR @ TWX-R-RES TWX-P>REST TWX-R-RES TWX-P>TYPE TWX-HIDDEN-SLOT@ 0 T=          \ ...is slot0
-TD3CUR @ TWX-R-RES TWX-P>REST TWX-R-RES TWX-P>REST TWX-R-RES TWX-TAG S-ROW T=         \ then the base row var — exactly W cells added
 
 \ unification discipline (TWX-UNIFY ( t t -- bool ), self-contained per call).
 \ same family + same slot -> pair.

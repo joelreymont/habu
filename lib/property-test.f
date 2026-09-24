@@ -35,13 +35,6 @@ require lib/property.f
    s" x " PROP:BUF+
    [: PT-SHRINK-FALSE? ;] PROP:SHRINK ;
 
-: PT-EXAMPLE-PROP ( -- )
-   7 16 PROP:RUN-RESET
-   0 begin dup PROP:COUNT@ < while
-      100 PROP:RND% dup * 0 >= TTRUE
-      1+
-   repeat drop ;
-
 create PT-PICKS 8 cells allot
 
 \ Check both adjacent draws and the fixed-stride sampling used by generators.
@@ -78,12 +71,6 @@ PROP:DEFAULTS PROP:DEFAULT-COUNT T= PROP:DEFAULT-SEED T=
 1 5 PROP:RUN-RESET
 PROP:SEED@ 1 T=
 PROP:COUNT@ 5 T=
-PROP:RND 1103527590 T=
-PROP:SEED@ 1103527590 T=
-
-1 PROP:SEED!
-10 PROP:RND% 2 T=
-8 PROP:RND% 1 T=
 
 PROP:BUF-RESET
 65 PROP:BUF-C+
@@ -119,7 +106,6 @@ PROP:BUF$ s" dup " T$=
 ' PT-BAD-STEP E-PROP-GENERATOR TTHROWS
 ' PT-BAD-SHRINK E-PROP-SHRINK TTHROWS
 
-PT-EXAMPLE-PROP
 PT-PICK-COVERAGE
 PT-COIN-RUNS
 

@@ -11,17 +11,13 @@ public
 : EMIT-FILE$ ( -- ptr u8 n )
    s" src/habu/habu2.f" ;
 
-: LAYOUT-FILE$ ( -- ptr u8 n )
-   s" src/habu/layout.f" ;
-
 \ The condition-code names live beside the four-bit field `?COND` bounds, in the
 \ encoder itself. src/arch/arm64/mnem.f carried a second copy until the compare
 \ and branch forms landed; it reads the encoder's now, and so does this gate.
 : COND-FILE$ ( -- ptr u8 n )
    s" src/arch/arm64/asm.f" ;
 
-\ The chain's four scaffold words are declared in the first emitter file, not
-\ the second, so the pinned-constant rows below have to read both.
+\ The chain's four scaffold words are declared in the first emitter file.
 : SCAFFOLD-FILE$ ( -- ptr u8 n )
    s" src/habu/habu1.f" ;
 
@@ -29,145 +25,8 @@ public
 : DECL-FILE$ ( -- ptr u8 n )
    s" src/habu/address-carrier.f" ;
 
-\ ---- 1. the pinned band constants --------------------------------------------
-\ Each row is a shipped constant and the model definition that mirrors it. The
-\ Site kind values are read from the shipped relocation vocabulary.
-
-16 constant PIN-COUNT
-
-: PIN-FILE$ ( n -- ptr u8 n )
-   case
-      0 of LAYOUT-FILE$ endof
-      1 of LAYOUT-FILE$ endof
-      2 of LAYOUT-FILE$ endof
-      3 of LAYOUT-FILE$ endof
-      4 of LAYOUT-FILE$ endof
-      5 of EMIT-FILE$ endof
-      6 of LAYOUT-FILE$ endof
-      7 of DECL-FILE$ endof
-      8 of DECL-FILE$ endof
-      9 of DECL-FILE$ endof
-      10 of SCAFFOLD-FILE$ endof
-      11 of SCAFFOLD-FILE$ endof
-      12 of SCAFFOLD-FILE$ endof
-      13 of SCAFFOLD-FILE$ endof
-      14 of DECL-FILE$ endof
-      15 of DECL-FILE$ endof
-      E-CRL-ROW throw
-   endcase ;
-
-: PIN-NAME$ ( n -- ptr u8 n )
-   case
-      0 of s" REGION-OFF" endof
-      1 of s" RBASE-VA" endof
-      2 of s" BL-REACH" endof
-      3 of s" REGION" endof
-      4 of s" CALLMAP-RC" endof
-      5 of s" BL-OP-HI" endof
-      6 of s" ADDRMAP-RC" endof
-      7 of s" ADDR-OPC-MASK" endof
-      8 of s" ADDR-IMM-MASK" endof
-      9 of s" ADDR-CHAIN-BYTES" endof
-      10 of s" W-MOVZ0" endof
-      11 of s" W-MOVK1" endof
-      12 of s" W-MOVK2" endof
-      13 of s" W-MOVK3" endof
-      14 of s" ADDR-RD-MASK" endof
-      15 of s" ADDR-RD-BITS" endof
-      E-CRL-ROW throw
-   endcase ;
-
-: PIN-MODEL$ ( n -- ptr u8 n )
-   case
-      0 of s" region_off" endof
-      1 of s" rbase_va" endof
-      2 of s" bl_reach" endof
-      3 of s" region_bytes" endof
-      4 of s" callmap_rc" endof
-      5 of s" bl_op_hi" endof
-      6 of s" addrmap_rc" endof
-      7 of s" addr_opc_mask" endof
-      8 of s" addr_imm_mask" endof
-      9 of s" addr_chain_bytes" endof
-      10 of s" w_movz0" endof
-      11 of s" w_movk1" endof
-      12 of s" w_movk2" endof
-      13 of s" w_movk3" endof
-      14 of s" addr_rd_mask" endof
-      15 of s" addr_rd_bits" endof
-      E-CRL-ROW throw
-   endcase ;
-
-: PIN-VALUE ( n -- n )
-   case
-      0 of $1000000 endof
-      1 of $300000000 endof
-      2 of $8000000 endof
-      3 of $2000000 endof
-      4 of 95 endof
-      5 of $25 endof
-      6 of 97 endof
-      7 of $FFE0001F endof
-      8 of $FFFF endof
-      9 of 16 endof
-      10 of $D2800009 endof
-      11 of $F2A00009 endof
-      12 of $F2C00009 endof
-      13 of $F2E00009 endof
-      14 of $1F endof
-      15 of 5 endof
-      E-CRL-ROW throw
-   endcase ;
-
-\ Producer classes are model data, not a census of the emitter's helper names.
-16 constant PROD-COUNT
-
-: PROD-MODEL$ ( n -- ptr u8 n )
-   case
-      0 of s" P_scalar_lit" endof
-      1 of s" P_scalar_raw_lit" endof
-      2 of s" P_addr_carrier" endof
-      3 of s" P_addr_carrier_push" endof
-      4 of s" P_data_addr" endof
-      5 of s" P_data_addr_raw" endof
-      6 of s" P_code_addr" endof
-      7 of s" P_pc_relative_adr" endof
-      8 of s" P_direct_call" endof
-      9 of s" P_aot_call_patch" endof
-      10 of s" P_aot_code_reloc" endof
-      11 of s" P_aot_xt_patch" endof
-      12 of s" P_aot_data_reloc" endof
-      13 of s" P_defer_cell" endof
-      14 of s" P_data_pointer_cell" endof
-      15 of s" P_defer_metadata" endof
-      E-CRL-ROW throw
-   endcase ;
-
-: PROD-CLASS$ ( n -- ptr u8 n )
-   case
-      0 of s" Not_an_address" endof
-      1 of s" Not_an_address" endof
-      2 of s" Named_at_site" endof
-      3 of s" Named_at_site" endof
-      4 of s" Recorded R_addrmap" endof
-      5 of s" Recorded R_addrmap" endof
-      6 of s" Recorded R_addrmap" endof
-      7 of s" Position_independent" endof
-      8 of s" Recorded R_callmap" endof
-      9 of s" Recorded R_callmap" endof
-      10 of s" Recorded R_addrmap" endof
-      11 of s" Recorded R_addrmap" endof
-      12 of s" Fixed_mapping" endof
-      13 of s" Recorded R_xtcell" endof
-      14 of s" Recorded R_xtcell" endof
-      15 of s" Fixed_mapping" endof
-      E-CRL-ROW throw
-   endcase ;
-
 \ ---- what each vector row is there to show -----------------------------------
-\ Every role must be covered by at least one row. The tables carry no digest, so
-\ the roles are the freeze: a row that stops being covered fails the coverage
-\ check in the cases file rather than quietly shrinking what the gate asks.
+\ Roles describe the relocation behavior each row exercises.
 
 0 constant ROLE-IDENTITY     \ same base both runs: the image comes back byte for byte
 1 constant ROLE-REBASE-UP    \ the restoring run's region sits above the writing run's
@@ -578,8 +437,7 @@ variable XOPEN-BASE
 \ It is deliberately not REGION: the rows place a site at the band's last word
 \ ($1017FFFF0 = base + $7FFFF0) to prove the pass relocates there, and that
 \ property belongs to the band a row declares, not to whatever capacity REGION
-\ currently has. REGION's own value is pinned once, in PIN-VALUE, against
-\ layout.f and the model. The canonical base is the RBASE-VA sentinel
+\ currently has. The canonical base is the RBASE-VA sentinel
 \ ($300000000) and the two live bases are ordinary region bases.
 
 \ Same band base both runs: the region comes back word for word, including the

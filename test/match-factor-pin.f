@@ -1,49 +1,6 @@
-\ match-factor-pin.f - persistent pin for the factored native MATCH/construct
-\ compiler stencils (dot habu-pin-factored-match-08a85f14).
-\
-\ Commit ed6207a00ef7 ("Factor repeated MATCH compiler stencils") replaced three
-\ byte-identical inline engine sequences in EM-COMPILE-ADT-MODE (src/habu/habu2.f)
-\ with BL/B-shared subroutines LADTPUSHTOK / LMFRTOP / LADTDIE, a -408 B
-\ compiler-text win. That landing shipped NO focused regression: the required
-\ byte-identical emitted-USER-code and diagnostic-path proof was not persistent.
-\ This fixture is emitted-user-code and diagnostic-path coverage.
-\
-\ Before/after evidence (recorded once at authoring, spark linux-arm64): the
-\ pinned bytes and every diagnostic below were captured from an engine built at
-\ ed6207a00ef7's PARENT (pre-factoring) and at the factored fixpoint; all were
-\ byte-for-byte and character-for-character identical. The pinned constants here
-\ are that shared value, so a future emit/diagnostic drift fails this gate with
-\ no historical engine needed.
-\
-\ Coverage (each an assertion below):
-\   payload construction        PIN con-ok / con-err emitted bytes (a wide-variant
-\                               constructor emits the same single tag push)
-\   MATCH success               RT round-trips execute to the pinned results
-\   wide payloads               PIN match-wide (multi-cell arm), RT wide round-trip
-\   tag mismatch                DIAG bad-tag: rc 85 + "hb: bad mfp tag"
-\   underdepth                  DIAG under: rc 70 + "hb: interpret stack underdepth: PWN"
-\   package wordlist restoration PKG: match+construct inside a package; the
-\                               private word is gone after ;package (E-UNDEFINED)
-\   write-xor-execute discipline RT/PKG runs prove the LPROT RW/RX flips in the
-\                               shared legs are exact (a botched flip faults, not
-\                               exits 0) and the bad-tag die (inline emit under
-\                               RW, then run) executes
-\   factored failure branches   DIAG con/match unknown family|variant, expected-of:
-\                               every LADTDIE caller dies at its own token, rc 70
-\   ahead-of-time compilation   the pinned bytes ARE what an AOT image bakes (the
-\                               factored routines are compiler text, never copied
-\                               into the user image); end-to-end AOT MATCH round
-\                               trips are gated by test/gate-aot-positive-lib.f
-\                               (GAP-FETCH / GEMT), which this pin backstops
-\   fixpoint bootstrap          every case runs under the self-rebuilt fixpoint
-\                               bin/hb (SUBJECT forks re-invoke it), so the
-\                               factored compiler in the fixpoint image is what
-\                               emits the pinned bytes
-\ Negatives and positives run in disposable SUBJECT forks so a die never touches
-\ the registry process.
-\
-\ Standalone (requires resolve every dependency; run BY THE ENGINE over stdin):
-\   bin/hb < test/match-factor-pin.f
+\ match-factor-pin.f - construct/MATCH execution and diagnostic regressions.
+\ Runs real programs in disposable engine processes and checks their results.
+\ Run: bin/hb --load test/match-factor-pin.f
 
 require lib/errors.f
 require lib/string.f
@@ -86,19 +43,12 @@ variable ERR-U
    CAP-LENS ;
 
 \ --- assertion shapes -----------------------------------------------------
-\ Positive: exit 0, empty stderr, stdout equals the pinned bytes.
+\ Positive: exit 0, empty stderr, stdout equals the expected output.
 : POS ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n src:ptr srcu:n want:ptr wantu:n :}
    label labelu T-LABEL   src srcu 0 RUN!
    label labelu T-LABEL   ERR$ s" " T$=
    label labelu T-LABEL   OUT$ want wantu T$= ;
-
-\ Assert one pinned hex line is present in the last capture's stdout (the whole
-\ per-word byte string appears verbatim). Runs against the single PIN-PROG dump
-\ already captured by RUN!, so all representative words share one fork.
-: PIN= ( ptr u8 n ptr u8 n -- )
-   {: label:ptr labelu:n hex:ptr hexu:n :}
-   label labelu T-LABEL   OUT$ hex hexu CONTAINS? TTRUE ;
 
 \ Negative: exact exit code + a stderr diagnostic substring; the armed-line
 \ stdout (if any) is pinned exactly so a fail-open (silent accept) trips too.
@@ -107,173 +57,6 @@ variable ERR-U
    label labelu T-LABEL   src srcu rc RUN!
    label labelu T-LABEL   OUT$ out outu T$=
    label labelu T-LABEL   ERR$ diag diagu CONTAINS? TTRUE ;
-
-\ --- PIN: exact emitted-user-byte fixtures --------------------------------
-\ Each source defines representative construct/match words and dumps the exact
-\ bytes each emits (cp@ span -> hex). CB@ is the sole raw read boundary (the
-\ mmap'd code region is not a checked object); the family name is fixed so the
-\ bad-tag die message bytes are stable. The dumped hex below is the pin.
-\
-\ Disassembly of the pinned words (decoded with src/arch/arm64/disasm.f;
-\ operands are register/imm indices):
-\   con-ok   sub sp,#16; str x30,[sp]; movz x16,#0(tag); str x16,[x19];
-\            add x19,#8; ldr x30,[sp]; add sp,#16; ret            (32 B)
-\   con-err  identical but movz x16,#1(err tag)                   (32 B)
-\   match-2  ldur x9,[x19,#-8]; cmp x9,#0; b.ne +.. ; sub x19,#8;
-\            <arm ok: bl +>; ...; cmp x9,#1; b.ne ..; <arm err: bl negate>;
-\            b .. ; inline bad-tag die "hb: bad mfp tag\n" write(2)+exit85 (128 B)
-\   match-3  three cmp #tag / b.ne dispatch arms + shared bad-tag die (164 B)
-\ The bad-tag die block is the C-DIE-BAD-TAG inline emission reached on a
-\ scrutinee whose tag matches no arm; it is emitted per MATCH, not shared.
-\
-\ A CALL IN AN ARM IS PINNED AS A CALL AND NOT AS A DISPLACEMENT. 3e024d582ba5
-\ ("Select the JIT tier for loads and the IR tier for builds") turned the
-\ engine's inline arm off - "THE INLINE ARM IS OFF, AND TIER 0 ALWAYS CALLS" in
-\ src/habu/habu2.f - because the safety scan behind C-CALL-COPY-INLINE was never
-\ validated against the shapes the IR tier emits. So an arm that used to carry a
-\ copy of its callee's body now carries one `bl imm26`: match-2's `1 +` and
-\ `negate` are one call each and match-wide's `100 *` and `nip nip` are three,
-\ which is the whole of what moved in the two strings below (every branch
-\ displacement shrank by exactly the words those copies occupied, and match-3,
-\ con-ok and con-err hold no callee at all and are unchanged byte for byte).
-\ A `bl`'s imm26 is the distance from the call site to the callee's body in the
-\ engine's own text, so it is a fact about where this engine was linked and where
-\ the fixture's own preamble left the code pointer - one added definition ahead of
-\ the dump moves it. MFP-WORD therefore dumps a `bl` as "00000094", the opcode
-\ with a zero displacement, and every other instruction byte for byte. What the
-\ arms CALL is not left unpinned by that: RT-CASES below executes both eliminators
-\ and the wide one and pins the values they answer, which no other callee
-\ produces. A message byte quad that happened to decode as `bl` would also be
-\ normalized; none of the three messages does, and the reading is the safe
-\ direction (the pin changes and has to be re-derived rather than silently
-\ passing).
-\
-\ Per-target pins: con-ok / con-err carry no die block, so their single
-\ tag-push bytes are byte-identical on linux-arm64 and macos-aarch64 and stay
-\ pinned unconditionally. The bad-tag die block that terminates match-2 /
-\ match-wide / match-3 ends in an inline write(2)+exit syscall pair whose
-\ syscall-number register, syscall numbers, and trap immediate are per-target:
-\ linux loads x8 (write #0x40, exit_group #0x5E) and traps with `svc #0`; macos
-\ loads x16 (write #4, exit #1) and traps with `svc #0x80`. Every byte before
-\ that pair -- the dispatch arms, the "hb: bad mfp tag" message, and the x0
-\ exit status -- is identical across targets. Both targets are pinned below,
-\ selected with HB-TARGET-MACOS?; the linux strings are measured linux-arm64
-\ bytes and the macos strings were measured on macos-aarch64, each at this
-\ tree's fixpoint. match-2's and match-wide's macos strings were re-derived for
-\ the call normalization above by applying that same two-instruction tail
-\ substitution to the re-measured linux string, which reproduces the committed
-\ macos strings from the committed linux ones exactly; they have not been
-\ re-measured on macos-aarch64.
-\
-\ The dump program is assembled once so every representative word shares the
-\ reader/formatter; SHOW prints one word's emitted instructions as an
-\ uppercase-hex line, four bytes at a time. Each expected line below is
-\ CONTAINS?-asserted, so the full per-word byte string must appear verbatim in
-\ the dump.
-create PIN-PROG 4096 allot
-variable PIN-PROG-U
-
-: PP+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a PIN-PROG PIN-PROG-U @ + u BYTE-COPY
-   PIN-PROG-U @ u + PIN-PROG-U ! ;
-
-: PIN-PROG! ( -- )
-   0 PIN-PROG-U !
-   s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n" PP+
-   s\" SUMTYPE mfpw 0\n  VARIANT small n ;VARIANT\n  VARIANT big ptr u8 n n ;VARIANT\n;SUMTYPE\n" PP+
-   s\" SUMTYPE mfpt 0\n  VARIANT one ;VARIANT\n  VARIANT two ;VARIANT\n  VARIANT three ;VARIANT\n;SUMTYPE\n" PP+
-   \ The dump helpers carry an MFP- prefix because this program runs at GLOBAL
-   \ scope in the child, and the engine's baked REPL/debugger set is in that
-   \ scope too since the AOT seed began running on every boot (dot
-   \ habu-decide-arm-the-5234727b): the old `HN` collided with repl.f's `HN` and
-   \ killed the whole dump with `duplicate definition`. The pinned words below
-   \ are unaffected - their bytes hold no absolute address and no helper call.
-   s\" variable MFP-A\n" PP+
-   s\" variable MFP-C\n" PP+
-   s\" TRUSTED: MFP-CB@ ( n -- n ) {: a:n :} a {: p:ptr :} p c@ ;\n" PP+
-   s\" : MFP-HN ( n -- ) $F and dup 10 < if 48 + else 55 + then emit ;\n" PP+
-   s\" : MFP-HB ( n -- ) {: v:n :} v 4 rshift MFP-HN v MFP-HN ;\n" PP+
-   s\" : MFP-W@ ( n -- n ) {: a:n :} a MFP-CB@ a 1 + MFP-CB@ 8 lshift or\n" PP+
-   s\"    a 2 + MFP-CB@ 16 lshift or a 3 + MFP-CB@ 24 lshift or ;\n" PP+
-   s\" : MFP-BL? ( n -- bool ) 26 rshift $3F and $25 = ;\n" PP+
-   s\" : MFP-CALL ( -- ) 0 MFP-HB 0 MFP-HB 0 MFP-HB $94 MFP-HB ;\n" PP+
-   s\" : MFP-BYTES ( n -- ) {: at:n :} 4 0 ?do at i + MFP-CB@ MFP-HB loop ;\n" PP+
-   s\" : MFP-WORD ( -- ) MFP-C @ {: at:n :} at MFP-W@ MFP-BL? if MFP-CALL else at MFP-BYTES then ;\n" PP+
-   s\" : MFP-MARK ( -- ) cp@ MFP-A ! ;\n" PP+
-   s\" : MFP-SHOW ( -- ) cp@ {: e:n :} MFP-A @ MFP-C ! begin MFP-C @ e < while MFP-WORD MFP-C @ 4 + MFP-C ! repeat cr ;\n" PP+
-   s\" MFP-MARK : W-CON ( n -- mfp ) construct mfp ok ; MFP-SHOW\n" PP+
-   s\" MFP-MARK : W-CONE ( n -- mfp ) construct mfp err ; MFP-SHOW\n" PP+
-   s\" MFP-MARK : W-MATCH ( mfp -- n ) MATCH mfp ok OF 1 + ENDOF err OF negate ENDOF ;MATCH ; MFP-SHOW\n" PP+
-   s\" MFP-MARK : W-MATCHW ( mfpw -- n ) MATCH mfpw small OF 100 * ENDOF big OF nip nip ENDOF ;MATCH ; MFP-SHOW\n" PP+
-   s\" MFP-MARK : W-MATCH3 ( mfpt -- n ) MATCH mfpt one OF 1 ENDOF two OF 2 ENDOF three OF 3 ENDOF ;MATCH ; MFP-SHOW\n" PP+ ;
-
-\ Per-target bad-tag die tails (see the Per-target pins note above).
-\
-\ Dot habu-use-pre-and-1830972f moved every string below, because a tier-0 word
-\ frame and a data-stack push are one instruction each now. Read off the
-\ compiled bytes and confirmed instruction by instruction against what they
-\ replaced; nothing here was adjusted to make an assert pass:
-\
-\   a tag push          `str x16,[x19],#8`, where it was `str x16,[x19]` then
-\                       `add x19,x19,#8`
-\   a framed word       opens `str x30,[sp,#-16]!` and closes
-\                       `ldr x30,[sp],#16`, one instruction at each end
-\   a LEAF word         opens with a `nop` in the entry slot and closes with
-\                       the bare `ret`: con-ok, con-err and match-3 call
-\                       nothing (match-3's three arms each push a constant and
-\                       branch, and its die tail is svc, not a call), so those
-\                       three lost their frame outright -- con-ok and con-err
-\                       went from eight instructions to four
-\   the tag peek        `ldur x9,[x19,#-8]` is untouched: it reads under the
-\                       pointer without moving it, so it was always one
-\                       instruction
-\
-\ The LINUX strings are measurements at this tree's fixpoint. The MACOS strings
-\ are DERIVED from them: the two targets' pins were byte-identical except for
-\ the four words of the write and exit syscall pairs (verified on the previous
-\ strings, which differed in exactly those four and nowhere else), so the macos
-\ variants here are the measured linux bytes with that one substitution. They
-\ have not been re-measured on macos-aarch64.
-\
-\ con-ok / con-err have no die block and are pinned unconditionally in PIN-CASES.
-: MATCH-2-PIN$ ( -- ptr u8 n )     \ scalar 2-variant eliminator + per-target die
-   HB-TARGET-MACOS? if
-      s" FE0F1FF869825FF83F0100F1C1000054732200D1300080D2708600F800000094130000143F0500F181000054732200D1000000940E0000140500001468623A20626164206D6670207461670A400080D261FFFF10020280D2900080D2011000D4A00A80D2300080D2011000D4FE0741F8C0035FD6"
-   else
-      s" FE0F1FF869825FF83F0100F1C1000054732200D1300080D2708600F800000094130000143F0500F181000054732200D1000000940E0000140500001468623A20626164206D6670207461670A400080D261FFFF10020280D2080880D2010000D4A00A80D2C80B80D2010000D4FE0741F8C0035FD6"
-   then ;
-
-: MATCH-WIDE-PIN$ ( -- ptr u8 n )  \ wide (ptr u8 n n) arm + per-target die
-   HB-TARGET-MACOS? if
-      s" FE0F1FF869825FF83F0100F1C1000054736200D1900C80D2708600F800000094150000143F0500F1A1000054732200D100000094000000940F0000140600001468623A20626164206D667077207461670A000000400080D241FFFF10220280D2900080D2011000D4A00A80D2300080D2011000D4FE0741F8C0035FD6"
-   else
-      s" FE0F1FF869825FF83F0100F1C1000054736200D1900C80D2708600F800000094150000143F0500F1A1000054732200D100000094000000940F0000140600001468623A20626164206D667077207461670A000000400080D241FFFF10220280D2080880D2010000D4A00A80D2C80B80D2010000D4FE0741F8C0035FD6"
-   then ;
-
-: MATCH-3-PIN$ ( -- ptr u8 n )     \ three-variant dispatch + per-target die
-   HB-TARGET-MACOS? if
-      s" 1F2003D569825FF83F0100F1A1000054732200D1300080D2708600F81B0000143F0500F1A1000054732200D1500080D2708600F8150000143F0900F1A1000054732200D1700080D2708600F80F0000140600001468623A20626164206D667074207461670A000000400080D241FFFF10220280D2900080D2011000D4A00A80D2300080D2011000D4C0035FD6"
-   else
-      s" 1F2003D569825FF83F0100F1A1000054732200D1300080D2708600F81B0000143F0500F1A1000054732200D1500080D2708600F8150000143F0900F1A1000054732200D1700080D2708600F80F0000140600001468623A20626164206D667074207461670A000000400080D241FFFF10220280D2080880D2010000D4A00A80D2C80B80D2010000D4C0035FD6"
-   then ;
-
-: PIN-CASES ( -- )
-   PIN-PROG!
-   \ one fork: emit every representative word once, then pin each line's bytes.
-   s" pin/dump" T-LABEL   PIN-PROG PIN-PROG-U @ 0 RUN!
-   s" pin/stderr" T-LABEL   ERR$ s" " T$=
-   \ payload construction: scalar sum, both tags (a wide-variant constructor
-   \ emits the identical single tag push, so con-wide adds no distinct bytes).
-   s" pin/con-ok"
-      s" 1F2003D5100080D2708600F8C0035FD6" PIN=
-   s" pin/con-err"
-      s" 1F2003D5300080D2708600F8C0035FD6" PIN=
-   \ MATCH success (compile): scalar 2-variant eliminator.
-   s" pin/match-2"      MATCH-2-PIN$ PIN=
-   \ wide payloads: the ptr u8 n n arm's multi-cell refinement lowering.
-   s" pin/match-wide"   MATCH-WIDE-PIN$ PIN=
-   \ three-variant enum-shaped dispatch (three cmp/b.ne arms).
-   s" pin/match-3"      MATCH-3-PIN$ PIN= ;
 
 \ --- RT: MATCH success + write-xor-execute discipline ---------------------
 \ Round-trips construct then MATCH inside one word and print the result. A run
@@ -332,7 +115,6 @@ public
 
 : RUN ( -- )
    T-RESET
-   PIN-CASES
    RT-CASES
    PKG-CASE
    DIAG-CASES

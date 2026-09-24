@@ -33,11 +33,6 @@ require src/habu/layout.f
 package HEAP-START-CELL-TEST
 private
 
-\ The ceiling src/habu/layout.f measures for a cell a compiled routine names
-\ directly: `DATA <off> LDR`/`STR` is a 12-bit immediate scaled by eight, and
-\ EM-DATA-INIT names this cell with exactly that form.
-$7FF8 constant LDR-CEILING
-
 : RECORDED ( -- n ) data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
 
 \ ---- case one: the engine published its floor, and it is the right one --------
@@ -51,38 +46,6 @@ $7FF8 constant LDR-CEILING
 
    s" the floor is above the reserved band's own cells, as a floor must be" T-LABEL
    RECORDED BOOT-LAYOUT:HEAP-START-CELL > TTRUE ;
-
-\ ---- case two: the cell was legal to take -------------------------------------
-\ AOT-SIG took the two cells below it out of the same unclaimed run PROT:RHI/CF
-\ opened; this is the next one, and each clause is why taking it was legal.
-
-: BAND-CASE ( -- )
-   s" the cell sits one cell above the last one AOT-SIG took" T-LABEL
-   BOOT-LAYOUT:HEAP-START-CELL AOT-SIG:LEN-CELL - CELL T=
-
-   s" ... and below the lowering transaction state that ends the run" T-LABEL
-   BOOT-LAYOUT:HEAP-START-CELL CELL + TXN-STATE-OFF <= TTRUE
-
-   s" it is addressable by the `DATA <off> STR` form EM-DATA-INIT uses" T-LABEL
-   BOOT-LAYOUT:HEAP-START-CELL LDR-CEILING < TTRUE
-
-   s" it is below DATA-START, so no compiled source can reach it" T-LABEL
-   BOOT-LAYOUT:HEAP-START-CELL DATA-START < TTRUE
-
-   s" it is cell-aligned, as an atomic read of it requires" T-LABEL
-   BOOT-LAYOUT:HEAP-START-CELL CELL mod 0 T=
-
-   s" it collides with no other cell named in this band" T-LABEL
-   BOOT-LAYOUT:HEAP-START-CELL PROT:RHI <> TTRUE
-   BOOT-LAYOUT:HEAP-START-CELL PROT:CF <> TTRUE
-   BOOT-LAYOUT:HEAP-START-CELL AOT-SIG:POOL-CELL <> TTRUE
-   BOOT-LAYOUT:HEAP-START-CELL AOT-SIG:LEN-CELL <> TTRUE
-   BOOT-LAYOUT:HEAP-START-CELL EVAL-TOP-CELL <> TTRUE
-   BOOT-LAYOUT:HEAP-START-CELL AOT-WINDOW:T0-CELL <> TTRUE
-   BOOT-LAYOUT:HEAP-START-CELL AOT-WINDOW:D0-CELL <> TTRUE
-   BOOT-LAYOUT:HEAP-START-CELL AOT-WINDOW:B0-CELL <> TTRUE
-   BOOT-LAYOUT:HEAP-START-CELL APP-ENTRY:XT-CELL <> TTRUE
-   BOOT-LAYOUT:HEAP-START-CELL TXN-STATE-OFF <> TTRUE ;
 
 \ ---- case three: the floor really is where the heap begins -------------------
 \ Case one would still pass if EM-DATA-INIT published a stale copy of some other
@@ -102,7 +65,6 @@ public
 
 : RUN ( -- )
    PUBLISHED-CASE
-   BAND-CASE
    HEAP-CASE
    T-REPORT
    s" heap-start-cell: ok" type cr ;

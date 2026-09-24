@@ -1,4 +1,4 @@
-\ ir-structure-manifest.f - Run native compiler structure schema, source and behavioral checks.
+\ ir-structure-manifest.f - Run native compiler structure behavioral vectors.
 
 require lib/test.f
 require test/compiler/ir-structure-cases.f

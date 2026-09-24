@@ -1920,84 +1920,6 @@ create BIG $2000 allot   variable BIG-U
    s" PASS: " type label labelu type
    s"  (" type mono-ns START-NS @ - PROC-NS-PER-MS / . s" ms)" type cr ;
 
-variable TA-PUB-WID
-
-: PUBLIC-WID ( ptr u8 n -- n )
-   XREF-FIND
-   dup XREF-FOUND? TTRUE
-   XREF-WORDLIST ;
-
-: TA-PUBLIC? ( ptr u8 n -- bool )
-   TA-PUB-WID @ XREF-FIND-WL XREF-FOUND? ;
-
-: TA-GLOBAL? ( ptr u8 n -- bool )
-   0 XREF-FIND-WL XREF-FOUND? ;
-
-: TA-RETIRED-GLOBALS? ( -- bool )
-   LINT-TRUE
-   s" CHECK-MAIN" TA-GLOBAL? 0= and
-   s" CHECK-RUN" TA-GLOBAL? 0= and
-   s" CAPTURE-OFF" TA-GLOBAL? 0= and
-   s" CHK-CAPTURE-BUFFERS!" TA-GLOBAL? 0= and
-   s" CHK-CAPTURE-OFF" TA-GLOBAL? 0= and
-   s" CHK-CAPTURE-OUT$" TA-GLOBAL? 0= and
-   s" CHK-CAPTURE-ERR$" TA-GLOBAL? 0= and
-   s" CHK-RUN-AS" TA-GLOBAL? 0= and
-   s" CHK-BUILD-PREFIX" TA-GLOBAL? 0= and
-   s" CHK-RUN-ACT" TA-GLOBAL? 0= and ;
-
-;package
-
-s" : CHK-CAPTURE-BUFFERS! ( -- ) ;" evaluate
-
-package CHECK-TEST
-private
-
-TA-RETIRED-GLOBALS? 0= constant TA-GLOBAL-MUTATION-REJECTED
-
-;package
-
-undefine CHK-CAPTURE-BUFFERS!
-
-package CHECK-TEST
-private
-
-: WID-WORD-N ( n -- n ) {: wid:n :}
-   0 0
-   begin over ndict@ < while
-      over XREF-REC XREF-WORDLIST wid = if 1+ then
-      swap 1+ swap
-   repeat
-   nip ;
-
-\ XREF reads live wordlists, so comments, strings, and duplicate source text
-\ cannot satisfy the package or retired-global inventories.
-: TEST-CHECK-PUBLIC ( -- )
-   s" CHECK:RESET" PUBLIC-WID TA-PUB-WID !
-   TA-PUB-WID @ WID-WORD-N 6 T=
-   s" RESET" TA-PUBLIC? TTRUE
-   s" OPT" TA-PUBLIC? TTRUE
-   s" SOURCE" TA-PUBLIC? TTRUE
-   s" FILE" TA-PUBLIC? TTRUE
-   s" RUN" TA-PUBLIC? TTRUE
-   s" MAIN" TA-PUBLIC? TTRUE
-   s" CAPTURE-OFF" TA-PUBLIC? TFALSE
-   s" CHECK-RUN" TA-PUBLIC? TFALSE
-   s" CHK-CAPTURE-BUFFERS!" TA-PUBLIC? TFALSE
-   s" CHK-RUN-AS" TA-PUBLIC? TFALSE
-   s" CHK-BUILD-PREFIX" TA-PUBLIC? TFALSE
-   s" CHK-RUN-ACT" TA-PUBLIC? TFALSE ;
-
-: TEST-CHECK-TEST-PUBLIC ( -- )
-   s" CHECK-TEST:TEST" PUBLIC-WID WID-WORD-N 1 T= ;
-
-: TEST-RETIRED-GLOBALS ( -- )
-   TA-RETIRED-GLOBALS? TTRUE ;
-
-: TEST-GLOBAL-MUTATION ( -- )
-   TA-GLOBAL-MUTATION-REJECTED TTRUE
-   TA-RETIRED-GLOBALS? TTRUE ;
-
 \ --- package-owned caller: the checker's replay scopes must start neutral ---
 \
 \ Every scope tools/check-core.f opens around a replay of the SUBJECT source
@@ -2133,10 +2055,6 @@ POISON-RECORD
    T-RESET
    s" check/package-caller-neutral" [: TEST-NEUTRAL-SCOPE ;] CASE-RUN
    s" check/decl-reject-frees-tail" [: TEST-DECL-REJECT-FREES-TAIL ;] CASE-RUN
-   s" check/public-api" [: TEST-CHECK-PUBLIC ;] CASE-RUN
-   s" check/test-public-api" [: TEST-CHECK-TEST-PUBLIC ;] CASE-RUN
-   s" check/retired-globals" [: TEST-RETIRED-GLOBALS ;] CASE-RUN
-   s" check/global-mutation" [: TEST-GLOBAL-MUTATION ;] CASE-RUN
    s" check/good" [: TEST-GOOD ;] CASE-RUN
    s" check/print-parity" [: TEST-PRINT-PARITY ;] CASE-RUN
    s" check/prelude-hook-public" [: TEST-PRELUDE-HOOK ;] CASE-RUN

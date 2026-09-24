@@ -11,7 +11,7 @@ require lib/json-read.f
 require test/checker-assert.f
 
 \ White-box test: reopen the module's package so the fixtures reach json-write's
-\ private record and byte plumbing (JW-LIVE, JW-APPEND-LEN, the byte constants)
+\ private byte plumbing (JW-APPEND-LEN and the byte constants)
 \ and call the public emitters by their bare package-local tails.
 package JSON-WRITE
 
@@ -151,14 +151,6 @@ create JWT-NAME
    a au s\" {\"count\":42,\"ok\":true}" T$=
    b bu s" [1,2]" T$=
    a b <> TTRUE ;
-
-: JWT-TEST-RECORD ( -- )
-   JWT-OPEN-A s" ab" RAW drop
-   JWT-A JW-LIVE {: vp:ptr cap:n used:n :}
-   cap JWT-CAP T=
-   used 2 T=
-   vp JWT-BUF-A = TTRUE
-   vp c@ 97 T= ;
 
 : JWT-TEST-RESET ( -- )
    JWT-OPEN-A s" abc" RAW drop
@@ -337,7 +329,6 @@ create JWT-NAME
    JWT-TEST-OBJECT
    JWT-TEST-ARRAY
    JWT-TEST-TWO-WRITERS
-   JWT-TEST-RECORD
    JWT-TEST-RESET
    JWT-TEST-SELF-RAW
    JWT-TEST-SELF-STRING

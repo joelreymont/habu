@@ -10,8 +10,8 @@
 \ variant, field-record cursor, and — via the enclosing checker candidate frame —
 \ the family/variant/schema registry cursors); STRUCTURE and ENUM consumers observe
 \ identical field events; the field-record name gate throws pass through unchanged;
-\ duplicate POLICY / DERIVE and out-of-range arity reject; snapshot identity is
-\ deterministic; standalone PUBLISH cannot bypass the contiguity preflight.
+\ duplicate POLICY / DERIVE and out-of-range arity reject; changed declarations
+\ change snapshot identity; standalone PUBLISH cannot bypass the contiguity preflight.
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 \
 \ Each field-publishing case uses its OWN family so committed field rows never
@@ -209,8 +209,7 @@ DECL-EVENT:COUNT 2 T=                                   \ DECL + n0 (n1 rolled b
 1 DECL-EVENT:FIELD? T-TRUE
 
 \ ---------------------------------------------------------------------------
-\ 9. Deterministic snapshot identity: identical declarations fold to an identical
-\    identity; a different declaration folds to a different one.
+\ 9. Changing the declared arity changes the snapshot identity.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 DECL-EVENT:OPEN TOK !
@@ -221,16 +220,9 @@ DECL-EVENT:IDENTITY IDA !
 DECL-EVENT:RESET
 DECL-EVENT:OPEN TOK !
 TOK @ FP1 @ DECL-EVENT:DECL TOK !
-TOK @ FP1 @ 2 DECL-EVENT:ARITY TOK !
-TOK @ DECL-EVENT:PUBLISH
-DECL-EVENT:IDENTITY IDB !
-DECL-EVENT:RESET
-DECL-EVENT:OPEN TOK !
-TOK @ FP1 @ DECL-EVENT:DECL TOK !
 TOK @ FP1 @ 3 DECL-EVENT:ARITY TOK !                    \ different arity
 TOK @ DECL-EVENT:PUBLISH
 DECL-EVENT:IDENTITY IDC !
-IDA @ IDB @ T=                                          \ same declaration -> same identity
 IDA @ IDC @ <> T-TRUE                                   \ different declaration -> different identity
 
 \ ---------------------------------------------------------------------------

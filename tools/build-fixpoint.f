@@ -808,16 +808,8 @@ package BUILD-FIXPOINT
 : BF-SOURCE-MUST-LACK ( ptr u8 n -- )
    BF-SOURCE-HAS? if s" build-fixpoint: unsafe native emitter shape" BF-BUILD-RC die then ;
 
-\ habu2.f/habu1.f preflight history: the typed-shape/bare-locals asserts were
-\ retired for the blocking stage compile (`LOWER-CERT-HOOK:INSTALL` checks every
-\ emitter word), and the final same-type codegen-role asserts (habu2
-\ `CLOC-MAIN LABEL@ B,` must-have / `CLOC-MAIN @ B ;` must-lack; habu1
-\ `14 SP SPAWN-ADESC-OFF SZA-I @ + STR,` must-have / `... + over + STR,`
-\ must-lack) retired for the structural check tools/codegen-role-test.f
-\ (gate suite codegen-role): it runs the extracted real emitters on the live
-\ arm64 primitives and asserts the label-relative branch fixup and the exact
-\ descriptor-slot store progression, with corruption fixtures covering both
-\ historic bad forms.
+\ The stage compiler checks emitter stack effects. Runtime process and native
+\ compilation suites verify spawn descriptors, locals and branch fixups.
 
 \ icode.f is emitted after the checker-boot hook reinstall, so the stage
 \ compile checks it, and the BLOCKING BF-CERTIFY static scan also covers its
@@ -836,13 +828,6 @@ package BUILD-FIXPOINT
    s" create LBLP LBL-CAP cells allot" BF-SOURCE-MUST-LACK
    s" create FXS 2048 cells allot" BF-SOURCE-MUST-LACK ;
 
-\ habu1.f/habu2.f preflight retired (see the history comment above BF-PREFLIGHT-ICODE):
-\ REG-PRIM/FPRIM/FPRIM-L/SPAWN-DUP2-ACTION/SPAWN-CHDIR-ACTION and friends are emitted
-\ after `LOWER-CERT-HOOK:INSTALL` and so are compiled checked (a stack-effect regression fails
-\ the stage compile, blocking); the residual same-type codegen roles the checker cannot
-\ express (label-relative branch fixup, spawn descriptor-slot store progression) are
-\ covered by the structural tools/codegen-role-test.f (gate suite codegen-role). Only
-\ BF-PREFLIGHT-ICODE remains here, for icode's mmap/no-static-allot runtime invariants.
 : BF-PREFLIGHT ( -- )
    BF-REQUIRE-WATERMARK
    BF-PREFLIGHT-ICODE ;

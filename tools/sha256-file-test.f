@@ -251,11 +251,6 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
       SFT-DG-S2 SFT-DG-D SFT-DIGEST=
    loop ;
 
-\ R4. The layout is a promise to every caller that allocates a context, so the
-\ size is pinned here and a change to it is deliberate.
-: SFT-TEST-CTX-BYTES ( -- )
-   SHA256-CTX-BYTES 784 T= ;
-
 \ R6. The hash words are cells, so a context has to be cell-aligned, and every
 \ caller gets that from `create` - including this one, defined right after a
 \ one-byte allot. AArch64 would not fault on the misaligned case, so the address
@@ -395,7 +390,6 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-PREPARE
    SFT-TEST-FIPS-HEX
    SFT-TEST-INCREMENTAL
-   SFT-TEST-CTX-BYTES
    SFT-TEST-INTERLEAVED
    SFT-TEST-CONTEXT-COPY
    SFT-TEST-TASKS

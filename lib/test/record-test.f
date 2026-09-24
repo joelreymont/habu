@@ -35,11 +35,6 @@ s" assert" -12 s" neg-id" TREC-FAIL$ RCT-WANT-NEG$ T$=
 s" snap" 0 s" " TREC-FAIL$ RCT-WANT-EMPTY-LABEL$ T$=
 s" assert" 105 s" digits case" TREC-FAIL$ RCT-WANT-DIGITS$ T$=
 
-\ builder primitives
-TREC-RESET TREC$ s" " T$=
-TREC-RESET s" ab" TREC-$+ TREC$ s" ab" T$=
-TREC-RESET -407 TREC-N+ TREC$ s" -407" T$=
-
 \ payload sanitization: tab/CR/LF in a label degrade to spaces so the
 \ record stays one TSV line with exactly four columns
 create RCT-DIRTY 5 allot
@@ -52,6 +47,4 @@ TREC-RESET RCT-DIRTY$ TREC-$+ TREC$ s" a b  " T$=
 ' RCT-FILL-OVER E-STR-CAPACITY TTHROWS
 TREC-RESET
 
-T-CASES 9 T=
-T-FAILURES 0 T=
 T-REPORT

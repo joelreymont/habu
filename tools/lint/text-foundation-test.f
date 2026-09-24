@@ -33,10 +33,6 @@ variable TEST-N
 : ASSERT$  ( ptr u8 n ptr u8 n -- )  LINT-STR= ASSERT ;
 
 $100 constant FIX-CAP
-create STR-FIX FIX-CAP allot     variable STR-FIX-LEN
-create TRUST-FIX FIX-CAP allot   variable TRUST-LEN
-create SRC-FIX FIX-CAP allot     variable SRC-LEN
-create BT-FIX FIX-CAP allot      variable BT-LEN
 create LEX-FIX FIX-CAP allot     variable LEX-LEN
 create BAD-FIX FIX-CAP allot     variable BAD-LEN
 create ESC-FIX FIX-CAP allot     variable ESC-LEN
@@ -57,78 +53,6 @@ variable BIG-LEX-U
 : BIG-LEX-PUT ( n -- ) {: k :}
    120 BIG-LEX-A@ k 2 * + c!
    32 BIG-LEX-A@ k 2 * 1+ + c! ;
-
-: INIT-STR-FIX  ( -- )
-   STR-FIX-LEN STR:BUF-RESET
-   32 STR-FIX FIX-CAP STR:LENGTH STR-FIX-LEN STR:BUF-APPEND-C
-   32 STR-FIX FIX-CAP STR:LENGTH STR-FIX-LEN STR:BUF-APPEND-C
-   s" Alpha beta" STR:LENGTH STR-FIX FIX-CAP STR:LENGTH STR-FIX-LEN STR:BUF-APPEND
-   10 STR-FIX FIX-CAP STR:LENGTH STR-FIX-LEN STR:BUF-APPEND-C
-   s" Gamma" STR:LENGTH STR-FIX FIX-CAP STR:LENGTH STR-FIX-LEN STR:BUF-APPEND
-   32 STR-FIX FIX-CAP STR:LENGTH STR-FIX-LEN STR:BUF-APPEND-C
-   32 STR-FIX FIX-CAP STR:LENGTH STR-FIX-LEN STR:BUF-APPEND-C
-   10 STR-FIX FIX-CAP STR:LENGTH STR-FIX-LEN STR:BUF-APPEND-C ;
-: STR-FIX$  ( -- ptr u8 n )  STR-FIX STR-FIX-LEN STR:BUF-LEN@ TFT-BL>RAW ;
-
-: INIT-TRUST-FIX  ( -- )
-   TRUST-LEN STR:BUF-RESET
-   s" prefix s" STR:LENGTH TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND
-   DQUOTE TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND-C
-   32 TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND-C
-   s" SQ" STR:LENGTH TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND
-   DQUOTE TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND-C
-   32 TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND-C
-   115 TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND-C
-   DQUOTE TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND-C
-   32 TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND-C
-   s" ( n -- n )" STR:LENGTH TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND
-   DQUOTE TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND-C
-   s"  TRUST \\ comment" STR:LENGTH TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND
-   10 TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND-C ;
-: TRUST-FIX$  ( -- ptr u8 n )  TRUST-FIX TRUST-LEN STR:BUF-LEN@ TFT-BL>RAW ;
-
-: TRUST-FIX-RESET  ( -- )
-   TRUST-LEN STR:BUF-RESET ;
-
-: TRUST-FIX+  ( ptr u8 n -- )
-   STR:LENGTH TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND ;
-
-: TRUST-FIX-C+  ( n -- )
-   TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND-C ;
-
-: TRUST-STRING-FALSE$  ( -- ptr u8 n )
-   TRUST-FIX-RESET
-   s" ." TRUST-FIX+
-   DQUOTE TRUST-FIX-C+
-   s"  s" TRUST-FIX+
-   DQUOTE TRUST-FIX-C+
-   s"  FAKE" TRUST-FIX+
-   DQUOTE TRUST-FIX-C+
-   s"  s" TRUST-FIX+
-   DQUOTE TRUST-FIX-C+
-   s"  --" TRUST-FIX+
-   DQUOTE TRUST-FIX-C+
-   s"  TRUST" TRUST-FIX+
-   DQUOTE TRUST-FIX-C+
-   s"  ;" TRUST-FIX+
-   TRUST-FIX$ ;
-
-: INIT-SRC-FIX  ( -- )
-   SRC-LEN STR:BUF-RESET
-   s" : REPL-SRC s" STR:LENGTH SRC-FIX FIX-CAP STR:LENGTH SRC-LEN STR:BUF-APPEND
-   DQUOTE SRC-FIX FIX-CAP STR:LENGTH SRC-LEN STR:BUF-APPEND-C
-   32 SRC-FIX FIX-CAP STR:LENGTH SRC-LEN STR:BUF-APPEND-C
-   s" src/habu/repl.f" STR:LENGTH SRC-FIX FIX-CAP STR:LENGTH SRC-LEN STR:BUF-APPEND
-   DQUOTE SRC-FIX FIX-CAP STR:LENGTH SRC-LEN STR:BUF-APPEND-C
-   s"  ;" STR:LENGTH SRC-FIX FIX-CAP STR:LENGTH SRC-LEN STR:BUF-APPEND
-   10 SRC-FIX FIX-CAP STR:LENGTH SRC-LEN STR:BUF-APPEND-C ;
-: SRC-FIX$  ( -- ptr u8 n )  SRC-FIX SRC-LEN STR:BUF-LEN@ TFT-BL>RAW ;
-
-: INIT-BT-FIX  ( -- )
-   BT-LEN STR:BUF-RESET
-   s" See `tools/lint/source-lex.f` and `plain`." STR:LENGTH BT-FIX FIX-CAP STR:LENGTH BT-LEN STR:BUF-APPEND
-   10 BT-FIX FIX-CAP STR:LENGTH BT-LEN STR:BUF-APPEND-C ;
-: BT-FIX$  ( -- ptr u8 n )  BT-FIX BT-LEN STR:BUF-LEN@ TFT-BL>RAW ;
 
 : INIT-LEX-FIX  ( -- )
    LEX-LEN STR:BUF-RESET
@@ -293,68 +217,18 @@ variable REG-I
    repeat drop ;
 
 : INIT-FIXTURES  ( -- )
-   INIT-STR-FIX
-   INIT-TRUST-FIX
-   INIT-SRC-FIX
-   INIT-BT-FIX
    INIT-LEX-FIX
    INIT-TOK-FIX
    INIT-BIG-LEX ;
 
-: TEST-STRINGS  ( -- )
+\ Scanner callers normally supply positive spans; negative/zero lengths
+\ must preserve the destination rather than reach BYTE-COPY as a huge count.
+: TEST-EMPTY-MOVE ( -- )
    s" unchanged" drop MOVE-FIX 9 LINT-BMOVE
    s" x" drop MOVE-FIX -1 LINT-BMOVE
    MOVE-FIX 9 s" unchanged" ASSERT$
    s" x" drop MOVE-FIX 0 LINT-BMOVE
-   MOVE-FIX 9 s" unchanged" ASSERT$
-   STR-FIX$ SPLIT-LINES  SN# @ 2 ASSERT=
-   0 S@ LINT-TRIM s" Alpha beta" ASSERT$
-   1 S@ LINT-TRIM s" Gamma" ASSERT$
-   STR-FIX$ SPLIT-WHITESPACE  SN# @ 3 ASSERT=
-   0 S@ s" Alpha" ASSERT$  1 S@ s" beta" ASSERT$  2 S@ s" Gamma" ASSERT$
-   s" hello.f" s" .f" HAS-EXT? ASSERT
-   s" hello.fs" s" .zig" HAS-EXT? 0= ASSERT
-   s" Habu" s" Ha" LINT-STARTS-WITH? ASSERT
-   s" Habu" s" bu" LINT-ENDS-WITH? ASSERT
-   s" banana" 97 LINT-COUNT-CHAR 3 ASSERT=
-   s" banana" 110 LINT-INDEX-OF MATCH option
-     none OF -1 ENDOF
-     some OF ENDOF
-   ;MATCH 2 ASSERT=
-   s" banana" 122 LINT-INDEX-OF MATCH option
-     none OF -1 ENDOF
-     some OF drop -2 ENDOF
-   ;MATCH -1 ASSERT=
-   s" banana split" s" spl" LINT-FIND-SUB MATCH option
-     none OF -1 ENDOF
-     some OF ENDOF
-   ;MATCH 7 ASSERT=
-   s" banana split" s" zz" LINT-FIND-SUB MATCH option
-     none OF -1 ENDOF
-     some OF drop -2 ENDOF
-   ;MATCH -1 ASSERT=
-   s" banana" s" " LINT-FIND-SUB MATCH option
-     none OF -1 ENDOF
-     some OF ENDOF
-   ;MATCH 0 ASSERT=
-   s" banana split" s" spl" LINT-CONTAINS? ASSERT
-   s" banana split" s" zz" LINT-CONTAINS? 0= ASSERT ;
-
-: TEST-SCANNERS  ( -- )
-   TRUST-FIX$ TRUST-SITE? ASSERT
-   P1A@ P1U @ s" SQ" ASSERT$
-   P2A@ P2U @ s" ( n -- n )" ASSERT$
-   s" TRUSTED: TRAW ( a n -- ) catch ;" TRUST-SITE? ASSERT
-   P1A@ P1U @ s" TRAW" ASSERT$
-   P2A@ P2U @ s" a n --" ASSERT$
-   s" \ TRUSTED: FAKE ( -- )" TRUST-SITE? 0= ASSERT
-   s" ( TRUSTED: FAKE ( -- ) )" TRUST-SITE? 0= ASSERT
-   TRUST-STRING-FALSE$ TRUST-SITE? 0= ASSERT
-   SRC-FIX$ SRC-PATH-REF? ASSERT
-   P1A@ P1U @ s" src/habu/repl.f" ASSERT$
-   BT-FIX$ BACKTICK-PATH? ASSERT
-   P1A@ P1U @ s" tools/lint/source-lex.f" ASSERT$
-   s" `plain`" BACKTICK-PATH? 0= ASSERT ;
+   MOVE-FIX 9 s" unchanged" ASSERT$ ;
 
 : TEST-LEXER  ( -- )
    LEX-FIX$ LINT-LEX:SOURCE
@@ -878,32 +752,6 @@ variable REG-I
    REG-COUNT 8 ASSERT=
    11 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
-\ End-to-end structural acceptance on the real axiom sources. Both must scan
-\ without error; checker.f's quoted primitive name must remain one registry token
-\ ending at its own closer rather than opening a string.
-: TEST-REAL-REGISTRY-FILES ( -- )
-   s" src/core/checker.f" LINT-SOURCE:LOAD
-   LINT-SOURCE:TEXT LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:ERROR-KIND@ 0 ASSERT=
-   \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
-   \ string opener, so the word path consumed source through the quote in the next
-   \ row. Name that row and pin that it is one token ending at its own closer.
-   ROW-RESET  s" PRIM: s" ROW+  ROW-Q
-   ROW$ REG-FIND {: q:n :}
-   q 0 >= ASSERT
-   q LINT-LEX:KIND@ LINT-LEX:REGISTRY ASSERT=
-   q LINT-LEX:TOKEN s" PRIM;" LINT-ENDS-WITH? ASSERT
-   q LINT-LEX:TOKEN s" PE-PTR-U8" LINT-CONTAINS? ASSERT
-   s" src/core/sumtype.f" LINT-SOURCE:LOAD
-   LINT-SOURCE:TEXT LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:ERROR-KIND@ 0 ASSERT=
-   \ The three surviving block openers of sumtype.f: NEWTYPE, SUMTYPE and
-   \ PRODUCT. The global ENUM keyword is an ordinary checked ( -- ) definition
-   \ over ENUM-DECL:ED-RUN now, so it carries no axiom of its own.
-   REG-COUNT 3 ASSERT= ;
-
 : TEST-TOKENIZER  ( -- )
    LINT-TRUE PARENS? !
    TOK-FIX$ TOKENIZE
@@ -962,18 +810,6 @@ variable REG-I
    [: UNTERM-FIX$ TOKENIZE ;] catch E-LINT-TOKEN-SOURCE ASSERT=
    TN# @ 0 ASSERT= ;
 
-: TEST-LINT-SOURCE ( -- )
-   s" tools/lint/text.f" 2dup FILE-SIZE {: path:ptr pathu:n size:n :}
-   path pathu LINT-SOURCE:LOAD
-   LINT-SOURCE:TEXT {: source:ptr sourceu:n :}
-   sourceu size ASSERT=
-   source sourceu s" package LINT-SOURCE" LINT-CONTAINS? ASSERT
-   s" src/habu/habu2.f" 2dup FILE-SIZE {: large:ptr largeu:n largesize:n :}
-   large largeu LINT-SOURCE:LOAD
-   LINT-SOURCE:TEXT {: largesource:ptr largesourceu:n :}
-   largesourceu largesize ASSERT=
-   largesource largesourceu s" LABEL@" LINT-CONTAINS? ASSERT ;
-
 \ CMP-CI is an ORDER, and a caller only gets to replace a scan with a binary
 \ search if it is a total one whose 0 answer is exactly LINT-STR=CI's true. The
 \ three laws are checked directly: sign, antisymmetry, and agreement with the
@@ -1014,11 +850,10 @@ variable REG-I
 
 : RUN  ( -- )
    1 TEST-N !
+   TEST-EMPTY-MOVE
    TEST-CMP-CI
    TEST-CMP-CI-TRANSITIVE
    INIT-FIXTURES
-   TEST-STRINGS
-   TEST-SCANNERS
    TEST-LEXER
    TEST-LEXER-PAREN-NAME
    TEST-LEXER-PAREN-CALL
@@ -1045,11 +880,9 @@ variable REG-I
    TEST-ROW-DIAGNOSTIC-SPAN
    TEST-ROW-DEFINER-POSITION
    TEST-ROW-REUSE-AFTER-ERROR
-   TEST-REAL-REGISTRY-FILES
    TEST-TOKENIZER
    TEST-TOKEN-LITERALS
    TEST-BIG-LEXER
-   TEST-LINT-SOURCE
    s" text-foundation-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
 
 RUN

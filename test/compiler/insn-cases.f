@@ -249,23 +249,6 @@ private
       i VECTOR-LENGTH
    loop ;
 
-\ Every form the model declares has to be asked about, or a form could be
-\ renamed, re-based, or dropped with no row noticing.
-: FORM-COVERED? ( n -- bool ) {: k:n :}
-   VECTORS 0 ?do
-      i ROW-FORM@ k = if true unloop exit then
-   loop
-   false ;
-
-: PHASE-COVERAGE ( -- )
-   FORMS 0 ?do
-      SB-RESET
-      s" the vectors ask about " SB-APPEND
-      i FORM-NAME$ SB-APPEND
-      SB$ T-LABEL
-      i FORM-COVERED? TTRUE
-   loop ;
-
 \ ---- the reserved-register rows the shipped code lets through ----------------
 
 : RESERVED-ALLOWED-ROW ( n -- ) {: r:n :}
@@ -312,7 +295,6 @@ public
 
 : HABU-SIDE ( -- )
    PHASE-VECTORS
-   PHASE-COVERAGE
    PHASE-RESERVED-ALLOWED
    PHASE-LIMM ;
 

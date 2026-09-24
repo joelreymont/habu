@@ -1,7 +1,5 @@
-\ lit-emit-size-test.f - exact compiled-body sizes for scalar literal emission, and
-\ the structural proof that relocatable addresses never flow through the scalar path.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f \
-\        lib/test/src-shape.f test/lit-emit-size-test.f
+\ lit-emit-size-test.f - measured code-size regressions for scalar literal emission.
+\ Run: bin/hb --load test/lit-emit-size-test.f
 \
 \ Dot habu-separate-scalar-and: scalar constants and string lengths now emit a MINIMAL
 \ MOVZ/MOVN+MOVK chain through the shared synthesizer (LVMOVK, via LVLITPUSH) instead of
@@ -43,8 +41,6 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
-require lib/fs.f
-require lib/test/src-shape.f
 
 package LIT-EMIT-SIZE-TEST
 
@@ -83,24 +79,8 @@ TRUSTED: XT0>N ( [ -- ] -- n ) ;
    ['] SMARK XT0>N ['] SONE XT0>N   BODY 40 T=
    T-REPORT ;
 
-\ --- Structural proof (item: a scalar numerically inside an address range is never
-\ relocated). Scalars materialize into x16 via the shared synthesizer; only the dedicated
-\ address emitters build the fixed four-instruction x9 chain the AOT relocation recognises,
-\ so no scalar can ever present the x9 shape the reloc scan matches on. ---
-: SHAPE ( -- )
-   s" src/habu/habu2.f" SHAPE:LOAD
-   s" : C-LIT ( -- )" SHAPE:MUST-HAVE
-   s" LVLITPUSH LABEL@ BL," SHAPE:MUST-HAVE            \ scalar-push -> shared x16 synthesizer
-   s" : C-RAW-LIT ( -- )" SHAPE:MUST-HAVE
-   s" 14 16 MOVZ,  LVMOVK LABEL@ BL," SHAPE:MUST-HAVE  \ raw scalar -> x16, minimal
-   s" : C-DATA-ADDR ( -- )" SHAPE:MUST-HAVE
-   s" : C-DATA-ADDR-RAW ( -- )" SHAPE:MUST-HAVE
-   s" : C-CODE-ADDR ( -- )" SHAPE:MUST-HAVE
-   s" : C-X9-LIT" SHAPE:MUST-LACK ;                    \ the conflated scalar/address emitter is gone
-
 : MAIN ( -- )
    SIZES
-   SHAPE
    s" lit-emit-size-test: ok" type cr ;
 
 MAIN

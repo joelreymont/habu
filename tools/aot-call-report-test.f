@@ -144,16 +144,6 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
    1 ACRT=
    $4010 ACRT= ;
 
-: ACRT-TEST-BUFFER ( -- )
-   s" /tmp/habu-aot-report-small.bin" ACRT-JSON ACRT-JSON-CAP REPORT-JSON-BUFFER
-   {: out:ptr outu:n :}
-   out ACRT-JSON = ACRT-ASSERT
-   outu 0 > ACRT-ASSERT
-   REPORT-BYTES @ 43 ACRT=
-   REPORT-STENCILS @ 2 ACRT=
-   REPORT-BLS @ 3 ACRT=
-   out outu 1- + c@ ACR-C-LF ACRT= ;
-
 : ACRT-TEST-CLI ( -- )
    s" /tmp/habu-aot-report-small.bin" ACRT-CLI-RUN
    {: outu:n erru:n rc:n :}
@@ -166,7 +156,6 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
    1 ACRT-N !
    ACRT-TEST-SMALL
    ACRT-TEST-BOUNDARY
-   ACRT-TEST-BUFFER
    ACRT-TEST-CLI
    s" aot-call-report-test: ok (" type ACRT-N @ 1- . s"  assertions)" type cr ;
 

@@ -63,15 +63,24 @@ belong in the language core.
   First check whether the current language can express the operation normally.
 - When checked code behaves incorrectly, reduce the failure and identify whether
   the declaration, checker, compiler or runtime is wrong. Fix the responsible
-  layer and add a regression; a type checker does not prove unmodeled semantics.
+  layer and verify the behavior through the testing policy below; a type checker
+  does not prove unmodeled semantics.
 - Use [docs/debugging.md](docs/debugging.md) for native failures. If `bin/hb`
   is missing or stale, follow [docs/bootstrap.md](docs/bootstrap.md).
 
 ## Verification and documentation
 
+- Never write unit tests after you write code.
+- Highly prefer E2E tests as the sole testing mechanism. Use them to verify
+  complex features work. At the end of E2E tests, produce a verifiable and
+  repeatable artifact.
+- If you must test a system in isolation, first write down all the ways it
+  could fail, then write the code.
+- Keep an isolated test only when it catches a concrete failure the E2E tests
+  miss. Delete redundant assertions, implementation mirrors and change detectors.
 - Test changed behavior through the real load path. Include rejected programs
   for type rules and meaningful edge cases for runtime changes.
-- Run focused tests while developing. Rebuild and run `bin/hb --load test/run.f`
+- Run focused E2E tests while developing. Rebuild and run `bin/hb --load test/run.f`
   for compiler/runtime or broad library changes that need the full suite.
   Documentation, moves and other mechanical changes need proportionate checks.
 - Report actual results and untested boundaries. Never weaken a claim to make a

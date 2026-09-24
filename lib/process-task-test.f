@@ -105,11 +105,6 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
    PTT-POLL-BAD @ 0 T=
    PTT-POLLS @ 0 > TTRUE ;
 
-\ The row is a claim on USER-BAND, so its size is part of the contract: a slot
-\ added without a band budget is caught here rather than at a caller's E-TASK-USER.
-: PTT-ROW-SIZE ( -- )
-   PROC-STORAGE-BYTES 1184 T= ;
-
 \ ---- two tasks, two commands ------------------------------------------------
 \ The shape the shared command could not survive: task A states its arguments,
 \ task B states its own in between, and A's run must still be A's command. With
@@ -275,7 +270,6 @@ TASK:MIN-STACK TASK:TASK PTT-T3
 
 : PROCESS-TASK-TEST-MAIN ( -- )
    T-RESET
-   PTT-ROW-SIZE
    PTT-CONCURRENT-CAPTURE-AND-POLL
    s" a task's own command arguments survive another task's" T-LABEL
    PTT-TWO-COMMANDS

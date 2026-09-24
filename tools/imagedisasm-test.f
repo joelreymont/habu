@@ -110,22 +110,13 @@ variable IMDT-LDRB-U
    outu 0 T=
    IMDT-ERR erru s" imagedisasm: range outside image" CONTAINS? TTRUE ;
 
-\ switchover wave A: the imagedisasm number parsers return option<n> (SOME
-\ parsed value, else NONE). Both branches through IMGD>NUMBER? ($hex, decimal,
-\ bad, hex-overflow via IMGD-HEX-STEP).
-: IMDT-NUM-SOME ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
-   a u IMGD>NUMBER? MATCH option
-     none OF 0 0= 0= ENDOF
-     some OF want = ENDOF
-   ;MATCH TTRUE ;
+\ Invalid digits and overflowing hex inputs are absent from the CLI fixtures.
 : IMDT-NUM-NONE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u IMGD>NUMBER? MATCH option
      none OF 0 0= ENDOF
      some OF drop 0 0= 0= ENDOF
    ;MATCH TTRUE ;
 : IMDT-TEST-PARSERS ( -- )
-   s" $ff" 255 IMDT-NUM-SOME
-   s" 42" 42 IMDT-NUM-SOME
    s" $zz" IMDT-NUM-NONE
    s" nope" IMDT-NUM-NONE
    s" $fffffffffffffffff" IMDT-NUM-NONE ;

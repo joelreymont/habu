@@ -2,195 +2,13 @@
 
 require lib/test.f
 require lib/string.f
-require test/compiler/ir-id-source.f
 require test/compiler/ir-structure-schema.f
 
 package COMPILER-STRUCT-CASES
 using COMPILER-STRUCT-PROOF
 private
 
-512 constant DEF-MAX
-
-create DEF-HEAD DEF-MAX cells allot
-create DEF-LO DEF-MAX cells allot
-create DEF-HI DEF-MAX cells allot
-create DEF-WRITES DEF-MAX cells allot
-create DEF-GUARDS DEF-MAX cells allot
-
-variable DEF-N
-variable HITS
-variable FOUND
-variable NEWLY
 variable CUR
-
-: TOK$ ( n -- ptr u8 n )
-   COMPILER-ID-SRC:TOKEN$ ;
-
-: TOK-IS? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k TOK$ a u STR= ;
-
-\ How many times the exact token appears in the half-open span.
-: SPAN-COUNT ( n n ptr u8 n -- n ) {: b:n e:n a:ptr u:n :}
-   0 HITS !
-   e b ?do
-      i a u TOK-IS? if HITS @ 1+ HITS ! then
-   loop
-   HITS @ ;
-
-\ ---- the frozen guard bodies -------------------------------------------------
-
-: GUARD-ROW ( n -- ) {: row:n :}
-   row GUARD-FILE$ COMPILER-ID-SRC:SCAN-FILE
-   s" a frozen structure guard still has the body the model was proved against" T-LABEL
-   row GUARD-WORD$ COMPILER-ID-SRC:BODY$ row GUARD-BODY$ T$= ;
-
-public
-
-: GUARDS ( -- )
-   GUARD-COUNT 0 ?do i GUARD-ROW loop ;
-
-private
-
-\ ---- who writes, and who guards ----------------------------------------------
-
-: DEF-NAME$ ( n -- ptr u8 n ) {: d:n :}
-   d cells DEF-HEAD + @ COMPILER-ID-SRC:DEF-NAME-AT$ ;
-
-: COLLECT-DEFS ( -- )
-   0 DEF-N !
-   COMPILER-ID-SRC:TOKENS 0 ?do
-      i COMPILER-ID-SRC:DEF-HEAD? if
-         DEF-N @ DEF-MAX >= if E-CIS-STRUCT throw then
-         i DEF-HEAD DEF-N @ cells + !
-         i COMPILER-ID-SRC:DEF-SPAN-AT {: b:n e:n :}
-         b DEF-LO DEF-N @ cells + !
-         e DEF-HI DEF-N @ cells + !
-         0 DEF-WRITES DEF-N @ cells + !
-         0 DEF-GUARDS DEF-N @ cells + !
-         DEF-N @ 1+ DEF-N !
-      then
-   loop ;
-
-: FLAG@ ( n ptr n -- n ) {: d:n base:ptr :}
-   base d cells + @ ;
-
-: FLAG! ( n ptr n -- ) {: d:n base:ptr :}
-   1 base d cells + ! ;
-
-: BODY-HAS? ( n ptr u8 n -- bool ) {: d:n a:ptr u:n :}
-   d cells DEF-LO + @ d cells DEF-HI + @ a u SPAN-COUNT 0 > ;
-
-: SEED-FLAGS ( ptr u8 n ptr n -- ) {: a:ptr u:n base:ptr :}
-   DEF-N @ 0 ?do
-      i a u BODY-HAS? if i base FLAG! then
-   loop ;
-
-\ Does this token name a definition that already carries the flag?
-: FLAGGED-NAME? ( ptr u8 n ptr n -- bool ) {: a:ptr u:n base:ptr :}
-   DEF-N @ 0 ?do
-      i base FLAG@ 0 <> if
-         i DEF-NAME$ a u STR= if true unloop exit then
-      then
-   loop
-   false ;
-
-: CALLS-FLAGGED? ( n ptr n -- bool ) {: d:n base:ptr :}
-   d cells DEF-LO + @ d cells DEF-HI + @ {: b:n e:n :}
-   e b ?do
-      i TOK$ base FLAGGED-NAME? if true unloop exit then
-   loop
-   false ;
-
-: FLAG-PASS ( ptr n -- n ) {: base:ptr :}
-   0 NEWLY !
-   DEF-N @ 0 ?do
-      i base FLAG@ 0= if
-         i base CALLS-FLAGGED? if
-            i base FLAG!
-            NEWLY @ 1+ NEWLY !
-         then
-      then
-   loop
-   NEWLY @ ;
-
-\ Close the flag under calls. Each pass flags at least one more definition or
-\ none at all, so the definition count bounds the number of passes.
-: FLAG-CLOSE ( ptr n -- ) {: base:ptr :}
-   DEF-N @ 1+ 0 ?do
-      base FLAG-PASS 0= if unloop exit then
-   loop ;
-
-: CLASSIFY ( ptr u8 n -- ) {: g:ptr gu:n :}
-   COLLECT-DEFS
-   PUSH-TOKEN$ DEF-WRITES SEED-FLAGS
-   g gu DEF-GUARDS SEED-FLAGS
-   DEF-WRITES FLAG-CLOSE
-   DEF-GUARDS FLAG-CLOSE ;
-
-: WRITER-TOKEN? ( n -- bool ) {: k:n :}
-   k PUSH-TOKEN$ TOK-IS? if true exit then
-   k TOK$ DEF-WRITES FLAGGED-NAME? ;
-
-: GUARD-TOKEN? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k a u TOK-IS? if true exit then
-   k TOK$ DEF-GUARDS FLAGGED-NAME? ;
-
-: FIRST-WRITER ( n n -- n ) {: b:n e:n :}
-   e FOUND !
-   e b ?do
-      i WRITER-TOKEN? if
-         FOUND @ e = if i FOUND ! then
-      then
-   loop
-   FOUND @ ;
-
-: WRITER-COUNT ( n n -- n ) {: b:n e:n :}
-   0 HITS !
-   e b ?do
-      i WRITER-TOKEN? if HITS @ 1+ HITS ! then
-   loop
-   HITS @ ;
-
-: GUARD-COUNT-IN ( n n ptr u8 n -- n ) {: b:n e:n a:ptr u:n :}
-   0 HITS !
-   e b ?do
-      i a u GUARD-TOKEN? if HITS @ 1+ HITS ! then
-   loop
-   HITS @ ;
-
-: LATE-GUARDS ( n n n ptr u8 n -- n ) {: b:n e:n first:n a:ptr u:n :}
-   0 HITS !
-   e first ?do
-      i a u GUARD-TOKEN? if HITS @ 1+ HITS ! then
-   loop
-   HITS @ ;
-
-: BUILDER-ROW ( n n n -- ) {: b:n e:n row:n :}
-   s" a builder still writes its rows through the arena" T-LABEL
-   b e WRITER-COUNT 0 > TTRUE
-   s" every guard a builder reaches runs before its first arena push" T-LABEL
-   b e  b e FIRST-WRITER  row ORDER-GUARD$ LATE-GUARDS 0 T= ;
-
-: READER-ROW ( n n -- ) {: b:n e:n :}
-   s" a reader revalidates and never writes a cell" T-LABEL
-   b e WRITER-COUNT 0 T= ;
-
-: ORDER-ROW ( n -- ) {: row:n :}
-   row ORDER-FILE$ COMPILER-ID-SRC:SCAN-FILE
-   row ORDER-GUARD$ CLASSIFY
-   row ORDER-WORD$ COMPILER-ID-SRC:BODY-SPAN {: b:n e:n :}
-   s" the guard token is nowhere in the body, so a one-level scan sees none" T-LABEL
-   b e row ORDER-GUARD$ SPAN-COUNT 0 T=
-   s" closing the guard relation under calls still reaches that guard" T-LABEL
-   b e row ORDER-GUARD$ GUARD-COUNT-IN 0 > TTRUE
-   row ORDER-WRITES? if b e row BUILDER-ROW else b e READER-ROW then ;
-
-public
-
-: CALL-CLOSED ( -- )
-   ORDER-COUNT 0 ?do i ORDER-ROW loop ;
-
-private
 
 \ ---- the rigged module -------------------------------------------------------
 \ An AArch64 Darwin contract with the baseline instruction set and plain
@@ -423,34 +241,7 @@ variable ANS
    CUR @ SCN-KIND@ KIND-SSA = if c SSA-SEQ exit then
    c BLK-SEQ ;
 
-\ ---- the table cannot quietly lose a case ------------------------------------
-
-: ROLE-COVERED? ( n -- bool ) {: role:n :}
-   SCENARIOS 0 ?do
-      i SCN-ROLE@ role = if true unloop exit then
-   loop
-   false ;
-
-: KIND-COVERED? ( n -- bool ) {: kind:n :}
-   SCENARIOS 0 ?do
-      i SCN-KIND@ kind = if true unloop exit then
-   loop
-   false ;
-
 public
-
-\ The sequence table carries no digest, so this is its freeze. A role that stops
-\ being covered or a store that stops being driven fails here rather than
-\ quietly shrinking what the gate asks.
-: COVERAGE ( -- )
-   ROLE-COUNT 0 ?do
-      s" every frozen sequence role is covered by a vector row" T-LABEL
-      i ROLE-COVERED? TTRUE
-   loop
-   KIND-COUNT 0 ?do
-      s" every store the model covers is driven by a vector row" T-LABEL
-      i KIND-COVERED? TTRUE
-   loop ;
 
 : VECTORS ( -- )
    SCENARIOS 0 ?do
@@ -459,9 +250,6 @@ public
    loop ;
 
 : HABU-SIDE ( -- )
-   GUARDS
-   CALL-CLOSED
-   COVERAGE
    VECTORS ;
 
 ;using

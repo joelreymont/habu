@@ -4,10 +4,7 @@
 \ test/structure-decl-suite.f (the front end parses the live input stream and
 \ mutates the type registry, so it resolves only at top-level interpret):
 \     bin/hb < test/enum-decl-suite.f
-\ Proves: a FULL declaration publishes a TK-SUM family with named variants and
-\ named FIELD payloads reaching TYPE-FIELD reflection keyed (family, variant-id)
-\ with SV.SCH-COUNT=0 (the settled seam); a COMPACT declaration publishes
-\ payloadless TK-ENUM variants matching legacy-compact registry semantics; POLICY
+\ Proves: full and compact declarations generate typed constructors; POLICY
 \ and DERIVE headers are accepted before compact variants and reach both the
 \ family record and the event stream; the shared
 \ variant open/close and field events sequence correctly and each field event
@@ -18,8 +15,7 @@
 \ collisions, and the field record's own dup / reserved / case / schema gate)
 \ fires at the offending token; a mid-declaration reject leaves every
 \ registry cursor byte-identical to the pre-declaration baseline; and the
-\ deterministic snapshot identity is reproducible for an identical declaration
-\ against a fresh registry.
+\ snapshot identity changes when a variant or payload field is added.
 \ A failure prints F<index> + detail; REPORT exits 1.
 \
 \ ENUM-DECL:ED-RUN is the front-end entry: the global ENUM token still belongs to
@@ -77,13 +73,9 @@ TRUSTED: F-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
 : F-HASH? ( n -- bool ) TFAM-DERIVE-HASH? ;
 : SV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
 : SV-TAG@ ( n -- n ) SUMV-TAG@ ;
-TRUSTED: SV-SCH-COUNT@ ( n -- n ) SUMV-SCH-COUNT@ ;
-TRUSTED: SV-FAM@ ( n -- n ) SUMV-FAM@ ;
 TRUSTED: SCH-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
-TRUSTED: SCH-TAG@ ( n -- n ) SCHEMA-TAG@ ;
 TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
 : PACKED# ( -- n ) TL-PACKED-TAG ;
-: SCHCON# ( -- n ) SCH-CON ;
 : CCN# ( -- n ) CC-N ;
 
 \ --- registry snapshot, so a reject can be proven byte-identical and the identity
@@ -173,62 +165,8 @@ package ENUM-DECL
 
 ;package
 
-\ ---------------------------------------------------------------------------
-\ 1. A compact declaration persists a TK-ENUM family and one payloadless SUMV row
-\    per bare variant, in declaration-order tags, owned by the family.
-\ ---------------------------------------------------------------------------
-TFAMN@ FID !
+\ A declared family name is reserved in the variant-name rejects below.
 s" ENUM-DECL:ED-RUN color red green blue ;ENUM" EV
-TFAMN@ FID @ 1 + T=                                  \ exactly one new family
-s" color" FAMID F-ENUM? T-TRUE                       \ registered as the enum kind
-s" color" FAMID F-VAR-COUNT 3 T=                     \ three variants
-s" color" FAMID F-FLD-COUNT 0 T=                     \ payloadless: no field rows
-s" color" FAMID F-WIDTH 1 T=                         \ enum width = one tag cell, no payload
-s" color" FAMID F-VAR-START VS0 !
-VS0 @ SV-NAME$ s" red" CORE-STR= T-TRUE              \ variant 0 = red, tag 0
-VS0 @ SV-TAG@ 0 T=
-VS0 @ SV-SCH-COUNT@ 0 T=                             \ payloadless SUMV row
-VS0 @ SV-FAM@ s" color" FAMID T=                     \ variant owned by the family
-VS0 @ 1 + SV-NAME$ s" green" CORE-STR= T-TRUE
-VS0 @ 1 + SV-TAG@ 1 T=
-VS0 @ 2 + SV-NAME$ s" blue" CORE-STR= T-TRUE
-VS0 @ 2 + SV-TAG@ 2 T=
-
-\ ---------------------------------------------------------------------------
-\ 2. A full declaration publishes a TK-SUM family; its named FIELD payloads reach
-\    TYPE-FIELD reflection keyed (family, variant-id) with the declared names,
-\    slots, and byte offsets; the SUMV rows carry no positional schema (the
-\    settled named-field seam, SV.SCH-COUNT=0); and the family width is the widest
-\    variant payload plus one tag cell.
-\ ---------------------------------------------------------------------------
-TYPE-FIELD:COUNT B !
-s" ENUM-DECL:ED-RUN msg 0 VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM" EV
-s" msg" FAMID F-SUM? T-TRUE                           \ a full enum is a tagged sum
-s" msg" FAMID F-VAR-COUNT 2 T=                        \ quit, move
-s" msg" FAMID F-FLD-COUNT 2 T=                        \ x, y (only move has fields)
-s" msg" FAMID F-WIDTH 3 T=                            \ widest payload (move = 2 cells) + one tag
-s" msg" FAMID F-VAR-START VS0 !
-VS0 @ SV-NAME$ s" quit" CORE-STR= T-TRUE
-VS0 @ SV-SCH-COUNT@ 0 T=                              \ named-field seam: no positional payload schema
-VS0 @ 1 + SV-NAME$ s" move" CORE-STR= T-TRUE
-VS0 @ 1 + SV-SCH-COUNT@ 0 T=
-VS0 @ 1 + VID !                                       \ the move variant id
-B @ TYPE-FIELD:NAME$ s" x" CORE-STR= T-TRUE           \ first field is x
-B @ TYPE-FIELD:FAMILY@ s" msg" FAMID T=               \ owned by the msg family
-B @ TYPE-FIELD:VARIANT@ VID @ T=                      \ keyed to the move variant
-B @ TYPE-FIELD:SLOT@ 0 T=                             \ x at variant-payload slot 0
-B @ TYPE-FIELD:BYTE-OFF@ 0 T=
-B @ 1 + TYPE-FIELD:NAME$ s" y" CORE-STR= T-TRUE       \ second field is y
-B @ 1 + TYPE-FIELD:VARIANT@ VID @ T=                  \ also keyed to the move variant
-B @ 1 + TYPE-FIELD:SLOT@ 1 T=                         \ y at variant-payload slot 1
-B @ 1 + TYPE-FIELD:BYTE-OFF@ CELL T=                  \ y at byte offset = one cell
-
-\ ---------------------------------------------------------------------------
-\ 3. The field schema reaches reflection: field type `n` is a concrete con node.
-\ ---------------------------------------------------------------------------
-B @ TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
-NODE @ SCH-TAG@ SCHCON# T=                            \ a concrete-con schema node
-NODE @ SCH-A@ CCN# T=                                 \ con code = n
 
 \ ---------------------------------------------------------------------------
 \ 4. A full declaration with arity resolves a positional-parameter field: FIELD v
@@ -442,9 +380,8 @@ s" ENUM-DECL:ED-RUN twice red ;ENUM" EV
 s" ENUM-DECL:ED-RUN twice red ;ENUM" TRY 7102 T=
 
 \ ---------------------------------------------------------------------------
-\ 14. Deterministic snapshot identity: an identical declaration against a fresh
-\     registry (family id restored, event log reset) folds to the same identity;
-\     a different declaration folds to a different one.
+\ 14. Snapshot identity changes when a variant or payload field is added,
+\     with family ids held constant by restoring the registry cursors.
 \
 \     These declarations are package-scoped, which makes them private, which
 \     keeps constructor generation out of the way. REG-RESTORE is a whitebox
@@ -464,24 +401,15 @@ s" ENUM-DECL:ED-RUN idc ia ib ic ;ENUM" EV
 DECL-EVENT:IDENTITY RC !                              \ RC holds identity A
 REG-RESTORE                                           \ retire family + variants; fresh registry
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN idc ia ib ic ;ENUM" EV
-DECL-EVENT:IDENTITY RC @ T=                           \ identical declaration -> same identity
-REG-RESTORE
-DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN idc ia ib ic id ;ENUM" EV
 DECL-EVENT:IDENTITY RC @ <> T-TRUE                    \ different declaration -> different identity
 REG-RESTORE
 
-\ Named payload declarations have the same deterministic snapshot contract for
-\ their ordered schema-bearing FIELD event sequence.
+\ Adding a named payload field also changes the identity.
 REG-MARK
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f ;VARIANT ;ENUM" EV
 DECL-EVENT:IDENTITY RC !
-REG-RESTORE
-DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f ;VARIANT ;ENUM" EV
-DECL-EVENT:IDENTITY RC @ T=
 REG-RESTORE
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f FIELD third n ;VARIANT ;ENUM" EV

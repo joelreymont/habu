@@ -1,4 +1,4 @@
-\ ir-intern-manifest.f - Run native interning schema, source and behavioral checks.
+\ ir-intern-manifest.f - Run native interning behavioral vectors.
 
 require lib/test.f
 require test/compiler/ir-intern-cases.f

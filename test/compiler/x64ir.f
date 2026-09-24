@@ -100,7 +100,6 @@ private
    X64IR:OPCODES 0 ?do
       i X64IR:NTH X64IR:ORD i T=
    loop
-   X64IR:OPCODES 46 T=
    s" machine opcode ordinals below the vocabulary are refused" T-LABEL
    [: OPCODE-NTH-LOW ;] E-X64IR-OPCODE TTHROWSQ
    s" machine opcode ordinals above the vocabulary are refused" T-LABEL

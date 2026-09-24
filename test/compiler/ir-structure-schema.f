@@ -15,46 +15,6 @@ public
 1 constant KIND-BLK                  \ IR-FUN's block table over IR-OP's operations
 2 constant KIND-COUNT
 
-\ ---- what each build sequence is there to show -------------------------------
-\ Every role below must be covered by at least one sequence. The coverage check
-\ in the cases file is what stops a sequence being quietly deleted: the table has
-\ no digest, so the roles are the freeze.
-
-0 constant ROLE-CHAIN                \ a legal chain, each operand naming an earlier value
-1 constant ROLE-FORWARD              \ an operand naming the live count itself
-2 constant ROLE-SELF                 \ an operand naming the ordinal this operation would mint
-3 constant ROLE-CYCLE                \ two operations each naming the other's result
-4 constant ROLE-OP-CEIL              \ the operation table's committed ceiling
-5 constant ROLE-VAL-CEIL             \ the value table's committed ceiling, then a legal append
-6 constant ROLE-POOL-CEIL            \ the cell pool's committed ceiling, then a legal append
-7 constant ROLE-TILE                 \ two blocks whose operation windows tile in a row
-8 constant ROLE-STRAY                \ an operation appended while no block is open
-9 constant ROLE-EMPTY                \ a block holding no operation at all
-10 constant ROLE-NOTERM              \ a block whose last operation is not a terminator
-11 constant ROLE-MIDTERM             \ a block with a terminator before its end
-12 constant ROLE-WEDGE               \ a refused block leaves its operations behind for good
-13 constant ROLE-COUNT
-
-\ The role's name, for the label a failing row reports and for the name the
-\ diagnostic row names.
-: ROLE-NAME$ ( n -- ptr u8 n )
-   case
-      0 of s" chain" endof
-      1 of s" forward_ref" endof
-      2 of s" self_ref" endof
-      3 of s" cycle" endof
-      4 of s" op_ceiling" endof
-      5 of s" value_ceiling" endof
-      6 of s" pool_ceiling" endof
-      7 of s" tile" endof
-      8 of s" stray_op" endof
-      9 of s" empty_block" endof
-      10 of s" no_terminator" endof
-      11 of s" mid_terminator" endof
-      12 of s" wedged" endof
-      E-CIS-ROW throw
-   endcase ;
-
 private
 
 \ ---- storage -----------------------------------------------------------------
@@ -77,7 +37,6 @@ create BS-TOFF STEP-CAP cells allot
 create BS-CLASS STEP-CAP cells allot
 create BS-ORD STEP-CAP cells allot
 
-create SCN-ROLE SCN-CAP cells allot
 create SCN-KIND SCN-CAP cells allot
 create SCN-BASE SCN-CAP cells allot
 create SCN-LEN SCN-CAP cells allot
@@ -138,10 +97,9 @@ variable OPEN-BASE
 : SEQ ( n -- ) {: kind:n :}
    kind KIND-SSA = if SS-N @ else BS-N @ then OPEN-BASE ! ;
 
-: ;SEQ ( n n n n n n n -- )
-   {: role:n kind:n a:n b:n c:n fa:n fb:n :}
+: ;SEQ ( n n n n n n -- )
+   {: kind:n a:n b:n c:n fa:n fb:n :}
    SCN-N @ SCN-CAP >= if E-CIS-ROW throw then
-   role SCN-ROLE SCN-N @ cells + !
    kind SCN-KIND SCN-N @ cells + !
    OPEN-BASE @ SCN-BASE SCN-N @ cells + !
    kind KIND-SSA = if SS-N @ else BS-N @ then OPEN-BASE @ -
@@ -155,7 +113,7 @@ variable OPEN-BASE
 
 \ ---- the value-store build sequences -----------------------------------------
 \ Read a block as: open, present these operations in this order, close with the
-\ role, the store kind, the three committed ceilings, and the operation and
+\ store kind, the three committed ceilings, and the operation and
 \ value counts the store must hold when the sequence ends.
 \
 \ An accepted operation answers the operation ordinal it was appended at, which
@@ -167,45 +125,45 @@ variable OPEN-BASE
       OPD-N @ 1 0 0 SSTEP+
       0 OPD+ OPD-N @ 1- 1 1 0 SSTEP+
       0 OPD+ 1 OPD+ OPD-N @ 2 - 1 2 0 SSTEP+
-   ROLE-CHAIN KIND-SSA 8 8 64 3 3 ;SEQ ;
+   KIND-SSA 8 8 64 3 3 ;SEQ ;
 
 : FORWARD-SEQ ( -- )
    KIND-SSA SEQ
       OPD-N @ 1 0 0 SSTEP+
       1 OPD+ OPD-N @ 1- 1 -1 E-IR-OP-SSA SSTEP+
       0 OPD+ OPD-N @ 1- 1 1 0 SSTEP+
-   ROLE-FORWARD KIND-SSA 8 8 64 2 2 ;SEQ ;
+   KIND-SSA 8 8 64 2 2 ;SEQ ;
 
 : SELF-SEQ ( -- )
    KIND-SSA SEQ
       0 OPD+ OPD-N @ 1- 1 -1 E-IR-OP-SSA SSTEP+
-   ROLE-SELF KIND-SSA 8 8 64 0 0 ;SEQ ;
+   KIND-SSA 8 8 64 0 0 ;SEQ ;
 
 : CYCLE-SEQ ( -- )
    KIND-SSA SEQ
       1 OPD+ OPD-N @ 1- 1 -1 E-IR-OP-SSA SSTEP+
       0 OPD+ OPD-N @ 1- 1 -1 E-IR-OP-SSA SSTEP+
-   ROLE-CYCLE KIND-SSA 8 8 64 0 0 ;SEQ ;
+   KIND-SSA 8 8 64 0 0 ;SEQ ;
 
 : OP-CEIL-SEQ ( -- )
    KIND-SSA SEQ
       OPD-N @ 1 0 0 SSTEP+
       OPD-N @ 1 -1 E-IR-OP-CAP SSTEP+
-   ROLE-OP-CEIL KIND-SSA 1 8 64 1 1 ;SEQ ;
+   KIND-SSA 1 8 64 1 1 ;SEQ ;
 
 : VAL-CEIL-SEQ ( -- )
    KIND-SSA SEQ
       OPD-N @ 1 0 0 SSTEP+
       OPD-N @ 1 -1 E-IR-OP-CAP SSTEP+
       OPD-N @ 0 1 0 SSTEP+
-   ROLE-VAL-CEIL KIND-SSA 8 1 64 2 1 ;SEQ ;
+   KIND-SSA 8 1 64 2 1 ;SEQ ;
 
 : POOL-CEIL-SEQ ( -- )
    KIND-SSA SEQ
       OPD-N @ 1 0 0 SSTEP+
       0 OPD+ OPD-N @ 1- 1 -1 E-IR-OP-CAP SSTEP+
       OPD-N @ 1 1 0 SSTEP+
-   ROLE-POOL-CEIL KIND-SSA 8 8 2 2 2 ;SEQ ;
+   KIND-SSA 8 8 2 2 2 ;SEQ ;
 
 \ ---- the block build sequences -----------------------------------------------
 \ A step is (operations appended while no block is open, operations appended
@@ -218,35 +176,35 @@ variable OPEN-BASE
    KIND-BLK SEQ
       0 1 0 0 0 BSTEP+
       0 2 1 1 0 BSTEP+
-   ROLE-TILE KIND-BLK 0 0 0 2 3 ;SEQ ;
+   KIND-BLK 0 0 0 2 3 ;SEQ ;
 
 : STRAY-SEQ ( -- )
    KIND-BLK SEQ
       0 1 0 0 0 BSTEP+
       1 1 0 -1 E-IR-FUN-WINDOW BSTEP+
-   ROLE-STRAY KIND-BLK 0 0 0 1 3 ;SEQ ;
+   KIND-BLK 0 0 0 1 3 ;SEQ ;
 
 : EMPTY-SEQ ( -- )
    KIND-BLK SEQ
       0 0 0 -1 E-IR-FUN-TERM BSTEP+
-   ROLE-EMPTY KIND-BLK 0 0 0 0 0 ;SEQ ;
+   KIND-BLK 0 0 0 0 0 ;SEQ ;
 
 : NOTERM-SEQ ( -- )
    KIND-BLK SEQ
       0 1 1 -1 E-IR-FUN-TERM BSTEP+
-   ROLE-NOTERM KIND-BLK 0 0 0 0 1 ;SEQ ;
+   KIND-BLK 0 0 0 0 1 ;SEQ ;
 
 : MIDTERM-SEQ ( -- )
    KIND-BLK SEQ
       0 2 0 -1 E-IR-FUN-TERM BSTEP+
-   ROLE-MIDTERM KIND-BLK 0 0 0 0 2 ;SEQ ;
+   KIND-BLK 0 0 0 0 2 ;SEQ ;
 
 : WEDGE-SEQ ( -- )
    KIND-BLK SEQ
       0 1 0 0 0 BSTEP+
       1 1 0 -1 E-IR-FUN-WINDOW BSTEP+
       0 1 0 -1 E-IR-FUN-WINDOW BSTEP+
-   ROLE-WEDGE KIND-BLK 0 0 0 1 4 ;SEQ ;
+   KIND-BLK 0 0 0 1 4 ;SEQ ;
 
 : BUILD-SEQUENCES ( -- )
    0 OPD-N !
@@ -275,7 +233,6 @@ public
 : SSA-STEPS ( -- n )       SS-N @ ;
 : BLK-STEPS ( -- n )       BS-N @ ;
 
-: SCN-ROLE@ ( n -- n )     dup SCN-RANGE cells SCN-ROLE + @ ;
 : SCN-KIND@ ( n -- n )     dup SCN-RANGE cells SCN-KIND + @ ;
 : SCN-BASE@ ( n -- n )     dup SCN-RANGE cells SCN-BASE + @ ;
 : SCN-LEN@ ( n -- n )      dup SCN-RANGE cells SCN-LEN + @ ;
@@ -298,170 +255,5 @@ public
 : BS-TOFF@ ( n -- n )      dup BS-RANGE cells BS-TOFF + @ ;
 : BS-ORD@ ( n -- n )       dup BS-RANGE cells BS-ORD + @ ;
 : BS-CLASS@ ( n -- n )     dup BS-RANGE cells BS-CLASS + @ ;
-
-\ ---- the frozen guard bodies -------------------------------------------------
-\ Each body is read back out of the production source as a normalized token run
-\ and compared whole. These are the bodies that make the model's hypotheses true
-\ of the shipped code, so a silent edit to any of them is a silent change to
-\ what the proofs are about.
-\
-\ Seven of them were re-derived when the operation store moved onto one resolved
-\ reader per public word (078759d8, 0e8c47e3, f9c7dcac). What changed in each is
-\ WHICH handle the read goes through and what the local holding it is called -
-\ `IR-ARENA:arena`/`IR-ARENA:view` became `IR-ARENA:reader`, `LCELL@` became
-\ `IR-ARENA:RD@`, and the live/frozen twins collapsed onto one word each
-\ (`FRC@` to `RC@`, `FROW-END` to `ROW-END`, `FPCELLS` to `PCELLS`). The
-\ arithmetic, the guard calls and their order are identical token for token.
-\ `FTILE-CK` additionally reads its eight fields in one pass into the frozen row
-\ memo before doing that arithmetic over the cached cells: `OFF-OPST` through
-\ `OFF-ATN` are the eight CONSECUTIVE offsets 1..8 of the row (src/compiler/ir/
-\ op.f), so the batched read covers exactly the cells the interleaved reads did.
-
-16 constant GUARD-COUNT
-
-: GUARD-FILE$ ( n -- ptr u8 n )
-   case
-      0 of s" src/compiler/ir/op.f" endof
-      1 of s" src/compiler/ir/op.f" endof
-      2 of s" src/compiler/ir/op.f" endof
-      3 of s" src/compiler/ir/op.f" endof
-      4 of s" src/compiler/ir/op.f" endof
-      5 of s" src/compiler/ir/op.f" endof
-      6 of s" src/compiler/ir/op.f" endof
-      7 of s" src/compiler/ir/fun.f" endof
-      8 of s" src/compiler/ir/fun.f" endof
-      9 of s" src/compiler/ir/fun.f" endof
-      10 of s" src/compiler/ir/fun.f" endof
-      11 of s" src/compiler/ir/fun.f" endof
-      12 of s" src/compiler/ir/fun.f" endof
-      13 of s" src/compiler/ir/fun.f" endof
-      14 of s" src/compiler/ir/fun.f" endof
-      15 of s" src/compiler/ir/fun.f" endof
-      E-CIS-ROW throw
-   endcase ;
-
-: GUARD-WORD$ ( n -- ptr u8 n )
-   case
-      0 of s" OPERANDS-CK" endof
-      1 of s" STEP-CK" endof
-      2 of s" TILE-CK" endof
-      3 of s" FTILE-CK" endof
-      4 of s" WIN-STARTS" endof
-      5 of s" ROW-ADD" endof
-      6 of s" ROOM-CK" endof
-      7 of s" STEP-CK" endof
-      8 of s" OTILE-CK" endof
-      9 of s" BTILE-CK" endof
-      10 of s" ATILE-CK" endof
-      11 of s" TERM-CK" endof
-      12 of s" TERM-AT-CK" endof
-      13 of s" ARGS-CK" endof
-      14 of s" PARENTS-CK" endof
-      15 of s" BROW-ADD" endof
-      E-CIS-ROW throw
-   endcase ;
-
-: GUARD-BODY$ ( n -- ptr u8 n )
-   case
-      0 of s" {: hs:n vcnt:n :} L-OP SN@ 0 ?do hs L-OP SEG i + SO@ OWNED-CK L-OP SEG i + SV@ dup 0 < swap vcnt >= or if E-IR-OP-SSA throw then loop" endof
-      1 of s" <> if E-IR-OP-WINDOW throw then" endof
-      2 of s" {: p:IR-ARENA:reader r:IR-ARENA:reader l:n :} l 0= if 0 else r l 1- ROW-END then {: at:n :} at r l OFF-OPST RC@ STEP-CK at r l OFF-OPN RC@ LEN-OK + {: a1:n :} a1 r l OFF-RSST RC@ STEP-CK a1 r l OFF-RSN RC@ LEN-OK + {: a2:n :} a2 r l OFF-SCST RC@ STEP-CK a2 r l OFF-SCN RC@ LEN-OK + {: a3:n :} a3 r l OFF-ATST RC@ STEP-CK a3 r l OFF-ATN RC@ LEN-OK + p PCELLS > if E-IR-OP-STATE throw then" endof
-      3 of s" {: p:IR-ARENA:reader r:IR-ARENA:reader l:n :} 8 0 ?do r l i OFF-OPST + RC@ i FROW-FIELDS ! loop l 0= if 0 else r l 1- ROW-END then {: at:n :} at OFF-OPST FROW-FIELD STEP-CK at OFF-OPN FROW-FIELD LEN-OK + {: a1:n :} a1 OFF-RSST FROW-FIELD STEP-CK a1 OFF-RSN FROW-FIELD LEN-OK + {: a2:n :} a2 OFF-SCST FROW-FIELD STEP-CK a2 OFF-SCN FROW-FIELD LEN-OK + {: a3:n :} a3 OFF-ATST FROW-FIELD STEP-CK a3 OFF-ATN FROW-FIELD LEN-OK + p PCELLS > if E-IR-OP-STATE throw then" endof
-      4 of s" {: st:n :} st st L-OP SN@ + st L-OP SN@ + L-RS SN@ + st L-OP SN@ + L-RS SN@ + L-SC SN@ +" endof
-      5 of s" {: c:IR-CTX:ctx r:IR-ARENA:arena st:n :} st WIN-STARTS {: sop:n srs:n ssc:n sat:n :} c r STG-OPC @ CELL+ c r sop CELL+ c r L-OP SN@ CELL+ c r srs CELL+ c r L-RS SN@ CELL+ c r ssc CELL+ c r L-SC SN@ CELL+ c r sat CELL+ c r L-AT SN@ AT-CELLS * CELL+ c r STG-SRC @ CELL+ c r STG-SBEG @ CELL+ c r STG-SLEN @ CELL+" endof
-      6 of s" {: p:IR-ARENA:reader v:IR-ARENA:reader r:IR-ARENA:reader :} r CNT r HC-CAP IR-ARENA:RD@ >= if E-IR-OP-CAP throw then v VCNT L-RS SN@ + v HC-CAP IR-ARENA:RD@ > if E-IR-OP-CAP throw then p PCELLS STAGED-CELLS + p HC-CAP IR-ARENA:RD@ > if E-IR-OP-CAP throw then" endof
-      7 of s" <> if E-IR-FUN-WINDOW throw then" endof
-      8 of s" {: blr:IR-ARENA:reader l:n :} l 0= if 0 else blr l 1- BOP-END then blr l OFF-OPST BC@ STEP-CK" endof
-      9 of s" {: fnr:IR-ARENA:reader l:n :} l 0= if 0 else fnr l 1- FNBK-END then fnr l OFF-BST FNC@ STEP-CK" endof
-      10 of s" {: fnp:IR-ARENA:reader fnr:IR-ARENA:reader l:n :} l 0= if 0 else fnr l 1- FNAT-END then {: at:n :} at fnr l OFF-ATST FNC@ STEP-CK fnr l FNAT-END fnp PCELLS > if E-IR-FUN-STATE throw then" endof
-      11 of s" {: r:IR-ARENA:arena qr:IR-ARENA:arena key:IR-ID:ir-module-key opst:n opn:n :} opn 1 < if E-IR-FUN-TERM throw then opn 0 ?do r qr key opst i opn 1- TERM-AT-CK loop" endof
-      12 of s" {: r:IR-ARENA:arena qr:IR-ARENA:arena key:IR-ID:ir-module-key opst:n i:n last:n :} qr r key key opst i + IR-ID:PACK-OP IR-OP:OPCODE@ IR-SCHEMA:TERMINATOR? {: t:bool :} t if i last <> if E-IR-FUN-TERM throw then exit then i last = if E-IR-FUN-TERM throw then" endof
-      13 of s" {: v:IR-ARENA:arena key:IR-ID:ir-module-key l:n agst:n agn:n :} agn 0 ?do key agst i + IR-ID:PACK-VALUE {: id:IR-ID:ir-value-id :} v id IR-OP:VALUE-KIND@ IR--OP-DEF--KIND:BLK-ARG IR--OP-DEF--KIND:EQ 0= if E-IR-FUN-ARG throw then v key id IR-OP:VALUE-BLOCK@ IR-ID:BLOCK-LOCAL l <> if E-IR-FUN-ARG throw then v id IR-OP:VALUE-ARG@ i <> if E-IR-FUN-ARG throw then loop" endof
-      14 of s" {: blr:IR-ARENA:reader l:n bst:n bn:n :} bn 0 ?do blr bst i + OFF-PAR BC@ l <> if E-IR-FUN-PARENT throw then loop" endof
-      15 of s" {: c:IR-CTX:ctx b:IR-ARENA:arena par:n agst:n opst:n opn:n :} c b par CELL+ c b agst CELL+ c b BSTG-AGN @ CELL+ c b opst CELL+ c b opn CELL+ c b opst opn + 1- CELL+ c b BSTG-SRC @ CELL+ c b BSTG-SBEG @ CELL+ c b BSTG-SLEN @ CELL+" endof
-      E-CIS-ROW throw
-   endcase ;
-
-\ ---- the call-closed guard rows ----------------------------------------------
-\ One row per (word, guard) pair whose guard is reached only through a call.
-\ Every row asserts that the guard token occurs zero times in the body itself,
-\ so a reader that did not close the guard relation under calls would pass the
-\ row for a body that has no guard at all.
-\
-\ A builder row writes rows into an arena and must run every guard before its
-\ first write. A reader row must contain no writer at all, because a reader
-\ revalidates and never mutates.
-
-13 constant ORDER-COUNT
-
-: ORDER-FILE$ ( n -- ptr u8 n )
-   case
-      0 of s" src/compiler/ir/op.f" endof
-      1 of s" src/compiler/ir/op.f" endof
-      2 of s" src/compiler/ir/op.f" endof
-      3 of s" src/compiler/ir/fun.f" endof
-      4 of s" src/compiler/ir/fun.f" endof
-      5 of s" src/compiler/ir/fun.f" endof
-      6 of s" src/compiler/ir/fun.f" endof
-      7 of s" src/compiler/ir/op.f" endof
-      8 of s" src/compiler/ir/op.f" endof
-      9 of s" src/compiler/ir/fun.f" endof
-      10 of s" src/compiler/ir/fun.f" endof
-      11 of s" src/compiler/ir/fun.f" endof
-      12 of s" src/compiler/ir/fun.f" endof
-      E-CIS-ROW throw
-   endcase ;
-
-: ORDER-WORD$ ( n -- ptr u8 n )
-   case
-      0 of s" END-OP" endof
-      1 of s" END-OP" endof
-      2 of s" END-OP" endof
-      3 of s" END-BLOCK" endof
-      4 of s" END-BLOCK" endof
-      5 of s" END-FUN" endof
-      6 of s" END-FUN" endof
-      7 of s" WIN@" endof
-      8 of s" FOPERAND@" endof
-      9 of s" OP@" endof
-      10 of s" FOP@" endof
-      11 of s" BLOCK@" endof
-      12 of s" TERMINATOR@" endof
-      E-CIS-ROW throw
-   endcase ;
-
-: ORDER-GUARD$ ( n -- ptr u8 n )
-   case
-      0 of s" E-IR-OP-SSA" endof
-      1 of s" E-IR-OP-CAP" endof
-      2 of s" E-IR-OP-ARITY" endof
-      3 of s" E-IR-FUN-TERM" endof
-      4 of s" E-IR-FUN-ARG" endof
-      5 of s" E-IR-FUN-PARENT" endof
-      6 of s" E-IR-FUN-LINKAGE" endof
-      7 of s" E-IR-OP-WINDOW" endof
-      8 of s" E-IR-OP-WINDOW" endof
-      9 of s" E-IR-FUN-WINDOW" endof
-      10 of s" E-IR-FUN-WINDOW" endof
-      11 of s" E-IR-FUN-WINDOW" endof
-      12 of s" E-IR-FUN-WINDOW" endof
-      E-CIS-ROW throw
-   endcase ;
-
-\ True for a builder row, false for a reader row.
-: ORDER-WRITES? ( n -- bool )
-   7 < ;
-
-\ The token that writes a cell into an arena, and the token every guard row is
-\ reached through. A definition that carries either, directly or through a word
-\ it calls, is a writer or a guard.
-: PUSH-TOKEN$ ( -- ptr u8 n )
-   s" IR-ARENA:PUSH" ;
-
-: OP-FILE$ ( -- ptr u8 n )
-   s" src/compiler/ir/op.f" ;
-
-: FUN-FILE$ ( -- ptr u8 n )
-   s" src/compiler/ir/fun.f" ;
 
 ;package

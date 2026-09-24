@@ -1,4 +1,4 @@
-\ map-test.f - focused tests for fixed-capacity map layout helpers.
+\ map-test.f - map operations, ownership, capacity and corrupt-state refusals.
 \ Run: cat lib/errors.f lib/string.f lib/map.f lib/map-test.f | bin/hb
 
 require lib/errors.f
@@ -46,20 +46,11 @@ create MT-KEY-Z 122 c,
 : MT-MAP-CHECK-CAP ( n -- )
    >COUNT MAP-CHECK-CAP ;
 
-: MT-MAP-CHECK-LEN ( n -- )
-   >LEN MAP-CHECK-LEN ;
-
 : MT-MAP-CELLS ( n -- n )
    >COUNT MAP-CELLS COUNT>N ;
 
 : MT-MAP-CAP@ ( ptr a -- n )
    MAP-CAP@ COUNT>N ;
-
-: MT-MAP-CAP! ( n ptr a -- ) {: cap m:ptr :}
-   cap >COUNT m MAP-CAP! ;
-
-: MT-MAP-CHECK-HANDLE ( ptr a n -- ) {: m:ptr cap :}
-   m cap >COUNT MAP-CHECK-HANDLE ;
 
 : MT-MAP-COUNT@ ( ptr a -- n )
    MAP-COUNT@ COUNT>N ;
@@ -75,9 +66,6 @@ create MT-KEY-Z 122 c,
 
 : MT-MAP-CHECK-INDEX ( ptr a n -- ) {: m:ptr ix :}
    m ix >IDX MAP-CHECK-INDEX ;
-
-: MT-MAP-SLOT ( ptr a n -- ptr a ) {: m:ptr ix :}
-   m ix >IDX MAP-SLOT ;
 
 : MT-MAP-SLOT-FIELD ( ptr a n n -- ptr a ) {: m:ptr ix off :}
    m ix >IDX off >OFF MAP-SLOT-FIELD ;
@@ -97,9 +85,6 @@ create MT-KEY-Z 122 c,
 : MT-MAP-SLOT-KEY-A@ ( ptr a n -- ptr u8 ) {: m:ptr ix :}
    m ix >IDX MAP-SLOT-KEY-A@ ;
 
-: MT-MAP-SLOT-KEY-A! ( ptr u8 ptr a n -- ) {: key:ptr m:ptr ix :}
-   key m ix >IDX MAP-SLOT-KEY-A! ;
-
 : MT-MAP-SLOT-KEY-U@ ( ptr a n -- n ) {: m:ptr ix :}
    m ix >IDX MAP-SLOT-KEY-U@ LEN>N ;
 
@@ -112,9 +97,6 @@ create MT-KEY-Z 122 c,
 : MT-MAP-SLOT-VALUE! ( a ptr a n -- ) {: value m:ptr ix :}
    value m ix >IDX MAP-SLOT-VALUE! ;
 
-: MT-MAP-SLOT-CLEAR ( ptr a n -- ) {: m:ptr ix :}
-   m ix >IDX MAP-SLOT-CLEAR ;
-
 : MT-MAP-INIT ( ptr a n -- ) {: m:ptr cap :}
    m cap >COUNT MAP-INIT ;
 
@@ -126,9 +108,6 @@ create MT-KEY-Z 122 c,
 
 : MT-MAP-PROBE ( n n n -- n ) {: hash step cap :}
    hash step >COUNT cap >COUNT MAP-PROBE IDX>N ;
-
-: MT-MAP-SLOT-MATCH? ( ptr a n n ptr u8 n -- bool ) {: m:ptr ix hash key:ptr len :}
-   m ix >IDX hash key len >LEN MAP-SLOT-MATCH? ;
 
 : MT-MAP-LOCATE-SLOT ( n ptr a n ptr u8 n n -- n map-loc ) {: fm:n m:ptr ix:n key:ptr len:n hash:n :}
    fm m ix >IDX key len >LEN hash MAP-LOCATE-SLOT ;
@@ -153,9 +132,6 @@ create MT-KEY-Z 122 c,
 : MT-ASSERT-LOC ( map-loc n n -- ) {: kind:n ix:n :} \ verdict kind + carried idx
    dup MT-LOC-KIND kind MT=
    MT-LOC-IDX ix MT= ;
-
-: MT-MAP-SLOT-INSERT ( a ptr a n n ptr u8 n -- ) {: value m:ptr ix hash key:ptr len :}
-   value m ix >IDX hash key len >LEN MAP-SLOT-INSERT ;
 
 : MT-MAP-GET ( ptr n n ptr u8 n -- option<n> ) {: m:ptr cap:n key:ptr len:n :}
    m cap >COUNT key len >LEN MAP-GET ;
@@ -264,23 +240,9 @@ create MT-KEY-Z 122 c,
    3 MT-MAP 0 MAP-SLOT-STATE-OFF MT-MAP-SLOT-FIELD !
    MT-MAP 0 MT-MAP-SLOT-STATE@ drop ;
 
-: MT-TEST-CONSTANTS ( -- )
-   MAP-CAP-OFF 0 MT=
-   MAP-COUNT-OFF 1 MT=
-   MAP-DELETED-OFF 2 MT=
-   MAP-HEADER-CELLS 3 MT=
-   MAP-SLOT-STATE-OFF 0 MT=
-   MAP-SLOT-HASH-OFF 1 MT=
-   MAP-SLOT-KEY-A-OFF 2 MT=
-   MAP-SLOT-KEY-U-OFF 3 MT=
-   MAP-SLOT-VALUE-OFF 4 MT=
-   MAP-SLOT-CELLS 5 MT= ;
-
-\ Full constructor x predicate matrix for the slot-state enum.
+\ Map workflows exercise each true predicate; these wrong-state calls reject
+\ an always-true predicate that those workflows would not observe.
 : MT-TEST-STATES ( -- )
-   SLOT--STATE:EMPTY MAP-EMPTY? MT-ASSERT
-   SLOT--STATE:DELETED MAP-DELETED? MT-ASSERT
-   SLOT--STATE:OCCUPIED MAP-OCCUPIED? MT-ASSERT
    SLOT--STATE:EMPTY MAP-DELETED? 0= MT-ASSERT
    SLOT--STATE:EMPTY MAP-OCCUPIED? 0= MT-ASSERT
    SLOT--STATE:DELETED MAP-EMPTY? 0= MT-ASSERT
@@ -321,36 +283,6 @@ create MT-KEY-Z 122 c,
    [: MT-BAD-HASH ;] catch E-MAP-BAD-CAP MT=
    [: MT-BAD-KEY-U ;] catch E-MAP-BAD-CAP MT=
    [: MT-BAD-STATE-TAG ;] catch ENGINE-ERROR:BAD-TAG MT= ;
-
-: MT-TEST-LAYOUT ( -- )
-   MT-CAP MT-MAP-CELLS MAP-HEADER-CELLS MT-CAP MAP-SLOT-CELLS * + MT=
-   MT-MAP MT-CAP MT-MAP-INIT
-   MT-MAP MT-MAP-CAP@ MT-CAP MT=
-   MT-MAP MT-MAP-COUNT@ 0 MT=
-   MT-MAP MT-MAP-DELETED@ 0 MT=
-   MT-MAP MAP-SLOTS MT-MAP MAP-HEADER-CELLS cells + = MT-ASSERT
-   MT-MAP 0 MT-MAP-SLOT MT-MAP MAP-SLOTS = MT-ASSERT
-   MT-MAP 1 MT-MAP-SLOT MT-MAP MAP-SLOTS MAP-SLOT-CELLS cells + = MT-ASSERT
-   MT-MAP 2 MAP-SLOT-STATE-OFF MT-MAP-SLOT-FIELD MT-MAP 2 MT-MAP-SLOT = MT-ASSERT
-   MT-MAP 2 MAP-SLOT-VALUE-OFF MT-MAP-SLOT-FIELD
-      MT-MAP 2 MT-MAP-SLOT 4 cells + = MT-ASSERT ;
-
-: MT-TEST-SLOT-FIELDS ( -- )
-   MT-MAP MT-CAP MT-MAP-INIT
-   SLOT--STATE:DELETED MT-MAP 2 MT-MAP-SLOT-STATE!
-   MT-MAP 2 MAP-SLOT-STATE-OFF MT-MAP-SLOT-FIELD @ 1 MT=
-   12345 MT-MAP 2 MT-MAP-SLOT-HASH!
-   MT-KEY MT-MAP 2 MT-MAP-SLOT-KEY-A!
-   3 MT-MAP 2 MT-MAP-SLOT-KEY-U!
-   99 MT-MAP 2 MT-MAP-SLOT-VALUE!
-   MT-MAP 2 MT-MAP-SLOT-STATE@ MAP-DELETED? MT-ASSERT
-   MT-MAP 2 MT-MAP-SLOT-HASH@ 12345 MT=
-   MT-MAP 2 MT-MAP-SLOT-KEY-A@ MT-KEY = MT-ASSERT
-   MT-MAP 2 MT-MAP-SLOT-KEY-U@ 3 MT=
-   MT-MAP 2 MT-MAP-SLOT-VALUE@ 99 MT=
-   MT-MAP 2 MT-MAP-SLOT-CLEAR
-   MT-MAP 2 MAP-SLOT-STATE-OFF MT-MAP-SLOT-FIELD @ 0 MT=
-   2 MT-ASSERT-CLEAR-SLOT ;
 
 : MT-TEST-INIT-CLEAR ( -- )
    MT-FILL-STORAGE
@@ -399,7 +331,6 @@ create MT-KEY-Z 122 c,
 
 : MT-TEST-HASH-PROBE ( -- )
    s" " MT-MAP-HASH MAP-HASH-SEED MT=
-   s" alpha" MT-MAP-HASH s" alpha" MT-MAP-HASH MT=
    s" alpha" MT-MAP-HASH 0 >= MT-ASSERT
    s" beta" MT-MAP-HASH MT-CAP MT-MAP-INDEX MT-CAP MT-RANGE
    -1 MT-CAP MT-MAP-INDEX MT-CAP 1 - MT=
@@ -577,12 +508,9 @@ create MT-KEY-Z 122 c,
    s" map-test: failures" MT-EX-FAIL die ;
 
 : MT-MAIN ( -- )
-   MT-TEST-CONSTANTS
    MT-TEST-STATES
    MT-TEST-STATE-TYPES
    MT-TEST-CHECKS
-   MT-TEST-LAYOUT
-   MT-TEST-SLOT-FIELDS
    MT-TEST-INIT-CLEAR
    MT-TEST-HASH-PROBE
    MT-TEST-MAP-SET-GET

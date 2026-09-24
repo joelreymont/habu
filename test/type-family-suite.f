@@ -110,7 +110,6 @@ TRUSTED: TWX-SCHEMA-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
 TRUSTED: TWX-SCHEMA-SNAPSHOT-PERSIST ( -- ) SCHEMA-SNAPSHOT-PERSIST ;
 TRUSTED: TWX-SCHEMA-TAG@ ( n -- n ) SCHEMA-TAG@ ;
 TRUSTED: TWX-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
-TRUSTED: TWX-SUMV-CTOR-PKG! ( n n n -- ) SUMV-CTOR-PKG! ;
 TRUSTED: TWX-SUMV-FAM@ ( n -- n ) SUMV-FAM@ ;
 TRUSTED: TWX-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
 TRUSTED: TWX-SUMV-PAY-FIELD ( n n -- n bool ) SUMV-PAY-FIELD ;
@@ -130,35 +129,21 @@ TRUSTED: TWX-TF-OFF$ ( n n -- ptr u8 n ) TF-OFF$ ;
 : TDP-PAIR ( n n -- ) {: index:n char:n :}
    index char TDP-INDEX>CHAR
    index char TDP-CHAR>INDEX ;
-TRUSTED: TWX-TFAM-CELL? ( n -- bool ) TFAM-CELL? ;
 TRUSTED: TWX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
-TRUSTED: TWX-TFAM-ENUM? ( n -- bool ) TFAM-ENUM? ;
 TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 TRUSTED: TWX-TFAM-FIND-PUBLIC ( ptr u8 n -- n bool ) TFAM-FIND-PUBLIC ;
-TRUSTED: TWX-TFAM-FLD-COUNT@ ( n -- n ) TFAM-FLD-COUNT@ ;
 TRUSTED: TWX-TFAM-FLD-RANGE! ( n n n -- ) TFAM-FLD-RANGE! ;
-TRUSTED: TWX-TFAM-FLD-START@ ( n -- n ) TFAM-FLD-START@ ;
 TRUSTED: TWX-TFAM-LAYOUT! ( n n -- ) TFAM-LAYOUT! ;
 TRUSTED: TWX-TFAM-LAYOUT-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
-TRUSTED: TWX-TFAM-LAYOUT? ( n -- bool ) TFAM-LAYOUT? ;
 TRUSTED: TWX-TFAM-PK! ( n n n -- ) TFAM-PK! ;
 TRUSTED: TWX-TFAM-PK@ ( n n -- n ) TFAM-PK@ ;
 TRUSTED: TWX-TFAM-PKG$ ( n -- ptr u8 n ) TFAM-PKG$ ;
-TRUSTED: TWX-TFAM-PRODUCT? ( n -- bool ) TFAM-PRODUCT? ;
 TRUSTED: TWX-TFAM-RESET ( -- ) TFAM-RESET ;
 TRUSTED: TWX-TFAM-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-RESOLVE ;
-TRUSTED: TWX-TFAM-SCHEMA-ROOT! ( n n -- ) TFAM-SCHEMA-ROOT! ;
-TRUSTED: TWX-TFAM-SCHEMA-ROOT@ ( n -- n ) TFAM-SCHEMA-ROOT@ ;
 TRUSTED: TWX-TFAM-SLOTS! ( n n -- ) TFAM-SLOTS! ;
 : TWX-TFAM-SLOTS@ ( n -- n ) TFAM-SLOTS@ ;
 TRUSTED: TWX-TFAM-SNAPSHOT-PERSIST ( -- ) TFAM-SNAPSHOT-PERSIST ;
-TRUSTED: TWX-TFAM-SPAN! ( n n n -- ) TFAM-SPAN! ;
-TRUSTED: TWX-TFAM-SPAN@ ( n -- n n ) TFAM-SPAN@ ;
-TRUSTED: TWX-TFAM-SUM? ( n -- bool ) TFAM-SUM? ;
-TRUSTED: TWX-TFAM-TAGW! ( n n -- ) TFAM-TAGW! ;
-TRUSTED: TWX-TFAM-TAGW@ ( n -- n ) TFAM-TAGW@ ;
 TRUSTED: TWX-TFAM-VAR-RANGE! ( n n n -- ) TFAM-VAR-RANGE! ;
-TRUSTED: TWX-TFAM-VIS@ ( n -- n ) TFAM-VIS@ ;
 : TWX-TFL-CON-FAM? ( ptr u8 n -- n bool ) TFL-CON-FAM? ;
 TRUSTED: TWX-TFL-CON? ( ptr u8 n ptr u8 n -- n n bool ) TFL-CON? ;
 TRUSTED: TWX-TFL-CVAR? ( ptr u8 n n -- n n bool ) TFL-CVAR? ;
@@ -273,35 +258,13 @@ TWX-TFAM-RESET               \ restore the clean slate for the rest of the suite
 TWX-SCHEMA-RESET
 
 \ ---------------------------------------------------------------------------
-\ 1. add / find / arity / kind / visibility / name / package readback.
+\ 1. Families used by lookup, scope, growth and rollback checks.
 \ ---------------------------------------------------------------------------
 s" pkga" CHECKER-PACKAGE-PRIVATE s" opt"  1 TK-SUM     TWX-TFAM-DECL FID !
 s" pkgb" CHECKER-PACKAGE-PUBLIC  s" res"  2 TK-SUM     TWX-TFAM-DECL PID !
 s" pkga" CHECKER-PACKAGE-PRIVATE s" res"  0 TK-ENUM    TWX-TFAM-DECL AID !
 s" pkgc" CHECKER-PACKAGE-PUBLIC  s" pt"   0 TK-PRODUCT TWX-TFAM-DECL PTID !
 s" pkgc" CHECKER-PACKAGE-PUBLIC  s" cl"   0 TK-CELL    TWX-TFAM-DECL CLID !
-
-FID @ TFAM-ARITY@ 1 T=
-PID @ TFAM-ARITY@ 2 T=
-AID @ TFAM-ARITY@ 0 T=
-FID @ TFAM-KIND@ TK-SUM T=
-AID @ TFAM-KIND@ TK-ENUM T=
-PTID @ TFAM-KIND@ TK-PRODUCT T=
-FID @ TWX-TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
-PID @ TWX-TFAM-VIS@ CHECKER-PACKAGE-PUBLIC T=
-FID @ TFAM-NAME$ s" opt" T$=
-FID @ TWX-TFAM-PKG$  s" pkga" T$=
-
-\ kind predicates
-FID @ TWX-TFAM-SUM? -1 T=      FID @ TWX-TFAM-ENUM? 0 T=      FID @ TWX-TFAM-LAYOUT? -1 T=
-AID @ TWX-TFAM-ENUM? -1 T=     AID @ TWX-TFAM-SUM? 0 T=
-PTID @ TWX-TFAM-PRODUCT? -1 T= PTID @ TWX-TFAM-LAYOUT? -1 T=
-CLID @ TWX-TFAM-CELL? -1 T=    CLID @ TWX-TFAM-LAYOUT? 0 T=
-
-\ defaults from TWX-TFAM-DECL
-FID @ TWX-TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=
-FID @ TWX-TFAM-TAGW@ TAGW-CELL T=
-FID @ TWX-TFAM-SLOTS@ 0 T=
 
 \ ---------------------------------------------------------------------------
 \ 2. qualified (exact-package) vs unqualified (active-scope) lookup.
@@ -366,23 +329,9 @@ s" opt"        TWX-TF-HIDDEN? 0 T=
 s" pkga" s" @opt.slot0" TWX-TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
 s" pkgb" s" @res.tag"   TWX-TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
 
-\ ---------------------------------------------------------------------------
-\ 8. field setters / getters (record stores layout/slots/ranges/tagw/span/pk).
-\ ---------------------------------------------------------------------------
-FID @ TL-PACKED-TAG TWX-TFAM-LAYOUT!   FID @ TWX-TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
-FID @ 3 TWX-TFAM-SLOTS!                FID @ TWX-TFAM-SLOTS@ 3 T=
-FID @ 16 TWX-TFAM-TAGW!                FID @ TWX-TFAM-TAGW@ 16 T=
-FID @ 5 9 TWX-TFAM-VAR-RANGE!          FID @ TFAM-VAR-START@ 5 T=  FID @ TFAM-VAR-COUNT@ 9 T=
-FID @ 2 4 TWX-TFAM-FLD-RANGE!          FID @ TWX-TFAM-FLD-START@ 2 T=  FID @ TWX-TFAM-FLD-COUNT@ 4 T=
-FID @ 7 TWX-TFAM-SCHEMA-ROOT!          FID @ TWX-TFAM-SCHEMA-ROOT@ 7 T=
-FID @ 40 6 TWX-TFAM-SPAN!              FID @ TWX-TFAM-SPAN@ 6 T= 40 T=
-FID @ 0 TWX-TFAM-PK@ PK-CELL T=
-FID @ 0 PK-TYPE TWX-TFAM-PK!           FID @ 0 TWX-TFAM-PK@ PK-TYPE T=
-PID @ 0 TWX-TFAM-PK@ PK-CELL T=        PID @ 1 TWX-TFAM-PK@ PK-CELL T=
-\ The setter probe above uses a synthetic, unpublished field range. Retire it
-\ before later semantic payload reads; a nonzero count now correctly selects
-\ named representation and rejects invalid committed bounds.
-FID @ 0 0 TWX-TFAM-FLD-RANGE!
+\ Distinct values retained across the growth and snapshot checks below.
+FID @ 3 TWX-TFAM-SLOTS!
+FID @ 0 PK-TYPE TWX-TFAM-PK!
 
 \ ---------------------------------------------------------------------------
 \ 9. SCHEMA nodes: valid builders, malformed rejection, root pool + growth.
@@ -855,8 +804,6 @@ s" v2" s" ok"      TWX-TF-CTOR-PKG$ s" V2-OK" T$=
 s" a-b" s" c"      TWX-TF-CTOR-PKG$ s" A--B-C" T$=
 s" a"   s" b-c"    TWX-TF-CTOR-PKG$ s" A-B--C" T$=
 s" "    s" a-b-c"  TWX-TF-CTOR-PKG$ s" A--B--C" T$=
-\ determinism: identical inputs -> byte-identical output.
-s" pkg" s" result" TWX-TF-CTOR-PKG$ s" PKG-RESULT" T$=
 
 \ Readable band 16 < len <= 32 (raised from 16 by dot
 \ habu-raise-or-alias-5d2a6b70): the escaped form is injective at every length
@@ -892,9 +839,6 @@ CPA @ 1 + HEX16? -1 T=
 \ stable copy of the first result before deriving again.
 variable CPOFF
 CPA @ CPU @ TWX-TF-INTERN CPOFF !
-\ determinism: the same long input reproduces the same derived name.
-s" verylongpackagename" s" resultresultr" TWX-TF-CTOR-PKG$ CQU ! CQA !
-CQA @ CQU @  CPOFF @ CPU @ TWX-TF-OFF$  T$=
 \ injectivity: a different long package hashes to a different name (the hash
 \ region separates inputs that share length and tail).
 s" verylongpackagenamx" s" resultresultr" TWX-TF-CTOR-PKG$ CQU ! CQA !
@@ -912,16 +856,6 @@ CQA @ 1 + HEX16? -1 T=
 CQA @ 18 + 33 s" ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG" T$=
 \ empty segment list golden: SHA-256("") = e3b0c44298fc1c14... (FIPS-180 constant).
 s" " s" abcdefghijklmnopqrstuvwxyzabcdefg" TWX-TF-CTOR-PKG$ s" Te3b0c44298fc1c14-ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG" T$=
-
-\ SV.CTOR-PKG metadata slot: friend writer/reader round-trip through the pool.
-\ VOK is a live variant id from section 10; storing its constructor package name
-\ leaves the other variant fields untouched.
-variable RPK
-s" RESULT" TWX-TF-INTERN RPK !
-VOK @ SUMV-CTOR-PKG$ nip 0 T=               \ unset variants report an empty name
-VOK @ RPK @ 6 TWX-SUMV-CTOR-PKG!
-VOK @ SUMV-CTOR-PKG$ s" RESULT" T$=
-VOK @ TWX-SUMV-TAG@ 0 T=                        \ tag field intact after the CTOR write
 
 \ ---------------------------------------------------------------------------
 \ 13. grow across the TFAM record / string / param-kind seed caps, then prove

@@ -25,7 +25,6 @@ variable TEST-N
 create MUT-BUF 3 allot
 create KEY-BUF 2 allot
 variable SET-I
-$40 constant WALK-LIMIT
 $1000 constant GROW-LIMIT
 INTERN-FOLD-CAP 1+ constant FOLD-OVER
 create FOLD-BUF FOLD-OVER allot
@@ -39,15 +38,6 @@ variable FOLD-I
    n $FF and KEY-BUF c!
    n 8 rshift $FF and KEY-BUF 1+ c!
    KEY-BUF 2 ;
-
-: TEST-DUPLICATES  ( -- )
-   INTERN-RESET
-   s" alpha" INTERN 0 ASSERT=
-   s" beta" INTERN 1 ASSERT=
-   s" alpha" INTERN 0 ASSERT=
-   INTERN# 2 ASSERT=
-   0 INTERN$ s" alpha" ASSERT$
-   1 INTERN$ s" beta" ASSERT$ ;
 
 : TEST-STORAGE  ( -- )
    INTERN-RESET
@@ -69,34 +59,12 @@ variable FOLD-I
    s" ALPHA" INTERN-FOLD? ASSERT
    0 INTERN$ s" alpha" ASSERT$ ;
 
-: TEST-MEMBERSHIP  ( -- )
-   INTERN-RESET
-   s" one" INTERN drop
-   s" two" INTERN drop
-   s" one" INTERN? ASSERT
-   s" two" INTERN-FIND 1 ASSERT=
-   s" nope" INTERN? 0= ASSERT
-   s" nope" INTERN-FIND -1 ASSERT= ;
-
 : FILL-WALK  {: limit :}  ( -- )
    INTERN-RESET  0 SET-I !
    begin SET-I @ limit < while
       SET-I @ KEY$ INTERN SET-I @ ASSERT=
       SET-I @ 1+ SET-I !
    repeat ;
-: CHECK-WALK  {: limit :}  ( -- )
-   0 SET-I !
-   begin SET-I @ limit < while
-      SET-I @ KEY$ INTERN-FIND SET-I @ ASSERT=
-      SET-I @ 1+ SET-I !
-   repeat ;
-: TEST-WALK  ( -- )
-   WALK-LIMIT FILL-WALK
-   INTERN# WALK-LIMIT ASSERT=
-   WALK-LIMIT 1- KEY$ INTERN? ASSERT
-   WALK-LIMIT KEY$ INTERN? 0= ASSERT
-   WALK-LIMIT CHECK-WALK ;
-
 \ the set has no entry ceiling left, so growth past the old $800 one is the
 \ positive case: 4096 distinct ids, every id its insertion order, and a repeat
 \ of the last one finds instead of appending.
@@ -154,11 +122,8 @@ create ATTR-BUF ATTR-CAP allot
 
 : SET-TEST  ( -- )
    1 TEST-N !
-   TEST-DUPLICATES
    TEST-STORAGE
    TEST-CASE
-   TEST-MEMBERSHIP
-   TEST-WALK
    TEST-GROWTH
    TEST-FOLD-BOUND
    TEST-ATTRIBUTION

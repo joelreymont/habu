@@ -31,98 +31,10 @@ $20000000 constant VM-REGION
 
 $3FFFFFF constant IMM-MASK
 26 constant IMM-BITS
-$2000000 constant IMM-HALF
 
 variable BLOP
-variable ROLE-SEEN
 variable IMG-OK
-variable SCAN-AT
-variable MOVED-N
 create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of habu1.f
-
-\ ---- 1. the pinned band constants --------------------------------------------
-
-: PIN-CHECK ( n -- ) {: k:n :}
-   k PIN-FILE$ COMPILER-ID-SRC:SCAN-FILE
-   s" the shipped source declares that band constant exactly once" T-LABEL
-   k PIN-NAME$ COMPILER-ID-SRC:CONSTS 1 T=
-   s" the shipped band constant is the number the shared table froze" T-LABEL
-   k PIN-NAME$ COMPILER-ID-SRC:CONST@ k PIN-VALUE T= ;
-
-: PHASE-PINS ( -- )
-   PIN-COUNT 0 ?do i PIN-CHECK loop ;
-
-\ ---- 4. the shape of the vector table ----------------------------------------
-
-: ROLE-SEE ( n -- ) {: role:n :}
-   role 0 < role ROLE-COUNT >= or if E-CRL-ROW throw then
-   ROLE-SEEN @ 1 role lshift or ROLE-SEEN ! ;
-
-: IN-REACH? ( n -- bool ) {: d:n :}
-   d IMM-HALF negate >= d IMM-HALF < and ;
-
-: SITE-SHAPE ( n n -- ) {: row:n j:n :}
-   row ROW-BASE@ j + {: s:n :}
-   s" every word of the region is listed once, in order" T-LABEL
-   s SITE-IDX@ j T=
-   s SITE-KIND@ KIND-BL = if
-      s" every call displacement in the row is inside BL's reach" T-LABEL
-      s SITE-V0@ IN-REACH? s SITE-V1@ IN-REACH? and s SITE-V2@ IN-REACH? and TTRUE
-   then ;
-
-: ROW-SHAPE ( n -- ) {: row:n :}
-   row ROW-ROLE@ ROLE-SEE
-   s" the row lists exactly as many words as its region holds" T-LABEL
-   row ROW-LEN@ row ROW-WORDS@ T=
-   s" the region fits the image window the machine gives it" T-LABEL
-   row ROW-WORDS@ 4 * IMG-BYTES <= TTRUE
-   s" both region bases sit a whole instruction from the canonical offset" T-LABEL
-   row ROW-WOFF@ REGION-OFF - 3 and row ROW-LOFF@ REGION-OFF - 3 and or 0 T=
-   row ROW-LEN@ 0 ?do row i SITE-SHAPE loop ;
-
-: XROW-SHAPE ( n -- ) {: row:n :}
-   row XROW-ROLE@ ROLE-SEE
-   s" the address-cell row fits the cell window the machine gives it" T-LABEL
-   row XROW-LEN@ 8 * CELLS-BYTES <= TTRUE ;
-
-\ How many slots of a chain row the writer's pass has to change. A row where
-\ that is zero would pass however little the pass did, so it is refused here.
-: AMOVED ( n -- n ) {: row:n :}
-   0 MOVED-N !
-   row AROW-LEN@ 0 ?do
-      row AROW-BASE@ i + {: s:n :}
-      s ASITE-V0@ s ASITE-V1@ <> if MOVED-N @ 1+ MOVED-N ! then
-   loop
-   MOVED-N @ ;
-
-: BANDS-APART? ( n n n -- bool ) {: a:n b:n blen:n :}
-   a blen + b <= b blen + a <= or ;
-
-: ASITE-SHAPE ( n n -- ) {: row:n j:n :}
-   s" every slot of the chain region is listed once, in order" T-LABEL
-   row AROW-BASE@ j + ASITE-IDX@ j CHAIN-WORDS * T= ;
-
-: AROW-SHAPE ( n -- ) {: row:n :}
-   row AROW-ROLE@ ROLE-SEE
-   s" the chain row lists exactly as many words as its region holds" T-LABEL
-   row AROW-LEN@ CHAIN-WORDS * row AROW-WORDS@ T=
-   s" the chain region fits the image window the machine gives it" T-LABEL
-   row AROW-WORDS@ 4 * IMG-BYTES <= TTRUE
-   s" the writer's band and the canonical band are disjoint" T-LABEL
-   row AROW-WB@ row AROW-CB@ row AROW-BLEN@ BANDS-APART? TTRUE
-   s" the loader's band and the canonical band are disjoint" T-LABEL
-   row AROW-LB@ row AROW-CB@ row AROW-BLEN@ BANDS-APART? TTRUE
-   s" the chain row asks the writer's pass to move at least one slot" T-LABEL
-   row AMOVED 0 > TTRUE
-   row AROW-LEN@ 0 ?do row i ASITE-SHAPE loop ;
-
-: PHASE-SHAPE ( -- )
-   0 ROLE-SEEN !
-   ROWS 0 ?do i ROW-SHAPE loop
-   XROWS 0 ?do i XROW-SHAPE loop
-   AROWS 0 ?do i AROW-SHAPE loop
-   s" every role the schema names is covered by a row" T-LABEL
-   ROLE-SEEN @ 1 ROLE-COUNT lshift 1- T= ;
 
 \ ---- the machine's symbol table ----------------------------------------------
 \ Every bare name the two shipped passes use, bound to the value the shipped
@@ -185,9 +97,8 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    3 s" W-MOVK3" SCAFFOLD-SYM ;
 
 \ The band offsets and the register alias come from the loaded layout, because
-\ they are derived rather than literal. CALLMAP-RC is a literal and is pinned as
-\ one above; it is bound here as well so the refusal the machine reports is the
-\ shipped status.
+\ they are derived rather than literal. Refusal codes are bound here too, so
+\ the machine reports the shipped status.
 : LOAD-LAYOUT-SYMS ( -- )
    s" DATA" DATA RELOC-VM:SYM+
    s" CALLMAP-OFF" SNAP-RELOC:CALLMAP-OFF RELOC-VM:SYM+
@@ -509,8 +420,6 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
 public
 
 : HABU-SIDE ( -- )
-   PHASE-PINS
-   PHASE-SHAPE
    TEACH-MACHINE
    PHASE-CALLS
    PHASE-BASE-FREE

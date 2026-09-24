@@ -1,20 +1,14 @@
 \ pointer-storage-test.f - focused pointer-slot ownership and effect regression.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\   src/habu/verify-source.f test/pointer-storage-test.f
+\ Run: bin/hb --load test/pointer-storage-test.f
 
 require lib/errors.f
 require lib/string.f
 require lib/test.f
-require lib/fs.f
 require src/habu/verify-source.f
 require test/checker-assert.f
 
 package POINTER-STORAGE-TEST
 
-$2000 constant SOURCE-CAP        \ the whole of pointer-storage.f is read in below
-
-create SOURCE SOURCE-CAP allot
-variable SOURCE-U
 PTR-VARIABLE ZERO-SLOT                   \ a declared slot nothing ever writes
 create TARGET 0 ,
 PTR-VARIABLE SLOT
@@ -36,18 +30,6 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 
 : ADDRESS ( -- ptr ptr n )
    SLOT ;
-
-: LOAD-SOURCE ( -- )
-   s" src/core/pointer-storage.f" SOURCE SOURCE-CAP READ-ALL SOURCE-U ! ;
-
-: HAS? ( ptr u8 n -- bool )
-   SOURCE SOURCE-U @ 2swap CONTAINS? ;
-
-: MUST-HAVE ( ptr u8 n -- )
-   HAS? TTRUE ;
-
-: MUST-LACK ( ptr u8 n -- )
-   HAS? TFALSE ;
 
 TRUSTED: RSV-OFF-A ( -- n ) RSV-CELL-A data-base - ;
 TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
@@ -154,21 +136,6 @@ TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
    s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" CHECK-QUIET-CANDIDATE! -1 T=
    s" VSRSV-WRONG ( -- ptr ptr n ) VSRSV" CHECK-QUIET-CANDIDATE! 0 T= ;
 
-: ISOLATION ( -- )
-   LOAD-SOURCE
-   s" PTR-VARIABLE" MUST-HAVE
-   s" PERSISTED-PTR-VARIABLE" MUST-HAVE
-   s" PTR-U8-TABLE" MUST-HAVE
-   s" PERSISTED-PTR-U8-TABLE-VARIABLE" MUST-HAVE
-   s" RESERVED-PTR-U8-CELL" MUST-HAVE
-   s" +FIELD" MUST-LACK
-   s" CFIELD:" MUST-LACK
-   s" STRUCT-BYTE+" MUST-LACK
-   s" STRUCT-ACTIVE" MUST-LACK
-   s" BEGIN-STRUCTURE" MUST-LACK
-   s" END-STRUCTURE" MUST-LACK
-   s" parse-name" MUST-LACK ;
-
 : RUN ( -- )
    T-RESET
    RUNTIME
@@ -179,7 +146,6 @@ TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
    RESERVED-RUNTIME
    VERIFY-RESERVED-EFFECT
    VERIFY-RESERVED-SCAN
-   ISOLATION
    T-REPORT ;
 
 RUN

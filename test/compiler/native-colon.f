@@ -43,8 +43,6 @@ package NCOMP-COLON-TEST
 
 private
 
-get-current constant TEST-WID
-
 : ADD3 ( n -- n )
    3 + ;
 
@@ -150,12 +148,6 @@ public
    REVIEW-RUN 73 T=
 
    USED-CASE
-
-   s" its record points at native code" T-LABEL
-   s" ADD3" TEST-WID XREF-FIND-WL XREF-START 0 T<>
-
-   s" its record has native code bytes" T-LABEL
-   s" ADD3" TEST-WID XREF-FIND-WL XREF-LEN 0 T<>
 
    s" a semicolon inside a plain string is captured as data" T-LABEL
    PLAIN$ s" alpha; beta" T$=

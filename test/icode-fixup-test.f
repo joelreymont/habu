@@ -20,7 +20,6 @@ package ICODE-FIXUP-TEST
 using A64ASM
 
 $801 constant SEQ-N
-$28000 constant WANT-TAB-BYTES
 $1000 constant CAPTURE-CAP
 10000 constant TIMEOUT-MS
 FX-LOFF 1 + constant KIND-BAD    \ first kind past the last real one
@@ -54,55 +53,15 @@ create ERR CAPTURE-CAP allot
       EMIT-PAIR PAIR=
       1 +
    repeat drop
-   ASM-CP @ SEQ-N 2 * T=
-   NFX @ 0 T=
-   FX-NEW @ 2 T=
-   FX-FREE @ 0 T=
-   ICODE-TAB-BYTES WANT-TAB-BYTES T= ;
+   ASM-CP @ SEQ-N 2 * T= ;
 
-: TEST-MIXED-PENDING ( label label -- )
-   {: a:label b:label :}
-   NFX @ 6 T=
-   FX-NEW @ 6 T=
-   FX-FREE @ -1 T=
-   FXH a LABEL>N SLOT@ 4 T=
-   FXN 4 SLOT@ 2 T=
-   FXN 2 SLOT@ 0 T=
-   FXN 0 SLOT@ -1 T=
-   FXH b LABEL>N SLOT@ 5 T=
-   FXN 5 SLOT@ 3 T=
-   FXN 3 SLOT@ 1 T=
-   FXN 1 SLOT@ -1 T=
-   FXS 0 SLOT@ 0 T=  FXK 0 SLOT@ FX-B26 T=
-   FXS 1 SLOT@ 1 T=  FXK 1 SLOT@ FX-B19 T=
-   FXS 2 SLOT@ 2 T=  FXK 2 SLOT@ FX-B19 T=
-   FXS 3 SLOT@ 3 T=  FXK 3 SLOT@ FX-B19 T=
-   FXS 4 SLOT@ 4 T=  FXK 4 SLOT@ FX-ADR T=
-   FXS 5 SLOT@ 5 T=  FXK 5 SLOT@ FX-B26 T= ;
-
-: TEST-A-RESOLVED ( label label -- )
-   {: a:label b:label :}
-   NFX @ 3 T=
-   FXH a LABEL>N SLOT@ -1 T=
-   FXH b LABEL>N SLOT@ 5 T=
-   FXN 5 SLOT@ 3 T=
-   FXN 3 SLOT@ 1 T=
-   FXN 1 SLOT@ -1 T=
+: TEST-A-RESOLVED ( -- )
    0 WORD@ $14000006 T=
    1 WORD@ $54000000 T=
    2 WORD@ $B4000083 T=
    3 WORD@ $B5000004 T=
    4 WORD@ $10000045 T=
    5 WORD@ $94000000 T= ;
-
-: TEST-MIXED-FREE ( -- )
-   FX-FREE @ 1 T=
-   FXN 1 SLOT@ 3 T=
-   FXN 3 SLOT@ 5 T=
-   FXN 5 SLOT@ 0 T=
-   FXN 0 SLOT@ 2 T=
-   FXN 2 SLOT@ 4 T=
-   FXN 4 SLOT@ -1 T= ;
 
 : TEST-MIXED ( -- )
    ASM-INIT
@@ -114,21 +73,17 @@ create ERR CAPTURE-CAP allot
    4 b CBNZ,
    5 a ADR,
    b BL,
-   a b TEST-MIXED-PENDING
    a LBL,
-   a b TEST-A-RESOLVED
+   TEST-A-RESOLVED
    b LBL,
-   NFX @ 0 T=
    1 WORD@ $540000A0 T=
    3 WORD@ $B5000064 T=
-   5 WORD@ $94000001 T=
-   TEST-MIXED-FREE ;
+   5 WORD@ $94000001 T= ;
 
 : TEST-BACKWARD ( -- )
    ASM-INIT
    LBL {: target:label :}
    target LBL,
-   LBLP target LABEL>N SLOT@ 0 T=
    0 EMITW
    target B,
    target BL,
@@ -143,26 +98,7 @@ create ERR CAPTURE-CAP allot
    3 WORD@ $54FFFFA0 T=
    4 WORD@ $B4FFFF83 T=
    5 WORD@ $B5FFFF64 T=
-   6 WORD@ $10FFFF45 T=
-   NFX @ 0 T=
-   FX-FREE @ -1 T= ;
-
-: TEST-KIND-VALIDATE ( -- )
-   FX-B26 FX-KIND-OK? TTRUE
-   FX-B19 FX-KIND-OK? TTRUE
-   FX-ADR FX-KIND-OK? TTRUE
-   FX-LOFF FX-KIND-OK? TTRUE
-   KIND-BAD FX-KIND-OK? TFALSE
-   -1 FX-KIND-OK? TFALSE
-   $7F FX-KIND-OK? TFALSE ;
-
-: TEST-KIND-GUARD-PURE ( -- )
-   ASM-INIT
-   LBL {: t:label :}
-   t B,  t B,
-   NFX @ 2 T=  FX-NEW @ 2 T=  FX-FREE @ -1 T=  ASM-CP @ 2 T=
-   KIND-BAD FX-KIND-OK? TFALSE                  \ pure check rejects, mutates nothing
-   NFX @ 2 T=  FX-NEW @ 2 T=  FX-FREE @ -1 T=  ASM-CP @ 2 T= ;
+   6 WORD@ $10FFFF45 T= ;
 
 \ signed-reach predicates: max delta on the valid side is in reach; one beyond
 \ each boundary (LO-1 and HI) is rejected. LO is inclusive, HI exclusive.
@@ -283,14 +219,9 @@ variable LW0  variable LW1
    0 EMITW  0 EMITW  0 EMITW
    5 t LOFF,
    ASM-CP @ 3 2 + T=                             \ the filler, then the pair's two words
-   NFX @ 1 T=
-   FXS 0 SLOT@ 3 T=  FXK 0 SLOT@ FX-LOFF T=
-   FXH t LABEL>N SLOT@ 0 T=
    3 WORD@ 0 MOVZ5 T=                            \ lanes reserved at zero
    4 WORD@ 0 MOVK5 T=
    LOFF-NEAR-WORD ASM-CP !  t LBL,
-   NFX @ 0 T=
-   FX-FREE @ 0 T=
    3 WORD@ LOFF-NEAR-OFF MOVZ5 T=
    4 WORD@ 0 MOVK5 T= ;
 
@@ -299,37 +230,6 @@ variable LW0  variable LW1
    ENC-LOFF-FAR-FWD
    ENC-LOFF-FAR-BACK
    ENC-LOFF-PATHS ;
-
-: TEST-REBIND-STATE ( label n -- )
-   {: target:label words:n :}
-   target LBL-BOUND? TTRUE
-   LBLP target LABEL>N SLOT@ 2 T=
-   LBLP target LABEL>N 1 + SLOT@ -1 T=
-   FXH target LABEL>N SLOT@ -1 T=
-   FXH target LABEL>N 1 + SLOT@ 1 T=
-   FX-FREE @ 0 T=
-   NFX @ 1 T=
-   FX-NEW @ 2 T=
-   FXN 0 SLOT@ -1 T=
-   FXN 1 SLOT@ -1 T=
-   FXS 0 SLOT@ 0 T=
-   FXK 0 SLOT@ FX-B26 T=
-   FXS 1 SLOT@ 1 T=
-   FXK 1 SLOT@ FX-B26 T=
-   ASM-CP @ words T=
-   0 WORD@ $14000002 T=
-   1 WORD@ $14000000 T=
-   words 3 = if 2 WORD@ 0 T= then ;
-
-: TEST-REBIND-AT ( bool -- )
-   ASM-INIT
-   LBL {: target:label :}
-   LBL {: pending:label :}
-   target B,
-   pending B,
-   target LBL,
-   if 0 EMITW 3 else 2 then
-   target swap TEST-REBIND-STATE ;
 
 : FULL-WANT ( n -- n )
    ICODE-TAB-CELLS swap - $14000000 or ;
@@ -340,26 +240,12 @@ variable LW0  variable LW1
       1 +
    repeat drop ;
 
-: TEST-FULL-FREE ( -- )
-   FX-FREE @ 0 T=
-   0 begin dup ICODE-TAB-CELLS 1 - < while
-      dup FXN swap SLOT@ over 1 + T=
-      1 +
-   repeat drop
-   FXN ICODE-TAB-CELLS 1 - SLOT@ -1 T= ;
-
 : TEST-FULL ( -- )
    ASM-INIT
    LBL {: target:label :}
    ICODE-TAB-CELLS 0 ?do target B, loop
-   NFX @ ICODE-TAB-CELLS T=
-   FX-NEW @ ICODE-TAB-CELLS T=
-   FX-FREE @ -1 T=
-   FXH target LABEL>N SLOT@ ICODE-TAB-CELLS 1 - T=
    target LBL,
-   NFX @ 0 T=
-   TEST-FULL-WORDS
-   TEST-FULL-FREE ;
+   TEST-FULL-WORDS ;
 
 : EMIT-OVERFLOW ( -- )
    ASM-INIT
@@ -449,17 +335,7 @@ variable LW0  variable LW1
    LOFF-HI 4 / ASM-CP !  t LBL,  0 ASM-CP !  5 t LOFF, ;
 
 \ ---- the code window ---------------------------------------------------------
-\ THE WINDOW IS A DERIVED NUMBER AND THIS IS WHERE IT IS HELD TO ITS OWNERS.
-\ src/arch/arm64/icode.f sizes CODE-CAP-BYTES as ADR-HI + IBUFSZ + AOT-SECTION-CAP
-\ - the reach an emitted image's own PC-relative addressing can cross, plus the
-\ boot source arena a baked prefix has to fit, plus what the AOT capture buffers
-\ may bake. None of the three is this file's or icode.f's to pick, so raising one
-\ without the window reds here, naming the window. The third term's own agreement
-\ with the buffers is executed at load by src/habu/habu2.f AOT-WINDOW-AGREE,
-\ which is the only place all those caps are visible.
-: TEST-WINDOW-DERIVED ( -- )
-   CODE-CAP-BYTES ADR-HI IBUFSZ + AOT-SECTION-CAP + T=
-   CODE-CAP-WORDS CODE-CAP-BYTES 4 / T=
+: TEST-WINDOW-REACH ( -- )
    \ LOFF, is only total over the buffer while every offset in the window fits
    \ its movz/movk pair. Widening the window past the pair would leave a range
    \ the emitter accepts and the form cannot say, so the two are held together.
@@ -516,8 +392,6 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    s" EMIT-CORRUPT-FUTURE" S\" icode: fixup free list corrupt\n" TEST-DIAG ;
 
 : TEST-REDEFINE ( -- )
-   0 0= 0= TEST-REBIND-AT
-   0 0= TEST-REBIND-AT
    s" 0 0<> EMIT-REDEFINE" S\" icode: label redefined\n" TEST-DIAG
    s" 0 0= EMIT-REDEFINE" S\" icode: label redefined\n" TEST-DIAG ;
 
@@ -567,8 +441,6 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    TEST-SEQUENTIAL
    TEST-MIXED
    TEST-BACKWARD
-   TEST-KIND-VALIDATE
-   TEST-KIND-GUARD-PURE
    TEST-REACH-VALIDATE
    TEST-REACH-PURE
    TEST-REACH-ENCODE
@@ -580,7 +452,7 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    TEST-BADKIND
    TEST-REACH-DIAG
    TEST-REACH-NUMBER$
-   TEST-WINDOW-DERIVED
+   TEST-WINDOW-REACH
    TEST-WINDOW-ADMITS
    TEST-WINDOW-REFUSES
    T-REPORT

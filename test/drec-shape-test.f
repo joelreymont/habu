@@ -55,12 +55,6 @@ require test/checker-assert.f
    s" drs rec+ preserves base" T-LABEL
    data-base 0 DRS-REC+ data-base = TTRUE ;
 
-: DRS-PTR-READS ( -- )
-   s" drs pointer reads execute deterministically" T-LABEL
-   data-base 0 DRS-PTR@ data-base 0 DRS-PTR@ = TTRUE
-   s" drs name byte view executes deterministically" T-LABEL
-   data-base DRS-NAME-BYTES data-base DRS-NAME-BYTES = TTRUE ;
-
 \ gap 1: dbase@ has no pointer provenance (PES: -- n); the capability's
 \ single audited mint (or a dbase@ PES change) closes it.
 : DRS-GAP-DBASE ( -- )
@@ -79,7 +73,6 @@ require test/checker-assert.f
    DRS-NDICT-EQUIV
    DRS-CELL-EQUIV
    DRS-REC+-BASE
-   DRS-PTR-READS
    DRS-GAP-DBASE
    DRS-GAP-PATCH32
    T-REPORT ;
