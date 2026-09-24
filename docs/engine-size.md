@@ -1,11 +1,11 @@
 # Where the engine's bytes go
 
-The block between the `ENGINE-SIZE-ROWS` markers below is the tool's output
-for the `bin/hb` this tree ships, regenerated at every landing;
-`tools/engine-size-doc-test.f` fails the gate when the two differ. The prose
-and tables after it read one engine, named under the block, and say what the
-measurement means for making the engine smaller; their figures stand still
-while the block moves with the engine.
+The block below records one Linux engine measurement. It is an example, not
+the size of the current build: compiler changes and the Mach-O container change
+these rows. The gate checks the reader's accounting and reachability behavior
+in `tools/engine-size-test.f`; it does not compare a changing binary with a
+documentation snapshot. The prose and tables explain what the measurement
+means for making the engine smaller.
 [Where an application image's bytes go](#where-an-application-images-bytes-go)
 asks the same question of what `tools/hb-build.f` writes, which is a much
 larger file and a different answer.
