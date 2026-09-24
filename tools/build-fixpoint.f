@@ -1161,6 +1161,7 @@ package BUILD-FIXPOINT
    out outu COMPILER-BUILD:SEAL
    out outu BF-APPEND-DRIVER-IO
    out outu s" src/habu/aot-arm.f" BF-APPEND-SOURCE
+   out outu s" src/habu/terminal-call.f" BF-APPEND-MODULE
    out outu s" src/habu/aot-capture.f" BF-APPEND-SOURCE
    out outu s" src/habu/aot-file.f" BF-APPEND-SOURCE
    out outu driver driveru BF-APPEND-SOURCE ;

@@ -3,6 +3,7 @@
 \ Runtime bodies remain in this process. The companion native producer,
 \ reader and consumer test execution across process exits in the same suite.
 \ Exceptional quotes are refused explicitly.
+s" lib/prelude.f" provided
 s" src/habu/layout.f" provided
 s" src/core/checker-owner-abi.f" provided
 require src/habu/aot-arm.f
