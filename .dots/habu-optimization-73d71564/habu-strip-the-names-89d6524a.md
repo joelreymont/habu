@@ -31,6 +31,34 @@ smoke. Keep required late-binding authority explicit; do not silently widen
 the keep-set. Temporary census: ~/.cache/tmp/habu-dictionary-rca.f.
 No current implementation or completed acceptance is claimed.
 
+## Confirmed remaining consumers
+
+The current source still has three concrete dependencies on internal names:
+
+- `AOT-RUNTIME:COMPLETE?` in `src/habu/habu2.f` requires compact dictionary
+  member `CHECKER-REG:DECLARATIONS`. Removing it makes a complete runtime fail
+  recognition. The historical package-only recognition change is absent.
+- `tools/check-core.f` compiles trusted calls to
+  `CHECKER-VERIFY-PKG-START/DONE`; both carry checker declarations but are
+  explicitly protected as internal. Effect metadata alone does not supply the
+  dictionary target for compilation.
+- The emitted legacy construct/MATCH compiler looks up internal `TFL-CVAR?`
+  by name. Preserve that capability through an explicit interface before
+  dropping its dictionary name.
+
+Preserve package rows, declared XT entries, named sites, boot-run entries and
+`NSTR:IMPORT-ROWS` roots. `PREFIX-MARK:CURSORS` is already checked/public;
+other inspected compiler lookups have checker rows or owner-table XT roots.
+The historical `REG-INCOMING?` and `USIGS` blockers have been replaced or
+removed; do not recreate their keep entries. Dictionary selection must remain
+separate from checker source-replay authority, as demonstrated in the private
+signature dot.
+
+Before the full gate, use the native generation chain, `tools/check-test.f`,
+legacy/native construct and MATCH cases, product refusal/whitebox availability,
+stripped images and snapshot/recapture. A one-bit change to `ACAP-NAMED?` alone
+does not meet these requirements.
+
 ## Earlier task context
 
 Problem: e74437cf strips a name only for a package-PRIVATE word the payload does not name; Joel's scope (2026-09-16) is every word the compiler, JIT and REPL do not expose, which includes globals and package-public words the internal-mark pass seals as internal (src/core/internal-mark.f) and that no source can reach after the seal. Acceptance: ACAP-NAMED? consults the internal mark at capture so a sealed-internal word's name is stripped by the same rule (payload-named, keep-set, package rows excepted), the sidecar records it, the name pool shrinks by the measured amount on a native-runtime engine (host class stated), test/gate-dictionary.f and the whitebox suites that name internals are handled per habu-whitebox-suites-7fe05e62 rather than by widening the keep-set; byte fixpoint; test/run.f. Files: src/habu/aot-capture.f, src/core/internal-mark.f, test/. Verify: engine-size; gate-dictionary; fixpoint. Depends: habu-whitebox-suites-7fe05e62 for the suites it breaks. Ownership: AOT capture. Claim: unassigned.

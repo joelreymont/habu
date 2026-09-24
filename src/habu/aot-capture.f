@@ -2504,7 +2504,7 @@ TRUSTED: ACAP-ADDRESS ( ptr u8 -- n ) ;
    ACAP-PROVE-RECS                              \ fail-closed inverse proof
    ACAP-NIDX-PROVE                              \ ... and the pool index answers every entry
    ACAP-PWIN-CAPTURE                            \ only the window's own seals travel
-   AOT-ARM:PAYLOAD-MODE @ 1 = AOT-SECTION:BYTES drop ;
+   AOT-ARM:PAYLOAD-MODE @ 1 = SITE-ROW AOT-SECTION:BYTES drop ;
 
 private
 

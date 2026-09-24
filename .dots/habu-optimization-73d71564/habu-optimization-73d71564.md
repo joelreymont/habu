@@ -43,6 +43,34 @@ Reproduce the physical budget with
 There is no baked source text. Total padding is 25,660 bytes. The captured
 DATA span is 8,671,320 bytes; zero cells are already omitted from the file.
 
+## Verified representation reductions
+
+The integrated Mac product is 2,972,407 bytes, down 412,800 (12.2%).
+SHA-256: `2daeb34544e8c081209f2437485d76f606c61ca5ac7eafe8cc28ddf438845639`.
+Interned checker package names and arena offsets remove 267,024 bytes of
+address rows; zero-sentinel scratch removes 51,840 bytes of bitmap/values;
+bound primitive instructions reduce the final call table to 38,560 bytes.
+The total is measured after changed code, scalar values and Mach-O alignment,
+not the sum of gross savings.
+
+Independent review accepted all three changes. Two native generations are
+byte-identical, and the integrated native gate passes all 490 suites. The
+first attempt timed out during documented host sleep; the unchanged candidate
+passed with a process-scoped sleep assertion. Maki's native image falls from
+25,675,040 to 25,264,640 bytes; its routed two-filter PCB remains byte-identical,
+and the existing negotiated-routing suite passes. External KiCad DRC was not
+part of these checks. Commands, signed images, output boards, hashes and logs
+are retained at `~/.cache/tmp/habu-opt-names-scratch/RESULTS.md`.
+
+Remaining measurements on that product: 20,827 effect headers occupy 267,461
+encoded bytes while representing 1,766 exact semantic tuples. The effect
+allocation costs 321,883 bytes including its bitmap. Code contains 14,758
+three-instruction DATA address carriers (177,096 bytes), plus 1,519 adjacent
+same-slot/register store-then-load pairs. These are costs and patterns, not
+proven removable bytes; source reconstruction, metadata roots and branch-entry
+semantics still constrain their removal. The private-symbol and internal-name
+dots record newly verified consumers before further stripping.
+
 ## Tracked RCA work
 
 The native code linker selects a code/dictionary closure, while persistent
@@ -62,7 +90,8 @@ copies and links the native payload. Track corrections at those owners:
 Header representation follows history compaction through a tracker dependency.
 The other tasks are independently investigable; serialize shared checker edits.
 The existing DATA-reachability owner remains
-habu-prove-the-closure-5b7d02bb. No implementation is claimed by this index.
+habu-prove-the-closure-5b7d02bb. Implemented reductions are qualified above;
+the remaining rows describe open work.
 The current downstream readiness check is Maki; older task text naming other
 applications does not expand this optimization work.
 
@@ -156,12 +185,12 @@ intended surface through `habu-declare-the-surface-89e9aed0`.
 Capture also conservatively retains 33,696 bytes outside indexed bodies;
 their removability is unproved.
 
-`docs/engine-size.md` and `tools/image-size-lib.f` still describe an engine
-without a native closure walk. Their historical claim and the old
-tier-1-growth examples must not override current measurements.
+`docs/engine-size.md` and `tools/image-size-lib.f` now distinguish the native
+closure walk from the historical Linux samples. Old tier-1-growth examples
+must not override current measurements.
 
-This audit changes no compiler or runtime behavior. The measured product
-previously passed all 500 native suites. Focused audit checks passed:
+The initial audit changed no compiler or runtime behavior. Its baseline
+previously passed all 500 then-registered native suites. Focused audit checks passed:
 `test/aot-capture-compact.f`, `tools/engine-size-test.f`,
 `tools/manifest-lint.f` (28 rows, 20 entries, 88 closure files, no findings),
 the four stripped probes, and the fresh two-tier corpus.

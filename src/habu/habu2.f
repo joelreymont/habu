@@ -5391,7 +5391,7 @@ public
 \ producer of region-to-text calls and records its sites in the same map as
 \ EMIT-CEMITBL, by the same region-extent test. It runs from EM-COMPILE-EXIT, after
 \ the DATA region is mapped, so the map is writable here.
-: EM-AOT-PATCH-SITES ( -- )
+: EM-AOT-PATCH-NAMED-SITES ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    s" hb: AOT call site unresolved"  s" hb: AOT call site target is outside this dictionary"
    {: ploop:label pdone:label pnf:label pnomark:label
@@ -5408,6 +5408,9 @@ public
    22 0 MOVZ,                                        \ x22 = site index
    ploop LBL,  22 23 CMP,  C-GE pdone BCOND,
       24 21 0 LDRW,                                  \ x24 = blob offset u32 (survives every path)
+      5 24 3 ANDI,  5 pbad CBNZ,
+      5 6 LAOTCODELEN LABEL@ TADR,  5 5 0 LDR,
+      6 24 4 ADDI,  6 5 CMP,  C-HI pbad BCOND,
       25 21 4 LDRW,                                  \ x25 = target word
       5 25 31 LSRI,  5 pname CBNZ,                   \ name tag: the seed resolves it
       5 25 30 LSRI,  5 5 1 ANDI,  5 prec CBNZ,       \ record tag: payload-relative index
@@ -5475,6 +5478,76 @@ public
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
    badmsg LBL,  bada badu BYTES,  NL-KW 1 BYTES,
    pdone LBL, ;
+
+\ Complete-runtime blobs land immediately after the dictionary. Their BLs
+\ already name seeded primitives at the canonical REGION-OFF distance. Record
+\ provenance before the ordinary snapshot relocator converts that distance to
+\ the actual mapping. No source prefix has executed on this path.
+: EM-AOT-BOUND-SITES ( label -- ) {: bad:label :}
+   LBL LBL LBL LBL LBL
+   {: scan:label done:label find:label next:label found:label :}
+   5 CP DBASE SUB,  6 DICT-SIZE LIT64,  5 6 CMP,  C-NE bad BCOND,
+   21 5 LAOTSITES LABEL@ TADR,
+   23 5 LAOTNSITE LABEL@ TADR,  23 23 0 LDR,
+   5 SITE-COUNT-MASK LIT64,  23 23 5 AND,
+   22 5 LAOTCODELEN LABEL@ TADR,  22 22 0 LDR,
+   5 22 3 ANDI,  5 bad CBNZ,
+   scan LBL,  23 done CBZ,
+      24 21 0 LDRW,
+      5 24 3 ANDI,  5 bad CBNZ,
+      24 22 CMP,  C-CS bad BCOND,
+      9 CP 24 ADD,  6 9 0 LDRW,
+      5 6 26 LSRI,  5 SNAP-RELOC:BL-OP-HI CMPI,  C-NE bad BCOND,
+      \ The immediate replaces the generic row's target index. A BL opcode
+      \ alone grants no target authority: require its decoded canonical target
+      \ to be an exact non-package entry in the immutable seeded dictionary.
+      10 6 38 LSLI,  10 10 36 ASRI,                \ signed imm26 * 4
+      5 REGION-OFF DICT-SIZE + LIT64,
+      10 10 5 ADD,  10 10 24 ADD,                 \ canonical text offset
+      11 LDICT LABEL@ ADR,
+      12 LNCOUNT LABEL@ ADR,  12 12 0 LDR,
+      find LBL,  12 bad CBZ,
+         5 11 0 LDR,  5 10 CMP,  C-NE next BCOND,
+         5 11 40 LDR,  5 5 1 ADDI,  5 found CBNZ,
+      next LBL,
+         11 11 DREC ADDI,  12 12 1 SUBI,  find B,
+      found LBL,
+      \ Check the actual displacement before the shared relocator masks it.
+      5 DATA RBASE-CELL LDR,  6 10 5 ADD,  6 6 9 SUB,
+      5 6 3 ANDI,  5 bad CBNZ,
+      5 BL-REACH LIT64,  6 6 5 ADD,
+      5 BL-REACH 2 * LIT64,  6 5 CMP,  C-CS bad BCOND,
+      14 9 DBASE SUB,
+      4 14 2 LSRI,  4 4 7 ANDI,
+      14 14 5 LSRI,  5 SNAP-RELOC:CALLMAP-OFF LIT64,
+      14 14 5 ADD,  14 DATA 14 ADD,
+      5 1 MOVZ,  5 5 4 LSLV,  13 14 0 LDRB,
+      13 13 5 ORR,  13 14 0 STRB,
+      21 21 BOUND-SITE-ROW ADDI,  23 23 1 SUBI,  scan B,
+   done LBL,
+   8 DBASE 0 ADDI,
+   11 CP DBASE SUB,  11 11 22 ADD,
+   9 DATA RBASE-CELL LDR,  10 DBASE 9 SUB,
+   9 REGION-OFF LIT64,  10 9 10 SUB,
+   SNAP-RELOC:LCALLS LABEL@ BL, ;
+
+: EM-AOT-PATCH-SITES ( -- )
+   LBL LBL LBL LBL {: bound:label done:label bad:label msg:label :}
+   9 5 LAOTNSITE LABEL@ TADR,  9 9 0 LDR,
+   5 9 33 LSRI,  5 bad CBNZ,                 \ no unknown format flags
+   5 SITE-COUNT-MASK LIT64,  6 9 5 AND,
+   5 AOT-SITE-MAX LIT64,  6 5 CMP,  C-HI bad BCOND,
+   9 9 32 LSRI,  9 bound CBNZ,
+   EM-AOT-PATCH-NAMED-SITES
+   done B,
+   bound LBL,
+   SEEDED-RUNTIME? if bad EM-AOT-BOUND-SITES else bad B, then
+   done B,
+   bad LBL,
+      1 msg ADR,  0 2 MOVZ,  2 30 MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: AOT call metadata corrupt" BYTES,  NL-KW 1 BYTES,
+   done LBL, ;
 
 \ DATA-literal relocation (third relocation class): reserve the REPL's DATA span
 \ at the current DP (the region is fixed MAP_FIXED, anon-mmap => zeroed => identical
@@ -10368,7 +10441,7 @@ public
 
 \ Bake the AOT section: blob length + blob, record count + N compact AOT-CREC-ROW
 \ records (blob-relative code span, name-pool reference, flags, wid), call-site
-\ count + M 8-byte rows (blob-off u32, name-off u32), then the name pool and the
+\ count/format + call rows (bound u32 offsets or generic SITE-ROW rows), then the name pool and the
 \ DATA/CODE/window offset tables, all u32. Emitted LAST of the three image parts
 \ (ENGINE-EMIT:FORTH says why), after the baked source, so it shifts nothing and
 \ no reach depends on its size.
@@ -10501,12 +10574,53 @@ variable AOT-BIND-MEMO-N
 
 : AOT-SITE-NAMED? ( n -- bool ) AOT-SITE-TARGET SITE-NAME-TAG and 0<> ;
 
+variable AOT-BOUND-SITES
+
+: AOT-SITE-REFUSE ( -- )
+   s" aot: invalid bound primitive call" 74 die ;
+
+: AOT-SITE-WORD ( n -- n ) {: s:n :}
+   s AOT-SITE-BOFF {: off:n :}
+   off 3 and 0<> off AOT-BLOB-LEN @ >= or if AOT-SITE-REFUSE then
+   AOT-BLOB-BUF@ off + AOT-W32@ ;
+
+\ Eligibility is about the complete placement AND every callee. A valid B or
+\ external/payload callee retains the generic representation for this image.
+: AOT-BOUND-SITES? ( -- bool )
+   SEEDED-RUNTIME? 0= if false exit then
+   AOT-BLOB-LEN @ 3 and 0<> if AOT-SITE-REFUSE then
+   AOT-SITE-N @ 0 ?do
+      i AOT-SITE-WORD 26 rshift SNAP-RELOC:BL-OP-HI <> if false unloop exit then
+      i AOT-SITE-INDEX dup 0 < swap SEEDED-PRIM-N @ >= or if false unloop exit then
+   loop
+   true ;
+
+: AOT-BOUND-DISP ( n -- n ) {: s:n :}
+   s AOT-SITE-WORD $94000000 <> if AOT-SITE-REFUSE then
+   s AOT-SITE-INDEX ENGINE-PRIMS:FIRST-LABEL
+   LABEL>N cells LBLP + @ dup 0 < if AOT-SITE-REFUSE then
+   4 * REGION-OFF DICT-SIZE + s AOT-SITE-BOFF + - {: delta:n :}
+   delta BL-REACH negate < delta BL-REACH >= or if AOT-SITE-REFUSE then
+   delta 3 and 0<> if AOT-SITE-REFUSE then
+   delta 4 / $3FFFFFF and ;
+
+\ Copy the reusable capture unchanged; patch only its emitted image copy.
+: EMIT-AOT-BLOB ( -- )
+   ASM-CP @ {: start:n :}
+   AOT-BLOB-LEN @ 0 > if AOT-BLOB-BUF@ AOT-BLOB-LEN @ BYTES, then
+   AOT-BOUND-SITES @ if
+      AOT-SITE-N @ 0 ?do
+         i AOT-BOUND-DISP start i AOT-SITE-BOFF 4 / + PATCH
+      loop
+   then ;
+
 : EMIT-AOT-SITES ( -- )   \ packed rows (blob-off u32 + target u32 + scope u32)
-   0 AOT-BIND-MEMO-N !
    AOT-SITE-N @ 0 ?do
       i AOT-SITE-BOFF $FFFFFFFF and EMITW
-      i AOT-SITE-TARGET $FFFFFFFF and EMITW
-      i AOT-SITE-SCOPE $FFFFFFFF and EMITW
+      AOT-BOUND-SITES @ 0= if
+         i AOT-SITE-TARGET $FFFFFFFF and EMITW
+         i AOT-SITE-SCOPE $FFFFFFFF and EMITW
+      then
    loop ;
 : EMIT-AOT-DSITES ( -- )   \ packed u32 DATA-site offsets
    AOT-DSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 4 * BYTES, THEN ;
@@ -10599,14 +10713,18 @@ variable CUR
 ;package
 
 : EMIT-AOT-SEED ( -- )
-   SEEDED-RUNTIME? 0= AOT-SECTION:BYTES drop
+   0 AOT-BIND-MEMO-N !
+   AOT-BOUND-SITES? AOT-BOUND-SITES !
+   SEEDED-RUNTIME? 0=
+   AOT-BOUND-SITES @ if BOUND-SITE-ROW else SITE-ROW then AOT-SECTION:BYTES drop
    LAOTCODELEN LABEL@ LBL,  AOT-BLOB-LEN @ DCQ,
    LAOTCODE LABEL@ LBL,
-   AOT-BLOB-LEN @ 0 > IF AOT-BLOB-BUF@ AOT-BLOB-LEN @ BYTES, THEN
+   EMIT-AOT-BLOB
    LAOTNREC LABEL@ LBL,  AOT-REC-N @ DCQ,
    LAOTDICT LABEL@ LBL,                          \ compact 16B records (EM-AOT-REGISTER-RECS expands to 48B)
    AOT-REC-N @ 0 > IF AOT-REC-BUF@ AOT-REC-MAX 48 * + AOT-REC-N @ AOT-CREC-ROW * BYTES, THEN
-   LAOTNSITE LABEL@ LBL,  AOT-SITE-N @ DCQ,
+   LAOTNSITE LABEL@ LBL,  AOT-SITE-N @
+   AOT-BOUND-SITES @ if SITE-BOUND-TAG or then DCQ,
    LAOTSITES LABEL@ LBL,  EMIT-AOT-SITES
    LAOTNAMESLEN LABEL@ LBL,  AOT-NAMES-LEN @ DCQ,
    LAOTNAMES LABEL@ LBL,

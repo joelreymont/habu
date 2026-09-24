@@ -23,9 +23,9 @@
 \ src/habu/xref.f, the same way tools/imgdump.f mirrors them; an emitter change
 \ that this file does not follow makes the walk fail to land, loudly.
 \
-\ THE REACHABILITY CENSUS answers the second half: a stripped application gets
-\ the closure walk (src/habu/aot-closure.f), the engine does not, so every word
-\ the build ever compiled ships. The census marks from roots over the same call
+\ THE REACHABILITY CENSUS answers the second half: stripped applications and
+\ native engine captures both compact code closures, with different roots. The
+\ census marks from roots over the same call
 \ graph the closure walker uses -- direct B/BL edges in the baked code, plus the
 \ code addresses the payload's own relocation tables name -- and reports what
 \ nothing reaches. Two root sets, because "dead" means two different things:
@@ -410,7 +410,7 @@ variable AOT0        variable AOT-END     variable CUR        variable FRAME-CEL
 variable FRAME-ZERO
 variable BLOB-OFF    variable BLOB-LEN
 variable REC0        variable REC-N
-variable SITE0       variable SITE-N
+variable SITE0       variable SITE-N       variable SITE-BOUND
 variable NAMES0      variable NAMES-LEN
 variable DATA-SPAN   variable DATA-D0
 variable DSITE0      variable DSITE-N
@@ -442,7 +442,12 @@ variable CAND        variable ACC
 \ payload's 8-byte run row. A width this file gets wrong cannot pass unnoticed:
 \ the walk stops landing on the image's own content end.
 12 constant SITE-ROW                              \ blob-off u32, target u32, callee scope u32
+$100000000 constant SITE-BOUND-TAG                \ four-byte sites with canonical primitive BLs
+$FFFFFFFF constant SITE-COUNT-MASK
+4 constant BOUND-SITE-ROW
 $80000000 constant SITE-NAME-TAG                  \ target is a name-pool offset, not an index
+$40000000 constant SITE-REC-TAG
+$3FFFFFFF constant SITE-TARGET-MASK
 8 constant XTOFF-ROW                              \ location u32, typed target u32
 8 constant XTSITE-ROW                             \ blob-off u32, name-off u32
 8 constant SPAN-ROW                               \ blob-off u32, raw code span u32
@@ -583,14 +588,32 @@ GROUP-BYTES CELL-BITS * constant GROUP-CELLS      \ cells such a group covers
    loop
    true ;
 
+: SITE-WIDTH ( -- n ) SITE-BOUND @ if BOUND-SITE-ROW else SITE-ROW then ;
+: SITE-AT ( n -- n ) SITE-WIDTH * SITE0 @ + ;
+
+: SITE-COUNT! ( n -- ) {: tagged:n :}
+   tagged 33 rshift 0<> if E-ES-WALK throw then
+   tagged SITE-BOUND-TAG and 0<> SITE-BOUND !
+   tagged SITE-COUNT-MASK and ETEXT-END ?BOUND SITE-N ! ;
+
+: SITES-CHECK ( -- )
+   SITE-N @ 0 ?do
+      i SITE-AT U32@ {: off:n :}
+      off 3 and 0<> off 4 + BLOB-LEN @ > or if E-ES-WALK throw then
+      SITE-BOUND @ if
+         BLOB-OFF @ off + U32@ 26 rshift $25 <> if E-ES-WALK throw then
+      then
+   loop ;
+
 : WALK-AT ( n -- n ) {: start:n :}
    start CUR !  0 FRAME-CELLS !  0 FRAME-ZERO !
    TAKE-CELL ETEXT-END ?BOUND BLOB-LEN !
    BLOB-LEN @ TAKE-RUN BLOB-OFF !
    TAKE-CELL DICT-CAP ?BOUND REC-N !
    REC-N @ AOT-CREC-ROW TAKE-ROWS REC0 !
-   TAKE-CELL ETEXT-END ?BOUND SITE-N !
-   SITE-N @ SITE-ROW TAKE-ROWS SITE0 !
+   TAKE-CELL SITE-COUNT!
+   SITE-N @ SITE-WIDTH TAKE-ROWS SITE0 !
+   SITES-CHECK
    TAKE-CELL NAMES-CAP ?BOUND NAMES-LEN !
    NAMES-LEN @ TAKE-RUN NAMES0 !
    NAMES0 @ NAMES-LEN @ POOL-CHECK
@@ -770,7 +793,7 @@ variable BK-DZERO  variable BK-PAD
    1 TILE-CELLS
    s" aot/dictionary-records" REC0 @ REC-N @ AOT-CREC-ROW * PADDED SPAN B-NAMES ROW
    1 TILE-CELLS
-   s" aot/call-sites" SITE0 @ SITE-N @ SITE-ROW * PADDED SPAN B-OTHER ROW
+   s" aot/call-sites" SITE0 @ SITE-N @ SITE-WIDTH * PADDED SPAN B-OTHER ROW
    1 TILE-CELLS
    s" aot/name-pool" NAMES0 @ NAMES-LEN @ PADDED SPAN B-NAMES ROW
    3 TILE-CELLS
@@ -1113,6 +1136,11 @@ DYNAMIC-BUFFER PMASK n
    role ROLE-GLOBAL = if M-GLOBAL exit then
    M-OTHER ;
 
+: SITE-NAME-OFF ( n -- n bool )
+   SITE-BOUND @ if drop 0 false exit then
+   SITE-AT 4 + U32@ dup SITE-NAME-TAG and 0= if drop 0 false exit then
+   SITE-TARGET-MASK and true ;
+
 : BUILD-POOL-MASK ( -- )
    NAMES-LEN @ 1+ PMASK-RESERVE
    NAMES-LEN @ 1+ 0 ?do 0 i PMASK ! loop
@@ -1120,6 +1148,7 @@ DYNAMIC-BUFFER PMASK n
       i CREC-PKG? if i CREC-NAME-OFF M-OTHER PMASK+
       else i CREC-NAME-OFF i REC-ROLE ROLE-BIT PMASK+ then
    loop
+   SITE-N @ 0 ?do i SITE-NAME-OFF if M-SITE PMASK+ else drop then loop
    XTSITE-N @ 0 ?do  XTSITE0 @ i XTSITE-ROW * + 4 + U32@ M-SITE PMASK+  loop ;
 
 : POOL-ONLY-BYTES ( n -- n ) {: mask:n :}
@@ -1169,27 +1198,46 @@ DYNAMIC-BUFFER RNAME n
    0 POOL-ONLY-BYTES FMT:.U cr ;
 
 \ ---- what the baked call sites bind to ----------------------------------------
-\ Every site is (blob offset, target, callee scope). A target with the name tag
+\ A generic site is (blob offset, target, callee scope). A target with the name tag
 \ clear is the callee's index in the dictionary the boot builds - primitives
 \ first, then the payload's records - and the boot loads dict[k][0]. A target
 \ with the tag set is a name-pool offset the boot resolves in the scope beside
 \ it, which is what a partial capture needs for a callee its own payload does
 \ not carry (src/habu/habu2.f EMIT-AOT-SITES binds, EM-AOT-PATCH-SITES
-\ relocates).
+\ relocates). Bound tables contain only offsets; their instructions supply the
+\ primitive targets at the canonical text/region distance.
 DYNAMIC-BUFFER SMASK n
 variable SITE-PRIMS    variable SITE-RECS
 variable SITE-NAMED    variable SITE-CALLEES  variable SITE-BAD
+
+\ The instruction owns the target in bound images. Recover the canonical text
+\ offset and match a seeded primitive entry, never a guessed address band.
+: BOUND-SITE-TARGET ( n -- n )
+   SITE-AT U32@ {: off:n :}
+   BLOB-OFF @ off + U32@ $3FFFFFF and
+   dup $2000000 and 0<> if $4000000 - then
+   4 * REGION-OFF DICT-SIZE + off + + {: target:n :}
+   PDICT-N @ 0 ?do
+      PDICT @ i PREC * + PREC-START target = if i unloop exit then
+   loop
+   -1 ;
+
+: SITE-TARGET ( n -- n )
+   SITE-BOUND @ if BOUND-SITE-TARGET exit then
+   SITE-AT 4 + U32@ ;
 
 : CENSUS-SITES ( -- )
    REC-N @ PDICT-N @ + 1+ SMASK-RESERVE
    REC-N @ PDICT-N @ + 1+ 0 ?do 0 i SMASK ! loop
    0 SITE-PRIMS !  0 SITE-RECS !  0 SITE-NAMED !  0 SITE-CALLEES !  0 SITE-BAD !
    SITE-N @ 0 ?do
-      SITE0 @ i SITE-ROW * + 4 + U32@ {: tgt:n :}
-      tgt SITE-NAME-TAG and 0<> if
+      i SITE-TARGET {: tgt:n :}
+      tgt 0 >= tgt SITE-NAME-TAG and 0<> and if
          SITE-NAMED @ 1+ SITE-NAMED !
       else
-         tgt {: k:n :}
+         tgt 0 >= tgt SITE-REC-TAG and 0<> and if
+            tgt SITE-TARGET-MASK and PDICT-N @ +
+         else tgt then {: k:n :}
          k 0 < k REC-N @ PDICT-N @ + >= or if
             SITE-BAD @ 1+ SITE-BAD !
          else
@@ -1510,7 +1558,7 @@ $FFFF constant ROW-MASK
       i CREC-PKG? if i CREC-NAME-OFF 2 DMASK+
       else i CREC-NAME-OFF i DEAD? if 1 else 2 then DMASK+ then
    loop
-   SITE-N @ 0 ?do SITE0 @ i SITE-ROW * + 4 + U32@ 2 DMASK+ loop
+   SITE-N @ 0 ?do i SITE-NAME-OFF if 2 DMASK+ else drop then loop
    XTSITE-N @ 0 ?do XTSITE0 @ i XTSITE-ROW * + 4 + U32@ 2 DMASK+ loop
    0 ACC !
    0 begin dup NAMES-LEN @ < while

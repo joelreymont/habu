@@ -16,6 +16,18 @@ registry from that tree:
 bin/hb --load test/run.f
 ```
 
+On macOS, keep the machine awake for the gate with a process-scoped assertion:
+
+```sh
+caffeinate -is bin/hb --load test/run.f
+```
+
+Sleep counts against the suites' elapsed-time deadlines. Repeated sleep/wake
+cycles produced simultaneous `TIMEOUT-UNDER-LOAD` reports even with one suite
+left in the pool. Check `pmset -g log` before treating that result as a hang,
+retain the failed log, and rerun the unchanged candidate awake; do not raise
+timeouts or count the interrupted run as acceptance.
+
 `test/gate-stdlib-cases.f` is the registry. Each `SUITE` row runs its listed
 files through the tree's `bin/hb`; there is no second test inventory.
 

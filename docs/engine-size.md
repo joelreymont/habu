@@ -1,5 +1,41 @@
 # Where the engine's bytes go
 
+## macOS representation reductions
+
+The ARM64 Mach-O product shrank from 3,385,207 to 2,972,407 bytes (12.2%)
+by interning checker package names, storing checker strings as arena offsets,
+encoding unused checker bindings as zero, and binding primitive BL targets in
+their instructions. Four-byte call-site offsets still identify the instructions
+that startup must relocate for the actual mapping distance. Partial captures
+retain their generic call rows.
+
+These are measured file sections, including each section's alignment:
+
+| Section | Before | After |
+|---|---:|---:|
+| Engine code | 120,804 | 121,332 |
+| Captured Habu code | 1,536,124 | 1,536,660 |
+| Call-site rows | 115,656 | 38,560 |
+| Address relocation rows | 270,552 | 3,528 |
+| DATA bitmap | 71,180 | 69,196 |
+| DATA values | 852,956 | 787,548 |
+| Complete signed file | 3,385,207 | 2,972,407 |
+
+The largest reduction is 33,378 string-pointer relocation rows removed by
+arena-relative offsets. Zero now represents an unused binding in the four
+checker scratch maps; no startup reconstruction pass is needed. Bound calls
+validate their encoded target against the immutable primitive dictionary before
+relocation. This changes representation, not the retained language surface.
+
+The resulting engine SHA-256 is
+`2daeb34544e8c081209f2437485d76f606c61ca5ac7eafe8cc28ddf438845639`.
+The baseline is
+`d3b3bdfd65c835c4275006bc40274635b7272e22d45591301ddcf62197279f8f`.
+Run `bin/hb --load tools/engine-size.f -- bin/hb` on a rebuilt product to
+measure subsequent changes; the table is evidence, not a fixed size assertion.
+
+## Historical Linux measurements
+
 The block below records one Linux engine measurement. It is an example, not
 the size of the current build: compiler changes and the Mach-O container change
 these rows. The gate checks the reader's accounting and reachability behavior

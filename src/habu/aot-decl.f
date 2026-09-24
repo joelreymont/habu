@@ -79,6 +79,12 @@ variable AOT-REC-N
 \ Named without the AOT- prefix the older tails here carry: that prefix is the
 \ recorded debt this file's header names, and a new name does not join it.
 12 constant SITE-ROW
+\ Only the baked image may bind primitive BLs to a canonical text distance.
+\ Bit 32 of its count cell selects four-byte site offsets; all other upper
+\ bits are reserved. Reusable artifacts always retain SITE-ROW named rows.
+$100000000 constant SITE-BOUND-TAG
+$FFFFFFFF constant SITE-COUNT-MASK
+4 constant BOUND-SITE-ROW
 \ The IMAGE's row is the same three words, but its middle word is a TARGET
 \ rather than a name: the build resolves the callee against the two tables the
 \ image carries - the seeded primitives and the payload's own records - and
@@ -91,8 +97,9 @@ variable AOT-REC-N
 \ its own prefix, and no index of this payload can name one. Such a row sets
 \ SITE-NAME-TAG on the target and carries the pool offset in the low bits; the
 \ scope word is then the wordlist the seed resolves the name in, exactly as
-\ before. Both kinds travel in one table because the row width is a property of
-\ the section, not of the site.
+\ before. Both generic kinds travel in one table. A complete runtime whose
+\ every site is a primitive BL can instead carry SITE-BOUND-TAG and four-byte
+\ offsets: its emitted BLs already hold their canonical target displacement.
 \ THE TWO INDEX KINDS ARE NOT THE SAME NUMBER. A primitive's index is absolute:
 \ the seed copies LDICT to dict[0..LNCOUNT) in every image. A payload record's
 \ is RELATIVE to wherever the records pass put them, and that is not LNCOUNT in
@@ -630,12 +637,12 @@ public
 \ rebuilds it from the flat capture first: a merge can still have extended that
 \ bitmap after the capture, and src/habu/habu2.f EMIT-AOT-SEED takes this count
 \ immediately before it emits those same bytes.
-: BODY-BYTES ( -- n )
+: BODY-BYTES ( n -- n ) {: sitewidth:n :}
    AOT-WINDOW:BM-BUF@ AOT-WINDOW:BM-LEN @ AOT-WINDOW:BM-COMPACT
    17 cells
    AOT-BLOB-LEN @ +BYTES
    AOT-REC-N @ AOT-CREC-ROW +ROWS
-   AOT-SITE-N @ SITE-ROW +ROWS
+   AOT-SITE-N @ sitewidth +ROWS
    AOT-NAMES-LEN @ +BYTES
    AOT-DSITE-N @ 4 +ROWS
    AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-ROW +ROWS
@@ -653,8 +660,8 @@ public
    56 AOT-SIG-N @ SIG-ROW +ROWS
    AOT-SIG-STR-LEN @ +RAW AOT-REG-LEN @ +RAW ;
 
-: BYTES ( bool -- n ) {: sidecar:bool :}
-   BODY-BYTES
+: BYTES ( bool n -- n ) {: sidecar:bool sitewidth:n :}
+   sitewidth BODY-BYTES
    sidecar if
       8 +BYTES PAYLOAD-BYTES +BYTES
       AOT-SIG:INSTALL-NAME$ nip +BYTES
