@@ -457,20 +457,19 @@ variable SELF-SRC-U
    s" PASS: hb-build AOT persistent data region (create/,/variable/@/!/+!/loop)" type cr ;
 
 \ Persistent-data code-window regression (dot habu-identify-code-pointers-b973e6cc,
-\ red-first). A datum whose VALUE lands in the former [RBASE-VA, RBASE-VA+REGION)
-\ magnitude window -- here RBASE-VA+REGION-8, the top cell of the JIT region, free
+\ red-first). A datum whose VALUE lands in the [dbase, dbase+REGION)
+\ magnitude window -- here dbase+REGION-8, the top cell of the JIT region, free
 \ space far above the code high-water -- is NOT a pointer. The old CELL-TEXTPTR?
 \ magnitude window MISclassified it and hb-build rejected the program (exit 70); the
 \ live-extents test correctly classifies it as data, so the program builds and its
 \ MAIN reads the datum back unchanged. The classifier's own two-sided check is
 \ SELF-TEXTPTR-DEFS, in MAKER-SELFTEST: CELL-TEXTPTR? is a linker word and this
-\ application is compiled before the linker is loaded. The RBASE-VA/REGION
-\ expression is evaluated by the maker, so the case tracks the constants if a
-\ later dot moves the region.
+\ application is compiled before the linker is loaded. Use the live region:
+\ RBASE-VA is a snapshot sentinel and may name unrelated mappings under ASLR.
 : DATA-WINDOW-SOURCE ( -- )
    GE-SRC-RESET
-   s" create X RBASE-VA REGION + 8 - ," GE-SRC-LINE
-   s\" : MAIN ( -- ) X @ RBASE-VA REGION + 8 - = IF s\" ok\" ELSE s\" bad\" THEN type cr ;" GE-SRC-LINE ;
+   s" dbase@ REGION + 8 - dup constant EXPECTED create X ," GE-SRC-LINE
+   s\" : MAIN ( -- ) X @ EXPECTED = IF s\" ok\" ELSE s\" bad\" THEN type cr ;" GE-SRC-LINE ;
 
 : DATA-WINDOW-EXPECT ( -- ptr u8 n )
    SB-RESET
