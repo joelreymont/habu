@@ -47,7 +47,7 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
 : PTT-ONE-CAPTURE ( -- )
    PROC-CMD:RESET
    s" hello" >LEN PROC-CMD:ARG+
-   s" /usr/bin/echo" >LEN PTT-CAPTURE-MS >MS PROC-CMD:RUN-RC
+   s" /bin/echo" >LEN PTT-CAPTURE-MS >MS PROC-CMD:RUN-RC
    MATCH result
      ok  OF drop ENDOF
      err OF drop PTT-CAP-BAD+ ENDOF
@@ -75,14 +75,14 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
 \ false instead of hanging forever, so a regression reports a failed case.
 : PTT-POLL-UNTIL-DONE ( -- bool )
    mono-ns PTT-BUDGET-NS + {: deadline:n :}
-   begin PTT-DONE @ 0= while
+   begin PTT-CAPTOR TASK:DONE? 0= while
       mono-ns deadline > if 0 0= 0= exit then
       PTT-POLL-ONCE
    repeat
    0 0= ;
 
 : PTT-JOIN-CAPTOR ( -- )
-   begin PTT-DONE @ 0= while TASK:PAUSE repeat   \ stop polling: let a wedged captor out
+   begin PTT-CAPTOR TASK:DONE? 0= while TASK:PAUSE repeat
    PTT-CAPTOR TASK:JOIN
    MATCH result
      ok  OF PTT-CAPTURES T= ENDOF

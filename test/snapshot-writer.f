@@ -232,6 +232,7 @@ variable BAND-WID
 \ ---- doctored-band legs ----------------------------------------------------
 : WRITE-BAND-COPY ( -- )
    BAD-BAND$ IMG IMGU @ WRITE-ALL
+   BAD-BAND$ CHMOD-X
    BAD-BAND$ CODESIGN:FORCE ;
 
 : RUN-BAND-COPY ( -- )

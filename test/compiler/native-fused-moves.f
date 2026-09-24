@@ -42,11 +42,14 @@ public
 
 : FM-PUSH1 ( -- n ) 5 ;                  \ publishes one cell and takes none
 : FM-EXCH ( n n -- n n ) swap ;          \ takes two and leaves two: no move at all
-: FM-GUARD ( n -- ) 0 < if 1 throw then ;   \ takes one, publishes none, calls
+\ Use an ordinary call boundary: a direct throw now takes the cold trap path,
+\ which deliberately has no returning-call stack transfers to fuse.
+: FM-RAISE ( n -- ) throw ;
+: FM-GUARD ( n -- ) 0 < if 1 FM-RAISE then ;   \ takes one, publishes none, calls
 : FM-CALLEE ( n -- n ) 1 + ;
 : FM-CALL ( n -- n n ) FM-CALLEE dup ;   \ publishes past a call it came back from
 : FM-FPUSH ( -- r ) -1 s>f ;             \ the same publish in the other file
-: FM-FPOP ( r -- ) 0 s>f f< 0= if 1 throw then ;
+: FM-FPOP ( r -- ) 0 s>f f< 0= if 1 FM-RAISE then ;
 : FM-SRC ( -- n ) 7 ;
 : FM-PRUNED ( -- n ) FM-SRC 0 > if 5 else 5 then ;
 variable FM-CELL

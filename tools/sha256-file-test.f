@@ -358,16 +358,19 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-FCTX-A SFT-DEEP$ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
    SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
 
-\ The top of the range: a path of exactly FS-PATH-CAP bytes, built from
+\ The top of the host's range (Darwin PATH_MAX includes its NUL), built from
 \ 100-byte directory components and a final name that lands on the cap. fs.f
 \ creates and writes it, and the digest words take it too; one byte more is
 \ refused by both layers alike.
+: SFT-HOST-PATH-CAP ( -- n )
+   HB-TARGET-MACOS? if FS-PATH-CAP 1- else FS-PATH-CAP then ;
+
 : SFT-EDGE-NAME! ( n -- ) {: n:n :}
    n 0 ?do 101 SFT-EDGE-NAME i + c! loop ;
 
 : SFT-EDGE-DIRS ( -- )   \ extend SFT-EDGE-A by 100-byte components while more than 201 bytes remain
    SFT-ROOT$ SFT-EDGE-A swap BYTE-COPY SFT-ROOT-U @ SFT-EDGE-U !
-   begin FS-PATH-CAP SFT-EDGE-U @ - 201 > while
+   begin SFT-HOST-PATH-CAP SFT-EDGE-U @ - 201 > while
       100 SFT-EDGE-NAME!
       SFT-EDGE-A SFT-EDGE-U @ SFT-EDGE-NAME 100 SFT-EDGE-B JOIN-PATH {: u:n :}
       SFT-EDGE-B SFT-EDGE-A u BYTE-COPY u SFT-EDGE-U !
@@ -376,10 +379,10 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 
 : SFT-TEST-EDGE-PATH ( -- )
    SFT-EDGE-DIRS
-   FS-PATH-CAP SFT-EDGE-U @ - 1- {: last:n :}
+   SFT-HOST-PATH-CAP SFT-EDGE-U @ - 1- {: last:n :}
    last SFT-EDGE-NAME!
    SFT-EDGE-A SFT-EDGE-U @ SFT-EDGE-NAME last SFT-EDGE-B JOIN-PATH SFT-EDGE-U !
-   SFT-EDGE-U @ FS-PATH-CAP T=
+   SFT-EDGE-U @ SFT-HOST-PATH-CAP T=
    SFT-FILL-A100
    SFT-EDGE-B SFT-EDGE-U @ SFT-A100 100 WRITE-ALL
    SFT-CTX-ONE SFT-A100 100 SFT-DG-A SHA256-IN
