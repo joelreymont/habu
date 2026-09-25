@@ -205,3 +205,24 @@ claim is made. Cedar's pending download tree on Tender 985a866a still refuses
 an undeclared pointer on this Habu pair, a separate application revision under
 Cedar/Aspen investigation. The unused quotation-cell root defect above remains
 open; the production PREPARE remeasurement is no longer outstanding.
+
+Current macOS DATA evidence on source f1b61d80 / engine 730f69da:
+an empty MAIN builds to 33,276 bytes, while an otherwise unused private
+65,536-byte BUFFER filled at build time produces 99,324 bytes. Code stays
+2,156 bytes; carried DATA values rise from 427 to 74,155. Both execute with
+exit 0. A third checked executable computes TARGET BASE - as a scalar GAP at
+build time, then reads TARGET through BASE GAP + at runtime; it also builds
+and runs with exit 0. Inputs, reports, artifacts and hashes are retained in
+`~/.cache/tmp/habu-opt-round3/data/RESULTS.md`.
+
+Independent review confirms that extents plus address sites alone are unsound:
+checked pointer arithmetic has no allocation bound and native lowering inlines
+it. Ordinary pointer tables, relative columns and code mutation add independent
+proof obligations. `data-design.md` and `data-contract-review.md` in that
+round-three evidence directory specify producer validity, rollback/reuse and
+current bounded-access facts; unknown accesses must retain possible targets.
+No heuristic linker filter was implemented. The smallest conservative proof
+machinery would help the empty-MAIN case but leave warm Maki unchanged, so
+owner-specific checker storage elimination takes priority. This issue remains
+active; neither general DATA liveness nor unused quotation-root removal is
+claimed complete. External Tender coordination is no longer part of this work.

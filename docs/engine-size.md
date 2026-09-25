@@ -83,6 +83,28 @@ time leaves code size unchanged but raises value bytes to 74,155. Both native
 executables run successfully. Sparse encoding already exists on this path and
 does not establish DATA reachability.
 
+Repeating that comparison on source `f1b61d80` and engine `730f69da` produces
+33,276-byte and 99,324-byte Mach-O executables: 66,048 extra file bytes for the
+unused array. The retained sources, executables, complete size reports and
+hashes are in `~/.cache/tmp/habu-opt-round3/data/RESULTS.md`.
+
+Allocation extents and literal address sites are insufficient to remove those
+bytes safely. A checked program can compute `TARGET BASE - constant GAP` at
+build time and later read `BASE GAP + c@`. The retained `hidden-offset.f`
+builds and executes successfully on that same source/engine pair. Pointer types
+carry no allocation bounds, and native lowering can inline the arithmetic;
+scanning calls to `+` cannot establish the missing proof. Ordinary pointer
+tables and relative deferred-column offsets also carry references outside the
+address-cell registry.
+
+Safe general DATA elimination therefore needs producer-owned extents, lifetime
+invalidation and current bounded-access facts, with unknown accesses retaining
+their possible targets. A conservative first version that rejects every generic
+memory operation would improve empty MAIN but provide no warm Maki saving.
+That is not the next optimization: remove storage at existing, explicit owner
+lifetime boundaries first. The broader DATA issue remains open as
+`habu-prove-the-closure-5b7d02bb`.
+
 Warm snapshot zero counts likewise do not prove dead allocations. Maki's
 preceding image has 15,218,805 zero bytes within its 16,732,124-byte DATA
 window. Its final USIGS/NORETS stores contain 4,194,576 used bytes and only
