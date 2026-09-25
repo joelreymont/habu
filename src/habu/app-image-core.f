@@ -19,21 +19,18 @@ package APP-IMAGE
       s" src/os/linux/sys.f" required
       s" src/os/image-bytes.f" required
       s" src/os/linux/elf.f" required
-      s" src/os/linux/sign.f" required
       exit
    then
    HB-TARGET-MACOS? if
       s" src/os/macos/sys.f" required
       s" src/os/image-bytes.f" required
       s" src/os/macos/macho.f" required
-      s" src/os/macos/sign2.f" required
       exit
    then
    HB-TARGET-LINUX-X86-64? if
       s" src/os/linux-x86-64/sys.f" required
       s" src/os/image-bytes.f" required
       s" src/os/linux-x86-64/elf.f" required
-      s" src/os/linux-x86-64/sign.f" required
       exit
    then
    s" app-image: unsupported target" 76 die ;
@@ -42,8 +39,6 @@ package APP-IMAGE
 ;package
 execute
 
-require src/habu/fdio.f
-require src/habu/driver-io.f
 require src/habu/snap-lib.f
 
 package APP-IMAGE

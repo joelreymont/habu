@@ -119,13 +119,46 @@ a complete object graph. Preserve unknown escapes conservatively. Compression
 and snapshot repacking remain held while these allocation causes are resolved;
 retaining runtime capacity does not itself justify storing every reserved byte.
 
-The current Maki snapshot still contains three all-zero checker boot
-reservations totaling 851,968 bytes: SYMS-BOOT, NORET-BOOT and SPA-BOOT.
-Their known lifetimes support first-use allocation while preserving live
-symbols/control facts and giving SPA explicit transient ownership. This is
-tracked as `habu-allocate-checker-boot-6b2624bd`; no saving is claimed yet.
-Persistence can still leave former live copies behind after later growth,
-so merely removing the BOOT declarations is not sufficient acceptance.
+## Allocate checker scratch when needed
+
+Lazy SYMS and NORETS storage, owned SPA/TV/SEEN mappings, and removal of the
+full-image driver/signers from warm capture reduce Maki's signed REPL image
+from 22,687,328 to **21,702,368 bytes**: 984,960 bytes (4.34%) smaller.
+Semantic registries still persist, scratch mappings are released at capture,
+and the stripped linker loads its own driver and signer dependencies.
+No snapshot codec or general DATA reclamation is involved.
+
+| Measured section | Before | After |
+|---|---:|---:|
+| Raw warm DATA window, including absorbed padding | 14,236,536 | 13,252,884 |
+| Warm code band | 1,508,260 | 1,506,636 |
+| Warm out-of-line record names | 19,900 | 19,860 |
+| Embedded native sections, net change | — | +2,276 |
+| Mach-O code signature | 44,528 | 42,608 |
+| Complete signed Maki file | 22,687,328 | 21,702,368 |
+
+The DATA-window reduction is 983,652 bytes; it includes the writer's absorbed
+alignment padding and is not an allocator-by-allocator attribution. Removed
+dictionary records become unused capacity, so that region's total is unchanged.
+Former persisted semantic copies can still remain after growth or recapture.
+
+The standalone native engine **grows** from 2,889,847 to 2,906,359 bytes.
+Its sparse DATA encoding already omitted most removed zero storage; the new
+owner code and alignment cost more physical bytes. Two native generations and
+their name sidecars are byte-identical. Engine SHA-256:
+`e2754336b266146d7bb33de3da8d64b66bdff2459c7fe829b0f928853c9363a6`.
+The Maki image SHA-256 is
+`2b070253266b4dd26d819ba66cf501deac55a564cd3aa7650d8889c2ccf72f83`.
+
+Existing native Maki routing/geometry and negotiation checks pass; both KiCad
+board exports are byte-identical to the preceding product, and the image's
+strict signature check passes. The integrated native gate passes all 490 suites.
+Its first run exposed an invalid timeout fixture that evaluated compile-only
+loop words; the corrected fixture compiles and runs an endless word while
+preserving the original deadline and timeout assertion. External KiCad DRC,
+connectivity and IPC remain
+unexercised. Frozen sources, generations, measurements and repeatable artifacts
+are retained at `~/.cache/tmp/habu-opt-round3/integrated/`.
 
 ## Historical Linux measurements
 

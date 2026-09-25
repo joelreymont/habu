@@ -78,10 +78,19 @@ both exported boards byte-identical. Final measurements, failed runs, the
 existing TCP/HTTP fixture ordering corrections and repeatable artifacts are
 retained at `~/.cache/tmp/habu-opt-round2/combined/RESULTS.md`.
 
-Compression and snapshot repacking remain held. The next bounded allocation
-work is [checker boot storage](habu-allocate-checker-boot-6b2624bd.md): 851,968
-bytes of static reservations still appear in Maki, with no achieved saving
-claimed. General DATA reachability remains a separate open implementation.
+The following storage changes remove the checker boot reservations, give
+SPA/TV/SEEN mapped ownership, and omit full-image driver/signers from warm
+capture. Maki is now 21,702,368 bytes, another 984,960 bytes smaller; routing
+and negotiation pass with byte-identical board exports. The native engine is
+2,906,359 bytes, 16,512 bytes larger: sparse DATA already omitted most removed
+zero storage, and owner code/alignment increase its physical size. Two native
+generations are byte-identical and all 490 native suites pass. The gate's invalid
+subject-timeout fixture was corrected without changing its deadline or assertion.
+Evidence, including the rejected first run, is retained in
+`~/.cache/tmp/habu-opt-round3/integrated/`.
+
+Compression and snapshot repacking remain held. General DATA reachability and
+former persisted semantic copies remain separate open work.
 
 Measurements before the next reduction: 20,827 effect headers occupy 267,461
 encoded bytes while representing 1,766 exact semantic tuples. The effect

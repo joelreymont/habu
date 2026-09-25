@@ -11,6 +11,22 @@ require src/habu/aot-decl.f
 require src/habu/aot-window-latch.f
 require src/habu/aot-owned-cells.f
 
+\ Full-image emission owns its signer and driver. This linker loads only after
+\ the application span is latched; snapshot support needs neither dependency.
+package AOT-LINK
+private
+
+: LOAD-SIGNER ( -- )
+   HB-TARGET-LINUX? if s" src/os/linux/sign.f" required exit then
+   HB-TARGET-MACOS? if s" src/os/macos/sign2.f" required exit then
+   HB-TARGET-LINUX-X86-64? if s" src/os/linux-x86-64/sign.f" required exit then
+   s" aot: unsupported target" 76 die ;
+
+' LOAD-SIGNER
+;package
+execute
+require src/habu/driver-io.f
+
 \ The AOT relocation core compiles checked. It works over CLOSURE MEMBERS - a
 \ code entry and a length, held in the parallel arrays src/habu/aot-closure.f
 \ fills - and not over dictionary records, because the image ships no record for

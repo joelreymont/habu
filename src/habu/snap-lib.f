@@ -1,7 +1,7 @@
 \ snap-lib.f — checked snapshot image writer definitions.
 \
 \ Load after target image emission words (`BUILD-SNAP-HDR`, `SNAP-DROP`,
-\ `SNAP-EXTRA-PTR`, `SNAP-EXTRA-SIZE`) and driver I/O. Entry files decide when
+\ `SNAP-EXTRA-PTR`, `SNAP-EXTRA-SIZE`). Entry files decide when
 \ to prepare checker/include state and call the writer's `PERSIST`.
 \
 \ Everything here belongs to package SNAP. The only word an entry file needs is
@@ -20,6 +20,7 @@
 require lib/fs.f
 require lib/codesign.f
 require src/habu/address-cells.f
+require src/habu/fdio.f
 require src/habu/stack-abi.f
 
 package SNAP
@@ -421,6 +422,6 @@ public
    CANON-DATA
    WRITE-IMAGE
    OUT-PATH CODESIGN:ENSURE
-   DRV-EXIT-OK ;
+   s" " 0 die ;
 
 ;package
