@@ -58,34 +58,53 @@ variable RDIAG-I
    RDIAG-U @ u + RDIAG-CAP @ > IF s" render: diagnostic buffer full" 76 die THEN
    a u RDIAG-COPY
    RDIAG-U @ u + RDIAG-U ! ;
-create SEEN-BOOT MAXTV-INIT cells allot
-PERSISTED-PTR-VARIABLE SEEN-P   SEEN-BOOT SEEN-P !
-variable SEEN-CAP   MAXTV-INIT SEEN-CAP !
-\ SEEN-RESET clears only [0, SEEN-HW), the span LET-OF wrote since the last
-\ reset; every cell above the mark is already UNBOUND. The mark opens AT the
-\ capacity, because `allot` leaves zeros and zero is a letter index rather than
-\ UNBOUND - so the first reset is the full fill that establishes the invariant,
-\ and a grow or the snapshot wipe re-opens it for exactly the same reason.
-variable SEEN-HW   MAXTV-INIT SEEN-HW !
+PERSISTED-PTR-VARIABLE SEEN-P   NULL-PTR SEEN-P !
+variable SEEN-CAP   0 SEEN-CAP !
+\ Only the assigned prefix needs clearing; allocation initializes every cell
+\ above SEEN-HW to UNBOUND, including a grown tail.
+variable SEEN-HW   0 SEEN-HW !
 variable NLET                                      \ SEEN is indexed by typevar (PAY)
 64 constant RATOM-CAP
 create RATOM-KEY RATOM-CAP cells allot
 variable RATOM-N
 variable RATOM-I
+$7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 
-: SEEN ( -- ptr n )
-   SEEN-P @ ;
+: SEEN-UNMAP-RC ( ptr a n -- n ) {: base:ptr cap:n :}
+   cap 0= IF 0 EXIT THEN
+   base cap cells munmap ;
+
+: SEEN-RELEASE ( -- )
+   SEEN-P @ SEEN-CAP @ SEEN-UNMAP-RC 0 <> IF
+      s" render: seen munmap failed" 76 die
+   THEN
+   NULL-PTR SEEN-P !   0 SEEN-CAP !   0 SEEN-HW ! ;
+
+: SEEN-GROW-CAP ( n -- n ) {: need:n :}
+   need MAXTV-INIT max
+   SEEN-CAP @ SEEN-MAX-CAP 2 / <= IF SEEN-CAP @ 2 * max THEN ;
+
+: SEEN-GROW ( n -- ) {: need:n :}
+   need SEEN-GROW-CAP {: nc:n :}
+   SEEN-CAP @ {: oc:n :}
+   nc cells ARENA-ALLOC {: next:ptr :}
+   oc 0 > IF SEEN-P @ BYTE-VIEW next BYTE-VIEW oc cells ARENA-COPY THEN
+   next oc nc ARENA-CELLS-UNBOUND
+   SEEN-P @ oc SEEN-UNMAP-RC 0 <> IF
+      next nc SEEN-UNMAP-RC 0 <> IF s" render: seen cleanup munmap failed" 76 die THEN
+      s" render: seen munmap failed" 76 die
+   THEN
+   next SEEN-P !   nc SEEN-CAP ! ;
 
 : SEEN-ENSURE ( -- )
-   MAXTV {: need:n :}
+   MAXTV MAXTV-INIT max {: need:n :}
+   need 0 < need SEEN-MAX-CAP > or IF s" render: seen capacity overflow" 76 die THEN
    need SEEN-CAP @ <= IF EXIT THEN
-   SEEN-P @ SEEN-CAP @ cells need cells ARENA-BYTES-GROW SEEN-P !
-   need SEEN-CAP !
-   need SEEN-HW ! ;                                \ the grown tail is not UNBOUND
+   need SEEN-GROW ;
 
-\ Every entry into the renderer runs this, and the renderer is entered per
-\ rendered term, not per definition; MAXTV is 1280 cells against the handful of
-\ variables one diagnostic names. Clear the written span, not the capacity.
+: SEEN ( -- ptr n ) SEEN-ENSURE SEEN-P @ ;
+
+\ Every entry into the renderer clears only the span written by LET-OF.
 : SEEN-RESET ( -- )
    SEEN-ENSURE
    0 BEGIN dup SEEN-HW @ < WHILE
@@ -94,17 +113,8 @@ variable RATOM-I
    REPEAT drop
    0 SEEN-HW ! ;
 
-\ SEEN-RESET leaves the whole array UNBOUND - the written span cleared, the
-\ rest never touched - so what the boot array holds at the capture seam is the
-\ last rendered diagnostic's alpha-renaming and nothing a restored engine
-\ reads. It is dense, though - 16,389 non-zero bytes on the pinned engine - and
-\ a capture carries every non-zero byte into the engine's __text. Empty it
-\ here, and re-open the mark so the next reset refills what this zeroed.
 : SEEN-SNAPSHOT-RESET ( -- )
-   SEEN-BOOT 0 MAXTV-INIT ARENA-CELLS-ZERO
-   SEEN-BOOT SEEN-P !
-   MAXTV-INIT SEEN-CAP !
-   MAXTV-INIT SEEN-HW ! ;
+   SEEN-RELEASE ;
 
 : REG-SCRATCH-SNAP-INSTALL ( -- ) [: SEEN-SNAPSHOT-RESET ;] is REG-SCRATCH-SNAP-XT ;
 REG-SCRATCH-SNAP-INSTALL
@@ -114,6 +124,7 @@ REG-SCRATCH-SNAP-INSTALL
 \ Diagnostic alpha-renaming has its own a..z namespace.  It renders generic
 \ checker variables and is deliberately independent of declaration positions.
 : LET-OF {: vp :}
+   SEEN-ENSURE
    vp 1 + SEEN-HW @ < 0= IF vp 1 + SEEN-HW ! THEN
    vp cells SEEN + @ UNBOUND = IF NLET @ vp cells SEEN + ! NLET @ 1 + NLET ! THEN
    vp cells SEEN + @ 97 + ;

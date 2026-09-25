@@ -779,6 +779,7 @@ TRUSTED: TG-COPY ( ptr u8 ptr u8 n -- ) USIGS-COPY ;
 TRUSTED: TG-RESTORE-END ( n -- ) USIGS-RESTORE-END ;
 TRUSTED: TG-PERSIST ( -- ) USIGS-SNAPSHOT-PERSIST ;
 TRUSTED: TG-TV-RESET ( -- ) TV-SNAP-RESET ;
+TRUSTED: TG-TV-ENSURE ( n -- ) TV-ENSURE ;
 TRUSTED: TG-ARENA-RESET ( -- ) DECOUPLED-ARENA-SNAP-RESET ;
 TRUSTED: TG-TVT ( -- ptr a ) TVT ;
 UEND @ TG-UEND !
@@ -899,19 +900,28 @@ create TG-CPY-DST 11 allot
 TG-CPY-SRC TG-CPY-DST 11 TG-COPY
 s" usigs-copy bytes" T-LABEL
 TG-CPY-DST 11 TG-CPY-SRC 11 T$=
-\ --- growable typevar arena: a body needing > MAXTV-INIT vars no longer dies
-\ and a mid-check grow must not corrupt the var-id maps (relocatable arena).
-variable TG-TV-CAP
-TV-CAP @ TG-TV-CAP !
-8 TV-CAP !                       \ shrink shared cap so a small body forces a grow
-s" COK-TVGROW ( a -- a ) dup drop dup drop dup drop dup drop dup drop" T-CHECK-PASSES
-s" tv-arena-grow-geometric" T-LABEL
-TV-CAP @ 16 >= -1 T=             \ one forced grow at least doubles the shrunk cap
-TG-TV-RESET                      \ repoint every var-id store back at its boot buffer
-s" tv-arena-restored-cap" T-LABEL
+\ --- the TV group has an honest owned extent through growth and capture.
+TG-TV-RESET
+s" tv-arena-cold-cap" T-LABEL
+TV-CAP @ 0 T=
+s" tv-arena-cold-base" T-LABEL
+TVT-P @ NULL-PTR = -1 T=
+TG-TVT drop
+s" tv-arena-first-use" T-LABEL
 TV-CAP @ MAXTV-INIT T=
-s" tv-arena-restored-boot" T-LABEL
-TG-TVT TVT-BOOT = -1 T=
+s" tv-arena-unbound-map" T-LABEL
+VRC-TV-P @ @ UNBOUND T=
+MAXTV-INIT 1 + TG-TV-ENSURE
+s" tv-arena-grow-geometric" T-LABEL
+TV-CAP @ MAXTV-INIT 2 * T=
+s" tv-arena-plane-stride" T-LABEL
+RVT-P @ TVT-P @ - TV-CAP @ cells T=
+s" COK-TVGROW ( a -- a ) dup drop dup drop dup drop dup drop dup drop" T-CHECK-PASSES
+TG-TV-RESET
+s" tv-arena-reset-cap" T-LABEL
+TV-CAP @ 0 T=
+s" tv-arena-reset-base" T-LABEL
+TVT-P @ NULL-PTR = -1 T=
 TRUSTED: T-PHASE-ID ( img -- img ) drop 0 ;
 s" COK-PHASE-ID ( img -- img ) T-PHASE-ID" T-CHECK-PASSES
 s" CBAD-PHASE-BORROW ( -- ) T-PHASE-ID" T-CHECK-REJECTS
