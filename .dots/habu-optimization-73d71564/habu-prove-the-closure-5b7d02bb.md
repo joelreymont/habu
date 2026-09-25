@@ -16,7 +16,40 @@ raises code to 2,976 bytes. The code result is consistent with word-grain
 reachability. The unreachable literal still adds DATA bytes (464 to 480), so
 data reachability is not yet proven word-granular. `--size-report` also shows that the current stripped report has image-wide code/data classes, not a per-package code table; the requested Tender package split therefore needs a report change or a separate attribution probe.
 
-Current owner: alder, workspace `.jj-ws/alder-data-root`.
+Current owner: Alder. The historical `alder-data-root` workspace is retired;
+current reproduction artifacts are in `~/.cache/tmp/habu-opt-round2/`.
+
+Current macOS reproduction on source
+88243cb4f4dc6297a1f365538c6629cdb4f536da and engine SHA256
+2daeb34544e8c081209f2437485d76f606c61ca5ac7eafe8cc28ddf438845639
+confirms that unreachable initialized DATA still travels. Empty MAIN and
+empty MAIN plus a private, unreferenced 65,536-byte BUFFER filled with 65 at
+build time both emit 2,156 code bytes. The unused array raises value payload
+from 427 to 74,155 bytes (+73,728), bitmap from 153 to 1,179 bytes, and the
+signed executable from 33,276 to 99,324 bytes. Both build and run with exit 0.
+The real inputs, executable artifacts, hashes and reports are retained in
+`~/.cache/tmp/habu-opt-round2/`; failure modes were recorded in
+`data-reachability-plan.md` before creating the reproduction. This evidence
+does not measure how much of Maki's warm snapshot is dead.
+
+The responsible boundary still admits every in-window DATA address in
+MAPPED-DATA, roots every nonzero declared quotation cell before CLOSURE, and
+serializes every nonzero cell in BUILD-SPARSE-DATA. ADDRESS-CELLS records
+pointer-bearing cells, not complete allocation extents or object lifetimes.
+AOT-OWNED has explicit fresh/carried extents for named engine claims only.
+Use actual allocation provenance to establish unreachable objects; the nearest
+dictionary name and a zero value are not ownership or liveness proofs.
+
+The bounded owner-interface design is recorded in
+`~/.cache/tmp/habu-opt-round2/data-object-design.md`. CREATE/ALLOT do not retain
+general allocation extents; sized BUFFER and typed-storage definers know sizes
+while declaring but do not publish an authoritative object table. Ordinary
+pointer storage and deferred-word relative-offset backing references show why
+address-relocation rows alone are not a complete edge graph. Record exact
+extent and reference/escape policy at storage introduction, retire that identity
+on rollback/reuse, and conservatively retain unclassified spans/escapes. The
+first dead-DATA omission can preserve all live addresses, mapping size and HERE;
+it does not require a new codec or heap compaction. Extents alone are insufficient.
 
 Current priority: fix DATA reachability before snapshot compression. The defect
 is broader than quotation-cell roots. On Habu 806f0654 / engine SHA256

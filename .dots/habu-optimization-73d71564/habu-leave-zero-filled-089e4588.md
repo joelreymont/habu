@@ -14,7 +14,46 @@ Ownership: snapshot writer. Claim: Alder. Hazel reviews before landing and
 the integration chain runs the full gate.
 
 Held at Joel's direction. Candidate 7289a859 must not be duplicated or chained
-while the deployment shape and allocation causes are addressed. Tender's
+while the deployment shape and allocation causes are addressed. The hold is
+specifically on compression as the proposed solution: first prove why the
+retained data cannot be eliminated or initialized at runtime. Maki requiring
+a REPL does not lift the hold. Attribute actual allocations and lifetimes,
+separating live semantic state, reconstructible scratch, unused capacity and
+unreachable objects. Neither a zero-byte count nor an estimated codec saving
+is evidence that an allocation belongs in the saved image. Runtime address
+space and on-file storage are separate requirements.
+
+The current Maki image on source 88243cb4 / engine 2daeb345 is 25,264,640
+bytes. Its 16,732,124-byte warm DATA contains 15,218,805 zero bytes, but the
+largest final range is live USIGS/NORETS: 4,194,576 used bytes with only
+65,264 bytes above their used prefixes. The census's nearest preceding name
+PARSE-SOURCE-U is not their owner. Empty dictionary capacity contributes
+2,396,112 bytes; omitting its file storage would preserve the allocation, not
+prove it unnecessary. FS-WALK-CTX0 reserves 165,144 bytes; private PROC-CMD's
+byte context reserves 362,624, but its arguments/results persist between API
+calls, so discarding that state requires a lifecycle proof. Zeroed SYMS-BOOT,
+NORET-BOOT and SPA-BOOT reserve 851,968 bytes and still have reset consumers.
+Probe and bounded attribution: `~/.cache/tmp/habu-opt-round2/snapshot-allocs.f`
+and `snapshot-elimination.md`. Investigate their owning layers before packing
+the same retained allocations differently. Unattributed ranges remain open.
+
+Further source/pointer attribution identifies 3,014,656 bytes of superseded
+donor USIGS/NORETS backing within DONE's interval; current live pointers target
+later stores. Those older bytes include 380,799 nonzero bytes, so sparse
+encoding would still carry stale content. Reclamation requires an alias and
+rollback proof, not merely observing that the primary pointer moved. The full
+3,514,248-byte unnamed prefix is fixed layout plus a 655,408-byte NSTR pool:
+1,748 literal rows and 41,381 body bytes are used, while the row/body capacities
+remain reserved. The literal bodies retain code-visible addresses. Exact probes
+and the remaining reference-proof boundary are in `snapshot-elimination.md`.
+
+The default-context lifetime audit rules out blindly clearing PROC-CMD: staged
+arguments, stdin, results and returned buffer aliases are retained API state.
+Even FS-WALK-CTX0 is currently an exported static address. A lazy transient
+replacement must preserve supported persisted aliases or explicitly resolve
+that contract. See `~/.cache/tmp/habu-opt-round2/scratch-lifetime-design.md`.
+
+Tender's
 server now defaults to stripped; its current feb55f7d / Habu 806f0654 build is
 2,228,416 bytes with 143,113 carried DATA bytes and no dictionary. The earlier
 16,777,408-byte candidate server and its roughly 6 MB encoded DATA were a
@@ -54,7 +93,12 @@ both subjects, so snapshot scratch must be sized from its encoded content.
 Evidence: ~/.cache/habu/snapshot-design/source-45608866/ and
 ~/.cache/habu/link-time/source-45608866/.
 
-Accepted design and required verification:
+Historical codec design, held and not authorization to implement:
+
+The outer snapshot version is already 10 for three-word DATA address carriers;
+the version assignment below is obsolete. If elimination evidence eventually
+justifies a codec, resolve the actual donor loader's capability and current
+format contract before considering this old design.
 
 1. Use the existing grouped bitmap + unsigned LEB128 grammar. Keep the
    48-byte trailer geometry and distinguish the changed outer format as v10.
