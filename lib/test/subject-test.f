@@ -65,7 +65,8 @@ variable SAVED-REPLH
 
 : TIMED ( -- )
    s" subject timeout stays an outcome variant" T-LABEL
-   s" begin again" SHORT-MS >MS RUN
+   \ Bare BEGIN rejects in interpret mode and races the deadline instead of looping.
+   s" : SUBJECT-TIMEOUT-HANG ( -- ) begin again ; SUBJECT-TIMEOUT-HANG" SHORT-MS >MS RUN
    T-OUTCOME-TIMEOUT
    LEN>N drop LEN>N drop ;
 
