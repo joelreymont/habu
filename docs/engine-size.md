@@ -160,6 +160,49 @@ connectivity and IPC remain
 unexercised. Frozen sources, generations, measurements and repeatable artifacts
 are retained at `~/.cache/tmp/habu-opt-round3/integrated/`.
 
+## Pack REQUIRE registry paths
+
+The next owner reduction replaces the fixed 524,800-byte `REQUIRE-PATHS`
+reservation with packed offsets, an immutable captured DATA prefix and one
+bounded mutable mapping. It preserves exact row addresses and contents across
+append until capture or discard. The mapped suffix is copied into DATA only
+when a surviving new fact is captured; unchanged recapture reuses the frozen
+prefix. Old DATA blocks remain after a mutation capture.
+
+The native engine still occupies **2,906,359 bytes**: its sparse capture had
+already omitted most of the unused reservation. Its captured DATA heap span
+falls from 6,648,272 to 6,130,400 bytes, but equal file lengths do not mean
+equal DATA layouts. The new engine SHA-256 is
+`4caa9e7dbb75d11eed663e5450ef8e0c61bc45a80fae11ffab1a877e07ee88d5`.
+
+| Native Maki REPL image | File bytes | Raw DATA window | Registry rows | Live path bytes |
+|---|---:|---:|---:|---:|
+| Previous storage product | 21,702,368 | 13,252,884 | — | — |
+| Fresh packed build | 21,193,472 | 12,742,308 | 180 | 6,054 |
+| First warm capture | 21,193,472 | 12,742,020 | 180 | 6,054 |
+| Unchanged warm recapture | 21,193,472 | 12,742,020 | 180 | 6,054 |
+| One new provided fact, recaptured | 21,209,888 | 12,758,404 | 181 | 6,122 |
+
+The fresh packed image is **508,896 file bytes** smaller than the prior
+product, with **510,576 fewer raw DATA bytes**. Unchanged recapture adds no
+DATA bytes. The added fact contributes 68 live path bytes, while its recapture
+adds 16,384 raw DATA-window bytes and 16,416 file bytes. Those whole-image
+deltas include capture alignment and metadata; they cannot be charged solely
+to the path fact. Under the owner rules, mutation retains the earlier pool
+block and adds a new packed copy.
+
+Five native generations and their name sidecars are byte-identical. The
+490-suite native gate passes on the frozen candidate. A real two-filter Maki
+program routes, checks geometry and exports a byte-identical 13,228-byte KiCad
+board from the previous and packed native images. The existing negotiation
+fixture passes on the packed image, and its 7,936-byte shared-channel export is
+byte-identical to both preserved baselines. Both the new engine and Maki image
+pass macOS strict signature verification. External KiCad DRC,
+connectivity and IPC were not exercised on this host; fault injection for
+map/unmap and DATA-allot failures and a 512-row maximum-length registry were
+also not run. Source archive, commands, images, logs and size reports are
+retained at `~/.cache/tmp/habu-opt-round3/require-pool/RESULTS.md`.
+
 ## Historical Linux measurements
 
 The block below records one Linux engine measurement. It is an example, not

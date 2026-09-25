@@ -89,6 +89,23 @@ subject-timeout fixture was corrected without changing its deadline or assertion
 Evidence, including the rejected first run, is retained in
 `~/.cache/tmp/habu-opt-round3/integrated/`.
 
+The packed REQUIRE owner is qualified for integration against that storage
+product. Five native generations are byte-identical; the new engine remains
+2,906,359 bytes while its captured DATA span falls from 6,648,272 to
+6,130,400 bytes. Fresh native Maki falls from 21,702,368 to 21,193,472 bytes,
+and its raw DATA window falls from 13,252,884 to 12,742,308 bytes. Unchanged
+warm recapture adds no DATA bytes; one new provided fact adds 68 live path
+bytes and a 16,384-byte raw DATA-window increase on recapture, including
+capture overhead and a retained previous pool. The frozen candidate passes all
+490 native suites. The packed and prior native Maki images export a
+byte-identical routed and geometry-checked two-filter board; the packed image
+also passes the retained negotiation suite and exports a byte-identical
+shared-channel board. The new engine and Maki image pass strict macOS signature
+verification. External KiCad DRC/connectivity, IPC and
+map/unmap/DATA-allot fault injection remain untested. The exact source
+manifest, executables, logs, sizes and limits are retained in
+`~/.cache/tmp/habu-opt-round3/require-pool/RESULTS.md`.
+
 Compression and snapshot repacking remain held. General DATA reachability and
 former persisted semantic copies remain separate open work.
 

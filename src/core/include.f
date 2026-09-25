@@ -16,12 +16,20 @@ $37D8 constant INCLUDE-EVALERR-CELL
 \ reserved in src/habu/layout.f as SRCLOC:PATH-CELL / SRCLOC:PATHLEN-CELL.
 $2800 constant INCLUDE-SRCLOC-PATH-CELL
 $2808 constant INCLUDE-SRCLOC-PATHLEN-CELL
-INCLUDE-PATH-CAP 1 + constant REQUIRE-SLOT-BYTES
-
 create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
 create INCLUDE-PROBE INCLUDE-PROBE-CAP allot
-create REQUIRE-PATHS REQUIRE-MAX REQUIRE-SLOT-BYTES * allot
 create REQUIRE-LENS REQUIRE-MAX cells allot
+
+package REQUIRE-REG
+private
+
+REQUIRE-MAX INCLUDE-PATH-CAP * constant POOL-CAP
+create OFFSETS REQUIRE-MAX cells allot
+PERSISTED-PTR-VARIABLE FROZEN
+PTR-VARIABLE MAPPED
+variable PREFIX-N
+
+;package
 
 variable INCLUDE-DEPTH
 variable INCLUDE-FD
@@ -358,14 +366,107 @@ using SOURCE-ROOT
    dup 0 <= if s" include: missing path" INCLUDE-DIE then
    dup INCLUDE-PATH-CAP > if s" include: path too long" INCLUDE-DIE then ;
 
-: REQUIRE-SLOT ( n -- ptr u8 )
-   REQUIRE-SLOT-BYTES * REQUIRE-PATHS + ;
-
 : REQUIRE-LEN@ ( n -- n )
    cells REQUIRE-LENS + @ ;
 
 : REQUIRE-LEN! ( n n -- ) {: u:n idx:n :}
    u REQUIRE-LENS idx cells + ! ;
+
+package REQUIRE-REG
+private
+
+: OFFSET@ ( n -- n )
+   cells OFFSETS + @ ;
+
+: OFFSET! ( n n -- ) {: off:n idx:n :}
+   off OFFSETS idx cells + ! ;
+
+: USED ( -- n )
+   REQUIRE-N @ 0= if 0 exit then
+   REQUIRE-N @ 1- dup OFFSET@ swap REQUIRE-LEN@ + ;
+
+: CLAMP ( -- )
+   PREFIX-N @ REQUIRE-N @ > if REQUIRE-N @ PREFIX-N ! then ;
+
+\ A mapping, once allocated, mirrors all live bytes. Frozen rows still return
+\ their DATA addresses, so appending never changes an existing live row borrow.
+: ENSURE-MAPPED ( n -- ) {: used:n :}
+   MAPPED @ NULL-PTR <> if exit then
+   POOL-CAP map-anon 0= 0= if drop INCLUDE-IO-RC throw then
+   {: fresh:ptr :}
+   used 0 > if FROZEN @ fresh used BYTE-COPY then
+   fresh MAPPED ! ;
+
+: ROUND-CELL ( n -- n ) {: bytes:n :}
+   bytes CELL mod {: rem:n :}
+   rem 0= if bytes exit then
+   bytes CELL rem - + ;
+
+public
+
+: SLOT ( n -- ptr u8 ) {: idx:n :}
+   idx PREFIX-N @ < if FROZEN @ else MAPPED @ then
+   idx OFFSET@ + ;
+
+: APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+   REQUIRE-N @ REQUIRE-MAX >= if
+      s" require: too many files" INCLUDE-DIE
+   then
+   u 0 <= u INCLUDE-PATH-CAP > or if
+      s" require: invalid path length" INCLUDE-DIE
+   then
+   USED {: used:n :}
+   u POOL-CAP used - > if
+      s" require: path pool full" INCLUDE-DIE
+   then
+   REQUIRE-N @ {: idx:n :}
+   PREFIX-N @ idx min {: prefix:n :}
+   used ENSURE-MAPPED
+   a MAPPED @ used + u BYTE-COPY
+   used idx OFFSET!
+   u idx REQUIRE-LEN!
+   prefix PREFIX-N !
+   idx 1+ REQUIRE-N ! ;
+
+: REWIND ( n -- )
+   REQUIRE-N !
+   CLAMP ;
+
+\ Capture has one DATA allocation only when a new suffix survives. Its
+\ leading and trailing padding are zero, and a failed unmap rolls back exactly
+\ that one allot while the old owner is still published.
+: PERSIST ( -- )
+   MAPPED @ NULL-PTR = if
+      CLAMP
+      REQUIRE-N @ 0= if NULL-PTR FROZEN ! then
+      exit
+   then
+   REQUIRE-N @ PREFIX-N @ <= if
+      MAPPED @ POOL-CAP munmap 0< if INCLUDE-IO-RC throw then
+      NULL-PTR MAPPED !
+      CLAMP
+      REQUIRE-N @ 0= if NULL-PTR FROZEN ! then
+      exit
+   then
+   USED {: used:n :}
+   here {: start:ptr :}
+   start data-base - negate CELL 1- and {: pad:n :}
+   pad used ROUND-CELL + {: total:n :}
+   total allot
+   total 0 ?do 0 start i + c! loop
+   MAPPED @ start pad + used BYTE-COPY
+   MAPPED @ POOL-CAP munmap 0< if
+      total negate allot
+      INCLUDE-IO-RC throw
+   then
+   start pad + FROZEN !
+   NULL-PTR MAPPED !
+   REQUIRE-N @ PREFIX-N ! ;
+
+;package
+
+: REQUIRE-SLOT ( n -- ptr u8 )
+   REQUIRE-REG:SLOT ;
 
 : REQUIRE-BYTE= ( ptr u8 n n -- bool ) {: a:ptr idx:n i:n :}
    a i ZBYTE@ idx REQUIRE-SLOT i ZBYTE@ = ;
@@ -403,10 +504,7 @@ using SOURCE-ROOT
 : REQUIRE-STORE ( ptr u8 n -- )
    REQUIRE-CHECK-ROOM
    REQUIRE-BOOT-OPEN? if CWD$ RELATIVE then {: a:ptr u:n :}
-   REQUIRE-N @ {: idx:n :}
-   a idx REQUIRE-SLOT u BYTE-COPY
-   u idx REQUIRE-LEN!
-   idx 1 + REQUIRE-N ! ;
+   a u REQUIRE-REG:APPEND ;
 
 package SOURCE-ROOT
 private
@@ -859,7 +957,7 @@ immediate
 
 : REQUIRE-RESTORE ( -- )
    REQUIRE-SAVE-BASE @ REQUIRE-BASE !
-   REQUIRE-SAVE-N @ REQUIRE-N ! ;
+   REQUIRE-SAVE-N @ REQUIRE-REG:REWIND ;
 
 \ ---- the registry's own truncation seam -------------------------------------
 \ THE ONE WAY TO MAKE THIS REGISTRY SMALLER, and it exists because storing the
@@ -895,7 +993,7 @@ public
    keep 0 < keep REQUIRE-N @ > or if
       s" require: truncate outside the registry" INCLUDE-DIE
    then
-   keep REQUIRE-N !
+   keep REWIND
    REQUIRE-BOOT-N @ keep > if keep REQUIRE-BOOT-N ! then
    REQUIRE-BASE @ keep > if keep REQUIRE-BASE ! then
    REQUIRE-SAVE-N @ keep > if keep REQUIRE-SAVE-N ! then
@@ -932,7 +1030,8 @@ public
       s" include: snapshot prepare under an open load" INCLUDE-DIE
    then
    INCLUDE-RESET-SCRATCH
-   RESET ;
+   RESET
+   REQUIRE-REG:PERSIST ;
 
 \ ---- what the ENGINE provides, as opposed to what this process has loaded ---
 \

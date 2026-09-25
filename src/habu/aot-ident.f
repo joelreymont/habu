@@ -7,8 +7,8 @@
 \ rather than a declared one.
 \
 \ THE CLOSURE IS THE ENGINE'S OWN RECORD, NOT A LIST ANYBODY MAINTAINS.
-\ src/core/include.f keeps every required path in REQUIRE-PATHS/REQUIRE-LENS, in
-\ load order, and REQUIRE-N is the cursor into it. So a producer that reads
+\ src/core/include.f keeps every required path in its packed registry, in load
+\ order, and REQUIRE-N is the cursor into it. So a producer that reads
 \ REQUIRE-N as its capture window opens and again as it closes has bracketed
 \ exactly the files the window compiled — 43 of them for the compiler chain,
 \ starting src/compiler/native/compiler.f and ending src/compiler/native/branch.f —

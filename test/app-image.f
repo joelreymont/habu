@@ -17,12 +17,22 @@ create ROOT-BUF FS-PATH-CAP allot
 create IMAGE-BUF FS-PATH-CAP allot
 create SECOND-BUF FS-PATH-CAP allot
 create THIRD-BUF FS-PATH-CAP allot
+create PROBE-BUF FS-PATH-CAP allot
+create MUTATED-BUF FS-PATH-CAP allot
+create MUTATED-AGAIN-BUF FS-PATH-CAP allot
+create DISCARD-BUF FS-PATH-CAP allot
+create REPLACED-BUF FS-PATH-CAP allot
 create STARTUP-BUF FS-PATH-CAP allot
 create REFUSE-BUF FS-PATH-CAP allot
 variable ROOT-U
 variable IMAGE-U
 variable SECOND-U
 variable THIRD-U
+variable PROBE-U
+variable MUTATED-U
+variable MUTATED-AGAIN-U
+variable DISCARD-U
+variable REPLACED-U
 variable STARTUP-U
 variable REFUSE-U
 
@@ -30,6 +40,11 @@ variable REFUSE-U
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
 : SECOND$ ( -- ptr u8 n ) SECOND-BUF SECOND-U @ ;
 : THIRD$ ( -- ptr u8 n ) THIRD-BUF THIRD-U @ ;
+: PROBE$ ( -- ptr u8 n ) PROBE-BUF PROBE-U @ ;
+: MUTATED$ ( -- ptr u8 n ) MUTATED-BUF MUTATED-U @ ;
+: MUTATED-AGAIN$ ( -- ptr u8 n ) MUTATED-AGAIN-BUF MUTATED-AGAIN-U @ ;
+: DISCARD$ ( -- ptr u8 n ) DISCARD-BUF DISCARD-U @ ;
+: REPLACED$ ( -- ptr u8 n ) REPLACED-BUF REPLACED-U @ ;
 : STARTUP$ ( -- ptr u8 n ) STARTUP-BUF STARTUP-U @ ;
 : REFUSE$ ( -- ptr u8 n ) REFUSE-BUF REFUSE-U @ ;
 
@@ -45,6 +60,11 @@ variable REFUSE-U
    ROOT$ s" application" IMAGE-BUF JOIN-PATH IMAGE-U !
    ROOT$ s" second" SECOND-BUF JOIN-PATH SECOND-U !
    ROOT$ s" third" THIRD-BUF JOIN-PATH THIRD-U !
+   ROOT$ s" require-probe.f" PROBE-BUF JOIN-PATH PROBE-U !
+   ROOT$ s" mutated" MUTATED-BUF JOIN-PATH MUTATED-U !
+   ROOT$ s" mutated-again" MUTATED-AGAIN-BUF JOIN-PATH MUTATED-AGAIN-U !
+   ROOT$ s" discard" DISCARD-BUF JOIN-PATH DISCARD-U !
+   ROOT$ s" replaced" REPLACED-BUF JOIN-PATH REPLACED-U !
    ROOT$ s" startup" STARTUP-BUF JOIN-PATH STARTUP-U !
    ROOT$ s" refuse-jit.f" REFUSE-BUF JOIN-PATH REFUSE-U !
    ROOT$ WHITEBOX-CHILD:PROVIDE-IN ;
@@ -79,13 +99,45 @@ variable REFUSE-U
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN
    OUT swap S\" 1\n\n1\n\n" T$= ;
 
+create PROBE-SOURCE 4096 allot
+variable PROBE-SOURCE-U
+
+: PROBE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   PROBE-SOURCE-U @ u + 4096 <= TTRUE
+   a PROBE-SOURCE PROBE-SOURCE-U @ + u BYTE-COPY
+   PROBE-SOURCE-U @ u + PROBE-SOURCE-U ! ;
+
+\ Compile the probe into the first image. Later children call the same code
+\ through stdin, so capture comparisons add no definitions to DATA.
+: WRITE-REQUIRE-PROBE ( -- )
+   0 PROBE-SOURCE-U !
+   S\" package IMAGE-REQUIRE-PROBE\ncreate SAVED INCLUDE-PATH-CAP allot\npublic\n" PROBE+
+   S\" : BORROW ( ptr u8 n -- )\n   REQUIRE-N @ 1- {: idx:n :}\n   idx REQUIRE-SLOT {: old:ptr :}\n   idx REQUIRE-LEN@ {: len:n :}\n" PROBE+
+   S\"    old SAVED len BYTE-COPY provided\n   idx REQUIRE-SLOT old <> if 70 throw then\n   idx REQUIRE-LEN@ len <> if 70 throw then\n" PROBE+
+   S\"    idx REQUIRE-SLOT len SAVED len CORE-STR= 0= if 70 throw then ;\n" PROBE+
+   S\" : FIRST-TWO ( -- )\n   s\q require-pool-one\q BORROW\n   s\q require-pool-two\q BORROW ;\n" PROBE+
+   S\" : CHECK-FACT ( ptr u8 n -- )\n   REQUIRE-N @ {: count:n :}\n   required\n   REQUIRE-N @ count <> if 70 throw then ;\n" PROBE+
+   S\" : CHECK-TWO ( -- )\n   s\q require-pool-one\q CHECK-FACT\n   s\q require-pool-two\q CHECK-FACT ;\n" PROBE+
+   S\" : THIRD ( -- )\n   CHECK-TWO\n   s\q require-pool-three\q BORROW ;\n" PROBE+
+   S\" : CHECK-THREE ( -- )\n   CHECK-TWO\n   s\q require-pool-three\q CHECK-FACT ;\n" PROBE+
+   S\" : DISCARD ( -- )\n   REQUIRE-N @ {: count:n :}\n   REQUIRE-SNAPSHOT\n   s\q require-pool-discard\q provided\n   REQUIRE-RESTORE\n   REQUIRE-N @ count <> if 70 throw then ;\n" PROBE+
+   S\" : CHECK-DISCARD ( -- )\n   s\q require-pool-discard\q SOURCE-ROOT:RESOLVE nip nip\n   if 70 throw then ;\n" PROBE+
+   S\" : REPLACE ( -- )\n   REQUIRE-N @ 2 - {: idx:n :}\n   idx REQUIRE-SLOT {: old:ptr :}\n   idx REQUIRE-LEN@ {: len:n :}\n" PROBE+
+   S\"    old SAVED len BYTE-COPY\n   REQUIRE-N @ 1- REQUIRE-REG:TRUNCATE\n   s\q require-pool-replace\q provided\n" PROBE+
+   S\"    idx REQUIRE-SLOT old <> if 70 throw then\n   idx REQUIRE-LEN@ len <> if 70 throw then\n   idx REQUIRE-SLOT len SAVED len CORE-STR= 0= if 70 throw then ;\n" PROBE+
+   S\" : CHECK-REPLACE ( -- )\n   s\q require-pool-replace\q SOURCE-ROOT:RESOLVE\n   {: a:ptr u:n known:bool :}\n   known 0= if 70 throw then\n" PROBE+
+   S\"    REQUIRE-N @ 1- REQUIRE-LEN@ u <> if 70 throw then\n   REQUIRE-N @ 1- REQUIRE-SLOT u a u CORE-STR= 0= if 70 throw then\n   s\q require-pool-replace\q CHECK-FACT ;\n;package\n" PROBE+
+   PROBE$ PROBE-SOURCE PROBE-SOURCE-U @ ATOMIC-WRITE-FILE ;
+
 : BUILD ( -- )
+   WRITE-REQUIRE-PROBE
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
+   PROBE$ >LEN PROC-ARGV+
    WHITEBOX-CHILD:ENV!
    WHITEBOX-CHILD:ENGINE$ >LEN
-   S\" require src/habu/app-image.f\nrequire test/app-image-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   S\" require src/habu/app-image.f\nrequire test/app-image-subject.f\n1 SCRIPT-ARGV$ required\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN drop
    IMAGE$ EXECUTABLE? TTRUE ;
@@ -161,6 +213,46 @@ variable REFUSE-U
    SECOND$ EXTENTS data T= region T= prefix T=
    THIRD$ EXTENTS data T= region T= prefix T=
    THIRD$ CHECK-APPLICATION ;
+
+: CAPTURE-PROBE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: source:ptr sourceu:n target:ptr targetu:n input:ptr inputu:n :}
+   PROC-ARGV-ENV-RESET
+   s" --" >LEN PROC-ARGV+
+   target targetu >LEN PROC-ARGV+
+   WHITEBOX-CHILD:ENV!
+   source sourceu input inputu RUN-INPUT CLEAN drop
+   target targetu EXECUTABLE? TTRUE ;
+
+: CHECK-PROBE ( ptr u8 n ptr u8 n -- )
+   {: source:ptr sourceu:n input:ptr inputu:n :}
+   PROC-ARGV-ENV-RESET
+   WHITEBOX-CHILD:ENV!
+   source sourceu input inputu RUN-INPUT CLEAN drop ;
+
+\ The baseline image owns DATA-backed rows. FIRST-TWO crosses to a fresh
+\ mutable suffix, then appends again while the first new row is borrowed.
+\ Each saved image is booted as a new process before the next capture.
+: CHECK-REQUIRE-IMAGES ( -- )
+   IMAGE$ MUTATED$
+   S\" IMAGE-REQUIRE-PROBE:FIRST-TWO\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
+   CAPTURE-PROBE
+   MUTATED$ S\" IMAGE-REQUIRE-PROBE:CHECK-TWO\n" CHECK-PROBE
+   MUTATED$ MUTATED-AGAIN$
+   S\" IMAGE-REQUIRE-PROBE:THIRD\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
+   CAPTURE-PROBE
+   MUTATED-AGAIN$ S\" IMAGE-REQUIRE-PROBE:CHECK-THREE\n" CHECK-PROBE
+
+   SECOND$ DISCARD$
+   S\" IMAGE-REQUIRE-PROBE:DISCARD\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
+   CAPTURE-PROBE
+   SECOND$ EXTENTS {: prefix:n region:n data:n :}
+   DISCARD$ EXTENTS data T= region T= prefix T=
+   DISCARD$ S\" IMAGE-REQUIRE-PROBE:CHECK-DISCARD\n" CHECK-PROBE
+
+   SECOND$ REPLACED$
+   S\" IMAGE-REQUIRE-PROBE:REPLACE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
+   CAPTURE-PROBE
+   REPLACED$ S\" IMAGE-REQUIRE-PROBE:CHECK-REPLACE\n" CHECK-PROBE ;
 
 : CAPTURE-STARTUP ( -- )
    PROC-ARGV-ENV-RESET
@@ -260,6 +352,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    IMAGE$ CHECK-APPLICATION
    CHECK-REJECTION
    RECAPTURE
+   CHECK-REQUIRE-IMAGES
    SECOND$ CHECK-APPLICATION
    CAPTURE-STARTUP
    CHECK-STARTUP
