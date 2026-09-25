@@ -10,11 +10,12 @@
 \ The layout and the fixups are ONE pass: the label table IS the block-start
 \ table, a block IS a label, and its ordinal is its name, so nothing is patched.
 \
-\ Three instructions are elided, and each rule is written once and asked twice -
+\ Instructions are elided by rules written once and asked twice -
 \ by the layout that counts and by the writer that appends, with CURSOR-CK
 \ holding the two together: a trailing branch to the block laid out next
 \ (FALL-THRU?), a copy into its own register (COPY?), and a data-stack
-\ adjustment of nothing. Adjacent data-stack adjustments are combined before
+\ adjustment of nothing, and a reload of the frame cell just stored from the
+\ same register. Adjacent data-stack adjustments are combined before
 \ either pass, without changing the accepted IR. An elided instruction gets NO
 \ source-map row, because row k describes the instruction WORD@ k answers.
 \
@@ -101,6 +102,10 @@ A64IR-OPCODE:RELEASE   A64IR:ORD constant O-RELEASE
 A64IR-OPCODE:LINKSAVE  A64IR:ORD constant O-LINKSAVE
 A64IR-OPCODE:LINKLOAD  A64IR:ORD constant O-LINKLOAD
 A64IR-OPCODE:DATAADDR  A64IR:ORD constant O-DATAADDR
+A64IR-OPCODE:STORE     A64IR:ORD constant O-STORE
+A64IR-OPCODE:LOAD      A64IR:ORD constant O-LOAD
+A64IR-OPCODE:FSTORE    A64IR:ORD constant O-FSTORE
+A64IR-OPCODE:FLOAD     A64IR:ORD constant O-FLOAD
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -874,11 +879,31 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
    id FUSED-SILENT? if 1- then
    id DZERO-MOVES - ;
 
+\ These frame forms move eight bytes at SP without writeback. Exact operation
+\ adjacency within one block leaves the stored register and cell unchanged,
+\ with no entry between them. Keep the store for later readers; only the reload
+\ disappears. Pairing opcodes keeps the general and floating files distinct.
+\ Read the result register without recording a write while deciding eligibility.
+: STORED-RELOAD? ( IR-ID:ir-block-id n -- bool )
+   {: bk:IR-ID:ir-block-id at:n :}
+   at 0= if false exit then
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id SLOT-AT {: k:n :}
+   k O-LOAD = k O-FLOAD = or 0= if false exit then
+   bk at 1- OP-AT {: prev:IR-ID:ir-op-id :}
+   k O-LOAD = if
+      prev SLOT-AT O-STORE <> if false exit then
+   else
+      prev SLOT-AT O-FSTORE <> if false exit then
+   then
+   id SLOT-OFF prev SLOT-OFF <> if false exit then
+   id 0 RESULT-AT REG-OF prev 0 OPERAND-REG = ;
+
 : BLOCK-INSNS ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id home:n :}
    0
    bk OP-COUNT 0 ?do
-      bk i OP-AT home OP-INSNS +
+      bk i STORED-RELOAD? 0= if bk i OP-AT home OP-INSNS + then
    loop ;
 
 : START-AT ( n -- n )
@@ -1542,7 +1567,7 @@ ARITH-ABI:E-DIV-ZERO invert constant DIV-CODE-IMM  \ the code as a Movn carries 
 : WALK-BLOCK ( IR-ID:ir-block-id n -- )
    {: bk:IR-ID:ir-block-id home:n :}
    bk OP-COUNT 0 ?do
-      bk i OP-AT home PUT-COUNTED
+      bk i STORED-RELOAD? 0= if bk i OP-AT home PUT-COUNTED then
    loop ;
 
 \ Where a block's instructions begin is what every displacement was computed
