@@ -1,9 +1,11 @@
 ---
 title: Allocate checker boot stores on first use
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-09-25T08:58:55.103706+02:00"
+created-at: "\"2026-09-25T08:58:55.103706+02:00\""
+closed-at: "2026-09-25T11:39:29.924287+02:00"
+close-reason: Reviewed lazy SYMS/NORETS and owned SPA accepted with identical native generations, all 490 native suites, and Maki routing/negotiation with identical exports. Boot alone removes 851936 DATA bytes; combined Maki is 21702368 bytes, 984960 smaller, while native grows 16512 to 2906359 bytes. Evidence ~/.cache/tmp/habu-opt-round3/{boot,integrated}; no codec or former-copy reclamation claim.
 ---
 
 Measured Maki reservations SYMS-BOOT (655,360), NORET-BOOT (131,072) and
@@ -32,4 +34,16 @@ Reconcile actual raw DATA, native sections and file deltas including former
 persisted copies; report runtime allocation separately. No history pruning,
 codec, general GC or ABI change. Serialize checker representation seams with
 registry-capacity and history work; no correctness dependency on those tasks.
-Owner: unassigned.
+Owner: agent opt_checker_names, workspace `.jj-ws/opt-boot-storage`.
+
+Implementation failure modes recorded before edits: SPA count multiplication
+or doubling must not overflow; allocation failure must leave the old mapping
+published; old-map release failure must clean up the unpublished replacement
+and refuse without publishing it. Capacity always describes the actual mapped
+extent. Full capacity must survive growth because saved trial indices may name
+rows above a rewound SPN. Quiescent capture releases storage and resets pointer,
+capacity and count together; NEW and trial restore only rewind counters.
+Existing behavior fixtures will be adapted only where their forged capacity or
+boot-pointer assumptions conflict with this ownership contract. No new unit
+tests. Focused evidence: `~/.cache/tmp/habu-opt-round3/boot/`; completed native
+fixpoint, full gate and Maki acceptance: `~/.cache/tmp/habu-opt-round3/integrated/`.

@@ -156,12 +156,10 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 \ Engine primitive effects, including tok-imm?, live in the primitive table.
 \ Retirement: habu-checker-self-typing-9ff8ba86 for arena/view/query sites;
 \ --- growable checker arenas --------------------------------------------
-\ Shared mmap primitives for the checker's process-local scratch stores. Each
-\ store keeps a baked DATA "boot" buffer (stable address across snapshot) and
-\ grows into anonymous mmap on demand. Build-time definitions never exceed the
-\ boot cap, so a baked engine always bakes the boot pointer; growth is
-\ runtime-only and process-local. Snapshot prepare repoints every store at its
-\ boot buffer so no mmap address is ever persisted. Growth is geometric so
+\ Shared mmap primitives for growable checker stores. Their owners decide the
+\ lifetime: persistent registries copy external storage into image DATA;
+\ scratch resets to its boot buffer or releases its owned mapping at capture.
+\ No process-local mmap address may enter an image. Growth is geometric so
 \ regrow copies each store O(log n) times over a load, not once per grain.
 3 constant ARENA-PROT-RW
 $1002 constant ARENA-MAP-ANON
@@ -1236,14 +1234,35 @@ UK-EXACT UNIFY-KIND !
    PARAMN @ 1 + PARAMN ! ;
 
 4096 constant MAXPUSH-INIT     \ push records (engine-sized bodies need hundreds; grows on demand)
-create SPA-BOOT MAXPUSH-INIT 16 * allot   variable SPN
+$7FFFFFFFFFFFFFFF 16 / constant MAXPUSH
+variable SPN
 PERSISTED-PTR-VARIABLE SPA-P   variable SPA-CAP
-SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
+NULL-PTR SPA-P !   0 SPA-CAP !
 : SPA ( -- ptr n ) SPA-P @ ;
+
+\ Every nonnull SPA base owns an mmap, never image DATA. Terms carry indices;
+\ growth preserves the full capacity, including rows saved by a trial.
+: SPA-UNMAP ( ptr n n -- ) {: base:ptr cap:n :}
+   cap 0= IF EXIT THEN
+   base cap 16 * munmap 0 <> IF s" checker: push arena munmap failed" 76 die THEN ;
+
+: SPA-RELEASE ( -- )
+   SPA-P @ SPA-CAP @ SPA-UNMAP
+   NULL-PTR SPA-P !  0 SPA-CAP !  0 SPN ! ;
+
 : SPA-ENSURE ( n -- ) {: need:n :}
+   need 0 <= need MAXPUSH > or IF s" checker: push arena capacity overflow" 76 die THEN
    need SPA-CAP @ <= IF exit THEN
-   need SPA-CAP @ 2 * max {: nc:n :}
-   SPA-P @ SPA-CAP @ 16 * nc 16 * ARENA-BYTES-GROW SPA-P !
+   need MAXPUSH-INIT max
+   SPA-CAP @ MAXPUSH 2 / <= IF SPA-CAP @ 2 * max THEN {: nc:n :}
+   SPA-P @ SPA-CAP @ 16 * nc 16 * ARENA-BYTES-GROW {: next:ptr :}
+   SPA-CAP @ 0 > IF
+      SPA-P @ SPA-CAP @ 16 * munmap 0 <> IF
+         next nc SPA-UNMAP
+         s" checker: push arena munmap failed" 76 die
+      THEN
+   THEN
+   next SPA-P !
    nc SPA-CAP ! ;
 
 : MK-PUSH ( n n -- n )
@@ -5219,16 +5238,21 @@ $8 constant SYM-REC-ALIGN
 
 SYM-LAYOUT-ASSERT
 
-create SYMS-BOOT SYM-CAP-INIT SYM-REC * allot
 create SYM-STR-BOOT SYM-STR-INIT allot
-PERSISTED-PTR-VARIABLE SYMS-P     SYMS-BOOT SYMS-P !
+PERSISTED-PTR-VARIABLE SYMS-P     NULL-PTR SYMS-P !
 PERSISTED-PTR-VARIABLE SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
 variable SYM-N
 variable SYM-STR-U
 variable SYM-PRIM-END
 variable SYM-ID
 
-: SYMS ( -- ptr u8 ) SYMS-P @ ;
+\ HIDX needs its positive power-of-two capacity before the first row exists.
+\ Allocate backing separately so a retired initial table is not reserved DATA.
+: SYMS ( -- ptr u8 )
+   SYMS-P @ NULL-PTR = IF
+      SYM-CAP-V @ SYM-REC * ARENA-ALLOC SYMS-P !
+   THEN
+   SYMS-P @ ;
 : SYM-STR ( -- ptr u8 ) SYM-STR-P @ ;
 
 1 SYM-N !
@@ -5599,7 +5623,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 \ the HIDX mapping so the next lookup rebuilds — rehashes — at the new cap/mask.
 : SYM-GROW ( n -- ) {: need:n :}
    need SYM-CAP-NEXT {: nc:n :}
-   SYMS-P @ SYM-CAP-V @ SYM-REC * nc SYM-REC * ARENA-BYTES-GROW
+   SYMS SYM-CAP-V @ SYM-REC * nc SYM-REC * ARENA-BYTES-GROW
    \ The copied table is retired; its old rows must not enter image DATA.
    SYMS-P @ CELL-VIEW 0 SYM-CAP-V @ SYM-REC * CELL / ARENA-CELLS-ZERO
    SYMS-P !
@@ -10359,13 +10383,20 @@ $8 constant NORET-ENTRY-ALIGN
 
 NORET-LAYOUT-ASSERT
 
-create NORET-BOOT NORET-INIT-CAP allot
 PERSISTED-PTR-VARIABLE NORET-P   variable NORET-CAP-U   variable NORET-END
-NORET-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !   0 NORET-BOOT !
+NULL-PTR NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !
 variable NORET-CTL      \ the packed control word NORET-SCAN-SYM last read
 variable NORET-GROW-CAP   PTR-VARIABLE NORET-GROW-NEXT
 
-: NORETS ( -- ptr u8 ) NORET-P @ ;
+\ Even an empty store has a readable zero-symbol terminator. The accessor also
+\ covers cold scans, preallocation/growth and persistence before any append.
+: NORETS ( -- ptr u8 )
+   NORET-P @ NULL-PTR = IF
+      NORET-CAP-U @ USIGS-ALLOC {: base:ptr :}
+      0 base CELL-VIEW !
+      base NORET-P !
+   THEN
+   NORET-P @ ;
 
 : NORET-CELL ( n -- ptr n ) {: off:n :}
    off NORET-ENTRY-ALIGN 1 - and 0 <> IF s" checker: unaligned no-return cell" 76 die THEN
@@ -10391,7 +10422,7 @@ variable NORET-GROW-CAP   PTR-VARIABLE NORET-GROW-NEXT
 : NRX-BASE! ( ptr u8 -- )
    NRX-BASE-FIELD ! ;
 
-NORETS NRX-BASE!
+NULL-PTR NRX-BASE!
 
 : NRX@ ( n -- n )
    HT-NRX IDX-HEAD@ ;
@@ -10474,27 +10505,16 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    sym NRX@ ;
 
 : NORET-RESET ( -- )
-   0 NRX-GEN !                    \ every entry the index points at is being dropped
-   NORET-BOOT NORET-P !
-   NORET-INIT-CAP NORET-CAP-U !
+   NRX-RESET                     \ every entry the index points at is being dropped
    0 NORET-END !
-   0 0 NORET-CELL !
+   NORET-P @ NULL-PTR <> IF 0 NORET-P @ CELL-VIEW ! THEN
    0 NORET-GROW-CAP !
    NULL-PTR NORET-GROW-NEXT ! ;
 
 \ The table can outgrow its initial buffer. Persist the complete live prefix
 \ in image DATA at the grain, just like stored signatures; NORET-GROW doubles.
-\ REACHING THE BRANCH MEANS NORET-BOOT IS ABANDONED: the boot buffer is in image
-\ DATA, so a store still sitting in it answers REG-DATA-SPAN? and never gets
-\ here. What that leaves is a buffer no restored engine reads - NORET-RESET
-\ returns to it with an empty end and rewrites from the front - still holding
-\ the entries this build put there before the table grew, which the capture
-\ bakes into the engine: measured on the pinned engine, 13,443 non-zero bytes in
-\ 8,070 sparse runs, 78,003 bytes of image. Empty it with the same stroke that
-\ replaces it.
 : NORET-SNAPSHOT-PERSIST ( -- )
    NORETS NORET-CAP-U @ REG-DATA-SPAN? 0= IF
-      NORET-BOOT 0 NORET-INIT-CAP CELL / ARENA-CELLS-ZERO
       NORET-END @ CELL + {: n:n :}
       n USIGS-ROUND-CAP {: cap:n :}
       cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
@@ -10537,18 +10557,8 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 
 \ ARENA-SNAP-BOOT ( pvar boot cells -- ) : restore one scratch arena to its boot
 \ buffer AND empty that buffer, in one step so neither can be done without the
-\ other. Emptying is not housekeeping. The capture that follows this seam copies
-\ the whole DATA window into the engine's own __text, and whatever these buffers
-\ hold at that moment is the LAST CHECKED DEFINITION'S scratch: dead by the
-\ caller's own contract below, yet baked into the image and laid back down at
-\ every start. It is not cheap either, because the payload is sparse and pays an
-\ (offset, length) row per non-zero extent: a cell array of small numbers breaks
-\ into one run per cell and costs more than its bytes. Measured on the pinned
-\ engine, these arenas held 10,580 non-zero bytes in 6,367 runs, 61,516 bytes of
-\ image, with the push arena alone at 8,418 bytes in 4,698 runs
-\ (tools/data-table-census.f prints the per-owner table). Together with the
-\ NORET buffer above and render.f's SEEN, emptying them took the sparse DATA
-\ blob of a self-built engine from 3,777,887 bytes to 3,644,805.
+\ other. Capture copies these DATA buffers into the image; the last checked
+\ definition's scratch is dead by the caller's quiescent-capture contract.
 \ The pointee is a quantifier, not `n`: a store whose boot buffer is a declared
 \ PTR-U8-TABLE (ATOMA-BOOT, PARAMA-BOOT) repoints its head through this word too,
 \ and its cells hold `ptr u8` rather than numbers. Zeroing is a byte-level act on
@@ -10559,15 +10569,15 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    boot BYTE-VIEW CELL-VIEW 0 cells ARENA-CELLS-ZERO
    boot pv ! ;
 
-\ DECOUPLED-ARENA-SNAP-RESET ( -- ) : repoint the per-definition scratch arenas
-\ (push/quot/ptr/atom/param) at their boot buffers and restore their init caps
+\ DECOUPLED-ARENA-SNAP-RESET ( -- ) : release the owned push arena and repoint
+\ the other per-definition scratch arenas at their boot buffers/init caps
 \ so no grown mmap address is persisted. Their counters reset in NEW, so no live
 \ content is lost — which is also why ARENA-SNAP-BOOT may empty every one of
 \ them. The two arenas with their own reset words keep them: those reset a
 \ counter, not the bytes, and they run after the buffer is already empty.
 \ SPA and QEA are counted in records rather than cells (16 and 32 bytes).
 : DECOUPLED-ARENA-SNAP-RESET ( -- )
-   SPA-P SPA-BOOT MAXPUSH-INIT 2 * ARENA-SNAP-BOOT       MAXPUSH-INIT SPA-CAP !
+   SPA-RELEASE
    PTRA-P PTRA-BOOT MAXPTR-INIT ARENA-SNAP-BOOT          MAXPTR-INIT PTR-CAP !
    STLA-P STLA-BOOT MAXSTALE-INIT ARENA-SNAP-BOOT        MAXSTALE-INIT STL-CAP !
    QEA-P QEA-BOOT MAXQE-INIT 4 * ARENA-SNAP-BOOT
@@ -10665,6 +10675,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    THEN ;
 
 : SYM-SNAPSHOT-PERSIST ( -- )      \ HIDX is dropped by HIDX-RESET; rebuilt on restore
+   SYMS drop
    SYMS-P SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
    SYM-STR-P SYM-STR-U @ SYM-STR-CAP-V @ REG-PERSIST-MOVE nip IF
       SYM-STR-U @ SYM-STR-CAP-V !

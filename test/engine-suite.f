@@ -935,9 +935,14 @@ TRUSTED: T-PTX-MADD ( tile<f32,block-256,m> tile<f32,block-256,m> -- tile<f32,bl
 TRUSTED: T-MK-SPAN ( n -- span<space-global,f32,fresh-extent-n> ) drop 0 ;
 TRUSTED: T-MK-SPAN= ( n -- span<space-global,f32,fresh-extent-n> span<space-global,f32,fresh-extent-n> ) drop 0 0 ;
 \ --- growable decoupled scratch arenas: crossing each init cap mid-check no
-\ longer dies and does not corrupt (each grow relocates its mmap store). Reuses
-\ T-MK-SPAN above so no new TRUST site is introduced.
-2 SPA-CAP !                      \ push records
+\ longer dies and does not corrupt (each grow relocates its mmap store).
+\ Parametric checks reuse T-MK-SPAN above.
+\ Capacity is the owned mapping extent: use a real small allocation so growth
+\ releases all of the old mapping, rather than forging its capacity.
+TRUSTED: TG-SPA-SMALL ( -- )
+   SPA-RELEASE
+   2 16 * ARENA-ALLOC SPA-P !  2 SPA-CAP ! ;
+TG-SPA-SMALL
 s" COK-SPAG ( -- ) 0 0 0 0 0 0 0 0 drop drop drop drop drop drop drop drop" T-CHECK-PASSES
 s" spa-arena-grow" T-LABEL
 SPA-CAP @ 2 > -1 T=
@@ -956,9 +961,10 @@ s" param-arena-grow" T-LABEL
 PARAM-CAP @ 2 > -1 T=
 s" atom-arena-grow" T-LABEL
 ATOM-CAP @ 2 > -1 T=
-TG-ARENA-RESET                   \ repoint every scratch store back at its boot buffer
+TG-ARENA-RESET                   \ release SPA; reset the other scratch stores
 s" decoupled-arena-restored" T-LABEL
-SPA-CAP @ MAXPUSH-INIT =  PTR-CAP @ MAXPTR-INIT =  and
+SPA-P @ NULL-PTR = SPA-CAP @ 0= and SPN @ 0= and
+PTR-CAP @ MAXPTR-INIT = and
 QE-CAP @ MAXQE-INIT =  and  ATOM-CAP @ MAXATOM-INIT =  and
 PARAM-CAP @ MAXPARAM-INIT =  and  -1 T=
 \ --- growable registries (CT / VREC / SYMS): crossing each init cap mid-run no
