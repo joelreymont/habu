@@ -358,27 +358,102 @@ PRODUCT point 0
    [: BUNDLE-THROW ;] catch {: rc:n :}
    nip drop rc ;
 
-\ Tender's OPEN keeps an archive beside option<document>, catches a reader,
-\ binds the result code, cleans up, then matches the surviving option.
+\ OPEN keeps an archive beside option<document>, catches a reader that can
+\ genuinely throw after consuming the option, cleans up, then matches it.
 NEWTYPE document 0
 CAST: >DOCUMENT ( n -- document )
 CAST: DOCUMENT>N ( document -- n )
 
+variable CLOSE-COUNT
+variable CLOSED-ARCHIVE
+81 constant E-DOC-READER
+
+: RESET-CLOSE ( -- ) 0 CLOSE-COUNT ! -1 CLOSED-ARCHIVE ! ;
+: CLOSE-COUNT@ ( -- n ) CLOSE-COUNT @ ;
+: CLOSED-ARCHIVE@ ( -- n ) CLOSED-ARCHIVE @ ;
+: CLOSE-ARCHIVE ( n -- ) CLOSED-ARCHIVE ! 1 CLOSE-COUNT +! ;
+
+: BUILD-DOCUMENT ( n -- n )
+   dup 2 = if drop E-DOC-READER throw then
+   drop 42 ;
+
+: NEW-DOCUMENT ( n -- document )
+   [: BUILD-DOCUMENT ;] catch {: code:n :}
+   code 0<> if drop code throw then
+   >DOCUMENT ;
+
 : READ-DOCUMENT ( n option<document> -- n option<document> )
-   drop
-   dup 0= if OPTION:NONE else 42 >DOCUMENT OPTION:SOME then ;
+   drop {: archive:n :}
+   archive 0= if OPTION:NONE else archive NEW-DOCUMENT OPTION:SOME then
+   archive swap ;
 
 : NO-DOCUMENT ( -- option<document> ) OPTION:NONE ;
 
 : OPEN-DOCUMENT ( n -- document )
    {: archive:n :}
    archive NO-DOCUMENT [: READ-DOCUMENT ;] catch {: code:n :}
-   nip archive drop
+   nip archive CLOSE-ARCHIVE
    code 0<> if drop code throw then
    MATCH option
       none OF -99 throw ENDOF
       some OF ENDOF
    ;MATCH ;
+
+82 constant E-SCALAR-READER
+variable SCALAR-FAIL
+
+: SCALAR-NEW ( -- n )
+   SCALAR-FAIL @ 0<> if E-SCALAR-READER throw then
+   64 ;
+
+: SCALAR-READER ( n -- n )
+   drop SCALAR-NEW ;
+
+: SCALAR-LITERAL ( n -- n )
+   dup 0< if 1 else 0 then SCALAR-FAIL !
+   [: SCALAR-READER ;] catch {: code:n :}
+   code 0<> if drop code throw then ;
+
+: SCALAR-TICK ( n -- n )
+   dup 0< if 1 else 0 then SCALAR-FAIL !
+   ['] SCALAR-READER catch {: code:n :}
+   code 0<> if drop code throw then ;
+
+\ The result is bound before proof, while the code goes through a duplicate,
+\ a swap and the return stack. Only the zero arm gives the result a typed use.
+: SCALAR-TRANSPORT ( n -- n n )
+   dup 0< if 1 else 0 then SCALAR-FAIL !
+   [: SCALAR-READER ;] catch dup >r swap {: code:n result :}
+   code 0= {: success:bool :}
+   success if result {: value:n :} value r> else -1 r> then ;
+
+: SCALAR-ELSE ( n -- n )
+   dup 0< if 1 else 0 then SCALAR-FAIL !
+   [: SCALAR-READER ;] catch {: code:n :}
+   code 0= if
+      1 1 = if 1+ else 2 + then
+   else drop -5 then ;
+
+\ An input below the caught temporary stays intact when a guarded result is
+\ dropped and the enclosing word later throws. Both inner outcomes preserve it.
+variable PRESERVE-FAIL
+create PRESERVE-BUF 1 allot
+
+: PRESERVE-INNER ( n -- n )
+   drop PRESERVE-FAIL @ 0<> if -71 throw then 5 ;
+
+: PRESERVE-OUTER ( ptr u8 -- ptr u8 )
+   0 [: PRESERVE-INNER ;] catch {: code:n :}
+   code 0<> if drop code throw then
+   drop -72 throw ;
+
+: PRESERVE-CATCH ( ptr u8 -- ptr u8 n )
+   [: PRESERVE-OUTER ;] catch ;
+
+: PRESERVED ( n -- bool n )
+   PRESERVE-FAIL !
+   PRESERVE-BUF PRESERVE-CATCH {: p:ptr code:n :}
+   p PRESERVE-BUF = code ;
 
 ;package
 
@@ -464,13 +539,40 @@ public
    3 5 NCA--FIXTURE-POINT:MAKE NCA-FIXTURE:SOME-POINT
    NCA-FIXTURE:CATCH-EMPTY-THROW -80 T= 42 T= 8 T=
    s" an OPEN-shaped caught reader retains its option through cleanup" T-LABEL
+   NCA-FIXTURE:RESET-CLOSE
    1 NCA-FIXTURE:OPEN-DOCUMENT NCA-FIXTURE:DOCUMENT>N 42 T=
+   NCA-FIXTURE:CLOSE-COUNT@ 1 T=
+   NCA-FIXTURE:CLOSED-ARCHIVE@ 1 T=
+   NCA-FIXTURE:RESET-CLOSE
+   [: 2 NCA-FIXTURE:OPEN-DOCUMENT drop ;] NCA-FIXTURE:E-DOC-READER TTHROWSQ
+   NCA-FIXTURE:CLOSE-COUNT@ 1 T=
+   NCA-FIXTURE:CLOSED-ARCHIVE@ 2 T=
+   NCA-FIXTURE:RESET-CLOSE
    [: 0 NCA-FIXTURE:OPEN-DOCUMENT drop ;] -99 TTHROWSQ
+   NCA-FIXTURE:CLOSE-COUNT@ 1 T=
+   NCA-FIXTURE:CLOSED-ARCHIVE@ 0 T=
    s" catch requires the same returned types, even at equal cell widths" T-LABEL
    s" SAME-ROW ( NCA-FIXTURE:document -- NCA-FIXTURE:document n ) [: ;] catch"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" CHANGED-ROW ( NCA-FIXTURE:document -- NCA-FIXTURE:document n ) [: NCA-FIXTURE:DOCUMENT>N ;] catch"
       CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: SUCCESS-CASE ( -- )
+   s" literal and named scalar readers expose only the guarded normal result" T-LABEL
+   1 NCA-FIXTURE:SCALAR-LITERAL 64 T=
+   [: -1 NCA-FIXTURE:SCALAR-LITERAL drop ;]
+      NCA-FIXTURE:E-SCALAR-READER TTHROWSQ
+   1 NCA-FIXTURE:SCALAR-TICK 64 T=
+   [: -1 NCA-FIXTURE:SCALAR-TICK drop ;]
+      NCA-FIXTURE:E-SCALAR-READER TTHROWSQ
+   s" status transport, zero arm and live ELSE keep their own proof" T-LABEL
+   1 NCA-FIXTURE:SCALAR-TRANSPORT 0 T= 64 T=
+   -1 NCA-FIXTURE:SCALAR-TRANSPORT NCA-FIXTURE:E-SCALAR-READER T= -1 T=
+   1 NCA-FIXTURE:SCALAR-ELSE 65 T=
+   -1 NCA-FIXTURE:SCALAR-ELSE -5 T=
+   s" a separate input stays intact across guard, drop and later throw" T-LABEL
+   0 NCA-FIXTURE:PRESERVED -72 T= TTRUE
+   1 NCA-FIXTURE:PRESERVED -71 T= TTRUE ;
 
 \ ---- what production compilation still refuses -------------------------------
 : NORET-BODY-CASE ( -- )
@@ -546,6 +648,7 @@ public
    STRING-SITE-CASE
    PARKED-CASE
    BUNDLE-CASE
+   SUCCESS-CASE
    NORET-BODY-CASE
    BODY-CONTROL-CASE
    BODY-CALL-LOCALS-CASE ;

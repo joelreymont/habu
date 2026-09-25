@@ -1252,7 +1252,7 @@ UK-EXACT UNIFY-KIND !
    PARAMN @ 1 + PARAMN ! ;
 
 4096 constant MAXPUSH-INIT     \ push records (engine-sized bodies need hundreds; grows on demand)
-$7FFFFFFFFFFFFFFF 16 / constant MAXPUSH
+$7FFFFFFFFFFFFFFF 32 / constant MAXPUSH
 variable SPN
 PERSISTED-PTR-VARIABLE SPA-P   variable SPA-CAP
 NULL-PTR SPA-P !   0 SPA-CAP !
@@ -1262,7 +1262,7 @@ NULL-PTR SPA-P !   0 SPA-CAP !
 \ growth preserves the full capacity, including rows saved by a trial.
 : SPA-UNMAP ( ptr n n -- ) {: base:ptr cap:n :}
    cap 0= IF EXIT THEN
-   base cap 16 * munmap 0 <> IF s" checker: push arena munmap failed" 76 die THEN ;
+   base cap 32 * munmap 0 <> IF s" checker: push arena munmap failed" 76 die THEN ;
 
 : SPA-RELEASE ( -- )
    SPA-P @ SPA-CAP @ SPA-UNMAP
@@ -1273,9 +1273,9 @@ NULL-PTR SPA-P !   0 SPA-CAP !
    need SPA-CAP @ <= IF exit THEN
    need MAXPUSH-INIT max
    SPA-CAP @ MAXPUSH 2 / <= IF SPA-CAP @ 2 * max THEN {: nc:n :}
-   SPA-P @ SPA-CAP @ 16 * nc 16 * ARENA-BYTES-GROW {: next:ptr :}
+   SPA-P @ SPA-CAP @ 32 * nc 32 * ARENA-BYTES-GROW {: next:ptr :}
    SPA-CAP @ 0 > IF
-      SPA-P @ SPA-CAP @ 16 * munmap 0 <> IF
+      SPA-P @ SPA-CAP @ 32 * munmap 0 <> IF
          next nc SPA-UNMAP
          s" checker: push arena munmap failed" 76 die
       THEN
@@ -1285,16 +1285,78 @@ NULL-PTR SPA-P !   0 SPA-CAP !
 
 : MK-PUSH ( n n -- n )
    SPN @ 1 + SPA-ENSURE
-   SPN @ 2 * cells SPA + {: a:ptr :}
+   SPN @ 4 * cells SPA + {: a:ptr :}
    a 8 + !
    a !
+   0 a 16 + !
+   0 a 24 + !
    SPN @ TAG-SHIFT lshift S-PUSH or
    SPN @ 1 + SPN ! ;
 
-: P>TYPE PAY 2 * cells SPA + @ ;
+: P>TYPE PAY 4 * cells SPA + @ ;
 
-: P>REST PAY 2 * cells SPA + 8 + @ ;
+: P>REST PAY 4 * cells SPA + 8 + @ ;
 
+: P>PROOF PAY 4 * cells SPA + 16 + @ ;
+: P>LOST PAY 4 * cells SPA + 24 + @ ;
+: P-PROOF! PAY 4 * cells SPA + 16 + ! ;
+: P-LOST! PAY 4 * cells SPA + 24 + ! ;
+
+: P-COPY ( n n -- n ) {: source:n rest:n :}
+   source P>TYPE rest MK-PUSH {: node:n :}
+   source P>PROOF node P-PROOF!
+   source P>LOST node P-LOST!
+   node ;
+
+\ Value facts are private to one CHECK. A push holds an immutable proof handle
+\ and independent lost lineage; neither is a type term or an effect field.
+256 constant CP-INIT
+create CP-BOOT CP-INIT 32 * allot
+PERSISTED-PTR-VARIABLE CP-P   CP-BOOT CP-P !
+variable CP-CAP   CP-INIT CP-CAP !
+variable CATCH-PF-N  variable CATCH-N  variable FACTS
+1 constant CP-CODE
+2 constant CP-TEST
+3 constant CP-NORMAL
+4 constant CP-FACT
+5 constant CP-LOCAL
+: CP-BASE ( -- ptr n ) CP-P @ ;
+: CP-AT ( n -- ptr n ) 1- 32 * CP-BASE + ;
+: CP-KIND ( n -- n ) CP-AT @ ;
+: CP-ID ( n -- n ) CP-AT 8 + @ ;
+: CP-TYPE ( n -- n ) CP-AT 16 + @ ;
+: CP-OTHER ( n -- n ) CP-AT 24 + @ ;
+: CP-ENSURE ( n -- ) {: need:n :}
+   need CP-CAP @ <= IF EXIT THEN
+   need CP-CAP @ 2 * max {: cap:n :}
+   CP-P @ CP-CAP @ 32 * cap 32 * ARENA-BYTES-GROW CP-P !
+   cap CP-CAP ! ;
+: CP-NEW ( n n n n -- n ) {: kind:n id:n type:n other:n :}
+   CATCH-PF-N @ 1 + CP-ENSURE
+   CATCH-PF-N @ 1 + {: handle:n :}
+   handle CP-AT {: p:ptr :}
+   kind p !  id p 8 + !  type p 16 + !  other p 24 + !
+   handle CATCH-PF-N !  handle ;
+: FACT-HAS ( n n -- bool ) {: id:n :}
+   BEGIN dup 0 <> WHILE
+      dup CP-ID id = IF drop 0 0= EXIT THEN
+      CP-OTHER
+   REPEAT drop 0 0= 0= ;
+: FACT-ADD ( n n -- n ) {: head:n id:n :}
+   head id FACT-HAS IF head EXIT THEN
+   CP-FACT id 0 head CP-NEW ;
+variable FM-CUR  variable FM-ACC
+: FACT-MEET ( n n -- n ) {: a:n b:n :}
+   a FM-CUR !  0 FM-ACC !
+   BEGIN FM-CUR @ 0 <> WHILE
+      b FM-CUR @ CP-ID FACT-HAS IF FM-ACC @ FM-CUR @ CP-ID FACT-ADD FM-ACC ! THEN
+      FM-CUR @ CP-OTHER FM-CUR !
+   REPEAT FM-ACC @ ;
+: P-VIEW-TYPE ( n n -- n ) {: node:n facts:n :}
+   node P>PROOF {: proof:n :}
+   proof 0= IF node P>TYPE EXIT THEN
+   proof CP-KIND CP-NORMAL <> IF node P>TYPE EXIT THEN
+   facts proof CP-ID FACT-HAS IF proof CP-TYPE ELSE proof CP-OTHER THEN ;
 : ISVAR TAG T-VAR = ;
 
 : ISROW TAG S-ROW = ;
@@ -1304,6 +1366,14 @@ NULL-PTR SPA-P !   0 SPA-CAP !
 
 : RES-FALSE ( -- bool )
    0 0= 0= ;
+
+: CP-SAME? ( n n -- bool ) {: a:n b:n :}
+   a b = IF RES-TRUE EXIT THEN
+   a 0= b 0= or IF RES-FALSE EXIT THEN
+   a CP-KIND b CP-KIND =
+   a CP-ID b CP-ID = and
+   a CP-TYPE b CP-TYPE = and
+   a CP-OTHER b CP-OTHER = and ;
 
 \ --- BTC-7 extent-role product/factorization role registry (dot
 \ habu-extent-role-product-8e364885, docs/extent-substrate.md §Decision, BTC-7).
@@ -1433,6 +1503,54 @@ PTX-BARRIER-DEFAULT
    dup R-RES-WALK {: root:n :}
    root R-COMPRESS
    root ;
+
+: ROW-VIEW-AT ( n n -- n ) {: row:n facts:n :}
+   row R-RES {: node:n :}
+   node TAG S-PUSH <> IF node EXIT THEN
+   node P>REST facts RECURSE {: rest:n :}
+   node facts P-VIEW-TYPE rest MK-PUSH {: copy:n :}
+   node P>PROOF copy P-PROOF!
+   node P>LOST copy P-LOST!
+   copy ;
+: ROW-VIEW ( n -- n ) FACTS @ ROW-VIEW-AT ;
+: ROW-NO-PROOF ( n -- n )
+   R-RES {: node:n :}
+   node TAG S-PUSH <> IF node EXIT THEN
+   node P>REST RECURSE node swap P-COPY {: copy:n :}
+   0 copy P-PROOF!
+   copy ;
+
+variable JOIN-FACTS
+: ROW-JOIN-PREP ( n n -- n n ) {: a:n b:n :}
+   a R-RES {: an:n :}  b R-RES {: bn:n :}
+   an TAG S-PUSH <> bn TAG S-PUSH <> or IF
+      an ROW-NO-PROOF bn ROW-NO-PROOF EXIT
+   THEN
+   an P>REST bn P>REST RECURSE {: ar:n br:n :}
+   an P>PROOF bn P>PROOF CP-SAME? IF
+      an JOIN-FACTS @ P-VIEW-TYPE ar MK-PUSH {: ao:n :}
+      bn JOIN-FACTS @ P-VIEW-TYPE br MK-PUSH {: bo:n :}
+      an P>PROOF ao P-PROOF!  bn P>PROOF bo P-PROOF!
+      an P>LOST bn P>LOST or dup ao P-LOST! bo P-LOST!
+      ao bo EXIT
+   THEN
+   an P>TYPE ar MK-PUSH {: ao:n :}
+   bn P>TYPE br MK-PUSH {: bo:n :}
+   an P>LOST bn P>LOST or dup ao P-LOST! bo P-LOST!
+   ao bo ;
+: ROW-META= ( n n -- bool )
+   BEGIN
+      over R-RES over R-RES
+      over TAG S-PUSH = IF
+         dup TAG S-PUSH <> IF 2drop 2drop RES-FALSE EXIT THEN
+      ELSE
+         dup TAG S-PUSH = IF 2drop 2drop RES-FALSE EXIT THEN
+         2drop 2drop RES-TRUE EXIT
+      THEN
+      over P>PROOF over P>PROOF CP-SAME? 0= IF 2drop 2drop RES-FALSE EXIT THEN
+      over P>LOST over P>LOST <> IF 2drop 2drop RES-FALSE EXIT THEN
+      P>REST swap P>REST swap 2swap 2drop
+   AGAIN ;
 
 \ The two readers of the stale arena declared above. Idempotent: a cell two
 \ nested catches both leave stale is stale once, so the wrapper never nests and
@@ -2665,12 +2783,12 @@ variable RCUR   variable RBROW
 \ of the body being checked (THROW-EDGE). THSET says whether any edge was seen,
 \ and only then do the masks mean anything.
 variable THDMASK  variable THRMASK  variable THSET
-variable XROW  variable XRROW  variable XSET  variable DEADP
+variable XROW  variable XRROW  variable XSET  variable XFACT  variable DEADP
 variable DEADERR  PTR-VARIABLE DEADTA  variable DEADTU
 
 : NEW ( -- )
    0 CALL-ARMED !  0 CALL-HIT !
-   -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !  0 STLN !
+   -1 OK ! 0 UNCK ! 0 SPN ! 0 CATCH-PF-N ! 0 CATCH-N ! 0 FACTS ! 0 XFACT ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !  0 STLN !
    0 LAYOUT-XPORT !  0 LAYOUT-INTRO !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
    RIGID-RESET
@@ -3065,29 +3183,6 @@ variable CDT-ROW
       1 +
    REPEAT drop 0 RES-FALSE ;
 
-: CHECKER-STEP {: din dout :}
-   din dout LIN-EXPLICIT? LINEXP !
-   LINEXP @ 0= IF LIN-SNAPSHOT THEN
-   DCUR @ WAS !
-   din STEP-BORROWS? {: borrows:bool :}   \ measured before the unify binds the tail
-   DCUR @ din UNIFY-IN
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF din WAS @ UF-CAPTURE THEN
-   OK @ and OK !
-   OK @ borrows and IF STEP-UNDERFLOW! THEN
-   dout DCUR !
-   OK @ LINEXP @ 0= and IF LIN-CHECK THEN ;
-
-
-\ Record a complete token effect while its input row is unified. Memory
-\ tokens construct these rows directly instead of instantiating a named word.
-: RECORDED-STEP ( n n -- )
-   0 CALL-HIT !
-   2dup CALL-DOUT ! CALL-DIN !
-   REC-ON @ CALL-ARMED !
-   CHECKER-STEP
-   0 CALL-ARMED ! ;
-
-
 \ --- return row: >r r> r@ transfer types between DCUR and RCUR. A definition
 \ must leave the return row exactly as it found it (ANS 3.2.3.3) — the final
 \ balance check rejects net growth or borrowing; loop joins unify RCUR too.
@@ -3212,6 +3307,7 @@ variable QDEPTH
 : XM-CLEAR ( n -- )             \ mark window position j stale in the mask being built
    1 swap lshift invert XM-ACC @ and XM-ACC ! ;
 
+
 \ The mask an edge contributes: `x` is the exceptional row (the live row with the
 \ throwing token's inputs already popped and its outputs not yet pushed) and `b`
 \ is the body's base row, whose fixed entries are the window known so far. Both
@@ -3236,6 +3332,7 @@ variable QDEPTH
       XM-I @ XM-CLEAR  XM-I @ 1 + XM-I !
    REPEAT
    BEGIN XM-I @ k < WHILE
+      dup R-RES P>LOST 0 <> IF XM-I @ XM-CLEAR THEN
       over R-RES P>TYPE T-RES  over R-RES P>TYPE T-RES  <> IF XM-I @ XM-CLEAR THEN
       swap R-RES P>REST swap  R-RES P>REST
       XM-I @ 1 + XM-I !
@@ -3275,6 +3372,70 @@ variable QDEPTH
       XC-B @ R-RES P>REST XC-B !
    REPEAT
    XC-A @ ;
+
+\ Explicit effect windows lose positive value identity. Lost lineage flows from
+\ every consumed cell to every explicit result, on either stack.
+: ROW-WINDOW-LOST ( n n -- n ) {: base:n :}
+   BEGIN dup R-RES base R-RES <> WHILE
+      R-RES dup TAG S-PUSH <> IF drop 0 EXIT THEN
+      dup P>LOST 0 <> IF drop -1 EXIT THEN
+      P>REST
+   REPEAT drop 0 ;
+: ROW-OUTPUT-LOSS ( n n n -- n ) {: row:n base:n lost:n :}
+   row R-RES base R-RES = IF row EXIT THEN
+   row R-RES {: node:n :}
+   node TAG S-PUSH <> IF node EXIT THEN
+   node P>REST base lost RECURSE node swap P-COPY {: copy:n :}
+   0 copy P-PROOF!
+   lost node P>LOST or copy P-LOST!
+   copy ;
+: STEP-LINEAGE ( n n -- n ) {: pre:n post:n :}
+   pre post ROW-COMMON {: common:n :}
+   pre common ROW-WINDOW-LOST {: lost:n :}
+   post common lost ROW-OUTPUT-LOSS ;
+
+: CHECKER-STEP {: din dout :}
+   din dout LIN-EXPLICIT? LINEXP !
+   LINEXP @ 0= IF LIN-SNAPSHOT THEN
+   DCUR @ WAS !
+   din STEP-BORROWS? {: borrows:bool :}   \ measured before the unify binds the tail
+   DCUR @ din UNIFY-IN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF din WAS @ UF-CAPTURE THEN
+   OK @ and OK !
+   OK @ borrows and IF STEP-UNDERFLOW! THEN
+   WAS @ dout STEP-LINEAGE DCUR !
+   OK @ LINEXP @ 0= and IF LIN-CHECK THEN ;
+
+\ Record a complete token effect while its input row is unified. Memory
+\ tokens construct these rows directly instead of instantiating a named word.
+: RECORDED-STEP ( n n -- )
+   0 CALL-HIT !
+   2dup CALL-DOUT ! CALL-DIN !
+   REC-ON @ CALL-ARMED !
+   CHECKER-STEP
+   0 CALL-ARMED ! ;
+
+: TWO-ROW-LOSS ( n n n n -- n n ) {: pd:n pr:n od:n orow:n :}
+   pd od ROW-COMMON {: cd:n :}
+   pr orow ROW-COMMON {: cr:n :}
+   pd cd ROW-WINDOW-LOST pr cr ROW-WINDOW-LOST or {: lost:n :}
+   od cd lost ROW-OUTPUT-LOSS
+   orow cr lost ROW-OUTPUT-LOSS ;
+
+: ROW-TOP-LOST ( n n -- n ) {: cnt:n :}
+   0 BEGIN dup cnt < WHILE
+      over R-RES TAG S-PUSH <> IF 2drop 0 EXIT THEN
+      over R-RES P>LOST 0 <> IF 2drop -1 EXIT THEN
+      swap R-RES P>REST swap 1 +
+   REPEAT 2drop 0 ;
+: ROW-TOP-OUTPUT-LOSS ( n n n -- n ) {: row:n cnt:n lost:n :}
+   cnt 0= IF row EXIT THEN
+   row R-RES {: node:n :}
+   node TAG S-PUSH <> IF node EXIT THEN
+   node P>REST cnt 1 - lost RECURSE node swap P-COPY {: copy:n :}
+   0 copy P-PROOF!
+   lost node P>LOST or copy P-LOST!
+   copy ;
 
 \ THE EDGE A THROWING CALL LEAVES. `ROW-COMMON pre post` is what popping the
 \ callee's own declared inputs leaves of the caller's row, and nothing below it
@@ -3347,6 +3508,7 @@ variable CWIN-IN
 variable CWIN-OUT
 variable CWIN-KIND                  \ 0 catch, 1 execute, -1 finally
 variable CWIN-DTERMS  variable CWIN-RTERMS   \ the window in row terms (mask positions)
+variable CWIN-DOUT-TERMS  variable CWIN-ROUT-TERMS
 variable FINALLY-CLEANUP-OUT
 
 : QUOT-WINDOW ( n -- ) {: kind:n :}
@@ -3358,6 +3520,8 @@ variable FINALLY-CLEANUP-OUT
    \ live row and its fixed prefix can no longer be told from the caller's stack.
    QTT @ Q>DIN ROW-TERMS CWIN-DTERMS !
    QTT @ Q>RIN ROW-TERMS CWIN-RTERMS !
+   QTT @ Q>DOUT ROW-TERMS CWIN-DOUT-TERMS !
+   QTT @ Q>ROUT ROW-TERMS CWIN-ROUT-TERMS !
    QTT @ Q>XDEAD IF CELLS-NONE ELSE QTT @ Q>DOUT ROW-CELLS THEN CWIN-OUT !
    \ Preserve execute's value boundaries before unification extends the rows.
    \ Final call metadata resolves the copied terms to their concrete widths.
@@ -3390,7 +3554,8 @@ variable QAPP-N
 
 : QAPP-ROW ( n -- n )
    R-RES dup TAG S-PUSH = IF
-      dup P>TYPE swap P>REST RECURSE MK-PUSH
+      dup P>TYPE swap dup P>LOST {: lost:n :}
+      P>REST RECURSE MK-PUSH dup lost swap P-LOST!
    ELSE QAPP-TAIL THEN ;
 
 : QUOT-APPLY-INST ( n -- n ) {: q:n :}
@@ -3408,6 +3573,8 @@ variable QAPP-N
    q Q>DIN QUOT-TAIL-MARK q Q>DOUT QUOT-TAIL-MARK
    q Q>RIN QUOT-TAIL-MARK q Q>ROUT QUOT-TAIL-MARK ;
 
+variable QUOT-LOSS
+
 : RSEXEC   \ execute: pop the xt; apply its quot effect (or bind a var to one)
    0 CWIN-HIT !
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
@@ -3418,6 +3585,8 @@ variable QAPP-N
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
      1 QUOT-WINDOW
+     DCUR @ CWIN-DTERMS @ ROW-TOP-LOST
+     RCUR @ CWIN-RTERMS @ ROW-TOP-LOST or QUOT-LOSS !
      \ Capture explicitness BEFORE UNIFY-IN: once the quot's fresh vars unify
      \ with the stack they resolve to linears and would look falsely explicit.
      QTT @ RSEXEC-LIN-EXPLICIT? RSEXEC-EXP !
@@ -3433,6 +3602,8 @@ variable QAPP-N
         -1 DEADP !
      ELSE
         QTT @ Q>DOUT DCUR !  QTT @ Q>ROUT RCUR !
+        DCUR @ CWIN-DOUT-TERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS DCUR !
+        RCUR @ CWIN-ROUT-TERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS RCUR !
         OK @  RSEXEC-EXP @ 0=  and IF LIN-CHECK THEN
      THEN
    ELSE QTT @ TAG T-VAR = IF
@@ -3486,19 +3657,38 @@ variable RSRET
 \ (the row's tail, so there is no further window entry to rewrite). The walk is
 \ as deep as the window is wide, which is why there is no scratch row and no
 \ width a rewrite quietly declines.
-: ROW-STALE-FROM ( n n n n -- n ) {: row:n cnt:n d:n mask:n :}
+: ROW-FIRST-LOST ( n -- n )
+   dup 0= IF EXIT THEN
+   R-RES dup TAG S-PUSH = IF P>LOST ELSE drop 0 THEN ;
+
+: ROW-NORMAL-PROOF ( n n -- ) {: normal:n copy:n :}
+   normal 0= IF EXIT THEN
+   normal R-RES dup TAG S-PUSH <> IF drop EXIT THEN
+   P>TYPE copy P>TYPE CP-NORMAL CATCH-N @ 2swap CP-NEW copy P-PROOF! ;
+
+: ROW-STALE-FROM ( n n n n n bool -- n ) {: row:n normal:n cnt:n d:n mask:n exceptional:bool :}
    cnt 0= IF row EXIT THEN
    row R-RES {: r:n :}
    r TAG S-PUSH <> IF row EXIT THEN
-   r P>REST  cnt 1 -  d 1 +  mask RECURSE {: rest:n :}
+   normal 0= IF 0 ELSE
+      normal R-RES dup TAG S-PUSH = IF P>REST ELSE drop 0 THEN
+   THEN {: next:n :}
+   r P>REST next cnt 1 - d 1 + mask exceptional RECURSE {: rest:n :}
    r P>TYPE {: t:n :}
-   d XMASK-BITS >= IF t MK-STALE ELSE
-      mask 1 d lshift and 0= IF t MK-STALE ELSE t THEN
+   exceptional IF
+      d XMASK-BITS >= IF RES-TRUE ELSE mask 1 d lshift and 0= THEN
+   ELSE RES-FALSE THEN {: uncertain:bool :}
+   uncertain IF t MK-STALE ELSE t THEN
+   rest MK-PUSH {: copy:n :}
+   r P>LOST normal ROW-FIRST-LOST or copy P-LOST!
+   uncertain IF
+      -1 copy P-LOST!
+      normal copy ROW-NORMAL-PROOF
    THEN
-   rest MK-PUSH ;
+   copy ;
 
-: ROW-STALE-TOP ( n n n -- n ) {: row:n cnt:n mask:n :}
-   row cnt 0 mask ROW-STALE-FROM ;
+: ROW-STALE-TOP ( n n n n bool -- n ) {: row:n normal:n cnt:n mask:n exceptional:bool :}
+   row normal cnt 0 mask exceptional ROW-STALE-FROM ;
 
 : RSCATCH   \ catch: stack-preserving quotation -> same stack plus throw code
    \ Catchable `throw` is not process no-return. The checker tracks throw paths
@@ -3512,6 +3702,9 @@ variable RSRET
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
      0 QUOT-WINDOW
+     CATCH-N @ 1 + CATCH-N !
+     DCUR @ CWIN-DTERMS @ ROW-TOP-LOST
+     RCUR @ CWIN-RTERMS @ ROW-TOP-LOST or QUOT-LOSS !
      DCUR @ QTT @ Q>DIN   UNIFY-IN OK @ and OK !
      RCUR @ QTT @ Q>RIN   UNIFY-IN OK @ and OK !
      QTT @ Q>XDEAD IF
@@ -3520,9 +3713,15 @@ variable RSRET
         DCUR @ QTT @ Q>DOUT  UNIFY-IN OK @ and OK !
         RCUR @ QTT @ Q>ROUT  UNIFY-IN OK @ and OK !
      THEN
-     QTT @ Q>XHAS OK @ and IF
-        DCUR @ CWIN-DTERMS @ QTT @ Q>XDMASK ROW-STALE-TOP DCUR !
-        RCUR @ CWIN-RTERMS @ QTT @ Q>XRMASK ROW-STALE-TOP RCUR !
+     DCUR @ CWIN-DTERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS DCUR !
+     RCUR @ CWIN-RTERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS RCUR !
+     \ Normal output loss is per occurrence, including when this quotation
+     \ has no exceptional edge of its own. Only consumed-input loss is shared.
+     OK @ RSRET @ and 0 <> IF
+        QTT @ Q>XDEAD IF 0 ELSE QTT @ Q>DOUT THEN {: nd:n :}
+        QTT @ Q>XDEAD IF 0 ELSE QTT @ Q>ROUT THEN {: nr:n :}
+        DCUR @ nd CWIN-DTERMS @ QTT @ Q>XDMASK QTT @ Q>XHAS ROW-STALE-TOP DCUR !
+        RCUR @ nr CWIN-RTERMS @ QTT @ Q>XRMASK QTT @ Q>XHAS ROW-STALE-TOP RCUR !
      THEN
    ELSE QTT @ TAG T-VAR = IF
      \ Opaque xt: the caught value is a bare type variable, i.e. an xt of unknown
@@ -3536,7 +3735,12 @@ variable RSRET
      \ T-QUOT here).
      0 OK !  -1 CATCH-OPAQUE !
    ELSE 0 OK ! THEN THEN
-   RSRET @ IF 1 MK-CON DCUR @ MK-PUSH DCUR ! THEN ;
+   RSRET @ IF
+      1 MK-CON DCUR @ MK-PUSH {: status:n :}
+      CP-CODE CATCH-N @ 0 0 CP-NEW status P-PROOF!
+      QUOT-LOSS @ status P-LOST!
+      status DCUR !
+   THEN ;
 
 \ Cleanup cannot borrow from either the body's input or its result row. Its
 \ own data/return windows must be empty and neutral, unless it never returns.
@@ -3566,19 +3770,13 @@ variable RSRET
 
 variable RSH
 
-: RS-TOK? {: a u :}
-   -1 RSH !
-   a u s" >r" CORE-STR= IF RS->R ELSE
-   a u s" r>" CORE-STR= IF RSR> ELSE
-   a u s" r@" CORE-STR= IF RSR@ ELSE
-   a u s" 2>r" CORE-STR= IF RS2->R ELSE
-   a u s" 2r>" CORE-STR= IF RS2R> ELSE
-   a u s" 2r@" CORE-STR= IF RS2R@ ELSE
-   a u s" execute" CORE-STR= IF RSEXEC ELSE
-   a u s" catch" CORE-STR= IF RSCATCH ELSE
-   a u s" finally" CORE-STR= IF RSFINALLY ELSE
-   0 RSH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   RSH @ ;
+: RS-TRANSFER-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" >r" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" r>" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" r@" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2>r" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2r>" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2r@" CORE-STR= ;
 
 0 constant VR-CON
 1 constant VR-VAR
@@ -7718,6 +7916,7 @@ variable LMI
 
 : EFF-APPLY ( ptr u8 -- ) {: h:ptr :}
    0 CALL-HIT !
+   DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
    h E-INST-RESET
    h E-DIN@ E-INST
    h E-DOUT@ E-INST
@@ -7726,6 +7925,8 @@ variable LMI
       h E-RIN@ E-INST RSUNI-IN          \ the called word's declared return inputs
       h E-ROUT@ E-INST RCUR !
    then
+   pd pr DCUR @ RCUR @ TWO-ROW-LOSS {: od:n orow:n :}
+   od DCUR !  orow RCUR !
    h LIN-EFF-PASS ;
 
 : EFF-QUOT ( ptr u8 -- n ) {: h:ptr :}
@@ -9774,7 +9975,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 : CALL-ROW-COPY ( n -- n )
    CALL-SPINE-COPY dup
    BEGIN dup TAG S-PUSH = WHILE
-      dup P>TYPE CALL-QUOT-COPY over PAY 2 * cells SPA + !
+      dup P>TYPE CALL-QUOT-COPY over PAY 4 * cells SPA + !
       P>REST
    REPEAT drop ;
 
@@ -10354,6 +10555,11 @@ variable LBUF-NM-I
 \ Positive provenance: this binding's effect was explicitly declared or its
 \ check was enforced. An ABI-only or old producer row carries no grant.
 $8 constant EFFECT-EXTERNAL
+$10 constant CTL-CORE-OP
+$20 constant CTL-ZERO-TRUE
+$40 constant CTL-ZERO-FALSE
+$1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or
+   constant CTL-GRAPH-FLAGS
 \ $20000 not $10000: the entry carries two cells beyond (sym, flags) — the
 \ back-link and the created-word effect below — so the byte cap is scaled with
 \ them and the store still holds the same number of entries.
@@ -10583,9 +10789,10 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ content is lost — which is also why ARENA-SNAP-BOOT may empty every one of
 \ them. The two arenas with their own reset words keep them: those reset a
 \ counter, not the bytes, and they run after the buffer is already empty.
-\ SPA and QEA are counted in records rather than cells (16 and 32 bytes).
+\ SPA and QEA are counted in records rather than cells (32 bytes each).
 : DECOUPLED-ARENA-SNAP-RESET ( -- )
    SPA-RELEASE
+   CP-P CP-BOOT CP-INIT 4 * ARENA-SNAP-BOOT   CP-INIT CP-CAP !
    PTRA-P PTRA-BOOT MAXPTR-INIT ARENA-SNAP-BOOT          MAXPTR-INIT PTR-CAP !
    STLA-P STLA-BOOT MAXSTALE-INIT ARENA-SNAP-BOOT        MAXSTALE-INIT STL-CAP !
    QEA-P QEA-BOOT MAXQE-INIT 4 * ARENA-SNAP-BOOT
@@ -10899,6 +11106,11 @@ REG-EXT-AOT-DEFAULTS
 : NORET-ADD {: a:ptr u:n flag:n :}
    a u CHECKER-RECORD-SYM flag 0 0 NORET-ADD-SYM ;
 
+\ Built-in axioms always belong to the global primitive symbol, regardless of
+\ the package active when a source reset needs to re-seed them.
+: NORET-AXIOM {: a:ptr u:n flag:n :}
+   a u PE-SYM-OF flag 0 0 NORET-ADD-SYM ;
+
 \ The two path-ending words the engine owns. `throw` leaves through the catch
 \ edge, so it carries both flags; `die` ends the process and is dead only. They
 \ are RECORDED here, in the same store every other word's control flags live in,
@@ -10913,8 +11125,28 @@ REG-EXT-AOT-DEFAULTS
 \ word underflowed. One authority for "does this call end the path", and it is
 \ the record of the word the token really names.
 : NORET-AXIOMS ( -- )
-   s" throw" CTL-DEAD CTL-THROW or NORET-ADD
-   s" die" CTL-DEAD NORET-ADD ;
+   s" throw" CTL-DEAD CTL-THROW or NORET-AXIOM
+   s" die" CTL-DEAD NORET-AXIOM
+   s" 0=" CTL-CORE-OP CTL-ZERO-TRUE or NORET-AXIOM
+   s" <>" CTL-CORE-OP NORET-AXIOM
+   s" dup" CTL-CORE-OP NORET-AXIOM
+   s" drop" CTL-CORE-OP NORET-AXIOM
+   s" swap" CTL-CORE-OP NORET-AXIOM
+   s" over" CTL-CORE-OP NORET-AXIOM
+   s" nip" CTL-CORE-OP NORET-AXIOM
+   s" tuck" CTL-CORE-OP NORET-AXIOM
+   s" rot" CTL-CORE-OP NORET-AXIOM
+   s" -rot" CTL-CORE-OP NORET-AXIOM
+   s" 2dup" CTL-CORE-OP NORET-AXIOM
+   s" 2drop" CTL-CORE-OP NORET-AXIOM
+   s" 2swap" CTL-CORE-OP NORET-AXIOM
+   s" 2over" CTL-CORE-OP NORET-AXIOM
+   s" >r" CTL-CORE-OP NORET-AXIOM
+   s" r>" CTL-CORE-OP NORET-AXIOM
+   s" r@" CTL-CORE-OP NORET-AXIOM
+   s" 2>r" CTL-CORE-OP NORET-AXIOM
+   s" 2r>" CTL-CORE-OP NORET-AXIOM
+   s" 2r@" CTL-CORE-OP NORET-AXIOM ;
 
 NORET-AXIOMS
 NORET-END @ constant NORET-PRIM-END
@@ -10967,6 +11199,27 @@ variable NORET-FMEND
 
 : CTL-FLAGS {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM CTL-FLAGS-SYM ;
+
+: CORE-BINDING? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHECKER-FIND-ACTIVE-SYM a u PE-SYM-OF <> IF RES-FALSE EXIT THEN
+   a u CTL-FLAGS CTL-CORE-OP and 0 <> ;
+
+: RS-TOK? {: a u :}
+   a u RS-TRANSFER-NAME? IF
+      a u CORE-BINDING? 0= IF RES-FALSE EXIT THEN
+   THEN
+   -1 RSH !
+   a u s" >r" CORE-STR= IF RS->R ELSE
+   a u s" r>" CORE-STR= IF RSR> ELSE
+   a u s" r@" CORE-STR= IF RSR@ ELSE
+   a u s" 2>r" CORE-STR= IF RS2->R ELSE
+   a u s" 2r>" CORE-STR= IF RS2R> ELSE
+   a u s" 2r@" CORE-STR= IF RS2R@ ELSE
+   a u s" execute" CORE-STR= IF RSEXEC ELSE
+   a u s" catch" CORE-STR= IF RSCATCH ELSE
+   a u s" finally" CORE-STR= IF RSFINALLY ELSE
+   0 RSH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   RSH @ ;
 
 \ The intact masks of the same word: which of the callee's declared inputs every
 \ throw path of its body left where they were. Asked only by a token that takes
@@ -11371,7 +11624,8 @@ variable UNSAFE-SYM-N
 
 \ Trial save/restore: a prim-overload trial saves the scalar cursors below and the
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
-variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN  variable SV-STLN
+variable SV-FV    variable SV-SPN   variable SV-PFN   variable SV-FACTS
+variable SV-QEN   variable SV-PTRN  variable SV-STLN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
 variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-DF-ACT  variable SV-DF-EXP
 variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG
@@ -11385,7 +11639,8 @@ variable SV-TRAIL
 
 : TRIAL-SAVE
    FV @ SV-FV !  TRAIL-N @ SV-TRAIL !     \ trail height is the per-TRY-EFF mark
-   SPN @ SV-SPN !  QEN @ SV-QEN !  PTRN @ SV-PTRN !  STLN @ SV-STLN !
+   SPN @ SV-SPN !  CATCH-PF-N @ SV-PFN !  FACTS @ SV-FACTS !
+   QEN @ SV-QEN !  PTRN @ SV-PTRN !  STLN @ SV-STLN !
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !
    DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !  DPOS @ SV-DPOS !
@@ -11415,7 +11670,8 @@ variable SV-TRAIL
    SV-TRAIL @ TRAIL-UNWIND       \ undo speculative binds in both pools
    TRIAL-CLEAR-NEW               \ new-var backstop (cells never bound via TV!/RV!)
    SV-FV @ FV !
-   SV-SPN @ SPN !  SV-QEN @ QEN !  SV-PTRN @ PTRN !  SV-STLN @ STLN !
+   SV-SPN @ SPN !  SV-PFN @ CATCH-PF-N !  SV-FACTS @ FACTS !
+   SV-QEN @ QEN !  SV-PTRN @ PTRN !  SV-STLN @ STLN !
    SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !
    SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
@@ -11739,7 +11995,7 @@ variable WF-I
    0 OK !
    RES-TRUE ;
 
-: DO-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+: DO-TOK-BODY ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CURSYM !
    a u DEFINER-TOK IF EXIT THEN
    a u LITERAL-TOK? IF EXIT THEN
@@ -11773,6 +12029,32 @@ variable WF-I
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
    a u ASIG-MISS+                                  \ the lazy intake's queue: see ASIG-MISS+
    -1 UNDEFERR ! -1 UNCK ! THEN ;
+
+: ZERO-USE-TEST ( n n -- ) {: pre:n prer:n :}
+   OK @ 0= IF EXIT THEN
+   CURSYM @ CTL-FLAGS-SYM {: flags:n :}
+   flags CTL-ZERO-TRUE CTL-ZERO-FALSE or and 0= IF EXIT THEN
+   pre R-RES dup TAG S-PUSH <> IF drop EXIT THEN {: input:n :}
+   input P>PROOF dup 0= IF drop EXIT THEN
+   dup CP-KIND CP-CODE <> IF drop EXIT THEN
+   CP-ID {: id:n :}
+   prer R-RES RCUR @ R-RES <> IF EXIT THEN
+   pre DCUR @ ROW-COMMON {: base:n :}
+   pre ROW-TERMS base ROW-TERMS - 1 <> IF EXIT THEN
+   DCUR @ ROW-TERMS base ROW-TERMS - 1 <> IF EXIT THEN
+   DCUR @ R-RES {: output:n :}
+   output TAG S-PUSH <> IF EXIT THEN
+   output P>TYPE T-RES CC-BOOL MK-CON <> IF EXIT THEN
+   flags CTL-ZERO-TRUE and 0 <> IF 1 ELSE 0 THEN {: polarity:n :}
+   CP-TEST id polarity 0 CP-NEW {: proof:n :}
+   output output P>REST P-COPY {: copy:n :}
+   proof copy P-PROOF!
+   copy DCUR ! ;
+
+: DO-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   DCUR @ {: pre:n :}  RCUR @ {: prer:n :}
+   a u DO-TOK-BODY
+   pre prer ZERO-USE-TEST ;
 
 : ROW-DROP-1 ( n -- n )            \ row below the top cell; die 76 if it is not a push
    R-RES dup TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN
@@ -11880,13 +12162,15 @@ variable WF-I
 64 constant XG-GCAP            \ max logical groups per op (= LOC-CAP for locals capture)
 256 constant XG-TCAP           \ max total cells across one op's groups
 create XG-TERMS XG-TCAP cells allot
+create XG-NODES XG-TCAP cells allot
 create XG-START XG-GCAP cells allot
 create XG-LEN XG-GCAP cells allot
 variable XG-N   variable XG-TN   variable XG-ROW
 
-: XG-T+ ( n -- )               \ append one cell term to the group scratch
+: XG-T+ ( n n -- ) {: term:n node:n :}   \ term and occurrence travel together
    XG-TN @ XG-TCAP >= IF s" checker: transport group scratch full" 76 die THEN
-   XG-TN @ cells XG-TERMS + !
+   term XG-TN @ cells XG-TERMS + !
+   node XG-TN @ cells XG-NODES + !
    XG-TN @ 1 + XG-TN ! ;
 
 : XG-TERM0@ ( n -- n ) {: gi:n :}   \ first (top) cell term of group gi
@@ -11899,7 +12183,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
    t HIDDEN-PARAM? 0= IF s" checker: hidden group cell not hidden" 76 die THEN
    t CELL>FAM fam <> IF s" checker: hidden group family mismatch" 76 die THEN
    t HIDDEN-SLOT@ slot <> IF s" checker: hidden group slot mismatch" 76 die THEN
-   t XG-T+                     \ the cell term as it is: a stale wrapper travels with its cell
+   t node XG-T+               \ the stale wrapper and metadata travel with this cell
    node P>REST XG-ROW ! ;
 
 : XG-READ-HID ( n -- ) {: t:n :}   \ read the whole W-cell group whose resolved tag is t
@@ -11915,7 +12199,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
    FRESH MK-VAR {: tv:n :}
    FRESH MK-ROW {: rest:n :}
    XG-ROW @  tv rest MK-PUSH  UNIFY 0= IF 0 OK ! RES-FALSE EXIT THEN
-   tv XG-T+
+   tv XG-ROW @ R-RES XG-T+
    rest XG-ROW !
    RES-TRUE ;
 
@@ -11931,7 +12215,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
                                          \ (LOC-BIND-GROUPS) removes the bundle from the counted rows at
                                          \ bind, so the same LIN-CHECK still rejects a linear layout local.
    t LAYOUT-PARAM? IF 0 OK ! -1 FAILSET ! RES-FALSE EXIT THEN   \ open-arg layout never transports
-   node P>TYPE XG-T+
+   node P>TYPE node XG-T+
    node P>REST XG-ROW !
    RES-TRUE ;
 
@@ -11953,8 +12237,8 @@ variable XG-N   variable XG-TN   variable XG-ROW
    XG-START gi cells + @ {: st:n :}
    XG-LEN gi cells + @ {: len:n :}
    st len + 1 - BEGIN dup st >= WHILE
-      dup cells XG-TERMS + @
-      rot MK-PUSH swap
+      dup cells XG-NODES + @
+      rot P-COPY swap
       1 -
    REPEAT drop ;
 
@@ -12056,10 +12340,21 @@ variable XG-N   variable XG-TN   variable XG-ROW
       1 +
    REPEAT 2drop RES-FALSE ;
 
+: XP-META-IN-K? ( n n -- bool ) {: row0:n k:n :}
+   row0
+   0 BEGIN dup k < WHILE
+      over R-RES TAG S-PUSH <> IF 2drop RES-FALSE EXIT THEN
+      over R-RES dup P>PROOF swap P>LOST or 0 <> IF 2drop RES-TRUE EXIT THEN
+      swap R-RES P>REST swap
+      1 +
+   REPEAT 2drop RES-FALSE ;
+
 : XPORT-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN
+   a u CORE-BINDING? 0= IF RES-FALSE EXIT THEN
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
-   a u WF-XPORT-K  XP-BUNDLE-IN-K? 0= IF RES-FALSE EXIT THEN
+   dup a u WF-XPORT-K XP-BUNDLE-IN-K?
+   swap a u WF-XPORT-K XP-META-IN-K? or 0= IF RES-FALSE EXIT THEN
    a u XPORT-APPLY
    RES-TRUE ;
 
@@ -12105,6 +12400,8 @@ create LOCSHOW LOC-CAP cells allot
 \ via MK-HIDDEN (LOC-PUSH-REF). Linear layouts never expand, so no linear bundle
 \ can reach a local; the bind-time linear check is unchanged.
 create LOCW LOC-CAP cells allot
+create LOCVAL LOC-CAP cells allot   \ per-local chain of captured physical cells
+variable LOC-CAP-HEAD
 variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  variable LI  variable LRF
 \ Emitter-facing width queries (item 12 slice 3b + habu-tfam-12-pass): LOCW is
 \ live-indexed and branch-scoped locals are popped at their join (CF-LOC-REST)
@@ -12311,6 +12608,17 @@ variable LCO
    XG-LEN gi cells + @ idx cells LOCW + !
    XG-LEN gi cells + @  idx cells LOCSEQIX + @ cells LOC-HW + ! ;   \ final width at the bind seq
 
+: LOC-CAPTURE-GROUP ( n n -- ) {: gi:n idx:n :}
+   0 LOC-CAP-HEAD !
+   XG-START gi cells + @ {: start:n :}
+   start XG-LEN gi cells + @ + 1 -
+   BEGIN dup start >= WHILE
+      dup cells XG-NODES + @ {: node:n :}
+      CP-LOCAL 0 node LOC-CAP-HEAD @ CP-NEW LOC-CAP-HEAD !
+      1 -
+   REPEAT drop
+   LOC-CAP-HEAD @ idx cells LOCVAL + ! ;
+
 : LOC-SCALAR-BIND ( n n -- ) {: gi:n idx:n :}
    1 LAYOUT-XPORT !
    idx cells LOCTV + @  gi XG-TERM0@  UNIFY
@@ -12328,7 +12636,8 @@ variable LCO
       gi idx LOC-BUNDLE-BIND
    ELSE
       gi idx LOC-SCALAR-BIND
-   THEN ;
+   THEN
+   OK @ IF gi idx LOC-CAPTURE-GROUP THEN ;
 
 : LOC-BIND-GROUPS ( -- )
    LIN-SNAPSHOT
@@ -12339,6 +12648,17 @@ variable LCO
    REPEAT drop
    XG-ROW @ DCUR !
    OK @ IF LIN-CHECK THEN ;
+
+: LOC-CAPTURE-SCALARS ( -- )
+   WAS @ R-RES
+   #LOC @ 1 -
+   BEGIN dup LGRP @ >= WHILE
+      over R-RES {: node:n :}
+      node TAG S-PUSH <> IF 2drop EXIT THEN
+      CP-LOCAL 0 node 0 CP-NEW over cells LOCVAL + !
+      swap drop node P>REST R-RES swap
+      1 -
+   REPEAT 2drop ;
 
 : LOC-BIND
    FRESH dup LROW !  MK-ROW LCH !
@@ -12352,6 +12672,7 @@ variable LCO
       1 LAYOUT-XPORT !                 \ capturing a local moves the value as one bundle
       LCH @  LROW @ MK-ROW  CHECKER-STEP
       0 LAYOUT-XPORT !
+      OK @ IF LOC-CAPTURE-SCALARS THEN
    THEN
    LOC-SHOW-GROUP
    LIN-LOCAL-BIND-CHECK ;
@@ -12371,21 +12692,18 @@ variable LCO
 \ A STALE bundle re-pushes stale in EVERY cell: the captured cells were all
 \ wrapped, MK-HIDDEN mints from the family term the wrapper hides, and a payload
 \ cell minted plain would launder the value a throw path may have overwritten.
+: LOC-REF-ROW ( n n -- n ) {: head:n rest:n :}
+   head 0= IF rest EXIT THEN
+   head CP-OTHER rest RECURSE {: tail:n :}
+   head CP-TYPE {: node:n :}
+   node FACTS @ P-VIEW-TYPE tail MK-PUSH {: copy:n :}
+   node P>PROOF copy P-PROOF!
+   node P>LOST copy P-LOST!
+   copy ;
+
 : LOC-PUSH-REF ( n -- ) {: idx:n :}
-   idx cells LOCW + @ {: w:n :}
-   idx cells LOCTV + @ {: t:n :}
-   w 1 > IF
-      t T-UNSTALE {: lt:n :}
-      t T-RES TAG T-STALE = {: stale:bool :}
-      DCUR @
-      0 BEGIN dup w 1 - < WHILE
-         dup lt swap MK-HIDDEN  stale IF MK-STALE THEN  rot MK-PUSH swap
-         1 +
-      REPEAT drop
-      t swap MK-PUSH DCUR !
-   ELSE
-      t dup LIN-LOCAL-REF-TAINT  DCUR @ MK-PUSH DCUR !
-   THEN ;
+   idx cells LOCTV + @ LIN-LOCAL-REF-TAINT
+   idx cells LOCVAL + @ DCUR @ LOC-REF-ROW DCUR ! ;
 
 \ A reference binds a local only in the local's DECLARED SPELLING: the raw token
 \ against the raw declaration, byte for byte. The engine's own lookup
@@ -12427,7 +12745,11 @@ $68 constant CF.TXS-OFF
 $70 constant CF.UNI-OFF
 $78 constant CF.LA-OFF
 $80 constant CF.LB-OFF
-$88 constant CFS-REC
+$88 constant CF.FA-OFF
+$90 constant CF.FB-OFF
+$98 constant CF.FT-OFF
+$A0 constant CF.XFA-OFF
+$A8 constant CFS-REC
 $8 constant CFS-REC-ALIGN
 0 constant CFS-REC-PTR-MASK
 
@@ -12452,6 +12774,10 @@ $8 constant CFS-REC-ALIGN
 : CF.UNI ( ptr a -- ptr a ) CF.UNI-OFF + ;
 : CF.LA ( ptr a -- ptr a ) CF.LA-OFF + ;
 : CF.LB ( ptr a -- ptr a ) CF.LB-OFF + ;
+: CF.FA ( ptr a -- ptr a ) CF.FA-OFF + ;
+: CF.FB ( ptr a -- ptr a ) CF.FB-OFF + ;
+: CF.FT ( ptr a -- ptr a ) CF.FT-OFF + ;
+: CF.XFA ( ptr a -- ptr a ) CF.XFA-OFF + ;
 
 CF.KND-OFF 0 cells CHECKER-LAYOUT=
 CF.SA-OFF 1 cells CHECKER-LAYOUT=
@@ -12470,7 +12796,11 @@ CF.TXS-OFF 13 cells CHECKER-LAYOUT=
 CF.UNI-OFF 14 cells CHECKER-LAYOUT=
 CF.LA-OFF 15 cells CHECKER-LAYOUT=
 CF.LB-OFF 16 cells CHECKER-LAYOUT=
-CFS-REC 17 cells CHECKER-LAYOUT=
+CF.FA-OFF 17 cells CHECKER-LAYOUT=
+CF.FB-OFF 18 cells CHECKER-LAYOUT=
+CF.FT-OFF 19 cells CHECKER-LAYOUT=
+CF.XFA-OFF 20 cells CHECKER-LAYOUT=
+CFS-REC 21 cells CHECKER-LAYOUT=
 CFS-REC-ALIGN CELL CHECKER-LAYOUT=
 CFS-REC CFS-REC-ALIGN mod 0 CHECKER-LAYOUT=
 CFS-REC-PTR-MASK 0 CHECKER-LAYOUT=
@@ -12491,6 +12821,10 @@ CFS-REC-PTR-MASK 0 CHECKER-LAYOUT=
 0 CF.UNI CF.UNI-OFF CHECKER-LAYOUT=
 0 CF.LA CF.LA-OFF CHECKER-LAYOUT=
 0 CF.LB CF.LB-OFF CHECKER-LAYOUT=
+0 CF.FA CF.FA-OFF CHECKER-LAYOUT=
+0 CF.FB CF.FB-OFF CHECKER-LAYOUT=
+0 CF.FT CF.FT-OFF CHECKER-LAYOUT=
+0 CF.XFA CF.XFA-OFF CHECKER-LAYOUT=
 
 create CFS 32 CFS-REC * allot
 variable CTMP  variable RTMP  variable INDO
@@ -12557,6 +12891,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
      r0 rec CF.RA !  r1 rec CF.RB !
      #LOC @ rec CF.LN !
      CF-LOOPS @ rec CF.LA !  0 rec CF.LB !
+     FACTS @ rec CF.FA !  0 rec CF.FB !  0 rec CF.FT !
      0 rec CF.UNI !                        \ default non-uniform; CF-IF marks a uniform<bool> branch
      #CFC @ 1 + #CFC ! THEN ;
 
@@ -12684,6 +13019,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    0 RECEFF-ON ! ;
 
 : CF-RECURSE-EFF ( ptr u8 -- ) {: h:ptr :}
+   DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
    h E-INST-RESET
    h E-HASR@ RHAS !
    h E-DIN@ E-INST RDIN !
@@ -12691,6 +13027,8 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    RHAS @ 0 <> IF h E-RIN@ E-INST RRIN !  h E-ROUT@ E-INST RROUT ! THEN
    RDIN @ SUNI-IN  RDOUT @ DCUR !
    RHAS @ 0 <> IF RRIN @ RSUNI-IN  RROUT @ RCUR ! THEN
+   pd pr DCUR @ RCUR @ TWO-ROW-LOSS {: od:n orow:n :}
+   od DCUR !  orow RCUR !
    h LIN-EFF-PASS ;
 
 : CF-RECURSE
@@ -12720,11 +13058,58 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    base s" uniform" PTX-UNIFORM-FAM @ MK-PARAM
    STEP-TYPE-IN ;
 
+: CF-TEST-ID ( -- n )   \ signed catch id: positive on a true arm
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 EXIT THEN
+   P>PROOF dup 0= IF EXIT THEN
+   dup CP-KIND CP-TEST <> IF drop 0 EXIT THEN
+   dup CP-ID swap CP-TYPE 0= IF negate THEN ;
+
+: CF-ARM-FACT ( n bool -- ) {: test:n truth:bool :}
+   test 0= IF EXIT THEN
+   test 0 > IF
+      truth 0= IF EXIT THEN
+   ELSE
+      truth IF EXIT THEN
+   THEN
+   FACTS @ test abs FACT-ADD FACTS !
+   DCUR @ ROW-VIEW DCUR !  RCUR @ ROW-VIEW RCUR ! ;
+
+: CF-JOIN-D ( n n -- n ) {: a:n b:n :}
+   a b ROW-JOIN-PREP {: ca:n cb:n :}
+   ca DCUR !  cb SUNI
+   DCUR @ ;
+
+: CF-JOIN-R ( n n -- n ) {: a:n b:n :}
+   a b ROW-JOIN-PREP {: ca:n cb:n :}
+   ca RCUR !  cb RSUNI
+   RCUR @ ;
+
+: CF-JOIN-LIVE ( n n n n n n -- )
+   {: da:n db:n ra:n rb:n fa:n fb:n :}
+   fa fb FACT-MEET JOIN-FACTS !
+   da db CF-JOIN-D DCUR !
+   ra rb CF-JOIN-R RCUR !
+   JOIN-FACTS @ FACTS ! ;
+
+: CF-ENTRY-FACTS ( -- )
+   CF-TOP CF.FA @ FACTS !
+   DCUR @ ROW-VIEW DCUR !  RCUR @ ROW-VIEW RCUR ! ;
+
+: CF-CARRIED= ( n n n n -- ) {: da:n db:n ra:n rb:n :}
+   da db ROW-META=  ra rb ROW-META= and 0= IF CF-FAIL THEN ;
+
+: CF-LOOP-FACTS ( -- )
+   CF-TOP CF.FA @ FACTS !
+   DCUR @ ROW-VIEW DCUR !  RCUR @ ROW-VIEW RCUR ! ;
+
 : CF-IF   \ IF consumes a flag (bool or a block-uniform uniform<bool>)
+   CF-TEST-ID {: test:n :}
    COND-UNIFORM? {: uni:bool :}
    uni IF STEP-UNIFORM-BOOL-IN ELSE STEP-BOOL-IN THEN
    #CFC @ {: n0:n :}
    1 DCUR @ 0 RCUR @ 0 CF-PUSH
+   test CF-TOP CF.FT !
+   test RES-TRUE CF-ARM-FACT
    uni  #CFC @ n0 >  and IF -1 CF-TOP CF.UNI ! THEN ;
 
 : CF-CASE ( -- )
@@ -12735,12 +13120,16 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    OK @ 0= IF EXIT THEN
    DEADP @ IF EXIT THEN
    idx CF-CASE-HAS? IF
-      idx CF-CASE-DATA@ SUNI
-      idx CF-CASE-RET@ RSUNI
+      idx CF-CASE-DATA@ DCUR @ idx CF-CASE-RET@ RCUR @
+      idx CF-ROW CF.FB @ FACTS @ CF-JOIN-LIVE
+      DCUR @ idx CF-CASE-DATA!
+      RCUR @ idx CF-CASE-RET!
+      FACTS @ idx CF-ROW CF.FB !
       idx CF-ROW CF.LB @ CF-LOOPS=
    ELSE
       DCUR @ idx CF-CASE-DATA!
       RCUR @ idx CF-CASE-RET!
+      FACTS @ idx CF-ROW CF.FB !
       CF-LOOPS @ idx CF-ROW CF.LB !
       idx CF-CASE-HAS!
    THEN ;
@@ -12763,6 +13152,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
       0 DEADP !
       CF-DROP
       CTMP @ DCUR !  RTMP @ RCUR !
+      CF-ENTRY-FACTS
    THEN THEN ;
 
 : CF-ENDCASE ( -- )
@@ -12771,6 +13161,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
       #CFC @ 1 - CF-CASE-ACCUM
       CF@DED 0 <> IF
          CF@B DCUR !  CF@RB RCUR !  0 DEADP !
+         CF-TOP CF.FB @ FACTS !
          CF@LB CF-LOOPS !
       ELSE
          -1 DEADP !
@@ -12788,6 +13179,9 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
      2 CF-TOP CF.KND !
      CTMP @ CF-TOP CF.SB !
      RTMP @ CF-TOP CF.RB !
+     FACTS @ CF-TOP CF.FB !
+     CF-ENTRY-FACTS
+     CF-TOP CF.FT @ RES-FALSE CF-ARM-FACT
      CF-LOC-REST
    THEN THEN ;
 
@@ -12798,14 +13192,15 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
       if-dead IF
          -1 DEADP !
       ELSE
-         CF@B DCUR !  CF@RB RCUR !  0 DEADP !
+         CF@B DCUR !  CF@RB RCUR !  CF-TOP CF.FB @ FACTS !  0 DEADP !
          CF@LB CF-LOOPS !
       THEN
    ELSE
       if-dead IF
          0 DEADP !
       ELSE
-         CF@B SUNI  CF@RB RSUNI  0 DEADP !
+         CF@B DCUR @ CF@RB RCUR @ CF-TOP CF.FB @ FACTS @ CF-JOIN-LIVE
+         0 DEADP !
          CF@LB CF-LOOPS=
       THEN
    THEN ;
@@ -12814,8 +13209,19 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    CF-MT? IF CF-FAIL ELSE
      CF@K 1 = IF                                          \ IF ... THEN (no else)
         DEADP? IF
-           CF@A DCUR !  CF@RA RCUR !  CF@LA CF-LOOPS !  0 DEADP !
-        ELSE CF@A SUNI  CF@RA RSUNI  CF@LA CF-LOOPS= THEN
+           CF@A DCUR !  CF@RA RCUR !  CF-ENTRY-FACTS
+           CF-TOP CF.FT @ RES-FALSE CF-ARM-FACT
+           CF@LA CF-LOOPS !  0 DEADP !
+        ELSE
+           DCUR @ {: true-d:n :}  RCUR @ {: true-r:n :}
+           FACTS @ {: true-f:n :}
+           CF@A {: entry-d:n :}  CF@RA {: entry-r:n :}
+           CF-TOP CF.FA @ FACTS !
+           entry-d DCUR !  entry-r RCUR !
+           CF-TOP CF.FT @ RES-FALSE CF-ARM-FACT
+           DCUR @ true-d RCUR @ true-r FACTS @ true-f CF-JOIN-LIVE
+           CF@LA CF-LOOPS=
+        THEN
         CF-LOC-REST  CF-DROP
      ELSE CF@K 2 = IF                                     \ IF ... ELSE ... THEN
         CF-THEN-ELSE-MERGE
@@ -12825,9 +13231,12 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 : CF-EXIT ( -- )
    -1 WRAPBENT !
    CF-LOOPS @ 0 <> IF CF-FAIL EXIT THEN
-   XSET @ IF  DCUR @ XROW @ UNIFY OK @ and OK !
-              RCUR @ XRROW @ UNIFY OK @ and OK !
-   ELSE  DCUR @ XROW !  RCUR @ XRROW !  -1 XSET ! THEN
+   XSET @ IF
+      XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE
+      DCUR @ XROW !  RCUR @ XRROW !  FACTS @ XFACT !
+   ELSE
+      DCUR @ XROW !  RCUR @ XRROW !  FACTS @ XFACT !  -1 XSET !
+   THEN
    -1 DEADP ! ;
 
 : CF-UNLOOP ( -- )
@@ -12841,14 +13250,21 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 : CF-UNTIL
    STEP-BOOL-IN
    CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
-     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !
+     DEADP? 0= IF
+        CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
+        CF@A SUNI  CF@RA RSUNI
+     THEN
+     CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
      CF@LA CF-LOOPS=
      CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-AGAIN ( -- )
    CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
-     DEADP? 0= IF CF@A SUNI  CF@RA RSUNI  CF@LA CF-LOOPS= THEN
-     CF@A DCUR !  CF@RA RCUR !
+     DEADP? 0= IF
+        CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
+        CF@A SUNI  CF@RA RSUNI  CF@LA CF-LOOPS=
+     THEN
+     CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
      CF-LOC-REST  CF-DROP  -1 DEADP ! THEN THEN ;
 
 : CF-WHILE
@@ -12862,8 +13278,12 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 
 : CF-REPEAT
    CF-MT? IF CF-FAIL ELSE CF@K 4 <> IF CF-FAIL ELSE
-     DEADP? 0= IF CF@A SUNI  CF@RA RSUNI  CF@LA CF-LOOPS= THEN
-     CF@B DCUR !  CF@RB RCUR !  CF@LB CF-LOOPS !  0 DEADP !
+     DEADP? 0= IF
+        CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
+        CF@A SUNI  CF@RA RSUNI  CF@LA CF-LOOPS=
+     THEN
+     CF@B DCUR !  CF@RB RCUR !  CF-LOOP-FACTS
+     CF@LB CF-LOOPS !  0 DEADP !
      CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-DO ( -- )
@@ -12882,11 +13302,13 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    CF-MT? IF CF-FAIL ELSE CF@K 5 <> IF CF-FAIL ELSE
      DEADP @ IF CF@DED 0= DEADP !
      ELSE
+        CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI  CF@RA RSUNI
         #CFC @ 1 - CF-LOOP-BIT CF@LA or CF-LOOPS=
      THEN
      CF@LA CF-LOOPS !
-     CF@A DCUR !  CF@RA RCUR !  CF-LOC-REST  CF-DROP THEN THEN ;
+     CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
+     CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-+LOOP
    DEADP? 0= IF STEP-N-IN THEN
@@ -12918,6 +13340,8 @@ variable LVDO  variable LVDN
    CF-FINDDO
    LVDO @ 0< IF CF-FAIL ELSE
      LVDO @ CF-LOOP-BIT LVDO @ CF-ROW CF.LA @ or CF-LOOPS=
+     LVDO @ CF-ROW CF.SA @ DCUR @
+     LVDO @ CF-ROW CF.RA @ RCUR @ CF-CARRIED=
      LVDO @ CF-ROW CF.SA @ SUNI
      LVDO @ CF-ROW CF.RA @ RSUNI
      -1 LVDO @ CF-ROW CF.DED !
@@ -12927,10 +13351,11 @@ variable LVDO  variable LVDN
    6  DCUR @  BROW @  RCUR @  RBROW @  CF-PUSH
    0 CF-LOOPS !
    XROW @ CF-TOP CF.XRO !  XRROW @ CF-TOP CF.XRR !
+   XFACT @ CF-TOP CF.XFA !
    XSET @ CF-TOP CF.XST !  DEADP @ CF-TOP CF.XDP !
    THDMASK @ CF-TOP CF.TXD !  THRMASK @ CF-TOP CF.TXR !
    THSET @ CF-TOP CF.TXS !
-   0 XSET !  0 DEADP !  0 THSET !
+   0 XSET !  0 XFACT !  0 DEADP !  0 THSET !  0 FACTS !
    QDEPTH @ 1 + QDEPTH !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
@@ -12940,14 +13365,18 @@ variable QTMP
 : CF-SEMIQ  \ ;] — quot<nested effect> pushed onto the restored outer row
    CF-MT? IF CF-FAIL ELSE CF@K 6 <> IF CF-FAIL ELSE
      XSET @ IF                                   \ fold the quote's OWN early returns into its effect
-       DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !
-       ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
+       DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
+       ELSE
+          XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE
+       THEN
      THEN
+     DCUR @ ROW-NO-PROOF DCUR !  RCUR @ ROW-NO-PROOF RCUR !
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
      \ A literal infers its fixed window before its implicit tails generalize.
      QTMP @ QUOT-ROWS-GENERALIZE
      QTMP @ THSET @ DEADP @ XSET @ 0= and THDMASK @ XMASK THRMASK @ XMASK QX!
      CF-TOP CF.XRO @ XROW !  CF-TOP CF.XRR @ XRROW !
+     CF-TOP CF.XFA @ XFACT !
      CF-TOP CF.XST @ XSET !  CF-TOP CF.XDP @ DEADP !  \ restore outer exit state
      CF-TOP CF.TXD @ THDMASK !  CF-TOP CF.TXR @ THRMASK !
      CF-TOP CF.TXS @ THSET !
@@ -12955,6 +13384,7 @@ variable QTMP
      QDEPTH @ 1 - QDEPTH !
      CF@B BROW !  CF@RB RBROW !
      CF@RA RCUR !
+     CF-TOP CF.FA @ FACTS !
      QTMP @  CF@A  MK-PUSH DCUR !
      CF-LOC-REST
      CF-DROP THEN THEN ;
@@ -13169,6 +13599,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    {: fam:n :}
    #CFC @ 30 > IF MD-DEPTH MDIAG! MATCH-REJECT EXIT THEN   \ two CFS frames per match: reject, never UNCK
    fam MATCH-SCRUT? 0= IF fam MATCH-SCRUT-DIAG MATCH-REJECT EXIT THEN
+   DCUR @ MTCH-W @ ROW-TOP-LOST {: lost:n :}
    MTCH-W @ MWIN-CELLS!                      \ the bundle a cell-accurate consumer has to pop
    MF-ENSURE
    MF-DEPTH @ 1 + MF-DEPTH !
@@ -13183,6 +13614,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    TOKIX @ r MF.TIX !
    MTCH-ROW @ DCUR !                         \ bundle popped; branches re-derive their rows
    9 DCUR @ 0 RCUR @ 0 CF-PUSH
+   lost CF-TOP CF.FT !
    2 MM ! ;
 
 : MATCH-ACCUM ( -- )
@@ -13190,13 +13622,17 @@ variable MTCH-W                      \ the bundle width the walk below really co
    DEADP @ IF EXIT THEN
    MF-CUR MF.HAS @ 0 <> IF
       FAILSET @ {: fs0:n :}                   \ SUNI pins the token itself: latch the
-      MF-CUR MF.OUT @ SUNI                    \ join reason only when THIS unify failed
-      MF-CUR MF.ROUT @ RSUNI
+      MF-CUR MF.OUT @ DCUR @ MF-CUR MF.ROUT @ RCUR @
+      #CFC @ 2 - CF-ROW CF.FB @ FACTS @ CF-JOIN-LIVE
+      DCUR @ MF-CUR MF.OUT !
+      RCUR @ MF-CUR MF.ROUT !
+      FACTS @ #CFC @ 2 - CF-ROW CF.FB !
       #CFC @ 2 - CF-ROW CF.LB @ CF-LOOPS=
       OK @ 0=  fs0 0=  and  MDIAG @ 0=  and IF MD-JOIN MDIAG ! THEN
    ELSE
       DCUR @ MF-CUR MF.OUT !
       RCUR @ MF-CUR MF.ROUT !
+      FACTS @ #CFC @ 2 - CF-ROW CF.FB !
       CF-LOOPS @ #CFC @ 2 - CF-ROW CF.LB !
       -1 MF-CUR MF.HAS !
    THEN ;
@@ -13209,6 +13645,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    0 DEADP !
    MF-CUR MF.BASE @ DCUR !
    MF-CUR MF.RBASE @ RCUR !
+   CF-ENTRY-FACTS
    2 MM ! ;
 
 : MATCH-SEMI ( -- )    \ ;match at variant-list level: exhaustiveness + join
@@ -13226,11 +13663,13 @@ variable MTCH-W                      \ the bundle width the walk below really co
    MF-CUR MF.HAS @ 0 <> IF
       MF-CUR MF.OUT @ DCUR !
       MF-CUR MF.ROUT @ RCUR !
+      CF-TOP CF.FB @ FACTS !
       CF@LB CF-LOOPS !
       0 DEADP !
    ELSE
       MF-CUR MF.BASE @ DCUR !
       MF-CUR MF.RBASE @ RCUR !
+      CF-TOP CF.FA @ FACTS !
       -1 DEADP !                             \ every branch exited: no normal continuation
    THEN
    CF-LOC-REST
@@ -13254,8 +13693,13 @@ variable MTCH-W                      \ the bundle width the walk below really co
    MF-CUR {: r:ptr :}
    r MF.BASE @ DCUR !
    r MF.RBASE @ RCUR !
+   CF-ENTRY-FACTS
    MPEND @ 0 < 0= IF
       MPEND @  r MF.TERM @  DCUR @  MATCH-PAY-XT DCUR !
+      CF-TOP CF.FT @ 0 <> IF
+         DCUR @ ROW-TERMS r MF.BASE @ ROW-TERMS - 0 max {: count:n :}
+         DCUR @ count -1 ROW-TOP-OUTPUT-LOSS DCUR !
+      THEN
       DCUR @ r MF.BASE @ MATCH-PAYLOAD-RECORD
    THEN
    10  r MF.BASE @  0  r MF.RBASE @  0  CF-PUSH
@@ -14142,12 +14586,8 @@ variable IS-PEND-U                   \ and its length
 \ is excluded on purpose — it branches on the top (tag) cell, width-breaking
 \ for a sum whose tag 0 is a valid variant.
 \ Transport mode keys on the FOLDED TOKEN NAME, and DO-TOK consults user sigs
-\ before prims, so a user word spelled dup/swap/... can bind a layout through
-\ its polymorphic effect. This is sound because the name implies a builtin or
-\ a checked/audited definition: a CHECKED shadow's effect is verified against
-\ its body, which can only move the value it binds; a TRUSTED shadow is
-\ already a named, audited trusted boundary whose declared effect is the
-\ audit's responsibility.
+\ before prims. The token is admitted to transport mode only after its current
+\ binding matches the registered global primitive and retains CTL-CORE-OP.
 : LAYOUT-XPORT-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" dup"   CORE-STR= IF RES-TRUE EXIT THEN
    a u s" drop"  CORE-STR= IF RES-TRUE EXIT THEN
@@ -14316,7 +14756,9 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !
    TKF TKFU @ s" xt!" CORE-STR= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
-   TKF TKFU @ LAYOUT-XPORT-TOK? LAYOUT-XPORT !    \ transport op? layout value moves whole
+   TKF TKFU @ LAYOUT-XPORT-TOK? IF
+      TKF TKFU @ CORE-BINDING?
+   ELSE RES-FALSE THEN LAYOUT-XPORT !
    TOK0 @ IF NAME-TOK ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
    LMODE @ IF a TKF TKFU @ LOC-TOK ELSE
@@ -15102,7 +15544,7 @@ defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
    src E-PTR 0 ASIG-GRAPH-PTR E-WIRE-COPY
    ASIG-GRAPH-MAGIC 0 ASIG-GRAPH-PTR EW.ACTIVE !
    0 0 ASIG-GRAPH-PTR EW.SYMPREV !
-   \ Flags and defer only: CK-GRAPH-REC refuses an EW.SYM outside $1000F, so a
+   \ Flags and defer only: CK-GRAPH-REC accepts CTL-GRAPH-FLAGS, so a
    \ captured graph carries no intact masks and a seeded signature's callee is
    \ read back with none. Widening that word is a version of this format.
    sym CTL-FLAGS-SYM
@@ -15393,7 +15835,7 @@ variable CK-GRAPH-WIDTH-BAD
    0 CK-GRAPH-PTR {: rec:ptr :}
    rec EW.ACTIVE @ ASIG-GRAPH-MAGIC <> IF ASIG-GRAPH-DIE THEN
    rec EW.NEXT @ bytes <> IF ASIG-GRAPH-DIE THEN
-   rec EW.SYMPREV @ 0 <> rec EW.SYM @ $1000F invert and 0 <> or IF ASIG-GRAPH-DIE THEN
+   rec EW.SYMPREV @ 0 <> rec EW.SYM @ CTL-GRAPH-FLAGS invert and 0 <> or IF ASIG-GRAPH-DIE THEN
    rec EW.HASR @ CK-GRAPH-BOOL?
    rec EW.HASR @ 0= IF rec EW.RIN @ rec EW.ROUT @ or 0 <> IF ASIG-GRAPH-DIE THEN THEN
    rec EW.TVN @ {: tvn:n :} rec EW.RVN @ {: rvn:n :}
@@ -15682,6 +16124,30 @@ ASIG-GRAPH-CHECK-INSTALL
    CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
    RES-TRUE CK-AOT-MISSES ;
 
+variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 other
+
+: ZSUMMARY-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   ZSHAPE @ 0= IF
+      a u s" 0=" CORE-STR= IF
+         a u CORE-BINDING? IF 1 ZSHAPE ! EXIT THEN
+      THEN
+      a u s" 0" CORE-STR= IF 2 ZSHAPE ! EXIT THEN
+   ELSE ZSHAPE @ 2 = IF
+      a u s" <>" CORE-STR= IF
+         a u CORE-BINDING? IF 3 ZSHAPE ! EXIT THEN
+      THEN
+   THEN THEN
+   -1 ZSHAPE ! ;
+
+: ZSUMMARY-EFFECT? ( -- bool )
+   SGSEEN @ 0= IF RES-FALSE EXIT THEN
+   SGIN @ ROW-TERMS 1 <> SGOUT @ ROW-TERMS 1 <> or IF RES-FALSE EXIT THEN
+   SGIN @ R-RES P>TYPE T-RES CC-N MK-CON <> IF RES-FALSE EXIT THEN
+   SGOUT @ R-RES P>TYPE T-RES CC-BOOL MK-CON <> IF RES-FALSE EXIT THEN
+   SGIN @ R-RES P>REST R-RES SGOUT @ R-RES P>REST R-RES <> IF RES-FALSE EXIT THEN
+   SGHASR @ IF SGRIN @ R-RES SGROUT @ R-RES <> IF RES-FALSE EXIT THEN THEN
+   RES-TRUE ;
+
 : CHECK-RESET {: a u :}
    RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    u TOKBUF-ENSURE
@@ -15689,6 +16155,7 @@ ASIG-GRAPH-CHECK-INSTALL
    WRAP-CLEAR
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
    0 CF-LOOPS !
+   0 ZSHAPE !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 XT-DECL !
@@ -15696,7 +16163,7 @@ ASIG-GRAPH-CHECK-INSTALL
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    NULL-PTR SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
-   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
+   0 FAILB !  0 FAILE !  0 XSET !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
    0 THDMASK !  0 THRMASK !  0 THSET !
    SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 NP-ORIG-N !  SG-ROWS-RESET
@@ -15818,7 +16285,9 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
             TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !
             0 IS-PEND !
          THEN
+         TOK0 @ {: was-name:bool :}
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
+         was-name 0= IF TSTART @ TADDR TI @ TSTART @ - ZSUMMARY-TOKEN THEN
          SCAN-TOKS @ 1 + SCAN-TOKS !
          CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
        THEN
@@ -15827,8 +16296,8 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 
 : CHECK-FOLD-EXITS ( -- )
    XSET @ IF                                         \ fold early-return states into the output
-     DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !         \ every path exited: output = accumulator
-     ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
+     DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
+     ELSE XROW @ DCUR @ XRROW @ RCUR @ XFACT @ FACTS @ CF-JOIN-LIVE THEN
    THEN ;
 
 : SGHASR? ( -- bool )
@@ -16092,6 +16561,10 @@ variable CTOR-PEND-I
       0 CTLNEW !
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
       THSET @ IF CTLNEW @ CTL-THROW or CTLNEW ! THEN
+      ZSUMMARY-EFFECT? IF
+         ZSHAPE @ 1 = IF CTLNEW @ CTL-ZERO-TRUE or CTLNEW ! THEN
+         ZSHAPE @ 3 = IF CTLNEW @ CTL-ZERO-FALSE or CTLNEW ! THEN
+      THEN
       \ The body's folded evidence, which is about the DECLARED input rows the
       \ edges were measured against (XBASE-D): with no declared signature there
       \ is no such row and nothing is claimed.
@@ -16371,6 +16844,9 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    0 DFER-END ! DFER-TERM
    CHECKER-ASIG-RESET
    SYMS-RETIRE-SOURCE
+   \ The reloaded primitives get fresh symbol ids. Rebind their facts before
+   \ the next checker source uses stack operators ahead of its own axiom table.
+   NORET-AXIOMS
    0 data-base $368 + ! ;  \ NCOMP-DISPATCH:TARGET-DECL-CELL
 REG-PROTECT
 package CHECKER-REG
@@ -17090,6 +17566,11 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
 \ spans.  They are inactive at the capture seam and must not carry the last
 \ checked source mapping into the engine.
 : CHECKER-LATE-CAPTURE-SCRATCH-PREPARE ( -- )
+   LOCVAL 0 LOC-CAP ARENA-CELLS-ZERO
+   XG-NODES 0 XG-TCAP ARENA-CELLS-ZERO
+   CFS 0 32 CFS-REC * CELL / ARENA-CELLS-ZERO
+   0 CATCH-PF-N !  0 CATCH-N !  0 FACTS !  0 XFACT !  0 JOIN-FACTS !
+   0 SV-PFN !  0 SV-FACTS !  0 LOC-CAP-HEAD !  0 ZSHAPE !
    NULL-PTR SV-SGBAD-A !  0 SV-SGBAD-U !
    NULL-PTR IS-TA !  0 IS-TU !
    NULL-PTR CAND-A !  0 CAND-U !

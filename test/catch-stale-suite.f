@@ -29,7 +29,18 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require lib/adt/option.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
 require test/checker-assert.f
+
+package CS-SHADOW
+public
+: 0= ( n -- bool ) drop true ;
+: 0<> ( n -- bool ) drop false ;
+;package
 
 package CATCH-STALE-TEST
 
@@ -57,6 +68,48 @@ variable CS-TICK
 : WKEEPTOP ( ptr u8 n -- ptr u8 n )       \ keeps the top cell, replaces the one below it
    swap drop 5 swap E-CS-BOOM throw ;
 : WRSWAP ( n | ptr u8 -- n | ptr u8 ) r> swap >r E-CS-BOOM throw ;  \ R2's body as a callee
+: WNUMBER-NEW ( -- n )
+   CS-TICK @ 0= if E-CS-BOOM throw then
+   31 ;
+: WNUMBER ( n -- n )
+   drop WNUMBER-NEW ;
+
+\ A caught callee can replace a return-window value before either outcome.
+\ Its successful replacement is read only after its own status is proved.
+83 constant E-CS-RETURN
+variable CS-RETURN-FAIL
+create CS-RETURN-OLD 1 allot
+create CS-RETURN-NEW 1 allot
+: CS-MAKE-RETURN ( -- n )
+   CS-RETURN-FAIL @ 0<> if E-CS-RETURN throw then
+   66 ;
+: CS-RETURN-READER ( n | ptr u8 -- n | ptr u8 )
+   r> drop CS-RETURN-NEW >r
+   drop CS-MAKE-RETURN ;
+: CS-RETURN-GUARD ( n -- ptr u8 )
+   dup 0< if 1 else 0 then CS-RETURN-FAIL !
+   CS-RETURN-OLD >r [: CS-RETURN-READER ;] catch {: code:n :}
+   code 0<> if drop r> drop code throw then
+   drop r> ;
+: CS-RETURN-NEW? ( ptr u8 -- bool ) CS-RETURN-NEW = ;
+: OUTER-ZERO-QUOTE ( n -- n )
+   drop
+   [: 5 ['] WNUMBER catch dup 0= if drop 1+ else 2drop 0 then ;] execute
+   E-CS-BOOM throw ;
+: OUTER-PARTIAL-QUOTE ( ptr u8 n -- ptr u8 n )
+   [: swap dup drop swap ['] WNUMBER catch
+      dup 0= if drop 1+ else 2drop 0 then ;] catch drop
+   E-CS-BOOM throw ;
+: INNER-LATER ( n n -- n n )
+   [: WNUMBER ;] catch {: code:n :}
+   code 0<> if drop code throw then
+   swap 91 throw ;
+: CODE-REPLACE ( n -- n )
+   CS-TICK @ 0= if E-CS-BOOM throw then
+   drop 0 ;
+: SWAP-CODES ( a a -- a a ) swap ;
+: ORDINARY-ZERO ( -- n ) 0 ;
+: ANY-ZERO? ( n -- bool ) drop true ;
 
 \ Checker-internal readers probed at top level go through named trusted shims
 \ (the type-export-suite boundary): CTL-MASKS is the store's own answer for a
@@ -101,6 +154,192 @@ create CS-DBUF 8192 allot
    \ same ordinary mismatch)
    s" R5 ( ptr u8 -- n ) [: WBOOM ;] catch {: v:n code:n :} code" CS-CODE<
    CS-STALE?  CS-CODE-END ;
+
+\ A zero branch proves only the matching catch completed normally. Equal
+\ numbers, another catch, and a predicate with the same effect cannot stand in
+\ for its code. The reader overwrites its input on both real paths.
+: CS-SECTION-PROOF ( -- )
+   s" P1 ( n n -- n ) [: WNUMBER ;] catch {: a ca:n :} [: WNUMBER ;] catch {: b cb:n :} cb 0= if a 1+ else 0 then" CS-CODE<
+   CS-STALE? CS-CODE-END
+   s" P2 ( n -- n ) [: WNUMBER ;] catch {: v code:n :} 0 0= if v 1+ else 0 then" CS-CODE<
+   CS-STALE? CS-CODE-END
+   s" P3 ( n -- n ) [: WNUMBER ;] catch {: v code:n :} ORDINARY-ZERO 0= if v 1+ else 0 then" CS-CODE<
+   CS-STALE? CS-CODE-END
+   s" P4 ( n -- n ) [: WNUMBER ;] catch {: code:n :} code 0<> if 1+ else drop 0 then" CS-CODE<
+   CS-STALE? CS-CODE-END
+   s" P5 ( option<cspt> -- n ) [: CS-BUNDLE-THROW ;] catch {: code:n :} code 0<> if CS-READ-BUNDLE else drop 0 then" CS-CODE<
+   CS-STALE? CS-CODE-END
+   s" P6 ( n -- n ) [: WNUMBER ;] catch {: old code:n :} [: ;] catch {: later:n :} later 0= if old 1+ else 0 then" CS-CODE<
+   CS-STALE? CS-CODE-END
+   s" P7 ( n -- n ) [: WNUMBER ;] catch {: code:n :} code 0= if 1+ else then 1+" CS-CODE<
+   CS-STALE? CS-CODE-END
+   s" P8 ( n -- n ) [: WNUMBER ;] catch {: v code:n :} 1 1 = if code else 0 then 0= if v 1+ else 0 then" CS-CODE<
+   CS-STALE? CS-CODE-END
+   s" P9 ( n -- n ) [: WNUMBER ;] catch {: v code:n :} code ANY-ZERO? if v 1+ else 0 then" CS-CODE<
+   CS-STALE? CS-CODE-END
+   s" P10 ( n -- n ) [: WNUMBER ;] catch {: v code:n :} code CS-SHADOW:0= if v 1+ else 0 then" CS-CODE<
+   CS-STALE? CS-CODE-END
+   s" P11 ( n -- n ) [: WNUMBER ;] catch {: v code:n :} code CS-SHADOW:0<> if 0 else v 1+ then" CS-CODE<
+   CS-STALE? CS-CODE-END
+   \ Iteration one may skip the read on failure. Iteration two must not treat the
+   \ loop-carried ordinary zero as the original status, even after it was
+   \ checked on the first pass. The changed back-edge proof is E-REJECTED.
+   s" P12 ( n -- ) [: WNUMBER ;] catch swap {: v :} 2 0 do dup 0= if v 1+ drop then drop 0 loop drop" CS-CODE<
+   s\" \"code\":\"E-REJECTED\"" CS-CODE? CS-CODE-END
+   \ Success of the inner catch does not retroactively preserve the original
+   \ input on a later throw through the enclosing catch.
+   s" P13 ( n n -- n ) [: INNER-LATER ;] catch {: outer:n :} drop 1+" CS-CODE<
+   CS-STALE? CS-CODE-END
+   \ B's failure can preserve A's code, while B's success replaces it with an
+   \ ordinary zero. A zero B code cannot certify the old A result.
+   s" P14 ( n -- n ) [: WNUMBER ;] catch swap {: old :} [: CODE-REPLACE ;] catch {: later:n :} later 0= if 0= if old 1+ else 0 then else drop 0 then" CS-CODE<
+   CS-STALE? CS-CODE-END
+   \ A declared polymorphic effect cannot identify which equal-typed status it returned.
+   s" P15 ( n n -- n ) [: WNUMBER ;] catch {: a ca:n :} [: WNUMBER ;] catch {: b cb:n :} ca cb SWAP-CODES drop 0= if a 1+ else 0 then" CS-CODE<
+   CS-STALE? CS-CODE-END
+   \ Facts established in one CASE or MATCH sibling must not authorize another.
+   s" P16 ( n -- n ) [: WNUMBER ;] catch {: v code:n :} 0 case 0 of code 0= if v 1+ else 0 then endof 1 of v 1+ endof 0 swap endcase" CS-CODE<
+   CS-STALE? CS-CODE-END
+   s" P17 ( option<cspt> n -- n ) [: WNUMBER ;] catch {: v code:n :} MATCH option none OF code 0= if v 1+ else 0 then ENDOF some OF drop v 1+ ENDOF ;MATCH" CS-CODE<
+   CS-STALE? CS-CODE-END
+   \ An outer proof survives a neutral loop; an inner proof is spent per turn.
+   s" P18 ( n -- n ) [: WNUMBER ;] catch {: v code:n :} code 0= if 2 0 do v 1+ drop loop v 1+ else 0 then"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" P19 ( n -- n ) 2 0 do 0 [: WNUMBER ;] catch {: v code:n :} code 0= if v 1+ drop then loop"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   \ A zero-input quotation still exports a result derived from an internal
+   \ guarded catch. Losing that result's lineage would forge an intact outer n.
+   s" P20 ( n -- n ) ['] OUTER-ZERO-QUOTE catch drop 1+" CS-CODE<
+   CS-STALE? CS-CODE-END ;
+
+: CS-SECTION-PROOF-PRECISION ( -- )
+   \ Two tests of one status mint equivalent facts on sibling paths. Their
+   \ join must keep the successful branch's value proof.
+   s" two equivalent status tests retain proof" T-LABEL
+   s" PP1 ( n bool -- n ) swap [: WNUMBER ;] catch {: v code:n :} if code 0= else code 0= then if v 1+ else 0 then"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   \ The quotation only replaces its numeric output; the pointer below it
+   \ remains intact when the enclosing word throws.
+   s" normal output loss stays with its occurrence" T-LABEL
+   s" PP2 ( ptr u8 n -- n ) ['] OUTER-PARTIAL-QUOTE catch {: code:n :} drop c@"
+      CHECK-QUIET-CANDIDATE! -1 T= ;
+
+\ Candidate checks isolate the diagnostic. These two children enter the
+\ enforcing check-tool load path, which reports the named code as JSON.
+4096 constant CS-CHILD-CAP
+create CS-CHILD-OUT CS-CHILD-CAP allot
+create CS-CHILD-ERR CS-CHILD-CAP allot
+create CS-CHILD-EMPTY 1 allot
+
+: CS-HB$ ( -- ptr u8 n )
+   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
+   2drop
+   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
+
+: CS-LOAD-WITH ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n hb:ptr hbu:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" --json-errors" >LEN PROC-ARGV+
+   path pathu >LEN PROC-ARGV+
+   hb hbu >LEN CS-CHILD-EMPTY 0 >LEN
+   CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
+   10000 >MS RUN-ARGV-STDIN-CAPTURE
+   MATCH result
+      ok OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF
+      err OF PCAP-FAILED:UNMAKE {: out:len err:len rc:rc :}
+         rc RC>N 70 T=
+         CS-CHILD-ERR err LEN>N s\" \"code\":\"E-STALE-READ\"" CONTAINS? TTRUE
+      ENDOF
+   ;MATCH ;
+
+: CS-LOAD-REFUSAL ( ptr u8 n -- ) CS-HB$ CS-LOAD-WITH ;
+
+: CS-SECTION-LOAD ( -- )
+   s" check-tool load refuses a plain-zero status" T-LABEL
+   s" test/catch-success-wrong-status.f" CS-LOAD-REFUSAL
+   s" check-tool load refuses a live failure join" T-LABEL
+   s" test/catch-success-unsafe-join.f" CS-LOAD-REFUSAL ;
+
+\ Definition control summaries survive APP-IMAGE:SAVE. Execute the guarded
+\ source from the restored image, then load fresh unsafe source against that
+\ same image so stale and zero-test semantics must still be enforced.
+create CS-IMAGE-ROOT-BUF FS-PATH-CAP allot
+create CS-IMAGE-PATH-BUF FS-PATH-CAP allot
+variable CS-IMAGE-ROOT-U
+variable CS-IMAGE-PATH-U
+variable CS-CHILD-OUT-U
+variable CS-CHILD-ERR-U
+
+: CS-IMAGE-ROOT$ ( -- ptr u8 n ) CS-IMAGE-ROOT-BUF CS-IMAGE-ROOT-U @ ;
+: CS-IMAGE$ ( -- ptr u8 n ) CS-IMAGE-PATH-BUF CS-IMAGE-PATH-U @ ;
+
+: CS-IMAGE-PREPARE ( -- )
+   s" habu-catch-success" HB-TMP-MKDIR {: path:ptr size:n :}
+   path CS-IMAGE-ROOT-BUF size BYTE-COPY
+   size CS-IMAGE-ROOT-U !
+   CS-IMAGE-ROOT$ CLEANUP-TREE+
+   CS-IMAGE-ROOT$ s" saved-hb" CS-IMAGE-PATH-BUF JOIN-PATH
+   CS-IMAGE-PATH-U ! ;
+
+: CS-IMAGE-RC ( result<pcap:captured,pcap:failed> -- n )
+   MATCH result
+      ok OF PCAP-CAPTURED:UNMAKE {: out:len err:len :}
+         out LEN>N CS-CHILD-OUT-U !
+         err LEN>N CS-CHILD-ERR-U !
+         0 ENDOF
+      err OF PCAP-FAILED:UNMAKE {: out:len err:len rc:rc :}
+         out LEN>N CS-CHILD-OUT-U !
+         err LEN>N CS-CHILD-ERR-U !
+         rc RC>N ENDOF
+   ;MATCH ;
+
+: CS-IMAGE-BUILD ( -- )
+   PROC-ARGV-RESET
+   s" --" >LEN PROC-ARGV+
+   CS-IMAGE$ >LEN PROC-ARGV+
+   CS-HB$ >LEN
+   S\" require src/habu/app-image.f\nrequire test/catch-success-image-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
+   180000 >MS RUN-ARGV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
+   CS-IMAGE$ EXECUTABLE? TTRUE ;
+
+: CS-IMAGE-RUN ( -- )
+   PROC-ARGV-RESET
+   CS-IMAGE$ >LEN
+   S\" CATCH-IMAGE:RUN\ns\" test/catch-success-image-consumer.f\" included\n" >LEN
+   CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
+   10000 >MS RUN-ARGV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
+   CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image: ok" CONTAINS? TTRUE
+   CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-fresh: ok" CONTAINS? TTRUE ;
+
+: CS-SAVED-REFUSAL ( ptr u8 n ptr u8 n -- )
+   {: src:ptr size:n want:ptr wantu:n :}
+   PROC-ARGV-RESET
+   CS-IMAGE$ >LEN src size >LEN
+   CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
+   10000 >MS RUN-ARGV-STDIN-CAPTURE CS-IMAGE-RC 70 T=
+   CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-load: began" CONTAINS? TTRUE
+   CS-CHILD-ERR CS-CHILD-ERR-U @ s" stale cell" CONTAINS? TTRUE
+   CS-CHILD-ERR CS-CHILD-ERR-U @ want wantu CONTAINS? TTRUE ;
+
+: CS-IMAGE-BODY ( -- )
+   CS-IMAGE-BUILD
+   CS-IMAGE-RUN
+   S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-wrong-status.f\" included\n"
+      s" wrong-status" CS-SAVED-REFUSAL
+   S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-override.f\" included\n"
+      s" unsafe" CS-SAVED-REFUSAL ;
+
+: CS-SECTION-IMAGE ( -- )
+   s" a saved image executes a guarded catch and still refuses forged proof" T-LABEL
+   CLEANUP-RESET
+   CS-IMAGE-PREPARE
+   [: CS-IMAGE-BODY ;] catch {: code:n :}
+   CLEANUP-RUN
+   code 0<> if code throw then ;
 
 \ ---- where a throw edge comes from ------------------------------------------
 \ A callee that throws counts as overwriting every input it declared UNLESS its
@@ -222,6 +461,8 @@ PRODUCT cspt 0
 : CS-SOME ( -- option<cspt> ) CS-PT OPTION:SOME ;
 : CS-BUNDLE-THROW ( option<cspt> -- option<cspt> )   \ overwrites the bundle, then throws
    drop CS-SOME E-CS-BOOM throw ;
+: CS-BUNDLE-MAYBE ( option<cspt> -- option<cspt> )
+   drop CS-SOME CS-TICK @ 0= IF E-CS-BOOM throw THEN ;
 : CS-READ-BUNDLE ( option<cspt> -- n )               \ a declared logical input: a read
    MATCH option
       none OF 0 ENDOF
@@ -230,6 +471,9 @@ PRODUCT cspt 0
 : CS-BUNDLE-RT ( cspt option<cspt> -- n )            \ one drop for the stale bundle, one for the cspt
    [: CS-BUNDLE-THROW ;] catch {: rc:n :}
    drop drop rc ;
+: CS-BUNDLE-GUARD ( option<cspt> -- n )
+   [: CS-BUNDLE-MAYBE ;] catch {: o code:n :}
+   code 0= IF o CS-READ-BUNDLE ELSE 0 THEN ;
 
 : CS-SECTION-BUNDLES ( -- )
    \ the stale bundle is dropped by ONE drop, the cspt below it by the other
@@ -254,6 +498,11 @@ PRODUCT cspt 0
    \ transport moves the group whole: `nip` takes the scalar out from under it
    s" B7 ( n option<cspt> -- ) [: CS-BUNDLE-THROW ;] catch {: rc:n :} nip drop"
       CHECK-QUIET-CANDIDATE! -1 T=
+   \ The entire captured group gets the normal view under its own status guard.
+   s" B8 ( option<cspt> -- n ) [: CS-BUNDLE-MAYBE ;] catch {: o code:n :} code 0= if o CS-READ-BUNDLE else 0 then"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   1 CS-TICK ! CS-SOME CS-BUNDLE-GUARD 42 T=
+   0 CS-TICK ! CS-SOME CS-BUNDLE-GUARD 0 T=
    \ B1's shape, run: the drops agree with the checker on the bundle's width
    CS-PT CS-SOME CS-BUNDLE-RT E-CS-BOOM T= ;
 
@@ -340,8 +589,14 @@ TYPED-VARIABLE CS-XT [ ptr u8 -- ptr u8 ]
 
 : RUN ( -- )
    T-RESET
+   s" caught return replacement needs its matching success status" T-LABEL
+   1 CS-RETURN-GUARD CS-RETURN-NEW? TTRUE
+   [: -1 CS-RETURN-GUARD drop ;] E-CS-RETURN TTHROWSQ
    CS-SECTION-REPRODUCERS
    CS-SECTION-READS
+   CS-SECTION-PROOF
+   CS-SECTION-PROOF-PRECISION
+   CS-SECTION-LOAD
    CS-SECTION-EDGES
    CS-SECTION-CALLEES
    CS-SECTION-RECORDED
@@ -350,6 +605,7 @@ TYPED-VARIABLE CS-XT [ ptr u8 -- ptr u8 ]
    CS-SECTION-BUNDLES
    CS-SECTION-RUNTIME
    CS-SECTION-TICK
+   CS-SECTION-IMAGE
    T-REPORT ;
 
 RUN

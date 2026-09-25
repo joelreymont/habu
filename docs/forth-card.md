@@ -91,6 +91,12 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 67 |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
 
+A caught result becomes readable on the success arm of core `code 0=` (or the
+false arm of core `code 0<>`) only when `code` is that catch's own status.
+Another zero or a shadowed predicate proves nothing. The value remains marked
+as replaced for a later outer catch; quotations retain that mark on their
+explicit outputs, and loops reject a changed carried proof or mark.
+
 These classic words are absent — naming one is `E-UNDEFINED`.
 
 | absent | instead |

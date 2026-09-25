@@ -1405,11 +1405,20 @@ the rule.
   over `: WMAYBE ( ptr u8 -- ptr u8 ) dup c@ 0= IF E-CS-BOOM throw THEN ;`
   keeps the address typed while the same catch of a body that drops it, swaps
   it, binds it to a local or overwrites it on one arm still stales it. A stale
-  cell may be moved, dropped
-  or bound to an untyped local; `@`, `c@`, arithmetic, a typed local and the
-  definition's own declared output refuse it, and no refinement un-stales one —
-  the migration is to bind the value to a local BEFORE the catch, or to drop
-  the cell. The evidence is the identity of the row's term at the throw edge,
+  cell may be moved, dropped or bound to an untyped local; `@`, `c@`,
+  arithmetic, a typed local and the definition's own declared output refuse
+  an unguarded read. The exact code returned by that `catch` proves its normal
+  output on the success arm of core `0=` (or the false arm of core `0<>`), so
+  that arm may read the corresponding value. A different zero, a shadowed
+  predicate, or another catch's code proves nothing. The successful value
+  remains marked as physically replaced: if a later throw passes it through
+  an enclosing catch, that catch cannot treat it as intact. A live loop back
+  edge must carry the same status proof and replacement mark as its entry;
+  otherwise the loop is refused. Quotation application carries replacement
+  marks on its explicit outputs, including a zero-input quotation's internal
+  result, but no private success proof escapes its boundary. A declared
+  polymorphic effect transports types, not the identity of a particular
+  catch status. The evidence is the identity of the row's term at the throw edge,
   not unification: a quotation literal infers its window on a fresh row, so
   until the catch site fits it the window cells are unbound variables, and
   `( n -- n n ) [: drop 5 -99 throw ;] catch` is refused too — the value the

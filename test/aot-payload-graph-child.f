@@ -138,7 +138,7 @@ TRUSTED: NAMED-GRAPH ( ptr u8 n -- ptr u8 ) {: name:ptr u:n :}
    loop 79 throw NULL-PTR ;
 
 TRUSTED: CORRUPT ( -- )
-   s" authority-bits" MODE? IF $10 0 GRAPH EW.SYM ! THEN
+   s" authority-bits" MODE? IF $80 0 GRAPH EW.SYM ! THEN
    s" length" MODE? IF $7FFFFFFFFFFFFFFF 0 GRAPH EW.NEXT ! THEN
    s" cycle" MODE? IF 0 GRAPH dup EW.DIN @ swap DIN EN.B ! THEN
    s" tag" MODE? IF 99 0 GRAPH DIN EN.TAG ! THEN
