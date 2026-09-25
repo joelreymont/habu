@@ -21,6 +21,67 @@ the engine are `TF-SHA-CTX` and `SHA-DIGEST` in
 [`src/core/type-family-sha.f`](../src/core/type-family-sha.f), the checker's own,
 single-task because the checker is.
 
+## Migrating the former singleton SHA API
+
+The supported digest API requires caller-owned contexts. The former `SHA256`,
+`SHA256-RESET`, `SHA256-UPDATE`, `SHA256-FINAL`, `SHA256-FILE` and
+`SHA256-FILE-HEX` words were removed by commit `167bb9502a1052367d1221405be3e95125237d29`.
+This was an ownership change: one shared
+digest context cannot preserve two interleaved operations, even on one thread.
+Restoring aliases backed by shared scratch would restore that failure.
+
+Stack operands below are written in call order. `a u` is the input span,
+`out` has 32 writable bytes, and `hex` has 64 writable bytes.
+
+| Former call | Supported call |
+|---|---|
+| `a u out SHA256` | `ctx a u out SHA256-IN` |
+| `SHA256-RESET` | `ctx SHA256-BEGIN` |
+| `a u SHA256-UPDATE` | `ctx a u SHA256-FEED` |
+| `out SHA256-FINAL` | `ctx out SHA256-END` |
+| `path len out SHA256-FILE` | `fctx path len out SHA256-FILE-IN` |
+| `path len hex SHA256-FILE-HEX` | `fctx path len hex SHA256-FILE-HEX-IN` |
+| `out hex SHA256>HEX` | Unchanged |
+
+Reserve `SHA256-CTX-BYTES` for `ctx`, or `SHA256-FILE-CTX-BYTES` for `fctx`;
+use the constants instead of copying their sizes. Contexts must be cell-aligned.
+Keep one context per in-progress operation, owned by the request, document,
+worker or other caller whose lifetime encloses the whole digest. Pass that same
+context through helpers that append to a stream. A package-global context is
+appropriate only when the package explicitly permits one operation at a time.
+Call END once per BEGIN; restart with BEGIN before reuse. The file words still
+return a status cell, zero on success, which the caller must handle.
+
+For a mixed consumer, migrate every old call, including test/build utilities;
+adding the new constants to an old engine cannot supply these semantics.
+Keep serialized digest bytes and identifiers unchanged. Use a matching Habu
+source/engine pair; copying only `sha256.f` into a tree with another baked
+engine is not a supported upgrade.
+
+The existing `streaming-sha256` gate row runs
+[`tools/sha256-file-test.f`](../tools/sha256-file-test.f): known digests,
+incremental/interleaved streams, copied contexts, concurrent one-shot and file
+hashing, and file errors. From the root of a matching installed tree, give the
+test a private `HB_TMP` directory and run
+`bin/hb --load tools/sha256-file-test.f`.
+
+One qualified macOS ARM64 source/engine pair is Habu revision
+`f1b61d80a2ec6dbedf7d8fb3b9d3b9566c857d41` with engine SHA-256
+`730f69dac961702ea8593685d5f7641df32cf2d8d20725ba996b38f422e63aae`.
+Its `src/core/sha256.f` SHA-256 is
+`a172c4eaf032fb4958bd8e0307a14cbaedde73bd6208d21e71bf02e98c922b3e`.
+The installed pair's `VERIFICATION.md` records the source manifest, two
+byte-identical native engine generations, and all 490 passing native suites;
+the focused command above also passes on that pair. The engine is a macOS ARM64
+Mach-O executable, so it cannot qualify a Linux consumer. For another target,
+build and qualify a matching source/engine pair on that OS and architecture.
+
+Consumer acceptance additionally needs migration of every legacy call,
+including test and build utilities; its complete source check and gate; unchanged
+digest, identifier and exported-artifact comparisons; and its real server/build
+paths. Passing Habu's digest suite does not waive an independent consumer fixture
+failure.
+
 The package carries no key management: no derivation, no rotation, no storage
 format, no nonce counter. It moves one message.
 
