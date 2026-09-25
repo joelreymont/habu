@@ -79,6 +79,7 @@ variable SERVER-DONE
 variable SERVER-BAD
 variable SERVER-ERRNO
 variable SERVER-HITS
+variable SERVER-SERVED
 variable LAST-STATUS
 variable LAST-LEN
 variable LAST-CODE
@@ -406,7 +407,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : SERVE-ONE ( TCP4:connection -- ) {: conn:TCP4:connection :}
    conn REQ-READ 0= if conn TCP4:CLOSE PEER-STATUS exit then
    1 SERVER-HITS atomic-add drop
-   conn ROUTE ;
+   conn ROUTE
+   1 SERVER-SERVED atomic-add drop ;
 
 
 \ The wakeup connection that ends the accept loop carries no request, so the
@@ -716,26 +718,40 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    BODY-BUF 3 s" hel" T$= ;
 
 
+\ A timed-out client can return while the serial server still drains/closes
+\ that request. Complete its cleanup before the next case starts its timer.
+: WAIT-SERVED ( n -- ) {: want:n :}
+   mono-ns REQUEST-MS NS-PER-MS * + {: deadline:n :}
+   begin SERVER-SERVED atomic@ want < while
+      mono-ns deadline >= if E-PROC-TIMEOUT throw then
+      TASK:PAUSE
+   repeat ;
+
+
 : TEST-TIMEOUT ( -- )
+   SERVER-HITS atomic@ 1+ {: request:n :}
    PATH-STALL$ GET-READY {: subject:CURL:handle :}
    subject STALL-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
    s" a server that never answers ends as CURLE_OPERATION_TIMEDOUT" T-LABEL
    LAST-KIND @ KIND-FAILED T=
-   LAST-CODE @ 28 T= ;
+   LAST-CODE @ 28 T=
+   request WAIT-SERVED ;
 
 
 \ The ceiling TIMEOUT! sets ends a transfer that is slow but perfectly alive:
 \ exactly the loss a low-speed limit exists to avoid.
 : DRIBBLE-CEILING ( -- )
+   SERVER-HITS atomic@ 1+ {: request:n :}
    PATH-DRIBBLE$ GET-READY {: subject:CURL:handle :}
    subject STALL-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
    s" a whole-transfer ceiling ends the dribble though it never stalled" T-LABEL
    LAST-KIND @ KIND-FAILED T=
-   LAST-CODE @ 28 T= ;
+   LAST-CODE @ 28 T=
+   request WAIT-SERVED ;
 
 
 \ The same dribble under a low-speed limit far below its rate finishes whole:
@@ -743,8 +759,13 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : DRIBBLE-LOW-SPEED ( -- )
    PATH-DRIBBLE$ GET-READY {: subject:CURL:handle :}
    subject LOW-RATE LOW-SECONDS CURL:LOW-SPEED! EXPECT-OK
+   mono-ns {: started:n :}
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
+   LAST-KIND @ KIND-FAILED = if
+      s" curl low-speed code: " type LAST-CODE @ .
+      s" elapsed ms: " type mono-ns started - NS-PER-MS / . cr
+   then
    s" a low-speed limit under the dribble's rate lets it finish whole" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    LAST-STATUS @ 200 T=
