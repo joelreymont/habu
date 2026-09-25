@@ -45,7 +45,7 @@ DATA span is 8,671,320 bytes; zero cells are already omitted from the file.
 
 ## Verified representation reductions
 
-The integrated Mac product is 2,972,407 bytes, down 412,800 (12.2%).
+The preceding Mac product is 2,972,407 bytes, down 412,800 (12.2%).
 SHA-256: `2daeb34544e8c081209f2437485d76f606c61ca5ac7eafe8cc28ddf438845639`.
 Interned checker package names and arena offsets remove 267,024 bytes of
 address rows; zero-sentinel scratch removes 51,840 bytes of bitmap/values;
@@ -62,7 +62,28 @@ and the existing negotiated-routing suite passes. External KiCad DRC was not
 part of these checks. Commands, signed images, output boards, hashes and logs
 are retained at `~/.cache/tmp/habu-opt-names-scratch/RESULTS.md`.
 
-Remaining measurements on that product: 20,827 effect headers occupy 267,461
+The current verified product is **2,889,847 bytes**, down another 82,560 bytes
+and 495,360 bytes (14.6%) from the initial baseline. SHA-256:
+`730f69dac961702ea8593685d5f7641df32cf2d8d20725ba996b38f422e63aae`.
+Exact immutable effect contents are shared while every binding, history and
+authority flag remains; the external 96-byte wire representation is unchanged.
+The native emitter also eliminates proven adjacent frame reloads. Independent
+review accepted both changes, two native generations are byte-identical, and
+the complete 490-suite gate passes.
+
+Maki's native REPL image is **22,687,328 bytes**, down 2,577,312 from the
+preceding product. Its raw warm DATA window alone shrinks by 2,495,588 bytes;
+no snapshot codec changed. Routing/geometry and negotiation checks pass with
+both exported boards byte-identical. Final measurements, failed runs, the
+existing TCP/HTTP fixture ordering corrections and repeatable artifacts are
+retained at `~/.cache/tmp/habu-opt-round2/combined/RESULTS.md`.
+
+Compression and snapshot repacking remain held. The next bounded allocation
+work is [checker boot storage](habu-allocate-checker-boot-6b2624bd.md): 851,968
+bytes of static reservations still appear in Maki, with no achieved saving
+claimed. General DATA reachability remains a separate open implementation.
+
+Measurements before the next reduction: 20,827 effect headers occupy 267,461
 encoded bytes while representing 1,766 exact semantic tuples. The effect
 allocation costs 321,883 bytes including its bitmap. Code contains 14,758
 three-instruction DATA address carriers (177,096 bytes), plus 1,519 adjacent
@@ -87,11 +108,13 @@ copies and links the native payload. Track corrections at those owners:
 | 20,825 effect headers represent 1,766 semantic tuples | [Share effect headers](habu-share-effect-headers-d26ffc89.md) |
 | Four reconstructible UNBOUND arrays cost 51,840 bytes | [Initialize checker scratch](habu-init-checker-scratch-4c2afab4.md) |
 
-Header representation follows history compaction through a tracker dependency.
-The other tasks are independently investigable; serialize shared checker edits.
+Header sharing preserves every history and has no correctness dependency on
+history compaction; the earlier ordering only avoided concurrent representation
+edits. Serialize shared checker edits. The other tasks are independently
+investigable.
 The existing DATA-reachability owner remains
 habu-prove-the-closure-5b7d02bb. Implemented reductions are qualified above;
-the remaining rows describe open work.
+the remaining unimplemented rows describe open work.
 The current downstream readiness check is Maki; older task text naming other
 applications does not expand this optimization work.
 

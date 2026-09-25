@@ -14,7 +14,7 @@
 \ nodes an older record wrote, so "the bytes of record R" is a question about
 \ REACHABILITY: a node belongs to the first record that reaches it, and every
 \ later reader of it is a SHARE. The walk therefore carries a visited set, and
-\ the accounting identity it publishes - window = headers + node bytes, orphan
+\ the accounting identity it publishes - window = bindings + contents + node bytes, orphan
 \ zero - is what proves the walk saw everything exactly once.
 \
 \ IT READS THE LAYOUT FROM ITS OWNER. Every record and node offset, every tag,
@@ -52,11 +52,13 @@ TRUSTED: CELL-AT ( n -- n ) USIGS-CELL-AT @ ;
 TRUSTED: BYTE-AT ( n -- n ) USIGS swap + c@ ;
 TRUSTED: REC-BYTES ( -- n ) EFF-REC ;
 TRUSTED: NODE-BYTES ( -- n ) EFF-NODE ;
-TRUSTED: R-DIN ( -- n ) ER-DIN-OFF ;
-TRUSTED: R-DOUT ( -- n ) ER-DOUT-OFF ;
-TRUSTED: R-RIN ( -- n ) ER-RIN-OFF ;
-TRUSTED: R-ROUT ( -- n ) ER-ROUT-OFF ;
-TRUSTED: R-HASR ( -- n ) ER-HASR-OFF ;
+TRUSTED: CONTENT-BYTES ( -- n ) EFF-CONTENT ;
+TRUSTED: R-CONTENT ( n -- n ) E-PTR ER.CONTENT @ ;
+TRUSTED: R-DIN ( n -- n ) E-PTR E-DIN@ ;
+TRUSTED: R-DOUT ( n -- n ) E-PTR E-DOUT@ ;
+TRUSTED: R-RIN ( n -- n ) E-PTR E-RIN@ ;
+TRUSTED: R-ROUT ( n -- n ) E-PTR E-ROUT@ ;
+TRUSTED: R-HASR ( n -- n ) E-PTR E-HASR@ ;
 TRUSTED: R-SYMPREV ( -- n ) ER-SYMPREV-OFF ;
 TRUSTED: N-TAG ( -- n ) EN-TAG-OFF ;
 TRUSTED: N-A ( -- n ) EN-A-OFF ;
@@ -75,6 +77,7 @@ TRUSTED: T-PARAM ( -- n ) EN-PARAM ;
 
 \ ---- the counters the walk fills ----------------------------------------------
 variable WINDOW-V   variable RECS-V     variable SHADOW-V
+variable CONTENTS-V
 variable NODES-V    variable NODEB-V    variable SHARES-V   variable SHAREB-V
 variable FINAL-V    variable DUP-V      variable BELOW-V    variable SHAPES-V
 
@@ -253,12 +256,18 @@ variable DUPCUR
    REPEAT ;
 
 : VISIT-ROWS ( n -- ) {: rec:n :}
-   rec R-DIN FIELD WALK    rec R-DIN FIELD SHAPE drop
-   rec R-DOUT FIELD WALK   rec R-DOUT FIELD SHAPE drop
-   rec R-HASR FIELD 0 <> IF
-      rec R-RIN FIELD WALK    rec R-RIN FIELD SHAPE drop
-      rec R-ROUT FIELD WALK   rec R-ROUT FIELD SHAPE drop
+   rec R-DIN WALK    rec R-DIN SHAPE drop
+   rec R-DOUT WALK   rec R-DOUT SHAPE drop
+   rec R-HASR 0 <> IF
+      rec R-RIN WALK    rec R-RIN SHAPE drop
+      rec R-ROUT WALK   rec R-ROUT SHAPE drop
    THEN ;
+
+: VISIT-CONTENT ( n -- ) R-CONTENT
+   dup BASE-V @ < IF drop EXIT THEN
+   dup SEEN? IF drop EXIT THEN
+   SEE CONTENT-BYTES CHARGE
+   1 CONTENTS-V +! ;
 
 : VISIT-RECORDS ( -- )
    BASE-V @ CUR-V !
@@ -268,11 +277,13 @@ variable DUPCUR
          -1 DUPCUR !  SHADOW-V @ 1 + SHADOW-V !
       ELSE 0 DUPCUR ! THEN
       REC-BYTES CHARGE
+      CUR-V @ VISIT-CONTENT
       CUR-V @ VISIT-ROWS
       CUR-V @ CELL-AT CUR-V !
    REPEAT ;
 
 : RESET ( -- )
+   0 CONTENTS-V !
    0 RECS-V !   0 SHADOW-V !  0 NODES-V !  0 NODEB-V !
    0 SHARES-V ! 0 SHAREB-V !  0 FINAL-V !  0 DUP-V !
    0 BELOW-V !  0 SHAPES-V !  0 WINDOW-V ! ;
@@ -296,6 +307,8 @@ public
 : RECORDS ( -- n ) RECS-V @ ;
 : SHADOWED ( -- n ) SHADOW-V @ ;
 : HEADER-BYTES ( -- n ) RECS-V @ REC-BYTES * ;
+: CONTENTS ( -- n ) CONTENTS-V @ ;
+: CONTENT-TOTAL-BYTES ( -- n ) CONTENTS-V @ CONTENT-BYTES * ;
 : NODES ( -- n ) NODES-V @ ;
 : NODE-TOTAL-BYTES ( -- n ) NODEB-V @ ;
 : SHARES ( -- n ) SHARES-V @ ;
@@ -318,6 +331,8 @@ public
    s" records " type RECORDS . cr
    s" shadowed-records " type SHADOWED . cr
    s" header-bytes " type HEADER-BYTES . cr
+   s" contents " type CONTENTS . cr
+   s" content-bytes " type CONTENT-TOTAL-BYTES . cr
    s" nodes " type NODES . cr
    s" node-bytes " type NODE-TOTAL-BYTES . cr
    s" shapes " type SHAPES . cr

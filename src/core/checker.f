@@ -4931,6 +4931,8 @@ PTR-VARIABLE NRX-BASE
 \ above the index words, and read through a cell-indexed ptr-field view so the
 \ nested pointer role survives the fetch — the same shape USX-BASE uses.
 PTR-VARIABLE UIX-BASE
+PTR-VARIABLE CHX-BASE
+variable CHX-HI
 
 : UIX-BASE-FIELD ( -- ptr ptr u8 )
    UIX-BASE 0 ptr-field ;
@@ -4940,6 +4942,9 @@ PTR-VARIABLE UIX-BASE
 
 : UIX-BASE! ( ptr u8 -- )
    UIX-BASE-FIELD ! ;
+
+: CHX-BASE@ ( -- ptr u8 ) CHX-BASE 0 ptr-field @ ;
+: CHX-BASE! ( ptr u8 -- ) CHX-BASE 0 ptr-field ! ;
 
 : UIX-REBASE ( -- )
    USIGS UIX-BASE! ;
@@ -5014,6 +5019,7 @@ TRUSTED: USIGS-RC>PTR ( n -- ptr u8 ) ;
 : USIGS-CLEAR ( -- )
    0 USX-GEN !                    \ every record the index points at is being dropped
    0 CHECKER-EFFECT-AUTHORITY:RECOVERY-START
+   NULL-PTR CHX-BASE! 0 CHX-HI !
    0 UEND !
    0 USIGS-HEAD !
    0 USIGS-GROW-CAP !
@@ -5076,6 +5082,8 @@ USIGS-RUNTIME-INIT
    need USIGS-CAP-U @ 2 * max USIGS-ROUND-CAP USIGS-GROW-CAP !
    USIGS-GROW-CAP @ USIGS-ALLOC USIGS-GROW-NEXT !
    USIGS USIGS-GROW-NEXT @ UEND @ CELL + USIGS-COPY
+   \ Carry only a valid content stamp; CLEAR's invalidation must survive a grow.
+   USIGS CHX-BASE@ = IF USIGS-GROW-NEXT @ CHX-BASE! THEN
    USIGS-GROW-NEXT @ USIGS-P !
    USIGS-GROW-CAP @ USIGS-CAP-U !
    UIX-REBASE ;                       \ the copy was verbatim: every interned offset is still its own node
@@ -5633,50 +5641,91 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 6 constant EN-ATOM
 7 constant EN-PARAM
 
+\ Bindings retain identity, authority and chronology; immutable contents share.
 0 constant ER-NEXT-CELL
 1 constant ER-ACTIVE-CELL
-2 constant ER-DIN-CELL
-3 constant ER-DOUT-CELL
-4 constant ER-RIN-CELL
-5 constant ER-ROUT-CELL
-6 constant ER-HASR-CELL
-7 constant ER-TVN-CELL
-8 constant ER-RVN-CELL
-9 constant ER-SYM-CELL
-10 constant ER-MINI-CELL
-11 constant ER-SYMPREV-CELL
+2 constant ER-SYM-CELL
+3 constant ER-SYMPREV-CELL
+4 constant ER-CONTENT-CELL
 $0 constant ER-NEXT-OFF
 $8 constant ER-ACTIVE-OFF
-$10 constant ER-DIN-OFF
-$18 constant ER-DOUT-OFF
-$20 constant ER-RIN-OFF
-$28 constant ER-ROUT-OFF
-$30 constant ER-HASR-OFF
-$38 constant ER-TVN-OFF
-$40 constant ER-RVN-OFF
-$48 constant ER-SYM-OFF
-$50 constant ER-MINI-OFF
-\ ER-SYMPREV: offset+1 of the PREVIOUS user record with this record's symbol,
-\ 0 when there is none. The per-symbol index (USX-* below) keeps the newest
-\ record per symbol; this back-link is what lets a store truncation restore the
-\ index in time proportional to the records it discards instead of rescanning.
-$58 constant ER-SYMPREV-OFF
-$60 constant EFF-REC
+$10 constant ER-SYM-OFF
+\ Previous binding for this symbol, offset+1; zero ends the history chain.
+$18 constant ER-SYMPREV-OFF
+$20 constant ER-CONTENT-OFF
+$28 constant EFF-REC
 $8 constant EFF-REC-ALIGN
 0 constant EFF-REC-PTR-MASK
 
 : ER.NEXT ( ptr u8 -- ptr n ) ER-NEXT-OFF + CELL-VIEW ;
 : ER.ACTIVE ( ptr u8 -- ptr n ) ER-ACTIVE-OFF + CELL-VIEW ;
-: ER.DIN ( ptr u8 -- ptr n ) ER-DIN-OFF + CELL-VIEW ;
-: ER.DOUT ( ptr u8 -- ptr n ) ER-DOUT-OFF + CELL-VIEW ;
-: ER.RIN ( ptr u8 -- ptr n ) ER-RIN-OFF + CELL-VIEW ;
-: ER.ROUT ( ptr u8 -- ptr n ) ER-ROUT-OFF + CELL-VIEW ;
-: ER.HASR ( ptr u8 -- ptr n ) ER-HASR-OFF + CELL-VIEW ;
-: ER.TVN ( ptr u8 -- ptr n ) ER-TVN-OFF + CELL-VIEW ;
-: ER.RVN ( ptr u8 -- ptr n ) ER-RVN-OFF + CELL-VIEW ;
 : ER.SYM ( ptr u8 -- ptr n ) ER-SYM-OFF + CELL-VIEW ;
-: ER.MINI ( ptr u8 -- ptr n ) ER-MINI-OFF + CELL-VIEW ;
 : ER.SYMPREV ( ptr u8 -- ptr n ) ER-SYMPREV-OFF + CELL-VIEW ;
+: ER.CONTENT ( ptr u8 -- ptr n ) ER-CONTENT-OFF + CELL-VIEW ;
+
+8 constant EFF-CONTENT-CELLS
+$40 constant EFF-CONTENT
+: EC.DIN ( ptr u8 -- ptr n ) CELL-VIEW ;
+: EC.DOUT ( ptr u8 -- ptr n ) $8 + CELL-VIEW ;
+: EC.RIN ( ptr u8 -- ptr n ) $10 + CELL-VIEW ;
+: EC.ROUT ( ptr u8 -- ptr n ) $18 + CELL-VIEW ;
+: EC.HASR ( ptr u8 -- ptr n ) $20 + CELL-VIEW ;
+: EC.TVN ( ptr u8 -- ptr n ) $28 + CELL-VIEW ;
+: EC.RVN ( ptr u8 -- ptr n ) $30 + CELL-VIEW ;
+: EC.MINI ( ptr u8 -- ptr n ) $38 + CELL-VIEW ;
+
+: E-CONTENT ( ptr u8 -- ptr u8 ) ER.CONTENT @ USIGS + ;
+: E-DIN@ ( ptr u8 -- n ) E-CONTENT EC.DIN @ ;
+: E-DOUT@ ( ptr u8 -- n ) E-CONTENT EC.DOUT @ ;
+: E-RIN@ ( ptr u8 -- n ) E-CONTENT EC.RIN @ ;
+: E-ROUT@ ( ptr u8 -- n ) E-CONTENT EC.ROUT @ ;
+: E-HASR@ ( ptr u8 -- n ) E-CONTENT EC.HASR @ ;
+: E-TVN@ ( ptr u8 -- n ) E-CONTENT EC.TVN @ ;
+: E-RVN@ ( ptr u8 -- n ) E-CONTENT EC.RVN @ ;
+: E-MINI@ ( ptr u8 -- n ) E-CONTENT EC.MINI @ ;
+
+\ The owner callback and serialized graph retain the legacy flat wire layout.
+0 constant EW-NEXT-CELL
+1 constant EW-ACTIVE-CELL
+2 constant EW-DIN-CELL
+3 constant EW-DOUT-CELL
+4 constant EW-RIN-CELL
+5 constant EW-ROUT-CELL
+6 constant EW-HASR-CELL
+7 constant EW-TVN-CELL
+8 constant EW-RVN-CELL
+9 constant EW-SYM-CELL
+10 constant EW-MINI-CELL
+11 constant EW-SYMPREV-CELL
+$0 constant EW-NEXT-OFF
+$8 constant EW-ACTIVE-OFF
+$10 constant EW-DIN-OFF
+$18 constant EW-DOUT-OFF
+$20 constant EW-RIN-OFF
+$28 constant EW-ROUT-OFF
+$30 constant EW-HASR-OFF
+$38 constant EW-TVN-OFF
+$40 constant EW-RVN-OFF
+$48 constant EW-SYM-OFF
+$50 constant EW-MINI-OFF
+\ Serialized graphs require zero here; owner transfer projects the binding link.
+$58 constant EW-SYMPREV-OFF
+$60 constant EFF-WIRE
+$8 constant EFF-WIRE-ALIGN
+0 constant EFF-WIRE-PTR-MASK
+
+: EW.NEXT ( ptr u8 -- ptr n ) EW-NEXT-OFF + CELL-VIEW ;
+: EW.ACTIVE ( ptr u8 -- ptr n ) EW-ACTIVE-OFF + CELL-VIEW ;
+: EW.DIN ( ptr u8 -- ptr n ) EW-DIN-OFF + CELL-VIEW ;
+: EW.DOUT ( ptr u8 -- ptr n ) EW-DOUT-OFF + CELL-VIEW ;
+: EW.RIN ( ptr u8 -- ptr n ) EW-RIN-OFF + CELL-VIEW ;
+: EW.ROUT ( ptr u8 -- ptr n ) EW-ROUT-OFF + CELL-VIEW ;
+: EW.HASR ( ptr u8 -- ptr n ) EW-HASR-OFF + CELL-VIEW ;
+: EW.TVN ( ptr u8 -- ptr n ) EW-TVN-OFF + CELL-VIEW ;
+: EW.RVN ( ptr u8 -- ptr n ) EW-RVN-OFF + CELL-VIEW ;
+: EW.SYM ( ptr u8 -- ptr n ) EW-SYM-OFF + CELL-VIEW ;
+: EW.MINI ( ptr u8 -- ptr n ) EW-MINI-OFF + CELL-VIEW ;
+: EW.SYMPREV ( ptr u8 -- ptr n ) EW-SYMPREV-OFF + CELL-VIEW ;
 
 0 constant EN-TAG-CELL
 1 constant EN-A-CELL
@@ -5710,43 +5759,59 @@ $8 constant EFF-NODE-ALIGN
 : EN.G ( ptr u8 -- ptr n ) EN-G-OFF + CELL-VIEW ;
 : EN.H ( ptr u8 -- ptr n ) EN-H-OFF + CELL-VIEW ;
 
-: ER-LAYOUT-OFFSETS-A ( -- )
+: ER-LAYOUT-ASSERT ( -- )
    ER-NEXT-CELL cells ER-NEXT-OFF CHECKER-RECORD-LAYOUT=
    ER-ACTIVE-CELL cells ER-ACTIVE-OFF CHECKER-RECORD-LAYOUT=
-   ER-DIN-CELL cells ER-DIN-OFF CHECKER-RECORD-LAYOUT=
-   ER-DOUT-CELL cells ER-DOUT-OFF CHECKER-RECORD-LAYOUT=
-   ER-RIN-CELL cells ER-RIN-OFF CHECKER-RECORD-LAYOUT= ;
-
-: ER-LAYOUT-OFFSETS-B ( -- )
-   ER-ROUT-CELL cells ER-ROUT-OFF CHECKER-RECORD-LAYOUT=
-   ER-HASR-CELL cells ER-HASR-OFF CHECKER-RECORD-LAYOUT=
-   ER-TVN-CELL cells ER-TVN-OFF CHECKER-RECORD-LAYOUT=
-   ER-RVN-CELL cells ER-RVN-OFF CHECKER-RECORD-LAYOUT=
-   ER-SYM-CELL cells ER-SYM-OFF CHECKER-RECORD-LAYOUT= ;
-
-: ER-LAYOUT-TAIL ( -- )
-   ER-MINI-CELL cells ER-MINI-OFF CHECKER-RECORD-LAYOUT=
+   ER-SYM-CELL cells ER-SYM-OFF CHECKER-RECORD-LAYOUT=
    ER-SYMPREV-CELL cells ER-SYMPREV-OFF CHECKER-RECORD-LAYOUT=
-   ER-SYMPREV-OFF CELL + EFF-REC CHECKER-RECORD-LAYOUT=
+   ER-CONTENT-CELL cells ER-CONTENT-OFF CHECKER-RECORD-LAYOUT=
+   ER-CONTENT-OFF CELL + EFF-REC CHECKER-RECORD-LAYOUT=
    CELL EFF-REC-ALIGN CHECKER-RECORD-LAYOUT=
-   EFF-REC EFF-REC-ALIGN mod 0 CHECKER-RECORD-LAYOUT=
-   EFF-REC-PTR-MASK 0 CHECKER-RECORD-LAYOUT= ;
-
-: ER-LAYOUT-ACCESSORS-A ( -- )
+   EFF-REC-PTR-MASK 0 CHECKER-RECORD-LAYOUT=
+   EFF-CONTENT-CELLS cells EFF-CONTENT CHECKER-RECORD-LAYOUT=
    here dup ER.NEXT swap ER-NEXT-OFF CHECKER-RECORD-FIELD=
    here dup ER.ACTIVE swap ER-ACTIVE-OFF CHECKER-RECORD-FIELD=
-   here dup ER.DIN swap ER-DIN-OFF CHECKER-RECORD-FIELD=
-   here dup ER.DOUT swap ER-DOUT-OFF CHECKER-RECORD-FIELD=
-   here dup ER.RIN swap ER-RIN-OFF CHECKER-RECORD-FIELD=
-   here dup ER.ROUT swap ER-ROUT-OFF CHECKER-RECORD-FIELD= ;
-
-: ER-LAYOUT-ACCESSORS-B ( -- )
-   here dup ER.HASR swap ER-HASR-OFF CHECKER-RECORD-FIELD=
-   here dup ER.TVN swap ER-TVN-OFF CHECKER-RECORD-FIELD=
-   here dup ER.RVN swap ER-RVN-OFF CHECKER-RECORD-FIELD=
    here dup ER.SYM swap ER-SYM-OFF CHECKER-RECORD-FIELD=
-   here dup ER.MINI swap ER-MINI-OFF CHECKER-RECORD-FIELD=
-   here dup ER.SYMPREV swap ER-SYMPREV-OFF CHECKER-RECORD-FIELD= ;
+   here dup ER.SYMPREV swap ER-SYMPREV-OFF CHECKER-RECORD-FIELD=
+   here dup ER.CONTENT swap ER-CONTENT-OFF CHECKER-RECORD-FIELD= ;
+
+: EW-LAYOUT-OFFSETS-A ( -- )
+   EW-NEXT-CELL cells EW-NEXT-OFF CHECKER-RECORD-LAYOUT=
+   EW-ACTIVE-CELL cells EW-ACTIVE-OFF CHECKER-RECORD-LAYOUT=
+   EW-DIN-CELL cells EW-DIN-OFF CHECKER-RECORD-LAYOUT=
+   EW-DOUT-CELL cells EW-DOUT-OFF CHECKER-RECORD-LAYOUT=
+   EW-RIN-CELL cells EW-RIN-OFF CHECKER-RECORD-LAYOUT= ;
+
+: EW-LAYOUT-OFFSETS-B ( -- )
+   EW-ROUT-CELL cells EW-ROUT-OFF CHECKER-RECORD-LAYOUT=
+   EW-HASR-CELL cells EW-HASR-OFF CHECKER-RECORD-LAYOUT=
+   EW-TVN-CELL cells EW-TVN-OFF CHECKER-RECORD-LAYOUT=
+   EW-RVN-CELL cells EW-RVN-OFF CHECKER-RECORD-LAYOUT=
+   EW-SYM-CELL cells EW-SYM-OFF CHECKER-RECORD-LAYOUT= ;
+
+: EW-LAYOUT-TAIL ( -- )
+   EW-MINI-CELL cells EW-MINI-OFF CHECKER-RECORD-LAYOUT=
+   EW-SYMPREV-CELL cells EW-SYMPREV-OFF CHECKER-RECORD-LAYOUT=
+   EW-SYMPREV-OFF CELL + EFF-WIRE CHECKER-RECORD-LAYOUT=
+   CELL EFF-WIRE-ALIGN CHECKER-RECORD-LAYOUT=
+   EFF-WIRE EFF-WIRE-ALIGN mod 0 CHECKER-RECORD-LAYOUT=
+   EFF-WIRE-PTR-MASK 0 CHECKER-RECORD-LAYOUT= ;
+
+: EW-LAYOUT-ACCESSORS-A ( -- )
+   here dup EW.NEXT swap EW-NEXT-OFF CHECKER-RECORD-FIELD=
+   here dup EW.ACTIVE swap EW-ACTIVE-OFF CHECKER-RECORD-FIELD=
+   here dup EW.DIN swap EW-DIN-OFF CHECKER-RECORD-FIELD=
+   here dup EW.DOUT swap EW-DOUT-OFF CHECKER-RECORD-FIELD=
+   here dup EW.RIN swap EW-RIN-OFF CHECKER-RECORD-FIELD=
+   here dup EW.ROUT swap EW-ROUT-OFF CHECKER-RECORD-FIELD= ;
+
+: EW-LAYOUT-ACCESSORS-B ( -- )
+   here dup EW.HASR swap EW-HASR-OFF CHECKER-RECORD-FIELD=
+   here dup EW.TVN swap EW-TVN-OFF CHECKER-RECORD-FIELD=
+   here dup EW.RVN swap EW-RVN-OFF CHECKER-RECORD-FIELD=
+   here dup EW.SYM swap EW-SYM-OFF CHECKER-RECORD-FIELD=
+   here dup EW.MINI swap EW-MINI-OFF CHECKER-RECORD-FIELD=
+   here dup EW.SYMPREV swap EW-SYMPREV-OFF CHECKER-RECORD-FIELD= ;
 
 : EN-LAYOUT-OFFSETS-A ( -- )
    EN-TAG-CELL cells EN-TAG-OFF CHECKER-RECORD-LAYOUT=
@@ -5779,11 +5844,12 @@ $8 constant EFF-NODE-ALIGN
    here dup EN.H swap EN-H-OFF CHECKER-RECORD-FIELD= ;
 
 : EFF-LAYOUT-ASSERT ( -- )
-   ER-LAYOUT-OFFSETS-A
-   ER-LAYOUT-OFFSETS-B
-   ER-LAYOUT-TAIL
-   ER-LAYOUT-ACCESSORS-A
-   ER-LAYOUT-ACCESSORS-B
+   ER-LAYOUT-ASSERT
+   EW-LAYOUT-OFFSETS-A
+   EW-LAYOUT-OFFSETS-B
+   EW-LAYOUT-TAIL
+   EW-LAYOUT-ACCESSORS-A
+   EW-LAYOUT-ACCESSORS-B
    EN-LAYOUT-OFFSETS-A
    EN-LAYOUT-OFFSETS-B
    EN-LAYOUT-ACCESSORS-A
@@ -5927,7 +5993,7 @@ EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
 \ type and row vars in first-appearance order as it writes them, so two records
 \ that mean the same rows agree here and two that differ in a var's position do
 \ not. E-TV-ID/E-RV-ID still run for a subterm that is then interned away,
-\ because the subterm is BUILT first and discarded after — ER.TVN/ER.RVN keep
+\ because the subterm is BUILT first and discarded after — E-TVN@/E-RVN@ keep
 \ counting the record's own vars.
 \
 \ WHY THE REWIND IS SAFE. A finished subterm occupies the contiguous span from
@@ -6228,9 +6294,9 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
                                           \ chained by a stale mask is invisible for good
 
 \ UIX-REC-ADD ( n n -- ) : every node in the span the record at `rec` owns,
-\ reached from its rows. E-REC-INIT zeroes all four row fields, so a record with
-\ no row effect names 0 in ER.RIN/ER.ROUT and the walk skips it; reading them
-\ without the ER.HASR gate can only make the index offer MORE nodes, never a
+\ reached from its content. Empty content has four zero roots, so a record with
+\ no row effect names 0 in E-RIN@/E-ROUT@ and the walk skips it; reading them
+\ without the E-HASR@ gate can only make the index offer MORE nodes, never a
 \ wrong one, because every answer is decided by comparing the nodes themselves.
 : UIX-REC-ADD ( n n -- ) {: rec:n next:n :}
    rec EFF-REC + {: lo:n :}
@@ -6241,10 +6307,10 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
                                           \ interned nothing: every row it names is older
    lo UIX-SPAN-LO !
    hi UIX-SPAN-HI !
-   rec E-PTR ER.DIN @ UIX-NODE-ADD
-   rec E-PTR ER.DOUT @ UIX-NODE-ADD
-   rec E-PTR ER.RIN @ UIX-NODE-ADD
-   rec E-PTR ER.ROUT @ UIX-NODE-ADD ;
+   rec E-PTR E-DIN@ UIX-NODE-ADD
+   rec E-PTR E-DOUT@ UIX-NODE-ADD
+   rec E-PTR E-RIN@ UIX-NODE-ADD
+   rec E-PTR E-ROUT@ UIX-NODE-ADD ;
 
 \ UIX-BUILD ( -- ) : the store's own chain, from the first record to the
 \ terminator — the same walk USX-BUILD makes for the per-symbol heads, and the
@@ -6354,7 +6420,7 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
          x E-RES P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
          x E-RES P>REST TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
          \ This cell's PHYSICAL WIDTH, asked of ROW-TERM-CELLS while the live term
-         \ is still in hand — the same authority ROW-CELLS asks for ER.MINI, at the
+         \ is still in hand — the same authority ROW-CELLS asks for E-MINI@, at the
          \ same moment, so the two can never drift. The stored graph cannot answer
          \ it afterwards: a width is a question about the TYPE (T-WIDTH walks the
          \ family registry's schemas), and the copy keeps a term's identity, not
@@ -6406,6 +6472,174 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
    endcase
    E-INTERN ;                          \ the finished subterm; older twin wins
 : E-COPY ( n -- n ) TWALK-RESET E-COPY* ;
+
+\ --- immutable effect content interning ---------------------------------------
+\ Entries identify content, never bindings. Both hash and equality read all
+\ eight cells, including variable counts and external minimum. The index is
+\ transient; rebuilding follows every binding, preserving all history roots.
+$1000 constant CHX-BKT-INIT       \ buckets; a power of two
+$400 constant CHX-ENT-INIT        \ entries; grows geometrically
+3 constant CHX-ENT-CELLS
+0 constant CHX-E-OFF              \ the interned content's store offset
+1 constant CHX-E-BKT              \ the bucket it is chained in
+2 constant CHX-E-NEXT             \ the next entry in that bucket, +1; 0 ends it
+PTR-VARIABLE CHX-BKT-P   PTR-VARIABLE CHX-ENT-P
+variable CHX-BKT-CAP variable CHX-ENT-CAP
+variable CHX-N
+variable CHX-I       variable CHX-J
+variable CHX-BP      \ the rebuild's record cursor
+
+: CHX-BKT ( -- ptr n ) CHX-BKT-P @ ;
+: CHX-ENT ( -- ptr n ) CHX-ENT-P @ ;
+
+: CHX-B ( n -- ptr n ) cells CHX-BKT + ;
+
+: CHX-E ( n n -- ptr n ) {: i:n f:n :}
+   i CHX-ENT-CELLS * f + cells CHX-ENT + ;
+
+: CHX-READY? ( -- bool )
+   CHX-BKT-P @ 0= 0= ;
+
+: CHX-STAMP ( -- )
+   UEND @ CHX-HI !
+   USIGS CHX-BASE! ;
+
+: CHX-DROP ( -- )                 \ forget every entry; the mapping stays allocated
+   0 CHX-N !
+   CHX-BKT 0 CHX-BKT-CAP @ ARENA-CELLS-ZERO
+   CHX-STAMP ;
+
+: CHX-ALLOC ( -- )
+   CHX-BKT-INIT cells ARENA-ALLOC CHX-BKT-P !
+   CHX-BKT-INIT CHX-BKT-CAP !
+   CHX-ENT-INIT CHX-ENT-CELLS * cells ARENA-ALLOC CHX-ENT-P !
+   CHX-ENT-INIT CHX-ENT-CAP !
+   CHX-DROP ;
+
+: CHX-RESET ( -- )
+   NULL-PTR CHX-BKT-P !
+   NULL-PTR CHX-ENT-P !
+   NULL-PTR CHX-BASE!
+   0 CHX-BKT-CAP !  0 CHX-ENT-CAP !  0 CHX-N !
+   0 CHX-HI ! ;
+
+CHX-RESET
+
+: E-CONTENT-HASH ( n -- n ) {: off:n :}
+   HIDX-FNV-BASIS
+   EFF-CONTENT-CELLS 0 ?do
+      off E-PTR i cells + CELL-VIEW @ xor HIDX-FNV-PRIME *
+   loop ;
+
+: E-CONTENT-SAME? ( n n -- bool ) {: a:n b:n :}
+   EFF-CONTENT-CELLS 0 ?do
+      a E-PTR i cells + CELL-VIEW @ b E-PTR i cells + CELL-VIEW @ <>
+      IF RES-FALSE unloop EXIT THEN
+   loop RES-TRUE ;
+
+: CHX-ENT-GROW ( -- )
+   CHX-ENT-CAP @ 2 * {: nc:n :}
+   nc CHX-ENT-CELLS * cells ARENA-ALLOC {: nb:ptr :}
+   CHX-ENT BYTE-VIEW nb BYTE-VIEW CHX-ENT-CAP @ CHX-ENT-CELLS * cells ARENA-COPY
+   nb CHX-ENT-P !
+   nc CHX-ENT-CAP ! ;
+
+variable CHX-BK
+: CHX-REHASH ( -- )
+   0 CHX-I !
+   BEGIN CHX-I @ CHX-N @ < WHILE
+      CHX-I @ CHX-E-OFF CHX-E @ E-CONTENT-HASH CHX-BKT-CAP @ 1 - and CHX-BK !
+      CHX-BK @ CHX-I @ CHX-E-BKT CHX-E !
+      CHX-BK @ CHX-B @ CHX-I @ CHX-E-NEXT CHX-E !
+      CHX-I @ 1 + CHX-BK @ CHX-B !
+      CHX-I @ 1 + CHX-I !
+   REPEAT ;
+
+: CHX-BKT-GROW ( -- )
+   CHX-BKT-CAP @ 2 * {: nc:n :}
+   nc cells ARENA-ALLOC {: nb:ptr :}
+   nb 0 nc ARENA-CELLS-ZERO
+   nb CHX-BKT-P !
+   nc CHX-BKT-CAP !
+   CHX-REHASH ;
+
+: CHX-ADD ( n n -- ) {: off:n b:n :}
+   CHX-N @ CHX-ENT-CAP @ >= IF CHX-ENT-GROW THEN
+   off CHX-N @ CHX-E-OFF CHX-E !
+   b CHX-N @ CHX-E-BKT CHX-E !
+   b CHX-B @ CHX-N @ CHX-E-NEXT CHX-E !
+   CHX-N @ 1 + b CHX-B !
+   CHX-N @ 1 + CHX-N !
+   CHX-STAMP
+   CHX-N @ 2 * CHX-BKT-CAP @ > IF CHX-BKT-GROW THEN ;
+
+: CHX-TOP-DEAD? ( n -- bool ) {: newend:n :}
+   CHX-N @ 0= IF RES-FALSE EXIT THEN
+   CHX-N @ 1 - CHX-E-OFF CHX-E @ newend >= ;
+
+: CHX-POP ( -- )
+   CHX-N @ 1 - CHX-I !
+   CHX-I @ CHX-E-BKT CHX-E @ {: b:n :}
+   b CHX-B @ CHX-I @ 1 + <> IF
+      s" checker: content intern table corrupt" 76 die
+   THEN
+   CHX-I @ CHX-E-NEXT CHX-E @ b CHX-B !
+   CHX-I @ CHX-N ! ;
+
+: CHX-TRUNCATE ( n -- ) {: newend:n :}
+   CHX-READY? 0= IF EXIT THEN
+   BEGIN newend CHX-TOP-DEAD? WHILE CHX-POP REPEAT
+   newend CHX-HI @ min CHX-HI ! ;
+
+variable CHX-C
+
+: CHX-BUCKET ( n -- n )
+   E-CONTENT-HASH CHX-BKT-CAP @ 1 - and ;
+
+: CHX-CHAIN-FIND ( n n -- n ) {: noff:n b:n :}
+   b CHX-B @ CHX-J !
+   BEGIN CHX-J @ 0 <> WHILE
+      CHX-J @ 1 - CHX-E-OFF CHX-E @ CHX-C !
+      CHX-C @ noff E-CONTENT-SAME? IF CHX-C @ 1 + EXIT THEN
+      CHX-J @ 1 - CHX-E-NEXT CHX-E @ CHX-J !
+   REPEAT
+   0 ;
+
+: CHX-BUILD ( -- )
+   0 CHX-BP !
+   BEGIN CHX-BP @ EFF-REC + UEND @ <= WHILE
+      CHX-BP @ E-PTR ER.NEXT @ {: next:n :}
+      next CHX-BP @ <= next UEND @ > or IF EXIT THEN
+      CHX-BP @ E-PTR ER.CONTENT @ {: off:n :}
+      off CHX-BP @ EFF-REC + >= off EFF-CONTENT + next <= and IF
+         off dup CHX-BUCKET {: b:n :} b CHX-CHAIN-FIND 0= IF off b CHX-ADD THEN
+      THEN
+      next CHX-BP !
+   REPEAT ;
+
+: CHX-EXACT ( -- )
+   CHX-READY? 0= IF CHX-ALLOC CHX-BUILD EXIT THEN
+   UEND @ CHX-HI @ < USIGS CHX-BASE@ <> or IF CHX-DROP CHX-BUILD EXIT THEN
+   CHX-STAMP ;
+
+\ Called only for a candidate at the top of an unfinished binding. A hit
+\ discards that candidate alone; every shared node remains below it.
+: E-CONTENT-INTERN ( n -- n ) {: off:n :}
+   off CHX-BUCKET {: b:n :}
+   off b CHX-CHAIN-FIND {: hit:n :}
+   hit 0 <> IF
+      off UEND ! off UIX-TRUNCATE off CHX-TRUNCATE
+      hit 1- EXIT
+   THEN
+   off b CHX-ADD off ;
+
+: E-CONTENT-NEW ( n n n n n n n n -- n )
+   {: din:n dout:n rin:n rout:n hasr:n tvn:n rvn:n mini:n :}
+   UEND @ EFF-CONTENT + CELL + USIGS-ENSURE
+   UEND @ {: off:n :}
+   din U!+ dout U!+ rin U!+ rout U!+
+   hasr U!+ tvn U!+ rvn U!+ mini U!+
+   off E-CONTENT-INTERN ;
 
 : USIG-NEXT ( ptr u8 -- ptr u8 )
    ER.NEXT @ E-PTR ;
@@ -6569,6 +6803,7 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
    newend USX-HI ! ;
 
 : USIGS-RESTORE-END ( n -- )
+   dup CHX-TRUNCATE                      \ content and nodes share the rollback watermark
    dup UIX-TRUNCATE                      \ drop interned nodes the rewind discards
    dup USX-TRUNCATE
    dup CHECKER-EFFECT-AUTHORITY:RECOVERY-REWIND
@@ -6650,13 +6885,13 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 \ read-time-only check could be masked by rewind-then-regrow.
 : E-REC-INIT ( ptr u8 -- ) {: p :}
    0 p ER.NEXT !  0 p ER.ACTIVE !
-   0 p ER.DIN !   0 p ER.DOUT !  0 p ER.RIN !  0 p ER.ROUT !
-   0 p ER.HASR !  0 p ER.TVN !   0 p ER.RVN !  0 p ER.MINI !
+   0 p ER.CONTENT !
    0 p ER.SYMPREV !
    CHECKER-REC-SYM @ p ER.SYM ! ;
 
 : E-REC-START ( -- ptr u8 )
    HIDX-EFF-SYNC
+   CHX-EXACT
    UIX-EXACT                             \ same discipline: UEND is the store's true top
                                          \ HERE, so an entry at or above it is dead and a
                                          \ regrow cannot mask the rewind that killed it.
@@ -6684,21 +6919,16 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 
 : E-BUILD-EFFECT ( n n n n bool -- n ) {: din:n dout:n rin:n rout:n hasr:bool :}
    din EFFECT-MIN-IN {: minin:n :}
-   E-REC-START E-OFF >r
+   E-REC-START E-OFF {: rec:n :}
    E-COPY-MAPS-RESET
-   EFF-ACTIVE r@ E-PTR ER.ACTIVE !
-   din E-COPY r@ E-PTR ER.DIN !
-   dout E-COPY r@ E-PTR ER.DOUT !
-   hasr if
-      rin E-COPY r@ E-PTR ER.RIN !
-      rout E-COPY r@ E-PTR ER.ROUT !
-   then
-   hasr IF -1 ELSE 0 THEN r@ E-PTR ER.HASR !
-   EC-TVN @ r@ E-PTR ER.TVN !
-   EC-RVN @ r@ E-PTR ER.RVN !
-   minin r@ E-PTR ER.MINI !
-   r@ E-PTR E-REC-FINISH
-   r> ;
+   EFF-ACTIVE rec E-PTR ER.ACTIVE !
+   din E-COPY {: di:n :}
+   dout E-COPY {: doff:n :}
+   hasr IF rin E-COPY rout E-COPY ELSE 0 0 THEN {: ri:n ro:n :}
+   di doff ri ro hasr IF -1 ELSE 0 THEN EC-TVN @ EC-RVN @ minin
+   E-CONTENT-NEW rec E-PTR ER.CONTENT !
+   rec E-PTR E-REC-FINISH
+   rec ;
 
 \ Interpret-gate wide scan (habu-tfam-12-interpret checker half): a word whose
 \ recorded effect mentions ANY wider-than-cell layout value — producers and
@@ -6845,7 +7075,7 @@ variable RECMI   0 RECMI !
    hasr IF rin ROW-WIDE? or  rout ROW-WIDE? or THEN
    RECW !
    din dout rin rout hasr E-BUILD-EFFECT {: off:n :}
-   external IF off E-PTR ER.MINI @ ELSE 0 THEN RECMI !
+   external IF off E-PTR E-MINI@ ELSE 0 THEN RECMI !
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!
       UEND @ HIDX-EFF-DEP+
@@ -6861,6 +7091,7 @@ variable RECMI   0 RECMI !
    0 RECMI !
    E-REC-START E-OFF >r
    EFF-DELETED r@ E-PTR ER.ACTIVE !
+   0 0 0 0 0 0 0 0 E-CONTENT-NEW r@ E-PTR ER.CONTENT !
    r> E-PTR E-REC-FINISH
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       0 CHECKER-REC-SYM @ HIDX-EFF!
@@ -7267,16 +7498,19 @@ variable FMEND
    rec ER.NEXT @ FMEND !
    rec ER.ACTIVE @ 0 <> if rec FEP-SET then ;
 
-: E-INST-RESET ( ptr u8 -- ) {: h:ptr :}
+: E-INST-COUNTS ( n n -- ) {: tvn:n rvn:n :}
    E-I-AK-RESET
-   0 begin dup h ER.TVN @ < while
+   0 begin dup tvn < while
       UNBOUND over cells EI-TV + !
       1 +
    repeat drop
-   0 begin dup h ER.RVN @ < while
+   0 begin dup rvn < while
       UNBOUND over cells EI-RV + !
       1 +
    repeat drop ;
+
+: E-INST-RESET ( ptr u8 -- ) {: h:ptr :}
+   h E-TVN@ h E-RVN@ E-INST-COUNTS ;
 
 \ FRESH may grow (relocate) the EI arena, so re-fetch the slot address after
 \ it: a base cached across FRESH would store into the freed buffer.
@@ -7406,11 +7640,11 @@ variable LMNEG  variable LMPOS  variable LMV
 
 : LIN-VAR-MULT ( ptr u8 n -- n n ) {: h:ptr v:n :}
    v LMV !  0 LMNEG !  0 LMPOS !
-   h ER.DIN @ RES-FALSE EN-MULT
-   h ER.DOUT @ RES-TRUE EN-MULT
-   h ER.HASR @ 0 <> IF
-      h ER.RIN @ RES-FALSE EN-MULT
-      h ER.ROUT @ RES-TRUE EN-MULT
+   h E-DIN@ RES-FALSE EN-MULT
+   h E-DOUT@ RES-TRUE EN-MULT
+   h E-HASR@ 0 <> IF
+      h E-RIN@ RES-FALSE EN-MULT
+      h E-ROUT@ RES-TRUE EN-MULT
    THEN
    LMNEG @ LMPOS @ ;
 
@@ -7424,7 +7658,7 @@ variable LMI
    LIN-ANY? 0= IF exit THEN
    OK @ 0= IF exit THEN
    0 LMI !
-   BEGIN LMI @ h ER.TVN @ < WHILE
+   BEGIN LMI @ h E-TVN@ < WHILE
       LMI @ cells EI-TV + @ {: r:n :}
       r UNBOUND <> IF
          r T-RES {: rr:n :}
@@ -7442,25 +7676,25 @@ variable LMI
 : EFF-APPLY ( ptr u8 -- ) {: h:ptr :}
    0 CALL-HIT !
    h E-INST-RESET
-   h ER.DIN @ E-INST
-   h ER.DOUT @ E-INST
+   h E-DIN@ E-INST
+   h E-DOUT@ E-INST
    RECORDED-STEP
-   h ER.HASR @ 0 <> if
-      h ER.RIN @ E-INST RSUNI-IN          \ the called word's declared return inputs
-      h ER.ROUT @ E-INST RCUR !
+   h E-HASR@ 0 <> if
+      h E-RIN@ E-INST RSUNI-IN          \ the called word's declared return inputs
+      h E-ROUT@ E-INST RCUR !
    then
    h LIN-EFF-PASS ;
 
 : EFF-QUOT ( ptr u8 -- n ) {: h:ptr :}
    h E-INST-RESET
-   h ER.HASR @ 0 <> if
-      h ER.DIN @ E-INST
-      h ER.DOUT @ E-INST
-      h ER.RIN @ E-INST
-      h ER.ROUT @ E-INST
+   h E-HASR@ 0 <> if
+      h E-DIN@ E-INST
+      h E-DOUT@ E-INST
+      h E-RIN@ E-INST
+      h E-ROUT@ E-INST
    else
-      h ER.DIN @ E-INST
-      h ER.DOUT @ E-INST
+      h E-DIN@ E-INST
+      h E-DOUT@ E-INST
       FRESH MK-ROW dup
    then
    MK-QUOT ;
@@ -9093,12 +9327,12 @@ PTR-VARIABLE FQSYM-A   variable FQSYM-U   variable FQSYM
 \ Source authority is a separate question, answered by EFFECT-EXTERNAL-MIN-IN.
 : SIG-MIN-IN ( ptr u8 n -- n )
    FIND-SIG 0= IF -1 EXIT THEN
-   FEP @ ER.MINI @ ;
+   FEP @ E-MINI@ ;
 
 \ ---- effect-read export API (dot habu-expose-checker-effect-95e853eb) ---------
 \ A cold-prefix consumer (src/core/top-row.f, and the tier-2 typed top-row, dot
 \ habu-typed-top-tier-589c550f) cannot reach the effect store directly: FIND-SIG,
-\ ER.DIN/ER.DOUT, E-PTR and the EN-* node accessors are sig-less colon words, so
+\ E-DIN@/E-DOUT@, E-PTR and the EN-* node accessors are sig-less colon words, so
 \ internal-mark.f marks them DNAME-INT and they fail closed at interpret time. This
 \ is the ONE stable, minimal query surface the prefix sees. Each PUBLIC entry carries
 \ a declared TRUSTED: signature, so SIG-MIN-IN finds it and internal-mark leaves it
@@ -9225,7 +9459,7 @@ variable EFFQ-SAVE-DOUT
 : EFF-ROW-SLOT ( n n -- n )                   \ bundle slot+1 of the i-th term from the top (0-based)
    EFF-ROW-TERM EFF-TERM-SLOT ;
 
-\ Only EFFECT-QUERY is trusted: it reads FEP / ER.DIN / ER.DOUT (raw checker state
+\ Only EFFECT-QUERY is trusted: it reads FEP / E-DIN@ / E-DOUT@ (raw checker state
 \ the checker cannot type, like its sibling USIGS readers). Every reader below it
 \ is an ordinary checked word over EFF-ROW-N / EFF-ROW-TERM, so the trusted base
 \ grows by exactly one site; internal-mark strips their names past the seal, but
@@ -9238,8 +9472,8 @@ variable EFFQ-SAVE-DOUT
 TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect into query state
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    FIND-SIG dup EFFQ-OK !
-   if FEP @ ER.DIN @ EFFQ-DIN !  FEP @ ER.DOUT @ EFFQ-DOUT !
-      FEP @ ER.RIN @ EFFQ-RIN !  FEP @ ER.ROUT @ EFFQ-ROUT !
+   if FEP @ E-DIN@ EFFQ-DIN !  FEP @ E-DOUT@ EFFQ-DOUT !
+      FEP @ E-RIN@ EFFQ-RIN !  FEP @ E-ROUT@ EFFQ-ROUT !
    else 0 EFFQ-DIN !  0 EFFQ-DOUT !  0 EFFQ-RIN !  0 EFFQ-ROUT ! then
    EFFQ-OK @ ;
 
@@ -9329,7 +9563,7 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 \ nowhere to put that motion.
 \
 \ IT ASKS THE ROWS AND NOT THE `|` CLAUSE, and that is the whole point of
-\ exposing it here rather than exposing ER.HASR. The clause is SYNTAX - whether
+\ exposing it here rather than exposing E-HASR@. The clause is SYNTAX - whether
 \ an author wrote `| rin -- rout` - and a signature may carry one and still be
 \ neutral: `( n | R -- n | R )` names a row variable on both sides and moves
 \ nothing. Refusing on the clause would refuse that word for how it is spelled.
@@ -9873,7 +10107,7 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
    sym USIG-NEWEST-VISIBLE dup 0= IF drop CELLS-NONE CELLS-NONE EXIT THEN
    1 - {: off:n :}
    off E-PTR ER.ACTIVE @ EFF-DELETED = IF CELLS-NONE CELLS-NONE EXIT THEN
-   off E-PTR ER.DIN @ EFF-ROW-CELLS  off E-PTR ER.DOUT @ EFF-ROW-CELLS ;
+   off E-PTR E-DIN@ EFF-ROW-CELLS  off E-PTR E-DOUT@ EFF-ROW-CELLS ;
 
 \ The private sym of the same package and the same tail, 0 when the record being
 \ added is not a package public or nothing private owns its tail. Asked in symbol
@@ -10793,10 +11027,10 @@ get-current prot-wid-add
    1 - E-PTR {: rec:ptr :}
    NEW
    rec E-INST-RESET
-   rec ER.DIN @ E-INST  rec ER.DOUT @ E-INST
-   rec ER.RIN @ E-INST  rec ER.ROUT @ E-INST
+   rec E-DIN@ E-INST  rec E-DOUT@ E-INST
+   rec E-RIN@ E-INST  rec E-ROUT@ E-INST
    na nu CHECKER-REC-NAME!
-   rec ER.HASR @ 0 <> RES-TRUE E-ADD-EFFECT
+   rec E-HASR@ 0 <> RES-TRUE E-ADD-EFFECT
    RES-TRUE ;
 
 \ A PRIM declaration grants its own effect, never an ABI-only user row's shape.
@@ -10805,10 +11039,10 @@ get-current prot-wid-add
 : EFFECT-EXTERNAL-MIN-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
    sym CHECKER-FIND-USIG-SYM IF
-      sym EFFECT-EXTERNAL-SYM? IF FEP @ ER.MINI @ EXIT THEN
+      sym EFFECT-EXTERNAL-SYM? IF FEP @ E-MINI@ EXIT THEN
    THEN
    sym PRIM-FIRST-IDX dup 0= IF drop -1 EXIT THEN
-   1 - PE-EFF@ E-PTR ER.MINI @ ;
+   1 - PE-EFF@ E-PTR E-MINI@ ;
 
 \ Whether control comes back from a call to the word this spelling denotes.
 \
@@ -11078,11 +11312,11 @@ variable UNSAFE-SYM-N
 \ rows into fresh working terms (din dout rin rout hasr, E-ADD-EFFECT intake).
 : EXPORT-EFF-INST ( ptr u8 -- n n n n bool ) {: h:ptr :}
    h E-INST-RESET
-   h ER.DIN @ E-INST
-   h ER.DOUT @ E-INST
-   h ER.HASR @ 0 <> IF
-      h ER.RIN @ E-INST
-      h ER.ROUT @ E-INST
+   h E-DIN@ E-INST
+   h E-DOUT@ E-INST
+   h E-HASR@ 0 <> IF
+      h E-RIN@ E-INST
+      h E-ROUT@ E-INST
       RES-TRUE EXIT
    THEN
    0 0 RES-FALSE ;
@@ -12432,10 +12666,10 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 
 : CF-RECURSE-EFF ( ptr u8 -- ) {: h:ptr :}
    h E-INST-RESET
-   h ER.HASR @ RHAS !
-   h ER.DIN @ E-INST RDIN !
-   h ER.DOUT @ E-INST RDOUT !
-   RHAS @ 0 <> IF h ER.RIN @ E-INST RRIN !  h ER.ROUT @ E-INST RROUT ! THEN
+   h E-HASR@ RHAS !
+   h E-DIN@ E-INST RDIN !
+   h E-DOUT@ E-INST RDOUT !
+   RHAS @ 0 <> IF h E-RIN@ E-INST RRIN !  h E-ROUT@ E-INST RROUT ! THEN
    RDIN @ SUNI-IN  RDOUT @ DCUR !
    RHAS @ 0 <> IF RRIN @ RSUNI-IN  RROUT @ RCUR ! THEN
    h LIN-EFF-PASS ;
@@ -14701,7 +14935,7 @@ $47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-SIG:LEN-CELL
 \ binary object below. The artifact and seed copy this pool without re-encoding.
 \ A signature row points at one versioned, self-contained verified graph.
 \ The E record/node shapes are reused; their references are blob-relative.
-\ ER.ACTIVE carries the version magic, ER.NEXT the byte length, and ER.SYM
+\ EW.ACTIVE carries the version magic, EW.NEXT the byte length, and EW.SYM
 \ carries control/defer flags. No source symbol id or history link travels.
 $4842470000000001 constant ASIG-GRAPH-MAGIC
 $10000 constant ASIG-GRAPH-DEFER
@@ -14826,6 +15060,17 @@ defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
    dst 1+ src ASIG-GRAPH-SLOT CELL + !
    dst ;
 
+\ Project a local binding into the stable owner/payload wire representation.
+: E-WIRE-COPY ( ptr u8 ptr u8 -- ) {: rec:ptr dst:ptr :}
+   rec ER.NEXT @ dst EW.NEXT !
+   rec ER.ACTIVE @ dst EW.ACTIVE !
+   rec ER.SYM @ dst EW.SYM !
+   rec ER.SYMPREV @ dst EW.SYMPREV !
+   rec E-DIN@ dst EW.DIN ! rec E-DOUT@ dst EW.DOUT !
+   rec E-RIN@ dst EW.RIN ! rec E-ROUT@ dst EW.ROUT !
+   rec E-HASR@ dst EW.HASR ! rec E-TVN@ dst EW.TVN !
+   rec E-RVN@ dst EW.RVN ! rec E-MINI@ dst EW.MINI ! ;
+
 : ASIG-GRAPH-COPY ( n -- n ) {: sym:n :}
    sym USIG-NEWEST dup 0= IF drop ASIG-GRAPH-DIE THEN
    1- {: src:n :}
@@ -14834,22 +15079,22 @@ defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
    ASIG-GRAPH-GEN !
    ASIG-GRAPH-ALIGN
    ASIG-STR-U @ ASIG-GRAPH-BASE !
-   EFF-REC ASIG-GRAPH-ALLOC drop
-   src E-PTR 0 ASIG-GRAPH-PTR EFF-REC USIGS-COPY
-   ASIG-GRAPH-MAGIC 0 ASIG-GRAPH-PTR ER.ACTIVE !
-   0 0 ASIG-GRAPH-PTR ER.SYMPREV !
-   \ Flags and defer only: CK-GRAPH-REC refuses an ER.SYM outside $1000F, so a
+   EFF-WIRE ASIG-GRAPH-ALLOC drop
+   src E-PTR 0 ASIG-GRAPH-PTR E-WIRE-COPY
+   ASIG-GRAPH-MAGIC 0 ASIG-GRAPH-PTR EW.ACTIVE !
+   0 0 ASIG-GRAPH-PTR EW.SYMPREV !
+   \ Flags and defer only: CK-GRAPH-REC refuses an EW.SYM outside $1000F, so a
    \ captured graph carries no intact masks and a seeded signature's callee is
    \ read back with none. Widening that word is a version of this format.
    sym CTL-FLAGS-SYM
    sym DFER-FIND-SYM IF ASIG-GRAPH-DEFER or THEN
-   0 ASIG-GRAPH-PTR ER.SYM !
-   src E-PTR ER.DIN @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.DIN !
-   src E-PTR ER.DOUT @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.DOUT !
-   src E-PTR ER.RIN @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.RIN !
-   src E-PTR ER.ROUT @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.ROUT !
-   ASIG-STR-U @ ASIG-GRAPH-BASE @ - 0 ASIG-GRAPH-PTR ER.NEXT !
-   0 ASIG-GRAPH-PTR dup ER.NEXT @ ASIG-GRAPH-CHECK-XT
+   0 ASIG-GRAPH-PTR EW.SYM !
+   src E-PTR E-DIN@ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR EW.DIN !
+   src E-PTR E-DOUT@ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR EW.DOUT !
+   src E-PTR E-RIN@ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR EW.RIN !
+   src E-PTR E-ROUT@ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR EW.ROUT !
+   ASIG-STR-U @ ASIG-GRAPH-BASE @ - 0 ASIG-GRAPH-PTR EW.NEXT !
+   0 ASIG-GRAPH-PTR dup EW.NEXT @ ASIG-GRAPH-CHECK-XT
    ASIG-GRAPH-BASE @ ;
 
 : CHECKER-PAYLOAD-ARM ( -- )
@@ -14996,7 +15241,7 @@ variable CK-GRAPH-WIDTH-BAD
    CK-GRAPH-MAP @ bytes ASIG-GRAPH-ZERO ;
 
 : CK-GRAPH-SPAN? ( n n -- ) {: off:n bytes:n :}
-   off EFF-REC < off 7 and 0 <> or IF ASIG-GRAPH-DIE THEN
+   off EFF-WIRE < off 7 and 0 <> or IF ASIG-GRAPH-DIE THEN
    off bytes CK-GRAPH-LEN @ CK-AOT-SPAN? ;
 
 : CK-GRAPH-CLAIM ( n n -- ) {: off:n bytes:n :}
@@ -15014,13 +15259,13 @@ variable CK-GRAPH-WIDTH-BAD
 : CK-GRAPH-BOOL? ( n -- ) dup 0 <> swap -1 <> and IF ASIG-GRAPH-DIE THEN ;
 
 : CK-GRAPH-VAR? ( n n bool -- ) {: id:n kind:n row:bool :}
-   row IF 0 CK-GRAPH-PTR ER.RVN @ ELSE 0 CK-GRAPH-PTR ER.TVN @ THEN {: count:n :}
+   row IF 0 CK-GRAPH-PTR EW.RVN @ ELSE 0 CK-GRAPH-PTR EW.TVN @ THEN {: count:n :}
    id 0 < id count >= or IF ASIG-GRAPH-DIE THEN
    row IF
       kind 0 <> kind RVK-QUOT <> and kind RVK-INFERRED <> and IF ASIG-GRAPH-DIE THEN
    ELSE kind TVK-ANY <> kind TVK-RAW <> and kind BASE-KIND? 0= and
         kind TVK-OFF <> and IF ASIG-GRAPH-DIE THEN THEN   \ offset provenance persists on a stored effect's pointee var
-   row IF id 0 CK-GRAPH-PTR ER.TVN @ + ELSE id THEN cells
+   row IF id 0 CK-GRAPH-PTR EW.TVN @ + ELSE id THEN cells
    CK-GRAPH-MAP-U @ + CK-GRAPH-SLOT {: slot:ptr :}
    slot @ 0 <> slot @ kind 1+ <> and IF ASIG-GRAPH-DIE THEN
    kind 1+ slot ! ;
@@ -15113,7 +15358,7 @@ variable CK-GRAPH-WIDTH-BAD
    tag 1+ off CK-GRAPH-SLOT ! ;
 
 : CK-GRAPH-MIN-IN ( -- n )
-   0 0 CK-GRAPH-PTR ER.DIN @
+   0 0 CK-GRAPH-PTR EW.DIN @
    BEGIN dup 0 <> WHILE
       dup CK-GRAPH-PTR EN.TAG @ EN-PUSH <> IF drop EXIT THEN
       dup CK-GRAPH-PTR EN.C @ 1- {: width:n :}
@@ -15123,31 +15368,31 @@ variable CK-GRAPH-WIDTH-BAD
 
 : CK-GRAPH-CHECK ( ptr u8 n ptr u8 n -- ) {: graph:ptr bytes:n reg:ptr regu:n :}
    0 CK-GRAPH-WIDTH-BAD !
-   bytes EFF-REC < IF ASIG-GRAPH-DIE THEN
+   bytes EFF-WIRE < IF ASIG-GRAPH-DIE THEN
    graph CK-GRAPH-BASE ! bytes CK-GRAPH-LEN !
    reg CK-GRAPH-REG-P ! regu CK-GRAPH-REG-U !
    0 CK-GRAPH-PTR {: rec:ptr :}
-   rec ER.ACTIVE @ ASIG-GRAPH-MAGIC <> IF ASIG-GRAPH-DIE THEN
-   rec ER.NEXT @ bytes <> IF ASIG-GRAPH-DIE THEN
-   rec ER.SYMPREV @ 0 <> rec ER.SYM @ $1000F invert and 0 <> or IF ASIG-GRAPH-DIE THEN
-   rec ER.HASR @ CK-GRAPH-BOOL?
-   rec ER.HASR @ 0= IF rec ER.RIN @ rec ER.ROUT @ or 0 <> IF ASIG-GRAPH-DIE THEN THEN
-   rec ER.TVN @ {: tvn:n :} rec ER.RVN @ {: rvn:n :}
+   rec EW.ACTIVE @ ASIG-GRAPH-MAGIC <> IF ASIG-GRAPH-DIE THEN
+   rec EW.NEXT @ bytes <> IF ASIG-GRAPH-DIE THEN
+   rec EW.SYMPREV @ 0 <> rec EW.SYM @ $1000F invert and 0 <> or IF ASIG-GRAPH-DIE THEN
+   rec EW.HASR @ CK-GRAPH-BOOL?
+   rec EW.HASR @ 0= IF rec EW.RIN @ rec EW.ROUT @ or 0 <> IF ASIG-GRAPH-DIE THEN THEN
+   rec EW.TVN @ {: tvn:n :} rec EW.RVN @ {: rvn:n :}
    tvn 0 < rvn 0 < or IF ASIG-GRAPH-DIE THEN
    tvn bytes EFF-NODE / > rvn bytes EFF-NODE / > or IF ASIG-GRAPH-DIE THEN
    tvn rvn + bytes EFF-NODE / > IF ASIG-GRAPH-DIE THEN
    CK-GRAPH-ROOM TWALK-RESET
-   rec ER.DIN @ RES-TRUE CK-GRAPH-NODE?
-   rec ER.DOUT @ RES-TRUE CK-GRAPH-NODE?
-   rec ER.RIN @ RES-TRUE CK-GRAPH-NODE?
-   rec ER.ROUT @ RES-TRUE CK-GRAPH-NODE?
-   CK-GRAPH-MIN-IN rec ER.MINI @ <> IF ASIG-GRAPH-DIE THEN ;
+   rec EW.DIN @ RES-TRUE CK-GRAPH-NODE?
+   rec EW.DOUT @ RES-TRUE CK-GRAPH-NODE?
+   rec EW.RIN @ RES-TRUE CK-GRAPH-NODE?
+   rec EW.ROUT @ RES-TRUE CK-GRAPH-NODE?
+   CK-GRAPH-MIN-IN rec EW.MINI @ <> IF ASIG-GRAPH-DIE THEN ;
 
 : CK-GRAPH-VALIDATE ( n -- ) {: at:n :}
    at 7 and 0 <> IF ASIG-GRAPH-DIE THEN
-   at EFF-REC CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
+   at EFF-WIRE CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
    CK-AOT-SIG-POOL CK-AOT-S-STR CK-AOT-OFF + at + {: graph:ptr :}
-   graph ER.NEXT @ {: bytes:n :}
+   graph EW.NEXT @ {: bytes:n :}
    at bytes CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
    graph bytes CK-AOT-REG$ CK-GRAPH-CHECK ;
 
@@ -15265,49 +15510,56 @@ ASIG-GRAPH-CHECK-INSTALL
       0 node EN.F ! 0 node EN.G !
    THEN THEN THEN THEN THEN THEN ;
 
+: CK-GRAPH-OFFSET ( n n -- n ) {: off:n delta:n :}
+   off 0= IF 0 ELSE off delta + THEN ;
+
 : CK-GRAPH-IMPORT ( n -- ) {: sym:n :}
-   CK-GRAPH-LEN @ 7 + -8 and {: bytes:n :}
-   bytes $7FFFFFFFFFFFFFFF UEND @ - CELL - > IF ASIG-GRAPH-DIE THEN
-   UEND @ bytes + CELL + USIGS-ENSURE
-   0 CK-GRAPH-PTR ER.TVN @ 0 CK-GRAPH-PTR ER.RVN @ max TV-ENSURE
-   \ Reserve constructor space before adding any missing linear constructor.
-   CTN @ bytes EFF-NODE / + CT-ENSURE
-   bytes CT-STR-ENSURE
-   EFF-REC BEGIN dup CK-GRAPH-LEN @ < WHILE
+   CK-GRAPH-LEN @ $7FFFFFFFFFFFFFFF 7 - > IF ASIG-GRAPH-DIE THEN
+   CK-GRAPH-LEN @ 7 + -8 and {: wirebytes:n :}
+   wirebytes EFF-WIRE - EFF-REC + {: bytes:n :}
+   bytes $7FFFFFFFFFFFFFFF UEND @ - CELL - EFF-CONTENT - > IF ASIG-GRAPH-DIE THEN
+   UEND @ bytes + EFF-CONTENT + CELL + USIGS-ENSURE
+   0 CK-GRAPH-PTR EW.TVN @ 0 CK-GRAPH-PTR EW.RVN @ max TV-ENSURE
+   \ Reserve every allocation before publishing the new binding or constructors.
+   CTN @ wirebytes EFF-NODE / + CT-ENSURE
+   wirebytes CT-STR-ENSURE
+   DFER-NEED DFER-ENSURE
+   NORET-END @ NORET-ENTRY + CELL + NORET-ENSURE
+   NRX-ENSURE USX-ENSURE UIX-EXACT CHX-EXACT
+   UIX-N @ wirebytes EFF-NODE / + {: maxnodes:n :}
+   BEGIN maxnodes UIX-ENT-CAP @ > WHILE UIX-ENT-GROW REPEAT
+   BEGIN maxnodes 2 * UIX-BKT-CAP @ > WHILE UIX-BKT-GROW REPEAT
+   CHX-N @ 1+ CHX-ENT-CAP @ > IF CHX-ENT-GROW THEN
+   CHX-N @ 1+ 2 * CHX-BKT-CAP @ > IF CHX-BKT-GROW THEN
+   EFF-WIRE BEGIN dup CK-GRAPH-LEN @ < WHILE
       dup CK-GRAPH-SLOT @ EN-CON 1+ = IF dup CK-GRAPH-PTR CK-GRAPH-CON-INSTALL THEN
       CELL +
    REPEAT drop
-   DFER-NEED DFER-ENSURE
-   NORET-END @ NORET-ENTRY + CELL + NORET-ENSURE
-   NRX-ENSURE USX-ENSURE UIX-EXACT
-   UIX-N @ bytes EFF-NODE / + {: maxnodes:n :}
-   BEGIN maxnodes UIX-ENT-CAP @ > WHILE UIX-ENT-GROW REPEAT
-   BEGIN maxnodes 2 * UIX-BKT-CAP @ > WHILE UIX-BKT-GROW REPEAT
    CHECKER-REC-SYM @ {: was:n :}
    sym CHECKER-REC-SYM !
    E-REC-START E-OFF {: base:n :}
-   CK-GRAPH-BASE @ EFF-REC + base EFF-REC + E-PTR
-   CK-GRAPH-LEN @ EFF-REC - USIGS-COPY
-   CK-GRAPH-LEN @ base + E-PTR bytes CK-GRAPH-LEN @ - ASIG-GRAPH-ZERO
-   0 CK-GRAPH-PTR {: source:ptr :}
-   base E-PTR {: rec:ptr :}
-   EFF-SEEDED rec ER.ACTIVE !
-   source ER.DIN @ rec ER.DIN ! rec ER.DIN base CK-GRAPH-REBASE
-   source ER.DOUT @ rec ER.DOUT ! rec ER.DOUT base CK-GRAPH-REBASE
-   source ER.RIN @ rec ER.RIN ! rec ER.RIN base CK-GRAPH-REBASE
-   source ER.ROUT @ rec ER.ROUT ! rec ER.ROUT base CK-GRAPH-REBASE
-   source ER.HASR @ rec ER.HASR !
-   source ER.TVN @ rec ER.TVN ! source ER.RVN @ rec ER.RVN !
-   source ER.MINI @ rec ER.MINI !
-   EFF-REC BEGIN dup CK-GRAPH-LEN @ < WHILE
-      dup CK-GRAPH-SLOT @ 0 > IF dup base CK-GRAPH-NODE-REBASE THEN
+   base EFF-REC + EFF-WIRE - {: delta:n :}
+   CK-GRAPH-BASE @ EFF-WIRE + base EFF-REC + E-PTR
+   CK-GRAPH-LEN @ EFF-WIRE - USIGS-COPY
+   CK-GRAPH-LEN @ delta + E-PTR wirebytes CK-GRAPH-LEN @ - ASIG-GRAPH-ZERO
+   EFF-WIRE BEGIN dup CK-GRAPH-LEN @ < WHILE
+      dup CK-GRAPH-SLOT @ 0 > IF dup delta CK-GRAPH-NODE-REBASE THEN
       CELL +
    REPEAT drop
-   base bytes + UEND ! rec E-REC-FINISH USX-STAMP
+   base bytes + UEND !
+   0 CK-GRAPH-PTR {: source:ptr :}
+   EFF-SEEDED base E-PTR ER.ACTIVE !
+   source EW.DIN @ delta CK-GRAPH-OFFSET
+   source EW.DOUT @ delta CK-GRAPH-OFFSET
+   source EW.RIN @ delta CK-GRAPH-OFFSET
+   source EW.ROUT @ delta CK-GRAPH-OFFSET
+   source EW.HASR @ source EW.TVN @ source EW.RVN @ source EW.MINI @
+   E-CONTENT-NEW base E-PTR ER.CONTENT !
+   base E-PTR E-REC-FINISH USX-STAMP
    base UEND @ UIX-REC-ADD UIX-STAMP
    HIDX-VALID @ IF base 1+ sym HIDX-EFF! UEND @ HIDX-EFF-DEP+ THEN
-   sym source ER.SYM @ ASIG-GRAPH-DEFER invert and 0 0 NORET-ADD-SYM
-   sym source ER.SYM @ ASIG-GRAPH-DEFER and 0 <> DFER-ADD-SYM
+   sym source EW.SYM @ ASIG-GRAPH-DEFER invert and 0 0 NORET-ADD-SYM
+   sym source EW.SYM @ ASIG-GRAPH-DEFER and 0 <> DFER-ADD-SYM
    was CHECKER-REC-SYM ! ;
 
 : CK-AOT-TAKE ( n -- ) {: r:n :}
@@ -16723,6 +16975,11 @@ package CHECKER-REG
 \ The retained compiler checked the replacement prefix before its new hooks
 \ existed. Transfer those actual graphs into the new owner before enabling
 \ the hooks. Symbols and constructors cross by semantic name, never by ID.
+\ SOURCE-ROW is consumed synchronously before the next call. Node offsets
+\ remain relative to the returned source pool, not this transient flat view.
+create EFFECT-XFER EFF-WIRE allot
+: EFFECT-XFER-CLEAR ( -- ) EFFECT-XFER EFF-WIRE ASIG-GRAPH-ZERO ;
+
 package CHECKER-REG
 
 $10000 constant TRANSFER-DEFER
@@ -16736,7 +16993,8 @@ $10000 constant TRANSFER-DEFER
    id CTL-FLAGS-SYM
    id DFER-FIND-SYM if TRANSFER-DEFER or then
    id CTL-MASKS-SYM XFER-PACK {: flags:n :}
-   USIGS rec id SYM-XFER-ROW flags RES-TRUE ;
+   rec EFFECT-XFER E-WIRE-COPY
+   USIGS EFFECT-XFER id SYM-XFER-ROW flags RES-TRUE ;
 
 : CON-NAME ( n -- ptr u8 n ) CT-NAME$ ;
 
@@ -16771,13 +17029,13 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    name TRANSFER-SYMBOL {: sym:n :}
    sym USIG-NEWEST 0= 0= if exit then
    packed XFER-FLAGS {: flags:n :}
-   NEW rec E-INST-RESET
-   rec ER.DIN @ pool E-INST-FROM
-   rec ER.DOUT @ pool E-INST-FROM
-   rec ER.RIN @ pool E-INST-FROM
-   rec ER.ROUT @ pool E-INST-FROM
+   NEW rec EW.TVN @ rec EW.RVN @ E-INST-COUNTS
+   rec EW.DIN @ pool E-INST-FROM
+   rec EW.DOUT @ pool E-INST-FROM
+   rec EW.RIN @ pool E-INST-FROM
+   rec EW.ROUT @ pool E-INST-FROM
    sym CHECKER-REC-SYM !
-   rec ER.HASR @ 0= 0= flags EFFECT-EXTERNAL and 0 <> E-ADD-EFFECT
+   rec EW.HASR @ 0= 0= flags EFFECT-EXTERNAL and 0 <> E-ADD-EFFECT
    sym flags TRANSFER-DEFER invert and  packed XFER-DMASK  packed XFER-RMASK  NORET-ADD-SYM
    sym flags TRANSFER-DEFER and 0= 0= DFER-ADD-SYM ;
 
@@ -16824,6 +17082,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
 \ the later checker scopes that are declared below the registry implementation.
 : CHECKER-CAPTURE-PREPARE ( -- )
    CHECKER-TAPE:DETACH
+   EFFECT-XFER-CLEAR
    CK-GRAPH-RELEASE
    ASIG-GRAPH-MAP @ ASIG-GRAPH-MAP-CAP @ ASIG-RELEASE
    NULL-PTR ASIG-GRAPH-MAP ! 0 ASIG-GRAPH-MAP-CAP !
@@ -16840,6 +17099,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    USIGS-SNAPSHOT-PERSIST
    USX-RESET
    UIX-RESET                            \ process-local mmap: never bake its address
+   CHX-RESET
    NORET-SNAPSHOT-PERSIST
    NRX-RESET
    REG-EXT-PERSIST-XT

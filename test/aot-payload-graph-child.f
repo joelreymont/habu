@@ -128,9 +128,9 @@ TRUSTED: MODE? ( ptr u8 n -- bool )
 TRUSTED: GRAPH ( n -- ptr u8 )
    4 CK-AOT-FIELD POOL CK-AOT-S-STR CK-AOT-OFF + + ;
 
-TRUSTED: DIN ( ptr u8 -- ptr u8 ) dup ER.DIN @ + ;
+TRUSTED: DIN ( ptr u8 -- ptr u8 ) dup EW.DIN @ + ;
 TRUSTED: DOUT-TYPE ( ptr u8 -- ptr u8 ) {: graph:ptr :}
-   graph ER.DOUT @ graph + EN.A @ graph + ;
+   graph EW.DOUT @ graph + EN.A @ graph + ;
 
 TRUSTED: NAMED-GRAPH ( ptr u8 n -- ptr u8 ) {: name:ptr u:n :}
    CK-AOT-ROWS 0 ?do
@@ -138,13 +138,13 @@ TRUSTED: NAMED-GRAPH ( ptr u8 n -- ptr u8 ) {: name:ptr u:n :}
    loop 79 throw NULL-PTR ;
 
 TRUSTED: CORRUPT ( -- )
-   s" authority-bits" MODE? IF $10 0 GRAPH ER.SYM ! THEN
-   s" length" MODE? IF $7FFFFFFFFFFFFFFF 0 GRAPH ER.NEXT ! THEN
-   s" cycle" MODE? IF 0 GRAPH dup ER.DIN @ swap DIN EN.B ! THEN
+   s" authority-bits" MODE? IF $10 0 GRAPH EW.SYM ! THEN
+   s" length" MODE? IF $7FFFFFFFFFFFFFFF 0 GRAPH EW.NEXT ! THEN
+   s" cycle" MODE? IF 0 GRAPH dup EW.DIN @ swap DIN EN.B ! THEN
    s" tag" MODE? IF 99 0 GRAPH DIN EN.TAG ! THEN
    s" variables" MODE? IF
-      2 GRAPH dup ER.TVN @ swap ER.RVN @ + 0 > 0= IF 79 throw THEN
-      0 2 GRAPH ER.TVN ! 0 2 GRAPH ER.RVN !
+      2 GRAPH dup EW.TVN @ swap EW.RVN @ + 0 > 0= IF 79 throw THEN
+      0 2 GRAPH EW.TVN ! 0 2 GRAPH EW.RVN !
    THEN
    s" family" MODE? IF
       3 GRAPH DOUT-TYPE dup EN.TAG @ EN-PARAM EQ
@@ -157,7 +157,7 @@ TRUSTED: CORRUPT ( -- )
    s" scalar-zero" MODE? IF
       1 GRAPH DIN EN.C @ 2 EQ
       1 1 GRAPH DIN EN.C !
-      0 1 GRAPH ER.MINI !
+      0 1 GRAPH EW.MINI !
    THEN
    s" wide-width" MODE? IF
       s" PAYLOAD-WIDE-USE" NAMED-GRAPH {: graph:ptr :}
@@ -166,14 +166,14 @@ TRUSTED: CORRUPT ( -- )
       dup EN.E @ 0 > 0= IF 79 throw THEN
       EN.E @ 2 EQ
       graph DIN dup EN.C @ 1+ swap EN.C !
-      graph ER.MINI dup @ 1+ swap !
+      graph EW.MINI dup @ 1+ swap !
    THEN
    s" logical-width" MODE? IF
       s" PAYLOAD-POLY-USE" NAMED-GRAPH {: graph:ptr :}
       graph DIN EN.C @ 3 EQ
       graph DIN EN.A @ graph + dup EN.TAG @ EN-PARAM EQ
       EN.E @ 0 EQ
-      2 graph DIN EN.C ! 1 graph ER.MINI !
+      2 graph DIN EN.C ! 1 graph EW.MINI !
    THEN
    s" HABU_PAYLOAD_TEST_MODE" GETENV nip IF
       s" graph corruption applied: " type s" HABU_PAYLOAD_TEST_MODE" GETENV type cr
@@ -210,8 +210,8 @@ TRUSTED: CORRUPT-SOURCE ( -- )
    s" producer-scalar-zero" MODE? IF
       s" PAYLOAD-FIXED" FIND-SIG -1 EQ
       FEP @ {: rec:ptr :}
-      rec ER.DIN @ E-PTR EN.C @ 2 EQ
-      1 rec ER.DIN @ E-PTR EN.C ! 0 rec ER.MINI !
+      rec E-DIN@ E-PTR EN.C @ 2 EQ
+      1 rec E-DIN@ E-PTR EN.C ! 0 rec E-CONTENT EC.MINI !
       s" graph corruption applied: producer-scalar-zero" type cr
    THEN ;
 TRUSTED: INSTALL ( -- )

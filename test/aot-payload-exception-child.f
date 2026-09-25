@@ -10,7 +10,7 @@ public
 TRUSTED: NONVACUOUS ( -- )
    s" PAYLOAD-THROW-PROVIDER" CHECKER-FIND-ACTIVE-SYM
    USIG-NEWEST dup 0= IF 79 throw THEN 1- E-PTR
-   ER.DOUT @ E-PTR EN.A @ E-PTR {: quotation:ptr :}
+   E-DOUT@ E-PTR EN.A @ E-PTR {: quotation:ptr :}
    quotation EN.TAG @ EN-QUOT <> IF 79 throw THEN
    quotation EN.E @ 0= IF 79 throw THEN
    quotation EN.G @ 0= quotation EN.H @ 0= or IF 79 throw THEN

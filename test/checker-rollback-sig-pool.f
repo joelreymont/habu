@@ -94,11 +94,11 @@ TRUSTED: N-ROW? ( ptr u8 n n -- bool ) {: graph:ptr off:n count:n :}
    graph node EN.B @ count 1- RECURSE ;
 
 TRUSTED: GRAPH-EFFECT? ( ptr u8 n n -- bool ) {: graph:ptr in:n out:n :}
-   graph ER.ACTIVE @ ASIG-GRAPH-MAGIC <> if false exit then
-   graph ER.MINI @ in <> if false exit then
-   graph ER.HASR @ 0<> if false exit then
-   graph graph ER.DIN @ in N-ROW?
-   graph graph ER.DOUT @ out N-ROW? and ;
+   graph EW.ACTIVE @ ASIG-GRAPH-MAGIC <> if false exit then
+   graph EW.MINI @ in <> if false exit then
+   graph EW.HASR @ 0<> if false exit then
+   graph graph EW.DIN @ in N-ROW?
+   graph graph EW.DOUT @ out N-ROW? and ;
 
 : ROW-EFFECT? ( ptr u8 n n n -- bool ) {: a:ptr u:n in:n out:n :}
    a u LOOKUP 0= if drop false exit then {: row:n :}

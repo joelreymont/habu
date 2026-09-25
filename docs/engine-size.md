@@ -34,6 +34,77 @@ The baseline is
 Run `bin/hb --load tools/engine-size.f -- bin/hb` on a rebuilt product to
 measure subsequent changes; the table is evidence, not a fixed size assertion.
 
+## Shared effects and frame reloads
+
+The next ARM64 Mach-O product is 2,889,847 bytes, down 82,560 bytes from
+2,972,407. Its SHA-256 is
+`730f69dac961702ea8593685d5f7641df32cf2d8d20725ba996b38f422e63aae`.
+Every effect binding and history remains; a 40-byte binding now references
+interned immutable 64-byte content. Authority stays on the binding. Owner
+transfer and serialized effect graphs retain their 96-byte wire representation.
+The isolated effect allocation falls from 321,883 to 239,570 encoded bytes,
+including its bitmap; the actual file reduction includes implementation costs.
+
+The native emitter also removes a frame reload immediately following a store
+of the same register to the same slot in one IR block. It retains the store,
+and one predicate controls layout and emission. The isolated change removes
+4,644 code bytes net, although alignment absorbs its entire standalone file
+saving. The combined product has these measured sections:
+
+| Section | Previous product | Combined product |
+|---|---:|---:|
+| Captured Habu code | 1,536,660 | 1,538,232 |
+| DATA bitmap | 69,196 | 52,908 |
+| DATA values | 787,548 | 723,712 |
+| Mach-O text padding | 6,680 | 60 |
+| Complete signed file | 2,972,407 | 2,889,847 |
+
+Added checker machinery makes the combined code section slightly larger; its
+metadata reduction is the net win. Two native generations are byte-identical,
+and the integrated native gate passes all 490 suites.
+Maki's native REPL image falls from 25,264,640 to 22,687,328 bytes without
+snapshot compression. Existing routing/geometry and negotiation checks produce
+byte-identical KiCad board artifacts. This does not measure external KiCad DRC.
+
+Of Maki's 2,577,312-byte reduction, 2,495,588 bytes are removed from the raw
+warm DATA window, 75,300 from embedded native sections, 1,400 from the warm
+code region and 5,024 from the signature. Padding is unchanged. The raw window
+falls from 16,732,124 to 14,236,536 bytes; it is still copied verbatim, with
+12,875,588 zero bytes. A smaller captured span, not a new snapshot codec,
+accounts for most of this reduction. The section census does not establish
+individual allocator provenance.
+
+## Eliminate unnecessary DATA before encoding it
+
+The current stripped builder still saves unreachable initialized storage.
+On the preceding product, an empty MAIN emits 2,156 code bytes and 427 DATA
+value bytes. Adding an unreferenced private 65,536-byte array filled at build
+time leaves code size unchanged but raises value bytes to 74,155. Both native
+executables run successfully. Sparse encoding already exists on this path and
+does not establish DATA reachability.
+
+Warm snapshot zero counts likewise do not prove dead allocations. Maki's
+preceding image has 15,218,805 zero bytes within its 16,732,124-byte DATA
+window. Its final USIGS/NORETS stores contain 4,194,576 used bytes and only
+65,264 bytes of spare capacity. Earlier copies reserve another 3,014,656
+bytes, but releasing them requires proving that their name borrows and cached
+pointers have ended. Command argument/result buffers also carry retained API
+state; they cannot simply be reset because the measured instance is empty.
+
+Capture needs exact allocation extents, reference ownership and lifecycle
+boundaries. CREATE/ALLOT and address-relocation rows do not currently provide
+a complete object graph. Preserve unknown escapes conservatively. Compression
+and snapshot repacking remain held while these allocation causes are resolved;
+retaining runtime capacity does not itself justify storing every reserved byte.
+
+The current Maki snapshot still contains three all-zero checker boot
+reservations totaling 851,968 bytes: SYMS-BOOT, NORET-BOOT and SPA-BOOT.
+Their known lifetimes support first-use allocation while preserving live
+symbols/control facts and giving SPA explicit transient ownership. This is
+tracked as `habu-allocate-checker-boot-6b2624bd`; no saving is claimed yet.
+Persistence can still leave former live copies behind after later growth,
+so merely removing the BOOT declarations is not sufficient acceptance.
+
 ## Historical Linux measurements
 
 The block below records one Linux engine measurement. It is an example, not

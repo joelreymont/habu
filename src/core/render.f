@@ -1120,15 +1120,15 @@ REC-SIG-INSTALL
 \ candidates (global and used public); this renders the reference-site reject
 \ naming both with their effect arity so the author knows to qualify (PKG:WORD)
 \ or rename the collision. The sym effects read through the read-only USIGS
-\ accessors (CHECKER-FIND-USIG-SYM / ER.DIN / ER.DOUT / EFF-ROW-N), never through
+\ accessors (CHECKER-FIND-USIG-SYM / E-DIN@ / E-DOUT@ / EFF-ROW-N), never through
 \ the bare-name resolver, so rendering cannot re-trigger the shadow throw.
 : USH-EFF ( n -- )                        \ append " (Din -- Dout)" for a sym's effect, " (?)" if none
    {: sym:n :}
    sym CHECKER-FIND-USIG-SYM 0= IF s"  (?)" DTXT EXIT THEN
    s"  (" DTXT
-   FEP @ ER.DIN @ EFF-ROW-N RNUM
+   FEP @ E-DIN@ EFF-ROW-N RNUM
    s"  -- " DTXT
-   FEP @ ER.DOUT @ EFF-ROW-N RNUM
+   FEP @ E-DOUT@ EFF-ROW-N RNUM
    41 EMIT1 ;
 : USHADOW-PROSE ( -- )
    s" E-USING-SHADOW-GLOBAL habu: bare '" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT

@@ -82,10 +82,10 @@ TRUSTED: EIX-MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
 \ words share a row exactly when these answer the same offset.
 TRUSTED: EIX-DIN ( ptr u8 n -- n )
    FIND-SIG 0= IF -1 EXIT THEN
-   FEP @ ER.DIN @ ;
+   FEP @ E-DIN@ ;
 TRUSTED: EIX-DOUT ( ptr u8 n -- n )
    FIND-SIG 0= IF -1 EXIT THEN
-   FEP @ ER.DOUT @ ;
+   FEP @ E-DOUT@ ;
 
 \ the interner's own state: how many nodes it is offering, the end it was last
 \ made exact at, and each entry's node offset.

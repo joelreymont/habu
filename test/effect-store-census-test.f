@@ -113,7 +113,8 @@ TC @ 0 T<>                                     \ the bad definition really was r
 EFF-CENSUS:NODES 0 T<>                         \ the fresh shape cost real nodes
 EFF-CENSUS:NODE-TOTAL-BYTES 0 T<>
 EFF-CENSUS:WINDOW-BYTES
-EFF-CENSUS:HEADER-BYTES EFF-CENSUS:NODE-TOTAL-BYTES + T=
+EFF-CENSUS:HEADER-BYTES EFF-CENSUS:CONTENT-TOTAL-BYTES +
+EFF-CENSUS:NODE-TOTAL-BYTES + T=
 BALANCED
 
 \ ---------------------------------------------------------------------------

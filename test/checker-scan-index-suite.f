@@ -107,7 +107,7 @@ TRUSTED: SCX-SYM-INTERN ( -- n ) s" " SYM-GLOBAL SCX-NA @ SCX-NU @ SYM-INTERN ;
 \ above them can hide a wrong answer behind a cache hit.
 TRUSTED: SCX-SCAN-USIG ( n -- ) SCAN-USIGS-SYM ;
 TRUSTED: SCX-FEP-HIT? ( -- bool ) FEP-HIT? ;
-TRUSTED: SCX-FEP-MINI ( -- n ) FEP @ ER.MINI @ ;
+TRUSTED: SCX-FEP-MINI ( -- n ) FEP @ E-MINI@ ;
 : SCX-FMEND ( -- n ) FMEND @ ;
 TRUSTED: SCX-SCAN-NORET ( n -- ) NORET-SCAN-SYM ;
 TRUSTED: SCX-NORET-FLAGS ( -- n ) NORET-CTL @ XFER-FLAGS ;   \ the control word's flag bits

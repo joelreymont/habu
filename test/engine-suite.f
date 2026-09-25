@@ -1152,7 +1152,7 @@ TRUSTED: TR-SYM-LAYOUT-RAW ( -- n n n bool )
 TRUSTED: TR-EFF-REC-LAYOUT-RAW ( -- n n n bool )
    EFF-REC EFF-REC-ALIGN EFF-REC-PTR-MASK
    TR-REG-REC ER.NEXT TR-REG-REC ER-NEXT-OFF + =
-   TR-REG-REC ER.MINI TR-REG-REC ER-MINI-OFF + = and
+   TR-REG-REC ER.CONTENT TR-REG-REC ER-CONTENT-OFF + = and
    TR-REG-REC ER.SYMPREV TR-REG-REC ER-SYMPREV-OFF + = and ;
 
 TRUSTED: TR-EFF-NODE-LAYOUT-RAW ( -- n n n bool )
@@ -1212,7 +1212,7 @@ public
 : TR-EFF-REC-LAYOUT ( -- )
    TR-EFF-REC-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" effect-record-layout" T-LABEL
-   stride 12 cells T=  align $8 T=  mask 0 T=
+   stride 5 cells T=  align $8 T=  mask 0 T=
    ok TR-BOOL= ;
 
 : TR-EFF-NODE-LAYOUT ( -- )
