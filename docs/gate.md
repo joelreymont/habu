@@ -56,6 +56,12 @@ a chosen length; a pool path in front of it would overflow `NF-PATH-CAP`).
 
 ## How a suite runs, and what that demands of its files
 
+If a private `XDG_CACHE_HOME` is used, first check `gforth -e bye` with that
+environment. A Gforth snapshot may reopen precompiled `libcc-tmp` libraries
+from its cache: an empty private cache then fails before any Habu fixture runs.
+Copy the installed Gforth cache into the private cache, preserving symlinks,
+and verify Gforth starts before running the gate.
+
 - A `SUITE` block is **one** `bin/hb --load` spawn: its files load into one
   image in order. A suite file is therefore package-scoped, duplicate-safe, and
   closes its `package` before `T-REPORT`; a later suite otherwise dies exit 75

@@ -401,100 +401,6 @@ public
    d SLOT-BYTES mod 0<> if false exit then
    d abs WB-MAX <= ;
 
-private
-
-\ ---- the opcode names --------------------------------------------------------
-\ One table and not a literal at each use, because a session interns this
-\ dialect's whole vocabulary by walking it: a spelling the walk cannot reach is
-\ a spelling every module interns again.
-: OP-NAME ( A64IR:opcode -- ptr u8 n )
-   MATCH opcode
-      movz    OF s" a64.movz"    ENDOF
-      movk    OF s" a64.movk"    ENDOF
-      mov     OF s" a64.mov"     ENDOF
-      add     OF s" a64.add"     ENDOF
-      sub     OF s" a64.sub"     ENDOF
-      mul     OF s" a64.mul"     ENDOF
-      sdiv    OF s" a64.sdiv"    ENDOF
-      and     OF s" a64.and"     ENDOF
-      orr     OF s" a64.orr"     ENDOF
-      eor     OF s" a64.eor"     ENDOF
-      lslv    OF s" a64.lslv"    ENDOF
-      lsrv    OF s" a64.lsrv"    ENDOF
-      mvn     OF s" a64.mvn"     ENDOF
-      store    OF s" a64.str"      ENDOF
-      load     OF s" a64.ldr"      ENDOF
-      reserve  OF s" a64.reserve"  ENDOF
-      release  OF s" a64.release"  ENDOF
-      dtake    OF s" a64.dtake"    ENDOF
-      dload    OF s" a64.dload"    ENDOF
-      dstore   OF s" a64.dstore"   ENDOF
-      dpublish OF s" a64.dpublish" ENDOF
-      dpush    OF s" a64.dpush"    ENDOF
-      dpop     OF s" a64.dpop"     ENDOF
-      fdpush   OF s" a64.fdpush"   ENDOF
-      fdpop    OF s" a64.fdpop"    ENDOF
-      aload    OF s" a64.aldr"     ENDOF
-      astore   OF s" a64.astr"     ENDOF
-      abload   OF s" a64.aldrb"    ENDOF
-      abstore  OF s" a64.astrb"    ENDOF
-      flag     OF s" a64.flag"     ENDOF
-      selz     OF s" a64.selz"     ENDOF
-      cmpsel   OF s" a64.cmpsel"   ENDOF
-      br       OF s" a64.b"        ENDOF
-      brz      OF s" a64.cbz"      ENDOF
-      cmpbr    OF s" a64.cmpbr"    ENDOF
-      call     OF s" a64.call"     ENDOF
-      wordcall OF s" a64.wordcall" ENDOF
-      linksave OF s" a64.lnkstr"   ENDOF
-      linkload OF s" a64.lnkldr"   ENDOF
-      ret      OF s" a64.ret"      ENDOF
-      fadd     OF s" a64.fadd" ENDOF
-      fsub     OF s" a64.fsub" ENDOF
-      fmul     OF s" a64.fmul" ENDOF
-      fdiv     OF s" a64.fdiv" ENDOF
-      fneg     OF s" a64.fneg" ENDOF
-      fabs     OF s" a64.fabs" ENDOF
-      fsqrt    OF s" a64.fsqrt" ENDOF
-      scvtf    OF s" a64.scvtf" ENDOF
-      fcvtzs   OF s" a64.fcvtzs" ENDOF
-      fmovxd   OF s" a64.fmovxd" ENDOF
-      fmovdx   OF s" a64.fmovdx" ENDOF
-      fmovdd   OF s" a64.fmovdd" ENDOF
-      fload    OF s" a64.fldr" ENDOF
-      fstore   OF s" a64.fstr" ENDOF
-      faload   OF s" a64.faldr" ENDOF
-      fastore  OF s" a64.fastr" ENDOF
-      fdload   OF s" a64.fdload" ENDOF
-      fdstore  OF s" a64.fdstore" ENDOF
-      fflag    OF s" a64.fflag" ENDOF
-      fflagz   OF s" a64.fflagz" ENDOF
-      fcmpbr   OF s" a64.fcmpbr" ENDOF
-      fcmpbrz  OF s" a64.fcmpbrz" ENDOF
-      selzd    OF s" a64.selzd" ENDOF
-      cmpseld  OF s" a64.cmpseld" ENDOF
-      fcmpsel   OF s" a64.fcmpsel" ENDOF
-      fcmpselz  OF s" a64.fcmpselz" ENDOF
-      fcmpseld  OF s" a64.fcmpseld" ENDOF
-      fcmpselzd OF s" a64.fcmpselzd" ENDOF
-      tailcall  OF s" a64.tailcall" ENDOF
-      trap      OF s" a64.trap"     ENDOF
-      madd      OF s" a64.madd"     ENDOF
-      addi      OF s" a64.addi"     ENDOF
-      subi      OF s" a64.subi"     ENDOF
-      movn      OF s" a64.movn"     ENDOF
-      andi      OF s" a64.andi"     ENDOF
-      orri      OF s" a64.orri"     ENDOF
-      eori      OF s" a64.eori"     ENDOF
-      flagi     OF s" a64.flagi"    ENDOF
-      cmpbri    OF s" a64.cmpbri"   ENDOF
-      codeaddr  OF s" a64.codeaddr" ENDOF
-      dataaddr  OF s" a64.dataaddr" ENDOF
-      sdivnz    OF s" a64.sdivnz"   ENDOF
-   ;MATCH ;
-
-public
-
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ These ordinals predate the enum declaration order and are kept stable for the
 \ native passes that store them in their own tables.
@@ -672,6 +578,116 @@ public
       81 of A64IR-OPCODE:SDIVNZ    endof
       E-A64IR-OPCODE throw
    endcase ;
+
+private
+
+\ ---- the opcode names --------------------------------------------------------
+\ Three exact immutable spans per stable ordinal: name, rule and renderer.
+\ The typed opcode selects its row through ORD, never through enum TAG.
+246 PTR-U8-TABLE TEXT-A
+246 TYPED-BUFFER TEXT-U n
+
+: TEXT! ( ptr u8 n n -- ) {: a:ptr u:n idx:n :}
+   u idx TEXT-U !
+   TEXT-A idx ptr-field {: cell:ptr :}
+   cell ptr-cell-mark
+   a cell ! ;
+
+: NAMES! ( ptr u8 n ptr u8 n ptr u8 n A64IR:opcode -- )
+   {: name:ptr nu:n rule:ptr ru:n render:ptr eu:n op:A64IR:opcode :}
+   op ORD 3 * {: idx:n :}
+   name nu idx TEXT!
+   rule ru idx 1+ TEXT!
+   render eu idx 2 + TEXT! ;
+
+s" a64.movz" s" a64.rule.movz" s" a64.render.movz" A64IR-OPCODE:MOVZ NAMES!
+s" a64.movk" s" a64.rule.movk" s" a64.render.movk" A64IR-OPCODE:MOVK NAMES!
+s" a64.mov" s" a64.rule.mov" s" a64.render.mov" A64IR-OPCODE:MOV NAMES!
+s" a64.add" s" a64.rule.add" s" a64.render.add" A64IR-OPCODE:ADD NAMES!
+s" a64.sub" s" a64.rule.sub" s" a64.render.sub" A64IR-OPCODE:SUB NAMES!
+s" a64.mul" s" a64.rule.mul" s" a64.render.mul" A64IR-OPCODE:MUL NAMES!
+s" a64.sdiv" s" a64.rule.sdiv" s" a64.render.sdiv" A64IR-OPCODE:SDIV NAMES!
+s" a64.and" s" a64.rule.and" s" a64.render.and" A64IR-OPCODE:AND NAMES!
+s" a64.orr" s" a64.rule.orr" s" a64.render.orr" A64IR-OPCODE:ORR NAMES!
+s" a64.eor" s" a64.rule.eor" s" a64.render.eor" A64IR-OPCODE:EOR NAMES!
+s" a64.lslv" s" a64.rule.lslv" s" a64.render.lslv" A64IR-OPCODE:LSLV NAMES!
+s" a64.lsrv" s" a64.rule.lsrv" s" a64.render.lsrv" A64IR-OPCODE:LSRV NAMES!
+s" a64.mvn" s" a64.rule.mvn" s" a64.render.mvn" A64IR-OPCODE:MVN NAMES!
+s" a64.str" s" a64.rule.str" s" a64.render.str" A64IR-OPCODE:STORE NAMES!
+s" a64.ldr" s" a64.rule.ldr" s" a64.render.ldr" A64IR-OPCODE:LOAD NAMES!
+s" a64.reserve" s" a64.rule.reserve" s" a64.render.reserve" A64IR-OPCODE:RESERVE NAMES!
+s" a64.release" s" a64.rule.release" s" a64.render.release" A64IR-OPCODE:RELEASE NAMES!
+s" a64.dtake" s" a64.rule.dtake" s" a64.render.dtake" A64IR-OPCODE:DTAKE NAMES!
+s" a64.dload" s" a64.rule.dload" s" a64.render.dload" A64IR-OPCODE:DLOAD NAMES!
+s" a64.dstore" s" a64.rule.dstore" s" a64.render.dstore" A64IR-OPCODE:DSTORE NAMES!
+s" a64.dpublish" s" a64.rule.dpublish" s" a64.render.dpublish" A64IR-OPCODE:DPUBLISH NAMES!
+s" a64.dpush" s" a64.rule.dpush" s" a64.render.dpush" A64IR-OPCODE:DPUSH NAMES!
+s" a64.dpop" s" a64.rule.dpop" s" a64.render.dpop" A64IR-OPCODE:DPOP NAMES!
+s" a64.fdpush" s" a64.rule.fdpush" s" a64.render.fdpush" A64IR-OPCODE:FDPUSH NAMES!
+s" a64.fdpop" s" a64.rule.fdpop" s" a64.render.fdpop" A64IR-OPCODE:FDPOP NAMES!
+s" a64.aldr" s" a64.rule.aldr" s" a64.render.aldr" A64IR-OPCODE:ALOAD NAMES!
+s" a64.astr" s" a64.rule.astr" s" a64.render.astr" A64IR-OPCODE:ASTORE NAMES!
+s" a64.aldrb" s" a64.rule.aldrb" s" a64.render.aldrb" A64IR-OPCODE:ABLOAD NAMES!
+s" a64.astrb" s" a64.rule.astrb" s" a64.render.astrb" A64IR-OPCODE:ABSTORE NAMES!
+s" a64.flag" s" a64.rule.flag" s" a64.render.flag" A64IR-OPCODE:FLAG NAMES!
+s" a64.selz" s" a64.rule.selz" s" a64.render.selz" A64IR-OPCODE:SELZ NAMES!
+s" a64.cmpsel" s" a64.rule.cmpsel" s" a64.render.cmpsel" A64IR-OPCODE:CMPSEL NAMES!
+s" a64.b" s" a64.rule.b" s" a64.render.b" A64IR-OPCODE:BR NAMES!
+s" a64.cbz" s" a64.rule.cbz" s" a64.render.cbz" A64IR-OPCODE:BRZ NAMES!
+s" a64.cmpbr" s" a64.rule.cmpbr" s" a64.render.cmpbr" A64IR-OPCODE:CMPBR NAMES!
+s" a64.call" s" a64.rule.call" s" a64.render.call" A64IR-OPCODE:CALL NAMES!
+s" a64.wordcall" s" a64.rule.wordcall" s" a64.render.wordcall" A64IR-OPCODE:WORDCALL NAMES!
+s" a64.lnkstr" s" a64.rule.lnkstr" s" a64.render.lnkstr" A64IR-OPCODE:LINKSAVE NAMES!
+s" a64.lnkldr" s" a64.rule.lnkldr" s" a64.render.lnkldr" A64IR-OPCODE:LINKLOAD NAMES!
+s" a64.ret" s" a64.rule.ret" s" a64.render.ret" A64IR-OPCODE:RET NAMES!
+s" a64.fadd" s" a64.rule.fadd" s" a64.render.fadd" A64IR-OPCODE:FADD NAMES!
+s" a64.fsub" s" a64.rule.fsub" s" a64.render.fsub" A64IR-OPCODE:FSUB NAMES!
+s" a64.fmul" s" a64.rule.fmul" s" a64.render.fmul" A64IR-OPCODE:FMUL NAMES!
+s" a64.fdiv" s" a64.rule.fdiv" s" a64.render.fdiv" A64IR-OPCODE:FDIV NAMES!
+s" a64.fneg" s" a64.rule.fneg" s" a64.render.fneg" A64IR-OPCODE:FNEG NAMES!
+s" a64.fabs" s" a64.rule.fabs" s" a64.render.fabs" A64IR-OPCODE:FABS NAMES!
+s" a64.fsqrt" s" a64.rule.fsqrt" s" a64.render.fsqrt" A64IR-OPCODE:FSQRT NAMES!
+s" a64.scvtf" s" a64.rule.scvtf" s" a64.render.scvtf" A64IR-OPCODE:SCVTF NAMES!
+s" a64.fcvtzs" s" a64.rule.fcvtzs" s" a64.render.fcvtzs" A64IR-OPCODE:FCVTZS NAMES!
+s" a64.fmovxd" s" a64.rule.fmovxd" s" a64.render.fmovxd" A64IR-OPCODE:FMOVXD NAMES!
+s" a64.fmovdx" s" a64.rule.fmovdx" s" a64.render.fmovdx" A64IR-OPCODE:FMOVDX NAMES!
+s" a64.fmovdd" s" a64.rule.fmovdd" s" a64.render.fmovdd" A64IR-OPCODE:FMOVDD NAMES!
+s" a64.fldr" s" a64.rule.fldr" s" a64.render.fldr" A64IR-OPCODE:FLOAD NAMES!
+s" a64.fstr" s" a64.rule.fstr" s" a64.render.fstr" A64IR-OPCODE:FSTORE NAMES!
+s" a64.faldr" s" a64.rule.faldr" s" a64.render.faldr" A64IR-OPCODE:FALOAD NAMES!
+s" a64.fastr" s" a64.rule.fastr" s" a64.render.fastr" A64IR-OPCODE:FASTORE NAMES!
+s" a64.fdload" s" a64.rule.fdload" s" a64.render.fdload" A64IR-OPCODE:FDLOAD NAMES!
+s" a64.fdstore" s" a64.rule.fdstore" s" a64.render.fdstore" A64IR-OPCODE:FDSTORE NAMES!
+s" a64.fflag" s" a64.rule.fflag" s" a64.render.fflag" A64IR-OPCODE:FFLAG NAMES!
+s" a64.fflagz" s" a64.rule.fflagz" s" a64.render.fflagz" A64IR-OPCODE:FFLAGZ NAMES!
+s" a64.fcmpbr" s" a64.rule.fcmpbr" s" a64.render.fcmpbr" A64IR-OPCODE:FCMPBR NAMES!
+s" a64.fcmpbrz" s" a64.rule.fcmpbrz" s" a64.render.fcmpbrz" A64IR-OPCODE:FCMPBRZ NAMES!
+s" a64.selzd" s" a64.rule.selzd" s" a64.render.selzd" A64IR-OPCODE:SELZD NAMES!
+s" a64.cmpseld" s" a64.rule.cmpseld" s" a64.render.cmpseld" A64IR-OPCODE:CMPSELD NAMES!
+s" a64.fcmpsel" s" a64.rule.fcmpsel" s" a64.render.fcmpsel" A64IR-OPCODE:FCMPSEL NAMES!
+s" a64.fcmpselz" s" a64.rule.fcmpselz" s" a64.render.fcmpselz" A64IR-OPCODE:FCMPSELZ NAMES!
+s" a64.fcmpseld" s" a64.rule.fcmpseld" s" a64.render.fcmpseld" A64IR-OPCODE:FCMPSELD NAMES!
+s" a64.fcmpselzd" s" a64.rule.fcmpselzd" s" a64.render.fcmpselzd" A64IR-OPCODE:FCMPSELZD NAMES!
+s" a64.tailcall" s" a64.rule.tailcall" s" a64.render.tailcall" A64IR-OPCODE:TAILCALL NAMES!
+s" a64.trap" s" a64.rule.trap" s" a64.render.trap" A64IR-OPCODE:TRAP NAMES!
+s" a64.madd" s" a64.rule.madd" s" a64.render.madd" A64IR-OPCODE:MADD NAMES!
+s" a64.addi" s" a64.rule.addi" s" a64.render.addi" A64IR-OPCODE:ADDI NAMES!
+s" a64.subi" s" a64.rule.subi" s" a64.render.subi" A64IR-OPCODE:SUBI NAMES!
+s" a64.movn" s" a64.rule.movn" s" a64.render.movn" A64IR-OPCODE:MOVN NAMES!
+s" a64.andi" s" a64.rule.andi" s" a64.render.andi" A64IR-OPCODE:ANDI NAMES!
+s" a64.orri" s" a64.rule.orri" s" a64.render.orri" A64IR-OPCODE:ORRI NAMES!
+s" a64.eori" s" a64.rule.eori" s" a64.render.eori" A64IR-OPCODE:EORI NAMES!
+s" a64.flagi" s" a64.rule.flagi" s" a64.render.flagi" A64IR-OPCODE:FLAGI NAMES!
+s" a64.cmpbri" s" a64.rule.cmpbri" s" a64.render.cmpbri" A64IR-OPCODE:CMPBRI NAMES!
+s" a64.codeaddr" s" a64.rule.codeaddr" s" a64.render.codeaddr" A64IR-OPCODE:CODEADDR NAMES!
+s" a64.dataaddr" s" a64.rule.dataaddr" s" a64.render.dataaddr" A64IR-OPCODE:DATAADDR NAMES!
+s" a64.sdivnz" s" a64.rule.sdivnz" s" a64.render.sdivnz" A64IR-OPCODE:SDIVNZ NAMES!
+
+: TEXT@ ( n -- ptr u8 n ) {: idx:n :}
+   idx TEXT-U @ TEXT-A idx ptr-field @ swap ;
+
+: OP-NAME ( A64IR:opcode -- ptr u8 n )
+   ORD 3 * TEXT@ ;
 
 private
 
@@ -1066,178 +1082,10 @@ private
 
 \ ---- the schema definitions --------------------------------------------------
 : RULE ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- IR-ID:ir-symbol-id )
-   MATCH opcode
-      movz    OF s" a64.rule.movz"    ENDOF
-      movk    OF s" a64.rule.movk"    ENDOF
-      mov     OF s" a64.rule.mov"     ENDOF
-      add     OF s" a64.rule.add"     ENDOF
-      sub     OF s" a64.rule.sub"     ENDOF
-      mul     OF s" a64.rule.mul"     ENDOF
-      sdiv    OF s" a64.rule.sdiv"    ENDOF
-      and     OF s" a64.rule.and"     ENDOF
-      orr     OF s" a64.rule.orr"     ENDOF
-      eor     OF s" a64.rule.eor"     ENDOF
-      lslv    OF s" a64.rule.lslv"    ENDOF
-      lsrv    OF s" a64.rule.lsrv"    ENDOF
-      mvn     OF s" a64.rule.mvn"     ENDOF
-      store    OF s" a64.rule.str"      ENDOF
-      load     OF s" a64.rule.ldr"      ENDOF
-      reserve  OF s" a64.rule.reserve"  ENDOF
-      release  OF s" a64.rule.release"  ENDOF
-      dtake    OF s" a64.rule.dtake"    ENDOF
-      dload    OF s" a64.rule.dload"    ENDOF
-      dstore   OF s" a64.rule.dstore"   ENDOF
-      dpublish OF s" a64.rule.dpublish" ENDOF
-      dpush    OF s" a64.rule.dpush"    ENDOF
-      dpop     OF s" a64.rule.dpop"     ENDOF
-      fdpush   OF s" a64.rule.fdpush"   ENDOF
-      fdpop    OF s" a64.rule.fdpop"    ENDOF
-      aload    OF s" a64.rule.aldr"     ENDOF
-      astore   OF s" a64.rule.astr"     ENDOF
-      abload   OF s" a64.rule.aldrb"    ENDOF
-      abstore  OF s" a64.rule.astrb"    ENDOF
-      flag     OF s" a64.rule.flag"     ENDOF
-      selz     OF s" a64.rule.selz"     ENDOF
-      cmpsel   OF s" a64.rule.cmpsel"   ENDOF
-      br       OF s" a64.rule.b"        ENDOF
-      brz      OF s" a64.rule.cbz"      ENDOF
-      cmpbr    OF s" a64.rule.cmpbr"    ENDOF
-      call     OF s" a64.rule.call"     ENDOF
-      wordcall OF s" a64.rule.wordcall" ENDOF
-      linksave OF s" a64.rule.lnkstr"   ENDOF
-      linkload OF s" a64.rule.lnkldr"   ENDOF
-      ret      OF s" a64.rule.ret"      ENDOF
-      fadd     OF s" a64.rule.fadd" ENDOF
-      fsub     OF s" a64.rule.fsub" ENDOF
-      fmul     OF s" a64.rule.fmul" ENDOF
-      fdiv     OF s" a64.rule.fdiv" ENDOF
-      fneg     OF s" a64.rule.fneg" ENDOF
-      fabs     OF s" a64.rule.fabs" ENDOF
-      fsqrt    OF s" a64.rule.fsqrt" ENDOF
-      scvtf    OF s" a64.rule.scvtf" ENDOF
-      fcvtzs   OF s" a64.rule.fcvtzs" ENDOF
-      fmovxd   OF s" a64.rule.fmovxd" ENDOF
-      fmovdx   OF s" a64.rule.fmovdx" ENDOF
-      fmovdd   OF s" a64.rule.fmovdd" ENDOF
-      fload    OF s" a64.rule.fldr" ENDOF
-      fstore   OF s" a64.rule.fstr" ENDOF
-      faload   OF s" a64.rule.faldr" ENDOF
-      fastore  OF s" a64.rule.fastr" ENDOF
-      fdload   OF s" a64.rule.fdload" ENDOF
-      fdstore  OF s" a64.rule.fdstore" ENDOF
-      fflag    OF s" a64.rule.fflag" ENDOF
-      fflagz   OF s" a64.rule.fflagz" ENDOF
-      fcmpbr   OF s" a64.rule.fcmpbr" ENDOF
-      fcmpbrz  OF s" a64.rule.fcmpbrz" ENDOF
-      selzd    OF s" a64.rule.selzd" ENDOF
-      cmpseld  OF s" a64.rule.cmpseld" ENDOF
-      fcmpsel   OF s" a64.rule.fcmpsel" ENDOF
-      fcmpselz  OF s" a64.rule.fcmpselz" ENDOF
-      fcmpseld  OF s" a64.rule.fcmpseld" ENDOF
-      fcmpselzd OF s" a64.rule.fcmpselzd" ENDOF
-      tailcall  OF s" a64.rule.tailcall" ENDOF
-      trap      OF s" a64.rule.trap"     ENDOF
-      madd      OF s" a64.rule.madd"     ENDOF
-      addi      OF s" a64.rule.addi"     ENDOF
-      subi      OF s" a64.rule.subi"     ENDOF
-      movn      OF s" a64.rule.movn"     ENDOF
-      andi      OF s" a64.rule.andi"     ENDOF
-      orri      OF s" a64.rule.orri"     ENDOF
-      eori      OF s" a64.rule.eori"     ENDOF
-      flagi     OF s" a64.rule.flagi"    ENDOF
-      cmpbri    OF s" a64.rule.cmpbri"   ENDOF
-      codeaddr  OF s" a64.rule.codeaddr" ENDOF
-      dataaddr  OF s" a64.rule.dataaddr" ENDOF
-      sdivnz    OF s" a64.rule.sdivnz"   ENDOF
-   ;MATCH
-   IR-BUILD:INTERN-SYMBOL ;
+   ORD 3 * 1+ TEXT@ IR-BUILD:INTERN-SYMBOL ;
 
 : RENDERER ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- IR-ID:ir-symbol-id )
-   MATCH opcode
-      movz    OF s" a64.render.movz"    ENDOF
-      movk    OF s" a64.render.movk"    ENDOF
-      mov     OF s" a64.render.mov"     ENDOF
-      add     OF s" a64.render.add"     ENDOF
-      sub     OF s" a64.render.sub"     ENDOF
-      mul     OF s" a64.render.mul"     ENDOF
-      sdiv    OF s" a64.render.sdiv"    ENDOF
-      and     OF s" a64.render.and"     ENDOF
-      orr     OF s" a64.render.orr"     ENDOF
-      eor     OF s" a64.render.eor"     ENDOF
-      lslv    OF s" a64.render.lslv"    ENDOF
-      lsrv    OF s" a64.render.lsrv"    ENDOF
-      mvn     OF s" a64.render.mvn"     ENDOF
-      store    OF s" a64.render.str"      ENDOF
-      load     OF s" a64.render.ldr"      ENDOF
-      reserve  OF s" a64.render.reserve"  ENDOF
-      release  OF s" a64.render.release"  ENDOF
-      dtake    OF s" a64.render.dtake"    ENDOF
-      dload    OF s" a64.render.dload"    ENDOF
-      dstore   OF s" a64.render.dstore"   ENDOF
-      dpublish OF s" a64.render.dpublish" ENDOF
-      dpush    OF s" a64.render.dpush"    ENDOF
-      dpop     OF s" a64.render.dpop"     ENDOF
-      fdpush   OF s" a64.render.fdpush"   ENDOF
-      fdpop    OF s" a64.render.fdpop"    ENDOF
-      aload    OF s" a64.render.aldr"     ENDOF
-      astore   OF s" a64.render.astr"     ENDOF
-      abload   OF s" a64.render.aldrb"    ENDOF
-      abstore  OF s" a64.render.astrb"    ENDOF
-      flag     OF s" a64.render.flag"     ENDOF
-      selz     OF s" a64.render.selz"     ENDOF
-      cmpsel   OF s" a64.render.cmpsel"   ENDOF
-      br       OF s" a64.render.b"        ENDOF
-      brz      OF s" a64.render.cbz"      ENDOF
-      cmpbr    OF s" a64.render.cmpbr"    ENDOF
-      call     OF s" a64.render.call"     ENDOF
-      wordcall OF s" a64.render.wordcall" ENDOF
-      linksave OF s" a64.render.lnkstr"   ENDOF
-      linkload OF s" a64.render.lnkldr"   ENDOF
-      ret      OF s" a64.render.ret"      ENDOF
-      fadd     OF s" a64.render.fadd" ENDOF
-      fsub     OF s" a64.render.fsub" ENDOF
-      fmul     OF s" a64.render.fmul" ENDOF
-      fdiv     OF s" a64.render.fdiv" ENDOF
-      fneg     OF s" a64.render.fneg" ENDOF
-      fabs     OF s" a64.render.fabs" ENDOF
-      fsqrt    OF s" a64.render.fsqrt" ENDOF
-      scvtf    OF s" a64.render.scvtf" ENDOF
-      fcvtzs   OF s" a64.render.fcvtzs" ENDOF
-      fmovxd   OF s" a64.render.fmovxd" ENDOF
-      fmovdx   OF s" a64.render.fmovdx" ENDOF
-      fmovdd   OF s" a64.render.fmovdd" ENDOF
-      fload    OF s" a64.render.fldr" ENDOF
-      fstore   OF s" a64.render.fstr" ENDOF
-      faload   OF s" a64.render.faldr" ENDOF
-      fastore  OF s" a64.render.fastr" ENDOF
-      fdload   OF s" a64.render.fdload" ENDOF
-      fdstore  OF s" a64.render.fdstore" ENDOF
-      fflag    OF s" a64.render.fflag" ENDOF
-      fflagz   OF s" a64.render.fflagz" ENDOF
-      fcmpbr   OF s" a64.render.fcmpbr" ENDOF
-      fcmpbrz  OF s" a64.render.fcmpbrz" ENDOF
-      selzd    OF s" a64.render.selzd" ENDOF
-      cmpseld  OF s" a64.render.cmpseld" ENDOF
-      fcmpsel   OF s" a64.render.fcmpsel" ENDOF
-      fcmpselz  OF s" a64.render.fcmpselz" ENDOF
-      fcmpseld  OF s" a64.render.fcmpseld" ENDOF
-      fcmpselzd OF s" a64.render.fcmpselzd" ENDOF
-      tailcall  OF s" a64.render.tailcall" ENDOF
-      trap      OF s" a64.render.trap"     ENDOF
-      madd      OF s" a64.render.madd"     ENDOF
-      addi      OF s" a64.render.addi"     ENDOF
-      subi      OF s" a64.render.subi"     ENDOF
-      movn      OF s" a64.render.movn"     ENDOF
-      andi      OF s" a64.render.andi"     ENDOF
-      orri      OF s" a64.render.orri"     ENDOF
-      eori      OF s" a64.render.eori"     ENDOF
-      flagi     OF s" a64.render.flagi"    ENDOF
-      cmpbri    OF s" a64.render.cmpbri"   ENDOF
-      codeaddr  OF s" a64.render.codeaddr" ENDOF
-      dataaddr  OF s" a64.render.dataaddr" ENDOF
-      sdivnz    OF s" a64.render.sdivnz"   ENDOF
-   ;MATCH
-   IR-BUILD:INTERN-SYMBOL ;
+   ORD 3 * 2 + TEXT@ IR-BUILD:INTERN-SYMBOL ;
 
 \ Name the rule and renderer, then validate and define the staged schema.
 : FINISH-OP ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- )

@@ -228,69 +228,6 @@ public
 0 constant MAJOR
 6 constant MINOR
 
-private
-
-\ ---- the opcode names --------------------------------------------------------
-\ One table and not a literal at each use, because a session interns this
-\ dialect's whole vocabulary by walking it: a spelling the walk cannot reach is
-\ a spelling every module interns again.
-: OP-NAME ( HIR:opcode -- ptr u8 n )
-   MATCH opcode
-      const  OF s" hir.const"  ENDOF
-      add    OF s" hir.add"    ENDOF
-      sub    OF s" hir.sub"    ENDOF
-      mul    OF s" hir.mul"    ENDOF
-      div    OF s" hir.div"    ENDOF
-      lt     OF s" hir.lt"     ENDOF
-      le     OF s" hir.le"     ENDOF
-      gt     OF s" hir.gt"     ENDOF
-      ge     OF s" hir.ge"     ENDOF
-      equal  OF s" hir.eq"     ENDOF
-      ne     OF s" hir.ne"     ENDOF
-      and    OF s" hir.and"    ENDOF
-      or     OF s" hir.or"     ENDOF
-      xor    OF s" hir.xor"    ENDOF
-      lshift OF s" hir.lshift" ENDOF
-      rshift OF s" hir.rshift" ENDOF
-      invert OF s" hir.invert" ENDOF
-      mem    OF s" hir.mem"    ENDOF
-      load   OF s" hir.load"   ENDOF
-      store  OF s" hir.store"  ENDOF
-      bload  OF s" hir.bload"  ENDOF
-      bstore OF s" hir.bstore" ENDOF
-      br     OF s" hir.br"     ENDOF
-      brz    OF s" hir.brz"    ENDOF
-      call   OF s" hir.call"   ENDOF
-      wordcall OF s" hir.wordcall" ENDOF
-      terminal OF s" hir.terminal" ENDOF
-      quot   OF s" hir.quot"   ENDOF
-      return OF s" hir.return" ENDOF
-      trap   OF s" hir.trap"   ENDOF
-      fconst   OF s" hir.fconst"    ENDOF
-      fadd     OF s" hir.fadd"      ENDOF
-      fsub     OF s" hir.fsub"      ENDOF
-      fmul     OF s" hir.fmul"      ENDOF
-      fdiv     OF s" hir.fdiv"      ENDOF
-      fneg     OF s" hir.fneg"      ENDOF
-      fabs     OF s" hir.fabs"      ENDOF
-      fsqrt    OF s" hir.fsqrt"     ENDOF
-      flt      OF s" hir.flt"       ENDOF
-      fgt      OF s" hir.fgt"       ENDOF
-      feq      OF s" hir.feq"       ENDOF
-      fltz     OF s" hir.fltz"      ENDOF
-      feqz     OF s" hir.feqz"      ENDOF
-      intreal  OF s" hir.int>real"  ENDOF
-      realint  OF s" hir.real>int"  ENDOF
-      bitsreal OF s" hir.bits>real" ENDOF
-      realbits OF s" hir.real>bits" ENDOF
-   ;MATCH ;
-
-public
-
-\ Interning deduplicates, so asking twice answers the same identity.
-: OPCODE ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- IR-ID:ir-symbol-id )
-   OP-NAME IR-BUILD:INTERN-SYMBOL ;
-
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ These are the stable codes stored by HIR-WORD, not enum representation.
 47 constant OPCODES
@@ -397,6 +334,87 @@ public
       46 of HIR-OPCODE:TERMINAL endof
       E-HIR-OPCODE throw
    endcase ;
+
+private
+
+\ ---- the opcode names --------------------------------------------------------
+\ Three exact immutable spans per stable ordinal: name, rule and renderer.
+\ The typed opcode selects its row through ORD, never through enum TAG.
+141 PTR-U8-TABLE TEXT-A
+141 TYPED-BUFFER TEXT-U n
+
+: TEXT! ( ptr u8 n n -- ) {: a:ptr u:n idx:n :}
+   u idx TEXT-U !
+   TEXT-A idx ptr-field {: cell:ptr :}
+   cell ptr-cell-mark
+   a cell ! ;
+
+: NAMES! ( ptr u8 n ptr u8 n ptr u8 n HIR:opcode -- )
+   {: name:ptr nu:n rule:ptr ru:n render:ptr eu:n op:HIR:opcode :}
+   op ORD 3 * {: idx:n :}
+   name nu idx TEXT!
+   rule ru idx 1+ TEXT!
+   render eu idx 2 + TEXT! ;
+
+s" hir.const" s" hir.rule.const" s" hir.render.const" HIR-OPCODE:CONST NAMES!
+s" hir.add" s" hir.rule.add" s" hir.render.add" HIR-OPCODE:ADD NAMES!
+s" hir.sub" s" hir.rule.sub" s" hir.render.sub" HIR-OPCODE:SUB NAMES!
+s" hir.mul" s" hir.rule.mul" s" hir.render.mul" HIR-OPCODE:MUL NAMES!
+s" hir.div" s" hir.rule.div" s" hir.render.div" HIR-OPCODE:DIV NAMES!
+s" hir.lt" s" hir.rule.lt" s" hir.render.lt" HIR-OPCODE:LT NAMES!
+s" hir.le" s" hir.rule.le" s" hir.render.le" HIR-OPCODE:LE NAMES!
+s" hir.gt" s" hir.rule.gt" s" hir.render.gt" HIR-OPCODE:GT NAMES!
+s" hir.ge" s" hir.rule.ge" s" hir.render.ge" HIR-OPCODE:GE NAMES!
+s" hir.eq" s" hir.rule.eq" s" hir.render.eq" HIR-OPCODE:EQUAL NAMES!
+s" hir.ne" s" hir.rule.ne" s" hir.render.ne" HIR-OPCODE:NE NAMES!
+s" hir.and" s" hir.rule.and" s" hir.render.and" HIR-OPCODE:AND NAMES!
+s" hir.or" s" hir.rule.or" s" hir.render.or" HIR-OPCODE:OR NAMES!
+s" hir.xor" s" hir.rule.xor" s" hir.render.xor" HIR-OPCODE:XOR NAMES!
+s" hir.lshift" s" hir.rule.lshift" s" hir.render.lshift" HIR-OPCODE:LSHIFT NAMES!
+s" hir.rshift" s" hir.rule.rshift" s" hir.render.rshift" HIR-OPCODE:RSHIFT NAMES!
+s" hir.invert" s" hir.rule.invert" s" hir.render.invert" HIR-OPCODE:INVERT NAMES!
+s" hir.mem" s" hir.rule.mem" s" hir.render.mem" HIR-OPCODE:MEM NAMES!
+s" hir.load" s" hir.rule.load" s" hir.render.load" HIR-OPCODE:LOAD NAMES!
+s" hir.store" s" hir.rule.store" s" hir.render.store" HIR-OPCODE:STORE NAMES!
+s" hir.bload" s" hir.rule.bload" s" hir.render.bload" HIR-OPCODE:BLOAD NAMES!
+s" hir.bstore" s" hir.rule.bstore" s" hir.render.bstore" HIR-OPCODE:BSTORE NAMES!
+s" hir.br" s" hir.rule.br" s" hir.render.br" HIR-OPCODE:BR NAMES!
+s" hir.brz" s" hir.rule.brz" s" hir.render.brz" HIR-OPCODE:BRZ NAMES!
+s" hir.call" s" hir.rule.call" s" hir.render.call" HIR-OPCODE:CALL NAMES!
+s" hir.wordcall" s" hir.rule.wordcall" s" hir.render.wordcall" HIR-OPCODE:WORDCALL NAMES!
+s" hir.terminal" s" hir.rule.terminal" s" hir.render.terminal" HIR-OPCODE:TERMINAL NAMES!
+s" hir.quot" s" hir.rule.quot" s" hir.render.quot" HIR-OPCODE:QUOT NAMES!
+s" hir.return" s" hir.rule.return" s" hir.render.return" HIR-OPCODE:RETURN NAMES!
+s" hir.trap" s" hir.rule.trap" s" hir.render.trap" HIR-OPCODE:TRAP NAMES!
+s" hir.fconst" s" hir.rule.fconst" s" hir.render.fconst" HIR-OPCODE:FCONST NAMES!
+s" hir.fadd" s" hir.rule.fadd" s" hir.render.fadd" HIR-OPCODE:FADD NAMES!
+s" hir.fsub" s" hir.rule.fsub" s" hir.render.fsub" HIR-OPCODE:FSUB NAMES!
+s" hir.fmul" s" hir.rule.fmul" s" hir.render.fmul" HIR-OPCODE:FMUL NAMES!
+s" hir.fdiv" s" hir.rule.fdiv" s" hir.render.fdiv" HIR-OPCODE:FDIV NAMES!
+s" hir.fneg" s" hir.rule.fneg" s" hir.render.fneg" HIR-OPCODE:FNEG NAMES!
+s" hir.fabs" s" hir.rule.fabs" s" hir.render.fabs" HIR-OPCODE:FABS NAMES!
+s" hir.fsqrt" s" hir.rule.fsqrt" s" hir.render.fsqrt" HIR-OPCODE:FSQRT NAMES!
+s" hir.flt" s" hir.rule.flt" s" hir.render.flt" HIR-OPCODE:FLT NAMES!
+s" hir.fgt" s" hir.rule.fgt" s" hir.render.fgt" HIR-OPCODE:FGT NAMES!
+s" hir.feq" s" hir.rule.feq" s" hir.render.feq" HIR-OPCODE:FEQ NAMES!
+s" hir.fltz" s" hir.rule.fltz" s" hir.render.fltz" HIR-OPCODE:FLTZ NAMES!
+s" hir.feqz" s" hir.rule.feqz" s" hir.render.feqz" HIR-OPCODE:FEQZ NAMES!
+s" hir.int>real" s" hir.rule.int>real" s" hir.render.int>real" HIR-OPCODE:INTREAL NAMES!
+s" hir.real>int" s" hir.rule.real>int" s" hir.render.real>int" HIR-OPCODE:REALINT NAMES!
+s" hir.bits>real" s" hir.rule.bits>real" s" hir.render.bits>real" HIR-OPCODE:BITSREAL NAMES!
+s" hir.real>bits" s" hir.rule.real>bits" s" hir.render.real>bits" HIR-OPCODE:REALBITS NAMES!
+
+: TEXT@ ( n -- ptr u8 n ) {: idx:n :}
+   idx TEXT-U @ TEXT-A idx ptr-field @ swap ;
+
+: OP-NAME ( HIR:opcode -- ptr u8 n )
+   ORD 3 * TEXT@ ;
+
+public
+
+\ Interning deduplicates, so asking twice answers the same identity.
+: OPCODE ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- IR-ID:ir-symbol-id )
+   OP-NAME IR-BUILD:INTERN-SYMBOL ;
 
 private
 
@@ -587,108 +605,10 @@ private
 \ ---- the schema definitions --------------------------------------------------
 \ Neither is public: IR-SCHEMA:RULE@ and RENDERER@ are the authority.
 : RULE ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- IR-ID:ir-symbol-id )
-   MATCH opcode
-      const  OF s" hir.rule.const"  ENDOF
-      add    OF s" hir.rule.add"    ENDOF
-      sub    OF s" hir.rule.sub"    ENDOF
-      mul    OF s" hir.rule.mul"    ENDOF
-      div    OF s" hir.rule.div"    ENDOF
-      lt     OF s" hir.rule.lt"     ENDOF
-      le     OF s" hir.rule.le"     ENDOF
-      gt     OF s" hir.rule.gt"     ENDOF
-      ge     OF s" hir.rule.ge"     ENDOF
-      equal  OF s" hir.rule.eq"     ENDOF
-      ne     OF s" hir.rule.ne"     ENDOF
-      and    OF s" hir.rule.and"    ENDOF
-      or     OF s" hir.rule.or"     ENDOF
-      xor    OF s" hir.rule.xor"    ENDOF
-      lshift OF s" hir.rule.lshift" ENDOF
-      rshift OF s" hir.rule.rshift" ENDOF
-      invert OF s" hir.rule.invert" ENDOF
-      mem    OF s" hir.rule.mem"    ENDOF
-      load   OF s" hir.rule.load"   ENDOF
-      store  OF s" hir.rule.store"  ENDOF
-      bload  OF s" hir.rule.bload"  ENDOF
-      bstore OF s" hir.rule.bstore" ENDOF
-      br     OF s" hir.rule.br"     ENDOF
-      brz    OF s" hir.rule.brz"    ENDOF
-      call   OF s" hir.rule.call"   ENDOF
-      wordcall OF s" hir.rule.wordcall" ENDOF
-      terminal OF s" hir.rule.terminal" ENDOF
-      quot   OF s" hir.rule.quot"   ENDOF
-      return OF s" hir.rule.return" ENDOF
-      trap   OF s" hir.rule.trap"   ENDOF
-      fconst   OF s" hir.rule.fconst"    ENDOF
-      fadd     OF s" hir.rule.fadd"      ENDOF
-      fsub     OF s" hir.rule.fsub"      ENDOF
-      fmul     OF s" hir.rule.fmul"      ENDOF
-      fdiv     OF s" hir.rule.fdiv"      ENDOF
-      fneg     OF s" hir.rule.fneg"      ENDOF
-      fabs     OF s" hir.rule.fabs"      ENDOF
-      fsqrt    OF s" hir.rule.fsqrt"     ENDOF
-      flt      OF s" hir.rule.flt"       ENDOF
-      fgt      OF s" hir.rule.fgt"       ENDOF
-      feq      OF s" hir.rule.feq"       ENDOF
-      fltz     OF s" hir.rule.fltz"      ENDOF
-      feqz     OF s" hir.rule.feqz"      ENDOF
-      intreal  OF s" hir.rule.int>real"  ENDOF
-      realint  OF s" hir.rule.real>int"  ENDOF
-      bitsreal OF s" hir.rule.bits>real" ENDOF
-      realbits OF s" hir.rule.real>bits" ENDOF
-   ;MATCH
-   IR-BUILD:INTERN-SYMBOL ;
+   ORD 3 * 1+ TEXT@ IR-BUILD:INTERN-SYMBOL ;
 
 : RENDERER ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- IR-ID:ir-symbol-id )
-   MATCH opcode
-      const  OF s" hir.render.const"  ENDOF
-      add    OF s" hir.render.add"    ENDOF
-      sub    OF s" hir.render.sub"    ENDOF
-      mul    OF s" hir.render.mul"    ENDOF
-      div    OF s" hir.render.div"    ENDOF
-      lt     OF s" hir.render.lt"     ENDOF
-      le     OF s" hir.render.le"     ENDOF
-      gt     OF s" hir.render.gt"     ENDOF
-      ge     OF s" hir.render.ge"     ENDOF
-      equal  OF s" hir.render.eq"     ENDOF
-      ne     OF s" hir.render.ne"     ENDOF
-      and    OF s" hir.render.and"    ENDOF
-      or     OF s" hir.render.or"     ENDOF
-      xor    OF s" hir.render.xor"    ENDOF
-      lshift OF s" hir.render.lshift" ENDOF
-      rshift OF s" hir.render.rshift" ENDOF
-      invert OF s" hir.render.invert" ENDOF
-      mem    OF s" hir.render.mem"    ENDOF
-      load   OF s" hir.render.load"   ENDOF
-      store  OF s" hir.render.store"  ENDOF
-      bload  OF s" hir.render.bload"  ENDOF
-      bstore OF s" hir.render.bstore" ENDOF
-      br     OF s" hir.render.br"     ENDOF
-      brz    OF s" hir.render.brz"    ENDOF
-      call   OF s" hir.render.call"   ENDOF
-      wordcall OF s" hir.render.wordcall" ENDOF
-      terminal OF s" hir.render.terminal" ENDOF
-      quot   OF s" hir.render.quot"   ENDOF
-      return OF s" hir.render.return" ENDOF
-      trap   OF s" hir.render.trap"   ENDOF
-      fconst   OF s" hir.render.fconst"    ENDOF
-      fadd     OF s" hir.render.fadd"      ENDOF
-      fsub     OF s" hir.render.fsub"      ENDOF
-      fmul     OF s" hir.render.fmul"      ENDOF
-      fdiv     OF s" hir.render.fdiv"      ENDOF
-      fneg     OF s" hir.render.fneg"      ENDOF
-      fabs     OF s" hir.render.fabs"      ENDOF
-      fsqrt    OF s" hir.render.fsqrt"     ENDOF
-      flt      OF s" hir.render.flt"       ENDOF
-      fgt      OF s" hir.render.fgt"       ENDOF
-      feq      OF s" hir.render.feq"       ENDOF
-      fltz     OF s" hir.render.fltz"      ENDOF
-      feqz     OF s" hir.render.feqz"      ENDOF
-      intreal  OF s" hir.render.int>real"  ENDOF
-      realint  OF s" hir.render.real>int"  ENDOF
-      bitsreal OF s" hir.render.bits>real" ENDOF
-      realbits OF s" hir.render.real>bits" ENDOF
-   ;MATCH
-   IR-BUILD:INTERN-SYMBOL ;
+   ORD 3 * 2 + TEXT@ IR-BUILD:INTERN-SYMBOL ;
 
 \ Name the rule and renderer, then validate and define the staged schema.
 : FINISH-OP ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- )

@@ -17,6 +17,7 @@ create ERR CAP allot
 create ROOT-BUF FS-PATH-CAP allot variable ROOT-U
 create IMAGE-BUF FS-PATH-CAP allot variable IMAGE-U
 create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
+64 BUFFER: VOCAB-HEX
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
@@ -54,10 +55,13 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN
-   S\" require src/compiler/native/compiler.f\n1 set-tier\n: DEFER-IMAGE-NATIVE ( n -- n ) 1+ ;\n17 DEFER-IMAGE-NATIVE . cr\n0 set-tier\nrequire src/habu/app-image.f\nrequire test/native-defer-image-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   S\" require src/compiler/native/compiler.f\n1 set-tier\n: DEFER-IMAGE-NATIVE ( n -- n ) 1+ ;\n17 DEFER-IMAGE-NATIVE . cr\n0 set-tier\nrequire src/habu/app-image.f\nrequire test/native-defer-image-subject.f\nrequire test/compiler/native-opcode-image.f\nNATIVE-OPCODE-IMAGE:PRINT\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE RESULT
-   OUT swap S\" 18\n\ndefer-source: ok\n" T$=
+   RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
+   S\" 18\n\ndefer-source: ok\n" {: prefix:ptr pu:n :}
+   OUT pu prefix pu T$=
+   outu pu - 65 T=
+   OUT pu + VOCAB-HEX 64 BYTE-COPY
    IMAGE$ EXECUTABLE? TTRUE ;
 
 : RUN-INPUT ( ptr u8 n ptr u8 n -- n )
@@ -69,8 +73,12 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : CHECK-IMAGE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n want:ptr wantu:n :}
    ENVIRONMENT
    path pathu
-   S\" require src/compiler/native/compiler.f\n1 set-tier\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nDEFER-IMAGE-SUBJECT:CHECK-REASSIGNMENT\n0 set-tier\n: DEFER-IMAGE-JIT ( n -- n ) 5 + ;\n17 DEFER-IMAGE-JIT . cr\n1 set-tier\n: DEFER-IMAGE-FRESH ( n -- n ) 7 + ;\n: DEFER-IMAGE-INSTALL ( -- ) ['] DEFER-IMAGE-FRESH DEFER-IMAGE-SUBJECT:INSTALL ;\nDEFER-IMAGE-INSTALL\n17 DEFER-IMAGE-SUBJECT:CALL . cr\n" RUN-INPUT
-   OUT swap want wantu T$= ;
+   S\" require src/compiler/native/compiler.f\n1 set-tier\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nDEFER-IMAGE-SUBJECT:CHECK-REASSIGNMENT\n0 set-tier\n: DEFER-IMAGE-JIT ( n -- n ) 5 + ;\n17 DEFER-IMAGE-JIT . cr\n1 set-tier\n: DEFER-IMAGE-FRESH ( n -- n ) 7 + ;\n: DEFER-IMAGE-INSTALL ( -- ) ['] DEFER-IMAGE-FRESH DEFER-IMAGE-SUBJECT:INSTALL ;\nDEFER-IMAGE-INSTALL\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nNATIVE-OPCODE-IMAGE:PRINT\n" RUN-INPUT
+   {: outu:n :}
+   OUT wantu want wantu T$=
+   outu wantu - 65 T=
+   s" every restored opcode name, rule, renderer and schema matches its source" T-LABEL
+   OUT wantu + 64 VOCAB-HEX 64 T$= ;
 
 : RECAPTURE ( -- )
    ENVIRONMENT
@@ -86,7 +94,8 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    BUILD
    IMAGE$ S\" 18\n\n22\n\n24\n\n" CHECK-IMAGE
    RECAPTURE
-   SECOND$ S\" 34\n\n22\n\n24\n\n" CHECK-IMAGE ;
+   SECOND$ S\" 34\n\n22\n\n24\n\n" CHECK-IMAGE
+   s" restored opcode vocabulary: " type VOCAB-HEX 64 type cr ;
 
 : RUN ( -- )
    T-RESET CLEANUP-RESET

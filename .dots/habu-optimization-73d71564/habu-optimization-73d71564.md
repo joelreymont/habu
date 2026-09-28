@@ -39,15 +39,29 @@ independent source coverage audit are complete (habu-find-repeated-code-7811ef13
 Generated buffer bounds sharing (habu-share-buf-bounds-c8093ca8), fixed
 validation/fatal tails (habu-share-fixed-valid-a57b1b73), and dialect schema
 finishing tails (habu-share-dialect-schema-d498c791) are qualified together.
-Opcode name tables (habu-table-opcode-names-d7cd2487) are finishing standalone
-native qualification. Packed DATA values (habu-pack-startup-data-0c5b8d64) and
+Opcode name tables (habu-table-opcode-names-d7cd2487) are qualified through
+native schema and restored-image checks. Packed DATA values
+(habu-pack-startup-data-0c5b8d64) and
 captured code packing (habu-pack-captured-code-54666c9e) are cancelled by user
 direction. Preserved source: DATA
 `cbfdab2dff57dafa14ceef8a75639253d19f0d7c`, CODE
 `89686491ae43fb71101918b2340251abba59768f`. Neither experiment counts toward
 the goal; their native images are not releases.
 
-The current qualified engine is **2,460,535 bytes**. The three source-sharing
+The current qualified engine is **2,444,023 bytes**. Shared opcode-name tables
+remove repeated dispatch code and save **16,512 signed bytes**, including all
+new table and relocation costs. Additional saving from the goal baseline is
+**181,632 bytes**, leaving 818,368 bytes to target. Engine SHA-256:
+`89b78737a1af0c75e6e28c34389559e879fa4f4065638fbca77cbac32a5dd165`.
+Five generations and name maps are byte-identical; native HIR/A64IR, selection,
+session and twice-restored image checks pass. The full registry ran all 492
+suites: 491 passed, and the sole failure was Gforth missing its precompiled
+libraries in an empty private cache. That unchanged fixture passes with those
+runtime libraries supplied. The duplicate full run was cancelled as redundant;
+Maki was not rebuilt. Evidence:
+`~/.cache/tmp/habu-opcode-names-completion-20260929-01.md`.
+
+The preceding qualified engine is **2,460,535 bytes**. The three source-sharing
 changes save another **16,512 signed bytes** from the compact-table parent.
 Additional saving from the 2,625,655-byte goal baseline is now **165,120 bytes**,
 leaving 834,880 bytes to target. Engine SHA-256:
