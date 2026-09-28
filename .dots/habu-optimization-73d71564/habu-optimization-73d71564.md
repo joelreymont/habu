@@ -52,8 +52,15 @@ Shared DATA literal pools remain a separate candidate. Per-word pools cannot
 reach 100 KB; whole-owner range grouping has a conditional 127,872-byte payload
 ceiling before real eligibility, implementation and final layout cost. It needs
 coherent pool/capture ownership and complete relocation support. The current
-planning-only task is habu-measure-shared-literal-9d63f61d. No pool implementation
-or saving is claimed. Design and repeatable census:
+planning-only task habu-measure-shared-literal-9d63f61d found that the shipped
+artifact omits original retired-record/raw-metadata ownership needed to prove
+safe placement. Its checked intake has 14,859 declared DATA carriers, including
+99 outside declared bodies; body containment alone is not sufficient authority.
+A future source-build census must observe CAPTURE after ACAP-GRAPH-INDEX with
+original dictionary/raw ranges and the final graph map. Pool eligibility and
+net savings remain unmeasured. No pool implementation or saving is claimed.
+Evidence: `~/.cache/tmp/habu-literal-placement-completion-20260928-01.md`.
+Design and earlier repeatable census:
 `~/.cache/tmp/habu-literal-pool-design-20260928-01.md` and
 `habu-literal-pool-census-completion-20260928-01.md` in the same directory.
 
