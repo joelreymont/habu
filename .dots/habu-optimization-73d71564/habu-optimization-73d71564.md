@@ -66,12 +66,28 @@ board smokes pass. The engine remains **2,856,823 bytes**, now SHA-256
 This correctness prerequisite adds no file-size cost and is the new baseline
 for control compaction. Evidence: `~/.cache/tmp/habu-native-creates-fix-20260928-01.md`.
 
-Next compact captured NORET control history under
-`habu-compact-captured-control-4969c5eb`, preserving primitive, saved-boundary
-and current states. The measured census warrants implementation but is not a
-binary saving. General effect-history, private-symbol and DATA reachability
-work remains open. Require native self-host convergence, the full gate and
-Maki qualification for each capture change. No savings estimate or tracker
+Captured NORET control compaction (`habu-compact-captured-control-4969c5eb`)
+preserves primitive, saved-boundary and current states, including clearing rows
+and nonzero created-word effects. The qualified engine is **2,807,287 bytes**,
+down **49,536 bytes (1.73%)** from the native DOES baseline, SHA-256
+`24003f017a601713c84185a7be5b1e0664d9951c942847372d2a0ddb9b0a654b`.
+DATA value bytes fall 728,444 to 688,080 and bitmap bytes 51,132 to 47,928;
+generated code grows 3,232 bytes. Alignment, metadata and signature changes
+also contribute to the measured total. Combined with internal-name stripping,
+the engine is 115,584 bytes (3.95%) smaller than `6c64049ce625`.
+
+Independent review passed; native B2–B5 and their names sidecars match byte for
+byte. All 491 suites pass. Two retained application images exercise actual
+capture/restore, boundary rewind, new rollback and active-scope refusal. Both
+Maki boards remain byte-identical and strict signatures pass. Evidence:
+`~/.cache/tmp/habu-control-compaction-completion-20260928-02.md`.
+
+These reductions do not prove that remaining DATA is necessary or generated
+code is efficient. The current product retains 736,008 DATA/bitmap bytes and
+1,543,368 generated code bytes plus 121,100 fixed engine bytes. General effect
+history, private symbols, DATA retention and native instruction selection remain
+open. Require current physical evidence, native self-host convergence, the full
+gate and Maki qualification for each capture change. No estimate or tracker
 cleanup counts as an implemented size reduction.
 
 Dots 0.6.4 renders one parent level reliably. Keep these tasks as direct

@@ -17615,6 +17615,94 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    NULL-PTR CAND-A !  0 CAND-U !
    NULL-PTR UNJ-A !  0 UNJ-U ! ;
 
+\ A capture keeps the primitive control prefix verbatim and the state at two
+\ later checkpoints: the saved core-prefix boundary, when present, and now.
+\ Each interval needs its own newest row per symbol; a zero row is a retraction
+\ and must survive just like a nonzero one. Effect offsets in CREATES are never
+\ changed because the effect store is not compacted here.
+RBF-REC CELL / constant NORET-BOUND-CELLS
+: NORET-COMPACT-REFUSE ( -- )
+   s" checker: invalid control checkpoint" 76 die ;
+
+: NORET-COMPACT-TERM? ( n -- bool )
+   NORET-CELL NORET.SYM @ 0= ;
+
+: NORET-COMPACT-SYMS? ( n -- bool ) {: oldend:n :}
+   RES-TRUE
+   oldend NORET-ENTRY / 0 ?do
+      i NORET-ENTRY * NORET-CELL NORET.SYM @ {: sym:n :}
+      sym 0 <= IF drop RES-FALSE THEN
+      sym SYM-N @ >= IF drop RES-FALSE THEN
+   loop ;
+
+: NORET-COMPACT-CHECK ( -- n n )
+   RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
+   RBF-BND-N @ IF
+      RBF-BND-N @ NORET-BOUND-CELLS <> IF NORET-COMPACT-REFUSE THEN
+   THEN
+   RBF-BND-N @ IF RBF-BND-REC RBF.NEND @ ELSE NORET-PRIM-END THEN {: bound:n :}
+   NORET-END @ {: oldend:n :}
+   NORET-PRIM-END 0 < IF NORET-COMPACT-REFUSE THEN
+   NORET-PRIM-END bound > IF NORET-COMPACT-REFUSE THEN
+   bound oldend > IF NORET-COMPACT-REFUSE THEN
+   NORET-CAP-U @ CELL < IF NORET-COMPACT-REFUSE THEN
+   oldend NORET-CAP-U @ CELL - > IF NORET-COMPACT-REFUSE THEN
+   NORET-PRIM-END NORET-ENTRY / NORET-ENTRY * NORET-PRIM-END <>
+      IF NORET-COMPACT-REFUSE THEN
+   bound NORET-ENTRY / NORET-ENTRY * bound <> IF NORET-COMPACT-REFUSE THEN
+   oldend NORET-ENTRY / NORET-ENTRY * oldend <> IF NORET-COMPACT-REFUSE THEN
+   oldend NORET-COMPACT-TERM? 0= IF NORET-COMPACT-REFUSE THEN
+   oldend NORET-COMPACT-SYMS? 0= IF NORET-COMPACT-REFUSE THEN
+   bound oldend ;
+
+: NORET-COMPACT-HEAD ( n ptr n -- ptr n ) {: sym:n heads:ptr :}
+   heads sym cells + ;
+
+: NORET-COMPACT-MARK ( n n ptr n -- ) {: lo:n hi:n heads:ptr :}
+   heads 0 SYM-N @ ARENA-CELLS-ZERO
+   hi NORET-ENTRY / lo NORET-ENTRY / ?do
+      i NORET-ENTRY * NORET-CELL NORET.SYM @ heads NORET-COMPACT-HEAD
+      i NORET-ENTRY * 1 + swap !
+   loop ;
+
+: NORET-COMPACT-ONE ( n n ptr n -- n ) {: dst:n off:n heads:ptr :}
+   off NORET-CELL NORET.SYM @ heads NORET-COMPACT-HEAD @
+      off 1 + <> IF dst EXIT THEN
+   off dst <> IF NORETS off + NORETS dst + NORET-ENTRY ARENA-COPY THEN
+   dst NORET-ENTRY + ;
+
+: NORET-COMPACT-INTERVAL ( n n n ptr n -- n )
+   {: lo:n hi:n dst:n heads:ptr :}
+   lo hi heads NORET-COMPACT-MARK
+   dst
+   hi NORET-ENTRY / lo NORET-ENTRY / ?do
+      i NORET-ENTRY * heads NORET-COMPACT-ONE
+   loop ;
+
+\ The primitive links are part of its byte-for-byte prefix. Build heads from
+\ them, then link only retained post-prefix rows to their new predecessors.
+: NORET-COMPACT-LINKS ( n ptr n -- ) {: newend:n heads:ptr :}
+   0 NORET-PRIM-END heads NORET-COMPACT-MARK
+   newend NORET-ENTRY / NORET-PRIM-END NORET-ENTRY / ?do
+      i NORET-ENTRY * NORET-CELL {: row:ptr :}
+      row NORET.SYM @ heads NORET-COMPACT-HEAD {: head:ptr :}
+      head @ row NORET.SYMPREV !
+      i NORET-ENTRY * 1 + head !
+   loop ;
+
+: NORET-COMPACT ( -- )
+   NORET-COMPACT-CHECK {: bound:n oldend:n :}   \ all guards precede mutation
+   SYM-N @ cells ARENA-ALLOC {: heads:ptr :}
+   NORET-PRIM-END bound NORET-PRIM-END heads
+      NORET-COMPACT-INTERVAL {: newbound:n :}
+   bound oldend newbound heads NORET-COMPACT-INTERVAL {: newend:n :}
+   newend heads NORET-COMPACT-LINKS
+   RBF-BND-N @ IF newbound RBF-BND-REC RBF.NEND ! THEN
+   newend NORET-END !
+   NORETS CELL-VIEW newend CELL / oldend CELL / 1 + ARENA-CELLS-ZERO
+   heads BYTE-VIEW SYM-N @ cells ASIG-RELEASE
+   NRX-RESET ;                         \ HIDX-RESET ran earlier in this capture
+
 \ One capture seam owns the order: scrub transient stores before persistence
 \ copies any grown registry, persist the live rows (all three name stores use
 \ offsets and need no pointer marking), then clear
@@ -17639,6 +17727,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    USX-RESET
    UIX-RESET                            \ process-local mmap: never bake its address
    CHX-RESET
+   NORET-COMPACT
    NORET-SNAPSHOT-PERSIST
    NRX-RESET
    REG-EXT-PERSIST-XT

@@ -470,6 +470,10 @@ SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE
 
+SUITE control-capture
+   test/control-capture.f
+;SUITE
+
 SUITE loop-obligations
    test/loop-obligations.f
 ;SUITE
