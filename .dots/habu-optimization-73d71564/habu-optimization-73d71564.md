@@ -16,11 +16,30 @@ claim; an RCA or candidate saving is not completed implementation.
 
 ## Current thin-engine work
 
-The user's current target is “taking off 100s of kilobytes or 1mb”. Pursue
-a measured structural reduction at that scale while preserving checked REPL,
-JIT, AOT, source reconstruction and capture/restore behavior. Count complete
-product cost, including new optimizer code; do not aggregate hypothetical
-pattern savings or remove state without proving its semantic roots.
+The user explicitly set a continuing goal of **1 MB or more of additional
+reduction** from the qualified 2,625,655-byte paired engine. The target is
+1,625,655 bytes or smaller. Earlier savings below are historical and do not
+count toward this additional target. Smaller accepted wins are progress, not
+completion. Preserve checked REPL, JIT, AOT, source reconstruction and
+capture/restore behavior. Count complete product cost, including new optimizer
+code; do not aggregate hypothetical pattern savings or remove state without
+proving its semantic roots. Completed bounded measurements cover real capture
+literal placement, remaining ARM64 selection gaps and compact startup tables.
+Implementation is active for direct boolean masks (habu-emit-bool-masks-9ba063d8),
+paired stack writeback (habu-fuse-paired-stack-c1800302), and packed startup
+tables (habu-pack-baked-seed-66e05afd). The broader repeated-code census and
+source audit remain active (habu-find-repeated-code-7811ef13).
+
+The startup-table census preserves every row and measures a 134,560-byte
+representation opportunity for dictionary records, signed bound-call gaps and
+signed DATA-site gaps, including framing and alignment. Native decoder and
+compiler costs remain unmeasured. Anonymous spans stay unchanged. Evidence:
+`~/.cache/tmp/habu-metadata-census-completion-20260928-01.md`.
+The ARM64 census finds 4,449 compatible STP-plus-pointer-move sites (17,796
+gross instruction bytes), 595 mixed scalar load pairs (2,380), 124 ordinary
+unsigned address folds (496), and two floating pairs (8). These independent
+screens overlap and lack live IR provenance; they are not additive savings.
+Evidence: `~/.cache/tmp/habu-selection-gap-census-completion-20260928-01.md`.
 
 Native stack transfers now use paired GPR64 instructions when both operations
 have the same block, full source origin, base and adjacent safe slots. The
@@ -48,18 +67,19 @@ signatures pass. Maki falls 32,832 bytes to 20,520,416; both board exports are
 byte-identical. Evidence: `~/.cache/tmp/habu-effect-links-fix-20260928-01/`
 and `habu-effect-links-review-20260928-01.md` in the same scratch parent.
 
-Shared DATA literal pools remain a separate candidate. Per-word pools cannot
-reach 100 KB; whole-owner range grouping has a conditional 127,872-byte payload
-ceiling before real eligibility, implementation and final layout cost. It needs
-coherent pool/capture ownership and complete relocation support. The current
-planning-only task habu-measure-shared-literal-9d63f61d found that the shipped
-artifact omits original retired-record/raw-metadata ownership needed to prove
-safe placement. Its checked intake has 14,859 declared DATA carriers, including
-99 outside declared bodies; body containment alone is not sufficient authority.
-A future source-build census must observe CAPTURE after ACAP-GRAPH-INDEX with
-original dictionary/raw ranges and the final graph map. Pool eligibility and
-net savings remain unmeasured. No pool implementation or saving is claimed.
-Evidence: `~/.cache/tmp/habu-literal-placement-completion-20260928-01.md`.
+Shared DATA literal pools remain a separate candidate. A real source-build
+capture census now recovers original dictionary/raw ownership, including retired
+records, and the complete graph map. Its instrumented engine and names remain
+byte-identical to the baseline. The checked plan selects 14,760 carriers into
+three islands with 4,237 cells; 99 carriers without declared executable owners
+remain unchanged. All mapped ranges, roots, edges and persisted plan fields
+verify. The conditional saving is 128,016 payload bytes, or 132,096 signed-file
+bytes with new implementation costs held at zero. No pooled executable or net
+implementation saving is claimed. This estimate overlaps the compact startup
+tables' DATA-site saving and must not be added to it. Evidence:
+`~/.cache/tmp/habu-live-literal-census-completion-20260928-01.md`.
+Earlier missing-authority result:
+`~/.cache/tmp/habu-literal-placement-completion-20260928-01.md`.
 Design and earlier repeatable census:
 `~/.cache/tmp/habu-literal-pool-design-20260928-01.md` and
 `habu-literal-pool-census-completion-20260928-01.md` in the same directory.
