@@ -835,8 +835,8 @@ variable ACAP-BP
    v  v ACAP-REC-EXT?  ACAP-REC-NAME  v 16 + ACAP-W32@ ;
 
 \ ---- the keep-set -------------------------------------------------------------
-\ ONE NAME THE DERIVED RULE CANNOT SEE, because something OUTSIDE the payload
-\ resolves it by name. The list is explicit and reviewed as policy, the way
+\ TWO NAMES THE DERIVED RULE CANNOT SEE, because a consumer resolves each by
+\ name. The list is explicit and reviewed as policy, the way
 \ tools/manifest-lint.f states the engine's entry points: a rule that cannot see
 \ a use is better than a rule quietly widened until it can.
 \
@@ -846,6 +846,10 @@ variable ACAP-BP
 \ That file's own comment named this dot as the one that has to carry the entry,
 \ before this dot ran. The drift guard is the build's own refusal, "native-build:
 \ literal importer missing", the moment the entry stops matching.
+\ DEFER-UNSET - habu2.f C-DEFER-FIND-UNSET resolves this global by name whenever
+\ source declares a new defer. The compiler embeds the lookup string in its own
+\ code, outside the capture's named-site tables; without this record even
+\ `defer SETUP ( -- )` fails before it publishes the word.
 \
 \ IT USED TO BE FOUR. MEM:WB-DEPTH, MEM:WB-BUFFERS and MEM:WB-LENGTHS were here
 \ for lib/memory-test.f's WITH-BYTES frame audit, which reopens package MEM and
@@ -861,6 +865,8 @@ variable ACAP-BP
 
 : ACAP-KEEP? ( n -- bool ) {: k:n :}
    k ACAP-REC-NAME$ {: a:ptr u:n :}
+   a u s" DEFER-UNSET" CORE-STR=CI  k ACAP-REC-DST 40 + ACAP-W32@ 0= and
+   if true exit then
    a u s" IMPORT-ROWS" CORE-STR=CI  k s" NSTR" ACAP-KEEP-PKG? and ;
 
 \ THE WHITEBOX IMAGE KEEPS EVERY NAME, and it is the same switch the seal pass
@@ -874,11 +880,14 @@ variable ACAP-BP
 : ACAP-WHITEBOX? ( -- bool )
    s" HABU_WHITEBOX_IMAGE" GETENV s" 1" CORE-STR= ;
 
+: ACAP-INTERNAL? ( ptr u8 -- bool )
+   20 + ACAP-W32@ $80000000 and 0<> ;
+
 : ACAP-NAMED? ( n -- bool ) {: k:n :}
    ACAP-WHITEBOX? if true exit then
    k ACAP-REC-DST {: v:ptr :}
    v CELL-VIEW AOT-RWID -1 = if true exit then
-   v 40 + ACAP-W32@ ACAP-PRIVATE? 0= if true exit then
+   v 40 + ACAP-W32@ ACAP-PRIVATE? 0= v ACAP-INTERNAL? 0= and if true exit then
    v ACAP-W32@ ACAP-XTOFF-ENTRY? if true exit then
    k ACAP-KEEP? if true exit then
    k ACAP-REC-NAME$ {: a:ptr u:n :}

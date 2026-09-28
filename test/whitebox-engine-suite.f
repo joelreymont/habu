@@ -45,6 +45,12 @@ create ERR IO-CAP allot
 TRUSTED: INTERNAL-XT ( -- n )
    ['] USIGS ;
 
+\ The product has no NULL-PTR-CELL name. The unsealed image can still inspect
+\ the cell and the two independently declared offsets used by its runtime.
+TRUSTED: NULL-CELL-VALUE ( -- n ) NULL-PTR-CELL @ ;
+TRUSTED: NULL-CELL-OFFSET ( -- n ) NULL-PTR-CELL data-base - NULL-PTR-CELL-OFF - ;
+TRUSTED: NULL-CELL-MIRROR ( -- n ) NULL-PTR-OFF NULL-PTR-CELL-OFF - ;
+
 \ Interpret-mode execution of the same word, through a name the engine resolves
 \ at run time rather than one this file compiled.
 : RESOLVED-XT ( -- n )
@@ -98,6 +104,13 @@ TRUSTED: INTERNAL-XT ( -- n )
 : RUN ( -- )
    s" tick of a sealed name compiles here" T-LABEL
    INTERNAL-XT 0 <> TTRUE
+   s" the verifier mirror remains in the whitebox dictionary" T-LABEL
+   s" CHECKER-VERIFY-PKG-START" XREF-FIND XREF-FOUND? TTRUE
+
+   s" the whitebox null cell remains zero at its declared offset" T-LABEL
+   NULL-CELL-VALUE 0 T=
+   NULL-CELL-OFFSET 0 T=
+   NULL-CELL-MIRROR 0 T=
 
    s" and it is the engine's own record" T-LABEL
    INTERNAL-XT RESOLVED-XT T=

@@ -1246,8 +1246,10 @@ public
    AOT-REC-N @ 0= if 0 0= 0= exit then
    s" CHECKER-REG" $FFFFFFFF FIND {: owner:n :}
    s" PREFIX-MARK" $FFFFFFFF FIND {: mark:n :}
-   owner 0 < mark 0 < and if 0 0= 0= exit then
-   s" DECLARATIONS" owner MEMBER? 0= if BAD then
+   s" NATIVE-RUNTIME" $FFFFFFFF FIND {: runtime:n :}
+   owner 0 < mark 0 < and runtime 0 < and if 0 0= 0= exit then
+   owner 0 < if BAD then
+   s" CAPTURE-PREPARE" runtime MEMBER? 0= if BAD then
    s" CURSORS" mark MEMBER? 0= if BAD then
    0 0= ;
 
@@ -2119,8 +2121,6 @@ variable LWORD  variable LUNSET  variable LNEUTRAL  variable LENTRY
 \ through the CMM-CELL mode machine. test/match-factor-pin.f pins their native
 \ CLI positives, negatives, forged-tag diagnostic, and checked round-trips.
 variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH
-variable LTFLCONFAM  variable LTFLCVAR   \ TFL lowering-surface bridge names (C-FIND-GLOBAL)
-variable LTFLMATCHFAM  variable LTFLNAME \ MATCH bridge names: tfl-match-fam? / tfam-name$
 variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
 variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
 
@@ -2216,8 +2216,6 @@ variable LKEYNONAME
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
-   LTFLCONFAM LABEL@ LBL, s" tfl-con-fam?" BYTES,  LTFLCVAR LABEL@ LBL, s" tfl-cvar?" BYTES,
-   LTFLMATCHFAM LABEL@ LBL, s" tfl-match-fam?" BYTES,  LTFLNAME LABEL@ LBL, s" tfam-name$" BYTES,
    LBADTAGPFX LABEL@ LBL, s" hb: bad " BYTES,  LBADTAGSFX LABEL@ LBL, BADTAG-SFX-KW 5 BYTES,
    LCHKSNAPTOKEN LABEL@ LBL,
    s" ' CHECKER-CAPTURE-PREPARE data-base ENGINE-SNAP-XT-CELL + !" BYTES,
@@ -9925,11 +9923,18 @@ public
 \                write(2) then C-DIE-TOKEN(70). Never returns (B, not BL).
 variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
 
+: C-ADT-OWNER ( n -- ) {: off:n :}
+   LBL LBL {: msg:label ready:label :}
+   off DECL-OWNER:FIND  11 ready CBNZ,
+   1 msg ADR,  2 33 MOVZ,  LADTDIE LABEL@ B,
+   msg LBL,  s" hb: declaration owner unavailable" BYTES,
+   ready LBL, ;
+
 : EM-ADT-CON-FAM ( -- )                 \ CMM=1 leg: resolve family, arm state 2
    LBL LBL {: fmsg:label fok:label :}
    LBCAP LABEL@ BL,                     \ operand reaches the checker's body too
    PROT:LCLOSE LABEL@ BL,          \ region -> RX: checker-call window
-   LTFLCONFAM 12 C-FIND-GLOBAL
+   NCOMP-DISPATCH:DECL-FAMILY-CON-OFF C-ADT-OWNER
    LADTPUSHTOK LABEL@ BL,
    C-CALL-X11-SAVED
    10 G-POP                             \ ok flag (top)
@@ -9960,7 +9965,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    LBL LBL LBL {: vmsg:label vok:label nox:label :}
    LBCAP LABEL@ BL,                     \ operand reaches the checker's body too
    PROT:LCLOSE LABEL@ BL,          \ region -> RX: checker-call window
-   LTFLCVAR 9 C-FIND-GLOBAL
+   NCOMP-DISPATCH:DECL-FAMILY-CVAR-OFF C-ADT-OWNER
    LADTPUSHTOK LABEL@ BL,
    9 DATA CMFAM-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
@@ -10038,7 +10043,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
 : EM-MATCH-SEMI ( -- )                  \ ;match: invalid-tag die + join + pop frame
    LBL LBL {: jl:label jd:label :}
    PROT:LCLOSE LABEL@ BL,          \ region -> RX: checker-friend call window
-   LTFLNAME 10 C-FIND-GLOBAL
+   NCOMP-DISPATCH:DECL-FAMILY-NAME-OFF C-ADT-OWNER
    LMFRTOP LABEL@ BL,  9 15 0 LDR,
    9 G-PUSH                             \ top match-frame family id
    C-CALL-X11-SAVED
@@ -10062,7 +10067,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    LBL LBL {: fmsg:label fok:label :}
    LBCAP LABEL@ BL,
    PROT:LCLOSE LABEL@ BL,
-   LTFLMATCHFAM 14 C-FIND-GLOBAL
+   NCOMP-DISPATCH:DECL-FAMILY-MATCH-OFF C-ADT-OWNER
    LADTPUSHTOK LABEL@ BL,
    C-CALL-X11-SAVED
    10 G-POP                             \ ok flag
@@ -10084,7 +10089,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
       EM-MATCH-SEMI
    notsemi LBL,
    PROT:LCLOSE LABEL@ BL,
-   LTFLCVAR 9 C-FIND-GLOBAL
+   NCOMP-DISPATCH:DECL-FAMILY-CVAR-OFF C-ADT-OWNER
    LADTPUSHTOK LABEL@ BL,
    LMFRTOP LABEL@ BL,  9 15 0 LDR,  9 G-PUSH
    C-CALL-X11-SAVED
@@ -10334,8 +10339,7 @@ package LABELS
    LBL DEFER-DIAG:LDEFNOTDEFER !  LBL DEFER-DIAG:LDEFNONAME !  LBL DEFER-DIAG:LDEFHINT !
    LBL LSIGPTRA !  LBL LSIGA !
    LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH !
-   LBL LTFLCONFAM !  LBL LTFLCVAR !
-   LBL LTFLMATCHFAM !  LBL LTFLNAME !  LBL LBADTAGPFX !  LBL LBADTAGSFX ! ;
+   LBL LBADTAGPFX !  LBL LBADTAGSFX ! ;
 
 : RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !  LBL LREPLROUTE !  LBL LGENIOOUT !

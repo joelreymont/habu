@@ -1,9 +1,9 @@
 ---
 title: Optimization
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-09-24T16:53:24.838504+02:00"
+created-at: "\"2026-09-24T16:53:24.838504+02:00\""
 ---
 
 Reduce Habu engine and application size, unnecessary generated instructions,
@@ -13,6 +13,53 @@ Remeasure historical claims on the current product before implementation.
 Record confirmed findings in an existing matching dot or a new bounded dot
 before fixing them. Update evidence and acceptance before an implementation
 claim; an RCA or candidate saving is not completed implementation.
+
+## Current thin-engine work
+
+The user requested implementation of the remaining engine-size fixes. Tender
+is reference material only; its engine, pin, application tests and historical
+500 KB target are not dependencies or acceptance criteria for this work.
+Preserve Habu's checked REPL, JIT, AOT, source reconstruction and supported
+capture/restore behavior. Use the existing implementation dots below rather
+than creating duplicate retention tasks. Alder owns integration and closure;
+Sol workers own implementation and verification in isolated workspaces.
+
+The preceding product from `6c64049ce625` is 2,922,871 bytes, SHA-256
+`19dbc04c14d10add5e9813f563fd115ea3e6e398511ac67e382038bc32f19db0`.
+`bin/hb --load tools/engine-size.f -- bin/hb` reports 1,681,480 code bytes,
+778,148 DATA/bitmap bytes, 267,536 dictionary/name bytes and 195,707 other
+bytes. All dictionary records and anonymous spans are reachable under the
+current dictionary-surface roots. Engine-entry roots omit 180,336 code bytes
+but do not describe every future compilation dependency; that is not a
+deletion list. The baseline passed the unchanged 490-suite registry with two
+concurrent children; the default eight-slot run had three load failures that
+each passed alone and in the full reduced-concurrency rerun.
+
+The qualified internal-name reduction is **2,856,823 bytes**, down **66,048**
+(2.26%), SHA-256
+`cf9c706cb70b9898822a5c4f20a13df163ac93a047c645f5fda46f5e657bc5cf`.
+It removes 2,172 non-package dictionary records: record bytes fall from
+166,640 to 123,200 and name bytes from 90,576 to 64,240. Reachable unnamed
+code remains; span metadata grows from 42,840 to 58,792 bytes. The code blob
+falls from 1,560,148 to 1,538,952 bytes. These section differences overlap
+other build changes and alignment; the total above is the measured file saving.
+
+Guarded declaration-owner callbacks replace real private-name consumers;
+the exact dynamic `DEFER-UNSET` root remains. Private inspection uses whitebox
+while public tests still use the product. Independent review passed, native
+generations 2–5 are byte-identical, and the default eight-slot gate passes all
+490 suites. Both Maki routing/geometry and shared-channel smokes pass with
+byte-identical accepted boards; engine and Maki signatures verify strictly.
+Evidence and artifacts: `~/.cache/tmp/habu-thin-internal-completion-20260928-02.md`.
+The internal-name and product/whitebox test dots are closed.
+
+Next compact captured NORET control history under
+`habu-compact-captured-control-4969c5eb`, preserving primitive, saved-boundary
+and current states. The measured census warrants implementation but is not a
+binary saving. General effect-history, private-symbol and DATA reachability
+work remains open. Require native self-host convergence, the full gate and
+Maki qualification for each capture change. No savings estimate or tracker
+cleanup counts as an implemented size reduction.
 
 Dots 0.6.4 renders one parent level reliably. Keep these tasks as direct
 children. The Tender size campaign remains recorded in
@@ -127,7 +174,7 @@ copies and links the native payload. Track corrections at those owners:
 | Finding | Implementation dot |
 |---|---|
 | 8,502 private symbols remain without dictionary entries | [Prune checker metadata](habu-drop-private-signatures-974304d0.md) |
-| 2,080 internal dictionary records and their names remain | [Strip internal names](habu-strip-the-names-89d6524a.md) |
+| Internal-name reduction qualified above | `habu-strip-the-names-89d6524a` (closed) |
 | 9,638 zero-displacement calls use 12-byte target rows | [Bind primitive calls](habu-bind-primitive-calls-a45cdb44.md) |
 | Repeated package strings and absolute string pointers | [Intern names and use offsets](habu-store-checker-names-70a89ffb.md) |
 | Older effect and control records persist wholesale | [Compact checker histories](habu-compact-checker-histories-3a1ce692.md) |

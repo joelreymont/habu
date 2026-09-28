@@ -230,11 +230,19 @@ create CS-DBUF 8192 allot
 create CS-CHILD-OUT CS-CHILD-CAP allot
 create CS-CHILD-ERR CS-CHILD-CAP allot
 create CS-CHILD-EMPTY 1 allot
+create CS-PRODUCT-PATH FS-PATH-CAP allot
 
-: CS-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
+: CS-HB$ ( -- ptr u8 n ) s" bin/hb" ;
+
+: CS-PRODUCT$ ( -- ptr u8 n )
+   SOURCE-ROOT:CWD$ CS-HB$ CS-PRODUCT-PATH JOIN-PATH {: u:n :}
+   CS-PRODUCT-PATH u ;
+
+: CS-ENV! ( -- )
+   PROC-ENV-RESET
+   s" HABU_UNDER_TEST" >LEN CS-PRODUCT$ >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN CS-PRODUCT$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING ;
 
 : CS-LOAD-WITH ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n hb:ptr hbu:n :}
@@ -244,9 +252,10 @@ create CS-CHILD-EMPTY 1 allot
    s" --" >LEN PROC-ARGV+
    s" --json-errors" >LEN PROC-ARGV+
    path pathu >LEN PROC-ARGV+
+   CS-ENV!
    hb hbu >LEN CS-CHILD-EMPTY 0 >LEN
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
-   10000 >MS RUN-ARGV-STDIN-CAPTURE
+   10000 >MS RUN-ARGV-ENV-STDIN-CAPTURE
    MATCH result
       ok OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF
       err OF PCAP-FAILED:UNMAKE {: out:len err:len rc:rc :}
@@ -300,27 +309,30 @@ variable CS-CHILD-ERR-U
    PROC-ARGV-RESET
    s" --" >LEN PROC-ARGV+
    CS-IMAGE$ >LEN PROC-ARGV+
+   CS-ENV!
    CS-HB$ >LEN
    S\" require src/habu/app-image.f\nrequire test/catch-success-image-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
-   180000 >MS RUN-ARGV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
+   180000 >MS RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
    CS-IMAGE$ EXECUTABLE? TTRUE ;
 
 : CS-IMAGE-RUN ( -- )
    PROC-ARGV-RESET
+   CS-ENV!
    CS-IMAGE$ >LEN
    S\" CATCH-IMAGE:RUN\ns\" test/catch-success-image-consumer.f\" included\n" >LEN
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
-   10000 >MS RUN-ARGV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
+   10000 >MS RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
    CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image: ok" CONTAINS? TTRUE
    CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-fresh: ok" CONTAINS? TTRUE ;
 
 : CS-SAVED-REFUSAL ( ptr u8 n ptr u8 n -- )
    {: src:ptr size:n want:ptr wantu:n :}
    PROC-ARGV-RESET
+   CS-ENV!
    CS-IMAGE$ >LEN src size >LEN
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
-   10000 >MS RUN-ARGV-STDIN-CAPTURE CS-IMAGE-RC 70 T=
+   10000 >MS RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 70 T=
    CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-load: began" CONTAINS? TTRUE
    CS-CHILD-ERR CS-CHILD-ERR-U @ s" stale cell" CONTAINS? TTRUE
    CS-CHILD-ERR CS-CHILD-ERR-U @ want wantu CONTAINS? TTRUE ;

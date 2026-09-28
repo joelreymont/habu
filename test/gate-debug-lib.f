@@ -2,6 +2,7 @@
 
 require tools/jitdump-core.f
 require test/gate-common.f
+require test/whitebox-child.f
 
 using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
 
@@ -9,7 +10,8 @@ using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
    GE-HB-RESET
    GE-SRC-RESET
    s" test/prop-test.f" GE-SRC-FILE+
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   WHITEBOX-CHILD:ENV!
+   WHITEBOX-CHILD:ENGINE$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" prop-test" GE-EXPECT-OK
    s" self-test OK" s" prop-test self-test/run did not complete" GE-EXPECT-OUT-HAS
    s" canary self-test OK" s" prop-test canary provenance teeth did not run" GE-EXPECT-OUT-HAS
@@ -446,6 +448,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 : GDB-RUN ( -- )
    s" hb-gate-debug" GT-START
+   s" hb-gate-debug" WHITEBOX-CHILD:PROVIDE
    GDB-PROP
    GDB-PROFILER
    GDB-PROFILER-BAND

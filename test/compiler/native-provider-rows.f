@@ -6,6 +6,9 @@ require lib/string.f
 require lib/test.f
 require lib/test/outcome.f
 require lib/test/subject.f
+require lib/process-argv.f
+require lib/process-env.f
+require test/whitebox-child.f
 
 package PROVIDER-ROW-TEST
 
@@ -49,11 +52,22 @@ variable EXITED
 : TIER ( n -- )
    0= if s" 0 set-tier " else s" 1 set-tier " then APPEND ;
 
-: RUN-SOURCE ( ptr u8 n n n -- ) {: src:ptr u:n provider:n caller:n :}
+: SOURCE! ( ptr u8 n n n -- ) {: src:ptr u:n provider:n caller:n :}
    0 SRC-U !
    provider TIER PROVIDERS$ APPEND
-   caller TIER src u APPEND
+   caller TIER src u APPEND ;
+
+: RUN-SOURCE ( ptr u8 n n n -- )
+   SOURCE!
    SRC-BUF SRC-U @ OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN STORE ;
+
+: RUN-PRIVATE ( ptr u8 n n n -- )
+   SOURCE!
+   PROC-ARGV-RESET
+   WHITEBOX-CHILD:ENV!
+   WHITEBOX-CHILD:ENGINE$ >LEN SRC-BUF SRC-U @ >LEN
+   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME STORE ;
 
 : EXPECT-RC ( n -- ) {: want:n :}
    EXITED @ 0= RC @ want <> or if ERR$ type OUT$ type then
@@ -74,7 +88,7 @@ variable EXITED
 \ making an underdepth call. The query boundary alone needs trusted access.
 : MINIMUM ( n -- )
    s" verified input cells reach both the effect and the interpret guard" T-LABEL
-   S\" TRUSTED: ROW-MINIMUM ( ptr u8 n -- )\n   2dup XREF-FIND dup XREF-FOUND? if XREF-FLAGS 52 rshift $FF and . else drop -1 . then\n   2dup SIG-MIN-IN .\n   EFFECT-QUERY if EFFECT-DIN-CELLS . else -1 . then ;\ns\" PR:RB1\" ROW-MINIMUM s\" PR:RB3\" ROW-MINIMUM\n" rot 0 RUN-SOURCE
+   S\" TRUSTED: ROW-MINIMUM ( ptr u8 n -- )\n   2dup XREF-FIND dup XREF-FOUND? if XREF-FLAGS 52 rshift $FF and . else drop -1 . then\n   2dup SIG-MIN-IN .\n   EFFECT-QUERY if EFFECT-DIN-CELLS . else -1 . then ;\ns\" PR:RB1\" ROW-MINIMUM s\" PR:RB3\" ROW-MINIMUM\n" rot 0 RUN-PRIVATE
    0 EXPECT-RC ERR-U @ 0 T=
    OUT$ S\" 1\n1\n1\n1\n1\n1\n" STR= TTRUE ;
 
@@ -96,7 +110,7 @@ variable EXITED
 
 : JIT-DEFINER ( -- )
    s" created-body validation preserves the JIT definer's verified effect" T-LABEL
-   S\" : ROW-MAKE ( R -- R ) 1 + create does> ( -- ptr a ) ;\nTRUSTED: DEF-MINIMUM ( -- )\n   s\" ROW-MAKE\" SIG-MIN-IN .\n   s\" ROW-MAKE\" XREF-FIND dup XREF-FOUND? if XREF-FLAGS 52 rshift $FF and . else drop -1 . then ;\nDEF-MINIMUM\n41 ROW-MAKE MADE .\nMADE drop\n: BAD ( ptr u8 -- ptr u8 ) ROW-MAKE ;\n" 0 0 RUN-SOURCE
+   S\" : ROW-MAKE ( R -- R ) 1 + create does> ( -- ptr a ) ;\nTRUSTED: DEF-MINIMUM ( -- )\n   s\" ROW-MAKE\" SIG-MIN-IN .\n   s\" ROW-MAKE\" XREF-FIND dup XREF-FOUND? if XREF-FLAGS 52 rshift $FF and . else drop -1 . then ;\nDEF-MINIMUM\n41 ROW-MAKE MADE .\nMADE drop\n: BAD ( ptr u8 -- ptr u8 ) ROW-MAKE ;\n" 0 0 RUN-PRIVATE
    70 EXPECT-RC
    OUT$ S\" 1\n1\n42\n" STR= TTRUE
    ERR$ s" expected: n actual: ptr u8" CONTAINS? TTRUE
@@ -106,11 +120,14 @@ public
 
 : RUN ( -- )
    T-RESET
+   CLEANUP-RESET
+   s" native-provider-rows" WHITEBOX-CHILD:PROVIDE
    2 0 do
       2 0 do j i POSITIVE j i NEGATIVE loop
       i MINIMUM
    loop
    JIT-DEFINER
+   CLEANUP-RUN
    T-REPORT ;
 
 ;package

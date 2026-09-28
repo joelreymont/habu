@@ -86,6 +86,14 @@ $238 constant DOES-IN-N-OFF
 $240 constant DOES-OUT-N-OFF
 $248 constant DOES-IN-SLOT-OFF
 $250 constant DOES-OUT-SLOT-OFF
+$258 constant VERIFY-START-OFF
+$260 constant VERIFY-DONE-OFF
+$268 constant FAMILY-CVAR-OFF
+$270 constant VERIFY-RECORD-SYM-OFF
+$278 constant VERIFY-FIND-SYM-OFF
+$280 constant VERIFY-CREATES-SYM-OFF
+$288 constant VERIFY-RECORD-CREATED-OFF
+$290 constant VERIFY-SOURCE-DOES-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

@@ -6,7 +6,7 @@ require lib/string.f
 require lib/test.f
 require lib/process.f
 require lib/process-argv.f
-require lib/engine-candidate.f
+require lib/process-env.f
 require lib/adt/option.f
 require src/compiler/native/compiler.f
 require src/compiler/native/branch.f
@@ -854,10 +854,21 @@ $4000 constant CAP-CAP
 
 create OUT-BUF CAP-CAP allot
 create ERR-BUF CAP-CAP allot
+create PRODUCT-PATH FS-PATH-CAP allot
 
 variable CHILD-OUT-N
 variable CHILD-ERR-N
 variable CHILD-RC
+
+: PRODUCT$ ( -- ptr u8 n )
+   SOURCE-ROOT:CWD$ s" bin/hb" PRODUCT-PATH JOIN-PATH {: u:n :}
+   PRODUCT-PATH u ;
+
+: PRODUCT-ENV! ( -- )
+   PROC-ENV-RESET
+   s" HABU_UNDER_TEST" >LEN PRODUCT$ >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN PRODUCT$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING ;
 
 : CHILD-ARGV ( -- )
    PROC-ARGV-RESET
@@ -867,11 +878,12 @@ variable CHILD-RC
 
 : CHILD-RUN ( -- )
    CHILD-ARGV
-   ENGINE-CANDIDATE:PATH$ >LEN
+   PRODUCT-ENV!
+   s" bin/hb" >LEN
    OUT-BUF CAP-CAP >LEN
    ERR-BUF CAP-CAP >LEN
    CHILD-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME
+   RUN-ARGV-ENV-CAPTURE-OUTCOME
    PROC-OUTCOME>RC RC>N CHILD-RC !
    LEN>N CHILD-ERR-N !
    LEN>N CHILD-OUT-N ! ;

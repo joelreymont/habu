@@ -27,6 +27,7 @@ require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
 \ dynamic-tail manifest.
 require tools/dynamic-tail-manifest.f
 require tools/source-discovery.f
+require src/core/checker-owner-guard.f
 
 \ These checker axioms retire with habu-primitive-effect-axiom-1119f176.
 \ CHECK! certifies snippets so the fail-closed source hook compiles checked.
@@ -1120,10 +1121,17 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    CHK-DEP-ORDER-N @ 0 > if CHK-RUN-NOMINAL-ORDER exit then
    CHK-SOURCE CHK-RUN-NOMINAL-FILE ;
 
+: CHK-VERIFIER-XT ( n -- n ) {: off:n :}
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
+   off CELL + CHECKER-OWNER-GUARD:VALIDATE
+   off + CELL-VIEW @ dup 0= IF E-NCOMP-OWNER throw THEN ;
+
+TRUSTED: CHK-VERIFIER-ACTION ( n -- [ -- ] ) ;
+
 TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
-   CHECKER-VERIFY-PKG-START
+   CHECKER-OWNER-ABI:VERIFY-START-OFF CHK-VERIFIER-XT CHK-VERIFIER-ACTION execute
    [: CHK-RUN-NOMINAL ;] catch
-   CHECKER-VERIFY-PKG-DONE
+   CHECKER-OWNER-ABI:VERIFY-DONE-OFF CHK-VERIFIER-XT CHK-VERIFIER-ACTION execute
    dup 0= if drop exit then
    throw ;
 

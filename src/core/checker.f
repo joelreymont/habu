@@ -108,18 +108,13 @@ create OWNER-STORAGE
    0 , 0 , 0 , 0 , 0 , 0 ,
    0 ,
    0 , 0 , 0 , 0 ,
+   0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
-\ PUBLIC BECAUSE THE IMAGE IS ASKED ABOUT IT BY NAME. src/habu/habu2.f
-\ AOT-RUNTIME:COMPLETE? decides whether a captured payload replaces source boot
-\ by asking the shipped dictionary for `DECLARATIONS` in this package's wordlist,
-\ and the image no longer carries a name for a private word at all
-\ (habu-ship-no-dictionary-2fee2dea, src/habu/aot-capture.f ACAP-NAMED?), so a
-\ private one would answer "incomplete" on every boot. The word itself is what it
-\ always was: the address of the declaration owner this file publishes into the
-\ engine's target declaration cell on the next lines. PREFIX-MARK:CURSORS, the
-\ other half of that check, is public for the same reason and already was.
+\ The captured declaration owner is validated by address and descriptor before
+\ compaction. Its dictionary name is not needed to recognize a complete runtime.
 : DECLARATIONS ( -- ptr u8 ) OWNER-STORAGE CHECKER-OWNER-ABI:HEADER-BYTES + ;
 private
 OWNER-BYTES constant OWNER-CELLS-BYTES   \ what the field list says the record is
@@ -132,7 +127,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   DOES-OUT-SLOT-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -1201,6 +1196,11 @@ REG-PROTECT
    VERIFY-FLOOR0 @ PASS-FLOOR !
    0 CHECKER-VERIFY-PKG-DEPTH ! ;
 REG-PROTECT
+
+package CHECKER-REG
+' CHECKER-VERIFY-PKG-START DECLARATIONS CHECKER-OWNER-ABI:VERIFY-START-OFF + xt!
+' CHECKER-VERIFY-PKG-DONE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DONE-OFF + xt!
+;package
 
 0 constant UK-EXACT
 1 constant UK-INPUT
@@ -17672,6 +17672,11 @@ package CHECKER-REG
 ' CHECKER-PAYLOAD-SPANS DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-SPANS-OFF + xt!
 ' CHECKER-REG-AOT-SAVE DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-REG-SAVE-OFF + xt!
 ' CHECKER-ASIG-DISARM DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-DISARM-OFF + xt!
+' CHECKER-RECORD-SYM? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF + xt!
+' CHECKER-FIND-QUIET-SYM DECLARATIONS CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF + xt!
+' CHECKER-CREATES-SYM? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF + xt!
+' CHECKER-RECORD-CREATED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF + xt!
+' CHECKER-SOURCE-DOES! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF + xt!
 
 \ The first cold checker has no retained owner to transfer from. Publish it
 \ only after every callback is installed. A replacement keeps the nonzero

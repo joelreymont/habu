@@ -24,10 +24,9 @@ using AOT-BUF
 : ANCHORS ( n -- ) {: mode:n :}
    mode 7 <> if s" checker-reg" 3 4 $FFFFFFFF ADD then
    mode 3 <> if s" prefix-mark" 5 6 $FFFFFFFF ADD then
-   mode 4 <> if
-      s" DECLARATIONS" 0 4 mode 6 = if 0 else 4 then ADD
-   then
-   mode 5 <> if s" CURSORS" 4 4 5 ADD then ;
+   mode 4 <> if s" native-runtime" 7 8 $FFFFFFFF ADD then
+   mode 5 <> if s" CURSORS" 4 4 5 ADD then
+   mode 6 <> if s" CAPTURE-PREPARE" 4 4 7 ADD then ;
 
 public
 

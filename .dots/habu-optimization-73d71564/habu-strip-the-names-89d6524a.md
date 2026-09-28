@@ -1,9 +1,11 @@
 ---
 title: Strip the names of sealed-internal words too
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-09-17T01:17:31.896498+03:00"
+created-at: "\"\\\"2026-09-17T01:17:31.896498+03:00\\\"\""
+closed-at: "2026-09-28T11:19:35.674283+02:00"
+close-reason: "Implemented and independently reviewed: sealed internal dictionary names are omitted while explicit roots, reachable anonymous code and checker source authority remain. Qualified macOS ARM64 engine is 2856823 bytes, 66048 fewer than 6c64049c; SHA cf9c706cb70b9898822a5c4f20a13df163ac93a047c645f5fda46f5e657bc5cf. Native generations 2-5 byte-identical; focused source-replay and checker tests, full 490-suite gate, strict signatures and both byte-identical Maki board smokes pass. Evidence: ~/.cache/tmp/habu-thin-internal-completion-20260928-02.md."
 ---
 
 ## Current RCA and implementation boundary

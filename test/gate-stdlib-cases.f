@@ -214,7 +214,7 @@ SUITE compiler-native-feed
    test/compiler/native-feed.f
 ;SUITE
 
-SUITE compiler-native-tape-owner
+WHITEBOX-SUITE compiler-native-tape-owner
    test/compiler/native-tape-owner.f
 ;SUITE
 
@@ -462,7 +462,7 @@ SUITE prim-owner-scope
    test/prim-owner-scope.f
 ;SUITE
 
-SUITE checker-effect-authority
+WHITEBOX-SUITE checker-effect-authority
    test/checker-effect-authority.f
 ;SUITE
 
@@ -568,7 +568,7 @@ SUITE app-image
    test/app-image.f
 ;SUITE
 
-SUITE registry-persist
+WHITEBOX-SUITE registry-persist
    test/registry-persist.f
 ;SUITE
 
@@ -823,11 +823,11 @@ SUITE native-tail-placement
    test/compiler/native-tail-placement.f
 ;SUITE
 
-SUITE compiler-native-match
+WHITEBOX-SUITE compiler-native-match
    test/compiler/native-match.f
 ;SUITE
 
-SUITE compiler-native-match-aot
+WHITEBOX-SUITE compiler-native-match-aot
    test/compiler/aot-mode.f
    test/compiler/native-match.f
 ;SUITE
@@ -1274,11 +1274,11 @@ SUITE xt-cell
    test/xt-cell-test.f
 ;SUITE
 
-SUITE catch-stale
+WHITEBOX-SUITE catch-stale
    test/catch-stale-suite.f
 ;SUITE
 
-SUITE effect-read-api
+WHITEBOX-SUITE effect-read-api
    test/effect-read-api-test.f
 ;SUITE
 
@@ -1306,11 +1306,11 @@ SUITE checker-verify-pkg-scope
    test/checker-verify-pkg-scope.f
 ;SUITE
 
-SUITE checker-verify-order
+WHITEBOX-SUITE checker-verify-order
    test/checker-verify-order.f
 ;SUITE
 
-SUITE checker-replay-pkg-state
+WHITEBOX-SUITE checker-replay-pkg-state
    test/checker-replay-pkg-state.f
 ;SUITE
 
@@ -1318,7 +1318,7 @@ SUITE verify-prim
    test/verify-prim-test.f
 ;SUITE
 
-SUITE checker-scan-index
+WHITEBOX-SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
 
@@ -1326,15 +1326,15 @@ SUITE defer-history
    test/defer-history.f
 ;SUITE
 
-SUITE effect-intern
+WHITEBOX-SUITE effect-intern
    test/effect-intern-suite.f
 ;SUITE
 
-SUITE effect-store-census
+WHITEBOX-SUITE effect-store-census
    test/effect-store-census-test.f
 ;SUITE
 
-SUITE checker-dead-path
+WHITEBOX-SUITE checker-dead-path
    test/checker-dead-path-suite.f
 ;SUITE
 
@@ -1342,7 +1342,7 @@ SUITE local-spelling
    test/local-spelling-suite.f
 ;SUITE
 
-SUITE checker-rollback-sig-pool
+WHITEBOX-SUITE checker-rollback-sig-pool
    test/checker-rollback-sig-pool.f
 ;SUITE
 
@@ -1863,7 +1863,7 @@ SUITE deftype
    test/deftype-suite.f
 ;SUITE
 
-SUITE engine
+WHITEBOX-SUITE engine
    test/engine-suite.f
 ;SUITE
 
@@ -1875,7 +1875,7 @@ SUITE engine-runtime-regressions
    test/runtime-regression-test.f
 ;SUITE
 
-SUITE declaration-replay-source
+WHITEBOX-SUITE declaration-replay-source
    test/decl-replay-verify-source.f
 ;SUITE
 
@@ -1987,7 +1987,7 @@ SUITE layout-defer
    test/layout-defer.f
 ;SUITE
 
-SUITE lower-cert
+WHITEBOX-SUITE lower-cert
    test/lower-cert.f
 ;SUITE
 
@@ -1999,11 +1999,11 @@ SUITE layout-buffer-depth
    test/layout-buffer-depth.f
 ;SUITE
 
-SUITE layout-valid-guards
+WHITEBOX-SUITE layout-valid-guards
    test/layout-valid-guards.f
 ;SUITE
 
-SUITE layout-valid-growth
+WHITEBOX-SUITE layout-valid-growth
    test/layout-valid-growth.f
 ;SUITE
 
@@ -2043,7 +2043,7 @@ SUITE lower-txn-large
    test/lower-txn-large.f
 ;SUITE
 
-SUITE bootstrap-wide-memory-src
+WHITEBOX-SUITE bootstrap-wide-memory-src
    test/bootstrap-wide-memory-src.f
 ;SUITE
 
@@ -2055,7 +2055,7 @@ SUITE extent-product
    test/extent-product-test.f
 ;SUITE
 
-SUITE field-proj
+WHITEBOX-SUITE field-proj
    test/field-proj-suite.f
 ;SUITE
 
@@ -2083,7 +2083,7 @@ SUITE lit-emit-size
    test/lit-emit-size-test.f
 ;SUITE
 
-SUITE prop
+WHITEBOX-SUITE prop
    test/prop-test.f
 ;SUITE
 
@@ -2099,31 +2099,31 @@ SUITE structure-certify
    test/structure-certify-suite.f
 ;SUITE
 
-SUITE structure-decl
+WHITEBOX-SUITE structure-decl
    test/structure-decl-suite.f
 ;SUITE
 
-SUITE structure-make
+WHITEBOX-SUITE structure-make
    test/structure-make-suite.f
 ;SUITE
 
-SUITE type-ctor
+WHITEBOX-SUITE type-ctor
    test/type-ctor-suite.f
 ;SUITE
 
-SUITE type-decl
+WHITEBOX-SUITE type-decl
    test/type-decl-suite.f
 ;SUITE
 
-SUITE type-export
+WHITEBOX-SUITE type-export
    test/type-export-suite.f
 ;SUITE
 
-SUITE type-family-rollback
+WHITEBOX-SUITE type-family-rollback
    test/type-family-rollback-suite.f
 ;SUITE
 
-SUITE type-family
+WHITEBOX-SUITE type-family
    test/type-family-suite.f
 ;SUITE
 
