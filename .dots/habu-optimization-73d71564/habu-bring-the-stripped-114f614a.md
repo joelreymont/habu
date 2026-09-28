@@ -1,9 +1,11 @@
 ---
 title: Bring the stripped tenderd under 500 KB
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-09-22T11:30:53.082560+03:00"
+created-at: "\"2026-09-22T11:30:53.082560+03:00\""
+closed-at: "2026-09-28T10:19:34.683707+02:00"
+close-reason: "Retired by user scope change: Tender no longer uses Habu except as reference. The historical 500 KB Tender server target was not achieved and is no longer a Habu acceptance criterion. Generic engine size work remains under habu-optimization-73d71564; no Tender source, pin or schema changes."
 ---
 
 Current result: Tender feb55f7d defaults tenderd to stripped on Habu 806f0654 /

@@ -282,28 +282,34 @@ where that time goes and reports what four changes since then removed: the same
 trivial definition now costs 524 µs and the same corpus 3.880 s, so the ratio
 above is 20.7x rather than 23.8x. The tier-0 column is untouched by them.
 
-**The self-build cannot be run at tier 0, and the tier is not the tool's to
-choose.** `EXECUTABLE-BUILD:WITH` opens a build scope, and `src/habu/habu1.f`
+**The production native build compiles the complete target prefix at tier 1.**
+`tools/native-build-core.f` retains the callable host compiler while resetting
+dictionary visibility to `CORE-PREFIX:FIRST-RECORD`. It opens a capture window
+and reloads the target core, checker, libraries and compiler. The completed
+target runtime then installs its compiler. This ordering lets the host compile
+its replacement without requiring the replacement compiler before it exists.
+`AOT-FILE:OWN-WINDOW` in `src/habu/aot-owned.f` refuses capture unless the entire
+original code window has native provenance; the production entry grants no
+bootstrap exception. Fixed engine primitives are separately emitted assembly.
+
+`EXECUTABLE-BUILD:WITH` opens a build scope, and `src/habu/habu1.f`
 `BBUILDENTER` saves the caller's tier in `NCOMP-DISPATCH:BUILD-TIER-CELL` and
 stores 1 into `TIER-CELL`; `EXECUTABLE-JIT-REFUSE` then refuses any JIT compile
 inside that scope with `hb: executable build requires native tier 1`, exit 70.
-Measured: editing `tools/native-build.f` line 2 from `1 set-tier` to
+
+The following historical sample measured the separate source-booted recovery
+chain, not this production capture window. Editing `tools/native-build.f`
+line 2 from `1 set-tier` to
 `0 set-tier` and rebuilding through
 `bin/hb --load tools/build-fixpoint-refresh.f -- install` produced a
 **byte-identical engine** (sha256 `52988371a1e8f044…` both times) in 41.58 s
-against 39.65 s for the unmodified tree, at load 8.3. The `set-tier` line at the
-head of a build tool documents the intent; it does not select anything the build
-scope has not already forced.
-
-What tier 1 costs the self-build can therefore only be computed, not switched
-off. The build's own census reports 5,374 certified words — 3,566 in the boot
-prefix, 1,808 assembled — and the prefix already compiles at tier 0. At the
-measured rates the 1,808 assembled words cost about 4.5 s of the 39.65 s build
-at tier 1 and would cost about 0.19 s at tier 0; moving the 3,566-word prefix to
-tier 1 would add about 8.6 s (+22 percent of the build) and make the prefix's
-code faster in exactly the proportions section 2 measures. Compilation is
-roughly 12 percent of this build either way: the wall clock is dominated by the
-stage chain, the capture and the checking, not by which compiler runs.
+against 39.65 s for the unmodified tree, at load 8.3. Its certification census
+counted 5,374 words: 3,566 boot-prefix words and 1,808 assembled words. That
+chain's cold startup clears compiler dispatch and loads its prefix from source
+at tier 0. Its counts and timings do not describe the native production build
+or establish a size saving from changing the production tier. The supported
+routes and their qualification limits are in
+[Bootstrap](bootstrap.md#generation-chain-check).
 
 ## 4. The pre-IR compiler
 
