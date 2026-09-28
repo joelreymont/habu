@@ -1194,8 +1194,19 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    e 0= if E-A64SEL-TRAP throw then
    e ;
 
+\ Keep the proof on the source SSA definition: an address or a block argument
+\ says nothing about the divisor, even when its current bits are nonzero.
+: DIVISOR-NONZERO? ( IR-ID:ir-op-id -- bool )
+   1 OPERAND-AT {: v:IR-ID:ir-value-id :}
+   v VALUE-FROM-OP? 0= if false exit then
+   v DEF-OP {: d:IR-ID:ir-op-id :}
+   d OP-SLOT O-CONST <> if false exit then
+   d CONST-ADDR HIR:ADDR-NONE <> if false exit then
+   d CONST-VALUE 0<> ;
+
 : EMIT-DIV ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   id DIVISOR-NONZERO? if id A64IR-OPCODE:SDIVNZ EMIT-BINARY exit then
    id A64IR-OPCODE:SDIV OPEN
    CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
    CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND

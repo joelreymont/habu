@@ -71,17 +71,29 @@ variable EXITED
 : PROLOGUE$ ( -- ptr u8 n )
    S\" 1 set-tier\nvariable A\nvariable B\nvariable R\n: DZ ( n n -- n ) / ;\n: DM ( n n -- n ) mod ;\n0 set-tier\n: TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\n: TRYM ( -- n ) [: A @ B @ DM R ! ;] catch ;\n" ;
 
-create SRC-BUF $800 allot
+\ Literal divisors exercise the selector's scalar proof through the real native
+\ load path. Expected decimal output is supplied by the test, not computed by
+\ another compiled division that could share the same lowering error.
+: LITERAL-PROLOGUE$ ( -- ptr u8 n )
+   S\" 1 set-tier\nvariable A\nvariable R\n: LZ ( n -- n ) 0 / ;\n: LMZ ( n -- n ) 0 mod ;\n: L2 ( n -- n ) 2 / ;\n: LM2 ( n -- n ) -2 / ;\n: LR2 ( n -- n ) -2 mod ;\n: LN1 ( n -- n ) -1 / ;\n: LRN1 ( n -- n ) -1 mod ;\n: L64K ( n -- n ) 65536 / ;\n: LR64K ( n -- n ) 65536 mod ;\n0 set-tier\n: TRY ( -- n ) [: A @ LZ R ! ;] catch ;\n: TRYM ( -- n ) [: A @ LMZ R ! ;] catch ;\n: TRY2 ( -- n ) [: A @ L2 R ! ;] catch ;\n" ;
+
+create SRC-BUF $1000 allot
 variable SRC-U
 
 : SRC$ ( -- ptr u8 n )  SRC-BUF SRC-U @ ;
 
-: PROGRAM ( ptr u8 n -- ptr u8 n ) {: tail:ptr tu:n :}
-   PROLOGUE$ {: head:ptr hu:n :}
+: JOIN-PROGRAM ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: head:ptr hu:n tail:ptr tu:n :}
    head SRC-BUF hu BYTE-COPY
    tail SRC-BUF hu + tu BYTE-COPY
    hu tu + SRC-U !
    SRC$ ;
+
+: PROGRAM ( ptr u8 n -- ptr u8 n ) {: tail:ptr tu:n :}
+   PROLOGUE$ tail tu JOIN-PROGRAM ;
+
+: LITERAL-PROGRAM ( ptr u8 n -- ptr u8 n ) {: tail:ptr tu:n :}
+   LITERAL-PROLOGUE$ tail tu JOIN-PROGRAM ;
 
 public
 
@@ -105,6 +117,27 @@ public
    s" MIN-N -1 is still the modular answer and not a second refusal" T-LABEL
    S\" $8000000000000000 -1 DZ $8000000000000000 = . $8000000000000000 -1 DM . cr\n"
    PROGRAM RUN  S\" -1\n0\n" ASSERT-OK
+
+   s" literal zero division and remainder retain catchable refusal" T-LABEL
+   S\" 7 A ! TRY . TRYM . cr\n" LITERAL-PROGRAM RUN
+   S\" -6400\n-6400\n" ASSERT-OK
+
+   s" literal refusal resumes into a successful literal division" T-LABEL
+   S\" 7 A ! TRY drop TRYM drop TRY2 . R @ . cr\n" LITERAL-PROGRAM RUN
+   S\" 0\n3\n" ASSERT-OK
+
+   s" literal signed divisors truncate toward zero and preserve remainder sign" T-LABEL
+   S\" 7 L2 . -7 L2 . 7 LM2 . -7 LM2 . 7 LR2 . -7 LR2 . cr\n"
+   LITERAL-PROGRAM RUN  S\" 3\n-3\n-3\n3\n1\n-1\n" ASSERT-OK
+
+   s" literal minus one preserves modular extrema" T-LABEL
+   S\" $8000000000000000 LN1 . $8000000000000000 LRN1 . $7FFFFFFFFFFFFFFF LN1 . cr\n"
+   LITERAL-PROGRAM RUN
+   S\" -9223372036854775808\n0\n-9223372036854775807\n" ASSERT-OK
+
+   s" wide nonzero literal division and modulo preserve boundary values" T-LABEL
+   S\" 65537 L64K . 65537 LR64K . -65537 L64K . -65537 LR64K . $8000000000000000 L64K . $8000000000000000 LR64K . cr\n"
+   LITERAL-PROGRAM RUN  S\" 1\n1\n-1\n-1\n-140737488355328\n0\n" ASSERT-OK
 
    T-REPORT
    s" native-div-refusal: ok" type cr ;

@@ -16,6 +16,20 @@ claim; an RCA or candidate saving is not completed implementation.
 
 ## Current thin-engine work
 
+Proven nonzero scalar divisors now select a single native division instruction;
+unknown and zero divisors retain the guarded throw path. The qualified engine
+has **4,968 fewer AOT code bytes** and **344 fewer throw-call entries** (1,376
+bytes). Its file remains **2,790,775 bytes** because alignment absorbs the
+payload reduction. SHA-256:
+`ae41d43ac92b69d6c0a1bc45b92f4f359a77b7766fd991e2fa4930e10b83ca02`.
+Maki generated code falls **18,072 bytes** and its executable falls **32,832
+bytes**, to **20,553,248 bytes**. Both exported boards are byte-identical.
+Independent source review, B2–B5 and names equality, all 492 suites, and strict
+engine/application signatures pass. Exact qualified source is `78d21b471ad4`;
+evidence: `~/.cache/tmp/habu-native-divisor-completion-20260928-01.md` and
+`~/.cache/tmp/habu-native-divisor-fix-20260928-01/`. The divisor dot is closed;
+boolean normalization and other open optimization tasks remain unfinished.
+
 The user requested implementation of the remaining engine-size fixes. Tender
 is reference material only; its engine, pin, application tests and historical
 500 KB target are not dependencies or acceptance criteria for this work.

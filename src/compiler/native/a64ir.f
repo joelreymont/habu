@@ -124,6 +124,7 @@ ENUM opcode DERIVE eq
    cmpbri
    codeaddr
    dataaddr
+   sdivnz
 ;ENUM
 
 \ One condition per SOURCE relation, so a lowering is never an operand order in
@@ -215,7 +216,7 @@ public
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables.
 0 constant MAJOR
-13 constant MINOR
+14 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )      XBITS ;
@@ -489,6 +490,7 @@ private
       cmpbri    OF s" a64.cmpbri"   ENDOF
       codeaddr  OF s" a64.codeaddr" ENDOF
       dataaddr  OF s" a64.dataaddr" ENDOF
+      sdivnz    OF s" a64.sdivnz"   ENDOF
    ;MATCH ;
 
 public
@@ -496,7 +498,7 @@ public
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ These ordinals predate the enum declaration order and are kept stable for the
 \ native passes that store them in their own tables.
-81 constant OPCODES
+82 constant OPCODES
 
 : ORD ( A64IR:opcode -- n )
    MATCH opcode
@@ -581,6 +583,7 @@ public
       fdpush    OF 78 ENDOF
       fdpop     OF 79 ENDOF
       dataaddr  OF 80 ENDOF
+      sdivnz    OF 81 ENDOF
    ;MATCH ;
 
 : NTH ( n -- A64IR:opcode )
@@ -666,6 +669,7 @@ public
       78 of A64IR-OPCODE:FDPUSH    endof
       79 of A64IR-OPCODE:FDPOP     endof
       80 of A64IR-OPCODE:DATAADDR  endof
+      81 of A64IR-OPCODE:SDIVNZ    endof
       E-A64IR-OPCODE throw
    endcase ;
 
@@ -1144,6 +1148,7 @@ private
       cmpbri    OF s" a64.rule.cmpbri"   ENDOF
       codeaddr  OF s" a64.rule.codeaddr" ENDOF
       dataaddr  OF s" a64.rule.dataaddr" ENDOF
+      sdivnz    OF s" a64.rule.sdivnz"   ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1230,6 +1235,7 @@ private
       cmpbri    OF s" a64.render.cmpbri"   ENDOF
       codeaddr  OF s" a64.render.codeaddr" ENDOF
       dataaddr  OF s" a64.render.dataaddr" ENDOF
+      sdivnz    OF s" a64.render.sdivnz"   ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -2094,6 +2100,7 @@ public
    c b t A64IR-OPCODE:MUL DEF-BINARY
    c b t DEF-MADD
    c b t DEF-SDIV
+   c b t A64IR-OPCODE:SDIVNZ DEF-BINARY
    c b t A64IR-OPCODE:AND DEF-BINARY
    c b t A64IR-OPCODE:ORR DEF-BINARY
    c b t A64IR-OPCODE:EOR DEF-BINARY
@@ -2182,6 +2189,7 @@ private
       mul       OF c b c b GPR-TYPE A64IR-OPCODE:MUL DEF-BINARY ENDOF
       madd      OF c b c b GPR-TYPE DEF-MADD ENDOF
       sdiv      OF c b c b GPR-TYPE DEF-SDIV ENDOF
+      sdivnz    OF c b c b GPR-TYPE A64IR-OPCODE:SDIVNZ DEF-BINARY ENDOF
       and       OF c b c b GPR-TYPE A64IR-OPCODE:AND DEF-BINARY ENDOF
       orr       OF c b c b GPR-TYPE A64IR-OPCODE:ORR DEF-BINARY ENDOF
       eor       OF c b c b GPR-TYPE A64IR-OPCODE:EOR DEF-BINARY ENDOF

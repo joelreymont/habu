@@ -1433,6 +1433,7 @@ ARITH-ABI:E-DIV-ZERO invert constant DIV-CODE-IMM  \ the code as a Movn carries 
       orri     OF id  id PAIRM ENC-ORRI  APPEND ENDOF
       eori     OF id  id PAIRM ENC-EORI  APPEND ENDOF
       sdiv     OF id PUT-SDIV ENDOF
+      sdivnz   OF id id TRIPLE ENC-SDIV APPEND ENDOF
       and      OF id  id TRIPLE ENC-AND  APPEND ENDOF
       orr      OF id  id TRIPLE ENC-ORR  APPEND ENDOF
       eor      OF id  id TRIPLE ENC-EOR  APPEND ENDOF
