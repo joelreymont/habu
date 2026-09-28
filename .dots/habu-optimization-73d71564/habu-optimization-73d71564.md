@@ -98,10 +98,11 @@ savings. Evidence: `~/.cache/tmp/habu-repeat-code-census-completion-20260928-01.
 `habu-generator-census-completion-20260928-01.md` and
 `habu-repeat-patterns-review-20260928-01.md` in the same directory.
 
-The startup-table census preserves every row and measures a 134,560-byte
+The initial startup-table census preserved every row and measured a 134,560-byte
 representation opportunity for dictionary records, signed bound-call gaps and
-signed DATA-site gaps, including framing and alignment. Native decoder and
-compiler costs remain unmeasured. Anonymous spans stay unchanged. Evidence:
+signed DATA-site gaps, including framing and alignment. The qualified result
+above now includes native decoder, compiler and complete product costs.
+Anonymous spans stay unchanged. Initial census evidence:
 `~/.cache/tmp/habu-metadata-census-completion-20260928-01.md`.
 The ARM64 census finds 4,449 compatible STP-plus-pointer-move sites (17,796
 gross instruction bytes), 595 mixed scalar load pairs (2,380), 124 ordinary
