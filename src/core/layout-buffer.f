@@ -145,15 +145,11 @@ variable LBUF-BYTES
    s"  : " LBUF-APP
    name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( n -- ptr " LBUF-APP  type typeu LBUF-APP
-   s"  ) {: i:n :} i 0 < if " LBUF-APP
-   E-LAYOUT-BOUNDS LBUF-DEC,
-   s"  throw then i " LBUF-APP
+   s"  ) " LBUF-APP
    LBUF-N @ LBUF-DEC,
-   s"  >= if " LBUF-APP
-   E-LAYOUT-BOUNDS LBUF-DEC,
-   s"  throw then " LBUF-APP
+   s"  DYNAMIC-STORAGE:BOUNDS " LBUF-APP
    name nameu LBUF-BASE,
-   s"  i " LBUF-APP
+   s"  swap " LBUF-APP
    LBUF-W @ cells LBUF-DEC,
    s"  * + ;" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
@@ -543,13 +539,10 @@ variable DBUF-W
    s" PTR-VARIABLE " LBUF-APP name nameu LBUF-BASE,
    s"  : " LBUF-APP name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( n -- ptr " LBUF-APP type typeu LBUF-APP
-   s"  ) {: i:n :} i 0 < if " LBUF-APP E-LAYOUT-BOUNDS LBUF-DEC,
-   s"  throw then i " LBUF-APP name nameu LBUF-BASE,
-   s"  cell+ byte-view cell-view @ " LBUF-APP DBUF-W @ LBUF-DEC,
-   s"  / >= if " LBUF-APP E-LAYOUT-BOUNDS LBUF-DEC,
-   s"  throw then " LBUF-APP name nameu LBUF-BASE,
-   s"  @ i " LBUF-APP DBUF-W @ LBUF-DEC,
-   s"  * + ; : " LBUF-APP name nameu LBUF-APP
+   s"  ) " LBUF-APP name nameu LBUF-BASE,
+   s"  " LBUF-APP DBUF-W @ LBUF-DEC,
+   s"  DYNAMIC-STORAGE:OFFSET " LBUF-APP name nameu LBUF-BASE,
+   s"  @ swap + ; : " LBUF-APP name nameu LBUF-APP
    s" -RESERVE ( n -- ) " LBUF-APP name nameu LBUF-BASE,
    s"  " LBUF-APP DBUF-W @ LBUF-DEC,
    s"  DYNAMIC-STORAGE:RESERVE ; : " LBUF-APP name nameu LBUF-APP

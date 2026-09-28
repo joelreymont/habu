@@ -16,6 +16,7 @@ private
 
 $7FFFFFFFFFFFFFFF constant MAX-BYTES
 7121 constant E-SIZE
+7122 constant E-BOUNDS
 7138 constant E-MAP
 7139 constant E-UNMAP
 
@@ -125,6 +126,18 @@ variable MUTEX
    0 cb SLOT ! ;
 
 public
+
+: BOUNDS ( n n -- n ) {: idx:n count:n :}
+   idx 0 < if E-BOUNDS throw then
+   idx count >= if E-BOUNDS throw then
+   idx ;
+
+\ Reject a negative index before touching the control record. The generated
+\ accessor keeps the declared head and fetches its current mapping itself.
+: OFFSET ( n ptr ptr a n -- n ) {: idx:n cb:ptr width:n :}
+   idx 0 < if E-BOUNDS throw then
+   idx cb CAP @ width / >= if E-BOUNDS throw then
+   idx width * ;
 
 : RESERVE ( n ptr ptr a n -- ) {: count:n cb:ptr width:n :}
    count width EXTENT {: need:n :}
