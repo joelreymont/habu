@@ -35,6 +35,14 @@ finishing tails (habu-share-dialect-schema-d498c791) are qualified together.
 Opcode name tables (habu-table-opcode-names-d7cd2487) and packed DATA values
 (habu-pack-startup-data-0c5b8d64) remain implementation experiments.
 
+Captured code packing (habu-pack-captured-code-54666c9e) is the next measured
+representation experiment. The exact accepted code blob is 1,383,192 bytes;
+the reviewed local encoder produces 610,304 bytes including provisional block
+framing, with every byte independently reconstructed. This reduces stored
+representation, not executed instructions. Native decoder cost, complete product
+size and startup behavior remain unqualified; none of this measurement counts
+toward the goal. It depends on qualifying the shared DATA codec first.
+
 The current qualified engine is **2,460,535 bytes**. The three source-sharing
 changes save another **16,512 signed bytes** from the compact-table parent.
 Additional saving from the 2,625,655-byte goal baseline is now **165,120 bytes**,
