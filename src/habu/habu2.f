@@ -5209,6 +5209,53 @@ variable CFSK2
 \ the whole window, after the loop.
 \ x2..x7 are LHIDXADD's saved set; x9/x11/x12 survive it. Records are 4B-aligned so
 \ each 32-bit word loads with LDRW.
+package AOT-META
+public
+
+\ Canonical u32 ULEB in an explicitly bounded boot stream. All register
+\ operands are distinct; only acc/cur/b/g/sh change. DATA cell varints have
+\ their separate 64-bit grammar and do not use this reader.
+: VGET, ( n n n n n n label -- )
+   {: acc:n cur:n end:n b:n g:n sh:n bad:label :}
+   LBL LBL LBL {: top:label last:label canonical:label :}
+   acc 0 MOVZ, sh 0 MOVZ,
+   top LBL,
+      cur end CMP, C-CS bad BCOND,
+      b cur 0 LDRB, cur cur 1 ADDI,
+      g b $7F ANDI, g g sh LSLV, acc acc g ORR,
+      g b $80 ANDI, g last CBZ,
+      sh sh 7 ADDI, sh 35 CMPI, C-CS bad BCOND, top B,
+   last LBL,
+      sh canonical CBZ,
+      g b $7F ANDI, g bad CBZ,
+   canonical LBL,
+      g acc 32 LSRI, g bad CBNZ, ;
+
+\ count is already untagged. The length cell follows its count, and the
+\ stream plus zero padding must end exactly at the next section's count.
+\ x2..x5/x7 are scratch; cur/count/end survive.
+: OPEN, ( n n n label label n n label -- )
+   {: count:n cur:n end:n hdr:label next:label lo:n hi:n bad:label :}
+   LBL LBL {: pad:label done:label :}
+   3 5 hdr TADR, 3 3 8 LDR,
+   4 lo MOVZ, 4 count 4 MUL, 3 4 CMP, C-CC bad BCOND,
+   4 hi MOVZ, 4 count 4 MUL, 3 4 CMP, C-HI bad BCOND,
+   end cur 3 ADD,
+   4 3 3 ADDI, 4 4 $FFFFFFFFFFFFFFFC ANDI, 4 cur 4 ADD,
+   5 7 next TADR, 4 5 CMP, C-NE bad BCOND,
+   2 end 0 ADDI,
+   pad LBL, 2 5 CMP, C-CS done BCOND,
+      4 2 0 LDRB, 4 bad CBNZ, 2 2 1 ADDI, pad B,
+   done LBL, ;
+
+: COUNT, ( n n label -- ) {: count:n packed:n bad:label :}
+   5 count 34 LSRI, 5 bad CBNZ,
+   5 count 32 LSRI, 5 5 1 ANDI, 5 bad CBNZ,
+   packed count 33 LSRI,
+   count count $FFFFFFFF ANDI, ;
+
+;package
+
 package AOT-WINDOW
 public
 
@@ -5269,8 +5316,15 @@ public
    {: rloop:label rdone:label pkg:label fields:label nloop:label ndone:label
       pkg-wid:label next:label extname:label nameok:label
       bad:label msg:label done:label :}
+   LBL LBL LBL LBL
+   {: fixed:label loaded:label ordinary:label decoded:label :}
+   SP SP 48 SUBI,                                  \ fixed row scratch, stream end, format
    9 5 LAOTDICT LABEL@ TADR,  12 0 MOVZ,           \ x9 = compact record src (AOT-CREC-ROW stride), x12 = k
    11 5 LAOTNREC LABEL@ TADR,  11 11 0 LDR,         \ x11 = N (survives LHIDXADD)
+   11 17 bad AOT-META:COUNT,
+   5 AOT-REC-MAX LIT64, 11 5 CMP, C-HI bad BCOND,
+   5 NDICT 11 ADD, 6 DICT-CAP LIT64, 5 6 CMP, C-HI bad BCOND,
+   17 SP 40 STR,
    \ T0, before a single wid is handed out: the base every window coordinate below
    \ rebases against, and the number the sealed-WID gate reads on all three passes
    \ to tell a wordlist this seed created from one the engine already had. Latched
@@ -5284,20 +5338,57 @@ public
    1 DREC MOVZ,  1 NDICT 1 MUL,  1 DBASE 1 ADD,
    2 DREC MOVZ,  2 11 2 MUL,
    PROT:LSPAN LABEL@ BL,
+   17 SP 40 LDR, 17 fixed CBZ,
+   11 9 8 LAOTNREC LABEL@ LAOTNSITE LABEL@ 5 25 bad AOT-META:OPEN,
+   8 SP 32 STR,
+   fixed LBL,
    rloop LBL,  12 11 CMP,  C-GE rdone BCOND,
+      17 SP 40 LDR, 17 ordinary CBNZ,
+      5 0 ?do 3 9 i 4 * LDRW, 3 SP i 4 * STRW, loop
+      9 9 AOT-CREC-ROW ADDI, loaded B,
+      ordinary LBL,
+      8 SP 32 LDR,
+      3 9 8 2 4 7 bad AOT-META:VGET,
+      3 3 1 SUBI, 3 SP 16 STRW,                  \ role zero restores the package sentinel
+      3 9 8 2 4 7 bad AOT-META:VGET, 3 SP 0 STRW,
+      3 9 8 2 4 7 bad AOT-META:VGET, 3 SP 4 STRW,
+      5 SP 16 LDRW, 4 $FFFFFFFF LIT64, 5 4 CMP, C-EQ decoded BCOND,
+      3 SP 0 LDRW, 4 3 30 LSRI, 4 bad CBNZ,
+      3 3 2 LSLI, 3 SP 0 STRW,
+      3 SP 4 LDRW, 4 3 30 LSRI, 4 bad CBNZ,
+      3 1 CMPI, C-EQ bad BCOND,                  \ FULL with no body is invalid
+      4 3 1 ANDI, 4 4 31 LSLI, 3 3 1 LSRI, 3 3 2 LSLI,
+      3 3 4 ORR, 3 SP 4 STRW,
+      5 3 $7FFFFFFF ANDI, 4 3 31 LSRI,
+      LBL {: exact:label :} 4 exact CBNZ, 5 5 4 ADDI, exact LBL,
+      3 SP 0 LDRW, 5 5 3 ADD,
+      4 7 LAOTCODELEN LABEL@ TADR, 4 4 0 LDR, 5 4 CMP, C-HI bad BCOND,
+      decoded LBL,
+      3 9 8 2 4 7 bad AOT-META:VGET, 3 SP 8 STRW,
+      3 9 8 2 4 7 bad AOT-META:VGET,
+      4 3 14 LSRI, 4 bad CBNZ,
+      4 3 $F ANDI, 5 3 4 LSRI, 5 5 $FF ANDI, 5 5 8 LSLI, 4 4 5 ORR,
+      5 3 12 LSRI, 5 5 16 LSLI, 4 4 5 ORR, 4 SP 12 STRW,
+      loaded LBL,
       10 DREC MOVZ,  10 NDICT 10 MUL,  10 DBASE 10 ADD,   \ x10 = &dict[NDICT]
-      6 9 16 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg BCOND,
-      3 9 0 LDRW,  3 CP 3 ADD,  3 10 0 STR,         \ ordinary [0] = CP + blob-off u32
-      3 9 4 LDRW,  3 10 8 STR,                      \ ordinary [8] = code length u32
+      6 SP 16 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg BCOND,
+      3 SP 0 LDRW,  3 CP 3 ADD,  3 10 0 STR,         \ ordinary [0] = CP + blob-off u32
+      3 SP 4 LDRW,  3 10 8 STR,                      \ ordinary [8] = code length u32
       fields B,
       pkg LBL,
-      3 9 0 LDRW,  3 4 5 bad AOT-WINDOW:REBASE-WID,  3 10 0 STR,   \ package [0] = public WID
-      3 9 4 LDRW,  3 4 5 bad AOT-WINDOW:REBASE-WID,  3 10 8 STR,   \ package [8] = private WID
+      3 SP 0 LDRW,  3 4 5 bad AOT-WINDOW:REBASE-WID,  3 10 0 STR,   \ package [0] = public WID
+      3 SP 4 LDRW,  3 4 5 bad AOT-WINDOW:REBASE-WID,  3 10 8 STR,   \ package [8] = private WID
       fields LBL,
-      4 9 8 LDRW,                                   \ x4 = word2 = name-off u32
+      4 SP 8 LDRW,                                   \ x4 = word2 = name-off u32
+      5 7 LAOTNAMESLEN LABEL@ TADR, 5 5 0 LDR,
+      4 5 CMP, C-CS bad BCOND,
+      \ The outer seed frame owns the entry bitmap through this entire loop,
+      \ including LHIDXADD. An in-range offset must name a validated entry.
+      2 SP 48 LDR, 3 4 3 LSRI, 2 2 3 ADD, 2 2 0 LDRB,
+      3 4 7 ANDI, 7 1 MOVZ, 7 7 3 LSLV, 2 2 7 AND, 2 bad CBZ,
       7 5 LAOTNAMES LABEL@ TADR,  4 7 4 ADD,        \ x4 = pool entry ptr (len byte)
       5 4 0 LDRB,                                   \ x5 = name length = pool[entry]
-      6 9 12 LDRW,                                  \ x6 = word3 = flags | min-in<<8
+      6 SP 12 LDRW,                                  \ x6 = word3 = flags | min-in<<8
       7 6 $FF ANDI,                                 \ x7 = flags
       7 7 60 LSLI,  7 7 5 ORR,                      \ flags<<60 | len
       3 6 8 LSRI,  3 3 $FF ANDI,  3 3 52 LSLI,      \ min-in byte = word3>>8 -> DNAME-MIN-IN bits 52-59
@@ -5315,6 +5406,7 @@ public
       \ folds a dictionary [24] that lands in __text to a canonical 0 on the way
       \ out and back to the live text base on the way in.
       6 6 2 ANDI,  6 extname CBNZ,                  \ word3 flags & DNAME-EXT
+      5 DNAME-INL CMPI, C-HI bad BCOND,             \ capture's name/EXT invariant, before any copy
       3 0 MOVZ,                                     \ x3 = i
       nloop LBL,  3 5 CMP,  C-GE ndone BCOND,
          2 4 3 ADD,  2 2 0 LDRB,                    \ x2 = name[i]
@@ -5323,7 +5415,7 @@ public
       ndone LBL,  nameok B,
       extname LBL,  4 10 24 STR,                    \ [24] = the pool entry's bytes
       nameok LBL,
-      6 9 16 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg-wid BCOND,
+      6 SP 16 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg-wid BCOND,
       6 4 5 bad AOT-WINDOW:REBASE-WID,
       6 10 40 STR,                                  \ ordinary [40] wid = word4 (full u32, hi=0)
       next B,
@@ -5331,33 +5423,51 @@ public
       6 0 MOVN,  6 10 40 STR,                       \ package marker is signed -1, not a wid
       next LBL,
       NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,      \ publish + index (x9/x11/x12 preserved)
-      9 9 AOT-CREC-ROW ADDI,  12 12 1 ADDI,  rloop B,
+      12 12 1 ADDI,  rloop B,
    rdone LBL,
+   17 SP 40 LDR, 17 done CBZ,
+   8 SP 32 LDR, 9 8 CMP, C-NE bad BCOND,
+   done LBL,
    \ WIDN = base + span, once. The span and not the highest wid registered: a
    \ window may allocate a wordlist no record names, and a later allocation must
    \ not be handed one of those either.
    4 5 AOT-WINDOW:LWIDSPAN LABEL@ TADR,  4 4 0 LDR,
    5 DATA WIDN-CELL LDR,  4 4 5 ADD,  4 DATA WIDN-CELL STR,
-   done B,
+   SP SP 48 ADDI,
+   LBL {: finish:label :} finish B,
    bad LBL,
       1 msg ADR,  0 2 MOVZ,  2 39 MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  s" hb: AOT wid outside the capture window" BYTES,  NL-KW 1 BYTES,
-   done LBL, ;
+   finish LBL, ;
 
-\ Validate the baked name pool before the AOT seed reads it.
+\ Validate the baked name pool and mark true entry offsets in a boot-owned
+\ anonymous bitmap. The caller's 16B frame owns pointer/length until the last
+\ dictionary record; no map exists for an empty pool. The names cap bounds
+\ both the +7 rounding and the allocation (at most AOT-NAMES-CAP / 8 bytes).
 : EM-AOT-VALIDATE ( label -- ) {: bad:label :}
-   LBL LBL
-   {: pool-loop:label pool-done:label :}
+   LBL LBL LBL
+   {: pool-loop:label pool-done:label no-map:label :}
    21 5 LAOTNAMESLEN LABEL@ TADR,  21 21 0 LDR,
    5 AOT-NAMES-CAP LIT64,  21 5 CMP,  C-HI bad BCOND,
+   0 0 MOVZ, 0 SP 0 STR, 0 SP 8 STR,
+   21 no-map CBZ,
+   1 21 7 ADDI, 1 1 3 LSRI, 1 SP 8 STR,
+   2 3 MOVZ, 3 MAP-ANON-PRIVATE LIT64, 4 0 MOVN, 5 0 MOVZ,
+   NR-MMAP SYS, C-CS bad BCOND,
+   0 SP 0 STR,
+   no-map LBL,
    22 5 LAOTNAMES LABEL@ TADR,
    4 0 MOVZ,
    pool-loop LBL,
       4 21 CMP,  C-GE pool-done BCOND,
       5 22 4 ADD,  2 5 0 LDRB,
-      4 4 1 ADDI,  4 4 2 ADD,
-      4 21 CMP,  C-HI bad BCOND,
+      3 4 1 ADDI, 3 3 2 ADD,
+      3 21 CMP,  C-HI bad BCOND,
+      5 SP 0 LDR, 6 4 3 LSRI, 5 5 6 ADD,
+      6 4 7 ANDI, 7 1 MOVZ, 7 7 6 LSLV,
+      6 5 0 LDRB, 6 6 7 ORR, 6 5 0 STRB,
+      4 3 0 ADDI,
       pool-loop B,
    pool-done LBL,
       4 21 CMP,  C-NE bad BCOND, ;
@@ -5399,7 +5509,7 @@ public
       nfa nfu bada badu :}
    \ One bound before the loop: a payload cannot have registered more records
    \ than the dictionary holds. Every row is bounded again on its own below.
-   5 6 LAOTNREC LABEL@ TADR,  5 5 0 LDR,
+   5 6 LAOTNREC LABEL@ TADR,  5 5 0 LDR, 5 5 $FFFFFFFF ANDI,
    5 NDICT CMP,  C-HI pbad BCOND,
    21 5 LAOTSITES LABEL@ TADR,                       \ x21 = row cursor
    23 5 LAOTNSITE LABEL@ TADR,  23 23 0 LDR,         \ x23 = site count M
@@ -5419,7 +5529,7 @@ public
       \ left NDICT one past the last, so the first of them is at NDICT - LAOTNREC.
       \ In a whole-tree image that is the seeded primitive count; in a partial one
       \ it is that plus the cold prefix THIS boot compiled, which no build knows.
-      5 6 LAOTNREC LABEL@ TADR,  5 5 0 LDR,
+      5 6 LAOTNREC LABEL@ TADR,  5 5 0 LDR, 5 5 $FFFFFFFF ANDI,
       5 NDICT 5 SUB,
       25 25 5 ADD,
    pbound LBL,
@@ -5484,14 +5594,34 @@ public
 : EM-AOT-BOUND-SITES ( label -- ) {: bad:label :}
    LBL LBL LBL LBL LBL
    {: scan:label done:label find:label next:label found:label :}
+   LBL LBL LBL {: fixed:label loaded:label positive:label :}
+   SP SP 32 SUBI,
    5 CP DBASE SUB,  6 DICT-SIZE LIT64,  5 6 CMP,  C-NE bad BCOND,
    21 5 LAOTSITES LABEL@ TADR,
    23 5 LAOTNSITE LABEL@ TADR,  23 23 0 LDR,
+   5 23 33 LSRI, 5 SP 8 STR,
    5 SITE-COUNT-MASK LIT64,  23 23 5 AND,
+   5 SP 8 LDR, 5 fixed CBZ,
+   23 21 25 LAOTNSITE LABEL@ LAOTNAMESLEN LABEL@ 1 5 bad AOT-META:OPEN,
+   25 SP 0 STR,
+   fixed LBL,
+   5 0 MOVZ, 5 SP 16 STR,
    22 5 LAOTCODELEN LABEL@ TADR,  22 22 0 LDR,
    5 22 3 ANDI,  5 bad CBNZ,
    scan LBL,  23 done CBZ,
-      24 21 0 LDRW,
+      5 SP 8 LDR, 5 loaded CBZ,
+      25 SP 0 LDR,
+      24 21 25 5 6 7 bad AOT-META:VGET,
+      5 $7FFFFFFE LIT64, 24 5 CMP, C-HI bad BCOND,
+      5 24 1 ANDI, 24 24 1 LSRI, 5 positive CBZ,
+      24 24 1 ADDI, 24 31 24 SUB,
+      positive LBL,
+      24 24 2 LSLI, 5 SP 16 LDR, 24 24 5 ADD,
+      5 24 32 LSRI, 5 bad CBNZ,
+      24 SP 16 STR,
+      LBL {: offready:label :} offready B,
+      loaded LBL, 24 21 0 LDRW, 21 21 BOUND-SITE-ROW ADDI,
+      offready LBL,
       5 24 3 ANDI,  5 bad CBNZ,
       24 22 CMP,  C-CS bad BCOND,
       9 CP 24 ADD,  6 9 0 LDRW,
@@ -5521,8 +5651,12 @@ public
       14 14 5 ADD,  14 DATA 14 ADD,
       5 1 MOVZ,  5 5 4 LSLV,  13 14 0 LDRB,
       13 13 5 ORR,  13 14 0 STRB,
-      21 21 BOUND-SITE-ROW ADDI,  23 23 1 SUBI,  scan B,
+      23 23 1 SUBI,  scan B,
    done LBL,
+   5 SP 8 LDR,
+   LBL {: consumed:label :} 5 consumed CBZ,
+   25 SP 0 LDR, 21 25 CMP, C-NE bad BCOND,
+   consumed LBL, SP SP 32 ADDI,
    8 DBASE 0 ADDI,
    11 CP DBASE SUB,  11 11 22 ADD,
    9 DATA RBASE-CELL LDR,  10 DBASE 9 SUB,
@@ -5532,10 +5666,11 @@ public
 : EM-AOT-PATCH-SITES ( -- )
    LBL LBL LBL LBL {: bound:label done:label bad:label msg:label :}
    9 5 LAOTNSITE LABEL@ TADR,  9 9 0 LDR,
-   5 9 33 LSRI,  5 bad CBNZ,                 \ no unknown format flags
+   5 9 34 LSRI,  5 bad CBNZ,                 \ no unknown format flags
    5 SITE-COUNT-MASK LIT64,  6 9 5 AND,
    5 AOT-SITE-MAX LIT64,  6 5 CMP,  C-HI bad BCOND,
-   9 9 32 LSRI,  9 bound CBNZ,
+   5 9 32 LSRI, 5 5 1 ANDI, 5 bound CBNZ,
+   5 9 33 LSRI, 5 bad CBNZ,                  \ generic named rows are never packed
    EM-AOT-PATCH-NAMED-SITES
    done B,
    bound LBL,
@@ -5750,6 +5885,7 @@ public
    LBL LBL LBL LBL LBL LBL LBL LBL
    {: dloop:label drdone:label ok:label msg:label chain:label next:label
       absolute:label mark:label :}
+   LBL LBL LBL LBL {: fixed:label loaded:label positive:label corrupt:label :}
    3 DATA DP-CELL LDR,                              \ x3 = seed DP (abs) = REPL DATA base at boot
    5 10 LAOTDATAD0 LABEL@ TADR,  5 5 0 LDR,         \ x5 = canonical DATA base (capture base's 8-residue)
    6 5 3 SUB,  6 6 7 ANDI,  3 3 6 ADD,              \ ... and DP up to that base's own 8-residue
@@ -5766,15 +5902,40 @@ public
    3 3 5 ADD,  3 DATA DP-CELL STR,                  \ DP += span (bounded)
    21 10 LAOTDSITES LABEL@ TADR,                    \ x21 = DATA-site cursor (u32 offsets)
    23 10 LAOTNDSITE LABEL@ TADR,  23 23 0 LDR,      \ x23 = DATA-site count
+   SP SP 48 SUBI, 6 SP 24 STR,
+   23 25 corrupt AOT-META:COUNT,
+   5 AOT-DSITE-MAX LIT64, 23 5 CMP, C-HI corrupt BCOND,
+   25 SP 8 STR, 25 fixed CBZ,
+   23 21 25 LAOTNDSITE LABEL@ AOT-WINDOW:LNXTOFF LABEL@ 1 5 corrupt AOT-META:OPEN,
+   25 SP 0 STR,
+   fixed LBL,
+   5 0 MOVZ, 5 SP 16 STR, 6 SP 24 LDR,
    22 0 MOVZ,
    dloop LBL,  22 23 CMP,  C-GE drdone BCOND,
-      24 21 0 LDRW,                                 \ kind plus blob offset
+      5 SP 8 LDR, 5 loaded CBZ,
+      25 SP 0 LDR,
+      24 21 25 5 13 14 corrupt AOT-META:VGET,
+      5 $7FFFFFFF LIT64, 24 5 CMP, C-HI corrupt BCOND,
+      7 24 1 ANDI, 7 7 31 LSLI,                    \ raw cell kind is independent of gap sign
+      24 24 1 LSRI, 5 24 1 ANDI, 24 24 1 LSRI, 5 positive CBZ,
+      24 24 1 ADDI, 24 31 24 SUB,
+      positive LBL,
+      24 24 2 LSLI, 5 SP 16 LDR, 24 24 5 ADD,
+      5 $7FFFFFFC LIT64, 24 5 CMP, C-HI corrupt BCOND,
+      24 SP 16 STR, 24 24 7 ORR,
+      LBL {: offready:label :} offready B,
+      loaded LBL, 24 21 0 LDRW, 21 21 4 ADDI,
+      offready LBL,
       5 AOT-DSITE-CELL LIT64,  7 24 5 AND,
       5 AOT-DSITE-OFF-MASK LIT64,  24 24 5 AND,
+      5 24 3 ANDI, 5 corrupt CBNZ,
+      5 10 LAOTCODELEN LABEL@ TADR, 5 5 0 LDR,
+      14 24 8 ADDI, 14 5 CMP, C-HI corrupt BCOND,
       9 CP 24 ADD,
       7 chain CBZ,
          11 9 0 LDR,  11 11 6 ADD,  11 9 0 STR,  next B,
       chain LBL,
+      14 24 12 ADDI, 14 5 CMP, C-HI corrupt BCOND,
       \ The short DATA carrier starts at half 2 and ends at half 0.
       10 9 0 LDRW,  5 SNAP-RELOC:ADDR-OPC-MASK LIT64,  10 10 5 AND,
       14 10 SNAP-RELOC:ADDR-RD-MASK ANDI,
@@ -5789,6 +5950,8 @@ public
       10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 0 ADDI,   5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
       mark B,
       absolute LBL,
+      5 10 LAOTCODELEN LABEL@ TADR, 5 5 0 LDR,
+      14 24 16 ADDI, 14 5 CMP, C-HI corrupt BCOND,
       10 9 0 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  11 10 0 ADDI,
       10 9 4 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 16 LSLI,  11 11 10 ORR,
       10 9 8 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 32 LSLI,  11 11 10 ORR,
@@ -5805,8 +5968,18 @@ public
       9 SNAP-RELOC:MARK-SITE-AT
       6 SP 0 LDR,  SP SP 16 ADDI,
       next LBL,
-      21 21 4 ADDI,  22 22 1 ADDI,  dloop B,
+      22 22 1 ADDI,  dloop B,
    drdone LBL,
+   5 SP 8 LDR,
+   LBL {: consumed:label :} 5 consumed CBZ,
+   25 SP 0 LDR, 21 25 CMP, C-NE corrupt BCOND,
+   consumed LBL, SP SP 48 ADDI,
+   LBL LBL {: complete:label badmsg:label :} complete B,
+   corrupt LBL,
+      1 badmsg ADR, 0 2 MOVZ, 2 25 MOVZ, NR-WRITE SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ, NR-EXIT-GROUP SYS,
+   badmsg LBL, s" hb: AOT metadata corrupt" BYTES, NL-KW 1 BYTES,
+   complete LBL,
    AOT-WINDOW:RESTORE-ADDRESS-CELLS ;
 
 \ CODE-literal relocation (fourth relocation class): rebase every captured movz/movk
@@ -6015,14 +6188,19 @@ public
 : EM-SEED-AOT ( -- )
    AOT-REC-N @ 0= if exit then
    LBL LBL LBL {: askip:label bad:label msg:label :}
-   11 5 LAOTNREC LABEL@ TADR,  11 11 0 LDR,        \ x11 = N
+   11 5 LAOTNREC LABEL@ TADR,  11 11 0 LDR, 11 11 $FFFFFFFF ANDI, \ x11 = N
    11 bad CBZ,                                      \ a native runtime seed is mandatory
+   SP SP 16 SUBI,                                  \ transient name-entry map pointer/length
    bad EM-AOT-VALIDATE
    11 5 LAOTCODELEN LABEL@ TADR,  11 11 0 LDR,     \ x11 = blob length, read before the flip
    1 CP 11 ADD,  PROT:LOPEN LABEL@ BL,              \ region -> RW over the blob's landing span
    EM-AOT-COPY-BLOB                                 \ x11 rides the kernel-preserved x2-x15 band
    AOT-SPAN:PUBLISH,                                \ CP is still the blob base here
    EM-AOT-REGISTER-RECS
+   LBL {: no-map:label :}
+   1 SP 8 LDR, 1 no-map CBZ,
+   0 SP 0 LDR, NR-MUNMAP SYS, C-CS bad BCOND,
+   no-map LBL, SP SP 16 ADDI,
    EM-AOT-PATCH-SITES
    EM-AOT-RELOC-DATA
    EM-AOT-RELOC-CODE
@@ -10619,6 +10797,9 @@ variable AOT-BOUND-SITES
    then ;
 
 : EMIT-AOT-SITES ( -- )   \ packed rows (blob-off u32 + target u32 + scope u32)
+   AOT-BOUND-SITES @ if
+      AOT-PACK:CALL-LEN @ 0 > if AOT-PACK:CALL-BUF AOT-PACK:CALL-LEN @ BYTES, then exit
+   then
    AOT-SITE-N @ 0 ?do
       i AOT-SITE-BOFF $FFFFFFFF and EMITW
       AOT-BOUND-SITES @ 0= if
@@ -10627,7 +10808,7 @@ variable AOT-BOUND-SITES
       then
    loop ;
 : EMIT-AOT-DSITES ( -- )   \ packed u32 DATA-site offsets
-   AOT-DSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 4 * BYTES, THEN ;
+   AOT-PACK:DATA-LEN @ 0 > if AOT-PACK:DATA-BUF AOT-PACK:DATA-LEN @ BYTES, then ;
 : EMIT-AOT-CSITES ( -- )   \ packed u32 CODE-site offsets (after the AOT-DSITE-N DATA u32s)
    AOT-CSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 4 * + AOT-CSITE-N @ 4 * BYTES, THEN ;
 package AOT-XTSITE
@@ -10719,23 +10900,26 @@ variable CUR
 : EMIT-AOT-SEED ( -- )
    0 AOT-BIND-MEMO-N !
    AOT-BOUND-SITES? AOT-BOUND-SITES !
-   SEEDED-RUNTIME? 0=
-   AOT-BOUND-SITES @ if BOUND-SITE-ROW else SITE-ROW then AOT-SECTION:BYTES drop
+   AOT-BOUND-SITES @ AOT-PACK:BUILD
+   SEEDED-RUNTIME? 0= AOT-BOUND-SITES @ AOT-SECTION:SEED-BYTES drop
    LAOTCODELEN LABEL@ LBL,  AOT-BLOB-LEN @ DCQ,
    LAOTCODE LABEL@ LBL,
    EMIT-AOT-BLOB
-   LAOTNREC LABEL@ LBL,  AOT-REC-N @ DCQ,
-   LAOTDICT LABEL@ LBL,                          \ compact 16B records (EM-AOT-REGISTER-RECS expands to 48B)
-   AOT-REC-N @ 0 > IF AOT-REC-BUF@ AOT-REC-MAX 48 * + AOT-REC-N @ AOT-CREC-ROW * BYTES, THEN
+   LAOTNREC LABEL@ LBL,  AOT-REC-N @ SEED-PACK-TAG or DCQ,
+   AOT-PACK:REC-LEN @ DCQ,
+   LAOTDICT LABEL@ LBL,
+   AOT-PACK:REC-LEN @ 0 > if AOT-PACK:REC-BUF AOT-PACK:REC-LEN @ BYTES, then
    LAOTNSITE LABEL@ LBL,  AOT-SITE-N @
-   AOT-BOUND-SITES @ if SITE-BOUND-TAG or then DCQ,
+   AOT-BOUND-SITES @ if SITE-BOUND-TAG SEED-PACK-TAG or or then DCQ,
+   AOT-BOUND-SITES @ if AOT-PACK:CALL-LEN @ DCQ, then
    LAOTSITES LABEL@ LBL,  EMIT-AOT-SITES
    LAOTNAMESLEN LABEL@ LBL,  AOT-NAMES-LEN @ DCQ,
    LAOTNAMES LABEL@ LBL,
    AOT-NAMES-LEN @ 0 > IF AOT-NAMES-BUF@ AOT-NAMES-LEN @ BYTES, THEN
    LAOTDATASIZE LABEL@ LBL,  AOT-DATA-SIZE @ DCQ,
    LAOTDATAD0 LABEL@ LBL,  AOT-DATA-D0 @ DCQ,
-   LAOTNDSITE LABEL@ LBL,  AOT-DSITE-N @ DCQ,
+   LAOTNDSITE LABEL@ LBL,  AOT-DSITE-N @ SEED-PACK-TAG or DCQ,
+   AOT-PACK:DATA-LEN @ DCQ,
    LAOTDSITES LABEL@ LBL,  EMIT-AOT-DSITES
    AOT-WINDOW:LNXTOFF LABEL@ LBL,  AOT-WINDOW:XTOFF-N @ DCQ,
    AOT-WINDOW:LXTOFFS LABEL@ LBL,  AOT-WINDOW:EMIT-XTOFFS

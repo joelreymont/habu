@@ -410,10 +410,13 @@ variable AOT0        variable AOT-END     variable CUR        variable FRAME-CEL
 variable FRAME-ZERO
 variable BLOB-OFF    variable BLOB-LEN
 variable REC0        variable REC-N
+variable REC-PACK    variable REC-PHYS
 variable SITE0       variable SITE-N       variable SITE-BOUND
+variable SITE-PACK   variable SITE-BYTES
 variable NAMES0      variable NAMES-LEN
 variable DATA-SPAN   variable DATA-D0
 variable DSITE0      variable DSITE-N
+variable DSITE-PACK  variable DSITE-BYTES
 variable XTOFF0      variable XTOFF-N
 variable RUN0        variable RUN-BYTES   variable RUN-N
 variable RUN-AT      variable RUN-PREV
@@ -443,6 +446,7 @@ variable CAND        variable ACC
 \ the walk stops landing on the image's own content end.
 12 constant SITE-ROW                              \ blob-off u32, target u32, callee scope u32
 $100000000 constant SITE-BOUND-TAG                \ four-byte sites with canonical primitive BLs
+$200000000 constant SEED-PACK-TAG                \ explicit final-image stream format
 $FFFFFFFF constant SITE-COUNT-MASK
 4 constant BOUND-SITE-ROW
 $80000000 constant SITE-NAME-TAG                  \ target is a name-pool offset, not an index
@@ -591,14 +595,125 @@ GROUP-BYTES CELL-BITS * constant GROUP-CELLS      \ cells such a group covers
 : SITE-WIDTH ( -- n ) SITE-BOUND @ if BOUND-SITE-ROW else SITE-ROW then ;
 : SITE-AT ( n -- n ) SITE-WIDTH * SITE0 @ + ;
 
+\ Packed boot streams are decoded once to tool-owned logical rows. Physical
+\ offsets/lengths still describe only the file, including its framing and pad.
+DYNAMIC-BUFFER REC-ROWS n
+DYNAMIC-BUFFER REC-WIDTHS n
+DYNAMIC-BUFFER CALL-ROWS n
+DYNAMIC-BUFFER DATA-ROWS n
+DYNAMIC-BUFFER NAME-ENTRIES u8
+variable PACK-CUR variable PACK-END variable PACK-PREV
+
+: PACK-V@ ( n -- n ) {: limit:n :}
+   PACK-CUR @ PACK-END @ PACK-CUR @ - RUN-V@ {: v:n w:n :}
+   w 5 > v 0< or v limit > or if E-ES-WALK throw then
+   PACK-CUR @ w + PACK-CUR ! v ;
+: PACK-END? ( -- ) PACK-CUR @ PACK-END @ <> if E-ES-WALK throw then ;
+: PACK-BEGIN ( n n -- ) over + PACK-END ! PACK-CUR ! 0 PACK-PREV ! ;
+: UNZIG ( n -- n ) dup 1 and 0<> if 1+ 2 / negate else 2 / then ;
+
+\ Framing and POOL-CHECK have already bounded the pool. Build a transient
+\ entry bitmap once, then release it after dictionary decoding even on refusal.
+: PACK-NAMES ( -- )
+   NAMES-LEN @ 7 + 8 / {: bytes:n :}
+   bytes NAME-ENTRIES-RESERVE
+   bytes 0 ?do 0 i NAME-ENTRIES c! loop
+   0 begin dup NAMES-LEN @ < while
+      dup 8 / NAME-ENTRIES {: p:ptr :}
+      1 over 7 and lshift p c@ or p c!
+      dup NAMES0 @ + U8@ 1+ +
+   repeat drop ;
+
+: PACK-NAME? ( n -- ) {: off:n :}
+   off NAMES-LEN @ >= if E-ES-WALK throw then
+   off 8 / NAME-ENTRIES c@ 1 off 7 and lshift and 0= if E-ES-WALK throw then ;
+
+: PACK-REC ( n -- ) {: row:n :}
+   PACK-CUR @ {: start-at:n :}
+   $FFFFFFFF PACK-V@ {: role:n :}
+   $FFFFFFFF PACK-V@ {: a:n :}
+   $FFFFFFFF PACK-V@ {: b:n :}
+   $FFFFFFFF PACK-V@ {: name:n :}
+   $3FFF PACK-V@ {: meta:n :}
+   name PACK-NAME?
+   meta 2 and 0= NAMES0 @ name + U8@ DNAME-INL > and if E-ES-WALK throw then
+   role 0= if
+      a row 5 * REC-ROWS ! b row 5 * 1+ REC-ROWS !
+   else
+      a $3FFFFFFF > b $3FFFFFFF > or b 1 = or if E-ES-WALK throw then
+      a 4 * {: start:n :}
+      b 1 rshift 4 * b 1 and 0<> if CODE-SPAN:FULL or then {: raw:n :}
+      start BLOB-LEN @ > if E-ES-WALK throw then
+      raw CODE-SPAN:BYTES BLOB-LEN @ start - > if E-ES-WALK throw then
+      start row 5 * REC-ROWS ! raw row 5 * 1+ REC-ROWS !
+   then
+   name row 5 * 2 + REC-ROWS !
+   meta 15 and meta 4 rshift $FF and 8 lshift or
+   meta 12 rshift 16 lshift or row 5 * 3 + REC-ROWS !
+   role 0= if $FFFFFFFF else role 1- then row 5 * 4 + REC-ROWS !
+   PACK-CUR @ start-at - row REC-WIDTHS ! ;
+
+: PACK-RECS ( -- )
+   REC-PACK @ 0= if exit then
+   [: PACK-NAMES
+      REC-N @ 5 * REC-ROWS-RESERVE
+      REC-N @ REC-WIDTHS-RESERVE
+      REC0 @ REC-PHYS @ PACK-BEGIN
+      REC-N @ 0 ?do i PACK-REC loop PACK-END?
+   ;] catch {: code:n :}
+   NAME-ENTRIES-RELEASE
+   code 0<> if code throw then ;
+
+: PACK-CALLS ( -- )
+   SITE-PACK @ 0= if exit then
+   SITE-N @ CALL-ROWS-RESERVE
+   SITE0 @ SITE-BYTES @ PACK-BEGIN
+   SITE-N @ 0 ?do
+      $7FFFFFFE PACK-V@ UNZIG 4 * PACK-PREV @ + {: off:n :}
+      off 0< off $FFFFFFFF > or if E-ES-WALK throw then
+      off i CALL-ROWS ! off PACK-PREV !
+   loop PACK-END? ;
+
+: PACK-DATA ( -- )
+   DSITE-PACK @ 0= if exit then
+   DSITE-N @ DATA-ROWS-RESERVE
+   DSITE0 @ DSITE-BYTES @ PACK-BEGIN
+   DSITE-N @ 0 ?do
+      $7FFFFFFF PACK-V@ {: q:n :}
+      q 1 rshift UNZIG 4 * PACK-PREV @ + {: off:n :}
+      off 0< off $7FFFFFFC > or if E-ES-WALK throw then
+      off q 1 and 0<> if $80000000 or then i DATA-ROWS !
+      off PACK-PREV !
+      off q 1 and 0<> if 8 else 12 then + BLOB-LEN @ > if E-ES-WALK throw then
+   loop PACK-END? ;
+
+: SITE-OFF ( n -- n )
+   SITE-PACK @ if CALL-ROWS @ else SITE-AT U32@ then ;
+: DSITE-OFF ( n -- n )
+   DSITE-PACK @ if DATA-ROWS @ else 4 * DSITE0 @ + U32@ then ;
+
+: SEED-COUNT ( n -- n bool ) {: tagged:n :}
+   tagged 34 rshift tagged SITE-BOUND-TAG and or 0<> if E-ES-WALK throw then
+   tagged SITE-COUNT-MASK and tagged SEED-PACK-TAG and 0<> ;
+
+: TAKE-PACK ( n n n -- n n ) {: count:n lo:n hi:n :}
+   TAKE-CELL count hi * ?BOUND {: bytes:n :}
+   bytes count lo * < if E-ES-WALK throw then
+   CUR @ bytes + bytes PAD4 + ETEXT-END > if E-ES-WALK throw then
+   bytes TAKE-RUN {: at:n :}
+   at bytes + bytes PAD4 ZEROS bytes PAD4 <> if E-ES-WALK throw then
+   at bytes ;
+
 : SITE-COUNT! ( n -- ) {: tagged:n :}
-   tagged 33 rshift 0<> if E-ES-WALK throw then
+   tagged 34 rshift 0<> if E-ES-WALK throw then
    tagged SITE-BOUND-TAG and 0<> SITE-BOUND !
+   tagged SEED-PACK-TAG and 0<> SITE-PACK !
+   SITE-PACK @ SITE-BOUND @ 0= and if E-ES-WALK throw then
    tagged SITE-COUNT-MASK and ETEXT-END ?BOUND SITE-N ! ;
 
 : SITES-CHECK ( -- )
    SITE-N @ 0 ?do
-      i SITE-AT U32@ {: off:n :}
+      i SITE-OFF {: off:n :}
       off 3 and 0<> off 4 + BLOB-LEN @ > or if E-ES-WALK throw then
       SITE-BOUND @ if
          BLOB-OFF @ off + U32@ 26 rshift $25 <> if E-ES-WALK throw then
@@ -609,18 +724,28 @@ GROUP-BYTES CELL-BITS * constant GROUP-CELLS      \ cells such a group covers
    start CUR !  0 FRAME-CELLS !  0 FRAME-ZERO !
    TAKE-CELL ETEXT-END ?BOUND BLOB-LEN !
    BLOB-LEN @ TAKE-RUN BLOB-OFF !
-   TAKE-CELL DICT-CAP ?BOUND REC-N !
-   REC-N @ AOT-CREC-ROW TAKE-ROWS REC0 !
+   TAKE-CELL SEED-COUNT REC-PACK ! DICT-CAP ?BOUND REC-N !
+   REC-PACK @ if
+      REC-N @ 32768 ?BOUND drop
+      REC-N @ 5 25 TAKE-PACK REC-PHYS ! REC0 !
+   else
+      REC-N @ AOT-CREC-ROW * REC-PHYS !
+      REC-N @ AOT-CREC-ROW TAKE-ROWS REC0 !
+   then
    TAKE-CELL SITE-COUNT!
-   SITE-N @ SITE-WIDTH TAKE-ROWS SITE0 !
-   SITES-CHECK
+   SITE-PACK @ if SITE-N @ 1 5 TAKE-PACK SITE-BYTES ! SITE0 !
+   else
+      SITE-N @ SITE-WIDTH * SITE-BYTES !
+      SITE-N @ SITE-WIDTH TAKE-ROWS SITE0 !
+   then
    TAKE-CELL NAMES-CAP ?BOUND NAMES-LEN !
    NAMES-LEN @ TAKE-RUN NAMES0 !
    NAMES0 @ NAMES-LEN @ POOL-CHECK
    TAKE-CELL DATA-SIZE ?BOUND DATA-SPAN !
    TAKE-CELL DATA-D0 !
-   TAKE-CELL ETEXT-END ?BOUND DSITE-N !
-   DSITE-N @ 4 TAKE-ROWS DSITE0 !
+   TAKE-CELL SEED-COUNT DSITE-PACK ! ETEXT-END ?BOUND DSITE-N !
+   DSITE-PACK @ if DSITE-N @ 1 5 TAKE-PACK DSITE-BYTES ! DSITE0 !
+   else DSITE-N @ 4 * DSITE-BYTES ! DSITE-N @ 4 TAKE-ROWS DSITE0 ! then
    TAKE-CELL ETEXT-END ?BOUND XTOFF-N !
    XTOFF-N @ XTOFF-ROW TAKE-ROWS XTOFF0 !
    TAKE-CELL ETEXT-END ?BOUND RUN-GROUPS !
@@ -654,6 +779,7 @@ GROUP-BYTES CELL-BITS * constant GROUP-CELLS      \ cells such a group covers
       SIGNAME0 @ SIGNAME-LEN @ SIGNAME$ IMAGE-STR= 0= if E-ES-WALK throw then
    then
    CUR @ TAIL-PAD? 0= if E-ES-WALK throw then
+   PACK-RECS PACK-CALLS PACK-DATA SITES-CHECK
    CUR @ ;
 
 : TRY-AT ( n -- bool )
@@ -790,14 +916,14 @@ variable BK-DZERO  variable BK-PAD
    s" aot/framing-cells" FRAME-CELLS @ 8 * FRAME-ZERO @ B-OTHER ROW
    1 TILE-CELLS
    s" aot/code-blob" BLOB-OFF @ BLOB-LEN @ PADDED SPAN B-CODE ROW
-   1 TILE-CELLS
-   s" aot/dictionary-records" REC0 @ REC-N @ AOT-CREC-ROW * PADDED SPAN B-NAMES ROW
-   1 TILE-CELLS
-   s" aot/call-sites" SITE0 @ SITE-N @ SITE-WIDTH * PADDED SPAN B-OTHER ROW
+   REC-PACK @ if 2 else 1 then TILE-CELLS
+   s" aot/dictionary-records" REC0 @ REC-PHYS @ PADDED SPAN B-NAMES ROW
+   SITE-PACK @ if 2 else 1 then TILE-CELLS
+   s" aot/call-sites" SITE0 @ SITE-BYTES @ PADDED SPAN B-OTHER ROW
    1 TILE-CELLS
    s" aot/name-pool" NAMES0 @ NAMES-LEN @ PADDED SPAN B-NAMES ROW
-   3 TILE-CELLS
-   s" aot/data-sites" DSITE0 @ DSITE-N @ 4 * PADDED SPAN B-OTHER ROW
+   DSITE-PACK @ if 4 else 3 then TILE-CELLS
+   s" aot/data-sites" DSITE0 @ DSITE-BYTES @ PADDED SPAN B-OTHER ROW
    1 TILE-CELLS
    s" aot/address-cells" XTOFF0 @ XTOFF-N @ XTOFF-ROW * PADDED SPAN B-OTHER ROW
    2 TILE-CELLS
@@ -946,11 +1072,16 @@ $FFFFFFFF constant PKG-ROW
 4 constant ROLE-N
 
 : CREC ( n -- n ) AOT-CREC-ROW * REC0 @ + ;
-: CREC-START ( n -- n ) CREC U32@ ;
-: CREC-RAW-LEN ( n -- n ) CREC 4 + U32@ ;
-: CREC-NAME-OFF ( n -- n ) CREC 8 + U32@ ;
-: CREC-META ( n -- n ) CREC 12 + U32@ ;
-: CREC-WID ( n -- n ) CREC 16 + U32@ ;
+: CREC-FIELD@ ( n n -- n ) {: row:n field:n :}
+   REC-PACK @ if row 5 * field + REC-ROWS @
+   else row CREC field 4 * + U32@ then ;
+: CREC-START ( n -- n ) 0 CREC-FIELD@ ;
+: CREC-RAW-LEN ( n -- n ) 1 CREC-FIELD@ ;
+: CREC-NAME-OFF ( n -- n ) 2 CREC-FIELD@ ;
+: CREC-META ( n -- n ) 3 CREC-FIELD@ ;
+: CREC-WID ( n -- n ) 4 CREC-FIELD@ ;
+: CREC-PHYS ( n -- n )
+   REC-PACK @ if REC-WIDTHS @ else drop AOT-CREC-ROW then ;
 : CREC-PKG? ( n -- bool ) CREC-WID PKG-ROW = ;
 : CREC-BYTES ( n -- n ) {: k:n :}
    k CREC-PKG? if 0 exit then
@@ -1163,13 +1294,16 @@ DYNAMIC-BUFFER PMASK n
 DYNAMIC-BUFFER RCOUNT n
 DYNAMIC-BUFFER RCODE n
 DYNAMIC-BUFFER RNAME n
+DYNAMIC-BUFFER RBYTES n
 
 : CENSUS-RECORDS ( -- )
    ROLE-N 1+ RCOUNT-RESERVE  ROLE-N 1+ RCODE-RESERVE  ROLE-N 1+ RNAME-RESERVE
-   ROLE-N 1+ 0 ?do 0 i RCOUNT !  0 i RCODE !  0 i RNAME ! loop
+   ROLE-N 1+ RBYTES-RESERVE
+   ROLE-N 1+ 0 ?do 0 i RCOUNT !  0 i RCODE !  0 i RNAME ! 0 i RBYTES ! loop
    REC-N @ 0 ?do
       i CREC-PKG? if ROLE-N else i REC-ROLE then {: slot:n :}
       slot RCOUNT @ 1+ slot RCOUNT !
+      slot RBYTES @ i CREC-PHYS + slot RBYTES !
       slot RCODE @ i CREC-BYTES + slot RCODE !
       slot RNAME @ i CREC-NAME-OFF POOL-BYTES + slot RNAME !
    loop ;
@@ -1177,7 +1311,7 @@ DYNAMIC-BUFFER RNAME n
 : .CLASS-ROW ( ptr u8 n n -- ) {: name:ptr nameu:n slot:n :}
    name nameu type TAB
    slot RCOUNT @ FMT:.U TAB
-   slot RCOUNT @ AOT-CREC-ROW * FMT:.U TAB
+   slot RBYTES @ FMT:.U TAB
    slot RNAME @ FMT:.U TAB
    slot RCODE @ FMT:.U cr ;
 
@@ -1213,7 +1347,7 @@ variable SITE-NAMED    variable SITE-CALLEES  variable SITE-BAD
 \ The instruction owns the target in bound images. Recover the canonical text
 \ offset and match a seeded primitive entry, never a guessed address band.
 : BOUND-SITE-TARGET ( n -- n )
-   SITE-AT U32@ {: off:n :}
+   SITE-OFF {: off:n :}
    BLOB-OFF @ off + U32@ $3FFFFFF and
    dup $2000000 and 0<> if $4000000 - then
    4 * REGION-OFF DICT-SIZE + off + + {: target:n :}
@@ -1531,8 +1665,8 @@ DYNAMIC-BUFFER DEAD-N n                           \ unreachable records per pack
 DYNAMIC-BUFFER DEAD-CODE n                        \ their code bytes
 DYNAMIC-BUFFER DMASK n                            \ per pool entry: 1 dead ref, 2 live ref
 DYNAMIC-BUFFER PROW n                             \ sortable (bytes, package row)
-variable PROW-N     variable DROLE-N   variable DROLE-CODE
-variable DEAD-TOTAL variable DEAD-BYTES variable DEAD-NAMES
+variable PROW-N     variable DROLE-N   variable DROLE-CODE variable DROLE-BYTES
+variable DEAD-TOTAL variable DEAD-BYTES variable DEAD-NAMES variable DEAD-RECS
 variable DEAD-SN variable DEAD-SCODE
 DYNAMIC-BUFFER SPROW n                            \ sortable (bytes, stripped span)
 variable SPROW-N
@@ -1570,10 +1704,11 @@ $FFFF constant ROW-MASK
 : COLLECT-DEAD ( -- )
    REC-N @ 1+ DEAD-N-RESERVE  REC-N @ 1+ DEAD-CODE-RESERVE
    REC-N @ 1+ 0 ?do 0 i DEAD-N !  0 i DEAD-CODE ! loop
-   0 DEAD-TOTAL !  0 DEAD-BYTES !
+   0 DEAD-TOTAL !  0 DEAD-BYTES ! 0 DEAD-RECS !
    REC-N @ 0 ?do
       i CREC-PKG? 0= i DEAD? and if
          DEAD-TOTAL @ 1+ DEAD-TOTAL !
+         DEAD-RECS @ i CREC-PHYS + DEAD-RECS !
          DEAD-BYTES @ i CREC-BYTES + DEAD-BYTES !
          i PKG-ROW-OF {: row:n :}
          row 0 >= if
@@ -1618,11 +1753,12 @@ $FFFF constant ROW-MASK
    loop ;
 
 : DEAD-ROLE ( n -- ) {: role:n :}
-   0 DROLE-N !  0 DROLE-CODE !
+   0 DROLE-N !  0 DROLE-CODE ! 0 DROLE-BYTES !
    REC-N @ 0 ?do
       i CREC-PKG? 0= i DEAD? and if
          i REC-ROLE role = if
             DROLE-N @ 1+ DROLE-N !
+            DROLE-BYTES @ i CREC-PHYS + DROLE-BYTES !
             DROLE-CODE @ i CREC-BYTES + DROLE-CODE !
          then
       then
@@ -1632,7 +1768,7 @@ $FFFF constant ROW-MASK
    role DEAD-ROLE
    DROLE-N @ 0= if exit then
    s"   " type role ROLE-NAME type TAB
-   DROLE-N @ FMT:.U TAB  DROLE-N @ AOT-CREC-ROW * FMT:.U TAB
+   DROLE-N @ FMT:.U TAB  DROLE-BYTES @ FMT:.U TAB
    DROLE-CODE @ FMT:.U cr ;
 
 : BUILD-PROWS ( -- )
@@ -1666,7 +1802,7 @@ $FFFF constant ROW-MASK
    cr s" reachability from the " type label labelu type s"  roots" type cr
    s"   reachable" type TAB REACH-N @ FMT:.U TAB REACH-CODE @ FMT:.U s"  code bytes" type cr
    s"   unreachable" type TAB DEAD-TOTAL @ FMT:.U TAB DEAD-BYTES @ FMT:.U
-   s"  code bytes, " type DEAD-TOTAL @ AOT-CREC-ROW * FMT:.U s"  record bytes, " type
+   s"  code bytes, " type DEAD-RECS @ FMT:.U s"  record bytes, " type
    DEAD-NAMES @ FMT:.U s"  name bytes" type cr
    s"   fall-through edges modeled" type TAB FALL-N @ FMT:.U cr
    ROLE-GLOBAL .ROLE-DEAD

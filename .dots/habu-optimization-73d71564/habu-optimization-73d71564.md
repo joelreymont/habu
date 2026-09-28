@@ -27,13 +27,32 @@ proving its semantic roots. Completed bounded measurements cover real capture
 literal placement, remaining ARM64 selection gaps and compact startup tables.
 Direct boolean masks are qualified (habu-emit-bool-masks-9ba063d8).
 Paired stack writeback is qualified (habu-fuse-paired-stack-c1800302).
-Implementation is active for packed startup tables (habu-pack-baked-seed-66e05afd). The broader repeated-code census and
+Packed startup tables are qualified (habu-pack-baked-seed-66e05afd). The broader repeated-code census and
 independent source coverage audit are complete (habu-find-repeated-code-7811ef13).
 Generated buffer bounds sharing is now a bounded implementation experiment
 (habu-share-buf-bounds-c8093ca8).
 
+The current qualified engine is **2,477,047 bytes**. Packing the dictionary,
+bound-call and DATA-site startup tables saves **132,096 bytes** from the paired
+writeback parent. Every row, field, order, name, WID and alias is preserved;
+reusable AOT13 and snapshot10 remain unchanged. Additional saving from the
+2,625,655-byte goal baseline is now **148,608 bytes**, leaving 851,392 bytes to
+target. Engine SHA-256:
+`1e16786cb66df805dcbdef714928630b658cfe19b85d322e3a7c461bcce03f22`.
+Table sections save 134,672 bytes including new headers/padding; native decoder
+code costs 1,984 bytes, captured code is unchanged, container padding costs
+1,616 bytes and signatures save 1,024 bytes. Independent reviews, five identical
+generations/names, all 492 suites, 25 signed corruptions, empty cold boot and
+complete semantic/physical row accounting pass. A transient name-entry bitmap
+removed an introduced repeated scan; 40 alternating process pairs measured
+6.241500 ms parent versus 6.352250 ms candidate (+0.110750 ms). Maki saves 131,328
+bytes to 20,027,936; both stdin board exports remain byte-identical. Qualified
+source: `1ff58c3d7e36b4a6c55b325d988bb11df51cffd0`. Evidence:
+`~/.cache/tmp/habu-compact-seed-completion-20260928-02.md` and
+`habu-compact-seed-review-20260928-03.md` in the same directory.
+
 Eligible paired stack stores now consume their planned pointer adjustment as
-STP post-index, preserving the enclosing call. The signed engine is **2,609,143
+STP post-index, preserving the enclosing call. That preceding signed engine is **2,609,143
 bytes**, down **16,512 bytes** from the additional-goal baseline. Generated code
 falls 16,468 bytes and nonpadding payload falls 16,072 bytes from CSETM. This is
 16,512 bytes toward the additional 1 MB target, leaving 983,488 bytes to target.

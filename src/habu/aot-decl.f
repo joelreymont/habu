@@ -31,6 +31,7 @@
 \ source-level rename sees), plus a per-tail collision check against the global
 \ wordlist — layout.f already publishes a global MAX.
 require src/habu/address-carrier.f
+require src/habu/code-span.f
 
 package AOT-BUF
 public
@@ -80,9 +81,10 @@ variable AOT-REC-N
 \ recorded debt this file's header names, and a new name does not join it.
 12 constant SITE-ROW
 \ Only the baked image may bind primitive BLs to a canonical text distance.
-\ Bit 32 of its count cell selects four-byte site offsets; all other upper
-\ bits are reserved. Reusable artifacts always retain SITE-ROW named rows.
+\ Bit 32 selects bound sites; bit 33 independently selects packed boot rows.
+\ Reusable artifacts always retain SITE-ROW named rows and untagged counts.
 $100000000 constant SITE-BOUND-TAG
+$200000000 constant SEED-PACK-TAG
 $FFFFFFFF constant SITE-COUNT-MASK
 4 constant BOUND-SITE-ROW
 \ The IMAGE's row is the same three words, but its middle word is a TARGET
@@ -603,6 +605,90 @@ public
 \ The shared physical budget is charged for actual encoded lengths. Individual
 \ tables retain their own format limits; growing one no longer reserves every
 \ other table's maximum in the aggregate.
+\ Final-image streams are transient build products. Fixed capture rows remain
+\ the reusable authority; sizing and emission consume these same built bytes.
+package AOT-PACK
+using AOT-BUF
+
+DYNAMIC-BUFFER RECS n
+DYNAMIC-BUFFER CALLS n
+DYNAMIC-BUFFER DATA-SITES n
+PTR-VARIABLE DST
+variable CUR variable LIMIT variable PREV
+
+: REFUSE ( -- ) s" aot: invalid packed seed metadata" 74 die ;
+: U32? ( n -- ) dup 0< swap $FFFFFFFF > or if REFUSE then ;
+: W32@ ( ptr u8 -- n ) {: p:ptr :}
+   0 4 0 ?do p i + c@ i 8 * lshift or loop ;
+: BEGIN-STREAM ( ptr u8 n -- ) LIMIT ! DST ! 0 CUR ! ;
+: V+ ( n -- ) {: v:n :}
+   v U32?
+   v AOT-WINDOW:CELL-VLEN LIMIT @ CUR @ - > if REFUSE then
+   v DST @ CUR @ + AOT-WINDOW:CELL-V! CUR +! ;
+: OFF>Q ( n -- n )
+   dup U32? dup 3 and 0<> if REFUSE then 4 / ;
+: SPAN>Q ( n -- n ) {: raw:n :}
+   raw CODE-SPAN:VALID? 0= if REFUSE then
+   raw CODE-SPAN:BODY 4 / 2 * raw CODE-SPAN:FULL? if 1+ then ;
+: META>Q ( n -- n ) {: m:n :}
+   m $FFFC00F0 and 0<> if REFUSE then
+   m 15 and m 8 rshift $FF and 4 lshift or
+   m 16 rshift 3 and 12 lshift or ;
+: ZIG ( n -- n ) dup 0< if negate 2 * 1- else 2 * then ;
+: COUNT-CHECK ( n n -- n ) {: count:n max:n :}
+   count 0< count max > or if REFUSE then count ;
+
+: REC+ ( ptr u8 -- ) {: rec:ptr :}
+   rec 16 + W32@ {: wid:n :}
+   wid $FFFFFFFF = if
+      0 V+ rec W32@ V+ rec 4 + W32@ V+
+   else
+      wid 1+ V+ rec W32@ OFF>Q V+ rec 4 + W32@ SPAN>Q V+
+   then
+   rec 8 + W32@ V+ rec 12 + W32@ META>Q V+ ;
+
+public
+variable REC-LEN variable CALL-LEN variable DATA-LEN
+: REC-BUF ( -- ptr u8 ) 0 RECS BYTE-VIEW ;
+: CALL-BUF ( -- ptr u8 ) 0 CALLS BYTE-VIEW ;
+: DATA-BUF ( -- ptr u8 ) 0 DATA-SITES BYTE-VIEW ;
+
+: BUILD ( bool -- ) {: bound:bool :}
+   AOT-REC-N @ AOT-REC-MAX COUNT-CHECK {: recn:n :}
+   AOT-SITE-N @ AOT-SITE-MAX COUNT-CHECK {: calln:n :}
+   AOT-DSITE-N @ AOT-DSITE-MAX COUNT-CHECK {: datan:n :}
+   0 REC-LEN ! 0 CALL-LEN ! 0 DATA-LEN !
+   recn 0 > if
+      recn 25 * {: recbytes:n :}
+      recbytes CELL 1- + CELL / RECS-RESERVE
+      REC-BUF recbytes BEGIN-STREAM
+      recn 0 ?do
+         AOT-REC-BUF@ AOT-REC-MAX 48 * + i AOT-CREC-ROW * + REC+
+      loop CUR @ REC-LEN !
+   then
+   bound calln 0 > and if
+      calln 5 * {: callbytes:n :}
+      callbytes CELL 1- + CELL / CALLS-RESERVE
+      CALL-BUF callbytes BEGIN-STREAM 0 PREV !
+      calln 0 ?do
+         AOT-SITE-BUF@ i SITE-ROW * + W32@ OFF>Q {: off:n :}
+         off PREV @ - ZIG V+ off PREV !
+      loop CUR @ CALL-LEN !
+   then
+   datan 0 > if
+      datan 5 * {: databytes:n :}
+      databytes CELL 1- + CELL / DATA-SITES-RESERVE
+      DATA-BUF databytes BEGIN-STREAM 0 PREV !
+      datan 0 ?do
+         AOT-DSITE-BUF@ i 4 * + W32@ {: row:n :}
+         row AOT-DSITE-OFF-MASK and OFF>Q {: off:n :}
+         off PREV @ - ZIG 2 * row AOT-DSITE-CELL and 0<> if 1+ then V+
+         off PREV !
+      loop CUR @ DATA-LEN !
+   then ;
+
+;package
+
 package AOT-SIG
 public
 : INSTALL-NAME$ ( -- ptr u8 n ) s" CK-AOT-REG-INSTALL" ;
@@ -626,10 +712,12 @@ public
    bytes negate 3 and {: pad:n :}
    end pad ROOM? 0= if REFUSE then end pad + ;
 
-: +ROWS ( n n n -- n ) {: used:n count:n width:n :}
+: ROW-BYTES ( n n -- n ) {: count:n width:n :}
    count 0 < width 0 <= or if REFUSE then
    count AOT-SECTION-CAP width / > if REFUSE then
-   used count width * +BYTES ;
+   count width * ;
+
+: +ROWS ( n n n -- n ) ROW-BYTES +BYTES ;
 
 \ Seventeen scalar/count cells frame the common baked section. BYTES, rounds
 \ each byte run to four bytes; packed rows already have that alignment.
@@ -637,14 +725,14 @@ public
 \ rebuilds it from the flat capture first: a merge can still have extended that
 \ bitmap after the capture, and src/habu/habu2.f EMIT-AOT-SEED takes this count
 \ immediately before it emits those same bytes.
-: BODY-BYTES ( n -- n ) {: sitewidth:n :}
+: BODY-SIZED ( n n n n -- n ) {: recbytes:n sitebytes:n databytes:n frames:n :}
    AOT-WINDOW:BM-BUF@ AOT-WINDOW:BM-LEN @ AOT-WINDOW:BM-COMPACT
-   17 cells
+   frames cells
    AOT-BLOB-LEN @ +BYTES
-   AOT-REC-N @ AOT-CREC-ROW +ROWS
-   AOT-SITE-N @ sitewidth +ROWS
+   recbytes +BYTES
+   sitebytes +BYTES
    AOT-NAMES-LEN @ +BYTES
-   AOT-DSITE-N @ 4 +ROWS
+   databytes +BYTES
    AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-ROW +ROWS
    AOT-WINDOW:CBM-LEN +BYTES
    AOT-WINDOW:VAL-LEN @ +BYTES
@@ -654,6 +742,15 @@ public
    AOT-BOOTRUN-LEN @ 1+ +BYTES
    AOT-PWIN-N @ 4 +ROWS ;
 
+: BODY-BYTES ( n -- n ) {: sitewidth:n :}
+   AOT-REC-N @ AOT-CREC-ROW ROW-BYTES AOT-SITE-N @ sitewidth ROW-BYTES
+   AOT-DSITE-N @ 4 ROW-BYTES 17 BODY-SIZED ;
+
+: SEED-BODY ( bool -- n ) {: bound:bool :}
+   AOT-PACK:REC-LEN @
+   bound if AOT-PACK:CALL-LEN @ else AOT-SITE-N @ SITE-ROW ROW-BYTES then
+   AOT-PACK:DATA-LEN @ bound if 20 else 19 then BODY-SIZED ;
+
 \ The sidecar is emitted as one byte run: its sections have no internal pad.
 : PAYLOAD-BYTES ( -- n )
    AOT-SIG-N @ AOT-SIG-STR-LEN @ or AOT-REG-LEN @ or 0= if 0 exit then
@@ -662,6 +759,13 @@ public
 
 : BYTES ( bool n -- n ) {: sidecar:bool sitewidth:n :}
    sitewidth BODY-BYTES
+   sidecar if
+      8 +BYTES PAYLOAD-BYTES +BYTES
+      AOT-SIG:INSTALL-NAME$ nip +BYTES
+   then ;
+
+: SEED-BYTES ( bool bool -- n ) {: sidecar:bool bound:bool :}
+   bound SEED-BODY
    sidecar if
       8 +BYTES PAYLOAD-BYTES +BYTES
       AOT-SIG:INSTALL-NAME$ nip +BYTES

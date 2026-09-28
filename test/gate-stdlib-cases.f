@@ -1432,6 +1432,7 @@ SUITE aot-data-prewin
 
 SUITE aot-seed-batch
    test/aot-seed-batch-suite.f
+   test/aot-seed-metadata.f
 ;SUITE
 
 SUITE aot-wide-format
