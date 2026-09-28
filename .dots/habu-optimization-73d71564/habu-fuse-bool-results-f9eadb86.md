@@ -6,4 +6,21 @@ issue-type: task
 created-at: "2026-09-16T16:09:22.609973+03:00"
 ---
 
-Problem: tier 1 materializes every boolean: `0=` compiles as `mov x1,#0; cmp x0,x1; cset x0,eq; neg x0,x0` and a following `0=` repeats it, so `REQUIRE-BOOT-V @ 0= 0=` spends 8 instructions producing a flag it could load in 1 (measured 2026-09-16, REQUIRE-BOOT-OPEN?); a boolean consumed by `if` is materialized, stored to the stack, reloaded and tested with cbz instead of one conditional branch (REQUIRE-BOOT-LIMIT). Acceptance: tier 1 selection folds double negation, keeps a comparison result in flags when its only consumer is a branch (cmp + b.cond, or cbz/cbnz on the loaded value), and materializes a boolean only when it escapes to the stack or a store; the sample words shrink to their loads and one branch; a fixture pins the instruction count of five representative shapes (0=, 0= 0=, = if, < if, and-of-two-tests); baked code bytes before and after; byte fixpoint; full gate green. Files: src/compiler/native/select.f, combine.f, a64ir.f, test/compiler/*.f. Verify: tools/jitdump.f on the shapes; test/compiler suites with the test/compiler/aot-mode.f prefix; tools/native-build.f fixpoint; test/run.f. Depends: none. Ownership: tier-1 selection. Claim: unassigned.
+Current engine `24003f017a60` at source `e337d11fc098` already fuses a single-use
+comparison into its branch: native select.f:1719 and baked CORE-STR= contain the
+active path. The earlier claim that every boolean is materialized is obsolete.
+REQUIRE-BOOT-OPEN? still emits two cmp/cset/neg groups for `@ 0= 0=` in a
+48-byte body plus RET. REQUIRE-BOOT-LIMIT calls it, reloads its stack result and
+branches; the call overhead is separately tracked by the small-colon dot.
+
+For arbitrary n, `0= 0=` normalizes to 0/-1; it is not identity. Combine it to
+one nonzero test. Eliminate normalization entirely only when canonical boolean
+provenance is established structurally. Preserve escaping results, shared uses,
+and existing comparison-to-branch fusion. Verify real native execution for zero,
+canonical flags and noncanonical positive/negative inputs, with escaping and
+branched consumers. Use before/after disassembly as a measurement artifact,
+not a fixed opcode-count test. Record actual code/image delta, native byte
+convergence and the full gate. Source and baked evidence:
+`~/.cache/tmp/habu-generated-code-audit-20260928-01.md`.
+
+Ownership: native selection; unclaimed. No implementation is asserted here.

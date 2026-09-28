@@ -8,11 +8,23 @@ created-at: "2026-09-17T12:39:26.146860+03:00"
 
 ## Current attribution and task ownership
 
-Use the Mac baseline and RCA index in habu-optimization-73d71564 instead of
-the historical sizes below. The DONE label is a nearest-owner interval,
-not evidence that the REPL owns the anonymous checker stores. Current effect
-headers cost 267,431 encoded value bytes, their shared graph/strings/argument
-runs 20,566, and NORETS control records 88,798; bitmap bytes are additional.
+The qualified macOS engine at `e337d11fc098`, SHA-256
+`24003f017a601713c84185a7be5b1e0664d9951c942847372d2a0ddb9b0a654b`,
+contains 688,080 encoded DATA value bytes and 47,928 bitmap bytes. The decoded
+span is 5,945,872 bytes. The DONE label is a nearest-owner interval, not evidence
+that the REPL owns the anonymous checker stores. Earlier effect/control counts
+in the RCA index are historical and must be remeasured after history compaction.
+
+The current source audit confirms whole-interval capture after owner cleanup,
+inactive rollback/MATCH buffers that are repointed without clearing, and growth
+or truncation paths that can leave abandoned DATA bytes. Their contribution to
+this exact product is unmeasured. EI-AK's 64 negative sentinel cells cost 640
+value bytes; symbol strings have 21,097 bytes of cell-varint overhead over their
+168,771-byte used extent. Neither figure proves private symbols removable.
+Package spellings are already interned. A read-only census is measuring exact
+live prefixes, tails, frame buffers, duplicate spellings and graph allocations
+against the physical image. Design and current source evidence:
+`~/.cache/tmp/habu-captured-data-audit-20260928-01.md`.
 
 This task owns durable attribution and measurement. Implementation owners
 are habu-drop-private-signatures-974304d0 for interface retention,
