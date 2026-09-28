@@ -42,6 +42,13 @@ Source audit: `~/.cache/tmp/habu-captured-data-audit-20260928-01.md`.
 Name-sharing design: `~/.cache/tmp/habu-symbol-name-intern-design-20260928-01.md`.
 All predicted savings exclude changed code, offsets, framing and alignment.
 
+The follow-up history census finds zero safely removable rows under the tested
+same-content, ACTIVE, payload-free rule. Its 125 initial matches are all current
+newest bindings, outside the 4,145 historical rows. It validates four live
+NORET.CREATES references and all 500 PES references, including raw offset zero.
+Evidence: `~/.cache/tmp/habu-effect-history-census-completion-20260928-02.md`.
+No history-pruning implementation or saving is claimed from this result.
+
 This task owns durable attribution and measurement. Implementation owners
 are habu-drop-private-signatures-974304d0 for interface retention,
 habu-compact-checker-histories-3a1ce692 for histories,

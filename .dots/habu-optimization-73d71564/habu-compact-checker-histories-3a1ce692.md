@@ -6,6 +6,39 @@ issue-type: task
 created-at: "2026-09-24T17:18:43.126319+02:00"
 ---
 
+## Current result
+
+Control-history compaction is landed and qualified in the closed child
+`habu-compact-captured-control-4969c5eb`. USIGS pruning remains unimplemented.
+The captured B5 at source `e337d11fc098`, SHA-256
+`24003f017a601713c84185a7be5b1e0664d9951c942847372d2a0ddb9b0a654b`, has
+21,063 effect bindings, including 4,145 historical rows. A conservative
+same-content, ACTIVE, payload-free deletion rule yields **zero eligible rows**.
+All 125 rows passing its initial content filter are current newest bindings;
+118 are also newest at the saved boundary. Removing them could move the
+definition's source-order horizon. No header, pointer or bitmap saving is
+proved by that rule, so no pruning code was added.
+
+The census preserves 16,712 conservative prefix cuts and validates all 500 PES
+references, including valid raw offset zero. Four live NORET.CREATES references
+target anonymous effects; an earlier suggestion that the image had none was
+incorrect. FORGET/HIDE and boundary rewinds can expose older horizons, so
+latest-only or two-checkpoint effect pruning is insufficient. Physical packing
+also requires graph/query-state remapping and a decision about existing private
+numeric-offset observations. Those are not justified by an empty deletion set.
+
+Design: `~/.cache/tmp/habu-effect-history-design-20260928-01.md`.
+Exact roots, cuts, field costs and repeatable Habu probes:
+`~/.cache/tmp/habu-effect-history-census-completion-20260928-02.md`.
+The probes can use the preserved matching source installation
+`~/.local/lib/habu/e337d11fc098` after the temporary census workspace is removed.
+This result rules out the tested subset; it does not prove all effect history
+irreducible under stronger analysis. Retain this task for a separately justified
+history representation or pruning design, without treating historical counts
+as a deletion budget.
+
+## Earlier measurements
+
 Current product remeasurement (engine SHA-256
 `2daeb34544e8c081209f2437485d76f606c61ca5ac7eafe8cc28ddf438845639`):
 20,827 effect headers cost 267,461 encoded bytes; their allocation including
