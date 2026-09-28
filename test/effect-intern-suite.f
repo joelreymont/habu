@@ -73,7 +73,7 @@ variable #CASE
 \ ---------------------------------------------------------------------------
 TRUSTED: EIX-EVAL ( ptr u8 n -- ) evaluate ;
 : EIX-UEND ( -- n ) UEND @ ;
-: EIX-CELL ( n -- n ) USIGS-CELL-AT @ ;
+TRUSTED: EIX-NEXT ( n -- n ) E-PTR E-NEXT@ ;
 : EIX-REC-BYTES ( -- n ) EFF-REC ;
 TRUSTED: EIX-MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
 
@@ -107,8 +107,8 @@ variable IX
 \ in how many records a definition publishes would make wrong for no reason.
 : RECS-SINCE ( n -- n ) {: from:n :}
    0 from
-   BEGIN dup EIX-CELL 0 <> WHILE
-      EIX-CELL swap 1 + swap
+   BEGIN dup EIX-NEXT 0 <> WHILE
+      EIX-NEXT swap 1 + swap
    REPEAT drop ;
 
 \ TABLE-LIVE ( -- ) : no entry names a byte at or above the store's end, and

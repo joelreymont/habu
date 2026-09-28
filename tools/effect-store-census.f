@@ -49,6 +49,7 @@ package EFF-CENSUS
 \ reaches it as compiled calls from named one-line boundaries.
 TRUSTED: STORE-END ( -- n ) UEND @ ;
 TRUSTED: CELL-AT ( n -- n ) USIGS-CELL-AT @ ;
+TRUSTED: REC-NEXT ( n -- n ) E-PTR E-NEXT@ ;
 TRUSTED: BYTE-AT ( n -- n ) USIGS swap + c@ ;
 TRUSTED: REC-BYTES ( -- n ) EFF-REC ;
 TRUSTED: NODE-BYTES ( -- n ) EFF-NODE ;
@@ -249,10 +250,10 @@ variable DUPCUR
 \ wins means, asked of the store's own links rather than of a symbol table.
 : MARK-SHADOWED ( -- )
    BASE-V @ CUR-V !
-   BEGIN CUR-V @ CELL-AT 0 <> WHILE
+   BEGIN CUR-V @ REC-NEXT 0 <> WHILE
       CUR-V @ R-SYMPREV FIELD {: p:n :}
       p 0 <> IF p 1 - BASE-V @ >= IF p 1 - SHADOW THEN THEN
-      CUR-V @ CELL-AT CUR-V !
+      CUR-V @ REC-NEXT CUR-V !
    REPEAT ;
 
 : VISIT-ROWS ( n -- ) {: rec:n :}
@@ -271,7 +272,7 @@ variable DUPCUR
 
 : VISIT-RECORDS ( -- )
    BASE-V @ CUR-V !
-   BEGIN CUR-V @ CELL-AT 0 <> WHILE
+   BEGIN CUR-V @ REC-NEXT 0 <> WHILE
       RECS-V @ 1 + RECS-V !
       CUR-V @ SHADOWED? IF
          -1 DUPCUR !  SHADOW-V @ 1 + SHADOW-V !
@@ -279,7 +280,7 @@ variable DUPCUR
       REC-BYTES CHARGE
       CUR-V @ VISIT-CONTENT
       CUR-V @ VISIT-ROWS
-      CUR-V @ CELL-AT CUR-V !
+      CUR-V @ REC-NEXT CUR-V !
    REPEAT ;
 
 : RESET ( -- )

@@ -109,6 +109,10 @@ TRUSTED: SCX-SCAN-USIG ( n -- ) SCAN-USIGS-SYM ;
 TRUSTED: SCX-FEP-HIT? ( -- bool ) FEP-HIT? ;
 TRUSTED: SCX-FEP-MINI ( -- n ) FEP @ E-MINI@ ;
 : SCX-FMEND ( -- n ) FMEND @ ;
+create SCX-WIRE EFF-WIRE allot
+TRUSTED: SCX-WIRE-NEXT ( n -- n )
+   USIG-NEWEST 1- E-PTR SCX-WIRE E-WIRE-COPY
+   SCX-WIRE EW.NEXT @ ;
 TRUSTED: SCX-SCAN-NORET ( n -- ) NORET-SCAN-SYM ;
 TRUSTED: SCX-NORET-FLAGS ( -- n ) NORET-CTL @ XFER-FLAGS ;   \ the control word's flag bits
 
@@ -140,6 +144,7 @@ TRUSTED: SCX-SUMV-CTOR-SYM! ( n n -- ) SUMV-CTOR-SYM! ;
 variable TC                    \ last caught throw code
 variable NMIS                  \ differential mismatches in the current section
 variable IX
+variable REC-END
 
 \ ---------------------------------------------------------------------------
 \ 1. ORDER PINNING. Every one of these answers depends on WHICH record of a
@@ -164,6 +169,7 @@ s" SCXA" SCX-SIG-MIN-IN -1 T=                  \ the deletion shadows it, not th
 ' SCX-DEF2 catch TC !   TC @ 0 T=
 s" SCXA" SCX-SIG-MIN-IN 2 T=                   \ the newest record answers again
 ' SCX-DEF3 catch TC !   TC @ 0 T=
+SCX-UEND REC-END !
 s" SCXA" SCX-SIG-MIN-IN 3 T=                   \ four records deep, still the newest
 
 \ the same symbol, read straight off the index, off the walk that specifies it,
@@ -171,19 +177,22 @@ s" SCXA" SCX-SIG-MIN-IN 3 T=                   \ four records deep, still the ne
 \ scan can hide behind a hit.
 s" SCXA" SCX-ACTIVE-SYM IX !
 IX @ 0 <> TTRUE
-IX @ SCX-USIG-NEWEST 0 <> TTRUE                \ the differential below is not vacuous
+IX @ SCX-USIG-NEWEST 1- 0 > TTRUE              \ the record is at a nonzero offset
 IX @ SCX-USIG-NEWEST  IX @ SCX-USIG-NEWEST-LINEAR T=
 IX @ SCX-SCAN-USIG
 SCX-FEP-HIT? TTRUE
 SCX-FEP-MINI 3 T=                              \ the scan reports the newest record's arity
-SCX-FMEND 0 <> TTRUE
+SCX-FMEND REC-END @ T=                        \ absolute completed end, not a span
+IX @ SCX-WIRE-NEXT REC-END @ T=               \ owner wire preserves that same end
 
 \ ... and with the newest record a DELETION, the scan reports no record at all
 \ rather than the live one it shadows.
 ' SCX-UNDEF catch TC !  TC @ 0 T=
+SCX-UEND REC-END !
 IX @ SCX-SCAN-USIG
 SCX-FEP-HIT? TFALSE
-SCX-FMEND 0 <> TTRUE                           \ the deletion is still a record it depends on
+SCX-FMEND REC-END @ T=                         \ deletion still depends on its completed end
+IX @ SCX-WIRE-NEXT REC-END @ T=
 s" SCXA" SCX-SIG-MIN-IN -1 T=
 ' SCX-DEF4 catch TC !   TC @ 0 T=
 IX @ SCX-SCAN-USIG

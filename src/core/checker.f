@@ -5911,6 +5911,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 7 constant EN-PARAM
 
 \ Bindings retain identity, authority and chronology; immutable contents share.
+\ NEXT is a positive record-relative cell span; zero is unfinished/terminator.
 0 constant ER-NEXT-CELL
 1 constant ER-ACTIVE-CELL
 2 constant ER-SYM-CELL
@@ -6188,6 +6189,10 @@ EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
 
 : E-PTR ( n -- ptr u8 )
    USIGS + ;
+
+: E-NEXT@ ( ptr u8 -- n ) {: rec:ptr :}
+   rec ER.NEXT @ dup 0= if exit then
+   cells rec E-OFF + ;
 
 : E-ENSURE-NODE ( -- )
    UEND @ EFF-NODE + CELL + USIGS-ENSURE ;
@@ -6597,7 +6602,7 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
 : UIX-BUILD ( -- )
    0 UIX-BP !
    BEGIN UIX-BP @ EFF-REC + UEND @ <= WHILE
-      UIX-BP @ E-PTR ER.NEXT @ UIX-BN !
+      UIX-BP @ E-PTR E-NEXT@ UIX-BN !
       UIX-BN @ UIX-BP @ <= IF EXIT THEN            \ 0, or a link that does not advance
       UIX-BN @ UEND @ > IF EXIT THEN               \ the next record is above the live store
       UIX-BP @ UIX-BN @ UIX-REC-ADD
@@ -6876,7 +6881,7 @@ variable CHX-C
 : CHX-BUILD ( -- )
    0 CHX-BP !
    BEGIN CHX-BP @ EFF-REC + UEND @ <= WHILE
-      CHX-BP @ E-PTR ER.NEXT @ {: next:n :}
+      CHX-BP @ E-PTR E-NEXT@ {: next:n :}
       next CHX-BP @ <= next UEND @ > or IF EXIT THEN
       CHX-BP @ E-PTR ER.CONTENT @ {: off:n :}
       off CHX-BP @ EFF-REC + >= off EFF-CONTENT + next <= and IF
@@ -6910,7 +6915,7 @@ variable CHX-C
    off E-CONTENT-INTERN ;
 
 : USIG-NEXT ( ptr u8 -- ptr u8 )
-   ER.NEXT @ E-PTR ;
+   E-NEXT@ E-PTR ;
 
 : USIG-OFF ( ptr u8 -- n )
    E-OFF ;
@@ -7036,7 +7041,7 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
    USIGS-USER-OFF @ USX-BP !
    begin USX-BP @ EFF-REC + UEND @ <= while
       USX-BP @  USX-BP @ E-PTR ER.SYM @  USX-LINK
-      USX-BP @ E-PTR ER.NEXT @ USX-BN !
+      USX-BP @ E-PTR E-NEXT@ USX-BN !
       USX-BN @ USX-BP @ <=  USX-BN @ UEND @ >  or IF
          UEND @ 1 + USX-BP !                 \ 0, a link that does not advance, or one
       ELSE                                   \ that leaves the live store: end the walk
@@ -7092,7 +7097,7 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
    USIGS-USER-OFF @ USX-BP !
    begin USX-BP @ EFF-REC + UEND @ <= while
       USX-BP @ E-PTR ER.SYM @ sym = IF drop USX-BP @ 1 + THEN
-      USX-BP @ E-PTR ER.NEXT @ USX-BN !
+      USX-BP @ E-PTR E-NEXT@ USX-BN !
       USX-BN @ USX-BP @ <=  USX-BN @ UEND @ >  or IF
          UEND @ 1 + USX-BP !
       ELSE
@@ -7178,8 +7183,8 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
    USX-STAMP                             \ USIGS-ENSURE may have moved the store
    p ;
 
-: E-REC-FINISH ( ptr u8 -- )
-   UEND @ swap ER.NEXT !
+: E-REC-FINISH ( ptr u8 -- ) {: rec:ptr :}
+   UEND @ rec E-OFF - CELL / rec ER.NEXT !
    UTERM! ;
 
 : EFFECT-MIN-IN ( n -- n )
@@ -7763,7 +7768,7 @@ variable FMEND
    0 FMEND !
    sym USIG-NEWEST-VISIBLE dup 0= if drop exit then
    1 - E-PTR {: rec:ptr :}
-   rec ER.NEXT @ FMEND !
+   rec E-NEXT@ FMEND !
    rec ER.ACTIVE @ 0 <> if rec FEP-SET then ;
 
 : E-INST-COUNTS ( n n -- ) {: tvn:n rvn:n :}
@@ -15553,7 +15558,7 @@ defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
 
 \ Project a local binding into the stable owner/payload wire representation.
 : E-WIRE-COPY ( ptr u8 ptr u8 -- ) {: rec:ptr dst:ptr :}
-   rec ER.NEXT @ dst EW.NEXT !
+   rec E-NEXT@ dst EW.NEXT !
    rec ER.ACTIVE @ dst EW.ACTIVE !
    rec ER.SYM @ dst EW.SYM !
    rec ER.SYMPREV @ dst EW.SYMPREV !

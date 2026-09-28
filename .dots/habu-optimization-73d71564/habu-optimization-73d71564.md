@@ -16,14 +16,38 @@ claim; an RCA or candidate saving is not completed implementation.
 
 ## Current thin-engine work
 
+The user's current target is “taking off 100s of kilobytes or 1mb”. Pursue
+a measured structural reduction at that scale while preserving checked REPL,
+JIT, AOT, source reconstruction and capture/restore behavior. Count complete
+product cost, including new optimizer code; do not aggregate hypothetical
+pattern savings or remove state without proving its semantic roots.
+
+Local effect links now store record-relative cell spans, preserving every
+record and history boundary. The qualified engine is **2,741,239 bytes**, down
+**49,536 bytes**: DATA value section −41,964, AOT code +76, with another 8 bytes
+of span metadata. Net payload saving before padding/signature is 41,880 bytes.
+SHA-256: `6c9d991160f61a0d08a4c82ebfba1e5b80745d45b7b9fb980aa8f78bbf54bcad`.
+Independent review, focused E2Es, B1–B5/names identity, all 492 suites and strict
+signatures pass. Maki falls 32,832 bytes to 20,520,416; both board exports are
+byte-identical. Evidence: `~/.cache/tmp/habu-effect-links-fix-20260928-01/`
+and `habu-effect-links-review-20260928-01.md` in the same scratch parent.
+
+The next measured generated-code opportunity is paired GPR64 SP/x19 transfers:
+29,843 body/control-target-screened pairs, a 119,372-byte gross ceiling before
+exact source-provenance restrictions and compiler cost. Shared DATA literals
+have a separate 129,564-byte payload ceiling but require coherent pool/capture
+ownership. Neither estimate is a completed saving. Design and repeatable census:
+`~/.cache/tmp/habu-large-reduction-design-20260928-01.md` and
+`habu-large-codegen-census-completion-20260928-01.md` in the same directory.
+
 The attempted boolean normalization reduction is rejected: its optimizer costs
 1,556 code bytes to remove 1,680 emitted bytes, while other serialized content
 grows 200 bytes. Engine payload therefore grows 76 bytes, with file size
 unchanged. Maki's 660-byte code saving is exactly offset by DATA/other growth.
 The source and patch are preserved in the open boolean dot; none is integrated.
 Focused tests, native convergence and Maki smokes passed, but the full registry
-was not run after the size rejection. The installed divisor product below is
-unchanged. Evidence: `~/.cache/tmp/habu-native-bool-completion-20260928-01.md`.
+was not run after the size rejection. Evidence:
+`~/.cache/tmp/habu-native-bool-completion-20260928-01.md`.
 
 Proven nonzero scalar divisors now select a single native division instruction;
 unknown and zero divisors retain the guarded throw path. The qualified engine
