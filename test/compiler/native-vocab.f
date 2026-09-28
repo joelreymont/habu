@@ -4,6 +4,7 @@
 1 set-tier
 
 require lib/test.f
+require lib/ieee754.f
 require src/arch/arm64/asm.f
 require tools/codegen-tail-probe.f
 
@@ -13,7 +14,17 @@ public
 : GT ( n n -- bool ) > ;
 : GE ( n n -- bool ) >= ;
 : NE ( n n -- bool ) <> ;
+: LT ( n n -- bool ) < ;
+: LE ( n n -- bool ) <= ;
+: EQ ( n n -- bool ) = ;
 : ZERO? ( n -- bool ) 0= ;
+: NEGATIVE? ( n -- bool ) 0< ;
+: LESS-THREE? ( n -- bool ) 3 < ;
+: F-LT ( r r -- bool ) f< ;
+: F-GT ( r r -- bool ) f> ;
+: F-EQ ( r r -- bool ) f= ;
+: F-ZERO? ( r -- bool ) f0= ;
+: F-NEGATIVE? ( r -- bool ) f0< ;
 : SELECT-GT ( n n -- n ) 2dup > if 2drop 1 exit then 2drop 0 ;
 : SELECT-GE ( n n -- n ) 2dup >= if 2drop 1 exit then 2drop 0 ;
 : SELECT-NE ( n n -- n ) 2dup <> if 2drop 1 exit then 2drop 0 ;
@@ -78,6 +89,47 @@ $FFE0FFE0 constant MVN-MASK
    3 4 NE FLAG-CELL -1 T= 3 3 NE TFALSE
    0 ZERO? FLAG-CELL -1 T= -1 ZERO? TFALSE 5 ZERO? TFALSE ;
 
+$8000000000000000 constant MIN-N
+$7FFFFFFFFFFFFFFF constant MAX-N
+
+: FLAG-VALUES ( -- )
+   s" integer comparisons preserve full-cell flags at signed extremes" T-LABEL
+   MIN-N MAX-N LT FLAG-CELL -1 T= MAX-N MIN-N LT FLAG-CELL 0 T=
+   MIN-N MAX-N LE FLAG-CELL -1 T= MAX-N MIN-N LE FLAG-CELL 0 T=
+   MAX-N MIN-N GT FLAG-CELL -1 T= MIN-N MAX-N GT FLAG-CELL 0 T=
+   MAX-N MIN-N GE FLAG-CELL -1 T= MIN-N MAX-N GE FLAG-CELL 0 T=
+   MIN-N MIN-N EQ FLAG-CELL -1 T= MIN-N MAX-N EQ FLAG-CELL 0 T=
+   MIN-N MAX-N NE FLAG-CELL -1 T= MIN-N MIN-N NE FLAG-CELL 0 T=
+   MIN-N MIN-N LE FLAG-CELL -1 T= MAX-N MAX-N GE FLAG-CELL -1 T=
+   s" immediate comparisons preserve full-cell true and false" T-LABEL
+   0 ZERO? FLAG-CELL -1 T= MAX-N ZERO? FLAG-CELL 0 T=
+   MIN-N NEGATIVE? FLAG-CELL -1 T= MAX-N NEGATIVE? FLAG-CELL 0 T=
+   MIN-N LESS-THREE? FLAG-CELL -1 T= MAX-N LESS-THREE? FLAG-CELL 0 T= ;
+
+: F-UNORDERED ( r -- ) {: nan:r :}
+   nan 1.0 F-LT FLAG-CELL 0 T= 1.0 nan F-LT FLAG-CELL 0 T=
+   nan 1.0 F-GT FLAG-CELL 0 T= 1.0 nan F-GT FLAG-CELL 0 T=
+   nan nan F-EQ FLAG-CELL 0 T= nan 1.0 F-EQ FLAG-CELL 0 T=
+   nan F-ZERO? FLAG-CELL 0 T= nan F-NEGATIVE? FLAG-CELL 0 T= ;
+
+: FLOAT-FLAGS ( -- )
+   s" floating comparisons preserve full-cell flags" T-LABEL
+   1.5 2.5 F-LT FLAG-CELL -1 T= 2.5 1.5 F-LT FLAG-CELL 0 T=
+   2.5 1.5 F-GT FLAG-CELL -1 T= 1.5 2.5 F-GT FLAG-CELL 0 T=
+   1.5 1.5 F-EQ FLAG-CELL -1 T= 1.5 2.5 F-EQ FLAG-CELL 0 T=
+   -1.5 F-NEGATIVE? FLAG-CELL -1 T= 1.5 F-NEGATIVE? FLAG-CELL 0 T=
+   s" quiet and signaling NaNs keep every floating flag false" T-LABEL
+   $7FF8000000000000 IEEE754:BITS>F64 F-UNORDERED
+   $7FF0000000000001 IEEE754:BITS>F64 F-UNORDERED
+   $FFF8000000000000 IEEE754:BITS>F64 F-UNORDERED
+   $8000000000000000 IEEE754:BITS>F64 {: negzero:r :}
+   s" both signed zeros are equal and neither is negative" T-LABEL
+   0.0 negzero F-EQ FLAG-CELL -1 T= negzero 0.0 F-EQ FLAG-CELL -1 T=
+   0.0 negzero F-LT FLAG-CELL 0 T= negzero 0.0 F-LT FLAG-CELL 0 T=
+   0.0 negzero F-GT FLAG-CELL 0 T= negzero 0.0 F-GT FLAG-CELL 0 T=
+   0.0 F-ZERO? FLAG-CELL -1 T= negzero F-ZERO? FLAG-CELL -1 T=
+   0.0 F-NEGATIVE? FLAG-CELL 0 T= negzero F-NEGATIVE? FLAG-CELL 0 T= ;
+
 : SELECTS ( -- )
    4 3 SELECT-GT 1 T= 3 3 SELECT-GT 0 T= 3 4 SELECT-GT 0 T=
    4 3 SELECT-GE 1 T= 3 3 SELECT-GE 1 T= 3 4 SELECT-GE 0 T=
@@ -109,7 +161,7 @@ $FFE0FFE0 constant MVN-MASK
    65 WHITE? TFALSE 0 WHITE? TFALSE 33 WHITE? TFALSE ;
 
 : RUN ( -- )
-   T-RESET COMPARES SELECTS BITWISE SHIFTS VALUES T-REPORT ;
+   T-RESET COMPARES FLAG-VALUES FLOAT-FLAGS SELECTS BITWISE SHIFTS VALUES T-REPORT ;
 
 RUN
 ;using

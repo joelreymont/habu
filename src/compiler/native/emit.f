@@ -675,9 +675,8 @@ variable N-FUNS                        \ how many functions the emission holds
 5 constant DIV-INSNS                 \ instructions one division is
 DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
 
-\ A property of the FORM: one for all but the three comparisons, the division,
-\ the two calls and the three compare-and-branches, and the two-way branch and
-\ the eight conditional selects, which are two.
+\ A property of the FORM: comparisons and conditional selects take two;
+\ division, calls, compare-and-branches and data addresses have longer forms.
 : INSNS-OF ( n -- n )
    {: k:n :}
    k O-DATAADDR = if 3 exit then
@@ -689,10 +688,10 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
    k O-FCMPSELZ = if 2 exit then
    k O-FCMPSELD = if 2 exit then
    k O-FCMPSELZD = if 2 exit then
-   k O-FLAG = if 3 exit then
-   k O-FLAGI = if 3 exit then
-   k O-FFLAG = if 3 exit then
-   k O-FFLAGZ = if 3 exit then
+   k O-FLAG = if 2 exit then
+   k O-FLAGI = if 2 exit then
+   k O-FFLAG = if 2 exit then
+   k O-FFLAGZ = if 2 exit then
    k O-SDIV = if DIV-INSNS exit then
    k O-CALL = if 3 exit then
    k O-WORDCALL = if 3 exit then
@@ -1221,35 +1220,30 @@ variable CH-AT
    id  id 0 OPERAND-REG ENC-FCMP0  APPEND
    id home PUT-COND-BR ;
 
-\ Compare, set one on the condition, negate - because a Habu flag is all bits
-\ set. It is the sequence the engine's own emitter uses.
+\ Compare and materialise the condition directly as Habu's full-cell 0/-1 flag.
 : PUT-FLAG ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG {: rd:n :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-CMP  APPEND
-   id  rd id COND-OF ENC-CSET  APPEND
-   id  rd rd ENC-NEG  APPEND ;
+   id  rd id COND-OF ENC-CSETM  APPEND ;
 
 : PUT-FLAGI ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG {: rd:n :}
    id  id 0 OPERAND-REG id OFF-IMM ENC-CMPI  APPEND
-   id  rd id COND-OF ENC-CSET  APPEND
-   id  rd rd ENC-NEG  APPEND ;
+   id  rd id COND-OF ENC-CSETM  APPEND ;
 
 : PUT-FFLAG ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG {: rd:n :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-FCMP  APPEND
-   id  rd id COND-OF ENC-CSET  APPEND
-   id  rd rd ENC-NEG  APPEND ;
+   id  rd id COND-OF ENC-CSETM  APPEND ;
 
 : PUT-FFLAGZ ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG {: rd:n :}
    id  id 0 OPERAND-REG ENC-FCMP0  APPEND
-   id  rd id COND-OF ENC-CSET  APPEND
-   id  rd rd ENC-NEG  APPEND ;
+   id  rd id COND-OF ENC-CSETM  APPEND ;
 
 \ The FIRST source is the condition-holds answer, which is the order a Csel
 \ reads and the order a64.cmpbr puts its successors in.

@@ -1461,7 +1461,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 : OP-KIND ( IR-ID:ir-op-id -- A64SEL:cmpkind )
    OPCODE-AT OPCODE-SLOT SLOT-KIND ;
 
-\ One source comparison is one machine comparison, three instructions and one
+\ One source comparison is one machine comparison, two instructions and one
 \ operation, because the flags between them may not be separated.
 : EMIT-FLAG ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}

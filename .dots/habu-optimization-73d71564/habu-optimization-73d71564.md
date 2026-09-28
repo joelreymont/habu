@@ -25,12 +25,25 @@ capture/restore behavior. Count complete product cost, including new optimizer
 code; do not aggregate hypothetical pattern savings or remove state without
 proving its semantic roots. Completed bounded measurements cover real capture
 literal placement, remaining ARM64 selection gaps and compact startup tables.
-Implementation is active for direct boolean masks (habu-emit-bool-masks-9ba063d8),
-paired stack writeback (habu-fuse-paired-stack-c1800302), and packed startup
+Direct boolean masks are qualified (habu-emit-bool-masks-9ba063d8).
+Implementation is active for paired stack writeback (habu-fuse-paired-stack-c1800302), and packed startup
 tables (habu-pack-baked-seed-66e05afd). The broader repeated-code census and
 independent source coverage audit are complete (habu-find-repeated-code-7811ef13).
 Generated buffer bounds sharing is now a bounded implementation experiment
 (habu-share-buf-bounds-c8093ca8).
+
+The four native comparison forms now emit CSETM directly instead of CSET then
+NEG, preserving exact 0/-1 flags and floating unordered behavior. Generated code
+falls 9,036 bytes and total nonpadding payload falls 8,900 bytes. The signed
+engine remains 2,625,655 bytes because alignment absorbs the saving: this adds
+zero file bytes toward the additional 1 MB target. Engine SHA-256:
+`830c33d0af20d4202de584b62a94d63953d2b2f1f1af19830b0296a606ff2821`.
+Independent review, all 14 encoder vectors, B2–B5 engine/names identity, all 492
+suites and strict signatures pass. Maki is 32,832 signed bytes smaller at
+20,192,096, with both stdin board exports byte-identical. Qualified source:
+`e319fdfe324a31bfca98541a785ea1f4c22c3ed3`. Evidence:
+`~/.cache/tmp/habu-native-mask-completion-20260928-01.md` and
+`habu-native-mask-review-20260928-01.md` in the same directory.
 
 The repeat census covers 1,388,784 owned code bytes in 13,362 disjoint rows,
 exact and normalized 4/6/8/12-instruction windows, and 9,322 short bodies.

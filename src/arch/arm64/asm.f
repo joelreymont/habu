@@ -427,6 +427,14 @@ public
    XR2ND ?COND ARM-IMM ! ARM-RD !
    $9A9F07E0 ARM-RD @ or  ARM-IMM @ 1 xor 12 lshift or MSK ;
 
+\ Csetm = csinv rd, xzr, xzr, invert(cond): a full-cell 0/-1 flag.
+\ DDI 0596 CSETM excludes AL and NV from this conditional alias.
+: ENC-CSETM ( n n -- n )
+   XR2ND
+   dup C-AL OUT? IF s" asm: mask condition out of range" ASM-EXIT-RC die THEN
+   ARM-IMM ! ARM-RD !
+   $DA9F03E0 ARM-RD @ or  ARM-IMM @ 1 xor 12 lshift or MSK ;
+
 \ rd takes rn when the condition holds and rm when it does not, with no branch.
 \ The condition reads whatever last wrote the flags, Fcmp's NaN rule included.
 : ENC-CSEL ( n n n n -- n )
