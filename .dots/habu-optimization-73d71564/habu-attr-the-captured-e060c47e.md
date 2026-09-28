@@ -15,16 +15,32 @@ span is 5,945,872 bytes. The DONE label is a nearest-owner interval, not evidenc
 that the REPL owns the anonymous checker stores. Earlier effect/control counts
 in the RCA index are historical and must be remeasured after history compaction.
 
-The current source audit confirms whole-interval capture after owner cleanup,
-inactive rollback/MATCH buffers that are repointed without clearing, and growth
-or truncation paths that can leave abandoned DATA bytes. Their contribution to
-this exact product is unmeasured. EI-AK's 64 negative sentinel cells cost 640
-value bytes; symbol strings have 21,097 bytes of cell-varint overhead over their
-168,771-byte used extent. Neither figure proves private symbols removable.
-Package spellings are already interned. A read-only census is measuring exact
-live prefixes, tails, frame buffers, duplicate spellings and graph allocations
-against the physical image. Design and current source evidence:
-`~/.cache/tmp/habu-captured-data-audit-20260928-01.md`.
+The current physical census reconciles the full DATA section, and all 16,923
+decoded symbol rows match restored rows. The four main allocation tails have
+no present cells. Seven depth-zero rollback/MATCH buffers contain 142 value
+bytes; clearing them predicts a 270-byte DATA-section reduction including two
+empty bitmap groups. EI-AK's 64 negative sentinel cells cost 640 value bytes;
+changing its representation is a separate correction, not safe direct clearing.
+
+The 168,771-byte symbol-string prefix is fully row-referenced. Its NAME-only
+physical union is 166,659 bytes versus 151,872 unique folded spelling bytes:
+14,787 raw bytes can be shared without merging symbol identities. Package
+spellings occupy exactly their 2,112 unique bytes already; 11 cross-role bytes
+are excluded from name-only sharing. Cell-varint encoding adds 21,097 bytes over
+the used string extent, which is a representation cost, not removable names.
+
+USIGS has 21,063 bindings (4,145 historical), 1,779 shared contents and 2,251
+nodes. Its graph accounts for all 1,123,016 raw bytes and 223,770 encoded value
+bytes with no gap. Bindings cost 190,406 value bytes, including 63,057 for NEXT
+and 52,043 for CONTENT offsets. History and identity remain semantic constraints;
+these costs are not a deletion list. Two anonymous intervals outside the main
+stores still account for 25,595 value bytes without a proven allocation owner.
+
+Repeatable probes, decoded artifact, field costs, bounds and limitations:
+`~/.cache/tmp/habu-data-retention-census-completion-20260928-01.md`.
+Source audit: `~/.cache/tmp/habu-captured-data-audit-20260928-01.md`.
+Name-sharing design: `~/.cache/tmp/habu-symbol-name-intern-design-20260928-01.md`.
+All predicted savings exclude changed code, offsets, framing and alignment.
 
 This task owns durable attribution and measurement. Implementation owners
 are habu-drop-private-signatures-974304d0 for interface retention,
