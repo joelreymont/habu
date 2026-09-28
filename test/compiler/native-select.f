@@ -1143,6 +1143,13 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : OPS ( -- n )
    R-BLKR RV BLK0 IR-FUN:FOP-COUNT ;
 
+: FIND-OP ( ptr u8 n -- n )
+   {: name:ptr len:n :}
+   -1
+   OPS 0 ?do
+      i name len OPCODE-IS? if drop i leave then
+   loop ;
+
 \ How many blocks the selected function has. The if-conversion is the one thing
 \ in this pass that changes the number, so a case that asserts the branch is
 \ gone asserts this too: a select in a module that still had four blocks would
@@ -1837,25 +1844,28 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ arithmetic operations would read different values. They read the SAME value:
 \ inside a converted region there is one straight line and no pair of siblings
 \ left in it, so the second literal is the first one.
-: SELECT-LOCALS-BODY ( IR-CTX:ctx -- n n bool bool bool bool n )
+: SELECT-LOCALS-BODY ( IR-CTX:ctx -- n bool bool bool bool n )
    HIR-MOD
    BUILD-SELECT-LOCALS
    SELECTED-POOL-FP READ!
    BLOCKS
-   OPS
-   8 s" a64.fcmpselzd" OPCODE-IS?
-   8 s" a64.fcmpbrz" OPCODE-IS?
-   3 s" a64.fmovxd" OPCODE-IS?
-   5 1 OPERAND@  7 1 OPERAND@  SAME-VALUE?
-   8 0 ATTR-INT ;
+   s" a64.fcmpselzd" FIND-OP {: sel:n :}
+   s" a64.fadd" FIND-OP {: add:n :}
+   s" a64.fsub" FIND-OP {: sub:n :}
+   sel 0 >=
+   s" a64.fcmpbrz" FIND-OP 0 >=
+   s" a64.fmovxd" FIND-OP 0 >=
+   add 0 >= sub 0 >= and if
+      add 1 OPERAND@  sub 1 OPERAND@  SAME-VALUE?
+   else false then
+   sel 0 >= if sel 0 ATTR-INT else -1 then ;
 
 : SELECT-LOCALS-CASE ( -- )
    s" an arm that carries its own constant converts, and both arms carry one"
    T-LABEL
    WBND [: SELECT-LOCALS-BODY ;] IR-CTX:WITH-CONTEXT
    A64IR-COND:MI A64IR:COND-CODE T=
-   TTRUE TTRUE TFALSE TTRUE
-   11 T= 2 T= ;
+   TTRUE TTRUE TFALSE TTRUE 2 T= ;
 
 \ The control: the same six defined values with every one of them handed to the
 \ join. Nothing was relaxed to a bigger number, so this one still keeps its

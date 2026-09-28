@@ -100,6 +100,19 @@ outcome, including supersession; closure does not assert implementation
 acceptance. The mixed compiler product/correctness campaign remains at
 `habu-compile-the-tender-8385810f`, with its optimization leaves grouped here.
 
+Native scalar literal selection now starts MOVZ at its first nonzero half,
+preserving MOVN policy and the separate relocation carriers. The qualified
+engine remains **2,807,287 bytes**, SHA-256
+`7a357464fe741b9359a170b433b54364a431df117f21ee947f2caca25d8044bb`.
+Its AOT code blob falls 1,543,368 to 1,543,112 bytes (**256 bytes**); DATA,
+metadata and alignment absorb the file saving. Maki generated code falls
+1,232 bytes with its total file size unchanged. Independent source review,
+B2–B5 and sidecar equality, all 491 suites, strict signatures and both Maki
+board smokes pass. The smokes execute through stdin and retain exact accepted
+board hashes. Evidence: `~/.cache/tmp/habu-native-scalar-completion-20260928-01.md`.
+The scalar dot is closed; name interning and the separately measured native
+shift, divisor-guard and boolean gaps remain unfinished.
+
 ## Measured baseline
 
 macOS ARM64 product built from master `434fbe1d29bb`; SHA-256:

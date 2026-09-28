@@ -9,6 +9,21 @@ package NATIVE-LITERALS-TEST
 : SAME-BRANCH ( n -- n ) {: x:n :} x 0= if 32768 exit then 32768 ;
 : SAME-REAL ( r -- n ) {: x:r :} x 0.0 f= if 42 exit then 42 ;
 : LOCAL-REBOUND ( -- n ) 1 {: x:n :} x 41 + {: x:n :} x ;
+\ Scalar halves must survive native selection, allocation and execution.
+: UPPER-ONE ( -- n ) $10000 ;
+: UPPER-TWO ( -- n ) $100000000 ;
+: UPPER-THREE ( -- n ) $1000000000000 ;
+: UPPER-MIXED ( -- n ) $1234005600000000 ;
+: ONES-MIXED ( -- n ) $FFFFFFFF0000FFFF ;
+: ZERO-SCALAR ( -- n ) 0 ;
+: ONES-SCALAR ( -- n ) -1 ;
+: UPPER-USE ( n -- n ) $100000000 + ;
+
+\ Parse the oracle at runtime so a selector error cannot change both values.
+: MATCH-PARSED ( n ptr u8 n -- )
+   {: got:n src:ptr len:n :}
+   src len num-parse {: want:n flt:bool ok:bool :}
+   ok TTRUE flt TFALSE got want T= ;
 : LONG-BODY ( n -- n )
    1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 
    1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 
@@ -101,6 +116,14 @@ create VALUE 42 ,
    0.0 SAME-REAL 42 T=
    1.0 SAME-REAL 42 T=
    LOCAL-REBOUND 42 T=
+   UPPER-ONE s" $10000" MATCH-PARSED
+   UPPER-TWO s" $100000000" MATCH-PARSED
+   UPPER-THREE s" $1000000000000" MATCH-PARSED
+   UPPER-MIXED s" $1234005600000000" MATCH-PARSED
+   ONES-MIXED s" $FFFFFFFF0000FFFF" MATCH-PARSED
+   ZERO-SCALAR s" 0" MATCH-PARSED
+   ONES-SCALAR s" -1" MATCH-PARSED
+   7 UPPER-USE s" $100000007" MATCH-PARSED
    0 LONG-BODY 600 T=
    0 MANY-BLOCKS 1000 T=
    20 MANY-BLOCKS 1020 T=

@@ -1037,13 +1037,21 @@ RLIT-SHUT RLIT-N !
 \ ones-based chains is chosen rather than the first one.
 A64IR:IMM-LIMIT 1- constant ONES-HALF
 
-\ The zero chain writes the lowest half and every higher half that is not zero.
+\ Start in the first nonzero half; zero still needs one MOVZ.
+: MOVZ-HALF ( n -- n )
+   {: v:n :}
+   0
+   A64IR:HALVES 0 ?do
+      v i A64IR:HALF-OF 0<> if drop i leave then
+   loop ;
+
 : MOVZ-COST ( n -- n )
    {: v:n :}
-   1
-   A64IR:HALVES 1 ?do
+   0
+   A64IR:HALVES 0 ?do
       v i A64IR:HALF-OF 0<> if 1+ then
-   loop ;
+   loop
+   dup 0= if drop 1 then ;
 
 \ The lowest half that is not already all ones, so the movn does work a movk
 \ would otherwise have to do.
@@ -1066,12 +1074,15 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 
 : MATERIALISE-Z ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id v:n :}
-   id A64IR-OPCODE:MOVZ  v 0 A64IR:HALF-OF  0 A64IR:HALF-SHIFT  false
+   v MOVZ-HALF {: s:n :}
+   id A64IR-OPCODE:MOVZ  v s A64IR:HALF-OF  s A64IR:HALF-SHIFT  false
    A64IR:ADDR-NONE MOVE-WIDE
-   A64IR:HALVES 1 ?do
-      v i A64IR:HALF-OF 0<> if
-         id A64IR-OPCODE:MOVK  v i A64IR:HALF-OF  i A64IR:HALF-SHIFT  true
-         A64IR:ADDR-NONE MOVE-WIDE
+   A64IR:HALVES 0 ?do
+      i s <> if
+         v i A64IR:HALF-OF 0<> if
+            id A64IR-OPCODE:MOVK  v i A64IR:HALF-OF  i A64IR:HALF-SHIFT  true
+            A64IR:ADDR-NONE MOVE-WIDE
+         then
       then
    loop ;
 
