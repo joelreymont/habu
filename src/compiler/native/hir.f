@@ -690,11 +690,12 @@ private
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
-\ The two fields every schema of this dialect names the same way.
-: NAMED ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- )
+\ Name the rule and renderer, then validate and define the staged schema.
+: FINISH-OP ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder o:HIR:opcode :}
    c b o RULE IR-SCHEMA:SET-RULE
-   c b o RENDERER IR-SCHEMA:SET-RENDERER ;
+   c b o RENDERER IR-SCHEMA:SET-RENDERER
+   c b IR-BUILD:DEFINE-OP ;
 
 \ An integer literal: no operands, one cell of result, and the value it holds.
 : DEF-CONST ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
@@ -706,8 +707,7 @@ private
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:CONST NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:CONST FINISH-OP ;
 
 \ Each one's may-trap flag is the compilation unit's overflow policy.
 : DEF-BINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
@@ -719,8 +719,7 @@ private
    PURE-VALUE
    c TRAPS? IR-SCHEMA:SET-TRAP
    c TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ The one arithmetic operation that may raise whatever the policy says: the
 \ policy is about OVERFLOW, and `/` refuses a zero divisor at every tier - the
@@ -734,8 +733,7 @@ private
    PURE-VALUE
    true IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:DIV NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:DIV FINISH-OP ;
 
 \ Two cells in, one out, pure and TOTAL: none of the eleven can overflow, so
 \ declaring them through DEF-BINARY would oblige the machine stage to reproduce
@@ -749,8 +747,7 @@ private
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ One cell in, one cell out, which is what stops a caller staging it with two.
 : DEF-UNARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
@@ -761,8 +758,7 @@ private
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ ---- the memory forms --------------------------------------------------------
 \ The address is a value the program computed, so it may name any cell it can
@@ -781,8 +777,7 @@ private
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:MEM NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:MEM FINISH-OP ;
 
 \ The token is the LAST operand and the LAST result of both forms, which is why
 \ elaborate.f finds it by TYPE rather than by position.
@@ -796,8 +791,7 @@ private
    IR--SCHEMA-EFFECT:READ GENERIC-MEM
    false IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:LOAD NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:LOAD FINISH-OP ;
 
 \ Forth writes `value address !`, so the value is the deeper of the two and
 \ therefore the first operand.
@@ -811,8 +805,7 @@ private
    IR--SCHEMA-EFFECT:WRITE GENERIC-MEM
    false IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:STORE NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:STORE FINISH-OP ;
 
 \ The value it answers is the byte widened into a cell: a byte is not a type of
 \ this dialect, it is a width of an access.
@@ -826,8 +819,7 @@ private
    IR--SCHEMA-EFFECT:READ GENERIC-MEM
    false IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:BLOAD NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:BLOAD FINISH-OP ;
 
 \ Only the value's lowest byte reaches memory; the operand is still a cell.
 : DEF-BSTORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
@@ -840,8 +832,7 @@ private
    IR--SCHEMA-EFFECT:WRITE GENERIC-MEM
    false IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:BSTORE NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:BSTORE FINISH-OP ;
 
 \ A terminator's operands are the successor's block arguments, so how many
 \ there are is a property of the destination and the list is one variadic tail.
@@ -853,8 +844,7 @@ private
    IR-SCHEMA:SET-PURE
    false IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:BR NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:BR FINISH-OP ;
 
 \ Its one operand is the value it tests and not a block argument: with two
 \ successors nothing could say which operand belongs to which destination.
@@ -866,8 +856,7 @@ private
    IR-SCHEMA:SET-PURE
    false IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:BRZ NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:BRZ FINISH-OP ;
 
 \ A word's output count is a property of the word and not of the opcode, so the
 \ operand list is one variadic cell.
@@ -879,8 +868,7 @@ private
    IR-SCHEMA:SET-PURE
    false IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:RETURN NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:RETURN FINISH-OP ;
 
 \ The diagnostic is an ordinary owned string literal plus an exit code. The
 \ source compiler resolves its registry ordinal before constructing this op.
@@ -894,8 +882,7 @@ private
    IR-SCHEMA:SET-PURE
    true IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:TRAP NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:TRAP FINISH-OP ;
 
 \ Operands are the memory order and EVERY live value, results the order and
 \ those values again: no register survives the call, so the call CONSUMES each
@@ -910,8 +897,7 @@ private
    IR--SCHEMA-EFFECT:READ-WRITE GENERIC-MEM
    true IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:CALL NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:CALL FINISH-OP ;
 
 \ A second operation and not a field, because a self-call goes to a LABEL and
 \ this goes to an ADDRESS the module has to carry. The save discipline is
@@ -929,8 +915,7 @@ private
    IR--SCHEMA-EFFECT:READ-WRITE GENERIC-MEM
    true IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:WORDCALL NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:WORDCALL FINISH-OP ;
 
 \ An authenticated engine primitive ends control without answering a row. It
 \ still observes memory and receives the live data-stack values in order.
@@ -945,8 +930,7 @@ private
    IR--SCHEMA-EFFECT:READ-WRITE IR-SCHEMA:SET-MEMORY
    true IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:TERMINAL NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:TERMINAL FINISH-OP ;
 
 \ One cell out, because a schema names ONE result type and the tree's
 \ quotations have four different signatures; which routine it is rides in an
@@ -959,8 +943,7 @@ private
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c TARGET
-   c b HIR-OPCODE:QUOT NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:QUOT FINISH-OP ;
 
 \ ---- the float forms ---------------------------------------------------------
 \ The value is the literal's own bit pattern, because the cell IS the double.
@@ -972,8 +955,7 @@ private
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c FP-TARGET
-   c b HIR-OPCODE:FCONST NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b HIR-OPCODE:FCONST FINISH-OP ;
 
 \ ALL FOUR ARE TOTAL, including the division: a float division by zero answers
 \ an infinity and zero over zero the default NaN, neither of which is a trap.
@@ -986,8 +968,7 @@ private
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c FP-TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ The square root of a negative is the default NaN rather than a raise.
 : DEF-FUNARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
@@ -998,8 +979,7 @@ private
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c FP-TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ A CELL out and not a double: a flag in the floating file is one no branch of
 \ this machine can read. Total, because comparing against a NaN answers false.
@@ -1013,8 +993,7 @@ private
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c FP-TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ The zero is not an operand because the INSTRUCTION does not take one: FCMP
 \ has a form whose second operand is the immediate zero.
@@ -1027,8 +1006,7 @@ private
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c FP-TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ Four and not two, because two of them compute and two do not: the rounding
 \ pair rounds, and the bit pair is the same eight bytes read as the other type.
@@ -1041,8 +1019,7 @@ private
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c FP-TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ ---- the table this dialect may fill -----------------------------------------
 \ The table's dialect name and version are fixed when the module is created, so

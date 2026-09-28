@@ -29,15 +29,35 @@ Direct boolean masks are qualified (habu-emit-bool-masks-9ba063d8).
 Paired stack writeback is qualified (habu-fuse-paired-stack-c1800302).
 Packed startup tables are qualified (habu-pack-baked-seed-66e05afd). The broader repeated-code census and
 independent source coverage audit are complete (habu-find-repeated-code-7811ef13).
-Generated buffer bounds sharing is now a bounded implementation experiment
-(habu-share-buf-bounds-c8093ca8).
+Generated buffer bounds sharing (habu-share-buf-bounds-c8093ca8), fixed
+validation/fatal tails (habu-share-fixed-valid-a57b1b73), and dialect schema
+finishing tails (habu-share-dialect-schema-d498c791) are qualified together.
+Opcode name tables (habu-table-opcode-names-d7cd2487) and packed DATA values
+(habu-pack-startup-data-0c5b8d64) remain implementation experiments.
 
-The current qualified engine is **2,477,047 bytes**. Packing the dictionary,
+The current qualified engine is **2,460,535 bytes**. The three source-sharing
+changes save another **16,512 signed bytes** from the compact-table parent.
+Additional saving from the 2,625,655-byte goal baseline is now **165,120 bytes**,
+leaving 834,880 bytes to target. Engine SHA-256:
+`c21bf57f366a4f138d0af805f3db7e744c7bf31247ecab0064ae672182c21a84`.
+Generated buffer accessors and their generators save 13,144 code bytes including
+new helper costs; fixed native validation/fatal tails save 968; typed schema
+finishing tails save 912. Complete payload saves 15,764 bytes, container padding
+saves 620 and signatures save 128. The two tail changes individually save zero
+file bytes because alignment absorbs their payload reductions. Each feature
+passes B1/B2 identity and focused native checks; the final combined source
+`dc3bea8d686d06ef87d4ed9639573966894eb56a` passes five identical generations/names,
+all 492 suites, restore/recapture paths and strict signatures. Independent reviews
+cover each feature. Maki saves 49,248 bytes to 19,978,688; both actual-stdin board
+exports remain byte-identical. Evidence and replay:
+`~/.cache/tmp/habu-source-sharing-completion-20260928-01.md`.
+
+The preceding qualified engine is **2,477,047 bytes**. Packing the dictionary,
 bound-call and DATA-site startup tables saves **132,096 bytes** from the paired
 writeback parent. Every row, field, order, name, WID and alias is preserved;
-reusable AOT13 and snapshot10 remain unchanged. Additional saving from the
-2,625,655-byte goal baseline is now **148,608 bytes**, leaving 851,392 bytes to
-target. Engine SHA-256:
+reusable AOT13 and snapshot10 remain unchanged. At that step, additional saving
+from the 2,625,655-byte goal baseline was **148,608 bytes**, leaving 851,392 bytes
+to target. Engine SHA-256:
 `1e16786cb66df805dcbdef714928630b658cfe19b85d322e3a7c461bcce03f22`.
 Table sections save 134,672 bytes including new headers/padding; native decoder
 code costs 1,984 bytes, captured code is unchanged, container padding costs

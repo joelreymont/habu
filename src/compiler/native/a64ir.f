@@ -1239,10 +1239,12 @@ private
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
-: NAMED ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- )
+\ Name the rule and renderer, then validate and define the staged schema.
+: FINISH-OP ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder o:A64IR:opcode :}
    c b o RULE IR-SCHEMA:SET-RULE
-   c b o RENDERER IR-SCHEMA:SET-RENDERER ;
+   c b o RENDERER IR-SCHEMA:SET-RENDERER
+   c b IR-BUILD:DEFINE-OP ;
 
 \ All three forms share the list, and MOVN's answer is constrained by the
 \ emitter, which refuses a movn claiming to carry an address.
@@ -1260,8 +1262,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:MOVZ NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:MOVZ FINISH-OP ;
 
 : DEF-CODEADDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
@@ -1271,8 +1272,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:CODEADDR NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:CODEADDR FINISH-OP ;
 
 \ One operation, so spill insertion cannot split the relocatable carrier.
 \ Its result is a shared pointer, independent of the task-local DATA register.
@@ -1284,8 +1284,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:DATAADDR NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:DATAADDR FINISH-OP ;
 
 : DEF-MOVN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
@@ -1295,8 +1294,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:MOVN NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:MOVN FINISH-OP ;
 
 \ The instruction names one register field for both, so the schema declares
 \ result 0 tied to operand 0.
@@ -1310,8 +1308,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:MOVK NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:MOVK FINISH-OP ;
 
 : DEF-UNARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:A64IR:opcode :}
@@ -1321,8 +1318,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ The form exists so that the two registers CAN be different. A copy whose ends
 \ coalesce is a no-op, and whether to elide it is the allocator's decision.
@@ -1341,8 +1337,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 : DEF-LOGICAL-IMM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:A64IR:opcode :}
@@ -1353,8 +1348,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ The immediate is an ATTRIBUTE and not an operand, which is why the form costs
 \ no register. It declares no tie, and `sub` is not commutative: only the value
@@ -1368,8 +1362,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ Operands are rn, rm then the addend ra. It declares NO tie - ARM64 names four
 \ independent fields - and its addend may never be the zero register, because
@@ -1384,8 +1377,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:MADD NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:MADD FINISH-OP ;
 
 \ The one form that may raise, and five instructions: branch over the refusal
 \ when the divisor is not zero, the refusal - the error code, its push and the
@@ -1403,8 +1395,7 @@ private
    PURE-VALUE
    true IR-SCHEMA:SET-TRAP
    TARGET
-   c b A64IR-OPCODE:SDIV NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:SDIV FINISH-OP ;
 
 \ ---- the frame forms ---------------------------------------------------------
 : FRAME-MEM ( IR-SCHEMA:effect -- )
@@ -1422,8 +1413,7 @@ private
    IR--SCHEMA-EFFECT:WRITE FRAME-MEM
    TOTAL
    TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 : DEF-LDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
@@ -1435,8 +1425,7 @@ private
    IR--SCHEMA-EFFECT:READ FRAME-MEM
    TOTAL
    TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 : DEF-RESERVE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
@@ -1446,8 +1435,7 @@ private
    IR--SCHEMA-EFFECT:WRITE FRAME-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:RESERVE NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:RESERVE FINISH-OP ;
 
 : DEF-RELEASE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
@@ -1457,8 +1445,7 @@ private
    IR--SCHEMA-EFFECT:WRITE FRAME-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:RELEASE NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:RELEASE FINISH-OP ;
 
 \ ---- the data-stack forms ----------------------------------------------------
 \ Unrestricted aliasing is an ORDERING statement: it forbids moving one access
@@ -1481,8 +1468,7 @@ private
    IR--SCHEMA-EFFECT:WRITE DSTACK-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:DTAKE NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:DTAKE FINISH-OP ;
 
 : DEF-DLOAD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
@@ -1494,8 +1480,7 @@ private
    IR--SCHEMA-EFFECT:READ DSTACK-MEM
    TOTAL
    TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 : DEF-DSTORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
@@ -1507,8 +1492,7 @@ private
    IR--SCHEMA-EFFECT:WRITE DSTACK-MEM
    TOTAL
    TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 : DEF-DPUBLISH ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
@@ -1518,8 +1502,7 @@ private
    IR--SCHEMA-EFFECT:WRITE DSTACK-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:DPUBLISH NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:DPUBLISH FINISH-OP ;
 
 \ ---- the fused forms ---------------------------------------------------------
 \ The machine writes the base register back as part of a load or a store, so one
@@ -1543,8 +1526,7 @@ private
    IR--SCHEMA-EFFECT:WRITE DSTACK-MEM
    TOTAL
    TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 : DEF-DPOP ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
@@ -1556,8 +1538,7 @@ private
    IR--SCHEMA-EFFECT:READ-WRITE DSTACK-MEM
    TOTAL
    TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ ---- the two addressed forms -------------------------------------------------
 : ADDR-MEM ( IR-SCHEMA:effect -- )
@@ -1578,8 +1559,7 @@ private
    IR--SCHEMA-EFFECT:READ ADDR-MEM
    TOTAL
    TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 : DEF-ASTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a:IR-ID:ir-type-id v:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
@@ -1591,8 +1571,7 @@ private
    IR--SCHEMA-EFFECT:WRITE ADDR-MEM
    TOTAL
    TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ The width is the FORM: the machine has separate Ldrb and Strb encodings. The
 \ loaded byte arrives zero-extended, which is what `c@` leaves.
@@ -1606,8 +1585,7 @@ private
    IR--SCHEMA-EFFECT:READ ADDR-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:ABLOAD NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:ABLOAD FINISH-OP ;
 
 : DEF-ASTRB ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
@@ -1619,8 +1597,7 @@ private
    IR--SCHEMA-EFFECT:WRITE ADDR-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:ABSTORE NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:ABSTORE FINISH-OP ;
 
 \ ---- the comparison form -----------------------------------------------------
 \ ONE operation and three instructions - compare, set one on the condition,
@@ -1636,8 +1613,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:FLAG NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:FLAG FINISH-OP ;
 
 \ The operand is the LEFT-hand side and the immediate the right, so a rewriter
 \ may fold only the second operand of a comparison.
@@ -1651,8 +1627,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:FLAGI NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:FLAGI FINISH-OP ;
 
 \ ---- the two conditional-select forms ----------------------------------------
 
@@ -1666,8 +1641,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:SELZ NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:SELZ FINISH-OP ;
 
 : DEF-CMPSEL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
@@ -1681,8 +1655,7 @@ private
    PURE-VALUE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:CMPSEL NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:CMPSEL FINISH-OP ;
 
 \ ---- the two branch forms ----------------------------------------------------
 : DEF-BR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
@@ -1693,8 +1666,7 @@ private
    IR-SCHEMA:SET-PURE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:BR NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:BR FINISH-OP ;
 
 : DEF-BRZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
@@ -1704,8 +1676,7 @@ private
    IR-SCHEMA:SET-PURE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:BRZ NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:BRZ FINISH-OP ;
 
 \ The first successor is the CONDITION-HOLDS one, measured: putting the
 \ condition-false arm first costs the loop rows four to six per cent. Neither
@@ -1720,8 +1691,7 @@ private
    IR-SCHEMA:SET-PURE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:CMPBR NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:CMPBR FINISH-OP ;
 
 \ Every sentence of a64.cmpbr carries over; the operand it keeps is the LEFT-hand
 \ side, because the machine subtracts the immediate FROM the register.
@@ -1735,8 +1705,7 @@ private
    IR-SCHEMA:SET-PURE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:CMPBRI NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:CMPBRI FINISH-OP ;
 
 : DEF-RET ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
@@ -1746,8 +1715,7 @@ private
    IR-SCHEMA:SET-PURE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:RET NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:RET FINISH-OP ;
 
 \ ---- the call, and the link register it costs --------------------------------
 : DEF-CALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
@@ -1760,8 +1728,7 @@ private
    IR--SCHEMA-EFFECT:READ-WRITE DSTACK-MEM
    true IR-SCHEMA:SET-TRAP
    TARGET
-   c b A64IR-OPCODE:CALL NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:CALL FINISH-OP ;
 
 : DEF-WORDCALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
@@ -1774,8 +1741,7 @@ private
    IR--SCHEMA-EFFECT:READ-WRITE DSTACK-MEM
    true IR-SCHEMA:SET-TRAP
    TARGET
-   c b A64IR-OPCODE:WORDCALL NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:WORDCALL FINISH-OP ;
 
 \ A TERMINATOR and not a call. It carries NO adjustment, which is what makes it
 \ one instruction: the selector only chooses it where the pointer already stands
@@ -1788,8 +1754,7 @@ private
    IR--SCHEMA-EFFECT:WRITE DSTACK-TERM-MEM
    true IR-SCHEMA:SET-TRAP
    TARGET
-   c b A64IR-OPCODE:TAILCALL NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:TAILCALL FINISH-OP ;
 
 \ Its own form and not the tail branch with another target: a tail branch is how
 \ a routine RETURNS, and this publishes nothing and comes back from nowhere. It
@@ -1803,8 +1768,7 @@ private
    IR--SCHEMA-EFFECT:WRITE DSTACK-TERM-MEM
    true IR-SCHEMA:SET-TRAP
    TARGET
-   c b A64IR-OPCODE:TRAP NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:TRAP FINISH-OP ;
 
 \ The register they move is x30, which is named by the FORM: NEFF keeps it out
 \ of every general-register set, so no operand could ever name it.
@@ -1817,8 +1781,7 @@ private
    IR--SCHEMA-EFFECT:WRITE FRAME-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:LINKSAVE NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:LINKSAVE FINISH-OP ;
 
 : DEF-LNKLDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
@@ -1829,8 +1792,7 @@ private
    IR--SCHEMA-EFFECT:READ FRAME-MEM
    TOTAL
    TARGET
-   c b A64IR-OPCODE:LINKLOAD NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:LINKLOAD FINISH-OP ;
 
 \ ---- the floating forms ------------------------------------------------------
 
@@ -1848,8 +1810,7 @@ private
    PURE-VALUE
    TOTAL
    FP-TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 : DEF-FCROSS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder ti:IR-ID:ir-type-id to:IR-ID:ir-type-id
@@ -1860,8 +1821,7 @@ private
    PURE-VALUE
    TOTAL
    FP-TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b o FINISH-OP ;
 
 \ ---- the four float comparison forms -----------------------------------------
 
@@ -1875,8 +1835,7 @@ private
    PURE-VALUE
    TOTAL
    FP-TARGET
-   c b A64IR-OPCODE:FFLAG NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:FFLAG FINISH-OP ;
 
 : DEF-FFLAGZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id t:IR-ID:ir-type-id :}
@@ -1887,8 +1846,7 @@ private
    PURE-VALUE
    TOTAL
    FP-TARGET
-   c b A64IR-OPCODE:FFLAGZ NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:FFLAGZ FINISH-OP ;
 
 \ When either operand is a NaN the relation does NOT hold, whichever condition
 \ is named, so control goes to the SECOND successor - which is the whole of how
@@ -1903,8 +1861,7 @@ private
    IR-SCHEMA:SET-PURE
    TOTAL
    FP-TARGET
-   c b A64IR-OPCODE:FCMPBR NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:FCMPBR FINISH-OP ;
 
 : DEF-FCMPBRZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
@@ -1915,8 +1872,7 @@ private
    IR-SCHEMA:SET-PURE
    TOTAL
    FP-TARGET
-   c b A64IR-OPCODE:FCMPBRZ NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:FCMPBRZ FINISH-OP ;
 
 \ ---- the two selects that answer a double ------------------------------------
 
@@ -1930,8 +1886,7 @@ private
    PURE-VALUE
    TOTAL
    FP-TARGET
-   c b A64IR-OPCODE:SELZD NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:SELZD FINISH-OP ;
 
 : DEF-CMPSELD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id f:IR-ID:ir-type-id :}
@@ -1945,8 +1900,7 @@ private
    PURE-VALUE
    TOTAL
    FP-TARGET
-   c b A64IR-OPCODE:CMPSELD NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:CMPSELD FINISH-OP ;
 
 \ ---- the four selects whose flags an Fcmp wrote ------------------------------
 
@@ -1964,8 +1918,7 @@ private
    PURE-VALUE
    TOTAL
    FP-TARGET
-   c b A64IR-OPCODE:FCMPSEL NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:FCMPSEL FINISH-OP ;
 
 : DEF-FCMPSELZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id f:IR-ID:ir-type-id :}
@@ -1978,8 +1931,7 @@ private
    PURE-VALUE
    TOTAL
    FP-TARGET
-   c b A64IR-OPCODE:FCMPSELZ NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:FCMPSELZ FINISH-OP ;
 
 : DEF-FCMPSELD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
@@ -1993,8 +1945,7 @@ private
    PURE-VALUE
    TOTAL
    FP-TARGET
-   c b A64IR-OPCODE:FCMPSELD NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:FCMPSELD FINISH-OP ;
 
 : DEF-FCMPSELZD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
@@ -2007,8 +1958,7 @@ private
    PURE-VALUE
    TOTAL
    FP-TARGET
-   c b A64IR-OPCODE:FCMPSELZD NAMED
-   c b IR-BUILD:DEFINE-OP ;
+   c b A64IR-OPCODE:FCMPSELZD FINISH-OP ;
 
 \ ---- the table this dialect may fill -----------------------------------------
 \ The table's dialect name and version are fixed when the module is created, so
