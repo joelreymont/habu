@@ -15,6 +15,9 @@
 \   overflow  - PD-CAP+headroom pre-trust defers (appended to exec-vector.f, the
 \               earliest file where a defer is legal) overflow the table ->
 \               C-PD-DIE-FULL, exit 72, table-full message.
+\   name/sig  - a 49-byte qualified name and a 65-byte effect exceed their slot
+\               caps -> exact table-full diagnostic, original token, exit 72.
+\               The name case runs through evaluate; this remains a hard exit.
 \   undrained - the WHOLE bare-token drain region (between the PTD-REGRESSION-BLANK
 \               sentinels) is blanked, so DRAIN-PRETRUST is never called and the
 \               prefix's own real pre-trust defers stay captured-but-undrained.
@@ -126,6 +129,22 @@ variable LAST-ERR-U
 
 : APPEND-POS-DEFER ( -- )                             \ the positive case's ( -- n ) pre-trust defer
    s" src/core/exec-vector.f" SUB$ S\" \ndefer PTDX-POS ( -- n )\n" APPEND-FILE ;
+
+: LONG-NAME$ ( -- ptr u8 n )                         \ 49 bytes; its qualified tail is only 39
+   s" PTDX-NAME:ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLM" ;
+
+: APPEND-LONG-NAME ( -- )
+   SB-RESET
+   S\" \ns\" defer " SB-APPEND  LONG-NAME$ SB-APPEND
+   S\"  ( -- )\" evaluate\n" SB-APPEND
+   s" src/core/exec-vector.f" SUB$ SB$ APPEND-FILE ;
+
+: APPEND-LONG-SIG ( -- )                             \ a valid ( -- n ) effect with 65 inner bytes
+   SB-RESET
+   S\" \ndefer PTDX-SIG ( -- n" SB-APPEND
+   60 0 do 32 SB-APPEND-C loop
+   S\" )\n" SB-APPEND
+   s" src/core/exec-vector.f" SUB$ SB$ APPEND-FILE ;
 
 \ check-hook.f installs the check hook at its own load, so source appended AFTER it
 \ compiles CHECKED -- the selftest's `is` must certify through the drained
@@ -250,7 +269,7 @@ variable LAST-ERR-U
 
 \ The tree is copied ONCE; each case patches at most three files and restores
 \ the pristine copies afterwards (cases are sequential and independent), so the
-\ suite pays one tree copy and one cold engine build for all six child boots.
+\ suite pays one tree copy and one cold engine build for all eight child boots.
 : RESTORE-FILES ( -- )
    s" src/core/exec-vector.f" COPY-ONE
    s" src/core/check-hook.f" COPY-ONE
@@ -271,6 +290,26 @@ variable LAST-ERR-U
    s" pre-trust defer table overflow exits 72" SPAWN-RC 72 CHILD-RC
    s" overflow names the table-full diagnostic" T-LABEL
    ERR$ s" pre-trust defer table full" CONTAINS? TTRUE
+   RESTORE-FILES ;
+
+: SLOT-FULL-ERR ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   SB-RESET  s" hb: pre-trust defer table full: " SB-APPEND
+   a u SB-APPEND  10 SB-APPEND-C
+   ERR$ SB$ T$= ;
+
+: NAME-OVERFLOW-CASE ( -- )
+   APPEND-LONG-NAME
+   s" pre-trust original name overflow hard exits 72 inside evaluate" SPAWN-RC 72 CHILD-RC
+   s" name overflow preserves the complete original qualified token" T-LABEL
+   LONG-NAME$ SLOT-FULL-ERR
+   RESTORE-FILES ;
+
+: SIG-OVERFLOW-CASE ( -- )
+   APPEND-LONG-SIG
+   s" pre-trust effect overflow exits 72" SPAWN-RC 72 CHILD-RC
+   s" effect overflow preserves the diagnostic and defer token" T-LABEL
+   s" PTDX-SIG" SLOT-FULL-ERR
    RESTORE-FILES ;
 
 \ Blank the bare DRAIN-PRETRUST token outright so the drain never runs. No
@@ -345,6 +384,8 @@ public
    FRESH-ROOT
    POSITIVE-CASE
    OVERFLOW-CASE
+   NAME-OVERFLOW-CASE
+   SIG-OVERFLOW-CASE
    UNDRAINED-CHECKED-CASE
    HOOK-BLANK-CONTROL-CASE
    EARLY-SEAL-CONTROL-CASE

@@ -3558,24 +3558,24 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    LQUALIFYDEF LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal LHIDXADD BL
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qnone qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done :}
+   {: qscan qcheck qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done :}
    C-QUALIFY-SEAL-GUARD
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
    14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
    9 11 0 ADDI,  10 12 0 ADDI,  17 0 MOVZ,
    qscan LBL,
-      17 10 CMP,  C-GE qnone BCOND,
+      17 10 CMP,  C-GE qcheck BCOND,
       14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ qhas BCOND,
       17 17 1 ADDI,  qscan B,
-   qnone LBL,
+   qcheck LBL,
       LDEFKWGUARD LABEL@ BL,
       C-QUALIFY-CAP
       C-REJECT-DUP-DEF
       done B,
    qhas LBL,
-      17 0 CMPI,  C-EQ qnone BCOND,
-      14 17 1 ADDI,  14 10 CMP,  C-GE qnone BCOND,
+      17 0 CMPI,  C-EQ qcheck BCOND,
+      14 17 1 ADDI,  14 10 CMP,  C-GE qcheck BCOND,
       14 0 MOVZ,  14 DATA DEF-WL-CELL STR,
       14 17 1 ADDI,
    qtail LBL,
@@ -3622,10 +3622,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    qapply LBL,
       11 DATA DEF-TKA-CELL LDR,  11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
       12 DATA DEF-TKL-CELL LDR,  12 12 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
-      LDEFKWGUARD LABEL@ BL,
-      C-QUALIFY-CAP
-      C-REJECT-DUP-DEF
-      done B,
+      qcheck B,
    qbad LBL,
       $4B C-QUALIFY-FAIL
    done LBL,
@@ -4069,28 +4066,25 @@ public
    0 72 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-PD-CAPTURE ( -- )                                \ record this defer's (name,sig) into the next pending slot
-   LBL LBL LBL {: capok nameok sigok :}
+   LBL LBL {: full done :}
    12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,           \ x12 = &band
-   13 12 0 LDR,  14 PD-CAP MOVZ,  13 14 CMP,  C-LT capok BCOND,
-      C-PD-DIE-FULL
-   capok LBL,
+   13 12 0 LDR,  14 PD-CAP MOVZ,  13 14 CMP,  C-GE full BCOND,
    15 PD-SLOT MOVZ,  15 13 15 MUL,                   \ x15 = count*PD-SLOT
    14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,           \ x14 = slot base (survives C-PUSH-DREC-NAME/copies)
    C-PUSH-DREC-NAME                                  \ G: name-addr, name-len (clobbers x9,x10,x12,x13)
    10 G-POP  9 G-POP                                 \ x10=name-len  x9=name-addr
-   16 PD-NAME-CAP MOVZ,  10 16 CMP,  C-LS nameok BCOND,
-      C-PD-DIE-FULL
-   nameok LBL,
+   16 PD-NAME-CAP MOVZ,  10 16 CMP,  C-HI full BCOND,
    10 14 PD-NLEN-OFF STR,
    16 14 PD-NAME-OFF ADDI,  5 10 0 ADDI,  C-PD-COPY
    9 DATA TSIG-A-CELL LDR,  10 DATA TSIG-U-CELL LDR, \ x9=sig-addr x10=sig-len
-   16 PD-SIG-CAP MOVZ,  10 16 CMP,  C-LS sigok BCOND,
-      C-PD-DIE-FULL
-   sigok LBL,
+   16 PD-SIG-CAP MOVZ,  10 16 CMP,  C-HI full BCOND,
    10 14 PD-SLEN-OFF STR,
    16 14 PD-SIG-OFF ADDI,  5 10 0 ADDI,  C-PD-COPY
    12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,           \ reload &band (C-PUSH-DREC-NAME clobbered x12)
-   13 12 0 LDR,  13 13 1 ADDI,  13 12 0 STR, ;       \ count++
+   13 12 0 LDR,  13 13 1 ADDI,  13 12 0 STR,          \ count++
+   done B,
+   full LBL,  C-PD-DIE-FULL
+   done LBL, ;
 
 : C-PRETRUST-READY? ( -- )
    LBL {: done:label :}
