@@ -110,8 +110,25 @@ metadata and alignment absorb the file saving. Maki generated code falls
 B2–B5 and sidecar equality, all 491 suites, strict signatures and both Maki
 board smokes pass. The smokes execute through stdin and retain exact accepted
 board hashes. Evidence: `~/.cache/tmp/habu-native-scalar-completion-20260928-01.md`.
-The scalar dot is closed; name interning and the separately measured native
-shift, divisor-guard and boolean gaps remain unfinished.
+The scalar dot is closed; the separately measured native shift, divisor-guard
+and boolean gaps remain unfinished.
+
+String interning for checker symbol names now preserves distinct identities,
+visibility and effects while reusing identical folded name bytes. The qualified
+engine is **2,790,775 bytes**, down **16,512 bytes (0.59%)**, SHA-256
+`614b033636dab64e95d6195ccb29c8c08d6463765dbd625e603cd9cb2cba1c0c`.
+DATA values fall 16,804 bytes and bitmap storage 192 bytes; added compiler code
+costs 632 bytes. The live string pool falls 168,780 to 154,056 bytes. This is
+132,096 bytes (4.52%) smaller than the preceding `6c64049ce625` baseline.
+
+The runtime index adds 512 KiB per mapping at current capacity. Existing reset
+abandons mappings without unmapping them; this change does not repair or measure
+that accumulation. One serial uncached build per version took 54.95 seconds
+before and 54.85 after, an informational pair rather than a statistical claim.
+Independent source review, native B2–B5/sidecar identity, all 492 suites, retained
+two-image capture/replay and strict signatures pass. Maki is 16,416 bytes smaller
+with both boards byte-identical. Evidence and limits:
+`~/.cache/tmp/habu-name-intern-completion-20260928-02.md`.
 
 ## Measured baseline
 

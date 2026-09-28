@@ -5576,7 +5576,11 @@ create SYM-XFER SYM-REC allot
 \ They contain every live symbol, so the same LIFO retirement removes them.
 13 constant HT-PKG-BKT
 14 constant HT-PKG-NEXT
-15 constant HIDX-TABLES
+\ The name-only chains reuse folded name bytes across package and visibility
+\ keys. Every row is linked so a scope can retire its rows newest-first.
+15 constant HT-NAME-BKT
+16 constant HT-NAME-NEXT
+17 constant HIDX-TABLES
 $CBF29CE484222325 constant HIDX-FNV-BASIS
 $100000001B3 constant HIDX-FNV-PRIME
 PTR-VARIABLE HIDX-MEM
@@ -5662,9 +5666,15 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
 : HIDX-BKT ( n -- ptr n )
    HT-BKT HIDX-CELL ;
 
+: HIDX-STR-BKT ( ptr u8 n n -- ptr n ) {: a:ptr u:n tbl:n :}
+   HIDX-FNV-BASIS HIDX-H ! a u HIDX-H$
+   HIDX-H @ SYM-CAP 1 - and tbl HIDX-CELL ;
+
 : HIDX-PKG-BKT ( ptr u8 n -- ptr n )
-   HIDX-FNV-BASIS HIDX-H ! HIDX-H$
-   HIDX-H @ SYM-CAP 1 - and HT-PKG-BKT HIDX-CELL ;
+   HT-PKG-BKT HIDX-STR-BKT ;
+
+: HIDX-NAME-BKT ( ptr u8 n -- ptr n )
+   HT-NAME-BKT HIDX-STR-BKT ;
 
 : HIDX-ROW-HASH ( n -- n ) {: id:n :}
    id SYM-PKG$ id SYM-ROW SYM.VIS @ id SYM-NAME$ HIDX-HASH ;
@@ -5682,7 +5692,10 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
    id b !
    id SYM-PKG$ HIDX-PKG-BKT {: pb:ptr :}
    pb @ id HT-PKG-NEXT HIDX-CELL !
-   id pb ! ;
+   id pb !
+   id SYM-NAME$ HIDX-NAME-BKT {: nb:ptr :}
+   nb @ id HT-NAME-NEXT HIDX-CELL !
+   id nb ! ;
 
 : HIDX-SYM-POP ( n -- ) {: id:n :}
    id HIDX-ROW-HASH HIDX-BKT {: b:ptr :}
@@ -5690,7 +5703,10 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
    id HT-NEXT HIDX-CELL @ b !
    id SYM-PKG$ HIDX-PKG-BKT {: pb:ptr :}
    pb @ id <> IF s" checker: package index corrupt" 76 die THEN
-   id HT-PKG-NEXT HIDX-CELL @ pb ! ;
+   id HT-PKG-NEXT HIDX-CELL @ pb !
+   id SYM-NAME$ HIDX-NAME-BKT {: nb:ptr :}
+   nb @ id <> IF s" checker: name index corrupt" 76 die THEN
+   id HT-NAME-NEXT HIDX-CELL @ nb ! ;
 
 \ HIDX-SYMS-RETIRE ( n -- ) : pop rows [n, SYM-N) before a scope restores SYM-N.
 : HIDX-SYMS-RETIRE {: keep:n :}
@@ -5733,6 +5749,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    0 begin dup SYM-CAP < while
       0 over HT-BKT HIDX-CELL !
       0 over HT-PKG-BKT HIDX-CELL !
+      0 over HT-NAME-BKT HIDX-CELL !
       1 +
    repeat drop ;
 
@@ -5826,8 +5843,17 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    off id SYM-PKG-A-FIELD !
    len id SYM-ROW SYM.PKG-U ! ;
 
+: SYM-NAME-INTERN ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   HIDX-ENSURE
+   a u HIDX-NAME-BKT @
+   begin dup 0 <> while
+      dup SYM-NAME$ a u SYM-STR=CI IF SYM-NAME-A-FIELD @ u EXIT THEN
+      HT-NAME-NEXT HIDX-CELL @
+   repeat drop
+   a u SYM-COPY-FOLD ;
+
 : SYM-NAME! ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
-   a u SYM-COPY-FOLD {: off:n len:n :}
+   a u SYM-NAME-INTERN {: off:n len:n :}
    off id SYM-NAME-A-FIELD !
    len id SYM-ROW SYM.NAME-U ! ;
 
@@ -5858,7 +5884,6 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 : SYM-INTERN ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n name nameu:n :}
    pkg pkgu vis name nameu SYM-FIND IF EXIT THEN drop
    SYM-ENSURE
-   pkgu nameu + SYM-STR-ENSURE
    SYM-N @ SYM-ID !
    pkg pkgu vis name nameu SYM-ID @ SYM-SET
    SYM-ID @ 1 + SYM-N !

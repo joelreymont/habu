@@ -474,6 +474,10 @@ SUITE control-capture
    test/control-capture.f
 ;SUITE
 
+SUITE name-intern-capture
+   test/name-intern-capture.f
+;SUITE
+
 SUITE loop-obligations
    test/loop-obligations.f
 ;SUITE
