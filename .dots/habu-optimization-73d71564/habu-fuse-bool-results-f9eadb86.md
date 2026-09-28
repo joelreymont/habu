@@ -1,10 +1,34 @@
 ---
-title: Fuse boolean results into branches at tier 1
+title: Reduce repeated boolean normalization
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-16T16:09:22.609973+03:00"
 ---
+
+## Rejected implementation
+
+Candidate `bcd52c01400a372a4e5e469945ee0137830474c5` correctly combines
+single-use integer comparisons followed by `0=`, including shared values,
+canonical masks, overlapping chains and branch/select consumers. Independent
+review passed after correcting a consuming equality's trap-schema check.
+Focused semantic tests, five-generation engine/names equality, signatures and
+both actual Maki board smokes passed. The full 492-suite registry was not run.
+
+The candidate adds 1,556 bytes of optimizer code and removes 1,680 emitted
+bytes: only **124 net AOT code bytes saved**. Other serialized content grows
+200 bytes, so engine payload grows **76 bytes** and the signed file remains
+2,790,775 bytes. Maki code falls 660 bytes, exactly offset by DATA/other growth;
+its file remains 20,553,248 bytes. The local REQUIRE-BOOT-OPEN? body shrinks
+48 to 36 bytes, but that does not justify the aggregate tradeoff.
+
+Rejected for landing; no candidate source or tests are integrated. Keep this
+task open for a smaller implementation with a measured overall benefit.
+Receipt: `~/.cache/tmp/habu-native-bool-completion-20260928-01.md`.
+Source/test patch: `~/.cache/tmp/habu-native-bool-fix-20260928-01/rejected.patch`,
+SHA-256 `7e789f46b075e7bc18b7619f42651030d55c1aeec0c732e4f655db8d90ae0669`.
+
+## Requirement and evidence
 
 Current engine `24003f017a60` at source `e337d11fc098` already fuses a single-use
 comparison into its branch: native select.f:1719 and baked CORE-STR= contain the

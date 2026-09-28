@@ -16,6 +16,15 @@ claim; an RCA or candidate saving is not completed implementation.
 
 ## Current thin-engine work
 
+The attempted boolean normalization reduction is rejected: its optimizer costs
+1,556 code bytes to remove 1,680 emitted bytes, while other serialized content
+grows 200 bytes. Engine payload therefore grows 76 bytes, with file size
+unchanged. Maki's 660-byte code saving is exactly offset by DATA/other growth.
+The source and patch are preserved in the open boolean dot; none is integrated.
+Focused tests, native convergence and Maki smokes passed, but the full registry
+was not run after the size rejection. The installed divisor product below is
+unchanged. Evidence: `~/.cache/tmp/habu-native-bool-completion-20260928-01.md`.
+
 Proven nonzero scalar divisors now select a single native division instruction;
 unknown and zero divisors retain the guarded throw path. The qualified engine
 has **4,968 fewer AOT code bytes** and **344 fewer throw-call entries** (1,376
