@@ -77,6 +77,7 @@ variable PRIOR-TARGET-U
 variable M-OPEN                      \ a compilation is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
+variable M-DOES-FRAME                \ checker-owned transaction spans a split compilation
 variable M-DOES                      \ byte split after `does> `, or zero
 variable M-DOES-ROW                  \ the tape row that carries `does>`
 PTR-VARIABLE M-DOES-SIG
@@ -244,6 +245,8 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
 
 
 : CHECK-DOES-SPLIT ( -- n )
+   CHECKER-OWNER:DOES-BEGIN
+   1 M-DOES-FRAME !
    M-DOES @ {: cut:n :}
    cut 6 < cut M-SRC-U @ > or if E-NCOMP-TEXT throw then
    M-SRC @ cut 6 - CHECK-PARENT
@@ -468,7 +471,8 @@ create SPELL-BUF SPELL-CAP allot
    NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    p r ELABORATE
    EMITTED
-   PUBLISH-IT ;
+   PUBLISH-IT
+   0 M-DOES-FRAME ! ;
 
 \ Asked INSIDE the context so the backend always leaves the ordinary way and
 \ gives its arenas back.
@@ -567,6 +571,13 @@ INSTALL-FORGET
 \ recorded. Before then the checker either published no signature or already
 \ rolled its own failed scan back.
 : RETRACT ( -- )
+   M-DOES @ 0<> if
+      M-DOES-FRAME @ 0<> if
+         NULL-PTR 0 false CHECKER-OWNER:DOES-FINISH
+         0 M-DOES-FRAME !
+      then
+      exit
+   then
    TRUSTED? if
       LATEST-NAME$ CHECKER-OWNER:USIG-TRUNCATE
       exit
@@ -597,7 +608,10 @@ INSTALL-FORGET
    0 M-RC !
    [: IN-CONTEXT ;] catch {: entry-rc:n :}
    0 M-OPEN !
-   entry-rc 0<> if entry-rc throw then
+   entry-rc 0<> if
+      M-DOES-FRAME @ 0<> if NULL-PTR 0 false CHECKER-OWNER:DOES-FINISH then
+      entry-rc throw
+   then
    M-RC @ {: rc:n :}
    rc 0 <> if REPORT-FAILURE RETRACT rc throw then ;
 
@@ -609,6 +623,7 @@ INSTALL-FORGET
    KEEP-PRIOR
    0 M-IN ! 0 M-OUT !
    0 M-VERDICT !
+   0 M-DOES-FRAME !
    DOES-BYTE@ M-DOES !
    DOES-SIG-FIELD @ M-DOES-SIG !
    data-base TCSIG-U-CELL + @ M-DOES-SIG-U !

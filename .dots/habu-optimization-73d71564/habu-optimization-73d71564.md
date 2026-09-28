@@ -53,6 +53,19 @@ byte-identical accepted boards; engine and Maki signatures verify strictly.
 Evidence and artifacts: `~/.cache/tmp/habu-thin-internal-completion-20260928-02.md`.
 The internal-name and product/whitebox test dots are closed.
 
+The next capture E2E exposed a native `does>` publication defect: a resident
+definer ran correctly but source verification could not recover its created-word
+effect. `habu-publish-native-does-10a4b58a` fixes publication through the checker
+owner and holds its existing rollback transaction through native publication.
+Rejected clauses and later failures restore signatures, control/CREATES, symbols
+and extension state; they cannot leave a phantom created word. The public E2E
+reproduced both failures before their repairs. Independent review, source-only
+replay, native B2–B5 byte equality, all 490 suites and the two byte-identical Maki
+board smokes pass. The engine remains **2,856,823 bytes**, now SHA-256
+`77270a103f32c6e7422554df65a36fa06680186d01ce50383aeea64c4b76e2b6`.
+This correctness prerequisite adds no file-size cost and is the new baseline
+for control compaction. Evidence: `~/.cache/tmp/habu-native-creates-fix-20260928-01.md`.
+
 Next compact captured NORET control history under
 `habu-compact-captured-control-4969c5eb`, preserving primitive, saved-boundary
 and current states. The measured census warrants implementation but is not a

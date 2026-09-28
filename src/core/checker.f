@@ -110,6 +110,9 @@ create OWNER-STORAGE
    0 , 0 , 0 , 0 ,
    0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 ,
+   0 ,
+   0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -127,7 +130,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:NATIVE-DOES-COMMIT-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -7206,18 +7209,18 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 \ points and neither carries the other's half: CHECK-DOES! is given the clause
 \ body and the clause signature but NOT the definer's name, and the definer's
 \ own body check learns the name and records the effect but never sees the
-\ clause. The engine runs them back to back for one definition — the clause
-\ first, because CHECK-DOES! resets the publication latches, then the definer's
-\ own body (habu2.f EM-COMPILE-PUBLISH-TRUSTED) — so the created-word effect
-\ crosses from the first to the second exactly the way RECW and RECMI below
-\ cross from a record to the publish tail: by value, through one latch.
+\ clause. The retained engine checks the clause first, then the definer's own
+\ body (habu2.f EM-COMPILE-PUBLISH-TRUSTED), so the created-word effect crosses
+\ to the parent record through this latch. The native compiler checks the parent
+\ first to keep its tape in source order, then takes state 1 explicitly at
+\ publication through CHECKER-NATIVE-DOES-FINISH.
 \
 \ DOESPEND IS WHAT MAKES IT FAIL CLOSED, and it has to, because the SOURCE
 \ pre-verifier runs the same two entry points in the OTHER order (verify-source
 \ VERIFY-DOES checks the definer's own body, then the clause), so a latch left
 \ armed there would be consumed by the NEXT definition's record and would teach
 \ the checker that an ordinary word creates something. The state machine admits
-\ only the engine's order:
+\ only the retained engine's order for automatic record consumption:
 \   0  nothing latched
 \   1  a clause certified: the NEXT body check is the definer's own
 \   2  that body check is under way; its record — and only its record — takes it
@@ -14127,8 +14130,10 @@ s" <input>" DIAG-FILE!
 \ lands on the trusted symbol's CREATES cell through the one writer of that cell.
 \ Before it, the state-1 latch was taken for nothing and cleared right here (the
 \ take in STORE), so `TASK:TASK T1` left T1 undefined for the source pre-verifier.
-\ The step is unconditional, like every other: a latch in any other state dies
-\ here rather than waiting for a record that is not its definer's.
+\ The native compiler registers a trusted parent before checking its clause;
+\ its later publication explicitly associates the accepted pair instead.
+\ This step is unconditional: a latch in any other state dies here rather than
+\ waiting for a record that is not its definer's.
 : TRUST-DECL {: na:ptr nu:n sa:ptr su:n :}
    DOES-EFF-STEP
    na nu sa su TRUST-USIG! ;
@@ -17449,9 +17454,10 @@ package CHECKER-REG
    ba bu DVERD @ CHECKER-CERT:PRODUCE ;
 
 \ THE TWO FRONT ENDS ARE TWO WORDS, because only one of them may latch. The
-\ ENGINE reaches CHECK-DOES! at the `;` of a definition it is compiling, BEFORE
-\ that definition's own body is checked and recorded, so the created-word effect
-\ it certifies here belongs to the record that follows. The SOURCE pre-verifier
+\ retained ENGINE reaches CHECK-DOES! at the `;` of a definition it is compiling,
+\ BEFORE that definition's own body is checked and recorded, so the created-word
+\ effect it certifies here belongs to the record that follows. Native compilation
+\ scans the parent first and uses CHECKER-NATIVE-DOES-FINISH. The SOURCE pre-verifier
 \ reaches the clause AFTER the definer's own body (verify-source VERIFY-DOES):
 \ the next record it publishes belongs to the NEXT definition, and a latch left
 \ armed here would be taken by it — measured, a conditional wrapper in
@@ -17466,6 +17472,39 @@ package CHECKER-REG
 : CHECKER-SOURCE-DOES! {: ba bu sa su :}
    ba bu sa su CHECK-DOES-RUN
    DOES-EFF-CLEAR ;
+
+\ Native compilation scans the parent first to keep the observer tape in source
+\ order. Its accepted clause therefore arrives after the parent's effect record.
+\ The existing checker rollback frame spans that split and native publication:
+\ a failed clause or later compile error restores the prior effect, control and
+\ symbol state together, including any earlier version of the same symbol.
+\ An open frame keeps RBF-DEPTH nonzero, so snapshot/compaction cannot relocate
+\ its saved cursors. On success, the publisher associates the accepted clause
+\ with the accepted parent, then finalizes the frame after all dictionary rows
+\ and pending facts publish.
+: CHECKER-NATIVE-DOES-BEGIN ( -- )
+   RBF-PUSH ;
+
+: CHECKER-NATIVE-DOES-PUBLISH ( ptr u8 n -- ) {: a:ptr u:n :}
+   DOESPEND @ 1 <> IF DOES-EFF-CLEAR EXIT THEN
+   DOESEFF @ {: creates:n :}
+   DOES-EFF-CLEAR
+   creates 0= IF EXIT THEN
+   a u CHECKER-RECORD-SYM? {: sym:n :}
+   sym CHECKER-FIND-USIG-SYM 0= IF EXIT THEN
+   sym EFFECT-EXTERNAL-SYM? 0= IF EXIT THEN
+   creates sym NORET-CREATES@ = IF EXIT THEN
+   sym sym CTL-FLAGS-SYM sym CTL-MASKS-SYM creates NORET-APPEND ;
+
+: CHECKER-NATIVE-DOES-FINISH ( ptr u8 n bool -- )
+   {: a:ptr u:n committed:bool :}
+   committed 0= IF
+      DOES-EFF-CLEAR WRAP-CLEAR RBF-POP EXIT
+   THEN
+   a u CHECKER-NATIVE-DOES-PUBLISH ;
+
+: CHECKER-NATIVE-DOES-COMMIT ( -- )
+   RBF-FINALIZE ;
 
 \ The retained compiler checked the replacement prefix before its new hooks
 \ existed. Transfer those actual graphs into the new owner before enabling
@@ -17677,6 +17716,9 @@ package CHECKER-REG
 ' CHECKER-CREATES-SYM? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF + xt!
 ' CHECKER-RECORD-CREATED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF + xt!
 ' CHECKER-SOURCE-DOES! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF + xt!
+' CHECKER-NATIVE-DOES-FINISH DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
+' CHECKER-NATIVE-DOES-BEGIN DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-BEGIN-OFF + xt!
+' CHECKER-NATIVE-DOES-COMMIT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-COMMIT-OFF + xt!
 
 \ The first cold checker has no retained owner to transfer from. Publish it
 \ only after every callback is installed. A replacement keeps the nonzero

@@ -180,8 +180,10 @@ public
    idx fn size COMMIT
    fn off +  size off - RECORDED-LEN  DOES-RECORD
    idx APPEND-PENDING
+   idx XREF-REC XREF-NAME$ true CHECKER-OWNER:DOES-FINISH
    idx PENDING-FACTS
-   idx 1+ APPEND-PENDING ;
+   idx 1+ APPEND-PENDING
+   CHECKER-OWNER:DOES-COMMIT ;
 
 : NEXT-SLOT ( -- n )
    cp@ ;

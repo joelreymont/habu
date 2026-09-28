@@ -72,6 +72,7 @@ TRUSTED: AS-CHECK ( n -- [ ptr u8 n -- n ] ) ;
 TRUSTED: AS-TAPE-INSTALL ( n -- [ n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- ] ) ;
 TRUSTED: AS-ACTION ( n -- [ -- ] ) ;
 TRUSTED: AS-DOES-CHECK ( n -- [ ptr u8 n ptr u8 n -- n ] ) ;
+TRUSTED: AS-DOES-FINISH ( n -- [ ptr u8 n bool -- ] ) ;
 TRUSTED: AS-N ( n -- [ -- n ] ) ;
 TRUSTED: AS-BOOL ( n -- [ -- bool ] ) ;
 TRUSTED: AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
@@ -149,6 +150,21 @@ TRUSTED: DOES-CHECK ( ptr u8 n ptr u8 n -- n )
    CHECKER-OWNER-ABI:DOES-CHECK-OFF s" does> split" FIELD
    dup 0= if drop CHECK-DOES! exit then
    AS-DOES-CHECK execute ;
+
+TRUSTED: DOES-FINISH ( ptr u8 n bool -- )
+   CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF s" does> publication" FIELD
+   dup 0= if drop CHECKER-NATIVE-DOES-FINISH exit then
+   AS-DOES-FINISH execute ;
+
+TRUSTED: DOES-BEGIN ( -- )
+   CHECKER-OWNER-ABI:NATIVE-DOES-BEGIN-OFF s" does> rollback frame" FIELD
+   dup 0= if drop CHECKER-NATIVE-DOES-BEGIN exit then
+   AS-ACTION execute ;
+
+TRUSTED: DOES-COMMIT ( -- )
+   CHECKER-OWNER-ABI:NATIVE-DOES-COMMIT-OFF s" does> rollback release" FIELD
+   dup 0= if drop CHECKER-NATIVE-DOES-COMMIT exit then
+   AS-ACTION execute ;
 
 TRUSTED: DOES-IN ( -- n )
    CHECKER-OWNER-ABI:DOES-IN-OFF s" does> input cells" FIELD

@@ -1,10 +1,25 @@
 \ native-create-does.f - ordinary colon compiles defining words natively.
 
+1 set-tier
 require lib/test.f
 require src/compiler/native/compiler.f
+require src/habu/verify-source.f
+
+package NATIVE-CREATE-DOES-PUBLIC
+public
+: MAKE-CHECKED ( n -- ) create , does> ( -- ptr n ) ;
+TRUSTED: MAKE-TRUSTED ( n -- ) create , does> ( -- ptr n ) ;
+8 MAKE-CHECKED CHECKED-LIVE
+8 MAKE-TRUSTED TRUSTED-LIVE
+: CHECKED-VALUE ( -- n ) CHECKED-LIVE @ ;
+: TRUSTED-VALUE ( -- n ) TRUSTED-LIVE @ ;
+: PLAIN ( n -- n ) 1 + ;
+;package
 
 package NATIVE-CREATE-DOES-TEST
 private
+
+TRUSTED: EVAL ( ptr u8 n -- ) evaluate ;
 
 : MAKE-CELL ( n -- n )
    dup create ,
@@ -49,6 +64,51 @@ UNPATCHED @ 99 T=
 public
 
 : RUN ( -- )
+   s\" 9 NATIVE-CREATE-DOES-PUBLIC:MAKE-CHECKED CHECKED-MADE\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s\" 9 NATIVE-CREATE-DOES-PUBLIC:MAKE-TRUSTED TRUSTED-MADE\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a native checked definer publishes its created effect" T-LABEL
+   s" NC1 ( -- ptr n ) CHECKED-MADE" CHECK-QUIET-CANDIDATE! -1 T=
+   s" a native checked definer refuses a scalar use" T-LABEL
+   s" NC2 ( -- n ) CHECKED-MADE" CHECK-QUIET-CANDIDATE! 0 T=
+   s" a native trusted definer publishes its created effect" T-LABEL
+   s" NT1 ( -- ptr n ) TRUSTED-MADE" CHECK-QUIET-CANDIDATE! -1 T=
+   s" a native trusted definer refuses a scalar use" T-LABEL
+   s" NT2 ( -- n ) TRUSTED-MADE" CHECK-QUIET-CANDIDATE! 0 T=
+   s" both native definers create working storage" T-LABEL
+   NATIVE-CREATE-DOES-PUBLIC:CHECKED-VALUE 8 T=
+   NATIVE-CREATE-DOES-PUBLIC:TRUSTED-VALUE 8 T=
+   s\" 5 NATIVE-CREATE-DOES-PUBLIC:PLAIN PLAIN-MADE\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a native plain definition inherits no clause" T-LABEL
+   s" NP1 ( -- ptr n ) PLAIN-MADE" CHECK-QUIET-CANDIDATE! 1 T=
+   s" a refused native clause publishes no definer" T-LABEL
+   [: s\" : NATIVE-DOES-BAD ( n -- ) NATIVE-CREATE-DOES-PUBLIC:MAKE-CHECKED does> ( -- n ) ;\n"
+      EVAL ;]
+      E-NCOMP-VERDICT TTHROWSQ
+   s" a refused clause leaves no parent signature" T-LABEL
+   s" NB0 ( n -- ) NATIVE-DOES-BAD" CHECK-QUIET-CANDIDATE! 1 T=
+   s\" 9 NATIVE-DOES-BAD BAD-GHOST\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a refused wrapper parent cannot create a phantom child" T-LABEL
+   s" NB1 ( -- ptr n ) BAD-GHOST" CHECK-QUIET-CANDIDATE! 1 T=
+   s\" : NATIVE-DOES-AFTER ( n -- n ) 2 * ;\n" EVAL
+   s\" 6 NATIVE-DOES-AFTER AFTER-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" the definition after a refused clause inherits nothing" T-LABEL
+   s" NP2 ( -- ptr n ) AFTER-MADE" CHECK-QUIET-CANDIDATE! 1 T=
+   s" a later native refusal retracts an accepted clause" T-LABEL
+   [: s\" : NATIVE-DOES-LATE ( n -- ) NATIVE-CREATE-DOES-PUBLIC:MAKE-CHECKED does> ( -- ptr n ) [: 1 ;] drop ;\n"
+      EVAL ;] E-NELAB-QUOT TTHROWSQ
+   s" a later refusal retracts the parent signature" T-LABEL
+   s" NL0 ( n -- ) NATIVE-DOES-LATE" CHECK-QUIET-CANDIDATE! 1 T=
+   s\" 9 NATIVE-DOES-LATE LATE-GHOST\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a later failure cannot leave a wrapper child" T-LABEL
+   s" NL1 ( -- ptr n ) LATE-GHOST" CHECK-QUIET-CANDIDATE! 1 T=
+   s\" : NATIVE-DOES-NEXT ( n -- n ) 1 + ;\n" EVAL
+   s\" 6 NATIVE-DOES-NEXT NEXT-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" the next definition inherits no accepted clause from that refusal" T-LABEL
+   s" NP3 ( -- ptr n ) NEXT-MADE" CHECK-QUIET-CANDIDATE! 1 T=
+
    s" created storage and the published output signature survive" T-LABEL
    CREATED-CELL 41 T=
 

@@ -94,6 +94,9 @@ $278 constant VERIFY-FIND-SYM-OFF
 $280 constant VERIFY-CREATES-SYM-OFF
 $288 constant VERIFY-RECORD-CREATED-OFF
 $290 constant VERIFY-SOURCE-DOES-OFF
+$298 constant NATIVE-DOES-FINISH-OFF
+$2A0 constant NATIVE-DOES-BEGIN-OFF
+$2A8 constant NATIVE-DOES-COMMIT-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay
