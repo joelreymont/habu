@@ -98,6 +98,20 @@ package STACK-LIFECYCLE-TEST
    s" 1 TYPED-BUFFER SLOT pair : STORE ( -- ) 11 22 SW-PAIR:MAKE 0 SLOT ! ; : GO ( -- ) ['] STORE BUF STACK-ABI:PAGE-BYTES run-in-stack 0 SLOT @ SW-PAIR:UNMAKE . . ; GO"
    PAIR-RC 0 T= OUT OUTLEN @ S\" 22\n11\n" T$= ;
 
+\ These subjects select tier 1 before defining their bodies. VALUES publishes
+\ two distinct results at one native return; TAKE consumes them at one native
+\ call. The ratchet advances by one cell, so VALUES first crosses the data
+\ guard with its second result while its first result still fits.
+: NATIVE-TRANSFERS ( -- )
+   s" native calls and returns preserve two ordered results" T-LABEL
+   SB-RESET s" 1 set-tier " SB-APPEND GUARDED-BUF
+   s" variable ANSWER : VALUES ( -- n n ) 11 22 ; : TAKE ( n n -- ) 3 * swap 5 * + ANSWER ! ; : MOVE ( -- ) VALUES TAKE ; : GO ( -- ) ['] MOVE BUF STACK-ABI:PAGE-BYTES run-in-stack ANSWER @ . ; GO" SB-APPEND
+   SB$ CHILD-RC 0 T= OUT OUTLEN @ S\" 121\n" T$=
+   s" native two-result return faults on its second guarded cell" T-LABEL
+   SB-RESET s" 1 set-tier " SB-APPEND GUARDED-BUF
+   s" : VALUES ( -- n n ) 11 22 ; : MOVE ( -- ) VALUES 2drop ; " SB-APPEND
+   s" MOVE" RATCHET-TAIL SB$ REFUSED-DATA ;
+
 : WIDE-RETURN-GROUPS ( -- )
    s" wide return move uses exactly the last two slots" T-LABEL
    s" : MOVE ( -- ) 11 22 SW-PAIR:MAKE >r r@ drop r> drop ; STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! MOVE data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = ."
@@ -160,7 +174,7 @@ package STACK-LIFECYCLE-TEST
 
 public
 : RUN-WIDE ( -- )
-   T-RESET PRIMITIVE-GROUPS PAIR-TRANSFERS WIDE-RETURN-GROUPS LARGE-TRANSFERS MEDIUM-TRANSFERS T-REPORT ;
+   T-RESET PRIMITIVE-GROUPS PAIR-TRANSFERS NATIVE-TRANSFERS WIDE-RETURN-GROUPS LARGE-TRANSFERS MEDIUM-TRANSFERS T-REPORT ;
 
 ;package
 

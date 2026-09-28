@@ -23,6 +23,10 @@ public
 1  4 lshift constant COND-LIM    \ condition code
 1  2 lshift constant HW-LIM      \ move-wide shifted-half selector
 
+8 constant PAIR-SCALE
+-512 constant PAIR-MIN
+504 constant PAIR-MAX
+
 \ Nine bits at bit twelve, so a negative offset is its two's complement there.
 1 9 lshift 1 - constant SIMM9-MASK
 12 constant SIMM9-SHIFT
@@ -65,6 +69,10 @@ private
 : ?SIMM9 ( n -- n )
    dup dup SIMM9-LIM negate < swap SIMM9-LIM >= or
    IF s" asm: 9-bit signed offset out of range" ASM-EXIT-RC die THEN ;
+
+: ?SIMM7 ( n -- n )
+   dup dup -64 < swap 64 >= or
+   IF s" asm: 7-bit signed offset out of range" ASM-EXIT-RC die THEN ;
 
 : ?COND ( n -- n )
    dup COND-LIM OUT? IF s" asm: condition code out of range" ASM-EXIT-RC die THEN ;
@@ -238,6 +246,16 @@ public
    2dup mod 0 <> IF s" asm: operand is not a multiple of its scale" ASM-EXIT-RC die THEN
    / ;
 
+private
+
+\ Plain GPR64 pair: Rt, Rt2, Rn, signed byte offset, opcode. No writeback.
+: PAIR-WORD ( n n n n n -- n )
+   {: rt:n rt2:n rn:n off:n op:n :}
+   rt XREG?  rt2 XREG? 10 lshift or  rn XREG? 5 lshift or
+   off PAIR-SCALE SCALE/ ?SIMM7 $7F and 15 lshift or  op or MSK ;
+
+public
+
 \ move-wide: rd imm16 hw -> u32
 : MOVZHW ( n n n -- n )  XMW3 21 lshift swap 5 lshift or or $D2800000 or MSK ;
 
@@ -312,6 +330,13 @@ public
 : ENC-LDR ( n n n -- n ) XRDI 8 SCALE/ ?IMM12 $F9400000 RRI ;
 
 : ENC-STR ( n n n -- n ) XRDI 8 SCALE/ ?IMM12 $F9000000 RRI ;
+
+: ENC-LDP ( n n n n -- n )
+   {: rt:n rt2:n rn:n off:n :}
+   rt rt2 = IF s" asm: load pair repeats a destination" ASM-EXIT-RC die THEN
+   rt rt2 rn off $A9400000 PAIR-WORD ;
+
+: ENC-STP ( n n n n -- n ) $A9000000 PAIR-WORD ;
 
 : ENC-LDRB ( n n n -- n ) XRDI ?IMM12 $39400000 RRI ;
 

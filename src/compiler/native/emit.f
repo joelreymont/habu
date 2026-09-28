@@ -16,7 +16,8 @@
 \ (FALL-THRU?), a copy into its own register (COPY?), and a data-stack
 \ adjustment of nothing, and a reload of the frame cell just stored from the
 \ same register. Adjacent data-stack adjustments are combined before
-\ either pass, without changing the accepted IR. An elided instruction gets NO
+\ either pass, and plain stack transfers with identical source spans are paired,
+\ without changing the accepted IR. An elided instruction gets NO
 \ source-map row, because row k describes the instruction WORD@ k answers.
 \
 \ Block zero is written first and the block control leaves through last.
@@ -244,6 +245,12 @@ DYNAMIC-BUFFER D-MOVES n
 : DHEAD@ ( IR-ID:ir-op-id -- n ) DHEAD D-MOVES @ ;
 : DTAIL@ ( IR-ID:ir-op-id -- n ) DHEAD 1+ D-MOVES @ ;
 
+\ Zero retains the scalar operation, positive names its paired second operation
+\ (local ordinal plus one), and -1 is that consumed second operation.
+DYNAMIC-BUFFER PAIRS n
+: PAIR@ ( IR-ID:ir-op-id -- n ) IR-ID:OP-LOCAL PAIRS @ ;
+: PAIR! ( n IR-ID:ir-op-id -- ) IR-ID:OP-LOCAL PAIRS ! ;
+
 : RESERVE-SCRATCH ( -- )
    SCRATCH-SIZES!
    INSN-CAP INSN-BYTES * CELL 1- + CELL / CODE-BUF-RESERVE
@@ -260,6 +267,7 @@ DYNAMIC-BUFFER D-MOVES n
    BMAX B-KEEP-BUF-RESERVE
    FMAX F-START-BUF-RESERVE
    OMAX 2 * D-MOVES-RESERVE
+   OMAX PAIRS-RESERVE
    ;
 variable N-FUNS                        \ how many functions the emission holds
 
@@ -903,7 +911,10 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
    {: bk:IR-ID:ir-block-id home:n :}
    0
    bk OP-COUNT 0 ?do
-      bk i STORED-RELOAD? 0= if bk i OP-AT home OP-INSNS + then
+      bk i STORED-RELOAD? 0= if
+         bk i OP-AT {: id:IR-ID:ir-op-id :}
+         id PAIR@ 0 >= if id home OP-INSNS + then
+      then
    loop ;
 
 : START-AT ( n -- n )
@@ -921,6 +932,72 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
    id FUSED-SILENT? if 1- then
    id DZERO-MOVES -
    0= ;
+
+\ Only compiler-owned plain eight-byte GPR transfers participate. Neither the
+\ allocator nor the accepted IR is changed; both ordered accesses remain there.
+: PAIR-FORM? ( n -- bool ) {: k:n :}
+   k O-LOAD = k O-STORE = or k O-DLOAD = or k O-DSTORE = or ;
+
+: PAIR-LOAD? ( n -- bool ) {: k:n :}
+   k O-LOAD = k O-DLOAD = or ;
+
+: PAIR-BASE ( n -- n )
+   dup O-LOAD = swap O-STORE = or if A64M:SP-GPR else A64M:DSTACK-GPR then ;
+
+: PAIR-OFF ( IR-ID:ir-op-id -- n ) {: id:IR-ID:ir-op-id :}
+   id SLOT-AT PAIR-BASE A64M:SP-GPR = if id SLOT-OFF else id DSLOT-OFF then ;
+
+: PAIR-VALUE ( IR-ID:ir-op-id -- IR-ID:ir-value-id ) {: id:IR-ID:ir-op-id :}
+   id SLOT-AT PAIR-LOAD? if id 0 RESULT-AT else id 0 OPERAND-AT then ;
+
+: SAME-ORIGIN? ( IR-ID:ir-op-id IR-ID:ir-op-id -- bool )
+   {: first:IR-ID:ir-op-id second:IR-ID:ir-op-id :}
+   first SPAN-AT IR--SOURCE-SPAN:UNMAKE {: src:IR-ID:ir-source-id st:n ln:n :}
+   second SPAN-AT IR--SOURCE-SPAN:UNMAKE {: src2:IR-ID:ir-source-id st2:n ln2:n :}
+   src IR-ID:SOURCE-OWNER src2 IR-ID:SOURCE-OWNER IR-ID:MODULE-SAME?
+   src IR-ID:SOURCE-LOCAL src2 IR-ID:SOURCE-LOCAL = and
+   st st2 = and ln ln2 = and ;
+
+: PAIRABLE? ( IR-ID:ir-op-id IR-ID:ir-op-id -- bool )
+   {: first:IR-ID:ir-op-id second:IR-ID:ir-op-id :}
+   first SLOT-AT {: k:n :}
+   k PAIR-FORM? 0= if false exit then
+   second SLOT-AT k <> if false exit then
+   first ADDR-OF A64IR:ADDR-NONE <>
+   second ADDR-OF A64IR:ADDR-NONE <> or if false exit then
+   first PAIR-OFF {: off:n :}
+   off PAIR-MIN < off PAIR-MAX > or off PAIR-SCALE mod 0<> or if false exit then
+   second PAIR-OFF off PAIR-SCALE + <> if false exit then
+   first PAIR-VALUE {: v:IR-ID:ir-value-id :}
+   second PAIR-VALUE {: v2:IR-ID:ir-value-id :}
+   v IR-ID:VALUE-LOCAL A64RAV:FLOATING?
+   v2 IR-ID:VALUE-LOCAL A64RAV:FLOATING? or if false exit then
+   v REG-OF {: r:n :} v2 REG-OF {: r2:n :}
+   r A64M:LINK-GPR = r2 A64M:LINK-GPR = or if false exit then
+   k PAIR-LOAD? if
+      r r2 = r k PAIR-BASE = or r2 k PAIR-BASE = or if false exit then
+   then
+   first second SAME-ORIGIN? ;
+
+\ A pending transfer survives only an operation the existing emitter proves
+\ silent. Reload elision has its own authority and cannot become a pair member.
+\ Consuming a pair clears the pending index, so a three-transfer run cannot
+\ overlap. The caller starts a fresh pending index for every basic block.
+: PLAN-PAIR-OP ( n IR-ID:ir-block-id n -- n )
+   {: prev:n bk:IR-ID:ir-block-id at:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   0 id PAIR!
+   bk at STORED-RELOAD? if prev exit then
+   id OP-SILENT? if prev exit then
+   prev 0 >= if
+      bk prev OP-AT {: first:IR-ID:ir-op-id :}
+      first id PAIRABLE? if
+         id IR-ID:OP-LOCAL 1+ first PAIR!
+         -1 id PAIR!
+         -1 exit
+      then
+   then
+   id SLOT-AT PAIR-FORM? if at else -1 then ;
 
 : SILENT-BEFORE-TERM? ( IR-ID:ir-block-id -- bool )
    {: bk:IR-ID:ir-block-id :}
@@ -1565,10 +1642,30 @@ ARITH-ABI:E-DIV-ZERO invert constant DIV-CODE-IMM  \ the code as a Movn carries 
    k IFACE-FORM? 0= if exit then
    N-INS @ was - EM-IFACE +! ;
 
+: PUT-PAIR ( IR-ID:ir-op-id -- )
+   {: first:IR-ID:ir-op-id :}
+   MKEY first PAIR@ 1- IR-ID:PACK-OP {: second:IR-ID:ir-op-id :}
+   first SLOT-AT {: k:n :}
+   first
+   k PAIR-LOAD? if
+      first 0 RESULT-REG second 0 RESULT-REG
+      k PAIR-BASE first PAIR-OFF ENC-LDP
+   else
+      first 0 OPERAND-REG second 0 OPERAND-REG
+      k PAIR-BASE first PAIR-OFF ENC-STP
+   then APPEND
+   k EM-LAST !
+   k IFACE-FORM? if 1 EM-IFACE +! then ;
+
 : WALK-BLOCK ( IR-ID:ir-block-id n -- )
    {: bk:IR-ID:ir-block-id home:n :}
    bk OP-COUNT 0 ?do
-      bk i STORED-RELOAD? 0= if bk i OP-AT home PUT-COUNTED then
+      bk i STORED-RELOAD? 0= if
+         bk i OP-AT {: id:IR-ID:ir-op-id :}
+         id PAIR@ 0 > if id PUT-PAIR else
+            id PAIR@ 0= if id home PUT-COUNTED then
+         then
+      then
    loop ;
 
 \ Where a block's instructions begin is what every displacement was computed
@@ -1738,6 +1835,18 @@ public
       loop
    loop ;
 
+: PLAN-PAIRS ( -- )
+   N-FUNS @ 0 ?do
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      f FRAME-SHAPE!
+      f BLOCK-COUNT 0 ?do
+         f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+         -1
+         bk OP-COUNT 0 ?do bk i PLAN-PAIR-OP loop
+         drop
+      loop
+   loop ;
+
 : MEASURE ( -- )
    0
    N-FUNS @ 0 ?do
@@ -1840,6 +1949,7 @@ variable SCAN-K
    SHAPES-CK
    m ALLOC-CK
    PLAN-DMOVES
+   PLAN-PAIRS
    MEASURE
    WRITE-ALL
    WRITES-CK

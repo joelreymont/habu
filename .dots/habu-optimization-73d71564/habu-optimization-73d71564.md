@@ -22,8 +22,24 @@ JIT, AOT, source reconstruction and capture/restore behavior. Count complete
 product cost, including new optimizer code; do not aggregate hypothetical
 pattern savings or remove state without proving its semantic roots.
 
-Local effect links now store record-relative cell spans, preserving every
-record and history boundary. The qualified engine is **2,741,239 bytes**, down
+Native stack transfers now use paired GPR64 instructions when both operations
+have the same block, full source origin, base and adjacent safe slots. The
+qualified engine is **2,625,655 bytes**, down **115,584 bytes** from f805a05f.
+Generated AOT code falls **116,100 bytes**, including the new compiler cost.
+The 29,887 emitted pairs remove 119,548 instruction bytes directly; this does
+not claim every secondary layout difference is attributed. Engine SHA-256:
+`da27859f7f4b18137cac8ef4524c34a8137897402e8d11485790cff1d01b6bb0`.
+Independent source and fixture reviews, B2–B5 engine/names equality, all 492
+suites, guard-page diagnostics and strict signatures pass. Maki falls **295,488
+bytes** to **20,224,928**, with **300,340 fewer physical instruction bytes**;
+both board exports are byte-identical. Exact qualified source: `430083dcd2ea`.
+Evidence: `~/.cache/tmp/habu-native-pairs-completion-20260928-01.md` and
+`habu-native-pairs-fix-20260928-01/` in the same directory. Relative to the
+2,922,871-byte thin-engine baseline, total file savings are **297,216 bytes
+(10.17%)**. This meets the hundreds-of-kilobytes scale, not a 1 MB claim.
+
+Local effect links store record-relative cell spans, preserving every record
+and history boundary. That preceding engine was **2,741,239 bytes**, down
 **49,536 bytes**: DATA value section −41,964, AOT code +76, with another 8 bytes
 of span metadata. Net payload saving before padding/signature is 41,880 bytes.
 SHA-256: `6c9d991160f61a0d08a4c82ebfba1e5b80745d45b7b9fb980aa8f78bbf54bcad`.
@@ -32,13 +48,14 @@ signatures pass. Maki falls 32,832 bytes to 20,520,416; both board exports are
 byte-identical. Evidence: `~/.cache/tmp/habu-effect-links-fix-20260928-01/`
 and `habu-effect-links-review-20260928-01.md` in the same scratch parent.
 
-The next measured generated-code opportunity is paired GPR64 SP/x19 transfers:
-29,843 body/control-target-screened pairs, a 119,372-byte gross ceiling before
-exact source-provenance restrictions and compiler cost. Shared DATA literals
-have a separate 129,564-byte payload ceiling but require coherent pool/capture
-ownership. Neither estimate is a completed saving. Design and repeatable census:
-`~/.cache/tmp/habu-large-reduction-design-20260928-01.md` and
-`habu-large-codegen-census-completion-20260928-01.md` in the same directory.
+Shared DATA literal pools remain a separate candidate. Per-word pools cannot
+reach 100 KB; whole-owner range grouping has a conditional 127,872-byte payload
+ceiling before real eligibility, implementation and final layout cost. It needs
+coherent pool/capture ownership and complete relocation support. The current
+planning-only task is habu-measure-shared-literal-9d63f61d. No pool implementation
+or saving is claimed. Design and repeatable census:
+`~/.cache/tmp/habu-literal-pool-design-20260928-01.md` and
+`habu-literal-pool-census-completion-20260928-01.md` in the same directory.
 
 The attempted boolean normalization reduction is rejected: its optimizer costs
 1,556 code bytes to remove 1,680 emitted bytes, while other serialized content

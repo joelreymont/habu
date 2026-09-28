@@ -18,7 +18,7 @@
 \ The span is read through the live dictionary (XREF-REC's start and exact code
 \ length) and decoded as instruction words, so the case measures what the engine
 \ really baked rather than a restatement of the planner's own decisions. The two
-\ frame-access counts keep it from passing vacuously: a T4 that stopped using
+\ frame-cell counts keep it from passing vacuously: a T4 that stopped using
 \ the frame at all would hold no pairs either.
 
 require lib/test.f
@@ -52,6 +52,8 @@ using IDENTITY-SPILL-SUBJECT
 $FFC00000 constant ACCESS-MASK
 $F9400000 constant LDR-FORM
 $F9000000 constant STR-FORM
+$A9400000 constant LDP-FORM
+$A9000000 constant STP-FORM
 31 constant SP-N
 
 : W-AT ( ptr u8 n -- n ) {: p:ptr i:n :}
@@ -71,6 +73,14 @@ $F9000000 constant STR-FORM
 : FRAME-STR? ( n -- bool ) {: w:n :}
    w ACCESS-MASK and STR-FORM <> if false exit then
    w BASE-OF SP-N = ;
+
+\ A paired instruction still transfers both frame cells. Keep the nonvacuity
+\ checks about storage, rather than how many instructions carry that storage.
+: FRAME-CELLS ( n n n -- n ) {: w:n scalar:n pair:n :}
+   w BASE-OF SP-N <> if 0 exit then
+   w ACCESS-MASK and {: form:n :}
+   form scalar = if 1 exit then
+   form pair = if 2 else 0 then ;
 
 \ A reload of one slot standing directly in front of a store back into it.
 : SAME-SLOT-PAIR? ( ptr u8 n -- bool ) {: p:ptr i:n :}
@@ -92,11 +102,11 @@ $F9000000 constant STR-FORM
 
 : SPAN-FRAME-STORES ( ptr n -- n ) {: rec:ptr :}
    rec SPAN-BASE {: p:ptr :}
-   0  rec SPAN-WORDS 0 ?do p i W-AT FRAME-STR? if 1+ then loop ;
+   0  rec SPAN-WORDS 0 ?do p i W-AT STR-FORM STP-FORM FRAME-CELLS + loop ;
 
 : SPAN-FRAME-LOADS ( ptr n -- n ) {: rec:ptr :}
    rec SPAN-BASE {: p:ptr :}
-   0  rec SPAN-WORDS 0 ?do p i W-AT FRAME-LDR? if 1+ then loop ;
+   0  rec SPAN-WORDS 0 ?do p i W-AT LDR-FORM LDP-FORM FRAME-CELLS + loop ;
 
 : SPAN-PAIRS ( ptr n -- n ) {: rec:ptr :}
    rec SPAN-BASE {: p:ptr :}
