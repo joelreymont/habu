@@ -240,6 +240,7 @@ DYNAMIC-BUFFER F-START-BUF n
 
 \ Two signed distances per operation: before and after its other instructions.
 \ Calls have both; take/publish have only the first and no other instruction.
+\ A paired plain store has no move attributes; its tail holds fused writeback.
 DYNAMIC-BUFFER D-MOVES n
 : DHEAD ( IR-ID:ir-op-id -- n ) IR-ID:OP-LOCAL 2 * ;
 : DHEAD@ ( IR-ID:ir-op-id -- n ) DHEAD D-MOVES @ ;
@@ -924,13 +925,14 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
 \ ---- the blocks control only passes through ----------------------------------
 \ Two operations can be present and emit nothing, which is a fact about the
 \ register assignment - so the ORDER is chosen after the acceptance is probed.
-: OP-SILENT? ( IR-ID:ir-op-id -- bool )
+: OP-LEFT ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id SLOT-AT INSNS-OF
    id SELF-MOV? if 1- then
    id FUSED-SILENT? if 1- then
-   id DZERO-MOVES -
-   0= ;
+   id DZERO-MOVES - ;
+
+: OP-SILENT? ( IR-ID:ir-op-id -- bool ) OP-LEFT 0= ;
 
 \ Only compiler-owned plain eight-byte GPR transfers participate. Neither the
 \ allocator nor the accepted IR is changed; both ordered accesses remain there.
@@ -997,6 +999,46 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
       then
    then
    id SLOT-AT PAIR-FORM? if at else -1 then ;
+
+\ PAIRS already owns the register file, provenance, source and ordered cells.
+\ Post-index additionally needs the first cell at x19 and no source/base overlap.
+: POST-PAIR? ( IR-ID:ir-op-id -- bool )
+   {: first:IR-ID:ir-op-id :}
+   first PAIR@ 0 <= if false exit then
+   first SLOT-AT O-DSTORE <> if false exit then
+   first PAIR-OFF 0<> if false exit then
+   MKEY first PAIR@ 1- IR-ID:PACK-OP {: second:IR-ID:ir-op-id :}
+   first 0 OPERAND-REG A64M:DSTACK-GPR <>
+   second 0 OPERAND-REG A64M:DSTACK-GPR <> and ;
+
+\ Only the first emitted instruction may be consumed. A call's head move is
+\ before its BL; its tail is behind that barrier. A tail is eligible only when
+\ the operation emits nothing else. Return the slot, never the operation.
+: FIRST-DMOVE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id DHEAD@ 0<> if id DHEAD exit then
+   id DTAIL@ 0<> if id OP-LEFT 1 = if id DHEAD 1+ exit then then
+   -1 ;
+
+: PAIR-MOVE! ( IR-ID:ir-op-id n -- )
+   {: first:IR-ID:ir-op-id slot:n :}
+   slot D-MOVES @ {: d:n :}
+   d PAIR-MIN < d PAIR-MAX > or d PAIR-SCALE mod 0<> or if exit then
+   d first DHEAD 1+ D-MOVES !
+   0 slot D-MOVES ! ;
+
+\ Skip only instructions the existing pair/reload/silence plans omit. Every
+\ real instruction clears the pending pair, including an unencodable move.
+: PLAN-POST-OP ( n IR-ID:ir-block-id n -- n )
+   {: prev:n bk:IR-ID:ir-block-id at:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id PAIR@ 0 < bk at STORED-RELOAD? or if prev exit then
+   id OP-SILENT? if prev exit then
+   prev 0 >= if
+      id FIRST-DMOVE {: slot:n :}
+      slot 0 >= if bk prev OP-AT slot PAIR-MOVE! -1 exit then
+   then
+   id POST-PAIR? if at else -1 then ;
 
 : SILENT-BEFORE-TERM? ( IR-ID:ir-block-id -- bool )
    {: bk:IR-ID:ir-block-id :}
@@ -1646,7 +1688,8 @@ ARITH-ABI:E-DIV-ZERO invert constant DIV-CODE-IMM  \ the code as a Movn carries 
       k PAIR-BASE first PAIR-OFF ENC-LDP
    else
       first 0 OPERAND-REG second 0 OPERAND-REG
-      k PAIR-BASE first PAIR-OFF ENC-STP
+      k PAIR-BASE
+      first DTAIL@ 0<> if first DTAIL@ ENC-STPPOST else first PAIR-OFF ENC-STP then
    then APPEND
    k EM-LAST !
    k IFACE-FORM? if 1 EM-IFACE +! then ;
@@ -1837,6 +1880,9 @@ public
          f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
          -1
          bk OP-COUNT 0 ?do bk i PLAN-PAIR-OP loop
+         drop
+         -1
+         bk OP-COUNT 0 ?do bk i PLAN-POST-OP loop
          drop
       loop
    loop ;

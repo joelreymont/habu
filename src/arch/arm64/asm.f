@@ -338,6 +338,14 @@ public
 
 : ENC-STP ( n n n n -- n ) $A9000000 PAIR-WORD ;
 
+\ Transfer at the old base, then apply the scaled signed byte writeback.
+: ENC-STPPOST ( n n n n -- n )
+   {: rt:n rt2:n rn:n off:n :}
+   rt rn = rt2 rn = or IF
+      s" asm: pair writeback overlaps a source" ASM-EXIT-RC die
+   THEN
+   rt rt2 rn off $A8800000 PAIR-WORD ;
+
 : ENC-LDRB ( n n n -- n ) XRDI ?IMM12 $39400000 RRI ;
 
 : ENC-STRB ( n n n -- n ) XRDI ?IMM12 $39000000 RRI ;

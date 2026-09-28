@@ -41,6 +41,7 @@ public
 \ name out of the global wordlist, which a package's words are not in.
 
 : FM-PUSH1 ( -- n ) 5 ;                  \ publishes one cell and takes none
+: FM-PUSH2 ( -- n n ) 11 22 ;
 : FM-EXCH ( n n -- n n ) swap ;          \ takes two and leaves two: no move at all
 \ Use an ordinary call boundary: a direct throw now takes the cold trap path,
 \ which deliberately has no returning-call stack transfers to fuse.
@@ -55,6 +56,8 @@ public
 variable FM-CELL
 : FM-PRUNED-DATA ( -- n ) FM-SRC 0 > if 5 else 5 then FM-CELL @ + ;
 : FM-SUM ( n n -- n ) + 1+ ;
+: FM-TAKE2 ( n n -- ) 3 * swap 5 * + FM-CELL ! ;
+: FM-SEND2 ( -- ) 11 22 FM-TAKE2 ;
 : FM-TWICE ( n -- n ) 2 * ;
 : FM-PAIR ( n n -- n ) FM-SUM FM-TWICE ;
 : FM-THREE ( n -- n n n ) dup 1+ over 2 + ;
@@ -72,7 +75,7 @@ private
    at 2 + XREF-N>U8 c@ 16 lshift or
    at 3 + XREF-N>U8 c@ 24 lshift or ;
 
-\ ---- the six shapes this file counts -----------------------------------------
+\ ---- the selected shapes this file counts ------------------------------------
 \ Masks over the fields DDI 0487 gives each form, so a register this file does
 \ not name cannot make a word match.
 19 constant DS-REG                        \ the data-stack pointer
@@ -82,6 +85,8 @@ $F8000400 constant STR-POST                \ str Xt,[Xn],#imm9
 $F8400C00 constant LDR-PRE                 \ ldr Xt,[Xn,#imm9]!
 $FC000400 constant STRD-POST               \ str Dt,[Xn],#imm9
 $FC400C00 constant LDRD-PRE                \ ldr Dt,[Xn,#imm9]!
+$A8800000 constant STP-POST                \ stp Xt,Xt2,[Xn],#imm7*8
+$FFC00000 constant PAIR-MASK
 $FFC00000 constant AS-MASK                 \ the add/sub immediate opcode
 $91000000 constant ADD-IMM
 $D1000000 constant SUB-IMM
@@ -106,8 +111,12 @@ $3E0 constant RN-FIELD                     \ bits 9:5
 3 constant K-FPOP                         \ ldr Dt,[x19,#imm]!
 4 constant K-ADD                          \ add x19,x19,#imm
 5 constant K-SUB                          \ sub x19,x19,#imm
+6 constant K-PUSH2                        \ stp Xt,Xt2,[x19],#imm
 
 : MATCHES? ( n n -- bool ) {: w:n kind:n :}
+   kind K-PUSH2 = if
+      w PAIR-MASK and STP-POST = w RN DS-REG = and exit
+   then
    kind K-PUSH = if w STR-POST DS-INDEXED? exit then
    kind K-POP = if w LDR-PRE DS-INDEXED? exit then
    kind K-FPUSH = if w STRD-POST DS-INDEXED? exit then
@@ -142,6 +151,11 @@ variable MISSING
       lo i 4 * + CODE@ {: w:n :}
       w kind MATCHES? if
          drop
+         kind K-PUSH2 = if
+            w 15 rshift $7F and {: imm:n :}
+            imm $40 >= if imm $80 - else imm then 8 *
+            leave
+         then
          w 12 rshift $1FF and {: imm:n :}
          imm $100 >= if imm $200 - else imm then
          leave
@@ -160,6 +174,19 @@ variable MISSING
    s" NATIVE-FUSED-MOVES:FM-PUSH1" K-POP COUNT-FORM 0 T=
    s" NATIVE-FUSED-MOVES:FM-PUSH1" NO-MOVES
    77 FM-PUSH1 5 T= 77 T= ;
+
+\ Read the actual selected mode, then execute the same publisher: distinct
+\ results catch reversed stores and the sentinel catches an incorrect x19.
+: PAIR-CASE ( -- )
+   s" two ordered results execute through a post-index store pair" T-LABEL
+   s" NATIVE-FUSED-MOVES:FM-PUSH2" K-PUSH2 COUNT-FORM 1 T=
+   s" NATIVE-FUSED-MOVES:FM-PUSH2" K-PUSH2 WB-OF 16 T=
+   s" NATIVE-FUSED-MOVES:FM-PUSH2" NO-MOVES
+   79 FM-PUSH2 22 T= 11 T= 79 T=
+   s" a paired call publish consumes only the call's pointer move" T-LABEL
+   s" NATIVE-FUSED-MOVES:FM-SEND2" K-PUSH2 COUNT-FORM 1 T=
+   s" NATIVE-FUSED-MOVES:FM-SEND2" K-PUSH2 WB-OF 16 T=
+   0 FM-CELL ! 80 FM-SEND2 FM-CELL @ 121 T= 80 T= ;
 
 \ The take rides the load of the first argument the body needs, and the argument
 \ the diagnostic call publishes rides the store in front of that call - two of
@@ -243,6 +270,7 @@ public
    T-RESET
    0 MISSING !
    PUSH-CASE
+   PAIR-CASE
    GUARD-CASE
    EXCH-CASE
    CALL-CASE

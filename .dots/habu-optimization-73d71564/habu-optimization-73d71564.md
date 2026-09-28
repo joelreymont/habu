@@ -26,11 +26,26 @@ code; do not aggregate hypothetical pattern savings or remove state without
 proving its semantic roots. Completed bounded measurements cover real capture
 literal placement, remaining ARM64 selection gaps and compact startup tables.
 Direct boolean masks are qualified (habu-emit-bool-masks-9ba063d8).
-Implementation is active for paired stack writeback (habu-fuse-paired-stack-c1800302), and packed startup
-tables (habu-pack-baked-seed-66e05afd). The broader repeated-code census and
+Paired stack writeback is qualified (habu-fuse-paired-stack-c1800302).
+Implementation is active for packed startup tables (habu-pack-baked-seed-66e05afd). The broader repeated-code census and
 independent source coverage audit are complete (habu-find-repeated-code-7811ef13).
 Generated buffer bounds sharing is now a bounded implementation experiment
 (habu-share-buf-bounds-c8093ca8).
+
+Eligible paired stack stores now consume their planned pointer adjustment as
+STP post-index, preserving the enclosing call. The signed engine is **2,609,143
+bytes**, down **16,512 bytes** from the additional-goal baseline. Generated code
+falls 16,468 bytes and nonpadding payload falls 16,072 bytes from CSETM. This is
+16,512 bytes toward the additional 1 MB target, leaving 983,488 bytes to target.
+Engine SHA-256:
+`5907200e52b43a55a24e27814dca4d82600a3d234923c3cad0e2dddc5763526c`.
+Independent reviews, B2–B5 engine/names identity, all 492 suites, selected-form
+order/call/sentinel and guard-page checks, five assembler vectors, ten refused
+encodings and strict signatures pass. Maki falls 32,832 bytes to 20,159,264;
+both actual stdin board exports remain byte-identical. Qualified source:
+`451d5c0f1ee7ec721519dd6a9a6d194a8d161080`. Evidence:
+`~/.cache/tmp/habu-pair-writeback-completion-20260928-01.md` and
+`habu-pair-writeback-review-20260928-02.md` in the same directory.
 
 The four native comparison forms now emit CSETM directly instead of CSET then
 NEG, preserving exact 0/-1 flags and floating unordered behavior. Generated code

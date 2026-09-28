@@ -102,14 +102,26 @@ package STACK-LIFECYCLE-TEST
 \ two distinct results at one native return; TAKE consumes them at one native
 \ call. The ratchet advances by one cell, so VALUES first crosses the data
 \ guard with its second result while its first result still fits.
+: NATIVE-PAIR-SOURCE ( -- )
+   SB-RESET s" 1 set-tier require src/habu/xref.f " SB-APPEND GUARDED-BUF
+   s" : VALUES ( -- n n ) 11 22 ; " SB-APPEND
+   s" : CODE@ ( n -- n ) {: at:n :} at XREF-N>U8 c@ at 1+ XREF-N>U8 c@ 8 lshift or " SB-APPEND
+   s" at 2 + XREF-N>U8 c@ 16 lshift or at 3 + XREF-N>U8 c@ 24 lshift or ; " SB-APPEND
+   S\" : SELECTED ( -- ) s\" VALUES\" XREF-FIND {: rec:ptr :} rec XREF-FOUND? 0= if s\" missing VALUES\" 1 die then " SB-APPEND
+   s" 0 rec XREF-CODE-BYTES 4 / 0 ?do rec XREF-START i 4 * + CODE@ {: w:n :} " SB-APPEND
+   s" w 4290772992 and 2826960896 = w 5 rshift 31 and 19 = and if 1+ then loop " SB-APPEND
+   S\" 1 <> if s\" VALUES has no post-index pair\" 1 die then ; SELECTED " SB-APPEND ;
+
 : NATIVE-TRANSFERS ( -- )
    s" native calls and returns preserve two ordered results" T-LABEL
-   SB-RESET s" 1 set-tier " SB-APPEND GUARDED-BUF
-   s" variable ANSWER : VALUES ( -- n n ) 11 22 ; : TAKE ( n n -- ) 3 * swap 5 * + ANSWER ! ; : MOVE ( -- ) VALUES TAKE ; : GO ( -- ) ['] MOVE BUF STACK-ABI:PAGE-BYTES run-in-stack ANSWER @ . ; GO" SB-APPEND
+   NATIVE-PAIR-SOURCE
+   s" variable ANSWER : TAKE ( n n -- ) 3 * swap 5 * + ANSWER ! ; " SB-APPEND
+   S\" : MOVE ( -- ) 79 VALUES TAKE 79 <> if s\" displaced sentinel\" 1 die then ; " SB-APPEND
+   s" : GO ( -- ) ['] MOVE BUF STACK-ABI:PAGE-BYTES run-in-stack ANSWER @ . ; GO" SB-APPEND
    SB$ CHILD-RC 0 T= OUT OUTLEN @ S\" 121\n" T$=
    s" native two-result return faults on its second guarded cell" T-LABEL
-   SB-RESET s" 1 set-tier " SB-APPEND GUARDED-BUF
-   s" : VALUES ( -- n n ) 11 22 ; : MOVE ( -- ) VALUES 2drop ; " SB-APPEND
+   NATIVE-PAIR-SOURCE
+   s" : MOVE ( -- ) VALUES 2drop ; " SB-APPEND
    s" MOVE" RATCHET-TAIL SB$ REFUSED-DATA ;
 
 : WIDE-RETURN-GROUPS ( -- )
