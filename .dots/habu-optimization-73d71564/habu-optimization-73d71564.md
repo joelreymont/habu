@@ -28,7 +28,28 @@ literal placement, remaining ARM64 selection gaps and compact startup tables.
 Implementation is active for direct boolean masks (habu-emit-bool-masks-9ba063d8),
 paired stack writeback (habu-fuse-paired-stack-c1800302), and packed startup
 tables (habu-pack-baked-seed-66e05afd). The broader repeated-code census and
-source audit remain active (habu-find-repeated-code-7811ef13).
+independent source coverage audit are complete (habu-find-repeated-code-7811ef13).
+Generated buffer bounds sharing is now a bounded implementation experiment
+(habu-share-buf-bounds-c8093ca8).
+
+The repeat census covers 1,388,784 owned code bytes in 13,362 disjoint rows,
+exact and normalized 4/6/8/12-instruction windows, and 9,322 short bodies.
+The fixed engine prefix and 33,968 blob bytes outside declared body ownership
+are excluded. Exact short duplicates occupy 27,988 extra bytes; normalized
+templates occupy 154,692. Neither proves interchangeable behavior, identical
+absolute callees, independent patching or safe removal. Remaining small local
+screens find 108 gross bytes of repeated comparisons and 168 of repeated frame
+loads; another optimizer is not justified by these counts.
+
+Source attribution and instruction templates confirm 197 shipped fixed buffer
+accessors and 159 dynamic ones. Their repeated bounds and pointer logic occupies
+20,268 bytes before replacement wrapper/helper costs. Existing reserve/release
+already share their runtime. HIR/A64IR naming ladders occupy 11,188 bytes;
+schema-definition families occupy 11,516 before their nonshared portions; 41
+derived enum TAG bodies occupy 5,808. These are candidate populations, not
+savings. Evidence: `~/.cache/tmp/habu-repeat-code-census-completion-20260928-01.md`,
+`habu-generator-census-completion-20260928-01.md` and
+`habu-repeat-patterns-review-20260928-01.md` in the same directory.
 
 The startup-table census preserves every row and measures a 134,560-byte
 representation opportunity for dictionary records, signed bound-call gaps and
