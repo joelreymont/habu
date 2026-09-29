@@ -161,10 +161,11 @@ The `x86-64-peer-routines` gate row does the same for every HIR fixture of
 HB_TMP="$TMP" "$HOST" --load test/x86-64-peer-routines.f
 ```
 
-It writes `$TMP/x64-routines`: one executable per fixture, a `-negative` twin
-whose first case expects a wrong answer, and a `manifest` of `<file> <status>`
-lines. Copy the directory to the peer and, inside it, run every file and
-compare its status with the manifest:
+It writes `$TMP/x64-routines`: one executable per fixture, one
+`diff-negative` image whose first case expects a wrong answer, and a
+`manifest` of `<file> <status>` lines. Copy the directory to the peer with
+executable permissions intact, then run every file there and compare its
+status with the manifest:
 
 ```sh
 bad=0; while read -r file want; do timeout 10 ./"$file" </dev/null; got=$?
@@ -173,9 +174,9 @@ done < manifest; [ "$bad" = 0 ]
 ```
 
 The command exits 0 only when every image exited with its listed status: 0
-for a fixture, 21 for its twin. Any other status names the failed check, as
-`test/x86-64-peer-harness.f` numbers them; 124 is `timeout` stopping an image
-that did not exit.
+for a fixture, 21 for `diff-negative`. Any other status names the failed check,
+as `test/x86-64-peer-harness.f` numbers them; 124 is `timeout` stopping an
+image that did not exit.
 
 `tools/bootstrap.sh` does the whole recovery and installs exactly one file:
 `bin/hb`.

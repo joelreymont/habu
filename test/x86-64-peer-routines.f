@@ -3,11 +3,10 @@
 \ is driven the way src/compiler/native/compiler.f drives a definition -
 \ declare, select, prune, fixpoint, emit at the image's own address, retire -
 \ and the routine is wrapped in test/x86-64-peer-harness.f's checking entry
-\ with the answers its definition must give. Every fixture is written twice into
-\ $HB_TMP/x64-routines: `<name>`, which must exit 0, and `<name>-negative`,
-\ whose first case expects a wrong answer and which must exit
-\ X64HARNESS:FIRST-CASE. The manifest there lists each file with that status;
-\ docs/bootstrap.md gives the peer's comparison.
+\ with the answers its definition must give. Each fixture writes one positive
+\ image into $HB_TMP/x64-routines; diff also writes a negative harness image
+\ whose first case expects a wrong answer. The manifest lists each file with
+\ its expected status; docs/bootstrap.md gives the peer's comparison.
 \
 \ Two fixtures have no image. The rows refuse BUILD-ADDRESSED with
 \ E-IR-VERIFY-OPTYPE: it takes its memory order as an argument, which a
@@ -43,7 +42,22 @@ variable CALLEE                      \ the entry the wordcall site names
 
 : DIFF-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-DIFF 2 1 NBACK:L-NONE ROWS, ;
 : SQUARE-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-SQUARE 1 1 NBACK:L-NONE ROWS, ;
-: CHAIN-BODY ( IR-CTX:ctx -- )    HIR-MOD BUILD-CHAIN 2 1 NBACK:L-NONE ROWS, ;
+\ The byte oracle in x64-emit-fixture.f pins BUILD-CHAIN's four tied binaries.
+\ Its value is always zero, so the peer uses a toggled low bit for the OR.
+\ With a=11 and b=2, the answer is 16; replacing AND with its first operand
+\ answers 18, and omitting MUL answers 8.
+: BUILD-CHAIN-PEER ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   HIR-OPCODE:XOR a 1 CONSTOP BINOP {: toggled:IR-ID:ir-value-id :}
+   HIR-OPCODE:AND a b BINOP {: common:IR-ID:ir-value-id :}
+   HIR-OPCODE:OR common toggled BINOP {: both:IR-ID:ir-value-id :}
+   HIR-OPCODE:XOR both b BINOP {: rest:IR-ID:ir-value-id :}
+   HIR-OPCODE:MUL rest b BINOP RET1
+   CLOSE-FUN ;
+
+: CHAIN-BODY ( IR-CTX:ctx -- )    HIR-MOD BUILD-CHAIN-PEER 2 1 NBACK:L-NONE ROWS, ;
 : IMMS-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-IMMS 2 1 NBACK:L-NONE ROWS, ;
 : SHIFTS-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-SHIFTS 1 1 NBACK:L-NONE ROWS, ;
 : NOT-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-NOT 1 1 NBACK:L-NONE ROWS, ;
@@ -114,102 +128,100 @@ create MANIFEST BUF:HDR-BYTES allot
    CLOSE, ENTRY, X64EMIT-TEST:DIFF-ROUTINE
    s" diff" negative WRITE-IMAGE ;
 
-: SQUARE-IMAGE ( bool -- ) {: negative:bool :}
-   negative OPEN,
+: SQUARE-IMAGE ( -- )
+   false OPEN,
    21 42 CASE1,
    -21 -42 CASE1,
    MAX-CELL -2 CASE1,
    MIN-CELL 0 CASE1,
    CLOSE, ENTRY, X64EMIT-TEST:SQUARE-ROUTINE
-   s" square" negative WRITE-IMAGE ;
+   s" square" false WRITE-IMAGE ;
 
-\ `a b and b or b xor b *` is zero for every input: a AND b OR b is b, and b XOR
-\ b is zero. The first case catches an AND that keeps bits of a outside b.
-: CHAIN-IMAGE ( bool -- ) {: negative:bool :}
-   negative OPEN,
-   $F0F0 $FF00 0 CASE2,
-   -1 -1 0 CASE2,
-   0 12345 0 CASE2,
+: CHAIN-IMAGE ( -- )
+   false OPEN,
+   11 2 16 CASE2,
+   5 2 12 CASE2,
+   -1 2 -8 CASE2,
    CLOSE, ENTRY, X64EMIT-TEST:CHAIN-ROUTINE
-   s" chain" negative WRITE-IMAGE ;
+   s" chain" false WRITE-IMAGE ;
 
 \ `((b and a) + 1000 - 2000) and 4095 or 61440 xor 255`.
-: IMMS-IMAGE ( bool -- ) {: negative:bool :}
-   negative OPEN,
+: IMMS-IMAGE ( -- )
+   false OPEN,
    -1 5 64738 CASE2,
    0 0 64743 CASE2,
    -1 -1 64744 CASE2,
    CLOSE, ENTRY, X64EMIT-TEST:IMMS-ROUTINE
-   s" imms" negative WRITE-IMAGE ;
+   s" imms" false WRITE-IMAGE ;
 
 \ `3 lshift 5 rshift`: the right shift is logical.
-: SHIFTS-IMAGE ( bool -- ) {: negative:bool :}
-   negative OPEN,
+: SHIFTS-IMAGE ( -- )
+   false OPEN,
    1000 250 CASE1,
    -1 $07FFFFFFFFFFFFFF CASE1,
    MIN-CELL 0 CASE1,
    CLOSE, ENTRY, X64EMIT-TEST:SHIFTS-ROUTINE
-   s" shifts" negative WRITE-IMAGE ;
+   s" shifts" false WRITE-IMAGE ;
 
-: NOT-IMAGE ( bool -- ) {: negative:bool :}
-   negative OPEN,
+: NOT-IMAGE ( -- )
+   false OPEN,
    0 -1 CASE1,
    5 -6 CASE1,
    MIN-CELL MAX-CELL CASE1,
    CLOSE, ENTRY, X64EMIT-TEST:NOT-ROUTINE
-   s" not" negative WRITE-IMAGE ;
+   s" not" false WRITE-IMAGE ;
 
 \ A true flag is all ones, as the ARM64 emitter's CSETM makes it.
-: CMPSET-IMAGE ( bool -- ) {: negative:bool :}
-   negative OPEN,
+: CMPSET-IMAGE ( -- )
+   false OPEN,
    5 2 0 CASE2,
    2 5 -1 CASE2,
    MIN-CELL MAX-CELL -1 CASE2,
    -1 -1 0 CASE2,
    CLOSE, ENTRY, X64EMIT-TEST:CMPSET-ROUTINE
-   s" cmpset" negative WRITE-IMAGE ;
+   s" cmpset" false WRITE-IMAGE ;
 
 \ `b a - 1000 <`.
-: CMPSETI-IMAGE ( bool -- ) {: negative:bool :}
-   negative OPEN,
+: CMPSETI-IMAGE ( -- )
+   false OPEN,
    0 5000 0 CASE2,
    10 500 -1 CASE2,
    1000 0 -1 CASE2,
    CLOSE, ENTRY, X64EMIT-TEST:CMPSETI-ROUTINE
-   s" cmpseti" negative WRITE-IMAGE ;
+   s" cmpseti" false WRITE-IMAGE ;
 
-: MOVI-IMAGE ( bool -- ) {: negative:bool :}
-   negative OPEN,
+: MOVI-IMAGE ( -- )
+   false OPEN,
    1 4294967297 CASE1,
    -4294967296 0 CASE1,
    MAX-CELL MAX-CELL 4294967296 + CASE1,
    CLOSE, ENTRY, X64EMIT-TEST:MOVI-ROUTINE
-   s" movi" negative WRITE-IMAGE ;
+   s" movi" false WRITE-IMAGE ;
 
 \ The cell and byte loads and stores at one address answer its low byte, zero
 \ extended, and leave the cell as it was.
-: DADDR-IMAGE ( bool -- ) {: negative:bool :}
-   negative OPEN,
+: DADDR-IMAGE ( -- )
+   false OPEN,
    $1122334455667788 $88 $1122334455667788 CELL-CASE,
    -1 255 -1 CELL-CASE,
    CLOSE, ENTRY, X64EMIT-TEST:DADDR-ROUTINE
-   s" daddressed" negative WRITE-IMAGE ;
+   s" daddressed" false WRITE-IMAGE ;
 
 \ `c = c0; begin t = x + c; t while c = t repeat t`: zero whenever it returns.
 \ Inverting the branch returns the first nonzero sum, so the one-turn case
 \ tells the two apart.
-: LOOP-IMAGE ( bool -- ) {: negative:bool :}
-   negative OPEN,
+: LOOP-IMAGE ( -- )
+   false OPEN,
    5 -5 0 CASE2,
    1 -5 0 CASE2,
    -2 10 0 CASE2,
    CLOSE, ENTRY, X64EMIT-TEST:LOOP-ROUTINE
-   s" loop" negative WRITE-IMAGE ;
+   s" loop" false WRITE-IMAGE ;
 
 \ The callee is the squaring fixture, placed first; the call site names its
 \ absolute entry, so the answers are the callee's.
-: WORDCALL-IMAGE ( bool -- ) {: negative:bool :}
-   negative OPEN,
+: WORDCALL-IMAGE ( -- )
+   false OPEN,
    21 42 CASE1,
    -7 -14 CASE1,
    MAX-CELL -2 CASE1,
@@ -218,7 +230,7 @@ create MANIFEST BUF:HDR-BYTES allot
    X64EMIT-TEST:SQUARE-ROUTINE
    ALIGN, ENTRY,
    callee X64EMIT-TEST:WORDCALL-ROUTINE
-   s" wordcaller" negative WRITE-IMAGE ;
+   s" wordcaller" false WRITE-IMAGE ;
 
 public
 : RUN ( -- )
@@ -227,17 +239,17 @@ public
    MANIFEST 512 BUF:N>BLEN BUF:INIT
    INIT
    false DIFF-IMAGE      true DIFF-IMAGE
-   false SQUARE-IMAGE    true SQUARE-IMAGE
-   false CHAIN-IMAGE     true CHAIN-IMAGE
-   false IMMS-IMAGE      true IMMS-IMAGE
-   false SHIFTS-IMAGE    true SHIFTS-IMAGE
-   false NOT-IMAGE       true NOT-IMAGE
-   false CMPSET-IMAGE    true CMPSET-IMAGE
-   false CMPSETI-IMAGE   true CMPSETI-IMAGE
-   false MOVI-IMAGE      true MOVI-IMAGE
-   false DADDR-IMAGE     true DADDR-IMAGE
-   false LOOP-IMAGE      true LOOP-IMAGE
-   false WORDCALL-IMAGE  true WORDCALL-IMAGE
+   SQUARE-IMAGE
+   CHAIN-IMAGE
+   IMMS-IMAGE
+   SHIFTS-IMAGE
+   NOT-IMAGE
+   CMPSET-IMAGE
+   CMPSETI-IMAGE
+   MOVI-IMAGE
+   DADDR-IMAGE
+   LOOP-IMAGE
+   WORDCALL-IMAGE
    SB-RESET DIR$ SB-APPEND s" /manifest" SB-APPEND SB$ TMP-PATH
    MANIFEST BUF:SPAN$ BUF:BLEN>N WRITE-ALL
    X64EMIT-TEST:ADDRESSED-REFUSAL
