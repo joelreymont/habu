@@ -1,6 +1,6 @@
 ---
 title: Boot and exit the x86-64 kernel skeleton
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.534293+03:00"
@@ -16,7 +16,7 @@ Verify: spark builds `hb-x64-skel` and the ARM64 product unchanged (rebuild); Th
 Depends: habu-add-the-x86-aad02c7e (K1), habu-add-the-x86-a8bf9973 (K2). Serialise with X4d on `tools/native-emit.f`.
 Route: Alder (shared: tools/native-emit.f).
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-boot-and-exit-367c46f5.
 Load order (from K1): the x86 arm of `tools/native-emit.f` loads `lib/byte-buffer.f` and `src/arch/x86-64/icode.f` (`X64CODE`) before any x86 seam file (`sys.f` and `proc-watch.f` bind `using X64CODE`), loads `src/os/image-bytes.f` under `using X64CODE` (it sizes `MSIZE` from a bare `CODE-CAP-BYTES`), and does not load `src/arch/arm64/icode.f` (its globals collide with `X64CODE`, `E-USING-SHADOW-GLOBAL`).
 
 Preflight corrections (these override the lines above where they differ):
