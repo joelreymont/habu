@@ -62,7 +62,8 @@ SUITE stripped-entry-qualified
 
 \ checker-scan-index is the first WHITEBOX-SUITE row. It holds the registry
 \ until the gate's whitebox build retires (WB-WAIT), so the rows above it keep
-\ the other slots busy for that build.
+\ the other slots busy for that build and the native-window rows below copy the
+\ finished engine. That barrier, not the row's own length, sets its place.
 WHITEBOX-SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE

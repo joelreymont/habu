@@ -17,11 +17,12 @@
 \ Each store still carries the walk that defines the answer — USIG-NEWEST-LINEAR,
 \ NORET-NEWEST-LINEAR, SUMV-CTOR-FIRST-LINEAR, TFAM-FIND-IN-LINEAR — and section
 \ 2 differentials the index against it for EVERY symbol and EVERY family in the
-\ live image. Section 1 comes first and is the one that would notice a
-\ specification and an index that are wrong together: it pins the ORDER the
-\ answer depends on (redefinition, deletion, shadowing) through the ordinary
-\ load path, before any index word is named. Section 3 pins the same order
-\ across the checker's rollback frames.
+\ live image; the effect and control walks are made once for all symbols
+\ rather than once per symbol. Section 1 comes first and is the one that would
+\ notice a specification and an index that are wrong together: it pins the
+\ ORDER the answer depends on (redefinition, deletion, shadowing) through the
+\ ordinary load path, before any index word is named. Section 3 pins the same
+\ order across the checker's rollback frames.
 \
 \ TWO ROWS, ONE FIXTURE. The assertions, the shims and the differential are
 \ test/checker-scan-index-lib.f. This row holds the cases that share state and

@@ -122,24 +122,86 @@ variable IX
 variable REC-END
 
 \ ---------------------------------------------------------------------------
+\ the reference side of the effect and control differentials. The
+\ specification of each store, USIG-NEWEST-LINEAR and NORET-NEWEST-LINEAR,
+\ answers ONE symbol with a walk of the whole store, so asking it for every
+\ symbol walks the store once per symbol. The walks below are those same
+\ walks, made once: each record's position lands in SCX-REF under the symbol
+\ it carries, and a later record of the same symbol overwrites an earlier one,
+\ so what is left is the newest record of every symbol at once. They read the
+\ records and the store's own bounds and nothing an index maintains — no head,
+\ no back-link, no mark — and they fill their own table, so the index under
+\ test never answers for them.
+\ ---------------------------------------------------------------------------
+DYNAMIC-BUFFER SCX-REF n       \ per symbol: newest record's offset+1, 0 = none
+variable REF-POS               \ the walk's record cursor
+variable REF-NEXT              \ ... and the link it reads
+
+: SCX-USER-OFF ( -- n ) USIGS-USER-OFF @ ;
+: SCX-EFF-REC ( -- n ) EFF-REC ;
+TRUSTED: SCX-REC-SYM ( n -- n ) E-PTR ER.SYM @ ;
+TRUSTED: SCX-REC-NEXT ( n -- n ) E-PTR E-NEXT@ ;
+: SCX-NORET-ENTRY ( -- n ) NORET-ENTRY ;
+TRUSTED: SCX-NORET-SYM ( n -- n ) NORET-CELL NORET.SYM @ ;
+
+: SCX-REF-CLEAR ( -- )
+   SCX-SYM-N SCX-REF-RESERVE
+   SCX-SYM-N 0 ?do 0 i SCX-REF ! loop ;
+
+\ The differential reads the interned ids, 1 up to SYM-N, so a record keyed to
+\ any other id answers nothing it compares and is passed over.
+: SCX-REF-NOTE ( n n -- ) {: pos:n sym:n :}
+   sym 1 >=  sym SCX-SYM-N <  and IF pos 1 + sym SCX-REF ! THEN ;
+
+\ USIG-NEWEST-LINEAR's walk: from the first user record while a whole record
+\ fits below UEND, following each record's link until one does not advance or
+\ leaves the live store.
+: SCX-USIG-REF ( -- )
+   SCX-REF-CLEAR
+   SCX-USER-OFF REF-POS !
+   BEGIN REF-POS @ SCX-EFF-REC + SCX-UEND <= WHILE
+      REF-POS @  REF-POS @ SCX-REC-SYM  SCX-REF-NOTE
+      REF-POS @ SCX-REC-NEXT REF-NEXT !
+      REF-NEXT @ REF-POS @ <=  REF-NEXT @ SCX-UEND >  or IF
+         SCX-UEND 1 + REF-POS !
+      ELSE
+         REF-NEXT @ REF-POS !
+      THEN
+   REPEAT ;
+
+\ NORET-NEWEST-LINEAR's walk: entry by entry from the first, up to the entry
+\ keyed 0 that terminates the store.
+: SCX-NORET-REF ( -- )
+   SCX-REF-CLEAR
+   0 REF-POS !
+   BEGIN REF-POS @ SCX-NORET-SYM 0 <> WHILE
+      REF-POS @  REF-POS @ SCX-NORET-SYM  SCX-REF-NOTE
+      REF-POS @ SCX-NORET-ENTRY + REF-POS !
+   REPEAT ;
+
+\ ---------------------------------------------------------------------------
 \ the differential. For every symbol the image has interned and every family
 \ it has declared, the index and the walk that specifies it agree. One
-\ assertion per store: the number of disagreements is zero.
+\ assertion per store: the number of disagreements is zero. The variant and
+\ family stores are small, so their differentials still ask the specification
+\ word itself once per symbol or family.
 \ ---------------------------------------------------------------------------
 : SCX-DIFF-USIG ( -- n )
+   SCX-USIG-REF
    0 NMIS !
    1 IX !
    BEGIN IX @ SCX-SYM-N < WHILE
-      IX @ SCX-USIG-NEWEST  IX @ SCX-USIG-NEWEST-LINEAR <> IF 1 NMIS +! THEN
+      IX @ SCX-USIG-NEWEST  IX @ SCX-REF @ <> IF 1 NMIS +! THEN
       IX @ 1 + IX !
    REPEAT
    NMIS @ ;
 
 : SCX-DIFF-NORET ( -- n )
+   SCX-NORET-REF
    0 NMIS !
    1 IX !
    BEGIN IX @ SCX-SYM-N < WHILE
-      IX @ SCX-NORET-NEWEST  IX @ SCX-NORET-NEWEST-LINEAR <> IF 1 NMIS +! THEN
+      IX @ SCX-NORET-NEWEST  IX @ SCX-REF @ <> IF 1 NMIS +! THEN
       IX @ 1 + IX !
    REPEAT
    NMIS @ ;

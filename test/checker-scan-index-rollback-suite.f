@@ -13,11 +13,11 @@
 \ rollback case reads is meaningful only once all four indexes exist, and the
 \ differential is what builds them (SCX-MARKS-EXACT).
 \
-\ Section 4 proves each symbol-keyed table refuses a key it has no cell for,
-\ in a child process, because the refusal is a process exit. The family tail
-\ index has no such refusal to test: its bucket array grows with the record
-\ arena it indexes (TFX-RESIZE), so the other row's section 5 proves the grown
-\ case answers instead.
+\ Section 4 proves the effect and control tables refuse a key they have no
+\ cell for, in a child process, because the refusal is a process exit. The
+\ family tail index has no such refusal to test: its bucket array grows with
+\ the record arena it indexes (TFX-RESIZE), so the other row's section 5 proves
+\ the grown case answers instead.
 
 require lib/string.f
 require lib/process.f
@@ -98,11 +98,14 @@ SCX-MARKS-EXACT
 SCX-DIFF-ALL
 
 \ ---------------------------------------------------------------------------
-\ 4. CAPACITY REFUSAL, one case per symbol-keyed table. The mapping has exactly
-\    SYM-CAP cells per table, so a key at or above that cap — or below the
-\    first real symbol id — has no cell and the store and the symbol table have
-\    disagreed. Each table refuses through its own linking word. The refusal is
-\    a process exit, so each case is a child.
+\ 4. CAPACITY REFUSAL. The mapping has exactly SYM-CAP cells per table, so a
+\    key at or above that cap — or below the first real symbol id — has no cell
+\    and the store and the symbol table have disagreed. Each table refuses
+\    through its own linking word, and all three linking words call the one
+\    range test (checker.f IDX-SYM-OK). The refusal is a process exit, so each
+\    case is a child. SVX-LINK is private to `package TFAM`, so no child
+\    program can spell it; USX-LINK and NRX-LINK are global, and a deleted
+\    guard reds their cases.
 \ ---------------------------------------------------------------------------
 $1000 constant IO-CAP
 30000 constant TIMEOUT-MS
@@ -139,19 +142,6 @@ variable SCX-RC
 s" TRUSTED: SCXCAP ( -- ) 0 SYM-CAP USX-LINK ; SCXCAP" SCX-REFUSED
 s" TRUSTED: SCXCAP ( -- ) 0 SYM-CAP NRX-LINK ; SCXCAP" SCX-REFUSED
 
-\ SVX-LINK used to be the third subject here and cannot be one any more: it is a
-\ private of `package TFAM` since dot habu-tfam-2b-sealed-1b77662c, so a child
-\ program has no spelling for it on any route and never reaches the guard. That
-\ is a stronger answer than the guard's own die and it is what this case now
-\ pins. The RULE is unchanged and still proved live above: all three linking
-\ words call the one shared range test (checker.f IDX-SYM-OK), and USX-LINK and
-\ NRX-LINK are global, so a deleted guard still reds this suite.
-: SCX-SEALED ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   src srcu SCX-CHILD
-   SCX-RC @ 70 T=
-   SCX-ERR$ s" E-UNDEFINED: SVX-LINK" CONTAINS? TTRUE ;
-
-s" TRUSTED: SCXCAP ( -- ) 0 SYM-CAP SVX-LINK ; SCXCAP" SCX-SEALED
 \ id 0 is the symbol table's own "no symbol", not a key: the control store has
 \ no early return for it, so its linking word is where that shows.
 s" TRUSTED: SCXCAP ( -- ) 0 0 NRX-LINK ; SCXCAP" SCX-REFUSED
