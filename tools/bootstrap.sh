@@ -316,6 +316,7 @@ emit_src() {
     cat "$f" >> "$out"
     printf '\n' >> "$out"
     if [[ "$f" == "src/core/include.f" ]]; then
+      printf 'SOURCE-INPUT:RESET\n' >> "$out"
       emit_provided "$out" "${SRC_CORE[@]}" "${SRC_COMMON[@]}" "${tail[@]}"
     fi
   done

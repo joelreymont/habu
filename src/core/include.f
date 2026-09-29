@@ -77,6 +77,27 @@ variable REQUIRE-SAVE-BASE
    REQUIRE-BOOT-OPEN? if REQUIRE-N @ exit then
    REQUIRE-BOOT-N @ ;
 
+\ An invocation that owns source bytes supplies both filesystem answers through
+\ this loader-local pair. A newly source-loaded target gets its own pair, so its
+\ require registry and source frames remain independent of the retained host.
+package SOURCE-INPUT
+private
+
+defer CANON-XT ( ptr u8 n -- ptr u8 n bool )
+defer READ-XT ( ptr u8 n ptr u8 n -- ptr u8 n )
+
+public
+
+: CANON ( ptr u8 n -- ptr u8 n bool ) CANON-XT ;
+: READ ( ptr u8 n ptr u8 n -- ptr u8 n ) READ-XT ;
+
+: USE ( [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
+   {: canon read :}
+   canon is CANON-XT
+   read is READ-XT ;
+
+;package
+
 \ Canonical source paths and a dynamically scoped owner root. This bootstrap
 \ layer uses only core bytes, mappings and the bounded realpath OS primitive.
 package SOURCE-ROOT
@@ -124,12 +145,23 @@ variable SCOPES
    a dst u BYTE-COPY 0 dst u + c! ;
 
 
-: TRY-CANON ( ptr u8 n -- bool )
+public
+
+: CANON-OS ( ptr u8 n -- ptr u8 n bool )
    ZBUF COPY-Z
    ZBUF CANON-BUF PATH-BYTES realpath {: n:n :}
    n -2 = if PATH-RC throw then
-   n 0 < if 0 CANON-U ! INCLUDE-FALSE exit then
-   n CANON-U ! INCLUDE-TRUE ;
+   n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
+   CANON-BUF n INCLUDE-TRUE ;
+
+private
+
+: TRY-CANON ( ptr u8 n -- bool )
+   SOURCE-INPUT:CANON {: a:ptr u:n found:bool :}
+   u PATH-BYTES >= if PATH-RC throw then
+   a CANON-BUF <> if a CANON-BUF u BYTE-COPY then
+   u CANON-U !
+   found ;
 
 
 : CANON$ ( -- ptr u8 n ) CANON-BUF CANON-U @ ;
@@ -310,6 +342,17 @@ public
    fresh u 1+ munmap {: release:n :}
    rc 0= 0= if rc throw then
    release 0 < if INCLUDE-IO-RC throw then ;
+
+\ A builder's target source is discovered from the invocation root. Restore
+\ its caller's source root after compilation, including on a checker refusal.
+: WITH-CWD ( [ -- ] -- ) {: q :}
+   CURRENT$ {: old:ptr oldu:n :}
+   CWD$ CURRENT!
+   1 SCOPES +!
+   q catch {: rc:n :}
+   -1 SCOPES +!
+   old oldu CURRENT!
+   rc 0= 0= if rc throw then ;
 
 private
 
@@ -875,9 +918,23 @@ PTR-VARIABLE TOP
    INCLUDE-CLOSE
    SOURCE INCLUDE-U @ ;
 
+public
+
+: READ-OS ( ptr u8 n ptr u8 n -- ptr u8 n )
+   2drop INCLUDE-READ-ALL ;
+
+private
+
+: LOAD-BYTES ( -- )
+   INCLUDE-PATH INCLUDE-PATH-U @ RESOLVED-ROOT$
+   SOURCE-INPUT:READ {: a:ptr u:n :}
+   u INCLUDE-BUF-CAP > if s" include: file too large" INCLUDE-IO-DIE then
+   a SOURCE <> if a SOURCE u BYTE-COPY then
+   SOURCE u INCLUDE-EVALUATE ;
+
 : LOAD-CURRENT ( -- )
    PUSH
-   [: INCLUDE-PATH INCLUDE-PATH-U @ INCLUDE-READ-ALL INCLUDE-EVALUATE ;] catch {: rc:n :}
+   [: LOAD-BYTES ;] catch {: rc:n :}
    INCLUDE-CLOSE
    POP {: release:n :}
    rc 0= 0= if rc throw then
@@ -893,6 +950,15 @@ public
 : LOAD ( ptr u8 n -- )
    INCLUDE-PATH0 drop
    RESOLVED-ROOT$ [: LOAD-CURRENT ;] WITH ;
+
+;package
+
+package SOURCE-INPUT
+public
+
+: RESET ( -- )
+   [: SOURCE-ROOT:CANON-OS ;] is CANON-XT
+   [: SOURCE-ROOT:READ-OS ;] is READ-XT ;
 
 ;package
 

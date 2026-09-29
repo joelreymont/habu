@@ -184,6 +184,20 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    CORE-PREFIX:FIRST-RECORD seed-ndict!
    RESET-ADDRESS-ROWS ;
 
+TRUSTED: SOURCE-RESET-XT ( n -- [ -- ] ) ;
+
+\ Resolve the fresh loader inside the open target code window. A retained
+\ SOURCE-INPUT:RESET would activate the wrong loader after LOGICAL-RESET.
+: OPEN-TARGET-XT ( ptr u8 n -- n )
+   XREF-FIND dup XREF-FOUND? 0= if
+      drop s" native-build: target source operation missing" BUILD-RC die
+   then
+   XREF-START {: xt:n :}
+   xt AOT-ARM:B0 @ < xt cp@ >= or if
+      s" native-build: source operation outside target window" BUILD-RC die
+   then
+   xt ;
+
 : LOAD-TARGET ( ptr u8 -- ) {: source:ptr :}
    s" src/core/util.f" included
    s" src/core/cell.f" included
@@ -223,6 +237,7 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    s" src/habu/layout.f" included
    s" src/os/env-base.f" included
    s" src/core/include.f" included
+   s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
    s" src/habu/native-runtime.f" included ;
 
 : OPEN-AND-COMPILE ( ptr u8 -- )

@@ -93,6 +93,18 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    CORE-PREFIX:FIRST-RECORD seed-ndict!
    RESET-ADDRESS-ROWS ;
 
+TRUSTED: SOURCE-RESET-XT ( n -- [ -- ] ) ;
+
+: ACTIVATE-SOURCE ( -- )
+   s" SOURCE-INPUT:RESET" XREF-FIND dup XREF-FOUND? 0= if
+      drop s" window: fresh source reset missing" 76 die
+   then
+   XREF-START SOURCE-RESET-XT execute ;
+
+: LOAD-OPTIONAL ( ptr u8 n -- )
+   2dup included
+   s" src/core/include.f" STR= if ACTIVATE-SOURCE then ;
+
 \ --- the window prefix, native-build's LOAD-TARGET through cell-effects.f ---
 
 : LOAD-WINDOW ( ptr u8 -- ) {: source:ptr :}
@@ -122,7 +134,7 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    s" src/core/cell-effects.f" included
    \ Optional dependency paths are loaded by this retained continuation: the
    \ replacement prefix has not installed its own include words yet.
-   SCRIPT-ARGC 1 ?do i SCRIPT-ARGV$ included loop
+   SCRIPT-ARGC 1 ?do i SCRIPT-ARGV$ LOAD-OPTIONAL loop
    PATH$ included
    \ Call the retained production detector after the replacement checker loads.
    ADDRESS-CELLS:CURRENT? if 1 else 0 then ADDRESS-ABI @ <> if

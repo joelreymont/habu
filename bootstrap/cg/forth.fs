@@ -3121,6 +3121,15 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $0A C-SOURCE-APPEND-CHAR
    done LBL, ;
 
+\ The caller activates source input after the complete loader text has run.
+: EMIT-SOURCE-RESET-TOKEN ( -- )
+   LBL {: done :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   s" SOURCE-INPUT:RESET" bounds ?do i c@ C-SOURCE-APPEND-CHAR loop
+   $0A C-SOURCE-APPEND-CHAR
+   done LBL, ;
+
 \ Mirror of src/habu/habu2.f EMIT-REQUIRE-FREEZE-TOKEN: once the provide rows
 \ are in, `REQUIRE-BOOT-FREEZE` pins include.f's engine surface, so a later
 \ ENGINE-PROVIDES? separates what the seed carries from what its program
@@ -3224,6 +3233,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES
+   EMIT-SOURCE-RESET-TOKEN
    \ habu2.f EMIT-HOST-LOAD-PREFIX opens the registry here, between the base
    \ files and the provide rows; its stdlib block loads inside the same window
    \ (PFX-LOAD-STDLIB-COLD, after the rows). This seed loads that block from

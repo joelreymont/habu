@@ -1531,6 +1531,17 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    $0A C-SOURCE-APPEND-CHAR
    done LBL, ;
 
+\ The caller activates the freshly loaded source interface only after all of
+\ include.f has run. Until then its deferred input pair refuses source loads.
+: EMIT-SOURCE-RESET-TOKEN ( -- )
+   LBL {: done:label :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   s" SOURCE-INPUT:RESET" {: a:ptr u:n :}
+   u 0 ?do a i + c@ C-SOURCE-APPEND-CHAR loop
+   $0A C-SOURCE-APPEND-CHAR
+   done LBL, ;
+
 \ TFAM 2b-iii (dot habu-tfam-2b-iii-5d25b52f): append `SEAL-CAPTURE` as the
 \ LAST engine-prefix source token, after every engine file and the provide
 \ rows. xref.f's in-file call is only the baseline: src/os/script-argv.f loads
@@ -1699,6 +1710,7 @@ public
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES
+   EMIT-SOURCE-RESET-TOKEN
    EMIT-REQUIRE-BOOT-OPEN-TOKEN
    PFX-PROVIDE-FILES
    \ The checked owner guard requires the ABI facts above. Carry it before
