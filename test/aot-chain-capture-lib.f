@@ -1,9 +1,9 @@
 \ aot-chain-capture-lib.f - the fixture the AOT chain capture gate rows share.
-\ Loaded by test/aot-chain-capture-suite.f and, through
-\ test/aot-chain-producer-lib.f, by the three producer rows: the scratch tree,
-\ the child runner and its captured output, the output assertions and the row
-\ driver. It runs nothing; each row file reopens
-\ package AOT-CHAIN-SUITE and runs the probes it owns.
+\ Loaded by test/aot-chain-capture-suite.f, test/aot-chain-producer-suite.f and,
+\ inside the producer's private host, test/aot-chain-row-checks.f: the scratch
+\ tree, the child runner and its captured output, the output assertions and the
+\ row driver. It runs nothing; each file reopens package AOT-CHAIN-SUITE and
+\ runs the probes it owns.
 
 require lib/string.f
 require lib/test.f

@@ -122,14 +122,6 @@ SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE
 
-SUITE aot-chain-location
-   test/aot-chain-location-suite.f
-;SUITE
-
-SUITE aot-chain-target
-   test/aot-chain-target-suite.f
-;SUITE
-
 SUITE hb-build-aot
    tools/hb-build-aot-test.f
 ;SUITE

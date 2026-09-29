@@ -10,10 +10,8 @@
 \
 \ The production capture tool is also loaded and must name its empty-window
 \ refusal: the booted engine already provides its chain. The producer's live-row
-\ checks in a private source-built host are test/aot-chain-producer-suite.f,
-\ test/aot-chain-location-suite.f and test/aot-chain-target-suite.f, gate rows
-\ of their own: each of their cases captures the whole compiler in its own
-\ child.
+\ checks in a private source-built host are test/aot-chain-producer-suite.f, a
+\ gate row of its own: its host captures the whole compiler.
 \
 \ Registered as `TEST:SUITE aot-chain-capture`. Run standalone:
 \   bin/hb --load test/aot-chain-capture-suite.f
