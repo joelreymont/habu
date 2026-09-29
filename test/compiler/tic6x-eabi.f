@@ -52,8 +52,12 @@ variable REMAINDER
       HELPER @ i 32 + PERMITTED? 0= i 3 <> and if i B@ $B5000000 i + <> if drop FALSE then then
    loop ;
 
+\ A group of calls emits its helper once. The simulator reads the program words
+\ through the pointer CALL is given and stores only into its own MEMORY, so every
+\ call in the group runs the words EMIT-HELPER wrote.
+: LOAD-HELPER ( n -- ) dup HELPER ! EMIT-HELPER ;
+
 : CALL-HELPER ( n n -- ) {: x:n y:n :}
-   HELPER @ EMIT-HELPER
    RESET FILL-REGISTERS x 4 A! y 4 B!
    PROGRAM$ CALL drop ;
 
@@ -61,35 +65,42 @@ variable REMAINDER
    ok 0= if 1 FAILURES +! s" eabi: " type text size type s"  x=" type 4 A@ . s"  y=" type 4 B@ . cr then ;
 
 
+\ The oracle's verdict on the division helper in HELPER after a call on x y:
+\ divi, divu, remi, remu, divremi and divremu in index order.
+: DIVISION-OK? ( n n -- bool ) {: x:n y:n :}
+   HELPER @ {: idx:n :}
+   idx 0 = if x y SIGNED-ORACLE 4 A@ QUOTIENT @ = exit then
+   idx 1 = if x y UNSIGNED-ORACLE 4 A@ QUOTIENT @ = exit then
+   idx 2 = if x y SIGNED-ORACLE 4 A@ REMAINDER @ = exit then
+   idx 3 = if x y UNSIGNED-ORACLE 4 A@ REMAINDER @ = exit then
+   idx 4 = if x y SIGNED-ORACLE else x y UNSIGNED-ORACLE then
+   4 A@ QUOTIENT @ = 5 A@ REMAINDER @ = and ;
+
 : DIVISION-CASES ( -- )
-   VECTOR-COUNT 0 ?do VECTOR-COUNT 0 ?do
-      i VECTOR {: x:n :} j VECTOR {: y:n :}
-      0 HELPER ! x y CALL-HELPER x y SIGNED-ORACLE
-      4 A@ QUOTIENT @ = UNTOUCHED? and s" divi" CHECK
-      1 HELPER ! x y CALL-HELPER x y UNSIGNED-ORACLE
-      4 A@ QUOTIENT @ = UNTOUCHED? and s" divu" CHECK
-      2 HELPER ! x y CALL-HELPER x y SIGNED-ORACLE
-      4 A@ REMAINDER @ = UNTOUCHED? and s" remi" CHECK
-      3 HELPER ! x y CALL-HELPER x y UNSIGNED-ORACLE
-      4 A@ REMAINDER @ = UNTOUCHED? and s" remu" CHECK
-      4 HELPER ! x y CALL-HELPER x y SIGNED-ORACLE
-      4 A@ QUOTIENT @ = 5 A@ REMAINDER @ = and UNTOUCHED? and s" divremi" CHECK
-      5 HELPER ! x y CALL-HELPER x y UNSIGNED-ORACLE
-      4 A@ QUOTIENT @ = 5 A@ REMAINDER @ = and UNTOUCHED? and s" divremu" CHECK
-   loop loop ;
+   6 0 ?do
+      i LOAD-HELPER
+      VECTOR-COUNT 0 ?do VECTOR-COUNT 0 ?do
+         i VECTOR {: x:n :} j VECTOR {: y:n :}
+         x y CALL-HELPER
+         x y DIVISION-OK? UNTOUCHED? and HELPER @ HELPER-NAME$ CHECK
+      loop loop
+   loop ;
 
 
 \ INT32_MIN, where the hardware ABS would saturate: the documented wrap and
 \ C's remainder sign.
 : EDGE-CASES ( -- )
-   0 HELPER ! $80000000 $FFFFFFFF CALL-HELPER 4 A@ $80000000 = UNTOUCHED? and s" divi INT32_MIN / -1 wraps to INT32_MIN" CHECK
-   0 HELPER ! $80000000 1 CALL-HELPER 4 A@ $80000000 = s" divi INT32_MIN / 1" CHECK
-   0 HELPER ! $80000000 3 CALL-HELPER 4 A@ -715827882 >U32 = s" divi INT32_MIN / 3" CHECK
-   2 HELPER ! $80000000 3 CALL-HELPER 4 A@ -2 >U32 = UNTOUCHED? and s" remi INT32_MIN % 3 is -2" CHECK
-   2 HELPER ! $80000000 $FFFFFFFF CALL-HELPER 4 A@ 0= s" remi INT32_MIN % -1 is 0" CHECK
-   2 HELPER ! 7 $80000000 CALL-HELPER 4 A@ 7 = s" remi 7 % INT32_MIN is 7" CHECK
-   4 HELPER ! $80000000 $FFFFFFFF CALL-HELPER 4 A@ $80000000 = 5 A@ 0= and UNTOUCHED? and s" divremi INT32_MIN / -1" CHECK
-   4 HELPER ! $80000000 3 CALL-HELPER 4 A@ -715827882 >U32 = 5 A@ -2 >U32 = and s" divremi INT32_MIN / 3" CHECK ;
+   0 LOAD-HELPER
+   $80000000 $FFFFFFFF CALL-HELPER 4 A@ $80000000 = UNTOUCHED? and s" divi INT32_MIN / -1 wraps to INT32_MIN" CHECK
+   $80000000 1 CALL-HELPER 4 A@ $80000000 = s" divi INT32_MIN / 1" CHECK
+   $80000000 3 CALL-HELPER 4 A@ -715827882 >U32 = s" divi INT32_MIN / 3" CHECK
+   2 LOAD-HELPER
+   $80000000 3 CALL-HELPER 4 A@ -2 >U32 = UNTOUCHED? and s" remi INT32_MIN % 3 is -2" CHECK
+   $80000000 $FFFFFFFF CALL-HELPER 4 A@ 0= s" remi INT32_MIN % -1 is 0" CHECK
+   7 $80000000 CALL-HELPER 4 A@ 7 = s" remi 7 % INT32_MIN is 7" CHECK
+   4 LOAD-HELPER
+   $80000000 $FFFFFFFF CALL-HELPER 4 A@ $80000000 = 5 A@ 0= and UNTOUCHED? and s" divremi INT32_MIN / -1" CHECK
+   $80000000 3 CALL-HELPER 4 A@ -715827882 >U32 = 5 A@ -2 >U32 = and s" divremi INT32_MIN / 3" CHECK ;
 
 
 : PREPARE ( -- )
@@ -98,19 +109,19 @@ variable REMAINDER
 
 : MEMORY-CASES ( -- )
    MEMORY-BASE {: src:n :} MEMORY-BASE 256 + {: dst:n :}
-   6 HELPER ! 6 EMIT-HELPER PREPARE dst 4 A! src 4 B! 100 6 A! PROGRAM$ CALL drop
+   6 LOAD-HELPER PREPARE dst 4 A! src 4 B! 100 6 A! PROGRAM$ CALL drop
    4 A@ dst = s" memcpy returns dst" CHECK
    TRUE 100 0 ?do dst i + MEMORY@ i 7 * 255 and <> if drop FALSE then loop s" memcpy copies 100 bytes" CHECK
    dst 100 + MEMORY@ $EE = s" memcpy stops at n" CHECK
    UNTOUCHED? s" memcpy preserves callee-saved registers" CHECK
-   6 EMIT-HELPER PREPARE dst 4 A! src 4 B! 0 6 A! PROGRAM$ CALL drop
+   PREPARE dst 4 A! src 4 B! 0 6 A! PROGRAM$ CALL drop
    dst MEMORY@ $EE = s" memcpy with n=0 writes nothing" CHECK
-   7 HELPER ! 7 EMIT-HELPER PREPARE dst 4 A! $1234567A 4 B! 37 6 A! PROGRAM$ CALL drop
+   7 LOAD-HELPER PREPARE dst 4 A! $1234567A 4 B! 37 6 A! PROGRAM$ CALL drop
    4 A@ dst = s" memset returns dst" CHECK
    TRUE 37 0 ?do dst i + MEMORY@ $7A <> if drop FALSE then loop s" memset fills 37 bytes with the low byte" CHECK
    dst 37 + MEMORY@ $EE = s" memset stops at n" CHECK
    UNTOUCHED? s" memset preserves callee-saved registers" CHECK
-   7 EMIT-HELPER PREPARE dst 4 A! 0 4 B! 0 6 A! PROGRAM$ CALL drop
+   PREPARE dst 4 A! 0 4 B! 0 6 A! PROGRAM$ CALL drop
    dst MEMORY@ $EE = s" memset with n=0 writes nothing" CHECK ;
 
 
@@ -120,7 +131,7 @@ variable SWEEP-OK
 
 : COPY-SWEEP-CASE ( n n n -- ) {: soff:n doff:n n:n :}
    MEMORY-BASE soff + {: src:n :} MEMORY-BASE 256 + doff + {: dst:n :}
-   6 EMIT-HELPER PREPARE dst 4 A! src 4 B! n 6 A! PROGRAM$ CALL drop
+   PREPARE dst 4 A! src 4 B! n 6 A! PROGRAM$ CALL drop
    4 A@ dst <> if 0 SWEEP-OK ! then
    n 0 ?do dst i + MEMORY@ soff i + 7 * 255 and <> if 0 SWEEP-OK ! then loop
    dst n + MEMORY@ $EE <> dst 1- MEMORY@ $EE <> or if 0 SWEEP-OK ! then
@@ -128,7 +139,7 @@ variable SWEEP-OK
 
 : FILL-SWEEP-CASE ( n n -- ) {: doff:n n:n :}
    MEMORY-BASE 256 + doff + {: dst:n :}
-   7 EMIT-HELPER PREPARE dst 4 A! $12345A 4 B! n 6 A! PROGRAM$ CALL drop
+   PREPARE dst 4 A! $12345A 4 B! n 6 A! PROGRAM$ CALL drop
    4 A@ dst <> if 0 SWEEP-OK ! then
    n 0 ?do dst i + MEMORY@ $5A <> if 0 SWEEP-OK ! then loop
    dst n + MEMORY@ $EE <> dst 1- MEMORY@ $EE <> or if 0 SWEEP-OK ! then
@@ -137,10 +148,10 @@ variable SWEEP-OK
 : COPY-LENGTHS ( n n -- ) {: soff:n doff:n :} 41 0 ?do soff doff i COPY-SWEEP-CASE loop ;
 
 : SWEEPS ( -- )
-   6 HELPER ! 1 SWEEP-OK !
+   6 LOAD-HELPER 1 SWEEP-OK !
    8 1 ?do 8 1 ?do i j COPY-LENGTHS loop loop
    SWEEP-OK @ 0 <> s" memcpy over every misalignment and length" CHECK
-   7 HELPER ! 1 SWEEP-OK !
+   7 LOAD-HELPER 1 SWEEP-OK !
    8 1 ?do 41 0 ?do j i FILL-SWEEP-CASE loop loop
    SWEEP-OK @ 0 <> s" memset over every misalignment and length" CHECK ;
 
@@ -154,7 +165,7 @@ variable SWEEP-OK
 
 : COPY-LARGE ( n n -- ) {: soff:n doff:n :}
    MEMORY-BASE soff + {: src:n :} MEMORY-BASE 512 + doff + {: dst:n :}
-   6 HELPER ! 6 EMIT-HELPER PREPARE-LARGE
+   PREPARE-LARGE
    dst 4 A! src 4 B! 256 6 A! PROGRAM$ CALL drop
    4 A@ dst = s" memcpy 256 returns dst" CHECK
    true 256 0 ?do
@@ -165,7 +176,7 @@ variable SWEEP-OK
 
 : FILL-LARGE ( n -- ) {: doff:n :}
    MEMORY-BASE 512 + doff + {: dst:n :}
-   7 HELPER ! 7 EMIT-HELPER PREPARE-LARGE
+   PREPARE-LARGE
    dst 4 A! $5A 4 B! 256 6 A! PROGRAM$ CALL drop
    4 A@ dst = s" memset 256 returns dst" CHECK
    true 256 0 ?do dst i + MEMORY@ $5A <> if drop false then loop
@@ -174,10 +185,12 @@ variable SWEEP-OK
    UNTOUCHED? s" memset 256 preserves callee-saved registers" CHECK ;
 
 : LARGE-MEMORY-CASES ( -- )
+   6 LOAD-HELPER
    0 0 COPY-LARGE
    8 0 COPY-LARGE
    1 0 COPY-LARGE
    3 3 COPY-LARGE
+   7 LOAD-HELPER
    0 FILL-LARGE
    3 FILL-LARGE ;
 
@@ -245,7 +258,7 @@ variable NORMAL-SHIFT
    x F32>R y F32>R f/ R>F32 ;
 
 : FLOAT-CASES ( -- )
-   8 HELPER !
+   8 LOAD-HELPER
    FLOAT-COUNT 0 ?do FLOAT-COUNT 0 ?do
       i FLOAT {: x:n :} j FLOAT {: y:n :}
       x y CALL-HELPER
@@ -287,12 +300,11 @@ create DOUBLES
    x IEEE754:BITS>F64 y IEEE754:BITS>F64 f/ IEEE754:F64>BITS ;
 
 : CALL-DIVD ( n n -- ) {: x:n y:n :}
-   9 EMIT-HELPER
    RESET FILL-REGISTERS x LOW 4 A! x HIGH 5 A! y LOW 4 B! y HIGH 5 B!
    PROGRAM$ CALL drop ;
 
 : DOUBLE-CASES ( -- )
-   9 HELPER !
+   9 LOAD-HELPER
    DOUBLE-COUNT 0 ?do DOUBLE-COUNT 0 ?do
       i DOUBLE {: x:n :} j DOUBLE {: y:n :}
       x y CALL-DIVD
@@ -309,10 +321,10 @@ create DOUBLES
 \ ---- cycles of the packed helpers, so a scheduling change is a deliberate one ---------
 
 : CYCLES-FOR ( n n n -- n ) {: idx:n x:n y:n :}
-   idx HELPER ! idx EMIT-HELPER RESET FILL-REGISTERS x 4 A! y 4 B! PROGRAM$ CALL ;
+   idx LOAD-HELPER RESET FILL-REGISTERS x 4 A! y 4 B! PROGRAM$ CALL ;
 
 : DOUBLE-CYCLES ( n n -- n ) {: x:n y:n :}
-   9 HELPER ! 9 EMIT-HELPER RESET FILL-REGISTERS
+   9 LOAD-HELPER RESET FILL-REGISTERS
    x >U32 4 A! x 32 rshift 5 A! y >U32 4 B! y 32 rshift 5 B! PROGRAM$ CALL ;
 
 : CYCLE-CASES ( -- )

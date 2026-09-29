@@ -3,7 +3,7 @@
 \ covers, and the span bound in src/habu/aot-closure.f, which meets the same kind
 \ of cell through a recorded address naming one the window never opened over.
 \ Each must name WHICH cell, WHICH value and - for a genuine data pointer -
-\ WHICH bounds. Build four stripped images through the real native linker and
+\ WHICH bounds. Build three stripped images through the real native linker and
 \ read the diagnostic each is refused with.
 \
 \ WHAT IS LEFT TO REFUSE. A cell DECLARED to hold an execution token is relocated
@@ -106,15 +106,25 @@ variable IMAGE-U
 \ unsupported-persistent-data verdict and the same three facts; its reason says
 \ the thing that is actually wrong with it, which no declaration could fix: the
 \ image does not restore this cell at all.
+\
+\ It is read in the JSON shape hb-build --json publishes. Every cell refusal
+\ renders through one writer pair, src/habu/aot-closure.f DATA-CELL-PROSE and
+\ DATA-CELL-JSON, with only the reason and suggestion as arguments, so CASE-TICK
+\ locks the three facts in the prose rendering and this case in the JSON one.
 : CASE-PRE-XT ( -- )
    S\" : MAIN ( -- ) DCR-PRE-XT @ . ;\n" WRITE-SUBJECT
+   s" 1"
    S\" : DCR-PRE ( n -- n ) 1+ ;\ncreate DCR-PRE-XT ' DCR-PRE ,\nrequire tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
-      BUILD
+      BUILD-DIAG
    70 s" pre-window xt cell: refusal code" GE-EXPECT-RC
-   s" stripped AOT persistent data outside the restored span holds a code/dict pointer"
+   S\" \"code\":\"E-AOT-UNSUPPORTED\"" s" pre-window xt cell: schema code" GE-EXPECT-ERR-HAS
+   S\" \"reason\":\"stripped AOT persistent data outside the restored span holds a code/dict pointer\""
       s" pre-window xt cell: refusal reason" GE-EXPECT-ERR-HAS
-   s" word=DCR-PRE-XT" s" pre-window xt cell: names the owning word" GE-EXPECT-ERR-HAS
-   s" pre-window xt cell: fields filled" FIELDS-FILLED
+   S\" \"word\":\"DCR-PRE-XT\"" s" pre-window xt cell: names the owning word" GE-EXPECT-ERR-HAS
+   S\" \"data_off\":" s" pre-window xt cell: names the DATA offset" GE-EXPECT-ERR-HAS
+   S\" \"data_off\":," s" pre-window xt cell: DATA offset filled" GE-EXPECT-ERR-LACKS
+   S\" \"value\":" s" pre-window xt cell: names the value" GE-EXPECT-ERR-HAS
+   S\" \"value\":," s" pre-window xt cell: value filled" GE-EXPECT-ERR-LACKS
    s" aot: address refers to data"
       s" pre-window xt cell: named as a cell, not as a bare span bound" GE-EXPECT-ERR-LACKS
    s" pre-window xt cell: no image" NO-IMAGE ;
@@ -140,28 +150,11 @@ variable IMAGE-U
       s" pre-window data cell: a plain datum is not called a pointer" GE-EXPECT-ERR-LACKS
    s" pre-window data cell: no image" NO-IMAGE ;
 
-\ hb-build --json publishes this shape, so the three facts are locked in both
-\ renderings rather than only in the prose one.
-: CASE-JSON ( -- )
-   S\" : MAIN ( -- ) DCR-PRE-XT @ . ;\n" WRITE-SUBJECT
-   s" 1"
-   S\" : DCR-PRE ( n -- n ) 1+ ;\ncreate DCR-PRE-XT ' DCR-PRE ,\nrequire tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
-      BUILD-DIAG
-   70 s" json refusal: code" GE-EXPECT-RC
-   S\" \"code\":\"E-AOT-UNSUPPORTED\"" s" json refusal: schema code" GE-EXPECT-ERR-HAS
-   S\" \"word\":\"DCR-PRE-XT\"" s" json refusal: names the owning word" GE-EXPECT-ERR-HAS
-   S\" \"data_off\":" s" json refusal: names the DATA offset" GE-EXPECT-ERR-HAS
-   S\" \"data_off\":," s" json refusal: DATA offset filled" GE-EXPECT-ERR-LACKS
-   S\" \"value\":" s" json refusal: names the value" GE-EXPECT-ERR-HAS
-   S\" \"value\":," s" json refusal: value filled" GE-EXPECT-ERR-LACKS
-   s" json refusal: no image" NO-IMAGE ;
-
 : BODY ( -- )
    PREPARE
    CASE-TICK
    CASE-PRE-XT
    CASE-PRE-DATA
-   CASE-JSON
    s" PASS: AOT persistent-cell refusals name the cell, the value and the bounds" type cr ;
 
 : RUN ( -- )
