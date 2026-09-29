@@ -1,16 +1,19 @@
 # Native test suite
 
-Build the engine the tree describes before running the suite — the product
-image, from a tree copy, with a private copy of the current engine as the
-host (the generation chain in [bootstrap.md](bootstrap.md#generation-chain-check)):
+Run focused tests through their real load paths first. Run the full native
+registry when a change affects shared checker or compiler behavior, runtime
+ABI, capture format or several libraries, or when focused tests cannot bound
+its effects. Source location alone does not decide this. For behavior baked
+into the engine, build a product candidate from a private copy of the matching
+tree with a ready native engine as host:
 
 ```sh
 HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST HB_TMP=$TMP \
   $HOST --load tools/native-build.f -- $OUT
 ```
 
-Copy the last generation to the tree's `bin/hb`, then run the one native
-registry from that tree:
+Put that candidate at the private tree's `bin/hb`, then run the native registry
+from that tree:
 
 ```sh
 bin/hb --load test/run.f
@@ -29,7 +32,10 @@ retain the failed log, and rerun the unchanged candidate awake; do not raise
 timeouts or count the interrupted run as acceptance.
 
 `test/gate-stdlib-cases.f` is the registry. Each `SUITE` row runs its listed
-files through the tree's `bin/hb`; there is no second test inventory.
+files through the tree's `bin/hb`. Multi-generation convergence is a separate
+check for codegen, self-hosting or capture changes that can alter successive
+engine output; see [bootstrap.md](bootstrap.md#generation-chain-check). The
+Gforth recovery checks below are also separate from this registry.
 
 The gate runs executable checks without an external theorem prover. Passing it
 establishes only the behavior exercised; see [proofs.md](proofs.md).
@@ -51,16 +57,9 @@ does, and whatever the child (or its own children) put under `HB_TMP` goes with
 the directory. An `HB_TMP` row the caller put in the child's environment itself
 — a value other than the pool process's own, which `PROC-ENV-INHERIT-MISSING`
 copies — is the caller's scratch to own and reap: the pool leaves the row and
-gives that slot no directory (`test/nf-path-test.f` hands each build a root of
-a chosen length; a pool path in front of it would overflow `NF-PATH-CAP`).
+gives that slot no directory.
 
 ## How a suite runs, and what that demands of its files
-
-If a private `XDG_CACHE_HOME` is used, first check `gforth -e bye` with that
-environment. A Gforth snapshot may reopen precompiled `libcc-tmp` libraries
-from its cache: an empty private cache then fails before any Habu fixture runs.
-Copy the installed Gforth cache into the private cache, preserving symlinks,
-and verify Gforth starts before running the gate.
 
 - A `SUITE` block is **one** `bin/hb --load` spawn: its files load into one
   image in order. A suite file is therefore package-scoped, duplicate-safe, and
@@ -102,3 +101,23 @@ and verify Gforth starts before running the gate.
   the unmodified base under the same load, then rerun the suite alone. Every
   gate run gets its own `HB_TMP` root, and nothing edits the tree while a gate
   or a census is running.
+
+## Separate Gforth recovery checks
+
+Run `bin/hb --load test/nf-path-test.f` when changing the Gforth fixture's
+scratch paths or build/run contract. This still executes the complete fixture,
+including its Gforth child, but does not make every native suite pay for it.
+The fixture supplies each build a root of a chosen length; a pool path in front
+of it would overflow `NF-PATH-CAP`.
+
+Run the [no-binary recovery check](bootstrap.md#periodic-no-binary-check) for
+changes to the recovery seed, mirror, launcher or dependencies, or as an
+explicit release recovery audit. The [DDC audit](bootstrap.md#ddc-audit-diverse-double-compiling)
+is also explicit. Neither is part of the normal native registry or an
+automatic per-commit or release gate.
+
+If a private `XDG_CACHE_HOME` is used for a Gforth check, first check
+`gforth -e bye` with that environment. A Gforth snapshot may reopen precompiled
+`libcc-tmp` libraries from its cache: an empty private cache then fails before
+any Habu fixture runs. Copy the installed Gforth cache into the private cache,
+preserving symlinks, and verify Gforth starts before running the check.

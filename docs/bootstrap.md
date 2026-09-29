@@ -206,8 +206,9 @@ below is what catches it, as the stage0 build dying on the bare token name.
 ## Periodic No-Binary Check
 
 The normal native gate uses an existing `bin/hb`; it does not prove the
-from-scratch Gforth recovery path. Run this periodic check after engine/compiler
-changes:
+from-scratch Gforth recovery path. Run this separate check after changes to
+the recovery seed, mirror, launcher or dependencies, or for an explicit release
+recovery audit:
 
 ```sh
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/habu-bootstrap-check.XXXXXX")

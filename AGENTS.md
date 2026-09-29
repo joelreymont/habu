@@ -82,9 +82,16 @@ belong in the language core.
   miss. Delete redundant assertions, implementation mirrors and change detectors.
 - Test changed behavior through the real load path. Include rejected programs
   for type rules and meaningful edge cases for runtime changes.
-- Run focused E2E tests while developing. Rebuild and run `bin/hb --load test/run.f`
-  for compiler/runtime or broad library changes that need the full suite.
-  Documentation, moves and other mechanical changes need proportionate checks.
+- Run focused E2E tests while developing. Rebuild `bin/hb` when changed behavior
+  is baked into it. Run the full native suite (`bin/hb --load test/run.f`) for
+  shared checker or compiler behavior, runtime ABI, capture format, effects
+  across libraries, or an impact that focused tests cannot bound; a file's
+  location alone does not require it. Check multi-generation convergence when
+  codegen, self-hosting or capture changes can alter successive engine output.
+  Gforth recovery is a separate, occasional check for seed, mirror, launcher or
+  recovery dependency changes, or an explicit release recovery audit. Maki owns
+  its downstream checks. Documentation, moves and other mechanical changes
+  need proportionate checks.
 - Report actual results and untested boundaries. Never weaken a claim to make a
   check pass. [docs/proofs.md](docs/proofs.md) explains verification limits.
 - A finding goes where it is checked: a test or a code comment if either can

@@ -1646,10 +1646,6 @@ SUITE build-fixpoint-fixtures
    tools/build-fixpoint-test.f
 ;SUITE
 
-SUITE native-fixture-paths
-   test/nf-path-test.f
-;SUITE
-
 SUITE load-argv-contract
    tools/load-argv-test.f
 ;SUITE
