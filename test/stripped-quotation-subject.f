@@ -82,6 +82,3 @@ public
    s" stripped-quotation: ok" type cr ;
 
 ;package
-
-: MAIN ( -- )
-   STRIPPED-QUOTATION-SUBJECT:RUN ;

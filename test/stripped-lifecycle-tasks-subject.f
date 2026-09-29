@@ -47,6 +47,3 @@ public
    s" stripped-lifecycle-tasks: ok" type cr ;
 
 ;package
-
-: MAIN ( -- )
-   STRIPPED-LIFECYCLE-TASKS-SUBJECT:RUN ;

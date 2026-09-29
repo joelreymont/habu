@@ -42,6 +42,3 @@ public
    s" stripped-lifecycle-prepare: ok" type cr ;
 
 ;package
-
-: MAIN ( -- )
-   STRIPPED-LIFECYCLE-PREPARE-SUBJECT:RUN ;

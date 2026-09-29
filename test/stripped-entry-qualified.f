@@ -13,7 +13,7 @@ package STRIPPED-ENTRY-TEST
    S\" public-helper\n" s" stripped explicit public HLP run" RUN-IMAGE ;
 
 : PRIVATE-REFUSED ( -- )
-   s" STRIPPED-ENTRY-HOSTILE:SECRET" BUILD
+   s" STRIPPED-ENTRY-HOSTILE:SECRET" MAKER-BUILD
    s" stripped private entry refused" REFUSED ;
 
 : BODY ( -- )

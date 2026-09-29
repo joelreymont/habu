@@ -1,5 +1,6 @@
-\ Literal bodies survive stripped linking; compiler lookup tables must refuse.
-\ Exercise the real native build driver.
+\ Compiler lookup tables must refuse a stripped link. The retained-literal
+\ image is tested by test/stripped-image.f; mutable pre-window DATA is tested
+\ by test/compiler/aot-data-cell-refusals.f.
 require test/gate-common.f
 require lib/engine-candidate.f
 
@@ -17,38 +18,12 @@ variable IMAGE-U
 : PREPARE ( -- )
    s" stripped-literal" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
-   s" application" IMAGE GT-PATH IMAGE-U ! ;
+   s" hb-aot-got" IMAGE GT-PATH IMAGE-U ! ;
 
 : WRITE-SUBJECT ( ptr u8 n -- ) {: a:ptr u:n :}
    SUBJECT$ a u WRITE-ALL ;
 
-: BUILD-LITERAL ( -- )
-   \ This deliberately invalid munmap range reaches MEM's baked error string.
-   \ The syscall refuses the unaligned address before touching any memory.
-   S\" package STRIPPED-LITERAL-SUBJECT\nprivate\nTRUSTED: BAD-SPAN ( -- ptr u8 NUM:byte-len ) 4097 4096 ;\npublic\n: RUN ( -- ) BAD-SPAN MEM:UNMAP ;\n;package\n: MAIN ( -- ) STRIPPED-LITERAL-SUBJECT:RUN ;\n" WRITE-SUBJECT
-   GE-HB-RESET
-   ENGINE-CANDIDATE:PATH$ GE-ARGV+
-   s" --load" GE-ARG+ s" tools/hb-build.f" GE-ARG+
-   s" --" GE-ARG+ SUBJECT$ GE-ARG+
-   s" -o" GE-ARG+ IMAGE$ GE-ARG+
-   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN GT-ROOT >LEN PROC-ENV+
-   ENGINE-CANDIDATE:PATH$ TIMEOUT-MS GE-RUN-ENV
-   s" stripped retained literal build" GE-EXPECT-OK
-   IMAGE$ EXECUTABLE? 0= if s" stripped retained literal executable" GE-FAIL then ;
-
-: RUN-LITERAL ( -- )
-   GE-HB-RESET
-   IMAGE$ GE-ARGV+
-   IMAGE$ TIMEOUT-MS GE-RUN-ENV
-   71 s" stripped retained literal error path" GE-EXPECT-RC
-   GT-OUT$ nip 0<> if s" stripped retained literal stdout" GE-FAIL then
-   GT-ERR$ S\" memory: unmap failed\n" STR= 0= if
-      s" stripped retained literal exact stderr" GE-FAIL
-   then ;
-
 : REFUSE-COMPILER-ROWS ( -- )
-   s" hb-aot-got" IMAGE GT-PATH IMAGE-U !
    S\" PERSISTED-PTR-VARIABLE SLT-COMPILER-ROWS\n: MAIN ( -- ) SLT-COMPILER-ROWS @ @ . ;\nNSTR:SOURCE-ROWS SLT-COMPILER-ROWS ! drop 2drop\n" WRITE-SUBJECT
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
@@ -66,10 +41,8 @@ variable IMAGE-U
 
 : BODY ( -- )
    PREPARE
-   BUILD-LITERAL
-   RUN-LITERAL
    REFUSE-COMPILER-ROWS
-   s" PASS: stripped literal bodies and compiler DATA refusal" type cr ;
+   s" PASS: stripped compiler rows refusal" type cr ;
 
 : RUN ( -- )
    [: BODY ;] [: GT-CLEANUP ;] finally ;

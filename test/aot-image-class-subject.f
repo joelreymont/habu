@@ -16,5 +16,3 @@ public
    s" size=ok" type cr ;
 
 ;package
-
-: MAIN ( -- ) AOT-IMAGE-CLASS-SUBJECT:RUN ;

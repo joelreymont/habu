@@ -19,7 +19,7 @@ package STRIPPED-ENTRY-TEST
 
 : MISSING-GLOBAL ( -- )
    NO-GLOBAL$ WRITE-SUBJECT
-   s" " BUILD
+   s" " MAKER-BUILD
    s" stripped missing global MAIN refused" REFUSED ;
 
 : BODY ( -- )

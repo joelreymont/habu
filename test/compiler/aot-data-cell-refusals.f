@@ -7,7 +7,7 @@
 \ read the diagnostic each is refused with.
 \
 \ WHAT IS LEFT TO REFUSE. A cell DECLARED to hold an execution token is relocated
-\ now rather than refused, and test/compiler/aot-xt-cells.f builds and runs an
+\ now rather than refused, and test/stripped-image.f builds and runs an
 \ image full of them (dot habu-let-a-stripped-0a064bf5). These are the cells no
 \ declaration accounts for: `' word ,` fills an untyped cell and declares
 \ nothing, so nothing may read it as a code address, and the refusal says which
@@ -85,7 +85,7 @@ variable IMAGE-U
 \ `,` stores a cell with no declaration of what it holds, so the image has no
 \ authority to read this one as a code address and says which forms would give it
 \ one. A DEFER cell in the same position is relocated instead, which is what
-\ test/compiler/aot-xt-cells.f builds and runs.
+\ test/stripped-image.f builds and runs.
 : CASE-TICK ( -- )
    S\" : DCR-BUMP ( n -- n ) 1+ ;\ncreate DCR-TABLE ' DCR-BUMP ,\n: MAIN ( -- ) DCR-TABLE @ . ;\n"
       WRITE-SUBJECT

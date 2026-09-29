@@ -1,5 +1,6 @@
 \ Address-chain admission in the real native stripped linker. Process children
-\ test die paths; the executable regression lives in stripped-quotation.f.
+\ test die paths; the executable regression is test/stripped-quotation-subject.f,
+\ linked and run by test/stripped-image.f.
 require lib/test.f
 require lib/string.f
 require test/gate-common.f

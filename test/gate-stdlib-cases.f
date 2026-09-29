@@ -618,8 +618,8 @@ SUITE native-build-entry
    test/native-build-entry.f
 ;SUITE
 
-SUITE stripped-quotation
-   test/stripped-quotation.f
+SUITE stripped-image
+   test/stripped-image.f
 ;SUITE
 
 SUITE stripped-lifecycle-prepare
@@ -630,28 +630,12 @@ SUITE stripped-address
    test/stripped-address.f
 ;SUITE
 
-SUITE aot-image-class
-   test/aot-image-class.f
-;SUITE
-
 SUITE stripped-literal
    test/stripped-literal.f
 ;SUITE
 
-SUITE stripped-does
-   test/stripped-does.f
-;SUITE
-
 SUITE aot-data-cell-refusals
    test/compiler/aot-data-cell-refusals.f
-;SUITE
-
-SUITE aot-xt-cells
-   test/compiler/aot-xt-cells.f
-;SUITE
-
-SUITE stripped-sparse-data
-   test/stripped-sparse-data.f
 ;SUITE
 
 SUITE aot-seeded-address-sites

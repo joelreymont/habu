@@ -38,6 +38,3 @@ public
    s" aot-xt-cells: ok" type cr ;
 
 ;package
-
-: MAIN ( -- )
-   AOT-XT-CELL-SUBJECT:RUN ;

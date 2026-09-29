@@ -55,6 +55,3 @@ public
    s" stripped-sparse-data: ok" type cr ;
 
 ;package
-
-: MAIN ( -- )
-   STRIPPED-SPARSE-DATA-SUBJECT:RUN ;
