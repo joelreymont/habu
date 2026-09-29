@@ -1,236 +1,27 @@
-\ build-fixpoint-test.f - checked fixture for tools/build-fixpoint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f
-\ lib/process-argv.f lib/process-env.f lib/process-cwd.f lib/build.f lib/codesign.f
-\ tools/build-fixpoint.f tools/build-fixpoint-test.f
+\ build-fixpoint-test.f - checked fixture for tools/build-fixpoint.f: the
+\ refresh build and every case that reads its output (candidate boot, cached
+\ skip, the watermark refusals on its capture host, the source-arena boundary
+\ on its candidate), the CLI footguns, the stamp key and the boot pins. The
+\ stale-seed sandbox cases are tools/build-fixpoint-sandbox-test.f, the emitted
+\ and certified sources tools/build-fixpoint-source-test.f and the snapshot
+\ trailer tools/build-fixpoint-snapshot-test.f; each is a gate row of its own,
+\ because one row running every case took 293-338 s in the gate's pool.
+\ Run: bin/hb --load tools/build-fixpoint-test.f
 
-require lib/errors.f
-require lib/string.f
+require tools/build-fixpoint-test-lib.f
 require lib/string-roles.f               \ package STR: the typed string surface
-require lib/fmt.f
 require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
-require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
-require lib/process-cwd.f
-require lib/build.f
-require lib/codesign.f
-require tools/build-fixpoint.f
-require src/habu/snapshot-format.f
 require lib/test/mapped.f
-require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
 
-\ This fixture drives the tool's internals - the emitted stage sources, the
-\ stamp preimage, the chain fold - so it REOPENS package BUILD-FIXPOINT rather
-\ than importing a public surface. Exporting those internals would widen the
-\ tool's own interface for the benefit of its own test. The local fixture
-\ scopes this file used to carry (BFT-SNAP-HOOK, BFT-CAP, BFT-CHAIN,
-\ STALE-SEED) were there only because the file had no package of its own; they
-\ are ordinary private words of the tool's package now.
+\ The shared fixture's words are private words of the tool's package, so this
+\ row reopens it the way tools/build-fixpoint-test-lib.f does.
 package BUILD-FIXPOINT
 
-8192 constant BFT-CAPTURE-CAP
-$40000 constant BFT-BIG-CAP
-120000 constant BFT-TIMEOUT-MS
 13 constant BFT-BUILD-ARGV#
-
-\ The snapshot trailer's size and field offsets are owned by src/habu/layout.f
-\ (SNAP-TRL-BYTES, SNAP-TRL-NDICT, SNAP-TRL-REGLEN, SNAP-TRL-DATALEN,
-\ SNAP-TRL-VERSION); the writer, the loader and this fixture all read them from
-\ there, so a format change cannot leave one side addressing the wrong cells.
-
-$A5 constant FORGE
-
-variable BFT-ROOT-U
-variable BFT-HB-NEW-U
-variable BFT-HB-U
-variable BFT-PREFIX-U
-variable BFT-STAGE2-U
-variable BFT-SNAP-U
-variable BFT-STAMP-U
-variable BFT-STAMP2-U
-variable BFT-NEST-U
-variable BFT-NOTDIR-U
-variable BFT-ENG-A-U
-variable BFT-ENG-B-U
-variable BFT-CERT-U
-variable BFT-STALE-U
-variable BFT-STALE-HB-U
-variable BFT-STALE-TMP-U
-variable BFT-STALE-STAMP-U
-variable BFT-STALE-PAYLOAD-U
-variable BFT-STALE-MARK-U
-variable BFT-CP-U
-TYPED-VARIABLE BFT-BIG-OUT-A ptr u8
-TYPED-VARIABLE BFT-BIG-ERR-A ptr u8
-TYPED-VARIABLE BFT-READ-A ptr u8
-variable BFT-READ-CAP
-TYPED-VARIABLE BFT-BYTES-A ptr u8
-variable BFT-BYTES-N
-
-create BFT-ROOT-BUF FS-PATH-CAP allot
-create BFT-HB-NEW-BUF FS-PATH-CAP allot
-create BFT-HB-BUF FS-PATH-CAP allot
-create BFT-PREFIX-BUF FS-PATH-CAP allot
-create BFT-STAGE2-BUF FS-PATH-CAP allot
-create BFT-SNAP-BUF FS-PATH-CAP allot
-create BFT-STAMP-BUF FS-PATH-CAP allot
-create BFT-STAMP2-BUF FS-PATH-CAP allot
-create BFT-NEST-BUF FS-PATH-CAP allot
-create BFT-NOTDIR-BUF FS-PATH-CAP allot
-create BFT-ENG-A-BUF FS-PATH-CAP allot
-create BFT-ENG-B-BUF FS-PATH-CAP allot
-create BFT-CERT-BUF FS-PATH-CAP allot
-create BFT-STALE-BUF FS-PATH-CAP allot
-create BFT-STALE-HB-BUF FS-PATH-CAP allot
-create BFT-STALE-TMP-BUF FS-PATH-CAP allot
-create BFT-STALE-STAMP-BUF FS-PATH-CAP allot
-create BFT-STALE-PAYLOAD-BUF FS-PATH-CAP allot
-create BFT-STALE-MARK-BUF FS-PATH-CAP allot
-create BFT-CP-BUF FS-PATH-CAP allot
-create BFT-NL 10 c,
 create BFT-KEY1 64 allot
-create BFT-OUT BFT-CAPTURE-CAP allot
-create BFT-ERR BFT-CAPTURE-CAP allot
-
-: BFT-READ-BUF! ( ptr u8 -- )
-   BFT-READ-A ! ;
-
-: BFT-READ-BUF ( -- ptr u8 )
-   BFT-READ-A @ ;
-
-: BFT-ALLOC-READ ( n -- )
-   dup BFT-READ-CAP @ <= if drop exit then
-   dup MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-READ-BUF!
-   BFT-READ-CAP ! ;
-
-: BFT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
-   u FS-PATH-CAP > if E-FS-PATH throw then
-   a dst u BYTE-COPY
-   u lenp ! ;
-
-: BFT-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu na:ptr nu dst:ptr lenp:ptr :}
-   pa pu na nu dst JOIN-PATH lenp ! ;
-
-: BFT-ROOT ( -- ptr u8 n )
-   BFT-ROOT-BUF BFT-ROOT-U @ ;
-
-: BFT-HB-NEW ( -- ptr u8 n )
-   BFT-HB-NEW-BUF BFT-HB-NEW-U @ ;
-
-: BFT-HB ( -- ptr u8 n )
-   BFT-HB-BUF BFT-HB-U @ ;
-
-: BFT-PREFIX ( -- ptr u8 n )
-   BFT-PREFIX-BUF BFT-PREFIX-U @ ;
-
-: BFT-STAGE2 ( -- ptr u8 n )
-   BFT-STAGE2-BUF BFT-STAGE2-U @ ;
-
-: BFT-SNAP ( -- ptr u8 n )
-   BFT-SNAP-BUF BFT-SNAP-U @ ;
-
-: BFT-STAMP ( -- ptr u8 n )
-   BFT-STAMP-BUF BFT-STAMP-U @ ;
-
-: BFT-STAMP2 ( -- ptr u8 n )
-   BFT-STAMP2-BUF BFT-STAMP2-U @ ;
-
-: BFT-NEST ( -- ptr u8 n )
-   BFT-NEST-BUF BFT-NEST-U @ ;
-
-: BFT-NOTDIR ( -- ptr u8 n )
-   BFT-NOTDIR-BUF BFT-NOTDIR-U @ ;
-
-: BFT-ENG-A ( -- ptr u8 n )
-   BFT-ENG-A-BUF BFT-ENG-A-U @ ;
-
-: BFT-ENG-B ( -- ptr u8 n )
-   BFT-ENG-B-BUF BFT-ENG-B-U @ ;
-
-: BFT-CERT ( -- ptr u8 n )
-   BFT-CERT-BUF BFT-CERT-U @ ;
-
-: BFT-STALE ( -- ptr u8 n )
-   BFT-STALE-BUF BFT-STALE-U @ ;
-
-: BFT-STALE-HB ( -- ptr u8 n )
-   BFT-STALE-HB-BUF BFT-STALE-HB-U @ ;
-
-: BFT-STALE-TMP ( -- ptr u8 n )
-   BFT-STALE-TMP-BUF BFT-STALE-TMP-U @ ;
-
-: BFT-STALE-STAMP ( -- ptr u8 n )
-   BFT-STALE-STAMP-BUF BFT-STALE-STAMP-U @ ;
-
-: BFT-STALE-PAYLOAD ( -- ptr u8 n )
-   BFT-STALE-PAYLOAD-BUF BFT-STALE-PAYLOAD-U @ ;
-
-: BFT-STALE-MARK ( -- ptr u8 n )
-   BFT-STALE-MARK-BUF BFT-STALE-MARK-U @ ;
-
-: BFT-BIG-OUT ( -- ptr u8 )
-   BFT-BIG-OUT-A @ ;
-
-: BFT-BIG-ERR ( -- ptr u8 )
-   BFT-BIG-ERR-A @ ;
-
-: BFT-ALLOC-BIG ( -- )
-   BFT-BIG-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BIG-OUT-A !
-   BFT-BIG-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BIG-ERR-A ! ;
-
-: BFT-EMPTY$ ( -- ptr u8 n )
-   SB-RESET
-   SB$ ;
 
 : BFT-ENV$ ( -- ptr u8 n )
    BFT-ROOT ;
-
-: BFT-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
-: BFT-PREPARE ( -- )
-   CLEANUP-RESET
-   s" habu-build-fixpoint" HB-TMP-MKDIR {: a:ptr u :}
-   a u BFT-ROOT-BUF BFT-ROOT-U BFT-COPY!
-   BFT-ROOT CLEANUP-TREE+
-   BFT-ROOT s" hb-new" BFT-HB-NEW-BUF BFT-HB-NEW-U BFT-PATH!
-   BFT-ROOT s" hb-stdin" BFT-HB-BUF BFT-HB-U BFT-PATH!
-   s" bin/hb" BFT-HB COPY-FILE-STREAM
-   BFT-HB CHMOD-X
-   BFT-ROOT s" prefix-src" BFT-PREFIX-BUF BFT-PREFIX-U BFT-PATH!
-   BFT-ROOT s" stage2-src" BFT-STAGE2-BUF BFT-STAGE2-U BFT-PATH!
-   BFT-ROOT s" hb-snap-src" BFT-SNAP-BUF BFT-SNAP-U BFT-PATH!
-   BFT-ROOT s" fixpoint-stamp" BFT-STAMP-BUF BFT-STAMP-U BFT-PATH!
-   BFT-ROOT s" fixpoint-stamp2" BFT-STAMP2-BUF BFT-STAMP2-U BFT-PATH!
-   BFT-ROOT s" nested/stamps/stamp" BFT-NEST-BUF BFT-NEST-U BFT-PATH!
-   BFT-ROOT s" not-a-dir" BFT-NOTDIR-BUF BFT-NOTDIR-U BFT-PATH!
-   BFT-ROOT s" engine-a" BFT-ENG-A-BUF BFT-ENG-A-U BFT-PATH!
-   BFT-ROOT s" engine-b" BFT-ENG-B-BUF BFT-ENG-B-U BFT-PATH!
-   BFT-ROOT s" cert-source.f" BFT-CERT-BUF BFT-CERT-U BFT-PATH!
-   BFT-NOTDIR s" plain file, not a directory" WRITE-ALL ;
-
-: BFT-ARGV-LOAD-LIBS ( -- )   \ the --load prefix through build-fixpoint.f, WITHOUT the CLI entry companion
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f" BFT-ARG+
-   s" lib/string.f" BFT-ARG+
-   s" lib/memory.f" BFT-ARG+
-   s" lib/fs.f" BFT-ARG+
-   s" lib/fs-mutate.f" BFT-ARG+
-   s" lib/process.f" BFT-ARG+
-   s" lib/process-argv.f" BFT-ARG+
-   s" lib/process-env.f" BFT-ARG+
-   s" lib/build.f" BFT-ARG+
-   s" lib/codesign.f" BFT-ARG+
-   s" tools/build-fixpoint.f" BFT-ARG+ ;
-
-: BFT-ARGV-LOAD-FILES ( -- )
-   BFT-ARGV-LOAD-LIBS
-   s" tools/build-fixpoint-main.f" BFT-ARG+ ;
 
 : BFT-ARGV-ENV+ ( ptr u8 n ptr u8 n -- ) {: tmp:ptr tmpu:n stamp:ptr stampu:n :}
    PROC-ARGV-RESET
@@ -260,12 +51,6 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-ARGV-FAIL ( -- n )
    BFT-NOTDIR BFT-STAMP2 BFT-ARGV-FIXPOINT ;
-
-: BFT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
-     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
-   ;MATCH ;
 
 : BFT-ARGV-ALL-FORCE ( -- )
    s" --" BFT-ARG+
@@ -529,151 +314,6 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BF-STAMP-MATCH? TTRUE
    BFT-STAMP-UNSCOPE ;
 
-: BFT-READ ( ptr u8 n -- n ) {: pa:ptr pu:n :}
-   pa pu FILE-SIZE BFT-ALLOC-READ
-   pa pu BFT-READ-BUF BFT-READ-CAP @ READ-ALL ;
-
-\ Stale-seed install regression: a refresh child that dies (here: a crash baked
-\ into the fixture's src/arch/arm64/mnem.f emitter payload, so the
-\ bootstrap child aborts with SIGABRT rc 134 exactly like a seed that cannot
-\ load the current engine prefix) must fail the install loudly: deterministic
-\ BF-BUILD-RC exit, a named stderr diagnostic, the engine binary byte-unchanged,
-\ and no stamp. Before the BF-CLI boundary the E-BUILD-STATUS throw escaped to
-\ BTHROW's no-handler exit: silent, exit code masked to the low 8 bits.
-\ The crash rides a TRUSTED: boundary so BLOCKING certification cannot see it
-\ (a `0 set-check` body is still checked by VERIFY:SOURCE-BUF and would be
-\ rejected statically before ever running) -- the stale-seed scenario this
-\ models is a semantic runtime failure, not a type error.
-: BFT-STALE-DST ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   BFT-STALE a u SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE
-   BFT-CP-BUF JOIN-PATH BFT-CP-U !
-   BFT-CP-BUF BFT-CP-U @ ;
-
-: BFT-STALE-COPY-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u BFT-STALE-DST {: d:ptr du:n :}
-   d du BF-PARENT-U {: pu:n :}
-   pu 0 > if d pu MAKE-DIRS then
-   a u d du COPY-FILE-STREAM ;
-
-: BFT-STALE-COPY-ENTRY ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u FILE? if a u BFT-STALE-COPY-FILE then ;
-
-: BFT-STALE-COPY-TREE ( ptr u8 n -- )
-   [: BFT-STALE-COPY-ENTRY ;] WALK-FILES ;
-
-: BFT-STALE-SABOTAGE ( -- )
-   s" src/arch/arm64/mnem.f" BFT-READ {: u:n :}
-   BFT-STALE-PAYLOAD s" TRUSTED: BFT-STALE-CRASH ( -- ) 1 0 ! ; BFT-STALE-CRASH" WRITE-ALL
-   BFT-STALE-PAYLOAD BFT-NL 1 APPEND-FILE
-   BFT-STALE-PAYLOAD BFT-READ-BUF u APPEND-FILE ;
-
-: BFT-STALE-PATHS! ( -- )
-   s" habu-bft-stale" HB-TMP-MKDIR {: a:ptr u:n :}
-   a u BFT-STALE-BUF BFT-STALE-U BFT-COPY!
-   BFT-STALE CLEANUP-TREE+
-   BFT-STALE s" bin/hb" BFT-STALE-HB-BUF BFT-STALE-HB-U BFT-PATH!
-   BFT-STALE s" tmp" BFT-STALE-TMP-BUF BFT-STALE-TMP-U BFT-PATH!
-   BFT-STALE s" stamp" BFT-STALE-STAMP-BUF BFT-STALE-STAMP-U BFT-PATH!
-   BFT-STALE s" src/arch/arm64/mnem.f" BFT-STALE-PAYLOAD-BUF BFT-STALE-PAYLOAD-U BFT-PATH!
-   BFT-STALE s" src/core/lower-cert-seal.f" BFT-STALE-MARK-BUF BFT-STALE-MARK-U BFT-PATH! ;
-
-\ The sandbox needs every tools/ file the refresh loads. That list used to be
-\ written out by hand and went stale the moment build-fixpoint.f grew a require:
-\ the sandboxed refresh then died on a missing file instead of on the fault the
-\ test was about. Ask the source instead - the same ordered closure walk the
-\ stamp key uses - so the sandbox tracks the tool's own requires. src/ and lib/
-\ still come over whole, because the stage build reads far more of them than
-\ build-fixpoint.f's own requires name.
-\ TWO CLOSURES, and the second is the same lesson a second time. The stamp key
-\ now opens the CAPTURE TOOL's closure as well, before it consults --force and
-\ before anything is written, so a sandbox without it dies -2102 (E-FS-OPEN)
-\ ahead of every fault these fixtures inject: the stale-seed crash and the
-\ certify injection both came back as a bare uncaught throw. The entry is asked
-\ from the tool - ENTRY$ - rather than spelled here, so whatever the key walks
-\ is what the sandbox carries.
-
-variable IX
-
-: COPY-CLOSURE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u EC:BUILD
-   0 IX !
-   begin IX @ EC:COUNT < while
-      IX @ EC:PATH$ BFT-STALE-COPY-ENTRY
-      IX @ 1+ IX !
-   repeat ;
-
-: BFT-STALE-PREPARE ( -- )
-   BFT-STALE-PATHS!
-   BFT-ALLOC-BIG
-   BFT-STALE-TMP MAKE-DIRS
-   s" src" BFT-STALE-COPY-TREE
-   s" lib" BFT-STALE-COPY-TREE
-   s" tools/build-fixpoint.f" COPY-CLOSURE
-   ENTRY$ COPY-CLOSURE
-   s" tools/build-fixpoint-main.f" BFT-STALE-COPY-FILE
-   s" bin/hb" BFT-STALE-COPY-FILE
-   BFT-STALE-HB CHMOD-X
-   BFT-STALE-SABOTAGE ;
-
-: BFT-STALE-ARGV ( -- )
-   PROC-ARGV-RESET
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN BFT-STALE-TMP >LEN PROC-ENV+
-   s" HABU_FIXPOINT_STAMP" >LEN BFT-STALE-STAMP >LEN PROC-ENV+
-   BFT-ARGV-LOAD-FILES
-   s" --" BFT-ARG+
-   s" install" BFT-ARG+
-   s" --force" BFT-ARG+ ;
-
-: BFT-STALE-SPAWN ( -- n n n )
-   BFT-STALE-HB >LEN BFT-STALE >LEN
-   BFT-BIG-OUT BFT-BIG-CAP >LEN
-   BFT-BIG-ERR BFT-BIG-CAP >LEN
-   BFT-TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
-   BFT-CAPTURE>N ;
-
-: BFT-TEST-STALE-INSTALL ( -- )
-   BFT-STALE-PREPARE
-   BFT-STALE-ARGV
-   BFT-STALE-SPAWN {: outu:n erru:n rcn:n :}
-   rcn BF-BUILD-RC T=
-   BFT-BIG-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
-   BFT-BIG-ERR erru s" E-BUILD-STATUS" CONTAINS? TTRUE
-   BFT-BIG-ERR erru s" habu-crash regs" CONTAINS? TTRUE
-   BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
-   BFT-STALE-STAMP FILE? TFALSE ;
-
-\ Staged-fixpoint refusal regression (dot habu-staged-fixpoint-src-0b5fc6e6):
-\ a deliberately type-broken CHECKED definition in a source file of the
-\ assembled stage list (here appended to the sandbox copy of src/arch/arm64/mnem.f, so the certify scan reaches it early) must make the
-\ refresh REFUSE at the blocking pre-pass: deterministic BF-BUILD-RC exit, the
-\ certify diagnostic naming the injected word on stdout, the E-BUILD-CERTIFY
-\ name on stderr, the sandbox engine byte-unchanged, and no stamp. Runs in the
-\ BFT-STALE sandbox tree (private tmp + scratch install target - the real
-\ workspace bin/hb is never touched) with a fresh sabotage replacing the
-\ stale-seed one.
-: BFT-STALE-PAYLOAD-RESTORE ( -- )
-   s" src/arch/arm64/mnem.f" BFT-READ {: u:n :}
-   BFT-STALE-PAYLOAD BFT-READ-BUF u WRITE-ALL ;
-
-: BFT-CERT-INJ-SABOTAGE ( -- )
-   BFT-STALE-PAYLOAD-RESTORE
-   BFT-STALE-PAYLOAD s" : BFT-CERT-INJ ( n -- n ) drop ;" APPEND-FILE
-   BFT-STALE-PAYLOAD BFT-NL 1 APPEND-FILE ;
-
-: BFT-TEST-CERT-INJECT-INSTALL ( -- )
-   BFT-CERT-INJ-SABOTAGE
-   BFT-STALE-ARGV
-   BFT-STALE-SPAWN {: outu:n erru:n rcn:n :}
-   rcn BF-BUILD-RC T=
-   BFT-BIG-OUT outu s" certify: stage2-src rejected" CONTAINS? TTRUE
-   BFT-BIG-OUT outu s" bft-cert-inj" CONTAINS? TTRUE
-   BFT-BIG-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
-   BFT-BIG-ERR erru s" E-BUILD-CERTIFY" CONTAINS? TTRUE
-   BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
-   BFT-STALE-STAMP FILE? TFALSE ;
-
 \ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
 \ then read the found option<NUM:index> through NUM's one public
 \ projection and mint the switchover option<idx> from it.
@@ -696,11 +336,10 @@ variable IX
 \ emitted, not leave an undefined core word to surface from inside a generated
 \ file. The sabotage is that file with its PREFIX-MARK block cut off and nothing
 \ else changed: an engine reads its boot prefix from the tree it runs in, so the
-\ sandbox's copy IS the child's prefix, and the sandbox engine is byte-identical
-\ to the workspace one. Runs after the certify-injection case, so it restores
-\ that case's sabotaged src/habu/hide.f first.
+\ sandbox's copy IS the child's prefix. The sandbox engine is the build case's
+\ capture host (BFT-SOURCE-HOST$, hb-host in the scratch root), so this case
+\ and the value case below run after the build, in a sandbox of their own.
 : BFT-MARK-SABOTAGE ( -- )
-   BFT-STALE-PAYLOAD-RESTORE
    s" src/core/lower-cert-seal.f" BFT-READ {: u:n :}
    BFT-READ-BUF u s" package PREFIX-MARK" BFT-FIND BFT-FOUND {: cut:n :}
    cut 0 > TTRUE
@@ -715,6 +354,7 @@ variable IX
    BFT-STALE-HB CHMOD-X ;
 
 : BFT-TEST-WATERMARK-REQUIRED ( -- )
+   BFT-STALE-PREPARE
    BFT-SOURCE-HOST!
    BFT-MARK-SABOTAGE
    BFT-STALE-ARGV
@@ -739,7 +379,6 @@ variable IX
 \ name clause is blind to and the value clause exists for. The rewrite starts
 \ from the workspace file, so it cannot inherit an earlier case's damage.
 : BFT-MARK-VALUE-FORGE ( ptr u8 n -- ) {: tail:ptr tailu:n :}
-   BFT-STALE-PAYLOAD-RESTORE
    s" src/core/lower-cert-seal.f" BFT-READ {: u:n :}
    BFT-READ-BUF u s" CHECKER-BOUND:CURSORS CU !" BFT-FIND BFT-FOUND {: cut:n :}
    cut 0 > TTRUE
@@ -758,167 +397,6 @@ variable IX
 : BFT-TEST-WATERMARK-VALUE ( -- )
    s\" ;package\n" BFT-MARK-VALUE-FORGE
    s" carries no checker boundary" BFT-MARK-VALUE-REFUSED ;
-
-\ Corrupt the current native snapshot's trailer and assert the loader's named
-\ version and bounds refusals. Re-sign mutations so macOS reaches the loader.
-: BFT-BYTES ( -- ptr u8 )
-   BFT-BYTES-A @ ;
-
-: BFT-SNAP0-BUILD ( -- )
-   BF-BUILD-SNAP-FRESH
-   s" hb-snap0" BF-REMOVE-TMP
-   s" hb-new" s" hb-snap0" BF-RENAME-TMP ;
-
-: BFT-EMPTY-STDIN! ( -- )
-   s" empty-stdin" BF-A$ BFT-EMPTY$ WRITE-ALL ;
-
-: BFT-SNAP-RUN ( ptr u8 n -- n )
-   s" empty-stdin" BF-RUN-ENV-TMP-INFILE ;
-
-: BFT-BYTES-READ ( -- )
-   s" hb-snap0" BF-A$ FILE-SIZE {: sz:n :}
-   sz MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BYTES-A !
-   s" hb-snap0" BF-A$ BFT-BYTES sz READ-ALL BFT-BYTES-N ! ;
-
-: BFT-BYTE@ ( n -- n ) {: off:n :}
-   BFT-BYTES off BYTE+ c@ ;
-
-: BFT-BYTE! ( n n -- ) {: val:n off:n :}
-   val BFT-BYTES off BYTE+ c! ;
-
-: U64@ ( n -- n ) {: off:n :}
-   0
-   8 0 ?do
-      off i + BFT-BYTE@ i 8 * lshift or
-   loop ;
-
-: TRAILER-OFF ( -- n )
-   IMAGE-TEXT-SIZE-OFF U64@ IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - ;
-
-: DATA-OFF ( -- n )
-   TRAILER-OFF dup SNAP-TRL-DATALEN + U64@ - ;
-
-: HOOK-OFF ( -- n )
-   DATA-OFF 8 + ENGINE-SNAP-XT-CELL + ;
-
-: BFT-DOCTOR-WRITE ( -- )
-   s" hb-doctored" BF-REMOVE-TMP
-   s" hb-doctored" BF-A$ BFT-BYTES BFT-BYTES-N @ WRITE-ALL
-   s" hb-doctored" BF-CODESIGN-FORCE-TMP
-   s" hb-doctored" BF-CHMOD-X-TMP ;
-
-variable BFT-DOC-ERR-U
-variable BFT-DOC-OUT-U
-variable BFT-DOC-EXITED
-variable BFT-DOC-CODE
-
-: BFT-DOC-ERR$ ( -- ptr u8 n )
-   BFT-ERR BFT-DOC-ERR-U @ ;
-
-: BFT-DOC-OUT$ ( -- ptr u8 n )
-   BFT-OUT BFT-DOC-OUT-U @ ;
-
-\ Doctor one trailer byte, run the patched snapshot engine with empty stdin and
-\ its stderr CAPTURED (the labeled diagnostic goes to fd 2), record the exit
-\ kind/code and stderr length, then restore the byte for the next case.
-: BFT-DOCTORED-CAPTURE ( n n -- ) {: off:n val:n :}
-   off BFT-BYTE@ {: orig:n :}
-   val off BFT-BYTE!
-   BFT-DOCTOR-WRITE
-   PROC-ARGV-RESET
-   s" hb-doctored" BF-A$ >LEN  BFT-EMPTY$ >LEN
-   BFT-OUT BFT-CAPTURE-CAP >LEN  BFT-ERR BFT-CAPTURE-CAP >LEN  BFT-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   MATCH outcome
-     exited OF BFT-DOC-CODE ! 0 0= BFT-DOC-EXITED ! ENDOF
-     signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
-     timeout OF 0 BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
-   ;MATCH {: ou:len eu:len :}
-   ou LEN>N BFT-DOC-OUT-U !
-   eu LEN>N BFT-DOC-ERR-U !
-   orig off BFT-BYTE! ;
-
-\ A labeled fatal exit: process EXITed with the contract code and its stderr
-\ carries the named diagnostic (proves the exit is no longer a bare rc-only).
-: BFT-ASSERT-SNAP-EXIT ( n ptr u8 n -- ) {: code:n msg:ptr msgu:n :}
-   BFT-DOC-EXITED @ TTRUE
-   BFT-DOC-CODE @ code T=
-   BFT-DOC-ERR$ msg msgu CONTAINS? TTRUE ;
-
-: PROBE! ( -- )
-   s" snap-hook-probe.f" BF-A$
-   s\" package SNAP-HOOK-PROBE public\n: ASSERT-HOOKS ( -- )\n   data-base ENGINE-SNAP-XT-CELL + @ 0 <> if 1 throw then\n   data-base COMPILE-PREFLIGHT-CELL + @ 0= if 2 throw then ;\n;package\nSNAP-HOOK-PROBE:ASSERT-HOOKS\n: BFT-SNAP-PI ( -- ) ; immediate\ns\" BFT-SNAP-PI\" 0 parse-imm\n: BFT-SNAP-OK ( -- n ) BFT-SNAP-PI 73 ;\n: BFT-SNAP-ASSERT ( -- ) BFT-SNAP-OK 73 <> if 3 throw then ;\nBFT-SNAP-ASSERT\n"
-   WRITE-ALL ;
-
-: PROBE-ARGV ( -- )
-   PROC-ARGV-RESET
-   s" --load" BFT-ARG+
-   s" snap-hook-probe.f" BF-A$ BFT-ARG+
-   s" --" BFT-ARG+
-   BFT-ROOT BFT-ARG+ ;
-
-: PROBE-CAPTURE ( -- )
-   PROBE-ARGV
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN BFT-ROOT >LEN PROC-ENV+
-   s" hb-doctored" BF-A$ >LEN BFT-OUT BFT-CAPTURE-CAP >LEN
-   BFT-ERR BFT-CAPTURE-CAP >LEN BFT-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME
-   MATCH outcome
-     exited OF BFT-DOC-CODE ! 0 0= BFT-DOC-EXITED ! ENDOF
-     signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
-     timeout OF 0 BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
-   ;MATCH {: ou:len eu:len :}
-   ou LEN>N BFT-DOC-OUT-U !
-   eu LEN>N BFT-DOC-ERR-U ! ;
-
-: RAW ( -- )
-   HOOK-OFF {: off:n :}
-   off 0 >= TTRUE
-   off 8 + TRAILER-OFF <= TTRUE
-   off U64@ 0 T= ;
-
-: STARTUP ( -- )
-   HOOK-OFF {: off:n :}
-   off BFT-BYTE@ {: orig:n :}
-   FORGE off BFT-BYTE!
-   off U64@ 0= TFALSE
-   BFT-DOCTOR-WRITE
-   s" hb-doctored" BF-CODESIGN-VERIFY-TMP
-   PROBE!
-   PROBE-CAPTURE
-   orig off BFT-BYTE!
-   BFT-DOC-EXITED @ TTRUE
-   BFT-DOC-ERR$ BFT-EMPTY$ T$=
-   BFT-DOC-CODE @ 0 T= ;
-
-: VERIFY-IMAGE ( -- )
-   RAW
-   STARTUP ;
-
-: TEST-TRAILER ( -- )
-   BFT-ROOT BF-TMP!
-   BFT-SNAP0-BUILD
-   BFT-EMPTY-STDIN!
-   s" hb-snap0" BFT-SNAP-RUN 0 T=
-   s" hb-snap0" BF-A$ s" lib/prelude.f" BF-RUN-LOAD-STAGE 0 T=
-   BFT-BYTES-READ
-   VERIFY-IMAGE
-   TRAILER-OFF {: tr:n :}
-   tr SNAP-TRL-VERSION + BFT-BYTE@ SNAPSHOT-FORMAT:VERSION T=
-   tr SNAP-TRL-VERSION + 2 BFT-DOCTORED-CAPTURE
-   80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
-   tr SNAP-TRL-VERSION + 9 BFT-DOCTORED-CAPTURE
-   80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
-   tr SNAP-TRL-VERSION + $FF BFT-DOCTORED-CAPTURE
-   80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
-   \ +4/+3: a MIDDLE byte of the 8-byte field keeps the value positive but
-   \ far above REGION/DICT-CAP (top bytes could go negative or SIGSEGV).
-   tr SNAP-TRL-REGLEN + 4 + $FF BFT-DOCTORED-CAPTURE
-   79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
-   tr SNAP-TRL-NDICT + 3 + $FF BFT-DOCTORED-CAPTURE
-   79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
-   BF-TMP-RESET ;
 
 \ ---- effective source boundary --------------------------------------------
 \ The cold prefix already occupies IBUFSZ and the reader performs an EOF probe,
@@ -1134,130 +612,6 @@ variable BAD-N
 : BFT-CERT-WRITE ( ptr u8 n -- )
    BFT-CERT 2swap WRITE-ALL ;
 
-\ Self-certification guard: checker.f must certify as the tail of its exact
-\ pre-hook prefix. Its layout assertions consume cell.f's CORE-LAYOUT-RC and
-\ PTR-VARIABLE has its own pre-checker owner. The generic structure DSL is
-\ deliberately post-hook and must not enter this prefix. The source verifier
-\ remains independently checked through the same VERIFY:SOURCE-BUF path.
-: BFT-CERT-CHECKER$ ( -- ptr u8 n )
-   s" cert-checker" BF-A$ ;
-
-: BFT-CERT-CHECKER-BASE ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu BF-RESET-OUT
-   out outu s" src/core/util.f" BF-APPEND-SOURCE
-   out outu s" src/core/cell.f" BF-APPEND-SOURCE
-   out outu s" src/core/pointer-storage.f" BF-APPEND-SOURCE
-   out outu s" src/core/engine-error.f" BF-APPEND-SOURCE
-   out outu s" src/core/checker-fetch-abi.f" BF-APPEND-SOURCE
-   out outu s" src/core/checker-owner-abi.f" BF-APPEND-SOURCE
-   out outu s" src/habu/prims.f" BF-APPEND-SOURCE
-   out outu s" src/core/checker.f" BF-APPEND-SOURCE ;
-
-: BFT-TEST-CERTIFY-CHECKER-SELF ( -- )
-   BFT-ROOT BF-TMP!
-   s" cert-checker" BFT-CERT-CHECKER-BASE
-   s" checker-self" BFT-CERT-CHECKER$ BF-CERTIFY-RC 0 T=
-   s" verify-source-self" s" src/habu/verify-source.f" BF-CERTIFY-RC 0 T=
-   BF-TMP-RESET ;
-
-\ Replaying this package sees its already-published CELLS query. The handoff
-\ must use the byte offset's CELL multiplier, not that same-named query.
-: BFT-TEST-CERTIFY-CALL-STORE ( -- )
-   BFT-ROOT BF-TMP!
-   s" cert-checker" BF-RESET-OUT
-   s" cert-checker" BF-APPEND-CHECKER-BOOT
-   s" call-store-warm" BFT-CERT-CHECKER$ BF-CERTIFY-RC 0 T=
-   s" call-store-repeat" BFT-CERT-CHECKER$ BF-CERTIFY-RC 0 T=
-   BF-TMP-RESET ;
-
-: BFT-TEST-RUNTIME-KIND ( -- )
-   BFT-ROOT BF-TMP!
-   8 0 ?do
-      s" runtime-kind-src" {: out:ptr outu:n :}
-      out outu BF-RESET-OUT
-      out outu BF-APPEND-RUN-PRELUDE
-      out outu BF-APPEND-COMMON
-      out outu COMPILER-BUILD:SEAL
-      out outu s" test/aot-runtime-kind-driver.f" BF-APPEND-SOURCE
-      SB-RESET i FMT:SB-U s"  AOT-KIND-TEST:RUN" SB-APPEND
-      out outu SB$ BF-APPEND-LINE
-      s" bin/hb" out outu BF-A$ COMPILER-BUILD:RUN
-      i 3 < if 0 else 74 then T=
-   loop
-   BF-TMP-RESET ;
-
-\ Per-file TFAM-prefix certification: type-schema.f, type-family.f, render.f,
-\ and sumtype.f certify clean via the same VERIFY:SOURCE-BUF path, each
-\ verified as the tail of its exact BF-APPEND-CHECKER-BOOT prefix context
-\ (util, cell, pointer storage, engine error, checker, then the earlier TFAM
-\ files), so de-typing any one file fails its own assert. render.f sits between
-\ type-family.f and sumtype.f in the real prefix and certifies since its cleanup
-\ (habu-make-fixpoint-certify-a11dbad5).
-: BFT-CERT-TFAM$ ( -- ptr u8 n )
-   s" cert-tfam" BF-A$ ;
-
-: BFT-CERT-TFAM-BASE ( -- )
-   s" cert-tfam" {: out:ptr outu:n :}
-   out outu BFT-CERT-CHECKER-BASE
-   out outu s" src/core/engine-error-effects.f" BF-APPEND-SOURCE
-   out outu s" src/core/lower-cert-base.f" BF-APPEND-SOURCE ;
-
-: BFT-TEST-CERTIFY-TFAM-PREFIX ( -- )
-   BFT-ROOT BF-TMP!
-   BFT-CERT-TFAM-BASE
-   s" cert-tfam" s" src/core/type-schema.f" BF-APPEND-SOURCE
-   s" tfam-type-schema" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
-   s" cert-tfam" s" src/core/type-family.f" BF-APPEND-SOURCE
-   s" tfam-type-family" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
-   s" cert-tfam" s" src/core/render.f" BF-APPEND-SOURCE
-   s" tfam-render" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
-   s" cert-tfam" s" src/core/sumtype.f" BF-APPEND-SOURCE
-   s" tfam-sumtype" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
-   BF-TMP-RESET ;
-
-\ The stage2 and stdin build phases both emit into the one fixed `stage2-src`
-\ stage-input path. The first generation uses COMPILER-BUILD's verified
-\ `--build` route; later hb-stage generations read that same path. Therefore
-\ BF-CERTIFY-STAGE2 and
-\ BF-CERTIFY-STDIN read the same path at different times. Prove the certify path
-\ exists in each phase and that the stdin phase OVERWRITES it with distinct
-\ content — so BF-CERTIFY-STDIN certifies the stdin driver source, not stage2 twice.
-\ The boot prefix is a certify phase of its own, and it is BLOCKING. The
-\ subject is the real assembly through the real phase word, not a hand-built
-\ stand-in: BF-PREFIX-SOURCE writes the bytes the build writes and
-\ BF-CERTIFY-PREFIX is the word the build calls. The good case proves those
-\ exact bytes certify; the bad case is the SAME bytes with one type-broken
-\ definition appended, which must throw rather than warn - the fail-open
-\ variant would pass the good case identically.
-\ The two membership assertions are structural, not decorative: they name a
-\ definition from the first checker-boot file and one from deep inside
-\ checker.f, so an assembly that silently emitted nothing, or stopped after its
-\ first file, still certifies clean and would pass without them.
-: BFT-TEST-CERTIFY-BOOT-PREFIX ( -- )
-   BFT-ROOT BF-TMP!
-   BF-PREFIX-SOURCE
-   BFT-PREFIX FILE? TTRUE
-   BF-CERTIFY-PREFIX
-   BFT-PREFIX BFT-READ {: u:n :}
-   BFT-READ-BUF u s" : CORE-STR=" CONTAINS? TTRUE
-   BFT-READ-BUF u s" checker-registry.f - typed checker effect store" CONTAINS? TTRUE
-   s" prefix-src" BF-A$ s" : BFT-PFX-BAD ( n -- n ) drop ;" APPEND-FILE
-   [: BF-CERTIFY-PREFIX ;] E-BUILD-CERTIFY TTHROWSQ
-   BF-TMP-RESET ;
-
-: BFT-TEST-CERTIFY-PHASE-SOURCES ( -- )
-   BFT-ROOT BF-TMP!
-   BF-STAGE2-SOURCE
-   BFT-STAGE2 FILE? TTRUE
-   BF-CERTIFY-STAGE2
-   BF-RECORD-STAGE
-   BF-STDIN-SOURCE
-   BFT-STAGE2 FILE? TTRUE
-   BF-CERTIFY-STDIN
-   BF-RECORD-STDIN
-   BF-REC-STAGE-DG BF-STAMP-DG-U BF-REC-STDIN-DG BF-STAMP-DG-U STR= TFALSE
-   BF-TMP-RESET ;
-
 \ Hash-pin mismatch: pin a sandbox boot-prefix file, reload unchanged (no
 \ throw), then mutate it mid-sequence - the reload must fail closed with
 \ E-BUILD-BOOT-DRIFT rather than silently entering the image.
@@ -1402,17 +756,7 @@ create DG-C 40 allot
    DG-A FRAGMENT$ PREIMAGE-HAS? TTRUE
    DG-B FRAGMENT$ PREIMAGE-HAS? TFALSE ;
 
-: BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
-   a u T-LABEL
-   q catch {: rc:n :}
-   rc 0= if exit then
-   a u type s" : throw " type rc . cr
-   s" build-fixpoint-test: subtest threw" T-EX-FAIL die ;
-
-\ Public so the driver below can run it with the package CLOSED: the subtests
-\ certify generated engine sources in this process (VERIFY:SOURCE-BUF), and the
-\ checker resolves the verified source's names in whatever package scope is open
-\ when it runs.
+\ Public so the driver below runs with the package CLOSED, as a gate row must.
 public
 : BFT-SOURCE-GROWTH-RELEASES ( -- )
    BF-SOURCE-BUF {: old:ptr :}
@@ -1421,11 +765,10 @@ public
    old MAPPED:LIVE? TFALSE
    BF-SOURCE-BUF MAPPED:LIVE? TTRUE ;
 
-: BFT-RUN-ALL ( -- )
+: BFT-FIXTURES-RUN ( -- )
    T-RESET
    BFT-PREPARE
    s" tmp override" [: BFT-TEST-TMP-OVERRIDE ;] BFT-STEP
-   s" runtime capture kind" [: BFT-TEST-RUNTIME-KIND ;] BFT-STEP
    s" stage argv reset" [: BFT-TEST-STAGE-ARGV-RESET ;] BFT-STEP
    s" stamp seed" [: BFT-TEST-STAMP-SEED ;] BFT-STEP
    s" build" [: BFT-TEST-BUILD ;] BFT-STEP
@@ -1435,8 +778,6 @@ public
    s" build fail no stamp" [: BFT-TEST-BUILD-FAIL-NO-STAMP ;] BFT-STEP
    s" no-main self dispatch" [: BFT-TEST-NO-MAIN-DISPATCHES ;] BFT-STEP
    s" missing preamble diag" [: BFT-TEST-MISSING-PREAMBLE ;] BFT-STEP
-   s" stale seed install" [: BFT-TEST-STALE-INSTALL ;] BFT-STEP
-   s" cert inject install" [: BFT-TEST-CERT-INJECT-INSTALL ;] BFT-STEP
    s" watermark required" [: BFT-TEST-WATERMARK-REQUIRED ;] BFT-STEP
    s" watermark value" [: BFT-TEST-WATERMARK-VALUE ;] BFT-STEP
    s" stamp source key" [: BFT-TEST-STAMP-SOURCE-KEY ;] BFT-STEP
@@ -1448,21 +789,12 @@ public
    s" stamp nested" [: BFT-TEST-STAMP-NESTED ;] BFT-STEP
    s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
    s" split source pin mismatch" [: BFT-TEST-SPLIT-PIN ;] BFT-STEP
-   s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
-   s" certify call store" [: BFT-TEST-CERTIFY-CALL-STORE ;] BFT-STEP
-   s" certify tfam prefix" [: BFT-TEST-CERTIFY-TFAM-PREFIX ;] BFT-STEP
-   s" certify boot prefix" [: BFT-TEST-CERTIFY-BOOT-PREFIX ;] BFT-STEP
-   s" certify phase sources" [: BFT-TEST-CERTIFY-PHASE-SOURCES ;] BFT-STEP
-   s" snap trailer" [: TEST-TRAILER ;] BFT-STEP
    s" source boundary" [: SOURCE-BOUNDARY ;] BFT-STEP
    s" stage2 source cap" [: STAGE2 ;] BFT-STEP
    s" maker source cap" [: MAKER ;] BFT-STEP
    s" source buffer growth releases" [: BFT-SOURCE-GROWTH-RELEASES ;] BFT-STEP
-   CLEANUP-RUN
-   BFT-ROOT EXISTS? TFALSE
-   T-REPORT
-   s" build-fixpoint-test: ok" type cr ;
+   s" build-fixpoint-test: ok" BFT-FINISH ;
 
 ;package
 
-BUILD-FIXPOINT:BFT-RUN-ALL
+BUILD-FIXPOINT:BFT-FIXTURES-RUN

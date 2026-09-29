@@ -356,9 +356,9 @@ TRUSTED: RECORD-CREATED ( ptr u8 n n -- bool )
 \ candidate scope this file opens (SOURCE-BUF) releases the rows recorded inside
 \ it: no row outlives the ids it names.
 \ BOTH TABLES ARE `create … allot`, AND THE ROW TABLE IS NOT A TYPED-BUFFER. This
-\ file is itself preverified - tools/build-fixpoint-test.f certifies it through
-\ VERIFY:SOURCE-BUF - and the count of a `TYPED-BUFFER` line is read from the
-\ TEXT by RECORD-TYPED-BUFFER above, which hands it to the checker's
+\ file is itself preverified - tools/build-fixpoint-source-test.f certifies it
+\ through VERIFY:SOURCE-BUF - and the count of a `TYPED-BUFFER` line is read
+\ from the TEXT by RECORD-TYPED-BUFFER above, which hands it to the checker's
 \ CHECKER-LBUF-COUNT?: decimal digits only. Measured, `DEFINER-CAP TYPED-BUFFER
 \ DEFINER-SYM n` certifies as E-CHECKER-LAYOUT-BUFFER (7121) because the token is
 \ a constant's name. A decimal literal would certify and then state the capacity

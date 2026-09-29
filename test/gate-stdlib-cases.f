@@ -11,6 +11,18 @@ SUITE build-fixpoint-fixtures
    tools/build-fixpoint-test.f
 ;SUITE
 
+SUITE build-fixpoint-snapshot
+   tools/build-fixpoint-snapshot-test.f
+;SUITE
+
+SUITE build-fixpoint-source
+   tools/build-fixpoint-source-test.f
+;SUITE
+
+SUITE build-fixpoint-sandbox
+   tools/build-fixpoint-sandbox-test.f
+;SUITE
+
 \ A ROW STAYS UNDER HALF ITS DEADLINE IN THE POOL. tools/hb-build-test.f once
 \ ran every hb-build group in one row, and that row took 353-355 s of the 360 s
 \ SUITE-TIMEOUT-MS slot its child gets: three of five full runs reported

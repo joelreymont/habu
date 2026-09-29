@@ -105,10 +105,10 @@ $48425350414E5321 constant SNAP-MAGIC
 \ from here: the writer (src/habu/snap-lib.f SNAP:WRITE-BYTES), the loader
 \ (src/habu/habu2.f EM-SNAPSHOT-RESTORE), the image dumper (tools/imgdump.f) and
 \ the two fixtures that doctor a real image (test/snapshot-writer.f,
-\ tools/build-fixpoint-test.f). They diverged once - the readers kept the legacy
-\ 40-byte size after the format grew to 48 - and every reader then addressed the
-\ wrong cells while still finding plausible values, so the size lives in exactly
-\ one place now.
+\ tools/build-fixpoint-snapshot-test.f). They diverged once - the readers kept
+\ the legacy 40-byte size after the format grew to 48 - and every reader then
+\ addressed the wrong cells while still finding plausible values, so the size
+\ lives in exactly one place now.
 48 constant SNAP-TRL-BYTES        \ magic, text base, ndict, region len, data len, version
 8 constant SNAP-TRL-TBASE         \ snapshot-time text base (canonically 0)
 16 constant SNAP-TRL-NDICT        \ dictionary record count

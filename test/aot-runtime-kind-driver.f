@@ -1,4 +1,4 @@
-\ Built after the real common emitter source by build-fixpoint-test.f. These
+\ Built after the real common emitter source by build-fixpoint-source-test.f. These
 \ compact-record fixtures test runtime membership; real full/partial boot is
 \ covered by hb-open-failure and aot-wid-restore.
 package AOT-KIND-TEST
