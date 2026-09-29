@@ -1026,10 +1026,10 @@ public
 -8580 constant E-NELAB-TYPE     \ a compile-time value whose type is not the one the position wants and is not a crossing this dialect performs: a double handed to an operation that computes with cells, or a double stored into a memory cell, which no leaf places yet
 -8581 constant E-A64RA-FILE     \ two values of two different register files joined into one class: an edge or a schema tie whose two ends cannot share a register because no register holds both
 
-\ Native branch decoding
+\ Native branch decoding and unit artifacts
+-8597 constant E-NUNIT-PROFILE  \ package state or relocation that this native artifact format cannot represent
 -8598 constant E-NBR-RANGE      \ a branch-with-link whose two addresses are not both whole instructions, or whose displacement does not fit the twenty-six-bit field the form encodes it in
 -8599 constant E-NUNIT-FILE     \ malformed or incompatible native package artifact
--8600 constant E-NUNIT-PROFILE  \ package state or relocation that this native artifact format cannot represent
 
 \ Data-stack residency: -8610..-8619
 \
