@@ -67,7 +67,7 @@ TRUSTED: SCX-TFX-SLOTS ( -- n ) TFX-SLOTS ;
 : SCX-TFX-SLOTS-INIT ( -- n ) TFX-SLOTS-INIT ;
 
 \ The span cells are pinned to what they hold, so the store is checked rather
-\ than asserted (test/typed-storage-structural-test.f §2). SCX-SYM-INTERN stays
+\ than asserted (test/typed-storage-structural-test.f §1). SCX-SYM-INTERN stays
 \ trusted for SYM-INTERN, not for these cells.
 TYPED-VARIABLE SCX-NA ptr u8
 TYPED-VARIABLE SCX-NU n

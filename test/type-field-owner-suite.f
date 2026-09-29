@@ -36,29 +36,14 @@ variable STRING-N
 variable RC
 
 \ --- retired product-field lifecycle names -----------------------------------
-\ Three independent boundaries, weakest first. Dictionary absence and the
-\ whole-load rc-70 failure are SUPPLEMENTAL: both only say the name is currently
-\ undefined, which any later source could change by defining it. The acceptance
-\ evidence is REJECT-VERDICT below — the checker's retired-token set answers 0
+\ REJECT-VERDICT below is the evidence: the checker's retired-token set answers 0
 \ (rejected) before it ever consults a signature or primitive row, so the name
 \ stays rejected even if something defines it again.
-
-: ABSENT ( ptr u8 n -- )
-   0 search-wl 0= TTRUE ;
 
 : QUALIFIED-ABSENT ( ptr u8 n -- )
    XREF-FIND XREF-FOUND? 0= TTRUE ;
 
-: INTERPRETER-ABSENCE ( -- )
-   s" PF-BEGIN" ABSENT
-   s" PF-ADD" ABSENT
-   s" PF-PUBLISH" ABSENT
-   s" PF-RELEASE" ABSENT
-   s" PF-FINALIZE" ABSENT
-   s" PF-COMMIT" ABSENT
-   s" PF-ROLLBACK" ABSENT ;
-
-\ supplemental: a real child load of the bad definition exits 70 naming the token
+\ a real child load of the bad definition exits 70 naming the token
 : LOAD-REJECTS ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n name:ptr nameu:n :}
    src srcu OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
@@ -68,15 +53,6 @@ variable RC
    outu 0 T=
    ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
    ERR erru name nameu CONTAINS? TTRUE ;
-
-: LOAD-ABSENCE ( -- )
-   s" : TFO-NO-BEGIN ( -- ) PF-BEGIN ;" s" PF-BEGIN" LOAD-REJECTS
-   s" : TFO-NO-ADD ( -- ) PF-ADD ;" s" PF-ADD" LOAD-REJECTS
-   s" : TFO-NO-PUBLISH ( -- ) PF-PUBLISH ;" s" PF-PUBLISH" LOAD-REJECTS
-   s" : TFO-NO-RELEASE ( -- ) PF-RELEASE ;" s" PF-RELEASE" LOAD-REJECTS
-   s" : TFO-NO-FINALIZE ( -- ) PF-FINALIZE ;" s" PF-FINALIZE" LOAD-REJECTS
-   s" : TFO-NO-COMMIT ( -- ) PF-COMMIT ;" s" PF-COMMIT" LOAD-REJECTS
-   s" : TFO-NO-ROLLBACK ( -- ) PF-ROLLBACK ;" s" PF-ROLLBACK" LOAD-REJECTS ;
 
 \ acceptance: production checker verdict is 0 (rejected), never 1 (uncheckable)
 : REJECT-VERDICT ( ptr u8 n -- )
@@ -177,9 +153,9 @@ variable RC
 \ that reopens DECL-EVENT can still call DEV-RETIRE-THROUGH. That entry is
 \ guarded on its own terms — live event token, matching field token, and the
 \ field chain checked here — rather than by being unnameable.
-\ Three independent boundaries, weakest first:
-\ the name is gone from the dictionary, the checker no longer knows it, and a
-\ real child load naming it exits 70 with E-UNDEFINED.
+\ Three independent boundaries: the qualified name is gone from the dictionary,
+\ the checker no longer knows it, and a real child load naming it exits 70 with
+\ E-UNDEFINED.
 \
 \ A checker PRIMITIVE row would have defeated the whole arrangement: `undefine`
 \ retires a dictionary entry and its usig metadata but NOT a primitive axiom, so
@@ -187,22 +163,17 @@ variable RC
 \ can no longer resolve. That is why this seam is a deferred word and not a
 \ primitive, and why the assertion below is on ABSENCE rather than on a role.
 \
-\ Measured, not hypothetical: commenting out the `undefine TDECL-FIELD-CLEANUP-XT`
-\ line in src/core/generated-declaration-protection.f and refreshing the engine
-\ makes the first assertion below fail on every run.
-\ The bare leg alone stopped being proof when the registry was sealed: the seam
-\ lives in `package TFAM` now (dot habu-tfam-2b-sealed-1b77662c), so a bare name
-\ is absent whether or not the `undefine` ran. The QUALIFIED leg is what the
-\ retirement claim rests on — `undefine TFAM:TDECL-FIELD-CLEANUP-XT` is the line
-\ in src/core/generated-declaration-protection.f, and deleting it makes exactly
-\ that assertion fail.
+\ The dictionary leg is QUALIFIED because the seam lives in `package TFAM` (dot
+\ habu-tfam-2b-sealed-1b77662c): a bare name is absent whether or not the
+\ `undefine` ran. Measured, not hypothetical: deleting the
+\ `undefine TFAM:TDECL-FIELD-CLEANUP-XT` line in
+\ src/core/generated-declaration-protection.f and refreshing the engine makes
+\ the first assertion below fail on every run.
 : CLEANUP-SEAM-ABSENT ( -- )
-   s" TDECL-FIELD-CLEANUP-XT" ABSENT
    s" TFAM:TDECL-FIELD-CLEANUP-XT" QUALIFIED-ABSENT
    s" TDECL-FIELD-CLEANUP-XT" CHECKER-RESOLVES? 0= TTRUE
    s" : TFO-NO-CLEANUP ( n -- ) TDECL-FIELD-CLEANUP-XT ;"
       s" TDECL-FIELD-CLEANUP-XT" LOAD-REJECTS
-   s" ROLLBACK-THROUGH" ABSENT
    s" TYPE-FIELD-OWNER:ROLLBACK-THROUGH" QUALIFIED-ABSENT
    s" TYPE-FIELD-OWNER:ROLLBACK-THROUGH" CHECKER-RESOLVES? 0= TTRUE
    s" : TFO-NO-THROUGH ( n -- ) TYPE-FIELD-OWNER:ROLLBACK-THROUGH ;"
@@ -224,16 +195,14 @@ variable RC
 \ axiom survives `undefine` and would keep certifying calls the runtime can no
 \ longer resolve.
 \
-\ Measured, not hypothetical: deleting the `undefine TDECL-FIELD-RELEASE-XT` line
-\ in src/core/generated-declaration-protection.f and refreshing the engine makes
-\ the first assertion below fail on every run.
+\ Measured, not hypothetical: deleting the `undefine TFAM:TDECL-FIELD-RELEASE-XT`
+\ line in src/core/generated-declaration-protection.f and refreshing the engine
+\ makes the first assertion below fail on every run.
 : RELEASE-SEAM-ABSENT ( -- )
-   s" TDECL-FIELD-RELEASE-XT" ABSENT
    s" TFAM:TDECL-FIELD-RELEASE-XT" QUALIFIED-ABSENT
    s" TDECL-FIELD-RELEASE-XT" CHECKER-RESOLVES? 0= TTRUE
    s" : TFO-NO-RELEASE ( -- ) TDECL-FIELD-RELEASE-XT ;"
       s" TDECL-FIELD-RELEASE-XT" LOAD-REJECTS
-   s" RELEASE" ABSENT
    s" TYPE-FIELD-OWNER:RELEASE" QUALIFIED-ABSENT
    s" TYPE-FIELD-OWNER:RELEASE" CHECKER-RESOLVES? 0= TTRUE
    s" : TFO-NO-OWNER-RELEASE ( -- ) TYPE-FIELD-OWNER:RELEASE ;"
@@ -509,8 +478,6 @@ DECL-EVENT:COUNT BASE-EVENT @ 2 + T=
 TYPE-FIELD:COUNT BASE-N @ 1 + T=
 DECL-EVENT:DEPTH 0 T=
 
-INTERPRETER-ABSENCE
-LOAD-ABSENCE
 CHECKER-RETIRED
 CHECKER-NEIGHBOURS-LIVE
 CHECKER-OWNER-API

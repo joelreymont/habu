@@ -33,12 +33,16 @@ package VERIFY-PRIM-TEST
    s" habu-verify-prim-engine" WHITEBOX-CHILD:PROVIDE ;
 
 $2000 constant DIAG-MAX
+$40 constant NEEDLE-CAP
 $22 constant QUOTE-C
 $5C constant ESCAPE-C
 $0A constant LF-C
 $20 constant SPACE-C
 
 create DIAG-BUF DIAG-MAX allot
+variable DIAG-U
+NEEDLE-CAP BUFFER: NEEDLE
+variable NEEDLE-U
 
 : BUF-CLEAR ( -- )
    SB-RESET ;
@@ -85,11 +89,22 @@ create DIAG-BUF DIAG-MAX allot
 : VERIFY-BUF ( -- n )
    DIAG-BUF DIAG-MAX DIAG-BUFFER!
    [: VERIFY-RUN ;] catch
+   DIAG-BUFFER$ nip DIAG-U !
    DIAG-BUFFER-OFF ;
 
-: EXPECT-HIDDEN ( ptr u8 n -- )
-   ADD-REF
-   VERIFY-BUF 70 T= ;
+: DIAG$ ( -- ptr u8 n ) DIAG-BUF DIAG-U @ ;
+: NEEDLE$ ( -- ptr u8 n ) NEEDLE NEEDLE-U @ ;
+: NEEDLE+ ( ptr u8 n -- ) NEEDLE NEEDLE-CAP NEEDLE-U BUF-APPEND ;
+
+\ rc 70 alone is CHECK-BODY's reject for any refused body, so a hidden name
+\ that leaked as a definition with another effect would give it too. The
+\ reference must fail on the name itself being undefined.
+: EXPECT-HIDDEN ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu ADD-REF
+   VERIFY-BUF 70 T=
+   NEEDLE-U BUF-RESET
+   s" undefined word '" NEEDLE+ name nameu NEEDLE+ s" '" NEEDLE+
+   DIAG$ NEEDLE$ CONTAINS? TTRUE ;
 
 : PRIM-STRING ( -- )
    s" a spaced PRIM; inside a body s-quote string is content, not the closer" T-LABEL

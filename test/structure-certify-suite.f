@@ -11,7 +11,9 @@
 \ pins the checker's construct/access CONTRACT through real STRUCTURE syntax:
 \   - test/structure-decl-suite.f owns the declaration/rollback front end and the
 \     end-to-end MAKE/UNMAKE seam for cell/byte/generic fields;
-\   - test/structure-make-suite.f owns the whitebox generator + role/arity matrix;
+\   - test/structure-make-suite.f owns only the generator's registry-level
+\     rejects (enum id, out-of-range id, empty product, rolled-back field row,
+\     second generation); the field-kind/role/arity matrix is sections 1-5 here;
 \   - test/field-proj-suite.f owns the field-ACCESS armed window (the accessor the
 \     generate-field lane will emit; see the accessor note at the file end).
 \ Everything here is verified against the checker as it types the LEGACY product
@@ -24,7 +26,8 @@
 \ Certify slices (dot Desc), each red-first (a positive that certifies AND a
 \ negative that rejects, so a checker regression flips a case):
 \   1. MAKE/UNMAKE exact inverses across field kinds the decl-suite lacks: a wide
-\      nested product field, a ptr field, a nested sum-with-payload field.
+\      nested product field, a ptr field, a nested sum-with-payload field, a
+\      payload-free enum field.
 \   2. Whole-layout widths: a wide nested field makes MAKE consume the whole
 \      bundle (not its flattened cells), UNMAKE yields it, round-trips preserve
 \      declaration order + values.
@@ -88,7 +91,8 @@ create SCG-BUF 8192 allot
 \ ---------------------------------------------------------------------------
 \ 1. Exact-inverse MAKE/UNMAKE across the field kinds the decl-suite does not
 \    cover, from real STRUCTURE syntax: a WIDE nested product field, a ptr
-\    field, and a nested sum-with-payload field. Each MAKE/UNMAKE pair certifies
+\    field, a nested sum-with-payload field and a payload-free enum field. Each
+\    MAKE/UNMAKE pair certifies
 \    as declaration-order inverses; a flattened/rolewrong call rejects.
 \ ---------------------------------------------------------------------------
 s" STRUCTURE scinr 0 FIELD a n FIELD b n ;STRUCTURE" EV           \ width-2 product leaf
@@ -104,6 +108,12 @@ s" SUMTYPE scnr 0 VARIANT ok n ;VARIANT VARIANT err n ;VARIANT ;SUMTYPE" EV
 s" STRUCTURE schold 0 FIELD r scnr FIELD t n ;STRUCTURE" EV       \ sum-with-payload field
 s" M3 ( scnr n -- schold ) SCHOLD:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" U3 ( schold -- scnr n ) SCHOLD:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+
+s" ENUM scne 0 VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM" EV   \ payload-free enum
+s" STRUCTURE scef 0 FIELD e scne FIELD t n ;STRUCTURE" EV        \ width-1 nested-family field
+s" M4 ( scne n -- scef ) SCEF:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" U4 ( scef -- scne n ) SCEF:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" M4N ( n n -- scef ) SCEF:MAKE" CHECK-QUIET-CANDIDATE! 0 T=     \ a plain cell is not the enum
 
 \ ---------------------------------------------------------------------------
 \ 2. Whole-layout widths. The wide nested field makes MAKE consume the WHOLE

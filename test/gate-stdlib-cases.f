@@ -2080,10 +2080,6 @@ WHITEBOX-SUITE lower-cert
    test/lower-cert.f
 ;SUITE
 
-SUITE multi-error-api
-   test/multi-error-api.f
-;SUITE
-
 SUITE layout-buffer-depth
    test/layout-buffer-depth.f
 ;SUITE

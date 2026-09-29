@@ -219,8 +219,9 @@ PTR-VARIABLE TS-DP
    s" R1 ( n -- rawk ) RAWV ! RAWV @" CHECK-QUIET-CANDIDATE! 0 T=
    s" R2 ( n -- rawk ) RAWC ! RAWC @" CHECK-QUIET-CANDIDATE! 0 T=
    s" R3 ( -- rawk ) RAWK" CHECK-QUIET-CANDIDATE! 0 T=
-   \ the same raw cell still certifies a plain-scalar round-trip
+   \ the same raw cell and constant still certify a plain scalar
    s" R4 ( n -- n ) RAWV ! RAWV @" CHECK-QUIET-CANDIDATE! -1 T=
+   s" R7 ( -- n ) RAWK" CHECK-QUIET-CANDIDATE! -1 T=
    \ the SOUND alternative — a TYPED-VARIABLE of the same family — certifies
    s" R5 ( tsk -- ) TSV !" CHECK-QUIET-CANDIDATE! -1 T=
    s" R6 ( -- tsk ) TSV @" CHECK-QUIET-CANDIDATE! -1 T= ;

@@ -87,7 +87,10 @@ TRUSTED: SELECT ( n -- ) set-tier ;
    s" trusted-only PRIM policy still wins over a user row" T-LABEL
    s" n --" s" set-tier" DECLARE
    s" EAUTH-PRIM-TRUST ( -- ) 0 set-tier" CHECK-CANDIDATE! 0 T=
-   SCOPE- ;
+   SCOPE-
+   s" the checker-state writers stay trusted-only in checked code" T-LABEL
+   s" EAUTH-INT-MARK ( -- ) 0 int-mark" CHECK-CANDIDATE! 0 T=
+   s" EAUTH-MIN-MARK ( -- ) 0 0 min-in-mark" CHECK-CANDIDATE! 0 T= ;
 
 : ROLLBACK-CASES ( -- )
    s" rollback restores the grant of the previous binding" T-LABEL

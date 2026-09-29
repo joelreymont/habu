@@ -5,11 +5,14 @@
 \     bin/hb < test/type-export-suite.f
 \ Covers: cross-package alias fidelity (one scheme, two names, source
 \ untouched), private->public promotion, defer + control-flag copy, quotation
-\ scheme fidelity, every reject (no package, undefined, private from a closed
-\ package, malformed qualification, sealed-system source, primitive source,
-\ duplicate/self-export), scope/candidate rollback of the alias rows, and the
-\ engine keyword half (real package blocks, dual-name execution, checked
-\ callers through both names).
+\ scheme fidelity, the CHECKER-EXPORT rejects the engine keyword's native walls
+\ pre-empt but the static scanner (src/habu/verify-source.f) meets directly (no
+\ package, undefined, private from a closed package, malformed qualification,
+\ sealed-system source, duplicate/self-export), scope/candidate rollback of the
+\ alias rows, and private->public promotion through the engine keyword. The
+\ keyword's dual-name execution, checked callers and primitive-source reject
+\ (E-EXPORT-PRIM, the one CHECKER-EXPORT reject the keyword reaches) are
+\ test/export-package.f's.
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
 variable #FAIL
@@ -135,8 +138,6 @@ s" match:arm" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-SEALED T=
 s" engine-error:bad-tag" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-SEALED T=
 s" engine-error:bad-tag" ' CHECKER-LBUF-NAME-GUARD catch TC ! 2drop
 TC @ E-CHECKER-LAYOUT-BUFFER T=
-\ primitive source: prims may be overloaded; copying one row would narrow.
-s" dup" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-PRIM T=
 \ duplicate tail in the current section.
 s" xps:XP-INC" CHECKER-EXPORT
 s" xps:XP-INC" ' CHECKER-EXPORT catch TC ! 2drop  TC @ $4E T=
@@ -197,29 +198,9 @@ s" xrb2:XP-DEF" TWX-CTL-FLAGS 0 T=
 s" xrb2:XP-THR" TWX-CTL-FLAGS 0 T=
 
 \ ---------------------------------------------------------------------------
-\ 8. engine keyword half: real package blocks, EXPORT publishes a callable
-\    alias — same xt, dual-name execution, checked callers through each name.
-\    (Engine REJECT cases exit the process, so they are pinned as child-run
-\    gate fixtures, not here.)
+\ 8. private->public promotion through the engine keyword: a bare private name
+\    resolves in the open package and runs under its public tail.
 \ ---------------------------------------------------------------------------
-package XPE
-public
-: XPE-DBL ( n -- n ) 2 * ;
-;package
-
-package XPF
-public
-EXPORT XPE:XPE-DBL
-;package
-
-7 XPE:XPE-DBL 14 T=
-7 XPF:XPE-DBL 14 T=
-: XPE-USE1 ( n -- n ) XPF:XPE-DBL ;
-: XPE-USE2 ( n -- n ) XPE:XPE-DBL ;
-5 XPE-USE1 10 T=
-5 XPE-USE2 10 T=
-
-\ private->public promotion through the engine keyword.
 package XPG
 : XPG-HID ( n -- n ) 3 + ;
 public

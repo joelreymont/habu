@@ -12,25 +12,22 @@
 \ only the structural half and the reason its one exclusion exists.
 \
 \ THE INVARIANT: a certification must not be vacuous. A raw `variable` types its
-\ cell with an open var that every call site instantiates afresh, so ONE raw
-\ cell certifies mutually contradictory readings — section 1 measures them, and
-\ that is why an accessor over a raw cell had to be spelled `TRUSTED:` to stay
-\ honest: its signature was an assertion the checker never checked. The
-\ POINTER readings are no longer among them (dot habu-refuse-a-ptr-5ad2734e):
-\ a cell that took an integer in and gave an address out was a `@` at any
-\ address, so section 1 now measures where that line was drawn as well.
-\ Pinning the cell type at its declaration is what makes the same signature
-\ mean something, and section 2 measures the difference — the wrong type is
-\ refused where the raw cell took it.
+\ cell with an open var that every call site instantiates afresh, so one raw
+\ cell certifies contradictory scalar readings, and an accessor over a raw cell
+\ had to be spelled `TRUSTED:` to stay honest. Pinning the cell type at its
+\ declaration is what makes the same signature mean something, and section 1
+\ measures that: the wrong type is refused. A raw cell's pointer readings are
+\ refused by test/compiler/raw-cell-pointer-refusals.f and its nominal mint by
+\ test/typed-storage-test.f section 8.
 \
 \ WHY THE ORIGINAL `BAD-N n` REJECT WAS RIGHT TO FLIP. That reject was a SCOPE
 \ decision, never a soundness claim: the gate existed to mint NOMINAL cells, and
-\ a plain scalar was held to be `variable`'s job. Section 1 is the measurement
-\ that it is not. checker.f's own RAW discipline draws the line in the same
-\ place — a raw cell "admits only a plain scalar representation and must NEVER
-\ absorb a nominal atom, arity-0 family, layout, or nominal-bearing pointer" —
-\ so admitting a CONCRETE con to the storage gate cannot weaken the nominal
-\ fence, and section 2's nominal rejects hold it from this side too.
+\ a plain scalar was held to be `variable`'s job. checker.f's own RAW discipline
+\ draws the line in the same place - a raw cell "admits only a plain scalar
+\ representation and must NEVER absorb a nominal atom, arity-0 family, layout,
+\ or nominal-bearing pointer" - so admitting a CONCRETE con to the storage gate
+\ cannot weaken the nominal fence, and section 1's nominal rejects hold it from
+\ this side too.
 
 require lib/errors.f
 require lib/string.f
@@ -49,18 +46,8 @@ NEWTYPE tssk 0
 \ is not storable in either position however closed it is.
 DEFLINEAR tsslin
 
-\ =============================================================================
-\ 1. NEGATIVE CONTROL: what a raw cell certifies, and why that is the problem.
-\    This is not a bug being reported — it is the baseline the pinned cells in
-\    section 2 improve on. If a future change makes one of the SCALAR readings
-\    reject, the structural-cell capability has become redundant and should be
-\    re-derived, so this section failing is informative either way. The pointer
-\    readings below are the opposite: they reject. The open hole repros below
-\    are documented without a gate verdict.
-\ =============================================================================
-variable TSS-RAWCELL
-
 \ Open repros; assert refusal only after the checker closes these holes.
+\ variable TSS-RAWCELL
 \ V8: habu-refuse-ptr-field-331a9731
 \ : TSS-RAWFIELD ( ptr a -- ptr ptr u8 ) 0 ptr-field ;
 \ : V8 ( n -- u8 ) TSS-RAWCELL ! TSS-RAWCELL TSS-RAWFIELD @ c@ ;
@@ -68,25 +55,8 @@ variable TSS-RAWCELL
 \ PTR-VARIABLE TSS-DECLCELL
 \ : V9 ( n -- ) TSS-DECLCELL BYTE-VIEW CELL-VIEW ! ;
 
-: SECTION-RAW-IS-VACUOUS ( -- )
-   s" V1 ( n -- ) TSS-RAWCELL !"             CHECK-QUIET-CANDIDATE! -1 T=
-   s" V2 ( -- n ) TSS-RAWCELL @"             CHECK-QUIET-CANDIDATE! -1 T=
-   s" V5 ( -- bool ) TSS-RAWCELL @"          CHECK-QUIET-CANDIDATE! -1 T=
-   \ the ONE thing a raw cell still cannot do is mint a nominal: the fence this
-   \ change had to leave standing (typed-storage-test.f section 8)
-   s" V7 ( -- tssk ) TSS-RAWCELL @"          CHECK-QUIET-CANDIDATE! 0 T=
-   \ V3, V4 and V6 read -1 until dot habu-refuse-a-ptr-5ad2734e landed. They were
-   \ the vacuity's sharp end rather than another reading of it: a cell that
-   \ certifies BOTH `( n -- )` and `( ptr u8 -- )` carries an integer in and
-   \ hands an address out, which is `@` and `c@` at any address with no TRUST
-   \ row. A raw cell now refuses a pointer in either direction, so the three
-   \ reject and the scalar readings above are the whole of what stays open.
-   s" V3 ( ptr u8 -- ) TSS-RAWCELL !"        CHECK-QUIET-CANDIDATE! 0 T=
-   s" V4 ( -- ptr u8 ) TSS-RAWCELL @"        CHECK-QUIET-CANDIDATE! 0 T=
-   s" V6 ( -- ptr ptr u8 ) TSS-RAWCELL @"    CHECK-QUIET-CANDIDATE! 0 T= ;
-
 \ =============================================================================
-\ 2. Closed STRUCTURAL cells: the same three shapes the raw cell blurred, each
+\ 1. Closed STRUCTURAL cells: three scalar shapes a raw cell would blur, each
 \    pinned at its declaration, each refusing the other two.
 \ =============================================================================
 TYPED-VARIABLE TSSN n
@@ -109,8 +79,7 @@ TYPED-VARIABLE TSSP ptr u8
    s" W4 ( -- bool ) TSSF @"           CHECK-QUIET-CANDIDATE! -1 T=
    s" W5 ( ptr u8 -- ) TSSP !"         CHECK-QUIET-CANDIDATE! -1 T=
    s" W6 ( -- ptr u8 ) TSSP @"         CHECK-QUIET-CANDIDATE! -1 T=
-   \ ... and every OTHER reading of the same cell is refused, which is exactly
-   \ what the raw cell in section 1 waved through
+   \ ... and every OTHER reading of the same cell is refused
    s" W7 ( bool -- ) TSSN !"           CHECK-QUIET-CANDIDATE! 0 T=
    s" W8 ( -- ptr u8 ) TSSN @"         CHECK-QUIET-CANDIDATE! 0 T=
    s" W9 ( -- tssk ) TSSN @"           CHECK-QUIET-CANDIDATE! 0 T=
@@ -133,7 +102,7 @@ TYPED-VARIABLE TSSP ptr u8
    1 TSSB-GET 6 T= ;
 
 \ =============================================================================
-\ 3. Define-time admissibility: what a structural declaration accepts, and the
+\ 2. Define-time admissibility: what a structural declaration accepts, and the
 \    fail-closed edge. An open var cannot be pinned at all, so it still rejects.
 \ =============================================================================
 TYPED-VARIABLE TSS-EVAL-A ptr u8
@@ -169,7 +138,7 @@ variable TSS-EVAL-U
    s" TSS-BAD-PLIN" 0 search-wl 0= TTRUE ;
 
 \ =============================================================================
-\ 4. Why a sub-cell integer stays out of the DIRECT stored-type position, and
+\ 3. Why a sub-cell integer stays out of the DIRECT stored-type position, and
 \    why it is still fine inside a pointer chain. Both halves are measured, so
 \    the exclusion rests on a fact rather than on taste.
 \ =============================================================================
@@ -189,15 +158,14 @@ PTR-VARIABLE TSS-PV
    \ TYPED-VARIABLE TSSP actually mints
    s" U3 ( ptr ptr u8 -- ptr u8 ) @"          CHECK-QUIET-CANDIDATE! -1 T=
    \ a raw pointer cell reached by ptr-field still enforces pointer-ness but NOT
-   \ which pointer: the open pointee takes any of them, which is the same
-   \ vacuity section 1 measures, one level down
+   \ which pointer: the open pointee takes any of them, the same vacuity a raw
+   \ scalar cell has, one level down
    s" U4 ( ptr a -- ) TSS-PV 0 ptr-field !"   CHECK-QUIET-CANDIDATE! -1 T=
    s" U5 ( ptr u8 -- ) TSS-PV 0 ptr-field !"  CHECK-QUIET-CANDIDATE! -1 T=
    s" U6 ( n -- ) TSS-PV 0 ptr-field !"       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : RUN ( -- )
    T-RESET
-   SECTION-RAW-IS-VACUOUS
    SECTION-STRUCTURAL
    SECTION-ADMISSIBILITY
    SECTION-SUBCELL-REASON

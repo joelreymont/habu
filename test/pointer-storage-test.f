@@ -67,23 +67,6 @@ TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
    [: s" PERSISTED-PTR-VARIABLE VPS-PTR : VPS-ADDR ( -- ptr ptr n ) VPS-PTR ;" VERIFY:SOURCE-BUF ;]
    catch 0 T= ;
 
-\ Raw-definer VALUE-side mint (habu-nominal-storage-raw): create/variable/constant
-\ publish a RAW cell whose fetch is a TVK-RAW var, so laundering an arity-0
-\ nominal family through raw storage rejects, while a plain scalar round-trip
-\ through the same raw cell still certifies. The definers are registered through
-\ the verify-source RAW-TRUST-NEXT path (the enforcing gate); the laundering word
-\ is then checked with the quiet candidate checker so the reject renders no stray
-\ diagnostic. Verdict 0 = rejected, -1 = certified.
-: REG-RAW-DEFINERS ( -- )
-   s\" NEWTYPE rsvfam 0\nvariable RSVV\ncreate RSVC 8 allot\n7 constant RSVK" VERIFY:SOURCE-BUF-IN-SCOPE ;
-: VERIFY-RAW-VALUE ( -- )
-   REG-RAW-DEFINERS
-   s" RSV-VAR-MINT ( n -- rsvfam ) RSVV ! RSVV @" CHECK-QUIET-CANDIDATE! 0 T=
-   s" RSV-CREATE-MINT ( n -- rsvfam ) RSVC ! RSVC @" CHECK-QUIET-CANDIDATE! 0 T=
-   s" RSV-CONST-MINT ( -- rsvfam ) RSVK" CHECK-QUIET-CANDIDATE! 0 T=
-   s" RSV-VAR-N ( n -- n ) RSVV ! RSVV @" CHECK-QUIET-CANDIDATE! -1 T=
-   s" RSV-CONST-N ( -- n ) RSVK" CHECK-QUIET-CANDIDATE! -1 T= ;
-
 \ Declared-pointee storage (dot habu-refuse-a-ptr-5ad2734e). PTR-U8-TABLE and
 \ PERSISTED-PTR-U8-TABLE-VARIABLE spell the pointee in the does> clause, so the
 \ published effect carries no type variable, `trust-raw` has nothing to seal, and
@@ -141,7 +124,6 @@ TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
    RUNTIME
    TABLE-RUNTIME
    VERIFY-EFFECT
-   VERIFY-RAW-VALUE
    VERIFY-DECLARED-POINTEE
    RESERVED-RUNTIME
    VERIFY-RESERVED-EFFECT

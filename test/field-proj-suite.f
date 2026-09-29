@@ -18,7 +18,8 @@
 \   2. negatives (red-first): unarmed op, forged offset, offset past the family
 \      width, non-layout pointer, foreign family, role/output mismatch, and a
 \      malformed (uncommitted-id) arming — every one a checker reject (verdict 0).
-\   3. seal: the arming word is not reachable by name from user source.
+\ That checked source cannot arm the window itself is
+\ test/field-proj-boundary-child.f's (FPX-FORGE).
 \ REPORT prints "ok" and exits 0, or F<index> + detail and exits 1.
 
 variable #FAIL
@@ -168,13 +169,6 @@ s" FPX-RS ( ptr fprec -- ptr r ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 s" FPX-BID" TYPE-FIELD:COUNT 100 + 0 FP-ARM
 s" FPX-BID ( ptr fprec -- ptr n ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 FP-CLEAR
-
-\ ===========================================================================
-\ 3. seal: user CHECKED source cannot arm the window. FIELD-PROJ! has an
-\ explicit trusted-only effect; only the generative crossing (a TRUSTED friend
-\ forwarder, above) may call it, including when a user signature is recorded.
-\ ===========================================================================
-s" FPX-FORGE ( ptr u8 n n n -- ) FIELD-PROJ!" CHECK-QUIET-CANDIDATE! 0 T=
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
