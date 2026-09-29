@@ -95,14 +95,6 @@ create DIAG-BUF 8192 allot
    ARM
    [: s" : IUF-BARE ( -- n ) UFC 0 ;" EV ;] CHECK-RC TTHROWSQ
    NAMED  s" UFC" TOKEN?  s" 1" s" 0" SHORT-BY?
-   DISARM ;
-
-\ The token after the call used to own this diagnostic. It must not any more:
-\ `0` is the innocent bystander that made the original report unreadable.
-: CASE-NOT-THE-NEXT-TOKEN ( -- )
-   s" and the token after the call is no longer blamed for it" T-LABEL
-   ARM
-   [: s" : IUF-NEXT ( -- n ) UFC 0 ;" EV ;] CHECK-RC TTHROWSQ
    s" 0" NOT-TOKEN?
    DISARM ;
 
@@ -182,7 +174,6 @@ public
 : RUN ( -- )
    T-RESET
    CASE-BARE
-   CASE-NOT-THE-NEXT-TOKEN
    CASE-TWO-DEEP
    CASE-AFTER-LOCALS
    CASE-LOCALS-BINDER

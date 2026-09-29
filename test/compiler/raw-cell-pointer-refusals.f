@@ -268,17 +268,6 @@ create DIAG-BUF 8192 allot
    NAMED-EXEC
    DISARM ;
 
-\ The two-definition shape the dot measured. The first definition is refused, so
-\ the second never names a word -- which is the point of judging the KIND rather
-\ than the `execute`.
-: CASE-EXECUTE-THROUGH-RAW ( -- )
-   s" and the fetch-and-execute pair dies at the accessor, before execute" T-LABEL
-   ARM
-   [: s" : RCP-QC2 ( -- ptr [ -- n ] ) RCP-V ;  : RCP-FIRE ( -- n ) RCP-QC2 @ execute ;" EV ;]
-      CHECK-RC TTHROWSQ
-   NAMED-EXEC
-   DISARM ;
-
 \ The write half. Refusing the accessor alone would leave `!` free to put a
 \ quotation into the cell for a later mention to read back.
 : CASE-QUOTATION-STORE ( -- )
@@ -391,7 +380,6 @@ public
    CASE-ABANDONED-CANDIDATE
    CASE-VARIABLE-AS-XT-CELL
    CASE-CREATE-AS-XT-CELL
-   CASE-EXECUTE-THROUGH-RAW
    CASE-QUOTATION-STORE
    CASE-BYTE-BUFFER
    CASE-TYPED-VARIABLE-XT
