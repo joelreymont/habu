@@ -4,6 +4,8 @@ status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.424177+03:00"
+blocks:
+  - habu-return-all-ones-7f25749e
 ---
 
 Problem: `test/x86-64-peer-image.f` executes one routine; new forms have only pinned bytes (`test/compiler/x64-emit.f`). Every other C leaf verifies through this family.
@@ -28,3 +30,4 @@ Preflight corrections, rev 2 (after K1 landed; these override everything above w
 - Line fixes: "x64-chain.f:352-366" is 355-379 (`DIFF-IMAGE?` 358, `PLACED-BODY` 367); "passes.f:88-105" is 89-107 (`ROUTINE` 91).
 - Manifest directory: `MAKE-DIR` throws E-FS-IO on an existing directory, so a documented re-run into one `HB_TMP` (docs/bootstrap.md:142) would die. Use `MAKE-DIRS` (lib/fs-mutate.f:203-211, which tolerates `DIR?` at 197-201). `TMP-PATH` (src/os/env-base.f:112-119) joins `$HB_TMP/<name>` and accepts a slash.
 - WORDCALLER's callee: `BUILD-WORDCALLER ( n -- )` (x64-emit.f:507) bakes the absolute entry (`WCALL-ATTRS` 481-485), and `ENTRY-TARGET` (emit-x64.f:599-602) subtracts the placement. So the callee is emitted first at a 16-aligned offset (`X64IR:SP-ALIGN`, x64ir.f:148), and its address is `VMBASE CODE-OFF + off`.
+Landing note: the native comparison found x86 compares returning 1 for true (`cmpset`/`cmpseti` exit 22); `habu-return-all-ones-7f25749e` fixes the emitter, and this leaf lands after it so every positive exits 0.
