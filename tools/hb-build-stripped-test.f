@@ -184,12 +184,14 @@ package HB-BUILD-CLI
    HBT-CELLS-NOARG-RUN ;
 
 \ A stripped build's refusal as the CLI reports it. The link refuses an entry
-\ it cannot find with exit 74 and `aot: entry word not found: NAME`
-\ (src/habu/aot-closure.f NO-ENTRY-DIE); tools/hb-build.f exits with the
-\ maker's code, carries its diagnostic to stderr, prints nothing on stdout and
-\ installs no image, so this case fails if the tool swallows or rewrites the
-\ maker's exit or diagnostic. The refusals below ask the maker directly
-\ (HBT-RUN-MAKER).
+\ it cannot find with exit 74 and two lines on stderr, `aot: entry word not
+\ found: NAME` and its die message `aot: no entry` (src/habu/aot-closure.f
+\ NO-ENTRY-DIE); tools/hb-build.f exits with the maker's code, carries that
+\ stderr through byte for byte, prints nothing on stdout and installs no image,
+\ so this case fails if the tool swallows, rewrites, adds to or drops any of
+\ the maker's exit or diagnostic. tools/hb-build-cli-errors-test.f
+\ HBT-REFUSE-MAIN-CLI is the REPL path's. The refusals below ask the maker
+\ directly (HBT-RUN-MAKER).
 : HBT-STRIPPED-NO-ENTRY ( -- )
    HBT-REMOVE-AOT-OUT
    HBT-ARGV-BASE
@@ -203,7 +205,7 @@ package HB-BUILD-CLI
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc 74 T=
    outu 0 T=
-   HBT-ERR erru s" aot: entry word not found: HBT-NO-ENTRY" CONTAINS? TTRUE
+   HBT-ERR erru S\" aot: entry word not found: HBT-NO-ENTRY\naot: no entry\n" T$=
    HBT-AOT-OUT FILE? TFALSE ;
 
 \ ... while an engine cell on no list is still refused, with its own diagnostic.

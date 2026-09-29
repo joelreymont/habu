@@ -387,12 +387,20 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBB-PATHS!
    HBT-TMP BF-TMP! ;
 
-\ A program that builds is built in this process: HBB-BUILD runs the lint
-\ child, the maker or app-build child, the object store and the install, all
-\ tools/hb-build.f does once it has parsed argv, without the tier-1 compile
-\ that tool pays before it reads argv. A refusal ends the row in
-\ HBB-FINISH-MAKER's die, the child's diagnostic on stderr. The CLI's own
-\ output is asserted where it is the subject: BUILD-AOT-PRESEED and CLI-REPORT.
+\ A program that builds is built in this process: HBB-BUILD runs what
+\ tools/hb-build.f runs once it has parsed argv (for an AOT build the lint
+\ child, the maker, the object store and the install; for a REPL build the
+\ app-build child and the install), without the tier-1 compile
+\ that tool pays before it reads argv. What the CLI wraps around them does not
+\ run here: HBB-PREPARE-TMP's private directory (the children's HB_TMP is
+\ HBT-TMP), HBB-BUILD-CLI's exit mapping and HBB-CLEANUP. A refusal ends the
+\ row in a die, the child's diagnostic on stderr: a lint refusal in
+\ HBB-FINISH-TOOL's, a maker refusal in HBB-FINISH-MAKER's. A row spawns the
+\ CLI only where the CLI is the subject: its options (CLI-REPORT,
+\ BUILD-AOT-PRESEED), a missing HB_TMP made and a lint refusal passed through
+\ (HBT-BUILD-MISSING-TMP), the cache path error's exit and JSON bytes
+\ (tools/hb-build-cli-errors-test.f), a maker refusal passed through (below)
+\ and the maker deadline and its override (the timeout rows).
 : HBT-HBB-BUILD-OUT ( -- )
    HBB-BUILD
    BF-TMP-RESET ;
@@ -401,9 +409,13 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ maker invocation, HBB-RUN-MAKER-CMD, but keeps the maker's ( outu erru rc )
 \ where HBB-FINISH-MAKER would die, so its code and its diagnostic (the maker
 \ writes it to stderr, into HBB-ERR-BUF) are asserted on the child that made
-\ them. A timeout still throws through HBB-MAKER-TIMED-OUT with its captured
-\ diagnostic. tools/hb-build-stripped-test.f HBT-STRIPPED-NO-ENTRY asserts once
-\ that the CLI propagates one.
+\ them. HBT-RUN-APP does the same for the REPL build's app-build child,
+\ HBB-RUN-APP-CMD. A timeout still throws through HBB-MAKER-TIMED-OUT with its
+\ captured diagnostic. That the CLI passes a refusal through - the child's
+\ code, its stderr byte for byte, nothing on stdout, no image installed - is
+\ asserted once per build path: tools/hb-build-stripped-test.f
+\ HBT-STRIPPED-NO-ENTRY for AOT, tools/hb-build-cli-errors-test.f
+\ HBT-REFUSE-MAIN-CLI for REPL.
 : HBT-MAKER-CAPTURE>N ( len len outcome -- n n n )
    MATCH outcome
       exited OF {: outu:len erru:len rc:n :}
@@ -419,6 +431,15 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBT-TMP BF-TMP!
    HBB-BUILD-BEGIN
    HBB-RUN-MAKER-CMD HBT-MAKER-CAPTURE>N
+   BF-TMP-RESET ;
+
+: HBT-RUN-APP ( ptr u8 n -- n n n )
+   HBB-RESET-OPTIONS
+   HBB-REPL-ON
+   HBB-SRC!
+   HBT-TMP BF-TMP!
+   HBB-BUILD-BEGIN
+   HBB-RUN-APP-CMD HBT-MAKER-CAPTURE>N
    BF-TMP-RESET ;
 
 : HBT-REMOVE-AOT-OUT ( -- )

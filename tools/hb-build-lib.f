@@ -901,9 +901,12 @@ HBB-INSTALL-CHILD-LINT
    HBB-CAPTURE-REPORT
    HBB-SUCCESS ;
 
+\ The cache path error in the form --json-errors chooses, without its newline.
+: HBB-PATH-ERROR$ ( -- ptr u8 n )
+   HBB-JSON @ if HB-BUILD:PATH-ERROR$ else HB-BUILD:PATH-ERROR-TEXT$ then ;
+
 : HBB-PATH-ERROR ( -- )
-   HBB-JSON @ if HB-BUILD:PATH-ERROR$ else HB-BUILD:PATH-ERROR-TEXT$ then
-   HBB-WERR
+   HBB-PATH-ERROR$ HBB-WERR
    HBB-WERR-LF ;
 
 : HBB-BUILD-BEGIN ( -- )
@@ -925,10 +928,7 @@ HBB-INSTALL-CHILD-LINT
 \ A REPL application is the complete running native image. Its child loads
 \ the writer and application once, then captures from the outer stdin stream
 \ after include frames have returned. Paths travel as argv, never source text.
-: HBB-BUILD-REPL ( -- )
-   HBB-PRESEED? if
-      s" hb-build: --preseed-entry requires an AOT build" HBB-USAGE-RC die
-   then
+: HBB-RUN-APP-CMD ( -- len len outcome )
    HBB-CMD-RESET
    s" --" >LEN PROC-ARGV+
    HBB-SRC$ >LEN PROC-ARGV+
@@ -937,8 +937,13 @@ HBB-INSTALL-CHILD-LINT
    S\" require tools/app-build.f\nAPP-BUILD:RUN\n" >LEN
    HBB-OUT-BUF HBB-CAPTURE-CAP >LEN
    HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
-   HBB-MAKER-TIMEOUT-MS @ >MS RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
-   HBB-FINISH-MAKER
+   HBB-MAKER-TIMEOUT-MS @ >MS RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ;
+
+: HBB-BUILD-REPL ( -- )
+   HBB-PRESEED? if
+      s" hb-build: --preseed-entry requires an AOT build" HBB-USAGE-RC die
+   then
+   HBB-RUN-APP-CMD HBB-FINISH-MAKER
    HBB-INSTALL-OUT
    HBB-FINISH ;
 

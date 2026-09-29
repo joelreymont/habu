@@ -81,9 +81,10 @@ variable HBT-SEQ-IP      \ that scan's cursor
    HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
-\ The second build of repl.f, under the cache root BUILD-REPL used: its report
-\ of no hit of any kind is what shows a REPL build is captured afresh and never
-\ answered from a cache.
+\ --report-json through the CLI: a REPL build exits 0 with nothing on stderr
+\ and the report object on stdout, its cache source none. HBB-BUILD-REPL
+\ consults no cache and sets no trace flag, so the five false fields are the
+\ reset trace as the report writes it, not a cache that was asked and missed.
 : CLI-REPORT ( -- )
    HBT-ARGV-BASE
    HBT-ADD-REPORT
@@ -350,19 +351,14 @@ variable HBT-SEQ-IP      \ that scan's cursor
    HBT-IMGDUMP-NAME$ BF-REMOVE-TMP
    BF-TMP-RESET ;
 
-\ Rejected input is compiled in the real snapshot child, before an image exists.
+\ Rejected input is checked in the real app-build child, which refuses it with
+\ the checker's code and diagnostic.
 : HBT-BUILD-REPL-BAD ( -- )
-   HBT-ARGV-BASE
-   s" --repl" >LEN PROC-ARGV+
-   HBT-REPL-BAD-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-REPL-BAD-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   HBT-REPL-BAD-SRC HBT-RUN-APP {: outu:n erru:n rc:n :}
    rc 70 T=
-   HBT-OUT outu HBT-EMPTY$ T$=
-   HBT-ERR erru s" expected: i64" CONTAINS? TTRUE
-   HBT-ERR erru s" actual: bool" CONTAINS? TTRUE
-   HBT-REPL-BAD-OUT EXISTS? TFALSE ;
+   outu 0 T=
+   HBB-ERR-BUF erru s" expected: i64" CONTAINS? TTRUE
+   HBB-ERR-BUF erru s" actual: bool" CONTAINS? TTRUE ;
 
 : HBT-BUILD-MISSING-TMP ( -- )
    HBT-NEW-TMP EXISTS? TFALSE
