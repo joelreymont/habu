@@ -3,6 +3,7 @@
 require lib/process-fork.f
 require lib/process-env.f
 require lib/test/runner.f
+require lib/test/suite.f                 \ TEST:ITEM-MAX sizes the red table
 require tools/why-threw.f
 
 using WHY-THREW                          \ the fork-throw self-identifying report
@@ -16,9 +17,10 @@ $64 constant GT-POOL-POLL-MS
 $1000 constant GT-POOL-CHUNK-CAP
 64 constant GT-POOL-NAME-CAP
 32 constant GT-POOL-NUM-CAP
-\ Red rows: one per registered suite (lib/test/suite.f ITEM-MAX), so a complete
-\ run reports every red with its exit code and capture paths.
-512 constant GT-POOL-RED-MAX
+\ Red rows: one per registered suite (lib/test/suite.f ITEM-MAX) plus the
+\ whitebox engine build row test/gate-stdlib-lib.f starts beside them, so a
+\ complete run reports every red with its exit code and capture paths.
+TEST:ITEM-MAX 1 + constant GT-POOL-RED-MAX
 GT-POOL-MAX GT-OUT-CAP * constant GT-POOL-OUT-BYTES
 GT-POOL-MAX GT-ERR-CAP * constant GT-POOL-ERR-BYTES
 

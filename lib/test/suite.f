@@ -13,7 +13,8 @@ package TEST
 1024 constant STDIN-CAP
 \ Shared suite-table budget. Grow by constant when it fills (FM-BUF-CAP
 \ precedent); keep the loud E-TBL-BOUNDS wall (ITEM-CHECK / ITEM-ALLOC).
-512 constant ITEM-MAX
+\ test/gate-pool.f sizes its red table from it.
+1024 constant ITEM-MAX
 32 constant GROUP-MAX
 $10000 constant ARG-CAP
 0 constant GROUP-PARALLEL
@@ -331,6 +332,8 @@ defer WHITEBOX-RUNNER ( ptr u8 n -- )
    rc 0 <> if rc throw then ;
 
 public
+
+EXPORT ITEM-MAX
 
 : SETUP! ( [ -- ] -- )
    is SETUP ;
