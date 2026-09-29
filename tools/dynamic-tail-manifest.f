@@ -7,6 +7,8 @@
 \ boundary whose loader dataflow the pass cannot read: discovery tolerates
 \ (skips) exactly those forms in it and records only its statically-visible
 \ loader events, so the event log is a lower bound on what that file loads.
+\ These dynamic calls run inside tools, not while their defining files load.
+\ Static loader events in those files are still discovered and followed.
 \ Keep this table minimal; every entry carries a one-line reason, and an entry
 \ is retired when its unreadable form is replaced by static loader forms.
 

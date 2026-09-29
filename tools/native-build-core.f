@@ -25,6 +25,7 @@ require src/habu/aot-arm.f
 require src/habu/aot-capture.f
 require src/compiler/native/string.f
 require tools/native-layout.f
+require tools/native-source-view.f
 
 package NATIVE-BUILD
 
@@ -144,6 +145,11 @@ TRUSTED: LITERAL-ADDRESS ( ptr u8 -- n ) ;
 : CHECKER-OWNER ( -- ptr u8 )
    data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @ ;
 
+\ Logical reset clears the target declaration cell. The retained source
+\ certifier stays in DECL-CELL until the fresh checker is transferred.
+: SOURCE-CHECKER-OWNER ( -- ptr u8 )
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
+
 \ These execution tokens belong to the retained/target private checker owners.
 TRUSTED: RESET-CHECKER ( ptr u8 -- ) {: owner:ptr :}
    owner 0= if exit then
@@ -198,7 +204,23 @@ TRUSTED: SOURCE-RESET-XT ( n -- [ -- ] ) ;
    then
    xt ;
 
-: LOAD-TARGET ( ptr u8 -- ) {: source:ptr :}
+variable TARGET-SOURCE-BOUND
+
+TRUSTED: SOURCE-USE-XT ( n -- [ [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] -- ] ) ;
+
+: BIND-TARGET-SOURCE ( -- )
+   1 TARGET-SOURCE-BOUND !
+   SOURCE-VIEW:CALLBACKS
+   s" SOURCE-INPUT:USE" OPEN-TARGET-XT SOURCE-USE-XT execute ;
+
+: RESET-TARGET-SOURCE ( -- )
+   TARGET-SOURCE-BOUND @ if
+      s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
+      0 TARGET-SOURCE-BOUND !
+   then ;
+
+: LOAD-TARGET ( -- )
+   SOURCE-CHECKER-OWNER {: source:ptr :}
    s" src/core/util.f" included
    s" src/core/cell.f" included
    s" src/core/pointer-storage.f" included
@@ -237,16 +259,20 @@ TRUSTED: SOURCE-RESET-XT ( n -- [ -- ] ) ;
    s" src/habu/layout.f" included
    s" src/os/env-base.f" included
    s" src/core/include.f" included
-   s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
+   SOURCE-VIEW:READY? if
+      BIND-TARGET-SOURCE
+   else
+      s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
+   then
    s" src/habu/native-runtime.f" included ;
 
-: OPEN-AND-COMPILE ( ptr u8 -- )
+: OPEN-AND-COMPILE ( -- )
    \ APP-IMAGE preserves the exact DATA cursor, including a trailing byte field.
    \ The captured window starts on the cell grid used by address relocation.
    align
    AOT-ARM:WINDOW-OPEN-PERSISTENT
    NSTR:WINDOW-OPEN
-   LOAD-TARGET
+   [: LOAD-TARGET ;] SOURCE-ROOT:WITH-CWD
    AOT-ARM:WINDOW-CLOSE ;
 
 \ Resolve a target operation without compiling another definition or opening a
@@ -550,9 +576,9 @@ variable NAMES-NI
 : DRIVE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    {: query bootstrap:bool writer :}
    CHECK-HOST-LAYOUT
-   CHECKER-OWNER {: source:ptr :}
-   source LOGICAL-RESET
-   source OPEN-AND-COMPILE
+   CHECKER-OWNER LOGICAL-RESET
+   OPEN-AND-COMPILE
+   RESET-TARGET-SOURCE
    TRANSFER-LITERALS
    AOT-CAPTURE:PAYLOAD-CAPTURE
    PREPARE-TARGET
@@ -574,11 +600,14 @@ variable NAMES-NI
 : RUN-READY-RC ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
    {: query bootstrap:bool writer :}
    CLEANUP-RESET
+   0 TARGET-SOURCE-BOUND !
    REMOVE-STALE-TEMP
    TEMP$ CLEANUP+
    SMOKE-DIR!
    query bootstrap writer [: DRIVE ;] catch {: rc:n :}
    drop 2drop
+   RESET-TARGET-SOURCE
+   SOURCE-VIEW:READY? if SOURCE-VIEW:CLOSE then
    CLEANUP-RUN
    rc 0<> if s" native-build: uncaught throw code " type rc . cr then
    rc ;

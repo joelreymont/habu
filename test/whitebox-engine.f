@@ -117,7 +117,7 @@ private
    repeat ;
 
 : KEY! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u EC:BUILD EC:CHECK-KEYABLE
+   a u EC:BUILD
    CONTENT-KEY:OPEN
    s" whitebox-engine-v3" CONTENT-KEY:TEXT+
    ENGINE-CANDIDATE:PATH$ s" host-engine" CONTENT-KEY:FILE-NAMED+

@@ -55,6 +55,7 @@ variable SD-ROOT-U
 variable SD-ENTRY-U
 
 TYPED-VARIABLE SD-STORAGE SPAN:span<u8>
+PTR-VARIABLE SD-A
 variable SD-U
 variable SD-I
 variable SD-PATH-U
@@ -74,7 +75,7 @@ variable SD-LOCAL-BASE
 variable SD-SCOPES
 
 : SD-BUF ( -- ptr u8 )
-   SD-STORAGE @ SPAN:$ drop ;
+   SD-A @ ;
 
 \ Reuse the largest source allocation. No scanner pointer survives a read:
 \ install the new scratch span before releasing the old one, without copying.
@@ -348,7 +349,9 @@ variable SD-SCOPES
 
 : SD-READ-ENTRY ( ptr u8 n -- ) {: pa:ptr pu:n :}
    pa pu FILE-SIZE 1 max SD-BUF-ENSURE
-   pa pu SD-STORAGE @ SPAN:$ READ-ALL SD-U ! ;
+   SD-STORAGE @ SPAN:$ {: a:ptr cap:n :}
+   pa pu a cap READ-ALL SD-U !
+   a SD-A ! ;
 
 : SD-KIND-NAME ( n -- ptr u8 n ) {: kind:n :}
    kind EV-INCLUDED = if s" included" exit then
@@ -366,13 +369,14 @@ variable SD-SCOPES
 : SD-WALK-IN ( -- )
    SD-ROOT SD-ROOT-U @ [: SD-WALK ;] WITH ;
 
-public
-
-: RUN-IN ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n root:ptr rootu:n :}
+: SELECT-ENTRY ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n root:ptr rootu:n :}
    pu SD-PATH-CAP > rootu SD-PATH-CAP > or if E-DISC-CAPACITY throw then
    pa SD-ENTRY pu BYTE-COPY pu SD-ENTRY-U !
-   root SD-ROOT rootu BYTE-COPY rootu SD-ROOT-U !
-   SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY
+   root SD-ROOT rootu BYTE-COPY rootu SD-ROOT-U ! ;
+
+private
+
+: RUN-SELECTED ( -- )
    SD-ENTRY SD-ENTRY-U @ DTM:KNOWN? SD-LENIENT !
    REQUIRE-SNAPSHOT
    EVENTS-RESET EVENT-ON DISCOVERY-ON
@@ -381,6 +385,19 @@ public
    REQUIRE-RESTORE
    SD-LOCALS-RELEASE
    rc 0= 0= if rc throw then ;
+
+public
+
+: RUN-IN ( ptr u8 n ptr u8 n -- )
+   SELECT-ENTRY
+   SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY
+   RUN-SELECTED ;
+
+: RUN-BYTES ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: pa:ptr pu:n root:ptr rootu:n bytes:ptr size:n :}
+   pa pu root rootu SELECT-ENTRY
+   bytes SD-A ! size SD-U !
+   RUN-SELECTED ;
 
 : RUN ( ptr u8 n -- )
    ENTRY-RESOLVE drop RESOLVED-ROOT$ RUN-IN ;

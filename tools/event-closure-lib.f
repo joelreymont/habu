@@ -68,12 +68,20 @@ variable EC-ORD-N
       1+
    repeat drop EC-FALSE ;
 
+: EC-SEEN-WITH? ( ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n root:ptr rootu:n :}
+   0 begin dup EC-N @ < while
+      dup EC-PATH$ a u STR= if
+         dup EC-ROOT$ root rootu STR= if drop EC-TRUE exit then
+      then
+      1+
+   repeat drop EC-FALSE ;
+
 : EC-ROOM ( n -- ) {: u:n :}
    EC-N @ EC-MAX >= if E-DISC-CAPACITY throw then
    EC-POOL-N @ u + EC-POOL-CAP > if E-DISC-CAPACITY throw then ;
 
-: EC-ADD ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
-   a u EC-SEEN? if exit then
+: EC-ADD-ROW ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
    u rootu + EC-ROOM
    EC-POOL-N @ {: off:n :}
    a off EC-POOL + u BYTE-COPY
@@ -84,6 +92,14 @@ variable EC-ORD-N
    rootu EC-N @ cells EC-ROOT-LEN + !
    off u + rootu + EC-POOL-N !
    EC-N @ 1+ EC-N ! ;
+
+: EC-ADD ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
+   a u EC-SEEN? if exit then
+   a u root rootu EC-ADD-ROW ;
+
+: EC-ADD-WITH ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
+   a u root rootu EC-SEEN-WITH? if exit then
+   a u root rootu EC-ADD-ROW ;
 
 : EC-LOADS? ( n -- bool ) {: i:n :}
    i EVENT-KIND@ {: k:n :}
@@ -99,6 +115,15 @@ variable EC-ORD-N
    0 EC-I !
    begin EC-I @ EVENT-COUNT < while
       EC-I @ EC-LOADS? if EC-I @ EVENT-PATH@ EC-I @ SOURCE-EVENT:ROOT@ EC-ENQUEUE then
+      EC-I @ 1+ EC-I !
+   repeat ;
+
+: EC-SCAN-EVENTS-WITH ( -- )
+   0 EC-I !
+   begin EC-I @ EVENT-COUNT < while
+      EC-I @ EC-LOADS? if
+         EC-I @ EVENT-PATH@ EC-I @ SOURCE-EVENT:ROOT@ EC-ADD-WITH
+      then
       EC-I @ 1+ EC-I !
    repeat ;
 
@@ -197,16 +222,19 @@ public
       EC-HEAD @ 1+ EC-HEAD !
    repeat ;
 
-\ Engine keys cross manifested loader-definition files only on the reviewed
-\ assumption that they load no source. Their discovery log is otherwise only a
-\ lower bound. Ordinary walks may still inspect a boundary with literal loads.
-: CHECK-KEYABLE ( -- )
-   EC-N @ 0 ?do
-      i EC-PATH$ DTM:KNOWN? if
-         i EC-PATH$ i EC-ROOT$ DISCOVER:RUN-IN
-         EVENT-COUNT 0 <> if E-DISC-DYNAMIC throw then
-      then
-   loop ;
+\ A source owner reads every loading event from its own byte table. A missing
+\ dependency is a refusal at that read, never an omitted closure member.
+: BUILD-WITH ( ptr u8 n [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
+   {: a:ptr u:n reader :}
+   RESET
+   a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-ADD-WITH
+   begin EC-HEAD @ EC-N @ < while
+      EC-HEAD @ EC-PATH$ EC-HEAD @ EC-ROOT$ reader execute
+      {: bytes:ptr size:n :}
+      EC-HEAD @ EC-PATH$ EC-HEAD @ EC-ROOT$ bytes size DISCOVER:RUN-BYTES
+      EC-SCAN-EVENTS-WITH
+      EC-HEAD @ 1+ EC-HEAD !
+   repeat ;
 
 \ Depth-first, post-order closure: each file is preceded by its own transitive
 \ require/include closure, so the last entry is always the entry file itself.

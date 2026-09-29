@@ -73,7 +73,7 @@ variable CLOSURE-IDX
    repeat ;
 
 : KEY! ( -- )
-   WRITER$ EC:BUILD EC:CHECK-KEYABLE
+   WRITER$ EC:BUILD
    CONTENT-KEY:OPEN
    s" cold-fixture-engine-v2" CONTENT-KEY:TEXT+
    ENGINE-CANDIDATE:PATH$ s" host-engine" CONTENT-KEY:FILE-NAMED+
