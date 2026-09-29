@@ -2043,6 +2043,10 @@ SUITE addrmap-call
    test/addrmap-call.f
 ;SUITE
 
+SUITE sites
+   test/sites.f
+;SUITE
+
 SUITE p2-map-rewind
    test/p2-map-rewind.f
 ;SUITE

@@ -440,6 +440,33 @@ EPRIM: fork          PE-N PE-OUT EPRIM;
 EPRIM: wait-status   PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: patch32       PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary may emit machine code (F3)
+\ The four relocation-record primitives below, per target.
+\ `code-publish ( src dst len -- )` copies an emission into the code arena,
+\ `callmap-set ( addr -- )` and `addrmap-set ( addr -- )` record a call or an
+\ address literal at a region address, and `reloc-maps-clear ( start len -- )`
+\ forgets the sites of a reclaimed span. The record is SNAP-RELOC's band
+\ (src/habu/layout.f), and src/habu/sites.f reads it on either target.
+\ - ARM64, two bitmaps of one bit per four-byte region word: `callmap-set` sets
+\   the call map's bit of the BL at `addr` and `addrmap-set` the address map's
+\   bit of a carrier's first MOVZ, and a set bit stays set; `code-publish`
+\   clears the call map over [dst, dst+len) and `reloc-maps-clear` both maps
+\   over its span.
+\ - x86-64, rows over the same bytes: `callmap-set` and `addrmap-set` add a
+\   SITE-CALL or SITE-ADDR row for the instruction whose first byte (the `call`
+\   opcode, the REX byte of `mov r64, imm64`) is at `addr`, at any byte of the
+\   region. The writer finds the row's place by offset and moves the rows above
+\   it up by one, so the rows stay strictly ascending: a site above the last
+\   row is an append, the common case of code published at the code pointer,
+\   and a site below it costs a move of the rows above it. No site is refused
+\   for being below the last row, so a caller records its sites in any order
+\   and merges nothing. The same row again changes nothing; the other kind at a
+\   recorded offset, or a row past SITE-CAP, exits SITE-RC. `code-publish`
+\   removes the rows of both kinds in [dst, dst+len) and `reloc-maps-clear`
+\   those of its span; sites are recorded after `code-publish`, so an x86-64
+\   publication drops the stale rows in its span where ARM64 keeps the address
+\   bits.
+\ An `addr` outside the region, or on ARM64 not a whole instruction, exits
+\ ENGINE-ERROR:SEAL-VIOLATION.
 EPRIM: code-publish  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ the bulk publication window is code injection too
 EPRIM: callmap-set   PE-N PE-IN EPRIM;

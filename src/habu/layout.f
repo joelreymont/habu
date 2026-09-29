@@ -1606,6 +1606,51 @@ REGION 32 / constant ADDRMAP-BYTES        \ one bit per region word (REGION / 4 
 CALLMAP-END constant ADDRMAP-OFF
 ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 
+\ Site-row band: the x86-64 view of the same bytes as the two maps above,
+\ [CALLMAP-OFF, ADDRMAP-END), 2 MiB. An x86-64 instruction is not a four-byte
+\ word, so a bit per region word cannot name its sites: the `call rel32` opcode
+\ and the REX byte of a `mov r64, imm64` sit at any byte offset. On that target
+\ the bytes hold a u64 count at SITE-N-CELL and then that many rows from
+\ SITE-ROWS-OFF, SITE-ROW-BYTES each: the region byte offset of the site's first
+\ instruction byte as a little-endian u32, then its kind as a u8 at
+\ SITE-KIND-OFF. The row names the instruction, as a bit names the BL word or a
+\ chain's first MOVZ; the patched field is at +1 of a call and at
+\ +MOVABS-IMM-OFF of a literal (src/habu/address-carrier.f).
+\
+\ BOTH VIEWS ARE DECLARED ON EVERY TARGET. src/ has no [if] and a top-level
+\ `if` is refused on the product engine, so this file cannot choose one; which
+\ view the bytes hold is decided at run time by HB-TARGET-LINUX-X86-64? in
+\ src/habu/sites.f, the one reader of both. The ARM64 maps above are unchanged.
+\
+\ THE ROWS ARE STRICTLY ASCENDING BY OFFSET, one per offset, so the reader yields
+\ a span's sites in the order the bitmaps give them without sorting a live band.
+\ On x86-64 `callmap-set` and `addrmap-set` find a new row's place by offset and
+\ move the rows above it up by one: a site above the last row is an append, the
+\ common case of code published at the code pointer, and a site below it costs
+\ a move of the rows above it. Neither refuses a site below the last row, so a
+\ caller records its sites in any order and merges nothing. `code-publish` and
+\ `reloc-maps-clear` remove the rows of a span (src/habu/prims.f). The kinds
+\ start at 1, so a zeroed row is no kind at all.
+\
+\ UNLIKE A BITMAP, THE BAND CAN FILL. SITE-CAP rows fit; a writer refuses one
+\ more with SITE-RC, and the reader refuses with the same status a count above
+\ SITE-CAP, a row at or after REGION, a row of no known kind and a row not above
+\ the one before it. 103 is the next status above src/core/engine-error.f's last
+\ (102), and it lives here for the reason CALLMAP-RC does.
+\
+\ SNAPSHOT RELOCATION DOES NOT APPLY ON x86-64: the region and DATA are mapped
+\ at fixed addresses there, so no call displacement or address literal differs
+\ between the run that writes an image and the run that restores it. The rows
+\ serve publication and the AOT capture.
+CALLMAP-OFF constant SITE-N-CELL                \ live row count (u64)
+SITE-N-CELL 8 + constant SITE-ROWS-OFF
+4 constant SITE-KIND-OFF                        \ the kind follows the u32 offset
+SITE-KIND-OFF 1 + constant SITE-ROW-BYTES       \ offset u32 LE + kind u8
+ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
+1 constant SITE-CALL
+2 constant SITE-ADDR
+103 constant SITE-RC
+
 \ Address-cell table: the DATA offset and kind of every persisted cell that was
 \ DECLARED to hold an address. XT cells hold JIT-region addresses; DATA-pointer
 \ cells hold addresses in the DATA heap. Region code moves on snapshot restore,

@@ -22,4 +22,5 @@ public
 100 constant IMAGE-CODE-ORIGIN  \ retained callable code lacks native evidence
 101 constant CODE-ORIGIN-FULL   \ provenance capacity refuses before dropping a row
 102 constant STACK-BOUNDS       \ a physical VM stack access exceeds its active allocation
+\ 103 belongs to SNAP-RELOC:SITE-RC, the x86-64 site-row band (layout.f).
 ;package

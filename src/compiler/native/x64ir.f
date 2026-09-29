@@ -27,7 +27,7 @@
 \ ARM64 builds a constant from a movz/movk run and keeps its return address in
 \ x30, which is why a64ir has `movk`, `linksave` and `linkload`. Here a literal
 \ is `mov r64, imm64` - ten bytes, one relocation site, patched at offset 2, the
-\ site kind src/habu/aot-decl.f calls MOVABS - and `call` pushes the return
+\ shape src/habu/address-carrier.f calls MOVABS - and `call` pushes the return
 \ address on the machine stack, so there is no link register to spill and no
 \ opcode for spilling it. For the same reason there is no fused push or pop: x86
 \ has no write-back addressing mode, so a data-stack store and the pointer move
@@ -953,7 +953,8 @@ private
 \ ---- the literal and the copy ------------------------------------------------
 \ The whole cell rides in the instruction, and `x64.addr` says whether the cell
 \ is a datum or an address a relocation pass has to find again. Ten bytes with
-\ the imm64 at X64ASM:MOV-RI64-IMM-OFF; the site kind is SNAP-RELOC:MOVABS.
+\ the imm64 at X64ASM:MOV-RI64-IMM-OFF; src/habu/address-carrier.f states the
+\ site's shape (SNAP-RELOC:MOVABS-SITE?, MOVABS-IMM-OFF).
 : DEF-MOVI ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b X64IR-OPCODE:MOVI OPCODE IR-SCHEMA:BEGIN-OP
