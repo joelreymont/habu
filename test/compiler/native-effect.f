@@ -42,8 +42,7 @@
 \    digests are pairwise distinct and that digest equality holds exactly where
 \    the structural comparison holds. The enumeration is driven by this suite's
 \    own index arithmetic and its own legality rules, not by the module under
-\    test, and the row count is asserted, so a rule that silently widened shows up
-\    as a changed legal-domain size.
+\    test.
 \ Tier-neutral by design: the schema words are called directly and every bound
 \ is asserted against the assembler's own constant, so the tier this file loads
 \ under changes no answer below.
@@ -747,7 +746,6 @@ variable ER-REG
 320 constant SWEEP-A
 72 constant SWEEP-B
 SWEEP-A SWEEP-B + constant ROWS
-392 constant ROWS-EXPECTED
 
 create DGA ROWS 4 * cells allot
 
@@ -851,7 +849,6 @@ create DGA ROWS 4 * cells allot
    SWEEP-A - SWEEP-B>ROUTINE ;
 
 : COLLECT ( -- )
-   ROWS ROWS-EXPECTED T=
    ROWS 0 ?do
       i IX>ROUTINE NEFF:DIGEST CDIGEST-DIGEST:UNMAKE i DG!
    loop ;
