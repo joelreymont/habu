@@ -99,6 +99,10 @@ WHITEBOX-SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
 
+WHITEBOX-SUITE checker-scan-index-rollback
+   test/checker-scan-index-rollback-suite.f
+;SUITE
+
 \ The native-window rows fetch the whitebox engine themselves
 \ (test/whitebox-child.f). Registered before the first WHITEBOX-SUITE row, which
 \ holds the registry until the gate's whitebox build retires, native-window-owner
