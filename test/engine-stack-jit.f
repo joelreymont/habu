@@ -1,5 +1,5 @@
 \ Direct JIT templates check each complete physical transfer, including spills.
-require test/engine-stack-lifecycle.f
+require test/engine-stack-lifecycle-lib.f
 
 package STACK-LIFECYCLE-TEST
 

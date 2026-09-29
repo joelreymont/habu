@@ -2,7 +2,7 @@
 \ stack to its real capacity, the three named overflow faults, one case per
 \ GUARDED-EXTENT? clause behind run-in-stack's structural refusal, and a
 \ task's own guarded stack.
-require test/engine-stack-lifecycle.f
+require test/engine-stack-lifecycle-lib.f
 require lib/memory.f
 
 package STACK-LIFECYCLE-TEST
@@ -60,7 +60,7 @@ create LIT-SRC LIT-SRC-CAP allot
 \ aligned, base + capacity does not wrap, base outside the DATA region. The
 \ first clause that rejects is the one that decides, so every case below takes
 \ the extent ACCEPTED-EXTENT is admitted with -- POOL and POOL-BYTES, the
-\ guarded mapping test/engine-stack-lifecycle.f made -- and changes exactly
+\ guarded mapping test/engine-stack-lifecycle-lib.f made -- and changes exactly
 \ ONE field of it. Every clause throws the same E-STACK-UNGUARDED, so the
 \ code observed never says which one fired: attribution comes from that one
 \ changed field plus the emitted order, and from the accepted control proving

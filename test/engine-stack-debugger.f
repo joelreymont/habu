@@ -1,5 +1,5 @@
 \ A breakpoint may interrupt a valid guarded allocation.
-require test/engine-stack-lifecycle.f
+require test/engine-stack-lifecycle-lib.f
 require lib/string.f
 
 package STACK-LIFECYCLE-TEST

@@ -1,5 +1,5 @@
 \ Complete primitive and width-aware JIT transfers use the active allocation.
-require test/engine-stack-lifecycle.f
+require test/engine-stack-lifecycle-lib.f
 require lib/string.f
 
 package STACK-LIFECYCLE-TEST
@@ -12,7 +12,7 @@ package STACK-LIFECYCLE-TEST
 \ run-in-stack refuses anything else, so every case below runs on the full
 \ 64 KB stack rather than on an extent tuned to the transfer's own width --
 \ there is no way to request a smaller guarded stack any more. The refusal
-\ itself is not retested here: test/engine-stack-lifecycle.f UNGUARDED-UNCAUGHT
+\ itself is not retested here: test/engine-stack-lifecycle-lib.f UNGUARDED-UNCAUGHT
 \ owns the uncaught child and test/stack-guard.f RUN-IN-STACK-REFUSALS owns one
 \ case per GUARDED-EXTENT? clause.
 \ The mapping's address is held in a DECLARED pointer cell and read back through
