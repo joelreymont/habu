@@ -940,7 +940,7 @@ $90 constant CK-PKG-REC-OFF
 \ using mirror further down is the main reader; the verifier window also seeds
 \ its owned depth from it, and that window is defined here, so the raw read lives
 \ with the other engine offsets rather than with the mirror.
-$9C08 constant CK-USE-DEPTH-OFF            \ = layout.f USE-DEPTH-CELL (DATA-relative); engine owns it
+$A408 constant CK-USE-DEPTH-OFF            \ = layout.f USE-DEPTH-CELL (DATA-relative); engine owns it
 : CK-USE-ENGINE-DEPTH ( -- n )  data-base CK-USE-DEPTH-OFF + @ ;
 7136 constant E-PKG-CONTEXT
 variable CHECKER-VERIFY-PKG-DEPTH

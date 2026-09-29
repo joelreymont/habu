@@ -20,7 +20,7 @@ require src/habu/layout.f
 \
 \ WHAT IS IN IT: every claim whose extent is DECLARED - a band with a length
 \ constant, or a single cell. That is the whole map from $3A00 up, where every
-\ library band lives, and all eight DATA-BANDS rows. THREE LOW CLAIMS ARE OUT,
+\ library band lives, and all DATA-BANDS rows. THREE LOW CLAIMS ARE OUT,
 \ because their extent exists only as an emitter convention and inventing one
 \ would be worse than omitting it: LVH-OFF ($580) and LVF-OFF ($2C0), the
 \ DO/LEAVE level arrays LVD-CELL indexes with no declared cap, and the $1A0 seal
@@ -193,6 +193,7 @@ variable NAMES-U
    s" SNAP-XTCELL" NAME,
    s" JIT-SNAP-FRAMES" NAME,
    s" TIER-PROV" NAME,
+   s" UNIT-COMPILE" NAME,
 
 create TAB
    DP-CELL                        ,  1 cells ,
@@ -312,6 +313,7 @@ create TAB
    SNAP-RELOC:XTCELL-N-CELL       ,  SNAP-RELOC:XTCELL-END SNAP-RELOC:XTCELL-N-CELL - ,
    JIT-SNAP:STK-OFF               ,  JIT-SNAP:END JIT-SNAP:STK-OFF - ,
    TIER-PROV:OPEN-CELL            ,  TIER-PROV:END TIER-PROV:OPEN-CELL - ,
+   UNIT-COMPILE-CELL              ,  1 cells ,
    0 ,  0 ,
 
 : ROW-OFF ( n -- n )

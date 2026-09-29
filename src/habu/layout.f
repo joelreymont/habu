@@ -1498,7 +1498,7 @@ FS-MUT-ABI:START constant END
 \ `trust`/`checker-defer` words — the drain replays only name+sig slot copies —
 \ and the table is empty whenever user source runs. test/protection-span.f pins
 \ this class at the DATA-START edge.
-48 constant PD-CAP                          \ pending slots: stage-2b pre-7687 needs ~20 (B5 + render/snapshot class); headroom
+64 constant PD-CAP                          \ pending slots: checker prefix needs ~48; leave room for new pre-trust defers
 48 constant PD-NAME-CAP                      \ max qualified defer-name bytes per slot
 64 constant PD-SIG-CAP                       \ max effect-signature bytes per slot
 0  constant PD-NLEN-OFF                       \ in-slot: name length (u64)

@@ -82,7 +82,8 @@ create ERR CAP allot
    s" require lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
 
 \ Pending pre-trust defer scratch ends at PD-TABLE-END. The later provenance
-\ table is protected through DATA-START: a store crossing its end must reject,
+\ table and unit dispatch cell are protected through DATA-START: a store
+\ crossing their end must reject,
 \ while a store beginning at the user heap remains valid.
 : TEST-BOUNDARY ( -- )
    s" 0 data-base $800 + c!" REJECTS
@@ -104,7 +105,7 @@ create ERR CAP allot
 \ in front of the band walk and skips the walk whole when a span provably
 \ misses every band, so the hull's own edges have to answer exactly as the
 \ bands do. BAND-LO is FRIEND-ARENA's base and BAND-HI is the end of the
-\ TIER-PROV table, which is DATA-START; the rows below stand one byte and one
+\ unit dispatch cell at DATA-START; the rows below stand one byte and one
 \ cell either side of each, and the last two are the spans a bounding test
 \ could wrongly admit: one entirely under the hull, one straddling all of it.
 : TEST-HULL-EDGE ( -- )
