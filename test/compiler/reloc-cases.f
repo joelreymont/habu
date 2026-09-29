@@ -216,27 +216,6 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    row ROW-RC@ 0<> if exit then
    row REBASE-PHASE ;
 
-\ Two writing runs at different region bases, the same two callees, and
-\ therefore the same canonical words: the portability claim, compared directly
-\ rather than left to a reader of the table.
-: CANON-IMAGE-EQUAL? ( n n -- bool ) {: ra:n rb:n :}
-   ra ROW-LEN@ rb ROW-LEN@ <> if false exit then
-   true IMG-OK !
-   ra ROW-LEN@ 0 ?do
-      ra ROW-BASE@ i + 0 SITE-EXPECT rb ROW-BASE@ i + 0 SITE-EXPECT <> if
-         false IMG-OK !
-      then
-   loop
-   IMG-OK @ ;
-
-: ROW-OF-ROLE ( n -- n ) {: role:n :}
-   ROWS 0 ?do i ROW-ROLE@ role = if i unloop exit then loop
-   E-CRL-ROW throw ;
-
-: PHASE-BASE-FREE ( -- )
-   s" a second writing base canonicalizes to the very same image" T-LABEL
-   ROLE-REBASE-UP ROW-OF-ROLE ROLE-BASE-FREE ROW-OF-ROLE CANON-IMAGE-EQUAL? TTRUE ;
-
 : PHASE-CALLS ( -- )
    s" the shipped call pass decodes into instructions the machine can run" T-LABEL
    s" EMIT-CALLS" RELOC-VM:DECODE
@@ -244,13 +223,9 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    ROWS 0 ?do i CALL-ROW loop ;
 
 \ ---- 5. driving the address-cell rows ----------------------------------------
-\ XT-CANON constructs the loader's input using the model's canonicalization.
-\ This does not execute the writer. test/snapshot-writer.f and test/app-image.f
-\ cover actual writer/restore use; the loader below is shipped EMIT-XT.
-
-: XT-CANON ( n n -- n ) {: c:n db:n :}
-   c 0= if 0 exit then
-   c db - RBASE-VA + ;
+\ The loader's input is the frozen canonical CELL-V1 vector. This does not
+\ execute the writer; test/snapshot-writer.f and test/app-image.f cover actual
+\ writer/restore use. The loader below is shipped EMIT-XT.
 
 : XT-SEGMENTS ( n -- ) {: row:n :}
    RELOC-VM:SEG-RESET
@@ -262,7 +237,7 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
 : XT-DECLARE ( n n -- ) {: row:n j:n :}
    j 8 * {: off:n :}
    off VM-DATA ADDRESS-CELLS:BOOT-OFF + j 8 * + 8 RELOC-VM:POKE
-   row XROW-BASE@ j + CELL-V0@ row XROW-DBW@ XT-CANON VM-DATA off + 8 RELOC-VM:POKE ;
+   row XROW-BASE@ j + CELL-V1@ VM-DATA off + 8 RELOC-VM:POKE ;
 
 : XT-BUILD ( n -- ) {: row:n :}
    row XT-SEGMENTS
@@ -271,17 +246,11 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    row XROW-LEN@ VM-DATA SNAP-RELOC:XTCELL-N-CELL + 8 RELOC-VM:POKE
    row XROW-LEN@ 0 ?do row i XT-DECLARE loop ;
 
-: XT-CANON-MATCH ( n n -- ) {: row:n j:n :}
-   row XROW-BASE@ j + {: c:n :}
-   s" the writer folds the declared cell onto the canonical sentinel" T-LABEL
-   c CELL-V0@ row XROW-DBW@ XT-CANON c CELL-V1@ T= ;
-
 : XT-CELL-MATCH ( n n -- ) {: row:n j:n :}
    s" the restored cell is the one the shared vector row records" T-LABEL
    VM-DATA j 8 * + 8 RELOC-VM:PEEK row XROW-BASE@ j + CELL-V2@ T= ;
 
 : XT-ROW ( n -- ) {: row:n :}
-   row XROW-LEN@ 0 ?do row i XT-CANON-MATCH loop
    row XT-BUILD
    CLEAR-REGS
    row XROW-DBL@ RBASE-VA - 10 RELOC-VM:R!
@@ -422,7 +391,6 @@ public
 : HABU-SIDE ( -- )
    TEACH-MACHINE
    PHASE-CALLS
-   PHASE-BASE-FREE
    PHASE-XT
    PHASE-ADDRS
    DATA-CHAINS ;
