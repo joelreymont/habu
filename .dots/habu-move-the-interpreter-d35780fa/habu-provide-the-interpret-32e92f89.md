@@ -14,3 +14,10 @@ Depends: none (K4 landed). Serialise `habu1.f`/`habu2.f` with I6 and I10c, `prim
 Route: Alder (shared: all four `src/habu` files).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+Preflight corrections (these override the lines above where they differ):
+- Files add `src/core/checker.f`: `PPRIM: PRIM-SPEC MIN-IN PE-N PE-IN  PE-N PE-OUT PPRIM;` beside `FIND` (`checker.f:8845-8853`); `primitive-registry.f` is checked code and its `PRIM-SPEC:FIND` call (`:80`) resolves only through `checker.f:8853`. Files add `docs/x86-64.md:529-547`: row forms gain `n EMIN-IN!`, readers gain `MIN-IN` (`:544` states readers need checker rows).
+- Pre-change failing check: `test/underdepth-gate.f` `UDG-NEG-PRIMS` gains `?dup` and `2>r` rows. Today they die rc 102 (`BQDUP` `habu1.f:1700-1703` loads `[XDS-8]` = `S0-8`, inside the guard page, `habu2.f:5101-5103,6276`, `rt.f:95-98`); after, rc 70 underdepth. `execute-floor` gets both branches in `test/runtime-regression-test.f`: a `TRUSTED: ( -- ) drop` xt answers -1 and the next token runs on a reset stack; a `( -- )` no-op xt answers 0.
+- Counts: LARITY has 47 registrations (44 in `habu1.f:3412-3532`, including the `GD-MIN !`/`GD-RECORD` pairs at `3463-3478` and `3523-3525`; 3 at `habu2.f:11107-11109`): 43 equal `PE-IN`, and 4 are atom-less (`execute catch evaluate finally`). `?dup` and `2>r` are not LARITY rows but `ELAB:` rows (`prims.f:649-650`) whose bodies read the stack (`habu1.f:1700,1777`), so their overrides close two crash seams; `2r>`/`2r@` need none.
+- Deletions also: `habu2.f:4996` (`variable LARITY`), `:10518` (`LBL LARITY !`), the `:11086` comment. `BEXEC`'s body is `habu1.f:2721` (`3432` is its registration).
+- The refused set grows by design: every `PE-IN > 0` primitive at top level refuses at the band (bare `drop` moves from the post-token floor, `habu2.f:7724`); bare `?dup`/`2>r`/`nip` move from rc 102 to rc 70. No test pins those crashes.
+- Base: master `bc2e9c44` or later. Workspace `.jj-ws/habu-provide-the-interpret-32e92f89`.
