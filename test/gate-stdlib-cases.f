@@ -1814,6 +1814,7 @@ SUITE span
 
 SUITE fs-mutate
    lib/fs-mutate-test.f
+   lib/fs-rename-noreplace-test.f
 ;SUITE
 
 SUITE exit-hook

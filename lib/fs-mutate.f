@@ -36,6 +36,7 @@ require lib/string.f
 require lib/fmt.f
 require lib/fs.f
 require lib/fs-identity.f
+require lib/ffi-abi.f
 require lib/span.f
 
 $FFF constant FS-MUT-MODE-PERM
@@ -122,6 +123,28 @@ FS-MUT-BAND-AGREE
 
 : RENAME-FILE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
    src srcu FS-PATHZ dst dstu FS-MUT-PATHZ2 rename 0 < if E-FS-IO throw then ;
+
+package FS-NOREPLACE
+17 constant DEST-EXISTS
+PROCESS-SYMBOLS
+FUNCTION: LINK-CALL link ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
+public
+: LINK-NEW? ( ptr u8 ptr u8 -- bool )
+   FFI:ERRNO drop
+   LINK-CALL 0<> if
+      FFI:ERRNO DEST-EXISTS = if false exit then
+      E-FS-IO throw
+   then
+   true ;
+;package
+
+\ The link claims the destination atomically. The caller owns a regular-file
+\ source on the same filesystem until this call returns. Source removal is a
+\ second step; if it fails, the published destination stays and E-FS-IO throws.
+: RENAME-NOREPLACE ( ptr u8 n ptr u8 n -- bool ) {: src:ptr srcu dst:ptr dstu :}
+   src srcu FS-PATHZ dst dstu FS-MUT-PATHZ2 FS-NOREPLACE:LINK-NEW? 0= if false exit then
+   src srcu REMOVE-FILE
+   true ;
 
 : CHMOD-MODE ( ptr u8 n n -- ) {: a:ptr u mode :}
    a u FS-PATHZ mode chmod 0 < if E-FS-IO throw then ;
