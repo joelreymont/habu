@@ -1,9 +1,11 @@
 ---
 title: Mark blob-provided rows in prims.f
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.621343+03:00"
+closed-at: "2026-09-29T15:53:51.613543+03:00"
+close-reason: "folded into I9a (habu-move-evaluate-and-9119f746): no row moves before it, so a standalone mechanism had no failing check"
 blocks:
   - habu-share-the-primitive-58c235e5
 ---
