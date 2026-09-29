@@ -47,14 +47,9 @@ create HBT-EXP-HEX2 64 allot
 
 : HBT-AOT-JIT-REJECT ( -- )
    HBT-REPL-BAD-SRC s" 0 set-tier : MAIN ( -- ) ;" WRITE-ALL
-   HBT-ARGV-BASE
-   HBT-REPL-BAD-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-REPL-BAD-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
-   rc 70 T= outu 0 T=
-   HBT-ERR erru s" executable build requires native tier 1" CONTAINS? TTRUE
-   HBT-REPL-BAD-OUT EXISTS? TFALSE ;
+   HBT-REPL-BAD-SRC HBT-RUN-MAKER {: outu:n erru:n rc:n :}
+   rc 70 T=
+   HBB-ERR-BUF erru s" executable build requires native tier 1" CONTAINS? TTRUE ;
 
 : HBT-AOT-SOURCE-KEY! ( -- )
    HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$

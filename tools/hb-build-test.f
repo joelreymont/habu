@@ -73,16 +73,6 @@ variable HBT-SEQ-IP      \ that scan's cursor
    HBT-REPL-OUT FILE? TTRUE
    HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
 
-\ A second capture compiles current sources and never restores a legacy maker.
-: REBUILD-REPL ( -- )
-   HBT-REPL-OUT FILE? if HBT-REPL-OUT REMOVE-FILE then
-   HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
-   HBT-HBB-BUILD-OUT
-   HBB-ARTIFACT-HIT @ 0= TTRUE
-   HBB-MAKER-RUN @ 0= TTRUE
-   HBT-REPL-OUT FILE? TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
-
 : HBT-CACHE-KEY-CHANGES ( -- )
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    HBT-AOT-SRC HBT-KEY-A HBT-HBB-KEY-AOT
@@ -91,6 +81,9 @@ variable HBT-SEQ-IP      \ that scan's cursor
    HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
+\ The second build of repl.f, under the cache root BUILD-REPL used: its report
+\ of no hit of any kind is what shows a REPL build is captured afresh and never
+\ answered from a cache.
 : CLI-REPORT ( -- )
    HBT-ARGV-BASE
    HBT-ADD-REPORT
@@ -437,7 +430,6 @@ public
    HBT-MAKER-KEY-FOLDS-MANIFEST
    HBT-PREPARE
    BUILD-REPL
-   REBUILD-REPL
    CLI-REPORT
    HBT-REPORT-INVALIDATION
    HBT-CACHE-KEY-CHANGES

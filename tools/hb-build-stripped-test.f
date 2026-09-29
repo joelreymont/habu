@@ -34,9 +34,6 @@ package HB-BUILD-CLI
 : HBT-PMK-SRC ( -- ptr u8 n )
    HBT-PMK-SRC-BUF HBT-PMK-SRC-U @ ;
 
-: HBT-PMK-OUT ( -- ptr u8 n )
-   HBT-PMK-OUT-BUF HBT-PMK-OUT-U @ ;
-
 \ An application that touches a PERSISTENT CELL of each library it requires:
 \ lib/string.f's builder, lib/fs-mutate.f's copy buffer (FS-MUT-COPY-BUF) and
 \ lib/fs.f's static walk context (FS-WALK-CTX0). Those cells are what the maker
@@ -111,14 +108,7 @@ package HB-BUILD-CLI
    s" c.txt" s" two" HBT-LIB-FILE!
    HBT-LIB-SRC HBT-LIB-SRC$ WRITE-ALL
    HBT-LIB-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   HBT-LIB-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-LIB-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
-   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
-   brc 0 T=
-   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-LIB-SRC HBT-LIB-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
    HBT-LIB-OUT FILE? TTRUE
    HBT-LIB-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
@@ -184,14 +174,7 @@ package HB-BUILD-CLI
 : HBT-STRIPPED-ENGINE-CELLS ( -- )
    HBT-CELLS-SRC HBT-CELLS-SRC$ WRITE-ALL
    HBT-CELLS-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   HBT-CELLS-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-CELLS-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
-   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
-   brc 0 T=
-   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-CELLS-SRC HBT-CELLS-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
    HBT-CELLS-OUT FILE? TTRUE
    HBT-CELLS-CHILD-ARGV-ENV
    HBT-CELLS-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
@@ -203,6 +186,10 @@ package HB-BUILD-CLI
    HBT-CELLS-NOARG-RUN ;
 
 \ ... while an engine cell on no list is still refused, with its own diagnostic.
+\ Of the maker's refusals this one alone goes through tools/hb-build.f: the CLI
+\ exits with the maker's code, carries its diagnostic to stderr, prints nothing
+\ on stdout and installs no image. The others are asked of the maker directly
+\ (HBT-RUN-MAKER).
 : HBT-STRIPPED-UNOWNED-CELL ( -- )
    HBT-UNOWNED-SRC HBT-UNOWNED-SRC$ WRITE-ALL
    HBT-UNOWNED-OUT HBT-REMOVE-FILE?
@@ -212,6 +199,7 @@ package HB-BUILD-CLI
    HBT-UNOWNED-OUT >LEN PROC-ARGV+
    HBT-RUN-HB-BUILD {: nout:n nerr:n nrc:n :}
    nrc 0 <> TTRUE
+   nout 0 T=
    HBT-ERR nerr s" outside the restored span" CONTAINS? TTRUE
    HBT-ERR nerr s" caller=TMP-PATH" CONTAINS? TTRUE
    HBT-ERR nerr s" target=TPU" CONTAINS? TTRUE
@@ -226,17 +214,11 @@ package HB-BUILD-CLI
 \ branch to the (MARK) ENTRY - what `xt!` compiles - is dropped as a declaration.
 : HBT-STRIPPED-PTR-MARK ( -- )
    HBT-PMK-SRC HBT-PMK-SRC$ WRITE-ALL
-   HBT-PMK-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   HBT-PMK-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-PMK-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: mout:n merr:n mrc:n :}
+   HBT-PMK-SRC HBT-RUN-MAKER {: mout:n merr:n mrc:n :}
    mrc 0 <> TTRUE
-   HBT-ERR merr s" PC-relative target removed or outside closure" CONTAINS? TTRUE
-   HBT-ERR merr s" site=ptr-cell-mark" CONTAINS? TTRUE
-   HBT-ERR merr s" target-word=(MARK)" CONTAINS? TTRUE
-   HBT-PMK-OUT FILE? TFALSE ;
+   HBB-ERR-BUF merr s" PC-relative target removed or outside closure" CONTAINS? TTRUE
+   HBB-ERR-BUF merr s" site=ptr-cell-mark" CONTAINS? TTRUE
+   HBB-ERR-BUF merr s" target-word=(MARK)" CONTAINS? TTRUE ;
 
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.

@@ -14,20 +14,11 @@ package HB-BUILD-CLI
 : HBT-TABLE-SRC ( -- ptr u8 n )
    HBT-TABLE-SRC-BUF HBT-TABLE-SRC-U @ ;
 
-: HBT-TABLE-OUT ( -- ptr u8 n )
-   HBT-TABLE-OUT-BUF HBT-TABLE-OUT-U @ ;
-
 : HBT-MAPC-SRC ( -- ptr u8 n )
    HBT-MAPC-SRC-BUF HBT-MAPC-SRC-U @ ;
 
-: HBT-MAPC-OUT ( -- ptr u8 n )
-   HBT-MAPC-OUT-BUF HBT-MAPC-OUT-U @ ;
-
 : HBT-MAPD-SRC ( -- ptr u8 n )
    HBT-MAPD-SRC-BUF HBT-MAPD-SRC-U @ ;
-
-: HBT-MAPD-OUT ( -- ptr u8 n )
-   HBT-MAPD-OUT-BUF HBT-MAPD-OUT-U @ ;
 
 \ ... and a baked `create` TABLE that no claim names is refused exactly as
 \ before. TPB is src/os/env-base.f's TMP-PATH buffer, the same shape as the
@@ -74,45 +65,26 @@ package HB-BUILD-CLI
 \ address: it differs in every build, which is the fault itself.
 : HBT-STRIPPED-MAPPED-CELL ( -- )
    HBT-MAPC-SRC HBT-MAPC-SRC$ WRITE-ALL
-   HBT-MAPC-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   HBT-MAPC-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-MAPC-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: cout:n cerr:n crc:n :}
+   HBT-MAPC-SRC HBT-RUN-MAKER {: cout:n cerr:n crc:n :}
    crc 0 <> TTRUE
-   HBT-ERR cerr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
-   HBT-ERR cerr s" word=BUF" CONTAINS? TTRUE
-   HBT-ERR cerr s" data-off=" CONTAINS? TTRUE
-   HBT-ERR cerr s" allocate at run time" CONTAINS? TTRUE
-   HBT-MAPC-OUT FILE? TFALSE ;
+   HBB-ERR-BUF cerr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
+   HBB-ERR-BUF cerr s" word=BUF" CONTAINS? TTRUE
+   HBB-ERR-BUF cerr s" data-off=" CONTAINS? TTRUE
+   HBB-ERR-BUF cerr s" allocate at run time" CONTAINS? TTRUE ;
 
 \ ... and so is one in a DECLARED cell, at the other site and by its own name.
 : HBT-STRIPPED-MAPPED-DECLARED ( -- )
    HBT-MAPD-SRC HBT-MAPD-SRC$ WRITE-ALL
-   HBT-MAPD-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   HBT-MAPD-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-MAPD-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: dout:n derr:n drc:n :}
+   HBT-MAPD-SRC HBT-RUN-MAKER {: dout:n derr:n drc:n :}
    drc 0 <> TTRUE
-   HBT-ERR derr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
-   HBT-ERR derr s" word=PBUF" CONTAINS? TTRUE
-   HBT-MAPD-OUT FILE? TFALSE ;
+   HBB-ERR-BUF derr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
+   HBB-ERR-BUF derr s" word=PBUF" CONTAINS? TTRUE ;
 
 \ ... while the allocation moved into MAIN links, runs and prints its own byte.
 : HBT-STRIPPED-MAPPED-LATE ( -- )
    HBT-MAPL-SRC HBT-MAPL-SRC$ WRITE-ALL
    HBT-MAPL-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   HBT-MAPL-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-MAPL-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: lout:n lerr:n lrc:n :}
-   lrc 0 <> if HBT-OUT lout type HBT-ERR lerr type then
-   lrc 0 T=
-   HBT-OUT lout s" hb-build OK" CONTAINS? TTRUE
+   HBT-MAPL-SRC HBT-MAPL-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
    HBT-MAPL-OUT FILE? TTRUE
    HBT-MAPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
@@ -125,17 +97,11 @@ package HB-BUILD-CLI
 \ the carried ones.
 : HBT-STRIPPED-UNCARRIED-TABLE ( -- )
    HBT-TABLE-SRC HBT-TABLE-SRC$ WRITE-ALL
-   HBT-TABLE-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   HBT-TABLE-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-TABLE-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: tout:n terr:n trc:n :}
+   HBT-TABLE-SRC HBT-RUN-MAKER {: tout:n terr:n trc:n :}
    trc 0 <> TTRUE
-   HBT-ERR terr s" outside the restored span" CONTAINS? TTRUE
-   HBT-ERR terr s" caller=TMP-PATH-COPY-SRC" CONTAINS? TTRUE
-   HBT-ERR terr s" target=TPB" CONTAINS? TTRUE
-   HBT-TABLE-OUT FILE? TFALSE ;
+   HBB-ERR-BUF terr s" outside the restored span" CONTAINS? TTRUE
+   HBB-ERR-BUF terr s" caller=TMP-PATH-COPY-SRC" CONTAINS? TTRUE
+   HBB-ERR-BUF terr s" target=TPB" CONTAINS? TTRUE ;
 
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.

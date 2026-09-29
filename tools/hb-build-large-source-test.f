@@ -1,13 +1,11 @@
 \ hb-build-large-source-test.f - checked fixture for tools/hb-build-lib.f: a
 \ string literal's body is declared text while the same bytes in a `create`
-\ cell are refused, and the CLI builds a source of HBT-LARGE-INPUT-U bytes in
+\ cell are refused, and hb-build builds a source of HBT-LARGE-INPUT-U bytes in
 \ --repl and AOT modes. tools/hb-build-test-lib.f lists the other hb-build
 \ rows.
 \ Run: bin/hb --load tools/hb-build-large-source-test.f
 
 require tools/hb-build-test-lib.f
-
-using BUILD-FIXPOINT                     \ the build tmp root and engine override
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -29,9 +27,6 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
 
 : HBT-LITC-SRC ( -- ptr u8 n )
    HBT-LITC-SRC-BUF HBT-LITC-SRC-U @ ;
-
-: HBT-LITC-OUT ( -- ptr u8 n )
-   HBT-LITC-OUT-BUF HBT-LITC-OUT-U @ ;
 
 \ A STRING LITERAL'S BODY IS DECLARED TEXT, and the span scan skips its cells by
 \ that declaration the way it skips a declared address cell by the engine's
@@ -77,27 +72,14 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
 \ is then a statement about the declaration and not about the value.
 : HBT-STRIPPED-LITERAL-BODY ( -- )
    HBT-LITC-SRC HBT-LITC-SRC$ WRITE-ALL
-   HBT-LITC-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   HBT-LITC-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-LITC-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: cout:n cerr:n crc:n :}
+   HBT-LITC-SRC HBT-RUN-MAKER {: cout:n cerr:n crc:n :}
    crc 70 T=
-   HBT-ERR cerr s" holds an undeclared code/dict pointer" CONTAINS? TTRUE
-   HBT-ERR cerr s" word=LIT-CELL" CONTAINS? TTRUE
-   HBT-LITC-OUT FILE? TFALSE
+   HBB-ERR-BUF cerr s" holds an undeclared code/dict pointer" CONTAINS? TTRUE
+   HBB-ERR-BUF cerr s" word=LIT-CELL" CONTAINS? TTRUE
 
    HBT-LITB-SRC HBT-LITB-SRC$ WRITE-ALL
    HBT-LITB-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   HBT-LITB-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-LITB-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: bout:n berr:n brc:n :}
-   brc 0 <> if HBT-OUT bout type HBT-ERR berr type then
-   brc 0 T=
-   HBT-OUT bout s" hb-build OK" CONTAINS? TTRUE
+   HBT-LITB-SRC HBT-LITB-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
    HBT-LITB-OUT FILE? TTRUE
    HBT-LITB-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
@@ -107,40 +89,16 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
    HBT-RUN-OUT outn HBT-LITB-EXPECTED$ T$=
    HBT-LITB-OUT HBT-REMOVE-FILE? ;
 
-: HBT-CLI-LARGE-SOURCE ( -- )
+: HBT-BUILD-LARGE-SOURCE ( -- )
    HBT-LARGE-CHUNK!
    HBT-REPL-SRC HBT-REPL-SRC$ HBT-WRITE-LARGE
    HBT-REPL-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   s" --repl" >LEN PROC-ARGV+
-   HBT-REPL-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-REPL-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: rout:n rerr:n rrc:n :}
-   rrc 0 <> if HBT-OUT rout type HBT-ERR rerr type then
-   rrc 0 T=
-   HBT-OUT rout s" hb-build OK" CONTAINS? TTRUE
-   rerr 0 T=
-   HBT-TMP BF-TMP!
-   s" hb-build-check-src" BF-A$ EXISTS? TFALSE
-   s" hb-build-src" BF-A$ EXISTS? TFALSE
-   BF-TMP-RESET
+   HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL HBT-HBB-BUILD-OUT
    HBT-RUN-REPL
 
    HBT-AOT-SRC HBT-LARGE-AOT-SRC$ HBT-WRITE-LARGE
    HBT-AOT-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   HBT-AOT-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-AOT-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: aout:n aerr:n arc:n :}
-   arc 0 <> if HBT-OUT aout type HBT-ERR aerr type then
-   arc 0 T=
-   HBT-OUT aout s" hb-build OK" CONTAINS? TTRUE
-   aerr 0 T=
-   HBT-TMP BF-TMP!
-   s" hb-aot-src" BF-A$ EXISTS? TFALSE
-   BF-TMP-RESET
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
    HBT-AOT-OUT FILE? TTRUE
    HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
@@ -155,14 +113,12 @@ public
    T-RESET
    HBT-PREPARE
    HBT-STRIPPED-LITERAL-BODY
-   HBT-CLI-LARGE-SOURCE
+   HBT-BUILD-LARGE-SOURCE
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT
    s" hb-build-large-source-test: ok" type cr ;
 
 ;package
-
-;using
 
 HB-BUILD-CLI:HBT-LARGE-SOURCE-MAIN
