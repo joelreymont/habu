@@ -1,6 +1,6 @@
 ---
 title: Optimization
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-09-24T16:53:24.838504+02:00\""
@@ -15,6 +15,13 @@ before fixing them. Update evidence and acceptance before an implementation
 claim; an RCA or candidate saving is not completed implementation.
 
 ## Current thin-engine work
+
+Parked at the user's request to return to Tender after committing, pushing and
+installing the completed non-compression work. Code and DATA compression require
+explicit user approval; the pending DATA and CODE compression experiments are
+rejected and will not be landed or installed. The additional size target remains
+unfinished. Preserve their source revisions and measurement artifacts as
+historical evidence, not accepted savings.
 
 The user explicitly set a continuing goal of **1 MB or more of additional
 reduction** from the qualified 2,625,655-byte paired engine. The target is
@@ -32,16 +39,13 @@ independent source coverage audit are complete (habu-find-repeated-code-7811ef13
 Generated buffer bounds sharing (habu-share-buf-bounds-c8093ca8), fixed
 validation/fatal tails (habu-share-fixed-valid-a57b1b73), and dialect schema
 finishing tails (habu-share-dialect-schema-d498c791) are qualified together.
-Opcode name tables (habu-table-opcode-names-d7cd2487) and packed DATA values
-(habu-pack-startup-data-0c5b8d64) remain implementation experiments.
-
-Captured code packing (habu-pack-captured-code-54666c9e) is the next measured
-representation experiment. The exact accepted code blob is 1,383,192 bytes;
-the reviewed local encoder produces 610,304 bytes including provisional block
-framing, with every byte independently reconstructed. This reduces stored
-representation, not executed instructions. Native decoder cost, complete product
-size and startup behavior remain unqualified; none of this measurement counts
-toward the goal. It depends on qualifying the shared DATA codec first.
+Opcode name tables (habu-table-opcode-names-d7cd2487) are finishing standalone
+native qualification. Packed DATA values (habu-pack-startup-data-0c5b8d64) and
+captured code packing (habu-pack-captured-code-54666c9e) are cancelled by user
+direction. Preserved source: DATA
+`cbfdab2dff57dafa14ceef8a75639253d19f0d7c`, CODE
+`89686491ae43fb71101918b2340251abba59768f`. Neither experiment counts toward
+the goal; their native images are not releases.
 
 The current qualified engine is **2,460,535 bytes**. The three source-sharing
 changes save another **16,512 signed bytes** from the compact-table parent.

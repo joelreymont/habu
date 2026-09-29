@@ -17,6 +17,8 @@ belong in the language core.
   missing choice or additional authority. User instructions take precedence.
 - Use plain English. Keep changes focused and remove obsolete machinery when
   the existing language or library already expresses the requirement.
+- Optimize code, data structures and architecture for the long term. Do not
+  compress code or data without the user's explicit approval of that change.
 - Use `jj`, preserve unrelated changes, and commit coherent completed work.
   Use separate workspaces when concurrent edits would conflict. Create Habu
   workspaces under this repository's `.jj-ws/`, never directly under `~/Work/`,
