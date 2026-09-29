@@ -2,6 +2,68 @@ STDLIB-GATE:MAIN
 
 using TEST
 
+\ Registry order is start order: GT-POOL-START takes the rows in the order
+\ below and each waits for a free slot, so a long row registered late starts
+\ late and alone sets the gate's tail.
+
+\ Start long native build and capture suites early so they overlap short suites.
+SUITE build-fixpoint-fixtures
+   tools/build-fixpoint-test.f
+;SUITE
+
+\ ONE FIXTURE, THREE ROWS. tools/hb-build-test.f used to run the stripped-image
+\ groups as well, and the row took 353-355 s of the 360 s SUITE-TIMEOUT-MS slot
+\ its child gets: three of five full runs reported kind=TIMEOUT-UNDER-LOAD for
+\ it while other suites ran beside it, every other row green. A row keeps at
+\ least twice its measured time in headroom - under half of SUITE-TIMEOUT-MS -
+\ and the seconds below were measured one row at a time on this engine. Move a
+\ group between the row files rather than letting one row grow past that.
+\ 130-133 s
+SUITE hb-build-fixtures
+   tools/hb-build-test.f
+   lib/build-cache-test.f
+   lib/codesign-test.f
+   tools/hb-build-direct-lints-test.f
+;SUITE
+
+\ 116-117 s
+SUITE hb-build-stripped
+   tools/hb-build-stripped-test.f
+;SUITE
+
+\ 108-118 s
+SUITE hb-build-stripped-cells
+   tools/hb-build-stripped-cells-test.f
+;SUITE
+
+SUITE aot-chain-capture
+   test/aot-chain-capture-suite.f
+;SUITE
+
+SUITE aot-wide-format
+   test/aot-wide-format-suite.f
+;SUITE
+
+WHITEBOX-SUITE checker-scan-index
+   test/checker-scan-index-suite.f
+;SUITE
+
+\ native-window-owner fetches the whitebox engine itself (test/whitebox-child.f).
+\ Registered before the first WHITEBOX-SUITE row, which holds the registry until
+\ the gate's whitebox build retires, it built its own copy beside that build and
+\ was killed at 360 s; after it, the row copies the finished artifact.
+SUITE native-window-owner
+   test/native-window-owner.f
+;SUITE
+
+SUITE stripped-entry
+   test/stripped-entry.f
+;SUITE
+
+SUITE aot-named-cells-image
+   test/aot-named-cells-suite.f
+;SUITE
+
 SUITE os-memory
    lib/os-memory-test.f
 ;SUITE
@@ -466,10 +528,6 @@ WHITEBOX-SUITE checker-effect-authority
    test/checker-effect-authority.f
 ;SUITE
 
-SUITE native-window-owner
-   test/native-window-owner.f
-;SUITE
-
 SUITE control-capture
    test/control-capture.f
 ;SUITE
@@ -516,10 +574,6 @@ SUITE aot-data-cell-refusals
 
 SUITE aot-xt-cells
    test/compiler/aot-xt-cells.f
-;SUITE
-
-SUITE stripped-entry
-   test/stripped-entry.f
 ;SUITE
 
 SUITE stripped-sparse-data
@@ -1327,10 +1381,6 @@ SUITE verify-prim
    test/verify-prim-test.f
 ;SUITE
 
-WHITEBOX-SUITE checker-scan-index
-   test/checker-scan-index-suite.f
-;SUITE
-
 SUITE defer-history
    test/defer-history.f
 ;SUITE
@@ -1436,14 +1486,6 @@ SUITE aot-seed-batch
    test/aot-seed-metadata.f
 ;SUITE
 
-SUITE aot-wide-format
-   test/aot-wide-format-suite.f
-;SUITE
-
-SUITE aot-chain-capture
-   test/aot-chain-capture-suite.f
-;SUITE
-
 SUITE aot-capture-compact
    test/aot-capture-compact.f
 ;SUITE
@@ -1459,10 +1501,6 @@ SUITE aot-named-cells
 
 SUITE aot-named-cells-native
    test/aot-named-cells.f -- native
-;SUITE
-
-SUITE aot-named-cells-image
-   test/aot-named-cells-suite.f
 ;SUITE
 
 SUITE aot-prelude-band
@@ -1643,10 +1681,6 @@ SUITE stdlib-build-fixtures
    lib/build-test.f
 ;SUITE
 
-SUITE build-fixpoint-fixtures
-   tools/build-fixpoint-test.f
-;SUITE
-
 SUITE load-argv-contract
    tools/load-argv-test.f
 ;SUITE
@@ -1661,31 +1695,6 @@ SUITE build-rewind
 
 SUITE cold-runtime
    test/cold-runtime-test.f
-;SUITE
-
-\ ONE FIXTURE, THREE ROWS. tools/hb-build-test.f used to run the stripped-image
-\ groups as well, and the row took 353-355 s of the 360 s SUITE-TIMEOUT-MS slot
-\ its child gets: three of five full runs reported kind=TIMEOUT-UNDER-LOAD for
-\ it while other suites ran beside it, every other row green. A row keeps at
-\ least twice its measured time in headroom - under half of SUITE-TIMEOUT-MS -
-\ and the seconds below were measured one row at a time on this engine. Move a
-\ group between the row files rather than letting one row grow past that.
-\ 130-133 s
-SUITE hb-build-fixtures
-   tools/hb-build-test.f
-   lib/build-cache-test.f
-   lib/codesign-test.f
-   tools/hb-build-direct-lints-test.f
-;SUITE
-
-\ 116-117 s
-SUITE hb-build-stripped
-   tools/hb-build-stripped-test.f
-;SUITE
-
-\ 108-118 s
-SUITE hb-build-stripped-cells
-   tools/hb-build-stripped-cells-test.f
 ;SUITE
 
 SUITE gate-pool
@@ -1921,35 +1930,6 @@ SUITE proc-maps
    test/proc-maps.f
 ;SUITE
 
-GROUP SEQ native-serial-gates
-
-\ Compiler budgets measure microseconds. The parallel pool can exceed them
-\ through scheduling contention even when the unchanged engine passes alone.
-SUITE compiler-compile-floor-gate
-   test/compile-floor-gate.f
-;SUITE
-
-\ The PTY REPL fixture starts and reaps eight engine children. Keep it in the
-\ idle serial group so the fixed 20 s child-reap budget is not consumed by a
-\ saturated suite pool.
-SUITE repl-address-cell-rollback
-   test/repl-address-cell-rollback.f
-;SUITE
-
-SUITE native-gate-diagnostics
-   test/gate-diagnostics.f
-;SUITE
-
-SUITE native-gate-aot-positive
-   test/gate-aot-positive.f
-;SUITE
-
-SUITE native-gate-aot-negative
-   test/gate-aot-negative.f
-;SUITE
-
-;GROUP
-
 SUITE type-layout-lower-pending
    test/type-layout-lower-pending.f
 ;SUITE
@@ -2154,6 +2134,38 @@ SUITE type-linear
 SUITE type-match
    test/type-match-suite.f
 ;SUITE
+
+\ The sequential group comes last. Entering it drains the pool (GROUP-HEADER in
+\ lib/test/suite.f), so anywhere earlier every slot idles until the rows before
+\ it finish, and the rows after it start only when it ends.
+GROUP SEQ native-serial-gates
+
+\ Compiler budgets measure microseconds. The parallel pool can exceed them
+\ through scheduling contention even when the unchanged engine passes alone.
+SUITE compiler-compile-floor-gate
+   test/compile-floor-gate.f
+;SUITE
+
+\ The PTY REPL fixture starts and reaps eight engine children. Keep it in the
+\ idle serial group so the fixed 20 s child-reap budget is not consumed by a
+\ saturated suite pool.
+SUITE repl-address-cell-rollback
+   test/repl-address-cell-rollback.f
+;SUITE
+
+SUITE native-gate-diagnostics
+   test/gate-diagnostics.f
+;SUITE
+
+SUITE native-gate-aot-positive
+   test/gate-aot-positive.f
+;SUITE
+
+SUITE native-gate-aot-negative
+   test/gate-aot-negative.f
+;SUITE
+
+;GROUP
 
 RUN
 

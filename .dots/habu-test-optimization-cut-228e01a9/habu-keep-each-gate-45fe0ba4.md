@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-29T13:58:20.612704+02:00"
 blocks:
   - habu-run-stdin-gate-f71b5917
-  - habu-start-the-longest-92200a98
   - habu-build-the-whitebox-74438b3c
 ---
 
