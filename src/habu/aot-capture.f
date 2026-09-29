@@ -20,6 +20,7 @@
 
 require src/habu/address-cells.f
 require src/habu/code-span.f
+require src/habu/sites.f
 require src/habu/terminal-call.f
 
 package AOT-CAPTURE
@@ -1691,18 +1692,38 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 
 \ Address sites come from the emitter's relocation map, never from recognizing
 \ instruction bytes or guessing whether an integer looks like an address.
-\ Both compilers record each chain where they create it. A direct call retains
-\ its callee's chain and creates no address literal in the caller.
+\ Both compilers record each chain where they create it, and SITES:EACH-IN-SPAN
+\ is the one reader of that record: it yields each chain's start in ascending
+\ offset order. A direct call retains its callee's chain and creates no address
+\ literal in the caller.
 \
 \ DATA and code sweeps classify recorded values against the captured spans.
 \ In-window addresses move with their span. Pre-window code travels by the
 \ callee's name; pre-window DATA has no general target-layout mapping and is
 \ refused. Explicit compile handlers can still create such a DATA reference
 \ (for example `is` on a pre-window defer), so this audit remains necessary.
-: ACAP-CHAIN-BIT? ( n n -- bool ) {: bstart:n boff:n :}
-   bstart boff + AOT-DBASE-N - {: off:n :}
-   AOT-LIVE-DATA SNAP-RELOC:ADDRMAP-OFF + off 5 rshift + AOT-A>U8 c@
-   off 2 rshift 7 and rshift 1 and 0= 0= ;
+
+\ The swept code span. A sweep's per-site word runs inside the quotation it hands
+\ SITES:EACH-IN-SPAN, which cannot read the sweep's locals, so the span travels
+\ in these cells.
+variable ACAP-SWEEP-B0
+variable ACAP-SWEEP-B1
+
+\ Every recorded site of the copied blob, as SITES yields it: a region offset,
+\ counted from the dictionary base, and a kind.
+: ACAP-SWEEP ( n n [ n n -- ] -- ) {: bstart:n bend:n q :}
+   bstart ACAP-SWEEP-B0 !  bend ACAP-SWEEP-B1 !
+   bstart AOT-DBASE-N -  AOT-BLOB-LEN @  q SITES:EACH-IN-SPAN ;
+
+: ACAP-SITE-BOFF ( n -- n )                  \ region offset -> blob offset
+   AOT-DBASE-N +  ACAP-SWEEP-B0 @ - ;
+
+\ The recorded chain at a blob offset: its size and the value it carries.
+: ACAP-CHAIN@ ( n -- n n ) {: boff:n :}
+   AOT-BLOB-BUF@ boff + {: p:ptr :}
+   p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + SNAP-RELOC:CHAIN-SIZE {: size:n :}
+   size 0= if s" aot-capture: malformed recorded address chain" 74 die then
+   size  p size SNAP-RELOC:CHAIN-VALUE ;
 
 : ACAP-ADD-DSITE ( n -- ) {: boff:n :}   \ store blob offset as u32
    AOT-CSITE-N @ 0<> if s" aot-capture: DATA sites follow CODE sites" 74 die then
@@ -1789,25 +1810,18 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ THE ZEROED LANES DO NOT DISTURB THE SECOND SWEEP. A named row's chain is left
 \ holding 0, and ACAP-SCAN-CSITES asks the same in-code-span question of it, which
 \ 0 fails -- so a site named here is not also rebased there. The interior words of
-\ the chain are never re-examined either way: the address map carries one bit at
-\ each chain's START and this walk tests that bit before it reads anything.
+\ the chain are never examined either way: SITES yields each chain's START only.
+: ACAP-DSITE-YIELD ( n n -- ) {: off:n kind:n :}
+   kind SNAP-RELOC:SITE-ADDR <> if exit then
+   off ACAP-SITE-BOFF {: boff:n :}
+   boff ACAP-CHAIN@ nip {: v:n :}
+   AOT-DATA-D0 @ {: d0:n :}
+   v d0 >= v d0 AOT-DATA-SIZE @ + < and if boff ACAP-ADD-DSITE exit then
+   boff v ACAP-SWEEP-B0 @ ACAP-SWEEP-B1 @ ACAP-OUT-CHAIN ;
+
 : ACAP-SCAN-DSITES ( n n n n -- ) {: bstart:n bend:n d0:n d1:n :}
    d0 AOT-DATA-D0 !  d1 d0 - AOT-DATA-SIZE !
-   0 ACAP-P !
-   begin ACAP-P @ 4 + AOT-BLOB-LEN @ <= while
-      bstart ACAP-P @ ACAP-CHAIN-BIT? if
-         AOT-BLOB-BUF@ ACAP-P @ + {: p:ptr :}
-         p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + SNAP-RELOC:CHAIN-SIZE {: size:n :}
-         size 0= if s" aot-capture: malformed recorded address chain" 74 die then
-         p size SNAP-RELOC:CHAIN-VALUE {: v:n :}
-         v d0 >= v d1 < and if
-            ACAP-P @ ACAP-ADD-DSITE
-         else
-            ACAP-P @ v bstart bend ACAP-OUT-CHAIN
-         then
-      then
-      ACAP-P @ 4 + ACAP-P !
-   repeat ;
+   bstart bend [: ACAP-DSITE-YIELD ;] ACAP-SWEEP ;
 
 \ A deferred word's trailer contains the same DATA address as its dispatch
 \ code. Its magic identifies the metadata field; aliases must relocate it once.
@@ -1852,28 +1866,24 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ buffer with every DATA offset ahead of every code offset - ACAP-ADD-CSITE
 \ appends past AOT-DSITE-N - so the DATA sweep has to finish before the first code
 \ offset is written.
+: ACAP-CSITE-YIELD ( n n -- ) {: off:n kind:n :}
+   kind SNAP-RELOC:SITE-ADDR <> if exit then
+   off ACAP-SITE-BOFF {: boff:n :}
+   boff ACAP-CHAIN@ {: size:n v:n :}
+   ACAP-SWEEP-B0 @ {: bstart:n :}
+   v bstart < v ACAP-SWEEP-B1 @ >= or if exit then
+   \ Live shared DATA is in the fixed DATA mapping, disjoint from this JIT CODE
+   \ window. A short carrier here is corrupt, not a CODE literal: all later
+   \ CODE-site passes require four words.
+   size SNAP-RELOC:DATA-CHAIN-BYTES = if
+      s" aot-capture: DATA carrier lies in the CODE band" 74 die
+   then
+   boff ACAP-ADD-CSITE
+   AOT-BLOB-BUF@ boff +  v bstart -  SNAP-RELOC:SET-CHAIN ;
+
 : ACAP-SCAN-CSITES ( n n -- ) {: bstart:n bend:n :}
    0 AOT-CODE-B0 !                                      \ canonical code base 0
-   0 ACAP-P !
-   begin ACAP-P @ 4 + AOT-BLOB-LEN @ <= while
-      bstart ACAP-P @ ACAP-CHAIN-BIT? if
-         AOT-BLOB-BUF@ ACAP-P @ + {: p:ptr :}
-         p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + SNAP-RELOC:CHAIN-SIZE {: size:n :}
-         size 0= if s" aot-capture: malformed recorded address chain" 74 die then
-         p size SNAP-RELOC:CHAIN-VALUE {: v:n :}
-         v bstart >= v bend < and if
-            \ Live shared DATA is in the fixed DATA mapping, disjoint from
-            \ this JIT CODE window. A short carrier here is corrupt, not a
-            \ CODE literal: all later CODE-site passes require four words.
-            size SNAP-RELOC:DATA-CHAIN-BYTES = if
-               s" aot-capture: DATA carrier lies in the CODE band" 74 die
-            then
-            ACAP-P @ ACAP-ADD-CSITE
-            AOT-BLOB-BUF@ ACAP-P @ +  v bstart -  SNAP-RELOC:SET-CHAIN
-         then
-      then
-      ACAP-P @ 4 + ACAP-P !
-   repeat ;
+   bstart bend [: ACAP-CSITE-YIELD ;] ACAP-SWEEP ;
 
 \ Normalize only after both sweeps classify live addresses: a window-relative
 \ DATA value could otherwise be mistaken for a live CODE address. D0 retains
