@@ -1,7 +1,8 @@
 \ hb-build-stripped-test.f - checked fixture for tools/hb-build-lib.f: what a
 \ stripped image may own and reach - library state and the claimed engine
-\ cells - and what it is refused: an engine cell nothing claims and a run-time
-\ pointer-cell mark. tools/hb-build-test-lib.f lists the other hb-build rows.
+\ cells - and what it is refused: an entry the link cannot find, as the CLI
+\ reports it, an engine cell nothing claims and a run-time pointer-cell mark.
+\ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-test.f
 
 require tools/hb-build-test-lib.f
@@ -27,9 +28,6 @@ package HB-BUILD-CLI
 
 : HBT-UNOWNED-SRC ( -- ptr u8 n )
    HBT-UNOWNED-SRC-BUF HBT-UNOWNED-SRC-U @ ;
-
-: HBT-UNOWNED-OUT ( -- ptr u8 n )
-   HBT-UNOWNED-OUT-BUF HBT-UNOWNED-OUT-U @ ;
 
 : HBT-PMK-SRC ( -- ptr u8 n )
    HBT-PMK-SRC-BUF HBT-PMK-SRC-U @ ;
@@ -185,25 +183,37 @@ package HB-BUILD-CLI
    HBT-RUN-OUT outn HBT-CELLS-EXPECTED$ T$=
    HBT-CELLS-NOARG-RUN ;
 
-\ ... while an engine cell on no list is still refused, with its own diagnostic.
-\ Of the maker's refusals this one alone goes through tools/hb-build.f: the CLI
-\ exits with the maker's code, carries its diagnostic to stderr, prints nothing
-\ on stdout and installs no image. The others are asked of the maker directly
+\ A stripped build's refusal as the CLI reports it. The link refuses an entry
+\ it cannot find with exit 74 and `aot: entry word not found: NAME`
+\ (src/habu/aot-closure.f NO-ENTRY-DIE); tools/hb-build.f exits with the
+\ maker's code, carries its diagnostic to stderr, prints nothing on stdout and
+\ installs no image, so this case fails if the tool swallows or rewrites the
+\ maker's exit or diagnostic. The refusals below ask the maker directly
 \ (HBT-RUN-MAKER).
+: HBT-STRIPPED-NO-ENTRY ( -- )
+   HBT-REMOVE-AOT-OUT
+   HBT-ARGV-BASE
+   s" --preseed-entry" >LEN PROC-ARGV+
+   s" HBT-NO-ENTRY" >LEN PROC-ARGV+
+   s" --preseed-seed" >LEN PROC-ARGV+
+   s" 000000000000002a" >LEN PROC-ARGV+
+   HBT-AOT-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-AOT-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc 74 T=
+   outu 0 T=
+   HBT-ERR erru s" aot: entry word not found: HBT-NO-ENTRY" CONTAINS? TTRUE
+   HBT-AOT-OUT FILE? TFALSE ;
+
+\ ... while an engine cell on no list is still refused, with its own diagnostic.
 : HBT-STRIPPED-UNOWNED-CELL ( -- )
    HBT-UNOWNED-SRC HBT-UNOWNED-SRC$ WRITE-ALL
-   HBT-UNOWNED-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   HBT-UNOWNED-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-UNOWNED-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: nout:n nerr:n nrc:n :}
+   HBT-UNOWNED-SRC HBT-RUN-MAKER {: nout:n nerr:n nrc:n :}
    nrc 0 <> TTRUE
-   nout 0 T=
-   HBT-ERR nerr s" outside the restored span" CONTAINS? TTRUE
-   HBT-ERR nerr s" caller=TMP-PATH" CONTAINS? TTRUE
-   HBT-ERR nerr s" target=TPU" CONTAINS? TTRUE
-   HBT-UNOWNED-OUT FILE? TFALSE ;
+   HBB-ERR-BUF nerr s" outside the restored span" CONTAINS? TTRUE
+   HBB-ERR-BUF nerr s" caller=TMP-PATH" CONTAINS? TTRUE
+   HBB-ERR-BUF nerr s" target=TPU" CONTAINS? TTRUE ;
 
 \ ... and the relocator's own arm refuses by name too. `ptr-cell-mark` has a body
 \ of its own (a deref-form prim, src/habu/habu2.f BPTRCELLMARK) holding a BL to
@@ -228,6 +238,7 @@ public
    HBT-PREPARE
    HBT-STRIPPED-LIB-STATE
    HBT-STRIPPED-ENGINE-CELLS
+   HBT-STRIPPED-NO-ENTRY
    HBT-STRIPPED-UNOWNED-CELL
    HBT-STRIPPED-PTR-MARK
    CLEANUP-RUN

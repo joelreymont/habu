@@ -234,8 +234,8 @@ variable REPORT-U
 \ one full chain as a synthetic member and drives the copier over it. Red-first:
 \ before the retirement the copier silently collapsed/copied the chain and the
 \ build exited 0; now it rejects with the named error (exit 74). hb-build's own
-\ propagation of a maker die, non-zero rc with the diagnostic on stderr, is
-\ tools/hb-build-stripped-test.f HBT-STRIPPED-UNOWNED-CELL's assertion.
+\ propagation of a maker die, the maker's rc with its diagnostic on stderr, is
+\ tools/hb-build-stripped-test.f HBT-STRIPPED-NO-ENTRY's assertion.
 : SOURCE-ABS-CHAIN ( -- )
    GE-SRC-RESET
    s" -1 JSON-DIAGS !" GE-SRC-LINE

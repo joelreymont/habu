@@ -14,9 +14,13 @@ private
 
 600000 constant TIMEOUT-MS
 
-\ test/stripped-sparse-data-subject.f's hole, and the ceiling the image stays
-\ under. An image that carried the hole is at least HOLE-BYTES; before sparse
-\ DATA extents that subject's image alone measured 1,704,128 bytes.
+\ HOLE-BYTES is test/stripped-sparse-data-subject.f's hole: an image that
+\ carried it is at least that long, as that subject's image alone was before
+\ sparse DATA extents (1,704,128 bytes). IMAGE-MAX bounds this whole image,
+\ every subject's code and DATA together, which measured 148,860 bytes, so it
+\ fails the image if it grows by more than 113,284 bytes, whatever grows.
+\ Being below HOLE-BYTES it also refuses the hole by itself; the HOLE-BYTES
+\ check names that failure.
 1000000 constant HOLE-BYTES
 $40000 constant IMAGE-MAX
 

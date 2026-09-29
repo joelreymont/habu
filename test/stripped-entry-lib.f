@@ -72,8 +72,10 @@ variable GOT-U
 
 \ The maker child tools/hb-build-lib.f HBB-RUN-MAKER-CMD starts, with the same
 \ argv and stdin. The linker resolves the entry and refuses a missing one
-\ (src/habu/aot-closure.f), so a refusal needs nothing the tool loads; the
-\ preseed builds prove the tool forwards the entry. The maker writes GOT$.
+\ (src/habu/aot-closure.f), so a refusal needs nothing the tool loads. The
+\ preseed builds prove the tool forwards the entry, and
+\ tools/hb-build-stripped-test.f HBT-STRIPPED-NO-ENTRY that it passes the
+\ refusal's exit 74 and diagnostic through. The maker writes GOT$.
 : MAKER-BUILD ( ptr u8 n -- ) {: entry:ptr entryu:n :}
    GOT$ EXISTS? if GOT$ REMOVE-FILE then
    GE-HB-RESET

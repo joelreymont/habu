@@ -29,9 +29,9 @@ require src/habu/fdio.f
 \ whether some file defined that word, and an `include` behind a false probe
 \ loads a file a second time. tools/native-emit.f `require`s the same target
 \ sys.f, elf.f, sign.f, image-bytes.f and driver-io.f, so an image holding both
-\ died with `duplicate definition: MAP-ANON-PRIVATE at src/os/linux/sys.f:6`
-\ (test/stripped-image.f). The require registry is the one record of
-\ what this image loaded, and it is keyed by path, so both sites now share it.
+\ died with `duplicate definition: MAP-ANON-PRIVATE at src/os/linux/sys.f:6`.
+\ The require registry is the one record of what this image loaded, and it is
+\ keyed by path, so both sites now share it.
 : OBJIMG-LOAD-SYS ( -- )
    HB-TARGET-LINUX? if s" src/os/linux/sys.f" required exit then
    HB-TARGET-MACOS? if s" src/os/macos/sys.f" required exit then

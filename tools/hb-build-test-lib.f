@@ -106,7 +106,6 @@ variable HBT-LIB-DIR-U
 variable HBT-CELLS-SRC-U
 variable HBT-CELLS-OUT-U
 variable HBT-UNOWNED-SRC-U
-variable HBT-UNOWNED-OUT-U
 variable HBT-PMK-SRC-U
 variable HBT-PPH-SRC-U
 variable HBT-PPH-OUT-U
@@ -139,7 +138,6 @@ create HBT-LIB-DIR-BUF FS-PATH-CAP allot
 create HBT-CELLS-SRC-BUF FS-PATH-CAP allot
 create HBT-CELLS-OUT-BUF FS-PATH-CAP allot
 create HBT-UNOWNED-SRC-BUF FS-PATH-CAP allot
-create HBT-UNOWNED-OUT-BUF FS-PATH-CAP allot
 create HBT-PMK-SRC-BUF FS-PATH-CAP allot
 create HBT-PPH-SRC-BUF FS-PATH-CAP allot
 create HBT-PPH-OUT-BUF FS-PATH-CAP allot
@@ -286,7 +284,6 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBT-ROOT s" cells.f" HBT-CELLS-SRC-BUF HBT-CELLS-SRC-U HBT-PATH!
    HBT-ROOT s" cells" HBT-CELLS-OUT-BUF HBT-CELLS-OUT-U HBT-PATH!
    HBT-ROOT s" unowned.f" HBT-UNOWNED-SRC-BUF HBT-UNOWNED-SRC-U HBT-PATH!
-   HBT-ROOT s" unowned" HBT-UNOWNED-OUT-BUF HBT-UNOWNED-OUT-U HBT-PATH!
    HBT-ROOT s" ptrmark.f" HBT-PMK-SRC-BUF HBT-PMK-SRC-U HBT-PATH!
    HBT-ROOT s" pph.f" HBT-PPH-SRC-BUF HBT-PPH-SRC-U HBT-PATH!
    HBT-ROOT s" pph" HBT-PPH-OUT-BUF HBT-PPH-OUT-U HBT-PATH!
@@ -405,8 +402,8 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ where HBB-FINISH-MAKER would die, so its code and its diagnostic (the maker
 \ writes it to stderr, into HBB-ERR-BUF) are asserted on the child that made
 \ them. A timeout still throws through HBB-MAKER-TIMED-OUT with its captured
-\ diagnostic. tools/hb-build-stripped-test.f HBT-STRIPPED-UNOWNED-CELL asserts
-\ once that the CLI propagates one.
+\ diagnostic. tools/hb-build-stripped-test.f HBT-STRIPPED-NO-ENTRY asserts once
+\ that the CLI propagates one.
 : HBT-MAKER-CAPTURE>N ( len len outcome -- n n n )
    MATCH outcome
       exited OF {: outu:len erru:len rc:n :}
