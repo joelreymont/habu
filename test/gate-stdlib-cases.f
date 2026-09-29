@@ -956,6 +956,10 @@ SUITE compiler-integer-literals
    test/compiler/integer-literals.f
 ;SUITE
 
+SUITE outer-number
+   test/outer-number.f
+;SUITE
+
 SUITE compiler-native-eval
    test/compiler/native-eval.f
 ;SUITE
