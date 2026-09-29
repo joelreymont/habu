@@ -55,15 +55,23 @@ constant A64-MASK
 
 \ docs/x86-64.md fixes these six, and this is their one statement:
 \ src/compiler/native/x64ir.f RESERVED-MASK reads X64-MASK and adds rsp, which
-\ the machine holds and the engine does not.
+\ the machine holds and the engine does not. X64-DSTACK is A64-DSTACK's twin;
+\ each of the four after rbx is the twin of the ARM64 constant at the head of
+\ this file named beside it; rbx has none. The x86-64 boot
+\ (src/habu/boot-x64.f) sets each register by its name here.
 12 constant X64-DSTACK
+3 constant X64-INTERP          \ rbx, the interpreter register
+5 constant X64-RBASE           \ rbp, the user area: XREG-RBASE, x20
+13 constant X64-DBASE          \ r13, the code region the records live in: DBASE
+14 constant X64-NDICT          \ r14, the dictionary record count: NDICT
+15 constant X64-CP             \ r15, the code pointer: CP
 
-1 3 lshift                     \ rbx, the interpreter register
-1 5 lshift or                  \ rbp, the user area
-1 X64-DSTACK lshift or         \ r12, the data-stack pointer
-1 13 lshift or                 \ r13, the data base
-1 14 lshift or                 \ r14, the dictionary
-1 15 lshift or                 \ r15, the code pointer
+1 X64-INTERP lshift
+1 X64-RBASE lshift or
+1 X64-DSTACK lshift or
+1 X64-DBASE lshift or
+1 X64-NDICT lshift or
+1 X64-CP lshift or
 constant X64-MASK
 
 : DSTACK ( -- n )

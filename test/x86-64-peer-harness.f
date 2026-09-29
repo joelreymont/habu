@@ -11,6 +11,9 @@
 \ FIRST-CASE upward in the order they are staged, below the harness's own
 \ statuses (31 and up). A negative image expects a wrong answer from its first
 \ case check, so it must exit FIRST-CASE.
+\
+\ An image with an entry of its own (test/x86-64-skel-image.f) skips the
+\ checking entry: it stages its stream after ASM-RESET and ends with WRITE.
 require lib/test.f
 require lib/byte-buffer.f
 require src/habu/fdio.f
@@ -184,8 +187,8 @@ public
    s" the executable carries the compiler's exact routine bytes" T-LABEL
    CODE at + u a u T$= ;
 
-: WRITE-ELF ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   EXIT,
+\ Write the staged stream as it stands: byte 0 is the ELF entry.
+: WRITE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    ASM-CODE BUILD-IMAGE
    s" x64-peer" SET-SIGID CODESIG2
    path pathu DRV-WRITE-IMAGE
@@ -193,6 +196,9 @@ public
    $12 M-OFF M-LE32@ $FFFF and 62 T=
    $18 M-OFF M-LE32@ VMBASE CODE-OFF + T=
    $1C M-OFF M-LE32@ 0 T= ;
+
+\ Close a peer image with the exit syscall every check reaches, then write it.
+: WRITE-ELF ( ptr u8 n -- ) EXIT, WRITE ;
 
 \ The sink every image is staged in, held across the images of one run.
 : INIT ( -- ) ASM-SINK CODE-CAP-BYTES BUF:N>BLEN BUF:INIT ;

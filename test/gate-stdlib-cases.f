@@ -1342,6 +1342,12 @@ SUITE x86-64-peer-routines
    test/x86-64-peer-routines.f
 ;SUITE
 
+\ The x86-64 boot skeleton, src/habu/boot-x64.f, and its guard-page twin, for the
+\ peer to run: `hb-x64-skel a b` exits 3 and hb-x64-skel-negative dies SIGSEGV.
+SUITE x86-64-skel-image
+   test/x86-64-skel-image.f
+;SUITE
+
 SUITE xml-byte-edits
    lib/xml-test.f
    lib/byte-edit-test.f
