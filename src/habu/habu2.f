@@ -5005,7 +5005,6 @@ variable CF-DEF-GUARD
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable LMAIN  variable LEXIT  variable LCOMPILE   \ LUNDEF is declared up with the diagnostics block
 variable LUNDERFLOW           \ top-level data-stack underflow diagnostic entry (guard at LMAIN boundary)
-variable LARITY               \ pre-exec arity guard for deref/execute prims (interpret-find BL -> EMIT-ARITY-GUARD)
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable LEVALREC             \ re-entrant evaluate: throw-escape recovery entry (BTHROW branches here)
 variable LEVLL  variable LEVLP  variable LEVLD  variable LEVLN  variable LEVLR   \ LEVALREC internal labels
@@ -8388,13 +8387,11 @@ package INTERP-EMIT
    found LBL,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                \ DNAME-WIDE effect (TFAM): fail closed, never land a bundle on the interpret stack (x13 still holds the LFIND dict flags)
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,           \ DNAME-INT: engine-internal word with no checker-known effect - fail closed before the body runs on the untyped interpret stack
-   14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): certified min input arity; 0 = unguarded boundary
+   14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): a certified word's min input arity, or a primitive's from its prims.f row (ENGINE-PRIMS:DNAME); 0 = unguarded boundary
       14 14 8 LSRI,                                    \ x14 = min-in cells
       9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 LSRI, \ descriptor proves a nonnegative unsigned depth
       10 14 CMP,  C-LT LMININ LABEL@ BCOND,            \ depth < declared inputs -> named reject BEFORE the body can read below base
    depthok LBL,
-   LARITY LABEL@ BL,          \ pre-exec arity guard (fable): deref/execute prims fault on a shallow
-                              \ stack before the LMAIN depth-floor guard sees it; diverts to LUNDERFLOW
    C-TOPHOOK-CALL             \ every native gate passed: emit the pre-BLR word event (x13 = LFIND flags)
    11 BLR,  LMAIN LABEL@ B,
    usedtry LBL,
@@ -10184,8 +10181,7 @@ public
    0 0 MOVZ,  LEXITHOOK LABEL@ BL,  NR-EXIT-GROUP SYS, ;   \ the deliberate success exit runs the exit hook
 
 \ Top-level data-stack underflow diagnostic. Reached from the LMAIN depth-floor
-\ guard when the just-interpreted word left XDS below S0 (proven underflow) and
-\ from LARITY when a guarded primitive is the token on a shallow stack. Print
+\ guard when the just-interpreted word left XDS below S0 (proven underflow). Print
 \ `E-UNDERFLOW: <word>` naming the offending token (TKA/TKL still hold it, LTOK has
 \ not overwritten them this iteration), then recover exactly like the undefined-word
 \ path: inside EVALUATE the failure unwinds as a catchable RC-REJECT throw via the
@@ -10528,7 +10524,7 @@ public
 package ENGINE-EMIT
 
 : EMIT-MAIN ( -- )
-   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LARITY !
+   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !
    EM-STARTUP
    \ Boot enters the interpret loop, explicitly. EM-STARTUP's last emitter ends
    \ at SRC-DONE with no branch, so before this line cold boot fell into the
@@ -10555,37 +10551,6 @@ package ENGINE-EMIT
 
 ;package
 
-\ Pre-execution arity guard (LARITY). A deref/execute/dispatch primitive (@ !
-\ +! c@ c! atomic@ atomic! atomic-add atomic-cas count type execute
-\ run-in-stack int-mark min-in-mark, plus the census additions of
-\ dot habu-habu-certified-words-84e84eaf: evaluate catch ffi-call* patch32
-\ search-wl set-check cp! ndict! - see the habu1.f GDEREF table) as the
-\ LITERAL FIRST top-level token faults inside the primitive body (SIGSEGV, crash
-\ handler exit 134) BEFORE the post-token LMAIN depth-floor guard (EM-COMMENT /
-\ EM-INTERPRET-UNDERFLOW) can observe XDS < S0. The interpret-find dispatch BLs here
-\ after a successful dictionary find: x11 = the resolved xt, x10 is loaded with the current
-\ data-stack depth in cells, and each guarded prim's baked entry-label address is
-\ compared against x11. If x11 matches and depth < the prim's minimum input count,
-\ we divert to LUNDERFLOW (TKA/TKL still name the token) for a clean E-UNDERFLOW
-\ instead of a signal; otherwise LARITY returns and the interpret BLR proceeds
-\ unchanged. Every non-guarded word runs the compare chain and falls through
-\ (effective min-in 0): no behavior change. The prim entry labels are resolved by
-\ EMIT-ARITY-GUARD after EMIT-PRIMS, so this routine is emitted post-prims.
-: ARITY-EMIT ( n n -- )               \ ( prim-entry-label min ) : x10=depth cells, x11=xt
-   LBL {: glbl:n min:n nxt:label :}
-   14 glbl >LABEL ADR,  11 14 CMP,  C-NE nxt BCOND,   \ x11 != this prim's xt -> skip
-      10 min CMPI,  C-LT LUNDERFLOW LABEL@ BCOND,     \ depth < min-in -> underflow diagnostic
-      RET,                                            \ matched, depth ok -> proceed to BLR
-   nxt LBL, ;
-
-: EMIT-ARITY-GUARD ( -- )             \ bake LARITY: depth into x10, then a compare row per guarded prim
-   LARITY LABEL@ LBL,
-   9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 LSRI,   \ descriptor proves a nonnegative unsigned depth
-   0 BEGIN dup GDR-N @ < WHILE
-      dup cells GDR-LBL + @  over cells GDR-MIN + @  ARITY-EMIT
-      1+
-   REPEAT drop
-   RET, ;
 \ The source-buffer cursor holds an address, so its cell is declared storage
 \ (dot habu-refuse-a-ptr-5ad2734e).
 PTR-VARIABLE SRCA
@@ -11096,7 +11061,7 @@ variable CUR
 \ LFIND the interpret dispatch uses, and pushes flags&2 - the DNAME-IMM bit
 \ (habu1.f FIND-HMATCH folds it to bit 1) - so DO-TOK1 can reject a live
 \ immediate as a checked body step. LFIND clobbers x3-x16 and preserves XDS
-\ (x19)/DATA (x20); the FPRIM frame (GDEREF-F) holds our x30 across the BL.
+\ (x19)/DATA (x20); the FPRIM frame holds our x30 across the BL.
 : BTOKIMM ( -- )
    10 G-POP  9 G-POP                   \ x10 = len (TOS), x9 = addr: LFIND's token registers
    LFIND LABEL@ BL,                    \ x13 = found | imm<<1 | min-in byte | int flags
@@ -11114,12 +11079,11 @@ package ENGINE-EMIT
    EMIT-PRIMS
    s" does-patch" ['] DOESPATCH:PRIM FPRIM
    s" does-record" ['] DOES-REC:NATIVE-PRIM FPRIM
-   EMIT-ARITY-GUARD
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
-   s" tok-imm?" ['] BTOKIMM 2 GDEREF-F
-   s" xt!" ['] SNAP-RELOC:BXTSTORE 2 GDEREF-F
-   s" ptr-cell-mark" ['] SNAP-RELOC:BPTRCELLMARK 1 GDEREF-F
+   s" tok-imm?" ['] BTOKIMM FPRIM
+   s" xt!" ['] SNAP-RELOC:BXTSTORE FPRIM
+   s" ptr-cell-mark" ['] SNAP-RELOC:BPTRCELLMARK FPRIM
    s" addr-cells-abi" ['] SNAP-RELOC:BVERSION FPRIM
    s" snapshot-format" ['] SNAP-RELOC:BSNAPSHOTFORMAT FPRIM
    PROF:EMIT-PROF-PRIMS

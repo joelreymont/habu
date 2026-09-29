@@ -251,16 +251,14 @@ public
    UDG-ENGINE$ UDG-EXEC:SUBJECT
    s" CORE-STR=" UDG-ASSERT-UNDERDEPTH ;
 
-\ --- census negatives: unguarded-prim gaps closed via the LARITY table ------
-\ (dot census: bare catch/ffi-call/patch32 crashed with SIGSEGV exit 134;
-\ evaluate/search-wl silently deref'd below-base garbage when it happened to
-\ be mapped. All now divert to a clean pre-execution E-UNDERFLOW.)
-
-: UDG-ASSERT-UNDERFLOW ( ptr u8 n -- ) {: a:ptr u:n :}   \ clean named reject, never a signal
-   UDG-EXITED @ TTRUE
-   UDG-RC @ UDG-REJECT-RC T=
-   UDG-ERR$ s" E-UNDERFLOW: " CONTAINS? TTRUE
-   UDG-ERR$ a u CONTAINS? TTRUE ;
+\ --- primitive negatives: the band covers every specified primitive ---------
+\ A primitive's seed record carries its specification row's input count in
+\ DNAME-MIN-IN (src/habu/prims.f PRIM-SPEC:MIN-IN, baked by
+\ ENGINE-PRIMS:DNAME), so a bare primitive on a shallow interpret stack takes
+\ the certified word's pre-execution reject. Bare catch, ffi-call and patch32
+\ once crashed with SIGSEGV; ?dup and 2>r read the data stack's low guard
+\ page and died rc 102, because their rows carry no atoms until an EMIN-IN!
+\ marker states the count.
 
 : UDG-BARE$ ( ptr u8 n -- ptr u8 n )     \ program = the bare token on one line
    SB-RESET
@@ -269,7 +267,7 @@ public
 
 : UDG-PRIM-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
    a u UDG-BARE$ UDG-EXEC:SUBJECT
-   a u UDG-ASSERT-UNDERFLOW ;
+   a u UDG-ASSERT-UNDERDEPTH ;
 
 : UDG-NEG-PRIMS ( -- )
    s" bare catch fails closed (was SIGSEGV)" T-LABEL
@@ -282,9 +280,13 @@ public
    s" evaluate" UDG-PRIM-ROW
    s" bare set-check fails closed pre-execution" T-LABEL
    s" set-check" UDG-PRIM-ROW
+   s" bare ?dup fails closed (was a guard-page read, rc 102)" T-LABEL
+   s" ?dup" UDG-PRIM-ROW
+   s" bare 2>r fails closed (was a guard-page read, rc 102)" T-LABEL
+   s" 2>r" UDG-PRIM-ROW
    s" partial-depth ffi-call fails closed" T-LABEL
    SB-RESET s" 0 ffi-call" UDG-LINE SB$ UDG-EXEC:SUBJECT
-   s" ffi-call" UDG-ASSERT-UNDERFLOW ;
+   s" ffi-call" UDG-ASSERT-UNDERDEPTH ;
 
 \ --- positives: the public top-level surface is untouched -------------------
 

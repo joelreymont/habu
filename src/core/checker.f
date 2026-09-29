@@ -8837,9 +8837,11 @@ PPRIM: TFAM SUMV-PAY-N PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TFAM REG-AOT-MERGE-INCOMING? PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PPRIM;
 \ THE PRIMITIVE SPECIFICATION'S OWN READERS, for the same reason: src/habu/prims.f
 \ loads ahead of this file so it records no signature of its own, and its readers
-\ have three checked callers - src/habu/habu1.f, which refuses a machine body
+\ have four checked callers - src/habu/habu1.f, which refuses a machine body
 \ whose name has no row; src/habu/habu2.f, whose completeness gate refuses a row
-\ that no body answers; and the parity gate that runs each row's reference
+\ that no body answers; src/habu/primitive-registry.f DNAME, which bakes each
+\ row's minimum input depth into the primitive's seed record; and the parity
+\ gate that runs each row's reference
 \ implementation beside each backend's body. This file reads the same table
 \ pre-hook, through the private spellings, to build the rows themselves.
 PPRIM: PRIM-SPEC COUNT PE-N PE-OUT PPRIM;
@@ -8851,6 +8853,7 @@ PPRIM: PRIM-SPEC TRUSTED-ONLY? PE-N PE-IN  PE-F PE-OUT PPRIM;
 PPRIM: PRIM-SPEC CODE-LEN@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC CODE@ PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC FIND PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC MIN-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 \ The row kinds, whole rather than in part: classifying a row means telling all
 \ four apart, and the table is the one place that says what they are.
 PPRIM: PRIM-SPEC K-PRIM PE-N PE-OUT PPRIM;

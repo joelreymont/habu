@@ -114,37 +114,6 @@ variable FP-WID
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
-\ --- deref/execute arity-guard table (for the interpret-boundary guard) ---
-\ A deref/execute/dispatch prim (@ ! +! c@ c! atomic@ atomic! atomic-add
-\ atomic-cas count type execute run-in-stack int-mark min-in-mark,
-\ plus the census additions of dot habu-habu-certified-words-84e84eaf: evaluate
-\ catch ffi-call* patch32 search-wl set-check cp! ndict!) consumes garbage into
-\ a user-space deref, a BLR, or an engine control cell on a shallow stack,
-\ before the post-token LMAIN depth-floor guard can see it. GDEREF-L / GDEREF-F
-\ register such a prim like FPRIM-L / FPRIM and, when the prim is kept, record
-\ its entry label + minimum input depth so EMIT-ARITY-GUARD can bake a pre-BLR
-\ depth check keyed by the runtime xt (= entry-label address). Every other word
-\ stays min-in 0. Certified/signed dictionary words are guarded separately by
-\ the DNAME-MIN-IN record band (EM-INTERPRET-FIND).
-48 constant GDR-CAP
-create GDR-LBL GDR-CAP cells allot   create GDR-MIN GDR-CAP cells allot
-variable GDR-N
-variable GD-MIN
-
-: GUARD-ADD ( n n -- )                \ ( entry-label min-in ) append one guard-table row
-   GDR-N @ GDR-CAP >= IF s" arity guard table full" 76 die THEN
-   GDR-N @ cells GDR-MIN + !
-   GDR-N @ cells GDR-LBL + !
-   GDR-N @ 1+ GDR-N ! ;
-
-: GD-RECORD ( -- )                    \ record ( FPL, GD-MIN ) iff the just-registered prim was kept
-   FP-KEEP? IF FPL @ GD-MIN @ GUARD-ADD THEN ;
-
-: GDEREF-L ( ptr u8 n [ -- ] n -- )   \ leaf deref prim: name emitter min-in
-   GD-MIN !  FPRIM-L  GD-RECORD ;
-
-: GDEREF-F ( ptr u8 n [ -- ] n -- )   \ framed deref prim: name emitter min-in
-   GD-MIN !  FPRIM  GD-RECORD ;
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
 variable LCEMIT   variable LCEMITBL  variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
@@ -2721,6 +2690,20 @@ public
 : BEXEC ( -- )
    A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
 
+\ execute-floor ( xt -- flag ): run the xt, then flag whether it left XDS below
+\ the base in S0-CELL, the comparison the interpreter's post-token depth floor
+\ makes. Below the base, XDS is reset to the base before the flag is pushed, so
+\ the push lands at the base and not in the low guard page. The FPRIM frame
+\ holds the caller's x30 across the BLR.
+: BEXECFLOOR ( -- )
+   LBL {: above:label :}
+   A G-POP  A BLR,
+   B 0 MOVZ,
+   A DATA S0-CELL LDR,  XDS A CMP,  C-CS above BCOND,   \ at or above the base: flag 0
+      XDS A 0 ADDI,  B 0 MOVN,                          \ below: XDS := base, flag -1
+   above LBL,
+   B G-PUSH ;
+
 \ catch ( xt -- exc ): a HNDF-SIZE handler frame chained through HND-CELL saves the
 \ COMPLETE caller execution frame so a caught throw resumes it (dot
 \ habu-restore-complete-exec-abb8baca). Frame: 0 prev-HND | 8 data-sp(x19) |
@@ -3409,32 +3392,33 @@ public
    s" 2>r" ['] B2TOR FPRIM-L  s" 2r>" ['] B2RFROM FPRIM-L  s" 2r@" ['] B2RFETCH FPRIM-L ;
 
 : EMIT-MEMORY-PRIMS ( -- )
-   s" @"    ['] BFETCH 1 GDEREF-L   s" !"    ['] BSTORE 2 GDEREF-F   s" ptr-field" ['] BPTRFIELD FPRIM-L
-   s" byte-view" ['] BADDRESSVIEW 1 GDEREF-L
-   s" cell-view" ['] BADDRESSVIEW 1 GDEREF-L
-   s" +!" ['] BPLUSSTORE 2 GDEREF-F
-   s" c@"   ['] BCFETCH 1 GDEREF-L  s" c!"   ['] BCSTORE 2 GDEREF-F
-   s" atomic@" ['] BATFETCH 1 GDEREF-L  s" atomic!" ['] BATSTORE 2 GDEREF-F
-   s" atomic-add" ['] BATADD 2 GDEREF-F  s" atomic-cas" ['] BATCAS 3 GDEREF-F  s" fence" ['] BFENCE FPRIM-L
+   s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM   s" ptr-field" ['] BPTRFIELD FPRIM-L
+   s" byte-view" ['] BADDRESSVIEW FPRIM-L
+   s" cell-view" ['] BADDRESSVIEW FPRIM-L
+   s" +!" ['] BPLUSSTORE FPRIM
+   s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM
+   s" atomic@" ['] BATFETCH FPRIM-L  s" atomic!" ['] BATSTORE FPRIM
+   s" atomic-add" ['] BATADD FPRIM  s" atomic-cas" ['] BATCAS FPRIM  s" fence" ['] BFENCE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
-   s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT 1 GDEREF-L ;
+   s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT FPRIM-L ;
 
 : EMIT-OUTPUT-PRIMS ( -- )
    s" ."    ['] BDOT  FPRIM-L   s" .s"   ['] B.S   FPRIM-L   s" depth" ['] BDEPTH FPRIM-L
    s" u."   ['] BU.   FPRIM-L   s" emit" ['] BEMIT FPRIM-L
    s" cr"   ['] BCR   FPRIM-L   s" space" ['] BSPACE FPRIM-L
-   s" type" ['] BTYPE  2 GDEREF-L ;
+   s" type" ['] BTYPE  FPRIM-L ;
 
 : EMIT-DICT-PRIMS ( -- )
    s" here" ['] BHERE  FPRIM-L   s" allot" ['] BALLOT FPRIM-L
    s" align" ['] BALIGN FPRIM-L
    s" ,"    ['] BCOMMA FPRIM-L   s" c,"   ['] BCCOMMA FPRIM-L
-   s" execute" ['] BEXEC 1 GDEREF-F
-   s" run-in-stack" ['] BRUNSTACK 3 GDEREF-F
+   s" execute" ['] BEXEC FPRIM
+   s" execute-floor" ['] BEXECFLOOR FPRIM
+   s" run-in-stack" ['] BRUNSTACK FPRIM
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM
-   s" evaluate" ['] B-EVAL 2 GDEREF-L ;
+   s" evaluate" ['] B-EVAL FPRIM-L ;
 
 : EMIT-PROCESS-PRIMS ( -- )
    s" run-rc" ['] BRUNRC FPRIM-L
@@ -3459,23 +3443,15 @@ package ENGINE-EMIT
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
-   s" cp!" ['] BCPSET 1 GDEREF-L   s" ndict!" ['] BNDSET 1 GDEREF-F
-   1 GD-MIN !
+   s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM
    s" seed-ndict!" ['] BSEEDNDICTSET ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   GD-RECORD
-   1 GD-MIN !
    s" ndict-append" ['] BNDAPPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   GD-RECORD
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
-   1 GD-MIN !
    s" int-mark" ['] BINTMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   GD-RECORD
-   2 GD-MIN !
    s" min-in-mark" ['] BMININMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   GD-RECORD
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" prot-wid-room" ['] BPROTWIDROOM FPRIM
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
@@ -3489,47 +3465,45 @@ package ENGINE-EMIT
    s" map-anon" ['] BMAPANON FPRIM
    s" mmap" ['] BMMAP FPRIM
    s" munmap" ['] BMUNMAP FPRIM
-   s" ffi-call" ['] BFFI-CALL 3 GDEREF-F
-   s" ffi-call-n" ['] BFFI-CALL-N 3 GDEREF-F
-   s" ffi-call-bounded" ['] BFFI-CALL-BOUNDED 4 GDEREF-F
+   s" ffi-call" ['] BFFI-CALL FPRIM
+   s" ffi-call-n" ['] BFFI-CALL-N FPRIM
+   s" ffi-call-bounded" ['] BFFI-CALL-BOUNDED FPRIM
    s" task-entry" ['] BTASK-ENTRY FPRIM
-   s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED 7 GDEREF-F
-   s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED 7 GDEREF-F
-   s" ffi-call-abi" ['] BFFI-CALL-ABI 7 GDEREF-F
-   s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R 7 GDEREF-F
+   s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED FPRIM
+   s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED FPRIM
+   s" ffi-call-abi" ['] BFFI-CALL-ABI FPRIM
+   s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R FPRIM
    s" open-rd" ['] BOPENRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
    s" symlink" ['] BSYMLINK FPRIM-L   s" readlink" ['] BREADLINK FPRIM
-   s" realpath" ['] LIBC-OS:REALPATH 3 GDEREF-F
+   s" realpath" ['] LIBC-OS:REALPATH FPRIM
    s" mkdir" ['] BMKDIR FPRIM-L     s" rmdir" ['] BRMDIR FPRIM-L
    s" stat64" ['] BSTAT64 FPRIM   s" lstat64" ['] BLSTAT64 FPRIM
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM
-   s" patch32" ['] BPATCH32 2 GDEREF-F
+   s" patch32" ['] BPATCH32 FPRIM
    s" reloc-maps-clear" ['] SNAP-RELOC:BCLEAR-MAPS FPRIM-L
-   s" code-publish" ['] NPUBWIN:BCODEPUBLISH 3 GDEREF-F
-   s" callmap-set" ['] NPUBWIN:BCALLMAPSET 1 GDEREF-F
-   s" addrmap-set" ['] NPUBWIN:BADDRMAPSET 1 GDEREF-F
-   s" xref-retarget" ['] NPUBWIN:BXREFRETARGET 3 GDEREF-F
+   s" code-publish" ['] NPUBWIN:BCODEPUBLISH FPRIM
+   s" callmap-set" ['] NPUBWIN:BCALLMAPSET FPRIM
+   s" addrmap-set" ['] NPUBWIN:BADDRMAPSET FPRIM
+   s" xref-retarget" ['] NPUBWIN:BXREFRETARGET FPRIM
    s" close" ['] BCLOSE FPRIM-L
    s" close-rc" ['] BCLOSE-RC FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 
 : EMIT-CHECKER-PRIMS ( -- )
-   s" catch" ['] BCATCH 1 GDEREF-F   s" throw" ['] BTHROW FPRIM-L
-   s" finally" ['] BFINALLY 2 GDEREF-F
+   s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
+   s" finally" ['] BFINALLY FPRIM
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
-   s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL 3 GDEREF-F
-   3 GD-MIN !
+   s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   GD-RECORD
-   s" set-check" ['] BSETCHECK 1 GDEREF-L   s" check@" ['] BCHECKFETCH FPRIM-L
-   s" set-tier" ['] BSETTIER 1 GDEREF-F     s" tier@" ['] BTIERFETCH FPRIM-L
+   s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
+   s" set-tier" ['] BSETTIER FPRIM     s" tier@" ['] BTIERFETCH FPRIM-L
    s" executable-build-enter" ['] BBUILDENTER ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" executable-build-leave" ['] BBUILDLEAVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" code-origin" ['] BCODEORIGIN 2 GDEREF-F
-   s" set-preflight" ['] BSETPREFLIGHT 1 GDEREF-L
-   s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
+   s" code-origin" ['] BCODEORIGIN FPRIM
+   s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
+   s" set-top-check" ['] BSETTOPCHECK FPRIM-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
 
 package ENGINE-EMIT
 

@@ -10,7 +10,8 @@
 \ literals (C-CHAR), interpret tick (C-TICK, LFIND flags), and found words
 \ pre-BLR (EM-INTERPRET-FIND, LFIND flags). Positives: an in-process logging
 \ hook observes the exact (class, token, flags) sequence for one deliberate
-\ token window — including certified min-in arity in the tick/word flags —
+\ token window — including min-in arity in the tick/word flags, a certified
+\ word's or a primitive's from its prims.f row —
 \ and `top-check@` round-trips the installed xt. Cold-prefix process negatives
 \ prove an invalid install dies rc 70 with the
 \ named diagnostic before any dispatch BLR, and a raw store into the sealed
@@ -39,9 +40,10 @@ package TOP-ROW-HOOK-TEST
 32 constant TRH-CAP
 512 constant TRH-ARENA-CAP
 23 constant TRH-WINDOW-N            \ events expected from the probe window below
-1 constant TRH-WORD-FLAGS           \ LFIND: found, no certified min-in (prims, data records)
+1 constant TRH-WORD-FLAGS           \ LFIND: found, min-in 0 (data records, input-free prims)
 3 constant TRH-IMM-FLAGS            \ LFIND: found + DNAME-IMM
-$101 constant TRH-PROBE-FLAGS       \ LFIND: found + certified min-in 1 (bits 8-15)
+$101 constant TRH-IN1-FLAGS         \ LFIND: found + min-in 1 (bits 8-15), certified or a prim's row
+$201 constant TRH-IN2-FLAGS         \ LFIND: found + min-in 2
 $401 constant TRH-LOG-FLAGS         \ LFIND: found + certified min-in 4
 
 create TRH-CLS TRH-CAP cells allot
@@ -124,27 +126,27 @@ variable TRH-OK-A
    s" window (class, token, flags) sequence" T-LABEL
    0  TOP-EV-WORD TRH-WORD-FLAGS  s" top-check@" TRH-EV-ASSERT
    1  TOP-EV-TICK TRH-LOG-FLAGS   s" TRH-LOG" TRH-EV-ASSERT
-   2  TOP-EV-WORD TRH-WORD-FLAGS  s" =" TRH-EV-ASSERT
+   2  TOP-EV-WORD TRH-IN2-FLAGS   s" =" TRH-EV-ASSERT
    3  TOP-EV-WORD TRH-WORD-FLAGS  s" TRH-OK-A" TRH-EV-ASSERT
-   4  TOP-EV-WORD TRH-WORD-FLAGS  s" !" TRH-EV-ASSERT
+   4  TOP-EV-WORD TRH-IN2-FLAGS   s" !" TRH-EV-ASSERT
    5  TOP-EV-NUM  0               s" 42" TRH-EV-ASSERT
-   6  TOP-EV-WORD TRH-WORD-FLAGS  s" drop" TRH-EV-ASSERT
+   6  TOP-EV-WORD TRH-IN1-FLAGS   s" drop" TRH-EV-ASSERT
    7  TOP-EV-STR  0               S\" s\q" TRH-EV-ASSERT
-   8  TOP-EV-WORD TRH-WORD-FLAGS  s" 2drop" TRH-EV-ASSERT
+   8  TOP-EV-WORD TRH-IN2-FLAGS   s" 2drop" TRH-EV-ASSERT
    9  TOP-EV-CSTR 0               S\" c\q" TRH-EV-ASSERT
-   10 TOP-EV-WORD TRH-WORD-FLAGS  s" drop" TRH-EV-ASSERT
+   10 TOP-EV-WORD TRH-IN1-FLAGS   s" drop" TRH-EV-ASSERT
    11 TOP-EV-CHAR 0               s" A" TRH-EV-ASSERT
-   12 TOP-EV-WORD TRH-WORD-FLAGS  s" drop" TRH-EV-ASSERT
-   13 TOP-EV-TICK TRH-PROBE-FLAGS s" TRH-PROBE" TRH-EV-ASSERT
-   14 TOP-EV-WORD TRH-WORD-FLAGS  s" drop" TRH-EV-ASSERT
+   12 TOP-EV-WORD TRH-IN1-FLAGS   s" drop" TRH-EV-ASSERT
+   13 TOP-EV-TICK TRH-IN1-FLAGS   s" TRH-PROBE" TRH-EV-ASSERT
+   14 TOP-EV-WORD TRH-IN1-FLAGS   s" drop" TRH-EV-ASSERT
    15 TOP-EV-NUM  0               s" 7" TRH-EV-ASSERT
-   16 TOP-EV-WORD TRH-PROBE-FLAGS s" TRH-PROBE" TRH-EV-ASSERT
-   17 TOP-EV-WORD TRH-WORD-FLAGS  s" drop" TRH-EV-ASSERT
+   16 TOP-EV-WORD TRH-IN1-FLAGS   s" TRH-PROBE" TRH-EV-ASSERT
+   17 TOP-EV-WORD TRH-IN1-FLAGS   s" drop" TRH-EV-ASSERT
    18 TOP-EV-WORD TRH-IMM-FLAGS   s" TRH-IMM" TRH-EV-ASSERT
    19 TOP-EV-STR  0               S\" S\\\q" TRH-EV-ASSERT
-   20 TOP-EV-WORD TRH-WORD-FLAGS  s" 2drop" TRH-EV-ASSERT
+   20 TOP-EV-WORD TRH-IN2-FLAGS   s" 2drop" TRH-EV-ASSERT
    21 TOP-EV-NUM  0               s" 0" TRH-EV-ASSERT
-   22 TOP-EV-WORD TRH-WORD-FLAGS  s" set-top-check" TRH-EV-ASSERT ;
+   22 TOP-EV-WORD TRH-IN1-FLAGS   s" set-top-check" TRH-EV-ASSERT ;
 
 \ ---- in-process logging-hook window -------------------------------------------
 \ Every token between the install and the uninstall is deliberate: the expected
@@ -294,11 +296,11 @@ create TRH-EMPTY 1 allot
    s" DATA-region address fails closed (outside [DBASE, CP))" T-LABEL
    s" data-base 8 + set-top-check" TRH-BARE$ TRH-RUN-LOAD
    TRH-ASSERT-INVALID
-   s" bare set-top-check fails closed pre-execution (LARITY min 1)" T-LABEL
+   s" bare set-top-check fails closed pre-execution (spec min-in 1)" T-LABEL
    s" set-top-check" TRH-BARE$ TRH-RUN-LOAD
    TRH-EXITED @ TTRUE
    TRH-RC @ TRH-REJECT-RC T=
-   TRH-ERR$ s" E-UNDERFLOW: " CONTAINS? TTRUE ;
+   TRH-ERR$ s" hb: interpret stack underdepth: set-top-check" CONTAINS? TTRUE ;
 
 : TRH-SEAL-FORGE$ ( -- ptr u8 n )   \ raw ! into the sealed cell must trap
    SB-RESET

@@ -15,14 +15,15 @@ implementation is decomposed into the sub-dots drafted in §5.
 The FOO2 landing guards direct certified-word dispatch
 (`src/habu/habu2.f` `EM-INTERPRET-FIND`: `DNAME-WIDE` and `DNAME-INT` fail
 closed, `DNAME-MIN-IN` bits 8-15 of the LFIND flags reject underdepth before
-the body BLR) plus the `LARITY` per-prim minimum table. Three residuals are
+the body BLR; a primitive's seed record carries its `src/habu/prims.f` row's
+input count in the same byte). Three residuals are
 value/effect problems a depth floor cannot express. All three were re-probed
 live on the current engine (probe sources under the session scratchpad,
 `probes/p*.f`; each run `bin/hb --load <probe> < /dev/null`):
 
 1. **xt-execute laundering.** `: FOO2 ( n -- n n ) dup ;  ' FOO2 execute` on
    an empty stack: rc 0, `.s` shows one garbage cell read from below base.
-   `execute` is LARITY-guarded min 1 (the xt itself); the TARGET's arity is
+   `execute`'s record states min-in 1 (the xt itself); the TARGET's arity is
    invisible through the raw xt cell. (probe p1)
 2. **Compile-mode immediates — two distinct holes.** (probe p4/p5)
    - `: IMM2 ( n -- n n ) dup ; immediate  : USER ( -- ) IMM2 drop drop ;`
@@ -35,8 +36,8 @@ live on the current engine (probe sources under the session scratchpad,
      `( n -- n n )`. Certificate/runtime divergence from fully-checked
      source, no `0 set-check` needed. This is the worst finding of the
      probe round and gets its own sub-dot (§5.1).
-3. **Depth-satisfied garbage values.** `0 0 catch`: depth 2 passes the LARITY
-   min, `catch` BLRs into xt 0 → SIGSEGV, crash-handler rc 134. (probe p2)
+3. **Depth-satisfied garbage values.** `0 0 catch`: depth 2 passes `catch`'s
+   min-in 1, `catch` BLRs into xt 0 → SIGSEGV, crash-handler rc 134. (probe p2)
    Same class: `s" abc" +` adds a byte pointer to its length, rc 0, silent
    garbage (probe p3). The interpret path knows *nothing* about literal
    types today: `EM-INTERPRET-NUMBER` pushes a bare cell, the string
@@ -71,7 +72,7 @@ that shadows the interpret stack, driven by a native per-token hook.
   / literal-char / tick / word), and for words the LFIND flags + record
   index (from which the hook reaches the word's `EFF-REC` via its sym).
   **Hook uninstalled = today's behavior, byte for byte** (tier 0). The
-  existing native gates (WIDE/INT/MIN-IN, LARITY) stay as the floor
+  existing native gates (WIDE/INT/MIN-IN) stay as the floor
   underneath; the row is layered above, never instead.
 - **Granularity: per token, not per line.** Top-level tokens resolve during
   execution (a line may define a word and later lines call it; definers
@@ -207,8 +208,8 @@ soundness hole independent of the row tracker.
 
 ### Tier 0 — today (shipped)
 
-Depth floor only: `DNAME-MIN-IN` + `DNAME-INT`/`DNAME-WIDE` + `LARITY`
-census prims. Hook cell absent. Gate: `test/underdepth-gate.f`,
+Depth floor only: `DNAME-MIN-IN` (certified words and every primitive's
+`prims.f` row) + `DNAME-INT`/`DNAME-WIDE`. Hook cell absent. Gate: `test/underdepth-gate.f`,
 `test/internal-word-gate.f`, engine suite — all green now.
 
 ### Tier 1 — row tracked, warnings only

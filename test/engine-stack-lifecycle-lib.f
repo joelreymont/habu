@@ -153,9 +153,10 @@ variable ERRLEN
    CHILD-RC CHILD-UNCAUGHT-RC T=
    ERR ERRLEN @ S\" hb: uncaught throw code -3802\n" T$= ;
 
-\ A data request below the base is the one refusal with a name: the guard leaves
-\ for the interpreter's E-UNDERFLOW diagnostic, which names the token and exits 70.
-: NAMED-UNDERFLOW ( ptr u8 n ptr u8 n -- ) {: src:ptr size:n diag:ptr diagu:n :}
+\ A data request below the base is the one refusal with a name: a primitive's
+\ seed record states its minimum input depth, so the interpret band refuses a
+\ shallower stack before the body runs, names the token and exits 70.
+: NAMED-UNDERDEPTH ( ptr u8 n ptr u8 n -- ) {: src:ptr size:n diag:ptr diagu:n :}
    src size CHILD-RC 70 T=
    ERR ERRLEN @ diag diagu T$= ;
 
@@ -191,7 +192,7 @@ variable ERRLEN
    s" 1 data-base RSP-CELL + ! 2r>" REFUSED-RETURN
    s" empty return-stack read" T-LABEL s" 2r>" REFUSED-RETURN
    s" empty data-stack adjustment" T-LABEL
-   s" drop" S\" E-UNDERFLOW: drop\n" NAMED-UNDERFLOW
+   s" drop" S\" hb: interpret stack underdepth: drop\n" NAMED-UNDERDEPTH
    s" the last loop frame" T-LABEL
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES NEST"
    CHILD-RC 0 T=

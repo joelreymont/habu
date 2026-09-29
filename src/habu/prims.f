@@ -85,8 +85,8 @@ $4C constant SPEC-RC
 \ Rows are fixed-width records; names, package names and reference names are
 \ byte spans in NAMES; atoms are bytes in CODES. Offsets, not addresses, so the
 \ table can be walked by index from any consumer.
-$180 constant ROW-CAP        \ 384 rows; 222 are used today
-10 constant ROW-CELLS
+$180 constant ROW-CAP        \ 384 rows; 223 are used today
+11 constant ROW-CELLS
 $1000 constant NAME-CAP
 $1000 constant CODE-CAP
 
@@ -100,6 +100,7 @@ $1000 constant CODE-CAP
 7 constant F-FLAGS
 8 constant F-REF-OFF
 9 constant F-REF-LEN
+10 constant F-MIN-IN
 
 1 constant FL-TRUSTED-ONLY
 
@@ -111,6 +112,8 @@ variable NAME-U
 variable CODE-U
 variable BI
 variable FI
+variable IN-N
+variable IN-DEPTH
 
 \ The row under construction, between an opener and its closer.
 variable CUR-KIND
@@ -185,6 +188,24 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    NAME-U @ CUR-NAME-OFF !
    parse-name dup CUR-NAME-LEN ! NAME-SPAN, ;
 
+\ THE ROW'S MINIMUM INPUT DEPTH is the number of inputs its atoms state, counted
+\ once as the row closes. An input between A-QUOT and A-QUOT-END belongs to the
+\ quotation's own effect, not to the row's. A row whose atoms state no input
+\ carries 0 until EMIN-IN! states its depth.
+: IN-ATOM ( n -- ) {: code:n :}
+   code A-QUOT = IF IN-DEPTH @ 1 + IN-DEPTH ! EXIT THEN
+   code A-QUOT-END = IF IN-DEPTH @ 1 - IN-DEPTH ! EXIT THEN
+   code A-IN = IN-DEPTH @ 0 = and IF IN-N @ 1 + IN-N ! THEN ;
+
+: IN-COUNT ( -- n )
+   0 IN-N !  0 IN-DEPTH !
+   CUR-CODE-OFF @ BI !
+   BEGIN BI @ CODE-U @ < WHILE
+      CODES BI @ + c@ IN-ATOM
+      BI @ 1 + BI !
+   REPEAT
+   IN-N @ ;
+
 : ROW-WRITE ( -- )
    ROW-N @ ROW-CAP >= IF s" prims: specification table full" SPEC-RC die THEN
    CUR-KIND @      ROW-N @ F-KIND SLOT !
@@ -197,6 +218,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    0               ROW-N @ F-FLAGS SLOT !
    CUR-REF-OFF @   ROW-N @ F-REF-OFF SLOT !
    CUR-REF-LEN @   ROW-N @ F-REF-LEN SLOT !
+   IN-COUNT        ROW-N @ F-MIN-IN SLOT !
    ROW-N @ 1 + ROW-N ! ;
 
 : EPRIM: ( -- )
@@ -226,6 +248,19 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    ROW-N @ 0 <= IF s" prims: trusted-only before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-TRUSTED-ONLY or swap ! ;
 
+\ The just-written row's minimum input depth, for a primitive whose body reads
+\ the stack although its atoms state no input: the elaborated `execute`,
+\ `catch`, `evaluate`, `?dup` and `2>r`, and `finally`. ENGINE-PRIMS:DNAME
+\ bakes every row's depth into the primitive's seed record, where the interpret
+\ band refuses a shallower stack before the body runs. A row whose atoms state
+\ its inputs is refused, so a depth has one source.
+: EMIN-IN! ( n -- ) {: depth:n :}
+   ROW-N @ 0 <= IF s" prims: min-in before any row" SPEC-RC die THEN
+   depth 0 <= IF s" prims: min-in must be positive" SPEC-RC die THEN
+   ROW-N @ 1 - F-MIN-IN ROW-FIELD @ 0 <>
+      IF s" prims: min-in on a row whose atoms state its inputs" SPEC-RC die THEN
+   depth ROW-N @ 1 - F-MIN-IN ROW-FIELD ! ;
+
 : ELAB: ( -- )
    K-ELAB ROW-OPEN ROW-NAME ROW-WRITE ;
 
@@ -252,6 +287,10 @@ public
 : TRUSTED-ONLY? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-TRUSTED-ONLY and 0 <> ;
 
+\ The inputs a row's atoms state, or the depth its EMIN-IN! marker states.
+: MIN-IN ( n -- n )
+   F-MIN-IN ROW-FIELD @ ;
+
 : CODE-LEN@ ( n -- n )
    F-CODE-LEN ROW-FIELD @ ;
 
@@ -274,6 +313,7 @@ private
 
 \ ---- the table ---------------------------------------------------------------
 EPRIM: finally PE-FINALLY EPRIM;
+2 EMIN-IN!                           \ the body xt and the cleanup xt
 
 EPRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT REF PRIM-REF:S-DUP EPRIM;
 EPRIM: drop  PE-A PE-IN REF PRIM-REF:S-DROP EPRIM;
@@ -637,6 +677,16 @@ EPRIM: kill-errno PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;   \ ( pid sig -- 0|-
 EPRIM: execve   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;   \ ( pathz argv envp -- -errno ) child-side exec; only returns on failure
 EPRIM: munmap   PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;   \ ( addr len -- 0|-1 ) release a mapping; consumed by MEM:RELEASE-BYTES
 
+\ execute-floor ( xt -- flag ): execute the xt, then answer whether it left the
+\ data stack below its base. When it did, the stack is reset to the base before
+\ the true flag is pushed, so no cell is written to the stack's low guard page.
+\ `depth` and `catch` both push, so this is the one word an interpreter loop
+\ written in Habu can use to observe a token that underflowed. The row states
+\ no effect for the xt, so the xt travels as a number and only a TRUSTED: body
+\ may call it.
+EPRIM: execute-floor PE-N PE-IN  PE-F PE-OUT EPRIM;
+ETRUSTED-ONLY!                       \ executes an xt whose effect nothing states
+
 \ ---- primitives whose effect the checker elaborates --------------------------
 \ These have engine bodies and deliberately no row: their effect depends on the
 \ call site, so src/core/checker.f computes it in the elaborator instead of
@@ -644,10 +694,15 @@ EPRIM: munmap   PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;   \ ( addr len -- 
 \ `evaluate`'s dynamic rule, and `?dup`'s branch-shaped result). A row here
 \ states that, so the completeness gate accepts the body without an effect.
 ELAB: execute
+1 EMIN-IN!
 ELAB: catch
+1 EMIN-IN!
 ELAB: evaluate
+2 EMIN-IN!
 ELAB: ?dup
+1 EMIN-IN!
 ELAB: 2>r
+2 EMIN-IN!
 ELAB: 2r>
 ELAB: 2r@
 

@@ -564,14 +564,15 @@ variable GE-NEST-J
 
 : GE-DEREF-1 ( ptr u8 n -- ) {: tok:ptr toku:n :}
    \ Run one deref/execute primitive as the LITERAL FIRST top-level token on an
-   \ empty stack: the pre-exec arity guard must name E-UNDERFLOW + exit 70, never a
-   \ signal (crash handler exit 134). Before the guard this faulted inside the prim.
+   \ empty stack: its seed record's min-in must make the band refuse it with the
+   \ underdepth reject + exit 70 before the body runs, never a signal (crash
+   \ handler exit 134). Unguarded, the body faults reading below the base.
    GE-HB-RESET
    GE-SRC-RESET
    tok toku GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    70 s" hb deref-first arity rc" GE-EXPECT-RC
-   s" E-UNDERFLOW" s" hb deref-first arity diagnostic" GE-EXPECT-ERR-HAS
+   s" hb: interpret stack underdepth: " s" hb deref-first arity diagnostic" GE-EXPECT-ERR-HAS
    tok toku s" hb deref-first arity token" GE-EXPECT-ERR-HAS ;
 
 : GE-DEREF-ARITY-DIAG ( -- )
@@ -584,6 +585,36 @@ variable GE-NEST-J
    s" variable GAV 5 GAV !" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    s" hb valid deref store succeeds" GE-EXPECT-OK ;
+
+\ The post-token depth floor's subject. TRUSTED: states ( -- ) over a body that
+\ drops, so the band admits the word on an empty stack and only the floor sees
+\ the stack go below its base. A bare `drop` never reaches the floor: its seed
+\ record carries min-in 1, so the band refuses it first.
+: GE-SINK-LINE ( -- )
+   s" TRUSTED: GE-SINK ( -- ) drop ;" GE-SRC-LINE ;
+
+: GE-EXECUTE-FLOOR ( -- )
+   \ execute-floor runs an xt and flags whether it left the stack below its
+   \ base. The sink leaves it one cell below: the flag is -1, and the stack was
+   \ reset to the base before the flag was pushed, so `5 .` runs on a live
+   \ stack and `depth` answers 0 (an unreset push lands in the low guard page,
+   \ rc 102). The no-op flags 0. The wrappers are TRUSTED: because the row is
+   \ trusted-only; they are also how an interpreter loop in Habu reaches it.
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-SINK-LINE
+   s" TRUSTED: GE-SINK-FLOOR ( -- bool ) [: GE-SINK ;] execute-floor ;" GE-SRC-LINE
+   s" TRUSTED: GE-NOOP-FLOOR ( -- bool ) [: ;] execute-floor ;" GE-SRC-LINE
+   s" GE-SINK-FLOOR . 5 . depth . cr" GE-SRC-LINE
+   s" GE-NOOP-FLOOR . depth . cr" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   s" hb execute-floor rc" GE-EXPECT-OK
+   SB-RESET
+   s" -1" SB-APPEND GE-SB-LF s" 5" SB-APPEND GE-SB-LF s" 0" SB-APPEND GE-SB-LF GE-SB-LF
+   s" 0" SB-APPEND GE-SB-LF s" 0" SB-APPEND GE-SB-LF GE-SB-LF
+   SB$ s" hb execute-floor flags and output" GE-EXPECT-OUT
+   s" " s" hb execute-floor stderr" GE-EXPECT-ERR
+   s" PASS: execute-floor flags an underflowed xt and resets the stack" type cr ;
 
 : GE-NESTED-DEF-SRC ( ptr u8 n -- ) {: body:ptr bodyu:n :}
    \ Build: TRUSTED: W ( -- ) s" <body>" evaluate ;  then run W.
@@ -712,11 +743,16 @@ variable GE-NEST-J
    \ was the one interpret failure still rolling the eval frame back with only
    \ EVALERR set — catch read 0 (fail-open). It must be caught 70 exactly like
    \ E-UNDEFINED, with the sentinel stack under the wrapper intact.
-   s" drop drop drop" GE-EVAL-CATCH-RUN
+   GE-HB-RESET
+   GE-EVAL-CATCH-SRC
+   GE-SINK-LINE
+   s" GE-SINK" GE-SRC-S"
+   s"  GEC-CATCH . cr" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
    s" hb eval underflow catch rc" GE-EXPECT-OK
    s" 70" s" hb eval underflow catch code" GE-EXPECT-OUT-HAS
    s" E-UNDERFLOW" s" hb eval underflow catch diag" GE-EXPECT-ERR-HAS
-   s" drop" s" hb eval underflow catch token" GE-EXPECT-ERR-HAS
+   s" GE-SINK" s" hb eval underflow catch token" GE-EXPECT-ERR-HAS
    s" PASS: interpret underflow under catch+evaluate -> caught 70" type cr ;
 
 : GE-EVAL-UNDERFLOW-FAILCLOSED ( -- )
@@ -725,13 +761,14 @@ variable GE-NEST-J
    \ rollback-and-return path printed the marker and exited 0 (fail-open).
    GE-HB-RESET
    GE-SRC-RESET
-   s" drop drop drop" GE-SRC-S"
+   GE-SINK-LINE
+   s" GE-SINK" GE-SRC-S"
    s"  INCLUDE-EVALUATE" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  ALIVE-AFTER" GE-SRC+ GE-DQ GE-SRC-C
    s"  type cr" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    70 s" hb eval underflow no-catch rc" GE-EXPECT-RC
-   s" E-UNDERFLOW" s" hb eval underflow no-catch diag" GE-EXPECT-ERR-HAS
+   s" E-UNDERFLOW: GE-SINK" s" hb eval underflow no-catch diag" GE-EXPECT-ERR-HAS
    s" " s" hb eval underflow no-catch dead marker" GE-EXPECT-OUT
    s" PASS: interpret underflow in evaluate w/o catch -> fail-closed rc70" type cr ;
 
@@ -740,10 +777,11 @@ variable GE-NEST-J
    \ the E-UNDERFLOW diagnostic + rc 70 exactly.
    GE-HB-RESET
    GE-SRC-RESET
-   s" drop drop drop" GE-SRC-LINE
+   GE-SINK-LINE
+   s" GE-SINK" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    70 s" hb top-level underflow rc unchanged" GE-EXPECT-RC
-   s" E-UNDERFLOW" s" hb top-level underflow diag unchanged" GE-EXPECT-ERR-HAS
+   s" E-UNDERFLOW: GE-SINK" s" hb top-level underflow diag unchanged" GE-EXPECT-ERR-HAS
    s" PASS: top-level underflow fail-closed rc70 (unchanged)" type cr ;
 
 : GE-EVAL-INTERP-ERR-RECOVER ( -- )
@@ -1383,6 +1421,7 @@ public
    GE-DIV-MOD
    GE-PROCESS-PTY
    GE-DEREF-ARITY-DIAG
+   GE-EXECUTE-FLOOR
    GE-NESTED-CHECKED-DEF
    GE-NESTED-BAD-DEF
    GE-EVAL-UNDEF-RECOVER

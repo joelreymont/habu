@@ -8,10 +8,10 @@
 \ engine's existing no-op; a tick of a retained marked name is refused.
 \ Previously a bare `U-TYPE` consumed below-base garbage as type-term handles
 \ and corrupted the process. Positives prove the public surface is
-\ untouched: undefined words still report E-UNDEFINED, underflow still reports
-\ E-UNDERFLOW, inferred user words stay executable, top-level TRUST rows /
-\ TRUSTED: / structures + type-family DSLs still work, and XREF introspection
-\ of internal words survives.
+\ untouched: undefined words still report E-UNDEFINED, a bare primitive short
+\ of its inputs reports underdepth, inferred user words stay executable,
+\ top-level TRUST rows / TRUSTED: / structures + type-family DSLs still work,
+\ and XREF introspection of internal words survives.
 \
 \ Semantic cases run in disposable SUBJECT forks. Exact outcome/stdout/stderr
 \ parity retains direct `--load` and stdin representatives below.
@@ -255,7 +255,7 @@ create EMPTY 1 allot            \ zero-length stdin
    s" NULL-PTR-CELL" ASSERT-UNDEF
    s" a tick of stripped NULL-PTR-CELL leaves no address to store" T-LABEL
    NULL-PTR-TICK$ RUN-SUBJECT
-   s" E-UNDERFLOW: !" ASSERT-DIAG
+   s" hb: interpret stack underdepth: !" ASSERT-DIAG
    s" search-wl cannot launder a NULL-PTR-CELL store" T-LABEL
    NULL-PTR-SEARCH$ RUN-SUBJECT
    ASSERT-OK
@@ -651,9 +651,9 @@ create EMPTY 1 allot            \ zero-length stdin
    s" undefined word still reports E-UNDEFINED" T-LABEL
    UNDEF-FORGE$ RUN-SUBJECT
    s" E-UNDEFINED" ASSERT-DIAG
-   s" bare drop still reports E-UNDERFLOW" T-LABEL
+   s" bare drop reports underdepth, not an internal word" T-LABEL
    s" drop" TOKEN$ RUN-SUBJECT
-   s" E-UNDERFLOW" ASSERT-DIAG
+   s" hb: interpret stack underdepth: drop" ASSERT-DIAG
    s" inferred user word stays executable at top level" T-LABEL
    RAW-FORGE$ RUN-SUBJECT ASSERT-OK
    s" top-level TRUST row still works" T-LABEL

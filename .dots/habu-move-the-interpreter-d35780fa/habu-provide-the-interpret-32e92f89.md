@@ -1,9 +1,11 @@
 ---
 title: Provide the interpret guards to the Habu loop
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T17:23:41.514821+03:00"
+closed-at: "2026-09-30T10:21:53.377546+03:00"
+close-reason: Primitive min-in from spec rows via DNAME; LARITY deleted; execute-floor added. Gate 493/493 rc 0 on 347cf5b8; Fable review clean.
 ---
 
 Problem: the pre-execute arity guard is a builder table baked as compare code (`habu1.f:129-147`, `habu2.f:10561-10575`) that no loop but the assembly one can read, and no Habu word can observe a below-base stack: after an underflow every push writes the low guard page (`src/habu/rt.f:95-98`), and `depth` and `catch` both push (`habu1.f:1574-1578`). The Habu loop (I4) needs both guards; without them it crashes rc 102 where the assembly loop refuses rc 70.
@@ -21,3 +23,5 @@ Preflight corrections (these override the lines above where they differ):
 - Deletions also: `habu2.f:4996` (`variable LARITY`), `:10518` (`LBL LARITY !`), the `:11086` comment. `BEXEC`'s body is `habu1.f:2721` (`3432` is its registration).
 - The refused set grows by design: every `PE-IN > 0` primitive at top level refuses at the band (bare `drop` moves from the post-token floor, `habu2.f:7724`); bare `?dup`/`2>r`/`nip` move from rc 102 to rc 70. No test pins those crashes.
 - Base: master `bc2e9c44` or later. Workspace `.jj-ws/habu-provide-the-interpret-32e92f89`.
+
+Closing note: the Verify line's "chain gen1 == gen2" is replaced by convergence from gen2 (gen2 == gen3 == gen4 == gen5 = `347cf5b8…`, reached independently from a Gforth recovery of the tree). gen1 differs by host-dependent captured DATA values, dotted as `habu-make-the-product-bed415cf`. No x86 seed writer exists yet, so the x86 half of the `DNAME` fold is structural until one does; `docs/x86-64.md` states it conditionally.

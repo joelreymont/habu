@@ -532,14 +532,19 @@ side (`STACK-ABI:PAGE-BYTES`, `src/habu/rt.f` EMIT-MAP). Compiled code carries
 no bounds check at all any more — capacity is enforced by the MMU, not by a
 check at every push and pop — so three independent mechanisms answer "why did
 this die", and they are not interchangeable:
-- `E-UNDERFLOW: <token>` (exit 70) is the data stack read below its base while
-  `<token>` was being interpreted, however deep the read happened: the
-  interpreter's depth checks catch it before a primitive runs. Inside
-  `evaluate` it is a catchable RC-REJECT throw; in the REPL the line recovers.
-  This is the one check still anywhere near the per-token path, and it only
-  ever fires from the interpreter — a stripped application has no interpreter
-  to name the token, so the same underflow there is a guard-page fault
-  instead (below).
+- `hb: interpret stack underdepth: <token>` and `E-UNDERFLOW: <token>` (both
+  exit 70) are the interpreter's own refusals. The first is the band in
+  `EM-INTERPRET-FIND`: `<token>`'s record states more inputs than the
+  interpret stack holds (a certified word's declared inputs, or a primitive's
+  `src/habu/prims.f` row), so the body never runs. The second is the
+  post-token depth floor: a word ran and left the stack below its base
+  because its body consumes more than its record states — a word defined
+  with checking off records no minimum, and a `TRUSTED:` body can drop more
+  than it declares. Inside `evaluate` either is a catchable
+  RC-REJECT throw; in the REPL the line recovers. These are the only checks
+  still anywhere near the per-token path, and they only ever fire from the
+  interpreter — a stripped application has no interpreter to name the token,
+  so the same underflow there is a guard-page fault instead (below).
 - `hb: stack bounds exceeded (data)` / `(return)` / `(loop)` (exit 102,
   `ENGINE-ERROR:STACK-BOUNDS`) is a guard-page fault: a push past the capacity
   or a read below the base takes SIGSEGV/SIGBUS, and `src/habu/crash.f` reads
@@ -588,11 +593,12 @@ this die", and they are not interchangeable:
   interpreter reads directly, its `dup` reading below the base faults the
   data stack's guard page — `hb: stack bounds exceeded (data)`, rc 102 — not
   `E-UNDERFLOW`. A bare `drop` on an empty stack, entered directly at the top
-  level or through `evaluate`, still ends in `E-UNDERFLOW: drop` rc 70,
-  because the interpreter's own depth floor sees that one before any
-  primitive runs (see `test/xt-effect-test.f` XE-TIER1,
+  level or through `evaluate`, ends in `hb: interpret stack underdepth: drop`
+  rc 70, because its record states min-in 1 and the band refuses it before
+  the body runs; a `TRUSTED: ( -- )` word that drops passes the band and ends
+  in `E-UNDERFLOW` at the floor (see `test/xt-effect-test.f` XE-TIER1,
   `test/top-row-warn-test.f` TW-POSITIVES, and
-  `test/runtime-regression-test.f` for the unchanged interpreted case).
+  `test/runtime-regression-test.f` for the interpreted cases).
 
 `test/stack-guard.f` has worked cases for all three: filling the boot stack
 short of its page by a margin versus filling the whole page, unbounded

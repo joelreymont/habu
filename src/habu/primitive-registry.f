@@ -98,8 +98,26 @@ public
 : HELPER-REGISTER ( ptr u8 n n n -- )
    >LABEL swap >LABEL swap ADD OWNER-API-PRI-WID swap WID! ;
 
+\ THE SEED RECORD STATES ITS PRIMITIVE'S MINIMUM INPUT DEPTH (DNAME-MIN-IN,
+\ bits 52-59), read from the specification row, so the interpret band refuses
+\ a bare primitive on a shallower stack before its body runs, exactly as it
+\ refuses a certified word. An engine helper has no row and states 0.
+private
+
+: MIN-IN-BITS ( ptr u8 n -- n ) {: name:ptr size:n :}
+   name size PRIM-SPEC:FIND {: row:n :}
+   row 0 < if 0 exit then
+   row PRIM-SPEC:MIN-IN {: depth:n :}
+   depth DNAME-MIN-IN-MASK 52 rshift > if
+      name size type cr
+      s" prims: minimum input depth exceeds the record field" SPEC-RC die
+   then
+   depth 52 lshift ;
+
+public
+
 : DNAME ( n -- n ) {: idx:n :}
-   idx NAME-LEN
+   idx NAME-LEN  idx NAME$ MIN-IN-BITS or
    idx WID {: wid:n :}
    wid OWNER-API-PRI-WID =  wid GLOBAL-INT-WID = or if DNAME-INT or then ;
 
