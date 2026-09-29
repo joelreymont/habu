@@ -9,29 +9,22 @@
 \ partial rows and invalid row coordinates must fail through the file reader.
 \
 \ The production capture tool is also loaded and must name its empty-window
-\ refusal: the booted engine already provides its chain. A private source-built
-\ host then captures the real compiler and exercises the producer's live-row
-\ checks, including count-preserving corruptions and an order-independent control.
+\ refusal: the booted engine already provides its chain. The producer's live-row
+\ checks in a private source-built host are test/aot-chain-producer-suite.f,
+\ test/aot-chain-location-suite.f and test/aot-chain-target-suite.f, gate rows
+\ of their own: each of their cases captures the whole compiler in its own
+\ child.
 \
 \ Registered as `TEST:SUITE aot-chain-capture`. Run standalone:
 \   bin/hb --load test/aot-chain-capture-suite.f
 
 require lib/errors.f
-require lib/string.f
 require lib/test.f
-require lib/memory.f
 require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
 require lib/process-argv.f
-require lib/process-env.f
-require lib/codesign.f
-require tools/build-fixpoint.f
+require test/aot-chain-capture-lib.f
 
 package AOT-CHAIN-SUITE
-
-$8000 constant CAP
-60000 constant CHILD-TIMEOUT-MS
 
 \ The header this reads back is src/habu/aot-file.f's, and these are its offsets
 \ and its identity. They are written out again rather than imported because that
@@ -50,45 +43,14 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order
 \ An address-row location has 31 offset bits; its high bit selects window DATA.
 $7FFFFFFF constant LOC-MASK
 
-\ tools/aot-chain-capture.f's refusal code and the sentence the product must die
-\ with, which is a different exit from every undefined-word death.
-$4A constant REFUSE-RC
-
-create OUT CAP allot     variable OUT-U
-create ERR CAP allot     variable ERR-U
-create EMPTY 1 allot                          \ zero-length stdin
-variable RC
-
-create ROOT-BUF FS-PATH-CAP allot   variable ROOT-U
-create ART-BUF FS-PATH-CAP allot    variable ART-U
 create HDR HDR-BYTES allot
 create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this suite's file-digest context
 create PROD-HEX HEX-LEN allot        \ sha256(bin/hb), taken here
 create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
+create ART-BUF FS-PATH-CAP allot    variable ART-U
 
-: ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : ART$ ( -- ptr u8 n ) ART-BUF ART-U @ ;
 : HB$ ( -- ptr u8 n ) s" bin/hb" ;
-: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
-
-\ One tree per run, registered for cleanup, so "the artifact exists" is a statement
-\ about the capture that just ran and never about a leftover.
-: SETUP ( -- )
-   s" habu-aot-chain" HB-TMP-MKDIR {: a:ptr u:n :}
-   a ROOT-BUF u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" small.aot" ART-BUF JOIN-PATH ART-U ! ;
-
-: RUN-ENGINE ( ptr u8 n -- )
-   >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  CHILD-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
-   ;MATCH ;
 
 : RUN-CHILD ( -- ) HB$ RUN-ENGINE ;
 
@@ -158,14 +120,6 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    ROOT$ >LEN PROC-ARGV+
    RUN-CHILD ;
 
-: SAID? ( ptr u8 n -- ) {: m:ptr mu:n :}
-   m mu T-LABEL
-   OUT$ m mu CONTAINS? TTRUE ;
-
-: ERR-SAID? ( ptr u8 n -- ) {: m:ptr mu:n :}
-   m mu T-LABEL
-   ERR$ m mu CONTAINS? TTRUE ;
-
 : CHILD-FAILED. ( -- )
    RC @ 0 = if exit then
    s" aot-chain-capture-suite: child stdout:" type cr OUT$ type cr
@@ -188,6 +142,7 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
 
 : PROBE-ROUNDTRIP ( -- )
    SETUP
+   ROOT$ s" small.aot" ART-BUF JOIN-PATH ART-U !
    RUN-ROUNDTRIP
    s" a capture writes, reads and rewrites its artifact byte for byte" T-LABEL
    CHILD-FAILED.
@@ -228,15 +183,6 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    s" the window is empty - the chain did not load" ERR-SAID? ;
 
 
-: ROW-RC ( n -- )
-   {: want:n :}
-   RC @ want <> if
-      s" artifact-row child stdout:" type cr OUT$ type cr
-      s" artifact-row child stderr:" type cr ERR$ type cr
-   then
-   RC @ want T= ;
-
-
 : ROW-REFUSED ( ptr u8 n ptr u8 n -- )
    {: name u:n message mu:n :}
    name u T-LABEL
@@ -268,72 +214,6 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    s" bad-code" s" address cell CODE target is outside its blob" ROW-REFUSED
    s" bad-data-site" s" DATA relocation site reaches past its blob" ROW-REFUSED
    s" bad-chain-site" s" DATA relocation site reaches past its blob" ROW-REFUSED ;
-
-\ Run the actual producer in a source-only host. Its private copy adds two
-\ declarations around the window and replaces only the final MAIN invocation
-\ with row checks; no production test switch or alternate row writer is used.
-$10000 constant TOOL-CAP
-create TOOL-SOURCE TOOL-CAP allot variable TOOL-U
-create TOOL-PATH FS-PATH-CAP allot variable TOOL-PATH-U
-create HOST-PATH FS-PATH-CAP allot variable HOST-PATH-U
-
-: TOOL$ ( -- ptr u8 n ) TOOL-PATH TOOL-PATH-U @ ;
-: HOST$ ( -- ptr u8 n ) HOST-PATH HOST-PATH-U @ ;
-: TOOL+ ( ptr u8 n -- ) {: a:ptr u:n :} TOOL$ a u APPEND-FILE ;
-: TOOL-PART ( n n -- ) {: start:n finish:n :}
-   TOOL-SOURCE start + finish start - TOOL+ ;
-
-: TOOL-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
-   TOOL-SOURCE TOOL-U @ a u FIND-SUB MATCH option
-      some OF IDX>N ENDOF
-      none OF s" chain-address-rows: producer source boundary missing" 75 die ENDOF
-   ;MATCH ;
-
-: PREPARE-PRODUCER ( -- )
-   ROOT$ s" row-producer.f" TOOL-PATH JOIN-PATH TOOL-PATH-U !
-   ROOT$ s" hb-stdin" HOST-PATH JOIN-PATH HOST-PATH-U !
-   s" tools/aot-chain-capture.f" TOOL-SOURCE TOOL-CAP READ-ALL TOOL-U !
-   S\" AOT-CHAIN:OPEN\n" TOOL-AT {: opened:n :}
-   S\" AOT-CHAIN:CLOSE\n" TOOL-AT {: closed:n :}
-   S\" AOT-CHAIN:MAIN\n" TOOL-AT {: called:n :}
-   called S\" AOT-CHAIN:MAIN\n" nip + TOOL-U @ T=
-   TOOL$ TOOL-SOURCE opened WRITE-ALL
-   S\" package CHAIN-ROW-OUTSIDE\npublic\nPERSISTED-PTR-VARIABLE SLOT\n;package\n" TOOL+
-   opened closed TOOL-PART
-   S\" package CHAIN-ROW-INSIDE\npublic\nPERSISTED-PTR-VARIABLE NIL\nvariable TARGET\n;package\nCHAIN-ROW-INSIDE:TARGET CHAIN-ROW-OUTSIDE:SLOT !\n" TOOL+
-   closed called TOOL-PART
-   S\" require test/aot-chain-row-checks.f\n" TOOL+
-   ROOT$ BUILD-FIXPOINT:BF-TMP!
-   BUILD-FIXPOINT:BF-PREFLIGHT
-   BUILD-FIXPOINT:BF-STAGE-FIXPOINT
-   s" src/habu/stdin.f" BUILD-FIXPOINT:BF-EMIT-ENGINE
-   BUILD-FIXPOINT:BF-TMP-RESET ;
-
-: PRODUCER-CASE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
-   a u T-LABEL
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   TOOL$ >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   a u >LEN PROC-ARGV+
-   HOST$ RUN-ENGINE
-   want ROW-RC
-   want 0= if s" chain-address-rows: ok" SAID? else
-      s" declared address rows do not match the live window" ERR-SAID?
-   then ;
-
-: PROBE-PRODUCER-ROWS ( -- )
-   PREPARE-PRODUCER
-   s" valid" 0 PRODUCER-CASE
-   s" chain-closure: portable" SAID?
-   s" reorder" 0 PRODUCER-CASE
-   s" index-scale" 0 PRODUCER-CASE
-   s" missing" REFUSE-RC PRODUCER-CASE
-   s" duplicate" REFUSE-RC PRODUCER-CASE
-   s" location" REFUSE-RC PRODUCER-CASE
-   s" kind" REFUSE-RC PRODUCER-CASE
-   s" target" REFUSE-RC PRODUCER-CASE
-   s" null-target" REFUSE-RC PRODUCER-CASE ;
 
 : SPAN-CASE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
    a u s" file" RUN-DATA-SITES want ROW-RC
@@ -401,18 +281,13 @@ create HOST-PATH FS-PATH-CAP allot variable HOST-PATH-U
    s" literal" RUN-COMPACT-REFUSAL $4A ROW-RC
    s" page-relative or literal-pool instruction unsupported" ERR-SAID?
    PROBE-DATA-SITES
-   PROBE-ADDRESS-STORAGE
-   PROBE-PRODUCER-ROWS ;
+   PROBE-ADDRESS-STORAGE ;
 
+\ Public so the driver below runs it with the package closed.
 public
 
 : RUN ( -- )
-   T-RESET
-   CLEANUP-RESET
-   [: BODY ;] catch {: code:n :}
-   CLEANUP-RUN
-   code 0 <> if code throw then
-   T-REPORT
+   [: BODY ;] RUN-PROBES
    s" aot-chain-capture: ok" type cr ;
 
 ;package

@@ -79,6 +79,18 @@ SUITE aot-chain-capture
    test/aot-chain-capture-suite.f
 ;SUITE
 
+SUITE aot-chain-producer
+   test/aot-chain-producer-suite.f
+;SUITE
+
+SUITE aot-chain-location
+   test/aot-chain-location-suite.f
+;SUITE
+
+SUITE aot-chain-target
+   test/aot-chain-target-suite.f
+;SUITE
+
 SUITE aot-wide-format
    test/aot-wide-format-suite.f
 ;SUITE
