@@ -5,9 +5,10 @@
 \ definition - declare, select, prune, fixpoint, emit at the image's own
 \ address, retire - and the routine is wrapped in test/x86-64-peer-harness.f's
 \ checking entry with the answers its definition must give. Each fixture writes
-\ one positive image into $HB_TMP/x64-routines; diff also writes a negative
-\ harness image whose first case expects a wrong answer. The manifest lists each
-\ file with its expected status; docs/bootstrap.md gives the peer's comparison.
+\ one positive image into $HB_TMP/x64-routines, and each compare fixture one per
+\ relation; diff also writes a negative harness image whose first case expects
+\ a wrong answer. The manifest lists each file with its expected status;
+\ docs/bootstrap.md gives the peer's comparison.
 \
 \ Two fixtures have no image. The rows refuse BUILD-ADDRESSED with
 \ E-IR-VERIFY-OPTYPE: it takes its memory order as an argument, which a
@@ -31,6 +32,7 @@ require test/x86-64-peer-harness.f
 package X64EMIT-TEST
 private
 variable CALLEE                      \ the entry the wordcall site names
+TYPED-VARIABLE REL-OP HIR:opcode     \ the relation the compare sites stage
 
 : ROWS, ( n n NBACK:linkage -- ) {: in:n out:n l:NBACK:linkage :}
    CC in out l NBACK:DECLARE
@@ -65,8 +67,10 @@ variable CALLEE                      \ the entry the wordcall site names
 : SHL-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-SHL 2 1 NBACK:L-NONE ROWS, ;
 : SHR-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-SHR 2 1 NBACK:L-NONE ROWS, ;
 : NOT-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-NOT 1 1 NBACK:L-NONE ROWS, ;
-: CMPSET-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-CMPSET 2 1 NBACK:L-NONE ROWS, ;
-: CMPSETI-BODY ( IR-CTX:ctx -- )  HIR-MOD BUILD-CMPSETI 2 1 NBACK:L-NONE ROWS, ;
+: RELATION-BODY ( IR-CTX:ctx -- )
+   HIR-MOD REL-OP @ BUILD-RELATION 2 1 NBACK:L-NONE ROWS, ;
+: RELATIONI-BODY ( IR-CTX:ctx -- )
+   HIR-MOD REL-OP @ BUILD-RELATIONI 2 1 NBACK:L-NONE ROWS, ;
 : MOVI-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-MOVI 1 1 NBACK:L-NONE ROWS, ;
 : DADDR-BODY ( IR-CTX:ctx -- )
    HIR-MOD BUILD-DADDRESSED 1 1 NBACK:L-NONE ROWS, ;
@@ -92,8 +96,10 @@ public
 : SHL-ROUTINE ( -- )      WBND [: SHL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SHR-ROUTINE ( -- )      WBND [: SHR-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NOT-ROUTINE ( -- )      WBND [: NOT-BODY ;] IR-CTX:WITH-CONTEXT ;
-: CMPSET-ROUTINE ( -- )   WBND [: CMPSET-BODY ;] IR-CTX:WITH-CONTEXT ;
-: CMPSETI-ROUTINE ( -- )  WBND [: CMPSETI-BODY ;] IR-CTX:WITH-CONTEXT ;
+: RELATION-ROUTINE ( HIR:opcode -- )
+   REL-OP !  WBND [: RELATION-BODY ;] IR-CTX:WITH-CONTEXT ;
+: RELATIONI-ROUTINE ( HIR:opcode -- )
+   REL-OP !  WBND [: RELATIONI-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MOVI-ROUTINE ( -- )     WBND [: MOVI-BODY ;] IR-CTX:WITH-CONTEXT ;
 : DADDR-ROUTINE ( -- )    WBND [: DADDR-BODY ;] IR-CTX:WITH-CONTEXT ;
 : LOOP-ROUTINE ( -- )     WBND [: LOOP-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -229,24 +235,60 @@ create MANIFEST BUF:HDR-BYTES allot
    CLOSE, ENTRY, X64EMIT-TEST:NOT-ROUTINE
    s" not" false WRITE-IMAGE ;
 
-\ A true flag is all ones, as the ARM64 emitter's CSETM makes it.
-: CMPSET-IMAGE ( -- )
-   false OPEN,
-   5 2 0 CASE2,
-   2 5 -1 CASE2,
-   MIN-CELL MAX-CELL -1 CASE2,
-   -1 -1 0 CASE2,
-   CLOSE, ENTRY, X64EMIT-TEST:CMPSET-ROUTINE
-   s" cmpset" false WRITE-IMAGE ;
+\ Every relation the selector compares with, in both forms, expecting the flag
+\ Habu's own word for it answers. Each form is staged below the boundary, at it
+\ and above it - above by 2^32, which a 32-bit compare would call level - and at
+\ the ends of the signed order, MIN-CELL and MAX-CELL. Where the difference a
+\ compare takes overflows - MIN-CELL against MAX-CELL either way round, and
+\ MIN-CELL less 1000 - an ordering condition that reads the sign alone or the
+\ unsigned order answers wrong. A sixth case would run the entry past the
+\ harness's ROUTINE-OFF.
+TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
 
-\ `b a - 1000 <`.
-: CMPSETI-IMAGE ( -- )
+\ The flag the relation answers for `a b`: all ones for true.
+: ANSWER ( n n -- n ) ANSWER-KEY @ execute if -1 else 0 then ;
+
+: REL-CASE, ( n n -- ) {: a:n b:n :}  a b  a b ANSWER CASE2, ;
+
+\ `b a - 1000 rel`.
+: RELI-CASE, ( n n -- ) {: a:n b:n :}  a b  b a - 1000 ANSWER CASE2, ;
+
+: REL-IMAGE ( HIR:opcode ptr u8 n -- )
+   {: o:HIR:opcode name:ptr u:n :}
    false OPEN,
-   0 5000 0 CASE2,
-   10 500 -1 CASE2,
-   1000 0 -1 CASE2,
-   CLOSE, ENTRY, X64EMIT-TEST:CMPSETI-ROUTINE
-   s" cmpseti" false WRITE-IMAGE ;
+   2 5 REL-CASE,
+   5 5 REL-CASE,
+   4294967296 0 REL-CASE,
+   MIN-CELL MAX-CELL REL-CASE,
+   MAX-CELL MIN-CELL REL-CASE,
+   CLOSE, ENTRY, o X64EMIT-TEST:RELATION-ROUTINE
+   name u false WRITE-IMAGE ;
+
+: RELI-IMAGE ( HIR:opcode ptr u8 n -- )
+   {: o:HIR:opcode name:ptr u:n :}
+   false OPEN,
+   10 500 RELI-CASE,
+   24 1024 RELI-CASE,
+   0 4294968296 RELI-CASE,
+   0 MIN-CELL RELI-CASE,
+   0 MAX-CELL RELI-CASE,
+   CLOSE, ENTRY, o X64EMIT-TEST:RELATIONI-ROUTINE
+   name u false WRITE-IMAGE ;
+
+\ One relation's two images: the register form and the folded-immediate form.
+: REL-IMAGES ( ptr u8 n ptr u8 n HIR:opcode [ n n -- bool ] -- )
+   ANSWER-KEY !
+   {: reg:ptr regu:n imm:ptr immu:n o:HIR:opcode :}
+   o reg regu REL-IMAGE
+   o imm immu RELI-IMAGE ;
+
+: RELATION-IMAGES ( -- )
+   s" cmpset-lt" s" cmpseti-lt" HIR-OPCODE:LT    [: < ;]  REL-IMAGES
+   s" cmpset-le" s" cmpseti-le" HIR-OPCODE:LE    [: <= ;] REL-IMAGES
+   s" cmpset-gt" s" cmpseti-gt" HIR-OPCODE:GT    [: > ;]  REL-IMAGES
+   s" cmpset-ge" s" cmpseti-ge" HIR-OPCODE:GE    [: >= ;] REL-IMAGES
+   s" cmpset-eq" s" cmpseti-eq" HIR-OPCODE:EQUAL [: = ;]  REL-IMAGES
+   s" cmpset-ne" s" cmpseti-ne" HIR-OPCODE:NE    [: <> ;] REL-IMAGES ;
 
 : MOVI-IMAGE ( -- )
    false OPEN,
@@ -349,8 +391,7 @@ public
    SHL-IMAGE
    SHR-IMAGE
    NOT-IMAGE
-   CMPSET-IMAGE
-   CMPSETI-IMAGE
+   RELATION-IMAGES
    MOVI-IMAGE
    DADDR-IMAGE
    LOOP-IMAGE

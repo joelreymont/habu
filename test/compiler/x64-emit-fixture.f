@@ -402,25 +402,35 @@ create TXT
    HIR-OPCODE:INVERT a UNOP RET1
    CLOSE-FUN ;
 
-\ `: LEAF ( a b -- n ) < ;` - compare, set a byte, widen it, negate it to the
-\ all-ones flag: one dialect operation and four instructions, because the flags
-\ between them are a single architectural resource no value stands for.
-: BUILD-CMPSET ( -- )
+\ `: LEAF ( a b -- flag ) rel ;` for any of the six relations the selector
+\ compares with (select-x64.f COMPARE-COND).
+: BUILD-RELATION ( HIR:opcode -- )
+   {: o:HIR:opcode :}
    2 1 OPEN-FUN
    ARG+ {: a:IR-ID:ir-value-id :}
    ARG+ {: b:IR-ID:ir-value-id :}
-   HIR-OPCODE:LT a b BINOP RET1
+   o a b BINOP RET1
    CLOSE-FUN ;
 
-\ The same four instructions against a folded literal, again on the second
-\ argument so no instruction names rax.
-: BUILD-CMPSETI ( -- )
+\ `: LEAF ( a b -- flag ) swap - 1000 rel ;` - the relation against a literal
+\ the selector folds into the compare.
+: BUILD-RELATIONI ( HIR:opcode -- )
+   {: o:HIR:opcode :}
    2 1 OPEN-FUN
    ARG+ {: a:IR-ID:ir-value-id :}
    ARG+ {: b:IR-ID:ir-value-id :}
    HIR-OPCODE:SUB b a BINOP {: x:IR-ID:ir-value-id :}
-   HIR-OPCODE:LT x 1000 CONSTOP BINOP RET1
+   o x 1000 CONSTOP BINOP RET1
    CLOSE-FUN ;
+
+\ `: LEAF ( a b -- n ) < ;` - compare, set a byte, widen it, negate it to the
+\ all-ones flag: one dialect operation and four instructions, because the flags
+\ between them are a single architectural resource no value stands for.
+: BUILD-CMPSET ( -- )    HIR-OPCODE:LT BUILD-RELATION ;
+
+\ The same four instructions against a folded literal, again on the second
+\ argument so no instruction names rax.
+: BUILD-CMPSETI ( -- )   HIR-OPCODE:LT BUILD-RELATIONI ;
 
 \ A literal too wide for the immediate an ALU form carries is materialised, and
 \ on this machine that is ONE instruction whatever the cell holds.
