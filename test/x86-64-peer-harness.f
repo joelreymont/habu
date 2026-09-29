@@ -1,0 +1,200 @@
+\ x86-64-peer-harness.f - the executable an x86-64 peer runs around routines
+\ the real pass rows emitted. An image is a checking entry, the routines, and
+\ the one exit syscall, staged in this order:
+\
+\    OPEN,  cases  CLOSE,  [ callee  ALIGN, ]  ENTRY,  routine  WRITE-ELF
+\
+\ The entry calls the routine bound at ENTRY, once per case, and checks its
+\ answer, the machine and data stacks around the call, the registers a routine
+\ must keep, the OS seam and a linked label. The first failed check exits with
+\ its own status; an image whose checks all hold exits 0. Case checks exit
+\ FIRST-CASE upward in the order they are staged, below the harness's own
+\ statuses (31 and up). A negative image expects a wrong answer from its first
+\ case check, so it must exit FIRST-CASE.
+require lib/test.f
+require lib/byte-buffer.f
+require src/habu/fdio.f
+require src/arch/x86-64/icode.f
+require src/compiler/native/x64ir.f
+
+package X64HARNESS
+using X64ASM
+using X64CODE
+public
+
+$8000000000000000 constant MIN-CELL
+$7FFFFFFFFFFFFFFF constant MAX-CELL
+21 constant FIRST-CASE
+
+private
+
+1024 constant ROUTINE-OFF
+31 constant CASE-END                 \ where the harness's own statuses start
+512 constant SCRATCH-OFF             \ a reserved cell no data stack reaches
+\ The two labels every assertion and case reaches, made fresh for each image.
+variable EXIT-CELL
+variable ROUTINE-CELL
+variable CASE-NEXT                   \ the status the next case check exits with
+variable WRONG-AT                    \ the check a negative image fails, or 0
+
+: EXIT-LBL ( -- label ) EXIT-CELL @ >LABEL ;
+: ROUTINE-LBL ( -- label ) ROUTINE-CELL @ >LABEL ;
+
+\ These are the production image writers and OS seam over package X64CODE's
+\ byte stream. They load into this package because the x86-64 sys.f spells the
+\ host seam's syscall-number words, which must not become globals here.
+s" src/os/image-bytes.f" required
+s" src/os/linux-x86-64/elf.f" required
+s" src/os/linux-x86-64/sign.f" required
+s" src/habu/driver-io.f" required
+s" src/os/linux-x86-64/sys.f" required
+
+: IMM ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
+
+: PAD-TO ( n -- ) {: target:n :}
+   target ASM-LEN < if E-BUF-BOUNDS throw then
+   target ASM-LEN - 0 ?do ASM-SINK ENC-NOP loop ;
+
+\ MOV preserves the flags being tested. A mismatch branches to the one exit
+\ syscall with the assertion's nonzero status in edi.
+: FAIL-IF ( condition n -- ) {: cond:condition failure:n :}
+   RDI failure IMM
+   cond EXIT-LBL JCC, ;
+
+: ASSERT-EQ ( n -- ) C-NE swap FAIL-IF ;
+
+: STATUS ( -- n )
+   CASE-NEXT @ {: s:n :}
+   s CASE-END >= if E-BUF-BOUNDS throw then
+   s 1+ CASE-NEXT !
+   s ;
+
+\ Compare rax with what the next case check expects: one less in the check a
+\ negative image gets wrong.
+: EXPECT, ( n -- ) {: want:n :}
+   STATUS {: s:n :}
+   s WRONG-AT @ = if want 1- else want then {: v:n :}
+   RCX v IMM RAX RCX ASM-SINK ENC-CMP-RR s ASSERT-EQ ;
+
+\ The data stack starts at rbp and grows up; a case stages argument `idx` in
+\ cell `idx` of it.
+: ARG, ( n n -- ) {: v:n idx:n :}
+   RAX v IMM RAX R12 idx 8 * MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+\ Move the data-stack pointer past the `in` staged arguments, call the routine
+\ and check its one answer, that the machine stack came back balanced, and that
+\ the data stack holds that answer and nothing else.
+: INVOKE, ( n n -- ) {: in:n want:n :}
+   R12 in 8 * >IMM8 ASM-SINK ENC-ADD-RI8
+   ROUTINE-LBL CALL,
+   RAX R12 -8 MEM-OFF ASM-SINK ENC-MOV-RM
+   want EXPECT,
+   RSP RBP ASM-SINK ENC-CMP-RR 31 ASSERT-EQ
+   RAX RBP ASM-SINK ENC-MOV-RR RAX 8 >IMM8 ASM-SINK ENC-ADD-RI8
+   R12 RAX ASM-SINK ENC-CMP-RR 32 ASSERT-EQ ;
+
+: RESERVED, ( r64 n n -- ) {: reg:r64 value:n failure:n :}
+   RAX value IMM reg RAX ASM-SINK ENC-CMP-RR failure ASSERT-EQ ;
+
+\ A movabs label site holds the address the kernel loaded its label at: lea with
+\ a zero rip displacement reads the address of the instruction after it, and the
+\ label is bound there.
+: LINKED-ADDRESS, ( -- )
+   LBL {: at:label :}
+   RCX 0 MEM-RIP ASM-SINK ENC-LEA
+   at LBL,
+   RAX at MOVABS,
+   RAX RCX ASM-SINK ENC-CMP-RR 51 ASSERT-EQ ;
+
+: EXIT, ( -- )
+   EXIT-LBL LBL,
+   0 >R32 NR-EXIT >IMM32 ASM-SINK ENC-MOV32-RI32
+   ASM-SINK ENC-SYSCALL ;
+
+public
+
+\ The entry's head: reserve the region the stacks and the scratch cell live in,
+\ start the data stack at its base, and load the registers a routine must keep.
+: OPEN, ( bool -- ) {: negative:bool :}
+   ASM-RESET
+   LBL EXIT-CELL !  LBL ROUTINE-CELL !
+   FIRST-CASE CASE-NEXT !
+   negative if FIRST-CASE else 0 then WRONG-AT !
+   RSP 1024 >IMM32 ASM-SINK ENC-SUB-RI32
+   RBP RSP ASM-SINK ENC-MOV-RR
+   RBX $22334455 IMM R13 $33445566 IMM
+   R14 $44556677 IMM R15 $55667788 IMM ;
+
+\ One cell in and one out.
+: CASE1, ( n n -- ) {: a:n want:n :}
+   R12 RBP ASM-SINK ENC-MOV-RR
+   a 0 ARG,
+   1 want INVOKE, ;
+
+\ Two cells in and one out.
+: CASE2, ( n n n -- ) {: a:n b:n want:n :}
+   R12 RBP ASM-SINK ENC-MOV-RR
+   a 0 ARG,  b 1 ARG,
+   2 want INVOKE, ;
+
+\ One cell in, the address of the scratch cell once it holds `content`, and one
+\ out; then a second check, of what the cell holds after the call.
+: CELL-CASE, ( n n n -- ) {: content:n want:n after:n :}
+   RAX content IMM RAX RBP SCRATCH-OFF MEM-OFF ASM-SINK ENC-MOV-MR
+   R12 RBP ASM-SINK ENC-MOV-RR
+   RAX RBP SCRATCH-OFF MEM-OFF ASM-SINK ENC-LEA
+   RAX R12 MEM-AT ASM-SINK ENC-MOV-MR
+   1 want INVOKE,
+   RAX RBP SCRATCH-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   after EXPECT, ;
+
+\ The entry's tail: exercise the real OS seam's success/error carry polarity,
+\ not a byte model; check the kept registers and a linked label; then exit 0.
+\ The routines start at ROUTINE-OFF.
+: CLOSE, ( -- )
+   NR-GETPID SYS, C-B 41 FAIL-IF
+   RAX 0 >IMM8 ASM-SINK ENC-CMP-RI8 C-LE 42 FAIL-IF
+   RDI -1 IMM NR-CLOSE SYS, C-AE 43 FAIL-IF
+   RAX -9 >IMM8 ASM-SINK ENC-CMP-RI8 44 ASSERT-EQ
+   RBX $22334455 33 RESERVED,
+   R13 $33445566 34 RESERVED,
+   R14 $44556677 35 RESERVED,
+   R15 $55667788 36 RESERVED,
+   LINKED-ADDRESS,
+   RDI 0 IMM
+   EXIT-LBL JMP,
+   ROUTINE-OFF PAD-TO ;
+
+\ The address the next routine appended lands at, so the one it is emitted at.
+: POSITION ( -- n ) VMBASE CODE-OFF + ASM-LEN + ;
+
+\ Pad to the unit a code region hands slots out in, where a second routine can
+\ be placed.
+: ALIGN, ( -- )
+   ASM-LEN X64IR:SP-ALIGN + 1- {: end:n :}
+   end end X64IR:SP-ALIGN mod - PAD-TO ;
+
+\ The routine every case calls starts here.
+: ENTRY, ( -- ) ROUTINE-LBL LBL, ;
+
+: APPEND-ROUTINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   ASM-LEN {: at:n :}
+   u 0 > TTRUE
+   a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
+   s" the executable carries the compiler's exact routine bytes" T-LABEL
+   CODE at + u a u T$= ;
+
+: WRITE-ELF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   EXIT,
+   ASM-CODE BUILD-IMAGE
+   s" x64-peer" SET-SIGID CODESIG2
+   path pathu DRV-WRITE-IMAGE
+   s" ELF names x86-64 and enters this fixture's code" T-LABEL
+   $12 M-OFF M-LE32@ $FFFF and 62 T=
+   $18 M-OFF M-LE32@ VMBASE CODE-OFF + T=
+   $1C M-OFF M-LE32@ 0 T= ;
+
+\ The sink every image is staged in, held across the images of one run.
+: INIT ( -- ) ASM-SINK CODE-CAP-BYTES BUF:N>BLEN BUF:INIT ;
+: DISPOSE ( -- ) ASM-SINK BUF:DISPOSE ;
+;package

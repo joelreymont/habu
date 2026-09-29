@@ -153,6 +153,30 @@ and carry flag, and that a linked `MOVABS` label site holds the address the
 kernel loaded its label at. Building them on arm64 alone does not prove those
 runtime properties, and neither executable is a complete Habu engine.
 
+The `x86-64-peer-routines` gate row does the same for every HIR fixture of
+`test/compiler/x64-emit.f` that the rows emit and that returns; the header of
+`test/x86-64-peer-routines.f` names the fixtures left out and why:
+
+```sh
+HB_TMP="$TMP" "$HOST" --load test/x86-64-peer-routines.f
+```
+
+It writes `$TMP/x64-routines`: one executable per fixture, a `-negative` twin
+whose first case expects a wrong answer, and a `manifest` of `<file> <status>`
+lines. Copy the directory to the peer and, inside it, run every file and
+compare its status with the manifest:
+
+```sh
+bad=0; while read -r file want; do timeout 10 ./"$file" </dev/null; got=$?
+echo "$file want $want got $got"; [ "$got" = "$want" ] || bad=1
+done < manifest; [ "$bad" = 0 ]
+```
+
+The command exits 0 only when every image exited with its listed status: 0
+for a fixture, 21 for its twin. Any other status names the failed check, as
+`test/x86-64-peer-harness.f` numbers them; 124 is `timeout` stopping an image
+that did not exit.
+
 `tools/bootstrap.sh` does the whole recovery and installs exactly one file:
 `bin/hb`.
 

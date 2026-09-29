@@ -1336,6 +1336,12 @@ SUITE x86-64-peer-image
    test/x86-64-peer-image.f
 ;SUITE
 
+\ Every HIR fixture the x86-64 rows emit, built the same way with a negative twin
+\ each and the manifest of statuses the peer must see (docs/bootstrap.md).
+SUITE x86-64-peer-routines
+   test/x86-64-peer-routines.f
+;SUITE
+
 SUITE xml-byte-edits
    lib/xml-test.f
    lib/byte-edit-test.f
