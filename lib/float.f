@@ -92,16 +92,6 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
    FL-SCALE @ FL-ADD-EXP
    FL-MANT @ s>f swap FL-SCALE-F ;
 
-\ ---- digit string -> double -----------------------------------------------
-\ Unsigned run of decimal digits. Empty is valid and yields 0.0; any non-digit
-\ byte is rejected.
-: FL-DIGITS>F ( ptr u8 n -- option<r> ) {: a:ptr u:n :}   \ SOME digit-run value (empty -> SOME 0.0), NONE on a non-digit
-   u 0= if 0.0 OPTION:SOME exit then
-   a u STR-DIGITS? 0= if OPTION:NONE exit then
-   0 FL-RESET-SIG
-   a u FL-KEEP-DIGITS
-   0 FL-SIG-VALUE OPTION:SOME ;
-
 \ ---- field splitting ------------------------------------------------------
 \ This file is one of the modules tools/build-fixpoint.f assembles into the
 \ engine's own stage source, and that source is certified against the core
@@ -152,10 +142,6 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
    a ilen FL-KEEP-DIGITS
    fa flen FL-KEEP-DIGITS
    exponent FL-SIG-VALUE OPTION:SOME ;
-
-
-: FL-SIG ( ptr u8 n -- option<r> )
-   0 FL-SCALED-SIG ;
 
 \ ---- exponent -------------------------------------------------------------
 \ FL-EXP-AT parses the exponent text after position epos, records it, and
