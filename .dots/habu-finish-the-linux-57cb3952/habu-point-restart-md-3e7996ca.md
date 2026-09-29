@@ -1,9 +1,11 @@
 ---
 title: Point RESTART.md at master and INTEL.md
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:29.017350+03:00"
+closed-at: "2026-09-29T13:40:31.256316+03:00"
+close-reason: RESTART.md points at master and INTEL.md
 ---
 
 Problem: `RESTART.md` names `hazel/integration` and `cedar` as accepted heads.

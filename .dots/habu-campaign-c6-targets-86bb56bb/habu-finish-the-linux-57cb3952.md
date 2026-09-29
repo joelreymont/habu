@@ -12,7 +12,6 @@ blocks:
   - habu-cross-build-the-d25a959d
   - habu-port-the-ffi-676f745d
   - habu-gate-and-self-7afc5ff3
-  - habu-point-restart-md-3e7996ca
 ---
 
 Mission: a tier-1-only Linux x86-64 engine. A small hand-written kernel per target binds the `src/habu/prims.f` names; the outer interpreter, definers, packages, source loading and a `MAIN` entry move into checked Habu, are captured into both the ARM64 and the x86-64 product, and are entered through `ENGINE-MAIN:XT-CELL`, so there is no x86 twin of `habu2.f` or `jit.f`. The x86 engine is cross-built from spark by dual emission: one HIR per definition, lowered and emitted twice, arm64 into the live region and x86 into a shadow keyed by record that the capture carries; a host-side Habu linker writes the x86 image with fixed segments at write time (no seed relocation at boot or snapshot restore on x86). The cross-built engine then rebuilds itself on the ThinkPad to a byte fixpoint, the release artefact. Invariants: no cold route on x86 (`tools/native-build.f` is its only build route); every code-bearing record comes from the compiler; the capture reads recorded sites; the region and DATA are fixed `PT_LOAD`s on x86; `MAIN` is a DATA cell the kernel calls. The ARM64 product keeps tier 0 through the B1 hook (I6, chosen); tier-1-only products on both arches (B2) is a follow-on opened with G4b's numbers.

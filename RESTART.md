@@ -3,13 +3,15 @@
 Start with [AGENTS.md](AGENTS.md) and [the Forth card](docs/forth-card.md).
 This file points to current state; it does not keep a second release snapshot.
 
-The accepted source head is the `hazel/integration` bookmark, also named
-`cedar/compiler-integration`. Read it without snapshotting a shared working copy:
+The accepted source head is `master`. Read it without snapshotting a shared
+working copy:
 
 ```sh
-jj --ignore-working-copy log -r hazel/integration --no-graph
+jj --ignore-working-copy log -r master@origin --no-graph
 dot ready
 ```
+
+The Linux x86-64 backend lane starts at [INTEL.md](INTEL.md).
 
 A dot's original report may predate its fix. Check its named code and fixtures
 against the current head before implementing it or proposing closure. Coordinate
