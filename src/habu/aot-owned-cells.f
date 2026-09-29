@@ -259,7 +259,7 @@ private
 \ below the window. src/os/env-base.f's own TMP-PATH cursors and buffer (TPB, TPP,
 \ TPQ, TPS, TPU) are the nearest miss: same file, same transient character, no
 \ claim - so a stripped program calling TMP-PATH still gets the
-\ outside-the-restored-span refusal, and tools/hb-build-test.f
+\ outside-the-restored-span refusal, and tools/hb-build-stripped-test.f
 \ HBT-STRIPPED-UNOWNED-CELL pins that. TPB is a `create` table like the carried
 \ ones and is not carried either: a table travels because it is named here.
 : LIST ( -- )

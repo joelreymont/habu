@@ -323,7 +323,7 @@ Habu word allocates from the break, every allocation `lib/memory.f` makes being
 an `mmap`. It is also where ordinary data lands — arm64 randomizes the break
 over a gigabyte above the executable's end, so the band sits somewhere in
 `[0x7a4000,0x407a4000)`, moves with every build, and swallows 32-bit-shaped
-values: one build of the hb-build fixture (`tools/hb-build-test.f` and the two
+values: one build of the hb-build fixture (`tools/hb-build-test.f` and the
 stripped rows beside it) was refused at an undeclared cell holding
 `0x34B12C35` and the next build of the same tree linked it. Two sites
 ask: `aot-lib.f AOT-DATA-TEXTPTR-CHECK` for an undeclared window

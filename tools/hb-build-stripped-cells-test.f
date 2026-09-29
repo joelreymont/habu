@@ -1,10 +1,7 @@
 \ hb-build-stripped-cells-test.f - checked fixture for tools/hb-build-lib.f:
 \ the DATA cells a stripped image carries - the mapped and declared cells, the
 \ late buffer, the uncarried table, the cached claims - and the CLI's large
-\ source. The rest of the stripped window is tools/hb-build-stripped-test.f
-\ and the build, CLI and AOT groups are tools/hb-build-test.f; each is a gate
-\ row of its own, because one row running all three took 353-355 s of the
-\ gate's 360 s child timeout.
+\ source. tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-cells-test.f
 
 require tools/hb-build-test-lib.f

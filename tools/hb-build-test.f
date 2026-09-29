@@ -1,8 +1,6 @@
 \ hb-build-test.f - checked fixture for tools/hb-build-lib.f: the build, CLI
-\ and AOT groups. The stripped-window groups run from
-\ tools/hb-build-stripped-test.f and tools/hb-build-stripped-cells-test.f, on
-\ gate rows of their own, because one row running all three took 353-355 s of
-\ the gate's 360 s child timeout.
+\ and AOT groups. The stripped-window groups run from the other row files
+\ tools/hb-build-test-lib.f lists, each a gate row of its own.
 \ Run: bin/hb --load tools/hb-build-test.f
 
 require tools/hb-build-test-lib.f
@@ -10,7 +8,7 @@ require tools/hb-build-test-lib.f
 using BUILD-FIXPOINT                     \ the build tmp root and engine override
 
 \ The shared fixture's words are private words of the library's package, so
-\ this half reopens it the way tools/hb-build-test-lib.f does.
+\ this row reopens it the way tools/hb-build-test-lib.f does.
 package HB-BUILD-CLI
 
 64 constant HBT-KEY-U

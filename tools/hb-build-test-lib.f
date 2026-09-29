@@ -1,8 +1,12 @@
-\ hb-build-test-lib.f - the fixture the three hb-build gate rows share.
-\ Loaded by tools/hb-build-test.f, tools/hb-build-stripped-test.f and
-\ tools/hb-build-stripped-cells-test.f: the scratch tree, the fixture sources,
-\ HBT-PREPARE and the helpers that run hb-build. It defines no MAIN; each row
-\ file runs the groups it owns.
+\ hb-build-test-lib.f - the fixture the hb-build gate rows share: the scratch
+\ tree, the fixture sources, HBT-PREPARE and the helpers that run hb-build. It
+\ defines no MAIN; each row file loads it and runs the groups it owns:
+\   tools/hb-build-test.f                     build, CLI and AOT
+\   tools/hb-build-stripped-test.f            library state, engine cells, ptr mark
+\   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path
+\   tools/hb-build-stripped-lifecycle-test.f  lifecycle registry, number parsing
+\   tools/hb-build-stripped-cells-test.f      carried DATA cells, large source
+\ test/gate-stdlib-cases.f registers each file as a row of its own and says why.
 
 require lib/errors.f
 require lib/string.f

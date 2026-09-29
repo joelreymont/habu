@@ -80,9 +80,9 @@ variable LTEXT
 \ member scans this replaced were 2.4 s of that maker run (45.2 s before) and
 \ 0.5 s of the 13,504-member half of it: four times the cost for twice the
 \ members is the quadratic term, and it is the term that is gone.
-\ tools/hb-build-test.f HBT-STRIPPED-CHAIN runs the converted startup end to end
-\ at 1,104 members, and Tender's standalone build is the proof at the scale that
-\ needed it.
+\ tools/hb-build-stripped-chain-test.f HBT-STRIPPED-CHAIN runs the converted
+\ startup end to end at 1,104 members, and Tender's standalone build is the
+\ proof at the scale that needed it.
 : TEXT-ADR, ( n n label -- )                      \ ( rd rt label -- ) rd = runtime address of label
    {: rd:n rt:n l:label :}
    rd rt = IF s" aot: TEXT-ADR, destination and scratch are one register" 74 die THEN

@@ -11,14 +11,15 @@ SUITE build-fixpoint-fixtures
    tools/build-fixpoint-test.f
 ;SUITE
 
-\ ONE FIXTURE, THREE ROWS. tools/hb-build-test.f used to run the stripped-image
-\ groups as well, and the row took 353-355 s of the 360 s SUITE-TIMEOUT-MS slot
-\ its child gets: three of five full runs reported kind=TIMEOUT-UNDER-LOAD for
-\ it while other suites ran beside it, every other row green. A row keeps at
-\ least twice its measured time in headroom - under half of SUITE-TIMEOUT-MS -
-\ and the seconds below were measured one row at a time on this engine. Move a
-\ group between the row files rather than letting one row grow past that.
-\ 130-133 s
+\ A ROW STAYS UNDER HALF ITS DEADLINE IN THE POOL. tools/hb-build-test.f once
+\ ran every hb-build group in one row, and that row took 353-355 s of the 360 s
+\ SUITE-TIMEOUT-MS slot its child gets: three of five full runs reported
+\ kind=TIMEOUT-UNDER-LOAD for it while other suites ran beside it. A row is
+\ measured in the pool, by its PASS line in the gate log, and stays under half
+\ of SUITE-TIMEOUT-MS (180 s) there: in a full pool a row runs 2-3x slower than
+\ alone, so a solo time proves nothing. Move a fixture group into a new row
+\ file - the shared fixture stays in the family's *-lib.f - rather than letting
+\ one row grow past that.
 SUITE hb-build-fixtures
    tools/hb-build-test.f
    lib/build-cache-test.f
@@ -26,12 +27,18 @@ SUITE hb-build-fixtures
    tools/hb-build-direct-lints-test.f
 ;SUITE
 
-\ 116-117 s
 SUITE hb-build-stripped
    tools/hb-build-stripped-test.f
 ;SUITE
 
-\ 108-118 s
+SUITE hb-build-stripped-chain
+   tools/hb-build-stripped-chain-test.f
+;SUITE
+
+SUITE hb-build-stripped-lifecycle
+   tools/hb-build-stripped-lifecycle-test.f
+;SUITE
+
 SUITE hb-build-stripped-cells
    tools/hb-build-stripped-cells-test.f
 ;SUITE
