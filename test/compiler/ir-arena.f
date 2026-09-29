@@ -192,6 +192,23 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 : XO-PEEK ( -- )
    BND [: XO-PEEK-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+: XO-TRY ( IR-ARENA:arena IR-ARENA:cell-id -- IR-ARENA:arena IR-ARENA:cell-id )
+   2dup IR-ARENA:PEEK drop ;
+
+: XO-LIVE-BODY ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   c 8 IR-ARENA:NEW {: b:IR-ARENA:arena :}
+   c a 77 IR-ARENA:PUSH {: x:IR-ARENA:cell-id :}
+   b x [: XO-TRY ;] catch {: rc:n :} 2drop
+   rc E-IR-ARENA-OWNER T=
+   a x IR-ARENA:PEEK 77 T=
+   a IR-ARENA:USED 1 T=
+   b IR-ARENA:USED 0 T= ;
+
+: XO-LIVE-CASE ( -- )
+   s" foreign-owner rejection leaves both live arenas unchanged" T-LABEL
+   BND [: XO-LIVE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : XO-CTX-INNER ( IR-ARENA:arena IR-CTX:ctx -- )
    swap 5 IR-ARENA:PUSH drop ;
 
@@ -206,6 +223,7 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 : XO-CASES ( -- )
    s" an index minted by arena A rejects on arena B" T-LABEL
    [: XO-PEEK ;] E-IR-ARENA-OWNER TTHROWSQ
+   XO-LIVE-CASE
    s" a foreign live context rejects as the growth allocator" T-LABEL
    [: XO-CTX ;] E-IR-ARENA-OWNER TTHROWSQ ;
 

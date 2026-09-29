@@ -90,6 +90,22 @@ create CBUF 64 allot
    BND [: IN-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 3 T= TTRUE 0 T= 1 T= 0 T= ;
 
+: ORDER-BODY ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c 3 8 TAB-NEW
+   {: keya:IR-ID:ir-module-key a:IR-ARENA:arena ra:IR-ARENA:arena :}
+   c a ra keya I64 IR-ID:TYPE-LOCAL 0 T=
+   c a ra keya I32 IR-ID:TYPE-LOCAL 1 T=
+   c 3 8 TAB-NEW
+   {: keyb:IR-ID:ir-module-key b:IR-ARENA:arena rb:IR-ARENA:arena :}
+   c b rb keyb I32 IR-ID:TYPE-LOCAL 0 T=
+   c b rb keyb I64 IR-ID:TYPE-LOCAL 1 T=
+   c a ra keya I32 IR-ID:TYPE-LOCAL 1 T=
+   c b rb keyb I32 IR-ID:TYPE-LOCAL 0 T= ;
+
+: ORDER-CASE ( -- )
+   s" type ordinals follow constructor order in either table" T-LABEL
+   BND [: ORDER-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 \ ---- pointer interning across constructors -----------------------------------
 : PT-BODY ( IR-CTX:ctx -- n bool n n )
    {: c:IR-CTX:ctx :}
@@ -240,6 +256,27 @@ create CBUF 64 allot
 
 : FWD-RUN ( -- )
    BND [: FWD-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: REF-TRY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-type-id -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-type-id )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-type-id :}
+   c a r key IR--TYPE-SPACE:GENERIC id IR-TYPE:POINTER drop
+   c a r key id ;
+
+: REF-COUNT-BODY ( n IR-CTX:ctx -- ) {: count:n c:IR-CTX:ctx :}
+   c 8 8 TAB-NEW
+   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   count 0 <> if c a r key I64 drop then
+   key count IR-ID:PACK-TYPE {: ghost:IR-ID:ir-type-id :}
+   c a r key ghost [: REF-TRY ;] catch {: rc:n :}
+   2drop 2drop drop
+   rc E-IR-TYPE-BOUND T=
+   r IR-TYPE:TYPES count T= ;
+
+: REF-COUNT-CASES ( -- )
+   s" a forward reference leaves an empty type table" T-LABEL
+   0 BND [: REF-COUNT-BODY ;] IR-CTX:WITH-CONTEXT
+   s" a self reference leaves the existing type untouched" T-LABEL
+   1 BND [: REF-COUNT-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : XM-PTEE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -886,6 +923,8 @@ public
 
 : RUN ( -- )
    T-RESET
+   REF-COUNT-CASES
+   ORDER-CASE
    EMBEDDED
    BND [: HARNESS-BODY ;] IR-CTX:WITH-CONTEXT
    GROW-CASE

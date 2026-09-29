@@ -556,6 +556,63 @@ private
    [: S-FUN-OPEN-BLK NEG-RUN ;] E-IR-FUN-STAGE TTHROWSQ
    CLEAR-STAGE ;
 
+: WINDOW-TRY ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key sa:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena qr:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   c key sa v r qr fr br BLK-CLOSE drop
+   c key sa v r qr fr br ;
+
+: WINDOW-STEP ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- n )
+   [: WINDOW-TRY ;] catch {: rc:n :}
+   2drop 2drop 2drop 2drop rc ;
+
+: TERM-COUNT-BODY ( n IR-CTX:ctx -- ) {: kind:n c:IR-CTX:ctx :}
+   c 8 8 32 RIG
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   c key sp sr br N-MAIN FUN-OPEN
+   c tp tr key L-DEF V-HIDDEN C-HABU FUN-DECL
+   r IR-FUN:BEGIN-BLOCK
+   kind S-NOTERM = if c key sp sr tp tr ar sa qr p v r K-CONST OP+ drop then
+   kind S-MIDTERM = if
+      c key sp sr tp tr ar sa qr p v r K-RET OP+ drop
+      c key sp sr tp tr ar sa qr p v r K-CONST OP+ drop
+   then
+   c key sa v r qr fr br WINDOW-STEP E-IR-FUN-TERM T=
+   br IR-FUN:BLOCKS 0 T=
+   r IR-OP:OPS
+   kind S-NOTERM = if 1 else kind S-MIDTERM = if 2 else 0 then then T=
+   IR-FUN:ABANDON-FUN ;
+
+: TERM-COUNT-CASES ( -- )
+   s" an empty rejected block leaves no block or operation" T-LABEL
+   S-NOOPS BND [: TERM-COUNT-BODY ;] IR-CTX:WITH-CONTEXT
+   s" a missing terminator leaves its operation but no block" T-LABEL
+   S-NOTERM BND [: TERM-COUNT-BODY ;] IR-CTX:WITH-CONTEXT
+   s" an early terminator leaves two operations but no block" T-LABEL
+   S-MIDTERM BND [: TERM-COUNT-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: WINDOW-BODY ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c 8 8 32 RIG
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   c key sp sr br N-MAIN FUN-OPEN
+   c tp tr key L-DEF V-HIDDEN C-HABU FUN-DECL
+   r IR-FUN:BEGIN-BLOCK
+   c key sp sr tp tr ar sa qr p v r K-RET OP+ drop
+   c key sa v r qr fr br BLK-CLOSE drop
+   c key sp sr tp tr ar sa qr p v r K-CONST OP+ drop
+   r IR-FUN:BEGIN-BLOCK
+   c key sp sr tp tr ar sa qr p v r K-RET OP+ drop
+   c key sa v r qr fr br WINDOW-STEP E-IR-FUN-WINDOW T=
+   r IR-FUN:BEGIN-BLOCK
+   c key sp sr tp tr ar sa qr p v r K-RET OP+ drop
+   c key sa v r qr fr br WINDOW-STEP E-IR-FUN-WINDOW T=
+   br IR-FUN:BLOCKS 1 T=
+   r IR-OP:OPS 4 T=
+   IR-FUN:ABANDON-FUN ;
+
+: WINDOW-CASE ( -- )
+   s" a stray operation keeps later blocks outside the function window" T-LABEL
+   BND [: WINDOW-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : STAGE-CASES ( -- )
    s" a block ended with no function open rejects" T-LABEL
    [: S-BLK-NO-FUN NEG-RUN ;] E-IR-FUN-STAGE TTHROWSQ
@@ -1192,6 +1249,8 @@ public
 
 : RUN ( -- )
    T-RESET
+   TERM-COUNT-CASES
+   WINDOW-CASE
    READ-CASE
    BLOCK-CASE
    ARGVAL-CASE

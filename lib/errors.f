@@ -450,24 +450,6 @@ public
 -6705 constant E-CID-CONST    \ a named identity constant is missing, duplicated, or not a literal in that source
 -6708 constant E-CID-REPLAY   \ a require replay handed back a module identity the allocator had already issued
 
-\ Compiler interning schema checks (package COMPILER-INTERN-PROOF): -6800..-6819.
--6800 constant E-CIN-FIRST
--6819 constant E-CIN-LAST
--6800 constant E-CIN-ROW      \ a shared interning vector index or table slot is outside its declared table
--6801 constant E-CIN-STRUCT   \ a frozen interner structure - a compared-field list, a check-before-write ordering, or a reference guard - is not what the source carries
-
-\ Compiler structure schema checks (package COMPILER-STRUCT-PROOF): -6820..-6839.
--6820 constant E-CIS-FIRST
--6839 constant E-CIS-LAST
--6820 constant E-CIS-ROW      \ a shared structure vector index or table slot is outside its declared table
--6821 constant E-CIS-STRUCT   \ a frozen structure guard - the strictly-below operand rule, a window tiling check, a call-closed guard row, or the derived terminator field - is not what the source carries
-
-\ Compiler storage and lifetime checks (package COMPILER-STORE-PROOF): -6840..-6859.
--6840 constant E-CST-FIRST
--6859 constant E-CST-LAST
--6840 constant E-CST-ROW      \ a shared storage vector index or table slot is outside its declared table
--6841 constant E-CST-STRUCT   \ a frozen storage structure - a pinned capacity constant, a check-before-write ordering, or a lifetime guard body - is not what the source carries
-
 \ Checker behavior and schema checks (package CHECKER-MODEL-PROOF): -6860..-6879.
 -6860 constant E-CMP-FIRST
 -6879 constant E-CMP-LAST

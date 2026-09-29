@@ -271,19 +271,7 @@ SUITE compiler-ir-id-manifest
    test/compiler/ir-id-manifest.f
 ;SUITE
 
-SUITE compiler-ir-intern-manifest
-   test/compiler/ir-intern-manifest.f
-;SUITE
-
 \ These manifests execute the native schema and case checks without a prover.
-SUITE compiler-ir-structure-manifest
-   test/compiler/ir-structure-manifest.f
-;SUITE
-
-SUITE compiler-ir-storage-manifest
-   test/compiler/ir-storage-manifest.f
-;SUITE
-
 SUITE compiler-checker-model-manifest
    test/compiler/checker-model-manifest.f
 ;SUITE

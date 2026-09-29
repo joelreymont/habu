@@ -372,12 +372,8 @@ public
 package IR-ID-AUDIT
 private
 
-variable PUBLIC-HITS
-
 26 constant RAW#
-42 constant PUBLIC#
 13 constant FAMILY#
-9 constant KIND#
 
 : KIND$ ( n -- ptr u8 n )
    case
@@ -410,35 +406,6 @@ variable PUBLIC-HITS
       12 of s" ir-count" endof
       E-TBL-BOUNDS throw
    endcase ;
-
-: KIND-API$ ( n n -- ptr u8 n ) {: kind:n form:n :}
-   SB-RESET
-   form
-   case
-      0 of s" PACK-" SB-APPEND kind KIND$ SB-APPEND endof
-      1 of kind KIND$ SB-APPEND s" -OWNER" SB-APPEND endof
-      2 of kind KIND$ SB-APPEND s" -LOCAL" SB-APPEND endof
-      3 of kind KIND$ SB-APPEND s" -CHECK" SB-APPEND endof
-      E-TBL-BOUNDS throw
-   endcase
-   SB$ ;
-
-: PUBLIC$ ( n -- ptr u8 n ) {: k:n :}
-   k 6 < if
-      k
-      case
-         0 of s" NEW-MODULE" endof
-         1 of s" MODULE-SAME?" endof
-         2 of s" COUNT" endof
-         3 of s" COUNT-N" endof
-         4 of s" POOL-OFF" endof
-         5 of s" POOL-OFF-N" endof
-         E-TBL-BOUNDS throw
-      endcase
-      exit
-   then
-   k 6 - {: api:n :}
-   api 4 / api 4 mod KIND-API$ ;
 
 : KIND-RAW$ ( n n -- ptr u8 n ) {: kind:n form:n :}
    SB-RESET
@@ -476,21 +443,6 @@ variable PUBLIC-HITS
    a u ns XREF-LEN XREF-FIND-WL XREF-FOUND? TTRUE ;
 
 
-: PUBLIC-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u AUTH-NS XREF-START XREF-FIND-WL XREF-FOUND? TTRUE ;
-
-
-: PUBLIC-SURFACE ( -- )
-   AUTH-NS XREF-START {: pub:n :}
-   0 PUBLIC-HITS !
-   0 begin dup ndict@ < while
-      dup XREF-REC XREF-WORDLIST pub = if 1 PUBLIC-HITS +! then
-      1+
-   repeat drop
-   PUBLIC-HITS @ PUBLIC# T=
-   PUBLIC# 0 ?do i PUBLIC$ PUBLIC-ROW loop
-   s" SERIAL-NEXT" pub XREF-FIND-WL XREF-FOUND? TFALSE ;
-
 \ Read the public metadata surface; checker lookup helpers are private, so the
 \ family's package name comes through a trusted wrapper of the sealed accessor.
 TRUSTED: FAMILY-PKG$ ( n -- ptr u8 n ) TFAM:TFAM-PKG$ ;
@@ -512,8 +464,8 @@ TRUSTED: FAMILY-PKG$ ( n -- ptr u8 n ) TFAM:TFAM-PKG$ ;
 
 
 : DICTIONARY-OWNERSHIP ( -- )
-   KIND# 2 * 8 + RAW# T=
    RAW# 0 ?do i RAW$ RAW-ROW loop
+   s" SERIAL-NEXT" AUTH-NS XREF-START XREF-FIND-WL XREF-FOUND? TFALSE
    s" IR-RAW" XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? TFALSE ;
 
 public
@@ -521,7 +473,6 @@ public
 : RUN ( -- )
    T-RESET
    FAMILY-SURFACE
-   PUBLIC-SURFACE
    DICTIONARY-OWNERSHIP
    T-REPORT ;
 

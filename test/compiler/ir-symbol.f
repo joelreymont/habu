@@ -63,6 +63,22 @@ create CBUF 32 allot
    BND [: DUP-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 3 T= 1 T= 0 T= 1 T= 0 T= ;
 
+: ORDER-BODY ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c 2 32 TAB-NEW
+   {: keya:IR-ID:ir-module-key a:IR-ARENA:arena ra:IR-ARENA:arena :}
+   c a ra keya s" main" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 0 T=
+   c a ra keya s" helper" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 1 T=
+   c 2 32 TAB-NEW
+   {: keyb:IR-ID:ir-module-key b:IR-ARENA:arena rb:IR-ARENA:arena :}
+   c b rb keyb s" helper" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 0 T=
+   c b rb keyb s" main" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 1 T=
+   c a ra keya s" main" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 0 T=
+   c b rb keyb s" main" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 1 T= ;
+
+: ORDER-CASE ( -- )
+   s" symbol ordinals follow insertion order in either table" T-LABEL
+   BND [: ORDER-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 \ ---- byte fidelity across cell boundaries ------------------------------------
 : BY-BODY ( IR-CTX:ctx -- bool n bool bool bool bool bool bool bool n n )
    {: c:IR-CTX:ctx :}
@@ -1023,6 +1039,7 @@ public
 
 : RUN ( -- )
    T-RESET
+   ORDER-CASE
    IDS-CASE
    CLONE-REFUSE-CASE
    CLONE-EXACT-CASE

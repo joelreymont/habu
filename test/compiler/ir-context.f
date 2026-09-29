@@ -128,6 +128,15 @@ $80000 constant TMAP-BYTES           \ independent allocation probe size
    dup IR-CTX:NEW-MODULE 2drop
    IR-CTX:NEW-MODULE 2drop ;
 
+: EX-REJECT ( IR-CTX:ctx -- IR-CTX:ctx )
+   dup IR-CTX:NEW-MODULE 2drop ;
+
+: EX-REJECT-BODY ( IR-CTX:ctx -- n n ) {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE 2drop
+   c IR-CTX:NEW-MODULE 2drop
+   c [: EX-REJECT ;] catch {: rc:n :} drop
+   rc c IR-CTX:MINTED ;
+
 : EX-RUN ( -- )
    BND 2 [: EX-BODY ;] IR-CTX:WITH-CONTEXT-BOUND ;
 
@@ -145,6 +154,9 @@ $80000 constant TMAP-BYTES           \ independent allocation probe size
    BND 2 [: EX-OK-BODY ;] IR-CTX:WITH-CONTEXT-BOUND 2 T=
    s" minting past the ceiling is a named exhaustion" T-LABEL
    [: EX-RUN ;] E-IR-CTX-SERIALS TTHROWSQ
+   s" exhaustion preserves the number of minted modules" T-LABEL
+   BND 2 [: EX-REJECT-BODY ;] IR-CTX:WITH-CONTEXT-BOUND
+   2 T= E-IR-CTX-SERIALS T=
    s" a zero ceiling is rejected at creation" T-LABEL
    [: CEIL-ZERO ;] E-IR-CTX-CEILING TTHROWSQ
    s" a negative ceiling is rejected at creation" T-LABEL
@@ -256,6 +268,14 @@ $80000 constant TMAP-BYTES           \ independent allocation probe size
 : SCR-ZERO ( -- )
    BND [: SCR-ZERO-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+: SCR-REJECT ( IR-CTX:ctx -- IR-CTX:ctx )
+   dup 0 IR-CTX:SCRATCH-TAKE 2drop ;
+
+: SCR-REJECT-BODY ( IR-CTX:ctx -- n n ) {: c:IR-CTX:ctx :}
+   c 5 IR-CTX:SCRATCH-TAKE 2drop
+   c [: SCR-REJECT ;] catch {: rc:n :} drop
+   rc c IR-CTX:SCRATCH-USED ;
+
 : SCR-NEG-BODY ( IR-CTX:ctx -- )
    -1 IR-CTX:SCRATCH-TAKE 2drop ;
 
@@ -269,6 +289,9 @@ $80000 constant TMAP-BYTES           \ independent allocation probe size
    [: SCR-HUGE ;] E-IR-CTX-SCRATCH TTHROWSQ
    s" a zero-byte request rejects" T-LABEL
    [: SCR-ZERO ;] E-IR-CTX-SIZE TTHROWSQ
+   s" a rejected zero-byte request preserves scratch usage" T-LABEL
+   BND [: SCR-REJECT-BODY ;] IR-CTX:WITH-CONTEXT
+   8 T= E-IR-CTX-SIZE T=
    s" a negative request rejects" T-LABEL
    [: SCR-NEG ;] E-IR-CTX-SIZE TTHROWSQ ;
 

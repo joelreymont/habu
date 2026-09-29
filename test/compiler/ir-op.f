@@ -860,24 +860,44 @@ private
    c k OVF-CAPS RIG
    {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c sp sr key sa S-SEED STG-OPEN
-   key S-SEED STG-VALS
-   c tp tr key S-SEED STG-RES
-   c sp sr ap ar key S-SEED STG-ATT
+   k 3 <> if c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop then
+   k 3 = if
+      c sp sr key K-CALL OPC-SYM IR-OP:BEGIN-OP
+      c sa key A-SPAN IR-OP:SET-SPAN
+      key 0 IR-ID:PACK-VALUE IR-OP:ADD-OPERAND
+      c tp tr key I64 IR-OP:ADD-RESULT
+   else
+      c sp sr key sa S-SEED STG-OPEN
+      key S-SEED STG-VALS
+      c tp tr key S-SEED STG-RES
+      c sp sr ap ar key S-SEED STG-ATT
+   then
    \ `catch` restores the DEPTH of both stacks and never their contents, so the
    \ nine cells the caught body was handed come back stale; the locals bound
    \ before the catch are the handles this case reads.
    c p v r key qr tr ar sa [: OVF-TRY ;] catch {: rc:n :}
    2drop 2drop 2drop 2drop drop
-   rc
-   r IR-OP:OPS
-   v IR-OP:VALUES
-   p IR-OP:POOL-CELLS ;
+   r IR-OP:OPS {: ops:n :}
+   v IR-OP:VALUES {: vals:n :}
+   p IR-OP:POOL-CELLS {: pool:n :}
+   k 2 = if
+      c key sp sr tp tr ap ar sa qr p v r S-VOID APPEND drop
+      r IR-OP:OPS ops 1+ T=
+      v IR-OP:VALUES vals T=
+      p IR-OP:POOL-CELLS pool T=
+   then
+   k 3 = if
+      c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+      r IR-OP:OPS ops 1+ T=
+      v IR-OP:VALUES vals 1+ T=
+      p IR-OP:POOL-CELLS pool 1+ T=
+   then
+   rc ops vals pool ;
 
-: OVF-CASE ( n -- )
-   BND [: OVF-BODY ;] IR-CTX:WITH-CONTEXT
-   2 T= 2 T= 2 T= E-IR-OP-CAP T= ;
+: OVF-CASE ( n -- ) {: k:n :}
+   k BND [: OVF-BODY ;] IR-CTX:WITH-CONTEXT
+   k 3 = if 1 T= 1 T= 1 T= else 2 T= 2 T= 2 T= then
+   E-IR-OP-CAP T= ;
 
 
 : CAP-ZERO-RUN ( -- )   BND [: 0 16 128 CAP-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -902,6 +922,30 @@ private
    2 OVF-CASE
    s" an append past the pool ceiling rejects and writes nothing" T-LABEL
    3 OVF-CASE ;
+
+: SSA-RECOVER-BODY ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c 8 8 64 RIG
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+   c sp sr key sa S-SSA STG-OPEN
+   key S-SSA STG-VALS
+   c tp tr key S-SSA STG-RES
+   c sp sr ap ar key S-SSA STG-ATT
+   c p v r key qr tr ar sa [: OVF-TRY ;] catch {: rc:n :}
+   2drop 2drop 2drop 2drop drop
+   rc E-IR-OP-SSA T=
+   r IR-OP:OPS 2 T=
+   v IR-OP:VALUES 2 T=
+   c key sp sr tp tr ap ar sa qr p v r S-ADD APPEND {: op:IR-ID:ir-op-id :}
+   r IR-OP:OPS 3 T=
+   v IR-OP:VALUES 3 T=
+   p r key op 0 IR-OP:OPERAND@ IR-ID:VALUE-LOCAL 0 T=
+   p r key op 1 IR-OP:OPERAND@ IR-ID:VALUE-LOCAL 1 T= ;
+
+: SSA-RECOVER-CASE ( -- )
+   s" a rejected forward value leaves the operation store appendable" T-LABEL
+   BND [: SSA-RECOVER-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- frozen modules ----------------------------------------------------------
 : FZ-BODY ( IR-CTX:ctx -- n n n n bool bool )
@@ -1176,6 +1220,7 @@ public
 
 : RUN ( -- )
    T-RESET
+   SSA-RECOVER-CASE
    READ-CASE
    VALUE-CASE
    ARG-CASE

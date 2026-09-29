@@ -18,7 +18,7 @@ behavior; they do not establish a formal soundness or refinement theorem.
 
 Dynamic growth, normal and exceptional lifetime, owner/stale rejection and
 state after refusals are tested through the native paths in
-`test/compiler/ir-context.f`, `ir-arena.f` and `ir-storage-manifest.f`.
+`test/compiler/ir-context.f` and `test/compiler/ir-arena.f`.
 
 The relocation tests compare selected vectors with shipped instruction
 sequences using a mnemonic interpreter. They do not establish that every
