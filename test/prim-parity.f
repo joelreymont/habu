@@ -345,12 +345,13 @@ $3A constant COLON-B
 \ ---- memory ------------------------------------------------------------------
 \ One scenario per row over the file's own fixtures: the case value goes in
 \ through the primitive under test and comes back out, so a store row is read
-\ back and a fetch row is written first.
+\ back and a fetch row is written first. The paired names share that round trip;
+\ their separate CASES sets still count both primitive rows.
 : MEM-PRIM ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
-   na nu s" !"         STR= IF v FIX-CELLS ! FIX-CELLS @ EXIT THEN
-   na nu s" @"         STR= IF v FIX-CELLS ! FIX-CELLS @ EXIT THEN
-   na nu s" c!"        STR= IF v FIX-BYTES c! FIX-BYTES c@ EXIT THEN
-   na nu s" c@"        STR= IF v FIX-BYTES c! FIX-BYTES c@ EXIT THEN
+   na nu s" !" STR= na nu s" @" STR= or IF
+      v FIX-CELLS ! FIX-CELLS @ EXIT THEN
+   na nu s" c!" STR= na nu s" c@" STR= or IF
+      v FIX-BYTES c! FIX-BYTES c@ EXIT THEN
    na nu s" +!"        STR= IF v FIX-CELLS ! BUMP FIX-CELLS +! FIX-CELLS @ EXIT THEN
    na nu s" count"     STR= IF v FIX-BYTES c! FIX-BYTES count nip EXIT THEN
    na nu s" byte-view" STR= IF v FIX-CELLS ! FIX-CELLS byte-view c@ EXIT THEN
