@@ -4,8 +4,8 @@ require lib/test.f
 require lib/test/outcome.f
 require lib/fs-mutate.f
 require lib/process-argv.f
-require lib/engine-candidate.f
 require test/cold-engine.f
+require test/fixture-writer.f
 
 package NAMED-CELLS-SUITE
 
@@ -60,9 +60,11 @@ variable CHILD-KIND variable CHILD-CODE variable CHILD-ARGC
    size 0 > if forged size ARG+ then
    COLD$ NULL$ 0 RUN-CHILD LIVE ART$ EXISTS? TTRUE ;
 
+\ The writer path comes first: see FIXTURE-WRITER:PATH$.
 : WRITE ( -- )
-   s" test/native-fixture-write.f" LOAD s" --" ARG+ IMAGE$ ARG+ ART$ ARG+ COLD$ ARG+
-   ENGINE-CANDIDATE:PATH$ NULL$ 0 RUN-CHILD IMAGE$ EXISTS? TTRUE ;
+   FIXTURE-WRITER:PATH$ {: writer:ptr writeru:n :}
+   PROC-ARGV-RESET s" --" ARG+ IMAGE$ ARG+ ART$ ARG+ COLD$ ARG+
+   writer writeru NULL$ 0 RUN-CHILD IMAGE$ EXISTS? TTRUE ;
 
 : BUILD ( -- )
    s" the shared cold prefix host reaches this fixture's private tree" T-LABEL

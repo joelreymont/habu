@@ -3,7 +3,12 @@
 \ producer. The file reader verifies that producer before the normal writer
 \ imports the owned capture. Neither disk identity nor this copy claims a tier
 \ for the imported code.
-1 set-tier
+\
+\ This is an application, not a script: test/fixture-writer.f builds it once per
+\ tree into a keyed image through tools/app-build.f, which compiles it at native
+\ tier 1 and starts the image at MAIN. Every write runs that image with the
+\ arguments above. After MAIN returns the image runs its stdin as a program in
+\ the same process, which is how test/aot-wid-build.f forges the emitted code.
 require tools/native-emit.f
 require lib/fs-mutate.f
 require lib/codesign.f
@@ -29,6 +34,8 @@ create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest conte
 : WRITE-OWNED ( AOT-OWNED:capture -- AOT-OWNED:capture )
    dup NATIVE-LAYOUT:CURRENT 0 SCRIPT-ARGV$ NATIVE-EMIT:WRITE ;
 
+public
+
 : RUN ( -- )
    WRITER-NATIVE
    READ-ARTIFACT
@@ -38,5 +45,6 @@ create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest conte
    0 SCRIPT-ARGV$ CHMOD-X
    0 SCRIPT-ARGV$ CODESIGN:ENSURE ;
 
-RUN
 ;package
+
+: MAIN ( -- ) NATIVE-FIXTURE-WRITE:RUN ;

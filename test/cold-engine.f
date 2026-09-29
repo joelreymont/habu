@@ -1,13 +1,13 @@
 \ cold-engine.f - the cold fixture engine, emitted once per tree and shared.
 \
 \ Every partial-capture fixture needs the empty cold host that
-\ test/native-fixture-write.f emits from one output argument. That emission
-\ recompiles the optimizing native writer from source - 20 s measured, paid
-\ thirteen times over a gate run - and its product depends on exactly two
-\ things: the engine binary that runs the writer, and the writer's own ordered
-\ require/include closure. Both go into the content key below, so the artifact
-\ is emitted once into the build cache and every later caller copies it; a tree
-\ edit anywhere in that closure changes the key and no stale host is reused.
+\ test/native-fixture-write.f emits from one output argument. That emission is a
+\ run of the writer image test/fixture-writer.f builds, so the host depends on
+\ exactly one thing: that image, whose key covers the engine that builds it and
+\ the ordered require/include closures of its builder and of the writer. The
+\ host's own key is derived from that key, so the artifact is emitted once into
+\ the build cache and every later caller copies it; another engine or a tree
+\ edit anywhere in those closures changes the key and no stale host is reused.
 \
 \ PROVIDE is the whole interface: it names the private path a fixture wants its
 \ own copy at. The keyed artifact itself is never handed out, so no fixture can
@@ -24,8 +24,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/build-cache.f
 require lib/content-key.f
-require lib/engine-candidate.f
-require tools/event-closure-lib.f
+require test/fixture-writer.f
 
 package COLD-ENGINE
 
@@ -49,10 +48,6 @@ variable WORK-U
 variable TMP-U
 variable EMIT-RC
 variable RESOLVED?
-variable CLOSURE-IDX
-
-: WRITER$ ( -- ptr u8 n )
-   s" test/native-fixture-write.f" ;
 
 : PATH-BYTES ( -- ptr u8 n )
    PATH-BUF PATH-U @ ;
@@ -63,21 +58,11 @@ variable CLOSURE-IDX
 : TMP-BYTES ( -- ptr u8 n )
    TMP-BUF TMP-U @ ;
 
-\ Discovery rejects fail-closed, so a closure that cannot be reproduced cannot
-\ be keyed - the key never silently covers fewer files than the build reads.
-: CLOSURE-CK+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   0 CLOSURE-IDX !
-   begin CLOSURE-IDX @ EC:COUNT < while
-      CLOSURE-IDX @ EC:PATH$ CLOSURE-IDX @ EC:NAME$ CONTENT-KEY:FILE-NAMED+
-      CLOSURE-IDX @ 1+ CLOSURE-IDX !
-   repeat ;
-
 : KEY! ( -- )
-   WRITER$ EC:BUILD
+   FIXTURE-WRITER:KEY$ {: writer:ptr writeru:n :}
    CONTENT-KEY:OPEN
-   s" cold-fixture-engine-v2" CONTENT-KEY:TEXT+
-   ENGINE-CANDIDATE:PATH$ s" host-engine" CONTENT-KEY:FILE-NAMED+
-   CLOSURE-CK+
+   s" cold-fixture-engine-v3" CONTENT-KEY:TEXT+
+   writer writeru CONTENT-KEY:TEXT+
    KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
 : NAME! ( -- )
@@ -118,14 +103,14 @@ variable CLOSURE-IDX
 : WRITER-ARGS ( -- )
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
-   s" --load" ARG
-   WRITER$ ARG
    s" --" ARG
    TMP-BYTES ARG ;
 
+\ The writer path comes first: see FIXTURE-WRITER:PATH$.
 : WRITER-RUN ( -- )
+   FIXTURE-WRITER:PATH$ {: writer:ptr writeru:n :}
    WRITER-ARGS
-   ENGINE-CANDIDATE:PATH$ >LEN s" " >LEN
+   writer writeru >LEN s" " >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN WRITER-TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
@@ -151,8 +136,12 @@ variable CLOSURE-IDX
 
 public
 
-\ Emit the shared cold host unless the keyed artifact is already on disk.
+\ Settle the shared writer image and the cold host it emits, each built only
+\ when its keyed artifact is not already on disk. The writer is settled even when
+\ the host is present: every fixture write runs it, and the gate calls this once
+\ before its first fork.
 : ENSURE ( -- )
+   FIXTURE-WRITER:ENSURE
    RESOLVE
    PATH-BYTES EXECUTABLE? if exit then
    EMIT ;

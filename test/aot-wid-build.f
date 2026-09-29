@@ -128,8 +128,8 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
-require lib/engine-candidate.f
 require test/cold-engine.f
+require test/fixture-writer.f
 
 package AOT-WID-BUILD
 
@@ -145,7 +145,6 @@ create ROOT-BUF FS-PATH-CAP allot variable ROOT-U
 create COLD-BUF FS-PATH-CAP allot variable COLD-U
 create ART-BUF FS-PATH-CAP allot variable ART-U
 create IMAGE-BUF FS-PATH-CAP allot variable IMAGE-U
-create PATCH-BUF FS-PATH-CAP allot variable PATCH-U
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 variable WINDOW-ENDED
@@ -154,7 +153,6 @@ variable WINDOW-ENDED
 : COLD$ ( -- ptr u8 n ) COLD-BUF COLD-U @ ;
 : ART$ ( -- ptr u8 n ) ART-BUF ART-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
-: PATCH$ ( -- ptr u8 n ) PATCH-BUF PATCH-U @ ;
 
 : PATHS ( -- )
    s" HB_TMP" GETENV {: a:ptr u:n :}
@@ -163,8 +161,7 @@ variable WINDOW-ENDED
    a ROOT-BUF u BYTE-COPY u ROOT-U !
    ROOT$ s" hb-cold" COLD-BUF JOIN-PATH COLD-U !
    ROOT$ s" window.aot" ART-BUF JOIN-PATH ART-U !
-   ROOT$ s" hb-pwid" IMAGE-BUF JOIN-PATH IMAGE-U !
-   ROOT$ s" pwid-patch.f" PATCH-BUF JOIN-PATH PATCH-U ! ;
+   ROOT$ s" hb-pwid" IMAGE-BUF JOIN-PATH IMAGE-U ! ;
 
 : DRV-PATH$ ( -- ptr u8 n )
    DRV-PATH-BUF DRV-PATH-U @ ;
@@ -845,9 +842,12 @@ create DRV-CH 1 allot
    s" HABU_AOT_WID_SKEW" GETENV nip 0 > or
    s" HABU_AOT_WID_SPAN" GETENV nip 0 > or ;
 
-: GEN-PATCH ( -- )
-   FORGE? 0= if exit then
+\ The program the writer image runs on stdin once its own write is done: empty
+\ unless a forge is asked for, which patches the emitted scalar in the writer's
+\ CODE and then rebuilds and re-signs the image in that same process.
+: PATCH-PROGRAM ( -- )
    DRV-RESET
+   FORGE? 0= if exit then
    s" package AOT-WID-IMAGE-PATCH" DRV-LINE
    s" : PATCH-CELL ( n n label -- ) {: value:n old:n lab:label :}" DRV-LINE
    s"    lab LBL-BOUND? 0= if 79 throw then" DRV-LINE
@@ -861,18 +861,16 @@ create DRV-CH 1 allot
    S\"    s\" hb\" 0 SCRIPT-ARGV$ DRV-EMIT-IMAGE" DRV-LINE
    s"    0 SCRIPT-ARGV$ CODESIGN:ENSURE ;" DRV-LINE
    s" RUN" DRV-LINE
-   s" ;package" DRV-LINE
-   PATCH$ DRV-BUF DRV-U @ WRITE-ALL ;
+   s" ;package" DRV-LINE ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
 : ARGS ( -- )
    PROC-ARGV-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG ;
+   PROC-ENV-INHERIT-MISSING ;
 
-: CHILD ( ptr u8 n -- )
-   >LEN s" " >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-TIMEOUT-MS >MS
+: CHILD ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n input:ptr inputu:n :}
+   path pathu >LEN input inputu >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type
@@ -885,21 +883,21 @@ create DRV-CH 1 allot
    COLD$ COLD-ENGINE:PROVIDE ;
 
 : CAPTURE-FIXTURE ( -- )
-   ARGS DRV-PATH$ ARG s" --" ARG ART$ ARG COLD$ ARG
-   COLD$ CHILD ;
+   ARGS s" --load" ARG DRV-PATH$ ARG s" --" ARG ART$ ARG COLD$ ARG
+   COLD$ NULL$ CHILD ;
 
+\ The writer path comes first: see FIXTURE-WRITER:PATH$.
 : WRITE-FIXTURE ( -- )
-   ARGS s" test/native-fixture-write.f" ARG
-   FORGE? if PATCH$ ARG then
-   s" --" ARG IMAGE$ ARG ART$ ARG COLD$ ARG
-   ENGINE-CANDIDATE:PATH$ CHILD ;
+   FIXTURE-WRITER:PATH$ {: writer:ptr writeru:n :}
+   PATCH-PROGRAM
+   ARGS s" --" ARG IMAGE$ ARG ART$ ARG COLD$ ARG
+   writer writeru DRV-BUF DRV-U @ CHILD ;
 
 public
 
 : BUILD ( -- )
    PATHS
    GEN-DRIVER
-   GEN-PATCH
    BUILD-COLD
    CAPTURE-FIXTURE
    WRITE-FIXTURE
