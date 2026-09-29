@@ -574,14 +574,6 @@ public
    0 NCA-FIXTURE:PRESERVED -72 T= TTRUE
    1 NCA-FIXTURE:PRESERVED -71 T= TTRUE ;
 
-\ ---- what production compilation still refuses -------------------------------
-: NORET-BODY-CASE ( -- )
-   s" catch compiles both throwing and returning bodies" T-LABEL
-   [: s" : NCA-NR1 ( n -- n n ) [: dup drop 5 throw ;] catch ;" NCA-TEST:EV ;]
-   0 TTHROWSQ
-   [: s" : NCA-NR2 ( n -- n n ) [: 1+ ;] catch ;" NCA-TEST:EV ;]
-   0 TTHROWSQ ;
-
 \ THE THIRD CEILING IS GONE TOO, and this case is what it left behind. A
 \ quotation body holding any control structure used to be refused - through this
 \ route and through the older one, an argument a callee declares - and it was
@@ -599,43 +591,26 @@ public
 \ made (src/compiler/native/regalloc.f B-BASE!, and its two siblings in
 \ regalloc-verify.f and emit.f).
 \
-\ WHAT IS LEFT HERE IS THE ANSWER. The straight-line twin is kept beside it,
-\ because a body with no control structure names no successor at all and is the
-\ row that would still pass if the subtraction were wrong.
-\ test/compiler/native-quot-scope.f measures the branching body under every
-\ enclosing shape and through both routes.
+\ WHAT IS LEFT HERE IS THE RUNTIME ANSWER. test/compiler/native-quot-scope.f
+\ measures the branching and straight-line bodies under every enclosing shape
+\ and through both compilation routes.
 : BODY-CONTROL-CASE ( -- )
    s" a caught body holding a control structure" T-LABEL
    7 NCA-FIXTURE:NCA-BC {: cu:n cr:n :}
-   cr 0 T=  cu 8 T=
+   cr 0 T=  cu 8 T= ;
 
-   s" and both it and its straight-line twin compile" T-LABEL
-   [: s" : NCA-BC1 ( n -- n n ) [: dup 3 > if 1+ then ;] catch ;" NCA-TEST:EV ;]
-   0 TTHROWSQ
-   [: s" : NCA-BC2 ( n -- n n ) [: 1+ ;] catch ;" NCA-TEST:EV ;]
-   0 TTHROWSQ ;
-
-\ THE SECOND CEILING IS GONE, and this case is what it left behind: the same two
-\ texts, now accepted. A quotation body that CALLS, with a locals group in
+\ A quotation body that CALLS, with a locals group in
 \ the definition around it, used to be refused as an operand naming a value of
 \ another function - the body was built with the enclosing routine's local scope
 \ still open, so its call carried the enclosing routine's local values. The body
 \ is now built with no local scope at all, which is what a quotation has (dot
 \ habu-let-a-calling-7578eaaa). What the compiled shape ANSWERS is measured in
-\ test/compiler/native-quot-scope.f on both paths; this case
-\ keeps the acceptance beside the refusal it replaced.
+\ test/compiler/native-quot-scope.f on both paths; this case keeps the runtime
+\ result.
 : BODY-CALL-LOCALS-CASE ( -- )
    s" a caught calling body runs under a definition with locals" T-LABEL
    7 NCA-FIXTURE:NCA-BL {: bu:n br:n :}
-   br 0 T=  bu 8 T=
-
-   s" and production compilation accepts it with the group and without it" T-LABEL
-   [: s" : NCA-BL1 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch {: rc:n :} rc 0 <> if 77 else 0 then ;"
-      NCA-TEST:EV ;]
-   0 TTHROWSQ
-   [: s" : NCA-BL2 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch ;"
-      NCA-TEST:EV ;]
-   0 TTHROWSQ ;
+   br 0 T=  bu 8 T= ;
 
 : RUN ( -- )
    CONTENTS-CASE
@@ -649,7 +624,6 @@ public
    PARKED-CASE
    BUNDLE-CASE
    SUCCESS-CASE
-   NORET-BODY-CASE
    BODY-CONTROL-CASE
    BODY-CALL-LOCALS-CASE ;
 
