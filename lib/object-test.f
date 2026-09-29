@@ -13,11 +13,13 @@ package OBJ-TEST
 using OBJ
 
 64 constant KEY-U
+$20001 constant LARGE-U
 
 create KEY1 80 allot
 create KEY2 80 allot
 create TEXT-BYTES 0 c, 127 c, 255 c,
 create DATA-BYTES 1 c, 2 c, 16 c,
+create LARGE-TEXT LARGE-U allot
 
 : HASH$ ( -- ptr u8 n )
    s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" ;
@@ -112,8 +114,37 @@ create DATA-BYTES 1 c, 2 c, 16 c,
    KEY2 KEY-HEX
    KEY1 KEY-U KEY2 KEY-U T$<> ;
 
-: MAX-BYTES-PUBLISHED ( -- )
-   MAX-BYTES $40000 > TTRUE ;
+: LARGE-HEX-DIGIT ( n -- n )
+   dup 10 < if 48 + exit then
+   87 + ;
+
+: LARGE-TEXT-VALID? ( -- bool )
+   4 0 ROW-FIELD$ {: field:ptr u:n :}
+   u LARGE-U 2 * <> if false exit then
+   true
+   LARGE-U 0 ?do
+      i 7 * 255 and {: byte:n :}
+      field i 2 * + c@ byte 4 rshift LARGE-HEX-DIGIT <> if drop false then
+      field i 2 * 1+ + c@ byte 15 and LARGE-HEX-DIGIT <> if drop false then
+   loop ;
+
+: LARGE-ROUNDTRIP ( -- )
+   LARGE-U 0 ?do i 7 * 255 and LARGE-TEXT i + c! loop
+   RESET
+   HASH$ SOURCE!
+   s" macos-aarch64" TARGET!
+   s" checker-effect-v1" CHECKER!
+   s" hb-arm64-v1" COMPILER!
+   LARGE-TEXT LARGE-U TEXT+
+   BYTES$ {: record:ptr u:n :}
+   u $40000 > TTRUE
+   u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: copy:ptr extent:NUM:alloc-byte-len :}
+   record copy u BYTE-COPY
+   copy u LOAD
+   BYTES$ copy u STR= TTRUE
+   4 ROW-TAG$ s" text" T$=
+   LARGE-TEXT-VALID? TTRUE
+   copy extent MEM:RELEASE-BYTES ;
 
 : SIZE-OVERFLOW-FAILS ( -- )
    [: TEXT-BYTES MAX-BYTES 2 / 1+ TEXT+ ;] E-OBJ-CAPACITY TTHROWSQ
@@ -258,7 +289,7 @@ public
    HEADERS
    KEY-STABLE
    KEY-CHANGES
-   MAX-BYTES-PUBLISHED
+   LARGE-ROUNDTRIP
    SIZE-OVERFLOW-FAILS
    ROW-ACCESSORS
    ENTRY-ROW
