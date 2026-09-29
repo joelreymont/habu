@@ -20,10 +20,6 @@ SUITE build-fixpoint-snapshot
    tools/build-fixpoint-snapshot-test.f
 ;SUITE
 
-SUITE stripped-entry
-   test/stripped-entry.f
-;SUITE
-
 SUITE hb-build-stripped
    tools/hb-build-stripped-test.f
 ;SUITE
@@ -40,6 +36,10 @@ SUITE aot-named-cells-image
    test/aot-named-cells-suite.f
 ;SUITE
 
+SUITE stripped-entry
+   test/stripped-entry.f
+;SUITE
+
 SUITE build-fixpoint-fixtures
    tools/build-fixpoint-test.f
 ;SUITE
@@ -54,6 +54,10 @@ SUITE aot-wide-format
 
 SUITE aot-wide-prefix
    test/aot-wide-prefix-suite.f
+;SUITE
+
+SUITE stripped-entry-qualified
+   test/stripped-entry-qualified.f
 ;SUITE
 
 \ checker-scan-index is the first WHITEBOX-SUITE row. It holds the registry
