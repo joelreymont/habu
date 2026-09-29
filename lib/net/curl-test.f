@@ -878,7 +878,6 @@ $40 constant MANY-CAP                   \ one span each, far past the six-byte b
 create MANY-BUF MANY-N MANY-CAP * allot
 
 TEST-ALIGN8
-variable BASE-THREADS
 variable DURING-THREADS
 variable HALT-PARKED
 variable HALT-RC
@@ -893,8 +892,6 @@ TYPED-VARIABLE HALT-HANDLE CURL:handle
 TASK:MIN-STACK TASK:TASK OWNER-TASK
 TASK:MIN-STACK TASK:TASK HALT-TASK
 
-
-: THREADS ( -- n ) TEST-HOST:THREADS ;
 
 : REACHED? ( ptr n n -- bool ) {: cell:ptr want:n :}
    mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
@@ -1015,18 +1012,18 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    EXTRA-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK ;
 
 
-\ Thirty-two transfers in flight at once, awaited in order. The thread count is
-\ the claim: the CURL loop and the AIO loop are the whole cost of all of them.
+\ Thirty-two transfers in flight at once, awaited in order. The two new OS
+\ thread identities are the CURL loop and the AIO loop.
 : CASE-MANY ( -- )
    MANY-N 0 ?do i MANY-START loop
-   THREADS DURING-THREADS !
+   TEST-HOST:NEW-THREADS DURING-THREADS !
    PATH-HELLO$ GET-READY EXTRA-HANDLE !
    s" a START with every transfer record claimed is refused" T-LABEL
    [: EXTRA-START ;] CURL:E-CAPACITY TTHROWSQ
    EXTRA-HANDLE @ CURL:CLEANUP
    MANY-N 0 ?do i MANY-CHECK loop
    s" thirty-two transfers cost the CURL loop and the AIO loop alone" T-LABEL
-   DURING-THREADS @ BASE-THREADS @ 2 + T= ;
+   DURING-THREADS @ 2 T= ;
 
 
 \ One transfer the server never answers, ended by its own ceiling, while the
@@ -1221,7 +1218,7 @@ public
    TEST-NO-URL
    TEST-FILE-SCHEME
    TEST-REFUSALS
-   THREADS BASE-THREADS !
+   TEST-HOST:SNAPSHOT
    AIO:START
    TEST-MULTI
    AIO:STOP
