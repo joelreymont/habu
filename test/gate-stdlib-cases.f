@@ -1147,10 +1147,6 @@ SUITE compiler-compile-floor
    test/compiler/compile-floor.f
 ;SUITE
 
-SUITE compiler-compile-floor-gate
-   test/compile-floor-gate.f
-;SUITE
-
 SUITE icode-fixup
    test/icode-fixup-test.f
 ;SUITE
@@ -1926,6 +1922,12 @@ SUITE proc-maps
 ;SUITE
 
 GROUP SEQ native-serial-gates
+
+\ Compiler budgets measure microseconds. The parallel pool can exceed them
+\ through scheduling contention even when the unchanged engine passes alone.
+SUITE compiler-compile-floor-gate
+   test/compile-floor-gate.f
+;SUITE
 
 \ The PTY REPL fixture starts and reaps eight engine children. Keep it in the
 \ idle serial group so the fixed 20 s child-reap budget is not consumed by a
