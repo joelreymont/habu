@@ -31,7 +31,7 @@
 \ The modes below are selected by environment so one builder serves every case
 \ its companion suites need (HABU_AOT_GATE serves two) -
 \ test/aot-wid-suite.f, test/aot-wide-format-suite.f, test/aot-wide-prefix-suite.f
-\ and the PTY half in test/aot-data-span-forge.f:
+\ and test/aot-data-window-suite.f:
 \
 \   (default)          define two packages inside the capture window and protect
 \                      one of them, then check the capture's contract against the
@@ -41,12 +41,16 @@
 \                      inside the window, and the host's own protected WIDs - all
 \                      of which sit below the window - do not travel.
 \   HABU_PWID_BAD=N    hand N to `prot-wid-add` inside the window and re-capture.
-\                      N at or above PROT-WID-MAX has no bit in the band and the
-\                      primitive that owns the bound refuses it; N=0 sets the one
-\                      bit no registry may carry and the capture refuses the band.
-\                      Either way the build dies named and no engine appears.
-\   HABU_AOT_SPAN=N    overwrite the captured AOT DATA span (the sibling
-\                      test/aot-data-span-forge.f forge; see SPAN-FORGE-LINE).
+\                      N=0 sets the one bit no registry may carry and the capture
+\                      refuses the band, so the build dies named and no engine
+\                      appears.
+\   HABU_AOT_REWRITE=1 take no capture: run the writer again over the window.aot
+\                      and hb-cold an earlier build left in HB_TMP, replacing its
+\                      hb-pwid with one carrying the forge the knobs below ask
+\                      for. A forge changes only the writer's patch, never the
+\                      window, so a suite forging one window several ways
+\                      captures it once.
+\   HABU_AOT_SPAN=N    overwrite the emitted AOT DATA span (see SPAN-FORGE-LINE).
 \   HABU_AOT_WID_SKEW=N  move the captured wid window's base up by N after the
 \                      capture, so the baked records name wordlists BELOW the
 \                      baked window. The seed must refuse at boot.
@@ -57,9 +61,9 @@
 \                      must refuse, naming the record.
 \   HABU_AOT_BAKE=1    put an INITIALISED data cell and a word that reads it inside
 \                      the capture window, and run that word from the boot-run
-\                      list. The built engine reports the value when it is entered
-\                      on a tty, and the value is zero unless the window's DATA
-\                      content travelled into the image.
+\                      list. The built engine reports the value at boot, and the
+\                      value is zero unless the window's DATA content travelled
+\                      into the image.
 \   HABU_AOT_TRAP=1    put a `defer` inside the capture window and run a word that
 \                      CALLS it from the boot-run list, installing nothing. Its
 \                      dispatch cell is a declared address cell, so the capture
@@ -256,13 +260,11 @@ create DRV-CH 1 allot
 : PREWIN-ENV$ ( -- ptr u8 n )    s" HABU_AOT_PREWIN" GETENV ;
 : GATE-ENV$ ( -- ptr u8 n )      s" HABU_AOT_GATE" GETENV ;
 
-\ The plain protected-WID fixture is the fallback mode, but two knobs reach that
-\ point with a window of their own to keep: the D0-skew refusal re-captures the
-\ closed REPL window, and the DATA-span forge
-\ (test/aot-data-span-forge.f) bakes that same window with a forged span. Neither
-\ wants two packages of ours inside it.
+\ The plain protected-WID fixture is the fallback mode, but the D0-skew refusal
+\ reaches that point with a window of its own to keep: it re-captures the closed
+\ REPL window and wants no package of ours inside it.
 : PLAIN-MODE? ( -- bool )
-   SKEW-ENV$ nip 0 =  SPAN-ENV$ nip 0 =  and ;
+   SKEW-ENV$ nip 0 = ;
 
 \ Re-run the real capture over the real window with the DATA span start moved.
 \ AOT-ARM's window cells still hold the span just latched, so raising
@@ -408,13 +410,12 @@ create DRV-CH 1 allot
    PROT-CHECK-DEF
    REPL-BOOTRUN-LINES ;
 
-\ The two refusals the live capture path owns, both reached through the word that
-\ owns the bound. An id at or above PROT-WID-MAX has no bit in the band, so
-\ `prot-wid-add` refuses it (exit 84) before any capture is asked anything - the
-\ memory-safety argument for a prim taking a caller-supplied index, whose
-\ in-process twin is in test/seal.f. WID 0 is not a wordlist, so a band with bit 0
-\ set is not a registry, and it is the RE-CAPTURE below that asks the capture
-\ about it (exit 74). Neither build reaches an image.
+\ The refusal the live capture path owns. WID 0 is not a wordlist, so a band with
+\ bit 0 set is not a registry, and it is the RE-CAPTURE below that asks the
+\ capture about it (exit 74); the build never reaches an image. An id at or above
+\ PROT-WID-MAX is refused by `prot-wid-add` itself before any capture is asked
+\ anything, so test/seal.f proves that bound on the shipped engine and no build
+\ here adds code to it.
 : BAD-FIXTURE-LINES ( ptr u8 n -- ) {: v:ptr vu:n :}
    v vu DRV+  s"  prot-wid-add" DRV-LINE
    RECAPTURE-LINE ;
@@ -640,7 +641,7 @@ create DRV-CH 1 allot
 \ span", exit 74). Its name is in the cold prefix the image bakes, which is what
 \ makes the BL the decline emits relocatable at boot - and its first cell is
 \ INITIALISED to the SHA-256 seed constant $6a09e667, so the boot half in
-\ test/aot-data-span-forge.f gets an answer that can only come from the right
+\ test/aot-wide-prefix-suite.f gets an answer that can only come from the right
 \ address in the built engine, not the zero an unrelocated read gives.
 \
 \ WHAT THE CHECK ASSERTS, and why it is structural rather than "the build did not
@@ -893,13 +894,30 @@ create DRV-CH 1 allot
    ARGS s" --" ARG IMAGE$ ARG ART$ ARG COLD$ ARG
    writer writeru DRV-BUF DRV-U @ CHILD ;
 
+: REWRITE? ( -- bool )
+   s" HABU_AOT_REWRITE" GETENV nip 0 > ;
+
+\ A rewrite reuses the earlier build's artifact and the host that produced it,
+\ which the writer checks against each other; without both there is nothing to
+\ rewrite, and building afresh here would hide that from the caller. The image
+\ it replaces goes first, so an image after the rewrite can only be the rewrite's
+\ and never the earlier write left in place.
+: REWRITE-SETUP ( -- )
+   ART$ EXISTS? COLD$ EXECUTABLE? and 0= if
+      s" aot-wid-build: rewrite found no earlier capture in HB_TMP" BUILD-RC die then
+   IMAGE$ EXISTS? if IMAGE$ REMOVE-FILE then ;
+
 public
 
 : BUILD ( -- )
    PATHS
-   GEN-DRIVER
-   BUILD-COLD
-   CAPTURE-FIXTURE
+   REWRITE? if
+      REWRITE-SETUP
+   else
+      GEN-DRIVER
+      BUILD-COLD
+      CAPTURE-FIXTURE
+   then
    WRITE-FIXTURE
    s" aot-wid-build: hb-pwid ready" type cr ;
 

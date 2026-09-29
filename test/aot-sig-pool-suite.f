@@ -27,13 +27,15 @@
 \ LIVE ENGINE, by naming the constants, which is the authority a compiled
 \ reference would use.
 \
-\ THE FIXTURES ARE BUILT TO FOOL A TEXT MATCHER. The lexer drops `\` line
-\ comments, `( ... )` bodies and string payloads, so a synthetic source carrying
-\ the right spelling in a comment, in a string, in the wrong role (the name where
-\ the number goes), or defining a decoy `constant` of the same name with a
-\ different number must NOT satisfy the reader. Each of those is a case below.
-\ Without them "the file contains $47D0" would pass for "the checker mirrors
-\ $47D0", which is the thing this file exists to refuse.
+\ THE FIXTURES ARE BUILT TO FOOL THE READER. A synthetic source carrying the
+\ right spelling in the wrong role (the name where the number goes), a name in
+\ the value position, a second definition of the same name, or a longer name
+\ that starts with the wanted one must NOT satisfy it. Each of those is a case
+\ below, and nothing else runs this reader, so a reader that took any of them
+\ would pass the live mirrors whatever the checker said. That the lexer keeps
+\ `\` comments, `( ... )` bodies and string payloads out of the code tokens is
+\ tools/lint/text-foundation-test.f's to prove, and a reader that misreads a
+\ real definition fails the live mirrors themselves.
 \
 \ THE SECOND HALF IS THE BAND. Two cells were taken out of the unclaimed run
 \ above the evaluator frames, and their claim is only sound while they stay in
@@ -150,16 +152,6 @@ variable VALUE                     \ the number the first one carried
    na nu SCAN-FOR ;
 
 : DECOY-CASE ( -- )
-   s\" \\ $1111 constant CK-DECOY-OFF\n: X ( $2222 constant CK-DECOY-OFF ) ;\n"
-   s" CK-DECOY-OFF" FIXTURE
-   s" a definition inside a line comment or a paren body is not a definition" T-LABEL
-   HITS @ 0 T=
-
-   s\" : Y ( -- ptr u8 n ) s\" $3333 constant CK-DECOY-OFF\" ;\n"
-   s" CK-DECOY-OFF" FIXTURE
-   s" ... and neither is one inside a string literal" T-LABEL
-   HITS @ 0 T=
-
    s\" CK-DECOY-OFF constant $4444\n"
    s" CK-DECOY-OFF" FIXTURE
    s" the name and the number in the wrong roles do not define it" T-LABEL
@@ -169,12 +161,6 @@ variable VALUE                     \ the number the first one carried
    s" CK-DECOY-OFF" FIXTURE
    s" a non-numeric token in the value position does not define it" T-LABEL
    HITS @ 0 T=
-
-   s\" $47D0 constant CK-DECOY-OFF\n"
-   s" CK-DECOY-OFF" FIXTURE
-   s" a real definition IS read, and reads as its own number" T-LABEL
-   HITS @ 1 T=
-   VALUE @ $47D0 T=
 
    s\" $47D0 constant CK-DECOY-OFF\n$5000 constant CK-DECOY-OFF\n"
    s" CK-DECOY-OFF" FIXTURE

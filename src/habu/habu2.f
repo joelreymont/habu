@@ -7000,7 +7000,8 @@ ardone LBL,
 \ another file cannot be justified by a fixture in this one; the layers that DO
 \ decide are each falsified by mutation on the real chain (deleting one reds
 \ SERIAL-NEXT, (LP2VEXEC), HS@ and WATCH respectively), and test/aot-wid-suite.f
-\ PROBE-BOOT-GATE holds the public-slot admit with a two-mode pair.
+\ holds the public-slot admit with a two-mode pair: PROBE-BOOT-GATE-SEALED (mode
+\ 1) and the ALIAS-CASE boots in PROBE-WID-REBASE (mode 2).
 \
 \ IT ASKS THE RECORD THE LOOKUP MATCHED, WHICH IS THE ONLY RECORD THAT ANSWERS.
 \ This used to take the xt alone and scan the whole dictionary for the first

@@ -61,7 +61,7 @@ package AOT-WIDE-FORMAT
    s" the over-64 KiB variant still runs a batch program" T-LABEL
    RC @ 0 T=
    s" and computes with it" T-LABEL
-   OUT$ s" 42" CONTAINS? TTRUE
+   ANSWERED
    \ THE ACCEPTANCE. The reporter was compiled ABOVE 100 KiB of filler, so its own
    \ blob offset, the DATA site it reads the cell through and the call site it
    \ reaches the callee through are all past 65535. It can only print the cell's
@@ -82,7 +82,7 @@ package AOT-WIDE-FORMAT
    s" the out-of-line-name variant still runs a batch program" T-LABEL
    RC @ 0 T=
    s" and computes with it" T-LABEL
-   OUT$ s" 42" CONTAINS? TTRUE
+   ANSWERED
    \ The boot-run resolves its entry words through LFIND, and for an EXT record
    \ LFIND compares the token against the bytes [24] points at - which the seed
    \ sets to the baked name pool. A wrong pointer finds nothing and the boot-run

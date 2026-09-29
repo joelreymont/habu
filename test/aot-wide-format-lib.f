@@ -1,9 +1,9 @@
-\ aot-wide-format-lib.f - the fixture the widened AOT capture format gate rows
-\ share (dot habu-widen-the-aot-089f5faf). Loaded by test/aot-wide-format-suite.f
-\ and test/aot-wide-prefix-suite.f: the scratch tree, the builder child, the
-\ batch boot of the built engine, the boot-run report reader and the row driver.
-\ It runs nothing; each row file reopens package AOT-WIDE-FORMAT and runs the
-\ probes it owns.
+\ aot-wide-format-lib.f - the fixture the capture-window gate rows share (dot
+\ habu-widen-the-aot-089f5faf). Loaded by test/aot-wide-format-suite.f,
+\ test/aot-wide-prefix-suite.f and test/aot-data-window-suite.f: the scratch
+\ tree, the builder child, the batch boot of the built engine, the boot-run
+\ report reader and the row driver. It runs nothing; each row file reopens
+\ package AOT-WIDE-FORMAT and runs the probes it owns.
 \
 \ Each probe spawns test/aot-wid-build.f in a child process with one HABU_AOT_*
 \ mode and a private HB_TMP. The mode compiles its fixture inside a capture window
@@ -11,21 +11,15 @@
 \ own capture tables and DIES unless the capture holds what the mode is for; the
 \ lines a row matches are printed only on the far side of those refusals.
 \
-\ AND THE BOOT HALF IS HERE TOO, ON EVERY HOST. That used to be impossible: the
-\ AOT seed was armed at the interactive REPL entry and nowhere else, so only a PTY
-\ could observe a captured word and the boot half of every case lived in
-\ test/aot-data-span-forge.f, which runs on Linux hosts alone - it prints
-\ "PTY boot cases run on linux only; skipped" everywhere else, so on a macOS host
-\ NOTHING was asserting that any of this boots. Since dot
-\ habu-decide-arm-the-5234727b the seed runs at the end of the engine prefix on
-\ EVERY boot, so the boot-run entry words report into an ordinary batch boot's
-\ stdout - and these rows were already spawning each built engine on a batch
-\ program and reading that stdout, to check the image is a working engine at all.
-\ The reports were sitting unread in the text they already had. Asserting them is
-\ what makes "capture and boot a blob larger than 64 KiB" a claim these rows
-\ prove rather than one they hand to a host they may not be running on. The PTY
-\ sibling keeps its own copies; what only IT can still say is what the engine does
-\ when it is entered INTERACTIVELY, since the entry words ask TTY? themselves.
+\ AND THE BOOT HALF IS HERE TOO, ON EVERY HOST. The seed runs at the end of the
+\ engine prefix on EVERY boot (dot habu-decide-arm-the-5234727b), so the boot-run
+\ entry words report into an ordinary batch boot's stdout, and a boot that dies
+\ at the seed or in the boot-run does so before any batch input is read. Before
+\ that the seed was armed at the interactive REPL entry alone and only a PTY -
+\ on Linux hosts - could observe a captured word, so on a macOS host nothing
+\ asserted that any of this boots. The fixtures' entry words print whatever fd 0
+\ is; only the REPL they install waits for a terminal, and test/proc-pty.f drives
+\ the shipped engine's captured REPL at one.
 
 require lib/errors.f
 require lib/string.f
@@ -71,10 +65,16 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
    s" --load" >LEN PROC-ARGV+
    s" test/aot-wid-build.f" >LEN PROC-ARGV+ ;
 
-: BUILD-MODE ( ptr u8 n -- ) {: k:ptr ku:n :}
+\ The builder's environment: HB_TMP names this row's tree, and each knob a probe
+\ adds selects a mode or a forge (test/aot-wid-build.f lists them).
+: BUILD-OPEN ( -- )
    PROC-ENV-RESET
-   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
-   k ku >LEN s" 1" >LEN PROC-ENV+
+   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+ ;
+
+: KNOB+ ( ptr u8 n ptr u8 n -- ) {: k:ptr ku:n v:ptr vu:n :}
+   k ku >LEN v vu >LEN PROC-ENV+ ;
+
+: BUILD-RUN ( -- )
    PROC-ENV-INHERIT-MISSING
    BUILDER-ARGV
    PLAIN$ >LEN  OUT CAP >LEN  ERR CAP >LEN  BUILD-TIMEOUT-MS >MS
@@ -85,6 +85,9 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
    ;MATCH ;
+
+: BUILD-MODE ( ptr u8 n -- )
+   BUILD-OPEN  s" 1" KNOB+  BUILD-RUN ;
 
 \ Boot the built engine on an ordinary batch program and capture what it wrote.
 \ TWO things arrive in that stdout and they are different claims. The program's own
@@ -102,8 +105,15 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
    ;MATCH ;
 
+\ The program prints its answer after a label of its own, because the boot-run
+\ reports ahead of it carry long numbers: awb-ext=6510767442340633178 holds "42",
+\ so a bare substring match passed whether or not the program ran. ANSWERED
+\ reads the labelled span and compares it exactly.
+: BATCH-PROGRAM$ ( -- ptr u8 n )
+   S\" : BATCH-ANSWER ( -- ) s\" batch-answer=\" type 7 6 * . cr ;\nBATCH-ANSWER" ;
+
 : BATCH-OK ( -- )
-   s" 7 6 * . cr" BATCH-RUN ;
+   BATCH-PROGRAM$ BATCH-RUN ;
 
 : DIGIT? ( n -- bool ) {: c:n :}
    c 48 >= c 57 <= and ;
@@ -133,6 +143,9 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
 \ quietly move the expectation.
 : REPORT= ( ptr u8 n ptr u8 n -- ) {: m:ptr mu:n w:ptr wu:n :}
    m mu REPORT$ w wu STR= TTRUE ;
+
+: ANSWERED ( -- )
+   s" batch-answer=" s" 42" REPORT= ;
 
 : REQUIRE-BUILD ( ptr u8 n -- ) {: m:ptr mu:n :}
    m mu T-LABEL

@@ -74,7 +74,7 @@ package AOT-WIDE-FORMAT
    s" the pre-window variant still runs a batch program" T-LABEL
    RC @ 0 T=
    s" and computes with it" T-LABEL
-   OUT$ s" 42" CONTAINS? TTRUE
+   ANSWERED
    \ HH0's first cell is the SHA-256 seed constant $6a09e667, initialised by
    \ src/core/sha256.f in the cold prefix. The window word can only read it if the
    \ seed resolved HH0's name in THIS engine and patched the call the decline

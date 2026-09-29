@@ -71,7 +71,7 @@ and async exit.
 ## Test harness (`lib/pty-harness.f`)
 
 One module owns that flow for the suites that drive a child engine at a
-terminal: `test/proc-pty.f`, `test/aot-data-span-forge.f` and the reading half
+terminal: `test/proc-pty.f` and the reading half
 of `test/process-pty-tty-smoke.f`. They keep no copy of it. `PTY-HARNESS`
 publishes:
 

@@ -1514,10 +1514,6 @@ SUITE aot-wid-restore
    test/aot-wid-suite.f -- restore
 ;SUITE
 
-SUITE aot-wid-refuse-bound
-   test/aot-wid-suite.f -- refuse-bound
-;SUITE
-
 SUITE aot-wid-refuse-wid0
    test/aot-wid-suite.f -- refuse-wid0
 ;SUITE
@@ -1526,56 +1522,20 @@ SUITE aot-wid-refuse-address-span
    test/aot-wid-suite.f -- refuse-address-span
 ;SUITE
 
-SUITE aot-wid-boot-open
-   test/aot-wid-suite.f -- boot-open
-;SUITE
-
 SUITE aot-wid-boot-sealed
    test/aot-wid-suite.f -- boot-sealed
 ;SUITE
 
-SUITE aot-wid-rebase-sealed
-   test/aot-wid-suite.f -- rebase-sealed
-;SUITE
-
-SUITE aot-wid-rebase-open
-   test/aot-wid-suite.f -- rebase-open
+SUITE aot-wid-rebase
+   test/aot-wid-suite.f -- rebase
 ;SUITE
 
 SUITE aot-wid-capture-refusal
    test/aot-wid-suite.f -- capture-refusal
 ;SUITE
 
-SUITE aot-wid-forged-low
-   test/aot-wid-suite.f -- forged-low
-;SUITE
-
-SUITE aot-wid-forged-high
-   test/aot-wid-suite.f -- forged-high
-;SUITE
-
-SUITE aot-data-span
-   test/aot-data-span-forge.f -- span
-;SUITE
-
-SUITE aot-data-content
-   test/aot-data-span-forge.f -- content
-;SUITE
-
-SUITE aot-data-trap
-   test/aot-data-span-forge.f -- trap
-;SUITE
-
-SUITE aot-data-big
-   test/aot-data-span-forge.f -- big
-;SUITE
-
-SUITE aot-data-ext
-   test/aot-data-span-forge.f -- ext
-;SUITE
-
-SUITE aot-data-prewin
-   test/aot-data-span-forge.f -- prewin
+SUITE aot-data-window
+   test/aot-data-window-suite.f
 ;SUITE
 
 SUITE aot-seed-batch

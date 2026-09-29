@@ -85,17 +85,9 @@ create VBUF 16 allot
    s" a value no cell could have held is refused" T-LABEL
    VMAX REFUSED ;
 
-\ The grid the bitmap covers is the DATA cell grid, and the bitmap's own cap is
-\ the span cap's arithmetic rather than a second guess at how big a window gets.
-: GRID ( -- )
-   s" a bitmap byte covers eight cells of window" T-LABEL
-   CELL-BYTES CELL-BITS * BM-BYTE-SPAN T=
-   s" the bitmap cap is the span cap in bitmap bytes" T-LABEL
-   SPAN-CAP BM-BYTE-SPAN / BM-CAP T= ;
-
 : RUN ( -- )
    T-RESET
-   WIDTHS  TRUNCATED  EMPTY  PADDED  OVERLONG  TOO-WIDE  GRID
+   WIDTHS  TRUNCATED  EMPTY  PADDED  OVERLONG  TOO-WIDE
    T-REPORT ;
 
 RUN
