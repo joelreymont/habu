@@ -4,6 +4,7 @@
 require lib/test.f
 require lib/fs-mutate.f
 require lib/task.f
+require lib/process-argv.f
 
 package FS-NOREPLACE-TEST
 
@@ -14,6 +15,7 @@ create TEXT 64 allot
 FS-PATH-CAP SPAN-BUFFER: LINK-TEXT
 variable RACE-DEST-U
 variable RACE-READY
+TYPED-VARIABLE ACL-ON bool
 5000000000 constant RACE-WAIT-NS
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
@@ -148,15 +150,61 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    BAD-DEST FS-TRY-LSTAT TFALSE
    SOURCE REMOVE-FILE ;
 
+: CHMOD-RUN ( -- )
+   s" /bin/chmod" >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
+   MATCH result
+      ok OF 0<> if E-FS-IO throw then ENDOF
+      err OF drop E-FS-IO throw ENDOF
+   ;MATCH ;
+
+: ACL-ADD ( -- )
+   PROC-ARGV-RESET
+   s" +a" >LEN PROC-ARGV+
+   s" everyone deny delete" >LEN PROC-ARGV+
+   SOURCE >LEN PROC-ARGV+
+   CHMOD-RUN ;
+
+: ACL-REMOVE ( ptr u8 n -- )
+   {: path:ptr bytes :}
+   PROC-ARGV-RESET
+   s" -a#" >LEN PROC-ARGV+
+   s" 0" >LEN PROC-ARGV+
+   path bytes >LEN PROC-ARGV+
+   CHMOD-RUN ;
+
+: ACL-CLEAR ( -- )
+   ACL-ON @ 0= if exit then
+   SOURCE FS-TRY-LSTAT if
+      SOURCE ACL-REMOVE
+   else
+      DEST FS-TRY-LSTAT if DEST ACL-REMOVE then
+   then
+   false ACL-ON ! ;
+
+\ On macOS this per-inode ACL permits link but denies unlink. The same ACL
+\ appears on both names, so CLEAN clears it through whichever name survived.
+: UNLINK-ERROR ( -- )
+   HB-TARGET-MACOS? 0= if exit then
+   SOURCE s" source bytes" WRITE-ALL
+   ACL-ADD
+   true ACL-ON !
+   [: SOURCE DEST RENAME-NOREPLACE drop ;] E-FS-IO TTHROWSQ
+   SOURCE FILE? TTRUE
+   DEST FILE? TTRUE
+   SOURCE-CONTENT
+   DEST s" source bytes" CONTENT
+   SOURCE DEST FS:SAMEFILE TTRUE ;
+
 : CHECKS ( -- )
    PUBLISH EXISTING-FILE DANGLING-LINK LIVE-LINK EXISTING-DIR SAME-PATH
-   RACE OTHER-ERRORS ;
+   RACE OTHER-ERRORS UNLINK-ERROR ;
 
 : SETUP ( -- )
    s" habu-rename-noreplace" HB-TMP-MKDIR {: path:ptr bytes :}
-   path ROOT bytes BYTE-COPY bytes ROOT-U ! ;
+   path ROOT bytes BYTE-COPY bytes ROOT-U !
+   false ACL-ON ! ;
 
-: CLEAN ( -- ) ROOT ROOT-U @ REMOVE-TREE ;
+: CLEAN ( -- ) ACL-CLEAR ROOT ROOT-U @ REMOVE-TREE ;
 : RUN ( -- ) T-RESET SETUP [: CHECKS ;] [: CLEAN ;] finally T-REPORT ;
 
 RUN
