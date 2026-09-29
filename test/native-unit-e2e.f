@@ -115,10 +115,10 @@ variable RC
    outpath outu AT-A OUT OUT-U @ WRITE-ALL
    errpath erru AT-A ERR ERR-U @ WRITE-ALL ;
 
-: BUILD-ARGS ( -- )
+: BUILD-ARGS ( ptr u8 n -- ) {: tool:ptr toolu:n :}
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" >LEN PROC-ARGV+
-   s" tools/native-build.f" >LEN PROC-ARGV+
+   tool toolu >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" HABU_WHITEBOX_IMAGE" >LEN s" 1" >LEN PROC-ENV+ ;
 
@@ -132,7 +132,7 @@ variable RC
    RC @ 0 T= ;
 
 : EXPORT-UNIT ( -- )
-   BUILD-ARGS
+   s" tools/native-unit-build.f" BUILD-ARGS
    s" --export-unit" >LEN PROC-ARGV+
    s" NBR" >LEN PROC-ARGV+
    s" nbr.unit" AT-A >LEN PROC-ARGV+
@@ -142,13 +142,13 @@ variable RC
    s" nbr.unit" AT-A FILE? TTRUE ;
 
 : COLD-BUILD ( -- )
-   BUILD-ARGS
+   s" tools/native-build.f" BUILD-ARGS
    s" hb-cold" BUILD-TAIL
    s" cold.out" s" cold.err" SAVE-LOG
    CHECK-OK ;
 
 : IMPORT-UNIT ( ptr u8 n -- ) {: out:ptr outu:n :}
-   BUILD-ARGS
+   s" tools/native-unit-build.f" BUILD-ARGS
    s" --import-unit" >LEN PROC-ARGV+
    s" nbr.unit" AT-A >LEN PROC-ARGV+
    out outu BUILD-TAIL ;
@@ -202,7 +202,7 @@ variable RC
    COPY-BRANCH
    s" src/compiler/native/branch.f" AT-A
    S\" \n0 set-tier\n" APPEND-FILE
-   BUILD-ARGS
+   s" tools/native-unit-build.f" BUILD-ARGS
    s" --export-unit" >LEN PROC-ARGV+
    s" NBR" >LEN PROC-ARGV+
    s" unsupported.unit" AT-A >LEN PROC-ARGV+
