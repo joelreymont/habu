@@ -1,9 +1,11 @@
 ---
 title: "Emit x86 frame forms: reserve, release, store, load"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.432839+03:00"
+closed-at: "2026-09-30T09:51:10.274084+03:00"
+close-reason: x86 frame forms emit; ties copied in allocator order; 17/17 native images
 ---
 
 Problem: `src/compiler/native/emit-x64.f:40-51` refuses `reserve`, `release`, `store` and `load` with `E-X64EMIT-FORM`; spills lower but cannot execute.

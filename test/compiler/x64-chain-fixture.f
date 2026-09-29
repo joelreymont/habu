@@ -17,7 +17,7 @@
 \ PRUNE IS A PASS-THROUGH HERE: src/compiler/native/prune.f rewrites nothing on
 \ the corpus and this machine has no prune pass, so the row answers the module
 \ it was given, and one case pins that by identity. EVERY ROW OF THIS BACKEND IS
-\ NOW FILLED: the last case runs the driver's whole order - declare, select,
+\ NOW FILLED: the placed case runs the driver's whole order - declare, select,
 \ prune, fixpoint, emit at a named slot, retire - and reads the sealed image back
 \ off the emitter, which is what says the x86-64 chain is reachable end to end
 \ from src/compiler/native/compiler.f. What the driver does with those bytes is
@@ -170,17 +170,151 @@ create TXT
 \ twelve results are not.
 12 constant PRESSURE-N
 
-: BUILD-PRESSURE ( -- )
-   1 1 OPEN-FUN
-   ARG+ {: a:IR-ID:ir-value-id :}
+: DOUBLINGS ( IR-ID:ir-value-id -- )
+   {: a:IR-ID:ir-value-id :}
    PRESSURE-N 0 ?do
       HIR-OPCODE:ADD a a BINOP  i ARGV !
-   loop
+   loop ;
+
+\ Their sum, `24 a *`, read in the order they were made.
+: DOUBLINGS-SUM ( -- IR-ID:ir-value-id )
    HIR-OPCODE:ADD  0 ARGV @  1 ARGV @  BINOP
    PRESSURE-N 2 ?do
       HIR-OPCODE:ADD swap  i ARGV @  BINOP
-   loop
-   RET1
+   loop ;
+
+: BUILD-PRESSURE ( -- )
+   1 1 OPEN-FUN
+   ARG+ DOUBLINGS
+   DOUBLINGS-SUM RET1
+   CLOSE-FUN ;
+
+\ ---- the same pressure held across control ----------------------------------
+: BLOCK-ID ( n -- IR-ID:ir-block-id )
+   {: k:n :}
+   BB IR-BUILD:MODULE-KEY k IR-ID:PACK-BLOCK ;
+
+: BLOCK+ ( -- )
+   CC BB IR-BUILD:END-BLOCK drop
+   CC BB IR-BUILD:BEGIN-BLOCK
+   CC BB  OPEN-ST OPEN-LN SPN  IR-BUILD:SET-BLOCK-SPAN ;
+
+: BRZ2 ( IR-ID:ir-value-id n n -- )
+   {: f:IR-ID:ir-value-id z:n o:n :}
+   HIR-OPCODE:BRZ CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB f IR-BUILD:ADD-OPERAND
+   CC BB z BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB o BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: BR1 ( IR-ID:ir-value-id n -- )
+   {: v:IR-ID:ir-value-id t:n :}
+   HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: BR2 ( IR-ID:ir-value-id IR-ID:ir-value-id n -- )
+   {: v:IR-ID:ir-value-id w:IR-ID:ir-value-id t:n :}
+   HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB w IR-BUILD:ADD-OPERAND
+   CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: CONSTOP ( n -- IR-ID:ir-value-id )
+   {: v:n :}
+   HIR-OPCODE:CONST BODY-ST BODY-LN OPEN-OP
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CC BB  CC BB HIR:KEY-VALUE  CC BB v IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-ADDR  CC BB HIR:ADDR-NONE HIR:ADDR-ATTR
+   IR-BUILD:ADD-ATTR
+   CLOSE-VALUE ;
+
+\ `( a b -- n )`: the twelve doublings, then `b` branches, and each arm sums
+\ them - so every one put away before the branch is brought back on both sides.
+\ The arms join at the return: `24 a *` where `b` is zero, `24 a * b +` where it
+\ is not.
+: BUILD-PBRANCH ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   a DOUBLINGS
+   b 1 2 BRZ2
+   BLOCK+
+   DOUBLINGS-SUM 3 BR1
+   BLOCK+
+   HIR-OPCODE:ADD DOUBLINGS-SUM b BINOP 3 BR1
+   BLOCK+
+   ARG+ RET1
+   CLOSE-FUN ;
+
+\ `( a n -- r )`: the twelve doublings, then a loop that turns `n` times, adding
+\ their sum to an accumulator that starts at `a` - `a 24 a * n * +`. All twelve
+\ are live around the backedge beside the count and the accumulator, so what
+\ the frame holds is brought back on every turn. The loop leaves the way
+\ src/compiler/native/elaborate.f DO-WHILE lays `begin ... while ... repeat` out:
+\ `brz` to a stub that hands the accumulator to the exit block as its argument,
+\ laid before the body.
+: BUILD-PLOOP ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: n:IR-ID:ir-value-id :}
+   a DOUBLINGS
+   n a 1 BR2
+   BLOCK+
+   ARG+ {: c:IR-ID:ir-value-id :}
+   ARG+ {: acc:IR-ID:ir-value-id :}
+   c 2 3 BRZ2
+   BLOCK+
+   acc 4 BR1
+   BLOCK+
+   HIR-OPCODE:ADD acc DOUBLINGS-SUM BINOP {: acc2:IR-ID:ir-value-id :}
+   HIR-OPCODE:SUB c 1 CONSTOP BINOP  acc2  1 BR2
+   BLOCK+
+   ARG+ RET1
+   CLOSE-FUN ;
+
+: MEMT ( -- IR-ID:ir-type-id )
+   CC BB HIR:MEM-TYPE ;
+
+: MEM0 ( -- IR-ID:ir-value-id )
+   HIR-OPCODE:MEM BODY-ST BODY-LN OPEN-OP
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+: INT-ATTR+ ( IR-ID:ir-symbol-id n -- )
+   {: k:IR-ID:ir-symbol-id v:n :}
+   CC BB  k  CC BB v IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR ;
+
+\ One argument in and one answer out, with nothing else on the data stack.
+: WORDCALL1 ( IR-ID:ir-value-id IR-ID:ir-value-id n -- IR-ID:ir-value-id )
+   {: tok:IR-ID:ir-value-id arg:IR-ID:ir-value-id e:n :}
+   HIR-OPCODE:WORDCALL BODY-ST BODY-LN OPEN-OP
+   CC BB tok IR-BUILD:ADD-OPERAND
+   CC BB arg IR-BUILD:ADD-OPERAND
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CC BB HIR:KEY-ENTRY e INT-ATTR+
+   CC BB HIR:KEY-IN 1 INT-ATTR+
+   CC BB HIR:KEY-OUT 1 INT-ATTR+
+   CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC BB id 1 IR-BUILD:OP-RESULT@ ;
+
+\ `( a -- n )` that calls: the twelve doublings and their sum, a call to another
+\ word's entry with that sum, and the twelve doublings of its answer and their
+\ sum. The frame is reserved at the entry and released before the return, so it
+\ is held across the call - and nothing is live in a register there: the call
+\ site hands its argument over on the data stack (select-x64.f CALL-SAVE).
+: BUILD-PCALLER ( n -- )
+   {: e:n :}
+   1 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   MEM0 {: tok:IR-ID:ir-value-id :}
+   a DOUBLINGS
+   tok DOUBLINGS-SUM e WORDCALL1 DOUBLINGS
+   DOUBLINGS-SUM RET1
    CLOSE-FUN ;
 
 \ `: LEAF ( a b -- n ) - ;` - two arguments that die at the subtraction. Nothing
@@ -196,12 +330,15 @@ create TXT
 \ The driver's own order up to the emit row this backend leaves unfilled:
 \ declare what the definition takes and leaves, select, prune, and lower to a
 \ fixpoint. src/compiler/native/compiler.f runs exactly these words.
-: CHAIN ( n n -- IR-BUILD:module )
-   {: in:n out:n :}
-   CC in out NBACK:L-NONE NBACK:DECLARE
+: CHAIN-LINKED ( n n NBACK:linkage -- IR-BUILD:module )
+   {: in:n out:n l:NBACK:linkage :}
+   CC in out l NBACK:DECLARE
    CC BB NBACK:SELECT {: m0:IR-BUILD:module :}
    CC m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
    CC m1 NBACK:FIXPOINT ;
+
+: CHAIN ( n n -- IR-BUILD:module )
+   NBACK:L-NONE CHAIN-LINKED ;
 
 \ The frame the last allocation settled on, as the ABI's slot count. There is no
 \ prologue slot to subtract on this machine: `call` pushes the return address on
@@ -378,6 +515,58 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
    CC NBACK:RELEASE
    sz blocks same gone ;
 
+\ ---- the spilling modules through the emit row -------------------------------
+\ The frame is taken on rsp by the routine's first instruction and given back by
+\ the one before its return: the spill pass opens the entry block with the
+\ reserve and stands the release in front of the return (spill.f WALK-BLOCK),
+\ and the emitter lays the entry first and the return block last. 32 is the
+\ frame the first case reads off the reserve. What these bytes do when they run
+\ is test/x86-64-peer-routines.f's question.
+: HEAD=HEX? ( ptr u8 n -- bool )
+   {: ea:ptr eu:n :}
+   X64EMIT:BYTES  eu 2 /  ea eu SPAN=HEX? ;
+
+: TAIL=HEX? ( ptr u8 n -- bool )
+   {: ea:ptr eu:n :}
+   eu 2 / {: k:n :}
+   X64EMIT:BYTES X64EMIT:SIZE k - +  k  ea eu SPAN=HEX? ;
+
+: PRESSURE-EMIT-BODY ( IR-CTX:ctx -- bool bool )
+   HIR-MOD
+   BUILD-PRESSURE
+   1 1 CHAIN {: m:IR-BUILD:module :}
+   CC m EMIT-SLOT NBACK:EMIT
+   \ mc: subq $32, %rsp
+   s" 4881ec20000000" HEAD=HEX? {: head:bool :}
+   \ mc: addq $32, %rsp
+   \ mc: retq
+   s" 4881c420000000c3" TAIL=HEX? {: tail:bool :}
+   CC NBACK:RETIRE
+   CC NBACK:RELEASE
+   head tail ;
+
+\ A shape through every row, emit included: how many reserves the entry block of
+\ the lowered module holds, and whether the emission was sealed.
+: FRAMED-EMIT ( n n NBACK:linkage -- n bool )
+   CHAIN-LINKED {: m:IR-BUILD:module :}
+   m SCAN drop
+   CC m EMIT-SLOT NBACK:EMIT
+   X64EMIT:SEALED? {: sealed:bool :}
+   CC NBACK:RETIRE
+   CC NBACK:RELEASE
+   N-RESERVE @ sealed ;
+
+$400 constant CALLEE-ENTRY           \ the entry the caller's site names
+
+: PBRANCH-BODY ( IR-CTX:ctx -- n bool )
+   HIR-MOD BUILD-PBRANCH 2 1 NBACK:L-NONE FRAMED-EMIT ;
+
+: PLOOP-BODY ( IR-CTX:ctx -- n bool )
+   HIR-MOD BUILD-PLOOP 2 1 NBACK:L-NONE FRAMED-EMIT ;
+
+: PCALLER-BODY ( IR-CTX:ctx -- n bool )
+   HIR-MOD CALLEE-ENTRY BUILD-PCALLER 1 1 NBACK:L-CALLED FRAMED-EMIT ;
+
 public
 
 : RUN ( -- )
@@ -398,6 +587,22 @@ public
    s" the last two rows: the chain's module is placed at the slot the driver names and comes back sealed as the bytes x64-emit.f pins for it, and retiring gives the emission back twice over" T-LABEL
    WBND [: PLACED-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE 1 T= 31 T=
+
+   s" the spilling module through the emit row: its first instruction takes the 32-byte frame on rsp and the one before its return gives it back" T-LABEL
+   WBND [: PRESSURE-EMIT-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE
+
+   s" the pressure held across a branch lowers into one frame, reserved where the routine enters, and is emitted" T-LABEL
+   WBND [: PBRANCH-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 1 T=
+
+   s" the pressure held around a loop lowers into one frame, reserved where the routine enters, and is emitted" T-LABEL
+   WBND [: PLOOP-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 1 T=
+
+   s" the pressure on both sides of a call lowers into one frame held across it, and is emitted" T-LABEL
+   WBND [: PCALLER-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 1 T=
 
    T-REPORT ;
 

@@ -27,7 +27,8 @@
 \ llvm-mc DISASSEMBLES the pinned 49 81 ec 10 00 00 00 as the `subq $16, %r12`
 \ its `mc:` line gives, and re-ASSEMBLES that line as the four-byte
 \ 49 83 ec 10: on those lines the instruction agrees and the encoding is the
-\ longer one this encoder has.
+\ longer one this encoder has. The frame's `x64.reserve` and `x64.release` are
+\ the same imm32 subtract and add on rsp, and disagree the same way.
 \
 \ THE SECOND IS THE BRANCH, and it is the same kind of disagreement. A `mc:` line
 \ for a branch or a call carries the rel32 FIELD as llvm-mc printed it - `je 11`,
@@ -67,12 +68,14 @@
 \ - A DATA-STACK DISPLACEMENT OUTSIDE disp8, or a negative one. `x64.dslot` is
 \   signed and reaches disp32 (x64ir.f DSLOT), which wants a contract of more
 \   than sixteen cells.
+\ - A FRAME SLOT OUTSIDE disp8. The validator bounds a slot by the module's own
+\   value count (regalloc-verify.f FLOW-SLOT refuses E-A64RAV-SLOT) and the spill
+\   pass reuses a slot once its value is dead, so slot 128 wants seventeen values
+\   put away at once.
 \ - THE FORMS STILL REFUSED BY NAME, one case standing for all of them below:
 \   the variable shifts `x64.shl` and `x64.shr`, `x64.idiv`, `x64.neg`, the
-\   selects `x64.cmpsel` and `x64.selz`, the frame forms `x64.reserve`,
-\   `x64.release`, `x64.store` and `x64.load`, `x64.trap` and `x64.codeaddr`.
-\   Each needs a register the machine names, a prologue, or a lowering, and none
-\   of those is here.
+\   selects `x64.cmpsel` and `x64.selz`, `x64.trap` and `x64.codeaddr`. Each
+\   needs a register the machine names or a lowering, and neither is here.
 \ - E-X64EMIT-LAYOUT, the disagreement between the two passes. It is the check
 \   that holds the writer to the measurer's numbers, and no module reaches it
 \   without a defect in one of them, so no case here can pin it.
@@ -732,15 +735,91 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    $DA7A0000 kind M-MOVI M-RET1
    M-CLOSE ;
 
+\ ---- the four frame forms ----------------------------------------------------
+\ `( a -- n )` in a frame of its own: `a` put away in two slots, brought back
+\ from both and summed, so the answer is `2 a *`. A slot is a displacement from
+\ rsp, and rsp as a base always takes a SIB byte: slot 0 has no displacement
+\ field and slot 8 a disp8. The spill pass's own frames are
+\ test/compiler/x64-chain.f's pressure fixtures, run natively by
+\ test/x86-64-peer-routines.f.
+16 constant FRAME-N                  \ two slots, a whole multiple of X64IR:SP-ALIGN
+
+: MMEMT ( -- IR-ID:ir-type-id )     CC MB X64IR:MEM-TYPE ;
+
+: M-CLOSE-VALUE ( -- IR-ID:ir-value-id )
+   CC MB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC MB id 0 IR-BUILD:OP-RESULT@ ;
+
+: M-RESERVE ( n -- IR-ID:ir-value-id )
+   {: size:n :}
+   X64IR-OPCODE:RESERVE M-OPEN
+   CC MB MMEMT IR-BUILD:ADD-RESULT
+   CC MB X64IR:KEY-FRAME  CC MB size X64IR:FRAME-ATTR  M-ATTR+
+   M-CLOSE-VALUE ;
+
+: M-STORE ( IR-ID:ir-value-id IR-ID:ir-value-id n -- IR-ID:ir-value-id )
+   {: v:IR-ID:ir-value-id k:IR-ID:ir-value-id slot:n :}
+   X64IR-OPCODE:STORE M-OPEN
+   v M-OPERAND+
+   k M-OPERAND+
+   CC MB MMEMT IR-BUILD:ADD-RESULT
+   CC MB X64IR:KEY-SLOT  CC MB slot X64IR:SLOT-ATTR  M-ATTR+
+   M-CLOSE-VALUE ;
+
+: M-LOAD ( IR-ID:ir-value-id n -- IR-ID:ir-value-id IR-ID:ir-value-id )
+   {: k:IR-ID:ir-value-id slot:n :}
+   X64IR-OPCODE:LOAD M-OPEN
+   k M-OPERAND+
+   M-RESULT+
+   CC MB MMEMT IR-BUILD:ADD-RESULT
+   CC MB X64IR:KEY-SLOT  CC MB slot X64IR:SLOT-ATTR  M-ATTR+
+   CC MB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC MB id 0 IR-BUILD:OP-RESULT@
+   CC MB id 1 IR-BUILD:OP-RESULT@ ;
+
+: M-RELEASE ( IR-ID:ir-value-id n -- )
+   {: k:IR-ID:ir-value-id size:n :}
+   X64IR-OPCODE:RELEASE M-OPEN
+   k M-OPERAND+
+   CC MB X64IR:KEY-FRAME  CC MB size X64IR:FRAME-ATTR  M-ATTR+
+   CC MB IR-BUILD:END-OP drop ;
+
+: M-ADD ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   X64IR-OPCODE:ADD M-OPEN
+   x M-OPERAND+
+   y M-OPERAND+
+   M-RESULT+
+   M-CLOSE-VALUE ;
+
+: BUILD-FRAMED ( -- IR-BUILD:module )
+   M-MOD
+   M-BIND-MACHINE
+   NEG-SIGN M-FUN
+   M-ARG+ {: a:IR-ID:ir-value-id :}
+   FRAME-N M-RESERVE {: k0:IR-ID:ir-value-id :}
+   a k0 0 M-STORE {: k1:IR-ID:ir-value-id :}
+   a k1 8 M-STORE {: k2:IR-ID:ir-value-id :}
+   k2 0 M-LOAD {: x:IR-ID:ir-value-id k3:IR-ID:ir-value-id :}
+   k3 8 M-LOAD {: y:IR-ID:ir-value-id k4:IR-ID:ir-value-id :}
+   x y M-ADD {: u:IR-ID:ir-value-id :}
+   k4 FRAME-N M-RELEASE
+   u M-RET1
+   M-CLOSE ;
+
 \ ---- running selection, allocation, validation and emission ------------------
 \ The contract every case emits under: a leaf computing in this machine's nine
-\ allocatable general registers, returning to its caller, reserving no frame and
-\ calling nothing.
-: LEAF ( -- NEFF:routine )
+\ allocatable general registers, returning to its caller, reserving the frame it
+\ is given - none, but for the frame forms' case - and calling nothing.
+: LEAF-FRAMED ( n -- NEFF:routine )
+   {: frame:n :}
    NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE X64ABI:SCRATCH
    NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
    NEFF-NZCV:CLOBBERED NEFF-LINK:ABSENT NEFF-CONTROL:RETURNS
-   NEFF:TRAITS-NONE 0 0 X64M:MACHINE NEFF:ROUTINE ;
+   NEFF:TRAITS-NONE frame 0 X64M:MACHINE NEFF:ROUTINE ;
+
+: LEAF ( -- NEFF:routine )
+   0 LEAF-FRAMED ;
 
 \ The emitter is bound to the module about to be written at the same moment the
 \ allocator and the validator are: a module's opcode and key identities are its
@@ -902,6 +981,13 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 
 : RELOC-BYTES ( IR-CTX:ctx -- )
    0 W-CTX ! X64IR:ADDR-DATA BUILD-RELOC M-ALLOCATED 0 PLACED ;
+
+\ Allocated and accepted under a leaf whose frame is the one it reserves.
+: FRAMED-BYTES ( IR-CTX:ctx -- )
+   0 W-CTX ! BUILD-FRAMED {: m:IR-BUILD:module :}
+   CC m FRAME-N LEAF-FRAMED A64RA:ALLOCATE
+   m FRAME-N LEAF-FRAMED A64RAV:ACCEPT
+   m 0 PLACED ;
 
 \ The sealed emission's own readers, taken on the routine that has one site.
 \ Every number here is a BYTE count or a BYTE offset, which is what separates
@@ -1241,6 +1327,18 @@ public
    s" the one site this routine has is the only one a reader answers about" T-LABEL
    [: SITE-PAST-END ;] E-X64EMIT-BOUND TTHROWSQ
    X64EMIT:RETIRE
+
+   s" the four frame forms: the frame taken on rsp, a cell put away and brought back at no displacement and at a disp8, the frame given back" T-LABEL
+   WBND [: FRAMED-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: subq $16, %rsp
+   \ mc: movq %rax, (%rsp)
+   \ mc: movq %rax, 8(%rsp)
+   \ mc: movq (%rsp), %rax
+   \ mc: movq 8(%rsp), %rcx
+   \ mc: addq %rcx, %rax
+   \ mc: addq $16, %rsp
+   \ mc: retq
+   s" 4881ec10000000488904244889442408488b0424488b4c24084801c84881c410000000c3" X=
 
    WBND [: ADDRESSED-CASES ;] IR-CTX:WITH-CONTEXT
    WBND [: STATE-CASES ;] IR-CTX:WITH-CONTEXT

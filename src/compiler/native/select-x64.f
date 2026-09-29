@@ -29,7 +29,8 @@
 \ again by the next pass through the header, and no operand of the backedge
 \ names it. So this pass computes live-in and live-out over the function's
 \ blocks before it walks them ("which values are live where" below) and the tie
-\ decision reads them. The allocator coalesces the copies it can (MB-COPY?), so
+\ decision reads them, together with every block laid after this one
+\ (LATER-LIVE?). The allocator coalesces the copies it can (MB-COPY?), so
 \ a copy that was not needed costs nothing after allocation.
 \
 \ TWO. A LITERAL IN THE SECOND OPERAND IS PART OF THE INSTRUCTION. x86-64 ALU
@@ -1030,9 +1031,10 @@ create NAMEBUF NAME-CAP allot
 \ to it. The allocator refuses a tie whose ends cannot share a register
 \ (regalloc.f MB-TIE1) instead of repairing it, so the operand a form is about
 \ to destroy is copied here whenever it is LIVE AFTER this operation, which is
-\ three questions in one: another operand of this operation names it (`dup +`),
-\ a later operation of this block reads it, or it is live out of this block. The
-\ last of the three is the one a count of uses cannot answer - a value read once
+\ four questions in one: another operand of this operation names it (`dup +`),
+\ a later operation of this block reads it, it is live out of this block, or a
+\ block laid after this one reads it or has it live out (LATER-LIVE? below). The
+\ third is the one a count of uses cannot answer - a value read once
 \ inside a loop is read again when the backedge brings control round, and no
 \ operand of that branch names it. The copy is `x64.mov` into a fresh value, and
 \ the allocator coalesces the ones whose ends can share a register after all.
@@ -1062,11 +1064,26 @@ create NAMEBUF NAME-CAP allot
       v  BLK i OP-AT  0 OP-READS-FROM? if drop true leave then
    loop ;
 
+\ THE ALLOCATOR ASKS IN ITS OWN ORDER. A range there is a hull over the blocks
+\ laid in ordinal order (regalloc.f MB-RANGES, MB-EXTEND1): a value read, or live
+\ out, in any block laid after this one reaches past this operation even where
+\ no path from here reads it - the arm a branch did not take, the exit a loop
+\ leaves by - and the tie against it is E-A64RA-TIE. So such a value is live
+\ after the operation too.
+: LATER-LIVE? ( IR-ID:ir-value-id -- bool )
+   {: v:IR-ID:ir-value-id :}
+   false
+   FUN BLOCK-COUNT  BLK BLOCK-ORD 1+ ?do
+      v  FUN i BLOCK-AT  BLOCK-USES 0<>
+      P-OUT i v VSLOT LIVE-HAS?  or if drop true leave then
+   loop ;
+
 : LIVE-AFTER? ( IR-ID:ir-value-id IR-ID:ir-op-id -- bool )
    {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id :}
    v id 1 OP-READS-FROM? if true exit then
    v id READ-BELOW? if true exit then
-   v LIVE-OUT? ;
+   v LIVE-OUT? if true exit then
+   v LATER-LIVE? ;
 
 : TIED-OPERAND ( IR-ID:ir-op-id -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id :}

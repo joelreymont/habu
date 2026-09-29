@@ -1,12 +1,13 @@
 \ x86-64-peer-routines.f - every HIR fixture of test/compiler/x64-emit.f that
-\ the x86-64 rows emit, cross-built into an executable for an x86-64 peer. Each
-\ is driven the way src/compiler/native/compiler.f drives a definition -
-\ declare, select, prune, fixpoint, emit at the image's own address, retire -
-\ and the routine is wrapped in test/x86-64-peer-harness.f's checking entry
-\ with the answers its definition must give. Each fixture writes one positive
-\ image into $HB_TMP/x64-routines; diff also writes a negative harness image
-\ whose first case expects a wrong answer. The manifest lists each file with
-\ its expected status; docs/bootstrap.md gives the peer's comparison.
+\ the x86-64 rows emit, and the pressure fixtures of test/compiler/x64-chain.f
+\ whose spills the rows lower into a frame, cross-built into an executable for an
+\ x86-64 peer. Each is driven the way src/compiler/native/compiler.f drives a
+\ definition - declare, select, prune, fixpoint, emit at the image's own
+\ address, retire - and the routine is wrapped in test/x86-64-peer-harness.f's
+\ checking entry with the answers its definition must give. Each fixture writes
+\ one positive image into $HB_TMP/x64-routines; diff also writes a negative
+\ harness image whose first case expects a wrong answer. The manifest lists each
+\ file with its expected status; docs/bootstrap.md gives the peer's comparison.
 \
 \ Two fixtures have no image. The rows refuse BUILD-ADDRESSED with
 \ E-IR-VERIFY-OPTYPE: it takes its memory order as an argument, which a
@@ -22,6 +23,7 @@ require lib/fs-mutate.f
 require src/compiler/native/backend.f
 require src/arch/x86-64/passes.f
 require test/compiler/x64-emit-fixture.f
+require test/compiler/x64-chain-fixture.f
 require test/x86-64-peer-harness.f
 
 \ The fixtures stay in the package that stages them; this adds each one's trip
@@ -94,6 +96,35 @@ public
 : WORDCALL-ROUTINE ( n -- )
    CALLEE !  WBND [: WORDCALL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : ADDRESSED-REFUSAL ( -- ) WBND [: ADDRESSED-REFUSED ;] IR-CTX:WITH-CONTEXT ;
+;package
+
+\ The same trip for the fixtures the chain suite stages. Twelve values live at
+\ once do not fit the nine registers, so the fixpoint puts some away in a frame
+\ the routine reserves on rsp: the harness's own balance check is what says the
+\ frame was given back exactly.
+package X64CHAIN-TEST
+private
+variable CALLEE                      \ the entry the caller's site names
+
+: ROWS, ( n n NBACK:linkage -- )
+   CHAIN-LINKED {: m:IR-BUILD:module :}
+   CC m X64HARNESS:POSITION NBACK:EMIT
+   X64EMIT:BYTES X64EMIT:SIZE X64HARNESS:APPEND-ROUTINE
+   CC NBACK:RETIRE
+   CC NBACK:RELEASE ;
+
+: PRESS-ROWS ( IR-CTX:ctx -- )    HIR-MOD BUILD-PRESSURE 1 1 NBACK:L-NONE ROWS, ;
+: PBRANCH-ROWS ( IR-CTX:ctx -- )  HIR-MOD BUILD-PBRANCH 2 1 NBACK:L-NONE ROWS, ;
+: PLOOP-ROWS ( IR-CTX:ctx -- )    HIR-MOD BUILD-PLOOP 2 1 NBACK:L-NONE ROWS, ;
+: PCALLER-ROWS ( IR-CTX:ctx -- )
+   HIR-MOD CALLEE @ BUILD-PCALLER 1 1 NBACK:L-CALLED ROWS, ;
+
+public
+: PRESSURE-ROUTINE ( -- )  WBND [: PRESS-ROWS ;] IR-CTX:WITH-CONTEXT ;
+: PBRANCH-ROUTINE ( -- )   WBND [: PBRANCH-ROWS ;] IR-CTX:WITH-CONTEXT ;
+: PLOOP-ROUTINE ( -- )     WBND [: PLOOP-ROWS ;] IR-CTX:WITH-CONTEXT ;
+: PCALLER-ROUTINE ( n -- )
+   CALLEE !  WBND [: PCALLER-ROWS ;] IR-CTX:WITH-CONTEXT ;
 ;package
 
 package X64ROUTINES
@@ -232,6 +263,51 @@ create MANIFEST BUF:HDR-BYTES allot
    callee X64EMIT-TEST:WORDCALL-ROUTINE
    s" wordcaller" false WRITE-IMAGE ;
 
+\ Twelve doublings summed: `24 a *`, over four frame slots.
+: PRESSURE-IMAGE ( -- )
+   false OPEN,
+   1 24 CASE1,
+   -5 -120 CASE1,
+   MAX-CELL -24 CASE1,
+   CLOSE, ENTRY, X64CHAIN-TEST:PRESSURE-ROUTINE
+   s" pressure" false WRITE-IMAGE ;
+
+\ `24 a *` where `b` is zero and `24 a * b +` where it is not: what was put away
+\ before the branch comes back on both arms.
+: PBRANCH-IMAGE ( -- )
+   false OPEN,
+   1 0 24 CASE2,
+   1 5 29 CASE2,
+   -2 0 -48 CASE2,
+   MAX-CELL -1 -25 CASE2,
+   CLOSE, ENTRY, X64CHAIN-TEST:PBRANCH-ROUTINE
+   s" pbranch" false WRITE-IMAGE ;
+
+\ `a 24 a * n * +`: no turn, one, and several.
+: PLOOP-IMAGE ( -- )
+   false OPEN,
+   1 0 1 CASE2,
+   5 1 125 CASE2,
+   1 3 73 CASE2,
+   -2 2 -98 CASE2,
+   CLOSE, ENTRY, X64CHAIN-TEST:PLOOP-ROUTINE
+   s" ploop" false WRITE-IMAGE ;
+
+\ The callee is the pressure fixture, placed first, so its frame is reserved and
+\ given back below the caller's while the caller's is held across the call:
+\ `24 a *`, then the callee's `24 *`, then `24 *` again - `13824 a *`.
+: PCALLER-IMAGE ( -- )
+   false OPEN,
+   1 13824 CASE1,
+   -1 -13824 CASE1,
+   3 41472 CASE1,
+   CLOSE,
+   POSITION {: callee:n :}
+   X64CHAIN-TEST:PRESSURE-ROUTINE
+   ALIGN, ENTRY,
+   callee X64CHAIN-TEST:PCALLER-ROUTINE
+   s" pcaller" false WRITE-IMAGE ;
+
 public
 : RUN ( -- )
    T-RESET
@@ -250,6 +326,10 @@ public
    DADDR-IMAGE
    LOOP-IMAGE
    WORDCALL-IMAGE
+   PRESSURE-IMAGE
+   PBRANCH-IMAGE
+   PLOOP-IMAGE
+   PCALLER-IMAGE
    SB-RESET DIR$ SB-APPEND s" /manifest" SB-APPEND SB$ TMP-PATH
    MANIFEST BUF:SPAN$ BUF:BLEN>N WRITE-ALL
    X64EMIT-TEST:ADDRESSED-REFUSAL

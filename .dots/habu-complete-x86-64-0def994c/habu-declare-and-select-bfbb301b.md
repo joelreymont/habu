@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.484363+03:00"
-blocks:
-  - habu-emit-x86-frame-d8d25223
 ---
 
 Problem: `src/compiler/native/x64ir.f` declares no float forms; selection refuses with `E-X64SEL-FLOAT`. First half of the float work (dialect and selection); C7b emits and executes.

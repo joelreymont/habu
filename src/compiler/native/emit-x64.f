@@ -44,12 +44,12 @@
 \ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the variable shifts
 \ `shl`/`shr` and the divide `idiv` - all three name a register the machine
 \ chose and the divide carries a branch to `x64.throw-entry` besides - the
-\ negate, the two selects `cmpsel` and `selz`, the four frame forms `reserve`,
-\ `release`, `store` and `load`, the trap, and `codeaddr`. The float forms are
-\ not declared by the dialect at all. Publication into a code region is not here
-\ either, and on this host it cannot be: src/compiler/native/publish.f reads
-\ NEMIT rows only the ARM64 emission row fills, and the engine's own callmap and
-\ addrmap record ARM64 shapes. An x86-64 emission is consumed by the cross-build image writer.
+\ negate, the two selects `cmpsel` and `selz`, the trap, and `codeaddr`. The
+\ float forms are not declared by the dialect at all. Publication into a code
+\ region is not here either, and on this host it cannot be:
+\ src/compiler/native/publish.f reads NEMIT rows only the ARM64 emission row
+\ fills, and the engine's own callmap and addrmap record ARM64 shapes. An x86-64
+\ emission is consumed by the cross-build image writer.
 
 require lib/prelude.f
 require lib/errors.f
@@ -194,6 +194,8 @@ X64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 
 \ ---- the dialect's operation family ------------------------------------------
 \ An opcode this dialect does not own has no encoding here and is refused rather
@@ -262,6 +264,8 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 : DBYTES-OF ( IR-ID:ir-op-id -- n )  0 BND-DBYTES @ ATTR-INT ;
 : DBACK-OF ( IR-ID:ir-op-id -- n )   0 BND-DBACK @ ATTR-INT ;
 : ENTRY-OF ( IR-ID:ir-op-id -- n )   0 BND-ENTRY @ ATTR-INT ;
+: SLOT-OF ( IR-ID:ir-op-id -- n )    0 BND-SLOT @ ATTR-INT ;
+: FRAME-OF ( IR-ID:ir-op-id -- n )   0 BND-FRAME @ ATTR-INT ;
 
 \ The dialect's condition field IS the assembler's four-bit tttn: x64ir.f takes
 \ every code from X64ASM:C-L, C-LE, C-G, C-GE, C-E and C-NE rather than writing
@@ -275,6 +279,13 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 \ A64M:DSTACK-GPR, so no pass writes 12.
 : DSTACK ( -- r64 )
    X64M:DSTACK-GPR >R64 ;
+
+\ ---- the machine stack pointer -----------------------------------------------
+\ The register a frame is taken on and addressed from, asked for by name the way
+\ emit.f asks A64M:SP-GPR: x64ir.f states it, and a frame slot is a displacement
+\ from it (x64ir.f SLOT).
+: MSTACK ( -- r64 )
+   X64IR:SP-GPR >R64 ;
 
 \ ---- where a block was laid --------------------------------------------------
 : BLK-ORD-CK ( n -- n )
@@ -557,6 +568,32 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    {: id:IR-ID:ir-op-id s:ptr :}
    id 0 OPD-R64  DSTACK id DSLOT-OF MEM-OFF  s ENC-MOV-MR ;
 
+\ ---- the frame forms ---------------------------------------------------------
+\ The spill pass's frame: a reserve opens the entry block, a release stands in
+\ front of the return, and every slot between them is a non-negative
+\ displacement from rsp in whole cells (x64ir.f SLOT and FRAME). NOTHING ELSE
+\ MOVES rsp INSIDE THE FRAME: a call pushes its return address below it and the
+\ callee's `ret` takes that back, so a slot names the same cell on both sides of
+\ a call and a frame held across one needs no other instruction. The size is
+\ the imm32 form whatever its magnitude, which is PUT-ADDI's rule; the slot's
+\ displacement width is the encoder's, fixed by the slot, so both passes
+\ measure the same length.
+: PUT-RESERVE ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   MSTACK  id FRAME-OF >IMM32  s ENC-SUB-RI32 ;
+
+: PUT-RELEASE ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   MSTACK  id FRAME-OF >IMM32  s ENC-ADD-RI32 ;
+
+: PUT-STORE ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 OPD-R64  MSTACK id SLOT-OF MEM-OFF  s ENC-MOV-MR ;
+
+: PUT-LOAD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-R64  MSTACK id SLOT-OF MEM-OFF  s ENC-MOV-RM ;
+
 \ ---- the addressed forms -----------------------------------------------------
 \ The dialect has no offset attribute on these: the address is the whole operand
 \ and the form encodes at displacement zero.
@@ -622,7 +659,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 \ Every opcode of the dialect is named, so a form added to the vocabulary is a
 \ decision taken HERE rather than a silent fall-through. The refusing arms are
 \ the forms this emitter does not render: each needs a register the machine
-\ names, a prologue or a lowering, and none of those is here.
+\ names or a lowering, and neither is here.
 : PUT-OP ( IR-ID:ir-op-id n ptr a -- )
    {: id:IR-ID:ir-op-id home:n s:ptr :}
    id SLOT-AT X64IR:NTH
@@ -656,10 +693,10 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
       cmpbr    OF id home s PUT-CMPBR ENDOF
       cmpbri   OF id home s PUT-CMPBRI ENDOF
       ret      OF s ENC-RET ENDOF
-      reserve  OF E-X64EMIT-FORM throw ENDOF
-      release  OF E-X64EMIT-FORM throw ENDOF
-      store    OF E-X64EMIT-FORM throw ENDOF
-      load     OF E-X64EMIT-FORM throw ENDOF
+      reserve  OF id s PUT-RESERVE ENDOF
+      release  OF id s PUT-RELEASE ENDOF
+      store    OF id s PUT-STORE ENDOF
+      load     OF id s PUT-LOAD ENDOF
       dtake    OF id s PUT-DTAKE ENDOF
       dload    OF id s PUT-DLOAD ENDOF
       dstore   OF id s PUT-DSTORE ENDOF
@@ -1012,6 +1049,8 @@ public
    c b X64IR:KEY-DBYTES 0 BND-DBYTES !
    c b X64IR:KEY-DBACK  0 BND-DBACK !
    c b X64IR:KEY-ENTRY  0 BND-ENTRY !
+   c b X64IR:KEY-SLOT   0 BND-SLOT !
+   c b X64IR:KEY-FRAME  0 BND-FRAME !
    BOUND-YES BND-MODE ! ;
 
 : BOUND? ( -- bool )

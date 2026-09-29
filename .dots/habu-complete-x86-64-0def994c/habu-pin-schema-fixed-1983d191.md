@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-29T17:34:20.074440+03:00"
 blocks:
   - habu-render-x86-neg-43e4e8f8
-  - habu-emit-x86-frame-d8d25223
 ---
 
 

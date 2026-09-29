@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.467577+03:00"
-blocks:
-  - habu-emit-x86-frame-d8d25223
 ---
 
 Problem: `src/compiler/native/emit-x64.f:40-51` refuses `trap` and `codeaddr`.
