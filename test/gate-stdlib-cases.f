@@ -170,6 +170,7 @@ SUITE bare-copy-lint
 ;SUITE
 
 SUITE clobber-lint
+   tools/lint/clobber-lint.f
    tools/lint/clobber-lint-test.f
 ;SUITE
 
