@@ -560,6 +560,10 @@ SUITE stripped-address
    test/stripped-address.f
 ;SUITE
 
+SUITE aot-image-class
+   test/aot-image-class.f
+;SUITE
+
 SUITE stripped-literal
    test/stripped-literal.f
 ;SUITE

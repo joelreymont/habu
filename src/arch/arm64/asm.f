@@ -4,6 +4,9 @@
 \ Every encoder screens its operand BEFORE packing a bit, so a bad operand dies
 \ instead of overflowing the neighbouring field; branch and ADR displacements
 \ are the exception, bounded by src/arch/arm64/icode.f (?REL26/?REL19/?ADR).
+\ Runtime image readers reach RRR, RRI, ENC-CMP, ENC-BCOND and ENC-ADR through
+\ tools/aot-startup-shape.f. Their operands stay local: a stripped image cannot
+\ read this file's baked scratch.
 
 package A64ASM
 
@@ -139,8 +142,8 @@ variable ARM-Z
 
 \ shifted-register 3-operand: rd rn rm
 : RRR ( n n n n -- n )
-   ARM-BASE ! ARM-R3!
-   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or  ARM-RM @ 16 lshift or MSK ;
+   {: rd:n rn:n rm:n op:n :}
+   op rd or  rn 5 lshift or  rm 16 lshift or MSK ;
 
 \ rd rn rm ra; the addend's own five-bit field sits at bit ten.
 : RRRA ( n n n n n -- n )
@@ -149,8 +152,8 @@ variable ARM-Z
    ARM-RM @ 16 lshift or  ARM-RA @ 10 lshift or MSK ;
 
 : RRI ( n n n n -- n )
-   ARM-BASE ! ARM-I3!
-   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or  ARM-IMM @ 10 lshift or MSK ;
+   {: rd:n rn:n imm:n op:n :}
+   op rd or  rn 5 lshift or  imm 10 lshift or MSK ;
 
 : RR ( n n n -- n )
    ARM-BASE ! ARM-R2!
@@ -313,8 +316,8 @@ public
 
 \ compare (shifted reg) rn rm  -> subs xzr
 : ENC-CMP ( n n -- n )
-   XR2 ARM-RM ! ARM-RN !
-   $EB00001F ARM-RN @ 5 lshift or  ARM-RM @ 16 lshift or MSK ;
+   XR2 {: rn:n rm:n :}
+   $EB00001F rn 5 lshift or  rm 16 lshift or MSK ;
 
 \ compare immediate rn imm12
 : ENC-CMPI ( n n -- n )
@@ -400,7 +403,8 @@ public
 : ENC-BL ( n -- n ) $3FFFFFF and $94000000 or MSK ;
 
 : ENC-BCOND ( n n -- n )
-   ?COND ARM-IMM ! $7FFFF and 5 lshift $54000000 or ARM-IMM @ or MSK ;
+   {: delta:n cond:n :}
+   delta $7FFFF and 5 lshift $54000000 or  cond ?COND or MSK ;
 
 : ENC-CBZ ( n n -- n )
    XR2ND swap ARM-RD ! $7FFFF and 5 lshift $B4000000 or ARM-RD @ or MSK ;
@@ -504,8 +508,8 @@ public
 : ENC-ADRD ( n -- n ) dup 3 and 29 lshift  swap 4 / $7FFFF and 5 lshift or ;
 
 : ENC-ADR ( n n -- n )
-   XR2ND ARM-IMM ! ARM-RD !
-   $10000000 ARM-RD @ or  ARM-IMM @ ENC-ADRD or MSK ;
+   XR2ND {: rd:n imm:n :}
+   $10000000 rd or  imm ENC-ADRD or MSK ;
 
 \ FP (double, D-register file): engine-grade set, golden vs habu in t-sh-fp-enc
 : ENC-FMOVDD ( n n -- n ) DR2 $1E604000 RR ;
