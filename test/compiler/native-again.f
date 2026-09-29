@@ -161,5 +161,7 @@ public
 ;package
 
 T-RESET
+s" the unbounded loop subject was compiled at tier 1" T-LABEL
+' NAG-FIXTURE:NAG-UP dup 4 + code-origin 1 T=
 NAG-TEST:RUN
 T-REPORT

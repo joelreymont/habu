@@ -11,6 +11,7 @@ package NATIVE-EDGE-PERMUTATION
 private
 
 : SWAP-TURNS ( n n n -- n n ) 0 ?DO swap LOOP ;
+' SWAP-TURNS dup 4 + code-origin constant SWAP-TURNS-TIER
 : DUPLICATE-TURNS ( n n n -- n n ) 0 ?DO nip dup LOOP ;
 : SHARED-TURNS ( n n n -- n n ) 0 ?DO over + swap LOOP ;
 
@@ -23,6 +24,8 @@ private
 public
 : RUN ( -- )
    T-RESET
+   s" the loop edge subject was compiled at tier 1" T-LABEL
+   SWAP-TURNS-TIER 1 T=
    91 1 2 0 SWAP-TURNS 2 T= 1 T= 91 T=
    91 1 2 1 SWAP-TURNS 1 T= 2 T= 91 T=
    91 1 2 2 SWAP-TURNS 2 T= 1 T= 91 T=

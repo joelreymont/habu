@@ -89,8 +89,12 @@ variable TOTAL
    then
    found pattern panel heading first at title height AR-SAVE ;
 
+' SCAN dup 4 + code-origin constant SCAN-TIER
+
 public
 : CASES ( -- )
+   s" the loop frame subject was compiled at tier 1" T-LABEL
+   SCAN-TIER 1 T=
    s" scalar values survive the conditional loop and calls" T-LABEL
    -999 TOTAL !
    1 2 3 4 5 0 1 1 SCAN TOTAL @ 26 T=

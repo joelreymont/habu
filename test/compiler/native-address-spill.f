@@ -19,9 +19,13 @@ create DATA 24 cells allot
    {: k:n :}
    1 k 0 ?do DATA i AT DATA k AT = if 1+ then loop ;
 
+' COUNT dup 4 + code-origin constant COUNT-TIER
+
 
 : RUN ( -- )
    T-RESET
+   s" the spilling subject was compiled at tier 1" T-LABEL
+   COUNT-TIER 1 T=
    4 DATA ! 7 DATA cell+ ! 4 DATA 2 cells + !
    9 DATA 3 cells + ! 4 DATA 4 cells + !
    0 COUNT 1 T=

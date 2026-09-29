@@ -35,6 +35,8 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 : JT-CASE ( -- )
    s" a one-armed if whose arm throws compiles, and its live path returns" T-LABEL
    MK-JT
+   s" the dead-path subject was compiled at tier 1" T-LABEL
+   s" ' DPC-JT dup 4 + code-origin" EV-N 1 T=
    s" 1 2 DPC-JT" EV-N 1 T=
    s" 9 4 DPC-JT" EV-N 9 T= ;
 

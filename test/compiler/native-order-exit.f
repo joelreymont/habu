@@ -1,5 +1,6 @@
 \ native-order-exit.f - a spilled memory loop reaches a no-return exit.
 require src/compiler/native/compiler.f
+require lib/test.f
 
 \ Tier 1 below: the unbounded bodies below are never run; they exist to be
 \ accepted by the optimizing compiler's allocator, whose spilled reload stands
@@ -52,6 +53,10 @@ s" abc" ' SCAN catch CHECK
       a MIX 185 = if 2 else -7191 throw then
    then ;
 
+T-RESET
+s" the no-return exit subject was compiled at tier 1" T-LABEL
+' CHOOSE dup 4 + code-origin 1 T=
+
 : CHECK-RETURNS ( -- )
    1 CHOOSE 1 <> if -2 throw then
    2 CHOOSE 2 <> if -2 throw then ;
@@ -84,3 +89,4 @@ CHECK-RETURNS
 2 3 ' EXHAUST-READ catch CHECK-EXHAUST
 
 ;package
+T-REPORT

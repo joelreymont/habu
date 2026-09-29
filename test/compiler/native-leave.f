@@ -171,5 +171,7 @@ public
 ;package
 
 T-RESET
+s" the leave subject was compiled at tier 1" T-LABEL
+' NLV-FIXTURE:NLV-FIRST dup 4 + code-origin 1 T=
 NLV-TEST:RUN
 T-REPORT

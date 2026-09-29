@@ -63,8 +63,8 @@ variable WB-FAIL-RC                      \ exit status a red whitebox row dies w
 \ test/compiler/aot-mode.f - `1 set-tier` - to every `test/compiler/native-*.f`
 \ row, so a suite whose assertions are tier-1 facts was green here and red on
 \ its own. The tier belongs to the code under test: such a file selects it
-\ before its requires, and every row now measures what `bin/hb --load <file>`
-\ measures.
+\ after harness and tool requires but before its subject definitions. Every
+\ row measures what `bin/hb --load <file>` measures.
 : SUITE-HB ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+ ;

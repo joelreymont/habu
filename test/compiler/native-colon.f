@@ -101,6 +101,9 @@ variable MAP-CELL
 : DK-LIVE ( n -- n )
    7 DK-CALLEE drop 1+ ;
 
+s" the ordinary colon subject was compiled at tier 1" T-LABEL
+' ADD3 dup 4 + code-origin 1 T=
+
 : ASK-AMBIGUOUS ( -- )
    s" SHARED" NDICT:CALL-TARGET drop ;
 

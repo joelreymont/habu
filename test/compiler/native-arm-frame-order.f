@@ -47,6 +47,8 @@ private
       E-ARM throw
    ENDCASE ;
 
+' ARMS dup 4 + code-origin constant ARMS-TIER
+
 \ The throwing arm READS the spilled local, so its block does need the lane.
 : ARMS-RELOAD ( n n -- n )
    {: sel:n kept:n :}
@@ -161,6 +163,8 @@ private
 public
 
 : CASES ( -- )
+   s" the arm frame subject was compiled at tier 1" T-LABEL
+   ARMS-TIER 1 T=
    s" a returning arm beside a throwing arm and a throwing default" T-LABEL
    0 77 ARMS 77 T=
    [: 1 5 ARMS drop ;] E-ARM TTHROWSQ
