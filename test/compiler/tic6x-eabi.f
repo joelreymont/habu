@@ -144,6 +144,43 @@ variable SWEEP-OK
    8 1 ?do 41 0 ?do j i FILL-SWEEP-CASE loop loop
    SWEEP-OK @ 0 <> s" memset over every misalignment and length" CHECK ;
 
+\ The long calls exercise word and byte paths with source and destination
+\ alignment combinations. Source bytes through offset 263 have a known pattern;
+\ the destination and its boundary bytes start as sentinels.
+: PREPARE-LARGE ( -- )
+   PREPARE
+   8 0 ?do i 256 + 7 * 255 and MEMORY-BASE 256 + i + MEMORY! loop
+   272 0 ?do $EE MEMORY-BASE 511 + i + MEMORY! loop ;
+
+: COPY-LARGE ( n n -- ) {: soff:n doff:n :}
+   MEMORY-BASE soff + {: src:n :} MEMORY-BASE 512 + doff + {: dst:n :}
+   6 HELPER ! 6 EMIT-HELPER PREPARE-LARGE
+   dst 4 A! src 4 B! 256 6 A! PROGRAM$ CALL drop
+   4 A@ dst = s" memcpy 256 returns dst" CHECK
+   true 256 0 ?do
+      dst i + MEMORY@ soff i + 7 * 255 and <> if drop false then
+   loop s" memcpy 256 copies every byte" CHECK
+   dst 1- MEMORY@ $EE = dst 256 + MEMORY@ $EE = and s" memcpy 256 keeps adjacent bytes" CHECK
+   UNTOUCHED? s" memcpy 256 preserves callee-saved registers" CHECK ;
+
+: FILL-LARGE ( n -- ) {: doff:n :}
+   MEMORY-BASE 512 + doff + {: dst:n :}
+   7 HELPER ! 7 EMIT-HELPER PREPARE-LARGE
+   dst 4 A! $5A 4 B! 256 6 A! PROGRAM$ CALL drop
+   4 A@ dst = s" memset 256 returns dst" CHECK
+   true 256 0 ?do dst i + MEMORY@ $5A <> if drop false then loop
+      s" memset 256 fills every byte" CHECK
+   dst 1- MEMORY@ $EE = dst 256 + MEMORY@ $EE = and s" memset 256 keeps adjacent bytes" CHECK
+   UNTOUCHED? s" memset 256 preserves callee-saved registers" CHECK ;
+
+: LARGE-MEMORY-CASES ( -- )
+   0 0 COPY-LARGE
+   8 0 COPY-LARGE
+   1 0 COPY-LARGE
+   3 3 COPY-LARGE
+   0 FILL-LARGE
+   3 FILL-LARGE ;
+
 
 \ ---- float32 division against the host's IEEE arithmetic --------------------------
 
@@ -278,31 +315,19 @@ create DOUBLES
    9 HELPER ! 9 EMIT-HELPER RESET FILL-REGISTERS
    x >U32 4 A! x 32 rshift 5 A! y >U32 4 B! y 32 rshift 5 B! PROGRAM$ CALL ;
 
-: COPY-CYCLES ( n n -- n ) {: soff:n doff:n :}
-   6 EMIT-HELPER PREPARE MEMORY-BASE 512 + doff + 4 A! MEMORY-BASE soff + 4 B! 256 6 A! PROGRAM$ CALL ;
-
-: FILL-CYCLES ( n -- n ) {: doff:n :}
-   7 EMIT-HELPER PREPARE MEMORY-BASE 512 + doff + 4 A! $5A 4 B! 256 6 A! PROGRAM$ CALL ;
-
 : CYCLE-CASES ( -- )
    1 1000000007 12345 CYCLES-FOR 76 T=                    \ the full 32-step chain
    1 $FFFFFFFF $80000001 CYCLES-FOR 28 T=                 \ a divisor with its top bit set
    1 5 0 CYCLES-FOR 15 T=                                 \ division by zero
    0 -1000000007 12345 CYCLES-FOR 78 T=
    4 -1000000007 12345 CYCLES-FOR 79 T=
-   0 0 COPY-CYCLES 259 T=                                 \ 256 bytes, both aligned
-   8 0 COPY-CYCLES 259 T=
-   1 0 COPY-CYCLES 1827 T=                                \ mismatched: bytes throughout
-   3 3 COPY-CYCLES 308 T=                                 \ co-aligned after three head bytes
-   0 FILL-CYCLES 259 T=
-   3 FILL-CYCLES 308 T=
    8 $3FC00000 $406CCCCD CYCLES-FOR 283 T=                \ 1.5 / 3.7
    $3FF8000000000000 $400D99999999999A DOUBLE-CYCLES 851 T= ;
 
 
 : RUN ( -- )
    0 FAILURES !
-   DIVISION-CASES EDGE-CASES MEMORY-CASES SWEEPS FLOAT-CASES DOUBLE-CASES REFUSALS CYCLE-CASES
+   DIVISION-CASES EDGE-CASES MEMORY-CASES SWEEPS LARGE-MEMORY-CASES FLOAT-CASES DOUBLE-CASES REFUSALS CYCLE-CASES
    FAILURES @ 0 T=
    HELPER-COUNT 10 T=
    1 HELPER-NAME$ s" __c6xabi_divu" T$=
