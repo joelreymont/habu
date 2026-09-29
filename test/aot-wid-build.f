@@ -30,8 +30,8 @@
 \
 \ The modes below are selected by environment so one builder serves every case
 \ its companion suites need (HABU_AOT_GATE serves two) -
-\ test/aot-wid-suite.f, test/aot-wide-format-suite.f and the PTY half in
-\ test/aot-data-span-forge.f:
+\ test/aot-wid-suite.f, test/aot-wide-format-suite.f, test/aot-wide-prefix-suite.f
+\ and the PTY half in test/aot-data-span-forge.f:
 \
 \   (default)          define two packages inside the capture window and protect
 \                      one of them, then check the capture's contract against the

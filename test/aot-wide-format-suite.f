@@ -31,165 +31,19 @@
 \ unless the capture really produced an out-of-line record, so the case cannot
 \ pass on a window whose names all shrank back under the limit.
 \
-\ THE THIRD CASE, and the one that is an ELIMINATION rather than a carry (dot
-\ habu-aot-pre-window-0b01043c). A window word that names a PREFIX data word used
-\ to end the build: the prefix word's body is short, the engine's inliner copied
-\ it, and the copy carried an address below the window's DATA span, which the
-\ capture correctly refuses because no delta relates the metabuild host's prefix
-\ band to the target's. Carrying such an address was measured and refuted, so the
-\ engine now DECLINES to copy a body holding a chain the open window cannot
-\ describe and emits its call instead - a call the capture records by name and the
-\ seed resolves in the engine it is booting. The HABU_AOT_PREWIN=1 mode reads the
-\ capture's own tables back over the fixture word's record and dies unless the body
-\ is free of DATA sites and holds the call.
+\ The window words that reach a PREFIX word - a data word and a code literal -
+\ are test/aot-wide-prefix-suite.f, a gate row of its own; both rows share the
+\ fixture and the boot-half reader in test/aot-wide-format-lib.f.
 \
-\ THE FOURTH CASE, and the one the ruling's rider named for this dot: a pre-window
-\ CODE literal, which is also what puts a NAMED code row on the bake-and-boot path.
-\ `['] X` on a PREFIX word compiles its chain into the window word's OWN body, so
-\ the decline that emptied the DATA class cannot reach it - there is no copy to
-\ decline. The capture recognises it as a call target that is not a BL and writes a
-\ name-keyed row instead, and the seed resolves that name in the engine it is
-\ booting. The HABU_AOT_XTLIT=1 mode asserts, over the fixture word's own captured
-\ record, exactly one such row inside its body naming the prefix word and no
-\ rebased code site there. On the base this build DIES named.
-\ It is the ONLY case the row kind needs. A row can only ever name a word the
-\ window does not contain (aot-capture.f ACAP-OUT-CHAIN returns early for a value
-\ inside the blob span, and every captured record's entry is inside it), so a
-\ fixture that doctors a row onto a WINDOW word tests a lookup the classifier
-\ cannot produce - which is what the deleted HABU_AOT_XTSITE mode did.
-\
-\ AND THE BOOT HALF IS HERE TOO, ON EVERY HOST. That used to be impossible: the
-\ AOT seed was armed at the interactive REPL entry and nowhere else, so only a PTY
-\ could observe a captured word and the boot half of every case lived in
-\ test/aot-data-span-forge.f, which runs on Linux hosts alone - it prints
-\ "PTY boot cases run on linux only; skipped" everywhere else, so on a macOS host
-\ NOTHING was asserting that any of this boots. Since dot
-\ habu-decide-arm-the-5234727b the seed runs at the end of the engine prefix on
-\ EVERY boot, so the boot-run entry words report into an ordinary batch boot's
-\ stdout - and this suite was already spawning each built engine on a batch
-\ program and reading that stdout, to check the image is a working engine at all.
-\ The reports were sitting unread in the text it already had. Asserting them is
-\ what makes "capture and boot a blob larger than 64 KiB" a claim this suite
-\ proves rather than one it hands to a host it may not be running on. The PTY
-\ sibling keeps its own copies; what only IT can still say is what the engine does
-\ when it is entered INTERACTIVELY, since the entry words ask TTY? themselves.
-\
-\ Cost: four child engine builds; the big-window one is larger than the others
+\ Cost: two child engine builds; the big-window one is larger than the other
 \ because the maker compiles the filler. Registered as
 \ `TEST:SUITE aot-wide-format` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-wide-format-suite.f
 
-require lib/errors.f
-require lib/string.f
-require lib/fmt.f
 require lib/test.f
-require lib/memory.f
-require lib/fs.f
-require lib/fs-mutate.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require test/aot-wide-format-lib.f
 
 package AOT-WIDE-FORMAT
-
-$8000 constant CAP
-240000 constant BUILD-TIMEOUT-MS
-30000  constant PROBE-TIMEOUT-MS
-
-create OUT CAP allot     variable OUT-U
-create ERR CAP allot     variable ERR-U
-create EMPTY 1 allot                 \ zero-length stdin
-variable RC
-
-create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
-create HB-BUF FS-PATH-CAP allot      variable HB-U
-
-: ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
-: HB$ ( -- ptr u8 n )   HB-BUF HB-U @ ;
-: PLAIN$ ( -- ptr u8 n ) s" bin/hb" ;
-: OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
-
-\ One tree per build, each registered for cleanup, so "the image exists" is a
-\ statement about the build that just ran and never about a leftover.
-: SETUP ( -- )
-   s" habu-aot-wide" HB-TMP-MKDIR {: a:ptr u:n :}
-   a ROOT-BUF u BYTE-COPY  u ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   ROOT$ s" hb-pwid" HB-BUF JOIN-PATH HB-U ! ;
-
-: BUILDER-ARGV ( -- )
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" test/aot-wid-build.f" >LEN PROC-ARGV+ ;
-
-: BUILD-MODE ( ptr u8 n -- ) {: k:ptr ku:n :}
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
-   k ku >LEN s" 1" >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   BUILDER-ARGV
-   PLAIN$ >LEN  OUT CAP >LEN  ERR CAP >LEN  BUILD-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
-   ;MATCH ;
-
-\ Boot the built engine on an ordinary batch program and capture what it wrote.
-\ TWO things arrive in that stdout and they are different claims. The program's own
-\ answer says the image the widened bake produced is a working engine. The lines
-\ AHEAD of it are the boot-run's, printed by words that exist only because the seed
-\ copied the blob, registered the records and patched the relocation sites of THIS
-\ engine - so those are what say the capture booted.
-: BATCH-RUN ( ptr u8 n -- ) {: p:ptr pu:n :}
-   PROC-ARGV-RESET
-   HB$ >LEN  p pu >LEN  OUT CAP >LEN  ERR CAP >LEN  PROBE-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
-   ;MATCH ;
-
-: BATCH-OK ( -- )
-   s" 7 6 * . cr" BATCH-RUN ;
-
-: DIGIT? ( n -- bool ) {: c:n :}
-   c 48 >= c 57 <= and ;
-
-: DIGITS-END ( n -- n )            \ from an index in OUT, the first non-digit at or after it
-   begin dup OUT-U @ < while
-      dup OUT + c@ DIGIT? 0= if exit then
-      1+
-   repeat ;
-
-\ The digits a boot-run report printed after its label, as a string. Taking the
-\ SPAN rather than searching for an expected substring is what lets the named-code
-\ literal case compare two reports against each other: its value is an address in
-\ the engine that printed it, so no fixed text can stand for it. An absent label
-\ answers an empty span, which no expectation matches and which the code-literal
-\ case rejects outright before it compares.
-: REPORT$ ( ptr u8 n -- ptr u8 n ) {: m:ptr mu:n :}
-   OUT$ m mu FIND-SUB MATCH option
-     none OF OUT-U @ ENDOF                      \ absent: start at the end -> empty span
-     some OF IDX>N mu + ENDOF
-   ;MATCH {: st:n :}
-   OUT st +  st DIGITS-END st - ;
-
-\ A report's value, asserted against a number the FIXTURE fixed. The two live in
-\ different files on purpose - the magic is written in test/aot-wid-build.f and
-\ read here - so a fixture that quietly stopped carrying its value cannot also
-\ quietly move the expectation.
-: REPORT= ( ptr u8 n ptr u8 n -- ) {: m:ptr mu:n w:ptr wu:n :}
-   m mu REPORT$ w wu STR= TTRUE ;
-
-: REQUIRE-BUILD ( ptr u8 n -- ) {: m:ptr mu:n :}
-   m mu T-LABEL
-   RC @ 0 T=
-   RC @ 0 <> if s" aot-wide-format: builder stderr:" type cr  ERR$ type cr  RC @ throw then ;
 
 : PROBE-BIG-WINDOW ( -- )
    SETUP
@@ -236,91 +90,15 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
    s" the out-of-line-named word is found by that name at boot" T-LABEL
    s" awb-ext=" s" 6510767442340633178" REPORT= ;
 
-\ A window word that names a PREFIX data word (dot habu-aot-pre-window-0b01043c).
-\ The prefix's `create` sits below the window's DATA span, so the address its body
-\ pushes is one the window cannot describe, and the body is short enough that the
-\ engine's compile-mode inliner used to COPY it into the caller - which is how the
-\ address got in. On the unfixed base this exact mode dies at build time,
-\ "aot-capture: recorded address site ... in neither the window's DATA span nor its
-\ code span", exit 74, with no image produced. The engine now declines that copy
-\ and emits the call instead.
-\
-\ WHAT THE TWO PRINTED LINES MEAN. The builder reads its own capture tables over
-\ the fixture word's captured dict record, found by name: prewin-dsites is how many
-\ DATA relocation sites lie inside that word's blob span (must be zero - the chain
-\ is gone) and prewin-calls how many call sites inside it name the prefix word
-\ (must not be zero - the BL is there and carries the name the seed resolves). The
-\ builder DIES rather than print either line if its half fails, so matching them is
-\ matching assertions that already passed; asserting both is what stops a fixture
-\ that quietly stopped naming a prefix word from looking like a pass.
-: PROBE-PREWINDOW ( -- )
-   SETUP
-   s" HABU_AOT_PREWIN" BUILD-MODE
-   s" a window word naming a prefix data word builds cleanly" REQUIRE-BUILD
-   s" its body carries no DATA relocation site" T-LABEL
-   OUT$ s" aot-wid-build: prewin-dsites 0" CONTAINS? TTRUE
-   s" its body calls the prefix word by name instead" T-LABEL
-   OUT$ s" aot-wid-build: prewin-calls 1" CONTAINS? TTRUE
-   s" the pre-window variant image exists after the build" T-LABEL
-   HB$ EXISTS? TTRUE
-   BATCH-OK
-   s" the pre-window variant still runs a batch program" T-LABEL
-   RC @ 0 T=
-   s" and computes with it" T-LABEL
-   OUT$ s" 42" CONTAINS? TTRUE
-   \ HH0's first cell is the SHA-256 seed constant $6a09e667, initialised by
-   \ src/core/sha256.f in the cold prefix. The window word can only read it if the
-   \ seed resolved HH0's name in THIS engine and patched the call the decline
-   \ emitted; an unrelocated read gives zero and a wrong one crashes.
-   s" the relocated call reaches the prefix word's own cell at boot" T-LABEL
-   s" awb-pre=" s" 1779033703" REPORT= ;
-
-\ THE PRE-WINDOW CODE LITERAL, both halves (dot habu-widen-the-aot-089f5faf).
-\ The build half is the structural one and lives in the builder: over the fixture
-\ word's own captured record, exactly one named code row inside its body, naming
-\ HH0, and no rebased code site there.
-\
-\ THE BOOT HALF COMPARES TWO TICKS OF ONE WORD. The reporter ticks HH0 from INSIDE
-\ the window, where the value can only be what the seed wrote; the probe program
-\ ticks it from OUTSIDE, in code this engine compiles at boot. Requiring the two to
-\ be equal needs no fixed number, which is what makes it survive ASLR - and neither
-\ wrong answer can produce it, because the building host's address is not this
-\ engine's and the zero the capture leaves in the lanes is not either. The two
-\ ticks are read as spans and compared, so a report that stopped printing digits
-\ cannot match a probe that also stopped.
-: PROBE-XTLIT ( -- )
-   SETUP
-   s" HABU_AOT_XTLIT" BUILD-MODE
-   s" a window holding a code literal for a prefix word builds cleanly" REQUIRE-BUILD
-   s" the capture made a named code row for it" T-LABEL
-   OUT$ s" aot-wid-build: xtlit " CONTAINS? TTRUE
-   s" and left no rebased code site in that body" T-LABEL
-   OUT$ s" aot-wid-build: xtlit-csites 0" CONTAINS? TTRUE
-   s" the code-literal variant image exists after the build" T-LABEL
-   HB$ EXISTS? TTRUE
-   S\" TRUSTED: XLP>BITS ( [ -- ptr a ] -- n ) ;\n: XLP ( -- ) s\" xl-live=\" type ['] HH0 XLP>BITS . cr ; XLP" BATCH-RUN
-   s" the code-literal variant still runs a batch program" T-LABEL
-   RC @ 0 T=
-   s" the baked literal is this engine's own entry for the word it names" T-LABEL
-   s" awb-xl=" REPORT$ {: a:ptr u:n :}
-   u 0 T<>
-   a u  s" xl-live=" REPORT$  STR= TTRUE ;
-
 : BODY ( -- )
    PROBE-BIG-WINDOW
-   PROBE-EXT-NAME
-   PROBE-XTLIT
-   PROBE-PREWINDOW ;
+   PROBE-EXT-NAME ;
 
+\ Public so the driver below runs it with the package closed.
 public
 
 : RUN ( -- )
-   T-RESET
-   CLEANUP-RESET
-   [: BODY ;] catch {: code:n :}
-   CLEANUP-RUN
-   code 0 <> if code throw then
-   T-REPORT
+   [: BODY ;] RUN-PROBES
    s" aot-wide-format: ok" type cr ;
 
 ;package

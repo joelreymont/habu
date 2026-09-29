@@ -24,10 +24,6 @@ SUITE stripped-entry
    test/stripped-entry.f
 ;SUITE
 
-SUITE aot-wide-format
-   test/aot-wide-format-suite.f
-;SUITE
-
 SUITE hb-build-stripped
    tools/hb-build-stripped-test.f
 ;SUITE
@@ -50,6 +46,14 @@ SUITE build-fixpoint-fixtures
 
 SUITE hb-build-large-source
    tools/hb-build-large-source-test.f
+;SUITE
+
+SUITE aot-wide-format
+   test/aot-wide-format-suite.f
+;SUITE
+
+SUITE aot-wide-prefix
+   test/aot-wide-prefix-suite.f
 ;SUITE
 
 \ checker-scan-index is the first WHITEBOX-SUITE row. It holds the registry

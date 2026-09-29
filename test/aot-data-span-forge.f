@@ -63,7 +63,7 @@
 \         declines the copy and emits the call, which the capture records BY NAME.
 \         So the report can only carry the prefix word's own initialised first cell
 \         if the seed resolved that name in the engine it was booting and patched
-\         the call to it. test/aot-wide-format-suite.f owns the build half, which
+\         the call to it. test/aot-wide-prefix-suite.f owns the build half, which
 \         runs on every host and reads the capture tables directly; this is the
 \         half that says the name reaches the right address at boot.
 \
