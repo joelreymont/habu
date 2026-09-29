@@ -6,7 +6,8 @@ using TEST
 \ below and each waits for a free slot, so a long row registered late starts
 \ late and alone sets the gate's tail. The long rows lead, longest first.
 
-\ A ROW STAYS UNDER HALF ITS DEADLINE IN THE POOL. tools/hb-build-test.f once
+\ A ROW STAYS UNDER HALF ITS DEADLINE IN THE POOL, EXCEPT AS NAMED BELOW.
+\ tools/hb-build-test.f once
 \ ran every hb-build group in one row, and that row took 353-355 s of the 360 s
 \ SUITE-TIMEOUT-MS slot its child gets: three of five full runs reported
 \ kind=TIMEOUT-UNDER-LOAD for it while other suites ran beside it. A row is
@@ -16,6 +17,9 @@ using TEST
 \ file - the shared fixture stays in the family's *-lib.f - rather than letting
 \ one row grow past that.
 
+\ Exception: snap must build a fresh native engine and save that engine's
+\ image. Reusing the fixtures engine would skip the snap verb's build path.
+\ Its own 360 s deadline remains the acceptance bound.
 SUITE build-fixpoint-snapshot
    tools/build-fixpoint-snapshot-test.f
 ;SUITE
