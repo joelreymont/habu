@@ -894,6 +894,31 @@ variable ACAP-BP
    a u ACAP-XTSITE-NAMES? if true exit then
    a u ACAP-BOOTRUN-NAMES? ;
 
+\ A retained definer can create words after the engine boots. Their patched
+\ final B targets its ;does clause, whose record follows the parent and lies
+\ inside its code span. The derived name is internal, but the stripped linker
+\ needs its exact entry record. ACAP-GRAPH-NAME-DOES below retains that record
+\ after reachability is known, including a private definer reached through a
+\ public wrapper or EXPORT alias.
+5 constant ACAP-DOES-SUFFIX-LEN
+: ACAP-DOES-COMPANION? ( n -- bool ) {: k:n :}
+   k 0= if false exit then
+   k 1- {: parent-k:n :}
+   parent-k ACAP-REC-DST {: parent:ptr :}
+   k ACAP-REC-DST {: clause:ptr :}
+   parent CELL-VIEW AOT-RWID -1 = if false exit then
+   parent 40 + ACAP-W32@ clause 40 + ACAP-W32@ <> if false exit then
+   parent ACAP-W32@ {: first:n :}
+   clause ACAP-W32@ {: entry:n :}
+   entry first <= if false exit then
+   entry clause 8 + ACAP-W32@ CODE-SPAN:BYTES +
+      first parent 8 + ACAP-W32@ CODE-SPAN:BYTES + > if false exit then
+   parent-k ACAP-REC-NAME$ {: name:ptr len:n :}
+   k ACAP-REC-NAME$ {: derived:ptr derived-len:n :}
+   derived-len len ACAP-DOES-SUFFIX-LEN + <> if false exit then
+   derived len name len CORE-STR=CI 0= if false exit then
+   derived len + ACAP-DOES-SUFFIX-LEN s" ;does" CORE-STR=CI ;
+
 \ An unnamed but reachable body retains an 8-byte AOT-SPAN row (blob offset,
 \ raw code span). The application linker needs that extent when it copies and
 \ retargets the body. An unreachable body carries neither code nor metadata.
@@ -2010,6 +2035,20 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
       then
    loop ;
 
+\ A named alias and a direct call through a public wrapper can retain a private
+\ definer's code while stripping its own name. The reach graph marks the entire
+\ defining span in either case. Its clause shares those bytes, though the graph
+\ may mark only the covering parent or alias record, so preserve the clause's
+\ exact-entry metadata when the parent's entry survived the sweep.
+: ACAP-GRAPH-NAME-DOES ( -- )
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-DOES-COMPANION? if
+         i 1- ACAP-GRAPH-START 4 / ACAP-GMAP @ 0<> if
+            1 i ACAP-NAMED-BIT !
+         then
+      then
+   loop ;
+
 : ACAP-GRAPH-REMAP-XTOFF ( -- )
    AOT-WINDOW:XTOFF-N @ 0 ?do
       i ACAP-XTMETA@ {: meta:n :}
@@ -2502,6 +2541,7 @@ TRUSTED: ACAP-ADDRESS ( ptr u8 -- n ) ;
    ACAP-GRAPH-SWEEP  -1 ACAP-GRAPH-READY !
    ACAP-GRAPH-SWEEP-GAPS
    ACAP-GRAPH-SWEEP
+   ACAP-GRAPH-NAME-DOES
    ACAP-GRAPH-BUILD-MAP
    ACAP-GRAPH-COPY-BLOB
    ACAP-GRAPH-PATCH
