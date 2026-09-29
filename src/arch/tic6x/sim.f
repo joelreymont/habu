@@ -451,7 +451,7 @@ public
 
 : RESET ( -- )
    64 0 ?do 0 i REG! loop
-   MEMORY-BYTES 0 ?do 0 MEMORY i + c! loop
+   MEMORY-BYTES 0 ?do 0 MEMORY i + CELL-VIEW ! CELL +loop
    0 PENDING-COUNT ! 0 CYCLES ! 0 BRANCH-PENDING ! 100000 BUDGET ! ;
 
 
