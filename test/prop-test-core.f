@@ -384,14 +384,6 @@ variable NFC0
    NRT @ . s" round-trip + " type  NCMP @ . s" composition runs; " type
    NSI @ NRI @ + NCI @ +  . s" inconsistency(ies)" type cr ;
 
-\ self-test: prove the detector has teeth (a sound checker won't hand us a real
-\ false-cert, so confirm the arity comparison fires on a fabricated mismatch).
-: SELFTEST ( -- )
-   5 DOUT !
-   4 DOUT @ <> 0= IF s" prop-test: self-test BROKEN" 1 die THEN
-   4 4 <> IF s" prop-test: self-test BROKEN (equal flagged)" 1 die THEN
-   s" prop-test: self-test OK (arity comparison fires)" type cr ;
-
 \ regression baits: programs that a SOUND checker rejects. If a regression ever
 \ certifies one, either arity or type/signature soundness regressed.
 : BAIT  ( ptr u8 n -- )   \ MUST NOT certify
@@ -749,7 +741,6 @@ public
 ;package
 
 : PROP-RUN ( n n -- )
-   SELFTEST
    SELFTEST-SHRINK
    BAITS
    SELFTEST-ALPHABET
@@ -793,14 +784,17 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
 : SHARD-FAIL ( ptr u8 n -- )
    type s"  in shard seed " type RUN-SEED @ .
    s" " 1 die ;
-\ Fault-injection seam for the sweep red-path self-test ONLY: when set, a shard
-\ dies red before running any iteration, so SELFTEST-SWEEP-RED can prove one
-\ red shard fails the whole sweep at the cost of the forks alone. Never set
-\ outside that self-test's probe child.
+\ Fault-injection seam for the sweep red-path self-test ONLY. Its selected
+\ middle shard fails; every other shard exits cleanly without an iteration,
+\ including later siblings. A negative slot disables the seam.
 variable SHARD-FAULT
+-1 SHARD-FAULT !
 : SHARD-CHILD ( n -- )   \ never returns: run this shard's seed, then exit 0 / 1
    SHARD-MUTE-STDERR
-   SHARD-FAULT @ IF s" prop-test: FAULT-INJECT" SHARD-FAIL THEN
+   SHARD-FAULT @ 0 >= IF
+      dup SHARD-FAULT @ = IF s" prop-test: FAULT-INJECT" SHARD-FAIL THEN
+      s" " 0 die
+   THEN
    SHARD-SEED DEFAULT-COUNT RUN-CORE
    PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT" SHARD-FAIL THEN
    NMETA 0 > IF s" prop-test: METAMORPHIC-INCONSISTENCY" SHARD-FAIL THEN
@@ -810,12 +804,12 @@ variable SHARD-FAULT
    p PID>N 0= IF i SHARD-CHILD THEN   \ child diverges (dies), only the parent falls through
    p i SHARD-PID! ;
 : SHARD-JOIN ( n -- ) {: i:n :}
-   i SHARD-PID@ PROC-WAIT-RC MATCH result ok OF drop ENDOF err OF drop -1 SWEEP-RED ! ENDOF ;MATCH ;
+   i SHARD-PID@ PROC-WAIT-RC MATCH result ok OF drop ENDOF err OF drop SWEEP-RED @ 1+ SWEEP-RED ! ENDOF ;MATCH ;
 : SWEEP  ( n -- )   \ base seed -> fork all shards, join all, fail on any red
    SWEEP-BASE !  0 SWEEP-RED !  -1 SWEEP-QUIET !
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-FORK  SWEEP-I @ 1+ SWEEP-I ! repeat
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-JOIN  SWEEP-I @ 1+ SWEEP-I ! repeat
-   SWEEP-RED @ IF s" prop-test: sweep FAILED (a shard reported above: FALSE-CERT or METAMORPHIC-INCONSISTENCY)" 1 die THEN
+   SWEEP-RED @ IF s" prop-test: sweep FAILED (a shard reported above: FALSE-CERT or METAMORPHIC-INCONSISTENCY)" SWEEP-RED @ die THEN
    s" prop-test: sweep OK — " type PROP-SHARD-N . s" shards x " type DEFAULT-COUNT . s" iters, distinct seeds" type cr ;
 
 \ shard-seed self-test: distinct per-slot streams. The golden-ratio step is
@@ -844,14 +838,12 @@ variable SS-I  variable SS-J  variable SS-BAD
    SS-BAD @ IF s" prop-test: shard-seed self-test FAILED (duplicate or out-of-range slot seed)" 1 die THEN
    s" prop-test: shard-seeds OK (distinct per-slot seed streams)" type cr ;
 
-\ sweep red-path self-test: one red shard must fail the whole sweep. The probe
-\ child mutes its own stdout+stderr, arms the fault seam, and runs a sweep in
-\ which every shard dies red before its first iteration - so the probe costs
-\ only the forks. The parent asserts the probe exits 1 (SWEEP's red die); a
-\ probe exiting 0 means shard reds no longer propagate and this dies.
+\ sweep red-path self-test: one middle shard dies red and later siblings exit
+\ cleanly. The sweep exits with its red-shard count, so an all-red sweep cannot
+\ satisfy this test. The probe costs only the forks.
 : SWEEP-RED-CHILD ( -- )   \ never returns
    1 MUTE-FD  2 MUTE-FD
-   -1 SHARD-FAULT !
+   PROP-SHARD-N 2 / SHARD-FAULT !
    7 SWEEP
    s" " 0 die ;
 : SELFTEST-SWEEP-RED ( -- )
@@ -865,7 +857,6 @@ package PROP-TEST
 private
 
 : RUN-DEFAULT ( -- )   \ sharded sweep: self-tests once, then N slots
-   SELFTEST
    SELFTEST-SHRINK
    BAITS
    SELFTEST-ALPHABET

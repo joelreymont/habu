@@ -397,6 +397,7 @@ create HOLDING HOLDING-BYTES allot     \ each worker's handle while it holds one
 variable COLLISIONS
 variable BUILDS
 variable REFUSALS
+variable W-FAULT
 
 : HOLDING-CELL ( n -- ptr n ) {: slot:n :}
    slot cells HOLDING + ;
@@ -454,6 +455,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER MY-SLOT drop
 
 : W-LOOP ( n -- ) {: slot:n :}
    slot MY-SLOT !
+   W-FAULT @ slot = if GENIO:E-OPERAND slot W-AFTER then
    WORK-ROUNDS 0 ?do
       [: W-ROUND-SELF ;] catch MY-SLOT @ W-AFTER
       TASK:PAUSE
@@ -469,19 +471,28 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER MY-SLOT drop
    ['] W-BODY-B WORKER-B TASK:ACTIVATE
    ['] W-BODY-C WORKER-C TASK:ACTIVATE ;
 
-: JOIN-WORKERS ( -- )
-   begin WORKER-A TASK:DONE? until
-   begin WORKER-B TASK:DONE? until
-   begin WORKER-C TASK:DONE? until
-   WORKER-A TASK:KILL  WORKER-B TASK:KILL  WORKER-C TASK:KILL ;
+: JOIN-WORKER ( ptr n -- n ) {: worker:ptr :}
+   begin worker TASK:DONE? 0= while TASK:PAUSE repeat
+   worker TASK:THROW@
+   worker TASK:KILL ;
+
+: JOIN-WORKERS ( n n n -- ) {: a:n b:n c:n :}
+   WORKER-A JOIN-WORKER a T=
+   WORKER-B JOIN-WORKER b T=
+   WORKER-C JOIN-WORKER c T= ;
 
 : T-CONCURRENT-REGISTRY ( -- )
+   s" a worker's W-AFTER throw reaches the parent and its peers finish" T-LABEL
+   1 W-FAULT !
+   START-WORKERS
+   0 GENIO:E-OPERAND 0 JOIN-WORKERS
+   -1 W-FAULT !
    0 COLLISIONS !  0 BUILDS !  0 REFUSALS !
    WORKERS 0 ?do 0 i HOLDING-CELL atomic! loop
    FILL-TABLE {: before:n :}
    RELEASE-HELD
    START-WORKERS
-   JOIN-WORKERS
+   0 0 0 JOIN-WORKERS
    s" concurrent tasks never share a row" T-LABEL
    COLLISIONS @ 0 T=
    s" and they really did build devices" T-LABEL

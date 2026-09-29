@@ -43,12 +43,21 @@ variable BASE-N
       0 D @ i <> if 77 throw then D-RELEASE
    loop ;
 
-: JOIN ( ptr n -- ) {: worker:ptr :}
+: FAIL-BEFORE-GROWTH ( -- )
+   77 throw ;
+
+: JOIN ( ptr n -- n ) {: worker:ptr :}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat
+   worker TASK:THROW@
    worker TASK:KILL ;
 
 : RUN ( -- )
    T-RESET
+   s" a worker throw before growth reaches the parent" T-LABEL
+   ['] FAIL-BEFORE-GROWTH WORKER-A TASK:ACTIVATE
+   WORKER-A JOIN 77 T=
+   WORKER-A TASK:PREPARE
+   s" all growth workers complete without a throw" T-LABEL
    TASK:PAUSE                    \ register the task runtime's own lifecycle hook
    DYNAMIC-STORAGE:REGISTERED-N BASE-N !
    0 READY atomic! 0 START atomic!
@@ -58,7 +67,8 @@ variable BASE-N
    ['] RUN-D WORKER-D TASK:ACTIVATE
    begin READY atomic@ 4 < while TASK:PAUSE repeat
    1 START atomic!
-   WORKER-A JOIN WORKER-B JOIN WORKER-C JOIN WORKER-D JOIN
+   WORKER-A JOIN 0 T=  WORKER-B JOIN 0 T=
+   WORKER-C JOIN 0 T=  WORKER-D JOIN 0 T=
    DYNAMIC-STORAGE:REGISTERED-N BASE-N @ T=
    T-REPORT ;
 
