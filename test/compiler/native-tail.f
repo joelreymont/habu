@@ -10,10 +10,8 @@
 \ test/run.f and red on its own; the tier is a property of the code under test,
 \ not of the runner, so the file selects it and
 \ `bin/hb --load test/compiler/native-tail.f` measures the same code.
-\ Only what is compiled after this line belongs to the tier, so it stands
-\ before the requires.
-1 set-tier
-
+\ Only what is compiled after `1 set-tier` belongs to the tier, so it follows
+\ the harness and probe requires and precedes the fixture.
 require lib/errors.f
 require lib/string.f
 require lib/test.f
@@ -22,6 +20,8 @@ require lib/adt/option.f
 require src/compiler/native/dict.f
 require src/compiler/native/compiler.f
 require tools/codegen-tail-probe.f
+
+1 set-tier
 
 package NTL-FIXTURE
 

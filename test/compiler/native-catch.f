@@ -1,8 +1,4 @@
 \ native-catch.f - production `catch` compilation.
-\ Tier 1 first: the `catch` lowering asserted below is the optimizing
-\ compiler's (48 rows fail at the default tier).
-1 set-tier
-
 require lib/test.f
 require lib/prelude.f
 require lib/string.f
@@ -10,6 +6,10 @@ require lib/errors.f
 require lib/adt/option.f
 require test/checker-assert.f
 require src/compiler/native/compiler.f
+
+\ Tier 1 below: the `catch` lowering asserted below is the optimizing
+\ compiler's (48 rows fail at the default tier).
+1 set-tier
 
 package NCA-TEST
 

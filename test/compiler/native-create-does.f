@@ -1,9 +1,10 @@
 \ native-create-does.f - ordinary colon compiles defining words natively.
 
-1 set-tier
 require lib/test.f
 require src/compiler/native/compiler.f
 require src/habu/verify-source.f
+
+1 set-tier
 
 package NATIVE-CREATE-DOES-PUBLIC
 public

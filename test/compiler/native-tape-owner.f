@@ -22,14 +22,13 @@
 \ the session to refill them.
 \
 \ Run: bin/hb --load test/compiler/native-tape-owner.f
-\
-\ Tier 1 first: the observer the claims below read is armed by the optimizing
-\ compiler, so INSTALLED-BY is a tier-1 fact (1 row fails at the default tier).
-1 set-tier
-
 require lib/test.f
 require lib/errors.f
 require src/compiler/native/feed.f
+
+\ Tier 1 below: the observer the claims below read is armed by the optimizing
+\ compiler, so INSTALLED-BY is a tier-1 fact (1 row fails at the default tier).
+1 set-tier
 
 package TAPE-OWNER-TEST
 

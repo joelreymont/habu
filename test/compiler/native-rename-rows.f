@@ -1,13 +1,13 @@
 \ native-rename-rows.f - whole-value stack renames through production code.
 
-\ Tier 1 first: the whole-value moves and the width refusals that name them
-\ come from native elaboration.
-1 set-tier
-
 require test/compiler/native-eval-fixture.f
 require lib/test.f
 require lib/adt/option.f
 require src/compiler/native/compiler.f
+
+\ Tier 1 below: the whole-value moves and the width refusals that name them
+\ come from native elaboration.
+1 set-tier
 
 package NRR
 

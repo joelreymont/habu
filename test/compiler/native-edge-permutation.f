@@ -1,11 +1,11 @@
 \ Loop edges transfer their values in parallel, including permuted/shared inputs.
-\ Tier 1 first: values transfer in parallel across a block argument, which is
+require lib/test.f
+require lib/string.f
+
+\ Tier 1 below: values transfer in parallel across a block argument, which is
 \ the optimizing compiler's loop edge; the sha256 body below is included to be
 \ compiled by it.
 1 set-tier
-
-require lib/test.f
-require lib/string.f
 
 package NATIVE-EDGE-PERMUTATION
 private

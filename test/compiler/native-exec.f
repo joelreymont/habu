@@ -1,11 +1,14 @@
 \ native-exec.f - production compilation of `execute`.
-\ Tier 1 first: the emitted shape of `execute` asserted below is the optimizing
-\ compiler's (2 rows fail at the default tier).
-1 set-tier
-
 require lib/test.f
 require src/compiler/native/compiler.f
 require src/compiler/native/codewalk.f
+
+\ Tier 1 below: the emitted shape of `execute` asserted below is the optimizing
+\ compiler's (2 rows fail at the default tier). lib/array.f is code under test:
+\ ARRAY-CASE's caller names the public ARRAY:A-MAPI!, the library's own
+\ definition, not the private copy re-compiled below.
+1 set-tier
+
 require lib/array.f
 
 \ The array the case maps over. It is global because the caller that maps it is

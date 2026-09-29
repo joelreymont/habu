@@ -1,8 +1,4 @@
 \ native-rstack.f - production return-stack operations across control-flow seams.
-\ Tier 1 first: those seams are the optimizing compiler's, so the results below
-\ are tier-1 facts (2 rows fail at the default tier).
-1 set-tier
-
 require test/compiler/native-eval-fixture.f
 require lib/errors.f
 require lib/string.f
@@ -10,6 +6,10 @@ require lib/test.f
 require test/checker-assert.f
 require lib/prelude.f
 require src/compiler/native/compiler.f
+
+\ Tier 1 below: those seams are the optimizing compiler's, so the results below
+\ are tier-1 facts (2 rows fail at the default tier).
+1 set-tier
 
 \ Replay the real higher-order definitions through the optimizing compiler.
 package NRS-COMBINATORS

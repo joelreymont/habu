@@ -86,11 +86,19 @@ gives that slot no directory.
   child needing the unsealed engine is not of that kind: it names one itself
   through `test/whitebox-child.f` (`PROVIDE`, `ENGINE$`, `ENV!`) and stays a
   plain `SUITE`, green on its own.
-- A suite whose assertions depend on the compiler tier selects it itself:
-  `1 set-tier` before its requires, because only code compiled after that line
-  belongs to the tier. The runner prepends nothing, so every row measures what
+- A suite whose assertions depend on the compiler tier selects it itself.
+  Only code compiled after `1 set-tier` belongs to the tier, so the line goes
+  after the harness and tool requires (`lib/test.f`, the code-reading tools,
+  test fixtures that drive the chain) and before the code under test; a
+  library whose own words a case runs as the subject is required after it
+  (`test/compiler/native-exec.f` and `lib/array.f`). `' W dup 4 + code-origin .`
+  prints the tier that compiled `W`. No assertion depends on the harness's
+  tier, and compiling it at tier 1 dominated these rows
+  (`test/compiler/native-do.f`: 1.17 s with the line above its requires,
+  0.13 s below them). The runner prepends nothing, so every row measures what
   `bin/hb --load <file>` measures. `test/compiler/aot-mode.f` is only for a
-  caller that runs one unchanged file at both tiers (the `*-aot` twin rows).
+  caller that runs one unchanged file at both tiers (the `*-aot` twin rows);
+  a twin row lists the subject's harness before it, by the same rule.
 - `bin/hb file.f` (no `--load`) drops to a REPL after a clean load and blocks
   on stdin — it looks like a hang, rc 124 under a timeout. Pipe `< /dev/null`,
   and give a spawned build child `/dev/null` stdin rather than letting it

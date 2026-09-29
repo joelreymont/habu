@@ -1,10 +1,10 @@
 \ native-order-exit.f - a spilled memory loop reaches a no-return exit.
-\ Tier 1 first: the unbounded bodies below are never run; they exist to be
+require src/compiler/native/compiler.f
+
+\ Tier 1 below: the unbounded bodies below are never run; they exist to be
 \ accepted by the optimizing compiler's allocator, whose spilled reload stands
 \ in a predecessor of the trap block.
 1 set-tier
-
-require src/compiler/native/compiler.f
 
 package NATIVE-ORDER-EXIT
 private

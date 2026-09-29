@@ -1,14 +1,14 @@
 \ native-string.f - a string literal, compiled by the native chain and run.
 
-\ Tier 1 first: one address per interned body, and code that does not grow with
-\ the string, are facts of the optimizing compiler's literal emission.
-1 set-tier
-
 require lib/test.f
 require lib/string.f
 require src/compiler/native/compiler.f
 require src/compiler/native/string.f
 require src/habu/aot-arm.f
+
+\ Tier 1 below: one address per interned body, and code that does not grow with
+\ the string, are facts of the optimizing compiler's literal emission.
+1 set-tier
 
 package NSTRING-TEST
 

@@ -1,12 +1,12 @@
 \ native-quot.f - production quotation compilation and execution.
-\ Tier 1 first: the quotation shapes below are the optimizing compiler's - at
-\ the default tier LEXICAL-PARKED's nested quotation refuses at load, exit 75.
-1 set-tier
-
 require lib/test.f
 require test/checker-assert.f
 require src/compiler/native/compiler.f
 require src/compiler/native/codewalk.f
+
+\ Tier 1 below: the quotation shapes below are the optimizing compiler's - at
+\ the default tier LEXICAL-PARKED's nested quotation refuses at load, exit 75.
+1 set-tier
 
 package NQUOT-TEST
 

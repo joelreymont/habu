@@ -1,14 +1,14 @@
 \ native-dstack-alias.f - production data-stack residency under aliasing.
-\ Tier 1 first: the residency and the surviving external call are read out of the
-\ production routine's own emitted instructions (tools/codegen-tail-probe.f).
-1 set-tier
-
 require lib/prelude.f
 require lib/errors.f
 require lib/memory.f
 require lib/test.f
 require src/compiler/native/compiler.f
 require tools/codegen-tail-probe.f
+
+\ Tier 1 below: the residency and the surviving external call are read out of the
+\ production routine's own emitted instructions (tools/codegen-tail-probe.f).
+1 set-tier
 
 \ ---- the program under test --------------------------------------------------
 \ A package of its own, and PUBLIC, because the bodies below are compiled from

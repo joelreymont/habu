@@ -10,12 +10,12 @@
 \ THE NEIGHBOURS ARE THE POINT. An arm order, a missing default, a selector that
 \ is not a call, and a throwing arm that READS the spilled local each still need
 \ the lane, so a rewrite that withheld lanes too eagerly fails them instead.
-\ Tier 1 first: the synthesized frame-order argument and the E-A64RAV-ORDER
+require lib/test.f
+
+\ Tier 1 below: the synthesized frame-order argument and the E-A64RAV-ORDER
 \ refusal these definitions reproduce are the optimizing compiler's spill
 \ rewriting; at the default tier nothing below is rewritten at all.
 1 set-tier
-
-require lib/test.f
 
 package NARM
 public

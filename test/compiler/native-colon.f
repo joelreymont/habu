@@ -4,12 +4,12 @@
 \ engine's own token reader captures them; no test entry evaluates source or
 \ calls the compiler directly. Execution and the live dictionary record show
 \ that the ordinary path publishes a runnable native routine.
-\ Tier 1 first: the ordinary `:` handler dispatches to the optimizing compiler
-\ only at tier 1, and a native routine published by that path is the subject.
-1 set-tier
-
 require lib/test.f
 require src/compiler/native/compiler.f
+
+\ Tier 1 below: the ordinary `:` handler dispatches to the optimizing compiler
+\ only at tier 1, and a native routine published by that path is the subject.
+1 set-tier
 
 package NST-AWAY
 public

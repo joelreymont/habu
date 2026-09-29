@@ -1,13 +1,13 @@
 \ native-do.f - production plain `do` compilation.
-\ Tier 1 first: the loop shapes asserted below are the optimizing compiler's
-\ (1 row fails at the default tier).
-1 set-tier
-
 require lib/test.f
 require lib/prelude.f
 require lib/string.f
 require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
+
+\ Tier 1 below: the loop shapes asserted below are the optimizing compiler's
+\ (1 row fails at the default tier).
+1 set-tier
 
 package NDO-FIXTURE
 

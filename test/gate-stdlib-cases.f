@@ -550,6 +550,8 @@ SUITE compiler-native-finally
 ;SUITE
 
 SUITE compiler-native-finally-aot
+   lib/test.f
+   test/checker-assert.f
    test/compiler/aot-mode.f
    test/compiler/native-finally.f
 ;SUITE
@@ -686,6 +688,7 @@ SUITE compiler-native-generic-calls
 ;SUITE
 
 SUITE compiler-native-generic-calls-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/compiler/native-generic-calls.f
 ;SUITE
@@ -703,6 +706,7 @@ SUITE compiler-native-stored-quot
 ;SUITE
 
 SUITE compiler-native-stored-quot-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/compiler/native-stored-quot.f
 ;SUITE
@@ -744,6 +748,7 @@ SUITE compiler-native-many-locals
 ;SUITE
 
 SUITE compiler-native-many-locals-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/compiler/native-many-locals.f
 ;SUITE
@@ -785,6 +790,7 @@ SUITE compiler-native-switch
 ;SUITE
 
 SUITE compiler-native-switch-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/compiler/native-switch.f
 ;SUITE
@@ -830,6 +836,8 @@ SUITE compiler-native-locals-scope
 ;SUITE
 
 SUITE compiler-native-locals-scope-aot
+   test/compiler/native-eval-fixture.f
+   lib/test.f
    test/compiler/aot-mode.f
    test/compiler/native-locals-scope.f
 ;SUITE
@@ -847,6 +855,7 @@ SUITE compiler-native-product-locals
 ;SUITE
 
 SUITE compiler-native-product-locals-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/compiler/native-product-locals.f
 ;SUITE
@@ -856,6 +865,7 @@ SUITE compiler-native-word-binding
 ;SUITE
 
 SUITE compiler-native-word-binding-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/compiler/native-word-binding.f
 ;SUITE
@@ -901,6 +911,8 @@ SUITE compiler-native-quot-scope
 ;SUITE
 
 SUITE compiler-native-quot-scope-aot
+   lib/test.f
+   test/checker-assert.f
    test/compiler/aot-mode.f
    test/compiler/native-quot-scope.f
 ;SUITE
@@ -910,6 +922,7 @@ SUITE compiler-native-chain
 ;SUITE
 
 SUITE compiler-native-chain-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/compiler/native-chain.f
 ;SUITE
@@ -940,6 +953,7 @@ SUITE compiler-native-exit
 ;SUITE
 
 SUITE compiler-native-exit-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/compiler/native-exit.f
 ;SUITE
@@ -949,6 +963,7 @@ SUITE compiler-native-tick
 ;SUITE
 
 SUITE compiler-native-tick-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/compiler/native-tick.f
 ;SUITE
@@ -958,6 +973,7 @@ SUITE compiler-native-literals
 ;SUITE
 
 SUITE compiler-native-literals-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/compiler/native-literals.f
 ;SUITE
@@ -991,6 +1007,11 @@ WHITEBOX-SUITE compiler-native-match
 ;SUITE
 
 WHITEBOX-SUITE compiler-native-match-aot
+   test/compiler/native-eval-fixture.f
+   lib/test.f
+   lib/process.f
+   lib/process-argv.f
+   lib/process-env.f
    test/compiler/aot-mode.f
    test/compiler/native-match.f
 ;SUITE
@@ -1008,6 +1029,9 @@ SUITE compiler-native-wide-mem
 ;SUITE
 
 SUITE compiler-native-wide-mem-aot
+   test/compiler/native-eval-fixture.f
+   lib/test.f
+   lib/ieee754.f
    test/compiler/aot-mode.f
    test/compiler/native-wide-mem.f
 ;SUITE
@@ -1017,6 +1041,7 @@ SUITE compiler-native-fetch-terms
 ;SUITE
 
 SUITE compiler-native-fetch-terms-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/compiler/native-fetch-terms.f
 ;SUITE
@@ -1675,7 +1700,6 @@ SUITE compiler-native-create-does
 SUITE tier
    test/tier.f
 ;SUITE
-
 SUITE does-clause-record
    test/does-clause-record.f
 ;SUITE
@@ -1705,6 +1729,7 @@ SUITE address-cell-rollback
 ;SUITE
 
 SUITE address-cell-rollback-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/address-cell-rollback.f
 ;SUITE
@@ -2061,6 +2086,7 @@ SUITE wide-typed-local-probe
 ;SUITE
 
 SUITE wide-typed-local-probe-aot
+   lib/test.f
    test/compiler/aot-mode.f
    test/wide-typed-local-probe.f
 ;SUITE

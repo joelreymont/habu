@@ -1,12 +1,12 @@
 \ Production vocabulary behavior and the instructions published for it.
-\ Tier 1 first: those published instructions are the optimizing compiler's
-\ (7 rows fail at the default tier).
-1 set-tier
-
 require lib/test.f
 require lib/ieee754.f
 require src/arch/arm64/asm.f
 require tools/codegen-tail-probe.f
+
+\ Tier 1 below: those published instructions are the optimizing compiler's
+\ (7 rows fail at the default tier).
+1 set-tier
 
 package NVOCAB-FIXTURE
 public

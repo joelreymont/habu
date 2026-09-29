@@ -1,8 +1,4 @@
 \ native-leave.f - production `leave` compilation.
-\ Tier 1 first: the back edges each case counts are the emitted code of the
-\ optimizing compiler (tools/codegen-loop-inventory.f).
-1 set-tier
-
 require test/compiler/native-eval-fixture.f
 require lib/test.f
 require lib/prelude.f
@@ -10,6 +6,10 @@ require lib/string.f
 require lib/errors.f
 require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
+
+\ Tier 1 below: the back edges each case counts are the emitted code of the
+\ optimizing compiler (tools/codegen-loop-inventory.f).
+1 set-tier
 
 package NLV-FIXTURE
 
