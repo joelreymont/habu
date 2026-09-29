@@ -1,6 +1,6 @@
 ---
 title: Represent x86 live-region sites as a row band
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.851249+03:00"
@@ -13,4 +13,10 @@ Verify: spark `bin/hb --load test/sites.f` drives both arms over synthetic bands
 Depends: none. Serialise with K2 on `layout.f`.
 Route: Alder (shared: src/habu/layout.f, src/habu/sites.f, src/habu/prims.f, test/sites.f).
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-represent-x86-live-729a7ac6.
+Preflight corrections (these override the lines above where they differ):
+- Mechanism: `src/` has no `[if]`, `layout.f` has no `HB-TARGET` reference, and a top-level `if` is `E-UNDEFINED` on the product engine. `layout.f` therefore declares both views of the same bytes unconditionally: the two bitmaps as today, plus, in `SNAP-RELOC`, the row band over `CALLMAP-OFF..ADDRMAP-END` (2 MiB): `SITE-N-CELL` (a u64 count at `CALLMAP-OFF`), `SITE-ROWS-OFF`, `SITE-ROW-BYTES 5` (offset u32 LE + kind u8), `SITE-CAP`, the kinds `SITE-CALL`/`SITE-ADDR`, and the exit status `SITE-RC` 103 (`src/core/engine-error.f:24` ends at 102). The arm is chosen at run time by `HB-TARGET-LINUX-X86-64?`; K2 uses the same mechanism.
+- Offsets: a site's offset is the region byte offset of its instruction's first byte on both arms (the BL word or the address chain's first MOVZ; the `call` opcode or the `mov r64, imm64` REX byte, with the patched field at +1 or +`MOVABS-IMM-OFF`). `callmap-set`/`addrmap-set` take that address on x86. `code-publish` drops rows of both kinds in [dst, dst+len).
+- Reader: `SITES:EACH-IN-SPAN ( off len [ off kind -- ] -- )` yields in ascending offset order on both arms. The arms are public and take their band(s) as `ptr u8` (`BITMAP-EACH` over the two bitmaps, `ROWS-EACH` over count + rows), so `test/sites.f` drives both over scratch buffers on spark. A count above `SITE-CAP`, or an offset at or after `REGION`, is refused. The ARM64 call arm yields region-to-text calls only (`habu2.f:659-668`, `5565-5567`); nothing records region-to-region calls.
+- Scope: this leaf ADDS the reader. `aot-capture.f` (X2a), `aot-closure.f`/`address-carrier.f` (I7) and `publish.f` (P3) migrate later; the `habu1.f`/`habu2.f` engine readers and writers are untouched; `sites.f` is required only by `test/sites.f` here. "The ARM64 engine byte-identical" means the chain's gen2 == gen3: `layout.f` is in the product, so its bytes differ from master's engine.
+- Files add: `test/gate-stdlib-cases.f` (a `SUITE sites` row like the one at `:2035`).

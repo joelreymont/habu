@@ -11,6 +11,6 @@ Acceptance: on spark, `time` five heavy suites with and without a `1 set-tier` p
 Files: `docs/compiler-measurements.md`.
 Verify: spark: the five suites timed at both tiers.
 Depends: none.
-Route: Alder (shared: docs/compiler-measurements.md).
+Route: direct (documentation no build loads; the Alder route exists for files a macOS build loads).
 Ownership: krait (Intel lane).
 Claim: unassigned.

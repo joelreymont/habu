@@ -18,3 +18,4 @@ Depends: habu-add-the-nemit-201c6fbf (P1), habu-represent-x86-live-729a7ac6 (P2)
 Route: Alder (shared: src/compiler/native/publish.f).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+Preflight note from P1: `src/habu/code-span.f` assumes 4-byte dictionary spans (`CODE-SPAN:EXACT` dies on size mod 4, lines 11, 17-18, 32-34); this leaf owns making it byte-granular for x86 spans.

@@ -11,6 +11,6 @@ Acceptance: `RESTART.md`: the accepted head is `master`, read with `jj --ignore-
 Files: `RESTART.md`.
 Verify: read-through; the command named runs.
 Depends: none.
-Route: Alder (shared: RESTART.md).
+Route: direct (documentation no build loads; the Alder route exists for files a macOS build loads).
 Ownership: krait (Intel lane).
 Claim: unassigned.

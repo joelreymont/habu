@@ -16,3 +16,4 @@ Depends: habu-represent-x86-live-729a7ac6 (P2). Serialise with X2b and I7 on `ao
 Route: Alder (shared: src/habu/aot-capture.f, src/habu/sites.f).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+Preflight note from P2: the ARM64 bitmap arm of `SITES:EACH-IN-SPAN` yields region-to-text calls only (`habu2.f:659-668`, `5565-5567`), while `aot-capture.f:1679-1690` (`ACAP-SITE-HERE`/`ACAP-BRANCH-HERE`) also resolves in-region, out-of-window calls and B branches by name. Replacing `ACAP-SCAN-CALLS` with the bitmap arm must account for those before claiming a byte-identical capture.

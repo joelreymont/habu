@@ -14,3 +14,4 @@ Depends: none.
 Route: direct.
 Ownership: krait (Intel lane).
 Claim: unassigned.
+Correction: the landing procedure INTEL.md describes is the current one. Shared-file leaves go to Alder as `intel/<dot-id>` bookmarks on GitHub origin, listed in the lane's receipt; that replaces the old hazel/neubau procedure the Acceptance deletes.

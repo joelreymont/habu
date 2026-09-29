@@ -1,6 +1,6 @@
 ---
 title: Sign-extend C int results in FFI declarations
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.765664+03:00"
@@ -13,4 +13,12 @@ Verify: spark `bin/hb --load lib/ffi-test.f` plus the `fs-mutate`, `tcp4`, `udp4
 Depends: none.
 Route: Alder (shared: lib/ffi-abi.f, the lib/ declaration files listed, tools/hb-build-test.f, src/habu/proc-maps.f).
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-sign-extend-c-c7f55f0e.
+Preflight corrections (these override the lines above where they differ):
+- Body: `dup $80000000 and if` is refused by the checker (`n n` at `if`) and leaves bits 32-63 when bit 31 is clear. `i32` renders the idiom of `lib/pg.f:189`: `$FFFFFFFF and dup $80000000 and 0 <> if $FFFFFFFF00000000 or then`, with `n` in the checker effect (`i32` is not a checker type). `u32` renders `$FFFFFFFF and` and keeps `u32` in the effect (`src/core/checker.f:1903`). `OUT-TOKEN` keeps the token verbatim (`TOK-KEEP`), `PLAN-CALL` (`lib/ffi-abi.f:779-791`) special-cases only pointer/float, and `EMIT` (946-956) has one tail to append to.
+- Rows, in addition to the list above: `test/signal-stub.f:45` (sigaction), `test/five-bindings.f:23` (getpid), `test/host-threads.f:13` (proc_pidinfo), `test/proc-maps.f:11` (mach_vm_protect), `lib/net/tcp4.f:210` (accept). `kern_return_t` is `int`, so the mach `kern_return_t` rows are `i32`. `task_self_trap` (`lib/task.f:335`, `src/habu/proc-maps.f:212`, `test/proc-maps.f:10`) returns `mach_port_t` and is `u32`. The curl pointer exceptions include `curl_slist_append` (`lib/net/curl.f:116`) and `curl_multi_info_read` (141).
+- Delete the workarounds the fix makes obsolete: `PG:C-INT` (`lib/pg.f:189`, callers 742-792) and the `$FFFFFFFF and` at `lib/process.f:448`. `lib/serial.f:104 C-INT` stays (a raw `ffi-call-bounded`, not `FUNCTION:`).
+- The negative-int case: declare `close ( n -- i32 )`-style, call it on `-1` and assert `-1` (real in glibc and libSystem; `strncmp`'s magnitude is implementation-defined).
+- Docs: the token grammar at `lib/ffi-abi.f:560` and `docs/stdlib.md:337-424` name `i32` and `u32`.
+- Files add: the `test/` rows above, `lib/pg.f`, `lib/process.f`, `docs/stdlib.md`.
+- Verify: `lib/ffi-abi.f` is baked into the engine (`src/habu/aot-closure.f:15`, `src/habu/proc-maps.f:64`) and `require` loads once per image, so a copied master engine never sees the new grammar. On spark build a candidate from the workspace with the master engine (`tools/native-build.f`), install it as `bin/hb`, then: `bin/hb --load lib/ffi-test.f`; `bin/hb --load lib/fs-mutate-test.f` (exit 67 before, 0 after); the gate (baseline 491/492 with `fs-mutate` red, expected 492/492); the chain, because the `proc-maps.f` bodies baked into the engine change.
