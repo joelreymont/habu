@@ -7,26 +7,35 @@ require lib/string.f
 require lib/memory.f
 require lib/fs.f
 require lib/image-lifecycle.f
+require lib/engine-id.f
 require tools/event-closure-lib.f
 
 package SOURCE-VIEW
 
 5 constant QUERY-CELLS
 5 constant FILE-CELLS
+3 constant LOAD-CELLS
 0 constant PATH-OFF
 1 constant PATH-LEN
 2 constant OTHER-OFF
 3 constant OTHER-LEN
 4 constant LAST-CELL
+0 constant LOAD-FILE
+1 constant LOAD-BASE
+2 constant LOAD-ACTIVE
 
 DYNAMIC-BUFFER QUERY n
+DYNAMIC-BUFFER QUERY-USE n
 DYNAMIC-BUFFER FILE-ROW n
 DYNAMIC-BUFFER FILE-A ptr u8
+DYNAMIC-BUFFER LOAD-ROW n
 DYNAMIC-BUFFER POOL u8
 DYNAMIC-BUFFER SCRATCH u8
 
 variable QUERY-N
+variable QUERY-USE-N
 variable FILE-N
+variable LOAD-N
 variable POOL-N
 variable READY
 variable IMAGE-HOOK-ARMED
@@ -47,6 +56,12 @@ create HASH-CELL 1 cells allot
 
 : FILE! ( n n n -- ) {: v:n id:n field:n :}
    v id FILE-CELLS * field + FILE-ROW ! ;
+
+: LOAD@ ( n n -- n ) {: id:n field:n :}
+   id LOAD-CELLS * field + LOAD-ROW @ ;
+
+: LOAD! ( n n n -- ) {: v:n id:n field:n :}
+   v id LOAD-CELLS * field + LOAD-ROW ! ;
 
 : POOL$ ( n n -- ptr u8 n ) {: off:n size:n :}
    off POOL size ;
@@ -78,6 +93,11 @@ create HASH-CELL 1 cells allot
       dup QUERY-PATH$ a u STR= if exit then
       1+
    repeat drop -1 ;
+
+: QUERY-USED ( n -- ) {: id:n :}
+   QUERY-USE-N @ 1+ QUERY-USE-RESERVE
+   id QUERY-USE-N @ QUERY-USE !
+   1 QUERY-USE-N +! ;
 
 : FILE-FIND ( ptr u8 n ptr u8 n -- n )
    {: a:ptr u:n root:ptr rootu:n :}
@@ -127,6 +147,7 @@ create HASH-CELL 1 cells allot
 : CANON-LOOKUP ( ptr u8 n -- ptr u8 n bool )
    QUERY-FIND {: id:n :}
    id 0 < if E-BUILD-SOURCE throw then
+   id QUERY-USED
    id QUERY-ANSWER$ id LAST-CELL QUERY@ 0<> ;
 
 : READ-COLLECT ( ptr u8 n ptr u8 n -- ptr u8 n )
@@ -158,6 +179,15 @@ create HASH-CELL 1 cells allot
       i LAST-CELL QUERY@ HASH-N
    loop ;
 
+: HASH-USED-QUERIES ( -- )
+   QUERY-USE-N @ HASH-N
+   QUERY-USE-N @ 0 ?do
+      i QUERY-USE @ {: id:n :}
+      id QUERY-PATH$ HASH-BYTES
+      id QUERY-ANSWER$ HASH-BYTES
+      id LAST-CELL QUERY@ HASH-N
+   loop ;
+
 : HASH-FILES ( -- )
    FILE-N @ HASH-N
    FILE-N @ 0 ?do
@@ -166,18 +196,90 @@ create HASH-CELL 1 cells allot
       i FILE-BYTES$ HASH-BYTES
    loop ;
 
+TRUSTED: ADDRESS ( ptr u8 -- n ) ;
+TRUSTED: FRAME ( n -- ptr u8 ) ;
+
+variable INPUT-HITS
+variable INPUT-CURSOR
+
+: INPUT-MATCH ( n n n -- ) {: base:n wanted:n cursor:n :}
+   base wanted = if
+      1 INPUT-HITS +!
+      cursor INPUT-CURSOR !
+   then ;
+
+\ A nested evaluate saves the suspended file cursor in its evaluator frame.
+\ Match each active load's own SOURCE base; include depth and evaluator depth
+\ differ when a word evaluates text while a file is loading.
+: INPUT-CONSUMED ( n n -- n ) {: base:n size:n :}
+   0 INPUT-HITS !
+   data-base SRCLOC:INB-CELL + @ base
+   data-base INP-CELL + @ INPUT-MATCH
+   data-base EVAL-TOP-CELL + @
+   begin dup 0<> while
+      dup FRAME {: fr:ptr :}
+      fr EVAL-INB + CELL-VIEW @ base
+      fr CELL-VIEW @ INPUT-MATCH
+      fr EVAL-PREV + CELL-VIEW @ swap drop
+   repeat drop
+   INPUT-HITS @ 1 <> if E-BUILD-SOURCE throw then
+   INPUT-CURSOR @ base - {: used:n :}
+   used 0 < used size > or if E-BUILD-SOURCE throw then
+   used ;
+
+\ A load row is added before its continuation, so the final row at the unit
+\ cut is the selected package input. Earlier active rows contribute only bytes
+\ the interpreter has actually consumed. All bytes come from this owned view.
+: HASH-LOADS ( -- )
+   LOAD-N @ HASH-N
+   LOAD-N @ 0 ?do
+      i LOAD-FILE LOAD@ {: file:n :}
+      file FILE-PATH$ HASH-BYTES
+      file FILE-ROOT$ HASH-BYTES
+      file FILE-BYTES$ {: bytes:ptr size:n :}
+      i LOAD-N @ 1- <> i LOAD-ACTIVE LOAD@ 0<> and if
+         i LOAD-BASE LOAD@ size INPUT-CONSUMED
+      else size then
+      bytes swap HASH-BYTES
+   loop ;
+
+: LOAD-START ( ptr u8 n ptr u8 n ptr u8 -- n )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr :}
+   path pathu root rootu FILE-FIND {: file:n :}
+   file 0 < if E-BUILD-SOURCE throw then
+   LOAD-N @ {: id:n :}
+   id 1+ LOAD-CELLS * LOAD-ROW-RESERVE
+   file id LOAD-FILE LOAD!
+   source ADDRESS id LOAD-BASE LOAD!
+   1 id LOAD-ACTIVE LOAD!
+   id 1+ LOAD-N !
+   id ;
+
+: LOAD-FINISH ( n -- ) {: id:n :}
+   id 0 < id LOAD-N @ >= or if E-BUILD-SOURCE throw then
+   id LOAD-ACTIVE LOAD@ 0= if E-BUILD-SOURCE throw then
+   0 id LOAD-ACTIVE LOAD! ;
+
+: LOAD-OWNED ( ptr u8 n ptr u8 n ptr u8 [ -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr q :}
+   path pathu root rootu source LOAD-START {: id:n :}
+   q catch {: rc:n :}
+   id LOAD-FINISH
+   rc 0<> if rc throw then ;
+
 public
 
 : CLOSE ( -- )
    SOURCE-INPUT:RESET
+   SOURCE-UNIT:RESET
    0 READY !
    FILE-N @ 0 ?do
       i FILE-BYTES$ {: bytes:ptr size:n :}
       bytes size 1 max MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    loop
-   QUERY-RELEASE FILE-ROW-RELEASE FILE-A-RELEASE
+   QUERY-RELEASE QUERY-USE-RELEASE FILE-ROW-RELEASE FILE-A-RELEASE LOAD-ROW-RELEASE
    POOL-RELEASE SCRATCH-RELEASE
-   0 QUERY-N ! 0 FILE-N ! 0 POOL-N ! ;
+   0 QUERY-N ! 0 QUERY-USE-N ! 0 FILE-N ! 0 LOAD-N ! 0 POOL-N ! ;
 
 : OPEN ( -- )
    CLOSE
@@ -195,12 +297,28 @@ public
 
 : USE ( -- )
    [: CANON-LOOKUP ;] [: READ-LOOKUP ;] SOURCE-INPUT:USE
+   [: LOAD-OWNED ;] SOURCE-UNIT:USE
    1 READY ! ;
 
 : READY? ( -- bool ) READY @ 0<> ;
 
 : CALLBACKS ( -- [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] )
    [: CANON-LOOKUP ;] [: READ-LOOKUP ;] ;
+
+: LOAD-CALLBACK ( -- [ ptr u8 n ptr u8 n ptr u8 [ -- ] -- ] )
+   [: LOAD-OWNED ;] ;
+
+: START-LOAD ( ptr u8 n ptr u8 n ptr u8 -- n ) LOAD-START ;
+: FINISH-LOAD ( n -- ) LOAD-FINISH ;
+
+: UNIT-KEY ( -- ptr u8 n )
+   LOAD-N @ 0= if E-BUILD-SOURCE throw then
+   LOAD-N @ 1- LOAD-ACTIVE LOAD@ 0= if E-BUILD-SOURCE throw then
+   HASH-CTX SHA256-BEGIN
+   3 HASH-N ENGINE-ID:KEY$ HASH-BYTES HASH-USED-QUERIES HASH-LOADS
+   HASH-CTX HASH-RAW SHA256-END
+   HASH-RAW HASH-HEX SHA256>HEX
+   HASH-HEX 64 ;
 
 : KEY ( -- ptr u8 n )
    HASH-CTX SHA256-BEGIN

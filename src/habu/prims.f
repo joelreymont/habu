@@ -509,6 +509,9 @@ ETRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary 
 \ ENGINE-ERROR:SEAL-VIOLATION.
 EPRIM: code-publish  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ the bulk publication window is code injection too
+EPRIM: native-unit-publish
+   PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!                       \ installs relocated package code and dictionary rows
 EPRIM: callmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
 EPRIM: addrmap-set   PE-N PE-IN EPRIM;
