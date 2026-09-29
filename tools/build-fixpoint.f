@@ -1045,8 +1045,9 @@ package BUILD-FIXPOINT
 \ the required build modules at their dependency boundaries, in habu1.f's own
 \ require order: data-claims.f before BAND-CLAIM-AT reads its rows (a module
 \ habu1.f requires but this list omits certifies as `undefined word`, which is
-\ how the DATA-CLAIMS split first failed here); code-origin calls
-\ ENGINE-HELPER, so its source belongs after that package in habu1.f.
+\ how the DATA-CLAIMS split first failed here); code-origin.f registers its
+\ helpers through ENGINE-PRIMS, so its source follows primitive-registry.f, at
+\ habu1.f's own require line.
 : BF-CODE-ORIGIN-REQUIRE$ ( -- ptr u8 n ) s" require src/habu/code-origin.f" ;
 
 : BF-APPEND-HABU1 ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -1085,7 +1086,7 @@ package BUILD-FIXPOINT
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
    out outu BF-APPEND-TARGET-SYS
    out outu BF-APPEND-SCRIPT-ARGV
-   out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE
+   out outu s" src/habu/treeshake.f" BF-APPEND-MODULE   \ primitive-registry.f requires it
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
    out outu BF-APPEND-IMAGE-BYTES

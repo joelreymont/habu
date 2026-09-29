@@ -78,8 +78,10 @@ explicitly and call a named target-unknown error when none match.
 row per primitive carrying its name, its checker effect and the name of the
 reference implementation that answers for it, and nothing machine-specific.
 `src/core/checker.f` replays that table to build its own rows, so an effect is
-stated once; `src/habu/habu1.f` refuses a machine body whose name has no row and
-`src/habu/habu2.f` refuses a row that the backend never answered. A new backend
+stated once. `src/habu/primitive-registry.f` holds both gates:
+`ENGINE-PRIMS:SPEC-CHECK`, called from each body's registration, refuses a
+machine body whose name has no row, and `ENGINE-PRIMS:COMPLETE`, called after
+the last body, refuses a `KEEP?`-kept row that no body answered. A new backend
 adds bodies under the row names and declares no effects of its own. Rows of kind
 `ELAB` (the checker computes the effect at the call site) and `UNROWED` (no
 declaration anywhere) name the primitives that deliberately have no row.

@@ -17,9 +17,9 @@
 \ - src/core/checker.f replays the table onto its own `PE-*` row constructors at
 \   the point its table used to hold these rows, so the effects exist here and
 \   nowhere else.
-\ - each backend registers a body under the row's name; src/habu/habu1.f refuses
-\   a body whose name has no row, and src/habu/habu2.f's completeness gate
-\   refuses a row that no body answers.
+\ - each backend registers a body under the row's name; src/habu/primitive-registry.f
+\   refuses a body whose name has no row (ENGINE-PRIMS:SPEC-CHECK) and a row that
+\   no body answers (ENGINE-PRIMS:COMPLETE).
 \ - `REF` names a reference implementation in checked Habu (src/habu/prim-ref.f,
 \   package PRIM-REF), which test/prim-parity.f runs beside each backend's body
 \   over the same cases. A reference never shadows a primitive spelling, so the
@@ -457,7 +457,7 @@ ETRUSTED-ONLY!                       \ points a live dictionary record at new co
 \ hosted a build at tier 1 and `TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;` came
 \ back E-HIR-UNMODELED. TRUSTED-only keeps the boundary exactly where it was:
 \ a CHECKED caller is refused here, and the emitted records carry DNAME-INT
-\ (habu1.f PRIM-GLOBAL-INT-WID) so neither name is executable or tickable.
+\ (ENGINE-PRIMS:GLOBAL-INT-WID) so neither name is executable or tickable.
 EPRIM: int-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-INT on one live record
 EPRIM: min-in-mark   PE-N PE-IN PE-N PE-IN EPRIM;

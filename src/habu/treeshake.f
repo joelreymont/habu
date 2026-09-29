@@ -2,7 +2,9 @@
 \ emitted and seeded ONLY if its name appears as a whitespace token in the
 \ user program (SHK-A/SHK-U). Sound over-approximation; default off = keep
 \ all. Gates: FPRIM/FPRIM-L (habu1.f) + keyword entries (habu2.f EM-COMPILE);
-\ armed by build.f. Load after the shared argv/env prefix, before habu1.f.
+\ the completeness gate (primitive-registry.f ENGINE-PRIMS:COMPLETE) asks the
+\ same KEEP?, so a dropped row is not a missing body. Armed by build.f. Load
+\ after the shared argv/env prefix; primitive-registry.f requires this file.
 
 variable SHAKE?   PTR-VARIABLE SHK-A   variable SHK-U
 variable SKP  variable STS

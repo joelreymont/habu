@@ -166,7 +166,7 @@ private
    msg LBL,  S\" hb: code-origin table capacity\n" BYTES,
    done LBL,  RESTORE,
    LSET-END LABEL@ LBL,
-   s" engine-code-origin-set" LSET @ LSET-END @ ENGINE-HELPER:REGISTER ;
+   s" engine-code-origin-set" LSET @ LSET-END @ ENGINE-PRIMS:HELPER-REGISTER ;
 
 : EMIT-QUERY ( -- )
    LBL LBL LBL LBL LBL {: search:label hi:label found:label unknown:label done:label :}
@@ -197,7 +197,7 @@ private
    9 SP 56 STR,                            \ replace saved x9 with the answer
    RESTORE,
    LQUERY-END LABEL@ LBL,
-   s" engine-code-origin-query" LQUERY @ LQUERY-END @ ENGINE-HELPER:REGISTER ;
+   s" engine-code-origin-query" LQUERY @ LQUERY-END @ ENGINE-PRIMS:HELPER-REGISTER ;
 
 \ Runtime addresses enter here; stored coordinates remain relocation-relative.
 \ Keep all caller registers intact, including overlapping argument registers.

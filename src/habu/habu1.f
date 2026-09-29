@@ -65,62 +65,22 @@ require src/habu/task-abi.f
 require src/habu/code-span.f
 PTR-VARIABLE FP-A  variable FP-U
 
-\ A primitive whose dictionary record is globally searchable but cannot be
-\ executed or ticked by ordinary source.  The sentinel lives only in this
-\ build-side registry; the emitted record carries WID 0 and DNAME-INT.
--1 constant PRIM-GLOBAL-INT-WID
 \ Every primitive body emitter has the same Habu effect. Keep that type when
 \ selecting a different emitter for each registry row.
 defer FP-EMIT ( -- )
 : FP-A@ ( -- ptr u8 ) FP-A @ ;
 
-\ An engine helper is an engine-resident routine that guarded primitives reach
-\ by a direct branch (a shared span guard, a bounds loop). REGISTER records it as
-\ a sealed, system-private dictionary record spanning [start-addr, end-addr) and
-\ stamps it with OWNER-API-PRI-WID. That stamp is the closed registration marker:
-\ it hides the helper from raw word searches (BSWL) and gives it a sealed dictionary
-\ record, so the ahead-of-time closure walker resolves a direct branch into the
-\ helper by its exact code entry like any record (aot-closure.f FINDADDR-PTR). Only a
-\ record's exact code entry is ever followed, so the AOT image can never pull
-\ in unintended code. DNAME folds the same marker into a record's baked name/flags
-\ cell so the seed dictionary carries the internal bit for helper records.
-package ENGINE-HELPER
-using ENGINE-PRIMS
-
-public
-
-: REGISTER ( ptr u8 n n n -- )
-   >LABEL swap >LABEL swap ADD OWNER-API-PRI-WID swap WID! ;
-
-: DNAME ( n -- n ) {: idx:n :}
-   idx NAME-LEN
-   idx WID {: wid:n :}
-   wid OWNER-API-PRI-WID =  wid PRIM-GLOBAL-INT-WID = or if DNAME-INT or then ;
-
-: WID ( n -- n )
-   ENGINE-PRIMS:WID dup PRIM-GLOBAL-INT-WID = if drop 0 then ;
-
-;package
-
 require src/habu/code-origin.f
 
 variable FPL  variable FPE
 
-\ THE TABLE IS WHICH PRIMITIVES EXIST. Every body below registers under a name
-\ that src/habu/prims.f already specifies - the row states the effect, the body
-\ states the machine code, and neither restates the other. A body whose name has
-\ no row is a second primitive list starting, so it is refused here, and the
-\ other half of the pair - a row that no backend answers - is the completeness
-\ gate in habu2.f ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS. The check runs before
-\ KEEP?, so a subset build cannot hide an unspecified primitive.
-: FP-SPEC-MISSING ( -- )
-   s" prims: primitive with no row in src/habu/prims.f: " type
-   FP-A@ FP-U @ type cr
-   s" prims: engine primitive absent from the specification table" 76 die ;
-
+\ Every body below registers under a name that src/habu/prims.f specifies.
+\ FP-ARGS checks the name (ENGINE-PRIMS:SPEC-CHECK) before FP-KEEP?, so a subset
+\ build cannot hide an unspecified primitive; habu2.f
+\ ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS runs the registry's completeness gate.
 : FP-ARGS ( ptr u8 n [ -- ] -- )
    is FP-EMIT  FP-U !  FP-A !
-   FP-A@ FP-U @ PRIM-SPEC:FIND 0 < IF FP-SPEC-MISSING THEN ;
+   FP-A@ FP-U @ ENGINE-PRIMS:SPEC-CHECK ;
 
 : FP-KEEP? ( -- bool )
    FP-A@ FP-U @ KEEP? ;
@@ -3403,20 +3363,20 @@ package ENGINE-EMIT
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET 1 GDEREF-L   s" ndict!" ['] BNDSET 1 GDEREF-F
    1 GD-MIN !
-   s" seed-ndict!" ['] BSEEDNDICTSET PRIM-GLOBAL-INT-WID FPRIM-WID
+   s" seed-ndict!" ['] BSEEDNDICTSET ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    GD-RECORD
    1 GD-MIN !
-   s" ndict-append" ['] BNDAPPEND PRIM-GLOBAL-INT-WID FPRIM-WID
+   s" ndict-append" ['] BNDAPPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    GD-RECORD
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
    1 GD-MIN !
-   s" int-mark" ['] BINTMARK PRIM-GLOBAL-INT-WID FPRIM-WID
+   s" int-mark" ['] BINTMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    GD-RECORD
    2 GD-MIN !
-   s" min-in-mark" ['] BMININMARK PRIM-GLOBAL-INT-WID FPRIM-WID
+   s" min-in-mark" ['] BMININMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    GD-RECORD
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" prot-wid-room" ['] BPROTWIDROOM FPRIM
@@ -3463,12 +3423,12 @@ package ENGINE-EMIT
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL 3 GDEREF-F
    3 GD-MIN !
-   s" xref-search-wl" ['] BCOMPILERSWL PRIM-GLOBAL-INT-WID FPRIM-WID
+   s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    GD-RECORD
    s" set-check" ['] BSETCHECK 1 GDEREF-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" set-tier" ['] BSETTIER 1 GDEREF-F     s" tier@" ['] BTIERFETCH FPRIM-L
-   s" executable-build-enter" ['] BBUILDENTER PRIM-GLOBAL-INT-WID FPRIM-WID
-   s" executable-build-leave" ['] BBUILDLEAVE PRIM-GLOBAL-INT-WID FPRIM-WID
+   s" executable-build-enter" ['] BBUILDENTER ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" executable-build-leave" ['] BBUILDLEAVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" code-origin" ['] BCODEORIGIN 2 GDEREF-F
    s" set-preflight" ['] BSETPREFLIGHT 1 GDEREF-L
    s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
@@ -3668,7 +3628,7 @@ package ENGINE-EMIT
 : EMIT-PROT-SPAN ( -- )
    LPROTSPAN LABEL@ {: start:label :}
    LBL {: end:label :}
-   s" (PROT-SPAN)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   s" (PROT-SPAN)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
    10 11 GUARD-SPAN
    RET,
@@ -3684,7 +3644,7 @@ package ENGINE-EMIT
 : EMIT-DIV-ZERO ( -- )
    LDIVZERO LABEL@ {: start:label :}
    LBL {: end:label :}
-   s" (DIV-ZERO)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   s" (DIV-ZERO)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
    9 ARITH-ABI:E-DIV-ZERO LIT64,  9 G-PUSH  BTHROW
    end LBL, ;
@@ -4545,7 +4505,7 @@ variable FIND-HMATCH
 \ and rewrites its internal branches with no further claim.
 : EMIT-NUM ( -- )
    LBL {: end:label :}
-   s" (NUM)" LNUM LABEL@ LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   s" (NUM)" LNUM LABEL@ LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    LNUM LABEL@ LBL,
    LBL NUM-DONE !
    LBL NUM-NDOLL !
@@ -4602,15 +4562,15 @@ create NAME-PADDING 0 , 0 ,
       dup FIRST-LABEL DLBL,
       dup LAST-LABEL DLBL,
       dup NAME-LEN DNAME-INL > IF
-         dup ENGINE-HELPER:DNAME DNAME-EXT or DCQ,
+         dup DNAME DNAME-EXT or DCQ,
          dup NAME-LABEL DLBL,
          0 DCQ,
       ELSE
-         dup ENGINE-HELPER:DNAME DCQ,
+         dup DNAME DCQ,
          dup NAME$ BYTES,
          16 over NAME-LEN 3 + -4 and - dup 0 > IF NAME-PADDING swap BYTES, ELSE drop THEN
       THEN
-      dup ENGINE-HELPER:WID DCQ,
+      dup HELPER-WID DCQ,
       1 + REPEAT drop ;
 
 ;package

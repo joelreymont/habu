@@ -1299,7 +1299,7 @@ public
 : EMIT-REPL-ROUTE ( -- )
    LBL LBL LBL {: no:label tty:label end:label :}
    LREPLROUTE LABEL@ {: start:label :}
-   s" (LREPLROUTE)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   s" (LREPLROUTE)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
    9 DATA REPLH-CELL LDR,  9 no CBZ,
    9 DATA INP-CELL LDR,  9 no CBZ,       \ startup has no source frame to recover into
@@ -1341,7 +1341,7 @@ public
 : EMIT-GENIO-OUT ( -- )
    LBL LBL LBL {: term:label done:label end:label :}
    LGENIOOUT LABEL@ {: start:label :}
-   s" (GENIO-OUT)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   s" (GENIO-OUT)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
    SP SP $10 SUBI,  30 SP 0 STR,
    9 DATA GENIO-ABI:BUSY-CELL LDR,  9 term CBNZ,
@@ -4438,7 +4438,7 @@ variable LTOPHOOK
 : EMIT-EXITHOOK ( -- )
    LBL LBL {: nohk:label end:label :}
    LEXITHOOK LABEL@ {: start:label :}
-   s" (LEXITHOOK)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   s" (LEXITHOOK)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
    9 DATA EXIT-HOOK-CELL LDR,  9 nohk CBZ,
    SP SP 16 SUBI,  30 SP 0 STR,  0 SP 8 STR,
@@ -6617,7 +6617,7 @@ ardone LBL,
       copied:label publish:label rebuild:label hit:label missing:label :}
    LMARK LABEL@ {: start:label :}
    LBL {: end:label :}
-   s" (MARK)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   s" (MARK)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL, MARK-SAVE
    15 0 MOVZ, common B,
    LPTRMARK LABEL@ LBL, MARK-SAVE
@@ -8564,7 +8564,7 @@ public
    LBL LBL LBL LBL LBL LBL {: outer:label guard:label active:label inactive:label invalid:label done:label :}
    LBL LBL {: badmsg:label end:label :}
    LP2VEXEC LABEL@ {: start:label :}
-   s" (LP2VEXEC)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   s" (LP2VEXEC)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
    15 30 4 ADDI,                                      \ descriptor follows return-site B
    9 15 0 LDR,  15 15 8 ADDI,
@@ -10806,12 +10806,12 @@ public
 : AOT-CREC-NAME$ ( n -- ptr u8 n ) AOT-CREC-AT 8 + AOT-W32@ AOT-POOL$ ;
 : AOT-CREC-WID@ ( n -- n ) AOT-CREC-AT 16 + AOT-W32@ ;
 
-\ The primitive's wid as the seeded record carries it: ENGINE-HELPER:WID is what
-\ ENGINE-EMIT:EMIT-DICT bakes into [40], so the match asks the same question the
-\ boot dictionary answers.
+\ The primitive's wid as the seeded record carries it: ENGINE-PRIMS:HELPER-WID
+\ is what ENGINE-EMIT:EMIT-DICT bakes into [40], so the match asks the same
+\ question the boot dictionary answers.
 : AOT-PRIM-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n w:n :}
    SEEDED-PRIM-N @ 0 ?do
-      i ENGINE-HELPER:WID w = if
+      i ENGINE-PRIMS:HELPER-WID w = if
          i ENGINE-PRIMS:NAME$ a u CORE-STR=CI if i unloop exit then
       then
    loop
@@ -11096,43 +11096,6 @@ variable CUR
 \ ENGINE-BUILD:BUILD below all call.
 package ENGINE-EMIT
 
-\ ---- the primitive specification's other half --------------------------------
-\ habu1.f FP-ARGS refuses a machine body whose name has no row in
-\ src/habu/prims.f. This is the converse: a row that this backend never answered.
-\ Without it a primitive could be specified, and every checked caller believe the
-\ effect, while the engine carried no code for the name - which is the same fork
-\ the table exists to close, read from the other end.
-\
-\ IT ASKS KEEP?, because a subset build drops bodies on purpose (habu1.f
-\ FP-KEEP?). A row the treeshaker drops is not a missing body; a row it keeps and
-\ no section registered is.
-variable PTC-I   variable PTC-J
-
-: PTC-BODY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 PTC-J !
-   BEGIN PTC-J @ ENGINE-PRIMS:COUNT < WHILE
-      PTC-J @ ENGINE-PRIMS:NAME$ a u CORE-STR= IF 0 0= EXIT THEN
-      PTC-J @ 1 + PTC-J !
-   REPEAT
-   0 0= 0= ;
-
-: PTC-MISSING ( ptr u8 n -- )
-   s" prims: no arm64 body for specified primitive " type type cr
-   s" prims: specification row without a backend body" 76 die ;
-
-: PTC-ROW ( n -- )
-   PRIM-SPEC:NAME$
-   2dup KEEP? IF
-      2dup PTC-BODY? 0= IF PTC-MISSING ELSE 2drop THEN
-   ELSE 2drop THEN ;
-
-: PRIM-TABLE-COMPLETE ( -- )
-   0 PTC-I !
-   BEGIN PTC-I @ PRIM-SPEC:COUNT < WHILE
-      PTC-I @ PTC-ROW
-      PTC-I @ 1 + PTC-I !
-   REPEAT ;
-
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    TIER-PROV:EMIT-HELPERS
    EMIT-PRIMS
@@ -11148,7 +11111,7 @@ variable PTC-I   variable PTC-J
    s" snapshot-format" ['] SNAP-RELOC:BSNAPSHOTFORMAT FPRIM
    PROF:EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
-   PRIM-TABLE-COMPLETE
+   ENGINE-PRIMS:COMPLETE
    EMIT-CEMIT
    EMIT-CEMITBL
    EMIT-ADDSUB-IMM
