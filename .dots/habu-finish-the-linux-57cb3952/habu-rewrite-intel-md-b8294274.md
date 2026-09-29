@@ -1,9 +1,11 @@
 ---
 title: Rewrite INTEL.md for the campaign
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.406681+03:00"
+closed-at: "2026-09-29T13:40:11.927081+03:00"
+close-reason: INTEL.md rewritten for the campaign; landed facts moved to docs/x86-64.md
 ---
 
 Problem: `INTEL.md` describes the superseded hazel/neubau/cedar integration (bookmarks, landing procedure, the Intel-machine setup list, the earlier integration table, the Landed narrative, the experiment reconciliation table) instead of this campaign.

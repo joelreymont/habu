@@ -12,7 +12,6 @@ blocks:
   - habu-cross-build-the-d25a959d
   - habu-port-the-ffi-676f745d
   - habu-gate-and-self-7afc5ff3
-  - habu-rewrite-intel-md-b8294274
   - habu-point-restart-md-3e7996ca
 ---
 

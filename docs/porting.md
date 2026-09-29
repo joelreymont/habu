@@ -2,9 +2,9 @@
 
 The supported native targets are macOS/arm64 and Linux/aarch64, with
 Linux/x86-64 declared: its seam directory, ELF64 writer, target contract and
-syscall emitters exist and are exercised from an aarch64 host, and no x86_64
-instruction has executed yet — the engine body and the compiler backend are
-still to come. A new port adds one target seam and proves it with native refresh
+syscall emitters exist and are exercised from an aarch64 host, and a
+cross-written peer image executes natively on an x86-64 host. The x86-64
+engine is in progress ([INTEL.md](../INTEL.md)). A new port adds one target seam and proves it with native refresh
 plus the port gate; it does not add host-language build logic or
 benchmark-runtime requirements.
 
