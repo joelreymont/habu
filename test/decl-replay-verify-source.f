@@ -24,7 +24,8 @@
 \   variants: name and tag of every row, in declaration order, plus the
 \             constructor package stamped on that row
 \   fields:   the TYPE-FIELD row count keyed (family, variant), and each row's
-\             name, schema root, slot, and cell width
+\             name, slot, and cell width; the pair fixture checks its concrete
+\             field schemas separately because root ids are allocation indices
 \ Both paths register constructor symbols and checked effects. Replay emits no
 \ code or runtime dictionary entries; VS-LOAD checks that distinction directly.
 \
@@ -38,6 +39,7 @@ require test/checker-assert.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/habu/verify-source.f
 
+using SCHEMA-REG
 using TFAM
 
 package VSPARITY
@@ -68,14 +70,12 @@ TRUSTED: V-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 : R-FAM ( n -- n ) TYPE-FIELD:FAMILY@ ;
 : R-VAR ( n -- n ) TYPE-FIELD:VARIANT@ ;
 TRUSTED: R-NAME$ ( n -- ptr u8 n ) PF-NAME$ ;
-TRUSTED: R-SCH ( n -- n ) PF-SCH@ ;
 TRUSTED: R-SLOT ( n -- n ) PF-SLOT@ ;
 TRUSTED: R-CELLS ( n -- n ) PF-CELLS@ ;
+TRUSTED: R-CON-N? ( n -- bool )
+   PF-SCH@ SCHEMA-ROOT@ dup SCHEMA-CON? IF SCHEMA-A@ CC-N = EXIT THEN
+   drop false ;
 : R-TOTAL ( -- n ) TYPE-FIELD:COUNT ;
-
-variable AV   variable BV
-variable SI   variable SJ
-variable ACC
 
 public
 
@@ -102,47 +102,42 @@ private
 \ variant), so a family's rows are found by scanning for that key; the Nth match
 \ in table order is the Nth field in declaration order.
 : ROWS ( n n -- n ) {: fam:n vid:n :}
-   0 ACC !   0 SI !
-   BEGIN SI @ R-TOTAL < WHILE
-      SI @ R-FAM fam = SI @ R-VAR vid = and IF ACC @ 1 + ACC ! THEN
-      SI @ 1 + SI !
-   REPEAT
-   ACC @ ;
+   0
+   R-TOTAL 0 ?DO
+      i R-FAM fam = i R-VAR vid = and IF 1+ THEN
+   LOOP ;
 
 : ROW-AT ( n n n -- n ) {: fam:n vid:n want:n :}   \ table index of the want'th row, or -1
-   0 ACC !   0 SI !
-   BEGIN SI @ R-TOTAL < WHILE
-      SI @ R-FAM fam = SI @ R-VAR vid = and IF
-         ACC @ want = IF SI @ EXIT THEN
-         ACC @ 1 + ACC !
+   0
+   R-TOTAL 0 ?DO
+      i R-FAM fam = i R-VAR vid = and IF
+         dup want = IF drop i unloop EXIT THEN
+         1+
       THEN
-      SI @ 1 + SI !
-   REPEAT
-   -1 ;
+   LOOP
+   drop -1 ;
 
 : SAME-FIELDS ( n n n n -- ) {: af:n av:n bf:n bv:n :}
-   af av ROWS bf bv ROWS T=
-   0 SJ !
-   BEGIN SJ @ af av ROWS < WHILE
-      af av SJ @ ROW-AT {: ai:n :}
-      bf bv SJ @ ROW-AT {: bi:n :}
+   af av ROWS {: count:n :}
+   bf bv ROWS count T=
+   count 0 ?DO
+      af av i ROW-AT {: ai:n :}
+      bf bv i ROW-AT {: bi:n :}
       ai 0 >= T-TRUE
       bi 0 >= T-TRUE
       ai R-NAME$ bi R-NAME$ CORE-STR= T-TRUE
-      ai R-SCH   bi R-SCH   T=
       ai R-SLOT  bi R-SLOT  T=
       ai R-CELLS bi R-CELLS T=
-      SJ @ 1 + SJ !
-   REPEAT ;
+   LOOP ;
 
 : SAME-VARIANTS ( n n -- ) {: af:n bf:n :}
-   af F-VCOUNT bf F-VCOUNT T=
-   af F-VSTART AV !
-   bf F-VSTART BV !
-   0 SI !
-   BEGIN SI @ af F-VCOUNT < WHILE
-      AV @ SI @ + {: a:n :}
-      BV @ SI @ + {: b:n :}
+   af F-VCOUNT {: count:n :}
+   bf F-VCOUNT count T=
+   af F-VSTART {: astart:n :}
+   bf F-VSTART {: bstart:n :}
+   count 0 ?DO
+      astart i + {: a:n :}
+      bstart i + {: b:n :}
       a V-NAME$ b V-NAME$ CORE-STR= T-TRUE
       a V-TAG b V-TAG T=
       \ The constructor package is DERIVED from the declaring package and the
@@ -157,8 +152,18 @@ private
       a V-SYM 0 <> T-TRUE
       b V-SYM 0 <> T-TRUE
       af a bf b SAME-FIELDS
-      SI @ 1 + SI !
-   REPEAT ;
+   LOOP ;
+
+: PAIR-FIELD ( n ptr u8 n n -- )
+   {: fam:n name:ptr nameu:n slot:n :}
+   fam TYPE-FIELD:NO-VARIANT name nameu TYPE-FIELD:FIND
+   {: row:n found:bool :}
+   found T-TRUE
+   found IF
+      row R-SLOT slot T=
+      row R-CELLS 1 T=
+      row R-CON-N? T-TRUE
+   THEN ;
 
 public
 
@@ -174,7 +179,13 @@ public
    af F-EQ     bf F-EQ     T=
    af F-HASH   bf F-HASH   T=
    af F-FCOUNT bf F-FCOUNT T=
+   af TYPE-FIELD:NO-VARIANT bf TYPE-FIELD:NO-VARIANT SAME-FIELDS
    af bf SAME-VARIANTS ;
+
+: PAIR-FIELDS ( ptr u8 n -- )
+   FAMID {: fam:n :}
+   fam s" lo" 0 PAIR-FIELD
+   fam s" hi" 1 PAIR-FIELD ;
 
 \ VS-LOAD ( source -- ) : register a source's declarations the way the
 \ in-process tools do, without executing it.
@@ -270,6 +281,8 @@ s" package sdrep public STRUCTURE pair 0 FIELD lo n FIELD hi n ;STRUCTURE ;packa
 VSPARITY:VS-LOAD
 
 s" sdlive:pair" s" sdrep:pair" VSPARITY:COMPARE
+s" sdlive:pair" VSPARITY:PAIR-FIELDS
+s" sdrep:pair" VSPARITY:PAIR-FIELDS
 
 \ ---------------------------------------------------------------------------
 \ 2. Compact ENUM. This is the arm that changed owner: it drove the legacy
@@ -291,6 +304,8 @@ s" edlive:colour" s" edrep:colour" VSPARITY:COMPARE
 s" package vruse public ENUM box 1 VARIANT ok FIELD value a ;VARIANT VARIANT no ;VARIANT ;ENUM : WRAP ( a -- box<a> ) VRUSE-BOX:OK ; ;package"
 VSPARITY:VS-LOAD
 s" COLOUR ( -- edrep:colour ) EDREP-COLOUR:RED" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
+s" COLOUR-GREEN ( -- edrep:colour ) EDREP-COLOUR:GREEN" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
+s" COLOUR-BLUE ( -- edrep:colour ) EDREP-COLOUR:BLUE" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
 s" PAIR ( n n -- sdrep:pair ) SDREP-PAIR:MAKE" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
 s" UNPAIR ( sdrep:pair -- n n ) SDREP-PAIR:UNMAKE" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
 s" WRONG-PAIR ( n -- sdrep:pair ) SDREP-PAIR:MAKE" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
@@ -409,4 +424,5 @@ s" ADR-LEAK ( ptr adprv:prec -- ptr n ) PREC-HI" CHECK-QUIET-CANDIDATE! 0 VSPARI
 
 VSPARITY:REPORT
 
+;using
 ;using
