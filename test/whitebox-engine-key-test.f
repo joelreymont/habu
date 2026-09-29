@@ -10,9 +10,9 @@
 \
 \ The tree cannot be edited to show that, so the closure is copied into a private
 \ root and keyed there through WHITEBOX-ENGINE:ENTRY-PATH!, the same derivation
-\ RESOLVE uses. The copy is a complete shadow: every member resolves inside it
-\ except the files tools/dynamic-tail-manifest.f names, which discovery
-\ recognizes by their real pathname and which therefore stay where they are.
+\ RESOLVE uses. Manifested files must keep their real pathname for discovery.
+\ Their static require closures stay there too, so those files resolve the same
+\ dependencies in the copied and real builder closures.
 
 require lib/test.f
 require lib/string.f
@@ -58,7 +58,6 @@ variable PATH-C-U
 variable PATH-D-U
 variable IDX
 variable REAL-N
-variable FOREIGN
 variable SEAL-SEEN?
 
 : ROOT$ ( -- ptr u8 n )       ROOT ROOT-U @ ;
@@ -90,10 +89,8 @@ variable SEAL-SEEN?
 : ENGINE-DIGEST! ( ptr u8 -- ) {: dst:ptr :}
    FSHA-CTX ENGINE-CANDIDATE:PATH$ dst SHA256-FILE-IN dup 0 <> if throw then drop ;
 
-\ One closure member into the copy. A manifested file keeps its own pathname -
-\ discovery recognizes it by that pathname and tolerates its unreadable loader
-\ forms only there - so it stays put and the walk over the copy reaches the real
-\ one; COUNT-FOREIGN below is what holds that to exactly those files.
+\ One closure member into the copy. Discovery recognizes a manifested file by
+\ its real pathname, so it must stay there.
 : MEMBER-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
    a u DTM:KNOWN? if exit then
    a u CWD$ BELOW? 0= if E-FS-PATH throw then
@@ -103,6 +100,24 @@ variable SEAL-SEEN?
    DST$ DIRNAME MAKE-DIRS
    a u DST$ COPY-FILE-STREAM ;
 
+\ A real-path boundary's static requires also resolve from the real tree.
+\ Leave their closure there instead of introducing shadow copies that the
+\ copied builder would load before reaching the boundary.
+: BOUNDARY-MEMBER-UNCOPY ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CWD$ BELOW? 0= if exit then
+   a u CWD$ RELATIVE DST DST-U UNDER-ROOT!
+   DST$ FILE? if DST$ REMOVE-FILE then ;
+
+: LEAVE-BOUNDARY-CLOSURES ( -- )
+   DTM:COUNT 0 ?do
+      CWD$ i DTM:PATH$ JOIN EC:BUILD
+      0 IDX !
+      begin IDX @ EC:COUNT < while
+         IDX @ EC:PATH$ BOUNDARY-MEMBER-UNCOPY
+         IDX @ 1+ IDX !
+      repeat
+   loop ;
+
 : COPY-CLOSURE ( -- )
    0 SEAL-SEEN? !
    WHITEBOX-ENGINE:BUILDER$ EC:BUILD
@@ -111,7 +126,8 @@ variable SEAL-SEEN?
    begin IDX @ REAL-N @ < while
       IDX @ EC:PATH$ MEMBER-COPY
       IDX @ 1+ IDX !
-   repeat ;
+   repeat
+   LEAVE-BOUNDARY-CLOSURES ;
 
 \ The entry sits at the copy's own root, because a dependency resolves under the
 \ directory the entry file was found in: at <root>/native-build.f every
@@ -131,27 +147,14 @@ variable SEAL-SEEN?
    SPARE-REL$ SPARE SPARE-U UNDER-ROOT!
    CWD$ SEAL-REL$ REAL-SEAL JOIN-PATH REAL-SEAL-U ! ;
 
-\ Members of the copy's closure that are neither the copy's own files nor
-\ manifested: any of those would mean the key folded the real tree's bytes.
-: COUNT-FOREIGN ( -- )
-   0 FOREIGN !
-   0 IDX !
-   begin IDX @ EC:COUNT < while
-      IDX @ EC:PATH$ {: a:ptr u:n :}
-      a u ROOT$ BELOW? 0= a u DTM:KNOWN? 0= and if 1 FOREIGN +! then
-      IDX @ 1+ IDX !
-   repeat ;
-
 : TEST-CLOSURE-CARRIES-PREFIX ( -- )
    s" the closure the key folds carries the boot prefix" T-LABEL
    SEAL-SEEN? @ 0 <> TTRUE ;
 
 : TEST-COPY-IS-COMPLETE ( -- )
-   s" and the copy of it keys itself, not the tree" T-LABEL
+   s" and its copy has the same source closure" T-LABEL
    ENTRY$ EC:BUILD
-   EC:COUNT REAL-N @ T=
-   COUNT-FOREIGN
-   FOREIGN @ 0 T= ;
+   EC:COUNT REAL-N @ T= ;
 
 : TEST-COPY-SHARES-KEY ( -- )
    s" identical source closures in different roots share the artifact" T-LABEL
@@ -187,7 +190,8 @@ variable SEAL-SEEN?
    ENG-A DG-LEN ENG-B DG-LEN STR= TTRUE ;
 
 \ Manifest identity is relative to the child's invocation root. Give it real
-\ copies of the two boundary files and links to the unchanged test/tool libs.
+\ copies of the two boundary files, one private dependency, and links to the
+\ unchanged test/tool libs.
 : MANIFEST$ ( -- ptr u8 n ) ROOT$ s" manifest" JOIN ;
 
 : MANIFEST-LINK ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -198,14 +202,16 @@ variable SEAL-SEEN?
    MANIFEST$ s" src/habu" JOIN MAKE-DIRS
    MANIFEST$ s" src/core" JOIN MAKE-DIRS
    s" lib" MANIFEST-LINK s" tools" MANIFEST-LINK s" test" MANIFEST-LINK
-   s" src/habu/task-abi.f" MANIFEST-LINK ;
+   s" src/habu/task-abi.f" MANIFEST-LINK
+   MANIFEST$ s" whitebox-manifest-private.f" JOIN
+   s\" \\ private dependency\n" WRITE-ALL ;
 
-: MANIFEST-RUN ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n mode:ptr modeu:n :}
+: MANIFEST-RUN ( ptr u8 n -- ) {: path:ptr pathu:n :}
    PROC-ARGV-RESET PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" test/whitebox-manifest-child.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
-   path pathu >LEN PROC-ARGV+ mode modeu >LEN PROC-ARGV+
+   path pathu >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ CANONICAL TTRUE >LEN MANIFEST$ >LEN
    CHILD-OUT $4000 >LEN CHILD-ERR $4000 >LEN 30000 >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
@@ -219,12 +225,11 @@ variable SEAL-SEEN?
 : MANIFEST-CASE ( ptr u8 n -- ) {: a:ptr u:n :}
    MANIFEST$ a u JOIN DST DST-U COPY!
    a u DST$ COPY-FILE-STREAM
-   a u s" clean" MANIFEST-RUN
-   DST$ S\" \nrequire lib/errors.f\n" APPEND-FILE
-   a u s" dirty" MANIFEST-RUN ;
+   DST$ S\" \nrequire whitebox-manifest-private.f\n" APPEND-FILE
+   a u MANIFEST-RUN ;
 
 : TEST-MANIFEST-LOADS ( -- )
-   s" manifested key members must record no loader events" T-LABEL
+   s" a manifested member keys its static private dependency" T-LABEL
    MANIFEST-PREP
    s" src/habu/driver-io.f" MANIFEST-CASE
    s" src/core/include.f" MANIFEST-CASE ;
