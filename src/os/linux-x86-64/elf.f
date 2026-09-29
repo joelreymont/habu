@@ -8,7 +8,12 @@
 \ e_machine, the interpreter the dynamic loader is named by (one byte longer,
 \ which is why ELF-INTERP-SZ is 28 and not 27), and the GOT relocation type.
 \ Everything else here is ELF64 format, and reads the same under both machines.
+\ The code stream it wraps is package X64CODE's (src/arch/x86-64/icode.f),
+\ loaded before this file and before src/os/image-bytes.f, which sizes MSIZE
+\ from a bare CODE-CAP-BYTES at load and so loads under `using X64CODE`.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
+
+using X64CODE
 
 $7F constant ELF-MAG0
 69 constant ELF-MAG1
@@ -57,10 +62,10 @@ $1B8 constant ELF-RELA-OFF
 1 constant DT-NEEDED
 30 constant DT-FLAGS
 8 constant DF-BIND-NOW
-\ The generated executable window: everything the assembler can emit, behind the
-\ header page it sits at. It is DERIVED from the assembler's own buffer rather
-\ than written out again, because the two are one fact and a second spelling of
-\ one fact is a drift waiting for an editor.
+\ The generated executable window: everything the code layer admits, behind the
+\ header page it sits at. It is DERIVED from X64CODE's window rather than
+\ written out again, because the two are one fact and a second spelling of one
+\ fact is a drift waiting for an editor.
 CODE-CAP-BYTES CODE-OFF + constant MPAGE
 variable CODELEN
 variable ELF-TEXT-SIZE
@@ -77,7 +82,10 @@ ELF-MSIZE-CHECK
 : ASM-CODELEN! ( -- )
    ASM-LEN CODELEN ! ;
 
+\ Assembly ends by linking the stream's labels at the address the text loads
+\ at, so no image is written with a label site still zero.
 : ASM-CODE ( -- asm )
+   VMBASE CODE-OFF + ASM-LINK
    ASM-CODELEN!
    ASM-PHASE ;
 
@@ -261,3 +269,5 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
 : IMG-TAIL-BYTES ( n -- n ) {: i:n :}
    i 0 = if ELF-RW-SZ exit then
    s" elf: size tail index out of range" ELF-TAIL-RC die ;
+
+;using

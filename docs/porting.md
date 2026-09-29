@@ -27,13 +27,19 @@ Each target owns these files under `src/os/<target>/`:
 word names the other two use, so an image builder selects a seam instead of
 branching. Its emitters are written against package `X64ASM`
 (`src/arch/x86-64/asm.f`) where the other two are written against `A64ASM`'s
-mnemonics. Two names they use are not the seam's own: `G-POP` and `G-PUSH` from
-the engine's runtime layer, and `ASM-SINK ( -- ptr u8 )`, the byte buffer the
-code stream being emitted appends into. An x86_64 instruction has no value
-representation, so every `X64ASM` encoder takes that sink as its last operand
-rather than returning a word, and supplying it is the x86-64 code layer's
-obligation; `test/x86-64-emit.f` binds it to a test-owned buffer and pins every
-byte the seam emits.
+mnemonics, and they append into package `X64CODE` (`src/arch/x86-64/icode.f`),
+the x86-64 code layer. An x86_64 instruction has no value representation, so
+every `X64ASM` encoder takes the sink as its last operand rather than returning
+a word; `X64CODE:ASM-SINK ( -- ptr u8 )` is that sink, a byte buffer whose
+`BUF:INIT` and `BUF:DISPOSE` the build driver owns. `X64CODE` also owns the
+stream's labels and their rel8, rel32 and `MOVABS` sites, which the image
+writer's `ASM-CODE` links at the text address before it builds the image;
+`ASM-RESET` begins another stream and forgets the last one's labels and sites.
+`src/os/image-bytes.f` sizes `MSIZE` from a bare `CODE-CAP-BYTES` at load, so an
+x86-64 build loads it after `X64CODE`, under `using X64CODE`. Two names the
+emitters use are not the seam's own, `G-POP` and `G-PUSH` from the engine's
+runtime layer; `test/x86-64-emit.f` stands them in and pins every byte the seam
+emits.
 
 A syscall stencil — the write and exit steps the MATCH bad-tag die emits into a
 user word — is a BYTE STRING `( -- ptr u8 n )` in every seam, not an instruction

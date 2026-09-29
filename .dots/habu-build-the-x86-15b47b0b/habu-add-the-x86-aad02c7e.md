@@ -1,9 +1,11 @@
 ---
 title: Add the x86-64 code layer
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.517403+03:00"
+closed-at: "2026-09-29T14:39:14.785299+03:00"
+close-reason: "X64CODE landed: labels, fixups, ASM-RESET, ASM-LINK; seam files bound"
 ---
 
 Problem: `ASM-SINK`, labels and forward rel32 fixups have no home (`src/os/linux-x86-64/sys.f:15-22`; `docs/porting.md:29-35`).

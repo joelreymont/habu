@@ -148,8 +148,9 @@ from `TMP` to a scratch directory on the Linux/x86-64 peer and run both there.
 The first must exit **0**; the deliberately wrong first arithmetic expectation
 in the second must exit **21**. Other statuses fail the device check. The
 executables check signed subtraction and wraparound, the data and machine
-stack positions, reserved registers, and the OS seam's getpid/invalid-close
-result and carry flag. Building them on arm64 alone does not prove those
+stack positions, reserved registers, the OS seam's getpid/invalid-close result
+and carry flag, and that a linked `MOVABS` label site holds the address the
+kernel loaded its label at. Building them on arm64 alone does not prove those
 runtime properties, and neither executable is a complete Habu engine.
 
 `tools/bootstrap.sh` does the whole recovery and installs exactly one file:

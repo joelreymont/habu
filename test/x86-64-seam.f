@@ -3,12 +3,13 @@
 \ Three things this can prove on this host, and one it cannot.
 \
 \ THE IMAGE WRITER. src/os/linux-x86-64/elf.f is ordinary Habu: it reads the
-\ assembler's code buffer and writes bytes into the shared image cursor
-\ (src/os/image-bytes.f), so an aarch64 engine can write an x86_64 executable
-\ header as readily as its own. That is the cross-build step docs/x86-64.md
-\ names, reduced to the part that exists: BUILD-ELF over an empty code window,
-\ read back FIELD BY FIELD rather than compared against a recorded blob, because
-\ a blob says "these bytes changed" where a field says which one and to what.
+\ x86-64 code layer's stream (src/arch/x86-64/icode.f) and writes bytes into the
+\ shared image cursor (src/os/image-bytes.f), so an aarch64 engine can write an
+\ x86_64 executable header as readily as its own. That is the cross-build step
+\ docs/x86-64.md names, reduced to the part that exists: BUILD-ELF over an empty
+\ code stream, read back FIELD BY FIELD rather than compared against a recorded
+\ blob, because a blob says "these bytes changed" where a field says which one
+\ and to what.
 \ The seam's layout.f cannot be loaded beside the host's - both spell CODE-OFF
 \ and the engine refuses a duplicate definition - so the writer is loaded on its
 \ own, over the host's identical CODE-OFF and PROT-PAGE-MAX. The two values are
@@ -28,14 +29,25 @@
 
 require lib/test.f
 require lib/errors.f
+require lib/byte-buffer.f
+require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
+
+\ src/os/image-bytes.f sizes the image buffer from a bare CODE-CAP-BYTES at
+\ load, so it loads under `using X64CODE`. It and the writer load before the
+\ ARM64 code layer below, whose CODE, ASM-LEN and CODE-CAP-BYTES are globals:
+\ once those exist, the engine refuses a bare reference to X64CODE's same names
+\ with E-USING-SHADOW-GLOBAL.
+using X64CODE
+require src/os/image-bytes.f
+;using
+s" src/os/linux-x86-64/elf.f" required
+
+\ src/habu/aot-decl.f sizes its rows by src/arch/arm64/icode.f's AOT-SECTION-CAP.
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
-require src/arch/x86-64/asm.f
-require src/os/image-bytes.f
 require src/habu/aot-decl.f
 require src/compiler/target.f
-
-s" src/os/linux-x86-64/elf.f" required
 
 package X64-SEAM-TEST
 
@@ -284,7 +296,9 @@ create NEAR 16 allot
 
 : RUN ( -- )
    T-RESET
+   X64CODE:ASM-SINK 64 BUF:N>BLEN BUF:INIT
    ELF-CASES
+   X64CODE:ASM-SINK BUF:DISPOSE
    MOVABS-CASES
    CONTRACT-CASES
    T-REPORT ;

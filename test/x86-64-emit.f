@@ -1,38 +1,41 @@
-\ x86-64-emit.f - the linux-x86-64 seam's instruction emitters, run on aarch64.
+\ x86-64-emit.f - the linux-x86-64 seam's instruction emitters and the x86-64
+\ code layer's label sites, run on aarch64.
 \
 \ src/os/linux-x86-64/{sys,proc-watch,proc-control}.f are ordinary Habu: they
-\ append bytes through package X64ASM, so an aarch64 engine can run them and read
-\ back exactly what an x86_64 machine would execute. Every case below pins those
+\ append bytes through package X64ASM into package X64CODE's sink
+\ (src/arch/x86-64/icode.f), so an aarch64 engine can run them and read back
+\ exactly what an x86_64 machine would execute. Every case below pins those
 \ bytes to a fixed string, and the `llvm-mc:` comment above each one is the
 \ source line that produced it - the same discipline, and the same LLVM 22.1.8 on
-\ 2026-09-18, as test/compiler/x86-64-asm.f.
+\ 2026-09-18, as test/compiler/x86-64-asm.f. The label cases are pinned the
+\ same way, with the one step llvm-mc cannot take alone: the object is linked
+\ with GNU ld at -Ttext=0x401000, the address X64CODE:ASM-LINK is given here,
+\ so the movabs immediate is the linker's own.
 \
-\ THE TWO COLLABORATORS THIS FILE SUPPLIES. The seam names ASM-SINK, the byte
-\ buffer the code stream being emitted appends into, and G-POP / G-PUSH, the
-\ engine's stack moves. Both belong to the x86-64 code layer and the x86_64
-\ engine body, which habu-cross-build-the-d25a959d writes. ASM-SINK is bound here
-\ to a test-owned buffer, which is what makes the bytes readable; G-POP and
-\ G-PUSH emit nothing and only record the register they were handed, so a case
-\ can check the argument ORDER the process primitives build - the substance of
-\ proc-control.f - without claiming to have run code that does not exist.
+\ THE COLLABORATORS THIS FILE SUPPLIES are G-POP / G-PUSH, the engine's stack
+\ moves, which belong to the x86_64 engine body. They emit nothing and only
+\ record the register they were handed, so a case can check the argument ORDER
+\ the process primitives build - the substance of proc-control.f - without
+\ claiming to have run code that does not exist.
 \
-\ WHAT IT CANNOT PROVE. No x86_64 instruction has ever executed. In particular
-\ the carry polarity SYS, is built around is pinned as bytes and argued in
-\ src/os/linux-x86-64/sys.f, not observed: that waits on the cross-built engine.
+\ WHAT IT CANNOT PROVE. No x86_64 instruction executes here. The carry polarity
+\ SYS, is built around, and a linked label's address against the loaded image,
+\ are observed by the peer images test/x86-64-peer-image.f builds
+\ (docs/bootstrap.md). A rel32 site out of reach needs a two-gigabyte stream and
+\ is not built.
 \
 \ Its own suite, because it loads the x86-64 seam's sys.f, which spells the same
 \ syscall-number words as the host's and cannot share a process with it.
 
 require lib/test.f
+require lib/test/outcome.f
+require lib/test/subject.f
 require lib/byte-buffer.f
 require lib/errors.f
 require src/arch/x86-64/asm.f
+require src/arch/x86-64/icode.f
 
 \ ---- the collaborators the seam is written against ---------------------------
-create SINK BUF:HDR-BYTES allot
-
-: ASM-SINK ( -- ptr u8 )  SINK ;
-
 16 constant G-LOG-CAP
 create G-LOG G-LOG-CAP allot
 variable G-LOG-N
@@ -49,14 +52,10 @@ s" src/os/linux-x86-64/sys.f" required
 s" src/os/linux-x86-64/proc-watch.f" required
 s" src/os/linux-x86-64/proc-control.f" required
 
-\ The span reader answers a role; a byte-count comparison takes a raw cell.
-\ Projection out of a cell family needs no ownership, so no reopen of NUM
-\ (test/compiler/x86-64-asm.f takes the same step for the same reason).
-CAST: X64E-BL>RAW ( NUM:byte-len -- n )
-
 package X64-EMIT-TEST
 private
 using X64ASM
+using X64CODE
 
 : N>BLEN ( n -- NUM:byte-len )
    NUM:BYTE-LEN
@@ -95,13 +94,13 @@ using X64ASM
    true ;
 
 : SINK$ ( -- ptr u8 n )
-   SINK BUF:SPAN$ X64E-BL>RAW ;
+   CODE ASM-LEN ;
 
-\ Compare what the seam just emitted against the expected string, then empty the
-\ sink and the register log for the next case.
+\ Compare what the seam just emitted against the expected string, then begin the
+\ next case's stream and empty the register log.
 : X= ( ptr u8 n -- ) {: ea:ptr eu:n :}
    SINK$ ea eu SPAN=HEX? TTRUE
-   SINK BUF:CLEAR
+   ASM-RESET
    0 G-LOG-N ! ;
 
 \ Compare a span the seam publishes as data (a stencil) against its string.
@@ -125,7 +124,7 @@ variable WANT-N
 
 : E= ( -- )
    SINK$ WANT WANT-N @ SPAN=? TTRUE
-   SINK BUF:CLEAR
+   ASM-RESET
    0 WANT-N !
    0 G-LOG-N ! ;
 
@@ -166,12 +165,12 @@ variable WANT-N
    SYS-EMIT-SVC s" 0f05" S=
 
    s" and are byte for byte what X64ASM encodes for the same instructions" T-LABEL
-   0 >R32 NR-WRITE >IMM32 SINK ENC-MOV32-RI32
-   SINK$ SYS-EMIT-WRITE SPAN=? TTRUE   SINK BUF:CLEAR
-   0 >R32 NR-EXIT-GROUP >IMM32 SINK ENC-MOV32-RI32
-   SINK$ SYS-EMIT-EXIT SPAN=? TTRUE    SINK BUF:CLEAR
-   SINK ENC-SYSCALL
-   SINK$ SYS-EMIT-SVC SPAN=? TTRUE     SINK BUF:CLEAR ;
+   0 >R32 NR-WRITE >IMM32 ASM-SINK ENC-MOV32-RI32
+   SINK$ SYS-EMIT-WRITE SPAN=? TTRUE   ASM-RESET
+   0 >R32 NR-EXIT-GROUP >IMM32 ASM-SINK ENC-MOV32-RI32
+   SINK$ SYS-EMIT-EXIT SPAN=? TTRUE    ASM-RESET
+   ASM-SINK ENC-SYSCALL
+   SINK$ SYS-EMIT-SVC SPAN=? TTRUE     ASM-RESET ;
 
 \ ---- the kernel-argument translators -----------------------------------------
 : OPEN-CASES ( -- )
@@ -264,16 +263,147 @@ variable WANT-N
    TRAP-TAIL+
    E= ;
 
+\ ---- the code layer's label sites ---------------------------------------------
+\ Every site is emitted with a zero field and patched when ASM-LINK is given the
+\ address the stream loads at; these cases link at $401000, the address the
+\ llvm-mc object below was linked at.
+$401000 constant LINK-VA
+
+: NOPS ( n -- )  0 ?do ASM-SINK ENC-NOP loop ;
+
+\ One label behind every site and one ahead of it: three forward sites share b,
+\ two backward sites reach a, and the movabs takes b's address.
+: LINK-FIXTURE ( -- )
+   LBL LBL {: a:label b:label :}
+   a LBL,
+   b JMP,
+   C-NE b JCC,
+   a CALL,
+   b JMP8,
+   C-E a JCC8,
+   RAX b MOVABS,
+   b LBL,
+   ASM-SINK ENC-RET ;
+
+\ A rel8 site at each end of its reach. The forward one's label is bound at the
+\ very end of the stream, where no instruction follows it.
+: REL8-FWD ( n -- ) {: gap:n :}
+   LBL {: e:label :}
+   e JMP8,  gap NOPS  e LBL, ;
+
+: REL8-BACK ( n -- ) {: gap:n :}
+   LBL {: f:label :}
+   f LBL,  gap NOPS  C-NE f JCC8, ;
+
+: LINK-CASES ( -- )
+   s" every site kind links to its label, forward and backward" T-LABEL
+   LINK-FIXTURE  LINK-VA ASM-LINK
+   s" e919000000" E+          \ llvm-mc: {disp32} jmp B
+   s" 0f8513000000" E+        \ llvm-mc: {disp32} jne B
+   s" e8f0ffffff" E+          \ llvm-mc: call A
+   s" eb0c" E+                \ llvm-mc: {disp8} jmp B
+   s" 74ec" E+                \ llvm-mc: {disp8} je A
+   s" 48b81e10400000000000" E+  \ llvm-mc: movabsq $B, %rax (ld -Ttext=0x401000)
+   s" c3" E+                  \ llvm-mc: ret
+   E=
+
+   s" a rel8 site reaches 127 bytes ahead and 128 behind" T-LABEL
+   127 REL8-FWD  LINK-VA ASM-LINK
+   CODE 2 s" eb7f" SPAN=HEX? TTRUE        \ llvm-mc: {disp8} jmp E, 127 bytes to E
+   ASM-RESET
+   126 REL8-BACK  LINK-VA ASM-LINK
+   CODE 126 + 2 s" 7580" SPAN=HEX? TTRUE  \ llvm-mc: {disp8} jne F, 126 bytes after F
+   ASM-RESET
+
+   s" linking forgets the stream's sites, so the next stream is not patched" T-LABEL
+   LBL {: l:label :}
+   l JMP,  l LBL,  LINK-VA ASM-LINK
+   s" e900000000" X=          \ llvm-mc: {disp32} jmp B, B next
+   5 NOPS  LINK-VA ASM-LINK
+   s" 9090909090" X=
+
+   s" a reset stream's sites never reach the longer stream after it" T-LABEL
+   LBL {: old:label :}
+   old JMP,  3 NOPS  old LBL,
+   ASM-RESET
+   LBL {: new:label :}
+   new LBL,  8 NOPS  new JMP,  LINK-VA ASM-LINK
+   s" 9090909090909090" E+
+   s" e9f3ffffff" E+          \ llvm-mc: {disp32} jmp T, 8 bytes after T
+   E= ;
+
+\ ---- the code layer's refusals ------------------------------------------------
+\ Each refusal ends the build: it dies with the code layer's exit code before a
+\ byte is patched. A child evaluates one fixture so the suite survives it.
+72 constant REFUSE-RC                   \ X64CODE's refusal, src/arch/arm64/icode.f's
+$1000 constant CAPTURE-CAP
+10000 constant TIMEOUT-MS
+create OUT CAPTURE-CAP allot
+create ERR CAPTURE-CAP allot
+
+: UNRESOLVED ( -- )  LBL JMP,  LINK-VA ASM-LINK ;
+: REL8-FAR-FWD ( -- )  128 REL8-FWD  LINK-VA ASM-LINK ;
+: REL8-FAR-BACK ( -- )  127 REL8-BACK  LINK-VA ASM-LINK ;
+: REDEFINED ( -- )  LBL {: l:label :}  l LBL,  l LBL, ;
+: FOREIGN ( -- )  LBL LABEL>N 1 + >LABEL JMP, ;
+
+\ A label held past the end of its stream, used after the next stream has made
+\ and bound a label of its own.
+: STALE-LINKED ( -- )
+   LBL {: old:label :}
+   old LBL,  LINK-VA ASM-LINK
+   LBL LBL,  old JMP, ;
+: STALE-RESET ( -- )
+   LBL {: old:label :}
+   old LBL,  ASM-RESET
+   LBL LBL,  old JMP, ;
+
+\ A driver that empties the sink with a raw BUF:CLEAR instead of ASM-RESET.
+: CUT ( -- )
+   LBL {: l:label :}
+   l JMP,  l LBL,
+   ASM-SINK BUF:CLEAR
+   LINK-VA ASM-LINK ;
+
+\ die writes its message as one line.
+: REFUSES ( ptr u8 n ptr u8 n -- )
+   {: source:ptr sourceu:n want:ptr wantu:n :}
+   source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
+   SUBJECT:RUN
+   REFUSE-RC T-OUTCOME-EXITED=
+   LEN>N {: erru:n :}
+   LEN>N {: outu:n :}
+   outu 0 T=
+   ERR erru want wantu T$= ;
+
+: REFUSAL-CASES ( -- )
+   s" a site whose label was never bound refuses the link" T-LABEL
+   s" UNRESOLVED" S\" x64code: unresolved label\n" REFUSES
+   s" a rel8 site one byte past either end of its reach refuses the link" T-LABEL
+   s" REL8-FAR-FWD" S\" x64code: rel8 out of reach\n" REFUSES
+   s" REL8-FAR-BACK" S\" x64code: rel8 out of reach\n" REFUSES
+   s" a label binds once" T-LABEL
+   s" REDEFINED" S\" x64code: label redefined\n" REFUSES
+   s" a label number not yet made is refused at its site" T-LABEL
+   s" FOREIGN" S\" x64code: unknown label\n" REFUSES
+   s" a label held past the link or reset that ended its stream is refused" T-LABEL
+   s" STALE-LINKED" S\" x64code: unknown label\n" REFUSES
+   s" STALE-RESET" S\" x64code: unknown label\n" REFUSES
+   s" a site the sink was cleared under without ASM-RESET refuses the link" T-LABEL
+   s" CUT" S\" x64code: label or site past the end of the code\n" REFUSES ;
+
 : RUN ( -- )
    T-RESET
-   SINK 64 N>BLEN BUF:INIT
+   ASM-SINK 64 N>BLEN BUF:INIT
    0 G-LOG-N !
    TRAP-CASES
    STENCIL-CASES
    OPEN-CASES
    MMAP-CASES
    PROC-CASES
-   SINK BUF:DISPOSE
+   LINK-CASES
+   REFUSAL-CASES
+   ASM-SINK BUF:DISPOSE
    T-REPORT ;
 
 RUN

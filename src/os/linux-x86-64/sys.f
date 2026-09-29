@@ -10,22 +10,23 @@
 \ AT_REMOVEDIR) and newfstatat serves both stat and lstat (with
 \ AT_SYMLINK_NOFOLLOW), which is why one number appears twice in each pair.
 \
-\ THE INSTRUCTION EMITTERS BELOW ASSUME TWO THINGS THIS SEAM DOES NOT OWN.
+\ THE INSTRUCTION EMITTERS BELOW ARE WRITTEN AGAINST TWO LAYERS AND ONE NAME.
 \
 \ ASM-SINK ( -- ptr u8 ) is the byte buffer the code stream currently being
-\ emitted appends into. An x86_64 instruction has no value representation, so
-\ every X64ASM encoder takes that sink as its last operand instead of returning a
-\ word the way the ARM64 encoders do. Supplying ASM-SINK is the x86-64 code
-\ layer's obligation (habu-cross-build-the-d25a959d); this file names it
+\ emitted appends into, package X64CODE's (src/arch/x86-64/icode.f). An x86_64
+\ instruction has no value representation, so every X64ASM encoder takes that
+\ sink as its last operand instead of returning a word the way the ARM64
+\ encoders do. Both packages are loaded before this file, which imports them
 \ unrequired exactly as src/os/linux/sys.f names MOVZ, and SVC, from
-\ src/arch/arm64/mnem.f, and test/x86-64-emit.f defines it over a test-owned
-\ buffer so every byte emitted here is pinned on an aarch64 host.
+\ src/arch/arm64/mnem.f; test/x86-64-emit.f reads every byte emitted here back
+\ from that sink on an aarch64 host.
 \
 \ THE SYSCALL ARGUMENT REGISTERS are rdi, rsi, rdx, r10, r8 and r9, and the
 \ number and the result are rax; the engine's x0..x5 order maps onto them in that
 \ sequence. G-POP and G-PUSH therefore name x86_64 register numbers here.
 
 using X64ASM
+using X64CODE
 
 $22 constant MAP-ANON-PRIVATE
 $32 constant MAP-ANON-PRIVATE-FIXED
@@ -181,4 +182,5 @@ $05 SYS-SVC-STENCIL 1 + c!
    R10 $1000 $20 OS-FLAG-BIT,                   \ MAP_ANONYMOUS
    R10 RAX ASM-SINK ENC-MOV-RR ;
 
+;using
 ;using

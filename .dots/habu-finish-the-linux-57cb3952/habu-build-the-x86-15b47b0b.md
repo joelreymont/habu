@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.380560+03:00"
 blocks:
-  - habu-add-the-x86-aad02c7e
   - habu-add-the-x86-a8bf9973
   - habu-boot-and-exit-367c46f5
   - habu-share-the-primitive-58c235e5
