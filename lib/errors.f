@@ -1028,6 +1028,8 @@ public
 
 \ Native branch decoding
 -8598 constant E-NBR-RANGE      \ a branch-with-link whose two addresses are not both whole instructions, or whose displacement does not fit the twenty-six-bit field the form encodes it in
+-8599 constant E-NUNIT-FILE     \ malformed or incompatible native package artifact
+-8600 constant E-NUNIT-PROFILE  \ package state or relocation that this native artifact format cannot represent
 
 \ Data-stack residency: -8610..-8619
 \

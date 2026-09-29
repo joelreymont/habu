@@ -1840,4 +1840,7 @@ N-CELL 8 + constant TABLE-OFF
 TABLE-OFF SPANS SPAN-BYTES * + constant END
 ;package
 
-TIER-PROV:END constant DATA-START
+\ The scoped package evaluator owns one transient dispatch xt. A source load
+\ disarms it on return or throw; snapshots are taken only with no unit active.
+TIER-PROV:END constant UNIT-COMPILE-CELL
+UNIT-COMPILE-CELL CELL + constant DATA-START

@@ -227,17 +227,17 @@ variable INPUT-CURSOR
    used 0 < used size > or if E-BUILD-SOURCE throw then
    used ;
 
-\ A load row is added before its continuation, so the final row at the unit
-\ cut is the selected package input. Earlier active rows contribute only bytes
-\ the interpreter has actually consumed. All bytes come from this owned view.
-: HASH-LOADS ( -- )
+\ The selected unit contributes all its owned bytes. Other active inputs
+\ contribute only bytes consumed at this cut; completed dependencies contribute
+\ all their bytes, including those loaded after the selected unit began.
+: HASH-LOADS ( n -- ) {: selected:n :}
    LOAD-N @ HASH-N
    LOAD-N @ 0 ?do
       i LOAD-FILE LOAD@ {: file:n :}
       file FILE-PATH$ HASH-BYTES
       file FILE-ROOT$ HASH-BYTES
       file FILE-BYTES$ {: bytes:ptr size:n :}
-      i LOAD-N @ 1- <> i LOAD-ACTIVE LOAD@ 0<> and if
+      i selected <> i LOAD-ACTIVE LOAD@ 0<> and if
          i LOAD-BASE LOAD@ size INPUT-CONSUMED
       else size then
       bytes swap HASH-BYTES
@@ -311,11 +311,15 @@ public
 : START-LOAD ( ptr u8 n ptr u8 n ptr u8 -- n ) LOAD-START ;
 : FINISH-LOAD ( n -- ) LOAD-FINISH ;
 
-: UNIT-KEY ( -- ptr u8 n )
-   LOAD-N @ 0= if E-BUILD-SOURCE throw then
-   LOAD-N @ 1- LOAD-ACTIVE LOAD@ 0= if E-BUILD-SOURCE throw then
+: UNIT-KEY ( n -- ptr u8 n ) {: selected:n :}
+   selected 0 < selected LOAD-N @ >= or if E-BUILD-SOURCE throw then
+   selected LOAD-ACTIVE LOAD@ 0= if E-BUILD-SOURCE throw then
+   LOAD-N @ selected 1+ ?do
+      i LOAD-ACTIVE LOAD@ 0<> if E-BUILD-SOURCE throw then
+   loop
    HASH-CTX SHA256-BEGIN
-   3 HASH-N ENGINE-ID:KEY$ HASH-BYTES HASH-USED-QUERIES HASH-LOADS
+   4 HASH-N selected HASH-N
+   ENGINE-ID:KEY$ HASH-BYTES HASH-USED-QUERIES selected HASH-LOADS
    HASH-CTX HASH-RAW SHA256-END
    HASH-RAW HASH-HEX SHA256>HEX
    HASH-HEX 64 ;

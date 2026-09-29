@@ -17,7 +17,6 @@ $8000 constant OUT-CAP
 
 create ROOT FS-PATH-CAP allot   variable ROOT-U
 create PATH FS-PATH-CAP allot
-create OTHER FS-PATH-CAP allot
 create TARGET FS-PATH-CAP allot variable TARGET-U
 create REL FS-PATH-CAP allot    variable REL-U
 create OUT OUT-CAP allot       variable OUT-U
@@ -28,9 +27,6 @@ variable RC
 
 : AT-A ( ptr u8 n -- ptr u8 n ) {: rel:ptr relu:n :}
    ROOT$ rel relu PATH JOIN-PATH PATH swap ;
-
-: AT-B ( ptr u8 n -- ptr u8 n ) {: rel:ptr relu:n :}
-   ROOT$ rel relu OTHER JOIN-PATH OTHER swap ;
 
 : LINK ( ptr u8 n -- ) {: rel:ptr relu:n :}
    SOURCE-ROOT:CWD$ rel relu TARGET JOIN-PATH TARGET-U !
@@ -140,18 +136,16 @@ variable RC
    s" --export-unit" >LEN PROC-ARGV+
    s" NBR" >LEN PROC-ARGV+
    s" nbr.unit" AT-A >LEN PROC-ARGV+
-   s" hb-build" BUILD-TAIL
+   s" hb-export" BUILD-TAIL
    s" export.out" s" export.err" SAVE-LOG
    CHECK-OK
    s" nbr.unit" AT-A FILE? TTRUE ;
 
 : COLD-BUILD ( -- )
    BUILD-ARGS
-   s" hb-build" BUILD-TAIL
+   s" hb-cold" BUILD-TAIL
    s" cold.out" s" cold.err" SAVE-LOG
-   CHECK-OK
-   s" hb-build" AT-A s" hb-cold" AT-B COPY-FILE-STREAM
-   s" hb-build.names" AT-A s" hb-cold.names" AT-B COPY-FILE-STREAM ;
+   CHECK-OK ;
 
 : IMPORT-UNIT ( ptr u8 n -- ) {: out:ptr outu:n :}
    BUILD-ARGS
@@ -160,11 +154,10 @@ variable RC
    out outu BUILD-TAIL ;
 
 : IMPORT-BUILD ( -- )
-   s" hb-build" IMPORT-UNIT
+   s" hb-import" IMPORT-UNIT
    s" import.out" s" import.err" SAVE-LOG
    CHECK-OK
-   s" hb-build" AT-A s" hb-import" AT-B COPY-FILE-STREAM
-   s" hb-build.names" AT-A s" hb-import.names" AT-B COPY-FILE-STREAM ;
+   OUT OUT-U @ s" native-build: NBR unit hit" CONTAINS? TTRUE ;
 
 : COMPARE ( ptr u8 n ptr u8 n -- ) {: left:ptr leftu:n right:ptr rightu:n :}
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -181,7 +174,7 @@ variable RC
    s" --load" >LEN PROC-ARGV+
    s" test/native-unit-client.f" >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   s" hb-build" AT-A >LEN ROOT$ >LEN
+   s" hb-import" AT-A >LEN ROOT$ >LEN
    OUT OUT-CAP >LEN ERR OUT-CAP >LEN BUILD-TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT
    s" client.out" s" client.err" SAVE-LOG
@@ -193,7 +186,7 @@ variable RC
    s" hb-bad" IMPORT-UNIT
    s" invalid.out" s" invalid.err" SAVE-LOG
    RC @ 0<> TTRUE
-   ERR ERR-U @ s" E-MISMATCH" CONTAINS? TTRUE
+   ERR ERR-U @ s" expected: n actual: ptr u8" CONTAINS? TTRUE
    s" hb-bad" AT-A EXISTS? 0= TTRUE ;
 
 : CHANGED-UNIT ( -- )
@@ -205,6 +198,19 @@ variable RC
    RC @ 0<> TTRUE
    s" hb-stale" AT-A EXISTS? 0= TTRUE ;
 
+: UNDECLARED-EFFECT ( -- )
+   COPY-BRANCH
+   s" src/compiler/native/branch.f" AT-A
+   S\" \n0 set-tier\n" APPEND-FILE
+   BUILD-ARGS
+   s" --export-unit" >LEN PROC-ARGV+
+   s" NBR" >LEN PROC-ARGV+
+   s" unsupported.unit" AT-A >LEN PROC-ARGV+
+   s" hb-unsupported" BUILD-TAIL
+   s" unsupported.out" s" unsupported.err" SAVE-LOG
+   RC @ 0<> TTRUE
+   s" unsupported.unit" AT-A EXISTS? 0= TTRUE ;
+
 public
 
 : RUN ( -- )
@@ -214,7 +220,7 @@ public
    CLIENT-EDITED COLD-BUILD IMPORT-BUILD
    s" hb-cold" s" hb-import" COMPARE
    s" hb-cold.names" s" hb-import.names" COMPARE
-   RUN-CLIENT INVALID-CLIENT CHANGED-UNIT
+   RUN-CLIENT INVALID-CLIENT CHANGED-UNIT UNDECLARED-EFFECT
    T-REPORT
    s" native unit tree: " type ROOT$ type cr ;
 

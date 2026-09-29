@@ -14,6 +14,7 @@ create KEY-CUR 64 allot
 create KEY-OLD 64 allot
 create KEY-LATE 64 allot
 variable KEY-SEEN
+variable UNIT-ID
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 
@@ -23,7 +24,13 @@ variable KEY-SEEN
 
 : UNIT-SOURCE ( -- )
    s" pkg.f"
-   S\" package NBR\npublic\n: VALUE ( -- n ) 42 ;\n;package\n" PUT ;
+   S\" s\" dep.f\" included\nNATIVE-UNIT-KEY-TEST:CUT\n0 drop\n" PUT ;
+
+: DEP-SOURCE ( -- )
+   s" dep.f" S\" 0 drop\n" PUT ;
+
+: DEP-EDIT ( -- )
+   s" dep.f" S\" 1 drop\n" PUT ;
 
 : BAD-SOURCE ( -- )
    s" bad.f" S\" 1 drop\n" PUT ;
@@ -37,6 +44,16 @@ variable KEY-SEEN
 : EARLY-EDIT ( -- )
    s" entry.f" S\" 0 drop\ns\" pkg.f\" included\n2 drop\n" PUT ;
 
+public
+
+: CUT ( -- )
+   UNIT-ID @ SOURCE-VIEW:UNIT-KEY {: key:ptr size:n :}
+   size 64 T=
+   key KEY-CUR size BYTE-COPY
+   1 KEY-SEEN ! ;
+
+private
+
 : KEY-LOAD ( ptr u8 n ptr u8 n ptr u8 [ -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr q :}
    path pathu root rootu SOURCE-ROOT:RELATIVE s" bad.f" STR= if
@@ -44,11 +61,10 @@ variable KEY-SEEN
       SOURCE-VIEW:LOAD-CALLBACK execute
    else path pathu root rootu SOURCE-ROOT:RELATIVE s" pkg.f" STR= if
       path pathu root rootu source SOURCE-VIEW:START-LOAD {: id:n :}
-      SOURCE-VIEW:UNIT-KEY {: key:ptr size:n :}
-      size 64 T=
-      key KEY-CUR size BYTE-COPY
-      1 KEY-SEEN !
+      id UNIT-ID !
+      q catch {: rc:n :}
       id SOURCE-VIEW:FINISH-LOAD
+      rc 0<> if rc throw then
    else
       path pathu root rootu source q SOURCE-VIEW:LOAD-CALLBACK execute
    then then ;
@@ -71,7 +87,8 @@ variable KEY-SEEN
    ORIGINAL ONE-LOAD KEY-CUR KEY-OLD 64 BYTE-COPY
    LATE-EDIT ONE-LOAD KEY-CUR 64 KEY-OLD 64 T$=
    KEY-CUR KEY-LATE 64 BYTE-COPY
-   EARLY-EDIT ONE-LOAD KEY-CUR 64 KEY-LATE 64 STR= 0= TTRUE ;
+   EARLY-EDIT ONE-LOAD KEY-CUR 64 KEY-LATE 64 STR= 0= TTRUE
+   ORIGINAL DEP-EDIT ONE-LOAD KEY-CUR 64 KEY-OLD 64 STR= 0= TTRUE ;
 
 public
 
@@ -81,6 +98,7 @@ public
    s" native-unit-key-e2e" HB-TMP-MKDIR {: path:ptr size:n :}
    path ROOT size BYTE-COPY size ROOT-U !
    UNIT-SOURCE
+   DEP-SOURCE
    BAD-SOURCE
    ROOT$ [: CHECK-KEYS ;] SOURCE-ROOT:WITH
    T-REPORT

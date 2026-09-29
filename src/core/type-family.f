@@ -2976,6 +2976,7 @@ package TFAM
    TF-RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
    TF-RBF-BOOT TF-RBF-P !
    TF-RBF-CAP-INIT TF-RBF-CAP-V !
+   TF-RBF-BOOT 0 TF-RBF-CAP-INIT TF-RBF-REC * CELL / ARENA-CELLS-ZERO
    0 TF-RBF-DEPTH ! ;
 
 : PF-TX-SNAP-RESET ( -- )
@@ -4745,6 +4746,7 @@ public
 private
 
 : TFAM-HOOK-INSTALL ( -- )
+   [: TFAM-N@ ;] is CHECKER-REG:UNIT-TFAM-N@
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
    [: TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ item 8: constructor-package reopen reject
    [: TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ item 8: generated-word undefine reject
