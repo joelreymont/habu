@@ -21,16 +21,19 @@ package OWNER-ADAPTER-CHECK
    CHECKER-OWNER:DIN-CELLS 0 EQ!
    CHECKER-OWNER:DOUT-CELLS 0 EQ! ;
 
-
-: RUN ( -- )
+\ At load, before any capture: the source adapter binds the checker by name.
+: FRESH ( -- )
    tier@ 1 EQ!
    CHECKER-OWNER:BY-NAME? TRUE!
    CHECKER-OWNER:RECORD? TRUE!
    s" ADAPTER-SOURCE ( n -- n ) 1 +" CHECKER-OWNER:CHECK-UNJUDGED -1 EQ!
    s" ADAPTER-SOURCE" CHECKER-OWNER:QUERY TRUE!
    CHECKER-OWNER:DIN-CELLS 1 EQ!
-   CHECKER-OWNER:DOUT-CELLS 1 EQ!
-   CHECKER-OWNER:CAPTURE-PREPARE
+   CHECKER-OWNER:DOUT-CELLS 1 EQ! ;
+
+\ After test/native-window-capture.f's CHECKER-OWNER:CAPTURE-PREPARE: every
+\ operation reaches the checker through the live owner record.
+: CAPTURED ( -- )
    CHECKER-OWNER:BY-NAME? 0= TRUE!
    PREFIX-DEFAULTS
    s" ADAPTER-SCAN ( n -- n ) 1 +" CHECKER-OWNER:CHECK -1 EQ!
@@ -44,5 +47,5 @@ package OWNER-ADAPTER-CHECK
    CHECKER-OWNER:DOES-OUT 1 EQ!
    CHECKER-OWNER:TAPE-DISARM ;
 
-RUN
+FRESH
 ;package

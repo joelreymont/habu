@@ -1,5 +1,7 @@
 \ Run after the real replacement-checker handoff in native-window-owner-child.f.
 \ No callback is synthesized: both validation and preparation reach that owner.
+\ test/native-window-capture.f runs RUN after the tape-detach fixture's checker
+\ preparations, so every preparation here is a later one.
 s" src/habu/layout.f" provided
 s" src/core/checker-owner-abi.f" provided
 require src/compiler/native/checker-owner.f
@@ -44,5 +46,4 @@ TRUSTED: AS-PREPARE ( n -- [ -- ] ) ;
    AOT-ARM:WINDOW-CLOSE
    AOT-ARM:?FROZEN ;
 
-RUN
 ;package

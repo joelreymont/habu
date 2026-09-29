@@ -105,19 +105,10 @@ SUITE hb-build-timeout-json
    tools/hb-build-timeout-json-test.f
 ;SUITE
 
-\ The native-window rows fetch the whitebox engine themselves
-\ (test/whitebox-child.f). Registered before the first WHITEBOX-SUITE row, which
-\ holds the registry until the gate's whitebox build retires, native-window-owner
-\ built its own copy beside that build and was killed at 360 s; after it, each
-\ row copies the finished artifact.
-SUITE native-window-source
-   test/native-window-source.f
-;SUITE
-
-SUITE native-window-boundary
-   test/native-window-boundary.f
-;SUITE
-
+\ native-window-owner fetches the whitebox engine itself (test/whitebox-child.f).
+\ Registered before the first WHITEBOX-SUITE row, which holds the registry until
+\ the gate's whitebox build retires, it built its own copy beside that build and
+\ was killed at 360 s; registered after it, the row copies the finished artifact.
 SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE
@@ -130,10 +121,6 @@ SUITE hb-build-aot-cache
    tools/hb-build-aot-cache-test.f
    lib/codesign-test.f
    tools/hb-build-direct-lints-test.f
-;SUITE
-
-SUITE native-window-payload
-   test/native-window-payload.f
 ;SUITE
 
 SUITE build-fixpoint-source
@@ -930,10 +917,6 @@ SUITE compiler-native-generated-constructor
 SUITE compiler-native-generated-constructor-aot
    test/compiler/aot-mode.f
    test/compiler/native-generated-constructor.f
-;SUITE
-
-SUITE compiler-native-checker-prefix
-   test/compiler/native-checker-prefix.f
 ;SUITE
 
 SUITE compiler-native-order-exit

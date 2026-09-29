@@ -31,13 +31,17 @@ private
    s" absent" fam NFAM:VARIANT nip 0= TRUE!
    s" absent" NFAM:MATCH-FAM nip 0= TRUE! ;
 
-: RUN ( -- )
+\ At load, before any capture: the readers resolve the checker by name.
+: FRESH ( -- )
    tier@ 1 EQ!
    CHECKER-OWNER:BY-NAME? TRUE!
-   READERS
-   CHECKER-OWNER:CAPTURE-PREPARE
+   READERS ;
+
+\ After test/native-window-capture.f's CHECKER-OWNER:CAPTURE-PREPARE: the same
+\ readers reach the checker through the live owner record.
+: CAPTURED ( -- )
    CHECKER-OWNER:BY-NAME? 0= TRUE!
    READERS ;
 
-RUN
+FRESH
 ;package

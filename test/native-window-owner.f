@@ -14,32 +14,46 @@
 \     left its retained checker answering window certifications: that refused
 \     the first case and resolved this one in a package the window cannot see.
 \
-\ The accept case runs again at the optimizing tier, beside a store through a
-\ call, and the bindings fixture loads its source closure at tier 0. The five
-\ tier-1 source-closure cases, about 22 s apiece, are
-\ test/native-window-source.f, test/native-window-boundary.f and
-\ test/native-window-payload.f, gate rows of their own: one row running all
-\ eleven cases took 219 s of the gate's 360 s child timeout in the pool.
+\ The bindings fixture then loads its source closure at tier 0, and the last
+\ case is ONE window at the optimizing tier that loads every tier-1 fixture
+\ (TIER1-CASE below): compiling the window's core prefix through the optimizing
+\ chain is nearly all of a case's cost, so the fixtures share one.
 \
 \ Run: bin/hb --load test/native-window-owner.f
 
 require lib/test.f
+require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require test/whitebox-child.f
-require test/native-window-owner-lib.f
 
 package NW-OWNER-TEST
 
+$4000 constant IO-CAP
+
+create OUT IO-CAP allot
+create ERR IO-CAP allot
+
 180000 constant DEADLINE-MS   \ the child checks the whole core prefix
+
+\ Every child here reopens the engine's native build window, which the sealed
+\ product refuses: `hb: internal engine word: DECLARATIONS`, exit 70. So they
+\ all run on the engine test/whitebox-child.f names.
+: PREPARE ( -- )
+   CLEANUP-RESET
+   s" native-window-owner" WHITEBOX-CHILD:PROVIDE ;
+
+: ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+
+: CHILD$ ( -- ptr u8 n ) s" test/native-window-owner-child.f" ;
 
 : ARGS! ( ptr u8 n -- ) {: fx:ptr fxu:n :}
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   CHILD$ >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   fx fxu >LEN PROC-ARGV+
+   s" --load" ARG+
+   CHILD$ ARG+
+   s" --" ARG+
+   fx fxu ARG+
    WHITEBOX-CHILD:ENV! ;
 
 : WINDOW-IS ( ptr u8 n ptr u8 n -- ) {: fx:ptr fxu:n want:ptr wantu:n :}
@@ -50,27 +64,106 @@ package NW-OWNER-TEST
    rc 0 T=
    OUT outu LEN>N want wantu T$= ;
 
-\ Ordinary cases stop at the checker handover.
-: WINDOW-TIER1-IS ( ptr u8 n ptr u8 n -- ) {: fx:ptr fxu:n want:ptr wantu:n :}
-   fx fxu TIER1-ARGS! want wantu WINDOW-TIER1-RESULT ;
+\ ---- the same window, compiled by the OPTIMIZING tier -------------------------
+\ Tier 1 is the one that reaches the checker as a CALLER: it has the checker scan
+\ each definition because the scan fills the source tape it elaborates from, so
+\ every question the tier-1 fixtures are about is asked for real only there.
+\ Tier 0 reads the engine's hook cell and asks nothing else, which is why the
+\ three tier-0 cast cases pass on a compiler that resolves the checker by name.
+\
+\ STDERR IS HALF THE CLAIM. A TRUSTED: definition's body is scanned only for that
+\ tape and its verdict is never enforced, so nothing may be rendered about it. The
+\ suppression is the OWNER's, reached through the declaration record: a compiler
+\ that bumped the quiet counter by name bumped the counter of the checker it was
+\ compiled into while the window's checker did the rendering, and this window then
+\ printed `habu: in install: at 'set-preflight'` for check-hook.f's own INSTALL --
+\ measured on the engine before the fix, with the same `window: 0` on stdout. Any
+\ byte here means a scan nobody judges reached a renderer again.
+\
+\ Its own deadline: the window's whole core prefix through the optimizing chain is
+\ minutes, not seconds (measured 2m11s on a loaded box against the 3-minute bound
+\ the tier-0 cases share). The bound is here to catch a hang, not to time a build.
+600000 constant TIER1-DEADLINE-MS
 
-: WINDOW-SOURCE-JIT ( ptr u8 n -- )
-   ARGS! WINDOW-SOURCE-DEPS ;
+: WINDOW-RESULT ( ptr u8 n -- ) {: want:ptr wantu:n :}
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
+   TIER1-DEADLINE-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   rc 0 <> if ERR erru LEN>N type cr then
+   rc 0 T=
+   OUT outu LEN>N want wantu T$=
+   erru LEN>N 0 <> if ERR erru LEN>N type cr then
+   erru LEN>N 0 T= ;
+
+\ The source loader and layout a fixture's real require closure needs.
+: SOURCE-DEPS+ ( -- )
+   HB-TARGET-LINUX? if
+      s" src/os/linux/target.f" ARG+
+      s" src/os/linux/layout.f" ARG+
+   else
+      s" src/os/macos/target.f" ARG+
+      s" src/os/macos/layout.f" ARG+
+   then
+   s" src/habu/stack-abi.f" ARG+
+   s" src/habu/layout.f" ARG+
+   s" src/core/bytes.f" ARG+
+   s" src/os/env-base.f" ARG+
+   s" src/core/include.f" ARG+ ;
+
+: BINDINGS-CASE ( -- )
+   s" test/native-window-owner-bindings.f" ARGS!
+   SOURCE-DEPS+
+   S\" window: 0\n" WINDOW-RESULT ;
+
+\ The tier-1 window loads its script arguments in order, then the fixture
+\ argument last; a fixture that refuses stops it at its own code. The order is
+\ each claim's precondition:
+\   - straight after src/core/cell-effects.f, as each ran in a window of its
+\     own: the window's own family resolves (cast-ok), the checked store
+\     adopted the bootstrap one (call-store), and the rebuilt checker's
+\     prefix-boundary rewind and pointer-pool clear
+\     (test/compiler/native-prefix-rollback.f, then native-checker-storage.f);
+\   - the source loader and layout the later require closures need;
+\   - the fixtures that assert a FRESH owner, each at its own load: the
+\     dictionary boundary (fixed), then the family readers and the compiler
+\     adapter while the source adapter still binds the checker by name;
+\   - the capture fixtures, compiled here against the unprepared checker and
+\     run by test/native-window-capture.f, the fixture argument.
+: TIER1-CASE ( -- )
+   PROC-ARGV-RESET
+   s" --load" ARG+
+   s" test/compiler/aot-mode.f" ARG+
+   CHILD$ ARG+
+   s" --" ARG+
+   s" test/native-window-capture.f" ARG+
+   s" test/native-window-cast-ok.f" ARG+
+   s" test/native-window-call-store.f" ARG+
+   s" test/compiler/native-prefix-rollback.f" ARG+
+   s" test/compiler/native-checker-storage.f" ARG+
+   SOURCE-DEPS+
+   s" test/native-window-owner-fixed.f" ARG+
+   s" test/native-window-owner-family.f" ARG+
+   s" test/native-window-owner-adapter.f" ARG+
+   s" test/native-window-tape-detach.f" ARG+
+   s" test/native-window-owner-payload.f" ARG+
+   WHITEBOX-CHILD:ENV!
+   S\" window: 0\n" WINDOW-RESULT ;
 
 : OWNER-CASES ( -- )
-   s" native-window-owner" PREPARE
+   PREPARE
    s" test/native-window-cast-ok.f"       S\" window: 0\n"    WINDOW-IS
    s" test/native-window-cast-bad.f"      S\" window: 7131\n" WINDOW-IS
    s" test/native-window-cast-host-bad.f" S\" window: 7131\n" WINDOW-IS
-   s" test/native-window-cast-ok.f"       S\" window: 0\n"    WINDOW-TIER1-IS
-   s" test/native-window-call-store.f"    S\" window: 0\n"    WINDOW-TIER1-IS
-   s" test/native-window-owner-bindings.f" WINDOW-SOURCE-JIT ;
+   BINDINGS-CASE
+   TIER1-CASE ;
 
 \ Public so the driver below runs it with the package closed.
 public
 
 : RUN ( -- )
-   [: OWNER-CASES ;] RUN-CASES
+   T-RESET
+   [: OWNER-CASES ;] [: CLEANUP-RUN ;] finally
+   T-REPORT
    s" native-window-owner: ok" type cr ;
 
 ;package

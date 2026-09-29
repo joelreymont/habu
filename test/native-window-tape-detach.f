@@ -1,4 +1,6 @@
 \ Exercise the real fresh checker's final capture seam and later tape reuse.
+\ test/native-window-capture.f runs RUN: its first PREPARE is the window's first
+\ checker preparation.
 package CHECKER-TAPE
 
 variable SEEN
@@ -36,5 +38,4 @@ TRUSTED: EVENTS ( -- )
    0 SEEN ! EVENTS SEEN @ 111 EQ!
    PREPARE DETACHED! ;
 
-RUN
 ;package
