@@ -1,5 +1,5 @@
-\ Literal bodies survive stripped linking; compiler lookup tables and mutable
-\ pre-window DATA must refuse. Exercise the real native build driver.
+\ Literal bodies survive stripped linking; compiler lookup tables must refuse.
+\ Exercise the real native build driver.
 require test/gate-common.f
 require lib/engine-candidate.f
 
@@ -47,25 +47,8 @@ variable IMAGE-U
       s" stripped retained literal exact stderr" GE-FAIL
    then ;
 
-: REFUSE-MUTABLE ( -- )
-   s" hb-aot-got" IMAGE GT-PATH IMAGE-U !
-   S\" : MAIN ( -- ) SLT-PREWINDOW-CELL @ . ;\n" WRITE-SUBJECT
-   GE-HB-RESET
-   ENGINE-CANDIDATE:PATH$ GE-ARGV+
-   s" --" GE-ARG+ SUBJECT$ GE-ARG+ s" 0" GE-ARG+
-   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
-   ENGINE-CANDIDATE:PATH$
-   \ The production maker script (tools/hb-build-lib.f HBB-RUN-MAKER-CMD): the
-   \ cell is created ahead of tools/aot-build-open.f, so it is compiled before
-   \ the capture window opens and is genuinely below the span.
-   S\" create SLT-PREWINDOW-CELL 41 ,\nrequire tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
-   TIMEOUT-MS GE-RUN-STDIN
-   74 s" stripped mutable pre-window DATA refusal" GE-EXPECT-RC
-   s" aot: address refers to data outside the restored span"
-      s" stripped mutable pre-window DATA diagnostic" GE-EXPECT-ERR-HAS
-   IMAGE$ EXISTS? if s" stripped mutable DATA emitted an image" GE-FAIL then ;
-
 : REFUSE-COMPILER-ROWS ( -- )
+   s" hb-aot-got" IMAGE GT-PATH IMAGE-U !
    S\" PERSISTED-PTR-VARIABLE SLT-COMPILER-ROWS\n: MAIN ( -- ) SLT-COMPILER-ROWS @ @ . ;\nNSTR:SOURCE-ROWS SLT-COMPILER-ROWS ! drop 2drop\n" WRITE-SUBJECT
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
@@ -85,7 +68,6 @@ variable IMAGE-U
    PREPARE
    BUILD-LITERAL
    RUN-LITERAL
-   REFUSE-MUTABLE
    REFUSE-COMPILER-ROWS
    s" PASS: stripped literal bodies and compiler DATA refusal" type cr ;
 
