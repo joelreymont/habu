@@ -1,4 +1,4 @@
-require lib/xml/scalar.f
+require lib/xml/source.f
 
 package XML
 public
@@ -9,7 +9,7 @@ private
 CAST: KIND>N ( kind -- n )
 CAST: >KIND ( n -- kind )
 
-21 constant HEADER-CELLS
+26 constant HEADER-CELLS
 5 constant FRAME-CELLS
 8 constant ATTR-CELLS
 4 constant NS-CELLS
@@ -35,6 +35,18 @@ FRAME-CELLS ATTR-CELLS + NS-CELLS + constant CAP-CELLS
 18 cells constant ROOT-COUNT
 19 cells constant FAILED
 20 cells constant STORAGE-LEN
+21 cells constant SOURCE-MODE
+22 constant WIRE-ORIGINAL-IDX
+23 cells constant WIRE-ORIGINAL-LEN
+24 constant WIRE-STORAGE-IDX
+25 cells constant WIRE-STORAGE-LEN
+
+0 constant LEGACY-UTF8
+1 constant SOURCE-UTF8
+2 constant SOURCE-UTF16-LE-BOM
+3 constant SOURCE-UTF16-BE-BOM
+4 constant SOURCE-UTF16-LE-DECL
+5 constant SOURCE-UTF16-BE-DECL
 
 1 constant POP-NEXT
 2 constant EMPTY-END
@@ -169,6 +181,51 @@ public
    storage BOM
    storage MINT ;
 
+private
+: SOURCE-READER-MODE ( ptr n -- n )
+   {: source-state :}
+   source-state SRC-ENCODING-N {: encoding:n :}
+   encoding XML-ENCODING:UTF8 ENCODING>N = if SOURCE-UTF8 exit then
+   source-state SRC-BOM-LEN + @ 0= if
+      encoding XML-ENCODING:UTF16-LE ENCODING>N = if
+         SOURCE-UTF16-LE-DECL
+      else
+         SOURCE-UTF16-BE-DECL
+      then
+   else
+      encoding XML-ENCODING:UTF16-LE ENCODING>N = if
+         SOURCE-UTF16-LE-BOM
+      else
+         SOURCE-UTF16-BE-BOM
+      then
+   then ;
+
+: SOURCE-READER ( ptr n ptr n n -- XML:reader )
+   {: source-state storage cap:n :}
+   source-state SRC-LEXICAL$ {: lexical size:n :}
+   storage cap lexical size STORAGE-CHECK
+   source-state SRC-ORIGINAL$ storage BYTE-VIEW cap OVERLAP? if
+      E-ALIAS throw
+   then
+   source-state BYTE-VIEW source-state SRC-STORAGE-LEN + @
+   storage BYTE-VIEW cap OVERLAP? if E-ALIAS throw then
+   storage cap lexical size INIT-STATE
+   source-state SOURCE-READER-MODE storage SOURCE-MODE + !
+   source-state SRC-ORIGINAL$ {: original original-len:n :}
+   original storage WIRE-ORIGINAL-IDX ptr-field !
+   original-len storage WIRE-ORIGINAL-LEN + !
+   source-state BYTE-VIEW storage WIRE-STORAGE-IDX ptr-field !
+   source-state SRC-STORAGE-LEN + @ storage WIRE-STORAGE-LEN + !
+   storage MINT ;
+
+: SOURCE-READER-ARGS ( XML:source ptr n n -- XML:source ptr n ptr n n )
+   {: storage cap:n :}
+   SRC-STATE storage cap ;
+
+public
+: INIT-SOURCE ( XML:source ptr n n -- XML:source XML:reader )
+   SOURCE-READER-ARGS SOURCE-READER ;
+
 : CLOSE ( XML:reader -- )
    CONSUME ;
 
@@ -203,6 +260,10 @@ private
    destination cap SPAN-CHECK
    state SOURCE$ destination cap OVERLAP? if E-ALIAS throw then
    state BYTE-VIEW state STORAGE-LEN + @
+   destination cap OVERLAP? if E-ALIAS throw then
+   state WIRE-ORIGINAL-IDX ptr-field @ state WIRE-ORIGINAL-LEN + @
+   destination cap OVERLAP? if E-ALIAS throw then
+   state WIRE-STORAGE-IDX ptr-field @ state WIRE-STORAGE-LEN + @
    destination cap OVERLAP? if E-ALIAS throw then ;
 
 \ Keep the reader below throwing workers' arguments. Native catch restores

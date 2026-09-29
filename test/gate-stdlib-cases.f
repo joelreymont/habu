@@ -1207,6 +1207,7 @@ SUITE xml-byte-edits
    lib/xml-test.f
    lib/byte-edit-test.f
    lib/xml-roundtrip-test.f
+   lib/xml-source-test.f
 ;SUITE
 
 SUITE stdlib-source-default

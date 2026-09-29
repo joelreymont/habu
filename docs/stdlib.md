@@ -902,8 +902,8 @@ XML:ATTR-TEXT     ( XML:reader ptr u8 n -- XML:reader n )
 ```
 
 Kinds are `XML-KIND:START`, `END`, `TEXT`, `COMMENT`, `PI`, `CDATA` and `EOF`.
-`RAW` includes lexical delimiters; all offsets are zero-based byte offsets in
-the original source, including a UTF-8 BOM. `<a/>` produces a start with its
+`RAW` includes lexical delimiters. With `XML:INIT`, offsets are zero-based
+byte offsets in the supplied UTF-8 source, including a UTF-8 BOM. `<a/>` produces a start with its
 complete tag span, then an end with zero length at the byte after the tag.
 End events retain the element's depth and namespace scope until the next
 advance. Empty CDATA is emitted. `CONTENT` selects text inside CDATA/comment/PI
@@ -918,13 +918,72 @@ decoded namespace URI. Default namespaces apply to elements, not unprefixed
 attributes. Duplicate expanded attribute names and invalid namespace bindings
 are rejected before the start event is returned.
 
+For UTF-16 input and source-aware editing, open an `XML:source` first. Its
+storage and original byte span are caller-owned and must remain live until
+`SOURCE-CLOSE`; close all readers and editors borrowing them first.
+`SOURCE-BYTES` validates the complete wire encoding and XML scalar range and
+returns the exact cell-aligned storage requirement. `SOURCE-INIT` repeats
+validation before publishing the handle. UTF-8 sources borrow their original
+payload; UTF-16 sources use canonical UTF-8 lexical bytes in caller storage.
+Neither call establishes XML well-formedness. Drain a reader to EOF before
+editing a document.
+
+```forth
+XML:SOURCE-BYTES     ( ptr u8 n -- n )
+XML:SOURCE-INIT      ( ptr n n ptr u8 n -- XML:source )
+XML:SOURCE-CLOSE     ( XML:source -- )
+XML:SOURCE-ORIGINAL$ ( XML:source -- XML:source ptr u8 n )
+XML:SOURCE-LEXICAL$  ( XML:source -- XML:source ptr u8 n )
+XML:SOURCE-ENCODING  ( XML:source -- XML:source XML:encoding )
+XML:SOURCE-BOM$      ( XML:source -- XML:source ptr u8 n )
+XML:INIT-SOURCE      ( XML:source ptr n n -- XML:source XML:reader )
+XML:SOURCE-RANGE     ( XML:source off len -- XML:source off len )
+XML:ENCODE-SIZE      ( XML:source ptr u8 n -- XML:source n )
+XML:ENCODE           ( XML:source ptr u8 n ptr u8 n -- XML:source n )
+```
+
+`SOURCE-ORIGINAL$` includes the exact original BOM; `SOURCE-BOM$` returns that
+prefix (zero, two or three bytes). `SOURCE-LEXICAL$` excludes only the leading
+BOM. It preserves declaration spelling, entities, whitespace, CRLF, namespaces,
+comments and CDATA markup. `INIT-SOURCE` parses that lexical view without
+skipping a second BOM. Its `RAW`, `CONTENT`, `ATTR-RAW` and `ATTR-VALUE` offsets
+and their `$` counterparts all select the lexical UTF-8 bytes. Semantic text
+and names are UTF-8. No reader mixes lexical and original offsets.
+
+`SOURCE-RANGE` maps a lexical half-open range to the original byte coordinates
+used by `EDIT:REPLACE`. Endpoints must be UTF-8 scalar boundaries; an empty
+range may be at EOF. The map includes the original BOM in its output offset.
+For UTF-16 it walks the lexical prefix, accounting for surrogate pairs as four
+original bytes. Mapping costs linear time in the endpoint offset. Replacements
+are already escaped UTF-8 markup: `ENCODE-SIZE` returns the wire byte count and
+`ENCODE` writes that encoding without a BOM. Use `ESCAPE-TEXT` or `ESCAPE-ATTR`
+for semantic input. `ENCODE` validates input, capacity and aliasing before
+writing; a failed call leaves the destination unchanged. Keep replacement
+buffers live until the editor closes. The edit flow is `SOURCE-INIT` → parse
+and drain → `SOURCE-RANGE` → `ENCODE` → `EDIT:INIT` on `SOURCE-ORIGINAL$` →
+`EDIT:REPLACE` → `EDIT:WRITE` → reopen. Untouched original byte spans are copied.
+
+Accepted wire forms are UTF-8 with or without BOM; UTF-16 LE/BE with BOM and
+an absent or generic `UTF-16` declaration; and BOM-less UTF-16 LE/BE beginning
+with `<?` in that byte order and an explicit matching `UTF-16LE` or `UTF-16BE`
+declaration. Encoding labels are case-insensitive, while the XML declaration
+target is lowercase `xml`. For a BOM-less candidate, the first `NEXT` validates
+the declaration before emitting any event. Missing, generic, opposite-endian
+or unsupported labels throw `E-ENCODING`. Other unsupported signatures,
+including UTF-32, also throw `E-ENCODING`; a BOM-less byte stream lacking the
+initial `<?` signature is not inferred as UTF-16. Malformed UTF-16 surrogate
+sequences throw `E-UTF16`; invalid lexical UTF-8 boundaries throw `E-BOUNDARY`.
+The existing scalar, range, capacity, storage and alias errors retain their
+meanings.
+
 Decode words take an output buffer and capacity and return the bytes written.
 They validate the entire result before writing and reject overlap with source
 or parser storage. Entity references, XML scalar restrictions, UTF-8 and XML
 newline/attribute normalization follow [XML 1.0](https://www.w3.org/TR/xml/) and
 [Namespaces in XML](https://www.w3.org/TR/xml-names/). DTDs are explicitly
-rejected with `E-DTD`; other encodings, including UTF-16 BOMs/declarations,
-throw `E-ENCODING`. This is not a validating DTD processor.
+rejected with `E-DTD`; unsupported encodings throw `E-ENCODING`. The ordinary
+`XML:INIT` remains a UTF-8 interface and rejects UTF-16 BOMs or declarations.
+This is not a validating DTD processor.
 
 `XML:ESCAPE-TEXT` and `XML:ESCAPE-ATTR` both have effect
 `( ptr u8 n ptr u8 n -- n )`: source, source length, destination, capacity,

@@ -177,6 +177,10 @@ private
 
 : DECLARATION-POSITION ( ptr n -- )
    {: state :}
+   state SOURCE-MODE + @ LEGACY-UTF8 <> if
+      state RAW-OFF + @ 0= if exit then
+      E-MALFORMED throw
+   then
    state RAW-OFF + @ 0= if exit then
    state RAW-OFF + @ 3 = if
       state 0 3 SPAN$ s\" \xEF\xBB\xBF" BYTES= if exit then
@@ -199,12 +203,44 @@ private
 
 : ENCODING-CHECK ( ptr n -- n )
    {: state :}
-   state ATTR-COUNT + @ 1 = if 1 exit then
-   state 1 s" encoding" DECLARATION-NAME? 0= if 1 exit then
-   state 1 DECLARATION-VALUE$ s" UTF-8" FOLD-EQUAL? 0= if
+   state ATTR-COUNT + @ 1 = if
+      state SOURCE-MODE + @ SOURCE-UTF16-LE-DECL =
+      state SOURCE-MODE + @ SOURCE-UTF16-BE-DECL = or if
+         E-ENCODING throw
+      then
+      1 exit
+   then
+   state 1 s" encoding" DECLARATION-NAME? 0= if
+      state SOURCE-MODE + @ SOURCE-UTF16-LE-DECL =
+      state SOURCE-MODE + @ SOURCE-UTF16-BE-DECL = or if
+         E-ENCODING throw
+      then
+      1 exit
+   then
+   state SOURCE-MODE + @ case
+      SOURCE-UTF16-LE-BOM of
+         state 1 DECLARATION-VALUE$ s" UTF-16" FOLD-EQUAL? endof
+      SOURCE-UTF16-BE-BOM of
+         state 1 DECLARATION-VALUE$ s" UTF-16" FOLD-EQUAL? endof
+      SOURCE-UTF16-LE-DECL of
+         state 1 DECLARATION-VALUE$ s" UTF-16LE" FOLD-EQUAL? endof
+      SOURCE-UTF16-BE-DECL of
+         state 1 DECLARATION-VALUE$ s" UTF-16BE" FOLD-EQUAL? endof
+      state 1 DECLARATION-VALUE$ s" UTF-8" FOLD-EQUAL? swap
+   endcase
+   0= if
       E-ENCODING throw
    then
    2 ;
+
+: BOMLESS-DECLARATION ( ptr n -- )
+   {: state :}
+   state SOURCE-MODE + @ SOURCE-UTF16-LE-DECL =
+   state SOURCE-MODE + @ SOURCE-UTF16-BE-DECL = or
+   state POSITION + @ 0= and 0= if exit then
+   state s" <?xml" MATCH$ 0= if E-ENCODING throw then
+   state SOURCE-LEN + @ 6 < if E-ENCODING throw then
+   state 5 AT XML-SPACE? 0= if E-ENCODING throw then ;
 
 : STANDALONE-CHECK ( ptr n n -- )
    {: state index:n :}
@@ -278,6 +314,7 @@ private
    {: state :}
    state PENDING + @ POP-NEXT = if state POP-FRAME then
    state EVENT-RESET
+   state BOMLESS-DECLARATION
    state PENDING + @ EMPTY-END = if state READ-EMPTY-END exit then
    state EOF? if state READ-EOF exit then
    state PEEK $3C = if state READ-MARKUP else state READ-TEXT then ;

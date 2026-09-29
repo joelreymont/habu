@@ -1,4 +1,5 @@
-\ XML 1.0 UTF-8 pull reader and escaping; original bytes remain caller-owned.
+\ XML 1.0 pull reader, source views and escaping; bytes remain caller-owned.
+require lib/xml/source.f
 require lib/xml/read.f
 require lib/xml/write.f
 

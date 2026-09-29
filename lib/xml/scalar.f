@@ -1,10 +1,10 @@
-\ XML 1.0 scalar/entity decoding retains byte offsets into the original input.
+\ XML 1.0 scalar/entity decoding retains byte offsets in its input view.
 require lib/prelude.f
 require lib/utf8-scalar.f
 
 package XML
 public
-\ XML scalar/parser errors: -9200..-9215.
+\ XML scalar/parser errors: -9200..-9217.
 -9200 constant E-STORAGE
 -9201 constant E-CAPACITY
 -9202 constant E-RANGE
