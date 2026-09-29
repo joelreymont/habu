@@ -1456,6 +1456,10 @@ SUITE ndict-binding
    test/ndict-binding.f
 ;SUITE
 
+SUITE outer-find
+   test/outer-find.f
+;SUITE
+
 SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE
