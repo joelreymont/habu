@@ -531,7 +531,7 @@ variable NB-IX
 \ between two records, so the record below names an address only when another
 \ record starts above it. An address above every record is not code the
 \ dictionary describes - the DATA buffer a hand-built member aims an ADR at
-\ (test/gate-aot-positive-lib.f ADR-MEMBER) is gigabytes above the last word -
+\ (test/gate-aot-negative-lib.f ADR-MEMBER) is gigabytes above the last word -
 \ and `NAME+13950258700` says less than `<unknown>`, which is then the whole
 \ truth about it.
 : CODE-ABOVE? ( ptr u8 -- bool ) {: addr:ptr :}

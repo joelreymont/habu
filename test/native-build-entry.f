@@ -1,8 +1,10 @@
-\ Load the production entry and its driver through the native build guard.
-\ No output argument reaches the driver's own refusal after the callback and
-\ dynamic source-load boundary have compiled; it does not start a full build.
-\ Neither does a bad second argument: the class the build is being asked for is
-\ settled before the target load, so a typo cannot quietly produce a product.
+\ The production entry refuses a bad command line before it loads the build
+\ closure (tools/native-build-args.f), so neither refusal starts a build. No
+\ output argument is refused by name; so is a bad second argument: the class
+\ the build is being asked for is settled before the target load, so a typo
+\ cannot quietly produce a product. The entry's accepted path, the closure
+\ compiling under the native build guard, is every gate's whitebox engine
+\ build (test/whitebox-engine.f runs this entry with `whitebox`).
 require lib/test.f
 require lib/process.f
 require lib/process-argv.f
@@ -52,7 +54,7 @@ variable RC
    ERR$ want wantu T$= ;
 
 : NO-OUTPUT-CASE ( -- )
-   s" the native driver reaches its missing-output refusal" T-LABEL
+   s" the entry refuses a missing output path before the build closure loads" T-LABEL
    ENTRY-ARGS
    DRIVE
    S\" native-build: one explicit output path is required, then an optional `whitebox`\n" REFUSED ;

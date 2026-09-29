@@ -1,5 +1,9 @@
 \ Production executable build: tier 1 precedes every tool dependency.
 1 set-tier
+\ A refused command line stops here, before BUILD below loads the whole native
+\ compiler to reach the driver's own check.
+require tools/native-build-args.f
+NATIVE-BUILD:BUILD-ARGS!
 require lib/executable-build.f
 
 package NATIVE-BUILD-ENTRY

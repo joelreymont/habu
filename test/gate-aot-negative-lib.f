@@ -227,6 +227,60 @@ variable REPORT-U
    s"  bytes=12 and=<unknown>"
    s" hb-build closure member overlap names both members" GE-EXPECT-ERR-HAS ;
 
+\ Fail-closed abs-chain reject (red-first). The AOT linker contract is
+\ DIRECT-BL-ONLY: no native emitter produces the absolute movz/movk/movk x16 +
+\ blr x16 call form, so the copier and relocator (aot-lib.f COPY-COMPACT-BLOB /
+\ RELOCATE) die with E-AOT-ABS-CHAIN if one is ever encountered. This hand-builds
+\ one full chain as a synthetic member and drives the copier over it. Red-first:
+\ before the retirement the copier silently collapsed/copied the chain and the
+\ build exited 0; now it rejects with the named error (exit 74). hb-build's own
+\ propagation of a maker die, non-zero rc with the diagnostic on stderr, is
+\ tools/hb-build-stripped-test.f HBT-STRIPPED-UNOWNED-CELL's assertion.
+: SOURCE-ABS-CHAIN ( -- )
+   GE-SRC-RESET
+   s" -1 JSON-DIAGS !" GE-SRC-LINE
+   s" package AOT-LINK" GE-SRC-LINE
+   s" create ABT-CHAIN 16 allot" GE-SRC-LINE
+   s" : ABT-W! ( n ptr u8 -- ) {: w:n a:ptr :} w a c! w 8 rshift a 1+ c! w 16 rshift a 2 + c! w 24 rshift a 3 + c! ;" GE-SRC-LINE
+   s" : ABT-BUILD ( -- ) $D2800010 ABT-CHAIN ABT-W! $F2A00010 ABT-CHAIN 4 + ABT-W! $F2C00010 ABT-CHAIN 8 + ABT-W! $D63F0200 ABT-CHAIN 12 + ABT-W! ;" GE-SRC-LINE
+   s" : ABT-RUN ( -- ) 1 CLO-TABLES 1 PLAN-TABLES ABT-BUILD" GE-SRC+
+   s"  ABT-CHAIN 0 CLO ! 16 0 CLO-LEN ! XREF-NULL 0 CLO-REC !" GE-SRC+
+   s"  0 0 NEWOFF ! 1 NCLO ! 0 COPY-COMPACT-BLOB ;" GE-SRC-LINE
+   s" ABT-RUN" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+: ABS-CHAIN ( -- )
+   SOURCE-ABS-CHAIN
+   74 s" E-AOT-ABS-CHAIN"
+   s" hb-build AOT abs-chain reject" GE-EVAL-FORK-BAD ;
+
+\ An ADR may not reach out of the member its site is in: the only ADR a compiled
+\ body carries is a quotation's address, whose target is a later function of the
+\ same emission and so of the same member (src/habu/aot-lib.f ADR-TARGET!). This
+\ hand-builds the violation - `ADR x0, .+8` in member 0, aimed at member 1's
+\ first byte - and drives the relocator over it. Both synthetic members carry
+\ XREF-NULL, the record AEREC-TXT spells `<unknown>`, so the site prints that
+\ name; the target is a DATA address above every record, which is `<unknown>`
+\ too (aot-closure.f CODE-ABOVE?).
+: SOURCE-ADR-MEMBER ( -- )
+   GE-SRC-RESET
+   s" package AOT-LINK" GE-SRC-LINE
+   s" create AMT-CODE 16 allot" GE-SRC-LINE
+   s" : AMT-RUN ( -- ) 2 CLO-TABLES 2 PLAN-TABLES" GE-SRC+
+   s"  AMT-CODE 0 CLO ! 8 0 CLO-LEN ! XREF-NULL 0 CLO-REC !" GE-SRC+
+   s"  AMT-CODE 8 + 1 CLO ! 8 1 CLO-LEN ! XREF-NULL 1 CLO-REC !" GE-SRC+
+   s"  ASM-LEN 0 NEWOFF ! ASM-LEN 8 + 1 NEWOFF ! 2 NCLO !" GE-SRC+
+   s"  0 AMT-CODE $10000040 RELOC-W32 drop ;" GE-SRC-LINE
+   s" AMT-RUN" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+: ADR-MEMBER ( -- )
+   SOURCE-ADR-MEMBER
+   74 s" aot: ADR target outside its member site=<unknown> target="
+   s" hb-build AOT cross-member ADR reject" GE-EVAL-FORK-BAD
+   s" target-word=<unknown>"
+   s" hb-build AOT cross-member ADR reject names the target word" GE-EXPECT-ERR-HAS ;
+
 \ Kept rejection: patch32 writes the code region, which a stripped binary has
 \ no way to do (its __text is r-x and its code is at the PIE image base, not the
 \ RBASE-VA region patch32 targets). The persistent data region does NOT make this
@@ -261,6 +315,8 @@ public
    CLOSURE-LIMIT
    CLOSURE-CAPACITY
    MEMBER-OVERLAP
+   ABS-CHAIN
+   ADR-MEMBER
    PATCH32
    GT-CLEANUP
    s" PASS: native hb-build AOT negative tests" type cr ;

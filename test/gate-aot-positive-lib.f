@@ -155,7 +155,30 @@ variable BLR-CNT
    s" hi" SRC-DOTQ
    s"  CR " GE-SRC+
    s" ok" SRC-CQ
-   s"  count type CR ;" GE-SRC-LINE ;
+   s"  count type CR DATA-SUM WINDOW-DATUM ;" GE-SRC-LINE ;
+
+\ Persistent data region: a compile-time table built with create/comma, read in
+\ a runtime ?do/loop and accumulated into a variable via @/!/+!. Proves the AOT
+\ entry maps DATA-VA, restores the persistent content, and sets up the
+\ return/loop stack.
+\
+\ Persistent-data code-window regression (dot habu-identify-code-pointers-b973e6cc,
+\ red-first). A datum whose VALUE lands in the [dbase, dbase+REGION) magnitude
+\ window -- here dbase+REGION-8, the top cell of the JIT region, free space far
+\ above the code high-water -- is NOT a pointer. The old CELL-TEXTPTR? magnitude
+\ window MISclassified it and hb-build rejected the program (exit 70); the
+\ live-extents test correctly classifies it as data, so the program builds and
+\ WINDOW-DATUM reads the datum back unchanged. The classifier's own two-sided
+\ check is SELF-TEXTPTR-DEFS, in MAKER-SELFTEST: CELL-TEXTPTR? is a linker word
+\ and this application is compiled before the linker is loaded. Use the live
+\ region: RBASE-VA is a snapshot sentinel and may name unrelated mappings under
+\ ASLR.
+: DATA-DEFS ( -- )
+   s" create TABLE 10 , 20 , 30 ," GE-SRC-LINE
+   s" variable SUM" GE-SRC-LINE
+   s" : DATA-SUM ( -- ) 0 SUM ! 3 0 ?do TABLE i 8 * + @ SUM +! loop SUM @ . ;" GE-SRC-LINE
+   s" dbase@ REGION + 8 - dup constant EXPECTED create X ," GE-SRC-LINE
+   s\" : WINDOW-DATUM ( -- ) X @ EXPECTED = IF s\" ok\" ELSE s\" bad\" THEN type cr ;" GE-SRC-LINE ;
 
 : SURFACE-BASE-DEFS ( -- )
    s" package AOT-SURFACE-HOSTILE" GE-SRC-LINE
@@ -333,10 +356,10 @@ variable SELF-SRC-U
 \ CELL-TEXTPTR? pins BOTH directions: a value in the former [RBASE-VA,
 \ RBASE-VA+REGION) magnitude window - the top cell of the JIT region, free space
 \ far above the code high-water - is data, while a live dict-record address and a
-\ live code entry (MAIN's) are pointers. DATA-WINDOW builds and runs the program
-\ that carries such a datum; this is the classifier's own two-sided check, and
-\ the RBASE-VA/REGION expression is evaluated in the maker, so the case tracks
-\ the constants if a later dot moves the region.
+\ live code entry (MAIN's) are pointers. This is the classifier's own two-sided
+\ check, and the RBASE-VA/REGION expression is evaluated in the maker, so the
+\ case tracks the constants if a later dot moves the region. BUNDLE builds and
+\ runs the program that carries such a datum.
 : SELF-TEXTPTR-DEFS ( -- )
    s" package AOT-LINK" GE-SRC-LINE
    s" : ATP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
@@ -398,6 +421,7 @@ variable SELF-SRC-U
    FIB-DEFS
    COMPACT-DEFS
    FEATURE-DEFS
+   DATA-DEFS
    BUNDLE-MAIN
    \ MAIN-OWNER-CHECK is engine reflection and stays in the application; the
    \ AOT-LINK surface check moved to MAKER-SELFTEST, where the linker exists.
@@ -409,13 +433,14 @@ variable SELF-SRC-U
    s" 22" GE-OUT-LINE s" ok" GE-OUT-LINE
    s" 260" GE-OUT-LINE GE-SB-LF s" 34" GE-OUT-LINE GE-SB-LF
    s" hi" GE-OUT-LINE s" ok" GE-OUT-LINE
+   s" 60" GE-OUT-LINE s" ok" GE-OUT-LINE
    SB$ ;
 
 : BUNDLE ( -- )
    s" hb-aot-bundle.f" s" hb-aot-bundle" s" hb-aot-bundle-report.json" PATHS
    BUNDLE-SOURCE
-   s" hb-build AOT compact/features" GB-HBB-BUILD
-   BUNDLE-EXPECT s" hb-build AOT compact/features output" GB-RUN-EXPECT
+   s" hb-build AOT compact/features/data" GB-HBB-BUILD
+   BUNDLE-EXPECT s" hb-build AOT compact/features/data output" GB-RUN-EXPECT
    GB-OUT$ CODE-RANGE nip {: codesz:n :}
    codesz CODE-TOO-LARGE? if s" hb-build AOT stripped code" GE-FAIL then
    s" hb-build AOT dynamic ELF shape" ASSERT-DYNAMIC-ELF
@@ -428,95 +453,9 @@ variable SELF-SRC-U
    CODE-REPORT
    s" aot-stripped" s" aot-stripped call report" AOT-ASSERT
    s" aot-compact" s" aot-compact call report" AOT-ASSERT
-   s" PASS: hb-build AOT compact/feature coverage (code " type
+   s" PASS: hb-build AOT compact/feature/data coverage (persistent data region, code-window datum; code " type
    codesz GB-U.
    s"  B)" type cr ;
-
-\ Persistent data region: a program that builds a compile-time table with
-\ create/comma, reads it in a runtime ?do/loop, and accumulates into a
-\ variable via @/!/+!. Proves the AOT entry maps DATA-VA, restores the
-\ persistent content, and sets up the return/loop stack. The relocation-math and
-\ span-table self-tests this source used to carry are MAKER-SELFTEST's now: an
-\ application cannot name a linker word, because the linker is loaded after it.
-: DATA-SOURCE ( -- )
-   GE-SRC-RESET
-   s" create TABLE 10 , 20 , 30 ," GE-SRC-LINE
-   s" variable SUM" GE-SRC-LINE
-   s" : MAIN ( -- ) 0 SUM ! 3 0 ?do TABLE i 8 * + @ SUM +! loop SUM @ . ;" GE-SRC-LINE ;
-
-: DATA-EXPECT ( -- ptr u8 n )
-   SB-RESET
-   s" 60" GE-OUT-LINE
-   SB$ ;
-
-: DATA ( -- )
-   s" hb-aot-data.f" s" hb-aot-data" s" hb-aot-data-report.json" PATHS
-   DATA-SOURCE
-   s" hb-build AOT data region build" GB-HBB-BUILD
-   DATA-EXPECT s" hb-build AOT data region output" GB-RUN-EXPECT
-   s" PASS: hb-build AOT persistent data region (create/,/variable/@/!/+!/loop)" type cr ;
-
-\ Persistent-data code-window regression (dot habu-identify-code-pointers-b973e6cc,
-\ red-first). A datum whose VALUE lands in the [dbase, dbase+REGION)
-\ magnitude window -- here dbase+REGION-8, the top cell of the JIT region, free
-\ space far above the code high-water -- is NOT a pointer. The old CELL-TEXTPTR?
-\ magnitude window MISclassified it and hb-build rejected the program (exit 70); the
-\ live-extents test correctly classifies it as data, so the program builds and its
-\ MAIN reads the datum back unchanged. The classifier's own two-sided check is
-\ SELF-TEXTPTR-DEFS, in MAKER-SELFTEST: CELL-TEXTPTR? is a linker word and this
-\ application is compiled before the linker is loaded. Use the live region:
-\ RBASE-VA is a snapshot sentinel and may name unrelated mappings under ASLR.
-: DATA-WINDOW-SOURCE ( -- )
-   GE-SRC-RESET
-   s" dbase@ REGION + 8 - dup constant EXPECTED create X ," GE-SRC-LINE
-   s\" : MAIN ( -- ) X @ EXPECTED = IF s\" ok\" ELSE s\" bad\" THEN type cr ;" GE-SRC-LINE ;
-
-: DATA-WINDOW-EXPECT ( -- ptr u8 n )
-   SB-RESET
-   s" ok" GE-OUT-LINE
-   SB$ ;
-
-: DATA-WINDOW ( -- )
-   s" hb-aot-window.f" s" hb-aot-window" s" hb-aot-window-report.json" PATHS
-   DATA-WINDOW-SOURCE
-   s" hb-build AOT code-window datum build" GB-HBB-BUILD
-   DATA-WINDOW-EXPECT s" hb-build AOT code-window datum output" GB-RUN-EXPECT
-   s" PASS: hb-build AOT code-window datum (metadata classification, not magnitude)" type cr ;
-
-\ Layout-bundle store: a program whose MAIN stores a wide (multi-cell) layout
-\ value through `!`. The pass-2 wide-store lowering (LP2STORE) emits a runtime
-\ call to the engine-resident (PROT-SPAN) span guard before the mutation. In a
-\ stripped AOT image that runtime call is a direct BL whose target
-\ is the (PROT-SPAN) helper; unless the linker rewrites it to a PC-relative
-\ branch into the copied helper, the built-time engine address ships and the
-\ store SIGSEGVs at load (dot habu-relocate-absolute-helper-dbb53aef). Because
-\ (PROT-SPAN) is a registered engine helper, the closure walk resolves the call
-\ by record address and collapses it to an in-image branch, so this MAIN runs.
-\ Reaching the trailing `42 .` proves the guarded store completed.
-: LAYOUT-STORE-SOURCE ( -- )
-   GE-SRC-RESET
-   s" package AOT-LAYOUT-STORE" GE-SRC-LINE
-   s" SUMTYPE res 2" GE-SRC-LINE
-   s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
-   s"   VARIANT err b ;VARIANT" GE-SRC-LINE
-   s" ;SUMTYPE" GE-SRC-LINE
-   s" 1 LAYOUT-BUFFER MEM res<n,n>" GE-SRC-LINE
-   s" public" GE-SRC-LINE
-   s" : STORE-IT ( -- ) 37 construct res ok 0 MEM ! ;" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE
-   s" : MAIN ( -- ) AOT-LAYOUT-STORE:STORE-IT 42 . ;" GE-SRC-LINE ;
-
-: LAYOUT-STORE-EXPECT ( -- ptr u8 n )
-   SB-RESET
-   s" 42" GE-OUT-LINE
-   SB$ ;
-
-: LAYOUT-STORE ( -- )
-   s" hb-aot-layout-store.f" s" hb-aot-layout-store" s" hb-aot-layout-store-report.json" PATHS
-   LAYOUT-STORE-SOURCE
-   s" hb-build AOT layout-bundle store build" GB-HBB-BUILD
-   LAYOUT-STORE-EXPECT s" hb-build AOT layout-bundle store output" GB-RUN-EXPECT
-   s" PASS: hb-build AOT layout-bundle store (LP2STORE reaches (PROT-SPAN) via a relocated call)" type cr ;
 
 \ Layout-bundle fetch: a program whose MAIN constructs a wide (multi-cell) layout
 \ value, stores it through `!`, then reads it back through `@` and destructures it
@@ -530,6 +469,12 @@ variable SELF-SRC-U
 \ call by record address and collapses it in-image, so this MAIN runs and prints
 \ the stored payload (37). ASSERT-BLR-ABSENT then proves the collapse by
 \ construction: the validated code span contains zero un-collapsed blr x16.
+\ The store ahead of the fetch is the wide-store case: the pass-2 wide-store
+\ lowering (LP2STORE) emits a runtime call to the engine-resident (PROT-SPAN)
+\ span guard before the mutation, which likewise ships the build-time engine
+\ address and SIGSEGVs at load unless the linker relocates it (dot
+\ habu-relocate-absolute-helper-dbb53aef); reaching the fetch proves the
+\ guarded store completed.
 : LAYOUT-FETCH-SOURCE ( -- )
    GE-SRC-RESET
    s" package AOT-LAYOUT-FETCH" GE-SRC-LINE
@@ -554,89 +499,7 @@ variable SELF-SRC-U
    s" hb-build AOT layout-bundle fetch build" GB-HBB-BUILD
    LAYOUT-FETCH-EXPECT s" hb-build AOT layout-bundle fetch output" GB-RUN-EXPECT
    s" hb-build AOT layout-bundle fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
-   s" PASS: hb-build AOT layout-bundle fetch (LP2VEXEC reaches via a relocated call; zero blr x16)" type cr ;
-
-\ Fail-closed abs-chain reject (red-first negative case). The AOT linker contract is
-\ DIRECT-BL-ONLY: no native emitter produces the absolute movz/movk/movk x16 + blr x16 call
-\ form, so the copier and relocator (aot-lib.f COPY-COMPACT-BLOB / RELOCATE) die with
-\ E-AOT-ABS-CHAIN if one is ever encountered. This hand-builds one full chain in a synthetic
-\ blob and drives the copier over it inside a real stripped build. The maker's rejection is
-\ a die (not a catchable result), so per the gate boundary rule it runs as a subprocess
-\ sentinel; it lives here rather than in the in-process negative gate because the copier is
-\ in the maker-only aot-lib.f. Red-first: before the retirement the copier silently
-\ collapsed/copied the chain and the build exited 0; now it rejects with the named error
-\ (exit 74).
-\
-\ IT LEFT THE hb-build WRAPPER because the driver names COPY-COMPACT-BLOB, and an
-\ application is now compiled BEFORE the linker is loaded - the capture window opens first -
-\ so it has to run where MAKER-SELFTEST's checks run: a file the maker's stdin requires
-\ after tools/aot-build.f. hb-build's own propagation of a maker die, non-zero rc with the
-\ diagnostic on stderr, is tools/hb-build-stripped-test.f
-\ HBT-STRIPPED-UNOWNED-CELL's assertion.
-: ABS-CHAIN-SOURCE ( -- )
-   GE-SRC-RESET
-   s" : MAIN ( -- ) ;" GE-SRC-LINE ;
-
-: ABS-CHAIN-SELF-SOURCE ( -- )
-   GE-SRC-RESET
-   s" -1 JSON-DIAGS !" GE-SRC-LINE
-   s" package AOT-LINK" GE-SRC-LINE
-   s" create ABT-CHAIN 16 allot" GE-SRC-LINE
-   s" : ABT-W! ( n ptr u8 -- ) {: w:n a:ptr :} w a c! w 8 rshift a 1+ c! w 16 rshift a 2 + c! w 24 rshift a 3 + c! ;" GE-SRC-LINE
-   s" : ABT-BUILD ( -- ) $D2800010 ABT-CHAIN ABT-W! $F2A00010 ABT-CHAIN 4 + ABT-W! $F2C00010 ABT-CHAIN 8 + ABT-W! $D63F0200 ABT-CHAIN 12 + ABT-W! ;" GE-SRC-LINE
-   s" : ABT-RUN ( -- ) 1 CLO-TABLES 1 PLAN-TABLES ABT-BUILD" GE-SRC+
-   s"  ABT-CHAIN 0 CLO ! 16 0 CLO-LEN ! XREF-NULL 0 CLO-REC !" GE-SRC+
-   s"  0 0 NEWOFF ! 1 NCLO ! 0 COPY-COMPACT-BLOB ;" GE-SRC-LINE
-   s" ABT-RUN" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE ;
-
-: ABS-CHAIN ( -- )
-   s" hb-aot-abschain.f" s" hb-aot-got" s" hb-aot-abschain-report.json" PATHS
-   ABS-CHAIN-SOURCE GB-WRITE-SRC
-   s" hb-aot-abschain-maker.f" SELF-SRC!
-   ABS-CHAIN-SELF-SOURCE WRITE-SELF-SRC
-   MAKER-RUN
-   74 s" hb-build AOT abs-chain reject rc" GE-EXPECT-RC
-   s" E-AOT-ABS-CHAIN" s" hb-build AOT abs-chain reject code" GE-EXPECT-ERR-HAS
-   GB-OUT$ EXISTS? if s" hb-build AOT abs-chain emitted an image" GE-FAIL then
-   s" PASS: hb-build AOT abs-chain reject (E-AOT-ABS-CHAIN; copier fails closed on a direct-BL-only violation)" type cr ;
-
-\ An ADR may not reach out of the member its site is in: the only ADR a compiled
-\ body carries is a quotation's address, whose target is a later function of the
-\ same emission and so of the same member (src/habu/aot-lib.f ADR-TARGET!). This
-\ hand-builds the violation - `ADR x0, .+8` in member 0, aimed at member 1's
-\ first byte - and drives the relocator over it inside a real stripped build.
-\ Both synthetic members carry XREF-NULL, the record AEREC-TXT spells
-\ `<unknown>`, so the site and the target word print that name.
-: ADR-MEMBER-SOURCE ( -- )
-   GE-SRC-RESET
-   s" : MAIN ( -- ) ;" GE-SRC-LINE ;
-
-: ADR-MEMBER-SELF-SOURCE ( -- )
-   GE-SRC-RESET
-   s" package AOT-LINK" GE-SRC-LINE
-   s" create AMT-CODE 16 allot" GE-SRC-LINE
-   s" : AMT-RUN ( -- ) 2 CLO-TABLES 2 PLAN-TABLES" GE-SRC+
-   s"  AMT-CODE 0 CLO ! 8 0 CLO-LEN ! XREF-NULL 0 CLO-REC !" GE-SRC+
-   s"  AMT-CODE 8 + 1 CLO ! 8 1 CLO-LEN ! XREF-NULL 1 CLO-REC !" GE-SRC+
-   s"  ASM-LEN 0 NEWOFF ! ASM-LEN 8 + 1 NEWOFF ! 2 NCLO !" GE-SRC+
-   s"  0 AMT-CODE $10000040 RELOC-W32 drop ;" GE-SRC-LINE
-   s" AMT-RUN" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE ;
-
-: ADR-MEMBER ( -- )
-   s" hb-aot-adrmember.f" s" hb-aot-got" s" hb-aot-adrmember-report.json" PATHS
-   ADR-MEMBER-SOURCE GB-WRITE-SRC
-   s" hb-aot-adrmember-maker.f" SELF-SRC!
-   ADR-MEMBER-SELF-SOURCE WRITE-SELF-SRC
-   MAKER-RUN
-   74 s" hb-build AOT cross-member ADR reject rc" GE-EXPECT-RC
-   s" aot: ADR target outside its member site=<unknown> target="
-      s" hb-build AOT cross-member ADR reject site" GE-EXPECT-ERR-HAS
-   s" target-word=<unknown>"
-      s" hb-build AOT cross-member ADR reject target word" GE-EXPECT-ERR-HAS
-   GB-OUT$ EXISTS? if s" hb-build AOT cross-member ADR emitted an image" GE-FAIL then
-   s" PASS: hb-build AOT cross-member ADR reject (named site and target word; relocation fails closed)" type cr ;
+   s" PASS: hb-build AOT layout-bundle store and fetch ((PROT-SPAN) and LP2VEXEC reached via relocated calls; zero blr x16)" type cr ;
 
 \ item 10 slice 5: a preseeded bad-tag object/AOT test entry. A source declaring a
 \ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
@@ -822,19 +685,14 @@ variable SELF-SRC-U
    s" hb-gate-aot-bundle-data" GT-START
    MAKER-SELFTEST
    BUNDLE
-   DATA
-   DATA-WINDOW
-   LAYOUT-STORE
    LAYOUT-FETCH
-   ABS-CHAIN
-   ADR-MEMBER
+   TRUSTED-ROW
    GT-CLEANUP ;
 
 : RUN-PRESEED ( -- )
    s" hb-gate-aot-preseed" GT-START
    PRESEED
    PRESEED-FETCH
-   TRUSTED-ROW
    GT-CLEANUP ;
 
 : START-BUNDLE-DATA ( -- )

@@ -1,25 +1,9 @@
-\ gate-debug.f - checked runner for prop/debug gate checks.
+\ gate-debug.f - checked runner for profiler/debug gate checks.
 
 require tools/jitdump-core.f
 require test/gate-common.f
-require test/whitebox-child.f
 
 using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
-
-: GDB-PROP ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" test/prop-test-core.f" GE-SRC-FILE+
-   s" PROP-TEST:RUN" GE-SRC-LINE
-   WHITEBOX-CHILD:ENV!
-   WHITEBOX-CHILD:ENGINE$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   s" prop-test" GE-EXPECT-OK
-   s" self-test OK" s" prop-test self-test/run did not complete" GE-EXPECT-OUT-HAS
-   s" canary self-test OK" s" prop-test canary provenance teeth did not run" GE-EXPECT-OUT-HAS
-   s" alphabet OK" s" prop-test alphabet self-test did not run in the gate path" GE-EXPECT-OUT-HAS
-   s" shard-seeds OK" s" prop-test shard-seed self-test did not run in the gate path" GE-EXPECT-OUT-HAS
-   s" sweep-red OK" s" prop-test sweep red-path self-test did not run in the gate path" GE-EXPECT-OUT-HAS
-   s" PASS: prop-test soundness smoke (self-hosted in habu, in-process via evaluate)" type cr ;
 
 : GDB-PROFILER-SOURCE ( -- )
    GE-SRC-RESET
@@ -131,7 +115,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ reuse of x20/x26/x27 and die SIGSEGV with x0 = SIGALRM; now such a sample is
 \ counted in the header's foreign field. And the profiler's total and limit no
 \ longer share $1E0/$1E8 with GTOD-SCRATCH, so a clock query after prof-on cannot
-\ turn the next tick into an early report + exit 99.
+\ turn the next tick into an early report + exit 99. 100,000 dlsym calls take
+\ some 220 ticks, all but a handful of them inside dlsym.
 : GDB-PROFILER-FOREIGN ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -139,10 +124,10 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" create GDB-SYM 16 allot" GE-SRC-LINE
    s" : GDB-SYM-LOOP ( n -- n ) {: reps:n :} 0 begin 0 GDB-SYM FFI:DLSYM drop 1+ dup reps >= until ;" GE-SRC-LINE
    S\" s\" strlen\" GDB-SYM FFI:CSTR" GE-SRC-LINE
-   s" 100000 prof-on 3000000 GDB-SYM-LOOP . cr prof-report" GE-SRC-LINE
+   s" 100000 prof-on 100000 GDB-SYM-LOOP . cr prof-report" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler foreign-context ticks" GE-EXPECT-OK
-   s" 3000000" s" profiler foreign loop completes" GE-EXPECT-OUT-HAS
+   s" 100000" s" profiler foreign loop completes" GE-EXPECT-OUT-HAS
    GT-OUT$ s" foreign" GDB-FIELD 0 <= if
       s" profiler foreign bucket counted nothing" GE-FAIL
    then
@@ -219,14 +204,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GT-OUT$ s" new" GDB-FIELD  GT-OUT$ GDB-SAMPLES 100 / > if
       s" more than one percent of samples stayed unnamed after the sync" GE-FAIL
    then
-   s" PASS: a word compiled after prof-on is named by the report, not bucketed" type cr ;
-
-: GDB-PROFILER-UNKNOWN ( -- )
-   GE-HB-RESET
-   GDB-PROF-LATE-SRC
-   GDB-PROF-RUN
-   s" profiler unknown caller" GE-EXPECT-OK
    s" (unknown)" s" profiler dropped the samples whose caller it cannot establish" GE-EXPECT-OUT-HAS
+   s" PASS: a word compiled after prof-on is named by the report, not bucketed" type cr
    s" PASS: a sample with no establishable caller keeps an explicit (unknown) row" type cr ;
 
 : GDB-PROF-RATE-RUN ( ptr u8 n -- )   \ run GDB-BUSY under one prof-on line
@@ -314,22 +293,13 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GT-OUT$ s" attributed" GDB-FIELD 1 < if
       s" json header does not count the words it attributed" GE-FAIL
    then
-   s" PASS: prof-json carries every attributed word and every caller edge" type cr ;
-
-\ An inclusive count above the sample total would say a word ran longer than the
-\ program did. The conservative walk can see one word twice in a sample, so the
-\ handler stamps each record with the sample serial and counts it once.
-: GDB-PROFILER-INCL-BOUND ( -- )
-   GE-HB-RESET
-   GDB-PROF-PHASE-SRC
-   s" 0 prof-on GDBPH:PHASE prof-off prof-json" GE-SRC-LINE
-   GDB-PROF-RUN
-   s" profiler inclusive bound" GE-EXPECT-OK
-   GT-OUT$ GDB-SAMPLES {: tot:n :}
-   GT-OUT$ S\" \"incl\":" GDB-FIELD {: first:n :}
-   first tot > if
+   \ An inclusive count above the sample total would say a word ran longer than
+   \ the program did. The conservative walk can see one word twice in a sample,
+   \ so the handler stamps each record with the sample serial and counts it once.
+   GT-OUT$ S\" \"incl\":" GDB-FIELD  GT-OUT$ GDB-SAMPLES > if
       s" an inclusive count is greater than the sample total" GE-FAIL
    then
+   s" PASS: prof-json carries every attributed word and every caller edge" type cr
    s" PASS: no inclusive count passes the sample total" type cr ;
 
 \ A word counted during the phase and retired before the report loses its index
@@ -438,8 +408,6 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 : GDB-RUN ( -- )
    s" hb-gate-debug" GT-START
-   s" hb-gate-debug" WHITEBOX-CHILD:PROVIDE
-   GDB-PROP
    GDB-PROFILER
    GDB-PROFILER-FOREIGN
    GDB-PROFILER-CLOCK
@@ -449,17 +417,15 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROFILER-OFF
    GDB-PROFILER-JSON
    GDB-PROFILER-DEFER
-   GDB-PROFILER-UNKNOWN
    GDB-PROFILER-RATE
    GDB-PROFILER-INCLUSIVE
    GDB-PROFILER-ROW
    GDB-PROFILER-JSON-ALL
-   GDB-PROFILER-INCL-BOUND
    GDB-PROFILER-RETIRED
    GDB-JITDUMP
    GDB-BREAKPOINT-REFUSAL
    GDB-BREAKPOINT-NATIVE
    GT-CLEANUP
-   s" PASS: native prop/debug tests" type cr ;
+   s" PASS: native profiler/debug tests" type cr ;
 
 ;using

@@ -30,10 +30,7 @@ package PTY-TTY-SMOKE
 using PTY-HARNESS
 
 $64 constant STEP-MS               \ one poll blocks at most this long
-3 constant QUIET-POLLS             \ polls in a row that bring nothing and so end a drain
 $1388 constant EXIT-MS
-
-variable QUIET-N
 
 : HB$ ( -- ptr u8 len )
    s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then >LEN ;
@@ -99,21 +96,15 @@ variable QUIET-N
 : PROMPT-AFTER! ( process-pty-handle ptr u8 n -- process-pty-handle ) {: na:ptr nu:n :}
    na nu PROMPT$ EXPECT-AFTER! ;
 
-\ Read until QUIET-POLLS polls in a row bring nothing, the target hangs up, or
-\ the deadline passes, and then DROP what was read. A drain is the barrier before
-\ a line is typed, so everything it swallowed -- the boot banner among it --
-\ must leave the buffer with it: the banner ends in " ok" and a prompt, and a
-\ wait that could match those would be answered by bytes older than the line it
-\ is waiting on.
-: DRAIN ( process-pty-handle -- process-pty-handle )
-   WAIT-BUDGET-MS WAIT-OPEN
-   0 QUIET-N !
-   begin QUIET-N @ QUIET-POLLS <  WAIT-LEFT 0 >  and while
-      READ-STEP {: n:n :}
-      n 0 < if BUF-CLEAR exit then
-      n 0= if QUIET-N @ 1 + QUIET-N ! else 0 QUIET-N ! then
-   repeat
-   BUF-CLEAR ;
+\ The barrier before a line is typed: wait for the prompt that follows the
+\ previous exchange's last answer, then DROP everything read. After it the child
+\ is parked in its line editor and prints nothing until the next key, so no
+\ byte older than the next line can answer a wait on it -- the boot banner ends
+\ in " ok" and a prompt, and the echo of a line carries prompts of its own. A
+\ fresh child has echoed nothing, so its first prompt is its own and the head
+\ is ANYWHERE$ (test/repl-address-cell-rollback.f PROMPT waits the same way).
+: SETTLE ( process-pty-handle ptr u8 n -- process-pty-handle )
+   PROMPT-AFTER! BUF-CLEAR ;
 
 \ One line typed at the target. Not SEND: that is the module's own master, and
 \ this suite's bytes go through the supervised handle.
@@ -145,7 +136,7 @@ variable QUIET-N
    BUF-CLEAR
    HB$ PROCESS-PTY:SPAWN-TTY
    PROCESS-PTY:LAUNCH
-   DRAIN
+   ANYWHERE$ SETTLE
    BAD-DEF$ TELL
    s" tty-bad" EXPECT!
    BUF-CLEAR
@@ -161,12 +152,11 @@ variable QUIET-N
    BUF-CLEAR
    HB$ PROCESS-PTY:SPAWN-TTY
    PROCESS-PTY:LAUNCH
-   DRAIN
+   ANYWHERE$ SETTLE
    s" package PTYP public STRUCTURE point 0 FIELD x n FIELD y n ;STRUCTURE : AT ( n n -- point ) PTYP-POINT:MAKE ; : FIRST ( point -- n ) PTYP-POINT:UNMAKE drop ; : FIRST-X ( -- n ) 2 3 AT FIRST ; ;package" TELL
-   DRAIN
+   s"  ok" SETTLE
    s" 2 3 PTYP:AT PTYP:FIRST" TELL
-   s" hb: interpret-mode layout value: PTYP:AT" EXPECT!
-   DRAIN
+   s" hb: interpret-mode layout value: PTYP:AT" SETTLE
    s" PTYP:FIRST-X . cr depth . cr" TELL
    S\" \r\n2\r\n" EXPECT!
    S\" \r\n0\r\n" PROMPT-AFTER!
@@ -201,7 +191,7 @@ variable QUIET-N
    BUF-CLEAR
    HB$ PROCESS-PTY:SPAWN-TTY
    PROCESS-PTY:LAUNCH
-   DRAIN
+   ANYWHERE$ SETTLE
    STACK-DEFS$ TELL
    s" ok" EXPECT!
    BUF-CLEAR
@@ -232,7 +222,7 @@ variable QUIET-N
    BUF-CLEAR
    HB$ PROCESS-PTY:SPAWN-TTY
    PROCESS-PTY:LAUNCH
-   DRAIN
+   ANYWHERE$ SETTLE
    ARITH$ TELL
    s" 42" PROMPT-AFTER!
    0 PROMPT$ FIND-FROM {: echo-at:n :}

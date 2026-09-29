@@ -71,6 +71,18 @@ public
    PROC-ENV-BUF-CAP PROC-ENVP-BYTES PROC-ENV-EXTRA-BYTES + T=
    T-REPORT ;
 
+\ No descriptor comes through an image: the image was saved with the signal
+\ self-pipe open, and a restored process still hands the first pipe it opens the
+\ lowest number past the standard three. Run before USE, whose AIO:START opens a
+\ descriptor of its own.
+: FIRST-FD ( -- )
+   T-RESET
+   s" a restored process holds no descriptor past the standard three" T-LABEL
+   SIGNAL:INIT
+   SIGNAL:FD FD>N 3 T=
+   SIGNAL:RELEASE
+   T-REPORT ;
+
 \ This path publishes a pointer row without allocating the argv byte cache.
 \ Repeated preparation also checks that an already completed cleanup is inert.
 : EMPTY-ARGV ( -- )

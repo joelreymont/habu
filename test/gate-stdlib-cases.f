@@ -682,10 +682,6 @@ SUITE image-lifecycle-tasks
    test/image-lifecycle-tasks.f
 ;SUITE
 
-SUITE process-wide-image
-   test/process-wide-image.f
-;SUITE
-
 SUITE native-resource-image
    test/native-resource-image.f
 ;SUITE

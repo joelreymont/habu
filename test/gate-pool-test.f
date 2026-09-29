@@ -306,9 +306,15 @@ private
 \ sentinel after a delay, then hangs. The pool times the worker out and
 \ GT-POOL-KILL-SLOT signals the whole process group, so the grandchild dies
 \ before its delay elapses and the sentinel never appears.
+\ The case waits for that death itself, not for a fixed settle: the worker, its
+\ reaper and the grandchild all inherit the write end of a pipe the case opens
+\ before the fork and closes in itself, so the read end reports EOF once the
+\ last of them is gone. A grandchild the kill missed holds it open until it has
+\ written the sentinel, DELAY after it started; one that never goes fails the
+\ GONE deadline.
 250 constant GPT-GK-TIMEOUT-MS
 1500 constant GPT-GK-DELAY-MS
-1500 constant GPT-GK-WAIT-MS
+3000 constant GPT-GK-GONE-MS       \ past DELAY, so a grandchild the kill missed has written by then
 
 create GPT-GK-SENTINEL FS-PATH-CAP allot
 create GPT-GK-SLEEP-PFD 64 allot
@@ -336,6 +342,11 @@ variable GPT-GK-SENTINEL-U
    s" gate-pool group-kill child" type cr
    begin 0 0= 0= until ;
 
+\ True once every holder of the pipe's write end has exited.
+: GPT-GK-GONE? ( fd -- bool ) {: rd:fd :}
+   rd POLLIN PROC-PFD!
+   1 GPT-GK-GONE-MS GPT-GK-GONE-MS >MS PROC-DEADLINE-AT PROC-POLL-RESTART 0 > ;
+
 : GPT-GK-SENTINEL! ( -- )
    GT-ROOT s" group-kill-sentinel" GPT-GK-SENTINEL JOIN-PATH GPT-GK-SENTINEL-U ! ;
 
@@ -345,9 +356,13 @@ variable GPT-GK-SENTINEL-U
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    GT-POOL-RED-RESET
+   PIPE-PAIR {: rd:fd wr:fd :}
    s" group-kill worker" GPT-GK-TIMEOUT-MS [: GPT-GK-CHILD ;] GT-POOL-START-FORK
+   wr FD>N close
    GT-POOL-DRAIN-SOFT
-   GPT-GK-WAIT-MS GPT-SLEEP-MS
+   s" group-kill: the worker and everything it started are gone" T-LABEL
+   rd GPT-GK-GONE? TTRUE
+   rd FD>N close
    s" group-kill: grandchild sentinel absent" T-LABEL
    GPT-GK-SENTINEL$ EXISTS? TFALSE
    GT-CLEANUP ;
@@ -544,8 +559,10 @@ variable GPT-FC-DONE-U
 \ before this the tree it made outlived every run.
 \
 \ Each child prints the path it made; the slot's capture is how the parent
-\ learns it, exactly as the timeout battery reads the hang sentinel.
-3000 constant GPT-CT-TIMEOUT-MS
+\ learns it, exactly as the timeout battery reads the hang sentinel. The hung
+\ child's deadline is the whole of its run, so it is only as long as a loaded
+\ host needs to boot the child and print: some 70 ms alone.
+1000 constant GPT-CT-HANG-MS
 
 : GPT-CT-GREEN-SRC$ ( -- ptr u8 n )
    S\" require lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" HB-TMP-MKDIR type cr ;\nW\n" ;
@@ -566,13 +583,13 @@ variable GPT-FC-DONE-U
 \ caller set to a value of its own is the opposite case and stays; that one is
 \ checked where it is needed, test/nf-path-test.f (a 97-byte root reaches the
 \ build unchanged).
-: GPT-CT-RUN ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
+: GPT-CT-RUN ( ptr u8 n ptr u8 n n -- ) {: src:ptr srcu:n label:ptr labelu:n ms:n :}
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    GT-POOL-RED-RESET
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
-   GPT-HB$ label labelu src srcu GPT-CT-TIMEOUT-MS GT-POOL-START-STDIN
+   GPT-HB$ label labelu src srcu ms GT-POOL-START-STDIN
    GT-POOL-DRAIN-SOFT ;
 
 : GPT-CT-EXPECT ( -- )
@@ -587,11 +604,11 @@ variable GPT-FC-DONE-U
 
 : GPT-CHILD-TMP-CASE ( -- )
    s" gate-pool-child-tmp" GT-START
-   GPT-CT-HANG-SRC$ s" child tmp kill worker" GPT-CT-RUN
+   GPT-CT-HANG-SRC$ s" child tmp kill worker" GPT-CT-HANG-MS GPT-CT-RUN
    s" child tmp: the hung child died on its slot deadline" T-LABEL
    0 >IDX GT-POOL-TIMED-OUT-PTR @ TTRUE
    GPT-CT-EXPECT
-   GPT-CT-GREEN-SRC$ s" child tmp green worker" GPT-CT-RUN
+   GPT-CT-GREEN-SRC$ s" child tmp green worker" GPT-TIMEOUT-MS GPT-CT-RUN
    s" child tmp: the green child exited clean" T-LABEL
    GT-POOL-RED# 0 T=
    GPT-CT-EXPECT
