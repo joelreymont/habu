@@ -1,9 +1,11 @@
 ---
 title: Add the NEMIT surface with an A64EMIT adapter
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.501288+03:00"
+closed-at: "2026-09-29T16:00:06.929381+03:00"
+close-reason: landed on master c595e06e (Alder); interdiff against the reviewed bookmark empty
 ---
 
 Problem: `src/compiler/native/publish.f:9,15,44-52,60-105` names `A64EMIT`, assumes 4-byte instructions (`INSN-BYTES 4`), discovers calls by decoding BL words (`RELOC-CALLS`) and shortens legacy spans (`size INSN-BYTES -` in `RECORDED-LEN`); the x86 engine publishes its own tier-1 definitions at runtime, so publication must be byte-based and target-neutral.

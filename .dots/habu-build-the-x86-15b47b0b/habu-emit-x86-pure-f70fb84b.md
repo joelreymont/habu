@@ -11,7 +11,6 @@ blocks:
   - habu-render-x86-cmpsel-279135be
   - habu-render-x86-trap-33eba82b
   - habu-boot-and-exit-367c46f5
-  - habu-share-the-primitive-58c235e5
 ---
 
 Problem: the kernel has no bodies for the pure-op rows of `src/habu/prims.f`.

@@ -1,9 +1,11 @@
 ---
 title: Share the primitive registry and completeness gate
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.542981+03:00"
+closed-at: "2026-09-29T16:00:06.917086+03:00"
+close-reason: landed on master c595e06e (Alder); interdiff against the reviewed bookmark empty
 ---
 
 Problem: registration (`src/habu/habu1.f:109-155 FP-ARGS`) and the completeness gate (`habu2.f ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS`) live in the ARM64 builder.

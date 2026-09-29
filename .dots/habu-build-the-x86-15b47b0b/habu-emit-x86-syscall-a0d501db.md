@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-29T12:51:36.560625+03:00"
 blocks:
   - habu-boot-and-exit-367c46f5
-  - habu-share-the-primitive-58c235e5
 ---
 
 Problem: the kernel has no syscall rows; the seam provides `SYS,`, `SYS-PUSH` polarity and the Linux flag translators (`src/os/linux-x86-64/sys.f`).

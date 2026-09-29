@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-17T17:32:42.546263+03:00"
 blocks:
-  - habu-sign-extend-c-c7f55f0e
   - habu-marshal-ffi-calls-46dfd999
   - habu-add-linux-family-56c75040
   - habu-pass-task-signal-bdb4c4f4

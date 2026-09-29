@@ -1,9 +1,11 @@
 ---
 title: Fail closed on x86 in habu1.f two-arm forms
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.757499+03:00"
+closed-at: "2026-09-29T16:00:06.956062+03:00"
+close-reason: landed on master c595e06e (Alder); interdiff against the reviewed bookmark empty
 ---
 
 Problem: 25 `HB-TARGET-LINUX?` two-arm forms in `src/habu/habu1.f` (cross-build obligation (4)).

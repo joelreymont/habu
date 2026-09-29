@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-09-29T12:51:36.672233+03:00"
 blocks:
   - habu-close-definitions-with-8ace78d8
-  - habu-add-the-nemit-201c6fbf
-  - habu-represent-x86-live-729a7ac6
 ---
 
 Problem: `create`/`variable`/`constant`/`defer` bodies are assembly chains (`habu2.f:3155-3232`); `aot-closure.f:683-690` and `address-carrier.f:9-30` decode their MOVZ/MOVK chains.

@@ -7,7 +7,6 @@ created-at: "2026-09-29T12:51:36.689073+03:00"
 blocks:
   - habu-close-definitions-with-8ace78d8
   - habu-move-pkgs-using-22f18b81
-  - habu-share-the-primitive-58c235e5
 ---
 
 Problem: `evaluate` is assembly. First of I9a-c.

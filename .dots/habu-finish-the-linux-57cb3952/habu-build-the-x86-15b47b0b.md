@@ -7,7 +7,6 @@ created-at: "2026-09-29T12:51:36.380560+03:00"
 blocks:
   - habu-add-the-x86-a8bf9973
   - habu-boot-and-exit-367c46f5
-  - habu-share-the-primitive-58c235e5
   - habu-emit-x86-pure-f70fb84b
   - habu-emit-x86-syscall-a0d501db
   - habu-emit-x86-control-9a35e3b3

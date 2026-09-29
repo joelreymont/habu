@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.983183+03:00"
-blocks:
-  - habu-represent-x86-live-729a7ac6
 ---
 
 Problem: `src/habu/aot-capture.f:1-14,62-80,1673-1684` discovers calls by decoding `BL` (`ACAP-CALL?`, `ACAP-TGT`, `ACAP-ZERO-IMM`, `ACAP-SCAN-CALLS`) and reads address chains as MOVZ/MOVK.

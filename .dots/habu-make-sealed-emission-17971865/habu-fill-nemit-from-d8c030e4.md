@@ -5,8 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.509382+03:00"
 blocks:
-  - habu-add-the-nemit-201c6fbf
-  - habu-represent-x86-live-729a7ac6
   - habu-record-symbolic-x86-10037f07
 ---
 

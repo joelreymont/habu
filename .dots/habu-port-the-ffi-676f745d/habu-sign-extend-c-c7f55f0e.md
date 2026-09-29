@@ -1,9 +1,11 @@
 ---
 title: Sign-extend C int results in FFI declarations
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.765664+03:00"
+closed-at: "2026-09-29T16:00:06.937925+03:00"
+close-reason: landed on master c595e06e (Alder); interdiff against the reviewed bookmark empty
 ---
 
 Problem: baseline defect on both arches. `lib/ffi-abi.f:734-739 OUT-TOKEN` admits `ptr u8`, `r` or a bare cell; a C `int` arrives with unspecified upper bits, so `lib/fs-mutate.f:332 OPEN-CALL open ( ... -- n )` reads `0xFFFFFFFF` for `-1`, writes to fd -1 and `FS-MUT-ATOMIC-CLEAN-TEMP` unlinks the colliding file (strace-verified). Neither AAPCS64 nor SysV defines bits 32-63 of a 32-bit result. Land before any x86 FFI work; unblocks the `fs-mutate` red on spark.

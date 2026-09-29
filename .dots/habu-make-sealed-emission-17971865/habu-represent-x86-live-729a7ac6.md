@@ -1,9 +1,11 @@
 ---
 title: Represent x86 live-region sites as a row band
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.851249+03:00"
+closed-at: "2026-09-29T16:00:06.947154+03:00"
+close-reason: landed on master c595e06e (Alder); interdiff against the reviewed bookmark empty
 ---
 
 Problem: `callmap`/`addrmap` hold one bit per 4-byte region word (`src/habu/layout.f:1548,1604`) and `BCALLMAPSET`/`BADDRMAPSET` refuse unaligned addresses (`src/habu/habu1.f:2539,2580`); x86 sites are byte offsets (`call rel32` displacement at +1, `movabs` immediate at +2); the maps are consumed by publish, K8, `SNAP-RELOC:EMIT-CALLS` (`src/habu/habu2.f:6350`) and the capture (`src/habu/aot-capture.f:1700-1704` `ACAP-CHAIN-BIT?`).

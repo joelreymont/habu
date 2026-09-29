@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.817662+03:00"
 blocks:
-  - habu-represent-x86-live-729a7ac6
   - habu-resolve-x86-entry-cb671d4d
   - habu-run-bin-hb-6378f297
   - habu-build-stripped-images-b27cfad7

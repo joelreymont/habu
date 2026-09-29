@@ -15,7 +15,6 @@ blocks:
   - habu-resolve-x86-entry-cb671d4d
   - habu-run-a-captured-15728fcc
   - habu-run-bin-hb-6378f297
-  - habu-fail-closed-on-f84f1197
 ---
 
 Lane X: cross-build the x86-64 engine from spark. A cross-build must execute the prefix on the host while emitting for the target (`LOAD-TARGET`, `tools/native-build-core.f:186-225`, runs every declarer and immediate on the host), so the cross-build is dual emission in the host compiler (X1), recorded-site capture and a shadow section in the capture (X2a, X2b), window target selection (X3) and a linked image with fixed segments written at build time (X4a-d); its acceptance is M3 (X5: a captured Habu program runs on x86) and M4 (X6: x86 `bin/hb --load` works). X7 makes the `habu1.f` two-arm forms fail closed. Spark builds, the ThinkPad runs. No peer-gate script under `test/`: the lead runs the gate natively on the ThinkPad, and X6 puts the two-command recipe (scp, run) and the x86 recovery rule (cross-build from a working arm64 engine; no Gforth mirror) in `docs/bootstrap.md`.

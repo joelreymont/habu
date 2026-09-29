@@ -5,8 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.371760+03:00"
 blocks:
-  - habu-add-the-nemit-201c6fbf
-  - habu-represent-x86-live-729a7ac6
   - habu-fill-nemit-from-d8c030e4
 ---
 

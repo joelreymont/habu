@@ -7,7 +7,6 @@ created-at: "2026-09-29T12:51:36.774308+03:00"
 blocks:
   - habu-add-sysv-abi-75f86980
   - habu-run-bin-hb-6378f297
-  - habu-sign-extend-c-c7f55f0e
 ---
 
 Problem: `lib/ffi-abi.f:3-5,563-566` are AAPCS64 (8 register slots each kind).
