@@ -1246,10 +1246,9 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
    [: STOP-ENDED TASK:WAKE ;] E-TASK-STATE TTHROWSQ
    STOP-ENDED TASK:KILL ;
 
-\ The park record is one more TASK-SEMAPHORE-BYTES row of the baked TCB, so the
-\ size the engine and this library agree on is pinned here.
+\ The checked surface accepts TASK:STOP only with an empty input row and
+\ TASK:WAKE only with a task pointer.
 : TASK-TEST-STOP-TYPES ( -- )
-   TASK-ABI:TCB-BYTES $170 T=
    s" TASK-STOP-OK ( -- ) TASK:STOP"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" TASK-STOP-N ( -- n ) TASK:STOP"

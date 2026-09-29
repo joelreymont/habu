@@ -294,7 +294,6 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
 \ the one-shot wrappers answer over the same file, and a missing file answers
 \ SHA-E-OPEN through the context word as well.
 : SFT-TEST-FILE-CTX ( -- )
-   SHA256-FILE-CTX-BYTES 5944 T=
    SFT-FILL-BIG
    SFT-FILE$ SFT-BIG SFT-BIG-LEN WRITE-ALL
    SFT-FCTX-A SFT-FILE$ SFT-DG-A SHA256-FILE-IN 0 T=

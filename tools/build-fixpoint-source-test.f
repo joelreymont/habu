@@ -120,7 +120,7 @@ package BUILD-FIXPOINT
    BF-CERTIFY-PREFIX
    BFT-PREFIX BFT-READ {: u:n :}
    BFT-READ-BUF u s" : CORE-STR=" CONTAINS? TTRUE
-   BFT-READ-BUF u s" checker-registry.f - typed checker effect store" CONTAINS? TTRUE
+   BFT-READ-BUF u s" : CHECK! (" CONTAINS? TTRUE
    s" prefix-src" BF-A$ s" : BFT-PFX-BAD ( n -- n ) drop ;" APPEND-FILE
    [: BF-CERTIFY-PREFIX ;] E-BUILD-CERTIFY TTHROWSQ
    BF-TMP-RESET ;
