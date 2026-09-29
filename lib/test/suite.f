@@ -29,6 +29,7 @@ create ITEM-KINDS ITEM-MAX cells allot
 create ITEM-GROUPS ITEM-MAX cells allot
 create ITEM-ARG-OFFS ITEM-MAX cells allot
 create ITEM-ARG-COUNTS ITEM-MAX cells allot
+create ITEM-PRELOAD-COUNTS ITEM-MAX cells allot
 create ITEM-STDINS ITEM-MAX STDIN-CAP * allot
 create ITEM-STDIN-US ITEM-MAX cells allot
 create GROUP-NAMES GROUP-MAX NAME-CAP * allot
@@ -43,6 +44,8 @@ variable GROUP-CUR
 variable ARG-U
 variable ARG-SCAN
 variable DEF-ID
+variable DEF-SCRIPT
+variable DEF-ENTRIES
 variable LAST-GROUP
 
 defer SETUP ( -- )
@@ -143,6 +146,9 @@ defer WHITEBOX-RUNNER ( ptr u8 n -- )
 : ITEM-ARG-COUNT@ ( n -- n )
    ITEM-ARG-COUNTS swap ITEM-CELL @ ;
 
+: ITEM-PRELOAD-COUNT@ ( n -- n )
+   ITEM-PRELOAD-COUNTS swap ITEM-CELL @ ;
+
 : GROUP-MODE@ ( n -- n )
    GROUP-MODES swap GROUP-CELL @ ;
 
@@ -236,22 +242,46 @@ defer WHITEBOX-RUNNER ( ptr u8 n -- )
 
 : ITEM-ARGS-BEGIN ( n -- ) {: id:n :}
    ARG-U @ ITEM-ARG-OFFS id ITEM-CELL !
-   0 ITEM-ARG-COUNTS id ITEM-CELL ! ;
+   0 ITEM-ARG-COUNTS id ITEM-CELL !
+   0 ITEM-PRELOAD-COUNTS id ITEM-CELL ! ;
 
 : ROW-UNTERMINATED ( n -- ) {: id:n :}
    s" test: row " type id ITEM-NAME$ type s"  has no ;SUITE" type cr
    E-SUITE-ROW throw ;
 
+: ROW-BAD-ENTRIES ( n -- ) {: id:n :}
+   s" test: row " type id ITEM-NAME$ type s"  has invalid ENTRIES boundary" type cr
+   E-SUITE-ROW throw ;
+
+: ENTRY-PRESENT? ( n -- bool ) {: id:n :}
+   id ITEM-ARG-COUNT@ id ITEM-PRELOAD-COUNT@ > ;
+
 \ One token of a row's argument list. A row ends at ;SUITE and nowhere else, so
 \ the end of input and a row keyword are both the missing terminator, named.
 : ARG-TOKEN ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
-   a u ;SUITE? if -1 DEF-ID ! exit then
+   a u ;SUITE? if
+      DEF-ENTRIES @ if id ENTRY-PRESENT? 0= if id ROW-BAD-ENTRIES then then
+      -1 DEF-ID ! exit
+   then
    u 0= if id ROW-UNTERMINATED then
    a u ROW-KEYWORD? if id ROW-UNTERMINATED then
+   a u s" --" STR= if
+      DEF-ENTRIES @ if id ENTRY-PRESENT? 0= if id ROW-BAD-ENTRIES then then
+      0 0= DEF-SCRIPT !
+   then
+   DEF-SCRIPT @ 0= if
+      a u s" ENTRIES" STR=CI if
+         DEF-ENTRIES @ if id ROW-BAD-ENTRIES then
+         id ITEM-ARG-COUNT@ ITEM-PRELOAD-COUNTS id ITEM-CELL !
+         0 0= DEF-ENTRIES ! exit
+      then
+   then
    a u id ITEM-ADD-ARG ;
 
 : PARSE-ARGS ( n -- ) {: id:n :}
    0 DEF-ID !
+   0 DEF-SCRIPT !
+   0 DEF-ENTRIES !
    begin DEF-ID @ 0= while
       parse-name id ARG-TOKEN
    repeat ;
@@ -369,16 +399,17 @@ EXPORT ITEM-NAME$
 \ Visit the source files before a row's script separator. The registry is the
 \ authority for what the adapter passes after --load; the same file can belong
 \ to several rows with different argv or engine tiers.
-: VISIT-ROW-FILES ( n [ n ptr u8 n -- ] -- ) {: id:n visit :}
+: VISIT-ROW-FILES ( n [ n bool ptr u8 n -- ] -- ) {: id:n visit :}
    id ITEM-ARG-OFF@
    id ITEM-ARG-COUNT@ 0 ?do
       dup ARGS + @ {: u:n :}
       dup ARGS + cell + u s" --" STR= if drop unloop exit then
-      id over ARGS + cell + u visit execute
+      dup ARGS + cell + {: path:ptr :}
+      id i id ITEM-PRELOAD-COUNT@ >= path u visit execute
       cell + u +
    loop drop ;
 
-: VISIT-LOAD-FILES ( [ n ptr u8 n -- ] -- ) {: visit :}
+: VISIT-LOAD-FILES ( [ n bool ptr u8 n -- ] -- ) {: visit :}
    ITEM-N @ 0 ?do i visit VISIT-ROW-FILES loop ;
 
 \ Does any registered item need the whitebox engine? The adapter asks before the

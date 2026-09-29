@@ -21,6 +21,7 @@ variable BETA-N
 variable THROW-N
 variable THROW-LATE-N
 variable STDIN-LABEL-N
+variable MARK-N
 
 : RESET-COUNTS ( -- )
    0 SETUP-N !
@@ -53,6 +54,14 @@ variable STDIN-LABEL-N
 : ARG+ ( ptr u8 n -- )
    2drop
    1 ARG-N +! ;
+
+: MARK-ARG ( ptr u8 n -- ) {: a:ptr u:n :}
+   1 MARK-N +!
+   MARK-N @ 1 = if a u s" preload.f" T$= exit then
+   MARK-N @ 2 = if a u s" first.f" T$= exit then
+   MARK-N @ 3 = if a u s" second.f" T$= exit then
+   MARK-N @ 4 = if a u s" --" T$= exit then
+   a u s" ENTRIES" T$= ;
 
 : RUNNER ( ptr u8 n -- ) {: label:ptr labelu:n :}
    1 RUN-N +!
@@ -179,6 +188,15 @@ EXPECT-RUN-FAIL
 
 TEARDOWN-N @ 3 T=
 TEARDOWN-RC @ E-STR-BOUNDS T=
+
+\ ENTRIES marks a load boundary, not an argv argument. After -- it is data.
+INSTALL
+0 MARK-N !
+' MARK-ARG TEST:ARG+!
+TEST:RESET
+TEST:SUITE marked preload.f ENTRIES first.f second.f -- ENTRIES TEST:;SUITE
+TEST:RUN
+MARK-N @ 5 T=
 T-REPORT
 
 ;package
@@ -304,6 +322,14 @@ s" TEST:RESET TEST:SUITE row-group a.f TEST:GROUP SEQ g TEST:;SUITE"
 s" row-group" T-ROW-REFUSED
 s" TEST:RESET TEST:SUITE row-endgroup a.f TEST:;GROUP"
 s" row-endgroup" T-ROW-REFUSED
+
+\ The boundary must be unique and must be followed by an entry.
+s" TEST:RESET TEST:SUITE duplicate a.f ENTRIES b.f ENTRIES c.f TEST:;SUITE"
+T-RUN-SUBJECT
+T-SUBJ-RC @ T-THROW-RC T=
+s" TEST:RESET TEST:SUITE empty a.f ENTRIES TEST:;SUITE"
+T-RUN-SUBJECT
+T-SUBJ-RC @ T-THROW-RC T=
 
 \ positive end-to-end: SEQ and PARA groups set the mode (read via GROUP-MODE@)
 RESET

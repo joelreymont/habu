@@ -30,8 +30,6 @@ TYPED-VARIABLE CAND-A ptr u8
 variable CAND-U
 variable CAND-LINE
 variable ERRORS
-create TIER-CANON FS-PATH-CAP allot
-variable TIER-U
 create SOURCE-CANON FS-PATH-CAP allot
 variable SOURCE-CANON-U
 
@@ -61,16 +59,6 @@ variable SOURCE-CANON-U
 : SOURCE$ ( -- ptr u8 n )
    PATH-HEAD @ PATH$ ;
 
-\ This prefix selects tier 1 before its following suite file loads. Compare
-\ physical identities so another spelling of it remains a prefix.
-: TIER-INIT ( -- )
-   s" test/compiler/aot-mode.f" SOURCE-ROOT:CANONICAL drop
-   {: a:ptr u:n :}
-   a TIER-CANON u BYTE-COPY u TIER-U ! ;
-
-: TIER-PREFIX? ( ptr u8 n -- bool )
-   SOURCE-ROOT:CANONICAL drop TIER-CANON TIER-U @ STR= ;
-
 : ROOT$ ( n -- ptr u8 n ) {: idx:n :}
    0 ROOT-BYTES idx ROOT-OFF @ + idx ROOT-LEN @ ;
 
@@ -80,13 +68,13 @@ variable SOURCE-CANON-U
 \ The registry's actual --load file arguments are frozen before scanning any
 \ source. Canonical paths are stored once; candidate checks never resolve each
 \ registered file again for every token.
-: ROOT-ADD ( n ptr u8 n -- ) {: id:n path:ptr pathu:n :}
+: ROOT-ADD ( n bool ptr u8 n -- ) {: id:n entry:bool path:ptr pathu:n :}
    path pathu SOURCE-ROOT:CANONICAL {: exists:bool :}
    exists 0= if
       s" entry guard: missing registered file: " type path pathu type cr
       E-SUITE-ROW throw
    then
-   2dup TIER-CANON TIER-U @ STR= if 2drop exit then
+   entry 0= if 2drop exit then
    {: a:ptr u:n :}
    ROOT-U @ u + ROOT-BYTES-RESERVE
    ROOT-N @ 1+ ROOT-OFF-RESERVE
@@ -106,6 +94,21 @@ variable SOURCE-CANON-U
    s"  references registered entry " type id TEST:ITEM-NAME$ type
    s"  (" type CAND-A @ CAND-U @ type s" )" type cr
    1 ERRORS +! ;
+
+: REPORT-PRELOAD ( n -- ) {: id:n :}
+   s" entry guard: row " type OWNER @ TEST:ITEM-NAME$ type
+   s"  preloads registered entry " type id TEST:ITEM-NAME$ type
+   s"  (" type CAND-A @ CAND-U @ type s" )" type cr
+   1 ERRORS +! ;
+
+: CHECK-PRELOAD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a CAND-A ! u CAND-U !
+   a u SOURCE-ROOT:CANONICAL drop {: canon:ptr canu:n :}
+   ROOT-N @ 0 ?do
+      canon canu i ROOT$ STR= if
+         i ROOT-ROW @ OWNER @ <> if i ROOT-ROW @ REPORT-PRELOAD then
+      then
+   loop ;
 
 : CHECK-PATH ( ptr u8 n n -- ) {: a:ptr u:n line:n :}
    a CAND-A ! u CAND-U ! line CAND-LINE !
@@ -212,9 +215,9 @@ variable SOURCE-CANON-U
    then
    LINT-LEX:COUNT 0 ?do i SCAN-TOKEN loop ;
 
-: CHECK-ENTRY ( n ptr u8 n -- ) {: id:n a:ptr u:n :}
-   a u TIER-PREFIX? if exit then
+: CHECK-FILE ( n bool ptr u8 n -- ) {: id:n entry:bool a:ptr u:n :}
    id OWNER !
+   entry 0= if a u CHECK-PRELOAD then
    PATH-RESET
    a u PATH-ADD
    begin PATH-HEAD @ PATH-N @ < while
@@ -226,10 +229,9 @@ public
 
 : CHECK ( -- )
    0 ERRORS !
-   TIER-INIT
    ROOT-RESET
    [: ROOT-ADD ;] TEST:VISIT-LOAD-FILES
-   [: CHECK-ENTRY ;] TEST:VISIT-LOAD-FILES
+   [: CHECK-FILE ;] TEST:VISIT-LOAD-FILES
    ERRORS @ 0 > if E-SUITE-ROW throw then ;
 
 ;package

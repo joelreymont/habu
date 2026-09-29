@@ -64,9 +64,33 @@ ENTRY-GUARD:CHECK
 
 \ A tier prefix and repeated script argv do not add another execution root.
 TEST:RESET
-TEST:SUITE first test/compiler/aot-mode.f test/gate-entry-guard-wrapper.f -- first TEST:;SUITE
-TEST:SUITE second test/compiler/aot-mode.f test/gate-entry-guard-wrapper.f -- second TEST:;SUITE
+TEST:SUITE first test/compiler/aot-mode.f ENTRIES test/gate-entry-guard-wrapper.f -- first TEST:;SUITE
+TEST:SUITE second test/compiler/aot-mode.f ENTRIES test/gate-entry-guard-wrapper.f -- second TEST:;SUITE
 ENTRY-GUARD:CHECK
+
+\ Shared preloads are loaded by each row but are not suite entries.
+TEST:RESET
+TEST:SUITE first lib/test.f ENTRIES test/gate-entry-guard-wrapper.f TEST:;SUITE
+TEST:SUITE second lib/test.f ENTRIES test/gate-entry-guard-read-only.f TEST:;SUITE
+ENTRY-GUARD:CHECK
+
+\ An import in a preload can still launch another row's entry.
+TEST:RESET
+TEST:SUITE target test/gate-entry-guard-target.f TEST:;SUITE
+TEST:SUITE wrapper test/gate-entry-guard-import-wrapper.f ENTRIES test/gate-entry-guard-wrapper.f TEST:;SUITE
+' ENTRY-GUARD:CHECK E-SUITE-ROW TTHROWS
+
+\ A preload path that aliases another entry must be rejected directly.
+TEST:RESET
+TEST:SUITE target test/gate-entry-guard-target.f TEST:;SUITE
+TEST:SUITE alias ./test/gate-entry-guard-target.f ENTRIES test/gate-entry-guard-wrapper.f TEST:;SUITE
+' ENTRY-GUARD:CHECK E-SUITE-ROW TTHROWS
+
+\ Every file after ENTRIES is an entry, including the first of several.
+TEST:RESET
+TEST:SUITE target test/gate-entry-guard-target.f test/gate-entry-guard-read-only.f TEST:;SUITE
+TEST:SUITE wrapper test/gate-entry-guard-import-wrapper.f TEST:;SUITE
+' ENTRY-GUARD:CHECK E-SUITE-ROW TTHROWS
 
 \ The real gate setup rejects the registry before fixture or pool work starts.
 STDLIB-GATE:MAIN
