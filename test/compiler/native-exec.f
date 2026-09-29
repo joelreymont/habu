@@ -8,17 +8,6 @@ require src/compiler/native/compiler.f
 require src/compiler/native/codewalk.f
 require lib/array.f
 
-\ ---- the library's own multishot body, re-compiled through the chain ----------
-\ See ARRAY-CASE below for why this stands here rather than inside a case.
-package ARRAY
-: NX-A-SRC ( -- ptr u8 n )
-   s" : A-MAPI! ( ptr a len [ idx a -- a ] -- ) {: arr:ptr len q :} len A-CHECK-WHOLE len LEN>N 0 ?do i A-IDX arr len i A-IDX A@ q execute arr len i A-IDX A! loop ;" ;
-\ Retirement owner: habu-type-isolated-dynamic-244c0e2c.
-TRUSTED: NX-A-GO ( -- )
-   NX-A-SRC evaluate ;
-NX-A-GO
-;package
-
 \ The array the case maps over. It is global because the caller that maps it is
 \ compiled by `evaluate` at run time, in the scope a program would write it in.
 create NX-BUF 4 cells allot
@@ -178,18 +167,10 @@ create DIAG-BUF 8192 allot
    OPAQUE-CASE ;
 
 \ ---- the real multishot site --------------------------------------------------
-\ THE LIBRARY'S OWN BODY, RE-COMPILED IN ITS OWN PACKAGE. `A-MAPI!` executes its
+\ `A-MAPI!` from lib/array.f executes its
 \ quotation once per element, inside a counted loop, with three locals live
 \ across every turn - which is what "multishot" costs: the value has to survive
 \ the call it is the argument of, every time round.
-\
-\ THE DEFINITION IS INSIDE `package ARRAY`: the body names ARRAY's private helpers,
-\ and the compilation entry
-\ evaluates the source in whatever scope is open, so the definition only
-\ resolves where the library's own compilation resolved it. `package` is a
-\ parser directive, so no word can open a package from inside itself - and the
-\ compilation is its own assertion either way, because EV publishes
-\ or throws.
 
 : BUF! ( -- )
    1 NX-BUF 0 cells + !
