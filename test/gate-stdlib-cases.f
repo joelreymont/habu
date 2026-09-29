@@ -158,10 +158,6 @@ SUITE bare-copy-lint
 ;SUITE
 
 SUITE clobber-lint
-   tools/lint/clobber-lint.f
-;SUITE
-
-SUITE clobber-lint-fixtures
    tools/lint/clobber-lint-test.f
 ;SUITE
 
@@ -1464,6 +1460,10 @@ SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE
 
+SUITE checker-owner-descriptor
+   test/checker-owner-descriptor.f
+;SUITE
+
 SUITE checker-soundness
    test/checker-soundness-suite.f
 ;SUITE
@@ -1658,9 +1658,8 @@ SUITE compiler-native-create-does
    test/compiler/native-create-does.f
 ;SUITE
 
-SUITE compiler-native-create-does-aot
-   test/compiler/aot-mode.f
-   test/compiler/native-create-does.f
+SUITE tier
+   test/tier.f
 ;SUITE
 
 SUITE does-clause-record
@@ -1823,6 +1822,7 @@ SUITE exit-hook
 
 SUITE fs-copy-alias
    lib/fs-copy-alias-test.f
+   lib/fs-identity-test.f
 ;SUITE
 
 SUITE fs-list
