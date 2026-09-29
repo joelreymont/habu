@@ -72,13 +72,6 @@ package PROGRAM-DIAGNOSTICS
    path pathu EXPECT-OK-END
    needle needleu path pathu GE-EXPECT-ERR-HAS ;
 
-: DIAGNOSTIC-WB ( ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n needle:ptr needleu:n :}
-   path pathu RUN-LOAD-WB
-   path pathu GE-EXPECT-OK
-   path pathu EXPECT-OK-END
-   needle needleu path pathu GE-EXPECT-ERR-HAS ;
-
 : ADDRESS-CAP ( -- )
    s" test/address-cell-cap-bad.f" 96
       s" ADDRESS-CELL-CAP-ARMED" s" hb: invalid address-cell storage header" NEGATIVE
@@ -135,11 +128,11 @@ package PROGRAM-DIAGNOSTICS
       s" BOOTSTRAP-CREATED-ARMED" s" expected: dow-id<> actual: a" NEGATIVE ;
 
 : DIAGNOSTICS ( -- )
-   s" test/engine-suite.f" s" habu: in mea1:" DIAGNOSTIC-WB
-   s" test/type-ctor-suite.f" s" duplicate family" DIAGNOSTIC-WB
-   s" test/using-test.f" s" hb: using: unknown package:" DIAGNOSTIC
-   s" test/type-export-suite.f" s" habu: in xpu3:" DIAGNOSTIC-WB
-   s" test/lower-cert.f" s" habu: in lc-named-bad:" DIAGNOSTIC-WB ;
+   s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC
+   s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
+   s" test/program-diagnostic-using.f" s" hb: using: unknown package:" DIAGNOSTIC
+   s" test/program-diagnostic-export.f" s" habu: in xpu3:" DIAGNOSTIC
+   s" test/program-diagnostic-lower.f" s" habu: in lc-named-bad:" DIAGNOSTIC ;
 
 public
 
