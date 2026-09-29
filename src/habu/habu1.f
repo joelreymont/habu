@@ -473,6 +473,15 @@ public
 
 ;package
 
+\ Every target selector below names the Linux-aarch64 and macOS arms and calls
+\ this otherwise: this file holds primitive bodies for those two targets only,
+\ so emitting one for any other target fails closed (docs/porting.md).
+package ENGINE-EMIT
+public
+: TARGET-UNKNOWN ( -- )
+   s" hb: habu1: no primitive body for this target" 76 die ;
+;package
+
 \ Guard the kernel-written extent encoded by the target ioctl ABI. Linux's
 \ legacy TCGETS/TCSETS pair predates _IOC direction bits and is handled
 \ explicitly; unknown unencoded requests fail closed instead of recovering an
@@ -493,7 +502,7 @@ public
       7 1 16 LSRI,  8 $3FFF LIT64,  7 7 8 AND,
       7 done CBZ,
       2 7 PROT-GUARD:CALL
-   ELSE
+   ELSE HB-TARGET-MACOS? IF
       8 $40000000 LIT64,  7 1 8 AND,         \ IOC_OUT: kernel writes
       7 write CBNZ,
       8 $A0000000 LIT64,  7 1 8 AND,         \ IOC_IN or IOC_VOID
@@ -503,7 +512,9 @@ public
       7 1 16 LSRI,  8 $1FFF LIT64,  7 7 8 AND,
       7 done CBZ,
       2 7 PROT-GUARD:CALL
-   THEN
+   ELSE
+      ENGINE-EMIT:TARGET-UNKNOWN
+   THEN THEN
    done B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    done LBL, ;
@@ -839,30 +850,34 @@ variable NUM-FPOS
       SP SP 64 ADDI,
       exit
    THEN
-   SP SP 64 SUBI,
-   9 SP 16 STR,                      \ argv[0] = path
-   10 0 MOVZ,  10 SP 24 STR,         \ argv[1] = 0
-   10 SP 48 STR,                     \ envp[0] = 0
-   0 SP 0 ADDI,                      \ &pid
-   1 9 0 ADDI,
-   2 0 MOVZ,                         \ adesc = 0 (kernel API: 5 args, not libc's 6)
-   3 SP 16 ADDI,  4 SP 48 ADDI,      \ argv, envp
-   NR-SPAWN SYS,
-   9 2 CSET,  9 9 0 ORR,             \ error = carry set OR errno in x0
-   9 ok CBZ,                         \ either -> rc -1
-      9 0 MOVN,  done B,
-   ok LBL,
-   0 SP 0 LDR,                       \ pid
-   1 SP 8 ADDI,  2 0 MOVZ,  3 0 MOVZ,
-   NR-WAIT4 SYS,
-   9 2 CSET,  9 waitok CBZ,          \ wait4 error (no child) -> rc -1
-      9 0 MOVN,  done B,
-   waitok LBL,
-   9 SP 8 LDRW,
-   9 9 8 LSRI,  9 9 $FF ANDI,        \ WEXITSTATUS
-   done LBL,
-   9 G-PUSH
-   SP SP 64 ADDI, ;
+   HB-TARGET-MACOS? IF
+      SP SP 64 SUBI,
+      9 SP 16 STR,                      \ argv[0] = path
+      10 0 MOVZ,  10 SP 24 STR,         \ argv[1] = 0
+      10 SP 48 STR,                     \ envp[0] = 0
+      0 SP 0 ADDI,                      \ &pid
+      1 9 0 ADDI,
+      2 0 MOVZ,                         \ adesc = 0 (kernel API: 5 args, not libc's 6)
+      3 SP 16 ADDI,  4 SP 48 ADDI,      \ argv, envp
+      NR-SPAWN SYS,
+      9 2 CSET,  9 9 0 ORR,             \ error = carry set OR errno in x0
+      9 ok CBZ,                         \ either -> rc -1
+         9 0 MOVN,  done B,
+      ok LBL,
+      0 SP 0 LDR,                       \ pid
+      1 SP 8 ADDI,  2 0 MOVZ,  3 0 MOVZ,
+      NR-WAIT4 SYS,
+      9 2 CSET,  9 waitok CBZ,          \ wait4 error (no child) -> rc -1
+         9 0 MOVN,  done B,
+      waitok LBL,
+      9 SP 8 LDRW,
+      9 9 8 LSRI,  9 9 $FF ANDI,        \ WEXITSTATUS
+      done LBL,
+      9 G-PUSH
+      SP SP 64 ADDI,
+      exit
+   THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BPIPE ( -- )                     \ ( -- rfd wfd rc ) rc=0, or -1 -1 -1
    LBL LNX-OK !
@@ -879,24 +894,41 @@ variable NUM-FPOS
       SP SP 16 ADDI,
       exit
    THEN
-   NR-PIPE SYS,
-   9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
-      9 0 MOVN,  9 G-PUSH  9 G-PUSH  9 G-PUSH  LNX-DONE LABEL@ B,
-   LNX-OK LABEL@ LBL,
-   0 G-PUSH  1 G-PUSH  9 0 MOVZ,  9 G-PUSH
-   LNX-DONE LABEL@ LBL, ;
+   HB-TARGET-MACOS? IF
+      NR-PIPE SYS,
+      9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+         9 0 MOVN,  9 G-PUSH  9 G-PUSH  9 G-PUSH  LNX-DONE LABEL@ B,
+      LNX-OK LABEL@ LBL,
+      0 G-PUSH  1 G-PUSH  9 0 MOVZ,  9 G-PUSH
+      LNX-DONE LABEL@ LBL,
+      exit
+   THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BDUP2 ( -- )                     \ ( oldfd newfd -- rc ) rc=newfd or -1
    1 G-POP  0 G-POP
    LBL LNX-OK !
    LBL LNX-DONE !
-   HB-TARGET-LINUX? IF 2 0 MOVZ, THEN
-   NR-DUP2 SYS,
-   9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
-      0 0 MOVN,  LNX-DONE LABEL@ B,
-   LNX-OK LABEL@ LBL,
-   LNX-DONE LABEL@ LBL,
-   0 G-PUSH ;
+   HB-TARGET-LINUX? IF
+      2 0 MOVZ,
+      NR-DUP2 SYS,
+      9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+         0 0 MOVN,  LNX-DONE LABEL@ B,
+      LNX-OK LABEL@ LBL,
+      LNX-DONE LABEL@ LBL,
+      0 G-PUSH
+      exit
+   THEN
+   HB-TARGET-MACOS? IF
+      NR-DUP2 SYS,
+      9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+         0 0 MOVN,  LNX-DONE LABEL@ B,
+      LNX-OK LABEL@ LBL,
+      LNX-DONE LABEL@ LBL,
+      0 G-PUSH
+      exit
+   THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 13 constant LINUX-SIGPIPE
 1 constant LINUX-SIG-IGN
@@ -927,13 +959,24 @@ variable NUM-FPOS
          LINUX-IGNORE-SIGPIPE
          done B,
       LNX-REAL LABEL@ LBL,
+      NR-FCNTL SYS,
+      9 C-CS CSET,  9 ok CBZ,
+         0 0 MOVN,  done B,
+      ok LBL,
+      done LBL,
+      0 G-PUSH
+      exit
    THEN
-   NR-FCNTL SYS,
-   9 C-CS CSET,  9 ok CBZ,
-      0 0 MOVN,  done B,
-   ok LBL,
-   done LBL,
-   0 G-PUSH ;
+   HB-TARGET-MACOS? IF
+      NR-FCNTL SYS,
+      9 C-CS CSET,  9 ok CBZ,
+         0 0 MOVN,  done B,
+      ok LBL,
+      done LBL,
+      0 G-PUSH
+      exit
+   THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 \ THE ERRNO RULE FOR THIS FILE'S SYSCALL WRAPPERS. Every wrapper above and below
 \ collapses a failed syscall to a bare -1 (`0 0 MOVN`) because its callers only
@@ -980,12 +1023,16 @@ variable NUM-FPOS
       SP SP 32 ADDI,
       exit
    THEN
-   LBL {: ok:label :}
-   NR-POLL SYS,
-   9 C-CS CSET,  9 ok CBZ,          \ carry clear -> x0 already holds nready or 0
-      10 0 MOVZ,  0 10 0 SUB,        \ carry set -> x0 = 0 - errno = -errno
-   ok LBL,
-   0 G-PUSH ;
+   HB-TARGET-MACOS? IF
+      LBL {: ok:label :}
+      NR-POLL SYS,
+      9 C-CS CSET,  9 ok CBZ,          \ carry clear -> x0 already holds nready or 0
+         10 0 MOVZ,  0 10 0 SUB,        \ carry set -> x0 = 0 - errno = -errno
+      ok LBL,
+      0 G-PUSH
+      exit
+   THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BKILL ( -- )                     \ ( pid sig -- rc ) rc=0 or -1
    1 G-POP  0 G-POP
@@ -1250,18 +1297,22 @@ variable SZA-I
       SP SP 64 ADDI,
       exit
    THEN
-   SPAWN-DARWIN-FRAME3-ENTER
-   9 >REG SPAWN-DARWIN-DEFAULT-ARGV-ENVP
-   3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
-   SPAWN-DARWIN-STDIO-ACTIONS
-   SPAWN-DARWIN-ZERO-ADESC
-   SPAWN-DARWIN-ZERO-ATTR
-   SPAWN-DARWIN-FILL-ADESC
-   9 >REG SPAWN-DARWIN-PID-PATH
-   SPAWN-DARWIN-USE-ADESC
-   SPAWN-DARWIN-USE-DEFAULT-ARGV-ENVP
-   BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
-   SPAWN-DARWIN-FRAME3-LEAVE ;
+   HB-TARGET-MACOS? IF
+      SPAWN-DARWIN-FRAME3-ENTER
+      9 >REG SPAWN-DARWIN-DEFAULT-ARGV-ENVP
+      3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
+      SPAWN-DARWIN-STDIO-ACTIONS
+      SPAWN-DARWIN-ZERO-ADESC
+      SPAWN-DARWIN-ZERO-ATTR
+      SPAWN-DARWIN-FILL-ADESC
+      9 >REG SPAWN-DARWIN-PID-PATH
+      SPAWN-DARWIN-USE-ADESC
+      SPAWN-DARWIN-USE-DEFAULT-ARGV-ENVP
+      BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
+      SPAWN-DARWIN-FRAME3-LEAVE
+      exit
+   THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BSPAWNARGVIO ( -- )              \ ( pathz argvp stdinfd stdoutfd stderrfd -- pid|-errno )
    BSP-LABELS3
@@ -1275,18 +1326,22 @@ variable SZA-I
       SP SP 16 ADDI,
       exit
    THEN
-   SPAWN-DARWIN-FRAME3-ENTER
-   SPAWN-DARWIN-DEFAULT-ENVP
-   3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
-   SPAWN-DARWIN-STDIO-ACTIONS
-   SPAWN-DARWIN-ZERO-ADESC
-   SPAWN-DARWIN-ZERO-ATTR
-   SPAWN-DARWIN-FILL-ADESC
-   8 >REG SPAWN-DARWIN-PID-PATH
-   SPAWN-DARWIN-USE-ADESC
-   9 >REG SPAWN-DARWIN-ARGV-DEFAULT-ENVP
-   BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
-   SPAWN-DARWIN-FRAME3-LEAVE ;
+   HB-TARGET-MACOS? IF
+      SPAWN-DARWIN-FRAME3-ENTER
+      SPAWN-DARWIN-DEFAULT-ENVP
+      3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
+      SPAWN-DARWIN-STDIO-ACTIONS
+      SPAWN-DARWIN-ZERO-ADESC
+      SPAWN-DARWIN-ZERO-ATTR
+      SPAWN-DARWIN-FILL-ADESC
+      8 >REG SPAWN-DARWIN-PID-PATH
+      SPAWN-DARWIN-USE-ADESC
+      9 >REG SPAWN-DARWIN-ARGV-DEFAULT-ENVP
+      BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
+      SPAWN-DARWIN-FRAME3-LEAVE
+      exit
+   THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BSPAWNARGVENVIO ( -- )           \ ( pathz argvp envp stdinfd stdoutfd stderrfd -- pid|-errno )
    BSP-LABELS3
@@ -1296,17 +1351,21 @@ variable SZA-I
       8 >REG 9 >REG 7 >REG 13 >REG 10 >REG 11 >REG 12 >REG LINUX-SPAWN
       exit
    THEN
-   SPAWN-DARWIN-FRAME3-ENTER
-   3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
-   SPAWN-DARWIN-STDIO-ACTIONS
-   SPAWN-DARWIN-ZERO-ADESC
-   SPAWN-DARWIN-ZERO-ATTR
-   SPAWN-DARWIN-FILL-ADESC
-   8 >REG SPAWN-DARWIN-PID-PATH
-   SPAWN-DARWIN-USE-ADESC
-   9 >REG 7 >REG SPAWN-DARWIN-ARGV-ENVP
-   BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
-   SPAWN-DARWIN-FRAME3-LEAVE ;
+   HB-TARGET-MACOS? IF
+      SPAWN-DARWIN-FRAME3-ENTER
+      3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
+      SPAWN-DARWIN-STDIO-ACTIONS
+      SPAWN-DARWIN-ZERO-ADESC
+      SPAWN-DARWIN-ZERO-ATTR
+      SPAWN-DARWIN-FILL-ADESC
+      8 >REG SPAWN-DARWIN-PID-PATH
+      SPAWN-DARWIN-USE-ADESC
+      9 >REG 7 >REG SPAWN-DARWIN-ARGV-ENVP
+      BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
+      SPAWN-DARWIN-FRAME3-LEAVE
+      exit
+   THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BSPAWNARGVENVCWDIO ( -- )        \ ( pathz argvp envp cwdz stdinfd stdoutfd stderrfd -- pid|-errno )
    BSP-LABELS2
@@ -1315,18 +1374,22 @@ variable SZA-I
       8 >REG 9 >REG 7 >REG 6 >REG 10 >REG 11 >REG 12 >REG LINUX-SPAWN
       exit
    THEN
-   SPAWN-DARWIN-FRAME4-ENTER
-   4 >COUNT SPAWN-DARWIN-ACTIONS-RESET
-   6 >REG BSP-DN @ >LABEL SPAWN-CHDIR-ACTION
-   SPAWN-DARWIN-STDIO-ACTIONS
-   SPAWN-DARWIN-ZERO-ADESC
-   SPAWN-DARWIN-ZERO-ATTR
-   SPAWN-DARWIN-FILL-ADESC
-   8 >REG SPAWN-DARWIN-PID-PATH
-   SPAWN-DARWIN-USE-ADESC
-   9 >REG 7 >REG SPAWN-DARWIN-ARGV-ENVP
-   BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
-   SPAWN-DARWIN-FRAME4-LEAVE ;
+   HB-TARGET-MACOS? IF
+      SPAWN-DARWIN-FRAME4-ENTER
+      4 >COUNT SPAWN-DARWIN-ACTIONS-RESET
+      6 >REG BSP-DN @ >LABEL SPAWN-CHDIR-ACTION
+      SPAWN-DARWIN-STDIO-ACTIONS
+      SPAWN-DARWIN-ZERO-ADESC
+      SPAWN-DARWIN-ZERO-ATTR
+      SPAWN-DARWIN-FILL-ADESC
+      8 >REG SPAWN-DARWIN-PID-PATH
+      SPAWN-DARWIN-USE-ADESC
+      9 >REG 7 >REG SPAWN-DARWIN-ARGV-ENVP
+      BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
+      SPAWN-DARWIN-FRAME4-LEAVE
+      exit
+   THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BCPFETCH ( -- ) 9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
 : BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
@@ -1826,8 +1889,11 @@ variable SZA-I
       OS-OPEN-FLAGS
       1 0 0 ADDI,
       0 99 MOVN,
+      NR-OPEN SYS,  SYS-PUSH
+      exit
    THEN
-   NR-OPEN SYS,  SYS-PUSH ;
+   HB-TARGET-MACOS? IF NR-OPEN SYS,  SYS-PUSH  exit THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BWRITE ( -- )
    2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH ;
@@ -1838,14 +1904,15 @@ variable SZA-I
 : BIOCTL ( -- )
    2 G-POP  1 G-POP  0 G-POP  GUARD-IOCTL  NR-IOCTL SYS,  SYS-PUSH ;
 
-: BMMAP ( -- )
+: BMMAP ( -- )                     \ ( addr len prot flags fd off -- addr|-1 )
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
    LBL {: notfixed:label :}
    6 3 $10 ANDI,  6 notfixed CBZ,            \ only MAP_FIXED replaces an existing mapping
       0 1 PROT-GUARD:CALL                      \ x0 = address, x1 = mapping length
    notfixed LBL,
-   HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
-   NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
+   HB-TARGET-LINUX? IF OS-MMAP-FLAGS  NR-MMAP SYS,  SYS-PUSH  exit THEN
+   HB-TARGET-MACOS? IF NR-MMAP SYS,  SYS-PUSH  exit THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 \ Fresh anonymous storage has no prior element type. The caller chooses the
 \ pointee type; the OS boundary returns a null pointer and -1 on failure.
@@ -2124,40 +2191,56 @@ variable SZA-I
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
+      NR-ACCESS SYS,  SYS-PUSH
+      exit
    THEN
-   NR-ACCESS SYS,  SYS-PUSH ;
+   HB-TARGET-MACOS? IF NR-ACCESS SYS,  SYS-PUSH  exit THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BUNLINK ( -- )
    0 G-POP
    HB-TARGET-LINUX? IF
       1 0 0 ADDI,  0 99 MOVN,  2 0 MOVZ,
+      NR-UNLINK SYS,  SYS-PUSH
+      exit
    THEN
-   NR-UNLINK SYS,  SYS-PUSH ;
+   HB-TARGET-MACOS? IF NR-UNLINK SYS,  SYS-PUSH  exit THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BRENAME ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       3 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  2 99 MOVN,
+      NR-RENAME SYS,  SYS-PUSH
+      exit
    THEN
-   NR-RENAME SYS,  SYS-PUSH ;
+   HB-TARGET-MACOS? IF NR-RENAME SYS,  SYS-PUSH  exit THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BCHMOD ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
+      NR-CHMOD SYS,  SYS-PUSH
+      exit
    THEN
-   NR-CHMOD SYS,  SYS-PUSH ;
+   HB-TARGET-MACOS? IF NR-CHMOD SYS,  SYS-PUSH  exit THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BSYMLINK ( -- )
    2 G-POP  0 G-POP
-   HB-TARGET-LINUX? IF 1 99 MOVN, ELSE 1 1 MOVN, THEN
+   HB-TARGET-LINUX? IF 1 99 MOVN, ELSE
+      HB-TARGET-MACOS? IF 1 1 MOVN, ELSE ENGINE-EMIT:TARGET-UNKNOWN THEN
+   THEN
    3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
    NR-SYMLINKAT SYS,  SYS-PUSH ;
 
 : BREADLINK ( -- )
    3 G-POP  2 G-POP  1 G-POP
    2 3 PROT-GUARD:CALL                         \ x2 = kernel-written link buffer, x3 = length
-   HB-TARGET-LINUX? IF 0 99 MOVN, ELSE 0 1 MOVN, THEN
+   HB-TARGET-LINUX? IF 0 99 MOVN, ELSE
+      HB-TARGET-MACOS? IF 0 1 MOVN, ELSE ENGINE-EMIT:TARGET-UNKNOWN THEN
+   THEN
    4 0 MOVZ,  5 0 MOVZ,
    NR-READLINKAT SYS,  SYS-PUSH ;
 
@@ -2170,12 +2253,15 @@ package LIBC-OS
    17 16 IMAGE-TEXT-SIZE-OFF LDR,
    HB-TARGET-LINUX? if
       16 16 17 ADD,  16 16 $B8 LDR,
-   else
+      0 0 MOVZ,
+   else HB-TARGET-MACOS? if
       15 CODE-OFF LIT64,  17 17 15 ADD,  15 $3FFF LIT64,
       17 17 15 ADD,  15 $3FFF invert LIT64,  17 17 15 AND,
       16 16 17 ADD,  16 16 8 LDR,
-   then
-   HB-TARGET-LINUX? if 0 0 MOVZ, else 0 1 MOVN, then
+      0 1 MOVN,
+   else
+      ENGINE-EMIT:TARGET-UNKNOWN
+   then then
    16 BLR, ;
 
 public
@@ -2232,16 +2318,20 @@ public
       NR-FORK SYS,  SYS-PUSH
       exit
    THEN
-   LBL LBL {: failed:label done:label :}
-   SP SP 16 SUBI,
-   9 $6B726F66 LIT64,  9 SP 0 STR,    \ "fork" + NUL
-   1 SP 0 ADDI,  DLSYM
-   0 failed CBZ,  16 0 0 ADDI,  16 BLR,
-   0 0 32 LSLI,  0 0 32 ASRI,        \ signed pid_t -> Habu cell
-   done B,
-   failed LBL,  0 0 MOVN,
-   done LBL,
-   SP SP 16 ADDI,  0 G-PUSH ;
+   HB-TARGET-MACOS? IF
+      LBL LBL {: failed:label done:label :}
+      SP SP 16 SUBI,
+      9 $6B726F66 LIT64,  9 SP 0 STR,    \ "fork" + NUL
+      1 SP 0 ADDI,  DLSYM
+      0 failed CBZ,  16 0 0 ADDI,  16 BLR,
+      0 0 32 LSLI,  0 0 32 ASRI,        \ signed pid_t -> Habu cell
+      done B,
+      failed LBL,  0 0 MOVN,
+      done LBL,
+      SP SP 16 ADDI,  0 G-PUSH
+      exit
+   THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 ;package
 
@@ -2249,15 +2339,21 @@ public
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,
+      NR-MKDIR SYS,  SYS-PUSH
+      exit
    THEN
-   NR-MKDIR SYS,  SYS-PUSH ;
+   HB-TARGET-MACOS? IF NR-MKDIR SYS,  SYS-PUSH  exit THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BRMDIR ( -- )
    0 G-POP
    HB-TARGET-LINUX? IF
       1 0 0 ADDI,  0 99 MOVN,  2 $200 MOVZ,
+      NR-RMDIR SYS,  SYS-PUSH
+      exit
    THEN
-   NR-RMDIR SYS,  SYS-PUSH ;
+   HB-TARGET-MACOS? IF NR-RMDIR SYS,  SYS-PUSH  exit THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : LINUX-STAT-FIX ( n -- )
    STAT-BUF !
@@ -2283,7 +2379,8 @@ public
       0 G-PUSH
       exit
    THEN
-   NR-STAT64 SYS,  SYS-PUSH ;
+   HB-TARGET-MACOS? IF NR-STAT64 SYS,  SYS-PUSH  exit THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BLSTAT64 ( -- )
    1 G-POP  0 G-POP  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
@@ -2301,7 +2398,8 @@ public
       0 G-PUSH
       exit
    THEN
-   NR-LSTAT64 SYS,  SYS-PUSH ;
+   HB-TARGET-MACOS? IF NR-LSTAT64 SYS,  SYS-PUSH  exit THEN
+   ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BGETDIRENTRIES64 ( -- )
    3 G-POP  2 G-POP  1 G-POP  0 G-POP
