@@ -6,9 +6,8 @@
 \     test/db/pg-fixture.sh build/hb-pg --load lib/pg-test.f
 \
 \ Without HABU_PG_CONNINFO in the environment the file prints a named skip and
-\ asserts nothing. It is registered in test/gate-stdlib-cases.f on those terms:
-\ every gate run certifies package PG and prints the skip, and the fixture is
-\ how the module is exercised against a real server.
+\ asserts nothing, so the gate does not run it; test/five-bindings.f loads and
+\ binds package PG there.
 
 require lib/test.f
 require lib/task.f

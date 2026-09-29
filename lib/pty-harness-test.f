@@ -17,7 +17,7 @@ package PTY-HARNESS-TEST
 using PTY-HARNESS
 
 $400 constant FEED-LIMIT           \ chunks one fill loop may feed before giving up
-$1F4 constant WEDGE-MS             \ the wedge case's own budget, short enough to watch
+$64 constant WEDGE-MS              \ the wedge case's own budget, short enough to watch
 $BB8 constant WEDGE-SLACK-MS       \ what a loaded box may add to it before the claim fails
 
 create FILLER 64 allot
@@ -206,20 +206,18 @@ variable HIT                       \ did the loop reach the case it was feeding 
    [: MISSING$ SPAWN-ON-PTY ;] catch E-PROC-SPAWN T=
    s" and the next one is refused by nothing it left behind" T-LABEL
    [: MISSING$ SPAWN-ON-PTY ;] catch E-PROC-SPAWN T=
-   s" so a real child still reaches its prompt and exits" T-LABEL
+   s" so a real child still reaches its prompt" T-LABEL
    HB$ SPAWN-ON-PTY
-   s" habu> " WAIT-FOR TTRUE
-   STOP-CHILD ;
+   s" habu> " WAIT-FOR TTRUE ;
 
 
 \ WAIT-AFTER on a live child: the echo of "42 ." carries the prompt ahead of
 \ the answer, so a wait for the prompt after " ok" is a wait for the prompt
 \ the editor prints once it holds the terminal raw again, not the echoed one.
 \ (A pair that never appears waits the whole 20 s budget out; CASE-ORDER pins
-\ the refusal on the buffer, where it costs nothing.)
+\ the refusal on the buffer, where it costs nothing.) The child is the one
+\ CASE-SPAWN-ABORT left at its prompt, and STOP-CHILD proves it still exits.
 : CASE-WAIT-AFTER ( -- )
-   HB$ SPAWN-ON-PTY
-   s" habu> " WAIT-FOR TTRUE
    BUF-CLEAR
    s" 42 ." SEND-LINE
    s" the answer arrives" T-LABEL

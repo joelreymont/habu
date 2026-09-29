@@ -36,12 +36,16 @@ $400 constant RES-CAP
 $20 constant NUM-CAP
 8 constant DRAIN-TRIES                  \ reads that finish a connection the peer is closing
 $1000 constant READY-TRIES              \ TASK:PAUSE turns before the listener is late
-500 constant STALL-MS                   \ well under the stall path's forever
+100 constant STALL-MS                   \ well under the stall path's forever
 $2710 constant REQUEST-MS               \ 10 s: a loopback request that slow is broken
 $FE constant FILL-BYTE                  \ the sentinel a refused transfer must not overwrite
 $300 constant DRIBBLE-U                 \ the dribble body, served whole but slowly
 $40 constant DRIBBLE-STEP               \ bytes per timed write
 100 constant DRIBBLE-GAP-MS             \ 12 steps: 1.3 s at about 640 bytes a second
+\ The dribble must outlast LOW-SECONDS: a shorter one finishes before any stall
+\ test or one-second ceiling could end it, so DRIBBLE-LOW-SPEED would pass
+\ whatever LOW-SPEED! set.
+DRIBBLE-GAP-MS 3 * constant CEILING-MS  \ several gaps in: a per-read limit never fires, a ceiling does
 $61 constant DRIBBLE-BYTE               \ the body's filler, never the sentinel
 1000000 constant NS-PER-MS
 10 constant LOW-RATE                    \ bytes a second, far under the dribble's own
@@ -745,7 +749,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : DRIBBLE-CEILING ( -- )
    SERVER-HITS atomic@ 1+ {: request:n :}
    PATH-DRIBBLE$ GET-READY {: subject:CURL:handle :}
-   subject STALL-MS >MS CURL:TIMEOUT! EXPECT-OK
+   subject CEILING-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
    s" a whole-transfer ceiling ends the dribble though it never stalled" T-LABEL

@@ -21,8 +21,11 @@ package PROCESS-TASK-TEST
 \ wrote its own revents back over the capture's, so the capture loop read a
 \ descriptor that was not ready and blocked - measured before the row moved as
 \ this same program running past 90 s without finishing one capture, against
-\ under a second afterwards (dot habu-make-the-process-6e615161).
-40 constant PTT-CAPTURES                 \ children the captor runs
+\ under a second afterwards (dot habu-make-the-process-6e615161). A shared slot
+\ spoils a capture only when a poll lands inside it: with one pollfd array for
+\ both tasks, twelve children failed or hung in each of twelve runs, where four
+\ passed one run in nine: at that rate twelve miss it about once in 700 runs.
+12 constant PTT-CAPTURES                 \ children the captor runs
 5000 constant PTT-CAPTURE-MS             \ one child's capture deadline
 50 constant PTT-POLL-MS                  \ one POLL-IN wait
 20000000000 constant PTT-BUDGET-NS       \ the captor's whole run: 20 s
@@ -112,8 +115,10 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
 \ reproducer habu-gaps/process-call-state/repro.f). Two declared contexts are
 \ two sets of storage, so the interleave is no longer a race at all - and this
 \ file's other rows keep proving that the lib/process.f capture row underneath
-\ them is already per task.
-20 constant PTT-ROUNDS
+\ them is already per task. In the two-command case the handshake forces the
+\ interleave every round; the four-command case relies on four tasks
+\ interleaving over its spawns.
+3 constant PTT-ROUNDS
 5000 constant PTT-RUN-MS
 5000000000 constant PTT-WAIT-NS          \ one handshake wait: 5 s
 

@@ -21,7 +21,11 @@ using OBJSTORE
 using OBJLINK
 
 64 constant KEY-U
-$81001 constant LARGE-U
+\ One byte past the linker's former 64 KiB merge ceiling. Its text and data,
+\ hex-encoded, put the record past the codec's former 256 KiB ceiling and the
+\ cache's former fixed read; lib/object-test.f takes one section past the
+\ codec's former 128 KiB section ceiling.
+$10001 constant LARGE-U
 DYNAMIC-BUFFER LARGE-STORAGE n
 
 create KEY2 80 allot
@@ -79,15 +83,18 @@ create TEXT-BYTES 1 c, 2 c, 3 c,
    BYTES$ {: src:ptr size:n :}
    size CELL / 1+ LARGE-STORAGE-RESERVE
    src 0 LARGE-STORAGE byte-view size BYTE-COPY
-   \ Appending the whole encoded record forces growth beyond its old mapping.
+   \ The append needs three times the record, past every capacity the codec has
+   \ reserved, so it reads its own input across a relocation of the codec buffer.
    BYTES$ TEXT+
+   s" the aliased append relocated the codec buffer" T-LABEL
+   BYTES$ drop src <> TTRUE
    OBJLINK:RESET
    ADD APPLY
    TEXT$ {: a:ptr u:n :}
    u LARGE-U size + T=
    a LARGE-U + size 0 LARGE-STORAGE byte-view size T$= ;
 
-\ Exercise both payload sections above the old codec and merge ceilings.
+\ Exercise both payload sections above the former record and merge ceilings.
 \ Self-loading must leave the source intact before any growth or copy.
 : LARGE-ROUNDTRIP ( -- )
    PREPARE-LARGE

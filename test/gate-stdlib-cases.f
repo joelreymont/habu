@@ -1152,12 +1152,6 @@ SUITE crypto-evp
    lib/crypto/evp-test.f
 ;SUITE
 
-\ The gate has no PostgreSQL, so this run certifies package PG and prints the
-\ named skip. test/db/pg-fixture.sh is how the module is exercised for real.
-SUITE pg
-   lib/pg-test.f
-;SUITE
-
 SUITE float-parse
    lib/float-test.f
    lib/fmath-test.f

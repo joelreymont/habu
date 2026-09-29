@@ -307,7 +307,6 @@ the first query completes. It also closes a pending query and then fills the
 declared result registry, checking that cancellation did not leak a slot.
 
 Without `HABU_PG_CONNINFO` the test prints `pg-test: skipped, HABU_PG_CONNINFO
-names no server` and asserts nothing. It is registered in
-`test/gate-stdlib-cases.f` as suite `pg` on exactly those terms: the gate
-has no PostgreSQL, so every gate run certifies package `PG` and prints the
-skip, and the fixture is how the module is exercised for real.
+names no server` and asserts nothing, so the gate does not run it: the gate
+has no PostgreSQL, `test/five-bindings.f` loads and binds package `PG` there,
+and the fixture is how the module is exercised for real.
