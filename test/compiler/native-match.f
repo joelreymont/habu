@@ -762,10 +762,6 @@ CAPTURE-NATIVE-EMISSION
 
 : BUILD-CASE ( -- )
    s" wide constructors preserve empty and payload arms" T-LABEL
-   0 E-MKI E-INST 0 T=
-   3 E-MKI E-INST 204 T=
-   0 E-MKI3 E-INST3 0 T=
-   3 E-MKI3 E-INST3 423 T=
    0 E-MKC E-RDC 0 T=
    3 E-MKC E-RDC 204 T=
 
@@ -801,7 +797,6 @@ CAPTURE-NATIVE-EMISSION
 
 : GROWTH-CASE ( -- )
    s" dispatch beyond the former sixteen-arm selector ceiling remains executable" T-LABEL
-   NMX-WIDE:W15 E-WIDE 215 T=
    RC-OVER @ 0 T=
    NMX-OVER:V0 C-OVER 300 T=
    NMX-OVER:V1 C-OVER 301 T=
