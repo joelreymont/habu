@@ -31,7 +31,7 @@ unsealed packages and five have no package record.
 Acceptance includes public checked calls, retained syntax/primitive overloads
 and constructor types, rejection of unavailable private names, rollback,
 restored compilation and native self-build. Measure real section deltas;
-complete the native fixpoint, test/run.f and Maki smoke before closure.
+complete the native fixpoint, test/run.f and Etch smoke before closure.
 Coordinate history compaction with habu-compact-checker-histories-3a1ce692.
 Independent string representation work is habu-store-checker-names-70a89ffb.
 Temporary reproduction: habu-symbol-retention-audit.f and habu-effect-rca.f

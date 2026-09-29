@@ -23,7 +23,7 @@ the campaign dots are the ledger.
   the tracker was rebuilt (2026-09-16), so `dot find` still reaches their
   text in the archive. Absorbed dots were closed with the reason
   `superseded by <campaign>`; done work was closed with its evidence; work
-  for Loom or Maki was moved to their trackers.
+  for Loom or Etch was moved to their trackers.
 - A child dot is dispatchable in under a day and carries Problem, Acceptance,
   Files, Verify, Depends, Ownership and Claim. Design decisions get a dot
   whose acceptance is a document section, not code.
@@ -44,7 +44,7 @@ release checklist `habu-qualify-habu-for-9ccd0432` on the hazel line defines
 release quality: full gate green on a byte-fixpoint engine, the recovery
 chain reaching bootstrap check OK, stripped applications green, snapshot
 suites green, silent traps closed, downstream proof on Radar, Tender, Loom
-and Maki, docs current, integration lines advanced and the root engine
+and Etch, docs current, integration lines advanced and the root engine
 replaced.
 
 Campaign content: the PLAN.md graph and the checklist are the children.

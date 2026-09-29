@@ -17,16 +17,16 @@ The native Apple Silicon product builds through
 Keep development `bin/hb` separate from the versioned stable installation
 described in [bootstrap.md](bootstrap.md#stable-local-command).
 
-Maki is the dependent application being qualified. Its native image builds
-with `tools/hb-build.f -- --repl /absolute/path/to/maki/maki.f -o /output/maki`.
-Run that tool through a matching Habu engine and library tree. Maki's tests
+Etch is the dependent application being qualified. Its native image builds
+with `tools/hb-build.f -- --repl /absolute/path/to/etch/etch.f -o /output/etch`.
+Run that tool through a matching Habu engine and library tree. Etch's tests
 require an output-directory argument. A native PCB construction, routing,
 geometry and export smoke check exercises application behavior; it does not
 qualify KiCad's external DRC or live IPC integration.
 
 The Rocq subsystem and toolchain requirement have been removed. Habu's
 executable checks carry the verification claims in [proofs.md](proofs.md).
-The work here is the language and Maki integration; application policy stays
+The work here is the language and Etch integration; application policy stays
 in the application repository.
 
 ## Work preserved for later
@@ -41,5 +41,5 @@ The generated-definer design decision is preserved in
 [its existing task](../.dots/habu-let-tools-check-6ac068c5.md).
 The source-only recovery engine's stronger optimized-definition smoke remains
 an uncompleted draft; [bootstrap.md](bootstrap.md) states that boundary.
-Linux and Intel execution, physical serial devices and Maki's live KiCad
+Linux and Intel execution, physical serial devices and Etch's live KiCad
 integration require their own qualification.

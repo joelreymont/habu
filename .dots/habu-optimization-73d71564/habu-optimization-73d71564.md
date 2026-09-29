@@ -58,7 +58,7 @@ session and twice-restored image checks pass. The full registry ran all 492
 suites: 491 passed, and the sole failure was Gforth missing its precompiled
 libraries in an empty private cache. That unchanged fixture passes with those
 runtime libraries supplied. The duplicate full run was cancelled as redundant;
-Maki was not rebuilt. Evidence:
+Etch was not rebuilt. Evidence:
 `~/.cache/tmp/habu-opcode-names-completion-20260929-01.md`.
 
 The preceding qualified engine is **2,460,535 bytes**. The three source-sharing
@@ -74,7 +74,7 @@ file bytes because alignment absorbs their payload reductions. Each feature
 passes B1/B2 identity and focused native checks; the final combined source
 `dc3bea8d686d06ef87d4ed9639573966894eb56a` passes five identical generations/names,
 all 492 suites, restore/recapture paths and strict signatures. Independent reviews
-cover each feature. Maki saves 49,248 bytes to 19,978,688; both actual-stdin board
+cover each feature. Etch saves 49,248 bytes to 19,978,688; both actual-stdin board
 exports remain byte-identical. Evidence and replay:
 `~/.cache/tmp/habu-source-sharing-completion-20260928-01.md`.
 
@@ -91,7 +91,7 @@ code costs 1,984 bytes, captured code is unchanged, container padding costs
 generations/names, all 492 suites, 25 signed corruptions, empty cold boot and
 complete semantic/physical row accounting pass. A transient name-entry bitmap
 removed an introduced repeated scan; 40 alternating process pairs measured
-6.241500 ms parent versus 6.352250 ms candidate (+0.110750 ms). Maki saves 131,328
+6.241500 ms parent versus 6.352250 ms candidate (+0.110750 ms). Etch saves 131,328
 bytes to 20,027,936; both stdin board exports remain byte-identical. Qualified
 source: `1ff58c3d7e36b4a6c55b325d988bb11df51cffd0`. Evidence:
 `~/.cache/tmp/habu-compact-seed-completion-20260928-02.md` and
@@ -106,7 +106,7 @@ Engine SHA-256:
 `5907200e52b43a55a24e27814dca4d82600a3d234923c3cad0e2dddc5763526c`.
 Independent reviews, B2–B5 engine/names identity, all 492 suites, selected-form
 order/call/sentinel and guard-page checks, five assembler vectors, ten refused
-encodings and strict signatures pass. Maki falls 32,832 bytes to 20,159,264;
+encodings and strict signatures pass. Etch falls 32,832 bytes to 20,159,264;
 both actual stdin board exports remain byte-identical. Qualified source:
 `451d5c0f1ee7ec721519dd6a9a6d194a8d161080`. Evidence:
 `~/.cache/tmp/habu-pair-writeback-completion-20260928-01.md` and
@@ -119,7 +119,7 @@ engine remains 2,625,655 bytes because alignment absorbs the saving: this adds
 zero file bytes toward the additional 1 MB target. Engine SHA-256:
 `830c33d0af20d4202de584b62a94d63953d2b2f1f1af19830b0296a606ff2821`.
 Independent review, all 14 encoder vectors, B2–B5 engine/names identity, all 492
-suites and strict signatures pass. Maki is 32,832 signed bytes smaller at
+suites and strict signatures pass. Etch is 32,832 signed bytes smaller at
 20,192,096, with both stdin board exports byte-identical. Qualified source:
 `e319fdfe324a31bfca98541a785ea1f4c22c3ed3`. Evidence:
 `~/.cache/tmp/habu-native-mask-completion-20260928-01.md` and
@@ -164,7 +164,7 @@ The 29,887 emitted pairs remove 119,548 instruction bytes directly; this does
 not claim every secondary layout difference is attributed. Engine SHA-256:
 `da27859f7f4b18137cac8ef4524c34a8137897402e8d11485790cff1d01b6bb0`.
 Independent source and fixture reviews, B2–B5 engine/names equality, all 492
-suites, guard-page diagnostics and strict signatures pass. Maki falls **295,488
+suites, guard-page diagnostics and strict signatures pass. Etch falls **295,488
 bytes** to **20,224,928**, with **300,340 fewer physical instruction bytes**;
 both board exports are byte-identical. Exact qualified source: `430083dcd2ea`.
 Evidence: `~/.cache/tmp/habu-native-pairs-completion-20260928-01.md` and
@@ -178,7 +178,7 @@ and history boundary. That preceding engine was **2,741,239 bytes**, down
 of span metadata. Net payload saving before padding/signature is 41,880 bytes.
 SHA-256: `6c9d991160f61a0d08a4c82ebfba1e5b80745d45b7b9fb980aa8f78bbf54bcad`.
 Independent review, focused E2Es, B1–B5/names identity, all 492 suites and strict
-signatures pass. Maki falls 32,832 bytes to 20,520,416; both board exports are
+signatures pass. Etch falls 32,832 bytes to 20,520,416; both board exports are
 byte-identical. Evidence: `~/.cache/tmp/habu-effect-links-fix-20260928-01/`
 and `habu-effect-links-review-20260928-01.md` in the same scratch parent.
 
@@ -202,9 +202,9 @@ Design and earlier repeatable census:
 The attempted boolean normalization reduction is rejected: its optimizer costs
 1,556 code bytes to remove 1,680 emitted bytes, while other serialized content
 grows 200 bytes. Engine payload therefore grows 76 bytes, with file size
-unchanged. Maki's 660-byte code saving is exactly offset by DATA/other growth.
+unchanged. Etch's 660-byte code saving is exactly offset by DATA/other growth.
 The source and patch are preserved in the open boolean dot; none is integrated.
-Focused tests, native convergence and Maki smokes passed, but the full registry
+Focused tests, native convergence and Etch smokes passed, but the full registry
 was not run after the size rejection. Evidence:
 `~/.cache/tmp/habu-native-bool-completion-20260928-01.md`.
 
@@ -214,7 +214,7 @@ has **4,968 fewer AOT code bytes** and **344 fewer throw-call entries** (1,376
 bytes). Its file remains **2,790,775 bytes** because alignment absorbs the
 payload reduction. SHA-256:
 `ae41d43ac92b69d6c0a1bc45b92f4f359a77b7766fd991e2fa4930e10b83ca02`.
-Maki generated code falls **18,072 bytes** and its executable falls **32,832
+Etch generated code falls **18,072 bytes** and its executable falls **32,832
 bytes**, to **20,553,248 bytes**. Both exported boards are byte-identical.
 Independent source review, B2–B5 and names equality, all 492 suites, and strict
 engine/application signatures pass. Exact qualified source is `78d21b471ad4`;
@@ -254,8 +254,8 @@ Guarded declaration-owner callbacks replace real private-name consumers;
 the exact dynamic `DEFER-UNSET` root remains. Private inspection uses whitebox
 while public tests still use the product. Independent review passed, native
 generations 2–5 are byte-identical, and the default eight-slot gate passes all
-490 suites. Both Maki routing/geometry and shared-channel smokes pass with
-byte-identical accepted boards; engine and Maki signatures verify strictly.
+490 suites. Both Etch routing/geometry and shared-channel smokes pass with
+byte-identical accepted boards; engine and Etch signatures verify strictly.
 Evidence and artifacts: `~/.cache/tmp/habu-thin-internal-completion-20260928-02.md`.
 The internal-name and product/whitebox test dots are closed.
 
@@ -266,7 +266,7 @@ owner and holds its existing rollback transaction through native publication.
 Rejected clauses and later failures restore signatures, control/CREATES, symbols
 and extension state; they cannot leave a phantom created word. The public E2E
 reproduced both failures before their repairs. Independent review, source-only
-replay, native B2–B5 byte equality, all 490 suites and the two byte-identical Maki
+replay, native B2–B5 byte equality, all 490 suites and the two byte-identical Etch
 board smokes pass. The engine remains **2,856,823 bytes**, now SHA-256
 `77270a103f32c6e7422554df65a36fa06680186d01ce50383aeea64c4b76e2b6`.
 This correctness prerequisite adds no file-size cost and is the new baseline
@@ -285,7 +285,7 @@ the engine is 115,584 bytes (3.95%) smaller than `6c64049ce625`.
 Independent review passed; native B2–B5 and their names sidecars match byte for
 byte. All 491 suites pass. Two retained application images exercise actual
 capture/restore, boundary rewind, new rollback and active-scope refusal. Both
-Maki boards remain byte-identical and strict signatures pass. Evidence:
+Etch boards remain byte-identical and strict signatures pass. Evidence:
 `~/.cache/tmp/habu-control-compaction-completion-20260928-02.md`.
 
 These reductions do not prove that remaining DATA is necessary or generated
@@ -293,7 +293,7 @@ code is efficient. The current product retains 736,008 DATA/bitmap bytes and
 1,543,368 generated code bytes plus 121,100 fixed engine bytes. General effect
 history, private symbols, DATA retention and native instruction selection remain
 open. Require current physical evidence, native self-host convergence, the full
-gate and Maki qualification for each capture change. No estimate or tracker
+gate and Etch qualification for each capture change. No estimate or tracker
 cleanup counts as an implemented size reduction.
 
 Dots 0.6.4 renders one parent level reliably. Keep these tasks as direct
@@ -311,9 +311,9 @@ preserving MOVN policy and the separate relocation carriers. The qualified
 engine remains **2,807,287 bytes**, SHA-256
 `7a357464fe741b9359a170b433b54364a431df117f21ee947f2caca25d8044bb`.
 Its AOT code blob falls 1,543,368 to 1,543,112 bytes (**256 bytes**); DATA,
-metadata and alignment absorb the file saving. Maki generated code falls
+metadata and alignment absorb the file saving. Etch generated code falls
 1,232 bytes with its total file size unchanged. Independent source review,
-B2–B5 and sidecar equality, all 491 suites, strict signatures and both Maki
+B2–B5 and sidecar equality, all 491 suites, strict signatures and both Etch
 board smokes pass. The smokes execute through stdin and retain exact accepted
 board hashes. Evidence: `~/.cache/tmp/habu-native-scalar-completion-20260928-01.md`.
 The scalar dot is closed; the separately measured native shift, divisor-guard
@@ -332,7 +332,7 @@ abandons mappings without unmapping them; this change does not repair or measure
 that accumulation. One serial uncached build per version took 54.95 seconds
 before and 54.85 after, an informational pair rather than a statistical claim.
 Independent source review, native B2–B5/sidecar identity, all 492 suites, retained
-two-image capture/replay and strict signatures pass. Maki is 16,416 bytes smaller
+two-image capture/replay and strict signatures pass. Etch is 16,416 bytes smaller
 with both boards byte-identical. Evidence and limits:
 `~/.cache/tmp/habu-name-intern-completion-20260928-02.md`.
 
@@ -368,7 +368,7 @@ not the sum of gross savings.
 Independent review accepted all three changes. Two native generations are
 byte-identical, and the integrated native gate passes all 490 suites. The
 first attempt timed out during documented host sleep; the unchanged candidate
-passed with a process-scoped sleep assertion. Maki's native image falls from
+passed with a process-scoped sleep assertion. Etch's native image falls from
 25,675,040 to 25,264,640 bytes; its routed two-filter PCB remains byte-identical,
 and the existing negotiated-routing suite passes. External KiCad DRC was not
 part of these checks. Commands, signed images, output boards, hashes and logs
@@ -383,7 +383,7 @@ The native emitter also eliminates proven adjacent frame reloads. Independent
 review accepted both changes, two native generations are byte-identical, and
 the complete 490-suite gate passes.
 
-Maki's native REPL image is **22,687,328 bytes**, down 2,577,312 from the
+Etch's native REPL image is **22,687,328 bytes**, down 2,577,312 from the
 preceding product. Its raw warm DATA window alone shrinks by 2,495,588 bytes;
 no snapshot codec changed. Routing/geometry and negotiation checks pass with
 both exported boards byte-identical. Final measurements, failed runs, the
@@ -392,7 +392,7 @@ retained at `~/.cache/tmp/habu-opt-round2/combined/RESULTS.md`.
 
 The following storage changes remove the checker boot reservations, give
 SPA/TV/SEEN mapped ownership, and omit full-image driver/signers from warm
-capture. Maki is now 21,702,368 bytes, another 984,960 bytes smaller; routing
+capture. Etch is now 21,702,368 bytes, another 984,960 bytes smaller; routing
 and negotiation pass with byte-identical board exports. The native engine is
 2,906,359 bytes, 16,512 bytes larger: sparse DATA already omitted most removed
 zero storage, and owner code/alignment increase its physical size. Two native
@@ -404,15 +404,15 @@ Evidence, including the rejected first run, is retained in
 The packed REQUIRE owner is qualified for integration against that storage
 product. Five native generations are byte-identical; the new engine remains
 2,906,359 bytes while its captured DATA span falls from 6,648,272 to
-6,130,400 bytes. Fresh native Maki falls from 21,702,368 to 21,193,472 bytes,
+6,130,400 bytes. Fresh native Etch falls from 21,702,368 to 21,193,472 bytes,
 and its raw DATA window falls from 13,252,884 to 12,742,308 bytes. Unchanged
 warm recapture adds no DATA bytes; one new provided fact adds 68 live path
 bytes and a 16,384-byte raw DATA-window increase on recapture, including
 capture overhead and a retained previous pool. The frozen candidate passes all
-490 native suites. The packed and prior native Maki images export a
+490 native suites. The packed and prior native Etch images export a
 byte-identical routed and geometry-checked two-filter board; the packed image
 also passes the retained negotiation suite and exports a byte-identical
-shared-channel board. The new engine and Maki image pass strict macOS signature
+shared-channel board. The new engine and Etch image pass strict macOS signature
 verification. External KiCad DRC/connectivity, IPC and
 map/unmap/DATA-allot fault injection remain untested. The exact source
 manifest, executables, logs, sizes and limits are retained in
@@ -453,7 +453,7 @@ investigable.
 The existing DATA-reachability owner remains
 habu-prove-the-closure-5b7d02bb. Implemented reductions are qualified above;
 the remaining unimplemented rows describe open work.
-The current downstream readiness check is Maki; older task text naming other
+The current downstream readiness check is Etch; older task text naming other
 applications does not expand this optimization work.
 
 ## Priorities supported by current evidence

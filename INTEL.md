@@ -125,7 +125,7 @@ compiles against, and the Landed section names them exactly.
   origin and tell Joel or hazel the bookmark name; do not move
   `hazel/integration` or `cedar/compiler-integration` yourself.
 - Library public-surface changes are announced to the consumer repositories
-  (loom, maki, kiba, radar, Tender) before they land.
+  (loom, etch, kiba, radar, Tender) before they land.
 
 ## Design facts that must not drift
 

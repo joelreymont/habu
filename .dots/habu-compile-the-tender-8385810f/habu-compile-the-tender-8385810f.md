@@ -43,7 +43,7 @@ blocks:
 
 Plan: [PLAN.md](../../PLAN.md). Owner: Cedar for integration; implementation leaves are unassigned until claimed. This campaign reuses the existing speed work and the current correctness findings, without repeating landed session/allocator/hash work.
 
-Completion: optimizing native compiler selfbuild/product rebuild, executable compilation independent of JIT invocation, correct first-generation layout and persistence, full native gate and Tender/Maki/Kestrel handoff. REPL/ordinary loader use JIT; AOT builds execute a compiled native compiler.
+Completion: optimizing native compiler selfbuild/product rebuild, executable compilation independent of JIT invocation, correct first-generation layout and persistence, full native gate and Tender/Etch/Kestrel handoff. REPL/ordinary loader use JIT; AOT builds execute a compiled native compiler.
 
 Speed acceptance: same pinned Tender source, all 3079 definitions counted through NCOMP, no object cache, normal checker/validators, under 1.7 s wall for complete optimizing load and trivial floor below 500 us. Report total executable-build wall including loading/capture/write alongside this target. Record source/bin IDs and actual compiler provenance. Run controlled quiet-machine before/after and per-definition pass curves; use existing Habu tools, no new measurement framework. Historical 153.3→131.6 s and 4106→3668 us used JIT-built compiler and do not prove all-AOT speed. If target still fails, keep campaign open and name measured remaining owner/pass; do not claim a projected sum.
 
@@ -101,7 +101,7 @@ pins and the uncached speed targets remain unchanged.
 
 Three interleaved append-B/H pairs measured trivial AOT 994/953, 994/953, 996/961 us
 and three-operation 705/645, 707/640, 707/641 us; JIT 29–30 us unchanged, exactly 200
-NCOMP calls each. Own lanes drained; external Maki lint used about 34% CPU. This
+NCOMP calls each. Own lanes drained; external Etch lint used about 34% CPU. This
 is composed-product evidence, not an isolated reader result or quiet acceptance.
 Frozen OPEN count falls 2895→328 with every read validation retained. Trivial
 <500us, complete uncached Tender timing, combined full gate and downstream

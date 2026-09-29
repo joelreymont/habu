@@ -29,7 +29,7 @@ Remaining implementation and qualification:
    generation r1 (source 93a972eb, SHA 07d6f0db) builds and passes source-free
    startup, exact-span and focused stack/JIT/REPL tests. Its same-source r2
    rebuild is running. Neither is release-qualified yet.
-4. Supply the identified source/engine pair for Maki, Tender and Kestrel
+4. Supply the identified source/engine pair for Etch, Tender and Kestrel
    acceptance. Preserve their existing pins until their owners accept it.
 5. Complete the requested runtime page-size query (c9528f06). Socket/FIFO tree
    removal (7bef09db) is reviewed and integrated, with ordinary and tier 1 tests
@@ -65,7 +65,7 @@ Completion means:
   compiler/application definitions, and no JIT fallback.
 - Correct first-generation layout, artifact IO/merge, capture, restore, repeated
   capture and checked REPL behavior.
-- Tender, Maki and Kestrel acceptance on an identified replacement toolchain.
+- Tender, Etch and Kestrel acceptance on an identified replacement toolchain.
   Preserve their accepted pins until their owners verify the replacement.
 - All 3,079 definitions of the pinned Tender workload through the optimizer in
   under 1.7 seconds, uncached, with normal checks and validation. Trivial-definition
@@ -318,7 +318,7 @@ currently rejects under AOT but passes under JIT. Reuse the verified effect
 contract; ordinary loader/REPL routing remains JIT.
 
 Reuse standalone delivery for joint acceptance: Tender's local `required` scanner
-case and full runner closure; Maki's `GEOM:SHAPED-PAIR`, native build, warm capture,
+case and full runner closure; Etch's `GEOM:SHAPED-PAIR`, native build, warm capture,
 restore and REPL; Kestrel's compiler and embedded target handoff. Report hardware
 acceptance separately where hardware is required. Minimal CLI help is insufficient.
 

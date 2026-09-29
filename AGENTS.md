@@ -1,7 +1,7 @@
 # Habu — checked Forth
 
 Habu is a general-purpose Forth with a native compiler and a stack-effect type
-checker. [Maki](../maki) is a separate PCB CAD application.
+checker. [Etch](../etch) is a separate PCB CAD application.
 Application-specific policy and model workflows do not
 belong in the language core.
 
@@ -89,7 +89,7 @@ belong in the language core.
   location alone does not require it. Check multi-generation convergence when
   codegen, self-hosting or capture changes can alter successive engine output.
   Gforth recovery is a separate, occasional check for seed, mirror, launcher or
-  recovery dependency changes, or an explicit release recovery audit. Maki owns
+  recovery dependency changes, or an explicit release recovery audit. Etch owns
   its downstream checks. Documentation, moves and other mechanical changes
   need proportionate checks.
 - Report actual results and untested boundaries. Never weaken a claim to make a

@@ -13,12 +13,12 @@ single-use integer comparisons followed by `0=`, including shared values,
 canonical masks, overlapping chains and branch/select consumers. Independent
 review passed after correcting a consuming equality's trap-schema check.
 Focused semantic tests, five-generation engine/names equality, signatures and
-both actual Maki board smokes passed. The full 492-suite registry was not run.
+both actual Etch board smokes passed. The full 492-suite registry was not run.
 
 The candidate adds 1,556 bytes of optimizer code and removes 1,680 emitted
 bytes: only **124 net AOT code bytes saved**. Other serialized content grows
 200 bytes, so engine payload grows **76 bytes** and the signed file remains
-2,790,775 bytes. Maki code falls 660 bytes, exactly offset by DATA/other growth;
+2,790,775 bytes. Etch code falls 660 bytes, exactly offset by DATA/other growth;
 its file remains 20,553,248 bytes. The local REQUIRE-BOOT-OPEN? body shrinks
 48 to 36 bytes, but that does not justify the aggregate tradeoff.
 

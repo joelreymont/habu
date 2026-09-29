@@ -62,11 +62,11 @@ saving. The combined product has these measured sections:
 Added checker machinery makes the combined code section slightly larger; its
 metadata reduction is the net win. Two native generations are byte-identical,
 and the integrated native gate passes all 490 suites.
-Maki's native REPL image falls from 25,264,640 to 22,687,328 bytes without
+Etch's native REPL image falls from 25,264,640 to 22,687,328 bytes without
 snapshot compression. Existing routing/geometry and negotiation checks produce
 byte-identical KiCad board artifacts. This does not measure external KiCad DRC.
 
-Of Maki's 2,577,312-byte reduction, 2,495,588 bytes are removed from the raw
+Of Etch's 2,577,312-byte reduction, 2,495,588 bytes are removed from the raw
 warm DATA window, 75,300 from embedded native sections, 1,400 from the warm
 code region and 5,024 from the signature. Padding is unchanged. The raw window
 falls from 16,732,124 to 14,236,536 bytes; it is still copied verbatim, with
@@ -100,12 +100,12 @@ address-cell registry.
 Safe general DATA elimination therefore needs producer-owned extents, lifetime
 invalidation and current bounded-access facts, with unknown accesses retaining
 their possible targets. A conservative first version that rejects every generic
-memory operation would improve empty MAIN but provide no warm Maki saving.
+memory operation would improve empty MAIN but provide no warm Etch saving.
 That is not the next optimization: remove storage at existing, explicit owner
 lifetime boundaries first. The broader DATA issue remains open as
 `habu-prove-the-closure-5b7d02bb`.
 
-Warm snapshot zero counts likewise do not prove dead allocations. Maki's
+Warm snapshot zero counts likewise do not prove dead allocations. Etch's
 preceding image has 15,218,805 zero bytes within its 16,732,124-byte DATA
 window. Its final USIGS/NORETS stores contain 4,194,576 used bytes and only
 65,264 bytes of spare capacity. Earlier copies reserve another 3,014,656
@@ -122,7 +122,7 @@ retaining runtime capacity does not itself justify storing every reserved byte.
 ## Allocate checker scratch when needed
 
 Lazy SYMS and NORETS storage, owned SPA/TV/SEEN mappings, and removal of the
-full-image driver/signers from warm capture reduce Maki's signed REPL image
+full-image driver/signers from warm capture reduce Etch's signed REPL image
 from 22,687,328 to **21,702,368 bytes**: 984,960 bytes (4.34%) smaller.
 Semantic registries still persist, scratch mappings are released at capture,
 and the stripped linker loads its own driver and signer dependencies.
@@ -135,7 +135,7 @@ No snapshot codec or general DATA reclamation is involved.
 | Warm out-of-line record names | 19,900 | 19,860 |
 | Embedded native sections, net change | — | +2,276 |
 | Mach-O code signature | 44,528 | 42,608 |
-| Complete signed Maki file | 22,687,328 | 21,702,368 |
+| Complete signed Etch file | 22,687,328 | 21,702,368 |
 
 The DATA-window reduction is 983,652 bytes; it includes the writer's absorbed
 alignment padding and is not an allocator-by-allocator attribution. Removed
@@ -147,10 +147,10 @@ Its sparse DATA encoding already omitted most removed zero storage; the new
 owner code and alignment cost more physical bytes. Two native generations and
 their name sidecars are byte-identical. Engine SHA-256:
 `e2754336b266146d7bb33de3da8d64b66bdff2459c7fe829b0f928853c9363a6`.
-The Maki image SHA-256 is
+The Etch image SHA-256 is
 `2b070253266b4dd26d819ba66cf501deac55a564cd3aa7650d8889c2ccf72f83`.
 
-Existing native Maki routing/geometry and negotiation checks pass; both KiCad
+Existing native Etch routing/geometry and negotiation checks pass; both KiCad
 board exports are byte-identical to the preceding product, and the image's
 strict signature check passes. The integrated native gate passes all 490 suites.
 Its first run exposed an invalid timeout fixture that evaluated compile-only
@@ -175,7 +175,7 @@ falls from 6,648,272 to 6,130,400 bytes, but equal file lengths do not mean
 equal DATA layouts. The new engine SHA-256 is
 `4caa9e7dbb75d11eed663e5450ef8e0c61bc45a80fae11ffab1a877e07ee88d5`.
 
-| Native Maki REPL image | File bytes | Raw DATA window | Registry rows | Live path bytes |
+| Native Etch REPL image | File bytes | Raw DATA window | Registry rows | Live path bytes |
 |---|---:|---:|---:|---:|
 | Previous storage product | 21,702,368 | 13,252,884 | — | — |
 | Fresh packed build | 21,193,472 | 12,742,308 | 180 | 6,054 |
@@ -192,11 +192,11 @@ to the path fact. Under the owner rules, mutation retains the earlier pool
 block and adds a new packed copy.
 
 Five native generations and their name sidecars are byte-identical. The
-490-suite native gate passes on the frozen candidate. A real two-filter Maki
+490-suite native gate passes on the frozen candidate. A real two-filter Etch
 program routes, checks geometry and exports a byte-identical 13,228-byte KiCad
 board from the previous and packed native images. The existing negotiation
 fixture passes on the packed image, and its 7,936-byte shared-channel export is
-byte-identical to both preserved baselines. Both the new engine and Maki image
+byte-identical to both preserved baselines. Both the new engine and Etch image
 pass macOS strict signature verification. External KiCad DRC,
 connectivity and IPC were not exercised on this host; fault injection for
 map/unmap and DATA-allot failures and a 512-row maximum-length registry were

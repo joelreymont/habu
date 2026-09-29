@@ -43,14 +43,14 @@ The prefix for these names is `archive/alder-20260924/alder-`.
 
 ## Historical application and language research
 
-These are retained for value assessment, not included in Maki PCB readiness.
+These are retained for value assessment, not included in Etch PCB readiness.
 Obsolete GPU/ML application branches have been retired following the extraction
-of that application work from Habu and the decision to focus on Maki PCB CAD.
+of that application work from Habu and the decision to focus on Etch PCB CAD.
 
 - `archive/mamushi-body-decls-20260820` and
   `archive/mamushi-macrofix-20260820`: earlier language work. The Mamushi
   February fixes remain ancestors of the retained Mamushi tips.
 - `archive/recovered-odin-habu-20260821`: its language fixes are integrated,
   but the camera/perception application port has no established external copy.
-- `push-tmqoymmutxvp`: application router draft to compare with current Maki.
+- `push-tmqoymmutxvp`: application router draft to compare with current Etch.
 - `push-vmznzzmovrmv`: document/report application work outside the language.

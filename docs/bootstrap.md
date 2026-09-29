@@ -687,7 +687,7 @@ working directory; run source-based tools from the selected installed tree:
 
 ```sh
 cd ~/.local/lib/habu/current
-~/.local/bin/hb --load /absolute/path/to/maki/maki.f
+~/.local/bin/hb --load /absolute/path/to/etch/etch.f
 ```
 
 Retain the previous version when promoting a new verified release so switching

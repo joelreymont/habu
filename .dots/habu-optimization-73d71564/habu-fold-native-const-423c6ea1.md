@@ -16,7 +16,7 @@ AOT code** (1,543,744 to 1,544,952). The signed file stays 2,790,775 bytes only
 because padding absorbs the increase; DATA values also grow 208 bytes.
 
 This implementation was rejected and is not in master. Full qualification was
-stopped after B2 economics; no full gate, later convergence or Maki result is
+stopped after B2 economics; no full gate, later convergence or Etch result is
 claimed. Do not mark the optimization complete or substitute manual source
 literals to hide the compiler gap. A further design needs a demonstrated net
 benefit that includes optimizer code, or a separately justified broader pass.
