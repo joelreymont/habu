@@ -16,3 +16,4 @@ Depends: habu-move-tier-1-aacb6029 (I5a).
 Route: Alder (shared: src/habu/definers.f, src/habu/outer.f and the test).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+- From I4 design: this leaf also owns a top-level `[:`, which captures a quotation body from interpret mode (dispatched before find, `habu2.f:8339-8362`).

@@ -17,3 +17,4 @@ Depends: habu-write-and-link-f6e6017f (X4a), habu-carry-the-shadow-dcb84138 (X2b
 Route: direct.
 Ownership: krait (Intel lane).
 Claim: unassigned.
+- From I4a: primitive flag cells come from `ENGINE-PRIMS:DNAME`, which carries each primitive's min-in.

@@ -16,3 +16,4 @@ Depends: habu-capture-does-in-46068833 (I5d).
 Route: Alder (shared: src/habu/definers.f, src/habu/outer.f and the test).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+- From I4 design: this leaf also owns interpret-mode `immediate` (`habu2.f:8354`), which marks the definition it closes.

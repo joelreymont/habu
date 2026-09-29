@@ -16,3 +16,4 @@ Depends: habu-boot-and-exit-367c46f5 (K3).
 Route: direct.
 Ownership: krait (Intel lane).
 Claim: unassigned.
+- From I4a: the body list includes `execute-floor ( n -- bool )` (call the xt, then clamp and report a stack below S0).

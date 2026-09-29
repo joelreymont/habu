@@ -30,3 +30,4 @@ Design correction, rev 2 (absorbs I1 `habu-mark-blob-provided-21605a53`, closed;
 - Verify (spark): rebuild; the nested cases on the rebuilt engine through plain `evaluate` (the only `evaluate`); gate (every suite's `evaluate` now runs the captured one); `bin/hb --load test/prim-parity.f` and `test/primitive-registry.f` unchanged; chain to convergence (a builder change: gen2 == gen3); once by hand, build with the `outer.f` manifest row removed and record the rc-76 prefix-provided refusal; the periodic no-binary check (`docs/bootstrap.md:209-220`): the cold `hb-stdin` keeps the assembly body.
 - Depends: I5e, I8, K4 (`habu-share-the-primitive-58c235e5`). Base on X7's bookmark until K4/X7 land. Serialise `habu2.f` (K4, X7, I6, I10c), `prims.f` (I6), `native-runtime.f` (I10c).
 - Route: Alder (shared: every file above except `outer.f` and the test).
+- From I4 design: retire `SOURCE-ROOT:INCLUDE-INTERPRET`; `INCLUDE-EVALUATE` calls the one `evaluate`.

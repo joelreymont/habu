@@ -16,3 +16,4 @@ Depends: habu-close-definitions-with-8ace78d8 (I5e), habu-add-the-nemit-201c6fbf
 Route: Alder (shared: src/habu/definers.f, src/habu/aot-closure.f, src/habu/address-carrier.f, src/habu/aot-capture.f).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+- From I4 design: this leaf also owns the interpret-mode defer words `is`, `defer-unset` and `undefine` (dispatched before find, `habu2.f:8339-8362`).
