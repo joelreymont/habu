@@ -1199,7 +1199,7 @@ create NAMEBUF NAME-CAP allot
    CTX BLD  CTX BLD X64IR:KEY-COND
    CTX BLD  id COMPARE-COND  X64IR:COND-ATTR  IR-BUILD:ADD-ATTR ;
 
-\ Compare and set a boolean: ONE operation and three instructions, because the
+\ Compare and set a 0/-1 flag: ONE operation and four instructions, because the
 \ flags between them are a single architectural resource no value may stand for.
 \ It is not fused into the branch below it in this slice.
 : EMIT-CMPSET ( IR-ID:ir-op-id -- )

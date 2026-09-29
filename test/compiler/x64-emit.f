@@ -378,9 +378,9 @@ create TXT
    HIR-OPCODE:INVERT a UNOP RET1
    CLOSE-FUN ;
 
-\ `: LEAF ( a b -- n ) < ;` - compare, set a byte, widen it: one dialect
-\ operation and three instructions, because the flags between them are a single
-\ architectural resource no value stands for.
+\ `: LEAF ( a b -- n ) < ;` - compare, set a byte, widen it, negate it to the
+\ all-ones flag: one dialect operation and four instructions, because the flags
+\ between them are a single architectural resource no value stands for.
 : BUILD-CMPSET ( -- )
    2 1 OPEN-FUN
    ARG+ {: a:IR-ID:ir-value-id :}
@@ -388,7 +388,7 @@ create TXT
    HIR-OPCODE:LT a b BINOP RET1
    CLOSE-FUN ;
 
-\ The same three instructions against a folded literal, again on the second
+\ The same four instructions against a folded literal, again on the second
 \ argument so no instruction names rax.
 : BUILD-CMPSETI ( -- )
    2 1 OPEN-FUN
@@ -1071,22 +1071,24 @@ public
    \ mc: retq
    s" 48f7d0c3" X=
 
-   s" compare, set and widen" T-LABEL
+   s" compare, set, widen and negate" T-LABEL
    WBND [: CMPSET-BYTES ;] IR-CTX:WITH-CONTEXT
    \ mc: cmpq %rcx, %rax
    \ mc: setl %al
    \ mc: movzbq %al, %rax
+   \ mc: negq %rax
    \ mc: retq
-   s" 4839c80f9cc0480fb6c0c3" X=
+   s" 4839c80f9cc0480fb6c048f7d8c3" X=
 
-   s" compare against a folded literal, set and widen" T-LABEL
+   s" compare against a folded literal, set, widen and negate" T-LABEL
    WBND [: CMPSETI-BYTES ;] IR-CTX:WITH-CONTEXT
    \ mc: subq %rax, %rcx
    \ mc: cmpq $1000, %rcx
    \ mc: setl %al
    \ mc: movzbq %al, %rax
+   \ mc: negq %rax
    \ mc: retq
-   s" 4829c14881f9e80300000f9cc0480fb6c0c3" X=
+   s" 4829c14881f9e80300000f9cc0480fb6c048f7d8c3" X=
 
    s" the literal no immediate holds, materialised" T-LABEL
    WBND [: MOVI-BYTES ;] IR-CTX:WITH-CONTEXT

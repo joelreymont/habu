@@ -1096,9 +1096,10 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the fused comparisons ---------------------------------------------------
-\ ONE operation and three instructions - compare, set one byte on the condition,
-\ widen it - because the flags between them are a single architectural resource
-\ no value stands for and the allocator may not hand out.
+\ ONE operation and four instructions - compare, set one byte on the condition,
+\ widen it, negate it to the all-ones flag - because the flags between them are a
+\ single architectural resource no value stands for and the allocator may not
+\ hand out.
 : DEF-CMPSET ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b X64IR-OPCODE:CMPSET OPCODE IR-SCHEMA:BEGIN-OP

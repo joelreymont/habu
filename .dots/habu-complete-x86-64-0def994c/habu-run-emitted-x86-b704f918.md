@@ -4,8 +4,6 @@ status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.424177+03:00"
-blocks:
-  - habu-return-all-ones-7f25749e
 ---
 
 Problem: `test/x86-64-peer-image.f` executes one routine; new forms have only pinned bytes (`test/compiler/x64-emit.f`). Every other C leaf verifies through this family.

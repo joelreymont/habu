@@ -468,13 +468,16 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    {: id:IR-ID:ir-op-id s:ptr :}
    id 0 RES-R64  s ENC-NOT ;
 
-\ THREE INSTRUCTIONS FOR ONE OPERATION, because the flags between them are a
+\ FOUR INSTRUCTIONS FOR ONE OPERATION, because the flags between them are a
 \ single architectural resource no SSA value stands for: compare, set the
-\ result's low byte on the condition, widen that byte into the whole register.
+\ result's low byte on the condition, widen that byte into the whole register,
+\ negate it. A Habu flag is ALL ONES - `1 2 < .` prints -1, and ARM64 answers
+\ with `csetm` - so the 0/1 that `setcc` and `movzx` leave becomes 0/-1.
 : PUT-SETCC ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id COND-OF  id 0 RES-R8  s ENC-SETCC
-   id 0 RES-R64  id 0 RES-R8  s ENC-MOVZX-8-RR ;
+   id 0 RES-R64  id 0 RES-R8  s ENC-MOVZX-8-RR
+   id 0 RES-R64  s ENC-NEG ;
 
 : PUT-CMPSET ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
