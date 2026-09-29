@@ -5,6 +5,7 @@ require lib/test/runner.f
 require test/gate-pool.f
 require test/cold-engine.f
 require test/whitebox-engine.f
+require test/gate-entry-guard.f
 require lib/engine-id.f                  \ ENGINE-ID:PATH$ - this gate's own binary
 
 package STDLIB-GATE
@@ -147,6 +148,7 @@ variable WB-FAIL-RC                      \ exit status a red whitebox row dies w
 \ writer's own native build. The whitebox build is the first fork.
 : SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS
+   ENTRY-GUARD:CHECK
    s" habu-native-suite" GT-START
    COLD-ENGINE:ENSURE
    GT-POOL-RESET

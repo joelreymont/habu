@@ -66,6 +66,14 @@ gives that slot no directory.
   closes its `package` before `T-REPORT`; a later suite otherwise dies exit 75
   with a bare token, one or two suites after the culprit. Fixture identities
   carry the test's own tag so two suites never intern one name.
+- Each registered suite file is an execution entry. Put reusable definitions in
+  an inert helper, then let each row run only its own assertions. Before the
+  first fixture build, the gate compares canonical file identities across
+  registered file arguments, source imports and path literals consumed by
+  known load helpers. It reports the referring file, line and target row. The
+  shared `test/compiler/aot-mode.f` prefix selects a tier and is not an entry. Run
+  `bin/hb --load test/gate-entry-guard-test.f` to check this boundary without
+  starting the full suite.
 - A `WHITEBOX-SUITE` row is the gate-only kind: the runner hands it the gate's
   private copy of the unsealed engine (`test/whitebox-engine.f`) because such a
   file reaches inside the engine, and the sealed `bin/hb` refuses those tokens

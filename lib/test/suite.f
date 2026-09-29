@@ -334,6 +334,7 @@ defer WHITEBOX-RUNNER ( ptr u8 n -- )
 public
 
 EXPORT ITEM-MAX
+EXPORT ITEM-NAME$
 
 : SETUP! ( [ -- ] -- )
    is SETUP ;
@@ -364,6 +365,21 @@ EXPORT ITEM-MAX
 
 : ITEMS-RUN ( -- n )
    ITEM-RAN @ ;
+
+\ Visit the source files before a row's script separator. The registry is the
+\ authority for what the adapter passes after --load; the same file can belong
+\ to several rows with different argv or engine tiers.
+: VISIT-ROW-FILES ( n [ n ptr u8 n -- ] -- ) {: id:n visit :}
+   id ITEM-ARG-OFF@
+   id ITEM-ARG-COUNT@ 0 ?do
+      dup ARGS + @ {: u:n :}
+      dup ARGS + cell + u s" --" STR= if drop unloop exit then
+      id over ARGS + cell + u visit execute
+      cell + u +
+   loop drop ;
+
+: VISIT-LOAD-FILES ( [ n ptr u8 n -- ] -- ) {: visit :}
+   ITEM-N @ 0 ?do i visit VISIT-ROW-FILES loop ;
 
 \ Does any registered item need the whitebox engine? The adapter asks before the
 \ first fork, so a gate with no whitebox suite pays nothing for one.
