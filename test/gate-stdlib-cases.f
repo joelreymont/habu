@@ -4,24 +4,7 @@ using TEST
 
 \ Registry order is start order: GT-POOL-START takes the rows in the order
 \ below and each waits for a free slot, so a long row registered late starts
-\ late and alone sets the gate's tail.
-
-\ Start long native build and capture suites early so they overlap short suites.
-SUITE build-fixpoint-fixtures
-   tools/build-fixpoint-test.f
-;SUITE
-
-SUITE build-fixpoint-snapshot
-   tools/build-fixpoint-snapshot-test.f
-;SUITE
-
-SUITE build-fixpoint-source
-   tools/build-fixpoint-source-test.f
-;SUITE
-
-SUITE build-fixpoint-sandbox
-   tools/build-fixpoint-sandbox-test.f
-;SUITE
+\ late and alone sets the gate's tail. The long rows lead, longest first.
 
 \ A ROW STAYS UNDER HALF ITS DEADLINE IN THE POOL. tools/hb-build-test.f once
 \ ran every hb-build group in one row, and that row took 353-355 s of the 360 s
@@ -32,13 +15,98 @@ SUITE build-fixpoint-sandbox
 \ alone, so a solo time proves nothing. Move a fixture group into a new row
 \ file - the shared fixture stays in the family's *-lib.f - rather than letting
 \ one row grow past that.
+
+SUITE build-fixpoint-snapshot
+   tools/build-fixpoint-snapshot-test.f
+;SUITE
+
+SUITE stripped-entry
+   test/stripped-entry.f
+;SUITE
+
+SUITE aot-wide-format
+   test/aot-wide-format-suite.f
+;SUITE
+
+SUITE hb-build-stripped
+   tools/hb-build-stripped-test.f
+;SUITE
+
+SUITE hb-build-stripped-cells
+   tools/hb-build-stripped-cells-test.f
+;SUITE
+
+SUITE hb-build-stripped-cache
+   tools/hb-build-stripped-cache-test.f
+;SUITE
+
+SUITE aot-named-cells-image
+   test/aot-named-cells-suite.f
+;SUITE
+
+SUITE build-fixpoint-fixtures
+   tools/build-fixpoint-test.f
+;SUITE
+
+SUITE hb-build-large-source
+   tools/hb-build-large-source-test.f
+;SUITE
+
+\ checker-scan-index is the first WHITEBOX-SUITE row. It holds the registry
+\ until the gate's whitebox build retires (WB-WAIT), so the rows above it keep
+\ the other slots busy for that build.
+WHITEBOX-SUITE checker-scan-index
+   test/checker-scan-index-suite.f
+;SUITE
+
+WHITEBOX-SUITE checker-scan-index-rollback
+   test/checker-scan-index-rollback-suite.f
+;SUITE
+
 SUITE hb-build-fixtures
    tools/hb-build-test.f
    lib/build-cache-test.f
 ;SUITE
 
+SUITE hb-build-stripped-chain
+   tools/hb-build-stripped-chain-test.f
+;SUITE
+
+SUITE aot-chain-producer
+   test/aot-chain-producer-suite.f
+;SUITE
+
+SUITE hb-build-stripped-lifecycle
+   tools/hb-build-stripped-lifecycle-test.f
+;SUITE
+
 SUITE hb-build-cli-errors
    tools/hb-build-cli-errors-test.f
+;SUITE
+
+\ The native-window rows fetch the whitebox engine themselves
+\ (test/whitebox-child.f). Registered before the first WHITEBOX-SUITE row, which
+\ holds the registry until the gate's whitebox build retires, native-window-owner
+\ built its own copy beside that build and was killed at 360 s; after it, each
+\ row copies the finished artifact.
+SUITE native-window-source
+   test/native-window-source.f
+;SUITE
+
+SUITE native-window-boundary
+   test/native-window-boundary.f
+;SUITE
+
+SUITE native-window-owner
+   test/native-window-owner.f
+;SUITE
+
+SUITE aot-chain-location
+   test/aot-chain-location-suite.f
+;SUITE
+
+SUITE aot-chain-target
+   test/aot-chain-target-suite.f
 ;SUITE
 
 SUITE hb-build-aot
@@ -51,85 +119,20 @@ SUITE hb-build-aot-cache
    tools/hb-build-direct-lints-test.f
 ;SUITE
 
-SUITE hb-build-stripped
-   tools/hb-build-stripped-test.f
+SUITE native-window-payload
+   test/native-window-payload.f
 ;SUITE
 
-SUITE hb-build-stripped-chain
-   tools/hb-build-stripped-chain-test.f
-;SUITE
-
-SUITE hb-build-stripped-lifecycle
-   tools/hb-build-stripped-lifecycle-test.f
-;SUITE
-
-SUITE hb-build-stripped-cells
-   tools/hb-build-stripped-cells-test.f
-;SUITE
-
-SUITE hb-build-stripped-cache
-   tools/hb-build-stripped-cache-test.f
-;SUITE
-
-SUITE hb-build-large-source
-   tools/hb-build-large-source-test.f
+SUITE build-fixpoint-source
+   tools/build-fixpoint-source-test.f
 ;SUITE
 
 SUITE aot-chain-capture
    test/aot-chain-capture-suite.f
 ;SUITE
 
-SUITE aot-chain-producer
-   test/aot-chain-producer-suite.f
-;SUITE
-
-SUITE aot-chain-location
-   test/aot-chain-location-suite.f
-;SUITE
-
-SUITE aot-chain-target
-   test/aot-chain-target-suite.f
-;SUITE
-
-SUITE aot-wide-format
-   test/aot-wide-format-suite.f
-;SUITE
-
-WHITEBOX-SUITE checker-scan-index
-   test/checker-scan-index-suite.f
-;SUITE
-
-WHITEBOX-SUITE checker-scan-index-rollback
-   test/checker-scan-index-rollback-suite.f
-;SUITE
-
-\ The native-window rows fetch the whitebox engine themselves
-\ (test/whitebox-child.f). Registered before the first WHITEBOX-SUITE row, which
-\ holds the registry until the gate's whitebox build retires, native-window-owner
-\ built its own copy beside that build and was killed at 360 s; after it, each
-\ row copies the finished artifact.
-SUITE native-window-owner
-   test/native-window-owner.f
-;SUITE
-
-SUITE native-window-source
-   test/native-window-source.f
-;SUITE
-
-SUITE native-window-boundary
-   test/native-window-boundary.f
-;SUITE
-
-SUITE native-window-payload
-   test/native-window-payload.f
-;SUITE
-
-SUITE stripped-entry
-   test/stripped-entry.f
-;SUITE
-
-SUITE aot-named-cells-image
-   test/aot-named-cells-suite.f
+SUITE build-fixpoint-sandbox
+   tools/build-fixpoint-sandbox-test.f
 ;SUITE
 
 SUITE os-memory
