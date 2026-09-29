@@ -1,8 +1,8 @@
 \ prim-parity.f — the engine primitive parity gate.
 \
 \ src/habu/prims.f is the machine-independent specification of the engine's
-\ primitives. This file is the behaviour half of that contract: one case set per
-\ primitive, written once in target-free checked Habu, run against the backend's
+\ primitives. This file is the behaviour half of that contract: case sets
+\ written once in target-free checked Habu, run against the backend's
 \ own body AND — where the row carries a `REF` clause — against the reference
 \ implementation in src/habu/prim-ref.f, asserting the two agree. The same file
 \ runs unchanged on the next backend: same cases, same expectations, so the
@@ -42,10 +42,11 @@
 \ lib/float-test.f and to f64 text, not here.
 \
 \ COVERAGE IS BY ROW. The zero-based overload ordinal selects one row of that
-\ name in table order. Closing a nonempty case set marks only that row; a
+\ name in table order. Closing a nonempty case set marks that row; a
 \ numeric case never covers a pointer or boolean sibling. REF also belongs to
 \ that exact row. Uncovered rows print their absolute table index with the name;
-\ the gate reports that gap rather than failing on it.
+\ the gate reports that gap rather than failing on it. The memory store/fetch
+\ pairs exercise both primitives in one round trip and mark both rows.
 \
 \ A REFUSAL IS A CASE TOO. A primitive that rejects its inputs is pinned by the
 \ code it throws, not by a value: `NN-THROWS` runs the arm under `catch` and the
@@ -343,14 +344,13 @@ $3A constant COLON-B
    s" refusing binary reference" na nu NO-ARM ;
 
 \ ---- memory ------------------------------------------------------------------
-\ One scenario per row over the file's own fixtures: the case value goes in
-\ through the primitive under test and comes back out, so a store row is read
-\ back and a fetch row is written first. The paired names share that round trip;
-\ their separate CASES sets still count both primitive rows.
+\ A round trip over the file's own fixtures passes the case value through a
+\ store primitive and reads it back through its paired fetch primitive. Each
+\ store/fetch pair runs once and covers both rows.
 : MEM-PRIM ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
-   na nu s" !" STR= na nu s" @" STR= or IF
+   na nu s" !" STR= IF
       v FIX-CELLS ! FIX-CELLS @ EXIT THEN
-   na nu s" c!" STR= na nu s" c@" STR= or IF
+   na nu s" c!" STR= IF
       v FIX-BYTES c! FIX-BYTES c@ EXIT THEN
    na nu s" +!"        STR= IF v FIX-CELLS ! BUMP FIX-CELLS +! FIX-CELLS @ EXIT THEN
    na nu s" count"     STR= IF v FIX-BYTES c! FIX-BYTES count nip EXIT THEN
@@ -400,6 +400,12 @@ $3A constant COLON-B
 
 : COVERED? ( n -- bool )
    COVERED swap + c@ 0= 0= ;
+
+: MARK-PAIRED ( ptr u8 n -- )
+   0 FIND-ROW dup 0 < IF
+      s" prim-parity: missing paired primitive" PARITY-RC die
+   THEN
+   MARK ;
 
 public
 
@@ -914,24 +920,14 @@ s" +" -1 FIND-ROW -1 T=
        $1234                           $1234  MEM
           -1                              -1  MEM
 ;CASES
-
-0 CASES @
-           0                               0  MEM
-       $1234                           $1234  MEM
-          -1                              -1  MEM
-;CASES
+s" @" MARK-PAIRED
 
 0 CASES c!
            0                               0  MEM
          $7F                             $7F  MEM
          $FF                             $FF  MEM
 ;CASES
-
-0 CASES c@
-           0                               0  MEM
-         $7F                             $7F  MEM
-         $FF                             $FF  MEM
-;CASES
+s" c@" MARK-PAIRED
 
 0 CASES +!
            0                               3  MEM
