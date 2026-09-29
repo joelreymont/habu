@@ -2488,8 +2488,7 @@ public
    14 DICT-CAP LIT64,  14 14 NDICT SUB,
    9 14 CMP,  C-HI bad BCOND,       \ unsigned comparison rejects negative count
    14 DREC MOVZ,  14 9 14 MUL,  14 SP 48 STR,
-   13 DREC MOVZ,  13 NDICT 13 MUL,  13 DBASE 13 ADD,  13 SP 40 STR,
-   9 SP 16 LDR,  10 CP 0 ADDI,  GUARD-CODE-SPAN
+   12 DREC MOVZ,  12 NDICT 12 MUL,  12 DBASE 12 ADD,  12 SP 40 STR,
    \ A sealed image cannot acquire a record in an already protected wordlist.
    17 DATA SEAL-NDICT-CELL LDR,  17 widdone CBZ,
    15 SP 8 LDR,  16 SP 0 LDR,
@@ -2499,6 +2498,7 @@ public
       13 bad CBNZ,
       15 15 DREC ADDI,  16 16 1 SUBI,  widloop B,
    widdone LBL,
+   9 SP 16 LDR,  10 CP 0 ADDI,  GUARD-CODE-SPAN
    9 SP 16 LDR,  1 CP 9 ADD,  PROT:LOPEN LABEL@ BL,
    1 SP 40 LDR,  2 SP 48 LDR,  PROT:LSPAN LABEL@ BL,
    9 SP 32 LDR,  10 SP 24 LDR,  11 SP 16 LDR,  12 0 MOVZ,

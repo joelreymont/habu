@@ -8023,7 +8023,7 @@ public
 : C-PACKAGE ( -- )
    C-TASK-LIVE-GUARD
    LBL LBL LBL {: inactive:label hastok:label cold:label :}
-   9 DATA PKG-PUB-CELL LDR,  9 inactive CBZ,
+   14 DATA PKG-PUB-CELL LDR,  14 inactive CBZ,
       $4B C-PACKAGE-FAIL
    inactive LBL,
    LTOK LABEL@ BL,  0 hastok CBNZ,
