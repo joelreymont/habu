@@ -837,12 +837,13 @@ variable LIT-N
    r ix  ix WSYM  EMIT-FIXED-SYM ;
 
 \ ---- a string literal ----------------------------------------------------------
-$1000 constant SB-CAP
-create SB-BUF SB-CAP allot
+DYNAMIC-BUFFER SB-BUF u8
 
 : STRING-BODY ( n -- ptr u8 n ) {: ix:n :}
    VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
-   SB-BUF  CTX BLD sy SB-BUF SB-CAP IR-BUILD:SYMBOL-COPY ;
+   CTX BLD sy IR-BUILD:SYMBOL-LEN {: u:n :}
+   u 1 max SB-BUF-RESERVE
+   0 SB-BUF  CTX BLD sy 0 SB-BUF u IR-BUILD:SYMBOL-COPY ;
 
 : EMIT-STRING ( n -- ) {: ix:n :}
    ix STRING-BODY {: a u:n :}

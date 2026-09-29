@@ -360,6 +360,10 @@ SUITE compiler-native-string-forms
    test/compiler/native-string-forms.f
 ;SUITE
 
+SUITE compiler-native-long-string-image
+   test/compiler/native-long-string-image.f
+;SUITE
+
 SUITE compiler-native-hir
    test/compiler/native-hir.f
 ;SUITE
