@@ -255,4 +255,46 @@ public
    BUILD-CACHE:CAUSE$ TEXT+
    TEXT$ ;
 
+: TIMEOUT-ENV-ERROR$ ( -- ptr u8 n )
+   REPORT-OPEN
+   JSON-WRITE:OBJECT-START
+   s" schema" s" hb-build-error" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" code" s" E-BUILD-COMMAND" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" env" s" HB_BUILD_TIMEOUT_MS" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" expected" s" integer from 1 to 2147483647" JSON-WRITE:FIELD-S
+   JSON-WRITE:OBJECT-END
+   JSON-WRITE:$ ;
+
+: TIMEOUT-ENV-ERROR-TEXT$ ( -- ptr u8 n )
+   s" hb-build: HB_BUILD_TIMEOUT_MS must be an integer from 1 to 2147483647" ;
+
+: MAKER-TIMEOUT-ERROR$ ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: maker:ptr makeru:n source:ptr sourceu:n limit:n out:ptr outu:n err:ptr erru:n :}
+   sourceu outu + erru + 6 * 512 + {: cap:n :}
+   TEXT-RESET
+   REPORT-W cap TEXT-BUF cap JSON-WRITE:OPEN
+   JSON-WRITE:OBJECT-START
+   s" schema" s" hb-build-error" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" code" s" E-PROC-TIMEOUT" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" maker" maker makeru JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" source" source sourceu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" timeout_ms" limit JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" stdout" out outu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" stderr" err erru JSON-WRITE:FIELD-S
+   JSON-WRITE:OBJECT-END
+   JSON-WRITE:$ ;
+
+: MAKER-TIMEOUT-ERROR-TEXT$ ( ptr u8 n ptr u8 n n -- ptr u8 n )
+   {: maker:ptr makeru:n source:ptr sourceu:n limit:n :}
+   TEXT-RESET
+   s" hb-build: code=E-PROC-TIMEOUT maker=" TEXT+
+   maker makeru TEXT+
+   s"  source=" TEXT+
+   source sourceu TEXT-QUOTED+
+   s"  timeout_ms=" TEXT+
+   REPORT-OPEN limit JSON-WRITE:U JSON-WRITE:$ TEXT+
+   TEXT$ ;
+
 ;package

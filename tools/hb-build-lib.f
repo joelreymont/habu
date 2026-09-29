@@ -37,13 +37,16 @@ using BUILD-FIXPOINT                     \ the emitted-source and tmp-root surfa
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
+67 constant HBB-UNCAUGHT-RC
 74 constant HBB-BUILD-RC
 34 constant HBB-DQ
 10 constant HBB-LF
 $2B constant HBB-PLUS
 64 constant HBB-HEX-U
 96 constant HBB-ABI-CAP
-120000 constant HBB-TIMEOUT-MS
+120000 constant HBB-LINT-TIMEOUT-MS
+600000 constant HBB-MAKER-DEFAULT-MS
+$7FFFFFFF constant HBB-MAKER-MAX-MS
 65536 constant HBB-CAPTURE-CAP
 
 create HBB-SRC-PATH FS-PATH-CAP allot
@@ -106,6 +109,7 @@ variable HBB-SEED-HEX-U
 variable HBB-PRESEED-MODE
 variable HBB-START-NS
 variable HBB-ELAPSED-NS
+variable HBB-MAKER-TIMEOUT-MS
 
 : HBB-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -170,6 +174,15 @@ variable HBB-ELAPSED-NS
 
 : HBB-WERR-LF ( -- )
    HBB-LF-BUF 1 HBB-WERR ;
+
+: HBB-WERR-SEPARATE ( n n -- ) {: outu:n erru:n :}
+   erru 0 > if
+      HBB-ERR-BUF erru 1- + c@ HBB-LF <> if HBB-WERR-LF then
+      exit
+   then
+   outu 0 > if
+      HBB-OUT-BUF outu 1- + c@ HBB-LF <> if HBB-WERR-LF then
+   then ;
 
 : HBB-LINE-FIRST ( n n -- n ) {: start end :}
    start begin dup end < while
@@ -344,6 +357,21 @@ variable HBB-ELAPSED-NS
    CLEANUP-RUN
    BF-TMP-RESET ;
 
+: HBB-BAD-MAKER-TIMEOUT ( -- )
+   HBB-JSON @ if HB-BUILD:TIMEOUT-ENV-ERROR$ else HB-BUILD:TIMEOUT-ENV-ERROR-TEXT$ then
+   HBB-WERR HBB-WERR-LF
+   HBB-USAGE-RC HBB-EXIT ;
+
+: HBB-READ-MAKER-TIMEOUT ( -- )
+   HBB-MAKER-DEFAULT-MS HBB-MAKER-TIMEOUT-MS !
+   s" HB_BUILD_TIMEOUT_MS" GETENV dup 0= if 2drop exit then
+   STR>NUMBER? MATCH option
+      none OF HBB-BAD-MAKER-TIMEOUT ENDOF
+      some OF ENDOF
+   ;MATCH {: limit:n :}
+   limit 1 < limit HBB-MAKER-MAX-MS > or if HBB-BAD-MAKER-TIMEOUT then
+   limit HBB-MAKER-TIMEOUT-MS ! ;
+
 : HBB-CMD-RESET ( -- )
    PROC-ARGV-RESET
    BF-PREPARE-ENV
@@ -384,7 +412,7 @@ variable HBB-ELAPSED-NS
 
 : HBB-RUN-HB-CAPTURE ( -- n n n )
    CLI-TOOLS$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
-   HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   HBB-LINT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    HBB-CAPTURE>N ;
 
 : HBB-FINISH-TOOL ( n n n -- ) {: outu erru rc :}
@@ -571,7 +599,7 @@ HBB-INSTALL-CHILD-LINT
       HBB-SEED-HEX$ >LEN PROC-ARGV+
    then ;
 
-: HBB-RUN-MAKER-CMD ( -- n n n )
+: HBB-RUN-MAKER-CMD ( -- len len outcome )
    HBB-RUN-MAKER-ARGS
    BF-ENGINE$ >LEN
    \ Order is the invariant: aot-build-open.f opens the capture window and loads
@@ -580,14 +608,39 @@ HBB-INSTALL-CHILD-LINT
    S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" >LEN
    HBB-OUT-BUF HBB-CAPTURE-CAP >LEN
    HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
-   HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE
-   HBB-CAPTURE>N ;
+   HBB-MAKER-TIMEOUT-MS @ >MS RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ;
 
-: HBB-FINISH-MAKER ( n n n -- ) {: outu erru rc :}
+: HBB-FINISH-MAKER-RC ( n n n -- ) {: outu erru rc :}
    rc 0= if exit then
    outu HBB-WOUT-ERR
    HBB-JSON @ if erru HBB-WERR-JSON-ONLY else erru HBB-WERR-ERR then
    rc HBB-EXIT ;
+
+: HBB-MAKER-KIND$ ( -- ptr u8 n )
+   HBB-REPL @ if s" repl" else s" aot" then ;
+
+: HBB-MAKER-TIMED-OUT ( n n -- ) {: outu:n erru:n :}
+   HBB-JSON @ if
+      HBB-MAKER-KIND$ HBB-SRC$ HBB-MAKER-TIMEOUT-MS @
+      HBB-OUT-BUF outu HBB-ERR-BUF erru HB-BUILD:MAKER-TIMEOUT-ERROR$
+      HBB-WERR HBB-WERR-LF
+   else
+      outu HBB-WOUT-ERR
+      erru HBB-WERR-ERR
+      outu erru HBB-WERR-SEPARATE
+      HBB-MAKER-KIND$ HBB-SRC$ HBB-MAKER-TIMEOUT-MS @
+      HB-BUILD:MAKER-TIMEOUT-ERROR-TEXT$ HBB-WERR HBB-WERR-LF
+   then
+   E-PROC-TIMEOUT throw ;
+
+: HBB-FINISH-MAKER ( len len outcome -- )
+   MATCH outcome
+      exited OF {: outu:len erru:len rc:n :}
+         outu LEN>N erru LEN>N rc HBB-FINISH-MAKER-RC ENDOF
+      signaled OF {: outu:len erru:len sig:n :}
+         outu LEN>N erru LEN>N sig 128 + HBB-FINISH-MAKER-RC ENDOF
+      timeout OF LEN>N swap LEN>N swap HBB-MAKER-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : HBB-REMOVE-OUT ( -- )
    HBB-OUT$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
@@ -857,6 +910,7 @@ HBB-INSTALL-CHILD-LINT
    mono-ns HBB-START-NS !
    HB-BUILD:RESET
    HBB-RESET-TRACE
+   HBB-READ-MAKER-TIMEOUT
    HBB-RUN-AOT-LINT ;
 
 : HBB-BUILD-REST ( -- )
@@ -883,8 +937,8 @@ HBB-INSTALL-CHILD-LINT
    S\" require tools/app-build.f\nAPP-BUILD:RUN\n" >LEN
    HBB-OUT-BUF HBB-CAPTURE-CAP >LEN
    HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
-   600000 >MS RUN-ARGV-ENV-STDIN-CAPTURE
-   HBB-CAPTURE>N HBB-FINISH-MAKER
+   HBB-MAKER-TIMEOUT-MS @ >MS RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
+   HBB-FINISH-MAKER
    HBB-INSTALL-OUT
    HBB-FINISH ;
 
@@ -904,11 +958,19 @@ HBB-INSTALL-CHILD-LINT
    then
    rc throw ;
 
+: HBB-CLI-MAKER-CODE ( n -- ) {: rc:n :}
+   rc 0= if exit then
+   rc E-PROC-TIMEOUT = if
+      HBB-CLEANUP
+      HBB-UNCAUGHT-RC HBB-EXIT
+   then
+   rc throw ;
+
 : HBB-BUILD-CLI ( -- )
    HBB-BUILD-BEGIN
-   HBB-REPL @ if HBB-BUILD-REPL exit then
+   HBB-REPL @ if [: HBB-BUILD-REPL ;] catch HBB-CLI-MAKER-CODE exit then
    HBB-PREPARE-CACHE-CLI
-   HBB-BUILD-REST ;
+   [: HBB-BUILD-REST ;] catch HBB-CLI-MAKER-CODE ;
 
 : HBB-MAIN ( -- )
    HBB-PARSE

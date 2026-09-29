@@ -92,6 +92,18 @@ SUITE hb-build-cli-errors
    tools/hb-build-cli-errors-test.f
 ;SUITE
 
+SUITE hb-build-timeout
+   tools/hb-build-timeout-test.f
+;SUITE
+
+SUITE hb-build-timeout-env
+   tools/hb-build-timeout-env-test.f
+;SUITE
+
+SUITE hb-build-timeout-json
+   tools/hb-build-timeout-json-test.f
+;SUITE
+
 \ The native-window rows fetch the whitebox engine themselves
 \ (test/whitebox-child.f). Registered before the first WHITEBOX-SUITE row, which
 \ holds the registry until the gate's whitebox build retires, native-window-owner
