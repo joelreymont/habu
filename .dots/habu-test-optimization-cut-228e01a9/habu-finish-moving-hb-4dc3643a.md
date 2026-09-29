@@ -1,9 +1,11 @@
 ---
 title: Finish moving hb-build fixture calls in process
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-29T22:09:02.056370+02:00"
+closed-at: "2026-09-29T23:19:40.723108+02:00"
+close-reason: "Landed aa24ec9d (review PASS): HBB-RUN-APP-CMD and HBB-PATH-ERROR$ splits; REPL refusals and the text path error checked in process; spawned CLI cases are report-json, lint refusal, path-error JSON (exact bytes), REPL and AOT maker-refusal pass-through (exact), preseed. hb-build-fixtures 3->2 spawns, cli-errors 4->2. Gate 493/493."
 ---
 
 Independent review of d6ba5300 (Build hb-build fixtures in process), which closed habu-build-hb-build-43939b3e. HIGH: 22 of the 25 non-CLI calls moved; three still spawn tools/hb-build.f: tools/hb-build-test.f HBT-BUILD-REPL-BAD (~:354-365), tools/hb-build-cli-errors-test.f HBT-CHECK-PATH-TEXT (~:73-80) and the second HBT-REFUSE-MAIN call (~:103, via :89-99). Fix: split the app-build child invocation out of HBB-BUILD-REPL (tools/hb-build-lib.f ~:932-940) into a command word like HBB-RUN-MAKER-CMD so REPL-BAD and one REFUSE-MAIN variant drive the production child in process; keep one REFUSE-MAIN variant on the CLI; CHECK-PATH-TEXT's exact string becomes an exact check on HB-BUILD:PATH-ERROR-TEXT$ in lib/build-cache-test.f CHECK-ERROR-REPORT (L8-tools.md hb-build-cli-errors section). MEDIUM comments: tools/hb-build-test.f:84-86 claims CLI-REPORT shows a REPL build is never answered from a cache, but HBB-BUILD-REPL never sets a hit flag (the five false flags hold whatever the cache does): reword to what the case proves; tools/hb-build-test-lib.f:393-398 says HBB-BUILD runs all the CLI does after argv, but in process skips HBB-PREPARE-TMP's private dir, the HBB-BUILD-CLI exit mapping and HBB-CLEANUP, and the maker's HB_TMP is HBT-TMP; the lint refusal ends in HBB-FINISH-TOOL, not HBB-FINISH-MAKER; tools/hb-build-stripped-test.f:189-192 and hb-build-test-lib.f:408-409 'alone'/'once' claims about CLI maker-refusal propagation must match the final set of CLI refusal cases. Acceptance: exactly the CLI cases stay spawned (report-json, path-error JSON, lint refusal, one maker refusal propagation, preseed, unowned-cell); each moved assertion fails on a mutation; comments match the code; per-row seconds before/after. Files: tools/hb-build-lib.f (command split only), tools/hb-build-*test*.f, tools/hb-build-test-lib.f, lib/build-cache-test.f. Depends: habu-fix-stripped-image-a8395674 (shares tools/hb-build-test.f and the stripped-test comment).
