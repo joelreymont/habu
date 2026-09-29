@@ -1019,6 +1019,8 @@ public
 -8561 constant E-NPUB-ROOM    \ the emission does not fit in what is left of the code arena under the engine's own end reserve
 -8562 constant E-NPUB-SIZE    \ an emission that cannot be a word body: no instructions at all, or a byte size that is not a whole number of instructions
 -8563 constant E-NPUB-OFFSET  \ an instruction whose source-map offset does not lie inside the emission it belongs to, or that is not instruction aligned
+-8564 constant E-NEMIT-STATE  \ a reader asked src/compiler/native/emission.f about rows no backend has sealed, or that its RETIRE row has cleared; rows opened over live ones or added to none; a placement asked of an unplaced emission
+-8565 constant E-NEMIT-ROW    \ a row index at or past the count the sealed emission holds, a row offset outside the emission, an empty emission, a trailing return longer than it, or a call site of neither kind
 -8566 constant E-NPUB-PLACE   \ an emission whose branches were measured from an address that is not the code slot this seam is claiming for it
 
 -8570 constant E-NCOMP-STATE   \ a compiler entry reached while another one is open

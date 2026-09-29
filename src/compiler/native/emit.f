@@ -2013,13 +2013,18 @@ variable SCAN-K
 : INSNS ( -- n )
    SEAL-CK N-INS @ ;
 
-\ The byte offset of one function in this sealed emission. Publication uses the
-\ clause function's real measured start for the companion `;does` record.
+\ The byte offset of one function in this sealed emission. Publication reads it
+\ through NEMIT as the clause function's real measured start for the companion
+\ `;does` record.
 : FUNCTION-OFFSET@ ( n -- n )
    SEAL-CK FUN-START INSN-BYTES * ;
 
-\ An INSTRUCTION INDEX, which is the coordinate the seam turns into an address
-\ by the same arithmetic it uses for a call site.
+\ How many functions it holds, each one an ordinal FUNCTION-OFFSET@ answers.
+: FUNS ( -- n )
+   SEAL-CK N-FUNS @ ;
+
+\ An INSTRUCTION INDEX, which src/arch/arm64/passes.f turns into the byte offset
+\ NEMIT holds by the same arithmetic it uses for a call site.
 : ADDR-SITES ( -- n )
    SEAL-CK N-SITES @ ;
 

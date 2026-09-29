@@ -1,12 +1,12 @@
 \ publish.f - commit one sealed native emission to its pending dictionary record.
 \ Every refusal precedes the code window; the commit phase only copies accepted
-\ bytes, records relocation sites, and publishes the record.
+\ bytes, records relocation sites, and publishes the record. The emission is
+\ read through NEMIT alone, in bytes, so nothing here decodes an instruction.
 
 require lib/prelude.f
 require lib/errors.f
-require src/compiler/native/branch.f
 require src/compiler/native/dict.f
-require src/compiler/native/emit.f
+require src/compiler/native/emission.f
 require src/habu/code-span.f
 
 package NPUB
@@ -14,7 +14,6 @@ package NPUB
 private
 
 $4000 constant CODE-RESERVE
-4 constant INSN-BYTES
 
 TRUSTED: CODE-WINDOW ( ptr u8 n n -- )
    code-publish ;
@@ -37,19 +36,6 @@ TRUSTED: DOES-RECORD ( n n -- )
 TRUSTED: APPEND-PENDING ( n -- )
    ndict-append ;
 
-: SIZE-CK ( -- n )
-   A64EMIT:SIZE {: n:n :}
-   A64EMIT:INSNS 0 <= if E-NPUB-SIZE throw then
-   n INSN-BYTES < if E-NPUB-SIZE throw then
-   n INSN-BYTES mod 0<> if E-NPUB-SIZE throw then
-   n ;
-
-: OFFSET-CK ( n n -- n ) {: off:n size:n :}
-   off 0 < if E-NPUB-OFFSET throw then
-   off INSN-BYTES + size > if E-NPUB-OFFSET throw then
-   off INSN-BYTES mod 0<> if E-NPUB-OFFSET throw then
-   off ;
-
 : CODE-CEILING ( -- n )
    dbase@ REGION + CODE-RESERVE - ;
 
@@ -59,65 +45,51 @@ TRUSTED: APPEND-PENDING ( n -- )
    fn ;
 
 : PLACE-CK ( n -- ) {: fn:n :}
-   A64EMIT:PLACED? 0= if exit then
-   A64EMIT:PLACEMENT fn <> if E-NPUB-PLACE throw then ;
-
-: INSN-ADDR ( n n n -- n ) {: fn:n size:n k:n :}
-   k A64EMIT:MAP-OFFSET@ size OFFSET-CK fn + ;
-
-: MAP-CK ( n -- ) {: size:n :}
-   A64EMIT:INSNS 0 ?do
-      i A64EMIT:MAP-OFFSET@ size OFFSET-CK  i INSN-BYTES * <> if
-         E-NPUB-OFFSET throw
-      then
-   loop ;
+   NEMIT:PLACED? 0= if exit then
+   NEMIT:PLACEMENT fn <> if E-NPUB-PLACE throw then ;
 
 : EXTERNAL? ( n -- bool ) {: t:n :}
    t dbase@ < if true exit then
    t dbase@ REGION + >= ;
 
-: LEAVES? ( n n n -- bool ) {: fn:n size:n t:n :}
-   t fn < if true exit then
-   t fn size + >= ;
-
-\ A tail branch out of the region cannot be relocated by the call map.
-: TAIL-RELOC-CK ( n n -- ) {: fn:n size:n :}
-   A64EMIT:INSNS 0 ?do
-      i A64EMIT:WORD@ {: w:n :}
-      w NBR:B? if
-         fn size i INSN-ADDR  w  NBR:B-TARGET {: t:n :}
-         fn size t LEAVES? t EXTERNAL? and if E-NPUB-RELOC throw then
+\ A tail branch out of the region cannot be relocated by the call map. The
+\ emission lies inside the region, so a branch to outside it leaves the emission.
+: TAIL-RELOC-CK ( -- )
+   NEMIT:CALL-SITES 0 ?do
+      i NEMIT:CALL-KIND@ NEMIT:TAIL = if
+         i NEMIT:CALL-TARGET@ EXTERNAL? if E-NPUB-RELOC throw then
       then
    loop ;
 
 : RELOC-CALLS ( n -- ) {: fn:n :}
-   A64EMIT:INSNS 0 ?do
-      i A64EMIT:WORD@ NBR:BL? if
-         fn i INSN-BYTES * +  i A64EMIT:WORD@  NBR:BL-TARGET EXTERNAL? if
-            fn i INSN-BYTES * + RELOC-EXTERNAL
+   NEMIT:CALL-SITES 0 ?do
+      i NEMIT:CALL-KIND@ NEMIT:CALL = if
+         i NEMIT:CALL-TARGET@ EXTERNAL? if
+            fn i NEMIT:CALL-SITE@ + RELOC-EXTERNAL
          then
       then
    loop ;
 
 : RELOC-ADDRS ( n -- ) {: fn:n :}
-   A64EMIT:ADDR-SITES 0 ?do
-      fn  i A64EMIT:ADDR-SITE@ INSN-BYTES * +  RELOC-ADDR
+   NEMIT:ADDR-SITES 0 ?do
+      fn i NEMIT:ADDR-SITE@ + RELOC-ADDR
    loop ;
 
-\ Legacy records omit the final RET slot. No-RET emissions explicitly record
-\ their whole span, so a reader never borrows the next record's instruction.
+\ Legacy records omit the trailing return. An emission with none explicitly
+\ records its whole span, so a reader never borrows the next record's bytes.
 : RECORDED-LEN ( n -- n ) {: size:n :}
-   A64EMIT:TRAILING-RETURN? 0= if size CODE-SPAN:EXACT exit then
-   size INSN-BYTES - ;
+   NEMIT:RET-BYTES {: ret:n :}
+   ret 0= if size CODE-SPAN:EXACT exit then
+   size ret - ;
 
 : VALIDATE-EMISSION ( n -- n ) {: size:n :}
    size ROOM-CK {: fn:n :}
    fn PLACE-CK
-   fn size TAIL-RELOC-CK
+   TAIL-RELOC-CK
    fn ;
 
 : COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
-   A64EMIT:BYTES fn size CODE-WINDOW
+   NEMIT:BYTES fn size CODE-WINDOW
    fn RELOC-CALLS
    fn RELOC-ADDRS
    fn  size RECORDED-LEN  idx PUBLISH-REC ;
@@ -135,8 +107,7 @@ TRUSTED: APPEND-PENDING ( n -- )
    f DNAME-IMM and 0<> if E-NPUB-PENDING throw then ;
 
 : PENDING-PROVE ( -- n n n )
-   SIZE-CK {: size:n :}
-   size MAP-CK
+   NEMIT:SIZE {: size:n :}
    PENDING-IDX {: idx:n :}
    idx PENDING-CK
    size VALIDATE-EMISSION {: fn:n :}
@@ -162,9 +133,8 @@ TRUSTED: PENDING-FACTS ( n -- ) {: idx:n :}
    idx 1+ DICT-CAP >= if E-NPUB-PENDING throw then
    idx DOES-NAME-PAD {: pad:n :}
    fn size + pad + CODE-CEILING > if E-NPUB-ROOM throw then
-   fun A64EMIT:FUNCTION-OFFSET@ {: off:n :}
+   fun NEMIT:FUNCTION-OFFSET@ {: off:n :}
    off 0 <= if E-NPUB-OFFSET throw then
-   off size OFFSET-CK drop
    idx fn size off ;
 
 public

@@ -47,9 +47,9 @@
 \ negate, the two selects `cmpsel` and `selz`, the four frame forms `reserve`,
 \ `release`, `store` and `load`, the trap, and `codeaddr`. The float forms are
 \ not declared by the dialect at all. Publication into a code region is not here
-\ either, and on this host it cannot be: src/compiler/native/publish.f names
-\ A64EMIT at thirteen sites and the engine's own callmap and addrmap record
-\ ARM64 shapes. An x86-64 emission is consumed by the cross-build image writer.
+\ either, and on this host it cannot be: src/compiler/native/publish.f reads
+\ NEMIT rows only the ARM64 emission row fills, and the engine's own callmap and
+\ addrmap record ARM64 shapes. An x86-64 emission is consumed by the cross-build image writer.
 
 require lib/prelude.f
 require lib/errors.f

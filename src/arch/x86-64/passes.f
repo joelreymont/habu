@@ -25,9 +25,9 @@
 \ seals a byte image with the list of the relocatable literals in it. RETIRE
 \ gives that image and the placement back, and is nonthrowing because the driver
 \ calls it on the refusing path too. WHAT NO ROW HERE DOES IS PUBLISH: this host
-\ has no x86-64 code region to write into (src/compiler/native/publish.f names
-\ A64EMIT throughout), so the sealed image is read back by a cross-build image
-\ writer and not by NPUB.
+\ has no x86-64 code region to write into (src/compiler/native/publish.f reads
+\ the NEMIT rows, which no row here fills), so the sealed image is read back by
+\ a cross-build image writer and not by NPUB.
 \
 \ So declare, select, prune, the lowering fixpoint, emit and retire all run in
 \ the order src/compiler/native/compiler.f runs them;

@@ -4,7 +4,9 @@
 \ naming a backend: each stage goes through the row that the definition's own
 \ target contract resolves to. This file is that row for ARM64. Every stage is
 \ the sequence the driver used to run by name, wrapping A64SEL, A64PRUNE, A64RA,
-\ A64RAV, A64SPILL and A64EMIT; none of their state moved here.
+\ A64RAV, A64SPILL and A64EMIT; none of their state moved here. The emission row
+\ also states the sealed emission as NEMIT's rows, the only emission
+\ src/compiler/native/publish.f reads, and the RETIRE row clears them.
 \
 \ WHAT IT OWNS. The routine contract this definition compiles to. Two of its
 \ facts are this backend's own readings - how many functions share the contract
@@ -37,6 +39,8 @@ require src/compiler/native/spill.f
 require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
 require src/compiler/native/emit.f
+require src/compiler/native/branch.f
+require src/compiler/native/emission.f
 require src/compiler/native/prof.f
 require src/arch/arm64/backend.f
 
@@ -209,6 +213,76 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
       swap IR-BUILD:RETIRE
    repeat ;
 
+\ ---- the sealed emission, as the rows publication reads ----------------------
+\ src/compiler/native/publish.f reads NEMIT and never an instruction, so the
+\ ARM64 shapes it relies on are proved here: a whole number of instructions, one
+\ source-map row per instruction at its own offset, every function starting at
+\ an instruction. Each `bl` and `b` is decoded here once, through NBR: a `bl` is
+\ a call, and a `b` whose target is outside the emission leaves it for good.
+NBR:INSN-BYTES constant INSN-BYTES
+
+: SIZE-CK ( -- n )
+   A64EMIT:SIZE {: n:n :}
+   A64EMIT:INSNS 0 <= if E-NPUB-SIZE throw then
+   n INSN-BYTES < if E-NPUB-SIZE throw then
+   n INSN-BYTES mod 0<> if E-NPUB-SIZE throw then
+   n ;
+
+: OFFSET-CK ( n n -- n ) {: off:n size:n :}
+   off 0 < if E-NPUB-OFFSET throw then
+   off INSN-BYTES + size > if E-NPUB-OFFSET throw then
+   off INSN-BYTES mod 0<> if E-NPUB-OFFSET throw then
+   off ;
+
+: MAP-CK ( n -- ) {: size:n :}
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:MAP-OFFSET@ size OFFSET-CK  i INSN-BYTES * <> if
+         E-NPUB-OFFSET throw
+      then
+   loop ;
+
+: FUNCTION-ROWS ( n -- ) {: size:n :}
+   A64EMIT:FUNS 0 ?do
+      i A64EMIT:FUNCTION-OFFSET@ size OFFSET-CK NEMIT:FUNCTION+
+   loop ;
+
+: LEAVES? ( n n n -- bool ) {: at:n size:n t:n :}
+   t at < if true exit then
+   t at size + >= ;
+
+: CALL-ROWS ( n n -- ) {: at:n size:n :}
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ {: w:n :}
+      i INSN-BYTES * {: off:n :}
+      w NBR:BL? if
+         off NEMIT:CALL  at off + w NBR:BL-TARGET  NEMIT:CALL-SITE+
+      then
+      w NBR:B? if
+         at off + w NBR:B-TARGET {: t:n :}
+         at size t LEAVES? if off NEMIT:TAIL t NEMIT:CALL-SITE+ then
+      then
+   loop ;
+
+: ADDR-ROWS ( -- )
+   A64EMIT:ADDR-SITES 0 ?do
+      i A64EMIT:ADDR-SITE@ INSN-BYTES *  i A64EMIT:ADDR-SITE-KIND@
+      NEMIT:ADDR-SITE+
+   loop ;
+
+: RET-BYTES ( -- n )
+   A64EMIT:TRAILING-RETURN? if INSN-BYTES exit then
+   0 ;
+
+: ROWS ( n -- ) {: at:n :}
+   SIZE-CK {: size:n :}
+   size MAP-CK
+   A64EMIT:BYTES size RET-BYTES NEMIT:OPEN
+   at NEMIT:PLACE
+   size FUNCTION-ROWS
+   at size CALL-ROWS
+   ADDR-ROWS
+   NEMIT:SEAL ;
+
 \ ---- emission ----------------------------------------------------------------
 \ Declared for every definition, not only one that calls, so the seam can place
 \ it at the slot it really claims. The spill binding is given back first: the
@@ -218,7 +292,13 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    A64SPILL:BOUND? if A64SPILL:RELEASE then
    m ROUTINE A64RAV:ACCEPT
    at A64EMIT:PLACE-AT
-   c m A64EMIT:EMIT ;
+   c m A64EMIT:EMIT
+   at ROWS ;
+
+\ The rows answer until this row runs, on the accepting and the refusing path.
+: RETIRE ( -- )
+   A64EMIT:RETIRE
+   NEMIT:CLEAR ;
 
 \ ---- what this backend holds between definitions -----------------------------
 \ Caught INSIDE the context so it always leaves the ordinary way and gives its
@@ -257,7 +337,7 @@ public
    ARCH [: FIXPOINT ;] NBACK:FIXPOINT!
    ARCH [: EMIT ;] NBACK:EMIT!
    ARCH [: RELEASE ;] NBACK:RELEASE!
-   ARCH [: A64EMIT:RETIRE ;] NBACK:RETIRE!
+   ARCH [: RETIRE ;] NBACK:RETIRE!
    ARCH [: A64IR:PROTOTYPE ;] NBACK:PROTOTYPE!
    ARCH [: A64IR:PROTOTYPE-CLEAR ;] NBACK:FORGET!
    ARCH [: PREPARE ;] NBACK:PREPARE! ;
