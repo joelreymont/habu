@@ -27,6 +27,10 @@ package X64BOOT
 using X64ASM
 using X64CODE
 
+\ The host's layout names its own DATA. Replay the Linux target's layout here
+\ so cross-built boot instructions use the target addresses and sizes.
+s" src/os/linux-x86-64/layout.f" included
+
 0 constant PROT-NONE
 3 constant PROT-RW                  \ PROT_READ|PROT_WRITE
 \ The rc every boot mapping failure exits with: STACK-GUARD's MAP-FAIL-RC
