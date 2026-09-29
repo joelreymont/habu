@@ -22,7 +22,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require src/compiler/native/backend.f
 require src/arch/x86-64/passes.f
-require test/compiler/x64-emit.f
+require test/compiler/x64-emit-fixture.f
 require test/x86-64-peer-harness.f
 
 \ The fixtures stay in the package that stages them; this adds each one's trip

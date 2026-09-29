@@ -1405,7 +1405,8 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    s" lib/test.f" GE-SRC-FILE+
-   s" tools/xref-test.f" GE-SRC-FILE+
+   s" tools/xref-test-fixture.f" GE-SRC-FILE+
+   s" XRT-MAIN" GE-SRC-LINE
    s" hb native xref words" GE-EVAL-RUN-STDIN
    s" xref-test: ok" s" hb native xref words output" GE-EXPECT-OUT-HAS ;
 

@@ -74,7 +74,7 @@ create ART-BUF FS-PATH-CAP allot    variable ART-U
 : RUN-COMPACT-REFUSAL ( ptr u8 n -- ) {: mode:ptr modeu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" test/aot-capture-compact.f" >LEN PROC-ARGV+
+   s" test/aot-capture-compact-refusal.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    mode modeu >LEN PROC-ARGV+
    RUN-CHILD ;

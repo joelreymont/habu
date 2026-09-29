@@ -1,7 +1,7 @@
 \ Cross-build two x86-64 comparison routines through the real HIR pass chain.
 \ Run both images on the peer: each must exit 0 after checking true as -1 and
-\ false as 0. A case failure exits with its own status (61 through 68).
-require test/x86-64-peer-image.f
+\ false as 0. The harness assigns each case a distinct failure status.
+require test/x86-64-peer-image-fixture.f
 
 package X64CHAIN-TEST
 private
@@ -32,8 +32,8 @@ private
 
 : EMIT-CMP ( -- )
    2 1 CHAIN {: m:IR-BUILD:module :}
-   CC m X64PEER:POSITION NBACK:EMIT
-   X64EMIT:BYTES X64EMIT:SIZE X64PEER:APPEND-ROUTINE
+   CC m X64HARNESS:POSITION NBACK:EMIT
+   X64EMIT:BYTES X64EMIT:SIZE X64HARNESS:APPEND-ROUTINE
    CC NBACK:RETIRE
    CC NBACK:RELEASE ;
 
@@ -48,52 +48,39 @@ public
 : PEER-CMP-IMM ( -- ) WBND [: CMP-IMM-BODY ;] IR-CTX:WITH-CONTEXT ;
 ;package
 
-package X64PEER
-using X64ASM
-using X64CODE
+package X64COMPARE
+using X64HARNESS
 private
 
 : CMP-ENTRY, ( bool -- ) {: folded:bool :}
-   ASM-RESET
-   LBL EXIT-CELL !  LBL ROUTINE-CELL !
-   RSP 1024 >IMM32 ASM-SINK ENC-SUB-RI32
-   RBP RSP ASM-SINK ENC-MOV-RR
+   false OPEN,
    folded if
-      20 7 -1 65 CASE,
-      -1000 0 0 66 CASE,
-      0 999 -1 67 CASE,
-      0 1000 0 68 CASE,
+      20 7 -1 CASE2,
+      -1000 0 0 CASE2,
+      0 999 -1 CASE2,
+      0 1000 0 CASE2,
    else
-      7 20 -1 61 CASE,
-      20 7 0 62 CASE,
-      -1 0 -1 63 CASE,
-      0 -1 0 64 CASE,
+      7 20 -1 CASE2,
+      20 7 0 CASE2,
+      -1 0 -1 CASE2,
+      0 -1 0 CASE2,
    then
-   RDI 0 IMM
-   EXIT-LBL JMP,
-   ROUTINE-OFF PAD-TO
-   ROUTINE-LBL LBL, ;
+   CLOSE, ENTRY, ;
 
 : BUILD-CMP ( bool ptr u8 n -- ) {: folded:bool path:ptr pathu:n :}
    folded CMP-ENTRY,
    folded if X64CHAIN-TEST:PEER-CMP-IMM
    else X64CHAIN-TEST:PEER-CMP-REG then
-   EXIT,
-   ASM-CODE BUILD-IMAGE
-   s" x64-peer" SET-SIGID CODESIG2
-   path pathu DRV-WRITE-IMAGE
-   s" ELF names x86-64 and enters the comparison code" T-LABEL
-   $12 M-OFF M-LE32@ $FFFF and 62 T=
-   $18 M-OFF M-LE32@ VMBASE CODE-OFF + T= ;
+   path pathu WRITE-ELF ;
 
 public
 : CMP-RUN ( -- )
    T-RESET
-   ASM-SINK CODE-CAP-BYTES BUF:N>BLEN BUF:INIT
+   INIT
    false s" hb-x64-compare-reg" TMP-PATH BUILD-CMP
    true s" hb-x64-compare-imm" TMP-PATH BUILD-CMP
-   ASM-SINK BUF:DISPOSE
+   DISPOSE
    T-REPORT ;
 ;package
 
-X64PEER:CMP-RUN
+X64COMPARE:CMP-RUN

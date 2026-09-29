@@ -9,7 +9,8 @@ using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
 : GDB-PROP ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" test/prop-test.f" GE-SRC-FILE+
+   s" test/prop-test-core.f" GE-SRC-FILE+
+   s" PROP-TEST:RUN" GE-SRC-LINE
    WHITEBOX-CHILD:ENV!
    WHITEBOX-CHILD:ENGINE$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" prop-test" GE-EXPECT-OK

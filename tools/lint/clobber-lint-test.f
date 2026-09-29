@@ -1,6 +1,6 @@
 \ clobber-lint-test.f - focused regression tests for clobber-lint.
 
-require tools/lint/clobber-lint.f
+require tools/lint/clobber-lint-core.f
 
 package CLOBBER
 
