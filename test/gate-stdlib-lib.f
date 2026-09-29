@@ -143,9 +143,13 @@ variable WB-FAIL-RC                      \ exit status a red whitebox row dies w
    PRODUCT-ENGINE$ SUITE-ENV
    PRODUCT-SPAWN$ label labelu in inu SUITE-TIMEOUT-MS GT-POOL-START-STDIN ;
 
-\ Emit the shared cold fixture host here, before the first suite forks: the
-\ fixtures that need it then copy one keyed artifact instead of each paying the
-\ writer's own native build. The whitebox build is the first fork.
+\ Settle the shared fixture writer image and the cold host it emits here, before
+\ the pool starts: every row that writes a fixture then runs that one keyed
+\ image and copies that one keyed host, so no row builds the writer image (about
+\ 24 s) or races another row to build it. Settling dates both images as used,
+\ as each row's own settle does again, so a prune by a gate on another tree
+\ (test/fixture-cache.f) leaves them alone. The whitebox build is the first
+\ fork.
 : SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS
    ENTRY-GUARD:CHECK

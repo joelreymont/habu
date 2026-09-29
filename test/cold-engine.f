@@ -25,6 +25,7 @@ require lib/process-env.f
 require lib/build-cache.f
 require lib/content-key.f
 require test/fixture-writer.f
+require test/fixture-cache.f
 
 package COLD-ENGINE
 
@@ -65,8 +66,14 @@ variable RESOLVED?
    writer writeru CONTENT-KEY:TEXT+
    KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
+: IMAGE-PREFIX$ ( -- ptr u8 n )
+   s" hb-cold-" ;
+
+: WORK-PREFIX$ ( -- ptr u8 n )
+   s" cold-engine" ;
+
 : NAME! ( -- )
-   s" hb-cold-" {: a:ptr u:n :}
+   IMAGE-PREFIX$ {: a:ptr u:n :}
    u KEY-HEX-LEN + NAME-CAP > if E-FS-CAPACITY throw then
    a NAME-BUF u BYTE-COPY
    KEY-HEX NAME-BUF u + KEY-HEX-LEN BYTE-COPY
@@ -90,8 +97,11 @@ variable RESOLVED?
 
 \ The writer emits into a private directory of its own, so a half-written host
 \ is never visible at the keyed path: only the closing rename publishes it.
+\ It is registered for removal at exit, so a die before WORK-CLOSE still removes
+\ it.
 : WORK-OPEN ( -- )
-   BUILD-CACHE:ROOT$ s" cold-engine" MAKE-TEMP-DIR WORK-BUF WORK-U COPY-OUT!
+   BUILD-CACHE:ROOT$ WORK-PREFIX$ MAKE-TEMP-DIR WORK-BUF WORK-U COPY-OUT!
+   WORK-BYTES CLEANUP-TREE+
    WORK-BYTES s" hb-cold" TMP-BUF JOIN-PATH TMP-U ! ;
 
 : WORK-CLOSE ( -- )
@@ -126,24 +136,29 @@ variable RESOLVED?
 \ A second builder racing this one writes the same keyed bytes and the rename
 \ above is atomic, so losing the race costs one discarded emission and nothing
 \ else. The work directory goes whatever the emission did, and a failure keeps
-\ its own code.
+\ its own code: a throw is caught here, and a die in WRITER-RUN or PUBLISH ends
+\ the process, whose exit registry removes what WORK-OPEN registered. A
+\ published host then prunes its family (test/fixture-cache.f), which reports
+\ its own failures and never fails the emission.
 : EMIT ( -- )
    WORK-OPEN
    ['] WRITER-RUN catch EMIT-RC !
    EMIT-RC @ 0 = if ['] PUBLISH catch EMIT-RC ! then
    WORK-CLOSE
-   EMIT-RC @ 0 <> if EMIT-RC @ throw then ;
+   EMIT-RC @ 0 <> if EMIT-RC @ throw then
+   IMAGE-PREFIX$ WORK-PREFIX$ PATH-BYTES FIXTURE-CACHE:PRUNE ;
 
 public
 
 \ Settle the shared writer image and the cold host it emits, each built only
 \ when its keyed artifact is not already on disk. The writer is settled even when
 \ the host is present: every fixture write runs it, and the gate calls this once
-\ before its first fork.
+\ before its first fork. A host found on disk is marked in use
+\ (FIXTURE-CACHE:USED), and one a pruner took meanwhile is emitted again.
 : ENSURE ( -- )
    FIXTURE-WRITER:ENSURE
    RESOLVE
-   PATH-BYTES EXECUTABLE? if exit then
+   PATH-BYTES EXECUTABLE? if PATH-BYTES FIXTURE-CACHE:USED if exit then then
    EMIT ;
 
 \ The keyed artifact, for a caller that only wants to name it.

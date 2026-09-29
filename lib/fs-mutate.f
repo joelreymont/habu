@@ -153,6 +153,21 @@ public
    a u STAT-MODE FS-MUT-MODE-PERM and FS-MUT-MODE-EXEC or {: mode :}
    a u mode CHMOD-MODE ;
 
+\ utimes(2) with a NULL times pointer - the integer 0 below - sets a path's
+\ access and modification times to now. No engine primitive sets a timestamp,
+\ so it is bound the way FS-NOREPLACE binds link(2). A cache that ages its
+\ entries by mtime marks one used with TOUCH (test/fixture-cache.f).
+package FS-TIMES
+PROCESS-SYMBOLS
+FUNCTION: UTIMES-CALL utimes ( ptr u8 n -- i32 ) ;FUNCTION
+public
+: NOW! ( ptr u8 -- )
+   0 UTIMES-CALL 0<> if E-FS-IO throw then ;
+;package
+
+: TOUCH ( ptr u8 n -- )
+   FS-PATHZ FS-TIMES:NOW! ;
+
 : MAKE-SYMLINK ( ptr u8 n ptr u8 n -- ) {: target:ptr targetu link:ptr linku :}
    target targetu FS-PATHZ link linku FS-MUT-PATHZ2 symlink 0 < if E-FS-IO throw then ;
 

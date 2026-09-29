@@ -29,6 +29,7 @@ require lib/build-cache.f
 require lib/content-key.f
 require lib/engine-candidate.f
 require tools/event-closure-lib.f
+require test/fixture-cache.f
 
 package FIXTURE-WRITER
 
@@ -94,8 +95,14 @@ variable CLOSURE-IDX
    WRITER$ CLOSURE+
    KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
+: IMAGE-PREFIX$ ( -- ptr u8 n )
+   s" hb-fixture-writer-" ;
+
+: WORK-PREFIX$ ( -- ptr u8 n )
+   s" fixture-writer" ;
+
 : NAME! ( -- )
-   s" hb-fixture-writer-" {: a:ptr u:n :}
+   IMAGE-PREFIX$ {: a:ptr u:n :}
    u KEY-HEX-LEN + NAME-CAP > if E-FS-CAPACITY throw then
    a NAME-BUF u BYTE-COPY
    KEY-HEX NAME-BUF u + KEY-HEX-LEN BYTE-COPY
@@ -116,8 +123,11 @@ variable CLOSURE-IDX
 
 \ The builder saves into a private directory of its own, so a half-written image
 \ is never visible at the keyed path: only the closing rename publishes it.
+\ It is registered for removal at exit, so a die before WORK-CLOSE still removes
+\ it.
 : WORK-OPEN ( -- )
-   BUILD-CACHE:ROOT$ s" fixture-writer" MAKE-TEMP-DIR WORK-BUF WORK-U COPY-OUT!
+   BUILD-CACHE:ROOT$ WORK-PREFIX$ MAKE-TEMP-DIR WORK-BUF WORK-U COPY-OUT!
+   WORK-BYTES CLEANUP-TREE+
    WORK-BYTES s" hb-fixture-writer" TMP-BUF JOIN-PATH TMP-U ! ;
 
 : WORK-CLOSE ( -- )
@@ -142,14 +152,10 @@ variable CLOSURE-IDX
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type
    2 ERR erru LEN>N write drop
-   rc 0 <> if
-      WORK-CLOSE
-      s" fixture-writer: writer image build failed" rc die
-   then ;
+   rc 0 <> if s" fixture-writer: writer image build failed" rc die then ;
 
 : PUBLISH ( -- )
    TMP-BYTES EXECUTABLE? 0= if
-      WORK-CLOSE
       s" fixture-writer: builder produced no executable image" WRITER-RC die
    then
    TMP-BYTES PATH-BYTES RENAME-FILE ;
@@ -157,21 +163,26 @@ variable CLOSURE-IDX
 \ A second builder racing this one saves an image from the same keyed sources
 \ and the rename above is atomic, so losing the race costs one discarded build and
 \ nothing else. The work directory goes whatever the build did, and a failure
-\ keeps its own code: a throw is caught here, and BUILD-RUN and PUBLISH remove
-\ the directory themselves before they die, because die ends the process.
+\ keeps its own code: a throw is caught here, and a die in BUILD-RUN or PUBLISH
+\ ends the process, whose exit registry removes what WORK-OPEN registered. A
+\ published image then prunes its family (test/fixture-cache.f), which reports
+\ its own failures and never fails the build.
 : EMIT ( -- )
    WORK-OPEN
    ['] BUILD-RUN catch EMIT-RC !
    EMIT-RC @ 0 = if ['] PUBLISH catch EMIT-RC ! then
    WORK-CLOSE
-   EMIT-RC @ 0 <> if EMIT-RC @ throw then ;
+   EMIT-RC @ 0 <> if EMIT-RC @ throw then
+   IMAGE-PREFIX$ WORK-PREFIX$ PATH-BYTES FIXTURE-CACHE:PRUNE ;
 
 public
 
-\ Build the shared writer image unless the keyed artifact is already on disk.
+\ Build the shared writer image unless the keyed artifact is already on disk. An
+\ image found there is marked in use (FIXTURE-CACHE:USED), and one a pruner
+\ took meanwhile is built again.
 : ENSURE ( -- )
    RESOLVE
-   PATH-BYTES EXECUTABLE? if exit then
+   PATH-BYTES EXECUTABLE? if PATH-BYTES FIXTURE-CACHE:USED if exit then then
    EMIT ;
 
 \ The keyed image, for a caller to run as `<image> -- output [artifact producer]`

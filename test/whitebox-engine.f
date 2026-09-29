@@ -20,11 +20,11 @@
 \ builder, and the builder's own ordered require/include closure - which is the
 \ engine's whole boot prefix, because tools/native-build.f names every prefix
 \ source it compiles. Both go into the content key below, exactly as
-\ test/cold-engine.f keys the cold host, so an edit anywhere in that closure
-\ changes the key and no stale host is reused. Keying on the installed binary
-\ alone made the artifact track bin/hb instead of the checkout: a tree whose
-\ engine sources changed without a reinstall got a whitebox host built from the
-\ older sources.
+\ test/fixture-writer.f keys the writer image, so an edit anywhere in that
+\ closure changes the key and no stale host is reused. Keying on the installed
+\ binary alone made the artifact track bin/hb instead of the checkout: a tree
+\ whose engine sources changed without a reinstall got a whitebox host built
+\ from the older sources.
 \
 \ PROVIDE is the whole interface: it names the private path a caller wants its
 \ own copy at. The keyed artifact itself is never handed out, so no suite can
@@ -45,6 +45,7 @@ require lib/build-cache.f
 require lib/content-key.f
 require lib/engine-candidate.f
 require tools/event-closure-lib.f
+require test/fixture-cache.f
 
 package WHITEBOX-ENGINE
 
@@ -77,8 +78,8 @@ public
 
 \ The builder's own deadline. It starts only after the key is hashed, so a
 \ caller that runs PROVIDE under a deadline of its own gives that one a margin
-\ beyond this: the inner deadline then governs, and BUILD-RUN removes the work
-\ directory before it dies with the builder's status.
+\ beyond this: the inner deadline then governs, BUILD-RUN dies with the
+\ builder's status, and the exit registry removes the work directory.
 360000 constant BUILD-TIMEOUT-MS
 
 \ The builder this host is built from, and whose closure the key folds. Public
@@ -124,8 +125,14 @@ private
    CLOSURE-CK+
    KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
+: IMAGE-PREFIX$ ( -- ptr u8 n )
+   s" hb-whitebox-" ;
+
+: WORK-PREFIX$ ( -- ptr u8 n )
+   s" whitebox-engine" ;
+
 : NAME! ( -- )
-   s" hb-whitebox-" {: a:ptr u:n :}
+   IMAGE-PREFIX$ {: a:ptr u:n :}
    u KEY-HEX-LEN + NAME-CAP > if E-FS-CAPACITY throw then
    a NAME-BUF u BYTE-COPY
    KEY-HEX NAME-BUF u + KEY-HEX-LEN BYTE-COPY
@@ -157,8 +164,11 @@ private
 
 \ The builder writes into a private directory of its own, so a half-written
 \ image is never visible at the keyed path: only the closing rename publishes it.
+\ It is registered for removal at exit, so a die before WORK-CLOSE still removes
+\ it.
 : WORK-OPEN ( -- )
-   BUILD-CACHE:ROOT$ s" whitebox-engine" MAKE-TEMP-DIR WORK-BUF WORK-U COPY-OUT!
+   BUILD-CACHE:ROOT$ WORK-PREFIX$ MAKE-TEMP-DIR WORK-BUF WORK-U COPY-OUT!
+   WORK-BYTES CLEANUP-TREE+
    WORK-BYTES s" hb-whitebox" TMP-BUF JOIN-PATH TMP-U ! ;
 
 : WORK-CLOSE ( -- )
@@ -193,14 +203,10 @@ private
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type
    2 ERR erru LEN>N write drop
-   rc 0 <> if
-      WORK-CLOSE
-      s" whitebox-engine: unsealed engine build failed" rc die
-   then ;
+   rc 0 <> if s" whitebox-engine: unsealed engine build failed" rc die then ;
 
 : PUBLISH ( -- )
    TMP-BYTES EXECUTABLE? 0= if
-      WORK-CLOSE
       s" whitebox-engine: builder produced no executable image" WB-RC die
    then
    TMP-BYTES PATH-BYTES RENAME-FILE ;
@@ -208,21 +214,26 @@ private
 \ A second builder racing this one writes the same keyed bytes and the rename
 \ above is atomic, so losing the race costs one discarded build and nothing
 \ else. The work directory goes whatever the build did, and a failure keeps its
-\ own code: a throw is caught here, and BUILD-RUN and PUBLISH remove the
-\ directory themselves before they die, because die ends the process.
+\ own code: a throw is caught here, and a die in BUILD-RUN or PUBLISH ends the
+\ process, whose exit registry removes what WORK-OPEN registered. A published
+\ engine then prunes its family (test/fixture-cache.f), which reports its own
+\ failures and never fails the build.
 : EMIT ( -- )
    WORK-OPEN
    ['] BUILD-RUN catch EMIT-RC !
    EMIT-RC @ 0 = if ['] PUBLISH catch EMIT-RC ! then
    WORK-CLOSE
-   EMIT-RC @ 0 <> if EMIT-RC @ throw then ;
+   EMIT-RC @ 0 <> if EMIT-RC @ throw then
+   IMAGE-PREFIX$ WORK-PREFIX$ PATH-BYTES FIXTURE-CACHE:PRUNE ;
 
 public
 
 \ Build the shared unsealed engine unless the keyed artifact is already on disk.
+\ An engine found there is marked in use (FIXTURE-CACHE:USED), and one a pruner
+\ took meanwhile is built again.
 : ENSURE ( -- )
    RESOLVE
-   PATH-BYTES EXECUTABLE? if exit then
+   PATH-BYTES EXECUTABLE? if PATH-BYTES FIXTURE-CACHE:USED if exit then then
    EMIT ;
 
 \ The keyed artifact, for a caller that only wants to name it.
