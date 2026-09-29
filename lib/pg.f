@@ -155,41 +155,36 @@ variable CONFIG-MUTEX
 VERSIONED-LIBRARY pq 5
 
 FUNCTION: LIB-CONNECT-START PQconnectStart ( ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-CONNECT-POLL PQconnectPoll ( ptr u8 -- n ) ;FUNCTION
-FUNCTION: LIB-STATUS PQstatus ( ptr u8 -- n ) ;FUNCTION
-FUNCTION: LIB-SET-NONBLOCKING PQsetnonblocking ( ptr u8 n -- n ) ;FUNCTION
-FUNCTION: LIB-SOCKET PQsocket ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-CONNECT-POLL PQconnectPoll ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-STATUS PQstatus ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-SET-NONBLOCKING PQsetnonblocking ( ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: LIB-SOCKET PQsocket ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-ERROR-MESSAGE PQerrorMessage ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-FINISH PQfinish ( ptr u8 -- ) ;FUNCTION
-FUNCTION: LIB-SEND-QUERY PQsendQuery ( ptr u8 ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-SEND-QUERY PQsendQuery ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-SEND-QUERY-PARAMS PQsendQueryParams
-   ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 ptr u8 n -- n ) ;FUNCTION
+   ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: LIB-SEND-PREPARE PQsendPrepare
-   ( ptr u8 ptr u8 ptr u8 n ptr u8 -- n ) ;FUNCTION
+   ( ptr u8 ptr u8 ptr u8 n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-SEND-QUERY-PREPARED PQsendQueryPrepared
-   ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 n -- n ) ;FUNCTION
-FUNCTION: LIB-FLUSH PQflush ( ptr u8 -- n ) ;FUNCTION
-FUNCTION: LIB-CONSUME-INPUT PQconsumeInput ( ptr u8 -- n ) ;FUNCTION
-FUNCTION: LIB-IS-BUSY PQisBusy ( ptr u8 -- n ) ;FUNCTION
+   ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: LIB-FLUSH PQflush ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-CONSUME-INPUT PQconsumeInput ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-IS-BUSY PQisBusy ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-GET-RESULT PQgetResult ( ptr u8 -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-RESULT-STATUS PQresultStatus ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-RESULT-STATUS PQresultStatus ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-RESULT-ERROR-FIELD PQresultErrorField ( ptr u8 n -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-NTUPLES PQntuples ( ptr u8 -- n ) ;FUNCTION
-FUNCTION: LIB-NFIELDS PQnfields ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: LIB-NTUPLES PQntuples ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-NFIELDS PQnfields ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-FNAME PQfname ( ptr u8 n -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-GETVALUE PQgetvalue ( ptr u8 n n -- ptr u8 ) ;FUNCTION
-FUNCTION: LIB-GETISNULL PQgetisnull ( ptr u8 n n -- n ) ;FUNCTION
-FUNCTION: LIB-GETLENGTH PQgetlength ( ptr u8 n n -- n ) ;FUNCTION
+FUNCTION: LIB-GETISNULL PQgetisnull ( ptr u8 n n -- i32 ) ;FUNCTION
+FUNCTION: LIB-GETLENGTH PQgetlength ( ptr u8 n n -- i32 ) ;FUNCTION
 FUNCTION: LIB-CLEAR PQclear ( ptr u8 -- ) ;FUNCTION
 FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 
-\ ---- foreign scalars and addresses ----------------------------------------
-\ A C `int` comes back in the low half of x0 and the high half is unspecified.
-: C-INT ( n -- n )
-   $FFFFFFFF and dup $80000000 and 0 <> if $100000000 - then ;
-
-
+\ ---- foreign addresses ----------------------------------------------------
 : NULL-ARG ( -- ptr u8 )
    NULL-PTR BYTE-VIEW ;
 
@@ -739,7 +734,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 
 : WAITING ( n n -- progress ) {: slot:n events:n :}
-   slot CONN-PG@ LIB-SOCKET C-INT {: socket:n :}
+   slot CONN-PG@ LIB-SOCKET {: socket:n :}
    socket 0 < if slot FAIL-CONNECTION E-EXEC throw then
    socket >FD events PG-PROGRESS:waiting ;
 
@@ -754,13 +749,13 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 : POLL-CONNECT ( n -- progress ) {: slot:n :}
    \ libpq requires writable readiness before the first PQconnectPoll too.
    slot CONNECTING@ CONNECT-FIRST = if
-      slot CONN-PG@ LIB-STATUS C-INT CONNECTION-BAD = if
+      slot CONN-PG@ LIB-STATUS CONNECTION-BAD = if
          slot CONNECT-REFUSED exit
       then
       CONNECT-POLLING slot CONNECTING!
       slot AIO:WRITABLE WAITING exit
    then
-   slot CONN-PG@ LIB-CONNECT-POLL C-INT {: status:n :}
+   slot CONN-PG@ LIB-CONNECT-POLL {: status:n :}
    status PGRES-POLLING-READING = if slot AIO:READABLE WAITING exit then
    status PGRES-POLLING-WRITING = if slot AIO:WRITABLE WAITING exit then
    status PGRES-POLLING-OK = if
@@ -789,14 +784,14 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 \ PQisBusy promises PQgetResult cannot block. The last result survives across
 \ progress calls; all preceding results are released as a script advances.
 : POLL-QUERY ( n -- progress ) {: slot:n :}
-   slot CONN-PG@ LIB-CONSUME-INPUT C-INT 0= if
+   slot CONN-PG@ LIB-CONSUME-INPUT 0= if
       slot FAIL-CONNECTION E-EXEC throw
    then
-   slot CONN-PG@ LIB-FLUSH C-INT {: flushing:n :}
+   slot CONN-PG@ LIB-FLUSH {: flushing:n :}
    flushing 0 < if slot FAIL-CONNECTION E-EXEC throw then
    flushing 0<> if slot AIO:READABLE AIO:WRITABLE or WAITING exit then
    begin
-      slot CONN-PG@ LIB-IS-BUSY C-INT 0<> if
+      slot CONN-PG@ LIB-IS-BUSY 0<> if
          slot AIO:READABLE WAITING exit
       then
       slot CONN-PG@ LIB-GET-RESULT {: pg :}
@@ -871,7 +866,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot CLAIM-STATEMENT {: arr-off:n res:n :}
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base sql-off + slot PARAM-N@ NULL-ARG base arr-off +
-   NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PARAMS C-INT {: sent:n :}
+   NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PARAMS {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
@@ -884,7 +879,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot CLAIM-STATEMENT {: arr-off:n res:n :}
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base name-off + slot PARAM-N@ base arr-off +
-   NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PREPARED C-INT {: sent:n :}
+   NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PREPARED {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
@@ -898,7 +893,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    sa su slot ARENA-CSTR {: sql-off:n :}
    CLAIM-RES-SLOT {: res:n :}
    slot ARENA-BASE {: base :}
-   slot CONN-PG@ base name-off + base sql-off + 0 NULL-ARG LIB-SEND-PREPARE C-INT {: sent:n :}
+   slot CONN-PG@ base name-off + base sql-off + 0 NULL-ARG LIB-SEND-PREPARE {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
@@ -913,14 +908,14 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot PARAM-N@ 0 <> if E-STATEMENT throw then
    a u slot ARENA-CSTR {: off:n :}
    CLAIM-RES-SLOT {: res:n :}
-   slot CONN-PG@ slot ARENA-BASE off + LIB-SEND-QUERY C-INT {: sent:n :}
+   slot CONN-PG@ slot ARENA-BASE off + LIB-SEND-QUERY {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
 
 
 : RESULT-STATUS ( n -- n ) {: slot:n :}
-   slot RES-PG@ LIB-RESULT-STATUS C-INT ;
+   slot RES-PG@ LIB-RESULT-STATUS ;
 
 
 : CLEAR-SLOT ( n -- ) {: slot:n :}
@@ -946,7 +941,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot a u VERB-TEXT! {: sql :}
    CLAIM-RES-SLOT {: res:n :}
    slot CONN-PG@ sql 0 NULL-ARG NULL-ARG NULL-ARG NULL-ARG TEXT-RESULT
-   LIB-SEND-QUERY-PARAMS C-INT {: sent:n :}
+   LIB-SEND-QUERY-PARAMS {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot WAIT-QUERY RESULT-SLOT ;
@@ -987,19 +982,19 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    c COL>N {: ci:n :}
    ri 0 < if E-COLUMN throw then
    ci 0 < if E-COLUMN throw then
-   ri res LIB-NTUPLES C-INT >= if E-COLUMN throw then
-   ci res LIB-NFIELDS C-INT >= if E-COLUMN throw then
+   ri res LIB-NTUPLES >= if E-COLUMN throw then
+   ci res LIB-NFIELDS >= if E-COLUMN throw then
    slot ri ci ;
 
 
 : VALUE$ ( n n n -- ptr u8 n ) {: slot:n ri:n ci:n :}
    slot RES-PG@ {: res :}
    res ri ci LIB-GETVALUE
-   res ri ci LIB-GETLENGTH C-INT ;
+   res ri ci LIB-GETLENGTH ;
 
 
 : CELL-NULL? ( n n n -- bool ) {: slot:n ri:n ci:n :}
-   slot RES-PG@ ri ci LIB-GETISNULL C-INT 0 <> ;
+   slot RES-PG@ ri ci LIB-GETISNULL 0 <> ;
 
 
 : CMD-COUNT ( n -- n ) {: slot:n :}
@@ -1043,7 +1038,7 @@ public
    slot ARENA-RELEASE
    pg NULL-ADDR? if slot RETIRE-CONN-SLOT E-CONNECT throw then
    pg slot CONN-PG!
-   pg 1 LIB-SET-NONBLOCKING C-INT 0<> if
+   pg 1 LIB-SET-NONBLOCKING 0<> if
       slot FAIL-CONNECTION
       E-CONNECT throw
    then
@@ -1165,11 +1160,11 @@ public
 
 
 : ROWS ( result -- count )
-   RESULT-SLOT RES-PG@ LIB-NTUPLES C-INT >COUNT ;
+   RESULT-SLOT RES-PG@ LIB-NTUPLES >COUNT ;
 
 
 : COLS ( result -- count )
-   RESULT-SLOT RES-PG@ LIB-NFIELDS C-INT >COUNT ;
+   RESULT-SLOT RES-PG@ LIB-NFIELDS >COUNT ;
 
 
 : AFFECTED ( result -- count )
@@ -1180,7 +1175,7 @@ public
    handle RESULT-SLOT RES-PG@ {: res :}
    c COL>N {: ci:n :}
    ci 0 < if E-COLUMN throw then
-   ci res LIB-NFIELDS C-INT >= if E-COLUMN throw then
+   ci res LIB-NFIELDS >= if E-COLUMN throw then
    res ci LIB-FNAME {: p :}
    p NULL-ADDR? if E-COLUMN throw then
    p CSTR$ ;

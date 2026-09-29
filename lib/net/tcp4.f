@@ -83,7 +83,6 @@ private
 $10 constant SOCKADDR-BYTES
 $FFFF constant MAX-PORT
 $FFFFFFFF constant MAX-ADDRESS
-$FFFFFFFF constant U32-MASK
 $7FFFF000 constant MAX-TRANSFER    \ Linux transfers at most this many bytes per call.
 $1000 constant MAX-BACKLOG         \ Linux SOMAXCONN.
 : SOCKET-FLAGS ( -- n ) HB-TARGET-MACOS? if 1 else $80001 then ;       \ SOCK_STREAM | SOCK_CLOEXEC.
@@ -132,10 +131,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 : CONNECTION-FD ( connection -- n )
    CONNECTION>N dup CHECK-FD ;
-
-
-: C-INT ( n -- n )
-   U32-MASK and dup $80000000 and 0 <> if $100000000 - then ;
 
 
 : BE16! ( n ptr u8 -- ) {: value:n target :}
@@ -199,25 +194,25 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 \ over a loopback connection.
 PROCESS-SYMBOLS
 
-FUNCTION: SOCKET-CALL socket ( n n n -- n ) ;FUNCTION
-FUNCTION: BIND-CALL bind ( n ptr u8 n -- n ) ;FUNCTION
-FUNCTION: LISTEN-CALL listen ( n n -- n ) ;FUNCTION
-FUNCTION: CONNECT-CALL connect ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
+FUNCTION: BIND-CALL bind ( n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: LISTEN-CALL listen ( n n -- i32 ) ;FUNCTION
+FUNCTION: CONNECT-CALL connect ( n ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: SEND-CALL send ( n ptr u8 n n -- n ) ;FUNCTION
-FUNCTION: SHUTDOWN-CALL shutdown ( n n -- n ) ;FUNCTION
-FUNCTION: CLOSE-CALL close ( n -- n ) ;FUNCTION
+FUNCTION: SHUTDOWN-CALL shutdown ( n n -- i32 ) ;FUNCTION
+FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
-FUNCTION: DARWIN-ACCEPT accept ( n ptr u8 ptr u8 -- n )
+FUNCTION: DARWIN-ACCEPT accept ( n ptr u8 ptr u8 -- i32 )
    1 $10 WRITES-BYTES
    2 $04 WRITES-BYTES
 ;FUNCTION
 
-FUNCTION: ACCEPT-CALL accept4 ( n ptr u8 ptr u8 n -- n )
+FUNCTION: ACCEPT-CALL accept4 ( n ptr u8 ptr u8 n -- i32 )
    1 $10 WRITES-BYTES                     \ sockaddr_in
    2 $04 WRITES-BYTES                     \ socklen_t
 ;FUNCTION
 
-FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- n )
+FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 )
    1 $10 WRITES-BYTES                     \ sockaddr_in
    2 $04 WRITES-BYTES                     \ socklen_t
 ;FUNCTION
@@ -241,28 +236,28 @@ FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n )
    fd ;
 
 : SOCKET-RAW ( -- n )
-   2 SOCKET-FLAGS 0 SOCKET-CALL C-INT OWN-SOCKET ;
+   2 SOCKET-FLAGS 0 SOCKET-CALL OWN-SOCKET ;
 
 
 : BIND-RAW ( n -- n ) {: fd:n :}
-   fd SOCKADDR SOCKADDR-BYTES BIND-CALL C-INT ;
+   fd SOCKADDR SOCKADDR-BYTES BIND-CALL ;
 
 
 : LISTEN-RAW ( n n -- n )                 \ fd backlog
-   LISTEN-CALL C-INT ;
+   LISTEN-CALL ;
 
 
 : ACCEPT-RAW ( n -- n ) {: fd:n :}
    HB-TARGET-MACOS? if fd SOCKADDR ADDRLEN DARWIN-ACCEPT
-   else fd SOCKADDR ADDRLEN ACCEPT-FLAGS ACCEPT-CALL then C-INT OWN-SOCKET ;
+   else fd SOCKADDR ADDRLEN ACCEPT-FLAGS ACCEPT-CALL then OWN-SOCKET ;
 
 
 : CONNECT-RAW ( n -- n ) {: fd:n :}
-   fd SOCKADDR SOCKADDR-BYTES CONNECT-CALL C-INT ;
+   fd SOCKADDR SOCKADDR-BYTES CONNECT-CALL ;
 
 
 : LOCAL-RAW ( n -- n ) {: fd:n :}
-   fd SOCKADDR ADDRLEN LOCAL-CALL C-INT ;
+   fd SOCKADDR ADDRLEN LOCAL-CALL ;
 
 
 : RECEIVE-RAW ( n ptr u8 n -- n ) {: fd:n bytes size:n :}
@@ -274,11 +269,11 @@ FUNCTION: RECEIVE-CALL recv ( n ptr u8 n n -- n )
 
 
 : SHUTDOWN-RAW ( n n -- n )               \ fd how
-   SHUTDOWN-CALL C-INT ;
+   SHUTDOWN-CALL ;
 
 
 : CLOSE-RAW ( n -- n )
-   CLOSE-CALL C-INT ;
+   CLOSE-CALL ;
 
 
 : RC>STATUS ( n -- status )

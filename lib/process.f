@@ -147,7 +147,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and PROC-STORAGE-BYTES TASK:+USER PROC-STORAGE 
    pid PID>N wait-status ;
 
 PROCESS-SYMBOLS
-FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- n )
+FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    1 4 WRITES-BYTES                    \ wait status is a C int, not a cell
 ;FUNCTION
 
@@ -445,7 +445,7 @@ PROC-REAP-ARM-DEFAULT
 : PROC-REAP-CAPTURE-BOUNDED ( -- )
    begin PROC-PID @ 0 >= while
       0 PROC-STATUS !
-      PROC-PID @ PROC-STATUS BYTE-VIEW 1 PROC-WAITPID-CALL $FFFFFFFF and {: got:n :}
+      PROC-PID @ PROC-STATUS BYTE-VIEW 1 PROC-WAITPID-CALL {: got:n :}
       got PROC-PID @ = if
          PROC-STATUS @ PROC-STATUS>RC RC>N PROC-RC !
          PROC-NO-PID PROC-PID !

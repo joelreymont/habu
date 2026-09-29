@@ -4,7 +4,7 @@ require lib/fs-mutate.f
 package FS-COPY-ALIAS-TEST
 
 PROCESS-SYMBOLS
-FUNCTION: LINK-CALL link ( ptr u8 ptr u8 -- n ) ;FUNCTION
+FUNCTION: LINK-CALL link ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
 
 create ROOT FS-PATH-CAP allot
 variable ROOT-U

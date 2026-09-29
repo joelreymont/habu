@@ -10,7 +10,7 @@ TASK-INFO-BYTES BUFFER: TASK-INFO
 variable THREAD-N
 
 PROCESS-SYMBOLS
-FUNCTION: PID-INFO proc_pidinfo ( n n n ptr u8 n -- n )
+FUNCTION: PID-INFO proc_pidinfo ( n n n ptr u8 n -- i32 )
    3 TASK-INFO-BYTES WRITES-BYTES
 ;FUNCTION
 

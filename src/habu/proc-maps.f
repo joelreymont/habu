@@ -209,8 +209,8 @@ variable BS-LO  variable BS-HI  variable BS-MID  variable BS-AT
 MACH-INFO-BYTES BUFFER: MACH-INFO
 
 PROCESS-SYMBOLS
-FUNCTION: MACH-SELF task_self_trap ( -- n ) ;FUNCTION
-FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr u8 -- n )
+FUNCTION: MACH-SELF task_self_trap ( -- u32 ) ;FUNCTION
+FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr u8 -- i32 )
    1 8 WRITES-BYTES
    2 8 WRITES-BYTES
    3 4 WRITES-BYTES

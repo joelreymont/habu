@@ -66,50 +66,50 @@ FUNCTION: AES-256-GCM EVP_aes_256_gcm ( -- n ) ;FUNCTION
 FUNCTION: SHA-256 EVP_sha256 ( -- n ) ;FUNCTION
 FUNCTION: SHA-1 EVP_sha1 ( -- n ) ;FUNCTION
 
-FUNCTION: RAND-BYTES RAND_bytes ( ptr u8 n -- n )
+FUNCTION: RAND-BYTES RAND_bytes ( ptr u8 n -- i32 )
    0 1 WRITES-ARG                         \ the caller's span, length from arg 1
 ;FUNCTION
 
-FUNCTION: ENC-CIPHER EVP_EncryptInit_ex ( n n n n n -- n ) ;FUNCTION
-FUNCTION: ENC-KEY EVP_EncryptInit_ex ( n n n ptr u8 ptr u8 -- n ) ;FUNCTION
-FUNCTION: DEC-CIPHER EVP_DecryptInit_ex ( n n n n n -- n ) ;FUNCTION
-FUNCTION: DEC-KEY EVP_DecryptInit_ex ( n n n ptr u8 ptr u8 -- n ) ;FUNCTION
+FUNCTION: ENC-CIPHER EVP_EncryptInit_ex ( n n n n n -- i32 ) ;FUNCTION
+FUNCTION: ENC-KEY EVP_EncryptInit_ex ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: DEC-CIPHER EVP_DecryptInit_ex ( n n n n n -- i32 ) ;FUNCTION
+FUNCTION: DEC-KEY EVP_DecryptInit_ex ( n n n ptr u8 ptr u8 -- i32 ) ;FUNCTION
 
-FUNCTION: ENC-AAD EVP_EncryptUpdate ( n n ptr u8 ptr u8 n -- n )
+FUNCTION: ENC-AAD EVP_EncryptUpdate ( n n ptr u8 ptr u8 n -- i32 )
    2 C-INT-BYTES WRITES-BYTES              \ int *outl
 ;FUNCTION
 
-FUNCTION: DEC-AAD EVP_DecryptUpdate ( n n ptr u8 ptr u8 n -- n )
+FUNCTION: DEC-AAD EVP_DecryptUpdate ( n n ptr u8 ptr u8 n -- i32 )
    2 C-INT-BYTES WRITES-BYTES
 ;FUNCTION
 
-FUNCTION: ENC-UPDATE EVP_EncryptUpdate ( n ptr u8 ptr u8 ptr u8 n -- n )
+FUNCTION: ENC-UPDATE EVP_EncryptUpdate ( n ptr u8 ptr u8 ptr u8 n -- i32 )
    1 4 WRITES-ARG                         \ the caller's output span, length from arg 4
    2 C-INT-BYTES WRITES-BYTES
 ;FUNCTION
 
-FUNCTION: DEC-UPDATE EVP_DecryptUpdate ( n ptr u8 ptr u8 ptr u8 n -- n )
+FUNCTION: DEC-UPDATE EVP_DecryptUpdate ( n ptr u8 ptr u8 ptr u8 n -- i32 )
    1 4 WRITES-ARG
    2 C-INT-BYTES WRITES-BYTES
 ;FUNCTION
 
-FUNCTION: ENC-FINAL EVP_EncryptFinal_ex ( n ptr u8 ptr u8 -- n )
+FUNCTION: ENC-FINAL EVP_EncryptFinal_ex ( n ptr u8 ptr u8 -- i32 )
    1 BLOCK-BYTES WRITES-BYTES              \ one block of slack; GCM emits nothing here
    2 C-INT-BYTES WRITES-BYTES
 ;FUNCTION
 
-FUNCTION: DEC-FINAL EVP_DecryptFinal_ex ( n ptr u8 ptr u8 -- n )
+FUNCTION: DEC-FINAL EVP_DecryptFinal_ex ( n ptr u8 ptr u8 -- i32 )
    1 BLOCK-BYTES WRITES-BYTES
    2 C-INT-BYTES WRITES-BYTES
 ;FUNCTION
 
-FUNCTION: CTL-VALUE EVP_CIPHER_CTX_ctrl ( n n n n -- n ) ;FUNCTION
+FUNCTION: CTL-VALUE EVP_CIPHER_CTX_ctrl ( n n n n -- i32 ) ;FUNCTION
 
-FUNCTION: CTL-TAG-OUT EVP_CIPHER_CTX_ctrl ( n n n ptr u8 -- n )
+FUNCTION: CTL-TAG-OUT EVP_CIPHER_CTX_ctrl ( n n n ptr u8 -- i32 )
    3 TAG-BYTES WRITES-BYTES                \ the tag the cipher hands back
 ;FUNCTION
 
-FUNCTION: CTL-TAG-IN EVP_CIPHER_CTX_ctrl ( n n n ptr u8 -- n ) ;FUNCTION
+FUNCTION: CTL-TAG-IN EVP_CIPHER_CTX_ctrl ( n n n ptr u8 -- i32 ) ;FUNCTION
 
 FUNCTION: HMAC-CALL HMAC ( n ptr u8 n ptr u8 n ptr u8 ptr u8 -- n )
    5 MAC-BYTES WRITES-BYTES                \ the digest

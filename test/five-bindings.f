@@ -20,7 +20,7 @@ require lib/task.f
 package FIVE-BINDINGS
 
 PROCESS-SYMBOLS
-FUNCTION: FIVE-GETPID getpid ( -- n ) ;FUNCTION
+FUNCTION: FIVE-GETPID getpid ( -- i32 ) ;FUNCTION
 
 $20 constant TEXT-CAP
 TEXT-CAP CRYPTO:TAG-BYTES + constant SEALED-CAP

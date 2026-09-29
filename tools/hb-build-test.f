@@ -128,7 +128,7 @@ variable HBT-SEQ-IP      \ that scan's cursor
 \ that cell made this program build without a word of complaint and take SIGSEGV
 \ inside DLSYM-SLOT's `@`.
 : HBT-AOT-FFI-SRC$ ( -- ptr u8 n )
-   S\" require lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: GETPID-CALL getpid ( -- n ) ;FUNCTION\n: MAIN ( -- ) GETPID-CALL 0 > if 1 else 0 then . cr ;\n" ;
+   S\" require lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: GETPID-CALL getpid ( -- i32 ) ;FUNCTION\n: MAIN ( -- ) GETPID-CALL 0 > if 1 else 0 then . cr ;\n" ;
 
 : HBT-HBB-PREPARE-REPL ( ptr u8 n ptr u8 n -- )
    HBB-RESET-OPTIONS

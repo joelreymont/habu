@@ -42,7 +42,7 @@ create EID-PROC-EXE
    char e c, char x c, char e c, 0 c,
 
 PROCESS-SYMBOLS
-FUNCTION: SELF-PATH proc_pidpath ( n ptr u8 n -- n )
+FUNCTION: SELF-PATH proc_pidpath ( n ptr u8 n -- i32 )
    1 2 WRITES-ARG
 ;FUNCTION
 

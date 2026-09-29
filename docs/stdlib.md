@@ -380,13 +380,23 @@ FUNCTION: WRITE-ONE write_one ( ptr u8 n -- n )
 ;FUNCTION
 ```
 
-The declared effect is the generated word's effect and decides the staging:
-`n` is a `FFI:VALUE!`, `r` a `FFI:FLOAT!`, and `ptr u8` a read-only
-`FFI:READABLE!` unless a clause names it written - `idx len WRITES-BYTES` for a
-fixed width, `idx arg WRITES-ARG` when another argument carries the length. The
-clauses are words the interpreter runs between the two keywords, so their
-numbers are ordinary literals. `VERSIONED-LIBRARY`, `LIBRARY` and
-`PROCESS-SYMBOLS` select for the
+The declared effect is the generated word's effect, except that an `i32` result
+reads `n`, and decides the staging: `n` is a `FFI:VALUE!`, `r` a `FFI:FLOAT!`,
+and `ptr u8` a read-only `FFI:READABLE!` unless a clause names it written -
+`idx len WRITES-BYTES` for a fixed width, `idx arg WRITES-ARG` when another
+argument carries the length. The clauses are words the interpreter runs between
+the two keywords, so their numbers are ordinary literals.
+
+The result states the C prototype's width. `n` takes the whole return register:
+a pointer kept as a number, `long`, `size_t`, `ssize_t`, `off_t`. A C `int`
+fills only the low 32 bits and neither AAPCS64 nor SysV defines the bits above
+them, so an `int` declared `n` can read -1 as `$FFFFFFFF`. Declare an `int` (an
+enum, `pid_t`, `kern_return_t`) `i32`, which sign-extends the low half and reads
+`n` to the checker, and an `unsigned int` (`mach_port_t`) `u32`, which masks it.
+`r` is a double, `ptr u8` a foreign-owned address, and no result drops the
+register.
+
+`VERSIONED-LIBRARY`, `LIBRARY` and `PROCESS-SYMBOLS` select for the
 declarations that follow and the selection belongs to the scope that states it -
 the package section, or the global scope, the declarations land in. There is no
 default: a declaration with no selection in its own scope is `E-FFI-LIBRARY`, so

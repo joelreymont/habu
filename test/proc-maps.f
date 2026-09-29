@@ -7,8 +7,8 @@ require src/habu/proc-maps.f
 package PROC-MAPS-TEST
 
 PROCESS-SYMBOLS
-FUNCTION: MACH-SELF task_self_trap ( -- n ) ;FUNCTION
-FUNCTION: MACH-PROTECT mach_vm_protect ( n n n n n -- n ) ;FUNCTION
+FUNCTION: MACH-SELF task_self_trap ( -- u32 ) ;FUNCTION
+FUNCTION: MACH-PROTECT mach_vm_protect ( n n n n n -- i32 ) ;FUNCTION
 
 \ mach_vm_address_t is the integer representation of this allocation's pointer.
 TRUSTED: ADDRESS ( ptr u8 -- n ) ;

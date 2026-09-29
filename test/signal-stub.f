@@ -42,7 +42,7 @@ variable PIPE-W
 
 PROCESS-SYMBOLS
 
-FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- n )
+FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    2 SA-BYTES WRITES-BYTES
 ;FUNCTION
 

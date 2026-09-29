@@ -59,9 +59,9 @@ DEFTYPE FFI-CTX
 
 PROCESS-SYMBOLS
 FUNCTION: FFI-T-STRLEN$ strlen ( ptr u8 -- n ) ;FUNCTION
-FUNCTION: FFI-T-STRNCMP$ strncmp ( ptr u8 ptr u8 n -- n ) ;FUNCTION
-FUNCTION: FFI-T-GETPID$ getpid ( -- n ) ;FUNCTION
-FUNCTION: FFI-T-CTX-CALL getpid ( n -- n ) ;FUNCTION
+FUNCTION: FFI-T-STRNCMP$ strncmp ( ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: FFI-T-GETPID$ getpid ( -- i32 ) ;FUNCTION
+FUNCTION: FFI-T-CTX-CALL getpid ( n -- i32 ) ;FUNCTION
 
 \ A declaration with no result drops the machine return cell, so the word is
 \ stack-neutral for its caller.
@@ -78,6 +78,13 @@ FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n )
    0 2 WRITES-ARG
 ;FUNCTION
 
+\ A C int result fills only the low half of the return register, and the half
+\ above it is whatever the callee left there. close(-1) fails with -1 in every
+\ libc: `i32` must read it as -1, never $FFFFFFFF, and the same result read
+\ through `u32` must be $FFFFFFFF, never -1.
+FUNCTION: FFI-T-CLOSE close ( n -- i32 ) ;FUNCTION
+FUNCTION: FFI-T-CLOSE-U32 close ( n -- u32 ) ;FUNCTION
+
 \ Nominal-input fixture proves ABI-cell identity does not erase a role: the
 \ conversion is visible at this call site and the checker keeps ffi-ctx apart
 \ from ffi-dev.
@@ -93,7 +100,7 @@ variable FFI-T-DEPTH-AFTER
 : FFI-T-DEPTH! ( ptr n -- ) depth swap ! ;
 
 FFI-T-DEPTH-BEFORE FFI-T-DEPTH!
-FUNCTION: FFI-T-DEPTH-PROBE getpid ( -- n ) ;FUNCTION
+FUNCTION: FFI-T-DEPTH-PROBE getpid ( -- i32 ) ;FUNCTION
 FFI-T-DEPTH-AFTER FFI-T-DEPTH!
 
 \ Declarations the declarer must refuse. Each rides INCLUDE-EVALUATE so the
@@ -337,7 +344,7 @@ FUNCTION: FFI-T-SQRT-CALL sqrt ( r -- r ) ;FUNCTION
 PROCESS-SYMBOLS
 
 \ The same declaration exercises Apple's stack varargs and Linux's registers.
-FUNCTION: FFI-T-PRINTF snprintf ( ptr u8 n ptr u8 n r ptr u8 -- n )
+FUNCTION: FFI-T-PRINTF snprintf ( ptr u8 n ptr u8 n r ptr u8 -- i32 )
    3 VARIADIC
    0 1 WRITES-ARG
 ;FUNCTION
@@ -420,6 +427,11 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
    FFI-T-HELLO FFI-T-HELP 3 FFI-T-STRNCMP$ 0 T=
    FFI-T-HELLO FFI-T-HELP 4 FFI-T-STRNCMP$ 0 T<>
+
+   s" a C int result is sign-extended from its low half" T-LABEL
+   -1 FFI-T-CLOSE -1 T=
+   s" an unsigned int result is masked to its low half" T-LABEL
+   -1 FFI-T-CLOSE-U32 $FFFFFFFF T=
 
    FFI-T-GETPID$ 0 T<>
    FFI-T-VOID$  FFI-T-GETPID$ 0 T<>               \ void-return wrapper is stack-neutral

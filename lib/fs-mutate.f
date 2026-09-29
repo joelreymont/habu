@@ -220,7 +220,7 @@ FS-MUT-BAND-AGREE
 
 package FS-COPY
 PROCESS-SYMBOLS
-FUNCTION: TRUNCATE-CALL ftruncate ( n n -- n ) ;FUNCTION
+FUNCTION: TRUNCATE-CALL ftruncate ( n n -- i32 ) ;FUNCTION
 public
 : PREPARE-DST ( fd fd -- ) {: source dest :}
    source dest FS:SAME-OPEN-FILE? if E-FS-OPEN throw then
@@ -329,8 +329,8 @@ public
 
 package FS-ATOMIC
 PROCESS-SYMBOLS
-FUNCTION: OPEN-CALL open ( ptr u8 n n -- n ) 2 VARIADIC ;FUNCTION
-FUNCTION: CLOSE-CALL close ( n -- n ) ;FUNCTION
+FUNCTION: OPEN-CALL open ( ptr u8 n n -- i32 ) 2 VARIADIC ;FUNCTION
+FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : OPEN-FLAGS ( -- n )
    HB-TARGET-LINUX? if $C1 exit then

@@ -12,7 +12,7 @@ package OS-MEMORY
 private
 
 PROCESS-SYMBOLS
-FUNCTION: PAGE-SIZE-CALL getpagesize ( -- n ) ;FUNCTION
+FUNCTION: PAGE-SIZE-CALL getpagesize ( -- i32 ) ;FUNCTION
 
 : PAGE-SIZE-CHECK ( n -- n )
    dup 0 <= if drop E-MEM-SIZE throw then ;

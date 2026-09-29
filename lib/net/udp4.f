@@ -91,10 +91,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    SOCKET>N 0 $7FFFFFFF WITHIN-RANGE ;
 
 
-: C-INT ( n -- n )
-   MAX-ADDRESS and dup $80000000 and 0 <> if $100000000 - then ;
-
-
 : BE16! ( n ptr u8 -- ) {: value:n target :}
    value 8 rshift $FF and target c! value $FF and target $01 + c! ;
 
@@ -148,12 +144,12 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 \ with an independent Python UDP peer.
 PROCESS-SYMBOLS
 
-FUNCTION: SOCKET-CALL socket ( n n n -- n ) ;FUNCTION
-FUNCTION: BIND-CALL bind ( n ptr u8 n -- n ) ;FUNCTION
-FUNCTION: CLOSE-CALL close ( n -- n ) ;FUNCTION
+FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
+FUNCTION: BIND-CALL bind ( n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 FUNCTION: SEND-CALL sendto ( n ptr u8 n n ptr u8 n -- n ) ;FUNCTION
 
-FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- n )
+FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 )
    1 $10 WRITES-BYTES                     \ sockaddr_in
    2 $04 WRITES-BYTES                     \ socklen_t
 ;FUNCTION
@@ -169,7 +165,7 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
 
 
 : SOCKET-RAW ( -- n )
-   2 SOCKET-FLAGS 0 SOCKET-CALL C-INT {: fd:n :}
+   2 SOCKET-FLAGS 0 SOCKET-CALL {: fd:n :}
    fd 0 < HB-TARGET-MACOS? 0= or if fd exit then
    \ Fresh sockets have no status flags to preserve. Darwin uses O_NONBLOCK=4.
    fd 2 1 fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
@@ -178,15 +174,15 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
 
 
 : BIND-RAW ( socket -- n ) {: socket:socket :}
-   socket SOCKET>N SOCKADDR SOCKADDR-BYTES BIND-CALL C-INT ;
+   socket SOCKET>N SOCKADDR SOCKADDR-BYTES BIND-CALL ;
 
 
 : CLOSE-RAW ( socket -- n ) {: socket:socket :}
-   socket SOCKET>N CLOSE-CALL C-INT ;
+   socket SOCKET>N CLOSE-CALL ;
 
 
 : LOCAL-RAW ( socket -- n ) {: socket:socket :}
-   socket SOCKET>N SOCKADDR ADDRLEN LOCAL-CALL C-INT ;
+   socket SOCKET>N SOCKADDR ADDRLEN LOCAL-CALL ;
 
 
 : SEND-RAW ( socket ptr u8 NUM:byte-len -- n )

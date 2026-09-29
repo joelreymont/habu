@@ -107,16 +107,16 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $18 TASK:+USER IO-STORAGE drop
 \ stack convention or Linux's register convention and preserves pointer extents.
 VERSIONED-LIBRARY curl 4
 
-FUNCTION: GLOBAL-INIT curl_global_init ( n -- n ) ;FUNCTION
+FUNCTION: GLOBAL-INIT curl_global_init ( n -- i32 ) ;FUNCTION
 FUNCTION: EASY-INIT curl_easy_init ( -- n ) ;FUNCTION
 FUNCTION: EASY-CLEANUP curl_easy_cleanup ( n -- ) ;FUNCTION
-FUNCTION: EASY-PERFORM curl_easy_perform ( n -- n ) ;FUNCTION
-FUNCTION: SETOPT-NUM curl_easy_setopt ( n n n -- n ) 2 VARIADIC ;FUNCTION
-FUNCTION: SETOPT-SPAN curl_easy_setopt ( n n ptr u8 -- n ) 2 VARIADIC ;FUNCTION
+FUNCTION: EASY-PERFORM curl_easy_perform ( n -- i32 ) ;FUNCTION
+FUNCTION: SETOPT-NUM curl_easy_setopt ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
+FUNCTION: SETOPT-SPAN curl_easy_setopt ( n n ptr u8 -- i32 ) 2 VARIADIC ;FUNCTION
 FUNCTION: SLIST-APPEND curl_slist_append ( n n -- n ) ;FUNCTION
 FUNCTION: SLIST-FREE curl_slist_free_all ( n -- ) ;FUNCTION
 
-FUNCTION: GETINFO-CELL curl_easy_getinfo ( n n ptr u8 -- n )
+FUNCTION: GETINFO-CELL curl_easy_getinfo ( n n ptr u8 -- i32 )
    2 VARIADIC
    2 $08 WRITES-BYTES                     \ one C long, or one char*
 ;FUNCTION
@@ -130,11 +130,11 @@ FUNCTION: GETINFO-CELL curl_easy_getinfo ( n n ptr u8 -- n )
 \ curl_multi_fdset fills three fd_sets the CALLER cleared, which is why each of
 \ them is declared as the whole FD_SETSIZE bitmap it writes into.
 FUNCTION: MULTI-INIT curl_multi_init ( -- n ) ;FUNCTION
-FUNCTION: MULTI-CLEANUP curl_multi_cleanup ( n -- n ) ;FUNCTION
-FUNCTION: MULTI-ADD curl_multi_add_handle ( n n -- n ) ;FUNCTION
-FUNCTION: MULTI-REMOVE curl_multi_remove_handle ( n n -- n ) ;FUNCTION
+FUNCTION: MULTI-CLEANUP curl_multi_cleanup ( n -- i32 ) ;FUNCTION
+FUNCTION: MULTI-ADD curl_multi_add_handle ( n n -- i32 ) ;FUNCTION
+FUNCTION: MULTI-REMOVE curl_multi_remove_handle ( n n -- i32 ) ;FUNCTION
 
-FUNCTION: MULTI-PERFORM curl_multi_perform ( n ptr u8 -- n )
+FUNCTION: MULTI-PERFORM curl_multi_perform ( n ptr u8 -- i32 )
    1 $04 WRITES-BYTES                     \ int *running_handles
 ;FUNCTION
 
@@ -142,14 +142,14 @@ FUNCTION: MULTI-INFO-READ curl_multi_info_read ( n ptr u8 -- n )
    1 $04 WRITES-BYTES                     \ int *msgs_in_queue
 ;FUNCTION
 
-FUNCTION: MULTI-FDSET curl_multi_fdset ( n ptr u8 ptr u8 ptr u8 ptr u8 -- n )
+FUNCTION: MULTI-FDSET curl_multi_fdset ( n ptr u8 ptr u8 ptr u8 ptr u8 -- i32 )
    1 $80 WRITES-BYTES                     \ fd_set *read_fd_set
    2 $80 WRITES-BYTES                     \ fd_set *write_fd_set
    3 $80 WRITES-BYTES                     \ fd_set *exc_fd_set
    4 $04 WRITES-BYTES                     \ int *max_fd
 ;FUNCTION
 
-FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- n )
+FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- i32 )
    1 $08 WRITES-BYTES                     \ long *milliseconds
 ;FUNCTION
 
@@ -161,7 +161,7 @@ FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- n )
 \ copies libcurl's string options read.
 PROCESS-SYMBOLS
 
-FUNCTION: STREAM-CLOSE fclose ( n -- n ) ;FUNCTION
+FUNCTION: STREAM-CLOSE fclose ( n -- i32 ) ;FUNCTION
 FUNCTION: DUP-TEXT strndup ( ptr u8 n -- n ) ;FUNCTION
 FUNCTION: TEXT-LENGTH strlen ( n -- n ) ;FUNCTION
 FUNCTION: RELEASE free ( n -- ) ;FUNCTION

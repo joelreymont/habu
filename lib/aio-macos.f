@@ -43,8 +43,8 @@ variable MAC-READ-FD
 variable MAC-WRITE-FD
 
 PROCESS-SYMBOLS
-FUNCTION: MAC-FCNTL-CALL fcntl ( n n n -- n ) 2 VARIADIC ;FUNCTION
-FUNCTION: MAC-POLL poll ( ptr u8 n n -- n )
+FUNCTION: MAC-FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
+FUNCTION: MAC-POLL poll ( ptr u8 n n -- i32 )
    0 MAC-POLL-N MAC-POLL-BYTES * WRITES-BYTES
 ;FUNCTION
 FUNCTION: MAC-READ read ( n ptr u8 n -- n ) 1 2 WRITES-ARG ;FUNCTION
@@ -52,9 +52,9 @@ FUNCTION: MAC-PREAD pread ( n ptr u8 n n -- n ) 1 2 WRITES-ARG ;FUNCTION
 FUNCTION: MAC-WRITE write ( n ptr u8 n -- n ) ;FUNCTION
 FUNCTION: MAC-PWRITE pwrite ( n ptr u8 n n -- n ) ;FUNCTION
 FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
-FUNCTION: MAC-ACCEPT accept ( n n n -- n ) ;FUNCTION
-FUNCTION: MAC-CONNECT connect ( n ptr u8 n -- n ) ;FUNCTION
-FUNCTION: MAC-SOCKET-ERROR getsockopt ( n n n ptr u8 ptr u8 -- n )
+FUNCTION: MAC-ACCEPT accept ( n n n -- i32 ) ;FUNCTION
+FUNCTION: MAC-CONNECT connect ( n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: MAC-SOCKET-ERROR getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    3 4 WRITES-BYTES 4 4 WRITES-BYTES
 ;FUNCTION
 
@@ -62,11 +62,10 @@ FUNCTION: MAC-SOCKET-ERROR getsockopt ( n n n ptr u8 ptr u8 -- n )
 : MAC-PFD ( n -- ptr u8 ) MAC-POLL-BYTES * MAC-POLLS + ;
 : MAC-ACTIVE? ( n -- bool )
    REC-STATE@ dup STATE-SUBMITTED = swap STATE-FORGET = or ;
-: MAC-CINT ( n -- n ) $FFFFFFFF and dup $80000000 and 0<> if $100000000 - then ;
 
 : MAC-RESULT ( n -- n ) dup 0 < if drop FFI:ERRNO negate then ;
 
-: MAC-FCNTL ( n n n -- n ) MAC-FCNTL-CALL MAC-CINT MAC-RESULT ;
+: MAC-FCNTL ( n n n -- n ) MAC-FCNTL-CALL MAC-RESULT ;
 
 \ CONNECT supplies the caller's borrowed sockaddr through SOCK-SUBMIT's cell
 \ ABI. The caller retains it until AWAIT, exactly as on the Linux backend.
@@ -156,8 +155,7 @@ TRUSTED: MAC-SOCKADDR ( n -- ptr u8 ) ;
    kind KIND-ACCEPT = if EV-READABLE else EV-WRITABLE then idx MR MR.EVENTS !
    kind KIND-CONNECT = if
       idx MAC-TAKE-FLAGS dup 0 <> if negate idx swap MAC-FINISH MAC-NOTIFY idx exit then drop
-      fd addr MAC-SOCKADDR len MAC-CONNECT MAC-CINT
-      MAC-RESULT {: result:n :}
+      fd addr MAC-SOCKADDR len MAC-CONNECT MAC-RESULT {: result:n :}
       idx MAC-GIVE-FLAGS
       result MAC-INPROGRESS negate <> result MAC-ALREADY negate <> and if
          idx result MAC-FINISH
@@ -194,7 +192,7 @@ TRUSTED: MAC-SOCKADDR ( n -- ptr u8 ) ;
    then MAC-RESULT ;
 
 : MAC-ACCEPT-READY ( n -- n )
-   MR MR.FD @ 0 0 MAC-ACCEPT MAC-CINT MAC-RESULT
+   MR MR.FD @ 0 0 MAC-ACCEPT MAC-RESULT
    dup 0 < if exit then {: fd:n :}
    fd 2 1 MAC-FCNTL dup 0 < if fd close exit then drop
    \ accept inherits O_NONBLOCK on Darwin; the public accepted socket is blocking.
@@ -205,7 +203,7 @@ TRUSTED: MAC-SOCKADDR ( n -- ptr u8 ) ;
 : MAC-CONNECT-READY ( n -- n )
    0 MAC-SOCKERR LE:U32! 4 MAC-SOCKERR 4 + LE:U32!
    MR MR.FD @ $FFFF $1007 MAC-SOCKERR MAC-SOCKERR 4 + MAC-SOCKET-ERROR
-   MAC-CINT MAC-RESULT dup 0 < if exit then drop
+   MAC-RESULT dup 0 < if exit then drop
    MAC-SOCKERR LE:U32@ negate ;
 
 : MAC-SERVICE ( n n -- ) {: idx:n events:n :}
@@ -279,7 +277,7 @@ TRUSTED: MAC-SOCKADDR ( n -- ptr u8 ) ;
 : MAC-LOOP ( -- )
    begin
       AIO-LOCK TASK:GET MAC-PREPARE {: timeout:n slots:n :} AIO-LOCK TASK:RELEASE
-      MAC-POLLS slots timeout MAC-POLL MAC-CINT MAC-RESULT
+      MAC-POLLS slots timeout MAC-POLL MAC-RESULT
       dup 0 < if ERR-INTR negate <> if E-AIO-ENTER throw then else drop then
       AIO-LOCK TASK:GET MAC-COLLECT AIO-LOCK TASK:RELEASE
       RING-STOP atomic@ 0 <> if exit then

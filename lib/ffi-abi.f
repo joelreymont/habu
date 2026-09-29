@@ -525,7 +525,7 @@ get-current prot-wid-add
 \     FUNCTION: CRC-CALL crc32 ( n ptr u8 n -- n ) ;FUNCTION
 \     LIBRARY /usr/lib/libSystem.B.dylib      \ a literal, or PROCESS-SYMBOLS (RTLD_DEFAULT)
 \     FUNCTION: SQRT-CALL sqrt ( r -- r ) ;FUNCTION
-\     FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- n )
+\     FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- i32 )
 \        1 $10 WRITES-BYTES                   \ sockaddr_in
 \        2 $04 WRITES-BYTES                   \ socklen_t
 \     ;FUNCTION
@@ -534,14 +534,15 @@ get-current prot-wid-add
 \ a legal Habu name (__errno_location), and a package's own verb is usually not
 \ the C one: UDP4:BIND is the module's API, bind is libc's.
 \
-\ The declared effect becomes the generated word's effect verbatim and decides
-\ every argument's staging: `n` (and any token that widens to it) is a VALUE!,
-\ `r` is a FLOAT!, and `ptr u8` is a READABLE! - read-only, extent 0 - unless a
-\ clause names it written: `idx len WRITES-BYTES` for a fixed width, or
-\ `idx arg WRITES-ARG` when another argument carries the length. A written
-\ pointer must state its extent because the bounded call guards exactly the span
-\ it is given. The clauses are ordinary words the interpreter runs between the
-\ two keywords, so their numbers are literals and comments sit among them.
+\ The declared effect becomes the generated word's effect - verbatim, except that
+\ an `i32` result reads `n` - and decides every argument's staging: `n` (and any
+\ token that widens to it) is a VALUE!, `r` is a FLOAT!, and `ptr u8` is a
+\ READABLE! - read-only, extent 0 - unless a clause names it written:
+\ `idx len WRITES-BYTES` for a fixed width, or `idx arg WRITES-ARG` when another
+\ argument carries the length. A written pointer must state its extent because
+\ the bounded call guards exactly the span it is given. The clauses are ordinary
+\ words the interpreter runs between the two keywords, so their numbers are
+\ literals and comments sit among them.
 \ Convert a nominal at the call site: a declaration speaks the C function's own
 \ types.
 \
@@ -557,8 +558,15 @@ get-current prot-wid-add
 \ cannot inherit the library a previously loaded file happened to select and
 \ resolve its symbols through that handle's dependency tree.
 \
-\ The result is the call's: `n` (or a widening token), `r`, `ptr u8` for a
-\ foreign-owned address, or nothing, which drops the machine return cell.
+\ The result is the call's, at the width of the C prototype: `n` (or a widening
+\ token) for a cell-wide integer - `long`, `size_t`, `ssize_t`, `off_t` or an
+\ address kept as a number - `i32` for a C `int` (an enum, `pid_t`,
+\ `kern_return_t`), `u32` for an `unsigned int` (`mach_port_t`), `r`, `ptr u8`
+\ for a foreign-owned address, or nothing, which drops the machine return cell.
+\ A 32-bit result fills only the low half of the return register and neither
+\ AAPCS64 nor SysV defines the high half, so a C `int` declared `n` can read -1
+\ as $FFFFFFFF. `i32` sign-extends the low half and reads `n` to the checker,
+\ which has no signed 32-bit type; `u32` masks it and keeps its own type.
 \
 \ Integer arguments take x0.. and floats d0.. in declaration order (AAPCS64). A
 \ declaration carrying a float rides the ABI call, which packs no spill here, so
@@ -608,6 +616,8 @@ $100 constant DIAG-CAP                    \ the refusal line: two $40 tokens and
 1 constant R-VALUE
 2 constant R-FLOAT
 3 constant R-POINTER
+4 constant R-I32                          \ a C int: sign-extend the low half
+5 constant R-U32                          \ a C unsigned int: mask the low half
 
 0 constant C-BOUNDED
 1 constant C-POINTER
@@ -731,10 +741,14 @@ variable SCOPE-SET                         \ ... and whether one was stated at a
    s" r" TOK-IS? if TOK-KEEP K-FLOAT REG+ exit then
    TOK-KEEP K-VALUE REG+ ;
 
+\ `i32` is not a checker type: the word the declaration generates returns the
+\ sign-extended value as `n`.
 : OUT-TOKEN ( -- )
    RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
    s" ptr" TOK-IS? if TOK-KEEP PTR-TAIL R-POINTER RES-KIND ! exit then
    s" r" TOK-IS? if TOK-KEEP R-FLOAT RES-KIND ! exit then
+   s" i32" TOK-IS? if s" n" EFF+ R-I32 RES-KIND ! exit then
+   s" u32" TOK-IS? if TOK-KEEP R-U32 RES-KIND ! exit then
    TOK-KEEP R-VALUE RES-KIND ! ;
 
 : INPUTS ( -- )
@@ -943,6 +957,16 @@ variable SCOPE-SET                         \ ... and whether one was stated at a
    TABLE-ROOM
    SYM-BUF SYM-U @ CUR-LIB @ INT-N @ STACK-N @ FFI:DECLARE-SPILLED ;
 
+\ What the machine return cell becomes: dropped, rebuilt from its low half for a
+\ 32-bit result, or taken whole.
+: RESULT-TAIL ( -- )
+   RES-KIND @ R-NONE = if s"  drop" GEN+ exit then
+   RES-KIND @ R-I32 = if
+      s"  $FFFFFFFF and dup $80000000 and 0 <> if $FFFFFFFF00000000 or then" GEN+
+      exit
+   then
+   RES-KIND @ R-U32 = if s"  $FFFFFFFF and" GEN+ then ;
+
 : EMIT ( -- )
    GEN CODEGEN:RESET
    s" : " GEN+ NAME-BUF NAME-U @ GEN+
@@ -952,7 +976,7 @@ variable SCOPE-SET                         \ ... and whether one was stated at a
    STAGE
    SLOT GEN-N GEN-SP
    CALL-WORD
-   RES-KIND @ R-NONE = if s"  drop" GEN+ then
+   RESULT-TAIL
    s"  ;" GEN+ ;
 
 \ A selection belongs to the scope that states it - the package section, or the

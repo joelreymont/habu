@@ -303,26 +303,26 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
 \ waiter holds nothing the signaller needs.
 PROCESS-SYMBOLS
 
-FUNCTION: SEM-INIT-CALL sem_init ( ptr u8 n n -- n )
+FUNCTION: SEM-INIT-CALL sem_init ( ptr u8 n n -- i32 )
    0 TASK-SEM-BYTES WRITES-BYTES          \ sem_t; then pshared, then the count
 ;FUNCTION
 
-FUNCTION: SEM-WAIT-CALL sem_wait ( ptr u8 -- n )
+FUNCTION: SEM-WAIT-CALL sem_wait ( ptr u8 -- i32 )
    0 TASK-SEM-BYTES WRITES-BYTES
 ;FUNCTION
 
-FUNCTION: SEM-POST-CALL sem_post ( ptr u8 -- n )
+FUNCTION: SEM-POST-CALL sem_post ( ptr u8 -- i32 )
    0 TASK-SEM-BYTES WRITES-BYTES
 ;FUNCTION
 
-FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- n )
+FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- i32 )
    0 TASK-SEM-BYTES WRITES-BYTES
 ;FUNCTION
 
 \ sem_trywait is the same decrement without the block: EAGAIN is the answer
 \ "would have blocked", not a failure, and it is what the queue's TRY-PUSH and
 \ TRY-POP refuse on.
-FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- n )
+FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- i32 )
    0 TASK-SEM-BYTES WRITES-BYTES
 ;FUNCTION
 
@@ -332,21 +332,21 @@ FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- n )
 14 constant MACH-ABORTED
 49 constant MACH-TIMED-OUT
 0 constant MACH-FIFO
-FUNCTION: MACH-TASK task_self_trap ( -- n ) ;FUNCTION
-FUNCTION: MACH-SEM-CREATE semaphore_create ( n ptr u8 n n -- n )
+FUNCTION: MACH-TASK task_self_trap ( -- u32 ) ;FUNCTION
+FUNCTION: MACH-SEM-CREATE semaphore_create ( n ptr u8 n n -- i32 )
    1 4 WRITES-BYTES
 ;FUNCTION
-FUNCTION: MACH-SEM-DESTROY semaphore_destroy ( n n -- n ) ;FUNCTION
-FUNCTION: MACH-SEM-WAIT semaphore_wait ( n -- n ) ;FUNCTION
-FUNCTION: MACH-SEM-SIGNAL semaphore_signal ( n -- n ) ;FUNCTION
-FUNCTION: MACH-SEM-TRY semaphore_timedwait ( n n -- n ) ;FUNCTION
+FUNCTION: MACH-SEM-DESTROY semaphore_destroy ( n n -- i32 ) ;FUNCTION
+FUNCTION: MACH-SEM-WAIT semaphore_wait ( n -- i32 ) ;FUNCTION
+FUNCTION: MACH-SEM-SIGNAL semaphore_signal ( n -- i32 ) ;FUNCTION
+FUNCTION: MACH-SEM-TRY semaphore_timedwait ( n n -- i32 ) ;FUNCTION
 
 \ nanosleep is the other call here that blocks on purpose: it parks the calling
 \ thread until a time arrives rather than until something happens. The first
 \ timespec is the request, which the kernel only reads; the second is the one it
 \ writes when a signal cuts the sleep short, so the extent is stated on that
 \ argument alone and the request stays a read-only pointer.
-FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- n )
+FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- i32 )
    1 TASK-TIMESPEC-BYTES WRITES-BYTES
 ;FUNCTION
 
