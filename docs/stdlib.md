@@ -2380,7 +2380,11 @@ install typed hooks with `TEST:SETUP!`, `TEST:TEARDOWN!`, `TEST:DRAIN!`,
 `TEST:GROUP SEQ name` or `TEST:GROUP PARA name` (the `SEQ`/`PARA` mode is a
 mandatory positional token before the group name), define `TEST:SUITE` or
 `TEST:SUITE-STDIN` entries, close each entry with `TEST:;SUITE`, close the group
-with `TEST:;GROUP`, and execute once with `TEST:RUN`. An entry ends at
+with `TEST:;GROUP`, and execute once with `TEST:RUN`. `TEST:RUN` starts entries
+in registration order and calls the drain hook on entry to a `SEQ` group,
+before and after each of its entries, and once at the end; `PARA` entries,
+`TEST:SUITE-STDIN` ones included, start without waiting for each other, so an
+entry that needs an idle pool belongs in a `SEQ` group. An entry ends at
 `TEST:;SUITE` and nowhere else: a row whose argument list reaches the next row's
 keyword (`SUITE`, `WHITEBOX-SUITE`, `SUITE-STDIN`, `GROUP`, `;GROUP`, bare or
 `TEST:`-qualified) or the end of input is refused by name — `test: row <name>

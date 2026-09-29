@@ -300,11 +300,9 @@ defer WHITEBOX-RUNNER ( ptr u8 n -- )
    id ITEM-NAME$ WHITEBOX-RUNNER ;
 
 : ITEM-RUN-STDIN ( n -- ) {: id:n :}
-   DRAIN
    ARGS-BEGIN
    id ITEM-ARGS-FEED
-   id ITEM-STDIN$ id ITEM-NAME$ STDIN-RUNNER
-   DRAIN ;
+   id ITEM-STDIN$ id ITEM-NAME$ STDIN-RUNNER ;
 
 : ITEM-RUN ( n -- ) {: id:n :}
    id ITEM-GROUP@ GROUP-HEADER

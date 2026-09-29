@@ -139,7 +139,9 @@ BETA-N @ 1 T=
 STDIN-LABEL-N @ 1 T=
 ARG-N @ 8 T=
 ARGS-BEGIN-N @ 3 T=
-DRAIN-N @ 6 T=
+\ Entering seq-grp, before and after alpha, and the end of RUN. The stdin
+\ entry in the parallel group runs beside its neighbours and never drains.
+DRAIN-N @ 4 T=
 TEST:ITEMS-REGISTERED 3 T=
 TEST:ITEMS-RUN 3 T=
 
