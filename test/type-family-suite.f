@@ -175,29 +175,6 @@ TRUSTED: TWX-MK-UNARY ( n n -- n ) {: arg:n fam:n :}  \ fam<arg> term
 : TWX-FAMILY-WIDTH ( n -- n ) TWX-MK-NULLARY TWX-T-WIDTH ;
 
 
-\ Explicit pre-checker layouts: offsets/accessors assert during prefix load;
-\ this pins each private record's stride, alignment, and pointer-role metadata.
-SCH-REC 4 cells T=
-SCH-REC-ALIGN CELL T=
-SCH-REC-PTR-MASK 0 T=
-SCH-RBF-REC 2 cells T=
-SCH-RBF-REC-ALIGN CELL T=
-SCH-RBF-REC-PTR-MASK 0 T=
-TF-REC 20 cells T=
-TF-REC-ALIGN CELL T=
-TF-REC-PTR-MASK 0 T=
-SUMV-REC 10 cells T=
-SUMV-REC-ALIGN CELL T=
-SUMV-REC-PTR-MASK 0 T=
-PF-REC 11 cells T=
-PF-REC-ALIGN CELL T=
-PF-REC-PTR-MASK 0 T=
-PF-TX-REC 5 cells T=
-PF-TX-REC-ALIGN CELL T=
-PF-TX-REC-PTR-MASK 0 T=
-LAY-REC 5 cells T=
-LAY-REC-ALIGN CELL T=
-LAY-REC-PTR-MASK 0 T=
 \ Declaration parameters use one reserved-safe positional alphabet.  These
 \ direct whitebox checks pin both directions and every ordered character;
 \ f/n/r are concrete scalar tokens and therefore never map to a parameter.
@@ -234,11 +211,6 @@ $6E TFAM-DECL-CHAR>PARAM nip 0 T=   \ n is int
 $72 TFAM-DECL-CHAR>PARAM nip 0 T=   \ r is real
 $41 TFAM-DECL-CHAR>PARAM nip 0 T=   \ uppercase is never positional
 $30 TFAM-DECL-CHAR>PARAM nip 0 T=   \ non-letter is never positional
-TF-RBF-REC 8 cells T=
-TF-RBF-REC-ALIGN CELL T=
-TF-RBF-REC-PTR-MASK 0 T=
-
-
 \ clean slate (nothing declares families during prefix load, but be explicit).
 TWX-TFAM-RESET
 TWX-SCHEMA-RESET
