@@ -1,6 +1,6 @@
 ---
 title: Run every x86 compare relation natively
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T17:45:15.270462+03:00"
@@ -16,4 +16,4 @@ Verify: ThinkPad: `bin/hb --load test/x86-64-peer-routines.f`, then every image 
 Depends: habu-run-emitted-x86-b704f918 (C8). Base: K2+C8, or C8's bookmark.
 Route: direct once C8 is on master (x86-only test files).
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-run-every-x86-a3663e4d.

@@ -1,6 +1,6 @@
 ---
 title: Provide the interpret guards to the Habu loop
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T17:23:41.514821+03:00"
@@ -13,7 +13,7 @@ Verify: spark: `bin/hb --load test/prim-parity.f`, `test/primitive-registry.f`, 
 Depends: none (K4 landed). Serialise `habu1.f`/`habu2.f` with I6 and I10c, `prims.f` with I6.
 Route: Alder (shared: all four `src/habu` files).
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-provide-the-interpret-32e92f89.
 Preflight corrections (these override the lines above where they differ):
 - Files add `src/core/checker.f`: `PPRIM: PRIM-SPEC MIN-IN PE-N PE-IN  PE-N PE-OUT PPRIM;` beside `FIND` (`checker.f:8845-8853`); `primitive-registry.f` is checked code and its `PRIM-SPEC:FIND` call (`:80`) resolves only through `checker.f:8853`. Files add `docs/x86-64.md:529-547`: row forms gain `n EMIN-IN!`, readers gain `MIN-IN` (`:544` states readers need checker rows).
 - Pre-change failing check: `test/underdepth-gate.f` `UDG-NEG-PRIMS` gains `?dup` and `2>r` rows. Today they die rc 102 (`BQDUP` `habu1.f:1700-1703` loads `[XDS-8]` = `S0-8`, inside the guard page, `habu2.f:5101-5103,6276`, `rt.f:95-98`); after, rc 70 underdepth. `execute-floor` gets both branches in `test/runtime-regression-test.f`: a `TRUSTED: ( -- ) drop` xt answers -1 and the next token runs on a reset stack; a `( -- )` no-op xt answers 0.
