@@ -56,7 +56,7 @@ $4D3C2B1A constant CANARY
 ;package
 
 \ ---- seeded PRNG (LCG) ----
-500 constant DEFAULT-COUNT
+2000 constant DEFAULT-COUNT
 
 \ Default seed varies per run (mono-ns clock) so the fuzzer explores a fresh
 \ space each gate instead of a frozen 250-case regression; RUN-SEED is printed
@@ -753,8 +753,11 @@ public
 \ once in the parent; children run silently (SWEEP-QUIET) and die 1 on a
 \ false-cert or metamorphic inconsistency. One red shard fails the phase.
 \ Distinct seeds come from a per-run
-\ base spread by a 32-bit golden-ratio step so no two slots share an LCG walk. ----
-8 constant PROP-SHARD-N
+\ base spread by a 32-bit golden-ratio step so no two slots share an LCG walk.
+\ The gate runs this row in one pool slot beside other rows, so the sweep keeps
+\ its 4,000 programs in two shards: a wider fan-out covers nothing more and
+\ takes the other rows' CPU. ----
+2 constant PROP-SHARD-N
 $9E3779B1 constant PROP-SHARD-STEP
 create PROP-SHARD-PIDS PROP-SHARD-N cells allot
 variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
@@ -766,7 +769,7 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
 : SHARD-PID@ ( n -- pid ) {: i:n :}
    i cells PROP-SHARD-PIDS + @ >PID ;
 1 constant PROP-O-WRONLY   \ O_WRONLY (macOS/Linux)
-\ Point a descriptor at /dev/null (best effort): a shard checks hundreds of
+\ Point a descriptor at /dev/null (best effort): a shard checks thousands of
 \ intentionally-rejected fuzz programs, and the checker's per-reject
 \ diagnostics on stderr (x N shards) would overflow the gate's bounded stderr
 \ capture. A false-cert reports on stdout (FC-LINE) and via the shard's
@@ -785,8 +788,8 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
    type s"  in shard seed " type RUN-SEED @ .
    s" " 1 die ;
 \ Fault-injection seam for the sweep red-path self-test ONLY. Its selected
-\ middle shard fails; every other shard exits cleanly without an iteration,
-\ including later siblings. A negative slot disables the seam.
+\ shard fails; every other shard exits cleanly without an iteration. A negative
+\ slot disables the seam.
 variable SHARD-FAULT
 -1 SHARD-FAULT !
 : SHARD-CHILD ( n -- )   \ never returns: run this shard's seed, then exit 0 / 1
@@ -838,9 +841,9 @@ variable SS-I  variable SS-J  variable SS-BAD
    SS-BAD @ IF s" prop-test: shard-seed self-test FAILED (duplicate or out-of-range slot seed)" 1 die THEN
    s" prop-test: shard-seeds OK (distinct per-slot seed streams)" type cr ;
 
-\ sweep red-path self-test: one middle shard dies red and later siblings exit
-\ cleanly. The sweep exits with its red-shard count, so an all-red sweep cannot
-\ satisfy this test. The probe costs only the forks.
+\ sweep red-path self-test: one shard dies red and the others exit cleanly.
+\ The sweep exits with its red-shard count, so an all-red sweep cannot satisfy
+\ this test. The probe costs only the forks.
 : SWEEP-RED-CHILD ( -- )   \ never returns
    1 MUTE-FD  2 MUTE-FD
    PROP-SHARD-N 2 / SHARD-FAULT !
