@@ -1,4 +1,8 @@
 \ Loaded before sealing: exercise the actual prefix-boundary extension hooks.
+\ test/native-window-capture.f loads it between payload validation's checker
+\ preparations and tape-detach's. The MARK below stays taken, so tape-detach's
+\ compact against it, as the build's own capture compacts against the mark
+\ src/core/lower-cert-seal.f takes.
 package PREFIX-ROLLBACK-TEST
 using SCHEMA-REG
 TRUSTED: MARK ( -- ) CHECKER-BOUND:MARK ;

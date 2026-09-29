@@ -121,14 +121,18 @@ create ERR IO-CAP allot
 \   - straight after src/core/cell-effects.f, as each ran in a window of its
 \     own: the window's own family resolves (cast-ok), the checked store
 \     adopted the bootstrap one (call-store), and the rebuilt checker's
-\     prefix-boundary rewind and pointer-pool clear
-\     (test/compiler/native-prefix-rollback.f, then native-checker-storage.f);
+\     pointer-pool clear (test/compiler/native-checker-storage.f);
 \   - the source loader and layout the later require closures need;
-\   - the fixtures that assert a FRESH owner, each at its own load: the
-\     dictionary boundary (fixed), then the family readers and the compiler
-\     adapter while the source adapter still binds the checker by name;
-\   - the capture fixtures, compiled here against the unprepared checker and
-\     run by test/native-window-capture.f, the fixture argument.
+\   - the dictionary boundary (fixed), asserting a FRESH owner at its load;
+\   - test/native-window-capture.f, the fixture argument: the capture seam.
+\     It requires the fixtures whose checks it runs - the family readers and
+\     the compiler adapter, asserting the by-name regime at their load, then
+\     payload validation and tape-detach - and runs those checks in the order
+\     their preconditions need. It loads the prefix-boundary rollback
+\     (test/compiler/native-prefix-rollback.f) between payload's preparations,
+\     which compact the no-return rows without a boundary, a branch the
+\     build's own capture never takes, and tape-detach's, which compact
+\     against its mark.
 : TIER1-CASE ( -- )
    PROC-ARGV-RESET
    s" --load" ARG+
@@ -138,14 +142,9 @@ create ERR IO-CAP allot
    s" test/native-window-capture.f" ARG+
    s" test/native-window-cast-ok.f" ARG+
    s" test/native-window-call-store.f" ARG+
-   s" test/compiler/native-prefix-rollback.f" ARG+
    s" test/compiler/native-checker-storage.f" ARG+
    SOURCE-DEPS+
    s" test/native-window-owner-fixed.f" ARG+
-   s" test/native-window-owner-family.f" ARG+
-   s" test/native-window-owner-adapter.f" ARG+
-   s" test/native-window-tape-detach.f" ARG+
-   s" test/native-window-owner-payload.f" ARG+
    WHITEBOX-CHILD:ENV!
    S\" window: 0\n" WINDOW-RESULT ;
 

@@ -333,6 +333,10 @@ loads.
 | `test/compiler/x86-64-asm.f` | 0.11 s | 1.36 s | 12.4x |
 | `test/compiler/x64-emit.f` | 0.19 s | 4.65 s | 24.5x |
 
+`test/compiler/native-checker-prefix.f` no longer exists: its two fixtures load
+in the tier-1 window of `test/native-window-owner.f`. Both rows predate that
+merge.
+
 - **Suites dominated by native builds and child engines** barely move. Their
   time is in work the prefix does not change.
 - **Suites dominated by in-process compilation** move by the compile-time

@@ -1,6 +1,8 @@
 \ Exercise the real fresh checker's final capture seam and later tape reuse.
-\ test/native-window-capture.f runs RUN: its first PREPARE is the window's first
-\ checker preparation.
+\ test/native-window-capture.f runs RUN after payload validation's preparations
+\ and the prefix-boundary mark, so no PREPARE here is the window's first. None
+\ needs to be: DETACH heads every CHECKER-CAPTURE-PREPARE, and each PREPARE
+\ below follows its own OBSERVE or a checked detach.
 package CHECKER-TAPE
 
 variable SEEN
