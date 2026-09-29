@@ -77,8 +77,8 @@ public
 
 \ The builder's own deadline. It starts only after the key is hashed, so a
 \ caller that runs PROVIDE under a deadline of its own gives that one a margin
-\ beyond this: the inner deadline then governs and EMIT removes its work
-\ directory.
+\ beyond this: the inner deadline then governs, and BUILD-RUN removes the work
+\ directory before it dies with the builder's status.
 360000 constant BUILD-TIMEOUT-MS
 
 \ The builder this host is built from, and whose closure the key folds. Public
@@ -193,17 +193,23 @@ private
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type
    2 ERR erru LEN>N write drop
-   rc 0 <> if s" whitebox-engine: unsealed engine build failed" rc die then ;
+   rc 0 <> if
+      WORK-CLOSE
+      s" whitebox-engine: unsealed engine build failed" rc die
+   then ;
 
 : PUBLISH ( -- )
    TMP-BYTES EXECUTABLE? 0= if
-      s" whitebox-engine: builder produced no executable image" WB-RC die then
+      WORK-CLOSE
+      s" whitebox-engine: builder produced no executable image" WB-RC die
+   then
    TMP-BYTES PATH-BYTES RENAME-FILE ;
 
 \ A second builder racing this one writes the same keyed bytes and the rename
 \ above is atomic, so losing the race costs one discarded build and nothing
 \ else. The work directory goes whatever the build did, and a failure keeps its
-\ own code.
+\ own code: a throw is caught here, and BUILD-RUN and PUBLISH remove the
+\ directory themselves before they die, because die ends the process.
 : EMIT ( -- )
    WORK-OPEN
    ['] BUILD-RUN catch EMIT-RC !
