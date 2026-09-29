@@ -1,10 +1,11 @@
 \ Concurrent first stores of both declared pointer kinds, with real growth.
-\ Tier 1 first: the concurrent stores under test are lowered by the optimizing
-\ backend; the parent spawns this file with no tier of its own.
-1 set-tier
-
+\ Tier 1 after the harness and the task library: the concurrent stores under
+\ test are lowered by the optimizing backend, in the registrar required below
+\ and in this file; the parent spawns this file with no tier of its own.
 require lib/test.f
 require lib/task.f
+
+1 set-tier
 require src/habu/address-cells.f
 package ADDRESS-CELL-TASKS
 private

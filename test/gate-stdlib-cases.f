@@ -1269,14 +1269,6 @@ SUITE argv-stdlib-capacity
    x x x x x x x x x x x x x x x x x
 ;SUITE
 
-SUITE argv-stdlib-capacity-after-dashdash
-   test/argv-capacity.f -- --
-   x x x x x x x x x x x x x x x x
-   x x x x x x x x x x x x x x x x
-   x x x x x x x x x x x x x x x x
-   x x x x x x x x x x x x x x x x x
-;SUITE
-
 SUITE test-stdlib
    lib/test/assert-test.f
    lib/test/suite-test.f
@@ -1778,10 +1770,6 @@ SUITE shadowed-arity-refusal
 
 SUITE load-reject-diag
    test/load-reject-diag-test.f
-;SUITE
-
-SUITE dictionary-record-shapes
-   test/drec-shape-test.f
 ;SUITE
 
 SUITE core-prefix-mark

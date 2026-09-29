@@ -1,11 +1,12 @@
 \ The cleanup registry runs at process exit: one child process per exit path.
 \ Every case registers a directory inside this fixture's own temp root and then
 \ leaves the process the way it means to - normally, by `die`, by an uncaught
-\ throw, by dying inside a chained foreign hook, or by returning from or dying
-\ in a stripped image's MAIN - and the assertion is what the child left on
-\ disk. The children
-\ take the directory as argument 0 rather than making their own under HB_TMP, so
-\ a case that fails leaves its evidence inside the root this fixture removes.
+\ throw, or by dying inside a chained foreign hook - and the assertion is what
+\ the child left on disk. The two exits of a stripped image's MAIN run in
+\ test/stripped-image.f, on the application it already builds
+\ (test/exit-hook-subject.f). The children take the directory as argument 0
+\ rather than making their own under HB_TMP, so a case that fails leaves its
+\ evidence inside the root this fixture removes.
 \ A child script resolves `require lib/fs-mutate.f` against the working
 \ directory, which is the checkout (test/app-image.f spawns the same way).
 require lib/test.f
@@ -29,20 +30,14 @@ create TEXT-BUF TEXT-CAP allot
 create ROOT-BUF FS-PATH-CAP allot
 create SCRIPT-BUF FS-PATH-CAP allot
 create TREE-BUF FS-PATH-CAP allot
-create SUBJECT-BUF FS-PATH-CAP allot
-create IMAGE-BUF FS-PATH-CAP allot
 variable TEXT-U
 variable ROOT-U
 variable SCRIPT-U
 variable TREE-U
-variable SUBJECT-U
-variable IMAGE-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : SCRIPT$ ( -- ptr u8 n ) SCRIPT-BUF SCRIPT-U @ ;
 : TREE$ ( -- ptr u8 n ) TREE-BUF TREE-U @ ;
-: SUBJECT$ ( -- ptr u8 n ) SUBJECT-BUF SUBJECT-U @ ;
-: IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
 : TEXT$ ( -- ptr u8 n ) TEXT-BUF TEXT-U @ ;
 
 \ Child sources are built a line at a time: one 255-byte source line of this
@@ -56,9 +51,7 @@ variable IMAGE-U
    CLEANUP-RESET
    s" exit-hook" TMPDIR-MKDIR {: path:ptr pathu :}
    path ROOT-BUF pathu BYTE-COPY pathu ROOT-U !
-   ROOT$ CLEANUP-TREE+
-   SOURCE-ROOT:CURRENT$ s" exit-hook-subject.f" SUBJECT-BUF JOIN-PATH SUBJECT-U !
-   ROOT$ s" application" IMAGE-BUF JOIN-PATH IMAGE-U ! ;
+   ROOT$ CLEANUP-TREE+ ;
 
 : TREE-PATH ( ptr u8 n -- ) {: name:ptr nameu :}
    ROOT$ name nameu TREE-BUF JOIN-PATH TREE-U ! ;
@@ -173,71 +166,13 @@ variable IMAGE-U
    erru s" hook: dying" ERR-HAS? TTRUE
    TREE$ EXISTS? TFALSE ;
 
-: BUILD ( -- bool )
-   PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" tools/hb-build.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   SUBJECT$ >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   IMAGE$ >LEN PROC-ARGV+
-   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
-   {: outu:len erru:len rc:n :}
-   s" the exit-hook subject builds stripped" T-LABEL
-   outu LEN>N erru LEN>N rc 0 EXPECT-RC
-   IMAGE$ EXECUTABLE? TTRUE
-   rc 0= IMAGE$ EXECUTABLE? and ;
-
-\ The built image runs with the arguments already queued: the tree to register
-\ first, then whatever tells the subject how to leave.
-: RUN-IMAGE ( -- n n n )
-   PROC-ENV-INHERIT-MISSING
-   IMAGE$ >LEN
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
-   {: outu:len erru:len rc:n :}
-   outu LEN>N erru LEN>N rc ;
-
-\ A stripped image has no engine label and no REPL: its entry calls the vector
-\ inline on the way to its own exit(0).
-: CASE-STRIPPED ( -- )
-   s" stripped-tree" TREE-PATH
-   PROC-ARGV-ENV-RESET
-   TREE$ >LEN PROC-ARGV+
-   RUN-IMAGE {: outu:n erru:n rc:n :}
-   s" a stripped application's own exit removes the registered tree" T-LABEL
-   outu erru rc 0 EXPECT-RC
-   erru 0 T=
-   OUT outu S\" exit-hook-subject: ok\n" T$=
-   TREE$ EXISTS? TFALSE ;
-
-\ `die` inside a stripped image: BDIE reaches the leaf by a direct BL that the
-\ linker can only relocate through the (LEXITHOOK) engine-helper record, and
-\ that is the exit a daemon takes. The second argument makes the subject die.
-: CASE-STRIPPED-DIE ( -- )
-   s" stripped-die-tree" TREE-PATH
-   PROC-ARGV-ENV-RESET
-   TREE$ >LEN PROC-ARGV+
-   s" die" >LEN PROC-ARGV+
-   RUN-IMAGE {: outu:n erru:n rc:n :}
-   s" a stripped application's die removes the registered tree" T-LABEL
-   outu erru rc 7 EXPECT-RC
-   erru s" subject: dying" ERR-HAS? TTRUE
-   OUT outu S\" exit-hook-subject: ok\n" T$=
-   TREE$ EXISTS? TFALSE ;
-
 : BODY ( -- )
    PREPARE
    CASE-NORMAL
    CASE-DIE
    CASE-THROW
    CASE-REPORT
-   CASE-CHAIN
-   BUILD if CASE-STRIPPED CASE-STRIPPED-DIE then ;
+   CASE-CHAIN ;
 
 : RUN ( -- )
    T-RESET

@@ -2,7 +2,9 @@
 \ (test/stripped-image-subject.f) through tools/hb-build.f, then measure it,
 \ read its startup shape and run it through its real entry. One build serves
 \ every subject: each prints its line or dies naming itself, so the exact
-\ stdout says which one failed.
+\ stdout says which one failed. The same image runs twice for
+\ test/exit-hook-subject.f, once per exit a stripped application takes, and
+\ each run must leave the directory it registered removed.
 require test/gate-common.f
 require test/gate-aot-image.f
 require lib/engine-candidate.f
@@ -20,23 +22,35 @@ $40000 constant IMAGE-MAX
 
 create SUBJECT FS-PATH-CAP allot
 create IMAGE FS-PATH-CAP allot
+create DIE-TREE FS-PATH-CAP allot
+create RETURN-TREE FS-PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
+variable DIE-TREE-U
+variable RETURN-TREE-U
 
 : SUBJECT$ ( -- ptr u8 n ) SUBJECT SUBJECT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
+: DIE-TREE$ ( -- ptr u8 n ) DIE-TREE DIE-TREE-U @ ;
+: RETURN-TREE$ ( -- ptr u8 n ) RETURN-TREE RETURN-TREE-U @ ;
 
 : PREPARE ( -- )
    s" stripped-image" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
-   s" application" IMAGE GT-PATH IMAGE-U ! ;
+   s" application" IMAGE GT-PATH IMAGE-U !
+   s" die-tree" DIE-TREE GT-PATH DIE-TREE-U !
+   s" return-tree" RETURN-TREE GT-PATH RETURN-TREE-U ! ;
 
 \ MAIN is written per host: the macOS image also starts and stops AIO, the
 \ run-time use of lib/aio.f's definers; the Linux image links lib/aio.f without
-\ starting it. UNMAP comes last because it ends the process.
+\ starting it. The exit-hook subject registers its directory first, and its
+\ return run leaves before the other subjects. UNMAP comes last because it ends
+\ the process.
 : WRITE-SUBJECT ( -- )
    SB-RESET
-   S\" require test/stripped-image-subject.f\n: MAIN ( -- )\n   STRIPPED-IMAGE-SUBJECT:RUN\n" SB-APPEND
+   S\" require test/stripped-image-subject.f\nrequire test/exit-hook-subject.f\n" SB-APPEND
+   S\" : MAIN ( -- )\n   EXIT-HOOK-SUBJECT:RUN\n   EXIT-HOOK-SUBJECT:RETURN? if exit then\n" SB-APPEND
+   S\"    STRIPPED-IMAGE-SUBJECT:RUN\n" SB-APPEND
    HB-TARGET-MACOS? if S\"    AIO:START AIO:STOP\n" SB-APPEND then
    S\"    STRIPPED-IMAGE-SUBJECT:UNMAP ;\n" SB-APPEND
    SUBJECT$ SB$ WRITE-ALL ;
@@ -66,18 +80,34 @@ variable IMAGE-U
    bytes IMAGE-MAX < 0= if s" stripped image exceeds IMAGE-MAX" GE-FAIL then ;
 
 : EXPECTED-OUT$ ( -- ptr u8 n )
-   S\" stripped-quotation: ok\n8\n0\n1\n23\nstripped-sparse-data: ok\nstripped\nsize=ok\naot-xt-cells: ok\nstripped-lifecycle-prepare: ok\nstripped-lifecycle-tasks: ok\n" ;
+   S\" exit-hook-subject: ok\nstripped-quotation: ok\n8\n0\n1\n23\nstripped-sparse-data: ok\nstripped\nsize=ok\naot-xt-cells: ok\nstripped-lifecycle-prepare: ok\nstripped-lifecycle-tasks: ok\n" ;
 
 \ A subject that fails dies with its own message and exit $4A, and a missing
 \ xt row is a wild call into builder code this process does not map, so only an
 \ image in which every subject passed and the literal survived meets all three.
+\ UNMAP's `die` is also the exit the registered directory has to go on.
 : RUN-IMAGE ( -- )
    GE-HB-RESET
    IMAGE$ GE-ARGV+
+   DIE-TREE$ GE-ARG+
    IMAGE$ TIMEOUT-MS GE-RUN-ENV
    71 s" stripped image exit through MEM:UNMAP" GE-EXPECT-RC
    EXPECTED-OUT$ s" stripped image exact stdout" GE-EXPECT-OUT
-   S\" memory: unmap failed\n" s" stripped image exact stderr" GE-EXPECT-ERR ;
+   S\" memory: unmap failed\n" s" stripped image exact stderr" GE-EXPECT-ERR
+   DIE-TREE$ EXISTS? if s" a stripped application's die removes the registered tree" GE-FAIL then ;
+
+\ The application's own return: its entry calls the exit vector inline on the
+\ way to exit(0).
+: RUN-RETURN ( -- )
+   GE-HB-RESET
+   IMAGE$ GE-ARGV+
+   RETURN-TREE$ GE-ARG+
+   s" return" GE-ARG+
+   IMAGE$ TIMEOUT-MS GE-RUN-ENV
+   s" stripped image return" GE-EXPECT-OK
+   S\" exit-hook-subject: ok\n" s" stripped image return stdout" GE-EXPECT-OUT
+   s" " s" stripped image return stderr" GE-EXPECT-ERR
+   RETURN-TREE$ EXISTS? if s" a stripped application's own exit removes the registered tree" GE-FAIL then ;
 
 \ The startup carries the xt-cell apply loop, so it has to keep satisfying the
 \ image gate's model of one: exactly one ADR x9 (the DATA copy, whose row and
@@ -89,7 +119,7 @@ variable IMAGE-U
    IMAGE$ AOT-IMAGE:CODE-RANGE 2drop ;
 
 : BODY ( -- )
-   PREPARE WRITE-SUBJECT BUILD CHECK-SIZE RUN-IMAGE CHECK-SHAPE
+   PREPARE WRITE-SUBJECT BUILD CHECK-SIZE RUN-IMAGE RUN-RETURN CHECK-SHAPE
    s" PASS: stripped image subjects" type cr ;
 
 public

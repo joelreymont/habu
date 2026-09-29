@@ -1,9 +1,10 @@
 \ Exact ordered rows survive indexed collisions, growth and owner invalidation.
-\ Tier 1 first: the rows read here are what a quotation store registers under
-\ the optimizing backend, which also compiles the registrar required below.
-1 set-tier
-
+\ Tier 1 after the harness: the rows read here are what a quotation store
+\ registers under the optimizing backend, which also compiles the registrar
+\ required below.
 require lib/test.f
+
+1 set-tier
 require src/habu/address-cells.f
 
 package ADDRESS-CELL-INDEX

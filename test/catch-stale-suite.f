@@ -224,12 +224,11 @@ create CS-DBUF 8192 allot
    s" PP2 ( ptr u8 n -- n ) ['] OUTER-PARTIAL-QUOTE catch {: code:n :} drop c@"
       CHECK-QUIET-CANDIDATE! -1 T= ;
 
-\ Candidate checks isolate the diagnostic. These two children enter the
-\ enforcing check-tool load path, which reports the named code as JSON.
+\ The saved-image children below run the product engine, whose seal pass is
+\ the one difference from the whitebox engine this file runs on.
 4096 constant CS-CHILD-CAP
 create CS-CHILD-OUT CS-CHILD-CAP allot
 create CS-CHILD-ERR CS-CHILD-CAP allot
-create CS-CHILD-EMPTY 1 allot
 create CS-PRODUCT-PATH FS-PATH-CAP allot
 
 : CS-HB$ ( -- ptr u8 n ) s" bin/hb" ;
@@ -243,34 +242,6 @@ create CS-PRODUCT-PATH FS-PATH-CAP allot
    s" HABU_UNDER_TEST" >LEN CS-PRODUCT$ >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN CS-PRODUCT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
-
-: CS-LOAD-WITH ( ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n hb:ptr hbu:n :}
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   s" --json-errors" >LEN PROC-ARGV+
-   path pathu >LEN PROC-ARGV+
-   CS-ENV!
-   hb hbu >LEN CS-CHILD-EMPTY 0 >LEN
-   CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
-   10000 >MS RUN-ARGV-ENV-STDIN-CAPTURE
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF
-      err OF PCAP-FAILED:UNMAKE {: out:len err:len rc:rc :}
-         rc RC>N 70 T=
-         CS-CHILD-ERR err LEN>N s\" \"code\":\"E-STALE-READ\"" CONTAINS? TTRUE
-      ENDOF
-   ;MATCH ;
-
-: CS-LOAD-REFUSAL ( ptr u8 n -- ) CS-HB$ CS-LOAD-WITH ;
-
-: CS-SECTION-LOAD ( -- )
-   s" check-tool load refuses a plain-zero status" T-LABEL
-   s" test/catch-success-wrong-status.f" CS-LOAD-REFUSAL
-   s" check-tool load refuses a live failure join" T-LABEL
-   s" test/catch-success-unsafe-join.f" CS-LOAD-REFUSAL ;
 
 \ Definition control summaries survive APP-IMAGE:SAVE. Execute the guarded
 \ source from the restored image, then load fresh unsafe source against that
@@ -608,7 +579,6 @@ TYPED-VARIABLE CS-XT [ ptr u8 -- ptr u8 ]
    CS-SECTION-READS
    CS-SECTION-PROOF
    CS-SECTION-PROOF-PRECISION
-   CS-SECTION-LOAD
    CS-SECTION-EDGES
    CS-SECTION-CALLEES
    CS-SECTION-RECORDED

@@ -18,6 +18,7 @@ ES-CERT-STALE ES-CERT-STALE0 !
 
 require test/checker-assert.f
 require lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
+require lib/fs-mutate.f            \ HB-TMP-MKDIR - the filesystem block's private root
 
 variable #FAIL
 variable #CASE
@@ -1888,11 +1889,17 @@ create DBUF 4096 allot
 create RLB 64 allot
 create ES-TARGETZ
    65 c, 71 c, 69 c, 78 c, 84 c, 83 c, 46 c, 109 c, 100 c, 0 c,
-create ES-LINKZ
-   47 c, 116 c, 109 c, 112 c, 47 c, 104 c, 97 c, 98 c, 117 c, 45 c,
-   101 c, 110 c, 103 c, 105 c, 110 c, 101 c, 45 c, 115 c, 117 c,
-   105 c, 116 c, 101 c, 45 c, 108 c, 105 c, 110 c, 107 c, 0 c,
 create DIRBASE 8 allot
+\ The directory and the link are made inside a fresh root under HB_TMP: two
+\ gates share one machine, and a fixed /tmp name let one run's mkdir meet the
+\ other's directory (EEXIST) or its rmdir remove it mid-test.
+create ES-ROOT FS-PATH-CAP allot
+variable ES-ROOT-U
+create ES-JOIN FS-PATH-CAP allot
+: ES-ROOT$ ( -- ptr u8 n ) ES-ROOT ES-ROOT-U @ ;
+: ES-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}  a ES-ROOT u BYTE-COPY  u ES-ROOT-U ! ;
+: ES-TMPZ ( ptr u8 n -- ptr u8 ) {: name:ptr nameu:n :}
+   ES-ROOT$ name nameu ES-JOIN JOIN-PATH {: u:n :}  ES-JOIN u FS-PATHZ ;
 variable DFD
 : U16@ ( ptr u8 -- n ) {: a:ptr :} a c@ a 1 + c@ 8 lshift or ;
 : MODE@ ( -- n ) ES-STB 4 + U16@ ;
@@ -1907,18 +1914,18 @@ DFD @ 0 >= -1 T=
 0 DIRBASE !
 DFD @ DBUF 4096 DIRBASE getdirentries64 0 > -1 T=
 DFD @ close
-s" /tmp/habu-engine-suite-mkdir" ES-PATHZ rmdir drop
-s" /tmp/habu-engine-suite-mkdir" ES-PATHZ 493 mkdir 0 T=
-s" /tmp/habu-engine-suite-mkdir" ES-PATHZ ES-STB stat64 0 T=
+s" engine-suite" HB-TMP-MKDIR ES-ROOT!
+s" dir" ES-TMPZ 493 mkdir 0 T=
+s" dir" ES-TMPZ ES-STB stat64 0 T=
 MODE@ $F000 and $4000 = -1 T=
-s" /tmp/habu-engine-suite-mkdir" ES-PATHZ rmdir 0 T=
-ES-LINKZ unlink drop
-ES-TARGETZ ES-LINKZ symlink 0 T=
-ES-LINKZ ES-STB lstat64 0 T=
+s" dir" ES-TMPZ rmdir 0 T=
+ES-TARGETZ s" link" ES-TMPZ symlink 0 T=
+s" link" ES-TMPZ ES-STB lstat64 0 T=
 MODE@ $F000 and $A000 = -1 T=
-ES-LINKZ RLB 64 readlink 9 T=
+s" link" ES-TMPZ RLB 64 readlink 9 T=
 RLB c@ 65 T=
-ES-LINKZ unlink 0 T=
+s" link" ES-TMPZ unlink 0 T=
+ES-ROOT$ FS-PATHZ rmdir 0 T=
 0 4096 3 $1002 -1 0 mmap dup 0 < 0 T= dup 65 swap c! c@ 65 T=
 
 \ floats (the f+ prim must be the FLOAT op — it was once shadowed by a
@@ -2165,15 +2172,19 @@ cp@ ES-CPX-CP !
 s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-CPX-CP @ 28 + T=
 
 \ Hash-index rollback churn must leave the index ALIVE, not merely terminate.
-\ Every cycle publishes a record, rolls NDICT and CP back by hand, and leaves a
-\ stale slot; the republish re-covers that slot's index, so the insert cannot
-\ reuse it and claims a fresh one - the exact leak that used to fill the fixed
-\ table and silently zero HIDXP-CELL, dropping the process to linear FIND for
-\ the rest of its life (CG-25). One full table of cycles (HIDX-SLOTS) crosses
-\ that old capacity whatever the boot dictionary's size, so on the old code
-\ this block reddens at the INDEXED assertion below; on the current code
-\ LHIDXADD compacts the table in place at HIDX:LOAD-MAX claims and the index
-\ never dies.
+\ Every cycle publishes a record at the same dictionary index, rolls NDICT and
+\ CP back by hand, and leaves a stale slot holding that index; the next publish
+\ re-covers every such slot, so the insert cannot reuse one and claims a fresh
+\ one - the exact leak that used to fill the fixed table and silently zero
+\ HIDXP-CELL, dropping the process to linear FIND for the rest of its life
+\ (CG-25). The churn runs until the claimed-slot count crosses HIDX:LOAD-MAX
+\ whatever the boot dictionary's size, where LHIDXADD compacts the table in
+\ place: without that compaction the claims assertion below reddens, and a
+\ compaction that dropped the index reddens at the INDEXED one. The churned
+\ names cycle through 676 two-letter tails: one repeated name makes every cycle
+\ walk that name's ever-longer chain of re-covered slots (19 s for a table's
+\ worth), while spread names keep each chain short and leak the same one claim
+\ per cycle.
 \ Unchecked span: the churn rolls ndict/cp back by hand WITHOUT rolling the
 \ checker registries, so checked evaluate would re-register ES-HIDX-CHURNED
 \ once per cycle against a dictionary that forgot it - the raw-dictionary churn
@@ -2188,12 +2199,27 @@ variable CP
 : SRC$ ( -- ptr u8 n )
    s" : ES-HIDX-CHURNED 1 ;" ;
 
+\ `: ES-HIDX-AA 1 ;` with its two name letters at TAIL and TAIL+1.
+16 constant CHURN-U
+10 constant TAIL
+create CHURN-SRC CHURN-U allot
+s" : ES-HIDX-AA 1 ;" CHURN-SRC swap BYTE-COPY
+
+: NAME! ( n -- ) {: i:n :}
+   i 26 mod [char] A + CHURN-SRC TAIL + c!
+   i 26 / 26 mod [char] A + CHURN-SRC TAIL + 1 + c! ;
+
+\ One claim per cycle carries the count across LOAD-MAX with two to spare.
+: CYCLES ( -- n )
+   HIDX:LOAD-MAX data-base HIDX:CLAIMS + @ - 2 + ;
+
 public
 
 : CHURN ( -- )
    ndict@ ND !  cp@ CP !
-   HIDX-SLOTS 0 ?do
-      SRC$ evaluate
+   CYCLES 0 ?do
+      i NAME!
+      CHURN-SRC CHURN-U evaluate
       ND @ ndict!
       CP @ cp!
    loop ;
@@ -2208,7 +2234,7 @@ ES-HIDX:CHURN
 \ top level, so the minted word lands in the global wordlist
 ES-HIDX:MINT
 LOWER-CERT-HOOK:INSTALL
-s" hidx rollback churn crosses the old capacity and the index survives" T-LABEL
+s" hidx rollback churn crosses HIDX:LOAD-MAX and the index survives" T-LABEL
 data-base HIDXP-CELL + @ 0 <> -1 T=
 s" hidx rollback churn claims stay under the compaction bound" T-LABEL
 data-base HIDX:CLAIMS + @ HIDX:LOAD-MAX > 0 T=
