@@ -293,8 +293,8 @@ named source sections and focused regressions. The layout, tier-provenance and
 symbol-ceiling leaves establish their interfaces before consumer edits. Encode
 all real dependencies; parallel work uses separate workspaces where necessary.
 Split the pending stacks by these source owners before landing them; the first
-leaf must not import another leaf's unfinished changes. A separate Astra reviews
-delegated changes before landing.
+leaf must not import another leaf's unfinished changes. Delegated changes receive
+an independent review before landing.
 
 Rebuild the exact source, run affected real-load suites, then
 `bin/hb --load test/run.f`. Resolve every recorded failure by name. Replace
