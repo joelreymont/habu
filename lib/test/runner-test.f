@@ -254,9 +254,10 @@ variable GTT-OFI
    s" progress capture" GT-PROGRESS-CAPTURE
    PROC-CLOSE-CAPTURE-FDS ;
 
-: GTT-PROGRESS-FLUSH-TRUE ( -- )
+: GTT-PROGRESS-FLUSH-FAIL ( -- )
    PROC-ARGV-RESET
-   s" /usr/bin/true" GTT-CMD-TIMEOUT-MS GTT-ARGV-CAPTURE-BEGIN
+   GTT-FAIL$ >LEN PROC-ARGV+
+   s" bin/hb" GTT-HB-TIMEOUT-MS GTT-ARGV-CAPTURE-BEGIN
    s" progress capture flush" GT-PROGRESS-CAPTURE-FLUSH
    PROC-CLOSE-CAPTURE-FDS ;
 
@@ -376,10 +377,26 @@ variable GTT-OFI
    GT-RC@ 0 T= ;
 
 : GTT-TEST-PROGRESS-CAPTURE-FLUSH ( -- )
-   GTT-PROGRESS-FLUSH-TRUE
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" lib/test/runner-test.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" flush-child" >LEN PROC-ARGV+
+   s" bin/hb" GTT-NEST-TIMEOUT-MS GT-RUN
    GT-RC@ 0 T=
+   GT-OUT$ s" bad-out" CONTAINS? TTRUE
+   GT-OUT$ s" test: ok" CONTAINS? TTRUE
+   GT-ERR$ s" bad-err" CONTAINS? TTRUE ;
+
+: GTT-PROGRESS-FLUSH-CHILD ( -- )
+   T-RESET
+   GTT-PREPARE
+   GTT-PROGRESS-FLUSH-FAIL
+   GT-RC@ 7 T=
    GT-OUT$ s" " T$=
-   GT-ERR$ s" " T$= ;
+   GT-ERR$ s" " T$=
+   GT-CLEANUP
+   T-REPORT ;
 
 : GTT-TEST-PROGRESS-STDIN-CAPTURE ( -- )
    GTT-PROGRESS-STDIN-CAT
@@ -410,4 +427,15 @@ variable GTT-OFI
    GT-REPORT
    s" test-runner-test: ok" type cr ;
 
-TEST-RUNNER-TEST-MAIN
+: GTT-MAIN ( -- )
+   SCRIPT-ARGC 0 > if
+      0 SCRIPT-ARGV$ s" flush-child" STR= if
+         GTT-PROGRESS-FLUSH-CHILD
+      else
+         s" runner-test: unknown mode" 1 die
+      then
+   else
+      TEST-RUNNER-TEST-MAIN
+   then ;
+
+GTT-MAIN

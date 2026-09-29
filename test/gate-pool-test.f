@@ -363,7 +363,9 @@ variable GPT-GK-SENTINEL-U
    -1 >PID PROC-WAIT-RC MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
 
 : GPT-WAIT-NEG-WORKER ( -- )
-   [: GPT-WAIT-ANY ;] E-PROC-WAIT TTHROWSQ ;
+   T-RESET
+   [: GPT-WAIT-ANY ;] E-PROC-WAIT TTHROWSQ
+   T-REPORT ;
 
 : GPT-WAIT-NEG-CASE ( -- )
    s" gate-pool-wait-neg" GT-START

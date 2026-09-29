@@ -40,6 +40,11 @@ variable TAT-SCRIPT-U
    TAT-SCRIPT$ >LEN PROC-ARGV+
    s" bin/hb" GT-DEFAULT-TIMEOUT-MS GT-RUN ;
 
+\ Deliberate failures are reset between cases. Check their count before a
+\ later assertion could turn a missing failure into the expected count.
+: TAT-EXPECT-FAILURES ( n -- )
+   T-FAILURES <> if s" assert-test: unexpected failure count" T-EX-FAIL die then ;
+
 \ A failing numeric assert renders through FMT's private buffer, so a case that
 \ is part-way through the shared builder keeps what it built. Seeding SB with
 \ text that is not the printed number is what makes the check bite: a printer
@@ -48,10 +53,13 @@ variable TAT-SCRIPT-U
    T-RESET
    SB-RESET s" keep-me" SB-APPEND
    1 2 T=
+   1 TAT-EXPECT-FAILURES
    SB$ s" keep-me" T$=
+   1 TAT-EXPECT-FAILURES
    1 1 T<>
+   2 TAT-EXPECT-FAILURES
    SB$ s" keep-me" T$=
-   T-FAILURES 2 T= ;
+   2 TAT-EXPECT-FAILURES ;
 
 : TAT-TEST-ONE-LINE ( -- )
    TAT-PREPARE
@@ -64,17 +72,19 @@ variable TAT-SCRIPT-U
 T-RESET
 s" numeric mismatch" T-LABEL
 1 2 T=
+1 TAT-EXPECT-FAILURES
 T-CASES 1 T=
-T-FAILURES 1 T=
+1 TAT-EXPECT-FAILURES
 
 T-RESET
 T-FAIL+
-T-FAILURES 1 T=
+1 TAT-EXPECT-FAILURES
 
 T-RESET
 ' TT-THROW-5 4 TTHROWS
+1 TAT-EXPECT-FAILURES
 T-CASES 1 T=
-T-FAILURES 1 T=
+1 TAT-EXPECT-FAILURES
 
 TAT-SB-SURVIVES-FAILURE
 
