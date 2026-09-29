@@ -49,6 +49,8 @@ variable #CASE
 
 \ catch-code stash (TC) + result-flag stash (FOUNDF) + id/node scratch.
 variable TC     variable FOUNDF
+TYPED-VARIABLE TF-GROW-BASE ptr n
+create TF-GROW-NAME 2 allot
 variable FID    variable PID    variable AID    variable PTID   variable CLID
 variable VOK    variable VERR   variable FX     variable NP     variable NC
 variable NA     variable R1     variable L0     variable NQ
@@ -130,6 +132,17 @@ TRUSTED: TWX-TF-OFF$ ( n n -- ptr u8 n ) TF-OFF$ ;
    index char TDP-INDEX>CHAR
    index char TDP-CHAR>INDEX ;
 TRUSTED: TWX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
+TRUSTED: TWX-TF-REC@ ( n -- ptr n ) TF-REC@ ;
+: TF-GROW-FAMILY ( n -- ) {: idx:n :}
+   idx 26 / [char] a + TF-GROW-NAME c!
+   idx 26 mod [char] a + TF-GROW-NAME 1+ c!
+   s" pkgrowth" CHECKER-PACKAGE-PUBLIC TF-GROW-NAME 2 0 TK-CELL TWX-TFAM-DECL drop ;
+: TF-GROW-THROUGH-CAP ( -- )
+   0 begin
+      dup 676 < FID @ TWX-TF-REC@ TF-GROW-BASE @ = and
+   while
+      dup TF-GROW-FAMILY 1+
+   repeat drop ;
 TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 TRUSTED: TWX-TFAM-FIND-PUBLIC ( ptr u8 n -- n bool ) TFAM-FIND-PUBLIC ;
 TRUSTED: TWX-TFAM-FLD-RANGE! ( n n n -- ) TFAM-FLD-RANGE! ;
@@ -861,17 +874,20 @@ s" " s" abcdefghijklmnopqrstuvwxyzabcdefg" TWX-TF-CTOR-PKG$ s" Te3b0c44298fc1c14
 \ 13. grow across the TFAM record / string / param-kind seed caps, then prove
 \    family id 0 survives every relocation.
 \ ---------------------------------------------------------------------------
+FID @ TF-REC@ TF-GROW-BASE !
 s" pkgd" CHECKER-PACKAGE-PUBLIC s" tree"  1 TK-SUM     TWX-TFAM-DECL drop
 s" pkgd" CHECKER-PACKAGE-PUBLIC s" list"  1 TK-SUM     TWX-TFAM-DECL drop
 s" pkgd" CHECKER-PACKAGE-PUBLIC s" maybe" 1 TK-SUM     TWX-TFAM-DECL drop
 s" pkge" CHECKER-PACKAGE-PUBLIC s" pair"  2 TK-PRODUCT TWX-TFAM-DECL drop
+TFAM-N@ 12 T=                      \ includes the three unified-payload fixtures
+TF-GROW-THROUGH-CAP
+FID @ TF-REC@ TF-GROW-BASE @ = 0 T=   \ the record arena moved
 FID @ TFAM-NAME$ s" opt" T$=
 FID @ TWX-TFAM-PKG$  s" pkga" T$=
 FID @ TFAM-ARITY@ 1 T=
 FID @ TFAM-KIND@ TK-SUM T=
 FID @ 0 TWX-TFAM-PK@ PK-TYPE T=
 s" pkgd" s" tree" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
-TFAM-N@ 12 T=                           \ includes the three unified-payload fixtures
 
 \ ---------------------------------------------------------------------------
 \ 14. snapshot persist/restore: run the exact words TWX-CHECKER-CAPTURE-PREPARE
