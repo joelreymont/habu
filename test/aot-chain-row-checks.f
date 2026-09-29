@@ -59,7 +59,7 @@ using AOT-WINDOW
 \ Exercise the index beyond the former fixed row limit, with both signed
 \ halves of the packed key space. These are index inputs, not a fake capture.
 : LARGE-KEY ( n -- n n ) {: k:n :}
-   k CELL * XTOFF-WINDOW-TAG or
+   k CELL * k 1 and 0<> if XTOFF-WINDOW-TAG or then
    k 1+ k 1 and 0= if XTOFF-DATA-TAG or then ;
 
 : LARGE-INDEX ( -- )
@@ -74,10 +74,12 @@ using AOT-WINDOW
 
 public
 : RUN ( -- )
-   AOT-CHAIN:RUN
-   ?PORTABLE-CLOSURE
-   ?POPULATIONS
-   s" index-scale" CASE? if LARGE-INDEX else
+   s" index-scale" CASE? if
+      LARGE-INDEX
+   else
+      AOT-CHAIN:RUN
+      ?PORTABLE-CLOSURE
+      ?POPULATIONS
       ALTER
       AOT-CHAIN:?XTOFF
    then
