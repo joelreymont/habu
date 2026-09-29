@@ -13,6 +13,7 @@ require lib/process-env.f
 require lib/process-cwd.f
 require src/os/script-argv.f
 require lib/codesign.f
+require lib/executable-build.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
@@ -225,6 +226,9 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    s" src/habu/native-runtime.f" included ;
 
 : OPEN-AND-COMPILE ( ptr u8 -- )
+   \ APP-IMAGE preserves the exact DATA cursor, including a trailing byte field.
+   \ The captured window starts on the cell grid used by address relocation.
+   align
    AOT-ARM:WINDOW-OPEN-PERSISTENT
    NSTR:WINDOW-OPEN
    LOAD-TARGET
@@ -344,16 +348,23 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 
 \ The reader's capture has its own bytes. Loading a writer may allocate and
 \ compile freely; none of those definitions or mutations enters that value.
-: WRITE-TARGET ( AOT-OWNED:capture -- )
+: SOURCE-WRITER-DISPATCH ( AOT-OWNED:capture ptr n n ptr u8 n -- )
    s" tools/native-emit.f" required
-   NATIVE-LAYOUT:CURRENT TEMP$ SOURCE-WRITER execute ;
+   SOURCE-WRITER execute ;
 
-: WRITE-OWNED ( AOT-OWNED:capture -- AOT-OWNED:capture )
-   dup WRITE-TARGET ;
+: WRITE-TARGET ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
+   {: writer :}
+   NATIVE-LAYOUT:CURRENT TEMP$ writer execute ;
 
-: EMIT-TEMP ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
-   AOT-CAPTURE:CODE-WINDOW query bootstrap AOT-FILE:OWN-WINDOW
+: WRITE-OWNED ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
+   {: writer :}
+   dup writer WRITE-TARGET writer ;
+
+: EMIT-TEMP ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
+   {: query bootstrap:bool writer :}
+   AOT-CAPTURE:CODE-WINDOW query bootstrap AOT-FILE:OWN-WINDOW writer
    ['] WRITE-OWNED catch {: rc:n :}
+   drop
    AOT-OWNED:CLOSE
    rc 0<> if rc throw then
    TEMP$ CHMOD-X ;
@@ -521,7 +532,8 @@ variable NAMES-NI
    TEMP$ 2dup SYMLINK? if REMOVE-FILE exit then
    2dup EXISTS? if REMOVE-FILE else 2drop then ;
 
-: DRIVE ( [ n n -- n ] bool -- [ n n -- n ] bool ) {: query bootstrap:bool :}
+: DRIVE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
+   {: query bootstrap:bool writer :}
    CHECK-HOST-LAYOUT
    CHECKER-OWNER {: source:ptr :}
    source LOGICAL-RESET
@@ -530,14 +542,12 @@ variable NAMES-NI
    AOT-CAPTURE:PAYLOAD-CAPTURE
    PREPARE-TARGET
    CAPTURE
-   query bootstrap EMIT-TEMP
+   query bootstrap writer EMIT-TEMP
    SIGN-TEMP
    SMOKE
    PROMOTE
    WRITE-NAMES
-   query bootstrap ;
-
-public
+   query bootstrap writer ;
 
 \ The build proper, to an explicit output path, returning its result code.
 \
@@ -546,18 +556,24 @@ public
 \ an unconditional exit_group, so `include tools/native-build.f` has no code
 \ path back to its caller. tools/build-profile.f prints the profiler's report
 \ after the build and is that driver.
-: RUN-PATH-RC ( ptr u8 n [ n n -- n ] bool -- n )
-   {: out:ptr outu:n query bootstrap:bool :}
+: RUN-READY-RC ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
+   {: query bootstrap:bool writer :}
    CLEANUP-RESET
-   out outu OUTPUT!
    REMOVE-STALE-TEMP
    TEMP$ CLEANUP+
    SMOKE-DIR!
-   query bootstrap [: DRIVE ;] catch {: rc:n :}
-   2drop
+   query bootstrap writer [: DRIVE ;] catch {: rc:n :}
+   drop 2drop
    CLEANUP-RUN
    rc 0<> if s" native-build: uncaught throw code " type rc . cr then
    rc ;
+
+public
+
+: RUN-PATH-RC ( ptr u8 n [ n n -- n ] bool -- n )
+   {: out:ptr outu:n query bootstrap:bool :}
+   out outu OUTPUT!
+   query bootstrap ['] SOURCE-WRITER-DISPATCH RUN-READY-RC ;
 
 \ The build says which of the two images it wrote, on the way out, so a build
 \ log records the class instead of leaving it to be inferred from a size.
@@ -576,12 +592,27 @@ public
    then
    CLASS-WHITEBOX CLASS-WANTED ! ;
 
-: RUN ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
+: BUILD-ARGS! ( -- )
    SCRIPT-ARGC 1 < SCRIPT-ARGC 2 > or if
       s" native-build: one explicit output path is required, then an optional `whitebox`" BUILD-RC die
    then
-   CLASS-ARG!
+   CLASS-ARG! ;
+
+: RUN ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
+   BUILD-ARGS!
    0 SCRIPT-ARGV$ query bootstrap RUN-PATH-RC {: rc:n :}
+   rc 0= if REPORT-CLASS then
+   s" " rc die ;
+
+\ APP-ENTRY changes the argv slice. Own both arguments before clearing it and
+\ enter the same protected build scope used by the source-loaded driver.
+: RUN-IMAGE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
+   {: query bootstrap:bool writer :}
+   BUILD-ARGS!
+   0 SCRIPT-ARGV$ OUTPUT!
+   \ The saved image already registered this cell; zero adds no code reference.
+   0 data-base APP-ENTRY:XT-CELL + !
+   query bootstrap writer [: RUN-READY-RC ;] EXECUTABLE-BUILD:WITH {: rc:n :}
    rc 0= if REPORT-CLASS then
    s" " rc die ;
 
