@@ -99,12 +99,25 @@ WHITEBOX-SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
 
-\ native-window-owner fetches the whitebox engine itself (test/whitebox-child.f).
-\ Registered before the first WHITEBOX-SUITE row, which holds the registry until
-\ the gate's whitebox build retires, it built its own copy beside that build and
-\ was killed at 360 s; after it, the row copies the finished artifact.
+\ The native-window rows fetch the whitebox engine themselves
+\ (test/whitebox-child.f). Registered before the first WHITEBOX-SUITE row, which
+\ holds the registry until the gate's whitebox build retires, native-window-owner
+\ built its own copy beside that build and was killed at 360 s; after it, each
+\ row copies the finished artifact.
 SUITE native-window-owner
    test/native-window-owner.f
+;SUITE
+
+SUITE native-window-source
+   test/native-window-source.f
+;SUITE
+
+SUITE native-window-boundary
+   test/native-window-boundary.f
+;SUITE
+
+SUITE native-window-payload
+   test/native-window-payload.f
 ;SUITE
 
 SUITE stripped-entry
