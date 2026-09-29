@@ -49,8 +49,6 @@ require tools/event-closure-lib.f
 package WHITEBOX-ENGINE
 
 $10000 constant IO-CAP
-360000 constant BUILD-TIMEOUT-MS
-75 constant WB-RC
 64 constant KEY-HEX-LEN
 128 constant NAME-CAP
 
@@ -71,6 +69,17 @@ variable RESOLVED?
 variable CLOSURE-IDX
 
 public
+
+\ The exit status of a failed build. The gate's whitebox rows die with it when
+\ the build row left no exit status of its own: killed by its deadline or a
+\ signal, or not among the detailed reds.
+75 constant WB-RC
+
+\ The builder's own deadline. It starts only after the key is hashed, so a
+\ caller that runs PROVIDE under a deadline of its own gives that one a margin
+\ beyond this: the inner deadline then governs and EMIT removes its work
+\ directory.
+360000 constant BUILD-TIMEOUT-MS
 
 \ The builder this host is built from, and whose closure the key folds. Public
 \ because test/whitebox-engine-key-test.f copies exactly this entry's closure: a

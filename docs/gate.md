@@ -70,7 +70,11 @@ gives that slot no directory.
   private copy of the unsealed engine (`test/whitebox-engine.f`) because such a
   file reaches inside the engine, and the sealed `bin/hb` refuses those tokens
   — standalone such a file exits 70 with `hb: internal engine word: <TOKEN>`
-  (measured on `test/whitebox-engine-suite.f`). A file that only *spawns* a
+  (measured on `test/whitebox-engine-suite.f`). The gate builds that engine in
+  the pool row `whitebox-engine-build` beside the other rows; a whitebox row
+  reached before it retires waits for it. After a failed build every whitebox
+  row is red with the build's exit status and points at that row's output,
+  and the other rows keep running. A file that only *spawns* a
   child needing the unsealed engine is not of that kind: it names one itself
   through `test/whitebox-child.f` (`PROVIDE`, `ENGINE$`, `ENV!`) and stays a
   plain `SUITE`, green on its own.

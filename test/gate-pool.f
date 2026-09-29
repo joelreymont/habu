@@ -474,6 +474,16 @@ GT-POOL-ABORT-KILL!
    repeat drop
    E-TBL-BOUNDS throw ;
 
+\ A retired slot is reused by the next start, so the capture sequence number,
+\ unique per start, is the one handle a caller can keep on a row it started.
+: GT-POOL-SEQ-LIVE? ( n -- bool ) {: seq:n :}
+   0 begin dup GT-POOL-LIMIT @ < while
+      dup >IDX GT-POOL-DONE@ 0=
+      over >IDX GT-POOL-SEQ-PTR @ seq = and if drop true exit then
+      1+
+   repeat drop
+   false ;
+
 : GT-POOL-ELAPSED-MS ( idx -- n ) {: idx :}
    mono-ns idx GT-POOL-START-PTR @ - PROC-NS-PER-MS / ;
 
@@ -856,6 +866,15 @@ GT-POOL-ABORT-KILL!
 
 : GT-POOL-RED-DETAILED ( -- n )
    GT-POOL-RED# dup GT-POOL-RED-MAX > if drop GT-POOL-RED-MAX then ;
+
+\ The red record of the row whose capture seq is n, or -1 when that row is not
+\ among the detailed reds (see GT-POOL-SEQ-LIVE? for why the seq is the handle).
+: GT-POOL-RED-FIND-SEQ ( n -- n ) {: seq:n :}
+   0 begin dup GT-POOL-RED-DETAILED < while
+      dup GT-POOL-RED-SEQ-PTR @ seq = if exit then
+      1+
+   repeat drop
+   -1 ;
 
 \ Saturation suffix, appended only for a pool-timeout (TIMEOUT-UNDER-LOAD) red:
 \ the live/limit depth and WAIT-heartbeat count that witness the contention, plus

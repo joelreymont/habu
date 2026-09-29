@@ -10,10 +10,15 @@ require lib/engine-id.f                  \ ENGINE-ID:PATH$ - this gate's own bin
 package STDLIB-GATE
 
 360000 constant SUITE-TIMEOUT-MS
+\ The whitebox build row's backstop: a minute beyond the builder's own deadline
+\ covers the key hashing and the copy, which take seconds.
+WHITEBOX-ENGINE:BUILD-TIMEOUT-MS 60000 + constant WB-ROW-TIMEOUT-MS
 64 constant SUITE-USAGE-RC
 
 create WB-BUF FS-PATH-CAP allot
 variable WB-U
+variable WB-SEQ                          \ the build row's capture seq; 0 = none
+variable WB-FAIL-RC                      \ exit status a red whitebox row dies with
 
 : SUITE-USAGE ( -- )
    s" usage: bin/hb --load test/run.f" SUITE-USAGE-RC die ;
@@ -86,15 +91,50 @@ variable WB-U
 
 \ The whitebox engine, in the gate's own temp root: a private copy per gate run,
 \ so a suite that spawns it cannot reach - or overwrite - the shared keyed
-\ artifact, and the tree's bin/hb keeps its seal.
-: WB-ENSURE ( -- )
-   0 WB-U !
-   TEST:WHITEBOX-REGISTERED? 0= if exit then
-   s" hb-whitebox" WB-BUF GT-PATH WB-U !
+\ artifact, and the tree's bin/hb keeps its seal. Its key hashing and native
+\ build run in a pool row beside the other rows; that row's PASS or FAIL is the
+\ one report of the build.
+: WB-BUILD ( -- )
    WB-PATH$ WHITEBOX-ENGINE:PROVIDE ;
 
+: WB-START ( -- )
+   0 WB-U !
+   0 WB-SEQ !
+   TEST:WHITEBOX-REGISTERED? 0= if exit then
+   s" hb-whitebox" WB-BUF GT-PATH WB-U !
+   s" whitebox-engine-build" WB-ROW-TIMEOUT-MS [: WB-BUILD ;] GT-POOL-START-FORK
+   GT-POOL-SEQ @ WB-SEQ ! ;
+
+: WB-WAIT ( -- )
+   begin WB-SEQ @ GT-POOL-SEQ-LIVE? while GT-POOL-STEP repeat ;
+
+\ The build's exit status when its red record holds one, else WB-RC: a row the
+\ pool killed records code 0 and a signalled one a signal number.
+: WB-FAIL-RC! ( -- )
+   WHITEBOX-ENGINE:WB-RC WB-FAIL-RC !
+   WB-SEQ @ GT-POOL-RED-FIND-SEQ {: i:n :}
+   i 0 < if exit then
+   i GT-POOL-RED-EXITED-PTR @ 0= if exit then
+   i GT-POOL-RED-CODE-PTR @ 0 = if exit then
+   i GT-POOL-RED-CODE-PTR @ WB-FAIL-RC ! ;
+
+: WB-RED-BODY ( -- )
+   s" whitebox engine build failed; its output is under FAIL: whitebox-engine-build"
+   WB-FAIL-RC @ die ;
+
+\ A whitebox row with no engine is its own red pool row: it dies with the
+\ build's exit status, and the rows after it keep running.
+: WB-RED ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   WB-FAIL-RC!
+   label labelu SUITE-TIMEOUT-MS [: WB-RED-BODY ;] GT-POOL-START-FORK ;
+
+\ A whitebox row reached while the engine builds waits here, and the rows
+\ registered after it wait with it: only the rows before the first whitebox row
+\ run beside the build, so the registry's longest rows lead it. A missing engine
+\ once the build row retired means that row failed red.
 : SUITE-WB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   WB-U @ 0 <= if E-FS-PATH throw then
+   WB-WAIT
+   WB-PATH$ EXECUTABLE? 0= if label labelu WB-RED exit then
    WB-PATH$ SUITE-ENV
    WB-PATH$ SUITE-TIMEOUT-MS label labelu SUITE-RUN-ASYNC ;
 
@@ -104,13 +144,13 @@ variable WB-U
 
 \ Emit the shared cold fixture host here, before the first suite forks: the
 \ fixtures that need it then copy one keyed artifact instead of each paying the
-\ writer's own native build.
+\ writer's own native build. The whitebox build is the first fork.
 : SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS
    s" habu-native-suite" GT-START
    COLD-ENGINE:ENSURE
-   WB-ENSURE
-   GT-POOL-RESET ;
+   GT-POOL-RESET
+   WB-START ;
 
 \ The pool drains softly between groups, so every registered suite runs
 \ whatever went red before it; the complete red set is reported here, once,
