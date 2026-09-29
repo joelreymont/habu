@@ -43,6 +43,7 @@
 require lib/prelude.f
 require lib/errors.f
 require lib/string.f
+require src/habu/layout.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
@@ -169,18 +170,16 @@ X64ASM:C-E X64ASM:CONDITION>N constant COND-EQ
 X64ASM:C-NE X64ASM:CONDITION>N constant COND-NE
 
 \ ---- the registers the virtual machine holds ---------------------------------
-\ docs/x86-64.md fixes five of them and the interpreter register; rsp is the
-\ sixth of the machine's own and the seventh of this set, because `call` pushes
-\ the return address through it and a routine that allocated it would destroy
-\ its own return. ARM64 has no equivalent slip to make: its stack pointer is not
-\ one of the thirty-one general registers an operand field can name.
-3 constant R-RBX                     \ the interpreter register
+\ Six are the running engine's - rbx, rbp and r12..r15, the ones docs/x86-64.md
+\ fixes - and src/habu/layout.f ENGINE-GPR:X64-MASK is the one statement of
+\ them. It is read by name and not through the target-selected ENGINE-GPR:MASK,
+\ because the engine that loads this dialect to cross-build x86-64 is an ARM64
+\ one, whose MASK is ARM64's. The seventh is rsp, which the machine holds and
+\ the engine does not: `call` pushes the return address through it, so a
+\ routine that allocated it would destroy its own return. ARM64 has no
+\ equivalent slip to make: its stack pointer is not one of the thirty-one
+\ general registers an operand field can name.
 4 constant R-RSP                     \ the machine stack pointer
-5 constant R-RBP                     \ the user area
-12 constant R-DSP                    \ r12, the data-stack pointer
-13 constant R-DBASE                  \ r13, the data base
-14 constant R-DICT                   \ r14, the dictionary
-15 constant R-CODE                   \ r15, the code pointer
 
 \ The three the fixed-register forms below name. Each number is TAKEN from the
 \ shipped assembler's own register word, the way the condition codes above are,
@@ -191,13 +190,7 @@ X64ASM:RCX X64ASM:R64>N constant R-RCX
 X64ASM:RDX X64ASM:R64>N constant R-RDX
 
 : RESERVED-MASK ( -- n )
-   1 R-RBX lshift
-   1 R-RSP lshift or
-   1 R-RBP lshift or
-   1 R-DSP lshift or
-   1 R-DBASE lshift or
-   1 R-DICT lshift or
-   1 R-CODE lshift or ;
+   ENGINE-GPR:X64-MASK  1 R-RSP lshift or ;
 
 : GPR-MASK ( -- n )   1 GPRS-N lshift 1- ;
 
@@ -335,15 +328,9 @@ public
 \ ---- the register a frame access is taken from -------------------------------
 \ rsp, which is one of the sixteen general registers here and is therefore named
 \ by number rather than implied by a form. src/arch/x86-64/machine.f states it
-\ as the machine's stack pointer; the number is this file's, because the whole
-\ reserved set above is.
+\ as the machine's stack pointer; the number is this file's, because rsp is the
+\ one member of the reserved set above that the engine does not declare.
 : SP-GPR ( -- n )        R-RSP ;
-
-\ ---- the register the running engine keeps its data-stack pointer in ---------
-\ r12, for the same reason SP-GPR is here: the reserved set above is this file's,
-\ so the number is stated once and read from src/arch/x86-64/machine.f, which is
-\ where a pass asks for it (X64M:DSTACK-GPR, the twin of A64M:DSTACK-GPR).
-: DSTACK-GPR ( -- n )    R-DSP ;
 
 \ ---- this machine's register files, for the passes that are not about it ------
 \ The register allocator is linear scan and not an x86-64 pass, so it reads this

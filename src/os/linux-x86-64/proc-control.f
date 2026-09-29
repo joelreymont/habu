@@ -10,7 +10,11 @@
 \ ABI leaves 0 or -errno in rax whatever SYS, then does with the carry flag, so
 \ publishing rax unchanged is exactly the -errno contract.
 \
-\ The register numbers are the syscall argument order rdi, rsi, rdx.
+\ The register numbers are the syscall argument order rdi, rsi, rdx. The
+\ data-stack moves G-POP and G-PUSH that take them are package X64RT's
+\ (src/arch/x86-64/rt.f), imported rather than qualified for the reason
+\ proc-watch.f gives.
+using X64RT
 
 : BKILLERRNO ( -- )                \ ( pid sig -- rc ) rc=0 or -errno
    6 G-POP  7 G-POP                \ rsi = sig, rdi = pid
@@ -21,3 +25,5 @@
    2 G-POP  6 G-POP  7 G-POP       \ rdx = envp, rsi = argv, rdi = pathz
    NR-EXECVE SYS,
    0 G-PUSH ;
+
+;using

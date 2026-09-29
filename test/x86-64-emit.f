@@ -1,22 +1,22 @@
-\ x86-64-emit.f - the linux-x86-64 seam's instruction emitters and the x86-64
-\ code layer's label sites, run on aarch64.
+\ x86-64-emit.f - the linux-x86-64 seam's instruction emitters, the x86-64
+\ runtime's data-stack moves and stencil consumer, and the x86-64 code layer's
+\ label sites, run on aarch64.
 \
-\ src/os/linux-x86-64/{sys,proc-watch,proc-control}.f are ordinary Habu: they
-\ append bytes through package X64ASM into package X64CODE's sink
-\ (src/arch/x86-64/icode.f), so an aarch64 engine can run them and read back
-\ exactly what an x86_64 machine would execute. Every case below pins those
-\ bytes to a fixed string, and the `llvm-mc:` comment above each one is the
-\ source line that produced it - the same discipline, and the same LLVM 22.1.8 on
-\ 2026-09-18, as test/compiler/x86-64-asm.f. The label cases are pinned the
-\ same way, with the one step llvm-mc cannot take alone: the object is linked
-\ with GNU ld at -Ttext=0x401000, the address X64CODE:ASM-LINK is given here,
-\ so the movabs immediate is the linker's own.
+\ src/os/linux-x86-64/{sys,proc-watch,proc-control}.f and src/arch/x86-64/rt.f
+\ are ordinary Habu: they append bytes through package X64ASM into package
+\ X64CODE's sink (src/arch/x86-64/icode.f), so an aarch64 engine can run them and
+\ read back exactly what an x86_64 machine would execute. Every case below pins
+\ those bytes to a fixed string, and the `llvm-mc:` comment above each one is the
+\ source line that produced it - the same discipline, and the same LLVM 22.1.8,
+\ as test/compiler/x86-64-asm.f. The label cases are pinned the same way, with
+\ the one step llvm-mc cannot take alone: the object is linked with GNU ld at
+\ -Ttext=0x401000, the address X64CODE:ASM-LINK is given here, so the movabs
+\ immediate is the linker's own.
 \
-\ THE COLLABORATORS THIS FILE SUPPLIES are G-POP / G-PUSH, the engine's stack
-\ moves, which belong to the x86_64 engine body. They emit nothing and only
-\ record the register they were handed, so a case can check the argument ORDER
-\ the process primitives build - the substance of proc-control.f - without
-\ claiming to have run code that does not exist.
+\ The process primitives are pinned whole, their data-stack moves included: the
+\ moves are X64RT's G-POP and G-PUSH, so the argument ORDER each primitive builds
+\ - the substance of proc-control.f - is the register field of each pop, and the
+\ result is the push of rax.
 \
 \ WHAT IT CANNOT PROVE. No x86_64 instruction executes here. The carry polarity
 \ SYS, is built around, and a linked label's address against the loaded image,
@@ -34,19 +34,7 @@ require lib/byte-buffer.f
 require lib/errors.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
-
-\ ---- the collaborators the seam is written against ---------------------------
-16 constant G-LOG-CAP
-create G-LOG G-LOG-CAP allot
-variable G-LOG-N
-
-: G-LOG! ( n -- )
-   G-LOG-N @ G-LOG-CAP >= if E-BUF-BOUNDS throw then
-   G-LOG G-LOG-N @ + c!
-   G-LOG-N @ 1 + G-LOG-N ! ;
-
-: G-POP ( n -- )   G-LOG! ;
-: G-PUSH ( n -- )  G-LOG! ;
+require src/arch/x86-64/rt.f
 
 s" src/os/linux-x86-64/sys.f" required
 s" src/os/linux-x86-64/proc-watch.f" required
@@ -56,6 +44,7 @@ package X64-EMIT-TEST
 private
 using X64ASM
 using X64CODE
+using X64RT
 
 : N>BLEN ( n -- NUM:byte-len )
    NUM:BYTE-LEN
@@ -97,11 +86,10 @@ using X64CODE
    CODE ASM-LEN ;
 
 \ Compare what the seam just emitted against the expected string, then begin the
-\ next case's stream and empty the register log.
+\ next case's stream.
 : X= ( ptr u8 n -- ) {: ea:ptr eu:n :}
    SINK$ ea eu SPAN=HEX? TTRUE
-   ASM-RESET
-   0 G-LOG-N ! ;
+   ASM-RESET ;
 
 \ Compare a span the seam publishes as data (a stencil) against its string.
 : S= ( ptr u8 n ptr u8 n -- ) {: da:ptr dlen:n ea:ptr eu:n :}
@@ -125,11 +113,7 @@ variable WANT-N
 : E= ( -- )
    SINK$ WANT WANT-N @ SPAN=? TTRUE
    ASM-RESET
-   0 WANT-N !
-   0 G-LOG-N ! ;
-
-: G-LOG@ ( n -- n ) {: i:n :}
-   G-LOG i + c@ ;
+   0 WANT-N ! ;
 
 \ ---- the trap ----------------------------------------------------------------
 \ The number goes in eax and zero-extends into rax; the trap is two bytes; the
@@ -170,7 +154,16 @@ variable WANT-N
    0 >R32 NR-EXIT-GROUP >IMM32 ASM-SINK ENC-MOV32-RI32
    SINK$ SYS-EMIT-EXIT SPAN=? TTRUE    ASM-RESET
    ASM-SINK ENC-SYSCALL
-   SINK$ SYS-EMIT-SVC SPAN=? TTRUE     ASM-RESET ;
+   SINK$ SYS-EMIT-SVC SPAN=? TTRUE     ASM-RESET
+
+   s" EMIT-STENCIL appends each stencil whole, in order, to the code stream" T-LABEL
+   SYS-EMIT-WRITE EMIT-STENCIL  SYS-EMIT-SVC EMIT-STENCIL      \ the MATCH bad-tag
+   SYS-EMIT-EXIT EMIT-STENCIL   SYS-EMIT-SVC EMIT-STENCIL      \ die's two traps
+   s" b801000000" E+          \ llvm-mc: movl $1, %eax
+   s" 0f05" E+                \ llvm-mc: syscall
+   s" b8e7000000" E+          \ llvm-mc: movl $231, %eax
+   s" 0f05" E+                \ llvm-mc: syscall
+   E= ;
 
 \ ---- the kernel-argument translators -----------------------------------------
 : OPEN-CASES ( -- )
@@ -238,29 +231,50 @@ variable WANT-N
    s" 48c7c100f0ffff" E+      \ llvm-mc: movq $-4096, %rcx
    s" 4839c1" E+ ;            \ llvm-mc: cmpq %rax, %rcx
 
+\ r12 stands just past the top cell: a pop retreats it and then loads, a push
+\ stores and then advances it.
+: RETREAT+ ( -- )
+   s" 4983ec08" E+ ;          \ llvm-mc: subq $8, %r12
+
+: PUBLISH-RAX+ ( -- )
+   s" 49890424" E+            \ llvm-mc: movq %rax, (%r12)
+   s" 4983c408" E+ ;          \ llvm-mc: addq $8, %r12
+
 : PROC-CASES ( -- )
-   s" pidfd_open publishes -1 for an error and the fd otherwise" T-LABEL
+   s" pidfd_open takes the pid in rdi and publishes -1 for an error, else the fd" T-LABEL
    BPROCWATCHOPEN
-   G-LOG-N @ 2 T=  0 G-LOG@ 7 T=  1 G-LOG@ 0 T=    \ pid from rdi, rax published
+   RETREAT+
+   s" 498b3c24" E+            \ llvm-mc: movq (%r12), %rdi
    s" 31f6" E+                \ llvm-mc: xorl %esi, %esi
    s" b8b2010000" E+          \ llvm-mc: movl $434, %eax
    TRAP-TAIL+
    s" 48c7c1ffffffff" E+      \ llvm-mc: movq $-1, %rcx
    s" 480f42c1" E+            \ llvm-mc: cmovbq %rcx, %rax
+   PUBLISH-RAX+
    E=
 
    s" kill takes the signal in rsi and the pid in rdi, and publishes rax" T-LABEL
    BKILLERRNO
-   G-LOG-N @ 3 T=  0 G-LOG@ 6 T=  1 G-LOG@ 7 T=  2 G-LOG@ 0 T=
+   RETREAT+
+   s" 498b3424" E+            \ llvm-mc: movq (%r12), %rsi
+   RETREAT+
+   s" 498b3c24" E+            \ llvm-mc: movq (%r12), %rdi
    s" b83e000000" E+          \ llvm-mc: movl $62, %eax
    TRAP-TAIL+
+   PUBLISH-RAX+
    E=
 
    s" execve takes envp, argv and pathz in rdx, rsi and rdi" T-LABEL
    BEXECVE
-   G-LOG-N @ 4 T=  0 G-LOG@ 2 T=  1 G-LOG@ 6 T=  2 G-LOG@ 7 T=  3 G-LOG@ 0 T=
+   RETREAT+
+   s" 498b1424" E+            \ llvm-mc: movq (%r12), %rdx
+   RETREAT+
+   s" 498b3424" E+            \ llvm-mc: movq (%r12), %rsi
+   RETREAT+
+   s" 498b3c24" E+            \ llvm-mc: movq (%r12), %rdi
    s" b83b000000" E+          \ llvm-mc: movl $59, %eax
    TRAP-TAIL+
+   PUBLISH-RAX+
    E= ;
 
 \ ---- the code layer's label sites ---------------------------------------------
@@ -395,7 +409,6 @@ create ERR CAPTURE-CAP allot
 : RUN ( -- )
    T-RESET
    ASM-SINK 64 N>BLEN BUF:INIT
-   0 G-LOG-N !
    TRAP-CASES
    STENCIL-CASES
    OPEN-CASES

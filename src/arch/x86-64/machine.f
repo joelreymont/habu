@@ -1,12 +1,14 @@
 \ machine.f - the x86-64 machine, as the one description a routine contract over
 \ this backend is written against.
 \
-\ WHERE THESE NUMBERS COME FROM. Every fact here is read off
+\ WHERE THESE NUMBERS COME FROM. Every fact here but one is read off
 \ src/compiler/native/x64ir.f, which is the machine dialect this backend lowers
-\ into, so this file states nothing twice:
+\ into, and the one is the engine's data-stack register, read off
+\ src/habu/layout.f as A64M reads its own; so this file states nothing twice:
 \   - sixteen general registers (rax..r15) and sixteen floating (xmm0..xmm15).
-\     Seven of the general file are the running engine's - rbx, rsp, rbp and
-\     r12..r15 - and x64ir's own RESERVED-MASK is where that is decided;
+\     Seven of the general file are reserved: the running engine's six - rbx,
+\     rbp and r12..r15, layout.f's ENGINE-GPR:X64-MASK - and rsp, which
+\     x64ir's RESERVED-MASK adds to them;
 \   - THERE IS NO LINK REGISTER. `call` pushes the return address onto the
 \     machine stack, so the caller's return address is not in a register a
 \     routine could preserve or clobber, and the contract's link field is
@@ -32,6 +34,7 @@
 \ carries no x86-64 backend carries no description of one either.
 
 require lib/prelude.f
+require src/habu/layout.f
 require src/compiler/native/machine.f
 require src/compiler/native/x64ir.f
 
@@ -69,11 +72,14 @@ public
 
 \ ---- the register the running engine keeps its data-stack pointer in ---------
 \ The one door a pass emitting an access to the caller's stack asks at, the twin
-\ of A64M:DSTACK-GPR - there the number comes from the engine's own arm64
-\ declaration, here from the machine dialect's reserved set
-\ (src/compiler/native/x64ir.f R-DSP), because no x86-64 engine declares one yet.
-\ This file reports that register, it does not decide it.
-: DSTACK-GPR ( -- n )   X64IR:DSTACK-GPR ;
+\ of A64M:DSTACK-GPR. Both numbers are the engine's own declaration in
+\ src/habu/layout.f, and src/arch/x86-64/rt.f's data-stack moves emit through
+\ the same declaration, so the compiler's code and the engine's share one stack
+\ by construction. It is ENGINE-GPR:X64-DSTACK by name and not the
+\ target-selected ENGINE-GPR:DSTACK, because the engine that loads this file to
+\ cross-build x86-64 is an ARM64 one, whose DSTACK is x19. This file reports
+\ that register, it does not decide it.
+: DSTACK-GPR ( -- n )   ENGINE-GPR:X64-DSTACK ;
 
 private
 get-current prot-wid-add

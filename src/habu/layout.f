@@ -17,28 +17,64 @@
 \ It is built from the register constants rather than written out as a list, so
 \ claiming a new engine register is one line here and nothing else.
 \
-\ ENGINE-GPR:DSTACK is declared HERE and not read from src/arch/arm64/mnem.f's
-\ XDS, even though mnem.f is that number's historic home. mnem.f is an
-\ emitter-side vocabulary only the BUILD chain compiles; this file is loaded by
-\ both build chains and belongs to every engine's own prefix, and mnem.f does
-\ not. A derivation through XDS therefore compiles during the build and dies
-\ E-UNDEFINED at runtime - which is exactly what happened when it was tried.
-\ The two must agree, and src/habu/rt.f - the first consumer of XDS, loaded
-\ after this file in both build chains - executes that agreement
+\ ENGINE-GPR:A64-DSTACK is declared HERE and not read from
+\ src/arch/arm64/mnem.f's XDS, even though mnem.f is that number's historic
+\ home. mnem.f is an emitter-side vocabulary only the BUILD chain compiles; this
+\ file is loaded by both build chains and belongs to every engine's own prefix,
+\ and mnem.f does not. A derivation through XDS therefore compiles during the
+\ build and dies E-UNDEFINED at runtime - which is exactly what happened when it
+\ was tried. The two must agree, and src/habu/rt.f - the first consumer of XDS,
+\ loaded after this file in both build chains - executes that agreement
 \ (RT:DSTACK-AGREE) and dies on mismatch, so a change to either stops the build
-\ rather than drifting.
+\ rather than drifting. ENGINE-GPR:X64-DSTACK has no second statement to agree
+\ with: the x86-64 compiler (src/arch/x86-64/machine.f X64M:DSTACK-GPR) and the
+\ x86-64 data-stack moves (src/arch/x86-64/rt.f) both read it here.
+\
+\ BOTH TARGETS' REGISTERS ARE DECLARED ON EVERY TARGET, as the two site views
+\ further down are: this file cannot branch at top level, and the engine loading
+\ it is not always the one it describes - an ARM64 engine emits x86-64 code.
+\ DSTACK and MASK select the running target's pair at run time and refuse a
+\ target that has neither. The x86-64 numbers are that encoding's own, so
+\ XREG-RBASE and its neighbours above, which are ARM64 numbers, cannot name them.
 package ENGINE-GPR
+
+\ src/core/cell.f's CORE-LAYOUT-RC, stated here because the Gforth recovery's
+\ stack check (test/bootstrap-engine-stack.fs) loads this file without cell.f.
+$4C constant UNKNOWN-TARGET-RC
 
 public
 
-19 constant DSTACK
+19 constant A64-DSTACK
 
-1 DSTACK lshift
+1 A64-DSTACK lshift
 1 XREG-RBASE lshift or
 1 DBASE lshift or
 1 NDICT lshift or
 1 CP lshift or
-constant MASK
+constant A64-MASK
+
+\ docs/x86-64.md fixes these six, and this is their one statement:
+\ src/compiler/native/x64ir.f RESERVED-MASK reads X64-MASK and adds rsp, which
+\ the machine holds and the engine does not.
+12 constant X64-DSTACK
+
+1 3 lshift                     \ rbx, the interpreter register
+1 5 lshift or                  \ rbp, the user area
+1 X64-DSTACK lshift or         \ r12, the data-stack pointer
+1 13 lshift or                 \ r13, the data base
+1 14 lshift or                 \ r14, the dictionary
+1 15 lshift or                 \ r15, the code pointer
+constant X64-MASK
+
+: DSTACK ( -- n )
+   HB-TARGET-LINUX-X86-64? if X64-DSTACK exit then
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or if A64-DSTACK exit then
+   s" layout: ENGINE-GPR: unknown target" UNKNOWN-TARGET-RC die ;
+
+: MASK ( -- n )
+   HB-TARGET-LINUX-X86-64? if X64-MASK exit then
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or if A64-MASK exit then
+   s" layout: ENGINE-GPR: unknown target" UNKNOWN-TARGET-RC die ;
 
 ;package
 
@@ -939,6 +975,19 @@ $37F8 constant SNAP-CELL
 \ test/internal-word-gate.f pins that, pins that the cell still reads zero, and
 \ pins this offset against the copy pointer-storage.f has to spell for itself.
 $3800 constant NULL-PTR-CELL-OFF
+
+\ ENGINE-MAIN:XT-CELL is the DATA cell a seeded boot calls the engine's MAIN
+\ through (docs/x86-64.md, "Build and bootstrap"). It is a separate cell from
+\ APP-ENTRY:XT-CELL because that one also switches the argv and stdin
+\ conventions to a saved application's. Nothing reads it yet; the boots that do
+\ are the ARM64 and x86-64 seeded-boot tasks. It takes the next cell of the run
+\ NULL-PTR-CELL-OFF ends, swept for a claimant up to the FFI buffers at $3A00 the
+\ way that cell was, and a fresh DATA mapping reads it zero, the unset value.
+package ENGINE-MAIN
+public
+$3808 constant XT-CELL
+;package
+
 $1D8 constant SSCR-CELL
 $1E0 constant GTOD-SCRATCH
 $200 constant VSP-CELL
