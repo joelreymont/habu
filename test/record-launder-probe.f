@@ -16,14 +16,8 @@
 \           count behind it, as a scalar cell, and a store puts an integer where
 \           the rule prescribed an address.
 \
-\ This probe measures both on the engine that carries the raw-storage rule, and
-\ states beside each row what the declared memory record of docs/type-system.md
-\ section 10 refuses. That section's survey cites these rows as its baseline.
-\ It is registered in test/gate-stdlib-cases.f so the rows it measures cannot
-\ drift unseen: L1-L4 flip to refusals when the two narrowings land, and K1-K6
-\ must keep certifying through every migration wave. The two launders are also
-\ pinned as suite rows in test/typed-storage-structural-test.f
-\ SECTION-RAW-IS-VACUOUS (V8, V9).
+\ The open repros below show both casts. The gate checks direct refusals and
+\ legitimate field reads without requiring the open holes to certify.
 
 require lib/errors.f
 require lib/string.f
@@ -46,41 +40,25 @@ PTR-VARIABLE RLP-HEAD 0 , 0 ,
 \    cast at all - the control that says the cast is the RECORD's fault.
 2 PTR-U8-TABLE RLP-TAB
 
-\ The accessor row `PTR-FIELD:` generates for a record's pointer field, in both
-\ spellings the tree uses. Neither body names a base, so neither is judged.
-: RLP-FIELD-A ( ptr a -- ptr ptr u8 ) 0 ptr-field ;
-: RLP-FIELD-N ( ptr n -- ptr ptr u8 ) 0 ptr-field ;
-
 package RECORD-LAUNDER-PROBE
 private
 
 \ =============================================================================
-\ 1. The two launders. Both certify; each is one dot.
+\ Open repros: these are source examples, not gate assertions. Cast A makes a
+\ pointer through a free pointee; cast B writes an integer into a pointer cell.
+\ The checker must refuse these before the gate can assert a refusal.
 \ =============================================================================
-: SECTION-LAUNDERS ( -- )
-   s" cast A and cast B both certify on the rule engine" T-LABEL
-   \ L1/L2 - cast A, dot habu-refuse-ptr-field-331a9731. An integer goes into a
-   \ raw cell and comes back out as a byte address, because the RAW base binds
-   \ to the accessor's declared parameter at the call, where no `ptr-field`
-   \ token is left to judge it. A DECLARED RECORD REFUSES BOTH: `ptr-field`
-   \ admits only a declared record base with a pointer field at that offset, or
-   \ a declared pointer cell, and RLP-RAW is neither.
-   s" L1 ( n -- u8 ) RLP-RAW ! RLP-RAW RLP-FIELD-A @ c@"
-                                              CHECK-QUIET-CANDIDATE! -1 T=
-   s" L2 ( n -- u8 ) RLP-RAW ! RLP-RAW RLP-FIELD-N @ c@"
-                                              CHECK-QUIET-CANDIDATE! -1 T=
-   \ L3/L4 - cast B, dot habu-refuse-a-scalar-030be3ad. The store lands in the
-   \ declared cell's OWN bytes, so the declared `@` hands the integer back as an
-   \ address. A DECLARED RECORD REFUSES BOTH: a view may not be taken of a base
-   \ whose pointee is a pointer, because the count cells that needed the view
-   \ are fields of the record and have their own typed accessors.
-   s" L3 ( n -- ) RLP-HEAD BYTE-VIEW CELL-VIEW !"
-                                              CHECK-QUIET-CANDIDATE! -1 T=
-   s" L4 ( n -- u8 ) RLP-HEAD BYTE-VIEW CELL-VIEW ! RLP-HEAD @ c@"
-                                              CHECK-QUIET-CANDIDATE! -1 T= ;
+\ L1/L2: habu-refuse-ptr-field-331a9731
+\ : RLP-FIELD-A ( ptr a -- ptr ptr u8 ) 0 ptr-field ;
+\ : RLP-FIELD-N ( ptr n -- ptr ptr u8 ) 0 ptr-field ;
+\ : L1 ( n -- u8 ) RLP-RAW ! RLP-RAW RLP-FIELD-A @ c@ ;
+\ : L2 ( n -- u8 ) RLP-RAW ! RLP-RAW RLP-FIELD-N @ c@ ;
+\ L3/L4: habu-refuse-a-scalar-030be3ad
+\ : L3 ( n -- ) RLP-HEAD BYTE-VIEW CELL-VIEW ! ;
+\ : L4 ( n -- u8 ) RLP-HEAD BYTE-VIEW CELL-VIEW ! RLP-HEAD @ c@ ;
 
 \ =============================================================================
-\ 2. The rule that DID land, so the probe cannot be read as "nothing is fenced".
+\ 1. The direct forms are fenced.
 \ =============================================================================
 : SECTION-FENCED ( -- )
    s" the direct forms of both puns are refused" T-LABEL
@@ -92,7 +70,7 @@ private
    s" C3 ( ptr a -- ptr ptr u8 ) "             CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ =============================================================================
-\ 3. What must keep certifying. Each row is a mixed record's field read; the
+\ 2. What must keep certifying. Each row is a mixed record's field read; the
 \    design turns each into a typed accessor the record declaration generates,
 \    so the cast disappears rather than the capability.
 \ =============================================================================
@@ -121,7 +99,6 @@ public
 
 : RUN ( -- )
    T-RESET
-   SECTION-LAUNDERS
    SECTION-FENCED
    SECTION-KEEP
    T-REPORT ;

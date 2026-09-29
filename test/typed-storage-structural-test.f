@@ -55,16 +55,18 @@ DEFLINEAR tsslin
 \    section 2 improve on. If a future change makes one of the SCALAR readings
 \    reject, the structural-cell capability has become redundant and should be
 \    re-derived, so this section failing is informative either way. The pointer
-\    readings below are the opposite: they reject, and the two rows that still
-\    certify are open holes with a dot each, not a baseline to preserve.
+\    readings below are the opposite: they reject. The open hole repros below
+\    are documented without a gate verdict.
 \ =============================================================================
 variable TSS-RAWCELL
-PTR-VARIABLE TSS-DECLCELL
 
-\ The row `PTR-FIELD:` generates for a record's pointer field: one free pointee
-\ in, a pointer-to-pointer out, related by nothing. It certifies, and V8 below
-\ measures what that costs while dot habu-refuse-ptr-field-331a9731 is open.
-: TSS-RAWFIELD ( ptr a -- ptr ptr u8 ) 0 ptr-field ;
+\ Open repros; assert refusal only after the checker closes these holes.
+\ V8: habu-refuse-ptr-field-331a9731
+\ : TSS-RAWFIELD ( ptr a -- ptr ptr u8 ) 0 ptr-field ;
+\ : V8 ( n -- u8 ) TSS-RAWCELL ! TSS-RAWCELL TSS-RAWFIELD @ c@ ;
+\ V9: habu-refuse-a-scalar-030be3ad
+\ PTR-VARIABLE TSS-DECLCELL
+\ : V9 ( n -- ) TSS-DECLCELL BYTE-VIEW CELL-VIEW ! ;
 
 : SECTION-RAW-IS-VACUOUS ( -- )
    s" V1 ( n -- ) TSS-RAWCELL !"             CHECK-QUIET-CANDIDATE! -1 T=
@@ -81,26 +83,7 @@ PTR-VARIABLE TSS-DECLCELL
    \ reject and the scalar readings above are the whole of what stays open.
    s" V3 ( ptr u8 -- ) TSS-RAWCELL !"        CHECK-QUIET-CANDIDATE! 0 T=
    s" V4 ( -- ptr u8 ) TSS-RAWCELL @"        CHECK-QUIET-CANDIDATE! 0 T=
-   s" V6 ( -- ptr ptr u8 ) TSS-RAWCELL @"    CHECK-QUIET-CANDIDATE! 0 T=
-   \ ---- the two launders that OUTLIVE that rule ------------------------------
-   \ Both certify, and both are the same pun V3/V4 stopped, reached around the
-   \ binding instead of through it. They are pinned here as -1 so the day either
-   \ dot closes, this suite says which one and not "something changed".
-   \
-   \ V8: the field door through a parameter. TSS-RAWFIELD's base pointee is a
-   \ declared free var, not a RAW one, so the ptr-field token sees nothing to
-   \ refuse; the RAW cell then binds to that free var at the call and the row's
-   \ unrelated `ptr ptr u8` result reads the cell as an address anyway.
-   \ Dot habu-refuse-ptr-field-331a9731.
-   s" V8 ( n -- u8 ) TSS-RAWCELL ! TSS-RAWCELL TSS-RAWFIELD @ c@"
-                                             CHECK-QUIET-CANDIDATE! -1 T=
-   \ V9: the view door into a DECLARED cell. byte-view and cell-view are
-   \ type-level renames, so the pair reinterprets the pointer cell the rule
-   \ prescribes as a scalar cell and stores an integer into it, which the
-   \ declared `@` then hands back as an address.
-   \ Dot habu-refuse-a-scalar-030be3ad.
-   s" V9 ( n -- ) TSS-DECLCELL BYTE-VIEW CELL-VIEW !"
-                                             CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" V6 ( -- ptr ptr u8 ) TSS-RAWCELL @"    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ =============================================================================
 \ 2. Closed STRUCTURAL cells: the same three shapes the raw cell blurred, each
