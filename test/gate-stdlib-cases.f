@@ -23,6 +23,18 @@ SUITE build-fixpoint-fixtures
 SUITE hb-build-fixtures
    tools/hb-build-test.f
    lib/build-cache-test.f
+;SUITE
+
+SUITE hb-build-cli-errors
+   tools/hb-build-cli-errors-test.f
+;SUITE
+
+SUITE hb-build-aot
+   tools/hb-build-aot-test.f
+;SUITE
+
+SUITE hb-build-aot-cache
+   tools/hb-build-aot-cache-test.f
    lib/codesign-test.f
    tools/hb-build-direct-lints-test.f
 ;SUITE

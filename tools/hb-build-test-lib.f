@@ -1,7 +1,12 @@
 \ hb-build-test-lib.f - the fixture the hb-build gate rows share: the scratch
-\ tree, the fixture sources, HBT-PREPARE and the helpers that run hb-build. It
-\ defines no MAIN; each row file loads it and runs the groups it owns:
-\   tools/hb-build-test.f                     build, CLI and AOT
+\ tree, the fixture sources, HBT-PREPARE, the helpers that run hb-build and the
+\ build report check. It defines no MAIN; each row file loads it and runs the
+\ groups it owns:
+\   tools/hb-build-test.f                     REPL build, CLI report, cache
+\                                             keys, rejected inputs, image size
+\   tools/hb-build-cli-errors-test.f          cache path error, MAIN effects
+\   tools/hb-build-aot-test.f                 AOT build and run, one program each
+\   tools/hb-build-aot-cache-test.f           object cache and its keys
 \   tools/hb-build-stripped-test.f            library state, engine cells, ptr mark
 \   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path
 \   tools/hb-build-stripped-lifecycle-test.f  lifecycle registry, number parsing
@@ -39,6 +44,8 @@ require tools/object-image.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f
 
+using BUILD-FIXPOINT                     \ the build tmp root
+
 \ This fixture drives the hb-build library's internals, so it REOPENS package
 \ HB-BUILD-CLI rather than importing a public surface: exporting those
 \ internals would widen the library's interface for the benefit of its own
@@ -49,6 +56,7 @@ package HB-BUILD-CLI
 
 65536 constant HBT-CAPTURE-CAP
 600000 constant HBT-TIMEOUT-MS
+64 constant HBT-KEY-U
 
 variable HBT-ROOT-U
 variable HBT-TMP-U
@@ -82,6 +90,9 @@ create HBT-OUT HBT-CAPTURE-CAP allot
 create HBT-ERR HBT-CAPTURE-CAP allot
 create HBT-RUN-OUT HBT-CAPTURE-CAP allot
 create HBT-RUN-ERR HBT-CAPTURE-CAP allot
+
+create HBT-REPORT-BUF FS-PATH-CAP allot
+create HBT-AOT-HEX 80 allot
 
 \ The three stripped-window fixtures: an application whose own require closure
 \ owns the library cells it touches, one that reads the engine runtime cells the
@@ -182,6 +193,9 @@ create HBT-LITC-OUT-BUF FS-PATH-CAP allot
 : HBT-BAD-SRC ( -- ptr u8 n )
    HBT-BAD-SRC-BUF HBT-BAD-SRC-U @ ;
 
+: HBT-BAD-OUT ( -- ptr u8 n )
+   HBT-BAD-OUT-BUF HBT-BAD-OUT-U @ ;
+
 : HBT-REPL-SRC ( -- ptr u8 n )
    HBT-REPL-SRC-BUF HBT-REPL-SRC-U @ ;
 
@@ -190,6 +204,9 @@ create HBT-LITC-OUT-BUF FS-PATH-CAP allot
 
 : HBT-REPL-BAD-SRC ( -- ptr u8 n )
    HBT-REPL-BAD-SRC-BUF HBT-REPL-BAD-SRC-U @ ;
+
+: HBT-REPL-BAD-OUT ( -- ptr u8 n )
+   HBT-REPL-BAD-OUT-BUF HBT-REPL-BAD-OUT-U @ ;
 
 : HBT-AOT-SRC ( -- ptr u8 n )
    HBT-AOT-SRC-BUF HBT-AOT-SRC-U @ ;
@@ -218,6 +235,16 @@ create HBT-LITC-OUT-BUF FS-PATH-CAP allot
 
 : HBT-AOT-SRC$ ( -- ptr u8 n )
    s" : MAIN ( -- ) ; \ trailing source comment" ;
+
+\ RUN's last line calls NULL$, and that is the point of it: NULL$ is a colon
+\ word of the ENGINE's own prefix, so it sits outside this window's code and the
+\ capture records a call site for it whose callee no index of this payload can
+\ name (habu2.f EMIT-AOT-SITES leaves such a site its name; the seed resolves it
+\ in the engine it boots). Every other call here is to a primitive, which binds
+\ to a seeded record index, so the two site kinds travel in one built image and
+\ a build that can only emit one of them fails this case.
+: HBT-AOT-SRC2$ ( -- ptr u8 n )
+   S\" package HBT-NATIVE\n: LOADING ( -- ) tier@ 1 <> if -9040 throw then ;\nLOADING\npublic\n: INC ( n -- n ) 1+ ;\n: APPLY ( n [ n -- n ] -- n ) execute ;\n: RUN ( -- ) 41 [: INC ;] APPLY 42 <> if -9041 throw then NULL$ nip 0 <> if -9045 throw then ;\n;package\n: MAIN ( -- ) HBT-NATIVE:RUN ;\n" ;
 
 : HBT-TWICE-CACHE ( -- ptr u8 n )
    HBT-TWICE-CACHE-BUF HBT-TWICE-CACHE-U @ ;
@@ -354,4 +381,84 @@ create HBT-LITC-OUT-BUF FS-PATH-CAP allot
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
    HBT-RUN-OUT outn HBT-REPL-EXPECTED$ T$= ;
 
+: HBT-HBB-PREPARE-REPL ( ptr u8 n ptr u8 n -- )
+   HBB-RESET-OPTIONS
+   HBB-REPL-ON
+   HBB-PATHS!
+   HBT-TMP BF-TMP! ;
+
+: HBT-HBB-PREPARE-AOT ( ptr u8 n ptr u8 n -- )
+   HBB-RESET-OPTIONS
+   HBB-PATHS!
+   HBT-TMP BF-TMP! ;
+
+: HBT-HBB-BUILD-OUT ( -- )
+   HBB-BUILD
+   BF-TMP-RESET ;
+
+: HBT-REMOVE-AOT-OUT ( -- )
+   HBT-AOT-OUT HBT-REMOVE-FILE? ;
+
+: HBT-REMOVE-ARTIFACT ( -- )
+   HBB-ARTIFACT$ HBT-REMOVE-FILE? ;
+
+here CELL 1- and CELL swap - CELL 1- and allot
+create READER-STATE JR:STORAGE-BYTES allot
+
+: REPORT-STRING= ( JR:reader ptr u8 n -- JR:reader ) {: want:ptr wantu:n :}
+   JR:TOKEN JR:T-STR T=
+   HBT-REPORT-BUF FS-PATH-CAP JR:STR {: gotu:n :}
+   HBT-REPORT-BUF gotu want wantu T$= ;
+
+: CHECK-REPORT ( ptr u8 n n n n n n -- )
+   {: a:ptr u:n artifact:n object:n maker:n built:n ran:n :}
+   READER-STATE JR:STORAGE-BYTES a u JR:INIT
+   JR:NEXT JR:T-OBJ T=
+   s" schema" JR:FIND-KEY TTRUE
+   s" hb-build-report" REPORT-STRING=
+   s" version" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
+   JR:INT 1 T=
+   s" cache_root" JR:FIND-KEY TTRUE
+   HBB-REPL @ if NULL$ else HBT-TMP then REPORT-STRING=
+   s" cache_source" JR:FIND-KEY TTRUE
+   HBB-REPL @ if s" none" else s" explicit" then REPORT-STRING=
+   s" artifact_hit" JR:FIND-KEY TTRUE
+   JR:TOKEN artifact T=
+   s" object_hit" JR:FIND-KEY TTRUE
+   JR:TOKEN object T=
+   s" maker_hit" JR:FIND-KEY TTRUE
+   JR:TOKEN maker T=
+   s" maker_built" JR:FIND-KEY TTRUE
+   JR:TOKEN built T=
+   s" maker_ran" JR:FIND-KEY TTRUE
+   JR:TOKEN ran T=
+   s" elapsed_ns" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
+   JR:INT 0 >= TTRUE
+   JR:CLOSE ;
+
+\ The object cache key is the ordered-closure hex of the source (a self-contained
+\ AOT source closes over only itself), so the fixtures that pre-store objects must
+\ key them the same way hb-build now does.
+: HBT-AOT-HEX! ( -- )
+   HBT-AOT-SRC HBB-SRC!
+   HBB-SRC-CLOSURE-HEX!
+   HBB-SRC-CLOSURE-HEX HBT-AOT-HEX 64 BYTE-COPY ;
+
+: HBT-OBJ-LOAD? ( -- bool )
+   HBB-RESET-OPTIONS
+   HBT-TMP OBJRES:ROOT!
+   HBT-AOT-HEX!
+   HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$ OBJRES:LOAD ;
+
+: HBT-RUN-AOT ( -- )
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 T=
+   outn 0 T=
+   errn 0 T= ;
+
 ;package
+
+;using

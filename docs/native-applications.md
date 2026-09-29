@@ -383,8 +383,8 @@ the text-base cell those slots are located from, since `src/os/linux/layout.f
 DLSYM-SLOT` reads `rbase - CODE-OFF + the image's text size + $B8`. With that
 cell left at the mapping's zero the slot address came out as -$FA0 and the image
 took SIGSEGV where it should have called; the claim above is what carries it.
-`tools/hb-build-test.f BUILD-AOT-FFI` builds a stripped image whose `MAIN` calls
-`getpid` through the declarer and holds it to its output.
+`tools/hb-build-aot-test.f BUILD-AOT-FFI` builds a stripped image whose `MAIN`
+calls `getpid` through the declarer and holds it to its output.
 
 A stripped image restores the program's own DATA window byte for byte, so a
 persistent cell arrives holding whatever the BUILD process put there. For a cell
