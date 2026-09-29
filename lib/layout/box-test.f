@@ -41,7 +41,7 @@ TYPED-VARIABLE BOXT-KEEP ptr n
 
 : BOXT-FILL ( n -- )            \ allocate n throwaway 1-payload records (drives chunk growth)
    {: cnt:n :}
-   0 cnt ?do  1 BOX-ALLOC drop  loop ;
+   cnt 0 ?do  1 BOX-ALLOC drop  loop ;
 
 : BOXT-GROWTH ( -- )            \ a record survives a later chunk-boundary crossing
    BOXT-M BOX-ALLOC BOXT-KEEP!
