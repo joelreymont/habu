@@ -62,6 +62,8 @@ variable CALLEE                      \ the entry the wordcall site names
 : CHAIN-BODY ( IR-CTX:ctx -- )    HIR-MOD BUILD-CHAIN-PEER 2 1 NBACK:L-NONE ROWS, ;
 : IMMS-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-IMMS 2 1 NBACK:L-NONE ROWS, ;
 : SHIFTS-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-SHIFTS 1 1 NBACK:L-NONE ROWS, ;
+: SHL-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-SHL 2 1 NBACK:L-NONE ROWS, ;
+: SHR-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-SHR 2 1 NBACK:L-NONE ROWS, ;
 : NOT-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-NOT 1 1 NBACK:L-NONE ROWS, ;
 : CMPSET-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-CMPSET 2 1 NBACK:L-NONE ROWS, ;
 : CMPSETI-BODY ( IR-CTX:ctx -- )  HIR-MOD BUILD-CMPSETI 2 1 NBACK:L-NONE ROWS, ;
@@ -87,6 +89,8 @@ public
 : CHAIN-ROUTINE ( -- )    WBND [: CHAIN-BODY ;] IR-CTX:WITH-CONTEXT ;
 : IMMS-ROUTINE ( -- )     WBND [: IMMS-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SHIFTS-ROUTINE ( -- )   WBND [: SHIFTS-BODY ;] IR-CTX:WITH-CONTEXT ;
+: SHL-ROUTINE ( -- )      WBND [: SHL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: SHR-ROUTINE ( -- )      WBND [: SHR-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NOT-ROUTINE ( -- )      WBND [: NOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : CMPSET-ROUTINE ( -- )   WBND [: CMPSET-BODY ;] IR-CTX:WITH-CONTEXT ;
 : CMPSETI-ROUTINE ( -- )  WBND [: CMPSETI-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -193,6 +197,29 @@ create MANIFEST BUF:HDR-BYTES allot
    MIN-CELL 0 CASE1,
    CLOSE, ENTRY, X64EMIT-TEST:SHIFTS-ROUTINE
    s" shifts" false WRITE-IMAGE ;
+
+\ `over swap lshift xor`, the count in cl: `shl r64, cl` takes the count modulo
+\ 64 as Habu's `lshift` does, so a count of 64 shifts by nothing and the answer
+\ is zero where a count honoured whole would leave a alone.
+: SHL-IMAGE ( -- )
+   false OPEN,
+   3 0 0 CASE2,
+   3 1 5 CASE2,
+   3 63 MIN-CELL 3 + CASE2,
+   3 64 0 CASE2,
+   CLOSE, ENTRY, X64EMIT-TEST:SHL-ROUTINE
+   s" shl" false WRITE-IMAGE ;
+
+\ `over swap rshift xor`: the right shift is logical, so -4 shifted by one is
+\ MAX-CELL less one where an arithmetic shift would answer -2.
+: SHR-IMAGE ( -- )
+   false OPEN,
+   -4 0 0 CASE2,
+   -4 1 MIN-CELL 2 + CASE2,
+   -4 63 -3 CASE2,
+   -4 64 0 CASE2,
+   CLOSE, ENTRY, X64EMIT-TEST:SHR-ROUTINE
+   s" shr" false WRITE-IMAGE ;
 
 : NOT-IMAGE ( -- )
    false OPEN,
@@ -319,6 +346,8 @@ public
    CHAIN-IMAGE
    IMMS-IMAGE
    SHIFTS-IMAGE
+   SHL-IMAGE
+   SHR-IMAGE
    NOT-IMAGE
    CMPSET-IMAGE
    CMPSETI-IMAGE

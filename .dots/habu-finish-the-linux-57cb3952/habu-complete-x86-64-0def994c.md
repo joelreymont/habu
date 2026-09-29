@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.362761+03:00"
 blocks:
-  - habu-render-x86-neg-43e4e8f8
   - habu-render-x86-idiv-9c6d9516
   - habu-render-x86-cmpsel-279135be
   - habu-render-x86-trap-33eba82b

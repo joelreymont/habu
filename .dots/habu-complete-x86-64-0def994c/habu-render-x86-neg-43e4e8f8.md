@@ -1,9 +1,11 @@
 ---
 title: Render x86 shl and shr
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.441939+03:00"
+closed-at: "2026-09-30T09:51:10.575794+03:00"
+close-reason: x86 shl/shr render with the count in cl; 19/19 native images
 ---
 
 Problem: `src/compiler/native/emit-x64.f:40-51` refuses `neg`, `shl` and `shr`; the variable shifts take their count in the fixed register `rcx` (`x64ir.f` schema).

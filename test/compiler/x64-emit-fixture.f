@@ -73,9 +73,9 @@
 \   pass reuses a slot once its value is dead, so slot 128 wants seventeen values
 \   put away at once.
 \ - THE FORMS STILL REFUSED BY NAME, one case standing for all of them below:
-\   the variable shifts `x64.shl` and `x64.shr`, `x64.idiv`, `x64.neg`, the
-\   selects `x64.cmpsel` and `x64.selz`, `x64.trap` and `x64.codeaddr`. Each
-\   needs a register the machine names or a lowering, and neither is here.
+\   `x64.idiv`, `x64.neg`, the selects `x64.cmpsel` and `x64.selz`, `x64.trap`
+\   and `x64.codeaddr`. Each needs a register the machine names or a lowering,
+\   and neither is here.
 \ - E-X64EMIT-LAYOUT, the disagreement between the two passes. It is the check
 \   that holds the writer to the measurer's numbers, and no module reaches it
 \   without a defect in one of them, so no case here can pin it.
@@ -372,6 +372,27 @@ create TXT
    ARG+ {: a:IR-ID:ir-value-id :}
    HIR-OPCODE:LSHIFT a 3 CONSTOP BINOP {: x:IR-ID:ir-value-id :}
    HIR-OPCODE:RSHIFT x 5 CONSTOP BINOP RET1
+   CLOSE-FUN ;
+
+\ `: LEAF ( a n -- x ) over swap lshift xor ;` - a computed count, and the value
+\ shifted read AFTER the shift: the value's copy is what the two-address form
+\ destroys, and the count's copy is the operand fixed to rcx, coalesced back
+\ into the count nothing else reads.
+: BUILD-SHL ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: n:IR-ID:ir-value-id :}
+   HIR-OPCODE:LSHIFT a n BINOP {: s:IR-ID:ir-value-id :}
+   HIR-OPCODE:XOR a s BINOP RET1
+   CLOSE-FUN ;
+
+\ `: LEAF ( a n -- x ) over swap rshift xor ;` - the same shape, shifted right.
+: BUILD-SHR ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: n:IR-ID:ir-value-id :}
+   HIR-OPCODE:RSHIFT a n BINOP {: s:IR-ID:ir-value-id :}
+   HIR-OPCODE:XOR a s BINOP RET1
    CLOSE-FUN ;
 
 \ `: LEAF ( a -- n ) invert ;` - the one unary form of this slice.
@@ -940,6 +961,8 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 : CHAIN-BYTES ( IR-CTX:ctx -- )    HIR-MOD BUILD-CHAIN EMITTED ;
 : IMMS-BYTES ( IR-CTX:ctx -- )     HIR-MOD BUILD-IMMS EMITTED ;
 : SHIFTS-BYTES ( IR-CTX:ctx -- )   HIR-MOD BUILD-SHIFTS EMITTED ;
+: SHL-BYTES ( IR-CTX:ctx -- )      HIR-MOD BUILD-SHL EMITTED ;
+: SHR-BYTES ( IR-CTX:ctx -- )      HIR-MOD BUILD-SHR EMITTED ;
 : NOT-BYTES ( IR-CTX:ctx -- )      HIR-MOD BUILD-NOT EMITTED ;
 : CMPSET-BYTES ( IR-CTX:ctx -- )   HIR-MOD BUILD-CMPSET EMITTED ;
 : CMPSETI-BYTES ( IR-CTX:ctx -- )  HIR-MOD BUILD-CMPSETI EMITTED ;
@@ -1150,6 +1173,24 @@ public
    \ mc: shrq $5, %rax
    \ mc: retq
    s" 48c1e00348c1e805c3" X=
+
+   s" a computed left shift: the value's copy shifted by cl, the value read after it" T-LABEL
+   WBND [: SHL-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: movq %rax, %rdx
+   \ mc: movq %rcx, %rcx
+   \ mc: shlq %cl, %rdx
+   \ mc: xorq %rdx, %rax
+   \ mc: retq
+   s" 4889c24889c948d3e24831d0c3" X=
+
+   s" a computed right shift, logical, the same shape" T-LABEL
+   WBND [: SHR-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: movq %rax, %rdx
+   \ mc: movq %rcx, %rcx
+   \ mc: shrq %cl, %rdx
+   \ mc: xorq %rdx, %rax
+   \ mc: retq
+   s" 4889c24889c948d3ea4831d0c3" X=
 
    s" the complement" T-LABEL
    WBND [: NOT-BYTES ;] IR-CTX:WITH-CONTEXT

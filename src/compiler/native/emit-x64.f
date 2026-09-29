@@ -41,15 +41,14 @@
 \ peephole this file does not have, and what the pinned bytes in
 \ test/compiler/x64-emit.f measure is a faithful image of the module.
 \
-\ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the variable shifts
-\ `shl`/`shr` and the divide `idiv` - all three name a register the machine
-\ chose and the divide carries a branch to `x64.throw-entry` besides - the
-\ negate, the two selects `cmpsel` and `selz`, the trap, and `codeaddr`. The
-\ float forms are not declared by the dialect at all. Publication into a code
-\ region is not here either, and on this host it cannot be:
-\ src/compiler/native/publish.f reads NEMIT rows only the ARM64 emission row
-\ fills, and the engine's own callmap and addrmap record ARM64 shapes. An x86-64
-\ emission is consumed by the cross-build image writer.
+\ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the divide `idiv` -
+\ it names the registers the machine divides in and carries a branch to
+\ `x64.throw-entry` besides - the negate, the two selects `cmpsel` and `selz`,
+\ the trap, and `codeaddr`. The float forms are not declared by the dialect at
+\ all. Publication into a code region is not here either, and on this host it
+\ cannot be: src/compiler/native/publish.f reads NEMIT rows only the ARM64
+\ emission row fills, and the engine's own callmap and addrmap record ARM64
+\ shapes. An x86-64 emission is consumed by the cross-build image writer.
 
 require lib/prelude.f
 require lib/errors.f
@@ -475,6 +474,20 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    {: id:IR-ID:ir-op-id s:ptr :}
    id 0 RES-R64  id SHIFT-OF >IMM8  s ENC-SHR-RI8 ;
 
+\ THE COUNT IS NAMED BY NO FIELD: `shl r64, cl` is D3 /4 and reads cl whatever
+\ the allocation, so the render writes only the result's register. The schema
+\ fixes operand 1 to rcx (x64ir.f DEF-SHIFT-CL) and the accepted allocation put
+\ the count there, the same guarantee the tie is. The machine masks the count to
+\ six bits, which is Habu's `lshift`/`rshift`: a count of 64 shifts by nothing.
+: PUT-SHL ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-R64  s ENC-SHL-CL ;
+
+\ Logical, as Habu's `rshift` is: D3 /5, never the arithmetic D3 /7.
+: PUT-SHR ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-R64  s ENC-SHR-CL ;
+
 : PUT-NOT ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id 0 RES-R64  s ENC-NOT ;
@@ -679,8 +692,8 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
       xori     OF id s PUT-XORI ENDOF
       shli     OF id s PUT-SHLI ENDOF
       shri     OF id s PUT-SHRI ENDOF
-      shl      OF E-X64EMIT-FORM throw ENDOF
-      shr      OF E-X64EMIT-FORM throw ENDOF
+      shl      OF id s PUT-SHL ENDOF
+      shr      OF id s PUT-SHR ENDOF
       neg      OF E-X64EMIT-FORM throw ENDOF
       not      OF id s PUT-NOT ENDOF
       idiv     OF E-X64EMIT-FORM throw ENDOF
