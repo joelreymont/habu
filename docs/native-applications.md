@@ -426,7 +426,7 @@ cell before the window is read out, so the image ships it in the cell's own
 captured bytes and no startup pass patches it. Without that map a cell holding
 `STR-MAX-I64$` at build time shipped the engine's address and the image printed
 nineteen NUL bytes out of its zero-filled mapping
-(`tools/hb-build-stripped-cells-test.f HBT-STRIPPED-CACHED-CARRIED`). A bare
+(`tools/hb-build-stripped-cache-test.f HBT-STRIPPED-CACHED-CARRIED`). A bare
 `PTR-VARIABLE` is scratch by declaration — it joins no relocation table — so a
 build-time address left in one is not mapped and not refused; use the
 persisted definer for a

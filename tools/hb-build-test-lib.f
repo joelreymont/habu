@@ -5,7 +5,9 @@
 \   tools/hb-build-stripped-test.f            library state, engine cells, ptr mark
 \   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path
 \   tools/hb-build-stripped-lifecycle-test.f  lifecycle registry, number parsing
-\   tools/hb-build-stripped-cells-test.f      carried DATA cells, large source
+\   tools/hb-build-stripped-cells-test.f      mapped cells, uncarried table
+\   tools/hb-build-stripped-cache-test.f      link equality, cached table cells
+\   tools/hb-build-large-source-test.f        literal bodies, large CLI source
 \ test/gate-stdlib-cases.f registers each file as a row of its own and says why.
 
 require lib/errors.f
@@ -219,6 +221,28 @@ create HBT-LITC-OUT-BUF FS-PATH-CAP allot
 
 : HBT-TWICE-CACHE ( -- ptr u8 n )
    HBT-TWICE-CACHE-BUF HBT-TWICE-CACHE-U @ ;
+
+: HBT-MAPL-SRC ( -- ptr u8 n )
+   HBT-MAPL-SRC-BUF HBT-MAPL-SRC-U @ ;
+
+: HBT-MAPL-OUT ( -- ptr u8 n )
+   HBT-MAPL-OUT-BUF HBT-MAPL-OUT-U @ ;
+
+\ THE MAPPED-CELL PROGRAM WITH ITS ALLOCATION INSIDE MAIN, shared by two rows.
+\ tools/hb-build-stripped-cells-test.f HBT-MAPC-SRC$ allocates at load time and
+\ is refused; this one links, runs and prints. The cell the image carries is
+\ the zero it was captured with and the pointer is taken in the new process,
+\ which is what the refusal's suggestion names. The printed byte is read back
+\ out of the run-time buffer, so the pinned line proves the image reached its
+\ own mapping and not merely that it exited zero. That file's
+\ HBT-STRIPPED-MAPPED-LATE runs it and tools/hb-build-stripped-cache-test.f
+\ HBT-STRIPPED-SAME-TWICE links it twice.
+: HBT-MAPL-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require lib/memory.f\nPTR-VARIABLE BUF\n: MAIN ( -- )\n" SB-APPEND
+   S\"    MEM-ALLOC-64K drop BUF !\n   BUF @ {: p:ptr :}\n" SB-APPEND
+   S\"    65 p c!  p 1 type cr ;\n" SB-APPEND
+   SB$ ;
 
 : HBT-PREPARE ( -- )
    CLEANUP-RESET

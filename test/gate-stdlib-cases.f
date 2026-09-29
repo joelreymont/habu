@@ -43,6 +43,14 @@ SUITE hb-build-stripped-cells
    tools/hb-build-stripped-cells-test.f
 ;SUITE
 
+SUITE hb-build-stripped-cache
+   tools/hb-build-stripped-cache-test.f
+;SUITE
+
+SUITE hb-build-large-source
+   tools/hb-build-large-source-test.f
+;SUITE
+
 SUITE aot-chain-capture
    test/aot-chain-capture-suite.f
 ;SUITE
