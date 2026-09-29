@@ -8,7 +8,6 @@ blocks:
   - habu-inventory-the-gate-9d02ff35
   - habu-pass-the-full-07316f5a
   - habu-self-host-the-ccc31e78
-  - habu-measure-tier-1-f7425ab1
   - habu-measure-tier-1-0faadb01
 ---
 

@@ -311,6 +311,37 @@ or establish a size saving from changing the production tier. The supported
 routes and their qualification limits are in
 [Bootstrap](bootstrap.md#generation-chain-check).
 
+### What a tier-1-only engine costs a suite
+
+The Linux x86-64 engine has no tier 0, so every `--load` compiles at tier 1.
+The measurement below times five suites with the tier fixed before the suite
+loads.
+
+- **Setup:** spark (aarch64, 20 cores), master's product engine (sha256
+  `11c00585…`). Each run is `bin/hb --load w.f`, where `w.f` holds
+  `<tier> set-tier s" <suite>" included`. The tiers were interleaved, two runs
+  each, with load 0.9 to 8.5 from other work on the host.
+- **Reach of the prefix:** it sets the tier of the loading process only.
+  Child engines a suite spawns start at tier 0 as usual, and the native
+  builds inside a suite compile at tier 1 already.
+
+| suite | tier 0 | tier 1 | ratio |
+|---|---:|---:|---:|
+| `test/native-window-owner.f` | 103.2 s | 105.7 s | 1.02x |
+| `test/aot-wide-format-suite.f` | 64.1 s | 66.0 s | 1.03x |
+| `test/compiler/native-checker-prefix.f` | 15.0 s | 17.3 s | 1.16x |
+| `test/compiler/x86-64-asm.f` | 0.11 s | 1.36 s | 12.4x |
+| `test/compiler/x64-emit.f` | 0.19 s | 4.65 s | 24.5x |
+
+- **Suites dominated by native builds and child engines** barely move. Their
+  time is in work the prefix does not change.
+- **Suites dominated by in-process compilation** move by the compile-time
+  ratio above: 12x to 25x, up to about 4.5 s for the largest.
+- **What these numbers do not settle:** the whole gate on a tier-1-only
+  engine. Every child engine would also compile at tier 1, and no switch here
+  makes a child start there. The x86-64 engine measures that directly
+  (`habu-measure-tier-1-0faadb01`).
+
 ## 4. The pre-IR compiler
 
 **Tier 0 *is* the pre-IR compiler.** There is no deleted "old native compiler"
