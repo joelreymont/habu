@@ -94,7 +94,8 @@ $48425350414E5321 constant SNAP-MAGIC
 \ Version 10 admits the three-word shared DATA address carrier in region code.
 \ A format-9 loader would call its valid carrier a corrupt address map (rc 97);
 \ reject that engine/image pairing at version admission (rc 80) instead.
-10 constant SNAP-FORMAT-VERSION
+\ The outer format version belongs to src/habu/snapshot-format.f, loaded
+\ independently of this potentially cached layout by every writer and reader.
 
 \ --- snapshot trailer geometry: the single owner ----------------------------
 \ The trailer is the last thing in the authenticated text extent, so its base is
@@ -1696,8 +1697,8 @@ $43B8 constant B0-CELL           \ first address of its code span
 \ per BEGIN and once per back edge AT COMPILE TIME, and buys a band that no
 \ future header growth can collide with.
 \
-\ Snapshot-carried like every other sub-DATA-START band, which is correct and
-\ uninteresting: the frames are live only inside one definition's compile.
+\ Snapshot capture requires zero compile depth; the fixed frames are omitted
+\ and explicitly cleared by the loader. They are live only inside a definition.
 \ THE DEPTH CELL STAYS LOW, AND THAT IS NOT AN OPTIMISATION. It is
 \ definition-scoped state exactly like VSP-CELL, LVD-CELL and EXITH-CELL, so the
 \ colon handlers and EM-RESET-COMPILE-STATE have to zero it in the same breath as
@@ -1718,7 +1719,7 @@ STK-OFF FRAMES FRAME-BYTES * + constant END
 ;package
 
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
-\ engine-reserved state (snapshot saves [0,DATA-START); DP-CHECK bounds the heap
+\ engine-reserved state (snapshot stores selected fixed sections); DP-CHECK bounds the heap
 \ >= DATA-START; task-user cells stop at EVAL-TOP-CELL. Its reserved band
 \ ends at $47C0, with PROT:RHI/PROT:CF taking the two cells directly
 \ above them. The lowering state ends at $8000; the pre-trust defer

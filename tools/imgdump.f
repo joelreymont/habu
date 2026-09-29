@@ -9,6 +9,7 @@
 
 require lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
 require src/habu/code-span.f
+require src/habu/snapshot-format.f
 require tools/macho-read.f
 
 : IMG-FALSE ( -- bool )
@@ -195,19 +196,23 @@ private
 : SNAP-CORE? {: o :} ( n -- bool )
    o SNAP-TRL-BYTES + IL @ > if IMG-FALSE exit then
    o I@ SNAP-MAGIC = 0= if IMG-FALSE exit then
-   o SNAP-TRL-VERSION + I@ SNAP-FORMAT-VERSION = 0= if IMG-FALSE exit then
-   o SNAP-TRL-NDICT + I@ 1 < if IMG-FALSE exit then
+   o SNAP-TRL-VERSION + I@ SNAPSHOT-FORMAT:VERSION = 0= if IMG-FALSE exit then
+   o SNAP-TRL-NDICT + I@ 0 < if IMG-FALSE exit then
    o SNAP-TRL-NDICT + I@ DICT-CAP > if IMG-FALSE exit then
-   o SNAP-TRL-REGLEN + I@ 0 <= if IMG-FALSE exit then
+   o SNAP-TRL-REGLEN + I@ DICT-SIZE < if IMG-FALSE exit then
    o SNAP-TRL-REGLEN + I@ REGION > if IMG-FALSE exit then
    o SNAP-TRL-DATALEN + I@ 0 <= if IMG-FALSE exit then
    o SNAP-TRL-DATALEN + I@ DATA-SIZE > if IMG-FALSE exit then
-   o SNAP-TRL-NDICT + I@ DREC *  o SNAP-TRL-REGLEN + I@ > if IMG-FALSE exit then
+   o SNAP-TRL-NDICT + I@ DREC * CFSTK-OFF > if IMG-FALSE exit then
    0 0= ;
+
+: SNAP-REGION-STORED ( n -- n ) {: o:n :}
+   o SNAP-TRL-NDICT + I@ DREC *
+   o SNAP-TRL-REGLEN + I@ DICT-SIZE - + ;
 
 : SNAP? {: o :} ( n -- bool )
    o SNAP-CORE? 0= if IMG-FALSE exit then
-   o SNAP-TRL-REGLEN + I@ o SNAP-TRL-DATALEN + I@ +  o > if IMG-FALSE exit then
+   o SNAP-REGION-STORED o SNAP-TRL-DATALEN + I@ + o > if IMG-FALSE exit then
    0 0= ;
 
 : FIND-SNAPSHOT ( -- bool )
@@ -226,11 +231,18 @@ private
    TOFF @ SNAP-TRL-NDICT + I@ TNDICT !
    TOFF @ SNAP-TRL-REGLEN + I@ TREG !
    TOFF @ SNAP-TRL-DATALEN + I@ TDATA !
-   TOFF @ TDATA @ - TREG @ - ROFF ! ;
+   TOFF @ TDATA @ - TOFF @ SNAP-REGION-STORED - ROFF ! ;
 
 : PTR>OFF {: p :} ( n -- n )
    HAS-SNAP @ 0= if -1 exit then
-   p RBASE-VA >=  p RBASE-VA TREG @ + < and if p RBASE-VA - ROFF @ + exit then
+   p RBASE-VA >=  p RBASE-VA TREG @ + < and if
+      p RBASE-VA - {: off:n :}
+      off TNDICT @ DREC * < if ROFF @ off + exit then
+      off DICT-SIZE >= if
+         ROFF @ TNDICT @ DREC * + off DICT-SIZE - + exit
+      then
+      -1 exit
+   then
    p IMG-TBASE @ >=  p IMG-TBASE @ ROFF @ CODE-OFF - + < and if p IMG-TBASE @ - CODE-OFF + exit then
    -1 ;
 : E-NAME-OFF {: o :} ( n -- n )

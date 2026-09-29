@@ -202,8 +202,10 @@ variable PROBE-SOURCE-U
    trailer CELL-VIEW @ SNAP-MAGIC T=
    trailer SNAP-TRL-REGLEN + CELL-VIEW @ {: region:n :}
    trailer SNAP-TRL-DATALEN + CELL-VIEW @ {: data:n :}
+   trailer SNAP-TRL-NDICT + CELL-VIEW @ DREC *
+      region DICT-SIZE - + {: stored:n :}
    image bytes munmap 0 T=
-   text IMAGE-TEXT-CONTENT-ADJ - SNAP-TRL-BYTES - region - data -
+   text IMAGE-TEXT-CONTENT-ADJ - SNAP-TRL-BYTES - stored - data -
    region data ;
 
 : RECAPTURE ( -- )

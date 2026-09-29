@@ -5,6 +5,7 @@
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
 require lib/fmt.f
 require src/habu/address-cells.f
+require src/habu/snapshot-format.f
 require src/habu/code-span.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
@@ -6282,21 +6283,24 @@ $47E0 constant HEAP-START-OFF
    5 DATA-START LIT64,  5 DATA EM-LAYOUT:HEAP-START-OFF STR,
    7 DATA 5 ADD,  7 DATA DP-CELL STR, ;
 
-: EM-SNAPSHOT-COPY-CODE ( -- )
-   LBL LBL {: sc1 sc1d :}
-   13 DBASE 0 ADDI,  14 0 MOVZ,
-   sc1 LBL,  14 6 CMP,  C-GE sc1d BCOND,
-      3 8 14 ADD,  3 3 0 LDRB,  4 13 14 ADD,  3 4 0 STRB,
-      14 14 1 ADDI,  sc1 B,
-   sc1d LBL, ;
+\ Inline bounded byte operations. x0 is destination, x1 source, x2 length;
+\ neither operation crosses a section boundary validated by the loader.
+: EM-SNAPSHOT-COPY ( -- )
+   LBL LBL {: more:label done:label :}
+   4 0 MOVZ,
+   more LBL,  4 2 CMP,  C-CS done BCOND,
+      3 1 4 ADD,  3 3 0 LDRB,
+      5 0 4 ADD,  3 5 0 STRB,
+      4 4 1 ADDI,  more B,
+   done LBL, ;
 
-: EM-SNAPSHOT-COPY-DATA ( -- )
-   LBL LBL {: sc2 sc2d :}
-   8 12 7 SUB,  13 DATA 0 ADDI,  14 0 MOVZ,
-   sc2 LBL,  14 7 CMP,  C-GE sc2d BCOND,
-      3 8 14 ADD,  3 3 0 LDRB,  4 13 14 ADD,  3 4 0 STRB,
-      14 14 1 ADDI,  sc2 B,
-   sc2d LBL, ;
+: EM-SNAPSHOT-ZERO ( -- )
+   LBL LBL {: more:label done:label :}
+   4 0 MOVZ,  3 0 MOVZ,
+   more LBL,  4 2 CMP,  C-CS done BCOND,
+      5 0 4 ADD,  3 5 0 STRB,
+      4 4 1 ADDI,  more B,
+   done LBL, ;
 
 \ Region walks are BL-callable and parameterized so the loader (live
 \ region) and the snapshot writer (scratch copy) share ONE implementation:
@@ -6363,6 +6367,8 @@ public
          14 5 1 ANDI,  14 scbnext CBZ,
             14 4 2 LSLI,                            \ x14 = site byte offset within the region
             14 11 CMP,  C-GE scbnext BCOND,         \ past this payload: not part of the image being patched
+            14 14 4 ADDI,  14 11 CMP,  C-HI scbad BCOND,
+            14 14 4 SUBI,                            \ the complete BL must be inside the extent
             14 8 14 ADD,                            \ x14 = site address
             9 14 0 LDRW,
             \ a recorded site must still be a call. Anything else means the map and
@@ -6733,6 +6739,7 @@ ardone LBL,
    0 XTCELL-RC MOVZ, NR-EXIT-GROUP SYS, ;
 
 : BVERSION ( -- ) A ADDRESS-CELLS:ABI-VERSION MOVZ, A G-PUSH ;
+: BSNAPSHOTFORMAT ( -- ) A SNAPSHOT-FORMAT:VERSION MOVZ, A G-PUSH ;
 
 : BPTRCELLMARK ( -- )
    A G-POP
@@ -7113,27 +7120,62 @@ ardone LBL,
    9 DATA PROT:RLO STR,  9 DATA PROT:RHI STR,  9 DATA PROT:CF STR,
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH LABEL@ BL, ;
 
-\ Strict v9 header admission before DATA copying or row relocation. x7 and x12
-\ retain the payload length and trailer address for the following owner checks.
+\ The v11 section header is not at its runtime DATA offset in the file.
+\ x24 points to its stored bytes, x22 is the exact restored DP extent. x16
+\ returns the length of inline rows (zero for heap-backed rows).
 : EM-SNAPSHOT-VALIDATE-ADDRESS-CELLS ( label -- ) {: bad:label :}
-   5 SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:HEADER-BYTES + LIT64,
-   7 5 CMP, C-CC bad BCOND,
-   10 12 7 SUB,
-   8 SNAP-RELOC:XTCELL-N-CELL LIT64, 8 10 8 ADD,
-   13 8 ADDRESS-CELLS:MAGIC-FIELD LDR,
+   LBL LBL {: heap:label done:label :}
+   13 24 ADDRESS-CELLS:MAGIC-FIELD LDR,
    5 ADDRESS-CELLS:MAGIC LIT64, 13 5 CMP, C-NE bad BCOND,
-   13 8 ADDRESS-CELLS:MODE-FIELD LDR, 13 bad CBNZ,
-   13 8 ADDRESS-CELLS:CAP-FIELD LDR, 13 bad CBZ,
+   13 24 ADDRESS-CELLS:MODE-FIELD LDR, 13 bad CBNZ,
+   13 24 ADDRESS-CELLS:CAP-FIELD LDR, 13 bad CBZ,
    5 ADDRESS-CELLS:MAX-ROWS LIT64, 13 5 CMP, C-HI bad BCOND,
-   14 8 0 LDR, 14 13 CMP, C-HI bad BCOND,
-   9 8 ADDRESS-CELLS:BASE-FIELD LDR, 9 7 CMP, C-HI bad BCOND,
-   5 7 9 SUB, 5 5 3 LSRI, 13 5 CMP, C-HI bad BCOND, ;
+   14 24 0 LDR, 14 13 CMP, C-HI bad BCOND,
+   9 24 ADDRESS-CELLS:BASE-FIELD LDR,
+   5 ADDRESS-CELLS:BOOT-OFF LIT64, 9 5 CMP, C-NE heap BCOND,
+      5 ADDRESS-CELLS:BOOT-CAP LIT64, 13 5 CMP, C-HI bad BCOND,
+      16 14 3 LSLI, done B,
+   heap LBL,
+      5 DATA-START LIT64, 9 5 CMP, C-CC bad BCOND,
+      9 22 CMP, C-HI bad BCOND,
+      5 22 9 SUB, 5 5 3 LSRI, 13 5 CMP, C-HI bad BCOND,
+      16 0 MOVZ,
+   done LBL, ;
+
+\ The header's backing determines the on-file row address. Validate each
+\ declared cell against the exact captured DATA extent before restoring any
+\ region or DATA byte; the later relocation walk retains its own guard.
+: EM-SNAPSHOT-VALIDATE-ROWS ( label -- ) {: bad:label :}
+   LBL LBL LBL {: rows:label more:label done:label :}
+   10 24 ADDRESS-CELLS:HEADER-BYTES ADDI,
+   9 24 ADDRESS-CELLS:BASE-FIELD LDR,
+   5 ADDRESS-CELLS:BOOT-OFF LIT64, 9 5 CMP, C-EQ rows BCOND,
+      5 DATA-START LIT64, 9 9 5 SUB, 10 10 9 ADD,
+   rows LBL,
+   13 24 0 LDR, 14 0 MOVZ,
+   more LBL, 14 13 CMP, C-CS done BCOND,
+      5 14 3 LSLI, 5 10 5 ADD, 5 5 0 LDR,
+      9 SNAP-RELOC:XTCELL-OFF-MASK LIT64, 5 5 9 AND,
+      9 22 8 SUBI, 5 9 CMP, C-HI bad BCOND,
+      14 14 1 ADDI, more B,
+   done LBL, ;
+
+\ A final partial code word cannot hold a complete BL. Its call-map bit is
+\ invalid even though the map byte itself is inside the stored DATA stream.
+: EM-SNAPSHOT-VALIDATE-CALLMAP ( label -- ) {: bad:label :}
+   LBL {: done:label :}
+   5 6 3 ANDI,  5 done CBZ,
+   8 6 5 LSRI,  5 DICT-SIZE 32 / LIT64,  8 8 5 SUB,
+   5 SNAP-RELOC:CALLMAP-OFF 8 + LIT64,  8 8 5 ADD,
+   8 17 8 ADD,  8 8 0 LDRB,
+   5 6 2 LSRI,  5 5 7 ANDI,
+   8 8 5 LSRV,  8 8 1 ANDI,  8 bad CBNZ,
+   done LBL, ;
 
 : EM-SNAPSHOT-VALIDATE-WIDS ( label -- ) {: bad:label :}
    LBL LBL LBL LBL LBL
    {: prot-loop:label prot-max:label prot-inner:label prot-next:label widn:label :}
-   5 PROT-BITS-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
-   10 12 7 SUB,                                     \ x10 = snapshot DATA source
+   10 17 8 ADDI,                                    \ x10 = stored raw DATA prefix
    11 10 PROT-REG-TAG-CELL LDR,
    5 PROT-REG-TAG LIT64,  11 5 CMP,  C-NE bad BCOND, \ the image's band must be a bitmap
    12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,            \ x12 = &image bitmap[0]
@@ -7164,9 +7206,10 @@ ardone LBL,
 \ restore both regions verbatim (fixed VAs keep region addresses valid),
 \ relocate engine-text call chains (the only ASLR-movers), boot WARM. ----
 : EM-SNAPSHOT-RESTORE ( -- )
-   LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: snomag:label snbad:label snok:label snnew:label snhave:label
-      snbadver:label snpresent:label :}
+      snbadver:label snpresent:label snpad:label snpaddone:label sninline:label
+      snorigin:label :}
    24 0 MOVZ,                                       \ x24 = snapshot flag
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,             \ x25 = live text CONTENT base
    10 9 0 ADDI,  5 CODE-OFF LIT64,  10 10 5 SUB,
@@ -7205,30 +7248,72 @@ ardone LBL,
    snbadver B,                                                     \ legacy v0 cannot carry owner roles
    snnew LBL,
       14 13 SNAP-TRL-VERSION LDR,                                  \ x14 = image format version
-      5 ADDRESS-CELLS:SNAPSHOT-VERSION MOVZ,  14 5 CMP,  C-NE snbadver BCOND,
+      5 SNAPSHOT-FORMAT:VERSION MOVZ,  14 5 CMP,  C-NE snbadver BCOND,
    snhave LBL,
       12 13 0 ADDI,                                                \ x12 = resolved trailer base
-   21 12 SNAP-TRL-TBASE LDR,                        \ x21 = snapshot-time text base
+   13 12 SNAP-TRL-TBASE LDR,  13 snbad CBNZ,       \ v11 text base is canonical zero
    15 12 SNAP-TRL-NDICT LDR,                        \ x15 = ndict
-   6 12 SNAP-TRL-REGLEN LDR,                        \ x6 = region payload len
-   7 12 SNAP-TRL-DATALEN LDR,                       \ x7 = data payload len
-   \ corrupt/truncated trailer must never smear the regions: exit 79
+   6 12 SNAP-TRL-REGLEN LDR,                        \ x6 = virtual CP extent
+   7 12 SNAP-TRL-DATALEN LDR,                       \ x7 = stored DATA length, including pad
+   \ Bound fields before any product, subtraction or source dereference.
    5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
    5 DICT-SIZE LIT64,  6 5 CMP,  C-LT snbad BCOND,
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
-   5 DICT-CAP LIT64,  15 5 CMP,  C-GT snbad BCOND,
-   SP SP 64 SUBI,
-   6 SP 0 STR,  7 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
-   15 SP 32 STR,  21 SP 40 STR,  25 SP 48 STR,
+   5 DICT-CAP LIT64,  15 5 CMP,  C-HI snbad BCOND,
+   5 DREC MOVZ,  17 15 5 MUL,  5 DICT-SIZE LIT64,
+   17 17 6 ADD,  17 17 5 SUB,                        \ x17 = stored region length
+   \ The payloads must start after the cold engine's retained text. Bound
+   \ both lengths against that prefix before subtracting file pointers.
+   14 LIMGEND LABEL@ LOFF,
+   HB-TARGET-LINUX? IF
+      5 IMAGE-TEXT-CONTENT-ADJ LIT64,  14 14 5 ADD,
+      5 PROT-PAGE-MAX 1 - MOVZ,  14 14 5 ADD,
+      5 PROT-PAGE-MAX negate LIT64,  14 14 5 AND,
+      5 IMAGE-TEXT-CONTENT-ADJ LIT64,  14 14 5 SUB,
+   THEN
+   14 25 14 ADD,  12 14 CMP,  C-CC snbad BCOND,
+   5 12 14 SUB,  7 5 CMP,  C-HI snbad BCOND,
+   5 5 7 SUB,  17 5 CMP,  C-HI snbad BCOND,
+   17 12 7 SUB,                                      \ stored DATA file pointer
+   5 DREC MOVZ,  9 15 5 MUL,  5 DICT-SIZE LIT64,
+   9 9 6 ADD,  9 9 5 SUB,  21 17 9 SUB,            \ stored region file pointer
+   23 6 31 ADDI,  23 23 5 LSRI,
+   5 DICT-SIZE 32 / LIT64,  23 23 5 SUB,            \ map bytes for the used code interval
+   5 8 SNAP-RELOC:CALLMAP-OFF + ADDRESS-CELLS:HEADER-BYTES + LIT64,
+   8 23 1 LSLI,  8 8 5 ADD,
+   8 7 CMP,  C-HI snbad BCOND,                       \ entire header is in stored DATA
+   24 17 8 ADD,  24 24 ADDRESS-CELLS:HEADER-BYTES SUBI,
+   22 17 0 LDR,                                     \ x22 = exact DATA extent
+   5 DATA-START LIT64,  22 5 CMP,  C-CC snbad BCOND,
+   5 DATA-SIZE LIT64,  22 5 CMP,  C-HI snbad BCOND,
+   10 17 8 ADDI,  13 10 DP-CELL LDR,
+   5 DATA 22 ADD,  13 5 CMP,  C-NE snbad BCOND,
    snbad EM-SNAPSHOT-VALIDATE-ADDRESS-CELLS
+   5 DATA-START LIT64,  8 22 5 SUB,  8 8 16 ADD,
+   5 8 SNAP-RELOC:CALLMAP-OFF + ADDRESS-CELLS:HEADER-BYTES + LIT64,
+   8 8 5 ADD,  5 23 1 LSLI,  8 8 5 ADD,             \ minimum stored DATA length
+   8 7 CMP,  C-HI snbad BCOND,
+   8 7 8 SUB,  5 PROT-PAGE-MAX LIT64,  8 5 CMP,  C-CS snbad BCOND,
+   14 12 8 SUB,                                    \ pad begins before trailer
+   snpad LBL,  14 12 CMP,  C-CS snpaddone BCOND,
+      5 14 0 LDRB,  5 snbad CBNZ,
+      14 14 1 ADDI,  snpad B,
+   snpaddone LBL,
+   snbad EM-SNAPSHOT-VALIDATE-CALLMAP
+   snbad EM-SNAPSHOT-VALIDATE-ROWS
+   SP SP 112 SUBI,
+   6 SP 0 STR,   7 SP 8 STR,   11 SP 16 STR,  12 SP 24 STR,
+   15 SP 32 STR, 21 SP 40 STR, 25 SP 48 STR,  16 SP 56 STR,
+   17 SP 64 STR, 21 SP 72 STR, 24 SP 80 STR, 22 SP 88 STR, 23 SP 96 STR,
    snbad EM-SNAPSHOT-VALIDATE-WIDS
    \ Seeding the native runtime has already closed its dictionary/code pages
    \ RX. Restore replaces that region from engine text, then the ordinary
    \ startup RX flush closes it again before any restored word executes.
    2 3 MOVZ,  0 DBASE 0 ADDI,  1 REGION LIT64,  LPROT LABEL@ BL,
-   6 SP 0 LDR,  7 SP 8 LDR,  11 SP 16 LDR,  12 SP 24 LDR,
-   15 SP 32 LDR,  21 SP 40 LDR,  25 SP 48 LDR,
-   SP SP 64 ADDI,
+   6 SP 0 LDR,   7 SP 8 LDR,   11 SP 16 LDR,  12 SP 24 LDR,
+   15 SP 32 LDR, 21 SP 40 LDR, 25 SP 48 LDR,  16 SP 56 LDR,
+   17 SP 64 LDR, 21 SP 72 LDR, 24 SP 80 LDR, 22 SP 88 LDR, 23 SP 96 LDR,
+   SP SP 112 ADDI,
    snok B,
    snbad LBL,                                                              \ corrupt/truncated trailer: label the fd-2 diagnostic before exit 79
       1 LSNAPBAD LABEL@ ADR,  0 2 MOVZ,  2 SNAPBAD-MSG-LEN MOVZ,  NR-WRITE SYS,
@@ -7245,19 +7330,65 @@ ardone LBL,
    \ they ride the machine stack across it and are republished beside XDS below.
    \ x13 is the copy loops' own scratch; x11 holds the snapshot text size the
    \ text pass below still needs, and x9/x10/x0 carry argc/argv/envp.
-   SP SP 16 SUBI,
+   SP SP 32 SUBI,
    13 DATA STACK-ABI:RETURN-BASE-CELL LDR,  13 SP 0 STR,
    13 DATA STACK-ABI:LOOP-BASE-CELL LDR,    13 SP 8 STR,
-   8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
-   EM-SNAPSHOT-COPY-CODE
-   EM-SNAPSHOT-COPY-DATA
+   0 SP 16 STR,
+   \ Restore live rows and code to their original runtime offsets. The gap is
+   \ cleared explicitly because cold AOT seeding has touched dictionary pages.
+   0 DBASE 0 ADDI,  1 21 0 ADDI,  5 DREC MOVZ,  2 15 5 MUL,
+   EM-SNAPSHOT-COPY
+   0 DBASE 2 ADD,  5 DICT-SIZE LIT64,  2 5 2 SUB,
+   EM-SNAPSHOT-ZERO
+   5 DREC MOVZ,  2 15 5 MUL,  1 21 2 ADD,
+   5 DICT-SIZE LIT64,  0 DBASE 5 ADD,  2 6 5 SUB,
+   EM-SNAPSHOT-COPY
+   \ Prefix fields retain their virtual DATA offsets. Fixed metadata omitted
+   \ from the stream is cleared before its live slice or header is installed.
+   0 DATA 0 ADDI,  1 17 8 ADDI,  2 SNAP-RELOC:CALLMAP-OFF LIT64,
+   EM-SNAPSHOT-COPY
+   5 SNAP-RELOC:CALLMAP-OFF LIT64,  0 DATA 5 ADD,
+   2 SNAP-RELOC:CALLMAP-BYTES SNAP-RELOC:ADDRMAP-BYTES + LIT64,
+   EM-SNAPSHOT-ZERO
+   5 SNAP-RELOC:CALLMAP-OFF DICT-SIZE 32 / + LIT64,  0 DATA 5 ADD,
+   5 8 SNAP-RELOC:CALLMAP-OFF + LIT64,  1 17 5 ADD,  2 23 0 ADDI,
+   EM-SNAPSHOT-COPY
+   5 SNAP-RELOC:ADDRMAP-OFF DICT-SIZE 32 / + LIT64,  0 DATA 5 ADD,
+   5 8 SNAP-RELOC:CALLMAP-OFF + LIT64,  1 17 5 ADD,  1 1 23 ADD,
+   2 23 0 ADDI,  EM-SNAPSHOT-COPY
+   5 ADDRESS-CELLS:BOOT-OFF LIT64,  0 DATA 5 ADD,
+   2 SNAP-RELOC:XTCELL-END ADDRESS-CELLS:BOOT-OFF - LIT64,
+   EM-SNAPSHOT-ZERO
+   5 SNAP-RELOC:XTCELL-N-CELL LIT64,  0 DATA 5 ADD,
+   1 24 0 ADDI,  2 ADDRESS-CELLS:HEADER-BYTES MOVZ,
+   EM-SNAPSHOT-COPY
+   16 sninline CBZ,
+      5 ADDRESS-CELLS:BOOT-OFF LIT64,  0 DATA 5 ADD,
+      1 24 ADDRESS-CELLS:HEADER-BYTES ADDI,  2 16 0 ADDI,
+      EM-SNAPSHOT-COPY
+   sninline LBL,
+   5 DATA-START LIT64,  0 DATA 5 ADD,
+   1 24 ADDRESS-CELLS:HEADER-BYTES ADDI,  1 1 16 ADD,
+   2 22 5 SUB,  EM-SNAPSHOT-COPY
+   5 JIT-SNAP:STK-OFF LIT64,  0 DATA 5 ADD,
+   2 JIT-SNAP:END JIT-SNAP:STK-OFF - LIT64,  EM-SNAPSHOT-ZERO
+   5 0 MOVZ,  5 DATA JIT-SNAP:SP-CELL STR,
+   5 TIER-PROV:OPEN-CELL LIT64,  0 DATA 5 ADD,
+   2 TIER-PROV:END TIER-PROV:OPEN-CELL - LIT64,  EM-SNAPSHOT-ZERO
+   5 DICT-SIZE LIT64,  6 5 CMP,  C-EQ snorigin BCOND,
+      5 TIER-PROV:OPEN-CELL LIT64,  5 DATA 5 ADD,
+      13 1 MOVZ,  13 5 8 STR,
+      14 DICT-SIZE LIT64,  14 5 16 STR,
+      6 5 24 STR,  13 5 32 STR,
+   snorigin LBL,
    5 0 MOVZ, 5 DATA ADDRESS-CELLS:INDEX-CELL STR,
    25 DATA RBASE-CELL STR,                          \ live values over stale copies
    XDS DATA STACK-ABI:BASE-CELL STR,
    5 STACK-ABI:BOOT-BYTES LIT64,  5 DATA STACK-ABI:CAP-CELL STR,
    13 SP 0 LDR,  13 DATA STACK-ABI:RETURN-BASE-CELL STR,
    13 SP 8 LDR,  13 DATA STACK-ABI:LOOP-BASE-CELL STR,
-   SP SP 16 ADDI,
+   0 SP 16 LDR,
+   SP SP 32 ADDI,
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
@@ -7277,8 +7408,11 @@ ardone LBL,
    11 6 0 ADDI,
    SNAP-RELOC:LADDRS LABEL@ BL,
    6 SP 0 LDR,  7 SP 8 LDR,  11 SP 16 LDR,
-   \ text pass: canonical base 0 -> live text base. x22 = engine text len; x25 reloaded.
-   21 0 MOVZ,  22 11 6 SUB,  22 22 7 SUB,  22 22 SNAP-TRL-BYTES SUBI,  25 DATA RBASE-CELL LDR,
+   \ Text length subtracts STORED region and DATA bytes, not the virtual CP.
+   5 DREC MOVZ,  17 15 5 MUL,  5 DICT-SIZE LIT64,
+   17 17 6 ADD,  17 17 5 SUB,
+   21 0 MOVZ,  22 11 17 SUB,  22 22 7 SUB,
+   22 22 SNAP-TRL-BYTES SUBI,  25 DATA RBASE-CELL LDR,
    LSNAPRBD LABEL@ BL,
    11 6 0 ADDI,  8 DBASE 0 ADDI,
    SNAP-RELOC:LADDRS LABEL@ BL,
@@ -11011,6 +11145,7 @@ variable PTC-I   variable PTC-J
    s" xt!" ['] SNAP-RELOC:BXTSTORE 2 GDEREF-F
    s" ptr-cell-mark" ['] SNAP-RELOC:BPTRCELLMARK 1 GDEREF-F
    s" addr-cells-abi" ['] SNAP-RELOC:BVERSION FPRIM
+   s" snapshot-format" ['] SNAP-RELOC:BSNAPSHOTFORMAT FPRIM
    PROF:EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
    PRIM-TABLE-COMPLETE

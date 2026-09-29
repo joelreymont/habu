@@ -4,6 +4,7 @@ require lib/fs-mutate.f
 require lib/engine-candidate.f
 require lib/codesign.f
 require src/habu/address-cells.f
+require src/habu/snapshot-format.f
 package ADDRESS-CELL-TASK-TEST
 using ADDRESS-CELLS
 $10000 constant CAP
@@ -61,13 +62,13 @@ variable IMAGE-N
    IMAGE$ FILE-SIZE dup IMAGE-N ! 7 + CELL / IMAGE-STORAGE-RESERVE
    IMAGE$ BYTES IMAGE-N @ READ-ALL IMAGE-N @ T=
    IMAGE-TEXT-SIZE-OFF CELL@ IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - {: tr:n :}
-   tr SNAP-TRL-VERSION + CELL@ SNAPSHOT-VERSION T=
-   tr tr SNAP-TRL-DATALEN + CELL@ - LOCK-CELL + {: off:n :}
+   tr SNAP-TRL-VERSION + CELL@ SNAPSHOT-FORMAT:VERSION T=
+   tr tr SNAP-TRL-DATALEN + CELL@ - 8 + LOCK-CELL + {: off:n :}
    off CELL@ 0 T=
    1 BYTES off + c!
    \ Process index pointers are never carried. A damaged incoming value must
    \ still be cleared without dereferencing it after the DATA copy.
-   tr tr SNAP-TRL-DATALEN + CELL@ - INDEX-CELL + {: index-off:n :}
+   tr tr SNAP-TRL-DATALEN + CELL@ - 8 + INDEX-CELL + {: index-off:n :}
    index-off CELL@ 0 T=
    1 BYTES index-off + c!
    IMAGE$ BYTES IMAGE-N @ WRITE-ALL

@@ -1,8 +1,8 @@
 \ snap.f — snapshot image writer entry point.
 \
-\ Writes a new binary = engine text copy + the LIVE dict/code region + the LIVE
-\ data region + a 40-byte trailer. The engine's startup loader detects the
-\ trailer, restores both regions, relocates engine-text call chains, and boots
+\ Writes engine text, live dictionary rows and code, structured DATA sections
+\ with the raw user heap, and a 48-byte trailer. The startup loader restores
+\ their original virtual extents, relocates engine-text call chains, and boots
 \ WARM.
 \
 \ The emitted snap source (tools/build-fixpoint.f BF-EMIT-SNAP-RUN-SOURCE)
@@ -48,6 +48,7 @@ package SNAPSHOT
 $4A constant E-SNAP-HOOK
 
 TRUSTED: RETIRE-AND-PERSIST ( -- )
+   SNAPSHOT-FORMAT:VERIFY
    IMAGE-LIFECYCLE:PREPARE
    s" SNAP-TAIL-MARK" FORGET-DEFS-FROM
    data-base ENGINE-SNAP-XT-CELL + @ dup 0= if

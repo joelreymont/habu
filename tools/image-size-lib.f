@@ -49,22 +49,22 @@
 \ WHAT AN APPLICATION IMAGE IS. tools/hb-build.f writes two other classes and
 \ this file walks both, because "where is the size going" was asked of them and
 \ not of the engine.
-\   --repl   a SNAPSHOT: the whole donor engine's text, then the live region
-\            (the dictionary slot array and the code band) and the DATA window
-\            copied verbatim, then the 48-byte trailer that says how long the
-\            two payloads are (src/habu/snap-lib.f writes it, src/habu/habu2.f
-\            EM-SNAPSHOT-RESTORE reads it, src/habu/layout.f owns its geometry).
+\   --repl   a SNAPSHOT: the whole donor engine's text, live dictionary rows
+\            and code, structured fixed DATA sections, and the raw user heap,
+\            followed by the 48-byte trailer (src/habu/snap-lib.f writes it,
+\            src/habu/habu2.f EM-SNAPSHOT-RESTORE reads it, src/habu/layout.f
+\            owns its geometry). Fixed unused capacity is reconstructed.
 \            The engine half is bit-for-bit a baked engine, so the walkers above
 \            measure it unchanged; only the text end moves, from TEXT-SIZE to
 \            where the region payload starts (ETEXT-END).
 \   stripped no dictionary, no compiler, no trailer: an entry, the closure of
 \            MAIN, the crash handlers, the DATA window as sparse non-zero runs,
 \            and one 8-byte relocation row per declared address cell.
-\ VERBATIM IS THE WHOLE STORY. A snapshot writes its zero bytes -- the unused
-\ dictionary slots, the untouched tail of every table -- and they are most of
-\ the file, so every class here carries a ZERO column beside its byte count and
-\ the two are reported apart. A stripped image carries no zero byte at all: its
-\ runs describe a span far larger than the file.
+\ PRESERVED BYTES ARE THE WHOLE STORY. A snapshot retains every user-heap byte,
+\ including zeros and spare allocation capacity, while fixed omitted capacity
+\ has its own virtual-extent report. Every file class carries a ZERO column.
+\ A stripped image carries no zero byte at all: its runs describe a span far
+\ larger than the file.
 \
 \ Run: <engine> --load tools/engine-size.f -- <image>
 
@@ -72,6 +72,8 @@ require lib/fmt.f
 require lib/fs.f
 require lib/sort.f
 require src/habu/code-span.f
+require src/habu/address-cells.f
+require src/habu/snapshot-format.f
 require tools/aot-startup-shape.f        \ the startup's instruction shapes, named once
 require tools/image-names.f
 require tools/macho-read.f
@@ -131,7 +133,7 @@ variable ILEN
 : U64@ ( n -- n ) {: off:n :}
    off U32@  off 4 + U32@ 32 lshift or ;
 
-\ How many bytes of a span are zero. An application image writes its DATA window
+\ How many bytes of a span are zero. An application image writes its user heap
 \ verbatim, zeros included, so this is the difference between what an image
 \ CARRIES and what it SAYS, and every class is reported with it beside the byte
 \ count rather than folded into one number.
@@ -982,8 +984,11 @@ variable BK-DZERO  variable BK-PAD
 \ It is read here, above the dictionary walkers, because the records a snapshot
 \ carries are inside that region payload: the cursor below needs its offsets.
 variable TRL-OFF     variable NDICT-N
-variable REG-LEN     variable DAT-LEN
+variable REG-LEN     variable DAT-LEN  variable DAT-VIRT
 variable REG-OFF     variable DAT-OFF
+variable REG-STORED  variable MAP-LEN
+variable DAT-CALLMAP  variable DAT-ADDRMAP  variable DAT-HEADER
+variable DAT-INLINE   variable DAT-HEAP  variable DAT-PAD
 variable TBASE                                    \ the writing run's text base
 
 : TRAILER-OFF ( -- n )
@@ -1003,24 +1008,25 @@ variable TBASE                                    \ the writing run's text base
 
 : READ-TRAILER ( -- )
    TRAILER-OFF TRL-OFF !
-   TRL-OFF @ SNAP-TRL-VERSION + U64@ SNAP-FORMAT-VERSION =
+   TRL-OFF @ SNAP-TRL-VERSION + U64@ SNAPSHOT-FORMAT:VERSION =
       s" image-size: snapshot format version is not the one this engine writes" ?TRL
    TRL-OFF @ SNAP-TRL-TBASE + U64@ TBASE !
    TRL-OFF @ SNAP-TRL-NDICT + U64@ NDICT-N !
    TRL-OFF @ SNAP-TRL-REGLEN + U64@ REG-LEN !
    TRL-OFF @ SNAP-TRL-DATALEN + U64@ DAT-LEN !
-   NDICT-N @ 1 >= NDICT-N @ DICT-CAP <= and
+   NDICT-N @ 0 >= NDICT-N @ DICT-CAP <= and
       s" image-size: snapshot record count is outside the dictionary" ?TRL
    NDICT-N @ DREC * CFSTK-OFF <=
       s" image-size: snapshot records overflow the dictionary slot array" ?TRL
    \ The bands are this engine's constants, so an image whose region was written
    \ against a different DICT-SIZE is refused by name rather than split at an
    \ offset that means nothing in it.
-   REG-LEN @ DICT-SIZE > REG-LEN @ REGION <= and
+   REG-LEN @ DICT-SIZE >= REG-LEN @ REGION <= and
       s" image-size: region payload does not hold this engine's dictionary band and a code band" ?TRL
-   DAT-LEN @ 1 >= DAT-LEN @ DATA-SIZE <= and
+   DAT-LEN @ 8 >= DAT-LEN @ DATA-SIZE <= and
       s" image-size: snapshot DATA payload is outside the DATA window" ?TRL
-   TRL-OFF @ DAT-LEN @ - REG-LEN @ - {: r:n :}
+   NDICT-N @ DREC * REG-LEN @ DICT-SIZE - + REG-STORED !
+   TRL-OFF @ DAT-LEN @ - REG-STORED @ - {: r:n :}
    r CODE-OFF >=
       s" image-size: snapshot payloads do not fit in front of the trailer" ?TRL
    \ The payloads begin where the DONOR engine's text ended, and an engine
@@ -1031,7 +1037,42 @@ variable TBASE                                    \ the writing run's text base
    r MACHO @ if INSN else PROT-PAGE-MAX then mod 0=
       s" image-size: the snapshot's payloads do not begin on the donor engine's text boundary" ?TRL
    r REG-OFF !
-   r REG-LEN @ + DAT-OFF !
+   r REG-STORED @ + DAT-OFF !
+   DAT-OFF @ U64@ DAT-VIRT !
+   DAT-VIRT @ DATA-START >= DAT-VIRT @ DATA-SIZE <= and
+      s" image-size: snapshot DATA extent is outside the heap" ?TRL
+   REG-LEN @ 31 + 32 / DICT-SIZE 32 / - MAP-LEN !
+   DAT-OFF @ 8 + SNAP-RELOC:CALLMAP-OFF + DAT-CALLMAP !
+   DAT-CALLMAP @ MAP-LEN @ + DAT-ADDRMAP !
+   DAT-ADDRMAP @ MAP-LEN @ + DAT-HEADER !
+   ADDRESS-CELLS:HEADER-BYTES TRL-OFF @ DAT-HEADER @ - <=
+      s" image-size: address header runs past DATA section" ?TRL
+   DAT-HEADER @ ADDRESS-CELLS:MAGIC-FIELD + U64@ ADDRESS-CELLS:MAGIC =
+      s" image-size: address header magic mismatch" ?TRL
+   DAT-HEADER @ ADDRESS-CELLS:MODE-FIELD + U64@ 0=
+      s" image-size: address header is not persisted" ?TRL
+   DAT-HEADER @ U64@ {: count:n :}
+   DAT-HEADER @ ADDRESS-CELLS:CAP-FIELD + U64@ {: cap:n :}
+   count 0 >= cap 0 > and count cap <= and
+      s" image-size: address header count exceeds capacity" ?TRL
+   DAT-HEADER @ ADDRESS-CELLS:BASE-FIELD + U64@ {: base:n :}
+   base ADDRESS-CELLS:BOOT-OFF = if
+      cap ADDRESS-CELLS:BOOT-CAP <=
+         s" image-size: inline address capacity overflow" ?TRL
+      count cells DAT-INLINE !
+   else
+      base DATA-START >= base DAT-VIRT @ <= and
+         s" image-size: heap address rows outside DATA" ?TRL
+      cap DAT-VIRT @ base - CELL / <=
+         s" image-size: heap address capacity overflow" ?TRL
+      0 DAT-INLINE !
+   then
+   DAT-HEADER @ ADDRESS-CELLS:HEADER-BYTES + DAT-INLINE @ + DAT-HEAP !
+   DAT-HEAP @ DAT-VIRT @ DATA-START - + DAT-PAD !
+   DAT-PAD @ TRL-OFF @ <= TRL-OFF @ DAT-PAD @ - PROT-PAGE-MAX < and
+      s" image-size: snapshot DATA framing or padding is invalid" ?TRL
+   DAT-PAD @ TRL-OFF @ DAT-PAD @ - ZEROS TRL-OFF @ DAT-PAD @ - =
+      s" image-size: snapshot padding is not zero" ?TRL
    \ The engine half ends where the region payload begins: every baked walker
    \ above is bounded by this and not by the file's own text extent.
    r ETEXT-N ! ;
@@ -1106,7 +1147,14 @@ $FFFFFFFF constant PKG-ROW
 \ on the two wordlist ids its package publishes, which is what makes the live
 \ records their own wid-to-package map.
 : PTR>OFF ( n -- n ) {: p:n :}
-   p RBASE-VA >= p RBASE-VA REG-LEN @ + < and if p RBASE-VA - REG-OFF @ + exit then
+   p RBASE-VA >= p RBASE-VA REG-LEN @ + < and if
+      p RBASE-VA - {: off:n :}
+      off NDICT-N @ DREC * < if REG-OFF @ off + exit then
+      off DICT-SIZE >= if
+         REG-OFF @ NDICT-N @ DREC * + off DICT-SIZE - + exit
+      then
+      -1 exit
+   then
    p TBASE @ >= p TBASE @ REG-OFF @ CODE-OFF - + < and if
       p TBASE @ - CODE-OFF + exit then
    -1 ;
@@ -1199,7 +1247,7 @@ $FFFFFFFF constant PKG-ROW
    SNAPSHOT-CLASS? if DATA-VA exit then  DATA-D0 @ ;
 
 : DATA-REACH ( -- n )
-   SNAPSHOT-CLASS? if DAT-LEN @ exit then  DATA-SPAN @ ;
+   SNAPSHOT-CLASS? if DAT-VIRT @ exit then  DATA-SPAN @ ;
 
 : .NAME ( n -- ) {: k:n :}
    k REC-NAME {: at:n len:n :}
@@ -2023,8 +2071,8 @@ variable TEXT-RECS  variable TEXT-NAMES variable BAND-RECS
 17 constant BAND-SHIFT                            \ a band offset fits above the two tag fields
 $10000 constant BAND-NAME                         \ the row is a name, not code
 
-: BAND0 ( -- n ) REG-OFF @ DICT-SIZE + ;
-: BAND-END ( -- n ) REG-OFF @ REG-LEN @ + ;
+: BAND0 ( -- n ) REG-OFF @ NDICT-N @ DREC * + ;
+: BAND-END ( -- n ) BAND0 REG-LEN @ DICT-SIZE - + ;
 : BAND-BYTES ( -- n ) BAND-END BAND0 - ;
 : IN-BAND? ( n -- bool ) {: at:n :} at BAND0 >= at BAND-END < and ;
 
@@ -2180,13 +2228,16 @@ $10000 constant BAND-NAME                         \ the row is a name, not code
 variable HEAD-W     variable HEAD-Z
 
 : CHARGE-WINDOW ( -- )
-   DOWN-N @ 0 > if 0 DOWN-OFF else DAT-LEN @ then {: head:n :}
-   DAT-OFF @ head ZEROS {: hz:n :}
-   hz HEAD-Z !  head hz - HEAD-W !
+   DOWN-N @ 0 > if 0 DOWN-OFF else DAT-VIRT @ then {: first:n :}
+   first DATA-START < if s" image-size: DATA owner below heap" RC die then
+   DAT-HEAP @ DAT-OFF @ - first DATA-START - + {: head:n :}
+   TRL-OFF @ DAT-PAD @ - {: pad:n :}
+   DAT-OFF @ head ZEROS DAT-PAD @ pad ZEROS + {: hz:n :}
+   hz HEAD-Z !  head pad + hz - HEAD-W !
    DOWN-N @ 0 ?do
       i OWNER-END i DOWN-OFF - {: ext:n :}
       ext 0 < if s" image-size: DATA owners do not advance" RC die then
-      DAT-OFF @ i DOWN-OFF + ext ZEROS {: z:n :}
+      DAT-HEAP @ i DOWN-OFF DATA-START - + ext ZEROS {: z:n :}
       ext z - i DBYTES !  z i DOVER !
    loop ;
 
@@ -2241,13 +2292,22 @@ variable HEAD-W     variable HEAD-Z
 : REGION-ROWS ( -- )
    NDICT-N @ DREC * {: recs:n :}
    s" region/dict-records" REG-OFF @ recs SPAN B-NAMES ROW
-   s" region/dict-unused" REG-OFF @ recs + CFSTK-OFF recs - SPAN B-NAMES ROW
-   s" region/cf-stack" REG-OFF @ CFSTK-OFF + DICT-SIZE CFSTK-OFF - SPAN B-OTHER ROW
    \ CHECK-BAND proves the three disjoint classes partition this physical span.
    BAND0 BAND-BYTES TILE
    s" region/record-names" BAND-NAMES @ BAND-NZERO @ B-NAMES ROW
    s" region/code-band" BAND-CODE @ BAND-CZERO @ B-CODE ROW
    s" region/code-unowned" BAND-FREE @ BAND-FZERO @ B-CODE ROW ;
+
+: SNAP-DATA-ROWS ( -- )
+   s" data/extent" DAT-OFF @ 8 SPAN B-OTHER ROW
+   s" data/fixed" DAT-OFF @ 8 + SNAP-RELOC:CALLMAP-OFF SPAN B-DATA ROW
+   s" data/callmap" DAT-CALLMAP @ MAP-LEN @ SPAN B-DATA ROW
+   s" data/addrmap" DAT-ADDRMAP @ MAP-LEN @ SPAN B-DATA ROW
+   s" data/address-header" DAT-HEADER @ ADDRESS-CELLS:HEADER-BYTES SPAN B-DATA ROW
+   s" data/address-rows" DAT-HEADER @ ADDRESS-CELLS:HEADER-BYTES +
+      DAT-INLINE @ SPAN B-DATA ROW
+   s" data/heap" DAT-HEAP @ DAT-VIRT @ DATA-START - SPAN B-DATA ROW
+   s" data/pad" DAT-PAD @ TRL-OFF @ DAT-PAD @ - SPAN B-PAD ROW ;
 
 : SNAP-BUDGET ( -- )
    -1 ZCOL !  BUDGET-BEGIN
@@ -2255,7 +2315,7 @@ variable HEAD-W     variable HEAD-Z
    ENGINE-ROWS
    s" engine/text-pad" AOT-END @ ETEXT-END AOT-END @ - SPAN B-PAD ROW
    REGION-ROWS
-   s" data/window" DAT-OFF @ DAT-LEN @ SPAN B-DATA ROW
+   SNAP-DATA-ROWS
    s" snapshot/trailer" TRL-OFF @ SNAP-TRL-BYTES SPAN B-OTHER ROW
    RW-ROW
    SUMS?
@@ -2263,8 +2323,17 @@ variable HEAD-W     variable HEAD-Z
 
 : SNAP-NOTES ( -- )
    cr s" the application's own half: " type
-   REG-LEN @ DAT-LEN @ + SNAP-TRL-BYTES + FMT:.U s"  bytes, " type
+   REG-STORED @ DAT-LEN @ + SNAP-TRL-BYTES + FMT:.U s"  stored bytes, " type
    NDICT-N @ FMT:.U s"  dictionary records" type cr
+   s"   virtual region extent " type REG-LEN @ FMT:.U
+   s"  bytes; omitted dictionary/control capacity " type
+   DICT-SIZE NDICT-N @ DREC * - FMT:.U s"  bytes" type cr
+   s"   exact DATA extent " type DAT-VIRT @ FMT:.U
+   s"  bytes; omitted fixed map/row/JIT/provenance capacity " type
+   SNAP-RELOC:CALLMAP-BYTES MAP-LEN @ - 2 *
+   SNAP-RELOC:XTCELL-END ADDRESS-CELLS:BOOT-OFF - DAT-INLINE @ - +
+   JIT-SNAP:END JIT-SNAP:STK-OFF - +
+   TIER-PROV:END TIER-PROV:OPEN-CELL - + FMT:.U s"  bytes" type cr
    REPORT-BAND
    REPORT-WINDOW ;
 

@@ -83,12 +83,16 @@ same process-symbol contract but are not exercised on this host.
 
 Every build prints one line saying where the bytes of the image it just wrote
 went, `--size-report` prints the whole table and `--report-json` carries the
-same numbers in the report object's `size` field. A `--repl` image is mostly
-zero bytes — it copies the DATA window verbatim and the dictionary slot array
-whole — which is a property of the format and not of your program; [Where an
+same numbers in the report object's `size` field. A `--repl` image stores live
+dictionary rows and code at their original virtual offsets. Its DATA stream
+stores the raw low prefix, the used code-map slices, the address-vector header
+and any live inline rows, and the complete user heap through the captured DP.
+The fixed unused dictionary, map, address-row, compiler-scratch and provenance
+capacities are reconstructed by the loader. Heap bytes, including zeros and
+spare allocation capacity, still travel verbatim. [Where an
 application image's bytes go](engine-size.md#where-an-application-images-bytes-go)
 measures both classes and says what moves the number. It attributes the code
-band by package and the DATA window by owner, and the answer for a `--repl`
+band by package and the stored DATA sections by owner, and the answer for a `--repl`
 image is usually the build's own compiler rather than the application: the maker
 child loads the tier-1 optimizer from source before your program, and the
 snapshot keeps it.

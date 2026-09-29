@@ -372,6 +372,7 @@ EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM;
 EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM;
 EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM;
 EPRIM: addr-cells-abi PE-N PE-OUT EPRIM;
+EPRIM: snapshot-format PE-N PE-OUT EPRIM;
 EPRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT EPRIM;
 \ Explicit memory views preserve address bits while changing the access type.
 EPRIM: byte-view  PE-PTR-A PE-IN PE-PTR-U8 PE-OUT EPRIM;

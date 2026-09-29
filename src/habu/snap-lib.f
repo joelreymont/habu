@@ -20,6 +20,7 @@
 require lib/fs.f
 require lib/codesign.f
 require src/habu/address-cells.f
+require src/habu/snapshot-format.f
 require src/habu/fdio.f
 require src/habu/stack-abi.f
 
@@ -51,7 +52,9 @@ variable OUTPUT-U
 \ Older formats cannot prove qualified-call visibility and fail closed.
 create TRL SNAP-TRL-BYTES allot
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
+variable SRL  variable SML  variable SIL  variable SDW
 variable SNL  variable SFTS  variable SPAD  variable SFD
+create PAD-ZEROS 16 allot
 \ These views expose the raw snapshot source and dictionary/data buffer cells.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 : STB@ STB @ ;
@@ -62,7 +65,7 @@ s" STB-CELL@" s" -- ptr n" TRUST
 s" SDB@" s" -- ptr u8" TRUST
 
 : SIZE! ( -- )
-   STSZ @ SCL @ + SDL @ + SNAP-TRL-BYTES + SNL ! ;   \ the format-versioned trailer
+   STSZ @ SRL @ + SDW @ + SNAP-TRL-BYTES + SNL ! ;
 
 : HDR! ( -- snap )
    SNL @ BUILD-SNAP-HDR SFTS ! ;
@@ -77,9 +80,10 @@ s" SDB@" s" -- ptr u8" TRUST
 : ABSORB-PAD ( -- snap )
    SIZE!
    PAD! STALE
-   SDL @ SPAD @ + SDL !
+   SPAD @ 0 < SPAD @ PROT-PAGE-MAX >= or if
+      s" snap: invalid image alignment padding" 74 die then
+   SDW @ SPAD @ + SDW !
    SIZE!
-   SDL @ DATA-SIZE > if s" snap: data payload exceeds image DATA" 74 die then
    HDR! ;
 
 : RESET-BUF ( -- )
@@ -108,7 +112,8 @@ s" SDB@" s" -- ptr u8" TRUST
    bytes SNAP-TRL-BYTES TEXT-CUT {: end:n :}
    STB@ end + {: trailer:ptr :}
    trailer CELL-VIEW @ SNAP-MAGIC <> if BAD-SOURCE then
-   end trailer SNAP-TRL-REGLEN + CELL-VIEW @ TEXT-CUT
+   end trailer SNAP-TRL-NDICT + CELL-VIEW @ DREC *
+      trailer SNAP-TRL-REGLEN + CELL-VIEW @ DICT-SIZE - + TEXT-CUT
    trailer SNAP-TRL-DATALEN + CELL-VIEW @ TEXT-CUT ;
 
 : HDR ( -- snap )
@@ -118,8 +123,17 @@ s" SDB@" s" -- ptr u8" TRUST
    data-base RBASE-CELL + @ STB !         \ text CONTENT base
    ENGINE-TEXT-SIZE STSZ !
    dbase@ SDB !
-   cp@ SDB @ - SCL !                      \ region payload (dict + compiled code)
-   here data-base - SDL !                 \ data payload (through DP)
+   cp@ SDB @ - SCL !                      \ virtual region extent
+   here data-base - SDL !                 \ exact virtual DATA extent
+   ndict@ DREC * SCL @ DICT-SIZE - + SRL !
+   SCL @ 31 + 32 / DICT-SIZE 32 / - SML !
+   data-base BYTE-VIEW SDL @ ADDRESS-CELLS:DATA-SPAN nip
+   data-base BYTE-VIEW SNAP-RELOC:XTCELL-N-CELL + CELL-VIEW
+      ADDRESS-CELLS:BASE-FIELD + @ ADDRESS-CELLS:BOOT-OFF =
+      if cells else drop 0 then SIL !
+   8 SNAP-RELOC:CALLMAP-OFF + SML @ 2 * +
+      ADDRESS-CELLS:HEADER-BYTES + SIL @ +
+      SDL @ DATA-START - + SDW !
    ABSORB-PAD ;
 
 
@@ -370,6 +384,11 @@ public
 
 package SNAP
 
+: WRITE-PAD ( -- )
+   16 0 ?do 0 PAD-ZEROS i + c! loop
+   SPAD @ 16 / 0 ?do SFD @ PAD-ZEROS 16 FDIO:WALL loop
+   SFD @ PAD-ZEROS SPAD @ 16 mod FDIO:WALL ;
+
 : WRITE-BYTES ( -- )
    \ trailer (SNAP-TRL-BYTES): magic, CANONICAL text base (0), dict count, region
    \ length, data length, format version - the region stream below is the
@@ -377,9 +396,9 @@ package SNAP
    \ older fields sit where the legacy trailer put them, which is what lets the
    \ loader tell a legacy image apart from a corrupt one.
    SNAP-MAGIC TRL !  0 TRL SNAP-TRL-TBASE + !  ndict@ TRL SNAP-TRL-NDICT + !
-   SCL @ TRL SNAP-TRL-REGLEN + !  SDL @ TRL SNAP-TRL-DATALEN + !
-   ADDRESS-CELLS:SNAPSHOT-FORMAT TRL SNAP-TRL-VERSION + !
-   \ stream: header, engine text, region, data, trailer, zero pad
+   SCL @ TRL SNAP-TRL-REGLEN + !  SDW @ TRL SNAP-TRL-DATALEN + !
+   SNAPSHOT-FORMAT:VERSION TRL SNAP-TRL-VERSION + !
+   \ stream: header, engine text, live dict rows, code, structured DATA, trailer
    OUT-PATH PATH0 1537 493 open SFD !
    SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
    MBUF {: hdr:ptr :}
@@ -387,9 +406,18 @@ package SNAP
    RESET-BUF
    SFD @ hdr CODE-OFF FDIO:WALL
    SFD @ STB@ STSZ @ FDIO:WALL
-   SFD @ SNC-PTR SCL @ FDIO:WALL
-   SFD @ SND-PTR SDL @ FDIO:WALL
-   SFD @ TRL 48 FDIO:WALL
+   SFD @ SNC-PTR ndict@ DREC * FDIO:WALL
+   SFD @ SNC-PTR DICT-SIZE + SCL @ DICT-SIZE - FDIO:WALL
+   SFD @ SDL BYTE-VIEW 8 FDIO:WALL
+   SFD @ SND-PTR SNAP-RELOC:CALLMAP-OFF FDIO:WALL
+   SFD @ SND-PTR SNAP-RELOC:CALLMAP-OFF + DICT-SIZE 32 / + SML @ FDIO:WALL
+   SFD @ SND-PTR SNAP-RELOC:ADDRMAP-OFF + DICT-SIZE 32 / + SML @ FDIO:WALL
+   SFD @ SND-PTR SNAP-RELOC:XTCELL-N-CELL +
+      ADDRESS-CELLS:HEADER-BYTES FDIO:WALL
+   SIL @ if SFD @ SND-PTR ADDRESS-CELLS:BOOT-OFF + SIL @ FDIO:WALL then
+   SFD @ SND-PTR DATA-START + SDL @ DATA-START - FDIO:WALL
+   WRITE-PAD
+   SFD @ TRL SNAP-TRL-BYTES FDIO:WALL
    SFD @ extra SNAP-EXTRA-SIZE FDIO:WALL
    SFD @ SNAP-CLOSE-SEAM:RUN
    SFD @ close-rc 0 <> IF s" snap: output close failed" 74 die THEN ;
@@ -397,6 +425,14 @@ package SNAP
 : WRITE-IMAGE ( snap -- )
    SNAP-DROP
    WRITE-BYTES ;
+
+TRUSTED: CF-DEPTH ( -- n ) dbase@ CFSTK-OFF + @ ;
+
+: VERIFY-QUIESCENT ( -- )
+   CF-DEPTH 0<>
+   data-base JIT-SNAP:SP-CELL + @ 0<> or if
+      s" snap: active compiler state at capture" 74 die
+   then ;
 
 public
 
@@ -408,6 +444,8 @@ public
    size OUTPUT-U ! ;
 
 : PERSIST ( -- )
+   SNAPSHOT-FORMAT:VERIFY
+   VERIFY-QUIESCENT
    \ The retained region includes hidden bodies and stored quotations. Checking
    \ only live dictionary records would miss both. Empty code is valid; every
    \ byte of a nonempty retained region needs positive native evidence.

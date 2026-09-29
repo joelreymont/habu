@@ -20,6 +20,7 @@ require lib/process-cwd.f
 require lib/build.f
 require lib/codesign.f
 require tools/build-fixpoint.f
+require src/habu/snapshot-format.f
 require lib/test/mapped.f
 require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
 
@@ -798,7 +799,7 @@ variable IX
    TRAILER-OFF dup SNAP-TRL-DATALEN + U64@ - ;
 
 : HOOK-OFF ( -- n )
-   DATA-OFF ENGINE-SNAP-XT-CELL + ;
+   DATA-OFF 8 + ENGINE-SNAP-XT-CELL + ;
 
 : BFT-DOCTOR-WRITE ( -- )
    s" hb-doctored" BF-REMOVE-TMP
@@ -904,7 +905,7 @@ variable BFT-DOC-CODE
    BFT-BYTES-READ
    VERIFY-IMAGE
    TRAILER-OFF {: tr:n :}
-   tr SNAP-TRL-VERSION + BFT-BYTE@ SNAP-FORMAT-VERSION T=
+   tr SNAP-TRL-VERSION + BFT-BYTE@ SNAPSHOT-FORMAT:VERSION T=
    tr SNAP-TRL-VERSION + 2 BFT-DOCTORED-CAPTURE
    80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
    tr SNAP-TRL-VERSION + 9 BFT-DOCTORED-CAPTURE

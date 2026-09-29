@@ -1100,6 +1100,7 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-FDIO
    out outu s" lib/errors.f" BF-APPEND-MODULE
    out outu s" src/habu/address-cells.f" BF-APPEND-MODULE
+   out outu s" src/habu/snapshot-format.f" BF-APPEND-MODULE
    out outu s" src/habu/address-carrier.f" BF-APPEND-MODULE
    out outu s" src/habu/aot-decl.f" BF-APPEND-SOURCE
    out outu s" src/habu/aot-ident.f" BF-APPEND-SOURCE

@@ -50,6 +50,7 @@ public
 \ Invoke from the outer stdin stream after all required files have returned.
 \ Capture exits after writing; callbacks may release live process resources.
 : SAVE ( ptr u8 n -- )
+   SNAPSHOT-FORMAT:VERIFY
    SNAP:PATH!
    REPL-ENABLE
    NATIVE-RUNTIME:CAPTURE-PREPARE

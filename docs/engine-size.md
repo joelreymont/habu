@@ -698,15 +698,11 @@ Measured against this engine, so the numbers are bounds, not hopes:
 - **An owner is a record the image carries, charged up to the next owner.** An
   anonymous heap block lands under the name below it, and so does every table a
   dropped private record used to own.
-- **A snapshot's payload lengths are the trailer's own statement, and only their
-  shape is checked.** `REGLEN` and `DATALEN` are validated against this engine's
-  band geometry and against the page boundary the donor's text ends on, so every
-  single-field edit — either length, the record count, the version, the magic —
-  is refused by name. An edit that raises one length by a page and lowers the
-  other by the same page keeps every one of those invariants, and the walk
-  reports a table whose region/DATA boundary is off by a page. Nothing in the
-  file is a second witness to where that boundary falls; only a checksum over the
-  payloads would be.
+- **A snapshot's payload lengths are the trailer's own statement.** The current
+  reader validates the version, virtual region extent, live row count, stored
+  section lengths, DATA extent, address-vector backing, and zero alignment pad
+  before attributing bytes. The trailer has no payload checksum, so these
+  checks establish framing and geometry rather than content authenticity.
 - **A record charged in the code band is charged for the ground it covers
   first.** An `EXPORT` alias or a `does>` clause that shares a span is charged
   nothing, and a record whose span nests inside another's is charged nothing:
@@ -719,6 +715,29 @@ Measured against this engine, so the numbers are bounds, not hopes:
   dropped is not in the file to find.
 
 ## Where an application image's bytes go
+
+Snapshot format 11 stores only live dictionary rows plus the code band, while
+`REGLEN` remains the original virtual CP extent. Its DATA stream has an exact
+DP extent cell, a raw low prefix, used CALLMAP/ADDRMAP slices, the 40-byte
+address-vector header, live inline rows when applicable, and every user-heap
+byte through DP. The loader reconstructs omitted fixed capacity at its original
+addresses. The size report charges stored bytes to file classes and reports
+omitted runtime capacity separately; class bytes still sum to the file length.
+This is structural ownership, not a zero-byte codec: user heap zeros and unused
+space inside live heap allocations remain in the file.
+
+On the integrated AIO base, capturing the no-user-application REPL from the
+outer stdin stream produces an 18,172,928-byte format-10 image and a
+12,689,984-byte format-11 image: 5,482,944 bytes (30.17%) less on disk.
+`tools/engine-size.f` reports 2,750,464 bytes of omitted dictionary/control
+capacity and 2,717,156 bytes of omitted fixed DATA map, row, JIT and
+provenance capacity in the latter. Both reports' class totals equal their file
+lengths. The two images come from their matching engine/source revisions, so
+the remaining difference also includes the format implementation itself.
+
+The worked measurement below records the earlier full-window snapshot format.
+Its table and byte counts are historical; use `tools/engine-size.f` on a current
+image for format-11 figures.
 
 `tools/hb-build.f` writes two other image classes, and the question "why is this
 application 24 MB on an engine of 4 MB" is not answered by either the code or

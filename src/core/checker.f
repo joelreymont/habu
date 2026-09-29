@@ -7976,7 +7976,7 @@ variable LMI
    then
    MK-QUOT ;
 
-$200 constant PE-CAP
+$200 constant PE-CAP-INIT
 1 constant PE-ACTIVE
 2 constant PE-TRUSTED-ONLY       \ prim is a trust boundary: rejected from CHECKED code, TRUSTED: only
 
@@ -8008,12 +8008,16 @@ $8 constant PE-REC-ALIGN
 
 PE-LAYOUT-ASSERT
 
-create PES PE-CAP PE-REC * allot
+\ A fresh source window can declare more rows than the baked engine. Keep row
+\ indices stable as the backing grows; capture copies a grown buffer into DATA.
+create PES PE-CAP-INIT PE-REC * allot
+PERSISTED-PTR-VARIABLE PES-P   PES PES-P !
+variable PE-CAP-V   PE-CAP-INIT PE-CAP-V !
 variable #PE
 variable PE-I
 
 : PE-ROW ( n -- ptr n )
-   PE-REC * PES + ;
+   PE-REC * PES-P @ + ;
 
 : PE-SYM@ ( n -- n )
    PE-ROW PE.SYM @ ;
@@ -8030,11 +8034,14 @@ variable PE-I
 : PE-TRUSTED-ONLY? ( n -- bool )
    PE-FLAGS@ PE-TRUSTED-ONLY and 0 <> ;
 
-: PRIM-CHECK-CAP ( -- )
-   #PE @ PE-CAP >= IF s" checker: prim table full" 76 die THEN ;
+: PRIM-ENSURE ( -- )
+   #PE @ PE-CAP-V @ < IF EXIT THEN
+   PE-CAP-V @ 2 * {: next:n :}
+   PES-P PE-CAP-V @ PE-REC * next PE-REC * REG-GROW1
+   next PE-CAP-V ! ;
 
 : PRIM-ADD ( n n n -- ) {: sym:n eff:n flags:n :}
-   PRIM-CHECK-CAP
+   PRIM-ENSURE
    sym #PE @ PE-ROW PE.SYM !
    eff #PE @ PE-ROW PE.EFF !
    flags #PE @ PE-ROW PE.FLAGS !
@@ -17750,6 +17757,7 @@ RBF-REC CELL / constant NORET-BOUND-CELLS
    DECOUPLED-ARENA-SNAP-RESET
    LOC-HW-SNAP-RESET                    \ the same arena job, one file-order later
    CHECKER-CAPTURE-SCRATCH-PREPARE
+   PES-P PE-CAP-V @ PE-REC * REG-PERSIST-BUF drop
    CT-SNAPSHOT-PERSIST
    VREC-SNAPSHOT-PERSIST
    SYM-SNAPSHOT-PERSIST

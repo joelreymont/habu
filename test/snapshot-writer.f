@@ -3,6 +3,7 @@
 \ fail closed, and a failed final close is reported.
 require lib/test.f
 require src/habu/address-cells.f
+require src/habu/snapshot-format.f
 require lib/fmt.f
 require lib/memory.f
 require src/habu/stack-abi.f
@@ -51,6 +52,12 @@ create PATH-BUF FS-PATH-CAP allot
 : SNAP-SRC$ ( -- ptr u8 n ) s" probe.f" PATH$ ;
 : BAD-SNAP$ ( -- ptr u8 n ) s" bad-locator" PATH$ ;
 : BAD-BAND$ ( -- ptr u8 n ) s" bad-registry" PATH$ ;
+create SHADOW-SRC-BUF FS-PATH-CAP allot
+create SHADOW-SNAP-BUF FS-PATH-CAP allot
+: SHADOW-SRC$ ( -- ptr u8 n )
+   ROOT s" shadow.f" SHADOW-SRC-BUF JOIN-PATH SHADOW-SRC-BUF swap ;
+: SHADOW-SNAP$ ( -- ptr u8 n )
+   ROOT s" shadow-snapshot" SHADOW-SNAP-BUF JOIN-PATH SHADOW-SNAP-BUF swap ;
 
 \ ---- snapshot image reader ----
 PTR-VARIABLE IMGP
@@ -92,11 +99,51 @@ variable IMGU
 \ return stack (the canary constants inverted) must not appear anywhere in the
 \ persisted DATA payload.
 : STACK-BASES-ZERO? ( -- bool )
-   DATA-OFF STACK-ABI:RETURN-BASE-CELL + U64@ 0=
-   DATA-OFF STACK-ABI:LOOP-BASE-CELL + U64@ 0= and ;
+   DATA-OFF 8 + STACK-ABI:RETURN-BASE-CELL + U64@ 0=
+   DATA-OFF 8 + STACK-ABI:LOOP-BASE-CELL + U64@ 0= and ;
 
 : DATA-LEN ( -- n )
    TRAILER-OFF SNAP-TRL-DATALEN + U64@ ;
+
+\ The trailer retains virtual region length while the file stores only live
+\ dictionary rows and code. The DATA stream starts with its own virtual extent.
+: REGION-LEN ( -- n )
+   TRAILER-OFF SNAP-TRL-REGLEN + U64@ ;
+
+: DICT-ROWS ( -- n )
+   TRAILER-OFF SNAP-TRL-NDICT + U64@ DREC * ;
+
+: STORED-REGION-LEN ( -- n )
+   DICT-ROWS REGION-LEN DICT-SIZE - + ;
+
+: REGION-OFF ( -- n )
+   DATA-OFF STORED-REGION-LEN - ;
+
+: MAP-SLICE-LEN ( -- n )
+   REGION-LEN 31 + 32 / DICT-SIZE 32 / - ;
+
+: DATA-HEADER-OFF ( -- n )
+   DATA-OFF 8 + SNAP-RELOC:CALLMAP-OFF + MAP-SLICE-LEN 2 * + ;
+
+: STREAM-END ( -- n )
+   DATA-HEADER-OFF ADDRESS-CELLS:HEADER-BYTES +
+   DATA-HEADER-OFF ADDRESS-CELLS:BASE-FIELD + U64@
+      ADDRESS-CELLS:BOOT-OFF = if
+      DATA-HEADER-OFF U64@ 8 * +
+   then
+   DATA-OFF U64@ DATA-START - + ;
+
+: STREAM-SHAPE-CASE ( -- )
+   s" v11 stores live dictionary rows and preserves the virtual code extent" T-LABEL
+   TRAILER-OFF SNAP-TRL-VERSION + U64@ SNAPSHOT-FORMAT:VERSION T=
+   REGION-LEN DICT-SIZE >= TTRUE
+   DICT-ROWS DICT-SIZE <= TTRUE
+   REGION-OFF DATA-OFF < TTRUE
+   s" v11 DATA begins with the exact restored DP extent" T-LABEL
+   DATA-OFF U64@ DATA-START >= TTRUE
+   DATA-OFF U64@ DATA-SIZE <= TTRUE
+   s" v11 carries the address-vector header after the live map slices" T-LABEL
+   DATA-HEADER-OFF ADDRESS-CELLS:MAGIC-FIELD + U64@ ADDRESS-CELLS:MAGIC T= ;
 
 : CANARIES-ABSENT? ( -- bool )
    DATA-OFF DATA-LEN + 8 - DATA-OFF ?do
@@ -115,10 +162,11 @@ variable IMGU
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
    ;MATCH ;
 
-: BUILD-WITH ( ptr u8 n -- ) {: fixture:ptr size:n :}
+: BUILD-WITH-TO ( ptr u8 n ptr u8 n -- )
+   {: target:ptr targetu:n fixture:ptr size:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
-   SNAP0$ >LEN PROC-ARGV+
+   target targetu >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    SB-RESET
    s\" require src/habu/app-image.f\nrequire " SB-APPEND
@@ -127,6 +175,9 @@ variable IMGU
    ENGINE$ >LEN SB$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE CAPTURE! ;
+
+: BUILD-WITH ( ptr u8 n -- ) {: fixture:ptr size:n :}
+   SNAP0$ fixture size BUILD-WITH-TO ;
 
 : ERR$ ( -- ptr u8 n )
    ERR ERR-U @ ;
@@ -204,10 +255,10 @@ variable IMGU
 variable BAND-WID
 
 : BAND-TAG ( -- n )
-   DATA-OFF PROT-REG-TAG-CELL + U64@ ;
+   DATA-OFF 8 + PROT-REG-TAG-CELL + U64@ ;
 
 : BAND-BIT? ( n -- bool ) {: wid:n :}
-   DATA-OFF PROT-BITS-OFF + wid 8 / + U8@
+   DATA-OFF 8 + PROT-BITS-OFF + wid 8 / + U8@
    wid 7 and rshift 1 and 0= 0= ;
 
 \ The lowest wordlist THIS IMAGE records as protected, skipping the two that
@@ -250,32 +301,86 @@ variable BAND-WID
    off orig U8! ;
 
 : DOCTOR-TAG ( -- )
-   DATA-OFF PROT-REG-TAG-CELL + 0 DOCTOR-BYTE ;
+   DATA-OFF 8 + PROT-REG-TAG-CELL + 0 DOCTOR-BYTE ;
 
 : DOCTOR-WID0 ( -- )
-   DATA-OFF PROT-BITS-OFF + {: off:n :}
+   DATA-OFF 8 + PROT-BITS-OFF + {: off:n :}
    off  off U8@ 1 or  DOCTOR-BYTE ;
+
+: CELL! ( n n -- ) {: off:n value:n :}
+   8 0 ?do off i + value i 8 * rshift $FF and U8! loop ;
+
+: DOCTOR-PAD ( -- )
+   STREAM-END {: end:n :}
+   end TRAILER-OFF < TTRUE
+   end 1 DOCTOR-BYTE ;
+
+: DOCTOR-DATA-LENGTH ( -- )
+   TRAILER-OFF SNAP-TRL-DATALEN + {: off:n :}
+   off U64@ {: old:n :}
+   off old 1- CELL! WRITE-BAND-COPY RUN-BAND-COPY
+   off old CELL! ;
+
+: DOCTOR-DICT-COUNT ( -- )
+   TRAILER-OFF SNAP-TRL-NDICT + {: off:n :}
+   off U64@ {: old:n :}
+   off -1 CELL! WRITE-BAND-COPY RUN-BAND-COPY
+   off old CELL! ;
+
+: DOCTOR-PARTIAL-CALL ( -- )
+   TRAILER-OFF SNAP-TRL-REGLEN + {: len-off:n :}
+   len-off U64@ {: old-len:n :}
+   old-len 3 and 0= if old-len 1- else old-len then {: len:n :}
+   len DICT-SIZE > TTRUE
+   DATA-OFF 8 + SNAP-RELOC:CALLMAP-OFF +
+      len 32 / DICT-SIZE 32 / - + {: map-off:n :}
+   map-off U8@ {: old-map:n :}
+   len-off len CELL!
+   map-off old-map 1 len 4 / 7 and lshift or U8!
+   WRITE-BAND-COPY RUN-BAND-COPY
+   map-off old-map U8!
+   len-off old-len CELL! ;
+
+: DOCTOR-LEGACY-TRAILER ( -- )
+   TRAILER-OFF {: tr:n :}
+   tr U64@ {: magic:n :}
+   tr SNAP-TRL-TBASE + U64@ {: base:n :}
+   tr 0 CELL!  tr SNAP-TRL-TBASE + SNAP-MAGIC CELL!
+   WRITE-BAND-COPY RUN-BAND-COPY
+   tr magic CELL!  tr SNAP-TRL-TBASE + base CELL! ;
 
 : ASSERT-BAND-REFUSED ( -- )
    EXITED @ TTRUE
    RC @ SNAP-BAD-RC T=
    ERR$ s" hb: snapshot trailer corrupt" CONTAINS? TTRUE ;
 
-\ The format version chooses the schema before any mutable header byte is read.
-\ Every malformed v9 header must stop before restore touches its row vector.
-: CELL! ( n n -- ) {: off:n value:n :}
-   8 0 ?do off i + value i 8 * rshift $FF and U8! loop ;
+: ASSERT-VERSION-REFUSED ( -- )
+   EXITED @ TTRUE
+   RC @ 80 T=
+   ERR$ s" hb: snapshot format version unsupported" CONTAINS? TTRUE ;
 
+\ The format version chooses the schema before any mutable header byte is read.
+\ Every malformed v11 header must stop before restore touches its row vector.
 : DOCTOR-ADDRESS-CELL ( n n -- ) {: field:n value:n :}
-   DATA-OFF SNAP-RELOC:XTCELL-N-CELL + field + {: off:n :}
+   DATA-HEADER-OFF field + {: off:n :}
    off U64@ {: old:n :}
    off value CELL! WRITE-BAND-COPY RUN-BAND-COPY
    off old CELL! ASSERT-BAND-REFUSED ;
 
+: DOCTOR-FIRST-ROW ( -- )
+   DATA-HEADER-OFF U64@ 0 > TTRUE
+   DATA-HEADER-OFF ADDRESS-CELLS:BASE-FIELD + U64@
+      ADDRESS-CELLS:BOOT-OFF T=
+   DATA-HEADER-OFF ADDRESS-CELLS:HEADER-BYTES + {: off:n :}
+   off U64@ {: old:n :}
+   off DATA-OFF U64@ CELL!
+   WRITE-BAND-COPY RUN-BAND-COPY
+   off old CELL! ASSERT-BAND-REFUSED ;
+
 : ADDRESS-HEADER-CASE ( -- )
-   s" snapshots carry the v9 address-vector header" T-LABEL
-   TRAILER-OFF SNAP-TRL-VERSION + U64@ ADDRESS-CELLS:SNAPSHOT-VERSION T=
-   DATA-OFF SNAP-RELOC:XTCELL-N-CELL + ADDRESS-CELLS:MAGIC-FIELD +
+   s" snapshots carry the address-vector header" T-LABEL
+   TRAILER-OFF SNAP-TRL-VERSION + U64@ SNAPSHOT-FORMAT:VERSION T=
+   DATA-HEADER-OFF ADDRESS-CELLS:MAGIC-FIELD +
       U64@ ADDRESS-CELLS:MAGIC T=
    s" malformed new headers never select the legacy row layout" T-LABEL
    ADDRESS-CELLS:MAGIC-FIELD 0 DOCTOR-ADDRESS-CELL
@@ -284,15 +389,17 @@ variable BAND-WID
    ADDRESS-CELLS:CAP-FIELD -1 DOCTOR-ADDRESS-CELL
    ADDRESS-CELLS:CAP-FIELD ADDRESS-CELLS:MAX-ROWS 1+ DOCTOR-ADDRESS-CELL
    0 -1 DOCTOR-ADDRESS-CELL
-   0 DATA-OFF SNAP-RELOC:XTCELL-N-CELL + ADDRESS-CELLS:CAP-FIELD +
+   0 DATA-HEADER-OFF ADDRESS-CELLS:CAP-FIELD +
       U64@ 1+ DOCTOR-ADDRESS-CELL
    ADDRESS-CELLS:BASE-FIELD
-      TRAILER-OFF SNAP-TRL-DATALEN + U64@ 1+ DOCTOR-ADDRESS-CELL
+      DATA-OFF U64@ 1+ DOCTOR-ADDRESS-CELL
    ADDRESS-CELLS:BASE-FIELD
-      TRAILER-OFF SNAP-TRL-DATALEN + U64@ 8 - DOCTOR-ADDRESS-CELL ;
+      DATA-OFF U64@ 8 - DOCTOR-ADDRESS-CELL ;
 
 : WARM-CASE ( -- )
    ADDRESS-HEADER-CASE
+   s" an address row outside exact DP is refused before restore" T-LABEL
+   DOCTOR-FIRST-ROW
    BAND-WID!
    s" persisted protected-WID band carries the bitmap shape tag" T-LABEL
    BAND-TAG PROT-REG-TAG T=
@@ -308,6 +415,18 @@ variable BAND-WID
    DOCTOR-TAG ASSERT-BAND-REFUSED
    s" band claiming wid 0 is refused at snapshot-read" T-LABEL
    DOCTOR-WID0 ASSERT-BAND-REFUSED
+   s" nonzero alignment padding is refused before restore" T-LABEL
+   DOCTOR-PAD ASSERT-BAND-REFUSED
+   s" a stored DATA length shorter than its sections is refused" T-LABEL
+   DOCTOR-DATA-LENGTH ASSERT-BAND-REFUSED
+   s" a negative dictionary count is refused before restore" T-LABEL
+   DOCTOR-DICT-COUNT ASSERT-BAND-REFUSED
+   s" a partial call site is refused before restore" T-LABEL
+   DOCTOR-PARTIAL-CALL ASSERT-BAND-REFUSED
+   s" the previous snapshot format is refused by the baked loader" T-LABEL
+   TRAILER-OFF SNAP-TRL-VERSION + 10 DOCTOR-BYTE ASSERT-VERSION-REFUSED
+   s" a legacy 40-byte trailer is refused before restore" T-LABEL
+   DOCTOR-LEGACY-TRAILER ASSERT-VERSION-REFUSED
    s" restored compiler accepts a fresh type and existing nominal signatures" T-LABEL
    PROBE-DECLARE$ WARM-STDIN
    EXITED @ TTRUE RC @ 0 T= PARSE-OUT 42 T=
@@ -336,6 +455,7 @@ variable BAND-WID
    RC @ 0 T=
    SNAP0$ EXISTS? TTRUE
    SNAP0$ LOAD-IMAGE
+   STREAM-SHAPE-CASE
    s" snapshot carries no return stack: base cells zero" T-LABEL
    STACK-BASES-ZERO? TTRUE
    s" the live return-stack canaries are absent from the image" T-LABEL
@@ -353,10 +473,22 @@ variable BAND-WID
    RC @ CLOSE-FAIL-RC T=
    ERR$ s" snap: output close failed" CONTAINS? TTRUE ;
 
+: SHADOW-CASE ( -- )
+   SHADOW-SRC$
+   S\" undefine snapshot-format\n: snapshot-format ( -- n ) 11 ;\n"
+   WRITE-ALL
+   SHADOW-SNAP$ SHADOW-SRC$ BUILD-WITH-TO
+   s" a source-shadowed capability cannot authorize capture" T-LABEL
+   RC @ 74 <> if OUT OUT-U @ type ERR$ type then
+   RC @ 74 T=
+   ERR$ s" snap: format capability is not an engine primitive" CONTAINS? TTRUE
+   SHADOW-SNAP$ EXISTS? TFALSE ;
+
 : BODY ( -- )
    SETUP-ROOT
    POISON-CASE
    CLOSE-FAIL-CASE
+   SHADOW-CASE
    IMG IMGU @ munmap drop ;
 
 public
