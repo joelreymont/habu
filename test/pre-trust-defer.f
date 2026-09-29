@@ -350,8 +350,6 @@ variable LAST-ERR-U
       SPAWN-RC 76 CHILD-RC
    s" hook-blank control names the refused constructor plan" T-LABEL
    ERR$ s" incomplete generated constructor plan" CONTAINS? TTRUE
-   s" hook-blank control is distinguishable from the backstop's 73" T-LABEL
-   76 73 T<>
    RESTORE-FILES ;
 
 : EARLY-SEAL-CONTROL-CASE ( -- )

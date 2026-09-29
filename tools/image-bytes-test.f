@@ -6,6 +6,7 @@ require lib/string.f
 require lib/test.f
 require lib/fs.f
 require test/checker-assert.f
+require src/arch/arm64/icode.f
 
 : IBT-IMAGE-BYTES-LOADED? ( -- bool )
    s" M-RESET" XREF-FIND 0= 0= ;

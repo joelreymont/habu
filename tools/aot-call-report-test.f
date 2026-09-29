@@ -5,6 +5,7 @@ require lib/errors.f
 require lib/string.f
 require lib/memory.f
 require lib/fs.f
+require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require tools/aot-call-report-lib.f
@@ -23,9 +24,13 @@ $1000 constant ACRT-ERR-CAP
 30000 constant ACRT-TIMEOUT-MS
 
 create ACRT-BUF ACRT-BUF-CAP allot
-create ACRT-PATH 128 allot
+create ACRT-PATH FS-PATH-CAP allot
+create ACRT-SMALL-PATH FS-PATH-CAP allot
+create ACRT-BOUNDARY-PATH FS-PATH-CAP allot
 variable ACRT-FD
 variable ACRT-N
+variable ACRT-SMALL-U
+variable ACRT-BOUNDARY-U
 TYPED-VARIABLE ACRT-JSON-A ptr u8
 TYPED-VARIABLE ACRT-ERR-A ptr u8
 
@@ -85,6 +90,19 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
    a ACRT-PATH u ACRT-COPY
    0 ACRT-PATH u + c! ;
 
+: ACRT-SMALL$ ( -- ptr u8 n )
+   ACRT-SMALL-PATH ACRT-SMALL-U @ ;
+
+: ACRT-BOUNDARY$ ( -- ptr u8 n )
+   ACRT-BOUNDARY-PATH ACRT-BOUNDARY-U @ ;
+
+: ACRT-PREPARE ( -- )
+   CLEANUP-RESET
+   s" habu-aot-report" HB-TMP-MKDIR 2dup CLEANUP-TREE+
+   {: root:ptr rootu:n :}
+   root rootu s" small.bin" ACRT-SMALL-PATH JOIN-PATH ACRT-SMALL-U !
+   root rootu s" boundary.bin" ACRT-BOUNDARY-PATH JOIN-PATH ACRT-BOUNDARY-U ! ;
+
 : ACRT-W32! ( n n -- ) {: w off :}
    w ACRT-BUF off + c!
    w 8 rshift ACRT-BUF off 1+ + c!
@@ -125,8 +143,8 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
    ACRT-NOP-INSTR 28 ACRT-W32!
    ACRT-NOP-INSTR 32 ACRT-W32!
    ACRT-BL-ZERO 36 ACRT-W32!
-   s" /tmp/habu-aot-report-small.bin" 43 ACRT-WRITE
-   s" /tmp/habu-aot-report-small.bin" ACRT-COUNT-FILE
+   ACRT-SMALL$ 43 ACRT-WRITE
+   ACRT-SMALL$ ACRT-COUNT-FILE
    3 ACRT=
    2 ACRT=
    43 ACRT= ;
@@ -138,14 +156,14 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
    ACRT-NOP-INSTR $3FF8 ACRT-W32!
    ACRT-NOP-INSTR $3FFC ACRT-W32!
    ACRT-BL-PLUS-2 $4000 ACRT-W32!
-   s" /tmp/habu-aot-report-boundary.bin" $4010 ACRT-WRITE
-   s" /tmp/habu-aot-report-boundary.bin" ACRT-COUNT-FILE
+   ACRT-BOUNDARY$ $4010 ACRT-WRITE
+   ACRT-BOUNDARY$ ACRT-COUNT-FILE
    2 ACRT=
    1 ACRT=
    $4010 ACRT= ;
 
 : ACRT-TEST-CLI ( -- )
-   s" /tmp/habu-aot-report-small.bin" ACRT-CLI-RUN
+   ACRT-SMALL$ ACRT-CLI-RUN
    {: outu:n erru:n rc:n :}
    rc 0 ACRT=
    erru 0 ACRT=
@@ -154,9 +172,11 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
 
 : ACRT-MAIN ( -- )
    1 ACRT-N !
+   ACRT-PREPARE
    ACRT-TEST-SMALL
    ACRT-TEST-BOUNDARY
    ACRT-TEST-CLI
+   CLEANUP-RUN
    s" aot-call-report-test: ok (" type ACRT-N @ 1- . s"  assertions)" type cr ;
 
 ACRT-MAIN

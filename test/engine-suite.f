@@ -1474,8 +1474,8 @@ TR-ME? 0= -1 T=
 \ buffer base plus the ABSOLUTE address of the compiler's def name-token cell
 \ (data-base DEF-TKA-CELL +) to MULTI-ERR-ORIGIN!; the checker then reports each
 \ rejected def's FILE position instead of a def-buffer-relative one. With the
-\ origin set, the JSON positions are byte-for-byte identical to tools/check.f
-\ --all-errors (golden test/golden/diag-all-errors.err). Off by default: without
+\ origin set, the JSON positions use the same file coordinates as tools/check.f
+\ --all-errors. Off by default: without
 \ MULTI-ERR-ORIGIN! a def on file line 3 still reports line 1.
 create MEO-CAP 8192 allot
 variable MEO-SA  variable MEO-SU

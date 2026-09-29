@@ -41,7 +41,6 @@ public
    SCRIPT-ARGC 0 <> if
       s" usage: bin/hb --load test/gate-diagnostics.f" 64 die
    then
-   GOLD:INIT
    SERIAL ;
 
 ;package

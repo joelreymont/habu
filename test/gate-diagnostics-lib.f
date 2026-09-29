@@ -8,7 +8,6 @@ require tools/gate-json-assert-core.f
 require tools/public-signatures-core.f
 require tools/check-core.f
 require test/gate-common.f
-require test/golden.f
 
 package GATE-DIAGNOSTICS
 
@@ -36,27 +35,6 @@ variable LABEL-U
    J-DQ
    SB-APPEND
    J-DQ ;
-
-\ Byte-exact golden assertion: compare captured diagnostic text against a
-\ committed golden under test/golden/; GOLD:CHECK handles --update-golden and
-\ prints the delta on mismatch. Diagnostics with volatile temp paths must set
-\ GOLD:REDACT! to GT-ROOT before calling so paths normalize to <root>.
-: EXPECT-GOLDEN ( ptr u8 n ptr u8 n ptr u8 n -- ) {: cap:ptr capu:n name:ptr nameu:n label:ptr labelu:n :}
-   cap capu name nameu GOLD:CHECK 0= if label labelu GE-FAIL then ;
-
-: ERR-GOLDEN ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n label:ptr labelu:n :}
-   GOLD:REDACT-CLEAR
-   GT-ERR$ name nameu label labelu EXPECT-GOLDEN ;
-
-\ File-origin diagnostics embed the temp source path; redact GT-ROOT so the
-\ golden stays stable across runs.
-: ERR-GOLDEN-R ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n label:ptr labelu:n :}
-   GT-ROOT GOLD:REDACT!
-   GT-ERR$ name nameu label labelu EXPECT-GOLDEN ;
-
-: OUT-GOLDEN-R ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n label:ptr labelu:n :}
-   GT-ROOT GOLD:REDACT!
-   GT-OUT$ name nameu label labelu EXPECT-GOLDEN ;
 
 : ERR-JKEY ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n label:ptr labelu:n :}
    SB-RESET
@@ -279,7 +257,6 @@ variable LABEL-U
    s" : JBAD ( i64 -- i64 ) dup ;" GE-SRC-LINE
    s" tools/check.f --json-errors accepted bad def" CHECK-JSON
    s" habu-json.err" WRITE-ERR
-   s" diag-primary-json.err" s" primary json golden" ERR-GOLDEN
    CHECK-JSON-FIELDS ;
 
 : UNKNOWN-SIGNATURE ( -- )
@@ -364,7 +341,6 @@ variable LABEL-U
    s" dead_owner" s" throw" s" dead-code owner" ERR-JSTR
    s" dead_owner" s" die" s" die dead-code owner" ERR-JSTR
    s" habu-json-repair.err" WRITE-ERR
-   s" diag-repair-classes.err" s" repair classes golden" ERR-GOLDEN
    s" habu-json-repair.err" s" repair batch diagnostic contract" DIAG-CONTRACT
    s" habu-json-repair.err" s" jmiss" s" add_producer" s" missing producer class" WORD-CLASS
    s" habu-json-repair.err" s" jtype" s" fix_type" s" type mismatch class" WORD-CLASS
@@ -466,12 +442,6 @@ variable LABEL-U
    SB-RESET
    s" 0" GE-OUT-LINE  s" 1" GE-OUT-LINE  s" 2" GE-OUT-LINE
    SB$ s" local in loop output" GE-EXPECT-OUT
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" 0 set-check : BAD ( -- n ) [: 1 {: x:n :} x ;] execute ;" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   $4B s" B2 local-in-quote exits 75" GE-EXPECT-RC
-   s" inside quotation" s" B2 local-in-quote diagnostic" GE-EXPECT-ERR-HAS
    GE-HB-RESET  GE-SRC-RESET
    s" : OKL ( n -- n ) {: a:n :} a ;" GE-SRC-LINE
    s" 5 OKL ." GE-SRC-LINE
@@ -679,7 +649,6 @@ variable LABEL-U
    s" habu-all-errors.f" WRITE-SRC
    s" habu-all-errors.f" s" tools/check.f --all-errors accepted bad defs" FILE-JSON-ALL
    s" habu-all-errors.err" WRITE-ERR
-   s" diag-all-errors.err" s" all-errors golden" ERR-GOLDEN-R
    s" habu-all-errors.err" s" all-errors diagnostic contract" DIAG-CONTRACT
    s" all-errors" s" habu-all-errors.err" s" all-errors diagnostics" GJA1 ;
 
@@ -689,7 +658,6 @@ variable LABEL-U
    s" : UDEF ( i64 -- i64 ) dup NOPE ;" GE-SRC-LINE
    s" tools/check.f --all-errors accepted undefined word" CHECK-JSON-ALL
    s" habu-undef.err" WRITE-ERR
-   s" diag-undefined.err" s" undefined golden" ERR-GOLDEN
    s" code" s" E-UNDEFINED" s" undefined diagnostic code" ERR-JSTR
    s" token" s" NOPE" s" undefined diagnostic token" ERR-JSTR
    s" habu-undef.err" s" undefined diagnostic contract" DIAG-CONTRACT

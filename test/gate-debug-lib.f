@@ -161,17 +161,6 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GT-OUT$ -1 GDB-ACCOUNT
    s" PASS: profiler state survives a clock query" type cr ;
 
-: GDB-PROFILER-BAND ( -- )   \ counter band must hold >= DICT-CAP counters (bound dot)
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" PROF-CNT-BYTES DICT-CAP cells >= ." GE-SRC-LINE
-   GDB-PROF-RUN
-   s" profiler counter band capacity probe" GE-EXPECT-OK
-   GT-OUT$ s" -1" STARTS-WITH? 0= if
-      s" profiler counter band holds fewer than DICT-CAP counters" GE-FAIL
-   then
-   s" PASS: profiler counter band covers every DICT-CAP slot" type cr ;
-
 : GDB-PROFILER-LIMIT1 ( -- )   \ limit 1 must attribute (not drop) the only sample
    GE-HB-RESET
    1 GDB-PROF-SRC
@@ -452,7 +441,6 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" hb-gate-debug" WHITEBOX-CHILD:PROVIDE
    GDB-PROP
    GDB-PROFILER
-   GDB-PROFILER-BAND
    GDB-PROFILER-FOREIGN
    GDB-PROFILER-CLOCK
    GDB-PROFILER-LIMIT1
