@@ -5,6 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.706966+03:00"
 blocks:
+  - habu-pin-schema-fixed-1983d191
   - habu-fill-nemit-from-d8c030e4
   - habu-bind-x86-host-4485acdd
   - habu-record-symbolic-x86-10037f07
@@ -18,3 +19,4 @@ Depends: habu-fill-nemit-from-d8c030e4 (P3), habu-bind-x86-host-4485acdd (K12), 
 Route: Alder (shared: src/compiler/native/shadow.f (the ARM64 host compiler loads it), src/compiler/native/compiler.f, src/compiler/native/publish.f, src/arch/arm64/passes.f, test/compiler/shadow.f).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+- The shadow emission compiles every definition through the x86 rows, so it needs schema-fixed operands pinned (habu-pin-schema-fixed-1983d191).
