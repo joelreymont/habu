@@ -26,7 +26,6 @@ require src/habu/aot-arm.f
 require src/habu/aot-capture.f
 require src/compiler/native/string.f
 require tools/native-layout.f
-require tools/native-source-view.f
 
 package NATIVE-BUILD
 
@@ -181,16 +180,27 @@ TRUSTED: SOURCE-RESET-XT ( n -- [ -- ] ) ;
 
 variable TARGET-SOURCE-BOUND
 
-TRUSTED: SOURCE-USE-XT ( n -- [ [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] -- ] ) ;
+TYPED-VARIABLE SOURCE-BIND [ -- ]
+TYPED-VARIABLE SOURCE-CHECK [ -- ]
+TYPED-VARIABLE SOURCE-CLOSE [ -- ]
 
-: BIND-TARGET-SOURCE ( -- )
-   1 TARGET-SOURCE-BOUND !
-   SOURCE-VIEW:CALLBACKS
-   s" SOURCE-INPUT:USE" OPEN-TARGET-XT SOURCE-USE-XT execute ;
+: SOURCE-POLICY! ( [ -- ] [ -- ] [ -- ] -- ) {: bind check close :}
+   bind SOURCE-BIND !
+   check SOURCE-CHECK !
+   close SOURCE-CLOSE ! ;
+
+: DEFAULT-SOURCE-BIND ( -- )
+   s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute ;
+
+: SOURCE-NOOP ( -- ) ;
+
+: DEFAULT-SOURCE-POLICY ( -- )
+   ['] DEFAULT-SOURCE-BIND ['] SOURCE-NOOP ['] SOURCE-NOOP SOURCE-POLICY! ;
 
 : RESET-TARGET-SOURCE ( -- )
    TARGET-SOURCE-BOUND @ if
       s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
+      s" SOURCE-UNIT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
       0 TARGET-SOURCE-BOUND !
    then ;
 
@@ -234,11 +244,7 @@ TRUSTED: SOURCE-USE-XT ( n -- [ [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 
    s" src/habu/layout.f" included
    s" src/os/env-base.f" included
    s" src/core/include.f" included
-   SOURCE-VIEW:READY? if
-      BIND-TARGET-SOURCE
-   else
-      s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
-   then
+   SOURCE-BIND @ execute
    s" src/habu/native-runtime.f" included ;
 
 : OPEN-AND-COMPILE ( -- )
@@ -553,7 +559,9 @@ variable NAMES-NI
    CHECK-HOST-LAYOUT
    CHECKER-OWNER LOGICAL-RESET
    OPEN-AND-COMPILE
+   SOURCE-CHECK @ execute
    RESET-TARGET-SOURCE
+   SOURCE-CLOSE @ execute
    TRANSFER-LITERALS
    AOT-CAPTURE:PAYLOAD-CAPTURE
    PREPARE-TARGET
@@ -582,7 +590,7 @@ variable NAMES-NI
    query bootstrap writer [: DRIVE ;] catch {: rc:n :}
    drop 2drop
    RESET-TARGET-SOURCE
-   SOURCE-VIEW:READY? if SOURCE-VIEW:CLOSE then
+   SOURCE-CLOSE @ execute
    CLEANUP-RUN
    rc 0<> if s" native-build: uncaught throw code " type rc . cr then
    rc ;
@@ -591,6 +599,7 @@ public
 
 : RUN-PATH-RC ( ptr u8 n [ n n -- n ] bool -- n )
    {: out:ptr outu:n query bootstrap:bool :}
+   DEFAULT-SOURCE-POLICY
    out outu OUTPUT!
    query bootstrap ['] SOURCE-WRITER-DISPATCH RUN-READY-RC ;
 
@@ -611,6 +620,7 @@ public
 : RUN-IMAGE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
    {: query bootstrap:bool writer :}
    BUILD-ARGS!
+   DEFAULT-SOURCE-POLICY
    0 SCRIPT-ARGV$ OUTPUT!
    \ The saved image already registered this cell; zero adds no code reference.
    0 data-base APP-ENTRY:XT-CELL + !

@@ -3641,7 +3641,22 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;              \ restore link register + return
 
-: C-QUALIFY-DEF ( -- )  LQUALIFYDEF LABEL@ BL, ;      \ call the one shared helper
+\ Selected units own their definitions. A qualified operand would redirect
+\ publication to another package before the ordinary qualifier resolves it.
+: C-UNIT-DEF-NAME-GUARD ( -- )
+   LBL LBL LBL {: done:label scan:label bad:label :}
+   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,  10 10 0 LDR,
+   10 done CBZ,
+   14 DATA TKL-CELL LDR,  15 0 MOVZ,
+   scan LBL,
+      15 14 CMP,  C-GE done BCOND,
+      9 DATA TKA-CELL LDR,  9 9 15 ADD,  9 9 0 LDRB,
+      9 58 CMPI,  C-EQ bad BCOND,
+      15 15 1 ADDI,  scan B,
+   bad LBL,  70 C-DIE-TOKEN
+   done LBL, ;
+
+: C-QUALIFY-DEF ( -- )  C-UNIT-DEF-NAME-GUARD  LQUALIFYDEF LABEL@ BL, ;
 
 \ One shared guarded-name-publication helper (dot habu-emit-one-shared).
 \ Formerly inlined at every definer plus EXPORT; now emitted once at
@@ -7616,10 +7631,34 @@ ardone LBL,
          C-CALL-X11-SAVED
    nosync LBL, ;
 
+\ A unit hook is reached by the real interpret, package and immediate paths.
+\ It returns a skip flag only for the parsed package-name event.
+: C-UNIT-HOOK ( -- )
+   LBL {: absent:label :}
+   9 0 MOVZ,
+   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,  9 absent CBZ,
+   SP SP 48 SUBI,  30 SP 0 STR,
+   10 DATA TKA-CELL LDR,  10 SP 8 STR,
+   10 DATA TKL-CELL LDR,  10 SP 16 STR,
+   11 SP 24 STR,
+   13 SP 32 STR,
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   15 G-PUSH  16 G-PUSH
+   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,  9 BLR,
+   9 G-POP
+   10 SP 8 LDR,  10 DATA TKA-CELL STR,
+   10 SP 16 LDR,  10 DATA TKL-CELL STR,
+   11 SP 24 LDR,
+   13 SP 32 LDR,
+   30 SP 0 LDR,  SP SP 48 ADDI,
+   absent LBL, ;
+
 : C-CALL-COMPILE-IMMEDIATE ( -- )
    LBL {: callimm:label :}
    SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,
    PROT:LCLOSE LABEL@ BL,
+   15 0 MOVZ,  16 3 MOVZ,  C-UNIT-HOOK
    9 DATA HOOK-CELL LDR,  9 callimm CBZ,
    9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS LABEL@ CBZ,  9 SP 16 STR,
    9 DATA BODYBUF-OFF ADDI,  9 G-PUSH
@@ -7725,6 +7764,26 @@ public
 
 ;package
 
+: C-UNIT-DISPATCH ( -- )
+   LBL LBL LBL LBL {: absent:label compile:label number:label classified:label :}
+   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,  9 absent CBZ,
+   9 DATA PEND-CELL LDR,  9 compile CBNZ,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM LABEL@ BL,
+   15 0 MOVZ,
+   12 number CBZ,
+      15 1 MOVZ,
+      2 classified CBZ,
+      15 2 MOVZ,
+   classified LBL,
+   number LBL,
+   16 0 MOVZ,  C-UNIT-HOOK
+   absent B,
+   compile LBL,
+   0 LKWDOES LABEL@ ADR,  1 5 MOVZ,  LKWCMP LABEL@ BL,
+   0 absent CBZ,
+   70 C-DIE-TOKEN
+   absent LBL, ;
+
 : EM-COMMENT ( -- )
    LBL LBL LBL LBL {: notcom skln skpar notcompile :}
    LMAIN LABEL@ LBL,
@@ -7744,6 +7803,7 @@ public
       skln LBL,   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN LABEL@ BCOND,
          9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 10 CMPI,  C-NE skln BCOND,  LMAIN LABEL@ B,
       notcom LBL,
+      C-UNIT-DISPATCH
       9 DATA PEND-CELL LDR,  9 notcompile CBZ,
       \ A body token, so hand it to the selected compiler's loop: tier 0's
       \ LCOMPILE head, or tier 1's LENTRY with the optimizing entry loaded.
@@ -7962,13 +8022,18 @@ public
 \ state transitions, token dispatch, and definition return paths.
 : C-PACKAGE ( -- )
    C-TASK-LIVE-GUARD
-   LBL LBL {: inactive:label hastok:label :}
-   9 DATA PKG-PUB-CELL LDR,  9 inactive CBZ,
+   LBL LBL LBL {: inactive:label hastok:label cold:label :}
+   14 DATA PKG-PUB-CELL LDR,  14 inactive CBZ,
       $4B C-PACKAGE-FAIL
    inactive LBL,
    LTOK LABEL@ BL,  0 hastok CBNZ,
       $4A C-PACKAGE-FAIL
    hastok LBL,
+   15 0 MOVZ,  16 2 MOVZ,  C-UNIT-HOOK
+   9 cold CBZ,
+      9 DATA INE-CELL LDR,  9 DATA INP-CELL STR,
+      LMAIN LABEL@ B,
+   cold LBL,
    C-CALL-CHECKER-PACKAGE
    C-PACKAGE-SEAL-GUARD
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
@@ -8392,6 +8457,7 @@ package INTERP-EMIT
       9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 LSRI, \ descriptor proves a nonnegative unsigned depth
       10 14 CMP,  C-LT LMININ LABEL@ BCOND,            \ depth < declared inputs -> named reject BEFORE the body can read below base
    depthok LBL,
+   15 11 0 ADDI,  16 4 MOVZ,  C-UNIT-HOOK
    C-TOPHOOK-CALL             \ every native gate passed: emit the pre-BLR word event (x13 = LFIND flags)
    11 BLR,  LMAIN LABEL@ B,
    usedtry LBL,
@@ -10150,10 +10216,23 @@ public
 \ Installing the user stream is EM-REPL-READ's move: the new stream starts where
 \ the old one ended (INE), and re-entering LMAIN is a branch. The cell is cleared
 \ as it is consumed, so nothing can install it twice.
+\ Refuse an unfinished selected unit before the evaluate frame is popped, so
+\ its ordinary throw path restores package scope and dictionary together.
+: C-UNIT-SOURCE-END ( -- )
+   LBL LBL {: absent:label complete:label :}
+   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,
+   9 absent CBZ,
+   9 DATA PEND-CELL LDR,  9 complete CBZ,
+      70 C-DIE-TOKEN
+   complete LBL,
+   15 0 MOVZ,  16 5 MOVZ,  C-UNIT-HOOK
+   absent LBL, ;
+
 : EM-COMPILE-EXIT ( -- )
    LBL {: nousrc:label :}
    LEXIT LABEL@ LBL,
    9 DATA EVALD-CELL LDR,  9 LEX0 LABEL@ CBZ,
+      C-UNIT-SOURCE-END
       EM-EVAL-CLEAN-EXIT
    LEX0 LABEL@ LBL,                                          \ top-level source exhausted (EVALD==0), cp@ clean here
    9 DATA BOOT-SRC:USER-END LDR,  9 nousrc CBZ,                  \ no second stream -> repl or exit

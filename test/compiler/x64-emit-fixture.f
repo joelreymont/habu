@@ -1098,10 +1098,16 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    m FRAME-N LEAF-FRAMED A64RAV:ACCEPT
    m 0 PLACED ;
 
-\ At a slot of its own for the reason the wordcall is: the call's field is the
-\ entry LESS the placement.
+\ The selector calls this engine's die entry. Keep the synthetic placement
+\ near that target so ASLR cannot put a valid trap call outside rel32 reach.
+: DIE-ENTRY ( -- n )
+   NTRAP:ROUTINE$ NDICT:CALL-TARGET ;
+
+: TRAP-SLOT ( -- n )
+   DIE-ENTRY X64IR:SP-ALIGN / X64IR:SP-ALIGN * ;
+
 : TRAP-BYTES ( IR-CTX:ctx -- )
-   HIR-MOD BUILD-TRAP DTRAP UNDER CALL-SLOT PLACED ;
+   HIR-MOD BUILD-TRAP DTRAP UNDER TRAP-SLOT PLACED ;
 
 \ At a slot of its own too, because the answer is the placement PLUS where the
 \ second function starts.
@@ -1113,9 +1119,6 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 \ with every engine build, so the call's field is not pinned as bytes: it is read
 \ back and held to the entry less the slot and the routine's own length, the
 \ call being the routine's last instruction.
-: DIE-ENTRY ( -- n )
-   NTRAP:ROUTINE$ NDICT:CALL-TARGET ;
-
 4 constant REL32-N                   \ the bytes of a rel32 field
 
 \ The rel32 that ends the sealed emission, little-endian and signed.
@@ -1131,7 +1134,7 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    da dlen ea eu SPAN=HEX? TTRUE ;
 
 : TRAP-FIELD ( -- n )
-   DIE-ENTRY CALL-SLOT - X64EMIT:SIZE - ;
+   DIE-ENTRY TRAP-SLOT - X64EMIT:SIZE - ;
 
 \ The quoting routine's own readers: two functions, one site.
 : QUOTER-FACTS ( -- n n n n n )
@@ -1565,4 +1568,3 @@ public
    T-REPORT ;
 
 ;package
-

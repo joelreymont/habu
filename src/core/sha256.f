@@ -293,26 +293,37 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 : SHA-FILE-PATH ( ptr u8 -- ptr u8 )
    SHA-FILE-PATH-OFF ZPTR+ ;
 
-\ Hash the file at [a,u) into out through the caller's file context. Nothing on
-\ this path is process-wide: the descriptor and the byte count are locals, and
-\ the digest context, the read buffer and the path the open is handed are the
-\ file context's, so two tasks run this at once on two contexts of their own.
-: SHA256-FILE-IN ( ptr u8 ptr u8 n ptr u8 -- n ) {: fctx a u:n out :}
+\ Hash from an already-open descriptor. The caller owns and closes it; the
+\ digest context and read buffer remain caller-owned as for the path form.
+: SHA256-FD-IN ( ptr u8 n ptr u8 -- n ) {: fctx fd:n out:ptr :}
    fctx SHA-FILE-IO {: io :}
-   fctx SHA-FILE-PATH {: pz :}
    fctx SHA256-BEGIN
-   a u pz PATHZ
-   pz open-rd {: fd:n :}
-   fd 0 < if SHA-E-OPEN exit then
    begin
       fd io SHA-IO-CAP read
       dup 0 > while
       fctx io rot SHA256-FEED
    repeat
-   0 < if fd close SHA-E-READ exit then
-   fd close
+   0 < if SHA-E-READ exit then
    fctx out SHA256-END
    0 ;
+
+: SHA256-FD-HEX-IN ( ptr u8 n ptr u8 -- n ) {: fctx fd:n out:ptr :}
+   fctx SHA-FILE-DG {: dg :}
+   fctx fd dg SHA256-FD-IN {: rc:n :}
+   rc 0 <> if rc exit then
+   dg out SHA256>HEX
+   0 ;
+
+\ Hash the file at [a,u) into out through the caller's file context. The
+\ path form opens once, delegates the read to the descriptor form and closes.
+: SHA256-FILE-IN ( ptr u8 ptr u8 n ptr u8 -- n ) {: fctx a u:n out :}
+   fctx SHA-FILE-PATH {: pz :}
+   a u pz PATHZ
+   pz open-rd {: fd:n :}
+   fd 0 < if SHA-E-OPEN exit then
+   fctx fd out SHA256-FD-IN {: rc:n :}
+   fd close
+   rc ;
 
 : SHA256-FILE-HEX-IN ( ptr u8 ptr u8 n ptr u8 -- n ) {: fctx a u:n out :}
    fctx SHA-FILE-DG {: dg :}

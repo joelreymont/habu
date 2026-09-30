@@ -505,33 +505,25 @@ gives DP, so the two can never disagree. `RESET-ADDRESS-ROWS` reads that cell.
 `test/heap-start-cell.f` is the registered check that an engine publishes a floor
 and that it is the floor its own code uses.
 
-**So: build a reserved-layout change from a post-cell host.** A host that predates
-the cell reads zero there, and the build falls back to the source constant, which
-is right only when the host's layout equals the tree's. The fallback is bounded
-rather than trusted: every row it keeps must lie at or below `$7FF8`, the ceiling
-a `DATA <off> LDR` can address and therefore the ceiling of every cell the engine
-itself declares, and a kept row above it ends the build by name instead of baking a
-retired host address into the image. That catches a host whose bands are **smaller**
-than the tree's, which is the direction a growth produces. A host whose bands are
-**larger** than the tree's -- a downgrade build -- is the one direction the fallback
-cannot see: it drops engine rows early and says nothing. Do not downgrade a layout
-from a pre-cell host.
+**Use a donor with a matching published layout.** `RESET-ADDRESS-ROWS` refuses a
+zero heap floor or a floor that disagrees with the donor's `DATA-START`; it has no
+pre-cell fallback. `CHECK-HOST-LAYOUT` also validates the donor's declared fixed
+slots before the target window opens. These checks describe the running donor,
+whose layout can differ from the target tree's.
 
-**Verify at generation 2, not generation 1.** A build's host-side layout constants
-are the *host's*: `tools/native-build.f` never loads the tree's `src/habu/layout.f`
-on the host side, and a booted engine's `require src/habu/layout.f` is a no-op
-because its own prefix already registered that path. Only `LOAD-TARGET` reads the
-tree's copy, into the image's dictionary. So generation 1 of a moved layout is an
-engine whose baked dictionary advertises the new bands while its compiled code
-still uses its host's -- measured 2026-09-12: a grown `XTCELL-CAP` built from a
-pre-grown host reported `cap 65536` and still refused the 32769th row, and its
-published floor was its host's. The two agree from generation 2 on, which is where
-`test/heap-start-cell.f` and the row cap mean what they say.
+**The cold source writer uses the target layout in generation 1.** `LOAD-TARGET`
+reads the tree's `src/habu/layout.f` into the fresh target dictionary.
+`SOURCE-WRITER` then resolves the source emitter against that dictionary, so its
+compiled layout and the image's advertised bands agree in the first product.
+The live donor's heap floor remains the boundary used by `RESET-ADDRESS-ROWS`.
+The PD64 transition passed the first-product pre-trust, using and protection
+checks; its five-generation chain converged byte for byte.
 
-The fallback arm in `RESET-ADDRESS-ROWS`, and `EM-LAYOUT:HEAP-START-OFF`, the
-host-side mirror of the cell offset that exists only because a pre-cell host cannot
-name `BOOT-LAYOUT`, both go when every host in use has the cell -- the same seed
-refresh that retires the by-name arm of dot `habu-retire-the-pre-a37792de`.
+**A direct saved writer retains its builder's layout.** Its emitter was compiled
+when the builder image was saved. Rebuild that builder from matching source for
+a reserved-layout transition; do not use a saved writer from the previous layout
+to construct the new one. Continue to check multi-generation convergence when
+codegen, self-hosting or capture changes require it.
 
 ## DDC Audit (Diverse Double-Compiling)
 

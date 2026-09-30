@@ -14,6 +14,8 @@ package NPUB
 private
 
 $4000 constant CODE-RESERVE
+TYPED-VARIABLE UNIT-OBSERVER [ n n n -- ]
+variable UNIT-ARMED
 
 TRUSTED: CODE-WINDOW ( ptr u8 n n -- )
    code-publish ;
@@ -113,6 +115,9 @@ TRUSTED: APPEND-PENDING ( n -- )
    size VALIDATE-EMISSION {: fn:n :}
    idx fn size ;
 
+: UNIT-NOTIFY ( n n n -- )
+   UNIT-ARMED @ if UNIT-OBSERVER @ execute else drop drop drop then ;
+
 \ Publishing the checker's one-shot minimum-input latch is engine authority.
 \ Keep the boundary at the native publisher that consumes it for this record.
 TRUSTED: PENDING-FACTS ( n -- ) {: idx:n :}
@@ -141,12 +146,14 @@ public
 
 : PUBLISH-PENDING ( -- )
    PENDING-PROVE {: idx:n fn:n size:n :}
+   idx fn size UNIT-NOTIFY
    idx fn size COMMIT
    idx APPEND-PENDING
    idx PENDING-FACTS ;
 
 : PUBLISH-PENDING-DOES ( n -- ) {: fun:n :}
    fun DOES-PROVE {: idx:n fn:n size:n off:n :}
+   idx fn size UNIT-NOTIFY
    idx fn size COMMIT
    fn off +  size off - RECORDED-LEN  DOES-RECORD
    idx APPEND-PENDING
@@ -165,6 +172,14 @@ private
 get-current prot-wid-add
 
 public
+
+: WITH-UNIT ( [ n n n -- ] [ -- ] -- ) {: observer q :}
+   UNIT-ARMED @ if E-NPUB-PENDING throw then
+   observer UNIT-OBSERVER !
+   1 UNIT-ARMED !
+   q catch {: rc:n :}
+   0 UNIT-ARMED !
+   rc 0<> if rc throw then ;
 get-current prot-wid-add
 
 ;package

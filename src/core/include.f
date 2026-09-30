@@ -98,6 +98,28 @@ public
 
 ;package
 
+\ A source load is also the publication boundary for an explicitly selected
+\ package unit. The continuation keeps the ordinary frame and scope behavior;
+\ callers may bind a unit importer after the complete loader has been loaded.
+package SOURCE-UNIT
+private
+
+defer LOAD-XT ( ptr u8 n ptr u8 n ptr u8 [ -- ] -- )
+
+: ORDINARY ( ptr u8 n ptr u8 n ptr u8 [ -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr q :}
+   q execute ;
+
+public
+
+: LOAD ( ptr u8 n ptr u8 n ptr u8 [ -- ] -- ) LOAD-XT ;
+: USE ( [ ptr u8 n ptr u8 n ptr u8 [ -- ] -- ] -- ) is LOAD-XT ;
+: RESET ( -- ) [: ORDINARY ;] is LOAD-XT ;
+
+;package
+
+SOURCE-UNIT:RESET
+
 \ Canonical source paths and a dynamically scoped owner root. This bootstrap
 \ layer uses only core bytes, mappings and the bounded realpath OS primitive.
 package SOURCE-ROOT
@@ -937,9 +959,14 @@ private
    a SOURCE <> if a SOURCE u BYTE-COPY then
    SOURCE u INCLUDE-INTERPRET ;
 
+: LOAD-UNIT ( -- )
+   TOP@ {: frame:ptr :}
+   frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
+   CURRENT$ SOURCE [: LOAD-BYTES ;] SOURCE-UNIT:LOAD ;
+
 : LOAD-CURRENT ( -- )
    PUSH
-   [: LOAD-BYTES ;] catch {: rc:n :}
+   [: LOAD-UNIT ;] catch {: rc:n :}
    INCLUDE-CLOSE
    POP {: release:n :}
    rc 0= 0= if rc throw then
