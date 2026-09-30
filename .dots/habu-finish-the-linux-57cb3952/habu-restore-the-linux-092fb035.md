@@ -1,9 +1,11 @@
 ---
 title: "Restore the Linux gate's fixture writer"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T09:54:40.213333+03:00"
+closed-at: "2026-09-30T10:12:03.972277+03:00"
+close-reason: "Premise wrong: 65b9ca99 was the recovery engine, not a product; master's product 506ca7b1 gates 493/493 rc 0. The rule is now in docs/gate.md and docs/bootstrap.md."
 ---
 
 Problem: every Linux gate on master dies at start (rc 70). Since `2dce15a3` ("Cache the native fixture writer as a keyed image"), `test/fixture-writer.f:130-148` builds the writer image by running the engine with stdin `require tools/app-build.f` / `APP-BUILD:RUN`, and compiling `save` in `src/habu/app-image-core.f:56` fails: `E-UNDEFINED habu: in save: undefined word 'NATIVE-RUNTIME:CAPTURE-PREPARE'`, `ncomp: cannot compile SAVE`, `fixture-writer: writer image build failed`. Reproduced on spark with master `6b993279`'s Gforth-recovered five-generation fixpoint engine (sha256 `65b9ca99…`) and with K3's product `264c829e…`: `printf ': T NATIVE-RUNTIME:CAPTURE-PREPARE ;' | bin/hb` answers `E-UNDEFINED`. `NATIVE-RUNTIME` (`src/habu/native-runtime.f:134-148`) enters the product only through `tools/native-build-core.f:242`. The macOS gate evidently passes, so the difference is platform- or build-path-specific.

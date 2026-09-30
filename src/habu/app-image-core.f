@@ -49,6 +49,11 @@ public
 
 \ Invoke from the outer stdin stream after all required files have returned.
 \ Capture exits after writing; callbacks may release live process resources.
+\ Only a tools/native-build.f product can save: NATIVE-RUNTIME comes from
+\ src/habu/native-runtime.f, which that build alone bakes. The recovery engine
+\ tools/bootstrap.sh installs captures src/habu/repl.f instead, answers
+\ `using NATIVE-RUNTIME` with `unknown package`, and refuses this definition
+\ with E-UNDEFINED at NATIVE-RUNTIME:CAPTURE-PREPARE, exit 70.
 : SAVE ( ptr u8 n -- )
    SNAPSHOT-FORMAT:VERIFY
    SNAP:PATH!

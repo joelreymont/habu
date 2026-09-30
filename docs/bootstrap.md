@@ -219,7 +219,9 @@ payload as from any other program (`test/build-rewind-test.f` pins both halves;
 `test/seal.f` pins the public refusal).
 
 The temporary files are not build products. The final installed `bin/hb` is the
-native checked stdin/TTY engine rebuilt from current source.
+native checked stdin/TTY engine rebuilt from current source. It is the recovery
+engine: the host for a product build ([Refresh `bin/hb`](#refresh-binhb)), not a
+gate candidate ([gate.md](gate.md)).
 
 An engine primitive that the boot prefix uses must also be registered in the
 stage0 generator `bootstrap/cg/forth.fs`, with the semantics that is honest for a

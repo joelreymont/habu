@@ -19,6 +19,18 @@ from that tree:
 bin/hb --load test/run.f
 ```
 
+The registry runs only on a `tools/native-build.f` product. Before its first
+suite it saves the fixture writer (`test/fixture-writer.f`) as an application
+image with the engine `lib/engine-candidate.f` resolves (an exported
+`HABU_UNDER_TEST`, else the running engine), and `APP-IMAGE:SAVE` needs
+`NATIVE-RUNTIME`, which only that build bakes. The engine `tools/bootstrap.sh`
+installs is the recovery engine: it answers `using NATIVE-RUNTIME` with
+`unknown package`, and a gate on it stops there with exit 70 and
+`E-UNDEFINED habu: in save: undefined word 'NATIVE-RUNTIME:CAPTURE-PREPARE'`.
+After a recovery, use that engine as `$HOST` above and gate its product. The
+generation chain's fixpoint is likewise its last generation (`hb-b5` in the
+directory `tools/two-generation-build.f` prints), never the seed it was given.
+
 On macOS, keep the machine awake for the gate with a process-scoped assertion:
 
 ```sh
