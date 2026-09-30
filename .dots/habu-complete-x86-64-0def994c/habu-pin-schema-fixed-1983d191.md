@@ -1,6 +1,6 @@
 ---
 title: Pin schema-fixed operands, forbid their overlap
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T17:34:20.074440+03:00"
@@ -15,7 +15,7 @@ Out of scope, recorded: under pressure `MB-CANDIDATE?` (`:1858-1863`) can evict 
 Depends: habu-run-emitted-x86-b704f918 (C8), habu-render-x86-neg-43e4e8f8 (C2), habu-emit-x86-frame-d8d25223 (C1: both edit `select-x64.f`, and C1 makes "a frame access" stale). Base: the C1 and C2 stack on K2+C8.
 Route: Alder (engine closure: `regalloc.f`, `lib/errors.f`).
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-pin-schema-fixed-1983d191.
 
 Preflight corrections (Fable preflight 2026-09-30, READY; these override the lines above where they differ):
 - Pre-change failing check (verified on the C1+C2 stack with K2's engine, through `X64SEL:SELECT` -> `A64RA:ALLOCATE` -> `A64RAV:ACCEPT`): both rows throw `E-A64RAV-FIXED` (-8461) under LEAF and DLEAF.
