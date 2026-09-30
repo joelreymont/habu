@@ -286,7 +286,7 @@ variable LAST-ERR-U
    RESTORE-FILES ;
 
 : OVERFLOW-CASE ( -- )
-   64 APPEND-DEFERS                                    \ PD-CAP=48 + headroom -> the 49th dies
+   64 APPEND-DEFERS                                    \ added defers exceed the prefix table's spare slots
    s" pre-trust defer table overflow exits 72" SPAWN-RC 72 CHILD-RC
    s" overflow names the table-full diagnostic" T-LABEL
    ERR$ s" pre-trust defer table full" CONTAINS? TTRUE

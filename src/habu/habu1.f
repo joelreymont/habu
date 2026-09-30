@@ -279,8 +279,8 @@ variable BAND-IX
    \ or above the hull's end, or ending at or below its start, intersects none
    \ of them and the table walk is skipped whole instead of run to a foregone
    \ conclusion. Every address the DP heap can reach takes that exit, because
-   \ the hull ends at DATA-START; nothing below it is admitted that a band
-   \ would refuse.
+   \ the hull ends before pending scratch and DATA-START; no span intersecting
+   \ a band is admitted.
    DREG DATA-BANDS:HI LIT64,  DREG DATA DREG ADD,
    addr DREG CMP,  C-CS past BCOND,     \ start >= hull end
    DREG DATA-BANDS:LO LIT64,  DREG DATA DREG ADD,
@@ -2473,6 +2473,65 @@ public
    9 10 0 ADDI,  LFLUSH LABEL@ BL,              \ flush [dst, CP), once
    SP SP 48 ADDI, ;
 
+\ Install one prepared native package unit. The caller has relocated its code
+\ and complete dictionary rows before this engine-owned publication boundary.
+\ The code and record bands open together and close together; no dictionary
+\ name becomes live until both copies and the instruction-cache flush finish.
+: BNATIVEUNITPUBLISH ( -- ) B-TASK-LIVE-GUARD
+   9 G-POP  10 G-POP  11 G-POP  12 G-POP  \ records-n, records-a, code-u, code-a
+   LBL LBL LBL LBL LBL LBL
+   {: bad:label widloop:label widdone:label cloop:label cdone:label rloop:label :}
+   LBL LBL LBL LBL {: rdone:label iloop:label idone:label done:label :}
+   SP SP 64 SUBI,
+   9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
+   CP SP 32 STR,
+   14 DICT-CAP LIT64,  14 14 NDICT SUB,
+   9 14 CMP,  C-HI bad BCOND,       \ unsigned comparison rejects negative count
+   14 DREC MOVZ,  14 9 14 MUL,  14 SP 48 STR,
+   12 DREC MOVZ,  12 NDICT 12 MUL,  12 DBASE 12 ADD,  12 SP 40 STR,
+   \ A sealed image cannot acquire a record in an already protected wordlist.
+   17 DATA SEAL-NDICT-CELL LDR,  17 widdone CBZ,
+   15 SP 8 LDR,  16 SP 0 LDR,
+   widloop LBL,
+      16 widdone CBZ,
+      9 15 40 LDR,  LPROTWIDQ LABEL@ BL,
+      13 bad CBNZ,
+      15 15 DREC ADDI,  16 16 1 SUBI,  widloop B,
+   widdone LBL,
+   9 SP 16 LDR,  10 CP 0 ADDI,  GUARD-CODE-SPAN
+   9 SP 16 LDR,  1 CP 9 ADD,  PROT:LOPEN LABEL@ BL,
+   1 SP 40 LDR,  2 SP 48 LDR,  PROT:LSPAN LABEL@ BL,
+   9 SP 32 LDR,  10 SP 24 LDR,  11 SP 16 LDR,  12 0 MOVZ,
+   cloop LBL,
+      12 11 CMP,  C-CS cdone BCOND,
+      13 10 12 ADD,  14 13 0 LDRW,
+      13 9 12 ADD,  14 13 0 STRW,
+      12 12 4 ADDI,  cloop B,
+   cdone LBL,
+   9 SP 40 LDR,  10 SP 8 LDR,  11 SP 48 LDR,  12 0 MOVZ,
+   rloop LBL,
+      12 11 CMP,  C-CS rdone BCOND,
+      13 10 12 ADD,  14 13 0 LDR,
+      13 9 12 ADD,  14 13 0 STR,
+      12 12 8 ADDI,  rloop B,
+   rdone LBL,
+   PROT:LCLOSE LABEL@ BL,
+   9 SP 16 LDR,  10 SP 32 LDR,
+   SNAP-RELOC:CALLMAP-OFF SNAP-RELOC:CLEAR-SPAN,
+   SNAP-RELOC:ADDRMAP-OFF SNAP-RELOC:CLEAR-SPAN,
+   9 SP 16 LDR,  CP CP 9 ADD,
+   9 SP 32 LDR,  LFLUSH LABEL@ BL,
+   9 SP 32 LDR,  10 CP 0 ADDI,  9 10 TIER-PROV:NATIVE-RANGE,
+   15 SP 0 LDR,
+   iloop LBL,
+      15 idone CBZ,
+      NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+      15 15 1 SUBI,  iloop B,
+   idone LBL,
+   SP SP 64 ADDI,  done B,
+   bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   done LBL, ;
+
 \ callmap-set ( addr -- ): record the instruction at `addr` as a call whose
 \ callee lives in the engine's loaded __text.
 \
@@ -2663,6 +2722,30 @@ public
    9 0 MOVZ,  CATCH-PUSH LABEL@ B,
    CATCH-RES LABEL@ LBL,
    CATCH-PUSH LABEL@ LBL,  9 G-PUSH ;
+
+\ unit-compile-run ( guard source -- rc ): the engine owns the protected
+\ dispatch hook for one source invocation. Busy or wild hooks return rc70
+\ before source runs; a source throw returns its original catch status.
+\ The hook remains callable after its donor dictionary records are reset,
+\ so use the existing live-code interval rather than dictionary membership.
+: BUNITCOMPILE ( -- )
+   LBL LBL {: bad:label done:label :}
+   A G-POP
+   SP SP 16 SUBI,  9 SP 0 STR,             \ source quotation
+   A G-POP                                  \ guard quotation
+   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,
+   11 10 0 LDR,  11 bad CBNZ,
+   9 DBASE CMP,  C-CC bad BCOND,
+   9 CP CMP,     C-CS bad BCOND,
+   9 10 0 STR,
+   9 SP 0 LDR,  9 G-PUSH
+   BCATCH
+   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,
+   11 0 MOVZ,  11 10 0 STR,                  \ clear on return or throw
+   SP SP 16 ADDI,  done B,
+   bad LBL,
+   SP SP 16 ADDI,  9 70 MOVZ,  9 G-PUSH
+   done LBL, ;
 
 \ throw ( code -- ) : unwind to the nearest catch handler (ANS semantics). When
 \ EVALD>0 the throw may cross one or more active `evaluate` boundaries before it
@@ -3414,6 +3497,7 @@ package ENGINE-EMIT
    s" patch32" ['] BPATCH32 FPRIM
    s" reloc-maps-clear" ['] SNAP-RELOC:BCLEAR-MAPS FPRIM-L
    s" code-publish" ['] NPUBWIN:BCODEPUBLISH FPRIM
+   s" native-unit-publish" ['] NPUBWIN:BNATIVEUNITPUBLISH ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" callmap-set" ['] NPUBWIN:BCALLMAPSET FPRIM
    s" addrmap-set" ['] NPUBWIN:BADDRMAPSET FPRIM
    s" xref-retarget" ['] NPUBWIN:BXREFRETARGET FPRIM
@@ -3424,6 +3508,7 @@ package ENGINE-EMIT
 : EMIT-CHECKER-PRIMS ( -- )
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
    s" finally" ['] BFINALLY FPRIM
+   s" unit-compile-run" ['] BUNITCOMPILE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

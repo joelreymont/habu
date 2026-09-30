@@ -76,6 +76,8 @@ public
 16 constant A-FINALLY
 17 constant A-DBASE          \ DBASE-kind the pending pointee: the DATA region's base, the address OF nothing
 18 constant A-OFF            \ mark the pending pointee as an INTEGER-offset step: a null riding it becomes a DATA-base pointer
+19 constant A-QUOT-IN
+20 constant A-QUOT-OUT
 
 private
 
@@ -174,6 +176,8 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-PTR-A-DBASE A-VAR-A CODE, A-DBASE CODE, A-PTR CODE, ;
 : PE-PTR-A-OFF   A-VAR-A CODE, A-OFF CODE, A-PTR CODE, ;
 : PE-Q           A-QUOT CODE, ;
+: PE-QIN         A-QUOT-IN CODE, ;
+: PE-QOUT        A-QUOT-OUT CODE, ;
 : ;PE-Q          A-QUOT-END CODE, ;
 : PE-FINALLY     A-FINALLY CODE, ;
 
@@ -314,6 +318,10 @@ private
 \ ---- the table ---------------------------------------------------------------
 EPRIM: finally PE-FINALLY EPRIM;
 2 EMIN-IN!                           \ the body xt and the cleanup xt
+EPRIM: unit-compile-run
+   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT ;PE-Q PE-IN
+   PE-Q ;PE-Q PE-IN PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!                       \ owns the protected unit hook for one source invocation
 
 EPRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT REF PRIM-REF:S-DUP EPRIM;
 EPRIM: drop  PE-A PE-IN REF PRIM-REF:S-DROP EPRIM;
@@ -509,6 +517,9 @@ ETRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary 
 \ ENGINE-ERROR:SEAL-VIOLATION.
 EPRIM: code-publish  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ the bulk publication window is code injection too
+EPRIM: native-unit-publish
+   PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!                       \ installs relocated package code and dictionary rows
 EPRIM: callmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
 EPRIM: addrmap-set   PE-N PE-IN EPRIM;

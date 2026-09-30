@@ -81,9 +81,9 @@ create ERR CAP allot
    s" require lib/task.f TASK:#USER USER-BAND:END over - 1+ TASK:+USER PST-OVER drop" UNCAUGHT-RC EXPECT
    s" require lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
 
-\ Pending pre-trust defer scratch ends at PD-TABLE-END. The later provenance
-\ table is protected through DATA-START: a store crossing its end must reject,
-\ while a store beginning at the user heap remains valid.
+\ The unit dispatch cell ends the protected bands. Pending pre-trust defer
+\ scratch follows it and remains writable through PD-TABLE-END; crossing the
+\ dispatch cell's end must reject while scratch and the user heap accept.
 : TEST-BOUNDARY ( -- )
    s" 0 data-base $800 + c!" REJECTS
    s" 0 data-base $7FF + !" REJECTS
@@ -96,15 +96,17 @@ create ERR CAP allot
    s" 0 data-base TIER-PROV:OPEN-CELL 1 cells - + !" ACCEPTS
    s" 0 data-base TIER-PROV:OPEN-CELL 1- + !" REJECTS
    s" 0 data-base TIER-PROV:OPEN-CELL + c!" REJECTS
-   s" 0 data-base DATA-START 1 cells - + !" REJECTS
-   s" 0 data-base DATA-START 1- + !" REJECTS
+   s" 0 data-base UNIT-COMPILE-CELL + !" REJECTS
+   s" 0 data-base UNIT-COMPILE-CELL 1 cells + 1- + !" REJECTS
+   s" 0 data-base DATA-START 1 cells - + !" ACCEPTS
+   s" 0 data-base DATA-START 1- + !" ACCEPTS
    s" 0 data-base DATA-START + c!" ACCEPTS ;
 
 \ The span guard runs a bounding test (src/habu/habu1.f ENGINE-EMIT:GUARD-SPAN)
 \ in front of the band walk and skips the walk whole when a span provably
 \ misses every band, so the hull's own edges have to answer exactly as the
 \ bands do. BAND-LO is FRIEND-ARENA's base and BAND-HI is the end of the
-\ TIER-PROV table, which is DATA-START; the rows below stand one byte and one
+\ unit dispatch cell; the rows below stand one byte and one
 \ cell either side of each, and the last two are the spans a bounding test
 \ could wrongly admit: one entirely under the hull, one straddling all of it.
 : TEST-HULL-EDGE ( -- )
@@ -112,9 +114,9 @@ create ERR CAP allot
    s" 0 data-base FRIEND-ARENA 1- + !" REJECTS
    s" 0 data-base FRIEND-ARENA + c!" REJECTS
    s" 0 data-base FRIEND-ARENA 1+ + c!" REJECTS
-   s" 0 data-base DATA-START 1 cells - + c!" REJECTS
-   s" 0 data-base DATA-START 1- + c!" REJECTS
-   s" 0 data-base DATA-START + c!" ACCEPTS
+   s" 0 data-base UNIT-COMPILE-CELL + c!" REJECTS
+   s" 0 data-base UNIT-COMPILE-CELL 1 cells + 1- + c!" REJECTS
+   s" 0 data-base UNIT-COMPILE-CELL 1 cells + + c!" ACCEPTS
    s" 0 data-base 16 read drop" ACCEPTS
    s" 0 data-base $10 + DATA-START $100 + read drop" REJECTS ;
 

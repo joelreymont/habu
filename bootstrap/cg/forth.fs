@@ -405,8 +405,9 @@ STACK-ABI:CATCH-MAGIC constant CATCH-FRAME-MAGIC
 \ DRAIN-PRETRUST replays both registrations after `: TRUST`. Empty by
 \ snapshot time; sits at the top of the reserved region and bumps DATA-START so no
 \ existing offset moves. Slot: [0]=name-len [8]=sig-len [PD-NAME-OFF..)=name
-\ [PD-SIG-OFF..)=sig. Keep byte-for-byte with native.
-48 constant PD-CAP                          \ pending slots (stage-2b pre-7687 ~20; headroom)
+\ [PD-SIG-OFF..)=sig. Capacity and slot shape match native; the private table
+\ follows this engine's own reserved bands, so its address need not match.
+64 constant PD-CAP                          \ pending slots; current checker prefix has 48
 48 constant PD-NAME-CAP                       \ max qualified defer-name bytes/slot
 64 constant PD-SIG-CAP                        \ max effect-signature bytes/slot
 0  constant PD-NLEN-OFF
@@ -415,14 +416,11 @@ STACK-ABI:CATCH-MAGIC constant CATCH-FRAME-MAGIC
 PD-NAME-OFF PD-NAME-CAP + constant PD-SIG-OFF
 PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT
 8 constant PD-SLOTS-REL
-\ USER-REGION-END is the anchor PD-TABLE-OFF has always started at; it does not
-\ move, so DATA-START does not move. $5300..$7690 is USER-BAND (lib/task.f
+\ USER-REGION-END remains the fixed library arena boundary. $5300..$7690 is USER-BAND (lib/task.f
 \ TASK:+USER), $7690..$7BC0 is FS-ABI, $7BC0..$7BF8 is FMT-ABI and $7BF8..$8000
 \ is STRING-ABI, none of which this stage names: the recovery chain has to
 \ agree about the GUARD, not about the library bands behind it.
 $8000 constant USER-REGION-END
-USER-REGION-END constant PD-TABLE-OFF   \ band base (= old DATA-START)
-PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 \ Package/search snapshots are fields of each native-stack evaluator frame.
 0  constant PKGSNAP-CUR
 8  constant PKGSNAP-PUB
@@ -440,12 +438,14 @@ PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 \ is transient. Offset +16 is native's REPL-line save slot: stage0
 \ takes no REPL package/using snapshot, so it stays reserved and unread here.
 16 constant USE-MAX                       \ concurrent `using` capacity (exit on overflow)
-PD-TABLE-END $400 + constant USE-BAND-OFF  \ preserve the checker-owned using offset
+$9C08 constant USE-BAND-OFF               \ published checker/engine using ABI
 USE-BAND-OFF          constant USE-DEPTH-CELL    \ live using depth (u64)
 USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL \ depth saved at `package` open (`;package` restores)
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF      \ public-wid array base (USE-MAX u64 cells)
 USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
-USE-BAND-END constant DATA-START \ user DP begins above engine-reserved state
+USE-BAND-END constant PD-TABLE-OFF
+PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
+PD-TABLE-END constant DATA-START \ user DP begins above engine-reserved state
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create CQ-KW  99 c, 34 c,
 create DOTQ-KW 46 c, 34 c,
