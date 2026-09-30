@@ -19,8 +19,9 @@
 \ instructions goes through src/compiler/native/backend.f, at the row the
 \ definition's own target contract resolves to, and an architecture with no
 \ backend loaded is refused at the declaration before a module is built. The
-\ ARM64 rows are installed by src/arch/arm64/passes.f, which this file requires
-\ because it is what loads the ARM64 passes today.
+\ rows are installed by the target's passes module, which LOAD-PASSES below
+\ requires when this file loads: src/arch/arm64/passes.f on AArch64 Linux and
+\ Darwin, src/arch/x86-64/passes.f on x86-64 Linux.
 
 require lib/prelude.f
 require lib/errors.f
@@ -34,7 +35,31 @@ require src/compiler/native/elaborate.f
 require src/compiler/native/backend.f
 require src/compiler/native/publish.f
 require src/compiler/native/prof.f
-require src/arch/arm64/passes.f
+
+package NCOMP
+private
+
+\ The target predicates are read as this file loads: the running engine's, or in
+\ a build window the window's own src/os/*/target.f. Each path sits on its own
+\ line so tools/manifest-lint.f reads both edges.
+: LOAD-PASSES ( -- )
+   HB-TARGET-LINUX? if
+      s" src/arch/arm64/passes.f" required
+      exit
+   then
+   HB-TARGET-MACOS? if
+      s" src/arch/arm64/passes.f" required
+      exit
+   then
+   HB-TARGET-LINUX-X86-64? if
+      s" src/arch/x86-64/passes.f" required
+      exit
+   then
+   E-CTGT-ABI throw ;
+
+' LOAD-PASSES
+;package
+execute
 
 package NCOMP
 

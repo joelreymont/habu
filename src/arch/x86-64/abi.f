@@ -55,8 +55,9 @@ public
 \ The linux x86-64 binding a routine of this convention compiles under: the SysV
 \ ABI, little-endian, 64-bit pointers. Overflow wraps, as add, sub and imul do,
 \ and the divide screens MIN-N -1 to wrap too (src/compiler/native/emit-x64.f
-\ PUT-IDIV); a trapping unit is refused by the selector. The twin of
-\ src/compiler/native/abi.f NABI:BINDING, which leaves this one to this file.
+\ PUT-IDIV); a trapping unit is refused by the selector. On an x86-64 host
+\ src/compiler/native/abi.f NABI:BINDING answers this same binding. This word
+\ answers it on every host, so an ARM64 engine can compile x86-64 code too.
 : BINDING ( -- CBIND:binding )
    CTARGET-ARCH:X86-64 CTARGET-ABI:SYSV-AMD64 CTARGET-ENDIAN:LITTLE
    CTARGET-PTR--WIDTH:BITS64

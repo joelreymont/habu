@@ -33,17 +33,25 @@ private
    HB-TARGET-LINUX-X86-64? if CTARGET-ABI:SYSV-AMD64 exit then
    E-CTGT-ABI throw ;
 
+\ The architecture that host's ABI runs on, read from the same predicates as
+\ TARGET-ABI so the two fields of the binding cannot name different hosts.
+: TARGET-ARCH ( -- CTARGET:arch )
+   HB-TARGET-LINUX? if CTARGET-ARCH:AARCH64 exit then
+   HB-TARGET-MACOS? if CTARGET-ARCH:AARCH64 exit then
+   HB-TARGET-LINUX-X86-64? if CTARGET-ARCH:X86-64 exit then
+   E-CTGT-ABI throw ;
+
 public
 
-\ The host AArch64 binding. Overflow wraps, as ARM64's add, sub and mul do; a
-\ trapping unit is refused by the selector.
-\ The architecture is this module's own: every routine it builds below names
-\ NEFF register sets. On a host whose ABI is not an AArch64 one - linux-x86-64
-\ answers sysv-amd64 above - CTARGET:CONTRACT refuses the pair with E-CTGT-ABI,
-\ which is the true statement: that ABI is not one this architecture runs. The
-\ x86-64 binding belongs to the x86-64 backend module, not to this file.
+\ The binding of the host this engine runs on: AAPCS64 on AArch64 Linux and
+\ Darwin, SysV on x86-64 Linux, where it is CBIND:SAME? as X64ABI:BINDING
+\ (src/arch/x86-64/abi.f). Overflow wraps, as add, sub and mul do on both
+\ machines; a trapping unit is refused by the selector. The host is read when
+\ this word runs, so it answers for the engine that calls it. The routine
+\ constructors below build AArch64 register sets; the x86-64 ones are the x86-64
+\ backend's, and this file does not load that backend.
 : BINDING ( -- CBIND:binding )
-   CTARGET-ARCH:AARCH64 TARGET-ABI CTARGET-ENDIAN:LITTLE
+   TARGET-ARCH TARGET-ABI CTARGET-ENDIAN:LITTLE
    CTARGET-PTR--WIDTH:BITS64
    CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH CTARGET:CONTRACT
    CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
