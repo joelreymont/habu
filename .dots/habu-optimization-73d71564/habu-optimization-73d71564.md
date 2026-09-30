@@ -569,7 +569,8 @@ immediates f082dbf3; shifted index and msub c57b5f1b; max as select fec184ee;
 callee clobber summaries db11d4c1; persisted summaries 890d67ea (optional);
 DATA literal pools d65bdc94; (RETURNED) 2ddb20af (census cleared its break-even); (STORE-CELLS) 458c9100
 (closed below its census break-even); zero-filled snapshot DATA
-089e4588; proven span checks 22af10b0; cold-throw target a6529379.
+089e4588; proven span checks 22af10b0, after colon inlining 2ca2438f; cold-throw
+target a6529379.
 
 Joel's decisions (2026-09-30): no no-check build mode; HR1, the private
 register ABI, is revisited only after db11d4c1 and only for a measured
