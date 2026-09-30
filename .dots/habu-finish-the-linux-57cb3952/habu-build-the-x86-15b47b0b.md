@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-29T12:51:36.380560+03:00"
 blocks:
   - habu-emit-x86-pure-f70fb84b
-  - habu-port-signals-crash-2c7768ca
   - habu-port-the-crash-99c87339
   - habu-port-the-profiler-97103e6e
   - habu-add-sysv-abi-75f86980

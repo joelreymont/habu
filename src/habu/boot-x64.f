@@ -9,6 +9,12 @@
 \ It is straight-line code that never calls or pushes, so rsp stays where the
 \ kernel left it, at argc, until the DATA cells take the argument vector.
 \
+\ The signal words below are the x86-64 side of what src/habu/crash.f emits for
+\ ARM64: SIGACTION, installs a handler through rt_sigaction, RESTORER, emits the
+\ rt_sigreturn stub every handler returns through, and UC-GREG and UC-RIP name
+\ where the ucontext a SA_SIGINFO handler receives keeps the interrupted
+\ registers.
+\
 \ The syscall numbers and SYS, are the x86-64 seam's, loaded below the way
 \ tools/native-emit.f loads a target's seam before the files that emit against
 \ it. A file that loads the seam into a private wordlist first (the peer
@@ -155,6 +161,70 @@ public
    REGION-BAD @ >LABEL s" hb: cannot map fixed code region" FAIL,
    DATA-BAD @ >LABEL s" hb: cannot map fixed data region" FAIL,
    booted LBL, ;
+
+private
+
+\ The kernel's own struct sigaction on x86-64, which is not glibc's: the
+\ handler, the flags, the restorer, then the blocked mask, SIGSET-BYTES wide,
+\ the size rt_sigaction also takes as its fourth argument.
+0 constant SA-HANDLER
+8 constant SA-FLAGS
+$10 constant SA-RESTORER-AT
+$18 constant SA-MASK
+$20 constant SA-BYTES
+8 constant SIGSET-BYTES
+
+\ The action names its restorer. x86-64 has no default one: the kernel will not
+\ build a handler's frame for an action without it and kills the process with
+\ SIGSEGV instead.
+$04000000 constant SA-RESTORER
+
+\ struct sigcontext's slot for each register, by register number: rax rcx rdx
+\ rbx rsp rbp rsi rdi, then r8-r15. The kernel lays the slots out r8-r15, rdi,
+\ rsi, rbp, rbx, rdx, rax, rcx, rsp, and rip after them.
+create GREG-SLOTS
+   13 c, 14 c, 12 c, 11 c, 15 c, 10 c, 9 c, 8 c,
+   0 c, 1 c, 2 c, 3 c, 4 c, 5 c, 6 c, 7 c,
+
+public
+
+\ The flag that enters a handler with the signal number in rdi, the siginfo in
+\ rsi and the ucontext in rdx, and has the kernel fill the siginfo.
+4 constant SA-SIGINFO
+
+\ The ucontext's struct sigcontext: where its first slot, r8's, lies, and where
+\ rip's lies past the sixteen general registers.
+$28 constant UC-GREGS
+UC-GREGS 16 CELL * + constant UC-RIP
+
+\ The ucontext offset of the slot that holds a register as the signal
+\ interrupted it. The kernel restores every register from its slot when the
+\ handler returns, so writing a slot changes the context that resumes.
+: UC-GREG ( r64 -- n ) R64>N GREG-SLOTS + c@ CELL * UC-GREGS + ;
+
+\ Bind the restorer at the label: rt_sigreturn, which resumes the interrupted
+\ context from the ucontext and never returns. A handler's `ret` enters it, so
+\ it goes where no other control falls in.
+: RESTORER, ( label -- )
+   LBL,
+   0 >R32 NR-SIGRETURN >IMM32 ASM-SINK ENC-MOV32-RI32
+   ASM-SINK ENC-SYSCALL ;
+
+\ Install the handler at a label for signal n with the given flags, returning
+\ through the restorer bound at the other label; SA-RESTORER joins the flags.
+\ The action is built on the machine stack and rsp comes back where it was. It
+\ clobbers rax rcx rdx rsi rdi r10 r11 and leaves CF set when the kernel
+\ refused, as SYS, does: the lea that gives the frame back keeps the flags.
+: SIGACTION, ( n n label label -- ) {: sig:n flags:n handler:label rest:label :}
+   RSP SA-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX handler MOVABS,  RAX RSP SA-HANDLER MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX flags SA-RESTORER or IMM,  RAX RSP SA-FLAGS MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX rest MOVABS,  RAX RSP SA-RESTORER-AT MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX ZERO-REG,  RAX RSP SA-MASK MEM-OFF ASM-SINK ENC-MOV-MR
+   RDI sig IMM,  RSI RSP ASM-SINK ENC-MOV-RR  RDX ZERO-REG,
+   R10 SIGSET-BYTES IMM,
+   NR-SIGACTION SYS,
+   RSP RSP SA-BYTES MEM-OFF ASM-SINK ENC-LEA ;
 
 ;using
 ;using

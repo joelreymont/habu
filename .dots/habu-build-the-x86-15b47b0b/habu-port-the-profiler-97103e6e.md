@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.880210+03:00"
-blocks:
-  - habu-port-signals-crash-2c7768ca
 ---
 
 Problem: the profiler's sampling handler models aarch64 frames only (`src/habu/prof.f:47-50` refuses other targets; `prof.f:867-918` is the handler and alternate-stack contract).

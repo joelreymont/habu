@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.871049+03:00"
-blocks:
-  - habu-port-signals-crash-2c7768ca
 ---
 
 Problem: the crash handler's register dump and guard-page classification exist for aarch64 only (`src/habu/crash.f`, whose constants at 30-36 are aarch64).

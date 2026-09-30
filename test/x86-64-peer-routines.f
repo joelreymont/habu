@@ -10,6 +10,12 @@
 \ a wrong answer. The manifest lists each file with its expected status;
 \ docs/bootstrap.md gives the peer's comparison.
 \
+\ The same directory takes the signal image, which installs a handler through
+\ src/habu/boot-x64.f, raises a real SIGUSR1 and checks the frame the kernel
+\ hands the handler and the context the kernel resumes. boot-x64.f loads the
+\ x86-64 seam globally, so it comes before the harness, which would otherwise
+\ load the seam into its own private wordlist.
+\
 \ Three fixtures have no image. The rows refuse BUILD-ADDRESSED with
 \ E-IR-VERIFY-OPTYPE: it takes its memory order as an argument, which a
 \ data-stack contract has no cell for. The last check, after every image is
@@ -28,6 +34,7 @@ require src/compiler/native/backend.f
 require src/arch/x86-64/passes.f
 require test/compiler/x64-emit-fixture.f
 require test/compiler/x64-chain-fixture.f
+require src/habu/boot-x64.f
 require test/x86-64-peer-harness.f
 
 \ The fixtures stay in the package that stages them; this adds each one's trip
@@ -192,6 +199,142 @@ public
 : PLOOP-ROUTINE ( -- )     WBND [: PLOOP-ROWS ;] IR-CTX:WITH-CONTEXT ;
 : PCALLER-ROUTINE ( n -- )
    CALLEE !  WBND [: PCALLER-ROWS ;] IR-CTX:WITH-CONTEXT ;
+;package
+
+\ The signal case, staged in the harness's package because its checks are the
+\ harness's own. The handler reads what the kernel saved of the interrupted
+\ context and then writes a new one, which the kernel resumes: UC-RIP and every
+\ UC-GREG slot but rdi's and r11's are pinned by the handler's reads, and UC-RIP
+\ and every slot but rsp's by the resume.
+package X64HARNESS
+using X64ASM
+using X64CODE
+using X64BOOT
+private
+
+10 constant SIGUSR1
+
+\ The cell the case leaves at the top of the machine stack for the raise: the
+\ saved rsp must point at it.
+$FEEDFACECAFEBEEF constant STACK-MARK
+
+\ How far below the interrupted rsp the kernel builds a handler's frame at
+\ most: the red zone, the siginfo, the ucontext and the extended register
+\ state, a few KiB with AVX-512 and more with AMX.
+$10000 constant FRAME-REACH
+
+: SAME? ( r64 r64 -- bool ) R64>N swap R64>N = ;
+
+\ The raise decides these registers: rax holds kill's number and then its
+\ result, rdi and rsi its arguments, the syscall writes rcx and r11, and rsp is
+\ the stack. The case loads every other register with its PATTERN.
+: RAISED? ( r64 -- bool ) {: r:r64 :}
+   r RAX SAME?  r RCX SAME? or  r RSP SAME? or
+   r RSI SAME? or  r RDI SAME? or  r R11 SAME? or ;
+
+\ The register's number in the low four bits of every byte and $A in the high
+\ four: no two registers share a value, and the top byte makes it no address.
+: PATTERN ( r64 -- n ) R64>N $0101010101010101 * $A0A0A0A0A0A0A0A0 or ;
+
+\ What the handler writes into a register's slot: an imm32 the case compares
+\ the resumed register with directly.
+: FRESH ( r64 -- n ) R64>N $10101 * $5A000000 + ;
+
+: LOAD-PATTERN, ( n -- ) >R64 {: r:r64 :}
+   r RAISED? 0= if r r PATTERN IMM then ;
+
+\ rax = the register's slot in the ucontext rdx points at.
+: SAVED, ( r64 -- ) {: r:r64 :}
+   RAX RDX r UC-GREG MEM-OFF ASM-SINK ENC-MOV-RM ;
+
+: SAVED=, ( r64 n n -- ) {: r:r64 want:n s:n :}
+   r SAVED,  RCX want IMM  RAX RCX ASM-SINK ENC-CMP-RR  s ASSERT-EQ ;
+
+: PATTERN=, ( n n -- ) {: ix:n s:n :}
+   ix >R64 {: r:r64 :}
+   r RAISED? 0= if r r PATTERN s SAVED=, then ;
+
+\ The saved rsp lies above the handler's frame, within FRAME-REACH, and points
+\ at the mark.
+: SAVED-RSP, ( n -- ) {: s:n :}
+   RSP SAVED,
+   RCX RAX ASM-SINK ENC-MOV-RR  RCX RSP ASM-SINK ENC-SUB-RR
+   RCX FRAME-REACH >IMM32 ASM-SINK ENC-CMP-RI32  C-AE s FAIL-IF
+   RAX RAX MEM-AT ASM-SINK ENC-MOV-RM
+   RCX STACK-MARK IMM  RAX RCX ASM-SINK ENC-CMP-RR  s ASSERT-EQ ;
+
+: WRITE-FRESH, ( n -- ) >R64 {: r:r64 :}
+   r RSP SAME? 0= if
+      RAX r FRESH IMM  RAX RDX r UC-GREG MEM-OFF ASM-SINK ENC-MOV-MR
+   then ;
+
+: FRESH=, ( r64 n -- ) {: r:r64 s:n :}
+   r r FRESH >IMM32 ASM-SINK ENC-CMP-RI32  s ASSERT-EQ ;
+
+: OTHER-FRESH=, ( n n -- ) {: ix:n s:n :}
+   ix >R64 {: r:r64 :}
+   r RSP SAME? r RDI SAME? or 0= if r s FRESH=, then ;
+
+\ Every register but rsp holds what the handler wrote. A failure loads rdi with
+\ its status first, so rdi is checked before the others.
+: RESUMED, ( n -- ) {: s:n :}
+   RDI s FRESH=,
+   16 0 ?do i s OTHER-FRESH=, loop ;
+
+\ Entered with the signal number in rdi, the siginfo in rsi and the ucontext in
+\ rdx: check the three, then write the context to resume, the fresh registers
+\ at `resumed`.
+: HANDLER, ( label label -- ) {: raised:label resumed:label :}
+   RAX RDI ASM-SINK ENC-MOV-RR  SIGUSR1 EXPECT,
+   0 >R32 RSI MEM-AT ASM-SINK ENC-MOV32-RM  SIGUSR1 EXPECT,
+   RAX RDX UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM  RCX raised MOVABS,  EXPECT-RCX,
+   STATUS SAVED-RSP,
+   STATUS {: s:n :}
+   16 0 ?do i s PATTERN=, loop
+   RAX 0 s SAVED=,
+   RSI SIGUSR1 s SAVED=,
+   RCX SAVED,  RCX raised MOVABS,  RAX RCX ASM-SINK ENC-CMP-RR  s ASSERT-EQ
+   16 0 ?do i WRITE-FRESH, loop
+   RAX resumed MOVABS,  RAX RDX UC-RIP MEM-OFF ASM-SINK ENC-MOV-MR
+   ASM-SINK ENC-RET ;
+
+public
+
+\ Install the handler for SIGUSR1, check the install gave rsp back and kept the
+\ harness's reserved registers, and that one for SIGKILL is refused with the
+\ carry set. Leave the mark on the machine stack, pattern every register the
+\ raise leaves free, raise the signal with kill on the image's own pid and
+\ check the resumed context. Control coming back to the
+\ instruction after the syscall fails: the handler moved the resume to
+\ `resumed`. It leaves rdi 0 for the exit.
+: SIGNAL-CASE, ( -- )
+   LBL LBL LBL LBL LBL
+   {: handler:label rest:label past:label raised:label resumed:label :}
+   SIGUSR1 SA-SIGINFO handler rest SIGACTION,  C-B STATUS FAIL-IF
+   STATUS {: kept:n :}                          \ the installer's own contract
+   RSP RBP ASM-SINK ENC-CMP-RR  kept ASSERT-EQ
+   RBX $22334455 kept RESERVED,  R13 $33445566 kept RESERVED,
+   R14 $44556677 kept RESERVED,  R15 $55667788 kept RESERVED,
+   9 SA-SIGINFO handler rest SIGACTION,  C-AE STATUS FAIL-IF   \ SIGKILL: refused
+   past JMP,
+   handler LBL,  raised resumed HANDLER,
+   rest RESTORER,
+   past LBL,
+   RSP CELL 2 * >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX STACK-MARK IMM  RAX RSP MEM-AT ASM-SINK ENC-MOV-MR
+   NR-GETPID SYS,  RDI RAX ASM-SINK ENC-MOV-RR
+   16 0 ?do i LOAD-PATTERN, loop
+   RSI SIGUSR1 IMM
+   0 >R32 NR-KILL >IMM32 ASM-SINK ENC-MOV32-RI32  ASM-SINK ENC-SYSCALL
+   raised LBL,
+   RDI STATUS IMM  EXIT-LBL JMP,
+   resumed LBL,
+   STATUS RESUMED,
+   RDI ZERO-REG, ;
+
+;using
+;using
+;using
 ;package
 
 package X64ROUTINES
@@ -478,6 +621,13 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    callee X64CHAIN-TEST:PCALLER-ROUTINE
    s" pcaller" false WRITE-IMAGE ;
 
+\ A real SIGUSR1 through the handler boot-x64.f installs, with no routine of the
+\ rows: the case ends the image itself.
+: SIGNAL-IMAGE ( -- )
+   false OPEN,
+   SIGNAL-CASE,
+   s" signal" false WRITE-IMAGE ;
+
 public
 : RUN ( -- )
    T-RESET
@@ -505,6 +655,7 @@ public
    PBRANCH-IMAGE
    PLOOP-IMAGE
    PCALLER-IMAGE
+   SIGNAL-IMAGE
    SB-RESET DIR$ SB-APPEND s" /manifest" SB-APPEND SB$ TMP-PATH
    MANIFEST BUF:SPAN$ BUF:BLEN>N WRITE-ALL
    X64EMIT-TEST:ADDRESSED-REFUSAL

@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-30T12:11:53.130107+03:00"
-blocks:
-  - habu-port-signals-crash-2c7768ca
 ---
 
 Problem: the ARM64 engine bakes a signal stub (`EMIT-SIGNAL-HANDLER`, `src/habu/crash.f:300-330`, label LSIGH) and publishes it on every boot (`habu2.f:7538-7540`: `SIGNAL-ABI:STUB-CELL` and `SIGNAL-ABI:FD-PTR-CELL`); `lib/signal.f:143-169` refuses `E-SIGNAL-ABI` when the stub cell is zero. The x86 kernel has neither, so R4's `signal-stub` suite cannot go green.

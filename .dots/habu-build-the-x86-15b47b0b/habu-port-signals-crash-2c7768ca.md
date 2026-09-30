@@ -1,6 +1,6 @@
 ---
 title: Install x86 signal handlers and decode frames
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.594682+03:00"

@@ -154,17 +154,19 @@ kernel loaded its label at. Building them on arm64 alone does not prove those
 runtime properties, and neither executable is a complete Habu engine.
 
 The `x86-64-peer-routines` gate row does the same for every HIR fixture of
-`test/compiler/x64-emit.f` that the rows emit and that returns; the header of
-`test/x86-64-peer-routines.f` names the fixtures left out and why:
+`test/compiler/x64-emit.f` that the rows emit and that returns. It also writes
+a `signal` image that installs a handler through `src/habu/boot-x64.f` and
+raises a real signal (`docs/x86-64.md` "Signal install and frames"). The
+header of `test/x86-64-peer-routines.f` names the fixtures left out and why:
 
 ```sh
 HB_TMP="$TMP" "$HOST" --load test/x86-64-peer-routines.f
 ```
 
-It writes `$TMP/x64-routines`: one executable per fixture, one
-`diff-negative` image whose first case expects a wrong answer, and a
-`manifest` of `<file> <status>` lines. Copy the directory to the peer with
-executable permissions intact, then run every file there and compare its
+It writes `$TMP/x64-routines`: one executable per fixture, the `signal`
+image, one `diff-negative` image whose first case expects a wrong answer,
+and a `manifest` of `<file> <status>` lines. Copy the directory to the peer
+with executable permissions intact, then run every file there and compare its
 status with the manifest:
 
 ```sh

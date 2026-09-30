@@ -1334,7 +1334,8 @@ SUITE x86-64-peer-image
    test/x86-64-peer-image.f
 ;SUITE
 
-\ Every HIR fixture the x86-64 rows emit, one image each, plus the one
+\ Every HIR fixture the x86-64 rows emit, one image each, the signal image that
+\ raises a real signal through src/habu/boot-x64.f's handler install, the one
 \ diff-negative image that proves the harness and the manifest of statuses the
 \ peer must see (docs/bootstrap.md).
 SUITE x86-64-peer-routines

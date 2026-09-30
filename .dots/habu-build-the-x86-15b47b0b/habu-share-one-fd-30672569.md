@@ -4,8 +4,6 @@ status: closed
 priority: 3
 issue-type: task
 created-at: "2026-09-30T13:02:53.356273+03:00"
-blocks:
-  - habu-port-signals-crash-2c7768ca
 ---
 
 Problem: the x86 kernel writes a fixed text to fd 2 and exits under several names: `INDEX-FAIL,` (K9d), `HOOK-DIE,` (K9c), `REFUSE-BODY` and `STDERR-EXIT,` (K9a) all repeat the `STDERR-WRITE,` then exit shape with different statuses.
