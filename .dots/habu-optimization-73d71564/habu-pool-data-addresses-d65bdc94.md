@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-30T10:58:43.400474+02:00"
 blocks:
   - habu-publish-and-use-db11d4c1
-  - habu-leave-zero-filled-089e4588
 ---
 
 Campaign: ARM64 code-size fixes, design revision 3 (§3.7). Line references are at master 8c9b75af; re-verify before editing.

@@ -88,8 +88,14 @@ dictionary rows and code at their original virtual offsets. Its DATA stream
 stores the raw low prefix, the used code-map slices, the address-vector header
 and any live inline rows, and the complete user heap through the captured DP.
 The fixed unused dictionary, map, address-row, compiler-scratch and provenance
-capacities are reconstructed by the loader. Heap bytes, including zeros and
-spare allocation capacity, still travel verbatim. [Where an
+capacities are reconstructed by the loader. The heap is stored in the cell grid
+of `src/habu/cell-grid.f` when that is smaller than its bytes, and as its bytes
+otherwise; the trailer's heap field (`SNAPSHOT-FORMAT:HEAP-FIELD`) says which.
+The grid keeps a presence bit per cell, drops every group of 512 cells that
+holds no nonzero one, and stores each nonzero cell as one LEB128 value, so zero
+cells and spare allocation capacity leave the file but not the process: the
+loader zeroes the restored extent and lays the stored cells over it, and every
+allocation keeps its size. [Where an
 application image's bytes go](engine-size.md#where-an-application-images-bytes-go)
 measures both classes and says what moves the number. It attributes the code
 band by package and the stored DATA sections by owner, and the answer for a `--repl`

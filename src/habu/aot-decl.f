@@ -32,6 +32,7 @@
 \ wordlist — layout.f already publishes a global MAX.
 require src/habu/address-carrier.f
 require src/habu/code-span.f
+require src/habu/cell-grid.f
 
 package AOT-BUF
 public
@@ -214,26 +215,16 @@ public
 \ closed on a span no engine could reserve. 16 MiB against the full runtime's
 \ measured 8,310,765 bytes leaves honest headroom at no storage cost.
 $1000000 constant SPAN-CAP
-\ WHY A BITMAP OVER CELLS AND NOT EXTENTS. A window is tables of cells holding
-\ small numbers, so its non-zero bytes come in ones and twos: the release
-\ engine's window holds 772,892 content bytes in 256,128 maximal non-zero
-\ extents, about 1.7 bytes each. Any extent format pays a header per extent -
-\ the varint (gap, length) rows this replaces cost 512,563 bytes for those
-\ 256,128 extents - while a bitmap pays ONE BIT PER CELL whether the cell is
-\ present or not, and a present cell then pays only its own varint. Measured on
-\ the release engine (4,063,424 bytes), bytes for the whole captured window:
-\   (a) varint (gap, length) run rows plus their bytes        1,285,454
-\   (b) this format: cell bitmap plus one varint per cell       964,570
-\   (c) (b) with raw 8-byte cells instead of varints          2,535,017
-\   (d) a per-4-KiB-page choice between (a) and (b)             843,675
-\ (d) is 9.4% of the DATA class below (b) and costs two decoders and a tag byte
-\ a page, so the one encoding is (b).
-8 constant CELL-BYTES                \ the grid's cell: the DATA cell a declared address sits on
-8 constant CELL-BITS                 \ cells one bitmap byte covers
-CELL-BYTES CELL-BITS * constant BM-BYTE-SPAN
-64 constant GROUP-BYTES              \ bitmap bytes one image presence bit covers
-GROUP-BYTES BM-BYTE-SPAN * constant GROUP-SPAN   \ DATA bytes such a group covers
-10 constant VMAX                     \ an unsigned LEB128 of a whole cell is at most ten bytes
+\ THE ENCODING IS src/habu/cell-grid.f's, shared with the snapshot writer: a
+\ presence bitmap over the window's cells, grouped, and one varint per present
+\ cell. These names are its constants under the window's own package, where
+\ the capture, both emitted readers and the tools read them.
+CELL-GRID:CELL-BYTES constant CELL-BYTES
+CELL-GRID:CELL-BITS constant CELL-BITS
+CELL-GRID:BM-BYTE-SPAN constant BM-BYTE-SPAN
+CELL-GRID:GROUP-BYTES constant GROUP-BYTES
+CELL-GRID:GROUP-SPAN constant GROUP-SPAN
+CELL-GRID:VMAX constant VMAX
 \ THE GRID IS THE DATA CELL GRID, NOT THE WINDOW'S OWN. Every declared address
 \ cell in the window is eight-byte aligned in DATA - the atomics fault on a
 \ misaligned cell - and each must fall on exactly one grid cell, because the
@@ -257,23 +248,15 @@ variable BM-LEN                      \ bytes of bitmap, trailing absent cells dr
 variable CONTENT-END                 \ one past the last present cell: where a merge may pad to
 
 \ ---- the image's second level: a presence bit per GROUP-BYTES bitmap bytes -----
-\ MOST OF THE BITMAP IS ZERO, because most of the span is room `allot`ed and
-\ never written: the release engine's 130,792 bitmap bytes include 69,906 that
-\ are all clear, and they are clear in runs, not singly. A bit per GROUP-BYTES
-\ bytes (512 cells, GROUP-SPAN bytes of DATA) drops a group that holds no present
-\ cell from the image entirely: measured on that engine, 2,044 groups cost a
-\ 256-byte presence map and save 63,360 bytes of bitmap.
 \ THE GROUPING IS AN IMAGE ENCODING, NOT THE CAPTURE FORMAT. The capture, the
 \ artifact sections and a merge keep the flat bitmap, where appending a window is
 \ a concatenation (src/habu/aot-file.f PLACE-WDATA) and a cell's bit is at a
-\ fixed place; this compacts that bitmap once for a writer, and both emitted
+\ fixed place; BM-COMPACT groups that bitmap once for a writer, and both emitted
 \ readers (src/habu/habu2.f AOT-WINDOW:APPLY-CELLS for the baked window,
 \ src/habu/aot-lib.f EMIT-DATA-COPY for a stripped image) decode it with one
 \ outer loop over the presence bits around the same per-byte walk.
-\ Image form, in both writers:
-\   [groups G][stored bytes S][presence map, ceil(G/8) bytes, group g in bit
-\    g mod 8 of byte g div 8, low bit first][the present groups, GROUP-BYTES
-\    bytes each in group order, the last zero-padded][the values]
+\ Image form, in both writers: [groups G][stored bytes S] and then the
+\ src/habu/cell-grid.f form: presence map, present groups, values.
 BM-CAP GROUP-BYTES / constant GROUP-CAP
 GROUP-CAP CELL-BITS / constant PMAP-CAP
 PMAP-CAP BM-CAP + constant CBM-CAP
@@ -284,43 +267,20 @@ DYNAMIC-BUFFER CBM-STORAGE n
 variable CBM-GROUPS                  \ groups the presence map covers
 variable CBM-STORED                  \ bytes of stored groups, GROUP-BYTES each
 
-: CBM-PMAP-BYTES ( -- n ) CBM-GROUPS @ CELL-BITS 1- + CELL-BITS / ;
+: CBM-PMAP-BYTES ( -- n ) CBM-GROUPS @ CELL-GRID:PMAP-BYTES ;
 
 \ The one run the image carries for the bitmap: the presence map and the groups
 \ it says are there. Derived, never stored, so it cannot disagree with them.
 : CBM-LEN ( -- n ) CBM-PMAP-BYTES CBM-STORED @ + ;
 
-: CBM-BIT! ( n -- ) {: g:n :}
-   g CELL-BITS / {: at:n :}
-   CBM-BUF at + c@  1 g CELL-BITS mod lshift or  CBM-BUF at + c! ;
-
-: CBM-BIT@ ( n -- bool ) {: g:n :}
-   CBM-BUF g CELL-BITS / + c@  g CELL-BITS mod rshift  1 and 0<> ;
-
-\ A flat bitmap in, the compact form in CBM-BUF. Two linear passes over the
-\ bitmap bytes: the first says which group holds a present cell, the second
-\ copies those groups out, so no group's bytes are ever read before its bit is
-\ known. It is a function of the bitmap it is handed and holds nothing between
-\ calls, which is why a merge that extends the bitmap needs no invalidation
-\ here - the next accounting rebuilds it (AOT-SECTION:BODY-BYTES).
+\ A flat bitmap in, the compact form in CBM-BUF. It is a function of the bitmap
+\ it is handed and holds nothing between calls, which is why a merge that
+\ extends the bitmap needs no invalidation here - the next accounting rebuilds
+\ it (AOT-SECTION:BODY-BYTES). The group cap keeps both halves inside CBM-CAP.
 : BM-COMPACT ( ptr u8 n -- ) {: bm:ptr len:n :}
-   len GROUP-BYTES 1- + GROUP-BYTES / {: g:n :}
-   g GROUP-CAP > if
+   len CELL-GRID:GROUPS GROUP-CAP > if
       s" aot: the window bitmap exceeds the AOT group map" 74 die then
-   g CBM-GROUPS !  0 CBM-STORED !
-   CBM-BUF {: buf:ptr :}
-   CBM-PMAP-BYTES {: pm:n :}
-   pm 0 ?do 0 buf i + c! loop
-   len 0 ?do
-      bm i + c@ 0<> if i GROUP-BYTES / CBM-BIT! then
-   loop
-   g GROUP-BYTES * 0 ?do
-      i GROUP-BYTES / CBM-BIT@ if
-         i len < if bm i + c@ else 0 then
-         buf pm + CBM-STORED @ + c!
-         CBM-STORED @ 1+ CBM-STORED !
-      then
-   loop ;
+   bm len CBM-BUF CELL-GRID:COMPACT CBM-STORED ! CBM-GROUPS ! ;
 
 \ A present cell costs its own varint and no more, so this cap answers to the
 \ content: the release engine's window encodes its 300,575 present cells in
@@ -340,59 +300,15 @@ variable VAL-LEN
 : WINDOW-RESET ( -- )
    0 CELL-N !  0 BM-LEN !  0 CONTENT-END !  0 VAL-LEN ! ;
 
-\ ---- the value codec, and the only Forth that writes or reads this varint -----
-\ A CELL'S VALUE IS AN UNSIGNED LEB128: seven bits a byte, low group first, high
-\ bit set while more groups follow. The two emitted decoders (src/habu/habu2.f
-\ AOT-WINDOW:APPLY-CELLS for the baked window, src/habu/aot-lib.f EMIT-DATA-COPY
-\ for a stripped image's own DATA) are this same grammar in ARM64, and
-\ tools/engine-size.f mirrors it for the same reason it mirrors the row widths:
-\ it reads images in a booted engine that cannot load this build-side file.
-\ A VALUE IS A WHOLE CELL, so every bit pattern a cell can hold is a field this
-\ format expresses: an address, a small count and a cell of packed bytes alike.
-\ A negative Habu cell is the unsigned value with bit 63 set and encodes in VMAX
-\ bytes, the widest this format has.
-: CELL-VLEN ( n -- n ) {: v:n :}
-   VMAX 1 ?do
-      v i 7 * rshift 0= if i unloop exit then
-   loop
-   VMAX ;
+\ ---- the value codec -----------------------------------------------------------
+\ src/habu/cell-grid.f owns the varint; these are its words under the window's
+\ package, where the capture, the packer and the linker call them.
+: CELL-VLEN ( n -- n ) CELL-GRID:CELL-VLEN ;
 
-: CELL-V! ( n ptr u8 -- n ) {: v:n p:ptr :}   \ answers the bytes written
-   v CELL-VLEN {: w:n :}
-   w 0 ?do
-      v i 7 * rshift $7F and {: g:n :}
-      i 1+ w < if g $80 or else g then  p i + c!
-   loop
-   w ;
+: CELL-V! ( n ptr u8 -- n ) CELL-GRID:CELL-V! ;
 
-\ The width, or 0 for a varint that does not end within `avail`, runs past VMAX,
-\ or wastes a byte on a zero high group - one encoding per value, so a round trip
-\ through this format is an identity rather than a resemblance.
-private
+: CELL-V@ ( ptr u8 n -- n n ) CELL-GRID:CELL-V@ ;
 
-: CELL-VW@ ( ptr u8 n -- n ) {: p:ptr avail:n :}
-   avail VMAX min 0 ?do
-      p i + c@ $80 and 0= if
-         i 1+ {: w:n :}
-         w 1 > p w 1- + c@ 0= and if 0 unloop exit then
-         w unloop exit
-      then
-   loop
-   0 ;
-
-: CELL-VV@ ( ptr u8 n -- n ) {: p:ptr w:n :}
-   0 w 0 ?do  p i + c@ $7F and  i 7 * lshift or  loop ;
-
-public
-
-\ Value and width, with a width of 0 for every malformation above. The tenth
-\ group holds bit 63 alone, so a tenth byte above one is a value no cell held.
-: CELL-V@ ( ptr u8 n -- n n ) {: p:ptr avail:n :}
-   p avail CELL-VW@ {: w:n :}
-   w 0= if 0 0 exit then
-   w VMAX = p VMAX 1- + c@ 1 > and if 0 0 exit then
-   p w CELL-VV@ {: v:n :}
-   v w ;
 \ Address rows grow independently of the engine's declaration registry. The
 \ artifact's aggregate byte budget, checked before copy or emission, is the
 \ limit; this single-section ceiling also bounds each allocation request.

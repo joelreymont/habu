@@ -1,9 +1,11 @@
 ---
 title: Leave zero-filled snapshot data out of the image file
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-18T10:26:28.263918+03:00"
+closed-at: "2026-09-30T14:12:11.787058+02:00"
+close-reason: "Landed as 'Leave zero-filled heap out of snapshot images' on master 2676159d. Snapshot DATA is written through the shared grouped bitmap/LEB128 grammar (src/habu/cell-grid.f), keeping the raw copy when grouped is not smaller; SNAPSHOT-FORMAT:VERSION 11 -> 12; old donors die 74, malformed images 79, legacy 80. Etch --repl image 14,791,232 -> 6,730,976 B, RSS 34.9 -> 26.9 MB, startup 17.45 -> 16.15 ms. Engine unchanged at 2,477,047 B. Gate at the tip: full suite 501/501, snapshot-writer and build-fixpoint-snapshot-test pass, gens 2-5 byte-identical. Untested boundaries: the old-donor rc 74 was checked by hand only; a zero-group (G=0) image has no round trip because the writer cannot produce one (the heap always holds the engine's own nonzero data)."
 ---
 
 Problem: --repl snapshots write canonical DATA verbatim, including internal

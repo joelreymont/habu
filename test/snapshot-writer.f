@@ -4,6 +4,7 @@
 require lib/test.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
+require src/habu/cell-grid.f
 require lib/fmt.f
 require lib/memory.f
 require src/habu/stack-abi.f
@@ -126,24 +127,65 @@ variable IMGU
 : DATA-HEADER-OFF ( -- n )
    DATA-OFF 8 + SNAP-RELOC:CALLMAP-OFF + MAP-SLICE-LEN 2 * + ;
 
-: STREAM-END ( -- n )
+: HEAP-OFF ( -- n )
    DATA-HEADER-OFF ADDRESS-CELLS:HEADER-BYTES +
    DATA-HEADER-OFF ADDRESS-CELLS:BASE-FIELD + U64@
       ADDRESS-CELLS:BOOT-OFF = if
       DATA-HEADER-OFF U64@ 8 * +
-   then
-   DATA-OFF U64@ DATA-START - + ;
+   then ;
+
+\ ---- the heap section: its bytes, or the src/habu/cell-grid.f form ----------
+: HEAP-BYTES ( -- n ) DATA-OFF U64@ DATA-START - ;
+: HEAP-FORM ( -- n ) TRAILER-OFF SNAPSHOT-FORMAT:HEAP-FIELD + U64@ ;
+: GRID? ( -- bool ) HEAP-FORM SNAPSHOT-FORMAT:HEAP-GRID = ;
+: GRID-G ( -- n ) HEAP-OFF U64@ ;
+: GRID-S ( -- n ) HEAP-OFF 8 + U64@ ;
+: MAP-OFF ( -- n ) HEAP-OFF SNAPSHOT-FORMAT:GRID-FRAME + ;
+: GROUPS-OFF ( -- n ) MAP-OFF GRID-G CELL-GRID:PMAP-BYTES + ;
+: VALUES-OFF ( -- n ) GROUPS-OFF GRID-S + ;
+
+: BITS ( n -- n ) {: b:n :}
+   0  8 0 ?do  b i rshift 1 and +  loop ;
+
+: PRESENT-CELLS ( -- n )
+   0  GRID-S 0 ?do  GROUPS-OFF i + U8@ BITS +  loop ;
+
+\ The width of the value at image offset `off`; the writer never stores a
+\ malformed one.
+: WIDTH ( n -- n ) {: off:n :}
+   IMG off + TRAILER-OFF off - CELL-GRID:CELL-V@ nip {: w:n :}
+   w 0= if s" snapshot writer: malformed grid value" 74 die then
+   w ;
+
+\ The offset of the first value `want` bytes wide, or -1.
+: VALUE-AT ( n -- n ) {: want:n :}
+   VALUES-OFF  PRESENT-CELLS 0 ?do
+      dup WIDTH want = if unloop exit then
+      dup WIDTH +
+   loop
+   drop -1 ;
+
+: LAST-VALUE ( -- n )
+   VALUES-OFF dup  PRESENT-CELLS 0 ?do  nip dup dup WIDTH +  loop drop ;
+
+: VALUES-END ( -- n )
+   VALUES-OFF  PRESENT-CELLS 0 ?do  dup WIDTH +  loop ;
+
+\ Where the zero pad begins: after the heap's bytes, or after the grid's values.
+: STREAM-END ( -- n )
+   GRID? if VALUES-END exit then
+   HEAP-OFF HEAP-BYTES + ;
 
 : STREAM-SHAPE-CASE ( -- )
-   s" v11 stores live dictionary rows and preserves the virtual code extent" T-LABEL
+   s" the snapshot stores live dictionary rows and preserves the virtual code extent" T-LABEL
    TRAILER-OFF SNAP-TRL-VERSION + U64@ SNAPSHOT-FORMAT:VERSION T=
    REGION-LEN DICT-SIZE >= TTRUE
    DICT-ROWS DICT-SIZE <= TTRUE
    REGION-OFF DATA-OFF < TTRUE
-   s" v11 DATA begins with the exact restored DP extent" T-LABEL
+   s" its DATA begins with the exact restored DP extent" T-LABEL
    DATA-OFF U64@ DATA-START >= TTRUE
    DATA-OFF U64@ DATA-SIZE <= TTRUE
-   s" v11 carries the address-vector header after the live map slices" T-LABEL
+   s" it carries the address-vector header after the live map slices" T-LABEL
    DATA-HEADER-OFF ADDRESS-CELLS:MAGIC-FIELD + U64@ ADDRESS-CELLS:MAGIC T= ;
 
 : CANARIES-ABSENT? ( -- bool )
@@ -165,20 +207,26 @@ variable IMGU
 
 \ The fixture is loaded on the keyed host with the saver already loaded
 \ (test/preloaded-engine.f), which starts at tier 0 where app-image.f set tier 1.
-: BUILD-WITH-TO ( ptr u8 n ptr u8 n -- )
-   {: target:ptr targetu:n fixture:ptr size:n :}
+\ `load` names the word that loads it: `require`, or `include`.
+: BUILD-LOADING-TO ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: target:ptr targetu:n load:ptr loadu:n fixture:ptr size:n :}
    PRELOADED-ENGINE:APP-IMAGE$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    target targetu >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    SB-RESET
-   s\" 1 set-tier\nrequire " SB-APPEND
+   s\" 1 set-tier\n" SB-APPEND
+   load loadu SB-APPEND  s"  " SB-APPEND
    fixture size SB-APPEND
    s\" \n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" SB-APPEND
    host hostu >LEN SB$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE CAPTURE! ;
+
+: BUILD-WITH-TO ( ptr u8 n ptr u8 n -- )
+   {: target:ptr targetu:n fixture:ptr size:n :}
+   target targetu s" require" fixture size BUILD-LOADING-TO ;
 
 : BUILD-WITH ( ptr u8 n -- ) {: fixture:ptr size:n :}
    SNAP0$ fixture size BUILD-WITH-TO ;
@@ -348,10 +396,10 @@ variable BAND-WID
 : DOCTOR-LEGACY-TRAILER ( -- )
    TRAILER-OFF {: tr:n :}
    tr U64@ {: magic:n :}
-   tr SNAP-TRL-TBASE + U64@ {: base:n :}
-   tr 0 CELL!  tr SNAP-TRL-TBASE + SNAP-MAGIC CELL!
+   tr SNAPSHOT-FORMAT:HEAP-FIELD + U64@ {: base:n :}
+   tr 0 CELL!  tr SNAPSHOT-FORMAT:HEAP-FIELD + SNAP-MAGIC CELL!
    WRITE-BAND-COPY RUN-BAND-COPY
-   tr magic CELL!  tr SNAP-TRL-TBASE + base CELL! ;
+   tr magic CELL!  tr SNAPSHOT-FORMAT:HEAP-FIELD + base CELL! ;
 
 : ASSERT-BAND-REFUSED ( -- )
    EXITED @ TTRUE
@@ -364,7 +412,7 @@ variable BAND-WID
    ERR$ s" hb: snapshot format version unsupported" CONTAINS? TTRUE ;
 
 \ The format version chooses the schema before any mutable header byte is read.
-\ Every malformed v11 header must stop before restore touches its row vector.
+\ Every malformed address header must stop before restore touches its row vector.
 : DOCTOR-ADDRESS-CELL ( n n -- ) {: field:n value:n :}
    DATA-HEADER-OFF field + {: off:n :}
    off U64@ {: old:n :}
@@ -428,7 +476,8 @@ variable BAND-WID
    s" a partial call site is refused before restore" T-LABEL
    DOCTOR-PARTIAL-CALL ASSERT-BAND-REFUSED
    s" the previous snapshot format is refused by the baked loader" T-LABEL
-   TRAILER-OFF SNAP-TRL-VERSION + 10 DOCTOR-BYTE ASSERT-VERSION-REFUSED
+   TRAILER-OFF SNAP-TRL-VERSION + SNAPSHOT-FORMAT:VERSION 1- DOCTOR-BYTE
+   ASSERT-VERSION-REFUSED
    s" a legacy 40-byte trailer is refused before restore" T-LABEL
    DOCTOR-LEGACY-TRAILER ASSERT-VERSION-REFUSED
    s" restored compiler accepts a fresh type and existing nominal signatures" T-LABEL
@@ -471,16 +520,227 @@ variable BAND-WID
    s" imgdump rejects a corrupted header-owned trailer locator" T-LABEL
    BAD-SNAP$ ASSERT-NO-SNAPSHOT ;
 
+\ ---- the heap in the cell grid ---------------------------------------------
+: RELOAD ( -- )
+   IMG IMGU @ munmap drop
+   SNAP0$ LOAD-IMAGE ;
+
+: BUILT-BY ( ptr u8 n ptr u8 n -- ) {: load:ptr loadu:n fixture:ptr size:n :}
+   SNAP0$ load loadu fixture size BUILD-LOADING-TO
+   RC @ 0<> if OUT OUT-U @ type ERR$ type then
+   RC @ 0 T=
+   RELOAD ;
+
+: BUILT ( ptr u8 n -- ) {: fixture:ptr size:n :}
+   s" require" fixture size BUILT-BY ;
+
+: DOCTOR-CELL ( n n -- ) {: off:n value:n :}
+   off U64@ {: old:n :}
+   off value CELL! WRITE-BAND-COPY RUN-BAND-COPY
+   off old CELL! ;
+
+: RUN-BAND-PROBE ( ptr u8 n -- ) {: s:ptr su:n :}
+   WRITE-BAND-COPY
+   PROC-ARGV-RESET
+   BAD-BAND$ >LEN  s su >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+
+: HOLE-PROBE$ ( -- ptr u8 n ) s\" SNAP-WRITER-HOLE:RESTORED .\n" ;
+
+: ASSERT-HOLE-RESTORED ( -- )
+   EXITED @ TTRUE  RC @ 0 T=  PARSE-OUT 0 T= ;
+
+\ The pad moved in front of the payloads, so the stored DATA ends at the last
+\ value. Everything the loader reads is placed from the trailer back, so the
+\ image stays valid, and a last value whose final byte says another follows
+\ now runs into the trailer.
+: SHIFT-PAD ( -- )
+   TRAILER-OFF STREAM-END - {: pad:n :}
+   REGION-OFF {: from:n :}
+   STREAM-END from - {: n:n :}
+   n 0 ?do  from n + i - 1- {: at:n :}  at pad + at U8@ U8!  loop
+   TRAILER-OFF SNAP-TRL-DATALEN + DATA-LEN pad - CELL! ;
+
+\ The last group's map bit lies below G, so the map's pad stays clear and G
+\ and the extent agree; the loader reads that bit before it compares S, which
+\ the cleared bit also contradicts.
+: GRID-FRAMING-CASE ( -- )
+   s" a last group the map leaves absent is refused" T-LABEL
+   GRID-G 1- {: top:n :}
+   MAP-OFF top CELL-GRID:CELL-BITS / + {: at:n :}
+   at  at U8@  1 top CELL-GRID:CELL-BITS mod lshift invert and  DOCTOR-BYTE
+   ASSERT-BAND-REFUSED
+   s" stored group bytes one group past the map's are refused" T-LABEL
+   HEAP-OFF 8 + GRID-S CELL-GRID:GROUP-BYTES + DOCTOR-CELL ASSERT-BAND-REFUSED
+   s" a presence bit past the last group is refused" T-LABEL
+   GRID-G CELL-GRID:CELL-BITS mod 0<> TTRUE
+   MAP-OFF GRID-G CELL-GRID:PMAP-BYTES + 1- {: last:n :}
+   last  last U8@ $80 or  DOCTOR-BYTE ASSERT-BAND-REFUSED
+   s" the form field takes no value but raw and grid" T-LABEL
+   TRAILER-OFF SNAPSHOT-FORMAT:HEAP-FIELD + SNAPSHOT-FORMAT:HEAP-GRID 1+ DOCTOR-CELL
+   ASSERT-BAND-REFUSED ;
+
+: GRID-VALUE-CASE ( -- )
+   2 VALUE-AT {: two:n :}  1 VALUE-AT {: one:n :}  10 VALUE-AT {: ten:n :}
+   s" a value that ends in a zero byte is refused" T-LABEL
+   two 0 >= TTRUE  two 1+ 0 DOCTOR-BYTE ASSERT-BAND-REFUSED
+   s" a present cell that holds zero is refused" T-LABEL
+   one 0 >= TTRUE  one 0 DOCTOR-BYTE ASSERT-BAND-REFUSED
+   s" a tenth value byte above one is refused" T-LABEL
+   ten 0 >= TTRUE  ten 9 + 2 DOCTOR-BYTE ASSERT-BAND-REFUSED ;
+
+: GRID-TRUNCATED-CASE ( -- )
+   SHIFT-PAD
+   s" a grid stream with no pad restores" T-LABEL
+   TRAILER-OFF STREAM-END T=
+   HOLE-PROBE$ RUN-BAND-PROBE ASSERT-HOLE-RESTORED
+   s" a last value that runs into the trailer is refused" T-LABEL
+   LAST-VALUE WIDTH CELL-GRID:VMAX < TTRUE
+   TRAILER-OFF 1- {: last:n :}
+   last  last U8@ $80 or  DOCTOR-BYTE ASSERT-BAND-REFUSED
+   RELOAD ;
+
+\ A fresh process that saves the image again, with nothing new defined.
+: RECAP$ ( -- ptr u8 n ) s" recapture" PATH$ ;
+
+: RECAPTURE ( -- )
+   PROC-ARGV-RESET
+   s" --" >LEN PROC-ARGV+
+   RECAP$ >LEN PROC-ARGV+
+   SNAP0$ >LEN  s\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+
+\ The recapture's heap holds per-run input the first image's does not: the
+\ output path and the line the save was read from sit in a few cells, so the
+\ two streams differ in those values. What must not differ is the extent and
+\ the grid's framing: a stream that embedded the previous one, or a decoder
+\ that dropped a cell, would move them.
+variable FIRST-EXTENT  variable FIRST-G  variable FIRST-S
+
+: KEEP-FRAME ( -- )
+   HEAP-BYTES FIRST-EXTENT !  GRID-G FIRST-G !  GRID-S FIRST-S ! ;
+
+: RECAPTURE-CASE ( -- )
+   KEEP-FRAME
+   RECAPTURE
+   s" the warm image saves itself again" T-LABEL
+   EXITED @ TTRUE  RC @ 0 T=
+   IMG IMGU @ munmap drop
+   RECAP$ LOAD-IMAGE
+   s" a recapture stores the same heap extent and grid framing" T-LABEL
+   HEAP-FORM SNAPSHOT-FORMAT:HEAP-GRID T=
+   HEAP-BYTES FIRST-EXTENT @ T=
+   GRID-G FIRST-G @ T=
+   GRID-S FIRST-S @ T=
+   RELOAD ;
+
+: HOLE-CASE ( -- )
+   s" a heap with a million-byte hole builds" T-LABEL
+   s" test/snapshot-writer-hole.f" BUILT
+   s" the sparse heap is stored as the cell grid, smaller than its bytes" T-LABEL
+   HEAP-FORM SNAPSHOT-FORMAT:HEAP-GRID T=
+   STREAM-END HEAP-OFF - HEAP-BYTES < TTRUE
+   s" the warm image reads the hole and the zeroed seed cells as zero" T-LABEL
+   HOLE-PROBE$ WARM-STDIN ASSERT-HOLE-RESTORED
+   GRID-FRAMING-CASE
+   GRID-VALUE-CASE
+   s" nonzero padding after the grid is refused" T-LABEL
+   DOCTOR-PAD ASSERT-BAND-REFUSED
+   GRID-TRUNCATED-CASE
+   RECAPTURE-CASE ;
+
+\ ---- a heap that ends inside a cell -----------------------------------------
+\ The tail fixture's heap ends TAIL-BYTES into the second cell of its last
+\ group, the first cell zero, so that group stores one bitmap byte with one bit
+\ set. The extent is stored twice, as the stream's first cell and as DP in the
+\ raw prefix, and the loader requires them to agree. DOCTOR-EXTENT moves both,
+\ so the stream reaches the heap decoder with a consistent shorter extent and
+\ the map, G and S untouched.
+3 constant TAIL-BYTES                \ test/snapshot-writer-tail.f's
+
+: EXTENT ( -- n ) DATA-OFF U64@ ;
+
+: DOCTOR-EXTENT ( n -- ) {: ext:n :}
+   EXTENT {: old:n :}
+   DATA-OFF 8 + DP-CELL + {: dp:n :}
+   dp U64@ {: old-dp:n :}
+   DATA-OFF ext CELL!  dp old-dp old - ext + CELL!
+   WRITE-BAND-COPY RUN-BAND-COPY
+   DATA-OFF old CELL!  dp old-dp CELL! ;
+
+: LAST-GROUP-BM ( -- n ) VALUES-OFF CELL-GRID:GROUP-BYTES - ;
+
+\ Each doctored image leaves every check the loader makes before its target
+\ true, so the target is the check that refuses it. The address-cell header is
+\ the engine's inline form, the one that reads no extent.
+: TAIL-REFUSED-CASE ( -- )
+   DATA-HEADER-OFF ADDRESS-CELLS:BASE-FIELD + U64@ ADDRESS-CELLS:BOOT-OFF T=
+   \ No bit in the last group: the groups before it decode as written, then
+   \ its bitmap is 64 zero bytes.
+   s" a present group with no present cell is refused" T-LABEL
+   LAST-GROUP-BM U8@ 2 T=               \ the group's second cell alone
+   LAST-GROUP-BM 0 DOCTOR-BYTE ASSERT-BAND-REFUSED
+   \ An extent at the last group's first byte needs one group fewer than G,
+   \ while the map still ends at a present group and S still matches it.
+   s" a group count past the groups the extent needs is refused" T-LABEL
+   GRID-G 1- CELL-GRID:GROUP-SPAN * DATA-START + DOCTOR-EXTENT ASSERT-BAND-REFUSED
+   \ An extent at the tail cell's first byte keeps G's groups: every earlier
+   \ cell is stored whole, then the tail cell starts at the extent.
+   s" a present cell at the extent is refused" T-LABEL
+   EXTENT TAIL-BYTES - DOCTOR-EXTENT ASSERT-BAND-REFUSED
+   \ One byte short, the tail cell still straddles the extent, its last byte
+   \ above it.
+   s" a last cell with a byte above the extent is refused" T-LABEL
+   EXTENT 1- DOCTOR-EXTENT ASSERT-BAND-REFUSED ;
+
+\ Included, not required: see the fixture's header.
+: TAIL-CASE ( -- )
+   s" a heap that ends inside a cell builds" T-LABEL
+   s" include" s" test/snapshot-writer-tail.f" BUILT-BY
+   s" the grid stores a heap that ends inside a cell" T-LABEL
+   HEAP-FORM SNAPSHOT-FORMAT:HEAP-GRID T=
+   EXTENT CELL-GRID:CELL-BYTES mod TAIL-BYTES T=
+   s" the warm image restores the last cell's bytes and the exact extent" T-LABEL
+   s\" SNAP-WRITER-TAIL:RESTORED .\n" WARM-STDIN
+   EXITED @ TTRUE  RC @ 0 T=  PARSE-OUT 0 T=
+   TAIL-REFUSED-CASE ;
+
+\ The dense fixture allots 48 MiB past the engine's own heap, so it runs where
+\ DATA holds twice that. Linux's DATA window is 32 MiB (src/os/linux/layout.f):
+\ there the engine heap's zero cells save more than any dense heap that fits
+\ could cost, so no snapshot keeps its heap's bytes.
+48 1024 * 1024 * 2 * constant DENSE-DATA
+
+: DENSE-CASE ( -- )
+   s" a heap of ten-byte cells builds" T-LABEL
+   s" test/snapshot-writer-dense.f" BUILT
+   s" a heap the grid would enlarge keeps its bytes" T-LABEL
+   HEAP-FORM SNAPSHOT-FORMAT:HEAP-RAW T=
+   TRAILER-OFF STREAM-END - PROT-PAGE-MAX < TTRUE
+   s" the raw heap restores" T-LABEL
+   s\" SNAP-WRITER-DENSE:MISMATCHES .\n" WARM-STDIN
+   EXITED @ TTRUE  RC @ 0 T=  PARSE-OUT 0 T=
+   s" nonzero padding after a raw heap is refused" T-LABEL
+   DOCTOR-PAD ASSERT-BAND-REFUSED ;
+
 : CLOSE-FAIL-CASE ( -- )
    s" test/snapshot-writer-close-fail.f" BUILD-WITH
    s" snapshot writer fails closed when the final close fails" T-LABEL
    RC @ CLOSE-FAIL-RC T=
    ERR$ s" snap: output close failed" CONTAINS? TTRUE ;
 
+: SHADOW$ ( -- ptr u8 n )
+   SB-RESET
+   s\" undefine snapshot-format\n: snapshot-format ( -- n ) " SB-APPEND
+   SNAPSHOT-FORMAT:VERSION FMT:SB-U
+   s\"  ;\n" SB-APPEND
+   SB$ ;
+
+\ The shadow answers the version the writer checks for, so only the capability
+\ check can refuse it.
 : SHADOW-CASE ( -- )
-   SHADOW-SRC$
-   S\" undefine snapshot-format\n: snapshot-format ( -- n ) 11 ;\n"
-   WRITE-ALL
+   SHADOW-SRC$ SHADOW$ WRITE-ALL
    SHADOW-SNAP$ SHADOW-SRC$ BUILD-WITH-TO
    s" a source-shadowed capability cannot authorize capture" T-LABEL
    RC @ 74 <> if OUT OUT-U @ type ERR$ type then
@@ -491,6 +751,9 @@ variable BAND-WID
 : BODY ( -- )
    SETUP-ROOT
    POISON-CASE
+   HOLE-CASE
+   TAIL-CASE
+   DATA-SIZE DENSE-DATA > if DENSE-CASE then
    CLOSE-FAIL-CASE
    SHADOW-CASE
    IMG IMGU @ munmap drop ;

@@ -152,9 +152,10 @@ $48425350414E5321 constant SNAP-MAGIC
 \ tools/build-fixpoint-snapshot-test.f). They diverged once - the readers kept
 \ the legacy 40-byte size after the format grew to 48 - and every reader then
 \ addressed the wrong cells while still finding plausible values, so the size
-\ lives in exactly one place now.
-48 constant SNAP-TRL-BYTES        \ magic, text base, ndict, region len, data len, version
-8 constant SNAP-TRL-TBASE         \ snapshot-time text base (canonically 0)
+\ lives in exactly one place now. The cell at offset 8 is the one exception:
+\ its meaning changed with the outer format, so src/habu/snapshot-format.f
+\ names it (SNAPSHOT-FORMAT:HEAP-FIELD, the heap's stored form).
+48 constant SNAP-TRL-BYTES        \ magic, heap form, ndict, region len, data len, version
 16 constant SNAP-TRL-NDICT        \ dictionary record count
 24 constant SNAP-TRL-REGLEN       \ region payload length
 32 constant SNAP-TRL-DATALEN      \ data payload length

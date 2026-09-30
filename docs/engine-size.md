@@ -846,7 +846,10 @@ as those cells. Nothing compresses it and nothing skips it: a restore is a
 `read` into the window. This is the lever, and it is the same lever the engine's
 `aot/data-cell-*` sections describe from the other side — the AOT capture does
 encode cells, which is why the engine pays under 1 MB for a 8.3 MB heap while
-the snapshot pays 14.9 MB for a 14.9 MB one.
+the snapshot pays 14.9 MB for a 14.9 MB one. Snapshot format 12 pulls this
+lever: the heap travels in the same cell grid (`src/habu/cell-grid.f`) whenever
+that is smaller than its bytes, and the table's `data/heap-*` rows split it into
+frame, map, groups and values.
 
 **The dictionary slot array is the second lever, at 2,680,032 bytes of nothing.**
 `DICT-CAP` is 65,536 records and this application publishes 9,702; the other

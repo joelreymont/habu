@@ -15,7 +15,7 @@ package BUILD-FIXPOINT
 
 \ The snapshot trailer's size and field offsets are owned by src/habu/layout.f
 \ (SNAP-TRL-BYTES, SNAP-TRL-NDICT, SNAP-TRL-REGLEN, SNAP-TRL-DATALEN,
-\ SNAP-TRL-VERSION); the writer, the loader and this fixture all read them from
+\ SNAP-TRL-VERSION) and src/habu/snapshot-format.f (HEAP-FIELD); the writer, the loader and this fixture all read them from
 \ there, so a format change cannot leave one side addressing the wrong cells.
 
 $A5 constant FORGE
@@ -181,6 +181,9 @@ variable BFT-DOC-CODE
    tr SNAP-TRL-REGLEN + 4 + $FF BFT-DOCTORED-CAPTURE
    79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
    tr SNAP-TRL-NDICT + 3 + $FF BFT-DOCTORED-CAPTURE
+   79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
+   \ The heap's form is raw or grid; the next value names no form.
+   tr SNAPSHOT-FORMAT:HEAP-FIELD + SNAPSHOT-FORMAT:HEAP-GRID 1+ BFT-DOCTORED-CAPTURE
    79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
    BF-TMP-RESET ;
 

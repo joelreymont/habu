@@ -6,6 +6,7 @@
 require lib/fmt.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
+require src/habu/cell-grid.f
 require src/habu/code-span.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
@@ -7147,7 +7148,7 @@ ardone LBL,
    9 DATA PROT:RLO STR,  9 DATA PROT:RHI STR,  9 DATA PROT:CF STR,
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH LABEL@ BL, ;
 
-\ The v11 section header is not at its runtime DATA offset in the file.
+\ The section header is not at its runtime DATA offset in the file.
 \ x24 points to its stored bytes, x22 is the exact restored DP extent. x16
 \ returns the length of inline rows (zero for heap-backed rows).
 : EM-SNAPSHOT-VALIDATE-ADDRESS-CELLS ( label -- ) {: bad:label :}
@@ -7173,11 +7174,15 @@ ardone LBL,
 \ declared cell against the exact captured DATA extent before restoring any
 \ region or DATA byte; the later relocation walk retains its own guard.
 : EM-SNAPSHOT-VALIDATE-ROWS ( label -- ) {: bad:label :}
-   LBL LBL LBL {: rows:label more:label done:label :}
+   LBL LBL LBL LBL {: rows:label more:label done:label decoded:label :}
    10 24 ADDRESS-CELLS:HEADER-BYTES ADDI,
    9 24 ADDRESS-CELLS:BASE-FIELD LDR,
    5 ADDRESS-CELLS:BOOT-OFF LIT64, 9 5 CMP, C-EQ rows BCOND,
-      5 DATA-START LIT64, 9 9 5 SUB, 10 10 9 ADD,
+      13 12 SNAPSHOT-FORMAT:HEAP-FIELD LDR,
+      5 SNAPSHOT-FORMAT:HEAP-GRID MOVZ, 13 5 CMP, C-EQ decoded BCOND,
+      5 DATA-START LIT64, 9 9 5 SUB, 10 10 9 ADD, rows B,
+   decoded LBL,                                     \ a grid heap is in DATA already
+      10 DATA 9 ADD,
    rows LBL,
    13 24 0 LDR, 14 0 MOVZ,
    more LBL, 14 13 CMP, C-CS done BCOND,
@@ -7229,6 +7234,144 @@ ardone LBL,
    6 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
    6 17 CMP,  C-LS bad BCOND, ;
 
+\ ---- the heap in the cell-grid form (SNAPSHOT-FORMAT:HEAP-GRID) ---------------
+\ The writer stores the heap as src/habu/cell-grid.f's form when that is smaller
+\ than its bytes. This lays it into DATA over zeros, because the seed has
+\ already put the engine's own window there and a cell the snapshot holds as
+\ zero must read zero. A snapshot is text this engine did not build, so this is
+\ the one reader of the form that refuses every byte a canonical writer could
+\ not have produced; each refusal branches to `bad` (rc 79) before any
+\ restored word runs.
+
+\ One unsigned LEB128 from the value cursor x5, bounded by x23, into x15;
+\ clobbers x16, x21 and x22. Refused: a value that runs off the stored DATA,
+\ takes more than ten bytes, ends in a zero byte (an overlong form, or a
+\ present cell holding zero) or puts more than bit 63 in its tenth byte.
+: EM-SNAPSHOT-VGET ( label -- ) {: bad:label :}
+   LBL LBL LBL {: vtop:label vdone:label vok:label :}
+   15 0 MOVZ,  22 0 MOVZ,
+   vtop LBL,
+      5 23 CMP,  C-CS bad BCOND,
+      16 5 0 LDRB,  5 5 1 ADDI,
+      21 16 $7F ANDI,  21 21 22 LSLV,  15 15 21 ORR,
+      21 16 $80 ANDI,  21 vdone CBZ,
+      22 22 7 ADDI,  22 63 CMPI,  C-HI bad BCOND,
+      vtop B,
+   vdone LBL,
+      16 bad CBZ,
+      22 63 CMPI,  C-NE vok BCOND,
+      16 1 CMPI,  C-HI bad BCOND,
+   vok LBL, ;
+
+\ The present cell x8 takes the value x15; x9 is the exact extent's end. A cell
+\ at or past it is refused. The last cell may straddle it: then the value's
+\ bytes above the extent must be zero and only those below are stored, so
+\ nothing above the extent is written. Clobbers x16, x21 and x22.
+: EM-SNAPSHOT-PUT-CELL ( label -- ) {: bad:label :}
+   LBL LBL LBL {: full:label tail:label done:label :}
+   21 8 CELL-GRID:CELL-BYTES ADDI,  21 9 CMP,  C-LS full BCOND,
+      8 9 CMP,  C-CS bad BCOND,
+      21 9 8 SUB,  22 21 3 LSLI,  16 15 22 LSRV,  16 bad CBNZ,
+      16 8 0 ADDI,
+      tail LBL,
+         15 16 0 STRB,  16 16 1 ADDI,  15 15 8 LSRI,
+         21 21 1 SUBI,  21 tail CBNZ,
+      done B,
+   full LBL,  15 8 0 STR,
+   done LBL, ;
+
+\ In: x8 = stored bytes before the heap section, x17 = the stored DATA, x7 its
+\ length, x22 = the exact extent. Out: x14 = the first byte after the values,
+\ where the zero pad begins. Every other register the restore holds is kept.
+\ The shifts are the grid's constants: 3 for CELL-BYTES, 12 for GROUP-SPAN, 6
+\ for GROUP-BYTES. The map is read twice: once to prove its framing (G no
+\ larger than the extent needs, clear bits past G, the last group present, S
+\ the stored bytes of its present groups), then to decode, so the group bytes
+\ and the destination are bounded before the first store.
+: EM-SNAPSHOT-DECODE-HEAP ( label -- ) {: bad:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: mtop:label mbit:label mdone:label mpadok:label mlastok:label
+      gtop:label gdone:label ptop:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: pnext:label absent:label bmtop:label bmdone:label bittop:label
+      bitdone:label bitnext:label empty:label :}
+   SP SP 96 SUBI,
+   6 SP 0 STR,   7 SP 8 STR,   11 SP 16 STR,  12 SP 24 STR,
+   15 SP 32 STR, 16 SP 40 STR, 17 SP 48 STR,  21 SP 56 STR,
+   22 SP 64 STR, 23 SP 72 STR, 24 SP 80 STR,  25 SP 88 STR,
+   9 DATA-START LIT64,  3 DATA 9 ADD,  5 22 9 SUB,
+   AOT-WINDOW:ZERO-SPAN                             \ the whole extent, over the seed's cells
+   23 17 7 ADD,                                     \ x23 = end of the stored DATA
+   9 17 8 ADD,                                      \ x9 = the heap section
+   10 23 9 SUB,  10 SNAPSHOT-FORMAT:GRID-FRAME CMPI,  C-CC bad BCOND,
+   10 9 0 LDR,  11 9 8 LDR,                         \ x10 = groups G, x11 = stored bytes S
+   9 9 SNAPSHOT-FORMAT:GRID-FRAME ADDI,             \ x9 = the presence map
+   5 DATA-START LIT64,  13 22 5 SUB,
+   13 13 CELL-GRID:GROUP-SPAN 1- ADDI,  13 13 12 LSRI,   \ x13 = groups the extent needs
+   10 13 CMP,  C-HI bad BCOND,
+   14 10 7 ADDI,  14 14 3 LSRI,                     \ x14 = presence map bytes
+   13 23 9 SUB,  14 13 CMP,  C-HI bad BCOND,
+   0 9 0 ADDI,  1 9 14 ADD,  2 0 MOVZ,             \ map cursor, map end, present groups
+   mtop LBL,  0 1 CMP,  C-CS mdone BCOND,
+      3 0 0 LDRB,  0 0 1 ADDI,
+      mbit LBL,  3 mtop CBZ,
+         4 3 1 ANDI,  2 2 4 ADD,  3 3 1 LSRI,  mbit B,
+   mdone LBL,
+   4 10 7 ANDI,  4 mpadok CBZ,                      \ no map bit past the last group
+      5 1 1 SUBI,  3 5 0 LDRB,  3 3 4 LSRV,  3 bad CBNZ,
+   mpadok LBL,
+   10 mlastok CBZ,                                  \ the last group is present
+      4 10 1 SUBI,  5 4 3 LSRI,  5 9 5 ADD,  3 5 0 LDRB,
+      5 4 7 ANDI,  3 3 5 LSRV,  3 3 1 ANDI,  3 bad CBZ,
+   mlastok LBL,
+   2 2 6 LSLI,  2 11 CMP,  C-NE bad BCOND,
+   4 1 0 ADDI,                                      \ x4 = the stored groups
+   5 23 4 SUB,  11 5 CMP,  C-HI bad BCOND,
+   5 4 11 ADD,                                      \ x5 = the value cursor
+   0 9 0 ADDI,                                      \ x0 = map cursor again, x1 its end
+   9 DATA-START LIT64,  8 DATA 9 ADD,               \ x8 = destination cell
+   9 DATA 22 ADD,                                   \ x9 = the exact extent's end
+   gtop LBL,  0 1 CMP,  C-CS gdone BCOND,
+      3 0 0 LDRB,  0 0 1 ADDI,                      \ x3 = this map byte's eight groups
+      2 CELL-GRID:CELL-BITS MOVZ,
+      ptop LBL,
+         2 gtop CBZ,
+         21 3 1 ANDI,  21 absent CBZ,
+            10 CELL-GRID:GROUP-BYTES MOVZ,  14 0 MOVZ,
+            bmtop LBL,
+               10 bmdone CBZ,
+               11 4 0 LDRB,  4 4 1 ADDI,  10 10 1 SUBI,
+               14 14 11 ORR,
+               11 empty CBZ,
+               13 CELL-GRID:CELL-BITS MOVZ,
+               bittop LBL,
+                  13 bitdone CBZ,
+                  21 11 1 ANDI,  21 bitnext CBZ,
+                     bad EM-SNAPSHOT-VGET
+                     bad EM-SNAPSHOT-PUT-CELL
+                  bitnext LBL,
+                  11 11 1 LSRI,  8 8 CELL-GRID:CELL-BYTES ADDI,  13 13 1 SUBI,
+                  bittop B,
+               bitdone LBL,
+               bmtop B,
+            empty LBL,
+               8 8 CELL-GRID:BM-BYTE-SPAN ADDI,
+               bmtop B,
+            bmdone LBL,
+            14 bad CBZ,                             \ a present group holds a present cell
+         pnext LBL,
+         3 3 1 LSRI,  2 2 1 SUBI,
+         ptop B,
+      absent LBL,
+         21 CELL-GRID:GROUP-SPAN MOVZ,  8 8 21 ADD,
+         pnext B,
+   gdone LBL,
+   14 5 0 ADDI,
+   6 SP 0 LDR,   7 SP 8 LDR,   11 SP 16 LDR,  12 SP 24 LDR,
+   15 SP 32 LDR, 16 SP 40 LDR, 17 SP 48 LDR,  21 SP 56 LDR,
+   22 SP 64 LDR, 23 SP 72 LDR, 24 SP 80 LDR,  25 SP 88 LDR,
+   SP SP 96 ADDI, ;
+
 \ ---- AOT snapshot? (trailer at the end of our own __text). If present:
 \ restore both regions verbatim (fixed VAs keep region addresses valid),
 \ relocate engine-text call chains (the only ASLR-movers), boot WARM. ----
@@ -7237,6 +7380,8 @@ ardone LBL,
    {: snomag:label snbad:label snok:label snnew:label snhave:label
       snbadver:label snpresent:label snpad:label snpaddone:label sninline:label
       snorigin:label :}
+   LBL LBL LBL LBL
+   {: snform:label sngrid:label snpadcheck:label sndecoded:label :}
    24 0 MOVZ,                                       \ x24 = snapshot flag
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,             \ x25 = live text CONTENT base
    10 9 0 ADDI,  5 CODE-OFF LIT64,  10 10 5 SUB,
@@ -7278,7 +7423,10 @@ ardone LBL,
       5 SNAPSHOT-FORMAT:VERSION MOVZ,  14 5 CMP,  C-NE snbadver BCOND,
    snhave LBL,
       12 13 0 ADDI,                                                \ x12 = resolved trailer base
-   13 12 SNAP-TRL-TBASE LDR,  13 snbad CBNZ,       \ v11 text base is canonical zero
+   13 12 SNAPSHOT-FORMAT:HEAP-FIELD LDR,             \ the heap's form: raw or grid, nothing else
+   5 SNAPSHOT-FORMAT:HEAP-GRID MOVZ,  13 5 CMP,  C-EQ snform BCOND,
+   5 SNAPSHOT-FORMAT:HEAP-RAW MOVZ,  13 5 CMP,  C-NE snbad BCOND,
+   snform LBL,
    15 12 SNAP-TRL-NDICT LDR,                        \ x15 = ndict
    6 12 SNAP-TRL-REGLEN LDR,                        \ x6 = virtual CP extent
    7 12 SNAP-TRL-DATALEN LDR,                       \ x7 = stored DATA length, including pad
@@ -7316,12 +7464,18 @@ ardone LBL,
    10 17 8 ADDI,  13 10 DP-CELL LDR,
    5 DATA 22 ADD,  13 5 CMP,  C-NE snbad BCOND,
    snbad EM-SNAPSHOT-VALIDATE-ADDRESS-CELLS
-   5 DATA-START LIT64,  8 22 5 SUB,  8 8 16 ADD,
    5 8 SNAP-RELOC:CALLMAP-OFF + ADDRESS-CELLS:HEADER-BYTES + LIT64,
-   8 8 5 ADD,  5 23 1 LSLI,  8 8 5 ADD,             \ minimum stored DATA length
+   8 23 1 LSLI,  8 8 5 ADD,  8 8 16 ADD,            \ x8 = stored bytes before the heap
    8 7 CMP,  C-HI snbad BCOND,
-   8 7 8 SUB,  5 PROT-PAGE-MAX LIT64,  8 5 CMP,  C-CS snbad BCOND,
-   14 12 8 SUB,                                    \ pad begins before trailer
+   13 12 SNAPSHOT-FORMAT:HEAP-FIELD LDR,
+   5 SNAPSHOT-FORMAT:HEAP-GRID MOVZ,  13 5 CMP,  C-EQ sngrid BCOND,
+      5 DATA-START LIT64,  5 22 5 SUB,  8 8 5 ADD,  \ raw: the heap's own bytes follow
+      8 7 CMP,  C-HI snbad BCOND,
+      14 17 8 ADD,  snpadcheck B,
+   sngrid LBL,
+      snbad EM-SNAPSHOT-DECODE-HEAP                 \ x14 = one past the last value
+   snpadcheck LBL,                                  \ x14 = first pad byte, x12 = trailer
+   8 12 14 SUB,  5 PROT-PAGE-MAX LIT64,  8 5 CMP,  C-CS snbad BCOND,
    snpad LBL,  14 12 CMP,  C-CS snpaddone BCOND,
       5 14 0 LDRB,  5 snbad CBNZ,
       14 14 1 ADDI,  snpad B,
@@ -7394,9 +7548,12 @@ ardone LBL,
       1 24 ADDRESS-CELLS:HEADER-BYTES ADDI,  2 16 0 ADDI,
       EM-SNAPSHOT-COPY
    sninline LBL,
-   5 DATA-START LIT64,  0 DATA 5 ADD,
-   1 24 ADDRESS-CELLS:HEADER-BYTES ADDI,  1 1 16 ADD,
-   2 22 5 SUB,  EM-SNAPSHOT-COPY
+   5 17 7 ADD,  5 5 SNAPSHOT-FORMAT:HEAP-FIELD LDR,   \ x17 + x7 is the trailer
+   4 SNAPSHOT-FORMAT:HEAP-GRID MOVZ,  5 4 CMP,  C-EQ sndecoded BCOND,
+      5 DATA-START LIT64,  0 DATA 5 ADD,
+      1 24 ADDRESS-CELLS:HEADER-BYTES ADDI,  1 1 16 ADD,
+      2 22 5 SUB,  EM-SNAPSHOT-COPY
+   sndecoded LBL,                                   \ a grid heap was decoded during validation
    5 JIT-SNAP:STK-OFF LIT64,  0 DATA 5 ADD,
    2 JIT-SNAP:END JIT-SNAP:STK-OFF - LIT64,  EM-SNAPSHOT-ZERO
    5 0 MOVZ,  5 DATA JIT-SNAP:SP-CELL STR,

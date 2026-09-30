@@ -192,10 +192,10 @@ variable HBT-SEQ-IP      \ that scan's cursor
 : HBT-SIZE-REPL ( -- )
    HBT-REPL-OUT HBT-SIZE-MEASURE
    IMAGE-SIZE:CLASS$ s" repl-snapshot" T$=
-   \ A snapshot copies its DATA window verbatim, zeros included, and they are
-   \ most of the image: the class exists and is never empty.
+   \ A snapshot stores its fixed DATA prefix and code maps as they stand, zeros
+   \ included, even when its heap goes in the cell grid: the class exists and
+   \ is never empty.
    IMAGE-SIZE:DATA-ZERO 0 > TTRUE
-   IMAGE-SIZE:DATA-ZERO IMAGE-SIZE:DATA-WRITTEN > TTRUE
    IMAGE-SIZE:CODE-BYTES 0 > TTRUE
    IMAGE-SIZE:NAME-BYTES 0 > TTRUE
    \ The region payload is attributed and not just classified: the code band

@@ -36,7 +36,7 @@ variable IFD
 1024 constant IPATH-CAP
 create IPATH IPATH-CAP 1 + allot
 create ISTAT 144 allot
-variable TOFF  variable IMG-TBASE  variable TNDICT  variable TREG  variable TDATA
+variable TOFF  variable TNDICT  variable TREG  variable TDATA
 variable ROFF  variable HAS-SNAP
 variable RUNV  variable BESTO  variable BESTN
 \ No-trailer only: the base added to a raw dict-record xt field. A snapshot's
@@ -197,6 +197,8 @@ private
    o SNAP-TRL-BYTES + IL @ > if IMG-FALSE exit then
    o I@ SNAP-MAGIC = 0= if IMG-FALSE exit then
    o SNAP-TRL-VERSION + I@ SNAPSHOT-FORMAT:VERSION = 0= if IMG-FALSE exit then
+   o SNAPSHOT-FORMAT:HEAP-FIELD + I@ SNAPSHOT-FORMAT:HEAP-RAW =
+   o SNAPSHOT-FORMAT:HEAP-FIELD + I@ SNAPSHOT-FORMAT:HEAP-GRID = or 0= if IMG-FALSE exit then
    o SNAP-TRL-NDICT + I@ 0 < if IMG-FALSE exit then
    o SNAP-TRL-NDICT + I@ DICT-CAP > if IMG-FALSE exit then
    o SNAP-TRL-REGLEN + I@ DICT-SIZE < if IMG-FALSE exit then
@@ -227,7 +229,6 @@ private
 : LOAD-SNAPSHOT ( -- )
    FIND-SNAPSHOT 0= if 0 HAS-SNAP ! exit then
    -1 HAS-SNAP !
-   TOFF @ SNAP-TRL-TBASE + I@ IMG-TBASE !
    TOFF @ SNAP-TRL-NDICT + I@ TNDICT !
    TOFF @ SNAP-TRL-REGLEN + I@ TREG !
    TOFF @ SNAP-TRL-DATALEN + I@ TDATA !
@@ -243,7 +244,8 @@ private
       then
       -1 exit
    then
-   p IMG-TBASE @ >=  p IMG-TBASE @ ROFF @ CODE-OFF - + < and if p IMG-TBASE @ - CODE-OFF + exit then
+   \ A text pointer in the payload is canonical: the writer rebased it to 0.
+   p 0 >=  p ROFF @ CODE-OFF - < and if p CODE-OFF + exit then
    -1 ;
 : E-NAME-OFF {: o :} ( n -- n )
    o E-F DNAME-EXT and 0= if o 24 + else o 24 + I@ PTR>OFF then ;
@@ -582,7 +584,10 @@ private
    HAS-SNAP @ 0= if s" no-snapshot" type cr exit then
    s" ndict " type TNDICT @ . cr
    s" region " type TREG @ h. cr
-   s" data " type TDATA @ h. cr ;
+   s" data " type TDATA @ h. cr
+   s" heap " type
+   TOFF @ SNAPSHOT-FORMAT:HEAP-FIELD + I@ SNAPSHOT-FORMAT:HEAP-GRID =
+   if s" grid" else s" raw" then type cr ;
 
 : MAIN ( -- )
    SCRIPT-ARGC 3 >= if 0 SCRIPT-ARGV$ s" --pc" CORE-STR= if PC-IMG exit then then

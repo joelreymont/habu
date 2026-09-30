@@ -21,6 +21,7 @@ require lib/fs.f
 require lib/codesign.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
+require src/habu/cell-grid.f
 require src/habu/fdio.f
 require src/habu/stack-abi.f
 
@@ -54,6 +55,7 @@ create TRL SNAP-TRL-BYTES allot
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SRL  variable SML  variable SIL  variable SDW
 variable SNL  variable SFTS  variable SPAD  variable SFD
+variable SHF  variable SHL           \ heap form (SNAPSHOT-FORMAT:HEAP-RAW/-GRID), stored heap bytes
 create PAD-ZEROS 16 allot
 \ These views expose the raw snapshot source and dictionary/data buffer cells.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
@@ -116,7 +118,7 @@ s" SDB@" s" -- ptr u8" TRUST
       trailer SNAP-TRL-REGLEN + CELL-VIEW @ DICT-SIZE - + TEXT-CUT
    trailer SNAP-TRL-DATALEN + CELL-VIEW @ TEXT-CUT ;
 
-: HDR ( -- snap )
+: GEOMETRY ( -- )
    RESET-BUF
    \ The builder's x20 register constant is XREG-RBASE so it does not shadow
    \ the `rbase` primitive; read the saved text base straight from its cell.
@@ -130,10 +132,13 @@ s" SDB@" s" -- ptr u8" TRUST
    data-base BYTE-VIEW SDL @ ADDRESS-CELLS:DATA-SPAN nip
    data-base BYTE-VIEW SNAP-RELOC:XTCELL-N-CELL + CELL-VIEW
       ADDRESS-CELLS:BASE-FIELD + @ ADDRESS-CELLS:BOOT-OFF =
-      if cells else drop 0 then SIL !
+      if cells else drop 0 then SIL ! ;
+
+\ The stored DATA stream's length waits for the heap section's form, which the
+\ writer chooses from the canonical copy (ENCODE-HEAP below).
+: FRAME ( -- snap )
    8 SNAP-RELOC:CALLMAP-OFF + SML @ 2 * +
-      ADDRESS-CELLS:HEADER-BYTES + SIL @ +
-      SDL @ DATA-START - + SDW !
+      ADDRESS-CELLS:HEADER-BYTES + SIL @ + SHL @ + SDW !
    ABSORB-PAD ;
 
 
@@ -350,6 +355,89 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    SNC-COPY
    SNC-CANON ;
 
+\ ---- the heap section: its bytes, or the cell grid when that is smaller ------
+\ Everything the stream restores above DATA-START is heap: tables `allot`ed at
+\ their capacity, registries, arenas and the application's own storage. Most
+\ of it is zero, and in the grid form (src/habu/cell-grid.f) a zero cell costs
+\ one bitmap bit, or nothing when its whole group is zero. The writer measures
+\ both forms on the canonical copy and stores the grid only when it is
+\ smaller, so a dense heap is never enlarged; the trailer's heap field records
+\ the choice and src/habu/habu2.f EM-SNAPSHOT-DECODE-HEAP lays the grid over
+\ zeros. This omits zero bytes from the file; it removes no allocation, and
+\ the restored heap is the same extent, byte for byte.
+\ The grid cannot be measured before the copy exists, so it runs after
+\ CANON-DATA, and its scratch is mapped at the size of what it holds.
+variable SBL                         \ flat bitmap bytes, ending at the last present cell's byte
+variable SVL                         \ value bytes of the present cells
+variable SBM-N                       \ flat bitmap scratch
+variable SGR-N                       \ grid stream scratch
+
+TRUSTED: SBM-PTR ( -- ptr u8 ) SBM-N @ ;
+TRUSTED: SGR-PTR ( -- ptr u8 ) SGR-N @ ;
+
+: SCRATCH ( n -- n ) {: bytes:n :}
+   0 bytes SNC-PROT-RW SNC-MAP-ANON -1 0 mmap
+   dup 0 < if s" snap: heap scratch mmap failed" 74 die then ;
+
+: HEAP-BYTES ( -- n ) SDL @ DATA-START - ;
+
+: HEAP-CELLS ( -- n )
+   HEAP-BYTES CELL-GRID:CELL-BYTES 1- + CELL-GRID:CELL-BYTES / ;
+
+\ One heap cell of the canonical copy. The grid rounds the heap up to whole
+\ cells, and the bytes that adds lie above the exact extent: they read as zero,
+\ and the loader refuses a cell that says otherwise.
+: HEAP-CELL@ ( n -- n ) {: c:n :}
+   DATA-START c CELL-GRID:CELL-BYTES * + {: off:n :}
+   SND-PTR off + CELL-VIEW @ {: v:n :}
+   SDL @ off - {: room:n :}
+   room CELL-GRID:CELL-BYTES >= if v exit then
+   v  1 room 8 * lshift 1-  and ;
+
+: BM-SET ( n -- ) {: c:n :}
+   SBM-PTR c CELL-GRID:CELL-BITS / + {: at:ptr :}
+   at c@  1 c CELL-GRID:CELL-BITS mod lshift or  at c! ;
+
+\ The flat bitmap, the value bytes and the bitmap's length, in one pass.
+: HEAP-SCAN ( -- )
+   0 SVL !  0 SBL !
+   HEAP-CELLS 0 ?do
+      i HEAP-CELL@ {: v:n :}
+      v 0<> if
+         i BM-SET
+         SVL @ v CELL-GRID:CELL-VLEN + SVL !
+         i CELL-GRID:CELL-BITS / 1+ SBL !
+      then
+   loop ;
+
+: GRID-BYTES ( -- n )
+   SBL @ CELL-GRID:GROUPS CELL-GRID:PMAP-BYTES
+   SBM-PTR SBL @ CELL-GRID:STORED-BYTES +
+   SVL @ + SNAPSHOT-FORMAT:GRID-FRAME + ;
+
+: GRID-VALUES ( ptr u8 -- ) {: at:ptr :}
+   0  HEAP-CELLS 0 ?do
+      i HEAP-CELL@ {: v:n :}
+      v 0<> if  v over at + CELL-GRID:CELL-V! +  then
+   loop drop ;
+
+: WRITE-GRID ( -- )
+   SHL @ SCRATCH SGR-N !
+   SBM-PTR SBL @ SGR-PTR SNAPSHOT-FORMAT:GRID-FRAME + CELL-GRID:COMPACT {: groups:n stored:n :}
+   groups SGR-PTR CELL-VIEW !
+   stored SGR-PTR 8 + CELL-VIEW !
+   SGR-PTR SNAPSHOT-FORMAT:GRID-FRAME + groups CELL-GRID:PMAP-BYTES + stored + GRID-VALUES ;
+
+: ENCODE-HEAP ( -- )
+   SNAPSHOT-FORMAT:HEAP-RAW SHF !  HEAP-BYTES SHL !
+   HEAP-CELLS 0= if exit then
+   HEAP-CELLS CELL-GRID:CELL-BITS 1- + CELL-GRID:CELL-BITS / SCRATCH SBM-N !
+   HEAP-SCAN
+   GRID-BYTES {: grid:n :}
+   grid HEAP-BYTES >= if exit then
+   SNAPSHOT-FORMAT:HEAP-GRID SHF !  grid SHL !
+   WRITE-GRID ;
+
 ;package
 
 \ ---- test-only final-close fault seam ----
@@ -389,16 +477,22 @@ package SNAP
    SPAD @ 16 / 0 ?do SFD @ PAD-ZEROS 16 FDIO:WALL loop
    SFD @ PAD-ZEROS SPAD @ 16 mod FDIO:WALL ;
 
+: WRITE-HEAP ( -- )
+   SHF @ SNAPSHOT-FORMAT:HEAP-GRID = if SFD @ SGR-PTR SHL @ FDIO:WALL exit then
+   SFD @ SND-PTR DATA-START + SHL @ FDIO:WALL ;
+
 : WRITE-BYTES ( -- )
-   \ trailer (SNAP-TRL-BYTES): magic, CANONICAL text base (0), dict count, region
-   \ length, data length, format version - the region stream below is the
+   \ trailer (SNAP-TRL-BYTES): magic, heap form, dict count, region length,
+   \ data length, format version - the region stream below is the
    \ canonicalized copy. The version is the LAST field so the magic and the four
    \ older fields sit where the legacy trailer put them, which is what lets the
    \ loader tell a legacy image apart from a corrupt one.
-   SNAP-MAGIC TRL !  0 TRL SNAP-TRL-TBASE + !  ndict@ TRL SNAP-TRL-NDICT + !
+   SNAP-MAGIC TRL !  SHF @ TRL SNAPSHOT-FORMAT:HEAP-FIELD + !
+   ndict@ TRL SNAP-TRL-NDICT + !
    SCL @ TRL SNAP-TRL-REGLEN + !  SDW @ TRL SNAP-TRL-DATALEN + !
    SNAPSHOT-FORMAT:VERSION TRL SNAP-TRL-VERSION + !
    \ stream: header, engine text, live dict rows, code, structured DATA, trailer
+   \ (the heap section last in DATA, raw or grid as SHF says)
    OUT-PATH PATH0 1537 493 open SFD !
    SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
    MBUF {: hdr:ptr :}
@@ -415,7 +509,7 @@ package SNAP
    SFD @ SND-PTR SNAP-RELOC:XTCELL-N-CELL +
       ADDRESS-CELLS:HEADER-BYTES FDIO:WALL
    SIL @ if SFD @ SND-PTR ADDRESS-CELLS:BOOT-OFF + SIL @ FDIO:WALL then
-   SFD @ SND-PTR DATA-START + SDL @ DATA-START - FDIO:WALL
+   WRITE-HEAP
    WRITE-PAD
    SFD @ TRL SNAP-TRL-BYTES FDIO:WALL
    SFD @ extra SNAP-EXTRA-SIZE FDIO:WALL
@@ -455,9 +549,11 @@ public
       then
    else 2drop then
    ADDRESS-CELLS:PERSIST
-   HDR
+   GEOMETRY
    CANON-REGION
    CANON-DATA
+   ENCODE-HEAP
+   FRAME
    WRITE-IMAGE
    OUT-PATH CODESIGN:ENSURE
    s" " 0 die ;

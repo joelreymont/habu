@@ -429,6 +429,10 @@ variable RUN-AT      variable RUN-PREV
 \ (RUN-AT is its map) - and RUN-BYTES stays what the image spends on the bitmap.
 variable RUN-GROUPS  variable RUN-STORED  variable RUN-PMAP
 variable RUN-BM0     variable STORED-AT
+\ The offset the values must end before, and the DATA offset of the span's first
+\ cell: the engine payload's are its text end and 0, and a snapshot heap's are
+\ its trailer and DATA-START (HEAP-RUNS! below).
+variable RUN-END     variable RUN-BASE
 variable RBYTES0     variable RBYTES-LEN
 variable CODE-B0
 variable CSITE0      variable CSITE-N
@@ -460,7 +464,7 @@ $3FFFFFFF constant SITE-TARGET-MASK
 AOT-NAMES-CAP constant NAMES-CAP
 \ The window's cells have no row width to mirror: the payload is a presence
 \ bitmap, one bit a cell, and one unsigned LEB128 per present cell. This decode
-\ mirrors src/habu/aot-decl.f AOT-WINDOW:CELL-V@ for the same reason the widths
+\ mirrors src/habu/cell-grid.f CELL-V@ for the same reason the widths
 \ above are mirrored, and it is what counts the present cells and sums their
 \ value bytes - the payload states neither.
 8 constant CELL-BYTES                             \ the DATA cell grid the bitmap covers
@@ -549,7 +553,7 @@ GROUP-BYTES CELL-BITS * constant GROUP-CELLS      \ cells such a group covers
             i CELL-BITS mod rshift  1 and 0<> if
                base i + 1+ CELL-BYTES * {: end:n :}
                end DATA-SPAN @ > if E-ES-WALK throw then
-               RBYTES0 @ ACC @ +  ETEXT-END RBYTES0 @ ACC @ + -  RUN-V@ {: v:n w:n :}
+               RBYTES0 @ ACC @ +  RUN-END @ RBYTES0 @ ACC @ + -  RUN-V@ {: v:n w:n :}
                ACC @ w + ACC !
                end RUN-PREV !
                RUN-N @ 1+ RUN-N !
@@ -757,6 +761,7 @@ variable PACK-CUR variable PACK-END variable PACK-PREV
    RUN-BYTES @ TAKE-RUN RUN0 !
    RUN0 @ RUN-PMAP @ + RUN-BM0 !
    CUR @ RBYTES0 !                                \ the values begin where the bitmap ended
+   ETEXT-END RUN-END !  0 RUN-BASE !
    RUN-BYTES-MEASURE RBYTES-LEN !
    RBYTES-LEN @ TAKE-RUN drop
    TAKE-CELL CODE-B0 !
@@ -989,7 +994,11 @@ variable REG-OFF     variable DAT-OFF
 variable REG-STORED  variable MAP-LEN
 variable DAT-CALLMAP  variable DAT-ADDRMAP  variable DAT-HEADER
 variable DAT-INLINE   variable DAT-HEAP  variable DAT-PAD
-variable TBASE                                    \ the writing run's text base
+\ The heap section's form (the trailer's SNAPSHOT-FORMAT:HEAP-FIELD) and, for
+\ the cell grid, its group count, stored group bytes, map, values and cells.
+variable DAT-FORM
+variable HEAP-G  variable HEAP-S  variable HEAP-MAP  variable HEAP-VALS
+variable HEAP-VLEN  variable HEAP-CELLS
 
 : TRAILER-OFF ( -- n )
    TEXT-SIZE SNAP-TRL-BYTES - ;
@@ -1006,11 +1015,50 @@ variable TBASE                                    \ the writing run's text base
    ok if exit then
    a u RC die ;
 
+\ The run walk's geometry, from the heap grid the trailer read. The engine
+\ payload's walk (FIND-AOT) fills the same variables after this, and the heap's
+\ owner report sets them back (REPORT-HEAP).
+: HEAP-RUNS! ( -- )
+   HEAP-G @ RUN-GROUPS !  HEAP-S @ RUN-STORED !
+   HEAP-G @ PMAP-BYTES RUN-PMAP !
+   RUN-PMAP @ RUN-STORED @ + RUN-BYTES !
+   HEAP-MAP @ RUN0 !  HEAP-MAP @ RUN-PMAP @ + RUN-BM0 !
+   HEAP-VALS @ RBYTES0 !  HEAP-VLEN @ RBYTES-LEN !  HEAP-CELLS @ RUN-N !
+   \ The grid covers whole cells, so a heap whose extent ends inside a cell has
+   \ that cell's span.
+   DAT-VIRT @ DATA-START - CELL-BYTES 1- + CELL-BYTES / CELL-BYTES * DATA-SPAN !
+   TRL-OFF @ RUN-END !  DATA-START RUN-BASE ! ;
+
+: HEAP-MEASURE ( -- ) RUN-BYTES-MEASURE HEAP-VLEN ! ;
+
+\ The grid's frame is its group count and its stored group bytes, then the map,
+\ the present groups and one value per present cell (src/habu/cell-grid.f). The
+\ walk is the one the engine payload's bitmap takes, so a stream it cannot
+\ decode is refused as the loader refuses it.
+: READ-HEAP-GRID ( -- )
+   SNAPSHOT-FORMAT:GRID-FRAME TRL-OFF @ DAT-HEAP @ - <=
+      s" image-size: snapshot heap grid frame runs past DATA" ?TRL
+   DAT-HEAP @ U64@ HEAP-G !  DAT-HEAP @ 8 + U64@ HEAP-S !
+   GROUP-CELLS CELL-BYTES * {: span:n :}
+   HEAP-G @ 0 >= HEAP-G @ DAT-VIRT @ DATA-START - span 1- + span / <= and
+      s" image-size: snapshot heap grid has more groups than its extent" ?TRL
+   HEAP-S @ 0 >= HEAP-S @ TRL-OFF @ <= and
+      s" image-size: snapshot heap grid stores more group bytes than DATA holds" ?TRL
+   DAT-HEAP @ SNAPSHOT-FORMAT:GRID-FRAME + HEAP-MAP !
+   HEAP-MAP @ HEAP-G @ PMAP-BYTES + HEAP-S @ + HEAP-VALS !
+   HEAP-VALS @ TRL-OFF @ <=
+      s" image-size: snapshot heap grid runs past DATA" ?TRL
+   HEAP-RUNS!
+   [: HEAP-MEASURE ;] catch 0<> if
+      s" image-size: snapshot heap grid does not decode" RC die
+   then
+   RUN-N @ HEAP-CELLS !
+   HEAP-VALS @ HEAP-VLEN @ + DAT-PAD ! ;
+
 : READ-TRAILER ( -- )
    TRAILER-OFF TRL-OFF !
    TRL-OFF @ SNAP-TRL-VERSION + U64@ SNAPSHOT-FORMAT:VERSION =
       s" image-size: snapshot format version is not the one this engine writes" ?TRL
-   TRL-OFF @ SNAP-TRL-TBASE + U64@ TBASE !
    TRL-OFF @ SNAP-TRL-NDICT + U64@ NDICT-N !
    TRL-OFF @ SNAP-TRL-REGLEN + U64@ REG-LEN !
    TRL-OFF @ SNAP-TRL-DATALEN + U64@ DAT-LEN !
@@ -1068,7 +1116,14 @@ variable TBASE                                    \ the writing run's text base
       0 DAT-INLINE !
    then
    DAT-HEADER @ ADDRESS-CELLS:HEADER-BYTES + DAT-INLINE @ + DAT-HEAP !
-   DAT-HEAP @ DAT-VIRT @ DATA-START - + DAT-PAD !
+   TRL-OFF @ SNAPSHOT-FORMAT:HEAP-FIELD + U64@ DAT-FORM !
+   DAT-FORM @ SNAPSHOT-FORMAT:HEAP-GRID = if
+      READ-HEAP-GRID
+   else
+      DAT-FORM @ SNAPSHOT-FORMAT:HEAP-RAW =
+         s" image-size: snapshot heap form is neither raw nor grid" ?TRL
+      DAT-HEAP @ DAT-VIRT @ DATA-START - + DAT-PAD !
+   then
    DAT-PAD @ TRL-OFF @ <= TRL-OFF @ DAT-PAD @ - PROT-PAGE-MAX < and
       s" image-size: snapshot DATA framing or padding is invalid" ?TRL
    DAT-PAD @ TRL-OFF @ DAT-PAD @ - ZEROS TRL-OFF @ DAT-PAD @ - =
@@ -1155,8 +1210,8 @@ $FFFFFFFF constant PKG-ROW
       then
       -1 exit
    then
-   p TBASE @ >= p TBASE @ REG-OFF @ CODE-OFF - + < and if
-      p TBASE @ - CODE-OFF + exit then
+   \ A text pointer in the payload is canonical: the writer rebased it to 0.
+   p 0 >= p REG-OFF @ CODE-OFF - < and if p CODE-OFF + exit then
    -1 ;
 
 : LREC ( n -- n ) DREC * REG-OFF @ + ;
@@ -1970,17 +2025,17 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
    0 UNOWNED-BYTES !  0 UNOWNED-RUNS !  0 UNOWNED-ROWB !
    0 ACC !  0 STORED-AT !
    RUN-PMAP @ 0 ?do
-      i CELL-BITS * GROUP-CELLS * CELL-BYTES * 1 CHARGE-BM-BYTE
+      i CELL-BITS * GROUP-CELLS * CELL-BYTES * RUN-BASE @ + 1 CHARGE-BM-BYTE
    loop
    RUN-GROUPS @ 0 ?do
       RUN0 @ i GROUP-SET? if
          i GROUP-CELLS * {: base:n :}
          GROUP-CELLS 0 ?do
-            i CELL-BITS mod 0= if base i + CELL-BYTES * 1 CHARGE-BM-BYTE then
+            i CELL-BITS mod 0= if base i + CELL-BYTES * RUN-BASE @ + 1 CHARGE-BM-BYTE then
             RUN-BM0 @ STORED-AT @ + i CELL-BITS / + U8@
             i CELL-BITS mod rshift  1 and 0<> if
-               RBYTES0 @ ACC @ +  ETEXT-END RBYTES0 @ ACC @ + -  RUN-V@ {: v:n w:n :}
-               base i + CELL-BYTES * w CHARGE-CELL
+               RBYTES0 @ ACC @ +  RUN-END @ RBYTES0 @ ACC @ + -  RUN-V@ {: v:n w:n :}
+               base i + CELL-BYTES * RUN-BASE @ + w CHARGE-CELL
                ACC @ w + ACC !
             then
          loop
@@ -2023,8 +2078,10 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
       s" image-size: DATA bitmap bytes do not add up" RC die
    then ;
 
-: REPORT-DATA ( -- )
-   COLLECT-OWNERS  CHARGE-RUNS  CHECK-CHARGES  RANK-OWNERS
+: DATA-ATTRIBUTE ( -- )
+   COLLECT-OWNERS  CHARGE-RUNS  CHECK-CHARGES  RANK-OWNERS ;
+
+: PRINT-DATA ( -- )
    cr s" captured DATA heap: " type DATA-SPAN @ FMT:.U
    s"  bytes of span, " type RUN-N @ FMT:.U s"  present cells in " type
    RUN-BYTES @ FMT:.U s"  bitmap bytes, " type
@@ -2043,6 +2100,8 @@ variable UNOWNED-BYTES  variable UNOWNED-RUNS  variable UNOWNED-ROWB
    DCOST-N @ TOP-ROWS > if
       s"   (" type DCOST-N @ TOP-ROWS - FMT:.U s"  more owners)" type cr
    then ;
+
+: REPORT-DATA ( -- ) DATA-ATTRIBUTE PRINT-DATA ;
 
 
 \ ---- a --repl application: the code band, by package ---------------------------
@@ -2287,7 +2346,19 @@ variable HEAD-W     variable HEAD-Z
 : SNAP-ATTRIBUTE ( -- )
    BUILD-WID-MAP
    COLLECT-BAND  CHARGE-BAND  CHECK-BAND  RANK-PKGS
+   DAT-FORM @ SNAPSHOT-FORMAT:HEAP-GRID = if exit then
    COLLECT-OWNERS  CHARGE-WINDOW  CHECK-WINDOW  RANK-OWNERS ;
+
+\ A heap stored as the cell grid is charged as the engine's captured window is:
+\ bitmap bytes and values to the owner their cells land on. The walk borrows
+\ the run variables, so it runs before the engine payload's walk fills them
+\ for the table's aot rows, and the report after the table points them back.
+: HEAP-ATTRIBUTE ( -- )
+   DAT-FORM @ SNAPSHOT-FORMAT:HEAP-GRID = if HEAP-RUNS! DATA-ATTRIBUTE then ;
+
+: REPORT-HEAP ( -- )
+   DAT-FORM @ SNAPSHOT-FORMAT:HEAP-GRID = if HEAP-RUNS! PRINT-DATA exit then
+   REPORT-WINDOW ;
 
 : REGION-ROWS ( -- )
    NDICT-N @ DREC * {: recs:n :}
@@ -2306,7 +2377,14 @@ variable HEAD-W     variable HEAD-Z
    s" data/address-header" DAT-HEADER @ ADDRESS-CELLS:HEADER-BYTES SPAN B-DATA ROW
    s" data/address-rows" DAT-HEADER @ ADDRESS-CELLS:HEADER-BYTES +
       DAT-INLINE @ SPAN B-DATA ROW
-   s" data/heap" DAT-HEAP @ DAT-VIRT @ DATA-START - SPAN B-DATA ROW
+   DAT-FORM @ SNAPSHOT-FORMAT:HEAP-GRID = if
+      s" data/heap-frame" DAT-HEAP @ SNAPSHOT-FORMAT:GRID-FRAME SPAN B-DATA ROW
+      s" data/heap-map" HEAP-MAP @ HEAP-G @ PMAP-BYTES SPAN B-DATA ROW
+      s" data/heap-groups" HEAP-MAP @ HEAP-G @ PMAP-BYTES + HEAP-S @ SPAN B-DATA ROW
+      s" data/heap-values" HEAP-VALS @ HEAP-VLEN @ SPAN B-DATA ROW
+   else
+      s" data/heap" DAT-HEAP @ DAT-VIRT @ DATA-START - SPAN B-DATA ROW
+   then
    s" data/pad" DAT-PAD @ TRL-OFF @ DAT-PAD @ - SPAN B-PAD ROW ;
 
 : SNAP-BUDGET ( -- )
@@ -2335,7 +2413,7 @@ variable HEAD-W     variable HEAD-Z
    JIT-SNAP:END JIT-SNAP:STK-OFF - +
    TIER-PROV:END TIER-PROV:OPEN-CELL - + FMT:.U s"  bytes" type cr
    REPORT-BAND
-   REPORT-WINDOW ;
+   REPORT-HEAP ;
 
 \ ---- a stripped application ---------------------------------------------------
 \ src/habu/aot-lib.f LINK emits, in this order: the startup entry, the closure
@@ -2666,6 +2744,7 @@ $D37EF54A constant XTC-LSL2
       snapshot OF
          ETEXT-END PRIM-DICT-FIND
          PRIM-NAMES-MEASURE
+         HEAP-ATTRIBUTE
          DICT-END FIND-AOT
          SNAP-ATTRIBUTE
       ENDOF

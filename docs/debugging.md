@@ -241,7 +241,7 @@ not need the capture buffers or assembler state in `aot-decl.f`.
 
 ## Is this heap cell a persisted pointer or a live one — the ASLR intersect
 
-A snapshot image carries the whole DP heap verbatim, so a cell holding an
+A snapshot image carries every cell of the DP heap, so a cell holding an
 address the *build* process owned — a `malloc`ed arena base, an execution token
 in the build's code region — is wrong the moment the image boots somewhere else.
 The restored process is full of perfectly good addresses in the same numeric
