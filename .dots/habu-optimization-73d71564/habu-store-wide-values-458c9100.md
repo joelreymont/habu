@@ -7,7 +7,6 @@ created-at: "2026-09-30T10:58:43.426274+02:00"
 blocks:
   - habu-report-certified-returns-2ddb20af
   - habu-expand-max-as-fec184ee
-  - habu-count-the-arm64-e13ae0a3
 ---
 
 Campaign: ARM64 code-size fixes, design revision 3 (§3.9). Line references are at master 8c9b75af; re-verify before editing.

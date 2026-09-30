@@ -1,9 +1,11 @@
 ---
 title: Count the ARM64 code-generation patterns
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-30T10:58:28.225772+02:00\""
+created-at: "2026-09-30T10:58:28.225772+02:00"
+closed-at: "2026-09-30T12:53:00.858751+02:00"
+close-reason: "tools/codegen-census.f counts the eleven design-r3 §2 patterns from a native-build product's aot/code-spans (tools/codegen-census-test.f, gate row codegen-census-fixtures). Baseline aa478d2b (engine 95ddf031, blob 1,377,104) is kept under ~/.cache/tmp/heron-arm64/baseline/. At master 67aa8046 (blob 1,391,640): call-crossing spill 12,620 sites / 66,760 B (a floor), DATA carriers 14,826 / 177,912 B, no-return fallback 392 / 13,700 B, wide-store runs 21 (below S11's 150-run break-even)."
 ---
 
 Campaign: ARM64 code-size fixes, design revision 3 (§2). Line references are at master 8c9b75af; re-verify before editing.

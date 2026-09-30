@@ -714,6 +714,33 @@ Measured against this engine, so the numbers are bounds, not hopes:
   (`src/habu/aot-closure.f`) run against it at build time, and what that walk
   dropped is not in the file to find.
 
+## The shapes the code-size fixes target
+
+`tools/codegen-census.f` counts, in one pass over a `tools/native-build.f`
+product's code blob, the ARM64 shapes the code-size fixes target: guarded
+divisions, terminal-only frames, mask chains, constant shifts, scaled indexes,
+remainders, signed maxima, call-crossing spills, DATA carriers (with distinct
+targets per record and per 1 MiB island), no-return fallbacks and wide-store
+runs. `bin/hb --load tools/codegen-census.f -- <image> <source-commit> <report>`
+writes the image's SHA-256 and the commit, one `P <pattern> <sites> <bytes>
+<estimated-saving>` row per pattern and the forty records with the most sites
+for each; the file's header defines every shape. A code-generation slice quotes
+the change in its pattern's row next to this tool's file total. The
+constant-shift and scaled-index savings are upper bounds: a constant the region
+memo shares with another use stays. The call-crossing-spill row is a floor on
+sites and an upper bound per site. Slot state follows a basic block and the
+fall-through out of a conditional branch into a block no branch, `adr` or code
+literal names, and the census refuses a blob holding a `br`, so a reload past a
+branch target such as a loop head is not counted; a self-call is
+not a crossing, since it keeps the whole pool destroyed; and a counted pair
+leaves only when the callee's clobber summary frees a register. A wide-store
+run's bytes are its measured span, from the first instruction after the call or
+block start before its first `bl !` through its last, and its saving is that
+span less the `w + 2` instructions (`w` publishes, a `movz`, a `bl`) of one
+helper call. `tools/codegen-census-test.f` runs it on `bin/hb`, checks that
+every row is present and well formed with a saving no larger than its bytes,
+and refuses a non-image.
+
 ## Where an application image's bytes go
 
 Snapshot format 11 stores only live dictionary rows plus the code band, while
