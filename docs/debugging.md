@@ -135,10 +135,11 @@ clobbers the executing line (SIGILL). Write a runtime stub at `cp@` from inside
 the exact ARM64 encodings and search the on-disk `bin/hb` for the contiguous
 stream — ASLR slides the xt, file bytes do not move.
 
-An uncaught throw in a `--load` or spawned child exits with the throw code's
-low eight bits and prints nothing: exit 56 is `E-PROC-TRUNCATED` (-2504), 104
-is `E-STR-BOUNDS` (-2200). Add multiples of 256 until a known `E-*` appears
-before hunting for the site; a one-byte diagnostic and a clean exit means a raw
+An uncaught throw in a `--load` or spawned child exits by its code. A code from
+1 to 255 is the exit status and prints nothing: `42 throw` exits 42. Any other
+code prints `hb: uncaught throw code N` on stderr and exits 67: `-2504 throw`
+(`E-PROC-TRUNCATED`) exits 67 with that line, so read the `E-*` from the
+message, not from the status. A one-byte diagnostic and a clean exit means a raw
 engine capacity path (`exit_group`), not a throw.
 
 ## gdb/lldb — native stepping boundary

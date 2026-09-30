@@ -203,10 +203,8 @@ gives that slot no directory.
 - `SUBJECT:RUN` forks the live test process: call it with no package open — a
   forked child's `package X` is otherwise a nested-package reject, exit 75 —
   and never gate a CLI file that parses argv.
-- An uncaught throw in a `--load` or spawned child exits with the throw
-  code's low eight bits and prints nothing: exit 56 is `E-PROC-TRUNCATED`
-  (-2504), 104 is `E-STR-BOUNDS` (-2200). Add multiples of 256 until a known
-  `E-*` appears before guessing at the site.
+- An uncaught throw in a child names its code on stderr and exits 67, unless
+  the code is 1 to 255; [debugging.md](debugging.md) has the exit rule.
 - A row that needs an external server starts a private one and stops it
   whatever its cases do. The `pg` row (`test/db/pg-cluster.f`) runs `initdb`
   and `pg_ctl` from `PATH`, a gate requirement on every host
