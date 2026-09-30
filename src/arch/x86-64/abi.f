@@ -26,6 +26,9 @@
 \ registers and its answer back out, so nothing lives across a call.
 
 require lib/prelude.f
+require src/compiler/target.f
+require src/compiler/numeric-policy.f
+require src/compiler/binding.f
 require src/compiler/native-effect.f
 require src/compiler/native/machine.f
 require src/compiler/native/x64ir.f
@@ -48,6 +51,19 @@ private
    spills X64IR:SLOT-WIDTH *  X64M:MACHINE NMACH:FRAME-ROUND ;
 
 public
+
+\ The linux x86-64 binding a routine of this convention compiles under: the SysV
+\ ABI, little-endian, 64-bit pointers. Overflow wraps, as add, sub and imul do,
+\ and the divide screens MIN-N -1 to wrap too (src/compiler/native/emit-x64.f
+\ PUT-IDIV); a trapping unit is refused by the selector. The twin of
+\ src/compiler/native/abi.f NABI:BINDING, which leaves this one to this file.
+: BINDING ( -- CBIND:binding )
+   CTARGET-ARCH:X86-64 CTARGET-ABI:SYSV-AMD64 CTARGET-ENDIAN:LITTLE
+   CTARGET-PTR--WIDTH:BITS64
+   CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH CTARGET:CONTRACT
+   CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
+   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
+   CBIND:BIND ;
 
 \ Every general register a routine of this convention may hold state in, which is
 \ a fact about the machine and the engine and never a number a caller picks.

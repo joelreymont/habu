@@ -1,9 +1,11 @@
 ---
 title: Emit x86 pure-op bodies from HIR
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.551789+03:00"
+closed-at: "2026-09-30T17:40:00.000000+03:00"
+close-reason: ThinkPad x86 proof plain and Mac-shim green; hb-x64-kernel-pure 0, -negative 21, three -armed 83; spark suite ok on 925c
 blocks:
   - habu-share-the-parity-045ddf20
 ---

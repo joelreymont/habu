@@ -66,6 +66,11 @@ E-X64ASM-OPERAND constant E-OPERAND
 \ (docs/x86-64.md), and the relocation writer patches at this offset.
 2 constant MOV-RI64-IMM-OFF
 
+\ `call rel32` is E8 cd and `jmp rel32` E9 cd, with no prefix, so the
+\ displacement of either always begins one byte into the instruction: where a
+\ writer that links a call or tail branch it did not encode patches it.
+1 constant CALL-REL32-OFF
+
 private
 
 \ ---- operand screening -------------------------------------------------------

@@ -274,7 +274,6 @@ private
 \ `call` and `jmp` and counts from the end of the instruction (docs/x86-64.md
 \ "Live-region sites"). A CODE literal is the placement plus a function's
 \ offset, so it moves by what the routine moved.
-1 constant REL32-AT
 4 constant REL32-N
 8 constant IMM64-N
 
@@ -295,7 +294,7 @@ public
 \ The rel32 of the `call` or `jmp` at address `site`, for the absolute `target`
 \ its row names.
 : LINK-CALL ( n n -- ) {: site:n target:n :}
-   site REL32-AT + {: field:n :}
+   site CALL-REL32-OFF + {: field:n :}
    target  field REL32-N +  -  {: rel:n :}
    rel X64IR:IMM-LIMIT negate <  rel X64IR:IMM-LIMIT >=  or
    if E-X64EMIT-REACH throw then

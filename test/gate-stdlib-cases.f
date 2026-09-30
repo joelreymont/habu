@@ -1415,6 +1415,10 @@ SUITE x86-64-kernel-ffi
    test/x86-64-kernel-ffi.f
 ;SUITE
 
+SUITE x86-64-kernel-pure
+   test/x86-64-kernel-pure.f
+;SUITE
+
 \ The signal stub src/habu/boot-x64.f START, publishes, installed and raised in
 \ the booted harness; its header names the statuses the peer must see.
 SUITE x86-64-boot-signal

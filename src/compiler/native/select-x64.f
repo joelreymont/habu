@@ -1227,11 +1227,16 @@ create NAMEBUF NAME-CAP allot
 \ does. The entry is asked for here, where the dictionary is readable, and
 \ carried to the emitter as the operation's own attribute; the name E-X64SEL-TRAP
 \ names is the routine a compiled refusal branches to missing from the target
-\ dictionary, which is the same refusal the ARM64 selector makes.
+\ dictionary, which is the same refusal the ARM64 selector makes. Public, so a
+\ writer that links a compiled routine itself knows the call the divide makes
+\ (src/habu/kernel-x64.f PRIM-HIR).
+public
 : THROW-ENTRY ( -- n )
    s" throw" NDICT:CALL-TARGET {: e:n :}
    e 0= if E-X64SEL-TRAP throw then
    e ;
+
+private
 
 \ `idiv r64` takes its dividend in rax and writes rax and rdx, so the dividend is
 \ COPIED into a fresh value the allocator can place in rax - the source value

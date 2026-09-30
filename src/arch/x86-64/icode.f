@@ -206,6 +206,13 @@ public
    r 0 >IMM64 SINK ENC-MOV-RI64
    at k SITE-ABS64 SITE+ ;
 
+\ The rel32 field at byte n, of an instruction this stream took whole rather
+\ than encoded, as a site of the label: src/habu/kernel-x64.f PRIM-HIR appends
+\ a compiled routine and links its calls this way.
+: REL32-SITE ( n label -- )
+   ?KNOWN {: at:n k:n :}
+   at k SITE-REL32 SITE+ ;
+
 \ Patch every site of the stream for code whose byte 0 loads at base, after
 \ checking all of them, then forget the stream's labels and sites.
 : ASM-LINK ( n -- ) {: base:n :}

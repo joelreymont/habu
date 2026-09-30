@@ -14,7 +14,8 @@
 \ r8-r11 are scratch. A body is entered by `call` and leaves by the `ret` PRIM
 \ appends, so the return address stays on the machine stack and a body calls a
 \ helper without a frame: one definer serves where habu1.f needs FPRIM and
-\ FPRIM-L.
+\ FPRIM-L. A compiled body (PRIM-HIR) keeps the same contract and ends in the
+\ x86-64 chain's own `ret`.
 \
 \ The x86-64 seam (src/os/linux-x86-64/sys.f) loads here globally, with its
 \ process emitters (proc-watch.f, proc-control.f), so this file loads before
@@ -42,6 +43,7 @@ require src/os/linux-x86-64/sys.f
 require src/os/linux-x86-64/proc-watch.f
 require src/os/linux-x86-64/proc-control.f
 require src/os/linux-x86-64/target-layout.f
+require src/habu/kernel-hir-x64.f
 
 package X64KERNEL
 using X64ASM
@@ -103,12 +105,15 @@ variable ROW-U
    is BODY  ROW-U !  ROW-A !
    ROW$ ENGINE-PRIMS:SPEC-CHECK ;
 
-\ The record spans [first, last): the body and the ret after it.
-: EMIT-ROW ( -- n )
+\ The record spans [first, last): the body, and the ret after it when the
+\ flag says so. A compiled body (PRIM-HIR) ends in its own.
+: RECORD ( bool -- n ) {: ret:bool :}
    LBL LBL {: first:label last:label :}
    ROW$ first last ENGINE-PRIMS:ADD {: row:n :}
-   first LBL,  BODY  ASM-SINK ENC-RET  last LBL,
+   first LBL,  BODY  ret if ASM-SINK ENC-RET then  last LBL,
    row ;
+
+: EMIT-ROW ( -- n ) true RECORD ;
 
 : REFUSE-HEAD$ ( -- ptr u8 n ) s" hb: " ;
 : REFUSE-TAIL$ ( -- ptr u8 n ) s"  is not in the x86-64 kernel" ;
@@ -2783,6 +2788,203 @@ public
    s" body-append" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" trust-sig!" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
+\ ---- pure rows ---------------------------------------------------------------
+\ The arithmetic, comparison, shuffle and memory rows. Every row but four is
+\ the compiler's own lowering: PRIM-HIR stages the row as one HIR function
+\ through X64KHIR (src/habu/kernel-hir-x64.f), the operations the word model
+\ gives the word (src/compiler/native/hir-word.f DEF-ARITH to DEF-BYTE-VIEW,
+\ src/compiler/native/elaborate.f EXPAND-CELL-INDEX to EXPAND-MAXIMUM), and
+\ lays the routine the x86-64 chain emits into the record whole, its own ret
+\ included. A word the model has no row for is staged here from operations it
+\ has. The four hand-written rows are the guarded stores, the twins of
+\ habu1.f BSTORE, BCSTORE and BPLUSSTORE, which compiled stores call rather
+\ than inline (elaborate.f DO-STORE), and ?dup, whose depth depends on its
+\ value.
+\
+\ A compiled body calls out only where a divide refuses a zero divisor: to the
+\ entry X64SEL:THROW-ENTRY names, which is the kernel's `throw` row here. Its
+\ field becomes a site of that row's label; any other call or an address site
+\ ends the build with REFUSE-RC.
+
+private
+
+variable HIR-IN
+variable HIR-OUT
+TYPED-VARIABLE HIR-STAGE [ -- ]
+
+\ The emission laid at the stream's end, its throws linked.
+: HIR-USE ( -- )
+   X64EMIT:ADDR-SITES 0<> if
+      s" x64kernel: " type ROW$ type s"  compiles to an address site" type cr
+      s" x64kernel: a compiled row takes an address" REFUSE-RC die
+   then
+   ASM-LEN {: at:n :}
+   X64EMIT:BYTES X64EMIT:SIZE TEXT,
+   X64EMIT:CALL-SITES 0 ?do
+      i X64EMIT:CALL-KIND@ NEMIT:CALL <>
+      i X64EMIT:CALL-TARGET@ X64SEL:THROW-ENTRY <>  or if
+         s" x64kernel: " type ROW$ type s"  compiles to a call other than throw" type cr
+         s" x64kernel: a compiled row calls out" REFUSE-RC die
+      then
+      at i X64EMIT:CALL-SITE@ + CALL-REL32-OFF +  s" throw" ENTRY-LABEL  REL32-SITE
+   loop ;
+
+: HIR-BODY ( -- )
+   ROW$ HIR-IN @ HIR-OUT @ HIR-STAGE @ [: HIR-USE ;] X64KHIR:COMPILE ;
+
+public
+
+\ Register the body the x86-64 chain compiles from the function the stager
+\ builds, of n cells in and n out, under the row's name: PRIM's twin for a
+\ compiled body, skipped when the tree shaker drops the row.
+: PRIM-HIR ( ptr u8 n n n [ -- ] -- )
+   HIR-STAGE !  HIR-OUT !  HIR-IN !
+   [: HIR-BODY ;] ARGS
+   ROW$ KEEP? 0= if exit then
+   false RECORD drop ;
+
+private
+
+\ ---- the stagers ----
+: PASS ( n -- ) X64KHIR:ARG X64KHIR:RESULT ;
+
+\ ( x -- x o n ): the argument against a literal.
+: WITH ( n HIR:opcode -- ) {: k:n o:HIR:opcode :}
+   0 X64KHIR:ARG  k X64KHIR:LIT  o X64KHIR:OP2  X64KHIR:RESULT ;
+
+: BIN ( HIR:opcode -- ) {: o:HIR:opcode :}
+   0 X64KHIR:ARG  1 X64KHIR:ARG  o X64KHIR:OP2  X64KHIR:RESULT ;
+
+\ ( x -- 0 x sub ).
+: NEGATE-HIR ( -- )
+   0 X64KHIR:LIT  0 X64KHIR:ARG  HIR-OPCODE:SUB X64KHIR:OP2  X64KHIR:RESULT ;
+
+\ ( x -- (x xor m) - m ), m the mask x 0 lt answers.
+: ABS-HIR ( -- )
+   0 X64KHIR:ARG {: x:IR-ID:ir-value-id :}
+   x  0 X64KHIR:LIT  HIR-OPCODE:LT X64KHIR:OP2 {: m:IR-ID:ir-value-id :}
+   x m HIR-OPCODE:XOR X64KHIR:OP2  m HIR-OPCODE:SUB X64KHIR:OP2  X64KHIR:RESULT ;
+
+\ elaborate.f EXPAND-MAXIMUM, `b xor ((a xor b) and (a rel b))`: gt answers the
+\ larger, lt the smaller.
+: PICK-HIR ( HIR:opcode -- ) {: rel:HIR:opcode :}
+   0 X64KHIR:ARG  1 X64KHIR:ARG {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
+   a b HIR-OPCODE:XOR X64KHIR:OP2
+   a b rel X64KHIR:OP2
+   HIR-OPCODE:AND X64KHIR:OP2
+   b HIR-OPCODE:XOR X64KHIR:OP2
+   X64KHIR:RESULT ;
+
+\ elaborate.f EXPAND-MODULO, a - (a / b) * b, over one division whose quotient
+\ /mod also answers.
+: QUOTIENT ( -- IR-ID:ir-value-id IR-ID:ir-value-id )
+   0 X64KHIR:ARG  1 X64KHIR:ARG {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
+   a b HIR-OPCODE:DIV X64KHIR:OP2 {: q:IR-ID:ir-value-id :}
+   a  q b HIR-OPCODE:MUL X64KHIR:OP2  HIR-OPCODE:SUB X64KHIR:OP2
+   q ;
+
+: MOD-HIR ( -- ) QUOTIENT drop X64KHIR:RESULT ;
+: DIVMOD-HIR ( -- ) QUOTIENT {: q:IR-ID:ir-value-id :} X64KHIR:RESULT q X64KHIR:RESULT ;
+
+\ elaborate.f EXPAND-CELL-INDEX: ( base n -- base + n cells ).
+: PTR-FIELD-HIR ( -- )
+   0 X64KHIR:ARG
+   1 X64KHIR:ARG  HIR:CELL-BYTES X64KHIR:LIT  HIR-OPCODE:MUL X64KHIR:OP2
+   HIR-OPCODE:ADD X64KHIR:OP2  X64KHIR:RESULT ;
+
+: FETCH-HIR ( HIR:opcode -- ) {: o:HIR:opcode :}
+   0 X64KHIR:ARG  o X64KHIR:FETCH  X64KHIR:RESULT ;
+
+\ ( addr -- addr+1 byte ).
+: COUNT-HIR ( -- )
+   0 X64KHIR:ARG {: x:IR-ID:ir-value-id :}
+   x  1 X64KHIR:LIT  HIR-OPCODE:ADD X64KHIR:OP2  X64KHIR:RESULT
+   x HIR-OPCODE:BLOAD X64KHIR:FETCH  X64KHIR:RESULT ;
+
+\ ---- the hand-written rows ----
+: STORE-BODY ( -- )
+   0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
+   RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
+
+: CSTORE-BODY ( -- )
+   0 1 SIZED-GUARD,  RCX POP,  RAX POP,
+   RAX R64>N >R8 RCX MEM-AT ASM-SINK ENC-MOV8-MR ;
+
+: ADDSTORE-BODY ( -- )
+   0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
+   RAX RCX MEM-AT ASM-SINK ENC-ADD-MR ;
+
+: QDUP-BODY ( -- )
+   LBL {: done:label :}
+   RAX 0 PEEK,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RAX PUSH,
+   done LBL, ;
+
+: ARITH-ROWS, ( -- )
+   s" +" 2 1 [: HIR-OPCODE:ADD BIN ;] PRIM-HIR
+   s" -" 2 1 [: HIR-OPCODE:SUB BIN ;] PRIM-HIR
+   s" *" 2 1 [: HIR-OPCODE:MUL BIN ;] PRIM-HIR
+   s" /" 2 1 [: HIR-OPCODE:DIV BIN ;] PRIM-HIR
+   s" mod" 2 1 [: MOD-HIR ;] PRIM-HIR
+   s" /mod" 2 2 [: DIVMOD-HIR ;] PRIM-HIR
+   s" abs" 1 1 [: ABS-HIR ;] PRIM-HIR
+   s" min" 2 1 [: HIR-OPCODE:LT PICK-HIR ;] PRIM-HIR
+   s" max" 2 1 [: HIR-OPCODE:GT PICK-HIR ;] PRIM-HIR ;
+
+: COMPARE-ROWS, ( -- )
+   s" =" 2 1 [: HIR-OPCODE:EQUAL BIN ;] PRIM-HIR
+   s" <>" 2 1 [: HIR-OPCODE:NE BIN ;] PRIM-HIR
+   s" <" 2 1 [: HIR-OPCODE:LT BIN ;] PRIM-HIR
+   s" >" 2 1 [: HIR-OPCODE:GT BIN ;] PRIM-HIR
+   s" <=" 2 1 [: HIR-OPCODE:LE BIN ;] PRIM-HIR
+   s" >=" 2 1 [: HIR-OPCODE:GE BIN ;] PRIM-HIR
+   s" 0=" 1 1 [: 0 HIR-OPCODE:EQUAL WITH ;] PRIM-HIR
+   s" 0<" 1 1 [: 0 HIR-OPCODE:LT WITH ;] PRIM-HIR
+   s" 1+" 1 1 [: 1 HIR-OPCODE:ADD WITH ;] PRIM-HIR
+   s" 1-" 1 1 [: 1 HIR-OPCODE:SUB WITH ;] PRIM-HIR
+   s" and" 2 1 [: HIR-OPCODE:AND BIN ;] PRIM-HIR
+   s" or" 2 1 [: HIR-OPCODE:OR BIN ;] PRIM-HIR
+   s" xor" 2 1 [: HIR-OPCODE:XOR BIN ;] PRIM-HIR
+   s" invert" 1 1 [: 0 X64KHIR:ARG HIR-OPCODE:INVERT X64KHIR:OP1 X64KHIR:RESULT ;] PRIM-HIR
+   s" negate" 1 1 [: NEGATE-HIR ;] PRIM-HIR
+   s" lshift" 2 1 [: HIR-OPCODE:LSHIFT BIN ;] PRIM-HIR
+   s" rshift" 2 1 [: HIR-OPCODE:RSHIFT BIN ;] PRIM-HIR ;
+
+: STACK-ROWS, ( -- )
+   s" dup" 1 2 [: 0 PASS 0 PASS ;] PRIM-HIR
+   s" drop" 1 0 [: ;] PRIM-HIR
+   s" swap" 2 2 [: 1 PASS 0 PASS ;] PRIM-HIR
+   s" nip" 2 1 [: 1 PASS ;] PRIM-HIR
+   s" over" 2 3 [: 0 PASS 1 PASS 0 PASS ;] PRIM-HIR
+   s" tuck" 2 3 [: 1 PASS 0 PASS 1 PASS ;] PRIM-HIR
+   s" rot" 3 3 [: 1 PASS 2 PASS 0 PASS ;] PRIM-HIR
+   s" -rot" 3 3 [: 2 PASS 0 PASS 1 PASS ;] PRIM-HIR
+   s" 2dup" 2 4 [: 0 PASS 1 PASS 0 PASS 1 PASS ;] PRIM-HIR
+   s" 2drop" 2 0 [: ;] PRIM-HIR
+   s" 2swap" 4 4 [: 2 PASS 3 PASS 0 PASS 1 PASS ;] PRIM-HIR
+   s" 2over" 4 6 [: 0 PASS 1 PASS 2 PASS 3 PASS 0 PASS 1 PASS ;] PRIM-HIR
+   s" ?dup" [: QDUP-BODY ;] PRIM ;
+
+: MEMORY-ROWS, ( -- )
+   s" @" 1 1 [: HIR-OPCODE:LOAD FETCH-HIR ;] PRIM-HIR
+   s" !" [: STORE-BODY ;] PRIM
+   s" ptr-field" 2 1 [: PTR-FIELD-HIR ;] PRIM-HIR
+   s" byte-view" 1 1 [: 0 PASS ;] PRIM-HIR
+   s" cell-view" 1 1 [: 0 PASS ;] PRIM-HIR
+   s" +!" [: ADDSTORE-BODY ;] PRIM
+   s" c@" 1 1 [: HIR-OPCODE:BLOAD FETCH-HIR ;] PRIM-HIR
+   s" c!" [: CSTORE-BODY ;] PRIM
+   s" cells" 1 1 [: HIR:CELL-BYTES HIR-OPCODE:MUL WITH ;] PRIM-HIR
+   s" cell+" 1 1 [: HIR:CELL-BYTES HIR-OPCODE:ADD WITH ;] PRIM-HIR
+   s" chars" 1 1 [: 0 PASS ;] PRIM-HIR
+   s" char+" 1 1 [: 1 HIR-OPCODE:ADD WITH ;] PRIM-HIR
+   s" count" 1 2 [: COUNT-HIR ;] PRIM-HIR ;
+
+public
+
+: PURE, ( -- )
+   ARITH-ROWS,  COMPARE-ROWS,  STACK-ROWS,  MEMORY-ROWS, ;
 \ The whole kernel: the helpers, then every section.
 : KERNEL, ( -- )
    HELPERS,
@@ -2794,7 +2996,8 @@ public
    ENGINE-STATE,
    FFI,
    TASK,
-   DEFINITION, ;
+   DEFINITION,
+   PURE, ;
 
 ;using
 ;using

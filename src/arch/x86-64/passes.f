@@ -257,14 +257,18 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    NEMIT:SEAL ;
 
 \ ---- emission ----------------------------------------------------------------
+\ The spill binding is given back first: the fixpoint above leaves it standing
+\ when its last turn lowered. The module is then held to the routine contract.
+: ACCEPTED ( IR-BUILD:module -- )
+   {: m:IR-BUILD:module :}
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
+   m ROUTINE A64RAV:ACCEPT ;
+
 \ Declared for every definition and not only one that calls, so the slot this
-\ routine really claims is the one its own displacements are measured from. The
-\ spill binding is given back first: the fixpoint above leaves it standing when
-\ its last turn lowered.
+\ routine really claims is the one its own displacements are measured from.
 : EMIT ( IR-CTX:ctx IR-BUILD:module n -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module at:n :}
-   A64SPILL:BOUND? if A64SPILL:RELEASE then
-   m ROUTINE A64RAV:ACCEPT
+   m ACCEPTED
    at X64EMIT:PLACE-AT
    c m X64EMIT:EMIT
    at ROWS ;
@@ -299,6 +303,16 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    CTARGET-ARCH:X86-64 ;
 
 public
+
+\ The emit row with no slot: a SHADOW emission (emit-x64.f), whose call fields
+\ are zero and whose X64EMIT rows alone say where they go, for a writer that
+\ lays the routine into its own stream and links it there, as the x86-64
+\ kernel does its compiled rows (src/habu/kernel-hir-x64.f). No NEMIT row is
+\ stated: publication reads a placed emission. RETIRE gives this one back too.
+: EMIT-UNPLACED ( IR-CTX:ctx IR-BUILD:module -- )
+   {: c:IR-CTX:ctx m:IR-BUILD:module :}
+   m ACCEPTED
+   c m X64EMIT:EMIT ;
 
 \ The row this backend fills as it loads, stage by stage. src/arch/x86-64/
 \ backend.f has already claimed the registry row these are stored beside.

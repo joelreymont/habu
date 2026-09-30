@@ -291,3 +291,31 @@ public
 ;using
 ;using
 ;package
+
+\ The pure rows' check: their case sets outnumber the statuses the checks
+\ number from FIRST-CASE, so each check names itself in text instead.
+package X64HARNESS
+using X64ASM
+using X64CODE
+using X64RT
+
+public
+
+\ Compare rax with rcx. On a mismatch, the kernel's `die` row writes the text
+\ and LF on fd 2 and exits FIRST-CASE. A negative image expects a wrong answer
+\ from its first check of either kind, so this check, staged before any
+\ numbered one, expects one less, as EXPECT-RCX, does.
+: CHECK-RCX, ( ptr u8 n -- ) {: a:ptr u:n :}
+   LBL {: ok:label :}
+   WRONG-AT @ CASE-NEXT @ = if
+      RCX 1 >IMM32 ASM-SINK ENC-SUB-RI32
+      0 WRONG-AT !
+   then
+   RAX RCX ASM-SINK ENC-CMP-RR  C-E ok JCC,
+   a u PUSH-TEXT,  FIRST-CASE PUSH,  s" die" CALL-ROW,
+   ok LBL, ;
+
+;using
+;using
+;using
+;package
