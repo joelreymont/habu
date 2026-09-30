@@ -237,4 +237,4 @@ Ownership: lib/policy*.f, test/policy/, docs/policy.md, the forth.md bullet,
 gate-stdlib-cases.f: this dot's worker; hir-word.f: the worker, reviewed by
 the native-compiler owner. layout.f, data-claims.f, habu1.f, habu2.f, prims.f,
 engine-error*.f: alder reviews and integrates, and that engine lands before
-lib/policy.f is written. kernel-x64.f REFUSE rows: krait. Claim: agent=zephyr.
+lib/policy.f is written. kernel-x64.f REFUSE rows: krait. Claim: agent=zephyr workspace=.jj-ws/policy-seal.
