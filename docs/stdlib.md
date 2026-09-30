@@ -2462,6 +2462,8 @@ The same package bounds what builds leave under the root:
 BUILD-CACHE:RETAIN-SECONDS ( -- n )
 BUILD-CACHE:USED           ( ptr u8 n -- bool )
 BUILD-CACHE:PRUNE          ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+BUILD-CACHE:WORK-OPEN      ( ptr u8 n -- ptr u8 n fd )
+BUILD-CACHE:WORK-CLOSE     ( ptr u8 n fd -- )
 ```
 
 Every entry is keyed: a writer publishes `<prefix><key><suffix>` with a 64-digit
@@ -2487,6 +2489,21 @@ keeps its old mtime, so any publisher's prune can still take it.
 Ages are one host's wall clock against the filesystem's mtimes, so a wall-clock
 step forward of `RETAIN-SECONDS` or more during a run can make an entry still in
 use stale to another process's sweep.
+
+A build that publishes by rename works in a directory `WORK-OPEN` makes for its
+family in the root, `build-cache-work-<family>-<seed>-<attempt>`, and returns
+with its path (valid until the next `WORK-OPEN`) and the hold: a descriptor on
+the directory carrying an exclusive `flock`, which the process's children
+inherit. The directory is registered for removal at exit; `WORK-CLOSE` removes
+it and then closes the hold. An empty family is `E-FS-PATH`. Before it makes
+one, `WORK-OPEN` removes every work directory that nothing holds, which only a
+killed build leaves (a reboot kills every build and drops every lock); it takes
+each only while holding its lock and after checking that the path still names
+the directory it locked, and a build that loses its new directory that way
+makes another. It reports what it cannot remove on fd 2, as `PRUNE` does. A
+filesystem that cannot lock a directory fails `WORK-OPEN` with `E-FS-IO`. A
+lock is seen only by the kernel that keeps it, so a cache root shared with
+another kernel is not supported.
 
 `tools/hb-build.f --report-json ...` emits one `hb-build-report` JSON object on
 success. Version 1 contains `cache_root`, `cache_source`, `artifact_hit`,

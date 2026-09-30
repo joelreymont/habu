@@ -3,7 +3,8 @@
 \
 \ ROOT$ is the root, selected once per process (docs/stdlib.md). The rest of
 \ this header is the retention: USED and PRUNE, which every writer into the
-\ cache calls.
+\ cache calls, and the work directories WORK-OPEN gives builds that publish by
+\ rename.
 \
 \ EVERY ENTRY IS KEYED. A writer publishes <prefix><key><suffix>, the key 64 hex
 \ digits covering what the entry was made from: hb-build its artifacts,
@@ -33,9 +34,31 @@
 \ A FAMILY'S LEFTOVERS GO THE SAME WAY. A build killed before its own cleanup
 \ (the gate pool kills a row at its deadline) leaves what it was writing: the
 \ <name>.tmp-<seed>-<attempt> an ATOMIC-WRITE-FILE reserves beside an entry, or
-\ the <work>-<seed>-<attempt> directory MAKE-TEMP-DIR made for a build that
-\ publishes by rename. Each is dated by the build that made it, which ends
-\ within minutes.
+\ the <work>-<seed>-<attempt> directory MAKE-TEMP-DIR made under the family's
+\ own stem. Each is dated by the build that made it, which ends within minutes.
+\
+\ A WORK DIRECTORY IS HELD WHILE ITS BUILD LIVES. WORK-OPEN makes
+\ build-cache-work-<family>-<seed>-<attempt> in the root, beside the entry the
+\ build will rename into place, so the publish never crosses a filesystem. The
+\ build holds it by an exclusive flock on the directory itself, which the
+\ kernel drops only when the last descriptor on it closes: the build's, and
+\ every child's that inherited it, such as the builder that writes into the
+\ directory. A build removes its own before it lets go (WORK-CLOSE, or the exit
+\ registry after a die), and a reboot drops every lock, so a directory nobody
+\ holds is a killed build's, and WORK-OPEN first removes every such directory.
+\ No pid is read: a reused one proves nothing either way.
+\
+\ A CACHE ROOT IS ONE KERNEL'S. A lock is seen only by the kernel that keeps
+\ it, so a root shared with another kernel is not supported.
+\
+\ TAKEN ONLY UNDER THE LOCK. A reaper takes a directory only while it holds
+\ the lock and once it has checked that the path still names the directory it
+\ locked. So two reapers never take one; none takes one from under a build that
+\ is publishing or removing it; and a build that made its directory and had
+\ not locked it yet finds, once it holds the lock, that the path is gone, and
+\ makes another. A filesystem that cannot lock a directory fails WORK-OPEN with
+\ E-FS-IO, since a build there would be unprotected; a reaper reports such a
+\ directory and leaves it.
 \
 \ CLAIMED BY RENAME. Two publishers can prune one family at once. PRUNE makes a
 \ claim directory, build-cache-claim-<seed>-<attempt>, beside the family and
@@ -74,6 +97,8 @@ require lib/fs.f
 require lib/fs-list.f
 require lib/fs-root.f
 require lib/fs-mutate.f
+require lib/fs-identity.f
+require lib/ffi-abi.f
 require lib/time.f
 
 package BUILD-CACHE
@@ -543,8 +568,9 @@ public
 
 \ Remove every entry of one family that nothing has used for RETAIN-SECONDS,
 \ from the directory holding the entry just published, which stays: the prefix
-\ and suffix around a key, and the stem its builds' work directories were made
-\ with (empty when they make none). Failures are reported, never thrown.
+\ and suffix around a key, and the stem MAKE-TEMP-DIR made its builds' work
+\ directories with (empty when they make none). Failures are reported, never
+\ thrown.
 : PRUNE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: pre:ptr preu:n suf:ptr sufu:n work:ptr worku:n keep:ptr keepu:n :}
    pre PREFIX-A !
@@ -576,5 +602,192 @@ public
    USED$ FS-TRY-LSTAT 0= if FALSE exit then
    s" date" USED$ code REPORT
    TRUE ;
+
+\ ---- work directories --------------------------------------------------------
+
+private
+
+2 constant LOCK-EX
+4 constant LOCK-NB
+35 constant WOULD-BLOCK-MACOS
+11 constant WOULD-BLOCK-LINUX
+16 constant WORK-TRIES
+
+create STEM-BUF FS-PATH-CAP allot
+create HELD-BUF FS-PATH-CAP allot
+TYPED-VARIABLE GONE-A ptr u8
+
+variable STEM-U
+variable HELD-U
+variable GONE-U
+variable SETTLED
+
+PROCESS-SYMBOLS
+FUNCTION: FLOCK-CALL flock ( n n -- i32 ) ;FUNCTION
+
+\ The descriptor HOLD opened, -1 when none: whoever called HOLD closes it
+\ through RELEASE or keeps it as its hold.
+variable HOLD-FD
+-1 HOLD-FD !
+
+: WORKDIR-STEM$ ( -- ptr u8 n )
+   s" build-cache-work-" ;
+
+: STEM$ ( -- ptr u8 n )
+   STEM-BUF STEM-U @ ;
+
+: HELD$ ( -- ptr u8 n )
+   HELD-BUF HELD-U @ ;
+
+: GONE$ ( -- ptr u8 n )
+   GONE-A @ GONE-U @ ;
+
+: COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
+   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   a dst u BYTE-COPY
+   u up ! ;
+
+\ The index where the run of digits that ends at i starts.
+: DIGITS-START ( ptr u8 n -- n ) {: a:ptr i:n :}
+   i begin dup 0 > if a over 1- + c@ DIGIT? else FALSE then while 1- repeat ;
+
+\ Where a name's closing -<seed>-<attempt> starts, or 0 when it has none.
+: TAIL-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u DIGITS-START {: s:n :}
+   s u = s 2 < or if 0 exit then
+   a s 1- + c@ DASH <> if 0 exit then
+   a s 1- DIGITS-START {: t:n :}
+   t s 1- = t 2 < or if 0 exit then
+   a t 1- + c@ DASH <> if 0 exit then
+   t 1- ;
+
+\ build-cache-work-<family>-<seed>-<attempt>: a family between the stem and the
+\ -<seed>-<attempt> MAKE-TEMP-DIR closes it with.
+: WORKDIR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u WORKDIR-STEM$ STARTS-WITH? 0= if FALSE exit then
+   a u TAIL-AT WORKDIR-STEM$ nip > ;
+
+: RELEASE ( -- )
+   HOLD-FD @ 0 >= if HOLD-FD @ close then
+   -1 HOLD-FD ! ;
+
+: WOULD-BLOCK ( -- n )
+   HB-TARGET-MACOS? if WOULD-BLOCK-MACOS else WOULD-BLOCK-LINUX then ;
+
+\ The path still names the directory HOLD-FD locked.
+: STILL-NAMED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u FS-PATHZ open-rd {: again:n :}
+   again 0 < if FALSE exit then
+   HOLD-FD @ >FD again >FD FS:SAME-OPEN-FILE? {: same:bool :}
+   again close
+   same ;
+
+\ Lock the directory at a path without waiting. TRUE when this process now
+\ holds it; FALSE when it is gone or not a directory, another process holds
+\ it, or the path no longer names the directory locked. A lock refused for any
+\ other reason is E-FS-IO. Whatever it answers or throws, what it opened is in
+\ HOLD-FD.
+: HOLD ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   RELEASE
+   a u FS-TRY-LSTAT 0= if FALSE exit then
+   FS-STAT-MODE@ S-IFMT and S-IFDIR <> if FALSE exit then
+   a u FS-PATHZ open-rd HOLD-FD !
+   HOLD-FD @ 0 < if
+      a u EXISTS? if E-FS-OPEN throw then
+      FALSE exit
+   then
+   FFI:ERRNO drop                     \ bound now, not after flock sets errno
+   HOLD-FD @ LOCK-EX LOCK-NB or FLOCK-CALL 0<> if
+      FFI:ERRNO WOULD-BLOCK = if FALSE exit then
+      E-FS-IO throw
+   then
+   a u STILL-NAMED? ;
+
+\ build-cache-work-<family>, the stem MAKE-TEMP-DIR closes with
+\ -<seed>-<attempt>. An empty family is E-FS-PATH: WORKDIR? takes no name made
+\ without one, so no reaper would take its directory.
+: STEM! ( ptr u8 n -- ) {: fam:ptr famu:n :}
+   famu 0 <= if E-FS-PATH throw then
+   SB-RESET
+   WORKDIR-STEM$ SB-APPEND
+   fam famu SB-APPEND
+   SB$ STEM-BUF STEM-U COPY! ;
+
+\ A work directory that nothing holds is a killed build's: it is removed where
+\ it stands, since the lock admits one reaper at a time.
+: REAP-TAKE ( -- )
+   DIR$ NAME$ SRC-BUF JOIN-PATH SRC-U !
+   SRC$ HOLD 0= if exit then
+   SRC$ REMOVE-TREE ;
+
+: REAP-VISIT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u WORKDIR? 0= if exit then
+   a NAME-A !
+   u NAME-U !
+   0 SRC-U !
+   [: REAP-TAKE ;] catch {: code:n :}
+   RELEASE
+   code 0= if exit then
+   SRC-U @ 0= if s" reap" NAME$ code REPORT exit then
+   s" reap" SRC$ code REPORT ;
+
+: REAP-SWEEP ( -- )
+   DIR$ [: REAP-VISIT ;] FS-LIST:EACH ;
+
+\ Failures are reported, never thrown: a build does not fail over another's
+\ leftovers.
+: REAP ( -- )
+   ROOT$ {: r:ptr ru:n :}
+   r DIR-A !
+   ru DIR-U !
+   [: REAP-SWEEP ;] catch {: code:n :}
+   code 0= if exit then
+   s" reap" DIR$ code REPORT ;
+
+\ Hold the directory just made and register it for removal at exit.
+: SETTLE ( -- )
+   0 SETTLED !
+   HELD$ HOLD 0= if exit then
+   HELD$ CLEANUP-TREE+
+   TRUE SETTLED ! ;
+
+\ FALSE when a reaper took the directory before this process locked it; the
+\ reaper removes it. A refusal removes it here before the throw.
+: HOLD-NEW ( -- bool )
+   [: SETTLE ;] catch {: code:n :}
+   code 0= if SETTLED @ 0<> exit then
+   RELEASE
+   HELD$ REMOVE-TREE
+   code throw ;
+
+public
+
+\ Make a work directory in the root for a build of the family that publishes by
+\ rename, after removing every work directory that nothing holds. The path
+\ stays valid until the next WORK-OPEN; the descriptor is the hold, which this
+\ process's children inherit. The directory is registered for removal at exit,
+\ and WORK-CLOSE removes it and releases the hold.
+: WORK-OPEN ( ptr u8 n -- ptr u8 n fd )
+   STEM!
+   REAP
+   0 begin
+      dup WORK-TRIES >= if E-FS-IO throw then
+      ROOT$ STEM$ MAKE-TEMP-DIR HELD-BUF HELD-U COPY!
+      HOLD-NEW 0=
+   while
+      RELEASE
+      1+
+   repeat drop
+   HELD$ HOLD-FD @ >FD
+   -1 HOLD-FD ! ;
+
+\ Remove a work directory WORK-OPEN made, then release its hold. A removal
+\ that fails still releases it, so the next build reaps what is left.
+: WORK-CLOSE ( ptr u8 n fd -- ) {: a:ptr u:n fd:fd :}
+   a GONE-A !
+   u GONE-U !
+   [: GONE$ REMOVE-TREE ;] catch {: code:n :}
+   fd FD>N close
+   code 0<> if code throw then ;
 
 ;package

@@ -108,6 +108,17 @@ the directory. An `HB_TMP` row the caller put in the child's environment itself
 copies — is the caller's scratch to own and reap: the pool leaves the row and
 gives that slot no directory.
 
+A keyed image's build (below) works in a directory of the build cache instead,
+beside the keyed path, so its publish is one rename within the cache
+(`BUILD-CACHE:WORK-OPEN`). The build holds that directory by a lock on it,
+which the kernel drops only once the build and every child that inherited the
+lock have exited, and before it makes its own it removes every such directory
+that nothing holds. A directory left by a build that the pool, a signalled
+gate, SIGKILL or a reboot killed therefore lasts only until the next
+keyed-image build in that cache, and a live build's is never taken.
+`test/keyed-image-reap-test.f` kills a build and then its builder beside a
+live one.
+
 ## How a suite runs, and what that demands of its files
 
 - A `SUITE` block is **one** `bin/hb --load` spawn: its files load into one

@@ -25,14 +25,17 @@
 \ The key therefore folds each member under that canonical name, and every tree
 \ resolves its own key.
 \
-\ PUBLISHED BY RENAME. The builder saves into a private work directory,
-\ <cache root>/<family>-<seed>-<attempt>, so a half-written image is never
-\ visible at the keyed path: only the closing rename publishes it. A second
-\ builder racing this one saves an image from the same keyed sources and the
-\ rename is atomic, so losing the race costs one discarded build and nothing
-\ else. The work directory goes whatever the build did, and a failure keeps its
-\ own code: a throw is caught here, and a die ends the process, whose exit
-\ registry removes the work directory it was registered with.
+\ PUBLISHED BY RENAME. The builder saves into a private work directory in the
+\ cache root (BUILD-CACHE:WORK-OPEN), so a half-written image is never visible
+\ at the keyed path: only the closing rename publishes it. A second builder
+\ racing this one saves an image from the same keyed sources and the rename is
+\ atomic, so losing the race costs one discarded build and nothing else. The
+\ work directory goes whatever the build did, and a failure keeps its own code:
+\ a throw is caught here, and a die ends the process, whose exit registry
+\ removes the work directory it was registered with. A build killed before
+\ either leaves the directory, and the next build in that root removes it
+\ once nothing holds it - the build, or the builder child that inherited its
+\ hold (lib/build-cache.f, A WORK DIRECTORY IS HELD WHILE ITS BUILD LIVES).
 \
 \ RETAINED WHILE USED. A published image prunes its family and an image found on
 \ disk is dated as in use (lib/build-cache.f), so the cache holds what some
@@ -74,6 +77,7 @@ create ERR IO-CAP allot
 variable NAME-U
 variable ENGINE-U
 variable WORK-U
+variable WORK-FD
 variable TMP-U
 variable EMIT-RC
 variable CLOSURE-IDX
@@ -126,16 +130,16 @@ TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
    a dst u BYTE-COPY
    u up ! ;
 
-\ The work directory is registered for removal at exit, so a die before
-\ WORK-CLOSE still removes it.
+\ The work directory is held until WORK-CLOSE and registered for removal at
+\ exit, so a die before WORK-CLOSE still removes it.
 : WORK-OPEN ( -- )
-   BUILD-CACHE:ROOT$ FAMILY$ MAKE-TEMP-DIR WORK-BUF WORK-U COPY-OUT!
-   WORK$ CLEANUP-TREE+
+   FAMILY$ BUILD-CACHE:WORK-OPEN FD>N WORK-FD !
+   WORK-BUF WORK-U COPY-OUT!
    FAMILY$ STEM!
    WORK$ NAME$ TMP-BUF JOIN-PATH TMP-U ! ;
 
 : WORK-CLOSE ( -- )
-   WORK$ REMOVE-TREE ;
+   WORK$ WORK-FD @ >FD BUILD-CACHE:WORK-CLOSE ;
 
 \ <family>: <what>, the message a failed build dies with.
 : FAILED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
@@ -164,7 +168,9 @@ TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
    then
    TMP$ PATH$ RENAME-FILE ;
 
-\ Pruning reports its own failures and never fails the build.
+\ Pruning reports its own failures and never fails the build. The family name
+\ is also the stem of the <family>-<seed>-<attempt> work directories a builder
+\ that holds none made, which pruning takes once they are a day old.
 : EMIT ( -- )
    WORK-OPEN
    ['] BUILD-RUN catch EMIT-RC !

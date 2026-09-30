@@ -46,6 +46,7 @@ create ERR IO-CAP allot
 variable NAME-U
 variable PATH-U
 variable WORK-U
+variable WORK-FD
 variable TMP-U
 variable EMIT-RC
 variable RESOLVED?
@@ -97,15 +98,16 @@ variable RESOLVED?
 
 \ The writer emits into a private directory of its own, so a half-written host
 \ is never visible at the keyed path: only the closing rename publishes it.
-\ It is registered for removal at exit, so a die before WORK-CLOSE still removes
-\ it.
+\ It is held until WORK-CLOSE and registered for removal at exit, so a die
+\ before WORK-CLOSE still removes it, and the next build removes it after a
+\ kill (BUILD-CACHE:WORK-OPEN).
 : WORK-OPEN ( -- )
-   BUILD-CACHE:ROOT$ WORK-PREFIX$ MAKE-TEMP-DIR WORK-BUF WORK-U COPY-OUT!
-   WORK-BYTES CLEANUP-TREE+
+   WORK-PREFIX$ BUILD-CACHE:WORK-OPEN FD>N WORK-FD !
+   WORK-BUF WORK-U COPY-OUT!
    WORK-BYTES s" hb-cold" TMP-BUF JOIN-PATH TMP-U ! ;
 
 : WORK-CLOSE ( -- )
-   WORK-BYTES REMOVE-TREE ;
+   WORK-BYTES WORK-FD @ >FD BUILD-CACHE:WORK-CLOSE ;
 
 : ARG ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -139,7 +141,9 @@ variable RESOLVED?
 \ its own code: a throw is caught here, and a die in WRITER-RUN or PUBLISH ends
 \ the process, whose exit registry removes what WORK-OPEN registered. A
 \ published host then prunes its family (BUILD-CACHE:PRUNE), which reports
-\ its own failures and never fails the emission.
+\ its own failures and never fails the emission. WORK-PREFIX$ is also the stem
+\ of the cold-engine-<seed>-<attempt> work directories a builder that holds
+\ none made, which pruning takes once they are a day old.
 : EMIT ( -- )
    WORK-OPEN
    ['] WRITER-RUN catch EMIT-RC !
