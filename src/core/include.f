@@ -947,7 +947,7 @@ public
 
 \ The loop a loaded file's bytes go through. INCLUDE-EVAL-BIND below binds the
 \ engine's `evaluate`; test/outer-loop-on.f binds the loop written in Habu,
-\ src/habu/outer.f OUTER:INTERPRET, for the files loaded after it.
+\ src/habu/interpret.f OUTER:INTERPRET, for the files loaded after it.
 defer INCLUDE-INTERPRET ( ptr u8 n -- )
 
 private

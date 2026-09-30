@@ -1,5 +1,5 @@
 \ outer.f - the outer interpreter written in Habu: numbers, the dictionary
-\ search, then the loop that reads a buffer with them.
+\ search, then the readers src/habu/interpret.f's loop reads a buffer with.
 
 require lib/prelude.f
 require lib/ieee754.f
@@ -276,12 +276,12 @@ public
 ;package
 
 \ ---- the interpret loop ------------------------------------------------------
-\ OUTER:INTERPRET reads a buffer token by token as the engine's interpret loop
-\ does (habu2.f EM-COMMENT's LMAIN, EM-INTERPRET-WORDS) for comments, the
-\ literal keywords (`s"`, `c"`, `."`, their escaped forms, `char` and `'`),
-\ numbers and dictionary words. The engine's other keywords (`:`, `using`,
-\ `create`, ...) are not read here yet: they are not dictionary words, so they
-\ refuse as undefined.
+\ OUTER:INTERPRET (src/habu/interpret.f) reads a buffer token by token with the
+\ words below, as the engine's interpret loop does (habu2.f EM-COMMENT's LMAIN,
+\ EM-INTERPRET-WORDS) for comments, the literal keywords (`s"`, `c"`, `."`,
+\ their escaped forms, `char` and `'`), numbers and dictionary words. The
+\ engine's other keywords (`:`, `using`, `create`, ...) are not read here yet:
+\ they are not dictionary words, so they refuse as undefined.
 \
 \ The input is the engine's own. The cursor, its end and the buffer start sit
 \ in INP-CELL, INE-CELL and SRCLOC:INB-CELL, and the token in TKA-CELL and
@@ -737,31 +737,5 @@ TRUSTED: PUSH-XT ( -- )
    s" char" TOKEN-IS? if PUSH-CHAR true exit then
    s" '" TOKEN-IS? if PUSH-XT true exit then
    false ;
-
-\ ---- the loop -------------------------------------------------------------------------
-\ A number is pushed and a word run: the token's effect on the stack is the
-\ program's, so this row, and every row above it, states none of it.
-TRUSTED: DISPATCH ( -- )
-   NUMERAL? if VALUE @ TOP-EV-NUM 0 HOOK exit then
-   RUN-WORD ;
-
-: STEP ( -- )
-   COMMENT? if exit then
-   LITERAL? if exit then
-   DISPATCH ;
-
-: RUN ( -- )
-   begin TOKEN while STEP repeat ;
-
-public
-
-\ Interpret the buffer as the engine's evaluate reads it, and put the input
-\ cells back after, whether the buffer ends or a token throws.
-: INTERPRET ( ptr u8 n -- ) {: a:ptr u:n :}
-   INP-CELL CELL@ INE-CELL CELL@ SRCLOC:INB-CELL CELL@ {: p:n e:n b:n :}
-   a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
-   [: RUN ;] catch {: code:n :}
-   p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!
-   code 0<> if code throw then ;
 
 ;package

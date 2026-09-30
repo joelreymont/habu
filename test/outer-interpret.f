@@ -1,4 +1,4 @@
-\ outer-interpret.f - the interpret loop written in Habu, src/habu/outer.f
+\ outer-interpret.f - the interpret loop written in Habu, src/habu/interpret.f
 \ OUTER:INTERPRET, against the engine's own, through the real load path.
 \
 \ Each case is a file a child engine loads twice:
@@ -26,7 +26,7 @@ require lib/fmt.f
 require lib/fs.f
 require lib/fs-mutate.f
 require test/gate-common.f
-require src/habu/outer.f
+require src/habu/interpret.f
 
 \ ---- one tail public in two packages: ambiguous under both usings ---------------
 package OUTER-INTERPRET-FXA
