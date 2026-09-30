@@ -4,6 +4,8 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.560625+03:00"
+blocks:
+  - habu-size-the-x86-fb635c93
 ---
 
 Problem: the kernel has no syscall rows; the seam provides `SYS,`, `SYS-PUSH` polarity and the Linux flag translators (`src/os/linux-x86-64/sys.f`).
