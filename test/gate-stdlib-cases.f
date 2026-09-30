@@ -17,6 +17,17 @@ using TEST
 \ file - the shared fixture stays in the family's *-lib.f - rather than letting
 \ one row grow past that.
 
+\ The positive hb-build AOT checks are two rows of about 28 s each that share no
+\ state and need no keyed image, so they start at once, beside the image build
+\ rows, and add their work to the slots the whitebox hold below leaves idle.
+SUITE native-gate-aot-positive-bundle
+   test/gate-aot-positive-bundle.f
+;SUITE
+
+SUITE native-gate-aot-positive-preseed
+   test/gate-aot-positive-preseed.f
+;SUITE
+
 \ Exception: snap must build a fresh native engine and save that engine's
 \ image. Reusing the fixtures engine would skip the snap verb's build path.
 \ Its own 360 s deadline remains the acceptance bound.
@@ -64,18 +75,6 @@ SUITE stripped-entry-qualified
    test/stripped-entry-qualified.f
 ;SUITE
 
-\ checker-scan-index is the first row that needs the unsealed engine. It holds
-\ the registry until the whitebox-engine-build row retires (test/gate-images.f),
-\ so the rows above it keep the other slots busy for that build. That barrier,
-\ not the row's own length, sets its place.
-WHITEBOX-SUITE checker-scan-index
-   test/checker-scan-index-suite.f
-;SUITE
-
-WHITEBOX-SUITE checker-scan-index-rollback
-   test/checker-scan-index-rollback-suite.f
-;SUITE
-
 SUITE hb-build-fixtures
    tools/hb-build-test.f
    lib/build-cache-test.f
@@ -109,10 +108,6 @@ SUITE hb-build-timeout-json
    tools/hb-build-timeout-json-test.f
 ;SUITE
 
-SUITE native-window-owner
-   test/native-window-owner.f
-;SUITE
-
 SUITE hb-build-aot
    tools/hb-build-aot-test.f
 ;SUITE
@@ -121,6 +116,37 @@ SUITE hb-build-aot-cache
    tools/hb-build-aot-cache-test.f
    lib/codesign-test.f
    tools/hb-build-direct-lints-test.f
+;SUITE
+
+\ app-image is the first row that needs the unsealed engine: it holds the
+\ registry until whitebox-engine-build retires (test/gate-images.f), about 89 s.
+\ Every row above needs no image or only the fixture writer and cold host, so
+\ they keep the other slots busy through that build. The long rows that need
+\ the engine follow the hold, longest in the pool first, so none of them starts
+\ behind the short rows and sets the drain tail; the checker-scan-index rows
+\ take under a second.
+SUITE app-image
+   test/app-image.f
+;SUITE
+
+SUITE native-window-owner
+   test/native-window-owner.f
+;SUITE
+
+SUITE field-proj-boundary
+   test/field-proj-boundary.f
+;SUITE
+
+WHITEBOX-SUITE prop
+   test/prop-test.f
+;SUITE
+
+WHITEBOX-SUITE checker-scan-index
+   test/checker-scan-index-suite.f
+;SUITE
+
+WHITEBOX-SUITE checker-scan-index-rollback
+   test/checker-scan-index-rollback-suite.f
 ;SUITE
 
 SUITE hb-build-retain
@@ -628,8 +654,15 @@ SUITE stripped-lifecycle-prepare
    test/stripped-lifecycle-prepare.f
 ;SUITE
 
+\ Both rows run on the linker image (test/preloaded-engine.f). The first row that
+\ needs it holds the registry until app-image-build and linker-build pass, so the
+\ second adds no hold of its own.
 SUITE stripped-address
    test/stripped-address.f
+;SUITE
+
+SUITE native-gate-aot-negative
+   test/gate-aot-negative.f
 ;SUITE
 
 SUITE stripped-literal
@@ -692,10 +725,6 @@ SUITE image-lifecycle-late-register
 
 SUITE native-resource-image
    test/native-resource-image.f
-;SUITE
-
-SUITE app-image
-   test/app-image.f
 ;SUITE
 
 WHITEBOX-SUITE registry-persist
@@ -2162,10 +2191,6 @@ WHITEBOX-SUITE field-proj-errors
    test/field-proj-errors.f
 ;SUITE
 
-SUITE field-proj-boundary
-   test/field-proj-boundary.f
-;SUITE
-
 SUITE gate-pool-orphan
    test/gate-pool-orphan-test.f
 ;SUITE
@@ -2180,10 +2205,6 @@ SUITE golden
 
 SUITE lit-emit-size
    test/lit-emit-size-test.f
-;SUITE
-
-WHITEBOX-SUITE prop
-   test/prop-test.f
 ;SUITE
 
 SUITE require-cap
@@ -2258,14 +2279,6 @@ SUITE repl-address-cell-rollback
 
 SUITE native-gate-diagnostics
    test/gate-diagnostics.f
-;SUITE
-
-SUITE native-gate-aot-positive
-   test/gate-aot-positive.f
-;SUITE
-
-SUITE native-gate-aot-negative
-   test/gate-aot-negative.f
 ;SUITE
 
 ;GROUP

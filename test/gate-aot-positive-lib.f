@@ -1,6 +1,26 @@
-\ gate-aot-positive.f - checked runner for positive hb-build AOT checks.
+\ gate-aot-positive-lib.f - the positive hb-build AOT checks, in two halves
+\ that share no state: each is a gate row of its own
+\ (test/gate-aot-positive-bundle.f, test/gate-aot-positive-preseed.f), so the
+\ pool runs them beside each other and beside every other row.
 
-require test/gate-pool.f
+require lib/source.f
+require lib/build.f
+require lib/codesign.f
+require lib/process-env.f
+require tools/build-fixpoint.f
+require tools/cli-run.f
+require tools/hb-build-lib.f
+require tools/aot-call-report-lib.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/lint/json-writer.f
+require tools/lint/source-lex.f
+require tools/aot-lint-core.f
+require tools/hb-build-direct-lints.f    \ the builds lint in process, not in a child
+require tools/json.f
+require tools/gate-json-assert-core.f
+require test/gate-common.f
 require test/gate-build-common.f
 require test/gate-build-hbb.f
 require test/gate-aot-image.f
@@ -681,6 +701,8 @@ variable SELF-SRC-U
    s" hb-build AOT trusted forged-tag run" FETCH-RUN-BAD
    s" PASS: hb-build AOT trusted family row (loose cells take the declared grouping; a forged tag still dies at the fetch, rc 85)" type cr ;
 
+public
+
 : RUN-BUNDLE-DATA ( -- )
    s" hb-gate-aot-bundle-data" GT-START
    MAKER-SELFTEST
@@ -694,23 +716,6 @@ variable SELF-SRC-U
    PRESEED
    PRESEED-FETCH
    GT-CLEANUP ;
-
-: START-BUNDLE-DATA ( -- )
-   s" fork hb-build AOT bundle/data" GE-TIMEOUT-MS [: RUN-BUNDLE-DATA ;] GT-POOL-START-FORK ;
-
-: START-PRESEED ( -- )
-   s" fork hb-build AOT preseed" GE-TIMEOUT-MS [: RUN-PRESEED ;] GT-POOL-START-FORK ;
-
-public
-
-: RUN ( -- )
-   s" hb-gate-aot-positive" GT-START
-   GT-POOL-RESET
-   START-BUNDLE-DATA
-   START-PRESEED
-   GT-POOL-DRAIN
-   GT-CLEANUP
-   s" PASS: native hb-build AOT positive tests" type cr ;
 
 ;using                                   \ AOT-IMAGE
 ;using                                   \ HB-BUILD-CLI
