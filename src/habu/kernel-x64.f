@@ -6,7 +6,8 @@
 \ gates hold on both targets, and the helpers the rows share are emitted once:
 \ the span guard (PROT-SPAN), the narrow page flip LPROTREC, the task-live
 \ exit LTASKLIVE, the dictionary index with the one-wordlist search, the DP
-\ refusal LDPBAD and the output device arm (GENIO-OUT).
+\ refusal LDPBAD, the output device arm (GENIO-OUT) and the code-provenance
+\ band's set and query (src/habu/code-origin-x64.f).
 \
 \ A BODY'S CONTRACT (docs/x86-64.md "Kernel inventory"). rbp is DATA, r12 the
 \ data stack, rbx and r13-r15 the other VM registers; rax rcx rdx rsi rdi and
@@ -32,6 +33,7 @@ require src/habu/primitive-registry.f
 require src/habu/data-bands.f
 require src/habu/snapshot-format.f
 require src/habu/code-span.f
+require src/habu/code-origin-x64.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/arch/x86-64/rt.f
@@ -667,7 +669,7 @@ public
    LBL SPAN-CELL !  LBL REC-CELL !  LBL LIVE-CELL !
    LBL DPBAD-CELL !  LBL LGENIOOUT !
    SPAN-HELPER,  REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS,
-   DPBAD-HELPER,  GENIO-HELPER, ;
+   DPBAD-HELPER,  GENIO-HELPER,  X64PROV:EMIT-HELPERS ;
 
 \ Each section's rows are tabled in docs/x86-64.md under the heading of its
 \ name.
@@ -1867,9 +1869,13 @@ variable SITE-TRAP-CELL
 \ ---- the rows ----------------------------------------------------------------
 \ patch32 ( n n -- ): guard the four bytes at the address, then store the word
 \ between two LPROTREC flips of its pages, as BPATCH32 does: the flip is keyed
-\ on the target, never on a band another bracket may hold open.
+\ on the target, never on a band another bracket may hold open. A generic
+\ instruction write carries no optimizer proof, so the four bytes lose their
+\ native evidence before the write can publish.
 : PATCH32, ( -- )
    0 PATCH-BYTES SIZED-GUARD,
+   RDI 0 PEEK,  RSI RDI PATCH-BYTES MEM-OFF ASM-SINK ENC-LEA
+   X64PROV:INVALIDATE,
    R8 POP,  R9 POP,                                    \ the address, the word
    R8 PROT-RW PROT-REC,
    R9 R64>N >R32 R8 MEM-AT ASM-SINK ENC-MOV32-MR
@@ -1885,7 +1891,9 @@ variable SITE-TRAP-CELL
 \ does not wrap and lies in [DBASE+DICT-SIZE, DBASE+REGION), and dst is CP: a
 \ publication is an append. The code band opens once over [CP, CP+len), the
 \ bytes copy, the band closes, the span's site rows of both kinds go, since
-\ its sites are recorded after, and CP moves past it.
+\ its sites are recorded after, and CP moves past it. The span's origin is
+\ unknown: only the compiler's successful return, X64PROV:CLOSE, with 1, may
+\ certify an emission.
 : PUBLISH, ( -- )
    ENGINE-GPR:X64-CP >R64 {: cp:r64 :}
    LBL LBL {: copy:label copied:label :}
@@ -1915,6 +1923,7 @@ variable SITE-TRAP-CELL
    DROP-SITES-LBL CALL,
    RDI RSP PUB-DST MOV-LOAD,  RSI RSP PUB-LEN MOV-LOAD,
    cp RDI RSI 1 0 MEM-IDX ASM-SINK ENC-LEA            \ the slot is claimed
+   RSI cp ASM-SINK ENC-MOV-RR  X64PROV:UNKNOWN-RANGE,
    RSP PUB-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
 \ callmap-set and addrmap-set ( n -- ): the site's region offset into rdi, where
@@ -2610,10 +2619,7 @@ private
    s" executable-build-leave" [: BUILD-LEAVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" set-tier" [: SET-TIER-BODY ;] PRIM
    s" tier@" [: RAX TIER-OFF CELL@,  RAX PUSH, ;] PRIM
-   \ The code's origin is unknown (-1, as code-origin.f LQUERY answers) until
-   \ the provenance band's query lands here.
-   s" code-origin" [:
-      DROP,  DROP,  RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32  RAX PUSH, ;] PRIM ;
+   s" code-origin" [: RSI POP,  RDI POP,  X64PROV:QUERY,  RAX PUSH, ;] PRIM ;
 
 public
 

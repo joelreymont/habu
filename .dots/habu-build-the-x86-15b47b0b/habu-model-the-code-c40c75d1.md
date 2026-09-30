@@ -1,9 +1,11 @@
 ---
 title: Model the code-provenance band on x86
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T09:22:47.271870+03:00"
+closed-at: "2026-09-30T14:47:34.483613+03:00"
+close-reason: "done: X64PROV (src/habu/code-origin-x64.f) models the TIER-PROV band on x86; patch32 invalidates, code-publish records unknown, code-origin queries, BOOT-OPEN, marks the kernel text native. [test/x86-64-kernel-engine.f hb-x64-kernel-origin and -origin-patch exit 0, -origin-full 101; the kernel-entry check exited 21 on the base.]"
 ---
 
 Problem: `code-origin` has x86 consumers that must answer truthfully: `snap-lib.f:453` (retained code without native evidence gives rc 100), `tools/native-build.f:9` (the self-build driver, G3) and `test/tier.f:366-371`. Dropping provenance on a tier-1-only engine would report `patch32`-written bytes as native, the exact hole `habu1.f:2417-2419` closes. Decision (K-lane design, 2026-09-30): model the band on x86.

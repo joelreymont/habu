@@ -59,8 +59,13 @@
 \   -prot-wid-bound exits 84 with its fd-2 text, -xt-store-armed and
 \   -mark-armed exit 83, -tier-zero exits 70 with its fd-2 text, and
 \   -snap-rebase exits 76 with the REFUSE text.
+\ hb-x64-kernel-origin asks code-origin about the kernel's text and about spans
+\ code-publish wrote, and -origin-patch about them once patch32 rewrote a word;
+\ both exit 0. -origin-full publishes into a full table and exits 101 with its
+\ fd-2 text.
 \ The host checks each image's ELF header; running them is the peer's.
 require src/habu/snapshot-format.f
+require src/habu/code-origin-x64.f
 require test/x86-64-boot-harness.f
 
 package X64K-ENGINE
@@ -578,6 +583,91 @@ $5A constant CALLER-TIER
    0 X64HARNESS:PUSH,  s" set-tier" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ ---- code provenance ---------------------------------------------------------
+\ The spans the provenance images publish, as offsets into the region: CP
+\ starts at DICT-SIZE and each publication appends at CP.
+16 constant SPAN-A                     \ native, then patched inside
+8 constant SPAN-B                      \ published bare
+8 constant SPAN-C                      \ C and D, native side by side
+DICT-SIZE constant AT-A
+AT-A SPAN-A + constant AT-B
+AT-B SPAN-B + constant AT-C
+AT-C SPAN-C + constant AT-D
+AT-D SPAN-C + constant AT-FREE         \ CP after the four: never published
+4 constant PATCH-AT                    \ the word patch32 rewrites, inside A
+4 constant WORD-BYTES
+$90909090 constant PATCH-WORD
+
+\ Publish n bytes at the region offset, CP, from the scratch cells.
+: PUBLISH, ( n n -- ) {: off:n len:n :}
+   0 X64HARNESS:PUSH-SCRATCH,  off X64HARNESS:PUSH-REGION,  len X64HARNESS:PUSH,
+   s" code-publish" ROW ;
+
+\ The same inside a provenance window that a successful compile closes.
+: NATIVE, ( n n -- ) X64PROV:OPEN,  PUBLISH,  1 X64PROV:CLOSE, ;
+
+\ Check code-origin's answer for the region offsets [lo, hi).
+: EXPECT-ORIGIN, ( n n n -- ) {: want:n lo:n hi:n :}
+   lo X64HARNESS:PUSH-REGION,  hi X64HARNESS:PUSH-REGION,  s" code-origin" ROW
+   want X64HARNESS:EXPECT-POP, ;
+
+\ Rewrite the word at the region offset through patch32.
+: PATCH, ( n -- ) {: off:n :}
+   PATCH-WORD X64HARNESS:PUSH,  off X64HARNESS:PUSH-REGION,  s" patch32" ROW ;
+
+\ Publish the four spans: A, and C and D side by side, inside windows a
+\ successful compile closes, and B bare between them.
+: SPANS, ( -- )
+   AT-A SPAN-A NATIVE,  AT-B SPAN-B PUBLISH,
+   AT-C SPAN-C NATIVE,  AT-D SPAN-C NATIVE, ;
+
+\ The kernel's text is native from the boot on. A span published inside a
+\ closed window is native, one published bare is unknown, and so is one never
+\ published. C and D share one row, so the count holds the text's row, A's, B's
+\ and theirs.
+: BUILD-ORIGIN ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   s" code-origin" X64KERNEL:ENTRY-LABEL {: entry:label :}
+   entry 0 X64HARNESS:PUSH-LABEL,  entry 1 X64HARNESS:PUSH-LABEL,
+   s" code-origin" ROW  1 X64HARNESS:EXPECT-POP,
+   SPANS,
+   1 AT-A AT-B EXPECT-ORIGIN,
+   -1 AT-B AT-C EXPECT-ORIGIN,
+   1 AT-C AT-FREE EXPECT-ORIGIN,
+   4 TIER-PROV:N-CELL X64HARNESS:EXPECT-CELL,
+   -1 AT-FREE AT-FREE CELL + EXPECT-ORIGIN,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ A patch32 inside A splits its row in three: the patched word turns unknown,
+\ the bytes on both sides stay native, and B's and C-D's rows move up intact.
+\ A patch32 where no row lies adds none.
+: BUILD-ORIGIN-PATCH ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   SPANS,
+   AT-A PATCH-AT + PATCH,
+   1 AT-A AT-A PATCH-AT + EXPECT-ORIGIN,
+   -1 AT-A PATCH-AT + AT-A PATCH-AT + WORD-BYTES + EXPECT-ORIGIN,
+   1 AT-A PATCH-AT + WORD-BYTES + AT-B EXPECT-ORIGIN,
+   -1 AT-B AT-C EXPECT-ORIGIN,
+   1 AT-C AT-FREE EXPECT-ORIGIN,
+   AT-FREE CELL + PATCH,
+   6 TIER-PROV:N-CELL X64HARNESS:EXPECT-CELL,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ A table of SPANS rows takes no more: the publication's row exits
+\ CODE-ORIGIN-FULL with the ARM64 text on fd 2.
+: BUILD-ORIGIN-FULL ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   TIER-PROV:SPANS TIER-PROV:N-CELL X64HARNESS:CELL!,
+   AT-A SPAN-B PUBLISH,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
 public
 
 : RUN ( -- )
@@ -626,6 +716,9 @@ public
    s" hb-x64-kernel-tier" TMP-PATH BUILD-TIER
    s" hb-x64-kernel-scope" TMP-PATH BUILD-SCOPE
    s" hb-x64-kernel-tier-zero" TMP-PATH BUILD-TIER-ZERO
+   s" hb-x64-kernel-origin" TMP-PATH BUILD-ORIGIN
+   s" hb-x64-kernel-origin-patch" TMP-PATH BUILD-ORIGIN-PATCH
+   s" hb-x64-kernel-origin-full" TMP-PATH BUILD-ORIGIN-FULL
    s" snap-rebase" s" hb-x64-kernel-snap-rebase" TMP-PATH BUILD-CALL
    X64HARNESS:DISPOSE
    T-REPORT ;

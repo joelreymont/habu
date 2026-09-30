@@ -5,7 +5,8 @@
 \    BOOT-OPEN,  case  BOOT-CLOSE,
 \
 \ BOOT-OPEN, emits X64BOOT's `_start`, a jump over the kernel X64KERNEL:KERNEL,
-\ emits next, and the case's entry past it; BOOT-CLOSE, exits 0 and writes the
+\ emits next, and the case's entry past it, which marks the kernel's text
+\ native as the engine's boot marks its own; BOOT-CLOSE, exits 0 and writes the
 \ image. A case stages cells, arms DATA cells, calls kernel rows by name and
 \ checks a popped cell, the data stack's depth, the machine stack's balance
 \ and a scratch cell. The checks exit FIRST-CASE upward in the order they are
@@ -25,6 +26,7 @@
 require src/habu/boot-x64.f
 require src/arch/x86-64/rt.f
 require src/habu/kernel-x64.f
+require src/habu/code-origin-x64.f
 require test/x86-64-peer-harness.f
 
 package X64HARNESS
@@ -54,8 +56,10 @@ public
    X64BOOT:START,
    ENTRY-LBL JMP,
    ENGINE-PRIMS:RESET
+   LBL {: text:label :}  text LBL,
    X64KERNEL:KERNEL,
-   ENTRY-LBL LBL, ;
+   ENTRY-LBL LBL,
+   text ENTRY-LBL X64PROV:TEXT-NATIVE, ;
 
 : PUSH, ( n -- ) {: v:n :}  RAX v IMM  0 G-PUSH ;
 
@@ -262,6 +266,26 @@ public
 : PROT-RECORD, ( n n -- ) {: ix:n prot:n :}
    R8 DBASE-REG ix DREC * MEM-OFF ASM-SINK ENC-LEA
    R8 prot X64KERNEL:PROT-REC, ;
+
+;using
+;using
+;using
+;package
+
+\ The provenance cases' word: an address in the image's text, which the image
+\ fixes only at link time.
+package X64HARNESS
+using X64ASM
+using X64CODE
+using X64RT
+
+public
+
+\ Push the address n bytes past a label.
+: PUSH-LABEL, ( label n -- ) {: at:label off:n :}
+   RAX at MOVABS,
+   RAX RAX off MEM-OFF ASM-SINK ENC-LEA
+   0 G-PUSH ;
 
 ;using
 ;using
