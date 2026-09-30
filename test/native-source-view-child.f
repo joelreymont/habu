@@ -53,6 +53,17 @@ TRUSTED: VALUE ( -- n ) s" SVTEST:VALUE" evaluate ;
 package NATIVE-BUILD
 
 TRUSTED: TARGET-LOAD-XT ( n -- [ ptr u8 n -- ] ) ;
+TRUSTED: SOURCE-USE-XT ( n -- [ [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] -- ] ) ;
+TRUSTED: SOURCE-UNIT-USE-XT ( n -- [ [ ptr u8 n ptr u8 n ptr u8 [ -- ] -- ] -- ] ) ;
+
+\ This fixture enters the private compiler directly, so it supplies the same
+\ explicit source policy that a build entry installs before logical reset.
+: BIND-OWNED-SOURCE ( -- )
+   1 TARGET-SOURCE-BOUND !
+   SOURCE-VIEW:CALLBACKS
+   s" SOURCE-INPUT:USE" OPEN-TARGET-XT SOURCE-USE-XT execute
+   SOURCE-VIEW:LOAD-CALLBACK
+   s" SOURCE-UNIT:USE" OPEN-TARGET-XT SOURCE-UNIT-USE-XT execute ;
 
 : TARGET-ENTRY ( -- )
    s" nest/entry.f" s" script-required" TARGET-XT TARGET-LOAD-XT execute ;
@@ -64,6 +75,7 @@ public
 
 : SOURCE-VIEW-PROOF ( -- )
    SOURCE-VIEW-PROOF:PREPARE
+   ['] BIND-OWNED-SOURCE ['] SOURCE-NOOP ['] SOURCE-VIEW:CLOSE SOURCE-POLICY!
    CHECKER-OWNER LOGICAL-RESET
    OPEN-AND-COMPILE
    TARGET-ENTRY
