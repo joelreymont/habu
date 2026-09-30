@@ -92,8 +92,8 @@ public
 : NTL-LEN ( n -- n ) {: v:n :}
    v NTL-GUARD  v NTL-RAW NTL-ROLE ;
 
-\ lib/map.f MAP-CELLS reduced: the local is the tail call's own argument, so the
-\ value handed over and the value published are the same value.
+\ lib/map.f MAP:CELL-COUNT reduced: the local is the tail call's own argument,
+\ so the value handed over and the value published are the same value.
 : NTL-SELF ( n -- n ) {: v:n :}
    v NTL-GUARD  v NTL-ROLE ;
 
