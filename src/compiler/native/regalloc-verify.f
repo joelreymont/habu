@@ -1106,6 +1106,8 @@ variable V-CHANGED
 0 V-CHANGED !
 variable V-LSAVE                     \ whether the contract's prologue keeps the caller's return address
 0 V-LSAVE !
+variable V-LREG                      \ whether the machine has a link register a call overwrites
+0 V-LREG !
 variable V-TAIL                      \ whether the contract says control leaves through a callee
 0 V-TAIL !
 variable V-NORET                     \ whether the contract says control never comes back
@@ -1471,6 +1473,30 @@ DYNAMIC-BUFFER V-TMP-BUF n
    rb NO-RET = if f want VNO-RET-FRAME-CK exit then
    V-LSAVE @ 0= if f rb want VSPILL-CK else f rb want VLINK-CK then
    f rb VOWNER-CK ;
+
+\ A call site control comes back from overwrites the link register, so a routine
+\ that leaves through a return or a tail branch keeps its caller's return address
+\ around one. A trap site is no such call: control never comes back to it -
+\ throw restores the link from the catch frame (src/habu/habu1.f BTHROW) and die
+\ exits - so a body whose only non-returning sites are terminals and traps owes
+\ no link, which is the selector's rule (select.f BLOCK-CALLS?) re-derived here.
+\ A machine with no link register (the contract's link is `absent`) keeps the
+\ return address on its stack, where a call does not overwrite it.
+: VCALL-IN? ( IR-ID:ir-block-id -- bool )
+   {: bk:IR-ID:ir-block-id :}
+   false
+   bk OP-COUNT 0 ?do
+      bk i OP-AT DCALL? if drop true leave then
+   loop ;
+
+: VLINK-OWED-CK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id rb:n :}
+   V-LREG @ 0= if exit then
+   rb NO-RET = if exit then
+   V-LSAVE @ 0<> if exit then
+   V-BLKS @ 0 ?do
+      f i BLOCK-AT VCALL-IN? if E-A64RAV-CALL throw then
+   loop ;
 
 \ ---- the data stack, across blocks -------------------------------------------
 : VNO-DSTACK ( IR-ID:ir-block-id -- )
@@ -2275,6 +2301,7 @@ DKEEP-HOOK-DEFAULT
    f VEDGE-CK
    f rb VTAIL-CK
    f rb frame VFRAME-CK
+   f rb VLINK-OWED-CK
    f VBLOCK-CKS
    f 0 BLOCK-AT args ARG-CK
    rb NO-RET <> if f rb BLOCK-AT outs OUT-CK then
@@ -2444,6 +2471,7 @@ public
    cv gi gr gc fi fr fc z l ct t size delta mch NEFF-ROUTINE:MAKE
    NEFF:FPR-WRITABLE {: fpool:NEFF:fprs :}
    t l A64FRAME:LINK-KEPT? if 1 else 0 then V-LSAVE !
+   l NEFF-LINK:ABSENT NEFF-LINK:EQ if 0 else 1 then V-LREG !
    ct NEFF-CONTROL:TAIL-CALL NEFF-CONTROL:EQ if 1 else 0 then V-TAIL !
    ct NEFF-CONTROL:NO-RETURN NEFF-CONTROL:EQ if 1 else 0 then V-NORET !
    cv NEFF-CONV:DSTACK NEFF-CONV:EQ if 1 else 0 then V-DSTACK !

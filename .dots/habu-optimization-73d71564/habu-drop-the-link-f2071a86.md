@@ -1,9 +1,11 @@
 ---
 title: Drop the link save for terminal-only words
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-30T10:58:28.244238+02:00\""
+created-at: "2026-09-30T10:58:28.244238+02:00"
+closed-at: "2026-09-30T14:27:29.118916+02:00"
+close-reason: "Landed as 'Drop the link save for terminal-only words', stacked on the division slice. A word whose only calls are the engine's terminal throw/die takes a leaf contract with no link save. The contract keys on A64SEL:MAKES-CALLS?, taken on the post-fold module SELECT walks, so it agrees with CALLED-CK by construction. VLINK-OWED-CK in the verifier refuses a returning routine that has a DBACK call site but no link save; a hand-built native-regalloc case proves it fires. Census terminal-only-frame 266 sites / 2,128 B -> 0. Gen-2 aot/code-blob with the division slice, against master+S12: 1,391,616 -> 1,390,344 (-1,272 B; about -928 B from this slice). Engine image 2,477,047 B, unchanged. Gate at the combined tip: full suite 501/501 (one curl-http flake, also seen on master+S12, green on rerun); gens 2-5 byte-identical. Untested: the verifier's NO-RET early exit."
 blocks:
   - habu-divide-through-div-1118f223
 ---

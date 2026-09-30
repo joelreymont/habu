@@ -516,6 +516,27 @@ variable D-RETS                                    \ returns seen while surveyin
    in FUN-SLOTS 0 S-ARGS !
    out FUN-SLOTS 0 S-OUTS ! ;
 
+\ Whether a block holds an operation selected as a call site, which is what
+\ obliges the contract to keep the link. A terminal is not one: control never
+\ comes back to it, because throw restores the link from the catch frame
+\ (src/habu/habu1.f BTHROW) and die exits, so the link its branch overwrites is
+\ dead and it is selected as a trap. A body whose only non-returning sites are
+\ terminals and traps therefore takes the leaf contract.
+: BLOCK-CALLS? ( IR-ID:ir-block-id -- bool )
+   {: bk:IR-ID:ir-block-id :}
+   false
+   bk OP-COUNT 0 ?do
+      bk i OP-AT OP-SLOT {: s:n :}
+      s O-CALL =  s O-WORDCALL =  or if drop true leave then
+   loop ;
+
+: FUN-CALLS? ( IR-ID:ir-fun-id -- bool )
+   {: f:IR-ID:ir-fun-id :}
+   false
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT BLOCK-CALLS? if drop true leave then
+   loop ;
+
 \ A contract that declares a call for a body containing none reserves a frame
 \ nothing needs.
 : CALLED-CK ( -- )
@@ -2634,11 +2655,11 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    entry EMIT-TRAP-BR
    N-TRAPS @ 1+ N-TRAPS ! ;
 
+\ Counted as the trap it is and not as a call: see BLOCK-CALLS?.
 : EMIT-TERMINAL ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id mask:n :}
    id 0 OPERAND TOK!
-   id 1 id WORD-ENTRY mask EMIT-TRAP
-   N-CALLS @ 1+ N-CALLS ! ;
+   id 1 id WORD-ENTRY mask EMIT-TRAP ;
 
 : EMIT-CALL-OR-TAIL ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id mask:n :}
@@ -3513,6 +3534,18 @@ public
 
 : RELEASE ( -- )
    BND-TAKE ;
+
+\ Whether selecting the bound module builds a call site, asked before the
+\ contract is chosen so that CALLED-CK holds the selection to the same answer.
+: MAKES-CALLS? ( IR-BUILD:module -- bool )
+   {: m:IR-BUILD:module :}
+   BOUND? 0= if E-A64SEL-BIND throw then
+   m BND-MODULE-CK
+   m VIEWS!
+   false
+   FUN-COUNT 0 ?do
+      MKEY i IR-ID:PACK-FUN FUN-CALLS? if drop true leave then
+   loop ;
 
 \ ---- the pass ----------------------------------------------------------------
 \ A module with no such loop or no such pair is handed back untouched, because
