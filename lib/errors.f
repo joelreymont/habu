@@ -1414,6 +1414,24 @@ public
 -9319 constant E-LIFECYCLE-LAST
 -9310 constant E-LIFECYCLE-LATE   \ a persistent hook registered a one-shot hook during PREPARE, after the one-shot phase: nothing runs it before the capture
 
+\ The database layer over package PG (lib/db/): -9320..-9329, the decade after
+\ IMAGE-LIFECYCLE's. DB-ROWS opens connections and reads rows into per-task
+\ arenas.
+-9320 constant E-DB-FIRST
+-9329 constant E-DB-LAST
+
+package DB-ROWS
+
+public
+
+-9320 constant E-CONNECT      \ the database refused the connection
+-9321 constant E-QUERY        \ the server refused a query, or a command answered no rows where rows were read
+-9322 constant E-ROW          \ the query answered no row, or a column its reader cannot read
+-9323 constant E-READERS      \ more tasks read rows than the declared readers
+-9324 constant E-CAPACITY     \ a declaration out of range or after first use, or a read past its arena
+
+;package
+
 \ The HTTP/1.1 server (package HTTP, lib/net/http.f): -9340..-9349.
 -9340 constant E-HTTP-FIRST
 -9349 constant E-HTTP-LAST

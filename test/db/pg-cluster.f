@@ -1,14 +1,17 @@
-\ pg-cluster.f - lib/pg-test.f against a private PostgreSQL cluster.
+\ pg-cluster.f - lib/pg-test.f and lib/db/rows-test.f against a private
+\ PostgreSQL cluster.
 \
 \     bin/hb --load test/db/pg-cluster.f
 \
 \ initdb makes a trust-authentication cluster under HB_TMP and pg_ctl starts it
 \ listening on a Unix-domain socket only (listen_addresses=''), so rows running
-\ beside each other have no TCP port to collide on. The cases run in a child
-\ engine that takes the conninfo as its one script argument. This process stops
-\ the cluster however that child ends - exit, failed assertion, die, crash or
-\ its deadline - and the cleanup registry (lib/fs-mutate.f CLEANUP-TREE+)
-\ removes both directories when this process exits, including by die.
+\ beside each other have no TCP port to collide on. lib/pg-test.f and then
+\ lib/db/rows-test.f each run in a child engine that takes the conninfo as its
+\ one script argument; the first that fails ends the run, and the row's last
+\ line names it. This process stops the cluster however the children end -
+\ exit, failed assertion, die, crash or a deadline - and the cleanup registry
+\ (lib/fs-mutate.f CLEANUP-TREE+) removes both directories when this process
+\ exits, including by die.
 \
 \ A SIGNAL THAT ENDS THIS PROCESS STOPS NOTHING. The engine runs the exit hook
 \ only on its own way out, so after a SIGTERM or SIGKILL the postmaster keeps
@@ -40,13 +43,13 @@ require lib/engine-candidate.f
 
 package PG-CLUSTER
 
-$10000 constant CAPTURE-CAP     \ initdb's chatter or the cases' whole report
-\ The step deadlines sum to 300 s, inside the row's 360 s
-\ (test/gate-stdlib-lib.f SUITE-TIMEOUT-MS), so this process and not the pool
-\ is the one that gives up and stops the cluster. pg_ctl's own wait (-t) ends
-\ before its capture deadline does.
+$10000 constant CAPTURE-CAP     \ initdb's chatter or one case file's whole report
+\ The step deadlines - initdb, start, each case file and stop - sum to 300 s,
+\ inside the row's 360 s (test/gate-stdlib-lib.f SUITE-TIMEOUT-MS), so this
+\ process and not the pool is the one that gives up and stops the cluster.
+\ pg_ctl's own wait (-t) ends before its capture deadline does.
 60000 constant TOOL-MS
-120000 constant CASES-MS
+60000 constant FILE-MS
 : PG-CTL-WAIT$ ( -- ptr u8 n ) s" 50" ;
 
 FS-PATH-CAP BUFFER: INITDB      variable INITDB-U
@@ -185,13 +188,19 @@ CAPTURE-CAP BUFFER: ERR
    s" pg-cluster: pg_ctl start failed" 1 die ;
 
 \ The child's report is shown whatever its outcome, so a red row carries it.
-: CASES ( -- bool )
+: RUN-FILE ( ptr u8 n -- bool ) {: file:ptr fileu:n :}
    PROC-ARGV-ENV-RESET
-   s" --load" ARG+ s" lib/pg-test.f" ARG+
+   s" --load" ARG+ file fileu ARG+
    s" --" ARG+ CONNINFO$ ARG+
-   ENGINE-CANDIDATE:PATH$ CASES-MS STEP {: o :}
+   ENGINE-CANDIDATE:PATH$ FILE-MS STEP {: o :}
    SHOW
-   o s" lib/pg-test.f" EXITED-0? ;
+   o file fileu EXITED-0? ;
+
+\ The files run against the one cluster in this order, and the first that
+\ fails ends the run: the answer is the last file run and whether it passed.
+: CASES ( -- ptr u8 n bool )
+   s" lib/pg-test.f" 2dup RUN-FILE 0= if false exit then 2drop
+   s" lib/db/rows-test.f" 2dup RUN-FILE ;
 
 : MAIN ( -- )
    s" initdb" INITDB TOOL INITDB-U !
@@ -200,7 +209,9 @@ CAPTURE-CAP BUFFER: ERR
    INITDB-RUN
    START
    [: CASES ;] [: STOP ;] finally
-   0= if s" pg-cluster: lib/pg-test.f failed" 1 die then ;
+   if 2drop exit then
+   s" pg-cluster: " type type s"  failed" type cr
+   s" " 1 die ;
 
 MAIN
 

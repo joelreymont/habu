@@ -299,11 +299,11 @@ the list into `EXEC`.
 `lib/pg-test.f` runs against a live server, and the native gate runs it as the
 `pg` row through `test/db/pg-cluster.f`. The harness makes a private
 trust-authentication cluster with `initdb`, starts it with `pg_ctl` listening
-on a Unix-domain socket only (`listen_addresses=''`), and runs the cases in a
-child engine with the cluster's conninfo (`host=<socket directory>
-dbname=postgres user=habu`) as their one script argument. It then stops the
-cluster whatever the cases' outcome, and both directories are removed when it
-exits:
+on a Unix-domain socket only (`listen_addresses=''`), and runs these cases and
+then [`lib/db/rows-test.f`](#its-test), each in a child engine with the
+cluster's conninfo (`host=<socket directory> dbname=postgres user=habu`) as its
+one script argument. It then stops the cluster whatever the cases' outcome, and
+both directories are removed when it exits:
 
 ```sh
 bin/hb --load test/db/pg-cluster.f
@@ -335,3 +335,73 @@ The server binaries are a gate requirement on every host
 and the name. Loaded without its argument, `lib/pg-test.f` dies naming the
 harness. Neither skips. `test/five-bindings.f` also loads and binds package
 `PG` beside the other foreign libraries.
+
+## Row readers (package DB-ROWS)
+
+`lib/db/rows.f` opens connections and reads rows. A span a `COL-` reader
+answers is copied into the reading task's own arena, so it stays valid after
+`PG:CLEAR` and until that task's next read (`READ-RESET`, which `BY-ID` runs).
+The arena is per task because static storage is one copy for the whole image
+while a server reads from many tasks at once: with one arena, a second task's
+read copies its bytes over a record the first task still holds.
+
+Two declarations come before the first `OPEN` or read:
+
+```forth
+3 DB-ROWS:CONNECTIONS+          \ each module, for the connections it opens
+8 DB-ROWS:CONFIGURE-READERS     \ once: the tasks that read rows, main included
+```
+
+`CONNECTIONS+` adds to one connection the process entry owns; the first `OPEN`
+calls `PG:CONFIGURE` with that count, 64 results and 32 parameters, and a later
+`CONNECTIONS+` is `DB-ROWS:E-CAPACITY`. `CONFIGURE-READERS` behaves like
+`PG:CONFIGURE`: the same count again is harmless, a different one is
+`E-CAPACITY` until image preparation releases the arenas, and a read before it
+or from one task more than the count is `DB-ROWS:E-READERS`. A task takes its
+arena on its first read and keeps it; each arena holds 16 KiB per read, and a
+read past that is `E-CAPACITY`.
+
+```forth
+DB-ROWS:OPEN-START   ( ptr u8 n -- PG:connection )  \ for a caller driving PG:POLL
+DB-ROWS:OPEN         ( ptr u8 n -- PG:connection )  \ E-CONNECT on refusal; needs AIO:START
+DB-ROWS:OPEN-ENV     ( -- PG:connection )           \ libpq's PG* environment
+DB-ROWS:CONNECTIONS  ( -- n )
+
+DB-ROWS:READ-RESET    ( -- )
+DB-ROWS:BY-ID         ( PG:connection n ptr u8 n -- PG:result )  \ $1 = n; one row or E-ROW
+DB-ROWS:WITH-ROW      ( PG:result [ PG:result -- R ] -- R )      \ clears on every path
+DB-ROWS:ROWS-OR-THROW ( PG:result -- PG:result )  \ E-QUERY unless rows
+DB-ROWS:FIRST-ROW     ( PG:result -- PG:result )  \ E-ROW on no row
+
+DB-ROWS:COL-TEXT  ( PG:result n -- ptr u8 n )       \ NULL is E-ROW
+DB-ROWS:COL-TEXT? ( PG:result n -- ptr u8 n bool )  \ NULL is empty and false
+DB-ROWS:COL-INT   ( PG:result n -- n )              \ NULL is PG:E-TYPE
+DB-ROWS:COL-ID    ( PG:result n -- n )              \ NULL is 0
+DB-ROWS:COL-REAL  ( PG:result n -- r )              \ NULL is 0.0
+DB-ROWS:COL-BOOL  ( PG:result n -- bool )           \ NULL is E-ROW
+
+DB-ROWS:AT$       ( PG:result n n -- ptr u8 n )     \ row, column; libpq's bytes
+DB-ROWS:AT?$      ( PG:result n n -- ptr u8 n bool )
+DB-ROWS:AT-INT    ( PG:result n n -- n )
+DB-ROWS:AT-BOOL   ( PG:result n n -- bool )
+DB-ROWS:ONE-INT   ( PG:result -- n )                \ clears; NULL or no row is E-ROW
+```
+
+The `COL-` readers read the first row; the `AT` readers read any row in place
+and answer libpq's bytes, valid until `PG:CLEAR`. A decoder run through
+`WITH-ROW` returns a record whose spans outlive the result.
+
+DB-ROWS holds `-9320..-9324` of the block `-9320..-9329` in `lib/errors.f`.
+
+### Its test
+
+`lib/db/rows-test.f` runs in the `pg` row: `test/db/pg-cluster.f` runs it after
+`lib/pg-test.f`, against the same cluster and with the same conninfo as its one
+script argument. The first file that fails ends the run, and the row's last
+line is `pg-cluster: <file> failed`. Loaded without the argument, the file dies
+naming the harness; there is no skip.
+
+It reads records whose spans must outlive `PG:CLEAR`, every NULL arm and
+refusal (each repeated past the 64 results a leak would exhaust), two worker
+tasks holding records at once, and a third worker one reader past the
+declaration.
