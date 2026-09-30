@@ -14,4 +14,13 @@ Verify: host K3's product engine: `--load test/x86-64-kernel-engine.f`; ThinkPad
 Depends: habu-emit-x86-code-973a0074 (K8b), habu-emit-x86-engine-86b5f8e7 (K9a).
 Route: direct (x86-only files).
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: krait.
+
+Preflight corrections (2026-09-30; override the lines above where they differ):
+- Citations: TIER-PROV is `layout.f:1832-1840`; the hole is `habu1.f:2316-2318`; the assembly interpreter's provenance sites are `habu2.f:2795, 7755, 9335-9457`.
+- `code-publish` certifies nothing: as `BCODEPUBLISH` (`habu1.f:2472`, "only the compiler return may certify this emission"), x86 `PUBLISH,` (`kernel-x64.f:1889`) calls `X64PROV:UNKNOWN-RANGE,` over [dst, CP). Native evidence comes only from `X64PROV:OPEN,` then `1 X64PROV:CLOSE,` after a successful compile (ARM64 `habu2.f:2795`, `7755`). Cases: `OPEN,`, `code-publish`, `1 CLOSE,` answers 1; a bare `code-publish` answers -1.
+- Engine text: ARM64 marks the engine text native at boot (`habu2.f:7513-7516`); x86 `START,` makes no provenance call. Add `X64PROV:TEXT-NATIVE, ( label label -- )` marking the kernel text native; call it at the entry after `KERNEL,` in `X64HARNESS:BOOT-OPEN,` (`test/x86-64-boot-harness.f:49-58`); X4d (`habu-resolve-x86-entry-cb671d4d`) calls it at the product entry. Case: a kernel row's entry answers 1 (pre-change failing check: it answers -1 today, `kernel-x64.f:2615-2617`, where ARM64 answers 1; `test/tier.f:367`). Files add `test/x86-64-boot-harness.f`.
+- Split, merge and shift paths (`EDGES,`, `MOVE,`, `PUT,`, `code-origin.f:53-130`) get cases: after a `patch32` inside a native span the bytes before and after the patched word still answer 1; an unknown span published after it still answers -1 (row shift); two adjacent native closes leave `TIER-PROV:N-CELL` at 1.
+- Register contract: the ARM64 `OPEN,`/`CLOSE,` preserve every register; the x86 bodies may clobber rax rcx rdx rsi rdi r8-r11 (I5e's row bodies rely on this statement).
+- Out of scope: `CAPTURE-ORIGIN!`, `CAPTURE-RANGE,`, `ABANDON,`, `RESTORE-REGION,` (x86 refuses `snap-rebase`, `kernel-x64.f:2601`); the captured-region rows at boot belong to the linker leaves X4b-X4d.
+- Verify: host the stack fixpoint engine (not K3's product): `--load test/x86-64-kernel-engine.f`; ThinkPad: the images natively.
