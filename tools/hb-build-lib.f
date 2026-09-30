@@ -450,7 +450,6 @@ HBB-INSTALL-CHILD-LINT
 
 : HBB-KEY-LOAD-FILES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" tools/hb-build.f" HBB-KEY-FILE+
-   s" tools/hb-build-core.f" HBB-KEY-FILE+
    s" lib/errors.f" HBB-KEY-FILE+
    s" lib/string.f" HBB-KEY-FILE+
    s" lib/memory.f" HBB-KEY-FILE+

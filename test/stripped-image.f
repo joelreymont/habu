@@ -61,7 +61,6 @@ variable RETURN-TREE-U
 
 \ A private cache root, as the entry rows use: the maker links this subject on
 \ every run instead of hb-build restoring an artifact by its content key.
-\ Witness for the CLI's tier-1 production load: no tools/hb-build-lib.f preload.
 : BUILD ( -- )
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+

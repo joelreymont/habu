@@ -318,11 +318,8 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    BUILD-CACHE:RESET
    HBT-TMP BUILD-CACHE:ROOT! ;
 
-\ The CLI with its library preloaded at tier 0: the requires of
-\ tools/hb-build-core.f, which tools/hb-build.f loads, are then no-ops, so a
-\ spawn skips the ~9 s tier-1 compile of that library and runs the same
-\ HBB-MAIN on the same argv. test/stripped-image.f spawns tools/hb-build.f
-\ alone, the production load with the library at tier 1.
+\ The CLI as docs/native-applications.md documents it: tools/hb-build.f alone
+\ requires its library, so every row spawns the command a user runs.
 : HBT-ARGV-BASE-TMP ( ptr u8 n -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
@@ -330,7 +327,6 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
-   s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
    s" tools/hb-build.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
