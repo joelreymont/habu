@@ -1193,6 +1193,12 @@ SUITE curl-http
    lib/net/curl-test.f
 ;SUITE
 
+\ The HTTP/1.1 server on a loopback port, answered by CURL and by raw TCP4;
+\ writes build/http-transcript.txt and compares it whole.
+SUITE http
+   lib/net/http-test.f
+;SUITE
+
 SUITE crypto-evp
    lib/crypto/evp-test.f
 ;SUITE

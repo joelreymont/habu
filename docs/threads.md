@@ -319,8 +319,9 @@ the declared bands directly above it are `FS-MUT-ABI` (3080 bytes), `FS-ABI`
 (1328 bytes), `FMT-ABI` (56 bytes) and `STRING-ABI` (1032 bytes), none of which
 is part of it.
 
-The libraries above claim 1696 of those 6024 bytes when one image loads them
-all — `lib/process.f`'s $4A0 row is the large one — so **4328 bytes are free**. A row
+The libraries above, with `lib/net/http-arena.f`'s 8-byte slot row, claim 1704
+of those 6024 bytes when one image loads them all — `lib/process.f`'s $4A0 row
+is the large one — so **4320 bytes are free**. A row
 that would cross
 `USER-BAND:END` is `E-TASK-USER` at its definition, not a store into whatever
 lies above. Budget accordingly.

@@ -1413,3 +1413,15 @@ public
 -9310 constant E-LIFECYCLE-FIRST
 -9319 constant E-LIFECYCLE-LAST
 -9310 constant E-LIFECYCLE-LATE   \ a persistent hook registered a one-shot hook during PREPARE, after the one-shot phase: nothing runs it before the capture
+
+\ The HTTP/1.1 server (package HTTP, lib/net/http.f): -9340..-9349.
+-9340 constant E-HTTP-FIRST
+-9349 constant E-HTTP-LAST
+-9340 constant E-HTTP-STATE       \ START on a running server, STOP on a stopped one, a hook installed while one runs, a second STATIC-ROOT
+-9341 constant E-HTTP-HANDLE      \ a request or response handle past its request, or one over another worker's slot
+-9342 constant E-HTTP-WORKERS     \ a worker count outside 1..MAX-WORKERS, or an idle deadline under 1 ms
+-9343 constant E-HTTP-CAPACITY    \ more hooks, headers or bound segments than a table holds, or a negative body length
+-9344 constant E-HTTP-ROUTE       \ more routes than the table holds, or an empty method or a pattern not starting with /
+-9345 constant E-HTTP-STATIC      \ a static root that is not a directory, or a tree larger than the tables that hold it
+-9346 constant E-HTTP-SOCKET      \ the listener could not be bound, put to listen or asked its own address
+-9347 constant E-HTTP-RESPONSE    \ a JSON body larger than the worker's body buffer

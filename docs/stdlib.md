@@ -85,6 +85,7 @@ theirs.
 | `lib/net/tcp4.f` | task-local |
 | `lib/net/udp4.f` | task-local |
 | `lib/net/curl.f` | task-local |
+| `lib/net/http.f` | process-wide (one server per image; each worker's request state is a row of its own slot, found through a `TASK:+USER` row; see [http.md](http.md)) |
 | `lib/serial.f` | task-local |
 | `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) |
 
