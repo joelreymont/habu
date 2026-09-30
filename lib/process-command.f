@@ -203,6 +203,7 @@ private
    u LEN>N 0 < if E-PROC-ENV throw then
    h ENV-OFF-CELL @ {: off:n :}
    off u PROC-ENV-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
+   a u PROC-ENV-CHECK-ENTRY
    a h ENV-BUF off + u LEN>N BYTE-COPY
    0 h ENV-BUF off + u LEN>N + c!
    off u LEN>N 1 + + h ENV-OFF-CELL !
@@ -211,17 +212,15 @@ private
 public
 
 : ENV-ENTRY+ ( ptr ptr u8 ptr u8 len -- ) {: h:ptr a:ptr u:len :}
-   a u PROC-ENV-CHECK-ENTRY
    h ENV-CHECK-EXTRA
    h h a u ENV-STORE-Z ENV-INSTALL-Z ;
 
 : ENV+ ( ptr ptr u8 ptr u8 len ptr u8 len -- )
    {: h:ptr name:ptr nameu:len val:ptr valu:len :}
-   name nameu PROC-ENV-CHECK-NAME
-   valu LEN>N 0 < if E-PROC-ENV throw then
    h ENV-CHECK-EXTRA
    h ENV-OFF-CELL @ {: off:n :}
-   off nameu PROC-ENV-NEED valu PROC-ENV-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
+   off nameu valu PROC-ENV-ROW-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
+   name nameu PROC-ENV-CHECK-NAME
    name h ENV-BUF off + nameu LEN>N BYTE-COPY
    PROC-ENV-EQUAL h ENV-BUF off + nameu LEN>N + c!
    val h ENV-BUF off + nameu LEN>N + 1 + valu LEN>N BYTE-COPY

@@ -76,7 +76,13 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 : ASCII-UPPER ( n -- n )
    dup STR-BEFORE-LOWER-A > over STR-AFTER-LOWER-Z < and if STR-SPACE - then ;
 
+\ A negative length is no string: STR=, STR=CI, STARTS-WITH?, ENDS-WITH? and
+\ FIND-SUB refuse one on either side before they answer.
+: STR-CHECK-LENS ( n n -- ) {: u:n v:n :}
+   u 0 < v 0 < or if E-STR-BOUNDS throw then ;
+
 : STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   u v STR-CHECK-LENS
    u v <> if 0 0= 0= exit then
    0 begin dup u < while
       dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
@@ -84,6 +90,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    repeat drop 0 0= ;
 
 : STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   u v STR-CHECK-LENS
    u v <> if 0 0= 0= exit then
    0 begin dup u < while
       dup a + c@ ASCII-LOWER over b + c@ ASCII-LOWER <> if
@@ -93,14 +100,17 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    repeat drop 0 0= ;
 
 : STARTS-WITH? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+   u v STR-CHECK-LENS
    u v < if 0 0= 0= exit then
    a v b v STR= ;
 
 : ENDS-WITH? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+   u v STR-CHECK-LENS
    u v < if 0 0= 0= exit then
    a u v - + v b v STR= ;
 
 : FIND-SUB ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}   \ SOME first offset of b in a (empty needle -> SOME 0), else NONE
+   u v STR-CHECK-LENS
    v 0= if 0 >IDX OPTION:SOME exit then
    u v < if OPTION:NONE exit then
    0 begin dup u v - <= while
@@ -145,6 +155,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    LTRIM RTRIM ;
 
 : SB-CHECK-LEN-ROOM ( len -- ) {: add :}
+   add LEN>N 0 < if E-STR-BOUNDS throw then
    add LEN>N SB-CAP SB-LEN @ - > if E-STR-CAPACITY throw then ;
 
 : SB-CHECK-ROOM ( n -- )

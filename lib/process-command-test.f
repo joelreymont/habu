@@ -12,6 +12,7 @@ require lib/process-env.f
 require lib/fs-mutate.f
 require lib/process-command.f
 require lib/test/outcome.f
+require lib/test/guard-page.f
 
 create PCMDT-ENV-OUT 97 c, 108 c, 112 c, 104 c, 97 c, 10 c, 10 c, 10 c,
 create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
@@ -397,6 +398,32 @@ create PCMDT-FILL PCMDT-FILL-LEN allot
    [: MEM-MAX-N PCMDT-ENV-AT ;] E-PROC-ENV TTHROWSQ
    PROC-CMD:RESET ;
 
+\ The room left is checked before a byte of the caller's text is read. One entry
+\ leaves PCMDT-LEFT bytes of the region; the text holds no `=` and ends at an
+\ inaccessible page, so a scan that runs first reads past it.
+8 constant PCMDT-LEFT
+
+: PCMDT-FILL-TO-LEFT ( -- )
+   PROC-CMD:RESET PCMDT-FILL PROC-ENV-EXTRA-BYTES PCMDT-LEFT - 1- PCMDT-ENV-ENTRY+ ;
+
+: PCMDT-ENTRY-UNREAD ( n -- ) {: u:n :}
+   PCMDT-FILL-TO-LEFT PCMDT-LEFT 1- [char] x GUARD-PAGE:TAIL u PCMDT-ENV-ENTRY+ ;
+
+: PCMDT-ENV-UNREAD ( n -- ) {: nameu:n :}
+   PCMDT-FILL-TO-LEFT PCMDT-LEFT 2 - [char] x GUARD-PAGE:TAIL nameu s" " PCMDT-ENV+ ;
+
+: PCMDT-ENV-BOUND-BEFORE-SCAN ( -- )
+   PCMDT-FILL!
+   s" an env entry or row is measured against the room before it is read" T-LABEL
+   [: PCMDT-LEFT PCMDT-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PCMDT-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: STR-MIN-I64 PCMDT-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: PCMDT-LEFT 1- PCMDT-ENV-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PCMDT-ENV-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: -1 PCMDT-ENV-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: STR-MIN-I64 PCMDT-ENV-UNREAD ;] E-PROC-ENV TTHROWSQ
+   PROC-CMD:RESET ;
+
 \ The argument region is PROC-ARGV-BUF-CAP bytes, and PROC-ZCOPY alone compares
 \ an argument and its NUL with the room left in it.
 : PCMDT-ARG-AT ( n -- ) {: u:n :}
@@ -429,6 +456,7 @@ create PCMDT-FILL PCMDT-FILL-LEN allot
    [: PCMDT-BAD-ENV-NAME ;] E-PROC-ENV TTHROWSQ
    [: PCMDT-BAD-ENV-ENTRY ;] E-PROC-ENV TTHROWSQ
    PCMDT-ENV-BYTE-BOUNDS
+   PCMDT-ENV-BOUND-BEFORE-SCAN
    PCMDT-ARG-BYTE-BOUNDS
    PROC-CMD:TEST-WIPE-AFTER-REFUSAL
    PCMDT-CMD CMD:TEST-WIPE

@@ -240,10 +240,14 @@ private
 
 public
 
+\ STRING and KEY check room for one byte per source byte before JW-STR-N reads
+\ the text: each byte takes at least one. A growable output may move on any
+\ JW-ROOM, so every read after one takes the source from JW-REBASE.
 : STRING ( ptr writer ptr u8 n -- ptr writer ) {: a:ptr u:n :}
    a u JW-SPAN
    dup a u JW-ALIAS {: off:n :}
-   a u JW-STR-N JW-ROOM
+   u JW-ROOM
+   dup a off JW-REBASE u JW-STR-N JW-ROOM
    dup a off JW-REBASE {: src:ptr :}
    JW-DQ JW-C
    0 begin dup u < while                      \ ( w idx )
@@ -255,7 +259,8 @@ public
 : KEY ( ptr writer ptr u8 n -- ptr writer ) {: a:ptr u:n :}
    a u JW-SPAN
    dup a u JW-ALIAS {: off:n :}
-   a u JW-STR-N 1 JW-SIZE+ JW-ROOM
+   u JW-ROOM
+   dup a off JW-REBASE u JW-STR-N 1 JW-SIZE+ JW-ROOM
    dup a off JW-REBASE u STRING
    JW-COLON-C JW-C ;
 

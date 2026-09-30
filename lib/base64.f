@@ -107,6 +107,9 @@ public
 
 : DECODE ( ptr u8 n SPAN:span<u8> -- n ) {: a u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
+   \ Each group of four decodes to three bytes and the last to at least one, so
+   \ a span too small for that is refused before the input is read.
+   u 4 / 3 * 2 - s SPAN:$ nip > if E-SPAN-CAPACITY throw then
    a u CHECKED {: len:n :}
    s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out :}
    u 4 / 0 ?do

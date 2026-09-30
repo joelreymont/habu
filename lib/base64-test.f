@@ -11,6 +11,7 @@ require lib/memory.f
 require lib/span.f
 require lib/base64.f
 require lib/crypto/sha1.f
+require lib/test/guard-page.f
 
 package BASE64-TEST
 
@@ -150,6 +151,13 @@ variable STAGED-LEN
    [: 0 OUT$ drop -1 OUT BASE64:ENCODE drop ;] E-SPAN-LENGTH TTHROWSQ
    s" DECODE refuses a negative length" T-LABEL
    [: 0 OUT$ drop -1 OUT BASE64:DECODE drop ;] E-SPAN-LENGTH TTHROWSQ
+   [: 0 OUT$ drop MEM-MAX-N negate 1- OUT BASE64:DECODE drop ;] E-SPAN-LENGTH TTHROWSQ
+   \ Eight characters decode to at least four bytes, so a three-byte span is
+   \ refused before the input, which ends at an inaccessible page, is read.
+   s" DECODE measures the span before it reads the input" T-LABEL
+   [: 7 [char] A GUARD-PAGE:TAIL 8 OUT-3 BASE64:DECODE drop ;] E-SPAN-CAPACITY TTHROWSQ
+   [: 7 [char] A GUARD-PAGE:TAIL MEM-MAX-N 3 invert and OUT-3 BASE64:DECODE drop ;]
+      E-SPAN-CAPACITY TTHROWSQ
    s" ENCODE refuses a length whose encoded size wraps" T-LABEL
    [: 0 OUT$ drop MEM-MAX-N 2 - OUT BASE64:ENCODE drop ;] E-SPAN-CAPACITY TTHROWSQ ;
 

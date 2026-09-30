@@ -19,6 +19,7 @@ using PTY-HARNESS
 $400 constant FEED-LIMIT           \ chunks one fill loop may feed before giving up
 $64 constant WEDGE-MS              \ the wedge case's own budget, short enough to watch
 $BB8 constant WEDGE-SLACK-MS       \ what a loaded box may add to it before the claim fails
+$401 constant PATH-OVER            \ one byte past the harness's $400-byte path store
 
 create FILLER 64 allot
 variable HIT                       \ did the loop reach the case it was feeding for?
@@ -177,8 +178,28 @@ variable HIT                       \ did the loop reach the case it was feeding 
    [: s" " WATCH+ drop ;] catch 0 <> TTRUE
    s" and so is a needle longer than the pool holds" T-LABEL
    [: FILLER 65 WATCH+ drop ;] catch 0 <> TTRUE
+   s" and so is a negative one" T-LABEL
+   [: FILLER -1 WATCH+ drop ;] E-PTY-CAPACITY TTHROWSQ
+   [: FILLER STR-MIN-I64 WATCH+ drop ;] E-PTY-CAPACITY TTHROWSQ
    s" and the table itself is bounded" T-LABEL
    [: FILL-WATCHES ;] catch 0 <> TTRUE ;
+
+
+\ A negative length is refused before it reaches a copy or a write: write()
+\ answers -1 for bytes it refused, which a length of -1 would take for success,
+\ and a negative needle would be found at offset 0. No pair is open yet.
+: CASE-NEGATIVE-LENGTHS ( -- )
+   BUF-CLEAR
+   s" a spawn path past the store, or negative, is refused" T-LABEL
+   [: FILLER PATH-OVER SPAWN-ON-PTY ;] E-PTY-CAPACITY TTHROWSQ
+   [: FILLER -1 SPAWN-ON-PTY ;] E-PTY-CAPACITY TTHROWSQ
+   [: FILLER STR-MIN-I64 SPAWN-ON-PTY ;] E-PTY-CAPACITY TTHROWSQ
+   s" a negative send length is refused before the write" T-LABEL
+   [: FILLER -1 SEND ;] E-PTY-CAPACITY TTHROWSQ
+   [: FILLER STR-MIN-I64 SEND ;] E-PTY-CAPACITY TTHROWSQ
+   s" a barrier on a negative needle is refused, not found at 0" T-LABEL
+   [: FILLER -1 WAIT-BARRIER drop ;] E-STR-BOUNDS TTHROWSQ
+   [: FILLER STR-MIN-I64 WAIT-BARRIER drop ;] E-STR-BOUNDS TTHROWSQ ;
 
 
 : HB$ ( -- ptr u8 n )
@@ -256,6 +277,7 @@ variable HIT                       \ did the loop reach the case it was feeding 
    CASE-KEEP-TAIL
    CASE-NO-WINDOW
    CASE-WATCH-REFUSALS
+   CASE-NEGATIVE-LENGTHS
    CASE-SPAWN-ABORT
    CASE-WAIT-AFTER
    CASE-WEDGE-REAP ;

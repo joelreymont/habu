@@ -1,6 +1,7 @@
 require lib/test.f
 require lib/xml.f
 require lib/byte-edit.f
+require lib/test/guard-page.f
 
 package XML-SOURCE-TEST
 
@@ -419,6 +420,23 @@ CAST: ENCODING>N ( XML:encoding -- n )
    READER XML-KIND:START NEXT= XML-KIND:END NEXT=
    XML-KIND:EOF NEXT= XML:CLOSE XML:SOURCE-CLOSE ;
 
+\ The output is measured against the fewest bytes the input can need before the
+\ input is read: all of them in UTF-8, two for every three in UTF-16. Each input
+\ ends at an inaccessible page one byte short of the length it claims.
+: UNREAD-UTF8 ( XML:source -- XML:source )
+   4 [char] A GUARD-PAGE:TAIL 5 ENCODED 4 XML:ENCODE drop ;
+
+: UNREAD-UTF16 ( XML:source -- XML:source )
+   2 [char] A GUARD-PAGE:TAIL 3 ENCODED 1 XML:ENCODE drop ;
+
+: ENCODE-BOUND ( -- )
+   s" <a/>" OPEN
+   ['] UNREAD-UTF8 catch XML:E-CAPACITY T=
+   XML:SOURCE-CLOSE
+   s\" \xFF\xFE<\za\z/\z>\z" OPEN
+   ['] UNREAD-UTF16 catch XML:E-CAPACITY T=
+   XML:SOURCE-CLOSE ;
+
 : REJECTIONS ( -- )
    s\" \xFF\xFE<" XML:E-UTF16 BAD-INIT
    s\" \xFF\xFE\x00\xDC" XML:E-UTF16 BAD-INIT
@@ -453,6 +471,7 @@ false COMPOSED-EDIT
 EDIT-LE
 BOUNDARIES-AND-RECOVERY
 SOURCE-CAPACITY
+ENCODE-BOUND
 SOURCE-OUTPUT-ALIAS
 REJECTIONS
 T-REPORT

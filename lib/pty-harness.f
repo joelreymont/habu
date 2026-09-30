@@ -211,8 +211,10 @@ public
    repeat ;
 
 
-\ A short write is an error, never a silent truncation.
+\ A short write is an error, never a silent truncation. A negative length is
+\ refused before the write, whose -1 error answer would equal a length of -1.
 : WRITE-ALL ( fd ptr u8 n -- ) {: f:fd a:ptr u:n :}
+   u 0 < if E-PTY-CAPACITY throw then
    f FD>N a u write u <> if E-PTY-IO throw then ;
 
 
@@ -355,7 +357,7 @@ private
 \ The transaction below cannot read a local, so the path it execs travels
 \ through storage.
 : STORE-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
-   u PATH-CAP > if E-PTY-CAPACITY throw then
+   u 0 < u PATH-CAP > or if E-PTY-CAPACITY throw then
    a PATH-BUF u BYTE-COPY
    u PATH-U ! ;
 
@@ -485,7 +487,7 @@ public
 \ so the fact can only refuse a claim, never grant one wrongly.
 : WATCH+ ( ptr u8 n -- watch ) {: a:ptr u:n :}
    WATCH-N @ WATCH-CAP >= if E-PTY-CAPACITY throw then
-   u 0= u NEEDLE-CAP > or if E-PTY-CAPACITY throw then
+   u 0 <= u NEEDLE-CAP > or if E-PTY-CAPACITY throw then
    WATCH-N @ {: w:n :}
    a  NEEDLE w NEEDLE-CAP * +  u BYTE-COPY
    u w NEEDLE-LEN-AT !

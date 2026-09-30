@@ -9,6 +9,7 @@ require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
 require lib/test/outcome.f
+require lib/test/guard-page.f
 require lib/process-env.f
 
 $8000 constant PET-CAP
@@ -470,6 +471,46 @@ variable PET-START-NS
    [: MEM-MAX-N PET-DEF-AT ;] E-PROC-ENV TTHROWSQ
    PET-RESET ;
 
+\ The room left is checked before a byte of the caller's text is read. The text
+\ holds no `=` and ends at an inaccessible page, so a scan that runs first reads
+\ past it; a length one past the room, or the maximum cell, is refused unread.
+
+: PET-UNREAD ( n -- ptr u8 ) {: u:n :}     \ u bytes of `x`, then no readable byte
+   u [char] x GUARD-PAGE:TAIL ;
+
+: PET-ENTRY-UNREAD ( n -- ) {: u:n :}
+   PET-ENV-FILL PET-LEFT 1- PET-UNREAD u >LEN PROC-ENV-ENTRY+ ;
+
+: PET-ROW-UNREAD ( n -- ) {: nameu:n :}
+   PET-ENV-FILL PET-LEFT 2 - PET-UNREAD nameu >LEN s" " >LEN PROC-ENV+ ;
+
+: PET-SET-UNREAD ( n -- ) {: nameu:n :}
+   PET-ENV-FILL PET-LEFT 2 - PET-UNREAD nameu >LEN s" " >LEN PROC-ENV-SET ;
+
+: PET-DEF-UNREAD ( n -- ) {: nameu:n :}
+   PET-DEF-FILL PET-LEFT 2 - PET-UNREAD nameu >LEN s" " >LEN PROC-ENV-DEFAULT+ ;
+
+: PET-ENV-BOUND-BEFORE-SCAN ( -- )
+   PET-EARLY-IN!
+   s" an entry is measured against the room before it is read" T-LABEL
+   [: PET-LEFT PET-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PET-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: STR-MIN-I64 PET-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
+   s" and so is a row's name, appended, set or defaulted" T-LABEL
+   [: PET-LEFT 1- PET-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PET-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: -1 PET-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: STR-MIN-I64 PET-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: PET-LEFT 1- PET-SET-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PET-SET-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: -1 PET-SET-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: STR-MIN-I64 PET-SET-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: PET-LEFT 1- PET-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PET-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: -1 PET-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: STR-MIN-I64 PET-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ
+   PET-RESET ;
+
 : PROCESS-ENV-TEST-MAIN ( -- )
    T-RESET
    s" env-child" [: PET-RUN-ENV-CHILD ;] PET-CASE
@@ -497,6 +538,7 @@ variable PET-START-NS
    s" bad-env-entry" [: PET-BAD-ENV-ENTRY-THROWS ;] PET-CASE
    s" bad-env-empty" [: PET-BAD-ENV-EMPTY-THROWS ;] PET-CASE
    s" env-byte-bounds" [: PET-ENV-BYTE-BOUNDS ;] PET-CASE
+   s" env-bound-before-scan" [: PET-ENV-BOUND-BEFORE-SCAN ;] PET-CASE
    s" path-find-hb" [: PET-PATH-FIND-HB ;] PET-CASE
    s" path-direct-hb" [: PET-PATH-DIRECT-HB ;] PET-CASE
    s" path-missing" [: PET-PATH-MISSING ;] PET-CASE

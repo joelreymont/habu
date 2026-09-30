@@ -79,6 +79,9 @@ variable STR-TEST-BUF2-LEN
 : STR-TEST-COUNT-NEG ( -- )
    -1 STR-COUNT drop ;
 
+: STR-TEST-SB-APPEND-LEN ( n -- ) {: u:n :}
+   s" x" drop u >LEN SB-APPEND-LEN ;
+
 : STR-TEST-BUILDER ( -- )
    SB-RESET
    s" ab" SB-APPEND
@@ -93,6 +96,12 @@ variable STR-TEST-BUF2-LEN
    [: STR-TEST-LEN-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
    [: STR-TEST-OFF-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
    [: STR-TEST-COUNT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   SB-RESET                                         \ a negative length would move the cursor back
+   s" ab" SB-APPEND
+   [: -1 STR-TEST-SB-APPEND-LEN ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-SB-APPEND-LEN ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: SB-CAP 1- STR-TEST-SB-APPEND-LEN ;] catch E-STR-CAPACITY STR-ASSERT=
+   SB$ s" ab" STR-ASSERT$
    STR-TEST-BYTE-VIEW-CELL BYTE-VIEW
       STR-TEST-BYTE-VIEW-CELL 0 STRUCT-BYTE+ = STR-ASSERT
    STR-TEST-A-CHAR STR-TEST-BYTE-VIEW-CELL BYTE-VIEW c!
@@ -201,6 +210,51 @@ variable STR-TEST-BUF2-LEN
      none OF STR-TRUE ENDOF
      some OF drop STR-FALSE ENDOF
    ;MATCH STR-ASSERT ;
+
+: STR-TEST-FIND-SUB-NEG ( n -- ) {: v:n :}
+   s" abc" s" x" drop v STR-FIND-SUB>N drop ;
+
+: STR-TEST-FIND-SUB-NEGATIVE ( -- )                 \ a negative needle is refused, not found at 0
+   [: -1 STR-TEST-FIND-SUB-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-FIND-SUB-NEG ;] catch E-STR-BOUNDS STR-ASSERT= ;
+
+: STR-TEST-FIND-SUB-HAY ( n n -- ) {: u:n v:n :}
+   s" abc" drop u s" abc" drop v STR-FIND-SUB>N drop ;
+
+: STR-TEST-EQ-NEG ( n n -- ) {: u:n v:n :}
+   s" abc" drop u s" abc" drop v STR= drop ;
+
+: STR-TEST-EQ-CI-NEG ( n n -- ) {: u:n v:n :}
+   s" abc" drop u s" abc" drop v STR=CI drop ;
+
+: STR-TEST-STARTS-NEG ( n n -- ) {: u:n v:n :}
+   s" abc" drop u s" abc" drop v STARTS-WITH? drop ;
+
+: STR-TEST-ENDS-NEG ( n n -- ) {: u:n v:n :}
+   s" abc" drop u s" abc" drop v ENDS-WITH? drop ;
+
+\ A negative length on either side is refused: equal negative lengths compared
+\ true, a negative needle matched every haystack, and a negative haystack held
+\ the empty needle at 0.
+: STR-TEST-COMPARE-NEGATIVE ( -- )
+   [: -1 1 STR-TEST-FIND-SUB-HAY ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 0 STR-TEST-FIND-SUB-HAY ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 -1 STR-TEST-EQ-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-MIN-I64 STR-TEST-EQ-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: 3 -1 STR-TEST-EQ-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 3 STR-TEST-EQ-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 -1 STR-TEST-EQ-CI-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-MIN-I64 STR-TEST-EQ-CI-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: 3 -1 STR-TEST-EQ-CI-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 3 STR-TEST-EQ-CI-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: 3 -1 STR-TEST-STARTS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: 3 STR-MIN-I64 STR-TEST-STARTS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 1 STR-TEST-STARTS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 0 STR-TEST-STARTS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: 3 -1 STR-TEST-ENDS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: 3 STR-MIN-I64 STR-TEST-ENDS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 1 STR-TEST-ENDS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 0 STR-TEST-ENDS-NEG ;] catch E-STR-BOUNDS STR-ASSERT= ;
 
 : STR-TEST-INDEX-OF-OPTION ( -- )                   \ direct both-branch option assertions
    s" abcdef" 100 INDEX-OF MATCH option
@@ -397,6 +451,8 @@ STR-TEST-PARSE
 STR-TEST-PARSE-OPTION
 STR-TEST-INDEX-OF-OPTION
 STR-TEST-FIND-SUB-OPTION
+STR-TEST-FIND-SUB-NEGATIVE
+STR-TEST-COMPARE-NEGATIVE
 STR-TEST-TYPED
 
 : STR-TEST-REPORT ( -- )

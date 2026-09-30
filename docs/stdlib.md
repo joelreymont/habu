@@ -659,8 +659,11 @@ the shared bounded string-builder buffer and throw `E-STR-CAPACITY` or
 i64 and returns `option<n>`: SOME value, or NONE on invalid or out-of-range
 input.
 `STR-LEN`, `STR-OFF`, and `STR-COUNT` refine raw integers into nominal string
-roles and reject negative values. Typed variants such as `SB-APPEND-LEN` keep
-already-refined lengths from being laundered through plain `n`. `BUFFER:`
+roles and reject negative values. `STR-CHECK-LENS` throws `E-STR-BOUNDS` when
+either of two lengths is negative; `STR=`, `STR=CI`, `STARTS-WITH?`,
+`ENDS-WITH?` and `FIND-SUB` call it before they read a byte. Typed variants
+such as `SB-APPEND-LEN` keep already-refined lengths from being laundered
+through plain `n`. `BUFFER:`
 defines caller-owned byte buffers; `BUF-*` helpers reset, read,
 and append into a caller-owned `(buffer, capacity, length-cell)` triple and throw
 instead of truncating or overflowing.
@@ -669,6 +672,7 @@ instead of truncating or overflowing.
 STR-LEN         ( n -- len )
 STR-OFF         ( n -- off )
 STR-COUNT       ( n -- count )
+STR-CHECK-LENS  ( n n -- )
 STR-TRUE        ( -- bool )
 STR-FALSE       ( -- bool )
 BUFFER:         ( n -- )

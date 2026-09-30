@@ -158,6 +158,7 @@ $41C8 constant FFI-SCRATCH-END
 \ Copy a Habu byte-string into dst and NUL-terminate it, yielding a C string
 \ for the callee. dst must hold at least n+1 bytes; the caller owns it.
 : COPY-CSTR ( ptr u8 n ptr u8 -- ) {: src:ptr u:n dst:ptr :}
+   u 0 < if E-FFI-SYNTAX throw then
    src dst u BYTE-COPY
    0 dst u + c! ;                         \ dst+u : NUL terminator
 
@@ -324,12 +325,12 @@ variable ERRNO-FN-CELL
 : ERRNO-FN ( -- n ) ERRNO-FN-CELL @ ;
 
 : NAME-ROOM ( n -- n ) {: u:n :}
-   u 0= if E-FFI-SYNTAX throw then
+   u 0 <= if E-FFI-SYNTAX throw then
    u FN-NAME-CAP 1 - > if E-FFI-SYNTAX throw then
    u ;
 
 : PATH-ROOM ( n -- n ) {: u:n :}
-   u 0= if E-FFI-SYNTAX throw then
+   u 0 <= if E-FFI-SYNTAX throw then
    u LIB-PATH-CAP 1 - > if E-FFI-SYNTAX throw then
    u ;
 
@@ -1055,6 +1056,9 @@ public
    src idx ARG-EXT-ARG! ;
 
 : SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
+   \ LIB-OVERFLOW holds CAP bytes; the length is bounded before the spelling check
+   \ reads the path.
+   u 0 <= u FFI:LIBRARY-PATH-CAP > or if E-FFI-SYNTAX throw then
    path u CHECK-SPELLING
    FFI:LIBRARY-ROOM? if
       path u FFI:LIBRARY-PATH CUR-LIB !
