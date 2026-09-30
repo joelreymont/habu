@@ -19,3 +19,11 @@ Depends: habu-run-emitted-x86-b704f918 (C8), habu-render-x86-neg-43e4e8f8 (C2), 
 Route: Alder (engine closure: `regalloc.f`, `lib/errors.f`).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+Preflight corrections (Fable preflight 2026-09-30, READY; these override the lines above where they differ):
+- Pre-change failing check (verified on the C1+C2 stack with K2's engine, through `X64SEL:SELECT` -> `A64RA:ALLOCATE` -> `A64RAV:ACCEPT`): both rows throw `E-A64RAV-FIXED` (-8461) under LEAF and DLEAF.
+- (a) also names the `MB-FIX-MASK` header comment `regalloc.f:2213-2214` ("for its RESULTS") and `MB-FORBID` `:1707-1709` ("forbids its fixed results").
+- (e) `docs/x86-64.md:193-196` is `:196-203` on the C1+C2 stack. The closure cite is `src/habu/native-runtime.f:98,109`.
+- Feasibility: `MB-STEP` (`:1812-1820`) runs `pos 1+ MB-EXPIRE` before `MB-PLACE-PINNED`, so a count dying at the copy frees rcx before the pinned copy is placed.
+- Base: master once C1 and C2 land (they are being ported onto master's split test layout: pinned bytes now go in `test/compiler/x64-emit-fixture.f` and cases in `test/compiler/x64-emit.f`, per master `0b0421fa`). Host engine: K3's product `264c829e…` (ThinkPad `~/.cache/habu-krait/qhb/hb-k3-264c`) for the x86 suites; the rebuild, chain and gate run on spark.
+- Route: lands on master after the Linux gate (rebuild, five-generation chain, spark gate); Alder pools the Mac gate.
