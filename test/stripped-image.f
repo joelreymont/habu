@@ -17,8 +17,8 @@ private
 \ HOLE-BYTES is test/stripped-sparse-data-subject.f's hole: an image that
 \ carried it is at least that long, as that subject's image alone was before
 \ sparse DATA extents (1,704,128 bytes). IMAGE-MAX bounds this whole image,
-\ every subject's code and DATA together, which measured 148,860 bytes, so it
-\ fails the image if it grows by 113,284 bytes or more, whatever grows.
+\ every subject's code and DATA together, which measured 165,372 bytes, so it
+\ fails the image if it grows by 96,772 bytes or more, whatever grows.
 \ Being below HOLE-BYTES it also refuses the hole by itself; the HOLE-BYTES
 \ check names that failure.
 1000000 constant HOLE-BYTES

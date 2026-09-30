@@ -1910,13 +1910,105 @@ public
       10 15 $40 LDR,  11 1 MOVZ,  LPROTSPAN LABEL@ BL, \ guard x8 = argbuf[8] indirect result
    nosret LBL, ;
 
+\ ---- the VM frame an outbound call leaves for C (docs/ffi-callback.md) ----
+\ This thread's pointer, the value CB-OWNER and a slot row are compared with.
+\ It has to be one value for the life of a thread and a different one in every
+\ other live thread. Linux: TPIDR_EL0, the TLS base clone gives each thread.
+\ macOS: TPIDRRO_EL0, which the kernel keeps as "the current cthread pointer"
+\ (the macOS SDK's Kernel.framework arm64/machine_machdep.h; the CPU number
+\ that once shared its low bits is in TPIDR_EL0 now). Measured on macOS 27.0.1
+\ (26A434, arm64): libsystem_pthread's own pthread_self opens with
+\ `mrs x0, TPIDRRO_EL0 ; ldr x8, [x0, #-0xe0]!`, the register unmasked; seven
+\ threads reading it four million times each across sched_yield and usleep
+\ saw one value per thread, its low three bits clear, always pthread_self +
+\ $E0 and so a different one per thread. The low three bits are cleared all
+\ the same, as libsyscall's os/tsd.h _os_tsd_get_base does for the kernels
+\ that kept the CPU number there: the result is the thread's TSD base on
+\ both, and an address inside one thread's pthread structure is no other
+\ thread's. lib/ffi-callback-test.f OWNER-IDENTITY checks the running host:
+\ the owner each thread claims with sits at one offset from its pthread_self.
+: CB-SELF, ( n -- ) {: r:n :}
+   HB-TARGET-LINUX? IF
+      $D53BD040 r or EMITW
+   ELSE
+      $D53BD060 r or EMITW
+      r r 3 LSRI,  r r 3 LSLI,
+   THEN ;
+
+\ CASAL Xs, Xt, [Xn]: Xs holds the expected value and receives the old one.
+: CASAL, ( n n n -- ) {: s:n t:n n:n :}
+   $C8E0FC00 s 16 lshift or n 5 lshift or t or EMITW ;
+
+\ YIELD, the spin-wait hint: this thread is waiting on another.
+: YIELD, ( -- ) $D503203F EMITW ;
+
+\ One refusal: `hb: callback: <reason>` on fd 2, then exit_group 106. The code
+\ lands at the label; callers emit it off their straight-line path.
+: CB-DIE, ( ptr u8 n label -- ) {: a u at:label :}
+   LBL {: msg:label :}
+   at LBL,
+   0 2 MOVZ,  1 msg ADR,  2 u MOVZ,  NR-WRITE SYS,
+   0 ENGINE-ERROR:CALLBACK MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  a u BYTES, ;
+
+\ Every outbound core runs this after its pops and guards, before its BLR. The
+\ owner comes first: LDAR CB-OWNER; this thread already is nested and claims
+\ nothing; 0 is CASAL'd 0 -> self; any other owner, or a lost CAS, dies 106
+\ with the region untouched. Only then the $30 frame - the claim flag at [sp],
+\ [sp+8] for the core's own x20 park, the four cells it replaces at
+\ [sp+$10..$28] - and the live cursors go out. Scratch is x9..x12, which no
+\ core holds across this point.
+: BCB-ENTER ( -- )
+   LBL LBL LBL {: held:label busy:label go:label :}
+   12 CB-SELF,
+   11 CB-OWNER MOVZ,  11 DATA 11 ADD,
+   9 11 LDAR,
+   10 0 MOVZ,
+   9 12 CMP,  C-EQ held BCOND,
+   9 busy CBNZ,
+   9 12 11 CASAL,
+   9 busy CBNZ,
+   10 1 MOVZ,
+   held LBL,
+   SP SP $30 SUBI,
+   10 SP 0 STR,
+   9 DATA CB-XDS LDR,    9 SP $10 STR,
+   9 DATA CB-DBASE LDR,  9 SP $18 STR,
+   9 DATA CB-NDICT LDR,  9 SP $20 STR,
+   9 DATA CB-CP LDR,     9 SP $28 STR,
+   XDS DATA CB-XDS STR,
+   DBASE DATA CB-DBASE STR,
+   NDICT DATA CB-NDICT STR,
+   CP DATA CB-CP STR,
+   go B,
+   S\" hb: callback: context busy on another thread\n" busy CB-DIE,
+   go LBL, ;
+
+\ After the BLR, with sp back at the $30 frame and x20 = DATA: the four cells
+\ are restored first and a claimed owner is released last, by STLR, so a
+\ thread that acquires the owner sees a complete frame or CB-XDS 0. x0 and d0
+\ carry the result, so the scratch is x9..x11.
+: BCB-LEAVE ( -- )
+   LBL {: kept:label :}
+   9 SP $10 LDR,  9 DATA CB-XDS STR,
+   9 SP $18 LDR,  9 DATA CB-DBASE STR,
+   9 SP $20 LDR,  9 DATA CB-NDICT STR,
+   9 SP $28 LDR,  9 DATA CB-CP STR,
+   9 SP 0 LDR,
+   SP SP $30 ADDI,
+   9 kept CBZ,
+      11 CB-OWNER MOVZ,  11 DATA 11 ADD,  10 0 MOVZ,  10 11 STLR,
+   kept LBL, ;
+
 : BFFI-CALL ( -- )
    16 G-POP                                            \ x16 = fn
    14 G-POP                                            \ x14 = nargs
    15 G-POP                                            \ x15 = argbuf
    9 0 MOVZ,  BFFI-GUARD-ARGS                          \ no sret: guard the live x0..x7 args
+   BCB-ENTER
    BFFI-LOAD-X0-X7
    16 BLR,
+   BCB-LEAVE
    0 G-PUSH ;
 
 : BFFI-LOAD-DREG ( n n -- )
@@ -1957,6 +2049,7 @@ public
    15 G-POP                                            \ x15 = integer argbuf
    BFFI-GUARD-ARGS                                     \ band-guard live int args + x8 sret before any load
    14 1 0 ADDI,                                        \ x14 = stack cell count (restore for the spill copy)
+   BCB-ENTER
    20 SP $8 STR,                                       \ park caller x20 in frame slot
    20 SP 0 ADDI,                                       \ x20 = frame sp
    BFFI-COPY-ABI-STACK
@@ -1965,7 +2058,8 @@ public
    BFFI-LOAD-D0-D7
    16 BLR,
    SP 20 0 ADDI,
-   20 SP $8 LDR, ;
+   20 SP $8 LDR,
+   BCB-LEAVE ;
 
 : BFFI-CALL-ABI ( -- )
    BFFI-CALL-ABI-CORE
@@ -1999,12 +2093,13 @@ public
 \ the stack (16-byte aligned per the ABI) by an exact runtime loop -- no arity
 \ cap, no garbage slots. argbuf must hold max(8,nargs) cells. The BLR clobbers
 \ caller-saved regs, so x20 (callee-saved) carries the frame sp across the call
-\ to restore it afterward; the caller's x20 parks in the FPRIM frame's free
-\ [sp,#8] slot. Shifted-register SUB treats r31 as XZR not SP, so sp is lowered
+\ to restore it afterward; the caller's x20 parks at [sp,#8] of the $30 frame
+\ BCB-ENTER pushed. Shifted-register SUB treats r31 as XZR not SP, so sp is lowered
 \ via a temp. Integer/pointer args only. Every live arg is PROT-GUARD'd before the
 \ call, so this is the sound sink for sealed-band pointers (the checked FFI library
 \ routes its integer/pointer calls here).
 : BFFI-CALL-N-CORE ( -- )
+   BCB-ENTER
    20 SP $8 STR,                                       \ park caller x20 in frame slot
    20 SP 0 ADDI,                                       \ x20 = frame sp
    LBL FFI-SKIP !
@@ -2027,6 +2122,7 @@ public
    16 BLR,
    SP 20 0 ADDI,                                       \ restore sp from x20
    20 SP $8 LDR,                                       \ restore caller x20
+   BCB-LEAVE
    0 G-PUSH ;
 
 \ Raw unbounded FFI is checker-restricted to explicit TRUSTED: definitions.
@@ -2084,6 +2180,146 @@ public
    29 19 do i SP i 19 - cells LDR, loop
    29 SP $50 LDR, 30 SP $58 LDR,
    SP SP $A0 ADDI, RET,
+   done LBL, ;
+
+\ ---- callback-entry: CB-POOL C entries into checked code (docs/ffi-callback.md)
+\ The thunk's frame on C's stack: C's callee-saved set at [sp..$A0) as
+\ BTASK-ENTRY keeps it, the marshal frame CB-FRAME names (x0..x7, then d0..d7
+\ from CB-FRAME-FLOATS), and the thunk's own state. Checked code may hold state
+\ in x21..x25 and x29 (src/compiler/native/abi.f SCRATCH), so everything the
+\ thunk needs after its BLR is on this frame, never in a register.
+$A0 constant CBT-MARSHAL
+CBT-MARSHAL CB-FRAME-FLOATS + constant CBT-FLOATS
+$120 constant CBT-ROW                   \ the slot row's address
+$128 constant CBT-REGION                \ the region the row named
+$130 constant CBT-ROW-CLAIM             \ 1 when this entry claimed the row
+$138 constant CBT-OWNER-CLAIM           \ 1 when this entry claimed CB-OWNER
+$140 constant CBT-OUTER                 \ the CB-FRAME this entry replaced
+$148 constant CBT-SLOT
+$150 constant CBT-BYTES
+
+\ Entered from a stub with the slot in x9. The row is claimed before the region
+\ it names is read: LDAR the row owner; this thread already is nested through
+\ this slot and claims nothing; 0 is CASAL'd 0 -> self; another thread dies.
+\ CB-ROW-BUSY, read or answered by a lost CAS, is a lib/task.f mover, which
+\ holds the row for a few steps that call nothing and wait on nothing, so the
+\ holder is never this thread and never waits on it: the thunk spins on LDAR
+\ with the YIELD hint, on C's thread and under C's frame, until the row is
+\ handed back, and claims it as the mover left it - a row dropped meanwhile
+\ reads unbound below and dies, unless a bind took it first. A region stays
+\ mapped while a row names it (lib/task.f UNEXPOSE and TASK-END drop the rows
+\ first), so only then the region, its CB-OWNER claimed the way BCB-ENTER claims
+\ it, a live frame (CB-XDS <> 0) and the slot's xt. The VM is the frame the
+\ region's outbound call published; the xt is a ( -- ) dispatch that reads its
+\ arguments through CB-FRAME and leaves its result in the x0 or d0 slot.
+\ Afterward a body whose NDICT or CP differs from the frame's dies: the way out
+\ restores C's callee-saved registers, the caller's VM among them, and would
+\ drop the records and code a definition added. Otherwise CB-FRAME is restored,
+\ then the owner released if claimed, then the row, each by STLR.
+: BCALLBACK-THUNK ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: row-read:label row-wait:label row-held:label owner-held:label
+      owner-kept:label row-kept:label no-table:label row-busy:label
+      unbound:label owner-busy:label no-frame:label no-xt:label
+      defined:label :}
+   SP SP CBT-BYTES SUBI,
+   \ C's callee-saved set is saved and restored in this body, as BTASK-ENTRY
+   \ does: tools/lint/clobber-lint.f proves x30 from the routine's own text.
+   29 19 do i SP i 19 - cells STR, loop
+   29 SP $50 STR, 30 SP $58 STR,
+   16 8 do i SP i 8 - cells $60 + ENC-STRD EMITW loop
+   29 SP $50 ADDI,                                     \ previous FP/LR form the C frame
+   8 0 do i SP CBT-MARSHAL i cells + STR, loop
+   8 0 do i SP CBT-FLOATS i cells + ENC-STRD EMITW loop
+   9 SP CBT-SLOT STR,
+   10 DATA-VA VA>N LIT64,                              \ x10 = the main region
+   11 CB-ROWS MOVZ,  11 10 11 ADD,  11 11 LDAR,
+   11 no-table CBZ,
+   12 9 4 LSLI,  11 11 12 ADD,                         \ x11 = the row (CB-ROW-BYTES 16)
+   11 SP CBT-ROW STR,
+   12 CB-SELF,
+   13 11 CB-ROW-OWNER ADDI,
+   15 0 MOVZ,
+   row-read LBL,
+   14 13 LDAR,
+   14 12 CMP,  C-EQ row-held BCOND,
+   14 CB-ROW-BUSY CMPI,  C-EQ row-wait BCOND,
+   14 row-busy CBNZ,
+   14 12 13 CASAL,
+   14 CB-ROW-BUSY CMPI,  C-EQ row-wait BCOND,
+   14 row-busy CBNZ,
+   15 1 MOVZ,
+   row-held LBL,
+   15 SP CBT-ROW-CLAIM STR,
+   14 11 LDAR,                                         \ x14 = CB-ROW-REGION, offset 0
+   14 unbound CBZ,
+   14 SP CBT-REGION STR,
+   13 CB-OWNER MOVZ,  13 14 13 ADD,
+   15 13 LDAR,
+   16 0 MOVZ,
+   15 12 CMP,  C-EQ owner-held BCOND,
+   15 owner-busy CBNZ,
+   15 12 13 CASAL,
+   15 owner-busy CBNZ,
+   16 1 MOVZ,
+   owner-held LBL,
+   16 SP CBT-OWNER-CLAIM STR,
+   15 14 CB-XDS LDR,
+   15 no-frame CBZ,
+   13 CB-XTS MOVZ,  13 10 13 ADD,  13 13 LDAR,
+   13 no-xt CBZ,
+   12 9 3 LSLI,  13 13 12 ADD,  13 13 0 LDR,
+   13 no-xt CBZ,
+   12 14 CB-FRAME LDR,  12 SP CBT-OUTER STR,
+   12 SP CBT-MARSHAL ADDI,  12 14 CB-FRAME STR,
+   XDS 15 0 ADDI,
+   DATA 14 0 ADDI,
+   DBASE 14 CB-DBASE LDR,
+   NDICT 14 CB-NDICT LDR,
+   CP 14 CB-CP LDR,
+   13 BLR,
+   14 SP CBT-REGION LDR,
+   12 14 CB-NDICT LDR,  12 NDICT CMP,  C-NE defined BCOND,
+   12 14 CB-CP LDR,  12 CP CMP,  C-NE defined BCOND,
+   12 SP CBT-OUTER LDR,  12 14 CB-FRAME STR,
+   10 0 MOVZ,
+   12 SP CBT-OWNER-CLAIM LDR,  12 owner-kept CBZ,
+      13 CB-OWNER MOVZ,  13 14 13 ADD,  10 13 STLR,
+   owner-kept LBL,
+   12 SP CBT-ROW-CLAIM LDR,  12 row-kept CBZ,
+      13 SP CBT-ROW LDR,  13 13 CB-ROW-OWNER ADDI,  10 13 STLR,
+   row-kept LBL,
+   0 SP CBT-MARSHAL LDR,
+   0 SP CBT-FLOATS ENC-LDRD EMITW
+   16 8 do i SP i 8 - cells $60 + ENC-LDRD EMITW loop
+   29 19 do i SP i 19 - cells LDR, loop
+   29 SP $50 LDR, 30 SP $58 LDR,
+   SP SP CBT-BYTES ADDI,
+   RET,
+   row-wait LBL,  YIELD,  row-read B,
+   S\" hb: callback: no slot has been bound\n" no-table CB-DIE,
+   S\" hb: callback: slot held by another thread\n" row-busy CB-DIE,
+   S\" hb: callback: slot is not bound\n" unbound CB-DIE,
+   S\" hb: callback: context busy on another thread\n" owner-busy CB-DIE,
+   S\" hb: callback: context is not inside a foreign call\n" no-frame CB-DIE,
+   S\" hb: callback: slot has no dispatch\n" no-xt CB-DIE,
+   S\" hb: callback: the body defined\n" defined CB-DIE, ;
+
+\ callback-entry ( n -- n ): the address of stub n, an immutable C entry and not
+\ a Habu execution token. Each stub is two instructions - its slot into x9, a
+\ branch to the one thunk - so stub n is 8n bytes past the first.
+: BCALLBACK-ENTRY ( -- )
+   LBL LBL LBL LBL {: stubs:label thunk:label done:label bad:label :}
+   A G-POP
+   A CB-POOL CMPI,  C-CS bad BCOND,
+   B stubs ADR,
+   A A 3 LSLI,  A B A ADD,  A G-PUSH
+   done B,
+   S\" hb: callback: slot out of range\n" bad CB-DIE,
+   stubs LBL,
+   CB-POOL 0 do  9 i MOVZ,  thunk B,  loop
+   thunk LBL,
+   BCALLBACK-THUNK
    done LBL, ;
 
 \ Mixed-ABI bounded calls guard every integer register slot (x0..x8) and
@@ -3700,6 +3936,7 @@ package ENGINE-EMIT
    s" ffi-call-n" ['] BFFI-CALL-N FPRIM
    s" ffi-call-bounded" ['] BFFI-CALL-BOUNDED FPRIM
    s" task-entry" ['] BTASK-ENTRY FPRIM
+   s" callback-entry" ['] BCALLBACK-ENTRY FPRIM
    s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED FPRIM
    s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED FPRIM
    s" ffi-call-abi" ['] BFFI-CALL-ABI FPRIM

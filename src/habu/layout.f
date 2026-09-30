@@ -963,6 +963,42 @@ PROT-BITS-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN  \ $410: tag + bitm
 \ Like EVALREC/AOT-SEED it is a fixed engine cell no compiled source writes (the mmap'd
 \ DATA region is zero until boot).
 $40C0 constant UNCGH-CELL
+\ ---- the callback band: C calling back into checked code (docs/ffi-callback.md)
+\ Eight cells every region carries at the same offset, in the run between the
+\ FFI length buffers ($40C8..$41C8) and APP-ENTRY:XT-CELL ($43A0). Every cell is
+\ correct at zero, which is what a fresh task region, a fresh DATA mapping and a
+\ stripped image's anonymous DATA all hold.
+\   CB-XDS..CB-CP  the VM frame an outbound FFI core publishes after its pops and
+\                  restores after its BLR (habu1.f BCB-ENTER / BCB-LEAVE), LIFO
+\                  through the core's own $30 stack frame. CB-XDS 0 = no frame.
+\   CB-OWNER       the thread pointer (TPIDR_EL0 on Linux, TPIDRRO_EL0 on macOS)
+\                  of the one thread allowed on this region; 0 = free.
+\   CB-FRAME       the live marshal frame of the innermost callback.
+\   CB-XTS/ROWS    the two CB-POOL-slot tables, read only in the main region,
+\                  through the absolute address DATA-VA.
+\ A slot row is CB-ROW-BYTES: the region it names (0 unbound) and its owner (0
+\ idle, the thread pointer of the thread inside through this slot, or
+\ CB-ROW-BUSY while a bind, unbind, claim or drop moves it). A call that meets
+\ BUSY waits for the hand-back (habu1.f BCALLBACK-THUNK).
+$41C8 constant CB-XDS
+$41D0 constant CB-DBASE
+$41D8 constant CB-NDICT
+$41E0 constant CB-CP
+$41E8 constant CB-OWNER
+$41F0 constant CB-FRAME
+$41F8 constant CB-XTS
+$4200 constant CB-ROWS
+$4208 constant CB-END
+CB-END CB-XDS - constant CB-BAND-BYTES
+16 constant CB-POOL
+16 constant CB-ROW-BYTES
+0 constant CB-ROW-REGION
+8 constant CB-ROW-OWNER
+1 constant CB-ROW-BUSY
+\ The marshal frame CB-FRAME names while a dispatch runs: x0..x7 as C passed
+\ them, then d0..d7 from CB-FRAME-FLOATS. The dispatch leaves its result in the
+\ x0 or the d0 slot, and the thunk returns both.
+$40 constant CB-FRAME-FLOATS
 \ Compact AOT dict record: five u32 words (blob-off/public-WID, code-len/private-WID,
 \ name-off, flags|min-in, wid). The name-off word is a full u32 so the deduped name
 \ pool can outgrow 64 KiB with the captured window; the compiler chain needs ~51 KiB

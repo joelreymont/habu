@@ -7,6 +7,9 @@ public
 2 constant RUNNING
 3 constant DONE
 4 constant HALT-REQ
+\ A prepared task whose region C may enter through a callback binding
+\ (lib/task.f EXPOSE); it runs no body of its own and is never activated.
+5 constant EXPOSED
 
 0 constant SIZE-OFF
 $8 constant XT-OFF

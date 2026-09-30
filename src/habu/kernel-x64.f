@@ -3059,7 +3059,11 @@ private
 
 public
 
-: TASK, ( -- ) s" task-entry" [: TASK-ENTRY-BODY ;] PRIM ;
+\ callback-entry waits for the SysV twin of habu1.f BCALLBACK-THUNK
+\ (habu-port-the-ffi-676f745d).
+: TASK, ( -- )
+   s" task-entry" [: TASK-ENTRY-BODY ;] PRIM
+   s" callback-entry" REFUSE ;
 
 \ ---- definition writers ------------------------------------------------------
 \ The nine rows an interpreter written in Habu publishes definitions, namespace
