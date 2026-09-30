@@ -1,12 +1,19 @@
-\ gate-aot-negative.f - checked runner for AOT closure rejection checks.
+\ gate-aot-negative-cases.f - the AOT closure rejection checks, run on the keyed
+\ linker image by test/gate-aot-negative.f (see test/preloaded-engine.f).
 
-require src/habu/app-image.f     \ ... and the assembler under it (src/habu/aot-lib.f)
-require src/habu/aot-closure.f
-require src/habu/aot-lib.f       \ MEMBER-ORDER, for the disjointness case below
 require lib/source.f
 require tools/json.f
 require tools/gate-json-assert-core.f
 require test/gate-common.f
+require src/habu/app-image.f     \ ... and the assembler under it (src/habu/aot-lib.f)
+require src/habu/aot-closure.f
+require src/habu/aot-lib.f       \ MEMBER-ORDER, for the disjointness case below
+
+\ The image restores at tier 0 and its require of src/habu/app-image.f is a
+\ no-op, so this sets the tier that file sets on a source load: every fixture
+\ below compiles in a fork of this process, under the optimizing tier the
+\ linker's own callers use.
+1 set-tier
 
 LOWER-CERT-HOOK:INSTALL
 
@@ -64,6 +71,11 @@ package AOT-NEGATIVE
 \ Both addresses are taken inside the fork, where the linker's own copy of
 \ src/habu/proc-maps.f reads that process's map; src/habu/aot-closure.f
 \ CELL-MAPPED? is private, which is why the fixture reopens its package.
+\ This runs on the keyed linker image, so the fork's first question is also a
+\ restored image's first question: a map the image carried from the process
+\ that saved it would answer here instead (measured: a loaded flag carried in
+\ DATA over the released rows threw E-BOUNDS, 7122; src/habu/proc-maps.f,
+\ A CAPTURE DROPS THE MAP WHOLE).
 \ THE ALLOCATION COMES FIRST because the map is a snapshot taken at the first
 \ question and an area mapped after it is invisible (measured: with the order
 \ reversed the mmap control answers no). That is the linker's order too - the
@@ -322,3 +334,5 @@ public
    s" PASS: native hb-build AOT negative tests" type cr ;
 
 ;package
+
+AOT-NEGATIVE:RUN

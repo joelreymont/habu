@@ -1,9 +1,4 @@
-\ gate-aot-negative.f - entry wrapper for AOT rejection checks.
-\
-require lib/source.f
-require tools/json.f
-require tools/gate-json-assert-core.f
-require test/gate-common.f
-include test/gate-aot-negative-lib.f
-
-AOT-NEGATIVE:RUN
+\ gate-aot-negative.f - runs the AOT rejection checks on the keyed linker image;
+\ see test/preloaded-engine.f.
+require test/preloaded-engine.f
+s" test/gate-aot-negative-cases.f" PRELOADED-ENGINE:LINKER-LOAD

@@ -51,6 +51,10 @@ private
 \ application data. A lazy first query from LINK repopulates that table after
 \ PREPARE and then refuses the pointer it just stored. FFI registered its
 \ persistent hook when proc-maps required it; reverse order runs this one first.
+\ Being persistent, it runs in every PREPARE of a process that loaded the linker,
+\ a full capture's too (the keyed linker image is one, test/preloaded-engine.f).
+\ That capture drops what the hook read, so the image it writes reads its own
+\ map at its first question (src/habu/proc-maps.f, A CAPTURE DROPS THE MAP WHOLE).
 ' PROC-MAPS:RELOAD IMAGE-LIFECYCLE:REGISTER-PERSISTENT
 
 

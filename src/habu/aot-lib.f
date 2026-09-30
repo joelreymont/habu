@@ -613,7 +613,7 @@ variable NEXT-OFF
 \ covering a target, so the discovery order decided). Adjacency is admitted and
 \ is what MAP-IN-MEMBER's >= boundary is about: a target at a member's end
 \ belongs to the next member. A WALK CANNOT REACH THE REFUSAL, so what reaches it
-\ is a table filled by hand - test/gate-aot-negative-lib.f fills two rows, the
+\ is a table filled by hand - test/gate-aot-negative-cases.f fills two rows, the
 \ second inside the first, and expects exit 74 with the named line. Over real
 \ links: zero overlapping pairs and 27,000 touching ones over the sorted order of
 \ the 27,004-member chain this file's head measures, and every link

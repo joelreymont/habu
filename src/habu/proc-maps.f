@@ -49,6 +49,18 @@
 \ (measured). The linker loads it ABOVE the capture window (tools/aot-build-core.f),
 \ where none of its cells are the image's to carry.
 \
+\ A CAPTURE DROPS THE MAP WHOLE. The rows, and the one cell that says a read
+\ completed and how many areas it found, are DYNAMIC-BUFFER storage, which every
+\ image capture releases (src/core/dynamic-storage.f RELEASE-ALL, run by the
+\ snapshot writer's CANON-DATA), so an image restored from any process starts
+\ with no map and reads its own at the first question. No DATA cell says
+\ whether the map was read, because DATA is copied: the linker reads the map
+\ inside every IMAGE-LIFECYCLE:PREPARE (tools/aot-build-core.f), and while a
+\ DATA flag and count said so, an image saved from a process that loaded the
+\ linker started marked loaded, with its builder's count, over released rows -
+\ its first question threw E-BOUNDS (7122) and EXTENTS answered the builder's
+\ count (measured on the gate's keyed linker image, test/preloaded-engine.f).
+\
 \ THE PARSE IS A STATE MACHINE OVER THE BYTES, not a line reader. Every line is
 \ `<start>-<end> <perms> <offset> <dev> <inode> <path>`, the path field may be
 \ absent, and a deleted file adds a further ` (deleted)` field - which is why the
@@ -82,7 +94,8 @@ DYNAMIC-BUFFER EXT-LO n
 DYNAMIC-BUFFER EXT-HI n
 DYNAMIC-BUFFER EXT-SELF n        \ 1 when our own executable backs the area, else 0
 DYNAMIC-BUFFER EXT-HEAP n        \ 1 when the kernel named the area [heap], else 0
-variable EXT-N
+DYNAMIC-BUFFER EXT-READ n        \ one cell once a read completes: the areas it found
+variable EXT-N                   \ areas the read in progress has listed
 variable ST
 variable ACC
 variable PEND-LO                 \ the line's pair, held until its path is known
@@ -94,7 +107,6 @@ variable PATH-OVER               \ a pathname longer than PATH-CAP: not ours, on
 variable EXE-U
 variable FD
 variable GOT
-variable LOADED
 \ The search cursor is storage rather than locals because a local binds once and
 \ this loop moves its bounds; the linker is single-threaded, as the tables in
 \ src/habu/aot-closure.f beside it are.
@@ -258,10 +270,11 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
    FD @ close
    ST @ ST-LO <> IF s" proc-maps: /proc/self/maps ended inside a line" FAIL-RC die THEN ;
 
-\ The area this value is interior to, or -1. [start, end): the end is the next
-\ area's start, or a hole, and belongs to neither.
-: ROW-AT ( n -- n ) {: v:n :}
-   0 BS-LO !  EXT-N @ BS-HI !  -1 BS-AT !
+\ The area this value is interior to, or -1, among the map's first count rows.
+\ [start, end): the end is the next area's start, or a hole, and belongs to
+\ neither.
+: ROW-AT ( n n -- n ) {: v:n count:n :}
+   0 BS-LO !  count BS-HI !  -1 BS-AT !
    BEGIN BS-LO @ BS-HI @ < BS-AT @ 0 < and WHILE
       BS-LO @ BS-HI @ + 2 / BS-MID !
       v BS-MID @ EXT-HI @ >= IF
@@ -276,29 +289,45 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
    REPEAT
    BS-AT @ ;
 
+\ Has this process no map? The count cell holds a mapping only once a read has
+\ completed, and the mapping lives in the head DYNAMIC-STORAGE nulls when the
+\ buffer is released - by RELOAD before it reads, or by a capture.
+: UNREAD? ( -- bool ) EXT-READ#base @ 0= ;
+
 public
 
 \ READ THE MAP NOW. Every earlier row is dropped: the answer is the process's
-\ areas at the moment of the call and nothing older.
+\ areas at the moment of the call and nothing older. The count cell is released
+\ first and reserved last, so a read that throws part way leaves no map behind.
 : RELOAD ( -- )
-   false LOADED !  0 EXT-N !
+   EXT-READ-RELEASE  0 EXT-N !
    HB-TARGET-MACOS? IF MACOS-RELOAD ELSE LINUX-RELOAD THEN
    EXT-N @ 0 = IF s" proc-maps: kernel listed no area" FAIL-RC die THEN
-   true LOADED ! ;
+   1 EXT-READ-RESERVE  EXT-N @ 0 EXT-READ ! ;
 
-: EXTENTS ( -- n ) EXT-N @ ;      \ areas the last read found
+\ Areas the last read found, and none before this process has read its map.
+: EXTENTS ( -- n )
+   UNREAD? IF 0 EXIT THEN
+   0 EXT-READ @ ;
+
+private
+
+\ The areas of this process's map, which is read now if it has none.
+: AREAS ( -- n )
+   UNREAD? IF RELOAD THEN
+   0 EXT-READ @ ;
+
+public
 
 \ IS THIS VALUE INSIDE ONE OF THEM? The map is read once, on the first question:
 \ a stripped link asks this for every cell of the window it carries, and the
 \ process's areas do not change while it does.
 : MAPPED? ( n -- bool ) {: v:n :}
-   LOADED @ 0= IF RELOAD THEN
-   v ROW-AT 0 >= ;
+   v AREAS ROW-AT 0 >= ;
 
 \ ... and is that area one our own executable backs?
 : SELF-IMAGE? ( n -- bool ) {: v:n :}
-   LOADED @ 0= IF RELOAD THEN
-   v ROW-AT {: at:n :}
+   v AREAS ROW-AT {: at:n :}
    at 0 < IF false EXIT THEN
    at EXT-SELF @ 0<> ;
 
@@ -306,8 +335,7 @@ public
 \ from: every allocation lib/memory.f makes is an mmap. The caller's reason for
 \ asking is src/habu/aot-closure.f CELL-MAPPED?.
 : HEAP? ( n -- bool ) {: v:n :}
-   LOADED @ 0= IF RELOAD THEN
-   v ROW-AT {: at:n :}
+   v AREAS ROW-AT {: at:n :}
    at 0 < IF false EXIT THEN
    at EXT-HEAP @ 0<> ;
 
@@ -318,8 +346,7 @@ public
 \ is where the break began. A process whose map lists no [heap] has no answer
 \ here, so the reader stops rather than naming an address outside it.
 : HEAP-START ( -- n )
-   LOADED @ 0= IF RELOAD THEN
-   EXT-N @ 0 ?do
+   AREAS 0 ?do
       i EXT-HEAP @ 0<> IF i EXT-LO @ unloop EXIT THEN
    loop
    s" proc-maps: /proc/self/maps lists no [heap] area" FAIL-RC die ;

@@ -140,7 +140,7 @@ get-current constant SAT-WID
 \ `<unknown>` for the OTHER reason it is given: a target ABOVE every record,
 \ which is what a DATA address is. SAT-CHAIN is a buffer gigabytes above the
 \ last word's code, and the record below it would be named with a region-sized
-\ offset (test/gate-aot-negative-lib.f ADR-MEMBER caught exactly that).
+\ offset (test/gate-aot-negative-cases.f ADR-MEMBER caught exactly that).
 : SAT-TARGET-DATA ( -- )
    SAT-CHAIN SAT-MAP-TARGET ;
 
