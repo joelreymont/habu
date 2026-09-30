@@ -1,6 +1,6 @@
 ---
 title: Scaffold the x86 kernel file and booted harness
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-30T09:22:04.219804+03:00"
@@ -35,7 +35,7 @@ Verify: host engine K3's product `264c829e…` (master's pre-K2 engine lacks `EN
 Depends: habu-boot-and-exit-367c46f5 (K3). Base: master once K3 lands. Workspace `.jj-ws/<id>`.
 Route: shared (`test/gate-stdlib-cases.f`): lands on master after the Linux gate; Alder pools the Mac gate.
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-scaffold-the-x86-9af80979.
 
 Preflight corrections (Fable preflight 2026-09-30, each probed on K3's engine against master; these override the lines above where they differ):
 - `RSP` collision. `src/habu/treeshake.f:78` defines the raw global `variable RSP` (and `RTS`); `src/habu/primitive-registry.f:13` requires it, so once `kernel-x64.f` loads, a bare `RSP` under `using X64ASM` (`test/x86-64-peer-harness.f:95,126-127`) refuses `E-USING-SHADOW-GLOBAL` rc 67. `src/habu/boot-x64.f:118-119` carries the same latent break behind `tools/native-emit.f:43`. Fix the owning layer: rename treeshake's scan cursors `RSP`/`RTS` to `REACH-P`/`REACH-T` (`treeshake.f:78,80,96-101`, `IN-REACH?`); Files add `src/habu/treeshake.f`. It is an embedded build module (`tools/build-fixpoint.f:1090`), so the ARM64 product rebuilds.
