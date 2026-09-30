@@ -26,4 +26,6 @@ Depends: habu-report-certified-returns-2ddb20af (shared habu1.f); habu-expand-ma
 
 Ownership: the files above.
 
+Census (tools/codegen-census.f, product of 2f165004, SHA-256 82148a2d…8c25): wide-store-run 21 runs (1,656 B, est. saving 1,228 B before the helper and elaborator cost), below the 150-run break-even. Not dispatched.
+
 Claim: unassigned.

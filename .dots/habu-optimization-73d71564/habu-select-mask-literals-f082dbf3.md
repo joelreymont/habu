@@ -25,4 +25,6 @@ Depends: habu-drop-the-link-f2071a86 (shared select.f); habu-count-the-arm64-e13
 
 Ownership: the files above.
 
+Census (tools/codegen-census.f, product of 2f165004, SHA-256 82148a2d…8c25): mask-chain 97 sites (800 B, est. saving 412 B), constant-shift 147 sites (1,176 B, est. saving 588 B at most): 244 sites clear the 150-site break-even.
+
 Claim: unassigned.

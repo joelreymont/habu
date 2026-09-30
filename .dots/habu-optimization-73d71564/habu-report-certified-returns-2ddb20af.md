@@ -26,4 +26,6 @@ Depends: habu-pool-data-addresses-d65bdc94 (shared select.f/emit.f); habu-divide
 
 Ownership: the files above.
 
+Census (tools/codegen-census.f, product of 2f165004, SHA-256 82148a2d…8c25): no-return-fallback 342 sites (11,912 B, est. saving 3,704 B): clears the 100-site break-even.
+
 Claim: unassigned.

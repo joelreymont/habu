@@ -1,9 +1,9 @@
 ---
 title: Drop the link save for terminal-only words
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-09-30T10:58:28.244238+02:00"
+created-at: "\"2026-09-30T10:58:28.244238+02:00\""
 blocks:
   - habu-divide-through-div-1118f223
 ---
@@ -22,4 +22,4 @@ Depends: habu-divide-through-div-1118f223 (shared select.f).
 
 Ownership: the files above.
 
-Claim: unassigned.
+Claim: agent=heron workspace=.jj-ws/arm-link

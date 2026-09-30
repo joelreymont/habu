@@ -66,5 +66,4 @@ Verify: tools/native-build.f product; the fixture; the objdump slice as the
 artifact; tools/two-generation-build.f; bin/hb --load test/run.f.
 
 Depends: habu-inline-small-colon-2ca2438f. Serialized after
-habu-expand-max-as-fec184ee and habu-store-wide-values-458c9100 on
-elaborate.f. Size effect about zero.
+habu-expand-max-as-fec184ee on elaborate.f. Size effect about zero.

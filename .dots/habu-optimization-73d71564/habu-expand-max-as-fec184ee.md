@@ -18,6 +18,6 @@ Verify: tools/native-build.f product; bin/hb --load test/compiler/native-fold.f;
 
 Depends: habu-count-the-arm64-e13ae0a3 for the census row only. Parallel with habu-divide-through-div-1118f223-habu-select-shifted-idx-c57b5f1b (disjoint files).
 
-Ownership: the files above; serialized with habu-store-wide-values-458c9100 and habu-remove-bounds-checks-22af10b0 on elaborate.f.
+Ownership: the files above; serialized with habu-remove-bounds-checks-22af10b0 on elaborate.f.
 
 Claim: agent=heron workspace=.jj-ws/arm-max

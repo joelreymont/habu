@@ -25,4 +25,6 @@ Depends: habu-select-mask-literals-f082dbf3 (shared select.f); habu-count-the-ar
 
 Ownership: the files above.
 
+Census (tools/codegen-census.f, product of 2f165004, SHA-256 82148a2d…8c25): scaled-index 730 sites (5,720 B, est. saving 2,800 B at most), remainder 52 sites (624 B, est. saving 208 B): 782 sites clear the 200-site break-even.
+
 Claim: unassigned.
