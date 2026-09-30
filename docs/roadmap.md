@@ -155,4 +155,5 @@ against the tree.
 | A mutation for every register-allocation verifier refusal | six of the 21 codes listed no longer exist, and `docs/proofs.md` does not ask for mutation runs |
 | A new rejection for control nests deeper than 32 | already refused: a 33-deep nest exits 70 under `--load` and under `tools/check.f --all-errors` |
 | Unifying every throw row of a quotation | `THROW-EDGE` already folds every throw edge of a body into the intact masks |
+| Residency transfer for a trap's live operands (C6, x86 lane) | only hand-built HIR reaches the refusal: a source trap passes fresh literals and a source `die` lowers as `terminal` |
 | `TYPE-FIXES-PLAN.md` and `docs/tracker-rebuild.md` | a stalled plan whose rules contradict the tree, and an inventory nothing reads |

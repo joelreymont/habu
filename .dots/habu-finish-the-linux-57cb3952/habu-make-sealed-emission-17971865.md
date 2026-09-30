@@ -1,9 +1,11 @@
 ---
 title: Make publication and sites target-neutral
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.371760+03:00"
+closed-at: "2026-09-30T17:46:00.000000+02:00"
+close-reason: "complete: leaves 201c6fbf (P1), 729a7ac6 (P2) and d8c030e4 (P3) are closed and the lane holds no other work."
 blocks:
   - habu-fill-nemit-from-d8c030e4
 ---

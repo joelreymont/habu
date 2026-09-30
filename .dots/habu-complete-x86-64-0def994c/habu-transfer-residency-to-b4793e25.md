@@ -1,9 +1,11 @@
 ---
 title: "Transfer residency to a trap's live operands"
-status: open
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-09-30T11:38:43.415689+03:00"
+closed-at: "2026-09-30T17:46:00.000000+02:00"
+close-reason: "dropped: only hand-built HIR reaches the refusal. Source traps stage fresh literals after TRAP-ARGS (elaborate.f:2944, 3103) and a source die lowers as terminal, so no program can pass a live value to a trap. Reopen with the first lowering that does."
 ---
 
 Problem: a `hir.trap` whose cell is a live value, such as the routine's own argument (`( a -- )` passing `a` to `die`, `NORET-LEAF-FRAMED 1 0`), is refused before emission with `E-A64RAV-DKEEP` (-8611) on both machines. Host probes (C5's review, 2026-09-30): a copy of `test/compiler/native-trap.f` with the first trap cell `ARG+` throws `E-A64RAV-DKEEP` on ARM64; the x86 twin of `BUILD-TRAP` under `NORET-LEAF-FRAMED 1 0 0` dies rc 67 -8611.
