@@ -6,7 +6,7 @@
 \ ownership gate reports a changed global definition in it.
 using A64ASM
 
-: BPROCWATCHOPEN ( -- )            \ ( pid -- fd|-1 )
+: BPROCWATCHOPEN ( -- )            \ ( pid -- fd|-errno )
    LBL LBL LBL {: openbad:label regbad:label done:label :}
    9 G-POP
    SP SP 64 SUBI,
@@ -25,10 +25,11 @@ using A64ASM
    9 C-CS CSET,  9 regbad CBNZ,
    0 SP 56 LDR,  done B,
    regbad LBL,
+   0 SP 48 STR,                   \ close must not replace registration errno
    0 SP 56 LDR,  NR-CLOSE SYS,
-   0 0 MOVN,  done B,
+   0 SP 48 LDR,
    openbad LBL,
-   0 0 MOVN,
+   10 0 MOVZ,  0 10 0 SUB,
    done LBL,
    SP SP 64 ADDI,
    0 G-PUSH ;

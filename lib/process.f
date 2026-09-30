@@ -55,6 +55,7 @@ private
 16 constant POLLHUP
 32 constant POLLNVAL
 4 constant EINTR#                  \ "interrupted by a signal" (POSIX, identical on Linux/macOS)
+3 constant ESRCH#                  \ process unavailable (Linux/macOS)
 9 constant SIGKILL
 2 constant F-SETFD
 3 constant F-GETFL

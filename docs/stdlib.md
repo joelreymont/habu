@@ -2101,6 +2101,22 @@ timeout. The helpers reset argv/env state after the native spawn attempt;
 missing or invalid cwd paths throw `E-PROC-SPAWN`, while empty or over-capacity
 cwd strings throw `E-PROC-OUTPUT` before spawning.
 
+### Process lifetime watches
+
+`proc-watch-open ( pid -- fd|-errno )` opens a descriptor that becomes readable
+when the process exits. Failure returns the negated syscall errno, including
+`-ESRCH` when the process is unavailable and `-EMFILE` when this process cannot
+open another descriptor. It does not set libc's `errno`.
+
+On macOS, `ESRCH` can precede a waitable exit: process references are drained
+before final cleanup and the transition to zombie state. The process filter
+cannot attach during that interval, while `waitpid(pid, ..., WNOHANG)` can still
+return zero. Zero means there is no waitable status yet; it does not establish
+that the process can still be watched. An owned-child caller receiving
+`-ESRCH` can finish with a matching wait for that child; other errors must keep
+their failure meaning. See Apple's [process filter](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_event.c)
+and [exit and wait paths](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_exit.c).
+
 ## Process signals
 
 `lib/signal.f` owns signal delivery in `SIGNAL`: the engine's baked

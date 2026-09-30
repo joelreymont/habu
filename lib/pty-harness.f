@@ -294,11 +294,14 @@ private
 \ A child that has hung up is not yet a child that has exited: the terminal can
 \ close before the process does. Its lifetime watch answers that question inside
 \ the budget. A host that refuses a watch for a process that has ALREADY exited
-\ (macOS cannot register a dead one; test/proc-watch-smoke.f pins both arms)
-\ answers it the same way, because that is the case whose wait returns at once.
+\ (macOS reports ESRCH; test/proc-watch-smoke.f pins both arms) answers it the
+\ same way. Other watch failures do not establish that the process is exiting.
 : EXIT-READY? ( pid n -- bool ) {: p:pid ms:n :}
    p PID>N proc-watch-open {: w:n :}
-   w 0 < if true exit then
+   w 0 < if
+      w ESRCH# negate = if true exit then
+      E-PROC-OUTPUT throw
+   then
    w >FD ms WATCH-READY? {: ready:bool :}
    w close
    ready ;

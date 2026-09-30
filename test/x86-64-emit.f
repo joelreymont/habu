@@ -241,15 +241,13 @@ variable WANT-N
    s" 4983c408" E+ ;          \ llvm-mc: addq $8, %r12
 
 : PROC-CASES ( -- )
-   s" pidfd_open takes the pid in rdi and publishes -1 for an error, else the fd" T-LABEL
+   s" pidfd_open takes the pid in rdi and publishes fd or negative errno" T-LABEL
    BPROCWATCHOPEN
    RETREAT+
    s" 498b3c24" E+            \ llvm-mc: movq (%r12), %rdi
    s" 31f6" E+                \ llvm-mc: xorl %esi, %esi
    s" b8b2010000" E+          \ llvm-mc: movl $434, %eax
    TRAP-TAIL+
-   s" 48c7c1ffffffff" E+      \ llvm-mc: movq $-1, %rcx
-   s" 480f42c1" E+            \ llvm-mc: cmovbq %rcx, %rax
    PUBLISH-RAX+
    E=
 

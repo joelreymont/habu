@@ -339,7 +339,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    s" getpid" ROW  s" proc-watch-open" ROW  KEPT KEEP,
    KEPT RECALL, 3 X64HARNESS:MAX-CELL IN-RANGE,  1 WANT
    KEPT RECALL, s" close-rc" ROW  0 WANT
-   PID-CEIL N, s" proc-watch-open" ROW  -1 WANT
+   PID-CEIL N, s" proc-watch-open" ROW  ESRCH negate WANT
    s" exit 4" SH-ARGV,  NO-ENV,
    s" fork" ROW
    [: s" /bin/sh" PATH, ARGV AT, ENVP AT, s" execve" ROW  DROP,  5 QUIT, ;] CHILD,

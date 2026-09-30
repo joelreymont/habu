@@ -15,6 +15,44 @@ require lib/process-fork.f
 
 package PROC-WATCH-SMOKE
 
+PROCESS-SYMBOLS
+FUNCTION: GET-LIMIT getrlimit ( n ptr u8 -- i32 )
+   1 16 WRITES-BYTES
+;FUNCTION
+FUNCTION: SET-LIMIT setrlimit ( n ptr u8 -- i32 ) ;FUNCTION
+
+create SAVED-LIMIT 16 allot
+create TEST-LIMIT 16 allot
+create OPEN-FDS 64 cells allot
+variable OPEN-N
+
+: FD-LIMIT ( -- n ) HB-TARGET-MACOS? if 8 else 7 then ;
+
+: FILL-FDS ( -- )
+   0 OPEN-N !
+   64 0 ?do
+      s" /dev/null" FS-PATHZ open-rd {: fd:n :}
+      fd 0 < if unloop exit then
+      fd OPEN-FDS OPEN-N @ cells + !
+      1 OPEN-N +!
+   loop ;
+
+: CLOSE-FDS ( -- )
+   OPEN-N @ 0 ?do OPEN-FDS i cells + @ close loop ;
+
+\ Exhaustion is local to this test process. Restore the limit and release all
+\ descriptors before asserting, so an errno failure cannot break reporting.
+: CHECK-FD-ERROR ( -- )
+   FD-LIMIT SAVED-LIMIT GET-LIMIT 0 T=
+   32 TEST-LIMIT !
+   SAVED-LIMIT cell+ @ TEST-LIMIT cell+ !
+   FD-LIMIT TEST-LIMIT SET-LIMIT 0 T=
+   FILL-FDS
+   getpid proc-watch-open {: result:n :}
+   CLOSE-FDS
+   FD-LIMIT SAVED-LIMIT SET-LIMIT 0 T=
+   result -24 T= ;
+
 1 constant POLLIN
 8 constant POLLERR
 $20 constant POLLNVAL
@@ -100,7 +138,7 @@ variable GO-R    variable GO-W     \ go-pipe: parent write, child blocks on read
 
 : DEAD-WATCH-MACOS ( pid -- )   {: cpid:pid :}
    cpid WATCH-OPEN {: wb:fd :}
-   wb FD>N 0 < TTRUE ;
+   wb FD>N -3 T= ;
 
 : CHECK-DEAD ( -- )
    FORK-HELD {: cpid:pid :}
@@ -111,17 +149,18 @@ variable GO-R    variable GO-W     \ go-pipe: parent write, child blocks on read
    wa CLOSE-OK
    cpid PROC-WAIT-STATUS 0 T= ;
 
-\ Negative: a positive but non-existent pid must fail closed (fd < 0), matching
-\ the recovered supervisor's `proc-watch-open dup 0 < if ... throw` contract.
+\ An absent pid reports ESRCH (-3), so a caller can distinguish a completed
+\ process from descriptor, permission, or registration failures.
 : CHECK-INVALID ( -- )
    DEAD-PID >PID WATCH-OPEN {: wfd:fd :}
-   wfd FD>N 0 < TTRUE ;
+   wfd FD>N -3 T= ;
 
 : RUN ( -- )
    T-RESET
    CHECK-FAST
    CHECK-DEAD
    CHECK-INVALID
+   CHECK-FD-ERROR
    T-REPORT
    s" proc-watch-smoke: ok" type cr ;
 
