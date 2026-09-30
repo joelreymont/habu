@@ -520,6 +520,54 @@ little-endian bridge as `F32-BUF:STORE`, `F32-BUF:LOAD`, `F32-BUF:PACK`, and
 Bounded marshalling belongs to the `MEM` span and subspan APIs, where capacity
 and access width can be checked before memory is touched.
 
+## Finite Binary64 Text
+
+`lib/f64-text.f` (package `F64-TEXT`) converts between finite binary64 values
+and decimal text through glibc's `libm.so.6` on Linux and `libSystem` on Darwin.
+
+```forth
+F64-TEXT:MAX-BYTES ( -- n )                                  \ 327
+F64-TEXT:PARSE     ( ptr u8 n -- result<r,F64-TEXT:fault> )
+F64-TEXT:FORMAT    ( r ptr u8 n -- result<n,F64-TEXT:fault> )
+```
+
+Failures answer the enum `F64-TEXT:fault`, whose variants are `malformed`,
+`trailing`, `nonfinite`, `capacity` and `runtime`; its constructors are
+`F64--TEXT-FAULT:MALFORMED` and so on, and a caller outside the package
+dispatches with `MATCH F64-TEXT:fault`.
+
+`PARSE` accepts one complete decimal: an optional `+` or `-`, digits with an
+optional `.` fraction and at least one digit in all, then an optional `e` or
+`E` exponent with an optional sign and at least one digit. A negative length,
+empty text, a missing digit, or a first byte outside that syntax such as leading
+padding answers `malformed`. Bytes left after a complete decimal, such as
+trailing padding, a second `.` or the `x` of a hex spelling, answer
+`trailing`. `nan`, `inf` and `infinity` in any case and with an optional sign
+answer `nonfinite`, as does a decimal that overflows to infinity. Otherwise the
+result is the nearest binary64 value, ties to even, with subnormals and signed
+zero preserved: `-1e-9999` answers `-0`.
+
+`FORMAT` writes the shortest decimal that `PARSE` reads back to the same bits,
+in plain notation with no exponent and no terminator, and answers its length.
+A negative value, including `-0`, starts with `-`. When two shortest decimals
+are equally close, the one farther from zero is written, as Rust's `Display`
+does. The caller's buffer is written only on success: a negative capacity or a
+text longer than the capacity answers `capacity`, and a NaN or infinity
+answers `nonfinite`. `MAX-BYTES` is the longest text `FORMAT` writes, reached
+by the negative least subnormal, so a `MAX-BYTES` buffer always suffices.
+
+Both words convert in an immutable C numeric locale under round-to-nearest,
+whatever the calling thread's locale and rounding mode: `PARSE` passes the
+locale to `strtod_l`, and `FORMAT` switches the thread to it. Each call restores
+the thread's rounding mode, and `FORMAT` its locale, before answering, including
+on failure; no task yields while that state is borrowed. The first call that
+reaches libc loads the library and creates the locale; a failure there or in
+any later native call answers `runtime`. An `IMAGE-LIFECYCLE` hook frees the
+locale and closes the library when the process image is prepared, and the
+restored image acquires them again on its next call. Focused verification:
+`bin/hb --load lib/f64-text-test.f` and
+`bin/hb --load lib/f64-text-lifecycle-test.f`.
+
 ## Core Bytes
 
 `src/core/bytes.f` provides small checked byte-buffer helpers that are part of
@@ -1058,7 +1106,11 @@ MAP-EACH    ( ptr a count [ ptr u8 len n -- ] -- )
 ```
 
 `MAP-GET` returns `SOME` with the stored value when the key is present, else
-`NONE`. `MAP-SET` inserts or replaces one numeric value. Capacity, malformed
+`NONE`. `MAP-SET` inserts or replaces one numeric value. An insert stores the
+caller's key pointer and length, not a copy of the bytes, and a replacement
+keeps the first key's pointer, so the caller must keep those key bytes alive
+and unchanged for as long as the entry exists: every lookup compares against
+them and `MAP-EACH` passes them to its quotation. Capacity, malformed
 storage, and full-table states throw named errors such as `E-MAP-BAD-CAP` and
 `E-MAP-FULL`.
 
