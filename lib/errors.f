@@ -7,6 +7,10 @@
 \ someone else's declared range. A subsystem that outgrows one block takes a
 \ second, separately named region rather than renumbering the codes it already
 \ ships; the compiler at -6600..-6699 and -8000..-8999 is the first such case.
+\
+\ This file declares no package. A block with codes in a package (JR:E-SOURCE)
+\ is minted in the file that owns that package, bounds and all, and a comment
+\ here says where (docs/forth-card.md § 6).
 
 \ Arrays: -2000..-2099
 -2000 constant E-A-FIRST
@@ -199,31 +203,7 @@
 -3802 constant E-STACK-UNGUARDED \ run-in-stack was handed an extent that is not a guarded stack mapping (thrown by src/habu/habu1.f BRUNSTACK through the same (code, name) re-registered in src/habu/stack-abi.f)
 -3803 constant E-PROF-RATE       \ prof-rate was handed an interval below 0 (thrown by src/habu/prof.f BPROF-RATE and src/habu/kernel-x64.f's prof-rate row through the same (code, name) re-registered in src/habu/prof-abi.f)
 
-\ JSON reader: -3900..-3999
--3900 constant E-JR-FIRST
--3999 constant E-JR-LAST
--3900 constant E-JR-MALFORMED   \ value expected but got a bare word / bad char / trailing comma
--3901 constant E-JR-STRING      \ unterminated string or unescaped control byte in a string
--3902 constant E-JR-ESCAPE      \ invalid backslash or \uXXXX escape sequence
--3903 constant E-JR-SURROGATE   \ lone or mismatched UTF-16 surrogate in a \u escape
--3904 constant E-JR-DEPTH       \ container nesting exceeds JR-MAX-DEPTH
--3905 constant E-JR-TRAILING    \ non-whitespace after the top-level value
--3906 constant E-JR-NUMBER      \ malformed number token or integer overflow
--3907 constant E-JR-EOF         \ input ended while a value/container/key was expected
--3908 constant E-JR-COLON       \ missing ':' after an object key
--3909 constant E-JR-COMMA       \ expected ',' or the matching container close
--3910 constant E-JR-STATE       \ accessor called on the wrong token kind or dst buffer too small
--3911 constant E-JR-BOUNDS      \ source-cursor read past the input buffer (internal invariant)
-
-package JR
-
-public
-
--3912 constant E-CAPACITY    \ caller storage is smaller than JR:STORAGE-BYTES
--3913 constant E-STORAGE     \ caller storage is null or not cell-aligned
--3914 constant E-SOURCE      \ source length is negative or a positive length has a null source
-
-;package
+\ JSON reader: -3900..-3999, minted by lib/json-read.f, which owns package JR.
 
 \ Remote device harness (ssh zed): -4000..-4099
 -4000 constant E-ZED-FIRST
@@ -237,19 +217,8 @@ public
 -4006 constant E-ZED-TIMEOUT     \ remote command exceeded the timeout
 -4007 constant E-ZED-EMIT        \ local artifact emit (bin/hb spawn) failed
 
-\ Floating mathematics: -9020..-9029
-\ Reserved as a small shared range because application error blocks begin nearby.
--9020 constant E-FMATH-FIRST
--9029 constant E-FMATH-LAST
-
-package FMATH
-
-public
-
--9020 constant E-DOMAIN       \ input is outside the public word's mathematical domain
--9021 constant E-OUTPUT       \ result is outside the declared output type's range
-
-;package
+\ Floating mathematics: -9020..-9029, minted by lib/fmath.f, which owns package
+\ FMATH.
 
 \ Source-composition discovery: -4100..-4199 (merge renumber from -3800; E-ENGINE owns -3800)
 -4100 constant E-DISC-FIRST
@@ -1377,27 +1346,8 @@ public
 -9275 constant E-CRYPTO-MAC        \ libcrypto refused the keyed hash, or answered a digest of the wrong width
 -9276 constant E-CRYPTO-PLATFORM   \ this module is qualified on Linux only, and refuses a foreign target before it binds
 
-\ PostgreSQL over libpq (package PG): -9250..-9259. The decade after libcurl;
-\ -9240..-9249 is tools/image-size-lib.f, outside this file.
--9250 constant E-PG-FIRST
--9259 constant E-PG-LAST
-
-package PG
-
-public
-
--9250 constant E-CONNECT      \ the server refused the conninfo, or libpq could not build a connection
--9251 constant E-EXEC         \ libpq returned no result at all, or a transaction verb the server rejected
--9252 constant E-COLUMN       \ a row or column index outside the result
--9253 constant E-TYPE         \ a column read as a type its bytes are not, including an integer read of NULL
--9254 constant E-CLEARED      \ a result used after CLEAR, or cleared a second time
--9255 constant E-TRANSACTION  \ a WITH-TRANSACTION inside another one on the same connection
--9256 constant E-HANDLE       \ a handle another task owns, or one an image restore invalidated
--9257 constant E-CAPACITY     \ more live connections, results or parameters than this module stores
--9258 constant E-PLATFORM     \ this module is qualified on Linux only, and refuses a foreign target before it binds
--9259 constant E-STATEMENT    \ an empty statement text or prepared-statement name
-
-;package
+\ PostgreSQL over libpq: -9250..-9259, the decade after libcurl, minted by
+\ lib/pg.f, which owns package PG. -9240..-9249 is tools/image-size-lib.f.
 
 \ Process signals on a self-pipe (package SIGNAL): -9280..-9289. The decade
 \ after CRYPTO.
@@ -1429,23 +1379,8 @@ public
 -9319 constant E-LIFECYCLE-LAST
 -9310 constant E-LIFECYCLE-LATE   \ a persistent hook registered a one-shot hook during PREPARE, after the one-shot phase: nothing runs it before the capture
 
-\ The database layer over package PG (lib/db/): -9320..-9329, the decade after
-\ IMAGE-LIFECYCLE's. DB-ROWS opens connections and reads rows into per-task
-\ arenas.
--9320 constant E-DB-FIRST
--9329 constant E-DB-LAST
-
-package DB-ROWS
-
-public
-
--9320 constant E-CONNECT      \ the database refused the connection
--9321 constant E-QUERY        \ the server refused a query, or a command answered no rows where rows were read
--9322 constant E-ROW          \ the query answered no row, or a column its reader cannot read
--9323 constant E-READERS      \ more tasks read rows than the declared readers
--9324 constant E-CAPACITY     \ a declaration out of range or after first use, or a read past its arena
-
-;package
+\ The database layer over package PG: -9320..-9329, the decade after
+\ IMAGE-LIFECYCLE's, minted by lib/db/rows.f, which owns package DB-ROWS.
 
 \ WebSocket, RFC 6455 (package WS): -9330..-9339. The frame codec
 \ (lib/net/ws-frame.f) mints from the head of the block; the codes after it are

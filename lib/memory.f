@@ -9,6 +9,7 @@
 
 s" lib/errors.f" required
 require lib/num-arithmetic.f
+require lib/span.f
 
 $10000 constant MEM-64K
 $7FFFFFFFFFFFFFFF constant MEM-MAX-N
@@ -141,20 +142,14 @@ TRUSTED: MEM-MAPPED>PTR ( n -- ptr u8 ) ;
 \ (zero is a valid scalar answer), while the allocation sinks (ALLOC-BYTES,
 \ ALLOC-CELLS, ALLOC-64K) accept only the `alloc-*` roles, which reject zero and
 \ over-allocation at VALIDATION - so a byte/cell role swap or a zero/overflow
-\ allocation cannot reach `mmap`. MEM owns three audited private projections:
+\ allocation cannot reach `mmap`. MEM owns four audited private projections:
 \ one allocation extent for `mmap` and whole-map `munmap`, one cell count for
-\ `cells`, and one mapped byte extent for range `munmap`. Retire each when its
-\ primitive accepts the nominal role directly.
+\ `cells`, one mapped byte extent for range `munmap`, and the reach ALLOC-SPAN
+\ hands SPAN:MAKE. Retire each of the first three when its primitive accepts the
+\ nominal role directly.
 \
 \ The legacy MEM-ALLOC-BYTES surface stays untouched for its four caller waves;
 \ MEM-ALLOC-CELLS and the multi-64K conveniences are out of this B5 wave.
-\
-\ MEM:ALLOC-SPAN and MEM:FREE-SPAN are NOT here: they reopen this package from
-\ lib/span.f, because a span is SPAN:span<u8> and this file is a boot-prefix
-\ file (src/habu/habu2.f PFX-LOAD-STDLIB-FILES) that every engine reads at every
-\ start - requiring lib/span.f from here would put the span package in the boot
-\ prefix before band 1 has decided that. They move into this file the day
-\ lib/span.f becomes a prefix row.
 
 package MEM
 private
@@ -287,6 +282,26 @@ public
 : CELLS-ALLOC-COUNT ( n -- NUM:alloc-cell-count )
    NUM:CELL-COUNT SIZE-CELL-COUNT
    NUM:AS-ALLOC-CELL-COUNT SIZE-ALLOC-CELL-COUNT ;
+
+\ ---- allocated spans: an ALLOC-BYTES mapping with its reach -------------------
+\ Here and not in lib/span.f, because this file owns MEM
+\ (docs/forth-card.md § 6); that makes lib/span.f a boot-prefix row ahead of
+\ this one. The private projection is proof erasure - SPAN:MAKE takes the reach
+\ as a raw byte count - and has no public inverse.
+private
+
+CAST: SPAN-ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
+
+public
+
+: ALLOCATION>SPAN ( ptr u8 NUM:alloc-byte-len -- SPAN:span<u8> )
+   SPAN-ALLOC-LEN>N SPAN:MAKE ;
+
+: ALLOC-SPAN ( NUM:alloc-byte-len -- SPAN:span<u8> )
+   ALLOC-BYTES ALLOCATION>SPAN ;
+
+: FREE-SPAN ( SPAN:span<u8> -- )
+   SPAN:$ BYTES-ALLOC-LEN RELEASE-BYTES ;
 
 \ ---- quotation-scoped owned mapping --------------------------------------------
 \ Each scope records a typed pointer and validated extent. The null pointer is

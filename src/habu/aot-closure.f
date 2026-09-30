@@ -4,6 +4,7 @@ require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
 require src/habu/aot-decl.f
+require src/habu/address-carrier.f
 require src/habu/address-cells.f
 require src/habu/code-span.f
 \ The span cells and HERE-N come from the lib-free latch file, which the build
@@ -23,6 +24,7 @@ s" JSON-DIAGS" s" -- ptr a" TRUST
 
 package AOT-LINK
 using SNAP-RELOC
+using ADDRESS-CARRIER
 
 \ These views expose mixed dictionary fields and the live code/dictionary extent
 \ used to classify stripped-image cells. Retirement:
@@ -243,11 +245,11 @@ variable FX
 \ number for the value-domain range test, the same two readings CELL-TEXTPTR?
 \ already makes of the live extents above.
 : SPAN-TABLE ( -- ptr u8 )
-   data-base AOT-SPAN:TABLE-CELL CELL / ptr-field @ ;
+   data-base AOT-CELLS:SPAN-TABLE-CELL CELL / ptr-field @ ;
 : SPAN-BASE ( -- ptr u8 )
-   data-base AOT-SPAN:BASE-CELL CELL / ptr-field @ ;
-: SPAN-BASE-N ( -- n ) data-base AOT-SPAN:BASE-CELL + @ ;
-: SPAN-N ( -- n ) data-base AOT-SPAN:N-CELL + @ ;
+   data-base AOT-CELLS:SPAN-BASE-CELL CELL / ptr-field @ ;
+: SPAN-BASE-N ( -- n ) data-base AOT-CELLS:SPAN-BASE-CELL + @ ;
+: SPAN-N ( -- n ) data-base AOT-CELLS:SPAN-N-CELL + @ ;
 : SPAN-ROW ( n -- ptr u8 ) {: k:n :}
    SPAN-TABLE k AOT-SPAN:ROW * + ;
 : SPAN-OFF ( n -- n ) SPAN-ROW AOT-W32@ ;
@@ -1339,5 +1341,6 @@ variable CLO-NI  variable CLO-NJ  variable CLO-NK   \ the candidate row, the sca
    0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ SCAN-MEMBER  WI @ 1+ WI ! REPEAT
    DROP-NESTED-CLO ;
 
+;using
 ;using
 ;package

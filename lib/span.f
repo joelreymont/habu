@@ -41,7 +41,6 @@
 \ today - hand a TYPED-BUFFER accessor result to SPAN:MAKE.
 
 require lib/errors.f
-require lib/memory.f
 
 package SPAN
 public
@@ -145,29 +144,6 @@ public
       v over b + c!
       1+
    repeat drop ;
-
-;package
-
-\ ---- allocated spans ----------------------------------------------------------
-\ Package MEM, reopened here rather than written in lib/memory.f: that file is a
-\ boot-prefix row and must not depend on this one (lib/memory.f says the same at
-\ its allocation surface). The private projection is proof erasure - SPAN:MAKE
-\ takes the reach as a raw byte count - and has no public inverse.
-package MEM
-private
-
-CAST: SPAN-ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
-
-public
-
-: ALLOCATION>SPAN ( ptr u8 NUM:alloc-byte-len -- SPAN:span<u8> )
-   SPAN-ALLOC-LEN>N SPAN:MAKE ;
-
-: ALLOC-SPAN ( NUM:alloc-byte-len -- SPAN:span<u8> )
-   MEM:ALLOC-BYTES ALLOCATION>SPAN ;
-
-: FREE-SPAN ( SPAN:span<u8> -- )
-   SPAN:$ MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 ;package
 

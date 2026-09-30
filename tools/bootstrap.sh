@@ -111,6 +111,7 @@ SRC_COMMON=(
   src/core/lower-cert-seal.f
   lib/prelude.f
   lib/errors.f
+  lib/span.f
   src/core/dynamic-storage.f
   src/habu/treeshake.f
   src/habu/rt.f

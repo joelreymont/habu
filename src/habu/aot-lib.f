@@ -947,12 +947,12 @@ variable BDELTA  variable TNEW
    p e ADDRESS-VALUE {: v:n :}
    v DATA-ADDRESS? if
       owner p v DATA-TARGET {: target:n :}
-      p e SNAP-RELOC:CHAIN-SIZE {: size:n :}
+      p e ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
       size 4 / {: halves:n :}
       \ Preserve geometry and scaffold; DATA halves run high to low.
       halves 0 ?do
-         p i 4 * + AOT-W32@ SNAP-RELOC:ADDR-OPC-MASK and
-         size SNAP-RELOC:DATA-CHAIN-BYTES = if 2 i - else i then
+         p i 4 * + AOT-W32@ ADDRESS-CARRIER:ADDR-OPC-MASK and
+         size ADDRESS-CARRIER:DATA-CHAIN-BYTES = if 2 i - else i then
          16 * target swap rshift $FFFF and 5 lshift or EMITW
       loop
       exit
@@ -960,7 +960,7 @@ variable BDELTA  variable TNEW
    v ADDRESS-MEMBER {: m:n :}
    m 0 < if s" aot: code address is outside the closure" 74 die then
    m MEMBER-NEWOFF  v m CLO-AT-N -  +
-   p AOT-W32@ SNAP-RELOC:ADDR-RD-MASK and EMIT-CODE-ADDRESS ;
+   p AOT-W32@ ADDRESS-CARRIER:ADDR-RD-MASK and EMIT-CODE-ADDRESS ;
 
 : COPY-COMPACT-BLOB {: i:n :} ( n -- )
    i CLO-AT CP2 !  i CLO-AT i CLO-BYTES + CEND !
@@ -968,7 +968,7 @@ variable BDELTA  variable TNEW
       CP2 @ CEND @ ABS-CHAIN? IF ABS-CHAIN-DIE THEN
       CP2 @ ADDRESS-SITE? if
          i CLO-REC@ CP2 @ CEND @ COPY-ADDRESS
-         CP2 @ CEND @ SNAP-RELOC:CHAIN-SIZE
+         CP2 @ CEND @ ADDRESS-CARRIER:CHAIN-SIZE
       else
          i CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW 4
       then CP2 @ + CP2 !

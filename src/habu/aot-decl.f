@@ -386,7 +386,8 @@ create BUF MAX 8 * allot    variable N   \ 8B rows: blob-off u32 + name-off u32
 \ fields and the same CODE-SPAN encoding a compact record's first two words hold,
 \ so the build proves a span row against the record it replaced field for field.
 \ The seed publishes the table's address, this count and the blob's landing base
-\ in the three AOT-SPAN cells layout.f set aside.
+\ in the three AOT-CELLS cells layout.f set aside (SPAN-TABLE-CELL, SPAN-N-CELL,
+\ SPAN-BASE-CELL).
 package AOT-SPAN
 private
 \ RESERVED AT FIRST USE, NOT ALLOTTED, and that is the shape every table only

@@ -32,6 +32,7 @@ require lib/test/outcome.f
 require lib/test/subject.f
 require lib/byte-buffer.f
 require lib/errors.f
+require lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/arch/x86-64/rt.f

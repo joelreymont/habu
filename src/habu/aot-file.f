@@ -856,7 +856,7 @@ variable SH-PREV
 : SH-WIDTH ( n -- n ) {: kind:n :}
    kind AOT-SHADOW:CALL = kind AOT-SHADOW:TAIL = or if 5 exit then
    kind AOT-SHADOW:DATA =  kind AOT-SHADOW:CODE = or  kind AOT-SHADOW:FUN = or if
-      SNAP-RELOC:MOVABS-BYTES exit then
+      ADDRESS-CARRIER:MOVABS-BYTES exit then
    0 ;
 
 : ?SH-TARGET ( n n -- ) {: t:n recs:n :}
@@ -1425,12 +1425,12 @@ DYNAMIC-BUFFER HOST-REG n
 
 
 : DSITE-CHAIN-SIZE ( ptr u8 -- n )
-   AOT-BLOB-BUF@ H-BLOB @ + S-BLOB ROW-LEN@ + SNAP-RELOC:CHAIN-SIZE ;
+   AOT-BLOB-BUF@ H-BLOB @ + S-BLOB ROW-LEN@ + ADDRESS-CARRIER:CHAIN-SIZE ;
 
 : DSITE-AT ( n -- ptr u8 )
    {: site:n :}
    site AOT-DSITE-OFF-MASK and {: off:n :}
-   site AOT-DSITE-CELL and 0<> if 8 else SNAP-RELOC:DATA-CHAIN-BYTES then
+   site AOT-DSITE-CELL and 0<> if 8 else ADDRESS-CARRIER:DATA-CHAIN-BYTES then
    off + S-BLOB ROW-LEN@ > if
       s" aot-file: a DATA relocation site reaches past its blob" DIE
    then
@@ -1446,13 +1446,13 @@ DYNAMIC-BUFFER HOST-REG n
 : DSITE-VALUE ( ptr u8 n -- n )
    {: p site:n :}
    site AOT-DSITE-CELL and 0<> if p U64@ exit then
-   p p DSITE-CHAIN-SIZE SNAP-RELOC:CHAIN-VALUE ;
+   p p DSITE-CHAIN-SIZE ADDRESS-CARRIER:CHAIN-VALUE ;
 
 
 : DSITE-VALUE! ( ptr u8 n n -- )
    {: p value:n site:n :}
    site AOT-DSITE-CELL and 0<> if value p U64! exit then
-   p value p DSITE-CHAIN-SIZE SNAP-RELOC:SET-CHAIN-VALUE ;
+   p value p DSITE-CHAIN-SIZE ADDRESS-CARRIER:SET-CHAIN-VALUE ;
 
 
 : MERGED-DSITE ( n -- n )
@@ -1498,9 +1498,9 @@ DYNAMIC-BUFFER HOST-REG n
       p i 4 * + {: q:ptr :}
       q U32@ {: boff:n :}
       AOT-BLOB-BUF@ H-BLOB @ + boff + {: ch:ptr :}
-      ch SNAP-RELOC:CHAINV {: v:n :}
+      ch ADDRESS-CARRIER:CHAINV {: v:n :}
       v blen < 0= if boff v ?CVALUE then
-      ch  v H-BLOB @ +  SNAP-RELOC:SET-CHAIN
+      ch  v H-BLOB @ +  ADDRESS-CARRIER:SET-CHAIN
       boff H-BLOB @ +  q U32!
    loop ;
 

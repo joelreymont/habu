@@ -133,8 +133,10 @@ variable LREPLROUTE
 variable LEXITHOOK
 \ The region's write bands track dictionary-record, control-flow and code spans.
 \ EMIT-PROT-WINDOW supplies the bodies; definition, publication and patch
-\ brackets in this file and habu2.f are their callers.
-package PROT
+\ brackets in this file and habu2.f are their callers. Their label ids are
+\ PROT-EMIT's: the band cells are src/habu/layout.f's PROT, which the engine
+\ bakes (src/habu/habu2.f RELOC-EMIT says why the halves split).
+package PROT-EMIT
 public
 variable LOPEN   variable LCLOSE   variable LGROW   variable LSPAN   variable LCF
 ;package
@@ -169,12 +171,11 @@ public
 variable LCOUNT  variable LROWS
 ;package
 variable LAOTBOOTRUN
-\ The checker payload the seed publishes into layout.f's AOT-SIG cells: its byte
-\ length, then the span itself (signature rows, their strings, the type registry
-\ delta, behind a table of their own). In package AOT-SIG for the same reason
-\ AOT-XTSITE's label ids are in theirs: layout.f already owns that name for the
-\ two cells this payload is published into, and a new label does not join the
-\ global naming debt the older LAOT* ids carry.
+\ The checker payload the seed publishes into layout.f's AOT-CELLS:SIG-POOL-CELL
+\ and SIG-LEN-CELL: its byte length, then the span itself (signature rows, their
+\ strings, the type registry delta, behind a table of their own). In package
+\ AOT-SIG for the same reason AOT-XTSITE's label ids are in theirs: a new label
+\ does not join the global naming debt the older LAOT* ids carry.
 package AOT-SIG
 public
 variable LLEN  variable LSPAN  variable LNAME
@@ -183,10 +184,10 @@ variable LPROTWIDQ
 variable LDPBAD   \ DP-CHECK out-of-range die target (defined in habu2.f EM-COMPILE-DIE; dot habu-dictionary-allot-past-4e5c3c2b)
 variable LBCAPFULL   \ body-capture over BODYBUF-CAP die target (defined in habu2.f EM-BODY-CAP-DIE; dot habu-name-the-per-56a594f3)
 \ dict hash-index label ids: the in-place compaction BNDSET's raise leg BLs,
-\ and the cannot-maintain loud exit (both bound in EMIT-HIDX). In a package for
-\ the same reason layout.f's HIDX constants are: new names stay out of the
-\ global packaging debt.
-package HIDX
+\ and the cannot-maintain loud exit (both bound in EMIT-HIDX). In a package so
+\ new names stay out of the global packaging debt, and in HIDX-EMIT rather than
+\ layout.f's HIDX because the engine bakes that one.
+package HIDX-EMIT
 public
 variable LREBUILD
 variable LFULL
@@ -339,7 +340,7 @@ public
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
-package PROT
+package PROT-EMIT
 
 public
 
@@ -355,7 +356,7 @@ public
 \ call and no syscall.
 \
 \ THE LENGTH ARRIVES IN A REGISTER, not as an emit-time operand, so a site reads
-\ `1 <len-register> 0 ADDI,  PROT:RESERVE` and the macro itself contributes no
+\ `1 <len-register> 0 ADDI,  PROT-EMIT:RESERVE` and the macro itself contributes no
 \ operand tokens. That is the same ABI its callee and LPROT already use, and it
 \ keeps the emitted token stream honest: a macro that carries a bare register
 \ NUMBER leaves that number sitting in front of the next instruction, where any
@@ -1318,7 +1319,7 @@ variable SZA-I
 \ a raise is the one motion that can leave the table short of the dictionary.
 \ The lookup keeps its authority by construction rather than by trusting the
 \ callers: a raise rebuilds the table from the raised [0,NDICT) in place
-\ (HIDX:LREBUILD), so the index stays authoritative instead of being silently
+\ (HIDX-EMIT:LREBUILD), so the index stays authoritative instead of being silently
 \ dropped for the rest of the process (CG-25).
 : BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
    LBL LBL LBL LBL LBL {: bounded:label msg:label floor-ok:label keep:label done:label :}
@@ -1335,7 +1336,7 @@ variable SZA-I
    floor-ok LBL,
    A NDICT CMP,  C-LE keep BCOND,
       NDICT A 0 ADDI,                     \ raise first: the rebuild reads the new NDICT
-      HIDX:LREBUILD LABEL@ BL,
+      HIDX-EMIT:LREBUILD LABEL@ BL,
       done B,
    keep LBL,
    NDICT A 0 ADDI,
@@ -1380,7 +1381,7 @@ variable SZA-I
    lower LBL,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
    NDICT A 0 ADDI,
-   HIDX:LREBUILD LABEL@ BL,
+   HIDX-EMIT:LREBUILD LABEL@ BL,
    9 0 MOVZ,  9 DATA SEAL-NDICT-CELL STR, ;
 
 : BEPOCHSECONDS ( -- )
@@ -2315,13 +2316,13 @@ public
    7 4 MOVZ,  A 7 PROT-GUARD:CALL \ x9 is the target; protect its exact 4-byte write
    \ A generic instruction write carries no optimizer proof, even if its old
    \ bytes belonged to a native body. Invalidate before the write can publish.
-   9 SP 8 LDR,  10 9 4 ADDI,  9 10 TIER-PROV:INVALIDATE,
+   9 SP 8 LDR,  10 9 4 ADDI,  9 10 CODE-ORIGIN:INVALIDATE,
    \ THE FLIP IS STATELESS, keyed on the target word, not on the bracket state a
    \ compile is holding. A patch names the address it rewrites outright and its
    \ target does not move between the two flips, which is exactly LPROTREC's
    \ precondition, so the pair flips the same pages back that it opened. Going
    \ through the code band instead would be wrong twice over: this is a Habu-level
-   \ primitive that can run while a compile bracket is open, and PROT:LCLOSE would
+   \ primitive that can run while a compile bracket is open, and PROT-EMIT:LCLOSE would
    \ then close somebody else's bands and clear their record.
    2 3 MOVZ,  LPROTREC LABEL@ BL,
    9 SP 8 LDR,  10 SP 16 LDR,  10 9 0 STRW,
@@ -2334,7 +2335,7 @@ public
 \ span of offsets is replaced or thrown away, every bit recorded about those
 \ words is a statement about code that is gone. Both maps' readers treat a bit as
 \ authoritative and refuse the image when the bytes underneath do not have the
-\ recorded shape (habu2.f SNAP-RELOC:EMIT-CALLS and SNAP-RELOC:EMIT-ADDRS, exits
+\ recorded shape (habu2.f RELOC-EMIT:EMIT-CALLS and RELOC-EMIT:EMIT-ADDRS, exits
 \ CALLMAP-RC and ADDRMAP-RC), which is what makes leaving one behind a defect and
 \ not a wasted bit: the stale record is indistinguishable from a live one.
 \
@@ -2348,7 +2349,7 @@ public
 \   x9  = its byte length; both survive, so a caller clearing both maps states
 \         the span once.
 \ Clobbers x6, x7 and x12..x15.
-package SNAP-RELOC
+package RELOC-EMIT
 public
 : CLEAR-SPAN, ( n -- ) {: mapoff:n :}
    LBL LBL {: loop:label done:label :}
@@ -2368,8 +2369,8 @@ public
 
 : BCLEAR-MAPS ( -- )
    A G-POP  B G-POP
-   SNAP-RELOC:CALLMAP-OFF SNAP-RELOC:CLEAR-SPAN,
-   SNAP-RELOC:ADDRMAP-OFF SNAP-RELOC:CLEAR-SPAN, ;
+   SNAP-RELOC:CALLMAP-OFF RELOC-EMIT:CLEAR-SPAN,
+   SNAP-RELOC:ADDRMAP-OFF RELOC-EMIT:CLEAR-SPAN, ;
 ;package
 
 package NPUBWIN
@@ -2418,7 +2419,7 @@ private
 \ its whole released span through CODE-RECLAIM in src/habu/xref.f.
 \ Clobbers x6, x7 and x12..x15.
 : CLEAR-CALLMAP-SPAN ( -- )
-   SNAP-RELOC:CALLMAP-OFF SNAP-RELOC:CLEAR-SPAN, ;
+   SNAP-RELOC:CALLMAP-OFF RELOC-EMIT:CLEAR-SPAN, ;
 
 public
 
@@ -2454,7 +2455,7 @@ public
    10 CP CMP,  C-EQ atcp BCOND,                 \ a publication is an append, or nothing
       0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    atcp LBL,
-   1 CP 9 ADD,  PROT:LOPEN LABEL@ BL,           \ code band -> RW over [CP, CP+len), once
+   1 CP 9 ADD,  PROT-EMIT:LOPEN LABEL@ BL,      \ code band -> RW over [CP, CP+len), once
    9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
    12 0 MOVZ,                                    \ x12 = byte offset into the copy
    loop LBL,
@@ -2464,12 +2465,12 @@ public
    12 12 4 ADDI,
    loop B,
    done LBL,
-   PROT:LCLOSE LABEL@ BL,                       \ region -> RX, once
+   PROT-EMIT:LCLOSE LABEL@ BL,                  \ region -> RX, once
    9 SP 8 LDR,  10 SP 16 LDR,
    CLEAR-CALLMAP-SPAN                            \ the span's relocation record, reset with it
    9 SP 8 LDR,  10 SP 16 LDR,
    CP 10 9 ADD,                                  \ the slot is claimed
-   10 CP TIER-PROV:UNKNOWN-RANGE,                  \ only the compiler return may certify this emission
+   10 CP CODE-ORIGIN:UNKNOWN-RANGE,                \ only the compiler return may certify this emission
    9 10 0 ADDI,  LFLUSH LABEL@ BL,              \ flush [dst, CP), once
    SP SP 48 ADDI, ;
 
@@ -2499,8 +2500,8 @@ public
       15 15 DREC ADDI,  16 16 1 SUBI,  widloop B,
    widdone LBL,
    9 SP 16 LDR,  10 CP 0 ADDI,  GUARD-CODE-SPAN
-   9 SP 16 LDR,  1 CP 9 ADD,  PROT:LOPEN LABEL@ BL,
-   1 SP 40 LDR,  2 SP 48 LDR,  PROT:LSPAN LABEL@ BL,
+   9 SP 16 LDR,  1 CP 9 ADD,  PROT-EMIT:LOPEN LABEL@ BL,
+   1 SP 40 LDR,  2 SP 48 LDR,  PROT-EMIT:LSPAN LABEL@ BL,
    9 SP 32 LDR,  10 SP 24 LDR,  11 SP 16 LDR,  12 0 MOVZ,
    cloop LBL,
       12 11 CMP,  C-CS cdone BCOND,
@@ -2515,13 +2516,13 @@ public
       13 9 12 ADD,  14 13 0 STR,
       12 12 8 ADDI,  rloop B,
    rdone LBL,
-   PROT:LCLOSE LABEL@ BL,
+   PROT-EMIT:LCLOSE LABEL@ BL,
    9 SP 16 LDR,  10 SP 32 LDR,
-   SNAP-RELOC:CALLMAP-OFF SNAP-RELOC:CLEAR-SPAN,
-   SNAP-RELOC:ADDRMAP-OFF SNAP-RELOC:CLEAR-SPAN,
+   SNAP-RELOC:CALLMAP-OFF RELOC-EMIT:CLEAR-SPAN,
+   SNAP-RELOC:ADDRMAP-OFF RELOC-EMIT:CLEAR-SPAN,
    9 SP 16 LDR,  CP CP 9 ADD,
    9 SP 32 LDR,  LFLUSH LABEL@ BL,
-   9 SP 32 LDR,  10 CP 0 ADDI,  9 10 TIER-PROV:NATIVE-RANGE,
+   9 SP 32 LDR,  10 CP 0 ADDI,  9 10 CODE-ORIGIN:NATIVE-RANGE,
    15 SP 0 LDR,
    iloop LBL,
       15 idone CBZ,
@@ -2966,7 +2967,7 @@ public
    done LBL, ;
 
 : BCODEORIGIN ( -- )
-   10 G-POP  9 G-POP  TIER-PROV:QUERY,  9 G-PUSH ;
+   10 G-POP  9 G-POP  CODE-ORIGIN:QUERY,  9 G-PUSH ;
 
 : BSETTIER ( -- )
    LBL LBL LBL LBL {: bad:label done:label msg:label native:label :}
@@ -3495,7 +3496,7 @@ package ENGINE-EMIT
    s" stat64" ['] BSTAT64 FPRIM   s" lstat64" ['] BLSTAT64 FPRIM
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM
    s" patch32" ['] BPATCH32 FPRIM
-   s" reloc-maps-clear" ['] SNAP-RELOC:BCLEAR-MAPS FPRIM-L
+   s" reloc-maps-clear" ['] RELOC-EMIT:BCLEAR-MAPS FPRIM-L
    s" code-publish" ['] NPUBWIN:BCODEPUBLISH FPRIM
    s" native-unit-publish" ['] NPUBWIN:BNATIVEUNITPUBLISH ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" callmap-set" ['] NPUBWIN:BCALLMAPSET FPRIM
@@ -3647,7 +3648,7 @@ package ENGINE-EMIT
    28 12 CMP,  C-CS inwin BCOND,                 \ and at or above its start
    grow LBL,
       SP SP 16 SUBI,  30 SP 0 STR,  1 SP 8 STR,
-      1 CP 4 ADDI,  PROT:LGROW LABEL@ BL,
+      1 CP 4 ADDI,  PROT-EMIT:LGROW LABEL@ BL,
       30 SP 0 LDR,  1 SP 8 LDR,  SP SP 16 ADDI,
    inwin LBL,
    12 SP 0 LDR,  13 SP 8 LDR,  SP SP 16 ADDI,
@@ -3776,7 +3777,7 @@ package ENGINE-EMIT
 \
 \ WHY A BAND GROWS. A bracket cannot say in advance how much code it will emit: a
 \ definition is unbounded. LCEMIT, the single store every emission funnels
-\ through, extends the code band when CP leaves it (PROT:LGROW). The extension is
+\ through, extends the code band when CP leaves it (PROT-EMIT:LGROW). The extension is
 \ exact — one unit past the word being stored — so it costs one mprotect per
 \ PROT-PAGE-MAX bytes of emitted code and nothing per instruction.
 \
@@ -3793,7 +3794,7 @@ package ENGINE-EMIT
 \ write through the claim would fault. Measured, not assumed - a mutation that
 \ skips the control-flow close kills the fixpoint build.
 \
-\ PROT:LSPAN ( x1 = address, x2 = byte length ) declares a span this bracket will
+\ PROT-EMIT:LSPAN ( x1 = address, x2 = byte length ) declares a span this bracket will
 \ write. It intersects the span with each band, so the caller states an address
 \ range and never a band; a span that reaches no band declares nothing. A band
 \ only ever GROWS while it is open, so however the declarations interleave, the
@@ -3801,26 +3802,26 @@ package ENGINE-EMIT
 \ That containment is a property of these bodies, not of the call graph: no caller
 \ has to know what is already open, and no ordering of the sites can orphan an RW
 \ page. Declaring a span a band already covers costs no syscall. It clobbers
-\ x0/x1/x2 and x30 — the same set PROT:LOPEN has always clobbered, which is why
+\ x0/x1/x2 and x30 — the same set PROT-EMIT:LOPEN has always clobbered, which is why
 \ every existing bracket site can carry a declaration without saving anything new.
 \
-\ PROT:LOPEN ( x1 = one past the last region byte this bracket will write ) is
-\ PROT:LSPAN over [CP, x1): the bracket openers all emit or publish at CP. An end
+\ PROT-EMIT:LOPEN ( x1 = one past the last region byte this bracket will write ) is
+\ PROT-EMIT:LSPAN over [CP, x1): the bracket openers all emit or publish at CP. An end
 \ at or below CP declares the single word at CP rather than a negative length.
 \
-\ PROT:LCF ( -- ) declares the whole control-flow band, register-transparently, so
+\ PROT-EMIT:LCF ( -- ) declares the whole control-flow band, register-transparently, so
 \ LCFPUSH/LCFPOP can call it without disturbing the emitter state they carry. Dot
 \ habu-move-the-control-c7de6246 moves that stack out of the protected region;
 \ when it lands, this body and PROT:CF go with it and the band disappears.
 \
-\ PROT:LCLOSE ( -- ) flips every open band back and clears its record. With
+\ PROT-EMIT:LCLOSE ( -- ) flips every open band back and clears its record. With
 \ nothing open it is a no-op, which is what the several defensive "region -> RX,
 \ idempotent" closes on the compile-error paths need: they run whether or not a
 \ bracket is open, and cost nothing when it is not.
 \
-\ PROT:LGROW ( x1 = one past the last byte that must be writable ) is the entry
+\ PROT-EMIT:LGROW ( x1 = one past the last byte that must be writable ) is the entry
 \ for a writer INSIDE someone else's bracket: LCEMIT leaving the code band, and
-\ the byte spills that reach it through PROT:RESERVE above. With no code band open
+\ the byte spills that reach it through PROT-EMIT:RESERVE above. With no code band open
 \ it returns at once, leaving the write to fault exactly as it does today: writing
 \ to the region outside a bracket is still a bug and still fails loudly. With the
 \ word already covered it returns without a syscall, which is what makes the
@@ -3881,7 +3882,7 @@ package ENGINE-EMIT
    {: rlo:label rhi:label rskip:label
       flo:label fhi:label fskip:label
       clo:label chi:label cskip:label :}
-   PROT:LSPAN LABEL@ LBL,
+   PROT-EMIT:LSPAN LABEL@ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  3 SP 8 STR,  4 SP 16 STR,
    3 1 0 ADDI,                                   \ x3 = span start
    4 1 2 ADD,                                    \ x4 = span end
@@ -3932,16 +3933,16 @@ package ENGINE-EMIT
 
 : EMIT-PROT-OPEN ( -- )
    LBL {: ok:label :}
-   PROT:LOPEN LABEL@ LBL,
+   PROT-EMIT:LOPEN LABEL@ LBL,
    1 CP CMP,  C-HI ok BCOND,                     \ an end at or below CP means the word at CP
       1 CP 4 ADDI,
    ok LBL,
    2 1 CP SUB,  1 CP 0 ADDI,
-   PROT:LSPAN LABEL@ B, ;                        \ tail: declare [CP, end)
+   PROT-EMIT:LSPAN LABEL@ B, ;                   \ tail: declare [CP, end)
 
 : EMIT-PROT-CLOSE ( -- )
    LBL {: xcf:label :}
-   PROT:LCLOSE LABEL@ LBL,
+   PROT-EMIT:LCLOSE LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
    1 DATA PROT:CF LDR,
    1 xcf CBZ,
@@ -3954,7 +3955,7 @@ package ENGINE-EMIT
 
 : EMIT-PROT-GROW ( -- )
    LBL LBL {: gnone:label gopen:label :}
-   PROT:LGROW LABEL@ LBL,
+   PROT-EMIT:LGROW LABEL@ LBL,
    SP SP 48 SUBI,
    30 SP 0 STR,  0 SP 8 STR,  2 SP 16 STR,  8 SP 24 STR,  16 SP 32 STR,
    0 DATA PROT:WINDOW LDR,
@@ -3963,21 +3964,21 @@ package ENGINE-EMIT
    0 DATA PROT:WLO LDR,
    CP 0 CMP,  C-CS gnone BCOND,                  \ CP still inside the band -> no syscall
    gopen LBL,
-      PROT:LOPEN LABEL@ BL,
+      PROT-EMIT:LOPEN LABEL@ BL,
    gnone LBL,
    30 SP 0 LDR,  0 SP 8 LDR,  2 SP 16 LDR,  8 SP 24 LDR,  16 SP 32 LDR,
    SP SP 48 ADDI,  RET, ;
 
 : EMIT-PROT-CF ( -- )
    LBL {: fret:label :}
-   PROT:LCF LABEL@ LBL,
+   PROT-EMIT:LCF LABEL@ LBL,
    SP SP 48 SUBI,
    30 SP 0 STR,  0 SP 8 STR,  1 SP 16 STR,  2 SP 24 STR,  8 SP 32 STR,  16 SP 40 STR,
    0 DATA PROT:CF LDR,
    0 fret CBNZ,                                  \ already declared -> no syscall
       1 CFSTK-OFF LIT64,  1 DBASE 1 ADD,
       2 DICT-SIZE CFSTK-OFF - MOVZ,
-      PROT:LSPAN LABEL@ BL,
+      PROT-EMIT:LSPAN LABEL@ BL,
    fret LBL,
    30 SP 0 LDR,  0 SP 8 LDR,  1 SP 16 LDR,  2 SP 24 LDR,  8 SP 32 LDR,  16 SP 40 LDR,
    SP SP 48 ADDI,  RET, ;
@@ -4088,7 +4089,7 @@ variable LHIDXBUILD
 \ exhausted-wrap exit is structurally unreachable. It used to disable HIDX
 \ silently there - the process then ran linear FIND for the rest of its life
 \ with nothing said (CG-25) - so reaching it now dies loudly instead
-\ (HIDX:LFULL). Clobbers x2 x4 x5 x6 x7 x8 x15 x16 x17.
+\ (HIDX-EMIT:LFULL). Clobbers x2 x4 x5 x6 x7 x8 x15 x16 x17.
 : C-HIDX-INS ( -- )
    LBL LBL LBL LBL LBL {: iloop:label inext:label iempty:label iput:label rinl:label :}
    5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
@@ -4106,7 +4107,7 @@ variable LHIDXBUILD
       4 iempty CBZ,
       4 4 1 SUBI,  4 NDICT CMP,  C-GE iput BCOND,
    inext LBL,
-      8 8 1 SUBI,  8 HIDX:LFULL LABEL@ CBZ,
+      8 8 1 SUBI,  8 HIDX-EMIT:LFULL LABEL@ CBZ,
       6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  iloop B,
    iempty LBL,
       4 DATA HIDX:CLAIMS LDR,  4 4 1 ADDI,  4 DATA HIDX:CLAIMS STR,
@@ -4158,11 +4159,11 @@ variable LHIDXBUILD
 \ re-covered) is swept before it can crowd the chains. Called mid-publish, so
 \ it saves its whole clobber set. LHIDXBUILD: fresh zeroed mmap (anonymous
 \ pages are zero), then the shared fill; a failed mmap is a startup failure,
-\ not a degraded mode. HIDX:LREBUILD: zero the existing table and claimed-slot
+\ not a degraded mode. HIDX-EMIT:LREBUILD: zero the existing table and claimed-slot
 \ count, then re-insert exactly the live records [0,NDICT) - the one operation
 \ that lowers HIDX:CLAIMS, and what the raise leg of ndict! (BNDSET) calls so a
 \ raise keeps an authoritative table instead of silently dropping it.
-\ HIDX:LFULL: the loud exit shared by every structurally-unreachable
+\ HIDX-EMIT:LFULL: the loud exit shared by every structurally-unreachable
 \ cannot-maintain state; nothing zeroes HIDXP-CELL any more.
 : EMIT-HIDX ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL
@@ -4179,7 +4180,7 @@ variable LHIDXBUILD
       C-HIDX-INS
       \ the load bound: compact before chains can approach a full wrap
       4 DATA HIDX:CLAIMS LDR,  5 HIDX:LOAD-MAX LIT64,  4 5 CMP,  C-LT aret BCOND,
-      HIDX:LREBUILD LABEL@ BL,
+      HIDX-EMIT:LREBUILD LABEL@ BL,
       aret LBL,
       30 SP 0 LDR,  2 SP 8 LDR,  3 SP 16 LDR,  4 SP 24 LDR,  5 SP 32 LDR,
       6 SP 40 LDR,  7 SP 48 LDR,  14 SP 56 LDR,  15 SP 64 LDR,  16 SP 72 LDR,  17 SP 80 LDR,
@@ -4202,7 +4203,7 @@ variable LHIDXBUILD
       14 0 0 ADDI,  14 DATA HIDXP-CELL STR,
       4 0 MOVZ,  4 DATA HIDX:CLAIMS STR,             \ fresh pages hold no claims
       bhave LBL,
-      HIDX:LREBUILD LABEL@ BL,                       \ zero + fill [0,NDICT)
+      HIDX-EMIT:LREBUILD LABEL@ BL,                  \ zero + fill [0,NDICT)
       30 SP 0 LDR,   0 SP 8 LDR,   1 SP 16 LDR,  2 SP 24 LDR,  3 SP 32 LDR,
       4 SP 40 LDR,   5 SP 48 LDR,  6 SP 56 LDR,  7 SP 64 LDR,  8 SP 72 LDR,
       13 SP 80 LDR,  14 SP 88 LDR, 15 SP 96 LDR, 16 SP 104 LDR, 17 SP 112 LDR,
@@ -4211,7 +4212,7 @@ variable LHIDXBUILD
          0 2 MOVZ,  1 msg ADR,  2 33 MOVZ,  NR-WRITE SYS,   \ write(2,"hb: dictionary index alloc failed",33)
          0 74 MOVZ,  NR-EXIT-GROUP SYS,
       msg LBL,  s" hb: dictionary index alloc failed" BYTES,
-   HIDX:LREBUILD LABEL@ LBL,
+   HIDX-EMIT:LREBUILD LABEL@ LBL,
       \ register-transparent like LHIDXBUILD: BNDSET and LHIDXADD call it
       \ mid-primitive with caller state live.
       SP SP 160 SUBI,
@@ -4221,7 +4222,7 @@ variable LHIDXBUILD
       14 DATA HIDXP-CELL LDR,  14 rret CBZ,          \ pre-build window: nothing to compact
       \ the dictionary must fit under the load bound or the compaction could
       \ not restore it - impossible while DICT-CAP < HIDX:LOAD-MAX, loud if not
-      5 HIDX:LOAD-MAX LIT64,  NDICT 5 CMP,  C-GE HIDX:LFULL LABEL@ BCOND,
+      5 HIDX:LOAD-MAX LIT64,  NDICT 5 CMP,  C-GE HIDX-EMIT:LFULL LABEL@ BCOND,
       13 0 MOVZ,  4 0 MOVZ,  15 HIDX-BYTES LIT64,
       zloop LBL,
          13 15 CMP,  C-GE zdone BCOND,
@@ -4239,7 +4240,7 @@ variable LHIDXBUILD
       6 SP 40 LDR,   7 SP 48 LDR,  8 SP 56 LDR,  13 SP 64 LDR, 14 SP 72 LDR,
       15 SP 80 LDR,  16 SP 88 LDR, 17 SP 96 LDR,
       SP SP 160 ADDI,  RET,
-   HIDX:LFULL LABEL@ LBL,                             \ cannot maintain the index: loud, never a quiet downgrade
+   HIDX-EMIT:LFULL LABEL@ LBL,                        \ cannot maintain the index: loud, never a quiet downgrade
       0 2 MOVZ,  1 fmsg ADR,  2 30 MOVZ,  NR-WRITE SYS,     \ write(2,"hb: dictionary index exhausted",30)
       0 74 MOVZ,  NR-EXIT-GROUP SYS,
    fmsg LBL,  s" hb: dictionary index exhausted" BYTES, ;

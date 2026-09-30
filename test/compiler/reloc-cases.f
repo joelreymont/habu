@@ -37,8 +37,9 @@ variable IMG-OK
 create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of habu1.f
 
 \ ---- the machine's symbol table ----------------------------------------------
-\ Every bare name the two shipped passes use, bound to the value the shipped
-\ source gives it. The condition codes and the register alias come out of the
+\ Every name the two shipped passes use, spelled as they spell it - qualified
+\ where the pass qualifies it - and bound to the value the shipped source gives
+\ it. The condition codes and the register alias come out of the
 \ sources that declare them, so a renumbering there changes what the machine
 \ runs rather than being absorbed by a copy kept here.
 
@@ -72,14 +73,14 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
 \ so the scan follows the definition rather than a copy kept here.
 : LOAD-DECL-SYMS ( -- )
    DECL-FILE$ COMPILER-ID-SRC:SCAN-FILE
-   s" ADDR-OPC-MASK" s" ADDR-OPC-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
-   s" ADDR-IMM-MASK" s" ADDR-IMM-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
-   s" ADDR-CHAIN-BYTES" s" ADDR-CHAIN-BYTES" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
-   s" DATA-CHAIN-BYTES" s" DATA-CHAIN-BYTES" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
-   s" DATA-MOVZ2" SNAP-RELOC:DATA-MOVZ2 RELOC-VM:SYM+
-   s" DATA-MOVK0" SNAP-RELOC:DATA-MOVK0 RELOC-VM:SYM+
-   s" ADDR-RD-MASK" s" ADDR-RD-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
-   s" ADDR-RD-BITS" s" ADDR-RD-BITS" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+ ;
+   s" ADDRESS-CARRIER:ADDR-OPC-MASK" s" ADDR-OPC-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" ADDRESS-CARRIER:ADDR-IMM-MASK" s" ADDR-IMM-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" ADDRESS-CARRIER:ADDR-CHAIN-BYTES" s" ADDR-CHAIN-BYTES" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" ADDRESS-CARRIER:DATA-CHAIN-BYTES" s" DATA-CHAIN-BYTES" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" ADDRESS-CARRIER:DATA-MOVZ2" ADDRESS-CARRIER:DATA-MOVZ2 RELOC-VM:SYM+
+   s" ADDRESS-CARRIER:DATA-MOVK0" ADDRESS-CARRIER:DATA-MOVK0 RELOC-VM:SYM+
+   s" ADDRESS-CARRIER:ADDR-RD-MASK" s" ADDR-RD-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" ADDRESS-CARRIER:ADDR-RD-BITS" s" ADDR-RD-BITS" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+ ;
 
 \ The chain's four scaffold words are declared in src/habu/habu1.f. They are
 \ bound as machine symbols so the shipped check runs against the shipped words,
@@ -101,19 +102,19 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
 \ the machine reports the shipped status.
 : LOAD-LAYOUT-SYMS ( -- )
    s" DATA" DATA RELOC-VM:SYM+
-   s" CALLMAP-OFF" SNAP-RELOC:CALLMAP-OFF RELOC-VM:SYM+
-   s" CALLMAP-RC" SNAP-RELOC:CALLMAP-RC RELOC-VM:SYM+
-   s" XTCELL-N-CELL" SNAP-RELOC:XTCELL-N-CELL RELOC-VM:SYM+
+   s" SNAP-RELOC:CALLMAP-OFF" SNAP-RELOC:CALLMAP-OFF RELOC-VM:SYM+
+   s" SNAP-RELOC:CALLMAP-RC" SNAP-RELOC:CALLMAP-RC RELOC-VM:SYM+
+   s" SNAP-RELOC:XTCELL-N-CELL" SNAP-RELOC:XTCELL-N-CELL RELOC-VM:SYM+
    s" ADDRESS-CELLS:BASE-FIELD" ADDRESS-CELLS:BASE-FIELD RELOC-VM:SYM+
-   s" XTCELL-CAP" SNAP-RELOC:XTCELL-CAP RELOC-VM:SYM+
-   s" XTCELL-RC" SNAP-RELOC:XTCELL-RC RELOC-VM:SYM+
-   s" XTCELL-OFF-MAX" SNAP-RELOC:XTCELL-OFF-MAX RELOC-VM:SYM+
-   s" XTCELL-DATA-TAG" SNAP-RELOC:XTCELL-DATA-TAG RELOC-VM:SYM+
-   s" XTCELL-OFF-MASK" SNAP-RELOC:XTCELL-OFF-MASK RELOC-VM:SYM+
-   s" XTBAND-RC" SNAP-RELOC:XTBAND-RC RELOC-VM:SYM+
-   s" XTKIND-RC" SNAP-RELOC:XTKIND-RC RELOC-VM:SYM+
-   s" ADDRMAP-OFF" SNAP-RELOC:ADDRMAP-OFF RELOC-VM:SYM+
-   s" ADDRMAP-RC" SNAP-RELOC:ADDRMAP-RC RELOC-VM:SYM+ ;
+   s" SNAP-RELOC:XTCELL-CAP" SNAP-RELOC:XTCELL-CAP RELOC-VM:SYM+
+   s" SNAP-RELOC:XTCELL-RC" SNAP-RELOC:XTCELL-RC RELOC-VM:SYM+
+   s" SNAP-RELOC:XTCELL-OFF-MAX" SNAP-RELOC:XTCELL-OFF-MAX RELOC-VM:SYM+
+   s" SNAP-RELOC:XTCELL-DATA-TAG" SNAP-RELOC:XTCELL-DATA-TAG RELOC-VM:SYM+
+   s" SNAP-RELOC:XTCELL-OFF-MASK" SNAP-RELOC:XTCELL-OFF-MASK RELOC-VM:SYM+
+   s" SNAP-RELOC:XTBAND-RC" SNAP-RELOC:XTBAND-RC RELOC-VM:SYM+
+   s" SNAP-RELOC:XTKIND-RC" SNAP-RELOC:XTKIND-RC RELOC-VM:SYM+
+   s" SNAP-RELOC:ADDRMAP-OFF" SNAP-RELOC:ADDRMAP-OFF RELOC-VM:SYM+
+   s" SNAP-RELOC:ADDRMAP-RC" SNAP-RELOC:ADDRMAP-RC RELOC-VM:SYM+ ;
 
 : LOAD-GLOBAL-LABELS ( -- )
    s" LCALLS" RELOC-VM:GLABEL+
@@ -267,7 +268,7 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    XROWS 0 ?do i XT-ROW loop ;
 
 \ ---- 6. driving the address-literal chain rows -------------------------------
-\ The shipped `SNAP-RELOC:EMIT-ADDRS` is decoded and run the same way the call
+\ The shipped `RELOC-EMIT:EMIT-ADDRS` is decoded and run the same way the call
 \ pass is, once per leg: the writer's leg moves the live band onto the canonical
 \ sentinel and the loader's moves the sentinel onto the band this run got. Only
 \ the fixture supplies the address; the four words of every slot are built from it

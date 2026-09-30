@@ -103,6 +103,7 @@
 
 require lib/test.f
 require lib/byte-buffer.f
+require lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
 require src/compiler/native/select-x64.f
 require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f

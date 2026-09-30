@@ -246,6 +246,16 @@ The SHA-256 before is
 Generations 2 to 5 are byte-identical; the whitebox engine, the 516-suite
 native gate and the dot lint pass.
 
+## Give every baked package one owning file
+
+Moving each baked package's definitions into the one file that owns it, so
+that no source on the product path reopens a package the engine bakes, does not
+change the file size. The product built to its fixpoint is 2,344,951 bytes on
+both sides, as it was 2,510,071 bytes on both sides of the same change made
+before the sweep above. The content grows 1,500 bytes: captured code and its
+site tables 796, DATA values and bitmap 1,156, less 452 of dictionary records
+and names. The Mach-O text padding falls by exactly that, from 4,980 to 3,480.
+
 ## Historical Linux measurements
 
 The block below records one Linux engine measurement. It is an example, not

@@ -15514,11 +15514,11 @@ public
 \ nothing at all.
 \
 \ The legacy signature sidecar still mirrors these two fixed cells until that
-\ sidecar is deleted. The agreement is executable: test/aot-sig-pool-suite.f reads AOT-SIG:POOL-CELL
+\ sidecar is deleted. The agreement is executable: test/aot-sig-pool-suite.f reads AOT-CELLS:SIG-POOL-CELL
 \ and these two constants out of a booted engine, where all three are live names,
 \ and refuses a disagreement.
-$47D0 constant CK-AOT-SIG-POOL-OFF      \ = layout.f AOT-SIG:POOL-CELL
-$47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-SIG:LEN-CELL
+$47D0 constant CK-AOT-SIG-POOL-OFF      \ = layout.f AOT-CELLS:SIG-POOL-CELL
+$47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-CELLS:SIG-LEN-CELL
 
 \ The pool base is a POINTER the seed stored, so it is read through `ptr-field`
 \ rather than through a plain `@`: the cell holds an address in __text and the

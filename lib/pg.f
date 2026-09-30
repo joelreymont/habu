@@ -33,9 +33,25 @@ require lib/task.f
 require lib/aio.f
 require lib/image-lifecycle.f
 
+\ PostgreSQL over libpq: -9250..-9259, the decade after libcurl. Minted here,
+\ beside the package its codes belong to (docs/forth-card.md § 6).
+-9250 constant E-PG-FIRST
+-9259 constant E-PG-LAST
+
 package PG
 
 public
+
+-9250 constant E-CONNECT      \ the server refused the conninfo, or libpq could not build a connection
+-9251 constant E-EXEC         \ libpq returned no result at all, or a transaction verb the server rejected
+-9252 constant E-COLUMN       \ a row or column index outside the result
+-9253 constant E-TYPE         \ a column read as a type its bytes are not, including an integer read of NULL
+-9254 constant E-CLEARED      \ a result used after CLEAR, or cleared a second time
+-9255 constant E-TRANSACTION  \ a WITH-TRANSACTION inside another one on the same connection
+-9256 constant E-HANDLE       \ a handle another task owns, or one an image restore invalidated
+-9257 constant E-CAPACITY     \ more live connections, results or parameters than this module stores
+-9258 constant E-PLATFORM     \ this module is qualified on Linux only, and refuses a foreign target before it binds
+-9259 constant E-STATEMENT    \ an empty statement text or prepared-statement name
 
 NEWTYPE connection 0
 NEWTYPE result 0

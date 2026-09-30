@@ -141,20 +141,20 @@ variable SH-PREV                     \ the record filed before this one
 : SH-ADDR ( n n -- ) {: e:n k:n :}
    e k NSHADOW:ADDR-SITE@ {: off:n :}
    e k NSHADOW:ADDR-SITE-KIND@ {: ak:n :}
-   off 0 <  off SNAP-RELOC:MOVABS-BYTES + SH-LEN @ > or if off SH-NOT-MOVABS then
+   off 0 <  off ADDRESS-CARRIER:MOVABS-BYTES + SH-LEN @ > or if off SH-NOT-MOVABS then
    AOT-SHADOW:CODE-BUF@ SH-AT @ + off + {: p:ptr :}
-   p SNAP-RELOC:MOVABS-SITE? 0= if off SH-NOT-MOVABS then
-   p SNAP-RELOC:MOVABSV {: v:n :}
+   p ADDRESS-CARRIER:MOVABS-SITE? 0= if off SH-NOT-MOVABS then
+   p ADDRESS-CARRIER:MOVABSV {: v:n :}
    SH-AT @ off + {: at:n :}
    ak HIR:ADDR-CODE = if
       e v SH-FUN? if at AOT-SHADOW:FUN 0 SH-SITE+ exit then
       off v SH-TARGET {: target:n :}
-      p 0 SNAP-RELOC:SET-MOVABS
+      p 0 ADDRESS-CARRIER:SET-MOVABS
       at AOT-SHADOW:CODE target SH-SITE+ exit
    then
    ak HIR:ADDR-DATA = if
       v SH-DATA? 0= if off v SH-DATA-OUT then
-      p  v ACAP-W-D0 @ - AOT-DATA-D0 @ +  SNAP-RELOC:SET-MOVABS
+      p  v ACAP-W-D0 @ - AOT-DATA-D0 @ +  ADDRESS-CARRIER:SET-MOVABS
       at AOT-SHADOW:DATA 0 SH-SITE+ exit
    then
    off ak SH-BAD-KIND ;

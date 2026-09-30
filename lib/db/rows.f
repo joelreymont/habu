@@ -19,7 +19,22 @@ require lib/task.f
 require lib/image-lifecycle.f
 require lib/pg.f
 
+\ The database layer over package PG: -9320..-9329, the decade after
+\ IMAGE-LIFECYCLE's. Minted here, beside the package its codes belong to
+\ (docs/forth-card.md § 6).
+-9320 constant E-DB-FIRST
+-9329 constant E-DB-LAST
+
 package DB-ROWS
+
+public
+
+-9320 constant E-CONNECT      \ the database refused the connection
+-9321 constant E-QUERY        \ the server refused a query, or a command answered no rows where rows were read
+-9322 constant E-ROW          \ the query answered no row, or a column its reader cannot read
+-9323 constant E-READERS      \ more tasks read rows than the declared readers
+-9324 constant E-CAPACITY     \ a declaration out of range or after first use, or a read past its arena
+
 private
 
 64 constant RESULTS               \ live results across every connection

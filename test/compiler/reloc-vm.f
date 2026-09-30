@@ -2,8 +2,8 @@
 \
 \ The module lives in `package RELOC-VM`. It exists because of a hard problem in
 \ binding a proof to this particular piece of code: the snapshot relocation
-\ passes are EMITTED ASSEMBLY. `SNAP-RELOC:EMIT-CALLS`, `SNAP-RELOC:EMIT-XT` and
-\ `SNAP-RELOC:EMIT-ADDRS` in src/habu/habu2.f are Forth words whose effect is to
+\ passes are EMITTED ASSEMBLY. `RELOC-EMIT:EMIT-CALLS`, `RELOC-EMIT:EMIT-XT` and
+\ `RELOC-EMIT:EMIT-ADDRS` in src/habu/habu2.f are Forth words whose effect is to
 \ write AArch64 instructions into the engine being built, and no test can call
 \ the machine code they produce: it only exists inside a running engine, reached
 \ from the snapshot writer and from the boot loader.

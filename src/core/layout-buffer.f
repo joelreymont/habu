@@ -101,7 +101,7 @@ variable LBUF-BYTES
 \ that is a relocation statement, not a style choice.
 \
 \ A DATA address uses the recorded carrier that habu2.f C-DATA-ADDR emits for
-\ `create`/`variable` (SNAP-RELOC:MARK-SITE): a three-half shared DATA address,
+\ `create`/`variable` (RELOC-EMIT:MARK-SITE): a three-half shared DATA address,
 \ or the full absolute chain on an older host.
 \ Every pass that MOVES persisted DATA - the snapshot restore, the AOT seed's
 \ EM-AOT-RELOC-DATA, and aot-file.f's MERGE - rewrites those chains by one delta

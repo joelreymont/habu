@@ -10,7 +10,7 @@ public
 : ROW-TEST-DATA-VALUE ( n -- n ) {: site:n :}
    AOT-ARM:B0 @ site AOT-BUF:AOT-DSITE-OFF-MASK and + AOT-N>U8 {: p:ptr :}
    site AOT-BUF:AOT-DSITE-CELL and 0<> if p CELL-VIEW @
-   else p p AOT-ARM:B1 @ AOT-N>U8 SNAP-RELOC:CHAIN-SIZE SNAP-RELOC:CHAIN-VALUE then
+   else p p AOT-ARM:B1 @ AOT-N>U8 ADDRESS-CARRIER:CHAIN-SIZE ADDRESS-CARRIER:CHAIN-VALUE then
    AOT-ARM:D0 @ - AOT-ARM:D0 @ 7 and + ;
 
 ;package
@@ -121,7 +121,7 @@ variable CHAIN-VALUE
    4 * AOT-DSITE-BUF@ + U32@ ;
 
 : CHAIN-VALUE@ ( ptr u8 -- n ) {: p:ptr :}
-   p p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + SNAP-RELOC:CHAIN-SIZE SNAP-RELOC:CHAIN-VALUE ;
+   p p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + ADDRESS-CARRIER:CHAIN-SIZE ADDRESS-CARRIER:CHAIN-VALUE ;
 
 
 : SAVE-DSITES ( -- )
@@ -335,7 +335,7 @@ variable CHAIN-VALUE
       RAW-INDEX @ 4 * AOT-DSITE-BUF@ + U32! true exit
    then
    s" bad-chain-site" CASE? if
-      ART-BLOB @ SNAP-RELOC:DATA-CHAIN-BYTES - 1+
+      ART-BLOB @ ADDRESS-CARRIER:DATA-CHAIN-BYTES - 1+
       CHAIN-INDEX @ 4 * AOT-DSITE-BUF@ + U32! true exit
    then
    false ;

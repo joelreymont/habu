@@ -12,7 +12,18 @@
 require lib/errors.f
 require lib/ieee754.f
 
+\ Floating mathematics: -9020..-9029, a small shared range because application
+\ error blocks begin nearby. Minted here, beside the package its codes belong
+\ to (docs/forth-card.md § 6).
+-9020 constant E-FMATH-FIRST
+-9029 constant E-FMATH-LAST
+
 package FMATH
+
+public
+
+-9020 constant E-DOMAIN       \ input is outside the public word's mathematical domain
+-9021 constant E-OUTPUT       \ result is outside the declared output type's range
 
 private
 

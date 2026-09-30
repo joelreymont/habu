@@ -148,14 +148,14 @@ variable RX  variable RACC
 : PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
    \ The relocation helpers touch syscall scratch only in fatal write/exit
    \ arms; neither x8 nor x16 is written on a returning path.
-   a u s" SNAP-RELOC:LCALLS" LINT-STR=CI
-   a u s" SNAP-RELOC:LADDRS" LINT-STR=CI or if SYS-SCRATCH-MASK exit then
+   a u s" RELOC-EMIT:LCALLS" LINT-STR=CI
+   a u s" RELOC-EMIT:LADDRS" LINT-STR=CI or if SYS-SCRATCH-MASK exit then
    \ Every registrar entry saves/restores x0..x17 around its emitted helpers.
-   a u s" SNAP-RELOC:Lmark" LINT-STR=CI if $3FFFF exit then
-   a u s" SNAP-RELOC:Lptrmark" LINT-STR=CI if $3FFFF exit then
-   a u s" SNAP-RELOC:Lindexrelease" LINT-STR=CI if $3FFFF exit then
+   a u s" RELOC-EMIT:Lmark" LINT-STR=CI if $3FFFF exit then
+   a u s" RELOC-EMIT:Lptrmark" LINT-STR=CI if $3FFFF exit then
+   a u s" RELOC-EMIT:Lindexrelease" LINT-STR=CI if $3FFFF exit then
    \ Recovery uses the same MARK-SAVE/RESTORE register frame as the registrars.
-   a u s" SNAP-RELOC:Lrollback" LINT-STR=CI if $3FFFF exit then
+   a u s" RELOC-EMIT:Lrollback" LINT-STR=CI if $3FFFF exit then
    a u s" Lvpushc" LINT-STR=CI if 0 11 CL-ADD exit then
    a u s" Lvpushr" LINT-STR=CI if 0 14 CL-ADD exit then
    a u s" Lvforcek" LINT-STR=CI if 0 5 CL-ADD exit then
@@ -168,7 +168,7 @@ variable RX  variable RACC
    a u s" Lcemit" LINT-STR=CI if
       0 0 CL-ADD 1 CL-ADD 2 CL-ADD 8 CL-ADD 12 CL-ADD 13 CL-ADD
         16 CL-ADD 30 CL-ADD exit then
-   a u s" PROT:LGROW" LINT-STR=CI if
+   a u s" PROT-EMIT:LGROW" LINT-STR=CI if
       0 0 CL-ADD 2 CL-ADD 8 CL-ADD 16 CL-ADD 30 CL-ADD exit then
    a u s" Laotwidgate" LINT-STR=CI if 0 11 CL-ADD exit then
    a u s" Lprotwidq" LINT-STR=CI if 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 14 CL-ADD exit then
@@ -242,7 +242,7 @@ public
 package CLOBBER
 
 : PSEUDO?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" prot:reserve" LINT-STR=CI if LINT-TRUE exit then
+   a u s" PROT-EMIT:reserve" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-save" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-restore" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-header" LINT-STR=CI if LINT-TRUE exit then
@@ -320,16 +320,16 @@ variable RK
 : ER  ( n -- )  RR@ dup 0 >= if RMSK @ swap CL-ADD RMSK ! else drop then ;
 
 : PSEUDO-EFFECTS  {: a u :}  ( -- )
-   \ PROT:RESERVE reads the byte count in x1 and CP, preserves its LR, and
+   \ PROT-EMIT:RESERVE reads the byte count in x1 and CP, preserves its LR, and
    \ calls LGROW, whose only unpreserved register is x1.
-   a u s" prot:reserve" LINT-STR=CI if
+   a u s" PROT-EMIT:reserve" LINT-STR=CI if
       0 1 CL-ADD 28 CL-ADD CL-ROR 0 1 CL-ADD CL-WOR exit then
    \ These inline registrar helpers use a fixed machine-register ABI.
    a u s" mark-save" LINT-STR=CI if
       $3FFFF 31 CL-ADD CL-ROR 0 31 CL-ADD CL-WOR exit then
    a u s" mark-restore" LINT-STR=CI if
       0 31 CL-ADD CL-ROR $3FFFF 31 CL-ADD CL-WOR exit then
-   \ SNAP-RELOC:MARK-HEADER materializes the fixed image base in x16 and
+   \ RELOC-EMIT:MARK-HEADER materializes the fixed image base in x16 and
    \ its address-table header in x4. Neither depends on a caller register.
    a u s" mark-header" LINT-STR=CI if 0 4 CL-ADD 16 CL-ADD CL-WOR exit then
    a u s" mark-lock" LINT-STR=CI if

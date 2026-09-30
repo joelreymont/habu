@@ -3,8 +3,14 @@
 \ Capture, link and file inspection share this grammar without loading capture
 \ buffers or assembler state. A matching shape grants no address provenance:
 \ callers still need the declared site map or a created-owner record.
+\
+\ ITS OWN PACKAGE, not SNAP-RELOC. src/habu/layout.f owns SNAP-RELOC, the
+\ relocation region's layout, and the engine bakes layout.f, so the image tools
+\ that load this file on a product engine (tools/image-size-lib.f,
+\ tools/native-build-core.f through aot-decl.f) may not reopen it
+\ (docs/forth-card.md § 6).
 
-package SNAP-RELOC
+package ADDRESS-CARRIER
 public
 
 \ The shape of the four-instruction address chain habu2.f C-ADDR-RAW emits, as the

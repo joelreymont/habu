@@ -1830,7 +1830,7 @@ HB-TARGET-LINUX? [IF]
 \ compiles the sources that build the real bin/hb.
 \ ptr-cell-mark ( ptr a -- ) is the declaration half of xt! on its own: in the
 \ native engine it registers a persisted DATA cell as holding a DATA pointer in
-\ the snapshot address table (src/habu/habu2.f SNAP-RELOC:BPTRCELLMARK, the
+\ the snapshot address table (src/habu/habu2.f RELOC-EMIT:BPTRCELLMARK, the
 \ LPTRMARK entry of EMIT-MARK). The seed has no such table -- the same reason
 \ xt! above is only its store -- so the honest seed word consumes the address
 \ and registers nothing.
@@ -2522,7 +2522,7 @@ variable LPGENDECLPROT  variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPDYNAMIC      variable LPINTMARK      variable LPTOPROW
 variable LPPRELUDE      variable LPERRORS       variable LPOPTION
 variable LPNUMTYPES     variable LPNUMARITH     variable LPSTRING
-variable LPMEMORY
+variable LPSPAN         variable LPMEMORY
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create ZBYTE 0 c,
 
@@ -2865,6 +2865,7 @@ create ZBYTE 0 c,
       PFX-COMMON LPERRORS s" lib/errors.f" row execute
    then
    parts PFX-RESTLIB and 0 <> if
+      PFX-COMMON LPSPAN s" lib/span.f" row execute
       PFX-COMMON LPOPTION s" lib/adt/option.f" row execute
       PFX-COMMON LPNUMTYPES s" lib/num-types.f" row execute
       PFX-COMMON LPNUMARITH s" lib/num-arithmetic.f" row execute
@@ -2898,7 +2899,7 @@ create ZBYTE 0 c,
 \ a second read; dynamic-storage.f has its row in PFX-PROVIDE-CORE-FILES.
 \
 \ Remaining LOAD drift, recorded rather than left as an unexplained short list:
-\ native's group continues with lib/adt/option.f, lib/num-types.f,
+\ native's group continues with lib/span.f, lib/adt/option.f, lib/num-types.f,
 \ lib/num-arithmetic.f, lib/string.f and lib/memory.f. A
 \ `require` of one of them from the seed's program reads it then, through
 \ src/core/include.f and the seed's own realpath (BREALPATH).
@@ -4611,17 +4612,16 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
    qlok LBL, ;
 
+\ A local named `i` is admitted, as natively (habu2.f C-LBRACE-STORE-ONE): the
+\ compile step looks a token up among the locals before the keywords
+\ (EMIT-COMPILE), so the local is what the body reads. lib/span.f, a prefix
+\ row, declares one.
 : C-LBRACE-STORE-ONE ( -- )
-   LBL LBL LBL LBL LBL LBL {: nlok noti ncp ncd tsl tsd :}
+   LBL LBL LBL LBL LBL {: nlok ncp ncd tsl tsd :}
    11 DATA LOCN-CELL LDR,  11 64 CMPI,  C-LT nlok BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
    nlok LBL,
-   13 DATA TKL-CELL LDR,  13 1 CMPI,  C-NE noti BCOND,
-   13 DATA TKA-CELL LDR,  13 13 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,
-   noti LBL,
    11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
    14 0 MOVZ,  8 DATA TKL-CELL LDR,  10 DATA TKA-CELL LDR,
    tsl LBL,  14 8 CMP,  C-GE tsd BCOND,
@@ -7794,7 +7794,7 @@ variable P2SK
    LBL LPDYNAMIC !  LBL LPINTMARK !  LBL LPTOPROW !
    LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !
    LBL LPNUMTYPES !  LBL LPNUMARITH !  LBL LPSTRING !
-   LBL LPMEMORY ! ;
+   LBL LPSPAN !  LBL LPMEMORY ! ;
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !

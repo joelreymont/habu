@@ -11,6 +11,7 @@ include src/core/generated-declaration-protection.f
 include src/core/layout-buffer-seal.f
 include src/core/lower-cert-seal.f
 require lib/errors.f
+require lib/span.f                        \ the prefix's place for it: right after errors.f
 require lib/adt/option.f
 require lib/num-types.f
 require lib/num-arithmetic.f

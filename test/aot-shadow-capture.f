@@ -94,6 +94,7 @@ require lib/process.f
 require lib/process-argv.f
 require src/habu/aot-ident.f
 require src/habu/fdio.f
+require src/habu/address-carrier.f
 require src/habu/aot-file.f
 
 package AOTSH
@@ -133,7 +134,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
 : SITE@ ( n n -- n ) SITE-AT LE:U32@ ;
 : XT@ ( n n -- n ) XT-AT LE:U32@ ;
 : CODE-BYTE@ ( n -- n ) AOT-SHADOW:CODE-BUF@ + c@ ;
-: IMM@ ( n -- n ) AOT-SHADOW:CODE-BUF@ + SNAP-RELOC:MOVABSV ;
+: IMM@ ( n -- n ) AOT-SHADOW:CODE-BUF@ + ADDRESS-CARRIER:MOVABSV ;
 
 \ The record row of window record w, or -1.
 : ROW-OF ( n -- n ) {: w:n :}

@@ -1487,6 +1487,10 @@ SUITE friend-arena-seal
    test/seal.f
 ;SUITE
 
+SUITE baked-owner
+   test/baked-owner.f
+;SUITE
+
 SUITE internal-word-gate
    test/internal-word-gate.f
 ;SUITE

@@ -276,46 +276,46 @@ create NEAR 16 allot
 
 : MOVABS-CASES ( -- )
    s" the site kind is ten bytes patched at offset two, eight wide" T-LABEL
-   SNAP-RELOC:MOVABS-BYTES 10 T=
-   SNAP-RELOC:MOVABS-IMM-OFF 2 T=
-   SNAP-RELOC:MOVABS-IMM-BYTES 8 T=
+   ADDRESS-CARRIER:MOVABS-BYTES 10 T=
+   ADDRESS-CARRIER:MOVABS-IMM-OFF 2 T=
+   ADDRESS-CARRIER:MOVABS-IMM-BYTES 8 T=
 
    \ The site kind and the assembler each state where the immediate begins.
    \ src/habu/aot-decl.f cannot read X64ASM's constant, because aot-decl.f is in
    \ every engine's payload and the encoder would follow it there, so the two
    \ numbers are one fact in two files and this case is what keeps them equal.
    s" the assembler names the same patch offset as the site kind" T-LABEL
-   SNAP-RELOC:MOVABS-IMM-OFF X64ASM:MOV-RI64-IMM-OFF T=
+   ADDRESS-CARRIER:MOVABS-IMM-OFF X64ASM:MOV-RI64-IMM-OFF T=
 
    s" mov rax, imm64 reads back the immediate it carries" T-LABEL
    $48 $B8 $123456789ABCDEF BUILD-SITE
-   SITE-PTR SNAP-RELOC:MOVABS-SITE? TTRUE
-   SITE-PTR SNAP-RELOC:MOVABSV $123456789ABCDEF T=
+   SITE-PTR ADDRESS-CARRIER:MOVABS-SITE? TTRUE
+   SITE-PTR ADDRESS-CARRIER:MOVABSV $123456789ABCDEF T=
 
    s" mov r15, imm64 is a site too, and REX.B and the register survive a rewrite" T-LABEL
    $49 $BF 0 BUILD-SITE
-   SITE-PTR SNAP-RELOC:MOVABS-SITE? TTRUE
-   SITE-PTR -1 SNAP-RELOC:SET-MOVABS
-   SITE-PTR SNAP-RELOC:MOVABSV -1 T=
+   SITE-PTR ADDRESS-CARRIER:MOVABS-SITE? TTRUE
+   SITE-PTR -1 ADDRESS-CARRIER:SET-MOVABS
+   SITE-PTR ADDRESS-CARRIER:MOVABSV -1 T=
    SITE-PTR c@ $49 T=
    SITE-PTR 1+ c@ $BF T=
 
    s" a rewrite replaces the whole immediate, high bytes included" T-LABEL
    $48 $B9 -1 BUILD-SITE
-   SITE-PTR $FF SNAP-RELOC:SET-MOVABS
-   SITE-PTR SNAP-RELOC:MOVABSV $FF T=
+   SITE-PTR $FF ADDRESS-CARRIER:SET-MOVABS
+   SITE-PTR ADDRESS-CARRIER:MOVABSV $FF T=
    SITE-PTR 9 + c@ 0 T=
 
    s" a byte outside the REX.W wall is not a site" T-LABEL
-   $40 $B8 NEAR! NEAR-PTR SNAP-RELOC:MOVABS-SITE? TFALSE
-   $4C $B8 NEAR! NEAR-PTR SNAP-RELOC:MOVABS-SITE? TFALSE
-   $B8 $B8 NEAR! NEAR-PTR SNAP-RELOC:MOVABS-SITE? TFALSE
+   $40 $B8 NEAR! NEAR-PTR ADDRESS-CARRIER:MOVABS-SITE? TFALSE
+   $4C $B8 NEAR! NEAR-PTR ADDRESS-CARRIER:MOVABS-SITE? TFALSE
+   $B8 $B8 NEAR! NEAR-PTR ADDRESS-CARRIER:MOVABS-SITE? TFALSE
 
    s" a 64-bit move that is not the imm64 form is not a site" T-LABEL
-   $48 $C7 NEAR! NEAR-PTR SNAP-RELOC:MOVABS-SITE? TFALSE
-   $48 $89 NEAR! NEAR-PTR SNAP-RELOC:MOVABS-SITE? TFALSE
-   $48 $B7 NEAR! NEAR-PTR SNAP-RELOC:MOVABS-SITE? TFALSE
-   $48 $C0 NEAR! NEAR-PTR SNAP-RELOC:MOVABS-SITE? TFALSE ;
+   $48 $C7 NEAR! NEAR-PTR ADDRESS-CARRIER:MOVABS-SITE? TFALSE
+   $48 $89 NEAR! NEAR-PTR ADDRESS-CARRIER:MOVABS-SITE? TFALSE
+   $48 $B7 NEAR! NEAR-PTR ADDRESS-CARRIER:MOVABS-SITE? TFALSE
+   $48 $C0 NEAR! NEAR-PTR ADDRESS-CARRIER:MOVABS-SITE? TFALSE ;
 
 \ ---- the target contract -----------------------------------------------------
 : X64-FEATURES ( -- CTARGET:features )

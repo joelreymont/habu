@@ -1,9 +1,11 @@
 ---
 title: Give every baked package one owning load path
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-30T18:50:08.001947+02:00"
+closed-at: "2026-10-01T18:40:00.000000+02:00"
+close-reason: "Landed: every baked package has one owning file, error constants are minted by their owners, the label cells live in packages of their own, the five TFAM and CHECKER-TAPE tests run in whitebox children and Etch has IMAGE-LIFECYCLE:COUNT. Fixpoint, whitebox, native suite and dot lint pass; the product size is unchanged (docs/engine-size.md)."
 ---
 
 Problem: sealing every captured package (habu-seal-every-captured-c550102f) refuses the sources on the product path that reopen a package the engine bakes. They are:
@@ -17,7 +19,7 @@ Acceptance:
 - No source loaded on the product engine reopens a package the engine bakes; each package has one owning file.
 - Package-qualified error constants are minted in the file that owns their package, with `tools/error-code-lint.f` clean.
 - `MEM:ALLOC-SPAN` keeps its spelling, so no caller changes (12 in Habu, 49 in Tender); its definitions move to the file that owns MEM.
-- The five tests become WHITEBOX-SUITE rows.
+- The five files that reopen TFAM and CHECKER-TAPE run only in children on the whitebox engine (WHITEBOX-CHILD:ENGINE$); their four rows stay plain SUITE per docs/gate.md.
 - The meta-compiler's label cells live in packages of their own: no stage source opens a package `layout.f` defines.
 - Etch's reopen is reported to Etch with the public accessor it needs.
 Files: the sources above, `src/habu/habu1.f`, `src/habu/habu2.f`, `test/gate-stdlib-cases.f`.

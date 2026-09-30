@@ -1107,6 +1107,9 @@ package BUILD-FIXPOINT
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
    out outu s" lib/errors.f" BF-APPEND-MODULE
+   \ The span type family, in the engine prefix's position right after errors.f
+   \ (src/habu/habu2.f PFX-LOAD-STDLIB-FILES says why the registry needs it).
+   out outu s" lib/span.f" BF-APPEND-MODULE
    out outu s" src/habu/address-cells.f" BF-APPEND-MODULE
    out outu s" src/habu/snapshot-format.f" BF-APPEND-MODULE
    out outu s" src/habu/address-carrier.f" BF-APPEND-MODULE

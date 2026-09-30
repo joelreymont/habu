@@ -5,7 +5,7 @@ require src/habu/address-carrier.f
 require lib/task.f
 
 package DATA-ADDRESS-CODEC-TEST
-using SNAP-RELOC
+using ADDRESS-CARRIER
 20 BUFFER: CODE
 
 : W32! ( n ptr u8 -- ) {: w:n p:ptr :}

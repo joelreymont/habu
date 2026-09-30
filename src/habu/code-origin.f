@@ -1,7 +1,10 @@
 \ Native engine helpers for retained-code provenance. The table is sorted and
 \ normalized; ordinary forward publication appends or extends its last row.
 \ Only an interior overwrite moves a suffix. Queries use binary search.
-package TIER-PROV
+\ The table's geometry is src/habu/layout.f's package TIER-PROV. The engine
+\ bakes that file, so these emitters live in a package of their own
+\ (docs/forth-card.md § 6).
+package CODE-ORIGIN
 
 variable LSET  variable LSET-END
 variable LQUERY  variable LQUERY-END
@@ -96,7 +99,7 @@ private
    17 14 15 ADD,  17 17 1 ADDI,
    16 6 5 SUB,  17 17 16 SUB,                 \ replacement count - removed count
    16 4 17 ADD,
-   10 SPANS LIT64,  16 10 CMP,  C-GT full BCOND,
+   10 TIER-PROV:SPANS LIT64,  16 10 CMP,  C-GT full BCOND,
    16 SP 176 STR,
    17 done CBZ,
    17 0 CMPI,  C-LT left BCOND,
@@ -137,9 +140,9 @@ private
    9 10 CMP,  C-CS done BCOND,
    7 9 DBASE SUB,  8 10 DBASE SUB,  9 11 0 ADDI,
    7 8 CMP,  C-GE done BCOND,
-   3 N-CELL LIT64,  3 DATA 3 ADD,  4 3 0 LDR,
-   10 SPANS LIT64,  4 10 CMP,  C-HI full BCOND,
-   2 TABLE-OFF LIT64,  2 DATA 2 ADD,
+   3 TIER-PROV:N-CELL LIT64,  3 DATA 3 ADD,  4 3 0 LDR,
+   10 TIER-PROV:SPANS LIT64,  4 10 CMP,  C-HI full BCOND,
+   2 TIER-PROV:TABLE-OFF LIT64,  2 DATA 2 ADD,
    \ x12 requests invalidation only where earlier evidence exists. Generic
    \ patch32 also writes dictionary/DATA metadata, which needs no code row.
    12 normal CBZ,
@@ -152,7 +155,7 @@ private
    11 13 16 LDR,  11 9 CMP,  C-NE append BCOND,
       8 13 8 STR,  done B,
    append LBL,
-      10 SPANS LIT64,  4 10 CMP,  C-GE full BCOND,
+      10 TIER-PROV:SPANS LIT64,  4 10 CMP,  C-GE full BCOND,
       13 4 2 ROW,
       7 13 0 STR,  8 13 8 STR,  9 13 16 STR,
       4 4 1 ADDI,  4 3 0 STR,  done B,
@@ -176,10 +179,10 @@ private
    9 10 CMP,  C-CS unknown BCOND,
    7 9 DBASE SUB,  8 10 DBASE SUB,
    7 8 CMP,  C-GE unknown BCOND,
-   2 TABLE-OFF LIT64,  2 DATA 2 ADD,
-   3 N-CELL LIT64,  3 DATA 3 ADD,
+   2 TIER-PROV:TABLE-OFF LIT64,  2 DATA 2 ADD,
+   3 TIER-PROV:N-CELL LIT64,  3 DATA 3 ADD,
    10 0 MOVZ,  11 3 0 LDR,  4 11 0 ADDI,
-   12 SPANS LIT64,  11 12 CMP,  C-HI unknown BCOND,
+   12 TIER-PROV:SPANS LIT64,  11 12 CMP,  C-HI unknown BCOND,
    search LBL,
       10 11 CMP,  C-GE found BCOND,
       12 10 11 ADD,  12 12 1 LSRI,  13 12 2 ROW,
@@ -237,7 +240,7 @@ public
 
 : OPEN, ( -- )
    SP SP 16 SUBI,  9 SP 0 STR,
-   9 OPEN-CELL LIT64,  9 DATA 9 ADD,  CP 9 0 STR,
+   9 TIER-PROV:OPEN-CELL LIT64,  9 DATA 9 ADD,  CP 9 0 STR,
    9 SP 0 LDR,  SP SP 16 ADDI, ;
 
 \ Close before any cursor rollback. Failure is explicitly unknown; only the
@@ -245,7 +248,7 @@ public
 : CLOSE, ( n -- ) {: origin:n :}
    LBL {: none:label :}
    SP SP 32 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,
-   11 OPEN-CELL LIT64,  11 DATA 11 ADD,
+   11 TIER-PROV:OPEN-CELL LIT64,  11 DATA 11 ADD,
    9 11 0 LDR,  9 none CBZ,
    10 0 MOVZ,  10 11 0 STR,
    9 CP origin RANGE,
@@ -265,9 +268,9 @@ public
 
 : RESTORE-REGION, ( -- )
    LBL LBL LBL {: more:label next:label done:label :}
-   2 TABLE-OFF LIT64,  2 DATA 2 ADD,
-   3 N-CELL LIT64,  3 DATA 3 ADD,  4 3 0 LDR,
-   5 SPANS LIT64,  4 5 CMP,  C-LS more BCOND,
+   2 TIER-PROV:TABLE-OFF LIT64,  2 DATA 2 ADD,
+   3 TIER-PROV:N-CELL LIT64,  3 DATA 3 ADD,  4 3 0 LDR,
+   5 TIER-PROV:SPANS LIT64,  4 5 CMP,  C-LS more BCOND,
    LBL {: msg:label :}
    0 2 MOVZ,  1 msg ADR,  2 31 MOVZ,  NR-WRITE SYS,
    0 101 MOVZ,  NR-EXIT-GROUP SYS,

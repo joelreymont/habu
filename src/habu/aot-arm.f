@@ -17,8 +17,8 @@ public
 \ Retain the existing engine DATA coordinates; call emission no longer uses
 \ these slots to decide whether to copy a body.
 : OPEN ( n n -- ) {: b0:n d0:n :}
-   d0 LIVE AOT-WINDOW:D0-CELL + CELL!
-   b0 LIVE AOT-WINDOW:B0-CELL + CELL! ;
+   d0 LIVE AOT-CELLS:D0-CELL + CELL!
+   b0 LIVE AOT-CELLS:B0-CELL + CELL! ;
 
 \ The engine's next wordlist id. It is read here, beside the window's other base
 \ cursors, because every producer needs it at the same two moments they need those

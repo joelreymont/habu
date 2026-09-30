@@ -611,7 +611,7 @@ $27C8 constant CLAIMS
 \ [CFSTK-OFF, DICT-SIZE), so there is nothing per-bracket to record but whether it
 \ is open. Dot habu-move-the-control-c7de6246 retires this band by moving the
 \ control-flow stack out of the protected region; when it lands, this cell and
-\ PROT:LCF go with it.
+\ PROT-EMIT:LCF go with it.
 \ src/habu/habu1.f EMIT-PROT-WINDOW owns every read and write of all five;
 \ engine-emitted code is their only writer.
 \
@@ -622,7 +622,7 @@ $27C8 constant CLAIMS
 \ and the lowering transaction state ($5000) - swept for a claimant across src lib
 \ tools test maki bootstrap before taking them. They are NOT in the $40C8..$43A8
 \ gap: that run is reserved for widening the protected-WID bitmap, which cannot be
-\ split, and AOT-WINDOW:T0-CELL/D0-CELL/B0-CELL already took its top three cells to
+\ split, and AOT-CELLS:T0-CELL/D0-CELL/B0-CELL already took its top three cells to
 \ keep the rest contiguous. All five sit below $7FF8, the ceiling AOT-WINDOW measured for a
 \ cell a compiled routine names directly (`DATA <off> LDR` is a 12-bit immediate
 \ scaled by eight), which every one of these is: the band bodies read them with
@@ -637,8 +637,8 @@ $47C0 constant RHI
 $47C8 constant CF
 ;package
 
-\ AOT-SIG:POOL-CELL / AOT-SIG:LEN-CELL: where the baked SIGNATURE POOL is and how
-\ long it is, published by the seed (habu2.f EM-SEED-AOT) at the moment it
+\ AOT-CELLS:SIG-POOL-CELL / SIG-LEN-CELL: where the baked SIGNATURE POOL is and
+\ how long it is, published by the seed (habu2.f EM-SEED-AOT) at the moment it
 \ registers the captured records, and read by the checker's lazy intake when a
 \ definition names a seeded word the checker has no effect for. Zero until a seed
 \ runs, which reads as "no pool" and leaves the intake a no-op - so an engine with
@@ -654,14 +654,19 @@ $47C8 constant CF
 \ the same reason CK-PKG-REC-OFF is mirrored there. The mirror is not left to
 \ prose: test/aot-sig-pool-suite.f reads both names out of a booted engine, where
 \ both are live, and refuses a disagreement.
-package AOT-SIG
+\ AOT-CELLS HOLDS EVERY AOT CELL THIS FILE DECLARES, and the packages the seed,
+\ the capture and the link write their code in (AOT-SIG, AOT-SPAN, AOT-WINDOW)
+\ are theirs: the engine bakes this file, so a cell declared in one of those
+\ would leave src/habu/aot-decl.f, habu1.f and habu2.f, which the product engine
+\ loads for a native build, reopening a baked package (docs/forth-card.md § 6).
+package AOT-CELLS
 public
-$47D0 constant POOL-CELL
-$47D8 constant LEN-CELL
+$47D0 constant SIG-POOL-CELL
+$47D8 constant SIG-LEN-CELL
 ;package
 
-\ AOT-SPAN:TABLE-CELL / N-CELL / BASE-CELL: where the baked CODE-SPAN TABLE is,
-\ how many rows it has, and the address the blob was copied to, published by the
+\ AOT-CELLS:SPAN-TABLE-CELL / SPAN-N-CELL / SPAN-BASE-CELL: where the baked
+\ CODE-SPAN TABLE is, how many rows it has, and the address the blob was copied to, published by the
 \ seed (habu2.f EM-SEED-AOT) the moment the blob lands. The image ships no
 \ dictionary record for a word nothing can name, so the only account of that
 \ word's code is a row of this table, and src/habu/aot-closure.f is the reader:
@@ -677,11 +682,11 @@ $47D8 constant LEN-CELL
 \ BOOT-LAYOUT:HEAP-START-CELL, which reads free in the source and is not: that is
 \ stack-abi.f's $47E8..$4810, then the transaction and USER-BAND. All three are below
 \ $7FF8 and below DATA-START, like their neighbours.
-package AOT-SPAN
+package AOT-CELLS
 public
-$660 constant TABLE-CELL
-$668 constant N-CELL
-$670 constant BASE-CELL
+$660 constant SPAN-TABLE-CELL
+$668 constant SPAN-N-CELL
+$670 constant SPAN-BASE-CELL
 ;package
 
 \ SIGNAL-ABI: the baked async-signal-safe handler stub (src/habu/crash.f
@@ -757,7 +762,7 @@ $688 constant FD-CELL
 \ everywhere. tools/native-build.f names its fallback for that case.
 \
 \ WHERE IT HAD TO GO: the next cell of the same unclaimed run PROT:RHI/CF and
-\ AOT-SIG:POOL-CELL/LEN-CELL took, swept for a claimant across src lib tools test
+\ AOT-CELLS:SIG-POOL-CELL/LEN-CELL took, swept for a claimant across src lib tools test
 \ maki bootstrap before taking it, below $7FF8 and below DATA-START for the reasons
 \ above. Sitting in the FIXED header matters more here than for its neighbours: the
 \ consumer reads this cell out of a host whose reserved bands differ from its own,
@@ -1236,7 +1241,7 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 \ vector empty. The hook's effect is ( -- ) and it runs on the data stack as it
 \ stands, because `die` may be running on a task thread whose stack is its own.
 \ It holds a code pointer, so it is declared for snapshot relocation beside the
-\ other hook cells (habu2.f EM-DATA-INIT SNAP-RELOC:MARK-CELL) and carries the
+\ other hook cells (habu2.f EM-DATA-INIT RELOC-EMIT:MARK-CELL) and carries the
 \ tools/native-layout.f row every declared engine cell below the heap floor
 \ needs. A stripped image claims it FRESH (src/habu/aot-owned-cells.f): a new
 \ process has no hook, and the library that wants one arms it at runtime.
@@ -1770,7 +1775,7 @@ $43A0 constant XT-CELL
 \ AOT-ARM:OPEN writes both coordinates; tier-0 call emission does not read them.
 \ T0 is latched when the seed allocates its wordlists: later boot-run entries
 \ can allocate more, so the sealed-wordlist gate cannot derive it from WIDN.
-package AOT-WINDOW
+package AOT-CELLS
 public
 $43A8 constant T0-CELL           \ first wordlist id the seed allocated for the window
 $43B0 constant D0-CELL           \ first address of the open window's DATA span

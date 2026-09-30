@@ -572,7 +572,7 @@ variable FULL-CELL
 
 \ The twin of C-HIDX-INS: index record rdi, which it keeps, at the first empty
 \ or stale slot of its key's chain. Claiming an empty slot counts one more
-\ HIDX:CLAIMS; a chain walked through every slot is HIDX:LFULL's. It clobbers
+\ HIDX:CLAIMS; a chain walked through every slot is HIDX-EMIT:LFULL's. It clobbers
 \ rax rcx rdx rsi and r8-r11.
 : INSERT, ( -- )
    LBL LBL LBL {: probe:label empty:label put:label :}
@@ -599,10 +599,10 @@ variable FULL-CELL
    R10 RDI 1 MEM-OFF ASM-SINK ENC-LEA
    R10 R64>N >R32 RAX R8 4 0 MEM-IDX ASM-SINK ENC-MOV32-MR ;
 
-\ HIDX:LREBUILD's twin: zero the table and HIDX:CLAIMS, then index the live
+\ HIDX-EMIT:LREBUILD's twin: zero the table and HIDX:CLAIMS, then index the live
 \ records [0, r14). With no table it returns at once; a dictionary at
 \ HIDX:LOAD-MAX, which the compaction could not bring under the bound, is
-\ HIDX:LFULL's.
+\ HIDX-EMIT:LFULL's.
 : REBUILD-HELPER, ( -- )
    LBL LBL LBL {: zero:label fill:label done:label :}
    REBUILD-LBL LBL,
@@ -659,7 +659,7 @@ variable FULL-CELL
    fail LBL,
    s" hb: dictionary index alloc failed" INDEX-RC STDERR-EXIT, ;
 
-\ HIDX:LFULL's twin: the index cannot be kept, which is loud, never a quiet
+\ HIDX-EMIT:LFULL's twin: the index cannot be kept, which is loud, never a quiet
 \ fall back to the scan.
 : FULL-HELPER, ( -- )
    FULL-LBL LBL,
@@ -673,7 +673,7 @@ variable FULL-CELL
 public
 
 \ The index's call sites, the twins of habu1.f's LHIDXBUILD, LHIDXADD and
-\ HIDX:LREBUILD calls, for the rows that move r14: build the table (a refused
+\ HIDX-EMIT:LREBUILD calls, for the rows that move r14: build the table (a refused
 \ mapping exits 74 with `hb: dictionary index alloc failed`), index the record
 \ just published, and rebuild the table over [0, r14). Each call keeps every VM
 \ register and clobbers rax rcx rdx rsi rdi and r8-r11; one that cannot keep
@@ -1634,9 +1634,9 @@ public
    s" fence" [: ASM-SINK ENC-MFENCE ;] PRIM ;
 
 \ The publication rows: the twins of habu1.f BPATCH32, BCODEPUBLISH,
-\ BCALLMAPSET, BADDRMAPSET, SNAP-RELOC:BCLEAR-MAPS, BXREFRETARGET, BINTMARK
+\ BCALLMAPSET, BADDRMAPSET, RELOC-EMIT:BCLEAR-MAPS, BXREFRETARGET, BINTMARK
 \ and BMININMARK and of habu2.f DOES-REC:NATIVE-PRIM, over the twins of
-\ habu1.f EMIT-PROT-WINDOW's PROT:LSPAN, LOPEN and LCLOSE. x86-64 keeps its
+\ habu1.f EMIT-PROT-WINDOW's PROT-EMIT:LSPAN, LOPEN and LCLOSE. x86-64 keeps its
 \ instruction cache coherent, so nothing flushes. An x86-64 span is
 \ byte-granular: a routine may end in a one-byte ret, so no guard traps a
 \ length or an address that is not a whole four-byte word. The two rows that
@@ -1841,7 +1841,7 @@ variable SITE-TRAP-CELL
    ASM-SINK ENC-RET ;
 
 \ Remove every row whose site lies in [rdi, rdi+rsi), both kinds: the twin of
-\ habu1.f SNAP-RELOC:CLEAR-SPAN over both maps. The span's offsets compare
+\ habu1.f RELOC-EMIT:CLEAR-SPAN over both maps. The span's offsets compare
 \ signed, so a span below the region removes nothing. Two scans down from the
 \ last row find the first row at or above the span's end, in r10, and the first
 \ at or above its start, in r11, counting the rows between in rdx; the rows
@@ -2112,8 +2112,8 @@ variable SITE-TRAP-CELL
 
 public
 
-\ The window's call sites, the twins of a habu1.f PROT:LSPAN, PROT:LOPEN and
-\ PROT:LCLOSE call: declare the span at rdi, rsi bytes long; open the code band
+\ The window's call sites, the twins of a habu1.f PROT-EMIT:LSPAN, PROT-EMIT:LOPEN and
+\ PROT-EMIT:LCLOSE call: declare the span at rdi, rsi bytes long; open the code band
 \ over [CP, rdi), or CP's byte for an end at or below CP; close every band.
 \ Each keeps every VM register and clobbers rax rcx rdx rsi rdi and r8-r11. A
 \ section that calls one follows PUBLICATION, in KERNEL,.
@@ -2616,7 +2616,7 @@ private
 \ boot, so it keeps no address-cell table: xt! and ptr-cell-mark guard the
 \ cell and declare nothing, addr-cells-abi answers 0, and snap-rebase, which
 \ moves a restored snapshot's cells, refuses. The twins of habu2.f
-\ SNAP-RELOC:BXTSTORE, BPTRCELLMARK, BVERSION and BSNAPSHOTFORMAT and habu1.f
+\ RELOC-EMIT:BXTSTORE, BPTRCELLMARK, BVERSION and BSNAPSHOTFORMAT and habu1.f
 \ BBUILDENTER, BBUILDLEAVE, BSETTIER, BTIERFETCH and BCODEORIGIN.
 
 : TIER-OFF ( -- n ) NCOMP-DISPATCH:TIER-CELL ;

@@ -1181,7 +1181,7 @@ $14000000 constant ACAP-GBR-TERM
       at w kind ACAP-GRAPH-PC-TARGET ACAP-GRAPH-MARK-OFF
    then
    at ACAP-GSITE@ 2 = if
-      AOT-BLOB-BUF@ at + SNAP-RELOC:CHAINV ACAP-GRAPH-MARK-OFF
+      AOT-BLOB-BUF@ at + ADDRESS-CARRIER:CHAINV ACAP-GRAPH-MARK-OFF
    then ;
 
 : ACAP-GRAPH-ENDS? ( n -- bool ) {: at:n :}
@@ -1270,11 +1270,11 @@ $14000000 constant ACAP-GBR-TERM
 : ACAP-GRAPH-PATCH-CODE-SITE ( n -- ) {: old:n :}
    old ACAP-GSITE@ 2 <> if exit then
    old ACAP-GRAPH-MAP@ dup 0 < if drop exit then {: new:n :}
-   AOT-BLOB-BUF@ new + SNAP-RELOC:CHAINV ACAP-GRAPH-MAP@ {: target:n :}
+   AOT-BLOB-BUF@ new + ADDRESS-CARRIER:CHAINV ACAP-GRAPH-MAP@ {: target:n :}
    target 0 < if
       s" aot-capture: live code literal targets a removed span" 74 die
    then
-   AOT-BLOB-BUF@ new + target SNAP-RELOC:SET-CHAIN ;
+   AOT-BLOB-BUF@ new + target ADDRESS-CARRIER:SET-CHAIN ;
 
 : ACAP-GRAPH-PATCH ( -- )
    ACAP-GOLDLEN @ 4 / 0 ?do
@@ -1726,9 +1726,9 @@ variable ACAP-SWEEP-B1
 \ The recorded chain at a blob offset: its size and the value it carries.
 : ACAP-CHAIN@ ( n -- n n ) {: boff:n :}
    AOT-BLOB-BUF@ boff + {: p:ptr :}
-   p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + SNAP-RELOC:CHAIN-SIZE {: size:n :}
+   p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
    size 0= if s" aot-capture: malformed recorded address chain" 74 die then
-   size  p size SNAP-RELOC:CHAIN-VALUE ;
+   size  p size ADDRESS-CARRIER:CHAIN-VALUE ;
 
 : ACAP-ADD-DSITE ( n -- ) {: boff:n :}   \ store blob offset as u32
    AOT-CSITE-N @ 0<> if s" aot-capture: DATA sites follow CODE sites" 74 die then
@@ -1764,7 +1764,7 @@ variable ACAP-SWEEP-B1
    a u ACAP-POOL-ADD {: noff:n :}
    AOT-XTSITE:N @ 8 * AOT-XTSITE:BUF@ + {: r:ptr :}
    boff r AOT-P32!  noff r 4 + AOT-P32!
-   AOT-BLOB-BUF@ boff +  0 SNAP-RELOC:SET-CHAIN                 \ no host address travels in the blob
+   AOT-BLOB-BUF@ boff +  0 ADDRESS-CARRIER:SET-CHAIN            \ no host address travels in the blob
    AOT-XTSITE:N @ 1+ AOT-XTSITE:N ! ;
 
 \ The refusal, with the site named. A capture that cannot classify one of its own
@@ -1880,11 +1880,11 @@ variable ACAP-SWEEP-B1
    \ Live shared DATA is in the fixed DATA mapping, disjoint from this JIT CODE
    \ window. A short carrier here is corrupt, not a CODE literal: all later
    \ CODE-site passes require four words.
-   size SNAP-RELOC:DATA-CHAIN-BYTES = if
+   size ADDRESS-CARRIER:DATA-CHAIN-BYTES = if
       s" aot-capture: DATA carrier lies in the CODE band" 74 die
    then
    boff ACAP-ADD-CSITE
-   AOT-BLOB-BUF@ boff +  v bstart -  SNAP-RELOC:SET-CHAIN ;
+   AOT-BLOB-BUF@ boff +  v bstart -  ADDRESS-CARRIER:SET-CHAIN ;
 
 : ACAP-SCAN-CSITES ( n n -- ) {: bstart:n bend:n :}
    0 AOT-CODE-B0 !                                      \ canonical code base 0
@@ -1902,8 +1902,8 @@ variable ACAP-SWEEP-B1
       site AOT-DSITE-CELL and 0<> if
          p CELL-VIEW @ d0 - base + p AOT-N-C!
       else
-         p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + SNAP-RELOC:CHAIN-SIZE {: size:n :}
-         p p size SNAP-RELOC:CHAIN-VALUE d0 - base + size SNAP-RELOC:SET-CHAIN-VALUE
+         p AOT-BLOB-BUF@ AOT-BLOB-LEN @ + ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
+         p p size ADDRESS-CARRIER:CHAIN-VALUE d0 - base + size ADDRESS-CARRIER:SET-CHAIN-VALUE
       then
    loop
    base AOT-DATA-D0 ! ;

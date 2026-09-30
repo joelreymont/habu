@@ -251,7 +251,7 @@ example below does it.
 | `PG:E-PLATFORM` | this module is qualified on Linux only, and refuses a foreign target before it binds |
 | `PG:E-STATEMENT` | an empty statement/name, script parameters, or an operation invalid for the connection's current phase |
 
-The block is `-9250..-9259` in `lib/errors.f`.
+The block is `-9250..-9259`, minted in `lib/pg.f`, which owns package PG.
 
 ## Worked example
 
@@ -391,7 +391,8 @@ The `COL-` readers read the first row; the `AT` readers read any row in place
 and answer libpq's bytes, valid until `PG:CLEAR`. A decoder run through
 `WITH-ROW` returns a record whose spans outlive the result.
 
-DB-ROWS holds `-9320..-9324` of the block `-9320..-9329` in `lib/errors.f`.
+DB-ROWS holds `-9320..-9324` of the block `-9320..-9329`, minted in
+`lib/db/rows.f`, which owns package DB-ROWS.
 
 ### Its test
 

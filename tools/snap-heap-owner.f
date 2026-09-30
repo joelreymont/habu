@@ -39,9 +39,9 @@ package SNAP-HEAP-OWNER
 
 : CHAIN-VALUE ( ptr n -- n ) {: rec:ptr :}
    rec XREF-START-SLOT XREF-PTR@ {: p:ptr :}
-   p p rec XREF-CODE-BYTES + SNAP-RELOC:CHAIN-SIZE {: size:n :}
+   p p rec XREF-CODE-BYTES + ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
    size 0= if s" heap-owner: malformed DKIND:ADDR carrier" 74 die then
-   p size SNAP-RELOC:CHAIN-VALUE ;
+   p size ADDRESS-CARRIER:CHAIN-VALUE ;
 
 : HEAP-OFF ( n -- n ) {: addr:n :}
    addr XREF-N>REC data-base - ;

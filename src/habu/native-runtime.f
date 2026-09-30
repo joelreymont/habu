@@ -96,6 +96,7 @@ s" src/core/checker-owner-guard.f" required
 s" src/core/lower-cert-seal.f" required
 s" lib/prelude.f" required
 s" lib/errors.f" required
+s" lib/span.f" required
 s" lib/image-lifecycle.f" required
 s" lib/adt/option.f" required
 s" lib/num-types.f" required

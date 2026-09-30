@@ -14,6 +14,7 @@ s" src/core/checker-owner-abi.f" provided
 require src/core/checker-owner-guard.f
 include src/core/lower-cert-seal.f
 require lib/errors.f
+require lib/span.f                        \ the prefix's place for it: right after errors.f
 require lib/adt/option.f
 require lib/num-types.f
 require lib/num-arithmetic.f
@@ -83,6 +84,7 @@ using AOT-BUF
 using AOT-ARM
 using AOT-CAPTURE
 using SNAP-RELOC
+using ADDRESS-CARRIER
 create KEY 32 allot
 create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 create CHAIN 16 allot

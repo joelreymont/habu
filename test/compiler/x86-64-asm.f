@@ -20,6 +20,7 @@ require lib/test.f
 require lib/byte-buffer.f
 require test/checker-assert.f
 require src/arch/x86-64/asm.f
+require lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
 
 \ The span reader answers a role; a byte-count assertion takes a raw cell.
 \ Projection out of a cell family needs no ownership, so no reopen of NUM

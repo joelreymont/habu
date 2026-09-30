@@ -26,7 +26,7 @@
 \ 2. EVERY DIRECT SPILL AT CP DECLARES ITS BYTES. Instructions reach the region
 \ through LCEMIT, which grows the window itself. The string literals, the escaped
 \ literals, a definition name past DNAME-INL and the defer metadata write BYTES
-\ straight at CP, so each must call PROT:RESERVE first. Each sweep below parks CP
+\ straight at CP, so each must call PROT-EMIT:RESERVE first. Each sweep below parks CP
 \ a fixed distance under a window page boundary and compiles one definition of
 \ that kind, so the spill begins inside the open window and runs past its end.
 \ The distance is SWEPT, in 4-byte steps, because what decides which distance
@@ -35,7 +35,7 @@
 \ literal and name sweeps run to 128 bytes; the MATCH die sweep runs to 400,
 \ because that spill sits about 250 bytes into the word.
 \
-\ Delete any one PROT:RESERVE in the engine and this file dies compiling itself:
+\ Delete any one PROT-EMIT:RESERVE in the engine and this file dies compiling itself:
 \ each of the seven was checked that way, and the four literal kinds plus the
 \ MATCH die are caught here alone (the long name and the defer metadata break the
 \ engine's own build before this file even runs).

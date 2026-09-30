@@ -1039,7 +1039,7 @@ private
 \ The whole cell rides in the instruction, and `x64.addr` says whether the cell
 \ is a datum or an address a relocation pass has to find again. Ten bytes with
 \ the imm64 at X64ASM:MOV-RI64-IMM-OFF; src/habu/address-carrier.f states the
-\ site's shape (SNAP-RELOC:MOVABS-SITE?, MOVABS-IMM-OFF).
+\ site's shape (ADDRESS-CARRIER:MOVABS-SITE?, MOVABS-IMM-OFF).
 : DEF-MOVI ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b X64IR-OPCODE:MOVI OPCODE IR-SCHEMA:BEGIN-OP

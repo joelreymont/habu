@@ -174,6 +174,11 @@ forth.md: **Structures And Enums**; the rule and its open hole are
   `-2000`, filesystem `-2100`, strings `-2200`, …) and reserves that whole
   range whether or not every code is minted;
   `tools/error-code-lint.f` reports a file minting inside another's.
+- A block with codes in a package (`JR:E-SOURCE`) is minted, bounds and all,
+  in the file that owns the package (`lib/json-read.f`), and `lib/errors.f`
+  says where. The engine bakes `lib/errors.f`, and a package the engine bakes
+  has one owning file: no source a product engine loads reopens it
+  (`test/baked-owner.f`).
 - A fallible word `throw`s a named code, never an out-of-band flag.
 - `throw` is catchable and belongs to the checker's exception edge. `die`
   (`ptr u8 n n --`, a real message and exit code) ends the process and is
@@ -198,8 +203,9 @@ forth.md: **Errors**, **Integer arithmetic**.
   path resolves against the `--load` entry's directory, then the working
   directory, so `require lib/…` names the tree root. Every file requires its
   **own** dependencies.
-- The engine provides `lib/prelude.f`, `errors.f`, `string.f`, `memory.f`,
-  `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and every `src/` file:
+- The engine provides `lib/prelude.f`, `errors.f`, `string.f`, `span.f`,
+  `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and every
+  `src/` file:
   their words resolve with no require and a `require` is a no-op. Write it
   anyway: a file states its dependencies.
 - Multi-file packages reopen `package NAME` per file; reopening shares scope and

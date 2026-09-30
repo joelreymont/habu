@@ -1657,14 +1657,14 @@ variable FALL-N                                      \ modeled fall-through edge
 \ Both the baked blob and a snapshot's region carry this address grammar.
 : CHAIN-SIZE ( n -- n ) {: at:n :}
    at 0 IN-IMAGE? 0= if 0 exit then
-   IMG@ at + IMG@ ILEN @ + SNAP-RELOC:CHAIN-SIZE ;
+   IMG@ at + IMG@ ILEN @ + ADDRESS-CARRIER:CHAIN-SIZE ;
 
 : CHAIN? ( n -- bool ) CHAIN-SIZE 0<> ;
 
 : CHAIN-VALUE ( n -- n ) {: at:n :}
    at CHAIN-SIZE {: size:n :}
    size 0= if s" image-size: malformed address carrier" RC die then
-   IMG@ at + size SNAP-RELOC:CHAIN-VALUE ;
+   IMG@ at + size ADDRESS-CARRIER:CHAIN-VALUE ;
 
 : ROOT-NAME ( n n -- ) {: at:n len:n :}
    REC-N @ 0 ?do
