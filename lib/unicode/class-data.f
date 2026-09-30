@@ -1783,15 +1783,6 @@ create OTHER-UPPERCASE-RANGES
 
 public
 
-: VERSION$ ( -- ptr u8 n )
-   s" 16.0.0" ;
-
-: UNICODE-DATA-SHA256$ ( -- ptr u8 n )
-   s" ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f" ;
-
-: PROP-LIST-SHA256$ ( -- ptr u8 n )
-   s" 53d614508e2a0b2305a8aa21cd60d993de9326cdf65993660dfcce4503548583" ;
-
 : LETTER-RANGE-COUNT ( -- n )
    LETTER-TABLE-COUNT ;
 
