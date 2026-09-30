@@ -842,17 +842,18 @@ $5402 constant TCSETS
 public
 
 \ Call the C function at r11 under the SysV ABI: the register arguments
-\ already in rdi rsi rdx rcx r8 r9, and the r10 cells at rax (a count >= 0) as
-\ its stack arguments; the answer is in rax. The entry rsp waits on the data
-\ stack, whose pointer r12 is callee-saved, as habu1.f BFFI-CALL-N-CORE keeps
-\ the frame sp in x20: every callee-saved register here is a VM register. The
-\ function waits in the machine-stack cell below the entry rsp while r11
-\ carries the copy. rsp drops by the cells and aligns down to 16, the cells
-\ land from [rsp] up, and al is zeroed, since a variadic callee reads it as
-\ its count of vector arguments; after the call rsp is the entry rsp again.
-\ The VM registers survive by the callee-saved rule; rax rcx rdx rsi rdi and
-\ r8-r11 do not.
-: SYSV-CALL, ( -- )
+\ already in rdi rsi rdx rcx r8 r9 and xmm0..7, and the r10 cells at rax (a
+\ count >= 0) as its stack arguments; the answer is in rax or xmm0. The entry
+\ rsp waits on the data stack, whose pointer r12 is callee-saved, as habu1.f
+\ BFFI-CALL-N-CORE keeps the frame sp in x20: every callee-saved register here
+\ is a VM register. The function waits in the machine-stack cell below the
+\ entry rsp while r11 carries the copy. rsp drops by the cells and aligns down
+\ to 16, the cells land from [rsp] up, and al is set to n, the caller's bound
+\ on its vector arguments, which a variadic callee reads to decide whether it
+\ saves xmm0..7; after the call rsp is the entry rsp again. The VM registers
+\ survive by the callee-saved rule; rax rcx rdx rsi rdi, r8-r11 and the XMM
+\ registers do not.
+: SYSV-CALL, ( n -- ) {: vecs:n :}
    LBL LBL {: copy:label called:label :}
    RSP PUSH,
    R11 ASM-SINK ENC-PUSH
@@ -868,14 +869,14 @@ public
    called LBL,
    R11 DSP CELL negate MEM-OFF ASM-SINK ENC-MOV-RM      \ the entry rsp
    R11 R11 CELL negate MEM-OFF ASM-SINK ENC-MOV-RM      \ the function below it
-   RAX ZERO-REG,
+   RAX vecs IMM32,
    R11 ASM-SINK ENC-CALL-REG
    RSP POP, ;
 
-\ Call the C function at rax with its register arguments only: SYSV-CALL,'s
-\ zero-cell case.
+\ Call the C function at rax with its integer register arguments only:
+\ SYSV-CALL,'s zero-cell case, with no vector arguments.
 : C-CALL, ( -- )
-   R11 RAX ASM-SINK ENC-MOV-RR  R10 ZERO-REG,  SYSV-CALL, ;
+   R11 RAX ASM-SINK ENC-MOV-RR  R10 ZERO-REG,  0 SYSV-CALL, ;
 
 \ rax = dlsym(RTLD_DEFAULT, the NUL-terminated name rsi points at), 0 when the
 \ loader has no such symbol: the twin of habu1.f LIBC-OS DLSYM. The loader's
@@ -2662,37 +2663,48 @@ public
 \ contract ARM64's unconditional load of x0..x7 sets; SysV takes six in
 \ registers, so the other two, and every cell past eight that ffi-call-n and
 \ ffi-call-bounded pass, go on the stack.
+\
+\ And of BFFI-CALL-ABI(-R) and BFFI-CALL-ABI(-R)-BOUNDED, the rows lib/ffi-abi.f
+\ plans a call for: the integer arguments in argbuf, the doubles in fpbuf and
+\ the stack arguments prepacked in stackbuf. rdi..r9 take argbuf[0..6),
+\ xmm0..7 always take fpbuf[0..8), and the stack takes max(nstack, 0)
+\ stackbuf cells and nothing else. argbuf[6..9) pass nowhere, but the twins'
+\ guards over them stand. No argument carries a count of doubles, so al is
+\ VEC-REGS, the bound SysV admits.
 
 private
 
 6 constant REG-CELLS                    \ rdi rsi rdx rcx r8 r9
 8 constant BUF-CELLS                    \ x0..x7
+8 constant SRET-SLOT                    \ x8, ARM64's indirect-result register
+SRET-SLOT 1+ constant ABI-SLOTS         \ x0..x8, the slots the twin guards
+8 constant VEC-REGS                     \ xmm0..7
 
-\ Guard argbuf[i] for each i below nargs, the cell one below the top, before
-\ the pops, as BFFI-GUARD-ARGS and BFFI-GUARD-BOUNDS do. argbuf is the cell n
-\ below the top; the quotation loads the span's length into rsi with rax = i.
-\ The guard clobbers every scratch register, so i waits on the machine stack
-\ across it and the cells are read again each turn. The compare is signed, so
-\ nargs <= 0 guards nothing.
+\ Guard argbuf[i] for each i below the count in rcx, argbuf the cell n below
+\ the top, before the pops, as BFFI-GUARD-ARGS and BFFI-GUARD-BOUNDS do with
+\ the count in x14. The quotation loads the span's length into rsi with
+\ rax = i. The guard clobbers every scratch register, so i and the count wait
+\ on the machine stack across it and argbuf and the extents are read again
+\ each turn. The compare is signed, so a count <= 0 guards nothing.
 : GUARD-ARGS, ( [ -- ] n -- ) {: buf:n :}
    LBL LBL {: next:label done:label :}
    RAX ZERO-REG,
    next LBL,
-   RCX 1 PEEK,  RAX RCX ASM-SINK ENC-CMP-RR  C-GE done JCC,
-   RAX ASM-SINK ENC-PUSH
+   RAX RCX ASM-SINK ENC-CMP-RR  C-GE done JCC,
+   RCX ASM-SINK ENC-PUSH  RAX ASM-SINK ENC-PUSH
    RCX buf PEEK,  RDI RCX RAX CELL 0 MEM-IDX ASM-SINK ENC-MOV-RM
    execute
    RDI RSI PROT-SPAN-CALL,
-   RAX ASM-SINK ENC-POP  RAX ASM-SINK ENC-INC
+   RAX ASM-SINK ENC-POP  RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-INC
    next JMP,
    done LBL, ;
 
-\ ffi-call's guard: one byte at each live argument, a band pointer's test.
+\ The raw rows' guard: one byte at each live argument, a band pointer's test.
 : BYTE-LEN, ( -- ) RSI 1 IMM32, ;
 
-\ ffi-call-bounded's: extents[i] bytes, extents the cell two below the top.
-: EXTENT-LEN, ( -- )
-   RCX 2 PEEK,  RSI RCX RAX CELL 0 MEM-IDX ASM-SINK ENC-MOV-RM ;
+\ The bounded rows': extents[i] bytes, extents the cell n below the top.
+: EXTENT-LEN, ( n -- ) {: ext:n :}
+   RCX ext PEEK,  RSI RCX RAX CELL 0 MEM-IDX ASM-SINK ENC-MOV-RM ;
 
 \ r10 = max(nargs, BUF-CELLS) - REG-CELLS, the stack cells, from nargs in r10;
 \ signed, as BFFI-CALL-N-CORE compares.
@@ -2703,18 +2715,24 @@ private
    wide LBL,
    R10 REG-CELLS >IMM8 ASM-SINK ENC-SUB-RI8 ;
 
+\ Load rdi rsi rdx rcx r8 r9 from the six cells a register points at, rcx
+\ last, so the register may be rcx.
+: REG-ARGS, ( r64 -- ) {: base:r64 :}
+   RDI base 0 MOV-LOAD,  RSI base CELL MOV-LOAD,  RDX base 2 CELL * MOV-LOAD,
+   R8 base 4 CELL * MOV-LOAD,  R9 base 5 CELL * MOV-LOAD,
+   RCX base 3 CELL * MOV-LOAD, ;
+
 \ With rax = argbuf, r10 = the stack cells and r11 = the function: load the
 \ register arguments, point rax at the first stack cell, call, push the answer.
 : BUF-CALL, ( -- )
-   RDI RAX 0 MOV-LOAD,  RSI RAX CELL MOV-LOAD,  RDX RAX 2 CELL * MOV-LOAD,
-   RCX RAX 3 CELL * MOV-LOAD,  R8 RAX 4 CELL * MOV-LOAD,  R9 RAX 5 CELL * MOV-LOAD,
+   RAX REG-ARGS,
    RAX REG-CELLS CELL * >IMM8 ASM-SINK ENC-ADD-RI8
-   SYSV-CALL,
+   0 SYSV-CALL,
    RAX PUSH, ;
 
 \ ffi-call ( argbuf nargs fn -- ret ): eight cells, whatever nargs is.
 : FFI-CALL-BODY ( -- )
-   [: BYTE-LEN, ;] 2 GUARD-ARGS,
+   RCX 1 PEEK,  [: BYTE-LEN, ;] 2 GUARD-ARGS,
    R11 POP,  DROP,  RAX POP,
    R10 BUF-CELLS REG-CELLS - IMM32,
    BUF-CALL, ;
@@ -2729,17 +2747,62 @@ private
 \ ffi-call-bounded ( argbuf extents nargs fn -- ret ): max(nargs, 8) cells,
 \ each live argument guarded over its extent.
 : FFI-CALL-BOUNDED-BODY ( -- )
-   [: EXTENT-LEN, ;] 3 GUARD-ARGS,
+   RCX 1 PEEK,  [: 2 EXTENT-LEN, ;] 3 GUARD-ARGS,
    R11 POP,  R10 POP,  DROP,  RAX POP,
    STACK-CELLS,
    BUF-CALL, ;
+
+\ With r11 = the function, r10 = nstack and argbuf fpbuf stackbuf the top three
+\ cells: pop them, load xmm0..7 from fpbuf and rdi..r9 from argbuf, and call
+\ with the stackbuf cells. nstack is the caller's data, and SYSV-CALL, copies
+\ r10 cells, so a negative count copies none, as BFFI-COPY-ABI-STACK skips.
+: ABI-CALL, ( -- )
+   LBL {: counted:label :}
+   R10 R10 ASM-SINK ENC-TEST-RR  C-GE counted JCC,
+   R10 ZERO-REG,
+   counted LBL,
+   RAX POP,
+   RCX POP,
+   VEC-REGS 0 ?do  i >XMM RCX i CELL * MEM-OFF ASM-SINK ENC-MOVSD-RM  loop
+   RCX POP,  RCX REG-ARGS,
+   VEC-REGS SYSV-CALL, ;
+
+\ ffi-call-abi(-r) ( argbuf fpbuf stackbuf nstack nint sret fn -- n|r ): one
+\ byte guarded at argbuf[i] for each i < nint, then at argbuf[8] when sret is
+\ nonzero, as BFFI-GUARD-ARGS guards x8.
+: FFI-CALL-ABI-BODY ( -- )
+   LBL {: direct:label :}
+   RCX 2 PEEK,  [: BYTE-LEN, ;] 6 GUARD-ARGS,
+   RAX 1 PEEK,  RAX RAX ASM-SINK ENC-TEST-RR  C-E direct JCC,
+   RDI 6 PEEK,  RDI RDI SRET-SLOT CELL * MOV-LOAD,  BYTE-LEN,
+   RDI RSI PROT-SPAN-CALL,
+   direct LBL,
+   R11 POP,  DROP,  DROP,  R10 POP,
+   ABI-CALL, ;
+
+\ ffi-call-abi(-r)-bounded ( argbuf fpbuf stackbuf regext stkext nstack fn --
+\ n|r ): regext[i] bytes at argbuf[i] for each of the ABI-SLOTS, then
+\ stkext[i] bytes at stackbuf[i] for each i < nstack, as
+\ BFFI-CALL-ABI-BOUNDED-CORE guards.
+: FFI-CALL-ABI-BOUNDED-BODY ( -- )
+   RCX ABI-SLOTS IMM32,  [: 3 EXTENT-LEN, ;] 6 GUARD-ARGS,
+   RCX 1 PEEK,  [: 2 EXTENT-LEN, ;] 4 GUARD-ARGS,
+   R11 POP,  R10 POP,  DROP,  DROP,
+   ABI-CALL, ;
+
+\ The -r rows' answer: xmm0's bits.
+: XMM0-PUSH, ( -- ) RAX XMM0 ASM-SINK ENC-MOVQ-RX  RAX PUSH, ;
 
 public
 
 : FFI, ( -- )
    s" ffi-call" [: FFI-CALL-BODY ;] PRIM
    s" ffi-call-n" [: FFI-CALL-N-BODY ;] PRIM
-   s" ffi-call-bounded" [: FFI-CALL-BOUNDED-BODY ;] PRIM ;
+   s" ffi-call-bounded" [: FFI-CALL-BOUNDED-BODY ;] PRIM
+   s" ffi-call-abi" [: FFI-CALL-ABI-BODY  RAX PUSH, ;] PRIM
+   s" ffi-call-abi-r" [: FFI-CALL-ABI-BODY  XMM0-PUSH, ;] PRIM
+   s" ffi-call-abi-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  RAX PUSH, ;] PRIM
+   s" ffi-call-abi-r-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  XMM0-PUSH, ;] PRIM ;
 
 \ ---- task entry --------------------------------------------------------------
 \ The twin of habu1.f BTASK-ENTRY. `task-entry` answers an immutable pthread
