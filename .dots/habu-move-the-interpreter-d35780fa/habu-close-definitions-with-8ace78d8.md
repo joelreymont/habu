@@ -19,3 +19,5 @@ Claim: unassigned.
 - From I4 design: this leaf also owns interpret-mode `immediate` (`habu2.f:8354`), which marks the definition it closes.
 
 K-lane correction (design 2026-09-30): Acceptance add provenance open/close rows in `prims.f` with bodies on both targets. Every `TIER-PROV:OPEN,`/`CLOSE,` call site is the assembly interpreter (`habu2.f:2783,7704,9259-9381`); a Habu loop needs them as primitives. K9b provides the x86 bodies. Files add `src/habu/prims.f`, `src/habu/habu1.f`.
+
+Lead note (2026-09-30, from the I8/I5a design): gains `cast:` (from I5a). `def-open` (I4c) already stores OPEN-CELL, so I5e's provenance row is only the close, and that row also clears what `def-open` set (DEF-TIER, TSIG, TCSIG, DOESB, TRUSTED, PEND). Files: `definers.f`.

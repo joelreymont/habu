@@ -7,6 +7,7 @@ created-at: "2026-09-29T12:51:36.689073+03:00"
 blocks:
   - habu-close-definitions-with-8ace78d8
   - habu-move-pkgs-using-22f18b81
+  - habu-call-the-unit-ec148ccf
 ---
 
 Problem: `evaluate` is assembly. First of I9a-c.
@@ -33,3 +34,5 @@ Design correction, rev 2 (absorbs I1 `habu-mark-blob-provided-21605a53`, closed;
 - From I4 design: retire `SOURCE-ROOT:INCLUDE-INTERPRET`; `INCLUDE-EVALUATE` calls the one `evaluate`.
 
 K-lane correction (design 2026-09-30): Files add `src/habu/kernel-x64.f`: `X64KERNEL:PRIM` and `REFUSE` call `ENGINE-PRIMS:KEEP-BODY?` beside `FP-KEEP?`, so a seeded x86 build drops K7's refusal rows for `evaluate`, `create`, `parse-name`, `num-parse` and `tok-imm?` once Habu provides them.
+
+Lead note (2026-09-30, from the I8/I5a design): `evaluate` and its manifest row name `interpret.f` (I8 creates it); depends on I8b.

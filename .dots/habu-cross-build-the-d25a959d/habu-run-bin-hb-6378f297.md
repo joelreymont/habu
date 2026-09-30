@@ -8,6 +8,7 @@ blocks:
   - habu-run-a-captured-15728fcc
   - habu-boot-the-arm64-d0d4421a
   - habu-keep-the-x86-6967d3cf
+  - habu-emit-the-x86-e49a3447
 ---
 
 Problem: the x86 engine has not yet run the Habu interpreter; milestone M4 joins lanes X and I.

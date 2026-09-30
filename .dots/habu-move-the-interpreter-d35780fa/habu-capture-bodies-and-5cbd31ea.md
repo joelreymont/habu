@@ -17,3 +17,5 @@ Route: Alder (shared: src/habu/definers.f, src/habu/outer.f and the test).
 Ownership: krait (Intel lane).
 Claim: unassigned.
 - From I4 design: this leaf also owns a top-level `[:`, which captures a quotation body from interpret mode (dispatched before find, `habu2.f:8339-8362`).
+
+Lead note (2026-09-30, from the I8/I5a design): keeps CAPTURE-STRING (the six keywords captured as one span through `body-append`, plus the escaped forms) and top-level `[:`; Files: `definers.f`. LBCAP/LBCS and the rc-71 refusal move to I5a.

@@ -16,3 +16,5 @@ Depends: habu-close-definitions-with-8ace78d8 (I5e). Serialise on `habu2.f` with
 Route: Alder (shared: src/habu/habu2.f, bootstrap/cg/forth.fs, src/habu/prims.f, src/habu/outer.f).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+Lead note (2026-09-30, from the I8/I5a design): `jit-open` does the JIT half of the head: the P2-nesting refusal (rc 76, `habu2.f:7825-7827`), the resets at `7843-7861`, EXECUTABLE-JIT-GUARD, FRAME-CELL and the link-save (`2799-2802`); it replaces I5a's tier-0 refusal. P2-CELL is set only by the JIT's pass 2 (`9349`).

@@ -16,3 +16,5 @@ Depends: habu-compile-immediates-from-cc47ecf4 (I5c).
 Route: Alder (shared: src/habu/definers.f, src/habu/outer.f and the test).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+Lead note (2026-09-30, from the I8/I5a design): TCSIG-A/U sit in the friend arena (a store exits 83 after the seal), so I5d adds a TCSIG twin of `trust-sig!` in prims.f with bodies on both targets.
