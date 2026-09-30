@@ -77,19 +77,23 @@ public
    idx IDX>N PROC-ARGV-MAX > if E-PROC-OUTPUT throw then
    idx IDX>N PROC-ARGV-TABLE ;
 
-: PROC-ARGV-CHECK-EXTRA ( -- )
-   PROC-ARGV-N @ COUNT>N PROC-ARGV-MAX 1- >= if E-PROC-OUTPUT throw then ;
+\ TRUE when PROC-ARGV+ has room for an argument of u bytes: a table row below
+\ the one the NULL terminator needs, and buffer room for the bytes and their NUL.
+\ A caller that batches arguments asks before each one. The length is compared
+\ with the room left, never added to, so no length wraps into range.
+: PROC-ARGV-FITS? ( len -- bool ) {: u :}
+   PROC-ARGV-N @ COUNT>N PROC-ARGV-MAX 1- <
+   u LEN>N 0 >= and
+   u LEN>N PROC-ARGV-BUF-CAP PROC-ARGV-OFF @ OFF>N - < and ;
 
 : PROC-ARGV-ZCOPY ( ptr u8 len -- ptr u8 ) {: a:ptr u :}
-   u LEN>N 0 < if E-PROC-OUTPUT throw then
    PROC-ARGV-OFF @ {: off :}
-   off OFF>N u LEN>N 1 + + PROC-ARGV-BUF-CAP > if E-PROC-OUTPUT throw then
    a u PROC-ARGV-BUF off OFF>N + PROC-ARGV-BUF-CAP off OFF>N - >LEN PROC-ZCOPY {: z:ptr :}
    off OFF>N u LEN>N 1 + + >OFF PROC-ARGV-OFF !
    z ;
 
 : PROC-ARGV+ ( ptr u8 len -- ) {: a:ptr u :}
-   PROC-ARGV-CHECK-EXTRA
+   u PROC-ARGV-FITS? 0= if E-PROC-OUTPUT throw then
    a u PROC-ARGV-ZCOPY
    PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !
    PROC-ARGV-N @ COUNT>N 1+ >COUNT PROC-ARGV-N ! ;
