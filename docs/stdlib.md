@@ -13,6 +13,7 @@ Planned module files:
 - `lib/array.f`
 - `lib/vector.f`
 - `lib/string.f`
+- `lib/base64.f`
 - `lib/json-write.f`
 - `lib/map.f`
 - `lib/memory.f`
@@ -726,6 +727,32 @@ any read. The package owns no mutable cursor, scratch cell, or return buffer.
 ```forth
 UTF8:NEXT ( ptr u8 n n -- scalar-step )
 ```
+
+## Base64
+
+`lib/base64.f` owns package `BASE64`: RFC 4648 base64 in the standard alphabet
+with `=` padding. Both words write into a caller's span and answer the count
+they wrote.
+
+```forth
+BASE64:ENCODE ( ptr u8 n SPAN:span<u8> -- n )
+BASE64:DECODE ( ptr u8 n SPAN:span<u8> -- n )
+```
+
+`ENCODE` writes four characters for every three bytes, the last group padded.
+`DECODE` accepts exactly what `ENCODE` writes, so every byte string has one
+encoding: a byte outside the alphabet is `E-BASE64-CHAR`, a `=` anywhere but
+the end of the last group or a spare bit left set below its last byte is
+`E-BASE64-PAD`, and a length that is not a multiple of four is
+`E-BASE64-LENGTH`. There is no whitespace, line wrapping or URL-safe alphabet.
+A span too small for the result throws `E-SPAN-CAPACITY` and a negative input
+length `E-SPAN-LENGTH`. `DECODE` checks the whole input before it writes, so a
+refusal leaves the span as it was. The RFC 6455 handshake is the first caller:
+a `Sec-WebSocket-Key` decodes to sixteen bytes, and `Sec-WebSocket-Accept` is
+the encoding of a `SHA1:digest`. `lib/base64-test.f` runs RFC 4648's section 10
+vectors, decodes the whole alphabet against `base64 -d`, round-trips every byte
+value, asserts each refusal, and derives RFC 6455's
+`s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`.
 
 ## JSON Write
 

@@ -1443,3 +1443,10 @@ public
 -9345 constant E-HTTP-STATIC      \ a static root that is not a directory, or a tree larger than the tables that hold it
 -9346 constant E-HTTP-SOCKET      \ the listener could not be bound, put to listen or asked its own address
 -9347 constant E-HTTP-RESPONSE    \ a JSON body larger than the worker's body buffer
+
+\ Base64 (package BASE64): -9350..-9359.
+-9350 constant E-BASE64-FIRST
+-9359 constant E-BASE64-LAST
+-9350 constant E-BASE64-CHAR      \ a byte outside the standard alphabet and its '=' padding
+-9351 constant E-BASE64-PAD       \ '=' before the last one or two places, or pad bits left set
+-9352 constant E-BASE64-LENGTH    \ an encoded length that is not a multiple of four

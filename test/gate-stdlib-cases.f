@@ -1160,6 +1160,10 @@ SUITE utf8-scalar
    lib/utf8-scalar-test.f
 ;SUITE
 
+SUITE base64
+   lib/base64-test.f
+;SUITE
+
 SUITE ffi-abi
    lib/ffi-abi-test.f
 ;SUITE
