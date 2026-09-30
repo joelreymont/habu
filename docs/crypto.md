@@ -248,3 +248,47 @@ seals and opens unchanged through one owned mapping; every operand refusal
 differs from a working call in exactly one operand; and 20,000 seal/unseal rounds
 must not raise the process's peak resident set, which one leaked context per
 round would do by megabytes.
+
+## SHA-1 for the WebSocket handshake
+
+[`lib/crypto/sha1.f`](../lib/crypto/sha1.f), package `SHA1`, is SHA-1 written
+in Habu with no foreign library, so a WebSocket server answers RFC 6455's
+opening handshake without libcrypto in its path. **It is not for security.**
+RFC 6455 derives `Sec-WebSocket-Accept` from SHA-1 only to show that the server
+read the client's key. SHA-1 collisions are practical, so nothing that
+authenticates, signs or names bytes an adversary may choose rests on this
+digest; use the engine's SHA-256 or `CRYPTO:HMAC-SHA256` for those.
+
+A digest streams through a context the caller owns, as SHA-256's does: a
+`SPAN:span<u8>` of at least `SHA1:CTX-BYTES` bytes, one per digest in flight.
+Every field in it is read and written a byte at a time, so it needs no
+alignment. The package keeps no state, so tasks hash at once by holding a
+context each.
+
+```forth
+SHA1:START        ( SPAN:span<u8> -- )
+SHA1:FEED         ( SPAN:span<u8> ptr u8 n -- )
+SHA1:FINISH       ( SPAN:span<u8> -- SHA1:digest )
+SHA1:HASH         ( SPAN:span<u8> ptr u8 n -- SHA1:digest )
+SHA1:DIGEST!      ( SHA1:digest SPAN:span<u8> -- )
+SHA1:CTX-BYTES    ( -- n )     \ 160
+SHA1:DIGEST-BYTES ( -- n )     \ 20
+```
+
+`FINISH` answers the digest of everything fed since `START`. It pads a copy of
+the last partial block, so the context is unchanged: a second `FINISH` answers
+the same digest, and `FEED` may go on with the stream. `HASH` is `START`, `FEED`
+and `FINISH` for a caller that holds the whole message. `SHA1:digest` is a
+five-cell value, the hash words H0 to H4 of FIPS 180-4; `DIGEST!` writes its 20
+bytes at the start of a span, each word big-endian, H0 first.
+
+A context span shorter than `CTX-BYTES` and a digest span shorter than
+`DIGEST-BYTES` throw `E-SPAN-CAPACITY` before anything is written, and a
+negative `FEED` length throws `E-SPAN-LENGTH`; the package mints no codes of
+its own.
+
+`lib/crypto/sha1-test.f` runs the FIPS 180 vectors: the empty message, `abc`,
+the 448-bit message, and one million `a` fed in chunks of 1 to 999 bytes. It
+hashes the lengths where the padding changes shape, 55, 56, 63, 64 and 65 bytes,
+both whole and a byte at a time; feeds two contexts in turn; calls `FINISH`
+twice and then feeds again; and asserts each refusal by its code.

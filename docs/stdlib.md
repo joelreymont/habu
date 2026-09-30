@@ -23,6 +23,7 @@ Planned module files:
 - `lib/pg.f`
 - `lib/net/curl.f`
 - `lib/crypto/evp.f`
+- `lib/crypto/sha1.f`
 - `lib/serial.f`
 - `lib/pty.f`
 - `lib/xmodem.f`
@@ -78,6 +79,7 @@ theirs.
 | `lib/fs-mutate.f` | task-local (the staged paths, FS-MUT-ABI band; the stream copy's descriptors and cursors) / process-wide (the copy buffer, so the two copy words are single-task; the cleanup registry, which any task may register into) |
 | `lib/json-write.f` | caller-owned |
 | `lib/json-read.f` | caller-owned |
+| `lib/crypto/sha1.f` | caller-owned (the digest context) |
 | `lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |
 | `lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` vector) |
 | `lib/process-command.f` | caller-owned (`CMD` contexts) / process-wide (the `PROC-CMD` surface over one static context) |
@@ -1224,6 +1226,14 @@ cleared, never a partial plaintext. Every `EVP_CIPHER_CTX` is freed on every
 path including a throw. See [crypto](crypto.md) for the vocabulary, a
 sealed-record example and the declarations. Key derivation, rotation, storage
 format and nonce sequencing belong above this module.
+
+## SHA-1
+
+`lib/crypto/sha1.f` owns package `SHA1`: SHA-1 in Habu, streamed through a
+caller-owned context span of `SHA1:CTX-BYTES` bytes (`START`, `FEED`, `FINISH`)
+or taken in one call (`HASH`), answering a `SHA1:digest` that `DIGEST!` writes
+as 20 bytes. It is here for the RFC 6455 handshake and is not for security. See
+[crypto](crypto.md#sha-1-for-the-websocket-handshake).
 
 ## Files
 

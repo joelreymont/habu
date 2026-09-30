@@ -1204,6 +1204,10 @@ SUITE crypto-evp
    lib/crypto/evp-test.f
 ;SUITE
 
+SUITE crypto-sha1
+   lib/crypto/sha1-test.f
+;SUITE
+
 SUITE float-parse
    lib/float-test.f
    lib/fmath-test.f
