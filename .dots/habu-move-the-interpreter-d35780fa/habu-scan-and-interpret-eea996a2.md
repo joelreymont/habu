@@ -1,6 +1,6 @@
 ---
 title: Scan and interpret in Habu
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.646748+03:00"

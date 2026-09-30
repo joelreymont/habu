@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.965848+03:00"
 blocks:
-  - habu-scan-and-interpret-eea996a2
   - habu-move-pkgs-using-22f18b81
 ---
 

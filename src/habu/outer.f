@@ -1,5 +1,5 @@
-\ outer.f - the outer interpreter's readers, written in Habu: numbers, then
-\ the dictionary search.
+\ outer.f - the outer interpreter written in Habu: numbers, the dictionary
+\ search, then the loop that reads a buffer with them.
 
 require lib/prelude.f
 require lib/ieee754.f
@@ -271,5 +271,234 @@ public
    q FIND-BAD = if XREF-NULL exit then
    q FIND-BARE = if a u FIND-BARE-REC exit then
    a u q FIND-QUALIFIED ;
+
+;package
+
+\ ---- the interpret loop ------------------------------------------------------
+\ OUTER:INTERPRET reads a buffer token by token as the engine's interpret loop
+\ does (habu2.f EM-COMMENT's LMAIN, EM-INTERPRET-NUMBER, EM-INTERPRET-FIND) for
+\ comments, numbers and dictionary words. The keywords the engine dispatches
+\ ahead of numbers (`:`, `s"`, `'`, `using`, ...) are not read here yet: they
+\ are not dictionary words, so they refuse as undefined.
+\
+\ The input is the engine's own. The cursor, its end and the buffer start sit
+\ in INP-CELL, INE-CELL and SRCLOC:INB-CELL, and the token in TKA-CELL and
+\ TKL-CELL, so a parsing word a token runs reads this buffer, a nested load
+\ nests, and a refusal names the token the engine would.
+\
+\ The data stack is the program's. Nothing of the loop's is on it while a
+\ word or the top-row hook runs, so the words that run them declare no locals
+\ and keep their state in cells or, across the hook, on the return stack.
+
+package OUTER
+
+private
+
+70 constant RC-REJECT            \ habu2.f RC-REJECT: a refused token, catchable
+52 constant MIN-IN-SHIFT         \ layout.f DNAME-MIN-IN-MASK: record flag bits 52-59
+32 constant BLANK                \ LTOK: every byte at or below it separates tokens
+$0A constant NEWLINE
+$5C constant LINE-COMMENT        \ a backslash
+$28 constant OPEN-COMMENT        \ (
+$29 constant CLOSE-COMMENT       \ )
+2 constant ERR-FD
+
+create NL NEWLINE c,
+
+\ ---- the engine's cells --------------------------------------------------------
+: CELL@ ( n -- n )
+   data-base + @ ;
+
+: CELL! ( n n -- )
+   data-base + ! ;
+
+\ The input cells hold byte addresses as integers (habu1.f B-EVAL, LTOK). These
+\ two are outer.f's one crossing between such a cell and a byte pointer.
+TRUSTED: ADDR@ ( n -- ptr u8 ) data-base + @ ;
+TRUSTED: ADDR! ( ptr u8 n -- ) data-base + ! ;
+
+: TOKEN$ ( -- ptr u8 n )
+   TKA-CELL ADDR@ TKL-CELL CELL@ ;
+
+\ ---- the scanner (habu1.f LTOK) -------------------------------------------------
+: BLANKS-END ( ptr u8 ptr u8 -- ptr u8 ) {: p:ptr e:ptr :}
+   p begin dup e < if dup c@ BLANK <= else false then while 1 + repeat ;
+
+: WORD-END ( ptr u8 ptr u8 -- ptr u8 ) {: p:ptr e:ptr :}
+   p begin dup e < if dup c@ BLANK > else false then while 1 + repeat ;
+
+\ The next token lands in TKA and TKL, and INP stops on the byte after it. With
+\ none left INP is the end and the token cells keep the last token.
+: TOKEN ( -- bool )
+   INP-CELL ADDR@ INE-CELL ADDR@ {: p:ptr e:ptr :}
+   p e BLANKS-END {: s:ptr :}
+   s e WORD-END {: t:ptr :}
+   t INP-CELL ADDR!
+   s t = if false exit then
+   s TKA-CELL ADDR!
+   t s - TKL-CELL CELL!
+   true ;
+
+\ ---- comments (habu2.f EM-COMMENT) -----------------------------------------------
+\ A backslash or `(` opens a comment only as a whole one-byte token. The comment
+\ runs past the next newline or `)`, or to the end of the input.
+: SKIP-PAST ( n -- ) {: c:n :}
+   INP-CELL ADDR@ INE-CELL ADDR@ {: p:ptr e:ptr :}
+   p begin dup e < if dup c@ c <> else false then while 1 + repeat
+   dup e < if 1 + then
+   INP-CELL ADDR! ;
+
+: COMMENT? ( -- bool )
+   TKL-CELL CELL@ 1 <> if false exit then
+   TKA-CELL ADDR@ c@ {: b:n :}
+   b LINE-COMMENT = if NEWLINE SKIP-PAST true exit then
+   b OPEN-COMMENT = if CLOSE-COMMENT SKIP-PAST true exit then
+   false ;
+
+\ ---- refusals (habu2.f EM-COMPILE-UNDEF, EM-INTERPRET-UNDERFLOW) ---------------
+\ Each writes the engine's text on descriptor 2 and throws its code. Like the
+\ engine's own diagnostics, a write that fails is not reported: the throw is.
+: SAY ( ptr u8 n -- ) {: a:ptr u:n :}
+   ERR-FD a u write drop ;
+
+\ The message, the token and a newline, then the catchable reject.
+: REFUSE ( ptr u8 n -- )
+   SAY TOKEN$ SAY NL 1 SAY
+   RC-REJECT throw ;
+
+: UNDEFINED ( -- )
+   s" E-UNDEFINED: " REFUSE ;
+
+\ ---- the refusal's location (habu2.f EM-COMPILE-DIE) ----------------------------
+20 constant DIGITS-CAP
+create DIGITS DIGITS-CAP allot
+variable DIGIT-AT
+
+: DIGIT+ ( n -- ) {: c:n :}
+   DIGIT-AT @ 1 - DIGIT-AT !
+   c DIGITS DIGIT-AT @ + c! ;
+
+\ A positive number's decimal digits, written from the end of DIGITS.
+: DIGITS$ ( n -- ptr u8 n )
+   DIGITS-CAP DIGIT-AT !
+   begin dup 10 mod $30 + DIGIT+ 10 / dup 0= until drop
+   DIGITS DIGIT-AT @ +  DIGITS-CAP DIGIT-AT @ - ;
+
+\ 1 + the newlines in [INB, INP): the line the cursor is on.
+: LINE ( -- n )
+   SRCLOC:INB-CELL ADDR@ INP-CELL ADDR@ {: b:ptr p:ptr :}
+   1 p b - 0 ?do b i + c@ NEWLINE = if 1 + then loop ;
+
+\ ` at <path>:<line>` while a source file is open.
+: AT-SOURCE ( -- )
+   SRCLOC:PATHLEN-CELL CELL@ {: u:n :}
+   u 0= if exit then
+   s"  at " SAY
+   SRCLOC:PATH-CELL ADDR@ u SAY
+   s" :" SAY
+   LINE DIGITS$ SAY ;
+
+: AMBIGUOUS ( -- )
+   s" hb: ambiguous bare word resolves in multiple used packages: " SAY
+   TOKEN$ SAY AT-SOURCE NL 1 SAY
+   ENGINE-ERROR:USING-AMBIGUOUS throw ;
+
+\ ---- running program code -------------------------------------------------------
+\ A word or the hook runs through execute-floor, which answers whether it left
+\ the stack below its base and then resets the stack to the base: the floor the
+\ engine checks after every token. The prim's row states no effect for the xt,
+\ so only a trusted body calls it.
+: FLOORED ( bool -- )
+   if s" E-UNDERFLOW: " REFUSE then ;
+
+\ ---- the top-row hook (habu2.f LTOPHOOK) ------------------------------------------
+\ With a hook installed (set-top-check) it gets ( token class flags ) for each
+\ number after the push and for each word, past its gates, before it runs. The
+\ hook consumes those four cells, as the event protocol states. A hook that
+\ leaves the stack below its base on a word event is refused here, before the
+\ word runs; the engine runs the word first and faults in the guard page (rc
+\ 102), so this loop names the underflow where the engine would crash.
+: HOOK@ ( -- n )
+   TOP-HOOK-CELL CELL@ ;
+
+TRUSTED: HOOK ( n n -- )
+   HOOK@ 0= if 2drop exit then
+   TOKEN$ 2swap HOOK@ execute-floor FLOORED ;
+
+\ ---- numbers ------------------------------------------------------------------------
+variable VALUE
+
+\ A number's value waits in VALUE. One out of range is undefined, and no word
+\ of its spelling is asked for.
+: NUMERAL? ( -- bool )
+   TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
+   range if UNDEFINED then
+   v VALUE !
+   num ;
+
+\ ---- words --------------------------------------------------------------------------
+TYPED-VARIABLE REC ptr n
+
+: LOOKUP-GO ( -- )
+   TOKEN$ FIND REC ! ;
+
+\ The token's record lands in REC. FIND's ambiguity is the engine's refusal,
+\ and a miss is undefined.
+: LOOKUP ( -- )
+   XREF-NULL REC !
+   [: LOOKUP-GO ;] catch {: code:n :}
+   code E-USING-AMBIGUOUS = if AMBIGUOUS then
+   code 0<> if code throw then
+   REC @ XREF-FOUND? 0= if UNDEFINED then ;
+
+: MIN-IN ( n -- n )
+   DNAME-MIN-IN-MASK and MIN-IN-SHIFT rshift ;
+
+\ The engine's gates in its order: a wide effect, an internal word, then fewer
+\ cells on the stack than the word's certified inputs.
+: GATE ( -- )
+   REC @ XREF-FLAGS {: f:n :}
+   f DNAME-WIDE and 0<> if s" hb: interpret-mode layout value: " REFUSE then
+   f DNAME-INT and 0<> if s" hb: internal engine word: " REFUSE then
+   depth f MIN-IN < if s" hb: interpret stack underdepth: " REFUSE then ;
+
+\ LFIND's flag word as the hook reads it (layout.f TOP-EV-*): bit 0 found,
+\ bit 1 immediate, bits 8-15 the certified inputs.
+: WORD-FLAGS ( -- n )
+   REC @ XREF-FLAGS {: f:n :}
+   1 f DNAME-IMM and 0<> if 2 or then
+   f MIN-IN 8 lshift or ;
+
+\ The xt waits on the return stack while the hook runs.
+TRUSTED: RUN-WORD ( -- )
+   LOOKUP GATE
+   REC @ XREF-START >r
+   TOP-EV-WORD WORD-FLAGS HOOK
+   r> execute-floor FLOORED ;
+
+\ ---- the loop -------------------------------------------------------------------------
+\ A number is pushed and a word run: the token's effect on the stack is the
+\ program's, so this row, and every row above it, states none of it.
+TRUSTED: DISPATCH ( -- )
+   NUMERAL? if VALUE @ TOP-EV-NUM 0 HOOK exit then
+   RUN-WORD ;
+
+: STEP ( -- )
+   COMMENT? if exit then
+   DISPATCH ;
+
+: RUN ( -- )
+   begin TOKEN while STEP repeat ;
+
+public
+
+\ Interpret the buffer as the engine's evaluate reads it, and put the input
+\ cells back after, whether the buffer ends or a token throws.
+: INTERPRET ( ptr u8 n -- ) {: a:ptr u:n :}
+   INP-CELL CELL@ INE-CELL CELL@ SRCLOC:INB-CELL CELL@ {: p:n e:n b:n :}
+   a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
+   [: RUN ;] catch {: code:n :}
+   p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!
+   code 0<> if code throw then ;
 
 ;package

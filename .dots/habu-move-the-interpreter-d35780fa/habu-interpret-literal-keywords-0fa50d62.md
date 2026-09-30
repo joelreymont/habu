@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T17:23:41.532885+03:00"
-blocks:
-  - habu-scan-and-interpret-eea996a2
 ---
 
 Problem: the interpret-mode literal keywords are dispatched before find and are not records (`habu2.f:8352-8362`), so under I4's seam `s"` `c"` `."` `s\"` `c\"` `.\"` `char` `'` die E-UNDEFINED.

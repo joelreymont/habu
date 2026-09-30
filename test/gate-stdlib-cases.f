@@ -1470,6 +1470,10 @@ SUITE outer-find
    test/outer-find.f
 ;SUITE
 
+SUITE outer-interpret
+   test/outer-interpret.f
+;SUITE
+
 SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE
