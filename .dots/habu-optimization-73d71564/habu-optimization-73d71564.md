@@ -559,3 +559,22 @@ the four stripped probes, and the fresh two-tier corpus.
 For implementation, compare actual emitted sections, startup behavior and
 the existing behavior suites; do not add candidate byte savings together
 before rebuilding, because representations, reachability and padding overlap.
+
+## ARM64 code-size campaign
+
+Owner heron; design revision 3 of the ARM64 "all fixes" design. Each slice is
+a child dot carrying its own contract and measured byte change: census
+e13ae0a3; division 1118f223; terminal-only link save f2071a86; mask and shift
+immediates f082dbf3; shifted index and msub c57b5f1b; max as select fec184ee;
+callee clobber summaries db11d4c1; persisted summaries 890d67ea (optional);
+DATA literal pools d65bdc94; (RETURNED) 2ddb20af and (STORE-CELLS) 458c9100
+(each dispatched only above its census break-even); zero-filled snapshot DATA
+089e4588; proven span checks 22af10b0; cold-throw target a6529379.
+
+Joel's decisions (2026-09-30): no no-check build mode; HR1, the private
+register ABI, is revisited only after db11d4c1 and only for a measured
+stripped-product win. Confirmed drops: inline guarded scalar stores (12 bytes
+either way); exact-site division helpers and CallOrigin rows (nothing reads
+x30 on a throw); ADRP for DATA (DATA-VA is out of ±4 GiB reach); the fragment
+model, typed relocation algebra and wire schema (pools are sealed records);
+the SCC fixed point and capsules (summaries never narrow).

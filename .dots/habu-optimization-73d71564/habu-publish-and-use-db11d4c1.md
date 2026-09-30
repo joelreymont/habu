@@ -23,4 +23,6 @@ Depends: habu-select-shifted-idx-c57b5f1b (shared select.f/a64ir.f); habu-drop-t
 
 Ownership: the files above.
 
+HR1 (Joel, 2026-09-30): the private register ABI is revisited only after this slice lands, and only if a stripped product then shows a measured win. The report states the call-crossing spills that remain in a stripped Tender or Etch product.
+
 Claim: unassigned.

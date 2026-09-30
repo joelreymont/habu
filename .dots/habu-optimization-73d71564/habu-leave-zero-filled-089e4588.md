@@ -10,8 +10,9 @@ Problem: --repl snapshots write canonical DATA verbatim, including internal
 zero holes. The baked engine and stripped applications already use grouped
 cell bitmaps and unsigned LEB128 values. This is a snapshot size problem;
 the measured server capture/write costs about 45 ms, not the reported minutes.
-Ownership: snapshot writer. Claim: Alder. Hazel reviews before landing and
-the integration chain runs the full gate.
+Ownership: snapshot writer. Claim: agent=heron workspace=.jj-ws/snap-holes
+(taken over from alder by agreement, confirmed by Joel). A Fable reviewer
+reviews before landing and the integrator runs the full gate.
 
 Joel lifted the former hold on 2026-09-30: dropping zero-filled snapshot data
 is fine, and packing allocations tightly is not compression. The hold had
@@ -144,3 +145,48 @@ callers, src/habu/layout.f, tools/imgdump.f, tools/image-size-lib.f,
 test/snapshot-writer.f, tools/build-fixpoint-test.f, codec/size fixtures and
 docs/native-applications.md. Any address-cells.f change must state why its
 format or version ownership needs to change. No compiler/checker changes.
+
+## ARM64 campaign slice (design revision 3, §3.12)
+
+This dot is the campaign's snapshot slice; it supersedes the older
+zero-omission design above wherever they differ. Line references are at
+master 8c9b75af; re-verify before editing.
+
+Current: `--repl` snapshots copy DATA verbatim (SND-COPY, snap-lib.f:232-233;
+PERSIST, :446-462; loader EM-SNAPSHOT-COPY, habu2.f:6299) while the AOT window
+already uses the grouped bitmap/LEB128 grammar (AOT-WINDOW:EMIT-BM/EMIT-VALS,
+habu2.f:10927-10929). Candidate 7289a859's donor guard compared two source
+constants; master's SNAPSHOT-FORMAT:VERIFY (snapshot-format.f:22-30) compares
+the engine's baked `snapshot-format` primitive with the source VERSION 11 (:9).
+
+Acceptance: SNAPSHOT-FORMAT:VERSION bumps (12 unless another branch claims it;
+the integrator assigns it at landing); the writer runs VERIFY before choosing
+any geometry (an old donor running new source dies 74 "donor does not support
+snapshot format", never writes an image its loader refuses 79); DATA is
+encoded through one shared grouped-grammar module used by both writers (no
+second codec), the raw copy kept when the grouped form is not smaller, the
+choice flagged in the trailer; the loader decodes into DATA with bounds,
+bitmap geometry and canonical-varint validation (malformed 79, legacy 80);
+recapture never embeds the previous stream. test/snapshot-writer.f: a
+million-byte hole restored exactly (zeros over seed-populated cells included),
+a dense fixture not enlarged, malformed framing/varint/pad refused 79, legacy
+refused 80, spoofed capability dies 74, recapture identical; three private
+generations with gen 2 == gen 3; tools/imgdump.f and image-size-lib.f
+attribute the new rows. Artifact: the fixtures' images; Etch's `--repl` image
+size, startup time and RSS before and after (tools/hb-build.f -- --repl
+--size-report); the report separates holes omitted from any allocation
+removed by other dots.
+
+Files: src/habu/snap-lib.f, snapshot-format.f, habu2.f (snapshot loader
+region), layout.f (trailer field), the shared codec module (new src/habu/ file
+or the existing AOT-WINDOW grammar factored), tools/imgdump.f,
+tools/image-size-lib.f, test/snapshot-writer.f,
+tools/build-fixpoint-snapshot-test.f, docs/native-applications.md. Engine
+text: yes; seed mirror: no.
+
+Verify: tools/native-build.f product; bin/hb --load test/snapshot-writer.f;
+bin/hb --load tools/build-fixpoint-snapshot-test.f;
+tools/two-generation-build.f; bin/hb --load test/run.f; the Etch size line.
+
+Depends: none. Lands before habu-pool-data-addresses-d65bdc94 on habu2.f.
+swift's NBR lanes also edit habu2.f and layout.f; order pushes with swift.

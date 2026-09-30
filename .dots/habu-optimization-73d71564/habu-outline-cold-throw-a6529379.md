@@ -6,13 +6,14 @@ issue-type: task
 created-at: "2026-09-16T16:38:23.439803+03:00"
 ---
 
-Claim: Alder, coordinated with Hazel. The terminal-call slice is separate from
+Claim: agent=heron workspace=.jj-ws/tier-remeasure (taken over from alder by
+agreement, confirmed by Joel). The terminal-call slice is separate from
 the cold-block layout slice: only a resolved global `throw` or `die` whose entry
 is inside the running engine's text may omit the returned-callee diagnostic.
 The 2,265-word census finds 432 such throw sites and nine die sites. `0 throw`
 unwinds to catch; package and replacement globals keep ordinary call semantics.
 
-Problem: docs/compiler-measurements.md (2026-09-16) shows tier 1 emits 1,521 more four-instruction MOVZ/MOVK address stencils than tier 0 over 1,772 words (24,336 bytes, the whole of the 3.9 percent code-size regression and more), and every word that grew has them on a NEVER-TAKEN throw path laid out inline between the hot test and the epilogue (ARRAY:A-LEN 60 to 96 bytes with 15 instructions of inline throw; SOURCE-QPATH-CHECK 48 to 112 with 60 cold bytes). Acceptance: tier 1 lays out the cold arm of a guard (a throw, a die, an error-code push) after the word epilogue or in a shared per-module cold block, so the hot path falls through; relocatable literals that only the cold arm needs are materialised there; the census tools (tools/tier-census.f + tier-census-join.f) show the tier-1 byte total at or below tier 0 on the same corpus with the bl and frame-traffic wins intact; the three side-by-side words in the doc are re-dumped with tools/tier-dump.f and the doc updated; tier-bench numbers unchanged or better; byte fixpoint; full gate green. Files: src/compiler/native/select.f, emit.f, a64ir.f (block layout), test/compiler/*.f, docs/compiler-measurements.md. Verify: the census pair; tools/native-build.f fixpoint; test/run.f. Depends: none (habu-addr-data-cells-d232781e removes the DATA-cell stencils separately; this dot is about placement and the remaining literal stencils, which may use a per-module literal pool or ADRP/ADD, a format the AOT capture path must accept, see src/habu/aot-lib.f relocation). Ownership: tier-1 layout. Claim: Alder; both unfinished slices are preserved in the main checkout over 2fb53374. See handoff.md for validation limits and the next action. Source: measurement lane, ranked fix 1 and 2.
+Problem: docs/compiler-measurements.md (2026-09-16) shows tier 1 emits 1,521 more four-instruction MOVZ/MOVK address stencils than tier 0 over 1,772 words (24,336 bytes, the whole of the 3.9 percent code-size regression and more), and every word that grew has them on a NEVER-TAKEN throw path laid out inline between the hot test and the epilogue (ARRAY:A-LEN 60 to 96 bytes with 15 instructions of inline throw; SOURCE-QPATH-CHECK 48 to 112 with 60 cold bytes). Acceptance: tier 1 lays out the cold arm of a guard (a throw, a die, an error-code push) after the word epilogue or in a shared per-module cold block, so the hot path falls through; relocatable literals that only the cold arm needs are materialised there; the census tools (tools/tier-census.f + tier-census-join.f) show the tier-1 byte total at or below tier 0 on the same corpus with the bl and frame-traffic wins intact; the three side-by-side words in the doc are re-dumped with tools/tier-dump.f and the doc updated; tier-bench numbers unchanged or better; byte fixpoint; full gate green. Files: src/compiler/native/select.f, emit.f, a64ir.f (block layout), test/compiler/*.f, docs/compiler-measurements.md. Verify: the census pair; tools/native-build.f fixpoint; test/run.f. Depends: none (habu-addr-data-cells-d232781e removes the DATA-cell stencils separately; this dot is about placement and the remaining literal stencils, which may use a per-module literal pool or ADRP/ADD, a format the AOT capture path must accept, see src/habu/aot-lib.f relocation). Ownership: tier-1 layout. Both slices landed: 1ce939b7 placement, b62ae1d2 terminal lowering, fa6e7443 capture reachability. Source: measurement lane, ranked fix 1 and 2.
 
 Initial revalidation used c12b6e82. The historical 3.9% and word count are not
 current measurements; error paths are cold candidates, not proven never taken.
@@ -48,3 +49,21 @@ primitive target, not a spelling; ordinary, qualified and redefined words
 retain their own control contract. This next reduction is not implemented
 by the layout change. Evidence and fresh dumps live in
 `~/.cache/habu/cold-throw/source-TV/`.
+
+## ARM64 campaign slice (design revision 3, §3.13)
+
+Only the measured target remains. The campaign baseline on master aa478d2b
+(macOS M2 Max, engine gen 2 SHA-256
+95ddf031a95d1fc15b24dbb17661c30e21da76e297ea15283cd9146f88f7517d,
+2,460,535 bytes) runs the 13-file corpus over 2,336 words: tier 0 175,832 B,
+tier 1 157,272 B (10.5% smaller); bl 11,763 -> 5,416; ldr via sp
+5,250 -> 3,756; str via sp 3,285 -> 2,370. The byte target is met. Evidence:
+~/.cache/tmp/heron-arm64/baseline/BASELINE.md.
+
+Acceptance to close: on current master, the tier pair rerun and matching the
+target; ARRAY:A-LEN, SOURCE-QPATH-CHECK and DECODE-LEAD re-dumped with
+tools/tier-dump.f at both tiers; tools/tier-bench.f at both tiers with load
+average quoted; docs/compiler-measurements.md "Current size comparison" and
+"Verdict" rewritten from the numbers. Files: docs/compiler-measurements.md and
+this dot. Later campaign slices report their own tier-1 deltas; they do not
+reopen this dot.
