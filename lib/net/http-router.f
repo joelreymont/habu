@@ -44,7 +44,6 @@ variable ROUTE-COUNT
 \ ---- segments ---------------------------------------------------------------
 
 : SEG-END ( ptr u8 n n -- n ) {: bytes:ptr len:n from:n :}
-   len from <= if len exit then
    len from ?do
       bytes i + c@ SLASH = if i unloop exit then
    loop

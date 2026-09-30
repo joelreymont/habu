@@ -783,6 +783,10 @@ SUITE compiler-jit-plusloop
    test/compiler/jit-plusloop.f
 ;SUITE
 
+SUITE compiler-jit-do
+   test/compiler/jit-do.f
+;SUITE
+
 SUITE compiler-native-edge-permutation
    test/compiler/native-edge-permutation.f
 ;SUITE

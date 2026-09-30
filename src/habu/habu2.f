@@ -2412,18 +2412,23 @@ variable LKEYNONAME
 \ further down so they resolve the handlers bare.
 package LOOP-EMIT
 
-: LVOPEN ( -- )                                 \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
+: LVOPEN ( -- )                                 \ open a LEAVE-chain level: LVH[LVD]=LVQ[LVD]=0, LVD++
    9 DATA LVD-CELL LDR,
+   12 LV-LEVELS MOVZ,  9 12 CMP,         \ all levels in use: refuse, write none
+   C-GE LCFCAP LABEL@ BCOND,             \ (TKA/TKL hold the `do`/`?do` token)
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    12 0 MOVZ,  12 10 0 STR,
+   10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
+   12 10 0 STR,
    10 9 3 LSLI,  10 10 LVF-OFF ADDI,  10 DATA 10 ADD,
    12 DATA LOCF-CELL LDR,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
 
-\ The DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF level arrays) is the
-\ loop family's opener record: `do`/`?do` open a level in LVOPEN, `loop`/
+\ The DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF/LVQ level arrays) is
+\ the loop family's opener record: `do`/`?do` open a level in LVOPEN, `loop`/
 \ `+loop` close one in J-LOOPEND, and `leave` chains onto the innermost open
-\ one. LCFPOP's orphan guard covers only the CF stack, so it does not see this
+\ one; LVQ holds a `?do`'s entry branch, 0 for `do`, for its `+loop` to rewrite.
+\ LCFPOP's orphan guard covers only the CF stack, so it does not see this
 \ stack at all: a loop-family word with no open `do` indexed level -1, and
 \ LVH-OFF's cell -1 IS LVD-CELL itself (they are adjacent, $578/$580). `loop`
 \ and `+loop` then handed that junk head offset to LBCHAIN, which dereferenced
@@ -2456,10 +2461,17 @@ package LOOP-EMIT
 : J-DO ( -- )
    J-FRAME  LVOPEN  C-PUSHCP ;
 
-: J-?DO ( -- )                                  \ DO, but skip the loop when limit = start
+\ `?do` enters only where its closer lets the first turn run. It emits `loop`'s
+\ test, start < limit, so a limit at or below the start takes no turn, and
+\ records the branch in LVQ: `+loop` steps by a per-turn value that may count
+\ down, so the `+loop` closing this level rewrites it to skip equal bounds only.
+: J-?DO ( -- )                                  \ DO, but skip the loop unless start < limit
    J-FRAME  LVOPEN
    $EB0A013F C-EMITW                     \ cmp x9,x10  (start/limit still live)
-   $54000041 C-EMITW                     \ b.ne +8 (over the skip placeholder)
+   9 DATA LVD-CELL LDR,  9 9 1 SUBI,     \ LVQ[LVD-1] := the entry branch's offset
+   10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
+   11 CP DBASE SUB,  11 10 0 STR,
+   $5400004B C-EMITW                     \ b.lt +8 (over the skip placeholder)
    LVLEAVE
    C-PUSHCP ;
 
@@ -2486,6 +2498,13 @@ package LOOP-EMIT
 
 : J-+LOOP ( -- )                                \ cross the limit boundary in the step's direction
    LVREQUIRE                             \ no open DO level: reject before emitting or popping
+   LBL {: plain:label :}
+   9 DATA LVD-CELL LDR,  9 9 1 SUBI,     \ a `?do` opened this level: rewrite its entry
+   10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
+   9 10 0 LDR,  9 plain CBZ,
+   1 DBASE 9 ADD,  2 4 MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,   \ a write below CP
+   10 DBASE 9 ADD,  11 $54000041 LIT64,  11 10 0 STRW,  \ b.ne +8: skip equal bounds only
+   plain LBL,
    W-POP9 C-EMITW                        \ step -> x9
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    $F940018D C-EMITW                     \ ldr x13,[x12]      index

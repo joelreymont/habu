@@ -131,8 +131,11 @@ Admitted and measured, the ones worth doubting: `tuck`, `+!`, `unloop exit`,
 `>r r@ r> 2>r 2r>`, `RECURSE`, `['] W catch`, `finally`, `defer W ( n -- n )`
 plus `[: IMPL ;] is W`, `parse-name`, `MATCH … ;MATCH`, `undefine`, and
 `true false 0<> fdup` with no require. An `endcase` default arm producing a
-value must leave the selector on top (`30 swap endcase`); `0 0 do … loop` runs
-once, `0 0 ?do … loop` zero times.
+value must leave the selector on top (`30 swap endcase`). `do` always takes its
+first turn: `0 0 do … loop` and `-1 0 do … loop` run once. `?do … loop` enters
+only while start < limit, signed, so `0 0`, `-1 0` and `MIN-N 0` run zero times
+and `u 0 ?do` runs max(u,0); `?do … +loop` skips only equal bounds, so
+`0 10 ?do … -1 +loop` counts down eleven turns.
 
 forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 

@@ -1153,7 +1153,9 @@ CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant DECL-VARIANT-PAY-TERMS-OFF
 
 \ BODYBUF-OFF was spelled as the end of the DO/LOOP frame band while that band
 \ lived at $600..$800. The frames are a guarded mapping now (STACK-ABI), so this
-\ states its own offset: the $600..$800 hole below it is free header space.
+\ states its own offset. Below it, $600..$690 is GENIO-ABI, AOT-SPAN and
+\ SIGNAL-ABI, $690..$750 is free, $750..$7D0 is LVQ-OFF and $7D0..$7E0 is
+\ FRAME-CELL and QFRAME-CELL.
 $800 constant BODYBUF-OFF
 8000 constant BODYBUF-CAP
 $568 constant RSP-CELL
@@ -1161,6 +1163,10 @@ $570 constant EXITH-CELL
 $578 constant LVD-CELL
 $580 constant LVH-OFF
 $2C0 constant LVF-OFF
+$750 constant LVQ-OFF      \ `?do` entry-branch offset per DO level; 0 for `do`
+\ LVH and LVQ hold one cell per level up to GENIO-ABI ($600) and FRAME-CELL
+\ ($7D0): a definition nests at most this many `do`/`?do` levels.
+16 constant LV-LEVELS
 $560 constant LASTC-CELL
 $1F0 constant DOESP-CELL
 $230 constant CREATEP-CELL

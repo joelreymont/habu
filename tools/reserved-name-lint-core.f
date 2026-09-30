@@ -260,7 +260,6 @@ private
    a 1+ u 1- RNL-NUM-BODY? ;
 
 : RNL-DOT-DIGIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ contains a ".<digit>" tail
-   u 2 < if LINT-FALSE exit then
    u 1- 0 ?do
       a i + c@ RNL-DOT-C =
       a i + 1+ c@ RNL-DIGIT? and if LINT-TRUE unloop exit then

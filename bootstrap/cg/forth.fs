@@ -376,6 +376,8 @@ $570 constant EXITH-CELL  \ EXIT placeholder chain head (code offset; 0 = none)
 $578 constant LVD-CELL    \ compile-time DO nesting depth (LEAVE chains)
 $580 constant LVH-OFF     \ LEAVE chain head per nesting level — 16 levels
 $2C0 constant LVF-OFF     \ loop-entry local-frame bytes per nesting level
+$750 constant LVQ-OFF     \ `?do` entry branch per nesting level; 0 for `do`
+16 constant LV-LEVELS     \ nesting levels LVH and LVQ hold (mirror of src/habu/layout.f)
 $560 constant LASTC-CELL  \ last CREATEd slot addr (DOES> patches it)
 $1F0 constant DOESP-CELL  \ runtime address of LDOESPATCH (stored at startup)
 $230 constant CREATEP-CELL \ runtime address of LCREATE (prims must not name labels)
@@ -3689,10 +3691,18 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    4181780107 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4177527177 C-EMITW  4177528202 C-EMITW  2432697707 C-EMITW  4177585803 C-EMITW ;
 
-: J-LVOPEN ( -- )                       \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
+: J-LVOPEN ( -- )                       \ open a LEAVE-chain level: LVH[LVD]=LVQ[LVD]=0, LVD++
+   LBL {: lvok :}
    9 DATA LVD-CELL LDR,
+   12 LV-LEVELS MOVZ,  9 12 CMP,  C-LT lvok BCOND,   \ a level free -> ok; else fail closed as LCFPUSH does
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   lvok LBL,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    12 0 MOVZ,  12 10 0 STR,
+   10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
+   12 10 0 STR,
    10 9 3 LSLI,  10 10 LVF-OFF ADDI,  10 DATA 10 ADD,
    12 DATA LOCF-CELL LDR,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
@@ -3730,10 +3740,15 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : J-DO ( -- )
    J-FRAME  J-LVOPEN  C-PUSHCP ;
 
-: J-?DO ( -- )              \ DO, but skip the loop when limit = start
+\ Mirror of the native J-?DO: emit `loop`'s entry test, start < limit, and
+\ record the branch in LVQ for a closing `+loop` to rewrite to skip equal bounds.
+: J-?DO ( -- )              \ DO, but skip the loop unless start < limit
    J-FRAME  J-LVOPEN
    $EB0A013F C-EMITW                     \ cmp x9,x10  (start/limit still live)
-   $54000041 C-EMITW                     \ b.ne +8 (over the skip placeholder)
+   9 DATA LVD-CELL LDR,  9 9 1 SUBI,     \ LVQ[LVD-1] := the entry branch's offset
+   10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
+   11 CP DBASE SUB,  11 10 0 STR,
+   $5400004B C-EMITW                     \ b.lt +8 (over the skip placeholder)
    J-LVLEAVE
    C-PUSHCP ;
 
@@ -3760,6 +3775,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : J-+LOOP ( -- )                   \ cross the limit boundary in the step's direction
    J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
+   LBL {: plain :}
+   9 DATA LVD-CELL LDR,  9 9 1 SUBI,     \ a `?do` opened this level: rewrite its entry
+   10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
+   9 10 0 LDR,  9 plain CBZ,
+   10 DBASE 9 ADD,  11 $54000041 LIT64,  11 10 0 STRW,  \ b.ne +8: skip equal bounds only
+   plain LBL,
    W-POP9 C-EMITW                        \ step -> x9
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    $F940018D C-EMITW                     \ ldr x13,[x12]      index

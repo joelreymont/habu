@@ -20,12 +20,11 @@ require src/habu/layout.f
 \
 \ WHAT IS IN IT: every claim whose extent is DECLARED - a band with a length
 \ constant, or a single cell. That is the whole map from $3A00 up, where every
-\ library band lives, and all DATA-BANDS rows. THREE LOW CLAIMS ARE OUT,
-\ because their extent exists only as an emitter convention and inventing one
-\ would be worse than omitting it: LVH-OFF ($580) and LVF-OFF ($2C0), the
-\ DO/LEAVE level arrays LVD-CELL indexes with no declared cap, and the $1A0 seal
-\ fixture poke cell, which no constant names. All three are below $800, where no
-\ library band reaches.
+\ library band lives, and all DATA-BANDS rows. TWO LOW CLAIMS ARE OUT, both
+\ below $800, where no library band reaches: LVF-OFF ($2C0), the DO level array
+\ of loop-entry frame bytes, whose LV-LEVELS cells lie inside VVAL-STACK, a pair
+\ CLAIMS-ASSERT would refuse; and the $1A0 seal fixture poke cell, which no
+\ constant names.
 \
 \ DELIBERATE ALIASES ARE ONE ROW, NOT TWO. The friend arena is one row, not the
 \ eighteen cells inside it. VVAL-STACK is one row of VSMAX cells: DEF-TKA-CELL
@@ -111,9 +110,11 @@ variable NAMES-U
    s" RSP-CELL" NAME,
    s" EXITH-CELL" NAME,
    s" LVD-CELL" NAME,
+   s" LVH-LEVELS" NAME,
    s" GENIO-ABI" NAME,
    s" AOT-SPAN" NAME,
    s" SIGNAL-ABI" NAME,
+   s" LVQ-LEVELS" NAME,
    s" FRAME-CELL" NAME,
    s" QFRAME-CELL" NAME,
    s" BODYBUF" NAME,
@@ -231,9 +232,11 @@ create TAB
    RSP-CELL                       ,  1 cells ,
    EXITH-CELL                     ,  1 cells ,
    LVD-CELL                       ,  1 cells ,
+   LVH-OFF                        ,  LV-LEVELS cells ,
    GENIO-ABI:OUT-CELL             ,  GENIO-ABI:END GENIO-ABI:OUT-CELL - ,
    AOT-CELLS:SPAN-TABLE-CELL      ,  3 cells ,
    SIGNAL-ABI:STUB-CELL           ,  3 cells ,
+   LVQ-OFF                        ,  LV-LEVELS cells ,
    FRAME-CELL                     ,  1 cells ,
    QFRAME-CELL                    ,  1 cells ,
    BODYBUF-OFF                    ,  BODYBUF-CAP 2 + ,

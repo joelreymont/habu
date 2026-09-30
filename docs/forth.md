@@ -755,10 +755,16 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   frames of the current quotation or definition, never an enclosing quotation's;
   loop frames are separate from the typed return stack. A `do` whose every body
   path returns or throws has no normal continuation; `?do` keeps its zero-trip
-  exit; `leave` is the explicit exit. `+loop` adds its step wrapping and ends
-  only when the index crosses between limit-1 and limit in the step's direction
-  (Forth 2012 6.1.0140): equal bounds run once with a negative step and a whole
-  cycle with a positive one, unlike `loop`.
+  exit; `leave` is the explicit exit. `do` always takes its first turn. `?do`
+  tests its bounds by its closer's rule before that turn: `?do … loop` enters
+  only while start < limit, signed, so `-1 0 ?do` and `MIN-N 0 ?do` skip as
+  `0 0 ?do` does and a count at or below zero takes no turn; `?do … +loop`
+  skips only equal bounds, since its step may count down to a limit below the
+  start. `+loop` adds its step wrapping and ends only when the index crosses
+  between limit-1 and limit in the step's direction (Forth 2012 6.1.0140):
+  equal bounds run once with a negative step and a whole cycle with a positive
+  one, unlike `loop`. The checker models frames, not trip counts, so the entry
+  rule changes no effect.
 - **`RECURSE` uses the declared effect**, a fresh copy per call; keep the raw
   declared signature stable after `CHECK!`.
 - **Checked `catch` is quotation catch**: `[: WORD drop ;] catch`, consuming
@@ -881,6 +887,10 @@ by name with the count it saw and the ceiling, and none truncates.
 - **`begin` nesting in one definition: `JIT-SNAP:FRAMES`, 28**
   (`src/habu/layout.f`), the JIT's value-stack snapshot frames per definition.
   Past it: `hb: BEGIN nesting full at 28 frames: <name> needs <depth>`, rc 75.
+  Factor the inner loops into their own words.
+- **`do` and `?do` nesting in one definition: `LV-LEVELS`, 16**
+  (`src/habu/layout.f`), the JIT's per-level `leave` chain and `?do` entry-test
+  records. Past it: `hb: control-flow nesting too deep: do` (or `?do`), rc 70.
   Factor the inner loops into their own words.
 - **Data space: `DATA-SIZE - PROF-CNT-BYTES`**, 33,030,080 bytes on
   linux-aarch64 (`src/os/linux/layout.f`, `src/habu/layout.f`; `DATA-SIZE` is

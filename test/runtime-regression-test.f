@@ -1028,6 +1028,43 @@ variable GE-CF-BODY-U
    s" control-flow nesting too deep" s" hb cf-cap eval-catch diag" GE-EXPECT-ERR-HAS
    s" PASS: control-flow depth cap fail-closed rc70 (no overflow, catchable)" type cr ;
 
+\ Build "variable HITS : DEEP ( -- ) " + n * opener + "1 HITS +! " + n * closer
+\ + "; DEEP ...": n nested counted loops of two turns each, run once, and a
+\ check that prints true when they took 2^LV-LEVELS turns.
+: GE-DO-NEST ( n ptr u8 n ptr u8 n -- ) {: n:n op:ptr opu:n cl:ptr clu:n :}
+   GE-CF-BODY-RESET
+   s" variable HITS : DEEP ( -- ) " GE-CF-BODY+
+   n 0 ?do op opu GE-CF-BODY+ loop
+   s" 1 HITS +! " GE-CF-BODY+
+   n 0 ?do cl clu GE-CF-BODY+ loop
+   s" ; DEEP HITS @ 1 LV-LEVELS lshift = . cr" GE-CF-BODY+ ;
+
+: GE-DO-OVERCAP-1 ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: op:ptr opu:n cl:ptr clu:n label:ptr labelu:n :}
+   \ One `do` level past LV-LEVELS must fail closed rc 70 with the named cap
+   \ diagnostic, never a register dump: the JIT keeps a `leave` chain head
+   \ (LVH) and a `?do` entry-test offset (LVQ) per level, the cell past LVQ's
+   \ last is FRAME-CELL, and a `+loop` rewrites code at the offset it reads
+   \ there. LVOPEN refuses before it writes either.
+   GE-HB-RESET
+   LV-LEVELS 1 + op opu cl clu GE-DO-NEST
+   GE-CF-BODY$ RUNTIME-RUNNER:SOURCE
+   70 label labelu GE-EXPECT-RC
+   s" control-flow nesting too deep" label labelu GE-EXPECT-ERR-HAS
+   s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
+
+: GE-DO-DEPTH-CAP ( -- )
+   \ LV-LEVELS nested loops compile and take every turn, each `+loop` settling
+   \ its own `?do`; one more `?do` or `do` is refused.
+   GE-HB-RESET
+   LV-LEVELS s" 2 0 ?do " s" 1 +loop " GE-DO-NEST
+   GE-CF-BODY$ RUNTIME-RUNNER:SOURCE
+   s" hb do-cap legal" GE-EXPECT-OK
+   s" -1" s" hb do-cap legal turns" GE-EXPECT-OUT-HAS
+   s" 2 0 ?do " s" 1 +loop " s" hb do-cap ?do plus1" GE-DO-OVERCAP-1
+   s" 2 0 do " s" loop " s" hb do-cap do plus1" GE-DO-OVERCAP-1
+   s" PASS: do nesting cap fail-closed rc70 (no overflow)" type cr ;
+
 : GE-RXE-CATCH-USABLE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n code:ptr codeu:n diag:ptr diagu:n :}
    \ dot habu-raw-exit-compile: one recoverable compile-error misuse evaluated
@@ -1430,6 +1467,7 @@ public
    GE-ORPHAN-CLOSER
    LOOP-OPENER:RUN
    GE-CF-DEPTH-CAP
+   GE-DO-DEPTH-CAP
    GE-RAWEXIT-RECOVER
    GE-RAWEXIT-RESIDUAL
    GE-QUOT-NEST
