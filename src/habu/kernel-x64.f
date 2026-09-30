@@ -3517,10 +3517,9 @@ public
 : PURE, ( -- )
    ARITH-ROWS,  COMPARE-ROWS,  STACK-ROWS,  MEMORY-ROWS,  FLOAT-ROWS, ;
 \ ---- profiler rows -----------------------------------------------------------
-\ The sampling half of habu1.f's profiler rows: src/habu/prof-x64.f emits the
-\ SIGALRM handler, its restorer and the index helpers once, then each body
-\ (docs/x86-64.md "Profiler rows"). prof-report, prof-json and prof-row come
-\ with the report half.
+\ habu1.f's profiler rows: src/habu/prof-x64.f emits the SIGALRM handler, its
+\ restorer, the index helpers, the sync, the printers and the reports once,
+\ then each body (docs/x86-64.md "Profiler rows").
 
 : PROFILER, ( -- )
    X64PROF:HELPERS,
@@ -3528,7 +3527,10 @@ public
    s" prof-off" [: X64PROF:OFF-BODY ;] PRIM
    s" prof-reset" [: X64PROF:RESET-BODY ;] PRIM
    s" prof-rate" [: X64PROF:RATE-BODY ;] PRIM
-   s" prof-pc>rec" [: X64PROF:PCREC-BODY ;] PRIM ;
+   s" prof-pc>rec" [: X64PROF:PCREC-BODY ;] PRIM
+   s" prof-report" [: X64PROF:REPORT-BODY ;] PRIM
+   s" prof-json" [: X64PROF:JSON-BODY ;] PRIM
+   s" prof-row" [: X64PROF:ROW-BODY ;] PRIM ;
 
 \ The whole kernel: the helpers, then every section.
 : KERNEL, ( -- )
