@@ -76,7 +76,7 @@ touched. A transfer ended by the stall test fails with
 ## Performing a request
 
 `PERFORM` writes into a caller-owned span and requires capacity `1..67108864`.
-Habu cannot hand libcurl a callback into checked code, and none is needed:
+It needs no callback into checked code ([ffi-callback.md](ffi-callback.md)):
 libcurl's default write callback is `fwrite`, so `CURLOPT_WRITEDATA` is given an
 `open_memstream` stream and `memcpy` moves the finished bytes into the caller's
 span. The stream and its buffer are released on every branch, and the handle

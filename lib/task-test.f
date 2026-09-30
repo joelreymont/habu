@@ -951,6 +951,60 @@ TASK:MIN-STACK TASK:TASK HALTED-TASK
    JOIN-HALT TASK-EXIT-MARK TASK:HIS @ 1 T=
    JOIN-HALT TASK:JOIN E-TASK-NO-RESULT JOIN-ERR= ;
 
+\ A HALT THAT MEETS A TASK'S CLEANUP RUNS IT ONCE, AND THE CLEANUP SEES IT.
+\ The cleanup pauses until the owner lets it return, which the owner does once
+\ the cleanup has turned twice after a HALT, so one of its TASK:PAUSEs has read
+\ the request. One task, its cleanup registered once, runs two rounds. In the
+\ first the body has returned and the HALT lands in its cleanup; in the second,
+\ a later activation of the same task, a HALT ends the body at TASK:PAUSE and a
+\ second HALT lands in that exit's cleanup. Either way the cleanup's PAUSE
+\ yields rather than entering the halted exit, and TASK:HALTED? answers true
+\ there.
+TASK-TEST-ALIGN8
+variable EXIT-HALT-RUNS               \ times the cleanup started
+variable EXIT-HALT-TURNS              \ the cleanup's TASK:PAUSE turns
+variable EXIT-HALT-GO                 \ the owner lets the cleanup return
+variable EXIT-HALT-SEEN               \ TASK:HALTED? was true in the cleanup
+TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
+
+: EXIT-HALT-CLEAN ( -- )
+   1 EXIT-HALT-RUNS atomic-add drop
+   begin EXIT-HALT-GO atomic@ 0= while
+      1 EXIT-HALT-TURNS atomic-add drop
+      TASK:PAUSE
+   repeat
+   TASK:HALTED? if 1 EXIT-HALT-SEEN atomic! then ;
+
+: EXIT-HALT-RESET ( -- )
+   0 EXIT-HALT-RUNS atomic!
+   0 EXIT-HALT-TURNS atomic!
+   0 EXIT-HALT-GO atomic!
+   0 EXIT-HALT-SEEN atomic! ;
+
+\ Halts the task in the cleanup it is running, lets the cleanup return once it
+\ has paused past the request, and reads what the cleanup saw.
+: EXIT-HALT-FINISH ( -- )
+   EXIT-HALT-RUNS 1 APP-WAIT-CELL
+   EXIT-HALT-TASK TASK:HALT
+   EXIT-HALT-TURNS EXIT-HALT-TURNS atomic@ 2 + APP-WAIT-CELL
+   1 EXIT-HALT-GO atomic!
+   EXIT-HALT-TASK APP-WAIT-DONE
+   s" a HALT landing in a running cleanup runs the cleanup once" T-LABEL
+   EXIT-HALT-RUNS atomic@ 1 T=
+   s" TASK:HALTED? is true in a cleanup the HALT landed in" T-LABEL
+   EXIT-HALT-SEEN atomic@ 1 T=
+   EXIT-HALT-TASK TASK:KILL ;
+
+: TASK-TEST-EXIT-HALT ( -- )
+   ['] EXIT-HALT-CLEAN EXIT-HALT-TASK TASK:AT-EXIT
+   EXIT-HALT-RESET
+   [: ;] EXIT-HALT-TASK TASK:ACTIVATE
+   EXIT-HALT-FINISH
+   EXIT-HALT-RESET
+   ['] TASK-PAUSER EXIT-HALT-TASK TASK:ACTIVATE
+   EXIT-HALT-TASK TASK:HALT
+   EXIT-HALT-FINISH ;
+
 \ A join needs a task that has been started: one that was never activated and one
 \ that was only prepared have nothing to wait for.
 : TASK-TEST-JOIN-REFUSED ( -- )
@@ -1507,6 +1561,517 @@ variable DONE-PUB-MISSES
    DONE-PUB-MISSES @ 0 T=
    TASK-LIVE-COUNT base T= ;
 
+\ ---- exposed tasks and callback slots (docs/ffi-callback.md) ------------------
+\ The slot rows and the EXPOSED state are lib/task.f's own, so their refusals
+\ are pinned here with bare slot numbers; lib/ffi-callback-test.f drives them
+\ through real callbacks.
+TASK:MIN-STACK TASK:TASK EXPOSE-CTX
+TASK:MIN-STACK TASK:TASK EXPOSE-BUSY
+
+TASK-TEST-ALIGN8
+variable EXPOSE-GATE
+variable EXPOSE-BUSY-CTX              \ a running task's own context number
+variable EXPOSE-OLD-CTX               \ EXPOSE-CTX's context, kept past its UNEXPOSE
+
+CB-POOL 1 - constant EXPOSE-SLOT      \ the last two of the engine's slots
+CB-POOL 2 - constant EXPOSE-SLOT-B
+
+: EXPOSE-BUSY-BODY ( -- )
+   TASK:SELF-CONTEXT EXPOSE-BUSY-CTX atomic!
+   begin EXPOSE-GATE atomic@ 0= while TASK:PAUSE repeat ;
+
+\ Slot k's owner cell, reached as the engine's thunk reaches it: through the
+\ row table the main region's CB-ROWS publishes.
+: SLOT-OWNER ( n -- ptr n ) {: k:n :}
+   TASK:MAIN-BASE {: base :}
+   base CB-ROWS + atomic@ base FFI:>CELL - {: table:n :}
+   base table + k CB-ROW-BYTES * + CB-ROW-OWNER + ;
+
+\ A task that was never prepared, and one that is running, are neither exposed
+\ nor exposable.
+: TASK-TEST-EXPOSE-STATES ( -- )
+   s" UNEXPOSE of a task never exposed" T-LABEL
+   [: EXPOSE-CTX TASK:UNEXPOSE ;] E-TASK-STATE TTHROWSQ
+   s" CONTEXT of a task never exposed" T-LABEL
+   [: EXPOSE-CTX TASK:CONTEXT drop ;] E-TASK-STATE TTHROWSQ
+   ['] EXPOSE-BUSY-BODY EXPOSE-BUSY TASK:ACTIVATE
+   begin EXPOSE-BUSY-CTX atomic@ 0= while TASK:PAUSE repeat
+   s" EXPOSE of a running task" T-LABEL
+   [: EXPOSE-BUSY TASK:EXPOSE ;] E-TASK-STATE TTHROWSQ
+   s" UNEXPOSE of a running task" T-LABEL
+   [: EXPOSE-BUSY TASK:UNEXPOSE ;] E-TASK-STATE TTHROWSQ
+   s" CONTEXT of a running task" T-LABEL
+   [: EXPOSE-BUSY TASK:CONTEXT drop ;] E-TASK-STATE TTHROWSQ
+   s" CONTEXT-BIND of a running task's region from another task" T-LABEL
+   [: EXPOSE-BUSY-CTX atomic@ EXPOSE-SLOT-B TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ ;
+
+: TASK-TEST-EXPOSE-BINDS ( -- )
+   s" CONTEXT-BIND of a slot past the pool" T-LABEL
+   [: EXPOSE-CTX TASK:CONTEXT CB-POOL TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
+   s" CONTEXT-BIND of a slot below it" T-LABEL
+   [: EXPOSE-CTX TASK:CONTEXT -1 TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
+   s" CONTEXT-BIND of a number that is no context" T-LABEL
+   [: 0 EXPOSE-SLOT TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
+   EXPOSE-CTX TASK:CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND
+   s" binding a slot to the context it names is a no-op" T-LABEL
+   [: EXPOSE-CTX TASK:CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch 0 T=
+   \ The row as a binder leaves it between naming the context and handing the
+   \ row back: that binder can still drop it, so the binding is not final.
+   s" CONTEXT-BIND of a slot a bind holds BUSY, though it names the context" T-LABEL
+   CB-ROW-BUSY EXPOSE-SLOT SLOT-OWNER atomic!
+   [: EXPOSE-CTX TASK:CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
+   0 EXPOSE-SLOT SLOT-OWNER atomic!
+   s" CONTEXT-BIND of a slot naming another context" T-LABEL
+   [: TASK:SELF-CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
+   s" CONTEXT-UNBIND of a slot past the pool" T-LABEL
+   [: CB-POOL TASK:CONTEXT-UNBIND ;] E-TASK-STATE TTHROWSQ ;
+
+: TASK-TEST-EXPOSE ( -- )
+   TASK-LIVE-COUNT {: base:n :}
+   0 EXPOSE-GATE atomic!
+   0 EXPOSE-BUSY-CTX atomic!
+   TASK-TEST-EXPOSE-STATES
+   EXPOSE-CTX TASK:EXPOSE
+   s" an exposed task and a running one both count as live" T-LABEL
+   TASK-LIVE-COUNT base 2 + T=
+   s" EXPOSE of an exposed task" T-LABEL
+   [: EXPOSE-CTX TASK:EXPOSE ;] E-TASK-STATE TTHROWSQ
+   TASK-TEST-EXPOSE-BINDS
+   1 EXPOSE-GATE atomic!
+   EXPOSE-BUSY TASK:KILL
+   EXPOSE-CTX TASK:CONTEXT EXPOSE-OLD-CTX !
+   EXPOSE-CTX TASK:UNEXPOSE
+   s" UNEXPOSE gives the count back" T-LABEL
+   TASK-LIVE-COUNT base T=
+   s" UNEXPOSE dropped the slot naming the task: it binds to the main context" T-LABEL
+   [: TASK:SELF-CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch 0 T=
+   EXPOSE-SLOT TASK:CONTEXT-UNBIND
+   s" CONTEXT-BIND of a CONSTRUCTED task's region" T-LABEL
+   [: EXPOSE-OLD-CTX @ EXPOSE-SLOT TASK:CONTEXT-BIND ;] E-TASK-STATE TTHROWSQ
+   EXPOSE-CTX TASK:EXPOSE
+   EXPOSE-CTX TASK:CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND
+   EXPOSE-CTX TASK:KILL
+   s" KILL of an exposed task unexposes it: the count is back" T-LABEL
+   TASK-LIVE-COUNT base T=
+   s" ... and its slot is free" T-LABEL
+   [: TASK:SELF-CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch 0 T=
+   EXPOSE-SLOT TASK:CONTEXT-UNBIND ;
+
+\ A HINT POSTED WHILE EXPOSED DIES WITH THE EXPOSURE. An exposed task is woken
+\ like a running one, and its park outlives UNEXPOSE with the rest of its
+\ memory, so the next ACTIVATE of the same TCB has to open the park at zero. On
+\ lib/task.f before it did, the new run's first TASK:STOP took the old hint and
+\ returned with no WAKE of its own: EXPOSE-WOKE read 1 after the sleep.
+TASK:MIN-STACK TASK:TASK EXPOSE-WAKE
+
+TASK-TEST-ALIGN8
+variable EXPOSE-WOKE
+
+50 constant EXPOSE-WAKE-MS            \ the new run's time to take a stale hint
+
+: EXPOSE-WAKE-BODY ( -- )
+   TASK:STOP
+   1 EXPOSE-WOKE atomic! ;
+
+: TASK-TEST-EXPOSE-WAKE ( -- )
+   TASK-LIVE-COUNT {: base:n :}
+   0 EXPOSE-WOKE atomic!
+   EXPOSE-WAKE TASK:EXPOSE
+   EXPOSE-WAKE TASK:WAKE
+   EXPOSE-WAKE TASK:UNEXPOSE
+   ['] EXPOSE-WAKE-BODY EXPOSE-WAKE TASK:ACTIVATE
+   EXPOSE-WAKE-MS >MS TASK:SLEEP
+   s" a hint posted while exposed does not reach the next run" T-LABEL
+   EXPOSE-WOKE atomic@ 0 T=
+   s" ... which still waits in its STOP, so its WAKE is admitted" T-LABEL
+   [: EXPOSE-WAKE TASK:WAKE ;] catch 0 T=
+   s" ... and releases it" T-LABEL
+   EXPOSE-WOKE 1 STOP-REACHED? TTRUE
+   EXPOSE-WAKE TASK:KILL
+   s" the case gives the live count back" T-LABEL
+   TASK-LIVE-COUNT base T= ;
+
+\ A WAKE OR A HALT RACING THE KILL THAT RELEASES ITS TASK. TASK:WAKE reads the
+\ state and then posts the park, and TASK:HALT posts it after its CAS, so the
+\ owner's KILL can end and release the task between the two steps. Each round
+\ runs a task and kills it while two wakers and a halter name it without
+\ pause. A WAKE posts or is refused E-TASK-STATE, and a HALT always succeeds,
+\ being a no-op on a task that has ended or been released, so only the wakers'
+\ answers count as posts and refusals. On lib/task.f before the park lived as
+\ long as its TCB, the release destroyed the park under such a post, which
+\ answered E-TASK-SEM-STATE or E-TASK-THREAD: five runs of this case counted 0,
+\ 3, 5, 0 and 5 such answers in their 20000 rounds, on a 12-core host at load
+\ 50 to 65, and three runs after it none. A hit needs a poster preempted
+\ between its two steps, so an idle host can count none.
+TASK:MIN-STACK TASK:TASK WAKE-RACE-TASK
+TASK:MIN-STACK TASK:TASK WAKE-RACE-W1
+TASK:MIN-STACK TASK:TASK WAKE-RACE-W2
+TASK:MIN-STACK TASK:TASK WAKE-RACE-H
+
+TASK-TEST-ALIGN8
+variable WAKE-RACE-OK                 \ wakes that posted
+variable WAKE-RACE-REFUSED            \ wakes refused E-TASK-STATE
+variable WAKE-RACE-ODD                \ any other wake answer, any HALT throw
+
+20000 constant WAKE-RACE-ROUNDS
+64 constant WAKE-RACE-BURST           \ posts between a poster's PAUSEs
+
+: WAKE-RACE-COUNT ( n -- ) {: rc:n :}
+   rc 0= if 1 WAKE-RACE-OK atomic-add drop exit then
+   rc E-TASK-STATE = if 1 WAKE-RACE-REFUSED atomic-add drop exit then
+   1 WAKE-RACE-ODD atomic-add drop ;
+
+: WAKE-RACE-WAKER ( -- )
+   begin
+      WAKE-RACE-BURST 0 ?do
+         [: WAKE-RACE-TASK TASK:WAKE ;] catch WAKE-RACE-COUNT
+      loop
+      TASK:PAUSE
+   again ;
+
+: WAKE-RACE-HALTER ( -- )
+   begin
+      WAKE-RACE-BURST 0 ?do
+         [: WAKE-RACE-TASK TASK:HALT ;] catch
+         0 <> if 1 WAKE-RACE-ODD atomic-add drop then
+      loop
+      TASK:PAUSE
+   again ;
+
+: WAKE-RACE-BODY ( -- )
+   begin TASK:HALTED? if exit then TASK:STOP again ;
+
+: TASK-TEST-WAKE-RACE ( -- )
+   TASK-LIVE-COUNT {: base:n :}
+   0 WAKE-RACE-OK atomic!
+   0 WAKE-RACE-REFUSED atomic!
+   0 WAKE-RACE-ODD atomic!
+   ['] WAKE-RACE-WAKER WAKE-RACE-W1 TASK:ACTIVATE
+   ['] WAKE-RACE-WAKER WAKE-RACE-W2 TASK:ACTIVATE
+   ['] WAKE-RACE-HALTER WAKE-RACE-H TASK:ACTIVATE
+   WAKE-RACE-ROUNDS 0 ?do
+      ['] WAKE-RACE-BODY WAKE-RACE-TASK TASK:ACTIVATE
+      WAKE-RACE-TASK TASK:KILL
+   loop
+   WAKE-RACE-W1 TASK:KILL
+   WAKE-RACE-W2 TASK:KILL
+   WAKE-RACE-H TASK:KILL
+   s" a WAKE racing a KILL posts or is refused E-TASK-STATE, a HALT succeeds" T-LABEL
+   WAKE-RACE-ODD atomic@ 0 T=
+   s" the wakers landed on both sides of the KILL" T-LABEL
+   WAKE-RACE-OK atomic@ 0 <> WAKE-RACE-REFUSED atomic@ 0 <> and TTRUE
+   s" the race gives the live count back" T-LABEL
+   TASK-LIVE-COUNT base T= ;
+
+\ A HALT REACHES ONLY THE RUN ITS CAS SAW. Each round runs a task and kills
+\ it once its body has spun a while; in every other round a halter names the
+\ task in a burst, and it leaves alone the round it finds when its burst ends.
+\ The body spins on TASK:HALTED? and, once it turns true, reads its own state
+\ at the offset src/habu/task-abi.f publishes, as the entry-race case does: a
+\ request made on this run comes before what HALTED? reads, so the state then
+\ says HALT-REQ, and RUNNING means a HALT whose CAS met an earlier run. Such a
+\ HALT ends its burst in a round the halter then leaves alone, so nothing but
+\ the KILL can make that run's HALT-REQ, and the KILL waits for turns that each
+\ check first. On lib/task.f before the CAS was the whole request, HALT stored
+\ a stop flag after its CAS, and a halter preempted between the two set a
+\ later run's: five runs of this case counted 0, 0, 0, 0 and 1 such reads in
+\ their 20000 rounds, on a 12-core host at load 17 to 53, and three runs after
+\ it none. A hit needs the halter preempted between its two steps, so an idle
+\ host can count none. Runs the halter ended before their KILL are counted too,
+\ so a case whose halter stopped landing fails instead of passing untested.
+TASK:MIN-STACK TASK:TASK HALT-RACE-TASK
+TASK:MIN-STACK TASK:TASK HALT-RACE-H
+
+TASK-TEST-ALIGN8
+variable HALT-RACE-STALE              \ a HALTED? whose request met another run
+variable HALT-RACE-ENDED              \ runs the halter ended before the KILL
+variable HALT-RACE-IN                 \ the run's body has started
+variable HALT-RACE-SPINS              \ the bodies' turns, every round
+variable HALT-RACE-ROUND              \ the owner's round, counted once it runs
+
+20000 constant HALT-RACE-ROUNDS
+4000 constant HALT-RACE-LIVE          \ turns a run spins before its KILL
+
+: HALT-RACE-STATE@ ( -- n )
+   HALT-RACE-TASK BYTE-VIEW TASK-ABI:STATUS-OFF + CELL-VIEW atomic@ ;
+
+: HALT-RACE-BODY ( -- )
+   1 HALT-RACE-IN atomic!
+   begin
+      TASK:HALTED? if
+         HALT-RACE-STATE@ TASK-ABI:RUNNING = if
+            1 HALT-RACE-STALE atomic-add drop
+         then
+         exit
+      then
+      1 HALT-RACE-SPINS atomic-add drop
+   again ;
+
+: HALT-RACE-BURST ( -- )
+   HALT-RACE-ROUND atomic@ {: r:n :}
+   begin HALT-RACE-ROUND atomic@ r = TASK:HALTED? 0= and while
+      HALT-RACE-TASK TASK:HALT
+   repeat ;
+
+: HALT-RACE-SKIP ( -- )
+   HALT-RACE-ROUND atomic@ {: r:n :}
+   begin HALT-RACE-ROUND atomic@ r = while TASK:PAUSE repeat ;
+
+: HALT-RACE-HALTER ( -- )
+   begin HALT-RACE-BURST HALT-RACE-SKIP again ;
+
+: HALT-RACE-RUN-ONE ( -- )
+   0 HALT-RACE-IN atomic!
+   ['] HALT-RACE-BODY HALT-RACE-TASK TASK:ACTIVATE
+   1 HALT-RACE-ROUND atomic-add drop
+   begin HALT-RACE-IN atomic@ 0= while TASK:PAUSE repeat
+   HALT-RACE-SPINS atomic@ HALT-RACE-LIVE + {: want:n :}
+   begin
+      HALT-RACE-SPINS atomic@ want < HALT-RACE-TASK TASK:DONE? 0= and
+   while TASK:PAUSE repeat
+   HALT-RACE-TASK TASK:DONE? if 1 HALT-RACE-ENDED +! then
+   HALT-RACE-TASK TASK:KILL ;
+
+: TASK-TEST-HALT-RACE ( -- )
+   TASK-LIVE-COUNT {: base:n :}
+   0 HALT-RACE-STALE atomic!
+   0 HALT-RACE-ENDED atomic!
+   0 HALT-RACE-SPINS atomic!
+   0 HALT-RACE-ROUND atomic!
+   ['] HALT-RACE-HALTER HALT-RACE-H TASK:ACTIVATE
+   HALT-RACE-ROUNDS 0 ?do HALT-RACE-RUN-ONE loop
+   HALT-RACE-H TASK:KILL
+   s" no TASK:HALTED? reads a request a HALT made on another run" T-LABEL
+   HALT-RACE-STALE atomic@ 0 T=
+   s" the halter ended runs before their KILL" T-LABEL
+   HALT-RACE-ENDED atomic@ 0 <> TTRUE
+   s" the halter's own run ended clean" T-LABEL
+   HALT-RACE-H TASK:THROW@ 0 T=
+   s" the race gives the live count back" T-LABEL
+   TASK-LIVE-COUNT base T= ;
+
+\ A BIND RACING AN UNEXPOSE. CONTEXT-BIND checks that its context is exposed and
+\ only then names its row, so an UNEXPOSE on another thread in between could
+\ sweep the rows before the row was named and leave it naming a region no
+\ longer exposed. Each round exposes the host, releases the binder and
+\ unexposes at once, after a spin whose length sweeps the two threads' offset
+\ across that window. With both done, a slot still naming the unexposed host
+\ refuses a bind to the main context: on lib/task.f before UNEXPOSE left
+\ EXPOSED first and the bind read its task again, five runs of this case left
+\ 6495, 6759, 6088, 5187 and 4372 such slots in their 20000 rounds, and the
+\ runs after it left none. The binder's answers are counted both
+\ ways, so a case whose binder stopped landing on both sides of the UNEXPOSE
+\ fails instead of passing untested. A refused UNEXPOSE met the binder's row
+\ mid-move and put EXPOSED back, so the one after it, the binder parked,
+\ succeeds.
+TASK:MIN-STACK TASK:TASK BIND-RACE-HOST
+TASK:MIN-STACK TASK:TASK BIND-RACE-BINDER
+
+TASK-TEST-ALIGN8
+variable BIND-RACE-GO                 \ the round the binder may start
+variable BIND-RACE-DONE               \ the round the binder has finished
+variable BIND-RACE-CTX                \ the host's context number
+variable BIND-RACE-BOUND              \ binds that succeeded
+variable BIND-RACE-LOST               \ binds refused E-TASK-STATE
+variable BIND-RACE-STALE              \ slots left naming the unexposed host
+variable BIND-RACE-ODD                \ any other answer, from either side
+
+20000 constant BIND-RACE-ROUNDS
+2048 constant BIND-RACE-SPREAD        \ the UNEXPOSE's delay, in empty loop turns
+
+: BIND-RACE-ODD+ ( -- )
+   1 BIND-RACE-ODD atomic-add drop ;
+
+: BIND-RACE-TRY ( -- )
+   [: BIND-RACE-CTX @ EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch {: rc:n :}
+   rc 0= if 1 BIND-RACE-BOUND +! exit then
+   rc E-TASK-STATE = if 1 BIND-RACE-LOST +! exit then
+   BIND-RACE-ODD+ ;
+
+: BIND-RACE-BODY ( -- )
+   BIND-RACE-ROUNDS 0 ?do
+      begin BIND-RACE-GO atomic@ i 1 + < while repeat
+      BIND-RACE-TRY
+      i 1 + BIND-RACE-DONE atomic!
+   loop ;
+
+: BIND-RACE-SPIN ( n -- )
+   0 ?do loop ;
+
+: BIND-RACE-PROBE ( -- )
+   [: TASK:SELF-CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch
+   0 <> if 1 BIND-RACE-STALE +! then
+   EXPOSE-SLOT TASK:CONTEXT-UNBIND ;
+
+: BIND-RACE-ROUND ( n -- ) {: r:n :}
+   BIND-RACE-HOST TASK:EXPOSE
+   r BIND-RACE-GO atomic!
+   r BIND-RACE-SPREAD mod BIND-RACE-SPIN
+   [: BIND-RACE-HOST TASK:UNEXPOSE ;] catch {: rc:n :}
+   begin BIND-RACE-DONE atomic@ r < while repeat
+   rc 0= if BIND-RACE-PROBE exit then
+   rc E-TASK-STATE <> if BIND-RACE-ODD+ then
+   [: BIND-RACE-HOST TASK:UNEXPOSE ;] catch 0 <> if BIND-RACE-ODD+ then ;
+
+: TASK-TEST-BIND-RACE ( -- )
+   TASK-LIVE-COUNT {: base:n :}
+   0 BIND-RACE-GO atomic!
+   0 BIND-RACE-DONE atomic!
+   0 BIND-RACE-BOUND !
+   0 BIND-RACE-LOST !
+   0 BIND-RACE-STALE !
+   0 BIND-RACE-ODD atomic!
+   BIND-RACE-HOST TASK:EXPOSE
+   BIND-RACE-HOST TASK:CONTEXT BIND-RACE-CTX !
+   BIND-RACE-HOST TASK:UNEXPOSE
+   ['] BIND-RACE-BODY BIND-RACE-BINDER TASK:ACTIVATE
+   BIND-RACE-ROUNDS 0 do i 1 + BIND-RACE-ROUND loop
+   BIND-RACE-BINDER TASK:KILL
+   BIND-RACE-HOST TASK:KILL
+   s" no slot is left naming a task an UNEXPOSE racing its bind unexposed" T-LABEL
+   BIND-RACE-STALE @ 0 T=
+   s" every refusal on either side of that race is E-TASK-STATE" T-LABEL
+   BIND-RACE-ODD atomic@ 0 T=
+   s" the binder landed on both sides of the UNEXPOSE" T-LABEL
+   BIND-RACE-BOUND @ 0 <> BIND-RACE-LOST @ 0 <> and TTRUE
+   s" the race gives the live count back" T-LABEL
+   TASK-LIVE-COUNT base T= ;
+
+\ TWO BINDS RACING FOR ONE FREE SLOT. CONTEXT-BIND reads the row free and only
+\ then moves it to BUSY, so a bind that read it before another bind named it,
+\ and moved it after that bind handed it back, renamed the other's binding and
+\ both answered 0. Each round sends two binders at one free slot, one to the
+\ main context and one to its own region, after a spin that sweeps their
+\ offset, each side waiting in alternate rounds. The contexts differ, so one
+\ bind succeeds and the other is refused. On lib/task.f before the bind read
+\ its row again under BUSY, five runs of this case counted 5989, 6950, 6397,
+\ 6331 and 4505 rounds of 20000 in which both succeeded, on a 12-core host at
+\ load 20 to 21, and the runs after it none. Each binder must win rounds alone,
+\ so a case whose offset stopped sweeping both ways fails instead of passing
+\ untested.
+TASK:MIN-STACK TASK:TASK BIND-PAIR-P
+TASK:MIN-STACK TASK:TASK BIND-PAIR-Q
+
+TASK-TEST-ALIGN8
+variable BIND-PAIR-GO                 \ the round the binders may start
+variable BIND-PAIR-P-DONE             \ the round each binder has finished
+variable BIND-PAIR-Q-DONE
+variable BIND-PAIR-P-RC               \ each binder's answer in that round
+variable BIND-PAIR-Q-RC
+variable BIND-PAIR-MAIN               \ the main context number
+variable BIND-PAIR-BOTH               \ rounds in which both binds succeeded
+variable BIND-PAIR-P-WON              \ rounds each binder won alone
+variable BIND-PAIR-Q-WON
+
+20000 constant BIND-PAIR-ROUNDS
+64 constant BIND-PAIR-SPREAD          \ the waiting side's spin, in loop turns
+
+\ Binder `side` (0 or 1) spins in round r before it binds: odd rounds hold one
+\ side back and even rounds the other, by a delay that sweeps the spread.
+: BIND-PAIR-SPIN ( n n -- ) {: r:n side:n :}
+   r 2 mod side = if r 2 / BIND-PAIR-SPREAD mod BIND-RACE-SPIN then ;
+
+: BIND-PAIR-P-BODY ( -- )
+   BIND-PAIR-ROUNDS 0 ?do
+      begin BIND-PAIR-GO atomic@ i 1 + < while repeat
+      i 1 + 0 BIND-PAIR-SPIN
+      [: BIND-PAIR-MAIN @ EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch
+      BIND-PAIR-P-RC atomic!
+      i 1 + BIND-PAIR-P-DONE atomic!
+   loop ;
+
+\ Q binds its own region, and its end drops every row naming that region, so
+\ it outlives P's last bind: ending first, it would hand P a free slot in the
+\ final round and both binds would succeed.
+: BIND-PAIR-Q-BODY ( -- )
+   BIND-PAIR-ROUNDS 0 ?do
+      begin BIND-PAIR-GO atomic@ i 1 + < while repeat
+      i 1 + 1 BIND-PAIR-SPIN
+      [: TASK:SELF-CONTEXT EXPOSE-SLOT TASK:CONTEXT-BIND ;] catch
+      BIND-PAIR-Q-RC atomic!
+      i 1 + BIND-PAIR-Q-DONE atomic!
+   loop
+   BIND-PAIR-P-DONE BIND-PAIR-ROUNDS APP-WAIT-CELL ;
+
+\ The slot is freed before each round starts, while both binders wait, so the
+\ last round's binding is left to the binder's own end or the case's unbind.
+: BIND-PAIR-ROUND ( n -- ) {: r:n :}
+   EXPOSE-SLOT TASK:CONTEXT-UNBIND
+   r BIND-PAIR-GO atomic!
+   begin
+      BIND-PAIR-P-DONE atomic@ r < BIND-PAIR-Q-DONE atomic@ r < or
+   while repeat
+   BIND-PAIR-P-RC atomic@ {: p:n :}
+   BIND-PAIR-Q-RC atomic@ {: q:n :}
+   p 0= q 0= and if 1 BIND-PAIR-BOTH +! then
+   p 0= q E-TASK-STATE = and if 1 BIND-PAIR-P-WON +! then
+   q 0= p E-TASK-STATE = and if 1 BIND-PAIR-Q-WON +! then ;
+
+: TASK-TEST-BIND-PAIR ( -- )
+   TASK-LIVE-COUNT {: base:n :}
+   0 BIND-PAIR-GO atomic!
+   0 BIND-PAIR-P-DONE atomic!
+   0 BIND-PAIR-Q-DONE atomic!
+   0 BIND-PAIR-BOTH !
+   0 BIND-PAIR-P-WON !
+   0 BIND-PAIR-Q-WON !
+   TASK:SELF-CONTEXT BIND-PAIR-MAIN !
+   ['] BIND-PAIR-P-BODY BIND-PAIR-P TASK:ACTIVATE
+   ['] BIND-PAIR-Q-BODY BIND-PAIR-Q TASK:ACTIVATE
+   BIND-PAIR-ROUNDS 0 do i 1 + BIND-PAIR-ROUND loop
+   BIND-PAIR-P TASK:KILL
+   BIND-PAIR-Q TASK:KILL
+   EXPOSE-SLOT TASK:CONTEXT-UNBIND
+   s" two binds racing for one free slot never both succeed" T-LABEL
+   BIND-PAIR-BOTH @ 0 T=
+   s" every other round one bind wins and one is refused E-TASK-STATE" T-LABEL
+   BIND-PAIR-ROUNDS BIND-PAIR-BOTH @ -
+   BIND-PAIR-P-WON @ - BIND-PAIR-Q-WON @ - 0 T=
+   s" each binder won rounds alone" T-LABEL
+   BIND-PAIR-P-WON @ 0 <> BIND-PAIR-Q-WON @ 0 <> and TTRUE
+   s" the race gives the live count back" T-LABEL
+   TASK-LIVE-COUNT base T= ;
+
+\ An exposed task is process state no image carries: the capture sweep names it
+\ and ends the build, as it does an activated one.
+: TASK-EXPOSED-CAPTURE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/task.f" SB-APPEND TASK-LF
+   s" require lib/image-lifecycle.f" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK TEX-TASK" SB-APPEND TASK-LF
+   s" TEX-TASK TASK:EXPOSE" SB-APPEND TASK-LF
+   s" IMAGE-LIFECYCLE:PREPARE" SB-APPEND TASK-LF
+   SB$ ;
+
+: TASK-TEST-EXPOSED-CAPTURE ( -- )
+   TASK-EXPOSED-CAPTURE$ TASK-UNCAUGHT-RC s" exposed task at capture" TASK-EXPECT-FAIL ;
+
+\ THE LIVE COUNT IS THE MAIN REGION'S, WHOEVER ACTIVATES. The compiler's guard
+\ reads the main region's cell, so a worker that activates a worker has to count
+\ there: counted in its own region, the inner task was invisible once the outer
+\ one was released, and the main task defined a word beside a running thread.
+\ The child releases the outer worker and then defines, with the inner one
+\ still running: exit $4F at that definer.
+: TASK-WORKER-ACTIVATES$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/task.f" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK TWW-OUTER" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK TWW-INNER" SB-APPEND TASK-LF
+   s" variable TWW-UP" SB-APPEND TASK-LF
+   s" : TWW-IDLE ( -- ) begin TASK:PAUSE again ;" SB-APPEND TASK-LF
+   s" : TWW-START ( -- ) ['] TWW-IDLE TWW-INNER TASK:ACTIVATE 1 TWW-UP atomic! ;" SB-APPEND TASK-LF
+   s" : TWW-WAIT ( -- ) begin TWW-UP atomic@ 0= while TASK:PAUSE repeat ;" SB-APPEND TASK-LF
+   s" ' TWW-START TWW-OUTER TASK:ACTIVATE" SB-APPEND TASK-LF
+   s" TWW-WAIT" SB-APPEND TASK-LF
+   s" TWW-OUTER TASK:KILL" SB-APPEND TASK-LF
+   s" variable TWW-LATE" SB-APPEND TASK-LF
+   SB$ ;
+
+: TASK-TEST-WORKER-ACTIVATES ( -- )
+   TASK-WORKER-ACTIVATES$ TASK-RUN-STDIN TASK-LIVE-RC T-OUTCOME-EXITED= {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   TASK-ERR erru LEN>N s" variable" T$= ;
+
 : TASK-TEST-RUN ( -- )
    T-RESET
    TASK-TEST-CALLBACK-TYPES
@@ -1563,6 +2128,7 @@ variable DONE-PUB-MISSES
    TASK-TEST-EXIT-CHAIN-THROWS
    TASK-TEST-HALTED
    TASK-TEST-JOIN-HALTED
+   TASK-TEST-EXIT-HALT
    TASK-TEST-JOIN-REFUSED
    TASK-TEST-SLEEP-MAIN
    TASK-TEST-SLEEP-WORKER
@@ -1582,6 +2148,14 @@ variable DONE-PUB-MISSES
    TASK-TEST-ENTRY-RACE
    TASK-TEST-ENTRY-RELEASE
    TASK-TEST-DONE-PUBLISH
+   TASK-TEST-EXPOSE
+   TASK-TEST-EXPOSE-WAKE
+   TASK-TEST-WAKE-RACE
+   TASK-TEST-HALT-RACE
+   TASK-TEST-BIND-RACE
+   TASK-TEST-BIND-PAIR
+   TASK-TEST-EXPOSED-CAPTURE
+   TASK-TEST-WORKER-ACTIVATES
    T-REPORT ;
 
 TASK-TEST-RUN

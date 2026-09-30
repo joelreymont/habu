@@ -46,8 +46,9 @@ $B0 constant MSG-FREE-OFF
 $D8 constant MSG-FULL-OFF
 \ The task's own wake-up: TASK:STOP waits on this semaphore and TASK:WAKE posts
 \ it, so a loop that completes work for many tasks needs no semaphore per waiter.
-\ Same shape and lifetime as the two mailbox records above - a guard cell then
-\ one sem_t, created with the task and destroyed with its memory.
+\ Same shape as the two mailbox records above, a guard cell then one sem_t, but
+\ it lives as long as its TCB in this process and the capture sweep destroys
+\ it; ACTIVATE and EXPOSE drain it, so every run and exposure opens at zero.
 $100 constant PARK-OFF
 \ The task's outcome, read by TASK:JOIN after the task has ended: the cell
 \ TASK:RETURN stores and the flag that says it did, the joiner's claim on that

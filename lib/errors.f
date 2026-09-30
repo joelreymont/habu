@@ -168,6 +168,11 @@
 \ The library-path table has its own ceiling. The declarer reports the path,
 \ Habu word, and C symbol before throwing this code.
 -3505 constant E-FFI-LIBRARY-FULL
+\ lib/ffi-callback.f: a CALLBACK: declaration past the engine's CB-POOL stubs;
+\ a callback frame accessor used outside a live callback, a descriptor no
+\ declaration made, or a dispatch whose body cell was never stored.
+-3506 constant E-FFI-CALLBACK-FULL
+-3507 constant E-FFI-CALLBACK-STATE
 
 \ Tasking/threads: -3600..-3699
 -3600 constant E-TASK-FIRST
