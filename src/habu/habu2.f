@@ -9379,6 +9379,25 @@ variable P2SK
 : EM-P2X-STORE ( -- )
    5 DATA P2W0-CELL LDR,  LP2STORE LABEL@ BL, ;
 
+\ The scope chain is asked before any row that lowers a token as one of the
+\ engine's own words by its spelling. A token LFIND binds outside the global
+\ wordlist is that scope's word - `dup` inside a package that defines `dup` -
+\ and it takes the call path, whatever it spells and wherever its operands sit.
+\ The operator rows used to claim such a token when its operands were constants
+\ or registers and pass it to the call only when they were in memory, so one
+\ spelling meant two words inside one package and the checker, which certifies
+\ the scope chain's word (src/core/checker.f CHECKER-BIND), certified one of
+\ them: `: dup ( n -- n ) 1 + ;  : T ( -- n ) 5 dup ;` left two cells where one
+\ was certified (test/reopen-binding.f). A record's wordlist is its cell [40],
+\ 0 for the global one; a miss leaves the rows their token, because a keyword
+\ such as `>r` has no record at all.
+: C-SCOPED-SKIP ( label -- ) {: scoped:label :}
+   LBL {: global:label :}
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
+   13 global CBZ,
+   14 5 40 LDR,  14 scoped CBNZ,
+   global LBL, ;
+
 \ the pass-2 width dispatch: sits between the local-reference dispatch (locals
 \ shadow op names, checker parity) and the keyword tiers, so a wide fact at any
 \ transport tier is intercepted before its scalar lowering. Facts are recorded
@@ -9386,6 +9405,7 @@ variable P2SK
 : EM-COMPILE-P2WIDE ( -- )
    LBL {: notp2:label :}
    9 DATA P2-CELL LDR,  9 notp2 CBZ,
+   notp2 C-SCOPED-SKIP
    LMAIN LABEL@ LKWDUP2    3 1 ['] EM-P2X-DUP     P2W-ENTRY
    LMAIN LABEL@ LKWDROP2   4 1 ['] EM-P2X-DROP    P2W-ENTRY
    LMAIN LABEL@ LKWSWAP2   4 2 ['] EM-P2X-SWAP    P2W-ENTRY
@@ -11063,7 +11083,7 @@ public
 \ declares its own span. The guard comes first, so its throw leaves the window
 \ as the way out left it.
 : EM-COMPILE-LEGACY ( -- )
-   LBL LBL {: lnotsemi:label open:label :}
+   LBL LBL LBL {: lnotsemi:label open:label call:label :}
    LCOMPILE LABEL@ LBL,
    EXECUTABLE-JIT-GUARD
    9 DATA PROT:WINDOW LDR,  9 open CBNZ,
@@ -11075,7 +11095,9 @@ public
    EM-COMPILE-P2WIDE
    EM-COMPILE-KEYWORDS
    EM-COMPILE-LITERAL
+   call C-SCOPED-SKIP
    ENGINE-EMIT:EM-COMPILE-OPS
+   call LBL,
    EM-COMPILE-CALL ;
 
 ;package

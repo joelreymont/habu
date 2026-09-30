@@ -9230,13 +9230,12 @@ SHADOW-DIAG-DEFAULT
    a u pri CK-WL-CLAIMS? IF RES-TRUE EXIT THEN
    a u data-base CK-PKG-PUB-OFF + @ CK-WL-CLAIMS? ;
 
-\ The used-publics leg, reached only after every earlier CHECKER scope missed.
-\ Before a used public may bind, the engine gets the deciding vote:
-\ - the open package claims the tail: inner scope wins silently (docs/forth.md
-\   § Packages), and the checker has no signature for that word, so the
-\   reference is uncheckable — 0 here is E-UNDEFINED at the call site;
-\ - a global claims the tail: the documented global-vs-used collision, rejected
-\   at the reference site exactly as when the global carries a signature.
+\ The used-publics leg, reached only after every earlier scope missed: the
+\ open package's two wordlists were asked of the engine by CHECKER-BIND before
+\ the global leg, so neither claims the tail here. Before a used public may
+\ bind, the engine gets one more deciding vote: a global claims the tail, which
+\ is the documented global-vs-used collision, rejected at the reference site
+\ exactly as when the global carries a signature.
 \ A global the store knows only beyond the binding horizon was defined after
 \ this definition, so the engine's live wordlist claiming the tail is not a
 \ collision this reference can see. A global the store has no record of keeps
@@ -9248,7 +9247,6 @@ SHADOW-DIAG-DEFAULT
 : CHECKER-USED-BIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u CHECKER-USED-SYM {: usym:n :}
    usym 0= IF 0 EXIT THEN
-   a u CK-OPEN-CLAIMS? IF 0 EXIT THEN
    a u GLOBAL-BEYOND-HORIZON? 0= IF
       a u 0 CK-WL-CLAIMS? IF a u 0 CHECKER-USED-SHADOW THEN
    THEN
@@ -9486,20 +9484,42 @@ variable CHECKER-QBAD-TOK
 \ global or a primitive from package code. That is affordable only because
 \ `search-wl` answers through the dictionary hash index (habu1.f BSWL) instead
 \ of scanning the record table.
-: CHECKER-FIND-ACTIVE-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT THEN
-   CHECKER-QBAD-TOK @ IF 0 EXIT THEN
+\
+\ THE WALK ANSWERS TWO THINGS AT ONCE: the symbol, and which scope bound it. The
+\ second is what keeps a spelling from being a binding. A token the chain binds
+\ outside the global wordlist is that scope's own word whatever it spells - `@`
+\ inside a package that defines `@` - and the compiler calls that word (habu1.f
+\ EMIT-FIND reaches it first; habu2.f C-SCOPED-SKIP keeps the JIT's operator
+\ rows off it). So every rule the checker keys on an engine word's spelling is
+\ offered a token only when this walk did NOT bind it in a scope: BIND-TOK
+\ resolves each body token once, and SPELLED-STEP? and DO-TOK-BODY read the
+\ answer before any such rule runs. A rule asked before the walk certified the
+\ engine's `@` for a body whose bare `@` the compiler bound to the package:
+\ `REC @` certified ( -- n ) and ran a two-input word on one cell
+\ (test/reopen-binding.f).
+0 constant BIND-NONE      \ no scope in the chain names the token
+1 constant BIND-GLOBAL    \ the global wordlist names it
+2 constant BIND-SCOPED    \ the open package, a used public or a qualifier names it
+
+: CHECKER-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? BIND-SCOPED EXIT THEN
+   CHECKER-QBAD-TOK @ IF 0 BIND-NONE EXIT THEN
    CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n mode:n :}
    mode CHECKER-PACKAGE-NONE <> IF
-      pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-VISIBLE dup 0 <> IF EXIT THEN drop
-      pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? SYM-VISIBLE dup 0 <> IF EXIT THEN drop
+      pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-VISIBLE dup 0 <> IF BIND-SCOPED EXIT THEN drop
+      pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? SYM-VISIBLE dup 0 <> IF BIND-SCOPED EXIT THEN drop
    THEN
-   a u CK-OPEN-CLAIMS? IF 0 EXIT THEN       \ engine-authoritative: an open-package word the checker cannot see
+   a u CK-OPEN-CLAIMS? IF 0 BIND-SCOPED EXIT THEN   \ engine-authoritative: an open-package word the checker cannot see
    a u CHECKER-GLOBAL-SYM? SYM-VISIBLE dup 0 <> IF
       dup >r a u r> CHECKER-USED-SHADOW      \ throws if a live used public also exports this bare tail
-      EXIT
+      BIND-GLOBAL EXIT
    THEN drop
-   a u CHECKER-USED-BIND ;                   \ engine-authoritative: no earlier scope may claim the tail
+   a u CHECKER-USED-BIND                     \ engine-authoritative: no global may claim the tail
+   dup 0 <> IF BIND-SCOPED EXIT THEN
+   BIND-NONE ;
+
+: CHECKER-FIND-ACTIVE-SYM ( ptr u8 n -- n )
+   CHECKER-BIND drop ;
 
 \ CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n ) : the same resolution, for a caller
 \ that is only ASKING — the source pre-verifier, of every token it scans, "does
@@ -12069,13 +12089,29 @@ variable WF-I
    0 OK !
    RES-TRUE ;
 
+\ The body token's one resolution, made by BIND-TOK before any rule keyed on a
+\ spelling is asked: the symbol and the scope that bound it (CHECKER-BIND).
+variable TOK-SYM   variable TOK-LEG
+
+\ A literal is claimed before any scope is asked, as the engine claims it
+\ (LITERAL-TOK? below, habu2.f EM-COMPILE-LITERAL), so its shape is never
+\ resolved as a name.
+: BIND-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u ALLDIG?  a u FLODIG?  or IF 0 TOK-SYM !  BIND-NONE TOK-LEG !  EXIT THEN
+   a u CHECKER-BIND TOK-LEG !  TOK-SYM ! ;
+
+: TOK-SCOPED? ( -- bool )
+   TOK-LEG @ BIND-SCOPED = ;
+
 : DO-TOK-BODY ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CURSYM !
-   a u DEFINER-TOK IF EXIT THEN
    a u LITERAL-TOK? IF EXIT THEN
-   a u CELL-MEMORY-TOK? IF EXIT THEN
-   a u RAW-FIELD-TOK? IF EXIT THEN
-   a u CHECKER-FIND-ACTIVE-SYM CURSYM !
+   TOK-SCOPED? 0= IF
+      a u DEFINER-TOK IF EXIT THEN
+      a u CELL-MEMORY-TOK? IF EXIT THEN
+      a u RAW-FIELD-TOK? IF EXIT THEN
+   THEN
+   TOK-SYM @ CURSYM !
    \ a call to a definer, counted for the straight-line-wrapper rule above. One
    \ per-symbol head load, on the resolved symbol: a tick is not a call here
    \ (BTICK-TOK never reaches this word) and the create-family tokens leave
@@ -14816,6 +14852,19 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    famterm LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN        \ ordinary pointee: the plain row answers
    famterm RECORD-AT-STEP RES-TRUE ;
 
+\ The steps keyed on an engine word's spelling, in their one order. A token a
+\ scope binds is that scope's word and none of these is asked of it: it goes on
+\ to DO-TOK and is judged by its own recorded effect.
+: SPELLED-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   TOK-SCOPED? IF RES-FALSE EXIT THEN
+   a u QDUP-STEP? IF RES-TRUE EXIT THEN
+   LAYOUT-XPORT @ IF a u WF-XPORT-RECORD THEN   \ width facts from the pre-op row
+   a u HIDROW-STEP? IF RES-TRUE EXIT THEN       \ depth/.s fail closed over hidden cells
+   a u XPORT-STEP? IF RES-TRUE EXIT THEN        \ whole-bundle transport row surgery
+   a u RS-TOK? IF RES-TRUE EXIT THEN
+   a u RECORD-AT-STEP? IF RES-TRUE EXIT THEN    \ FAMILY:AT stride: ptr family<args> n -> ptr family<args>
+   a u FIELD-PROJ-STEP? ;                       \ armed FAMILY:FIELD projection: ptr family<args> -> ptr field-type
+
 \ The first token names the definition. Inside a verifier scope the text is a
 \ replay of recorded source, so the name's own record bounds what the body
 \ binds; anywhere else - the live load path, a candidate probe whose name is a
@@ -14852,13 +14901,8 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    OK @ IF TKF TKFU @ s" leave" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TKFU @ s" again" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    TKF TKFU @ CF-TOK? 0= IF
-   TKF TKFU @ QDUP-STEP? 0= IF
-   LAYOUT-XPORT @ IF TKF TKFU @ WF-XPORT-RECORD THEN   \ width facts from the pre-op row
-   TKF TKFU @ HIDROW-STEP? 0= IF                       \ depth/.s fail closed over hidden cells
-   TKF TKFU @ XPORT-STEP? 0= IF                        \ whole-bundle transport row surgery
-   TKF TKFU @ RS-TOK? 0= IF
-   TKF TKFU @ RECORD-AT-STEP? 0= IF                    \ FAMILY:AT stride: ptr family<args> n -> ptr family<args>
-   TKF TKFU @ FIELD-PROJ-STEP? 0= IF                   \ armed FAMILY:FIELD projection: ptr family<args> -> ptr field-type
+   TKF TKFU @ BIND-TOK                                 \ the token's one resolution, ahead of every spelling-keyed step
+   TKF TKFU @ SPELLED-STEP? 0= IF
    TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF
       a u FAIL-PIN! REJECT-IMMEDIATE
    THEN   \ live immediate with a usig: wrong-certificate reject (p5)
@@ -14877,7 +14921,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    PIMM-STREAM @ 0 = IF
       CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
    THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    \ The raw-cell and base-address refusals name themselves where they are

@@ -876,6 +876,17 @@ SUITE compiler-native-word-binding-aot
    test/compiler/native-word-binding.f
 ;SUITE
 
+SUITE reopen-binding
+   test/reopen-binding.f
+;SUITE
+
+SUITE reopen-binding-aot
+   lib/test.f
+   test/compiler/aot-mode.f
+   ENTRIES
+   test/reopen-binding.f
+;SUITE
+
 SUITE compiler-native-dictionary-record
    test/compiler/native-dictionary-record.f
 ;SUITE

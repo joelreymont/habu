@@ -371,7 +371,11 @@ for a one-off call or to escape a collision.
   a checked body under `using DOC` a bare `close` is refused against
   `DOC:CLOSE`. There is no root-vocabulary qualifier: reach the operation
   through a differently named word (`OPEN-APPEND-FD`, the primitive's sibling
-  `close-rc`) or rename the package word.
+  `close-rc`) or rename the package word. Operator spellings are no exception:
+  once a package defines `@` or `+`, a bare `@` or `+` in its later bodies is the
+  package word to the checker and to both compilers, whatever its operands; a
+  body compiled before the definition keeps the engine word
+  (`test/reopen-binding.f`).
 
 ### Structures And Enums
 
