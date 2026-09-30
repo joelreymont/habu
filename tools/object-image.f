@@ -84,10 +84,15 @@ public
 : ADD ( -- )
    OBJLINK:ADD ;
 
+\ An object's text is a stripped program as the maker's link emitted it
+\ (src/habu/aot-lib.f LINK writes both), so this writes that link's image under
+\ the identifier that link signs, DRV-PROG-ID$ (src/habu/driver-io.f says why
+\ the identifier is part of the bytes), and a relink is the file a fresh build
+\ writes (tools/hb-build-stripped-cache-test.f HBT-STRIPPED-OBJECT-RELINK).
 : WRITE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    OBJLINK:APPLY
    NONEMPTY-TEXT
    TEXT>ASM
-   s" hb-obj" path pathu DRV-EMIT-IMAGE ;
+   DRV-PROG-ID$ path pathu DRV-EMIT-IMAGE ;
 
 ;package

@@ -1009,7 +1009,7 @@ public
    LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !   \ the stripped image carries both handlers too
    EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-CRASH-CODE  EMIT-DATA-BLOB  EMIT-XT-ROWS
    AOT-WRITE-OBJ
-   s" hb-prog" AOT-OUT DRV-EMIT-IMAGE ;
+   DRV-PROG-ID$ AOT-OUT DRV-EMIT-IMAGE ;
 
 ;using
 ;package

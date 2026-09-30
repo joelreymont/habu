@@ -24,12 +24,29 @@ variable DRV-WFD
    phase IMG-DROP
    path pathu DRV-WRITE-IMAGE-PATH ;
 
+\ The code-signature identifier of each kind of image. Every writer names its
+\ identifier through one of these, never a literal of its own: on macOS the
+\ identifier is signed bytes (src/os/macos/sign2.f CODESIG2-BODY), held in the
+\ CodeDirectory and counted in its size, the SuperBlob's, and the header's
+\ LC_CODE_SIGNATURE and __LINKEDIT sizes, so a writer with another name writes
+\ another file for the same program. A one-byte-shorter name made a one-byte-
+\ shorter image (tools/hb-build-stripped-cache-test.f
+\ HBT-STRIPPED-OBJECT-RELINK). src/os/macos/macho.f MACHO-SIG-MAX prices the
+\ longer of the two. Linux signers discard the identifier.
+: DRV-PROG-ID$ ( -- ptr u8 n )
+   s" hb-prog" ;
+
+: DRV-ENGINE-ID$ ( -- ptr u8 n )
+   s" hb" ;
+
 \ The single high-level image-emission tail: assemble the current CODE into the
-\ target image, sign it with the caller's sigid, and write it to path. Every
-\ engine driver (stage2/build/stdin/maker/aot-lib) and the object image writer
-\ (tools/object-image.f OBJIMG:WRITE) route through this one word, so exactly one
-\ BUILD-IMAGE+sign+write implementation exists. Loads after the target image
-\ writer (macho/elf + sign) in every context that includes driver-io.f.
+\ target image, sign it with the identifier the caller names (DRV-PROG-ID$ for
+\ a program, DRV-ENGINE-ID$ for an engine), and write it to path. Every engine
+\ driver (stage2/build/stdin/maker/aot-lib), tools/native-emit.f and the object
+\ image writer (tools/object-image.f OBJIMG:WRITE) route through this one word,
+\ so exactly one BUILD-IMAGE+sign+write implementation exists. Loads after the
+\ target image writer (macho/elf + sign) in every context that includes
+\ driver-io.f.
 : DRV-EMIT-IMAGE ( ptr u8 n ptr u8 n -- ) {: sig:ptr sigu:n path:ptr pathu:n :}
    ASM-CODE BUILD-IMAGE
    sig sigu SET-SIGID CODESIG2

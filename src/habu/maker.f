@@ -46,7 +46,7 @@ s" MK-SBUF@" s" -- ptr u8" TRUST
    MK-READ-SRC
    DRV-RETIRE-RELOADS
    MK-SBUF@ MK-SLEN @ ENGINE-BUILD:BUILD
-   s" hb" MK-OUT DRV-EMIT-IMAGE ;
+   DRV-ENGINE-ID$ MK-OUT DRV-EMIT-IMAGE ;
 
 \ Process boundary: report uncaught throws instead of exiting silently
 \ (driver-io.f DRV-FAIL; exit code stays the throw code when representable,

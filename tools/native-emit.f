@@ -88,6 +88,6 @@ public
    host count TRANSLATE-FIXED
    0 0= STDIN? !
    NULL$ origin ENGINE-EMIT:FORTH-ORIGIN
-   s" hb" path size DRV-EMIT-IMAGE ;
+   DRV-ENGINE-ID$ path size DRV-EMIT-IMAGE ;
 
 ;package

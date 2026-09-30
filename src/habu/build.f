@@ -43,7 +43,7 @@ variable PN
    MAKER-SOURCE:SOURCE SHK-A !  PN @ SHK-U !  0 SHAKE? !
    0 0= 0= STDIN? !
    MAKER-SOURCE:SOURCE PN @ ENGINE-EMIT:FORTH
-   s" hb-prog" BLD-OUT DRV-EMIT-IMAGE ;
+   DRV-PROG-ID$ BLD-OUT DRV-EMIT-IMAGE ;
 
 \ Process boundary: report uncaught throws instead of exiting silently
 \ (driver-io.f DRV-FAIL; exit code stays the throw code when representable,

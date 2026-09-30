@@ -859,7 +859,7 @@ create DRV-CH 1 allot
    s"    8 0 ?do value i 8 * rshift dst i + c! loop ;" DRV-LINE
    s" : RUN ( -- )" DRV-LINE
    SPAN-FORGE-LINE WID-FORGE-LINE
-   S\"    s\" hb\" 0 SCRIPT-ARGV$ DRV-EMIT-IMAGE" DRV-LINE
+   s"    DRV-ENGINE-ID$ 0 SCRIPT-ARGV$ DRV-EMIT-IMAGE" DRV-LINE
    s"    0 SCRIPT-ARGV$ CODESIGN:ENSURE ;" DRV-LINE
    s" RUN" DRV-LINE
    s" ;package" DRV-LINE ;
