@@ -140,7 +140,7 @@ private
 
 : PREP-ENGINE-ALIASES ( -- )
    INVOCATION$ MAKE-DIR
-   s" lib" ENGINE-LINK s" test" ENGINE-LINK
+   s" lib" ENGINE-LINK s" src" ENGINE-LINK s" test" ENGINE-LINK
    ROOT$ s" other/nested" JOIN MAKE-DIRS
    ROOT$ s" other/lib" JOIN MAKE-DIRS
    ROOT$ s" other/lib/errors.f" JOIN s" 100 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL

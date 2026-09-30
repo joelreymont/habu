@@ -287,16 +287,23 @@ forth.md: **Errors**, **Integer arithmetic**.
 - `require lib/string.f` loads once per image, keyed by canonical path;
   `include` replays. `s" path" required` / `included` are the string forms. A
   path resolves against the root that resolved the requiring file (the
-  `--load` entry's directory for the entry), then the working directory, so
-  `require lib/…` names the tree root. A file found through the working
-  directory keeps that root for its own requires: an overlay copy of one tree
-  file, required by a tree file, loads beside the tree's copy and dies on the
-  duplicate (exit 78; test/aot-capture-bound.f copies the requirer too). Every
-  file requires its **own** dependencies.
+  `--load` entry's directory for the entry), then the working directory, then
+  the engine's source root (the working directory when it is a Habu tree, else
+  the tree above the running `bin/hb`), so `require lib/…` names the tree
+  root. A file found through the working directory keeps that root for its own
+  requires: an overlay copy of one tree file, required by a tree file, loads
+  beside the tree's copy and dies on the duplicate (exit 78;
+  test/aot-capture-bound.f copies the requirer too). Every file requires its
+  **own** dependencies.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
   token reaching its loader's cells throws 70, and a file that ends with cells
   on the stack is `E-EVAL-RESIDUE`. A value crosses a load only as a word the
   file defines.
+- At the top level of a stdin session or of a program file run as
+  `bin/hb file.f`, `SOURCE-ROOT:CD <dir>` moves the first search root (a bare
+  `CD` prints it), `PUSHPATH` / `POPPATH` save and restore it, all public in
+  `SOURCE-ROOT`; inside a loaded file (`--load`, `require`) they are refused
+  (exit 74): scope a root with `SOURCE-ROOT:WITH`.
 - The engine provides `lib/prelude.f`, `errors.f`, `string.f`, `span.f`,
   `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and the
   `src/` files its boot prefix loads (`ENGINE-PROVIDES?`; `tools/check.f`

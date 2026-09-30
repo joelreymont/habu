@@ -1,4 +1,4 @@
-\ Fresh engine in a checkout whose lib and test directories are symlinks.
+\ Fresh engine in a checkout whose lib, src and test directories are symlinks.
 require lib/test.f
 
 using SOURCE-ROOT
@@ -41,7 +41,7 @@ private
    s" lib/../lib/errors.f" KNOWN
    CWD$ s" lib/errors.f" JOIN KNOWN
    CWD$ s" ./lib/../lib/errors.f" JOIN KNOWN
-   \ No src directory exists here: a missing compiled file is still provided.
+   \ src is a link too, so this checkout is a tree and the engine root.
    s" src/core/util.f" KNOWN
    REQUIRE-N @ before T=
    REQUIRE-SNAPSHOT

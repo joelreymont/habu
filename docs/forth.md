@@ -262,10 +262,35 @@ public
   `hb prog.f` and a program on stdin are not loaded files and keep their
   top-level stack. `test/closed-source-suite.f` pins the boundary.
 - A named `--load` entry's canonical directory is the primary source root.
-  Relative dependencies search that root, then the invocation working directory;
-  a dependency keeps the root that resolved it for its own loads; absolute paths
-  bypass the search; the process working directory never changes. So
-  `/work/app/main.f` can require `src/model.f`, and that file `src/math.f`.
+  Relative dependencies search that root, then the invocation working
+  directory, then the engine's source root, each root once.
+  `SOURCE-ROOT:ENGINE$ ( -- ptr u8 n )` is the working directory when it is a
+  Habu tree (it holds the engine's first boot file, `src/core/util.f`), else
+  the tree two levels above the engine's executable (SwiftForth's `%`, found
+  through symlinks) when that is one, else the working directory. So an
+  installed `hb` runs from any directory, and inside a checkout the checkout
+  is the root. No variable or word sets it. The working directory is searched
+  before the engine root, so while the root is the executable's tree, a
+  working directory that is not a tree must not hold copies of engine files:
+  its `lib/errors.f` is an application file, and loading it beside the
+  engine's is a duplicate definition, exit 78. With no tree at either place
+  the working directory is the root, so its `lib/errors.f` is the engine's
+  row and is never loaded. A relative `--load` entry is relative to the
+  working directory alone; a dependency keeps the root that resolved it for
+  its own loads; absolute paths bypass the search; the process working
+  directory never changes. So `/work/app/main.f` can require `src/model.f`,
+  and that file `src/math.f`.
+- At the top level of a stdin session or of a program file run as
+  `bin/hb file.f`, SwiftForth's path words, public in package `SOURCE-ROOT`
+  (`SOURCE-ROOT:CD`, or `CD` under `using SOURCE-ROOT`), move the current
+  path, the first root a relative path searches: `CD <dir>` sets it, relative
+  to the current path when relative, and a bare `CD` prints it; `PUSHPATH`
+  saves it, up to 8 deep, and `POPPATH` restores it. A missing directory, a
+  file, a path over the loader's cap, a full or empty stack and a word inside
+  a loaded file (`--load` or `require`) are refused by name, exit 74. They
+  never change the engine root or the process working directory, and an
+  image cannot be saved with a path pushed. A file scopes a root with
+  `SOURCE-ROOT:WITH`.
   `SOURCE-ROOT:WITH ( ptr u8 n [ -- ] -- )` scopes an explicit root, restoring
   the caller's on return or throw; fixtures resolve against
   `SOURCE-ROOT:CURRENT$ ( -- ptr u8 n )`, never a script argument. Nested loads
@@ -275,10 +300,14 @@ public
   owner roots.
 - The engine marks its baked prefix files `provided` before user source runs, so
   `require src/core/sha256.f` skips the prefix-owned copy; `provided` is honored
-  before a missing file is opened. Frozen facts keep root-relative names, so the
-  engine runs from another checkout or without its compiled sources; snapshots
-  keep these facts and clear process-local roots and resolver scratch. Relocated
-  reloading of a deleted application source tree is not promised.
+  before a missing file is opened. Frozen facts keep names relative to the
+  engine's source root and match only that root's own copy, so the engine runs
+  from another checkout or without its compiled sources, and an application's
+  file named like an engine file stays the application's. A build records each
+  boot file by that relative name, so one outside the engine root is refused by
+  name, exit 74 (bootstrap.md, "Refresh `bin/hb`"); snapshots keep these facts
+  and clear process-local roots and resolver scratch. Relocated reloading of a
+  deleted application source tree is not promised.
 - A package wordlist is a case-insensitive no-duplicate set (`RESET` and `reset`
   are one tail) across reopened blocks and across `:`, `create`, `variable`,
   `constant` and `TRUSTED:`; silent last-definition-wins shadowing is always an
@@ -1573,7 +1602,7 @@ the rule.
   that check.f performs next (`checker.f` `UNSEEN-MARK$`, `UNSEEN-COVERS?`).
   Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
   i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
-  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:51, used at :78), `CTX0`
+  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :75), `CTX0`
   (lib/process-command.f:437), `EVP-STORAGE` (lib/crypto/evp.f:134) and
   `MY-SLOT` (lib/net/http-arena.f:120) were refused and pass. A misuse of a
   product is the run's `E-MISMATCH` (exit 70) and a typo in the same scope the

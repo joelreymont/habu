@@ -748,6 +748,14 @@ private product image with `tools/native-build.f -- <out>` and qualify that
 image against its matching source tree as described in [gate.md](gate.md).
 Promote the verified product to `bin/hb` only after the gate passes.
 
+Build from the tree. A build's boot files are recorded and opened under the
+working directory; the target's prefix sources may be read from the host
+executable's tree. A build from a directory without the tree dies at the
+first boot file it opens (`include: cannot open <cwd>/src/core/…`), exit 74,
+and writes nothing (`test/source-root-exe-test.f`). A boot file outside the
+root is refused by name, exit 74:
+`source root: a boot file is outside the engine root: <path>`.
+
 The separate stage-2 recovery/development refresh is:
 
 ```sh
@@ -802,13 +810,23 @@ selecting that version and `~/.local/bin/hb` pointing to `current/bin/hb`.
 Changing the checkout then leaves dependent projects on the verified version.
 
 Libraries loaded from source must match the installed engine. Habu resolves
-application paths from the application's root and library paths from the
-working directory; run source-based tools from the selected installed tree:
+application paths from the application's root, then the working directory,
+then the engine's source root: the tree two levels above the executable,
+found through the `~/.local/bin/hb` and `current` symlinks. So an installed
+engine runs source-based tools from any directory:
 
 ```sh
-cd ~/.local/lib/habu/current
 ~/.local/bin/hb --load /absolute/path/to/etch/etch.f
 ```
+
+A working directory that is itself a Habu tree (it holds `src/core/util.f`) is
+the root instead, so inside a checkout the checkout's sources load
+(`test/source-root-exe-test.f`). The working directory is searched before the
+root, so while the root is the executable's tree, one that is not a tree must
+not hold copies of engine files: its `lib/errors.f` loads as an application
+file beside the engine's, a duplicate definition, exit 78. With no tree at
+either place the working directory is the root, and its copy is the engine's
+row, never loaded.
 
 Retain the previous version when promoting a new verified release so switching
 `current` back restores both the binary and its sources.

@@ -1356,20 +1356,16 @@ TRUSTED: FILE-ACTION ( n -- [ [ -- ] -- ] ) ;
    SOURCE-ROOT:RESOLVE drop COMPOSE-OPEN ;
 
 : COMPOSE-REQUIRED ( ptr u8 n -- )
-   SOURCE-ROOT:RESOLVE {: path:ptr pathu:n known:bool :}
-   known IF EXIT THEN
-   path pathu REQUIRE-STORE
-   path pathu COMPOSE-OPEN ;
+   SOURCE-ROOT:RESOLVE IF 2drop EXIT THEN
+   REQUIRE-STORE COMPOSE-OPEN ;
 
 : COMPOSE-SCRIPT-REQUIRED ( ptr u8 n -- )
-   SOURCE-ROOT:ENTRY-RESOLVE {: path:ptr pathu:n known:bool :}
-   known IF EXIT THEN
-   path pathu REQUIRE-STORE
-   path pathu COMPOSE-OPEN ;
+   SOURCE-ROOT:ENTRY-RESOLVE IF 2drop EXIT THEN
+   REQUIRE-STORE COMPOSE-OPEN ;
 
 : COMPOSE-PROVIDED ( ptr u8 n -- )
    SOURCE-ROOT:RESOLVE IF 2drop EXIT THEN
-   REQUIRE-STORE ;
+   REQUIRE-STORE 2drop ;
 
 : COMPOSE-STRING-PATH ( -- ptr u8 n )
    STR-LAST-U @ 0= IF E-DISC-DYNAMIC throw THEN
@@ -1713,7 +1709,7 @@ public
    0 PEND-N !
    REQUIRE-REG:COUNT COMPOSE-REQ0 !
    COMPOSE-SUBJ-PATH pathu REQUIRE-KNOWN? 0= IF
-      COMPOSE-SUBJ-PATH pathu REQUIRE-STORE
+      COMPOSE-SUBJ-PATH pathu REQUIRE-STORE 2drop
    THEN
    -1 COMPOSE-ON !
    [: COMPOSE-WITH-ROOT ;] catch {: rc:n :}

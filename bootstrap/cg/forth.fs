@@ -1335,6 +1335,13 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
    A OS-OPEN-RD
    SYS-PUSH ;
 
+: BACCESS ( -- )                          \ ( pathz mode -- rc ); Linux is faccessat(AT_FDCWD, path, mode, 0)
+   1 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF
+      2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
+   THEN
+   NR-ACCESS SYS,  SYS-PUSH ;
+
 : BWRITE ( -- ) 2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
 
 : BREAD ( -- ) 2 G-POP  1 G-POP  0 G-POP  1 2 GUARD-SPAN  NR-READ SYS,  0 G-PUSH ;  \ ( fd buf len -- n )
@@ -2050,6 +2057,7 @@ HB-TARGET-LINUX? [IF]
 
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
+   s" access" ['] BACCESS FPRIM-L
    s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" map-anon" ['] BMAPANON FPRIM-L
    s" realpath" ['] BREALPATH FPRIM

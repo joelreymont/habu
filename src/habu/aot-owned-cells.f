@@ -47,7 +47,6 @@
 \ not otherwise know that AOT exists.
 require src/core/util.f
 require lib/image-lifecycle.f
-require lib/engine-id.f
 require src/os/env-base.f
 require src/core/dynamic-storage.f
 require src/core/sha256.f
@@ -280,11 +279,6 @@ private
 \ src/core/type-family-sha.f declares no package, so the list names its two cells
 \ directly and that file needs no word of its own: the DYNAMIC-STORAGE:OWNED-CELLS
 \ detour below exists only because those three cells are private to their package.
-\ ENGINE-ID's pathname/key caches and identity-query buffers are process-local:
-\ PREPARE clears their validity before capture, and the stripped process computes
-\ them on first use. Its fixed Linux /proc pathname is immutable and is carried.
-\ ENGINE-ID:OWNED-CELLS names the private contiguous extents without exposing
-\ their fields to application code.
 \
 \ NOT ON THE LIST, and refused as loudly as before, is every other engine cell
 \ below the window. src/os/env-base.f's own TMP-PATH cursors and buffer (TPB, TPP,
@@ -321,7 +315,6 @@ public
    TF-SHA-CTX FRESH  SHA-DIGEST FRESH
    [: ENGINE-CARRY ;] [: ENGINE-FRESH ;] FFI:OWNED-CELLS
    window [: ENGINE-CARRY ;] [: ENGINE-FRESH ;] TASK:OWNED-CELLS
-   [: ENGINE-CARRY ;] [: ENGINE-FRESH ;] ENGINE-ID:OWNED-CELLS
    PZB PATH-CAP 1 + FRESH-BYTES ;
 
 ;package

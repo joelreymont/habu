@@ -189,8 +189,7 @@ variable ML-NI
    s" src/os/linux-x86-64/repl-term.f" ML-ENTRY+               \ the REPL terminal, linux-x86-64
    s" src/habu/repl.f" ML-ENTRY+                               \ the REPL
    s" src/core/top-row.f" ML-ENTRY+                          \ the top-level row tracker the REPL warns from
-   s" lib/c2-owner.f" ML-ENTRY+                              \ checked owner and allocation surface in every product
-   s" lib/engine-id.f" ML-ENTRY+ ;                            \ running executable path for boot source identity
+   s" lib/c2-owner.f" ML-ENTRY+ ;                            \ checked owner and allocation surface in every product
 
 \ ---- the closure walk ----------------------------------------------------------
 

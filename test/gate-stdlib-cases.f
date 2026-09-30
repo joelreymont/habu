@@ -2290,6 +2290,10 @@ SUITE boot-relocation
    test/boot-relocation-e2e.f
 ;SUITE
 
+SUITE source-root-exe
+   test/source-root-exe-test.f
+;SUITE
+
 SUITE json
    tools/json-test.f
 ;SUITE
