@@ -52,7 +52,8 @@
 \ leaves through its callee. A call site cannot be staged in the dialect instead
 \ - the memory order it mints would be read by nobody and the validator refuses
 \ that by name - so `x64.call`, `x64.wordcall` and `x64.tailcall` reach this
-\ emitter only through the selector. ONE FIXTURE PER CONTEXT, and the refusing
+\ emitter only through the selector. Last X64ABI:NORET-LEAF-FRAMED, the
+\ contract of a routine that ends in `die`. ONE FIXTURE PER CONTEXT, and the refusing
 \ cases run inside an enclosing one, for the reason that suite gives.
 \
 \ WHAT THIS SUITE DOES NOT PIN. Of the forms this emitter renders, only
@@ -73,9 +74,10 @@
 \   pass reuses a slot once its value is dead, so slot 128 wants seventeen values
 \   put away at once.
 \ - THE FORMS STILL REFUSED BY NAME, one case standing for all of them below:
-\   `x64.idiv`, `x64.neg`, the selects `x64.cmpsel` and `x64.selz`, `x64.trap`
-\   and `x64.codeaddr`. Each needs a register the machine names or a lowering,
-\   and neither is here.
+\   `x64.idiv`, `x64.neg` and the selects `x64.cmpsel` and `x64.selz`. Each
+\   needs a register the machine names or a lowering, and neither is here.
+\ - THE FIELD OF THE CALL TO `die`. Its entry is the host engine's, so the trap
+\   case pins every other byte and holds that field to the entry (DIE-ENTRY).
 \ - E-X64EMIT-LAYOUT, the disagreement between the two passes. It is the check
 \   that holds the writer to the measurer's numbers, and no module reaches it
 \   without a defect in one of them, so no case here can pin it.
@@ -250,9 +252,11 @@ create TXT
    t IR-TYPE:FN-RESULT
    CC BB IR-BUILD:INTERN-CODE-REF ;
 
-: OPEN-FUN-SIG ( IR-ID:ir-type-id -- )
-   {: sig:IR-ID:ir-type-id :}
-   CC BB  CC BB s" LEAF" IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
+\ A module's function table admits one function per symbol (E-IR-FUN-DUP), so a
+\ module of two names them apart.
+: OPEN-FUN-NAMED ( IR-ID:ir-type-id ptr u8 n -- )
+   {: sig:IR-ID:ir-type-id a:ptr u:n :}
+   CC BB  CC BB a u IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
    CC BB  sig  IR-BUILD:SET-SIGNATURE
    CC BB IR--FUN-LINKAGE:DEFINED IR-BUILD:SET-LINKAGE
    CC BB IR--FUN-VISIBILITY:EXPORTED IR-BUILD:SET-VISIBILITY
@@ -260,6 +264,9 @@ create TXT
    CC BB  NAME-ST NAME-LN SPN  IR-BUILD:SET-FUN-SPAN
    CC BB IR-BUILD:BEGIN-BLOCK
    CC BB  OPEN-ST OPEN-LN SPN  IR-BUILD:SET-BLOCK-SPAN ;
+
+: OPEN-FUN-SIG ( IR-ID:ir-type-id -- )
+   s" LEAF" OPEN-FUN-NAMED ;
 
 : OPEN-FUN ( n n -- )
    SIGN OPEN-FUN-SIG ;
@@ -581,6 +588,44 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    MEM0 {: tok:IR-ID:ir-value-id :}
    tok a a CALL1 {: id:IR-ID:ir-op-id :}
    CC BB id 2 IR-BUILD:OP-RESULT@ RET1
+   CLOSE-FUN ;
+
+\ ---- the routine that ends the process ----------------------------------------
+\ `: LEAF ( -- ) s" hello" 70 die ;` in the shape the source compiler hands
+\ over (test/compiler/native-trap.f TRAP1): one `hir.trap` whose three operands
+\ are the cells `die` reads, the address, the length and the exit code. The
+\ address is a plain literal here: a literal's site is the relocatable literal
+\ case's. Nothing follows the trap and no block returns.
+: BUILD-TRAP ( -- )
+   0 0 OPEN-FUN
+   $DA7A0000 CONSTOP {: a:IR-ID:ir-value-id :}
+   5 CONSTOP {: u:IR-ID:ir-value-id :}
+   70 CONSTOP {: rc:IR-ID:ir-value-id :}
+   HIR-OPCODE:TRAP CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB a IR-BUILD:ADD-OPERAND
+   CC BB u IR-BUILD:ADD-OPERAND
+   CC BB rc IR-BUILD:ADD-OPERAND
+   CC BB IR-BUILD:END-OP drop
+   CLOSE-FUN ;
+
+\ ---- the routine that answers another function's address ---------------------
+\ `: LEAF ( -- xt ) [: 3000 ;] ;`: a module of two functions, the first
+\ answering the address of the second, which `hir.quot` names by its ordinal.
+\ Both answer one cell, because the contract is the whole module's.
+: QUOT1 ( n -- IR-ID:ir-value-id )
+   {: k:n :}
+   HIR-OPCODE:QUOT BODY-ST BODY-LN OPEN-OP
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CC BB  CC BB HIR:KEY-FUN  CC BB k IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CLOSE-VALUE ;
+
+: BUILD-QUOTER ( -- )
+   0 1 SIGN OPEN-FUN-SIG
+   1 QUOT1 RET1
+   CLOSE-FUN
+   0 1 SIGN s" SECOND" OPEN-FUN-NAMED
+   3000 CONSTOP RET1
    CLOSE-FUN ;
 
 \ ---- the module the machine dialect is written into --------------------------
@@ -950,17 +995,22 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 : DCALL ( -- NEFF:routine )
    X64ABI:SCRATCH 1 1 X64ABI:CALL ;
 
-: CALL-ALLOCATED ( -- IR-BUILD:module )
+\ Selected, allocated and accepted under the one contract given.
+: UNDER ( NEFF:routine -- IR-BUILD:module )
+   {: r :}
    CC BB X64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    X64-BUILDER {: xb:IR-BUILD:builder :}
    CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
    CC xb X64EMIT:BIND-DIALECT
-   CC m xb DCALL X64SEL:SELECT {: sel:IR-BUILD:module :}
-   CC sel DCALL A64RA:ALLOCATE
-   sel DCALL A64RAV:ACCEPT
+   CC m xb r X64SEL:SELECT {: sel:IR-BUILD:module :}
+   CC sel r A64RA:ALLOCATE
+   sel r A64RAV:ACCEPT
    sel ;
+
+: CALL-ALLOCATED ( -- IR-BUILD:module )
+   DCALL UNDER ;
 
 \ ---- and the contract a routine leaves through its callee under --------------
 \ One cell in and one out, control leaving through the callee: the pointer never
@@ -970,16 +1020,14 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    X64ABI:SCRATCH 1 1 X64ABI:TAIL ;
 
 : TAIL-ALLOCATED ( -- IR-BUILD:module )
-   CC BB X64SEL:BIND-SOURCE
-   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   X64-BUILDER {: xb:IR-BUILD:builder :}
-   CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
-   CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
-   CC xb X64EMIT:BIND-DIALECT
-   CC m xb DTAIL X64SEL:SELECT {: sel:IR-BUILD:module :}
-   CC sel DTAIL A64RA:ALLOCATE
-   sel DTAIL A64RAV:ACCEPT
-   sel ;
+   DTAIL UNDER ;
+
+\ ---- and the contract of a routine that ends the process ---------------------
+\ Nothing in or out, no return anywhere and no call it comes back from: the
+\ contract src/arch/x86-64/passes.f ROUTINE declares for a definition that ends
+\ in `die` and calls nothing else.
+: DTRAP ( -- NEFF:routine )
+   X64ABI:SCRATCH 0 0 0 X64ABI:NORET-LEAF-FRAMED ;
 
 \ A form outside this emitter's renders is refused only once the shape and the
 \ assignment have been agreed, so this module is allocated and accepted like any
@@ -1049,6 +1097,46 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    CC m FRAME-N LEAF-FRAMED A64RA:ALLOCATE
    m FRAME-N LEAF-FRAMED A64RAV:ACCEPT
    m 0 PLACED ;
+
+\ At a slot of its own for the reason the wordcall is: the call's field is the
+\ entry LESS the placement.
+: TRAP-BYTES ( IR-CTX:ctx -- )
+   HIR-MOD BUILD-TRAP DTRAP UNDER CALL-SLOT PLACED ;
+
+\ At a slot of its own too, because the answer is the placement PLUS where the
+\ second function starts.
+: QUOTER-BYTES ( IR-CTX:ctx -- )
+   HIR-MOD BUILD-QUOTER ALLOCATED CALL-SLOT PLACED ;
+
+\ Where `hir.trap` goes: `die` in THIS engine's dictionary, which is what the
+\ selector names (select-x64.f TRAP-ENTRY). That address is the host's and moves
+\ with every engine build, so the call's field is not pinned as bytes: it is read
+\ back and held to the entry less the slot and the routine's own length, the
+\ call being the routine's last instruction.
+: DIE-ENTRY ( -- n )
+   NTRAP:ROUTINE$ NDICT:CALL-TARGET ;
+
+4 constant REL32-N                   \ the bytes of a rel32 field
+
+\ The rel32 that ends the sealed emission, little-endian and signed.
+: LAST-REL32 ( -- n )
+   X64EMIT:BYTES X64EMIT:SIZE REL32-N - + {: f:ptr :}
+   0
+   REL32-N 0 ?do  f i + c@  i 8 * lshift or  loop
+   dup $80000000 and 0<> if $100000000 - then ;
+
+\ Compare every byte but the field that ends the emission, without retiring.
+: XH= ( ptr u8 n -- ) {: ea:ptr eu:n :}
+   X64EMIT:BYTES X64EMIT:SIZE REL32-N - {: da:ptr dlen:n :}
+   da dlen ea eu SPAN=HEX? TTRUE ;
+
+: TRAP-FIELD ( -- n )
+   DIE-ENTRY CALL-SLOT - X64EMIT:SIZE - ;
+
+\ The quoting routine's own readers: two functions, one site.
+: QUOTER-FACTS ( -- n n n n n )
+   X64EMIT:ADDR-SITES  0 X64EMIT:ADDR-SITE@  0 X64EMIT:ADDR-SITE-KIND@
+   0 X64EMIT:FUNCTION-OFFSET@  1 X64EMIT:FUNCTION-OFFSET@ ;
 
 \ The sealed emission's own readers, taken on the routine that has one site.
 \ Every number here is a BYTE count or a BYTE offset, which is what separates
@@ -1436,6 +1524,36 @@ public
    \ mc: addq $16, %rsp
    \ mc: retq
    s" 4881ec10000000488904244889442408488b0424488b4c24084801c84881c410000000c3" X=
+
+   s" the trap, placed: the three cells die reads stored, the pointer moved over them, and a call to die's entry with nothing after it" T-LABEL
+   WBND [: TRAP-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: movabsq $3665428480, %rax
+   \ mc: movabsq $5, %rcx
+   \ mc: movabsq $70, %rdx
+   \ mc: movq %rax, (%r12)
+   \ mc: movq %rcx, 8(%r12)
+   \ mc: movq %rdx, 16(%r12)
+   \ mc: addq $24, %r12
+   \ mc: callq TRAP-FIELD
+   s" 48b800007ada0000000048b9050000000000000048ba46000000000000004989042449894c240849895424104981c418000000e8" XH=
+   LAST-REL32 TRAP-FIELD T=
+   X64EMIT:TRAILING-RETURN? TFALSE
+   X64EMIT:RETIRE
+
+   s" a function's address, from a routine placed at a slot of its own: the placement plus where the second function starts, in the ten bytes a literal takes" T-LABEL
+   WBND [: QUOTER-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: movabsq $27, %rax
+   \ mc: retq
+   \ mc: movabsq $3000, %rax
+   \ mc: retq
+   s" 48b81b00000000000000c348b8b80b000000000000c3" XB=
+   QUOTER-FACTS
+   11 T=                                 \ the second function starts 11 bytes in
+   0 T=                                  \ and the first where the emission does
+   X64IR:ADDR-CODE T=                    \ the site is a code address
+   0 T=                                  \ at byte zero, the `mov r64, imm64` itself
+   1 T=                                  \ one site: the literal 3000 is no address
+   X64EMIT:RETIRE
 
    WBND [: ADDRESSED-CASES ;] IR-CTX:WITH-CONTEXT
    WBND [: STATE-CASES ;] IR-CTX:WITH-CONTEXT

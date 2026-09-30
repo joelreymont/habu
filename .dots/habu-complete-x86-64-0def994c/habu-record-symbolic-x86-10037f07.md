@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.475867+03:00"
-blocks:
-  - habu-render-x86-trap-33eba82b
 ---
 
 Problem: `wordcall`/`tailcall` resolve to absolute host entries at emit time (`docs/x86-64.md:192-206`) and `TRAILING-RETURN?` mirrors ARM64's size-minus-one rule; the publisher, the capture and the linker need every site recorded and every span exact.

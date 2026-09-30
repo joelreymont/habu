@@ -12,6 +12,13 @@
 \ statuses (31 and up). A negative image expects a wrong answer from its first
 \ case check, so it must exit FIRST-CASE.
 \
+\ A routine control never comes back from is called by the one TERMINAL-CASE,
+\ of its image and leaves through a STAND-IN, staged as its callee: the stand-in
+\ checks what the routine published and exits 0 itself, and a routine that
+\ returns fails the case. A routine answering the address of one of its own
+\ functions is appended with APPEND-QUOTING, which binds the label its
+\ QUOTE-CASE, compares the answer with where that function landed.
+\
 \ An image with an entry of its own (test/x86-64-skel-image.f) skips the
 \ checking entry: it stages its stream after ASM-RESET and ends with WRITE.
 require lib/test.f
@@ -34,14 +41,16 @@ private
 1024 constant ROUTINE-OFF
 31 constant CASE-END                 \ where the harness's own statuses start
 512 constant SCRATCH-OFF             \ a reserved cell no data stack reaches
-\ The two labels every assertion and case reaches, made fresh for each image.
+\ The labels every assertion and case reaches, made fresh for each image.
 variable EXIT-CELL
 variable ROUTINE-CELL
+variable QUOTED-CELL                 \ where a quoting routine's function lands
 variable CASE-NEXT                   \ the status the next case check exits with
 variable WRONG-AT                    \ the check a negative image fails, or 0
 
 : EXIT-LBL ( -- label ) EXIT-CELL @ >LABEL ;
 : ROUTINE-LBL ( -- label ) ROUTINE-CELL @ >LABEL ;
+: QUOTED-LBL ( -- label ) QUOTED-CELL @ >LABEL ;
 
 \ These are the production image writers and OS seam over package X64CODE's
 \ byte stream. They load into this package because the x86-64 sys.f spells the
@@ -72,29 +81,38 @@ s" src/os/linux-x86-64/sys.f" required
    s 1+ CASE-NEXT !
    s ;
 
-\ Compare rax with what the next case check expects: one less in the check a
-\ negative image gets wrong.
-: EXPECT, ( n -- ) {: want:n :}
+\ Compare rax with what the next case check expects, which rcx holds: one less
+\ in the check a negative image gets wrong.
+: EXPECT-RCX, ( -- )
    STATUS {: s:n :}
-   s WRONG-AT @ = if want 1- else want then {: v:n :}
-   RCX v IMM RAX RCX ASM-SINK ENC-CMP-RR s ASSERT-EQ ;
+   s WRONG-AT @ = if RCX 1 >IMM32 ASM-SINK ENC-SUB-RI32 then
+   RAX RCX ASM-SINK ENC-CMP-RR s ASSERT-EQ ;
+
+: EXPECT, ( n -- ) {: want:n :}  RCX want IMM EXPECT-RCX, ;
 
 \ The data stack starts at rbp and grows up; a case stages argument `idx` in
 \ cell `idx` of it.
 : ARG, ( n n -- ) {: v:n idx:n :}
    RAX v IMM RAX R12 idx 8 * MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-\ Move the data-stack pointer past the `in` staged arguments, call the routine
-\ and check its one answer, that the machine stack came back balanced, and that
-\ the data stack holds that answer and nothing else.
-: INVOKE, ( n n -- ) {: in:n want:n :}
+\ Move the data-stack pointer past the `in` staged arguments and call the
+\ routine.
+: CALLED, ( n -- ) {: in:n :}
    R12 in 8 * >IMM8 ASM-SINK ENC-ADD-RI8
-   ROUTINE-LBL CALL,
+   ROUTINE-LBL CALL, ;
+
+\ Check the one answer the routine left in rax, that the machine stack came
+\ back balanced, and that the data stack holds that answer and nothing else.
+: ANSWERED, ( -- )
    RAX R12 -8 MEM-OFF ASM-SINK ENC-MOV-RM
-   want EXPECT,
+   EXPECT-RCX,
    RSP RBP ASM-SINK ENC-CMP-RR 31 ASSERT-EQ
    RAX RBP ASM-SINK ENC-MOV-RR RAX 8 >IMM8 ASM-SINK ENC-ADD-RI8
    R12 RAX ASM-SINK ENC-CMP-RR 32 ASSERT-EQ ;
+
+: INVOKE, ( n n -- ) {: in:n want:n :}
+   in CALLED,
+   RCX want IMM ANSWERED, ;
 
 : RESERVED, ( r64 n n -- ) {: reg:r64 value:n failure:n :}
    RAX value IMM reg RAX ASM-SINK ENC-CMP-RR failure ASSERT-EQ ;
@@ -120,7 +138,7 @@ public
 \ start the data stack at its base, and load the registers a routine must keep.
 : OPEN, ( bool -- ) {: negative:bool :}
    ASM-RESET
-   LBL EXIT-CELL !  LBL ROUTINE-CELL !
+   LBL EXIT-CELL !  LBL ROUTINE-CELL !  LBL QUOTED-CELL !
    FIRST-CASE CASE-NEXT !
    negative if FIRST-CASE else 0 then WRONG-AT !
    RSP 1024 >IMM32 ASM-SINK ENC-SUB-RI32
@@ -157,6 +175,22 @@ public
    RAX RBP SCRATCH-OFF MEM-OFF ASM-SINK ENC-MOV-RM
    after EXPECT, ;
 
+\ One cell in and no return: the routine leaves through the STAND-IN, staged as
+\ its callee, so control coming back here is itself the failure, 37. It is the
+\ image's one case, because nothing after it runs.
+: TERMINAL-CASE, ( n -- ) {: a:n :}
+   R12 RBP ASM-SINK ENC-MOV-RR
+   a 0 ARG,
+   1 CALLED,
+   RDI 37 IMM EXIT-LBL JMP, ;
+
+\ No cell in and one out, the address of the routine's function APPEND-QUOTING
+\ bound QUOTED-LBL at.
+: QUOTE-CASE, ( -- )
+   R12 RBP ASM-SINK ENC-MOV-RR
+   0 CALLED,
+   RCX QUOTED-LBL MOVABS, ANSWERED, ;
+
 \ The entry's tail: exercise the real OS seam's success/error carry polarity,
 \ not a byte model; check the kept registers and a linked label; then exit 0.
 \ The routines start at ROUTINE-OFF.
@@ -186,12 +220,28 @@ public
 \ The routine every case calls starts here.
 : ENTRY, ( -- ) ROUTINE-LBL LBL, ;
 
+\ The callee a TERMINAL-CASE,'s routine leaves through, standing in for the one
+\ that ends the process: it checks the two cells published below r12 and that
+\ they end two cells above where the case started the data stack, then exits 0.
+: STAND-IN, ( n n -- ) {: a:n b:n :}
+   RAX R12 -16 MEM-OFF ASM-SINK ENC-MOV-RM  a EXPECT,
+   RAX R12 -8 MEM-OFF ASM-SINK ENC-MOV-RM  b EXPECT,
+   RAX R12 ASM-SINK ENC-MOV-RR  RAX RBP ASM-SINK ENC-SUB-RR  16 EXPECT,
+   RDI 0 IMM EXIT-LBL JMP, ;
+
 : APPEND-ROUTINE ( ptr u8 n -- ) {: a:ptr u:n :}
    ASM-LEN {: at:n :}
    u 0 > TTRUE
    a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
    s" the executable carries the compiler's exact routine bytes" T-LABEL
    CODE at + u a u T$= ;
+
+\ The same for a routine whose answer is the address of its own function `off`
+\ bytes in: its bytes go in two parts, and QUOTED-LBL is bound between them.
+: APPEND-QUOTING ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
+   a off APPEND-ROUTINE
+   QUOTED-LBL LBL,
+   a off +  u off -  APPEND-ROUTINE ;
 
 \ Write the staged stream as it stands: byte 0 is the ELF entry.
 : WRITE ( ptr u8 n -- ) {: path:ptr pathu:n :}

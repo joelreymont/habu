@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.451004+03:00"
-blocks:
-  - habu-render-x86-trap-33eba82b
 ---
 
 Problem: `src/compiler/native/emit-x64.f:40-51` refuses `idiv`; Habu requires `MIN-N -1 /` to give `MIN-N` and a zero divisor to throw `E-DIV-ZERO` (`src/habu/arith-abi.f`; `docs/forth-card.md:184-186`).

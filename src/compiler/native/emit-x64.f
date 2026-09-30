@@ -43,9 +43,9 @@
 \
 \ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the divide `idiv` -
 \ it names the registers the machine divides in and carries a branch to
-\ `x64.throw-entry` besides - the negate, the two selects `cmpsel` and `selz`,
-\ the trap, and `codeaddr`. The float forms are not declared by the dialect at
-\ all. Publication into a code region is not here either, and on this host it
+\ `x64.throw-entry` besides - the negate, and the two selects `cmpsel` and
+\ `selz`. The float forms are not declared by the dialect at all. Publication
+\ into a code region is not here either, and on this host it
 \ cannot be: src/compiler/native/publish.f reads NEMIT rows only the ARM64
 \ emission row fills, and the engine's own callmap and addrmap record ARM64
 \ shapes. An x86-64 emission is consumed by the cross-build image writer.
@@ -193,6 +193,8 @@ X64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-TRAP-ENTRY IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 
@@ -263,6 +265,8 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 : DBYTES-OF ( IR-ID:ir-op-id -- n )  0 BND-DBYTES @ ATTR-INT ;
 : DBACK-OF ( IR-ID:ir-op-id -- n )   0 BND-DBACK @ ATTR-INT ;
 : ENTRY-OF ( IR-ID:ir-op-id -- n )   0 BND-ENTRY @ ATTR-INT ;
+: TRAP-ENTRY-OF ( IR-ID:ir-op-id -- n ) 0 BND-TRAP-ENTRY @ ATTR-INT ;
+: FUN-OF ( IR-ID:ir-op-id -- n )     0 BND-FUN @ ATTR-INT ;
 : SLOT-OF ( IR-ID:ir-op-id -- n )    0 BND-SLOT @ ATTR-INT ;
 : FRAME-OF ( IR-ID:ir-op-id -- n )   0 BND-FRAME @ ATTR-INT ;
 
@@ -650,10 +654,12 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 \ ANOTHER WORD'S ENTRY IS AN ABSOLUTE ADDRESS, so the distance is measured from
 \ where this emission was placed: the instruction's own address is the placement
 \ plus its offset in the emission, and the displacement is from the end of it.
-: ENTRY-TARGET ( IR-ID:ir-op-id -- n )
-   {: id:IR-ID:ir-op-id :}
+: FROM-PLACE ( n -- n )
    PLACE-MODE @ PLACE-YES <> if E-X64EMIT-STATE throw then
-   id ENTRY-OF PLACE-AT-N @ - ;
+   PLACE-AT-N @ - ;
+
+: ENTRY-TARGET ( IR-ID:ir-op-id -- n )
+   ENTRY-OF FROM-PLACE ;
 
 : PUT-WORDCALL ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
@@ -667,6 +673,31 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 : PUT-TAILCALL ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id ENTRY-TARGET s PUT-JMP ;
+
+\ ---- leaving through the routine that ends the process -----------------------
+\ The twin of emit.f PUT-TRAP: the pointer moved over the cells the routine
+\ reads, then a call to its absolute entry under the trap's own key. A CALL and
+\ not a jump, so the routine finds a return address where every callee does;
+\ control never comes back to this one, so no move follows it.
+: PUT-TRAP ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id DBYTES-OF s PUT-DMOVE
+   id TRAP-ENTRY-OF FROM-PLACE s PUT-CALL-TO ;
+
+\ ---- the address of one of this emission's own functions --------------------
+\ AN ABSOLUTE ADDRESS, the placement plus where the function starts, in the
+\ `mov r64, imm64` a literal takes, and filed as a CODE site so the image writer
+\ finds it again. A measurement writes zero: a later function has no start yet,
+\ and the immediate's width does not depend on the number in it.
+: FUN-ADDR ( IR-ID:ir-op-id -- n )
+   FUN-OF FUN-START {: at:n :}
+   MEAS @ 0<> if 0 exit then
+   at PLACE-AT-N @ + ;
+
+: PUT-CODEADDR ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   MEAS @ 0= if CUR X64IR:ADDR-CODE SITE+ then
+   id 0 RES-R64  id FUN-ADDR >IMM64  s ENC-MOV-RI64 ;
 
 \ ---- the dispatch ------------------------------------------------------------
 \ Every opcode of the dialect is named, so a form added to the vocabulary is a
@@ -721,8 +752,8 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
       call     OF id s PUT-CALL ENDOF
       wordcall OF id s PUT-WORDCALL ENDOF
       tailcall OF id s PUT-TAILCALL ENDOF
-      trap     OF E-X64EMIT-FORM throw ENDOF
-      codeaddr OF E-X64EMIT-FORM throw ENDOF
+      trap     OF id s PUT-TRAP ENDOF
+      codeaddr OF id s PUT-CODEADDR ENDOF
    ;MATCH ;
 
 \ ---- how long one operation is -----------------------------------------------
@@ -1062,6 +1093,8 @@ public
    c b X64IR:KEY-DBYTES 0 BND-DBYTES !
    c b X64IR:KEY-DBACK  0 BND-DBACK !
    c b X64IR:KEY-ENTRY  0 BND-ENTRY !
+   c b X64IR:KEY-TRAP-ENTRY 0 BND-TRAP-ENTRY !
+   c b X64IR:KEY-FUN    0 BND-FUN !
    c b X64IR:KEY-SLOT   0 BND-SLOT !
    c b X64IR:KEY-FRAME  0 BND-FRAME !
    BOUND-YES BND-MODE ! ;

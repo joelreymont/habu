@@ -10,11 +10,14 @@
 \ a wrong answer. The manifest lists each file with its expected status;
 \ docs/bootstrap.md gives the peer's comparison.
 \
-\ Two fixtures have no image. The rows refuse BUILD-ADDRESSED with
+\ Three fixtures have no image. The rows refuse BUILD-ADDRESSED with
 \ E-IR-VERIFY-OPTYPE: it takes its memory order as an argument, which a
 \ data-stack contract has no cell for. The last check, after every image is
 \ written, asserts that refusal. BUILD-SELFCALLER is RECURSE with no base case,
-\ so it never returns.
+\ so it never returns. BUILD-TRAP calls `die` at its address in the host
+\ engine's dictionary (select-x64.f TRAP-ENTRY), which is no address of an x86
+\ image; the terminal fixture here renders the same `x64.trap` to a callee the
+\ image carries.
 require lib/test.f
 require lib/string.f
 require lib/fmt.f
@@ -34,15 +37,59 @@ private
 variable CALLEE                      \ the entry the wordcall site names
 TYPED-VARIABLE REL-OP HIR:opcode     \ the relation the compare sites stage
 
-: ROWS, ( n n NBACK:linkage -- ) {: in:n out:n l:NBACK:linkage :}
+public
+\ The cell the terminal fixture computes and hands its callee.
+$0123456789ABCDEF constant TERMINAL-CELL
+private
+
+: ROWS-EMIT ( n n NBACK:linkage -- ) {: in:n out:n l:NBACK:linkage :}
    CC in out l NBACK:DECLARE
    CC BB NBACK:SELECT {: m0:IR-BUILD:module :}
    CC m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
    CC m1 NBACK:FIXPOINT {: m:IR-BUILD:module :}
-   CC m X64HARNESS:POSITION NBACK:EMIT
-   X64EMIT:BYTES X64EMIT:SIZE X64HARNESS:APPEND-ROUTINE
+   CC m X64HARNESS:POSITION NBACK:EMIT ;
+
+: ROWS-DONE ( -- )
    CC NBACK:RETIRE
    CC NBACK:RELEASE ;
+
+: ROWS, ( n n NBACK:linkage -- )
+   ROWS-EMIT
+   X64EMIT:BYTES X64EMIT:SIZE X64HARNESS:APPEND-ROUTINE
+   ROWS-DONE ;
+
+\ The quoting fixture answers the address of its second function, so the label
+\ its case expects is bound where the emission laid that function.
+: QUOTING-ROWS, ( -- )
+   0 1 NBACK:L-NONE ROWS-EMIT
+   X64EMIT:BYTES X64EMIT:SIZE  1 X64EMIT:FUNCTION-OFFSET@
+   X64HARNESS:APPEND-QUOTING
+   ROWS-DONE ;
+
+\ `: LEAF ( n -- ) TERMINAL-CELL CALLEE ;` where CALLEE ends the process: the
+\ terminal call hands over the cell the routine was entered with and a
+\ computed one, publishing both where the callee reads its arguments, the shape
+\ test/compiler/x64-select.f selects.
+: BUILD-TERMINAL ( n -- )
+   {: e:n :}
+   1 0 OPEN-FUN
+   ARG+ {: arg:IR-ID:ir-value-id :}
+   MEM0 {: tok:IR-ID:ir-value-id :}
+   TERMINAL-CELL CONSTOP {: extra:IR-ID:ir-value-id :}
+   HIR-OPCODE:TERMINAL BODY-ST BODY-LN OPEN-OP
+   CC BB tok IR-BUILD:ADD-OPERAND
+   CC BB arg IR-BUILD:ADD-OPERAND
+   CC BB extra IR-BUILD:ADD-OPERAND
+   CC BB  CC BB HIR:KEY-ENTRY  CC BB e IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CC BB IR-BUILD:END-OP drop
+   CLOSE-FUN ;
+
+\ A definition control never comes back from is declared dead, and called
+\ because it makes a call: src/arch/x86-64/passes.f ROUTINE composes
+\ X64ABI:NORET-FRAMED from the two.
+: NORET ( -- NBACK:linkage )
+   NBACK:L-DEAD NBACK:L-CALLED NBACK:WITH ;
 
 : DIFF-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-DIFF 2 1 NBACK:L-NONE ROWS, ;
 : SQUARE-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-SQUARE 1 1 NBACK:L-NONE ROWS, ;
@@ -79,6 +126,9 @@ TYPED-VARIABLE REL-OP HIR:opcode     \ the relation the compare sites stage
 : LOOP-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-LOOP 2 1 NBACK:L-NONE ROWS, ;
 : WORDCALL-BODY ( IR-CTX:ctx -- )
    HIR-MOD CALLEE @ BUILD-WORDCALLER 1 1 NBACK:L-CALLED ROWS, ;
+: TERMINAL-BODY ( IR-CTX:ctx -- )
+   HIR-MOD CALLEE @ BUILD-TERMINAL 1 0 NORET ROWS, ;
+: QUOTER-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-QUOTER QUOTING-ROWS, ;
 
 \ A refused definition ends the way src/compiler/native/compiler.f ends one:
 \ what the refusal left bound is released, then the emission retired.
@@ -109,6 +159,9 @@ public
 : LOOP-ROUTINE ( -- )     WBND [: LOOP-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WORDCALL-ROUTINE ( n -- )
    CALLEE !  WBND [: WORDCALL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: TERMINAL-ROUTINE ( n -- )
+   CALLEE !  WBND [: TERMINAL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: QUOTER-ROUTINE ( -- )   WBND [: QUOTER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : ADDRESSED-REFUSAL ( -- ) WBND [: ADDRESSED-REFUSED ;] IR-CTX:WITH-CONTEXT ;
 ;package
 
@@ -359,6 +412,27 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    callee X64EMIT-TEST:WORDCALL-ROUTINE
    s" wordcaller" false WRITE-IMAGE ;
 
+\ The routine never comes back: its terminal call leaves through a stand-in for
+\ the callee, placed first, which checks the argument and the computed cell the
+\ routine published below the data-stack pointer and exits 0.
+: TERMINAL-IMAGE ( -- )
+   false OPEN,
+   MIN-CELL TERMINAL-CASE,
+   CLOSE,
+   POSITION {: callee:n :}
+   MIN-CELL X64EMIT-TEST:TERMINAL-CELL STAND-IN,
+   ALIGN, ENTRY,
+   callee X64EMIT-TEST:TERMINAL-ROUTINE
+   s" terminal" false WRITE-IMAGE ;
+
+\ The answer is the address the emission laid the second function at, which is
+\ where the harness bound the label the case compares it with.
+: QUOTER-IMAGE ( -- )
+   false OPEN,
+   QUOTE-CASE,
+   CLOSE, ENTRY, X64EMIT-TEST:QUOTER-ROUTINE
+   s" quoter" false WRITE-IMAGE ;
+
 \ Twelve doublings summed: `24 a *`, over four frame slots.
 : PRESSURE-IMAGE ( -- )
    false OPEN,
@@ -425,6 +499,8 @@ public
    DADDR-IMAGE
    LOOP-IMAGE
    WORDCALL-IMAGE
+   TERMINAL-IMAGE
+   QUOTER-IMAGE
    PRESSURE-IMAGE
    PBRANCH-IMAGE
    PLOOP-IMAGE

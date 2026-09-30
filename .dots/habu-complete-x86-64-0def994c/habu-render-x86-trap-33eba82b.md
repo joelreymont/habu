@@ -1,6 +1,6 @@
 ---
 title: Render x86 trap and codeaddr
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.467577+03:00"
