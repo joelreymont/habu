@@ -2815,17 +2815,17 @@ public
    s" trust-sig!" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
 \ ---- pure rows ---------------------------------------------------------------
-\ The arithmetic, comparison, shuffle and memory rows. Every row but four is
-\ the compiler's own lowering: PRIM-HIR stages the row as one HIR function
-\ through X64KHIR (src/habu/kernel-hir-x64.f), the operations the word model
-\ gives the word (src/compiler/native/hir-word.f DEF-ARITH to DEF-BYTE-VIEW,
-\ src/compiler/native/elaborate.f EXPAND-CELL-INDEX to EXPAND-MAXIMUM), and
-\ lays the routine the x86-64 chain emits into the record whole, its own ret
-\ included. A word the model has no row for is staged here from operations it
-\ has. The four hand-written rows are the guarded stores, the twins of
-\ habu1.f BSTORE, BCSTORE and BPLUSSTORE, which compiled stores call rather
-\ than inline (elaborate.f DO-STORE), and ?dup, whose depth depends on its
-\ value.
+\ The arithmetic, comparison, shuffle, memory and float rows. Every row but
+\ five is the compiler's own lowering: PRIM-HIR stages the row as one HIR
+\ function through X64KHIR (src/habu/kernel-hir-x64.f), the operations the
+\ word model gives the word (src/compiler/native/hir-word.f DEF-ARITH to
+\ DEF-BYTE-VIEW, src/compiler/native/elaborate.f EXPAND-CELL-INDEX to
+\ EXPAND-MAXIMUM), and lays the routine the x86-64 chain emits into the record
+\ whole, its own ret included. A word the model has no row for is staged here
+\ from operations it has. The five hand-written rows are the guarded stores,
+\ the twins of habu1.f BSTORE, BCSTORE and BPLUSSTORE, which compiled stores
+\ call rather than inline (elaborate.f DO-STORE), ?dup, whose depth depends on
+\ its value, and f., the twin of habu1.f BFDOT, which writes its own line.
 \
 \ A compiled body calls out only where a divide refuses a zero divisor: to the
 \ entry X64SEL:THROW-ENTRY names, which is the kernel's `throw` row here. Its
@@ -2927,6 +2927,36 @@ private
    x  1 X64KHIR:LIT  HIR-OPCODE:ADD X64KHIR:OP2  X64KHIR:RESULT
    x HIR-OPCODE:BLOAD X64KHIR:FETCH  X64KHIR:RESULT ;
 
+\ A float row's cells are a double's bits. Each argument crosses into a real
+\ with bitsreal and a real answer back to a cell with realbits, as a compiled
+\ word's values cross (elaborate.f COERCE1 and CELL-CROSS).
+: REAL-ARG ( n -- IR-ID:ir-value-id )
+   X64KHIR:ARG HIR-OPCODE:BITSREAL X64KHIR:OP1 ;
+
+: REAL-RESULT ( IR-ID:ir-value-id -- )
+   HIR-OPCODE:REALBITS X64KHIR:OP1 X64KHIR:RESULT ;
+
+: FBIN ( HIR:opcode -- ) {: o:HIR:opcode :}
+   0 REAL-ARG  1 REAL-ARG  o X64KHIR:OP2  REAL-RESULT ;
+
+: FUNARY ( HIR:opcode -- ) {: o:HIR:opcode :}
+   0 REAL-ARG  o X64KHIR:OP1  REAL-RESULT ;
+
+\ A comparison answers a flag, which is a cell.
+: FREL ( HIR:opcode -- ) {: o:HIR:opcode :}
+   0 REAL-ARG  1 REAL-ARG  o X64KHIR:OP2  X64KHIR:RESULT ;
+
+: FREL0 ( HIR:opcode -- ) {: o:HIR:opcode :}
+   0 REAL-ARG  o X64KHIR:OP1  X64KHIR:RESULT ;
+
+\ s>f and f>s cross between a cell's number and a real, and so take or answer
+\ the cell as it stands.
+: S>F-HIR ( -- )
+   0 X64KHIR:ARG  HIR-OPCODE:INTREAL X64KHIR:OP1  REAL-RESULT ;
+
+: F>S-HIR ( -- )
+   0 REAL-ARG  HIR-OPCODE:REALINT X64KHIR:OP1  X64KHIR:RESULT ;
+
 \ ---- the hand-written rows ----
 : STORE-BODY ( -- )
    0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
@@ -2946,6 +2976,64 @@ private
    RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
    RAX PUSH,
    done LBL, ;
+
+\ f.'s frame, written downward from its top: a sign, 19 integer digits, the
+\ point, six fraction digits and the newline are 28 bytes.
+32 constant FDOT-BYTES
+1000000 constant FRAC-SCALE             \ six fraction digits
+6 constant FRAC-DIGITS
+
+\ Put the low byte of a register one below rsi, which moves down to it.
+: PUT, ( r64 -- ) {: r:r64 :}
+   RSI ASM-SINK ENC-DEC
+   r R64>N >R8 RSI MEM-AT ASM-SINK ENC-MOV8-MR ;
+
+: CHAR, ( n -- ) {: c:n :}  RCX c IMM32,  RCX PUT, ;
+
+\ rax = ARM64 fcvtzs of a double that is a NaN or not negative, which is all
+\ f. converts. cvttsd2si answers MIN-N for a NaN and past a cell, where fcvtzs
+\ answers 0 and saturates to MAX-N: MIN-N's sign smeared over rcx flips it to
+\ MAX-N, and a NaN, unordered with itself, then takes zero. It clobbers rcx.
+: TRUNC-MAG, ( xmm -- ) {: x:xmm :}
+   RAX x ASM-SINK ENC-CVTTSD2SI-RR
+   RCX RAX ASM-SINK ENC-MOV-RR  RCX 63 >IMM8 ASM-SINK ENC-SAR-RI8
+   RAX RCX ASM-SINK ENC-XOR-RR
+   RCX ZERO-REG,
+   x x ASM-SINK ENC-UCOMISD-RR  C-P RAX RCX ASM-SINK ENC-CMOVCC ;
+
+\ The twin of habu1.f BFDOT: one write on fd 1, never the output device, of `-`
+\ when bit 63 is set, the decimal of I = fcvtzs(|x|), `.`, the six low digits,
+\ zero-padded, of fcvtzs((|x| - I) * 1e6) and a newline. |x| clears bit 63, so
+\ an infinity prints MAX-N and MAX-N's six low digits, and a NaN 0.000000
+\ after its sign.
+: FDOT-BODY ( -- )
+   LBL LBL {: frac:label pos:label :}
+   R8 POP,                                          \ the bits
+   RSP FDOT-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RSI RSP FDOT-BYTES MEM-OFF ASM-SINK ENC-LEA
+   STR-LF CHAR,
+   RAX R8 ASM-SINK ENC-MOV-RR
+   RAX 1 >IMM8 ASM-SINK ENC-SHL-RI8  RAX 1 >IMM8 ASM-SINK ENC-SHR-RI8
+   XMM1 RAX ASM-SINK ENC-MOVQ-XR                    \ |x|
+   XMM1 TRUNC-MAG,  R9 RAX ASM-SINK ENC-MOV-RR      \ r9 = I
+   XMM2 R9 ASM-SINK ENC-CVTSI2SD-RR
+   XMM1 XMM2 ASM-SINK ENC-SUBSD-RR
+   RCX FRAC-SCALE IMM32,  XMM2 RCX ASM-SINK ENC-CVTSI2SD-RR
+   XMM1 XMM2 ASM-SINK ENC-MULSD-RR
+   XMM1 TRUNC-MAG,                                  \ rax = the fraction
+   R10 FRAC-DIGITS IMM32,  RCX 10 IMM32,
+   frac LBL,
+      RDX ZERO-REG,  RCX ASM-SINK ENC-DIV
+      RDX [char] 0 >IMM8 ASM-SINK ENC-ADD-RI8  RDX PUT,
+      R10 ASM-SINK ENC-DEC  C-NE frac JCC,
+   [char] . CHAR,
+   RAX R9 ASM-SINK ENC-MOV-RR  DIGITS,
+   R8 R8 ASM-SINK ENC-TEST-RR  C-NS pos JCC,
+   [char] - CHAR,
+   pos LBL,
+   RDX RSP FDOT-BYTES MEM-OFF ASM-SINK ENC-LEA  RDX RSI ASM-SINK ENC-SUB-RR
+   RDI 1 IMM32,  NR-WRITE SYS,
+   RSP FDOT-BYTES >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
 : ARITH-ROWS, ( -- )
    s" +" 2 1 [: HIR-OPCODE:ADD BIN ;] PRIM-HIR
@@ -3007,10 +3095,29 @@ private
    s" char+" 1 1 [: 1 HIR-OPCODE:ADD WITH ;] PRIM-HIR
    s" count" 1 2 [: COUNT-HIR ;] PRIM-HIR ;
 
+\ The word model's float operations (hir-word.f DEF-FLOAT and DEF-FCOMPARE),
+\ and f.
+: FLOAT-ROWS, ( -- )
+   s" f+" 2 1 [: HIR-OPCODE:FADD FBIN ;] PRIM-HIR
+   s" f-" 2 1 [: HIR-OPCODE:FSUB FBIN ;] PRIM-HIR
+   s" f*" 2 1 [: HIR-OPCODE:FMUL FBIN ;] PRIM-HIR
+   s" f/" 2 1 [: HIR-OPCODE:FDIV FBIN ;] PRIM-HIR
+   s" f<" 2 1 [: HIR-OPCODE:FLT FREL ;] PRIM-HIR
+   s" f=" 2 1 [: HIR-OPCODE:FEQ FREL ;] PRIM-HIR
+   s" f>" 2 1 [: HIR-OPCODE:FGT FREL ;] PRIM-HIR
+   s" f0<" 1 1 [: HIR-OPCODE:FLTZ FREL0 ;] PRIM-HIR
+   s" f0=" 1 1 [: HIR-OPCODE:FEQZ FREL0 ;] PRIM-HIR
+   s" fabs" 1 1 [: HIR-OPCODE:FABS FUNARY ;] PRIM-HIR
+   s" fnegate" 1 1 [: HIR-OPCODE:FNEG FUNARY ;] PRIM-HIR
+   s" fsqrt" 1 1 [: HIR-OPCODE:FSQRT FUNARY ;] PRIM-HIR
+   s" s>f" 1 1 [: S>F-HIR ;] PRIM-HIR
+   s" f>s" 1 1 [: F>S-HIR ;] PRIM-HIR
+   s" f." [: FDOT-BODY ;] PRIM ;
+
 public
 
 : PURE, ( -- )
-   ARITH-ROWS,  COMPARE-ROWS,  STACK-ROWS,  MEMORY-ROWS, ;
+   ARITH-ROWS,  COMPARE-ROWS,  STACK-ROWS,  MEMORY-ROWS,  FLOAT-ROWS, ;
 \ ---- profiler rows -----------------------------------------------------------
 \ The sampling half of habu1.f's profiler rows: src/habu/prof-x64.f emits the
 \ SIGALRM handler, its restorer and the index helpers once, then each body

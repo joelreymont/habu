@@ -16,8 +16,9 @@
 \            -7       4         -3  NN-N
 \     ;CASES
 \
-\ The integer sets are the data file test/prim-cases.f, which this file
-\ includes and another runner can include to hold a backend to the same cases.
+\ The integer sets are the data file test/prim-cases.f and the float sets
+\ test/prim-float-cases.f, which this file includes and another runner can
+\ include to hold a backend to the same cases.
 \
 \ HOW A CASE REACHES A PRIMITIVE. The sealed product engine has no way for
 \ checked code to execute a name it computed: no xt table, no `evaluate`, no
@@ -603,85 +604,14 @@ s" +" -1 FIND-ROW -1 T=
 
 \ =============================================================================
 \ The cases, in table order: the integer sets are data in test/prim-cases.f,
-\ the float sets follow.
+\ the float sets in test/prim-float-cases.f.
 \ =============================================================================
 
 s" test/prim-cases.f" included
 s" @" MARK-PAIRED                       \ fetched by the `!` round trip
 s" c@" MARK-PAIRED                      \ fetched by the `c!` round trip
 
-\ ---- floats ------------------------------------------------------------------
-0 CASES f+
-           3           4                   7  NN-N
-          -3           4                   1  NN-N
-           0           0                   0  NN-N
-;CASES
-
-0 CASES f-
-           7           4                   3  NN-N
-           4           7                  -3  NN-N
-;CASES
-
-0 CASES f*
-           6           7                  42  NN-N
-          -6           7                 -42  NN-N
-;CASES
-
-0 CASES f/
-          12           3                   4  NN-N
-         -12           3                  -4  NN-N
-;CASES
-
-0 CASES fnegate
-           5                              -5  N-N
-          -5                               5  N-N
-;CASES
-
-0 CASES fabs
-          -5                               5  N-N
-           5                               5  N-N
-;CASES
-
-0 CASES fsqrt
-          16                               4  N-N
-           0                               0  N-N
-;CASES
-
-0 CASES f<
-           3           4                   1  NN-F
-           4           3                   0  NN-F
-;CASES
-
-0 CASES f>
-           4           3                   1  NN-F
-           3           4                   0  NN-F
-;CASES
-
-0 CASES f=
-           3           3                   1  NN-F
-           3           4                   0  NN-F
-;CASES
-
-0 CASES f0<
-          -1                               1  N-F
-           1                               0  N-F
-           0                               0  N-F
-;CASES
-
-0 CASES f0=
-           0                               1  N-F
-           1                               0  N-F
-;CASES
-
-0 CASES s>f
-           7                               7  N-N
-          -7                              -7  N-N
-;CASES
-
-0 CASES f>s
-           7                               7  N-N
-          -7                              -7  N-N
-;CASES
+s" test/prim-float-cases.f" included
 
 REF-RESOLVES
 REPORT

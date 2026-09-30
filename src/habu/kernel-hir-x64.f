@@ -7,9 +7,11 @@
 \ text is the row's name, so every span names the row. It stages one function
 \ of `in` cells: the stager builds its body with ARG (argument 0 is the
 \ deepest cell), LIT, OP1, OP2 and FETCH, and names each answer, deepest
-\ first, with RESULT. The function then goes down the backend rows in the
-\ order src/compiler/native/compiler.f runs them: declare with no linkage,
-\ select, prune and lower to a fixpoint. X64PASS:EMIT-UNPLACED seals a shadow
+\ first, with RESULT. OP1 and OP2 answer the type the opcode's schema declares,
+\ so a float row crosses its cells into reals and its real answer back. The
+\ function then goes down the backend rows in the order
+\ src/compiler/native/compiler.f runs them: declare with no linkage, select,
+\ prune and lower to a fixpoint. X64PASS:EMIT-UNPLACED seals a shadow
 \ emission, since the kernel lays the bytes where its stream is and links the
 \ calls itself, and `use` reads it through X64EMIT's readers before the retire
 \ row gives it back.
@@ -119,6 +121,12 @@ variable TOK?                           \ nonzero once the function has a token
 
 : CELL-RESULT ( -- ) CC BB CELLT IR-BUILD:ADD-RESULT ;
 
+\ The answer an operation's schema declares: a cell for the integer operations,
+\ a real for the float ones, whose answer the verifier holds to that type.
+: SCHEMA-RESULT ( HIR:opcode -- )
+   {: o:HIR:opcode :}
+   CC BB  CC BB  CC BB o HIR:OPCODE 0 IR-BUILD:SCHEMA-RESULT@  IR-BUILD:ADD-RESULT ;
+
 \ The memory the function is entered with, minted where the first fetch needs
 \ it; each fetch then answers the memory after it.
 : TOKEN ( -- IR-ID:ir-value-id )
@@ -180,13 +188,13 @@ public
 
 : OP1 ( IR-ID:ir-value-id HIR:opcode -- IR-ID:ir-value-id )
    {: x:IR-ID:ir-value-id o:HIR:opcode :}
-   o OPEN-OP  x OPERAND  CELL-RESULT
+   o OPEN-OP  x OPERAND  o SCHEMA-RESULT
    CLOSE-OP 0 RESULT-AT ;
 
 \ The deeper operand first, as the source order is: `a b sub` is a - b.
 : OP2 ( IR-ID:ir-value-id IR-ID:ir-value-id HIR:opcode -- IR-ID:ir-value-id )
    {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id o:HIR:opcode :}
-   o OPEN-OP  x OPERAND  y OPERAND  CELL-RESULT
+   o OPEN-OP  x OPERAND  y OPERAND  o SCHEMA-RESULT
    CLOSE-OP 0 RESULT-AT ;
 
 \ A load, `load` or `bload`, of the address.
