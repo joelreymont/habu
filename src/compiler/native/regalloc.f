@@ -831,10 +831,11 @@ DYNAMIC-BUFFER CALL-POS-BUF n
 : CALL-POS ( -- ptr n ) 0 CALL-POS-BUF ;
 variable N-CALLS
 0 N-CALLS !
-\ Every operation whose form fixes a RESULT register, in position order, with
-\ the registers it writes there. A fixed result destroys its register at that
-\ position exactly as a call destroys the ones it may, so this index is read
-\ where the call index is.
+\ Every operation whose form fixes a register, in position order, with the
+\ registers it fixes there, for a result or an operand. A fixed result destroys
+\ its register at that position exactly as a call destroys the ones it may, and
+\ a fixed operand's pin holds its register up to that position, so this index
+\ is read where the call index is.
 DYNAMIC-BUFFER FIXP-POS-BUF n
 : FIXP-POS ( -- ptr n ) 0 FIXP-POS-BUF ;
 DYNAMIC-BUFFER FIXP-MASK-BUF n
@@ -1156,14 +1157,18 @@ variable N-FIXP
 
 \ ---- the registers an operation's own form names -----------------------------
 \ A schema-declared fixed register is the same fact about one VALUE that a
-\ contract's declared place is, one operation in rather than one routine in: the
-\ value a form's result field leaves in that register is declared INTO it, and
-\ the value its operand field reads is WANTED there. Both are written in the
-\ contract's own two planes, so a class two declarations disagree about is
-\ refused where a contract's would be (MB-ONE-DECL) and the fixed-first
-\ placement pins them without a rule of its own. What this pass does NOT do is
-\ insert a copy for a value that cannot be pre-coloured; the selector is what
-\ keeps two values that both demand one register apart.
+\ contract's declared place is, one operation in rather than one routine in, and
+\ it is a PIN on either side of the form: the value a result field leaves in
+\ that register and the value an operand field reads from it are both declared
+\ INTO it. The instruction has no other place for either, so a want the
+\ placement may decline would only hand the validator a module it refuses
+\ (E-A64RAV-FIXED). The declaration is written in the contract's fixed plane, so
+\ a class two declarations disagree about is refused where a contract's would be
+\ (MB-ONE-DECL) and the fixed-first placement pins it without a rule of its own.
+\ What keeps the pinned register free for it is the forbid every class that
+\ crosses or reads the operation carries (MB-FIXED-BITS). What this pass does
+\ NOT do is insert a copy for a value that cannot be pre-coloured; the selector
+\ is what keeps two values that both demand one register apart.
 : MB-FIX-REG-CK ( n -- )
    {: r:n :}
    r 0 < r F-GPR RF-SIZE >= or if E-A64RA-FIXED throw then
@@ -1174,9 +1179,6 @@ variable N-FIXP
    sd FIX-RESULT? if id ord RESULT-AT SLOT exit then
    id ord OPERAND-AT SLOT ;
 
-: MB-FIXED-PLANE ( IR-SCHEMA:side -- n )
-   FIX-RESULT? if D-FIX else D-WANT then ;
-
 : MB-FIXED1 ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id i:n :}
    id i FIX-REG-AT {: r:n :}
@@ -1184,7 +1186,7 @@ variable N-FIXP
    id i FIX-SIDE-AT {: sd:IR-SCHEMA:side :}
    id  id i FIX-ORD-AT  sd MB-FIXED-VAL {: k:n :}
    k CLS-AT C-TOKEN = if E-A64RA-FIXED throw then
-   r  sd MB-FIXED-PLANE  k DECL! ;
+   r D-FIX k DECL! ;
 
 : MB-FIXED-OP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
@@ -1624,7 +1626,7 @@ variable N-FIXP
    repeat
    drop ;
 
-\ The same bisection over the fixed-result index.
+\ The same bisection over the fixed-register index.
 : MB-FIX-FROM ( n -- n )
    {: p:n :}
    0 N-FIXP @
@@ -1667,21 +1669,34 @@ variable N-FIXP
    w NOBODY = if 0 exit then
    1 w lshift ;
 
-\ One crossing operation whose form fixes a RESULT register forbids that
-\ register: the instruction writes it whatever is in it, so a value that has to
-\ survive the operation cannot be there.
+\ One crossing operation whose form fixes a register forbids that register,
+\ whichever side of the form fixes it. A fixed RESULT is written whatever is in
+\ it, so a value that has to survive the operation cannot be there. A fixed
+\ OPERAND is pinned (MB-FIXED1): the value the form reads there holds it from
+\ its definition to this operation, so a value live across the operation cannot
+\ be there either - it would hold the register when the pin is placed.
 \
 \ AND SO DOES AN OPERATION THE CLASS IS ONLY READ BY, which crosses nothing. A
 \ form that fixes a result may write that register before it has read its
-\ operands - `x64.idiv` renders `cqo; idiv r64` and the cqo writes rdx - so a
-\ value this operation READS may not be in a fixed-result register either, with
-\ the one exception the form itself states: the operand declared INTO that
-\ register, which is where the instruction wants it and nowhere else. The
-\ exception is asked of the CLASS and not of the operand ordinal, which is as
-\ exact as one declaration per class makes it (MB-ONE-DECL): a class a routine
-\ CONTRACT declares into a fixed-result register would be exempt at an operation
-\ that reads it for another operand, and no convention of either machine declares
-\ a place a form also fixes.
+\ operands - `x64.idiv` renders `cqo; idiv r64` and the cqo writes rdx - and a
+\ form that fixes an operand reads THAT value from the register and no other -
+\ `shl r64, cl` shifts its tied destination by rcx, so a destination in rcx is
+\ the count. A value this operation READS may therefore not be in any register
+\ its form fixes, with the one exception the form itself states: the operand
+\ declared INTO that register, which is where the instruction wants it and
+\ nowhere else. The exception is asked of the CLASS and not of the operand
+\ ordinal, which is as exact as one declaration per class makes it
+\ (MB-ONE-DECL): a class a routine CONTRACT declares into a fixed register would
+\ be exempt at an operation that reads it for another operand, and no convention
+\ of either machine declares a place a form also fixes.
+\
+\ Together the two rules are what make a pinned operand placeable when its value
+\ is defined immediately before the operation, which is where the selector puts
+\ the copy it makes for a fixed operand: every class holding the register there
+\ either dies at the definition, and is expired before the pin is placed
+\ (MB-STEP), or reaches the operation and is forbidden the register. A value
+\ defined further up can meet a class that holds the register and dies before
+\ the operation; MB-PIN refuses that placement with E-A64RA-FIXED.
 : MB-FIXED-BITS ( n n n -- n )
    {: r:n p:n m:n :}
    r p MB-CROSSES? if m exit then
@@ -1707,7 +1722,7 @@ variable N-FIXP
    r first limit MB-FORBID-CALLS {: acc:n :}
    \ The fixed scan runs one position FURTHER than the calls one, because the
    \ operation that READS a class for the last time is the last position of its
-   \ hull and forbids its fixed results there.
+   \ hull and forbids its fixed registers there.
    r first limit 1+ acc MB-FORBID-FIXED ;
 
 : MB-DUE? ( n n -- bool )
@@ -2210,15 +2225,14 @@ variable N-FIXP
       loop
    loop ;
 
-\ The registers one operation's form fixes for its RESULTS, as a mask. An
-\ operation that fixes none answers zero and takes no row in the index.
+\ The registers one operation's form fixes, for its results and its operands
+\ alike, as a mask. An operation that fixes none answers zero and takes no row in
+\ the index.
 : MB-FIX-MASK ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    0
    id FIXES-AT 0 ?do
-      id i FIX-SIDE-AT FIX-RESULT? if
-         1  id i FIX-REG-AT  lshift or
-      then
+      1  id i FIX-REG-AT  lshift or
    loop ;
 
 \ Built beside the call index and read by the same scan, for the same reason:

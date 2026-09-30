@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.706966+03:00"
 blocks:
-  - habu-pin-schema-fixed-1983d191
   - habu-fill-nemit-from-d8c030e4
   - habu-bind-x86-host-4485acdd
   - habu-record-symbolic-x86-10037f07

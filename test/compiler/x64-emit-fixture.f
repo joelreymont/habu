@@ -395,6 +395,32 @@ create TXT
    HIR-OPCODE:XOR a s BINOP RET1
    CLOSE-FUN ;
 
+\ `: LEAF ( a b n -- x ) lshift + ;` - the value shifted dies at the shift, so it
+\ is the tied destination itself, and the shift reads it at the instant it reads
+\ the count's copy from rcx: it is kept out of rcx, which it would otherwise
+\ have taken as the lowest register free where it is written.
+: BUILD-SHL-ADD ( -- )
+   3 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   ARG+ {: n:IR-ID:ir-value-id :}
+   HIR-OPCODE:LSHIFT b n BINOP {: s:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD a s BINOP RET1
+   CLOSE-FUN ;
+
+\ `: LEAF ( a n -- x ) 2dup lshift rot xor + ;` - the value shifted and the count
+\ are both read after the shift, so both are copied and both originals live
+\ across it: neither may hold rcx, where the count's copy is when the shift
+\ reads it.
+: BUILD-SHL-CROSS ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: n:IR-ID:ir-value-id :}
+   HIR-OPCODE:LSHIFT a n BINOP {: s:IR-ID:ir-value-id :}
+   HIR-OPCODE:XOR s a BINOP {: t:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD n t BINOP RET1
+   CLOSE-FUN ;
+
 \ `: LEAF ( a -- n ) invert ;` - the one unary form of this slice.
 : BUILD-NOT ( -- )
    1 1 OPEN-FUN
@@ -973,6 +999,8 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 : SHIFTS-BYTES ( IR-CTX:ctx -- )   HIR-MOD BUILD-SHIFTS EMITTED ;
 : SHL-BYTES ( IR-CTX:ctx -- )      HIR-MOD BUILD-SHL EMITTED ;
 : SHR-BYTES ( IR-CTX:ctx -- )      HIR-MOD BUILD-SHR EMITTED ;
+: SHL-ADD-BYTES ( IR-CTX:ctx -- )  HIR-MOD BUILD-SHL-ADD EMITTED ;
+: SHL-CROSS-BYTES ( IR-CTX:ctx -- ) HIR-MOD BUILD-SHL-CROSS EMITTED ;
 : NOT-BYTES ( IR-CTX:ctx -- )      HIR-MOD BUILD-NOT EMITTED ;
 : CMPSET-BYTES ( IR-CTX:ctx -- )   HIR-MOD BUILD-CMPSET EMITTED ;
 : CMPSETI-BYTES ( IR-CTX:ctx -- )  HIR-MOD BUILD-CMPSETI EMITTED ;
@@ -1201,6 +1229,24 @@ public
    \ mc: xorq %rdx, %rax
    \ mc: retq
    s" 4889c24889c948d3ea4831d0c3" X=
+
+   s" a computed left shift whose tied destination is kept out of rcx, where the count's copy is" T-LABEL
+   WBND [: SHL-ADD-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: movq %rcx, %rcx
+   \ mc: shlq %cl, %rdx
+   \ mc: addq %rdx, %rax
+   \ mc: retq
+   s" 4889c948d3e24801d0c3" X=
+
+   s" a computed left shift whose value and count both live across it, kept out of rcx" T-LABEL
+   WBND [: SHL-CROSS-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: movq %rax, %rsi
+   \ mc: movq %rdx, %rcx
+   \ mc: shlq %cl, %rsi
+   \ mc: xorq %rax, %rsi
+   \ mc: addq %rsi, %rdx
+   \ mc: retq
+   s" 4889c64889d148d3e64831c64801f2c3" X=
 
    s" the complement" T-LABEL
    WBND [: NOT-BYTES ;] IR-CTX:WITH-CONTEXT

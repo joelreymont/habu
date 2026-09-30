@@ -140,6 +140,12 @@ public
    a 0 ARG,  b 1 ARG,
    2 want INVOKE, ;
 
+\ Three cells in and one out.
+: CASE3, ( n n n n -- ) {: a:n b:n c:n want:n :}
+   R12 RBP ASM-SINK ENC-MOV-RR
+   a 0 ARG,  b 1 ARG,  c 2 ARG,
+   3 want INVOKE, ;
+
 \ One cell in, the address of the scratch cell once it holds `content`, and one
 \ out; then a second check, of what the cell holds after the call.
 : CELL-CASE, ( n n n -- ) {: content:n want:n after:n :}

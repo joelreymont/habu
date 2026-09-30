@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-30T10:32:49.303353+03:00"
-blocks:
-  - habu-pin-schema-fixed-1983d191
 ---
 
 Problem: a valid program whose shift count is loaded or computed while a short-lived value holds rcx is refused. The selector copies the count immediately before `x64.shl`/`x64.shr`, but `MB-COALESCE1` (`src/compiler/native/regalloc.f:1308-1321`) merges that copy into a source that dies at it, so the pinned class opens at the source's definition; if another class holds rcx there, `MB-PIN` (`:1736-1742`) throws `E-A64RA-FIXED`. `( a b n -- x ) -rot + swap lshift` under the data-stack convention: arguments load a, b, n in order; b dies at the add and takes rcx; `{n, copy}` is pinned to rcx at n's load while b still holds it. Refused through `NBACK:DECLARE/SELECT/PRUNE/FIXPOINT` under `X64ABI:LEAF-FRAMED`; the register convention accepts it. Found by Cfix's Fable review (repros `repro-coalesce.f`, `repro-rows.f` in the reviewer's scratchpad). Pre-existing: master refuses it too (`E-A64RAV-FIXED`). Never a miscompile; the validator backstops.

@@ -66,6 +66,8 @@ TYPED-VARIABLE REL-OP HIR:opcode     \ the relation the compare sites stage
 : SHIFTS-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-SHIFTS 1 1 NBACK:L-NONE ROWS, ;
 : SHL-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-SHL 2 1 NBACK:L-NONE ROWS, ;
 : SHR-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-SHR 2 1 NBACK:L-NONE ROWS, ;
+: SHL-ADD-BODY ( IR-CTX:ctx -- )  HIR-MOD BUILD-SHL-ADD 3 1 NBACK:L-NONE ROWS, ;
+: SHL-CROSS-BODY ( IR-CTX:ctx -- ) HIR-MOD BUILD-SHL-CROSS 2 1 NBACK:L-NONE ROWS, ;
 : NOT-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-NOT 1 1 NBACK:L-NONE ROWS, ;
 : RELATION-BODY ( IR-CTX:ctx -- )
    HIR-MOD REL-OP @ BUILD-RELATION 2 1 NBACK:L-NONE ROWS, ;
@@ -95,6 +97,8 @@ public
 : SHIFTS-ROUTINE ( -- )   WBND [: SHIFTS-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SHL-ROUTINE ( -- )      WBND [: SHL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SHR-ROUTINE ( -- )      WBND [: SHR-BODY ;] IR-CTX:WITH-CONTEXT ;
+: SHL-ADD-ROUTINE ( -- )  WBND [: SHL-ADD-BODY ;] IR-CTX:WITH-CONTEXT ;
+: SHL-CROSS-ROUTINE ( -- ) WBND [: SHL-CROSS-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NOT-ROUTINE ( -- )      WBND [: NOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : RELATION-ROUTINE ( HIR:opcode -- )
    REL-OP !  WBND [: RELATION-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -226,6 +230,29 @@ create MANIFEST BUF:HDR-BYTES allot
    -4 64 0 CASE2,
    CLOSE, ENTRY, X64EMIT-TEST:SHR-ROUTINE
    s" shr" false WRITE-IMAGE ;
+
+\ `lshift +`, the value shifted the tied destination: a + b shifted by n, with b
+\ kept out of rcx where the count's copy is. A b in cl would be shifted by
+\ itself.
+: SHL-ADD-IMAGE ( -- )
+   false OPEN,
+   5 3 0 8 CASE3,
+   5 3 1 11 CASE3,
+   5 3 63 MIN-CELL 5 + CASE3,
+   5 3 64 8 CASE3,
+   CLOSE, ENTRY, X64EMIT-TEST:SHL-ADD-ROUTINE
+   s" shl-add" false WRITE-IMAGE ;
+
+\ `2dup lshift rot xor +`: n + ((a shifted by n) xor a), with a and n both live
+\ across the shift and so both out of rcx.
+: SHL-CROSS-IMAGE ( -- )
+   false OPEN,
+   3 0 0 CASE2,
+   3 1 6 CASE2,
+   3 63 MIN-CELL 66 + CASE2,
+   3 64 64 CASE2,
+   CLOSE, ENTRY, X64EMIT-TEST:SHL-CROSS-ROUTINE
+   s" shl-cross" false WRITE-IMAGE ;
 
 : NOT-IMAGE ( -- )
    false OPEN,
@@ -390,6 +417,8 @@ public
    SHIFTS-IMAGE
    SHL-IMAGE
    SHR-IMAGE
+   SHL-ADD-IMAGE
+   SHL-CROSS-IMAGE
    NOT-IMAGE
    RELATION-IMAGES
    MOVI-IMAGE

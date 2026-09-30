@@ -44,15 +44,24 @@
 \ and result registers (x64ir.f DEF-SHIFT-CL and DEF-IDIV) and the allocator
 \ places them from there, so making them SATISFIABLE is this pass's work, as it
 \ is for a tie: the count of a variable shift and the dividend of a division are
-\ copied into fresh values with `x64.mov` first, and a count or dividend the rest
-\ of the function reads - or two counts live over one interval - is repaired by
-\ the copy instead of refused. A shift by a literal keeps the immediate form and
-\ carries no constraint at all. A division's quotient is result 0 and the source
-\ value's; its remainder is a second result nothing reads; `cqo` and the branch
-\ over the zero-divisor refusal belong to the form's RENDER, which is why the
-\ operation carries the runtime `throw` entry as its own attribute the way
-\ a64.sdiv does, and why a target dictionary without `throw` is refused
-\ (E-X64SEL-TRAP).
+\ copied into fresh values with `x64.mov` immediately before the operation. The
+\ allocator pins each copy to its register and forbids that register to every
+\ other value the operation reads or lives across (regalloc.f MB-FIXED-BITS), so
+\ a count or dividend the rest of the function reads - or two counts live over
+\ one interval - keeps its own value elsewhere while the copy takes the
+\ register. The copy stands IMMEDIATELY before the operation so that a value
+\ dying between the two cannot hold the register where the pin is placed. That
+\ holds while the copy is a class of its own. When the allocator coalesces the
+\ copy into a source that dies at it (regalloc.f MB-COALESCE1), the pinned class
+\ opens at the source's definition instead, and a short-lived value holding the
+\ register there makes MB-PIN refuse with E-A64RA-FIXED: `( a b n -- x ) -rot +
+\ swap lshift` under the data-stack convention is refused so. A shift by a
+\ literal keeps the immediate form and carries no constraint at all. A
+\ division's quotient is result 0 and the source value's; its remainder is a
+\ second result nothing reads; `cqo` and the branch over the zero-divisor refusal
+\ belong to the form's RENDER, which is why the operation carries the runtime
+\ `throw` entry as its own attribute the way a64.sdiv does, and why a target
+\ dictionary without `throw` is refused (E-X64SEL-TRAP).
 \
 \ WHAT THE EMITTER STILL OWES. emit-x64.f renders `x64.shl` and `x64.shr` but
 \ not `x64.idiv`, which it refuses by name (E-X64EMIT-FORM), so a division is

@@ -1,11 +1,12 @@
 ---
 title: Pin schema-fixed operands, forbid their overlap
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T17:34:20.074440+03:00"
+closed-at: "2026-09-30T10:33:00.371208+03:00"
+close-reason: "Schema-fixed operands pinned; crossing classes forbidden the register. ARM64 bytes unchanged (chain B1==B2); gate 493/493 rc 0. Review: coalesced-pin refusal dotted as habu-pin-a-coalesced-613f623b."
 ---
-
 
 Problem: `src/compiler/native/regalloc.f` treats a form's schema-fixed operand register as a want (`MB-FIXED-PLANE`, `regalloc.f:1177`; `MB-WANTED` grants it only when free, `:1730-1738`) and indexes only fixed results (`MB-FIX-MASK`, `:2215-2222`). So a value in rcx that is read by or live across `x64.shl`/`x64.shr` keeps the count copy out of rcx, and the validator (`regalloc-verify.f:734-741`) refuses a valid program with `E-A64RAV-FIXED`: `( a b n -- x ) lshift +` (b, the tied destination, holds rcx) and `( a n -- x ) 2dup lshift rot xor +` (crossing holders), under LEAF and DLEAF. `select-x64.f:40-48` point THREE claims the copy repairs this; it does not. Found by C2; repros in the C2 worker's notes (`dbg2.f`, `dbg3.f`).
 Acceptance: (a) a schema-fixed operand is a pin, not a want: `MB-FIX-MASK` masks every fixed side, operands as well as results, so `MB-FORBID-FIXED` keeps every class that crosses the operation, or is read by it and is not the declared class, out of that register, the twin of the result rule (`MB-FIXED-BITS` `:1685-1689`, exemption `MB-DECL-BIT` `:1663`); the comments at `:1627` and `:1670-1689` say so. (b) `MB-FIXED1` (`:1180-1187`) declares `D-FIX`; `MB-FIXED-PLANE` is deleted; the comment at `:1158-1166` is rewritten. Contract result wants stay wants (`MB-PLAN-MOVES` `:2013-2023` repairs them with `P-MOVE`). ARM64 declares no fixed operand (`a64ir.f` has no `ADD-FIXED`) and neither ABI places an argument in a register, so ARM64 placement is unchanged. (c) `test/compiler/x64-regalloc.f` gains two accepted rows under LEAF and DLEAF: `( a b n -- x ) lshift +` and `( a n -- x ) 2dup lshift rot xor +`, each asserting the count copy's register is rcx and `ACCEPTED?`; `TWO-COUNTS`, `RESERVED-FIX` and `test/compiler/native-regalloc.f:2871-2905` stay refused as they are (`TWO-COUNTS` then throws `E-A64RA-FIXED` from `MB-PIN`, `:1725`). (d) `test/compiler/x64-emit.f` pins both shapes' bytes; `test/x86-64-peer-routines.f` runs both natively (counts 0, 1, 63, 64, with negative twins). (e) `select-x64.f:40-48` names the allocator's forbid; `docs/x86-64.md:193-196` likewise. (f) `lib/errors.f:1259`: `E-X64EMIT-FORM`'s description drops "a variable shift" and "a frame access" (C1, C2).

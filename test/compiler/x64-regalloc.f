@@ -243,6 +243,31 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    HIR-OPCODE:LSHIFT s1 c2 BINOP RET1
    CLOSE-FUN ;
 
+\ `: LEAF ( a b n -- x ) lshift + ;` - the value shifted dies at the shift, so it
+\ is the tied destination itself and no copy stands for it. The shift reads it
+\ at the instant it reads the count's copy from rcx, so it may not be in rcx.
+: BUILD-SHIFT-ADD ( -- )
+   3 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   ARG+ {: n:IR-ID:ir-value-id :}
+   HIR-OPCODE:LSHIFT b n BINOP {: s:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD a s BINOP RET1
+   CLOSE-FUN ;
+
+\ `: LEAF ( a n -- x ) 2dup lshift rot xor + ;` - the value shifted and the count
+\ are both read again after the shift, so the selector copies both and the
+\ originals CROSS it. A value live across the shift may not hold rcx, where the
+\ count's copy is when the shift reads it.
+: BUILD-SHIFT-CROSS ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: n:IR-ID:ir-value-id :}
+   HIR-OPCODE:LSHIFT a n BINOP {: s:IR-ID:ir-value-id :}
+   HIR-OPCODE:XOR s a BINOP {: t:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD n t BINOP RET1
+   CLOSE-FUN ;
+
 \ `: LEAF ( a b -- n ) / ;` - the dividend is copied into the register the divide
 \ takes it in, the divisor is the free operand, and the remainder is a result
 \ nothing reads.
@@ -349,25 +374,29 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    m ;
 
 \ ---- and the same body under the data-stack convention -----------------------
-\ The other contract of this machine: the interface is two caller cells in and
-\ one out, so the selector writes the boundary and the validator has a stand to
-\ measure. It is x86-64's own policy that is measured, because the vocabulary
-\ x64ir builds states `entry-base` and the validator reads it there.
-: DLEAF ( -- NEFF:routine )
-   X64ABI:SCRATCH 2 1 X64ABI:LEAF ;
+\ The other contract of this machine: the interface is as many caller cells in
+\ as the body takes and one out, so the selector writes the boundary and the
+\ validator has a stand to measure. It is x86-64's own policy that is measured,
+\ because the vocabulary x64ir builds states `entry-base` and the validator reads
+\ it there.
+: DLEAF ( n -- NEFF:routine )
+   {: in:n :}
+   X64ABI:SCRATCH in 1 X64ABI:LEAF ;
 
-: DSTACK-SELECTED ( -- IR-BUILD:module )
+: DSTACK-SELECTED ( n -- IR-BUILD:module )
+   {: in:n :}
    CC BB X64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    X64-BUILDER {: xb:IR-BUILD:builder :}
    CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
-   CC m xb DLEAF X64SEL:SELECT ;
+   CC m xb  in DLEAF  X64SEL:SELECT ;
 
-: DSTACK-ALLOCATED ( -- IR-BUILD:module )
-   DSTACK-SELECTED {: m:IR-BUILD:module :}
-   CC m DLEAF A64RA:ALLOCATE
-   m DLEAF A64RAV:ACCEPT
+: DSTACK-ALLOCATED ( n -- IR-BUILD:module )
+   {: in:n :}
+   in DSTACK-SELECTED {: m:IR-BUILD:module :}
+   CC m  in DLEAF  A64RA:ALLOCATE
+   m  in DLEAF  A64RAV:ACCEPT
    m ;
 
 \ ---- and the contract a routine leaves through its callee under --------------
@@ -624,7 +653,7 @@ $1000 constant THROW-STAND
 : DSTACK-BODY ( IR-CTX:ctx -- n n n n n bool )
    HIR-MOD
    BUILD-DIFF
-   DSTACK-ALLOCATED drop
+   2 DSTACK-ALLOCATED drop
    A64RA:VALUES
    1 A64RAV:REG@
    3 A64RAV:REG@
@@ -654,7 +683,7 @@ $1000 constant THROW-STAND
 : DLOOP-BODY ( IR-CTX:ctx -- bool )
    HIR-MOD
    BUILD-LOOP
-   DSTACK-ALLOCATED drop
+   2 DSTACK-ALLOCATED drop
    A64RAV:ACCEPTED? ;
 
 : SQUARE-BODY ( IR-CTX:ctx -- n n n n n bool )
@@ -700,6 +729,43 @@ $1000 constant THROW-STAND
    5 A64RAV:REG@
    6 A64RAV:REG@
    A64RAV:ACCEPTED? ;
+
+\ The count's copy is PINNED to rcx, and every class the shift reads or lives
+\ across is kept out of rcx (regalloc.f MB-FIXED-BITS), as for a fixed result.
+\ A copy only WANTED there loses rcx to the tied destination of the first shape
+\ and to a value crossing the shift in the second, and the validator refuses
+\ that module with E-A64RAV-FIXED. Each shape runs under both conventions: the
+\ count's copy is value 3 of either register-convention body, and 7 and 6 of
+\ the data-stack ones, whose boundary loads and memory tokens come first.
+: SHIFT-ADD-BODY ( IR-CTX:ctx -- n bool )
+   HIR-MOD
+   BUILD-SHIFT-ADD
+   ALLOCATED drop
+   3 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
+: DSHIFT-ADD-BODY ( IR-CTX:ctx -- n bool )
+   HIR-MOD
+   BUILD-SHIFT-ADD
+   3 DSTACK-ALLOCATED drop
+   7 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
+: SHIFT-CROSS-BODY ( IR-CTX:ctx -- n bool )
+   HIR-MOD
+   BUILD-SHIFT-CROSS
+   ALLOCATED drop
+   3 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
+: DSHIFT-CROSS-BODY ( IR-CTX:ctx -- n bool )
+   HIR-MOD
+   BUILD-SHIFT-CROSS
+   2 DSTACK-ALLOCATED drop
+   6 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
+: RCX# ( -- n )   X64ASM:RCX X64ASM:R64>N ;
 
 \ The division the selector lowers: the dividend's copy is coalesced into the
 \ argument and holds rax, the divisor is placed out of rax and rdx, the quotient
@@ -801,6 +867,22 @@ public
    s" two variable shifts whose counts are both live at the first allocate, because the second count's copy is NOT coalesced into a count another class already wants the register for" T-LABEL
    WBND [: TWO-SHIFTS-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 0 T= 1 T= 0 T= 1 T= 2 T= 1 T= 0 T=
+
+   s" a value the shift reads as its tied destination is kept out of rcx, so the count's copy is placed there and the module is accepted: `( a b n -- x ) lshift +` under the register convention" T-LABEL
+   WBND [: SHIFT-ADD-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE RCX# T=
+
+   s" the same shape under the data-stack convention places the count's copy in rcx and is accepted" T-LABEL
+   WBND [: DSHIFT-ADD-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE RCX# T=
+
+   s" values live across the shift are kept out of rcx, so the count's copy is placed there and the module is accepted: `( a n -- x ) 2dup lshift rot xor +` under the register convention" T-LABEL
+   WBND [: SHIFT-CROSS-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE RCX# T=
+
+   s" the same shape under the data-stack convention places the count's copy in rcx and is accepted" T-LABEL
+   WBND [: DSHIFT-CROSS-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE RCX# T=
 
    s" a division the selector lowered places the dividend's copy in rax, the divisor out of rax and rdx, and the remainder nothing reads in rdx" T-LABEL
    WBND [: DIVIDE-BODY ;] IR-CTX:WITH-CONTEXT
