@@ -28,6 +28,8 @@ create UB-LF-BUF 1 allot
 
 TYPED-VARIABLE UB-FILE-A ptr u8
 variable UB-FILE-U
+TYPED-VARIABLE UB-LABEL-A ptr u8
+variable UB-LABEL-U
 TYPED-VARIABLE UB-SRC-A ptr u8
 variable UB-SRC-U
 variable UB-SRC-CAP
@@ -59,6 +61,9 @@ variable UB-OUT-FD
 : UB-FILE$ ( -- ptr u8 n )
    UB-FILE-A@ UB-FILE-U @ ;
 
+: UB-LABEL$ ( -- ptr u8 n )
+   UB-LABEL-A @ UB-LABEL-U @ ;
+
 : UB-SRC-A@ ( -- ptr u8 )
    UB-SRC-A @ ;
 
@@ -73,6 +78,9 @@ variable UB-OUT-FD
 
 : UB-FILE-A! ( ptr u8 -- )
    UB-FILE-A ! ;
+
+: UB-LABEL-A! ( ptr u8 -- )
+   UB-LABEL-A ! ;
 
 : UB-SRC-A! ( ptr u8 -- )
    UB-SRC-A ! ;
@@ -330,7 +338,7 @@ private
 : UB-JSON-ORIGIN ( -- )
    s" token" LJW-KEY UB-TOK$ LJW-STRING LJW-COMMA
    s" token_index" LJW-KEY 0 LJW-U LJW-COMMA
-   s" file" LJW-KEY UB-FILE$ LJW-STRING LJW-COMMA
+   s" file" LJW-KEY UB-LABEL$ LJW-STRING LJW-COMMA
    s" line" LJW-KEY UB-TOK-LINE @ LJW-U LJW-COMMA
    s" column" LJW-KEY UB-TOK-COL @ LJW-U LJW-COMMA
    s" byte_start" LJW-KEY UB-TOK-BYTE @ LJW-U LJW-COMMA
@@ -381,7 +389,7 @@ private
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if name nu UB-JSON-DEFINITION exit then
    s" UNCHECKED-DEFINITION " UB-OUT
-   UB-FILE$ UB-OUT
+   UB-LABEL$ UB-OUT
    UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
    UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
    s" : `" UB-OUT name nu UB-OUT
@@ -391,7 +399,7 @@ private
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if UB-JSON-MUTATION exit then
    s" CHECKER-MUTATION " UB-OUT
-   UB-FILE$ UB-OUT
+   UB-LABEL$ UB-OUT
    UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
    UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
    s" : `" UB-OUT UB-TOK$ UB-OUT
@@ -401,7 +409,7 @@ private
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if UB-JSON-PREFLIGHT exit then
    s" MISSING-PREFLIGHT-REARM " UB-OUT
-   UB-FILE$ UB-OUT
+   UB-LABEL$ UB-OUT
    UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
    UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
    s" : use `LOWER-CERT-HOOK:INSTALL` before replacing the checker hook" UB-OUT UB-NL ;
@@ -410,7 +418,7 @@ private
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if UB-JSON-ROGUE-HOOK exit then
    s" UNAUDITED-HOOK " UB-OUT
-   UB-FILE$ UB-OUT
+   UB-LABEL$ UB-OUT
    UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
    UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
    s" : `" UB-OUT UB-PREV$ UB-OUT
@@ -420,7 +428,7 @@ private
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if UB-JSON-ROGUE-TOP-HOOK exit then
    s" UNAUDITED-TOP-HOOK " UB-OUT
-   UB-FILE$ UB-OUT
+   UB-LABEL$ UB-OUT
    UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
    UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
    s" : `" UB-OUT UB-PREV$ UB-OUT
@@ -462,6 +470,7 @@ private
 
 : UB-CLEAR-SPANS ( -- )
    NULL$ drop UB-FILE-A! 0 UB-FILE-U !
+   NULL$ drop UB-LABEL-A! 0 UB-LABEL-U !
    UB-CLEAR-MAPPED-SPANS ;
 
 : UB-MAPPED-SPANS-CLEAR? ( -- bool )
@@ -545,13 +554,19 @@ public
    UB-FALSE STRICT!
    1 >FD OUT-FD! ;
 
-: FILE ( ptr u8 n -- )
-   {: path:ptr pu:n :}
+\ PATH is read and matched against the hook registry as spelled; LABEL names it
+\ in every report.
+: FILE-AS ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pu:n label:ptr lu:n :}
    UB-REQUIRE-IDLE
    path UB-FILE-A! pu UB-FILE-U !
+   label UB-LABEL-A! lu UB-LABEL-U !
    [: UB-FILE-ACT ;] catch {: rc:n :}
    UB-CLEAR-SPANS
    rc 0 <> if rc throw then ;
+
+: FILE ( ptr u8 n -- )
+   2dup FILE-AS ;
 
 : FINISH ( -- )
    UB-BAD @ 0 > if 1 throw then ;

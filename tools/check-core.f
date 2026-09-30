@@ -70,7 +70,6 @@ $20000 constant CHK-ERR-CAP
 10 constant CHK-LF
 13 constant CHK-CR
 32 constant CHK-SP
-34 constant CHK-DQ
 45 constant CHK-DASH
 64 constant CHK-E-USAGE
 66 constant CHK-E-NOINPUT
@@ -439,13 +438,11 @@ private
 : CHK-SINGLE-FILE? ( -- bool )
    CHK-SEL-MODE @ CHK-SEL-FILE = ;
 
+\ The lints read a named file where it lies, and any other input from the copy
+\ CHK-MATERIALIZE wrote.
 : CHK-LINT-SOURCE ( -- ptr u8 n )
    CHK-SINGLE-FILE? if 0 CHK-POS$ exit then
    CHK-SOURCE ;
-
-: CHK-LINT-LABEL ( -- ptr u8 n )
-   CHK-SINGLE-FILE? if 0 CHK-POS$ exit then
-   CHK-LABEL ;
 
 : CHK-DEP-CHECK ( n -- ) {: id:n :}
    id 0 < if E-TBL-BOUNDS throw then
@@ -568,8 +565,11 @@ private
    id CHK-DEP-ORDER-PUSH
    2 id CHK-DEP-STATE ! ;
 
+: CHK-ENTRY-ID ( ptr u8 n -- n )
+   ENTRY-RESOLVE drop RESOLVED-ROOT$ CHK-DEP-ID ;
+
 : CHK-EXPAND-PATH ( ptr u8 n -- )
-   ENTRY-RESOLVE drop RESOLVED-ROOT$ CHK-DEP-ID CHK-EXPAND-ID ;
+   CHK-ENTRY-ID CHK-EXPAND-ID ;
 
 : CHK-EXPAND-RESET ( -- )
    0 CHK-EXP-OUT-U !
@@ -598,6 +598,19 @@ private
    s" required" CHK-EXP-APP
    CHK-LF CHK-EXP-C ;
 
+\ A named file is loaded the way the command line loads it: the engine turns
+\ `--load PATH` into `s" PATH" script-required`, which resolves PATH as an
+\ entry, so the file's own relative requires resolve against its directory. The
+\ path is the canonical one the file's closure entry holds, so the child's
+\ working directory does not matter. DIAG-ORIGIN! markers exist only in inlined
+\ text: the child's own JSON diagnostics for a file it loads by path carry the
+\ engine's coordinates, which count from each definition's name.
+: CHK-APPEND-ENTRY ( ptr u8 n -- )
+   >LEN CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-QPATH
+   CHK-SP CHK-EXP-C
+   s" script-required" CHK-EXP-APP
+   CHK-LF CHK-EXP-C ;
+
 : CHK-MATERIALIZE-STDIN ( -- )
    CHK-LABEL-STDIN
    CHK-SRC-BUF CHK-SRC-CAP >LEN READ-STDIN-ALL LEN>N CHK-SRC-U !
@@ -607,45 +620,91 @@ private
 : CHK-SOURCE-TOO-BIG ( -- )
    s" check.f: source exceeds capacity" CHK-E-NOINPUT CHK-FAIL ;
 
+\ E-FS-PATH-UNSAFE: the quoting judge, SOURCE-QPATH-CHECK, refuses a double
+\ quote, backslash, CR, LF or NUL, and the file system refuses a NUL in a path.
+: CHK-PATH-UNSAFE ( -- )
+   s" check.f: source path or label contains a double quote, backslash, CR, LF or NUL" CHK-E-USAGE CHK-FAIL ;
+
+\ Every input must be a file before the engine's resolver sees it. The
+\ resolver refuses a path holding a NUL with a raw range code, and FILE?
+\ refuses it with E-FS-PATH-UNSAFE instead.
+\
+\ Resident verification skips an input this image already holds. The child
+\ skips one the engine provides as well, so nothing would check it: a usage
+\ error. Any other held input is in check.f's own closure, which `bin/hb
+\ --load` loads; only this checker cannot verify it, so it is unavailable.
+: CHK-HELD? ( ptr u8 n -- bool )
+   ENTRY-RESOLVE nip nip ;
+
+: CHK-INPUTS-ALL? ( [ ptr u8 n -- bool ] -- bool ) {: q :}
+   CHK-POS-N @ 0 ?do
+      i CHK-POS$ q execute 0= if unloop false exit then
+   loop
+   true ;
+
+: CHK-CHECK-INPUTS ( ptr u8 n ptr u8 n -- )
+   {: provided:ptr providedu:n held:ptr heldu:n :}
+   [: FILE? ;] CHK-INPUTS-ALL? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   [: ENGINE-PROVIDES? ;] CHK-INPUTS-ALL? if provided providedu CHK-E-USAGE CHK-FAIL then
+   [: CHK-HELD? ;] CHK-INPUTS-ALL? if held heldu CHK-E-UNAVAILABLE CHK-FAIL then ;
+
+: CHK-CHECK-FILE-INPUT ( -- )
+   s" check.f: source is already provided; resident verification would skip it"
+   s" check.f: check.f's own image holds the source; resident verification cannot check it"
+   CHK-CHECK-INPUTS ;
+
+: CHK-CHECK-LIST-INPUTS ( -- )
+   s" check.f: all source-list inputs are already provided; resident verification would skip them"
+   s" check.f: check.f's own image holds every source-list input; resident verification cannot check them"
+   CHK-CHECK-INPUTS ;
+
+\ The run stage quotes the label into DIAG-FILE! only after the stages that
+\ read the source, so a label the materializer takes from its caller is judged
+\ as soon as it is set. stdin and a source list carry fixed labels.
+: CHK-CHECK-LABEL ( -- )
+   CHK-LABEL SOURCE-QPATH-CHECK ;
+
 \ The bound is checked on the file itself: discovery sizes its own scratch to
 \ the source, so a source over CHK-SRC-CAP no longer refuses there, and the
 \ later read into the source buffer sits outside CHK-MATERIALIZE's catch.
+\
+\ A JSON packet names the file by the canonical absolute path its closure entry
+\ holds, the spelling every dependency's packets carry, so one run names each
+\ file one way and a client can map it to a URI. Prose keeps the path as given.
+\ Both spellings the run quotes, the entry in the loader line and the label,
+\ are judged before discovery reads the file.
 : CHK-MATERIALIZE-FILE ( -- )
    0 CHK-POS$ CHK-LABEL!
-   CHK-LABEL FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   CHK-CHECK-FILE-INPUT
    CHK-LABEL FILE-SIZE CHK-SRC-CAP > if CHK-SOURCE-TOO-BIG then
    CHK-EXPAND-RESET
-   CHK-LABEL CHK-EXPAND-PATH
-   CHK-LABEL CHK-SOURCE! ;
+   CHK-LABEL CHK-ENTRY-ID {: id:n :}
+   id CHK-DEP$ CHK-APPEND-ENTRY
+   CHK-JSON @ if id CHK-DEP$ CHK-LABEL! else CHK-CHECK-LABEL then
+   id CHK-EXPAND-ID
+   CHK-WRITE-EXPANDED-SOURCE ;
 
 : CHK-MATERIALIZE-SOURCE ( -- )
    CHK-SEL-SRC-BUF CHK-SRC-BUF CHK-SEL-SRC-U @ BYTE-COPY
    CHK-SEL-SRC-U @ CHK-SRC-U !
    CHK-SEL-LABEL-BUF CHK-SEL-LABEL-U @ CHK-LABEL!
+   CHK-CHECK-LABEL
    CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
    CHK-SRC-PATH CHK-SOURCE! ;
 
-\ Resident verification skips already-provided inputs. Refuse a list for
-\ which it would check nothing; engine-provided inputs also skip in the child.
-: CHK-CHECK-LIST-INPUTS ( -- )
-   CHK-POS-N @ 0 ?do
-      i CHK-POS$ ENTRY-RESOLVE nip nip 0= if unloop exit then
-   loop
-   s" check.f: all source-list inputs are already provided; resident verification would skip them"
-   CHK-E-USAGE CHK-FAIL ;
-
+\ Each listed path is quoted into its loader line before discovery reads any
+\ file.
 : CHK-MATERIALIZE-LIST ( -- )
    CHK-POS-N @ 0= if CHK-USAGE then
    CHK-CHECK-LIST-INPUTS
    s" <source-list>" CHK-LABEL!
    CHK-EXPAND-RESET
    0 begin dup CHK-POS-N @ < while
-      dup CHK-POS$ CHK-EXPAND-PATH
+      dup CHK-POS$ CHK-APPEND-REQUIRED
       1+
    repeat drop
-   0 CHK-EXP-OUT-U !
    0 begin dup CHK-POS-N @ < while
-      dup CHK-POS$ CHK-APPEND-REQUIRED
+      dup CHK-POS$ CHK-EXPAND-PATH
       1+
    repeat drop
    CHK-WRITE-EXPANDED-SOURCE ;
@@ -677,13 +736,20 @@ private
 
 \ A source (or its facade expansion) over CHK-SRC-CAP fails closed with the
 \ clean NOINPUT diagnostic instead of an uncaught E-FS-CAPACITY from the read
-\ layer (dot habu-tfam-13-c2-checkcore-cap).
+\ layer (dot habu-tfam-13-c2-checkcore-cap). E-FS-PATH-UNSAFE is a path or
+\ label the run cannot quote (a named file's canonical spelling or a listed
+\ one as CHK-APPEND-REQUIRED spells it, in its loader line; the label, in the
+\ run stage's DIAG-FILE!) or a path holding a NUL, which the file system
+\ refuses to look up. The materializers judge each spelling after the existence
+\ check, so a missing path is still NOINPUT, and before discovery or any later
+\ stage reads the source, so the answer does not depend on what it holds.
 : CHK-MATERIALIZE ( -- )
    CHK-HB$ FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
    CHK-MAKE-TEMP
    [: CHK-MATERIALIZE-DISPATCH ;] catch {: rc:n :}
    rc 0= if exit then
    rc E-FS-CAPACITY = if CHK-SOURCE-TOO-BIG then
+   rc E-FS-PATH-UNSAFE = if CHK-PATH-UNSAFE then
    rc throw ;
 
 : CHK-WORD-TOK? ( n -- bool ) {: k:n :}
@@ -851,8 +917,10 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 \ A failed NEWTYPE/SUMTYPE declaration already reported through the
 \ checker's declaration diagnostics (TDECL-DIAG, declaration-shaped packet);
 \ capture that packet into the check error stream (the preverify pattern) and
-\ map the registration throw to the check rc without a second packet.
+\ map the registration throw to the check rc without a second packet. The
+\ packet names the file the nominal pass is reading, as every other report does.
 : CHK-DECL-CAPTURE ( -- )
+   CHK-LABEL DIAG-FILE!
    CHK-JSON @ DIAG-JSON!
    CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER! ;
 
@@ -1135,15 +1203,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    dup 0= if drop exit then
    throw ;
 
-: CHK-LABEL-DQ? ( -- bool )
-   CHK-LABEL CHK-DQ LINT-INDEX-OF MATCH option
-     none OF 0 0= 0= ENDOF
-     some OF drop 0 0= ENDOF
-   ;MATCH ;
-
-: CHK-CHECK-LABEL ( -- )
-   CHK-LABEL-DQ? if s" check.f: source path contains a double quote, cannot set DIAG-FILE" CHK-E-USAGE CHK-FAIL then ;
-
 : CHK-RUN-RESET ( -- )
    0 CHK-RUN-U ! ;
 
@@ -1233,20 +1292,22 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    2 >FD CHECKED-BOUNDARY-LINT:OUT-FD!
    CHK-JSON @ CHECKED-BOUNDARY-LINT:JSON!
    LINT-TRUE CHECKED-BOUNDARY-LINT:STRICT!
-   CHK-LINT-SOURCE CHECKED-BOUNDARY-LINT:FILE
+   CHK-LINT-SOURCE CHK-LABEL CHECKED-BOUNDARY-LINT:FILE-AS
    CHECKED-BOUNDARY-LINT:FINISH ;
 
 : CHK-RUN-RESERVED-NAMES ( -- )
    RESERVED-NAME-LINT:RESET
    2 >FD RESERVED-NAME-LINT:OUT-FD!
    CHK-JSON @ RESERVED-NAME-LINT:JSON!
-   CHK-LINT-SOURCE CHK-LINT-LABEL RESERVED-NAME-LINT:FILE-AS
+   CHK-LINT-SOURCE CHK-LABEL RESERVED-NAME-LINT:FILE-AS
    RESERVED-NAME-LINT:FINISH ;
 
-\ Source-list all-errors redrive: run all-errors per ORIGINAL file in
-\ dependency order, registering each verified file as cross-file support so
-\ later files check against real prefix state. Per-file check failures
-\ (70/duplicate) are collected so every file reports; any other throw aborts.
+\ All-errors redrive over a discovered closure, a named file's or a source
+\ list's: run all-errors per ORIGINAL file in dependency order, registering
+\ each verified file as cross-file support so later files check against real
+\ prefix state. A file this image already holds is skipped, as the loader skips
+\ it. Per-file check failures (70/duplicate) are collected so every file
+\ reports; any other throw aborts.
 
 : CHK-ALL-ID-ACT ( -- )
    CHK-ALL-ID @ CHK-DEP$ 2dup CHECK-ALL-ERRORS:FILE ;
@@ -1265,7 +1326,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    rc CHK-E-CHECK = rc CHECK-ALL-ERRORS:DUP-RC = or if rc CHK-ALL-RC-NOTE exit then
    rc throw ;
 
-: CHK-RUN-ALL-LIST-CURRENT ( -- )
+: CHK-RUN-ALL-ORDER ( -- )
    CHECK-ALL-ERRORS:SUPPORT-RESET
    0 CHK-ALL-RC !
    0 begin dup CHK-DEP-ORDER-N @ < while
@@ -1277,7 +1338,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 : CHK-RUN-ALL-CURRENT ( -- )
    CHK-OUT-BUF CHK-OUT-CAP CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:BUFFERS!
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   CHK-SEL-MODE @ CHK-SEL-LIST = if CHK-RUN-ALL-LIST-CURRENT exit then
+   CHK-DEP-ORDER-N @ 0 > if CHK-RUN-ALL-ORDER exit then
    CHECK-ALL-ERRORS:SUPPORT-RESET
    CHK-LABEL CHK-SOURCE CHECK-ALL-ERRORS:FILE ;
 
@@ -1416,7 +1477,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 
 : CHK-RUN-CURRENT ( -- )
    CHK-RUN-STATIC-LINTS
-   CHK-CHECK-LABEL
    CHK-RUN-DIAG
    CHK-RUN-PREVERIFY
    CHK-BUILD-RUN
