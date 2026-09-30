@@ -21,4 +21,10 @@ Verify: host K3's product engine: `--load test/x86-64-kernel-atomics.f`; ThinkPa
 Depends: habu-emit-x86-atomics-c02e092e (K8a). Hand-written through `X64ASM`; no allocator dependency.
 Route: direct (x86-only files).
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-emit-x86-code-973a0074.
+
+Preflight corrections (2026-09-30; override the lines above where they differ):
+- x86 spans are byte-granular. The `code-publish` span guard keeps the nonzero, no-wrap, `[DBASE+DICT-SIZE, DBASE+REGION)` and dst = CP checks and drops ARM64's `& 3` traps (`habu1.f:2394-2402`); `xref-retarget` keeps the NDICT+1 bound, `RAW-MAX` and the FULL-with-empty-body refusal and drops `& 3` (`habu1.f:2593`). Reason: `publish.f:79-83,97-101` pass byte sizes on x86 (a `ret` is one byte); a faithful twin would exit 83 on every x86 `COMMIT`.
+- Line refs (I4a shifted `habu1.f`): LSPAN/LOPEN/LCLOSE bodies `habu1.f:3794-3868`, contract `3711-3746`, band cells `layout.f:630-636`; `GUARD-CODE-SPAN` `2394`; append-only `2455-2457`; `BCODEPUBLISH` `2447-2475`; map contract `prims.f:484-508` and `layout.f:1666-1704`; `xref-retarget` `2569-2610`; `int-mark`/`min-in-mark` `3016-3050`, registered into `ENGINE-PRIMS:GLOBAL-INT-WID` (`habu1.f:3383-3384`; x86 `PRIM-WID`, `kernel-x64.f:132`); `does-record` = `DOES-REC:NATIVE-PRIM` `habu2.f:3278-3360` (`NAME$` reads `PEND-CELL`; `RECORD` declares its own `LSPAN` over the pending+1 record; `LOPEN`/`LCLOSE` around the name copy), registered `11081`; `patch32` `2311-2333`.
+- Tests: single positive images; the suite's `-negative` image proves the harness (no negative twins). Each image holds ten checks (`test/x86-64-peer-harness.f:37,55`) and `hb-x64-kernel-atomics` already uses all ten (`test/x86-64-kernel-atomics.f:63`), so K8b adds its own images to that suite.
+- Not in scope: `src/habu/code-span.f` (`INSN-BYTES 4`) on the Habu side; P3 (`habu-fill-nemit-from-d8c030e4`) owns making it byte-granular.

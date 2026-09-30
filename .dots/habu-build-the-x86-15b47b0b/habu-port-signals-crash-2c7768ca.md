@@ -13,4 +13,4 @@ Verify: ThinkPad: a routine image that raises a real signal and checks the decod
 Depends: habu-boot-and-exit-367c46f5 (K3), habu-emit-x86-control-9a35e3b3 (K7).
 Route: direct.
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-port-signals-crash-2c7768ca.
