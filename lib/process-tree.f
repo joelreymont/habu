@@ -52,6 +52,12 @@
 \ last of them; it does not close it. Linux reads each thread's own state,
 \ and a blocked thread is not a stopped one there.
 \
+\ WHETHER A ROOT CAN BE ASKED FIRST. CATCHES? reads whether a process runs a
+\ handler for a signal. A pool asks a row's root to end itself with SIGTERM
+\ only when it does: the default action would end the root at once, and what
+\ it spawned, each leading its own group, would be left to init before the
+\ walk could list it.
+\
 \ STORAGE CLASS. PROCESS-WIDE, one walk at a time: the member table and the scan
 \ buffers are this file's. Its callers are pool parents, each its own process.
 \
@@ -429,6 +435,98 @@ variable CUR                        \ the read position in STAT
       i MEMBER >PID SIGKILL PROC-KILL-RAW drop
    loop ;
 
+\ ---- a process that catches a signal ------------------------------------------
+\
+\ A signal a process catches runs its handler; any other takes the default
+\ action or is ignored. Each host keeps the caught set as one bit per signal,
+\ bit n-1 for signal n.
+\
+\ macOS: sysctl {CTL_KERN, KERN_PROC, KERN_PROC_PID, pid} fills a struct
+\ kinfo_proc of 648 bytes whose kp_proc.p_sigcatch, a u32, sits at 236
+\ (sys/sysctl.h and sys/proc.h in the local SDK; size and offset measured with
+\ its clang). Measured here: an engine that ran SIGNAL:CATCH on SIGTERM reads
+\ $4698, one that did not $698. A pid nobody has fills nothing and still
+\ answers 0.
+\
+\ Linux: /proc/<pid>/status holds the set as the line `SigCgt:` and sixteen hex
+\ digits (proc(5)). A status file that will not open is a process that ended.
+\ Written from proc(5); it has run on no host here.
+
+1 constant CTL-KERN
+14 constant KERN-PROC
+1 constant KERN-PROC-PID
+4 constant MIB-N
+648 constant KINFO-BYTES
+236 constant KINFO-SIGCATCH
+4096 constant STATUS-CAP
+
+create MIB MIB-N 4 * allot
+create KINFO KINFO-BYTES allot
+create STATUS STATUS-CAP allot
+variable KINFO-U                    \ sysctl's size_t in and out
+variable STATUS-U
+
+FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 )
+   2 KINFO-BYTES WRITES-BYTES
+   3 8 WRITES-BYTES
+;FUNCTION
+
+: CAUGHT-BIT? ( n n -- bool ) {: set:n sig:n :}
+   set 1 sig 1- lshift and 0<> ;
+
+: CATCHES-MACOS? ( n n -- bool ) {: pid:n sig:n :}
+   CTL-KERN MIB LE:U32!
+   KERN-PROC MIB 4 + LE:U32!
+   KERN-PROC-PID MIB 8 + LE:U32!
+   pid MIB 12 + LE:U32!
+   KINFO-BYTES KINFO-U !
+   MIB MIB-N KINFO KINFO-U BYTE-VIEW NULL-PTR 0 SYSCTL 0 <> if E-PROC-OUTPUT throw then
+   KINFO-U @ KINFO-BYTES <> if false exit then
+   KINFO KINFO-SIGCATCH + LE:U32@ sig CAUGHT-BIT? ;
+
+: HEX-DIGIT ( n -- n ) {: c:n :}
+   c [char] 0 >= c [char] 9 <= and if c [char] 0 - exit then
+   c [char] a >= c [char] f <= and if c [char] a - 10 + exit then
+   -1 ;
+
+\ The offset just past `SigCgt:` at the start of a line of STATUS.
+: SIGCGT-AT ( -- n )
+   s" SigCgt:" {: key:ptr keyu:n :}
+   STATUS-U @ 0 ?do
+      i 0= if true else STATUS i 1- + c@ 10 = then
+      if
+         STATUS i + STATUS-U @ i - key keyu STARTS-WITH? if i keyu + unloop exit then
+      then
+   loop
+   E-PROC-OUTPUT throw ;
+
+: BLANK? ( n -- bool ) {: c:n :}
+   c 9 = c STR-SPACE = or ;
+
+\ The hex number at offset at in STATUS, past the tab or spaces before it.
+: HEX-AT ( n -- n ) {: at:n :}
+   at begin
+      dup STATUS-U @ < if STATUS over + c@ BLANK? else false then
+   while 1+ repeat
+   0 swap begin
+      dup STATUS-U @ < if STATUS over + c@ HEX-DIGIT 0 >= else false then
+   while
+      STATUS over + c@ HEX-DIGIT rot 4 lshift or swap 1+
+   repeat drop ;
+
+: CATCHES-LINUX? ( n n -- bool ) {: pid:n sig:n :}
+   TASK-DIR-U BUF-RESET
+   s" /proc/" TASK-DIR+
+   pid DIGITS+
+   s\" /status\z" TASK-DIR+
+   TASK-DIR open-rd {: fd:n :}
+   fd 0 < if false exit then
+   fd STATUS STATUS-CAP read {: got:n :}
+   fd close
+   got 0 <= if false exit then
+   got STATUS-U !
+   SIGCGT-AT HEX-AT sig CAUGHT-BIT? ;
+
 public
 
 \ SIGKILL pid and every process descended from it. A pid at or below 1 names
@@ -444,5 +542,14 @@ public
    0 MEMBER-N !
    pid PID>N MEMBER+
    [: SETTLE ;] [: END-MEMBERS ;] finally ;
+
+\ TRUE when pid runs a handler for signal sig; FALSE when the default action
+\ or SIG_IGN takes it, or when nobody has pid. A caller that would SIGKILL a
+\ tree asks this first to know whether its root can be asked to end itself
+\ (test/gate-pool.f GT-POOL-ASK-END).
+: CATCHES? ( pid n -- bool ) {: pid:pid sig:n :}
+   HB-TARGET-MACOS? if pid PID>N sig CATCHES-MACOS? exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if pid PID>N sig CATCHES-LINUX? exit then
+   E-PROC-HOST throw ;
 
 ;package

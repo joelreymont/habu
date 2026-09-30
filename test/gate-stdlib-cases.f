@@ -1219,11 +1219,13 @@ SUITE five-bindings
 
 \ Packages PG and DB-ROWS against a private PostgreSQL cluster the harness
 \ starts on a Unix-domain socket, runs lib/pg-test.f and then lib/db/rows-test.f
-\ against, and stops however they end. initdb and pg_ctl on PATH are a gate
-\ requirement (docs/bootstrap.md). The harness's step deadlines sum to 300 s,
-\ inside SUITE-TIMEOUT-MS.
+\ against, and stops however they end; then the same harness killed by a pool,
+\ which must leave no server process and no socket directory. initdb and
+\ postgres on PATH are a gate requirement (docs/bootstrap.md). The harness's
+\ step deadlines sum to 300 s, inside SUITE-TIMEOUT-MS.
 SUITE pg
    test/db/pg-cluster.f
+   test/db/pg-kill-test.f
 ;SUITE
 
 \ Loopback HTTP in one process; the one HTTPS request is opt-in behind

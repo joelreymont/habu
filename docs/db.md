@@ -298,32 +298,62 @@ the list into `EXEC`.
 
 `lib/pg-test.f` runs against a live server, and the native gate runs it as the
 `pg` row through `test/db/pg-cluster.f`. The harness makes a private
-trust-authentication cluster with `initdb`, starts it with `pg_ctl` listening
-on a Unix-domain socket only (`listen_addresses=''`), and runs these cases and
-then [`lib/db/rows-test.f`](#its-test), each in a child engine with the
-cluster's conninfo (`host=<socket directory> dbname=postgres user=habu`) as its
-one script argument. It then stops the cluster whatever the cases' outcome, and
-both directories are removed when it exits:
+trust-authentication cluster with `initdb`, starts `postgres` on it as its own
+child, listening on a Unix-domain socket only (`listen_addresses=''`), and runs
+these cases and then [`lib/db/rows-test.f`](#its-test), each in a child engine
+with the cluster's conninfo (`host=<socket directory> dbname=postgres
+user=habu`) as its one script argument. It then stops the server whatever the
+cases' outcome, and the directories it made are removed when it exits:
 
 ```sh
 bin/hb --load test/db/pg-cluster.f
 ```
 
-That cleanup runs only when the harness ends on its own, including by `die` or
-an uncaught throw. A signal that ends the harness, such as SIGTERM, runs neither
-the stop nor the directory removal: the postmaster keeps running and both
-directories stay. Recover with `pg_ctl -D <root>/data -m immediate stop`, then
-remove the two directories; the postmaster's command line names both (`-D` and
-`-k`). Under the gate pool, retiring the slot — at its deadline, or when the
-gate root itself is signalled ([gate.md](gate.md)) — removes its `HB_TMP` and
-the data directory with it, and the postmaster's lock-file recheck then stops
-it within about a minute; the socket directory under `TMPDIR` stays.
+Case files named after `--` run in place of those two.
+
+A server a row starts is the row's child for as long as it runs, and so is
+every process it forks, so the pool's kill reaches all of them. The harness
+therefore runs `postgres` itself: `pg_ctl` forks the server, calls `setsid`,
+starts it through a shell and exits, which leaves the server with init for a
+parent in a session of its own, beyond the pool's tree walk
+([gate.md](gate.md)). The harness waits for the status line of
+`postmaster.pid` to read `ready`, as `pg_ctl -w` does, and stops the server
+with SIGQUIT, `pg_ctl -m immediate`'s signal.
+
+The server has to end through its own exit, because that is the only thing
+that removes its System V shared-memory segment. PostgreSQL keys the segment by
+the data directory's inode and removes it on its way out; a server that is
+SIGKILLed leaves it for good, since APFS does not hand the inode out again and
+nothing else removes it, and `kern.sysv.shmmni` caps the segments host-wide (32
+on the macOS hosts here). A host out of segments starts no PostgreSQL at all.
+So the harness catches SIGTERM, SIGINT and SIGHUP. On one it sends the server
+its SIGQUIT, ends the running case engine with every process under it, gives
+the server six seconds (an immediate shutdown SIGKILLs the children still alive
+after five), removes its directories and dies of the signal. A pool sends a
+row's root SIGTERM before it kills the row's tree when the root catches it
+([gate.md](gate.md)), so a pg row killed at its deadline, or because the gate
+root was signalled, leaves nothing: no process, no segment, no directory. The
+same row then runs `test/db/pg-kill-test.f`, which has a pool kill the harness
+both of those ways while a case holds a backend busy, and checks that no
+process of the row, no segment and no socket directory is left.
+
+SIGKILL cannot be answered. After one to the harness, or to a gate root
+(whose rows' reapers then SIGKILL each row's group, the harness included), the
+server keeps running with init for a parent and both directories stay. Recover
+with `kill -QUIT` to the pid on the first line of `<root>/data/postmaster.pid`,
+then remove the two directories; the server's command line names both (`-D`
+and `-k`). A server that was SIGKILLed as well has left its segment: `ipcs -m
+-p` lists it with `NATTCH` 0 and a creator pid that no longer runs, and
+`ipcrm -m <id>` removes it. Line 7 of a `postmaster.pid` that still exists
+names its segment as `<key> <id>`.
 
 With no TCP listener, rows running beside each other cannot collide on a port.
-The data directory is under the row's `HB_TMP`. The socket directory is under
-`TMPDIR`, because a pool slot's `HB_TMP` is already about 100 bytes long and
-postgres refuses a socket path over 103 (`Unix-domain socket path ... is too
-long (maximum 103 bytes)` on macOS, whose `sun_path` holds 104).
+The data directory is under the row's `HB_TMP`. The socket directory is the
+row's `HB_SOCK_TMP`, the short directory the pool makes for each child it
+spawns under `TMPDIR` ([gate.md](gate.md)), because a pool slot's `HB_TMP` is
+already about 100 bytes long and postgres refuses a socket path over 103
+(`Unix-domain socket path ... is too long (maximum 103 bytes)` on macOS, whose
+`sun_path` holds 104). Run on its own, the harness makes one under `TMPDIR`.
 
 The dispatcher case uses two real connections from one task: a query waits on
 an advisory lock, the same task releases it through the other connection, and
@@ -331,7 +361,7 @@ the first query completes. It also closes a pending query and then fills the
 declared result registry, checking that cancellation did not leak a slot.
 
 The server binaries are a gate requirement on every host
-([bootstrap.md](bootstrap.md#requirements)): without `initdb` or `pg_ctl` on
+([bootstrap.md](bootstrap.md#requirements)): without `initdb` or `postgres` on
 `PATH` the row fails with `pg-cluster: required executable missing on PATH:`
 and the name. Loaded without its argument, `lib/pg-test.f` dies naming the
 harness. Neither skips. `test/five-bindings.f` also loads and binds package

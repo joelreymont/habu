@@ -23,6 +23,7 @@ $1000 constant GT-POOL-CHUNK-CAP
 \ Rows an adapter starts beside the registered suites: test/gate-images.f starts
 \ one build row per keyed image family, and refuses more families than this.
 8 constant GT-POOL-SIDE-MAX
+10000 constant GT-POOL-GRACE-MS         \ a root that catches SIGTERM ends itself inside this (GT-POOL-ASK-END)
 \ Red rows: one per registered suite (lib/test/suite.f ITEM-MAX) plus the side
 \ rows, so a complete run reports every red with its exit code and capture
 \ paths, and a row the table has no record of passed.
@@ -45,6 +46,7 @@ create GT-POOL-DONES GT-POOL-MAX cells allot
 create GT-POOL-STARTS GT-POOL-MAX cells allot
 create GT-POOL-LASTS GT-POOL-MAX cells allot
 create GT-POOL-TIMEOUTS GT-POOL-MAX cells allot
+create GT-POOL-ASKEDS GT-POOL-MAX cells allot
 create GT-POOL-LABELS GT-POOL-MAX GT-FAIL-NAME-CAP * allot
 create GT-POOL-LABEL-US GT-POOL-MAX cells allot
 create GT-POOL-PFDS GT-POOL-MAX GT-POOL-FDS * GT-PFD-SZ * allot
@@ -58,6 +60,9 @@ create GT-POOL-OUT-PATH-US GT-POOL-MAX cells allot
 create GT-POOL-ERR-PATH-US GT-POOL-MAX cells allot
 create GT-POOL-TMP-PATHS GT-POOL-MAX FS-PATH-CAP * allot
 create GT-POOL-TMP-PATH-US GT-POOL-MAX cells allot
+create GT-POOL-SOCK-PATHS GT-POOL-MAX FS-PATH-CAP * allot
+create GT-POOL-SOCK-PATH-US GT-POOL-MAX cells allot
+create GT-POOL-SOCK-ROOT-BUF FS-PATH-CAP allot
 create GT-POOL-OUT-FDS GT-POOL-MAX cells allot
 create GT-POOL-ERR-FDS GT-POOL-MAX cells allot
 create GT-POOL-OUT-TOTALS GT-POOL-MAX cells allot
@@ -243,6 +248,10 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-TIMEOUT-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-TIMEOUTS + ;
 
+\ The slot's child was sent SIGTERM and is being given its grace.
+: GT-POOL-ASKED-PTR ( idx -- ptr bool )
+   IDX>N cells GT-POOL-ASKEDS + ;
+
 : GT-POOL-LABEL-U-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-LABEL-US + ;
 
@@ -291,6 +300,17 @@ GT-POOL-ABORT-BARE!
 \ forked slot, which shares the parent's image and gets no directory of its own.
 : GT-POOL-TMP$ ( idx -- ptr u8 n ) {: idx:idx :}
    idx GT-POOL-TMP-PATH-BUF idx GT-POOL-TMP-PATH-U-PTR @ ;
+
+: GT-POOL-SOCK-PATH-BUF ( idx -- ptr u8 )
+   IDX>N FS-PATH-CAP * GT-POOL-SOCK-PATHS + ;
+
+: GT-POOL-SOCK-PATH-U-PTR ( idx -- ptr n )
+   IDX>N cells GT-POOL-SOCK-PATH-US + ;
+
+\ The short directory this pool made for a SPAWNED slot's child's sockets,
+\ empty for a forked slot (GT-POOL-CHILD-SOCK!).
+: GT-POOL-SOCK$ ( idx -- ptr u8 n ) {: idx:idx :}
+   idx GT-POOL-SOCK-PATH-BUF idx GT-POOL-SOCK-PATH-U-PTR @ ;
 
 : GT-POOL-OUT-FILE$ ( idx -- ptr u8 n ) {: idx:idx :}
    idx GT-POOL-OUT-PATH-BUF idx GT-POOL-OUT-PATH-U-PTR @ ;
@@ -391,11 +411,120 @@ GT-POOL-ABORT-BARE!
    idx GT-POOL-CLOSE-READS
    idx GT-POOL-CLOSE-CAPTURE ;
 
+\ Absence is tolerated: a directory is gone already when a child removed it
+\ itself, and a forked slot never had one.
+: GT-POOL-TREE-REMOVE ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if exit then
+   a u EXISTS? 0= if exit then
+   a u REMOVE-TREE ;
+
+\ The child's scratch and its socket directory (GT-POOL-CHILD-TMP!), once
+\ nothing is left to write into them.
+: GT-POOL-CHILD-TMP-REMOVE ( idx -- ) {: idx:idx :}
+   idx GT-POOL-TMP$ GT-POOL-TREE-REMOVE
+   idx GT-POOL-SOCK$ GT-POOL-TREE-REMOVE ;
+
+\ THE SOCKET ROOT. Every spawned child's socket directory (GT-POOL-CHILD-SOCK!)
+\ is made inside one directory under TMPDIR per pool session, which goes in
+\ the cleanup registry once (lib/fs-mutate.f CLEANUP-TREE+). One entry a row
+\ would not fit: the registry holds 64 (FS-MUT-CLEANUP-MAX), keeps each entry
+\ until a CLEANUP-RUN, and a gate starts hundreds of rows. So a process that
+\ ends without retiring or killing its slots - an uncaught throw, a die -
+\ still removes every slot's directory with the root, and GT-CLEANUP removes it
+\ with the runner's root. A session's root is made at its first spawn, and
+\ made again if a GT-CLEANUP removed it. GT-POOL-RESET removes the one before:
+\ no live slot's directory is in it by then, and a GT-START since may have
+\ reset its entry away. A SIGKILL of this process leaves it (docs/gate.md).
+variable GT-POOL-SOCK-ROOT-U
+0 GT-POOL-SOCK-ROOT-U !
+
+: GT-POOL-SOCK-ROOT$ ( -- ptr u8 n )
+   GT-POOL-SOCK-ROOT-BUF GT-POOL-SOCK-ROOT-U @ ;
+
+: GT-POOL-SOCK-ROOT-REMOVE ( -- )
+   GT-POOL-SOCK-ROOT$ GT-POOL-TREE-REMOVE
+   0 GT-POOL-SOCK-ROOT-U ! ;
+
+: GT-POOL-SOCK-ROOT-MAKE ( -- )
+   GT-POOL-SOCK-ROOT-U @ 0 > if GT-POOL-SOCK-ROOT$ EXISTS? if exit then then
+   s" hb-sock" TMPDIR-MKDIR {: a:ptr u:n :}
+   a GT-POOL-SOCK-ROOT-BUF u BYTE-COPY
+   u GT-POOL-SOCK-ROOT-U !
+   GT-POOL-SOCK-ROOT$ CLEANUP-TREE+ ;
+
+\ A ROW'S ROOT THAT CATCHES SIGTERM IS ASKED TO END ITSELF FIRST. The kill below
+\ freezes a tree and SIGKILLs every member, and a process SIGKILLed runs none of
+\ its own exit path: a server it was running loses what only that path
+\ releases. PostgreSQL removes its SysV shared-memory segment there, and
+\ nothing else ever does: the key is the data directory's inode, which APFS
+\ does not hand out again, and kern.sysv.shmmni caps the segments host-wide
+\ (32 here), so every killed pg row took one for good. So a root that catches
+\ SIGTERM (PROC-TREE:CATCHES?) is sent it, and the kill waits until that root
+\ has exited or GT-POOL-GRACE-MS has passed. In that time the root owes the
+\ pool its whole tree: a process it spawned leads a group of its own and goes
+\ to init when the root exits, out of the walk's reach. test/db/pg-cluster.f
+\ stops its server and ends its case engine's tree, then dies of the signal.
+\
+\ A root that does not catch SIGTERM is not sent it: the default action would
+\ end it at once and leave what it spawned to init before the walk could list
+\ it. Those rows are killed as before, and not held for the others' grace.
+
+\ A read of the process table that throws is named, and the root is not asked:
+\ the kill has to go on whatever the table answered.
+TYPED-VARIABLE GT-POOL-CAUGHT bool
+false GT-POOL-CAUGHT !
+
+: GT-POOL-CATCHES-TERM? ( idx -- bool ) {: idx:idx :}
+   false GT-POOL-CAUGHT !
+   idx GT-POOL-PID@
+   [: dup SIGNAL:SIGTERM PROC-TREE:CATCHES? GT-POOL-CAUGHT ! ;] catch {: code:n :}
+   drop
+   code 0= if GT-POOL-CAUGHT @ exit then
+   s" test pool: signals of " type idx GT-POOL-LABEL$ type
+   s"  not read, throw " type code FMT:.INT cr
+   false ;
+
+: GT-POOL-ASK-END ( idx -- ) {: idx:idx :}
+   false idx GT-POOL-ASKED-PTR !
+   idx GT-POOL-PID@ PID>N 0 < if exit then
+   idx GT-POOL-CATCHES-TERM? 0= if exit then
+   idx GT-POOL-PID@ SIGNAL:SIGTERM PROC-KILL-RAW drop
+   true idx GT-POOL-ASKED-PTR ! ;
+
+\ Until the asked root has exited or the deadline passes. macOS cannot watch a
+\ process that has already exited (test/proc-watch-smoke.f): proc-watch-open
+\ answers -1 for one, and there is nothing left to wait for.
+: GT-POOL-AWAIT-END ( idx n -- ) {: idx:idx deadline:n :}
+   idx GT-POOL-ASKED-PTR @ 0= if exit then
+   idx GT-POOL-PID@ PID>N proc-watch-open {: w:n :}
+   w 0 < if exit then
+   w >FD POLLIN PROC-PFD!
+   1 deadline PROC-LEFT-MS MS>N deadline PROC-POLL-RESTART drop
+   w close ;
+
+\ A slot killed here is never reaped, so it never retires: its directories go
+\ here, after the kill. HB_TMP is under the root a signalled run removes
+\ anyway; the socket directory is not. Every root that catches SIGTERM is asked
+\ before any slot is killed, so their graces run together and beside the
+\ other slots' kills.
 : GT-POOL-KILL-ALL ( -- )
-   0 begin dup GT-POOL-MAX < while
-      dup >IDX GT-POOL-DONE@ 0= if dup >IDX GT-POOL-KILL-SLOT then
-      1+
-   repeat drop ;
+   GT-POOL-MAX 0 ?do
+      i >IDX GT-POOL-DONE@ 0= if i >IDX GT-POOL-ASK-END then
+   loop
+   GT-POOL-MAX 0 ?do
+      i >IDX GT-POOL-DONE@ 0= i >IDX GT-POOL-ASKED-PTR @ 0= and if
+         i >IDX GT-POOL-KILL-SLOT
+         i >IDX GT-POOL-CHILD-TMP-REMOVE
+      then
+   loop
+   GT-POOL-GRACE-MS >MS PROC-DEADLINE-AT {: deadline:n :}
+   GT-POOL-MAX 0 ?do
+      i >IDX GT-POOL-DONE@ 0= i >IDX GT-POOL-ASKED-PTR @ and if
+         i >IDX deadline GT-POOL-AWAIT-END
+         i >IDX GT-POOL-KILL-SLOT
+         i >IDX GT-POOL-CHILD-TMP-REMOVE
+      then
+   loop ;
 
 : GT-POOL-THROW ( n -- ) {: code :}
    GT-POOL-KILL-ALL
@@ -499,6 +628,8 @@ false GT-POOL-CATCHING !
    0 idx GT-POOL-OUT-PATH-U-PTR !
    0 idx GT-POOL-ERR-PATH-U-PTR !
    0 idx GT-POOL-TMP-PATH-U-PTR !
+   0 idx GT-POOL-SOCK-PATH-U-PTR !
+   false idx GT-POOL-ASKED-PTR !
    0 idx GT-POOL-SEQ-PTR !
    0 idx GT-POOL-WAITS-PTR !
    0 idx GT-POOL-SAT-LIVE-PTR !
@@ -523,6 +654,7 @@ false GT-POOL-CATCHING !
    -1 GT-POOL-DEATH-MADE ! ;
 
 : GT-POOL-RESET ( -- )
+   GT-POOL-SOCK-ROOT-REMOVE
    GT-POOL-ALLOC-BUFFERS
    GT-POOL-LIMIT-SELECT GT-POOL-LIMIT !
    0 GT-POOL-LIVE !
@@ -827,20 +959,33 @@ false GT-POOL-CATCHING !
    z ku BYTE+ z ZLEN ku -
    s" HB_TMP" GETENV STR= 0= ;
 
+\ EACH SPAWNED CHILD ALSO GETS A SHORT DIRECTORY FOR ITS SOCKETS. A
+\ Unix-domain socket's path has to fit sun_path - 104 bytes on macOS, 108 on
+\ Linux - and a gate row's HB_TMP is about 100 bytes long already, longer
+\ again for each pool that runs under a pool. So the pool also makes each
+\ spawned child a directory named by its capture sequence number in the
+\ session's socket root under TMPDIR, which no pool changes and which is as
+\ short at every level, and names it HB_SOCK_TMP in the child's environment
+\ (test/db/pg-cluster.f puts its server's socket there). It goes with the
+\ scratch. Every spawned slot gets one, whoever owns its HB_TMP: the value
+\ inherited in its place would name this process's own, which a sibling may
+\ be using. Under macOS's default TMPDIR a PostgreSQL socket path there is
+\ about 90 bytes.
+: GT-POOL-CHILD-SOCK! ( idx -- ) {: idx:idx :}
+   GT-POOL-SOCK-ROOT-MAKE
+   GT-POOL-SOCK-ROOT$ idx GT-POOL-SEQ-PTR @ GT-POOL-NUM$
+   idx GT-POOL-SOCK-PATH-BUF JOIN-PATH idx GT-POOL-SOCK-PATH-U-PTR !
+   idx GT-POOL-SOCK$ MAKE-DIRS
+   s" HB_SOCK_TMP" >LEN idx GT-POOL-SOCK$ >LEN PROC-ENV-SET ;
+
 : GT-POOL-CHILD-TMP! ( idx -- ) {: idx:idx :}
+   idx GT-POOL-CHILD-SOCK!
    GT-POOL-ENV-HB-TMP-OWN? if 0 idx GT-POOL-TMP-PATH-U-PTR ! exit then
    GT-POOL-CAPTURE-ROOT$
    idx GT-POOL-SEQ-PTR @ s" -tmp" GT-POOL-CAPTURE-NAME
    idx GT-POOL-TMP-PATH-BUF JOIN-PATH idx GT-POOL-TMP-PATH-U-PTR !
    idx GT-POOL-TMP$ MAKE-DIRS
    s" HB_TMP" >LEN idx GT-POOL-TMP$ >LEN PROC-ENV-SET ;
-
-\ Absence is tolerated: the directory is gone already when a child removed it
-\ itself, and a forked slot never had one.
-: GT-POOL-CHILD-TMP-REMOVE ( idx -- ) {: idx:idx :}
-   idx GT-POOL-TMP-PATH-U-PTR @ 0 <= if exit then
-   idx GT-POOL-TMP$ EXISTS? 0= if exit then
-   idx GT-POOL-TMP$ REMOVE-TREE ;
 
 \ The one place a slot leaves the live set, whatever its outcome was: a reap
 \ (exited or signaled) or a timeout the pool killed. The child's scratch goes
@@ -1278,6 +1423,10 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
    OUTCOME:TIMEOUT idx GT-POOL-OUTCOME!
    \ Snapshot the saturation depth (live slots, including this one) for RED.
    GT-POOL-LIVE @ idx GT-POOL-SAT-LIVE-PTR !
+   \ A root that catches SIGTERM is asked to end first (GT-POOL-ASK-END), so
+   \ what it writes while it ends is in the pipe for the drain below.
+   idx GT-POOL-ASK-END
+   idx GT-POOL-GRACE-MS >MS PROC-DEADLINE-AT GT-POOL-AWAIT-END
    \ Final bounded poll+drain so the last bytes the worker wrote (often the
    \ hang clue) reach the tail and capture file before the fds are closed.
    GT-POOL-POLL-BUILD  GT-POOL-POLL drop  idx GT-POOL-DRAIN-SLOT

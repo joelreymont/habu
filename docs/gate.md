@@ -83,7 +83,8 @@ leaves; the capture file each `stdout-file:` line names is readable only while
 the run is still going. To keep a run's trees, give it its own `HB_TMP`: every
 maker (the pool root, each spawned child's scratch, `hb-build`'s private build
 directory) goes under it when it is set, and under `TMPDIR` or `/tmp` when it
-is not.
+is not. A spawned child's socket directory (below) goes under `TMPDIR` either
+way.
 
 A gate `HB_TMP` of at most 675 bytes keeps every row's paths within
 `PATH-CAP` and Darwin's 1023-byte `PATH_MAX` on any host. The deepest row
@@ -119,9 +120,39 @@ keyed-image build in that cache, and a live build's is never taken.
 `test/keyed-image-reap-test.f` kills a build and then its builder beside a
 live one.
 
+Each spawned child also gets a short directory for Unix-domain sockets, handed
+over as `HB_SOCK_TMP`. A socket's path has to fit `sun_path`, 104 bytes on
+macOS and 108 on Linux; a gate row's `HB_TMP` is about 100 bytes long already
+and grows with every pool that runs under a pool, while `TMPDIR` is the same at
+every level. So the directories are made, one per spawned slot whoever owns its
+`HB_TMP`, in one socket root per pool session under `TMPDIR`, and each goes
+with its slot's scratch. A slot killed because the run is ending never retires:
+its directories go as soon as it is killed. The socket root is in the cleanup
+registry once, so a pool that ends with live slots and never kills them — an
+uncaught throw, a `die` — still removes them all at exit; one entry per row
+would not fit the registry's 64, which it keeps until a `CLEANUP-RUN`.
+
 A slot the pool kills — at its deadline, or because the run is ending — is
-killed with every process descended from its child, not only the child's process
-group. Every spawned child leads a group of its own
+first asked to end, if its child catches SIGTERM. A process that is SIGKILLed
+runs none of its own exit path, and a server it ran loses what only that path
+releases: PostgreSQL's System V shared-memory segment is removed there and
+nowhere else, and `kern.sysv.shmmni` allows 32 on the macOS hosts here
+([db.md](db.md#tests)). So the pool reads the
+child's caught signals (`PROC-TREE:CATCHES?`, lib/process-tree.f) and, when
+SIGTERM is among them, sends it and waits until the child has exited or
+`GT-POOL-GRACE-MS` (10 s) has passed. Every child asked at the end of a run
+gets that grace at once, while the others are killed. In that time the child
+owes the pool its whole tree, since what it spawned goes to init when it
+exits; the `pg` row's harness stops its server and ends its case engine's tree.
+A child that does not catch SIGTERM is not sent it: the default action would
+end it at once and leave what it spawned beyond the walk. Its row is killed
+without waiting, as before. A row's deadline that sends a SIGTERM holds the
+pool's other rows for as long as the child takes to end, at most the grace;
+the `pg` harness ends about 70 ms after its SIGTERM, measured with a backend
+busy.
+
+The kill itself then reaches every process descended from the slot's child,
+not only the child's process group. Every spawned child leads a group of its own
 ([process-pty.md](process-pty.md)), so a row's engine builds used to outlive the
 row, reparented to init. `lib/process-tree.f` stops the tree before it lists it
 and kills it once it has settled, or as it stands after two seconds. It follows
@@ -129,9 +160,10 @@ each member's children and the group each member leads, a zombie's too: a child
 that forked and exited unreaped leaves what it forked in the group its pid still
 names. Two things are beyond
 its reach. A process whose parent is gone and whose group id names no member of
-the tree, zombie included, as a daemon's after `setsid` (the `pg` row's
-postmaster, [db.md](db.md)). And on macOS, a child whose spawn had not made it
-yet: a member counts as settled when none of its threads is runnable, so a
+the tree, zombie included, as a daemon's after `setsid`: so a row starts a
+server as its own child, never through a launcher that daemonizes it, as the
+`pg` row runs `postgres` and not `pg_ctl` ([db.md](db.md#tests)). And on
+macOS, a child whose spawn had not made it yet: a member counts as settled when none of its threads is runnable, so a
 thread blocked in the kernel partway into a spawn - on a page-in, an allocation
 or a lock - is not seen, and that spawn finishes after the kill. The walk's
 repeated passes narrow that window; they do not close it.
@@ -141,9 +173,11 @@ every live row that way, removes its temporary root, and then dies of the same
 signal, so its caller reads a death by that signal and not an exit. A signal the
 root was started with ignored — `nohup`'s SIGHUP, the SIGINT of a background job
 — stays ignored. SIGKILL cannot be answered: each row's reaper kills the row's
-group, and what the rows spawned and the temporary root stay. One that lands
-during a tree walk also leaves what the walk had stopped stopped, not running
-out its time. Measured on macOS: the kernel sends SIGHUP and then SIGCONT to a
+group, and what the rows spawned stays, with the temporary root and the
+session's socket root under `TMPDIR` (`hb-sock-*`). A `pg` row's server is one
+of what stays, still running; [db.md](db.md#tests) has its recovery. One that
+lands during a tree walk also leaves what the walk had stopped stopped, not
+running out its time. Measured on macOS: the kernel sends SIGHUP and then SIGCONT to a
 stopped process when a death orphans its group, which ends it unless it ignores
 SIGHUP; any other — one whose group was orphaned before it was stopped, or whose
 parent lives on — stays stopped until something sends it SIGKILL or SIGCONT.
@@ -285,13 +319,14 @@ at its deadline.
   `E-PROC-TIMEOUT` again on that status.
 - A row that needs an external server starts a private one and stops it
   whatever its cases do. The `pg` row (`test/db/pg-cluster.f`) runs `initdb`
-  and `pg_ctl` from `PATH`, a gate requirement on every host
+  and `postgres` from `PATH`, a gate requirement on every host
   ([bootstrap.md](bootstrap.md#requirements)); without them it fails naming
-  the missing binary. It serves the cluster on a Unix-domain socket only, so
-  concurrent rows share no port, and runs the cases in a child engine so a
-  case that dies or hangs still leaves the harness to stop the server. The
-  socket directory is under `TMPDIR` rather than the slot's `HB_TMP`, whose
-  length leaves no room in `sun_path`.
+  the missing binary. The server is the harness's own child, so the pool's
+  kill ends it with the row. It serves the cluster on a Unix-domain socket
+  only, so concurrent rows share no port, and runs the cases in a child engine
+  so a case that dies or hangs still leaves the harness to stop the server.
+  The socket directory is the slot's `HB_SOCK_TMP` rather than a directory
+  under its `HB_TMP`, whose length leaves no room in `sun_path`.
 - A red that appears only when the box is loaded is the box: reproduce it on
   the unmodified base under the same load, then rerun the suite alone. Every
   gate run gets its own `HB_TMP` root, and nothing edits the tree while a gate
