@@ -279,13 +279,63 @@ public
    s" evaluate" REFUSE ;
 
 \ ---- atomics and publication rows --------------------------------------------
+private
+
+\ The twins of habu1.f BATFETCH .. BFENCE. x86-64 orders memory as total store
+\ order: a plain load already has LDAR's acquire order, but a plain store may
+\ pass a later load, which STLR followed by LDAR forbids, so the store is the
+\ implicitly locked xchg. A row that writes guards the cell whose address is on
+\ top of the data stack, and pops its operands only after the guard, which
+\ preserves no scratch register.
+: TOP-CELL-GUARD, ( -- )
+   RDI ENGINE-GPR:X64-DSTACK >R64 CELL negate MEM-OFF ASM-SINK ENC-MOV-RM
+   RSI CELL IMM32,
+   RDI RSI PROT-SPAN-CALL, ;
+
+\ atomic@ ( ptr a -- a )
+: ATOMIC-FETCH, ( -- )
+   0 X64RT:G-POP
+   RAX RAX MEM-AT ASM-SINK ENC-MOV-RM
+   0 X64RT:G-PUSH ;
+
+\ atomic! ( a ptr a -- )
+: ATOMIC-STORE, ( -- )
+   TOP-CELL-GUARD,
+   1 X64RT:G-POP  0 X64RT:G-POP
+   RAX RCX MEM-AT ASM-SINK ENC-XCHG-MR ;
+
+\ atomic-add ( n ptr n -- n ), answering the value the cell held.
+: ATOMIC-ADD, ( -- )
+   TOP-CELL-GUARD,
+   1 X64RT:G-POP  0 X64RT:G-POP
+   RAX RCX MEM-AT ASM-SINK ENC-LOCK-XADD-MR
+   0 X64RT:G-PUSH ;
+
+\ atomic-cas ( a a ptr a -- a ): the expected value in rax and the new one in
+\ rdx. It answers the value the cell held, which cmpxchg leaves in rax whether
+\ or not it matched.
+: ATOMIC-CAS, ( -- )
+   TOP-CELL-GUARD,
+   1 X64RT:G-POP  2 X64RT:G-POP  0 X64RT:G-POP
+   RDX RCX MEM-AT ASM-SINK ENC-LOCK-CMPXCHG-MR
+   0 X64RT:G-PUSH ;
+
+public
+
+: ATOMICS, ( -- )
+   s" atomic@" [: ATOMIC-FETCH, ;] PRIM
+   s" atomic!" [: ATOMIC-STORE, ;] PRIM
+   s" atomic-add" [: ATOMIC-ADD, ;] PRIM
+   s" atomic-cas" [: ATOMIC-CAS, ;] PRIM
+   s" fence" [: ASM-SINK ENC-MFENCE ;] PRIM ;
 
 \ ---- engine-state rows -------------------------------------------------------
 
 \ The whole kernel: the helpers, then every section.
 : KERNEL, ( -- )
    HELPERS,
-   CONTROL, ;
+   CONTROL,
+   ATOMICS, ;
 
 ;using
 ;using

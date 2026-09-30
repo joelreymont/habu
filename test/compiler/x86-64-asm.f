@@ -330,6 +330,24 @@ create SINK BUF:HDR-BYTES allot
    \ llvm-mc: xchgq %rbx, %rcx
    RCX RBX SINK ENC-XCHG-RR   s" 4887cb" X= ;
 
+\ the atomic forms. The memory xchg is locked with no prefix; xadd and cmpxchg
+\ carry f0 ahead of REX, here with REX.R and REX.B or REX.X set behind it.
+: ATOMICS ( -- )
+   \ llvm-mc: xchgq %rax, (%rcx)
+   RAX RCX MEM-AT SINK ENC-XCHG-MR   s" 488701" X=
+   \ llvm-mc: xchgq %r9, 8(%r12)
+   R9 R12 8 MEM-OFF SINK ENC-XCHG-MR   s" 4d874c2408" X=
+   \ llvm-mc: lock xaddq %rax, (%rcx)
+   RAX RCX MEM-AT SINK ENC-LOCK-XADD-MR   s" f0480fc101" X=
+   \ llvm-mc: lock xaddq %r10, (%r13)
+   R10 R13 MEM-AT SINK ENC-LOCK-XADD-MR   s" f04d0fc15500" X=
+   \ llvm-mc: lock cmpxchgq %rdx, (%rcx)
+   RDX RCX MEM-AT SINK ENC-LOCK-CMPXCHG-MR   s" f0480fb111" X=
+   \ llvm-mc: lock cmpxchgq %rbx, -16(%rbp,%r8,8)
+   RBX RBP R8 8 -16 MEM-IDX SINK ENC-LOCK-CMPXCHG-MR   s" f04a0fb15cc5f0" X=
+   \ llvm-mc: mfence
+   SINK ENC-MFENCE   s" 0faef0" X= ;
+
 \ the addressing forms that have no ARM counterpart: rsp and
 \ r12 forcing a SIB, rbp and r13 forcing a disp8 of zero, the disp8 boundary,
 \ rip-relative, and an rsp base carrying an index.
@@ -612,6 +630,11 @@ create SINK BUF:HDR-BYTES allot
    [: -1 >CONDITION 0 >REL SINK ENC-JCC-REL32 ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
    [: 16 >CONDITION 0 >R8 SINK ENC-SETCC ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T= ;
 
+\ The lock prefix is the first byte, so a refused operand must stop it too.
+: LOCK-REFUSALS ( -- )
+   [: RAX 16 32 lshift >MEM SINK ENC-LOCK-XADD-MR ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T=
+   [: 16 >R64 RCX MEM-AT SINK ENC-LOCK-CMPXCHG-MR ;] E-OPERAND TTHROWSQ   SINK-LEN 0 T= ;
+
 \ The operand types themselves: an ill-formed instruction is a CHECKER refusal,
 \ not a runtime throw. -1 is accepted, 0 refused.
 : SSE-NOMINAL-CASES ( -- )
@@ -672,10 +695,10 @@ create SINK BUF:HDR-BYTES allot
    MOVES WIDENING ADDRESS-AND-ZERO ONE-REGISTER SIGNED-MULTIPLY
    IMMEDIATE-STORES STORE-REFUSALS
    PADDING-AND-TRAP
-   SHIFTS CONTROL MEMORY-TRAPS CONDITION-NAMES REGISTER-NAMES BRANCHES
+   SHIFTS CONTROL ATOMICS MEMORY-TRAPS CONDITION-NAMES REGISTER-NAMES BRANCHES
    SSE-REGISTERS SSE-MOVES SSE-ARITHMETIC SSE-REFUSALS SSE-NOMINAL-CASES
    REGISTER-REFUSALS IMMEDIATE-REFUSALS MEMORY-REFUSALS BRANCH-REFUSALS
-   NOMINAL-CASES RELOCATION-CONTRACT
+   LOCK-REFUSALS NOMINAL-CASES RELOCATION-CONTRACT
    SINK BUF:DISPOSE
    T-REPORT ;
 

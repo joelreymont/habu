@@ -8,7 +8,6 @@ blocks:
   - habu-emit-x86-pure-f70fb84b
   - habu-emit-x86-syscall-a0d501db
   - habu-emit-x86-control-9a35e3b3
-  - habu-emit-x86-atomics-c02e092e
   - habu-emit-x86-engine-86b5f8e7
   - habu-port-signals-crash-2c7768ca
   - habu-port-the-crash-99c87339

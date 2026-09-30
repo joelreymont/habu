@@ -324,6 +324,13 @@ private
    op s EMIT-OP
    rn m s EMIT-MEM ;
 
+\ A locked 64-bit read-modify-write of memory. The lock prefix precedes REX, as
+\ a mandatory SSE prefix does, so both operands are screened before it.
+: LOCK-RM ( n r64 mem ptr a -- ) {: op:n r:r64 m:mem s:ptr :}
+   r R64>N REG-NUM {: rn:n :}  m MEM-CHECK
+   $F0 s EMIT-B
+   W64 op rn m 0 s RM-ENC ;
+
 public
 
 \ ---- the 64-bit register file ------------------------------------------------
@@ -726,9 +733,28 @@ public
    0 0 0 n 3 rshift 0 s EMIT-REX
    $58 n 7 and + s EMIT-B ;
 
-\ xchg between two registers is implicitly locked and is the seq-cst swap the
-\ runtime needs. The first operand takes the reg field, the second the rm field.
+\ xchg between two registers touches no memory, so nothing locks it. The first
+\ operand takes the reg field, the second the rm field.
 : ENC-XCHG-RR ( r64 r64 ptr a -- ) {: l:r64 r:r64 s:ptr :}
    W64 $87 l R64>N REG-NUM r R64>N REG-NUM 0 s RR-ENC ;
+
+\ ---- the atomic forms and the fence ------------------------------------------
+\ Only the memory form of xchg is implicitly locked, so it takes no prefix;
+\ xadd and cmpxchg take the f0 lock prefix. The register is the source, as in
+\ the stores. xchg and xadd leave the old memory value in it; cmpxchg compares
+\ rax with memory, stores the register only on a match, and leaves the old
+\ memory value in rax.
+: ENC-XCHG-MR ( r64 mem ptr a -- ) {: sr:r64 m:mem s:ptr :}
+   W64 $87 sr R64>N REG-NUM m 0 s RM-ENC ;
+
+: ENC-LOCK-XADD-MR ( r64 mem ptr a -- ) {: sr:r64 m:mem s:ptr :}
+   $0FC1 sr m s LOCK-RM ;
+
+: ENC-LOCK-CMPXCHG-MR ( r64 mem ptr a -- ) {: sr:r64 m:mem s:ptr :}
+   $0FB1 sr m s LOCK-RM ;
+
+\ mfence is the group-15 opcode 0F AE with the register-form ModRM of digit 6.
+: ENC-MFENCE ( ptr a -- ) {: s:ptr :}
+   $0FAE s EMIT-OP  3 6 0 MODRM s EMIT-B ;
 
 ;package

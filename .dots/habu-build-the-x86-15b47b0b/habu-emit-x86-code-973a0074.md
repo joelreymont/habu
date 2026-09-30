@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-30T09:22:47.240129+03:00"
-blocks:
-  - habu-emit-x86-atomics-c02e092e
 ---
 
 Problem: the code window and publication rows need the x86 protection window and the sorted map inserts; K8a covers only encoders and atomics. Split from K8 by the K-lane design (2026-09-30).

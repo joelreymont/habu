@@ -10,7 +10,6 @@ blocks:
   - habu-emit-x86-pure-f70fb84b
   - habu-emit-x86-syscall-a0d501db
   - habu-emit-x86-control-9a35e3b3
-  - habu-emit-x86-atomics-c02e092e
   - habu-emit-x86-engine-86b5f8e7
   - habu-emit-x86-float-38de4a6f
   - habu-emit-x86-process-8e1f6f84

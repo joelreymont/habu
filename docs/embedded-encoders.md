@@ -83,7 +83,9 @@ in five forms each, `test`, moves and loads and stores at 8, 16, 32 and 64
 bits, `movzx`/`movsx`/`movsxd`, `lea`, the F7 and FF one-register groups
 (`not neg mul imul div idiv inc dec`) with `cqo`, the non-widening `imul`,
 shifts and rotates by imm8 and by `cl`, relative and indirect branches and
-calls, `ret`, `setcc`, `cmovcc`, `push`, `pop`, `xchg` and `syscall`. The one
+calls, `ret`, `setcc`, `cmovcc`, `push`, `pop`, `xchg` between registers and
+with memory, `lock xadd` and `lock cmpxchg` to memory, `mfence` and `syscall`.
+The one
 32-bit arithmetic form is `ENC-XOR32-RR`, the register-zeroing idiom; a 32-bit
 result zero-extends into the whole 64-bit register.
 
