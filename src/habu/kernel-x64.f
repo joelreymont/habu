@@ -2769,6 +2769,20 @@ public
 
 : TASK, ( -- ) s" task-entry" [: TASK-ENTRY-BODY ;] PRIM ;
 
+\ ---- definition writers ------------------------------------------------------
+\ The seven rows an interpreter written in Habu publishes definitions, namespace
+\ rows, aliases and package scope through (src/habu/prims.f, "the definition
+\ writers"). Each refuses here until this kernel carries its body, and each
+\ record carries ENGINE-PRIMS:GLOBAL-INT-WID, as on ARM64.
+: DEFINITION, ( -- )
+   s" namespace-record" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" namespace-private" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" alias-record" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" package-scope!" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" def-open" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" body-append" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" trust-sig!" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+
 \ The whole kernel: the helpers, then every section.
 : KERNEL, ( -- )
    HELPERS,
@@ -2779,7 +2793,8 @@ public
    DICT-SEARCH,
    ENGINE-STATE,
    FFI,
-   TASK, ;
+   TASK,
+   DEFINITION, ;
 
 ;using
 ;using

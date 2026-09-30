@@ -3204,21 +3204,47 @@ public
    LCODEFULL C-CAP-LABEL
    $4C C-DIE-TOKEN ;
 
-: C-STORE-NAME ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL {: short fail capok lcopy lcd scopy scd done :}
+\ ---- a record's name, stored once for every definer --------------------------
+\ `:`, `create`, `export`, `package` and a qualified definition store the token
+\ in TKA/TKL; the definition writers further down (DEFWRITE bodies) store a
+\ name a TRUSTED: caller hands them. Both go through this one emitter, so the
+\ inline and out-of-line forms, the code ceiling and the provenance of a spilled
+\ name have one owner.
+package DEFWRITE
+
+public
+
+\ Refuse, through `full`, a name longer than DNAME-INL whose 4-aligned copy at
+\ CP would reach the code ceiling, REGION - $4000 above DBASE. The comparisons
+\ are unsigned and never wrap: a CP already at the ceiling, and a length no
+\ region holds (a negative one among them), are refused rather than added.
+\ x12 = the length. Clobbers x11, x15 and the flags.
+: NAME-ROOM ( label -- ) {: full:label :}
+   LBL {: fits:label :}
+   12 DNAME-INL CMPI,  C-LS fits BCOND,
+   11 REGION $4000 - LIT64,  11 DBASE 11 ADD,
+   CP 11 CMP,  C-CS full BCOND,                       \ CP is already at the ceiling
+   11 11 CP SUB,                                      \ x11 = the room below it
+   12 11 CMP,  C-CS full BCOND,                       \ the bytes alone reach it
+   15 12 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI,
+   15 11 CMP,  C-CS full BCOND,                       \ so do the padded bytes
+   fits LBL, ;
+
+\ Store the name in record x9, whose room NAME-ROOM has already admitted: [16]
+\ its length, with DNAME-EXT for a long one; [24] and [32] the bytes inline, or
+\ [24] the address of a copy at CP, marked native provenance, with CP moved past
+\ it. x10 = the name's address, x12 = its length, at least one byte. x9 and x12
+\ survive; x1, x10, x11 and x13-x16 are clobbered.
+: NAME-COPY ( -- )
+   LBL LBL LBL LBL LBL LBL {: short lcopy lcd scopy scd done :}
    14 0 MOVZ,  14 9 24 STR,  14 9 32 STR,             \ canonical name/padding before either form
-   12 DATA TKL-CELL LDR,
    13 12 0 ADDI,
-   12 DNAME-INL CMPI,  C-LE short BCOND,
+   12 DNAME-INL CMPI,  C-LS short BCOND,
       14 DNAME-EXT LIT64,  13 13 14 ORR,  13 9 16 STR,
       15 12 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI,
       16 CP 15 ADD,
-      10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  16 10 CMP,  C-LT capok BCOND,
-         fail B,
-      capok LBL,
       1 15 0 ADDI,  PROT:RESERVE                 \ a long name is a direct write at CP
       CP 9 24 STR,
-      10 DATA TKA-CELL LDR,
       11 CP 0 ADDI,
       14 12 0 ADDI,
       lcopy LBL,  14 lcd CBZ,
@@ -3230,12 +3256,24 @@ public
       done B,
    short LBL,
       13 9 16 STR,
-      11 9 24 ADDI,  10 DATA TKA-CELL LDR,  14 12 0 ADDI,
+      11 9 24 ADDI,  14 12 0 ADDI,
       scopy LBL,  14 scd CBZ,
          15 10 0 LDRB,  15 11 0 STRB,
          10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  scopy B,
       scd LBL,
-      done B,
+   done LBL, ;
+
+\ The whole store: the room, then the copy.
+: NAME-STORE ( label -- )
+   NAME-ROOM  NAME-COPY ;
+
+;package
+
+: C-STORE-NAME ( -- )
+   LBL LBL {: fail done :}
+   10 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
+   fail DEFWRITE:NAME-STORE
+   done B,
    fail LBL,                                          \ long name would overflow the code region: the SAME capacity and exit code its sibling definer arms report, so it takes the same labeled tail instead of writing a bare token (rc 76 = $4C, recoverable inside evaluate, fail-closed exit at top level)
       C-DIE-CODE-FULL
    done LBL, ;
@@ -3427,6 +3465,237 @@ public
    9 DATA DOESB-CELL LDR,  9 none CBZ,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    none LBL, ;
+
+;package
+
+\ ---- the definition writers --------------------------------------------------
+\ The bodies of the seven rows src/habu/prims.f specifies under "the definition
+\ writers", registered with ENGINE-PRIMS:GLOBAL-INT-WID in
+\ EMIT-PRIMITIVE-SECTIONS. Each checks everything before it writes, and a
+\ refusal exits the process, so no reader ever sees a half-written row.
+\ FPRIM-WID frames x30 around each body.
+package DEFWRITE
+
+: REFUSE-AT ( label n -- ) {: at:label rc:n :}
+   at LBL,  0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ x<dst> = the address of record x<ix>; dst and ix differ.
+: REC-AT, ( n n -- ) {: dst:n ix:n :}
+   dst DREC MOVZ,  dst ix dst MUL,  dst DBASE dst ADD, ;
+
+\ A pending definition's record is slot NDICT, the slot a record writer fills.
+: NOT-PENDING, ( label -- ) {: bad:label :}
+   9 DATA PEND-CELL LDR,  9 bad CBNZ, ;
+
+\ Slot DICT-CAP is the control-flow band, not a record.
+: DICT-ROOM, ( label -- ) {: bad:label :}
+   9 DICT-CAP LIT64,  NDICT 9 CMP,  C-CS bad BCOND, ;
+
+\ An empty name, and one whose copy would reach the code ceiling. x1 = the
+\ length; x12 takes a copy for NAME-ROOM.
+: NAME-SIZE, ( label -- ) {: bad:label :}
+   1 bad CBZ,
+   12 1 0 ADDI,  bad NAME-ROOM ;
+
+\ A live record for the folded name x0/x1 in wordlist x2. WLFIND keeps x0, x1,
+\ x2 and x13, and clobbers x3-x12 and x14-x17.
+: FRESH, ( label -- ) {: bad:label :}
+   WLFIND:LENTRY LABEL@ BL,  12 bad CBNZ, ;
+
+\ Wid x2 is a namespace row's or a retired record's, not a wordlist.
+: REAL-WID, ( label -- ) {: bad:label :}
+   15 DICT-WL:NAMESPACE invert MOVN,  2 15 CMP,  C-EQ bad BCOND,
+   15 DICT-WL:RETIRED invert MOVN,  2 15 CMP,  C-EQ bad BCOND, ;
+
+\ After the seal, wid x2 is protected. LPROTWIDQ keeps x0-x4 and answers in x13.
+: OPEN-WID, ( label -- ) {: prot:label :}
+   LBL {: open:label :}
+   9 DATA SEAL-NDICT-CELL LDR,  9 open CBZ,
+   9 2 0 ADDI,  LPROTWIDQ LABEL@ BL,  13 prot CBNZ,
+   open LBL, ;
+
+\ Declare record x9 writable. PROT:LSPAN clobbers x0-x2.
+: REC-SPAN, ( -- )
+   1 9 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL, ;
+
+\ Open the code band at CP, as the engine's definers do, so a long name's
+\ PROT:RESERVE can grow it (with no band open the spill faults), then declare
+\ record x9. PROT:LOPEN, like PROT:LSPAN, clobbers x0-x2.
+: NAME-BANDS, ( -- )
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
+   REC-SPAN, ;
+
+\ Count record NDICT, index it and close the band.
+: PUBLISH, ( -- )
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   PROT:LCLOSE LABEL@ BL, ;
+
+public
+
+\ namespace-record ( ptr u8 n bool -- n )
+: NAMESPACE-RECORD ( -- )
+   LBL LBL LBL LBL LBL {: bad scan clean nopri done :}
+   B-TASK-LIVE-GUARD
+   13 G-POP  1 G-POP  0 G-POP                         \ x13 = the flag, x1 = the length, x0 = the name
+   bad NOT-PENDING,
+   bad DICT-ROOM,
+   bad NAME-SIZE,
+   14 0 MOVZ,
+   scan LBL,  14 1 CMP,  C-CS clean BCOND,            \ a colon would make the name qualified
+      15 0 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ bad BCOND,
+      14 14 1 ADDI,  scan B,
+   clean LBL,
+   2 DICT-WL:NAMESPACE invert MOVN,
+   bad FRESH,
+   10 0 0 ADDI,  12 1 0 ADDI,  3 13 0 ADDI,           \ past the band call: the name, the flag
+   9 NDICT REC-AT,
+   NAME-BANDS,
+   NAME-COPY
+   14 DATA WIDN-CELL LDR,  14 9 0 STR,                \ [0] = a fresh wid
+   14 14 1 ADDI,  15 0 MOVZ,
+   3 nopri CBZ,
+      15 14 0 ADDI,  14 14 1 ADDI,                    \ [8] = a second one
+   nopri LBL,
+   15 9 8 STR,  14 DATA WIDN-CELL STR,
+   15 DICT-WL:NAMESPACE invert MOVN,  15 9 40 STR,
+   PUBLISH,
+   9 NDICT 1 SUBI,  9 G-PUSH
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ namespace-private ( n -- )
+: NAMESPACE-PRIVATE ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   0 G-POP
+   0 NDICT CMP,  C-CS bad BCOND,
+   9 0 REC-AT,
+   14 9 40 LDR,  15 DICT-WL:NAMESPACE invert MOVN,  14 15 CMP,  C-NE bad BCOND,
+   14 9 8 LDR,  14 bad CBNZ,
+   REC-SPAN,
+   14 DATA WIDN-CELL LDR,  14 9 8 STR,
+   14 14 1 ADDI,  14 DATA WIDN-CELL STR,
+   PROT:LCLOSE LABEL@ BL,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ alias-record ( ptr u8 n n n -- ) name, source index, wid
+: ALIAS-RECORD ( -- )
+   LBL LBL LBL {: bad prot done :}
+   B-TASK-LIVE-GUARD
+   2 G-POP  4 G-POP  1 G-POP  0 G-POP                 \ x2 = the wid, x4 = the source, x1/x0 = the name
+   bad REAL-WID,
+   prot OPEN-WID,
+   bad NOT-PENDING,
+   4 NDICT CMP,  C-CS bad BCOND,
+   5 4 REC-AT,
+   14 5 40 LDR,
+   15 DICT-WL:NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 DICT-WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   14 5 16 LDR,  14 14 DNAME-INT ANDI,  14 bad CBNZ,  \ an internal body: the alias would drop its gate
+   bad DICT-ROOM,
+   bad NAME-SIZE,
+   13 4 0 ADDI,
+   bad FRESH,
+   3 2 0 ADDI,  4 13 0 ADDI,  10 0 0 ADDI,  12 1 0 ADDI,
+   9 NDICT REC-AT,
+   NAME-BANDS,
+   NAME-COPY
+   5 4 REC-AT,
+   14 5 0 LDR,  14 9 0 STR,                           \ [0] = the source's entry
+   14 5 8 LDR,  14 9 8 STR,                           \ [8] = its recorded length
+   14 5 16 LDR,
+   15 DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or LIT64,  14 14 15 AND,
+   15 9 16 LDR,  15 15 14 ORR,  15 9 16 STR,          \ its IMM, WIDE and MIN-IN bits
+   3 9 40 STR,
+   PUBLISH,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
+   done LBL, ;
+
+\ package-scope! ( n n -- ) namespace index, parent wid
+: PACKAGE-SCOPE ( -- )
+   LBL LBL LBL {: bad set done :}
+   B-TASK-LIVE-GUARD
+   1 G-POP  0 G-POP                                   \ x1 = the parent wid, x0 = the row
+   15 0 MOVN,  0 15 CMP,  C-NE set BCOND,
+      1 bad CBNZ,                                     \ only `-1 0` clears
+      9 0 MOVZ,
+      9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,
+      9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,
+      done B,
+   set LBL,
+   0 NDICT CMP,  C-CS bad BCOND,
+   9 0 REC-AT,
+   14 9 40 LDR,  15 DICT-WL:NAMESPACE invert MOVN,  14 15 CMP,  C-NE bad BCOND,
+   12 9 8 LDR,  12 bad CBZ,
+   11 9 0 LDR,
+   11 DATA PKG-PUB-CELL STR,  12 DATA PKG-PRI-CELL STR,
+   1 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ def-open ( ptr u8 n n n -- ) name, wid, kind
+: DEF-OPEN ( -- )
+   LBL LBL LBL {: bad prot done :}
+   B-TASK-LIVE-GUARD
+   4 G-POP  2 G-POP  1 G-POP  0 G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
+   14 DKIND:MASK invert LIT64,  14 4 14 AND,  14 bad CBNZ,
+   bad REAL-WID,
+   prot OPEN-WID,
+   bad NOT-PENDING,
+   9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-CS bad BCOND,
+   bad DICT-ROOM,
+   bad NAME-SIZE,
+   13 4 0 ADDI,
+   bad FRESH,
+   3 2 0 ADDI,  4 13 0 ADDI,  10 0 0 ADDI,  12 1 0 ADDI,
+   9 NDICT REC-AT,
+   NAME-BANDS,
+   NAME-COPY
+   CP 9 0 STR,                                        \ [0] = the entry, past a long name
+   14 0 MOVZ,  14 9 8 STR,
+   14 9 16 LDR,  14 14 4 ORR,  14 9 16 STR,           \ the kind beside the length
+   3 9 40 STR,
+   9 DATA PEND-CELL STR,
+   14 0 MOVZ,
+   14 DATA TSIG-A-CELL STR,   14 DATA TSIG-U-CELL STR,
+   14 DATA TCSIG-A-CELL STR,  14 DATA TCSIG-U-CELL STR,
+   14 DATA DOESB-CELL STR,    14 DATA TRUSTED-CELL STR,
+   14 DATA NCOMP-DISPATCH:TIER-CELL LDR,  14 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
+   TIER-PROV:OPEN,
+   PROT:LCLOSE LABEL@ BL,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
+   done LBL, ;
+
+\ body-append ( ptr u8 n -- ): LBCS is the capture `:` appends through.
+: BODY-APPEND ( -- )
+   LBL LBL {: bad done :}
+   12 G-POP  11 G-POP                                 \ LBCS: x11 = the bytes, x12 = their count
+   14 DATA BODYLEN-CELL LDR,  15 BODYBUF-CAP MOVZ,
+   14 15 CMP,  C-HI bad BCOND,                        \ BODYLEN is already past the buffer
+   15 15 14 SUB,                                      \ x15 = the room left
+   12 15 CMP,  C-CS bad BCOND,                        \ the bytes and their space do not fit
+   LBCS LABEL@ BL,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ trust-sig! ( ptr u8 n -- )
+: TRUST-SIG ( -- )
+   LBL LBL {: bad done :}
+   12 G-POP  11 G-POP
+   9 DATA PEND-CELL LDR,  9 bad CBZ,
+   11 DATA TSIG-A-CELL STR,  12 DATA TSIG-U-CELL STR,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
 
 ;package
 
@@ -11315,6 +11584,13 @@ package ENGINE-EMIT
    EMIT-PRIMS
    s" does-patch" ['] DOESPATCH:PRIM FPRIM
    s" does-record" ['] DOES-REC:NATIVE-PRIM FPRIM
+   s" namespace-record" ['] DEFWRITE:NAMESPACE-RECORD ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" namespace-private" ['] DEFWRITE:NAMESPACE-PRIVATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" alias-record" ['] DEFWRITE:ALIAS-RECORD ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" package-scope!" ['] DEFWRITE:PACKAGE-SCOPE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" def-open" ['] DEFWRITE:DEF-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" body-append" ['] DEFWRITE:BODY-APPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" trust-sig!" ['] DEFWRITE:TRUST-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM

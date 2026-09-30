@@ -1536,6 +1536,10 @@ SUITE outer-interpret
    test/outer-interpret.f
 ;SUITE
 
+SUITE engine-writers
+   test/engine-writers.f
+;SUITE
+
 SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE

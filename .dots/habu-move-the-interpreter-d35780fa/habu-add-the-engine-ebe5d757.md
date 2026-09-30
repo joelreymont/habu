@@ -1,8 +1,10 @@
 ---
 title: Add the engine writers the Habu interpreter needs
-status: open
+status: closed
 priority: 2
 issue-type: task
+closed-at: "2026-09-30T17:01:18.937396+03:00"
+close-reason: "done: seven EPRIM writer rows (ARM64 DEFWRITE bodies, x86 refusals); test/engine-writers.f ok at exact statuses 79/84/83; spark chain from 925c1c6e converges gen2-5 at efddfcc6, gate 506 of 506 rc 0; ThinkPad x86 proof 128 images at unchanged statuses, bad=0, plain and Mac-shim identical."
 created-at: "2026-09-30T14:52:44.675778+03:00"
 ---
 

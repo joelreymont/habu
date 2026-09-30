@@ -592,6 +592,68 @@ EPRIM: seed-ndict!    PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ explicit trusted reset boundary
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
+\ ---- the definition writers --------------------------------------------------
+\ What `package`, `export` and `:` change is sealed state after the seal: the
+\ friend arena (CUR, WIDN, DEF-WL, TSIG, PKG-*), BODYBUF, DEF-TIER-CELL, the
+\ TIER-PROV band and the records behind the PROT window. These seven rows are
+\ how an interpreter written in Habu writes it. Each is registered with
+\ ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so only a TRUSTED: body reaches
+\ one. A refusal exits and never throws: 79 while a task is live (the five
+\ dictionary and scope rows), 84 for a protected wid after the seal
+\ (`alias-record`, `def-open`) and 83 for every other refusal. A caller checks
+\ first and prints the engine's own text.
+\
+\ The three record writers store a name of at least one byte: up to DNAME-INL
+\ bytes inline, a longer one at CP, 4-aligned and marked native provenance, as
+\ `:` stores one. Each refuses an empty name, a live (folded name, wid) pair,
+\ NDICT at DICT-CAP, a name copy that would reach the code ceiling (REGION -
+\ $4000 above DBASE, compared unsigned) and a pending definition, whose record
+\ occupies slot NDICT.
+\
+\ namespace-record ( ptr u8 n bool -- n ): publish a namespace row at NDICT and
+\ answer its index: [0] a fresh wid, [8] a second fresh wid when the flag is
+\ set and else 0, [40] DICT-WL:NAMESPACE. It refuses a colon in the name.
+EPRIM: namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!
+\ namespace-private ( n -- ): give namespace row n, whose [8] is 0, a fresh
+\ private wid. It refuses an index at or above NDICT, unsigned, a row that is
+\ not a namespace row and one that already has a private wid.
+EPRIM: namespace-private PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+\ alias-record ( ptr u8 n n n -- ) name, source index, wid: publish a record
+\ carrying the source's [0] and [8] and exactly its DNAME-IMM, DNAME-WIDE and
+\ DNAME-MIN-IN bits, as `export` does. It refuses wid -1 or -2, a source at or
+\ above NDICT, unsigned, and a namespace, retired or DNAME-INT source. An
+\ internal body has no checker-known effect, and DNAME-INT is what keeps it
+\ inside a TRUSTED: boundary; an alias without the bit would run it from the
+\ interpret loop. `export` never reaches one: its checker call refuses an
+\ unsigned or prim source.
+EPRIM: alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+\ package-scope! ( n n -- ) namespace index, parent wid: PKG-PUB and PKG-PRI
+\ from the row's [0] and [8], PKG-REC the row's address and PKG-PARENT the
+\ wid; `-1 0` clears all four. It refuses any other index at or above NDICT,
+\ unsigned, a row that is not a namespace row and one without a private wid.
+EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+\ def-open ( ptr u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
+\ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR or
+\ DKIND:CAST) in [16] and the wid in [40]; PEND-CELL is that record; TSIG,
+\ TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL takes TIER-CELL and the
+\ TIER-PROV open cell takes CP. It refuses another kind, wid -1 or -2 and CP
+\ at or past the code ceiling. At tier 0 it opens the record only: the JIT's
+\ own head (its frame and resets) is not this row's.
+EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+\ body-append ( ptr u8 n -- ): append the bytes and one space to BODYBUF
+\ through the capture routine `:` uses. It refuses BODYLEN + u + 1 past
+\ BODYBUF-CAP, with BODYLEN and u both unsigned.
+EPRIM: body-append PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+\ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
+\ TSIG-A and TSIG-U. It refuses when no definition is pending.
+EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;
 EPRIM: SEAL-FRIEND    EPRIM;
