@@ -679,6 +679,20 @@ variable PTY-LONG-U
    PTY-PKGSCOPE-FRESH
    PTY-PKGSCOPE-GLOBAL ;
 
+\ A line whose create is rolled back retires that record, and the next
+\ definition reuses its slot. The does> after it has no created record to
+\ patch, so it is refused by name and the session reads on, where it used to
+\ patch the reused slot's new owner.
+: PTY-LASTC-RECOVERY ( -- )
+   s" create PLC-GONE 5 , PLC-NO-SUCH-WORD" STEP-LN
+   s" PLC-NO-SUCH-WORD" PROMPT-AFTER
+   s" : PLC-BEHAVE ( -- ) does> ( -- n ) @ ;" STEP-LN
+   s"  ok" PROMPT-AFTER
+   s" PLC-BEHAVE" STEP-LN
+   s" hb: does> has no created word" PROMPT-AFTER
+   PROBE-BARRIER
+   s"  ok" REJECT ;
+
 \ The barrier itself, against the live child. An absence claim over a buffer the
 \ child has not answered into is granted by the harness's own silence: a drain
 \ that returned on its first quiet poll leaves exactly that buffer. One leg has
@@ -832,6 +846,7 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
    PTY-THROW-RECOVERY
    PTY-COMPILE-RECOVERY
    PTY-PKGSCOPE-RECOVERY
+   PTY-LASTC-RECOVERY
    PTY-REJECT-BARRIER ;
 
 : PTY-HB ( -- )

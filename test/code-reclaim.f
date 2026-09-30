@@ -1,6 +1,10 @@
-\ code-reclaim.f - the live-XREF floor used when FORGET gives code back.
+\ code-reclaim.f - the live-XREF floor used when FORGET gives code back, and
+\ the created record a later does> patches.
 
+require lib/string.f
 require lib/test.f
+require lib/test/outcome.f
+require lib/test/subject.f
 require src/habu/layout.f
 
 package CRECL-TEST
@@ -112,6 +116,53 @@ variable U-INDEX
    s" : CR-REUSE-CALL ( n -- n ) CR-REUSE ;" EV
    s" 5 CR-REUSE-CALL" EV-N 15 T= ;
 
+\ LASTC-CELL names the record the last create, variable or constant wrote, and
+\ does> patches that record. Every motion that lowers the dictionary count
+\ retires the records above it, and the next definition reuses their slots, so
+\ a LASTC left naming a retired record makes a later does> patch the slot's new
+\ owner. Each program runs in a child, where a refusal ends the process.
+$1000 constant LC-CAP
+20000 constant LC-TIMEOUT-MS
+LC-CAP BUFFER: LC-OUT
+LC-CAP BUFFER: LC-ERR
+
+: LC-RUN ( ptr u8 n -- len len outcome )
+   LC-OUT LC-CAP >LEN LC-ERR LC-CAP >LEN LC-TIMEOUT-MS >MS SUBJECT:RUN ;
+
+\ The program runs to the end and prints this.
+: LC-PRINTS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n :}
+   LC-RUN 0 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   erru LEN>N 0 T=
+   LC-OUT outu LEN>N want wantu T$= ;
+
+\ The program's does> is refused by name, and the process ends there.
+: LC-REFUSED ( ptr u8 n -- )
+   LC-RUN 70 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   LC-ERR erru LEN>N s" hb: does> has no created word" CONTAINS? TTRUE ;
+
+: LASTC-CASE ( -- )
+   s" a forget that keeps the created record keeps it for does>" T-LABEL
+   S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ns\" CR-LC-MARK\" FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ 1 + ;\nCR-LC-BEHAVE CR-LC-KEEP .\n"
+   S\" 8\n" LC-PRINTS
+
+   s" a forget that retires the created record leaves does> none to patch" T-LABEL
+   S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ncreate CR-LC-GONE 5 ,\ns\" CR-LC-MARK\" FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ ;\nCR-LC-BEHAVE\n"
+   LC-REFUSED
+
+   s" an evaluate that fails retires its created record the same way" T-LABEL
+   S\" create CR-LC-KEEP 7 ,\nTRUSTED: CR-LC-TRY ( -- n ) [: s\" create CR-LC-GONE 5 , CR-LC-NO-SUCH-WORD\" evaluate ;] catch ;\nCR-LC-TRY drop\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ ;\nCR-LC-BEHAVE\n"
+   LC-REFUSED
+
+   \ undefine retires a record in place: NDICT stays, the wordlist cell says so.
+   s" an undefine that retires the created record leaves does> none to patch" T-LABEL
+   S\" create CR-LC-GONE 7 ,\nundefine CR-LC-GONE\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ 1 + ;\nCR-LC-BEHAVE depth .\n"
+   LC-REFUSED
+
+   s" so does one whose body a compiled caller still reaches" T-LABEL
+   S\" create CR-LC-GONE 7 ,\n: CR-LC-USE ( -- n ) CR-LC-GONE @ ;\nundefine CR-LC-GONE\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ 1 + ;\nCR-LC-BEHAVE CR-LC-USE .\n"
+   LC-REFUSED ;
+
 public
 
 : RUN ( -- )
@@ -120,6 +171,7 @@ public
    PLAIN-CASE
    REFUSE-CASE
    REUSE-CASE
+   LASTC-CASE
    T-REPORT ;
 
 ;package

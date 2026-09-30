@@ -3159,10 +3159,34 @@ public
    B DATA CRSIG-A-CELL STR,  C DATA CRSIG-U-CELL STR,
    B A 0 ADDI,  LDOESPATCH LABEL@ BL, ;
 
+private
+
+: NONE$ ( -- ptr u8 n )
+   s" hb: does> has no created word" ;
+
+\ A LASTC of zero names no record: none was created since boot, or the one it
+\ named was retired by a motion that lowered NDICT (habu1.f LASTC-TRIM,). A
+\ LASTC whose wordlist cell is DICT-WL:RETIRED names a record `undefine`
+\ retired in place (xref.f XREF-RETIRE), which leaves NDICT alone. Either is
+\ refused before anything is patched, recoverable inside evaluate like the
+\ other definition errors.
+: EMIT-NONE ( label -- ) {: have:label :}
+   LBL LBL {: none:label msg:label :}
+   11 DATA LASTC-CELL LDR,  11 none CBZ,
+   12 11 40 LDR,  13 DICT-WL:RETIRED invert MOVN,  12 13 CMP,  C-NE have BCOND,
+   none LBL,
+   0 2 MOVZ,  1 msg ADR,  2 NONE$ nip MOVZ,  NR-WRITE SYS,
+   0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
+   msg LBL,  NONE$ BYTES, ;
+
+public
+
 : EMIT ( -- )
-   LBL LBL LBL LBL LBL LBL
-   {: nocr:label slot:label declared:label patch:label write:label flush:label :}
+   LBL LBL LBL LBL LBL LBL LBL
+   {: nocr:label slot:label declared:label patch:label write:label flush:label have:label :}
    LDOESPATCH LABEL@ LBL,
+   have EMIT-NONE
+   have LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
    11 DATA LASTC-CELL LDR,                               \ created slot
    12 11 0 LDR,  13 11 8 LDR,
@@ -10277,6 +10301,7 @@ public
       12 13 56 LDR,
       RELOC-EMIT:LROLLBACK LABEL@ BL,
       12 DATA DP-CELL STR,
+      9 10 LASTC-TRIM,
       \ Restore package/search state from this escaped native-stack frame.
       10 13 EVAL-PKG ADDI,
       9 10 PKGSNAP-CUR LDR,     9 DATA CUR-CELL STR,
@@ -10379,6 +10404,7 @@ public
    12 DATA RSAVDP-CELL LDR,
    RELOC-EMIT:LROLLBACK LABEL@ BL,
    12 DATA DP-CELL STR,
+   9 10 LASTC-TRIM,
    9 DATA S0-CELL LDR,  XDS 9 0 ADDI,
    EM-RESET-COMPILE-STATE
    \ roll the open-package scope back to this REPL line's boundary (RPKG snapshot),

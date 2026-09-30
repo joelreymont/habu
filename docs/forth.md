@@ -514,6 +514,26 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   guard follow the replacement effect, including zero inputs or a scalar result.
   An empty replacement removes the earlier clause and restores the created
   word's original body.
+- **`does>` patches the word the last `create`, `variable` or `constant`
+  made, only while that word lives.** A forget, an `undefine`, a failed
+  `evaluate` or a failed REPL line that retires it leaves `does>` nothing to
+  patch, even when an earlier created word survives, and `does>` is then
+  refused with `hb: does> has no created word` (rc 70, a catchable throw
+  inside `evaluate`). Measured in `test/code-reclaim.f`:
+
+  ```forth
+  create K 7 ,
+  : M ( -- ) ;
+  create G 5 ,
+  s" M" FORGET-DEFS-FROM
+  : B ( -- ) does> ( -- n ) @ ;
+  B
+  ```
+
+  A native engine boots with no created word, so a `does>` before any
+  `create` is refused the same way. An image restored from a `--repl` build
+  keeps its build's last created word instead, and its first `does>` patches
+  that word (`tools/hb-build-repl-twin-test.f`).
 - **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` comment
   inside the body is refused with `E-BAD-DECLARATION`; put comments above the
   opener, including comments explaining the header or fields.
