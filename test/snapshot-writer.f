@@ -12,6 +12,7 @@ require lib/fs-mutate.f
 require lib/process-env.f
 require lib/engine-candidate.f
 require lib/codesign.f
+require test/preloaded-engine.f
 
 package SNAP-WRITER-TEST
 
@@ -162,17 +163,20 @@ variable IMGU
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
    ;MATCH ;
 
+\ The fixture is loaded on the keyed host with the saver already loaded
+\ (test/preloaded-engine.f), which starts at tier 0 where app-image.f set tier 1.
 : BUILD-WITH-TO ( ptr u8 n ptr u8 n -- )
    {: target:ptr targetu:n fixture:ptr size:n :}
+   PRELOADED-ENGINE:APP-IMAGE$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    target targetu >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    SB-RESET
-   s\" require src/habu/app-image.f\nrequire " SB-APPEND
+   s\" 1 set-tier\nrequire " SB-APPEND
    fixture size SB-APPEND
    s\" \n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" SB-APPEND
-   ENGINE$ >LEN SB$ >LEN
+   host hostu >LEN SB$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE CAPTURE! ;
 

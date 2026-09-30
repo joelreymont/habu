@@ -1,11 +1,12 @@
 \ Capture live signals and caches, then reinitialise and recapture them twice.
 \ Every restored generation starts cold: no signal state, descriptor or
 \ environment sizing of the process that saved it (PROCESS-IMAGE-SUBJECT CLEAN,
-\ FIRST-FD, ENV-SIZE).
+\ FIRST-FD, ENV-SIZE). The first generation is saved from the keyed host with
+\ the saver already loaded (test/preloaded-engine.f).
 require lib/test.f
 require lib/fs-mutate.f
 require lib/process-cwd.f
-require lib/engine-candidate.f
+require test/preloaded-engine.f
 
 package PROCESS-IMAGE-TEST
 
@@ -56,12 +57,13 @@ variable SECOND-U
    s" LANG" >LEN s" C" >LEN PROC-ENV+ ;
 
 : BUILD ( -- )
+   PRELOADED-ENGINE:APP-IMAGE$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    FIRST$ >LEN PROC-ARGV+
    ENVIRONMENT
-   ENGINE-CANDIDATE:PATH$ >LEN
-   S\" require src/habu/app-image.f\nrequire test/process-image-subject.f\nPROCESS-IMAGE-SUBJECT:CLEAN\nSIGNAL:INIT\nSIGNAL:SIGUSR1 SIGNAL:CATCH\nPROC-ENV-TABLE drop\n2 PROCESS-IMAGE-SUBJECT:ENV-SIZE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   host hostu >LEN
+   S\" 1 set-tier\nrequire test/process-image-subject.f\nPROCESS-IMAGE-SUBJECT:CLEAN\nSIGNAL:INIT\nSIGNAL:SIGUSR1 SIGNAL:CATCH\nPROC-ENV-TABLE drop\n2 PROCESS-IMAGE-SUBJECT:ENV-SIZE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN
    FIRST$ EXECUTABLE? TTRUE ;

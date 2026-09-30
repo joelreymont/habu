@@ -1,20 +1,24 @@
 \ fixture-cache.f - retention for the keyed gate fixtures in the build cache.
 \
-\ test/fixture-writer.f, test/cold-engine.f and test/whitebox-engine.f each
-\ publish one image per key into the build cache - hb-fixture-writer-<key>,
-\ hb-cold-<key>, hb-whitebox-<key> - built in a private work directory beside
-\ it, <prefix>-<seed>-<attempt>. A key covers the engine and the source closures
-\ the image is built from, so every engine rebuild or closure edit publishes a
-\ new image beside the old ones, and a build killed before its own cleanup (the
-\ gate pool kills a row at its deadline) leaves its work directory behind.
-\ Nothing else removes either, so each of the three calls PRUNE once it has
-\ published and closed its work directory.
+\ test/keyed-image.f (for test/fixture-writer.f and test/preloaded-engine.f),
+\ test/cold-engine.f and test/whitebox-engine.f each publish one image per key
+\ into the build cache - hb-fixture-writer-<key>, hb-app-image-<key>,
+\ hb-linker-<key>, hb-cold-<key>, hb-whitebox-<key> - built in a private work
+\ directory beside it, <prefix>-<seed>-<attempt>. A key covers the engine and
+\ the source closures the image is built from, so every engine rebuild or
+\ closure edit publishes a new image beside the old ones, and a build killed
+\ before its own cleanup (the gate pool kills a row at its deadline) leaves its
+\ work directory behind. Nothing else removes either, so each of the three
+\ calls PRUNE once it has published and closed its work directory.
 \
-\ AN ENTRY GOES ONCE NOTHING HAS USED IT FOR A DAY. Gates on other trees use
-\ these images from the same shared cache under keys of their own - the writer
-\ runs in place - so keeping only the key just published would pull images out
-\ from under them. Instead every ENSURE that finds its image dates it to now
-\ through USED, so the mtime is the last time any caller on any tree
+\ AN ENTRY GOES ONCE NOTHING HAS USED IT FOR A DAY. Gates on other trees share
+\ this cache and run images published under keys of their own: a writer,
+\ preloaded host or linker key names its tree's canonical source paths
+\ (test/keyed-image.f) and a cold key derives from the writer's, so every
+\ checkout has its own, and a whitebox key differs wherever the engine or its
+\ closure does. The images run in place, so keeping only the key just published
+\ would pull images out from under them. Instead every ENSURE that finds its
+\ image dates it to now through USED, so the mtime is the last time any caller
 \ settled it, and PRUNE takes only entries whose mtime is RETAIN-SECONDS old: a
 \ day, far beyond any build's deadline or any gate's run. A gate settles its
 \ images before its pool starts and every row settles them again before using

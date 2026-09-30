@@ -1,8 +1,11 @@
 \ The public first-store path survives contention and a fresh snapshot process.
+\ The image is saved from the keyed host with the saver already loaded
+\ (test/preloaded-engine.f).
 require lib/test.f
 require lib/fs-mutate.f
 require lib/engine-candidate.f
 require lib/codesign.f
+require test/preloaded-engine.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
 package ADDRESS-CELL-TASK-TEST
@@ -49,11 +52,12 @@ variable IMAGE-N
    S\" require test/address-cell-tasks-subject.f\nADDRESS-CELL-TASKS:RUN\n"
    EXEC CHECK-OUTPUT ;
 : BUILD ( -- )
+   PRELOADED-ENGINE:APP-IMAGE$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+ IMAGE$ >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$
-   S\" require src/habu/app-image.f\nrequire test/address-cell-tasks-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
+   host hostu
+   S\" 1 set-tier\nrequire test/address-cell-tasks-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    EXEC 0 T=
    IMAGE$ EXECUTABLE? TTRUE ;
 : CELL@ ( n -- n ) {: off:n :}

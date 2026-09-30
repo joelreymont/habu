@@ -4,6 +4,7 @@ require lib/test.f
 require lib/test/runner.f
 require test/gate-pool.f
 require test/cold-engine.f
+require test/preloaded-engine.f
 require test/whitebox-engine.f
 require test/gate-entry-guard.f
 require lib/engine-id.f                  \ ENGINE-ID:PATH$ - this gate's own binary
@@ -146,15 +147,17 @@ variable WB-FAIL-RC                      \ exit status a red whitebox row dies w
 \ Settle the shared fixture writer image and the cold host it emits here, before
 \ the pool starts: every row that writes a fixture then runs that one keyed
 \ image and copies that one keyed host, so no row builds the writer image (about
-\ 24 s) or races another row to build it. Settling dates both images as used,
-\ as each row's own settle does again, so a prune by a gate on another tree
-\ (test/fixture-cache.f) leaves them alone. The whitebox build is the first
-\ fork.
+\ 24 s) or races another row to build it. The preloaded host and linker
+\ (test/preloaded-engine.f) are settled for the same reason. Settling dates
+\ every image as used, as each row's own settle does again, so a prune by a
+\ gate on another tree (test/fixture-cache.f) leaves them alone. The whitebox
+\ build is the first fork.
 : SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS
    ENTRY-GUARD:CHECK
    s" habu-native-suite" GT-START
    COLD-ENGINE:ENSURE
+   PRELOADED-ENGINE:ENSURE
    GT-POOL-RESET
    WB-START ;
 

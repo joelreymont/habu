@@ -113,6 +113,23 @@ gives that slot no directory.
   `bin/hb --load <file>` measures. `test/compiler/aot-mode.f` is only for a
   caller that runs one unchanged file at both tiers (the `*-aot` twin rows);
   a twin row lists the subject's harness before it, by the same rule.
+- A row whose child compiles `src/habu/app-image.f` or the AOT linker only to
+  reach its subject runs a keyed image with them already loaded
+  (`test/preloaded-engine.f`: `APP-IMAGE$`, `LINKER$`, `LINKER-LOAD`); the gate
+  settles both before its first fork. That file's header holds the rules: take
+  the path before staging argv, start a program on the host with `1 set-tier`,
+  link only subjects that require nothing in the linker's lib closure, and keep
+  a row whose children run `ENGINE-CANDIDATE:PATH$` off the images. A row whose
+  claim is the saver's or the linker's own load (`test/app-image.f`) keeps
+  compiling them from source, and so does `test/gate-aot-negative.f`: its
+  mapped-band fixture asks the process-map reader its first question, and on
+  the linker image that reader starts marked loaded by its builder
+  (`tools/aot-build-core.f` rereads the map as a save hook) with none of the
+  builder's rows, so the question throws `E-BOUNDS` (7122, exit 67) instead of
+  reading the running process's map. The accepted cost of settling both in
+  `SUITE-SETUP`, as the fixture writer is: a compile error in the saver's or
+  the linker's closure stops the gate at setup with the builder's diagnostic
+  instead of failing the rows that load them.
 - `bin/hb file.f` (no `--load`) drops to a REPL after a clean load and blocks
   on stdin — it looks like a hang, rc 124 under a timeout. Pipe `< /dev/null`,
   and give a spawned build child `/dev/null` stdin rather than letting it

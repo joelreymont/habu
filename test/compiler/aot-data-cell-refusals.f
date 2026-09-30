@@ -23,7 +23,7 @@
 \ engine fault rather than a refusal (dot habu-name-the-cell-740feb52; Tender's
 \ server image took the first path and its CLI the second).
 require test/gate-common.f
-require lib/engine-candidate.f
+require test/preloaded-engine.f
 
 package AOT-DATA-CELL-REFUSAL-TEST
 
@@ -52,16 +52,20 @@ variable IMAGE-U
 \ above the span, and BUILD-NATIVE links. A definition placed in the prelude
 \ AHEAD of tools/aot-build-open.f is therefore compiled before the window opens
 \ and lands in pre-window DATA; the subject file is loaded inside the window.
+\ The child runs the keyed linker image (test/preloaded-engine.f), which has the
+\ linker loaded already, so there phase two's require is a no-op.
 : LINK-ONLY$ ( -- ptr u8 n )
    S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
 
-\ The linker's second argument is its JSON-diagnostics flag.
+\ The linker's second argument is its JSON-diagnostics flag. The linker image
+\ is taken before the child's argv is staged: building it stages its own.
 : BUILD-DIAG ( ptr u8 n ptr u8 n -- ) {: json:ptr jsonu:n in:ptr inu:n :}
+   PRELOADED-ENGINE:LINKER$ {: linker:ptr linkeru:n :}
    GE-HB-RESET
-   ENGINE-CANDIDATE:PATH$ GE-ARGV+
+   linker linkeru GE-ARGV+
    s" --" GE-ARG+ SUBJECT$ GE-ARG+ json jsonu GE-ARG+
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
-   ENGINE-CANDIDATE:PATH$ in inu TIMEOUT-MS GE-RUN-STDIN ;
+   linker linkeru in inu TIMEOUT-MS GE-RUN-STDIN ;
 
 : BUILD ( ptr u8 n -- ) {: in:ptr inu:n :}
    s" 0" in inu BUILD-DIAG ;

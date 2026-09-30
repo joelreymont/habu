@@ -1,9 +1,11 @@
 \ Warm F64 and ZIP, save, then use fresh native resources outside the checkout.
+\ The image is saved from the keyed host with the saver already loaded
+\ (test/preloaded-engine.f).
 require lib/test.f
 require lib/fs-mutate.f
 require lib/process-cwd.f
-require lib/engine-candidate.f
 require lib/zip-test-fixture.f
+require test/preloaded-engine.f
 
 package ZIP-TEST
 public
@@ -54,13 +56,14 @@ variable ZIP-U
    rc 0 T= erru 0 T= outu ;
 
 : BUILD ( -- )
+   PRELOADED-ENGINE:APP-IMAGE$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
    ZIP$ >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN
-   S\" require src/habu/app-image.f\nrequire test/native-resource-image-subject.f\n1 SCRIPT-ARGV$ NATIVE-RESOURCE-SUBJECT:WARM\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   host hostu >LEN
+   S\" 1 set-tier\nrequire test/native-resource-image-subject.f\n1 SCRIPT-ARGV$ NATIVE-RESOURCE-SUBJECT:WARM\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN drop
    IMAGE$ EXECUTABLE? TTRUE ;
