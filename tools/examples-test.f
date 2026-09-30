@@ -222,13 +222,12 @@ variable EXT-ERR-A
    b u EXT-CLEAR-BUNDLE
    b u s" lib/errors.f" EXT-ADD-SOURCE-LF
    b u s" lib/string.f" EXT-ADD-SOURCE-LF
-   b u s" lib/string-roles.f" EXT-ADD-SOURCE-LF   \ examples/string-regex.f uses STR:
+   b u s" lib/string-roles.f" EXT-ADD-SOURCE-LF   \ examples/string.f uses STR:
    b u s" lib/test.f" EXT-ADD-SOURCE-LF
    b u s" lib/array.f" EXT-ADD-SOURCE-LF
-   b u s" lib/regex.f" EXT-ADD-SOURCE-LF
    b u s" lib/property.f" EXT-ADD-SOURCE-LF
    b u s" examples/array.f" EXT-ADD-SOURCE-LF
-   b u s" examples/string-regex.f" EXT-ADD-SOURCE-LF
+   b u s" examples/string.f" EXT-ADD-SOURCE-LF
    b u s" examples/property-test.f" EXT-ADD-SOURCE
    b u ;
 

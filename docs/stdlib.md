@@ -14,7 +14,6 @@ Planned module files:
 - `lib/vector.f`
 - `lib/string.f`
 - `lib/json-write.f`
-- `lib/regex.f`
 - `lib/map.f`
 - `lib/memory.f`
 - `lib/span.f`
@@ -106,9 +105,9 @@ surface; planned contracts here define the target API shape for implementation
 dots and benchmark prompts.
 
 Typed examples in prompts must use the current checked grammar exactly. Array
-views and cell-backed map storage use `ptr a n`; byte strings, regex bytecode
-buffers, map keys, paths, and capture buffers use `ptr u8 n`. Quotation effects
-are written in brackets, for example `[ ptr u8 n -- ]`.
+views and cell-backed map storage use `ptr a n`; byte strings, map keys, paths,
+and capture buffers use `ptr u8 n`. Quotation effects are written in brackets,
+for example `[ ptr u8 n -- ]`.
 
 ## Execution Vectors
 
@@ -134,9 +133,8 @@ dedicated concrete handle types exist.
 Opaque `addr` values are boundary-only. A module may use `addr` only for values
 that checked code never dereferences. When the checker cannot express a
 boundary, add a checker-owned `PRIM:` axiom; unchecked colon bodies are
-forbidden. Regex prose may call values `rx`, but source signatures remain typed
-as `ptr u8 n`; map prose may call values `map`, but source signatures remain
-typed as `ptr a n` for storage and `ptr u8 n` for keys.
+forbidden. Map prose may call values `map`, but source signatures remain typed
+as `ptr a n` for storage and `ptr u8 n` for keys.
 
 ## Array
 
@@ -988,83 +986,6 @@ because those tails also exist in the global Forth vocabulary.
 
 The native `xml-byte-edits` suite covers both libraries and composed
 parse/escape/edit/readback round trips.
-
-## Regex
-
-`lib/regex.f` exposes a bounded capture-free regex scanner and matcher for LLM
-tasks: literals, `.`, `^`, `$`, character classes and negated classes, escaped
-metacharacters, and `?`, `*`, `+`. v1 excludes captures, backreferences,
-lookaround, and alternation unless a bounded NFA plan is implemented first. Regex
-bytecode uses caller-provided `ptr u8 len` storage. Matches never return
-unchecked `addr` handles; offsets are `off`, lengths are `len`, and counts are
-`count`.
-
-```forth
-RX-BYTE-IN?           ( n ptr u8 n -- bool )
-RX-ESCAPABLE?         ( n -- bool )
-RX-UNSUPPORTED-META?  ( n -- bool )
-RX-CHECK-BYTE         ( n -- )
-RX-NEED               ( len off len -- )
-RX-EMIT-1             ( n ptr u8 len off -- off )
-RX-EMIT-LIT           ( n ptr u8 len off -- off )
-RX-EMIT-RANGE         ( n ptr u8 len ptr u8 len off -- off )
-RX-SCAN-CLASS-BODY    ( ptr u8 len off -- off )
-RX-SCAN-CLASS         ( ptr u8 len off -- off off n )
-RX-EMIT-CLASS-DONE    ( ptr u8 ptr u8 len off off off n -- off off )
-RX-EMIT-CLASS         ( ptr u8 len off ptr u8 len off -- off off )
-RX-SCAN-ESCAPE        ( ptr u8 len off ptr u8 len off -- off off )
-RX-META-TOKEN         ( n -- n bool )
-RX-EMIT-SINGLE-TOKEN  ( n off ptr u8 len off -- off off )
-RX-SCAN-ONE           ( ptr u8 len off ptr u8 len off -- off off )
-RX-COMPILE            ( ptr u8 len ptr u8 len -- len )
-RX-CHECK-MATCH-ARGS   ( len len -- )
-RX-FLAGS-CLEAR        ( ptr u8 len -- )
-RX-FLAG?              ( ptr u8 off -- bool )
-RX-ANY-FLAG?          ( ptr u8 len -- bool )
-RX-ADD-STATE          ( ptr u8 len off -- )
-RX-QUANT?             ( n -- bool )
-RX-ZERO-QUANT?        ( n -- bool )
-RX-CONSUMING?         ( n -- bool )
-RX-ANCHOR?            ( n -- bool )
-RX-FIXED-ATOM-LEN     ( len off len -- len )
-RX-CLASS-RAW-LEN      ( ptr u8 len off -- len )
-RX-ATOM-LEN           ( ptr u8 len off -- len )
-RX-ATOM-END           ( ptr u8 len off -- off )
-RX-QUANT-AT           ( ptr u8 len off -- n )
-RX-AFTER-ATOM-QUANT   ( ptr u8 len off -- off )
-RX-VALIDATE-STEP      ( ptr u8 len off -- off )
-RX-VALIDATE           ( ptr u8 len -- )
-RX-CLASS-RANGE-CAND?  ( ptr u8 len off -- bool )
-RX-CLASS-RANGE-MATCH? ( n ptr u8 off -- bool )
-RX-CLASS-ESC-MATCH?   ( n ptr u8 len off -- bool )
-RX-CLASS-MEMBER?      ( n ptr u8 len -- bool )
-RX-ATOM-CHAR-MATCH?   ( n ptr u8 len off -- bool )
-RX-ANCHOR-MATCH?      ( n off len -- bool )
-RX-CLOSE-ANCHOR       ( n ptr u8 len off len ptr u8 off -- )
-RX-CLOSE-ZERO-QUANT   ( ptr u8 len off ptr u8 -- )
-RX-CLOSE-ONE          ( ptr u8 len off len ptr u8 off -- )
-RX-CLOSE              ( ptr u8 len off len ptr u8 -- )
-RX-RESET-STATES       ( len -- )
-RX-NEXT>ACTIVE        ( len -- )
-RX-ADD-QUANT-TARGET   ( n ptr u8 len off ptr u8 -- )
-RX-ADD-CONSUME-TARGET ( ptr u8 len off ptr u8 -- )
-RX-CONSUME-STATE      ( ptr u8 ptr u8 len off ptr u8 ptr u8 off -- )
-RX-CONSUME-CHAR       ( ptr u8 ptr u8 len off -- )
-RX-ACCEPT?            ( len -- bool )
-RX-PREFIX-LEN         ( ptr u8 len ptr u8 len off -- len bool )
-RX-PREPARE            ( len ptr u8 len -- )
-RX-MATCH?             ( ptr u8 len ptr u8 len -- bool )
-RX-FIND-FROM          ( ptr u8 len ptr u8 len off -- off len bool )
-RX-FIND               ( ptr u8 len ptr u8 len -- off len bool )
-RX-COUNT              ( ptr u8 len ptr u8 len -- count )
-```
-
-`RX-COMPILE` takes pattern bytes plus a caller-provided bytecode buffer and
-capacity, then returns the compiled byte length. Malformed patterns and bytecode
-capacity overflow throw named regex errors; they do not return a partial regex
-or an unchecked `addr`. `RX-MATCH?` is whole-input matching, `RX-FIND` returns
-`off len true` or `0 >OFF 0 >LEN false`, and `RX-COUNT` counts non-overlapping
-matches, advancing one byte after zero-length matches to avoid hangs.
 
 ## Map
 

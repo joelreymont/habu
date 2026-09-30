@@ -34,12 +34,6 @@
 -2200 constant E-STR-BOUNDS
 -2201 constant E-STR-CAPACITY
 
-\ Regex: -2300..-2399
--2300 constant E-RX-FIRST
--2399 constant E-RX-LAST
--2300 constant E-RX-SYNTAX
--2301 constant E-RX-CAPACITY
-
 \ Maps: -2400..-2499
 -2400 constant E-MAP-FIRST
 -2499 constant E-MAP-LAST
