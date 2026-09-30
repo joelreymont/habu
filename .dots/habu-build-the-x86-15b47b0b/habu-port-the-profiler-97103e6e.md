@@ -1,9 +1,11 @@
 ---
 title: Port the profiler tick and alternate stack
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.880210+03:00"
+closed-at: "2026-09-30T17:16:53.884826+03:00"
+close-reason: "(1) 49f8dc6f: ARM64 engine and .names byte-identical, fixpoint refresh, bootstrap check-only and clobber-lint on spark; (2) hb-x64-kernel-prof images exit 0, 21 and 78 on the ThinkPad (76 at ENTRY-LABEL before), the full x86 proof plain and shimmed, the suite ok on spark"
 blocks:
   - habu-share-one-x86-0a045dc8
 ---

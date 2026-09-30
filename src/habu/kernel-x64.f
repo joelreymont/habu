@@ -44,6 +44,7 @@ require src/os/linux-x86-64/proc-watch.f
 require src/os/linux-x86-64/proc-control.f
 require src/os/linux-x86-64/target-layout.f
 require src/habu/kernel-hir-x64.f
+require src/habu/prof-x64.f
 
 package X64KERNEL
 using X64ASM
@@ -3010,6 +3011,20 @@ public
 
 : PURE, ( -- )
    ARITH-ROWS,  COMPARE-ROWS,  STACK-ROWS,  MEMORY-ROWS, ;
+\ ---- profiler rows -----------------------------------------------------------
+\ The sampling half of habu1.f's profiler rows: src/habu/prof-x64.f emits the
+\ SIGALRM handler, its restorer and the index helpers once, then each body
+\ (docs/x86-64.md "Profiler rows"). prof-report, prof-json and prof-row come
+\ with the report half.
+
+: PROFILER, ( -- )
+   X64PROF:HELPERS,
+   s" prof-on" [: X64PROF:ON-BODY ;] PRIM
+   s" prof-off" [: X64PROF:OFF-BODY ;] PRIM
+   s" prof-reset" [: X64PROF:RESET-BODY ;] PRIM
+   s" prof-rate" [: X64PROF:RATE-BODY ;] PRIM
+   s" prof-pc>rec" [: X64PROF:PCREC-BODY ;] PRIM ;
+
 \ The whole kernel: the helpers, then every section.
 : KERNEL, ( -- )
    HELPERS,
@@ -3022,7 +3037,8 @@ public
    FFI,
    TASK,
    DEFINITION,
-   PURE, ;
+   PURE,
+   PROFILER, ;
 
 ;using
 ;using

@@ -1419,6 +1419,11 @@ SUITE x86-64-kernel-pure
    test/x86-64-kernel-pure.f
 ;SUITE
 
+\ The sampling profiler's rows, src/habu/prof-x64.f, in the booted harness: its
+\ header names the statuses the peer must see.
+SUITE x86-64-kernel-prof
+   test/x86-64-kernel-prof.f
+;SUITE
 \ The signal stub src/habu/boot-x64.f START, publishes, installed and raised in
 \ the booted harness; its header names the statuses the peer must see.
 SUITE x86-64-boot-signal

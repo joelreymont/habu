@@ -27,6 +27,7 @@ require src/habu/boot-x64.f
 require src/arch/x86-64/rt.f
 require src/habu/kernel-x64.f
 require src/habu/code-origin-x64.f
+require src/habu/code-span.f
 require test/x86-64-peer-harness.f
 
 package X64HARNESS
@@ -314,6 +315,36 @@ public
    RAX RCX ASM-SINK ENC-CMP-RR  C-E ok JCC,
    a u PUSH-TEXT,  FIRST-CASE PUSH,  s" die" CALL-ROW,
    ok LBL, ;
+
+;using
+;using
+;using
+;package
+
+\ The profiler cases' word: a record whose code is a span of the image's text,
+\ which the image fixes only at link time.
+package X64HARNESS
+using X64ASM
+using X64CODE
+using X64RT
+
+public
+
+\ Seed record r14 as RECORD, does, in wordlist 0 with no flags, its code the
+\ text from the first label to the second: the code cell holds the first
+\ label's address and the length cell after it the span's byte count as an
+\ exact span (src/habu/code-span.f). It clobbers rax, rcx and rdx.
+: CODE-RECORD, ( ptr u8 n label label -- ) {: a:ptr u:n first:label last:label :}
+   a u 0 0 RECORD,
+   RAX NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RAX DBASE-REG ASM-SINK ENC-ADD-RR                     \ one record past it
+   RCX first MOVABS,
+   RCX RAX X64KERNEL:REC-CODE DREC - MEM-OFF ASM-SINK ENC-MOV-MR
+   RDX last MOVABS,
+   RDX RCX ASM-SINK ENC-SUB-RR
+   RCX R64>N >R32 CODE-SPAN:FULL >IMM32 ASM-SINK ENC-MOV32-RI32
+   RDX RCX ASM-SINK ENC-OR-RR
+   RDX RAX X64KERNEL:REC-CODE CELL + DREC - MEM-OFF ASM-SINK ENC-MOV-MR ;
 
 ;using
 ;using

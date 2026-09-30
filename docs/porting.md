@@ -130,8 +130,10 @@ the target's `sigaction` frame, ucontext pointer, PC offset, `sigreturn`
 convention, and installed signal list. On Linux/aarch64, `rt_sigaction` also
 requires the sigset-size argument. `src/habu/prof.f` models the two aarch64
 hosts' frames and refuses any other target at load rather than emitting an
-aarch64 frame for it; the x86_64 frame, where the trap decoding reads `RIP` and
-`RSP`, arrives with that engine's own primitives.
+aarch64 frame for it. `src/habu/prof-x64.f` emits the x86_64 twin of its
+sampling half: its handler reads the interrupted `RIP`, `RSP`, `RBP` and `R13`
+from the ucontext, walks from `RSP` because x86_64 has no link register, and
+returns through its own `rt_sigreturn` restorer.
 
 ## Executable Images
 
