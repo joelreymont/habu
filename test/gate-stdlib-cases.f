@@ -1223,6 +1223,20 @@ SUITE base64
    lib/base64-test.f
 ;SUITE
 
+SUITE utf16-units
+   lib/utf16-test.f
+;SUITE
+
+SUITE file-uri
+   lib/uri-test.f
+;SUITE
+
+\ Exact reads and full writes over pipes; the write cases run under the
+\ profiler's SIGALRM storm to force short writes.
+SUITE fd-io
+   lib/fd-io-test.f
+;SUITE
+
 SUITE ffi-abi
    lib/ffi-abi-test.f
 ;SUITE

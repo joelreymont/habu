@@ -307,6 +307,12 @@ create JWT-NAME
 : JWT-FULL-KEY ( -- )
    JWT-OPEN-SMALL s" abcde" RAW s" k" KEY drop ;
 
+: JWT-FULL-INT ( -- )
+   JWT-OPEN-SMALL s" abcde" RAW -123 INT drop ;
+
+: JWT-FULL-INT-MIN ( -- )
+   JWT-OPEN-SMALL s" abcde" RAW STR-MIN-I64 INT drop ;
+
 : JWT-ZERO-CAP ( -- )
    JWT-A JWT-BUF-A 0 OPEN s" x" RAW drop ;
 
@@ -319,6 +325,8 @@ create JWT-NAME
    [: JWT-FULL-STRING ;] JWT-REFUSED-KEEPS$
    [: JWT-FULL-U ;] JWT-REFUSED-KEEPS$
    [: JWT-FULL-KEY ;] JWT-REFUSED-KEEPS$
+   [: JWT-FULL-INT ;] JWT-REFUSED-KEEPS$
+   [: JWT-FULL-INT-MIN ;] JWT-REFUSED-KEEPS$
    [: JWT-ZERO-CAP ;] E-JW-CAPACITY TTHROWSQ
    JWT-A $ nip 0 T= ;
 
@@ -432,6 +440,35 @@ create JWT-NAME
    [: JWT-C-HIGH ;] E-JW-BYTE TTHROWSQ
    [: JWT-U-NEG ;] E-JW-BYTE TTHROWSQ ;
 
+\ INT writes every cell: zero, both ends of the range, and negatives such as
+\ JSON-RPC's error codes, each compared with its exact decimal text.
+: JWT-INT$ ( n -- ptr u8 n )
+   {: v:n :}
+   JWT-OPEN-A v INT $ ;
+
+: JWT-INT= ( n ptr u8 n -- )
+   {: v:n a:ptr u:n :}
+   v JWT-INT$ a u T$= ;
+
+: JWT-TEST-INT ( -- )
+   0 s" 0" JWT-INT=
+   7 s" 7" JWT-INT=
+   -7 s" -7" JWT-INT=
+   -32601 s" -32601" JWT-INT=
+   STR-MAX-I64 s" 9223372036854775807" JWT-INT=
+   STR-MIN-I64 s" -9223372036854775808" JWT-INT=
+   STR-MIN-I64 1+ s" -9223372036854775807" JWT-INT= ;
+
+\ The room INT reserves is exact: a number that just fits is written whole, the
+\ minimum cell's twenty bytes included.
+: JWT-TEST-INT-FIT ( -- )
+   JWT-OPEN-SMALL s" abcde" RAW -12 INT $ s" abcde-12" T$=
+   JWT-A JWT-BUF-A 20 OPEN STR-MIN-I64 INT $ s" -9223372036854775808" T$= ;
+
+: JWT-TEST-FIELD-INT ( -- )
+   JWT-OPEN-A OBJECT-START s" code" -32601 FIELD-INT OBJECT-END
+   $ s\" {\"code\":-32601}" T$= ;
+
 \ One random source string: plain ASCII, a control byte, a quote, a backslash,
 \ or a two-byte UTF-8 scalar, so every escape width is exercised.
 : JWT-RT-BYTE+ ( -- )
@@ -508,6 +545,9 @@ create JWT-NAME
    JWT-TEST-FIELD-REFUSAL
    JWT-TEST-STATE
    JWT-TEST-ERRORS
+   JWT-TEST-INT
+   JWT-TEST-INT-FIT
+   JWT-TEST-FIELD-INT
    JWT-TEST-ROUNDTRIP
    JWT-TEST-CHECKER
    T-REPORT

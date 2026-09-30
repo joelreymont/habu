@@ -20,10 +20,10 @@
 \
 \ Callers build compact JSON through the qualified public API: JSON-WRITE:OPEN /
 \ OPEN-BUF / RESET / CLOSE bind and control the writer, the value emitters
-\ JSON-WRITE:STRING / RAW / U / BOOL / NULL append one JSON value,
-\ JSON-WRITE:KEY writes one escaped object key
-\ plus its colon, JSON-WRITE:COMMA / OBJECT-START / OBJECT-END / ARRAY-START /
-\ ARRAY-END write structural delimiters, the JSON-WRITE:FIELD-S / FIELD-U /
+\ JSON-WRITE:STRING / RAW / U / INT / BOOL / NULL append one JSON value,
+\ JSON-WRITE:KEY writes one escaped object key plus its colon,
+\ JSON-WRITE:COMMA / OBJECT-START / OBJECT-END / ARRAY-START / ARRAY-END write
+\ structural delimiters, the JSON-WRITE:FIELD-S / FIELD-U / FIELD-INT /
 \ FIELD-BOOL / FIELD-NULL / FIELD-RAW helpers write one key-and-value pair, and
 \ JSON-WRITE:$ returns the accumulated output bytes. The record accessors, the
 \ capacity/length refinement helpers, the single-byte and escape emitters, and
@@ -285,6 +285,22 @@ public
    u JW-DIGIT-COUNT JW-ROOM
    u JW-DIGITS ;
 
+\ The minimum cell negates to itself, so its digits come from lib/string.f's
+\ canonical STR-MIN-I64$, as lib/fmt.f's INT>NUM takes them. The whole width is
+\ reserved first, so a number is written whole or not at all.
+: INT ( ptr writer n -- ptr writer )
+   {: v:n :}
+   v 0 >= if v U exit then
+   v STR-MIN-I64 = if
+      STR-I64-DIGITS 1+ JW-ROOM
+      STR-MINUS JW-C
+      STR-MIN-I64$ STR-I64-DIGITS RAW exit
+   then
+   v negate {: m:n :}
+   m JW-DIGIT-COUNT 1+ JW-ROOM
+   STR-MINUS JW-C
+   m JW-DIGITS ;
+
 : FIELD-RAW ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
    {: kp:ptr keyu:n vp:ptr valu:n :}
    dup vp valu JW-ALIAS {: off:n :}
@@ -300,6 +316,11 @@ public
 : FIELD-U ( ptr writer ptr u8 n n -- ptr writer ) {: kp:ptr keyu:n val:n :}
    kp keyu KEY
    val U ;
+
+: FIELD-INT ( ptr writer ptr u8 n n -- ptr writer )
+   {: kp:ptr keyu:n val:n :}
+   kp keyu KEY
+   val INT ;
 
 : FIELD-BOOL ( ptr writer ptr u8 n bool -- ptr writer )
    {: kp:ptr keyu:n val:bool :}

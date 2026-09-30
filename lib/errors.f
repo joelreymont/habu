@@ -1418,3 +1418,10 @@
 -9360 constant E-C2-CAPACITY       \ this task has no owner frame left
 -9361 constant E-C2-STATE          \ a frame operation contradicts its transition state
 -9364 constant E-C2-CAPTURE        \ capture saw an active owner or loan in main
+
+\ File URIs (package URI, lib/uri.f): -9370..-9379.
+-9370 constant E-URI-FIRST
+-9379 constant E-URI-LAST
+-9370 constant E-URI-SCHEME       \ a scheme other than `file`, compared without case, or none
+-9371 constant E-URI-AUTHORITY    \ after `file:`, anything but `//`, an empty or `localhost` authority, and the `/` that starts the path
+-9372 constant E-URI-ESCAPE       \ a `%` without two hex digits after it, or a bare `?` or `#`, which a file URI's path carries only escaped

@@ -14,6 +14,8 @@ Planned module files:
 - `lib/vector.f`
 - `lib/string.f`
 - `lib/base64.f`
+- `lib/utf16.f`
+- `lib/uri.f`
 - `lib/json-write.f`
 - `lib/map.f`
 - `lib/memory.f`
@@ -40,6 +42,7 @@ Planned module files:
 - `lib/object-index.f`
 - `lib/object-resolve.f`
 - `lib/object-link.f`
+- `lib/fd-io.f`
 - `lib/process.f`
 - `lib/process-fork.f`
 - `lib/process-argv.f`
@@ -82,6 +85,9 @@ theirs.
 | `lib/fs-mutate.f` | task-local (the staged paths, FS-MUT-ABI band; the stream copy's descriptors and cursors) / process-wide (the copy buffer, so the two copy words are single-task; the cleanup registry, which any task may register into) |
 | `lib/json-write.f` | caller-owned |
 | `lib/json-read.f` | caller-owned |
+| `lib/utf16.f` | caller-owned |
+| `lib/uri.f` | caller-owned |
+| `lib/fd-io.f` | caller-owned (the descriptor and the span) |
 | `lib/crypto/sha1.f` | caller-owned (the digest context) |
 | `lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |
 | `lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` vector) |
@@ -732,6 +738,24 @@ any read. The package owns no mutable cursor, scratch cell, or return buffer.
 UTF8:NEXT ( ptr u8 n n -- scalar-step )
 ```
 
+## UTF-16 Units
+
+`lib/utf16.f` owns package `UTF16`. `UTF16:UNITS` answers how many UTF-16 code
+units a UTF-8 byte span encodes to, the measure LSP positions take by default:
+the column of a byte offset on a line is the units of the bytes before it.
+
+```forth
+UTF16:UNITS ( ptr u8 n -- n )
+```
+
+It reads the span with `UTF8:NEXT`: a scalar below U+10000 is one unit and one
+at or above it is two, a surrogate pair. Invalid UTF-8 counts as `UTF8:NEXT`
+reads it, one unit for every byte it answers as `raw-byte`, the width of the
+U+FFFD that stands for that byte. Unicode's maximal-subpart practice agrees on
+every ill-formed byte except a truncated sequence that starts well (`E2 82`
+then an `A`, or `F0 9F 98` at the end of the span), which it counts as one unit
+and this counts as one per byte. A negative length is `E-STR-BOUNDS`.
+
 ## Base64
 
 `lib/base64.f` owns package `BASE64`: RFC 4648 base64 in the standard alphabet
@@ -757,6 +781,31 @@ the encoding of a `SHA1:digest`. `lib/base64-test.f` runs RFC 4648's section 10
 vectors, decodes the whole alphabet against `base64 -d`, round-trips every byte
 value, asserts each refusal, and derives RFC 6455's
 `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`.
+
+## File URIs
+
+`lib/uri.f` owns package `URI`. `URI:FILE>PATH` decodes a `file:` URI that
+names a file on this machine into the caller's span and answers the path's
+length.
+
+```forth
+URI:FILE>PATH ( ptr u8 n SPAN:span<u8> -- n )
+```
+
+The scheme is `file` in any case, followed by `//` and an authority that is
+empty or `localhost` in any case; the authority ends at the `/` that starts the
+path, so every answer is an absolute path. Each `%XX` decodes once, in either
+hex case, to the byte it names, and every other byte is copied as it is. A
+scheme other than `file` is `E-URI-SCHEME`. Anything else before the path - no
+`//` (RFC 8089's `file:/path` form), a host, a port, user information, or no
+path at all - is `E-URI-AUTHORITY`. A `%` without two hex digits is
+`E-URI-ESCAPE`, and so is a bare `?` or `#`: RFC 8089's file URI has no query
+or fragment, and a generic parser would split the path there. The whole URI is
+checked and the path measured before a byte is written: a span too small for
+the path throws `E-SPAN-CAPACITY` and a negative URI length `E-SPAN-LENGTH`, so
+a refusal leaves the span as it was. The path is bytes, as the file system takes
+them: a decoded NUL or `/` is kept, and `lib/fs.f` refuses a path holding a NUL
+(`E-FS-PATH-UNSAFE`) where it opens one.
 
 ## JSON Write
 
@@ -839,13 +888,21 @@ JSON-WRITE:COMMA        ( ptr writer -- ptr writer )
 JSON-WRITE:NULL         ( ptr writer -- ptr writer )
 JSON-WRITE:BOOL         ( ptr writer bool -- ptr writer )
 JSON-WRITE:U            ( ptr writer n -- ptr writer )
+JSON-WRITE:INT          ( ptr writer n -- ptr writer )
 JSON-WRITE:FIELD-RAW    ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
 JSON-WRITE:FIELD-S      ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
 JSON-WRITE:FIELD-U      ( ptr writer ptr u8 n n -- ptr writer )
+JSON-WRITE:FIELD-INT    ( ptr writer ptr u8 n n -- ptr writer )
 JSON-WRITE:FIELD-BOOL   ( ptr writer ptr u8 n bool -- ptr writer )
 JSON-WRITE:FIELD-NULL   ( ptr writer ptr u8 n -- ptr writer )
 JSON-WRITE:$            ( ptr writer -- ptr u8 n )
 ```
+
+`JSON-WRITE:U` writes a nonnegative number and refuses a negative one with
+`E-JW-BYTE`. `JSON-WRITE:INT` writes every cell, with a leading `-` for a
+negative one such as a JSON-RPC error code; the minimum cell, whose magnitude
+has no positive form, is written from `STR-MIN-I64$`. Both reserve the whole
+number's width before its first byte.
 
 Prefer these words over constructing quoted JSON literals by hand. Use
 `JSON-WRITE:FIELD-S` when the value is arbitrary text and `JSON-WRITE:FIELD-RAW`
@@ -1784,6 +1841,31 @@ a trailing newline, strips a trailing carriage return before `\n`, and throws
 `E-FS-CAPACITY` rather than truncating a line that exceeds the supplied line
 buffer. `SOURCE-LS-*` words are the checked implementation steps behind that
 streaming API.
+
+## Descriptor IO
+
+`lib/fd-io.f` owns package `FD-IO`: exact reads and full writes on a blocking
+descriptor the caller owns, such as a pipe or a server's stdin and stdout.
+
+```forth
+FD-IO:fill                                          \ full | eof bytes
+FD-IO:READ-EXACT ( fd SPAN:span<u8> -- FD-IO:fill )
+FD-IO:WRITE-FULL ( fd ptr u8 n -- )
+```
+
+`READ-EXACT` reads until the span is full and answers `full`; a read that
+answers short, as a pipe does with fewer bytes than asked, is read again. End
+of file first is an answer, not an error: `eof` carries how many bytes arrived,
+which head the span, and `eof 0` is a stream that ended on the boundary. An
+empty span is `full` without a read. `WRITE-FULL` writes until the kernel has
+taken every byte: a blocking write answers short when a caught signal lands
+after some bytes moved, and every handler that returns sets `SA_RESTART`, so a
+signal before any byte moved restarts the call ([signal.md](signal.md)). A read
+or write the kernel refuses, a write that takes no byte and a count past what
+was asked throw `E-FS-IO`; a negative length is `E-SPAN-LENGTH`. A write to a
+pipe with no reader raises `SIGPIPE`, which ends the process unless the caller
+armed `FD-NOSIGPIPE!` (below); then it throws `E-FS-IO`. The engine reports
+`EAGAIN` as a failed call, so a nonblocking descriptor is not for these words.
 
 ## Processes
 
