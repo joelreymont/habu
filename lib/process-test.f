@@ -30,7 +30,8 @@ variable PT-FORK-CELL
 create PT-BUF 32 allot
 create PT-OUT 32 allot
 create PT-ERR 32 allot
-create PT-PWD-OUT 256 allot
+FS-PATH-CAP 1 + constant PT-PWD-CAP     \ a working directory and its line end
+create PT-PWD-OUT PT-PWD-CAP allot
 create PT-ROOT-BUF FS-PATH-CAP allot
 create PT-CAPTURE-OK-BUF FS-PATH-CAP allot
 create PT-CAPTURE-LONG-BUF FS-PATH-CAP allot
@@ -448,7 +449,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
 \ child, per arm): a clean exit MATCHes ok(captured) carrying the two lengths;
 \ a nonzero exit MATCHes err(failed) carrying the SAME lengths PLUS the code.
 : TEST-RUN-CAPTURE-RESULT-OK ( -- )                 \ /bin/pwd exits clean -> ok(captured)
-   s" /bin/pwd" >LEN PT-PWD-OUT 256 >LEN PT-ERR 32 >LEN PT-CMD-TIMEOUT-MS >MS RUN-CAPTURE
+   s" /bin/pwd" >LEN PT-PWD-OUT PT-PWD-CAP >LEN PT-ERR 32 >LEN PT-CMD-TIMEOUT-MS >MS RUN-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 0 > TTRUE  e LEN>N 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF                \ pwd must exit clean

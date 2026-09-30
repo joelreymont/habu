@@ -99,17 +99,17 @@ variable ECT-I
    ECT-ENTRY$ rot ECT-KEY-FOR ;
 
 \ --- ordering / dedup ---------------------------------------------------------
-: ECT-MIXED-ENTRY$ ( -- ptr u8 n )
-   SB-RESET
-   ECT-DA$ ECT-REQ-LINE
-   ECT-DB$ ECT-REQ-LINE
-   ECT-DA$ ECT-REQ-LINE
-   SB$ ;
+\ One require line per write: SB holds one path and its line, not three.
+: ECT-REQ+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   SB-RESET a u ECT-REQ-LINE ECT-ENTRY$ SB$ APPEND-FILE ;
 
 : ECT-TEST-ORDER ( -- )
    ECT-DA$ s\" \\ a\n" ECT-WRITE
    ECT-DB$ s\" \\ b\n" ECT-WRITE
-   ECT-ENTRY$ ECT-MIXED-ENTRY$ ECT-WRITE
+   ECT-ENTRY$ s" " ECT-WRITE
+   ECT-DA$ ECT-REQ+
+   ECT-DB$ ECT-REQ+
+   ECT-DA$ ECT-REQ+
    ECT-ENTRY$ EC:BUILD
    EC:COUNT 3 T=
    0 EC:PATH$ ECT-ENTRY$ T$=

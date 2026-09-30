@@ -8,7 +8,10 @@
 
 package CBLT
 
-8192 constant BUF-CAP                  \ holds the whole registry sweep below
+\ The largest report names its fixture path ten times among about 1 KiB of
+\ other text, and a path may take FS-PATH-CAP bytes; the registry sweep below
+\ is smaller.
+FS-PATH-CAP 10 * $800 + constant BUF-CAP
 1400 constant LARGE-LINES
 512 constant SITE-CAP
 

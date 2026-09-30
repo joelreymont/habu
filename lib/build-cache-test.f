@@ -21,8 +21,8 @@ require tools/hb-build-report.f
 package BUILD-CACHE-TEST
 
 $4000 constant CAP
-$400 constant MAX-ROOT-U
-$401 constant OVER-ROOT-U
+FS-PATH-CAP constant MAX-ROOT-U
+FS-PATH-CAP 1 + constant OVER-ROOT-U
 $92 constant MODE-0222
 $16D constant MODE-0555
 $1C0 constant MODE-0700

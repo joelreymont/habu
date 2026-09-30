@@ -85,6 +85,20 @@ maker (the pool root, each spawned child's scratch, `hb-build`'s private build
 directory) goes under it when it is set, and under `TMPDIR` or `/tmp` when it
 is not.
 
+A gate `HB_TMP` of at most 675 bytes keeps every row's paths within
+`PATH-CAP` and Darwin's 1023-byte `PATH_MAX` on any host. The deepest row
+path is `streaming-sha256`'s deep file (`tools/sha256-file-test.f`):
+`<HB_TMP>/habu-native-suite-<ns>-<try>/pool-<pid>-<seq>-tmp/habu-sha256-file-test-<ns>-<try>/<230 bytes>/deep.bin`.
+That is 295 fixed bytes, then `<ns>` twice, the mono-ns clock in decimal (14
+digits before 27.8 hours of uptime, 15 before 11.6 days, 19 at most);
+`<try>` twice, the temp-name attempt (under 64, so at most 2 digits);
+`<pid>` (5 digits on Darwin, up to 7 on Linux); and `<seq>`, the pool's
+spawn count (3 digits for this suite; the bound allows 4). At
+those maxima it adds 348 bytes, and 1023 less 348 is 675. Measured on a host
+with a 14-digit `<ns>` and a 5-digit `<pid>`, where it adds at most 333: a
+685-byte root fit every row, and at 700 bytes that row was refused past
+`PATH_MAX`.
+
 The pool makes one scratch directory per spawned child and hands it to the
 child as `HB_TMP`, then removes it when that slot retires — exited, signaled or
 timed out. A child the pool kills cannot clean up after itself; the parent

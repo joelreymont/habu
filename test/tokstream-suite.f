@@ -28,10 +28,12 @@ require lib/process-env.f
 
 package TOKSTREAM-TEST
 
-65536 constant CAP                    \ the at-cap case captures 64 fixture streams
 10000 constant TIMEOUT-MS
 64 constant USAGE-RC                  \ ARGV:E-USAGE, the over-cap refusal
 65 constant OVER-CAP                  \ one past lib/argv.f ARGV-MAX
+\ The at-cap case captures one fixture stream per argument: the fixture path, up
+\ to FS-PATH-CAP bytes, and under $200 bytes of tokens.
+OVER-CAP 1- FS-PATH-CAP $200 + * constant CAP
 
 variable ROOT-U
 variable SRC-U

@@ -24,6 +24,7 @@ create TEST-NESTED-BUF FS-PATH-CAP allot
 create TEST-ARCHIVED-BUF FS-PATH-CAP allot
 create TEST-UNIQUE-BUF FS-PATH-CAP allot
 create TEST-OUT TEST-OUT-CAP allot
+create TEST-WANT TEST-OUT-CAP allot   \ the expected report: two paths, more than SB holds
 
 variable TEST-ROOT-U
 variable TEST-DOTS-U
@@ -33,6 +34,7 @@ variable TEST-TOP-U
 variable TEST-NESTED-U
 variable TEST-ARCHIVED-U
 variable TEST-UNIQUE-U
+variable TEST-WANT-U
 
 : TEST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -105,16 +107,17 @@ variable TEST-UNIQUE-U
    TEST-PREPARE-PATHS
    TEST-PREPARE-FILES ;
 
+: TEST-WANT+ ( ptr u8 n -- )
+   TEST-WANT TEST-OUT-CAP TEST-WANT-U BUF-APPEND ;
+
 : TEST-EXPECTED$ ( -- ptr u8 n )
-   SB-RESET
-   s" DOT-DEP-DUPLICATE habu-duplicate-12345678: " SB-APPEND
-   TEST-TOP$ SB-APPEND
-   s" , " SB-APPEND
-   TEST-NESTED$ SB-APPEND
-   10 SB-APPEND-C
-   s" dot-dep-lint: 3 dot(s), 0 blocker(s), 1 finding(s)" SB-APPEND
-   10 SB-APPEND-C
-   SB$ ;
+   TEST-WANT-U BUF-RESET
+   s" DOT-DEP-DUPLICATE habu-duplicate-12345678: " TEST-WANT+
+   TEST-TOP$ TEST-WANT+
+   s" , " TEST-WANT+
+   TEST-NESTED$ TEST-WANT+
+   S\" \ndot-dep-lint: 3 dot(s), 0 blocker(s), 1 finding(s)\n" TEST-WANT+
+   TEST-WANT TEST-WANT-U @ ;
 
 : TEST-DUPLICATE-FIXTURE ( -- )
    TEST-PREPARE

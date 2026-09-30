@@ -151,16 +151,16 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 \ temp base cannot fake a mismatch; the directory is registered for cleanup
 \ before the run so a throw does not leak it. A missing directory is refused
 \ before any spawn.
-create PCMDT-DIR 256 allot   variable PCMDT-DIR-U
-create PCMDT-REL 512 allot   variable PCMDT-REL-U
+create PCMDT-DIR FS-PATH-CAP allot   variable PCMDT-DIR-U
+create PCMDT-REL FS-PATH-CAP allot   variable PCMDT-REL-U
 : PCMDT-CWD-BODY$ ( -- ptr u8 n )  s" from the private directory" ;
 
 : PCMDT-RUN-CWD ( -- )
    CLEANUP-RESET
    s" hb-proc-cmd-cwd" HB-TMP-MKDIR {: d:ptr du :}
    d du CLEANUP-TREE+
-   du 256 <= TTRUE
-   du 256 > if CLEANUP-RUN exit then
+   du FS-PATH-CAP <= TTRUE
+   du FS-PATH-CAP > if CLEANUP-RUN exit then
    d PCMDT-DIR du BYTE-COPY  du PCMDT-DIR-U !
    PCMDT-DIR PCMDT-DIR-U @ s" here.txt" PCMDT-REL JOIN-PATH PCMDT-REL-U !
    PCMDT-REL PCMDT-REL-U @ PCMDT-CWD-BODY$ WRITE-ALL
@@ -316,8 +316,8 @@ CMD:COMMAND PCMDT-CMD
    CLEANUP-RESET
    s" hb-cmd-cwd" HB-TMP-MKDIR {: d:ptr du :}
    d du CLEANUP-TREE+
-   du 256 <= TTRUE
-   du 256 > if CLEANUP-RUN exit then
+   du FS-PATH-CAP <= TTRUE
+   du FS-PATH-CAP > if CLEANUP-RUN exit then
    d PCMDT-DIR du BYTE-COPY  du PCMDT-DIR-U !
    PCMDT-DIR PCMDT-DIR-U @ s" here.txt" PCMDT-REL JOIN-PATH PCMDT-REL-U !
    PCMDT-REL PCMDT-REL-U @ PCMDT-CWD-BODY$ WRITE-ALL

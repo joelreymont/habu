@@ -113,8 +113,9 @@ variable GTT-OFI
 
 \ A child that runs the fail fixture through the real runner, then asserts two
 \ values that hold and three that do not, so its whole stdout witnesses what a
-\ failed comparison reports and what a passed one stays silent about.
-: GTT-DETAIL-SRC$ ( -- ptr u8 n )
+\ failed comparison reports and what a passed one stays silent about. The
+\ fixture path takes its own write, so SB never holds it beside the rest.
+: GTT-DETAIL-WRITE ( -- )
    SB-RESET
    s" require lib/errors.f" SB-APPEND GTT-LF
    s" require lib/string.f" SB-APPEND GTT-LF
@@ -124,7 +125,11 @@ variable GTT-OFI
    s" require lib/process-argv.f" SB-APPEND GTT-LF
    s" require lib/test/runner.f" SB-APPEND GTT-LF
    s" PROC-ARGV-RESET" SB-APPEND GTT-LF
+   GTT-DETAIL$ SB$ WRITE-ALL
+   SB-RESET
    GTT-FAIL$ GTT-LIT+ s"  >LEN PROC-ARGV+" SB-APPEND GTT-LF
+   GTT-DETAIL$ SB$ APPEND-FILE
+   SB-RESET
    s" bin/hb" GTT-LIT+ s"  GT-RUN-DEFAULT" SB-APPEND GTT-LF
    s" 7 " SB-APPEND s" rc-pass" GTT-LIT+ s"  GT-RC=" SB-APPEND GTT-LF
    s" GT-OUT$ " SB-APPEND s" out-pass" GTT-LIT+ s"  GT-STDOUT=" SB-APPEND GTT-LF
@@ -134,7 +139,7 @@ variable GTT-OFI
    \ Ends itself: a child that falls off the end waits on the stdin it
    \ inherited, so its cost would be the caller's stdin and not its own work.
    s" 0 0 0 die" SB-APPEND GTT-LF
-   SB$ ;
+   GTT-DETAIL$ SB$ APPEND-FILE ;
 
 \ Golden, written out rather than derived, so a change in what the runner prints
 \ cannot rewrite its own expectation. The blank line after each captured stream
@@ -216,7 +221,7 @@ variable GTT-OFI
    GTT-FAIL$ GTT-FAIL-SRC$ GTT-WRITE
    GTT-HANG$ GTT-HANG-SRC$ GTT-WRITE
    GTT-REC$ GTT-REC-SRC$ GTT-WRITE
-   GTT-DETAIL$ GTT-DETAIL-SRC$ GTT-WRITE ;
+   GTT-DETAIL-WRITE ;
 
 : GTT-RUN-HB ( ptr u8 n n -- ) {: script:ptr scriptu timeout :}
    PROC-ARGV-RESET
