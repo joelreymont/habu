@@ -36,69 +36,91 @@ package name through WLFIND:LENTRY with wid DICT-WL:NAMESPACE
 above PROT-WID-MAX as BPROTWIDADD does (3163-3178) and sets the bit
 (PROT-BITS-AT, 3144); `policy-seal ( -- )` stores NDICT. lib/policy.f, package
 POLICY: `ALLOW ( ptr u8 n -- )` and `SEAL ( -- )`; nothing else. PREDICATE. A
-record is admitted iff unsealed, or its index >= POLICY-NDICT (the design's own
-definitions, in whatever wordlist `package` put them), or its wid
-(record[40]) is below PROT-WID-MAX unsigned AND that bit is set; the bound is
-tested before the band is addressed, as LPROTWIDQ does (habu1.f:4052), because
-PROT-BITS-AT, requires it (3135-3143) and wids reach WID:MAX ($FFFFFFFE,
-layout.f:235). A keyword is admitted iff unsealed or its baked spelling lies in
-the KWDATA design span [LKWIF, LKWDESIGNEND): `if` `else` `then` `{:` `:}`
-`s"` `package` `public` `private` `;package` `using` `;using`. Everything else
-is NOT FOUND: `hb: not in vocabulary: <token> at <path>:<line>` through
-LCOMPILEDIE (habu2.f:10132), exit ENGINE-ERROR:POLICY (105) at top level, a
-catchable throw of 105 inside an `included`/`evaluate` frame, nothing later
-executed. SITES, all in the engine's token loops, where a SOURCE token is
-resolved and nowhere else: LPOLICYREC (x5 = record) at the `found` labels of
-EM-INTERPRET-FIND (habu2.f:8609) and EM-COMPILE-CALL (9803), which LFINDUSED
-rejoins; in CAPTURE-IMMEDIATE (7871) on an LFIND hit, and under the seal on a
-miss after a LFINDUSED probe (8355-8425: x5 = record, x13 = found; the probe
-only gates, then restores the miss path, so used-public immediates still do
-not run at capture); LKWCMP's match exit (2040-2053: sealed and x0 >=
-LKWDESIGNEND -> LPOLICY), which every row inherits (20 callers in habu2.f and
-jit.f: control, loop, meta, string, op, does>, `;match`/`of`, `:}`, the
-definition-name guard, C-UNIT-DISPATCH); LUNDEF's head (10037: sealed ->
-LPOLICY), so a sealed miss is the same located line. `:` (7976-8047), `;`
-(9624, 7908), `\`/`(` (EM-COMMENT 7943-7960), numbers (LNUM before find) and
-tier-0 local references are matched before any row or lookup and stay.
-COMPILER-OWNED RESOLUTION NEVER PASSES THE GATE: dict.f and xref.f are
-unchanged, so NDICT:CALL-TARGET for the trap routine `die` (select.f:2623,
-trap.f:135-136, generated for a call to a certified-dead word,
-elaborate.f:3186 and 3100-3104), for `type`, `evaluate`, `xt!`, `execute`,
-`catch` (elaborate.f:3157-3279), `throw` (select-x64.f:1232) and the prior
-binding (compiler.f:394) resolve as today. The invariant that makes this
-sound: at tier 1 every body token passes the capture loop before it reaches
-the tape (EM-COMPILE 7892-7920), NDICT's order is the engine's own
-(dict.f:4-7) and VISIBLE-RECORD? only narrows it, so every record NCOMP can
-bind a tape token to was found and gated at capture, and any record created
-after the seal is admitted by index. TIER-1 KEYWORDS: HIR-WORD:LOOKUP
-(hir-word.f:959-969, the one reader ROW-OF/MODELS?/MEANING@ share; the session
-table is built once, 1485-1556, so the gate is at read time) answers "no row"
-under the seal for any modeled symbol except CONTROL open-if/mid-else/close-if
-and OPEN-/CLOSE-LOCALS; `begin`, `recurse`, `[:`, `[']`, `exit`, `>r`, `case`,
-`match` then fall to the callable path, find nothing and NCOMP refuses the
-definition (E-HIR-UNMODELED -> `ncomp: cannot compile <DEF>`, compiler.f:598,
-rc 70, fatal before any code runs: probe u1b). Top level is the same
-interpreter at both tiers. No write gate: a definition lands where `package`
-puts it and is admitted by index; reopening a dependency exposes only gated
-records and can add only words made of admitted words; system packages keep
-C-PACKAGE-SEAL-GUARD (8171). No globals, no re-exported core words, no
-definers, no ticks, no quotations, no arithmetic or stack rows: Maki's
-packages provide typed length/angle operations and predicates. TERMINATION is
-structural: no admitted keyword has a back edge (`if/else/then` patch forward
-placeholders only, LBCHAIN 2053-2064); a body can call only records that exist
-when it compiles, and the pending record is outside [0,NDICT) at tier 0 (LFIND
-invariant habu1.f:4409-4415, publish at `;` EM-COMPILE-PUBLISH 9605) and
-unbound at tier 1 (compiler.f:377-379), so `: A ... A ;` is undefined (probes
-self, self1) and forward references need `defer`/`is`, which are off; the call
-graph is a DAG ordered by dictionary index and every run is bounded by
-induction on that index, with no fuel, timeout or analysis pass. MAKI'S
-OBLIGATION, which the seal assumes and docs/policy.md states: every word in an
-admitted public wordlist terminates on every input (a throw counts), an
-admitted parsing word consumes a bounded number of tokens, and no admitted word
-stores to a caller-supplied address or widens the policy (calls
-`policy-admit`, `prot-wid-add`, `set-current`, `evaluate`, `included` on
-caller data): the admitted API is the design's whole reach. The checker is
-unchanged and still certifies every admitted body at `;` (probe chk0).
+record is admitted iff unsealed, or ALL of: (i) it is in scope — its index >=
+POLICY-NDICT (the design's own definitions, in whatever wordlist `package` put
+them), or its wid (record[40]) is below PROT-WID-MAX unsigned AND that bit is
+set, the bound tested before the band is addressed as LPROTWIDQ does
+(habu1.f:4052) because PROT-BITS-AT, requires it (3135-3143) and wids reach
+WID:MAX ($FFFFFFFE, layout.f:235); and (ii) it is callable from checked
+source — its flags carry no DNAME-INT (the rule of the tier-0 compile-call
+guard, habu2.f:9792-9795, whose TRUSTED-CELL escape cannot arm under the seal
+because `trusted:` is off), its wid is not OWNER-API-PRI-WID (layout.f:203)
+and its start cell [0] is not zero — exactly what NDICT:VISIBLE-RECORD?
+(dict.f:47-55) and CALL-BINDING (274-287) require, so the predicate is the
+intersection of the design's scope with the native compiler's visibility. A
+keyword is admitted iff unsealed or its baked spelling lies in the KWDATA
+design span [LKWIF, LKWDESIGNEND): `if` `else` `then` `{:` `:}` `s"` `package`
+`public` `private` `;package` `using` `;using`. Everything else is NOT FOUND:
+`hb: not in vocabulary: <token> at <path>:<line>` through LCOMPILEDIE
+(habu2.f:10132), exit ENGINE-ERROR:POLICY (105) at top level, a catchable
+throw of 105 inside an `included`/`evaluate` frame, nothing later executed.
+SITES, all in the engine's token loops, where a SOURCE token is resolved and
+nowhere else: LPOLICYREC (x5 = record) at the `found` labels of
+EM-INTERPRET-FIND (habu2.f:8609) and EM-COMPILE-CALL (9803), ahead of the
+legacy internal guards there (LINTERNAL 8611, C-COMPILE-CALL-GUARD 9805),
+which LFINDUSED rejoins; in CAPTURE-IMMEDIATE (7871) on an LFIND hit, and
+under the seal on a miss after a LFINDUSED probe (8355-8425: x5 = record,
+x13 = found; the probe only gates, then restores the miss path, so
+used-public immediates still do not run at capture); LKWCMP's match exit
+(2040-2053: sealed and x0 >= LKWDESIGNEND -> LPOLICY), which every row
+inherits (20 callers in habu2.f and jit.f: control, loop, meta, string, op,
+does>, `;match`/`of`, `:}`, the definition-name guard, C-UNIT-DISPATCH);
+LUNDEF's head (10037: sealed -> LPOLICY), so a sealed miss is the same located
+line. `:` (7976-8047), `;` (9624, 7908), `\`/`(` (EM-COMMENT 7943-7960),
+numbers (LNUM before find) and tier-0 local references are matched before any
+row or lookup and stay. COMPILER-OWNED RESOLUTION NEVER PASSES THE GATE:
+dict.f and xref.f are unchanged, so NDICT:CALL-TARGET for the trap routine
+`die` (select.f:2623, trap.f:135-136, generated for a call to a
+certified-dead word, elaborate.f:3186 and 3100-3104), for `type`, `evaluate`,
+`xt!`, `execute`, `catch` (elaborate.f:3157-3279), `throw`
+(select-x64.f:1232) and the prior binding (compiler.f:394) resolve as today.
+THE RECORD CAPTURE ADMITS IS THE RECORD NCOMP CALLS: at tier 1 every body
+token passes the capture loop before it reaches the tape (EM-COMPILE
+7892-7920); the engine walks the legs private, public, global, then the used
+publics (LFIND habu1.f:4495-4506, LFINDUSED), and NDICT walks the same legs in
+the same order (dict.f:4-7; BARE-REC 89-95, USED-REC 64-77, QUALIFIED-REC
+98-103 through the namespace record as LFIND's FIND-NMATCH); each wordlist
+holds at most one record per folded name (C-REJECT-DUP-DEF habu2.f:3471,
+forth.md:224-231); the engine takes the first leg that holds the name while
+NDICT takes the first leg that holds a VISIBLE record of the name. Under the
+seal capture dies unless the engine's record passes LPOLICYREC, and LPOLICYREC
+admits only visible records (ii), so the legs before it hold no record of the
+name at all and NDICT stops at the same record; on the used leg LFINDUSED
+answers one record or dies USING-AMBIGUOUS, and USED-REC's visible candidates
+are a subset of that one. An immediate hit is run at capture, never bound
+(CALL-BINDING refuses DNAME-IMM). A record published later in the same body by
+an admitted immediate has index >= POLICY-NDICT and is admitted by the same
+predicate. Hence NCOMP never binds a tape name to a record the seal did not
+admit, and no NDICT caller is gated or special-cased. TIER-1 KEYWORDS:
+HIR-WORD:LOOKUP (hir-word.f:959-969, the one reader ROW-OF/MODELS?/MEANING@
+share; the session table is built once, 1485-1556, so the gate is at read
+time) answers "no row" under the seal for any modeled symbol except CONTROL
+open-if/mid-else/close-if and OPEN-/CLOSE-LOCALS; `begin`, `recurse`, `[:`,
+`[']`, `exit`, `>r`, `case`, `match` then fall to the callable path, find
+nothing and NCOMP refuses the definition (E-HIR-UNMODELED -> `ncomp: cannot
+compile <DEF>`, compiler.f:598, rc 70, fatal before any code runs: probe
+u1b). Top level is the same interpreter at both tiers. No write gate: a
+definition lands where `package` puts it and is admitted by index; reopening a
+dependency exposes only gated records and can add only words made of admitted
+words; system packages keep C-PACKAGE-SEAL-GUARD (8171). No globals, no
+re-exported core words, no definers, no ticks, no quotations, no arithmetic or
+stack rows: Maki's packages provide typed length/angle operations and
+predicates. TERMINATION is structural: no admitted keyword has a back edge
+(`if/else/then` patch forward placeholders only, LBCHAIN 2053-2064); a body
+can call only records that exist when it compiles, and the pending record is
+outside [0,NDICT) at tier 0 (LFIND invariant habu1.f:4409-4415, publish at `;`
+EM-COMPILE-PUBLISH 9605) and unbound at tier 1 (compiler.f:377-379), so `: A
+... A ;` is undefined (probes self, self1) and forward references need
+`defer`/`is`, which are off; the call graph is a DAG ordered by dictionary
+index and every run is bounded by induction on that index, with no fuel,
+timeout or analysis pass. MAKI'S OBLIGATION, which the seal assumes and
+docs/policy.md states: every word in an admitted public wordlist terminates on
+every input (a throw counts), an admitted parsing word consumes a bounded
+number of tokens, and no admitted word stores to a caller-supplied address or
+widens the policy (calls `policy-admit`, `prot-wid-add`, `set-current`,
+`evaluate`, `included` on caller data): the admitted API is the design's
+whole reach. The checker is unchanged and still certifies every admitted body
+at `;` (probe chk0).
 
 Decided by the Fable design (2026-09-30), from Joel's requirement that a Maki design is a limited declarative vocabulary that provably terminates, with the words a design may not use removed from what it can find: (1) the sealed built-ins are exactly `:` `;` `\` `(` numbers, locals
 and the twelve spellings above; `if/else/then` for configurations (flags come
@@ -106,23 +128,31 @@ only from Maki predicates), `s"` for names the source states, the package
 keywords for the design's own qualified identities, `using`/`;using` because
 forth.md:296-299 requires consumers to import a package they call twice,
 `{: :}` because stack shuffles are off. (2) admission by index-or-wid-bit for
-records with the unsigned bound first, and by baked spelling span for
-keywords; the engine reads the seal for every source token at both tiers and
-the tier-1 dialect table reads it for modeled symbols; the native compiler's
-own name resolution is never gated. (3) one located diagnostic and rc 105 for
-every engine refusal; a sealed undefined token shares it; tier-1 pure keywords
-and a tier-1 self-call are refused by NCOMP or the checker with their own
-lines and rc 70, fatal. (4) `using`, `package` (new or reopened) stay legal
-and harmless; no write gate. (5) the definition-name guard follows the seal:
-`: begin` is `not in vocabulary: begin` at both tiers (the guard runs in
-C-QUALIFY-DEF before the tier fork, habu2.f:3586, 8000-8020). (6) at tier 1 a
-local may not spell a non-admitted word (`{: type :}` is refused at capture);
-a restriction, not a bypass. (7) load form: the harness's own word admits,
-seals and `included`s the design path from the script arguments; no
-policy-file token is read after the seal. (8) x86-64: kernel-x64.f registers
-the two prims as REFUSE rows (krait). (9) EXIT-HOOK-CELL's claim row belongs
-here because this dot's Verify relies on CLAIMS-ASSERT for the watermark cell's
-neighbours. Not under C2; C2 is not a prerequisite.
+records with the unsigned bound first, intersected with the native compiler's
+visibility (no DNAME-INT, not OWNER-API-PRI-WID, nonzero start), and by baked
+spelling span for keywords; the engine reads the seal for every source token
+at both tiers and the tier-1 dialect table reads it for modeled symbols; the
+native compiler's own name resolution is never gated. (3) one located
+diagnostic and rc 105 for every engine refusal; a sealed undefined token
+shares it; tier-1 pure keywords and a tier-1 self-call are refused by NCOMP or
+the checker with their own lines and rc 70, fatal. (4) `using`, `package`
+(new or reopened) stay legal and harmless; no write gate. (5) the
+definition-name guard follows the seal: `: begin` is `not in vocabulary:
+begin` at both tiers (the guard runs in C-QUALIFY-DEF before the tier fork,
+habu2.f:3586, 8000-8020). (6) at tier 1 a local may not spell a non-admitted
+word (`{: type :}` is refused at capture); a restriction, not a bypass. (7)
+load form: the harness's own word admits, seals and `included`s the design
+path from the script arguments; no policy-file token is read after the seal.
+(8) x86-64: kernel-x64.f registers the two prims as REFUSE rows (krait). (9)
+EXIT-HOOK-CELL's claim row belongs here because this dot's Verify relies on
+CLAIMS-ASSERT for the watermark cell's neighbours. (10) the visibility part of
+the predicate lives inside LPOLICYREC rather than as a second guard at
+capture: one predicate is what the capture-equals-NCOMP argument quantifies
+over, it is seal-conditional by construction so unsealed tier-1 capture is
+byte-identical, and it covers the two visibility legs the compile-call guard
+does not (OWNER-API-PRI-WID, zero start); an internal record under the seal
+is therefore `not in vocabulary` at every site, ahead of E-INTERNAL and
+E-UNDEFINED. Not under C2; C2 is not a prerequisite.
 
 Acceptance: lib/policy-test.f spawns `bin/hb --load test/policy/allow.f --
 test/policy/<case>.f` and the same with test/policy/allow-tier1.f (first line
@@ -133,11 +163,14 @@ PROC-CMD (RESET, ARG+, RUN-OUTCOME, ERR$, OUT$; lib/process-command.f:443-482)
 with T-OUTCOME-EXITED= (lib/test/outcome.f:9), writing `<tier> <case> rc=<n>
 <first stderr line>` to build/policy-run.txt. dep.f: package PDEP with private
 HIDDEN, public ANSWER ( -- n ) 42, ZERO, BIG? ( n -- bool ), SHOW ( n -- ),
-NAME-LEN ( ptr u8 n -- n ), BOOM ( -- ) -30001 throw; foreign.f: package
-PFOREIGN public LEAK ( -- n ). "105 at L" below means stderr line 1 is `hb:
-not in vocabulary: <token> at <abs path>:L`, rc 105, no stdout; a case with
-one outcome behaves the same at both tiers. Admitted: ok.f (a design package
-with a private helper called by a public word, locals, `s" front"
+NAME-LEN ( ptr u8 n -- n ), BOOM ( -- ) -30001 throw, and STEP ( -- n ) 1
+marked internal right after its definition by a private `TRUSTED: MARK-LAST
+( -- ) ndict@ 1- int-mark ;` (the shape of test/compiler/native-internal-call.f
+:29-31; its checked effect survives, :36); foreign.f: package PFOREIGN public
+LEAK ( -- n ) and STEP ( -- n ) 2. "105 at L" below means stderr line 1 is
+`hb: not in vocabulary: <token> at <abs path>:L`, rc 105, no stdout; a case
+with one outcome behaves the same at both tiers. Admitted: ok.f (a design
+package with a private helper called by a public word, locals, `s" front"
 PDEP:NAME-LEN PDEP:SHOW`, `PDEP:ANSWER PDEP:BIG? if PDEP:ANSWER else PDEP:ZERO
 then PDEP:SHOW`, a `using PDEP … ;using` block, top-level calls) prints 42 and
 5, rc 0; dead.f (`: FAIL ( -- ) PDEP:BOOM ;` then `FAIL`) compiles at both
@@ -160,19 +193,25 @@ execute.f (`: E ( [ -- ] -- ) execute ;`) `execute`; store.f (`: S ( n ptr a --
 ) ! ;`) `!`; arith.f (`: T ( n -- n ) 1 + ;`) `+` (tier 0 by the op row, tier 1
 as the wid-0 record at capture); used.f (`using PFOREIGN` / `: U ( -- n ) LEAK
 ;`) `LEAK` at 2 (tier 0 via usedtry, tier 1 via the sealed LFINDUSED probe);
-dotq.f (`: D ( -- ) ." x" ;`) `."` (tier 1 via CAPTURE-STRING). Tier-split:
-begin.f (`: SPIN ( -- ) begin again ;`), recurse.f (`: R2 ( -- ) recurse ;`),
-quote.f (`: Q ( -- [ -- ] ) [: ;] ;`), btick.f (`: T ( -- [ -- n ] ) [']
-PDEP:ANSWER ;`) are 105 at the keyword at tier 0 and, at tier 1, rc 70 with
-stderr containing `ncomp: cannot compile <DEF>` and no stdout (unsealed all
-four compile at tier 1: probes); self.f (`: R ( -- ) R ;`) is `R` 105 at 1 at
-tier 0 and, at tier 1, rc 70 with stderr containing `undefined word 'R'` (the
-checker, probe self1). Harness-level: allow-sealed-admit.f (RUN seals then
-ALLOWs) `hb: policy: sealed`, rc 105; allow-no-package.f (`s" NOPE"
+dotq.f (`: D ( -- ) ." x" ;`) `."` (tier 1 via CAPTURE-STRING); internal.f
+(`package PDEP` / `public` / `using PFOREIGN` / `: I ( -- n ) STEP ;` /
+`;using` / `;package` / `PDEP:I PDEP:SHOW`) `STEP` 105 at 4 and no `2` on
+stdout at either tier — the engine's first leg is PDEP's public STEP, which is
+internal, so LPOLICYREC refuses it at EM-COMPILE-CALL (tier 0) and at capture
+(tier 1); without clause (ii) tier 1 would capture the token, NDICT would skip
+the internal record and bind PFOREIGN:STEP, and the run would print 2.
+Tier-split: begin.f (`: SPIN ( -- ) begin again ;`), recurse.f (`: R2 ( -- )
+recurse ;`), quote.f (`: Q ( -- [ -- ] ) [: ;] ;`), btick.f (`: T ( -- [ -- n ]
+) ['] PDEP:ANSWER ;`) are 105 at the keyword at tier 0 and, at tier 1, rc 70
+with stderr containing `ncomp: cannot compile <DEF>` and no stdout (unsealed
+all four compile at tier 1: probes); self.f (`: R ( -- ) R ;`) is `R` 105 at 1
+at tier 0 and, at tier 1, rc 70 with stderr containing `undefined word 'R'`
+(the checker, probe self1). Harness-level: allow-sealed-admit.f (RUN seals
+then ALLOWs) `hb: policy: sealed`, rc 105; allow-no-package.f (`s" NOPE"
 POLICY:ALLOW`) `hb: policy: no package NOPE`, rc 105. Unsealed smoke: `bin/hb
---load lib/policy.f test/policy/dep.f test/policy/ok.f` prints 42 and 5, rc 0;
-`bin/hb --load test/run.f` unchanged, test/compiler/native-dead-path.f
-included.
+--load lib/policy.f test/policy/dep.f test/policy/foreign.f test/policy/ok.f`
+prints 42 and 5, rc 0; `bin/hb --load test/run.f` unchanged,
+test/compiler/native-dead-path.f and native-internal-call.f included.
 
 Files: lib/policy.f, lib/policy-test.f, test/policy/ (dep.f, foreign.f,
 allow.f, allow-tier1.f, allow-sealed-admit.f, allow-no-package.f, one file
