@@ -1,6 +1,6 @@
 ---
 title: Scan and interpret in Habu
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.646748+03:00"
@@ -13,7 +13,7 @@ Verify: spark `bin/hb --load test/outer-interpret.f`; a whole `--load` of a test
 Depends: habu-find-dictionary-names-e8f56969 (I2), habu-parse-numbers-in-86b27302 (I3).
 Route: Alder (shared: src/habu/outer.f, test/outer-interpret.f).
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-scan-and-interpret-eea996a2.
 
 Preflight corrections (these override the lines above where they differ):
 - Scope: the per-token loop over numbers and records. The literal keywords (`s"`, `c"`, `."`, the escaped forms, `char`, `'`) are I4b (`habu-interpret-literal-keywords-0fa50d62`); the guards the loop reads are I4a (`habu-provide-the-interpret-32e92f89`), which this leaf depends on.
@@ -26,3 +26,11 @@ Preflight corrections (these override the lines above where they differ):
 - Files: `src/habu/outer.f`, `src/core/include.f`, `test/outer-loop-on.f`, `test/outer-interpret.f`, `test/gate-stdlib-cases.f` (`SUITE outer-interpret`).
 - Verify (spark): the suite; rebuild (a prefix change, `native-runtime.f:83`); chain gen1 == gen2; the gate.
 - Route: Alder (`src/core/include.f`, `test/gate-stdlib-cases.f`).
+
+Preflight corrections, rev 2 (Fable, 2026-09-30; these override everything above where they differ):
+- Base: master (I2, I3 and I4a all landed). Workspace `.jj-ws/habu-scan-and-interpret-eea996a2`. Route: krait lands it on master after the Linux proof (Joel, 2026-09-30); Alder pools the Mac gate.
+- Seam: `src/core/include.f` gains `defer INCLUDE-INTERPRET ( ptr u8 n -- )` in the `SOURCE-ROOT` `public` block at `include.f:921-925` (before `LOAD-BYTES`); `LOAD-BYTES` (`:933`) calls it in place of `INCLUDE-EVALUATE`; `INCLUDE-EVAL-BIND` (`:1143-1147`) adds `: INTERPRET-INSTALL ( -- ) [: INCLUDE-EVALUATE ;] is SOURCE-ROOT:INCLUDE-INTERPRET ; INTERPRET-INSTALL`. A bare `[: ... ;] is` at file level dies `E-UNDEFINED: [:`, and `INSTALL` is a taken global. `test/outer-loop-on.f`: `require src/habu/outer.f`, then `: OUTER-LOOP-ON ( -- ) [: OUTER:INTERPRET ;] is SOURCE-ROOT:INCLUDE-INTERPRET ; OUTER-LOOP-ON`.
+- Pre-change failing check, after `OUTER:INTERPRET` exists and before the `include.f` change, on master's product: `bin/hb --load test/outer-loop-on.f` writes `hb: is: no deferred word named SOURCE-ROOT:INCLUDE-INTERPRET` and `hb: is: parsing words resolve outside using-imports; qualify the target at <path>:3`, rc 70.
+- Spawns: `--load <prelude> test/outer-loop-on.f <case>` and `--load <prelude> <case>`. The prelude precedes the switch because `TRUSTED:`, `:`, `'` and `[:` are keywords this leaf refuses; a case file holds only numbers, comments and prelude words (the hook installer is a prelude word `OI-HOOK-ON ( -- )`).
+- Lines on master: `INCLUDE-EVALUATE` `include.f:725`; the global-count note `:1136`; B-EVAL saves `habu1.f:1444-1446`; LTOK 3603-3621; the LFIND fold 4365-4374 (bit 0 found, bit 1 IMM, bit 3 WIDE, bit 4 INT, bits 8-15 min-in); the hook block `habu2.f:4389`; comments 7735-7745; number 8374-8379; find gates 8381-8398; the ambiguity text 8255; the die tail 9908.
+- Verify (spark): `bin/hb --load test/outer-interpret.f`; rebuild with master's product `~/.cache/habu-krait/hb-master-5f4d` (`5f4d3321…`) as host (`include.f` is prefix, `native-runtime.f:83`); `bin/hb --load tools/two-generation-build.f -- ~/.cache/habu-krait/hb-master-5f4d`: five generations converge, gen1 == gen2 expected (no primitive added); if gen1 differs from gen2 only by the +1 DATA cells of `habu-make-the-product-bed415cf`, convergence from gen2 is the pass and the report says so; the gate `bin/hb --load test/run.f < /dev/null` on the fixpoint (`hb-b5`): every suite of master plus `SUITE outer-interpret`, rc 0, no red row.
