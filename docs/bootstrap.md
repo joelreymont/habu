@@ -66,7 +66,12 @@ seed; the release copy for other agents is `/tmp/hazel-release/hb`.
   run `brew link postgresql@18`, or put `/opt/homebrew/opt/postgresql@18/bin`
   on `PATH`. On Linux, install the distribution's PostgreSQL server package and
   put its `bin` directory on `PATH` when the package keeps it elsewhere (Debian
-  and Ubuntu use `/usr/lib/postgresql/<version>/bin`).
+  and Ubuntu use `/usr/lib/postgresql/<version>/bin`). Without root on Debian
+  or Ubuntu, `apt-get download postgresql-<version> postgresql-client-<version>
+  libpq5` and `dpkg -x` each into one prefix: the server finds its share files
+  relative to its binary, so it runs from there with the prefix's
+  `usr/lib/postgresql/<version>/bin` on `PATH` and its
+  `usr/lib/<triplet>` (for `libpq.so.5`) on `LD_LIBRARY_PATH`.
 - Gforth with `{:` locals support. Homebrew `gforth` 0.7.3 is too old.
   A current Gforth snapshot such as `0.7.9_20260610` works.
 - GB10 device gates (sm_121a) **require** the pinned 13.3 `ptxas` in
