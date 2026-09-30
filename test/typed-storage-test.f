@@ -207,7 +207,9 @@ PTR-VARIABLE TS-DP
 \ 8. Distinct capability pin #2: a raw variable/create/constant still cannot
 \    mint a nominal family (TVK-RAW), while TYPED-VARIABLE is the sound path.
 \    The raw definers are registered through the verify-source RAW gate — the
-\    enforcing path — then a laundering word is checked with the quiet checker.
+\    enforcing path. That scan compiles nothing, so the engine holds no record
+\    of RAWV, RAWC or RAWK, and a laundering word naming them is asked on the
+\    certify path (VERIFY:CANDIDATE-IN-SCOPE), where the scan registered them.
 \ =============================================================================
 : TS-REG-RAW ( -- )
    s\" NEWTYPE rawk 0\nvariable RAWV\ncreate RAWC 8 allot\n7 constant RAWK"
@@ -216,13 +218,14 @@ PTR-VARIABLE TS-DP
 : TS-SECTION-PIN-RAW-REJECT ( -- )
    TS-REG-RAW
    \ raw variable/create/constant laundering a nominal family rejects (verdict 0)
-   s" R1 ( n -- rawk ) RAWV ! RAWV @" CHECK-QUIET-CANDIDATE! 0 T=
-   s" R2 ( n -- rawk ) RAWC ! RAWC @" CHECK-QUIET-CANDIDATE! 0 T=
-   s" R3 ( -- rawk ) RAWK" CHECK-QUIET-CANDIDATE! 0 T=
+   s" R1 ( n -- rawk ) RAWV ! RAWV @" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   s" R2 ( n -- rawk ) RAWC ! RAWC @" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   s" R3 ( -- rawk ) RAWK" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    \ the same raw cell and constant still certify a plain scalar
-   s" R4 ( n -- n ) RAWV ! RAWV @" CHECK-QUIET-CANDIDATE! -1 T=
-   s" R7 ( -- n ) RAWK" CHECK-QUIET-CANDIDATE! -1 T=
-   \ the SOUND alternative — a TYPED-VARIABLE of the same family — certifies
+   s" R4 ( n -- n ) RAWV ! RAWV @" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" R7 ( -- n ) RAWK" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   \ the SOUND alternative — a TYPED-VARIABLE of the same family, a live word —
+   \ certifies where compiled code asks
    s" R5 ( tsk -- ) TSV !" CHECK-QUIET-CANDIDATE! -1 T=
    s" R6 ( -- tsk ) TSV @" CHECK-QUIET-CANDIDATE! -1 T= ;
 

@@ -8805,7 +8805,9 @@ public
 \ An operator row lowers its token as the primitive of that spelling, so it may
 \ claim the token only when the lookup bound that primitive's own record: a
 \ spelling, or a record's wordlist, is not that identity (C-OP-ROW-GATE below,
-\ src/compiler/native/hir-word.f INTRINSIC-BOUND?, src/core/checker.f BIND-TOK).
+\ src/compiler/native/hir-word.f INTRINSIC-BOUND?). The checker names the same
+\ word by the identity NORET-AXIOMS registers on its symbol (src/core/checker.f
+\ CTL-CORE-OP, CTL-INTRINSIC).
 : EMIT-SCOPE-REC ( -- )
    LBL LBL LBL {: two:label have:label notseed:label :}
    LSCOPEREC LABEL@ LBL,

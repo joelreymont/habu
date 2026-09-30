@@ -891,6 +891,13 @@ SUITE undefine-binding
    test/undefine-binding.f
 ;SUITE
 
+SUITE undefine-binding-aot
+   lib/test.f
+   test/compiler/aot-mode.f
+   ENTRIES
+   test/undefine-binding.f
+;SUITE
+
 SUITE compiler-native-dictionary-record
    test/compiler/native-dictionary-record.f
 ;SUITE

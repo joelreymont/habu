@@ -76,20 +76,23 @@ TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
 \ raw cell REFUSES a pointer pointee is the rule's own fixture
 \ (test/compiler/raw-cell-pointer-refusals.f), not this file's: the rule lands
 \ after these conversions, and this file must read the same before and after it.
+\ The pre-scan registers DPT, DPH and DPR for the certify path alone - the
+\ engine holds no record of them - so the probes ask that path
+\ (VERIFY:CANDIDATE-IN-SCOPE); VERIFY-RESERVED-SCAN below shows both answers.
 : REG-DECLARED-CELLS ( -- )
    s\" 4 PTR-U8-TABLE DPT\nPERSISTED-PTR-U8-TABLE-VARIABLE DPH\nPTR-VARIABLE DPR"
    VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : VERIFY-DECLARED-POINTEE ( -- )
    REG-DECLARED-CELLS
-   s" DP-BASE ( -- ptr ptr u8 ) DPT" CHECK-QUIET-CANDIDATE! -1 T=
-   s" DP-READ ( -- ptr ptr u8 ) DPH @" CHECK-QUIET-CANDIDATE! -1 T=
-   s" DP-STORE ( ptr u8 -- ) 0 cells DPT + 0 ptr-field !" CHECK-QUIET-CANDIDATE! -1 T=
-   s" DP-RAW-SCALAR ( -- ptr u8 ) DPR @" CHECK-QUIET-CANDIDATE! -1 T=
-   s" DP-BASE-WRONG ( -- ptr ptr n ) DPT" CHECK-QUIET-CANDIDATE! 0 T=
-   s" DP-READ-WRONG ( -- ptr u8 ) DPH @" CHECK-QUIET-CANDIDATE! 0 T=
-   s" DP-STORE-WRONG ( n -- ) 0 cells DPT + 0 ptr-field !" CHECK-QUIET-CANDIDATE! 0 T=
-   s" DP-HEAD-WRONG ( ptr ptr n -- ) DPH !" CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" DP-BASE ( -- ptr ptr u8 ) DPT" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" DP-READ ( -- ptr ptr u8 ) DPH @" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" DP-STORE ( ptr u8 -- ) 0 cells DPT + 0 ptr-field !" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" DP-RAW-SCALAR ( -- ptr u8 ) DPR @" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" DP-BASE-WRONG ( -- ptr ptr n ) DPT" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   s" DP-READ-WRONG ( -- ptr u8 ) DPH @" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   s" DP-STORE-WRONG ( n -- ) 0 cells DPT + 0 ptr-field !" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+   s" DP-HEAD-WRONG ( ptr ptr n -- ) DPH !" VERIFY:CANDIDATE-IN-SCOPE 0 T= ;
 
 \ THE TWO ROWS, AND THE PAIR THAT SHOWS WHAT THEY DO. `RESERVED-PTR-U8-CELL`
 \ is written in src/core/pointer-storage.f, before the checker exists, so the
@@ -101,23 +104,31 @@ TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
 \ built - a clone written in this file is ordinary checked source and could
 \ never be sealed. test/internal-word-gate.f owns the `internal engine word`
 \ diagnostic itself.) The control candidate is spelled with NULL-PTR-CELL's OWN
-\ effect, so a type disagreement cannot be what refuses it: the name is.
+\ effect, so a type disagreement cannot be what fails it: the name is. The
+\ product image keeps no NULL-PTR-CELL record (`: X NULL-PTR-CELL ;` is
+\ E-UNDEFINED, in a trusted body too), and a candidate binds the record the
+\ compiler binds, so the control is unresolvable (1), not refused.
 : VERIFY-RESERVED-EFFECT ( -- )
    s" RSV-BASE ( -- ptr ptr u8 ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! -1 T=
    s" RSV-READ ( -- ptr u8 ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! -1 T=
    s" RSV-BASE-WRONG ( -- ptr ptr n ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! 0 T=
    s" RSV-READ-WRONG ( -- ptr n ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! 0 T=
-   s" RSV-SEALED ( -- ptr n ) NULL-PTR-CELL" CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" RSV-SEALED ( -- ptr n ) NULL-PTR-CELL" CHECK-QUIET-CANDIDATE! 1 T= ;
 
 \ The scanner's own row: the pre-scan sees the same definer and publishes the
 \ same effect for the word it creates, so a source file that declares a
-\ reserved cell verifies without being run.
+\ reserved cell verifies without being run. That effect is a fact of the
+\ certify path: the scan compiles nothing, so the engine holds no VSRSV record
+\ and a live candidate cannot bind it (1) even with VSRSV the scan's last
+\ registration - a replay leaves no pending definition behind - while the same
+\ candidate on the certify path binds the scanned row.
 : REG-RESERVED-CELL ( -- )
    s" $30 RESERVED-PTR-U8-CELL VSRSV" VERIFY:SOURCE-BUF-IN-SCOPE ;
 : VERIFY-RESERVED-SCAN ( -- )
    REG-RESERVED-CELL
-   s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" CHECK-QUIET-CANDIDATE! -1 T=
-   s" VSRSV-WRONG ( -- ptr ptr n ) VSRSV" CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" CHECK-QUIET-CANDIDATE! 1 T=
+   s" VSRSV-BASE ( -- ptr ptr u8 ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+   s" VSRSV-WRONG ( -- ptr ptr n ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE 0 T= ;
 
 : RUN ( -- )
    T-RESET

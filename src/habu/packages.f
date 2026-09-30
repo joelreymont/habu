@@ -124,14 +124,14 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
 \ checker-export in the global wordlist, and without one the process ends
 \ with that name.
 : PKG-CHECK-EXPORT ( -- )
-   s" checker-export" 0 FIND-PROBE {: rec:ptr :}
+   s" checker-export" 0 WL-PROBE {: rec:ptr :}
    rec XREF-FOUND? 0= if s" checker-export" RC-REJECT FAIL-CLOSED then
    TOKEN$ rec XREF-START PKG-AS-NAME-ACTION execute ;
 
 \ ---- package, public, private, ;package (habu2.f C-PACKAGE to C-END-PACKAGE) -
 \ The namespace row the token names, or XREF-NULL.
 : PKG-ROW ( -- ptr n )
-   TOKEN$ XREF-NAMESPACE-WL FIND-PROBE ;
+   TOKEN$ XREF-NAMESPACE-WL WL-PROBE ;
 
 \ Once the engine is sealed, a sealed package's name ends the process, and so
 \ does a package whose public wordlist is protected: the token is the whole
@@ -156,7 +156,7 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
 \ The index of the row `package` opens (habu2.f C-PACKAGE-ENSURE). A colon
 \ anywhere in the name is refused; a new row takes a public and a private wid.
 : PKG-ENSURE ( -- n )
-   TOKEN$ 0 FIND-COLON 0 >= if PKG-RC-CONTEXT PKG-FAIL then
+   TOKEN$ 0 COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
    PKG-ROW {: row:ptr :}
    row XREF-FOUND? if row PKG-REOPEN exit then
    PKG-DICT-ROOM
@@ -202,7 +202,7 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
       s" hb: using: missing package name" SAY
       ENGINE-ERROR:USING-NO-NAME THROW-AT
    then
-   TOKEN$ 0 FIND-COLON 0 >= if
+   TOKEN$ 0 COLON-AT 0 >= if
       s" hb: using: package name must not contain ':': "
       ENGINE-ERROR:USING-BAD-NAME PKG-USING-FAIL
    then
@@ -217,7 +217,7 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
 : PKG-USING ( -- )
    TASK-GUARD
    PKG-USED-WID {: wid:n :}
-   FIND-USE-DEPTH {: d:n :}
+   USE-DEPTH-CELL CELL@ {: d:n :}
    d USE-MAX >= if
       s" hb: using: too many concurrent usings: "
       ENGINE-ERROR:USING-OVERFLOW PKG-USING-FAIL
@@ -231,7 +231,7 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
 \ closing it here would come undone there.
 : PKG-END-USING ( -- )
    TASK-GUARD
-   FIND-USE-DEPTH {: d:n :}
+   USE-DEPTH-CELL CELL@ {: d:n :}
    d 0= if
       s" hb: ;using without an open using" SAY
       ENGINE-ERROR:USING-UNBALANCED THROW-AT
@@ -244,19 +244,24 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
 
 \ ---- export (habu2.f C-EXPORT) -----------------------------------------------
 \ The record the operand names as the engine's LFIND resolves it: the open
-\ package, then the global wordlist, never a used public.
+\ package, then the global wordlist, or NAME:tail, never a used public. It is
+\ the one name lookup's answer (`scope-find`) unless a used public bound it,
+\ and the lookup asks the used publics only when LFIND missed: a bound record
+\ that is also theirs is LFIND's miss, except in the open package's public
+\ wordlist, where a package that uses itself met it in LFIND first.
 : PKG-SOURCE ( -- ptr n )
-   TOKEN$ {: a:ptr u:n :}
-   a u FIND-SPLIT {: q:n :}
-   q FIND-BAD = if XREF-NULL exit then
-   q FIND-BARE = if a u NDICT:OPEN-PRI FIND-OPEN exit then
-   a u q FIND-QUALIFIED ;
+   TOKEN$ scope-find drop drop {: rec:ptr used:ptr :}
+   rec used <> if rec exit then
+   rec XREF-FOUND? 0= if rec exit then
+   rec XREF-WORDLIST NDICT:OPEN-PUB = if rec exit then
+   XREF-NULL ;
 
-\ The name the alias takes: the operand's tail, after a qualifier.
+\ The name the alias takes: the operand's tail after its first colon, or the
+\ whole operand when it has none or one at either edge (habu2.f C-EXPORT-TAIL!).
 : PKG-TAIL ( -- ptr u8 n )
    TOKEN$ {: a:ptr u:n :}
-   a u FIND-SPLIT {: q:n :}
-   q 0< if a u exit then
+   a u 0 COLON-AT {: q:n :}
+   q 1 <  q 1+ u >=  or if a u exit then
    a q 1+ ZPTR+  u q - 1- ;
 
 \ After the seal a protected wordlist takes no record: the engine names its
@@ -294,7 +299,7 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
    PKG-EXPORT-SOURCE {: src:ptr :}
    PKG-DICT-ROOM
    PKG-TAIL {: ta:ptr tu:n :}
-   ta tu get-current FIND-PROBE XREF-FOUND? if
+   ta tu get-current WL-PROBE XREF-FOUND? if
       s" duplicate definition: " SAY PKG-RC-DUPLICATE PKG-FAIL
    then
    PKG-CHECK-EXPORT

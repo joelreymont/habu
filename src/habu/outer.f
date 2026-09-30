@@ -156,122 +156,38 @@ public
 ;package
 
 \ ---- dictionary search ------------------------------------------------------
-\ OUTER:FIND answers the record the engine's LFIND and LFINDUSED resolve for one
-\ token (habu1.f EMIT-FIND, habu2.f EMIT-FIND-USED), or XREF-NULL. The caller
-\ reads the immediate, wide, internal and min-in facts from the record's
-\ XREF-FLAGS, as LFIND's flag output folds them.
-\
-\ The order. A bare token is asked of the open package's private wordlist, then
-\ its public one, then the global one; with no package open, of the global one
-\ alone. Only when that chain misses, and only for a token with no colon at all,
-\ is every live used public asked: two distinct records there are
-\ E-USING-AMBIGUOUS, and one package used twice is one record. NAME:tail asks
-\ NAME's public wordlist, found through its namespace row.
-\
-\ Each wordlist is asked through xref-search-wl (habu1.f WLFIND), which walks the
-\ dictionary's hash index under the key LFIND's own probe uses, so one index
-\ answers both. The search stops at the first wordlist holding the name and
-\ returns that row whatever its flags. `search-wl` would not do: it hides
-\ DNAME-INT rows and the engine-helper wordlist, which the interpreter must see
-\ in order to refuse them.
-\
-\ NDICT (src/compiler/native/dict.f) answers a different question: which record
-\ a checked program may call. It skips a row the caller may not see and keeps
-\ searching, so its chain is not this one; only its open-scope readers are.
+\ OUTER:FIND answers the record the engine's own lookup binds one token to, or
+\ XREF-NULL: NDICT:SCOPE-REC, which is the `scope-find` primitive (habu2.f
+\ LSCOPEREC) - LFIND and then the used publics, the leaves the JIT's call site
+\ runs. The row comes back whatever its flags, and the caller reads the
+\ immediate, wide, internal and min-in facts from its XREF-FLAGS, as LFIND's
+\ flag output folds them: the interpreter must see an internal row in order to
+\ refuse it. Two used publics that both export the tail are E-USING-AMBIGUOUS.
 
 package OUTER
 
 private
 
-\ ---- one wordlist -------------------------------------------------------------
-\ The record, not an xt: one body can carry several names (EXPORT), so only the
-\ record says which wordlist the name resolved in. Trusted-only by the
-\ primitive's own row (prims.f).
-TRUSTED: FIND-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
+\ Not the lookup: the row one wordlist holds under a name, whatever its flags -
+\ the namespace row `package`, `using` and a qualified definition name ask,
+\ `checker-export`, and the tail a definition or `export` would add, which must
+\ not be there yet.
+\ xref-search-wl walks the dictionary's hash index under the key the engine's
+\ own probe uses. Trusted-only by the primitive's own row (prims.f).
+TRUSTED: WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
-\ ---- the token's shape (habu1.f FIND-QSCAN to FIND-QTAILOK) ------------------
--1 constant FIND-BARE
--2 constant FIND-BAD
-
-\ The index of the first colon at or after `from`, or -1.
-: FIND-COLON ( ptr u8 n n -- n )
-   {: a:ptr u:n from:n :}
+\ The index of the first colon at or after `from`, or -1: the shape the
+\ qualifier readers refuse a token by.
+: COLON-AT ( ptr u8 n n -- n ) {: a:ptr u:n from:n :}
    u from ?do
       a i + c@ $3A = if i unloop exit then
    loop
    -1 ;
 
-\ The qualifier is the token's FIRST colon. One at either edge leaves the whole
-\ token a bare name, whatever follows it: `:a:b` is bare. A second colon after
-\ the qualifier misses. xref.f XREF-QUAL-INDEX calls `:a:b` malformed, so it is
-\ not this reader.
-: FIND-SPLIT ( ptr u8 n -- n )
-   {: a:ptr u:n :}
-   a u 0 FIND-COLON {: q:n :}
-   q 1 < if FIND-BARE exit then
-   q 1+ u >= if FIND-BARE exit then
-   a u q 1+ FIND-COLON 0 >= if FIND-BAD exit then
-   q ;
-
-\ ---- the open package, then the global wordlist (habu1.f FIND-DONE) ----------
-\ A miss in the open package's private wordlist retries its public one, a miss
-\ there retries the global one, and any other miss is final. The retry reads
-\ the wordlist that missed, not the one the search began in, so P:tail while P
-\ is open falls through to a global tail P does not export.
-: FIND-OPEN ( ptr u8 n n -- ptr n )
-   {: a:ptr u:n wid:n :}
-   a u wid FIND-PROBE {: rec:ptr :}
-   rec XREF-FOUND? if rec exit then
-   NDICT:OPEN-PRI 0= if XREF-NULL exit then
-   wid NDICT:OPEN-PRI = if a u NDICT:OPEN-PUB RECURSE exit then
-   wid NDICT:OPEN-PUB = if a u 0 RECURSE exit then
-   XREF-NULL ;
-
-\ ---- the used publics (habu2.f EMIT-FIND-USED) --------------------------------
-: FIND-USE-DEPTH ( -- n )
-   data-base USE-DEPTH-CELL + @ ;
-
-: FIND-USE-WID ( n -- n )
-   cells data-base USE-WIDS-OFF + + @ ;
-
-\ Every used public is asked, and the answers must agree on one record.
-: FIND-USED ( ptr u8 n -- ptr n )
-   {: a:ptr u:n :}
-   a u 0 FIND-COLON 0 >= if XREF-NULL exit then
-   XREF-NULL
-   FIND-USE-DEPTH 0 ?do
-      a u i FIND-USE-WID FIND-PROBE
-      dup XREF-FOUND? if
-         over XREF-FOUND? if
-            2dup <> if E-USING-AMBIGUOUS throw then
-         then
-         nip
-      else
-         drop
-      then
-   loop ;
-
-: FIND-BARE-REC ( ptr u8 n -- ptr n )
-   {: a:ptr u:n :}
-   a u NDICT:OPEN-PRI FIND-OPEN {: rec:ptr :}
-   rec XREF-FOUND? if rec exit then
-   a u FIND-USED ;
-
-\ The namespace row carries its package's public wid where a word keeps its start.
-: FIND-QUALIFIED ( ptr u8 n n -- ptr n )
-   {: a:ptr u:n q:n :}
-   a q XREF-NAMESPACE-WL FIND-PROBE {: ns:ptr :}
-   ns XREF-FOUND? 0= if XREF-NULL exit then
-   a q 1+ ZPTR+ u q - 1- ns XREF-PKG-PUBLIC FIND-OPEN ;
-
 public
 
 : FIND ( ptr u8 n -- ptr n )
-   {: a:ptr u:n :}
-   a u FIND-SPLIT {: q:n :}
-   q FIND-BAD = if XREF-NULL exit then
-   q FIND-BARE = if a u FIND-BARE-REC exit then
-   a u q FIND-QUALIFIED ;
+   NDICT:SCOPE-REC ;
 
 ;package
 
@@ -728,14 +644,14 @@ TRUSTED: PUSH-CHAR ( -- )
 \ The seal guard (habu2.f C-QUALIFY-SEAL-GUARD): once the engine is sealed, a
 \ token qualified by a sealed package ends the process, the token its whole
 \ diagnostic. The qualifier is the first colon when it is at neither edge, as
-\ FIND-SPLIT reads it, but a second colon does not spare the token. The sealed
+\ DEF-QUALIFY reads it, but a second colon does not spare the token. The sealed
 \ packages are the checker's list (src/core/checker.f CHECKER-SEALED-PKG?, the
 \ declared mirror of the engine's own), which folds case as the engine does.
 \ The exit is fail-closed, as C-SEAL-PACKAGE-FAIL's is.
 : SEAL-GUARD ( -- )
    SEAL-NDICT@ 0= if exit then
    TOKEN$ {: a:ptr u:n :}
-   a u 0 FIND-COLON {: q:n :}
+   a u 0 COLON-AT {: q:n :}
    q 1 < if exit then
    q 1+ u >= if exit then
    a q CHECKER-SEALED-PKG? 0= if exit then

@@ -1158,17 +1158,42 @@ PTR-VARIABLE STG-START
 
 TRUSTED: VERIFIER-ACTION ( n -- [ -- ] ) ;
 
-TRUSTED: RUN ( -- )
+\ One action inside the verifier's package scope: the owner's start puts the
+\ checker under mirror authority, so every check the action runs binds a name
+\ over the checker's own records (src/core/checker.f REPLAY-BIND), and the done
+\ restores the caller's scope on the clean and the throwing path alike.
+TRUSTED: RUN-IN-SCOPE ( [ -- ] -- )
    CHECKER-OWNER-ABI:VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
-   [: VERIFY-SOURCE ;] catch
+   catch
    CHECKER-OWNER-ABI:VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
    THROW-RESULT ;
+
+: RUN ( -- )
+   [: VERIFY-SOURCE ;] RUN-IN-SCOPE ;
+
+\ Stash-and-body, the shape src/core/checker.f CHECK-QUIET-CANDIDATE! takes: a
+\ quotation cannot read its caller's locals.
+PTR-VARIABLE CAND-A
+variable CAND-U
+variable CAND-VERDICT
+
+: CANDIDATE-BODY ( -- )
+   CAND-A @ CAND-U @ CHECK-QUIET-CANDIDATE! CAND-VERDICT ! ;
 
 public
 
 : SOURCE-BUF-IN-SCOPE ( ptr u8 n -- )
    SOURCE!
    RUN ;
+
+\ What the certify path says about one candidate definition, `NAME ( effect )
+\ body`: -1 certified, 0 refused, 1 unresolvable, as CHECK-QUIET-CANDIDATE!
+\ answers. A name this scanner registered has no engine record, so a live
+\ candidate cannot bind it; here it binds where the scan recorded it.
+: CANDIDATE-IN-SCOPE ( ptr u8 n -- n )
+   CAND-U !  CAND-A !
+   [: CANDIDATE-BODY ;] RUN-IN-SCOPE
+   CAND-VERDICT @ ;
 
 : SOURCE-BUF-AT-IN-SCOPE ( ptr u8 n n n n -- )
    SOURCE-AT!

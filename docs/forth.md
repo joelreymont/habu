@@ -1324,6 +1324,42 @@ the rule.
   word, and the same local hides the word `TEXT` from the definition it is
   declared in (`address` hides `ADDRESS`). The three resolvers — the checker,
   the JIT and tier 1 — agree; `test/compiler/native-local-case.f` pins it.
+- **A name binds one word at every tier, and that word's own facts judge it.**
+  The checker, the JIT and tier 1 ask the engine's one lookup (`scope-find`:
+  the open package, the global wordlist, then the used publics), so a word
+  redefined after `undefine`, a package word spelled like an engine word and
+  an `EXPORT` alias are each checked and called as the word they are. The
+  rules that type an engine word by what it does (`@`, `!`, `?dup`,
+  `record-at`, `create`, `variable`, …) follow the identity the engine
+  registered on that word's symbol (its `INTRINSIC` id, or `CTL-CORE-OP` for
+  the stack shuffles and zero tests), which a redefinition does not carry, and
+  the control facts a definition earns are recorded on its own symbol.
+  Measured: after `undefine dup  : dup ( n -- n ) 100 + ;`, `: T ( -- n )
+  5 dup ;` certified against the new `dup` while the JIT lowered the spelling
+  to the engine's, so `T` left `5 5`; it leaves `105` at both tiers
+  (test/undefine-binding.f). `package P : DIE ( ptr u8 n -- ) 3 die ;
+  : T ( -- n ) s" x" DIE 0 ;` certified with the `0` unreachable, because
+  `DIE`'s flags were compared with the global `die`'s and never recorded; with
+  the flags on `DIE`'s own symbol it is `E-DEAD-CODE`
+  (test/checker-dead-path-suite.f).
+- **A name the engine holds no word for binds nowhere in compiled code.** The
+  checker binds a token to the word the lookup finds, to the definition it
+  recorded last and the engine has not yet published, or to a keyword it types
+  by axiom (`>r`, `r@`). A name only the checker knows - a row `CHECK!` alone
+  recorded, a qualified `TRUST` row with no word behind it, a word the source
+  pre-verifier registered, a `CHECKER-EXPORT` alias - is unresolvable, bare or
+  qualified, as the compiler finds it `E-UNDEFINED`. It binds on the certify
+  path, which replays over the checker's records: `VERIFY:CANDIDATE-IN-SCOPE`
+  (`src/habu/verify-source.f`) answers what that path says of a candidate. A
+  candidate scope checks rows that publish together, so each row binds for the
+  scope's later rows until it closes: a `STRUCTURE` deriving `hash` checks a
+  `HASH` that calls its `UNMAKE` before either is published. Measured on
+  `bin/hb`: after `s" SPANX ( -- n ) 1" CHECK!`, `: C ( -- n ) SPANX ;` is
+  `E-UNDEFINED` and the candidate `C ( -- n ) SPANX` answers 1 live, as
+  `s" C ( -- n ) SPANX" CHECK!` does, and -1 through `VERIFY:CANDIDATE-IN-SCOPE`
+  (test/engine-suite.f, test/pointer-storage-test.f);
+  `STRUCTURE der 0 DERIVE eq hash FIELD x n ;STRUCTURE` declares and its
+  `DER:HASH` runs (test/structure-certify-suite.f).
 - **A signature list holds at most 32 cells.** A word whose inputs (or
   outputs) stage more than 32 cells - several records passed by value add up
   fast - certifies at tier 0 and dies at native elaboration with

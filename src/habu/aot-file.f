@@ -270,8 +270,8 @@ variable CUR
 
 : TARGET-ID ( -- n )
    HB-TARGET-MACOS? if TARGET-MACOS exit then
-   HB-TARGET-LINUX? if TARGET-LINUX exit then
-   s" aot-file: unknown target" DIE  0 ;
+   HB-TARGET-LINUX? 0= if s" aot-file: unknown target" DIE then
+   TARGET-LINUX ;
 
 : ROW-OFF@ ( n -- n ) ROW-BYTES * TBL + U64@ ;
 : ROW-LEN@ ( n -- n ) ROW-BYTES * TBL + 8 + U64@ ;
@@ -738,9 +738,8 @@ variable RN-AT   variable RN-END   variable RN-SUM   variable RN-COUNT
 \ and never a read past it.
 : WIN-V ( n n -- n n ) {: at:n avail:n :}
    VAL-BUF@ at + avail CELL-V@ {: v:n w:n :}
-   w 0<> if v w exit then
-   s" aot-file: a window DATA cell value is not a well-formed varint" DIE
-   0 0 ;
+   w 0= if s" aot-file: a window DATA cell value is not a well-formed varint" DIE then
+   v w ;
 
 : ?SPAN ( n -- ) {: span:n :}
    span 0< 0= span SPAN-CAP <= and if exit then
@@ -1299,15 +1298,14 @@ DYNAMIC-BUFFER HOST-REG n
 \ this host keeps at that number.
 : REWID ( n n -- n ) {: noff:n w:n :}
    w 0= if 0 exit then
-   w WID-REL-BASE >= w A-SPAN @ WID-REL-BASE + < and if
-      H-SPAN @ w + exit
+   w WID-REL-BASE >= w A-SPAN @ WID-REL-BASE + < and 0= if
+      s" aot-file: merged record " type noff NAME.
+      s"  names wordlist offset " type w .
+      s" , which its own window did not create; that window allocated [" type
+      WID-REL-BASE .  s" ," type A-SPAN @ WID-REL-BASE + .  s" )" type cr
+      s" aot-file: a merged record names a wid its window did not create" DIE
    then
-   s" aot-file: merged record " type noff NAME.
-   s"  names wordlist offset " type w .
-   s" , which its own window did not create; that window allocated [" type
-   WID-REL-BASE .  s" ," type A-SPAN @ WID-REL-BASE + .  s" )" type cr
-   s" aot-file: a merged record names a wid its window did not create" DIE
-   0 ;
+   H-SPAN @ w + ;
 
 \ A record's name offset always moves with the pool. Its [0] and [4] are a blob
 \ offset and a code length for an ordinary word, and a package's PUBLIC and
