@@ -11,6 +11,7 @@ blocks:
   - habu-add-the-x86-efc81b26
   - habu-marshal-ffi-calls-46dfd999
   - habu-add-linux-family-56c75040
+  - habu-emit-the-x86-3b63853e
 ---
 
 Problem: the task, signal-stub, stack-guard and io_uring suites have never run on x86; their x86 bodies arrive in K10a-c, K11c, R2 and R3. Split from habu-port-the-ffi-676f745d (task entry and guard-page model).
