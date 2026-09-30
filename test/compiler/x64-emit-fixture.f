@@ -59,11 +59,15 @@
 \ contract of a routine that ends in `die`. ONE FIXTURE PER CONTEXT, and the refusing
 \ cases run inside an enclosing one, for the reason that suite gives.
 \
-\ WHAT THIS SUITE DOES NOT PIN. Of the forms this emitter renders, only
-\ `x64.cmpbri` has no byte string here: the selector is deliberately unfused and
-\ mints no compare-and-branch at all, and the diamond below is the one staged in
-\ the dialect. What else is left unmeasured is a byte no module of this slice can
-\ produce, and each of them is a later slice's:
+\ WHAT THIS SUITE DOES NOT PIN. Of the forms this emitter renders, `x64.cmpbri`
+\ has no byte string here: the selector is deliberately unfused and mints no
+\ compare-and-branch at all, and the diamond below is the one staged in the
+\ dialect. Nor have the scalar double forms: their encoders are pinned one at a
+\ time against llvm-mc in test/compiler/x86-64-asm.f, and the routines the
+\ double fixtures below select run as images in test/x86-64-peer-routines.f,
+\ whose answers hold every render to what this engine's own float words answer.
+\ What else is left unmeasured is a byte no module of this slice can produce,
+\ and each of them is a later slice's:
 \
 \ - THE REGISTERS ABOVE rdx. The pool is rax, rcx, rdx, rsi, rdi and r8..r11
 \   (x64ir.f RESERVED-MASK), and no fixture here is wide enough for the
@@ -78,7 +82,9 @@
 \   put away at once.
 \ - THE FORMS STILL REFUSED BY NAME, one case standing for all of them below:
 \   `x64.neg` and the selects `x64.cmpsel` and `x64.selz`. Each needs a
-\   register the machine names or a lowering, and neither is here.
+\   register the machine names or a lowering, and neither is here. An
+\   `x64.fcmpset` whose condition and result count are not `gt` with one or
+\   `equal` with two is refused the same way, a case for each.
 \ - THE FIELD OF THE CALL TO `die`. Its entry is the host engine's, so the trap
 \   case pins every other byte and holds that field to the entry (DIE-ENTRY).
 \   The call to `throw` in the selected divide is held the same way
@@ -645,6 +651,158 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    3000 CONSTOP RET1
    CLOSE-FUN ;
 
+\ ---- the doubles -------------------------------------------------------------
+\ A double never crosses a routine's boundary: its arguments and its answer are
+\ cells, read as doubles with `bitsreal` and handed back with `realbits` the way
+\ the front end reads them, so a case hands a routine bit patterns and checks the
+\ bits it answers. A fixture shared by several source operations stages the one
+\ F-OP names.
+TYPED-VARIABLE F-OP HIR:opcode
+
+: REALT ( -- IR-ID:ir-type-id )
+   CC BB HIR:REAL-TYPE ;
+
+: ROP1 ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-type-id -- IR-ID:ir-value-id )
+   {: o:HIR:opcode x:IR-ID:ir-value-id t:IR-ID:ir-type-id :}
+   o BODY-ST BODY-LN OPEN-OP
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB t IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+: ROP2 ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-type-id -- IR-ID:ir-value-id )
+   {: o:HIR:opcode x:IR-ID:ir-value-id y:IR-ID:ir-value-id t:IR-ID:ir-type-id :}
+   o BODY-ST BODY-LN OPEN-OP
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   CC BB t IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+: DOUBLE ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: x:IR-ID:ir-value-id :}
+   HIR-OPCODE:BITSREAL x REALT ROP1 ;
+
+: CELL-OF ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: d:IR-ID:ir-value-id :}
+   HIR-OPCODE:REALBITS d CELLT ROP1 ;
+
+\ `( a b -- n )` with the two-double operation F-OP names between the readings.
+: BUILD-FBIN ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   a DOUBLE {: x:IR-ID:ir-value-id :}
+   b DOUBLE {: y:IR-ID:ir-value-id :}
+   F-OP @ x y REALT ROP2 CELL-OF RET1
+   CLOSE-FUN ;
+
+\ `( a b -- n )`, the sum less its left operand. That operand is read after the
+\ add that destroys its register, so selection copies it first with the double
+\ copy, `x64.movsd` (select-x64.f TIED-OPERAND); no other fixture has the shape.
+: BUILD-FKEEP ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   a DOUBLE {: x:IR-ID:ir-value-id :}
+   b DOUBLE {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:FADD x y REALT ROP2 {: s:IR-ID:ir-value-id :}
+   HIR-OPCODE:FSUB s x REALT ROP2 CELL-OF RET1
+   CLOSE-FUN ;
+
+\ `( a -- n )` with the one-double operation F-OP names.
+: BUILD-FUN1 ( -- )
+   1 1 OPEN-FUN
+   ARG+ DOUBLE {: x:IR-ID:ir-value-id :}
+   F-OP @ x REALT ROP1 CELL-OF RET1
+   CLOSE-FUN ;
+
+\ `( a b -- flag )` with the comparison F-OP names.
+: BUILD-FCMP ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   a DOUBLE {: x:IR-ID:ir-value-id :}
+   b DOUBLE {: y:IR-ID:ir-value-id :}
+   F-OP @ x y CELLT ROP2 RET1
+   CLOSE-FUN ;
+
+\ `( a -- flag )` with the comparison against zero F-OP names.
+: BUILD-FCMP0 ( -- )
+   1 1 OPEN-FUN
+   ARG+ DOUBLE {: x:IR-ID:ir-value-id :}
+   F-OP @ x CELLT ROP1 RET1
+   CLOSE-FUN ;
+
+\ `: LEAF ( n -- n ) s>f realbits ;`
+: BUILD-INTREAL ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   HIR-OPCODE:INTREAL a REALT ROP1 CELL-OF RET1
+   CLOSE-FUN ;
+
+\ `: LEAF ( a -- n ) bitsreal f>s ;`
+: BUILD-REALINT ( -- )
+   1 1 OPEN-FUN
+   ARG+ DOUBLE {: x:IR-ID:ir-value-id :}
+   HIR-OPCODE:REALINT x CELLT ROP1 RET1
+   CLOSE-FUN ;
+
+\ `: LEAF ( a -- n ) bitsreal realbits ;` - the eight bytes there and back.
+: BUILD-BITS ( -- )
+   1 1 OPEN-FUN
+   ARG+ DOUBLE CELL-OF RET1
+   CLOSE-FUN ;
+
+\ -pi: the sign and both halves of the cell set, so a literal moved through
+\ fewer than eight bytes answers other bits.
+public
+$C00921FB54442D18 constant FCONST-BITS
+private
+
+: FCONSTOP ( n -- IR-ID:ir-value-id )
+   {: bits:n :}
+   HIR-OPCODE:FCONST BODY-ST BODY-LN OPEN-OP
+   CC BB REALT IR-BUILD:ADD-RESULT
+   CC BB  CC BB HIR:KEY-VALUE  CC BB bits IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CLOSE-VALUE ;
+
+\ `: LEAF ( a -- n ) -pi realbits + ;`
+: BUILD-FCONST ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   FCONST-BITS FCONSTOP CELL-OF {: k:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD k a BINOP RET1
+   CLOSE-FUN ;
+
+\ One call to a one-in one-out callee with nothing carried past it.
+: WCALL0 ( IR-ID:ir-value-id IR-ID:ir-value-id n -- IR-ID:ir-value-id )
+   {: tok:IR-ID:ir-value-id arg:IR-ID:ir-value-id e:n :}
+   HIR-OPCODE:WORDCALL BODY-ST BODY-LN OPEN-OP
+   CC BB tok IR-BUILD:ADD-OPERAND
+   CC BB arg IR-BUILD:ADD-OPERAND
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   e 1 1 WCALL-ATTRS
+   CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC BB id 1 IR-BUILD:OP-RESULT@ ;
+
+\ `: LEAF ( a b -- n ) s>f over s>f rot CALLEE -rot swap f- realbits + ;` - two
+\ doubles made before the call and subtracted after it. It extends the
+\ one-double shape test/compiler/x64-regalloc.f BUILD-FCALL plans into the
+\ frame with a second double. Both are live at once, so they take two slots and
+\ one of them sits away from rsp; the difference reads each from its own.
+: BUILD-FCALL ( n -- )
+   {: e:n :}
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   HIR-OPCODE:INTREAL a REALT ROP1 {: x:IR-ID:ir-value-id :}
+   HIR-OPCODE:INTREAL b REALT ROP1 {: y:IR-ID:ir-value-id :}
+   MEM0 a e WCALL0 {: c:IR-ID:ir-value-id :}
+   HIR-OPCODE:FSUB x y REALT ROP2 CELL-OF {: d:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD c d BINOP RET1
+   CLOSE-FUN ;
+
 \ ---- the module the machine dialect is written into --------------------------
 : X64-BUILDER ( -- IR-BUILD:builder )
    IR-BUILD:PLAN-BEGIN
@@ -1049,6 +1207,41 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    M-RET0
    M-CLOSE ;
 
+\ ---- the double comparison the selector never mints --------------------------
+\ `x64.fcmpset` carries its scratch as a variadic result tail (x64ir.f
+\ DEF-FCMPSET), so nothing before the emitter ties the count to the condition: a
+\ module whose count is wrong for its condition, or whose condition is not one
+\ of the two ucomisd's flags answer, freezes, allocates and is accepted. Each is
+\ staged here as `( a b -- flag )` under the data-stack boundary, with `k`
+\ results.
+: M-XMM ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: g:IR-ID:ir-value-id :}
+   X64IR-OPCODE:MOVQ-XR M-OPEN
+   g M-OPERAND+
+   CC MB  CC MB X64IR:FPR-TYPE  IR-BUILD:ADD-RESULT
+   M-CLOSE-VALUE ;
+
+: BUILD-BADFCMP ( X64IR:cond n -- IR-BUILD:module )
+   {: c:X64IR:cond k:n :}
+   M-MOD
+   M-BIND-MACHINE
+   BINARY-SIGN M-FUN
+   16 M-DTAKE {: t0:IR-ID:ir-value-id :}
+   t0 0 M-DLOAD {: a:IR-ID:ir-value-id t1:IR-ID:ir-value-id :}
+   t1 8 M-DLOAD {: b:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   a M-XMM {: x:IR-ID:ir-value-id :}
+   b M-XMM {: y:IR-ID:ir-value-id :}
+   X64IR-OPCODE:FCMPSET M-OPEN
+   x M-OPERAND+
+   y M-OPERAND+
+   k 0 ?do M-RESULT+ loop
+   CC MB X64IR:KEY-COND  CC MB c X64IR:COND-ATTR  M-ATTR+
+   M-CLOSE-VALUE {: f:IR-ID:ir-value-id :}
+   f t2 0 M-DSTORE {: t3:IR-ID:ir-value-id :}
+   t3 8 M-DPUBLISH
+   M-RET0
+   M-CLOSE ;
+
 \ ---- running selection, allocation, validation and emission ------------------
 \ The contract every case emits under: a leaf computing in this machine's nine
 \ allocatable general registers, returning to its caller, reserving the frame it
@@ -1431,6 +1624,23 @@ $100000000 constant FAR-ENTRY
    0 W-CTX !
    s" a form this emitter does not render is refused by name in a routine whose shape and assignment are both agreed" T-LABEL
    [: NEGATOR-EMIT ;] E-X64EMIT-FORM TTHROWSQ
+   X64EMIT:RETIRE ;
+
+: BADFCMP-EMIT ( X64IR:cond n -- )
+   BUILD-BADFCMP 2 1 M-DALLOCATED 0 PLACED ;
+
+\ `gt` answers with one flag and `equal` with the flag and the `setnp` scratch;
+\ every other pairing of condition and count is refused by name.
+: FCMP-REFUSE-CASES ( IR-CTX:ctx -- )
+   0 W-CTX !
+   s" a gt fcmpset carrying a scratch result is refused: seta writes one byte" T-LABEL
+   [: X64IR-COND:GT 2 BADFCMP-EMIT ;] E-X64EMIT-FORM TTHROWSQ
+   X64EMIT:RETIRE
+   s" an equal fcmpset without its scratch result is refused: the setnp byte has no register" T-LABEL
+   [: X64IR-COND:EQUAL 1 BADFCMP-EMIT ;] E-X64EMIT-FORM TTHROWSQ
+   X64EMIT:RETIRE
+   s" an fcmpset under a condition other than gt and equal is refused: ucomisd writes the unsigned flags" T-LABEL
+   [: X64IR-COND:LT 1 BADFCMP-EMIT ;] E-X64EMIT-FORM TTHROWSQ
    X64EMIT:RETIRE ;
 
 \ WHAT A REFUSED EMISSION LEAVES BEHIND, which is nothing: the refusal above is
@@ -1896,6 +2106,7 @@ public
    WBND [: ADDRESSED-CASES ;] IR-CTX:WITH-CONTEXT
    STATE-CASES
    WBND [: MACHINE-REFUSE-CASES ;] IR-CTX:WITH-CONTEXT
+   WBND [: FCMP-REFUSE-CASES ;] IR-CTX:WITH-CONTEXT
    WBND [: AFTER-REFUSE-CASES ;] IR-CTX:WITH-CONTEXT
    WBND [: FAR-REFUSE-CASES ;] IR-CTX:WITH-CONTEXT
    WBND [: UNACCEPTED-CASES ;] IR-CTX:WITH-CONTEXT

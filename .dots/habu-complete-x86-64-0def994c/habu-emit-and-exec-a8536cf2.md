@@ -1,9 +1,11 @@
 ---
 title: Emit and execute x86 scalar floats
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.492952+03:00"
+closed-at: "2026-09-30T15:07:00.095144+03:00"
+close-reason: all 15 double forms render and run natively (19 float images, 62 routines bad=0); engine unchanged at 613a259c; gate ran 501/501, red only the known aio-uring flake
 ---
 
 Problem: after C7a the float forms select and allocate but `src/compiler/native/emit-x64.f` renders none of them. Second half of the float work.

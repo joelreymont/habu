@@ -1186,12 +1186,12 @@ private
 \ One operand and one result with no tie. `sqrtsd` writes a register the source
 \ need not share; `cvtsi2sd` rounds a cell to the nearest double; `cvttsd2si`
 \ truncates a double toward zero, and a NaN or a double outside a cell answers
-\ $8000000000000000. `realint` is defined there - `f>s` truncates toward zero,
-\ saturates at the ends and answers 0 for a NaN (src/compiler/native/hir-word.f,
-\ lib/fmt.f) - and this bare form diverges from it: the divergence is open, and
-\ dot habu-emit-and-exec-a8536cf2 owns it; `movq` moves
-\ eight bytes unchanged, `x64.movq-xr` from a general register into an XMM one
-\ and `x64.movq-rx` back.
+\ $8000000000000000. So this bare form is not `realint`, which `f>s` defines -
+\ truncate toward zero, saturate at the ends and answer 0 for a NaN
+\ (src/compiler/native/hir-word.f, lib/fmt.f): select-x64.f EMIT-REALINT
+\ finishes it with two `x64.fcmpset` flags and no branch. `movq` moves eight
+\ bytes unchanged, `x64.movq-xr` from a general register into an XMM one and
+\ `x64.movq-rx` back.
 : DEF-CROSS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id X64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder ti:IR-ID:ir-type-id to:IR-ID:ir-type-id
       o:X64IR:opcode :}

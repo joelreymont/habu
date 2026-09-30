@@ -67,9 +67,9 @@
 \ with the two answers this pass cannot give: the branch that hands a zero
 \ divisor to the entry above, and `MIN-N / -1`, which raises #DE on this machine
 \ where Habu's `/` wraps to MIN-N, so the render screens the divisor before it
-\ divides (docs/x86-64.md "Division semantics"). It refuses every double form
-\ by name (E-X64EMIT-FORM), so the doubles are lowered, placed and validated
-\ here but are not yet bytes.
+\ divides (docs/x86-64.md "Division semantics"). It renders every double form
+\ this pass selects, and reads the flags of `x64.fcmpset` the one way ucomisd
+\ leaves them for each of its two conditions.
 \
 \ AND THE DOUBLES ARE SSE2 SCALAR FORMS. A source value whose TYPE is the double
 \ is a value of the XMM file (REAL?), and every floating source operation selects
@@ -1338,7 +1338,7 @@ F-SIGN-MASK invert constant F-MAGNITUDE-MASK
 
 \ Operand 0 is the left-hand side. `equal` carries the byte `setnp` writes as a
 \ second result nothing reads, and `gt` carries none (x64ir.f DEF-FCMPSET).
-: EMIT-FCMPSET ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id X64IR:cond -- )
+: FCMPSET ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id X64IR:cond -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id l:IR-ID:ir-value-id r:IR-ID:ir-value-id c:X64IR:cond :}
    id X64IR-OPCODE:FCMPSET OPEN
    l OPERAND+
@@ -1347,7 +1347,12 @@ F-SIGN-MASK invert constant F-MAGNITUDE-MASK
    c X64IR-COND:EQUAL X64IR-COND:EQ if RESULT+ then
    CTX BLD  CTX BLD X64IR:KEY-COND  CTX BLD c X64IR:COND-ATTR  IR-BUILD:ADD-ATTR
    CLOSE-VALUE
-   id 0 RESULT-AT  ACC  VBIND ;
+   ACC ;
+
+: EMIT-FCMPSET ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id X64IR:cond -- )
+   {: id:IR-ID:ir-op-id l:IR-ID:ir-value-id r:IR-ID:ir-value-id c:X64IR:cond :}
+   id l r c FCMPSET {: v:IR-ID:ir-value-id :}
+   id 0 RESULT-AT  v  VBIND ;
 
 \ `gt` and `equal` are the two relations ucomisd answers false on unordered, so
 \ a less-than exchanges its operands, and a comparison against zero compares
@@ -1373,6 +1378,42 @@ F-SIGN-MASK invert constant F-MAGNITUDE-MASK
    {: id:IR-ID:ir-op-id :}
    id 0 EMIT-DOUBLE {: z:IR-ID:ir-value-id :}
    id  id 0 OPERAND  z  X64IR-COND:EQUAL  EMIT-FCMPSET ;
+
+\ `f>s` truncates toward zero, saturates at both ends and answers zero for a NaN
+\ (src/compiler/native/hir-word.f DEF-FLOAT), which is ARM64's fcvtzs whole.
+\ cvttsd2si truncates the same way but answers MIN-CELL for a NaN and for every
+\ double outside a cell, so two flags finish it and nothing branches. `gt`
+\ against the largest double below 2^63 is all ones exactly where the answer is
+\ MAX-CELL, which is MIN-CELL with every bit flipped; below -2^63 MIN-CELL is
+\ already the answer. A double `equal` to itself is all ones except on a NaN,
+\ whose answer the mask clears.
+$43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or more
+
+\ A tied form over two values this rule made and reads once: the one it
+\ destroys dies here, so it needs no copy.
+: EMIT-FRESH-TIED ( IR-ID:ir-op-id X64IR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id o:X64IR:opcode d:IR-ID:ir-value-id v:IR-ID:ir-value-id :}
+   at o OPEN
+   d OPERAND+
+   v OPERAND+
+   RESULT+
+   CLOSE-VALUE
+   ACC ;
+
+: EMIT-REALINT ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND {: x:IR-ID:ir-value-id :}
+   id X64IR-OPCODE:CVTTSD2SI OPEN
+   x OPERAND+
+   RESULT+
+   CLOSE-VALUE
+   ACC {: t:IR-ID:ir-value-id :}
+   id REALINT-TOP EMIT-DOUBLE {: top:IR-ID:ir-value-id :}
+   id x top X64IR-COND:GT FCMPSET {: past:IR-ID:ir-value-id :}
+   id X64IR-OPCODE:XOR t past EMIT-FRESH-TIED {: sat:IR-ID:ir-value-id :}
+   id x x X64IR-COND:EQUAL FCMPSET {: num:IR-ID:ir-value-id :}
+   id X64IR-OPCODE:AND sat num EMIT-FRESH-TIED {: v:IR-ID:ir-value-id :}
+   id 0 RESULT-AT  v  VBIND ;
 
 \ ---- selecting the memory operations -----------------------------------------
 \ The source order and the machine order are ONE order.
@@ -1957,7 +1998,7 @@ F-SIGN-MASK invert constant F-MAGNITUDE-MASK
       fltz     OF id EMIT-FLTZ ENDOF
       feqz     OF id EMIT-FEQZ ENDOF
       intreal  OF id X64IR-OPCODE:CVTSI2SD EMIT-CROSS ENDOF
-      realint  OF id X64IR-OPCODE:CVTTSD2SI EMIT-CROSS ENDOF
+      realint  OF id EMIT-REALINT ENDOF
       bitsreal OF id X64IR-OPCODE:MOVQ-XR EMIT-CROSS ENDOF
       realbits OF id X64IR-OPCODE:MOVQ-RX EMIT-CROSS ENDOF
       quot     OF id EMIT-QUOT ENDOF

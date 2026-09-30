@@ -574,11 +574,21 @@ public
    $66 W32 $0F2E l XMM>N r XMM>N s SSE-RR ;
 
 \ Hardware conversions only: range/NaN handling for Habu's realint belongs to
-\ lowering, not this byte encoder.
+\ lowering (src/compiler/native/select-x64.f EMIT-REALINT), not this byte
+\ encoder.
 : ENC-CVTSI2SD-RR ( xmm r64 ptr a -- ) {: d:xmm sr:r64 s:ptr :}
    $F2 W64 $0F2A d XMM>N sr R64>N s SSE-RR ;
 : ENC-CVTTSD2SI-RR ( r64 xmm ptr a -- ) {: d:r64 sr:xmm s:ptr :}
    $F2 W64 $0F2C d R64>N sr XMM>N s SSE-RR ;
+
+\ The eight bytes moved between the two files unchanged, a NaN's payload and a
+\ signalling NaN included. The XMM register is the ModRM reg field in both
+\ directions and the opcode says which way: 66 REX.W 0F 6E /r into it,
+\ 66 REX.W 0F 7E /r out of it.
+: ENC-MOVQ-XR ( xmm r64 ptr a -- ) {: d:xmm sr:r64 s:ptr :}
+   $66 W64 $0F6E d XMM>N sr R64>N s SSE-RR ;
+: ENC-MOVQ-RX ( r64 xmm ptr a -- ) {: d:r64 sr:xmm s:ptr :}
+   $66 W64 $0F7E sr XMM>N d R64>N s SSE-RR ;
 
 \ ---- widening moves ----------------------------------------------------------
 \ Every one of these widens into a 64-bit register, so REX.W is always set. movsxd

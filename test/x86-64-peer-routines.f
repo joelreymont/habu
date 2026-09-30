@@ -53,6 +53,7 @@ require test/compiler/x64-chain-fixture.f
 require src/habu/boot-x64.f
 require test/x86-64-peer-harness.f
 require src/habu/arith-abi.f
+require lib/ieee754.f
 
 \ The fixtures stay in the package that stages them; this adds each one's trip
 \ through the rows to the harness's next address.
@@ -179,6 +180,17 @@ private
 : TERMINAL-BODY ( IR-CTX:ctx -- )
    HIR-MOD CALLEE @ BUILD-TERMINAL 1 0 NORET ROWS, ;
 : QUOTER-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-QUOTER QUOTING-ROWS, ;
+: FBIN-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-FBIN 2 1 NBACK:L-NONE ROWS, ;
+: FKEEP-BODY ( IR-CTX:ctx -- )    HIR-MOD BUILD-FKEEP 2 1 NBACK:L-NONE ROWS, ;
+: FUN1-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-FUN1 1 1 NBACK:L-NONE ROWS, ;
+: FCMP-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-FCMP 2 1 NBACK:L-NONE ROWS, ;
+: FCMP0-BODY ( IR-CTX:ctx -- )    HIR-MOD BUILD-FCMP0 1 1 NBACK:L-NONE ROWS, ;
+: INTREAL-BODY ( IR-CTX:ctx -- )  HIR-MOD BUILD-INTREAL 1 1 NBACK:L-NONE ROWS, ;
+: REALINT-BODY ( IR-CTX:ctx -- )  HIR-MOD BUILD-REALINT 1 1 NBACK:L-NONE ROWS, ;
+: BITS-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-BITS 1 1 NBACK:L-NONE ROWS, ;
+: FCONST-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-FCONST 1 1 NBACK:L-NONE ROWS, ;
+: FCALL-BODY ( IR-CTX:ctx -- )
+   HIR-MOD CALLEE @ BUILD-FCALL 2 1 NBACK:L-CALLED ROWS, ;
 
 \ A routine staged in the dialect has no source operation for the rows to
 \ select, so it is allocated, accepted and emitted the way the emitter's own
@@ -240,6 +252,23 @@ public
 : DIVZERO-ROUTINE ( n -- )
    CALLEE !  WBND [: DIVZERO-BODY ;] IR-CTX:WITH-CONTEXT ;
 : ADDRESSED-REFUSAL ( -- ) WBND [: ADDRESSED-REFUSED ;] IR-CTX:WITH-CONTEXT ;
+
+\ The doubles: the source operation, where a fixture stages several, first.
+: FBIN-ROUTINE ( HIR:opcode -- )
+   F-OP !  WBND [: FBIN-BODY ;] IR-CTX:WITH-CONTEXT ;
+: FKEEP-ROUTINE ( -- )    WBND [: FKEEP-BODY ;] IR-CTX:WITH-CONTEXT ;
+: FUN1-ROUTINE ( HIR:opcode -- )
+   F-OP !  WBND [: FUN1-BODY ;] IR-CTX:WITH-CONTEXT ;
+: FCMP-ROUTINE ( HIR:opcode -- )
+   F-OP !  WBND [: FCMP-BODY ;] IR-CTX:WITH-CONTEXT ;
+: FCMP0-ROUTINE ( HIR:opcode -- )
+   F-OP !  WBND [: FCMP0-BODY ;] IR-CTX:WITH-CONTEXT ;
+: INTREAL-ROUTINE ( -- )  WBND [: INTREAL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: REALINT-ROUTINE ( -- )  WBND [: REALINT-BODY ;] IR-CTX:WITH-CONTEXT ;
+: BITS-ROUTINE ( -- )     WBND [: BITS-BODY ;] IR-CTX:WITH-CONTEXT ;
+: FCONST-ROUTINE ( -- )   WBND [: FCONST-BODY ;] IR-CTX:WITH-CONTEXT ;
+: FCALL-ROUTINE ( n -- )
+   CALLEE !  WBND [: FCALL-BODY ;] IR-CTX:WITH-CONTEXT ;
 ;package
 
 \ The same trip for the fixtures the chain suite stages. Twelve values live at
@@ -401,6 +430,21 @@ public
    resumed LBL,
    STATUS RESUMED,
    RDI ZERO-REG, ;
+
+\ A callee `( n -- n )` that answers its cell doubled and writes every XMM
+\ register on the way, which a call is allowed to: every contract of this
+\ machine destroys the whole file (src/arch/x86-64/abi.f). A double the caller
+\ kept in a register across the call reads this pattern back, a signalling NaN
+\ no case computes.
+$7FF4DEADBEEF0000 constant XMM-JUNK
+
+: XMM-CLOBBER, ( -- )
+   RAX XMM-JUNK IMM
+   16 0 ?do  i >XMM RAX ASM-SINK ENC-MOVQ-XR  loop
+   RAX R12 -8 MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-ADD-RR
+   RAX R12 -8 MEM-OFF ASM-SINK ENC-MOV-MR
+   ASM-SINK ENC-RET ;
 
 ;using
 ;using
@@ -783,6 +827,249 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    ALIGN, ENTRY,
    callee X64EMIT-TEST:DIVZERO-ROUTINE
    s" divzero" false WRITE-IMAGE ;
+
+\ ---- the doubles ---------------------------------------------------------------
+\ A case hands the routine bit patterns and checks the bits it answers. Where
+\ IEEE 754 fixes the answer, the bits a case expects are the ones this engine's
+\ own word leaves over the same bits, so the image holds the x86-64 render to
+\ the engine that stages it; none of those cases makes a NaN, whose bits the two
+\ machines choose differently. Where Habu states the answer - `f>s` at the ends
+\ and on a NaN, a comparison with a NaN on either side - the case names it and
+\ this engine's own word is held to the same answer first.
+$3FF0000000000000 constant F-ONE
+$4000000000000000 constant F-TWO
+$4008000000000000 constant F-THREE
+$3FF8000000000000 constant F-HALF3               \ 1.5
+$3FD0000000000000 constant F-QUARTER
+$3FB999999999999A constant F-TENTH               \ 0.1, rounded
+$3FC999999999999A constant F-FIFTH               \ 0.2, rounded
+$C00599999999999A constant F-NEG-TWO-SEVEN       \ -2.7
+$8000000000000000 constant F-NEGZERO
+$7FF0000000000000 constant F-INF
+$FFF0000000000000 constant F-NEGINF
+$7FEFFFFFFFFFFFFF constant F-MAX                 \ the largest finite double
+1 constant F-TINY                                \ the smallest subnormal
+$7FF8000000000000 constant F-NAN
+$FFF8000000000000 constant F-NEGNAN
+$43E0000000000000 constant F-TWO63               \ 2^63, one past MAX-CELL
+$C3E0000000000000 constant F-NEGTWO63            \ -2^63, MIN-CELL exactly
+$43DFFFFFFFFFFFFF constant F-BELOW63             \ the largest double below 2^63
+
+TYPED-VARIABLE FBIN-KEY [ r r -- r ]
+TYPED-VARIABLE FUN1-KEY [ r -- r ]
+TYPED-VARIABLE FCMP-KEY [ r r -- bool ]
+TYPED-VARIABLE FCMP0-KEY [ r -- bool ]
+
+: FBIN-CASE, ( n n -- ) {: a:n b:n :}
+   a b  a IEEE754:BITS>F64 b IEEE754:BITS>F64 FBIN-KEY @ execute IEEE754:F64>BITS
+   CASE2, ;
+
+\ No case divides zero by zero or subtracts infinities: each answer is a number,
+\ an infinity or a signed zero, rounded to nearest - 0.1 and 0.2 add to the
+\ double above 0.3, the largest double overflows, the smallest subnormal halves
+\ to zero, and one over minus zero is minus infinity.
+: FBIN-CASES, ( [ r r -- r ] -- )
+   FBIN-KEY !
+   false OPEN,
+   F-TENTH F-FIFTH FBIN-CASE,
+   F-ONE F-THREE FBIN-CASE,
+   F-MAX F-MAX FBIN-CASE,
+   F-TINY F-TWO FBIN-CASE,
+   F-ONE F-NEGZERO FBIN-CASE,
+   CLOSE, ENTRY, ;
+
+: FBIN-IMAGE ( HIR:opcode ptr u8 n [ r r -- r ] -- )
+   FBIN-CASES,
+   {: o:HIR:opcode name:ptr u:n :}
+   o X64EMIT-TEST:FBIN-ROUTINE
+   name u false WRITE-IMAGE ;
+
+\ The same cases through `(a + b) - a`, whose `a` is copied before the add
+\ destroys it. The largest double's sum overflows to an infinity the
+\ subtraction keeps, so no case makes a NaN either.
+: FKEEP-IMAGE ( -- )
+   [: over f+ swap f- ;] FBIN-CASES,
+   X64EMIT-TEST:FKEEP-ROUTINE
+   s" fkeep" false WRITE-IMAGE ;
+
+: FUN1-CASE, ( n -- ) {: a:n :}
+   a  a IEEE754:BITS>F64 FUN1-KEY @ execute IEEE754:F64>BITS  CASE1, ;
+
+: FUN1-CLOSE, ( HIR:opcode ptr u8 n -- ) {: o:HIR:opcode name:ptr u:n :}
+   CLOSE, ENTRY, o X64EMIT-TEST:FUN1-ROUTINE
+   name u false WRITE-IMAGE ;
+
+\ The sign and the magnitude are bit operations, a NaN's sign included.
+: FNEG-IMAGE ( -- )
+   [: fnegate ;] FUN1-KEY !
+   false OPEN,
+   F-HALF3 FUN1-CASE,
+   0 FUN1-CASE,
+   F-NEGINF FUN1-CASE,
+   F-NAN 1 + FUN1-CASE,
+   HIR-OPCODE:FNEG s" fnegate" FUN1-CLOSE, ;
+
+: FABS-IMAGE ( -- )
+   [: fabs ;] FUN1-KEY !
+   false OPEN,
+   F-HALF3 F-NEGZERO or FUN1-CASE,
+   F-NEGZERO FUN1-CASE,
+   F-NEGINF FUN1-CASE,
+   F-NEGNAN 1 + FUN1-CASE,
+   HIR-OPCODE:FABS s" fabs" FUN1-CLOSE, ;
+
+\ No negative operand: the square root of one is a NaN.
+: FSQRT-IMAGE ( -- )
+   [: fsqrt ;] FUN1-KEY !
+   false OPEN,
+   F-TWO FUN1-CASE,
+   F-QUARTER FUN1-CASE,
+   F-NEGZERO FUN1-CASE,
+   F-INF FUN1-CASE,
+   F-TINY FUN1-CASE,
+   HIR-OPCODE:FSQRT s" fsqrt" FUN1-CLOSE, ;
+
+: FCMP-CASE, ( n n n -- ) {: a:n b:n want:n :}
+   a IEEE754:BITS>F64 b IEEE754:BITS>F64 FCMP-KEY @ execute
+   if -1 else 0 then  want T=
+   a b want CASE2, ;
+
+\ The relation's flag for 1 against 2, 2 against 1 and minus zero against zero,
+\ then a NaN on each side, which every relation answers false.
+: FCMP-IMAGE ( HIR:opcode ptr u8 n n n n [ r r -- bool ] -- )
+   FCMP-KEY !
+   {: o:HIR:opcode name:ptr u:n lt:n gt:n eq:n :}
+   s" this engine's own comparison answers each case's flag, false with a NaN on either side" T-LABEL
+   false OPEN,
+   F-ONE F-TWO lt FCMP-CASE,
+   F-TWO F-ONE gt FCMP-CASE,
+   F-NEGZERO 0 eq FCMP-CASE,
+   F-NAN F-ONE 0 FCMP-CASE,
+   F-ONE F-NAN 0 FCMP-CASE,
+   CLOSE, ENTRY, o X64EMIT-TEST:FCMP-ROUTINE
+   name u false WRITE-IMAGE ;
+
+: FCMP0-CASE, ( n n -- ) {: a:n want:n :}
+   a IEEE754:BITS>F64 FCMP0-KEY @ execute  if -1 else 0 then  want T=
+   a want CASE1, ;
+
+\ Minus one, one and minus zero, then a NaN of each sign: a negative NaN is
+\ not below zero.
+: FCMP0-IMAGE ( HIR:opcode ptr u8 n n n [ r -- bool ] -- )
+   FCMP0-KEY !
+   {: o:HIR:opcode name:ptr u:n neg:n zero:n :}
+   s" this engine's own comparison with zero answers each case's flag, false on a NaN of either sign" T-LABEL
+   false OPEN,
+   F-ONE F-NEGZERO or neg FCMP0-CASE,
+   F-ONE 0 FCMP0-CASE,
+   F-NEGZERO zero FCMP0-CASE,
+   F-NAN 0 FCMP0-CASE,
+   F-NEGNAN 0 FCMP0-CASE,
+   CLOSE, ENTRY, o X64EMIT-TEST:FCMP0-ROUTINE
+   name u false WRITE-IMAGE ;
+
+: FCMP-IMAGES ( -- )
+   HIR-OPCODE:FLT s" flt" -1 0 0 [: f< ;] FCMP-IMAGE
+   HIR-OPCODE:FGT s" fgt" 0 -1 0 [: f> ;] FCMP-IMAGE
+   HIR-OPCODE:FEQ s" feq" 0 0 -1 [: f= ;] FCMP-IMAGE
+   HIR-OPCODE:FLTZ s" fltz" -1 0 [: f0< ;] FCMP0-IMAGE
+   HIR-OPCODE:FEQZ s" feqz" 0 -1 [: f0= ;] FCMP0-IMAGE ;
+
+: INTREAL-CASE, ( n -- ) {: a:n :}
+   a  a s>f IEEE754:F64>BITS  CASE1, ;
+
+\ The ends of the cell and 2^53 + 1, a tie that rounds to the even 2^53.
+: INTREAL-IMAGE ( -- )
+   false OPEN,
+   3 INTREAL-CASE,
+   -7 INTREAL-CASE,
+   MAX-CELL INTREAL-CASE,
+   MIN-CELL INTREAL-CASE,
+   9007199254740993 INTREAL-CASE,
+   CLOSE, ENTRY, X64EMIT-TEST:INTREAL-ROUTINE
+   s" intreal" false WRITE-IMAGE ;
+
+: REALINT-CASE, ( n n -- ) {: a:n want:n :}
+   a IEEE754:BITS>F64 f>s want T=
+   a want CASE1, ;
+
+\ `f>s` truncates toward zero, saturates at both ends and answers zero for a
+\ NaN, where `cvttsd2si` alone answers MIN-CELL for all three.
+: REALINT-IMAGE ( -- )
+   s" this engine's own f>s answers each case's cell: saturated at the ends, zero for a NaN" T-LABEL
+   false OPEN,
+   F-NAN 0 REALINT-CASE,
+   F-TWO63 MAX-CELL REALINT-CASE,
+   F-NEGTWO63 MIN-CELL REALINT-CASE,
+   F-INF MAX-CELL REALINT-CASE,
+   F-NEGINF MIN-CELL REALINT-CASE,
+   F-NEG-TWO-SEVEN -2 REALINT-CASE,
+   CLOSE, ENTRY, X64EMIT-TEST:REALINT-ROUTINE
+   s" realint" false WRITE-IMAGE ;
+
+\ Next to the bounds: the largest double below 2^63 is a cell, the next double
+\ below -2^63 is not, a NaN with its sign set is still zero, and 1.5 truncates.
+: REALINT-NEAR-IMAGE ( -- )
+   false OPEN,
+   F-BELOW63 $7FFFFFFFFFFFFC00 REALINT-CASE,
+   F-NEGTWO63 1 + MIN-CELL REALINT-CASE,
+   F-NEGNAN 0 REALINT-CASE,
+   F-HALF3 1 REALINT-CASE,
+   CLOSE, ENTRY, X64EMIT-TEST:REALINT-ROUTINE
+   s" realint-near" false WRITE-IMAGE ;
+
+\ The eight bytes come back as they went: a signalling NaN is not quieted.
+: BITS-IMAGE ( -- )
+   false OPEN,
+   $7FF0000000000001 dup CASE1,
+   F-NEGZERO dup CASE1,
+   -1 dup CASE1,
+   F-TINY dup CASE1,
+   CLOSE, ENTRY, X64EMIT-TEST:BITS-ROUTINE
+   s" bits" false WRITE-IMAGE ;
+
+: FCONST-IMAGE ( -- )
+   false OPEN,
+   0 X64EMIT-TEST:FCONST-BITS CASE1,
+   5 X64EMIT-TEST:FCONST-BITS 5 + CASE1,
+   CLOSE, ENTRY, X64EMIT-TEST:FCONST-ROUTINE
+   s" fconst" false WRITE-IMAGE ;
+
+: FCALL-CASE, ( n n -- ) {: a:n b:n :}
+   a b  a 2 *  a s>f b s>f f- IEEE754:F64>BITS +  CASE2, ;
+
+\ The callee, placed first, writes every XMM register and doubles the first
+\ cell, so the answer is that plus the bits of `a - b`, both doubles made before
+\ the call. No case has a equal to b: two doubles put away in one slot come back
+\ as one, and their difference is zero.
+: FCALL-IMAGE ( -- )
+   false OPEN,
+   1 3 FCALL-CASE,
+   -3 5 FCALL-CASE,
+   MAX-CELL -1 FCALL-CASE,
+   CLOSE,
+   POSITION {: callee:n :}
+   XMM-CLOBBER,
+   ALIGN, ENTRY,
+   callee X64EMIT-TEST:FCALL-ROUTINE
+   s" fcall" false WRITE-IMAGE ;
+
+: FLOAT-IMAGES ( -- )
+   HIR-OPCODE:FADD s" fadd" [: f+ ;] FBIN-IMAGE
+   HIR-OPCODE:FSUB s" fsub" [: f- ;] FBIN-IMAGE
+   HIR-OPCODE:FMUL s" fmul" [: f* ;] FBIN-IMAGE
+   HIR-OPCODE:FDIV s" fdiv" [: f/ ;] FBIN-IMAGE
+   FKEEP-IMAGE
+   FNEG-IMAGE
+   FABS-IMAGE
+   FSQRT-IMAGE
+   FCMP-IMAGES
+   INTREAL-IMAGE
+   REALINT-IMAGE
+   REALINT-NEAR-IMAGE
+   BITS-IMAGE
+   FCONST-IMAGE
+   FCALL-IMAGE ;
 public
 : RUN ( -- )
    T-RESET
@@ -813,6 +1100,7 @@ public
    DIVNEG-IMAGE
    REMAINDER-IMAGE
    DIVZERO-IMAGE
+   FLOAT-IMAGES
    SB-RESET DIR$ SB-APPEND s" /manifest" SB-APPEND SB$ TMP-PATH
    MANIFEST BUF:SPAN$ BUF:BLEN>N WRITE-ALL
    X64EMIT-TEST:ADDRESSED-REFUSAL

@@ -559,6 +559,46 @@ create SINK BUF:HDR-BYTES allot
    \ llvm-mc: cvttsd2siq %xmm1, %rcx
    RCX XMM1 SINK ENC-CVTTSD2SI-RR   s" f2480f2cc9" X= ;
 
+\ movq moves eight bytes between the two files unchanged. The XMM register is the
+\ ModRM reg field in both directions, so each pair crosses REX.R with REX.B.
+: SSE-CROSS ( -- )
+   \ llvm-mc: movq %rax, %xmm0
+   XMM0 RAX SINK ENC-MOVQ-XR   s" 66480f6ec0" X=
+   \ llvm-mc: movq %xmm0, %rax
+   RAX XMM0 SINK ENC-MOVQ-RX   s" 66480f7ec0" X=
+   \ llvm-mc: movq %r8, %xmm0
+   XMM0 R8 SINK ENC-MOVQ-XR   s" 66490f6ec0" X=
+   \ llvm-mc: movq %xmm0, %r8
+   R8 XMM0 SINK ENC-MOVQ-RX   s" 66490f7ec0" X=
+   \ llvm-mc: movq %r15, %xmm0
+   XMM0 R15 SINK ENC-MOVQ-XR   s" 66490f6ec7" X=
+   \ llvm-mc: movq %xmm0, %r15
+   R15 XMM0 SINK ENC-MOVQ-RX   s" 66490f7ec7" X=
+   \ llvm-mc: movq %rax, %xmm8
+   XMM8 RAX SINK ENC-MOVQ-XR   s" 664c0f6ec0" X=
+   \ llvm-mc: movq %xmm8, %rax
+   RAX XMM8 SINK ENC-MOVQ-RX   s" 664c0f7ec0" X=
+   \ llvm-mc: movq %r8, %xmm8
+   XMM8 R8 SINK ENC-MOVQ-XR   s" 664d0f6ec0" X=
+   \ llvm-mc: movq %xmm8, %r8
+   R8 XMM8 SINK ENC-MOVQ-RX   s" 664d0f7ec0" X=
+   \ llvm-mc: movq %r15, %xmm8
+   XMM8 R15 SINK ENC-MOVQ-XR   s" 664d0f6ec7" X=
+   \ llvm-mc: movq %xmm8, %r15
+   R15 XMM8 SINK ENC-MOVQ-RX   s" 664d0f7ec7" X=
+   \ llvm-mc: movq %rax, %xmm15
+   XMM15 RAX SINK ENC-MOVQ-XR   s" 664c0f6ef8" X=
+   \ llvm-mc: movq %xmm15, %rax
+   RAX XMM15 SINK ENC-MOVQ-RX   s" 664c0f7ef8" X=
+   \ llvm-mc: movq %r8, %xmm15
+   XMM15 R8 SINK ENC-MOVQ-XR   s" 664d0f6ef8" X=
+   \ llvm-mc: movq %xmm15, %r8
+   R8 XMM15 SINK ENC-MOVQ-RX   s" 664d0f7ef8" X=
+   \ llvm-mc: movq %r15, %xmm15
+   XMM15 R15 SINK ENC-MOVQ-XR   s" 664d0f6eff" X=
+   \ llvm-mc: movq %xmm15, %r15
+   R15 XMM15 SINK ENC-MOVQ-RX   s" 664d0f7eff" X= ;
+
 : SSE-REFUSALS ( -- )
    \ Preserve an existing instruction as well as emitting no partial prefix.
    RAX SINK ENC-PUSH
@@ -571,6 +611,10 @@ create SINK BUF:HDR-BYTES allot
    [: XMM0 16 32 lshift >MEM SINK ENC-MOVSD-RM ;] E-OPERAND TTHROWSQ
    [: XMM0 4 37 lshift >MEM SINK ENC-MOVSD-MR ;] E-OPERAND TTHROWSQ
    [: XMM0 1 44 lshift >MEM SINK ENC-MOVSD-RM ;] E-OPERAND TTHROWSQ
+   [: 16 >XMM RAX SINK ENC-MOVQ-XR ;] E-OPERAND TTHROWSQ
+   [: XMM0 16 >R64 SINK ENC-MOVQ-XR ;] E-OPERAND TTHROWSQ
+   [: -1 >R64 XMM0 SINK ENC-MOVQ-RX ;] E-OPERAND TTHROWSQ
+   [: RAX 16 >XMM SINK ENC-MOVQ-RX ;] E-OPERAND TTHROWSQ
    s" 50" X= ;
 
 \ The five relative branches. A displacement is measured from the END of the
@@ -647,6 +691,11 @@ create SINK BUF:HDR-BYTES allot
    s" X64-BAD-CVT ( X64ASM:xmm X64ASM:xmm ptr a -- ) X64ASM:ENC-CVTSI2SD-RR"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" X64-BAD-CVTT ( X64ASM:r32 X64ASM:xmm ptr a -- ) X64ASM:ENC-CVTTSD2SI-RR"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" X64-GOOD-MOVQ ( X64ASM:xmm X64ASM:r64 ptr a -- ) X64ASM:ENC-MOVQ-XR"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   \ the direction is the type: a general register first is the other form
+   s" X64-BAD-MOVQ ( X64ASM:xmm X64ASM:r64 ptr a -- ) X64ASM:ENC-MOVQ-RX"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : NOMINAL-CASES ( -- )
@@ -696,7 +745,7 @@ create SINK BUF:HDR-BYTES allot
    IMMEDIATE-STORES STORE-REFUSALS
    PADDING-AND-TRAP
    SHIFTS CONTROL ATOMICS MEMORY-TRAPS CONDITION-NAMES REGISTER-NAMES BRANCHES
-   SSE-REGISTERS SSE-MOVES SSE-ARITHMETIC SSE-REFUSALS SSE-NOMINAL-CASES
+   SSE-REGISTERS SSE-MOVES SSE-ARITHMETIC SSE-CROSS SSE-REFUSALS SSE-NOMINAL-CASES
    REGISTER-REFUSALS IMMEDIATE-REFUSALS MEMORY-REFUSALS BRANCH-REFUSALS
    LOCK-REFUSALS NOMINAL-CASES RELOCATION-CONTRACT
    SINK BUF:DISPOSE

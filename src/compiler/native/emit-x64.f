@@ -52,9 +52,10 @@
 \ routine whatever it ends in, and a `does>` body is SIZE less its
 \ FUNCTION-OFFSET@.
 \
-\ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the negate, the two
-\ selects `cmpsel` and `selz`, and every scalar double form, which selection
-\ lowers and the allocator places but no render here writes yet. Publication
+\ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the negate and the
+\ two selects `cmpsel` and `selz`, which no selection reaches yet, and an
+\ `x64.fcmpset` whose condition and result count are not one of the two pairs
+\ its render reads the flags for (PUT-FCMPSET). Publication
 \ into a code region is not here either, and on this host it cannot be:
 \ src/compiler/native/publish.f reads NEMIT rows only the ARM64 emission row
 \ fills, and the engine's own callmap and addrmap record ARM64 shapes. An
@@ -538,11 +539,16 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 \ result's low byte on the condition, widen that byte into the whole register,
 \ negate it. A Habu flag is ALL ONES - `1 2 < .` prints -1, and ARM64 answers
 \ with `csetm` - so the 0/1 that `setcc` and `movzx` leave becomes 0/-1.
+\ WIDEN-FLAG is those last two steps, which the double comparison shares.
+: WIDEN-FLAG ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-R64  id 0 RES-R8  s ENC-MOVZX-8-RR
+   id 0 RES-R64  s ENC-NEG ;
+
 : PUT-SETCC ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id COND-OF  id 0 RES-R8  s ENC-SETCC
-   id 0 RES-R64  id 0 RES-R8  s ENC-MOVZX-8-RR
-   id 0 RES-R64  s ENC-NEG ;
+   id s WIDEN-FLAG ;
 
 : PUT-CMPSET ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
@@ -806,6 +812,116 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    id s PUT-DIV-NEG
    id s PUT-DIV-HOT ;
 
+\ ---- the scalar doubles ------------------------------------------------------
+\ A register number names a register of ONE file - xmm3 and rbx are both number
+\ three - and the value's type is what the allocation chose the file by
+\ (x64ir.f FPR-TYPE), so an XMM register comes through the same door as a
+\ general one. The two-address forms write the result's register, which the
+\ tie has made operand 0's, and read operand 1; the rest take one operand and
+\ leave one result, untied, each in the file its type names.
+: RES-XMM ( IR-ID:ir-op-id n -- xmm )
+   RESULT-AT REG-OF >XMM ;
+
+: OPD-XMM ( IR-ID:ir-op-id n -- xmm )
+   OPERAND-AT REG-OF >XMM ;
+
+: PUT-MOVSD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-XMM  id 0 OPD-XMM  s ENC-MOVSD-RR ;
+
+: PUT-ADDSD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-XMM  id 1 OPD-XMM  s ENC-ADDSD-RR ;
+
+: PUT-SUBSD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-XMM  id 1 OPD-XMM  s ENC-SUBSD-RR ;
+
+: PUT-MULSD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-XMM  id 1 OPD-XMM  s ENC-MULSD-RR ;
+
+: PUT-DIVSD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-XMM  id 1 OPD-XMM  s ENC-DIVSD-RR ;
+
+: PUT-ANDPD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-XMM  id 1 OPD-XMM  s ENC-ANDPD-RR ;
+
+: PUT-XORPD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-XMM  id 1 OPD-XMM  s ENC-XORPD-RR ;
+
+: PUT-SQRTSD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-XMM  id 0 OPD-XMM  s ENC-SQRTSD-RR ;
+
+: PUT-CVTSI2SD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-XMM  id 0 OPD-R64  s ENC-CVTSI2SD-RR ;
+
+: PUT-CVTTSD2SI ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-R64  id 0 OPD-XMM  s ENC-CVTTSD2SI-RR ;
+
+: PUT-MOVQ-XR ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-XMM  id 0 OPD-R64  s ENC-MOVQ-XR ;
+
+: PUT-MOVQ-RX ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-R64  id 0 OPD-XMM  s ENC-MOVQ-RX ;
+
+\ The frame pair of a double: PUT-STORE and PUT-LOAD with movsd, at the same
+\ displacement from rsp, so a double put away comes back into the file it left.
+: PUT-FSTORE ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 OPD-XMM  MSTACK id SLOT-OF MEM-OFF  s ENC-MOVSD-MR ;
+
+: PUT-FLOAD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-XMM  MSTACK id SLOT-OF MEM-OFF  s ENC-MOVSD-RM ;
+
+\ ---- the double comparison ---------------------------------------------------
+\ ucomisd writes the UNSIGNED flags, and all three of ZF, PF and CF on an
+\ unordered pair, so the dialect's two conditions (x64ir.f DEF-FCMPSET) are read
+\ this way and no other. `gt` is `seta`, CF and ZF both clear, which is false on
+\ unordered; the signed `setg` reads SF and OF, which ucomisd clears, and would
+\ answer true for every pair it did not call below or equal. `equal` is ZF set
+\ AND PF clear: `sete` into the result and `setnp` into result 1, the scratch
+\ the form carries for it, joined by a cell-wide `and` whose low byte is the
+\ two bytes' and. Then WIDEN-FLAG clears what the setcc bytes left above them
+\ and makes the all-ones flag, as in PUT-SETCC.
+\
+\ THE PAIRING IS CHECKED HERE because nothing before this render can: a schema
+\ cannot tie a result count to an attribute, so result 1 is a variadic tail and a
+\ module with the wrong count freezes, allocates and is accepted. Any other
+\ condition, and a count other than one for `gt` and two for `equal`, is
+\ refused before a byte is written.
+: FCMP-GT ( -- n )     X64IR-COND:GT X64IR:COND-CODE ;
+: FCMP-EQUAL ( -- n )  X64IR-COND:EQUAL X64IR:COND-CODE ;
+
+: PUT-FCMPSET ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 BND-COND @ ATTR-INT {: c:n :}
+   id RESULTS-OF {: k:n :}
+   c FCMP-GT =  k 1 =  and if
+      id 0 OPD-XMM  id 1 OPD-XMM  s ENC-UCOMISD-RR
+      C-A  id 0 RES-R8  s ENC-SETCC
+      id s WIDEN-FLAG
+      exit
+   then
+   c FCMP-EQUAL =  k 2 =  and if
+      id 0 OPD-XMM  id 1 OPD-XMM  s ENC-UCOMISD-RR
+      C-E   id 0 RES-R8  s ENC-SETCC
+      C-NP  id 1 RES-R8  s ENC-SETCC
+      id 0 RES-R64  id 1 RES-R64  s ENC-AND-RR
+      id s WIDEN-FLAG
+      exit
+   then
+   E-X64EMIT-FORM throw ;
+
 \ ---- the address of one of this emission's own functions --------------------
 \ AN ABSOLUTE ADDRESS, the placement plus where the function starts, in the
 \ `mov r64, imm64` a literal takes, and filed as a CODE site so the image writer
@@ -828,7 +944,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 \ Every opcode of the dialect is named, so a form added to the vocabulary is a
 \ decision taken HERE rather than a silent fall-through. The refusing arms are
 \ the forms this emitter does not render: each needs a register the machine
-\ names, a lowering or a render of the XMM file, and none is here.
+\ names or a lowering, and neither is here.
 : PUT-OP ( IR-ID:ir-op-id n ptr a -- )
    {: id:IR-ID:ir-op-id home:n s:ptr :}
    id SLOT-AT X64IR:NTH
@@ -879,21 +995,21 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
       tailcall OF id s PUT-TAILCALL ENDOF
       trap     OF id s PUT-TRAP ENDOF
       codeaddr OF id s PUT-CODEADDR ENDOF
-      movsd     OF E-X64EMIT-FORM throw ENDOF
-      addsd     OF E-X64EMIT-FORM throw ENDOF
-      subsd     OF E-X64EMIT-FORM throw ENDOF
-      mulsd     OF E-X64EMIT-FORM throw ENDOF
-      divsd     OF E-X64EMIT-FORM throw ENDOF
-      andpd     OF E-X64EMIT-FORM throw ENDOF
-      xorpd     OF E-X64EMIT-FORM throw ENDOF
-      sqrtsd    OF E-X64EMIT-FORM throw ENDOF
-      cvtsi2sd  OF E-X64EMIT-FORM throw ENDOF
-      cvttsd2si OF E-X64EMIT-FORM throw ENDOF
-      movq-xr   OF E-X64EMIT-FORM throw ENDOF
-      movq-rx   OF E-X64EMIT-FORM throw ENDOF
-      fstore    OF E-X64EMIT-FORM throw ENDOF
-      fload     OF E-X64EMIT-FORM throw ENDOF
-      fcmpset   OF E-X64EMIT-FORM throw ENDOF
+      movsd     OF id s PUT-MOVSD ENDOF
+      addsd     OF id s PUT-ADDSD ENDOF
+      subsd     OF id s PUT-SUBSD ENDOF
+      mulsd     OF id s PUT-MULSD ENDOF
+      divsd     OF id s PUT-DIVSD ENDOF
+      andpd     OF id s PUT-ANDPD ENDOF
+      xorpd     OF id s PUT-XORPD ENDOF
+      sqrtsd    OF id s PUT-SQRTSD ENDOF
+      cvtsi2sd  OF id s PUT-CVTSI2SD ENDOF
+      cvttsd2si OF id s PUT-CVTTSD2SI ENDOF
+      movq-xr   OF id s PUT-MOVQ-XR ENDOF
+      movq-rx   OF id s PUT-MOVQ-RX ENDOF
+      fstore    OF id s PUT-FSTORE ENDOF
+      fload     OF id s PUT-FLOAD ENDOF
+      fcmpset   OF id s PUT-FCMPSET ENDOF
    ;MATCH ;
 
 \ ---- how long one operation is -----------------------------------------------

@@ -1223,7 +1223,12 @@ variable WANT-U
    1 s" x64.movq-rx" OPCODE-IS?
    1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE? ;
 
-: TRUNC-BODY ( IR-CTX:ctx -- n bool bool bool bool )
+\ `f>s` saturates and answers zero for a NaN, where cvttsd2si answers MIN-CELL
+\ for every double outside a cell and for a NaN. So the truncation is flipped to
+\ MAX-CELL by the flag of `gt` against the largest double below 2^63, and the
+\ whole is masked by the flag of the double `equal` to itself, which a NaN is
+\ not. Nothing branches.
+: TRUNC-BODY ( IR-CTX:ctx -- n bool bool bool bool n bool n bool n bool bool )
    HIR-MOD
    BUILD-TRUNC
    SELECTED READ!
@@ -1231,15 +1236,27 @@ variable WANT-U
    0 s" x64.movq-xr" OPCODE-IS?
    0 0 OPERAND@ 0 ARG@ SAME-VALUE?
    1 s" x64.cvttsd2si" OPCODE-IS?
-   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE? ;
+   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   2 0 ATTR-INT
+   4 s" x64.fcmpset" OPCODE-IS?  4 0 OPERAND@ 0 0 RESULT@ SAME-VALUE? and
+   4 0 ATTR-INT
+   6 s" x64.fcmpset" OPCODE-IS?  6 0 OPERAND@ 0 0 RESULT@ SAME-VALUE? and
+   6 1 OPERAND@ 0 0 RESULT@ SAME-VALUE? and
+   6 0 ATTR-INT
+   7 s" x64.and" OPCODE-IS?  5 s" x64.xor" OPCODE-IS? and
+   8 0 OPERAND@ 7 0 RESULT@ SAME-VALUE? ;
 
 : CONVERT-CASE ( -- )
    s" a cell rounds to a double with cvtsi2sd and a double's bits leave with movq" T-LABEL
    WBND [: FLOAT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE 3 T=
-   s" a cell's bits enter as a double with movq and a double truncates with cvttsd2si" T-LABEL
+   s" a cell's bits enter as a double with movq, and f>s is cvttsd2si flipped to MAX-CELL past 2^63 and masked to zero on a NaN" T-LABEL
    WBND [: TRUNC-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE 3 T= ;
+   TTRUE TTRUE
+   X64IR-COND:EQUAL X64IR:COND-CODE T= TTRUE
+   X64IR-COND:GT X64IR:COND-CODE T= TTRUE
+   $43DFFFFFFFFFFFFF T=
+   TTRUE TTRUE TTRUE TTRUE 9 T= ;
 
 \ There is no SSE form that carries an immediate, so a double literal is its bits
 \ moved into a general register and from there into the XMM file.
