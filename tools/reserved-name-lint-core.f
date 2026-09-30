@@ -104,12 +104,6 @@ private
 : RNL-TOK-END ( n -- n ) {: k :}
    k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
 
-: RNL-PARSE-NEXT? ( n -- bool ) {: k :}
-   k LINT-LEX:TOKEN s" char" LINT-STR=CI if LINT-TRUE exit then
-   k LINT-LEX:TOKEN s" [char]" LINT-STR=CI if LINT-TRUE exit then
-   k LINT-LEX:TOKEN s" '" LINT-STR= if LINT-TRUE exit then
-   k LINT-LEX:TOKEN s" [']" LINT-STR= ;
-
 : RNL-COLON-DEFINER? ( n -- bool ) {: k :}
    k LINT-LEX:TOKEN s" :" LINT-STR= if LINT-TRUE exit then
    k LINT-LEX:TOKEN s" +:" LINT-STR= if LINT-TRUE exit then
@@ -336,7 +330,6 @@ private
    k LINT-LEX:TOKEN RNL-NUMERIC-NAME? if k RNL-REPORT-NUM then ;
 
 : RNL-HANDLE-IN-DEF ( -- )
-   RNL-I @ RNL-PARSE-NEXT? if RNL-I @ 1+ RNL-I ! exit then
    RNL-I @ LINT-LEX:TOKEN s" ;" LINT-STR= if 0 RNL-IN-DEF ! then ;
 
 : RNL-HANDLE-TOP ( -- )
@@ -347,8 +340,11 @@ private
    then
    RNL-I @ RNL-DATA-DEFINER? if RNL-I @ 1+ RNL-CHECK-NAME then ;
 
+\ A parsing keyword's operand is data in either state: `char : constant COLON`
+\ defines COLON, not a word named `constant`.
 : RNL-SCAN-TOKEN ( -- )
    RNL-I @ RNL-WORD? 0= if exit then
+   RNL-I @ LINT-LEX:TOKEN LINT-PARSER? if RNL-I @ 1+ RNL-I ! exit then
    RNL-IN-DEF @ if RNL-HANDLE-IN-DEF else RNL-HANDLE-TOP then ;
 
 : RNL-SCAN ( -- )

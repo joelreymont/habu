@@ -252,6 +252,24 @@ variable DO-OUT-BUF?
 : DO-ORIGIN-WORD? ( -- bool )
    DO-TOK-K @ DO-WORD = ;
 
+: DO-PARSER? ( -- bool )
+   DO-ORIGIN-WORD? 0= if DO-FALSE exit then
+   DO-TOK-A@ DO-TOK-U @ LINT-PARSER? ;
+
+: DO-GAP? ( -- bool )
+   DO-END? if DO-FALSE exit then
+   DO-C@ LINT-WS? ;
+
+: DO-INK? ( -- bool )
+   DO-END? if DO-FALSE exit then
+   DO-C@ LINT-WS? 0= ;
+
+\ A parsing keyword's operand is the next whitespace-delimited token, read raw:
+\ `char :` and `[char] :` start no definition, so nothing is marked there.
+: DO-SKIP-OPERAND ( -- )
+   begin DO-GAP? while DO-ADV drop repeat
+   begin DO-INK? while DO-ADV drop repeat ;
+
 : DO-EMIT-RANGE ( n n -- ) {: start end :}
    end start <= if exit then
    DO-SRC-A@ start + end start - DO-OUT ;
@@ -306,7 +324,8 @@ variable DO-OUT-BUF?
    1 DO-LINE !
    1 DO-COL !
    begin DO-NEXT-TOKEN while
-      DO-COLON? if DO-MARK-COLON then
+      DO-PARSER? if DO-SKIP-OPERAND else
+      DO-COLON? if DO-MARK-COLON then then
    repeat
    DO-OUT-X @ DO-SRC-U @ DO-EMIT-RANGE ;
 

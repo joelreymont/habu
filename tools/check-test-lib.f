@@ -1084,6 +1084,43 @@ variable LONG-J
    CAP-ERR erru3 s" preverify failed" CONTAINS? TFALSE
    CAP-ERR erru3 s" 7121" CONTAINS? TTRUE ;
 
+\ A parsing keyword's operand is data to every stage of check.f, whatever it
+\ spells: `'` and `char` at top level, `[char]` in a body, matched case-folded
+\ as the engine and the checker match them. After `CHAR 0` the count is the
+\ keyword's value, left to the run, and the line after such a keyword is still
+\ read: a literal bad count and an undefined name are refused as before.
+: OPERAND-COLON$ ( -- ptr u8 n )
+   s" char : constant CKT-COLON : CKT-C ( -- n ) CKT-COLON ;" ;
+
+: OPERAND-TICK$ ( -- ptr u8 n )
+   s" ' TYPED-BUFFER constant CKT-TB" ;
+
+: OPERAND-COUNT$ ( -- ptr u8 n )
+   s" CHAR 0 TYPED-BUFFER CKT-ROWS n : CKT-ROW ( n -- ptr n ) CKT-ROWS ;" ;
+
+: OPERAND-BODY$ ( -- ptr u8 n )
+   s" : CKT-P ( -- n ) [char] ( ; : CKT-B ( -- n ) [CHAR] \ ; : CKT-Q ( -- n ) [char] : ;" ;
+
+: OPERAND-BAD-COUNT$ ( -- ptr u8 n )
+   s" char : constant CKT-COLON 0 TYPED-BUFFER CKT-ROWS n" ;
+
+: OPERAND-UNDEFINED$ ( -- ptr u8 n )
+   s" char : constant CKT-COLON : CKT-F ( -- n ) CKT-NOPE ;" ;
+
+: TEST-PARSED-OPERAND ( -- )
+   OPERAND-COLON$ DIRECT-STDIN EXPECT-ACCEPTED
+   OPERAND-TICK$ DIRECT-STDIN EXPECT-ACCEPTED
+   OPERAND-COUNT$ DIRECT-STDIN EXPECT-ACCEPTED
+   OPERAND-BODY$ DIRECT-STDIN EXPECT-ACCEPTED
+   OPERAND-BAD-COUNT$ DIRECT-STDIN LBUF-RC T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" preverify failed" CONTAINS? TTRUE
+   OPERAND-UNDEFINED$ DIRECT-JSON-STDIN 70 T=
+   {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 s" E-UNDEFINED" CONTAINS? TTRUE ;
+
 : TEST-FILE-LABEL ( -- )
    BAD$SRC CORE-JSON 70 T=
    {: outu:n erru:n :}
@@ -2110,6 +2147,7 @@ POISON-RECORD
    s" check/prelude-hook-public" [: TEST-PRELUDE-HOOK ;] CASE-RUN
    s" check/layout-buffer" [: TEST-LAYOUT-BUFFER ;] CASE-RUN
    s" check/buffer-count" [: TEST-BUFFER-COUNT ;] CASE-RUN
+   s" check/parsed-operand" [: TEST-PARSED-OPERAND ;] CASE-RUN
    s" check/file-label" [: TEST-FILE-LABEL ;] CASE-RUN
    s" check/usage-direct" [: TEST-USAGE ;] CASE-RUN
    s" check/source-bytes-copy" [: TEST-SOURCE-BYTES-COPY ;] CASE-RUN

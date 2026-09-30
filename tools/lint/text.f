@@ -241,6 +241,18 @@ public
       1+
    repeat drop LINT-TRUE ;
 
+\ A parsing keyword takes the next whitespace-delimited token as data, whatever
+\ it spells: `'` and `char` at top level, `[']` and `[char]` in a body
+\ (src/habu/habu2.f EM-INTERPRET-DEFINE-KEYWORDS, EM-COMPILE-META-KEYWORDS),
+\ matched case-folded as the engine's keyword compare folds. A scanner that
+\ does not track which state it is in takes all four: the engine refuses each
+\ outside its own state, so no program it accepts reads differently.
+: LINT-PARSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" char" LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" [char]" LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" '" LINT-STR= IF LINT-TRUE exit THEN
+   a u s" [']" LINT-STR= ;
+
 \ A total order on case-folded names, so a tool holding a fixed name set can keep
 \ it sorted and reach it by binary search instead of scanning it. Kept apart from
 \ the equality helpers above because ordering is the whole of this module's job:

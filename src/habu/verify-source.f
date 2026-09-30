@@ -252,19 +252,53 @@ create BODY-BUF BODYBUF-CAP allot
 : SKIP-STRING-REST ( ptr u8 n -- )
    STRING-REST 2drop ;
 
-: PARSE-NEXT? ( ptr u8 n -- bool )
-   2dup s" char" CORE-STR= IF 2drop 0 0= exit THEN
-   s" [char]" CORE-STR= ;
+: FOLD-C ( n -- n )
+   dup $41 < IF EXIT THEN
+   dup $5A > IF EXIT THEN
+   $20 or ;
 
-: APPEND-NEXT-BODY ( -- )
-   BODY!
-   TOKEN-U @ 0= IF s" verify-source: missing parsed token" 74 die THEN
-   TOKEN-A @ TOKEN-U @ BODY-APPEND ;
+: STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   u v <> IF 0 0= 0= EXIT THEN
+   0 BEGIN dup u < WHILE
+      dup a + c@ FOLD-C
+      over b + c@ FOLD-C <> IF drop 0 0= 0= EXIT THEN
+      1+
+   REPEAT drop 0 0= ;
+
+\ ---- the token a parsing keyword takes ----------------------------------------
+\ A parsing keyword takes the next whitespace-delimited token as its operand, by
+\ parse-name's rule, so a `:`, a definer, a digit, a `\`, a `(` or a string
+\ opener there is data and never a token of the program. At top level the
+\ keywords are the engine's interpret-state ones (src/habu/habu2.f
+\ EM-INTERPRET-DEFINE-KEYWORDS, C-TICK and C-CHAR); in a body they are the ones
+\ the checker's body reader takes (src/core/checker.f PARSE-LIT?). `char` is
+\ both. Each matches case-folded and ahead of any lookup, as the engine's keyword
+\ compare (LKWCMP) and the checker's TOKFOLD do, so no source can shadow one and
+\ the spelling decides.
+\
+\ A dictionary word that parses is not one of these. Which word `require`
+\ (src/core/include.f) or `SEE` (src/habu/xref.f) names is a scope question,
+\ and the tree defines words that take no operand under both spellings
+\ (test/native-unit-compile-e2e.f, test/compiler/tic6x-facts.f), so the token
+\ after one is read as an ordinary token.
+: CHAR-KEYWORD? ( ptr u8 n -- bool )
+   s" char" STR=CI ;
+
+: TOP-PARSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHAR-KEYWORD? IF 0 0= EXIT THEN
+   a u s" '" STR=CI ;
+
+: BODY-PARSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHAR-KEYWORD? IF 0 0= EXIT THEN
+   a u s" [char]" STR=CI ;
+
+: OPERAND ( -- ptr u8 n )
+   NEXT-RAW dup 0= IF s" verify-source: missing parsed token" 74 die THEN ;
 
 : APPEND-BODY-TOKEN ( -- )
-   TOKEN-A @ TOKEN-U @ PARSE-NEXT? IF
+   TOKEN-A @ TOKEN-U @ BODY-PARSER? IF
       TOKEN-A @ TOKEN-U @ BODY-APPEND
-      APPEND-NEXT-BODY
+      OPERAND BODY-APPEND
       exit
    THEN
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF
@@ -273,12 +307,8 @@ create BODY-BUF BODYBUF-CAP allot
       TOKEN-A @ TOKEN-U @ BODY-APPEND
    THEN ;
 
-: SKIP-NEXT-BODY ( -- )
-   BODY!
-   TOKEN-U @ 0= IF s" verify-source: missing parsed token" 74 die THEN ;
-
 : SKIP-BODY-TOKEN ( -- )
-   TOKEN-A @ TOKEN-U @ PARSE-NEXT? IF SKIP-NEXT-BODY exit THEN
+   TOKEN-A @ TOKEN-U @ BODY-PARSER? IF OPERAND 2drop exit THEN
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF TOKEN-A @ TOKEN-U @ SKIP-STRING-REST THEN ;
 
 \ Verifier trust rows below cover recursive checker entrypoints, checker-owned
@@ -589,19 +619,6 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 : RECORD-CAST-OUT ( ptr u8 n ptr u8 n -- )
    DTC-BUILD-OUT
    CAST-TRUST ;
-
-: FOLD-C ( n -- n )
-   dup $41 < IF EXIT THEN
-   dup $5A > IF EXIT THEN
-   $20 or ;
-
-: STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   u v <> IF 0 0= 0= EXIT THEN
-   0 BEGIN dup u < WHILE
-      dup a + c@ FOLD-C
-      over b + c@ FOLD-C <> IF drop 0 0= 0= EXIT THEN
-      1+
-   REPEAT drop 0 0= ;
 
 : TRUST-NEXT ( ptr u8 n -- ) {: sig:ptr sigu:n :}
    NEXT-SCAN
@@ -1133,14 +1150,18 @@ PTR-VARIABLE STG-START
       APPEND-BODY-TOKEN
    AGAIN ;
 
+\ A parsing keyword and its operand are one value on the interpret stack, and
+\ the keyword stays the token before whatever follows: `char 0 TYPED-BUFFER B n`
+\ hands the count reader `char`, not `0`, so the count is left to the run.
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !
    BEGIN
       NEXT-SCAN dup 0 > WHILE
       2dup TOP-CUR-U ! TOP-CUR-A !
+      2dup TOP-PARSER? IF 2drop OPERAND 2drop ELSE
       2dup s" :" CORE-STR= IF 2drop VERIFY-DEFINITION ELSE
-      2dup RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN
+      2dup RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN THEN
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
    REPEAT 2drop ;
 

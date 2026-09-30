@@ -1235,6 +1235,23 @@ passing suite.
   to the definer: `4 constant N  N TYPED-BUFFER B n` and `N 2 * TYPED-BUFFER B
   n` check, and `0 constant Z  Z TYPED-BUFFER B n` is refused by the run, exit
   67 with the definer's 7121 (tools/check-test-lib.f `check/buffer-count`).
+- **A parsing keyword's operand is data to every stage of `tools/check.f`.**
+  `'` and `char` at top level and `[char]` in a body take the next
+  whitespace-delimited token whatever it spells, matched case-folded and ahead
+  of any lookup, as the engine's keyword compare and the checker's body reader
+  both fold, so no source can shadow one. The source pre-verifier
+  (`verify-source.f` `TOP-PARSER?`, `BODY-PARSER?`, `OPERAND`), the
+  reserved-name lint and the origin-marker rewriter (`tools/lint/text.f`
+  `LINT-PARSER?`) skip it. The keyword stays the token before what follows, so
+  `char 0 TYPED-BUFFER B n` leaves its count, 48, to the run. Measured:
+  `char : constant COLON`, `' TYPED-BUFFER constant TB` and `char 0
+  TYPED-BUFFER B n` load and were refused (a definition named `constant`, a
+  definer, a zero count), and `: F ( -- n ) [char] ( ;` and `[char] :` in a
+  body load and were refused (a comment, a definition start); all check now
+  (tools/check-test-lib.f `check/parsed-operand`). A dictionary word that
+  parses, such as `require` or `SEE`, is not one of these: the word a spelling
+  names depends on scope, and the tree defines words that take no operand
+  under both spellings, so the token after one is an ordinary token.
 - **A `create … does>` definer teaches the checker what its words are, whether
   or not its text was read.** A definer the source pre-verifier READ is learned
   from the clause text (`verify-source.f` `DEFINER-EFFECT`). A RESIDENT one —

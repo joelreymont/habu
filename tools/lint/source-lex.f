@@ -379,7 +379,7 @@ private
 \ operand and not a closer.
 \
 \ The bracket-less `char` is deliberately NOT here, and this is a known divergence
-\ from src/habu/verify-source.f PARSE-NEXT?, which treats `char` and `[char]`
+\ from src/habu/verify-source.f BODY-PARSER?, which treats `char` and `[char]`
 \ alike. Two reasons. The row grammar this file implements names exactly eight
 \ operand-parsing labels, and `char` is not one of them. And leaving it out is the
 \ safe direction: a hostile `PRIM: FOO char PRIM; create LEAK PRIM;` then closes
