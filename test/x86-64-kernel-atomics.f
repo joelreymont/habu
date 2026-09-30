@@ -25,10 +25,13 @@
 \   finds the page between the code band's two declarations writable.
 \ - hb-x64-kernel-prot-window-closed opens the same window, closes it, and
 \   probes each band and the page just past the window's recorded end.
-\ - hb-x64-kernel-publish records four sites around a six-byte routine,
-\   publishes it at CP, calls it, probes its page and finds the two sites inside
-\   the span gone; patch32 then rewrites its immediate and the call answers the
-\   new value.
+\ - hb-x64-kernel-publish records five sites around a six-byte routine,
+\   publishes it at CP, finds CP on the next code slot, calls it, probes its
+\   page and finds the three sites in the span and its int3 fill gone; patch32
+\   then rewrites its immediate and the call answers the new value.
+\ - hb-x64-kernel-publish-fill publishes a 17-byte routine at CP and finds CP
+\   32 bytes on, bytes 17-31 int3 over poisoned cells and the cell past them
+\   untouched.
 \ - hb-x64-kernel-sites records sites out of order, one twice and one at the
 \   region's last byte, clears a middle span, a span below the region and one
 \   reaching into it, and checks the rows left.
@@ -38,7 +41,8 @@
 \ - hb-x64-kernel-does gives an inline-named parent the clause record past the
 \   pending one, finds its window closed and checks the record and its name.
 \ - hb-x64-kernel-does-long then gives a long-named parent its clause, finds
-\   the window closed and checks the record, the padded name and CP.
+\   the window closed and checks the record, the name zero-padded to a code
+\   slot and CP on the next slot.
 \ The armed images exit a refusal: code-publish one byte past CP
 \ (-publish-armed) or past the region (-publish-past-armed), a site outside the
 \ region (-sites-outside-armed) and xref-retarget at NDICT + 1
@@ -195,6 +199,19 @@ $1000 constant PAGE                    \ the x86-64 page a window flips
    0 >R32 ANSWER >IMM32 ASM-SINK ENC-MOV32-RI32
    ASM-SINK ENC-RET ;
 
+\ mov eax, ANSWER, eleven nops and ret: 17 bytes, one past a code slot.
+: LONG-CODE, ( -- )
+   0 >R32 ANSWER >IMM32 ASM-SINK ENC-MOV32-RI32
+   11 0 ?do ASM-SINK ENC-NOP loop
+   ASM-SINK ENC-RET ;
+
+\ The code slots past DICT-SIZE, and the 17-byte routine's second slot as
+\ whole cells: its ret, then the int3 fill.
+DICT-SIZE 16 + constant SECOND-SLOT
+DICT-SIZE 32 + constant THIRD-SLOT
+$CCCCCCCCCCCCCCC3 constant RET-INT3S
+$CCCCCCCCCCCCCCCC constant INT3S
+
 \ Call the row on the address n bytes into the region.
 : AT-ROW, ( n ptr u8 n -- ) {: off:n row:ptr rowu:n :}
    off X64HARNESS:PUSH-REGION,  row rowu X64HARNESS:CALL-ROW, ;
@@ -272,27 +289,44 @@ DICT-SIZE PAGE 2 * + CELL + constant WIDEN
    WIDEN PROBE,  FAULTED X64HARNESS:EXPECT-POP,
    DICT-SIZE PAGE 3 * + PROBE,  FAULTED X64HARNESS:EXPECT-POP, ;
 
-\ The routine's sites: past its span and below it stay, and the two inside it
-\ go with the publication.
+\ The routine's sites: below its span and on the slot past its fill stay, and
+\ the two inside it and the one at the fill's last byte go with the
+\ publication.
 : PUBLISH-CASE, ( -- )
    REST,
    [: ANSWER-CODE, ;] PUSH-CODE, {: len:n :}
-   DICT-SIZE len + s" callmap-set" AT-ROW,           \ into the empty band
+   SECOND-SLOT s" callmap-set" AT-ROW,               \ into the empty band
+   SECOND-SLOT 1- s" callmap-set" AT-ROW,            \ the fill's last byte, below it
    DICT-SIZE 1- s" callmap-set" AT-ROW,              \ below every row
    DICT-SIZE 2 + s" addrmap-set" AT-ROW,             \ between the two
    DICT-SIZE len + 1- s" callmap-set" AT-ROW,        \ the span's last byte
    DICT-SIZE X64HARNESS:PUSH-REGION,  len X64HARNESS:PUSH,
    s" code-publish" X64HARNESS:CALL-ROW,
-   PUSH-CP,  DICT-SIZE len + X64HARNESS:EXPECT-POP-REGION,
+   PUSH-CP,  SECOND-SLOT X64HARNESS:EXPECT-POP-REGION,
    DICT-SIZE CALL-REGION,  ANSWER X64HARNESS:EXPECT-POP,
    DICT-SIZE CELL + PROBE,  FAULTED X64HARNESS:EXPECT-POP,
    PUSH-BANDS,  0 X64HARNESS:EXPECT-POP,
    2 SNAP-RELOC:SITE-N-CELL X64HARNESS:EXPECT-CELL,
    0 DICT-SIZE 1- SNAP-RELOC:SITE-CALL EXPECT-SITE,
-   1 DICT-SIZE len + SNAP-RELOC:SITE-CALL EXPECT-SITE,
+   1 SECOND-SLOT SNAP-RELOC:SITE-CALL EXPECT-SITE,
    PATCHED X64HARNESS:PUSH,  DICT-SIZE IMM-AT + X64HARNESS:PUSH-REGION,
    s" patch32" X64HARNESS:CALL-ROW,
    DICT-SIZE CALL-REGION,  PATCHED X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED, ;
+
+\ The fill overwrites the two poisoned cells of the routine's second slot and
+\ stops short of the poisoned cell past it, where CP lands.
+: PUBLISH-FILL-CASE, ( -- )
+   SECOND-SLOT POKE,  SECOND-SLOT CELL + POKE,  THIRD-SLOT POKE,
+   REST,
+   [: LONG-CODE, ;] PUSH-CODE, {: len:n :}
+   DICT-SIZE X64HARNESS:PUSH-REGION,  len X64HARNESS:PUSH,
+   s" code-publish" X64HARNESS:CALL-ROW,
+   PUSH-CP,  THIRD-SLOT X64HARNESS:EXPECT-POP-REGION,
+   SECOND-SLOT PUSH-REGION-CELL,  RET-INT3S X64HARNESS:EXPECT-POP,
+   SECOND-SLOT CELL + PUSH-REGION-CELL,  INT3S X64HARNESS:EXPECT-POP,
+   THIRD-SLOT PUSH-REGION-CELL,  -1 X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED, ;
 
@@ -343,28 +377,30 @@ DICT-SIZE $80 + constant ENTRY-B
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED, ;
 
-\ The two clauses: record 3, past the pending record 2, twice. The long name,
-\ 22 bytes, rounds up to 24 at CP, and its pad lands in its third cell.
+\ The two clauses: record 3, past the pending record 2, twice. The short name,
+\ 8 bytes, fills a 16-byte code slot at CP; the long name, 22 bytes, lands on
+\ the next slot and fills two, and its pad lands in its third and fourth cells.
 DICT-SIZE $100 + constant CLAUSE-A
 DICT-SIZE $200 + constant CLAUSE-B
 9 constant CLAUSE-LEN-A
 11 constant CLAUSE-LEN-B
 : SHORT$ ( -- ptr u8 n ) s" abc;does" ;
 : LONG$ ( -- ptr u8 n ) s" abcdefghijklmnopq;does" ;
-DICT-SIZE 8 + constant LONG-AT
+DICT-SIZE 16 + constant LONG-AT
 LONG-AT CELL 2 * + constant LONG-TAIL
-24 constant LONG-PADDED
+LONG-TAIL CELL + constant LONG-PAD
+32 constant LONG-PADDED
 
 : DOES, ( n n -- ) {: entry:n len:n :}
    entry X64HARNESS:PUSH-REGION,  len X64HARNESS:PUSH,
    s" does-record" X64HARNESS:CALL-ROW, ;
 
-\ The two parents, the poisoned cell the long name's pad lands in, and the
+\ The two parents, the poisoned cells the long name's pad lands in, and the
 \ region at rest.
 : DOES-SETUP, ( -- )
    s" abc" 5 0 X64HARNESS:RECORD,
    s" abcdefghijklmnopq" 6 0 X64HARNESS:RECORD,     \ past DNAME-INL: out of line
-   LONG-TAIL POKE,
+   LONG-TAIL POKE,  LONG-PAD POKE,
    0 PEND!,
    REST, ;
 
@@ -384,6 +420,7 @@ LONG-AT CELL 2 * + constant LONG-TAIL
    SHORT$ nip DNAME-EXT or X64HARNESS:EXPECT-POP,
    3 X64KERNEL:REC-NAME REC PUSH-REGION-CELL,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    DICT-SIZE PUSH-REGION-CELL,  SHORT$ LE-CELL X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED, ;
 
 \ The long-named parent's clause, published after the short one's, so its name
@@ -398,7 +435,9 @@ LONG-AT CELL 2 * + constant LONG-TAIL
    LONG$ nip DNAME-EXT or X64HARNESS:EXPECT-POP,
    3 X64KERNEL:REC-WID REC PUSH-REGION-CELL,  6 X64HARNESS:EXPECT-POP,
    LONG-TAIL PUSH-REGION-CELL,  s" q;does" LE-CELL X64HARNESS:EXPECT-POP,
+   LONG-PAD PUSH-REGION-CELL,  0 X64HARNESS:EXPECT-POP,
    PUSH-CP,  LONG-AT LONG-PADDED + X64HARNESS:EXPECT-POP-REGION,
+   0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED, ;
 
 : PUBLISH-ARMED, ( n n -- ) {: dst:n len:n :}
@@ -417,6 +456,7 @@ LONG-AT CELL 2 * + constant LONG-TAIL
    [: WINDOW-CASE, ;] s" hb-x64-kernel-prot-window" TMP-PATH IMAGE
    [: WINDOW-CLOSED-CASE, ;] s" hb-x64-kernel-prot-window-closed" TMP-PATH IMAGE
    [: PUBLISH-CASE, ;] s" hb-x64-kernel-publish" TMP-PATH IMAGE
+   [: PUBLISH-FILL-CASE, ;] s" hb-x64-kernel-publish-fill" TMP-PATH IMAGE
    [: SITES-CASE, ;] s" hb-x64-kernel-sites" TMP-PATH IMAGE
    [: RETARGET-CASE, ;] s" hb-x64-kernel-retarget" TMP-PATH IMAGE
    [: DOES-CASE, ;] s" hb-x64-kernel-does" TMP-PATH IMAGE

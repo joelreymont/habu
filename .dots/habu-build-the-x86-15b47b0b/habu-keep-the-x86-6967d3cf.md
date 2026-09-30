@@ -1,9 +1,11 @@
 ---
 title: Keep the x86 code pointer on code slots
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T14:35:05.373466+03:00"
+closed-at: "2026-09-30T16:56:37.167859+03:00"
+close-reason: ThinkPad x86 proof plain and Mac shim, 129 images, publish-fill 0, cp-unslotted 83, negatives 21; ARM64 product byte-identical 925c1c6e
 blocks:
   - habu-model-the-code-c40c75d1
 ---

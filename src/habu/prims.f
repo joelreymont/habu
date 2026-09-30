@@ -509,10 +509,19 @@ ETRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary 
 \   for being below the last row, so a caller records its sites in any order
 \   and merges nothing. The same row again changes nothing; the other kind at a
 \   recorded offset, or a row past SITE-CAP, exits SITE-RC. `code-publish`
-\   removes the rows of both kinds in [dst, dst+len) and `reloc-maps-clear`
-\   those of its span; sites are recorded after `code-publish`, so an x86-64
-\   publication drops the stale rows in its span where ARM64 keeps the address
-\   bits.
+\   removes the rows of both kinds in [dst, slot), the span and its int3 fill,
+\   and `reloc-maps-clear` those of its span; sites are recorded after
+\   `code-publish`, so an x86-64 publication drops the stale rows in the bytes
+\   it writes where ARM64 keeps the address bits.
+\ CP is always a code slot, the only address the native driver places code at:
+\ a four-byte instruction word on ARM64 and a 16-byte slot on x86-64
+\ (X64KERNEL:CODE-SLOT, X64IR:SP-ALIGN). Every CP writer keeps it one:
+\ `cp!` refuses any other address with ENGINE-ERROR:SEAL-VIOLATION, the boot
+\ starts it at the page-aligned DBASE+DICT-SIZE, `code-publish` moves it to
+\ the first slot at or past dst+len, x86-64 filling the gap with int3,
+\ `does-record` pads the name it writes at CP to a slot with zeros, and ARM64
+\ `native-unit-publish` moves it past a unit whose length GUARD-CODE-SPAN
+\ admits only in whole instruction words.
 \ An `addr` outside the region, or on ARM64 not a whole instruction, exits
 \ ENGINE-ERROR:SEAL-VIOLATION.
 EPRIM: code-publish  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
@@ -544,6 +553,8 @@ EPRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ clears metadata over reclaimed code
 EPRIM: does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native defining-word runtime patch
+\ `does-record ( entry len -- )` records the pending definition's `;does`
+\ clause and writes its name at CP, zero-padded to a code slot.
 EPRIM: does-record PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native `;does` companion publication
 EPRIM: snap-rebase PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;

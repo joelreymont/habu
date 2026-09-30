@@ -62,6 +62,12 @@ public
 \ bounds it.
 X64LAYOUT:DATA-SIZE PROF-CNT-BYTES - constant DP-CEILING
 
+\ The code slot: every CP is a multiple of it, and each row that moves CP moves
+\ it to a slot. It is X64IR:SP-ALIGN, the only placement X64EMIT:PLACE-AT
+\ accepts, and the native driver places each definition at CP
+\ (NPUB:NEXT-SLOT). The kernel loads no dialect, so it states the value.
+16 constant CODE-SLOT
+
 private
 
 $1000 constant PAGE-BYTES              \ the x86-64 Linux base page
@@ -1620,13 +1626,15 @@ public
 \ habu1.f EMIT-PROT-WINDOW's PROT:LSPAN, LOPEN and LCLOSE. x86-64 keeps its
 \ instruction cache coherent, so nothing flushes. An x86-64 span is
 \ byte-granular: a routine may end in a one-byte ret, so no guard traps a
-\ length or an address that is not a whole four-byte word.
+\ length or an address that is not a whole four-byte word. The two rows that
+\ write at CP leave it on a CODE-SLOT: code-publish fills the gap with int3 and
+\ does-record zero-pads its name.
 
 private
 
 4 constant PATCH-BYTES                 \ the word patch32 writes
 52 constant MIN-IN-SHIFT               \ layout.f DNAME-MIN-IN-MASK: flag bits 52-59
-4 constant NAME-ALIGN                  \ publish.f DOES-NAME-PAD's rounding
+$CC constant INT3                      \ the byte code-publish fills a slot's gap with
 
 \ The helpers' labels, made by PUBLICATION, in the stream it emits them into.
 variable LSPAN-CELL
@@ -1884,22 +1892,32 @@ variable SITE-TRAP-CELL
    R9 R64>N >R32 R8 MEM-AT ASM-SINK ENC-MOV32-MR
    R8 PROT-RX PROT-REC, ;
 
-\ code-publish's frame: the source, the destination and the length.
+\ dst = the first code slot at or past src.
+: SLOT-UP, ( r64 r64 -- ) {: dst:r64 src:r64 :}
+   dst src CODE-SLOT 1- MEM-OFF ASM-SINK ENC-LEA
+   dst CODE-SLOT negate >IMM8 ASM-SINK ENC-AND-RI8 ;
+
+\ code-publish's frame: the source, the destination, the length and the slot
+\ past the span.
 0 constant PUB-SRC
 8 constant PUB-DST
 16 constant PUB-LEN
-24 constant PUB-FRAME
+24 constant PUB-SLOT
+32 constant PUB-FRAME
 
 \ code-publish ( ptr u8 n n -- ): the twin of BCODEPUBLISH. The span is nonzero,
 \ does not wrap and lies in [DBASE+DICT-SIZE, DBASE+REGION), and dst is CP: a
-\ publication is an append. The code band opens once over [CP, CP+len), the
-\ bytes copy, the band closes, the span's site rows of both kinds go, since
-\ its sites are recorded after, and CP moves past it. The span's origin is
-\ unknown: only the compiler's successful return, X64PROV:CLOSE, with 1, may
-\ certify an emission.
+\ publication is an append. The slot is the first CODE-SLOT multiple at or
+\ past the span's end, so at most the region's end. The code band opens once
+\ over [CP, slot), the bytes copy, int3 fills [dst+len, slot), the band
+\ closes, the site rows of both kinds in [dst, slot) go, since the span's
+\ sites are recorded after and the fill holds no code, and CP moves to the
+\ slot. The origin of [dst, slot) is unknown: only
+\ the compiler's successful return, X64PROV:CLOSE, with 1, may certify an
+\ emission.
 : PUBLISH, ( -- )
    ENGINE-GPR:X64-CP >R64 {: cp:r64 :}
-   LBL LBL {: copy:label copied:label :}
+   LBL LBL LBL LBL {: copy:label copied:label fill:label filled:label :}
    RSI POP,  RDI POP,  RDX POP,                        \ len, dst, src
    RSI RSI ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,    \ a window of nothing
    RAX RDI RSI 1 0 MEM-IDX ASM-SINK ENC-LEA            \ rax = the span's end
@@ -1911,7 +1929,7 @@ variable SITE-TRAP-CELL
    RDI cp ASM-SINK ENC-CMP-RR  C-NE SEAL-TRAP-LBL JCC,     \ not an append at CP
    RSP PUB-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
    RDX RSP PUB-SRC MOV-STORE,  RDI RSP PUB-DST MOV-STORE,  RSI RSP PUB-LEN MOV-STORE,
-   RDI RAX ASM-SINK ENC-MOV-RR  LOPEN-LBL CALL,
+   RDI RAX SLOT-UP,  RDI RSP PUB-SLOT MOV-STORE,  LOPEN-LBL CALL,
    RDX RSP PUB-SRC MOV-LOAD,  RDI RSP PUB-DST MOV-LOAD,  RCX RSP PUB-LEN MOV-LOAD,
    RAX ZERO-REG,
    copy LBL,
@@ -1921,11 +1939,18 @@ variable SITE-TRAP-CELL
    RAX ASM-SINK ENC-INC
    copy JMP,
    copied LBL,
+   RCX RSP PUB-SLOT MOV-LOAD,  RCX RDI ASM-SINK ENC-SUB-RR  \ rcx = slot - dst
+   R8 INT3 IMM32,
+   fill LBL,                                           \ int3 to the slot
+   RAX RCX ASM-SINK ENC-CMP-RR  C-AE filled JCC,
+   8 >R8 RDI RAX 1 0 MEM-IDX ASM-SINK ENC-MOV8-MR
+   RAX ASM-SINK ENC-INC
+   fill JMP,
+   filled LBL,
    LCLOSE-LBL CALL,
-   RDI RSP PUB-DST MOV-LOAD,  RSI RSP PUB-LEN MOV-LOAD,
+   RDI RSP PUB-DST MOV-LOAD,  RSI RSP PUB-SLOT MOV-LOAD,  RSI RDI ASM-SINK ENC-SUB-RR
    DROP-SITES-LBL CALL,
-   RDI RSP PUB-DST MOV-LOAD,  RSI RSP PUB-LEN MOV-LOAD,
-   cp RDI RSI 1 0 MEM-IDX ASM-SINK ENC-LEA            \ the slot is claimed
+   RDI RSP PUB-DST MOV-LOAD,  cp RSP PUB-SLOT MOV-LOAD,     \ the slot is claimed
    RSI cp ASM-SINK ENC-MOV-RR  X64PROV:UNKNOWN-RANGE,
    RSP PUB-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
@@ -1987,7 +2012,7 @@ variable SITE-TRAP-CELL
 8 constant DR-LEN                      \ its recorded length
 16 constant DR-NAME-LEN                \ its name's length
 24 constant DR-NAME                    \ the parent's name bytes
-32 constant DR-PAD                     \ the name's bytes at CP, NAME-ALIGN whole
+32 constant DR-PAD                     \ the name's bytes at CP, CODE-SLOT whole
 40 constant DR-REC                     \ the clause's record
 48 constant DR-FRAME
 
@@ -2005,10 +2030,11 @@ variable SITE-TRAP-CELL
 \ does-record ( n n -- ): the twin of DOES-REC:NATIVE-PRIM. The parent is the
 \ record PEND-CELL points at, and its clause takes the slot past the pending
 \ one, NDICT+1: the entry and length given, the parent's name and ";does"
-\ out of line at CP, zero-padded to NAME-ALIGN as src/compiler/native/publish.f
-\ DOES-NAME-PAD measures, and the parent's wid. The code band opens over the
-\ name and the record band over the record, and CP moves past the name before
-\ the close.
+\ out of line at CP, zero-padded to a CODE-SLOT multiple, and the parent's
+\ wid. The code band opens over the padded name and the record band over the
+\ record, and CP moves past the pad, to a slot, before the close.
+\ src/compiler/native/publish.f DOES-NAME-PAD measures the name padded to a
+\ four-byte word; CODE-RESERVE absorbs the rest.
 : DOES-RECORD, ( -- )
    ENGINE-GPR:X64-CP >R64 {: cp:r64 :}
    LBL LBL LBL LBL {: copy:label copied:label pad:label padded:label :}
@@ -2021,8 +2047,7 @@ variable SITE-TRAP-CELL
    RCX SUFFIX$ nip >IMM8 ASM-SINK ENC-ADD-RI8
    RCX RSP DR-NAME-LEN MOV-STORE,
    RDX RSP DR-NAME MOV-STORE,
-   RAX RCX NAME-ALIGN 1- MEM-OFF ASM-SINK ENC-LEA
-   RAX NAME-ALIGN negate >IMM8 ASM-SINK ENC-AND-RI8
+   RAX RCX SLOT-UP,
    RAX RSP DR-PAD MOV-STORE,
    RDI cp RAX 1 0 MEM-IDX ASM-SINK ENC-LEA  LOPEN-LBL CALL,
    RSI RSP DR-NAME MOV-LOAD,
@@ -2272,18 +2297,18 @@ private
 
 74 constant COUNT-RC                   \ BNDSET's and BSEEDNDICTSET's refusal
 
-\ The twin of habu1.f GUARD-CODE-WORD: a new CP must be a 4-aligned address in
-\ [DBASE + DICT-SIZE, DBASE + REGION - 4], unsigned, or the row exits
-\ SEAL-VIOLATION, so cp! never aims later emission outside the code area. x86
-\ code slots are SP-ALIGN multiples, so the alignment refuses only a wild CP.
-\ It clobbers rax.
-: CODE-WORD-GUARD, ( r64 -- ) {: at:r64 :}
+\ The twin of habu1.f GUARD-CODE-WORD, over code slots where ARM64 takes
+\ instruction words: a new CP must be a CODE-SLOT multiple in
+\ [DBASE + DICT-SIZE, DBASE + REGION - CODE-SLOT], unsigned, or the row exits
+\ SEAL-VIOLATION, so cp! never aims later emission outside the code area or
+\ at an address X64EMIT:PLACE-AT refuses. It clobbers rax.
+: CODE-SLOT-GUARD, ( r64 -- ) {: at:r64 :}
    LBL LBL {: ok:label trap:label :}
    RAX DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
    at RAX ASM-SINK ENC-CMP-RR  C-B trap JCC,
-   RAX DBASE-REG REGION 4 - MEM-OFF ASM-SINK ENC-LEA
+   RAX DBASE-REG REGION CODE-SLOT - MEM-OFF ASM-SINK ENC-LEA
    at RAX ASM-SINK ENC-CMP-RR  C-A trap JCC,
-   at 3 >IMM32 ASM-SINK ENC-TEST-RI32  C-E ok JCC,
+   at CODE-SLOT 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-E ok JCC,
    trap LBL,
    ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
    ok LBL, ;
@@ -2385,7 +2410,7 @@ private
    s" rbase" [: RAX RBASE-CELL CELL@,  RAX PUSH, ;] PRIM
    s" ndict@" [: NDICT-REG PUSH, ;] PRIM
    s" cp!" [:
-      TASK-LIVE-GUARD,  RCX POP,  RCX CODE-WORD-GUARD,
+      TASK-LIVE-GUARD,  RCX POP,  RCX CODE-SLOT-GUARD,
       CP-REG RCX ASM-SINK ENC-MOV-RR ;] PRIM
    s" ndict!" [: NDICT-SET-BODY ;] PRIM
    s" seed-ndict!" [: SEED-NDICT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID

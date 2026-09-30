@@ -42,7 +42,8 @@
 \ - hb-x64-kernel-state reads the boot's registers and DATA cells through the
 \   getters and counts wordlists, and exits 0;
 \ - hb-x64-kernel-cp moves CP to both bounds of the code area and back, and
-\   -cp-low, -cp-high and -cp-odd each refuse one CP with 83;
+\   -cp-low, -cp-high and -cp-unslotted each refuse one CP with 83: a code
+\   slot below the area, the region's end and a 4-aligned CP between slots;
 \ - hb-x64-kernel-ndict lowers and raises the count over an index, and exits
 \   0; -ndict-cap admits DICT-CAP and exits 74 with the fd-2 text for one
 \   more, and -ndict-floor exits 83 below the seal floor;
@@ -60,9 +61,11 @@
 \   -mark-armed exit 83, -tier-zero exits 70 with its fd-2 text, and
 \   -snap-rebase exits 76 with the REFUSE text.
 \ hb-x64-kernel-origin asks code-origin about the kernel's text and about spans
-\ code-publish wrote, and -origin-patch about them once patch32 rewrote a word;
-\ both exit 0. -origin-full publishes into a full table and exits 101 with its
-\ fd-2 text.
+\ code-publish wrote, each with its int3 fill to the next code slot, and
+\ -origin-patch about them once patch32 rewrote a word; both exit 0.
+\ -origin-fill moves CP back over a native span and publishes a shorter one
+\ bare there, and finds the bare span's fill unknown; it exits 0.
+\ -origin-full publishes into a full table and exits 101 with its fd-2 text.
 \ The host checks each image's ELF header; running them is the peer's.
 require src/habu/snapshot-format.f
 require src/habu/code-origin-x64.f
@@ -317,11 +320,15 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
 \ ---- the code pointer --------------------------------------------------------
 : CP!, ( n -- ) X64HARNESS:PUSH-REGION,  s" cp!" ROW ;
 
-\ cp! admits a 4-aligned CP in [DICT-SIZE, REGION - 4] of the region, both
-\ bounds included, and cp@ reads each back.
+\ The code slot, and the last one of the region.
+X64KERNEL:CODE-SLOT constant SLOT-BYTES
+REGION SLOT-BYTES - constant TOP-SLOT
+
+\ cp! admits a code slot in [DICT-SIZE, TOP-SLOT] of the region, both bounds
+\ included, and cp@ reads each back.
 : BUILD-CP ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
-   REGION 4 - CP!,  s" cp@" ROW  REGION 4 - X64HARNESS:EXPECT-POP-REGION,
+   TOP-SLOT CP!,  s" cp@" ROW  TOP-SLOT X64HARNESS:EXPECT-POP-REGION,
    DICT-SIZE 64 + CP!,  s" cp@" ROW  DICT-SIZE 64 + X64HARNESS:EXPECT-POP-REGION,
    DICT-SIZE CP!,  s" cp@" ROW  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    0 X64HARNESS:EXPECT-DEPTH,
@@ -331,6 +338,8 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
 : BUILD-CP-BAD ( n ptr u8 n -- ) {: at:n path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    at CP!,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ ---- the dictionary count ----------------------------------------------------
@@ -585,15 +594,17 @@ $5A constant CALLER-TIER
 
 \ ---- code provenance ---------------------------------------------------------
 \ The spans the provenance images publish, as offsets into the region: CP
-\ starts at DICT-SIZE and each publication appends at CP.
+\ starts at DICT-SIZE, each publication appends at CP, and CP moves to the
+\ first code slot at or past the span's end, so B, C and D each take a slot
+\ whose last eight bytes are int3 fill.
 16 constant SPAN-A                     \ native, then patched inside
 8 constant SPAN-B                      \ published bare
 8 constant SPAN-C                      \ C and D, native side by side
 DICT-SIZE constant AT-A
-AT-A SPAN-A + constant AT-B
-AT-B SPAN-B + constant AT-C
-AT-C SPAN-C + constant AT-D
-AT-D SPAN-C + constant AT-FREE         \ CP after the four: never published
+AT-A SPAN-A + constant AT-B            \ A fills its slot
+AT-B SLOT-BYTES + constant AT-C
+AT-C SLOT-BYTES + constant AT-D
+AT-D SLOT-BYTES + constant AT-FREE     \ CP after the four: never published
 4 constant PATCH-AT                    \ the word patch32 rewrites, inside A
 4 constant WORD-BYTES
 $90909090 constant PATCH-WORD
@@ -623,8 +634,8 @@ $90909090 constant PATCH-WORD
 
 \ The kernel's text is native from the boot on. A span published inside a
 \ closed window is native, one published bare is unknown, and so is one never
-\ published. C and D share one row, so the count holds the text's row, A's, B's
-\ and theirs.
+\ published; each span's fill takes its origin. C and D share one row, so the
+\ count holds the text's row, A's, B's and theirs.
 : BUILD-ORIGIN ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    s" code-origin" X64KERNEL:ENTRY-LABEL {: entry:label :}
@@ -654,6 +665,22 @@ $90909090 constant PATCH-WORD
    1 AT-C AT-FREE EXPECT-ORIGIN,
    AT-FREE CELL + PATCH,
    6 TIER-PROV:N-CELL X64HARNESS:EXPECT-CELL,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ The fill takes its span's origin. Over a 32-byte native span, cp! back to its
+\ start and an 8-byte bare publication leave its first slot unknown, the fill
+\ [dst+8, dst+16) included, and its second slot native.
+32 constant SPAN-WIDE
+
+: BUILD-ORIGIN-FILL ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   AT-A SPAN-WIDE NATIVE,
+   AT-A CP!,
+   AT-A SPAN-B PUBLISH,
+   -1 AT-A SPAN-B + AT-A SLOT-BYTES + EXPECT-ORIGIN,
+   1 AT-A SLOT-BYTES + AT-A SPAN-WIDE + EXPECT-ORIGIN,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
@@ -693,9 +720,9 @@ public
    s" hb-x64-kernel-hooks-empty" TMP-PATH BUILD-HOOKS-EMPTY
    s" hb-x64-kernel-state" TMP-PATH BUILD-STATE
    s" hb-x64-kernel-cp" TMP-PATH BUILD-CP
-   DICT-SIZE 4 - s" hb-x64-kernel-cp-low" TMP-PATH BUILD-CP-BAD
+   DICT-SIZE SLOT-BYTES - s" hb-x64-kernel-cp-low" TMP-PATH BUILD-CP-BAD
    REGION s" hb-x64-kernel-cp-high" TMP-PATH BUILD-CP-BAD
-   DICT-SIZE 2 + s" hb-x64-kernel-cp-odd" TMP-PATH BUILD-CP-BAD
+   DICT-SIZE 8 + s" hb-x64-kernel-cp-unslotted" TMP-PATH BUILD-CP-BAD
    s" hb-x64-kernel-ndict" TMP-PATH BUILD-NDICT
    s" hb-x64-kernel-ndict-cap" TMP-PATH BUILD-NDICT-CAP
    s" hb-x64-kernel-ndict-floor" TMP-PATH BUILD-NDICT-FLOOR
@@ -718,6 +745,7 @@ public
    s" hb-x64-kernel-tier-zero" TMP-PATH BUILD-TIER-ZERO
    s" hb-x64-kernel-origin" TMP-PATH BUILD-ORIGIN
    s" hb-x64-kernel-origin-patch" TMP-PATH BUILD-ORIGIN-PATCH
+   s" hb-x64-kernel-origin-fill" TMP-PATH BUILD-ORIGIN-FILL
    s" hb-x64-kernel-origin-full" TMP-PATH BUILD-ORIGIN-FULL
    s" snap-rebase" s" hb-x64-kernel-snap-rebase" TMP-PATH BUILD-CALL
    X64HARNESS:DISPOSE
