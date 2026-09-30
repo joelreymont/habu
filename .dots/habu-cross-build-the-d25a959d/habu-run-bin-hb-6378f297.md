@@ -7,6 +7,7 @@ created-at: "2026-09-29T12:51:36.749146+03:00"
 blocks:
   - habu-run-a-captured-15728fcc
   - habu-boot-the-arm64-d0d4421a
+  - habu-keep-the-x86-6967d3cf
 ---
 
 Problem: the x86 engine has not yet run the Habu interpreter; milestone M4 joins lanes X and I.
@@ -17,3 +18,5 @@ Depends: habu-run-a-captured-15728fcc (X5), habu-boot-the-arm64-d0d4421a (I10c),
 Route: Alder (shared: docs/bootstrap.md).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+Lead note (2026-09-30, from P3's design): depends on K8c `habu-keep-the-x86-6967d3cf`. It is P3's native proof: its first tier-1 `:`…`;` through NCOMP and NPUB on x86 runs the commit path (`code-publish`, `callmap-set`, `xref-retarget`, `does-record`) and the slot rule. Acceptance: the `test/tier.f`-class run includes a call between two definitions and one `does>` definition.

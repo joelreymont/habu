@@ -18,3 +18,5 @@ Route: Alder (shared: src/compiler/native/shadow.f (the ARM64 host compiler load
 Ownership: krait (Intel lane).
 Claim: unassigned.
 - The shadow emission compiles every definition through the x86 rows, so it needs schema-fixed operands pinned (habu-pin-schema-fixed-1983d191).
+
+Lead note (2026-09-30, from P3's design): `NEMIT` holds one emission (`emission.f:122` refuses an open over sealed rows), and after P3 the x86 row fills it in `EMIT`, so the shadow's rows must be copied and retired before the primary's `NEMIT:OPEN`. `X64PASS:EMIT` always places, so X1 adds the unplaced path. X1 takes the wrong-target refusal: `NEMIT:OPEN` takes the emitting `CTARGET:arch`, and NPUB refuses any arch other than `NABI:BINDING`'s (K12) with a new `E-NPUB-TARGET` before the window.
