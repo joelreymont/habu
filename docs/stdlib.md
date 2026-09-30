@@ -21,6 +21,7 @@ Planned module files:
 - `lib/ffi-abi.f`
 - `lib/zip.f`
 - `lib/net/udp4.f`
+- `lib/net/ws-frame.f`
 - `lib/pg.f`
 - `lib/net/curl.f`
 - `lib/crypto/evp.f`
@@ -1213,6 +1214,15 @@ their source endpoint, with distinct complete, truncated, timeout, and OS-error
 variants. See [UDP4](udp4.md) for exact effects, buffer and socket lifetime
 contracts, the bounded foreign interface, and independent localhost checks.
 Application protocol framing and retry/ordering policy belong above this module.
+
+## WebSocket frames
+
+`lib/net/ws-frame.f` owns package `WS`: the RFC 6455 frame header, written
+(`ENCODE-HEADER`) and read from the bytes held so far (`DECODE-HEADER`, which
+answers `need` or `frame`), payload masking (`MASK`) and close status codes
+(`CLOSE-CODE!`). The words read and write the caller's bytes and touch no
+socket. Every protocol fault the RFC names is refused by its own code as soon as
+the bytes held show it. See [WebSocket](websocket.md).
 
 ## PostgreSQL
 

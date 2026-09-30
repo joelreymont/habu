@@ -1432,6 +1432,18 @@ public
 
 ;package
 
+\ WebSocket, RFC 6455 (package WS): -9330..-9339. The frame codec
+\ (lib/net/ws-frame.f) mints from the head of the block; the codes after it are
+\ left for the connection words.
+-9330 constant E-WS-FIRST
+-9339 constant E-WS-LAST
+-9330 constant E-WS-RSV           \ a reserved bit set in a frame's first byte
+-9331 constant E-WS-OPCODE        \ a reserved opcode
+-9332 constant E-WS-CONTROL       \ a control frame that is fragmented or carries more than 125 bytes
+-9333 constant E-WS-LENGTH        \ a negative payload length, or an extended length with its high bit set or not in its shortest form
+-9334 constant E-WS-TOO-BIG       \ a payload longer than the receiver's bound
+-9335 constant E-WS-MASK          \ a mask bit the sender must not set or must set, or a key the sender cannot use
+
 \ The HTTP/1.1 server (package HTTP, lib/net/http.f): -9340..-9349.
 -9340 constant E-HTTP-FIRST
 -9349 constant E-HTTP-LAST
