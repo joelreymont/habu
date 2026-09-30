@@ -1,6 +1,6 @@
 ---
 title: Render x86 trap and codeaddr
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.467577+03:00"
@@ -13,7 +13,7 @@ Verify: spark `bin/hb --load test/compiler/x64-emit.f` and `bin/hb --load test/c
 Depends: habu-run-emitted-x86-b704f918 (C8).
 Route: direct.
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-render-x86-trap-33eba82b.
 
 Preflight corrections (these override the lines above where they differ):
 - Target: `x64.trap` carries `x64.trap-entry` = `NTRAP:ROUTINE$` = `die` (`trap.f:135-136`, `select-x64.f:781-784`, `x64ir.f:1466-1476`); `throw` is `idiv`'s `x64.throw-entry` (C3). The render publishes the three trap cells (`TRAP-CELLS`, `select-x64.f:202,797-803`) and branches to `x64.trap-entry`, twin of `emit.f:1441-1445`.
