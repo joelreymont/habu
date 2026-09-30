@@ -98,7 +98,7 @@ variable DATA-BAD
    RBASE-REG ASM-LEN >IMM32 ASM-SINK ENC-SUB-RI32 ;
 
 \ r13 = the code region, REGION bytes at the image base plus REGION-OFF, where
-\ the linker's PT_LOAD will place it; r15 = its code area past the records;
+\ the writer's PT_LOAD places it; r15 = its code area past the records;
 \ r14 = no records; rbx = 0. The twin of EM-MMAP-CODE-REGION and EM-SEED-DICT.
 : CODE-REGION, ( -- )
    RDI RBASE-REG REGION-OFF CODE-OFF - MEM-OFF ASM-SINK ENC-LEA

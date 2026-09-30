@@ -4,8 +4,6 @@ status: open
 priority: 3
 issue-type: task
 created-at: "2026-09-30T13:02:53.346419+03:00"
-blocks:
-  - habu-write-and-link-f6e6017f
 ---
 
 Problem: the x86 target layout (`src/os/linux-x86-64/layout.f`) is replayed inside three packages so its constants do not collide with the host's globals: X64BOOT (`src/habu/boot-x64.f:32`), X64KERNEL (`src/habu/kernel-x64.f:45`) and X64LAYOUT (`src/os/linux-x86-64/elf.f`, from X4a habu-write-and-link-f6e6017f).

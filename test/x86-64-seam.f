@@ -11,9 +11,12 @@
 \ blob, because a blob says "these bytes changed" where a field says which one
 \ and to what.
 \ The seam's layout.f cannot be loaded beside the host's - both spell CODE-OFF
-\ and the engine refuses a duplicate definition - so the writer is loaded on its
-\ own, over the host's identical CODE-OFF and PROT-PAGE-MAX. The two values are
-\ pinned here, so this test fails rather than drifts if either target moves one.
+\ and the engine refuses a duplicate definition - so the writer replays it in a
+\ package of its own for the DATA segment, which a macOS host places elsewhere,
+\ and reads the host's identical CODE-OFF, PROT-PAGE-MAX, REGION and REGION-OFF.
+\ Every address and size is pinned here as a literal, so this test fails rather
+\ than drifts if either target moves one, and fails on a macOS host if the
+\ writer reads that host's DATA.
 \
 \ THE RELOCATION SITE KIND. The mov r64, imm64 site (package SNAP-RELOC) is
 \ recognised, read and rewritten here over hand-built fixtures, including the
@@ -72,6 +75,18 @@ $1000 constant WANT-CODE-OFF
 1 constant WANT-ELFDATA2LSB
 64 constant PHOFF
 56 constant PHENT
+6 constant WANT-PHNUM
+$10000 constant WANT-PAGE-MAX
+$1400000 constant WANT-REGION-VA        \ VMBASE plus REGION-OFF
+$2000000 constant WANT-REGION
+$340000000 constant WANT-DATA-VA         \ the Linux target's, not a macOS host's
+$2000000 constant WANT-DATA-SIZE
+\ The metadata past the six program headers, which end at $190.
+$190 constant WANT-INTERP-OFF
+$1B0 constant WANT-HASH-OFF
+$1C8 constant WANT-DYNSYM-OFF
+$210 constant WANT-DYNSTR-OFF
+$228 constant WANT-RELA-OFF
 
 : PH ( n n -- n ) {: i:n field:n :}
    PHOFF i PHENT * + field + ;
@@ -106,7 +121,7 @@ $1000 constant WANT-CODE-OFF
    $30 U32@ 0 T=                          \ e_flags
    $34 U16@ 64 T=                         \ e_ehsize
    $36 U16@ PHENT T=                      \ e_phentsize
-   $38 U16@ 4 T=                          \ e_phnum
+   $38 U16@ WANT-PHNUM T=                 \ e_phnum
    $3A U16@ 0 T=  $3C U16@ 0 T=  $3E U16@ 0 T= ;
 
 : CHECK-RX-PHDR ( n -- ) {: textsz:n :}
@@ -136,8 +151,8 @@ $1000 constant WANT-CODE-OFF
    s" program header 2 names the x86-64 dynamic loader" T-LABEL
    2 PH-TYPE@ 3 T=                        \ PT_INTERP
    2 PH-FLAGS@ 4 T=                       \ PF_R
-   2 PH-OFF@ $120 T=
-   2 PH-VADDR@ WANT-VMBASE $120 + T=
+   2 PH-OFF@ WANT-INTERP-OFF T=
+   2 PH-VADDR@ WANT-VMBASE WANT-INTERP-OFF + T=
    2 PH-FILESZ@ 28 T=
    2 PH-ALIGN@ 1 T= ;
 
@@ -150,24 +165,74 @@ $1000 constant WANT-CODE-OFF
    3 PH-FILESZ@ $B0 T=
    3 PH-ALIGN@ 8 T= ;
 
+\ The code region and DATA are loadable segments the file carries no bytes of,
+\ after the read-write tail and in ascending order, as ELF orders loadable
+\ segments: the kernel maps each zeroed and read-write at its address.
+: CHECK-FIXED-PHDR ( n n n -- ) {: i:n va:n memsz:n :}
+   i PH-TYPE@ 1 T=                        \ PT_LOAD
+   i PH-FLAGS@ 6 T=                       \ PF_R | PF_W
+   i PH-OFF@ 0 T=
+   i PH-VADDR@ va T=
+   i PH-PADDR@ va T=
+   i PH-FILESZ@ 0 T=
+   i PH-MEMSZ@ memsz T=
+   i PH-ALIGN@ WANT-PAGE-MAX T= ;
+
+: CHECK-REGION-PHDR ( -- )
+   s" program header 4 maps the code region at the image base plus REGION-OFF" T-LABEL
+   4 WANT-REGION-VA WANT-REGION CHECK-FIXED-PHDR ;
+
+: CHECK-DATA-PHDR ( -- )
+   s" program header 5 maps the target's DATA at its fixed address" T-LABEL
+   5 WANT-DATA-VA WANT-DATA-SIZE CHECK-FIXED-PHDR ;
+
 : CHECK-INTERP-BYTES ( -- )
    s" the interpreter string is /lib64/ld-linux-x86-64.so.2 and is terminated" T-LABEL
-   MBUF $120 M-BYTE+ 27 s" /lib64/ld-linux-x86-64.so.2" T$=
-   $120 27 + U8@ 0 T= ;
+   MBUF WANT-INTERP-OFF M-BYTE+ 27 s" /lib64/ld-linux-x86-64.so.2" T$=
+   WANT-INTERP-OFF 27 + U8@ 0 T= ;
+
+\ Entry i of the dynamic table, which opens the read-write segment.
+: DYN-TAG@ ( n n -- n ) {: textsz:n i:n :}
+   textsz i 16 * + U64@ ;
+
+: DYN-VAL@ ( n n -- n ) {: textsz:n i:n :}
+   textsz i 16 * + 8 + U64@ ;
+
+\ The loader reaches the hash, string, symbol and relocation tables through the
+\ dynamic table, so each is pinned both where the table points and by its own
+\ bytes there: an offset left inside the program headers would put the bytes
+\ elsewhere while the pointer still named it.
+: CHECK-DYNAMIC-TABLES ( n -- ) {: textsz:n :}
+   s" the dynamic table points at each metadata table past the headers" T-LABEL
+   textsz 0 DYN-TAG@ 4 T=                 \ DT_HASH
+   textsz 0 DYN-VAL@ WANT-VMBASE WANT-HASH-OFF + T=
+   textsz 1 DYN-TAG@ 5 T=                 \ DT_STRTAB
+   textsz 1 DYN-VAL@ WANT-VMBASE WANT-DYNSTR-OFF + T=
+   textsz 2 DYN-TAG@ 6 T=                 \ DT_SYMTAB
+   textsz 2 DYN-VAL@ WANT-VMBASE WANT-DYNSYM-OFF + T=
+   textsz 5 DYN-TAG@ 7 T=                 \ DT_RELA
+   textsz 5 DYN-VAL@ WANT-VMBASE WANT-RELA-OFF + T=
+   s" each metadata table holds its own bytes where it is named" T-LABEL
+   WANT-HASH-OFF U32@ 1 T=                \ nbucket
+   WANT-HASH-OFF 4 + U32@ 3 T=            \ nchain
+   WANT-DYNSYM-OFF 24 + U32@ 1 T=         \ dlopen's st_name
+   WANT-DYNSYM-OFF 48 + U32@ 8 T=         \ dlsym's st_name
+   MBUF WANT-DYNSTR-OFF 1 + M-BYTE+ 6 s" dlopen" T$=
+   MBUF WANT-DYNSTR-OFF 8 + M-BYTE+ 5 s" dlsym" T$= ;
 
 \ Both GOT slots are bound by a GLOB_DAT relocation of the x86-64 vocabulary:
 \ symbol index in the high half, type in the low.
 : CHECK-RELA ( n -- ) {: textsz:n :}
    s" each GOT slot takes an R_X86_64_GLOB_DAT against its own symbol" T-LABEL
-   $1B8 U64@ WANT-VMBASE textsz + $B0 + T=
-   $1C0 U64@ 1 32 lshift 6 or T=
-   $1C8 U64@ 0 T=
-   $1D0 U64@ WANT-VMBASE textsz + $B8 + T=
-   $1D8 U64@ 2 32 lshift 6 or T=
-   $1E0 U64@ 0 T= ;
+   WANT-RELA-OFF U64@ WANT-VMBASE textsz + $B0 + T=
+   WANT-RELA-OFF 8 + U64@ 1 32 lshift 6 or T=
+   WANT-RELA-OFF 16 + U64@ 0 T=
+   WANT-RELA-OFF 24 + U64@ WANT-VMBASE textsz + $B8 + T=
+   WANT-RELA-OFF 32 + U64@ 2 32 lshift 6 or T=
+   WANT-RELA-OFF 40 + U64@ 0 T= ;
 
 : CHECK-LENGTH ( n -- ) {: textsz:n :}
-   s" the image is the padded text plus the read-write segment" T-LABEL
+   s" the image is the padded text plus the read-write segment, no region or DATA" T-LABEL
    MLEN@ textsz $C0 + T= ;
 
 : ELF-CASES ( -- )
@@ -182,7 +247,10 @@ $1000 constant WANT-CODE-OFF
    textsz CHECK-RW-PHDR
    CHECK-INTERP-PHDR
    textsz CHECK-DYNAMIC-PHDR
+   CHECK-REGION-PHDR
+   CHECK-DATA-PHDR
    CHECK-INTERP-BYTES
+   textsz CHECK-DYNAMIC-TABLES
    textsz CHECK-RELA
    textsz CHECK-LENGTH ;
 

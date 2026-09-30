@@ -27,6 +27,15 @@ require src/habu/fdio.f
 require src/arch/x86-64/icode.f
 require src/compiler/native/x64ir.f
 
+\ The production image writer loads at top level, as every production path
+\ loads it: elf.f opens package X64LAYOUT, and packages do not nest.
+\ src/os/image-bytes.f sizes MSIZE from a bare CODE-CAP-BYTES at load, so it
+\ loads under `using X64CODE`.
+using X64CODE
+require src/os/image-bytes.f
+;using
+require src/os/linux-x86-64/elf.f
+
 package X64HARNESS
 using X64ASM
 using X64CODE
@@ -52,11 +61,9 @@ variable WRONG-AT                    \ the check a negative image fails, or 0
 : ROUTINE-LBL ( -- label ) ROUTINE-CELL @ >LABEL ;
 : QUOTED-LBL ( -- label ) QUOTED-CELL @ >LABEL ;
 
-\ These are the production image writers and OS seam over package X64CODE's
-\ byte stream. They load into this package because the x86-64 sys.f spells the
-\ host seam's syscall-number words, which must not become globals here.
-s" src/os/image-bytes.f" required
-s" src/os/linux-x86-64/elf.f" required
+\ The signer, the image driver and the OS seam over package X64CODE's byte
+\ stream. They load into this package because the x86-64 sys.f spells the host
+\ seam's syscall-number words, which must not become globals here.
 s" src/os/linux-x86-64/sign.f" required
 s" src/habu/driver-io.f" required
 s" src/os/linux-x86-64/sys.f" required

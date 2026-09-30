@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.991875+03:00"
 blocks:
-  - habu-write-and-link-f6e6017f
   - habu-carry-the-shadow-dcb84138
 ---
 

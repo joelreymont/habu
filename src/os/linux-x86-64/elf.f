@@ -4,14 +4,35 @@
 \ Every PT_LOAD sits on a PROT-PAGE-MAX boundary so the text and the read-write
 \ tail never share a kernel page on any supported page size.
 \ Snapshot extras name the staged dynamic/GOT tail and its fixed byte size.
-\ What differs from the aarch64 writer is exactly what the architecture owns:
-\ e_machine, the interpreter the dynamic loader is named by (one byte longer,
-\ which is why ELF-INTERP-SZ is 28 and not 27), and the GOT relocation type.
+\ What differs from the aarch64 writer is what the architecture owns - e_machine,
+\ the interpreter the dynamic loader is named by (one byte longer, which is why
+\ ELF-INTERP-SZ is 28 and not 27) and the GOT relocation type - and two fixed
+\ segments: this image maps its code region and DATA by PT_LOAD, where the
+\ aarch64 boot maps both itself (docs/x86-64.md "Fixed segments"). Its six
+\ program headers end at $190, so the metadata behind them starts there and not
+\ at the aarch64 writer's $120.
 \ Everything else here is ELF64 format, and reads the same under both machines.
 \ The code stream it wraps is package X64CODE's (src/arch/x86-64/icode.f),
 \ loaded before this file and before src/os/image-bytes.f, which sizes MSIZE
 \ from a bare CODE-CAP-BYTES at load and so loads under `using X64CODE`.
+\ This file opens package X64LAYOUT, and packages do not nest, so it loads at
+\ top level.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
+
+\ The target's layout. The host's layout names the host's own DATA (a macOS host
+\ maps it at $44000000000), and the engine refuses a second CODE-OFF beside it,
+\ so the target's is replayed in a package, as src/habu/boot-x64.f replays it,
+\ and read qualified.
+\ The public constants copy the replayed values rather than EXPORT them:
+\ tools/check.f preverifies without replaying another target's layout, so there
+\ DATA-VA is the engine's own, and an EXPORT of it is a word checked code may
+\ not call (E-CAP-TRUSTED).
+package X64LAYOUT
+s" src/os/linux-x86-64/layout.f" included
+public
+DATA-VA constant DATA-VA
+DATA-SIZE constant DATA-SIZE
+;package
 
 using X64CODE
 
@@ -34,19 +55,19 @@ $7F constant ELF-MAG0
 6 constant PF-RW
 64 constant ELF-HDR-SZ
 56 constant ELF-PHDR-SZ
-4 constant ELF-PHDR-N
+6 constant ELF-PHDR-N
 $400000 constant VMBASE
 $C0 constant ELF-RW-SZ
 $B0 constant ELF-DYNAMIC-SZ
 $B0 constant ELF-DLOPEN-SLOT-OFF
 $B8 constant ELF-DLSYM-SLOT-OFF
-$120 constant ELF-INTERP-OFF
+$190 constant ELF-INTERP-OFF
 28 constant ELF-INTERP-SZ
-$140 constant ELF-HASH-OFF
-$158 constant ELF-DYNSYM-OFF
-$1A0 constant ELF-DYNSTR-OFF
+$1B0 constant ELF-HASH-OFF
+$1C8 constant ELF-DYNSYM-OFF
+$210 constant ELF-DYNSTR-OFF
 24 constant ELF-DYNSTR-SZ
-$1B8 constant ELF-RELA-OFF
+$228 constant ELF-RELA-OFF
 48 constant ELF-RELA-SZ
 24 constant ELF-SYM-SZ
 24 constant ELF-RELA-ENT-SZ
@@ -69,6 +90,7 @@ $1B8 constant ELF-RELA-OFF
 CODE-CAP-BYTES CODE-OFF + constant MPAGE
 variable CODELEN
 variable ELF-TEXT-SIZE
+VMBASE REGION-OFF + constant ELF-REGION-VA
 
 : ELF-PAGE-UP ( n -- n )
    PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
@@ -78,6 +100,15 @@ variable ELF-TEXT-SIZE
    MPAGE ELF-PAGE-UP ELF-RW-SZ + MSIZE >
    IF s" elf: MSIZE below max image" 73 die THEN ;
 ELF-MSIZE-CHECK
+
+\ The region starts past the largest text and its RW tail, and DATA past the
+\ region, so the loadable segments ascend by address, as ELF orders them, and
+\ never overlap.
+: ELF-FIXED-CHECK ( -- )
+   MPAGE ELF-PAGE-UP ELF-RW-SZ + REGION-OFF >
+   ELF-REGION-VA REGION + X64LAYOUT:DATA-VA > or
+   IF s" elf: fixed segments overlap the image" 73 die THEN ;
+ELF-FIXED-CHECK
 
 : ASM-CODELEN! ( -- )
    ASM-LEN CODELEN ! ;
@@ -118,34 +149,52 @@ ELF-MSIZE-CHECK
    ELF-HDR-SZ IMG-M16  ELF-PHDR-SZ IMG-M16  ELF-PHDR-N IMG-M16
    0 IMG-M16  0 IMG-M16  0 IMG-M16 ;
 
-: ELF-PHDR, ( n n n n n n -- ) {: typ flags off va filesz align :}
+\ The kernel maps memsz bytes at va and zero-fills those past filesz.
+: ELF-PHDR, ( n n n n n n n -- ) {: typ flags off va filesz memsz align :}
    typ IMG-M32
    flags IMG-M32
    off IMG-M64
    va IMG-M64
    va IMG-M64
    filesz IMG-M64
-   filesz IMG-M64
+   memsz IMG-M64
    align IMG-M64 ;
 
 : ELF-RX-PHDR, ( -- )
-   PT-LOAD PF-RX 0 VMBASE ELF-TEXT-SIZE @ PROT-PAGE-MAX ELF-PHDR, ;
+   PT-LOAD PF-RX 0 VMBASE ELF-TEXT-SIZE @ dup PROT-PAGE-MAX ELF-PHDR, ;
 
 : ELF-RW-PHDR, ( -- )
-   PT-LOAD PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-RW-SZ PROT-PAGE-MAX ELF-PHDR, ;
+   PT-LOAD PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-RW-SZ dup PROT-PAGE-MAX
+   ELF-PHDR, ;
 
 : ELF-INTERP-PHDR, ( -- )
-   PT-INTERP PF-R ELF-INTERP-OFF ELF-INTERP-OFF ELF-VA ELF-INTERP-SZ 1
+   PT-INTERP PF-R ELF-INTERP-OFF ELF-INTERP-OFF ELF-VA ELF-INTERP-SZ dup 1
    ELF-PHDR, ;
 
 : ELF-DYNAMIC-PHDR, ( -- )
-   PT-DYNAMIC PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-DYNAMIC-SZ 8 ELF-PHDR, ;
+   PT-DYNAMIC PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-DYNAMIC-SZ dup 8 ELF-PHDR, ;
 
+\ A fixed segment the file carries no bytes of: memsz zeroed read-write bytes
+\ at va, where the boot maps the same span MAP_FIXED (src/habu/boot-x64.f
+\ CODE-REGION, and DATA-REGION,). p_offset 0 is congruent to every va here
+\ modulo the alignment, as the kernel requires.
+: ELF-FIXED-PHDR, ( n n -- ) {: va:n memsz:n :}
+   PT-LOAD PF-RW 0 va 0 memsz PROT-PAGE-MAX ELF-PHDR, ;
+
+: ELF-REGION-PHDR, ( -- )
+   ELF-REGION-VA REGION ELF-FIXED-PHDR, ;
+
+: ELF-DATA-PHDR, ( -- )
+   X64LAYOUT:DATA-VA X64LAYOUT:DATA-SIZE ELF-FIXED-PHDR, ;
+
+\ The loadable segments ascend by address: text, RW tail, region, DATA.
 : ELF-PHDRS, ( -- )
    ELF-RX-PHDR,
    ELF-RW-PHDR,
    ELF-INTERP-PHDR,
-   ELF-DYNAMIC-PHDR, ;
+   ELF-DYNAMIC-PHDR,
+   ELF-REGION-PHDR,
+   ELF-DATA-PHDR, ;
 
 : ELF-INTERP, ( -- )
    ELF-INTERP-OFF M-OFF M-PAD-OFF

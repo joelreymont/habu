@@ -150,11 +150,14 @@ ignored; they exist so the checker can enforce image-build ordering.
 
 - macOS uses Mach-O plus signing.
 - Linux uses ELF64 with executable `PT_LOAD` detection requiring read+execute
-  and not write. Both Linux seams write the same four program headers, the same
-  `PROT-PAGE-MAX` boundary between the text and the read-write tail, and the
-  same dynamic table; what the architecture owns is `e_machine`
-  (`EM_AARCH64` 183, `EM_X86_64` 62), the interpreter the image names, and the
-  GOT relocation type (`R_AARCH64_GLOB_DAT`, `R_X86_64_GLOB_DAT` 6).
+  and not write. Both Linux seams write the same kinds of program headers, the
+  same `PROT-PAGE-MAX` boundary between the text and the read-write tail, and
+  the same dynamic tags; what the
+  architecture owns is `e_machine` (`EM_AARCH64` 183, `EM_X86_64` 62), the
+  interpreter the image names, and the GOT relocation type
+  (`R_AARCH64_GLOB_DAT`, `R_X86_64_GLOB_DAT` 6). The x86_64 image adds fixed
+  `PT_LOAD`s for its code region and DATA, so its metadata starts at `$190`,
+  not `$120` ([x86-64.md](x86-64.md) "Fixed segments").
   `test/x86-64-seam.f` writes an x86_64 image from an aarch64 engine and checks
   those headers field by field.
 

@@ -8,7 +8,6 @@ blocks:
   - habu-emit-a-second-8a260f5a
   - habu-carry-the-shadow-dcb84138
   - habu-select-the-build-610b4492
-  - habu-write-and-link-f6e6017f
   - habu-link-records-and-647852d3
   - habu-link-the-shadow-74e41be7
   - habu-resolve-x86-entry-cb671d4d

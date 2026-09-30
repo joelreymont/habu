@@ -1,6 +1,6 @@
 ---
 title: Write ELF segments for a linked x86 image
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.732552+03:00"
