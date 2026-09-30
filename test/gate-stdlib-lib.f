@@ -146,14 +146,16 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    PRODUCT-ENGINE$ grant grantu SUITE-ENV
    PRODUCT-SPAWN$ label labelu prog progu timeout GT-POOL-START-STDIN ;
 
-\ The entry guard runs before anything else starts. The keyed images the
-\ registry's rows load - the fixture writer, the cold host, the saver and
-\ linker images, the unsealed engine - are settled in the pool, one build row
-\ per image beside the rows, and each row starts once its own images are
-\ (test/gate-images.f): a broken image closure fails its build row and the
-\ rows that load it, and every other row runs.
+\ The entry guard walks the load graph DERIVE read and refuses the registry
+\ before anything starts: this hook runs outside the catch around the rows. The
+\ keyed images the registry's rows load - the fixture writer, the cold host,
+\ the saver and linker images, the unsealed engine - are settled in the pool,
+\ one build row per image beside the rows, and each row starts once its own
+\ images are (test/gate-images.f): a broken image closure fails its build row
+\ and the rows that load it, and every other row runs.
 : SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS
+   GATE-IMAGES:DERIVE
    ENTRY-GUARD:CHECK
    s" habu-native-suite" GT-START
    GT-POOL-RESET

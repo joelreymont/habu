@@ -10,7 +10,8 @@
 \ suite drives the op directly under a test-armed window (arming through a
 \ TRUSTED forwarder to the sealed FIELD-PROJ!, exactly as the whitebox suites
 \ reach CTOR-PEND! / TFAM-FIND-IN), so it pins the exact contract the generator
-\ binds to.
+\ binds to. The forwarder, the lookups and the accessors are
+\ test/field-proj-lib.f's, which test/field-proj-boundary-child.f shares.
 \
 \ Sections:
 \   1. positives: cell field, byte-offset field, and a generic-substituted field
@@ -35,60 +36,12 @@ variable #CASE
    then ;
 
 require test/checker-assert.f
-using TFAM
-
-
-\ --- sealed friend boundary (dot habu-hb-crash-bare-c5be6634 idiom): the
-\ field-projection window is armed only by the generative crossing, so its arming
-\ word is a pre-hook internal that the seal marks non-executable. A whitebox test
-\ reaches it through a named TRUSTED forwarder, exactly as structure-make-suite.f
-\ forwards to SUMV-ADD / TFAM-DECL and type-layout-lower forwards to TFAM-FIND-IN.
-TRUSTED: FP-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
-: FP-CLEAR ( -- ) FIELD-PROJ-CLEAR ;
-TRUSTED: TWX-FAM ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
-
-\ field-id lookup helper (TYPE-FIELD:FIND is a public sealed-package API).
-: FLD-ID ( n ptr u8 n -- n ) {: fam:n na:ptr nu:n :}   \ fam name$ -> committed field id
-   fam TYPE-FIELD:NO-VARIANT na nu TYPE-FIELD:FIND 0= if
-      s" field-proj-suite: field not found" 76 die then ;
-: FAM-ID ( ptr u8 n -- n ) {: na:ptr nu:n :}   \ top-level family name -> id
-   s" " na nu TWX-FAM 0= if s" field-proj-suite: family not found" 76 die then ;
-
-\ --- the runtime for the projection op is the ENGINE's now (dot
-\ habu-generate-typed-field-ba63866e, src/core/structure-make.f): the checker
-\ intercepts `field-project` only inside the armed window (replacing its effect
-\ with the schema-aware projection), and the engine compiles an ordinary call to
-\ the production word, whose row is exactly `+` — no retype, layout-fenced on a
-\ layout pointer. This suite used to define its own; defining one now is a
-\ duplicate definition.
+require test/field-proj-lib.f
+using FIELD-PROJ-LIB
 
 \ ===========================================================================
 \ 1. positives
 \ ===========================================================================
-PRODUCT fprec 0
-  FIELD a n
-  FIELD b n
-;PRODUCT
-2 LAYOUT-BUFFER FP-BUF fprec
-
-variable FPREC-FAM   variable FID-A   variable FID-B
-s" fprec" FAM-ID FPREC-FAM !
-FPREC-FAM @ s" a" FLD-ID FID-A !
-FPREC-FAM @ s" b" FLD-ID FID-B !
-
-\ cell field at offset 0
-s" FPX-A" FID-A @ 0 FP-ARM
-: FPX-A ( ptr fprec -- ptr n ) 0 field-project ;
-\ byte-offset field at offset CELL
-s" FPX-B" FID-B @ CELL FP-ARM
-: FPX-B ( ptr fprec -- ptr n ) CELL field-project ;
-
-\ MAKE + whole-bundle store happen in compiled words (a layout value cannot sit
-\ on the interpret stack); the projected reads are scalars, so they surface fine.
-: FP-STORE ( n n n -- ) {: av:n bv:n idx:n :} av bv FPREC:MAKE idx FP-BUF ! ;
-: FP-GETA ( n -- n ) FP-BUF FPX-A @ ;
-: FP-GETB ( n -- n ) FP-BUF FPX-B @ ;
-
 \ store {a=10,b=20} at slot 0, project each field, read the exact value back
 10 20 0 FP-STORE
 0 FP-GETA 10 T=
@@ -110,23 +63,10 @@ FPPTR-FAM @ s" p" FLD-ID FID-P !
 s" FPX-P" FID-P @ 0 FP-ARM
 s" FPX-P ( ptr fpptr -- ptr ptr u8 ) 0 field-project" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ generic-substituted field: `fpg<a>` field v:a projects as `ptr a`, and at a
-\ concrete instantiation reads the stored value back.
-PRODUCT fpg 1
-  FIELD v a
-;PRODUCT
-1 LAYOUT-BUFFER FPG-BUF fpg<n>
-variable FPG-FAM   variable FID-V
-s" fpg" FAM-ID FPG-FAM !
-FPG-FAM @ s" v" FLD-ID FID-V !
-\ generic accessor certifies with the substituted output type
+\ generic-substituted field: the generic accessor certifies with the substituted
+\ output type, and at fpg<n> reads the stored value back.
 s" FPX-V" FID-V @ 0 FP-ARM
 s" FPX-V ( ptr fpg<a> -- ptr a ) 0 field-project" CHECK-QUIET-CANDIDATE! -1 T=
-\ define + run it at fpg<n>
-s" FPX-V" FID-V @ 0 FP-ARM
-: FPX-V ( ptr fpg<a> -- ptr a ) 0 field-project ;
-: FPG-STORE ( n n -- ) {: vv:n idx:n :} vv FPG:MAKE idx FPG-BUF ! ;
-: FPG-GET ( n -- n ) FPG-BUF FPX-V @ ;
 42 0 FPG-STORE
 0 FPG-GET 42 T=
 

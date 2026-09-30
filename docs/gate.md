@@ -81,13 +81,15 @@ gives that slot no directory.
 - Files in a `SUITE` row are entries unless an `ENTRIES` marker follows an
   inert preload prefix. The marker is not passed to `--load`; every file after
   it and before `--` is an entry. Put reusable definitions in preloads, then
-  let each row run only its own assertions. Before the first fixture build, the
-  gate compares canonical file identities across registered entries, preloads,
-  source imports and path literals consumed by known load helpers. It reports
-  a preload or source file that references another row's entry. The shared
-  `test/compiler/aot-mode.f` prefix selects a tier and is declared as a preload.
-  Run `bin/hb --load test/gate-entry-guard-test.f` to check this boundary
-  without starting the full suite.
+  let each row run only its own assertions. Before any row or build row
+  starts, the gate walks the load graph it derives the keyed images from
+  (`test/gate-images.f`): from every file a row loads, through each import and
+  each path literal a known load helper consumes, to every file those reach.
+  It refuses a preload that is another row's entry and any import or launch of
+  one, naming the file and line. A file may name itself, and tier twins share
+  an entry. The shared `test/compiler/aot-mode.f` prefix selects a tier and is
+  declared as a preload. Run `bin/hb --load test/gate-entry-guard-test.f` to
+  check this boundary without starting the full suite.
 - A `WHITEBOX-SUITE` row is the gate-only kind: the runner hands it the gate's
   private copy of the unsealed engine (`test/whitebox-engine.f`) because such a
   file reaches inside the engine, and the sealed `bin/hb` refuses those tokens

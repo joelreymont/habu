@@ -1,164 +1,102 @@
 \ Gate entry files are execution roots. A row may share an inert helper, but
 \ importing or launching another row's entry silently runs that suite twice.
+\
+\ The guard walks the load graph test/gate-images.f derived, from every file a
+\ row loads through every import and launch. A load of another row's entry is
+\ refused, naming the file and line that makes it, and so is a preload that is
+\ another row's entry. A file may name itself, and rows may share an entry: a
+\ tier twin runs one file at both tiers.
 
 require lib/errors.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/test.f
 require lib/fmt.f
-require tools/lint/text.f
-require tools/lint/source-lex.f
-require test/load-refs.f
+require lib/test.f
+require test/gate-images.f
 
 package ENTRY-GUARD
 private
 
-DYNAMIC-BUFFER PATH-BYTES u8
-DYNAMIC-BUFFER PATH-OFF n
-DYNAMIC-BUFFER PATH-LEN n
-DYNAMIC-BUFFER ROOT-BYTES u8
-DYNAMIC-BUFFER ROOT-OFF n
-DYNAMIC-BUFFER ROOT-LEN n
-DYNAMIC-BUFFER ROOT-ROW n
-variable PATH-U
-variable PATH-N
-variable PATH-HEAD
-variable ROOT-U
-variable ROOT-N
+DYNAMIC-BUFFER ROW-A n                   \ the first row a file is an entry of
+DYNAMIC-BUFFER ROW-B n                   \ another row it is an entry of
+DYNAMIC-BUFFER MARK n                    \ the row walk that last reached it
+DYNAMIC-BUFFER QUEUE n
+variable WALK
+variable QHEAD
+variable QTAIL
 variable OWNER
-TYPED-VARIABLE CAND-A ptr u8
-variable CAND-U
-variable CAND-LINE
 variable ERRORS
-create SOURCE-CANON FS-PATH-CAP allot
-variable SOURCE-CANON-U
 
-: PATH$ ( n -- ptr u8 n ) {: idx:n :}
-   0 PATH-BYTES idx PATH-OFF @ +
-   idx PATH-LEN @ ;
+: RESET ( -- )
+   GATE-IMAGES:FILE-COUNT {: n:n :}
+   n ROW-A-RESERVE n ROW-B-RESERVE n MARK-RESERVE n QUEUE-RESERVE
+   n 0 ?do -1 i ROW-A ! -1 i ROW-B ! 0 i MARK ! loop
+   0 WALK ! -1 OWNER ! 0 ERRORS ! ;
 
-: PATH-RESET ( -- )
-   0 PATH-U ! 0 PATH-N ! 0 PATH-HEAD ! ;
+\ Every registered file must be one DERIVE read. A file keeps the first row that
+\ has it as an entry and one other.
+: ENTRY-ADD ( n bool ptr u8 n -- ) {: row:n entry:bool a:ptr u:n :}
+   a u GATE-IMAGES:FILE-ID {: f:n :}
+   entry 0= if exit then
+   f ROW-A @ 0 < if row f ROW-A ! exit then
+   f ROW-A @ row <> if row f ROW-B ! then ;
 
-: PATH-SEEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   PATH-N @ 0 ?do
-      a u i PATH$ STR= if true unloop exit then
-   loop false ;
+\ A row other than the owner that has the file as an entry, else -1.
+: OTHER ( n -- n ) {: f:n :}
+   f ROW-A @ OWNER @ <> if f ROW-A @ exit then
+   f ROW-B @ ;
 
-: PATH-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u PATH-SEEN? if exit then
-   PATH-U @ u + PATH-BYTES-RESERVE
-   PATH-N @ 1+ PATH-OFF-RESERVE
-   PATH-N @ 1+ PATH-LEN-RESERVE
-   PATH-U @ PATH-N @ PATH-OFF !
-   u PATH-N @ PATH-LEN !
-   a 0 PATH-BYTES PATH-U @ + u BYTE-COPY
-   PATH-U @ u + PATH-U !
-   PATH-N @ 1+ PATH-N ! ;
-
-: SOURCE$ ( -- ptr u8 n )
-   PATH-HEAD @ PATH$ ;
-
-: ROOT$ ( n -- ptr u8 n ) {: idx:n :}
-   0 ROOT-BYTES idx ROOT-OFF @ + idx ROOT-LEN @ ;
-
-: ROOT-RESET ( -- )
-   0 ROOT-U ! 0 ROOT-N ! ;
-
-\ The registry's actual --load file arguments are frozen before scanning any
-\ source. Canonical paths are stored once; candidate checks never resolve each
-\ registered file again for every token.
-: ROOT-ADD ( n bool ptr u8 n -- ) {: id:n entry:bool path:ptr pathu:n :}
-   path pathu SOURCE-ROOT:CANONICAL {: exists:bool :}
-   exists 0= if
-      s" entry guard: missing registered file: " type path pathu type cr
-      E-SUITE-ROW throw
-   then
-   entry 0= if 2drop exit then
-   {: a:ptr u:n :}
-   ROOT-U @ u + ROOT-BYTES-RESERVE
-   ROOT-N @ 1+ ROOT-OFF-RESERVE
-   ROOT-N @ 1+ ROOT-LEN-RESERVE
-   ROOT-N @ 1+ ROOT-ROW-RESERVE
-   ROOT-U @ ROOT-N @ ROOT-OFF !
-   u ROOT-N @ ROOT-LEN !
-   id ROOT-N @ ROOT-ROW !
-   a 0 ROOT-BYTES ROOT-U @ + u BYTE-COPY
-   ROOT-U @ u + ROOT-U !
-   ROOT-N @ 1+ ROOT-N ! ;
-
-: REPORT ( n -- ) {: id:n :}
-   s" entry guard: " type SOURCE$ type
-   s" :" type CAND-LINE @ FMT:.INT
+: REPORT ( n n n -- ) {: src:n e:n row:n :}
+   e GATE-IMAGES:EDGE-TO {: to:n :}
+   s" entry guard: " type src GATE-IMAGES:FILE$ type
+   s" :" type e GATE-IMAGES:EDGE-LINE@ FMT:.INT
    s" : row " type OWNER @ TEST:ITEM-NAME$ type
-   s"  references registered entry " type id TEST:ITEM-NAME$ type
-   s"  (" type CAND-A @ CAND-U @ type s" )" type cr
+   e GATE-IMAGES:EDGE-IMPORT? if s"  imports" else s"  launches" then type
+   s"  registered entry " type row TEST:ITEM-NAME$ type
+   s"  (" type to GATE-IMAGES:FILE$ type s" )" type cr
    1 ERRORS +! ;
 
-: REPORT-PRELOAD ( n -- ) {: id:n :}
+: CHECK-PRELOAD ( n -- ) {: f:n :}
+   f OTHER {: row:n :}
+   row 0 < if exit then
    s" entry guard: row " type OWNER @ TEST:ITEM-NAME$ type
-   s"  preloads registered entry " type id TEST:ITEM-NAME$ type
-   s"  (" type CAND-A @ CAND-U @ type s" )" type cr
+   s"  preloads registered entry " type row TEST:ITEM-NAME$ type
+   s"  (" type f GATE-IMAGES:FILE$ type s" )" type cr
    1 ERRORS +! ;
 
-: CHECK-PRELOAD ( ptr u8 n -- ) {: a:ptr u:n :}
-   a CAND-A ! u CAND-U !
-   a u SOURCE-ROOT:CANONICAL drop {: canon:ptr canu:n :}
-   ROOT-N @ 0 ?do
-      canon canu i ROOT$ STR= if
-         i ROOT-ROW @ OWNER @ <> if i ROOT-ROW @ REPORT-PRELOAD then
-      then
-   loop ;
+: REACH ( n -- ) {: f:n :}
+   f MARK @ WALK @ = if exit then
+   WALK @ f MARK !
+   f QTAIL @ QUEUE !
+   QTAIL @ 1+ QTAIL ! ;
 
-: CHECK-PATH ( ptr u8 n n -- ) {: a:ptr u:n line:n :}
-   a CAND-A ! u CAND-U ! line CAND-LINE !
-   \ A non-path literal cannot name a registered load file.
-   u 0 <= u FS-PATH-CAP >= or if exit then
-   a u SOURCE-ROOT:CANONICAL {: exists:bool :}
-   exists 0= if 2drop exit then
-   {: canon:ptr canu:n :}
-   canon canu SOURCE-CANON SOURCE-CANON-U @ STR= if exit then
-   ROOT-N @ 0 ?do
-      canon canu i ROOT$ STR= if
-         i ROOT-ROW @ OWNER @ <> if i ROOT-ROW @ REPORT then
-      then
-   loop ;
+: FOLLOW ( n n -- ) {: src:n e:n :}
+   e GATE-IMAGES:EDGE-TO {: to:n :}
+   to OTHER {: row:n :}
+   to src <> row 0 >= and if src e row REPORT then
+   to REACH ;
 
-\ An import is followed as well as checked; a launch - a path literal a load
-\ helper consumes - is only checked.
-: REF ( ptr u8 n n bool -- ) {: a:ptr u:n line:n import:bool :}
-   a u line CHECK-PATH
-   import 0= if exit then
-   a u FILE? if a u PATH-ADD then ;
+: EXPAND ( n -- ) {: src:n :}
+   src GATE-IMAGES:EDGE-FIRST {: first:n :}
+   src GATE-IMAGES:EDGE-COUNT 0 ?do src first i + FOLLOW loop ;
 
-: SCAN-SOURCE ( -- )
-   SOURCE$ SOURCE-ROOT:CANONICAL drop {: a:ptr u:n :}
-   a SOURCE-CANON u BYTE-COPY u SOURCE-CANON-U !
-   SOURCE$ LINT-SOURCE:LOAD
-   LINT-SOURCE:TEXT LINT-LEX:SOURCE
-   LINT-LEX:ERROR? if
-      s" entry guard: cannot lex " type SOURCE$ type cr
-      E-SUITE-ROW throw
-   then
-   [: REF ;] LOAD-REFS:EACH ;
-
-: CHECK-FILE ( n bool ptr u8 n -- ) {: id:n entry:bool a:ptr u:n :}
-   id OWNER !
-   entry 0= if a u CHECK-PRELOAD then
-   PATH-RESET
-   a u PATH-ADD
-   begin PATH-HEAD @ PATH-N @ < while
-      SCAN-SOURCE
-      PATH-HEAD @ 1+ PATH-HEAD !
+\ One walk per row: a file the row reached from an earlier file is not walked
+\ again.
+: CHECK-FILE ( n bool ptr u8 n -- ) {: row:n entry:bool a:ptr u:n :}
+   row OWNER @ <> if row OWNER ! WALK @ 1+ WALK ! then
+   a u GATE-IMAGES:FILE-ID {: f:n :}
+   entry 0= if f CHECK-PRELOAD then
+   0 QHEAD ! 0 QTAIL !
+   f REACH
+   begin QHEAD @ QTAIL @ < while
+      QHEAD @ QUEUE @ QHEAD @ 1+ QHEAD ! EXPAND
    repeat ;
 
 public
 
+\ Refuse a registry whose rows run another row's entry. Call it after
+\ GATE-IMAGES:DERIVE read the registry's graph.
 : CHECK ( -- )
-   0 ERRORS !
-   ROOT-RESET
-   [: ROOT-ADD ;] TEST:VISIT-LOAD-FILES
+   RESET
+   [: ENTRY-ADD ;] TEST:VISIT-LOAD-FILES
    [: CHECK-FILE ;] TEST:VISIT-LOAD-FILES
    ERRORS @ 0 > if E-SUITE-ROW throw then ;
 

@@ -3,10 +3,9 @@
 \ Two kinds. An IMPORT loads the file into the same image: `require` or
 \ `include` and a path, or a string literal handed to `required` or `included`.
 \ A LAUNCH runs the file in a child: a string literal a known load helper
-\ consumes. test/gate-entry-guard.f follows the imports of every registered
-\ row and checks both kinds against the registered entries; test/gate-images.f
-\ follows both to find the keyed images a row needs. One reader serves both, so
-\ the two never disagree about what a row loads.
+\ consumes. test/gate-images.f reads both kinds into the gate's load graph,
+\ which finds the keyed images a row needs and which test/gate-entry-guard.f
+\ walks to refuse a row that runs another row's entry.
 \
 \ EACH reads the tokens tools/lint/source-lex.f holds for the source its caller
 \ lexed last.

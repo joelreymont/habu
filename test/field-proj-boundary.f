@@ -62,10 +62,10 @@ create ERR IO-CAP allot
    WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN DEADLINE-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
-   OUT outu LEN>N S\" ok\nfield boundary: ok\nwindow: 0\n" STR= 0= rc 0 <> or
+   OUT outu LEN>N S\" field boundary: ok\nwindow: 0\n" STR= 0= rc 0 <> or
       if OUT outu LEN>N type ERR erru LEN>N type cr then
    rc 0 T=
-   OUT outu LEN>N S\" ok\nfield boundary: ok\nwindow: 0\n" T$=
+   OUT outu LEN>N S\" field boundary: ok\nwindow: 0\n" T$=
    ERR erru LEN>N s" trust-boundary primitive" CONTAINS? TTRUE
    ERR erru LEN>N s" hb: internal engine word: FIELD-PROJ!" CONTAINS? TTRUE ;
 

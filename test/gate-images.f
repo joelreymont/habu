@@ -30,6 +30,11 @@
 \ The build rows are spawned, not forked, so the gate process loads no family
 \ module: a file that loads the gate itself (test/run-cli-test.f launches
 \ test/run.f) reaches no image through it.
+\
+\ ONE GRAPH. DERIVE reads each file once and keeps every load it names, with
+\ the line naming it; test/gate-entry-guard.f walks that graph through the
+\ readers below, so the guard and the grants never disagree about what a row
+\ loads.
 
 require lib/errors.f
 require lib/string.f
@@ -63,7 +68,7 @@ package GATE-IMAGES
    f WHITEBOX = if s" whitebox-engine" exit then
    E-TBL-BOUNDS throw ;
 
-\ A family's prerequisites come before it here: START refuses a table that
+\ A family's prerequisites come before it here: DERIVE refuses a table that
 \ lists one after.
 : MODULE$ ( n -- ptr u8 n ) {: f:n :}
    f WRITER = if s" test/fixture-writer.f" exit then
@@ -104,6 +109,8 @@ DYNAMIC-BUFFER CLOSURE n                 \ families it reaches; -1 until walked
 DYNAMIC-BUFFER SEEN n                    \ the walk that last reached it
 DYNAMIC-BUFFER QUEUE n
 DYNAMIC-BUFFER EDGES n                   \ each file's loads, back to back
+DYNAMIC-BUFFER EDGE-LINE n               \ the line naming each load
+DYNAMIC-BUFFER EDGE-IMPORT bool          \ TRUE for an import, FALSE for a launch
 
 create HASH HASH-CAP cells allot         \ file id + 1 per slot; 0 is empty
 
@@ -117,7 +124,7 @@ variable QTAIL
 variable REACH
 variable UNION
 
-: FILE-PATH$ ( n -- ptr u8 n ) {: id:n :}
+: FILE$ ( n -- ptr u8 n ) {: id:n :}
    0 PATH-BYTES id PATH-OFF @ +
    id PATH-LEN @ ;
 
@@ -153,13 +160,19 @@ variable UNION
 : SLOT-ID ( -- n )
    PROBE @ HASH-SLOT @ ;
 
-\ The id of a canonical path, added the first time it is seen.
-: INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ Probe from a canonical path's hash to the slot holding it, or to the empty
+\ slot it would take.
+: PROBE! ( ptr u8 n -- ) {: a:ptr u:n :}
    a u FNV HASH-CAP 1- and PROBE !
    begin SLOT-ID 0<> while
-      SLOT-ID 1- FILE-PATH$ a u STR= if SLOT-ID 1- exit then
+      SLOT-ID 1- FILE$ a u STR= if exit then
       PROBE @ 1+ HASH-CAP 1- and PROBE !
-   repeat
+   repeat ;
+
+\ The id of a canonical path, added the first time it is seen.
+: INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u PROBE!
+   SLOT-ID 0<> if SLOT-ID 1- exit then
    FILE-N @ HASH-CAP 2 / >= if
       s" gate images: more files than HASH-CAP holds" type cr
       E-TBL-BOUNDS throw
@@ -172,28 +185,31 @@ variable UNION
    0 PATH-U ! 0 FILE-N ! 0 EDGE-N ! 0 WALK !
    HASH-CAP 0 ?do 0 i HASH-SLOT ! loop ;
 
-: EDGE+ ( n -- ) {: id:n :}
+: EDGE+ ( n n bool -- ) {: id:n line:n import:bool :}
    EDGE-N @ 1+ EDGES-RESERVE
+   EDGE-N @ 1+ EDGE-LINE-RESERVE
+   EDGE-N @ 1+ EDGE-IMPORT-RESERVE
    id EDGE-N @ EDGES !
+   line EDGE-N @ EDGE-LINE !
+   import EDGE-N @ EDGE-IMPORT !
    EDGE-N @ 1+ EDGE-N ! ;
 
-\ A reference names its file from the tree root, as the entry guard reads it; a
-\ path that names no file is not an edge. A launch is followed only into a
-\ Forth source: a launched script or data file is not lexed.
-: REF ( ptr u8 n n bool -- )
-   nip {: a:ptr u:n import:bool :}
+\ A reference names its file from the tree root; a path that names no file is
+\ not an edge. A launch is followed only into a Forth source: a launched script
+\ or data file is not lexed.
+: REF ( ptr u8 n n bool -- ) {: a:ptr u:n line:n import:bool :}
    a u FILE? 0= if exit then
    a u SOURCE-ROOT:CANONICAL drop {: path:ptr pathu:n :}
    import 0= path pathu s" .f" ENDS-WITH? 0= and if exit then
-   path pathu INTERN EDGE+ ;
+   path pathu INTERN line import EDGE+ ;
 
 : SCAN ( n -- ) {: id:n :}
    id EDGE-OFF @ 0 >= if exit then
    EDGE-N @ id EDGE-OFF !
-   id FILE-PATH$ LINT-SOURCE:LOAD
+   id FILE$ LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
    LINT-LEX:ERROR? if
-      s" gate images: cannot lex " type id FILE-PATH$ type cr
+      s" gate images: cannot lex " type id FILE$ type cr
       E-SUITE-ROW throw
    then
    [: REF ;] LOAD-REFS:EACH
@@ -387,7 +403,7 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n n -- ]
    loop
    true ;
 
-\ START wanted every family a row can need, and PUMP starts a wanted family
+\ DERIVE wanted every family a row can need, and PUMP starts a wanted family
 \ once its prerequisites passed, so a build row is live until the mask settles.
 : AWAIT ( n -- ) {: mask:n :}
    begin
@@ -415,23 +431,28 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n n -- ]
 
 public
 
-\ Derive the images the registry's rows need and start their build rows. Call
-\ it after GT-START and GT-POOL-RESET, before the first registry row; the xt
-\ starts a build row from its stdin program, label, grant and deadline.
-: START ( [ ptr u8 n ptr u8 n ptr u8 n n -- ] -- )
-   START-XT !
+\ Read the registry's load graph and derive the images its rows need, starting
+\ nothing. Call it once the registry is complete, before START and before the
+\ graph readers below.
+: DERIVE ( -- )
    SIDE-CHECK
    GRAPH-RESET
    STATES-RESET
    FAMILY-N 0 ?do i MODULE! loop
    FAMILY-N 0 ?do i DERIVE-PRE loop
-   s" hb-whitebox" WB-BUF GT-PATH WB-U !
    0 UNION !
    [: UNION-FILE ;] TEST:VISIT-LOAD-FILES
    TEST:WHITEBOX-REGISTERED? if
       WHITEBOX MODULE$ FILE-MASK UNION @ or UNION !
    then
-   UNION @ WANT
+   UNION @ WANT ;
+
+\ Start the build rows of the images DERIVE found needed. Call it after
+\ GT-START and GT-POOL-RESET, before the first registry row; the xt starts a
+\ build row from its stdin program, label, grant and deadline.
+: START ( [ ptr u8 n ptr u8 n ptr u8 n n -- ] -- )
+   START-XT !
+   s" hb-whitebox" WB-BUF GT-PATH WB-U !
    PUMP ;
 
 \ The engine the WHITEBOX-SUITE rows run on: this gate's private copy, which
@@ -469,5 +490,39 @@ public
 \ beside a sequential group.
 : SETTLE-ALL ( -- )
    NEEDED @ AWAIT ;
+
+\ ---- the load graph DERIVE read ----------------------------------------------
+\
+\ Files are numbered from 0. A file's loads are EDGE-COUNT consecutive edges
+\ from EDGE-FIRST, in source order; each names the file loaded, the line naming
+\ it and whether it is an import or a launch.
+
+: FILE-COUNT ( -- n )
+   FILE-N @ ;
+
+\ The id of a file DERIVE read, by any path naming it. Any other path is
+\ refused: a file the walk never read has no loads to trust.
+: FILE-ID ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u SOURCE-ROOT:CANONICAL drop PROBE!
+   SLOT-ID 0<> if SLOT-ID 1- exit then
+   s" gate images: not a file of the load graph: " type a u type cr
+   E-SUITE-ROW throw ;
+
+EXPORT FILE$
+
+: EDGE-FIRST ( n -- n )
+   EDGE-OFF @ ;
+
+: EDGE-COUNT ( n -- n )
+   EDGE-CNT @ ;
+
+: EDGE-TO ( n -- n )
+   EDGES @ ;
+
+: EDGE-LINE@ ( n -- n )
+   EDGE-LINE @ ;
+
+: EDGE-IMPORT? ( n -- bool )
+   EDGE-IMPORT @ ;
 
 ;package
