@@ -2004,6 +2004,12 @@ SUITE process-env
    lib/process-env-test.f
 ;SUITE
 
+\ A tree walk the kernel refuses throws rather than reading the refusal as
+\ nobody there.
+SUITE process-tree
+   lib/process-tree-test.f
+;SUITE
+
 SUITE test-subject
    lib/test/subject-test.f
 ;SUITE
@@ -2293,6 +2299,12 @@ WHITEBOX-SUITE field-proj-errors
 
 SUITE gate-pool-orphan
    test/gate-pool-orphan-test.f
+;SUITE
+
+\ A signalled gate root, and a row past its deadline, leave no process and no
+\ scratch behind.
+SUITE gate-signal
+   test/gate-signal-test.f
 ;SUITE
 
 WHITEBOX-SUITE generated-declaration-transaction

@@ -1,7 +1,10 @@
 \ gate-pool.f - checked bounded process pool for native tests.
 
+require lib/fmt.f
 require lib/process-fork.f
 require lib/process-env.f
+require lib/process-tree.f               \ a slot ends with everything descended from its child
+require lib/signal.f                     \ a signalled run is answered at a pool step
 require lib/test/runner.f
 require lib/test/suite.f                 \ TEST:ITEM-MAX sizes the red table
 require tools/why-threw.f
@@ -361,8 +364,23 @@ GT-POOL-ABORT-BARE!
       -1 >PID idx GT-POOL-REAPER-PID-PTR !
    then ;
 
+\ A SLOT ENDS WITH EVERYTHING DESCENDED FROM ITS CHILD. The group kill below
+\ reaches the child and what it forked. What it spawned leads groups of its own
+\ (docs/process-pty.md) - for a gate row, the engines it builds and runs - and
+\ used to outlive the row, reparented to init. lib/process-tree.f stops and
+\ lists those first, so they end here with it. A walk that throws is named and
+\ the slot is ended the old way all the same: the kill has to go on to the
+\ wait and the descriptor closes whatever the process table answered.
+: GT-POOL-KILL-TREE ( idx -- ) {: idx:idx :}
+   idx GT-POOL-PID@ [: dup PROC-TREE:KILL-TREE ;] catch {: code:n :}
+   drop
+   code 0= if exit then
+   s" test pool: process tree of " type idx GT-POOL-LABEL$ type
+   s"  not walked, throw " type code FMT:.INT cr ;
+
 : GT-POOL-KILL-SLOT ( idx -- ) {: idx :}
    idx GT-POOL-PID@ PID>N 0 >= if
+      idx GT-POOL-KILL-TREE
       idx GT-POOL-PID@ SIGKILL PROC-FORK:KILL-GROUP drop
       idx GT-POOL-PID@ SIGKILL PROC-KILL-RAW drop
       idx GT-POOL-PID@ PROC-WAIT-STATUS drop
@@ -387,6 +405,51 @@ GT-POOL-ABORT-BARE!
 \ overflow with live children kills the pool instead of leaking orphans.
 : GT-POOL-ABORT-KILL! ( -- ) [: GT-POOL-THROW ;] is GT-POOL-ABORT ;
 GT-POOL-ABORT-KILL!
+
+\ ---- a signal that stops the run ---------------------------------------------
+\
+\ A RUN THAT IS SIGNALLED ENDS ITS OWN CHILDREN AND REMOVES ITS OWN TREE. Under
+\ the default action SIGTERM, SIGINT and SIGHUP end the pool where it stands.
+\ Its reapers then kill each row's group, the rows' own children live on
+\ (lib/process-tree.f), and nothing removes the root: the engine calls the exit
+\ hook only on its own way out (src/habu/layout.f EXIT-HOOK-CELL).
+\
+\ A program that is a pool from its first row to its exit - the gate - calls
+\ GT-POOL-CATCH-SIGNALS before it makes its root. No Forth word runs in a
+\ handler (lib/signal.f), so a signal is answered at the next GT-POOL-STEP,
+\ which is never far: the signal itself interrupts a step's poll, and between
+\ two steps the pool only starts a row. The answer is GT-POOL-SIGNAL-DIE,
+\ below GT-POOL-FALLBACK-REMOVE.
+\
+\ IT IS ASKED FOR, NOT INSTALLED BY GT-POOL-RESET. The catch lasts as long as
+\ the process and only a step answers it, so a program that ran a pool and
+\ went on to other work would never answer SIGTERM again.
+\
+\ A signal the process was started with IGNORED stays ignored. nohup's SIGHUP
+\ and the SIGINT of a background job are the caller's choice, and a catch over
+\ one would undo it.
+TYPED-VARIABLE GT-POOL-CATCHING bool
+false GT-POOL-CATCHING !
+
+: GT-POOL-CATCH-SIGNAL ( n -- ) {: sig:n :}
+   sig SIGNAL:IGNORED? if exit then
+   sig SIGNAL:CATCH ;
+
+: GT-POOL-CATCH-SIGNALS ( -- )
+   GT-POOL-CATCHING @ if exit then
+   SIGNAL:INIT
+   SIGNAL:SIGTERM GT-POOL-CATCH-SIGNAL
+   SIGNAL:SIGINT GT-POOL-CATCH-SIGNAL
+   SIGNAL:SIGHUP GT-POOL-CATCH-SIGNAL
+   true GT-POOL-CATCHING ! ;
+
+\ A forked worker is a new process holding its parent's pipe: left as it is, a
+\ signal sent to the worker would be written there and answered by the parent
+\ as its own.
+: GT-POOL-UNCATCH-SIGNALS ( -- )
+   GT-POOL-CATCHING @ 0= if exit then
+   SIGNAL:RELEASE
+   false GT-POOL-CATCHING ! ;
 
 : GT-POOL-CHECK-LIMIT ( n -- n ) {: n :}
    n 1 < if E-TBL-BOUNDS throw then
@@ -625,6 +688,7 @@ GT-POOL-ABORT-KILL!
    0 GT-POOL-DEATH-MADE ! ;
 
 : GT-POOL-FORK-CHILD ( idx [ -- ] -- ) {: idx:idx q :}
+   GT-POOL-UNCATCH-SIGNALS
    idx GT-POOL-CLOSE-READS
    idx GT-POOL-OUT-W-PTR @ 1 GT-POOL-DUP2!
    idx GT-POOL-ERR-W-PTR @ 2 GT-POOL-DUP2!
@@ -1003,9 +1067,13 @@ GT-POOL-ABORT-KILL!
       1+
    repeat drop ;
 
+\ poll(2) is the one wait SA_RESTART never restarts, so a caught signal ends
+\ it with -EINTR: nothing failed and no descriptor is ready. The build above
+\ rewrote every slot, so no stale readiness is read either.
 : GT-POOL-POLL ( -- n )
    GT-POOL-POLL-BUILD
    GT-POOL-PFDS GT-POOL-MAX GT-POOL-FDS * GT-POOL-POLL-MS poll {: rc :}
+   rc EINTR# negate = if 0 exit then
    rc 0 < if E-PROC-OUTPUT GT-POOL-THROW then
    rc ;
 
@@ -1229,8 +1297,43 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
       1+
    repeat drop ;
 
+\ THE ANSWER TO A CAUGHT SIGNAL (see GT-POOL-CATCH-SIGNALS). Every live slot
+\ is killed with its whole tree, the cleanup registry removes what this
+\ process registered - the runner's root, and with it every slot's scratch -
+\ and the process then dies OF THE SIGNAL, under the default action again, so
+\ its caller reads the status an uncaught signal would have left. The stub
+\ stays installed until that last step: a second signal during the kills or
+\ the removal is written to the pipe and read by nobody.
+\
+\ A removal that throws is named and the process still ends as signalled. The
+\ die is the end for a signal that another thread took: it is not reached when
+\ this one did.
+: GT-POOL-SIGNAL@ ( -- n )
+   GT-POOL-CATCHING @ 0= if 0 exit then
+   SIGNAL:TAKE MATCH SIGNAL:signal-result
+      signal OF ENDOF
+      timeout OF 0 ENDOF
+   ;MATCH ;
+
+: GT-POOL-SIGNAL-DIE ( n -- ) {: sig:n :}
+   s" test pool: signal " type sig GT-POOL-N-TYPE
+   s" , ending " type GT-POOL-LIVE @ GT-POOL-N-TYPE s"  live rows" type cr
+   GT-POOL-KILL-ALL
+   [: GT-CLEANUP GT-POOL-FALLBACK-REMOVE ;] catch {: code:n :}
+   code 0<> if s" test pool: cleanup threw " type code GT-POOL-N-TYPE cr then
+   SIGNAL:RELEASE
+   getpid >PID sig PROC-KILL-RAW drop
+   s" test pool: signal" 128 sig + die ;
+
+\ A step asks after every poll. A program that caught signals asks once more
+\ when its own cleanup is done, for the one that arrived after its last step.
+: GT-POOL-SIGNAL-CHECK ( -- )
+   GT-POOL-SIGNAL@ dup 0= if drop exit then
+   GT-POOL-SIGNAL-DIE ;
+
 : GT-POOL-STEP ( -- )
    GT-POOL-POLL drop
+   GT-POOL-SIGNAL-CHECK
    GT-POOL-DRAIN-READY
    GT-POOL-CHECK-TIMEOUTS
    GT-POOL-WAIT-LINES ;

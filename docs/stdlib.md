@@ -46,6 +46,7 @@ Planned module files:
 - `lib/process-env.f`
 - `lib/process-command.f`
 - `lib/process-cwd.f`
+- `lib/process-tree.f`
 - `lib/argv.f`
 - `lib/test.f`
 - `lib/test/assert.f`
@@ -86,6 +87,7 @@ theirs.
 | `lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` vector) |
 | `lib/process-command.f` | caller-owned (`CMD` contexts) / process-wide (the `PROC-CMD` surface over one static context) |
 | `lib/process-cwd.f` | process-wide |
+| `lib/process-tree.f` | process-wide |
 | `lib/net/tcp4.f` | task-local |
 | `lib/net/udp4.f` | task-local |
 | `lib/net/curl.f` | task-local |
@@ -2143,6 +2145,31 @@ that the process can still be watched. An owned-child caller receiving
 `-ESRCH` can finish with a matching wait for that child; other errors must keep
 their failure meaning. See Apple's [process filter](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_event.c)
 and [exit and wait paths](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_exit.c).
+
+`lib/process-tree.f` ends a process and every process descended from it, which
+a group kill cannot do: every spawned child leads a process group of its own.
+
+```forth
+PROC-TREE:KILL-TREE ( pid -- )
+```
+
+It stops the process, then grows the tree through the kernel's own links - the
+children of every member, and the members of every group a member leads, a
+zombie member's included - and stops each process as it joins, until two passes
+in a row add nobody and find every member settled, or until two seconds have
+passed (`SETTLE-MS`). Then every member is sent SIGKILL: a tree that has not
+settled by then is killed as it stands. Settled is stopped and, on macOS, with
+no runnable thread (libproc's `pti_numrunning`), or on Linux with every thread
+shown stopped in `/proc/<pid>/task`. A macOS thread blocked in the kernel
+partway into a spawn is not runnable, so a child that spawn has not made yet can
+still appear after the kill ([gate.md](gate.md)). The caller and the caller's
+other children are never members, and a process whose parent is gone and whose
+group id names no member is out of reach. A pid at or below 1, or the caller's
+own, is refused with `E-PROC-OUTPUT`, and so is a libproc call the kernel
+refuses rather than answers empty; a tree of more than 1024 processes throws
+`E-PROC-TRUNCATED`. A walk that throws still kills every member it found; a
+SIGKILL of the caller leaves them stopped. The gate pool ends every slot it
+kills this way.
 
 ## Process signals
 

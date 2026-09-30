@@ -18,9 +18,11 @@ result. Everything else happens in checked Habu on the reading end.
 | --- | --- | --- | --- |
 | `INIT` | — | — | the main task |
 | `CATCH` | Signal number, `1..64` | — | the task that ran `INIT` |
+| `IGNORED?` | Signal number, `1..64` | `bool`, ignored now | the task that ran `INIT` |
 | `FD` | — | `fd`, the read end | any |
 | `PENDING?` | — | `bool`, readable now | any |
 | `WAIT` | `ms` window | `signal-result`: `signal n` or `timeout` | any |
+| `TAKE` | — | `signal-result`, `timeout` at once when none is waiting | any |
 | `RELEASE` | — | — | the task that ran `INIT` |
 
 `SIGNAL:signal-result` is a sum type, so every caller matches both arms:
@@ -45,7 +47,11 @@ answers whether one is waiting without consuming it. Both wait through the AIO
 loop ([aio.md](aio.md)) - one `AIO:POLL` for the window, `PENDING?`'s being
 zero-length, and one `AIO:AWAIT` - so a program calls `AIO:START` before
 its first `WAIT` or `PENDING?`, and either with no loop running is
-`E-AIO-STATE`. `RELEASE`
+`E-AIO-STATE`. `TAKE` reads one without waiting and runs no AIO loop, for a
+program that waits in a poll of its own: the gate pool asks it after every
+step (`test/gate-pool.f`). A process starts with its caller's ignored signals
+still ignored - `nohup`'s SIGHUP, the SIGINT of a background job - and a
+`CATCH` over one undoes that choice, so `IGNORED?` answers it first. `RELEASE`
 clears the fd word first — so a signal delivered during the teardown is
 absorbed rather than written to a descriptor that is about to close — then
 restores `SIG_DFL` for every signal `CATCH` installed and closes both ends.
@@ -67,12 +73,12 @@ baked literal rather than through the running task's region base. `INIT` in a
 spawned task, or on an engine that bakes no stub, reads zero and is refused
 with `E-SIGNAL-ABI`.
 
-`INIT` also records `TASK:SELF-N`, and `CATCH` and `RELEASE` refuse any other
-task with `E-SIGNAL-STATE`. They share one `struct sigaction` pair — the record
+`INIT` also records `TASK:SELF-N`, and `CATCH`, `IGNORED?` and `RELEASE`
+refuse any other task with `E-SIGNAL-STATE`. They share one `struct sigaction` pair — the record
 handed to `sigaction` and the `oldact` it fills — and one caught set, so a
 second task in either would be overwriting a record the owner is in the middle
-of using. `FD`, `PENDING?` and `WAIT` touch none of the three and answer any
-task.
+of using. `FD`, `PENDING?`, `WAIT` and `TAKE` touch none of the three and
+answer any task.
 
 The handler runs on whichever thread the kernel hands the signal to. Because
 the fd word is one word for the whole process, that does not matter: a signal

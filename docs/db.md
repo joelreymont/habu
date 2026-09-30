@@ -314,9 +314,10 @@ an uncaught throw. A signal that ends the harness, such as SIGTERM, runs neither
 the stop nor the directory removal: the postmaster keeps running and both
 directories stay. Recover with `pg_ctl -D <root>/data -m immediate stop`, then
 remove the two directories; the postmaster's command line names both (`-D` and
-`-k`). Under the gate pool, retiring the slot removes its `HB_TMP` and the data
-directory with it, and the postmaster's lock-file recheck then stops it within
-about a minute; the socket directory under `TMPDIR` stays.
+`-k`). Under the gate pool, retiring the slot — at its deadline, or when the
+gate root itself is signalled ([gate.md](gate.md)) — removes its `HB_TMP` and
+the data directory with it, and the postmaster's lock-file recheck then stops
+it within about a minute; the socket directory under `TMPDIR` stays.
 
 With no TCP listener, rows running beside each other cannot collide on a port.
 The data directory is under the row's `HB_TMP`. The socket directory is under

@@ -119,6 +119,38 @@ keyed-image build in that cache, and a live build's is never taken.
 `test/keyed-image-reap-test.f` kills a build and then its builder beside a
 live one.
 
+A slot the pool kills — at its deadline, or because the run is ending — is
+killed with every process descended from its child, not only the child's process
+group. Every spawned child leads a group of its own
+([process-pty.md](process-pty.md)), so a row's engine builds used to outlive the
+row, reparented to init. `lib/process-tree.f` stops the tree before it lists it
+and kills it once it has settled, or as it stands after two seconds. It follows
+each member's children and the group each member leads, a zombie's too: a child
+that forked and exited unreaped leaves what it forked in the group its pid still
+names. Two things are beyond
+its reach. A process whose parent is gone and whose group id names no member of
+the tree, zombie included, as a daemon's after `setsid` (the `pg` row's
+postmaster, [db.md](db.md)). And on macOS, a child whose spawn had not made it
+yet: a member counts as settled when none of its threads is runnable, so a
+thread blocked in the kernel partway into a spawn - on a page-in, an allocation
+or a lock - is not seen, and that spawn finishes after the kill. The walk's
+repeated passes narrow that window; they do not close it.
+
+The gate root answers SIGTERM, SIGINT and SIGHUP. At its next pool step it kills
+every live row that way, removes its temporary root, and then dies of the same
+signal, so its caller reads a death by that signal and not an exit. A signal the
+root was started with ignored — `nohup`'s SIGHUP, the SIGINT of a background job
+— stays ignored. SIGKILL cannot be answered: each row's reaper kills the row's
+group, and what the rows spawned and the temporary root stay. One that lands
+during a tree walk also leaves what the walk had stopped stopped, not running
+out its time. Measured on macOS: the kernel sends SIGHUP and then SIGCONT to a
+stopped process when a death orphans its group, which ends it unless it ignores
+SIGHUP; any other — one whose group was orphaned before it was stopped, or whose
+parent lives on — stays stopped until something sends it SIGKILL or SIGCONT.
+`test/gate-signal-test.f` runs the gate's own driver on a one-row registry and
+checks each signal, a second signal during the answer, `nohup`, and a row killed
+at its deadline.
+
 ## How a suite runs, and what that demands of its files
 
 - A `SUITE` block is **one** `bin/hb --load` spawn: its files load into one

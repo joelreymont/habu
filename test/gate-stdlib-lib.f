@@ -157,6 +157,7 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    SUITE-CHECK-ARGS
    GATE-IMAGES:DERIVE
    ENTRY-GUARD:CHECK
+   GT-POOL-CATCH-SIGNALS
    s" habu-native-suite" GT-START
    GT-POOL-RESET
    [: SUITE-BUILD-RUN ;] GATE-IMAGES:START ;
@@ -181,6 +182,7 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    s"  of " type TEST:ITEMS-REGISTERED GT-U-TYPE cr
    GT-POOL-RED-REPORT
    GT-CLEANUP
+   GT-POOL-SIGNAL-CHECK
    rc 0 <> if exit then                 \ the body threw: the framework rethrows that code
    GT-POOL-RED# 0 > if s" test pool failed" 1 die then ;
 
