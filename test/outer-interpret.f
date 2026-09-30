@@ -324,6 +324,16 @@ variable WANT-RC
    s" tick and char" GE-EXPECT-OK
    S\" 65\n122\n0\n0\n0\n0\n7\n" s" tick and char" GE-EXPECT-OUT ;
 
+\ Top-level `char` operands whose bytes together pass the definition-body
+\ capture (layout.f BODYBUF-CAP): no definition is open, so none is captured.
+: CHAR-PAST-BODY-CAP ( -- )
+   GE-SRC-RESET
+   BODYBUF-CAP 8 / 1 + 0 ?do s" char ABCDEFGH drop" GE-SRC-LINE loop
+   s" char Q . depth ." GE-SRC-LINE
+   s" oi-char-past-cap.f" BOTH
+   s" char past the body capture" GE-EXPECT-OK
+   S\" 81\n0\n" s" char past the body capture" GE-EXPECT-OUT ;
+
 \ A refusal through the engine's compile-die tail: its rc, its message, and
 \ the case file's line the refusal names.
 : DIED-AT ( n ptr u8 n ptr u8 n -- ) {: rc:n msg:ptr msgu:n at:ptr atu:n :}
@@ -544,6 +554,7 @@ private
    NESTED
    LITERALS
    TICK-AND-CHAR
+   CHAR-PAST-BODY-CAP
    UNTERMINATED
    BAD-ESCAPE
    BAD-HEX

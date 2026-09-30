@@ -683,10 +683,8 @@ TRUSTED: PUSH-ESC-CSTR ( -- )
    ESC-KEEP type ;
 
 \ ---- char (habu2.f C-CHAR) ---------------------------------------------------------------
-\ The engine's C-CHAR also appends the operand to the definition-body capture
-\ (LBCAP). A definer resets that buffer before it captures a body, so outside
-\ a definition the appends only fill it: 8000 bytes of top-level `char`
-\ operands end the engine with rc 71. This loop leaves the capture alone.
+\ The operand's first byte. No definition is open at top level, so no body
+\ text captures the operand.
 : FIRST-BYTE ( -- n )
    s" char" OPERAND
    TOKEN$ drop c@ ;

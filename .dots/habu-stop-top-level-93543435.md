@@ -1,9 +1,11 @@
 ---
 title: Stop top-level char from filling the body buffer
-status: open
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-09-30T12:45:25.145193+03:00"
+closed-at: "2026-09-30T14:44:16+03:00"
+close-reason: "C-CHAR drops its body capture; oi-char-past-cap fails on 613a (engine rc 71) and agrees on the rebuilt 06d8d4ab (gen2-5 fixpoint), gate 501/501 rc 0."
 ---
 
 Problem: at top level the ARM64 engine's `char` also appends its operand to the definition-body text buffer. A file of 3000 lines `char ABCDEFGH drop` dies at line 889: `hb: definition body text full at 8000 bytes: ABCDEFGH needs 8001`, rc 71. Found by I4b (habu-interpret-literal-keywords-0fa50d62), whose Habu loop does not append.
