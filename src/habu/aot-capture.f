@@ -389,8 +389,11 @@ DYNAMIC-BUFFER ACAP-GSITE n
    s" aot-capture: adding " type k AOT-REC AOT-RNPTR k AOT-REC AOT-RNLEN type cr
    s" aot-capture: too many records" 74 die ;
 
-: ACAP-ADD-REC ( n n -- ) {: k:n bstart:n :}
-   k AOT-REC AOT-RWID DICT-WL:RETIRED = if exit then
+\ The capture index the record became, -1 for a retired record, which is not
+\ copied: so a dictionary index and a capture index differ by the retired
+\ records below it, and CAPTURE keeps the answer (ACAP-REC-OF).
+: ACAP-ADD-REC ( n n -- n ) {: k:n bstart:n :}
+   k AOT-REC AOT-RWID DICT-WL:RETIRED = if -1 exit then
    AOT-REC-N @ AOT-REC-MAX >= if k ACAP-REC-REFUSE then
    k AOT-REC AOT-A>U8 {: src:ptr :}
    AOT-REC-N @ ACAP-REC-DST {: d:ptr :}
@@ -398,6 +401,7 @@ DYNAMIC-BUFFER ACAP-GSITE n
    k AOT-REC AOT-RWID -1 <> if
       k AOT-REC AOT-RXT bstart -  d AOT-N-C!                  \ ordinary [0] = xt - blob-start
    then                                                        \ package [0]/[8] are raw u32 WID roles
+   AOT-REC-N @
    AOT-REC-N @ 1+ AOT-REC-N ! ;
 
 \ --- compact AOT-CREC-ROW records: blob-off-or-package-public u32 + code-len-or-
@@ -535,6 +539,7 @@ variable ACAP-MARKED?    \ the band was declared for this capture
 variable ACAP-W-B0                       \ the window's code base, latched at CAPTURE
 variable ACAP-W-R0  variable ACAP-W-R1   \ its record span
 variable ACAP-W-D0                       \ its first DATA address
+DYNAMIC-BUFFER ACAP-REC-OF n             \ per window record, by dictionary order: its capture index or -1
 
 public
 
@@ -2223,8 +2228,12 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
          woff celloff len ACAP-XTCELL-LOC
          meta ACAP-ADD-XTOFF
       then
-   loop
-   d0 rlen ACAP-SCAN-CELLS ;
+   loop ;
+
+\ The window's present cells, copied once everything that may still change them
+\ before the copy has run (CAPTURE says what that is).
+: ACAP-COPY-DATA ( n -- ) {: d0:n :}
+   d0 AOT-DATA-SIZE @ ACAP-SCAN-CELLS ;
 
 \ --- boot-run list: append a top-level entry-word NAME to the 0-terminated
 \ [len][name] list EM-AOT-BOOTRUN walks (LFIND + blr) after the seed installs the
@@ -2461,6 +2470,36 @@ TRUSTED: ACAP-RANGE-XT ( n n n -- ptr u8 n [ ptr u8 n -- ] ) ;
       s" aot-capture: dynamic storage has no range release" 74 die then
    d0 d1 d0 - range ACAP-RUN-RANGE ;
 
+\ ---- the checker symbols the names leave ------------------------------------
+\ A persistent window carries the checker whose stores this capture copies, and
+\ that checker keeps a symbol only while a record the image ships WITH ITS NAME
+\ resolves to it (src/core/checker-surface.f). The capture seam's sweep
+\ (CHECKER-CAPTURE-PREPARE) answered as a snapshot does, every live record
+\ named; which names this capture keeps is decided here, and is final only after
+\ ACAP-GRAPH-NAME-DOES. So the window's checker sweeps again
+\ (src/core/checker.f CHECKER-SWEEP STRIP) with this capture's own answer,
+\ before its DATA is copied: ACAP-NAMED-BIT itself, read through ACAP-REC-OF.
+\ The engine's own records below the prelude band always ship named. The band
+\ [ACAP-PRE-R, ACAP-W-R0) is the capturing tool's own and never ships
+\ (ACAP-SITE-BAND refuses a call into it), and a record the build defined after
+\ the window never ships.
+: ACAP-SHIPS-NAMED? ( n -- bool ) {: idx:n :}
+   idx ACAP-PRE-R @ < if true exit then
+   idx ACAP-W-R0 @ < if false exit then
+   idx ACAP-W-R1 @ >= if false exit then
+   idx ACAP-W-R0 @ - ACAP-REC-OF @ {: k:n :}
+   k 0 < if false exit then
+   k ACAP-NAMED-BIT @ 0<> ;
+
+TRUSTED: ACAP-STRIP-XT ( n -- [ [ n -- bool ] -- ] ) ;
+
+: ACAP-CHECKER-STRIP ( n n -- ) {: b0:n b1:n :}
+   AOT-ARM:PAYLOAD-MODE @ 2 <> if exit then
+   s" CHECKER-SWEEP:STRIP" ACAP-DBUF-XT {: xt:n :}
+   xt b0 < xt b1 >= or if
+      s" aot-capture: the window's checker has no symbol strip" 74 die then
+   ['] ACAP-SHIPS-NAMED? xt ACAP-STRIP-XT execute ;
+
 \ Full-runtime payload mode is explicit. Its verified checker stores travel in
 \ DATA, so an empty sidecar is valid only for that captured owner and closure.
 TRUSTED: ACAP-ADDRESS ( ptr u8 -- n ) ;
@@ -2533,7 +2572,8 @@ TRUSTED: ACAP-ADDRESS ( ptr u8 -- n ) ;
    ACAP-TIDX-BUILD                              \ xt -> record index for THIS dictionary
    ACAP-TIDX-PROVE                              \ ... which answers what the scan answers
    bstart bend ACAP-COPY-BLOB
-   rend rstart ?do i bstart ACAP-ADD-REC loop
+   rend rstart - ACAP-REC-OF-RESERVE
+   rend rstart ?do i bstart ACAP-ADD-REC  i rstart - ACAP-REC-OF ! loop
    AOT-REC-N @ ACAP-REC-ALL !
    ACAP-AUDIT-WIDS
    ACAP-GRAPH-SITES
@@ -2552,7 +2592,9 @@ TRUSTED: ACAP-ADDRESS ( ptr u8 -- n ) ;
    ACAP-GRAPH-SWEEP  -1 ACAP-GRAPH-READY !
    ACAP-GRAPH-SWEEP-GAPS
    ACAP-GRAPH-SWEEP
-   ACAP-GRAPH-NAME-DOES
+   ACAP-GRAPH-NAME-DOES                         \ the names that ship are final here
+   bstart bend ACAP-CHECKER-STRIP               \ ... so the checker retires what they leave
+   d0 ACAP-COPY-DATA                            \ ... before the DATA it changed is copied
    ACAP-GRAPH-BUILD-MAP
    ACAP-GRAPH-COPY-BLOB
    ACAP-GRAPH-PATCH

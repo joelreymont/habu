@@ -1491,6 +1491,10 @@ SUITE internal-word-gate
    test/internal-word-gate.f
 ;SUITE
 
+SUITE checker-surface
+   test/checker-surface.f
+;SUITE
+
 SUITE immediate-model
    test/immediate-model-test.f
 ;SUITE

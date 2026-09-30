@@ -106,6 +106,8 @@ s" src/os/script-argv.f" required
 \ Seal the pre-checker definitions before compiling the checked toolchain.
 \ Later checked publications record their own visibility and minimum arity.
 s" src/core/internal-mark.f" required
+\ The checker symbols the capture keeps, decided against the sealed dictionary.
+s" src/core/checker-surface.f" required
 s" src/compiler/native/compiler.f" required
 package NATIVE-RUNTIME
 

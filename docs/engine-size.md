@@ -203,6 +203,49 @@ map/unmap and DATA-allot failures and a 512-row maximum-length registry were
 also not run. Source archive, commands, images, logs and size reports are
 retained at `~/.cache/tmp/habu-opt-round3/require-pool/RESULTS.md`.
 
+## Retire unshipped checker symbols
+
+The capture now keeps a checker symbol, and every row keyed on it, only when a
+record the image ships with its name resolves to it, when it is a private of a
+package that is not sealed, or when it is a primitive axiom; the whitebox image
+keeps everything (`src/core/checker-surface.f`, `src/habu/aot-capture.f`
+`ACAP-SHIPS-NAMED?`). A dropped symbol is retired in place, so ids stay stable:
+its strings leave the rebuilt pool, its no-return and defer rows are compacted
+out and its effect bindings are detached. The bindings themselves and the
+retired rows' cells remain.
+
+Measured on the ARM64 Mach-O product built to its fixpoint from master
+448ae659 and from the same tree with the sweep:
+
+| Section | Before | After |
+|---|---:|---:|
+| Captured Habu code | 1,402,220 | 1,408,304 |
+| DATA bitmap | 48,888 | 41,720 |
+| DATA values | 646,372 | 488,464 |
+| Mach-O text padding | 10,316 | 4,980 |
+| Code signature | 19,599 | 18,319 |
+| Complete signed file | 2,510,071 | 2,344,951 |
+
+The product is **165,120 bytes (6.6%) smaller**. The sweep's own code adds
+6,084 bytes; it removes 165,076 bytes of DATA values and bitmap. By owner
+(`tools/data-table-census.f`), the checker's symbol string arena `SYM-STR-BOOT`
+falls from 186,506 to 75,063 bytes of image and the `DONE` row, which holds the
+baked signature and no-return stores, from 443,806 to 394,674.
+
+Of the 6,266 named records the product shares with the unswept engine, two lost
+their effect: `NSTR:IMPORT-ROWS` and `PREFIX-MARK:BOUNDARY`, privates of sealed
+packages. Every global (DNAME-INT included, since user lookup resolves it),
+every package public and every named private of an unsealed package keeps its
+effect. Of the 6,157 symbols with a live binding, the 9 that resolve to no
+shipped record are axiom rows: five field projections and the four
+CLOSE-PRIVATE rows of a sealed package.
+
+The SHA-256 before is
+`ae3873de20e36a3551124d73e9ebeb3b142317c222606d94a55ce1638574a342`, after
+`3f5fa2fbcfba1f5ebb16a8c17f12df8902fb83c8dd7aefeb06bbe335dc237beb`.
+Generations 2 to 5 are byte-identical; the whitebox engine, the 516-suite
+native gate and the dot lint pass.
+
 ## Historical Linux measurements
 
 The block below records one Linux engine measurement. It is an example, not
@@ -460,69 +503,49 @@ An owner is also a record the image still carries, and private records no longer
 travel, so a private table is invisible here and its bytes charge to the nearest
 shipped name below it.
 
-The heap is 8,371,088 bytes of span holding 303,943 present cells in 67,712
-bitmap bytes, 910,312 bytes of image, across 961 owners, with 52,186 value bytes
-in 8,562 cells below the first owner.
+On the product above, the census covers 8,777,616 bytes of span across 962
+owners: 185,512 present cells holding 479,217 non-zero bytes, at a modelled
+image cost of 645,849 bytes. Below the first owner, the engine's own fixed
+cells (2,867,048 bytes of span) cost 60,865 and the heap the seed and the boot
+prefix allotted before the first `create` (655,408 bytes) costs 48,073.
 
-| owner | offset | extent | cells | bytes | image cost |
+| owner | offset | extent | cells | non-zero bytes | image cost |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `DONE` | 4,170,280 | 4,200,808 | 252,562 | 431,706 | 486,353 |
-| `SYM-STR-BOOT` | 1,817,328 | 393,216 | 31,152 | 280,360 | 284,340 |
-| `EC-RV-BOOT` | 769,424 | 10,240 | 1,280 | 12,800 | 12,960 |
-| `EC-TV-BOOT` | 759,184 | 10,240 | 1,280 | 12,800 | 12,960 |
-| `RVT-BOOT` | 707,984 | 10,240 | 1,280 | 12,800 | 12,960 |
-| `TVT-BOOT` | 697,744 | 10,240 | 1,280 | 12,800 | 12,960 |
-| `TDECL-PROT-WID-ARMED` | 2,550,520 | 8,520 | 731 | 6,378 | 6,512 |
-| `RDP` | 658,000 | 39,720 | 1,433 | 5,329 | 5,758 |
-| `REQUIRE-PATHS` | 2,601,912 | 524,800 | 443 | 3,571 | 5,451 |
-| `PES` | 2,213,720 | 12,288 | 1,496 | 2,738 | 2,930 |
-| `DFERS` | 2,226,488 | 65,536 | 200 | 1,169 | 1,235 |
-| `DISC-TOK-U` | 3,195,672 | 768 | 94 | 838 | 850 |
-| `STR-MIN-I64$` | 3,203,464 | 944,000 | 56 | 317 | 696 |
-| `EI-AK` | 2,210,712 | 512 | 64 | 640 | 648 |
-| `STGT-START` | 2,569,528 | 23,768 | 169 | 212 | 585 |
-| `VRDEF-I` | 2,597,952 | 2,296 | 117 | 544 | 580 |
+| `DONE` | 5,603,432 | 3,174,184 | 154,169 | 315,147 | 394,674 |
+| `SYM-STR-BOOT` | 3,870,656 | 393,216 | 8,220 | 65,755 | 75,063 |
+| `STR-MIN-I64$` | 4,627,632 | 962,648 | 1,512 | 7,846 | 10,202 |
+| `TDECL-PROT-WID-ARMED` | 4,499,544 | 14,840 | 805 | 5,875 | 6,871 |
+| `RDP` | 3,525,048 | 42,920 | 1,793 | 5,787 | 6,803 |
+| `DISC-TOK-U` | 4,624,048 | 776 | 95 | 750 | 907 |
+| `REQUIRE-SAVE-BASE` | 4,559,256 | 14,520 | 82 | 539 | 870 |
+| `VRDEF-I` | 4,546,984 | 2,296 | 154 | 658 | 805 |
+| `EFFECT-XFER` | 4,459,000 | 11,032 | 263 | 569 | 770 |
+| `DFERS` | 4,279,992 | 65,536 | 108 | 540 | 713 |
+| `EI-AK` | 4,264,064 | 512 | 64 | 512 | 704 |
+| `DBUF-W` | 4,518,560 | 23,768 | 180 | 257 | 677 |
+| `TF-CI` | 4,470,032 | 5,200 | 87 | 463 | 651 |
+| `REQUIRE-LENS` | 4,550,944 | 8,216 | 254 | 372 | 575 |
 
-439 more owners follow.
+948 more owners follow. Regenerate the table with
+`printf 'require tools/data-table-census.f\nDATA-CENSUS:RUN\n' | bin/hb` and
+sort on the cost column.
 
-An owner's `bytes` is what its present cells encode to, and its image cost is
-that plus the bitmap bytes covering its span, charged whole to the owner the
-byte's first cell lands on — but only for the groups the image carries. An owner
-whose extent holds no present cell costs nothing beyond its share of the
-presence map, and that is what sorted this table: `SYMS-BOOT` and `NORET-BOOT`
-are entirely zero and have left it, 23 owners have dropped out of the ranking
-altogether, and `STR-MIN-I64$` fell from third place to thirteenth — 56 present
-cells in 944,000 bytes of span cost 317 bytes of value against 379 of bitmap,
-where the flat bitmap charged it 14,750.
+An owner's image cost is what its present cells encode to plus the bitmap
+groups its extent keeps; an extent of zero cells costs nothing.
 
-`DONE` (`src/habu/repl.f`) is a global variable in the REPL, and the last owner
-whose record the image still ships, so the row is the heap above every named
-table the census can still see: 4.20 MB of span holding 252,562 present cells
-that encode to 431,706 bytes, which cost 486,353 bytes of image — 13.0% of the
-engine, one row. Two
-things land in it. The packages that load after the REPL keep their tables here,
-because their private records were dropped at capture. And the checker's baked
-user-signature store has no name to charge to at all: `USIGS-SNAPSHOT-PERSIST`
-(`src/core/checker.f`) allots the grown store at `here` when it bakes it,
-rounded up to a 64 KB grain, so it lands in this row under the REPL's name.
-Nothing in the image says how much of the row it is — the census can only charge
-an anonymous block to the word below it.
+`DONE` (`src/habu/repl.f`) is a global variable in the REPL and the last owner
+whose record the image ships, so its row is the heap above every named table:
+3.17 MB of span holding 154,169 present cells that cost 394,674 bytes, 61% of
+the census. Two things land in it. The packages that load after the REPL keep
+their tables here, because their private records are dropped at capture. And
+the checker's baked user-signature store has no name to charge to:
+`USIGS-SNAPSHOT-PERSIST` (`src/core/checker.f`) allots the grown store at
+`here` when it bakes it, rounded up to a 64 KB grain. The census can only
+charge an anonymous block to the word below it.
 
-The row's shape says what kind of store it is. Its present cells encode to 1.7
-bytes each, so the non-zero bytes are scattered over cells that mostly hold
-small numbers — and a small number now costs its own byte and one bit, where an
-extent row charged two framing bytes on top of it. The same row cost 773,687
-bytes of image under those rows. `SYMS-BOOT` (`src/core/checker.f`) is that
-shape taken to its limit and the clearest measure of the change: 655,360 bytes
-of span with no present cell at all now cost nothing at all, because all 160 of
-their groups are absent — the flat bitmap still charged 10,240 bytes for them,
-and the extent rows 115,224 for 38,408 one-byte runs. Its string arena
-`SYM-STR-BOOT` is the opposite, and the one owner the extent rows carried more
-cheaply: 31,152 present cells of packed text encode to 280,360 bytes — nine a
-cell, because a cell with a byte in its top octet needs nine groups — costing
-284,340 against 242,081 for the single run they made of it. The checker's two
-symbol stores are 284,340 bytes of image between them, all of it the arena, down
-from 357,305.
+`SYM-STR-BOOT` is the checker's symbol string arena: 8,220 present cells of
+packed text cost 75,063 bytes, nine bytes a cell. It held 186,506 before the
+capture stopped keeping the strings of symbols no shipped name resolves to.
 
 ## The dictionary the image ships
 

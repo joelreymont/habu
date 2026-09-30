@@ -863,12 +863,13 @@ USIGS-P @ = 0 T=
 USIGS-CAP-U @ USIGS-INIT-CAP T=
 UEND @ 0 T=
 TG-USIGS @ 0 T=
-\ the baked store is the smallest grain multiple that holds its content: two
-\ grains of content persist as three grains of cap, never a power of two.
+\ the baked store is the smallest grain multiple that holds its content and a
+\ grain of room (checker.f USIGS-PERSIST-CAP): two grains of content persist as
+\ four grains of cap, never a power of two.
 USIGS-GRAIN 2 * TG-RESTORE-END
 TG-PERSIST
 s" grain-cap persisted store" T-LABEL
-USIGS-CAP-U @ USIGS-GRAIN 3 * T=
+USIGS-CAP-U @ USIGS-GRAIN 4 * T=
 TG-RESET
 UEND @ 128 + USIGS-CAP-U !
 USIGS-CAP-U @ TG-SMALL-CAP !

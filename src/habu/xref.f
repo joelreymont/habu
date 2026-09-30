@@ -79,6 +79,18 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
 : XREF-PKG-PRIVATE ( ptr n -- n )
    XREF-LEN-SLOT XREF-CELL@ ;
 
+\ Whether wordlist `wid` is protected: the answer the engine's own guards read
+\ (src/habu/habu1.f EMIT-PROTWID). The two OWNER-API wordlists are protected by
+\ rule rather than by a bit; any other wid by its bit in the band at
+\ PROT-BITS-OFF; a wid at or past PROT-WID-MAX has no bit and never is, because
+\ prot-wid-add refuses to protect one. A package whose PUBLIC wid is protected
+\ cannot be reopened (habu2.f C-PACKAGE-PROT-GUARD reads exactly that wid).
+: XREF-WID-PROTECTED? ( n -- bool ) {: wid:n :}
+   wid OWNER-API-PUB-WID = wid OWNER-API-PRI-WID = or if XREF-TRUE exit then
+   wid 0 < wid PROT-WID-MAX < 0= or if XREF-FALSE exit then
+   wid 6 rshift 8 * data-base PROT-BITS-OFF + + @
+   wid 63 and rshift 1 and 0= 0= ;
+
 \ Keep the namespace private-WID API and the historical body length distinct
 \ from the exact code span. A raw length is only for record serialization.
 : XREF-LEN ( ptr n -- n ) {: rec:ptr :}

@@ -181,6 +181,7 @@ variable ML-NI
    s" src/core/lower-cert-seal.f" ML-ENTRY+                    \ seals the lowering certificate
    s" src/os/script-argv.f" ML-ENTRY+                          \ the argv the REPL and the drivers read
    s" src/core/internal-mark.f" ML-ENTRY+                      \ the seal pass over the pre-checker definitions
+   s" src/core/checker-surface.f" ML-ENTRY+                    \ the checker symbols a capture keeps
    s" src/compiler/native/compiler.f" ML-ENTRY+                \ the compiler and the JIT
    s" src/os/linux/repl-term.f" ML-ENTRY+                      \ the REPL terminal, linux
    s" src/os/macos/repl-term.f" ML-ENTRY+                      \ the REPL terminal, macos

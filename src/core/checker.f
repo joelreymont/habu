@@ -5307,14 +5307,24 @@ USIGS-RUNTIME-INIT
    base here > IF RES-FALSE EXIT THEN
    cap here base - <= ;
 
-\ Bake the store at the grain above its content. A power-of-two cap shipped up
-\ to 2 MB of zero padding per image; USIGS-GROW still doubles at runtime.
+\ Bake the store at the grain above its content, plus one grain of room. A
+\ power-of-two cap shipped up to 2 MB of zero padding per image; USIGS-GROW
+\ still doubles at runtime. The spare grain is zero and the grid stores no zero
+\ group, so it costs bitmap bytes, not heap bytes; without it a capture that
+\ landed just under a grain boundary left a restored engine a few rows of room,
+\ its first definitions regrew the store, and its own capture then copied the
+\ grown store into fresh DATA past everything the program laid last
+\ (measured on the NORETS of test/app-image-engine.f's image: 32 bytes left,
+\ and test/snapshot-writer-tail.f's heap no longer ended inside its cell).
+: USIGS-PERSIST-CAP ( n -- n )
+   USIGS-GRAIN + USIGS-ROUND-CAP ;
+
 \ A restored DATA allocation already belongs to the image. Recopying it would
 \ retain another full effect store on every unchanged application recapture.
 : USIGS-SNAPSHOT-PERSIST ( -- )
    USIGS USIGS-CAP-U @ REG-DATA-SPAN? 0= IF
       USIGS-SNAPSHOT-SIZE {: n:n :}
-      n USIGS-ROUND-CAP {: cap:n :}
+      n USIGS-PERSIST-CAP {: cap:n :}
       cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
       USIGS dst n USIGS-COPY
       dst USIGS-P !
@@ -5488,6 +5498,11 @@ variable SYM-ID
 
 : SYM-ROW ( n -- ptr u8 )
    SYM-REC * SYMS + ;
+
+\ A retired row keeps its id and answers no lookup: it is in no index chain, so
+\ no spelling can reach it and no string of its is shared.
+: SYM-RETIRED? ( n -- bool )
+   SYM-ROW SYM.VIS @ SYM-RETIRED = ;
 
 : SYM-PKG-A-FIELD ( n -- ptr n )
    SYM-ROW SYM.PKG-A ;
@@ -5717,11 +5732,12 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
    id HT-NAME-NEXT HIDX-CELL @ nb ! ;
 
 \ HIDX-SYMS-RETIRE ( n -- ) : pop rows [n, SYM-N) before a scope restores SYM-N.
+\ A retired row was never pushed (HIDX-BUILD skips it), so it has nothing to pop.
 : HIDX-SYMS-RETIRE {: keep:n :}
    HIDX-VALID @ 0= IF EXIT THEN
    SYM-N @ 1 -
    begin dup keep >= while
-      dup HIDX-SYM-POP
+      dup SYM-RETIRED? 0= IF dup HIDX-SYM-POP THEN
       1 -
    repeat drop ;
 
@@ -5766,7 +5782,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    HIDX-BKT-CLEAR
    1 HIDX-I !
    begin HIDX-I @ SYM-N @ < while
-      HIDX-I @ HIDX-SYM+
+      HIDX-I @ SYM-RETIRED? 0= IF HIDX-I @ HIDX-SYM+ THEN
       HIDX-I @ 1 + HIDX-I !
    repeat
    HIDX-EPOCH+
@@ -8727,6 +8743,14 @@ PPRIM: LOWER-CERT-HOOK HOOK PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
 PPRIM: LOWER-CERT-HOOK INSTALL PPRIM;
 PPRIM: CHECKER-CERT INSTALL PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN PPRIM;
 PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
+\ The capture's keep policy (src/core/checker-surface.f), installed once. The
+\ policy answers for a symbol by its package, visibility and name - the scope key
+\ CHECKER-ASIG-ROW-FOR takes - and the sweep it arms retires the rest.
+PPRIM: CHECKER-SWEEP INSTALL
+   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-F PE-QIN PE-PTR-U8 PE-QIN PE-N PE-QIN PE-F PE-QOUT ;PE-Q PE-IN
+PPRIM;
+\ ... and the policy asks the capture in progress whether a record ships named.
+PPRIM: CHECKER-SWEEP NAMED? PE-N PE-IN PE-F PE-OUT PPRIM;
 \ The source-tape observer's arming surface (dot habu-feed-the-src-f7ed8733).
 \ Checked callers may install and arm an observer: it is called before a token
 \ is judged and its answer is never read, so it can abort a compilation but
@@ -10831,11 +10855,12 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    NULL-PTR NORET-GROW-NEXT ! ;
 
 \ The table can outgrow its initial buffer. Persist the complete live prefix
-\ in image DATA at the grain, just like stored signatures; NORET-GROW doubles.
+\ in image DATA at the grain with a grain of room, just like stored signatures
+\ (USIGS-PERSIST-CAP says why); NORET-GROW doubles.
 : NORET-SNAPSHOT-PERSIST ( -- )
    NORETS NORET-CAP-U @ REG-DATA-SPAN? 0= IF
       NORET-END @ CELL + {: n:n :}
-      n USIGS-ROUND-CAP {: cap:n :}
+      n USIGS-PERSIST-CAP {: cap:n :}
       cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
       NORETS dst n USIGS-COPY
       dst NORET-P !
@@ -18167,8 +18192,10 @@ private
 \ A capture keeps the primitive control prefix verbatim and the state at two
 \ later checkpoints: the saved core-prefix boundary, when present, and now.
 \ Each interval needs its own newest row per symbol; a zero row is a retraction
-\ and must survive just like a nonzero one. Effect offsets in CREATES are never
-\ changed because the effect store is not compacted here.
+\ and must survive just like a nonzero one. A retired symbol keeps no row at
+\ all: no spelling reaches it, so no row of its can ever be read again. Effect
+\ offsets in CREATES are never changed because the effect store is not
+\ compacted here.
 RBF-REC CELL / constant NORET-BOUND-CELLS
 : NORET-COMPACT-REFUSE ( -- )
    s" checker: invalid control checkpoint" 76 die ;
@@ -18215,7 +18242,9 @@ RBF-REC CELL / constant NORET-BOUND-CELLS
    loop ;
 
 : NORET-COMPACT-ONE ( n n ptr n -- n ) {: dst:n off:n heads:ptr :}
-   off NORET-CELL NORET.SYM @ heads NORET-COMPACT-HEAD @
+   off NORET-CELL NORET.SYM @ {: sym:n :}
+   sym SYM-RETIRED? IF dst EXIT THEN
+   sym heads NORET-COMPACT-HEAD @
       off 1 + <> IF dst EXIT THEN
    off dst <> IF NORETS off + NORETS dst + NORET-ENTRY ARENA-COPY THEN
    dst NORET-ENTRY + ;
@@ -18252,6 +18281,242 @@ RBF-REC CELL / constant NORET-BOUND-CELLS
    heads BYTE-VIEW SYM-N @ cells ASIG-RELEASE
    NRX-RESET ;                         \ HIDX-RESET ran earlier in this capture
 
+\ ---- the surface a capture keeps ---------------------------------------------
+\ A capture keeps a checker symbol, and every row keyed on it, only when some
+\ spelling can still reach it in the engine it writes. Two reasons are this
+\ file's own and hold whether or not a dictionary record carries the name: a
+\ primitive axiom row names the symbol (PES), or the primitive control prefix
+\ does (NORETS below NORET-PRIM-END), which is how `>r` or `2>r` resolve at all.
+\ Every other symbol is decided by src/core/checker-surface.f, which reads the
+\ dictionary and the seal pass's verdict; this file loads before both. Until
+\ that file installs its policy the sweep does nothing, so an engine whose
+\ closure does not load it - the recovery engine, built from src/habu/repl.f -
+\ captures every symbol it holds.
+\
+\ WHICH RECORDS SHIP WITH A NAME IS THE CAPTURE'S ANSWER, NOT THE POLICY'S. The
+\ policy finds the record a symbol's spelling resolves to and asks NAMED? of its
+\ dictionary index, and the capture in progress answers. A snapshot (src/habu/
+\ snap-lib.f, APP-IMAGE:SAVE) writes the whole dictionary, every live record
+\ with its name, so SWEEP - the capture seam's call - answers yes for every
+\ record. The native build's capture strips names afterwards, deciding in
+\ src/habu/aot-capture.f which records keep theirs, a DNAME-INT word it retains
+\ by name included; once that decision is final it runs STRIP with its own
+\ answer, before it copies DATA. A name it strips leaves no spelling, so its
+\ symbol goes; a name it keeps is one a TRUSTED: body can still call, and the
+\ native compiler asks this checker for that callee's arity.
+\
+\ A DROPPED SYMBOL IS RETIRED IN PLACE, never renumbered: ids are held outside
+\ this table - a variant's constructor symbol (src/core/type-family.f), the
+\ core-prefix boundary's SYM-N - and a retired row answers no lookup, so a stale
+\ id names nothing rather than some other word. Its strings go with it: the pool
+\ is rebuilt from the kept rows in id order, so the rows below the boundary keep
+\ their strings below the boundary's pool mark, which moves with them.
+\
+\ ITS ROWS GO WITH IT, OR NAME NOTHING. Control rows go at NORET-COMPACT; defer,
+\ unsafe and parse-immediate rows are filtered here. An effect binding stays
+\ where it is - the store is not compacted here, and a record's own bytes must
+\ still lie between it and the next (UIX-REC-ADD) - but its symbol and back-link
+\ are cleared, so no index, scan or owner transfer can reach it through the
+\ retired id. CHECKER-REG CHECKED-ROW walks every id of a product host that
+\ builds an engine, and a binding still keyed on a retired row would hand the
+\ target a symbol with an empty name.
+package CHECKER-SWEEP
+private
+
+defer KEEP-XT ( ptr u8 n bool ptr u8 n -- bool )
+variable KEEP-SET   0 KEEP-SET !
+defer NAMED-XT ( n -- bool )             \ the capture's answer, by record index
+
+: EVERY-RECORD ( n -- bool ) drop RES-TRUE ;
+: NAMED-DEFAULT ( -- ) ['] EVERY-RECORD is NAMED-XT ;
+NAMED-DEFAULT
+variable DST                             \ the compacting filters' write cursor
+variable CUR                             \ the binding walk's record cursor
+
+: KEEP! ( n ptr n -- ) {: sym:n keep:ptr :}
+   sym 0 > sym SYM-N @ < and IF -1 keep sym cells + ! THEN ;
+
+: MARK-AXIOMS ( ptr n -- ) {: keep:ptr :}
+   #PE @ 0 ?do i PE-SYM@ keep KEEP! loop
+   NORET-PRIM-END NORET-ENTRY / 0 ?do
+      i NORET-ENTRY * NORET-CELL NORET.SYM @ keep KEEP!
+   loop ;
+
+: RETIRE ( n -- ) {: id:n :}
+   id SYM-ROW {: r:ptr :}
+   0 r SYM.PKG-A !  0 r SYM.PKG-U !
+   0 r SYM.NAME-A !  0 r SYM.NAME-U !
+   SYM-RETIRED r SYM.VIS ! ;
+
+\ The scope key the policy reads: an empty package is the global scope, and the
+\ flag says public rather than private (ASIG-AUDIT-VIS is the inverse).
+: ASK ( n [ ptr u8 n bool ptr u8 n -- bool ] -- bool ) {: id:n policy :}
+   id SYM-PKG$  id SYM-ROW SYM.VIS @ SYM-PUBLIC =  id SYM-NAME$  policy execute ;
+
+: DECIDE ( [ ptr u8 n bool ptr u8 n -- bool ] -- ) {: policy :}
+   SYM-N @ cells ARENA-ALLOC {: keep:ptr :}
+   keep MARK-AXIOMS
+   SYM-N @ 1 ?do
+      i SYM-RETIRED? IF i RETIRE ELSE
+         keep i cells + @ 0= IF
+            i policy ASK 0= IF i RETIRE THEN
+         THEN
+      THEN
+   loop
+   keep BYTE-VIEW SYM-N @ cells ASIG-RELEASE ;
+
+\ Two rows share a string exactly when they share its offset (SYM-PKG-INTERN and
+\ SYM-NAME-INTERN reuse a whole equal string), so mapping old offset to new
+\ keeps the pool's own sharing among the rows that stay. The map holds new+1.
+: MOVE-STR ( n n ptr u8 ptr n -- n ) {: off:n u:n old:ptr map:ptr :}
+   u 0= IF 0 EXIT THEN
+   map off cells + @ {: seen:n :}
+   seen 0 <> IF seen 1 - EXIT THEN
+   SYM-STR-U @ {: at:n :}
+   old off + SYM-STR at + u ARENA-COPY
+   at 1 + map off cells + !
+   at u + SYM-STR-U !
+   at ;
+
+: STR-ZERO ( n n -- ) {: from:n to:n :}
+   to from ?do 0 SYM-STR i + c! loop ;
+
+: BOUND-SYMU! ( -- )
+   SYM-STR-U @ RBF-BND-REC RBF.SYMU ! ;
+
+: STRINGS ( -- )
+   SYM-STR-U @ {: oldu:n :}
+   oldu 0= IF EXIT THEN
+   oldu ARENA-ALLOC {: old:ptr :}
+   SYM-STR old oldu ARENA-COPY
+   oldu cells ARENA-ALLOC {: map:ptr :}
+   RBF-BND-N @ IF RBF-BND-REC RBF.SYMN @ ELSE 0 THEN {: bnd:n :}
+   0 SYM-STR-U !
+   SYM-N @ 1 ?do
+      i bnd = IF BOUND-SYMU! THEN
+      i SYM-RETIRED? 0= IF
+         i SYM-PKG-A-FIELD @ i SYM-ROW SYM.PKG-U @ old map MOVE-STR i SYM-PKG-A-FIELD !
+         i SYM-NAME-A-FIELD @ i SYM-ROW SYM.NAME-U @ old map MOVE-STR i SYM-NAME-A-FIELD !
+      THEN
+   loop
+   bnd SYM-N @ = IF BOUND-SYMU! THEN
+   SYM-STR-U @ oldu STR-ZERO
+   old oldu ASIG-RELEASE
+   map BYTE-VIEW oldu cells ASIG-RELEASE ;
+
+\ The user region, bounded by UEND the way USX-BUILD walks it. The primitive
+\ region holds the PES rows' own effects, whose symbols the axiom rule keeps.
+: DETACH ( -- )
+   USIGS-USER-OFF @ CUR !
+   begin CUR @ EFF-REC + UEND @ <= while
+      CUR @ E-PTR {: rec:ptr :}
+      rec ER.SYM @ {: sym:n :}
+      sym 0 > IF sym SYM-N @ < IF sym SYM-RETIRED? IF
+         0 rec ER.SYM !  0 rec ER.SYMPREV !
+      THEN THEN THEN
+      rec E-NEXT@ {: nx:n :}
+      nx CUR @ <= nx UEND @ > or IF EXIT THEN
+      nx CUR !
+   repeat ;
+
+\ Newest-wins holds for the rows that stay because their order does. A rollback
+\ frame cannot be open here, so the boundary's end is the one saved end to move.
+: DEFER-FILTER ( -- )
+   RBF-BND-N @ IF RBF-BND-REC RBF.DFEREND @ ELSE -1 THEN {: bnd:n :}
+   DFER-END @ {: oldend:n :}
+   0 DST !
+   oldend DFER-REC / 0 ?do
+      i DFER-REC * {: at:n :}
+      at bnd = IF DST @ RBF-BND-REC RBF.DFEREND ! THEN
+      DFERS at + DFER.SYM @ SYM-RETIRED? 0= IF
+         at DST @ <> IF DFERS at + DFERS DST @ + DFER-REC ARENA-COPY THEN
+         DST @ DFER-REC + DST !
+      THEN
+   loop
+   bnd oldend = IF DST @ RBF-BND-REC RBF.DFEREND ! THEN
+   DFERS CELL-VIEW DST @ CELL / oldend CELL / ARENA-CELLS-ZERO
+   DST @ DFER-END !
+   DFER-TERM ;
+
+: UNSAFE-FILTER ( -- )
+   0 DST !
+   UNSAFE-SYM-N @ 0 ?do
+      i UNSAFE-SYM-AT @ {: sym:n :}
+      sym SYM-RETIRED? 0= IF
+         sym DST @ UNSAFE-SYM-AT !
+         DST @ 1 + DST !
+      THEN
+   loop
+   UNSAFE-SYM-N @ DST @ ?do 0 i UNSAFE-SYM-AT ! loop
+   DST @ UNSAFE-SYM-N ! ;
+
+: PIMM-FILTER ( -- )
+   0 DST !
+   PIMM-N @ 0 ?do
+      i cells PIMM-SYMS + @ {: sym:n :}
+      sym SYM-RETIRED? 0= IF
+         sym DST @ cells PIMM-SYMS + !
+         i cells PIMM-NS + @ DST @ cells PIMM-NS + !
+         DST @ 1 + DST !
+      THEN
+   loop
+   PIMM-N @ DST @ ?do
+      0 i cells PIMM-SYMS + !  0 i cells PIMM-NS + !
+   loop
+   DST @ PIMM-N ! ;
+
+public
+
+\ The sweep itself, for the policy it is handed. It has no axiom row, so the seal
+\ marks it internal and the product cannot spell it; the whitebox census
+\ (test/effect-store-census-test.f) runs it on a policy of its own.
+: RUN ( [ ptr u8 n bool ptr u8 n -- bool ] -- ) {: policy :}
+   RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN   \ NORET-COMPACT-CHECK's refusal, met first
+   policy DECIDE
+   STRINGS
+   DETACH
+   DEFER-FILTER
+   UNSAFE-FILTER
+   PIMM-FILTER
+   0 HIDX-VALID ! ;
+
+\ Granted once, like CHECKER-CERT:INSTALL: a second policy cannot quietly
+\ replace the one the build installed.
+: INSTALL ( [ ptr u8 n bool ptr u8 n -- bool ] -- )
+   KEEP-SET @ IF s" checker: capture keep policy already installed" 76 die THEN
+   is KEEP-XT
+   -1 KEEP-SET ! ;
+
+\ Whether the capture in progress ships dictionary record n with its name.
+: NAMED? ( n -- bool )
+   NAMED-XT ;
+
+\ The capture seam's sweep, for a capture that writes every live record.
+: SWEEP ( -- )
+   KEEP-SET @ 0= IF EXIT THEN
+   NAMED-DEFAULT
+   ['] KEEP-XT RUN ;
+
+\ A capture that strips names after the seam sweeps again with its own answer,
+\ over stores the seam already persisted into DATA: everything here works in
+\ place and allots nothing, and NORET-COMPACT drops the control rows of what this
+\ pass retired. The answer is the capture's own code, so the cell goes back to
+\ the window's before the capture copies DATA.
+: STRIP ( [ n -- bool ] -- )
+   KEEP-SET @ 0= IF drop EXIT THEN
+   is NAMED-XT
+   ['] KEEP-XT RUN
+   NAMED-DEFAULT
+   NORET-COMPACT ;
+
+;package
+
+\ A grown primitive table left its first rows in the boot buffer, which is DATA
+\ and would be baked beside the live copy; nothing reads it once PES-P moved.
+: PES-BOOT-RETIRE ( -- )
+   PES-P @ PES = IF EXIT THEN
+   PES CELL-VIEW 0 PE-CAP-INIT PE-REC * CELL / ARENA-CELLS-ZERO ;
+
 \ One capture seam owns the order: scrub transient stores before persistence
 \ copies any grown registry, persist the live rows (all three name stores use
 \ offsets and need no pointer marking), then clear
@@ -18267,12 +18532,14 @@ RBF-REC CELL / constant NORET-BOUND-CELLS
    0 ASIG-GRAPH-BASE ! 0 ASIG-GRAPH-GEN ! 0 ASIG-GRAPH-UNIT-OFF !
    0 CK-AOT-STATE !                  \ validation belongs to the current signature pool
    TOKBUF-RESET
+   CHECKER-SWEEP:SWEEP                  \ retire what the image cannot spell
    HIDX-RESET
    TV-SNAP-RESET
    DECOUPLED-ARENA-SNAP-RESET
    LOC-HW-SNAP-RESET                    \ the same arena job, one file-order later
    CHECKER-CAPTURE-SCRATCH-PREPARE
    PES-P PE-CAP-V @ PE-REC * REG-PERSIST-BUF drop
+   PES-BOOT-RETIRE
    CT-SNAPSHOT-PERSIST
    VREC-SNAPSHOT-PERSIST
    SYM-SNAPSHOT-PERSIST

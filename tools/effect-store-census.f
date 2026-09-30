@@ -61,6 +61,8 @@ TRUSTED: R-RIN ( n -- n ) E-PTR E-RIN@ ;
 TRUSTED: R-ROUT ( n -- n ) E-PTR E-ROUT@ ;
 TRUSTED: R-HASR ( n -- n ) E-PTR E-HASR@ ;
 TRUSTED: R-SYMPREV ( -- n ) ER-SYMPREV-OFF ;
+TRUSTED: R-SYM ( n -- n ) E-PTR ER.SYM @ ;
+TRUSTED: SYM-GONE? ( n -- bool ) SYM-RETIRED? ;
 TRUSTED: N-TAG ( -- n ) EN-TAG-OFF ;
 TRUSTED: N-A ( -- n ) EN-A-OFF ;
 TRUSTED: N-B ( -- n ) EN-B-OFF ;
@@ -81,6 +83,7 @@ variable WINDOW-V   variable RECS-V     variable SHADOW-V
 variable CONTENTS-V
 variable NODES-V    variable NODEB-V    variable SHARES-V   variable SHAREB-V
 variable FINAL-V    variable DUP-V      variable BELOW-V    variable SHAPES-V
+variable UNKEYED-V  variable RETIRED-V
 
 \ ---- the visited set: one byte per eight-byte granule of the window -----------
 \ Bit 0 marks a node the walk has already charged to a record; bit 1 marks a
@@ -270,10 +273,19 @@ variable DUPCUR
    SEE CONTENT-BYTES CHARGE
    1 CONTENTS-V +! ;
 
+\ A binding keyed on no symbol is one a capture detached from a retired symbol
+\ (src/core/checker.f CHECKER-SWEEP); one still keyed on a retired symbol is a
+\ binding the sweep missed, and no reader can reach either through a name.
+: KEY ( n -- ) {: rec:n :}
+   rec R-SYM {: sym:n :}
+   sym 0= IF 1 UNKEYED-V +! EXIT THEN
+   sym SYM-GONE? IF 1 RETIRED-V +! THEN ;
+
 : VISIT-RECORDS ( -- )
    BASE-V @ CUR-V !
    BEGIN CUR-V @ REC-NEXT 0 <> WHILE
       RECS-V @ 1 + RECS-V !
+      CUR-V @ KEY
       CUR-V @ SHADOWED? IF
          -1 DUPCUR !  SHADOW-V @ 1 + SHADOW-V !
       ELSE 0 DUPCUR ! THEN
@@ -287,7 +299,8 @@ variable DUPCUR
    0 CONTENTS-V !
    0 RECS-V !   0 SHADOW-V !  0 NODES-V !  0 NODEB-V !
    0 SHARES-V ! 0 SHAREB-V !  0 FINAL-V !  0 DUP-V !
-   0 BELOW-V !  0 SHAPES-V !  0 WINDOW-V ! ;
+   0 BELOW-V !  0 SHAPES-V !  0 WINDOW-V !
+   0 UNKEYED-V !  0 RETIRED-V ! ;
 
 public
 
@@ -318,6 +331,8 @@ public
 : FINAL-BYTES ( -- n ) FINAL-V @ ;
 : DUP-BYTES ( -- n ) DUP-V @ ;
 : SHAPES ( -- n ) SHAPES-V @ ;
+: UNKEYED ( -- n ) UNKEYED-V @ ;
+: RETIRED-KEYED ( -- n ) RETIRED-V @ ;
 
 \ ORPHAN-BYTES ( -- n ) : the window minus everything the walk accounted for.
 \ Zero is the instrument's own proof that it saw the store exactly once; a
@@ -342,6 +357,8 @@ public
    s" below-window-refs " type BELOW-WINDOW . cr
    s" final-bytes " type FINAL-BYTES . cr
    s" dup-bytes " type DUP-BYTES . cr
-   s" orphan-bytes " type ORPHAN-BYTES . cr ;
+   s" orphan-bytes " type ORPHAN-BYTES . cr
+   s" unkeyed-bindings " type UNKEYED . cr
+   s" retired-symbol-bindings " type RETIRED-KEYED . cr ;
 
 ;package

@@ -118,6 +118,37 @@ EFF-CENSUS:NODE-TOTAL-BYTES + T=
 BALANCED
 
 \ ---------------------------------------------------------------------------
+\ window 4: a swept window — the bindings of retired symbols name nothing
+\ ---------------------------------------------------------------------------
+\ The capture's sweep (src/core/checker.f CHECKER-SWEEP) retires what its policy
+\ drops and clears the symbol of every binding it leaves in the store. This runs
+\ it on a policy that drops two of the window's three words, so the census has a
+\ known answer: two bindings keyed on nothing, none on a retired symbol, and the
+\ window's bytes unchanged, because nothing was compacted.
+: CTS-DROP? ( ptr u8 n bool ptr u8 n -- bool ) {: pa:ptr pu:n pub:bool na:ptr nu:n :}
+   na nu s" cts-drop" STARTS-WITH? 0= ;
+TRUSTED: CT-SWEEP ( -- ) [: CTS-DROP? ;] CHECKER-SWEEP:RUN ;
+
+EFF-CENSUS:MARK MK !
+s" : CTS-KEEP ( n -- n ) 1 + ;" CT-EVAL
+s" : CTS-DROP1 ( n -- n ) 2 + ;" CT-EVAL
+s" : CTS-DROP2 ( n n -- n ) + ;" CT-EVAL
+MK @ EFF-CENSUS:RUN
+EFF-CENSUS:WINDOW-BYTES TC !
+EFF-CENSUS:UNKEYED 0 T=
+CT-SWEEP
+MK @ EFF-CENSUS:RUN
+EFF-CENSUS:RETIRED-KEYED 0 T=                  \ no binding still names a retired symbol
+EFF-CENSUS:UNKEYED 2 T=                        \ ... the dropped words' two name nothing
+EFF-CENSUS:WINDOW-BYTES TC @ T=
+BALANCED
+s" CTS-KEEP" EFFECT-QUERY TTRUE                \ the kept word still resolves
+s" CTS-DROP1" EFFECT-QUERY 0= TTRUE            \ a retired one resolves to nothing
+s" undefine CTS-DROP1" CT-EVAL                \ ... and its name certifies afresh
+s" : CTS-DROP1 ( n -- n ) 3 + ;" CT-EVAL
+s" CTS-DROP1" EFFECT-QUERY TTRUE
+
+\ ---------------------------------------------------------------------------
 \ the whole store: one node per shape, which is the interner's whole claim
 \ ---------------------------------------------------------------------------
 0 EFF-CENSUS:RUN

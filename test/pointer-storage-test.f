@@ -101,13 +101,15 @@ TRUSTED: RSV-OFF-B ( -- n ) RSV-CELL-B data-base - ;
 \ built - a clone written in this file is ordinary checked source and could
 \ never be sealed. test/internal-word-gate.f owns the `internal engine word`
 \ diagnostic itself.) The control candidate is spelled with NULL-PTR-CELL's OWN
-\ effect, so a type disagreement cannot be what refuses it: the name is.
+\ effect, so a type disagreement cannot be what refuses it: the name is. The
+\ image strips that name, and its capture retired the checker's symbol for it
+\ with the name (src/core/checker-surface.f), so the candidate is unresolved.
 : VERIFY-RESERVED-EFFECT ( -- )
    s" RSV-BASE ( -- ptr ptr u8 ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! -1 T=
    s" RSV-READ ( -- ptr u8 ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! -1 T=
    s" RSV-BASE-WRONG ( -- ptr ptr n ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! 0 T=
    s" RSV-READ-WRONG ( -- ptr n ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! 0 T=
-   s" RSV-SEALED ( -- ptr n ) NULL-PTR-CELL" CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" RSV-SEALED ( -- ptr n ) NULL-PTR-CELL" CHECK-QUIET-CANDIDATE! 1 T= ;
 
 \ The scanner's own row: the pre-scan sees the same definer and publishes the
 \ same effect for the word it creates, so a source file that declares a
