@@ -3,7 +3,7 @@ title: Start the longest gate rows first
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-09-29T13:58:20.601217+02:00\\\"\""
+created-at: "2026-09-29T13:58:20.601217+02:00"
 closed-at: "2026-09-29T14:54:53.829888+02:00"
 close-reason: Cold-cache native gate passed 494/494; long build rows started early, shared whitebox built before native-window-owner, and the sequential group ran last.
 ---

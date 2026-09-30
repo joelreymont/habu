@@ -3,7 +3,7 @@ title: Delete duplicate IR manifests and IR census pins
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-29T18:01:45.767176+02:00\\\"\""
+created-at: "2026-09-29T18:01:45.767176+02:00"
 closed-at: "2026-09-29T20:38:15.484100+02:00"
 close-reason: Removed three duplicate IR manifest rows and nine runner/schema files; retained distinct ordering and post-refusal behavior in native IR suites; removed IR-ID public census and tautology, cleaned dead error codes and current references. Twelve surviving ordinary compiler-IR rows and whitebox ir-id passed through their load paths; entry guard and error-code lint passed; Astra follow-up review passed.
 ---
