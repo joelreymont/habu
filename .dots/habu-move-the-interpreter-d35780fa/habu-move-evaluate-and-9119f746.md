@@ -31,3 +31,5 @@ Design correction, rev 2 (absorbs I1 `habu-mark-blob-provided-21605a53`, closed;
 - Depends: I5e, I8, K4 (`habu-share-the-primitive-58c235e5`). Base on X7's bookmark until K4/X7 land. Serialise `habu2.f` (K4, X7, I6, I10c), `prims.f` (I6), `native-runtime.f` (I10c).
 - Route: Alder (shared: every file above except `outer.f` and the test).
 - From I4 design: retire `SOURCE-ROOT:INCLUDE-INTERPRET`; `INCLUDE-EVALUATE` calls the one `evaluate`.
+
+K-lane correction (design 2026-09-30): Files add `src/habu/kernel-x64.f`: `X64KERNEL:PRIM` and `REFUSE` call `ENGINE-PRIMS:KEEP-BODY?` beside `FP-KEEP?`, so a seeded x86 build drops K7's refusal rows for `evaluate`, `create`, `parse-name`, `num-parse` and `tok-imm?` once Habu provides them.

@@ -17,3 +17,5 @@ Depends: habu-parse-argv-and-2106dd5c (I10a), habu-recover-throws-across-18bd36f
 Route: Alder (shared: src/habu/main.f, src/habu/repl.f and the test).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+K-lane correction (design 2026-09-30): Acceptance add "on x86 stores the uncaught-throw reporter xt `( n -- )` in `UNCGH-CELL`" (K7's no-handler `throw` calls it); Files add `src/habu/kernel-x64.f` only if the store needs a kernel row.

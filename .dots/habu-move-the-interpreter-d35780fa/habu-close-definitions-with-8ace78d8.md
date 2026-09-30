@@ -17,3 +17,5 @@ Route: Alder (shared: src/habu/definers.f, src/habu/outer.f and the test).
 Ownership: krait (Intel lane).
 Claim: unassigned.
 - From I4 design: this leaf also owns interpret-mode `immediate` (`habu2.f:8354`), which marks the definition it closes.
+
+K-lane correction (design 2026-09-30): Acceptance add provenance open/close rows in `prims.f` with bodies on both targets. Every `TIER-PROV:OPEN,`/`CLOSE,` call site is the assembly interpreter (`habu2.f:2783,7704,9259-9381`); a Habu loop needs them as primitives. K9b provides the x86 bodies. Files add `src/habu/prims.f`, `src/habu/habu1.f`.

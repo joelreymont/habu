@@ -17,3 +17,5 @@ Depends: habu-boot-and-exit-367c46f5 (K3), habu-emit-x86-syscall-a0d501db (K6).
 Route: direct.
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+K-lane correction (design 2026-09-30): Acceptance add "reuses K6a's `X64KERNEL:DLSYM,` and `C-CALL,`"; no second loader-slot reader.
