@@ -79,13 +79,14 @@ public
 
 \ TRUE when PROC-ARGV+ has room for an argument of u bytes: a table row below
 \ the one the NULL terminator needs, and buffer room for the bytes and their NUL.
-\ A caller that batches arguments asks before each one.
+\ A caller that batches arguments asks before each one. The length is compared
+\ with the room left, never added to, so no length wraps into range.
 : PROC-ARGV-FITS? ( len -- bool ) {: u :}
    PROC-ARGV-N @ COUNT>N PROC-ARGV-MAX 1- <
-   PROC-ARGV-OFF @ OFF>N u LEN>N 1 + + PROC-ARGV-BUF-CAP <= and ;
+   u LEN>N 0 >= and
+   u LEN>N PROC-ARGV-BUF-CAP PROC-ARGV-OFF @ OFF>N - < and ;
 
 : PROC-ARGV-ZCOPY ( ptr u8 len -- ptr u8 ) {: a:ptr u :}
-   u LEN>N 0 < if E-PROC-OUTPUT throw then
    PROC-ARGV-OFF @ {: off :}
    a u PROC-ARGV-BUF off OFF>N + PROC-ARGV-BUF-CAP off OFF>N - >LEN PROC-ZCOPY {: z:ptr :}
    off OFF>N u LEN>N 1 + + >OFF PROC-ARGV-OFF !

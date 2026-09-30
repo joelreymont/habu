@@ -476,6 +476,23 @@ create PT-DRAIN-BUF PT-CHUNK allot
    33 PT-CAPTURE-OK-U !
    PT-R PT-OUT 32 >LEN PT-CAPTURE-OK-U PROC-READ-STREAM ;
 
+8 constant PT-Z-CAP
+create PT-Z PT-Z-CAP allot
+
+: TEST-ZCOPY-EXACT ( -- )
+   s" a copy fits when its bytes and NUL fit the destination" T-LABEL
+   s" 1234567" >LEN PT-Z PT-Z-CAP >LEN PROC-ZCOPY ZLEN 7 T= ;
+
+: TEST-ZCOPY-FULL ( -- )
+   s" 12345678" >LEN PT-Z PT-Z-CAP >LEN PROC-ZCOPY drop ;
+
+: TEST-ZCOPY-NEG-LEN ( -- )
+   PT-BUF -1 >LEN PT-Z PT-Z-CAP >LEN PROC-ZCOPY drop ;
+
+\ A length whose NUL wraps the sum must not reach the copy loop.
+: TEST-ZCOPY-HUGE-LEN ( -- )
+   PT-BUF MEM-MAX-N >LEN PT-Z PT-Z-CAP >LEN PROC-ZCOPY drop ;
+
 : PROCESS-TEST-MAIN ( -- )
    T-RESET
    PT-PREPARE
@@ -515,6 +532,10 @@ create PT-DRAIN-BUF PT-CHUNK allot
    TEST-RUN-CAPTURE-RESULT-TYPES
    [: TEST-PROC-READ-NEG-LEN ;] E-PROC-TRUNCATED TTHROWSQ
    [: TEST-PROC-READ-HIGH-LEN ;] E-PROC-TRUNCATED TTHROWSQ
+   TEST-ZCOPY-EXACT
+   [: TEST-ZCOPY-FULL ;] E-PROC-OUTPUT TTHROWSQ
+   [: TEST-ZCOPY-NEG-LEN ;] E-PROC-OUTPUT TTHROWSQ
+   [: TEST-ZCOPY-HUGE-LEN ;] E-PROC-OUTPUT TTHROWSQ
    PT-CLEANUP
    T-REPORT
    s" process-test: ok" type cr ;

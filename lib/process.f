@@ -158,7 +158,8 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    pid PID>N sig kill >RC ;
 
 : PROC-ZCOPY ( ptr u8 len ptr u8 len -- ptr u8 ) {: a:ptr u dst:ptr cap :}
-   u LEN>N 1 + cap LEN>N > if E-PROC-OUTPUT throw then
+   u LEN>N 0 < if E-PROC-OUTPUT throw then
+   u LEN>N cap LEN>N >= if E-PROC-OUTPUT throw then
    0 begin dup u LEN>N < while
       dup a + c@  over dst + c!
       1 +
