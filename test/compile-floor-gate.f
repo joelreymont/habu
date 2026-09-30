@@ -7,10 +7,30 @@
 \ ten-run maximum - the ten-run spread itself is under 5%, the rest is for a
 \ core the gate pool saturates - and the smallest numbers (search, move) get
 \ about 2x because a few microseconds of timer granularity is a large share of
-\ them. A doubled compile or corpus cost is red. The child output is printed on
-\ every run: the pool keeps it for a red suite, and a standalone run (`bin/hb
-\ --load test/compile-floor-gate.f`) shows the numbers on a green engine. Lower
-\ a budget when a floor dot lands and the new ten-run maximum is known.
+\ them. A doubled corpus cost, or a doubled compile cost that every definition
+\ pays, is red. The child output is printed on every run: the pool keeps it
+\ for a red suite, and a standalone run (`bin/hb --load
+\ test/compile-floor-gate.f`) shows the numbers on a green engine. Lower a
+\ budget when a floor dot lands and the new ten-run maximum is known.
+\
+\ The gate judges the least of each measurement. Other processes only add time
+\ and a regression slows every run, so the least is the estimate a neighbour
+\ cannot push over a budget and a doubled cost still exceeds. A B line carries
+\ three timed runs and their median; the median fails as soon as two runs of
+\ three are slowed, so the gate reads the least run. A floor set's mean is one
+\ window of 100 compiles, and a saturated host preempts that window or moves it
+\ to a slower core every time: on a 12-core M2 Max (4 of them efficiency cores)
+\ at load 80-95 with 24 extra busy processes, the least of three whole windows
+\ still put three-op-t1 over its budget in three trials of three. So the gate
+\ reads each set's fastest single definition, the least-* fields of the floor
+\ line. The median and the mean stay in the tools' output for quoting.
+\
+\ The fastest definition prices only a cost every definition pays, so a cost
+\ only some definitions of a set pay, such as an occasional arena growth or a
+\ scan that lengthens as the set is defined, shows in the mean alone. No suite
+\ row holds a mean to a budget: tools/compile-floor.f's ratchet judges
+\ trivial-t1's mean only when a floor is given on its command line, and the
+\ suite gives it only 0 and 1000 ms, to prove the ratchet refuses and passes.
 \
 \ The pinned core is the slow bound of this machine: the same suite unpinned in
 \ a workspace at load average 5 measured trivial-t1 378 us and tier-0 arith
@@ -27,10 +47,15 @@ package COMPILE-FLOOR-GATE
 
 private
 
-\ Budgets in microseconds; the comment is the ten-run range on the pinned core.
+\ Budgets in microseconds; the comment is the ten-run range on the pinned core,
+\ of each floor set's mean and of each B line's median. The least is never above
+\ either, so it keeps at least the stated margin. On the M2 Max a floor set's
+\ fastest definition ran 0.94 (trivial-t0) to 0.99 (three-op-t1) of its mean, so
+\ a doubled cost clears each floor budget by 17% or more; for tier 0 that takes
+\ TRIVIAL-T0-BUDGET 90, 1.5x its mean's maximum, where 100 left 5%.
 1800 constant TRIVIAL-T1-BUDGET     \ 1109..1123
 1600 constant THREE-OP-T1-BUDGET    \ 974..984
-100 constant TRIVIAL-T0-BUDGET      \ 56..59
+90 constant TRIVIAL-T0-BUDGET       \ 56..59
 35000 constant T0-ARITH-BUDGET      \ 21864..21944
 55000 constant T0-BRANCH-BUDGET     \ 34404..36017
 400 constant T0-SEARCH-BUDGET       \ 187..206
@@ -47,6 +72,7 @@ private
 $10000 constant OUT-CAP
 $4000 constant ERR-CAP
 180000 constant TIMEOUT-MS
+3 constant BENCH-RUNS               \ timed runs per B line, before the median
 32 constant SP
 48 constant ZERO-C
 create OUT OUT-CAP allot
@@ -136,13 +162,17 @@ variable PARSE-POS
 : CHECK-LIMIT ( n n -- ) <= TTRUE ;
 
 : CHECK-FLOOR ( -- )
-   OUT$ s" floor: trivial-t1 " 0 FIELD-LABEL TRIVIAL-T1-BUDGET CHECK-LIMIT
-   OUT$ s" three-op-t1 " 0 FIELD-LABEL THREE-OP-T1-BUDGET CHECK-LIMIT
-   OUT$ s" trivial-t0 " 0 FIELD-LABEL TRIVIAL-T0-BUDGET CHECK-LIMIT ;
+   OUT$ s" least-trivial-t1 " 0 FIELD-LABEL TRIVIAL-T1-BUDGET CHECK-LIMIT
+   OUT$ s" least-three-op-t1 " 0 FIELD-LABEL THREE-OP-T1-BUDGET CHECK-LIMIT
+   OUT$ s" least-trivial-t0 " 0 FIELD-LABEL TRIVIAL-T0-BUDGET CHECK-LIMIT ;
+
+: LEAST-RUN ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n label:ptr labelu:n :}
+   a u label labelu 0 FIELD-LABEL
+   BENCH-RUNS 1 ?do a u label labelu i FIELD-LABEL min loop ;
 
 : CHECK-BENCH ( ptr u8 n ptr u8 n n -- )
    {: a:ptr u:n label:ptr labelu:n budget:n :}
-   a u label labelu 3 FIELD-LABEL budget CHECK-LIMIT ;
+   a u label labelu LEAST-RUN budget CHECK-LIMIT ;
 
 : RUN-FLOOR-CASE ( -- )
    RUN-FLOOR

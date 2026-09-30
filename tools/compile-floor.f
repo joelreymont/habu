@@ -4,9 +4,21 @@
 \     bin/hb --load tools/compile-floor.f                \ report only
 \     bin/hb --load tools/compile-floor.f -- 0.5         \ report, then ratchet
 \
-\ One machine-readable line, every mean in microseconds per definition:
+\ One machine-readable line, every figure in microseconds per definition: the
+\ mean of each set, the dispatch count, then the fastest definition of each set:
 \
 \     floor: trivial-t1 <us> three-op-t1 <us> trivial-t0 <us> compiled <n>
+\            least-trivial-t1 <us> least-three-op-t1 <us> least-trivial-t0 <us>
+\
+\ (one line, wrapped here). The mean is the number to quote and the one the
+\ ratchet reads. The least is what a shared machine cannot inflate: another
+\ process preempting the window, or moving it to a slower core, adds time to
+\ every definition it touches and never takes any away, so one untouched
+\ definition in a hundred gives the cost every definition pays.
+\ test/compile-floor-gate.f judges it. A cost only some definitions pay, such
+\ as an occasional arena growth or a scan that lengthens as the set is
+\ defined, shows in the mean alone, and only the ratchet judges a mean:
+\ trivial-t1's, when a floor is given.
 \
 \ MEASURED ON b4363e71 (the integration root, 2026-09-11 evening), aarch64
 \ Linux, three consecutive runs at load average 5.8: trivial-t1 4111-4113 us,
@@ -17,10 +29,11 @@
 \
 \ WHAT IS TIMED. 100 definitions `: Tn ( n -- n ) 1 + ;` and 100 definitions
 \ `: Un ( n n -- n ) swap drop ;`, each handed to the engine's own `evaluate`
-\ one at a time inside a `mono-ns` window. Every source string is built BEFORE
-\ the window opens, so what the window holds is compile time and not string
-\ building. The tier-0 line compiles the trivial body a third time under its
-\ own names (`Vn`), so the contrast never redefines the set it contrasts with.
+\ one at a time inside a `mono-ns` window, and each definition is timed on its
+\ own inside it. Every source string is built BEFORE the window opens, so what
+\ the window holds is compile time and not string building. The tier-0 line
+\ compiles the trivial body a third time under its own names (`Vn`), so the
+\ contrast never redefines the set it contrasts with.
 \
 \ WHY `swap drop` IS THE SECOND BODY. It carries no combinable pair and `1 +`
 \ carries one, so the two lines together price the fold. They used to price a
@@ -70,6 +83,7 @@ require lib/string.f
 require lib/fmt.f
 require lib/float.f
 require lib/argv.f
+require lib/memory.f
 
 -7700 constant E-FLOOR-UNCOMPILED
 -7701 constant E-FLOOR-EXCEEDED
@@ -108,6 +122,9 @@ variable SET-LIVE?                 \ that set is defined and not yet removed
 variable TRIV-T1
 variable THREE-T1
 variable TRIV-T0
+variable TRIV-T1-LEAST
+variable THREE-T1-LEAST
+variable TRIV-T0-LEAST
 variable BOUND-US                  \ ratchet floor in us; read only when a floor was given
 
 \ ---- the dispatch counter ---------------------------------------------------
@@ -171,10 +188,18 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 \ ---- the measured window ----------------------------------------------------
 
-: COMPILE-SET ( -- n )             \ nanoseconds for the whole built set
-   mono-ns
-   SET-N 0 ?do i DEF$ EVAL$ loop
-   mono-ns swap - ;
+: COMPILE-ONE ( n -- n ) {: ix :}  \ nanoseconds for one definition
+   ix DEF$ {: a:ptr u :}
+   mono-ns {: start :}
+   a u EVAL$
+   mono-ns start - ;
+
+\ Nanoseconds for the whole built set, then for its fastest definition.
+: COMPILE-SET ( -- n n )
+   MEM-MAX-N
+   mono-ns {: start :}
+   SET-N 0 ?do i COMPILE-ONE min loop
+   mono-ns start - swap ;
 
 : MEAN-US ( n -- n )  NS-PER-US / SET-N / ;
 
@@ -202,13 +227,13 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 \ returned the whole set exists and TEARDOWN's count is exact. A throw inside
 \ it leaves SET-LIVE? clear and the partial set in the dictionary - reachable
 \ only if compiling `1 +` fails, which kills the run loudly anyway.
-: MEASURE ( ptr u8 n ptr u8 n -- n )   \ prefix and body tail -> mean us
+: MEASURE ( ptr u8 n ptr u8 n -- n n )   \ prefix, body tail -> mean, least us
    TEARDOWN
    BUILD-SET
    NC-COUNT @ NC-MARK !
-   COMPILE-SET
+   COMPILE-SET {: total least :}
    1 SET-LIVE? !
-   MEAN-US ;
+   total MEAN-US  least NS-PER-US / ;
 
 : EXPECT ( n n ptr u8 n -- ) {: want got lbl:ptr lu :}
    want got = if exit then
@@ -221,14 +246,14 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 : RUN-TIER1 ( -- )
    1 SELECT-TIER
-   s" T" s"  ( n -- n ) 1 + ; " MEASURE TRIV-T1 !
+   s" T" s"  ( n -- n ) 1 + ; " MEASURE TRIV-T1-LEAST ! TRIV-T1 !
    SET-N DISPATCHES s" the trivial tier-1 set" EXPECT
-   s" U" s"  ( n n -- n ) swap drop ; " MEASURE THREE-T1 !
+   s" U" s"  ( n n -- n ) swap drop ; " MEASURE THREE-T1-LEAST ! THREE-T1 !
    SET-N DISPATCHES s" the three-op tier-1 set" EXPECT ;
 
 : RUN-TIER0 ( -- )
    0 SELECT-TIER
-   s" V" s"  ( n -- n ) 1 + ; " MEASURE TRIV-T0 !
+   s" V" s"  ( n -- n ) 1 + ; " MEASURE TRIV-T0-LEAST ! TRIV-T0 !
    0 DISPATCHES s" the trivial tier-0 set" EXPECT ;
 
 : REPORT ( -- )
@@ -237,6 +262,9 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
    s"  three-op-t1 " SB-APPEND       THREE-T1 @ FMT:SB-U
    s"  trivial-t0 " SB-APPEND        TRIV-T0 @ FMT:SB-U
    s"  compiled " SB-APPEND          NC-COUNT @ FMT:SB-U
+   s"  least-trivial-t1 " SB-APPEND  TRIV-T1-LEAST @ FMT:SB-U
+   s"  least-three-op-t1 " SB-APPEND THREE-T1-LEAST @ FMT:SB-U
+   s"  least-trivial-t0 " SB-APPEND  TRIV-T0-LEAST @ FMT:SB-U
    SB$ type cr ;
 
 \ ---- the ratchet ------------------------------------------------------------
