@@ -118,6 +118,19 @@ variable LVPUSHT
    6 DATA VSP-CELL LDR,  5 6 2 SUBI,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 STR,
    6 6 1 SUBI,  6 DATA VSP-CELL STR,  RET, ;
+
+\ Row-comparison mode. A routine that asks whether a name spells a dispatch row
+\ (habu2.f EMIT-DEF-KW-GUARD, EMIT-ROW-WALK) replays the row registrars with
+\ CF-DEF-GUARD set: each then emits only its spelling test, a branch to the
+\ label CF-DEF-HIT holds when LKWCMP matches, in place of its handler. The mode
+\ exists only in this image generator; a generated engine holds the tests.
+variable CF-DEF-GUARD
+variable CF-DEF-HIT
+
+: CF-DEF-GUARD-ROW ( ptr n n -- ) {: kwvar:ptr kwlen:n :}
+   0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
+   0 CF-DEF-HIT @ CBNZ, ;
+
 variable LKWPLUS  variable LKWMINUS  variable LKWSTAR
 variable LKWAND2  variable LKWOR2   variable LKWXOR2
 variable FESK
@@ -392,6 +405,7 @@ variable FESK2
 
 \ vop-entry: fold when both con, register op when forceable, else fall through
 : VOP-ENTRY ( label ptr n n [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt emitxt :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK !  LBL FESK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK LABEL@ CBZ,
@@ -413,6 +427,7 @@ variable FESK6
 package ENGINE-EMIT
 
 : VOPI-ENTRY ( label ptr n n [ -- ] [ -- ] [ -- ] n -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt emitxt immxt max:n :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK !  LBL FESK2 !  LBL FESK6 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK LABEL@ CBZ,
@@ -488,6 +503,7 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
 \ comparison entry: fold -> dispatch computes the flag; registers -> emit
 \ cmp rd,rm ; cset rd,cond ; sub rd,xzr,rd  (Forth flag 0/-1)
 : VCMP-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n cond:n :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK !  LBL FESK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK LABEL@ CBZ,
@@ -669,6 +685,7 @@ variable FESK5
 \ FOP-ENTRY: float binop keyword -> FADD-class dd,dn,dm on the d-pool; anything
 \ not forceable falls through to the generic (spill + memory prim) path.
 : FOP-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n base:n :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK5 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK5 LABEL@ CBZ,
@@ -861,6 +878,7 @@ variable FESK3
 
 \ vshuf-entry: reg-aware stack ops — relabels and register moves, no memory traffic
 : VSHUF-ENTRY ( label ptr n n n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n min:n sxt :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK3 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK3 LABEL@ CBZ,
@@ -891,6 +909,7 @@ variable FESK4
 \ vun-entry: unary op on the VS top — con folds at JIT time (no code); reg gets
 \ an in-place op (rd = rs, entry unchanged); empty VS falls through to the prim.
 : VUN-ENTRY ( label ptr n n [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt emitxt :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK4 !  LBL FESK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK4 LABEL@ CBZ,

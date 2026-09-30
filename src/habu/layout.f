@@ -1420,6 +1420,27 @@ $2858 constant SP-CELL                              \ frames parked
 $2860 constant STK-OFF                              \ base of the frame area
 STK-OFF LEVELS 1- FRAME-BYTES * + constant END
 ;package
+\ The design seal (lib/policy.f, docs/policy.md): the two cells that confine a
+\ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
+\ while nothing is sealed, else the NDICT the seal stored; a record at or above
+\ that index is the design's own. POLICY-BITS-OFF is a WID-indexed bitmap shaped
+\ like PROT-BITS-OFF's, PROT-WID-MAX bits in PROT-BITS-BYTES bytes: bit w admits
+\ wordlist w, and every reader tests w against PROT-WID-MAX before it addresses
+\ the band. Only habu1.f BPOLICYADMIT and BPOLICYSEAL write them, and both
+\ refuse once the seal is set. The readers are the places a source token is
+\ read: habu2.f LPOLICYREC for a found record, LKWCMP for a matched keyword,
+\ LUNDEF for a miss, NCOMP-EMIT:CAPTURE-IMMEDIATE for every tier-1 body token,
+\ and EMIT-QUALIFY-DEF for a definition name, which under the seal may spell no
+\ dispatch row (LROWWALK). The native compiler never reads them. The loader
+\ reads the watermark through its own copy of the offset, src/core/include.f
+\ INCLUDE-POLICY-NDICT-CELL, so that a sealed file is read by the engine's loop.
+\ Both cells take the run after RPKG:WIDS below TXN-STATE-OFF ($5000), swept for
+\ a claimant across src lib tools test maki bootstrap, below $7FF8 so the engine
+\ names the cell with a `DATA <off> LDR`, and below DATA-START; data-claims.f
+\ proves neither overlaps a neighbour. A fresh process is unsealed: the zero a
+\ fresh mapping and a build's captured DATA both hold.
+$4898 constant POLICY-NDICT-CELL
+$48A0 constant POLICY-BITS-OFF
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

@@ -144,6 +144,15 @@ variable LINTERNAL   variable LINTMSG   \ interpret-mode internal-word reject (D
 26 constant INTMSG-LEN    \ byte length of "hb: internal engine word: " (LINTMSG)
 variable LTRUSTTICK   variable LTRUSTTICKMSG
 23 constant TRUSTTICKMSG-LEN
+\ The design seal (layout.f POLICY-NDICT-CELL). LPOLICYREC is the one admission
+\ predicate over a found record and LPOLICY the one refusal every sealed site
+\ shares: a record the predicate refuses, a keyword outside the KWDATA design
+\ span [LKWIF, LKWDESIGNEND) and an undefined token all end there. They are
+\ declared with the diagnostics because LKWCMP, emitted long before the MAIN
+\ label block, branches to LPOLICY.
+variable LPOLICY   variable LPOLICYMSG   variable LPOLICYREC   variable LKWDESIGNEND
+: POLICY-MSG$ ( -- ptr u8 n )   s" hb: not in vocabulary: " ;   \ LPOLICY appends the token; the LCOMPILEDIE tail appends the location and the newline
+: POLICY-MSG-LEN ( -- n )       POLICY-MSG$ nip ;
 variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth reject (DNAME-MIN-IN) + its message
 32 constant MINMSG-LEN    \ byte length of "hb: interpret stack underdepth: " (LMINMSG)
 variable LPREFMISS   variable LPREFMISSMSG   \ armed checker without its compile-immediate preflight
@@ -646,6 +655,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LWIDEMSG LABEL@ LBL, s" hb: interpret-mode layout value: " BYTES,     \ WIDEMSG-LEN bytes; LWIDE appends the token + newline
    LINTMSG LABEL@ LBL, s" hb: internal engine word: " BYTES,             \ INTMSG-LEN bytes; LINTERNAL appends the token + newline
    LTRUSTTICKMSG LABEL@ LBL, s" hb: trusted-only tick: " BYTES,
+   LPOLICYMSG LABEL@ LBL, POLICY-MSG$ BYTES,                             \ LPOLICY appends the token; the LCOMPILEDIE tail appends the location + newline
    LMINMSG LABEL@ LBL, s" hb: interpret stack underdepth: " BYTES,       \ MINMSG-LEN bytes; LMININ appends the token + newline
    LPREFMISSMSG LABEL@ LBL, S\" hb: compile preflight hook missing\n" BYTES, \ PREFMISSMSG-LEN contiguous bytes
    LDEFKWMSG LABEL@ LBL, s" hb: compile keyword cannot be a definition name: " BYTES, \ DEFKWMSG-LEN bytes
@@ -2055,7 +2065,7 @@ public
    done LBL, ;
 
 : EMIT-CF-HELPERS ( -- )
-   LBL LBL LBL LBL LBL LBL {: pisb pdone kno kyes kchk knf :}
+   LBL LBL LBL LBL LBL LBL LBL {: pisb pdone kno kyes kchk knf kok :}
    LCFPUSH LABEL@ LBL,
       \ The control-flow stack lives inside the protected region, so a push must
       \ declare its band before it writes. PROT-EMIT:LCF is register-transparent and
@@ -2119,7 +2129,17 @@ public
          5 0 2 ADD,    5 5 0 LDRB,
          4 5 CMP,  C-NE kno BCOND,
          2 2 1 ADDI,  kchk B,
-      kyes LBL,  0 1 MOVZ,  RET,
+      \ The token IS this keyword. Under the design seal (layout.f
+      \ POLICY-NDICT-CELL) only a spelling baked in KWDATA's design span
+      \ [LKWIF, LKWDESIGNEND) is in the vocabulary, and x0 still holds the
+      \ spelling the row passed. Both ends are tested because the op rows bake
+      \ theirs outside KWDATA (jit.f), on whichever side the emitter put them.
+      \ Every row matches through here, so every row inherits the refusal.
+      kyes LBL,
+         2 DATA POLICY-NDICT-CELL LDR,  2 kok CBZ,
+         2 LKWIF LABEL@ ADR,  0 2 CMP,  C-CC LPOLICY LABEL@ BCOND,
+         2 LKWDESIGNEND LABEL@ ADR,  0 2 CMP,  C-CS LPOLICY LABEL@ BCOND,
+      kok  LBL,  0 1 MOVZ,  RET,
       kno  LBL,  0 0 MOVZ,  RET,
    LBCHAIN LABEL@ LBL,                                    \ patch a B-placeholder chain:
       LBL LBL {: bcl bcd :}                    \ x9=head offset, x14=target;
@@ -2262,15 +2282,35 @@ variable LKEYNONAME
 36 constant COLONNONAME-LEN      \ "hb: : missing definition name after "
 33 constant KEYNONAME-LEN        \ "hb: reader keyword needs a name: "
 
+private
+
+\ The design span: the twelve keyword spellings a sealed source may still use
+\ (layout.f POLICY-NDICT-CELL). It is baked first and as one run, LKWIF opening
+\ it and LKWDESIGNEND closing it, because EMIT-CF-HELPERS' LKWCMP admits a
+\ matched keyword under the seal by ADDRESS: its baked spelling lies in
+\ [LKWIF, LKWDESIGNEND) or the token is refused. A spelling baked in this word
+\ is therefore in every sealed design's vocabulary, and one baked anywhere else
+\ is not.
+: DESIGN-SPAN ( -- )
+   LKWIF LABEL@ LBL,     s" if"     BYTES,    LKWELSE LABEL@ LBL,   s" else"   BYTES,
+   LKWTHEN LABEL@ LBL,   s" then"   BYTES,
+   LKWLBRACE LABEL@ LBL, LBRACE-KW 2 BYTES,  LKWENDLOC LABEL@ LBL, ENDLOC-KW 2 BYTES,
+   LKWSQ LABEL@ LBL,     SQ-KW 2 BYTES,
+   LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,
+   LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,
+   LKWDESIGNEND LABEL@ LBL, ;
+
+public
+
 : EMIT ( -- )
-   LKWIF LABEL@ LBL,     s" if"     BYTES,    LKWTHEN LABEL@ LBL,   s" then"   BYTES,
-   LKWELSE LABEL@ LBL,   s" else"   BYTES,    LKWBEGIN LABEL@ LBL,  s" begin"  BYTES,
+   DESIGN-SPAN
+   LKWBEGIN LABEL@ LBL,  s" begin"  BYTES,
    LKWUNTIL LABEL@ LBL,  s" until"  BYTES,    LKWAGAIN LABEL@ LBL,  s" again"  BYTES,
    LKWWHILE LABEL@ LBL,  s" while"  BYTES,    LKWREPEAT LABEL@ LBL, s" repeat" BYTES,
    LKWCASE LABEL@ LBL,   s" case"   BYTES,    LKWOF LABEL@ LBL,     s" of"     BYTES,
    LKWENDOF LABEL@ LBL,  s" endof"  BYTES,    LKWENDCASE LABEL@ LBL, s" endcase" BYTES,
    LKWCREATE LABEL@ LBL, s" create" BYTES,    LKWVAR LABEL@ LBL,    s" variable" BYTES,
-   LKWSQ LABEL@ LBL,     SQ-KW 2 BYTES,
    LKWCQ LABEL@ LBL,     CQ-KW 2 BYTES,
    LKWDOTQ LABEL@ LBL,   DOTQ-KW 2 BYTES,
    LKWESQ LABEL@ LBL,    ESQ-KW 3 BYTES,
@@ -2278,7 +2318,6 @@ variable LKEYNONAME
    LKWEDOTQ LABEL@ LBL,  EDOTQ-KW 3 BYTES,
    LKWTYPE LABEL@ LBL,   s" type" BYTES,
    LKWTICK LABEL@ LBL,   TICK-KW 1 BYTES,    LKWBTICK LABEL@ LBL,  BTICK-KW 3 BYTES,
-   LKWLBRACE LABEL@ LBL, LBRACE-KW 2 BYTES,  LKWENDLOC LABEL@ LBL, ENDLOC-KW 2 BYTES,
    LKWCONST LABEL@ LBL,  s" constant" BYTES,
    LQNL LABEL@ LBL,  QNL-KW 2 BYTES,   LOKS LABEL@ LBL,  OKS-KW 4 BYTES,
    LKWDO LABEL@ LBL,  s" do" BYTES,    LKWLOOP LABEL@ LBL,  s" loop" BYTES,    LKWI LABEL@ LBL,  s" i" BYTES,
@@ -2296,10 +2335,10 @@ variable LKEYNONAME
    LCOLONNONAME LABEL@ LBL, s" hb: : missing definition name after " BYTES,
    LKEYNONAME LABEL@ LBL, s" hb: reader keyword needs a name: " BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
-   LKWTRUSTDECL LABEL@ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
-   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, s" hb: is: parsing words resolve outside using-imports; qualify the target" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  NCOMP-EMIT:LUNSET LABEL@ LBL, S\" hb: native compiler dispatch unset\n" BYTES,  NCOMP-EMIT:LNEUTRAL LABEL@ LBL, s" NEUTRAL-PARSE-IMM?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
+   LKWTRUSTDECL LABEL@ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,
+   LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, s" hb: is: parsing words resolve outside using-imports; qualify the target" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  NCOMP-EMIT:LUNSET LABEL@ LBL, S\" hb: native compiler dispatch unset\n" BYTES,  NCOMP-EMIT:LNEUTRAL LABEL@ LBL, s" NEUTRAL-PARSE-IMM?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
-   LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
+   LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
    LBADTAGPFX LABEL@ LBL, s" hb: bad " BYTES,  LBADTAGSFX LABEL@ LBL, BADTAG-SFX-KW 5 BYTES,
    PFX-PATH-FILES
@@ -4214,8 +4253,8 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 : EMIT-QUALIFY-DEF ( -- )
    LQUALIFYDEF LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal LHIDXADD BL
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qcheck qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: qscan qcheck qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done qopen qwalled :}
    C-QUALIFY-SEAL-GUARD
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
@@ -4226,7 +4265,18 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
       14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ qhas BCOND,
       17 17 1 ADDI,  qscan B,
    qcheck LBL,
+      \ The definition-name wall. Unsealed it is the compile keyword rows. Under
+      \ the design seal it is every row (LROWWALK): a name a row matches is the
+      \ row at tier 0 and the definition at tier 1, so a row outside the design
+      \ span refuses the name in LKWCMP (LPOLICY) and one inside it is reserved
+      \ (LDEFKWFAIL). Both tiers, because this runs before the tier fork.
+      2 DATA POLICY-NDICT-CELL LDR,  2 qopen CBZ,
+         0 DATA TKA-CELL LDR,  1 DATA TKL-CELL LDR,  LROWWALK LABEL@ BL,
+         0 LDEFKWFAIL LABEL@ CBNZ,
+         qwalled B,
+      qopen LBL,
       LDEFKWGUARD LABEL@ BL,
+      qwalled LBL,
       C-QUALIFY-CAP
       C-REJECT-DUP-DEF
       done B,
@@ -5709,15 +5759,7 @@ variable VDESC  variable DRIFT-FAIL
    C-CALL ;
 variable CFSK
 
-\ LDEFKWGUARD replays the compile dispatch rows in comparison-only mode. The
-\ flag exists only in this image generator; generated engines contain the
-\ comparisons, not mutable mode state.
-variable CF-DEF-GUARD
-
-: CF-DEF-GUARD-ROW ( ptr n n -- ) {: kwvar:ptr kwlen:n :}
-   0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
-   0 LDEFKWFAIL LABEL@ CBNZ, ;
-
+\ Every registrar below honours jit.f's row-comparison mode (CF-DEF-GUARD).
 : CF-ENTRY ( label ptr n n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !
@@ -8630,9 +8672,35 @@ public
    LMAIN LABEL@ LKWECQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
    LMAIN LABEL@ LKWEDOTQ  3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY ;
 
+\ THE DESIGN SEAL GATES EVERY BODY TOKEN HERE, where tier 1 reads it, with tier
+\ 0's predicate, so a token outside the vocabulary is refused at its own line at
+\ both tiers and nothing is left for the native compiler to refuse. Under the
+\ seal a body token is admitted when it is
+\   1. a local this body declared, matched before any lookup as tier 0 matches
+\      its locals: a sealed `{:` records its names as tier 0's C-LBRACE does;
+\   2. a record LFIND answers and LPOLICYREC admits, which is the record NCOMP
+\      binds: src/compiler/native/dict.f walks the same legs in the same order;
+\   3. on a miss, a used package's record, probed through LFINDUSED (NCOMP's
+\      used-publics leg) and admitted by LPOLICYREC. The probe only gates and
+\      then takes the miss, so a used package's immediate still does not run;
+\   4. on a miss, a number;
+\   5. on a miss, a body keyword of the design span: if, else, then, s" or {:,
+\      whose names and `:}` the locals parse consumes, so a `:}` outside a
+\      group is refused as tier 0 refuses it. Every other keyword row, `does>`
+\      and the other string forms among them, is refused here before
+\      CAPTURE-DOES or CAPTURE-STRING reads it.
+\ Anything else is refused at LPOLICY. Unsealed, every test below falls through
+\ to the capture this word always did.
 : CAPTURE-IMMEDIATE ( -- )
-   LBL LBL LBL LBL {: done:label notneutral:label noimm:label maybe-does:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: done:label notneutral:label noimm:label maybe-does:label probe:label gated:label lookup:label missed:label locals:label :}
+   14 DATA POLICY-NDICT-CELL LDR,  14 lookup CBZ,
+   LLOC-FIND LABEL@ BL,  0 0 CMPI,  C-GE LMAIN LABEL@ BCOND,    \ 1: x0 = the local's index, else -1
+   lookup LBL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
+   13 probe CBZ,
+   LPOLICYREC LABEL@ BL,
+   gated LBL,
    14 13 2 ANDI,  14 noimm CBZ,
    SP SP 16 SUBI,  11 SP 0 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,
@@ -8650,6 +8718,24 @@ public
    noimm LBL,
    13 done CBNZ,
    maybe-does B,
+   probe LBL,
+   14 DATA POLICY-NDICT-CELL LDR,  14 gated CBZ,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,
+   13 missed CBZ,
+   LPOLICYREC LABEL@ BL,
+   13 0 MOVZ,  gated B,
+   missed LBL,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM LABEL@ BL,
+   12 maybe-does CBNZ,                                               \ 4
+   0 LKWIF LABEL@ ADR,      1 2 MOVZ,  LKWCMP LABEL@ BL,  0 maybe-does CBNZ,   \ 5
+   0 LKWELSE LABEL@ ADR,    1 4 MOVZ,  LKWCMP LABEL@ BL,  0 maybe-does CBNZ,
+   0 LKWTHEN LABEL@ ADR,    1 4 MOVZ,  LKWCMP LABEL@ BL,  0 maybe-does CBNZ,
+   0 LKWSQ LABEL@ ADR,      1 2 MOVZ,  LKWCMP LABEL@ BL,  0 maybe-does CBNZ,
+   0 LKWLBRACE LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,  0 locals CBNZ,
+   LPOLICY LABEL@ B,
+   locals LBL,                                     \ each name up to `:}` is recorded, and still captured for NCOMP
+   C-LBRACE-PARSE-NAMES
+   LMAIN LABEL@ B,
    done LBL, ;
 
 : EM-COMPILE ( -- )
@@ -9500,6 +9586,16 @@ package INTERP-EMIT
    LMAIN LABEL@ LKWECQ    3 ['] C-EICQ     CF-ENTRY
    LMAIN LABEL@ LKWEDOTQ  3 ['] C-EIDOTQ   CF-ENTRY ;
 
+public
+
+\ The interpret keyword rows: EM-INTERPRET-WORDS dispatches through them and
+\ COMPILE-EMIT:EMIT-ROW-WALK replays them.
+: EM-INTERPRET-KEYWORDS ( -- )
+   EM-INTERPRET-DEFINE-KEYWORDS
+   EM-INTERPRET-STRING-KEYWORDS ;
+
+private
+
 : EM-INTERPRET-NUMBER ( label -- ) {: lnotnum:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM LABEL@ BL,
    17 LUNDEF LABEL@ CBNZ,                                  \ range-refused decimal never falls through to LFIND
@@ -9511,6 +9607,7 @@ package INTERP-EMIT
    LBL LBL LBL {: depthok:label usedtry:label found:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,                                     \ open-scope + global miss -> try used publics
+   LPOLICYREC LABEL@ BL,                               \ the design seal, ahead of every other gate: a record outside the vocabulary is refused as one (x5 = the record LFIND resolved)
    LFINDSHADOW LABEL@ BL,                              \ a global a used public also exports refuses (105)
    found LBL,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                \ DNAME-WIDE effect (TFAM): fail closed, never land a bundle on the interpret stack (x13 still holds the LFIND dict flags)
@@ -9527,12 +9624,12 @@ package INTERP-EMIT
    usedtry LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,   \ used-publics resolution (ambiguity dies)
       13 LUNDEF LABEL@ CBZ,                            \ still nothing -> undefined
+      LPOLICYREC LABEL@ BL,                            \ the design seal (x5 = the record LFINDUSED resolved)
       found B, ;                                       \ resolved via a used package: rejoin the normal dispatch
 
 : EM-INTERPRET-WORDS ( -- )
    LBL {: lnotnum :}
-   EM-INTERPRET-DEFINE-KEYWORDS
-   EM-INTERPRET-STRING-KEYWORDS
+   EM-INTERPRET-KEYWORDS
    lnotnum EM-INTERPRET-NUMBER
    lnotnum LBL,
    EM-INTERPRET-FIND ;
@@ -9908,9 +10005,11 @@ public
    scal LBL, ;
 
 \ Pass-2 and compiler helpers dispatch width-aware emitters, rerun/freeze publication,
-\ and emit the control, literal, operator, call, and reset paths.
+\ and emit the control, literal, operator, call, and reset paths. Both registrars
+\ honour jit.f's row-comparison mode (CF-DEF-GUARD).
 variable P2SK
 : P2W-ENTRY ( label ptr n n n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n k:n ext :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL P2SK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 P2SK LABEL@ CBZ,
@@ -9922,6 +10021,7 @@ variable P2SK
    P2SK LABEL@ LBL, ;
 
 : P2F-ENTRY ( label ptr n n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n ext :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL P2SK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 P2SK LABEL@ CBZ,
@@ -10005,14 +10105,11 @@ variable P2SK
    14 5 40 LDR,  14 scoped CBNZ,
    global LBL, ;
 
-\ the pass-2 width dispatch: sits between the local-reference dispatch (locals
-\ shadow op names, checker parity) and the keyword tiers, so a wide fact at any
-\ transport tier is intercepted before its scalar lowering. Facts are recorded
-\ only at transport/locals tokens; everything else falls through byte-identical.
-: EM-COMPILE-P2WIDE ( -- )
-   LBL {: notp2:label :}
-   9 DATA P2-CELL LDR,  9 notp2 CBZ,
-   notp2 C-SCOPED-SKIP
+\ The pass-2 width rows: EM-COMPILE-P2WIDE dispatches through them and
+\ COMPILE-EMIT:EMIT-ROW-WALK replays them. A row answers only in pass 2, but
+\ there it answers before any lookup but the scope chain's (C-SCOPED-SKIP), so
+\ a name it spells is a row like any other.
+: EM-P2WIDE-ROWS ( -- )
    LMAIN LABEL@ LKWDUP2    3 1 ['] EM-P2X-DUP     P2W-ENTRY
    LMAIN LABEL@ LKWDROP2   4 1 ['] EM-P2X-DROP    P2W-ENTRY
    LMAIN LABEL@ LKWSWAP2   4 2 ['] EM-P2X-SWAP    P2W-ENTRY
@@ -10032,7 +10129,17 @@ variable P2SK
    LMAIN LABEL@ LKW2RFROM3 3 2 ['] EM-P2X-2RFROM  P2W-ENTRY
    LMAIN LABEL@ LKW2RFET3  3 2 ['] EM-P2X-2RFET   P2W-ENTRY
    LMAIN LABEL@ LKWAT2     1 ['] EM-P2X-FETCH   P2F-ENTRY
-   LMAIN LABEL@ LKWSTORE2  1 1 ['] EM-P2X-STORE   P2W-ENTRY
+   LMAIN LABEL@ LKWSTORE2  1 1 ['] EM-P2X-STORE   P2W-ENTRY ;
+
+\ the pass-2 width dispatch: sits between the local-reference dispatch (locals
+\ shadow op names, checker parity) and the keyword tiers, so a wide fact at any
+\ transport tier is intercepted before its scalar lowering. Facts are recorded
+\ only at transport/locals tokens; everything else falls through byte-identical.
+: EM-COMPILE-P2WIDE ( -- )
+   LBL {: notp2:label :}
+   9 DATA P2-CELL LDR,  9 notp2 CBZ,
+   notp2 C-SCOPED-SKIP
+   EM-P2WIDE-ROWS
    notp2 LBL, ;
 
 package LOWER-TXN
@@ -10664,15 +10771,20 @@ package COMPILE-EMIT
    EM-COMPILE-META-KEYWORDS
    LOOP-EMIT:EM-COMPILE-LOOP-KEYWORDS ;
 
+\ Emit the spelling tests of every row `rows` registers, each branching to `hit`
+\ on a match (jit.f row-comparison mode).
+: ROW-TESTS ( label [ -- ] -- ) {: hit:label rows :}
+   hit CF-DEF-HIT !  -1 CF-DEF-GUARD !
+   rows catch {: rc:n :}                              \ reset mode even if row emission throws
+   0 CF-DEF-GUARD !
+   rc 0 <> IF rc throw THEN ;
+
 public
 
 : EMIT-DEF-KW-GUARD ( -- )
    LDEFKWGUARD LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                       \ LKWCMP is BL-called by every row
-   -1 CF-DEF-GUARD !
-   [: EM-COMPILE-KEYWORDS ;] catch {: rc:n :}         \ reset mode even if row emission throws
-   0 CF-DEF-GUARD !
-   rc 0 <> IF rc throw THEN
+   LDEFKWFAIL LABEL@ [: EM-COMPILE-KEYWORDS ;] ROW-TESTS
    30 SP 0 LDR,  SP SP 16 ADDI,  RET,
    LDEFKWFAIL LABEL@ LBL,
       0 2 MOVZ,  1 LDEFKWMSG LABEL@ ADR,  2 DEFKWMSG-LEN MOVZ,  NR-WRITE SYS,
@@ -10828,6 +10940,7 @@ public
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,
    found LBL,
+   LPOLICYREC LABEL@ BL,                          \ the design seal, ahead of the internal-word guard: x5 = the record LFIND or LFINDUSED resolved
    C-COMPILE-CALL-GUARD
    \ LFIND returns the exact resolved record in x5. An immediate still runs at
    \ compile time; only an ordinary CAST mention can leave the virtual stack as
@@ -11126,6 +11239,7 @@ public
 \ via the eval throw-recovery (restoring RX first), else tty REPL recovery, else exit 70.
 : EM-COMPILE-UNDEF ( -- )
    LUNDEF LABEL@ LBL,
+   9 DATA POLICY-NDICT-CELL LDR,  9 LPOLICY LABEL@ CBNZ,    \ under the design seal a token nothing resolves is outside the vocabulary like any other: the same located line and code
    SP SP 16 SUBI,  9 $494645444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A44454E LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,  0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ LBL,                                     \ shared LUNDEF/LWIDE recovery tail (TFAM)
    9 DATA EVALD-CELL LDR,  9 LUN0 LABEL@ CBZ,               \ EVALD==0 -> top-level path (LUN0), unchanged
@@ -11309,6 +11423,61 @@ public
    9 DATA-SIZE PROF-CNT-BYTES - LIT64,  LDIAGU LABEL@ BL,   \ the ceiling DP-CHECK enforces
    0 2 MOVZ,  1 LDPBADUNIT LABEL@ ADR,  2 DPBAD-UNIT-LEN MOVZ,  NR-WRITE SYS,
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B, ;
+
+\ The design seal (layout.f POLICY-NDICT-CELL and POLICY-BITS-OFF, written by
+\ habu1.f BPOLICYADMIT and BPOLICYSEAL). A sealed process confines the source it
+\ reads to the vocabulary its harness admitted, and these two labels are the
+\ engine's whole reading of that.
+\
+\ LPOLICYREC ( x5 = the record a source token resolved to ) returns when the
+\ record is admitted and branches to LPOLICY when it is not. It is a leaf that
+\ writes x14-x16 only, so a call site keeps LFIND's whole answer across it.
+\ Unsealed it admits every record. Sealed, a record is admitted when BOTH hold:
+\   - it is in scope: the design defined it, which is an index at or above the
+\     NDICT the seal stored, in whichever wordlist `package` put it; or its
+\     wordlist [40] is below PROT-WID-MAX and has its bit in the admitted
+\     bitmap. The bound is tested first, as LPROTWIDQ tests it, because
+\     PROT-BITS-AT, addresses the band from the wid and a wid reaches WID:MAX.
+\   - checked source may call it: no DNAME-INT, not in OWNER-API-PRI-WID, and a
+\     start cell [0] that is not zero. That is src/compiler/native/dict.f
+\     VISIBLE-RECORD? with `trusted:` off, which a sealed source cannot arm.
+\ The second clause is what makes the record a tier-1 capture admits the record
+\ NCOMP binds. The engine takes the first leg of the search order that holds the
+\ name and NCOMP the first that holds a VISIBLE record of it; under the seal the
+\ engine's record is visible or the capture died, so the two stop at one record.
+\ Without it a sealed body naming an internal word of an admitted package would
+\ be captured, skipped by NCOMP, and bound to a later leg nothing had gated.
+\ The callers are the sites where the engine resolves a SOURCE token: both legs
+\ of EM-INTERPRET-FIND, ahead of its shadow check (INTERP-EMIT:FIND-SHADOW), the
+\ `found` label of EM-COMPILE-CALL, and NCOMP-EMIT:CAPTURE-IMMEDIATE. The native
+\ compiler's own resolution (dict.f, xref.f) never comes here.
+\
+\ LPOLICY is the one refusal: `hb: not in vocabulary: <token>`, then the
+\ LCOMPILEDIE tail with ENGINE-ERROR:POLICY, which appends ` at <path>:<line>`
+\ and exits at top level or unwinds an `included`/`evaluate` frame as a catchable
+\ throw of that code. TKA/TKL hold the token at every site that reaches it:
+\ LPOLICYREC's callers, LKWCMP's match exit, LUNDEF's head and the capture's
+\ miss tail (NCOMP-EMIT:CAPTURE-IMMEDIATE).
+: EM-POLICY ( -- )
+   LBL LBL {: admitted:label callable:label :}
+   LPOLICYREC LABEL@ LBL,
+   14 DATA POLICY-NDICT-CELL LDR,  14 admitted CBZ,               \ unsealed
+   15 DREC MOVZ,  14 14 15 MUL,  14 DBASE 14 ADD,                 \ x14 = the first record defined after the seal
+   5 14 CMP,  C-CS callable BCOND,                                \ the design's own record
+   15 5 40 LDR,                                                   \ x15 = the wordlist the token resolved in
+   16 PROT-WID-MAX MOVZ,  15 16 CMP,  C-CS LPOLICY LABEL@ BCOND,  \ at or above the bound: no bit, never admitted
+   14 POLICY-BITS-OFF MOVZ,  14 DATA 14 ADD,
+   14 15 14 15 16 ENGINE-EMIT:PROT-BITS-AT,                       \ x14 = &word, x15 = mask
+   16 14 LDAR,  16 16 15 AND,  16 LPOLICY LABEL@ CBZ,             \ a wordlist the harness did not admit
+   callable LBL,
+   16 5 16 LDR,  16 16 DNAME-INT ANDI,  16 LPOLICY LABEL@ CBNZ,
+   16 5 40 LDR,  16 OWNER-API-PRI-WID CMPI,  C-EQ LPOLICY LABEL@ BCOND,
+   16 5 0 LDR,  16 LPOLICY LABEL@ CBZ,
+   admitted LBL,  RET,
+   LPOLICY LABEL@ LBL,
+   0 2 MOVZ,  1 LPOLICYMSG LABEL@ ADR,  2 POLICY-MSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 ENGINE-ERROR:POLICY MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 \ LDIAGU ( x9 = value ): unsigned decimal on fd 2, no newline. The diagnostic
 \ twin of prof.f LPROFNUM, which writes fd 1 and pads a column: a diagnostic
@@ -11943,6 +12112,42 @@ public
    call LBL,
    EM-COMPILE-CALL ;
 
+\ LROWWALK ( x0 = a name, x1 = its length -> x0 = 1 when a dispatch row
+\ matches the name, else 0 ). The union of the keyword rows the engine
+\ dispatches -- the interpret rows, the compile and string rows, the pass-2
+\ width rows, jit.f's op rows and tier 1's capture string rows -- replayed from
+\ their registrars, so a row added to any of them is walked by construction.
+\ Each test is LKWCMP, as at dispatch: the name is folded the same way, and
+\ under the design seal a row outside the design span refuses the name there
+\ (LPOLICY) instead of answering. LKWCMP reads the token cells, so the name
+\ stands in them for the walk and the token is put back.
+\ Three spellings no registrar holds are compared only inside their construct:
+\ `:}` in a `{:` group (C-LBRACE-PARSE-NAMES), `kernel:` where top level reads
+\ `:` (EM-INTERPRET-COLON) and `;match` in a match arm (EM-ADT-MATCH-VAR). A
+\ word so named would be the keyword in one place and the word in another - a
+\ body's `:}` is a call at tier 0 and the closer to tier 1's compiler - so they
+\ are walked too, and so is any spelling a new bare LKWCMP compares.
+\ Writes x0-x5 only. Callers: the sealed definition-name wall in
+\ EMIT-QUALIFY-DEF and habu1.f BPOLICYADMIT, which refuses a package whose
+\ public words spell a row.
+: EMIT-ROW-WALK ( -- )
+   LBL LBL {: hit:label back:label :}
+   LROWWALK LABEL@ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,
+   2 DATA TKA-CELL LDR,  2 SP 8 STR,
+   2 DATA TKL-CELL LDR,  2 SP 16 STR,
+   0 DATA TKA-CELL STR,  1 DATA TKL-CELL STR,
+   hit [: INTERP-EMIT:EM-INTERPRET-KEYWORDS  EM-COMPILE-KEYWORDS  EM-P2WIDE-ROWS
+          ENGINE-EMIT:EM-COMPILE-OPS  NCOMP-EMIT:CAPTURE-STRING
+          LKWENDLOC 2 CF-DEF-GUARD-ROW  LKWKERNEL 7 CF-DEF-GUARD-ROW
+          LKWSEMIMATCH 6 CF-DEF-GUARD-ROW ;] ROW-TESTS
+   0 0 MOVZ,  back B,
+   hit LBL,  0 1 MOVZ,
+   back LBL,
+   2 SP 8 LDR,  2 DATA TKA-CELL STR,
+   2 SP 16 LDR,  2 DATA TKL-CELL STR,
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
 ;package
 
 \ The main-loop emitter entry belongs to the emitter package habu1.f opens for
@@ -11965,6 +12170,7 @@ package ENGINE-EMIT
    COMPILE-EMIT:EM-COMPILE-LEGACY
    EM-COMPILE-UNDEF
    EM-COMPILE-DIE
+   EM-POLICY
    EMIT-DIAGU
    EMIT-DIAGDEF
    EM-BODY-CAP-DIE
@@ -12019,7 +12225,7 @@ package LABELS
    LBL RELOC-EMIT:LINDEXRELEASE !
    LBL RELOC-EMIT:LROLLBACK !
    LBL RELOC-EMIT:LADDRS !  LBL RELOC-EMIT:LADDRSITE !
-   LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !  LBL LDEFKWGUARD !  LBL LDEFKWFAIL !
+   LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !  LBL LDEFKWGUARD !  LBL LDEFKWFAIL !  LBL LROWWALK !
    LBL LAOTWIDGATE !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !  LBL LTOPHOOK ! ;
 
@@ -12045,7 +12251,7 @@ package LABELS
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
    LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LUNSET !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
-   LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !  LBL LFINDUSED !  LBL INTERP-EMIT:LFINDSHADOW !
+   LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LKWDESIGNEND !  LBL LCHKUSING !  LBL LFINDUSED !  LBL INTERP-EMIT:LFINDSHADOW !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL DEFER-DIAG:LDEFNOTOKEN !  LBL DEFER-DIAG:LDEFNOTFOUND !
    LBL DEFER-DIAG:LDEFNOTDEFER !  LBL DEFER-DIAG:LDEFNONAME !  LBL DEFER-DIAG:LDEFHINT !
@@ -12062,6 +12268,7 @@ package LABELS
    LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
    LBL LINTERNAL !  LBL LINTMSG !  LBL LTRUSTTICK !  LBL LTRUSTTICKMSG !
+   LBL LPOLICY !  LBL LPOLICYMSG !  LBL LPOLICYREC !
    LBL LMININ !  LBL LMINMSG !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
@@ -12605,7 +12812,7 @@ package ENGINE-EMIT
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE
    DOESPATCH:EMIT
-   EMIT-CF-HELPERS  COMPILE-EMIT:EMIT-DEF-KW-GUARD
+   EMIT-CF-HELPERS  COMPILE-EMIT:EMIT-DEF-KW-GUARD  COMPILE-EMIT:EMIT-ROW-WALK
    EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
    EM-SNAPSHOT-REBASE-DICT  EM-AOTWIDGATE  EMIT-AOT-PROT-RESTORE
    RELOC-EMIT:EMIT-CALLS  RELOC-EMIT:EMIT-MARK

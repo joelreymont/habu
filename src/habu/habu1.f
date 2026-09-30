@@ -200,6 +200,7 @@ public
 variable LENTRY
 ;package
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
+variable LROWWALK   \ every dispatch row's spelling test over x0/x1 (habu2.f COMPILE-EMIT:EMIT-ROW-WALK); BPOLICYADMIT calls it
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
@@ -3630,6 +3631,99 @@ private
    16 15 STLR,                                       \ release-publish the set bit
    done LBL, ;
 
+\ The design seal's two writers (lib/policy.f, docs/policy.md). The harness
+\ admits packages and seals before it loads the design; once POLICY-NDICT-CELL
+\ is set either prim writes `hb: policy: sealed` and exits ENGINE-ERROR:POLICY,
+\ so nothing the design can reach widens its own vocabulary. Each refusal is one
+\ line on fd 2 and that exit, as BPROTWIDADD refuses past its bound.
+: POLICY-SEALED$ ( -- ptr u8 n ) S\" hb: policy: sealed\n" ;
+: POLICY-NOPKG$ ( -- ptr u8 n ) s" hb: policy: no package " ;
+: POLICY-BOUND$ ( -- ptr u8 n ) S\" hb: policy: package wid above the bound\n" ;
+: POLICY-NL$ ( -- ptr u8 n ) S\" \n" ;
+: POLICY-PKG$ ( -- ptr u8 n ) s" hb: policy: package " ;
+: POLICY-KEYWORD$ ( -- ptr u8 n ) s"  publishes keyword " ;
+
+\ What both writers open with: once sealed, name the refusal and exit. Unsealed
+\ it falls through, having written x9 only.
+: POLICY-OPEN, ( -- )
+   LBL LBL {: open:label msg:label :}
+   9 DATA POLICY-NDICT-CELL LDR,  9 open CBZ,
+      0 2 MOVZ,  1 msg ADR,  2 POLICY-SEALED$ nip MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:POLICY MOVZ,  NR-EXIT-GROUP SYS,
+      msg LBL,  POLICY-SEALED$ BYTES,
+   open LBL, ;
+
+\ policy-admit ( ptr u8 n -- ): admit the public wordlist of the package the
+\ span names. The name resolves as `using` resolves one, to its row in
+\ DICT-WL:NAMESPACE, whose cell [0] is the package's public wid. A name no
+\ package owns writes `hb: policy: no package <name>`; a wid at or above
+\ PROT-WID-MAX has no bit in the band. A package with a public word spelled like
+\ a dispatch row (habu2.f LROWWALK) writes `hb: policy: package <name>
+\ publishes keyword <word>`: under the seal tier 0 reads that name as the row,
+\ which refuses it, and tier 1 as the admitted word, so admitting the package
+\ would split the tiers. The bit is published as BPROTWIDADD publishes its own:
+\ acquire-load, OR, release-store of the containing word.
+: BPOLICYADMIT ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: found:label bounded:label nopkg:label nl:label bound:label walk:label inline:label next:label spelled:label pkgmsg:label kwmsg:label walked:label :}
+   POLICY-OPEN,
+   1 G-POP  0 G-POP                                  \ x1 = name length, x0 = name
+   13 0 0 ADDI,                                      \ the name, for the refusals: the lookup leaves x13 and x1 alone
+   2 DICT-WL:NAMESPACE LIT64,
+   WLFIND:LENTRY LABEL@ BL,                          \ x11 = public wid, x12 = the row or 0
+   14 1 0 ADDI,                                      \ the walk and the kernel's writes keep x13/x14
+   12 found CBNZ,
+      0 2 MOVZ,  1 nopkg ADR,  2 POLICY-NOPKG$ nip MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 13 0 ADDI,  2 14 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 nl ADR,  2 POLICY-NL$ nip MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:POLICY MOVZ,  NR-EXIT-GROUP SYS,
+   found LBL,
+   15 PROT-WID-MAX MOVZ,  11 15 CMP,  C-CC bounded BCOND,
+      0 2 MOVZ,  1 bound ADR,  2 POLICY-BOUND$ nip MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:POLICY MOVZ,  NR-EXIT-GROUP SYS,
+   nopkg LBL,  POLICY-NOPKG$ BYTES,
+   nl LBL,  POLICY-NL$ BYTES,
+   bound LBL,  POLICY-BOUND$ BYTES,
+   bounded LBL,
+   \ Every record of the wordlist: [40] its wid, [16] its name length (the low
+   \ 50 bits) and DNAME-EXT, [24] the name inline or, with DNAME-EXT, its address.
+   6 DBASE 0 ADDI,  7 NDICT 0 ADDI,
+   walk LBL,
+      7 walked CBZ,
+      8 6 40 LDR,  8 11 CMP,  C-NE next BCOND,
+      8 6 16 LDR,  10 8 14 LSLI,  10 10 14 LSRI,      \ x10 = the name's length
+      9 6 24 ADDI,
+      8 8 DNAME-EXT ANDI,  8 inline CBZ,  9 6 24 LDR,
+      inline LBL,                                    \ x9 = the name
+      0 9 0 ADDI,  1 10 0 ADDI,  LROWWALK LABEL@ BL, \ writes x0-x5 only
+      0 spelled CBNZ,
+   next LBL,
+      6 6 DREC ADDI,  7 7 1 SUBI,  walk B,
+   spelled LBL,
+      SP SP 16 SUBI,  9 SP 0 STR,  10 SP 8 STR,
+      0 2 MOVZ,  1 pkgmsg ADR,  2 POLICY-PKG$ nip MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 13 0 ADDI,  2 14 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 kwmsg ADR,  2 POLICY-KEYWORD$ nip MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 SP 0 LDR,  2 SP 8 LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 nl ADR,  2 POLICY-NL$ nip MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:POLICY MOVZ,  NR-EXIT-GROUP SYS,
+   pkgmsg LBL,  POLICY-PKG$ BYTES,
+   kwmsg LBL,  POLICY-KEYWORD$ BYTES,
+   walked LBL,
+   14 POLICY-BITS-OFF MOVZ,  14 DATA 14 ADD,
+   14 11 15 14 16 PROT-BITS-AT,                      \ x15 = &word, x14 = mask
+   16 15 LDAR,
+   16 16 14 ORR,
+   16 15 STLR, ;
+
+\ policy-seal ( -- ): seal the dictionary as it stands. Every record below the
+\ stored NDICT is admitted only through its wordlist's bit; the design's own
+\ records land at or above it. NDICT is never 0 in a running engine, so the
+\ stored value cannot read as unsealed.
+: BPOLICYSEAL ( -- )
+   POLICY-OPEN,
+   NDICT DATA POLICY-NDICT-CELL STR, ;
+
 ;package
 
 \ prot-wid-room ( -- n ): how many more wordlists may still be allocated AND
@@ -3923,6 +4017,8 @@ package ENGINE-EMIT
    s" min-in-mark" ['] BMININMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" prot-wid-room" ['] BPROTWIDROOM FPRIM
+   s" policy-admit" ['] BPOLICYADMIT FPRIM
+   s" policy-seal" ['] BPOLICYSEAL FPRIM
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
    s" die"  ['] BDIE   FPRIM-L ;

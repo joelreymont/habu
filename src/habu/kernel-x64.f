@@ -2766,6 +2766,9 @@ private
    RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
    R8 PROT-RX PROT-REC, ;
 
+\ policy-admit and policy-seal refuse: the design seal is read by habu2.f's
+\ token loops (LPOLICYREC, LKWCMP), which this kernel does not have, so a seal
+\ stored here would confine nothing.
 : WORDLIST-ROWS, ( -- )
    s" wordlist" [:
       RAX WIDN-CELL CELL@,  RAX PUSH,
@@ -2774,6 +2777,8 @@ private
    s" set-current" [: RAX POP,  RAX CUR-CELL CELL!, ;] PRIM
    s" prot-wid-add" [: PROT-WID-ADD-BODY ;] PRIM
    s" prot-wid-room" [: PROT-WID-ROOM-BODY ;] PRIM
+   s" policy-admit" REFUSE
+   s" policy-seal" REFUSE
    s" wide-mark" [: WIDE-MARK-BODY ;] PRIM ;
 
 \ ---- persisted cells, the tier and the build scope ---------------------------

@@ -13,7 +13,8 @@ s" CATCH-STACK" s" -- n" TRUST
 s" CODE-CERT" s" -- n" TRUST
 s" IMAGE-CODE-ORIGIN" s" -- n" TRUST
 s" CODE-ORIGIN-FULL" s" -- n" TRUST
-\ This immutable value is part of the engine failure ABI.
+\ These immutable values are part of the engine failure ABI.
 PPRIM: ENGINE-ERROR STACK-BOUNDS PE-N PE-OUT PPRIM;
 PPRIM: ENGINE-ERROR CALLBACK PE-N PE-OUT PPRIM;
+PPRIM: ENGINE-ERROR POLICY PE-N PE-OUT PPRIM;
 ;package

@@ -724,6 +724,11 @@ EPRIM: DRAIN-PRETRUST EPRIM;   \ dot habu-engine-pre-trust-77410827: drains the 
 EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 EPRIM: prot-wid-add   PE-N PE-IN EPRIM;
 EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
+\ The design seal's two writers (lib/policy.f, docs/policy.md): admit a
+\ package's public wordlist by name, then seal the dictionary as it stands. Both
+\ refuse once sealed, so a sealed design cannot widen its own vocabulary.
+EPRIM: policy-admit   PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+EPRIM: policy-seal    EPRIM;
 EPRIM: wordlist       PE-N PE-OUT EPRIM;
 EPRIM: get-current    PE-N PE-OUT EPRIM;
 EPRIM: set-current    PE-N PE-IN EPRIM;
