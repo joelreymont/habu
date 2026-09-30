@@ -115,19 +115,24 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ reuse of x20/x26/x27 and die SIGSEGV with x0 = SIGALRM; now such a sample is
 \ counted in the header's foreign field. And the profiler's total and limit no
 \ longer share $1E0/$1E8 with GTOD-SCRATCH, so a clock query after prof-on cannot
-\ turn the next tick into an early report + exit 99. 100,000 dlsym calls take
-\ some 220 ticks, all but a handful of them inside dlsym.
+\ turn the next tick into an early report + exit 99.
+\ GDB-SYM-FOR calls dlsym for n ms of the monotonic clock, not a call count, so
+\ the sample total follows the timer rather than the host's call speed. On spark
+\ (ARM64 Linux, glibc, the default 1000 us rate) 100,000 calls took 8 or 9
+\ ticks, 46% of them inside dlsym and the rest in the FFI wrapper, so an empty
+\ foreign bucket came up by chance; 200 ms gave 200 ticks in each of 20 runs,
+\ 64 to 86 of them (38% overall) foreign.
 : GDB-PROFILER-FOREIGN ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    s" require lib/ffi-abi.f" GE-SRC-LINE
    s" create GDB-SYM 16 allot" GE-SRC-LINE
-   s" : GDB-SYM-LOOP ( n -- n ) {: reps:n :} 0 begin 0 GDB-SYM FFI:DLSYM drop 1+ dup reps >= until ;" GE-SRC-LINE
+   s" : GDB-SYM-FOR ( n -- ) 1000000 * mono-ns + {: stop:n :} begin 0 GDB-SYM FFI:DLSYM drop mono-ns stop >= until ;" GE-SRC-LINE
    S\" s\" strlen\" GDB-SYM FFI:CSTR" GE-SRC-LINE
-   s" 100000 prof-on 100000 GDB-SYM-LOOP . cr prof-report" GE-SRC-LINE
+   S\" 100000 prof-on 200 GDB-SYM-FOR s\" dlsym loop done\" type cr prof-report" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler foreign-context ticks" GE-EXPECT-OK
-   s" 100000" s" profiler foreign loop completes" GE-EXPECT-OUT-HAS
+   s" dlsym loop done" s" profiler foreign loop completes" GE-EXPECT-OUT-HAS
    GT-OUT$ s" foreign" GDB-FIELD 0 <= if
       s" profiler foreign bucket counted nothing" GE-FAIL
    then

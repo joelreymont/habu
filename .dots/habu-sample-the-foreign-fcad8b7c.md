@@ -1,9 +1,11 @@
 ---
 title: Sample the foreign profiler check by time
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T17:54:25.108123+03:00"
+closed-at: "2026-09-30T18:06:56.309633+03:00"
+close-reason: "GDB-PROFILER-FOREIGN calls dlsym for 200 ms (200 ticks, 38% foreign on spark): 50 of 50 alone green on eff4ff42, native-gate-debug row green, source mutations fail naming the foreign bucket"
 ---
 
 Problem: `test/gate-debug-lib.f` GDB-PROFILER-FOREIGN runs a fixed 100000 dlsym calls and fails when the report's foreign bucket is 0. Its comment assumes some 220 ticks, but on spark (ARM64 Linux, glibc) the loop takes about 9 ms. The red land8 gate (engine `eff4ff42`, suite `native-gate-debug`) printed `samples 9 words 9 other 0 ... foreign 0 ... attributed 13`, with the rows in FFI:DLSYM-RAW, ffi-call-bounded and startup words: most of the short loop's few ticks land in the Habu FFI wrapper, so no tick inside dlsym happens by chance. The check passed 5 of 5 alone on the same engine. The profiler is not at fault; the workload is sized for a slower host.
