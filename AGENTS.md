@@ -12,7 +12,9 @@ belong in the language core.
   Keep small or tightly coupled work direct, with no fixed agent chain.
   Define each worker's ownership and acceptance checks before starting it.
   Editing workers use isolated `.jj-ws/<task>` workspaces; the integrator owns
-  review, integration, verification and cleanup.
+  review, integration, verification and cleanup. Independent review of a
+  delegated change runs on Astra for Codex agents and on Fable for Claude
+  agents.
 - Infer routine details and complete authorized work. Ask only for a material
   missing choice or additional authority. User instructions take precedence.
 - Use plain English. Keep changes focused and remove obsolete machinery when
