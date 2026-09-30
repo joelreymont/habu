@@ -41,16 +41,12 @@ require src/arch/x86-64/rt.f
 require src/os/linux-x86-64/sys.f
 require src/os/linux-x86-64/proc-watch.f
 require src/os/linux-x86-64/proc-control.f
+require src/os/linux-x86-64/target-layout.f
 
 package X64KERNEL
 using X64ASM
 using X64CODE
 using X64RT
-
-\ The host's layout names its own DATA. Replay the Linux target's layout here,
-\ as src/habu/boot-x64.f does, so the heap rows bound DP by the target's
-\ DATA-SIZE.
-s" src/os/linux-x86-64/layout.f" included
 
 public
 
@@ -60,8 +56,9 @@ public
 76 constant REFUSE-RC
 
 \ The highest DP, as an offset from DATA, that the heap rows admit: the top of
-\ DATA less the profiler's counter band, as habu1.f DP-CHECK bounds it.
-DATA-SIZE PROF-CNT-BYTES - constant DP-CEILING
+\ the target's DATA less the profiler's counter band, as habu1.f DP-CHECK
+\ bounds it.
+X64LAYOUT:DATA-SIZE PROF-CNT-BYTES - constant DP-CEILING
 
 private
 
@@ -876,9 +873,9 @@ public
 \ p_filesz, IMAGE-TEXT-SIZE-OFF into the image.
 : DLSYM, ( -- )
    RAX DATA-REG RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX CODE-OFF >IMM32 ASM-SINK ENC-SUB-RI32
-   RAX RAX IMAGE-TEXT-SIZE-OFF MEM-OFF ASM-SINK ENC-ADD-RM
-   RAX RAX LINUX-DLSYM-SLOT-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX X64LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-SUB-RI32
+   RAX RAX X64LAYOUT:IMAGE-TEXT-SIZE-OFF MEM-OFF ASM-SINK ENC-ADD-RM
+   RAX RAX X64LAYOUT:LINUX-DLSYM-SLOT-OFF MEM-OFF ASM-SINK ENC-MOV-RM
    RDI ZERO-REG,
    C-CALL, ;
 
@@ -1475,9 +1472,9 @@ private
    RSI base cap 1 0 MEM-IDX ASM-SINK ENC-LEA
    RSI base ASM-SINK ENC-CMP-RR  C-B bad JCC,
    RDI base ASM-SINK ENC-MOV-RR
-   RSI DATA-VA VA>N >IMM64 ASM-SINK ENC-MOV-RI64
+   RSI X64LAYOUT:DATA-VA VA>N >IMM64 ASM-SINK ENC-MOV-RI64
    RDI RSI ASM-SINK ENC-SUB-RR
-   RSI DATA-SIZE >IMM64 ASM-SINK ENC-MOV-RI64
+   RSI X64LAYOUT:DATA-SIZE >IMM64 ASM-SINK ENC-MOV-RI64
    RDI RSI ASM-SINK ENC-CMP-RR  C-B bad JCC, ;
 
 \ run-in-stack ( xt ptr u8 n -- ): run the xt on the extent as its data stack.

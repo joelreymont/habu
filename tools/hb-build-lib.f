@@ -503,6 +503,7 @@ HBB-INSTALL-CHILD-LINT
    s" target:linux-x86-64" CONTENT-KEY:TEXT+
    s" src/os/linux-x86-64/target.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/layout.f" HBB-KEY-FILE+
+   s" src/os/linux-x86-64/target-layout.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/sys.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/elf.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/sign.f" HBB-KEY-FILE+

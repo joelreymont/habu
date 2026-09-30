@@ -32,7 +32,8 @@ require src/arch/x86-64/icode.f
 require src/compiler/native/x64ir.f
 
 \ The production image writer loads at top level, as every production path
-\ loads it: elf.f opens package X64LAYOUT, and packages do not nest.
+\ loads it: elf.f requires src/os/linux-x86-64/target-layout.f, which opens
+\ package X64LAYOUT, and packages do not nest.
 \ src/os/image-bytes.f sizes MSIZE from a bare CODE-CAP-BYTES at load, so it
 \ loads under `using X64CODE`.
 using X64CODE

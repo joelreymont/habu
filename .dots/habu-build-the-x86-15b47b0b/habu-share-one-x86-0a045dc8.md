@@ -1,9 +1,11 @@
 ---
 title: Share one x86 target-layout package
-status: open
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-09-30T13:02:53.346419+03:00"
+closed-at: "2026-09-30T16:15:47.449904+03:00"
+close-reason: "done: X64LAYOUT in src/os/linux-x86-64/target-layout.f is the one replay; elf.f, boot-x64.f and kernel-x64.f read it qualified. [ThinkPad x86 proof: 20 suites ok, 128 hb-x64-* images name, status and sha12 equal to master, manifest bad=0; the same with macOS layout values stood in for the host globals.]"
 blocks:
   - habu-port-the-crash-99c87339
   - habu-emit-the-x86-3b63853e

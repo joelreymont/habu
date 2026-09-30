@@ -33,14 +33,11 @@ require src/habu/stack-abi.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/sys.f
+require src/os/linux-x86-64/target-layout.f
 
 package X64BOOT
 using X64ASM
 using X64CODE
-
-\ The host's layout names its own DATA. Replay the Linux target's layout here
-\ so cross-built boot instructions use the target addresses and sizes.
-s" src/os/linux-x86-64/layout.f" included
 
 0 constant PROT-NONE
 3 constant PROT-RW                  \ PROT_READ|PROT_WRITE
@@ -109,7 +106,7 @@ variable DATA-BAD
 \ the writer's PT_LOAD places it; r15 = its code area past the records;
 \ r14 = no records; rbx = 0. The twin of EM-MMAP-CODE-REGION and EM-SEED-DICT.
 : CODE-REGION, ( -- )
-   RDI RBASE-REG REGION-OFF CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
+   RDI RBASE-REG REGION-OFF X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
    REGION REGION-BAD @ >LABEL MAP-FIXED,
    DBASE-REG RDI ASM-SINK ENC-MOV-RR
    ENGINE-GPR:X64-CP >R64 DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
@@ -118,8 +115,8 @@ variable DATA-BAD
 
 \ rax = DATA, DATA-SIZE bytes at DATA-VA, as EM-MMAP-DATA-REGION maps it.
 : DATA-REGION, ( -- )
-   RDI DATA-VA VA>N IMM,
-   DATA-SIZE DATA-BAD @ >LABEL MAP-FIXED, ;
+   RDI X64LAYOUT:DATA-VA VA>N IMM,
+   X64LAYOUT:DATA-SIZE DATA-BAD @ >LABEL MAP-FIXED, ;
 
 \ The twin of EM-DATA-INIT: publish the text base, then rbp becomes DATA; then
 \ the data stack's extent, the argument vector ([rsp] = argc, argv at rsp + 8,
@@ -158,7 +155,7 @@ variable DATA-BAD
 \ The fd word's absolute address. DATA is MAP_FIXED at DATA-VA and DATA-REGION,
 \ refuses a boot the kernel answered elsewhere, so this one address names the
 \ same word for the life of the process, whatever task is running.
-: FD-WORD-VA ( -- n ) DATA-VA VA>N SIGNAL-ABI:FD-CELL + ;
+: FD-WORD-VA ( -- n ) X64LAYOUT:DATA-VA VA>N SIGNAL-ABI:FD-CELL + ;
 
 \ Bind the signal stub at the label: the twin of src/habu/crash.f
 \ EMIT-SIGNAL-HANDLER (LSIGH), whose comment gives the contract. It is a
@@ -295,7 +292,7 @@ private
 $10 constant SI-ADDR                    \ siginfo_t._sifields._sigfault.si_addr
 134 constant CRASH-RC
 \ The code region's base less the text base, and Habu's own code's length.
-REGION-OFF CODE-OFF - constant REGION-FROM-TEXT
+REGION-OFF X64LAYOUT:CODE-OFF - constant REGION-FROM-TEXT
 REGION-FROM-TEXT REGION + constant HABU-SPAN
 
 \ Where the handler keeps the signal, the siginfo, the ucontext, the text base

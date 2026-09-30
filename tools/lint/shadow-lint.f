@@ -217,6 +217,7 @@ variable IN-DEFINITION
    s" src/os/linux-x86-64/layout.f" LINT-FILE
    s" src/os/linux-x86-64/sys.f" LINT-FILE
    s" src/os/linux-x86-64/repl-term.f" LINT-FILE
+   s" src/os/linux-x86-64/target-layout.f" LINT-FILE
    s" src/os/linux-x86-64/elf.f" LINT-FILE
    s" src/os/linux-x86-64/sign.f" LINT-FILE
    s" src/os/linux-x86-64/proc-watch.f" LINT-FILE

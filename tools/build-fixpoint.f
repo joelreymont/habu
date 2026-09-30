@@ -924,6 +924,7 @@ package BUILD-FIXPOINT
       exit
    then
    HB-TARGET-LINUX-X86-64? if
+      out outu s" src/os/linux-x86-64/target-layout.f" BF-APPEND-MODULE
       out outu s" src/os/linux-x86-64/elf.f" BF-APPEND-SOURCE
       out outu s" src/os/linux-x86-64/sign.f" BF-APPEND-SOURCE
       exit

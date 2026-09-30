@@ -15,24 +15,12 @@
 \ The code stream it wraps is package X64CODE's (src/arch/x86-64/icode.f),
 \ loaded before this file and before src/os/image-bytes.f, which sizes MSIZE
 \ from a bare CODE-CAP-BYTES at load and so loads under `using X64CODE`.
-\ This file opens package X64LAYOUT, and packages do not nest, so it loads at
-\ top level.
+\ The fixed DATA segment is the target's, read qualified from package X64LAYOUT
+\ (src/os/linux-x86-64/target-layout.f). The bare CODE-OFF reads are the
+\ image-builder surface's, $1000 on every host. The require below opens a
+\ package, and packages do not nest, so this file loads at top level.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
-
-\ The target's layout. The host's layout names the host's own DATA (a macOS host
-\ maps it at $44000000000), and the engine refuses a second CODE-OFF beside it,
-\ so the target's is replayed in a package, as src/habu/boot-x64.f replays it,
-\ and read qualified.
-\ The public constants copy the replayed values rather than EXPORT them:
-\ tools/check.f preverifies without replaying another target's layout, so there
-\ DATA-VA is the engine's own, and an EXPORT of it is a word checked code may
-\ not call (E-CAP-TRUSTED).
-package X64LAYOUT
-s" src/os/linux-x86-64/layout.f" included
-public
-DATA-VA constant DATA-VA
-DATA-SIZE constant DATA-SIZE
-;package
+require src/os/linux-x86-64/target-layout.f
 
 using X64CODE
 

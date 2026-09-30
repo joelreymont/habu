@@ -11,9 +11,10 @@
 \ blob, because a blob says "these bytes changed" where a field says which one
 \ and to what.
 \ The seam's layout.f cannot be loaded beside the host's - both spell CODE-OFF
-\ and the engine refuses a duplicate definition - so the writer replays it in a
-\ package of its own for the DATA segment, which a macOS host places elsewhere,
-\ and reads the host's identical CODE-OFF, PROT-PAGE-MAX, REGION and REGION-OFF.
+\ and the engine refuses a duplicate definition - so the writer reads the DATA
+\ segment, which a macOS host places elsewhere, from the package that replays it
+\ (X64LAYOUT, src/os/linux-x86-64/target-layout.f), and reads the host's
+\ identical CODE-OFF, PROT-PAGE-MAX, REGION and REGION-OFF.
 \ Every address and size is pinned here as a literal, so this test fails rather
 \ than drifts if either target moves one, and fails on a macOS host if the
 \ writer reads that host's DATA.
