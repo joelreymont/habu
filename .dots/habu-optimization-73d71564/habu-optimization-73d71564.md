@@ -443,7 +443,7 @@ copies and links the native payload. Track corrections at those owners:
 | Internal-name reduction qualified above | `habu-strip-the-names-89d6524a` (closed) |
 | 9,638 zero-displacement calls use 12-byte target rows | [Bind primitive calls](habu-bind-primitive-calls-a45cdb44.md) |
 | Repeated package strings and absolute string pointers | [Intern names and use offsets](habu-store-checker-names-70a89ffb.md) |
-| Older effect and control records persist wholesale | [Compact checker histories](habu-compact-checker-histories-3a1ce692.md) |
+| Older effect and control records persist wholesale | `habu-compact-checker-histories-3a1ce692` (closed: control histories compacted; no effect row is prunable) |
 | 20,825 effect headers represent 1,766 semantic tuples | [Share effect headers](habu-share-effect-headers-d26ffc89.md) |
 | Four reconstructible UNBOUND arrays cost 51,840 bytes | [Initialize checker scratch](habu-init-checker-scratch-4c2afab4.md) |
 
@@ -471,7 +471,7 @@ applications does not expand this optimization work.
    bytes including its bitmap. See `src/core/checker.f`:
    `SYM-PKG!`, `SYM-COPY-FOLD`, `SYM-SNAPSHOT-MARK-POINTERS`;
    `src/habu/aot-decl.f`: `CELL-V!` and address-row emission.
-   Existing owner: `habu-attr-the-captured-e060c47e`.
+   The attribution is recorded in `habu-attr-the-captured-e060c47e` (closed).
 
 2. **Stop serializing reconstructible scratch state.** Four transient
    checker maps contain 5,120 UNBOUND cells: 40,960 raw bytes become
@@ -480,9 +480,7 @@ applications does not expand this optimization work.
    them violates reset invariants. See `TV-SNAP-RESET` in
    `src/core/checker.f`. The live effect/signature store separately costs
    about 321,853 image bytes; it is persistent compiler state, not scratch.
-   Reuse `habu-attr-the-captured-e060c47e`,
-   `habu-persist-registry-arrays-0459b70a` and
-   `habu-drop-private-signatures-974304d0` as applicable.
+   Owner: `habu-drop-private-signatures-974304d0`.
 
 3. **Make DATA reachability part of image closure.** Real stripped builds
    prove word-level code shaking works, but unused initialized DATA survives.
@@ -523,17 +521,8 @@ applications does not expand this optimization work.
    the common case. 248 exact call wrappers offer at most 2,976 bytes
    before tail-call eligibility checks. Of 8,496 framed bodies, only eight
    contain no call: shared does> routine contracts waste 64 frame bytes.
-   Existing owners include `habu-elide-same-slot-443de377`,
-   `habu-elide-the-three-a87cf770` and `habu-cost-a-placement-1f61860d`.
-
-5. **Separate startup memory from file size.** Startup zeroes the entire
-   restored DATA span before applying sparse contents. A fresh idle product
-   measured 13.3 MiB physical footprint and 8,944 KiB resident in its initial
-   DATA mapping. The 1 TiB reservation is virtual address space, not disk
-   or resident allocation. Deferring scratch allocation can reduce startup
-   writes/residency even where sparse encoding already removes file cost.
-   Existing owners: `habu-reserve-the-capture-e9d07c82` and
-   `habu-size-the-capture-5f0c0e42`.
+   Existing owners: `habu-elide-same-slot-443de377` and
+   `habu-cost-a-placement-1f61860d`.
 
 ## Shaker and measurement boundaries
 

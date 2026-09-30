@@ -1,9 +1,11 @@
 ---
 title: Compact checker histories at capture
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-24T17:18:43.126319+02:00"
+closed-at: "2026-09-30T17:30:00.000000+02:00"
+close-reason: "Dropped: control-history compaction landed in habu-compact-captured-control-4969c5eb, and the tested USIGS pruning rule yields zero eligible rows, so no code was added."
 ---
 
 ## Current result

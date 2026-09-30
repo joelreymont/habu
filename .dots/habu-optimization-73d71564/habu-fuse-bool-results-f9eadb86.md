@@ -1,9 +1,11 @@
 ---
 title: Reduce repeated boolean normalization
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-16T16:09:22.609973+03:00"
+closed-at: "2026-09-30T17:30:00.000000+02:00"
+close-reason: "Dropped: the measured candidate bcd52c01 saved 124 AOT code bytes and grew other content by 200, so the engine payload grew 76 bytes."
 ---
 
 ## Rejected implementation

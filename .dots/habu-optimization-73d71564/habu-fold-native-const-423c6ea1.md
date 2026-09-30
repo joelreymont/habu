@@ -1,9 +1,11 @@
 ---
 title: Fold native constant shifts
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-28T13:16:47.889890+02:00"
+closed-at: "2026-09-30T17:30:00.000000+02:00"
+close-reason: "Dropped: the measured candidate 0fe1d896 saved 16 code bytes and added 1,224, 1,208 bytes more AOT code."
 ---
 
 ## Measured attempt rejected

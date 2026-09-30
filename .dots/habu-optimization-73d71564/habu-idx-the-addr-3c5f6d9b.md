@@ -1,9 +1,11 @@
 ---
 title: "Index address cells at the owning registrar"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-13T11:09:21.785913+03:00"
+closed-at: "2026-09-30T17:30:00.000000+02:00"
+close-reason: "Landed: the registrar indexes address cells (src/habu/address-cells.f INDEX-CELL); registration of 8,192 cells fell from 180-304 ms to 0.15-0.41 ms. The full Tender build timing pair was never taken."
 blocks:
   - habu-size-the-snapshot-1ca5db10
 ---

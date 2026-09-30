@@ -1,9 +1,11 @@
 ---
 title: Attribute the captured heap and drop sealed-dead records
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-17T12:39:26.146860+03:00"
+closed-at: "2026-09-30T17:30:00.000000+02:00"
+close-reason: "Dropped: a DATA attribution record with no acceptance left; the one clearing it predicts is 270 bytes."
 ---
 
 ## Current attribution and task ownership

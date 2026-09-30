@@ -26,7 +26,6 @@ blocks:
   - habu-give-a-word-297b990d
   - habu-attr-and-remove-2b13e978
   - habu-make-spill-rewrite-ca192310
-  - habu-idx-the-addr-3c5f6d9b
   - habu-read-an-ir-516b2416
   - habu-remove-test-requirements-fec97925
   - habu-pass-native-fixture-deafcd5a

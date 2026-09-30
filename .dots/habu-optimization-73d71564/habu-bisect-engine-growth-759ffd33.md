@@ -1,9 +1,11 @@
 ---
 title: Bisect engine growth 90k to 132k
-status: done
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-02T04:00:00.000000+02:00"
+closed-at: "2026-09-30T17:30:00.000000+02:00"
+close-reason: "Stale: a July size bisect of a 132,343-byte engine. Its findings are recorded above; the size ratchet it cites, test/gate-build-size.f, no longer exists."
 ---
 # Problem
 bin/hb was ~90 KB; it is 132,343 bytes now. Account for every chunk and
