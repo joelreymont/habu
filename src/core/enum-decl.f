@@ -103,7 +103,6 @@ package ENUM-DECL
 \ raw-memory / metaprogramming boundaries the checker cannot type from a post-hook
 \ checked body; the compiled reference survives the REG-PROTECT name seal exactly
 \ as decl-event.f's DEV-FLD-* and structure-decl.f's FAM-* forwarders do.
-\ Replacement owner: TYPE-FIXES-PLAN E5-E8.
 \
 \ A forwarder belongs here ONLY while its target has no checker-recorded effect.
 \ TFAM-PUBLIC?, TFAM-ARITY@, TFAM-WIDTH@, CHECKER-AUTH-PACKAGE-ACTIVE? and
@@ -153,7 +152,7 @@ TRUSTED: TK-ENUM-K ( -- n ) TK-ENUM ;          \ compact-mode payloadless enum k
 \ --- one-token pushback. The token bytes stay valid across a line refill (the
 \ engine buffers the input source), so the pushback holds the raw span; storing a
 \ ptr u8 through a plain cell and reading it back is the one place the checker
-\ needs a named boundary. Replacement owner: TYPE-FIXES-PLAN item 27.
+\ needs a named boundary.
 variable PEND-U   variable PEND-A
 TRUSTED: PEND! ( ptr u8 n -- ) PEND-U ! PEND-A ! ;
 TRUSTED: PEND@ ( -- ptr u8 n ) PEND-A @ PEND-U @ ;

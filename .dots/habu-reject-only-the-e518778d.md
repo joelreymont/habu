@@ -1,9 +1,11 @@
 ---
 title: Reject only the expected field projection miss
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-21T22:04:23.255435+02:00"
+closed-at: "2026-09-30T17:45:00.000000+02:00"
+close-reason: "Done: the same defect as habu-tfam-field-proj-206a50d5. TFAM-FIELD-PROJ now classifies exactly E-PF-ID and rethrows every other code."
 ---
 
 `src/core/type-family.f` runs field projection under `catch` and drops every

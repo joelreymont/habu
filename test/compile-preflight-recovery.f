@@ -21,8 +21,7 @@ public
 ;package
 
 get-current CPR-WID !
-\ Disabling checking and installing CPR-HOOK are the unchecked-region boundary;
-\ TYPE-FIXES-PLAN item 26 replaces both with NO-TYPE-CHECK.
+\ Disabling checking and installing CPR-HOOK are the unchecked-region boundary.
 0 set-check
 
 : CPR-HOOK ( ptr u8 n -- n )

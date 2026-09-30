@@ -1,9 +1,11 @@
 ---
 title: Cut ENUM to binder FIELD grammar
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-30T23:53:23.711587+02:00"
+closed-at: "2026-09-30T17:45:00.000000+02:00"
+close-reason: "Dropped: it depends on a DECL-HEAD package that is not in the tree, and no declaration needs binder heads."
 ---
 
 Problem: package ENUM-DECL in src/core/enum-decl.f still requires a naked decimal arity to select full mode and maps one-letter payload parameters by alphabet position. The hard-cut surface is ENUM name<binders>; binder order defines schema ordinals; full payloads are written only as FIELD name type inside VARIANT blocks. Both live and replay callers already converge on ED-GUARDED and DRIVE.

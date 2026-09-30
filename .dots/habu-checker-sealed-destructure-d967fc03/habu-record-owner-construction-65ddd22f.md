@@ -1,9 +1,11 @@
 ---
 title: Record owner construction flag
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-29T20:53:42.492055+02:00"
+closed-at: "2026-09-30T17:45:00.000000+02:00"
+close-reason: "Dropped: the value it reserves, 4, is DRV-ADDR (src/core/type-family.f), and the products it served moved to Loom."
 ---
 
 Problem: every public product currently publishes MAKE, so the family registry cannot record package-owned construction. Result: reserve value 4 as DRV-CONSTRUCT-OWNER in the existing TF.DERIVE word at offset 18 of the unchanged 19-cell family row. Add TFAM-CONSTRUCT-OWNER! ( fam -- ) beside the existing derive setters and read-only TFAM-CONSTRUCT-OWNER? ( fam -- bool ); TF-REC@ retains the existing live-family range check. Change TFAM-DERIVE-ANY? to mask only DRV-EQ or DRV-HASH so the owner flag cannot enter sum/enum derived-operation validation or generation. Keep every row offset, ordinary image format, and rollback watermark unchanged. The existing type-family registry owns the flag, setter, and query; this leaf adds no package or transaction dependency. The later parser captures the setter through its trusted declaration boundary exactly as it already captures TFAM-DERIVE-EQ! and TFAM-DERIVE-HASH!; no checked primitive effect exposes the setter.

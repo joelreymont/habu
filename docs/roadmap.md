@@ -12,7 +12,7 @@ the campaign dots are the ledger.
 - C5: the decisions appended to [database-models.md](database-models.md) and
   [tasking-models.md](tasking-models.md).
 - C6: [x86-64.md](x86-64.md) and [cortex-m.md](cortex-m.md).
-- C3, C4 and C7 are specified by their child dots and by MISSING.md; C1 by
+- C3 and C4 are specified by their child dots and by MISSING.md; C1 by
   PLAN.md and the release checklist.
 
 ## Tracker rules
@@ -75,20 +75,20 @@ surface as the proof.
 
 ## C3 The ergonomics traps
 
-What is missing (`MISSING.md`, Tender LESSONS): nominal integer types are
-engine constants, not declarable in source (Foundation A1); locals have no
-defined precedence against the dictionary, shadow words case-insensitively,
-and cannot use natural names (Foundation B); quotations cannot see locals;
+What is missing (`MISSING.md`, Tender LESSONS): locals have no defined
+precedence against the dictionary, shadow words case-insensitively, and
+cannot use natural names (Foundation B); quotations cannot see locals;
 repeated structural types have no transparent alias; packages cannot nest.
+Foundation A1 landed: `DEFTYPE` (`lib/type/deftype.f`) declares a nominal
+integer in source, with its converter pair.
 
-Campaign content: one child per foundation. A1: a `nominal` declaration
-backed by a tag table, explicit converters generated, strictness identical
-to the built-in roles, measured on Tender by the drop in explicit conversions.
-B: scope frames with innermost-first resolution, locals may shadow ordinary
-words within their scope, shadowing a control word is a located error,
-prototyped on a temporary engine and landed only at fixpoint. Plus the
-existing alias and package-hierarchy dots. Acceptance: the fixtures named in
-`MISSING.md` pass and the rules an AI had to memorise are enforced instead.
+Campaign content: B: scope frames with innermost-first resolution, locals may
+shadow ordinary words within their scope, shadowing a control word is a
+located error, prototyped on a temporary engine and landed only at fixpoint.
+Plus the existing alias and package-hierarchy dots, and the retirement of the
+legacy `SUMTYPE` and `PRODUCT` declarers. Acceptance: the fixtures named in
+`MISSING.md` for B pass and the rules an AI had to memorise are enforced
+instead.
 
 ## C4 Diagnostics that name the fix
 
@@ -96,17 +96,11 @@ What exists: `docs/repair-diagnostics.md` is a stable JSON contract for
 checker diagnostics with code, repair class, span and suggestion, gated over
 fixtures; repair packets are built from it for LLM repair loops.
 
-What is missing: engine and runtime failures do not follow the contract;
-several checker paths `die` on user-reachable inputs instead of throwing;
-error codes are minted outside `lib/errors.f`; over a hundred codes are
-provoked by no test.
+What is missing: several checker and engine paths `die` or crash on
+user-reachable input instead of throwing a located diagnostic.
 
-Campaign content: extend the contract to engine and runtime failures (every
-exit path prints the same shape with a code and a suggestion), replace `die`
-with `throw` where a user can reach it, one owner for codes, a test per code.
-Acceptance: a generated program that fails at check, compile, load or run
-time yields one located diagnostic with a repair class, and the gate refuses
-a new code without span, class and fixture.
+Campaign content: one child per observed failure. Acceptance: every child is
+closed, each with the fixture that reproduces its failure.
 
 ## C5 Runtime services
 
@@ -142,19 +136,23 @@ inspected over serial.
 
 ## C7 Learning material and hygiene
 
-What exists: `docs/forth.md` is the one document an agent must read;
-`tools/public-signatures.f` extracts public signatures; `docs/stdlib.md`
-declares itself the LLM-facing library guide.
+Closed. `docs/forth.md` and its card are what an agent reads before writing
+Habu; `tools/public-signatures.f` prints the public signatures of the tree on
+demand; `docs/stdlib.md` is the library guide. The stale plan documents and
+document sections this campaign named are gone.
 
-What is missing: the reference is hand-written and drifts from the tree
-(dots record `docs/forth.md` stating the opposite of what ships, and plan
-documents contradicting the tree); nothing generates a library reference
-from the typed signatures the checker already holds; the idiomatic corpus is
-the library plus Tender and nothing else.
+## Campaign work that was removed
 
-Campaign content: generate the library reference from public signatures and
-the package doc comments, in the VFX DocGen manner, and gate it against the
-tree; repair `docs/forth.md` and the plan documents; keep LESSONS as rules.
-Acceptance: the generated reference is byte-identical across two builds of
-the same tree and the gate fails when a public signature changes without its
-doc.
+Each row was planned under a campaign above and dropped after it was checked
+against the tree.
+
+| Work | Why it was removed |
+|---|---|
+| A generated library reference with a staleness gate (C7) | `tools/public-signatures.f` prints the true signatures on demand; checked-in pages need a regeneration in every library change |
+| JSON diagnostics for runtime failures; one owner, one provoking test and a gate per error code (C4) | nothing reads a runtime JSON diagnostic, and no observed failure stands behind the sweep |
+| Owner-only product construction (`CONSTRUCT owner`) | its only consumers are two proof tokens in Loom, and the flag value the dot reserved is `DRV-ADDR` |
+| Binder heads on `ENUM` (`NAME<a,b>`) | no declaration needs them, and the dot depended on a `DECL-HEAD` package that is not in the tree |
+| A mutation for every register-allocation verifier refusal | six of the 21 codes listed no longer exist, and `docs/proofs.md` does not ask for mutation runs |
+| A new rejection for control nests deeper than 32 | already refused: a 33-deep nest exits 70 under `--load` and under `tools/check.f --all-errors` |
+| Unifying every throw row of a quotation | `THROW-EDGE` already folds every throw edge of a body into the intact masks |
+| `TYPE-FIXES-PLAN.md` and `docs/tracker-rebuild.md` | a stalled plan whose rules contradict the tree, and an inventory nothing reads |

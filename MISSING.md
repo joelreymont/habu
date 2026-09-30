@@ -1,8 +1,8 @@
 # MISSING — Habu ergonomics: what porting a real application surfaced, and how to fix it properly
 
 Status: design proposal with partial implementation. Foundation C, Foundation
-A2, and the floating-point cleanup are landed; A1 and B remain active checker
-work. Author: FFI/port agent. Audience: the agent working on Habu core
+A2, the floating-point cleanup and A1 (`DEFTYPE`, `lib/type/deftype.f`) are
+landed; B remains open checker work. Author: FFI/port agent. Audience: the agent working on Habu core
 (checker/compiler/stdlib).
 
 ## Why this document exists

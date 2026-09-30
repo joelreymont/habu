@@ -74,9 +74,12 @@ is exactly what the trusted boundaries in § 8 exist to make visible and rare.
 - **`bool`** — a real boolean, and a different type from `n`. Produce one with
   a comparison or a typed helper. Storing a raw `0` where a `bool` is declared
   is rejected: `expected: bool actual: n`, exit 70.
-- **Sized integers** — `u8`, `u16`, `u32` widen to `n` on their own when
-  nothing is lost. Going the other way, or changing sign at the same width,
-  needs an explicit conversion.
+- **Sized integers** — `n` is the generic integer: it flows into and out of
+  every sized integer with no conversion, so `: F ( n -- u8 ) ;` certifies.
+  Between two sized types a narrower one widens into a wider one of the same
+  sign, and an unsigned one into a strictly wider signed one; narrowing
+  (`u16` to `u8`) or changing sign at the same width needs an explicit
+  conversion. `docs/effects.md` ("Integer widening") has the measured table.
   A quotation argument reads the lattice from the other side: its inputs are
   supplied by whoever executes it, so `[ u8 -- ]` does not satisfy a
   `[ i64 -- ]` parameter while `[ i64 -- ]` satisfies `[ u8 -- ]`; quotation
@@ -138,10 +141,8 @@ the decision record is `docs/value-nominal-substrate.md`.)
 A nominal cell family is also how a package embeds a **proof token**: a field
 whose only constructor is private to the package, so possessing a filled-in
 record is evidence that the package's own validating constructor built it.
-This is a workaround, not architecture — construction control faked with a
-magic field because generated constructors are always public — and it is
-scheduled to be deleted: the `CONSTRUCT owner` flag (TYPE-FIXES-PLAN.md)
-controls construction directly and every proof token evaporates with it.
+Generated constructors are always public, so the token is the only
+construction control a package has.
 `GPT2:cfg-proof` in Loom's `maki/infer/gpt2-config.f` and `GPT2:layer-proof`
 in its `maki/infer/gpt2-tensor.f` are the two live examples. Both files are honest
 in their own headers about the limit of that evidence, and § 9 explains it.
@@ -365,8 +366,7 @@ same package as the consumer, so this is not about package boundaries. It is
 about tagged families specifically: `NEWTYPE` and `STRUCTURE` instantiate a
 generic parameter, `ENUM` and `SUMTYPE` do not. This is implementation debt, not
 design — a tag value is one cell like any nominal; the instantiation code was
-never taught about variant families. The fix is scheduled in the type
-conversion (TYPE-FIXES-PLAN.md item 14).
+never taught about variant families.
 
 **Pointers carry no lifetime — on purpose.** A pointer type says what it
 points at, and nothing else: not which allocation it came from, how long it is

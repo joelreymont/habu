@@ -1,9 +1,11 @@
 ---
 title: "Checker: linear-scope WITH-owner combinator"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T09:00:47.465023+02:00"
+closed-at: "2026-09-30T17:45:00.000000+02:00"
+close-reason: "Complete: every other child landed, and the last, habu-unify-all-quotation-56884608, rested on a false premise."
 blocks:
   - habu-migrate-safet-loads-379b3f70
 ---

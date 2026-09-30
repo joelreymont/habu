@@ -1,9 +1,11 @@
 ---
 title: "Checker: owner-only product construction"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T09:00:47.469920+02:00"
+closed-at: "2026-09-30T17:45:00.000000+02:00"
+close-reason: "Dropped: what remains is the owner-construction flag, whose only consumers are two proof tokens in Loom. Every other child landed."
 blocks:
   - habu-prove-sealed-inference-1d007ad5
 ---

@@ -1,9 +1,11 @@
 ---
 title: Unify all quotation throw rows
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T20:48:45.151869+02:00"
+closed-at: "2026-09-30T17:45:00.000000+02:00"
+close-reason: "Dropped: the premise is false. THROW-EDGE (src/core/checker.f) folds every throw edge of a body into the intact masks with AND; no edge is ignored."
 blocks:
   - habu-factor-declaration-growth-2d487dd8
 ---
