@@ -76,10 +76,11 @@ therefore records no cache source and no cache hits for `--repl`.
 `OS-MEMORY:PAGE-SIZE` reports the current process's host page size through the
 checked `getpagesize` binding. It is a runtime fact for mapping descriptions;
 it does not replace Habu's fixed `STACK-ABI:PAGE-BYTES` guard-window contract or
-change allocation growth. The query resolves again after image preparation, so
-an image never carries a process-owned function address. The Linux AArch64 path
-is covered by `lib/os-memory-test.f`; macOS and x86-64 are supported by the
-same process-symbol contract but are not exercised on this host.
+change allocation growth. The binding resolves on its first call, image
+preparation forgets that address and the next call resolves it again, so an
+image never carries a process-owned function address. `lib/os-memory-test.f`
+compares the answer with `getconf PAGESIZE` on the host that runs it, before
+and after `IMAGE-LIFECYCLE:PREPARE`.
 
 Every build prints one line saying where the bytes of the image it just wrote
 went, `--size-report` prints the whole table and `--report-json` carries the
