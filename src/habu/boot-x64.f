@@ -1,8 +1,9 @@
 \ boot-x64.f - the x86-64 engine's process entry, package X64BOOT. START, emits
 \ `_start`, the twin of src/habu/habu2.f EM-STARTUP up to its first run-time
 \ state: it maps the guarded VM stacks, the code region and the DATA region,
-\ loads the six VM registers (layout.f ENGINE-GPR) and fills the DATA cells the
-\ ARM64 boot fills, then falls through into whatever the stream emits next.
+\ loads the six VM registers (layout.f ENGINE-GPR), fills the DATA cells the
+\ ARM64 boot fills and publishes the signal stub it carries out of line, then
+\ falls through into whatever the stream emits next.
 \ docs/x86-64.md "Kernel inventory" lists each register and cell beside its
 \ ARM64 twin.
 \
@@ -10,10 +11,10 @@
 \ kernel left it, at argc, until the DATA cells take the argument vector.
 \
 \ The signal words below are the x86-64 side of what src/habu/crash.f emits for
-\ ARM64: SIGACTION, installs a handler through rt_sigaction, RESTORER, emits the
-\ rt_sigreturn stub every handler returns through, and UC-GREG and UC-RIP name
-\ where the ucontext a SA_SIGINFO handler receives keeps the interrupted
-\ registers.
+\ ARM64: SIGNAL-STUB, is its LSIGH, SIGACTION, and SIGACTION-AT, install a
+\ handler through rt_sigaction, RESTORER, emits the rt_sigreturn stub every
+\ handler returns through, and UC-GREG and UC-RIP name where the ucontext a
+\ SA_SIGINFO handler receives keeps the interrupted registers.
 \
 \ The syscall numbers and SYS, are the x86-64 seam's, loaded below the way
 \ tools/native-emit.f loads a target's seam before the files that emit against
@@ -144,22 +145,67 @@ variable DATA-BAD
    a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
    STR-LF ASM-SINK BUF:APPEND-BYTE ;
 
+\ The width of the stub's one write: under PIPE_BUF, so a pipe takes it whole.
+4 constant SIGNO-BYTES
+
+\ The fd word's absolute address. DATA is MAP_FIXED at DATA-VA and DATA-REGION,
+\ refuses a boot the kernel answered elsewhere, so this one address names the
+\ same word for the life of the process, whatever task is running.
+: FD-WORD-VA ( -- n ) DATA-VA VA>N SIGNAL-ABI:FD-CELL + ;
+
+\ Bind the signal stub at the label: the twin of src/habu/crash.f
+\ EMIT-SIGNAL-HANDLER (LSIGH), whose comment gives the contract. It is a
+\ `void (int)` sa_handler, so the number arrives in edi; its four low bytes,
+\ pushed, are what the fd receives in one write whose result it ignores. It
+\ reads the fd word by its absolute address, never through rbp, which is the
+\ interrupted thread's own DATA; a word of zero absorbs the signal. It costs
+\ rax rcx rdx rsi r11, the flags and a cell below its own rsp, all of which
+\ rt_sigreturn restores, and touches no Forth state. Its `ret` enters the
+\ restorer the installer named: lib/signal.f installs through libc sigaction,
+\ which supplies one.
+: SIGNAL-STUB, ( label -- )
+   LBL,
+   LBL {: done:label :}
+   RDI ASM-SINK ENC-PUSH
+   RAX FD-WORD-VA IMM,
+   RDI RAX MEM-AT ASM-SINK ENC-MOV-RM
+   RDI RDI ASM-SINK ENC-TEST-RR
+   C-E done JCC8,
+   RSI RSP ASM-SINK ENC-MOV-RR
+   RDX R64>N >R32 SIGNO-BYTES >IMM32 ASM-SINK ENC-MOV32-RI32
+   RAX R64>N >R32 NR-WRITE >IMM32 ASM-SINK ENC-MOV32-RI32
+   ASM-SINK ENC-SYSCALL
+   done LBL,
+   RDI ASM-SINK ENC-POP
+   ASM-SINK ENC-RET ;
+
+\ Publish the stub bound at the label and the address of the word it reads,
+\ as habu2.f EM-STARTUP-RUNTIME-STATE does, so a program installs and arms the
+\ stub without spelling either (layout.f package SIGNAL-ABI). The word itself
+\ needs no clear: DATA is a fresh mapping here, where the ARM64 boot clears it
+\ after a restore that carried DATA bytes.
+: PUBLISH-STUB, ( label -- ) {: stub:label :}
+   RAX stub MOVABS,  RAX SIGNAL-ABI:STUB-CELL CELL!
+   RAX FD-WORD-VA IMM,  RAX SIGNAL-ABI:FD-PTR-CELL CELL! ;
+
 public
 
 \ Emit `_start`. The ELF entry is the text's byte 0, so it begins the stream.
 : START, ( -- )
    LBL STACK-BAD !  LBL REGION-BAD !  LBL DATA-BAD !
-   LBL {: booted:label :}
+   LBL LBL {: booted:label stub:label :}
    TEXT-BASE,
    STACK-ABI:BOOT-BYTES DSTACK-REG MAP-STACK,
    CODE-REGION,
    DATA-REGION,
    DATA-INIT,
+   stub PUBLISH-STUB,
    FRAME-STACKS,
    booted JMP,
    STACK-BAD @ >LABEL s" hb: cannot map guarded VM stack" FAIL,
    REGION-BAD @ >LABEL s" hb: cannot map fixed code region" FAIL,
    DATA-BAD @ >LABEL s" hb: cannot map fixed data region" FAIL,
+   stub SIGNAL-STUB,
    booted LBL, ;
 
 private
@@ -210,14 +256,16 @@ UC-GREGS 16 CELL * + constant UC-RIP
    0 >R32 NR-SIGRETURN >IMM32 ASM-SINK ENC-MOV32-RI32
    ASM-SINK ENC-SYSCALL ;
 
-\ Install the handler at a label for signal n with the given flags, returning
-\ through the restorer bound at the other label; SA-RESTORER joins the flags.
-\ The action is built on the machine stack and rsp comes back where it was. It
-\ clobbers rax rcx rdx rsi rdi r10 r11 and leaves CF set when the kernel
-\ refused, as SYS, does: the lea that gives the frame back keeps the flags.
-: SIGACTION, ( n n label label -- ) {: sig:n flags:n handler:label rest:label :}
+\ Install the handler whose address a register holds for signal n with the
+\ given flags, returning through the restorer bound at the label; SA-RESTORER
+\ joins the flags. The action is built on the machine stack and rsp comes back
+\ where it was. The handler is stored before anything is clobbered, so any
+\ register but rsp may hold it. It clobbers rax rcx rdx rsi rdi r10 r11 and
+\ leaves CF set when the kernel refused, as SYS, does: the lea that gives the
+\ frame back keeps the flags.
+: SIGACTION-AT, ( n n r64 label -- ) {: sig:n flags:n handler:r64 rest:label :}
    RSP SA-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
-   RAX handler MOVABS,  RAX RSP SA-HANDLER MEM-OFF ASM-SINK ENC-MOV-MR
+   handler RSP SA-HANDLER MEM-OFF ASM-SINK ENC-MOV-MR
    RAX flags SA-RESTORER or IMM,  RAX RSP SA-FLAGS MEM-OFF ASM-SINK ENC-MOV-MR
    RAX rest MOVABS,  RAX RSP SA-RESTORER-AT MEM-OFF ASM-SINK ENC-MOV-MR
    RAX ZERO-REG,  RAX RSP SA-MASK MEM-OFF ASM-SINK ENC-MOV-MR
@@ -225,6 +273,11 @@ UC-GREGS 16 CELL * + constant UC-RIP
    R10 SIGSET-BYTES IMM,
    NR-SIGACTION SYS,
    RSP RSP SA-BYTES MEM-OFF ASM-SINK ENC-LEA ;
+
+\ The same for the handler at a label, through rax.
+: SIGACTION, ( n n label label -- ) {: sig:n flags:n handler:label rest:label :}
+   RAX handler MOVABS,
+   sig flags RAX rest SIGACTION-AT, ;
 
 ;using
 ;using

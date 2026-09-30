@@ -1,9 +1,11 @@
 ---
 title: Emit the x86 signal stub and publish it
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T12:11:53.130107+03:00"
+closed-at: "2026-09-30T14:34:13.458437+03:00"
+close-reason: x86-64-boot-signal images exit 0, 0 and 21 on the ThinkPad; before the stub 21 and 138
 ---
 
 Problem: the ARM64 engine bakes a signal stub (`EMIT-SIGNAL-HANDLER`, `src/habu/crash.f:300-330`, label LSIGH) and publishes it on every boot (`habu2.f:7538-7540`: `SIGNAL-ABI:STUB-CELL` and `SIGNAL-ABI:FD-PTR-CELL`); `lib/signal.f:143-169` refuses `E-SIGNAL-ABI` when the stub cell is zero. The x86 kernel has neither, so R4's `signal-stub` suite cannot go green.
