@@ -1,6 +1,6 @@
 ---
 title: Emit x86 process rows
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T09:22:47.220353+03:00"

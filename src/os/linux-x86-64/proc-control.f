@@ -1,6 +1,4 @@
 \ proc-control.f -- Linux/x86-64 exact process-control primitive emitters.
-\ Loaded before habu1.f (same OS layer as proc-watch.f), so each syscall result
-\ is published with inlined logic rather than habu1.f's shared SYS-PUSH.
 \
 \ Two child-process control syscalls the supervisor uses after fork:
 \   kill-errno  ( pid sig -- rc )         send a signal, report failure as -errno

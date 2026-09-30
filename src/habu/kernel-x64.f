@@ -15,9 +15,10 @@
 \ helper without a frame: one definer serves where habu1.f needs FPRIM and
 \ FPRIM-L.
 \
-\ The x86-64 seam (src/os/linux-x86-64/sys.f) loads here globally, so this file
-\ loads before any file that loads the seam into a private wordlist, as
-\ src/habu/boot-x64.f does.
+\ The x86-64 seam (src/os/linux-x86-64/sys.f) loads here globally, with its
+\ process emitters (proc-watch.f, proc-control.f), so this file loads before
+\ any file that loads the seam into a private wordlist, as src/habu/boot-x64.f
+\ does.
 \
 \ One section per group of rows. KERNEL, emits the helpers and every section;
 \ a group's rows land in its section word, which KERNEL, calls.
@@ -33,6 +34,8 @@ require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/arch/x86-64/rt.f
 require src/os/linux-x86-64/sys.f
+require src/os/linux-x86-64/proc-watch.f
+require src/os/linux-x86-64/proc-control.f
 
 package X64KERNEL
 using X64ASM
@@ -950,6 +953,263 @@ $687461706C616572 constant REALPATH-NAME
    RSP RP-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
    0 G-PUSH ;
 
+\ ---- process rows ------------------------------------------------------------
+\ The twins of habu1.f's Linux process bodies: LINUX-SPAWN under the four spawn
+\ rows and BRUNRC, then BPIPE .. BWAITSTATUS and LIBC-OS FORK. Every failure
+\ is -1, as habu1.f's errno rule has it, except poll's -errno.
+
+17 constant CLONE-SIGCHLD           \ SIGCHLD at exit, nothing shared
+$80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
+1030 constant F-DUPFD-CLOEXEC
+3 constant SPAWN-MIN-FD             \ the lowest the pipe's write end may sit
+127 constant SPAWN-FAIL-RC
+73 constant FCNTL-NOSIGPIPE         \ lib/process.f F-SETNOSIGPIPE
+13 constant SIGPIPE
+1 constant SIG-IGN
+8 constant SIGSET-BYTES
+1000 constant MS-PER-S
+1000000 constant NS-PER-MS
+61 constant NFDS-WRAP-SHIFT         \ an nfds at or past 2^61 wraps nfds * 8
+
+\ The spawn frame on the machine stack. The first seven cells are LINUX-SPAWN's
+\ arguments; -1 in the directory or a descriptor cell means none. pipe2 writes
+\ two u32 descriptors, and the child's failure byte, the pid and wait4's u32
+\ status follow. The default argv (the path, then 0) and envp (0) sit last.
+0 constant SPN-PATH
+8 constant SPN-ARGV
+16 constant SPN-ENV
+24 constant SPN-CWD
+32 constant SPN-IN
+40 constant SPN-OUT
+48 constant SPN-ERR
+56 constant SPN-PIPE-R
+60 constant SPN-PIPE-W
+64 constant SPN-BYTE
+72 constant SPN-PID
+80 constant SPN-STATUS
+88 constant SPN-ARGV0
+104 constant SPN-ENVP0
+112 constant SPN-FRAME
+
+: FRAME@, ( r64 n -- ) RP ASM-SINK ENC-MOV-RM ;
+: FRAME!, ( r64 n -- ) RP ASM-SINK ENC-MOV-MR ;
+: FRAME32@, ( r64 n -- ) {: r:r64 off:n :} r R64>N >R32 off RP ASM-SINK ENC-MOV32-RM ;
+: FRAME32!, ( r64 n -- ) {: r:r64 off:n :} r R64>N >R32 off RP ASM-SINK ENC-MOV32-MR ;
+: FRAME-AT, ( r64 n -- ) RP ASM-SINK ENC-LEA ;
+: MINUS-1, ( r64 -- ) -1 >IMM32 ASM-SINK ENC-MOV-RI32 ;
+
+\ clone(SIGCHLD, 0, 0, 0, 0): x86-64's order puts child_tid before tls where
+\ aarch64's puts tls first, and both are 0.
+: CLONE-ARGS, ( -- )
+   RDI CLONE-SIGCHLD IMM32,  RSI ZERO-REG,  RDX ZERO-REG,  R10 ZERO-REG,  R8 ZERO-REG, ;
+
+: CLOSE-SLOT, ( n -- ) {: off:n :}  RDI off FRAME32@,  NR-CLOSE SYS, ;
+
+\ Move the pipe's write end to SPAWN-MIN-FD or above, as LINUX-SPAWN-PREP-W
+\ does, so the child's dup onto 0, 1 or 2 cannot replace it. syscall keeps r8.
+: SPAWN-PREP-W, ( label -- ) {: fail:label :}
+   LBL {: high:label :}
+   RDI SPN-PIPE-W FRAME32@,
+   RDI SPAWN-MIN-FD 1- >IMM8 ASM-SINK ENC-CMP-RI8  C-G high JCC,
+   RSI F-DUPFD-CLOEXEC IMM32,  RDX SPAWN-MIN-FD IMM32,  NR-FCNTL SYS,  C-B fail JCC,
+   R8 RAX ASM-SINK ENC-MOV-RR
+   SPN-PIPE-W CLOSE-SLOT,
+   R8 SPN-PIPE-W FRAME32!,
+   high LBL, ;
+
+\ Dup the descriptor in the frame cell onto fd n, as LINUX-DUP2-FD: skipped
+\ when it is negative or n itself.
+: CHILD-DUP, ( n n label -- ) {: off:n fd:n fail:label :}
+   LBL {: skip:label :}
+   RDI off FRAME@,
+   RDI RDI ASM-SINK ENC-TEST-RR  C-S skip JCC,
+   RDI fd >IMM8 ASM-SINK ENC-CMP-RI8  C-E skip JCC,
+   RSI fd IMM32,  RDX ZERO-REG,  NR-DUP2 SYS,  C-B fail JCC,
+   skip LBL, ;
+
+\ LINUX-SPAWN-CHILD: its own process group, the directory, the three
+\ descriptors, then execve. A step that fails, execve included, writes one
+\ byte to the pipe and exits SPAWN-FAIL-RC; the pipe is O_CLOEXEC, so a
+\ successful execve closes it with nothing written.
+: SPAWN-CHILD, ( -- )
+   LBL LBL {: fail:label nocwd:label :}
+   SPN-PIPE-R CLOSE-SLOT,
+   RDI ZERO-REG,  RSI ZERO-REG,  NR-SETPGID SYS,  C-B fail JCC,
+   RDI SPN-CWD FRAME@,  RDI RDI ASM-SINK ENC-TEST-RR  C-S nocwd JCC,
+   NR-CHDIR SYS,  C-B fail JCC,
+   nocwd LBL,
+   SPN-IN 0 fail CHILD-DUP,  SPN-OUT 1 fail CHILD-DUP,  SPN-ERR 2 fail CHILD-DUP,
+   RDI SPN-PATH FRAME@,  RSI SPN-ARGV FRAME@,  RDX SPN-ENV FRAME@,
+   NR-EXECVE SYS,
+   fail LBL,
+   RAX 1 IMM32,  RAX SPN-BYTE FRAME!,
+   RDI SPN-PIPE-W FRAME32@,  RSI SPN-BYTE FRAME-AT,  RDX 1 IMM32,  NR-WRITE SYS,
+   SPAWN-FAIL-RC EXIT-GROUP, ;
+
+\ LINUX-SPAWN-PARENT, with the child's pid in rax: read the pipe once. End of
+\ file is an execve that worked, and rax becomes the pid; a byte or a failed
+\ read is a child that failed, which is reaped, and rax becomes -1.
+: SPAWN-PARENT, ( -- )
+   LBL LBL LBL {: failed:label ok:label done:label :}
+   RAX SPN-PID FRAME!,
+   SPN-PIPE-W CLOSE-SLOT,
+   RDI SPN-PIPE-R FRAME32@,  RSI SPN-BYTE FRAME-AT,  RDX 1 IMM32,  NR-READ SYS,
+   C-B failed JCC,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E ok JCC,
+   failed LBL,
+   SPN-PIPE-R CLOSE-SLOT,
+   RDI SPN-PID FRAME@,  RSI SPN-STATUS FRAME-AT,  RDX ZERO-REG,  R10 ZERO-REG,
+   NR-WAIT4 SYS,
+   RAX MINUS-1,  done JMP,
+   ok LBL,
+   SPN-PIPE-R CLOSE-SLOT,
+   RAX SPN-PID FRAME@,
+   done LBL, ;
+
+\ The twin of habu1.f LINUX-SPAWN over the frame at rsp: rax becomes the
+\ child's pid, or -1 when the pipe, the clone or any step of the child failed.
+: SPAWN, ( -- )
+   LBL LBL LBL LBL {: child:label closefail:label fail:label done:label :}
+   RDI SPN-PIPE-R FRAME-AT,  RSI PIPE-CLOEXEC IMM32,  NR-PIPE SYS,  C-B fail JCC,
+   closefail SPAWN-PREP-W,
+   CLONE-ARGS,  NR-SPAWN SYS,  C-B closefail JCC,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E child JCC,
+   SPAWN-PARENT,  done JMP,
+   child LBL,
+   SPAWN-CHILD,
+   closefail LBL,
+   SPN-PIPE-R CLOSE-SLOT,  SPN-PIPE-W CLOSE-SLOT,
+   fail LBL,
+   RAX MINUS-1,
+   done LBL, ;
+
+: SPAWN-OPEN, ( -- ) RSP SPN-FRAME >IMM8 ASM-SINK ENC-SUB-RI8 ;
+: SPAWN-CLOSE, ( -- ) RSP SPN-FRAME >IMM8 ASM-SINK ENC-ADD-RI8  RAX PUSH, ;
+: POP-SLOT, ( n -- ) {: off:n :}  RAX POP,  RAX off FRAME!, ;
+: NONE-SLOT, ( n -- ) {: off:n :}  RAX MINUS-1,  RAX off FRAME!, ;
+: STDIO-SLOTS, ( -- ) SPN-ERR POP-SLOT,  SPN-OUT POP-SLOT,  SPN-IN POP-SLOT, ;
+
+\ argv = { path, 0 }, as BSPAWNIO and BRUNRC build it.
+: DEFAULT-ARGV, ( -- )
+   RAX SPN-PATH FRAME@,  RAX SPN-ARGV0 FRAME!,
+   RAX ZERO-REG,  RAX SPN-ARGV0 CELL + FRAME!,
+   RAX SPN-ARGV0 FRAME-AT,  RAX SPN-ARGV FRAME!, ;
+
+\ envp = { 0 }: no environment.
+: DEFAULT-ENV, ( -- )
+   RAX ZERO-REG,  RAX SPN-ENVP0 FRAME!,
+   RAX SPN-ENVP0 FRAME-AT,  RAX SPN-ENV FRAME!, ;
+
+: SPAWN-IO-ROW ( -- )               \ ( path in out err -- pid|-1 )
+   SPAWN-OPEN,  STDIO-SLOTS,  SPN-PATH POP-SLOT,
+   SPN-CWD NONE-SLOT,  DEFAULT-ARGV,  DEFAULT-ENV,
+   SPAWN,  SPAWN-CLOSE, ;
+
+: SPAWN-ARGV-IO-ROW ( -- )          \ ( path argv in out err -- pid|-1 )
+   SPAWN-OPEN,  STDIO-SLOTS,  SPN-ARGV POP-SLOT,  SPN-PATH POP-SLOT,
+   SPN-CWD NONE-SLOT,  DEFAULT-ENV,
+   SPAWN,  SPAWN-CLOSE, ;
+
+: SPAWN-ENV-IO-ROW ( -- )           \ ( path argv envp in out err -- pid|-1 )
+   SPAWN-OPEN,  STDIO-SLOTS,  SPN-ENV POP-SLOT,  SPN-ARGV POP-SLOT,
+   SPN-PATH POP-SLOT,  SPN-CWD NONE-SLOT,
+   SPAWN,  SPAWN-CLOSE, ;
+
+: SPAWN-CWD-IO-ROW ( -- )           \ ( path argv envp cwd in out err -- pid|-1 )
+   SPAWN-OPEN,  STDIO-SLOTS,  SPN-CWD POP-SLOT,  SPN-ENV POP-SLOT,
+   SPN-ARGV POP-SLOT,  SPN-PATH POP-SLOT,
+   SPAWN,  SPAWN-CLOSE, ;
+
+\ ( path -- status|-1 ): spawn with no arguments, environment or redirection,
+\ then wait4 for the exit status (WEXITSTATUS), as BRUNRC does. A spawn or a
+\ wait that failed is -1.
+: RUN-RC-ROW ( -- )
+   LBL LBL {: failed:label done:label :}
+   SPAWN-OPEN,  SPN-PATH POP-SLOT,
+   SPN-CWD NONE-SLOT,  SPN-IN NONE-SLOT,  SPN-OUT NONE-SLOT,  SPN-ERR NONE-SLOT,
+   DEFAULT-ARGV,  DEFAULT-ENV,
+   SPAWN,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-S done JCC,
+   RDI RAX ASM-SINK ENC-MOV-RR  RSI SPN-STATUS FRAME-AT,  RDX ZERO-REG,  R10 ZERO-REG,
+   NR-WAIT4 SYS,  C-B failed JCC,
+   RAX SPN-STATUS FRAME32@,
+   RAX 8 >IMM8 ASM-SINK ENC-SHR-RI8  RAX $FF >IMM32 ASM-SINK ENC-AND-RI32
+   done JMP,
+   failed LBL,
+   RAX MINUS-1,
+   done LBL,
+   SPAWN-CLOSE, ;
+
+\ ( pid -- status|-1 ): wait4's raw u32 status, as BWAITSTATUS. The load
+\ leaves the carry SYS, set for SYS-PUSH.
+: WAIT-STATUS-ROW ( -- )
+   RDI POP,
+   RSP CELL >IMM8 ASM-SINK ENC-SUB-RI8
+   RSI RSP ASM-SINK ENC-MOV-RR  RDX ZERO-REG,  R10 ZERO-REG,  NR-WAIT4 SYS,
+   RAX 0 FRAME32@,  SYS-PUSH
+   RSP CELL >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+\ ( -- rfd wfd 0 | -1 -1 -1 ): pipe2(fds, 0), as BPIPE.
+: PIPE-ROW ( -- )
+   LBL LBL {: failed:label done:label :}
+   RSP CELL >IMM8 ASM-SINK ENC-SUB-RI8
+   RDI RSP ASM-SINK ENC-MOV-RR  RSI ZERO-REG,  NR-PIPE SYS,  C-B failed JCC,
+   RAX 0 FRAME32@,  RAX PUSH,  RAX 4 FRAME32@,  RAX PUSH,
+   RAX ZERO-REG,  RAX PUSH,  done JMP,
+   failed LBL,
+   RAX MINUS-1,  RAX PUSH,  RAX PUSH,  RAX PUSH,
+   done LBL,
+   RSP CELL >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+\ ( fd cmd arg -- rc ): fcntl, as BFCNTL. FCNTL-NOSIGPIPE, the macOS
+\ F_SETNOSIGPIPE, has no Linux command: it ignores SIGPIPE for the process
+\ through rt_sigaction, as LINUX-IGNORE-SIGPIPE does. The four cells pushed
+\ are the kernel's struct sigaction, the handler SIG_IGN and then zero flags,
+\ restorer and mask, and the lea that drops them keeps the carry.
+: FCNTL-ROW ( -- )
+   LBL LBL {: real:label done:label :}
+   RDX POP,  RSI POP,  RDI POP,
+   RSI FCNTL-NOSIGPIPE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE real JCC,
+   RAX ZERO-REG,
+   RAX ASM-SINK ENC-PUSH  RAX ASM-SINK ENC-PUSH  RAX ASM-SINK ENC-PUSH
+   RAX SIG-IGN IMM32,  RAX ASM-SINK ENC-PUSH
+   RDI SIGPIPE IMM32,  RSI RSP ASM-SINK ENC-MOV-RR  RDX ZERO-REG,
+   R10 SIGSET-BYTES IMM32,
+   NR-SIGACTION SYS,
+   RSP 4 CELL * FRAME-AT,  done JMP,
+   real LBL,
+   NR-FCNTL SYS,
+   done LBL,
+   SYS-PUSH ;
+
+\ ( fds nfds ms -- n|0|-errno ): ppoll, as BPOLL. The pollfd array's nfds * 8
+\ bytes are guarded first, and an nfds whose byte length wraps is the
+\ all-address span. ms becomes a timespec, and a negative ms none, which waits
+\ without end. rax is pushed raw: poll alone is not restarted after a signal,
+\ so its caller needs -EINTR (habu1.f's errno rule).
+: POLL-ROW ( -- )
+   LBL LBL LBL {: scaled:label guard:label call:label :}
+   RDI 2 PEEK,  RSI 1 PEEK,
+   RAX RSI ASM-SINK ENC-MOV-RR  RAX NFDS-WRAP-SHIFT >IMM8 ASM-SINK ENC-SHR-RI8
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E scaled JCC,
+   RSI MINUS-1,  guard JMP,
+   scaled LBL,
+   RSI 3 >IMM8 ASM-SINK ENC-SHL-RI8
+   guard LBL,
+   RDI RSI PROT-SPAN-CALL,
+   RAX POP,  RSI POP,  RDI POP,
+   RSP 2 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
+   RDX ZERO-REG,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-S call JCC,
+   RCX MS-PER-S IMM32,  RCX ASM-SINK ENC-DIV
+   RDX RDX NS-PER-MS >IMM32 ASM-SINK ENC-IMUL-RRI32
+   RAX 0 FRAME!,  RDX CELL FRAME!,
+   RDX RSP ASM-SINK ENC-MOV-RR
+   call LBL,
+   R10 ZERO-REG,  R8 ZERO-REG,  NR-POLL SYS,
+   RSP 2 CELL * >IMM8 ASM-SINK ENC-ADD-RI8
+   RAX PUSH, ;
+
 public
 
 \ The rows, one line each, in the order docs/x86-64.md "Syscall rows" tables
@@ -981,7 +1241,23 @@ public
    s" getdirentries64" [: 2 1 SPAN-GUARD,  0 CELL SIZED-GUARD,  DROP,  RDX POP, RSI POP, RDI POP,  NR-GETDIRENTRIES64 SYS-PUSH, ;] PRIM
    s" epoch-seconds" [: EPOCH-ROW ;] PRIM
    s" mono-ns" [: MONO-ROW ;] PRIM
-   s" getpid" [: NR-GETPID SYS-PUSH, ;] PRIM ;
+   s" getpid" [: NR-GETPID SYS-PUSH, ;] PRIM
+   s" pipe" [: PIPE-ROW ;] PRIM
+   s" dup2" [: RSI POP, RDI POP, RDX ZERO-REG,  NR-DUP2 SYS-PUSH, ;] PRIM
+   s" fcntl" [: FCNTL-ROW ;] PRIM
+   s" poll" [: POLL-ROW ;] PRIM
+   s" kill" [: RSI POP, RDI POP,  NR-KILL SYS-PUSH, ;] PRIM
+   s" setpgid" [: RSI POP, RDI POP,  NR-SETPGID SYS-PUSH, ;] PRIM
+   s" proc-watch-open" [: BPROCWATCHOPEN ;] PRIM
+   s" kill-errno" [: BKILLERRNO ;] PRIM
+   s" execve" [: BEXECVE ;] PRIM
+   s" fork" [: CLONE-ARGS,  NR-FORK SYS-PUSH, ;] PRIM
+   s" wait-status" [: WAIT-STATUS-ROW ;] PRIM
+   s" spawn-io" [: SPAWN-IO-ROW ;] PRIM
+   s" spawn-argv-io" [: SPAWN-ARGV-IO-ROW ;] PRIM
+   s" spawn-argv-env-io" [: SPAWN-ENV-IO-ROW ;] PRIM
+   s" spawn-argv-env-cwd-io" [: SPAWN-CWD-IO-ROW ;] PRIM
+   s" run-rc" [: RUN-RC-ROW ;] PRIM ;
 
 \ ---- control rows ------------------------------------------------------------
 \ The catch frame, STACK-ABI:CATCH-BYTES on the machine stack and chained

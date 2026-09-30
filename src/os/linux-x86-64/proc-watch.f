@@ -1,30 +1,20 @@
 \ proc-watch.f -- Linux/x86-64 exact process-lifetime watch primitive emitter.
-\ Loaded before habu1.f, so the syscall-result push is inlined rather than using
-\ habu1.f's shared SYS-PUSH (same carry-checked -1-on-failure logic).
 
-\ The x86_64 encoders and condition names are package X64ASM's public surface
-\ (src/arch/x86-64/asm.f), ASM-SINK is package X64CODE's
-\ (src/arch/x86-64/icode.f) and the data-stack moves G-POP and G-PUSH are
-\ package X64RT's (src/arch/x86-64/rt.f), imported here rather than qualified at
-\ each call so the emitter below keeps the shape its aarch64 counterpart has:
-\ this file carries no package, so the ownership gate reports a changed global
-\ definition in it.
+\ The register names are package X64ASM's public surface
+\ (src/arch/x86-64/asm.f), and the data-stack pop G-POP and the syscall-result
+\ push SYS-PUSH are package X64RT's (src/arch/x86-64/rt.f), imported here rather
+\ than qualified at each call so the emitter below keeps the shape its aarch64
+\ counterpart has: this file carries no package, so the ownership gate reports a
+\ changed global definition in it.
 using X64ASM
-using X64CODE
 using X64RT
 
-\ SYS, leaves CF set on error and rcx holding its comparison constant. A mov does
-\ not touch the flags, so the -1 can be staged in rcx after the compare and
-\ selected without a branch, where the aarch64 seam spells the same choice as a
-\ CSET and two branches around a MOVN.
+\ SYS, leaves CF set on error, and SYS-PUSH publishes rax or, on error, -1.
 : BPROCWATCHOPEN ( -- )            \ ( pid -- fd|-1 ) pidfd_open(pid, 0)
    7 G-POP                         \ rdi = pid
    RSI ZERO-REG,                   \ flags 0
    NR-PIDFD-OPEN SYS,
-   RCX -1 >IMM32 ASM-SINK ENC-MOV-RI32
-   C-B RAX RCX ASM-SINK ENC-CMOVCC \ CF set means error: publish -1
-   0 G-PUSH ;
+   SYS-PUSH ;
 
-;using
 ;using
 ;using

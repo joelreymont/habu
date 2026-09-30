@@ -10,7 +10,6 @@ blocks:
   - habu-emit-x86-pure-f70fb84b
   - habu-emit-x86-engine-86b5f8e7
   - habu-emit-x86-float-38de4a6f
-  - habu-emit-x86-process-8e1f6f84
   - habu-emit-x86-code-973a0074
   - habu-model-the-code-c40c75d1
   - habu-add-sysv-abi-75f86980

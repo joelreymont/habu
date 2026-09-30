@@ -5,7 +5,6 @@ priority: 3
 issue-type: task
 created-at: "2026-09-30T13:02:53.356273+03:00"
 blocks:
-  - habu-emit-x86-process-8e1f6f84
   - habu-emit-x86-code-973a0074
   - habu-emit-x86-engine-86b5f8e7
   - habu-port-signals-crash-2c7768ca
