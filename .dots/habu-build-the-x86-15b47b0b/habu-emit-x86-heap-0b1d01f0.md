@@ -1,6 +1,6 @@
 ---
 title: Emit x86 heap, printer and hook rows
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T09:22:47.260112+03:00"

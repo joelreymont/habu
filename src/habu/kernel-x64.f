@@ -5,7 +5,8 @@
 \ (src/habu/primitive-registry.f) as habu1.f FPRIM does, so the specification
 \ gates hold on both targets, and the helpers the rows share are emitted once:
 \ the span guard (PROT-SPAN), the narrow page flip LPROTREC, the task-live
-\ exit LTASKLIVE, and the dictionary index with the one-wordlist search.
+\ exit LTASKLIVE, the dictionary index with the one-wordlist search, the DP
+\ refusal LDPBAD and the output device arm (GENIO-OUT).
 \
 \ A BODY'S CONTRACT (docs/x86-64.md "Kernel inventory"). rbp is DATA, r12 the
 \ data stack, rbx and r13-r15 the other VM registers; rax rcx rdx rsi rdi and
@@ -36,12 +37,23 @@ require src/os/linux-x86-64/sys.f
 package X64KERNEL
 using X64ASM
 using X64CODE
+using X64RT
+
+\ The host's layout names its own DATA. Replay the Linux target's layout here,
+\ as src/habu/boot-x64.f does, so the heap rows bound DP by the target's
+\ DATA-SIZE.
+s" src/os/linux-x86-64/layout.f" included
+
 public
 
 \ The rc a primitive body this kernel lacks dies with: ENTRY-LABEL's at build
 \ time and a REFUSE row's at run time. It is the rc habu1.f
 \ ENGINE-EMIT:TARGET-UNKNOWN dies with when a target has no body at all.
 76 constant REFUSE-RC
+
+\ The highest DP, as an offset from DATA, that the heap rows admit: the top of
+\ DATA less the profiler's counter band, as habu1.f DP-CHECK bounds it.
+DATA-SIZE PROF-CNT-BYTES - constant DP-CEILING
 
 private
 
@@ -66,9 +78,11 @@ $1000 constant PAGE-BYTES              \ the x86-64 Linux base page
 variable SPAN-CELL
 variable REC-CELL
 variable LIVE-CELL
+variable DPBAD-CELL
 : SPAN-LBL ( -- label ) SPAN-CELL @ >LABEL ;
 : REC-LBL ( -- label ) REC-CELL @ >LABEL ;
 : LIVE-LBL ( -- label ) LIVE-CELL @ >LABEL ;
+: DPBAD-LBL ( -- label ) DPBAD-CELL @ >LABEL ;
 
 \ ---- the definer -------------------------------------------------------------
 \ The row being registered. Every body registers under a name src/habu/prims.f
@@ -257,6 +271,88 @@ private
 : LIVE-HELPER, ( -- )
    LIVE-LBL LBL,
    TASK-LIVE-RC EXIT-GROUP, ;
+
+\ Write the n bytes at the label on fd 2.
+: STDERR-WRITE, ( label n -- ) {: msg:label len:n :}
+   RDI STDERR IMM32,  RSI msg MOVABS,  RDX len IMM32,  NR-WRITE SYS, ;
+
+\ The machine-stack frame DIAG-U, writes digits into: room for any cell's.
+CELL 4 * constant DIAG-BYTES
+
+\ rax as unsigned decimal on fd 2, no newline: the twin of habu2.f LDIAGU,
+\ which a refusal with a count to state calls instead of `u.`, since a
+\ diagnostic never leaves through the output device. It clobbers rax rcx rdx
+\ rsi rdi r11 and keeps r8.
+: DIAG-U, ( -- )
+   RSP DIAG-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RSI RSP DIAG-BYTES MEM-OFF ASM-SINK ENC-LEA
+   DIGITS,
+   RDX RSP DIAG-BYTES MEM-OFF ASM-SINK ENC-LEA
+   RDX RSI ASM-SINK ENC-SUB-RR
+   RDI STDERR IMM32,  NR-WRITE SYS,
+   RSP DIAG-BYTES >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+\ The refusal line of habu2.f LDPBAD, before and between its two numbers.
+: DPBAD-HEAD$ ( -- ptr u8 n ) s" hb: data space out of range: DP " ;
+: DPBAD-OF$ ( -- ptr u8 n ) s"  of " ;
+: DPBAD-UNIT$ ( -- ptr u8 n ) s"  bytes" ;
+
+\ The status a refused DP exits with: habu2.f LDPBAD's.
+76 constant DPBAD-RC
+
+\ LDPBAD ( rdi = the refused DP ): the twin of habu2.f LDPBAD. It writes
+\ `hb: data space out of range: DP <dp> of <ceiling> bytes` on fd 2, both
+\ numbers offsets from DATA, and exits DPBAD-RC. On ARM64 it continues into
+\ LCOMPILEDIE, whose throw inside `evaluate` this engine has no interpreter
+\ to catch yet (CONTROL,), so the refusal is always the top level's exit.
+\ r8 carries the DP across the writes: a syscall preserves it.
+: DPBAD-HELPER, ( -- )
+   LBL LBL LBL {: head:label of:label unit:label :}
+   DPBAD-LBL LBL,
+   R8 RDI ASM-SINK ENC-MOV-RR  R8 DATA-REG ASM-SINK ENC-SUB-RR
+   head DPBAD-HEAD$ nip STDERR-WRITE,
+   RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U,
+   of DPBAD-OF$ nip STDERR-WRITE,
+   RAX DP-CEILING IMM32,  DIAG-U,
+   unit DPBAD-UNIT$ nip 1+ STDERR-WRITE,
+   DPBAD-RC EXIT-GROUP,
+   head LBL,  DPBAD-HEAD$ TEXT,
+   of LBL,  DPBAD-OF$ TEXT,
+   unit LBL,  DPBAD-UNIT$ TEXT,  STR-LF ASM-SINK BUF:APPEND-BYTE ;
+
+\ (GENIO-OUT) ( rdi = device index, rsi = span, rdx = length ): the output
+\ funnel's device arm at X64RT's LGENIOOUT, the twin of habu2.f
+\ EMIT-GENIO-OUT. It writes fd 1 while GENIO-ABI:BUSY-CELL is set, for an
+\ index past DEVICES (unsigned, so a negative one too) and for an empty row.
+\ Otherwise it saves ACTIVE-CELL on the machine stack, marks the write as the
+\ device's and the funnel busy, calls row index-1's xt with the span and
+\ length on the data stack, and clears BUSY-CELL and restores ACTIVE-CELL.
+\ A device's own output meanwhile finds the funnel busy and reaches fd 1.
+\ Registered as an engine helper, as EMIT-GENIO-OUT registers the ARM64 arm.
+: GENIO-HELPER, ( -- )
+   LGENIOOUT @ >LABEL {: start:label :}
+   LBL LBL {: term:label end:label :}
+   s" (GENIO-OUT)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   start LBL,
+   RAX DATA-REG GENIO-ABI:BUSY-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE term JCC,
+   RDI GENIO-ABI:DEVICES >IMM8 ASM-SINK ENC-CMP-RI8  C-A term JCC,
+   RAX DATA-REG RDI CELL GENIO-ABI:WRITE-OFF CELL - MEM-IDX ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E term JCC,
+   RCX DATA-REG GENIO-ABI:ACTIVE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX ASM-SINK ENC-PUSH
+   RDI DATA-REG GENIO-ABI:ACTIVE-CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   RCX 1 IMM32,  RCX DATA-REG GENIO-ABI:BUSY-CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   RSI R64>N G-PUSH  RDX R64>N G-PUSH
+   RAX ASM-SINK ENC-CALL-REG
+   RCX ZERO-REG,  RCX DATA-REG GENIO-ABI:BUSY-CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   RCX ASM-SINK ENC-POP
+   RCX DATA-REG GENIO-ABI:ACTIVE-CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   ASM-SINK ENC-RET
+   term LBL,
+   RDI 1 IMM32,  NR-WRITE SYS,
+   ASM-SINK ENC-RET
+   end LBL, ;
 
 \ ---- the dictionary index and the one-wordlist search -------------------------
 \ The twins of habu1.f EMIT-HIDX and WLFIND:EMIT. The index at HIDXP-CELL is
@@ -564,7 +660,9 @@ public
 \ that calls one follows.
 : HELPERS, ( -- )
    LBL SPAN-CELL !  LBL REC-CELL !  LBL LIVE-CELL !
-   SPAN-HELPER,  REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS, ;
+   LBL DPBAD-CELL !  LBL LGENIOOUT !
+   SPAN-HELPER,  REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS,
+   DPBAD-HELPER,  GENIO-HELPER, ;
 
 \ Each section's rows are tabled in docs/x86-64.md under the heading of its
 \ name.
@@ -671,13 +769,164 @@ public
    s" search-wl" [: SEARCH-WL-BODY ;] PRIM
    s" xref-search-wl" [: XREF-SEARCH-WL-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
+private
+
+: DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
+: CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
+
+: POP, ( r64 -- ) R64>N G-POP ;
+: PUSH, ( r64 -- ) R64>N G-PUSH ;
+
+\ Load and store the DATA cell at an offset.
+: CELL@, ( r64 n -- ) {: r:r64 off:n :}
+   r DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM ;
+: CELL!, ( r64 n -- ) {: r:r64 off:n :}
+   r DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+\ The twin of habu1.f DP-CHECK, before every store of a new DP: rdi, the new
+\ DP, must lie in [DATA + DATA-START, DATA + DP-CEILING], or LDPBAD refuses
+\ it with rdi in hand. The compares are signed, as the ARM64 ones are. It
+\ clobbers rax.
+: DP-CHECK, ( -- )
+   RAX DATA-REG DATA-START MEM-OFF ASM-SINK ENC-LEA
+   RDI RAX ASM-SINK ENC-CMP-RR  C-L DPBAD-LBL JCC,
+   RAX DATA-REG DP-CEILING MEM-OFF ASM-SINK ENC-LEA
+   RDI RAX ASM-SINK ENC-CMP-RR  C-G DPBAD-LBL JCC, ;
+
+\ The heap rows move DP, so each begins with the task-live guard, as the
+\ ARM64 bodies do. `,` and c, check the DP past their store before it lands.
+: HEAP, ( -- )
+   s" here" [: RAX DP-CELL CELL@,  RAX PUSH, ;] PRIM
+   s" allot" [:
+      TASK-LIVE-GUARD,  RCX POP,  RDI DP-CELL CELL@,
+      RDI RCX ASM-SINK ENC-ADD-RR  DP-CHECK,  RDI DP-CELL CELL!, ;] PRIM
+   s" align" [:
+      TASK-LIVE-GUARD,  RDI DP-CELL CELL@,
+      RDI CELL 1- >IMM8 ASM-SINK ENC-ADD-RI8
+      RDI CELL negate >IMM8 ASM-SINK ENC-AND-RI8
+      DP-CHECK,  RDI DP-CELL CELL!, ;] PRIM
+   s" ," [:
+      TASK-LIVE-GUARD,  RCX POP,  RDX DP-CELL CELL@,
+      RDI RDX CELL MEM-OFF ASM-SINK ENC-LEA  DP-CHECK,
+      RCX RDX MEM-AT ASM-SINK ENC-MOV-MR  RDI DP-CELL CELL!, ;] PRIM
+   s" c," [:
+      TASK-LIVE-GUARD,  RCX POP,  RDX DP-CELL CELL@,
+      RDI RDX 1 MEM-OFF ASM-SINK ENC-LEA  DP-CHECK,
+      RCX R64>N >R8 RDX MEM-AT ASM-SINK ENC-MOV8-MR  RDI DP-CELL CELL!, ;] PRIM ;
+
+\ .s ( -- ): print each cell from the base up, one per line, and leave them.
+\ The cursor lives in SSCR-CELL, as on ARM64: a device write calls an xt that
+\ may clobber every scratch register.
+: DOT-S-BODY ( -- )
+   LBL LBL {: loop:label done:label :}
+   RAX S0-CELL CELL@,  RAX SSCR-CELL CELL!,
+   loop LBL,
+   RAX SSCR-CELL CELL@,  RAX DSP ASM-SINK ENC-CMP-RR  C-AE done JCC,
+   RAX RAX MEM-AT ASM-SINK ENC-MOV-RM  G-PRINT9
+   RAX SSCR-CELL CELL@,  RAX CELL >IMM8 ASM-SINK ENC-ADD-RI8
+   RAX SSCR-CELL CELL!,
+   loop JMP,
+   done LBL, ;
+
+\ Every printer leaves through X64RT's G-OUT, which honours OUT-CELL.
+: PRINTERS, ( -- )
+   s" ." [: RAX POP,  G-PRINT9 ;] PRIM
+   s" u." [: RAX POP,  G-PRINTU9 ;] PRIM
+   s" .s" [: DOT-S-BODY ;] PRIM
+   s" depth" [:
+      RAX DSP ASM-SINK ENC-MOV-RR
+      RAX DATA-REG S0-CELL MEM-OFF ASM-SINK ENC-SUB-RM
+      RAX 3 >IMM8 ASM-SINK ENC-SHR-RI8  RAX PUSH, ;] PRIM
+   s" emit" [: RAX POP,  G-EMITC ;] PRIM
+   s" cr" [: RAX STR-LF IMM32,  G-EMITC ;] PRIM
+   s" space" [: RAX STR-SPACE IMM32,  G-EMITC ;] PRIM
+   s" type" [: RDX POP,  RSI POP,  G-OUT ;] PRIM ;
+
+\ The status a refused hook exits with: habu1.f BSETCHECK's.
+70 constant HOOK-BAD-RC
+
+\ Write the text on fd 2, with no newline, as the ARM64 rows do, and exit
+\ HOOK-BAD-RC. The text follows the exit, inside the record.
+: HOOK-DIE, ( ptr u8 n -- ) {: a:ptr u:n :}
+   LBL {: msg:label :}
+   msg u STDERR-WRITE,
+   HOOK-BAD-RC EXIT-GROUP,
+   msg LBL,  a u TEXT, ;
+
+\ Branch to the label unless rax is a live JIT entry, DBASE <= rax < CP,
+\ unsigned: the install window of habu1.f BSETCHECK. It catches a wild
+\ install, not a well-formed pointer into live code.
+: WINDOW, ( label -- ) {: bad:label :}
+   RAX DBASE-REG ASM-SINK ENC-CMP-RR  C-B bad JCC,
+   RAX CP-REG ASM-SINK ENC-CMP-RR  C-AE bad JCC, ;
+
+\ set-check ( xt -- ): 0 turns checking off and empties the preflight hook
+\ too; any other xt must lie in the window.
+: SET-CHECK-BODY ( -- )
+   LBL LBL LBL {: bad:label ok:label done:label :}
+   RAX POP,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E ok JCC,
+   bad WINDOW,
+   ok LBL,
+   RAX HOOK-CELL CELL!,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE done JCC,
+   RAX COMPILE-PREFLIGHT-CELL CELL!,
+   done JMP,
+   bad LBL,  s" set-check: invalid checker xt" HOOK-DIE,
+   done LBL, ;
+
+\ set-preflight ( xt -- ): installs once. With the cell set, the same xt is
+\ inert and any other refused; with it empty, the xt must lie in the window.
+: SET-PREFLIGHT-BODY ( -- )
+   LBL LBL LBL {: invalid:label empty:label done:label :}
+   RAX POP,
+   RCX COMPILE-PREFLIGHT-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E empty JCC,
+   RCX RAX ASM-SINK ENC-CMP-RR  C-E done JCC,
+   s" set-preflight: invalid or replaced hook" HOOK-DIE,
+   empty LBL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E invalid JCC,
+   invalid WINDOW,
+   RAX COMPILE-PREFLIGHT-CELL CELL!,
+   done JMP,
+   invalid LBL,  s" set-preflight: invalid hook" HOOK-DIE,
+   done LBL, ;
+
+\ set-top-check ( xt -- ): 0 uninstalls; any other xt must lie in the window.
+: SET-TOP-CHECK-BODY ( -- )
+   LBL LBL LBL {: bad:label ok:label done:label :}
+   RAX POP,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E ok JCC,
+   bad WINDOW,
+   ok LBL,
+   RAX TOP-HOOK-CELL CELL!,
+   done JMP,
+   bad LBL,  s" set-top-check: invalid top-row hook xt" HOOK-DIE,
+   done LBL, ;
+
+\ The checker's hooks live in sealed DATA cells, so a direct store from the
+\ row is their only writer once the engine is sealed.
+: HOOKS, ( -- )
+   s" set-check" [: SET-CHECK-BODY ;] PRIM
+   s" check@" [: RAX HOOK-CELL CELL@,  RAX PUSH, ;] PRIM
+   s" set-preflight" [: SET-PREFLIGHT-BODY ;] PRIM
+   s" set-top-check" [: SET-TOP-CHECK-BODY ;] PRIM
+   s" top-check@" [: RAX TOP-HOOK-CELL CELL@,  RAX PUSH, ;] PRIM ;
+
+public
+
+: ENGINE-STATE, ( -- )
+   HEAP,  PRINTERS,  HOOKS, ;
+
 \ The whole kernel: the helpers, then every section.
 : KERNEL, ( -- )
    HELPERS,
    CONTROL,
    ATOMICS,
-   DICT-SEARCH, ;
+   DICT-SEARCH,
+   ENGINE-STATE, ;
 
+;using
 ;using
 ;using
 ;package

@@ -19,6 +19,24 @@
 \ seeds more records: one the index is not told of stays absent until
 \ HIDX-ADD, and one until HIDX-REBUILD,, and one under DICT-WL:RETIRED is found
 \ by the scan the probe leaves that wid to.
+\
+\ The heap, printer and hook rows, one image per outcome; the peer runs each
+\ and compares its status and its fd-1 and fd-2 bytes (docs/x86-64.md
+\ "Engine-state rows"):
+\ - hb-x64-kernel-heap walks DP from the heap floor through allot, align, `,`
+\   and c, checks the cells they filled and returns to the floor, and exits 0;
+\ - hb-x64-kernel-heap-high allots up to the ceiling, which DP may reach, and
+\   one byte past it, which exits 76 with the DP line on fd 2;
+\ - hb-x64-kernel-heap-low allots one byte below the floor and exits 76;
+\ - hb-x64-kernel-heap-armed runs `,` with a task live and exits 79;
+\ - hb-x64-kernel-print writes the fixed bytes the ARM64 engine writes for
+\   the same values on fd 1 and exits 0;
+\ - hb-x64-kernel-genio sends output through a device row whose routine
+\   brackets the span in [ ], and past it on each path that writes fd 1;
+\ - hb-x64-kernel-hooks installs, reads and clears the three hooks at the
+\   code window's edges and exits 0;
+\ - hb-x64-kernel-hooks-check, -top, -replaced and -empty each end in one
+\   hook row's fd-2 refusal and exit 70.
 \ The host checks each image's ELF header; running them is the peer's.
 require test/x86-64-boot-harness.f
 
@@ -109,6 +127,139 @@ create FILL FILL-BYTES allot
    X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ ---- heap ----------------------------------------------------------------------
+$1122334455667788 constant CELL-VALUE
+
+: ROW ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
+
+: ALLOT, ( n -- ) X64HARNESS:PUSH,  s" allot" ROW ;
+
+\ DP starts at the heap floor, DATA-START. Three bytes and an align reach the
+\ next cell; `,` fills it and c, stores the low byte of its cell alone.
+: BUILD-HEAP ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   3 ALLOT,  s" align" ROW
+   CELL-VALUE X64HARNESS:PUSH,  s" ," ROW
+   $1AB X64HARNESS:PUSH,  s" c," ROW
+   s" align" ROW  s" align" ROW
+   s" here" ROW  DATA-START 24 + X64HARNESS:EXPECT-POP-DATA,
+   0 DATA-START X64HARNESS:EXPECT-CELL,
+   CELL-VALUE DATA-START 8 + X64HARNESS:EXPECT-CELL,
+   $AB DATA-START 16 + X64HARNESS:EXPECT-CELL,
+   -24 ALLOT,
+   s" here" ROW  DATA-START X64HARNESS:EXPECT-POP-DATA,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-HEAP-HIGH ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   X64KERNEL:DP-CEILING DATA-START - ALLOT,
+   s" here" ROW  X64KERNEL:DP-CEILING X64HARNESS:EXPECT-POP-DATA,
+   1 ALLOT,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-HEAP-LOW ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   -1 ALLOT,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-HEAP-ARMED ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   1 TASKS-LIVE-CELL X64HARNESS:CELL!,
+   1 X64HARNESS:PUSH,  s" ," ROW
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ ---- printers ------------------------------------------------------------------
+$8000000000000000 constant MIN-CELL
+$7FFFFFFFFFFFFFFF constant MAX-CELL
+
+: DOT, ( n -- ) X64HARNESS:PUSH,  s" ." ROW ;
+: EMIT, ( n -- ) X64HARNESS:PUSH,  s" emit" ROW ;
+
+\ fd 1: the four cells ., -1 and 0 u., "A B", "hello" and .s of 7 -3, one per
+\ line; .s leaves the cells, and depth counts them.
+: BUILD-PRINT ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   MIN-CELL DOT,  MAX-CELL DOT,  0 DOT,  -1 DOT,
+   -1 X64HARNESS:PUSH,  s" u." ROW
+   0 X64HARNESS:PUSH,  s" u." ROW
+   [char] A EMIT,  s" space" ROW  [char] B EMIT,  s" cr" ROW
+   s" hello" X64HARNESS:PUSH-TEXT,  s" type" ROW  s" cr" ROW
+   7 X64HARNESS:PUSH,  -3 X64HARNESS:PUSH,  s" .s" ROW
+   s" depth" ROW  2 X64HARNESS:EXPECT-POP,
+   -3 X64HARNESS:EXPECT-POP,  7 X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ ---- the output device ---------------------------------------------------------
+: TYPE, ( ptr u8 n -- ) X64HARNESS:PUSH-TEXT,  s" type" ROW ;
+: OUT! ( n -- ) GENIO-ABI:OUT-CELL X64HARNESS:CELL!, ;
+
+\ Device 1's write routine: `[`, the span it is handed, `]`. Its own output
+\ runs while the funnel is busy, so it reaches fd 1 and not the routine again.
+: BRACKET, ( -- label )
+   [: [char] [ EMIT,  s" type" ROW  [char] ] EMIT, ;] X64HARNESS:ROUTINE, ;
+
+\ fd 1: `[hi][42\n][Z]` through device 1, the funnel idle again and the
+\ caller's active device back afterwards; then `e` for a device with no row,
+\ `x` for an index past DEVICES and `b` while the funnel is busy.
+: BUILD-GENIO ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   BRACKET, GENIO-ABI:WRITE-OFF X64HARNESS:LABEL-CELL!,
+   5 GENIO-ABI:ACTIVE-CELL X64HARNESS:CELL!,
+   1 OUT!
+   s" hi" TYPE,  42 DOT,  [char] Z EMIT,
+   0 GENIO-ABI:BUSY-CELL X64HARNESS:EXPECT-CELL,
+   5 GENIO-ABI:ACTIVE-CELL X64HARNESS:EXPECT-CELL,
+   2 OUT!  s" e" TYPE,
+   GENIO-ABI:DEVICES 1+ OUT!  s" x" TYPE,
+   1 OUT!  1 GENIO-ABI:BUSY-CELL X64HARNESS:CELL!,  s" b" TYPE,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ ---- hooks ---------------------------------------------------------------------
+: CHECK-HOOK! ( n -- ) X64HARNESS:PUSH-REGION,  s" set-check" ROW ;
+: TOP-HOOK! ( n -- ) X64HARNESS:PUSH-REGION,  s" set-top-check" ROW ;
+: PREFLIGHT! ( n -- ) X64HARNESS:PUSH-REGION,  s" set-preflight" ROW ;
+
+\ The code window is [DBASE, CP), and the boot's CP is DICT-SIZE past DBASE.
+\ The preflight hook installs once; the same xt again is inert, and
+\ `0 set-check` empties it so another installs.
+: BUILD-HOOKS ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   0 CHECK-HOOK!
+   s" check@" ROW  0 X64HARNESS:EXPECT-POP-REGION,
+   DICT-SIZE 1- TOP-HOOK!
+   s" top-check@" ROW  DICT-SIZE 1- X64HARNESS:EXPECT-POP-REGION,
+   64 PREFLIGHT!  64 PREFLIGHT!
+   0 X64HARNESS:PUSH,  s" set-check" ROW
+   s" check@" ROW  0 X64HARNESS:EXPECT-POP,
+   128 PREFLIGHT!
+   0 X64HARNESS:PUSH,  s" set-top-check" ROW
+   s" top-check@" ROW  0 X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-HOOKS-CHECK ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   DICT-SIZE CHECK-HOOK!
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-HOOKS-TOP ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   -1 TOP-HOOK!
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-HOOKS-REPLACED ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   64 PREFLIGHT!  128 PREFLIGHT!
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-HOOKS-EMPTY ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   0 X64HARNESS:PUSH,  s" set-preflight" ROW
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
 public
 
 : RUN ( -- )
@@ -121,6 +272,17 @@ public
    false s" hb-x64-kernel-search" TMP-PATH BUILD-SEARCH
    true s" hb-x64-kernel-search-index" TMP-PATH BUILD-SEARCH
    s" hb-x64-kernel-index-upkeep" TMP-PATH BUILD-UPKEEP
+   s" hb-x64-kernel-heap" TMP-PATH BUILD-HEAP
+   s" hb-x64-kernel-heap-high" TMP-PATH BUILD-HEAP-HIGH
+   s" hb-x64-kernel-heap-low" TMP-PATH BUILD-HEAP-LOW
+   s" hb-x64-kernel-heap-armed" TMP-PATH BUILD-HEAP-ARMED
+   s" hb-x64-kernel-print" TMP-PATH BUILD-PRINT
+   s" hb-x64-kernel-genio" TMP-PATH BUILD-GENIO
+   s" hb-x64-kernel-hooks" TMP-PATH BUILD-HOOKS
+   s" hb-x64-kernel-hooks-check" TMP-PATH BUILD-HOOKS-CHECK
+   s" hb-x64-kernel-hooks-top" TMP-PATH BUILD-HOOKS-TOP
+   s" hb-x64-kernel-hooks-replaced" TMP-PATH BUILD-HOOKS-REPLACED
+   s" hb-x64-kernel-hooks-empty" TMP-PATH BUILD-HOOKS-EMPTY
    X64HARNESS:DISPOSE
    T-REPORT ;
 

@@ -171,3 +171,53 @@ public
 ;using
 ;using
 ;package
+
+\ The engine-state cases' words: addresses the boot fixes only at run time
+\ (DATA, the code region), whole DATA cells, and a routine a case installs
+\ where a row calls through a DATA cell.
+package X64HARNESS
+using X64ASM
+using X64CODE
+using X64RT
+
+public
+
+\ Push the address n bytes into the code region: an xt the hook rows admit.
+: PUSH-REGION, ( n -- ) {: off:n :}
+   RAX DBASE-REG off MEM-OFF ASM-SINK ENC-LEA
+   0 G-PUSH ;
+
+\ Pop an address and check it lies n bytes into DATA.
+: EXPECT-POP-DATA, ( n -- ) {: want:n :}
+   0 G-POP  RAX DATA-REG ASM-SINK ENC-SUB-RR  want EXPECT, ;
+
+\ Pop an address and check it lies n bytes into the code region.
+: EXPECT-POP-REGION, ( n -- ) {: want:n :}
+   0 G-POP  RAX DBASE-REG ASM-SINK ENC-SUB-RR  want EXPECT, ;
+
+\ Check the DATA cell at an offset holds n.
+: EXPECT-CELL, ( n n -- ) {: want:n off:n :}
+   RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM
+   want EXPECT, ;
+
+\ Store a label's address into the DATA cell at an offset: install a routine
+\ where a row calls through the cell.
+: LABEL-CELL!, ( label n -- ) {: at:label off:n :}
+   RAX at MOVABS,
+   RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+\ Emit a routine behind a jump, its body what the quotation emits and then
+\ `ret`, and answer its entry label.
+: ROUTINE, ( [ -- ] -- label )
+   LBL LBL {: entry:label past:label :}
+   past JMP,
+   entry LBL,
+   execute
+   ASM-SINK ENC-RET
+   past LBL,
+   entry ;
+
+;using
+;using
+;using
+;package
