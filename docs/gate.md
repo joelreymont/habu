@@ -121,11 +121,11 @@ gives that slot no directory.
   link only subjects that require nothing in the linker's lib closure, and keep
   a row whose children run `ENGINE-CANDIDATE:PATH$` off the images. A row whose
   claim is the saver's or the linker's own load (`test/app-image.f`) keeps
-  compiling them from source. `test/gate-aot-negative.f` runs on `LINKER$`:
-  its die paths are forks of the image, not `ENGINE-CANDIDATE` children, and
-  its mapped-band fixture's first question to the process-map reader reads the
-  running process's map, because every capture drops the map its builder read
-  (`src/habu/proc-maps.f`).
+  compiling them from source. `test/gate-aot-negative.f` and
+  `test/stripped-address.f` run on `LINKER$`: their die paths are forks of the
+  image, not `ENGINE-CANDIDATE` children, and the mapped-band fixture's first
+  question to the process-map reader reads the running process's map, because
+  every capture drops the map its builder read (`src/habu/proc-maps.f`).
   The accepted cost of settling both in
   `SUITE-SETUP`, as the fixture writer is: a compile error in the saver's or
   the linker's closure stops the gate at setup with the builder's diagnostic
