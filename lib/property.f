@@ -2,10 +2,10 @@
 \
 \ The module lives in `package PROP`. External callers use the qualified public
 \ property-testing DSL (PROP:RUN-RESET, PROP:SEED!/SEED@, PROP:COUNT@, PROP:RND/
-\ RND%, PROP:BUF-RESET/BUF+/BUF-C+/BUF$/BUF-CHECK-ROOM, PROP:DIGIT+, PROP:GEN-START/
-\ GEN-STEP/GEN-DEPTH@, PROP:TRIM-TRAIL, PROP:DROP-LAST, PROP:SHRINK, PROP:DEFAULTS
-\ and the PROP:DEFAULT-SEED/DEFAULT-COUNT/MAX-COUNT/BUF-CAP constants); the LCG
-\ constants, PRNG/buffer state cells, and seed/count validators are package-private.
+\ RND%, PROP:BUF-RESET/BUF+/BUF-C+/BUF$/BUF-CHECK-ROOM, PROP:DIGIT+, PROP:DROP-LAST,
+\ PROP:SHRINK, PROP:DEFAULTS and the PROP:DEFAULT-SEED/DEFAULT-COUNT/MAX-COUNT/
+\ BUF-CAP constants); the LCG constants, PRNG/buffer state cells, seed/count
+\ validators and DROP-LAST's trailing-space trim are package-private.
 
 require lib/errors.f
 
@@ -35,8 +35,6 @@ private
 
 variable PROP-SEED
 variable PROP-COUNT
-variable PROP-GEN-DEPTH
-variable PROP-GEN-NEXT
 \ the shrink predicate is stored and re-run across the shrink loop; a typed xt
 \ cell keeps its ( -- bool ) effect through store+fetch so execute stays checked
 \ (an untyped variable would launder it -> E-EXEC-OPAQUE-XT).
@@ -115,22 +113,7 @@ public
 : BUF$ ( -- ptr u8 n )
    PROP-BUF PROP-BUF-LEN @ ;
 
-: GEN-DEPTH@ ( -- n )
-   PROP-GEN-DEPTH @ ;
-
-: GEN-START ( n -- ) {: depth:n :}
-   depth 0 < if E-PROP-GENERATOR throw then
-   BUF-RESET
-   depth PROP-GEN-DEPTH ! ;
-
-: GEN-STEP ( ptr u8 n n n -- ) {: a:ptr u:n need:n delta:n :}
-   need 0 < if E-PROP-GENERATOR throw then
-   PROP-GEN-DEPTH @ need < if E-PROP-GENERATOR throw then
-   PROP-GEN-DEPTH @ delta + PROP-GEN-NEXT !
-   PROP-GEN-NEXT @ 0 < if E-PROP-GENERATOR throw then
-   u BUF-CHECK-ROOM
-   a u BUF+
-   PROP-GEN-NEXT @ PROP-GEN-DEPTH ! ;
+private
 
 : TRIM-TRAIL ( -- )
    begin PROP-BUF-LEN @ 0 > while
@@ -140,6 +123,8 @@ public
          exit
       then
    repeat ;
+
+public
 
 : DROP-LAST ( -- bool )
    TRIM-TRAIL

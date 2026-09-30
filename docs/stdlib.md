@@ -2221,8 +2221,6 @@ PROP:BUF+       ( ptr u8 n -- )
 PROP:BUF-C+     ( n -- )
 PROP:DIGIT+     ( n -- )
 PROP:BUF$       ( -- ptr u8 n )
-PROP:GEN-START  ( n -- )
-PROP:GEN-STEP   ( ptr u8 n n n -- )
 PROP:DROP-LAST  ( -- bool )
 PROP:SHRINK     ( [ -- bool ] -- )
 BUILD:CHECK          ( ptr u8 n -- )
@@ -2279,7 +2277,7 @@ has no ;SUITE`, `E-SUITE-ROW` — so a missing terminator can no longer hand one
 row's arguments to the row after it. Fixture helper words should live in a
 private package, not global stemmed names.
 `lib/property.f` owns deterministic PRNG state, seed/count bounds, bounded
-source buffers, modeled generator depth, and token-tail shrinking utilities.
+source buffers, and token-tail shrinking utilities.
 Property execution may call an audited `evaluate` boundary for generated checked
 source, but pure generators and shrink predicates remain checked helpers.
 `lib/test/runner.f` layers reusable process-fixture helpers on top of `lib/fs.f`,
