@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.603500+03:00"
-blocks:
-  - habu-emit-x86-syscall-a0d501db
 ---
 
 Problem: the FFI trampolines are ARM64 code. Split from habu-port-the-ffi-676f745d (SysV calls); K11b and K11c build on it.

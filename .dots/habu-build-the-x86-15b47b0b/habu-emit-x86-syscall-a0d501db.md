@@ -1,6 +1,6 @@
 ---
 title: Emit x86 syscall table rows
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.560625+03:00"

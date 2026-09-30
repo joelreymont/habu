@@ -54,6 +54,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 38  constant NR-SETITIMER
 131 constant NR-SIGALTSTACK
 96  constant NR-GETTIMEOFDAY
+228 constant NR-CLOCK-GETTIME
 9   constant NR-MMAP
 271 constant NR-POLL              \ ppoll(fds, n, timespec, sigmask, sigsetsize)
 56  constant NR-SPAWN
@@ -73,6 +74,8 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 
 -100 constant AT-FDCWD
 $100 constant AT-SYMLINK-NOFOLLOW
+$200 constant AT-REMOVEDIR
+1 constant CLOCK-MONOTONIC
 
 \ ---- the trap ----------------------------------------------------------------
 \ THE CARRY POLARITY IS CHOSEN, NOT TRANSLITERATED. Linux returns -errno in the

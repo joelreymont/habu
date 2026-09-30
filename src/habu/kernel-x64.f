@@ -668,6 +668,294 @@ public
 \ name.
 
 \ ---- syscall rows ------------------------------------------------------------
+\ The twins of habu1.f's file, memory, time and identity bodies. A row pops its
+\ arguments into the syscall registers, rdi rsi rdx r10 r8 r9 (the order
+\ src/os/linux-x86-64/sys.f maps x0..x5 onto), stages the *at* family's
+\ AT_FDCWD and flags, traps through SYS, and pushes through X64RT:SYS-PUSH: the
+\ result, or -1 when the kernel refused.
+\
+\ A row whose kernel call writes through a caller's span guards it first. The
+\ guard clobbers every argument register, so it reads the span from the data
+\ stack before the pops.
+
+private
+
+$10 constant MAP-FIXED              \ the same bit in the BSD and Linux words
+$90 constant STAT-BYTES             \ the x86-64 struct stat newfstatat writes
+$5401 constant TCGETS
+$5402 constant TCSETS
+36 constant TERMIOS-BYTES           \ the struct termios TCGETS writes
+1000000000 constant NS-PER-S
+
+: DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
+: POP, ( r64 -- ) R64>N G-POP ;
+: DROP, ( -- ) DSP CELL >IMM8 ASM-SINK ENC-SUB-RI8 ;
+: AT-FDCWD, ( r64 -- ) AT-FDCWD >IMM32 ASM-SINK ENC-MOV-RI32 ;
+: SYS-PUSH, ( n -- ) SYS, SYS-PUSH ;
+
+\ Load the cell n below the top of the data stack, which stays where it is.
+: PEEK, ( r64 n -- ) {: r:r64 depth:n :}
+   r DSP depth 1+ CELL * negate MEM-OFF ASM-SINK ENC-MOV-RM ;
+
+\ Guard the span whose address and length are the cells a and l below the top.
+: SPAN-GUARD, ( n n -- ) {: a:n l:n :}
+   RDI a PEEK,  RSI l PEEK,  RDI RSI PROT-SPAN-CALL, ;
+
+\ Guard n bytes at the address the cell a below the top holds.
+: SIZED-GUARD, ( n n -- ) {: a:n bytes:n :}
+   RDI a PEEK,  RSI bytes IMM32,  RDI RSI PROT-SPAN-CALL, ;
+
+: OPEN-ROW ( -- )                   \ ( path flags mode -- fd|-1 )
+   R10 POP,  RSI POP,  RDI POP,
+   OS-OPEN-FLAGS                    \ rsi's BSD-shaped flags into rdx
+   RSI RDI ASM-SINK ENC-MOV-RR  RDI AT-FDCWD,
+   NR-OPEN SYS-PUSH, ;
+
+\ The twin of habu1.f GUARD-IOCTL, over the request and the argument still on
+\ the stack. TCGETS writes a termios and TCSETS only reads one; an _IOC request
+\ the kernel writes through (_IOC_READ in bits 30-31) names its size in bits
+\ 16-29, and one it only reads needs no guard. Any other request has no size
+\ the guard could check, so it fails closed.
+: IOCTL-GUARD, ( -- )
+   LBL LBL LBL {: legacy:label write:label span:label :}
+   LBL LBL {: trap:label done:label :}
+   RAX 1 PEEK,  RDI 0 PEEK,
+   RAX TCGETS >IMM32 ASM-SINK ENC-CMP-RI32  C-E legacy JCC,
+   RAX TCSETS >IMM32 ASM-SINK ENC-CMP-RI32  C-E done JCC,
+   RCX RAX ASM-SINK ENC-MOV-RR
+   RCX 30 >IMM8 ASM-SINK ENC-SHR-RI8  RCX 3 >IMM8 ASM-SINK ENC-AND-RI8
+   RCX 2 >IMM32 ASM-SINK ENC-TEST-RI32  C-NE write JCC,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE done JCC,
+   trap JMP,
+   legacy LBL,
+   RSI TERMIOS-BYTES IMM32,  span JMP,
+   write LBL,
+   RSI RAX ASM-SINK ENC-MOV-RR
+   RSI 16 >IMM8 ASM-SINK ENC-SHR-RI8  RSI $3FFF >IMM32 ASM-SINK ENC-AND-RI32
+   C-E done JCC,
+   span LBL,
+   RDI RSI PROT-SPAN-CALL,  done JMP,
+   trap LBL,
+   ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
+   done LBL, ;
+
+\ Fresh anonymous storage: ( bytes -- ptr ior ), a null pointer and -1 for a
+\ length that is not positive or a mapping the kernel refuses.
+: MAP-ANON-ROW ( -- )
+   LBL LBL {: failed:label done:label :}
+   RSI POP,
+   RSI RSI ASM-SINK ENC-TEST-RR  C-LE failed JCC,
+   RDI ZERO-REG,  RDX PROT-RW IMM32,  R10 MAP-ANON-PRIVATE IMM32,
+   R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
+   NR-MMAP SYS,  C-B failed JCC,
+   RCX ZERO-REG,  done JMP,
+   failed LBL,
+   RAX ZERO-REG,  RCX -1 >IMM32 ASM-SINK ENC-MOV-RI32
+   done LBL,
+   0 G-PUSH  1 G-PUSH ;
+
+\ ( addr len prot flags fd off -- addr|-1 ). Only MAP_FIXED replaces a mapping
+\ that stands, so only it guards the span.
+: MMAP-ROW ( -- )
+   LBL {: placed:label :}
+   RAX 2 PEEK,  RAX MAP-FIXED >IMM32 ASM-SINK ENC-TEST-RI32  C-E placed JCC,
+   5 4 SPAN-GUARD,
+   placed LBL,
+   R9 POP,  R8 POP,  R10 POP,  RDX POP,  RSI POP,  RDI POP,
+   OS-MMAP-FLAGS
+   NR-MMAP SYS-PUSH, ;
+
+\ newfstatat writes the x86-64 struct stat, whose st_mode sits at 24 behind
+\ three u64s where aarch64's sits at 16; the size and the two times sit where
+\ aarch64's do. The fix rewrites the layout lib/fs.f reads, as habu1.f
+\ LINUX-STAT-FIX does: the mode at 4, the modification time at 48 and 56, the
+\ change time at 64 and 72 and the size at 96. Every field is loaded before
+\ one is stored, since the size and the modification time trade places.
+: STAT-FIX, ( r64 -- ) {: buf:r64 :}
+   1 >R32 buf 24 MEM-OFF ASM-SINK ENC-MOV32-RM
+   1 >R32 buf 4 MEM-OFF ASM-SINK ENC-MOV32-MR
+   RSI buf 48 MEM-OFF ASM-SINK ENC-MOV-RM
+   RDI buf 88 MEM-OFF ASM-SINK ENC-MOV-RM
+   R8 buf 96 MEM-OFF ASM-SINK ENC-MOV-RM
+   R9 buf 104 MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 buf 112 MEM-OFF ASM-SINK ENC-MOV-RM
+   RSI buf 96 MEM-OFF ASM-SINK ENC-MOV-MR
+   RDI buf 48 MEM-OFF ASM-SINK ENC-MOV-MR
+   R8 buf 56 MEM-OFF ASM-SINK ENC-MOV-MR
+   R9 buf 64 MEM-OFF ASM-SINK ENC-MOV-MR
+   R10 buf 72 MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+\ ( path buf -- 0|-1 ) through newfstatat with the flags n. The buffer is still
+\ in rdx after the trap, and the fix runs only when the row pushed 0.
+: STAT-ROW ( n n -- ) {: nr:n flags:n :}
+   LBL {: done:label :}
+   0 STAT-BYTES SIZED-GUARD,
+   RDX POP,  RSI POP,  RDI AT-FDCWD,  R10 flags IMM32,
+   nr SYS-PUSH,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE done JCC,
+   RDX STAT-FIX,
+   done LBL, ;
+
+: GTOD ( n -- mem ) {: off:n :} DATA-REG GTOD-SCRATCH off + MEM-OFF ;
+
+\ A time call cannot fail with the arguments these rows give it. One that does
+\ stops on ud2, as habu1.f's twins stop on brk.
+: TIME-CHECK, ( -- )
+   LBL {: ok:label :}
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E ok JCC,
+   ASM-SINK ENC-UD2
+   ok LBL, ;
+
+: EPOCH-ROW ( -- )                  \ ( -- seconds ) gettimeofday's seconds
+   RDI 0 GTOD ASM-SINK ENC-LEA  RSI ZERO-REG,
+   NR-GETTIMEOFDAY SYS,  TIME-CHECK,
+   RAX 0 GTOD ASM-SINK ENC-MOV-RM  0 G-PUSH ;
+
+\ ( -- ns ) CLOCK_MONOTONIC as seconds * 10^9 + nanoseconds, where the ARM64
+\ twin reads CNTVCT_EL0.
+: MONO-ROW ( -- )
+   RDI CLOCK-MONOTONIC IMM32,  RSI 0 GTOD ASM-SINK ENC-LEA
+   NR-CLOCK-GETTIME SYS,  TIME-CHECK,
+   RAX 0 GTOD ASM-SINK ENC-MOV-RM
+   RAX RAX NS-PER-S >IMM32 ASM-SINK ENC-IMUL-RRI32
+   RAX CELL GTOD ASM-SINK ENC-ADD-RM
+   0 G-PUSH ;
+
+public
+
+\ Call the C function at rax under the SysV ABI: align rsp to 16 for the call
+\ and restore it after. Both pushed copies are the entry rsp, so [rsp+8] holds
+\ it whether the alignment took 0 or 8 more bytes. The VM registers survive by
+\ the callee-saved rule; rax rcx rdx rsi rdi and r8-r11 do not.
+: C-CALL, ( -- )
+   RCX RSP ASM-SINK ENC-MOV-RR
+   RCX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH
+   RSP -16 >IMM8 ASM-SINK ENC-AND-RI8
+   RAX ASM-SINK ENC-CALL-REG
+   RSP RSP CELL MEM-OFF ASM-SINK ENC-MOV-RM ;
+
+\ rax = dlsym(RTLD_DEFAULT, the NUL-terminated name rsi points at), 0 when the
+\ loader has no such symbol: the twin of habu1.f LIBC-OS DLSYM. The loader's
+\ slot sits LINUX-DLSYM-SLOT-OFF into the read-write segment, which starts the
+\ text's size past the image base; the image base is the text base RBASE-CELL
+\ holds less CODE-OFF, and the text size is the first program header's
+\ p_filesz, IMAGE-TEXT-SIZE-OFF into the image.
+: DLSYM, ( -- )
+   RAX DATA-REG RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX CODE-OFF >IMM32 ASM-SINK ENC-SUB-RI32
+   RAX RAX IMAGE-TEXT-SIZE-OFF MEM-OFF ASM-SINK ENC-ADD-RM
+   RAX RAX LINUX-DLSYM-SLOT-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   RDI ZERO-REG,
+   C-CALL, ;
+
+private
+
+\ The realpath frame on the machine stack: the arguments, free, the result and
+\ its length, then the two names dlsym is asked for, NUL-terminated.
+0 constant RP-PATH
+8 constant RP-DST
+16 constant RP-CAP
+24 constant RP-FREE
+32 constant RP-RESULT
+40 constant RP-LEN
+48 constant RP-FREE-NAME            \ "free"
+56 constant RP-REALPATH-NAME        \ "realpath", its NUL the next cell
+72 constant RP-FRAME
+$65657266 constant FREE-NAME
+$687461706C616572 constant REALPATH-NAME
+
+: RP ( n -- mem ) RSP swap MEM-OFF ;
+
+\ ( pathz dst capacity -- length | -1 | -2 ): the twin of habu1.f LIBC-OS
+\ REALPATH. libc resolves the path, symlinks included, and allocates the
+\ result; only a result that fits with its NUL reaches dst, and free runs after
+\ a copy and after a result too long. -1 is a resolution or loader failure, -2
+\ a capacity with no room for the whole C string.
+: REALPATH-ROW ( -- )
+   LBL LBL LBL LBL {: badcap:label failed:label short:label release:label :}
+   LBL LBL LBL LBL {: count:label counted:label copy:label done:label :}
+   RDX POP,  RSI POP,  RDI POP,
+   RSP RP-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
+   RDI RP-PATH RP ASM-SINK ENC-MOV-MR
+   RSI RP-DST RP ASM-SINK ENC-MOV-MR
+   RDX RP-CAP RP ASM-SINK ENC-MOV-MR
+   RDX RDX ASM-SINK ENC-TEST-RR  C-LE badcap JCC,
+   RSI RDX PROT-SPAN-CALL,
+   RAX FREE-NAME IMM32,  RAX RP-FREE-NAME RP ASM-SINK ENC-MOV-MR
+   RAX REALPATH-NAME >IMM64 ASM-SINK ENC-MOV-RI64
+   RAX RP-REALPATH-NAME RP ASM-SINK ENC-MOV-MR
+   RAX ZERO-REG,  RAX RP-REALPATH-NAME CELL + RP ASM-SINK ENC-MOV-MR
+   RSI RP-FREE-NAME RP ASM-SINK ENC-LEA  DLSYM,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E failed JCC,
+   RAX RP-FREE RP ASM-SINK ENC-MOV-MR
+   RSI RP-REALPATH-NAME RP ASM-SINK ENC-LEA  DLSYM,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E failed JCC,
+   RDI RP-PATH RP ASM-SINK ENC-MOV-RM  RSI ZERO-REG,  C-CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E failed JCC,
+   RAX RP-RESULT RP ASM-SINK ENC-MOV-MR
+   RCX RAX ASM-SINK ENC-MOV-RR  RDX ZERO-REG,
+   count LBL,
+   R8 RCX MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   R8 R8 ASM-SINK ENC-TEST-RR  C-E counted JCC,
+   RCX ASM-SINK ENC-INC  RDX ASM-SINK ENC-INC  count JMP,
+   counted LBL,
+   RDX RP-LEN RP ASM-SINK ENC-MOV-MR
+   RDX RP-CAP RP ASM-SINK ENC-CMP-RM  C-AE short JCC,
+   RSI RP-RESULT RP ASM-SINK ENC-MOV-RM
+   RDI RP-DST RP ASM-SINK ENC-MOV-RM
+   RCX RDX ASM-SINK ENC-MOV-RR  RCX ASM-SINK ENC-INC
+   copy LBL,
+   R8 RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   8 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
+   RSI ASM-SINK ENC-INC  RDI ASM-SINK ENC-INC
+   RCX ASM-SINK ENC-DEC  C-NE copy JCC,
+   release LBL,
+   RDI RP-RESULT RP ASM-SINK ENC-MOV-RM
+   RAX RP-FREE RP ASM-SINK ENC-MOV-RM  C-CALL,
+   RAX RP-LEN RP ASM-SINK ENC-MOV-RM  done JMP,
+   short LBL,
+   RAX -2 >IMM32 ASM-SINK ENC-MOV-RI32  RAX RP-LEN RP ASM-SINK ENC-MOV-MR
+   release JMP,
+   badcap LBL,
+   RAX -2 >IMM32 ASM-SINK ENC-MOV-RI32  done JMP,
+   failed LBL,
+   RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
+   done LBL,
+   RSP RP-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
+   0 G-PUSH ;
+
+public
+
+\ The rows, one line each, in the order docs/x86-64.md "Syscall rows" tables
+\ them.
+: SYSCALLS, ( -- )
+   s" open" [: OPEN-ROW ;] PRIM
+   s" read" [: 1 0 SPAN-GUARD,  RDX POP, RSI POP, RDI POP,  NR-READ SYS-PUSH, ;] PRIM
+   s" write" [: RDX POP, RSI POP, RDI POP,  NR-WRITE SYS-PUSH, ;] PRIM
+   s" close" [: RDI POP,  NR-CLOSE SYS, ;] PRIM
+   s" close-rc" [: RDI POP,  NR-CLOSE SYS-PUSH, ;] PRIM
+   s" ioctl" [: IOCTL-GUARD,  RDX POP, RSI POP, RDI POP,  NR-IOCTL SYS-PUSH, ;] PRIM
+   s" map-anon" [: MAP-ANON-ROW ;] PRIM
+   s" mmap" [: MMAP-ROW ;] PRIM
+   s" munmap" [: 1 0 SPAN-GUARD,  RSI POP, RDI POP,  NR-MUNMAP SYS-PUSH, ;] PRIM
+   s" open-rd" [: RDI POP,  RDI R64>N OS-OPEN-RD  SYS-PUSH ;] PRIM
+   s" access" [: RDX POP, RSI POP, RDI AT-FDCWD, R10 ZERO-REG,  NR-ACCESS SYS-PUSH, ;] PRIM
+   s" unlink" [: RSI POP, RDI AT-FDCWD, RDX ZERO-REG,  NR-UNLINK SYS-PUSH, ;] PRIM
+   s" rename" [: R10 POP, RSI POP, RDI AT-FDCWD, RDX AT-FDCWD,  NR-RENAME SYS-PUSH, ;] PRIM
+   s" chmod" [: RDX POP, RSI POP, RDI AT-FDCWD, R10 ZERO-REG,  NR-CHMOD SYS-PUSH, ;] PRIM
+   s" symlink" [: RDX POP, RDI POP, RSI AT-FDCWD,  NR-SYMLINKAT SYS-PUSH, ;] PRIM
+   s" readlink" [: 1 0 SPAN-GUARD,  R10 POP, RDX POP, RSI POP, RDI AT-FDCWD,  NR-READLINKAT SYS-PUSH, ;] PRIM
+   s" realpath" [: REALPATH-ROW ;] PRIM
+   s" mkdir" [: RDX POP, RSI POP, RDI AT-FDCWD,  NR-MKDIR SYS-PUSH, ;] PRIM
+   s" rmdir" [: RSI POP, RDI AT-FDCWD, RDX AT-REMOVEDIR IMM32,  NR-RMDIR SYS-PUSH, ;] PRIM
+   s" stat64" [: NR-STAT64 0 STAT-ROW ;] PRIM
+   s" lstat64" [: NR-LSTAT64 AT-SYMLINK-NOFOLLOW STAT-ROW ;] PRIM
+   \ getdents64 keeps no base cookie: the pointer is guarded, as the macOS
+   \ call writes through it, and dropped.
+   s" getdirentries64" [: 2 1 SPAN-GUARD,  0 CELL SIZED-GUARD,  DROP,  RDX POP, RSI POP, RDI POP,  NR-GETDIRENTRIES64 SYS-PUSH, ;] PRIM
+   s" epoch-seconds" [: EPOCH-ROW ;] PRIM
+   s" mono-ns" [: MONO-ROW ;] PRIM
+   s" getpid" [: NR-GETPID SYS-PUSH, ;] PRIM ;
 
 \ ---- control rows ------------------------------------------------------------
 \ `evaluate` jumps into habu2.f's interpreter on ARM64, which the x86-64 engine
@@ -771,10 +1059,8 @@ public
 
 private
 
-: DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 : CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
 
-: POP, ( r64 -- ) R64>N G-POP ;
 : PUSH, ( r64 -- ) R64>N G-PUSH ;
 
 \ Load and store the DATA cell at an offset.
@@ -921,6 +1207,7 @@ public
 \ The whole kernel: the helpers, then every section.
 : KERNEL, ( -- )
    HELPERS,
+   SYSCALLS,
    CONTROL,
    ATOMICS,
    DICT-SEARCH,

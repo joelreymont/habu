@@ -1,8 +1,9 @@
 \ rt.f - x86-64 runtime emitters, package X64RT: the engine's data-stack push
-\ and pop, the consumer of the seam's syscall stencils and the output funnel
-\ with its printers. They are the twins of src/habu/rt.f G-PUSH / G-POP, G-OUT,
-\ G-PRINT9, G-PRINTU9 and G-EMITC and of src/habu/jit.f C-EMIT-STENCIL, and
-\ they append to the current code stream, X64CODE's ASM-SINK.
+\ and pop, the syscall-result push, the consumer of the seam's syscall stencils
+\ and the output funnel with its printers. They are the twins of src/habu/rt.f
+\ G-PUSH / G-POP, G-OUT, G-PRINT9, G-PRINTU9 and G-EMITC, of habu1.f SYS-PUSH
+\ and of src/habu/jit.f C-EMIT-STENCIL, and they append to the current code
+\ stream, X64CODE's ASM-SINK.
 \
 \ The seam files src/os/linux-x86-64/proc-watch.f and proc-control.f name their
 \ registers by x86-64 number - 7 rdi, 6 rsi, 2 rdx, 0 rax - so these moves take
@@ -142,6 +143,16 @@ public
    RSI RSP ASM-SINK ENC-MOV-RR  RDX 1 MOV32,
    G-OUT
    RSP CELL 2 * >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+\ Push rax, or -1 when the carry is set: the twin of habu1.f SYS-PUSH, which
+\ pushes x0 or -1. It follows src/os/linux-x86-64/sys.f SYS,, which leaves CF
+\ set on error. A mov leaves the flags alone, so the -1 is staged in rcx after
+\ the compare and selected without a branch; rcx is free, since `syscall`
+\ clobbers it.
+: SYS-PUSH ( -- )
+   RCX -1 >IMM32 ASM-SINK ENC-MOV-RI32
+   C-B RAX RCX ASM-SINK ENC-CMOVCC
+   0 G-PUSH ;
 
 \ An x86-64 stencil is a byte string of whole instructions
 \ (src/os/linux-x86-64/sys.f), so it is appended as it stands where ARM64's
