@@ -40,12 +40,11 @@ gates; downstream acceptance is a separate part of the checklist below.
 
 Grounding: `PLAN.md` "Required result" and "Dispatch order" define the
 compiler's completion and its dependency graph over existing dots. The
-release checklist `habu-qualify-habu-for-9ccd0432` on the hazel line defines
-release quality: full gate green on a byte-fixpoint engine, the recovery
-chain reaching bootstrap check OK, stripped applications green, snapshot
-suites green, silent traps closed, downstream proof on Radar, Tender, Loom
-and Etch, docs current, integration lines advanced and the root engine
-replaced.
+release checklist defines release quality: full gate green on a
+byte-fixpoint engine, the recovery chain reaching bootstrap check OK,
+stripped applications green, snapshot suites green, silent traps closed,
+downstream proof on Radar, Tender, Loom and Etch, docs current, integration
+lines advanced and the root engine replaced.
 
 Campaign content: the PLAN.md graph and the checklist are the children.
 Acceptance for the campaign is the checklist closed plus PLAN.md's
@@ -156,4 +155,7 @@ against the tree.
 | A new rejection for control nests deeper than 32 | already refused: a 33-deep nest exits 70 under `--load` and under `tools/check.f --all-errors` |
 | Unifying every throw row of a quotation | `THROW-EDGE` already folds every throw edge of a body into the intact masks |
 | Residency transfer for a trap's live operands (C6, x86 lane) | only hand-built HIR reaches the refusal: a source trap passes fresh literals and a source `die` lowers as `terminal` |
+| A forged-artifact negative for every reader refusal (C1) | no failure stands behind them; the one defect found, a signed overflow in `AOT-FILE:?TABLE`, landed with its negative |
+| A generator of FFI declarations from C headers (C5) | no consumer: `lib/pg.f` and `lib/net/curl.f` carry fifty hand-written `FUNCTION:` rows that work |
+| `lib/process.f`'s single-descriptor polls moved onto the AIO loop (C5) | only test harnesses call them, and the capture loop under every child run stays on `poll(2)` either way |
 | `TYPE-FIXES-PLAN.md` and `docs/tracker-rebuild.md` | a stalled plan whose rules contradict the tree, and an inventory nothing reads |

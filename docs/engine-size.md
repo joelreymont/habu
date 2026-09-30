@@ -740,6 +740,7 @@ before landing.
 | Clobber summaries persisted in dictionary records | none on its own | useful only with the row above |
 | Small colon words inlined at tier 1 | two of five steps built: +7.8 KB of compiler code, nothing spliced | one sampled call and no measured speed gain, under a rule that the engine must not grow |
 | Span checks elided where the loop bound proves the index | size effect about zero | needs the inliner; no workload measures the checks as a cost, and every build keeps the refusal |
+| A fused data-stack move priced as free when `DPLACE-CHOOSE` places the pointer | not counted; the one known shape, `( -- n n )`, keeps its instruction count | no count of affected routines, and the rule has to change twice, in `select.f` and in the verifier's `VDPLACE-CK` |
 | DATA addresses pooled in island records | at most 88.5 KB of blob: five pages, 3.3% of the file | two kernel primitives, a dictionary record class, a backend stage and an AOT format bump across 17 files |
 
 Two changes from the same set stay, because each did something other than

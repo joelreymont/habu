@@ -1709,9 +1709,12 @@ original engine, not this one.
    timing difference at their new addresses. Controlled placement changes
    reproduce it; the hardware cause is not established. No padding workaround
    is shipped.
-4. **Price fused data-stack transfers when choosing placement.** Section 9's
-   remaining placement-model issue is `1f61860d`. Adjacent opposite stack
-   adjustments are already combined by `d187f629`; do not repeat that fix.
+
+Pricing fused data-stack transfers when choosing placement, section 9's
+remaining placement-model issue, was dropped:
+[engine-size.md](engine-size.md#arm64-code-generation-changes-that-were-removed)
+gives the reason. Adjacent opposite stack adjustments are already combined by
+`d187f629`; do not repeat that fix.
 
 ## Reproducing
 

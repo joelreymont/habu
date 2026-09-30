@@ -1,9 +1,11 @@
 ---
 title: "Exercise real artifact reader refusal branches"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-13T10:53:21.388233+03:00"
+closed-at: "2026-09-30T17:53:07.000000+02:00"
+close-reason: "dropped: asks for negatives against reader refusals with no failure behind them. The one defect it found, a signed overflow in AOT-FILE:?TABLE, landed with its negative at 2b94ee43."
 blocks:
   - habu-preserve-complete-addr-258c0288
   - habu-wire-the-checker-eec26aea

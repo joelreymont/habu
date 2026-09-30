@@ -40,80 +40,10 @@ blocks:
   - habu-deliver-standalone-native-a86d4699
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Owner: Cedar for integration; implementation leaves are unassigned until claimed. This campaign reuses the existing speed work and the current correctness findings, without repeating landed session/allocator/hash work.
+Plan: [PLAN.md](../../PLAN.md) "Required result". Claim: unassigned.
 
 Completion: optimizing native compiler selfbuild/product rebuild, executable compilation independent of JIT invocation, correct first-generation layout and persistence, full native gate and Tender/Etch/Kestrel handoff. REPL/ordinary loader use JIT; AOT builds execute a compiled native compiler.
 
-Speed acceptance: same pinned Tender source, all 3079 definitions counted through NCOMP, no object cache, normal checker/validators, under 1.7 s wall for complete optimizing load and trivial floor below 500 us. Report total executable-build wall including loading/capture/write alongside this target. Record source/bin IDs and actual compiler provenance. Run controlled quiet-machine before/after and per-definition pass curves; use existing Habu tools, no new measurement framework. Historical 153.3→131.6 s and 4106→3668 us used JIT-built compiler and do not prove all-AOT speed. If target still fails, keep campaign open and name measured remaining owner/pass; do not claim a projected sum.
+Speed acceptance: same pinned Tender source, all 3079 definitions counted through NCOMP, no object cache, normal checker/validators, under 1.7 s wall for complete optimizing load and trivial floor below 500 us. Report total executable-build wall including loading/capture/write alongside this target. Record source/bin IDs and actual compiler provenance. Run controlled quiet-machine before/after and per-definition pass curves; use existing Habu tools, no new measurement framework. If target still fails, keep campaign open and name measured remaining owner/pass; do not claim a projected sum.
 
-Each leaf has source ownership, prerequisites and decisive behavior checks.
-Final gate: rebuild exact source and run `bin/hb --load test/run.f`; resolve every
-failure by behavior. PTX/Loom and later cache/digest work are outside this campaign.
-
-Latest full gate: native J, source/runtime 674900c6, SHA
-3146f12e5bcd330ce85728423765c74050cf7f44b2cc801a9abc3adca097017e.
-All 341 suites ran in 432.942 seconds: 329 passed, 12 failed.
-Logs: /tmp/cedar-J-full-suite.{json,log}; individual outputs:
-/tmp/habu-native-suite-1074470298998500-17/.
-
-- tool-boundary-check-repair
-- image-lifecycle-tasks
-- native-window-owner
-- checker-dead-path
-- checker-rollback-sig-pool
-- aot-wid-restore
-- aot-wide-format
-- aot-chain-capture
-- native-fixture-paths
-- build-fixpoint-fixtures
-- engine
-- program-diagnostics
-
-Reviewed fixes after J: source-replay package import depth, required build module
-assembly, growable Gforth primitive registry, private fixture boundaries/control
-flags, and address-cell growth with actual aggregate artifact admission. Root's
-independent focused checks pass. K2 source b8e069a5 built from J in 135.940 s,
-SHA6428d167d119e683322c7f4f17b28cb6f7d10e63ffe38087df49ed355228a68f.
-All eight independent storage/image suites pass; evidence is in
-/tmp/cedar-K2-focused/. Shared-DATA store fix 79563f22 is accepted locally.
-A separate concurrent first-registration race is reproduced through the public
-K2 task API; serialized calls preserve all rows. Scoped diagnostic recovery
-a775e66e/e0562cb2 is independently reviewed, with eight focused native suites
-green, including complete engine and program diagnostics. Fresh combined
-full-gate acceptance is pending.
-
-The real current native builder does not use the old BF phase certifier. The
-maker lane is auditing recovery/fixture consumers before adding machinery to
-restore that pipeline. The emitted payload's retained-prefix type ownership is
-a proven issue, tracked in 369d625d; ordinary duplicate declarations must still
-reject. General warmed source-order binding remains separately in 0c9fe3d7.
-
-Registry candidate P2 (source 6969dc7a, SHA
-ef4a7aa34ada381c90435f98b10298aad4a9030e674cdc5cdc27ec103538ff4c)
-built from G2 in 143.102 seconds. Pinned Tender 4cc58705 public build succeeds
-in 63.822 seconds. Its executable and two recaptures preserve all 76,154 unique
-rows and identical row bytes; the third image restores its public REPL. File and
-DATA sizes still grow, tracked separately in 4e8a865e; this does not establish a
-size fixpoint. Evidence:
-/home/joel/.cache/cedar-capture-rows-u5l55np1/tender-P2/. Accepted downstream
-pins and the uncached speed targets remain unchanged.
-
-Three interleaved append-B/H pairs measured trivial AOT 994/953, 994/953, 996/961 us
-and three-operation 705/645, 707/640, 707/641 us; JIT 29–30 us unchanged, exactly 200
-NCOMP calls each. Own lanes drained; external Etch lint used about 34% CPU. This
-is composed-product evidence, not an isolated reader result or quiet acceptance.
-Frozen OPEN count falls 2895→328 with every read validation retained. Trivial
-<500us, complete uncached Tender timing, combined full gate and downstream
-acceptance remain open. Details and current ownership are in PLAN.md.
-
-
-M composition 99caf411 builds through the optimizing entry on K2 in135.602s,
-SHA9522a8e5685129b17b107bd547dc0797a1f11e0bb3f89f8282b2b8206770b58c.
-All eight focused suites pass, including stable effect/control storage at both
-tiers, three fresh application generations with identical prefix/region/DATA
-extents, concurrent address growth/restore, worker lifecycle, cold owner
-publication, scoped recovery and the complete engine suite. Independent review
-is complete. Exact commands/results: /tmp/cedar-M-focused/. The full native
-gate is running on that exact source/product, logged to
-/tmp/cedar-M-full-suite.log. Final gate, current-writer chain storage and target
-closure, uncached compiler speed and downstream acceptance remain open.
+State: all 66 leaves are closed. Open: the speed acceptance and the downstream handoff. The last measurement this dot recorded, on a composed product and not a quiet machine, put the trivial AOT floor at 953 to 996 us against the 500 us target, with JIT at 29 to 30 us; it records no timing of the complete uncached Tender load on an all-AOT compiler. The integration ledger it used to carry (gate runs J, K2, M and P2 with their `/tmp` logs) is in this file's history.

@@ -1,9 +1,11 @@
 ---
 title: "Capture and restore the source owner's checker payload"
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-13T10:53:21.380871+03:00"
+closed-at: "2026-09-30T17:53:07.000000+02:00"
+close-reason: "done: both payload modes are in production. Partial (mode 1) is what every AOT-ARM:WINDOW-OPEN capture runs, including src/habu/stdin.f:142, which builds the host engine, and tools/aot-chain-capture.f:87; complete (mode 2) is tools/native-build-core.f:230,254. Its six children, the three boundaries it named (89902bde, 8262d7f3, 608449fe) and its blockers are closed, and its focused suites are gate rows."
 blocks:
   - habu-build-engine-layout-abdd0188
   - habu-preserve-complete-addr-258c0288

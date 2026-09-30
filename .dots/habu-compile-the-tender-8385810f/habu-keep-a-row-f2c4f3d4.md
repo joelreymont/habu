@@ -1,9 +1,11 @@
 ---
 title: "Preserve named provider rows when publishing verified effects"
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-13T11:45:43.535614+03:00"
+closed-at: "2026-09-30T17:53:07.000000+02:00"
+close-reason: "done: landed as 799f713bb216 (Preserve declared named-row kinds when publishing verified effects). test/compiler/native-provider-rows.f is a gate row and passes."
 ---
 
 Plan: [PLAN.md](../../PLAN.md). Claim: unassigned (stale claim cleared 2026-09-16). Independent Astra source review accepted; independent native-provider-rows and ir-context real loads pass on private candidate e0f2fee7. Combined rebuild and native gate are next.
