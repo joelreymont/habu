@@ -1580,7 +1580,8 @@ public
    s" create" REFUSE
    s" parse-name" REFUSE
    s" num-parse" REFUSE
-   s" tok-imm?" REFUSE ;
+   s" tok-imm?" REFUSE
+   s" scope-find" REFUSE ;
 
 \ ---- atomics and publication rows --------------------------------------------
 private

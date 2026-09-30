@@ -602,7 +602,7 @@ variable LKWTRUSTED variable LKWTRUSTDECL variable LKWTRUSTRAW variable LKWCHKDO
 variable LKWCAST variable LKWDEFCAST variable LCASTNONAME variable LCOLONNONAME variable LKEYNONAME   \ definition-name diagnostics (mirrors src/habu/habu2.f)
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
 variable LKWEXPORT
-variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
+variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED variable LSCOPEREC
 variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG variable LCHKDEFER
 variable LSIGPTRA variable LSIGA   \ the two effects a raw-storage definer publishes
 variable LRESCHECKCERT variable LRESLOWERCERT variable LRESLOWERHOOK variable LRESENGINEERROR
@@ -1761,6 +1761,12 @@ HB-TARGET-LINUX? [IF]
 : BSWL ( -- ) C-SWL-RESULTS 11 G-PUSH ;
 : BCOMPILERSWL ( -- ) C-SWL-RESULTS 12 G-PUSH ;
 
+\ scope-find ( ptr u8 n -- ptr n ptr n ptr n n ): SCOPE-REC's four answers.
+: BSCOPEFIND ( -- )
+   10 G-POP  9 G-POP
+   LSCOPEREC @ BL,
+   14 G-PUSH  16 G-PUSH  17 G-PUSH  15 G-PUSH ;
+
 : BPARSE-NAME ( -- )
    LBL LBL {: none done :}
    LTOK @ BL,
@@ -1906,6 +1912,7 @@ HB-TARGET-LINUX? [IF]
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
    s" xref-search-wl" ['] BCOMPILERSWL FPRIM-L
+   s" scope-find" ['] BSCOPEFIND FPRIM
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" tok-imm?" ['] BTOKIMM FPRIM ;
@@ -2286,6 +2293,43 @@ HB-TARGET-LINUX? [IF]
       ENGINE-ERROR:USING-AMBIGUOUS C-USING-DIE-TOKEN     \ exit_group: no caller resumes, so the compile
                                                         \ loop's RW code region needs no flip back to RX
    ambmsg LBL,  s" hb: ambiguous bare word resolves in multiple used packages: " BYTES, ;
+
+\ ---- SCOPE-REC ( x9=tka x10=tkl -- x14=bound x16=used x17=used2 x15=flags ) ----
+\ Mirror of src/habu/habu2.f EMIT-SCOPE-REC, the name lookup `scope-find` answers
+\ for the checker, the optimizing compiler and the outer interpreter: FIND, then
+\ the used publics, in the order this engine's own compile path asks them. x14 is
+\ the bound record (FIND's, else the used publics' one; 0 when nothing binds),
+\ x16 the used publics' record, and x15 is 1 when the bound record is a seeded
+\ primitive, below dict[LNCOUNT]. Both leaves here answer found in x13 and leave
+\ x5 undefined on a miss, so x13 decides. The seed's FIND-USED exits on an
+\ ambiguous tail instead of answering flag 2, so no second used record ever
+\ reaches here and x17 is always 0: this transient engine compiles only the
+\ tree, and the native build refuses any ambiguity in it first.
+\ x9/x10 are preserved.
+: EMIT-SCOPE-REC ( -- )
+   LBL LBL LBL LBL {: nofind noused have notseed :}
+   LSCOPEREC @ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,
+   LFIND @ BL,
+   14 0 MOVZ,  13 nofind CBZ,  14 5 0 ADDI,
+   nofind LBL,
+   14 SP 24 STR,
+   9 SP 8 LDR,  10 SP 16 LDR,
+   LFINDUSED @ BL,
+   16 0 MOVZ,  13 noused CBZ,  16 5 0 ADDI,
+   noused LBL,
+   14 SP 24 LDR,  14 have CBNZ,
+      14 16 0 ADDI,                                       \ FIND missed: the used publics bind
+   have LBL,
+   15 0 MOVZ,  17 0 MOVZ,
+   14 notseed CBZ,
+   12 LNCOUNT @ ADR,  12 12 0 LDR,  13 DREC MOVZ,  12 12 13 MUL,  12 DBASE 12 ADD,
+   14 12 CMP,  C-CS notseed BCOND,                        \ at or past dict[LNCOUNT]: not seeded
+      15 1 MOVZ,
+   notseed LBL,
+   9 SP 8 LDR,  10 SP 16 LDR,
+   30 SP 0 LDR,  SP SP 32 ADDI,
+   RET, ;
 
 \ ---- NUMBER? ( x9=tka x10=tkl -- x11=val x12=ok x17=range-refused ) ----
 \ Accepts decimal and $hex, each with an optional leading '-'.  x6=base, x7=digit.
@@ -7729,7 +7773,7 @@ variable P2SK
    ICODE-RESET  0 #PL !  0 PNP !  0 CF-DEF-GUARD !  0 CF-DEF-LMAIN ! ;
 
 : EMIT-LABEL-CORE ( -- )
-   LBL LANCHOR !  LBL LFIND !  LBL LFINDUSED !  LBL LNUM !  LBL LDICT !  LBL LSRC !
+   LBL LANCHOR !  LBL LFIND !  LBL LFINDUSED !  LBL LSCOPEREC !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LADDSUBIMM !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LDIVZERO !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
@@ -7858,6 +7902,7 @@ variable P2SK
    EMIT-FLUSH
    EMIT-FIND
    EMIT-FIND-USED
+   EMIT-SCOPE-REC
    EMIT-NUM ;
 
 : EMIT-DICTIONARY-SECTIONS ( -- )
