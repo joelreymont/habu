@@ -417,6 +417,59 @@ variable PET-START-NS
 : PET-RESOLVE-MISSING-THROWS ( -- )
    [: PET-RESOLVE-MISSING ;] E-PROC-PATH TTHROWSQ ;
 
+\ A row is compared with the room left in its buffer. The ways that rule can
+\ fail: an exact fill refused, one byte past it taken, a negative length taken,
+\ and a length near the maximum cell wrapping the byte count back into range.
+8 constant PET-LEFT                      \ room the boundary rows are tried against
+3 constant PET-ROW-EXTRA                 \ a one-byte name, its `=` and the NUL
+
+: PET-ENV-ROOM ( -- n )
+   PROC-ENV-BUF-CAP PROC-ENV-OFF @ OFF>N - ;
+
+: PET-FILL-ROW ( n -- ) {: take:n :}
+   s" F" >LEN PET-EARLY-IN take PET-ROW-EXTRA - >LEN PROC-ENV-SET ;
+
+\ One name is set again and again, so the buffer fills while the table holds one
+\ row. PET-LEFT bytes stay free.
+: PET-ENV-FILL ( -- )
+   PET-RESET
+   begin PET-ENV-ROOM PET-LEFT - dup PET-EARLY-IN-CAP > while
+      drop PET-EARLY-IN-CAP 2 / PET-FILL-ROW
+   repeat PET-FILL-ROW ;
+
+\ The defaults buffer is PROC-ENV-EXTRA-BYTES, which one row can fill.
+: PET-DEF-FILL ( -- )
+   PET-RESET
+   s" F" >LEN PET-EARLY-IN PROC-ENV-EXTRA-BYTES PET-LEFT - PET-ROW-EXTRA - >LEN PROC-ENV-DEFAULT+ ;
+
+: PET-ENTRY-AT ( n -- ) {: u:n :}
+   PET-ENV-FILL s" AB=cdefg" drop u >LEN PROC-ENV-ENTRY+ ;
+
+: PET-ROW-AT ( n -- ) {: valu:n :}
+   PET-ENV-FILL s" AB" >LEN s" cdefg" drop valu >LEN PROC-ENV+ ;
+
+: PET-DEF-AT ( n -- ) {: valu:n :}
+   PET-DEF-FILL s" AB" >LEN s" cdefg" drop valu >LEN PROC-ENV-DEFAULT+ ;
+
+: PET-ENV-BYTE-BOUNDS ( -- )
+   PET-EARLY-IN!
+   s" an entry fits when its bytes and NUL fit the room left" T-LABEL
+   7 PET-ENTRY-AT PET-ENV-ROOM 0 T=
+   [: 8 PET-ENTRY-AT ;] E-PROC-ENV TTHROWSQ
+   [: -1 PET-ENTRY-AT ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PET-ENTRY-AT ;] E-PROC-ENV TTHROWSQ
+   s" a row fits when its name, value and two terminators fit the room left" T-LABEL
+   4 PET-ROW-AT PET-ENV-ROOM 0 T=
+   [: 5 PET-ROW-AT ;] E-PROC-ENV TTHROWSQ
+   [: -1 PET-ROW-AT ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PET-ROW-AT ;] E-PROC-ENV TTHROWSQ
+   s" a default row fits by the same rule" T-LABEL
+   4 PET-DEF-AT PROC-ENV-DEF-OFF @ OFF>N PROC-ENV-EXTRA-BYTES T=
+   [: 5 PET-DEF-AT ;] E-PROC-ENV TTHROWSQ
+   [: -1 PET-DEF-AT ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PET-DEF-AT ;] E-PROC-ENV TTHROWSQ
+   PET-RESET ;
+
 : PROCESS-ENV-TEST-MAIN ( -- )
    T-RESET
    s" env-child" [: PET-RUN-ENV-CHILD ;] PET-CASE
@@ -443,6 +496,7 @@ variable PET-START-NS
    s" bad-env-name" [: PET-BAD-ENV-NAME-THROWS ;] PET-CASE
    s" bad-env-entry" [: PET-BAD-ENV-ENTRY-THROWS ;] PET-CASE
    s" bad-env-empty" [: PET-BAD-ENV-EMPTY-THROWS ;] PET-CASE
+   s" env-byte-bounds" [: PET-ENV-BYTE-BOUNDS ;] PET-CASE
    s" path-find-hb" [: PET-PATH-FIND-HB ;] PET-CASE
    s" path-direct-hb" [: PET-PATH-DIRECT-HB ;] PET-CASE
    s" path-missing" [: PET-PATH-MISSING ;] PET-CASE

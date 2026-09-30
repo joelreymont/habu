@@ -93,9 +93,12 @@ public
 
 : ENCODE ( ptr u8 n SPAN:span<u8> -- n ) {: a u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
+   \ The input is compared with what the span holds, three bytes to four of
+   \ reach: scaled up first, a length near the maximum cell wraps the encoded
+   \ size negative and every span looks large enough.
+   s SPAN:$ 4 / 3 * u < if E-SPAN-CAPACITY throw then {: out :}
    u 2 + 3 / {: groups:n :}
    groups 4 * {: len:n :}
-   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out :}
    groups 0 ?do
       u i 3 * - 3 min {: k:n :}
       a i 3 * + k GATHER out i 4 * + k SCATTER

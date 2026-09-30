@@ -366,6 +366,51 @@ CMD:COMMAND PCMDT-CMD
    b CMD:BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    h BYTE-VIEW CMD:VEC-CELLS cells MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
+\ A context's argument and environment bytes are fixed regions, and a row is
+\ compared with the room left in its region: an exact fill is taken, one byte
+\ past it is refused, and neither a negative length nor one near the maximum
+\ cell gets past the rule. One fill serves both, so it spans the larger region.
+PROC-ENV-EXTRA-BYTES PROC-ARGV-BUF-CAP max constant PCMDT-FILL-LEN
+create PCMDT-FILL PCMDT-FILL-LEN allot
+
+: PCMDT-FILL! ( -- )
+   PCMDT-FILL-LEN 0 ?do 120 PCMDT-FILL i + c! loop
+   61 PCMDT-FILL 1+ c! ;                 \ "x=xxx...": an entry at any length from two
+
+: PCMDT-ENTRY-AT ( n -- ) {: u:n :}
+   PROC-CMD:RESET PCMDT-FILL u PCMDT-ENV-ENTRY+ ;
+
+: PCMDT-ENV-AT ( n -- ) {: valu:n :}
+   PROC-CMD:RESET s" N" PCMDT-FILL valu PCMDT-ENV+ ;
+
+: PCMDT-ENV-BYTE-BOUNDS ( -- )
+   PCMDT-FILL!
+   s" an env entry fits when its bytes and NUL fit the region" T-LABEL
+   [: PROC-ENV-EXTRA-BYTES 1- PCMDT-ENTRY-AT ;] catch 0 T=
+   [: PROC-ENV-EXTRA-BYTES PCMDT-ENTRY-AT ;] E-PROC-ENV TTHROWSQ
+   [: -1 PCMDT-ENTRY-AT ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PCMDT-ENTRY-AT ;] E-PROC-ENV TTHROWSQ
+   s" an env row fits when its name, value and two terminators fit the region" T-LABEL
+   [: PROC-ENV-EXTRA-BYTES 3 - PCMDT-ENV-AT ;] catch 0 T=
+   [: PROC-ENV-EXTRA-BYTES 2 - PCMDT-ENV-AT ;] E-PROC-ENV TTHROWSQ
+   [: -1 PCMDT-ENV-AT ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PCMDT-ENV-AT ;] E-PROC-ENV TTHROWSQ
+   PROC-CMD:RESET ;
+
+\ The argument region is PROC-ARGV-BUF-CAP bytes, and PROC-ZCOPY alone compares
+\ an argument and its NUL with the room left in it.
+: PCMDT-ARG-AT ( n -- ) {: u:n :}
+   PROC-CMD:RESET PCMDT-FILL u >LEN PROC-CMD:ARG+ ;
+
+: PCMDT-ARG-BYTE-BOUNDS ( -- )
+   PCMDT-FILL!
+   s" an argument fits when its bytes and NUL fit the region" T-LABEL
+   [: PROC-ARGV-BUF-CAP 1- PCMDT-ARG-AT ;] catch 0 T=
+   [: PROC-ARGV-BUF-CAP PCMDT-ARG-AT ;] E-PROC-OUTPUT TTHROWSQ
+   [: -1 PCMDT-ARG-AT ;] E-PROC-OUTPUT TTHROWSQ
+   [: MEM-MAX-N PCMDT-ARG-AT ;] E-PROC-OUTPUT TTHROWSQ
+   PROC-CMD:RESET ;
+
 : PROCESS-COMMAND-TEST-MAIN ( -- )
    T-RESET
    PROC-CMD:TEST-WIPE
@@ -383,6 +428,8 @@ CMD:COMMAND PCMDT-CMD
    [: PCMDT-TOO-MANY-ARGS ;] E-PROC-OUTPUT TTHROWSQ
    [: PCMDT-BAD-ENV-NAME ;] E-PROC-ENV TTHROWSQ
    [: PCMDT-BAD-ENV-ENTRY ;] E-PROC-ENV TTHROWSQ
+   PCMDT-ENV-BYTE-BOUNDS
+   PCMDT-ARG-BYTE-BOUNDS
    PROC-CMD:TEST-WIPE-AFTER-REFUSAL
    PCMDT-CMD CMD:TEST-WIPE
    PCMDT-CMD PCMDT-H-PRINTF

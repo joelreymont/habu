@@ -355,8 +355,9 @@ public
 
 : FS-MUT-BUILD-ATOMIC-TMP ( ptr u8 n n n -- ptr u8 n ) {: path:ptr pathu seed attempt :}
    pathu 0 < if E-FS-PATH throw then
-   pathu 6 + seed FS-MUT-U-DIGITS + attempt FS-MUT-U-DIGITS +
-   FS-PATH-CAP > if E-SPAN-CAPACITY throw then
+   pathu FS-PATH-CAP 6 - seed FS-MUT-U-DIGITS - attempt FS-MUT-U-DIGITS - > if
+      E-SPAN-CAPACITY throw
+   then
    FS-MUT-ATOMIC-PATH {: dst :}
    path pathu dst SPAN:COPY
    s" .tmp-" dst pathu SPAN:SKIP SPAN:COPY

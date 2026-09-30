@@ -156,11 +156,10 @@ private
 
 \ An argument is copied NUL-terminated into the context's ARG-BUF and its
 \ address installed straight into the argv vector: no lib/process-argv.f
-\ staging is on this path.
+\ staging is on this path. PROC-ZCOPY is handed the room left and makes the fit
+\ rule, so no second one is kept here to drift from it.
 : ARG-ZCOPY ( ptr ptr u8 ptr u8 len -- ptr u8 ) {: h:ptr a:ptr u:len :}
-   u LEN>N 0 < if E-PROC-OUTPUT throw then
    h ARG-OFF-CELL @ {: off:n :}
-   off u LEN>N 1 + + ARG-BUF-CAP > if E-PROC-OUTPUT throw then
    a u h ARG-BUF off + ARG-BUF-CAP off - >LEN PROC-ZCOPY {: z:ptr :}
    off u LEN>N 1 + + h ARG-OFF-CELL !
    z ;
@@ -203,7 +202,7 @@ private
 : ENV-STORE-Z ( ptr ptr u8 ptr u8 len -- ptr u8 ) {: h:ptr a:ptr u:len :}
    u LEN>N 0 < if E-PROC-ENV throw then
    h ENV-OFF-CELL @ {: off:n :}
-   off u LEN>N 1 + + ENV-BUF-CAP > if E-PROC-ENV throw then
+   off u PROC-ENV-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
    a h ENV-BUF off + u LEN>N BYTE-COPY
    0 h ENV-BUF off + u LEN>N + c!
    off u LEN>N 1 + + h ENV-OFF-CELL !
@@ -222,7 +221,7 @@ public
    valu LEN>N 0 < if E-PROC-ENV throw then
    h ENV-CHECK-EXTRA
    h ENV-OFF-CELL @ {: off:n :}
-   off nameu LEN>N valu LEN>N + 2 + + ENV-BUF-CAP > if E-PROC-ENV throw then
+   off nameu PROC-ENV-NEED valu PROC-ENV-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
    name h ENV-BUF off + nameu LEN>N BYTE-COPY
    PROC-ENV-EQUAL h ENV-BUF off + nameu LEN>N + c!
    val h ENV-BUF off + nameu LEN>N + 1 + valu LEN>N BYTE-COPY

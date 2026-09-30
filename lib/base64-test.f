@@ -7,6 +7,7 @@
 \ an oracle this file does not share.
 
 require lib/test.f
+require lib/memory.f
 require lib/span.f
 require lib/base64.f
 require lib/crypto/sha1.f
@@ -148,7 +149,9 @@ variable STAGED-LEN
    s" ENCODE refuses a negative length" T-LABEL
    [: 0 OUT$ drop -1 OUT BASE64:ENCODE drop ;] E-SPAN-LENGTH TTHROWSQ
    s" DECODE refuses a negative length" T-LABEL
-   [: 0 OUT$ drop -1 OUT BASE64:DECODE drop ;] E-SPAN-LENGTH TTHROWSQ ;
+   [: 0 OUT$ drop -1 OUT BASE64:DECODE drop ;] E-SPAN-LENGTH TTHROWSQ
+   s" ENCODE refuses a length whose encoded size wraps" T-LABEL
+   [: 0 OUT$ drop MEM-MAX-N 2 - OUT BASE64:ENCODE drop ;] E-SPAN-CAPACITY TTHROWSQ ;
 
 \ RFC 6455 section 1.3: the key decodes to sixteen bytes, and the accept value
 \ is the base64 of SHA-1 over the key and the protocol's GUID, fed as a server

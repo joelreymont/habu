@@ -139,6 +139,16 @@ variable PAT-I
 : PAT-HUGE-ARG ( -- )
    PROC-ARGV-RESET PAT-LONG MEM-MAX-N >LEN PROC-ARGV+ ;
 
+\ The path rule can fail the same ways: an exact fill refused, one byte past it
+\ taken, a negative length taken, and a length whose NUL wraps the sum back into
+\ range.
+: PAT-PATH-BOUNDS ( -- )
+   s" a path fits when its bytes and NUL fit PROC-PATHZ-CAP" T-LABEL
+   [: PAT-LONG PROC-PATHZ-CAP 1- >LEN PROC-ARGV-CHECK-PATH ;] catch 0 T=
+   [: PAT-LONG PROC-PATHZ-CAP >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ
+   [: PAT-LONG -1 >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ
+   [: PAT-LONG MEM-MAX-N >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ ;
+
 : PAT-RUN-ARGV-CAPTURE ( -- )
    PROC-ARGV-RESET
    s" %s:%s"  >LEN PROC-ARGV+
@@ -298,6 +308,7 @@ variable PAT-SAVED-STDIN
    PAT-FITS-BOUNDS
    [: PAT-NEG-ARG ;] E-PROC-OUTPUT TTHROWSQ
    [: PAT-HUGE-ARG ;] E-PROC-OUTPUT TTHROWSQ
+   PAT-PATH-BOUNDS
    PAT-RUN-ARGV-CAPTURE
    PAT-RUN-ARGV-CAPTURE-RESULT
    PAT-RUN-ARGV-CAPTURE-EXACT
