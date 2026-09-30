@@ -1,6 +1,6 @@
 ---
 title: Emit the x86 dictionary index and search rows
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T09:22:47.250064+03:00"

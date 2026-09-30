@@ -16,7 +16,6 @@ blocks:
   - habu-emit-x86-code-973a0074
   - habu-model-the-code-c40c75d1
   - habu-emit-x86-heap-0b1d01f0
-  - habu-emit-the-x86-f74e1d26
   - habu-add-sysv-ffi-17a130a1
   - habu-add-sysv-abi-75f86980
   - habu-add-the-x86-efc81b26

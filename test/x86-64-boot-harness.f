@@ -109,6 +109,64 @@ public
    RDI ZERO-REG,
    WRITE-ELF ;
 
+private
+
+: DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
+: NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
+
+\ One cell of an inline name: up to eight of its bytes from byte `at`,
+\ little-endian, zero past its end.
+: NAME-CELL ( ptr u8 n n -- n ) {: a:ptr u:n at:n :}
+   0  CELL 0 ?do
+      at i + u < if  a at i + + c@  i 8 * lshift  or  then
+   loop ;
+
+\ Store n into the cell at an offset in rax's record, through rcx.
+: ROW!, ( n n -- ) {: v:n off:n :}
+   RCX v IMM
+   RCX RAX off MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+\ The address of a name's bytes, which sit in the text behind a jump.
+: NAME-TEXT, ( ptr u8 n -- label ) {: a:ptr u:n :}
+   LBL LBL {: text:label past:label :}
+   past JMP,
+   text LBL,
+   a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
+   past LBL,
+   text ;
+
+public
+
+\ Seed record r14 of the dictionary at r13 + r14 * DREC with a name, a wid and
+\ flags, and count it, laid out as X64KERNEL's record cells name them: the
+\ flags or'd with the name's length, the name inline when it fits DNAME-INL
+\ bytes and otherwise a pointer to its bytes with DNAME-EXT set, and the wid.
+\ The code cell holds the record's ordinal, its index plus one, so a found
+\ record's code is never 0, the answer for an absent name. The booted region is
+\ read-write. It clobbers rax and rcx.
+: RECORD, ( ptr u8 n n n -- ) {: a:ptr u:n wid:n flags:n :}
+   RAX NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RAX DBASE-REG ASM-SINK ENC-ADD-RR
+   RCX NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
+   RCX RAX X64KERNEL:REC-CODE MEM-OFF ASM-SINK ENC-MOV-MR
+   u DNAME-INL > if
+      flags u or DNAME-EXT or X64KERNEL:REC-FLAGS ROW!,
+      RCX a u NAME-TEXT, MOVABS,
+      RCX RAX X64KERNEL:REC-NAME MEM-OFF ASM-SINK ENC-MOV-MR
+   else
+      flags u or X64KERNEL:REC-FLAGS ROW!,
+      a u 0 NAME-CELL X64KERNEL:REC-NAME ROW!,
+      a u CELL NAME-CELL X64KERNEL:REC-NAME CELL + ROW!,
+   then
+   wid X64KERNEL:REC-WID ROW!,
+   NDICT-REG ASM-SINK ENC-INC ;
+
+\ Pop a cell and check it is the address of record n.
+: EXPECT-ROW, ( n -- ) {: ix:n :}
+   0 G-POP
+   RAX DBASE-REG ASM-SINK ENC-SUB-RR
+   ix DREC * EXPECT, ;
+
 ;using
 ;using
 ;using

@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.586158+03:00"
-blocks:
-  - habu-emit-the-x86-f74e1d26
 ---
 
 Problem: the kernel has no engine-state rows.
