@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.594682+03:00"
-blocks:
-  - habu-emit-x86-control-9a35e3b3
 ---
 
 Problem: `src/habu/crash.f:30-36` and `src/habu/prof.f:47-50` model aarch64 signal frames only; the x86 kernel installs no handler. Split from habu-port-the-ffi-676f745d (signal frame decoding); K10b and K10c build on it.

@@ -7,7 +7,6 @@ created-at: "2026-09-29T12:51:36.749146+03:00"
 blocks:
   - habu-run-a-captured-15728fcc
   - habu-boot-the-arm64-d0d4421a
-  - habu-emit-x86-control-9a35e3b3
   - habu-add-sysv-ffi-17a130a1
 ---
 

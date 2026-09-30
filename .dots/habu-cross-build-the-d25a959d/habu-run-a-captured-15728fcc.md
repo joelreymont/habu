@@ -8,7 +8,6 @@ blocks:
   - habu-select-the-build-610b4492
   - habu-resolve-x86-entry-cb671d4d
   - habu-emit-x86-pure-f70fb84b
-  - habu-emit-x86-control-9a35e3b3
   - habu-emit-x86-engine-86b5f8e7
   - habu-emit-x86-float-38de4a6f
   - habu-emit-x86-process-8e1f6f84

@@ -689,6 +689,7 @@ $5402 constant TCSETS
 
 : DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 : POP, ( r64 -- ) R64>N G-POP ;
+: PUSH, ( r64 -- ) R64>N G-PUSH ;
 : DROP, ( -- ) DSP CELL >IMM8 ASM-SINK ENC-SUB-RI8 ;
 : AT-FDCWD, ( r64 -- ) AT-FDCWD >IMM32 ASM-SINK ENC-MOV-RI32 ;
 : SYS-PUSH, ( n -- ) SYS, SYS-PUSH ;
@@ -958,11 +959,304 @@ public
    s" getpid" [: NR-GETPID SYS-PUSH, ;] PRIM ;
 
 \ ---- control rows ------------------------------------------------------------
-\ `evaluate` jumps into habu2.f's interpreter on ARM64, which the x86-64 engine
-\ never has. Lane I provides it in Habu; until then its row refuses, and the
-\ registration is what ENGINE-PRIMS:COMPLETE needs meanwhile.
+\ The catch frame, STACK-ABI:CATCH-BYTES on the machine stack and chained
+\ through HND-CELL, laid out as habu1.f BCATCH lays it: the byte offsets of its
+\ cells below STACK-ABI:CATCH-BASE and CATCH-CAP.
+0 constant CATCH-PREV       \ the handler this one hides
+8 constant CATCH-DSP        \ the data stack pointer once the xt is popped
+16 constant CATCH-MSP       \ rsp at CAUGHT,'s entry, above the frame
+24 constant CATCH-RESUME    \ where a throw resumes, the code in rax
+32 constant CATCH-RET       \ the cell at CATCH-MSP, as BCATCH saves x30
+40 constant CATCH-RDEPTH    \ RSP-CELL, the return stack's depth
+48 constant CATCH-LDEPTH    \ LOOPSP-CELL, the loop stack's depth
+56 constant CATCH-SENTINEL  \ STACK-ABI:CATCH-MAGIC
+
+\ The twins of habu1.f BEXEC, BEXECFLOOR, B2TOR, B2RFROM, B2RFETCH, BCATCH,
+\ BTHROW, BFINALLY, BRUNSTACK and BDIE. An xt is a code address a body enters
+\ by `call`; the code it runs owns every scratch register, so what a body needs
+\ after the call waits on the machine stack.
+
+private
+
+\ mov r, [base + off] and mov [base + off], r.
+: MOV-LOAD, ( r64 r64 n -- ) {: r:r64 base:r64 off:n :}
+   r base off MEM-OFF ASM-SINK ENC-MOV-RM ;
+: MOV-STORE, ( r64 r64 n -- ) {: r:r64 base:r64 off:n :}
+   r base off MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+: CORRUPT$ ( -- ptr u8 n ) s" hb: catch frame corrupt" ;
+
+\ run-in-stack's frame: the caller's data stack pointer and descriptor.
+0 constant RUN-DSP
+8 constant RUN-BASE
+16 constant RUN-CAP
+24 constant RUN-BYTES
+
+\ Exit with rdi when it is a status in [n, 255], and with UNCAUGHT-RC otherwise:
+\ the kernel would keep only the low byte, so a negative code could exit 0.
+\ The tails of habu1.f BDIE (n = 0) and BTHROW (n = 1).
+: RC-EXIT, ( n -- ) {: lo:n :}
+   LBL {: wide:label :}
+   RAX RDI lo negate MEM-OFF ASM-SINK ENC-LEA
+   RAX 255 lo - >IMM32 ASM-SINK ENC-CMP-RI32  C-A wide JCC,
+   NR-EXIT-GROUP SYS,
+   wide LBL,
+   UNCAUGHT-RC EXIT-GROUP, ;
+
+\ execute-floor ( n -- bool ): call the xt, then answer whether it left the
+\ data stack below the base in S0-CELL. Below, the stack is reset to the base
+\ before the flag is pushed, so the push lands at the base and not on the low
+\ guard page.
+: EXECUTE-FLOOR, ( -- )
+   LBL {: above:label :}
+   RAX POP,  RAX ASM-SINK ENC-CALL-REG
+   RCX ZERO-REG,
+   RAX DATA-REG S0-CELL MOV-LOAD,
+   DSP RAX ASM-SINK ENC-CMP-RR  C-AE above JCC,
+   DSP RAX ASM-SINK ENC-MOV-RR
+   RCX -1 >IMM32 ASM-SINK ENC-MOV-RI32
+   above LBL,
+   RCX PUSH, ;
+
+\ The return stack is RSP-CELL cells deep from the base in
+\ STACK-ABI:RETURN-BASE-CELL, as habu1.f RSTK-PUSH and RSTK-POP address it; a
+\ push past RETURN-CELLS lands on its guard page. RSTACK, loads the depth into
+\ rcx and the base into rsi, and RSLOT is the cell n cells past the depth.
+: RSTACK, ( -- )
+   RCX DATA-REG RSP-CELL MOV-LOAD,
+   RSI DATA-REG STACK-ABI:RETURN-BASE-CELL MOV-LOAD, ;
+: RSLOT ( n -- mem ) {: k:n :} RSI RCX CELL k CELL * MEM-IDX ;
+
+\ 2>r ( n n -- ), R: ( -- n n ).
+: 2>R, ( -- )
+   RDX POP,  RAX POP,  RSTACK,
+   RAX 0 RSLOT ASM-SINK ENC-MOV-MR  RDX 1 RSLOT ASM-SINK ENC-MOV-MR
+   RCX 2 >IMM8 ASM-SINK ENC-ADD-RI8  RCX DATA-REG RSP-CELL MOV-STORE, ;
+
+\ 2r> ( -- n n ), R: ( n n -- ).
+: 2R>, ( -- )
+   RSTACK,
+   RCX 2 >IMM8 ASM-SINK ENC-SUB-RI8  RCX DATA-REG RSP-CELL MOV-STORE,
+   RAX 0 RSLOT ASM-SINK ENC-MOV-RM  RDX 1 RSLOT ASM-SINK ENC-MOV-RM
+   RAX PUSH,  RDX PUSH, ;
+
+\ 2r@ ( -- n n ), R: ( n n -- n n ).
+: 2R@, ( -- )
+   RSTACK,
+   RAX -2 RSLOT ASM-SINK ENC-MOV-RM  RDX -1 RSLOT ASM-SINK ENC-MOV-RM
+   RAX PUSH,  RDX PUSH, ;
+
+\ Pop an xt and call it under a catch frame, leaving 0 in rax when it returns
+\ and its throw's code when it throws: the twin of BCATCH before its push. The
+\ frame saves the caller's whole execution state, links in as the handler and
+\ is unlinked on the return; a throw restores the state, unlinks the frame and
+\ resumes after the unlink with the code in rax.
+: CAUGHT, ( -- )
+   LBL {: resume:label :}
+   RAX POP,
+   RSP STACK-ABI:CATCH-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
+   RCX DATA-REG HND-CELL MOV-LOAD,  RCX RSP CATCH-PREV MOV-STORE,
+   DSP RSP CATCH-DSP MOV-STORE,
+   RCX RSP STACK-ABI:CATCH-BYTES MEM-OFF ASM-SINK ENC-LEA
+   RCX RSP CATCH-MSP MOV-STORE,
+   RDX RCX 0 MOV-LOAD,  RDX RSP CATCH-RET MOV-STORE,
+   RCX resume MOVABS,  RCX RSP CATCH-RESUME MOV-STORE,
+   RCX DATA-REG RSP-CELL MOV-LOAD,  RCX RSP CATCH-RDEPTH MOV-STORE,
+   RCX DATA-REG LOOPSP-CELL MOV-LOAD,  RCX RSP CATCH-LDEPTH MOV-STORE,
+   RCX STACK-ABI:CATCH-MAGIC >IMM64 ASM-SINK ENC-MOV-RI64
+   RCX RSP CATCH-SENTINEL MOV-STORE,
+   RCX DATA-REG STACK-ABI:BASE-CELL MOV-LOAD,
+   RCX RSP STACK-ABI:CATCH-BASE MOV-STORE,
+   RCX DATA-REG STACK-ABI:CAP-CELL MOV-LOAD,
+   RCX RSP STACK-ABI:CATCH-CAP MOV-STORE,
+   RSP DATA-REG HND-CELL MOV-STORE,
+   RAX ASM-SINK ENC-CALL-REG
+   RCX RSP CATCH-PREV MOV-LOAD,  RCX DATA-REG HND-CELL MOV-STORE,
+   RSP STACK-ABI:CATCH-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
+   RAX ZERO-REG,
+   resume LBL, ;
+
+\ Admit the handler frame in rdx before any store: its sentinel, both depths
+\ within their stacks' capacities, and its data stack's descriptor and cursor
+\ with room for a cell. A frame that fails branches to the label.
+: FRAME-OK, ( label -- ) {: bad:label :}
+   RCX STACK-ABI:CATCH-MAGIC >IMM64 ASM-SINK ENC-MOV-RI64
+   RCX RDX CATCH-SENTINEL MEM-OFF ASM-SINK ENC-CMP-RM  C-NE bad JCC,
+   RCX STACK-ABI:RETURN-CELLS IMM32,
+   RCX RDX CATCH-RDEPTH MEM-OFF ASM-SINK ENC-CMP-RM  C-B bad JCC,
+   RCX STACK-ABI:LOOP-FRAMES IMM32,
+   RCX RDX CATCH-LDEPTH MEM-OFF ASM-SINK ENC-CMP-RM  C-B bad JCC,
+   RSI RDX STACK-ABI:CATCH-BASE MOV-LOAD,
+   RDI RDX STACK-ABI:CATCH-CAP MOV-LOAD,
+   R8 RDX CATCH-DSP MOV-LOAD,
+   RSI RDI R8 CELL bad CHECK-CURSOR ;
+
+\ Restore the execution state the frame in rdx saved, unlink it and resume
+\ where CAUGHT, left, with the code still in rax.
+: RESUME, ( -- )
+   DSP RDX CATCH-DSP MOV-LOAD,
+   RCX RDX STACK-ABI:CATCH-BASE MOV-LOAD,
+   RCX DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
+   RCX RDX STACK-ABI:CATCH-CAP MOV-LOAD,
+   RCX DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
+   RCX RDX CATCH-RDEPTH MOV-LOAD,  RCX DATA-REG RSP-CELL MOV-STORE,
+   RCX RDX CATCH-LDEPTH MOV-LOAD,  RCX DATA-REG LOOPSP-CELL MOV-STORE,
+   RCX RDX CATCH-PREV MOV-LOAD,  RCX DATA-REG HND-CELL MOV-STORE,
+   RCX RDX CATCH-RET MOV-LOAD,
+   RSI RDX CATCH-RESUME MOV-LOAD,
+   RSP RDX CATCH-MSP MOV-LOAD,
+   RCX RSP 0 MOV-STORE,
+   RSI ASM-SINK ENC-JMP-REG ;
+
+\ No handler: call the reporter xt in UNCGH-CELL, when one is installed, with
+\ the code on the data stack, and then exit with the code, which waited on the
+\ machine stack.
+: UNCAUGHT, ( -- )
+   LBL {: bare:label :}
+   RAX ASM-SINK ENC-PUSH
+   RCX DATA-REG UNCGH-CELL MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E bare JCC,
+   RAX PUSH,  RCX ASM-SINK ENC-CALL-REG
+   bare LBL,
+   RDI ASM-SINK ENC-POP
+   1 RC-EXIT, ;
+
+\ Throw the code in rax: BTHROW without its evaluate and REPL arms, which jump
+\ into habu2.f routines the x86-64 engine never has. Habu's `evaluate`
+\ recovers through `catch`. A handler's frame is admitted, restored and resumed;
+\ one that fails its admission writes `hb: catch frame corrupt` on fd 2 and
+\ exits ENGINE-ERROR:CATCH-STACK. The text follows the exit.
+: THROW, ( -- )
+   LBL LBL LBL {: none:label corrupt:label msg:label :}
+   RDX DATA-REG HND-CELL MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E none JCC,
+   corrupt FRAME-OK,
+   RESUME,
+   none LBL,
+   UNCAUGHT,
+   corrupt LBL,
+   RDI STDERR IMM32,  RSI msg MOVABS,  RDX CORRUPT$ nip IMM32,  NR-WRITE SYS,
+   ENGINE-ERROR:CATCH-STACK EXIT-GROUP,
+   msg LBL,
+   CORRUPT$ TEXT, ;
+
+\ finally ( xt xt -- ): run the body under CAUGHT, and then the cleanup outside
+\ it, so the cleanup's throw supersedes the body's; then rethrow the body's
+\ code unless it is 0. The cleanup's xt and then the code wait in a two-cell
+\ frame, which a throw inside the body leaves in place.
+: FINALLY, ( -- )
+   LBL {: done:label :}
+   RAX POP,
+   RSP 2 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX RSP 0 MOV-STORE,
+   CAUGHT,
+   RAX RSP CELL MOV-STORE,
+   RAX RSP 0 MOV-LOAD,  RAX ASM-SINK ENC-CALL-REG
+   RAX RSP CELL MOV-LOAD,
+   RSP 2 CELL * >IMM8 ASM-SINK ENC-ADD-RI8
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   THROW,
+   done LBL, ;
+
+\ Branch to the label unless the registers name an extent a guarded stack
+\ mapping could be: habu1.f GUARDED-EXTENT?. The base and the capacity are
+\ nonzero and STACK-ABI:PAGE-BYTES aligned, their sum does not wrap, and the
+\ base lies outside DATA, where every create, allot and buffer address lies, so
+\ no dictionary buffer passes however it is aligned. Clobbers rsi and rdi.
+: GUARDED-EXTENT, ( r64 r64 label -- ) {: base:r64 cap:r64 bad:label :}
+   STACK-ABI:PAGE-BYTES 1- {: mask:n :}
+   base base ASM-SINK ENC-TEST-RR  C-E bad JCC,
+   cap cap ASM-SINK ENC-TEST-RR  C-E bad JCC,
+   base mask >IMM32 ASM-SINK ENC-TEST-RI32  C-NE bad JCC,
+   cap mask >IMM32 ASM-SINK ENC-TEST-RI32  C-NE bad JCC,
+   RSI base cap 1 0 MEM-IDX ASM-SINK ENC-LEA
+   RSI base ASM-SINK ENC-CMP-RR  C-B bad JCC,
+   RDI base ASM-SINK ENC-MOV-RR
+   RSI DATA-VA VA>N >IMM64 ASM-SINK ENC-MOV-RI64
+   RDI RSI ASM-SINK ENC-SUB-RR
+   RSI DATA-SIZE >IMM64 ASM-SINK ENC-MOV-RI64
+   RDI RSI ASM-SINK ENC-CMP-RR  C-B bad JCC, ;
+
+\ run-in-stack ( xt ptr u8 n -- ): run the xt on the extent as its data stack.
+\ An extent that is not a guarded mapping is the caller's error, so it throws
+\ STACK-ABI:E-STACK-UNGUARDED over the three cells, as BRUNSTACK does. The
+\ extent becomes the data stack and its descriptor for the call; on the return
+\ the caller's saved descriptor and cursor are admitted, since nothing proves
+\ what the callback left of them, and restored.
+: RUN-IN-STACK, ( -- )
+   LBL LBL LBL {: unguarded:label bad:label done:label :}
+   RAX DSP -3 CELL * MOV-LOAD,
+   RDX DSP -2 CELL * MOV-LOAD,
+   RCX DSP CELL negate MOV-LOAD,
+   RDX RCX unguarded GUARDED-EXTENT,
+   DSP 3 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
+   RSP RUN-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   DSP RSP RUN-DSP MOV-STORE,
+   RSI DATA-REG STACK-ABI:BASE-CELL MOV-LOAD,  RSI RSP RUN-BASE MOV-STORE,
+   RSI DATA-REG STACK-ABI:CAP-CELL MOV-LOAD,  RSI RSP RUN-CAP MOV-STORE,
+   RDX DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
+   RCX DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
+   DSP RDX ASM-SINK ENC-MOV-RR
+   RAX ASM-SINK ENC-CALL-REG
+   RSI RSP RUN-BASE MOV-LOAD,  RDI RSP RUN-CAP MOV-LOAD,  RDX RSP RUN-DSP MOV-LOAD,
+   RSI RDI RDX 0 bad CHECK-CURSOR
+   RSI DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
+   RDI RSP RUN-CAP MOV-LOAD,  RDI DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
+   DSP RSP RUN-DSP MOV-LOAD,
+   RSP RUN-BYTES >IMM8 ASM-SINK ENC-ADD-RI8
+   done JMP,
+   unguarded LBL,
+   RAX STACK-ABI:E-STACK-UNGUARDED >IMM32 ASM-SINK ENC-MOV-RI32
+   THROW,
+   bad LBL,
+   EXIT-BOUNDS
+   done LBL, ;
+
+\ die ( ptr u8 n n -- ): the message and LF on fd 2 when its length is
+\ positive, then the exit hook, then the exit. The rc waits on the machine
+\ stack, and the LF is a cell pushed there for its write. The hook's cell is
+\ cleared before the call (layout.f EXIT-HOOK-CELL, habu2.f EMIT-EXITHOOK), so
+\ a hook that dies or throws finds it empty.
+: DIE, ( -- )
+   LBL LBL {: quiet:label bare:label :}
+   RAX POP,  RDX POP,  RSI POP,
+   RAX ASM-SINK ENC-PUSH
+   RDX RDX ASM-SINK ENC-TEST-RR  C-LE quiet JCC,
+   RDI STDERR IMM32,  NR-WRITE SYS,
+   RCX STR-LF IMM32,  RCX ASM-SINK ENC-PUSH
+   RDI STDERR IMM32,  RSI RSP ASM-SINK ENC-MOV-RR  RDX 1 IMM32,  NR-WRITE SYS,
+   RCX ASM-SINK ENC-POP
+   quiet LBL,
+   RAX DATA-REG EXIT-HOOK-CELL MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E bare JCC,
+   RCX ZERO-REG,  RCX DATA-REG EXIT-HOOK-CELL MOV-STORE,
+   RAX ASM-SINK ENC-CALL-REG
+   bare LBL,
+   RDI ASM-SINK ENC-POP
+   0 RC-EXIT, ;
+
+public
+
+\ The interpreter-bound rows jump into habu2.f's interpreter on ARM64, which
+\ the x86-64 engine never has. Lane I provides each in Habu; until then each
+\ row refuses, and the registration is what ENGINE-PRIMS:COMPLETE needs
+\ meanwhile.
 : CONTROL, ( -- )
-   s" evaluate" REFUSE ;
+   s" execute" [: RAX POP,  RAX ASM-SINK ENC-CALL-REG ;] PRIM
+   s" execute-floor" [: EXECUTE-FLOOR, ;] PRIM
+   s" 2>r" [: 2>R, ;] PRIM
+   s" 2r>" [: 2R>, ;] PRIM
+   s" 2r@" [: 2R@, ;] PRIM
+   s" catch" [: CAUGHT,  RAX PUSH, ;] PRIM
+   s" throw" [: RAX POP,  THROW, ;] PRIM
+   s" finally" [: FINALLY, ;] PRIM
+   s" run-in-stack" [: RUN-IN-STACK, ;] PRIM
+   s" die" [: DIE, ;] PRIM
+   s" evaluate" REFUSE
+   s" create" REFUSE
+   s" parse-name" REFUSE
+   s" num-parse" REFUSE
+   s" tok-imm?" REFUSE ;
 
 \ ---- atomics and publication rows --------------------------------------------
 private
@@ -1060,8 +1354,6 @@ public
 private
 
 : CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
-
-: PUSH, ( r64 -- ) R64>N G-PUSH ;
 
 \ Load and store the DATA cell at an offset.
 : CELL@, ( r64 n -- ) {: r:r64 off:n :}
