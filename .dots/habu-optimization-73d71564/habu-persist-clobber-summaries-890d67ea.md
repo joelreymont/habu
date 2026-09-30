@@ -1,12 +1,12 @@
 ---
 title: Persist clobber summaries in dictionary records
-status: open
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-09-30T10:58:43.409183+02:00"
+closed-at: "2026-09-30T16:45:00.000000+02:00"
+close-reason: "Dropped: conditional on habu-publish-and-use-db11d4c1, which was dropped. docs/engine-size.md, 'ARM64 code-generation changes that were removed'."
 blocks:
-  - habu-publish-and-use-db11d4c1
-  - habu-pool-data-addresses-d65bdc94
 ---
 
 Campaign: ARM64 code-size fixes, design revision 3 (§3.6). Line references are at master 8c9b75af; re-verify before editing.

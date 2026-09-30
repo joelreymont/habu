@@ -11,7 +11,7 @@ require src/compiler/native/compiler.f
 require tools/codegen-combine-inventory.f
 
 \ Tier 1 below: instruction selection is the optimizing compiler's, so every
-\ folded pair below is a tier-1 fact (30 rows fail at the default tier).
+\ folded pair below is a tier-1 fact (25 rows fail at the default tier).
 1 set-tier
 
 package NCT-FIXTURE
@@ -109,167 +109,6 @@ public
 : NCT-CSHARED ( n n -- n ) {: a:n b:n :}
    a 9 < if 9 exit then a b / ;
 
-\ The larger of two signed cells, beside a body with the same frame whose own
-\ work is one instruction, so what the maximum adds to that frame is counted.
-: NCT-MAX ( n n -- n )
-   max ;
-
-: NCT-MFRAME ( n n -- n )
-   - ;
-
-\ Two maxima in a row, the first carrying the third argument across its join.
-: NCT-MAX3 ( n n n -- n )
-   max max ;
-
-\ A module holds at most 256 blocks. The entry block and the diamonds of these
-\ 85 max sites fill them exactly, so every site is a diamond.
-: NCT-M85 ( n n -- n )
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   2dup max drop  2dup max drop  2dup max drop  2dup max drop
-   max ;
-
-\ 85 `if`s fill the 256 blocks with no diamond at all, so none of the maxima
-\ is a diamond and the word compiles as it did while every max was
-\ straight-line.
-: NCT-MIX85 ( n n -- n )
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   dup 0< if 1+ over max then  dup 0< if 1+ over max then
-   max ;
-
-\ A module is the definition and every body built with it. The 84 `if`s of the
-\ quotation body below leave the module two blocks short of the ceiling, so the
-\ definition's max, built before that body, is no diamond.
-: NCT-MQUOT ( n n -- n )
-   max [:
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   ;] execute ;
-
-\ Nor is the max of a does> parent, whose clause is read only after the parent
-\ is built; this clause fills the ceiling as that quotation body does.
-: NCT-MDOES ( n n -- )
-   max create , does> ( -- n ) @
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-      dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   ;
-
--3 -9 NCT-MDOES NCT-MDOES-A
-7 -9 NCT-MDOES NCT-MDOES-B
-
-\ A does> clause is built into the module its parent has filled: the parent's
-\ 84 `if`s leave it two blocks short of the ceiling, so the clause's max is no
-\ diamond.
-: NCT-MCLAUSE ( n -- )
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then  dup 0< if 1+ then
-   create , does> ( n -- n ) @ max ;
-
--3 NCT-MCLAUSE NCT-MCLAUSE-A
-
 ;package
 
 package NCT-TEST
@@ -316,33 +155,6 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 : CMPIS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u NCOMBINV:ROW!
    NCOMBINV:CMPI-INSNS ;
-
-\ A conditional branch in either form a flag test takes - on the flags or on a
-\ register against zero - and the select that replaces one.
-$FF000010 constant BCOND-MASK
-$54000000 constant BCOND-FORM
-$7E000000 constant CBZ-MASK
-$34000000 constant CBZ-FORM
-$FFE00C00 constant CSEL-MASK
-$9A800000 constant CSEL-FORM
-
-: FORMS-IN ( ptr u8 n n n -- n ) {: a:ptr u:n mask:n form:n :}
-   a u NCOMBINV:ROW!
-   0
-   NCOMBINV:INSNS 0 ?do
-      i NCOMBINV:INSN@ mask and form = if 1+ then
-   loop ;
-
-: BRANCHES-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u BCOND-MASK BCOND-FORM FORMS-IN
-   a u CBZ-MASK CBZ-FORM FORMS-IN + ;
-
-: CSELS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u CSEL-MASK CSEL-FORM FORMS-IN ;
-
-: INSNS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u NCOMBINV:ROW!
-   NCOMBINV:INSNS ;
 
 \ The same reading for the three logical immediate forms.
 : ANDIS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
@@ -571,70 +383,6 @@ public
    8 3 NCT-FIXTURE:NCT-CSHARED 9 T=
    9 3 NCT-FIXTURE:NCT-CSHARED 3 T= ;
 
-: MAX-FIRED-CASES ( -- )
-   s" max is one comparison and one select, and no conditional branch" T-LABEL
-   s" NCT-FIXTURE:NCT-MAX" CMPS-IN 1 T=
-   s" NCT-FIXTURE:NCT-MAX" CSELS-IN 1 T=
-   s" NCT-FIXTURE:NCT-MAX" BRANCHES-IN 0 T=
-
-   s" and those two are all it adds to a frame whose body is one instruction"
-   T-LABEL
-   s" NCT-FIXTURE:NCT-MAX" INSNS-IN  s" NCT-FIXTURE:NCT-MFRAME" INSNS-IN 1+  T=
-
-   s" a value carried across the first join leaves both maxima as selects"
-   T-LABEL
-   s" NCT-FIXTURE:NCT-MAX3" CMPS-IN 2 T=
-   s" NCT-FIXTURE:NCT-MAX3" CSELS-IN 2 T=
-   s" NCT-FIXTURE:NCT-MAX3" BRANCHES-IN 0 T= ;
-
-: MAX-ANSWER-CASES ( -- )
-   s" max answers equal cells, mixed signs and the ends of the range"
-   T-LABEL
-   5 5 NCT-FIXTURE:NCT-MAX 5 T=
-   -3 4 NCT-FIXTURE:NCT-MAX 4 T=
-   4 -3 NCT-FIXTURE:NCT-MAX 4 T=
-   -1 0 NCT-FIXTURE:NCT-MAX 0 T=
-   MIN-INT -1 NCT-FIXTURE:NCT-MAX -1 T=
-   MIN-INT MAX-INT NCT-FIXTURE:NCT-MAX MAX-INT T=
-   MAX-INT MIN-INT NCT-FIXTURE:NCT-MAX MAX-INT T=
-   MIN-INT MIN-INT NCT-FIXTURE:NCT-MAX MIN-INT T=
-   MAX-INT MAX-INT NCT-FIXTURE:NCT-MAX MAX-INT T=
-   3 9 5 NCT-FIXTURE:NCT-MAX3 9 T=
-   9 3 5 NCT-FIXTURE:NCT-MAX3 9 T=
-   3 5 9 NCT-FIXTURE:NCT-MAX3 9 T=
-   MIN-INT MAX-INT MIN-INT NCT-FIXTURE:NCT-MAX3 MAX-INT T= ;
-
-\ Each word fills the block ceiling, so its compiling at all is the claim that
-\ no max made it too large; what they answer is that the diamonds and the
-\ straight-line maxima compute the same maximum. NCT-M85's selects are the
-\ claim that a budget filled exactly still grants every diamond: a count one
-\ block too cautious turns all 85 into masks and changes no answer.
-: MAX-CEILING-CASES ( -- )
-   s" max diamonds that fill the block ceiling exactly answer"
-   T-LABEL
-   3 9 NCT-FIXTURE:NCT-M85 9 T=
-   9 3 NCT-FIXTURE:NCT-M85 9 T=
-   -4 -7 NCT-FIXTURE:NCT-M85 -4 T=
-   MIN-INT MAX-INT NCT-FIXTURE:NCT-M85 MAX-INT T=
-   MAX-INT MIN-INT NCT-FIXTURE:NCT-M85 MAX-INT T=
-
-   s" and all 85 of them are selects, none a straight-line mask" T-LABEL
-   s" NCT-FIXTURE:NCT-M85" CSELS-IN 85 T=
-
-   s" straight-line maxima beside 85 ifs that fill the ceiling answer" T-LABEL
-   -90 -100 NCT-FIXTURE:NCT-MIX85 -6 T=
-   -1 -300 NCT-FIXTURE:NCT-MIX85 0 T=
-   5 3 NCT-FIXTURE:NCT-MIX85 5 T=
-   3 5 NCT-FIXTURE:NCT-MIX85 5 T=
-
-   s" and so does a max beside a body, clause or parent that fills it" T-LABEL
-   -3 -9 NCT-FIXTURE:NCT-MQUOT 0 T=
-   7 -9 NCT-FIXTURE:NCT-MQUOT 7 T=
-   NCT-FIXTURE:NCT-MDOES-A 0 T=
-   NCT-FIXTURE:NCT-MDOES-B 7 T=
-   5 NCT-FIXTURE:NCT-MCLAUSE-A 5 T=
-   -7 NCT-FIXTURE:NCT-MCLAUSE-A 0 T= ;
-
 \ Relocation after publication is covered by the real saved-image tests in
 \ test/app-image.f; the compiler retires its temporary emission here.
 
@@ -650,10 +398,7 @@ public
    MASK-ANSWER-CASES
    CMP-FIRED-CASES
    CMP-REFUSED-CASES
-   CMP-ANSWER-CASES
-   MAX-FIRED-CASES
-   MAX-ANSWER-CASES
-   MAX-CEILING-CASES ;
+   CMP-ANSWER-CASES ;
 
 ;using
 

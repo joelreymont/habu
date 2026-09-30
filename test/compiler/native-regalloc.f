@@ -3217,56 +3217,34 @@ using A64RA
    M-RET0
    CLOSE-FUN ;
 
-\ SELF's contract, one argument cell in and one result cell out, with the given
-\ traits. Under the call trait the prologue keeps the caller's return address in
-\ the frame's bottom slot; without it the routine is a leaf and its frame is the
-\ allocator's alone.
-: SELF-HABU ( NEFF:traits -- NEFF:routine )
-   {: t:NEFF:traits :}
-   NEFF-CONV:DSTACK 1 SLOTS-N  1 SLOTS-N  4 POOL-N
+: CALL-HABU-N ( n n n -- NEFF:routine )
+   {: n:n in:n out:n :}
+   NEFF-CONV:DSTACK in SLOTS-N  out SLOTS-N  n POOL-N
    NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
    NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
-   t A64M:SP-ALIGN 0 A64M:MACHINE NEFF:ROUTINE ;
+   NEFF:T-CALL A64M:SP-ALIGN 0 A64M:MACHINE NEFF:ROUTINE ;
 
-: SELF-ACCEPT ( n n NEFF:traits -- )
-   {: give:n back:n t:NEFF:traits :}
+: SELF-ACCEPT ( n n -- )
+   {: give:n back:n :}
    give back BUILD-SELF
    M-FREEZE {: m:IR-BUILD:module :}
-   CC m  t SELF-HABU  A64RA:ALLOCATE
-   m  t SELF-HABU  A64RAV:ACCEPT ;
+   CC m  4 1 1 CALL-HABU-N  A64RA:ALLOCATE
+   m  4 1 1 CALL-HABU-N  A64RAV:ACCEPT ;
 
 : SELF-CANON-BODY ( IR-CTX:ctx -- bool )
    A64-MOD
-   0 0 NEFF:T-CALL SELF-ACCEPT
+   0 0 SELF-ACCEPT
    A64RAV:ACCEPTED? ;
 
 : SELF-HIGH-BODY ( IR-CTX:ctx -- )
    A64-MOD
-   A64IR:SLOT-WIDTH A64IR:SLOT-WIDTH NEFF:T-CALL SELF-ACCEPT ;
-
-\ WHAT TAKING THE CALL TRAIT AWAY DOES. The module is the one the call-framed
-\ contract accepts, and under a leaf contract its frame still passes: the bottom
-\ slot a leaf leaves to the allocator is where the module keeps the link, and
-\ nothing else is in the frame. What is wrong is the branch - control comes
-\ back from it, the branch-and-link that takes it overwrites the link register,
-\ and a routine that keeps no return address has nothing left to return
-\ through. The validator's owed-link rule (regalloc-verify.f VLINK-OWED-CK) is
-\ the first to say so, which is why the case names its code: the data-stack
-\ entry rule would refuse the same module later, with E-A64RAV-DSTACK, because
-\ a leaf's entry take stands right after its reserve. The selector's own
-\ refusal (select.f CALLED-CK) never sees a module built by hand.
-: SELF-LEAF-BODY ( IR-CTX:ctx -- )
-   A64-MOD
-   0 0 NEFF:TRAITS-NONE SELF-ACCEPT ;
+   A64IR:SLOT-WIDTH A64IR:SLOT-WIDTH SELF-ACCEPT ;
 
 : SELF-CANON ( -- bool )
    WBND [: SELF-CANON-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : SELF-HIGH ( -- )
    WBND [: SELF-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: SELF-LEAF ( -- )
-   WBND [: SELF-LEAF-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : CALL-PLACE-ACCEPT-CASE ( -- )
    s" a call whose callee's base is where the routine already stands costs nothing"
@@ -3276,11 +3254,6 @@ using A64RA
 : CALL-PLACE-REFUSE-CASE ( -- )
    s" a branch taken from anywhere but the callee's base is refused" T-LABEL
    [: SELF-HIGH ;] E-A64RAV-DRES TTHROWSQ ;
-
-: CALL-LINK-REFUSE-CASE ( -- )
-   s" the same routine is refused a call that comes back when it keeps no link"
-   T-LABEL
-   [: SELF-LEAF ;] E-A64RAV-CALL TTHROWSQ ;
 
 \ The join is block three, before the forwarding block four. In a forward
 \ sweep its first predecessor already carries the entry value while the other
@@ -3650,7 +3623,6 @@ using A64RA
 : GROUP-PLACE-CANON ( IR-CTX:ctx -- ) drop PLACE-CANON-CASES ;
 : GROUP-CALL-PLACE ( IR-CTX:ctx -- ) drop CALL-PLACE-ACCEPT-CASE ;
 : GROUP-CALL-PLACE-BAD ( IR-CTX:ctx -- ) drop CALL-PLACE-REFUSE-CASE ;
-: GROUP-CALL-LINK ( IR-CTX:ctx -- ) drop CALL-LINK-REFUSE-CASE ;
 : GROUP-SHAPE ( IR-CTX:ctx -- )     drop SHAPE-REFUSE-CASES ;
 : GROUP-TIE ( IR-CTX:ctx -- )       drop TIE-REFUSE-CASES ;
 : GROUP-DERIVE ( IR-CTX:ctx -- )    drop DERIVE-FRAME-CASES ;
@@ -4037,7 +4009,6 @@ public
    WBND [: GROUP-PLACE-CANON ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-CALL-PLACE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-CALL-PLACE-BAD ;] IR-CTX:WITH-CONTEXT
-   WBND [: GROUP-CALL-LINK ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-DERIVE ;] IR-CTX:WITH-CONTEXT

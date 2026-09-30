@@ -158,9 +158,8 @@ ENUM rmove DERIVE eq
 \ `cell-index` is `ptr-field`, the cell index scaled and added to the base;
 \ `modulo` is `mod`, the remainder the engine's own division leaves, which is why
 \ it is spelled with the division that carries the zero-divisor refusal; `maximum`
-\ is `max`, the larger of two signed cells, built as the diamond `a b > if a else
-\ b then` when the definition fits the module's block ceiling with every max so
-\ built, and otherwise straight-line with the mask the comparison answers.
+\ is `max`, the larger of two signed cells, taken branchlessly with the mask a
+\ comparison answers.
 ENUM expand DERIVE eq
    cell-index
    modulo

@@ -136,9 +136,7 @@ $FFFFFFFF HDR-CELLS - EROW-CELLS / constant EROW-CAP-MAX
 $FFFFFFFF HDR-CELLS - constant EPOOL-CAP-MAX
 
 \ ---- the committed working set -----------------------------------------------
-public
 256 constant BLOCK-MAX               \ matches IR-BUILD's committed block ceiling
-private
 2048 constant EDGE-MAX               \ control-flow edges one module may hold
 64 constant SET-BITS                 \ dominator-set bits per cell
 BLOCK-MAX SET-BITS / constant SET-CELLS

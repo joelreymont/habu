@@ -659,59 +659,6 @@ defer ZERO-THROW ( n -- )
 
    EMISSION-CODE ;
 
-\ ---- a terminal is a trap for the link obligation ----------------------------
-\ Control never comes back to a terminal site: throw restores the link register
-\ from the catch frame (src/habu/habu1.f BTHROW) and die exits. So the link the
-\ branch overwrites is dead, and a guard whose only non-returning site is its
-\ throw keeps no return address, while a word that calls the guard and comes
-\ back still saves and restores it.
-public
-: NT-LINK-GUARD ( n -- n ) dup 0 < if E-A-BOUNDS throw then ;
-: NT-LINK-CALL ( n -- n ) NT-LINK-GUARD 1+ ;
-private
-
-\ A 64-bit transfer of x30 through sp, in either spelling the frame uses: the
-\ writeback forms `str x30,[sp,#-16]!` and `ldr x30,[sp],#16`, and the
-\ unsigned-offset forms a wider frame keeps the link with.
-$FFC00000 constant UO-CLASS-MASK     \ the opcode bits of an unsigned-offset access
-$F9000000 constant UO-STORE-OP
-$F9400000 constant UO-LOAD-OP
-
-: LINK-XFER-WORD? ( n -- bool )
-   {: w:n :}
-   w REG-MASK and A64M:LINK-GPR <> if false exit then
-   w 5 rshift REG-MASK and A64M:SP-GPR <> if false exit then
-   w WB-CLASS-MASK and {: wb:n :}
-   wb WB-STORE-OP =  wb WB-LOAD-OP =  or if true exit then
-   w UO-CLASS-MASK and {: uo:n :}
-   uo UO-STORE-OP =  uo UO-LOAD-OP =  or ;
-
-: LINK-XFERS-IN-EMISSION ( -- n )
-   0
-   CODE-INSNS 0 ?do
-      i CODE-WORD@ LINK-XFER-WORD? if 1+ then
-   loop ;
-
-: LINK-GUARD-CASE ( -- )
-   s" a guard whose only non-returning site is a throw keeps no link" T-LABEL
-   s" NTRAP-TEST:NT-LINK-GUARD" RECORD-CODE
-   LINK-XFERS-IN-EMISSION 0 T=
-   EMISSION-CODE
-
-   s" and answers a valid argument" T-LABEL
-   5 NT-LINK-GUARD 5 T=
-   0 NT-LINK-GUARD 0 T=
-
-   s" and its refusal reaches a calling word's catch with its own code" T-LABEL
-   [: -1 NT-LINK-GUARD drop ;] E-A-BOUNDS TTHROWSQ
-   [: -1 NT-LINK-CALL drop ;] E-A-BOUNDS TTHROWSQ
-
-   s" a word with one returning call saves and restores the link" T-LABEL
-   s" NTRAP-TEST:NT-LINK-CALL" RECORD-CODE
-   LINK-XFERS-IN-EMISSION 2 T=
-   EMISSION-CODE
-   5 NT-LINK-CALL 6 T= ;
-
 \ An earlier exit block must not interrupt the guard's successful trace.
 public
 : NT-GUARD ( n -- n )
@@ -855,7 +802,6 @@ public
    \ ---- what a routine compiled from source is as bytes ----
    COMPILED-DEAD-BYTES-CASE
    COMPILED-CALL-BYTES-CASE
-   LINK-GUARD-CASE
    COMPILED-GUARD-CASE
    COLD-DISPATCH-CASE
    PRIMITIVE-THROW-CASE

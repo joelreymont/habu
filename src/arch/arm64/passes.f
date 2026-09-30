@@ -8,13 +8,12 @@
 \ also states the sealed emission as NEMIT's rows, the only emission
 \ src/compiler/native/publish.f reads, and the RETIRE row clears them.
 \
-\ WHAT IT OWNS. The routine contract this definition compiles to. Three of its
+\ WHAT IT OWNS. The routine contract this definition compiles to. Two of its
 \ facts are this backend's own readings - how many functions share the contract
-\ (IR-BUILD:FUNS, read at selection), whether selection builds a call site
-\ (A64SEL:MAKES-CALLS?, read at selection) and how many spill slots the
-\ allocator settled on (A64RA:FRAME, read at each lowering turn) - and the rest
-\ are declared by the driver. ROUTINE is the only reader of all of them, which
-\ is why they sit together here rather than in a driver that names no machine.
+\ (IR-BUILD:FUNS, read at selection) and how many spill slots the allocator
+\ settled on (A64RA:FRAME, read at each lowering turn) - and the other two are
+\ declared by the driver. ROUTINE is the only reader of all four, which is why
+\ they sit together here rather than in a driver that names no machine.
 \
 \ HIR LOOP FOLDING TRAVELS WITH SELECTION, not because it is ARM64's, but because
 \ the fold rewrites the module the selector is bound to as its source: the
@@ -52,32 +51,30 @@ private
 variable D-IN                        \ cells the definition takes
 variable D-OUT                       \ cells it leaves
 variable D-DEAD                      \ control never comes back
+variable D-CALLED                    \ a call site reaches it
 variable D-TAIL                      \ tail-called from inside the emitted region
 variable D-BACK                      \ it calls back out
 variable D-FUNS                      \ functions sharing the emitted routine contract
-variable D-CALLS                     \ selection builds a call site; a terminal is a trap
 variable D-SPILLS                    \ padded spill slots that define the cumulative frame
 
 \ The driver's first stage: what this definition takes and leaves, and how
-\ control reaches and leaves it. The facts this backend reads for itself start
-\ again here, so a stage can only see the definition it is compiling. Whether
-\ the body calls is one of them: the driver's answer counts a terminal, which
-\ selection builds as a trap.
+\ control reaches and leaves it. The two counts this backend reads for itself
+\ start again here, so a stage can only see the definition it is compiling.
 : DECLARE ( n n NBACK:linkage -- )
    {: in:n out:n l:NBACK:linkage :}
    in D-IN !  out D-OUT !
    l NBACK:L-DEAD NBACK:HAS? D-DEAD !
+   l NBACK:L-CALLED NBACK:HAS? D-CALLED !
    l NBACK:L-TAIL NBACK:HAS? D-TAIL !
    l NBACK:L-BACK NBACK:HAS? D-BACK !
    0 D-FUNS !
-   0 D-CALLS !
    0 D-SPILLS ! ;
 
 \ All functions share this ABI. No-return and tail-call control describe a
 \ single function; quotation siblings must retain their ordinary returns.
 : ROUTINE ( -- NEFF:routine )
    D-DEAD @ 0<> D-FUNS @ 1 = and if
-      D-CALLS @ 0<> if
+      D-CALLED @ 0<> if
          NABI:SCRATCH D-IN @ D-OUT @ D-SPILLS @ NABI:NORET-FRAMED exit
       then
       NABI:SCRATCH D-IN @ D-OUT @ D-SPILLS @ NABI:NORET-LEAF-FRAMED exit
@@ -88,7 +85,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
       then
       NABI:SCRATCH D-IN @ D-OUT @ D-SPILLS @ NABI:TAIL-FRAMED exit
    then
-   D-CALLS @ 0<> if
+   D-CALLED @ 0<> if
       NABI:SCRATCH D-IN @ D-OUT @ D-SPILLS @ NABI:CALL-FRAMED exit
    then
    NABI:SCRATCH D-IN @ D-OUT @ D-SPILLS @ NABI:LEAF-FRAMED ;
@@ -131,7 +128,6 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    b IR-BUILD:FUNS D-FUNS !
    c b IR-BUILD:FREEZE-INTERIM {: m0:IR-BUILD:module :}
    c m0 CLOSED {: m:IR-BUILD:module :}
-   m A64SEL:MAKES-CALLS? D-CALLS !
    c A64-BUILDER {: ab:IR-BUILD:builder :}
    c ab A64IR:MACHINE  c ab A64IR:VOCABULARY  A64RA:BIND-DIALECT
    c ab  c ab A64IR:VOCABULARY  A64RAV:BIND-DIALECT

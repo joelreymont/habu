@@ -1,9 +1,11 @@
 ---
 title: Select mask literals and immediate shifts
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T10:58:43.364215+02:00"
+closed-at: "2026-09-30T16:45:00.000000+02:00"
+close-reason: "Dropped; built, gated and reviewed at 1f621c6b but not landed. aot/code-blob -228 B; DATA cell values +1,176, code-spans +144, records +48, name pool +40 and address cells +72, so content grew 1,252 B and the product stayed at 2,477,047 B. docs/engine-size.md, 'ARM64 code-generation changes that were removed'."
 blocks:
 ---
 

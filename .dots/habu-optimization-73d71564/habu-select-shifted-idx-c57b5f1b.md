@@ -1,11 +1,12 @@
 ---
 title: Select shifted-index adds and msub
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T10:58:43.374662+02:00"
+closed-at: "2026-09-30T16:45:00.000000+02:00"
+close-reason: "Dropped, not landed. The census ceiling is 2.8 KB for scaled indexes and 0.2 KB for remainders before the added selector code, below the 16 KiB page the Mach-O text segment rounds to, so the file cannot change. The partial encoders and schema rows (fbd875c2) are discarded. docs/engine-size.md, 'ARM64 code-generation changes that were removed'."
 blocks:
-  - habu-select-mask-literals-f082dbf3
 ---
 
 Campaign: ARM64 code-size fixes, design revision 3 (§3.4). Line references are at master 8c9b75af; re-verify before editing.

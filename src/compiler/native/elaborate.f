@@ -21,7 +21,6 @@ require src/compiler/ir/arena.f
 require src/compiler/ir/type.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
-require src/compiler/ir/verify.f
 require src/compiler/ir/source.f
 require src/compiler/native/tape.f
 require src/compiler/native/hir.f
@@ -1450,23 +1449,12 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
       ix i  t i ARG-T@  EDGE-VALUE  i XV !
    loop ;
 
-\ A `br` opens with the token's span and closes the block on its one successor.
-: BR-OPEN ( n -- )
-   {: ix:n :}
-   CTX BLD  CTX BLD HIR-OPCODE:BR HIR:ENSURE-OP  IR-BUILD:BEGIN-OP
-   CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-OP-SPAN ;
-
-: BR-CLOSE ( n -- )
-   {: t:n :}
-   CTX BLD  t BLOCK-ORD  IR-BUILD:ADD-SUCCESSOR
-   CTX BLD IR-BUILD:END-OP drop
-   CLOSE-BLOCK ;
-
 : TERM-BR-H ( n n n n n -- )
    {: ix:n t:n lo:n h:n l:n :}
    R-SPILL
    ix t EDGE-STAGE
-   ix BR-OPEN
+   CTX BLD  CTX BLD HIR-OPCODE:BR HIR:ENSURE-OP  IR-BUILD:BEGIN-OP
+   CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-OP-SPAN
    VN @ 0 ?do
       CTX BLD  i XV @  IR-BUILD:ADD-OPERAND
    loop
@@ -1475,7 +1463,9 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    TOK-LIVE @ 0<> if
       CTX BLD TOK IR-BUILD:ADD-OPERAND
    then
-   t BR-CLOSE
+   CTX BLD  t BLOCK-ORD  IR-BUILD:ADD-SUCCESSOR
+   CTX BLD IR-BUILD:END-OP drop
+   CLOSE-BLOCK
    RN @ VDROP ;
 
 : TERM-BR ( n n -- )
@@ -1492,14 +1482,6 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    CTX BLD  o BLOCK-ORD  IR-BUILD:ADD-SUCCESSOR
    CTX BLD IR-BUILD:END-OP drop
    CLOSE-BLOCK ;
-
-\ An edge that hands ONE value to a join whose only argument it is: everything
-\ else live at that join comes from a block that dominates both of its edges.
-: TERM-BR1 ( n n IR-ID:ir-value-id -- )
-   {: ix:n t:n v:IR-ID:ir-value-id :}
-   ix BR-OPEN
-   CTX BLD v IR-BUILD:ADD-OPERAND
-   t BR-CLOSE ;
 
 \ A whole block that does nothing but hand the live values on.
 : STUB-H ( n n n n n -- )
@@ -2482,30 +2464,6 @@ here CELL 1- and CELL swap - CELL 1- and allot
    k HIR-CTRL:CLOSE-AGAIN HIR-CTRL:EQ if exit then
    E-NELAB-CTRL throw ;
 
-\ ---- the diamonds `max` may take ----------------------------------------------
-\ A module holds at most IR-VERIFY:BLOCK-MAX blocks, and a max diamond spends
-\ three of them where the straight-line mask spends none. NUMBER decides for a
-\ function and the quotation bodies built with it whether every max among them
-\ is a diamond or none is.
-3 constant DIAMOND-BLOCKS            \ the zero arm, the one arm and the join
-variable DIAMOND-ON                  \ the all-ones flag while every max is a diamond
-
-\ Every expansion is straight-line except a `max` built as a diamond, whose
-\ block closes into two arms and their join: the flag masks its three blocks.
-: SK-EXPAND ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena ix:n :}
-   r  ix WSYM  HIR-WORD:EXPAND@
-   HIR-EXPAND:MAXIMUM HIR-EXPAND:EQ if
-      NB @  DIAMOND-ON @ DIAMOND-BLOCKS and  +  NB !
-   then ;
-
-\ Whether the token is a control word, having counted an expansion's blocks.
-: SK-CONTROL? ( IR-ARENA:arena n -- bool )
-   {: r:IR-ARENA:arena ix:n :}
-   r ix ADMIT-AT {: m:HIR:meaning :}
-   m HIR-MEANING:EXPANSION HIR-MEANING:EQ if r ix SK-EXPAND false exit then
-   m HIR-MEANING:CONTROL HIR-MEANING:EQ ;
-
 : SK-STEP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    VW ix NTAPE-MODE:COMPILING MODE-CK
@@ -2519,7 +2477,8 @@ variable DIAMOND-ON                  \ the all-ones flag while every max is a di
       PATH-DEAD PATH-END !
       exit
    then
-   r ix SK-CONTROL? 0= if exit then
+   r ix ADMIT-AT
+   HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if exit then
    r  ix WSYM  HIR-WORD:CTRL@
    MATCH HIR:ctrl
       open-if      OF HIR-CTRL:OPEN-IF ix SK-PUSH  NB @ 2 + NB ! ENDOF
@@ -3479,17 +3438,7 @@ create DN-BUF DN-CAP allot
    b VPUSH  ix HIR-OPCODE:MUL EMIT-OPCODE
    ix HIR-OPCODE:SUB EMIT-OPCODE ;
 
-\ max ( n n -- n ): the larger of two signed cells, as the diamond `a b > if a
-\ else b then` whose arms do nothing but hand their operand to the join. That
-\ operand is the join's one argument; the rest of the vector, the locals and the
-\ loop counters stay the head's values, which dominate the join. The ARM64
-\ selector converts the diamond into one comparison and one select
-\ (src/compiler/native/select.f, REGION-PICK); x86-64 lowers it as a branch.
-\ The blocks are numbered as DO-OPEN-IF numbers them, from the three SK-EXPAND
-\ counted: the zero arm, the one arm, the join. `>` refuses an operand that is
-\ not a cell, so the argument is one.
-\
-\ Where NUMBER grants no diamond the maximum stays in one block. `>` answers the
+\ max ( n n -- n ): the larger of two signed cells, branchlessly. `>` answers the
 \ all-ones mask when a is larger and zero when it is not, so `b xor ((a xor b)
 \ and mask)` is a in the first case and b in the second. The exchanging form is
 \ used rather than b + ((a-b) and mask) because `xor` is TOTAL: no step of it can
@@ -3497,19 +3446,10 @@ create DN-BUF DN-CAP allot
 : EXPAND-MAXIMUM ( n -- )
    {: ix:n :}
    EXPAND-PAIR {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
+   a VPUSH  b VPUSH  ix HIR-OPCODE:XOR EMIT-OPCODE
    a VPUSH  b VPUSH  ix HIR-OPCODE:GT EMIT-OPCODE
-   DIAMOND-ON @ 0= if
-      a VPUSH  b VPUSH  ix HIR-OPCODE:XOR EMIT-OPCODE
-      ix HIR-OPCODE:AND EMIT-OPCODE
-      b VPUSH  ix HIR-OPCODE:XOR EMIT-OPCODE
-      exit
-   then
-   NB @ {: c:n :}
-   ix  c 1+  c 2 +  TERM-BRZ
-   ix OPEN-PLAIN  ix  c DIAMOND-BLOCKS +  b TERM-BR1
-   ix OPEN-PLAIN  ix  c DIAMOND-BLOCKS +  a TERM-BR1
-   ix OPEN-PLAIN
-   CTX BLD  CTX BLD CELL-TYPE  IR-BUILD:ADD-BLOCK-ARG  VPUSH ;
+   ix HIR-OPCODE:AND EMIT-OPCODE
+   b VPUSH  ix HIR-OPCODE:XOR EMIT-OPCODE ;
 
 \ A sequence computes over CELLS, exactly as the one-operation words do, so a
 \ token whose operands are a wider layout is refused here and not lowered wrong.
@@ -3924,34 +3864,6 @@ variable QNAME-P                     \ the place value the digit loop is on
       i QFUN@ QPARAM <> if c b v key p r i QBUILD then
    loop ;
 
-\ The blocks the module holds once QBUILD-ALL has built the quotation bodies:
-\ those already built, and each body's, numbered as QBUILD numbers it. Every row
-\ is still a body the scan read; the rows a parameter or a call hands in are
-\ added once the function is opened.
-: QBLOCKS ( IR-ARENA:arena -- n )
-   {: r:IR-ARENA:arena :}
-   BLD IR-BUILD:BLOCKS
-   QN @ 0 ?do
-      i QCUR !
-      r  i QLO@  i QHI@  SKELETON-TRY
-      BLOCK-LIMIT @ +
-   loop
-   QOWNER-DEF QCUR ! ;
-
-\ Every max of the function and of its quotation bodies is a diamond, or none
-\ is: every one when the module, holding those bodies and the function, still
-\ fits the block ceiling that way. A does> parent takes none, because its clause
-\ is read only once the parent is built. The function is numbered last, so its
-\ numbering is the one the walk follows.
-: NUMBER ( IR-ARENA:arena n n -- )
-   {: r:IR-ARENA:arena lo:n hi:n :}
-   FUN-KIND @ FUN-DOES-PARENT <> DIAMOND-ON !
-   r QBLOCKS {: held:n :}
-   r lo hi SKELETON-TRY
-   held BLOCK-LIMIT @ +  IR-VERIFY:BLOCK-MAX  <= if exit then
-   0 DIAMOND-ON !
-   r lo hi SKELETON-TRY ;
-
 \ A `{: … :}` group inside a quotation body is refused.
 : QLOCALS-CK ( -- )
    LG-N @ 0 ?do
@@ -4137,7 +4049,7 @@ private
    OUT-GLUE @ NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    b IR-BUILD:FUNS QBASE !
    p r lo hi SCAN-FUN
-   r lo hi NUMBER
+   r lo hi SKELETON-TRY
    b FUN-STATE!
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
    c b v key in out OPEN-FUN-BODY

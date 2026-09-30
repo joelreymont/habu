@@ -1694,9 +1694,10 @@ original engine, not this one.
    The census cannot divide them among DATA carriers, absolute addresses and
    wide scalar literals, and no tool counts the non-return fallbacks left in
    the corpus, though both guard words above have lost theirs.
-   `habu-count-the-arm64-e13ae0a3` adds those counts, and
-   `habu-pool-data-addresses-d65bdc94` targets the carriers. Sharing or
-   shortening an address needs capture and relocation proof.
+   Pooling the carriers was designed and dropped:
+   [engine-size.md](engine-size.md#arm64-code-generation-changes-that-were-removed)
+   gives its ceiling and cost. Sharing or shortening an address needs capture
+   and relocation proof.
 2. **Close the selection gaps the side-by-side words show.** A zero or sign
    test compiles to `cmp` and a conditional branch where one `cbz` or `tbnz`
    would do; in `SOURCE-QPATH-CHECK` that is half of the 8 bytes by which tier

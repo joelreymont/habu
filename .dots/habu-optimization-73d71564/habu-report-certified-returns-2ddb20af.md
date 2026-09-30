@@ -1,11 +1,12 @@
 ---
 title: Report certified returns through (RETURNED)
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T10:58:43.417835+02:00"
+closed-at: "2026-09-30T16:45:00.000000+02:00"
+close-reason: "Dropped, not started. 392 no-return fallback sites hold 13.7 KB and the helper saves 4.3 KB, below the 16 KiB page the Mach-O text segment rounds to. docs/engine-size.md, 'ARM64 code-generation changes that were removed'."
 blocks:
-  - habu-pool-data-addresses-d65bdc94
 ---
 
 Campaign: ARM64 code-size fixes, design revision 3 (§3.8). Line references are at master 8c9b75af; re-verify before editing.

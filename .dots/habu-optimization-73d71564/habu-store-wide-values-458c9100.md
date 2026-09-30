@@ -7,7 +7,6 @@ created-at: "2026-09-30T10:58:43.426274+02:00"
 closed-at: "2026-09-30T12:53:24.617938+02:00"
 close-reason: "Below break-even: the census (habu-count-the-arm64-e13ae0a3) counts 21 wide-store runs, 1,292 B, at master 67aa8046, against this slice's 150-run break-even; saving at most 916 B against about 400-600 B of added helper and rules."
 blocks:
-  - habu-report-certified-returns-2ddb20af
 ---
 
 Campaign: ARM64 code-size fixes, design revision 3 (§3.9). Line references are at master 8c9b75af; re-verify before editing.

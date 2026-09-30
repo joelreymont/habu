@@ -1,14 +1,14 @@
 ---
 title: Remove bounds checks from an optimized build
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-22T11:30:53.087679+03:00"
-blocks:
-  - habu-inline-small-colon-2ca2438f
+closed-at: "2026-09-30T17:20:00.000000+02:00"
+close-reason: "Probe answered; the elision slice is dropped. Every build keeps the span range check: a stripped SPAN:U8! loop calls U8! and AT on each iteration, an invalid index exits 67 (caught: -6100), and no release or no-check mode exists; Joel decided on 2026-09-30 that there will be none. The proof-based elision slice was added for the ARM64 campaign, not requested: its size effect is about zero, no workload measures the checks as a cost, and it needs colon inlining, which is dropped. docs/engine-size.md, 'ARM64 code-generation changes that were removed'."
 ---
 
-Problem: Joel (2026-09-22): 'bounds checking should be removed during optimization, unless we are in debug mode' - unproved either way. Probe: a stripped program with a SPAN:U8! loop over a span, objdump -d, the compare-and-branch pairs per access counted; then the same under whatever release or no-check build mode exists - if none exists, that absence is the finding. Acceptance: the per-access check count recorded with the engine sha for both modes, and either a release mode that drops the checks or the reason one cannot exist yet; Tender's bin/tenderd re-measured by hb-build's size line. Verification: the images and disassembly under ~/.cache/tender/habu-gaps/bounds-checks-release/, then Tender's python3 scripts/habu.py build --server. Ownership: heron (ARM64 campaign; taken over from alder by agreement, confirmed by Joel). Claim: unassigned.
+Problem: Joel (2026-09-22): 'bounds checking should be removed during optimization, unless we are in debug mode' - unproved either way. Probe: a stripped program with a SPAN:U8! loop over a span, objdump -d, the compare-and-branch pairs per access counted; then the same under whatever release or no-check build mode exists - if none exists, that absence is the finding. Acceptance: the per-access check count recorded with the engine sha for both modes, and either a release mode that drops the checks or the reason one cannot exist yet; Tender's bin/tenderd re-measured by hb-build's size line. Verification: the images and disassembly under ~/.cache/tender/habu-gaps/bounds-checks-release/, then Tender's python3 scripts/habu.py build --server. Ownership: unassigned. Claim: unassigned.
 
 
 Initial measurement on the same engine: a native `SPAN:U8!` with index 999
@@ -46,9 +46,9 @@ The element type alone does not prove a dynamic index is in range; the
 remaining optimization is to prove and eliminate redundant checks, including
 the loop case, without changing the invalid-index behavior. No compiler or
 library source was changed. This dot remains open for that optimization.
-Measurements by alder; compiler implementation is the campaign slice below.
+Measurements by alder; compiler implementation is the slice below.
 
-## ARM64 campaign slice (design revision 3, §3.11)
+## Implementation slice
 
 Acceptance: with the accessor inlined (habu-inline-small-colon-2ca2438f), a
 loop whose index is bounded by the same span's SPAN:LEN proves the range once
@@ -65,5 +65,4 @@ rebuilt from ~/.cache/tender/habu-gaps/bounds-checks-release/.
 Verify: tools/native-build.f product; the fixture; the objdump slice as the
 artifact; tools/two-generation-build.f; bin/hb --load test/run.f.
 
-Depends: habu-inline-small-colon-2ca2438f. Serialized after
-habu-expand-max-as-fec184ee on elaborate.f. Size effect about zero.
+Depends: habu-inline-small-colon-2ca2438f. Size effect about zero.

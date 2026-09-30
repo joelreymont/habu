@@ -1,11 +1,12 @@
 ---
 title: Publish and use callee clobber summaries
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-30T10:58:43.391728+02:00"
+closed-at: "2026-09-30T16:45:00.000000+02:00"
+close-reason: "Dropped, not landed. Measured on candidate 866f2f02: call-crossing spill sites 12,680 -> 10,364, aot/code-blob -14,748 B, other classes +7,212 B, product file unchanged and generation 1 one page larger. Most non-leaf callees still destroy the whole register pool, because every store is a BL to an engine primitive. docs/engine-size.md, 'ARM64 code-generation changes that were removed'."
 blocks:
-  - habu-select-shifted-idx-c57b5f1b
 ---
 
 Campaign: ARM64 code-size fixes, design revision 3 (§3.6). Line references are at master 8c9b75af; re-verify before editing.

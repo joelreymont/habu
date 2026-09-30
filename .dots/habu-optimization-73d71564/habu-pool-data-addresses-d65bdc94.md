@@ -1,11 +1,12 @@
 ---
 title: Pool DATA addresses in island records
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-30T10:58:43.400474+02:00"
+closed-at: "2026-09-30T16:45:00.000000+02:00"
+close-reason: "Dropped, not started. The ceiling is 88.5 KB of aot/code-blob, at most five 16 KiB pages (3.3% of the file), for two kernel primitives on two kernels, a dictionary record class, a backend stage, publisher pool state, an AOT format bump and stripped-link changes across 17 files. Per-word literals reach about 31 KB and need most of the same machinery. docs/engine-size.md, 'ARM64 code-generation changes that were removed'."
 blocks:
-  - habu-publish-and-use-db11d4c1
 ---
 
 Campaign: ARM64 code-size fixes, design revision 3 (§3.7). Line references are at master 8c9b75af; re-verify before editing.

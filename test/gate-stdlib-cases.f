@@ -240,10 +240,6 @@ SUITE engine-size-fixtures
    tools/engine-size-test.f
 ;SUITE
 
-SUITE codegen-census-fixtures
-   tools/codegen-census-test.f
-;SUITE
-
 SUITE two-generation-fixtures
    tools/two-generation-test.f
 ;SUITE

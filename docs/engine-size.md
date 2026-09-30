@@ -714,32 +714,50 @@ Measured against this engine, so the numbers are bounds, not hopes:
   (`src/habu/aot-closure.f`) run against it at build time, and what that walk
   dropped is not in the file to find.
 
-## The shapes the code-size fixes target
+## ARM64 code-generation changes that were removed
 
-`tools/codegen-census.f` counts, in one pass over a `tools/native-build.f`
-product's code blob, the ARM64 shapes the code-size fixes target: guarded
-divisions, terminal-only frames, mask chains, constant shifts, scaled indexes,
-remainders, signed maxima, call-crossing spills, DATA carriers (with distinct
-targets per record and per 1 MiB island), no-return fallbacks and wide-store
-runs. `bin/hb --load tools/codegen-census.f -- <image> <source-commit> <report>`
-writes the image's SHA-256 and the commit, one `P <pattern> <sites> <bytes>
-<estimated-saving>` row per pattern and the forty records with the most sites
-for each; the file's header defines every shape. A code-generation slice quotes
-the change in its pattern's row next to this tool's file total. The
-constant-shift and scaled-index savings are upper bounds: a constant the region
-memo shares with another use stays. The call-crossing-spill row is a floor on
-sites and an upper bound per site. Slot state follows a basic block and the
-fall-through out of a conditional branch into a block no branch, `adr` or code
-literal names, and the census refuses a blob holding a `br`, so a reload past a
-branch target such as a loop head is not counted; a self-call is
-not a crossing, since it keeps the whole pool destroyed; and a counted pair
-leaves only when the callee's clobber summary frees a register. A wide-store
-run's bytes are its measured span, from the first instruction after the call or
-block start before its first `bl !` through its last, and its saving is that
-span less the `w + 2` instructions (`w` publishes, a `movz`, a `bl`) of one
-helper call. `tools/codegen-census-test.f` runs it on `bin/hb`, checks that
-every row is present and well formed with a saving no larger than its bytes,
-and refuses a non-image.
+The Mach-O text segment rounds up to a 16 KiB page; `tools/engine-size.f`
+reports the remainder as `macho/text-pad`. A change shortens the shipped file
+only when it removes more content than the current pad, and then by exactly
+16,384 bytes, 0.66% of the 2,493,559-byte engine. Judge a code-generation change
+by the file total and the `macho/text-pad` row, not by `aot/code-blob`: a
+selector rule that shortens the blob also adds compiler code, schema rows and
+names to the other classes.
+
+A set of instruction-selection changes was measured against that rule and
+removed. The first three had landed and were reverted; the rest were dropped
+before landing.
+
+| Change | Measured or bounded effect | Why it was removed |
+|---|---|---|
+| No link save for a word whose only calls are terminal throws | blob -928 B, file unchanged | 148 lines and a verifier path no test reaches, for no file bytes |
+| `max` compiled as a conditional select | blob -516 B, file unchanged | 386 lines for no file bytes |
+| `tools/codegen-census.f`, which counted the shapes below | none: a measuring tool | 1,148 lines and a gate row that decoded the whole blob; every change it measured is gone |
+| Mask literals and immediate shifts | blob -228 B, other classes +1,480 B | content grew by 1,252 B |
+| Shifted-index adds and `msub` | at most 3.0 KB | below one page |
+| A register helper for the no-return fallback | at most 4.3 KB | below one page |
+| Callee clobber summaries | spill sites 12,680 to 10,364; blob -14,748 B, other classes +7,212 B; file unchanged, generation 1 one page larger | every store is a `bl` to an engine primitive, so most non-leaf callees still destroy the whole register pool |
+| Clobber summaries persisted in dictionary records | none on its own | useful only with the row above |
+| Small colon words inlined at tier 1 | two of five steps built: +7.8 KB of compiler code, nothing spliced | one sampled call and no measured speed gain, under a rule that the engine must not grow |
+| Span checks elided where the loop bound proves the index | size effect about zero | needs the inliner; no workload measures the checks as a cost, and every build keeps the refusal |
+| DATA addresses pooled in island records | at most 88.5 KB of blob: five pages, 3.3% of the file | two kernel primitives, a dictionary record class, a backend stage and an AOT format bump across 17 files |
+
+Two changes from the same set stay, because each did something other than
+shorten the blob. Checked division fixed a false `E-A64EMIT-CAP` refusal of a
+valid word holding 14 divisions. Leaving zero-filled heap out of snapshot images
+took an Etch `--repl` image from 14,791,232 to 6,730,976 bytes.
+
+Every counted shape summed to a ceiling of 165 KB, 6.7% of the 2,477,047-byte
+engine it was counted on. The three changes that landed took 1,788 bytes out of
+the blob and none out of the file. Reverting the first two rows and the census
+put 1,472 bytes back into the blob and took 716 out of the other classes;
+`macho/text-pad` went from 15,148 to 14,392 and the file stayed at 2,493,559
+bytes.
+
+The two largest shapes are not selection gaps: DATA is mapped beyond ADRP
+reach, and the whole register pool is declared destroyed across a call. The
+bytes there are to win are the checker's DATA stores and the records the
+engine's own entries never reach; see "What the size work is worth" above.
 
 ## Where an application image's bytes go
 

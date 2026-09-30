@@ -524,8 +524,7 @@ applications does not expand this optimization work.
    before tail-call eligibility checks. Of 8,496 framed bodies, only eight
    contain no call: shared does> routine contracts waste 64 frame bytes.
    Existing owners include `habu-elide-same-slot-443de377`,
-   `habu-elide-the-three-a87cf770`, `habu-inline-small-colon-2ca2438f`,
-   and `habu-cost-a-placement-1f61860d`.
+   `habu-elide-the-three-a87cf770` and `habu-cost-a-placement-1f61860d`.
 
 5. **Separate startup memory from file size.** Startup zeroes the entire
    restored DATA span before applying sparse contents. A fresh idle product
@@ -562,20 +561,25 @@ before rebuilding, because representations, reachability and padding overlap.
 
 ## ARM64 code-size campaign
 
-Owner heron; design revision 3 of the ARM64 "all fixes" design. Each slice is
-a child dot carrying its own contract and measured byte change: census
-e13ae0a3; division 1118f223; terminal-only link save f2071a86; mask and shift
-immediates f082dbf3; shifted index and msub c57b5f1b; max as select fec184ee;
-callee clobber summaries db11d4c1; persisted summaries 890d67ea (optional);
-DATA literal pools d65bdc94; (RETURNED) 2ddb20af (census cleared its break-even); (STORE-CELLS) 458c9100
-(closed below its census break-even); zero-filled snapshot DATA
-089e4588; proven span checks 22af10b0, after colon inlining 2ca2438f; cold-throw
-target a6529379.
+Closed. Three slices stay on master: checked division 1118f223 (it fixed a
+false E-A64EMIT-CAP refusal), zero-filled snapshot DATA 089e4588 (an Etch
+`--repl` image fell by 8.06 MB) and the remeasured tier comparison a6529379.
+
+Everything else was removed because no instruction-selection change moved
+the shipped file: the Mach-O text segment rounds to a 16 KiB page, and the
+three landed code-generation slices took 1,788 bytes out of `aot/code-blob`
+and none out of the 2,477,047-byte product. Reverted after landing: census e13ae0a3,
+terminal-only link save f2071a86, max as select fec184ee. Dropped before
+landing: mask and shift immediates f082dbf3, shifted index and msub c57b5f1b,
+callee clobber summaries db11d4c1, persisted summaries 890d67ea, DATA literal
+pools d65bdc94, (RETURNED) 2ddb20af, colon inlining 2ca2438f and the
+proven span-check slice of 22af10b0. (STORE-CELLS) 458c9100 was closed below
+its break-even. `docs/engine-size.md`, "ARM64 code-generation changes that
+were removed", carries the measurement for each.
 
 Joel's decisions (2026-09-30): no no-check build mode; HR1, the private
-register ABI, is revisited only after db11d4c1 and only for a measured
-stripped-product win. Confirmed drops: inline guarded scalar stores (12 bytes
-either way); exact-site division helpers and CallOrigin rows (nothing reads
-x30 on a throw); ADRP for DATA (DATA-VA is out of ±4 GiB reach); the fragment
-model, typed relocation algebra and wire schema (pools are sealed records);
-the SCC fixed point and capsules (summaries never narrow).
+register ABI, stays parked. Confirmed drops: inline guarded scalar stores (12
+bytes either way); exact-site division helpers and CallOrigin rows (nothing
+reads x30 on a throw); ADRP for DATA (DATA-VA is out of ±4 GiB reach); the
+fragment model, typed relocation algebra and wire schema; the SCC fixed point
+and capsules (summaries never narrow).
