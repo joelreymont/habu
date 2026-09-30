@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.655350+03:00"
-blocks:
-  - habu-interpret-literal-keywords-0fa50d62
 ---
 
 Problem: colon definitions start in the assembly interpreter (`habu2.f:7613-7660`, `EM-INTERPRET-COLON`). First of the five tier-1 compile-mode leaves I5a-e.

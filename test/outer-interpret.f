@@ -11,13 +11,14 @@
 \
 \ The prelude defines with keywords (`:`, `TRUSTED:`, `SUMTYPE`), which the Habu
 \ loop does not read yet, so it loads before the switch and a case holds only
-\ numbers, comments and words.
+\ numbers, comments, the literal keywords (`s"`, `c"`, `."`, their escaped
+\ forms, `char` and `'`) and words.
 \
-\ Two checks run in a forked copy of this process instead. Ambiguity needs two
-\ usings open around the token, and `using` is a keyword: the fork opens both
-\ and calls OUTER:INTERPRET, against a fork whose `evaluate` reads the same
-\ text. And the seam: a fork binds it to a counting spy, and a loaded file must
-\ arrive there.
+\ Three checks run in a forked copy of this process instead. Ambiguity, and a
+\ tick that only a used package answers, need usings open around the token,
+\ and `using` is a keyword: the fork opens them and calls OUTER:INTERPRET,
+\ against a fork whose `evaluate` reads the same text. And the seam: a fork
+\ binds it to a counting spy, and a loaded file must arrive there.
 
 require lib/errors.f
 require lib/string.f
@@ -42,6 +43,7 @@ package OUTER-INTERPRET-TEST
 
 $0A constant NEWLINE
 $5C constant BACKSLASH
+$7E constant TILDE
 
 variable CASES
 
@@ -66,10 +68,22 @@ variable NESTED-U
 : SRC>FILE ( ptr u8 n -- )
    GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
 
+\ Source text in which each `~` stands for a double quote, which a string in
+\ this file cannot hold.
+: Q+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 ?do
+      a i + c@ {: c:n :}
+      c TILDE = if GE-DQ else c then GE-SRC-C
+   loop ;
+
+: QLINE ( ptr u8 n -- )
+   Q+ GE-SRC-LF ;
+
 \ Words the cases call: a certified word of two inputs, a trusted one that
 \ drops a cell it does not declare, an immediate word, a wide one, a word
 \ spelled as an out-of-range number, a top-row hook that logs each event and
-\ one that drops two cells more than its event carries.
+\ one that drops two cells more than its event carries, a word that prints a
+\ string's bytes in decimal, and a package public.
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
@@ -85,6 +99,8 @@ variable NESTED-U
    s" TRUSTED: OI-HOOK-ON ( -- ) ['] OI-LOG set-top-check ;" GE-SRC-LINE
    s" TRUSTED: OI-SINK ( ptr u8 n n n -- ) 2drop 2drop 2drop ;" GE-SRC-LINE
    s" TRUSTED: OI-SINK-ON ( -- ) ['] OI-SINK set-top-check ;" GE-SRC-LINE
+   s" : OI-BYTES ( ptr u8 n -- ) {: a:ptr u:n :} u 0 ?do a i + c@ . loop ;" GE-SRC-LINE
+   s" package OI-PKG public : OI-SEVEN ( -- n ) 7 ; ;package" GE-SRC-LINE
    s" oi-prelude.f" PRELUDE-BUF GT-PATH PRELUDE-U !
    PRELUDE$ SRC>FILE ;
 
@@ -260,6 +276,177 @@ variable WANT-RC
    s" nested include" GE-EXPECT-OK
    S\" 2\n3\n1\n0\n" s" nested include" GE-EXPECT-OUT ;
 
+\ ---- the literal keywords --------------------------------------------------------------
+\ Each string form, some spelled in upper case; every escape; the data space
+\ each keeps (a `."` none, a `.\"` its decoded bytes); an empty text; a keyword
+\ ended by a newline; a text across lines; and a counted string of 255 bytes,
+\ one of them from 1020 bytes of escapes.
+: LITERALS ( -- )
+   GE-SRC-RESET
+   s" s~ hi~ type cr" QLINE
+   s" S~ Hi~ type cr" QLINE
+   s" c~ hey~ count type cr" QLINE
+   s" .~ dot~ cr" QLINE
+   s" C\~ e\x42~ count type cr" QLINE
+   s" .\~ x\ny~ cr" QLINE
+   s" s\~ \a\b\e\f\l\n\r\t\v\z\q\~\\\x41\X4a\x4F~ OI-BYTES" QLINE
+   s" here s~ abc~ 2drop here swap - ." QLINE
+   s" here c~ abc~ drop here swap - ." QLINE
+   s" here .~ ~ here swap - ." QLINE
+   s" here .\~ q~ here swap - ." QLINE
+   s" s~ ~ nip ." QLINE
+   s" s~" QLINE
+   s" x~ type cr" QLINE
+   s" s~ two" QLINE
+   s" lines~ type cr" QLINE
+   s" c~ " Q+
+   255 [char] z GE-SRC-REPEAT-C s" ~ c@ ." QLINE
+   s" c\~ " Q+
+   255 0 ?do s" \x41" GE-SRC+ loop s" ~ c@ ." QLINE
+   s" depth ." GE-SRC-LINE
+   s" oi-literals.f" BOTH
+   s" literals" GE-EXPECT-OK
+   S\" hi\nHi\nhey\ndot\neB\nx\ny\n7\n8\n27\n12\n10\n10\n13\n9\n11\n0\n34\n34\n92\n65\n74\n79\n3\n4\n0\nq1\n0\nx\ntwo\nlines\n255\n255\n0\n"
+   s" literals" GE-EXPECT-OUT ;
+
+\ char pushes its operand's first byte. ' pushes an xt with no depth gate, a
+\ name no word has is a quiet miss, an edge colon leaves a name bare, and an
+\ unsealed qualifier resolves.
+: TICK-AND-CHAR ( -- )
+   GE-SRC-RESET
+   s" char Abc . CHAR z ." GE-SRC-LINE
+   s" 1 2 ' OI-TWO execute depth ." GE-SRC-LINE
+   s" ' OI-TWO drop depth ." GE-SRC-LINE
+   s" ' OI-NOPE depth ." GE-SRC-LINE
+   s" ' engine-error: depth ." GE-SRC-LINE
+   s" ' OI-PKG:OI-SEVEN execute ." GE-SRC-LINE
+   s" oi-tick-char.f" BOTH
+   s" tick and char" GE-EXPECT-OK
+   S\" 65\n122\n0\n0\n0\n0\n7\n" s" tick and char" GE-EXPECT-OUT ;
+
+\ A refusal through the engine's compile-die tail: its rc, its message, and
+\ the case file's line the refusal names.
+: DIED-AT ( n ptr u8 n ptr u8 n -- ) {: rc:n msg:ptr msgu:n at:ptr atu:n :}
+   rc CASE$ GE-EXPECT-RC
+   msg msgu CASE$ GE-EXPECT-ERR-HAS
+   at atu CASE$ GE-EXPECT-ERR-HAS ;
+
+\ No closing quote: the refusal names the keyword's line, not the end's.
+: UNTERMINATED ( -- )
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" 2 s~ never" QLINE
+   s" closed" GE-SRC-LINE
+   s" oi-unterminated.f" BOTH
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   74 s" hb: bad string literal at " S\" oi-unterminated.f:2\n" DIED-AT ;
+
+\ A bad escape past a newline in the text is refused at the keyword's line.
+: BAD-ESCAPE ( -- )
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" s\~ a" QLINE
+   s" \m~" QLINE
+   s" oi-bad-escape.f" BOTH
+   74 s" hb: bad string literal at " S\" oi-bad-escape.f:2\n" DIED-AT ;
+
+: BAD-HEX ( -- )
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" s\~ \x4g~" QLINE
+   s" oi-bad-hex.f" BOTH
+   74 s" hb: bad string literal at " S\" oi-bad-hex.f:2\n" DIED-AT ;
+
+\ A backslash that is the input's last byte escapes nothing.
+: ESCAPE-AT-END ( -- )
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" s\~ ab\" Q+
+   s" oi-escape-end.f" BOTH
+   74 s" hb: bad string literal at " S\" oi-escape-end.f:2\n" DIED-AT ;
+
+\ 256 bytes across a newline. c" checks the length once INP has passed the
+\ closing quote, c\" before, so the two name different lines.
+: COUNTED-TOO-LONG ( -- )
+   GE-SRC-RESET
+   s" c~ " Q+ 200 [char] x GE-SRC-REPEAT-C GE-SRC-LF
+   55 [char] y GE-SRC-REPEAT-C s" ~" QLINE
+   s" oi-counted-long.f" BOTH
+   76 s" hb: counted string too long (max 255) at " S\" oi-counted-long.f:2\n" DIED-AT ;
+
+: ESCAPED-TOO-LONG ( -- )
+   GE-SRC-RESET
+   s" c\~ " Q+ 200 [char] x GE-SRC-REPEAT-C GE-SRC-LF
+   55 [char] y GE-SRC-REPEAT-C s" ~" QLINE
+   s" oi-escaped-long.f" BOTH
+   76 s" hb: counted string too long (max 255) at " S\" oi-escaped-long.f:1\n" DIED-AT ;
+
+\ A reader keyword at the end of the input: the refusal spells the keyword in
+\ lowercase and names the end's line.
+: CHAR-NO-NAME ( -- )
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" CHAR" GE-SRC-LINE
+   s" oi-char-no-name.f" BOTH
+   74 s" hb: reader keyword needs a name: char at " S\" oi-char-no-name.f:3\n" DIED-AT ;
+
+: TICK-NO-NAME ( -- )
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" '" GE-SRC-LINE
+   GE-SRC-LF
+   s" oi-tick-no-name.f" BOTH
+   74 s" hb: reader keyword needs a name: ' at " S\" oi-tick-no-name.f:4\n" DIED-AT ;
+
+\ ' of a token qualified by a sealed package ends the process, the token its
+\ whole diagnostic. Every package the engine seals is asked once, in assorted
+\ case, and a second colon does not spare the token. The exit is fail-closed:
+\ the exit hook the program armed, `cr` ($2818 is src/habu/layout.f
+\ EXIT-HOOK-CELL), does not run.
+: SEALED ( ptr u8 n -- ) {: t:ptr u:n :}
+   GE-SRC-RESET
+   s" ' cr data-base $2818 + !" GE-SRC-LINE
+   s" ' " GE-SRC+ t u GE-SRC-LINE
+   s" oi-sealed.f" BOTH
+   ENGINE-ERROR:SEAL-PACKAGE t u GE-EXPECT-RC
+   t u t u GE-EXPECT-ERR ;
+
+: SEALED-PACKAGES ( -- )
+   s" tfam:x" SEALED
+   s" TYPE:x" SEALED
+   s" Match:x" SEALED
+   s" checker-cert:x:y" SEALED
+   s" lower-cert:x" SEALED
+   s" LOWER-CERT-HOOK:x" SEALED
+   s" engine-error:x" SEALED ;
+
+: TICK-WIDE ( -- )
+   GE-SRC-RESET
+   s" ' OI-WIDE" GE-SRC-LINE
+   s" oi-tick-wide.f" BOTH
+   70 s" tick wide" GE-EXPECT-RC
+   S\" hb: interpret-mode layout value: OI-WIDE\n" s" tick wide" GE-EXPECT-ERR ;
+
+: TICK-INTERNAL ( -- )
+   GE-SRC-RESET
+   s" ' DEFER-UNSET" GE-SRC-LINE
+   s" oi-tick-internal.f" BOTH
+   70 s" tick internal" GE-EXPECT-RC
+   S\" hb: internal engine word: DEFER-UNSET\n" s" tick internal" GE-EXPECT-ERR ;
+
+\ The literal events, test/top-row-hook-test.f's window: each logs its class,
+\ flags and token. A string's token is its keyword, a char's and a tick's the
+\ operand, and a tick's flags are the word's. `."`, `.\"` and a missed tick
+\ log nothing.
+: LITERAL-HOOK ( -- )
+   GE-SRC-RESET
+   s" OI-HOOK-ON s~ hi~ 2drop c~ hey~ drop char A drop ' OI-TWO drop" QLINE
+   s" S\~ e~ 2drop .~ x~ .\~ y~ ' OI-NOPE 0 set-top-check" QLINE
+   s" oi-literal-hook.f" BOTH
+   s" literal hook" GE-EXPECT-OK
+   S\" 2\n0\ns\q\n6\n513\n2drop\n3\n0\nc\q\n6\n257\ndrop\n4\n0\nA\n6\n257\ndrop\n5\n513\nOI-TWO\n6\n257\ndrop\n2\n0\nS\\\q\n6\n513\n2drop\nxy1\n0\n0\n6\n257\nset-top-check\n"
+   s" literal hook" GE-EXPECT-OUT ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 create TWIN-BUF 16 allot
 
@@ -307,6 +494,22 @@ private
    S\" outer-interpret.f:3\n" s" ambiguity" GE-EXPECT-ERR-HAS
    1 CASES +! ;
 
+\ A tick that only a used package answers: the fork's `evaluate` pushes the
+\ text for OUTER:INTERPRET to read.
+: TICK-USED ( -- )
+   GE-SRC-RESET
+   s" using OUTER-INTERPRET-FXA ' OI-TWIN execute ." GE-SRC-LINE
+   GE-EVAL-FORK-CAPTURE KEEP
+   GE-SRC-RESET
+   s" using OUTER-INTERPRET-FXA " GE-SRC+
+   s" ' OI-TWIN execute ." GE-SRC-S"
+   s"  OUTER:INTERPRET" GE-SRC-LINE
+   GE-EVAL-FORK-CAPTURE
+   s" tick through a using" SAME
+   s" tick through a using" GE-EXPECT-OK
+   S\" 1\n" s" tick through a using" GE-EXPECT-OUT
+   1 CASES +! ;
+
 \ A file loaded after the seam is rebound arrives at the new binding.
 : SEAM ( -- )
    GE-SRC-RESET
@@ -339,7 +542,22 @@ private
    HOOK-WINDOW
    HOOK-UNDERFLOW
    NESTED
+   LITERALS
+   TICK-AND-CHAR
+   UNTERMINATED
+   BAD-ESCAPE
+   BAD-HEX
+   ESCAPE-AT-END
+   COUNTED-TOO-LONG
+   ESCAPED-TOO-LONG
+   CHAR-NO-NAME
+   TICK-NO-NAME
+   SEALED-PACKAGES
+   TICK-WIDE
+   TICK-INTERNAL
+   LITERAL-HOOK
    AMBIGUITY
+   TICK-USED
    SEAM
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT

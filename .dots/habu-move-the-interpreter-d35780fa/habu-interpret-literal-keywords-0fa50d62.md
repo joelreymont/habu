@@ -1,6 +1,6 @@
 ---
 title: Interpret literal keywords in Habu
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T17:23:41.532885+03:00"

@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.680527+03:00"
-blocks:
-  - habu-interpret-literal-keywords-0fa50d62
 ---
 
 Problem: `package`, `public`, `private`, `;package`, `using`, `;using` and `EXPORT` run in the assembly interpreter.

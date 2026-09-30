@@ -3,6 +3,7 @@
 
 require lib/prelude.f
 require lib/ieee754.f
+require src/core/bytes.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
@@ -276,10 +277,11 @@ public
 
 \ ---- the interpret loop ------------------------------------------------------
 \ OUTER:INTERPRET reads a buffer token by token as the engine's interpret loop
-\ does (habu2.f EM-COMMENT's LMAIN, EM-INTERPRET-NUMBER, EM-INTERPRET-FIND) for
-\ comments, numbers and dictionary words. The keywords the engine dispatches
-\ ahead of numbers (`:`, `s"`, `'`, `using`, ...) are not read here yet: they
-\ are not dictionary words, so they refuse as undefined.
+\ does (habu2.f EM-COMMENT's LMAIN, EM-INTERPRET-WORDS) for comments, the
+\ literal keywords (`s"`, `c"`, `."`, their escaped forms, `char` and `'`),
+\ numbers and dictionary words. The engine's other keywords (`:`, `using`,
+\ `create`, ...) are not read here yet: they are not dictionary words, so they
+\ refuse as undefined.
 \
 \ The input is the engine's own. The cursor, its end and the buffer start sit
 \ in INP-CELL, INE-CELL and SRCLOC:INB-CELL, and the token in TKA-CELL and
@@ -295,12 +297,19 @@ package OUTER
 private
 
 70 constant RC-REJECT            \ habu2.f RC-REJECT: a refused token, catchable
+74 constant RC-BAD-LITERAL       \ habu2.f C-QUOTE-EOF: no closing quote, or a bad escape
+74 constant RC-NO-NAME           \ habu2.f C-DIE-KEYWORD-NAME: a keyword's operand is missing
+76 constant RC-TOO-LONG          \ habu2.f LCSTR: a counted string past CSTR-MAX bytes
 52 constant MIN-IN-SHIFT         \ layout.f DNAME-MIN-IN-MASK: record flag bits 52-59
 32 constant BLANK                \ LTOK: every byte at or below it separates tokens
 $0A constant NEWLINE
 $5C constant LINE-COMMENT        \ a backslash
 $28 constant OPEN-COMMENT        \ (
 $29 constant CLOSE-COMMENT       \ )
+$22 constant QUOTE               \ a double quote closes a string literal
+$5C constant ESCAPE              \ a backslash, in an escaped literal
+$20 constant CASE-BIT            \ ORed into A-Z it gives a-z
+255 constant CSTR-MAX            \ a counted string's length is one byte
 2 constant ERR-FD
 
 create NL NEWLINE c,
@@ -398,10 +407,15 @@ variable DIGIT-AT
    s" :" SAY
    LINE DIGITS$ SAY ;
 
+\ The engine's compile-die tail (habu2.f LCOMPILEDIE) after a site's message:
+\ the location, a newline, then the site's code, thrown as the engine throws
+\ it inside evaluate.
+: THROW-AT ( n -- )
+   AT-SOURCE NL 1 SAY throw ;
+
 : AMBIGUOUS ( -- )
    s" hb: ambiguous bare word resolves in multiple used packages: " SAY
-   TOKEN$ SAY AT-SOURCE NL 1 SAY
-   ENGINE-ERROR:USING-AMBIGUOUS throw ;
+   TOKEN$ SAY ENGINE-ERROR:USING-AMBIGUOUS THROW-AT ;
 
 \ ---- running program code -------------------------------------------------------
 \ A word or the hook runs through execute-floor, which answers whether it left
@@ -442,25 +456,33 @@ TYPED-VARIABLE REC ptr n
 : LOOKUP-GO ( -- )
    TOKEN$ FIND REC ! ;
 
-\ The token's record lands in REC. FIND's ambiguity is the engine's refusal,
-\ and a miss is undefined.
-: LOOKUP ( -- )
+\ The token's record lands in REC, XREF-NULL on a miss. FIND's ambiguity is
+\ the engine's refusal.
+: SEARCH ( -- )
    XREF-NULL REC !
    [: LOOKUP-GO ;] catch {: code:n :}
    code E-USING-AMBIGUOUS = if AMBIGUOUS then
-   code 0<> if code throw then
+   code 0<> if code throw then ;
+
+\ A word to run: a miss is undefined.
+: LOOKUP ( -- )
+   SEARCH
    REC @ XREF-FOUND? 0= if UNDEFINED then ;
 
 : MIN-IN ( n -- n )
    DNAME-MIN-IN-MASK and MIN-IN-SHIFT rshift ;
 
-\ The engine's gates in its order: a wide effect, an internal word, then fewer
-\ cells on the stack than the word's certified inputs.
-: GATE ( -- )
+\ The gates before a record's xt leaves the loop, in the engine's order: a
+\ wide effect, then an internal word.
+: XT-GATE ( -- )
    REC @ XREF-FLAGS {: f:n :}
    f DNAME-WIDE and 0<> if s" hb: interpret-mode layout value: " REFUSE then
-   f DNAME-INT and 0<> if s" hb: internal engine word: " REFUSE then
-   depth f MIN-IN < if s" hb: interpret stack underdepth: " REFUSE then ;
+   f DNAME-INT and 0<> if s" hb: internal engine word: " REFUSE then ;
+
+\ A word to run passes them, then has its certified inputs on the stack.
+: GATE ( -- )
+   XT-GATE
+   depth REC @ XREF-FLAGS MIN-IN < if s" hb: interpret stack underdepth: " REFUSE then ;
 
 \ LFIND's flag word as the hook reads it (layout.f TOP-EV-*): bit 0 found,
 \ bit 1 immediate, bits 8-15 the certified inputs.
@@ -476,6 +498,249 @@ TRUSTED: RUN-WORD ( -- )
    TOP-EV-WORD WORD-FLAGS HOOK
    r> execute-floor FLOORED ;
 
+\ ---- keywords (habu2.f CF-ENTRY, LKWCMP) --------------------------------------------
+\ A keyword is matched before the token is read as a number or a word, and it
+\ reads the input after it itself. Each keyword table is a word that runs the
+\ token when it is one of its rows and answers whether it was.
+
+: FOLD ( n -- n ) {: c:n :}
+   c [char] A [char] Z BETWEEN? if c CASE-BIT or exit then
+   c ;
+
+\ Whether the span a u spells kw, which is lowercase. As the engine's LKWCMP
+\ does, only the span's A-Z are folded.
+: FOLDED= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n kw:ptr v:n :}
+   u v <> if false exit then
+   u 0 ?do
+      a i + c@ FOLD  kw i + c@ <> if false unloop exit then
+   loop
+   true ;
+
+: TOKEN-IS? ( ptr u8 n -- bool )
+   TOKEN$ 2swap FOLDED= ;
+
+\ The token after a reader keyword kw. With the input at its end the refusal
+\ names kw as the engine bakes it, lowercase whatever the token's case, at the
+\ end's line (habu2.f C-DIE-KEYWORD-NAME).
+: OPERAND ( ptr u8 n -- ) {: kw:ptr u:n :}
+   TOKEN if exit then
+   s" hb: reader keyword needs a name: " SAY
+   kw u SAY RC-NO-NAME THROW-AT ;
+
+\ ---- string literals (habu2.f C-ISDQ to C-EIDOTQ) ------------------------------------
+\ A literal's text starts one byte past the keyword, past the blank that ended
+\ it, and runs to a closing quote that INP then passes. A literal with no
+\ closing quote refuses with INP still after the keyword, so the refusal names
+\ the keyword's line. A literal a program keeps is copied into data space it
+\ allots first: allot's DP-CHECK (habu1.f) refuses a literal that does not fit
+\ before any of it is written, as the engine's copies do. One divergence stays
+\ open: allot also carries the task-live guard, which exits 79 silently while a
+\ task runs, where the engine's interpret copies advance DP with DP-CHECK only
+\ (dot habu-reconcile-str-literals-2614abea).
+
+: BAD-LITERAL ( -- )
+   s" hb: bad string literal" SAY RC-BAD-LITERAL THROW-AT ;
+
+: TOO-LONG ( -- )
+   s" hb: counted string too long (max 255)" SAY RC-TOO-LONG THROW-AT ;
+
+\ INP passes the closing quote at q.
+: PAST ( ptr u8 -- )
+   1 + INP-CELL ADDR! ;
+
+: ROOM ( n -- ptr u8 )
+   here swap allot ;
+
+\ A plain literal's text.
+: TEXT ( -- ptr u8 n )
+   INP-CELL ADDR@ 1 + INE-CELL ADDR@ {: s:ptr e:ptr :}
+   s begin dup e < if dup c@ QUOTE <> else false then while 1 + repeat
+   {: q:ptr :}
+   q e >= if BAD-LITERAL then
+   q PAST
+   s q s - ;
+
+: KEEP ( -- ptr u8 n )
+   TEXT {: a:ptr u:n :}
+   u ROOM {: d:ptr :}
+   a d u BYTE-COPY
+   d u ;
+
+\ c": a count byte, then the text. INP has passed the quote when the length
+\ is checked (habu2.f C-ICQ), so the refusal names the quote's line.
+: COUNTED ( -- ptr u8 )
+   TEXT {: a:ptr u:n :}
+   u CSTR-MAX > if TOO-LONG then
+   u 1 + ROOM {: d:ptr :}
+   u d c!
+   a d 1 + u BYTE-COPY
+   d ;
+
+\ ---- escaped literals (habu2.f EMIT-ESC-SCAN, EMIT-ESC-COPY) ------------------------
+\ The byte an escape letter stands for (habu2.f C-ESC-DECODE-BASIC), and
+\ whether it is one. `x` and `X` are not: HEX-STEP reads their two digits.
+: ESC-BYTE ( n -- n bool )
+   case
+      QUOTE of QUOTE true endof
+      [char] q of QUOTE true endof
+      ESCAPE of ESCAPE true endof
+      [char] a of 7 true endof
+      [char] b of 8 true endof
+      [char] e of 27 true endof
+      [char] f of 12 true endof
+      [char] l of NEWLINE true endof
+      [char] n of NEWLINE true endof
+      [char] r of 13 true endof
+      [char] t of 9 true endof
+      [char] v of 11 true endof
+      [char] z of 0 true endof
+      0 false rot
+   endcase ;
+
+\ A backslash at p, `x` and two hex digits before e.
+: HEX-STEP ( ptr u8 ptr u8 -- n ptr u8 bool ) {: p:ptr e:ptr :}
+   p 4 + e > if 0 p false exit then
+   p 2 + c@ 16 DIGIT {: hi:n hi-ok:bool :}
+   p 3 + c@ 16 DIGIT {: lo:n lo-ok:bool :}
+   hi 4 lshift lo or  p 4 +  hi-ok lo-ok and ;
+
+\ The byte the text at p stands for, where its spelling ends, and whether that
+\ spelling is whole before e. A backslash makes the next byte an escape letter.
+: ESC-STEP ( ptr u8 ptr u8 -- n ptr u8 bool ) {: p:ptr e:ptr :}
+   p c@ ESCAPE <> if p c@ p 1 + true exit then
+   p 1 + e >= if 0 p false exit then
+   p 1 + c@ {: c:n :}
+   c [char] x = c [char] X = or if p e HEX-STEP exit then
+   c ESC-BYTE p 2 + swap ;
+
+\ An escaped literal's start, its closing quote and the count of bytes it
+\ decodes to. A bad escape refuses as a missing quote does, INP unmoved.
+: ESC-SCAN ( -- ptr u8 ptr u8 n )
+   INP-CELL ADDR@ 1 + INE-CELL ADDR@ {: s:ptr e:ptr :}
+   s 0
+   begin
+      over e >= if BAD-LITERAL then
+      over c@ QUOTE <>
+   while
+      {: p:ptr k:n :}
+      p e ESC-STEP {: nx:ptr ok:bool :} drop
+      ok 0= if BAD-LITERAL then
+      nx k 1 +
+   repeat
+   {: q:ptr u:n :}
+   s q u ;
+
+\ The bytes the text from s to its quote q decodes to, written from d on. The
+\ scan has proved every escape whole.
+: ESC-COPY ( ptr u8 ptr u8 ptr u8 -- ) {: s:ptr q:ptr d:ptr :}
+   s d
+   begin over q < while
+      {: p:ptr t:ptr :}
+      p q ESC-STEP drop {: b:n nx:ptr :}
+      b t c!
+      nx t 1 +
+   repeat
+   2drop ;
+
+: ESC-KEEP ( -- ptr u8 n )
+   ESC-SCAN {: s:ptr q:ptr u:n :}
+   q PAST
+   u ROOM {: d:ptr :}
+   s q d ESC-COPY
+   d u ;
+
+\ c\" checks the decoded length before INP moves (habu2.f C-EICQ), so its
+\ refusal names the keyword's line.
+: ESC-COUNTED ( -- ptr u8 )
+   ESC-SCAN {: s:ptr q:ptr u:n :}
+   u CSTR-MAX > if TOO-LONG then
+   q PAST
+   u 1 + ROOM {: d:ptr :}
+   u d c!
+   s q d 1 + ESC-COPY
+   d ;
+
+\ ---- the string keywords ---------------------------------------------------------------
+\ A literal a program keeps is pushed, then the hook sees it with the keyword
+\ as its token. `."` types its text straight from the input and allots
+\ nothing; `.\"` keeps its decoded bytes, as the engine's C-EIDOTQ does.
+TRUSTED: PUSH-STR ( -- )
+   KEEP TOP-EV-STR 0 HOOK ;
+
+TRUSTED: PUSH-CSTR ( -- )
+   COUNTED TOP-EV-CSTR 0 HOOK ;
+
+: TYPE-STR ( -- )
+   TEXT type ;
+
+TRUSTED: PUSH-ESC-STR ( -- )
+   ESC-KEEP TOP-EV-STR 0 HOOK ;
+
+TRUSTED: PUSH-ESC-CSTR ( -- )
+   ESC-COUNTED TOP-EV-CSTR 0 HOOK ;
+
+: TYPE-ESC-STR ( -- )
+   ESC-KEEP type ;
+
+\ ---- char (habu2.f C-CHAR) ---------------------------------------------------------------
+\ The engine's C-CHAR also appends the operand to the definition-body capture
+\ (LBCAP). A definer resets that buffer before it captures a body, so outside
+\ a definition the appends only fill it: 8000 bytes of top-level `char`
+\ operands end the engine with rc 71. This loop leaves the capture alone.
+: FIRST-BYTE ( -- n )
+   s" char" OPERAND
+   TOKEN$ drop c@ ;
+
+\ The hook sees the operand as the token.
+TRUSTED: PUSH-CHAR ( -- )
+   FIRST-BYTE TOP-EV-CHAR 0 HOOK ;
+
+\ ---- tick (habu2.f C-TICK) ---------------------------------------------------------------
+\ The seal guard (habu2.f C-QUALIFY-SEAL-GUARD): once the engine is sealed, a
+\ token qualified by a sealed package ends the process, the token its whole
+\ diagnostic. The qualifier is the first colon when it is at neither edge, as
+\ FIND-SPLIT reads it, but a second colon does not spare the token. The sealed
+\ packages are the checker's list (src/core/checker.f CHECKER-SEALED-PKG?, the
+\ declared mirror of the engine's own), which folds case as the engine does.
+\ The exit runs no program code (src/habu/layout.f EXIT-HOOK-CELL): the hook is
+\ cleared before `die`, which would otherwise call it.
+: SEAL-GUARD ( -- )
+   SEAL-NDICT@ 0= if exit then
+   TOKEN$ {: a:ptr u:n :}
+   a u 0 FIND-COLON {: q:n :}
+   q 1 < if exit then
+   q 1+ u >= if exit then
+   a q CHECKER-SEALED-PKG? 0= if exit then
+   a u SAY
+   0 EXIT-HOOK-CELL CELL!             \ fail-closed, as C-SEAL-PACKAGE-FAIL is
+   s" " ENGINE-ERROR:SEAL-PACKAGE die ;
+
+\ Whether ' names a word, which then passes the xt gates. A tick runs nothing,
+\ so it has no depth gate, and a name no word has is a quiet miss.
+: TICKED ( -- bool )
+   s" '" OPERAND
+   SEAL-GUARD
+   SEARCH
+   REC @ XREF-FOUND? dup if XT-GATE then ;
+
+\ The hook sees the operand as the token and the record's flags.
+TRUSTED: PUSH-XT ( -- )
+   TICKED if REC @ XREF-START TOP-EV-TICK WORD-FLAGS HOOK then ;
+
+\ ---- the literal keywords -----------------------------------------------------------------
+\ The engine's EM-INTERPRET-STRING-KEYWORDS, with `'` and `char` from its
+\ EM-INTERPRET-DEFINE-KEYWORDS.
+: LITERAL? ( -- bool )
+   S\" s\q" TOKEN-IS? if PUSH-STR true exit then
+   S\" c\q" TOKEN-IS? if PUSH-CSTR true exit then
+   S\" .\q" TOKEN-IS? if TYPE-STR true exit then
+   S\" s\\\q" TOKEN-IS? if PUSH-ESC-STR true exit then
+   S\" c\\\q" TOKEN-IS? if PUSH-ESC-CSTR true exit then
+   S\" .\\\q" TOKEN-IS? if TYPE-ESC-STR true exit then
+   s" char" TOKEN-IS? if PUSH-CHAR true exit then
+   s" '" TOKEN-IS? if PUSH-XT true exit then
+   false ;
+
 \ ---- the loop -------------------------------------------------------------------------
 \ A number is pushed and a word run: the token's effect on the stack is the
 \ program's, so this row, and every row above it, states none of it.
@@ -485,6 +750,7 @@ TRUSTED: DISPATCH ( -- )
 
 : STEP ( -- )
    COMMENT? if exit then
+   LITERAL? if exit then
    DISPATCH ;
 
 : RUN ( -- )

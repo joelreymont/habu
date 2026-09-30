@@ -8508,6 +8508,13 @@ PRIM: CHECKER-LBUF-NAME-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ moment its file gained a package (dot habu-checker-defined-answers-1504bbde).
 PRIM: CHECKER-DEFINED-HERE? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-RESOLVES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+\ CHECKER-SEALED-PKG? is the one Habu list of the sealed system packages, the
+\ declared mirror of the engine's RESTAB (src/habu/habu2.f). This file's guards
+\ read it, and so does src/habu/outer.f SEAL-GUARD, the Habu loop's copy of the
+\ engine's C-QUALIFY-SEAL-GUARD. Without the row the seal marks the word
+\ DNAME-INT, the product drops its name, and the loop would need a list of its
+\ own. It answers a question about a name and changes nothing.
+PRIM: CHECKER-SEALED-PKG? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ The AOT signature pool's own surface, for the same reason every axiom above it
 \ exists: this file's definitions are compiled with the hook off, so a checked
 \ caller outside it has no record to resolve against. The two callers are
