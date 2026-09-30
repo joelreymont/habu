@@ -15,6 +15,9 @@ belong in the language core.
   review, integration, verification and cleanup. Independent review of a
   delegated change runs on Astra for Codex agents and on Fable for Claude
   agents.
+- Agents work independently in separate worktrees; there are no shared slots.
+  Never pause other worktrees for local `jj` errors; back up and recover only
+  your own.
 - Infer routine details and complete authorized work. Ask only for a material
   missing choice or additional authority. User instructions take precedence.
 - Use plain English. Keep changes focused and remove obsolete machinery when
