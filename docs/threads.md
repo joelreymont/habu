@@ -36,13 +36,16 @@ loop start the code pointer sat in the next unit and the same run survived 21
 client rounds. No task is exempt, the AIO loop task included: an exemption would
 have to keep every live task's code out of the unit the code pointer is in,
 which no later definition can promise, and the forget paths (`cp!`, `ndict!`)
-free code under a task that may be running it. This bounds what a remote REPL
-can do: a REPL served over a connection ([genio.md](genio.md)) can evaluate
-while worker tasks run, but a colon definition sent to it is dictionary mutation
-and ends the process. Define first, then start the tasks, the AIO loop last
-([aio.md](aio.md)). Linux fatal exits use `exit_group`
-(`94`), not thread-local `exit` (`93`), so an error in any thread terminates the
-whole process instead of leaving worker threads behind.
+free code under a task that may be running it. Data space is shut the same way:
+`allot`, `align`, `,`, `c,`, the interpret-mode string literals that keep
+their text (`s"`, `c"`, `s\"`, `c\"`, `.\"`; not `."`, which reserves nothing)
+and `evaluate` exit `$4F` with no output while a task is live. This bounds
+what a remote REPL can do: a REPL served over a connection ([genio.md](genio.md)) can neither
+evaluate nor define while a task is live; either ends the process. Define
+first, then start the tasks, the AIO loop last ([aio.md](aio.md)). Linux
+fatal exits use `exit_group` (`94`), not thread-local `exit` (`93`), so an
+error in any thread terminates the whole process instead of leaving worker
+threads behind.
 
 Worker bodies run through a task wrapper. A worker `die` keeps its explicit exit
 status and message and still ends the process. An uncaught worker `throw` ends

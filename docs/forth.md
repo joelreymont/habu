@@ -915,14 +915,18 @@ by name with the count it saw and the ceiling, and none truncates.
   linux-aarch64 (`src/os/linux/layout.f`, `src/habu/layout.f`; the top
   `PROF-CNT-BYTES` of the region are the profiler counter band, and `DATA-SIZE`
   is the host's). `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and
-  interpret-mode string literals all advance the DP through `DP-CHECK`
+  the interpret-mode string literals that keep their text (all but `."`)
+  advance the DP through `DP-CHECK`
   (`src/habu/habu1.f`). Past it:
   `hb: data space out of range: DP <dp> of <cap> bytes`, rc 76, catchable inside
   `evaluate`, both numbers offsets from `data-base`. No definition is named: no
   DP sink runs while a colon body compiles, so the refusal reports the line it
   came from (` at <path>:<line>`, added when a source file is open). Repair:
   hold bulk data in `MEM:ALLOC-BYTES` or a `DYNAMIC-BUFFER`, which map their own
-  pages, not in the dictionary.
+  pages, not in the dictionary. While a task is live every one of these sinks
+  exits `$4F` before it writes, and so does `evaluate`
+  ([threads.md](threads.md)): the definers name their token on stderr, the rest
+  print nothing.
 
 ## Constants
 

@@ -54,6 +54,9 @@ create CASE-BUF FS-PATH-CAP allot
 variable CASE-U
 create NESTED-BUF FS-PATH-CAP allot
 variable NESTED-U
+\ The spin prelude's path; SPIN-U is 0 while a case runs without it.
+create SPIN-BUF FS-PATH-CAP allot
+variable SPIN-U
 
 : PRELUDE$ ( -- ptr u8 n )
    PRELUDE-BUF PRELUDE-U @ ;
@@ -63,6 +66,9 @@ variable NESTED-U
 
 : NESTED$ ( -- ptr u8 n )
    NESTED-BUF NESTED-U @ ;
+
+: SPIN$ ( -- ptr u8 n )
+   SPIN-BUF SPIN-U @ ;
 
 \ The source buffer's text, written to the file at path.
 : SRC>FILE ( ptr u8 n -- )
@@ -104,6 +110,19 @@ variable NESTED-U
    s" oi-prelude.f" PRELUDE-BUF GT-PATH PRELUDE-U !
    PRELUDE$ SRC>FILE ;
 
+\ A second prelude for the cases that need a live task: OI-SPIN starts one that
+\ spins until the process ends. A task this prelude started would end the load
+\ of test/outer-loop-on.f, whose `package` mutates the dictionary, so each such
+\ case starts its own.
+: SPIN-PRELUDE ( -- )
+   GE-SRC-RESET
+   s" require lib/task.f" GE-SRC-LINE
+   s" : OI-SPIN-BODY ( -- ) begin TASK:PAUSE false until ;" GE-SRC-LINE
+   s" TASK:MIN-STACK TASK:TASK OI-SPINNER" GE-SRC-LINE
+   s" : OI-SPIN ( -- ) ['] OI-SPIN-BODY OI-SPINNER TASK:ACTIVATE ;" GE-SRC-LINE
+   s" oi-spin-prelude.f" SPIN-BUF GT-PATH SPIN-U !
+   SPIN$ SRC>FILE ;
+
 \ ---- the two runs of a case --------------------------------------------------------
 create WANT-OUT GT-OUT-CAP allot
 variable WANT-OUT-U
@@ -140,6 +159,7 @@ variable WANT-RC
    GE-HB-RESET
    s" --load" GE-ARG+
    PRELUDE$ GE-ARG+
+   SPIN-U @ 0<> if SPIN$ GE-ARG+ then
    habu if s" test/outer-loop-on.f" GE-ARG+ then
    CASE$ GE-ARG+
    GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV ;
@@ -457,6 +477,36 @@ variable WANT-RC
    S\" 2\n0\ns\q\n6\n513\n2drop\n3\n0\nc\q\n6\n257\ndrop\n4\n0\nA\n6\n257\ndrop\n5\n513\nOI-TWO\n6\n257\ndrop\n2\n0\nS\\\q\n6\n513\n2drop\nxy1\n0\n0\n6\n257\nset-top-check\n"
    s" literal hook" GE-EXPECT-OUT ;
 
+\ ---- with a task live -----------------------------------------------------------------
+\ A literal that keeps its text in data space exits $4F with no output while a
+\ task is live, as `allot` does, after its own refusals: a counted string too
+\ long still refuses first. `."` keeps nothing and runs.
+: SPUN ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
+   GE-SRC-RESET
+   s" OI-SPIN " GE-SRC+  src srcu QLINE
+   name nameu BOTH ;
+
+: TASK-LIVE ( -- )
+   SPIN-PRELUDE
+   s" s~ hi~ type cr" s" oi-live-str.f" SPUN
+   79 CASE$ GE-EXPECT-RC  CASE$ GE-EXPECT-SILENT
+   s" c~ hi~ count type cr" s" oi-live-cstr.f" SPUN
+   79 CASE$ GE-EXPECT-RC  CASE$ GE-EXPECT-SILENT
+   s" s\~ h\x69~ type cr" s" oi-live-esc-str.f" SPUN
+   79 CASE$ GE-EXPECT-RC  CASE$ GE-EXPECT-SILENT
+   s" c\~ h\x69~ count type cr" s" oi-live-esc-cstr.f" SPUN
+   79 CASE$ GE-EXPECT-RC  CASE$ GE-EXPECT-SILENT
+   s" .\~ h\x69~ cr" s" oi-live-esc-dot.f" SPUN
+   79 CASE$ GE-EXPECT-RC  CASE$ GE-EXPECT-SILENT
+   s" .~ ok~ cr" s" oi-live-dot.f" SPUN
+   CASE$ GE-EXPECT-OK
+   S\" ok\n" CASE$ GE-EXPECT-OUT
+   GE-SRC-RESET
+   s" OI-SPIN c~ " Q+ 256 [char] x GE-SRC-REPEAT-C s" ~" QLINE
+   s" oi-live-too-long.f" BOTH
+   76 s" hb: counted string too long (max 255) at " S\" oi-live-too-long.f:1\n" DIED-AT
+   0 SPIN-U ! ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 create TWIN-BUF 16 allot
 
@@ -567,6 +617,7 @@ private
    TICK-WIDE
    TICK-INTERNAL
    LITERAL-HOOK
+   TASK-LIVE
    AMBIGUITY
    TICK-USED
    SEAM

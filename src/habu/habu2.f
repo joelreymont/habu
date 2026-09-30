@@ -4483,7 +4483,7 @@ variable LTOPHOOK
    C-QUOTE-CONSUME
    LBL LBL {: cl cd :}
    12 DATA 0 LDR,  15 12 0 ADDI,                        \ x12 = DP, x15 = string base
-   14 12 10 ADD,  14 DP-CHECK
+   14 12 10 ADD,  B-TASK-LIVE-GUARD  14 DP-CHECK
    11 13 0 ADDI,  9 10 0 ADDI,
    cl LBL,  9 cd CBZ,
       14 11 0 LDRB,  14 12 0 STRB,  12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
@@ -4500,7 +4500,7 @@ variable LTOPHOOK
    10 255 CMPI,  C-LE capok BCOND,  LCSTR LABEL@ B,   \ c" over 255 bytes: named fd-2 label (LCSTR) then rc 76 via LCOMPILEDIE -- recoverable inside evaluate, fail-closed exit 76 at top level. Fires before the DP copy -> clean rollback
    capok LBL,
    12 DATA 0 LDR,  15 12 0 ADDI,                       \ x15 = counted string base
-   14 12 10 ADD,  14 14 1 ADDI,  14 DP-CHECK
+   14 12 10 ADD,  14 14 1 ADDI,  B-TASK-LIVE-GUARD  14 DP-CHECK
    10 12 0 STRB,  12 12 1 ADDI,
    11 13 0 ADDI,  9 10 0 ADDI,
    cl LBL,  9 cd CBZ,
@@ -4522,7 +4522,7 @@ variable LTOPHOOK
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
    17 DATA 0 LDR,
-   14 17 10 ADD,  14 DP-CHECK
+   14 17 10 ADD,  B-TASK-LIVE-GUARD  14 DP-CHECK
    C-ESC-COPY-X17
    17 DATA 0 STR,  11 17 10 SUB,
    11 G-PUSH  10 G-PUSH
@@ -4537,7 +4537,7 @@ variable LTOPHOOK
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
    17 DATA 0 LDR,
-   14 17 10 ADD,  14 14 1 ADDI,  14 DP-CHECK
+   14 17 10 ADD,  14 14 1 ADDI,  B-TASK-LIVE-GUARD  14 DP-CHECK
    10 17 0 STRB,  17 17 1 ADDI,
    C-ESC-COPY-X17
    17 DATA 0 STR,  11 17 10 SUB,  11 11 1 SUBI,
@@ -4550,7 +4550,7 @@ variable LTOPHOOK
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
    17 DATA 0 LDR,
-   14 17 10 ADD,  14 DP-CHECK
+   14 17 10 ADD,  B-TASK-LIVE-GUARD  14 DP-CHECK
    C-ESC-COPY-X17
    17 DATA 0 STR,
    1 17 10 SUB,  2 10 0 ADDI,  G-OUT ;

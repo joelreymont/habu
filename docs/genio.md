@@ -180,13 +180,14 @@ connection GENIO:TCP-DEVICE {: dev:GENIO:device :}
 dev dev [: SERVE ;] GENIO:WITH-IO
 ```
 
-**No Habu task may be live while such a REPL compiles.** A colon definition is
-dictionary mutation, and Habu forbids that while any task is live: the engine
-exits `$4F` naming the rejected token (see [threads.md](threads.md)). A remote
-REPL on a server that is running worker tasks can therefore evaluate but not
-define. That is a restriction of Habu's tasking model, not of this layer - the
-W^X unit a definition flips, measured in threads.md - and it is why [`lib/genio-test.f`](../lib/genio-test.f) holds both ends of its
-connection in the main task.
+**No Habu task may be live while such a REPL runs a line.** A colon definition
+is dictionary mutation, and Habu forbids that while any task is live: the engine
+exits `$4F` naming the rejected token. `evaluate` exits `$4F` too, with no
+output (see [threads.md](threads.md)). A remote REPL on a server that is running
+worker tasks can therefore neither evaluate nor define. That is a restriction
+of Habu's tasking model, not of this layer - the W^X unit a definition flips,
+measured in threads.md - and it is why [`lib/genio-test.f`](../lib/genio-test.f)
+holds both ends of its connection in the main task.
 
 ## Images
 

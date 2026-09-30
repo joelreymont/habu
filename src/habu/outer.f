@@ -532,11 +532,10 @@ TRUSTED: RUN-WORD ( -- )
 \ it, and runs to a closing quote that INP then passes. A literal with no
 \ closing quote refuses with INP still after the keyword, so the refusal names
 \ the keyword's line. A literal a program keeps is copied into data space it
-\ allots first: allot's DP-CHECK (habu1.f) refuses a literal that does not fit
-\ before any of it is written, as the engine's copies do. One divergence stays
-\ open: allot also carries the task-live guard, which exits 79 silently while a
-\ task runs, where the engine's interpret copies advance DP with DP-CHECK only
-\ (dot habu-reconcile-str-literals-2614abea).
+\ allots first, after its own refusals. allot's task-live guard then exits $4F
+\ with no output while a task runs, and its DP-CHECK (habu1.f) refuses a literal
+\ that does not fit, both before any of it is written, as the engine's copies
+\ do.
 
 : BAD-LITERAL ( -- )
    s" hb: bad string literal" SAY RC-BAD-LITERAL THROW-AT ;
