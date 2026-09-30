@@ -534,6 +534,7 @@ HBB-INSTALL-CHILD-LINT
    s" src/os/image-bytes.f" HBB-KEY-FILE+
    s" src/os/script-argv.f" HBB-KEY-FILE+
    s" src/habu/fdio.f" HBB-KEY-FILE+
+   s" src/habu/sign-id.f" HBB-KEY-FILE+
    s" src/habu/driver-io.f" HBB-KEY-FILE+
    s" src/habu/aot-decl.f" HBB-KEY-FILE+
    s" src/habu/cell-grid.f" HBB-KEY-FILE+

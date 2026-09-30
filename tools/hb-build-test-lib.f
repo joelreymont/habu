@@ -16,6 +16,7 @@
 \   tools/hb-build-stripped-cells-test.f      mapped cells, uncarried table
 \   tools/hb-build-stripped-cache-test.f      link equality, cached table cells
 \   tools/hb-build-large-source-test.f        literal bodies, large source
+\   tools/hb-build-repl-twin-test.f           two REPL builds, restored LASTC
 \ test/gate-stdlib-cases.f registers each file as a row of its own and says why.
 
 require lib/errors.f
@@ -359,6 +360,15 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 
 : HBT-REMOVE-FILE? ( ptr u8 n -- )
    2dup FILE? if REMOVE-FILE else 2drop then ;
+
+\ The first byte two spans differ at, or -1 for identical. A pinned -1 names the
+\ offset on failure instead of printing two images into the capture.
+: HBT-DIFF-AT ( ptr u8 n ptr u8 n -- n ) {: a:ptr au:n b:ptr bu:n :}
+   au bu min 0 ?do
+      a i + c@  b i + c@ <> if i unloop exit then
+   loop
+   au bu <> if au bu min exit then
+   -1 ;
 
 : HBT-REPL-EXPECTED$ ( -- ptr u8 n )
    SB-RESET

@@ -19,6 +19,7 @@ create SLOTS
    APP-ENTRY:XT-CELL ,                  0 ,
    REPLH-CELL ,                         0 ,
    BPWBASE-CELL ,                       1 ,
+   LASTC-CELL ,                         0 ,
 here SLOTS - 2 cells / constant ROWS
 
 : SLOT ( ptr n n -- ptr n ) 2 * cells + ;

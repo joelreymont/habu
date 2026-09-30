@@ -59,6 +59,7 @@ require src/habu/aot-decl.f
 require src/habu/aot-ident.f
 require src/habu/aot-owned.f
 require src/habu/habu2.f
+require src/habu/sign-id.f
 require src/habu/driver-io.f
 require tools/native-layout.f
 
@@ -88,6 +89,6 @@ public
    host count TRANSLATE-FIXED
    0 0= STDIN? !
    NULL$ origin ENGINE-EMIT:FORTH-ORIGIN
-   DRV-ENGINE-ID$ path size DRV-EMIT-IMAGE ;
+   SIGN-ID:ENGINE$ path size DRV-EMIT-IMAGE ;
 
 ;package

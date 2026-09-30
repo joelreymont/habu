@@ -65,15 +65,6 @@ package HB-BUILD-CLI
 : HBT-MAPL-EXPECTED$ ( -- ptr u8 n )
    S\" A\n" ;
 
-\ The first byte two spans differ at, or -1 for identical. A pinned -1 names the
-\ offset on failure instead of printing two images into the capture.
-: HBT-DIFF-AT ( ptr u8 n ptr u8 n -- n ) {: a:ptr au:n b:ptr bu:n :}
-   au bu min 0 ?do
-      a i + c@  b i + c@ <> if i unloop exit then
-   loop
-   au bu <> if au bu min exit then
-   -1 ;
-
 \ THE ALLOCATION MOVED INTO MAIN LINKS, RUNS AND PRINTS ITS OWN BYTE: the
 \ program tools/hb-build-stripped-cells-test.f HBT-STRIPPED-MAPPED-CELL refuses,
 \ written the way that refusal suggests.

@@ -224,6 +224,7 @@ variable IN-DEFINITION
    s" src/os/linux-x86-64/proc-control.f" LINT-FILE
    s" src/habu/habu1.f"     LINT-FILE   s" src/habu/prof.f"      LINT-FILE
    s" src/habu/regalloc.f"  LINT-FILE   s" src/habu/jit.f"       LINT-FILE
+   s" src/habu/sign-id.f"   LINT-FILE
    s" src/habu/habu2.f"     LINT-FILE   s" src/habu/snap-lib.f"  LINT-FILE
    s" src/habu/snap.f"      LINT-FILE
    \ `1 die` alone left die's message operands to the CALLER's stack — a

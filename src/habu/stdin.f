@@ -174,7 +174,7 @@ public
    MERGE-ARTIFACT
    0 0= STDIN? !
    HB@ 0 ENGINE-EMIT:FORTH                        \ empty LSRC: the REPL is seeded, not re-parsed
-   DRV-ENGINE-ID$ STDIN-OUT DRV-EMIT-IMAGE
+   SIGN-ID:ENGINE$ STDIN-OUT DRV-EMIT-IMAGE
    DRV-EXIT-OK ;
 
 ;package

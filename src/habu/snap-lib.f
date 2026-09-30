@@ -23,6 +23,7 @@ require src/habu/address-cells.f
 require src/habu/snapshot-format.f
 require src/habu/cell-grid.f
 require src/habu/fdio.f
+require src/habu/sign-id.f
 require src/habu/stack-abi.f
 
 package SNAP
@@ -30,11 +31,14 @@ package SNAP
 create OUTPUT FS-PATH-CAP allot
 variable OUTPUT-U
 
-\ Refresh builds keep their existing temporary artifact name. Applications
-\ select a path before capture, copied into DATA rather than retained in argv.
-: OUT-PATH ( -- ptr u8 n )
-   OUTPUT-U @ if OUTPUT OUTPUT-U @ exit then
-   s" hb-snap0" TMP-PATH ;
+\ Every persist names its output first (PATH!), copied into DATA rather than
+\ retained in argv. The image stores none of it (SND-ZERO-WRITER), so a restored
+\ process that persists without naming its own path is refused instead of
+\ writing where its build did.
+: OUT-PATH ( -- ptr u8 n ) OUTPUT OUTPUT-U @ ;
+
+: OUT-PATH-NAMED ( -- )
+   OUTPUT-U @ 0= if s" snap: persist has no output path" 74 die then ;
 
 \ Snapshot trailer format version (item 12 slice 3b, dot
 \ habu-snapshot-format-ver): once 3b bakes nonzero hidden-field counts into the
@@ -181,8 +185,9 @@ TRUSTED: SNC-TEXT-N ( -- n ) STB @ ;
 \ text base, stack, argv, cached label addresses) and are all overwritten
 \ by the loader/startup (EM-SNAPSHOT-RESTORE + EM-STARTUP-RUNTIME-STATE,
 \ src/habu/habu2.f). Zero them in a scratch copy so images are
-\ byte-identical; the two-build compare fails loudly if a new live cell
-\ ever appears here without being added.
+\ byte-identical. tools/hb-build-repl-twin-test.f builds one program twice
+\ and compares the images, so a new live cell left out of this list fails
+\ that row loudly.
 variable SND-N
 
 TRUSTED: SND-PTR ( -- ptr u8 ) SND-N @ ;
@@ -217,6 +222,11 @@ TRUSTED: SND-ZERO-CELL ( n -- )
    LOOPSP-CELL SND-ZERO-CELL  DOESP-CELL SND-ZERO-CELL
    CREATEP-CELL SND-ZERO-CELL RRECP-CELL SND-ZERO-CELL
    LMAINP-CELL SND-ZERO-CELL  DOESB-CELL SND-ZERO-CELL
+   EVALREC-CELL SND-ZERO-CELL UNCGH-CELL SND-ZERO-CELL
+   SIGNAL-ABI:STUB-CELL SND-ZERO-CELL
+   AOT-CELLS:SPAN-TABLE-CELL SND-ZERO-CELL
+   AOT-CELLS:SPAN-N-CELL SND-ZERO-CELL
+   AOT-CELLS:SPAN-BASE-CELL SND-ZERO-CELL
    TSIG-A-CELL SND-ZERO-CELL  TSIG-U-CELL SND-ZERO-CELL
    TCSIG-A-CELL SND-ZERO-CELL TCSIG-U-CELL SND-ZERO-CELL
    CRSIG-A-CELL SND-ZERO-CELL CRSIG-U-CELL SND-ZERO-CELL
@@ -324,7 +334,10 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    MLEN SND-ZERO-OFF SND-ZERO-CELL
    STB SND-ZERO-OFF SND-ZERO-CELL
    SDB SND-ZERO-OFF SND-ZERO-CELL
-   SFD SND-ZERO-OFF SND-ZERO-CELL ;
+   SFD SND-ZERO-OFF SND-ZERO-CELL
+   OUTPUT-U SND-ZERO-OFF SND-ZERO-CELL
+   OUTPUT SND-ZERO-OFF {: out:n :}
+   FS-PATH-CAP 0 ?do out i + SND-ZERO-CELL CELL +loop ;
 
 \ PERSIST admitted the complete retained code interval before copying. Freeze
 \ exactly that interval, excluding abandoned rows and the old engine's ASLR
@@ -538,6 +551,7 @@ public
    size OUTPUT-U ! ;
 
 : PERSIST ( -- )
+   OUT-PATH-NAMED
    SNAPSHOT-FORMAT:VERIFY
    VERIFY-QUIESCENT
    \ The retained region includes hidden bodies and stored quotations. Checking
@@ -555,7 +569,7 @@ public
    ENCODE-HEAP
    FRAME
    WRITE-IMAGE
-   OUT-PATH CODESIGN:ENSURE
+   OUT-PATH SIGN-ID:PROG$ CODESIGN:SIGN-AS
    s" " 0 die ;
 
 ;package

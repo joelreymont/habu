@@ -114,6 +114,10 @@ SUITE hb-build-timeout-json
    tools/hb-build-timeout-json-test.f
 ;SUITE
 
+SUITE hb-build-repl-twin
+   tools/hb-build-repl-twin-test.f
+;SUITE
+
 SUITE hb-build-aot
    tools/hb-build-aot-test.f
 ;SUITE

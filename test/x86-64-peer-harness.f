@@ -28,6 +28,7 @@
 require lib/test.f
 require lib/byte-buffer.f
 require src/habu/fdio.f
+require src/habu/sign-id.f
 require src/arch/x86-64/icode.f
 require src/compiler/native/x64ir.f
 
@@ -68,7 +69,9 @@ variable WRONG-AT                    \ the check a negative image fails, or 0
 
 \ The signer, the image driver and the OS seam over package X64CODE's byte
 \ stream. They load into this package because the x86-64 sys.f spells the host
-\ seam's syscall-number words, which must not become globals here.
+\ seam's syscall-number words, which must not become globals here. The driver's
+\ packaged dependencies, fdio.f and sign-id.f, load at top level above, because
+\ packages do not nest.
 s" src/os/linux-x86-64/sign.f" required
 s" src/habu/driver-io.f" required
 s" src/os/linux-x86-64/sys.f" required

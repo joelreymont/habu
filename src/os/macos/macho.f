@@ -40,8 +40,8 @@ $4000     constant DATA-CONST-SIZE
 \ CodeDirectory header ($58, sign2.f CD-HDR) and the id string. The largest file
 \ this writer can hand the signer is a full MPAGE of __TEXT plus __DATA_CONST
 \ and the chained-fixups tail, so that is the slot count to price. $40 is the id
-\ allowance: every writer signs with src/habu/driver-io.f DRV-PROG-ID$ or
-\ DRV-ENGINE-ID$, and the longer, DRV-PROG-ID$ `hb-prog`, is 7 bytes.
+\ allowance: every writer signs with src/habu/sign-id.f SIGN-ID:PROG$ or
+\ SIGN-ID:ENGINE$, and the longer, SIGN-ID:PROG$ `hb-prog`, is 7 bytes.
 \
 \ THE FOUR FORMAT NUMBERS ARE A MIRROR OF sign2.f AND NOTHING CHECKS THE MIRROR.
 \ They cannot be read from their owner here because sign2.f loads after this file

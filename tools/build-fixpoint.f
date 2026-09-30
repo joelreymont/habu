@@ -1122,6 +1122,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-DRIVER-IO ( ptr u8 n -- ) {: out:ptr outu :}
+   out outu s" src/habu/sign-id.f" BF-APPEND-MODULE   \ driver-io.f requires it
    out outu s" src/habu/driver-io.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}

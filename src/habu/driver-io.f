@@ -4,7 +4,11 @@
 \ FDIO:WALL, which loads immediately before this one in every builder. It moved
 \ because it is the only part of this file a process without the image writer can
 \ use: everything below reaches MBUF, BUILD-IMAGE and the target's signer, so a
-\ booted engine cannot load this file at all.
+\ booted engine cannot load this file at all. The code-signature identifiers live
+\ in src/habu/sign-id.f for the same reason: src/habu/snap-lib.f signs in a
+\ booted engine.
+
+require src/habu/sign-id.f
 
 variable DRV-WFD
 
@@ -24,24 +28,9 @@ variable DRV-WFD
    phase IMG-DROP
    path pathu DRV-WRITE-IMAGE-PATH ;
 
-\ The code-signature identifier of each kind of image. Every writer names its
-\ identifier through one of these, never a literal of its own: on macOS the
-\ identifier is signed bytes (src/os/macos/sign2.f CODESIG2-BODY), held in the
-\ CodeDirectory and counted in its size, the SuperBlob's, and the header's
-\ LC_CODE_SIGNATURE and __LINKEDIT sizes, so a writer with another name writes
-\ another file for the same program. A one-byte-shorter name made a one-byte-
-\ shorter image (tools/hb-build-stripped-cache-test.f
-\ HBT-STRIPPED-OBJECT-RELINK). src/os/macos/macho.f MACHO-SIG-MAX prices the
-\ longer of the two. Linux signers discard the identifier.
-: DRV-PROG-ID$ ( -- ptr u8 n )
-   s" hb-prog" ;
-
-: DRV-ENGINE-ID$ ( -- ptr u8 n )
-   s" hb" ;
-
 \ The single high-level image-emission tail: assemble the current CODE into the
-\ target image, sign it with the identifier the caller names (DRV-PROG-ID$ for
-\ a program, DRV-ENGINE-ID$ for an engine), and write it to path. Every engine
+\ target image, sign it with the identifier the caller names (SIGN-ID:PROG$ for
+\ a program, SIGN-ID:ENGINE$ for an engine), and write it to path. Every engine
 \ driver (stage2/build/stdin/maker/aot-lib), tools/native-emit.f and the object
 \ image writer (tools/object-image.f OBJIMG:WRITE) route through this one word,
 \ so exactly one BUILD-IMAGE+sign+write implementation exists. Loads after the

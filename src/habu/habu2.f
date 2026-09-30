@@ -6405,11 +6405,13 @@ public
 ;package
 
 \ Publish the payload's CODE-SPAN TABLE: where the baked rows are, how many there
-\ are, and the address the blob just landed at. Three DATA cells, written once and
-\ never again, which is what makes them readable by ordinary checked code
+\ are, and the address the blob just landed at. Three DATA cells, written once per
+\ boot and never again, which is what makes them readable by ordinary checked code
 \ (src/habu/aot-closure.f) with no relocation of their own: the rows are __text,
 \ mapped for the life of the process, and a row's blob offset means the same thing
-\ at every boot once the base sits beside it.
+\ at every boot once the base sits beside it. A snapshot restore keeps this boot's
+\ three across its DATA copy (EM-SNAPSHOT-RESTORE), and the image writer stores
+\ none of them (snap-lib.f SND-ZERO-LIVE).
 \ IT RUNS WITH CP STILL AT THE BLOB'S BASE, before this pass advances past the
 \ blob, because that base is what a row's offset is measured from. A build that
 \ captured nothing emits no seed pass at all, so all three keep the zero the DATA
@@ -7821,12 +7823,17 @@ ardone LBL,
    \ copies of their base cells are another run's addresses. The data stack
    \ survives the copy in XDS, a pinned register; these two have no register, so
    \ they ride the machine stack across it and are republished beside XDS below.
+   \ So do the three AOT-SPAN cells, which the seed filled with this boot's text
+   \ and region addresses before the restore began and nothing fills after it.
    \ x13 is the copy loops' own scratch; x11 holds the snapshot text size the
    \ text pass below still needs, and x9/x10/x0 carry argc/argv/envp.
-   SP SP 32 SUBI,
+   SP SP 64 SUBI,
    13 DATA STACK-ABI:RETURN-BASE-CELL LDR,  13 SP 0 STR,
    13 DATA STACK-ABI:LOOP-BASE-CELL LDR,    13 SP 8 STR,
    0 SP 16 STR,
+   13 DATA AOT-CELLS:SPAN-TABLE-CELL LDR,  13 SP 24 STR,
+   13 DATA AOT-CELLS:SPAN-N-CELL LDR,      13 SP 32 STR,
+   13 DATA AOT-CELLS:SPAN-BASE-CELL LDR,   13 SP 40 STR,
    \ Restore live rows and code to their original runtime offsets. The gap is
    \ cleared explicitly because cold AOT seeding has touched dictionary pages.
    0 DBASE 0 ADDI,  1 21 0 ADDI,  5 DREC MOVZ,  2 15 5 MUL,
@@ -7883,8 +7890,11 @@ ardone LBL,
    5 STACK-ABI:BOOT-BYTES LIT64,  5 DATA STACK-ABI:CAP-CELL STR,
    13 SP 0 LDR,  13 DATA STACK-ABI:RETURN-BASE-CELL STR,
    13 SP 8 LDR,  13 DATA STACK-ABI:LOOP-BASE-CELL STR,
+   13 SP 24 LDR,  13 DATA AOT-CELLS:SPAN-TABLE-CELL STR,
+   13 SP 32 LDR,  13 DATA AOT-CELLS:SPAN-N-CELL STR,
+   13 SP 40 LDR,  13 DATA AOT-CELLS:SPAN-BASE-CELL STR,
    0 SP 16 LDR,
-   SP SP 32 ADDI,
+   SP SP 64 ADDI,
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
@@ -7964,6 +7974,10 @@ ardone LBL,
    EXIT-HOOK-CELL RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:XT-CELL RELOC-EMIT:MARK-CELL
    APP-ENTRY:XT-CELL RELOC-EMIT:MARK-CELL
+   \ LASTC holds the record the last `create`, `variable` or `constant` wrote,
+   \ which is a region address too: a `does>` a restored session runs before
+   \ its first `create` patches the record the image names (DOESPATCH).
+   LASTC-CELL RELOC-EMIT:MARK-CELL
    9 DATA NCOMP-DISPATCH:DECL-CELL ADDI,  RELOC-EMIT:LPTRMARK LABEL@ BL,
    9 DATA NCOMP-DISPATCH:TARGET-DECL-CELL ADDI,  RELOC-EMIT:LPTRMARK LABEL@ BL,
    \ Constructor registry starts empty: clear the whole bitmap, then publish the shape

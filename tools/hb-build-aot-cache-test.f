@@ -100,7 +100,7 @@ create HBT-EXP-HEX2 64 allot
 \ package AND a re-exported alias must be byte-identical to the same program
 \ calling the defining name twice — a second body or a diverged call target
 \ changes the bytes. The signature identifier is no variable here: a stripped
-\ image is signed with src/habu/driver-io.f DRV-PROG-ID$, whatever its path.
+\ image is signed with src/habu/sign-id.f SIGN-ID:PROG$, whatever its path.
 \ The alias variant also runs, proving both names execute the one body.
 : HBT-EXP-SRC ( -- ptr u8 n )
    HBT-EXP-SRC-BUF HBT-EXP-SRC-U @ ;

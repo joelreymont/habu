@@ -71,6 +71,18 @@ The native REPL build compiles the current source into a fresh running image.
 It does not use the AOT maker or artifact caches. The existing build report
 therefore records no cache source and no cache hits for `--repl`.
 
+A `--repl` image stores no cell that only the building process can read. The
+cells a process fills at startup are stored as zero, region addresses such as
+the engine hooks and `LASTC-CELL` are declared and relocated, the snapshot
+output path is not stored, and the image is signed as `hb-prog` like every
+program image rather than under its file name. So two builds of one program
+from one tree write the same bytes whatever their output names
+(`tools/hb-build-repl-twin-test.f`), and a persist in the running
+application must name its own output with `SNAP:PATH!` or it stops with
+`snap: persist has no output path`. The include registry does keep the
+canonical path of every file the build loaded, which `require` reads to skip a
+file already loaded, so builds from different tree roots differ in those rows.
+
 ### Process page size
 
 `OS-MEMORY:PAGE-SIZE` reports the current process's host page size through the

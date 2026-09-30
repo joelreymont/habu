@@ -250,7 +250,7 @@ emit_provided() {
 emit_src() {
   local out="$1"
   local driver="$2"
-  local tail=(src/habu/driver-io.f)
+  local tail=(src/habu/sign-id.f src/habu/driver-io.f)
   if [[ "$driver" == "src/habu/stdin.f" ]]; then
     tail+=(src/habu/aot-arm.f src/habu/aot-capture.f src/habu/aot-file.f)
   fi

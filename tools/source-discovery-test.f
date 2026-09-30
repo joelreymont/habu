@@ -257,9 +257,12 @@ variable SDT-SRC-U
 
 \ --- dynamic-tail manifest: seeded repo files tolerated, path-keyed ----------
 
+\ The manifest tolerates the loader names driver-io.f retires, and the walk still
+\ records the file's one static require.
 : SDT-TEST-MANIFEST-DRIVER ( -- )
    s" src/habu/driver-io.f" DISCOVER:RUN
-   EVENT-COUNT 0 T= ;
+   EVENT-COUNT 1 T=
+   0 EVENT-PATH@ s" src/habu/sign-id.f" CANONICAL drop T$= ;
 
 \ The loader's own definition site. The manifest tolerates the reserved names it
 \ defines, and it loads no source itself, so the walk that keys the engine's

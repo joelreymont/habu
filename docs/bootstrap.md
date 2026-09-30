@@ -454,6 +454,18 @@ with no reader in a restored image, so it now travels on the stack
 (`REG-PERSIST-MOVE`) and occupies no cell. Two seed-hosted builds then agreed
 in all 5,701,824 bytes, and `two-gen: bytes gen 4 vs 5` went from 4 to 0.
 
+The same rule holds for a `--repl` application image, which the snapshot writer
+stores rather than the AOT capture. Two builds of one program differed in
+`LASTC-CELL`, `AOT-CELLS:SPAN-TABLE-CELL` and `AOT-CELLS:SPAN-BASE-CELL`,
+`SIGNAL-ABI:STUB-CELL`, `EVALREC-CELL`, `UNCGH-CELL`, the native compiler's
+cached prior call target and the writer's own output path, and the code
+signature's identifier was the output file's name. Each cell is now declared
+and relocated, kept from the booting process across the restore, zeroed in the
+image, or gone, and the image signs as `hb-prog`.
+`tools/hb-build-repl-twin-test.f` builds one program twice with separate
+`HB_TMP` and cache roots, and once more by the maker directly to another name,
+and requires the same bytes.
+
 **Transient storage is released before DATA is copied.** A `DYNAMIC-BUFFER`
 control record holds its mapping pointer, byte capacity and private registry
 handle. `RESERVE` registers its first live allocation; `RELEASE` removes that

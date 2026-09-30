@@ -25,6 +25,7 @@ private
 ' LOAD-SIGNER
 ;package
 execute
+require src/habu/sign-id.f
 require src/habu/driver-io.f
 
 \ The AOT relocation core compiles checked. It works over CLOSURE MEMBERS - a
@@ -1009,7 +1010,7 @@ public
    LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !   \ the stripped image carries both handlers too
    EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-CRASH-CODE  EMIT-DATA-BLOB  EMIT-XT-ROWS
    AOT-WRITE-OBJ
-   DRV-PROG-ID$ AOT-OUT DRV-EMIT-IMAGE ;
+   SIGN-ID:PROG$ AOT-OUT DRV-EMIT-IMAGE ;
 
 ;using
 ;package
