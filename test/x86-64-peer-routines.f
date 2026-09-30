@@ -23,19 +23,23 @@
 \ alone (X64HARNESS:LINK-CALL, LINK-CODE). Both must run the same, which is
 \ what says the rows name every site and name it right.
 \
-\ Two divide routines x64-emit.f stages in the machine dialect have no source
-\ for the rows to select: the remainder, and a zero divisor whose cold side
-\ calls a stand-in for `throw`. Each is allocated, accepted and emitted at the
-\ image's own address directly (M-ROWS,).
+\ The divide routines are the three x64-emit.f stages in the machine dialect,
+\ which have no source for the rows to select: the quotient, the remainder and
+\ a zero divisor. Each cold side calls a callee its image carries in place of
+\ `throw`: a stand-in in the zero-divisor image, a ud2 pad no case reaches in
+\ the others. Each routine is allocated, accepted and emitted at the image's own
+\ address directly (M-ROWS,).
 \
-\ Three fixtures have no image. The rows refuse BUILD-ADDRESSED with
+\ Four fixtures have no image. The rows refuse BUILD-ADDRESSED with
 \ E-IR-VERIFY-OPTYPE: it takes its memory order as an argument, which a
 \ data-stack contract has no cell for. The last check, after every image is
 \ written, asserts that refusal. BUILD-SELFCALLER is RECURSE with no base case,
-\ so it never returns. BUILD-TRAP calls `die` at its address in the host
-\ engine's dictionary (select-x64.f TRAP-ENTRY), which is no address of an x86
-\ image; the terminal fixture here renders the same `x64.trap` to a callee the
-\ image carries.
+\ so it never returns. BUILD-TRAP calls `die`, and BUILD-DIV's cold side
+\ `throw`, each at its address in the host engine's dictionary (select-x64.f
+\ TRAP-ENTRY, THROW-ENTRY), which is no address of an x86 image; the terminal
+\ fixture here renders the same `x64.trap`, and the divide routines the same
+\ `x64.idiv`, to a callee the image carries. BUILD-DIV's bytes are pinned by
+\ test/compiler/x64-emit.f.
 require lib/test.f
 require lib/string.f
 require lib/fmt.f
@@ -54,7 +58,7 @@ require src/habu/arith-abi.f
 \ through the rows to the harness's next address.
 package X64EMIT-TEST
 private
-variable CALLEE                      \ the entry the wordcall site names
+variable CALLEE                      \ the entry a call site names
 TYPED-VARIABLE REL-OP HIR:opcode     \ the relation the compare sites stage
 variable MOVED                       \ how far past its placement the routine lands
 
@@ -175,7 +179,6 @@ private
 : TERMINAL-BODY ( IR-CTX:ctx -- )
    HIR-MOD CALLEE @ BUILD-TERMINAL 1 0 NORET ROWS, ;
 : QUOTER-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-QUOTER QUOTING-ROWS, ;
-: DIV-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-DIV 2 1 NBACK:L-NONE ROWS, ;
 
 \ A routine staged in the dialect has no source operation for the rows to
 \ select, so it is allocated, accepted and emitted the way the emitter's own
@@ -185,10 +188,11 @@ private
    X64EMIT:BYTES X64EMIT:SIZE X64HARNESS:APPEND-ROUTINE
    X64EMIT:RETIRE ;
 
-\ The cold side's entry is this engine's `throw`, as the selector names it; no
-\ case of the image reaches it.
+\ Each cold side calls the callee its image carries in place of `throw`.
+: QUOTIENT-BODY ( IR-CTX:ctx -- )
+   0 W-CTX !  CALLEE @ BUILD-QUOTIENT 2 1 M-ROWS, ;
 : REMAINDER-BODY ( IR-CTX:ctx -- )
-   0 W-CTX !  THROW-TARGET BUILD-REMAINDER 3 1 M-ROWS, ;
+   0 W-CTX !  CALLEE @ BUILD-REMAINDER 3 1 M-ROWS, ;
 : DIVZERO-BODY ( IR-CTX:ctx -- )
    0 W-CTX !  CALLEE @ BUILD-DIVZERO 0 1 M-ROWS, ;
 
@@ -229,8 +233,10 @@ public
 : QUOTER-ROUTINE ( n -- )
    MOVED !  WBND [: QUOTER-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-: DIV-ROUTINE ( -- )      WBND [: DIV-BODY ;] IR-CTX:WITH-CONTEXT ;
-: REMAINDER-ROUTINE ( -- ) WBND [: REMAINDER-BODY ;] IR-CTX:WITH-CONTEXT ;
+: QUOTIENT-ROUTINE ( n -- )
+   CALLEE !  WBND [: QUOTIENT-BODY ;] IR-CTX:WITH-CONTEXT ;
+: REMAINDER-ROUTINE ( n -- )
+   CALLEE !  WBND [: REMAINDER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : DIVZERO-ROUTINE ( n -- )
    CALLEE !  WBND [: DIVZERO-BODY ;] IR-CTX:WITH-CONTEXT ;
 : ADDRESSED-REFUSAL ( -- ) WBND [: ADDRESSED-REFUSED ;] IR-CTX:WITH-CONTEXT ;
@@ -720,9 +726,14 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    SIGNAL-CASE,
    s" signal" false WRITE-IMAGE ;
 
+\ The callee of a divide whose image never divides by zero, in place of
+\ `throw`: a ud2 pad the image carries, placed first, so a cold side that ran
+\ would stop on SIGILL instead of exiting with the manifest's status.
+: COLD-PAD, ( -- n )
+   POSITION  X64IR:SP-ALIGN SKIP, ;
+
 \ `/` truncates toward zero over the four sign pairs, and MIN-CELL -1 / wraps
-\ to MIN-CELL where `idiv` raises #DE. The cold side's entry is this engine's
-\ `throw`, which no image carries, and no case here reaches it.
+\ to MIN-CELL where `idiv` raises #DE.
 : DIV-IMAGE ( -- )
    false OPEN,
    7 2 3 CASE2,
@@ -730,7 +741,9 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    7 -2 -3 CASE2,
    -7 -2 3 CASE2,
    MIN-CELL -1 MIN-CELL CASE2,
-   CLOSE, ENTRY, X64EMIT-TEST:DIV-ROUTINE
+   CLOSE,
+   COLD-PAD, {: cold:n :}
+   ENTRY, cold X64EMIT-TEST:QUOTIENT-ROUTINE
    s" div" false WRITE-IMAGE ;
 
 \ Minus one divides by negating: the same routine, 7 and -7 each over -1.
@@ -738,7 +751,9 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    false OPEN,
    7 -1 -7 CASE2,
    -7 -1 7 CASE2,
-   CLOSE, ENTRY, X64EMIT-TEST:DIV-ROUTINE
+   CLOSE,
+   COLD-PAD, {: cold:n :}
+   ENTRY, cold X64EMIT-TEST:QUOTIENT-ROUTINE
    s" divneg" false WRITE-IMAGE ;
 
 \ `a b mod 1000 +`: the remainder takes the dividend's sign, and MIN-CELL -1
@@ -751,7 +766,9 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    1000 7 -2 1001 CASE3,
    1000 -7 -2 999 CASE3,
    1000 MIN-CELL -1 1000 CASE3,
-   CLOSE, ENTRY, X64EMIT-TEST:REMAINDER-ROUTINE
+   CLOSE,
+   COLD-PAD, {: cold:n :}
+   ENTRY, cold X64EMIT-TEST:REMAINDER-ROUTINE
    s" remainder" false WRITE-IMAGE ;
 
 \ A zero divisor: the cold side leaves through a stand-in for `throw`, placed

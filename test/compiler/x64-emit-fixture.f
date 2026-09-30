@@ -82,7 +82,8 @@
 \ - THE FIELD OF THE CALL TO `die`. Its entry is the host engine's, so the trap
 \   case pins every other byte and holds that field to the entry (DIE-ENTRY).
 \   The call to `throw` in the selected divide is held the same way
-\   (THROW-TARGET).
+\   (THROW-TARGET). Each case is placed at the slot at or below its entry
+\   (SLOT-BELOW), so the field reaches the entry wherever the engine loaded.
 \ - E-X64EMIT-LAYOUT, the disagreement between the two passes. It is the check
 \   that holds the writer to the measurer's numbers, and no module reaches it
 \   without a defect in one of them, so no case here can pin it.
@@ -927,11 +928,11 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 
 \ ---- the divide, staged in the dialect ---------------------------------------
 \ The selector reads only the quotient and names THIS engine's `throw` as the
-\ cold side's entry (select-x64.f EMIT-DIV), so the remainder, and a cold side
-\ that calls an entry an image carries, are staged here. Both routines keep the
-\ data-stack boundary the selector writes: the pointer taken over the cells,
-\ each one loaded, the answer stored and published, and a return with no
-\ operand.
+\ cold side's entry (select-x64.f EMIT-DIV), so the remainder, and a divide
+\ whose cold side calls an entry an image carries, are staged here. Every
+\ routine keeps the data-stack boundary the selector writes: the pointer taken
+\ over the cells, each one loaded, the answer stored and published, and a
+\ return with no operand.
 : TERNARY-SIGN ( -- IR-ID:ir-type-id )
    IR-TYPE:FN-BEGIN
    MCELLT IR-TYPE:FN-PARAM
@@ -1015,6 +1016,23 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    M-RET0
    M-CLOSE ;
 
+\ `( a b -- n )` answering `a b /`: the selected divide less the dividend's
+\ copy, which the selector makes because its source may be read afterwards and
+\ nothing reads `a` here.
+: BUILD-QUOTIENT ( n -- IR-BUILD:module )
+   {: entry:n :}
+   M-MOD
+   M-BIND-MACHINE
+   BINARY-SIGN M-FUN
+   16 M-DTAKE {: t0:IR-ID:ir-value-id :}
+   t0 0 M-DLOAD {: a:IR-ID:ir-value-id t1:IR-ID:ir-value-id :}
+   t1 8 M-DLOAD {: b:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   a b entry M-IDIV drop {: q:IR-ID:ir-value-id :}
+   q t2 0 M-DSTORE {: t3:IR-ID:ir-value-id :}
+   t3 8 M-DPUBLISH
+   M-RET0
+   M-CLOSE ;
+
 \ `( -- n ) 7 0 mod`: control leaves through the cold side, and no cell was
 \ taken, so the code lands in the cell above the caller's.
 : BUILD-DIVZERO ( n -- IR-BUILD:module )
@@ -1064,9 +1082,9 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    m ;
 
 \ AT SLOT ZERO, which is the placement every case of this file emits at unless
-\ it is about the placement itself: a displacement to another word's entry is
-\ measured from it, and zero is the one that leaves the entry's own number in
-\ the bytes.
+\ it is about the placement itself or calls one of this engine's entries
+\ (SLOT-BELOW): a displacement to another word's entry is measured from it, and
+\ zero is the one that leaves the entry's own number in the bytes.
 : PLACED ( IR-BUILD:module n -- )
    {: m:IR-BUILD:module at:n :}
    at X64EMIT:PLACE-AT
@@ -1183,8 +1201,6 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 : TAIL-BYTES ( IR-CTX:ctx -- )
    HIR-MOD CALLEE-ENTRY BUILD-WORDCALLER TAIL-ALLOCATED 0 PLACED ;
 
-: DIV-BYTES ( IR-CTX:ctx -- )      HIR-MOD BUILD-DIV 2 1 DSTACK-EMITTED ;
-
 \ ---- the machine-dialect cases -----------------------------------------------
 \ Each is allocated and accepted like any other module: the walk TAKES the
 \ allocator's binding, which is why every fixture here allocates and none has to
@@ -1230,16 +1246,34 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    m FRAME-N LEAF-FRAMED A64RAV:ACCEPT
    m 0 PLACED ;
 
-\ The selector calls this engine's die entry. Keep the synthetic placement
-\ near that target so ASLR cannot put a valid trap call outside rel32 reach.
+\ The selector calls two of this engine's entries: `die` for a trap and `throw`
+\ for a divide's cold side. A case that calls one is placed at the aligned slot
+\ at or below it, so its rel32 reaches the entry wherever the engine is loaded;
+\ on Darwin arm64 that is above 4 GB, where no slot near zero reaches it.
+: SLOT-BELOW ( n -- n )
+   X64IR:SP-ALIGN / X64IR:SP-ALIGN * ;
+
 : DIE-ENTRY ( -- n )
    NTRAP:ROUTINE$ NDICT:CALL-TARGET ;
 
 : TRAP-SLOT ( -- n )
-   DIE-ENTRY X64IR:SP-ALIGN / X64IR:SP-ALIGN * ;
+   DIE-ENTRY SLOT-BELOW ;
 
 : TRAP-BYTES ( IR-CTX:ctx -- )
    HIR-MOD BUILD-TRAP DTRAP UNDER TRAP-SLOT PLACED ;
+
+\ Where the divide's cold side goes: `throw` in THIS engine's dictionary, which
+\ is what the selector names (select-x64.f THROW-ENTRY). It moves with every
+\ engine build as `die` does, so its call's field is read back and held to it
+\ less the slot.
+: THROW-TARGET ( -- n )
+   s" throw" NDICT:CALL-TARGET ;
+
+: THROW-SLOT ( -- n )
+   THROW-TARGET SLOT-BELOW ;
+
+: DIV-BYTES ( IR-CTX:ctx -- )
+   HIR-MOD BUILD-DIV 2 1 DSTACK-ALLOCATED THROW-SLOT PLACED ;
 
 \ At a slot of its own too, because the answer is the placement PLUS where the
 \ second function starts.
@@ -1293,12 +1327,6 @@ $100000000 constant FAR-ENTRY
 
 : TRAP-FIELD ( -- n )
    DIE-ENTRY TRAP-SLOT - X64EMIT:SIZE - ;
-
-\ Where the divide's cold side goes: `throw` in THIS engine's dictionary, which
-\ is what the selector names (select-x64.f THROW-ENTRY). It moves with every
-\ engine build as `die` does, so its call's field is read back and held to it.
-: THROW-TARGET ( -- n )
-   s" throw" NDICT:CALL-TARGET ;
 
 \ The rel32 `at` bytes into the sealed emission, little-endian and signed.
 : REL32@ ( n -- n )
@@ -1451,7 +1479,7 @@ $100000000 constant FAR-ENTRY
    \ mc: movq $-6400, %rdx
    \ mc: movq %rdx, (%r12)
    \ mc: addq $8, %r12
-   \ mc: callq THROW-TARGET-51
+   \ mc: callq THROW-TARGET-(THROW-SLOT+51)
    \ mc: cmpq $-1, %rcx
    \ mc: jne 10
    \ mc: negq %rax
@@ -1463,7 +1491,7 @@ $100000000 constant FAR-ENTRY
    \ mc: addq $8, %r12
    \ mc: retq
    s" 4981ec10000000498b0424498b4c24084889c04885c90f851700000048c7c200e7ffff498914244981c408000000e84881f9ffffffff0f850a00000048f7d831d2e905000000489948f7f9498904244981c408000000c3" 47 XF=
-   47 REL32@  THROW-TARGET 51 -  T=
+   47 REL32@  THROW-TARGET THROW-SLOT - 51 -  T=
    s" the divide's call files a row naming throw's entry, the cold side's last instruction" T-LABEL
    CALL-ROW
    THROW-TARGET T=
