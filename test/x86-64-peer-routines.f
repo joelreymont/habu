@@ -23,6 +23,11 @@
 \ alone (X64HARNESS:LINK-CALL, LINK-CODE). Both must run the same, which is
 \ what says the rows name every site and name it right.
 \
+\ Two divide routines x64-emit.f stages in the machine dialect have no source
+\ for the rows to select: the remainder, and a zero divisor whose cold side
+\ calls a stand-in for `throw`. Each is allocated, accepted and emitted at the
+\ image's own address directly (M-ROWS,).
+\
 \ Three fixtures have no image. The rows refuse BUILD-ADDRESSED with
 \ E-IR-VERIFY-OPTYPE: it takes its memory order as an argument, which a
 \ data-stack contract has no cell for. The last check, after every image is
@@ -43,6 +48,7 @@ require test/compiler/x64-emit-fixture.f
 require test/compiler/x64-chain-fixture.f
 require src/habu/boot-x64.f
 require test/x86-64-peer-harness.f
+require src/habu/arith-abi.f
 
 \ The fixtures stay in the package that stages them; this adds each one's trip
 \ through the rows to the harness's next address.
@@ -169,6 +175,22 @@ private
 : TERMINAL-BODY ( IR-CTX:ctx -- )
    HIR-MOD CALLEE @ BUILD-TERMINAL 1 0 NORET ROWS, ;
 : QUOTER-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-QUOTER QUOTING-ROWS, ;
+: DIV-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-DIV 2 1 NBACK:L-NONE ROWS, ;
+
+\ A routine staged in the dialect has no source operation for the rows to
+\ select, so it is allocated, accepted and emitted the way the emitter's own
+\ cases are, at the image's next address.
+: M-ROWS, ( IR-BUILD:module n n -- )
+   M-DALLOCATED X64HARNESS:POSITION PLACED
+   X64EMIT:BYTES X64EMIT:SIZE X64HARNESS:APPEND-ROUTINE
+   X64EMIT:RETIRE ;
+
+\ The cold side's entry is this engine's `throw`, as the selector names it; no
+\ case of the image reaches it.
+: REMAINDER-BODY ( IR-CTX:ctx -- )
+   0 W-CTX !  THROW-TARGET BUILD-REMAINDER 3 1 M-ROWS, ;
+: DIVZERO-BODY ( IR-CTX:ctx -- )
+   0 W-CTX !  CALLEE @ BUILD-DIVZERO 0 1 M-ROWS, ;
 
 \ A refused definition ends the way src/compiler/native/compiler.f ends one:
 \ what the refusal left bound is released, then the emission retired.
@@ -206,6 +228,11 @@ public
    MOVED !  CALLEE !  WBND [: TERMINAL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : QUOTER-ROUTINE ( n -- )
    MOVED !  WBND [: QUOTER-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DIV-ROUTINE ( -- )      WBND [: DIV-BODY ;] IR-CTX:WITH-CONTEXT ;
+: REMAINDER-ROUTINE ( -- ) WBND [: REMAINDER-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DIVZERO-ROUTINE ( n -- )
+   CALLEE !  WBND [: DIVZERO-BODY ;] IR-CTX:WITH-CONTEXT ;
 : ADDRESSED-REFUSAL ( -- ) WBND [: ADDRESSED-REFUSED ;] IR-CTX:WITH-CONTEXT ;
 ;package
 
@@ -693,6 +720,52 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    SIGNAL-CASE,
    s" signal" false WRITE-IMAGE ;
 
+\ `/` truncates toward zero over the four sign pairs, and MIN-CELL -1 / wraps
+\ to MIN-CELL where `idiv` raises #DE. The cold side's entry is this engine's
+\ `throw`, which no image carries, and no case here reaches it.
+: DIV-IMAGE ( -- )
+   false OPEN,
+   7 2 3 CASE2,
+   -7 2 -3 CASE2,
+   7 -2 -3 CASE2,
+   -7 -2 3 CASE2,
+   MIN-CELL -1 MIN-CELL CASE2,
+   CLOSE, ENTRY, X64EMIT-TEST:DIV-ROUTINE
+   s" div" false WRITE-IMAGE ;
+
+\ Minus one divides by negating: the same routine, 7 and -7 each over -1.
+: DIVNEG-IMAGE ( -- )
+   false OPEN,
+   7 -1 -7 CASE2,
+   -7 -1 7 CASE2,
+   CLOSE, ENTRY, X64EMIT-TEST:DIV-ROUTINE
+   s" divneg" false WRITE-IMAGE ;
+
+\ `a b mod 1000 +`: the remainder takes the dividend's sign, and MIN-CELL -1
+\ mod is zero. A divisor sharing rdx with `cqo` would fault on a positive
+\ dividend and answer 1000 for a negative one.
+: REMAINDER-IMAGE ( -- )
+   false OPEN,
+   1000 7 2 1001 CASE3,
+   1000 -7 2 999 CASE3,
+   1000 7 -2 1001 CASE3,
+   1000 -7 -2 999 CASE3,
+   1000 MIN-CELL -1 1000 CASE3,
+   CLOSE, ENTRY, X64EMIT-TEST:REMAINDER-ROUTINE
+   s" remainder" false WRITE-IMAGE ;
+
+\ A zero divisor: the cold side leaves through a stand-in for `throw`, placed
+\ first, which checks the cell the case staged and the code pushed above it,
+\ and exits 0.
+: DIVZERO-IMAGE ( -- )
+   false OPEN,
+   MIN-CELL TERMINAL-CASE,
+   CLOSE,
+   POSITION {: callee:n :}
+   MIN-CELL ARITH-ABI:E-DIV-ZERO STAND-IN,
+   ALIGN, ENTRY,
+   callee X64EMIT-TEST:DIVZERO-ROUTINE
+   s" divzero" false WRITE-IMAGE ;
 public
 : RUN ( -- )
    T-RESET
@@ -719,6 +792,10 @@ public
    PLOOP-IMAGE
    PCALLER-IMAGE
    SIGNAL-IMAGE
+   DIV-IMAGE
+   DIVNEG-IMAGE
+   REMAINDER-IMAGE
+   DIVZERO-IMAGE
    SB-RESET DIR$ SB-APPEND s" /manifest" SB-APPEND SB$ TMP-PATH
    MANIFEST BUF:SPAN$ BUF:BLEN>N WRITE-ALL
    X64EMIT-TEST:ADDRESSED-REFUSAL

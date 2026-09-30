@@ -1,6 +1,6 @@
 ---
 title: Render x86 idiv with Habu semantics
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.451004+03:00"

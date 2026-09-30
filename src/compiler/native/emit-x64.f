@@ -52,14 +52,12 @@
 \ routine whatever it ends in, and a `does>` body is SIZE less its
 \ FUNCTION-OFFSET@.
 \
-\ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the divide `idiv` -
-\ it names the registers the machine divides in and carries a branch to
-\ `x64.throw-entry` besides - the negate, and the two selects `cmpsel` and
-\ `selz`. The float forms are not declared by the dialect at all. Publication
-\ into a code region is not here either, and on this host it
-\ cannot be: src/compiler/native/publish.f reads NEMIT rows only the ARM64
-\ emission row fills, and the engine's own callmap and addrmap record ARM64
-\ shapes. An x86-64 emission is consumed by the cross-build image writer.
+\ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the negate, and the
+\ two selects `cmpsel` and `selz`. The float forms are not declared by the
+\ dialect at all. Publication into a code region is not here either, and on
+\ this host it cannot be: src/compiler/native/publish.f reads NEMIT rows only
+\ the ARM64 emission row fills, and the engine's own callmap and addrmap record
+\ ARM64 shapes. An x86-64 emission is consumed by the cross-build image writer.
 
 require lib/prelude.f
 require lib/errors.f
@@ -75,6 +73,7 @@ require src/compiler/native/regalloc-verify.f
 require src/compiler/native/emission.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/machine.f
+require src/habu/arith-abi.f            \ E-DIV-ZERO, the divide's refusal
 
 package X64EMIT
 using X64ASM
@@ -215,6 +214,7 @@ X64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-TRAP-ENTRY IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-THROW-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
@@ -287,6 +287,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 : DBACK-OF ( IR-ID:ir-op-id -- n )   0 BND-DBACK @ ATTR-INT ;
 : ENTRY-OF ( IR-ID:ir-op-id -- n )   0 BND-ENTRY @ ATTR-INT ;
 : TRAP-ENTRY-OF ( IR-ID:ir-op-id -- n ) 0 BND-TRAP-ENTRY @ ATTR-INT ;
+: THROW-ENTRY-OF ( IR-ID:ir-op-id -- n ) 0 BND-THROW-ENTRY @ ATTR-INT ;
 : FUN-OF ( IR-ID:ir-op-id -- n )     0 BND-FUN @ ATTR-INT ;
 : SLOT-OF ( IR-ID:ir-op-id -- n )    0 BND-SLOT @ ATTR-INT ;
 : FRAME-OF ( IR-ID:ir-op-id -- n )   0 BND-FRAME @ ATTR-INT ;
@@ -729,6 +730,81 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    id DBYTES-OF s PUT-DMOVE
    id TRAP-ENTRY-OF s PUT-FAR-CALL ;
 
+\ ---- the divide --------------------------------------------------------------
+\ `idiv r64` divides rdx:rax and raises #DE on a zero divisor and on MIN-N -1,
+\ where Habu throws and wraps instead, so the divisor is screened first and the
+\ form is three pieces (docs/x86-64.md "Division semantics"):
+\
+\ - ZERO is a caller error. The cold side pushes ARITH-ABI:E-DIV-ZERO the way
+\   src/arch/x86-64/rt.f G-PUSH pushes, store then advance, and calls the entry
+\   the form carries, which is `throw`: `throw` pops the code as it pops one a
+\   checked `throw` pushed. The code travels in rdx, the remainder's register,
+\   which the form writes on every path, so no value live across the form is
+\   there; control never comes back to read it. The call is written as PUT-TRAP
+\   writes its own.
+\ - MINUS ONE divides every dividend exactly, so the quotient is the dividend
+\   negated in place - the schema fixes both to rax - and the remainder zero.
+\   The negation wraps MIN-N to MIN-N, which is Habu's answer.
+\ - ANY OTHER divisor is `cqo; idiv`, truncating toward zero as Habu's `/` and
+\   `mod` do. `cqo` writes rdx before `idiv` reads its divisor, which is why the
+\   allocator keeps the divisor out of rdx (x64ir.f DEF-IDIV).
+\
+\ A JUMP INSIDE THE FORM SKIPS A PIECE, and a displacement counts from the end
+\ of its jump, so the field is the skipped piece's length: measured into the
+\ scratch sink like any length here, and zero while measuring, when that sink
+\ holds the whole operation and the field's width does not depend on its number.
+\ The piece's sink is declared `ptr n`: a `ptr a` there would be specialised by
+\ the scratch sink, which is raw storage, and the checker refuses that
+\ (E-NONPARAMETRIC-EFFECT).
+: PIECE-LEN ( IR-ID:ir-op-id [ IR-ID:ir-op-id ptr n -- ] -- n )
+   MEAS @ 0<> if 2drop 0 exit then
+   1 MEAS !
+   SC-CLEAR
+   SC-SINK swap execute
+   0 MEAS !
+   SC-LEN ;
+
+: PUT-SKIP-JCC ( condition n ptr a -- )
+   {: c:condition d:n s:ptr :}
+   c  d FIT  s ENC-JCC-REL32 ;
+
+: PUT-SKIP-JMP ( n ptr a -- )
+   {: d:n s:ptr :}
+   d FIT  s ENC-JMP-REL32 ;
+
+: PUT-DIV-COLD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 1 RES-R64 {: code:r64 :}
+   code  ARITH-ABI:E-DIV-ZERO >IMM32  s ENC-MOV-RI32
+   code  DSTACK MEM-AT  s ENC-MOV-MR
+   CELL s PUT-DMOVE
+   id THROW-ENTRY-OF s PUT-FAR-CALL ;
+
+: PUT-DIV-HOT ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   s ENC-CQO
+   id 1 OPD-R64  s ENC-IDIV ;
+
+\ The remainder is cleared with the 32-bit xor, which zero-extends across the
+\ whole register (src/arch/x86-64/asm.f ENC-XOR32-RR).
+: PUT-DIV-NEG ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-R64  s ENC-NEG
+   id 1 RESULT-AT REG-OF >R32 {: z:r32 :}
+   z z s ENC-XOR32-RR
+   id [: PUT-DIV-HOT ;] PIECE-LEN  s PUT-SKIP-JMP ;
+
+: PUT-IDIV ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 1 OPD-R64 {: d:r64 :}
+   d d s ENC-TEST-RR
+   C-NE  id [: PUT-DIV-COLD ;] PIECE-LEN  s PUT-SKIP-JCC
+   id s PUT-DIV-COLD
+   d  -1 >IMM32  s ENC-CMP-RI32
+   C-NE  id [: PUT-DIV-NEG ;] PIECE-LEN  s PUT-SKIP-JCC
+   id s PUT-DIV-NEG
+   id s PUT-DIV-HOT ;
+
 \ ---- the address of one of this emission's own functions --------------------
 \ AN ABSOLUTE ADDRESS, the placement plus where the function starts, in the
 \ `mov r64, imm64` a literal takes, and filed as a CODE site so the image writer
@@ -775,7 +851,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
       shr      OF id s PUT-SHR ENDOF
       neg      OF E-X64EMIT-FORM throw ENDOF
       not      OF id s PUT-NOT ENDOF
-      idiv     OF E-X64EMIT-FORM throw ENDOF
+      idiv     OF id s PUT-IDIV ENDOF
       cmpset   OF id s PUT-CMPSET ENDOF
       cmpseti  OF id s PUT-CMPSETI ENDOF
       cmpsel   OF E-X64EMIT-FORM throw ENDOF
@@ -1141,6 +1217,7 @@ public
    c b X64IR:KEY-DBACK  0 BND-DBACK !
    c b X64IR:KEY-ENTRY  0 BND-ENTRY !
    c b X64IR:KEY-TRAP-ENTRY 0 BND-TRAP-ENTRY !
+   c b X64IR:KEY-THROW-ENTRY 0 BND-THROW-ENTRY !
    c b X64IR:KEY-FUN    0 BND-FUN !
    c b X64IR:KEY-SLOT   0 BND-SLOT !
    c b X64IR:KEY-FRAME  0 BND-FRAME !

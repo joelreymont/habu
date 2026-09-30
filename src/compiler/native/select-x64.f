@@ -63,12 +63,11 @@
 \ `throw` entry as its own attribute the way a64.sdiv does, and why a target
 \ dictionary without `throw` is refused (E-X64SEL-TRAP).
 \
-\ WHAT THE EMITTER STILL OWES. emit-x64.f renders `x64.shl` and `x64.shr` but
-\ not `x64.idiv`, which it refuses by name (E-X64EMIT-FORM), so a division is
-\ lowered, placed and validated here but is not yet bytes.
-\ The render owes two answers this pass cannot give it: the branch that hands a
-\ zero divisor to the entry above, and `MIN-N / -1`, which raises #DE on this
-\ machine where Habu's `/` wraps to MIN-N.
+\ WHAT THE EMITTER ANSWERS. emit-x64.f renders `x64.idiv` with the two answers
+\ this pass cannot give: the branch that hands a zero divisor to the entry
+\ above, and `MIN-N / -1`, which raises #DE on this machine where Habu's `/`
+\ wraps to MIN-N, so the render screens the divisor before it divides
+\ (docs/x86-64.md "Division semantics").
 \
 \ AND ONE THE DIALECT MAKES: THERE IS NO FLOATING FORM AT ALL. x64ir declares no
 \ SSE operation, so every floating source operation - including the four

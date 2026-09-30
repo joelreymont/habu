@@ -29,7 +29,9 @@
 \ its `mc:` line gives, and re-ASSEMBLES that line as the four-byte
 \ 49 83 ec 10: on those lines the instruction agrees and the encoding is the
 \ longer one this encoder has. The frame's `x64.reserve` and `x64.release` are
-\ the same imm32 subtract and add on rsp, and disagree the same way.
+\ the same imm32 subtract and add on rsp, and disagree the same way. So does
+\ the comparison with minus one every `x64.idiv` carries: llvm-mc re-assembles
+\ `cmpq $-1` as 48 83 /7 ff.
 \
 \ THE SECOND IS THE BRANCH, and it is the same kind of disagreement. A `mc:` line
 \ for a branch or a call carries the rel32 FIELD as llvm-mc printed it - `je 11`,
@@ -75,10 +77,12 @@
 \   pass reuses a slot once its value is dead, so slot 128 wants seventeen values
 \   put away at once.
 \ - THE FORMS STILL REFUSED BY NAME, one case standing for all of them below:
-\   `x64.idiv`, `x64.neg` and the selects `x64.cmpsel` and `x64.selz`. Each
-\   needs a register the machine names or a lowering, and neither is here.
+\   `x64.neg` and the selects `x64.cmpsel` and `x64.selz`. Each needs a
+\   register the machine names or a lowering, and neither is here.
 \ - THE FIELD OF THE CALL TO `die`. Its entry is the host engine's, so the trap
 \   case pins every other byte and holds that field to the entry (DIE-ENTRY).
+\   The call to `throw` in the selected divide is held the same way
+\   (THROW-TARGET).
 \ - E-X64EMIT-LAYOUT, the disagreement between the two passes. It is the check
 \   that holds the writer to the measurer's numbers, and no module reaches it
 \   without a defect in one of them, so no case here can pin it.
@@ -435,6 +439,16 @@ create TXT
    1 1 OPEN-FUN
    ARG+ {: a:IR-ID:ir-value-id :}
    HIR-OPCODE:INVERT a UNOP RET1
+   CLOSE-FUN ;
+
+\ `: LEAF ( a b -- n ) / ;` - the divide: the dividend's copy is the operand
+\ fixed to rax, and the remainder is a result nothing reads (select-x64.f
+\ EMIT-DIV).
+: BUILD-DIV ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:DIV x y BINOP RET1
    CLOSE-FUN ;
 
 \ `: LEAF ( a b -- flag ) rel ;` for any of the six relations the selector
@@ -911,6 +925,112 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    u M-RET1
    M-CLOSE ;
 
+\ ---- the divide, staged in the dialect ---------------------------------------
+\ The selector reads only the quotient and names THIS engine's `throw` as the
+\ cold side's entry (select-x64.f EMIT-DIV), so the remainder, and a cold side
+\ that calls an entry an image carries, are staged here. Both routines keep the
+\ data-stack boundary the selector writes: the pointer taken over the cells,
+\ each one loaded, the answer stored and published, and a return with no
+\ operand.
+: TERNARY-SIGN ( -- IR-ID:ir-type-id )
+   IR-TYPE:FN-BEGIN
+   MCELLT IR-TYPE:FN-PARAM
+   MCELLT IR-TYPE:FN-PARAM
+   MCELLT IR-TYPE:FN-PARAM
+   MCELLT IR-TYPE:FN-RESULT
+   CC MB IR-BUILD:INTERN-CODE-REF ;
+
+: M-DTAKE ( n -- IR-ID:ir-value-id )
+   {: d:n :}
+   X64IR-OPCODE:DTAKE M-OPEN
+   CC MB MMEMT IR-BUILD:ADD-RESULT
+   CC MB X64IR:KEY-DBYTES  CC MB d X64IR:DBYTES-ATTR  M-ATTR+
+   M-CLOSE-VALUE ;
+
+: M-DLOAD ( IR-ID:ir-value-id n -- IR-ID:ir-value-id IR-ID:ir-value-id )
+   {: k:IR-ID:ir-value-id off:n :}
+   X64IR-OPCODE:DLOAD M-OPEN
+   k M-OPERAND+
+   M-RESULT+
+   CC MB MMEMT IR-BUILD:ADD-RESULT
+   CC MB X64IR:KEY-DSLOT  CC MB off X64IR:DSLOT-ATTR  M-ATTR+
+   CC MB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC MB id 0 IR-BUILD:OP-RESULT@
+   CC MB id 1 IR-BUILD:OP-RESULT@ ;
+
+: M-DSTORE ( IR-ID:ir-value-id IR-ID:ir-value-id n -- IR-ID:ir-value-id )
+   {: v:IR-ID:ir-value-id k:IR-ID:ir-value-id off:n :}
+   X64IR-OPCODE:DSTORE M-OPEN
+   v M-OPERAND+
+   k M-OPERAND+
+   CC MB MMEMT IR-BUILD:ADD-RESULT
+   CC MB X64IR:KEY-DSLOT  CC MB off X64IR:DSLOT-ATTR  M-ATTR+
+   M-CLOSE-VALUE ;
+
+: M-DPUBLISH ( IR-ID:ir-value-id n -- )
+   {: k:IR-ID:ir-value-id d:n :}
+   X64IR-OPCODE:DPUBLISH M-OPEN
+   k M-OPERAND+
+   CC MB X64IR:KEY-DBYTES  CC MB d X64IR:DBYTES-ATTR  M-ATTR+
+   CC MB IR-BUILD:END-OP drop ;
+
+: M-RET0 ( -- )
+   X64IR-OPCODE:RET M-OPEN
+   CC MB IR-BUILD:END-OP drop ;
+
+\ The divide of `x` by `y`, its cold side calling `entry`: the quotient and the
+\ remainder, in that order.
+: M-IDIV ( IR-ID:ir-value-id IR-ID:ir-value-id n -- IR-ID:ir-value-id IR-ID:ir-value-id )
+   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id entry:n :}
+   X64IR-OPCODE:IDIV M-OPEN
+   x M-OPERAND+
+   y M-OPERAND+
+   M-RESULT+
+   M-RESULT+
+   CC MB X64IR:KEY-THROW-ENTRY  CC MB entry X64IR:ENTRY-ATTR  M-ATTR+
+   CC MB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC MB id 0 IR-BUILD:OP-RESULT@
+   CC MB id 1 IR-BUILD:OP-RESULT@ ;
+
+\ `( k a b -- n )` answering `a b mod k +`, with k live across the divide: the
+\ shape of test/compiler/x64-regalloc.f EARLY-CLOBBER-BODY. k is loaded first
+\ and kept out of rax and rdx, which the form writes, so it takes rcx; rdx is
+\ then the lowest register left for the divisor b, and b is not given it,
+\ because `cqo` writes rdx before `idiv` reads its divisor. Divided by an rdx
+\ holding b's sign, a positive a would be divided by zero and a negative one by
+\ minus one.
+: BUILD-REMAINDER ( n -- IR-BUILD:module )
+   {: entry:n :}
+   M-MOD
+   M-BIND-MACHINE
+   TERNARY-SIGN M-FUN
+   24 M-DTAKE {: t0:IR-ID:ir-value-id :}
+   t0 0 M-DLOAD {: k:IR-ID:ir-value-id t1:IR-ID:ir-value-id :}
+   t1 8 M-DLOAD {: a:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   t2 16 M-DLOAD {: b:IR-ID:ir-value-id t3:IR-ID:ir-value-id :}
+   a b entry M-IDIV nip {: r:IR-ID:ir-value-id :}
+   r k M-ADD {: u:IR-ID:ir-value-id :}
+   u t3 0 M-DSTORE {: t4:IR-ID:ir-value-id :}
+   t4 8 M-DPUBLISH
+   M-RET0
+   M-CLOSE ;
+
+\ `( -- n ) 7 0 mod`: control leaves through the cold side, and no cell was
+\ taken, so the code lands in the cell above the caller's.
+: BUILD-DIVZERO ( n -- IR-BUILD:module )
+   {: entry:n :}
+   M-MOD
+   M-BIND-MACHINE
+   NULLARY-SIGN M-FUN
+   0 M-DTAKE {: t0:IR-ID:ir-value-id :}
+   7 X64IR:ADDR-NONE M-MOVI {: a:IR-ID:ir-value-id :}
+   0 X64IR:ADDR-NONE M-MOVI {: b:IR-ID:ir-value-id :}
+   a b entry M-IDIV nip {: r:IR-ID:ir-value-id :}
+   r t0 0 M-DSTORE {: t1:IR-ID:ir-value-id :}
+   t1 8 M-DPUBLISH
+   M-RET0
+   M-CLOSE ;
+
 \ ---- running selection, allocation, validation and emission ------------------
 \ The contract every case emits under: a leaf computing in this machine's nine
 \ allocatable general registers, returning to its caller, reserving the frame it
@@ -1063,6 +1183,8 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 : TAIL-BYTES ( IR-CTX:ctx -- )
    HIR-MOD CALLEE-ENTRY BUILD-WORDCALLER TAIL-ALLOCATED 0 PLACED ;
 
+: DIV-BYTES ( IR-CTX:ctx -- )      HIR-MOD BUILD-DIV 2 1 DSTACK-EMITTED ;
+
 \ ---- the machine-dialect cases -----------------------------------------------
 \ Each is allocated and accepted like any other module: the walk TAKES the
 \ allocator's binding, which is why every fixture here allocates and none has to
@@ -1071,6 +1193,14 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    {: m:IR-BUILD:module :}
    CC m LEAF A64RA:ALLOCATE
    m LEAF A64RAV:ACCEPT
+   m ;
+
+\ Allocated and accepted under the data-stack contract its boundary is written
+\ for: `in` cells taken and `out` published.
+: M-DALLOCATED ( IR-BUILD:module n n -- IR-BUILD:module )
+   {: m:IR-BUILD:module in:n out:n :}
+   CC m in out DLEAF A64RA:ALLOCATE
+   m in out DLEAF A64RAV:ACCEPT
    m ;
 
 : DIAMOND-BYTES ( IR-CTX:ctx -- )
@@ -1137,6 +1267,11 @@ $100000000 constant FAR-ENTRY
 : SHADOW-QUOTER-BYTES ( IR-CTX:ctx -- )
    HIR-MOD BUILD-QUOTER ALLOCATED SHADOW ;
 
+\ At slot zero with the cold side's entry at CALLEE-ENTRY, so every byte is the
+\ module's own and none is the host's.
+: REMAINDER-BYTES ( IR-CTX:ctx -- )
+   0 W-CTX ! CALLEE-ENTRY BUILD-REMAINDER 3 1 M-DALLOCATED 0 PLACED ;
+
 \ Where `hir.trap` goes: `die` in THIS engine's dictionary, which is what the
 \ selector names (select-x64.f TRAP-ENTRY). That address is the host's and moves
 \ with every engine build, so the call's field is not pinned as bytes: it is read
@@ -1158,6 +1293,28 @@ $100000000 constant FAR-ENTRY
 
 : TRAP-FIELD ( -- n )
    DIE-ENTRY TRAP-SLOT - X64EMIT:SIZE - ;
+
+\ Where the divide's cold side goes: `throw` in THIS engine's dictionary, which
+\ is what the selector names (select-x64.f THROW-ENTRY). It moves with every
+\ engine build as `die` does, so its call's field is read back and held to it.
+: THROW-TARGET ( -- n )
+   s" throw" NDICT:CALL-TARGET ;
+
+\ The rel32 `at` bytes into the sealed emission, little-endian and signed.
+: REL32@ ( n -- n )
+   {: at:n :}
+   X64EMIT:BYTES at + {: f:ptr :}
+   0
+   REL32-N 0 ?do  f i + c@  i 8 * lshift or  loop
+   dup $80000000 and 0<> if $100000000 - then ;
+
+\ Compare every byte but the rel32 field `at` bytes in, without retiring: the
+\ expected string leaves the field out.
+: XF= ( ptr u8 n n -- ) {: ea:ptr eu:n at:n :}
+   X64EMIT:BYTES {: da:ptr :}
+   da at  ea at 2 *  SPAN=HEX? TTRUE
+   da at + REL32-N +  X64EMIT:SIZE at - REL32-N -
+   ea at 2 * +  eu at 2 * -  SPAN=HEX? TTRUE ;
 
 \ The quoting routine's own readers: two functions, one site.
 : QUOTER-FACTS ( -- n n n n n )
@@ -1280,6 +1437,65 @@ $100000000 constant FAR-ENTRY
    s" a module the accepted allocation is not about is refused before a byte is written" T-LABEL
    [: UNALLOCATED-EMIT ;] E-X64EMIT-ACCEPT TTHROWSQ
    X64EMIT:RETIRE ;
+
+\ The divide, its call row to `throw`, and the remainder read.
+: DIVIDE-CASES ( -- )
+   s" the divide under the data-stack convention: a zero divisor's code pushed and handed to throw, minus one a negation, any other divisor the divide" T-LABEL
+   WBND [: DIV-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: subq $16, %r12
+   \ mc: movq (%r12), %rax
+   \ mc: movq 8(%r12), %rcx
+   \ mc: movq %rax, %rax
+   \ mc: testq %rcx, %rcx
+   \ mc: jne 23
+   \ mc: movq $-6400, %rdx
+   \ mc: movq %rdx, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: callq THROW-TARGET-51
+   \ mc: cmpq $-1, %rcx
+   \ mc: jne 10
+   \ mc: negq %rax
+   \ mc: xorl %edx, %edx
+   \ mc: jmp 5
+   \ mc: cqto
+   \ mc: idivq %rcx
+   \ mc: movq %rax, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: retq
+   s" 4981ec10000000498b0424498b4c24084889c04885c90f851700000048c7c200e7ffff498914244981c408000000e84881f9ffffffff0f850a00000048f7d831d2e905000000489948f7f9498904244981c408000000c3" 47 XF=
+   47 REL32@  THROW-TARGET 51 -  T=
+   s" the divide's call files a row naming throw's entry, the cold side's last instruction" T-LABEL
+   CALL-ROW
+   THROW-TARGET T=
+   NEMIT:CALL T=
+   46 T=                                 \ the e8 before the rel32 at 47
+   1 T=
+   X64EMIT:RETIRE
+
+   s" the remainder read, with a value live across the divide in rcx and the divisor kept out of rdx, which cqo writes first" T-LABEL
+   WBND [: REMAINDER-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: subq $24, %r12
+   \ mc: movq (%r12), %rcx
+   \ mc: movq 8(%r12), %rax
+   \ mc: movq 16(%r12), %rsi
+   \ mc: testq %rsi, %rsi
+   \ mc: jne 23
+   \ mc: movq $-6400, %rdx
+   \ mc: movq %rdx, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: callq 971
+   \ mc: cmpq $-1, %rsi
+   \ mc: jne 10
+   \ mc: negq %rax
+   \ mc: xorl %edx, %edx
+   \ mc: jmp 5
+   \ mc: cqto
+   \ mc: idivq %rsi
+   \ mc: addq %rcx, %rdx
+   \ mc: movq %rdx, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: retq
+   s" 4981ec18000000498b0c24498b442408498b7424104885f60f851700000048c7c200e7ffff498914244981c408000000e8cb0300004881feffffffff0f850a00000048f7d831d2e905000000489948f7fe4801ca498914244981c408000000c3" X= ;
 
 public
 
@@ -1646,6 +1862,8 @@ public
    0 T=
    1 T=
    X64EMIT:RETIRE
+
+   DIVIDE-CASES
 
    WBND [: ADDRESSED-CASES ;] IR-CTX:WITH-CONTEXT
    STATE-CASES

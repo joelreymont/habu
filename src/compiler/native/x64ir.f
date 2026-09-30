@@ -1049,10 +1049,11 @@ private
 
 \ TWO RESULTS, because one instruction leaves both: `idiv r64` divides rdx:rax
 \ and writes the quotient to rax and the remainder to rdx, which is why `mod`
-\ costs no second division on this machine where it costs one on ARM64. It is
-\ three instructions - the dividend widened with cqo, the divide, and the branch
-\ over the trap the engine's `/` carries - and it may raise, because the machine
-\ raises #DE on a zero divisor and on MIN-INT / -1.
+\ costs no second division on this machine where it costs one on ARM64. The
+\ machine raises #DE on a zero divisor and on MIN-INT / -1, where Habu throws
+\ and wraps, so the render screens the divisor first (emit-x64.f PUT-IDIV): a
+\ zero divisor goes to the `throw` entry the form carries, -1 negates the
+\ dividend in place, and any other divisor is widened with cqo and divided.
 \
 \ Four register fields of this form are the machine's own and not the
 \ allocator's: the dividend is operand 0 in rax, the quotient is result 0 in rax

@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.551789+03:00"
-blocks:
-  - habu-render-x86-idiv-9c6d9516
 ---
 
 Problem: the kernel has no bodies for the pure-op rows of `src/habu/prims.f`.
