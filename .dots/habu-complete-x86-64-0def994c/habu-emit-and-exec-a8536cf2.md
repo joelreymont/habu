@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-29T12:51:36.492952+03:00"
 blocks:
   - habu-declare-and-select-bfbb301b
-  - habu-run-emitted-x86-b704f918
 ---
 
 Problem: after C7a the float forms select and allocate but `src/compiler/native/emit-x64.f` renders none of them. Second half of the float work.

@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-09-29T12:51:36.467577+03:00"
 blocks:
   - habu-emit-x86-frame-d8d25223
-  - habu-boot-and-exit-367c46f5
-  - habu-run-emitted-x86-b704f918
 ---
 
 Problem: `src/compiler/native/emit-x64.f:40-51` refuses `trap` and `codeaddr`.

@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-17T17:32:42.544466+03:00"
 blocks:
   - habu-emit-a-second-8a260f5a
-  - habu-read-recorded-sites-d4949953
   - habu-carry-the-shadow-dcb84138
   - habu-select-the-build-610b4492
   - habu-write-and-link-f6e6017f

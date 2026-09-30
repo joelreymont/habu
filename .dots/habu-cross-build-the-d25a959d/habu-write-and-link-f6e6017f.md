@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.732552+03:00"
-blocks:
-  - habu-boot-and-exit-367c46f5
 ---
 
 Problem: the x86 ELF writer (`src/os/linux-x86-64/elf.f`, `VMBASE $400000` at line 33) has no segment for the code region or for DATA; the ARM64 region is mapped wherever the kernel gives it (`src/habu/habu2.f:5113-5145`), which is why snapshot call displacements are relocated at load. On Linux an ET_EXEC `PT_LOAD` is mapped at its `p_vaddr` or exec fails, so the x86 image fixes both (DATA is already fixed: `MAP-ANON-PRIVATE-FIXED` at `DATA-VA`, `habu2.f:6247`). First of X4a-d.

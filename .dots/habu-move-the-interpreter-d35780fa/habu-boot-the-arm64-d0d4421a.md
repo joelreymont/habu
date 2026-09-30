@@ -7,7 +7,6 @@ created-at: "2026-09-29T12:51:36.697835+03:00"
 blocks:
   - habu-route-stdin-repl-d7e12895
   - habu-hook-tier-0-96e33c29
-  - habu-add-the-x86-a8bf9973
 ---
 
 Problem: the seeded product's `EM-STARTUP` (`src/habu/habu2.f:7428-7451`) never walks `LAOTBOOTRUN`, which is emitted only for cold engines (`habu2.f:10016-10023`), and `APP-ENTRY:XT-CELL` cannot carry the engine's `MAIN` because it also flips the argv and stdin conventions (`src/habu/aot-owned-cells.f:171-179`, `habu2.f:1305,1747,1869`); the product's REPL installs at window time (`src/habu/repl.f:237-240`, `src/habu/native-runtime.f:130`). This is the one leaf that changes the kernel boot on ARM64.

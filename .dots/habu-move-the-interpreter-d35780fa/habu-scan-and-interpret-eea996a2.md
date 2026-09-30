@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-09-29T12:51:36.646748+03:00"
 blocks:
   - habu-provide-the-interpret-32e92f89
-  - habu-find-dictionary-names-e8f56969
-  - habu-parse-numbers-in-86b27302
 ---
 
 Problem: the token scanner and interpret loop are assembly (`LMAIN`, the `habu2.f:4370` top-row hook block).

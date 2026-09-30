@@ -4,8 +4,6 @@ status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.432839+03:00"
-blocks:
-  - habu-run-emitted-x86-b704f918
 ---
 
 Problem: `src/compiler/native/emit-x64.f:40-51` refuses `reserve`, `release`, `store` and `load` with `E-X64EMIT-FORM`; spills lower but cannot execute.

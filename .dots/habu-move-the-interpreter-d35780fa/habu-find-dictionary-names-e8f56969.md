@@ -1,9 +1,11 @@
 ---
 title: Find dictionary names in Habu
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.629799+03:00"
+closed-at: "2026-09-30T09:26:25.105585+03:00"
+close-reason: I2 landed as 1d89a0d2 (interdiff empty)
 ---
 
 Problem: dictionary lookup for the interpreter is assembly (`LFIND`/`LFINDUSED`) while `NDICT` (`src/compiler/native/dict.f:47-103`) already reads records with package visibility in Habu.

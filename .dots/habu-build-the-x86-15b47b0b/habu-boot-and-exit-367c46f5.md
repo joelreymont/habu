@@ -1,12 +1,11 @@
 ---
 title: Boot and exit the x86-64 kernel skeleton
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.534293+03:00"
-blocks:
-  - habu-add-the-x86-a8bf9973
-  - habu-run-emitted-x86-b704f918
+closed-at: "2026-09-30T09:26:25.086656+03:00"
+close-reason: K3 landed as 7da8f791 (interdiff empty)
 ---
 
 Problem: no x86 kernel exists and `tools/native-emit.f` cannot build one: its lines 2-4 and 44-61 require the arm64 assembler, `rt.f`, `crash.f`, `prof.f`, `regalloc.f`, `habu1.f`, `jit.f` and `habu2.f` unconditionally, and `src/habu/prof.f:47-50` dies on x86. Milestone M2.

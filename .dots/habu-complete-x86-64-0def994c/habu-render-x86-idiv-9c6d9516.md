@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.451004+03:00"
 blocks:
-  - habu-run-emitted-x86-b704f918
   - habu-render-x86-trap-33eba82b
 ---
 

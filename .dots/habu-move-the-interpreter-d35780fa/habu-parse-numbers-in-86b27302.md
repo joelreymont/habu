@@ -1,9 +1,11 @@
 ---
 title: Parse numbers in Habu
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.638255+03:00"
+closed-at: "2026-09-30T09:26:25.095852+03:00"
+close-reason: I3 landed as fe18f873 (interdiff empty)
 ---
 
 Problem: number parsing is the assembly `LNUM`; `bootstrap/cg/forth.fs:2290` documents its contract.

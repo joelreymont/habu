@@ -9,7 +9,6 @@ blocks:
   - habu-render-x86-neg-43e4e8f8
   - habu-render-x86-idiv-9c6d9516
   - habu-render-x86-trap-33eba82b
-  - habu-boot-and-exit-367c46f5
 ---
 
 Problem: the kernel has no bodies for the pure-op rows of `src/habu/prims.f`.

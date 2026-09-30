@@ -1,9 +1,11 @@
 ---
 title: Read recorded sites in the capture
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.983183+03:00"
+closed-at: "2026-09-30T09:26:25.115454+03:00"
+close-reason: X2a landed as c0e2d857 (interdiff empty)
 ---
 
 Problem: `src/habu/aot-capture.f:1-14,62-80,1673-1684` discovers calls by decoding `BL` (`ACAP-CALL?`, `ACAP-TGT`, `ACAP-ZERO-IMM`, `ACAP-SCAN-CALLS`) and reads address chains as MOVZ/MOVK.

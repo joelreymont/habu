@@ -5,8 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.389107+03:00"
 blocks:
-  - habu-find-dictionary-names-e8f56969
-  - habu-parse-numbers-in-86b27302
   - habu-scan-and-interpret-eea996a2
   - habu-move-tier-1-aacb6029
   - habu-capture-bodies-and-5cbd31ea

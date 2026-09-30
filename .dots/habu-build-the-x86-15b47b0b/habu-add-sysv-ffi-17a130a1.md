@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.603500+03:00"
 blocks:
-  - habu-boot-and-exit-367c46f5
   - habu-emit-x86-syscall-a0d501db
 ---
 

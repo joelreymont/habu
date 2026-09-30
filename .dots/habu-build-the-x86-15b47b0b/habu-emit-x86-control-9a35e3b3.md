@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.568965+03:00"
 blocks:
-  - habu-boot-and-exit-367c46f5
   - habu-scaffold-the-x86-9af80979
 ---
 

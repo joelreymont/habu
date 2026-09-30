@@ -1,9 +1,11 @@
 ---
 title: Add x86-64 runtime moves and per-target DSTACK
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.526025+03:00"
+closed-at: "2026-09-30T09:26:25.058358+03:00"
+close-reason: K2 landed as 4ce9d404 (interdiff with its intel bookmark empty)
 ---
 
 Problem: `src/habu/layout.f:34` `ENGINE-GPR:DSTACK` is the shared `19` (consumed by `src/arch/arm64/machine.f:84,150` and `src/habu/rt.f:23`; the x86 side already has `X64IR:R-DSP 12` and `X64M:DSTACK-GPR`, `src/compiler/native/x64ir.f:180,346`), and the x86 data-stack moves have no home: the seam's `G-POP`/`G-PUSH` take x86 register numbers and `test/x86-64-emit.f` carries recording stubs (cross-build obligation (5)).

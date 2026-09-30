@@ -4,8 +4,6 @@ status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T17:45:15.270462+03:00"
-blocks:
-  - habu-run-emitted-x86-b704f918
 ---
 
 

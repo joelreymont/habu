@@ -6,9 +6,7 @@ issue-type: task
 created-at: "2026-09-29T13:12:29.008645+03:00"
 blocks:
   - habu-link-the-shadow-74e41be7
-  - habu-add-the-x86-a8bf9973
   - habu-select-the-build-610b4492
-  - habu-boot-and-exit-367c46f5
 ---
 
 Problem: nothing resolves the entry cells in an x86 image, and `NATIVE-EMIT:WRITE` has no x86 arm.

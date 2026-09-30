@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-29T12:51:36.715680+03:00"
 blocks:
   - habu-emit-a-second-8a260f5a
-  - habu-read-recorded-sites-d4949953
 ---
 
 Problem: the capture carries only the primary emission; the x86 writer needs the shadow per record.

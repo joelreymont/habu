@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-30T09:22:04.219804+03:00"
-blocks:
-  - habu-boot-and-exit-367c46f5
 ---
 
 Problem: K6-K9 would each create `src/habu/kernel-x64.f` (an add/add conflict) with copies of the definer (`habu1.f:91-103`), the span guard (`PROT-GUARD:CALL`, `habu1.f:412-427`), `LPROTREC` (`habu1.f:4027-4028`) and `B-TASK-LIVE-GUARD` (`habu1.f:1401-1405`); and no test can run a kernel body: C8's `X64HARNESS:OPEN,` makes rbp a 1 KiB stack window, `CASE1,` resets r12 to rbp and `CLOSE,` pins r13-r15 (K3 `test/x86-64-peer-harness.f:121-129,133,162-165`), while every K7/K8/K9 body and half of K6's read DATA cells or move those registers.
