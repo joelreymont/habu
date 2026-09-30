@@ -279,8 +279,8 @@ variable BAND-IX
    \ or above the hull's end, or ending at or below its start, intersects none
    \ of them and the table walk is skipped whole instead of run to a foregone
    \ conclusion. Every address the DP heap can reach takes that exit, because
-   \ the hull ends at DATA-START; nothing below it is admitted that a band
-   \ would refuse.
+   \ the hull ends before pending scratch and DATA-START; no span intersecting
+   \ a band is admitted.
    DREG DATA-BANDS:HI LIT64,  DREG DATA DREG ADD,
    addr DREG CMP,  C-CS past BCOND,     \ start >= hull end
    DREG DATA-BANDS:LO LIT64,  DREG DATA DREG ADD,

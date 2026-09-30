@@ -1327,11 +1327,10 @@ TXN-STATE-OFF $100 + constant TXN-LIVE-W-OFF
 \ hand out rows ($41C8..$43A0, 472 bytes): that run is bounded by
 \ APP-ENTRY:XT-CELL and five shipped libraries already claimed 448 of it, and
 \ every other candidate below TASK-REGION-BYTES ($10000, the whole a task has)
-\ is claimed - PD-TABLE from $8000, USE-BAND above it, then SNAP-RELOC's XTCELL
-\ table, which runs past 2.6 MB and would alias in the main thread's region.
-\
-\ USER-REGION-END is the anchor and does not move. It is where PD-TABLE-OFF has
-\ always started, so DATA-START is where it was and no mirrored constant shifts.
+\ is unavailable to task libraries: USE-BAND and SNAP-RELOC's XTCELL table extend
+\ past 2.6 MB and would alias in the main thread's region. Pending-defer scratch
+\ lives after the engine's private bands, outside the task arena.
+\ USER-REGION-END remains the fixed library arena boundary.
 $8000 constant USER-REGION-END
 
 \ STRING-ABI is lib/string.f's SB builder, declared here because string.f is
@@ -1486,8 +1485,8 @@ FS-MUT-ABI:START constant END
 \ signature into a slot of this fixed table; DRAIN-PRETRUST (called once in
 \ checker.f right after `: TRUST`) replays both registrations for every slot.
 \ Populated and drained entirely inside the checker.f prefix load, so the table is
-\ empty by snapshot time; it sits at the TOP of the reserved region and bumps
-\ DATA-START (protected-WID growth precedent) so no existing engine offset moves.
+\ empty by snapshot time; its storage is appended after the private engine bands
+\ below DATA-START so growth never moves the live using ABI or relocation maps.
 \ Overflow (and an over-long name/sig) dies at declaration; a non-empty table at
 \ SEAL-CAPTURE dies (undrained backstop) — both fail-closed, named. Slot access
 \ uses a computed band base (PD-TABLE-OFF > the DATA-relative scaled-imm range),
@@ -1507,8 +1506,6 @@ FS-MUT-ABI:START constant END
 PD-NAME-OFF PD-NAME-CAP + constant PD-SIG-OFF \ in-slot: sig bytes
 PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 8 constant PD-SLOTS-REL                       \ slots begin after the u64 band count cell
-STRING-ABI:END constant PD-TABLE-OFF   \ band base (= old DATA-START, = USER-REGION-END); [0]=count
-PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
 \ --- Package-scope eval-frame snapshot band (dot habu-recovery-pkg-scope-e0bd98e2) ---
 \ Evaluator entry snapshots package/search state in its native stack frame.
@@ -1535,7 +1532,9 @@ PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 \ counter to drift. The depth is always 0 at rest (usings are file-local and closed
 \ before seal/snapshot), so the band is transient.
 16 constant USE-MAX                       \ concurrent `using` capacity (E-code on overflow)
-PD-TABLE-END $400 + constant USE-BAND-OFF  \ preserve the checker-owned using offset
+\ checker.f loads before layout.f and reads this cell in the running compiler.
+\ This is a published engine ABI, independent of pending-table capacity.
+$9C08 constant USE-BAND-OFF
 USE-BAND-OFF          constant USE-DEPTH-CELL      \ live using depth (u64)
 USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL   \ depth saved at `package` open (`;package` restores)
 USE-BAND-OFF 16 +     constant USE-RPKG-SAVE-CELL  \ depth saved at REPL line start (recover restores)
@@ -1825,8 +1824,8 @@ STK-OFF FRAMES FRAME-BYTES * + constant END
 \ engine-reserved state (snapshot stores selected fixed sections); DP-CHECK bounds the heap
 \ >= DATA-START; task-user cells stop at EVAL-TOP-CELL. Its reserved band
 \ ends at $47C0, with PROT:RHI/PROT:CF taking the two cells directly
-\ above them. The lowering state ends at $8000; the pre-trust defer
-\ pending band follows, then the immutable lowering blob lives outside DATA.
+\ above them. The lowering state ends at $8000; the immutable lowering blob
+\ lives outside DATA. Pending-defer scratch follows the private engine bands.
 \ Sorted, disjoint code intervals. Coordinates are relative to dbase@; a row is
 \ (first, end, origin). Unknown is -1, JIT is 0, positively native is 1.
 \ Missing coverage is unknown, never evidence that older code was native.
@@ -1843,4 +1842,9 @@ TABLE-OFF SPANS SPAN-BYTES * + constant END
 \ The scoped package evaluator owns one transient dispatch xt. A source load
 \ disarms it on return or throw; snapshots are taken only with no unit active.
 TIER-PROV:END constant UNIT-COMPILE-CELL
-UNIT-COMPILE-CELL CELL + constant DATA-START
+
+\ Pending storage is private to the engine's capture/drain primitives. Its
+\ capacity may grow without moving any published engine slot or live map.
+UNIT-COMPILE-CELL CELL + constant PD-TABLE-OFF
+PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
+PD-TABLE-END constant DATA-START
