@@ -57,6 +57,16 @@ seed; the release copy for other agents is `/tmp/hazel-release/hb`.
   [dynamic-library loading rules](https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/DynamicLibraryUsageGuidelines.html).
 - Linux gates require a working devpts setup: `/dev/ptmx`, `/dev/pts`, and PTY
   ioctls must be available to the user running the gate.
+- Every gate host needs the PostgreSQL server binaries: `initdb` and `pg_ctl`
+  on `PATH`, with `postgres` beside `pg_ctl`. The `pg` row starts a private
+  cluster with them (`test/db/pg-cluster.f`, see [db.md](db.md#tests)) and
+  fails naming a missing one; it never skips. The gate must run as an ordinary
+  user, because `initdb` refuses to run as root. On macOS, Homebrew
+  `postgresql@18` is keg-only and installs no links into `/opt/homebrew/bin`:
+  run `brew link postgresql@18`, or put `/opt/homebrew/opt/postgresql@18/bin`
+  on `PATH`. On Linux, install the distribution's PostgreSQL server package and
+  put its `bin` directory on `PATH` when the package keeps it elsewhere (Debian
+  and Ubuntu use `/usr/lib/postgresql/<version>/bin`).
 - Gforth with `{:` locals support. Homebrew `gforth` 0.7.3 is too old.
   A current Gforth snapshot such as `0.7.9_20260610` works.
 - GB10 device gates (sm_121a) **require** the pinned 13.3 `ptxas` in

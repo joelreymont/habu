@@ -62,7 +62,11 @@ closes its libpq resources and releases every call arena and registry buffer
 when `IMAGE-LIFECYCLE` prepares an image, because a
 restored image runs in another process where the libpq pointers are gone and
 the mappings are not its own. A surviving handle then refuses instead of
-reaching a freed address.
+reaching a freed address. Capture runs after the program's tasks stop, and the
+AIO loop the convenience words wait through is one of them: call `AIO:STOP`
+before the capture and `AIO:START` after it. `IMAGE-LIFECYCLE:PREPARE` with the
+loop running ends the process with `task: activated task at capture`
+([threads.md](threads.md)).
 
 ## Vocabulary
 
@@ -292,21 +296,42 @@ the list into `EXEC`.
 
 ## Tests
 
-`lib/pg-test.f` runs against a live server. `test/db/pg-fixture.sh` starts a
-throwaway trust-authentication cluster on a free loopback port in a temporary
-directory, exports `HABU_PG_CONNINFO`, runs the command and then stops and
-removes the cluster:
+`lib/pg-test.f` runs against a live server, and the native gate runs it as the
+`pg` row through `test/db/pg-cluster.f`. The harness makes a private
+trust-authentication cluster with `initdb`, starts it with `pg_ctl` listening
+on a Unix-domain socket only (`listen_addresses=''`), and runs the cases in a
+child engine with the cluster's conninfo (`host=<socket directory>
+dbname=postgres user=habu`) as their one script argument. It then stops the
+cluster whatever the cases' outcome, and both directories are removed when it
+exits:
 
 ```sh
-test/db/pg-fixture.sh build/hb-pg --load lib/pg-test.f
+bin/hb --load test/db/pg-cluster.f
 ```
+
+That cleanup runs only when the harness ends on its own, including by `die` or
+an uncaught throw. A signal that ends the harness, such as SIGTERM, runs neither
+the stop nor the directory removal: the postmaster keeps running and both
+directories stay. Recover with `pg_ctl -D <root>/data -m immediate stop`, then
+remove the two directories; the postmaster's command line names both (`-D` and
+`-k`). Under the gate pool, retiring the slot removes its `HB_TMP` and the data
+directory with it, and the postmaster's lock-file recheck then stops it within
+about a minute; the socket directory under `TMPDIR` stays.
+
+With no TCP listener, rows running beside each other cannot collide on a port.
+The data directory is under the row's `HB_TMP`. The socket directory is under
+`TMPDIR`, because a pool slot's `HB_TMP` is already about 100 bytes long and
+postgres refuses a socket path over 103 (`Unix-domain socket path ... is too
+long (maximum 103 bytes)` on macOS, whose `sun_path` holds 104).
 
 The dispatcher case uses two real connections from one task: a query waits on
 an advisory lock, the same task releases it through the other connection, and
 the first query completes. It also closes a pending query and then fills the
 declared result registry, checking that cancellation did not leak a slot.
 
-Without `HABU_PG_CONNINFO` the test prints `pg-test: skipped, HABU_PG_CONNINFO
-names no server` and asserts nothing, so the gate does not run it: the gate
-has no PostgreSQL, `test/five-bindings.f` loads and binds package `PG` there,
-and the fixture is how the module is exercised for real.
+The server binaries are a gate requirement on every host
+([bootstrap.md](bootstrap.md#requirements)): without `initdb` or `pg_ctl` on
+`PATH` the row fails with `pg-cluster: required executable missing on PATH:`
+and the name. Loaded without its argument, `lib/pg-test.f` dies naming the
+harness. Neither skips. `test/five-bindings.f` also loads and binds package
+`PG` beside the other foreign libraries.

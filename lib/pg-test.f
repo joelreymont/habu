@@ -1,13 +1,12 @@
 \ pg-test.f - package PG against a live PostgreSQL server.
 \
-\ Run it through the fixture, which starts a throwaway cluster and exports the
-\ conninfo:
+\ test/db/pg-cluster.f starts a private cluster and runs this file with the
+\ cluster's conninfo as its one script argument; the gate row is that harness:
 \
-\     test/db/pg-fixture.sh build/hb-pg --load lib/pg-test.f
+\     bin/hb --load test/db/pg-cluster.f
 \
-\ Without HABU_PG_CONNINFO in the environment the file prints a named skip and
-\ asserts nothing, so the gate does not run it; test/five-bindings.f loads and
-\ binds package PG there.
+\ Loaded without the argument, the file dies naming the harness. There is no
+\ skip.
 
 require lib/test.f
 require lib/task.f
@@ -43,7 +42,7 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
 
 
 : CONNINFO$ ( -- ptr u8 n )
-   s" HABU_PG_CONNINFO" GETENV ;
+   0 SCRIPT-ARGV$ ;
 
 
 : OPEN ( -- PG:connection )
@@ -633,11 +632,20 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
    dup PARAMS ;
 
 
+\ A capture runs after the program's tasks stop: PREPARE ends the process on a
+\ task still activated (docs/threads.md), and the AIO loop is one. CAPTURE stops
+\ it, prepares, and starts it again however PREPARE ends, so the loop is live
+\ for the connections opened afterwards and for MAIN's cleanup.
+: CAPTURE ( -- )
+   AIO:STOP
+   [: IMAGE-LIFECYCLE:PREPARE ;] [: AIO:START ;] finally ;
+
+
 : IMAGE-CASES ( -- )
    OPEN {: c :}
    c PARAMS
    c s" select 1" EXEC {: r :}
-   IMAGE-LIFECYCLE:PREPARE
+   CAPTURE
    c [: USE-CONN ;] catch {: stale-conn code:n :}
    code E-HANDLE T=
    r [: READ-ROWS ;] catch {: stale-res res-code:n :}
@@ -681,8 +689,8 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
 
 
 : MAIN ( -- )
-   CONNINFO$ nip 0= if
-      s" pg-test: skipped, HABU_PG_CONNINFO names no server" type cr exit
+   SCRIPT-ARGC 1 <> if
+      s" pg-test: no conninfo argument; test/db/pg-cluster.f runs this file" 2 die
    then
    CONNECTIONS RESULTS PARAMETERS CONFIGURE
    PROGRESS-CASES

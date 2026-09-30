@@ -148,6 +148,15 @@ gives that slot no directory.
   code's low eight bits and prints nothing: exit 56 is `E-PROC-TRUNCATED`
   (-2504), 104 is `E-STR-BOUNDS` (-2200). Add multiples of 256 until a known
   `E-*` appears before guessing at the site.
+- A row that needs an external server starts a private one and stops it
+  whatever its cases do. The `pg` row (`test/db/pg-cluster.f`) runs `initdb`
+  and `pg_ctl` from `PATH`, a gate requirement on every host
+  ([bootstrap.md](bootstrap.md#requirements)); without them it fails naming
+  the missing binary. It serves the cluster on a Unix-domain socket only, so
+  concurrent rows share no port, and runs the cases in a child engine so a
+  case that dies or hangs still leaves the harness to stop the server. The
+  socket directory is under `TMPDIR` rather than the slot's `HB_TMP`, whose
+  length leaves no room in `sun_path`.
 - A red that appears only when the box is loaded is the box: reproduce it on
   the unmodified base under the same load, then rerun the suite alone. Every
   gate run gets its own `HB_TMP` root, and nothing edits the tree while a gate

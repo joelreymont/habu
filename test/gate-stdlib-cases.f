@@ -1150,6 +1150,14 @@ SUITE five-bindings
    test/five-bindings.f
 ;SUITE
 
+\ Package PG against a private PostgreSQL cluster the harness starts on a
+\ Unix-domain socket and stops however lib/pg-test.f ends. initdb and pg_ctl on
+\ PATH are a gate requirement (docs/bootstrap.md). The harness's step
+\ deadlines sum to 300 s, inside SUITE-TIMEOUT-MS.
+SUITE pg
+   test/db/pg-cluster.f
+;SUITE
+
 \ Loopback HTTP in one process; the one HTTPS request is opt-in behind
 \ HABU_NET_TESTS.
 SUITE curl-http
