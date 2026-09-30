@@ -1,11 +1,13 @@
 ---
 title: Move packages, using and EXPORT into Habu
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.680527+03:00"
 blocks:
   - habu-add-the-engine-ebe5d757
+closed-at: "2026-10-01T00:30:00.000000+03:00"
+close-reason: "Package keywords in the Habu loop (packages.f, interpret.f): outer-interpret 81 route-equality cases agree, outer-find and outer-number ok on eff4ff42; Opus review LAND"
 ---
 
 Problem: `package`, `public`, `private`, `;package`, `using`, `;using` and `EXPORT` run in the assembly interpreter.
@@ -34,3 +36,16 @@ Design corrections (2026-09-30; override the lines above and the earlier correct
 - Refs: C-PACKAGE `habu2.f:8023`, NEW-RECORD 7939, EXISTING-PRIVATE 7956, using 8097-8186, C-EXPORT 8365-8409, keywords 8415-8422, `checker.f:9115`.
 - Verify: `bin/hb --load test/outer-interpret.f` (SUITE outer-interpret) with the corrections-block cases plus `package ENGINE-ERROR` (84), a prelude-spawned task (79), EXPORT into a protected wid (84); the checker mirror: `using P`, then an engine `evaluate` of a `:` that calls a shadowed tail (rc 67). No in-process calls. Gate.
 - Rejected from the re-preflight: I8-owned rows taking caller-supplied wids (a live wordlist could get a second namespace name; the writers go to I4c, which allocates wids); a PACKAGE? table in outer.f with PKGS throwing bare codes (splits every refusal across two files).
+
+Re-preflight corrections (2026-09-30; override every block above where they differ):
+- Checked on master 1ced9608 with I4, I4b and I4c closed. The Design corrections stand except below.
+- Refs (drifted): C-TASK-LIVE-GUARD `habu2.f:2503`; DECL-OWNER `2556-2575`; `checker-export` lookup `2755-2761`; C-QUALIFY-FAIL (stale DEF-TKA/TKL) `3281-3283` via C-QUALIFY-CAP `3727`; dup wall `3741`; C-SEAL-MATCH `3780`; checker calls `8296-8337`; C-PACKAGE family `8341-8512`; using `8523-8611`; C-EXPORT `8748-8835`; keywords `8841-8848`; rows `prims.f:624-648`; `set-current` `prims.f:685` is global, not trusted-only; USE-MAX `layout.f:1534`. The loop to move is `outer.f:741-767` (DISPATCH, STEP, RUN, INTERPRET).
+- interpret.f requires outer.f in the mechanical commit; packages.f joins in the second.
+- INTERPRET also saves USE-DEPTH and restores it on both exits: usings are file-local (`layout.f:1522-1533`; B-EVAL `habu1.f:1442`, EM-EVAL-CLEAN-EXIT `habu2.f:10595-10598`). Case: a nested include opens `using`, then the parent's bare tail is `E-UNDEFINED` rc 70. Package-scope rollback on a throw stays with habu-roll-back-failed-64bf2ba5.
+- EXPORT of a DNAME-INT source: the engine publishes an alias without the bit; `alias-record` exits 83. Right after the lookup, before the checker call, refuse with the interpret gate's `hb: internal engine word: <token>` and throw 70. Test this on the Habu route alone. An integer constant exports normally. The pending-definition 83s and tier-0 `def-open` touch no I8 path.
+- The PKG- prefix only avoids OUTER's existing names.
+- PROTECTED?: copy `tools/prot-wid-probe.f` MEMBER? (src never requires tools/).
+- Tests: outer-interpret is a spawned route-equality suite, so booted-image rules do not apply. Turn AMBIGUITY and TICK-USED into BOTH cases (FXA/FXB move into the prelude), then delete OI-AMBIG, TWIN$ and TWIN-BUF. Keep SEAM. Add a global twin of OI-SEVEN for the shadow case. Update the loop comments (`outer.f:279-284`, outer-loop-on.f, outer-interpret.f header).
+- Pre-change failing check: `package OI-X public ;package 1 .` loaded after `test/outer-loop-on.f` gives `E-UNDEFINED: package`, rc 70; the engine prints 1, rc 0.
+- Baked: nothing. The include.f edit is a comment. No rebuild, chain or full gate: only outer-number, outer-find and outer-interpret require outer.f.
+- Verify: `bin/hb --load test/outer-interpret.f` (44 cases on master), `test/outer-find.f`, `test/outer-number.f`.

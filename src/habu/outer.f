@@ -279,9 +279,11 @@ public
 \ OUTER:INTERPRET (src/habu/interpret.f) reads a buffer token by token with the
 \ words below, as the engine's interpret loop does (habu2.f EM-COMMENT's LMAIN,
 \ EM-INTERPRET-WORDS) for comments, the literal keywords (`s"`, `c"`, `."`,
-\ their escaped forms, `char` and `'`), numbers and dictionary words. The
-\ engine's other keywords (`:`, `using`, `create`, ...) are not read here yet:
-\ they are not dictionary words, so they refuse as undefined.
+\ their escaped forms, `char` and `'`), numbers and dictionary words, and with
+\ src/habu/packages.f for the package keywords (`package`, `public`, `private`,
+\ `;package`, `using`, `;using` and `export`). The engine's other keywords
+\ (`:`, `create`, ...) are not read yet: they are not dictionary words, so they
+\ refuse as undefined.
 \
 \ The input is the engine's own. The cursor, its end and the buffer start sit
 \ in INP-CELL, INE-CELL and SRCLOC:INB-CELL, and the token in TKA-CELL and
@@ -300,6 +302,7 @@ private
 74 constant RC-BAD-LITERAL       \ habu2.f C-QUOTE-EOF: no closing quote, or a bad escape
 74 constant RC-NO-NAME           \ habu2.f C-DIE-KEYWORD-NAME: a keyword's operand is missing
 76 constant RC-TOO-LONG          \ habu2.f LCSTR: a counted string past CSTR-MAX bytes
+79 constant RC-TASK-LIVE         \ habu2.f C-TASK-LIVE-GUARD's $4F: a keyword while a task is live
 52 constant MIN-IN-SHIFT         \ layout.f DNAME-MIN-IN-MASK: record flag bits 52-59
 32 constant BLANK                \ LTOK: every byte at or below it separates tokens
 $0A constant NEWLINE
@@ -416,6 +419,33 @@ variable DIGIT-AT
 : AMBIGUOUS ( -- )
    s" hb: ambiguous bare word resolves in multiple used packages: " SAY
    TOKEN$ SAY ENGINE-ERROR:USING-AMBIGUOUS THROW-AT ;
+
+\ ---- fail-closed exits ----------------------------------------------------------
+\ Where the engine ends the process instead of throwing (NR-EXIT-GROUP), the
+\ text goes to descriptor 2 and no program code runs: the exit hook
+\ (src/habu/layout.f EXIT-HOOK-CELL) is cleared before `die`, which would
+\ otherwise call it.
+: FAIL-CLOSED ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
+   a u SAY
+   0 EXIT-HOOK-CELL CELL!
+   s" " rc die ;
+
+\ A keyword that changes the dictionary or its scope while a task is live
+\ ends the process, the keyword its whole diagnostic (habu2.f
+\ C-TASK-LIVE-GUARD).
+: TASK-GUARD ( -- )
+   TASKS-LIVE-CELL CELL@ 0= if exit then
+   TOKEN$ RC-TASK-LIVE FAIL-CLOSED ;
+
+\ Whether wordlist wid is protected (habu1.f EMIT-PROTWID, read as
+\ tools/prot-wid-probe.f MEMBER? reads it): the two engine-reserved wordlists
+\ by rule, then the wid's bit in the bitmap at PROT-BITS-OFF, which no wid
+\ outside [0, PROT-WID-MAX) has.
+: PROTECTED? ( n -- bool ) {: wid:n :}
+   wid OWNER-API-PUB-WID = wid OWNER-API-PRI-WID = or if true exit then
+   wid 0 < wid PROT-WID-MAX >= or if false exit then
+   wid 6 rshift cells PROT-BITS-OFF + CELL@
+   wid 63 and rshift 1 and 0<> ;
 
 \ ---- running program code -------------------------------------------------------
 \ A word or the hook runs through execute-floor, which answers whether it left
@@ -699,8 +729,7 @@ TRUSTED: PUSH-CHAR ( -- )
 \ FIND-SPLIT reads it, but a second colon does not spare the token. The sealed
 \ packages are the checker's list (src/core/checker.f CHECKER-SEALED-PKG?, the
 \ declared mirror of the engine's own), which folds case as the engine does.
-\ The exit runs no program code (src/habu/layout.f EXIT-HOOK-CELL): the hook is
-\ cleared before `die`, which would otherwise call it.
+\ The exit is fail-closed, as C-SEAL-PACKAGE-FAIL's is.
 : SEAL-GUARD ( -- )
    SEAL-NDICT@ 0= if exit then
    TOKEN$ {: a:ptr u:n :}
@@ -708,9 +737,7 @@ TRUSTED: PUSH-CHAR ( -- )
    q 1 < if exit then
    q 1+ u >= if exit then
    a q CHECKER-SEALED-PKG? 0= if exit then
-   a u SAY
-   0 EXIT-HOOK-CELL CELL!             \ fail-closed, as C-SEAL-PACKAGE-FAIL is
-   s" " ENGINE-ERROR:SEAL-PACKAGE die ;
+   a u ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
 
 \ Whether ' names a word, which then passes the xt gates. A tick runs nothing,
 \ so it has no depth gate, and a name no word has is a quiet miss.
