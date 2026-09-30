@@ -1,5 +1,6 @@
 \ Process resources are reset before an executable image captures live data.
 require lib/prelude.f
+require lib/errors.f
 \ HOOKS below is a checked quotation store; the optimizing tier lowers such a
 \ store through QUOTATION-STORAGE:STORE, so this file owns that dependency.
 require src/core/quotation-storage.f
@@ -67,6 +68,13 @@ public
 
 \ Capture runs after application tasks stop. Reverse order releases dependents
 \ first; cleanup can register again, and a failed callback remains for retry.
+\ A ONE-SHOT HOOK REGISTERED BY A PERSISTENT ONE IS REFUSED, E-LIFECYCLE-LATE.
+\ The one-shot phase has ended and its table is released, so nothing runs that
+\ hook before the capture; running it now would put cleanup that may call
+\ foreign functions after the hooks that forget their addresses. Admitted, the
+\ capture released the table again and copied N: an image saved from the keyed
+\ linker image counted 4 hooks, one in no table, and its first PREPARE threw
+\ E-BOUNDS (test/image-lifecycle-late-register.f).
 : PREPARE ( -- )
    begin N @ 0 > while
       N @ 1- {: at:n :}
@@ -77,7 +85,8 @@ public
    \ One-shot cleanup may use foreign functions. Forget their addresses last,
    \ after resource cleanup has finished, in reverse declaration order.
    PERSISTENT-N @
-   begin dup 0 > while 1- dup PERSISTENT @ execute repeat drop ;
+   begin dup 0 > while 1- dup PERSISTENT @ execute repeat drop
+   N @ 0 > if E-LIFECYCLE-LATE throw then ;
 
 \ THE FIVE CELLS A STRIPPED IMAGE REACHES THIS REGISTRY THROUGH, handed one at a
 \ time to a claim the caller supplies. This file is baked into the engine, so

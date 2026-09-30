@@ -686,6 +686,10 @@ SUITE image-lifecycle-tasks
    test/image-lifecycle-tasks.f
 ;SUITE
 
+SUITE image-lifecycle-late-register
+   test/image-lifecycle-late-register.f
+;SUITE
+
 SUITE native-resource-image
    test/native-resource-image.f
 ;SUITE

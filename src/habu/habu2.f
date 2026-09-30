@@ -1114,7 +1114,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 \ errors have no requires; adt/option.f is a bare ENUM; num-types.f is the
 \ role NEWTYPEs and num-arithmetic.f requires it; string.f requires errors,
 \ adt/option and num-arithmetic; memory.f requires errors and
-\ num-arithmetic; image-lifecycle requires prelude and quotation-storage. The
+\ num-arithmetic; image-lifecycle requires prelude, errors and
+\ quotation-storage. The
 \ lifecycle registry belongs below the compiler capture window: capture tooling
 \ can register its own FFI cleanup after the window closes, and that callback
 \ must not become a target of the window's declared CODE cells. Some files spell

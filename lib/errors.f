@@ -1418,3 +1418,9 @@ public
 -9294 constant E-AIO-BUSY         \ STOP with an operation still in flight
 -9295 constant E-AIO-GROUP        \ the group is full or empty, holds no such ticket, or no row is left
 -9296 constant E-AIO-BOUNDS       \ a transfer count past its allocation or below zero, a file offset below -1, or a socket address length not positive
+
+\ Image lifecycle hooks (package IMAGE-LIFECYCLE, lib/image-lifecycle.f):
+\ -9310..-9319. The decade after the debugger's (src/habu/debug.f).
+-9310 constant E-LIFECYCLE-FIRST
+-9319 constant E-LIFECYCLE-LAST
+-9310 constant E-LIFECYCLE-LATE   \ a persistent hook registered a one-shot hook during PREPARE, after the one-shot phase: nothing runs it before the capture
