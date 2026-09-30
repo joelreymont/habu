@@ -1,9 +1,11 @@
 ---
 title: Share the parity case sets as data
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T14:48:39.759522+03:00"
+closed-at: "2026-09-30T16:07:35.999150+03:00"
+close-reason: "spark base engine 41f0e089: bin/hb --load test/prim-parity.f rc 0, test: ok, rows with cases 81 -> 82, ptr-field no longer uncovered, assertions 467 -> 472"
 ---
 
 Problem: the integer case sets of `test/prim-parity.f` (590-954) run only through PARITY's own shape words, at load; the x86 kernel test (K5 habu-emit-x86-pure-f70fb84b) cannot run them without copying them, and `ptr-field` has no case set.
