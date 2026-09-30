@@ -150,7 +150,7 @@ variable WB-FAIL-RC                      \ exit status a red whitebox row dies w
 \ 24 s) or races another row to build it. The preloaded host and linker
 \ (test/preloaded-engine.f) are settled for the same reason. Settling dates
 \ every image as used, as each row's own settle does again, so a prune by a
-\ gate on another tree (test/fixture-cache.f) leaves them alone. The whitebox
+\ gate on another tree (lib/build-cache.f) leaves them alone. The whitebox
 \ build is the first fork.
 : SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS

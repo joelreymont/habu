@@ -407,12 +407,11 @@ variable HBT-SEQ-IP      \ that scan's cursor
 \ discovery producer (tools/source-discovery.f requires it, and its rows steer
 \ closure computation), so its content must fold into the producer cache key. The
 \ key preimage records each tool source through CONTENT-KEY:FILE+, which appends
-\ the path fragment and then the file's content digest with no earlier return, so
-\ the presence of the manifest path in the preimage (CONTENT-KEY:BUF$) proves its
-\ content participates in the key. If the manifest is missing from
+\ the path fragment and then the file's content digest, so the presence of the
+\ manifest path in the preimage (CONTENT-KEY:BUF$) proves its content
+\ participates in the key. If the manifest is missing from
 \ HBB-KEY-LOAD-FILES a manifest edit silently reuses a stale hb-build artifact.
 : HBT-MAKER-KEY-FOLDS-MANIFEST ( -- )
-   CONTENT-KEY:CACHE-CLEAR!
    CONTENT-KEY:OPEN
    HBB-KEY-LOAD-FILES
    dup CONTENT-KEY:BUF$ s" tools/dynamic-tail-manifest.f" CONTAINS? TTRUE

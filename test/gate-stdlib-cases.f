@@ -127,6 +127,10 @@ SUITE hb-build-aot-cache
    tools/hb-build-direct-lints-test.f
 ;SUITE
 
+SUITE hb-build-retain
+   tools/hb-build-retain-test.f
+;SUITE
+
 SUITE build-fixpoint-source
    tools/build-fixpoint-source-test.f
 ;SUITE
@@ -259,7 +263,7 @@ SUITE streaming-sha256
    tools/sha256-file-test.f
 ;SUITE
 
-SUITE content-key-cache
+SUITE content-key
    lib/content-key-test.f
 ;SUITE
 
@@ -1909,6 +1913,10 @@ SUITE whitebox-engine-key
 
 SUITE fixture-cache
    test/fixture-cache-test.f
+;SUITE
+
+SUITE build-cache-retain
+   lib/build-cache-retain-test.f
 ;SUITE
 
 SUITE hb-baseline-contracts

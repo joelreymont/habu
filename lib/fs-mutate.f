@@ -156,7 +156,7 @@ public
 \ utimes(2) with a NULL times pointer - the integer 0 below - sets a path's
 \ access and modification times to now. No engine primitive sets a timestamp,
 \ so it is bound the way FS-NOREPLACE binds link(2). A cache that ages its
-\ entries by mtime marks one used with TOUCH (test/fixture-cache.f).
+\ entries by mtime marks one used with TOUCH (lib/build-cache.f).
 package FS-TIMES
 PROCESS-SYMBOLS
 FUNCTION: UTIMES-CALL utimes ( ptr u8 n -- i32 ) ;FUNCTION

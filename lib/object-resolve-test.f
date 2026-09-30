@@ -148,10 +148,12 @@ create TEXT-BYTES 1 c, 2 c, 3 c,
    STORE-WRONG-INDEX
    [: SRC2$ TARGET$ CHECKER$ COMPILER$ OBJRES:LOAD drop ;] E-OBJ-SCHEMA TTHROWSQ ;
 
-: CORRUPT-INDEX-FAILS ( -- )
+\ An index record whose object is gone is a miss, not an error: a prune takes
+\ an object and an index record apart, so either can outlive the other.
+: GONE-OBJECT-MISSES ( -- )
    SRC$ SOURCE-KEY!
    SRC-KEY KEY-U BADOBJ$ OBJIDX:STORE
-   [: SRC$ TARGET$ CHECKER$ COMPILER$ OBJRES:LOAD drop ;] E-FS-OPEN TTHROWSQ ;
+   SRC$ TARGET$ CHECKER$ COMPILER$ OBJRES:LOAD TFALSE ;
 
 public
 
@@ -162,7 +164,7 @@ public
    LARGE-ROUNDTRIP
    MISS-RETURNS-FALSE
    WRONG-INDEX-FAILS
-   CORRUPT-INDEX-FAILS
+   GONE-OBJECT-MISSES
    CLEANUP-RUN
    T-REPORT ;
 

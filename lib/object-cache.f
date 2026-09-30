@@ -12,8 +12,6 @@ package OBJSTORE
 using OBJ
 
 64 constant KEY-U
-4 constant SUFFIX-U
-46 constant DOT
 65 constant UP-A
 71 constant UP-G
 97 constant LOW-A
@@ -49,17 +47,20 @@ DYNAMIC-BUFFER READ-STORAGE n
 : ROOT-CHECK ( -- )
    ROOT-U @ 0 <= if E-FS-PATH throw then ;
 
-: SUFFIX! ( -- )
-   DOT NAME-BUF KEY-U + c!
-   104 NAME-BUF KEY-U 1 + + c!
-   98 NAME-BUF KEY-U 2 + + c!
-   111 NAME-BUF KEY-U 3 + + c! ;
+public
+
+\ What every object's name has after its key.
+: SUFFIX$ ( -- ptr u8 n )
+   s" .hbo" ;
+
+private
 
 : NAME! ( ptr u8 n -- ptr u8 n ) {: key:ptr keyu:n :}
    key keyu KEY-CHECK
    key NAME-BUF KEY-U BYTE-COPY
-   SUFFIX!
-   NAME-BUF KEY-U SUFFIX-U + ;
+   SUFFIX$ {: suffix:ptr suffixu:n :}
+   suffix NAME-BUF KEY-U + suffixu BYTE-COPY
+   NAME-BUF KEY-U suffixu + ;
 
 : PATH! ( ptr u8 n -- )
    ROOT-CHECK

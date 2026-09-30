@@ -34,7 +34,7 @@
 \ registry removes the work directory it was registered with.
 \
 \ RETAINED WHILE USED. A published image prunes its family and an image found on
-\ disk is dated as in use (test/fixture-cache.f), so the cache holds what some
+\ disk is dated as in use (lib/build-cache.f), so the cache holds what some
 \ tree still runs and nothing older.
 \
 \ An image is handed out in place: its callers only execute it, and it writes
@@ -50,7 +50,6 @@ require lib/process-env.f
 require lib/build-cache.f
 require lib/content-key.f
 require tools/event-closure-lib.f
-require test/fixture-cache.f
 
 package KEYED-IMAGE
 
@@ -168,7 +167,7 @@ TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
    EMIT-RC @ 0 <> if EMIT-RC @ throw then
    FAMILY$ STEM!
    s" -" NAME+
-   NAME$ FAMILY$ PATH$ FIXTURE-CACHE:PRUNE ;
+   NAME$ s" " FAMILY$ PATH$ BUILD-CACHE:PRUNE ;
 
 public
 
@@ -205,7 +204,7 @@ public
 \ copied; the family name, keyed path and program are read until ENSURE returns.
 : ENSURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] -- )
    {: fam:ptr famu:n path:ptr pathu:n eng:ptr engu:n prog:ptr progu:n args :}
-   path pathu EXECUTABLE? if path pathu FIXTURE-CACHE:USED if exit then then
+   path pathu EXECUTABLE? if path pathu BUILD-CACHE:USED if exit then then
    fam FAMILY-A ! famu FAMILY-U !
    path PATH-A ! pathu PATH-U !
    prog PROGRAM-A ! progu PROGRAM-U !

@@ -45,7 +45,6 @@ require lib/build-cache.f
 require lib/content-key.f
 require lib/engine-candidate.f
 require tools/event-closure-lib.f
-require test/fixture-cache.f
 
 package WHITEBOX-ENGINE
 
@@ -216,7 +215,7 @@ private
 \ else. The work directory goes whatever the build did, and a failure keeps its
 \ own code: a throw is caught here, and a die in BUILD-RUN or PUBLISH ends the
 \ process, whose exit registry removes what WORK-OPEN registered. A published
-\ engine then prunes its family (test/fixture-cache.f), which reports its own
+\ engine then prunes its family (BUILD-CACHE:PRUNE), which reports its own
 \ failures and never fails the build.
 : EMIT ( -- )
    WORK-OPEN
@@ -224,16 +223,16 @@ private
    EMIT-RC @ 0 = if ['] PUBLISH catch EMIT-RC ! then
    WORK-CLOSE
    EMIT-RC @ 0 <> if EMIT-RC @ throw then
-   IMAGE-PREFIX$ WORK-PREFIX$ PATH-BYTES FIXTURE-CACHE:PRUNE ;
+   IMAGE-PREFIX$ s" " WORK-PREFIX$ PATH-BYTES BUILD-CACHE:PRUNE ;
 
 public
 
 \ Build the shared unsealed engine unless the keyed artifact is already on disk.
-\ An engine found there is marked in use (FIXTURE-CACHE:USED), and one a pruner
+\ An engine found there is marked in use (BUILD-CACHE:USED), and one a pruner
 \ took meanwhile is built again.
 : ENSURE ( -- )
    RESOLVE
-   PATH-BYTES EXECUTABLE? if PATH-BYTES FIXTURE-CACHE:USED if exit then then
+   PATH-BYTES EXECUTABLE? if PATH-BYTES BUILD-CACHE:USED if exit then then
    EMIT ;
 
 \ The keyed artifact, for a caller that only wants to name it.

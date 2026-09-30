@@ -1,11 +1,80 @@
-\ build-cache.f - canonical checked build-cache root selection.
+\ build-cache.f - the checked build cache: the root every build shares, and the
+\ retention that bounds what builds leave in it.
+\
+\ ROOT$ is the root, selected once per process (docs/stdlib.md). The rest of
+\ this header is the retention: USED and PRUNE, which every writer into the
+\ cache calls.
+\
+\ EVERY ENTRY IS KEYED. A writer publishes <prefix><key><suffix>, the key 64 hex
+\ digits covering what the entry was made from: hb-build its artifacts,
+\ hb-build-out-<key> (tools/hb-build-lib.f), and its object cache, <key>.hbo and
+\ <key>.idx (lib/object-resolve.f); the gate its keyed images (test/keyed-image.f,
+\ test/cold-engine.f, test/whitebox-engine.f). A key moves with every edit to
+\ what it covers, so each publish lands beside the entries it replaces, and
+\ nothing but PRUNE removes one.
+\
+\ AN ENTRY GOES ONCE NOTHING HAS USED IT FOR A DAY. Builds on other trees share
+\ the cache under keys of their own, and some run an entry in place, so keeping
+\ only the key just published would pull entries out from under them. Instead
+\ every caller that finds an entry dates it to now through USED, so its mtime is
+\ the last time anything used it, and PRUNE takes only entries RETAIN-SECONDS
+\ old: a day, far beyond any build's deadline or any gate's run, so an entry in
+\ use is never that old. Only a caller that last used an entry a day ago and
+\ uses it again can lose it. When a prune renames the entry away before USED
+\ dates it, USED answers FALSE and the caller builds the entry again. A prune
+\ whose STALE? read the entry before USED dated it still renames it after, so
+\ USED answers TRUE and the entry is gone when the caller uses it. The file
+\ families take a use that fails while their entry is gone as a miss: the
+\ hb-build artifact copy (tools/hb-build-lib.f), the object and its index
+\ record (lib/object-resolve.f, lib/object-index.f). A keyed image is run or
+\ copied by path, so that interleaving fails the row that uses it, and the next
+\ run builds the image again.
+\
+\ A FAMILY'S LEFTOVERS GO THE SAME WAY. A build killed before its own cleanup
+\ (the gate pool kills a row at its deadline) leaves what it was writing: the
+\ <name>.tmp-<seed>-<attempt> an ATOMIC-WRITE-FILE reserves beside an entry, or
+\ the <work>-<seed>-<attempt> directory MAKE-TEMP-DIR made for a build that
+\ publishes by rename. Each is dated by the build that made it, which ends
+\ within minutes.
+\
+\ CLAIMED BY RENAME. Two publishers can prune one family at once. PRUNE makes a
+\ claim directory, build-cache-claim-<seed>-<attempt>, beside the family and
+\ renames each stale entry into it before removing it there. A rename is atomic,
+\ so exactly one pruner owns each entry; the other finds the source gone and
+\ passes on. A claim directory a killed pruner leaves is a stale entry of every
+\ family a day later.
+\
+\ WHAT IS NOT OURS STAYS. Only names of the family's shapes are touched. An
+\ entry that cannot be claimed (another owner under a sticky root, an immutable
+\ flag, a directory without write permission) stays where it is. A claimed entry
+\ that cannot be removed - something inside it is not ours to delete - is
+\ renamed back under its own name, so the claim never holds, and never deletes,
+\ what could not be removed; the rest of it, stale and ours, is gone.
+\ A cache root is per-user: an entry USED cannot date, such as another user's
+\ file, keeps its old mtime, so any publisher's prune can still take it.
+\
+\ PRUNE NEVER FAILS ITS CALLER. It runs after a successful publish, and a build
+\ that has its entry must not fail over housekeeping. Each entry it cannot
+\ claim, remove or put back is reported on fd 2 with its path and code and left
+\ for the next sweep, and a sweep that cannot run at all is reported the same
+\ way. USED likewise reports an entry it cannot date and lets the hit stand.
+\
+\ AGE IS ONE HOST'S WALL CLOCK AGAINST THE FILESYSTEM'S MTIMES, so a wall-clock
+\ step forward of RETAIN-SECONDS or more during a run can make entries still in
+\ use stale to another process's sweep. Only the entry just published and the
+\ pruner's own claim directory stay whatever their mtime says, and only in that
+\ pruner's own sweep: a host suspended for a day in the middle of a build would
+\ otherwise age the entry before its publisher uses it.
 
 require lib/errors.f
 require lib/string.f
 require lib/memory.f
+require lib/fmt.f
 require lib/fs.f
+require lib/fs-list.f
 require lib/fs-root.f
 require lib/fs-mutate.f
+require lib/time.f
 
 package BUILD-CACHE
 public
@@ -269,5 +338,243 @@ public
    dup E-FS-IO = if drop s" E-FS-IO" exit then
    dup E-FS-CAPACITY = if drop s" E-FS-CAPACITY" exit then
    throw ;
+
+\ ---- retention ----------------------------------------------------------------
+
+\ How long an entry stays after its last use.
+86400 constant RETAIN-SECONDS
+
+private
+
+64 constant KEY-HEX-LEN
+$2D constant DASH
+
+TYPED-VARIABLE PREFIX-A ptr u8
+TYPED-VARIABLE SUFFIX-A ptr u8
+TYPED-VARIABLE WORK-A ptr u8
+TYPED-VARIABLE KEEP-A ptr u8
+TYPED-VARIABLE DIR-A ptr u8
+TYPED-VARIABLE NAME-A ptr u8
+TYPED-VARIABLE USED-A ptr u8
+create CLAIM-BUF FS-PATH-CAP allot
+create SRC-BUF FS-PATH-CAP allot
+create DST-BUF FS-PATH-CAP allot
+
+variable PREFIX-U
+variable SUFFIX-U
+variable WORK-U
+variable KEEP-U
+variable DIR-U
+variable NAME-U
+variable USED-U
+variable CLAIM-U
+variable SRC-U
+variable DST-U
+variable CUTOFF
+
+: PREFIX$ ( -- ptr u8 n )
+   PREFIX-A @ PREFIX-U @ ;
+
+: SUFFIX$ ( -- ptr u8 n )
+   SUFFIX-A @ SUFFIX-U @ ;
+
+: WORK$ ( -- ptr u8 n )
+   WORK-A @ WORK-U @ ;
+
+: KEEP$ ( -- ptr u8 n )
+   KEEP-A @ KEEP-U @ ;
+
+: DIR$ ( -- ptr u8 n )
+   DIR-A @ DIR-U @ ;
+
+: NAME$ ( -- ptr u8 n )
+   NAME-A @ NAME-U @ ;
+
+: USED$ ( -- ptr u8 n )
+   USED-A @ USED-U @ ;
+
+: CLAIM$ ( -- ptr u8 n )
+   CLAIM-BUF CLAIM-U @ ;
+
+: SRC$ ( -- ptr u8 n )
+   SRC-BUF SRC-U @ ;
+
+: DST$ ( -- ptr u8 n )
+   DST-BUF DST-U @ ;
+
+: CLAIM-STEM$ ( -- ptr u8 n )
+   s" build-cache-claim" ;
+
+: ATOMIC-STEM$ ( -- ptr u8 n )
+   s" .tmp" ;
+
+: DIGIT? ( n -- bool ) {: c:n :}
+   c $30 >= c $39 <= and ;
+
+: HEX? ( n -- bool ) {: c:n :}
+   c DIGIT?
+   c $61 >= c $66 <= and or
+   c $41 >= c $46 <= and or ;
+
+\ The index past the run of digits that starts at i.
+: DIGITS-END ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
+   i begin dup u < if a over + c@ DIGIT? else FALSE then while 1+ repeat ;
+
+\ -<seed>-<attempt>, the two decimal numbers MAKE-TEMP-DIR and ATOMIC-WRITE-FILE
+\ put after the name they are given.
+: TEMP-TAIL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 4 < if FALSE exit then
+   a c@ DASH <> if FALSE exit then
+   a u 1 DIGITS-END {: mid:n :}
+   mid 1 = mid u >= or if FALSE exit then
+   a mid + c@ DASH <> if FALSE exit then
+   a u mid 1+ DIGITS-END {: end:n :}
+   end mid 1+ > end u = and ;
+
+\ <stem>-<seed>-<attempt>.
+: TEMP-OF? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n stem:ptr stemu:n :}
+   a u stem stemu STARTS-WITH? 0= if FALSE exit then
+   a stemu + u stemu - TEMP-TAIL? ;
+
+\ KEY-HEX-LEN hex digits at the start of a span.
+: KEY-HEAD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u KEY-HEX-LEN < if FALSE exit then
+   KEY-HEX-LEN 0 ?do
+      a i + c@ HEX? 0= if FALSE unloop exit then
+   loop
+   TRUE ;
+
+\ What may follow a published name: nothing, or the .tmp-<seed>-<attempt> of an
+\ atomic write.
+: PUBLISH-TAIL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= if TRUE exit then
+   a u ATOMIC-STEM$ TEMP-OF? ;
+
+\ <prefix><key><suffix>, alone or with an atomic write's tail.
+: KEYED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u PREFIX$ STARTS-WITH? 0= if FALSE exit then
+   a PREFIX-U @ + {: k:ptr :}
+   u PREFIX-U @ - {: ku:n :}
+   k ku KEY-HEAD? 0= if FALSE exit then
+   k KEY-HEX-LEN + {: t:ptr :}
+   ku KEY-HEX-LEN - {: tu:n :}
+   t tu SUFFIX$ STARTS-WITH? 0= if FALSE exit then
+   t SUFFIX-U @ + tu SUFFIX-U @ - PUBLISH-TAIL? ;
+
+\ An entry of the family, a work directory of its builds, or any pruner's claim.
+: FAMILY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u KEYED? if TRUE exit then
+   WORK-U @ 0 > if a u WORK$ TEMP-OF? if TRUE exit then then
+   a u CLAIM-STEM$ TEMP-OF? ;
+
+\ The entry just published and this sweep's own claim directory.
+: KEPT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u KEEP$ STR=
+   a u CLAIM$ BASENAME STR= or ;
+
+\ The entry's own mtime, never a link target's. An entry already gone is not
+\ stale: another pruner has it.
+: STALE? ( ptr u8 n -- bool )
+   FS-TRY-LSTAT 0= if FALSE exit then
+   FS-STAT-MTIME-SEC@ CUTOFF @ < ;
+
+: SAY ( ptr u8 n -- ) {: a:ptr u:n :}
+   2 a u write drop ;
+
+\ One line on fd 2: build-cache: cannot <verb> <path>: <code>. The path goes out
+\ on its own: the string builder's 1 KiB would refuse one near FS-PATH-CAP, and
+\ a report must never throw.
+: REPORT ( ptr u8 n ptr u8 n n -- ) {: v:ptr vu:n a:ptr u:n code:n :}
+   s" build-cache: cannot " SAY
+   v vu SAY
+   s"  " SAY
+   a u SAY
+   SB-RESET
+   s" : " SB-APPEND
+   code FMT:SB-INT
+   S\" \n" SB-APPEND
+   SB$ SAY ;
+
+\ A claimed entry that cannot be removed goes back under its own name.
+: PUT-BACK ( n -- ) {: code:n :}
+   s" remove" SRC$ code REPORT
+   [: DST$ SRC$ RENAME-FILE ;] catch {: back:n :}
+   back 0<> if s" put back" DST$ back REPORT then ;
+
+\ The rename is the claim. When it fails and the source is gone, another pruner
+\ claimed the entry first; any other failure is the caller's to report.
+: TAKE ( -- )
+   DIR$ NAME$ SRC-BUF JOIN-PATH SRC-U !
+   SRC$ STALE? 0= if exit then
+   CLAIM$ NAME$ DST-BUF JOIN-PATH DST-U !
+   [: SRC$ DST$ RENAME-FILE ;] catch {: code:n :}
+   code 0<> if
+      SRC$ FS-TRY-LSTAT if code throw then
+      exit
+   then
+   [: DST$ REMOVE-TREE ;] catch {: rm:n :}
+   rm 0<> if rm PUT-BACK then ;
+
+: VISIT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u FAMILY? 0= if exit then
+   a u KEPT? if exit then
+   a NAME-A !
+   u NAME-U !
+   0 SRC-U !
+   [: TAKE ;] catch {: code:n :}
+   code 0= if exit then
+   SRC-U @ 0= if s" prune" NAME$ code REPORT exit then
+   s" prune" SRC$ code REPORT ;
+
+: SWEEP ( -- )
+   DIR-U @ 0 <= if E-FS-PATH throw then
+   DIR$ CLAIM-STEM$ MAKE-TEMP-DIR {: a:ptr u:n :}
+   a CLAIM-BUF u BYTE-COPY
+   u CLAIM-U !
+   DIR$ [: VISIT ;] FS-LIST:EACH ;
+
+\ The claim holds only what could not be put back, so it goes only when empty.
+: CLOSE-CLAIM ( -- )
+   CLAIM-U @ 0= if exit then
+   [: CLAIM$ REMOVE-DIR ;] catch {: code:n :}
+   code 0<> if s" remove" CLAIM$ code REPORT then ;
+
+public
+
+\ Remove every entry of one family that nothing has used for RETAIN-SECONDS,
+\ from the directory holding the entry just published, which stays: the prefix
+\ and suffix around a key, and the stem its builds' work directories were made
+\ with (empty when they make none). Failures are reported, never thrown.
+: PRUNE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: pre:ptr preu:n suf:ptr sufu:n work:ptr worku:n keep:ptr keepu:n :}
+   pre PREFIX-A !
+   preu PREFIX-U !
+   suf SUFFIX-A !
+   sufu SUFFIX-U !
+   work WORK-A !
+   worku WORK-U !
+   keep keepu BASENAME KEEP-U ! KEEP-A !
+   keep DIR-A !
+   keepu KEEP-U @ - 1- 0 max DIR-U !
+   0 CLAIM-U !
+   TIME:EPOCH-SECONDS RETAIN-SECONDS - CUTOFF !
+   [: SWEEP ;] catch {: code:n :}
+   CLOSE-CLAIM
+   code 0= if exit then
+   s" sweep" DIR$ code REPORT ;
+
+\ Mark an entry found on disk as in use by dating it to now, which is what keeps
+\ PRUNE from taking it. TRUE when the hit stands: dated, or kept although it
+\ cannot be dated (another owner, an immutable flag), which is reported on fd 2.
+\ FALSE when the entry is gone - a pruner took it after the caller's check - so
+\ the caller builds it again. TRUE does not hold the entry: a pruner that read it
+\ stale before the date can still take it (see the header).
+: USED ( ptr u8 n -- bool )
+   USED-U ! USED-A !
+   [: USED$ TOUCH ;] catch {: code:n :}
+   code 0= if TRUE exit then
+   USED$ FS-TRY-LSTAT 0= if FALSE exit then
+   s" date" USED$ code REPORT
+   TRUE ;
 
 ;package

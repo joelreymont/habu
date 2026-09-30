@@ -153,6 +153,7 @@ create BF-STAMP-PATH-BUF FS-PATH-CAP allot
 create BF-STAMP-DIR-BUF FS-PATH-CAP allot
 create BF-STAMP-DEF-BUF FS-PATH-CAP allot
 create BF-ENGINE-BUF FS-PATH-CAP allot
+create BF-TMP-BUF FS-PATH-CAP allot
 FS-PATH-CAP SPAN-BUFFER: BF-INSTALL-TMP-BUF     \ FS-MUT-SUFFIX-PATH destinations
 FS-PATH-CAP SPAN-BUFFER: BF-HOST-DST-BUF
 FS-PATH-CAP SPAN-BUFFER: BF-HOST-TMP-BUF
@@ -181,7 +182,6 @@ variable BF-APP-OFF
 variable BF-GEN
 variable BF-FOUND
 variable BF-PID
-TYPED-VARIABLE BF-TMP-A ptr u8
 variable BF-TMP-U
 variable BF-STRIP-R
 variable BF-STRIP-W
@@ -206,12 +206,6 @@ TYPED-VARIABLE BF-CERT-LAB-A ptr u8
 variable BF-CERT-LAB-U
 TYPED-VARIABLE BF-CERT-PATH-A ptr u8
 variable BF-CERT-PATH-U
-
-: BF-TMP-A@ ( -- ptr u8 )
-   BF-TMP-A @ ;
-
-: BF-TMP-A! ( ptr u8 -- )
-   BF-TMP-A ! ;
 
 : BF-CERT-LAB-A@ ( -- ptr u8 )
    BF-CERT-LAB-A @ ;
@@ -312,13 +306,18 @@ variable BF-CERT-PATH-U
 : BF-FALSE ( -- bool )
    0 0= 0= ;
 
-: BF-TMP! ( ptr u8 n -- )
-   {: a:ptr u :}
-   u BF-TMP-U !
-   a BF-TMP-A! ;
+\ The root is copied, as BF-ENGINE! copies the engine: every later BF-A$ joins
+\ under it, and a caller's span need not outlive the call - MAKE-TEMP-DIR's is
+\ replaced by the task's next MAKE-TEMP-DIR, such as a build cache prune's claim
+\ directory (lib/build-cache.f).
+: BF-TMP! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 < if E-BUILD-PATH throw then
+   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   a BF-TMP-BUF u BYTE-COPY
+   u BF-TMP-U ! ;
 
 : BF-TMP-OVERRIDE$ ( -- ptr u8 n )
-   BF-TMP-A@ BF-TMP-U @ ;
+   BF-TMP-BUF BF-TMP-U @ ;
 
 : BF-TMP-RESET ( -- )
    0 BF-TMP-U ! ;

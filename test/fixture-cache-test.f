@@ -1,25 +1,23 @@
-\ fixture-cache-test.f - build-cache retention, through a real publish.
+\ fixture-cache-test.f - the gate fixtures' retention in the build cache,
+\ through a real publish.
 \
-\ test/fixture-cache.f prunes a fixture family when one of its images is
-\ published, and every mistake it can make is invisible to the rows that use
-\ the images: taking too much costs a rebuild on the next ENSURE, taking too
-\ little lets the cache grow without bound. So this publishes a cold host for
-\ real - a child engine runs COLD-ENGINE:ENSURE against a private cache root -
-\ beside planted entries that touch(1) dates to 2020, and then reads the root.
-\ The child's ENSURE also finds the planted writer image, and the child then
-\ prunes the writer family the way a publish under another key would.
+\ The gate's keyed images share the build cache with every other writer, and
+\ lib/build-cache.f bounds them: a published image prunes its family, and an
+\ image found on disk is dated as used (test/keyed-image.f, test/cold-engine.f,
+\ test/whitebox-engine.f). lib/build-cache-retain-test.f holds the rules; this
+\ holds their wiring. A child engine runs COLD-ENGINE:ENSURE against a private
+\ cache root: it finds the fixture writer image there, dated to 2020 by
+\ touch(1), and publishes a cold host beside a stale host and a stale work
+\ directory of the host's family.
 \
-\ What a wrong prune does, and the check that sees it:
-\ - keeps a stale entry of the family: the old hb-cold-<key> or the old
-\   cold-engine-<ns>-<n> work directory is still there;
-\ - takes a recent one, which a gate on another tree may be using: the recent
-\   host or the recent work directory is gone;
-\ - takes the image it has just published: the host is missing;
-\ - takes an image a caller has just used: the writer image, dated to 2020 but
-\   then found by the child's ENSURE, is gone after the writer prune;
-\ - reaches past its family: an old hb-whitebox-<key>, an old
-\   hb-build-out-<key>, or an old name outside the family's shape is gone;
-\ - leaves what it claimed behind: the root holds more entries than it should.
+\ What wrong wiring does, and the check that sees it:
+\ - a hit that does not date the image it found: the writer image is still
+\   dated 2020;
+\ - a publish that prunes nothing, or prunes under another family's prefix or
+\   work stem: the stale host or the stale work directory is still there;
+\ - a publish that leaves its work directory, or a prune its claim: the root
+\   holds more entries than it should;
+\ - a publish or a prune that fails: the child exits nonzero.
 
 require lib/errors.f
 require lib/string.f
@@ -32,6 +30,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/engine-candidate.f
 require lib/time.f
+require lib/build-cache.f
 require test/fixture-writer.f
 require test/cold-engine.f
 
@@ -69,32 +68,8 @@ variable T0
 : OLD-HOST$ ( -- ptr u8 n )
    s" hb-cold-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ;
 
-: NEW-HOST$ ( -- ptr u8 n )
-   s" hb-cold-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ;
-
 : OLD-WORK$ ( -- ptr u8 n )
    s" cold-engine-1-0" ;
-
-: NEW-WORK$ ( -- ptr u8 n )
-   s" cold-engine-2-0" ;
-
-: OLD-WRITER$ ( -- ptr u8 n )
-   s" hb-fixture-writer-dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" ;
-
-: OLD-WB$ ( -- ptr u8 n )
-   s" hb-whitebox-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" ;
-
-: OLD-OUT$ ( -- ptr u8 n )
-   s" hb-build-out-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" ;
-
-: ODD-HOST$ ( -- ptr u8 n )
-   s" hb-cold-notakey" ;
-
-: ODD-WORK$ ( -- ptr u8 n )
-   s" cold-engine-12" ;
-
-: FILE+ ( ptr u8 n -- )
-   AT$ s" x" WRITE-ALL ;
 
 \ A work directory holds what its build wrote, as a killed build's does.
 : WORK+ ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -130,8 +105,7 @@ variable T0
    PROC-ENV-INHERIT-MISSING
    s" -t" ARG
    s" 202001010000" ARG
-   OLD-HOST$ OLD  OLD-WORK$ OLD  OLD-OUT$ OLD  ODD-HOST$ OLD  ODD-WORK$ OLD
-   OLD-WRITER$ OLD  OLD-WB$ OLD  WRITER$ OLD
+   OLD-HOST$ OLD  OLD-WORK$ OLD  WRITER$ OLD
    s" /usr/bin/touch" s" " RUN ;
 
 : SETUP ( -- )
@@ -141,16 +115,10 @@ variable T0
    u ROOT-U !
    ROOT$ CLEANUP-TREE+
    WRITER+
-   OLD-HOST$ FILE+  NEW-HOST$ FILE+  OLD-OUT$ FILE+  ODD-HOST$ FILE+
-   OLD-WRITER$ FILE+  OLD-WB$ FILE+
-   OLD-WORK$ WORK+  NEW-WORK$ WORK+  ODD-WORK$ WORK+
+   OLD-HOST$ AT$ s" x" WRITE-ALL
+   OLD-WORK$ WORK+
    s" touch dates the planted entries" T-LABEL
    AGE 0 T= ;
-
-\ The last line prunes the writer family as a publish of hb-fixture-writer-new
-\ would, after the ENSURE above found the planted writer image.
-: PROGRAM$ ( -- ptr u8 n )
-   S\" require test/cold-engine.f\nCOLD-ENGINE:ENSURE\ns\" hb-fixture-writer-\" s\" fixture-writer\" s\" hb-fixture-writer-new\" FIXTURE-CACHE:PRUNE\n" ;
 
 \ Set before the inherit, so the child's root is this one whatever ours says.
 : PUBLISH ( -- n )
@@ -158,7 +126,7 @@ variable T0
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN ROOT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ PROGRAM$ RUN ;
+   ENGINE-CANDIDATE:PATH$ S\" require test/cold-engine.f\nCOLD-ENGINE:ENSURE\n" RUN ;
 
 : COUNT+ ( ptr u8 n -- )
    2drop 1 ENTRIES +! ;
@@ -178,35 +146,19 @@ variable T0
 
 : CHECK ( -- )
    s" the writer image starts unused for a day" T-LABEL
-   WRITER$ MTIME TIME:EPOCH-SECONDS 86400 - < TTRUE
+   WRITER$ MTIME TIME:EPOCH-SECONDS BUILD-CACHE:RETAIN-SECONDS - < TTRUE
    s" a child publishes the cold host into the private root" T-LABEL
    PUBLISH 0 T=
-   s" an image a hit refreshed survives a prune by another key" T-LABEL
-   WRITER$ HELD? TTRUE
-   s" a hit dates the image it finds to now" T-LABEL
+   s" the hit dates the writer image it found to now" T-LABEL
    WRITER$ MTIME T0 @ 1 - >= TTRUE
-   s" an unused image goes in that prune" T-LABEL
-   OLD-WRITER$ HELD? TFALSE
-   s" the image just published stays" T-LABEL
+   s" the host just published is there" T-LABEL
    COLD-ENGINE:PATH$ BASENAME HELD? TTRUE
-   s" a stale host of the family goes" T-LABEL
+   s" the publish takes a stale host of its family" T-LABEL
    OLD-HOST$ HELD? TFALSE
-   s" a stale work directory of the family goes" T-LABEL
+   s" and a stale work directory of its family" T-LABEL
    OLD-WORK$ HELD? TFALSE
-   s" a recent host stays: a gate on another tree may be using it" T-LABEL
-   NEW-HOST$ HELD? TTRUE
-   s" a recent work directory stays: its build may be live" T-LABEL
-   NEW-WORK$ HELD? TTRUE
-   s" a stale whitebox image stays: another family" T-LABEL
-   OLD-WB$ HELD? TTRUE
-   s" a stale hb-build artifact stays: not a gate fixture" T-LABEL
-   OLD-OUT$ HELD? TTRUE
-   s" a stale name without a key after the prefix stays" T-LABEL
-   ODD-HOST$ HELD? TTRUE
-   s" a stale name without -<ns>-<n> after the prefix stays" T-LABEL
-   ODD-WORK$ HELD? TTRUE
-   s" nothing either prune claimed is left in the root" T-LABEL
-   ENTRIES# 8 T= ;
+   s" the root holds the writer image and the host, nothing else" T-LABEL
+   ENTRIES# 2 T= ;
 
 public
 

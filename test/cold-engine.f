@@ -25,7 +25,6 @@ require lib/process-env.f
 require lib/build-cache.f
 require lib/content-key.f
 require test/fixture-writer.f
-require test/fixture-cache.f
 
 package COLD-ENGINE
 
@@ -138,7 +137,7 @@ variable RESOLVED?
 \ else. The work directory goes whatever the emission did, and a failure keeps
 \ its own code: a throw is caught here, and a die in WRITER-RUN or PUBLISH ends
 \ the process, whose exit registry removes what WORK-OPEN registered. A
-\ published host then prunes its family (test/fixture-cache.f), which reports
+\ published host then prunes its family (BUILD-CACHE:PRUNE), which reports
 \ its own failures and never fails the emission.
 : EMIT ( -- )
    WORK-OPEN
@@ -146,7 +145,7 @@ variable RESOLVED?
    EMIT-RC @ 0 = if ['] PUBLISH catch EMIT-RC ! then
    WORK-CLOSE
    EMIT-RC @ 0 <> if EMIT-RC @ throw then
-   IMAGE-PREFIX$ WORK-PREFIX$ PATH-BYTES FIXTURE-CACHE:PRUNE ;
+   IMAGE-PREFIX$ s" " WORK-PREFIX$ PATH-BYTES BUILD-CACHE:PRUNE ;
 
 public
 
@@ -154,11 +153,11 @@ public
 \ when its keyed artifact is not already on disk. The writer is settled even when
 \ the host is present: every fixture write runs it, and the gate calls this once
 \ before its first fork. A host found on disk is marked in use
-\ (FIXTURE-CACHE:USED), and one a pruner took meanwhile is emitted again.
+\ (BUILD-CACHE:USED), and one a pruner took meanwhile is emitted again.
 : ENSURE ( -- )
    FIXTURE-WRITER:ENSURE
    RESOLVE
-   PATH-BYTES EXECUTABLE? if PATH-BYTES FIXTURE-CACHE:USED if exit then then
+   PATH-BYTES EXECUTABLE? if PATH-BYTES BUILD-CACHE:USED if exit then then
    EMIT ;
 
 \ The keyed artifact, for a caller that only wants to name it.

@@ -56,8 +56,8 @@ create HBB-SRC-CLOSURE-HEX 80 allot
 create HBB-CHECKER-ABI-BUF HBB-ABI-CAP allot
 create HBB-COMPILER-ABI-BUF HBB-ABI-CAP allot
 create HBB-ARTIFACT-PATH FS-PATH-CAP allot
-create HBB-ARTIFACT-TMP-PATH FS-PATH-CAP allot
-create HBB-ARTIFACT-LOCK-PATH FS-PATH-CAP allot
+create HBB-STAGE-DIR-BUF FS-PATH-CAP allot
+create HBB-STAGE-BUF FS-PATH-CAP allot
 create HBB-INSTALL-TMP-PATH FS-PATH-CAP allot
 variable HBB-INSTALL-TMP-U
 create HBB-ARTIFACT-NAME-BUF 128 allot
@@ -83,8 +83,8 @@ variable HBB-OUT-U
 variable HBB-CHECKER-ABI-U
 variable HBB-COMPILER-ABI-U
 variable HBB-ARTIFACT-U
-variable HBB-ARTIFACT-TMP-U
-variable HBB-ARTIFACT-LOCK-U
+variable HBB-STAGE-DIR-U
+variable HBB-STAGE-U
 variable HBB-ARTIFACT-NAME-U
 variable HBB-ARTIFACT-RC
 variable HBB-ARTIFACT-CACHE
@@ -549,13 +549,6 @@ HBB-INSTALL-CHILD-LINT
    HBB-KEY-DRIVER-SOURCES
    HBB-MAKER-KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
-: HBB-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
-   {: a:ptr u suf:ptr su dst:ptr up:ptr :}
-   u su + FS-PATH-CAP > if E-BUILD-PATH throw then
-   a dst u BYTE-COPY
-   suf dst u + su BYTE-COPY
-   u su + up ! ;
-
 : HBB-INSTALL-TMP$ ( -- ptr u8 n )
    HBB-INSTALL-TMP-PATH HBB-INSTALL-TMP-U @ ;
 
@@ -660,11 +653,19 @@ HBB-INSTALL-CHILD-LINT
 : HBB-ARTIFACT$ ( -- ptr u8 n )
    HBB-ARTIFACT-PATH HBB-ARTIFACT-U @ ;
 
-: HBB-ARTIFACT-TMP$ ( -- ptr u8 n )
-   HBB-ARTIFACT-TMP-PATH HBB-ARTIFACT-TMP-U @ ;
+: HBB-STAGE-DIR$ ( -- ptr u8 n )
+   HBB-STAGE-DIR-BUF HBB-STAGE-DIR-U @ ;
 
-: HBB-ARTIFACT-LOCK$ ( -- ptr u8 n )
-   HBB-ARTIFACT-LOCK-PATH HBB-ARTIFACT-LOCK-U @ ;
+: HBB-STAGE$ ( -- ptr u8 n )
+   HBB-STAGE-BUF HBB-STAGE-U @ ;
+
+\ The artifact cache's family in the build cache: hb-build-out-<key>, staged in
+\ hb-build-out-<seed>-<attempt> work directories.
+: HBB-ARTIFACT-STEM$ ( -- ptr u8 n )
+   s" hb-build-out" ;
+
+: HBB-ARTIFACT-PREFIX$ ( -- ptr u8 n )
+   s" hb-build-out-" ;
 
 : HBB-OPTION-TEXT+ ( CONTENT-KEY:fold ptr u8 n bool -- CONTENT-KEY:fold )
    if CONTENT-KEY:TEXT+ else 2drop then ;
@@ -740,30 +741,37 @@ HBB-INSTALL-CHILD-LINT
    HBB-ARTIFACT-KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
 : HBB-ARTIFACT-NAME! ( -- )
-   s" hb-build-out" {: a:ptr u:n :}
-   u 65 + 128 > if E-BUILD-PATH throw then
+   HBB-ARTIFACT-PREFIX$ {: a:ptr u:n :}
+   u 64 + 128 > if E-BUILD-PATH throw then
    a HBB-ARTIFACT-NAME-BUF u BYTE-COPY
-   45 HBB-ARTIFACT-NAME-BUF u + c!
-   HBB-ARTIFACT-KEY-HEX HBB-ARTIFACT-NAME-BUF u 1 + + 64 BYTE-COPY
-   u 65 + HBB-ARTIFACT-NAME-U ! ;
+   HBB-ARTIFACT-KEY-HEX HBB-ARTIFACT-NAME-BUF u + 64 BYTE-COPY
+   u 64 + HBB-ARTIFACT-NAME-U ! ;
 
 : HBB-ARTIFACT-PATHS ( -- )
    HBB-ARTIFACT-KEY!
    HBB-ARTIFACT-NAME!
-   BUILD-CACHE:ROOT$ HBB-ARTIFACT-NAME$ HBB-ARTIFACT-PATH JOIN-PATH HBB-ARTIFACT-U !
-   HBB-ARTIFACT$ s" .tmp" HBB-ARTIFACT-TMP-PATH HBB-ARTIFACT-TMP-U HBB-SUFFIX!
-   HBB-ARTIFACT$ s" .lock" HBB-ARTIFACT-LOCK-PATH HBB-ARTIFACT-LOCK-U HBB-SUFFIX! ;
+   BUILD-CACHE:ROOT$ HBB-ARTIFACT-NAME$ HBB-ARTIFACT-PATH JOIN-PATH HBB-ARTIFACT-U ! ;
 
 : HBB-PREPARE-ARTIFACT-CACHE ( -- )
    HBB-PREPARE-CACHE
    HBB-ARTIFACT-PATHS
    -1 HBB-ARTIFACT-CACHE ! ;
 
+\ An artifact found in the cache is dated as used (lib/build-cache.f), and one a
+\ prune took after the check is built again. So is one a prune takes after USED
+\ dated it: a copy that fails while the artifact is gone is a miss. The copy
+\ opens the artifact before it creates the output, and once open it reads the
+\ whole artifact whatever happens to its name.
 : HBB-RESTORE-ARTIFACT? ( -- bool )
    HBB-ARTIFACT-CACHE @ 0= if HBB-FALSE exit then
    HBB-ARTIFACT$ EXECUTABLE? 0= if HBB-FALSE exit then
+   HBB-ARTIFACT$ BUILD-CACHE:USED 0= if HBB-FALSE exit then
    HBB-REMOVE-OUT
-   HBB-ARTIFACT$ HBB-OUT$ COPY-FILE-STREAM
+   [: HBB-ARTIFACT$ HBB-OUT$ COPY-FILE-STREAM ;] catch {: code:n :}
+   code 0<> if
+      HBB-ARTIFACT$ FS-TRY-LSTAT if code throw then
+      HBB-FALSE exit
+   then
    HBB-OUT$ CHMOD-X
    -1 HBB-ARTIFACT-HIT !
    HBB-TRUE ;
@@ -818,33 +826,32 @@ HBB-INSTALL-CHILD-LINT
    HBB-WRITE-OBJECT
    HBB-TRUE ;
 
-: HBB-ARTIFACT-LOCK-BUSY? ( -- bool )
-   HBB-ARTIFACT-LOCK$ DIR? if HBB-TRUE exit then
-   HBB-ARTIFACT-LOCK$ EXISTS? if E-FS-IO throw then
-   HBB-FALSE ;
+\ The artifact is copied into a work directory of its own in the cache and
+\ published by rename, so a half-written artifact is never visible under its
+\ key, and two builds installing one key each publish whole bytes. The work
+\ directory goes whatever the copy did; one a killed build leaves is a stale
+\ entry of the family a day later.
+: HBB-STAGE-ARTIFACT ( -- )
+   HBB-STAGE-DIR$ HBB-ARTIFACT-STEM$ HBB-STAGE-BUF JOIN-PATH HBB-STAGE-U !
+   HBB-OUT$ HBB-STAGE$ COPY-FILE-STREAM
+   HBB-STAGE$ CHMOD-X
+   HBB-STAGE$ HBB-ARTIFACT$ RENAME-FILE ;
 
-: HBB-TRY-ARTIFACT-LOCK? ( -- bool )
-   HBB-ARTIFACT-LOCK$ FS-PATHZ FS-MUT-MODE-PRIVATE-DIR mkdir 0= if HBB-TRUE exit then
-   HBB-ARTIFACT-LOCK-BUSY? if HBB-FALSE exit then
-   E-FS-IO throw ;
+: HBB-STAGE-OPEN ( -- )
+   BUILD-CACHE:ROOT$ HBB-ARTIFACT-STEM$ MAKE-TEMP-DIR {: a:ptr u:n :}
+   a HBB-STAGE-DIR-BUF u BYTE-COPY
+   u HBB-STAGE-DIR-U ! ;
 
-: HBB-RELEASE-ARTIFACT-LOCK ( -- )
-   HBB-ARTIFACT-LOCK$ DIR? if HBB-ARTIFACT-LOCK$ REMOVE-DIR then ;
-
-: HBB-INSTALL-ARTIFACT-LOCKED ( -- )
-   HBB-ARTIFACT$ EXECUTABLE? if exit then
-   HBB-ARTIFACT-TMP$ EXISTS? if HBB-ARTIFACT-TMP$ REMOVE-FILE then
-   HBB-OUT$ HBB-ARTIFACT-TMP$ COPY-FILE-STREAM
-   HBB-ARTIFACT-TMP$ CHMOD-X
-   HBB-ARTIFACT-TMP$ HBB-ARTIFACT$ RENAME-FILE ;
-
+\ A published artifact prunes its family, which reports its own failures and
+\ never fails the build.
 : HBB-INSTALL-ARTIFACT ( -- )
    HBB-ARTIFACT-CACHE @ 0= if exit then
    HBB-ARTIFACT$ EXECUTABLE? if exit then
-   HBB-TRY-ARTIFACT-LOCK? 0= if exit then
-   [: HBB-INSTALL-ARTIFACT-LOCKED ;] catch HBB-ARTIFACT-RC !
-   HBB-RELEASE-ARTIFACT-LOCK
-   HBB-ARTIFACT-RC @ 0 <> if HBB-ARTIFACT-RC @ throw then ;
+   HBB-STAGE-OPEN
+   [: HBB-STAGE-ARTIFACT ;] catch HBB-ARTIFACT-RC !
+   HBB-STAGE-DIR$ REMOVE-TREE
+   HBB-ARTIFACT-RC @ 0 <> if HBB-ARTIFACT-RC @ throw then
+   HBB-ARTIFACT-PREFIX$ s" " HBB-ARTIFACT-STEM$ HBB-ARTIFACT$ BUILD-CACHE:PRUNE ;
 
 : HBB-RUN-MAKER ( -- )
    -1 HBB-MAKER-RUN !

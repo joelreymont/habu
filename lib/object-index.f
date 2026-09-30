@@ -11,9 +11,7 @@ require lib/adt/option.f                  \ option<objidx:rec> for LOAD
 package OBJIDX
 
 64 constant KEY-U
-4 constant SUFFIX-U
 10 constant LF
-46 constant DOT
 65 constant UP-A
 71 constant UP-G
 97 constant LOW-A
@@ -49,17 +47,20 @@ variable PATH-U
 : ROOT-CHECK ( -- )
    ROOT-U @ 0 <= if E-FS-PATH throw then ;
 
-: SUFFIX! ( -- )
-   DOT NAME-BUF KEY-U + c!
-   105 NAME-BUF KEY-U 1 + + c!
-   100 NAME-BUF KEY-U 2 + + c!
-   120 NAME-BUF KEY-U 3 + + c! ;
+public
+
+\ What every index record's name has after its source key.
+: SUFFIX$ ( -- ptr u8 n )
+   s" .idx" ;
+
+private
 
 : NAME! ( ptr u8 n -- ptr u8 n ) {: key:ptr keyu:n :}
    key keyu KEY-CHECK
    key NAME-BUF KEY-U BYTE-COPY
-   SUFFIX!
-   NAME-BUF KEY-U SUFFIX-U + ;
+   SUFFIX$ {: suffix:ptr suffixu:n :}
+   suffix NAME-BUF KEY-U + suffixu BYTE-COPY
+   NAME-BUF KEY-U suffixu + ;
 
 : PATH! ( ptr u8 n -- )
    ROOT-CHECK
@@ -120,12 +121,24 @@ STRUCTURE rec 0
   FIELD len n
 ;STRUCTURE
 
+private
+
+\ The record READ-ALL read, checked, as the object key it names.
+: RECORD ( n -- option<objidx:rec> )
+   RECORD-CHECK
+   REC-BUF KEY-BUF KEY-U BYTE-COPY
+   KEY-BUF KEY-U OBJIDX-REC:MAKE OPTION:SOME ;
+
+public
+
+\ A record that goes between FILE? and the read - a build-cache prune can take
+\ it (lib/build-cache.f) - is absent too.
 : LOAD ( ptr u8 n -- option<objidx:rec> )   \ SOME object-key bytes when present, else NONE
    PATH!
    PATH-BUF PATH-U @ FILE? 0= if OPTION:NONE exit then
-   PATH-BUF PATH-U @ REC-BUF KEY-U 1 + READ-ALL {: u:n :}
-   u RECORD-CHECK
-   REC-BUF KEY-BUF KEY-U BYTE-COPY
-   KEY-BUF KEY-U OBJIDX-REC:MAKE OPTION:SOME ;
+   0 [: drop PATH-BUF PATH-U @ REC-BUF KEY-U 1 + READ-ALL ;] catch {: u code:n :}
+   code 0= if u RECORD exit then
+   PATH-BUF PATH-U @ FS-TRY-LSTAT if code throw then
+   OPTION:NONE ;
 
 ;package

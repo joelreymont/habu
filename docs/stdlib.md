@@ -1447,17 +1447,13 @@ CONTENT-KEY:FINAL-HEX   ( CONTENT-KEY:fold ptr u8 -- )
 CONTENT-KEY:DISCARD     ( CONTENT-KEY:fold -- )
 ```
 
-`CONTENT-KEY:FILE+` records the path in the manifest but hashes file content
-through a metadata-validated per-file digest cache when one is configured.
-`FILE-NAMED+` takes the physical path followed by a logical name: only that
-name and the file's content enter the key, while cache lookup still uses the
-physical path and metadata. Whitebox and cold engine keys use each source's
-root-relative name and the host engine's bytes, so identical trees in different
-workspaces share their cached artifact.
-`CONTENT-KEY:CACHE-PATH!` sets an explicit cache file, `CONTENT-KEY:CACHE-ROOT!`
-uses `content-key.cache` under a root directory, and `CONTENT-KEY:CACHE-CLEAR!`
-clears the explicit setting. The test suite installs this root in-process;
-content-key does not read environment variables.
+`CONTENT-KEY:FILE+` records the path in the manifest and hashes the file's
+current content on every call. `FILE-NAMED+` takes the physical path followed
+by a logical name: only that name and the file's content enter the key, while
+the bytes are still read from the physical path. Whitebox and cold engine keys
+use each source's root-relative name and the host engine's bytes, so identical
+trees in different workspaces share their cached artifact. Content-key does
+not read environment variables.
 
 ## Object Records
 
@@ -1568,11 +1564,13 @@ OBJRES:LOAD  ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool )
 ```
 
 `OBJRES:ROOT!` sets the shared root for `.idx` and `.hbo` entries. `STORE`
-stores the current validated object and indexes it by its own source, target,
-checker, and compiler fields. `LOAD` takes source digest, target ABI, checker
-ABI, and compiler ABI. It returns false only when no source index exists; an
-index pointing at a missing, malformed, wrong-key, or wrong-ABI object fails
-closed through filesystem errors or `E-OBJ-SCHEMA`.
+stores the current validated object, indexes it by its own source, target,
+checker, and compiler fields, and prunes both families (`BUILD-CACHE:PRUNE`).
+`LOAD` takes source digest, target ABI, checker ABI, and compiler ABI. It dates
+the index record and then the object it names as used, and returns false when
+either is gone: the two age apart, so the build that follows stores both again.
+An index pointing at a malformed, wrong-key, or wrong-ABI object fails closed
+through filesystem errors or `E-OBJ-SCHEMA`.
 
 `lib/object-link.f` owns the `OBJLINK` package: the checked symbol validation
 pass for a future object linker. It copies export/import names out of the
@@ -2394,6 +2392,38 @@ complete attempted root, and underlying filesystem cause even when the root is
 too long for a filesystem operation. The `SELECTED-*` and `CAUSE*` accessors
 read that separately owned evidence without attempting resolution again;
 `source` also has the diagnostic-only `none` variant for the no-tier case.
+
+The same package bounds what builds leave under the root:
+
+```forth
+BUILD-CACHE:RETAIN-SECONDS ( -- n )
+BUILD-CACHE:USED           ( ptr u8 n -- bool )
+BUILD-CACHE:PRUNE          ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+```
+
+Every entry is keyed: a writer publishes `<prefix><key><suffix>` with a 64-digit
+hex key, as hb-build's `hb-build-out-<key>` artifacts, the object cache's
+`<key>.hbo` and `<key>.idx`, and the gate's keyed images do. A caller that finds
+an entry passes its path to `USED`, which dates it to now and returns false when
+the entry is gone, so the caller builds it again. True does not hold the entry:
+a prune that read it as stale before the date can still take it. hb-build's
+artifact restore and `OBJRES:LOAD` take a use that fails while the entry is gone
+as a miss; a keyed image, run or copied by path, fails its row. After a
+successful publish the writer passes `PRUNE` the family's prefix, suffix and
+work-directory stem (empty when its builds make none) and the path just
+published. `PRUNE` removes every
+entry of that family, and every temporary file or work directory a killed build
+of it left, that nothing has used for `RETAIN-SECONDS` (one day); it keeps the
+published entry and every name of another shape. Each stale entry is claimed by
+renaming it into a claim directory first, so two pruners never remove the same
+one. `PRUNE` never fails its caller: an entry it cannot claim or remove is
+reported on fd 2 with its path and code and stays for the next sweep. `USED`
+reports an entry it cannot date the same way and lets the hit stand. A cache
+root is per-user: an entry `USED` cannot date, such as another user's file,
+keeps its old mtime, so any publisher's prune can still take it.
+Ages are one host's wall clock against the filesystem's mtimes, so a wall-clock
+step forward of `RETAIN-SECONDS` or more during a run can make an entry still in
+use stale to another process's sweep.
 
 `tools/hb-build.f --report-json ...` emits one `hb-build-report` JSON object on
 success. Version 1 contains `cache_root`, `cache_source`, `artifact_hit`,
