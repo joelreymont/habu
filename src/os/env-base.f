@@ -87,7 +87,10 @@ variable ENV-QU
    repeat
    drop NULL$ ;
 
-$100 constant TMP-PATH-CAP
+\ The tree's one path capacity (src/core/util.f), taken while loading: util.f
+\ loads before the check hook, so a checked colon body here cannot name
+\ PATH-CAP (the cold host's prefix refuses it as an undefined word).
+PATH-CAP constant TMP-PATH-CAP
 create TPB TMP-PATH-CAP allot
 PTR-VARIABLE TPP
 variable TPQ
