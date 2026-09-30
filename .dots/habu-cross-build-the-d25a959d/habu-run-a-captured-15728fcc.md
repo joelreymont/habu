@@ -13,7 +13,6 @@ blocks:
   - habu-emit-x86-process-8e1f6f84
   - habu-emit-x86-code-973a0074
   - habu-model-the-code-c40c75d1
-  - habu-add-sysv-ffi-17a130a1
   - habu-add-sysv-abi-75f86980
   - habu-add-the-x86-efc81b26
   - habu-port-the-profiler-97103e6e

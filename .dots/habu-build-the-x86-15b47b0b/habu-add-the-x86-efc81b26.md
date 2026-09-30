@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.897036+03:00"
-blocks:
-  - habu-add-sysv-ffi-17a130a1
 ---
 
 Problem: `BTASK-ENTRY` (`src/habu/habu1.f:2099`) is ARM64 code. Split from habu-port-the-ffi-676f745d (task entry).

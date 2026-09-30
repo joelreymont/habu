@@ -1363,6 +1363,10 @@ SUITE x86-64-kernel-engine
    test/x86-64-kernel-engine.f
 ;SUITE
 
+SUITE x86-64-kernel-ffi
+   test/x86-64-kernel-ffi.f
+;SUITE
+
 SUITE xml-byte-edits
    lib/xml-test.f
    lib/byte-edit-test.f

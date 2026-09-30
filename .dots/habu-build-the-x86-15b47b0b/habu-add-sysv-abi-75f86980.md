@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.888710+03:00"
 blocks:
-  - habu-add-sysv-ffi-17a130a1
   - habu-emit-and-exec-a8536cf2
 ---
 
@@ -17,3 +16,5 @@ Depends: habu-add-sysv-ffi-17a130a1 (K11a), habu-emit-and-exec-a8536cf2 (C7b).
 Route: direct.
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+K11a landing note (2026-09-30): K11a's `X64KERNEL:SYSV-CALL,` takes the function in r11, the register arguments loaded, and r10 = the count of stack cells at rax; it assumes r10 >= 0. K11b extends it with the xmm loads and `al` = the vector-register count, and clamps any count derived from user data as ARM64 `BFFI-COPY-ABI-STACK` does: a negative count corrupts the machine stack.

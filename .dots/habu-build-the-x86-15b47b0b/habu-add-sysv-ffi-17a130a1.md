@@ -1,6 +1,6 @@
 ---
 title: Add integer SysV FFI trampolines
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.603500+03:00"

@@ -10,7 +10,6 @@ blocks:
   - habu-port-signals-crash-2c7768ca
   - habu-port-the-crash-99c87339
   - habu-port-the-profiler-97103e6e
-  - habu-add-sysv-ffi-17a130a1
   - habu-add-sysv-abi-75f86980
   - habu-add-the-x86-efc81b26
   - habu-bind-x86-host-4485acdd

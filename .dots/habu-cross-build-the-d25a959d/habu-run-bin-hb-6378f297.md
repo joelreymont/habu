@@ -7,7 +7,6 @@ created-at: "2026-09-29T12:51:36.749146+03:00"
 blocks:
   - habu-run-a-captured-15728fcc
   - habu-boot-the-arm64-d0d4421a
-  - habu-add-sysv-ffi-17a130a1
 ---
 
 Problem: the x86 engine has not yet run the Habu interpreter; milestone M4 joins lanes X and I.
