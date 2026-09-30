@@ -271,8 +271,8 @@
 -5902 constant E-FMT-BAND        \ layout FMT-ABI band width disagrees with FMT-NUM-CAP
 
 \ Bounded pointers (package SPAN, lib/span.f): -6100..-6199. The block sits
-\ between lib/type/deftype.f's own -6001/-6002 and lib/render.f's -6210; both of
-\ those keep their codes in their own files and reserve no range.
+\ after lib/type/deftype.f's own -6001/-6002; that file keeps its codes to
+\ itself and reserves no range.
 -6100 constant E-SPAN-FIRST
 -6199 constant E-SPAN-LAST
 -6100 constant E-SPAN-RANGE      \ a narrowing or an index outside the span's byte reach

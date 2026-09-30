@@ -32,7 +32,6 @@
 \ nothing and is left alone.
 require lib/errors.f
 require lib/string.f
-require lib/render.f
 
 package PERF-MAP
 private
@@ -40,6 +39,7 @@ private
 7401 constant E-IO
 $10000 constant IN-CAP           \ one read chunk
 4096 constant LINE-CAP
+$4000 constant OUT-CAP           \ one rewritten line: LINE-CAP bytes plus a name and an offset
 512 constant PKG-CAP             \ package rows the qualifier table holds
 4 constant ADDR-MIN              \ hex digits before a token is taken for an address
 16 constant ADDR-MAX
@@ -47,16 +47,34 @@ $10000 constant IN-CAP           \ one read chunk
 
 create IN-BUF IN-CAP allot
 create LINE-BUF LINE-CAP allot
+create OUT-BUF OUT-CAP allot
 create PKG-WID PKG-CAP cells allot
 create PKG-REC PKG-CAP cells allot
 
 variable IN-U      variable IN-I
 variable LINE-U
+TYPED-VARIABLE OUT-U len
 variable PKG-N
 variable CUR       variable TOK
 variable ACC
 variable OK
 variable MAPPED    \ has this line's address column been rewritten already
+
+\ ---- the rewritten line ------------------------------------------------------
+\ lib/string.f's caller-owned builder over a buffer sized for a whole line. The
+\ shared SB builder is 1 KiB, and a fixture may hand LINE$ a line that lives in
+\ it, which is also why the offset is not rendered through lib/fmt.f: FMT
+\ appends numbers to SB and nowhere else. A full buffer throws E-STR-CAPACITY
+\ rather than truncate.
+: OUT+ ( ptr u8 n -- )
+   OUT-BUF OUT-CAP OUT-U BUF-APPEND ;
+
+: DIGIT+ ( n -- )
+   [char] 0 + OUT-BUF OUT-CAP OUT-U BUF-APPEND-C ;
+
+: DEC+ ( n -- )                         \ append a nonnegative decimal
+   dup 10 < if DIGIT+ exit then
+   dup 10 / RECURSE  10 mod DIGIT+ ;
 
 \ ---- the package qualifier table ---------------------------------------------
 \ A namespace row publishes its public wid in the cell a word uses for its code
@@ -91,8 +109,8 @@ variable MAPPED    \ has this line's address column been rewritten already
 : QNAME+ ( n -- ) {: idx:n :}           \ append the record's qualified name
    idx XREF-REC {: rec:ptr :}
    rec XREF-WORDLIST PKG-OF {: p:n :}
-   p 0 >= if p XREF-REC XREF-NAME$ RENDER:RB+ s" :" RENDER:RB+ then
-   rec XREF-NAME$ RENDER:RB+ ;
+   p 0 >= if p XREF-REC XREF-NAME$ OUT+ s" :" OUT+ then
+   rec XREF-NAME$ OUT+ ;
 
 \ ---- hex tokens ---------------------------------------------------------------
 : HEX-DIGIT ( n -- n ) {: c:n :}        \ the digit's value, or -1
@@ -116,10 +134,10 @@ variable MAPPED    \ has this line's address column been rewritten already
 : ADDR+ ( ptr u8 n -- ) {: a:ptr u:n :}
    a u HEX@ {: addr:n :}
    addr prof-pc>rec {: idx:n :}
-   idx 0 < if a u RENDER:RB+ exit then
+   idx 0 < if a u OUT+ exit then
    idx QNAME+
    addr idx XREF-REC XREF-START - {: off:n :}
-   off 0 > if s" +" RENDER:RB+ off RENDER:RB# then ;
+   off 0 > if s" +" OUT+ off DEC+ then ;
 
 \ ---- one line ------------------------------------------------------------------
 : SEP? ( n -- bool ) {: c:n :}
@@ -135,15 +153,15 @@ variable MAPPED    \ has this line's address column been rewritten already
    a u HEX? ;
 
 public
-\ The rewritten line, in RENDER's buffer. Separated from the stdin driver so a
+\ The rewritten line, in OUT-BUF. Separated from the stdin driver so a
 \ fixture can hand it a line and read the answer back.
 : LINE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   RENDER:RESET
+   OUT-U BUF-RESET
    0 CUR !
    a u INDENTED? 0= if 1 else 0 then MAPPED !
    begin CUR @ u < while
       a CUR @ + c@ SEP? if
-         a CUR @ + 1 RENDER:RB+  CUR @ 1+ CUR !
+         a CUR @ + 1 OUT+  CUR @ 1+ CUR !
       else
          CUR @ TOK !
          begin CUR @ u < if a CUR @ + c@ SEP? 0= else STR-FALSE then while
@@ -152,11 +170,11 @@ public
          a TOK @ +  CUR @ TOK @ -  2dup ADDR-HERE? if
             ADDR+  1 MAPPED !
          else
-            RENDER:RB+  1 MAPPED !
+            OUT+  1 MAPPED !
          then
       then
    repeat
-   RENDER:RB$ ;
+   OUT-BUF OUT-U BUF-LEN@ ;
 private
 
 : LINE. ( ptr u8 n -- )
