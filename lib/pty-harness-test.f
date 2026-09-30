@@ -202,6 +202,34 @@ variable HIT                       \ did the loop reach the case it was feeding 
    [: FILLER STR-MIN-I64 WAIT-BARRIER drop ;] E-STR-BOUNDS TTHROWSQ ;
 
 
+\ A reader hands TOOK the count it wrote into ROOM$: a negative one moved the read
+\ cursor back, and one past the room moved it past the buffer.
+: TOOK-AFTER-MARK ( n -- ) {: got:n :}
+   BUF-CLEAR
+   MARK$ FEED
+   got TOOK ;
+
+
+: TOOK-PAST-ROOM ( -- )
+   BUF-CLEAR
+   MARK$ FEED
+   ROOM$ {: room:ptr cap:n :}
+   cap 1+ TOOK ;
+
+
+: CASE-TOOK-BOUNDS ( -- )
+   WATCH-RESET
+   s" a negative count is refused before the cursor moves" T-LABEL
+   [: -1 TOOK-AFTER-MARK ;] E-PTY-CAPACITY TTHROWSQ
+   BUF-LEN MARK$ nip T=
+   [: STR-MIN-I64 TOOK-AFTER-MARK ;] E-PTY-CAPACITY TTHROWSQ
+   BUF-LEN MARK$ nip T=
+   s" and so is a count one past the room" T-LABEL
+   [: TOOK-PAST-ROOM ;] E-PTY-CAPACITY TTHROWSQ
+   BUF-LEN MARK$ nip T=
+   BUF-CLEAR ;
+
+
 : HB$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then ;
 
@@ -278,6 +306,7 @@ variable HIT                       \ did the loop reach the case it was feeding 
    CASE-NO-WINDOW
    CASE-WATCH-REFUSALS
    CASE-NEGATIVE-LENGTHS
+   CASE-TOOK-BOUNDS
    CASE-SPAWN-ABORT
    CASE-WAIT-AFTER
    CASE-WEDGE-REAP ;

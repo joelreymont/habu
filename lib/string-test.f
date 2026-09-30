@@ -4,6 +4,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/string-roles.f               \ package STR: the typed string surface
+require lib/test/guard-page.f
 require test/checker-assert.f
 
 64 constant STR-TEST-BUF-LEN
@@ -256,6 +257,103 @@ variable STR-TEST-BUF2-LEN
    [: -1 1 STR-TEST-ENDS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
    [: STR-MIN-I64 0 STR-TEST-ENDS-NEG ;] catch E-STR-BOUNDS STR-ASSERT= ;
 
+\ The end of readable memory: a word that reads a byte of a span it should have
+\ refused faults here instead of answering.
+: STR-TEST-EDGE ( -- ptr u8 )
+   0 0 GUARD-PAGE:TAIL ;
+
+\ A sign and one digit ending at the edge, so a length that wraps past the sign
+\ scans on into the inaccessible page.
+: STR-TEST-SIGNED ( n -- ptr u8 ) {: sign:n :}
+   2 STR-ZERO 1+ GUARD-PAGE:TAIL {: a:ptr :}
+   sign a c!
+   a ;
+
+: STR-TEST-DROP-N ( option<n> -- )
+   MATCH option
+     none OF ENDOF
+     some OF drop ENDOF
+   ;MATCH ;
+
+: STR-TEST-INDEX-NEG ( n -- ) {: u:n :}
+   STR-TEST-EDGE u STR-TEST-A-CHAR STR-INDEX-OF>N drop ;
+
+: STR-TEST-COUNT-CHAR-NEG ( n -- ) {: u:n :}
+   STR-TEST-EDGE u STR-TEST-A-CHAR COUNT-CHAR drop ;
+
+: STR-TEST-LTRIM-NEG ( n -- ) {: u:n :}
+   STR-TEST-EDGE u LTRIM 2drop ;
+
+: STR-TEST-RTRIM-NEG ( n -- ) {: u:n :}
+   STR-TEST-EDGE u RTRIM 2drop ;
+
+: STR-TEST-TRIM-NEG ( n -- ) {: u:n :}
+   STR-TEST-EDGE u TRIM 2drop ;
+
+: STR-TEST-SPLIT-NEG ( n -- ) {: u:n :}
+   STR-TEST-EDGE u STR-TEST-COMMA 0 SPLIT-NEXT 2drop 2drop ;
+
+: STR-TEST-DIGITS-NEG ( n -- ) {: u:n :}
+   STR-TEST-EDGE u STR-DIGITS? drop ;
+
+: STR-TEST-DIGITS<=-LEFT ( n -- ) {: u:n :}
+   STR-TEST-EDGE u s" 1" STR-DIGITS<= drop ;
+
+: STR-TEST-DIGITS<=-RIGHT ( n -- ) {: v:n :}
+   s" 1" STR-TEST-EDGE v STR-DIGITS<= drop ;
+
+: STR-TEST-PARSE-POS-NEG ( n -- ) {: u:n :}
+   STR-TEST-EDGE u STR-PARSE-POS STR-TEST-DROP-N ;
+
+: STR-TEST-PARSE-NEG-NEG ( n -- ) {: u:n :}
+   STR-TEST-EDGE u STR-PARSE-NEG STR-TEST-DROP-N ;
+
+: STR-TEST-NUMBER-NEG ( n -- ) {: u:n :}
+   STR-TEST-EDGE u STR>NUMBER? STR-TEST-DROP-N ;
+
+: STR-TEST-SIGNED-NEG ( n n -- ) {: sign:n u:n :}
+   sign STR-TEST-SIGNED u STR>NUMBER? STR-TEST-DROP-N ;
+
+\ Every word that takes a length refuses a negative one before it reads a byte;
+\ each span here ends at the inaccessible page, so a read faults. Unrefused,
+\ INDEX-OF, COUNT-CHAR and SPLIT-NEXT answered NONE, 0 and no more fields, the
+\ trims an empty string, STR-DIGITS? and STR-DIGITS<= true, and the parsers
+\ SOME 0.
+: STR-TEST-SCAN-NEGATIVE ( -- )
+   [: -1 STR-TEST-INDEX-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-INDEX-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 STR-TEST-COUNT-CHAR-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-COUNT-CHAR-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 STR-TEST-LTRIM-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-LTRIM-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 STR-TEST-RTRIM-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-RTRIM-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 STR-TEST-TRIM-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-TRIM-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 STR-TEST-SPLIT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-SPLIT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 STR-TEST-DIGITS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-DIGITS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 STR-TEST-DIGITS<=-LEFT ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-DIGITS<=-LEFT ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 STR-TEST-DIGITS<=-RIGHT ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-DIGITS<=-RIGHT ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 STR-TEST-PARSE-POS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-PARSE-POS-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 STR-TEST-PARSE-NEG-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-PARSE-NEG-NEG ;] catch E-STR-BOUNDS STR-ASSERT= ;
+
+\ STR>NUMBER? read the first byte of a negative span, and after a sign answered
+\ SOME 0 for -1; with the minimum cell `u 1-` wrapped to the maximum and the
+\ digit scan ran past the span into the inaccessible page.
+: STR-TEST-NUMBER-NEGATIVE ( -- )
+   [: STR-MINUS -1 STR-TEST-SIGNED-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-PLUS -1 STR-TEST-SIGNED-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MINUS STR-MIN-I64 STR-TEST-SIGNED-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-PLUS STR-MIN-I64 STR-TEST-SIGNED-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: -1 STR-TEST-NUMBER-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-MIN-I64 STR-TEST-NUMBER-NEG ;] catch E-STR-BOUNDS STR-ASSERT= ;
+
 : STR-TEST-INDEX-OF-OPTION ( -- )                   \ direct both-branch option assertions
    s" abcdef" 100 INDEX-OF MATCH option
      none OF STR-FALSE ENDOF
@@ -453,6 +551,8 @@ STR-TEST-INDEX-OF-OPTION
 STR-TEST-FIND-SUB-OPTION
 STR-TEST-FIND-SUB-NEGATIVE
 STR-TEST-COMPARE-NEGATIVE
+STR-TEST-SCAN-NEGATIVE
+STR-TEST-NUMBER-NEGATIVE
 STR-TEST-TYPED
 
 : STR-TEST-REPORT ( -- )

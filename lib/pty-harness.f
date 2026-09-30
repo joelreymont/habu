@@ -157,8 +157,11 @@ public
    RBUF RN @ +  BUF-CAP RN @ - ;
 
 
+\ The count is what the reader wrote into ROOM$: never negative, never past the
+\ room, so the cursor never moves back or past the buffer.
 : TOOK ( n -- ) {: got:n :}
    RN @ {: old:n :}
+   got 0 < got BUF-CAP old - > or if E-PTY-CAPACITY throw then
    old got + RN !
    old SCAN-WATCHES ;
 
