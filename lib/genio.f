@@ -322,8 +322,14 @@ private
 : CLEAR-ROWS ( -- )
    SLOTS 1 ?do i ENGINE-ROW-CLEAR loop ;
 
+variable RESET-REGISTERED
+
 \ Every device is forgotten, and every row's generation moves on so a handle
 \ minted before the capture cannot address a row in the restored process.
+\ PREPARE removes this one-shot hook once it returns, so the flag goes with it:
+\ a capture carries the flag but no registration, and a flag left set would
+\ stop the next DEVICE - in this process or the restored image - from arming
+\ the next capture's reset (lib/genio-test.f T-CAPTURE-RESETS).
 : RESET-ROUTING ( -- )
    0 OUT-PTR !
    0 IN-PTR !
@@ -333,9 +339,8 @@ private
    SLOTS 1 ?do
       i SLOT-GEN @ 1+ i SLOT-GEN !
       FREE i STATUS-CELL atomic!
-   loop ;
-
-variable RESET-REGISTERED
+   loop
+   0 RESET-REGISTERED ! ;
 
 : REGISTER-RESET ( -- )
    RESET-REGISTERED @ 0 <> if exit then

@@ -10,6 +10,7 @@
 require lib/test.f
 require lib/prelude.f
 require lib/string.f
+require lib/image-lifecycle.f
 require lib/net/tcp4.f
 require lib/genio.f
 
@@ -206,6 +207,31 @@ variable ROUNDS
    [: CLOSE-SPARE ;] GENIO:E-STATE TTHROWSQ
    s" and it cannot be selected either" T-LABEL
    [: SELECT-SPARE ;] GENIO:E-STATE TTHROWSQ ;
+
+\ ---- every capture resets routing, not only the first ------------------------
+\ IMAGE-LIFECYCLE:PREPARE is what a capture runs first: routing goes back to the
+\ terminal and the selected device's row is freed. It also removes the reset it
+\ ran, so a device made afterwards has to register it again - an image saved
+\ from a restored image is captured by exactly that second preparation. The
+\ answers are read before the terminal is selected here, because a preparation
+\ that skipped the reset leaves output on the memory device.
+: PREPARED-OUTPUT ( -- n )
+   MEM-BUILD GENIO:DEVICE>N SPARE-DEV !
+   SELECT-SPARE
+   IMAGE-LIFECYCLE:PREPARE
+   GENIO:OUTPUT@ GENIO:DEVICE>N ;
+
+: T-CAPTURE-RESETS ( -- )
+   PREPARED-OUTPUT {: first:n :}
+   PREPARED-OUTPUT {: second:n :}
+   TO-TERMINAL
+   GENIO:TERMINAL GENIO:DEVICE>N {: term:n :}
+   s" a capture's preparation puts output back on the terminal" T-LABEL
+   first term T=
+   s" and so does the next, for a device made after the first" T-LABEL
+   second term T=
+   s" freeing that device's row" T-LABEL
+   [: CLOSE-SPARE ;] GENIO:E-STATE TTHROWSQ ;
 
 \ The whole table, opened and closed many times over. Without reclamation the
 \ ninth device would be refused; the count here is fifty times the table.
@@ -638,6 +664,8 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER MY-SLOT drop
 
 : RUN ( -- )
    T-RESET
+   \ First, because a preparation frees every row, the memory device's too.
+   T-CAPTURE-RESETS
    MEM-BUILD GENIO:DEVICE>N MEM-DEV !
    T-ENGINE-ROUTE
    T-LIBRARY-ROUTE
