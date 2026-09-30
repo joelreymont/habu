@@ -537,10 +537,28 @@ create CAE-LF-BYTE 10 c,
    CAE-OUT outu CAE-EMPTY$ T$=
    s" duplicate-buffer code" T-LABEL
    CAE-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
-   s" duplicate-buffer text" T-LABEL
-   CAE-ERR erru s" duplicate-definition" CONTAINS? TTRUE
+   s" duplicate-buffer word" T-LABEL
+   CAE-ERR erru S\" \qword\q:\qCAE-DUP\q," CONTAINS? TTRUE
+   s" duplicate-buffer site" T-LABEL
+   CAE-ERR erru S\" \qline\q:2,\qcolumn\q:3,\qbyte_start\q:33,\qbyte_end\q:40," CONTAINS? TTRUE
    s" duplicate-buffer diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+\ The record reads the refused name the scan kept (VERIFY:DUPLICATE) back from
+\ the reporter's own read of the file, which is shorter than the scanned bytes
+\ when the file shrank in between: a name ending past that read is not read,
+\ and the record is the placeholder. CAE-DUP-SOURCE$'s second CAE-DUP spans
+\ bytes 33 to 40.
+: CAE-DUP-READ-AS ( n -- ptr u8 n ) {: len:n :}
+   VERIFY:DUPLICATE CAE-IN CAE-DUP-SOURCE$ drop len CHECK-ALL-ERRORS:DUP-RECORD$ ;
+
+: CAE-TEST-DUP-SHRUNK ( -- )
+   s" duplicate-shrunk" CAE-CASE!
+   CAE-DUP-SOURCE$ CAE-BUF-CAPTURE CHECK-ALL-ERRORS:DUP-RC CAE-EXPECT-EXIT 2drop
+   s" duplicate-shrunk name read whole" T-LABEL
+   40 CAE-DUP-READ-AS S\" \qword\q:\qCAE-DUP\q," CONTAINS? TTRUE
+   s" duplicate-shrunk name cut" T-LABEL
+   39 CAE-DUP-READ-AS S\" \qword\q:\qduplicate-definition\q," CONTAINS? TTRUE ;
 
 \ The lexer has two fail-closed diagnostics and they need different repairs, so a
 \ malformed primitive-axiom row must report its own code, its own opener token and
@@ -1012,6 +1030,7 @@ public
    s" undefined-json" [: CAE-TEST-UNDEFINED-JSON ;] CAE-CASE-RUN
    s" buffer-core" [: CAE-TEST-BUF-CORE ;] CAE-CASE-RUN
    s" duplicate-buffer" [: CAE-TEST-DUP-BUF ;] CAE-CASE-RUN
+   s" duplicate-shrunk" [: CAE-TEST-DUP-SHRUNK ;] CAE-CASE-RUN
    s" bad-registry-row-json" [: CAE-TEST-BAD-ROW-JSON ;] CAE-CASE-RUN
    s" bad-registry-row-prose" [: CAE-TEST-BAD-ROW-PROSE ;] CAE-CASE-RUN
    s" cli-smoke" [: CAE-TEST-CLI-SMOKE ;] CAE-CASE-RUN
