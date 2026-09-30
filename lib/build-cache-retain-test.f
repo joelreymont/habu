@@ -50,7 +50,6 @@ $4000 constant IO-CAP
 60 constant READY-SECONDS
 300 constant RACE-STALE
 16 constant RACE-PUBLISHES
-120 constant TOUCH-BATCH
 $1ED constant MODE-0755
 $16D constant MODE-0555
 $65 constant CH-E
@@ -186,11 +185,13 @@ variable T0
    s" /usr/bin/touch" s" " CAPTURE-RUN 0 T= ;
 
 \ Date a root entry to 2020. Directories go after their contents: touching one
-\ dates only the directory. touch(1) takes TOUCH-BATCH paths per run.
+\ dates only the directory. A touch(1) run takes the paths its argv can hold,
+\ which depends on how long the scratch root is.
 : OLD ( ptr u8 n -- )
-   AT$ ARG
-   1 TOUCHES +!
-   TOUCHES @ TOUCH-BATCH = if TOUCH-RUN TOUCH-BEGIN then ;
+   AT$ {: a:ptr u:n :}
+   u >LEN PROC-ARGV-FITS? 0= if TOUCH-RUN TOUCH-BEGIN then
+   a u ARG
+   1 TOUCHES +! ;
 
 : HELD? ( ptr u8 n -- bool )
    AT$ FS-TRY-LSTAT ;
