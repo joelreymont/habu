@@ -1,9 +1,11 @@
 ---
 title: Outline cold throw paths at tier 1
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-16T16:38:23.439803+03:00"
+closed-at: "2026-09-30T12:34:06.389063+02:00"
+close-reason: "Tier 1 is 157,272 B against tier 0's 175,832 B on the 13-file corpus (docs/compiler-measurements.md, Current size comparison). Against section 2's ratios every compiler benchmark holds; by the tier-0/tier-1 ratio five of six hold, and lines' 2.76x against 3.06x is the residual recorded in the doc."
 ---
 
 Claim: agent=heron workspace=.jj-ws/tier-remeasure (taken over from alder by

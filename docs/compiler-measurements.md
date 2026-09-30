@@ -1,62 +1,226 @@
 # Does the optimizing tier pay for itself?
 
-The optimizer removes substantial call and frame traffic, but its code-size
-work is unfinished. The latest comparison below supersedes the original
-**3.9%** growth claim. Historical profiles retain their own engine, corpus and
-load measurements; their percentages are not current performance guarantees.
+The optimizer removes substantial call and frame traffic, and on the current
+engine it also emits **10.56%** fewer code bytes than the direct JIT. The
+current comparison below supersedes the original **3.9%** growth claim.
+Historical profiles retain their own engine, corpus and load measurements;
+their percentages are not current performance guarantees.
 
-## Current size comparison: cold error paths
+## Current size comparison
 
-The same 13 source entries now load 2,265 definitions. The before engine
-(`c9a6154f49349fa0…`) includes compact DATA address carriers and capture's fatal
-call boundary; the after engine (`ed6ea4d59d15a8f9…`) additionally places blocks
-that can only trap after the successful return. Generations 2 and 3 of the
-after engine are byte-identical. This comparison changes only the block layout
-and its branch conditions; both census processes load the same source.
+Tier 1 emits **18,560 bytes (10.56%) less** code than tier 0 over the 13-entry
+corpus in "Method", which loads 2,336 definitions on the current tree. The call
+and frame-traffic wins remain: 54.0% fewer `bl`, 28.5% fewer frame loads and
+27.9% fewer frame stores. Corpus totals, `tools/tier-census-join.f`:
 
-| metric | tier 0, either engine | tier 1 before | tier 1 after |
+| metric | tier 0 | tier 1 | delta |
 |---|---:|---:|---:|
-| words | 2,265 | 2,265 | 2,265 |
-| bytes | 168,484 | 186,880 | 185,908 |
-| instructions | 42,121 | 46,720 | 46,477 |
-| `bl` | 11,315 | 5,672 | 5,672 |
-| `ldr` via sp | 4,998 | 4,789 | 4,789 |
-| `str` via sp | 3,132 | 2,991 | 2,991 |
-| register moves | 40 | 135 | 135 |
-| `movk` | 567 | 3,848 | 3,848 |
+| words | 2,336 | 2,336 | 0 |
+| bytes | 175,832 | 157,272 | −18,560 (−10.56%) |
+| instructions | 43,958 | 39,318 | −4,640 |
+| `bl` | 11,763 | 5,416 | −6,347 (−54.0%) |
+| `ldr` via sp | 5,250 | 3,756 | −1,494 (−28.5%) |
+| `str` via sp | 3,285 | 2,370 | −915 (−27.9%) |
+| register moves | 41 | 141 | +100 |
+| `movk` | 594 | 3,048 | +2,454 |
 
-The layout removes a net **243 instructions, 972 bytes (0.52%)**, without
-changing calls, frame traffic or literal counts. Tier 0's two census reports
-are identical. `BUILD:STEP-RC@` is the sole growing word, 92 to 96 bytes: its
-invalid-tag path needs a branch past the return; its valid paths retain the
-same instructions and branch count. The complete engine's AOT code falls
-1,655,368 to 1,651,012 bytes. Both files remain **3,539,136 bytes**, because
-padding absorbs the change. These are full compiler/REPL engines, not stripped
-Tender application images.
+Both census reports list the same 2,336 names in the same order. Each report is
+byte-identical to the one the ARM64 campaign's baseline engine (generation 2 of
+master `aa478d2b`, sha256 `95ddf031a95d1fc1…`) wrote on the same machine, so
+the commits between the two sources change none of the census's per-word
+counts on this corpus.
 
-Tier 1 remains **17,424 bytes (10.34%) larger** than tier 0. Moving diagnostic
-blocks does not delete their instructions or literals. The corpus still has
-1,903 DATA address sites at tier 1 against 260 at tier 0; each now costs three
-instructions instead of four. Reducing those extra materializations is still
-required by `habu-outline-cold-throw-a6529379`; this change does not close it.
-The carrier comparison also found a placement-sensitive search slowdown,
-tracked on that dot rather than hidden by padding the benchmark.
+The engine is built from source commit `20cee555` by `tools/native-build.f`,
+with that baseline engine as host. The product rebuilt by itself is
+byte-identical (generation 1 equals generation 2): sha256
+`82148a2d879d2a8c9cf0678f61b2c7a2817eda144f5a56d6ad6da6598f188c25`, 2,460,535
+bytes, 1,377,244 bytes of AOT code. The machine is an Apple M2 Max (8
+performance and 4 efficiency cores, 96 GiB) running macOS 27.0.1, shared with
+other agents' builds and gates. Sizes and counts are deterministic. macOS has
+no `taskset`, so the timings below are unpinned.
 
-Reading the declared address sites through `NSTR:OWNER-ROW` separates the
-remaining costs: 776 of the 1,903 DATA sites name literal bodies; 519 name
-non-return fallback messages, covering only 16 distinct messages. Of those,
-432 say `hb: throw returned` and nine say `hb: die returned`. `DEAD-END` in
-`elaborate.f` emits these fallbacks after calls marked non-returning. The
-engine's `BTHROW` unwinds or exits on every path, including a zero code; its
-ordinary return is unreachable. This identifies a concrete next reduction:
-an authenticated primitive can terminate control directly, while a user word
-with the same spelling must retain its own behavior. It is a measurement and
-design direction, not an optimization already made by the cold layout.
+The comparison this section replaces measured a 2,265-word corpus on
+Omarchy/Asahi Linux and found tier 1 17,424 bytes (10.34%) larger. Its engine
+already placed cold traps after successful returns (landed as `1ce939b7`) and
+stopped capture reachability at fatal calls (`fa6e7443`). Since then
+`b62ae1d2` has lowered terminal engine calls without a fallback, among other
+compiler changes. The corpus and host differ as well, so the two totals are not
+a like-for-like pair, and this section does not divide the change among those
+commits. The dumps below show the missing fallback directly.
 
-The tools are `tools/tier-census.f`, `tools/tier-census-join.f`,
-`tools/tier-dump.f`, `tools/tier-bench.f` and `tools/compile-floor.f`.
-The machine is Omarchy/Asahi aarch64, M2 Max, 12 cores (cpu0-3 capacity 561,
-cpu4-11 capacity 1024).
+### Three words, side by side
+
+These are `tools/tier-dump.f` results from the engine above, with the whole
+13-entry corpus loaded at each tier. `sp` counts frame loads plus stores. The
+previous tier-1 column is what the replaced comparison's engine
+(`ed6ea4d59d15a8f9…`) dumped; tier 0 is unchanged.
+
+| word | tier 0 bytes | tier 1 bytes | previous tier 1 | `bl` 0 / 1 | `sp` 0 / 1 |
+|---|---:|---:|---:|---:|---:|
+| `ARRAY:A-LEN` | 44 | 36 | 76 | 4 / 1 | 2 / 2 |
+| `SOURCE-QPATH-CHECK` | 36 | 44 | 80 | 4 / 2 | 2 / 2 |
+| `DECODE-LEAD` | 396 | 184 | 200 | 20 / 6 | 29 / 2 |
+
+`ARRAY:A-LEN` checks `dup 0 < if E-A-BOUNDS throw then >LEN`. Its normal path
+falls through to the return in six instructions without a call. The failure
+arm after the return pushes the error code and calls `throw`:
+
+```asm
+tier 0 (44 B)                         tier 1 (36 B)
+  str  x30, [sp, #-16]!                 str  x30, [sp, #-16]!
+  bl   <dup>                            ldur x0, [x19, #-8]
+  mov  x16, #0                          cmp  x0, #0
+  str  x16, [x19], #8                   b.lt 0x18
+  bl   <less-than>                      ldr  x30, [sp], #16
+  ldr  x9, [x19, #-8]!                  ret
+  cbz  x9, 0x24                       0x18:
+  bl   <E-A-BOUNDS>                     mov  x0, #-2001
+  bl   <throw>                          str  x0, [x19], #8
+0x24:                                   bl   <throw>
+  ldr  x30, [sp], #16
+  ret
+```
+
+The arm is 12 bytes. The 40-byte refusal that followed the `throw` call in the
+replaced dump, with its three-instruction address carrier, is gone: the callee
+is the engine's `throw`, which has no ordinary return. Tier 1 is now 8 bytes
+smaller than tier 0 on this word.
+
+`SOURCE-QPATH-CHECK` is the one word of the three that is still larger at tier
+1, by 8 bytes:
+
+```asm
+tier 0 (36 B)                         tier 1 (44 B)
+  str  x30, [sp, #-16]!                 str  x30, [sp, #-16]!
+  bl   <SOURCE-PATH-SAFE?>              bl   <SOURCE-PATH-SAFE?>
+  bl   <0=>                             ldur x0, [x19, #-8]
+  ldr  x9, [x19, #-8]!                  cmp  x0, #0
+  cbz  x9, 0x1c                         b.eq 0x20
+  bl   <E-FS-PATH-UNSAFE>               sub  x19, x19, #8
+  bl   <throw>                          ldr  x30, [sp], #16
+0x1c:                                   ret
+  ldr  x30, [sp], #16                 0x20:
+  ret                                   mov  x0, #-2107
+                                        stur x0, [x19, #-8]
+                                        bl   <throw>
+```
+
+Tier 1 folds `0=` into the branch and the error constant into an immediate.
+It then tests the flag with `cmp` and `b.eq`, where one `cbz` would do, and
+drops the flag with a separate `sub` on the normal path so that the failure arm
+can store the code over it. Tier 0 pops and tests with `ldr` and `cbz`, and
+pushes the code by calling the constant.
+
+`DECODE-LEAD` keeps its register and immediate-comparison win, and is 16 bytes
+smaller than in the replaced dump. Its two operands now arrive through one
+paired load:
+
+```asm
+tier 0 (396 B)                        tier 1 (184 B)
+  str  x30, [sp, #-16]!                 str  x30, [sp, #-16]!
+  sub  sp, sp, #32                      sub  x19, x19, #8
+  ldr  x9, [x19, #-8]!                  ldp  x0, x1, [x19, #-8]
+  str  x9, [sp]                         cmp  x1, #0x80
+  ldr  x9, [x19, #-8]!                  b.lt 0x54
+  str  x9, [sp, #8]                     mov  x2, x0
+  ... two more locals spilled ...       mov  x3, x1
+  ldr  x9, [sp]                         cmp  x3, #0xc0
+  str  x9, [x19], #8                    b.lt 0x68
+  bl   <ASCII-LIMIT>                    mov  x0, x2
+  bl   <less-than>                      mov  x1, x3
+  ...                                   cmp  x1, #0xe0
+                                        ...
+```
+
+None of the four register moves is needed: `x0` and `x1` are not written
+between the copies out and the copies back, so every copy duplicates a value
+that stays live where it was. The tier-1 corpus has 141 register moves, 564
+bytes, which bounds what removing redundant ones can save.
+
+### Run time
+
+`tools/tier-bench.f` on `src/core/checker.f`, five invocations per tier,
+interleaved tier 0, tier 1, tier 0 and so on, started once the 1-minute load
+average was below 8. At the start of each pair of runs the 1-minute load
+average was 7.04/6.71, 6.71/6.71, 6.50/6.50, 6.50/6.50 and 6.29/6.29 (tier 0 /
+tier 1); the 5- and 15-minute averages fell from 10.23 and 14.88 to 9.91 and
+14.68. Each invocation reports the median of the tool's three runs. The table
+gives the median of the five invocation medians in microseconds, and the
+median and range of the five paired tier-0/tier-1 ratios.
+
+The previous figures came from a pinned Linux host, so the ratio is the
+comparison, not the absolute times. The previous ratio divides the latest
+pinned Linux medians, tier 0 from section 7 after cut 2 by tier 1 from section
+10's landed engine; those are two engines measured apart. The original ratio is
+section 2's.
+
+| benchmark | tier 0 | tier 1 | ratio, median | ratio, range | previous ratio | original ratio |
+|---|---:|---:|---:|---:|---:|---:|
+| `harness` | 3,370 | 2,702 | 1.23x | 0.98-1.26x | 1.23x | 1.12x |
+| `arith` | 7,936 | 864 | 9.10x | 4.72-9.55x | 9.39x | 9.32x |
+| `branch` | 12,145 | 1,459 | 8.32x | 7.82-8.57x | 7.97x | 1.51x |
+| `search` | 11,629 | 2,202 | 5.34x | 5.24-5.40x | 5.26x | 5.33x |
+| `fold` | 401,994 | 93,835 | 4.28x | 3.61-4.31x | 4.30x | 2.77x |
+| `move` | 19,933 | 19,667 | 1.00x | 0.90-1.06x | 2.45x | 1.65x |
+| `lines` | 18,604 | 6,736 | 2.76x | 2.66-2.79x | 3.06x | 2.38x |
+
+A benchmark holds "unchanged or better" when its median ratio is at least the
+previous ratio, or the previous ratio lies inside the observed range.
+`harness`, `arith`, `branch`, `search` and `fold` hold. The fifth tier-1
+invocation ran slow on every row (`arith` 1,694 µs against 840-868) and sets
+the low end of every range except `search`'s; without it the ranges are
+`arith` 9.06-9.55x and `fold` 4.28-4.31x, and both still hold.
+
+**`lines` does not hold:** 2.76x against 3.06x, below its whole range. It is a
+residual regression, and its cause is not established. The absolute medians
+cannot locate it in one tier: they were measured on a different, unpinned host
+from sections 7 and 10.
+
+`move` measures neither compiler: `LINT-BMOVE` now calls `BYTE-COPY` from
+`src/core/bytes.f`, which is baked into the engine, so both tiers run the same
+code. It is excluded.
+
+Against section 2's original ratios, every benchmark that measures a compiler
+holds, and tier 1 is faster than tier 0 on each of them.
+
+### Reproducing this comparison
+
+Run these from a checkout of `20cee555` in POSIX sh or bash; in zsh, write
+`${=C}` instead of `$C`, or zsh passes the whole corpus as one path. `$HOST` is
+a private copy of the baseline engine above; see "Reproducing" for why
+`HABU_FIXPOINT_ENGINE` must never name a shared engine.
+
+```sh
+mkdir -p build/gen1 build/gen2 build/tmp build/tmp1 build/tmp2
+HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST HB_TMP=$PWD/build/tmp1 \
+  $HOST --load tools/native-build.f -- $PWD/build/gen1/hb
+H=$PWD/build/gen1/hb
+HABU_UNDER_TEST=$H HABU_FIXPOINT_ENGINE=$H HB_TMP=$PWD/build/tmp2 \
+  $H --load tools/native-build.f -- $PWD/build/gen2/hb
+cmp build/gen1/hb build/gen2/hb           # silent: fixpoint
+shasum -a 256 build/gen2/hb
+
+E=$PWD/build/gen2/hb
+export HB_TMP=$PWD/build/tmp
+C="lib/byte-edit.f lib/array.f lib/fmt.f lib/float.f lib/json-read.f \
+lib/json-write.f lib/unicode.f lib/argv.f lib/fs.f lib/task.f lib/build.f \
+tools/lint/text.f tools/public-signatures-core.f"
+$E --load tools/engine-size.f -- $E       # row aot/code-blob
+$E --load tools/tier-census.f -- 0 build/t0.txt $C
+$E --load tools/tier-census.f -- 1 build/t1.txt $C
+$E --load tools/tier-census-join.f -- build/t0.txt build/t1.txt
+
+$E --load tools/tier-dump.f -- 0 ARRAY:A-LEN build/a0.bin $C
+$E --load tools/tier-dump.f -- 1 ARRAY:A-LEN build/a1.bin $C
+aarch64-elf-objdump -b binary -m aarch64 -D build/a1.bin   # Linux: objdump
+
+for i in 1 2 3 4 5; do
+  for t in 0 1; do
+    sysctl -n vm.loadavg
+    $E --load tools/tier-bench.f -- $t src/core/checker.f
+  done
+done
+```
 
 ## 0. Anonymous stripped-code reachability
 
@@ -88,22 +252,25 @@ already in the engine can appear in either column. That is why the corpus below
 is library and tool source rather than `src/core`, and why every benchmark word
 comes from a file loaded after the selection.
 
-Corpus (13 entries, 1,772 words after their own `require` closure):
+Corpus (13 entries; after their own `require` closure they loaded 1,772
+words for the original baseline and load 2,336 on the current tree):
 `lib/byte-edit.f`, `lib/array.f`, `lib/fmt.f`, `lib/float.f`,
 `lib/json-read.f`, `lib/json-write.f`, `lib/unicode.f`, `lib/argv.f`,
 `lib/fs.f`, `lib/task.f`, `lib/build.f`, `tools/lint/text.f`,
 `tools/public-signatures-core.f`.
 
 Timings are wall clock on a machine that had other lanes building throughout;
-the load average is quoted with every one, and every timing run is pinned to a
-performance core (`taskset -c 8`), because an unpinned run that lands on cpu0-3
-reads 1.6x slow and that difference is larger than several of the results.
+the load average is quoted with every one. On the Linux host every timing run
+is pinned to a performance core (`taskset -c 8`), because an unpinned run that
+lands on cpu0-3 reads 1.6x slow and that difference is larger than several of
+the results. macOS has no `taskset`, so the current comparison's timings are
+unpinned and may land on an efficiency core.
 
 ## 1. Original code-size baseline
 
 This table used engine `7e490c6031cc317c…`, 5,832,896 bytes, and the original
 1,772-word corpus. It records the finding that motivated the work; use the
-current comparison above for the remaining size difference.
+current comparison above for today's sizes.
 
 Corpus totals, `tools/tier-census-join.f`:
 
@@ -160,88 +327,6 @@ three counts them. Corpus-wide that is 1,789 stencils at tier 1 against 268 at
 tier 0: **24,336 bytes of extra address materialization against a net growth of
 6,676**. Tier 1's folding and inlining are saving about 17,700 bytes elsewhere
 and spending 24,300 putting addresses inline.
-
-### Three words re-dumped with the current engine
-
-These are fresh `tier-dump.f` results from `ed6ea4d59d15a8f9…`, with the whole
-13-entry corpus loaded at each tier. `sp` counts frame loads plus stores.
-
-| word | tier 0 bytes | tier 1 before layout | tier 1 after | `bl` 0 / 1 | `sp` 0 / 1 |
-|---|---:|---:|---:|---:|---:|
-| `ARRAY:A-LEN` | 44 | 80 | 76 | 4 / 2 | 2 / 2 |
-| `SOURCE-QPATH-CHECK` | 36 | 84 | 80 | 4 / 3 | 2 / 2 |
-| `DECODE-LEAD` | 396 | 200 | 200 | 20 / 6 | 29 / 2 |
-
-`ARRAY:A-LEN` checks `dup 0 < if E-A-BOUNDS throw then >LEN`. Its normal
-path now falls through to the return in six instructions, without a call:
-
-```asm
-tier 0 (44 B)                         tier 1 (76 B)
-  str  x30, [sp, #-16]!                 str  x30, [sp, #-16]!
-  bl   <dup>                            ldur x0, [x19, #-8]
-  mov  x16, #0                          cmp  x0, #0
-  str  x16, [x19], #8                   b.lt 0x18
-  bl   <less-than>                       ldr  x30, [sp], #16
-  ldr  x9, [x19, #-8]!                  ret
-  cbz  x9, 0x24                      0x18:
-  bl   <throw context>                  mov  x0, #-2001
-  bl   <throw>                          str  x0, [x19], #8
-0x24:                                    bl   <throw>
-  ldr  x30, [sp], #16                   mov  x0, #0x300000000
-  ret                                    movk x0, #0x4060, lsl #16
-                                         movk x0, #0x3b50
-                                         mov  x1, #18
-                                         mov  x2, #88
-                                         stur x0, [x19, #-8]
-                                         str  x1, [x19]
-                                         str  x2, [x19, #8]
-                                         add  x19, x19, #16
-                                         bl   <fatal diagnostic>
-```
-
-The 52-byte failure arm remains after the return: 12 bytes push the error and
-call `throw`, followed by 40 bytes that refuse if that certified non-returning
-call unexpectedly returns. The guard can fail; only the fallback is a violated
-certificate path. The new layout removes one branch, not that fallback or its
-three-instruction address carrier.
-
-`SOURCE-QPATH-CHECK` has the same improvement. Its current tier-1 prefix is:
-
-```asm
-  str  x30, [sp, #-16]!
-  bl   <SOURCE-PATH-SAFE?>
-  ldr  x0, [x19, #-8]!
-  cmp  x0, #0
-  b.eq 0x1c
-  ldr  x30, [sp], #16
-  ret
-0x1c:                         // remaining 52 bytes report E-FS-PATH-UNSAFE
-```
-
-The redundant data-stack subtract/add described by the original dump is
-already gone through `d187f629`; the cold layout removes another four bytes.
-
-`DECODE-LEAD` keeps the existing register and immediate-comparison win. The
-cold layout changes neither its size nor its call/frame counts:
-
-```asm
-tier 0 (396 B)                        tier 1 (200 B)
-  str  x30, [sp, #-16]!                 str  x30, [sp, #-16]!
-  sub  sp, sp, #32                      sub  x19, x19, #8
-  ldr  x9, [x19, #-8]!                  ldur x0, [x19, #-8]
-  str  x9, [sp]                         ldr  x1, [x19]
-  ldr  x9, [x19, #-8]!                  cmp  x1, #0x80
-  str  x9, [sp, #8]                     b.lt 0x5c
-  ... two more locals spilled ...       mov  x2, x0
-  ldr  x9, [sp]                         mov  x3, x1
-  str  x9, [x19], #8                    cmp  x3, #0xc0
-  bl   <ASCII-LIMIT>                     b.lt 0x74
-  bl   <less-than>                       ...
-```
-
-Four register shuffles remain in this word. The whole current tier-1 corpus
-contains 135 register moves, 540 bytes even if every one could be removed;
-address materialization is still the larger size opportunity.
 
 ## 2. Original run-time baseline
 
@@ -1591,30 +1676,41 @@ slot per definer.
 
 ## Verdict and the ranked fixes
 
-The current census keeps the optimizer's call reduction but still shows a
-10.34% byte excess. The original runtime and compile-time ratios describe the
-original engine, not this one. The cold-layout comparison removes branches
-without erasing the much larger literal cost.
+On the current engine the optimizing tier pays for itself in size as well as in
+calls and frame traffic. Over 2,336 words tier 1 emits 10.56% fewer bytes than
+tier 0, with 54.0% fewer calls and 28% fewer frame loads and stores. Tier 1 at
+or below tier 0 on the census corpus, with those wins intact, was the size
+target of `habu-outline-cold-throw-a6529379`; it is met. Tier 1 is also faster
+than tier 0 on every run-time benchmark that measures a compiler. Judged by the
+tier-0/tier-1 ratio against the latest pinned medians, `harness`, `arith`,
+`branch`, `search` and `fold` are unchanged or better. `lines` falls from 3.06x
+to 2.76x, below its observed range; that is a residual regression whose cause
+is not established. The original run-time and compile-time ratios describe the
+original engine, not this one.
 
-1. **Remove redundant non-return fallbacks, then reduce remaining address
-   materialization.** The 432 repeated `throw returned` fallback sites give
-   the first concrete target. Prove the captured callee is the engine
-   primitive before eliminating its fallback; a spelling is insufficient.
-   DATA carriers are now three instructions (`d232781e`), but tier 1 still
-   emits 1,643 more of them than tier 0. Further sharing or shortening needs
-   capture and relocation proof. Moving a block past the return alone cannot
-   deliver the dot's size target.
-2. **Resolve placement-sensitive performance with evidence.** The compact
+1. **Reduce the remaining literal materialization.** `movk` is the one census
+   column where tier 1 is far above tier 0: 3,048 against 594, 2,454 more
+   keep-moves, 9,816 bytes before counting the move that starts each chain.
+   The census cannot divide them among DATA carriers, absolute addresses and
+   wide scalar literals, and no tool counts the non-return fallbacks left in
+   the corpus, though both guard words above have lost theirs.
+   `habu-count-the-arm64-e13ae0a3` adds those counts, and
+   `habu-pool-data-addresses-d65bdc94` targets the carriers. Sharing or
+   shortening an address needs capture and relocation proof.
+2. **Close the selection gaps the side-by-side words show.** A zero or sign
+   test compiles to `cmp` and a conditional branch where one `cbz` or `tbnz`
+   would do; in `SOURCE-QPATH-CHECK` that is half of the 8 bytes by which tier
+   1 is still larger. `DECODE-LEAD` keeps four register moves that copy values
+   already live where they are. All 141 tier-1 register moves are 564 bytes,
+   the upper bound of removing redundant ones.
+3. **Resolve placement-sensitive performance with evidence.** The compact
    carrier comparison found unchanged search instructions with an 11.3%
    timing difference at their new addresses. Controlled placement changes
    reproduce it; the hardware cause is not established. No padding workaround
    is shipped.
-3. **Price fused data-stack transfers when choosing placement.** Section 9's
+4. **Price fused data-stack transfers when choosing placement.** Section 9's
    remaining placement-model issue is `1f61860d`. Adjacent opposite stack
    adjustments are already combined by `d187f629`; do not repeat that fix.
-
-Register moves are at most 540 bytes on the current corpus, before deciding
-which are redundant. They rank below the remaining address materialization.
 
 ## Reproducing
 
