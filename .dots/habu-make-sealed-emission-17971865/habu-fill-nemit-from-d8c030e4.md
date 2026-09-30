@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.509382+03:00"
-blocks:
-  - habu-record-symbolic-x86-10037f07
 ---
 
 Problem: after P1 only the A64EMIT adapter fills `NEMIT`, so `NPUB` cannot publish an x86 emission; the x86 engine publishes its own tier-1 definitions at runtime.
@@ -17,3 +15,4 @@ Route: Alder (shared: src/compiler/native/publish.f).
 Ownership: krait (Intel lane).
 Claim: unassigned.
 Preflight note from P1: `src/habu/code-span.f` assumes 4-byte dictionary spans (`CODE-SPAN:EXACT` dies on size mod 4, lines 11, 17-18, 32-34); this leaf owns making it byte-granular for x86 spans.
+C6 landing note: `X64EMIT` has `FUNCTION-OFFSET@` but no function-count reader (the ARM64 adapter loops `A64EMIT:FUNS`, `src/arch/arm64/passes.f` FUNCTION-ROWS); P3 adds that one-line reader in `src/compiler/native/emit-x64.f` (add it to Files). Call rows name the instruction's first byte; the rel32 field is at +1.

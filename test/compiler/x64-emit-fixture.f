@@ -3,7 +3,8 @@
 \ validator accept, and over two routines written straight in the machine
 \ dialect. THE EMITTER OWNS ITS SINK: a case declares where the routine goes with
 \ `X64EMIT:PLACE-AT`, emits, reads the sealed image back and retires it, which is
-\ what gives the placement back as well as the bytes.
+\ what gives the placement back as well as the bytes. A SHADOW case emits with no
+\ placement at all: every field that depends on one is left to the rows.
 \
 \ HOW THE BYTES ARE PINNED. The WHOLE byte string of the routine is compared
 \ against a fixed expectation, the way test/compiler/x86-64-asm.f pins one
@@ -95,6 +96,7 @@ require src/compiler/native/select-x64.f
 require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
 require src/compiler/native/emit-x64.f
+require src/compiler/native/emission.f
 require src/arch/x86-64/abi.f
 require src/arch/x86-64/machine.f
 
@@ -1114,6 +1116,27 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 : QUOTER-BYTES ( IR-CTX:ctx -- )
    HIR-MOD BUILD-QUOTER ALLOCATED CALL-SLOT PLACED ;
 
+\ ---- the shadow cases: EMIT with no PLACE-AT ---------------------------------
+\ Nothing to measure an absolute entry from, so every call and tail-branch field
+\ is zero and its row alone says where it goes, and a function's address is its
+\ offset in the emission.
+: SHADOW ( IR-BUILD:module -- )
+   {: m:IR-BUILD:module :}
+   CC m X64EMIT:EMIT ;
+
+\ A callee four gigabytes away, which no rel32 reaches from anywhere near: the
+\ placed twin is FAR-REFUSE-CASES's refusal, and here there is no reach to ask.
+$100000000 constant FAR-ENTRY
+
+: SHADOW-CALL-BYTES ( IR-CTX:ctx -- )
+   HIR-MOD FAR-ENTRY BUILD-WORDCALLER CALL-ALLOCATED SHADOW ;
+
+: SHADOW-TAIL-BYTES ( IR-CTX:ctx -- )
+   HIR-MOD CALLEE-ENTRY BUILD-WORDCALLER TAIL-ALLOCATED SHADOW ;
+
+: SHADOW-QUOTER-BYTES ( IR-CTX:ctx -- )
+   HIR-MOD BUILD-QUOTER ALLOCATED SHADOW ;
+
 \ Where `hir.trap` goes: `die` in THIS engine's dictionary, which is what the
 \ selector names (select-x64.f TRAP-ENTRY). That address is the host's and moves
 \ with every engine build, so the call's field is not pinned as bytes: it is read
@@ -1145,10 +1168,18 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 \ Every number here is a BYTE count or a BYTE offset, which is what separates
 \ these readers from the ARM64 emitter's: there an instruction is four bytes and
 \ the answers are instruction indices.
-: RELOC-FACTS ( -- n n n n n n bool )
+: RELOC-FACTS ( -- n n n n n n )
    X64EMIT:SIZE  X64EMIT:BLOCKS  0 X64EMIT:FUNCTION-OFFSET@
-   X64EMIT:ADDR-SITES  0 X64EMIT:ADDR-SITE@  0 X64EMIT:ADDR-SITE-KIND@
-   X64EMIT:TRAILING-RETURN? ;
+   X64EMIT:ADDR-SITES  0 X64EMIT:ADDR-SITE@  0 X64EMIT:ADDR-SITE-KIND@ ;
+
+\ The one row a routine that leaves for another word's entry files: where the
+\ `call` or `jmp` starts, which of NEMIT's kinds it is, and the absolute entry.
+: CALL-ROW ( -- n n n n )
+   X64EMIT:CALL-SITES
+   0 X64EMIT:CALL-SITE@  0 X64EMIT:CALL-KIND@  0 X64EMIT:CALL-TARGET@ ;
+
+: CALL-PAST-END ( -- )
+   1 X64EMIT:CALL-SITE@ drop ;
 
 \ ---- why the addressed pins are taken under the data-stack convention --------
 \ The same four forms in a REGISTER-convention leaf are not accepted, so their
@@ -1178,11 +1209,8 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    [: ADDRESSED-ACCEPT ;] E-A64RAV-ORDER TTHROWSQ ;
 
 \ ---- the state machine around one emission -----------------------------------
-\ Bound, placed, sealed, retired. Each of these asks for a step out of turn.
-: EMIT-UNPLACED ( -- )
-   ALLOCATED {: m:IR-BUILD:module :}
-   CC m X64EMIT:EMIT ;
-
+\ Bound, placed or not, sealed, retired. Each of these asks for a step out of
+\ turn.
 : READ-UNSEALED ( -- )
    X64EMIT:SIZE drop ;
 
@@ -1200,12 +1228,7 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 : SITE-PAST-END ( -- )
    1 X64EMIT:ADDR-SITE@ drop ;
 
-: STATE-CASES ( IR-CTX:ctx -- )
-   HIR-MOD
-   BUILD-DIFF
-   s" an emission whose calls would be measured from a placement it was never given is refused before a byte is written" T-LABEL
-   [: EMIT-UNPLACED ;] E-X64EMIT-STATE TTHROWSQ
-   X64EMIT:RETIRE
+: STATE-CASES ( -- )
    s" a reader of an emission that has not been sealed is refused rather than answering the last one's bytes" T-LABEL
    [: READ-UNSEALED ;] E-X64EMIT-STATE TTHROWSQ
    s" a second placement over a live one is refused: a routine is written at one slot" T-LABEL
@@ -1421,7 +1444,6 @@ public
    1 X64EMIT:BLOCK-START@ 22 T=
    2 X64EMIT:BLOCK-START@ 48 T=
    3 X64EMIT:BLOCK-START@ 37 T=
-   X64EMIT:TRAILING-RETURN? TTRUE
    X64EMIT:RETIRE
 
    s" the compare-and-branch diamond, placed: both arms written and the block they join at taking the answer as its argument" T-LABEL
@@ -1461,7 +1483,6 @@ public
    X64EMIT:BLOCKS 1 T=
    0 X64EMIT:FUNCTION-OFFSET@ 0 T=
    1 X64EMIT:FUNCTION-OFFSET@ 35 T=
-   X64EMIT:TRAILING-RETURN? TTRUE
    X64EMIT:RETIRE
 
    s" the self-call: the pointer over the callee's arguments, the call to function zero of this emission, the pointer back over its results" T-LABEL
@@ -1476,7 +1497,10 @@ public
    \ mc: movq %rax, (%r12)
    \ mc: addq $8, %r12
    \ mc: retq
-   s" 4981ec08000000498b042449894424084981c410000000e8e4ffffff4981ec10000000498b442408498904244981c408000000c3" X=
+   s" 4981ec08000000498b042449894424084981c410000000e8e4ffffff4981ec10000000498b442408498904244981c408000000c3" XB=
+   s" a call to function zero of this emission is measured inside it and files no row" T-LABEL
+   X64EMIT:CALL-SITES 0 T=
+   X64EMIT:RETIRE
 
    s" a call to another word's entry, from a routine placed at a slot of its own" T-LABEL
    WBND [: WORDCALL-BYTES ;] IR-CTX:WITH-CONTEXT
@@ -1490,13 +1514,27 @@ public
    \ mc: movq %rax, (%r12)
    \ mc: addq $8, %r12
    \ mc: retq
-   s" 4981ec08000000498b042449894424084981c410000000e8d40300004981ec10000000498b442408498904244981c408000000c3" X=
+   s" 4981ec08000000498b042449894424084981c410000000e8d40300004981ec10000000498b442408498904244981c408000000c3" XB=
+   s" the call files a row: where the call starts, a call that comes back, and the callee's absolute entry" T-LABEL
+   CALL-ROW
+   CALLEE-ENTRY T=                       \ the entry, not the placed displacement
+   NEMIT:CALL T=
+   23 T=                                 \ the e8 byte, after the pointer moved over the argument
+   1 T=
+   s" the one row this routine has is the only one a reader answers about" T-LABEL
+   [: CALL-PAST-END ;] E-X64EMIT-BOUND TTHROWSQ
+   X64EMIT:RETIRE
 
    s" the routine that leaves through its callee: one tail branch and no return" T-LABEL
    WBND [: TAIL-BYTES ;] IR-CTX:WITH-CONTEXT
    \ mc: jmp 1019
    s" e9fb030000" XB=
-   X64EMIT:TRAILING-RETURN? TFALSE
+   s" the tail branch files a row: at byte zero, a branch that leaves for good, and the callee's entry" T-LABEL
+   CALL-ROW
+   CALLEE-ENTRY T=
+   NEMIT:TAIL T=
+   0 T=
+   1 T=
    X64EMIT:RETIRE
 
    s" the relocatable literal, and the site the emission recorded for it" T-LABEL
@@ -1505,7 +1543,6 @@ public
    \ mc: retq
    s" 48b800007ada00000000c3" XB=
    RELOC-FACTS
-   TTRUE                                 \ it ends in a return
    X64IR:ADDR-DATA T=                    \ the site is a data address
    0 T=                                  \ at byte zero, the `mov r64, imm64` itself
    1 T=                                  \ one site, because ADDR-LANES is one
@@ -1540,7 +1577,12 @@ public
    \ mc: callq TRAP-FIELD
    s" 48b800007ada0000000048b9050000000000000048ba46000000000000004989042449894c240849895424104981c418000000e8" XH=
    LAST-REL32 TRAP-FIELD T=
-   X64EMIT:TRAILING-RETURN? TFALSE
+   s" the trap's call files a row naming die's entry, the routine's last instruction" T-LABEL
+   CALL-ROW
+   DIE-ENTRY T=
+   NEMIT:CALL T=
+   X64EMIT:SIZE REL32-N - 1- T=          \ the e8 before the rel32 that ends it
+   1 T=
    X64EMIT:RETIRE
 
    s" a function's address, from a routine placed at a slot of its own: the placement plus where the second function starts, in the ten bytes a literal takes" T-LABEL
@@ -1558,8 +1600,55 @@ public
    1 T=                                  \ one site: the literal 3000 is no address
    X64EMIT:RETIRE
 
+   s" a shadow call: no placement, so the rel32 is zero and no reach is asked, even of a callee four gigabytes away" T-LABEL
+   WBND [: SHADOW-CALL-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: subq $8, %r12
+   \ mc: movq (%r12), %rax
+   \ mc: movq %rax, 8(%r12)
+   \ mc: addq $16, %r12
+   \ mc: callq 0
+   \ mc: subq $16, %r12
+   \ mc: movq 8(%r12), %rax
+   \ mc: movq %rax, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: retq
+   s" 4981ec08000000498b042449894424084981c410000000e8000000004981ec10000000498b442408498904244981c408000000c3" XB=
+   s" the row is the whole statement of where a shadow call goes" T-LABEL
+   CALL-ROW
+   FAR-ENTRY T=
+   NEMIT:CALL T=
+   23 T=
+   1 T=
+   X64EMIT:RETIRE
+
+   s" a shadow tail branch: the rel32 zero, the row naming the entry" T-LABEL
+   WBND [: SHADOW-TAIL-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: jmp 0
+   s" e900000000" XB=
+   CALL-ROW
+   CALLEE-ENTRY T=
+   NEMIT:TAIL T=
+   0 T=
+   1 T=
+   X64EMIT:RETIRE
+
+   s" a shadow function address: the second function's offset in the emission, which the writer adds its placement to" T-LABEL
+   WBND [: SHADOW-QUOTER-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: movabsq $11, %rax
+   \ mc: retq
+   \ mc: movabsq $3000, %rax
+   \ mc: retq
+   s" 48b80b00000000000000c348b8b80b000000000000c3" XB=
+   QUOTER-FACTS
+   11 T=
+   0 T=
+   X64IR:ADDR-CODE T=
+   0 T=
+   1 T=
+   X64EMIT:RETIRE
+
    WBND [: ADDRESSED-CASES ;] IR-CTX:WITH-CONTEXT
-   WBND [: STATE-CASES ;] IR-CTX:WITH-CONTEXT
+   STATE-CASES
    WBND [: MACHINE-REFUSE-CASES ;] IR-CTX:WITH-CONTEXT
    WBND [: AFTER-REFUSE-CASES ;] IR-CTX:WITH-CONTEXT
    WBND [: FAR-REFUSE-CASES ;] IR-CTX:WITH-CONTEXT

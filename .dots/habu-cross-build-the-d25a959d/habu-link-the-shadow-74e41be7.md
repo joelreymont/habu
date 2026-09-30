@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-29T13:12:29.000279+03:00"
 blocks:
   - habu-link-records-and-647852d3
-  - habu-record-symbolic-x86-10037f07
 ---
 
 Problem: the shadow blob's sites are unresolved until the writer places them.

@@ -7,7 +7,6 @@ created-at: "2026-09-29T12:51:36.706966+03:00"
 blocks:
   - habu-fill-nemit-from-d8c030e4
   - habu-bind-x86-host-4485acdd
-  - habu-record-symbolic-x86-10037f07
 ---
 
 Problem: a cross-build must execute the prefix on the host while emitting for the target: `LOAD-TARGET` (`tools/native-build-core.f:186-225`) runs every declarer and immediate on the host, and the host cannot run x86 bytes; re-lowering from the tape later is rejected because `BIND-PRIOR` (`compiler.f:381-419`) resolves names against the dictionary at compile time. Two rules bind the second chain: `NBACK:ROW@` resolves the row from `IR-CTX:BINDING@` (`src/compiler/native/backend.f:131-132`) and `X64SEL:MACHINE-CK` refuses another machine's contract (`select-x64.f:2068-2069`).

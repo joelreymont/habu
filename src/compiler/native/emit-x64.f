@@ -41,6 +41,17 @@
 \ peephole this file does not have, and what the pinned bytes in
 \ test/compiler/x64-emit.f measure is a faithful image of the module.
 \
+\ ANOTHER WORD'S ENTRY IS A ROW AND NOT ONLY A FIELD. Every call and tail branch
+\ to an absolute entry files one - where its instruction starts, NEMIT:CALL or
+\ NEMIT:TAIL, and the entry - and every relocatable literal and `codeaddr` a site
+\ of its address kind, so whoever writes the routine can write those fields
+\ again at any address (docs/x86-64.md "Live-region sites"). An EMIT with no
+\ PLACE-AT is a SHADOW emission: those rel32 fields are zero, the rows are the
+\ whole statement of where they go, and a `codeaddr` carries the function's
+\ offset in the emission alone. Nothing here trims a span: SIZE is the whole
+\ routine whatever it ends in, and a `does>` body is SIZE less its
+\ FUNCTION-OFFSET@.
+\
 \ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the divide `idiv` -
 \ it names the registers the machine divides in and carries a branch to
 \ `x64.throw-entry` besides - the negate, and the two selects `cmpsel` and
@@ -61,6 +72,7 @@ require src/compiler/native/x64ir.f
 require src/compiler/native/frozen.f
 require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
+require src/compiler/native/emission.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/machine.f
 
@@ -114,7 +126,7 @@ variable N-LAID                         \ ...and how many of them the order hold
 variable B-BASE                         \ where this function's blocks start in the module
 variable N-FUNS
 variable N-SITES
-variable EM-LAST                        \ the form of the last operation written
+variable N-CALLS
 variable CH-AT                          \ the pass-through chase's cursor
 
 variable SCRATCH-BLOCKS
@@ -144,6 +156,12 @@ DYNAMIC-BUFFER SITES-BUF n              \ byte offset of a relocatable literal
 : SITES ( -- ptr n ) 0 SITES-BUF ;
 DYNAMIC-BUFFER SKIND-BUF n              \ and which kind of address it carries
 : SKIND ( -- ptr n ) 0 SKIND-BUF ;
+DYNAMIC-BUFFER CSITES-BUF n             \ byte offset of a call or branch out
+: CSITES ( -- ptr n ) 0 CSITES-BUF ;
+DYNAMIC-BUFFER CKIND-BUF n              \ NEMIT:CALL or NEMIT:TAIL
+: CKIND ( -- ptr n ) 0 CKIND-BUF ;
+DYNAMIC-BUFFER CTARGET-BUF n            \ and the absolute entry it goes to
+: CTARGET ( -- ptr n ) 0 CTARGET-BUF ;
 
 : SINK-READY ( -- )
    SINK-MODE @ 0<> if exit then
@@ -178,7 +196,10 @@ DYNAMIC-BUFFER SKIND-BUF n              \ and which kind of address it carries
    BMAX B-KEEP-BUF-RESERVE
    FMAX F-START-BUF-RESERVE
    SITE-CEIL SITES-BUF-RESERVE
-   SITE-CEIL SKIND-BUF-RESERVE ;
+   SITE-CEIL SKIND-BUF-RESERVE
+   SITE-CEIL CSITES-BUF-RESERVE
+   SITE-CEIL CKIND-BUF-RESERVE
+   SITE-CEIL CTARGET-BUF-RESERVE ;
 
 \ ---- the bound dialect -------------------------------------------------------
 \ A module's symbols are its own ordinals, so the identities are taken once from
@@ -409,6 +430,20 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    off  N-SITES @ cells SITES + !
    kind N-SITES @ cells SKIND + !
    N-SITES @ 1+ N-SITES ! ;
+
+\ ---- where this emission leaves for another word's entry ---------------------
+\ ONE ROW PER SITE WHOSE OTHER END IS AN ABSOLUTE ADDRESS, filed by the writer:
+\ the byte offset of the `call` or `jmp` itself, whose rel32 follows its one
+\ opcode byte and counts from its end; NEMIT's kind, a call that comes back or a
+\ branch that leaves for good; and the entry. Which word owns that entry is the
+\ capture's to resolve, so no callee is named here.
+: CALL-SITE+ ( n n n -- )
+   {: off:n kind:n target:n :}
+   N-CALLS @ SITE-CEIL >= if E-X64EMIT-BOUND throw then
+   off    N-CALLS @ cells CSITES + !
+   kind   N-CALLS @ cells CKIND + !
+   target N-CALLS @ cells CTARGET + !
+   N-CALLS @ 1+ N-CALLS ! ;
 
 \ ---- one operation, written --------------------------------------------------
 : PUT-MOVI ( IR-ID:ir-op-id ptr a -- )
@@ -651,20 +686,30 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    SELF-FUN FUN-START s PUT-CALL-TO
    id DBACK-OF negate s PUT-DMOVE ;
 
-\ ANOTHER WORD'S ENTRY IS AN ABSOLUTE ADDRESS, so the distance is measured from
-\ where this emission was placed: the instruction's own address is the placement
-\ plus its offset in the emission, and the displacement is from the end of it.
-: FROM-PLACE ( n -- n )
-   PLACE-MODE @ PLACE-YES <> if E-X64EMIT-STATE throw then
-   PLACE-AT-N @ - ;
+\ ANOTHER WORD'S ENTRY IS AN ABSOLUTE ADDRESS, so the site files its row and its
+\ field is measured from where this emission was placed: the instruction's own
+\ address is the placement plus its offset in the emission, and the displacement
+\ is from the end of it. A SHADOW run was placed nowhere, so the field is zero,
+\ no reach is asked, and the row alone says where the site goes.
+: PLACED? ( -- bool )
+   PLACE-MODE @ PLACE-YES = ;
 
-: ENTRY-TARGET ( IR-ID:ir-op-id -- n )
-   ENTRY-OF FROM-PLACE ;
+: PUT-FAR-CALL ( n ptr a -- )
+   {: target:n s:ptr :}
+   MEAS @ 0= if CUR NEMIT:CALL target CALL-SITE+ then
+   PLACED? 0= if 0 >REL s ENC-CALL-REL32 exit then
+   target PLACE-AT-N @ -  s PUT-CALL-TO ;
+
+: PUT-FAR-JMP ( n ptr a -- )
+   {: target:n s:ptr :}
+   MEAS @ 0= if CUR NEMIT:TAIL target CALL-SITE+ then
+   PLACED? 0= if 0 >REL s ENC-JMP-REL32 exit then
+   target PLACE-AT-N @ -  s PUT-JMP ;
 
 : PUT-WORDCALL ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id DBYTES-OF s PUT-DMOVE
-   id ENTRY-TARGET s PUT-CALL-TO
+   id ENTRY-OF s PUT-FAR-CALL
    id DBACK-OF negate s PUT-DMOVE ;
 
 \ ONE instruction and never more: the selector only builds it where the pointer
@@ -672,7 +717,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 \ routine's caller.
 : PUT-TAILCALL ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
-   id ENTRY-TARGET s PUT-JMP ;
+   id ENTRY-OF s PUT-FAR-JMP ;
 
 \ ---- leaving through the routine that ends the process -----------------------
 \ The twin of emit.f PUT-TRAP: the pointer moved over the cells the routine
@@ -682,16 +727,19 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 : PUT-TRAP ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id DBYTES-OF s PUT-DMOVE
-   id TRAP-ENTRY-OF FROM-PLACE s PUT-CALL-TO ;
+   id TRAP-ENTRY-OF s PUT-FAR-CALL ;
 
 \ ---- the address of one of this emission's own functions --------------------
 \ AN ABSOLUTE ADDRESS, the placement plus where the function starts, in the
 \ `mov r64, imm64` a literal takes, and filed as a CODE site so the image writer
-\ finds it again. A measurement writes zero: a later function has no start yet,
-\ and the immediate's width does not depend on the number in it.
+\ finds it again. A shadow run has no placement, so the immediate is where the
+\ function starts in the emission and the writer adds where it put it. A
+\ measurement writes zero: a later function has no start yet, and the
+\ immediate's width does not depend on the number in it.
 : FUN-ADDR ( IR-ID:ir-op-id -- n )
    FUN-OF FUN-START {: at:n :}
    MEAS @ 0<> if 0 exit then
+   PLACED? 0= if at exit then
    at PLACE-AT-N @ + ;
 
 : PUT-CODEADDR ( IR-ID:ir-op-id ptr a -- )
@@ -972,9 +1020,6 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 : BOUND-CK ( -- )
    BND-MODE @ BOUND-YES <> if E-X64EMIT-MODULE throw then ;
 
-: PLACED-CK ( -- )
-   PLACE-MODE @ PLACE-YES <> if E-X64EMIT-STATE throw then ;
-
 : BND-MODULE-CK ( IR-BUILD:module -- )
    IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
    0= if E-X64EMIT-MODULE throw then ;
@@ -1047,7 +1092,6 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    {: bk:IR-ID:ir-block-id home:n :}
    bk OP-COUNT 0 ?do
       bk i OP-AT home EM-SINK PUT-OP
-      bk i OP-AT SLOT-AT EM-LAST !
    loop ;
 
 : WALK ( IR-ID:ir-fun-id -- )
@@ -1072,6 +1116,9 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 
 : SITE-ORD-CK ( n -- n )
    dup 0 < over N-SITES @ >= or if E-X64EMIT-BOUND throw then ;
+
+: CALL-ORD-CK ( n -- n )
+   dup 0 < over N-CALLS @ >= or if E-X64EMIT-BOUND throw then ;
 
 public
 
@@ -1108,8 +1155,8 @@ public
    0 PLACE-AT-N ! ;
 
 \ ---- declaring where this routine will be written ----------------------------
-\ There is no default: an emission whose calls are measured from a placement it
-\ was never given is refused by name. WHAT IS CHECKED IS THAT IT COULD BE AN
+\ Optional: an EMIT without it is a shadow emission, whose calls are left to
+\ the rows (the calls above). WHAT IS CHECKED IS THAT IT COULD BE AN
 \ ENTRY OF THIS MACHINE. An x86-64 instruction needs no alignment to decode, so
 \ this is not about decoding: the only alignment this machine states is
 \ X64IR:SP-ALIGN, the sixteen bytes the SysV contract aligns to, and a code
@@ -1130,13 +1177,12 @@ public
 : EMIT ( IR-CTX:ctx IR-BUILD:module -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
    BOUND-CK
-   PLACED-CK
    SINK-READY
    EM-SINK BUF:CLEAR
    ST-EMPTY ST !
    0 N-SITES !
+   0 N-CALLS !
    0 MEAS !
-   -1 EM-LAST !
    m BND-MODULE-CK
    c TARGET-CK
    m VIEWS!
@@ -1162,8 +1208,8 @@ public
    PLACE-NO PLACE-MODE !
    0 PLACE-AT-N !
    0 N-SITES !
+   0 N-CALLS !
    0 MEAS !
-   -1 EM-LAST !
    SINK-MODE @ 0<> if EM-SINK BUF:CLEAR then ;
 
 \ The registry releases buffers immediately before a DATA copy, so the mapped
@@ -1201,11 +1247,6 @@ public
 : FUNCTION-OFFSET@ ( n -- n )
    SEAL-CK FUN-START ;
 
-\ The last OPERATION is asked about rather than the last instruction: a routine
-\ that leaves through a tail branch ends in no return at all.
-: TRAILING-RETURN? ( -- bool )
-   SEAL-CK EM-LAST @ O-RET = ;
-
 : ADDR-SITES ( -- n )
    SEAL-CK N-SITES @ ;
 
@@ -1217,6 +1258,22 @@ public
 
 : ADDR-SITE-KIND@ ( n -- n )
    SEAL-CK SITE-ORD-CK cells SKIND + @ ;
+
+\ The rows of the sites that leave for another word's entry, in the order they
+\ were written.
+: CALL-SITES ( -- n )
+   SEAL-CK N-CALLS @ ;
+
+\ The byte offset of the `call` or `jmp` itself; its rel32 follows the opcode
+\ byte and counts from the end of the instruction.
+: CALL-SITE@ ( n -- n )
+   SEAL-CK CALL-ORD-CK cells CSITES + @ ;
+
+: CALL-KIND@ ( n -- n )
+   SEAL-CK CALL-ORD-CK cells CKIND + @ ;
+
+: CALL-TARGET@ ( n -- n )
+   SEAL-CK CALL-ORD-CK cells CTARGET + @ ;
 
 private
 get-current prot-wid-add

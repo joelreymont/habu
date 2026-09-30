@@ -16,6 +16,13 @@
 \ x86-64 seam globally, so it comes before the harness, which would otherwise
 \ load the seam into its own private wordlist.
 \
+\ A routine whose bytes depend on where it is written - a call, a tail branch,
+\ a function's address - has a second image, `-moved`: the same emission,
+\ placed where the first image has it, lands MOVE-N bytes further on past a
+\ ud2 pad, and every such field is written again from the emission's rows
+\ alone (X64HARNESS:LINK-CALL, LINK-CODE). Both must run the same, which is
+\ what says the rows name every site and name it right.
+\
 \ Three fixtures have no image. The rows refuse BUILD-ADDRESSED with
 \ E-IR-VERIFY-OPTYPE: it takes its memory order as an argument, which a
 \ data-stack contract has no cell for. The last check, after every image is
@@ -43,6 +50,7 @@ package X64EMIT-TEST
 private
 variable CALLEE                      \ the entry the wordcall site names
 TYPED-VARIABLE REL-OP HIR:opcode     \ the relation the compare sites stage
+variable MOVED                       \ how far past its placement the routine lands
 
 public
 \ The cell the terminal fixture computes and hands its callee.
@@ -54,23 +62,44 @@ private
    CC BB NBACK:SELECT {: m0:IR-BUILD:module :}
    CC m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
    CC m1 NBACK:FIXPOINT {: m:IR-BUILD:module :}
-   CC m X64HARNESS:POSITION NBACK:EMIT ;
+   CC m X64HARNESS:POSITION MOVED @ - NBACK:EMIT ;
+
+\ A routine that landed where it was placed keeps the fields its emission wrote.
+\ One that landed MOVED bytes further on has each of them written again from a
+\ row: a call or tail branch at its absolute target, a CODE literal moved.
+: LINK-ROWS ( n -- ) {: at:n :}
+   X64EMIT:CALL-SITES 0 ?do
+      at i X64EMIT:CALL-SITE@ +  i X64EMIT:CALL-TARGET@  X64HARNESS:LINK-CALL
+   loop
+   X64EMIT:ADDR-SITES 0 ?do
+      i X64EMIT:ADDR-SITE-KIND@ X64IR:ADDR-CODE = if
+         at i X64EMIT:ADDR-SITE@ +  MOVED @  X64HARNESS:LINK-CODE
+      then
+   loop ;
+
+: LINKED ( n -- ) {: at:n :}
+   MOVED @ 0<> if at LINK-ROWS then ;
 
 : ROWS-DONE ( -- )
    CC NBACK:RETIRE
-   CC NBACK:RELEASE ;
+   CC NBACK:RELEASE
+   0 MOVED ! ;
 
 : ROWS, ( n n NBACK:linkage -- )
    ROWS-EMIT
+   X64HARNESS:POSITION {: at:n :}
    X64EMIT:BYTES X64EMIT:SIZE X64HARNESS:APPEND-ROUTINE
+   at LINKED
    ROWS-DONE ;
 
 \ The quoting fixture answers the address of its second function, so the label
 \ its case expects is bound where the emission laid that function.
 : QUOTING-ROWS, ( -- )
    0 1 NBACK:L-NONE ROWS-EMIT
+   X64HARNESS:POSITION {: at:n :}
    X64EMIT:BYTES X64EMIT:SIZE  1 X64EMIT:FUNCTION-OFFSET@
    X64HARNESS:APPEND-QUOTING
+   at LINKED
    ROWS-DONE ;
 
 \ `: LEAF ( n -- ) TERMINAL-CELL CALLEE ;` where CALLEE ends the process: the
@@ -133,6 +162,10 @@ private
 : LOOP-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-LOOP 2 1 NBACK:L-NONE ROWS, ;
 : WORDCALL-BODY ( IR-CTX:ctx -- )
    HIR-MOD CALLEE @ BUILD-WORDCALLER 1 1 NBACK:L-CALLED ROWS, ;
+\ The same site in tail position: the routine leaves through its callee, whose
+\ return comes back to the case that called the routine.
+: TAILCALL-BODY ( IR-CTX:ctx -- )
+   HIR-MOD CALLEE @ BUILD-WORDCALLER 1 1 NBACK:L-TAIL ROWS, ;
 : TERMINAL-BODY ( IR-CTX:ctx -- )
    HIR-MOD CALLEE @ BUILD-TERMINAL 1 0 NORET ROWS, ;
 : QUOTER-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-QUOTER QUOTING-ROWS, ;
@@ -164,11 +197,15 @@ public
 : MOVI-ROUTINE ( -- )     WBND [: MOVI-BODY ;] IR-CTX:WITH-CONTEXT ;
 : DADDR-ROUTINE ( -- )    WBND [: DADDR-BODY ;] IR-CTX:WITH-CONTEXT ;
 : LOOP-ROUTINE ( -- )     WBND [: LOOP-BODY ;] IR-CTX:WITH-CONTEXT ;
-: WORDCALL-ROUTINE ( n -- )
-   CALLEE !  WBND [: WORDCALL-BODY ;] IR-CTX:WITH-CONTEXT ;
-: TERMINAL-ROUTINE ( n -- )
-   CALLEE !  WBND [: TERMINAL-BODY ;] IR-CTX:WITH-CONTEXT ;
-: QUOTER-ROUTINE ( -- )   WBND [: QUOTER-BODY ;] IR-CTX:WITH-CONTEXT ;
+\ These take how far past its placement the routine lands as well.
+: WORDCALL-ROUTINE ( n n -- )
+   MOVED !  CALLEE !  WBND [: WORDCALL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: TAILCALL-ROUTINE ( n n -- )
+   MOVED !  CALLEE !  WBND [: TAILCALL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: TERMINAL-ROUTINE ( n n -- )
+   MOVED !  CALLEE !  WBND [: TERMINAL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: QUOTER-ROUTINE ( n -- )
+   MOVED !  WBND [: QUOTER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : ADDRESSED-REFUSAL ( -- ) WBND [: ADDRESSED-REFUSED ;] IR-CTX:WITH-CONTEXT ;
 ;package
 
@@ -541,9 +578,13 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    CLOSE, ENTRY, X64EMIT-TEST:LOOP-ROUTINE
    s" loop" false WRITE-IMAGE ;
 
+\ How far a `-moved` image puts its routine past the first image's: a whole
+\ number of slots, and longer than any callee staged before one.
+256 constant MOVE-N
+
 \ The callee is the squaring fixture, placed first; the call site names its
 \ absolute entry, so the answers are the callee's.
-: WORDCALL-IMAGE ( -- )
+: WORDCALL-IMAGE ( n ptr u8 n -- ) {: moved:n name:ptr u:n :}
    false OPEN,
    21 42 CASE1,
    -7 -14 CASE1,
@@ -551,30 +592,54 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    CLOSE,
    POSITION {: callee:n :}
    X64EMIT-TEST:SQUARE-ROUTINE
-   ALIGN, ENTRY,
-   callee X64EMIT-TEST:WORDCALL-ROUTINE
-   s" wordcaller" false WRITE-IMAGE ;
+   ALIGN, moved SKIP, ENTRY,
+   callee moved X64EMIT-TEST:WORDCALL-ROUTINE
+   name u false WRITE-IMAGE ;
+
+\ The same answers through a tail branch: the callee returns to the case.
+: TAILCALL-IMAGE ( n ptr u8 n -- ) {: moved:n name:ptr u:n :}
+   false OPEN,
+   21 42 CASE1,
+   -7 -14 CASE1,
+   MAX-CELL -2 CASE1,
+   CLOSE,
+   POSITION {: callee:n :}
+   X64EMIT-TEST:SQUARE-ROUTINE
+   ALIGN, moved SKIP, ENTRY,
+   callee moved X64EMIT-TEST:TAILCALL-ROUTINE
+   name u false WRITE-IMAGE ;
 
 \ The routine never comes back: its terminal call leaves through a stand-in for
 \ the callee, placed first, which checks the argument and the computed cell the
 \ routine published below the data-stack pointer and exits 0.
-: TERMINAL-IMAGE ( -- )
+: TERMINAL-IMAGE ( n ptr u8 n -- ) {: moved:n name:ptr u:n :}
    false OPEN,
    MIN-CELL TERMINAL-CASE,
    CLOSE,
    POSITION {: callee:n :}
    MIN-CELL X64EMIT-TEST:TERMINAL-CELL STAND-IN,
-   ALIGN, ENTRY,
-   callee X64EMIT-TEST:TERMINAL-ROUTINE
-   s" terminal" false WRITE-IMAGE ;
+   ALIGN, moved SKIP, ENTRY,
+   callee moved X64EMIT-TEST:TERMINAL-ROUTINE
+   name u false WRITE-IMAGE ;
 
 \ The answer is the address the emission laid the second function at, which is
 \ where the harness bound the label the case compares it with.
-: QUOTER-IMAGE ( -- )
+: QUOTER-IMAGE ( n ptr u8 n -- ) {: moved:n name:ptr u:n :}
    false OPEN,
    QUOTE-CASE,
-   CLOSE, ENTRY, X64EMIT-TEST:QUOTER-ROUTINE
-   s" quoter" false WRITE-IMAGE ;
+   CLOSE, moved SKIP, ENTRY, moved X64EMIT-TEST:QUOTER-ROUTINE
+   name u false WRITE-IMAGE ;
+
+\ Each routine with a site of that kind, where the rows placed it and moved.
+: SITE-IMAGES ( -- )
+   0 s" wordcaller" WORDCALL-IMAGE
+   MOVE-N s" wordcaller-moved" WORDCALL-IMAGE
+   0 s" tailcaller" TAILCALL-IMAGE
+   MOVE-N s" tailcaller-moved" TAILCALL-IMAGE
+   0 s" terminal" TERMINAL-IMAGE
+   MOVE-N s" terminal-moved" TERMINAL-IMAGE
+   0 s" quoter" QUOTER-IMAGE
+   MOVE-N s" quoter-moved" QUOTER-IMAGE ;
 
 \ Twelve doublings summed: `24 a *`, over four frame slots.
 : PRESSURE-IMAGE ( -- )
@@ -648,9 +713,7 @@ public
    MOVI-IMAGE
    DADDR-IMAGE
    LOOP-IMAGE
-   WORDCALL-IMAGE
-   TERMINAL-IMAGE
-   QUOTER-IMAGE
+   SITE-IMAGES
    PRESSURE-IMAGE
    PBRANCH-IMAGE
    PLOOP-IMAGE

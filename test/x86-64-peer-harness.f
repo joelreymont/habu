@@ -2,7 +2,11 @@
 \ the real pass rows emitted. An image is a checking entry, the routines, and
 \ the one exit syscall, staged in this order:
 \
-\    OPEN,  cases  CLOSE,  [ callee  ALIGN, ]  ENTRY,  routine  WRITE-ELF
+\    OPEN,  cases  CLOSE,  [ callee  ALIGN, ]  [ n SKIP, ]  ENTRY,  routine  WRITE-ELF
+\
+\ A routine staged past a SKIP, lands n bytes beyond where its emission placed
+\ it; LINK-CALL and LINK-CODE write its placement-dependent fields again from
+\ the emission's rows.
 \
 \ The entry calls the routine bound at ENTRY, once per case, and checks its
 \ answer, the machine and data stacks around the call, the registers a routine
@@ -249,6 +253,58 @@ public
    a off APPEND-ROUTINE
    QUOTED-LBL LBL,
    a off +  u off -  APPEND-ROUTINE ;
+
+\ Pad `n` bytes with ud2, so the routine appended next lands that much further
+\ on. A call its rows did not write again still reaches `n` bytes past a callee
+\ staged just before it, which is inside this pad and on the first byte of a
+\ ud2, so it stops with SIGILL rather than sliding through padding into code.
+: SKIP, ( n -- ) {: n:n :}
+   ASM-LEN n + {: target:n :}
+   begin ASM-LEN target < while ASM-SINK ENC-UD2 repeat
+   ASM-LEN target <> if E-BUF-BOUNDS throw then ;
+
+private
+
+\ ---- a routine written where its emission did not place it -------------------
+\ The emission's rows say which of its fields depend on where it is written and
+\ what goes in them, so these write them again the way a linker writes a
+\ routine it did not place. A call or tail-branch row names its instruction's
+\ first byte and an absolute target: the rel32 follows the one opcode byte of
+\ `call` and `jmp` and counts from the end of the instruction (docs/x86-64.md
+\ "Live-region sites"). A CODE literal is the placement plus a function's
+\ offset, so it moves by what the routine moved.
+1 constant REL32-AT
+4 constant REL32-N
+8 constant IMM64-N
+
+\ The `u` staged bytes at absolute address `at`, all of them inside the stream.
+: STAGED ( n n -- ptr u8 ) {: at:n u:n :}
+   at VMBASE CODE-OFF + - {: off:n :}
+   off 0 <  off u + ASM-LEN >  or if E-BUF-BOUNDS throw then
+   CODE off + ;
+
+: LE! ( n ptr u8 n -- ) {: v:n p:ptr u:n :}
+   u 0 ?do  v i 8 * rshift $FF and  p i + c!  loop ;
+
+: LE@ ( ptr u8 n -- n ) {: p:ptr u:n :}
+   0  u 0 ?do  p i + c@  i 8 * lshift or  loop ;
+
+public
+
+\ The rel32 of the `call` or `jmp` at address `site`, for the absolute `target`
+\ its row names.
+: LINK-CALL ( n n -- ) {: site:n target:n :}
+   site REL32-AT + {: field:n :}
+   target  field REL32-N +  -  {: rel:n :}
+   rel X64IR:IMM-LIMIT negate <  rel X64IR:IMM-LIMIT >=  or
+   if E-X64EMIT-REACH throw then
+   rel  field REL32-N STAGED  REL32-N LE! ;
+
+\ The immediate of the CODE literal whose `mov r64, imm64` is at address
+\ `site`, moved by `moved` bytes.
+: LINK-CODE ( n n -- ) {: site:n moved:n :}
+   site MOV-RI64-IMM-OFF + IMM64-N STAGED {: p:ptr :}
+   p IMM64-N LE@ moved +  p IMM64-N LE! ;
 
 \ Write the staged stream as it stands: byte 0 is the ELF entry.
 : WRITE ( ptr u8 n -- ) {: path:ptr pathu:n :}

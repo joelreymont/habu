@@ -1,6 +1,6 @@
 ---
 title: Record x86 call and code sites with exact spans
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.475867+03:00"
