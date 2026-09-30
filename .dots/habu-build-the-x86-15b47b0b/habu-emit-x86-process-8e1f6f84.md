@@ -14,3 +14,5 @@ Depends: habu-emit-x86-syscall-a0d501db (K6a), habu-scaffold-the-x86-9af80979 (s
 Route: direct (x86-only files).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+Note (K6a landing, 2026-09-30): `X64RT:SYS-PUSH` now exists (`src/arch/x86-64/rt.f`). `src/os/linux-x86-64/proc-watch.f` still inlines its own copy (`mov rcx,-1 / cmovb rax,rcx / push`) under a stale "Loaded before habu1.f, so … inlined" comment; this leaf, which owns `BPROCWATCHOPEN`, switches it to `X64RT:SYS-PUSH` (same bytes, pinned by `test/x86-64-emit.f`).
