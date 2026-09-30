@@ -288,6 +288,26 @@ create TXT
    ARG+ RET1
    CLOSE-FUN ;
 
+\ `( a b c -- n )` computing `a b max c + a -`, the max laid out as
+\ src/compiler/native/elaborate.f EXPAND-MAXIMUM lays out a diamond: `a b >`
+\ branches to two arms that hand b and a to the join as its one argument, and
+\ the join then reads c and a, which no edge hands it - they are the entry's own
+\ values, and the entry dominates the join.
+: BUILD-PMAX ( -- )
+   3 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   ARG+ {: c:IR-ID:ir-value-id :}
+   HIR-OPCODE:GT a b BINOP  1 2 BRZ2
+   BLOCK+
+   b 3 BR1
+   BLOCK+
+   a 3 BR1
+   BLOCK+
+   ARG+ {: m:IR-ID:ir-value-id :}
+   HIR-OPCODE:SUB  HIR-OPCODE:ADD m c BINOP  a  BINOP RET1
+   CLOSE-FUN ;
+
 : MEMT ( -- IR-ID:ir-type-id )
    CC BB HIR:MEM-TYPE ;
 
@@ -663,6 +683,21 @@ $100000000 constant FAR-ENTRY
    [: NEMIT:SIZE drop ;] E-NEMIT-STATE TTHROWSQ
    FINISH ;
 
+\ This machine keeps the max diamond as the branch it is: the lowered function
+\ still has its four blocks, the validator accepts the join reading the entry's
+\ values across both arms, and the emission is sealed.
+: PMAX-BODY ( IR-CTX:ctx -- n bool bool )
+   HIR-MOD
+   BUILD-PMAX
+   3 1 CHAIN {: m:IR-BUILD:module :}
+   m 3 1 ACCEPTED {: ok:bool :}
+   m SCAN {: blocks:n :}
+   CC m EMIT-SLOT NBACK:EMIT
+   X64EMIT:SEALED? {: sealed:bool :}
+   CC NBACK:RETIRE
+   CC NBACK:RELEASE
+   blocks ok sealed ;
+
 public
 
 : RUN ( -- )
@@ -717,6 +752,10 @@ public
 
    s" a callee four gigabytes from the slot is refused inside the emit row, before any row publication reads is stated" T-LABEL
    WBND [: FAR-BODY ;] IR-CTX:WITH-CONTEXT
+
+   s" a max diamond whose join takes one argument and reads the entry's values past it lowers as a branch of four blocks, is accepted and is emitted" T-LABEL
+   WBND [: PMAX-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 4 T=
 
    T-REPORT ;
 
