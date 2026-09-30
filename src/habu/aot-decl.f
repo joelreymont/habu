@@ -543,8 +543,11 @@ variable CUR variable LIMIT variable PREV
    v DST @ CUR @ + AOT-WINDOW:CELL-V! CUR +! ;
 : OFF>Q ( n -- n )
    dup U32? dup 3 and 0<> if REFUSE then 4 / ;
+\ The seed packs a span in four-byte units. An exact span may end on any byte,
+\ so one that is not whole units is refused here rather than truncated.
 : SPAN>Q ( n -- n ) {: raw:n :}
    raw CODE-SPAN:VALID? 0= if REFUSE then
+   raw CODE-SPAN:BODY 3 and 0<> if REFUSE then
    raw CODE-SPAN:BODY 4 / 2 * raw CODE-SPAN:FULL? if 1+ then ;
 : META>Q ( n -- n ) {: m:n :}
    m $FFFC00F0 and 0<> if REFUSE then

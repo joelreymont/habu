@@ -55,11 +55,10 @@
 \ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the negate and the
 \ two selects `cmpsel` and `selz`, which no selection reaches yet, and an
 \ `x64.fcmpset` whose condition and result count are not one of the two pairs
-\ its render reads the flags for (PUT-FCMPSET). Publication
-\ into a code region is not here either, and on this host it cannot be:
-\ src/compiler/native/publish.f reads NEMIT rows only the ARM64 emission row
-\ fills, and the engine's own callmap and addrmap record ARM64 shapes. An
-\ x86-64 emission is consumed by the cross-build image writer.
+\ its render reads the flags for (PUT-FCMPSET). Publication into a code region
+\ is not here either: src/arch/x86-64/passes.f states the sealed emission as
+\ NEMIT's rows from the readers below, and src/compiler/native/publish.f reads
+\ nothing else.
 
 require lib/prelude.f
 require lib/errors.f
@@ -1452,6 +1451,11 @@ public
 
 : BLOCK-START@ ( n -- n )
    SEAL-CK START-AT ;
+
+\ How many functions share the routine: FUNCTION-OFFSET@ answers each ordinal
+\ below it.
+: FUNS ( -- n )
+   SEAL-CK N-FUNS @ ;
 
 : FUNCTION-OFFSET@ ( n -- n )
    SEAL-CK FUN-START ;

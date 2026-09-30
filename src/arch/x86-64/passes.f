@@ -22,12 +22,13 @@
 \ EMISSION IS THIS BACKEND'S LAST ROW AND IT IS FILLED. src/compiler/native/
 \ emit-x64.f owns its byte sink, lays every block of the accepted module out in
 \ BYTES, resolves every displacement against the slot this row is handed, and
-\ seals a byte image with the list of the relocatable literals in it. RETIRE
-\ gives that image and the placement back, and is nonthrowing because the driver
-\ calls it on the refusing path too. WHAT NO ROW HERE DOES IS PUBLISH: this host
-\ has no x86-64 code region to write into (src/compiler/native/publish.f reads
-\ the NEMIT rows, which no row here fills), so the sealed image is read back by
-\ a cross-build image writer and not by NPUB.
+\ seals a byte image with the lists of its call and address sites. The row then
+\ states that emission as NEMIT's rows, the only emission
+\ src/compiler/native/publish.f reads: the whole image with no trailing return,
+\ because an x86-64 span is exact, the placement, where each function starts,
+\ and each site at its instruction's first byte. RETIRE gives the image, the
+\ placement and the rows back, and is nonthrowing because the driver calls it on
+\ the refusing path too.
 \
 \ So declare, select, prune, the lowering fixpoint, emit and retire all run in
 \ the order src/compiler/native/compiler.f runs them;
@@ -55,6 +56,7 @@ require src/compiler/native/spill.f
 require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
 require src/compiler/native/emit-x64.f
+require src/compiler/native/emission.f
 require src/compiler/native/prof.f
 require src/arch/x86-64/backend.f
 require src/arch/x86-64/abi.f
@@ -225,6 +227,35 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
       swap IR-BUILD:RETIRE
    repeat ;
 
+\ ---- the sealed emission, as the rows publication reads ----------------------
+\ The emitter already answers in bytes, and each of its sites names an
+\ instruction's first byte, so the rows are copied across and nothing is
+\ decoded. No trailing return is split off: the span is the whole routine,
+\ whatever it ends in.
+: FUNCTION-ROWS ( -- )
+   X64EMIT:FUNS 0 ?do
+      i X64EMIT:FUNCTION-OFFSET@ NEMIT:FUNCTION+
+   loop ;
+
+: CALL-ROWS ( -- )
+   X64EMIT:CALL-SITES 0 ?do
+      i X64EMIT:CALL-SITE@  i X64EMIT:CALL-KIND@  i X64EMIT:CALL-TARGET@
+      NEMIT:CALL-SITE+
+   loop ;
+
+: ADDR-ROWS ( -- )
+   X64EMIT:ADDR-SITES 0 ?do
+      i X64EMIT:ADDR-SITE@  i X64EMIT:ADDR-SITE-KIND@  NEMIT:ADDR-SITE+
+   loop ;
+
+: ROWS ( n -- ) {: at:n :}
+   X64EMIT:BYTES X64EMIT:SIZE 0 NEMIT:OPEN
+   at NEMIT:PLACE
+   FUNCTION-ROWS
+   CALL-ROWS
+   ADDR-ROWS
+   NEMIT:SEAL ;
+
 \ ---- emission ----------------------------------------------------------------
 \ Declared for every definition and not only one that calls, so the slot this
 \ routine really claims is the one its own displacements are measured from. The
@@ -235,7 +266,13 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    A64SPILL:BOUND? if A64SPILL:RELEASE then
    m ROUTINE A64RAV:ACCEPT
    at X64EMIT:PLACE-AT
-   c m X64EMIT:EMIT ;
+   c m X64EMIT:EMIT
+   at ROWS ;
+
+\ The rows answer until this row runs, on the accepting and the refusing path.
+: RETIRE ( -- )
+   X64EMIT:RETIRE
+   NEMIT:CLEAR ;
 
 \ ---- what this backend holds between definitions -----------------------------
 \ Caught INSIDE the context so it always leaves the ordinary way and gives its
@@ -272,7 +309,7 @@ public
    ARCH [: FIXPOINT ;] NBACK:FIXPOINT!
    ARCH [: EMIT ;] NBACK:EMIT!
    ARCH [: RELEASE ;] NBACK:RELEASE!
-   ARCH [: X64EMIT:RETIRE ;] NBACK:RETIRE!
+   ARCH [: RETIRE ;] NBACK:RETIRE!
    ARCH [: X64IR:PROTOTYPE ;] NBACK:PROTOTYPE!
    ARCH [: X64IR:PROTOTYPE-CLEAR ;] NBACK:FORGET!
    ARCH [: PREPARE ;] NBACK:PREPARE! ;

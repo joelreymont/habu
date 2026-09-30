@@ -1,8 +1,10 @@
 ---
 title: Fill NEMIT from X64EMIT and publish x86 emissions
-status: open
+status: closed
 priority: 2
 issue-type: task
+closed-at: "2026-09-30T15:32:06.018534+03:00"
+close-reason: "done: x86 emit fills NEMIT rows and RETIRE clears them; spark chain from 613a converges at 39723d8c (gen1-5), gate 501 of 501 rc 0; ThinkPad x86 proof with it: 17 suites ok incl. code-span, 107 images unchanged, manifest bad=0."
 created-at: "2026-09-29T12:51:36.509382+03:00"
 ---
 
