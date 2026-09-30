@@ -91,15 +91,16 @@ are a subset of that one. An immediate hit is run at capture, never bound
 (CALL-BINDING refuses DNAME-IMM). A record published later in the same body by
 an admitted immediate has index >= POLICY-NDICT and is admitted by the same
 predicate. Hence NCOMP never binds a tape name to a record the seal did not
-admit, and no NDICT caller is gated or special-cased. TIER-1 KEYWORDS:
-HIR-WORD:LOOKUP (hir-word.f:959-969, the one reader ROW-OF/MODELS?/MEANING@
-share; the session table is built once, 1485-1556, so the gate is at read
-time) answers "no row" under the seal for any modeled symbol except CONTROL
-open-if/mid-else/close-if and OPEN-/CLOSE-LOCALS; `begin`, `recurse`, `[:`,
-`[']`, `exit`, `>r`, `case`, `match` then fall to the callable path, find
-nothing and NCOMP refuses the definition (E-HIR-UNMODELED -> `ncomp: cannot
-compile <DEF>`, compiler.f:598, rc 70, fatal before any code runs: probe
-u1b). Top level is the same interpreter at both tiers. No write gate: a
+admit, and no NDICT caller is gated or special-cased. TIER-1 BODIES: the capture loop (CAPTURE-IMMEDIATE) applies tier 0's predicate
+at tier 1's read site. Under the seal a body token is admitted iff it names a
+local declared in the body (checked before LFIND; a matched `{:` group is
+recorded at capture by tier 0's store, C-LBRACE-STORE-ONE), LFIND or the
+LFINDUSED probe hits a record LPOLICYREC admits, LNUM accepts it, or it spells
+one of the span's body keywords; anything else is LPOLICY at the token. So
+`begin`, `recurse`, `[:`, `[']`, `[char]`, `exit`, `>r`, `do`, `case`, `[`,
+`postpone`, a self-call and an undefined name are 105 at the token at both
+tiers, and hir-word.f is unchanged. Every new branch sits behind a
+POLICY-NDICT-CELL load, so unsealed capture is unchanged. Top level is the same interpreter at both tiers. No write gate: a
 definition lands where `package` puts it and is admitted by index; reopening a
 dependency exposes only gated records and can add only words made of admitted
 words; system packages keep C-PACKAGE-SEAL-GUARD (8171). No globals, no
@@ -133,14 +134,21 @@ visibility (no DNAME-INT, not OWNER-API-PRI-WID, nonzero start), and by baked
 spelling span for keywords; the engine reads the seal for every source token
 at both tiers and the tier-1 dialect table reads it for modeled symbols; the
 native compiler's own name resolution is never gated. (3) one located
-diagnostic and rc 105 for every engine refusal; a sealed undefined token
-shares it; tier-1 pure keywords and a tier-1 self-call are refused by NCOMP or
-the checker with their own lines and rc 70, fatal. (4) `using`, `package`
+diagnostic and rc 105 for every engine refusal, at both tiers; a sealed
+undefined token shares it. (4) `using`, `package`
 (new or reopened) stay legal and harmless; no write gate. (5) the
-definition-name guard follows the seal: `: begin` is `not in vocabulary:
-begin` at both tiers (the guard runs in C-QUALIFY-DEF before the tier fork,
-habu2.f:3586, 8000-8020). (6) at tier 1 a local may not spell a non-admitted
-word (`{: type :}` is refused at capture); a restriction, not a bypass. (7)
+definition-name guard follows the seal: under it a definition name that any
+row the emitter dispatches would match is refused at the name, before the tier
+fork (C-QUALIFY-DEF), at both tiers: a row outside the span is `not in
+vocabulary: <name>` 105 (`: begin`, `: dup`, `: create`, `: tuck`), one inside
+keeps E-RESERVED-DEFINITION 70 (`: if`, `: package`). The walk covers the union
+of the interpret, compile, string, op and pass-2 width rows and is generated
+from their registrars, so a new row is covered by construction; `policy-admit`
+runs the same walk over the public wordlist it admits and refuses a package
+that publishes such a name: `hb: policy: package <name> publishes keyword
+<word>`, 105. (6) locals are matched before any lookup at both tiers, so
+`{: type:n :} type` is legal at both; at capture a local declared anywhere in
+the body is admitted, and block scope stays NCOMP's own check. (7)
 load form: the harness's own word admits, seals and `included`s the design
 path from the script arguments; no policy-file token is read after the seal.
 (8) x86-64: kernel-x64.f registers the two prims as REFUSE rows (krait). (9)
@@ -200,15 +208,22 @@ stdout at either tier — the engine's first leg is PDEP's public STEP, which is
 internal, so LPOLICYREC refuses it at EM-COMPILE-CALL (tier 0) and at capture
 (tier 1); without clause (ii) tier 1 would capture the token, NDICT would skip
 the internal record and bind PFOREIGN:STEP, and the run would print 2.
-Tier-split: begin.f (`: SPIN ( -- ) begin again ;`), recurse.f (`: R2 ( -- )
-recurse ;`), quote.f (`: Q ( -- [ -- ] ) [: ;] ;`), btick.f (`: T ( -- [ -- n ]
-) ['] PDEP:ANSWER ;`) are 105 at the keyword at tier 0 and, at tier 1, rc 70
-with stderr containing `ncomp: cannot compile <DEF>` and no stdout (unsealed
-all four compile at tier 1: probes); self.f (`: R ( -- ) R ;`) is `R` 105 at 1
-at tier 0 and, at tier 1, rc 70 with stderr containing `undefined word 'R'`
-(the checker, probe self1). Harness-level: allow-sealed-admit.f (RUN seals
+Refused in a body at both tiers, 105 at the token on line 2: begin.f (`: SPIN ( -- ) begin
+again ;`) `begin`, recurse.f `recurse`, quote.f `[:`, btick.f `[']`,
+char-literal.f `[char]`, self.f (`: R ( -- ) R ;`) `R`, exit.f `exit`,
+bracket.f `[`, postpone.f `postpone`, rstack.f `>r`, do.f `do`. local-name.f
+(`: LT ( n -- n ) {: type:n :} type ;` / `42 LT PDEP:SHOW`) prints 42, rc 0,
+at both tiers. Definition names, both tiers: own-keyword.f `dup` 105 at 4;
+defname-interpret.f (`: create ( -- ) ;`) `create` 105 at 2; defname-p2.f
+(`: tuck ( -- n ) 5 ;`) `tuck` 105 at 2; defname-span.f (`: package ( -- ) ;`)
+rc 70 with first line `hb: compile keyword cannot be a definition name:
+package`. Harness-level: allow-sealed-admit.f (RUN seals
 then ALLOWs) `hb: policy: sealed`, rc 105; allow-no-package.f (`s" NOPE"
-POLICY:ALLOW`) `hb: policy: no package NOPE`, rc 105. Unsealed smoke: `bin/hb
+POLICY:ALLOW`) `hb: policy: no package NOPE`, rc 105; allow-seal-twice.f
+(ALLOW, SEAL, SEAL) `hb: policy: sealed`, rc 105; allow-keyword-package.f
+(admits a package `PKW` whose public words include `DUP`) `hb: policy: package
+PKW publishes keyword DUP`, rc 105, and the same for a package publishing
+`TUCK`. Unsealed smoke: `bin/hb
 --load lib/policy.f test/policy/dep.f test/policy/foreign.f test/policy/ok.f`
 prints 42 and 5, rc 0; `bin/hb --load test/run.f` unchanged,
 test/compiler/native-dead-path.f and native-internal-call.f included.
@@ -217,13 +232,14 @@ Files: lib/policy.f, lib/policy-test.f, test/policy/ (dep.f, foreign.f,
 allow.f, allow-tier1.f, allow-sealed-admit.f, allow-no-package.f, one file
 per case), docs/policy.md, docs/forth.md Packages paragraph (one bullet),
 test/gate-stdlib-cases.f (`SUITE policy lib/policy-test.f ;SUITE`),
-src/compiler/native/hir-word.f (LOOKUP). Engine: src/habu/layout.f +
-data-claims.f (three claim rows: watermark, bitmap, EXIT-HOOK-CELL),
+docs/stdlib.md (Layout, storage class, `## Sealed vocabulary`). Engine:
+src/habu/layout.f + data-claims.f (three claim rows: watermark, bitmap, EXIT-HOOK-CELL),
 src/core/engine-error.f + engine-error-effects.f (`105 constant POLICY`, its
 TRUST row), src/habu/prims.f (two EPRIM rows), src/habu/habu1.f (two prim
-bodies), src/habu/habu2.f (KWDATA span + LKWDESIGNEND, LKWCMP, LPOLICYREC +
-its calls, the sealed LFINDUSED probe in CAPTURE-IMMEDIATE, LPOLICY, LUNDEF
-head), src/habu/kernel-x64.f (two REFUSE rows).
+bodies, the admit-time keyword walk), src/habu/habu2.f (KWDATA span +
+LKWDESIGNEND, LKWCMP, LPOLICYREC + its calls, the capture predicate and `{:`
+recorder in CAPTURE-IMMEDIATE, the generated row walk and its registrar
+prologues, LPOLICY, LUNDEF head), src/habu/kernel-x64.f (two REFUSE rows).
 
 Verify: `bin/hb --load lib/policy-test.f` (both tiers, artifact
 build/policy-run.txt); `bin/hb --load test/run.f`; the fixpoint refresh
@@ -234,7 +250,6 @@ because layout cells, KWDATA order and prim rows change; the unsealed smoke;
 Depends: none. C2 is not a prerequisite.
 
 Ownership: lib/policy*.f, test/policy/, docs/policy.md, the forth.md bullet,
-gate-stdlib-cases.f: this dot's worker; hir-word.f: the worker, reviewed by
-the native-compiler owner. layout.f, data-claims.f, habu1.f, habu2.f, prims.f,
+docs/stdlib.md, gate-stdlib-cases.f: this dot's worker. layout.f, data-claims.f, habu1.f, habu2.f, prims.f,
 engine-error*.f: alder reviews and integrates, and that engine lands before
 lib/policy.f is written. kernel-x64.f REFUSE rows: krait. Claim: agent=zephyr workspace=.jj-ws/policy-seal.
