@@ -11,8 +11,8 @@
 \ the algorithm keeps indices in bounds; len <= 1 is a no-op. Core + float deps.
 \
 \ The module lives in `package SORT`. External callers use the qualified public
-\ API (SORT:SORT!, SORT:FSORT!, and SORT:FX@ for the float-cell read that
-\ lib/stats.f shares); the heap cursor and sift-down helpers are package-private.
+\ API (SORT:SORT!, SORT:FSORT!, and SORT:FX@, the float-cell read); the heap
+\ cursor and sift-down helpers are package-private.
 
 package SORT
 
@@ -57,7 +57,7 @@ public
       a 0 tail FX-SWAP a tail 0 q HS-SIFT tail 1 -
    repeat drop ;
 
-\ Float-ascending convenience (the percentile/median path in lib/stats.f).
+\ Float-ascending convenience.
 : FSORT! ( ptr r n -- )  [: f< ;] SORT! ;
 
 ;package

@@ -1184,10 +1184,6 @@ SUITE float-sort
    lib/sort-test.f
 ;SUITE
 
-SUITE float-stats
-   lib/stats-test.f
-;SUITE
-
 SUITE hashmap
    lib/hashmap-test.f
 ;SUITE
