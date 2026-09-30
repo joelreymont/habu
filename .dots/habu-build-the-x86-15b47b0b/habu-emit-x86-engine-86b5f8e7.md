@@ -1,6 +1,6 @@
 ---
 title: Emit x86 engine-state bodies
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.586158+03:00"

@@ -30,6 +30,7 @@ require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/habu/primitive-registry.f
 require src/habu/data-bands.f
+require src/habu/snapshot-format.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/arch/x86-64/rt.f
@@ -111,12 +112,24 @@ variable ROW-U
 : REFUSE-HEAD$ ( -- ptr u8 n ) s" hb: " ;
 : REFUSE-TAIL$ ( -- ptr u8 n ) s"  is not in the x86-64 kernel" ;
 
+\ Write the n bytes at the label on fd 2.
+: STDERR-WRITE, ( label n -- ) {: msg:label len:n :}
+   RDI STDERR IMM32,  RSI msg MOVABS,  RDX len IMM32,  NR-WRITE SYS, ;
+
+\ Write the text on fd 2, with no newline, as the ARM64 rows do, and exit n.
+\ The text follows the exit, inside the record.
+: STDERR-EXIT, ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
+   LBL {: msg:label :}
+   msg u STDERR-WRITE,
+   rc EXIT-GROUP,
+   msg LBL,  a u TEXT, ;
+
 \ Name the row on fd 2 and exit REFUSE-RC. The text follows the exit, inside
 \ the record, as src/habu/boot-x64.f FAIL, places its own.
 : REFUSE-BODY ( -- )
    LBL {: msg:label :}
    REFUSE-HEAD$ nip ROW-U @ + REFUSE-TAIL$ nip + 1+ {: len:n :}
-   RDI STDERR IMM32,  RSI msg MOVABS,  RDX len IMM32,  NR-WRITE SYS,
+   msg len STDERR-WRITE,
    REFUSE-RC EXIT-GROUP,
    msg LBL,
    REFUSE-HEAD$ TEXT,  ROW$ TEXT,  REFUSE-TAIL$ TEXT,
@@ -274,10 +287,6 @@ private
 : LIVE-HELPER, ( -- )
    LIVE-LBL LBL,
    TASK-LIVE-RC EXIT-GROUP, ;
-
-\ Write the n bytes at the label on fd 2.
-: STDERR-WRITE, ( label n -- ) {: msg:label len:n :}
-   RDI STDERR IMM32,  RSI msg MOVABS,  RDX len IMM32,  NR-WRITE SYS, ;
 
 \ The machine-stack frame DIAG-U, writes digits into: room for any cell's.
 CELL 4 * constant DIAG-BYTES
@@ -477,15 +486,6 @@ variable FULL-CELL
    next JMP,
    done LBL, ;
 
-\ Name the failure on fd 2 and exit INDEX-RC, with habu1.f's bytes. The text
-\ follows the exit.
-: INDEX-FAIL, ( ptr u8 n -- ) {: a:ptr u:n :}
-   LBL {: msg:label :}
-   RDI STDERR IMM32,  RSI msg MOVABS,  RDX u IMM32,  NR-WRITE SYS,
-   INDEX-RC EXIT-GROUP,
-   msg LBL,
-   a u TEXT, ;
-
 \ WLFIND:LENTRY's twin ( rdi = name, rsi = length, rdx = wid ): rax = the
 \ name's record in that one wordlist, or 0; the record's code cell is its first.
 \ It keeps rdi, rsi and rdx and clobbers rcx and r8-r11. With a table it probes
@@ -634,13 +634,13 @@ variable FULL-CELL
    have LBL,
    REBUILD-LBL JMP,                                    \ its ret is this one's
    fail LBL,
-   s" hb: dictionary index alloc failed" INDEX-FAIL, ;
+   s" hb: dictionary index alloc failed" INDEX-RC STDERR-EXIT, ;
 
 \ HIDX:LFULL's twin: the index cannot be kept, which is loud, never a quiet
 \ fall back to the scan.
 : FULL-HELPER, ( -- )
    FULL-LBL LBL,
-   s" hb: dictionary index exhausted" INDEX-FAIL, ;
+   s" hb: dictionary index exhausted" INDEX-RC STDERR-EXIT, ;
 
 : INDEX-HELPERS, ( -- )
    LBL FIND-CELL !  LBL BUILD-CELL !  LBL ADD-CELL !  LBL REBUILD-CELL !
@@ -1428,7 +1428,7 @@ private
 \ one that fails its admission writes `hb: catch frame corrupt` on fd 2 and
 \ exits ENGINE-ERROR:CATCH-STACK. The text follows the exit.
 : THROW, ( -- )
-   LBL LBL LBL {: none:label corrupt:label msg:label :}
+   LBL LBL {: none:label corrupt:label :}
    RDX DATA-REG HND-CELL MOV-LOAD,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E none JCC,
    corrupt FRAME-OK,
@@ -1436,10 +1436,7 @@ private
    none LBL,
    UNCAUGHT,
    corrupt LBL,
-   RDI STDERR IMM32,  RSI msg MOVABS,  RDX CORRUPT$ nip IMM32,  NR-WRITE SYS,
-   ENGINE-ERROR:CATCH-STACK EXIT-GROUP,
-   msg LBL,
-   CORRUPT$ TEXT, ;
+   CORRUPT$ ENGINE-ERROR:CATCH-STACK STDERR-EXIT, ;
 
 \ finally ( xt xt -- ): run the body under CAUGHT, and then the cleanup outside
 \ it, so the cleanup's throw supersedes the body's; then rethrow the body's
@@ -1724,14 +1721,6 @@ private
 \ The status a refused hook exits with: habu1.f BSETCHECK's.
 70 constant HOOK-BAD-RC
 
-\ Write the text on fd 2, with no newline, as the ARM64 rows do, and exit
-\ HOOK-BAD-RC. The text follows the exit, inside the record.
-: HOOK-DIE, ( ptr u8 n -- ) {: a:ptr u:n :}
-   LBL {: msg:label :}
-   msg u STDERR-WRITE,
-   HOOK-BAD-RC EXIT-GROUP,
-   msg LBL,  a u TEXT, ;
-
 \ Branch to the label unless rax is a live JIT entry, DBASE <= rax < CP,
 \ unsigned: the install window of habu1.f BSETCHECK. It catches a wild
 \ install, not a well-formed pointer into live code.
@@ -1751,7 +1740,7 @@ private
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE done JCC,
    RAX COMPILE-PREFLIGHT-CELL CELL!,
    done JMP,
-   bad LBL,  s" set-check: invalid checker xt" HOOK-DIE,
+   bad LBL,  s" set-check: invalid checker xt" HOOK-BAD-RC STDERR-EXIT,
    done LBL, ;
 
 \ set-preflight ( xt -- ): installs once. With the cell set, the same xt is
@@ -1762,13 +1751,13 @@ private
    RCX COMPILE-PREFLIGHT-CELL CELL@,
    RCX RCX ASM-SINK ENC-TEST-RR  C-E empty JCC,
    RCX RAX ASM-SINK ENC-CMP-RR  C-E done JCC,
-   s" set-preflight: invalid or replaced hook" HOOK-DIE,
+   s" set-preflight: invalid or replaced hook" HOOK-BAD-RC STDERR-EXIT,
    empty LBL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E invalid JCC,
    invalid WINDOW,
    RAX COMPILE-PREFLIGHT-CELL CELL!,
    done JMP,
-   invalid LBL,  s" set-preflight: invalid hook" HOOK-DIE,
+   invalid LBL,  s" set-preflight: invalid hook" HOOK-BAD-RC STDERR-EXIT,
    done LBL, ;
 
 \ set-top-check ( xt -- ): 0 uninstalls; any other xt must lie in the window.
@@ -1780,7 +1769,7 @@ private
    ok LBL,
    RAX TOP-HOOK-CELL CELL!,
    done JMP,
-   bad LBL,  s" set-top-check: invalid top-row hook xt" HOOK-DIE,
+   bad LBL,  s" set-top-check: invalid top-row hook xt" HOOK-BAD-RC STDERR-EXIT,
    done LBL, ;
 
 \ The checker's hooks live in sealed DATA cells, so a direct store from the
@@ -1792,10 +1781,374 @@ private
    s" set-top-check" [: SET-TOP-CHECK-BODY ;] PRIM
    s" top-check@" [: RAX TOP-HOOK-CELL CELL@,  RAX PUSH, ;] PRIM ;
 
+\ ---- the registers and the dictionary count ----------------------------------
+\ The twins of habu1.f BCPFETCH .. BDATAFETCH, BRBASE, BCPSET, BNDSET,
+\ BSEEDNDICTSET and BNDAPPEND. A row that moves r14 keeps the dictionary index
+\ authoritative through the HIDX calls.
+
+5 constant PROT-RX                     \ PROT_READ|PROT_EXEC
+74 constant COUNT-RC                   \ BNDSET's and BSEEDNDICTSET's refusal
+
+\ The twin of habu1.f GUARD-CODE-WORD: a new CP must be a 4-aligned address in
+\ [DBASE + DICT-SIZE, DBASE + REGION - 4], unsigned, or the row exits
+\ SEAL-VIOLATION, so cp! never aims later emission outside the code area. x86
+\ code slots are SP-ALIGN multiples, so the alignment refuses only a wild CP.
+\ It clobbers rax.
+: CODE-WORD-GUARD, ( r64 -- ) {: at:r64 :}
+   LBL LBL {: ok:label trap:label :}
+   RAX DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
+   at RAX ASM-SINK ENC-CMP-RR  C-B trap JCC,
+   RAX DBASE-REG REGION 4 - MEM-OFF ASM-SINK ENC-LEA
+   at RAX ASM-SINK ENC-CMP-RR  C-A trap JCC,
+   at 3 >IMM32 ASM-SINK ENC-TEST-RI32  C-E ok JCC,
+   trap LBL,
+   ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
+   ok LBL, ;
+
+\ Guard the DREC bytes of record n, n the top of the data stack, which stays:
+\ the record a new count points the next write at, as habu1.f BNDSET guards
+\ it. It clobbers what PROT-SPAN-CALL, clobbers.
+: RECORD-GUARD, ( -- )
+   RAX 0 PEEK,
+   RDI RAX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RDI DBASE-REG ASM-SINK ENC-ADD-RR
+   RSI DREC IMM32,
+   RDI RSI PROT-SPAN-CALL, ;
+
+\ Exit SEAL-VIOLATION when rax, a count, lies below the floor SEAL-CAPTURE
+\ recorded; 0 is no floor. It clobbers rcx.
+: FLOOR-GUARD, ( -- )
+   LBL {: ok:label :}
+   RCX SEAL-NDICT-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E ok JCC,
+   RAX RCX ASM-SINK ENC-CMP-RR  C-AE ok JCC,
+   ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
+   ok LBL, ;
+
+\ ndict! ( n -- ): a count past DICT-CAP, unsigned, writes `hb: dictionary
+\ count out of range` and exits COUNT-RC; one below the seal floor exits
+\ SEAL-VIOLATION. A lowered count keeps the index, whose probe skips a record
+\ at or past the count; a raised one re-exposes records whose slots a later
+\ insert may have reused, so the index is rebuilt over the raised count.
+: NDICT-SET-BODY ( -- )
+   LBL LBL {: bounded:label done:label :}
+   TASK-LIVE-GUARD,
+   RAX 0 PEEK,
+   RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-BE bounded JCC,
+   s" hb: dictionary count out of range" COUNT-RC STDERR-EXIT,
+   bounded LBL,
+   RECORD-GUARD,
+   RAX POP,
+   FLOOR-GUARD,
+   RAX NDICT-REG ASM-SINK ENC-CMP-RR
+   NDICT-REG RAX ASM-SINK ENC-MOV-RR                   \ mov keeps the flags
+   C-LE done JCC,
+   HIDX-REBUILD,
+   done LBL, ;
+
+\ seed-ndict! ( n -- ): lower the count below the live one, rebuild the index
+\ and clear the seal floor, which the native builder's trusted reset opens.
+\ A negative count or one that does not lower exits COUNT-RC.
+: SEED-NDICT-BODY ( -- )
+   LBL LBL {: lower:label bad:label :}
+   TASK-LIVE-GUARD,
+   RAX 0 PEEK,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-L bad JCC,
+   RAX NDICT-REG ASM-SINK ENC-CMP-RR  C-L lower JCC,
+   bad LBL,
+   COUNT-RC EXIT-GROUP,
+   lower LBL,
+   RECORD-GUARD,
+   NDICT-REG POP,
+   HIDX-REBUILD,
+   RAX ZERO-REG,  RAX SEAL-NDICT-CELL CELL!, ;
+
+\ ndict-append ( n -- ): count the native tier's pending record, which must
+\ be record n at the count, or its does> companion one record past it while
+\ a does> body is pending, and index it. Anything else, or a count below the
+\ seal floor, exits SEAL-VIOLATION.
+: NDICT-APPEND-BODY ( -- )
+   LBL LBL LBL {: owner:label bad:label done:label :}
+   TASK-LIVE-GUARD,
+   RAX 0 PEEK,
+   RAX NDICT-REG ASM-SINK ENC-CMP-RR  C-NE bad JCC,
+   RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-AE bad JCC,
+   RCX NCOMP-DISPATCH:DEF-TIER-CELL CELL@,
+   RCX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE bad JCC,
+   RDX RAX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RDX DBASE-REG ASM-SINK ENC-ADD-RR                   \ rdx = record n
+   RCX PEND-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E bad JCC,
+   RCX RDX ASM-SINK ENC-CMP-RR  C-E owner JCC,
+   RCX DREC >IMM8 ASM-SINK ENC-ADD-RI8
+   RCX RDX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
+   RCX DOESB-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-LE bad JCC,
+   owner LBL,
+   FLOOR-GUARD,
+   RECORD-GUARD,
+   DROP,
+   NDICT-REG ASM-SINK ENC-INC
+   HIDX-ADD,
+   done JMP,
+   bad LBL,
+   ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
+   done LBL, ;
+
+: DICT-COUNT, ( -- )
+   s" cp@" [: CP-REG PUSH, ;] PRIM
+   s" dbase@" [: DBASE-REG PUSH, ;] PRIM
+   s" data-base" [: DATA-REG PUSH, ;] PRIM
+   s" rbase" [: RAX RBASE-CELL CELL@,  RAX PUSH, ;] PRIM
+   s" ndict@" [: NDICT-REG PUSH, ;] PRIM
+   s" cp!" [:
+      TASK-LIVE-GUARD,  RCX POP,  RCX CODE-WORD-GUARD,
+      CP-REG RCX ASM-SINK ENC-MOV-RR ;] PRIM
+   s" ndict!" [: NDICT-SET-BODY ;] PRIM
+   s" seed-ndict!" [: SEED-NDICT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" ndict-append" [: NDICT-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+
+\ ---- the seal ----------------------------------------------------------------
+\ The twins of habu1.f BSEALCAP, BSEALCAPQ and BSEALFRIEND and habu2.f
+\ BDRAINPRETRUST. The pending pre-trust defer table at PD-TABLE-OFF is a count
+\ and PD-SLOT byte slots, each a name and a signature with their lengths.
+
+73 constant UNDRAINED-RC               \ habu1.f BSEALCAP's
+70 constant REGISTRAR-RC               \ habu2.f DEF-TRUST:FIND's
+
+: PD-COUNT ( -- mem ) DATA-REG PD-TABLE-OFF MEM-OFF ;
+
+\ r8 = the base of the pending slot whose index rcx holds.
+: SLOT-BASE, ( -- )
+   R8 RCX PD-SLOT >IMM32 ASM-SINK ENC-IMUL-RRI32
+   R8 DATA-REG R8 1 PD-TABLE-OFF PD-SLOTS-REL + MEM-IDX ASM-SINK ENC-LEA ;
+
+: UNDRAINED$ ( -- ptr u8 n ) s" hb: undrained pre-trust defer: " ;
+
+\ SEAL-CAPTURE ( -- ): record the count as the seal floor. The pending table
+\ must be empty by then, since checker.f drains it after `: TRUST`; a pending
+\ defer means the drain never ran, so each is named on fd 2, one per line, and
+\ the row exits UNDRAINED-RC. The walk lives in r8-r10, which a syscall keeps.
+: SEAL-CAPTURE-BODY ( -- )
+   LBL LBL LBL {: next:label stop:label drained:label :}
+   LBL LBL {: head:label nl:label :}
+   R9 PD-COUNT ASM-SINK ENC-MOV-RM                     \ r9 = the count
+   R9 R9 ASM-SINK ENC-TEST-RR  C-E drained JCC,
+   R10 ZERO-REG,                                       \ r10 = the slot
+   next LBL,
+   R10 R9 ASM-SINK ENC-CMP-RR  C-GE stop JCC,
+   RCX R10 ASM-SINK ENC-MOV-RR  SLOT-BASE,
+   head UNDRAINED$ nip STDERR-WRITE,
+   RDI STDERR IMM32,
+   RSI R8 PD-NAME-OFF MEM-OFF ASM-SINK ENC-LEA
+   RDX R8 PD-NLEN-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   NR-WRITE SYS,
+   nl 1 STDERR-WRITE,
+   R10 ASM-SINK ENC-INC
+   next JMP,
+   stop LBL,
+   UNDRAINED-RC EXIT-GROUP,
+   head LBL,  UNDRAINED$ TEXT,
+   nl LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE
+   drained LBL,
+   NDICT-REG SEAL-NDICT-CELL CELL!, ;
+
+\ rax = the target checker's operation at offset n of its record, the twin of
+\ habu2.f DECL-OWNER:TARGET: with no record or no operation it branches to the
+\ label.
+: DECL-TARGET, ( n label -- ) {: off:n absent:label :}
+   RAX NCOMP-DISPATCH:TARGET-DECL-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E absent JCC,
+   RAX RAX off MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E absent JCC, ;
+
+\ r8 = the top pending slot's base. The count is read again from DATA each
+\ time, since a checker call keeps no scratch register. It clobbers rcx.
+: TOP-SLOT, ( -- )
+   RCX PD-COUNT ASM-SINK ENC-MOV-RM
+   RCX ASM-SINK ENC-DEC
+   SLOT-BASE, ;
+
+\ Push a string of the slot at r8: the address of its bytes, at the first
+\ offset, and its length, the cell at the second.
+: PUSH-SLOT, ( n n -- ) {: at:n len:n :}
+   RCX R8 at MEM-OFF ASM-SINK ENC-LEA  RCX PUSH,
+   RCX R8 len MEM-OFF ASM-SINK ENC-MOV-RM  RCX PUSH, ;
+
+\ DRAIN-PRETRUST ( -- ): replay the table from the top: the target checker's
+\ trust-decl with the slot's name and signature, then its checker-defer with
+\ the name, then drop the slot. No trust-decl exits REGISTRAR-RC naming it on
+\ fd 2; no checker-defer ends the drain with the slot still pending, as the
+\ ARM64 twin does.
+: DRAIN-BODY ( -- )
+   LBL LBL LBL {: next:label absent:label done:label :}
+   next LBL,
+   RCX PD-COUNT ASM-SINK ENC-MOV-RM
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   NCOMP-DISPATCH:DECL-EFFECT-OFF absent DECL-TARGET,
+   TOP-SLOT,
+   PD-NAME-OFF PD-NLEN-OFF PUSH-SLOT,
+   PD-SIG-OFF PD-SLEN-OFF PUSH-SLOT,
+   RAX ASM-SINK ENC-CALL-REG
+   NCOMP-DISPATCH:DECL-DEFER-OFF done DECL-TARGET,
+   TOP-SLOT,
+   PD-NAME-OFF PD-NLEN-OFF PUSH-SLOT,
+   RAX ASM-SINK ENC-CALL-REG
+   RCX PD-COUNT ASM-SINK ENC-MOV-RM
+   RCX ASM-SINK ENC-DEC
+   RCX PD-COUNT ASM-SINK ENC-MOV-MR
+   next JMP,
+   absent LBL,
+   s" trust-decl" REGISTRAR-RC STDERR-EXIT,
+   done LBL, ;
+
+: SEAL-ROWS, ( -- )
+   s" SEAL-CAPTURE" [: SEAL-CAPTURE-BODY ;] PRIM
+   \ -1 when the floor is set: neg sets CF for a nonzero rax, sbb spreads it.
+   s" seal-captured?" [:
+      RAX SEAL-NDICT-CELL CELL@,
+      RAX ASM-SINK ENC-NEG  RAX RAX ASM-SINK ENC-SBB-RR  RAX PUSH, ;] PRIM
+   s" SEAL-FRIEND" [: RAX FRIEND-ARENA-LEN IMM32,  RAX FRIEND-LATCH-CELL CELL!, ;] PRIM
+   s" DRAIN-PRETRUST" [: DRAIN-BODY ;] PRIM ;
+
+\ ---- wordlists and record marks ----------------------------------------------
+\ The twins of habu1.f BWORDLIST, BGETCUR, BSETCUR, BPROTWIDADD, BPROTWIDROOM
+\ and BWIDEMARK.
+
+\ The twin of habu1.f PROT-BITS-ADDR, over the wid in rdi, which must lie
+\ below PROT-WID-MAX: rsi = the protected-WID bitmap's cell holding its bit,
+\ rdx = the bit. It clobbers rcx; shl takes its count mod 64, the wid's low
+\ six bits.
+: PROT-BITS, ( -- )
+   RSI RDI ASM-SINK ENC-MOV-RR
+   RSI 6 >IMM8 ASM-SINK ENC-SHR-RI8
+   RSI DATA-REG RSI CELL PROT-BITS-OFF MEM-IDX ASM-SINK ENC-LEA
+   RCX RDI ASM-SINK ENC-MOV-RR
+   RDX 1 IMM32,  RDX ASM-SINK ENC-SHL-CL ;
+
+\ prot-wid-add ( n -- ): protect the wid, once. The two engine-reserved wids
+\ are protected already, as habu1.f LPROTWIDQ pins them, and a set bit is
+\ left alone; a wid at or above PROT-WID-MAX has no bit, so it writes `hb:
+\ protected-WID id above the bound` and exits SEAL-PACKAGE rather than write
+\ past the band. The set bit is published by a plain store, which x86-64 total
+\ store order releases as habu1.f's STLR does.
+: PROT-WID-ADD-BODY ( -- )
+   LBL LBL {: bounded:label done:label :}
+   RDI POP,
+   RDI OWNER-API-PUB-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E done JCC,
+   RDI OWNER-API-PRI-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E done JCC,
+   RDI PROT-WID-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-B bounded JCC,
+   s" hb: protected-WID id above the bound" ENGINE-ERROR:SEAL-PACKAGE STDERR-EXIT,
+   bounded LBL,
+   PROT-BITS,
+   RAX RSI MEM-AT ASM-SINK ENC-MOV-RM
+   RAX RDX ASM-SINK ENC-TEST-RR  C-NE done JCC,
+   RAX RDX ASM-SINK ENC-OR-RR
+   RAX RSI MEM-AT ASM-SINK ENC-MOV-MR
+   done LBL, ;
+
+\ prot-wid-room ( -- n ): PROT-WID-MAX less WIDN-CELL, or 0 once WIDN-CELL
+\ reaches the bound.
+: PROT-WID-ROOM-BODY ( -- )
+   RCX ZERO-REG,
+   RAX PROT-WID-MAX IMM32,
+   RAX DATA-REG WIDN-CELL MEM-OFF ASM-SINK ENC-SUB-RM
+   RAX RAX ASM-SINK ENC-TEST-RR
+   C-L RAX RCX ASM-SINK ENC-CMOVCC
+   RAX PUSH, ;
+
+\ wide-mark ( -- ): set DNAME-WIDE on the newest record, r14 - 1, between two
+\ flips of its pages, read/write and then back to read/execute, as habu1.f
+\ BWIDEMARK brackets its store with LPROTREC.
+: WIDE-MARK-BODY ( -- )
+   R8 NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   R8 DBASE-REG R8 1 DREC negate MEM-IDX ASM-SINK ENC-LEA
+   R8 PROT-RW PROT-REC,
+   RAX DNAME-WIDE IMM64,
+   RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
+   R8 PROT-RX PROT-REC, ;
+
+: WORDLIST-ROWS, ( -- )
+   s" wordlist" [:
+      RAX WIDN-CELL CELL@,  RAX PUSH,
+      RAX ASM-SINK ENC-INC  RAX WIDN-CELL CELL!, ;] PRIM
+   s" get-current" [: RAX CUR-CELL CELL@,  RAX PUSH, ;] PRIM
+   s" set-current" [: RAX POP,  RAX CUR-CELL CELL!, ;] PRIM
+   s" prot-wid-add" [: PROT-WID-ADD-BODY ;] PRIM
+   s" prot-wid-room" [: PROT-WID-ROOM-BODY ;] PRIM
+   s" wide-mark" [: WIDE-MARK-BODY ;] PRIM ;
+
+\ ---- persisted cells, the tier and the build scope ---------------------------
+\ The x86-64 image has a fixed region and DATA, and its restore is the ordinary
+\ boot, so it keeps no address-cell table: xt! and ptr-cell-mark guard the
+\ cell and declare nothing, addr-cells-abi answers 0, and snap-rebase, which
+\ moves a restored snapshot's cells, refuses. The twins of habu2.f
+\ SNAP-RELOC:BXTSTORE, BPTRCELLMARK, BVERSION and BSNAPSHOTFORMAT and habu1.f
+\ BBUILDENTER, BBUILDLEAVE, BSETTIER, BTIERFETCH and BCODEORIGIN.
+
+: TIER-OFF ( -- n ) NCOMP-DISPATCH:TIER-CELL ;
+: DEPTH-OFF ( -- n ) NCOMP-DISPATCH:BUILD-DEPTH-CELL ;
+: SAVED-OFF ( -- n ) NCOMP-DISPATCH:BUILD-TIER-CELL ;
+
+\ executable-build-enter ( -- ): open a build scope. The outermost saves the
+\ caller's tier; every scope selects tier 1.
+: BUILD-ENTER-BODY ( -- )
+   LBL {: nested:label :}
+   RAX DEPTH-OFF CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE nested JCC,
+   RCX TIER-OFF CELL@,  RCX SAVED-OFF CELL!,
+   nested LBL,
+   RAX ASM-SINK ENC-INC  RAX DEPTH-OFF CELL!,
+   RAX 1 IMM32,  RAX TIER-OFF CELL!, ;
+
+\ executable-build-leave ( -- ): close a scope. The outermost restores the
+\ saved tier and clears the copy; with no scope open it does nothing.
+: BUILD-LEAVE-BODY ( -- )
+   LBL {: done:label :}
+   RAX DEPTH-OFF CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RAX ASM-SINK ENC-DEC
+   RAX DEPTH-OFF CELL!,                               \ mov keeps dec's flags
+   C-NE done JCC,
+   RCX SAVED-OFF CELL@,  RCX TIER-OFF CELL!,
+   RAX SAVED-OFF CELL!,
+   done LBL, ;
+
+\ set-tier ( n -- ): x86-64 has no tier-0 compiler, so 1 is the one tier it
+\ selects; any other writes `set-tier: x86-64 runs tier 1 only` and exits
+\ HOOK-BAD-RC, as habu1.f BSETTIER refuses a tier past 1.
+: SET-TIER-BODY ( -- )
+   LBL LBL {: bad:label done:label :}
+   RAX POP,
+   RAX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE bad JCC,
+   RAX TIER-OFF CELL!,
+   done JMP,
+   bad LBL,
+   s" set-tier: x86-64 runs tier 1 only" HOOK-BAD-RC STDERR-EXIT,
+   done LBL, ;
+
+: SCOPE-ROWS, ( -- )
+   s" xt!" [:
+      0 CELL SIZED-GUARD,  RCX POP,  RAX POP,
+      RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;] PRIM
+   s" ptr-cell-mark" [: 0 CELL SIZED-GUARD,  DROP, ;] PRIM
+   s" addr-cells-abi" [: RAX ZERO-REG,  RAX PUSH, ;] PRIM
+   s" snapshot-format" [: RAX SNAPSHOT-FORMAT:VERSION IMM32,  RAX PUSH, ;] PRIM
+   s" snap-rebase" REFUSE
+   s" executable-build-enter" [: BUILD-ENTER-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" executable-build-leave" [: BUILD-LEAVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" set-tier" [: SET-TIER-BODY ;] PRIM
+   s" tier@" [: RAX TIER-OFF CELL@,  RAX PUSH, ;] PRIM
+   \ The code's origin is unknown (-1, as code-origin.f LQUERY answers) until
+   \ the provenance band's query lands here.
+   s" code-origin" [:
+      DROP,  DROP,  RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32  RAX PUSH, ;] PRIM ;
+
 public
 
 : ENGINE-STATE, ( -- )
-   HEAP,  PRINTERS,  HOOKS, ;
+   HEAP,  PRINTERS,  HOOKS,
+   DICT-COUNT,  SEAL-ROWS,  WORDLIST-ROWS,  SCOPE-ROWS, ;
 
 \ ---- FFI rows ----------------------------------------------------------------
 \ The twins of habu1.f BFFI-CALL, BFFI-CALL-N and BFFI-CALL-BOUNDED: integer

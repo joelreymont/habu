@@ -37,7 +37,30 @@
 \   code window's edges and exits 0;
 \ - hb-x64-kernel-hooks-check, -top, -replaced and -empty each end in one
 \   hook row's fd-2 refusal and exit 70.
+\
+\ The register, dictionary, seal, wordlist and scope rows, the same way:
+\ - hb-x64-kernel-state reads the boot's registers and DATA cells through the
+\   getters and counts wordlists, and exits 0;
+\ - hb-x64-kernel-cp moves CP to both bounds of the code area and back, and
+\   -cp-low, -cp-high and -cp-odd each refuse one CP with 83;
+\ - hb-x64-kernel-ndict lowers and raises the count over an index, and exits
+\   0; -ndict-cap admits DICT-CAP and exits 74 with the fd-2 text for one
+\   more, and -ndict-floor exits 83 below the seal floor;
+\ - hb-x64-kernel-seed-ndict lowers through the floor and exits 0, and
+\   -seed-ndict-high exits 74;
+\ - hb-x64-kernel-append publishes a pending record and its does> companion
+\   and exits 0, and -append-foreign exits 83;
+\ - hb-x64-kernel-seal exits 0; -seal-undrained names two pending defers on
+\   fd 2 and exits 73;
+\ - hb-x64-kernel-drain replays two pending defers through the target
+\   checker's routines, which write them on fd 1, and exits 0;
+\   -drain-unset writes `trust-decl` on fd 2 and exits 70;
+\ - hb-x64-kernel-prot-wid, -wide-mark, -xt-store, -tier and -scope exit 0;
+\   -prot-wid-bound exits 84 with its fd-2 text, -xt-store-armed and
+\   -mark-armed exit 83, -tier-zero exits 70 with its fd-2 text, and
+\   -snap-rebase exits 76 with the REFUSE text.
 \ The host checks each image's ELF header; running them is the peer's.
+require src/habu/snapshot-format.f
 require test/x86-64-boot-harness.f
 
 package X64K-ENGINE
@@ -260,6 +283,301 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    0 X64HARNESS:PUSH,  s" set-preflight" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ ---- engine state ------------------------------------------------------------
+40 constant FIRST-WID                  \ WIDN-CELL before the first wordlist
+
+\ The getters answer what the boot published, and wordlist counts WIDN-CELL.
+: BUILD-STATE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   s" cp@" ROW  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
+   s" dbase@" ROW  0 X64HARNESS:EXPECT-POP-REGION,
+   s" data-base" ROW  0 X64HARNESS:EXPECT-POP-DATA,
+   s" rbase" ROW  CODE-OFF REGION-OFF - X64HARNESS:EXPECT-POP-REGION,
+   s" ndict@" ROW  0 X64HARNESS:EXPECT-POP,
+   FIRST-WID WIDN-CELL X64HARNESS:CELL!,
+   s" wordlist" ROW  s" wordlist" ROW
+   FIRST-WID 1+ X64HARNESS:EXPECT-POP,  FIRST-WID X64HARNESS:EXPECT-POP,
+   FIRST-WID 2 + WIDN-CELL X64HARNESS:EXPECT-CELL,
+   OTHER-WID X64HARNESS:PUSH,  s" set-current" ROW
+   s" get-current" ROW  OTHER-WID X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ Boot, call one row and close: for a row that ends the image itself.
+: BUILD-CALL ( ptr u8 n ptr u8 n -- ) {: row:ptr rowu:n path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   row rowu ROW
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ ---- the code pointer --------------------------------------------------------
+: CP!, ( n -- ) X64HARNESS:PUSH-REGION,  s" cp!" ROW ;
+
+\ cp! admits a 4-aligned CP in [DICT-SIZE, REGION - 4] of the region, both
+\ bounds included, and cp@ reads each back.
+: BUILD-CP ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   REGION 4 - CP!,  s" cp@" ROW  REGION 4 - X64HARNESS:EXPECT-POP-REGION,
+   DICT-SIZE 64 + CP!,  s" cp@" ROW  DICT-SIZE 64 + X64HARNESS:EXPECT-POP-REGION,
+   DICT-SIZE CP!,  s" cp@" ROW  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ One refused CP, n bytes into the region: the row exits 83.
+: BUILD-CP-BAD ( n ptr u8 n -- ) {: at:n path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   at CP!,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ ---- the dictionary count ----------------------------------------------------
+: NDICT!, ( n -- ) X64HARNESS:PUSH,  s" ndict!" ROW ;
+: NDICT?, ( n -- ) s" ndict@" ROW  X64HARNESS:EXPECT-POP, ;
+
+\ Lowering the count hides the records past it. Raising it rebuilds the index,
+\ so delta, written while the count was low and never indexed, is found, and
+\ LONG$, whose record delta overwrote, is not.
+: BUILD-NDICT ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   SEED,  X64KERNEL:HIDX-BUILD,
+   5 NDICT?,
+   2 NDICT!,  2 NDICT?,
+   s" secret" OWNER-API-PRI-WID XREF,  0 X64HARNESS:EXPECT-POP,
+   s" delta" 0 0 X64HARNESS:RECORD,                      \ record 2
+   2 NDICT!,  3 NDICT!,
+   s" delta" 0 SEARCH,  3 X64HARNESS:EXPECT-POP,
+   LONG-UPPER$ 0 SEARCH,  0 X64HARNESS:EXPECT-POP,
+   5 NDICT!,
+   s" secret" OWNER-API-PRI-WID XREF,  3 X64HARNESS:EXPECT-ROW,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ DICT-CAP is a count ndict! admits; one more exits 74 with the ARM64 text.
+: BUILD-NDICT-CAP ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   DICT-CAP NDICT!,  DICT-CAP NDICT?,
+   DICT-CAP 1+ NDICT!,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ Below the floor SEAL-CAPTURE records, ndict! exits 83.
+: BUILD-NDICT-FLOOR ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   SEED,  s" SEAL-CAPTURE" ROW
+   4 NDICT!,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: SEED-NDICT!, ( n -- ) X64HARNESS:PUSH,  s" seed-ndict!" ROW ;
+
+\ seed-ndict! lowers the count through the seal floor and clears the floor.
+: BUILD-SEED-NDICT ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   SEED,  X64KERNEL:HIDX-BUILD,  s" SEAL-CAPTURE" ROW
+   2 SEED-NDICT!,  2 NDICT?,
+   0 SEAL-NDICT-CELL X64HARNESS:EXPECT-CELL,
+   s" alpha" OTHER-WID SEARCH,  2 X64HARNESS:EXPECT-POP,
+   LONG$ 0 SEARCH,  0 X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ A count that does not lower the live one exits 74.
+: BUILD-SEED-NDICT-HIGH ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   SEED,  5 SEED-NDICT!,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ ---- native publication ------------------------------------------------------
+: APPEND, ( n -- ) X64HARNESS:PUSH,  s" ndict-append" ROW ;
+
+\ Record 5, delta, written and pending but not counted, under the native tier.
+: PENDING, ( -- )
+   SEED,  X64KERNEL:HIDX-BUILD,
+   1 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:CELL!,
+   5 DREC * PEND-CELL X64HARNESS:REGION-ADDR!,
+   s" delta" 0 0 X64HARNESS:RECORD,  5 NDICT!, ;
+
+\ ndict-append counts the pending record and then, with a does> body pending,
+\ its companion one record past it; the index learns each as it lands.
+: BUILD-APPEND ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   PENDING,
+   5 APPEND,  6 NDICT?,
+   s" delta" 0 SEARCH,  6 X64HARNESS:EXPECT-POP,
+   1 DOESB-CELL X64HARNESS:CELL!,
+   s" echo" 0 0 X64HARNESS:RECORD,  6 NDICT!,
+   6 APPEND,  7 NDICT?,
+   s" echo" 0 SEARCH,  7 X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ The companion's place with no does> body pending exits 83.
+: BUILD-APPEND-FOREIGN ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   PENDING,  6 NDICT!,  6 APPEND,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ ---- the seal ----------------------------------------------------------------
+: BUILD-SEAL ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   s" seal-captured?" ROW  0 X64HARNESS:EXPECT-POP,
+   SEED,  s" SEAL-CAPTURE" ROW
+   5 SEAL-NDICT-CELL X64HARNESS:EXPECT-CELL,
+   s" seal-captured?" ROW  -1 X64HARNESS:EXPECT-POP,
+   s" SEAL-FRIEND" ROW
+   FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:EXPECT-CELL,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ Slot n of the pending pre-trust defer table.
+: SLOT ( n -- n ) PD-SLOT * PD-TABLE-OFF PD-SLOTS-REL + + ;
+
+\ Stage a pending defer's name and signature in slot n.
+: DEFER-SLOT, ( ptr u8 n ptr u8 n n -- ) {: na:ptr nu:n sa:ptr su:n ix:n :}
+   nu ix SLOT PD-NLEN-OFF + X64HARNESS:CELL!,
+   na nu ix SLOT PD-NAME-OFF + X64HARNESS:TEXT!,
+   su ix SLOT PD-SLEN-OFF + X64HARNESS:CELL!,
+   sa su ix SLOT PD-SIG-OFF + X64HARNESS:TEXT!, ;
+
+: PENDING-DEFERS, ( -- )
+   s" ab" s" ( -- )" 0 DEFER-SLOT,
+   s" xyz" s" ( n -- n )" 1 DEFER-SLOT,
+   2 PD-TABLE-OFF X64HARNESS:CELL!, ;
+
+\ The target checker's record, at the heap floor, which TARGET-DECL-CELL
+\ names: its trust-decl writes T, the signature and the name on fd 1, and its
+\ checker-defer D and the name.
+: DECL, ( -- )
+   [: [char] T EMIT,  s" type" ROW  s" type" ROW  s" cr" ROW ;] X64HARNESS:ROUTINE,
+   DATA-START NCOMP-DISPATCH:DECL-EFFECT-OFF + X64HARNESS:LABEL-CELL!,
+   [: [char] D EMIT,  s" type" ROW  s" cr" ROW ;] X64HARNESS:ROUTINE,
+   DATA-START NCOMP-DISPATCH:DECL-DEFER-OFF + X64HARNESS:LABEL-CELL!,
+   DATA-START NCOMP-DISPATCH:TARGET-DECL-CELL X64HARNESS:DATA-ADDR!, ;
+
+\ DRAIN-PRETRUST replays the table from the top, slot 1 and then slot 0, and
+\ empties it; a second drain calls nothing.
+: BUILD-DRAIN ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   PENDING-DEFERS,  DECL,
+   s" DRAIN-PRETRUST" ROW
+   0 PD-TABLE-OFF X64HARNESS:EXPECT-CELL,
+   s" DRAIN-PRETRUST" ROW
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ A pending table the drain or the seal row meets without a checker to take it.
+: BUILD-PENDING ( ptr u8 n ptr u8 n -- ) {: row:ptr rowu:n path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   PENDING-DEFERS,
+   row rowu ROW
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ ---- protected wordlists -----------------------------------------------------
+: PROT-WID!, ( n -- ) X64HARNESS:PUSH,  s" prot-wid-add" ROW ;
+: BITS ( n -- n ) CELL * PROT-BITS-OFF + ;   \ the bitmap's cell n
+
+\ Wid 70's bit is bit 6 of cell 1 and 71's the next; a second add is inert,
+\ an engine-reserved wid counts as protected and keeps its bit clear, and the
+\ last wid below PROT-WID-MAX is the last cell's top bit. prot-wid-room
+\ answers the wids left below the bound, and 0 past it.
+: BUILD-PROT-WID ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   70 PROT-WID!,  $40 1 BITS X64HARNESS:EXPECT-CELL,
+   71 PROT-WID!,  70 PROT-WID!,  $C0 1 BITS X64HARNESS:EXPECT-CELL,
+   OWNER-API-PUB-WID PROT-WID!,  0 0 BITS X64HARNESS:EXPECT-CELL,
+   PROT-WID-MAX 1- PROT-WID!,
+   MIN-CELL PROT-BITS-BYTES CELL / 1- BITS X64HARNESS:EXPECT-CELL,
+   FIRST-WID WIDN-CELL X64HARNESS:CELL!,
+   s" prot-wid-room" ROW  PROT-WID-MAX FIRST-WID - X64HARNESS:EXPECT-POP,
+   PROT-WID-MAX 1+ WIDN-CELL X64HARNESS:CELL!,
+   s" prot-wid-room" ROW  0 X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ A wid with no bit exits 84 with the ARM64 text.
+: BUILD-PROT-WID-BOUND ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   PROT-WID-MAX PROT-WID!,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ ---- record marks and persisted cells ----------------------------------------
+\ wide-mark sets DNAME-WIDE on the newest record, hidden, and leaves the one
+\ before it alone. The record's pages start read and execute only, as a
+\ published record's are, so the row writes only through its own flip.
+: BUILD-WIDE-MARK ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   SEED,  4 5 X64HARNESS:PROT-RECORD,  s" wide-mark" ROW
+   DNAME-WIDE DNAME-INT or 6 or  4 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   6  3 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: SEAL, ( -- ) FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:CELL!, ;
+
+\ With the latch sealed, xt! stores into a scratch cell and ptr-cell-mark
+\ admits one.
+: BUILD-XT-STORE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   SEAL,
+   CELL-VALUE X64HARNESS:PUSH,  0 X64HARNESS:PUSH-SCRATCH,  s" xt!" ROW
+   CELL-VALUE 0 X64HARNESS:EXPECT-SCRATCH,
+   CELL X64HARNESS:PUSH-SCRATCH,  s" ptr-cell-mark" ROW
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ With the latch sealed, the row aimed at the band cell TIER-PROV:N-CELL exits
+\ 83 before it stores: xt! when the flag is true, ptr-cell-mark otherwise.
+: BUILD-BAND-CELL ( bool ptr u8 n -- ) {: store:bool path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   SEAL,
+   store if CELL-VALUE X64HARNESS:PUSH, then
+   TIER-PROV:N-CELL X64HARNESS:PUSH-DATA,
+   store if s" xt!" ROW else s" ptr-cell-mark" ROW then
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ ---- the compiler tier and the build scope -----------------------------------
+\ The constant rows, code-origin's unknown answer and tier 1.
+: BUILD-TIER ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   s" addr-cells-abi" ROW  0 X64HARNESS:EXPECT-POP,
+   s" snapshot-format" ROW  SNAPSHOT-FORMAT:VERSION X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:PUSH-SCRATCH,  CELL X64HARNESS:PUSH,  s" code-origin" ROW
+   -1 X64HARNESS:EXPECT-POP,
+   1 X64HARNESS:PUSH,  s" set-tier" ROW
+   s" tier@" ROW  1 X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ Not a tier: the caller's cell, which only the saved copy can restore.
+$5A constant CALLER-TIER
+
+: ENTER, ( -- ) s" executable-build-enter" ROW ;
+: LEAVE, ( -- ) s" executable-build-leave" ROW ;
+: TIER-CELL?, ( n -- ) NCOMP-DISPATCH:TIER-CELL X64HARNESS:EXPECT-CELL, ;
+
+\ Two nested scopes select tier 1 and save the caller's tier once; the
+\ outermost leave restores it and clears the saved copy, and a leave with no
+\ scope open changes nothing.
+: BUILD-SCOPE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   CALLER-TIER NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
+   ENTER,  ENTER,
+   1 TIER-CELL?,
+   2 NCOMP-DISPATCH:BUILD-DEPTH-CELL X64HARNESS:EXPECT-CELL,
+   CALLER-TIER NCOMP-DISPATCH:BUILD-TIER-CELL X64HARNESS:EXPECT-CELL,
+   LEAVE,  1 TIER-CELL?,
+   LEAVE,  CALLER-TIER TIER-CELL?,
+   0 NCOMP-DISPATCH:BUILD-TIER-CELL X64HARNESS:EXPECT-CELL,
+   LEAVE,
+   0 NCOMP-DISPATCH:BUILD-DEPTH-CELL X64HARNESS:EXPECT-CELL,
+   CALLER-TIER TIER-CELL?,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ Tier 0 exits 70 with the x86-64 text.
+: BUILD-TIER-ZERO ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   0 X64HARNESS:PUSH,  s" set-tier" ROW
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
 public
 
 : RUN ( -- )
@@ -283,6 +601,32 @@ public
    s" hb-x64-kernel-hooks-top" TMP-PATH BUILD-HOOKS-TOP
    s" hb-x64-kernel-hooks-replaced" TMP-PATH BUILD-HOOKS-REPLACED
    s" hb-x64-kernel-hooks-empty" TMP-PATH BUILD-HOOKS-EMPTY
+   s" hb-x64-kernel-state" TMP-PATH BUILD-STATE
+   s" hb-x64-kernel-cp" TMP-PATH BUILD-CP
+   DICT-SIZE 4 - s" hb-x64-kernel-cp-low" TMP-PATH BUILD-CP-BAD
+   REGION s" hb-x64-kernel-cp-high" TMP-PATH BUILD-CP-BAD
+   DICT-SIZE 2 + s" hb-x64-kernel-cp-odd" TMP-PATH BUILD-CP-BAD
+   s" hb-x64-kernel-ndict" TMP-PATH BUILD-NDICT
+   s" hb-x64-kernel-ndict-cap" TMP-PATH BUILD-NDICT-CAP
+   s" hb-x64-kernel-ndict-floor" TMP-PATH BUILD-NDICT-FLOOR
+   s" hb-x64-kernel-seed-ndict" TMP-PATH BUILD-SEED-NDICT
+   s" hb-x64-kernel-seed-ndict-high" TMP-PATH BUILD-SEED-NDICT-HIGH
+   s" hb-x64-kernel-append" TMP-PATH BUILD-APPEND
+   s" hb-x64-kernel-append-foreign" TMP-PATH BUILD-APPEND-FOREIGN
+   s" hb-x64-kernel-seal" TMP-PATH BUILD-SEAL
+   s" SEAL-CAPTURE" s" hb-x64-kernel-seal-undrained" TMP-PATH BUILD-PENDING
+   s" hb-x64-kernel-drain" TMP-PATH BUILD-DRAIN
+   s" DRAIN-PRETRUST" s" hb-x64-kernel-drain-unset" TMP-PATH BUILD-PENDING
+   s" hb-x64-kernel-prot-wid" TMP-PATH BUILD-PROT-WID
+   s" hb-x64-kernel-prot-wid-bound" TMP-PATH BUILD-PROT-WID-BOUND
+   s" hb-x64-kernel-wide-mark" TMP-PATH BUILD-WIDE-MARK
+   s" hb-x64-kernel-xt-store" TMP-PATH BUILD-XT-STORE
+   true s" hb-x64-kernel-xt-store-armed" TMP-PATH BUILD-BAND-CELL
+   false s" hb-x64-kernel-mark-armed" TMP-PATH BUILD-BAND-CELL
+   s" hb-x64-kernel-tier" TMP-PATH BUILD-TIER
+   s" hb-x64-kernel-scope" TMP-PATH BUILD-SCOPE
+   s" hb-x64-kernel-tier-zero" TMP-PATH BUILD-TIER-ZERO
+   s" snap-rebase" s" hb-x64-kernel-snap-rebase" TMP-PATH BUILD-CALL
    X64HARNESS:DISPOSE
    T-REPORT ;
 

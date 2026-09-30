@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-30T09:22:47.271870+03:00"
 blocks:
   - habu-emit-x86-code-973a0074
-  - habu-emit-x86-engine-86b5f8e7
 ---
 
 Problem: `code-origin` has x86 consumers that must answer truthfully: `snap-lib.f:453` (retained code without native evidence gives rc 100), `tools/native-build.f:9` (the self-build driver, G3) and `test/tier.f:366-371`. Dropping provenance on a tier-1-only engine would report `patch32`-written bytes as native, the exact hole `habu1.f:2417-2419` closes. Decision (K-lane design, 2026-09-30): model the band on x86.

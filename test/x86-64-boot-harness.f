@@ -221,3 +221,49 @@ public
 ;using
 ;using
 ;package
+
+\ The dictionary and engine-state cases' words: DATA cells that hold an
+\ address the boot fixes only at run time, text staged in DATA, and a
+\ record's cell.
+package X64HARNESS
+using X64ASM
+using X64CODE
+using X64RT
+
+public
+
+\ Push the address of the DATA cell at an offset.
+: PUSH-DATA, ( n -- ) {: off:n :}
+   RAX DATA-REG off MEM-OFF ASM-SINK ENC-LEA
+   0 G-PUSH ;
+
+\ Store the address n bytes into DATA into the DATA cell at an offset.
+: DATA-ADDR!, ( n n -- ) {: at:n off:n :}
+   RAX DATA-REG at MEM-OFF ASM-SINK ENC-LEA
+   RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+\ Store the address n bytes into the code region into the DATA cell at an
+\ offset.
+: REGION-ADDR!, ( n n -- ) {: at:n off:n :}
+   RAX DBASE-REG at MEM-OFF ASM-SINK ENC-LEA
+   RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+\ Store a string's bytes into DATA from an offset, eight to a cell, the last
+\ cell zero past its end.
+: TEXT!, ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
+   u 0 ?do  a u i NAME-CELL off i + CELL!,  CELL +loop ;
+
+\ Check the cell at an offset in record n holds n.
+: EXPECT-RECORD, ( n n n -- ) {: want:n ix:n off:n :}
+   RAX DBASE-REG ix DREC * off + MEM-OFF ASM-SINK ENC-MOV-RM
+   want EXPECT, ;
+
+\ Set record n's pages to the protection prot, as the kernel's own flips do.
+: PROT-RECORD, ( n n -- ) {: ix:n prot:n :}
+   R8 DBASE-REG ix DREC * MEM-OFF ASM-SINK ENC-LEA
+   R8 prot X64KERNEL:PROT-REC, ;
+
+;using
+;using
+;using
+;package
