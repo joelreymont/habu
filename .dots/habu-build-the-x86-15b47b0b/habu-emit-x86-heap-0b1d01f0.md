@@ -1,6 +1,6 @@
 ---
 title: Emit x86 heap, printer and hook rows
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-30T09:22:47.260112+03:00"
@@ -17,7 +17,7 @@ Verify: host K3's product engine: `--load test/x86-64-kernel-engine.f`; ThinkPad
 Depends: habu-scaffold-the-x86-9af80979 (scaffold). Hand-written through `X64ASM`.
 Route: direct (x86-only files).
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-emit-x86-heap-0b1d01f0.
 
 Preflight corrections (Fable, 2026-09-30; these override the lines above where they differ):
 - `(GENIO-OUT)` belongs to this leaf. Its ARM64 form is `EMIT-GENIO-OUT` (`habu2.f:1340-1376`), registered `(GENIO-OUT)` through `HELPER-REGISTER` and reached by label from `rt.f:182-195`: x0 = `OUT-CELL` index, x1 = span, x2 = length; it writes to fd 1 when `GENIO-ABI:BUSY-CELL` is nonzero, the index exceeds `DEVICES` (8) or row `[WRITE-OFF + 8*(index-1)]` is zero; else it saves `ACTIVE-CELL` in the frame, stores the index there, sets `BUSY-CELL` = 1, pushes span and length on the data stack, calls the row's xt, clears `BUSY-CELL` and restores `ACTIVE-CELL`. `X64KERNEL:HELPERS,` emits its twin (rdi index, rsi span, rdx length; the same rules; registered `(GENIO-OUT)`) at a label `X64RT` declares as `LGENIOOUT`'s twin; `G-OUT` loads `OUT-CELL` through rbp, takes the `write(1)` path on zero and calls the label otherwise. Case: `OUT-CELL` = 1 through `CELL!,`, row 0 pointing at a stub that pops the span into scratch cells.

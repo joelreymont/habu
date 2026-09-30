@@ -1,6 +1,6 @@
 ---
 title: Emit the x86 dictionary index and search rows
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-30T09:22:47.250064+03:00"
@@ -13,7 +13,7 @@ Verify: host K3's product engine: `--load test/x86-64-kernel-engine.f`; ThinkPad
 Depends: habu-scaffold-the-x86-9af80979 (scaffold). Hand-written through `X64ASM`.
 Route: direct (x86-only files).
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-emit-the-x86-f74e1d26.
 
 Preflight corrections (Fable, 2026-09-30; these override the lines above where they differ):
 - Seeding: a booted image starts with r14 = 0 and no records (`boot-x64.f:100-103`); its region is RW (`boot-x64.f:64-68, 96-100`). Files add `test/x86-64-boot-harness.f`: `RECORD, ( ptr u8 n n n -- )` (name, wid, flags) emits code that writes record r14 at `r13 + r14*DREC` (`DREC` 48, `layout.f:199`: `[0]` code, `[16]` flags or'd with the name length, `[24]` the name inline up to `DNAME-INL` 16 bytes or, with `DNAME-EXT`, a pointer, `[40]` wid; `habu1.f:3199-3206`) and increments r14.

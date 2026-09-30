@@ -1,6 +1,6 @@
 ---
 title: Add lock encoders and x86 atomic rows
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.577804+03:00"
@@ -13,7 +13,7 @@ Verify: spark `bin/hb --load test/compiler/x86-64-asm.f`; ThinkPad: routine imag
 Depends: habu-boot-and-exit-367c46f5 (K3), habu-represent-x86-live-729a7ac6 (P2).
 Route: direct (test/compiler/x86-64-asm.f is the X64ASM encoder suite, x86-only).
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-emit-x86-atomics-c02e092e.
 
 K-lane corrections (design 2026-09-30; these override the lines above where they differ):
 - Depends add habu-scaffold-the-x86-9af80979 (the kernel scaffold). Files: replace `test/x86-64-peer-routines.f` with this leaf's `test/x86-64-kernel-<name>.f` from the scaffold. Bodies are hand-written through `X64ASM` (no allocator dependency). Every body reads DATA through rbp, so cases run in the booted harness (`test/x86-64-boot-harness.f`). The row table goes in this leaf's `docs/x86-64.md` subsection. Verify: host engine K3's product `264c829e…`; the ThinkPad runs the images natively, each with its negative twin. Base: the scaffold on master.

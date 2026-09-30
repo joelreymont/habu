@@ -1,6 +1,6 @@
 ---
 title: Emit x86 control bodies
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.568965+03:00"
@@ -13,7 +13,7 @@ Verify: ThinkPad: routine images (C8).
 Depends: habu-boot-and-exit-367c46f5 (K3).
 Route: direct.
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-emit-x86-control-9a35e3b3.
 - From I4a: the body list includes `execute-floor ( n -- bool )` (call the xt, then clamp and report a stack below S0).
 
 K-lane corrections (design 2026-09-30; these override the lines above where they differ):

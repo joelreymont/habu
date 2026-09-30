@@ -1,6 +1,6 @@
 ---
 title: Emit x86 syscall table rows
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.560625+03:00"
@@ -13,7 +13,7 @@ Verify: ThinkPad: routine images calling each row through the kernel; `strace` s
 Depends: habu-boot-and-exit-367c46f5 (K3), habu-share-the-primitive-58c235e5 (K4).
 Route: direct.
 Ownership: krait (Intel lane).
-Claim: unassigned.
+Claim: agent=krait workspace=.jj-ws/habu-emit-x86-syscall-a0d501db.
 Owner note (from K2's preflight): the x86-64 `SYS-PUSH` (a `setc` after `SYS,`, `docs/x86-64.md:417`) belongs here, in `X64RT` beside K2's moves, as its first consumer; correct the docs line that assigns it to K2.
 
 K-lane corrections (design 2026-09-30; these override the lines above where they differ):
