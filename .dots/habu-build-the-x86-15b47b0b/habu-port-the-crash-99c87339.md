@@ -1,9 +1,11 @@
 ---
 title: Port the crash handler and guard classification
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.871049+03:00"
+closed-at: "2026-09-30T15:04:17+03:00"
+close-reason: x86-64-kernel-crash images 0 (-negative 21, all 21 before), skel-negative 139 to 102, 118 booted images and x64-routines bad=0 on the ThinkPad
 ---
 
 Problem: the crash handler's register dump and guard-page classification exist for aarch64 only (`src/habu/crash.f`, whose constants at 30-36 are aarch64).

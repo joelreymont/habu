@@ -1343,7 +1343,7 @@ SUITE x86-64-peer-routines
 ;SUITE
 
 \ The x86-64 boot skeleton, src/habu/boot-x64.f, and its guard-page twin, for the
-\ peer to run: `hb-x64-skel a b` exits 3 and hb-x64-skel-negative dies SIGSEGV.
+\ peer to run: `hb-x64-skel a b` exits 3 and hb-x64-skel-negative exits 102.
 SUITE x86-64-skel-image
    test/x86-64-skel-image.f
 ;SUITE
@@ -1380,6 +1380,13 @@ SUITE x86-64-boot-signal
 
 SUITE x86-64-kernel-task
    test/x86-64-kernel-task.f
+;SUITE
+
+\ The crash handler the x86-64 boot installs, src/habu/boot-x64.f, in the
+\ booted harness: each image's child faults with fd 2 on a pipe, and its parent
+\ checks the dump or the guard page's line and the exit status.
+SUITE x86-64-kernel-crash
+   test/x86-64-kernel-crash.f
 ;SUITE
 
 SUITE xml-byte-edits

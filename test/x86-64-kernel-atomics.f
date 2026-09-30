@@ -16,9 +16,9 @@
 \
 \ The publication images put the code region at rest first, read-execute
 \ throughout as the ARM64 boot leaves it, so a row that writes the region
-\ outside its window dies SIGSEGV (139). A probe proves a window closed:
-\ clock_gettime answers -EFAULT for a timespec the kernel cannot write. Each
-\ of these exits 0:
+\ outside its window faults into the crash handler's dump (134). A probe
+\ proves a window closed: clock_gettime answers -EFAULT for a timespec the
+\ kernel cannot write. Each of these exits 0:
 \ - hb-x64-kernel-prot-window declares a span across the record band's top and
 \   into the control-flow band, opens the code band at CP with an end below it
 \   and widens it two pages on, writes each, checks the five band cells and

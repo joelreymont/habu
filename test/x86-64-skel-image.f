@@ -4,8 +4,9 @@
 \ every address the boot published (the return and DO/LOOP stack bases, DP, the
 \ code region and its code pointer) and exits with argc read back through the
 \ user area from ARGC-CELL, so `hb-x64-skel a b` exits 3. hb-x64-skel-negative
-\ pushes one cell more, onto the guard page, and dies SIGSEGV (a shell reports
-\ 139). The host checks each image's ELF header; running them is the peer's.
+\ pushes one cell more, onto the guard page, and the crash handler the boot
+\ installs writes `hb: stack bounds exceeded (data)` on fd 2 and exits 102. The
+\ host checks each image's ELF header; running them is the peer's.
 \
 \ boot-x64.f loads the x86-64 seam, so it comes before the harness, which would
 \ otherwise load the seam into its own private wordlist.
