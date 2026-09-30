@@ -17,8 +17,6 @@ private
 \ fixpoint I/O paths — the single knobs; the build-fixpoint driver owns artifacts
 \ These rows expose the fixed path scratch and raw source-buffer cell.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
-256 constant PATH-CAP
-s" PATH-CAP" s" -- n" TRUST
 create PATH-BUF PATH-CAP allot
 s" PATH-BUF" s" -- ptr u8" TRUST
 

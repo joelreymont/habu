@@ -18,7 +18,7 @@ require lib/string.f
 package DTM
 using SOURCE-ROOT
 
-create CANON-PATH $401 allot
+create CANON-PATH PATH-CAP 1 + allot
 variable CANON-U
 
 public

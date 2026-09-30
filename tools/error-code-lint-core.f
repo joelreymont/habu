@@ -76,7 +76,6 @@ public
 
 private
 
-512 constant PATH-CAP
 2048 constant MAX-CLAIMS  \ the tree passed 1024 live claims; the table is sized above what it holds, and a full one dies rather than certifying a partial ledger
 1024 constant MAX-RES
 48 constant ZERO-C

@@ -3,7 +3,7 @@
 \ `include` is source composition. Package reopening owns shared namespace;
 \ this file only gives source files a checked way to load dependencies.
 
-$400 constant INCLUDE-PATH-CAP
+PATH-CAP constant INCLUDE-PATH-CAP
 $100000 constant INCLUDE-BUF-CAP  \ checker.f crossed the old 512 KiB slot
 $200 constant REQUIRE-MAX  \ composed maki+stdlib require closure crossed 256 (2026-07-20)
 $1 constant INCLUDE-PROBE-CAP
@@ -756,7 +756,10 @@ TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )
 
 $100 constant EVENT-MAX
 8 constant EVENT-FIELDS
-$8000 constant EVENT-POOL-CAP
+\ Each event copies its path and, unless an earlier event stored the same one,
+\ the root it resolved under, each at most PATH-CAP bytes: the pool holds
+\ EVENT-MAX of both, so a run is refused for its event count alone.
+EVENT-MAX 2 * PATH-CAP * constant EVENT-POOL-CAP
 $4D constant INCLUDE-EVENT-RC
 
 0 constant EV-INCLUDED

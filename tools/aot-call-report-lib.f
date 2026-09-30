@@ -11,7 +11,7 @@ $94000000 constant BL-OP
 15 constant ACR-CARRY-CAP
 $4000 constant ACR-READ-CAP
 ACR-READ-CAP ACR-CARRY-CAP + constant ACR-BUF-CAP
-1024 constant REPORT-PATH-CAP
+PATH-CAP 1 + constant REPORT-PATH-CAP
 32 constant JSON-NUM-CAP
 
 9 constant ACR-C-TAB

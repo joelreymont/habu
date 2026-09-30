@@ -6,7 +6,7 @@
 76 constant BL-INTERNAL-RC
 
 64 constant BL-MOD-MAX
-1024 constant BL-PATH-CAP
+PATH-CAP constant BL-PATH-CAP
 8192 constant BL-IO-CAP
 256 constant BL-STAT-CAP
 

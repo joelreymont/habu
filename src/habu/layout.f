@@ -1420,7 +1420,7 @@ public
 5 constant IO-CELLS                    \ FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR
 256 constant STAT-BYTES                \ lib/fs.f FS-STAT-CAP
 1 constant PROBE-BYTES                 \ lib/fs.f FS-READ-PROBE-CAP
-1025 constant PATHZ-BYTES              \ lib/fs.f FS-PATHZ-CAP = PATH-CAP + 1
+PATH-CAP 1 + constant PATHZ-BYTES       \ lib/fs.f FS-PATHZ-CAP
 IO-CELLS cells STAT-BYTES + PROBE-BYTES + PATHZ-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
 FMT-ABI:START constant END
@@ -1459,9 +1459,9 @@ PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 \ alignment; the rounding is the band's only slack.
 package FS-MUT-ABI
 public
-1025 constant PATHZ2-BYTES              \ lib/fs.f FS-PATHZ-CAP = FS-PATH-CAP + 1
-1024 constant ATOMIC-BYTES              \ lib/fs.f FS-PATH-CAP
-1024 constant TMP-BYTES                 \ lib/fs.f FS-PATH-CAP
+PATH-CAP 1 + constant PATHZ2-BYTES      \ lib/fs.f FS-PATHZ-CAP
+PATH-CAP constant ATOMIC-BYTES          \ lib/fs.f FS-PATH-CAP
+PATH-CAP constant TMP-BYTES             \ lib/fs.f FS-PATH-CAP
 PATHZ2-BYTES ATOMIC-BYTES + TMP-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
 FS-ABI:START constant END

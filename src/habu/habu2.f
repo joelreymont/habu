@@ -1649,7 +1649,7 @@ public
 variable LTAB
 private
 
-AOT-IDENT:MAX AOT-IDENT:PATH-CAP 1 + * 1 + constant TAB-CAP
+AOT-IDENT:MAX PATH-CAP 1 + * 1 + constant TAB-CAP
 create TAB TAB-CAP allot
 variable TAB-U
 

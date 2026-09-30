@@ -28,11 +28,12 @@ package EC
 using SOURCE-ROOT
 
 \ One closure's entries and its path pool - each entry stores its own path and
-\ the root it resolved under. The largest walk any consumer keys is
-\ tools/native-build.f, the engine's own prefix: 159 entries and $2AFB bytes of
-\ paths plus one root string each, measured 2026-09-17, well inside both caps.
+\ the root it resolved under, each at most PATH-CAP bytes, so the pool holds
+\ EC-MAX of both and a walk is refused for its entry count alone. The largest
+\ walk any consumer keys is tools/native-build.f, the engine's own prefix, well
+\ under EC-MAX.
 $400 constant EC-MAX
-$40000 constant EC-POOL-CAP
+EC-MAX 2 * PATH-CAP * constant EC-POOL-CAP
 
 create EC-POOL EC-POOL-CAP allot
 create EC-OFF EC-MAX cells allot

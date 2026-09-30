@@ -5,7 +5,7 @@
 
 \ Checked CLI wrapper. Raw fd primitives are used through checked effects.
 
-1024 constant JSON-ONLY-PATH-CAP
+PATH-CAP 1 + constant JSON-ONLY-PATH-CAP
 $40000 constant JSON-ONLY-IN-CAP
 
 create JSON-ONLY-PATH JSON-ONLY-PATH-CAP allot

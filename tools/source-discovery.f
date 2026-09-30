@@ -32,7 +32,7 @@ package DISCOVER
 using SOURCE                             \ the shared source-string emitters
 using SOURCE-ROOT
 
-$400 constant SD-PATH-CAP
+PATH-CAP constant SD-PATH-CAP
 
 $5C constant SD-BACKSLASH
 $28 constant SD-LPAREN

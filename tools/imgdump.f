@@ -33,7 +33,7 @@ TYPED-VARIABLE IB ptr u8                     \ image buffer
 variable IL                                  \ image length
 variable MACHO
 variable IFD
-1024 constant IPATH-CAP
+PATH-CAP constant IPATH-CAP
 create IPATH IPATH-CAP 1 + allot
 create ISTAT 144 allot
 variable TOFF  variable TNDICT  variable TREG  variable TDATA

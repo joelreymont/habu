@@ -6,7 +6,9 @@ s" lib/process.f" required
 require lib/image-lifecycle.f
 
 $100 constant PROC-ARGV-MAX
-32768 constant PROC-ARGV-BUF-CAP
+\ Every row can carry a path of PATH-CAP bytes (src/core/util.f) and its NUL,
+\ so a command line this table refuses is refused for its row count alone.
+PROC-ARGV-MAX PATH-CAP 1 + * constant PROC-ARGV-BUF-CAP
 
 \ The argv table holds the address of every zero-terminated argument and
 \ PROC-ARGV-BUF-A the address of the mapping they live in, so both are declared

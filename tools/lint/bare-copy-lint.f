@@ -65,7 +65,7 @@ variable N-TEST  variable N-EX    variable N-OTHER
 \ The script's one optional argument, so a consumer repository is linted from
 \ the habu root - `bin/hb --load tools/lint/... -- /path/to/consumer` - where
 \ the lint's own `require` rows resolve. Without it the walk starts at `.`.
-create ROOT-BUF 1024 allot
+create ROOT-BUF PATH-CAP allot
 variable ROOT-U
 
 : ROOT$ ( -- ptr u8 n )
@@ -74,7 +74,7 @@ variable ROOT-U
 : ROOT! ( -- )
    SCRIPT-ARGC 0= if [char] . ROOT-BUF c! 1 ROOT-U ! exit then
    0 SCRIPT-ARGV$ {: a:ptr u:n :}
-   u 1024 > if E-FS-PATH throw then
+   u PATH-CAP > if E-FS-PATH throw then
    a ROOT-BUF u BYTE-COPY u ROOT-U ! ;
 
 \ ---- ownership: an anchored path prefix, never a substring --------------------

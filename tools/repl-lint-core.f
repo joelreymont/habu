@@ -8,7 +8,7 @@ require tools/lint/lib.f
 using LINT-INTERN
 
 $8000 constant REPL-FILE-CAP
-$400 constant REPL-PATH-CAP
+PATH-CAP constant REPL-PATH-CAP
 $80 constant REPL-PATH-MAX
 
 create REPL-FB REPL-FILE-CAP allot

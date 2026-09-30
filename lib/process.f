@@ -47,7 +47,7 @@ STRUCTURE failed 0
 private
 ;package
 
-1024 constant PROC-PATHZ-CAP
+PATH-CAP 1 + constant PROC-PATHZ-CAP     \ a path of PATH-CAP bytes and its NUL
 1000000 constant PROC-NS-PER-MS
 1 constant POLLIN
 4 constant POLLOUT
@@ -94,7 +94,7 @@ $FF constant PROC-WAIT-EXIT-MASK
 3 constant PROC-PFD-SLOTS                \ stdout, stderr, stdin
 8 constant PROC-PFD-SLOT-BYTES           \ one struct pollfd: fd | events | revents
 0 constant PROC-PATHZ-OFF
-PROC-PATHZ-OFF PROC-PATHZ-CAP + constant PROC-PFD-OFF
+PROC-PATHZ-OFF PROC-PATHZ-CAP + 7 + $FFFFFFFFFFFFFFF8 and constant PROC-PFD-OFF
 PROC-PFD-OFF PROC-PFD-SLOTS PROC-PFD-SLOT-BYTES * + constant PROC-PROBE-OFF
 PROC-PROBE-OFF 1 + 7 + $FFFFFFFFFFFFFFF8 and constant PROC-PID-OFF
 PROC-PID-OFF     1 cells + constant PROC-RC-OFF

@@ -54,7 +54,6 @@ $4000 constant BUF-CAP
 $200 constant TAIL-KEEP            \ bytes kept when a full buffer is compacted
 $10 constant WATCH-CAP             \ registered never-seen needles
 $40 constant NEEDLE-CAP            \ bytes per needle
-$400 constant PATH-CAP             \ supervised executable path bytes
 10 constant LF
 
 create RBUF BUF-CAP allot

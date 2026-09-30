@@ -52,7 +52,7 @@ package PROCESS-PTY
 0 constant SIG-PROBE               \ the null signal: probe existence, deliver nothing
 3 constant ESRCH#                  \ "no such process" (POSIX, identical Linux/macOS)
 1 constant EPERM#                  \ "operation not permitted" (process exists, denied)
-$400 constant IO-PATH-CAP          \ maximum supervised executable path length + NUL
+PATH-CAP 1 + constant IO-PATH-CAP  \ a supervised executable path of PATH-CAP bytes and its NUL
 $7F constant IO-EXEC-FAIL          \ child exit code when execve never replaces the image
 0 constant F-DUPFD                 \ fcntl: duplicate to the lowest descriptor at or above the argument
 10 constant IO-LF

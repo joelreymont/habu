@@ -20,7 +20,7 @@ s" CHECK!" s" ptr u8 n -- n" TRUST
 LOWER-CERT-HOOK:INSTALL
 ' LINT-CHECK-HOOK set-check
 
-create PATHBUF 1024 allot
+create PATHBUF PATH-CAP 1 + allot
 create READ-PROBE 1 allot
 variable RFD  variable RGOT  variable RLEN
 TYPED-VARIABLE LINT-OUT-A ptr u8
@@ -69,7 +69,7 @@ variable LINT-OUT-ON
 variable RPATH-U
 
 : LINT-PATHZ ( ptr u8 n -- ) {: a:ptr u :}
-   u 1+ 1024 > IF s" lint: path too long" 1 die THEN
+   u PATH-CAP > IF s" lint: path too long" 1 die THEN
    0 begin dup u < while
       dup a + c@ over PATHBUF + c!
       1+

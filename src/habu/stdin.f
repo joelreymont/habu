@@ -98,7 +98,7 @@ public
 \ THE PRODUCER KEY IS TWO INDEPENDENT READINGS OF ONE FACT: the capture stamped
 \ the SHA-256 of the binary it was running into the artifact, and this hashes the
 \ binary it is told produced it. A mismatch is the reader's refusal.
-$100 constant APATH-CAP           \ src/habu/aot-ident.f's per-path cap, same reason
+PATH-CAP constant APATH-CAP       \ the tree's path capacity (src/core/util.f)
 create ART-P APATH-CAP allot   variable ART-U
 create ENG-P APATH-CAP allot   variable ENG-U
 create PROD 32 allot
