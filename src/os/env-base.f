@@ -87,11 +87,10 @@ variable ENV-QU
    repeat
    drop NULL$ ;
 
-\ The tree's one path capacity (src/core/util.f), taken while loading: util.f
-\ loads before the check hook, so a checked colon body here cannot name
-\ PATH-CAP (the cold host's prefix refuses it as an undefined word).
-PATH-CAP constant TMP-PATH-CAP
-create TPB TMP-PATH-CAP allot
+\ TMP-PATH's answer is a path of at most PATH-CAP bytes (src/core/util.f) with
+\ no NUL: a caller that opens it hands it to PATH0 or PATHZ, which add one in
+\ a buffer of their own.
+create TPB PATH-CAP allot
 PTR-VARIABLE TPP
 variable TPQ
 PTR-VARIABLE TPS
@@ -107,7 +106,7 @@ variable TPU
    TPS ! ;
 
 : TMP-PATH-CHECK ( n -- )
-   TMP-PATH-CAP > if s" env: TMP-PATH exceeds buffer" 76 die then ;
+   PATH-CAP > if s" env: TMP-PATH exceeds buffer" 76 die then ;
 
 : TMP-PATH-COPY-SRC ( ptr u8 n -- )
    0 ?do dup i ZBYTE@ TPB TPQ @ 1 + i + ZBYTE! loop drop ;

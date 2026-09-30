@@ -80,7 +80,10 @@ variable REG-PROT-N   0 REG-PROT-N !
 \ The tree's one path capacity, in path bytes without the NUL: every path
 \ buffer, core or library (lib/fs.f derives FS-PATH-CAP from it), holds a
 \ path of this many bytes plus its NUL, so a path one layer accepts is a path
-\ every layer accepts.
+\ every layer accepts. src/core/cell-effects.f gives this constant and
+\ E-PATH-RANGE a PRIM: row: this file loads before the checker, and without
+\ the row a checked body that names either is E-UNDEFINED on an engine that
+\ boots its prefix from source (test/cold-naming-test.f).
 1024 constant PATH-CAP
 7134 constant E-PATH-RANGE   \ path length negative, or longer than PATH-CAP bytes
 : PATHZ {: a:ptr u d:ptr :} ( ptr u8 n ptr u8 -- )

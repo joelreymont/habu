@@ -4,6 +4,13 @@ s" CELL" s" -- n" TRUST
 s" CELL-WIDTH-CHECK" s" --" TRUST
 s" CHECKER-CAPTURE-PREPARE" s" --" TRUST
 
+\ src/core/util.f's public constants. util.f loads before the checker, so a
+\ from-source prefix boot gives them no effect of their own and a checked body
+\ that names one is E-UNDEFINED there (test/cold-naming-test.f). Rows rather
+\ than TRUST declarations, for the reason NULL-PTR's is one.
+PRIM: PATH-CAP PE-N PE-OUT PRIM;
+PRIM: E-PATH-RANGE PE-N PE-OUT PRIM;
+
 s" PTR-VARIABLE" s" --" TRUST
 s" PERSISTED-PTR-VARIABLE" s" --" TRUST
 s" PTR-U8-TABLE" s" n --" TRUST

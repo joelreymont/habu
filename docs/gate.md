@@ -19,6 +19,29 @@ from that tree:
 bin/hb --load test/run.f
 ```
 
+A green native build does not show that the prefix boots from source. The
+build compiles the whole prefix with a checker: the host's up to
+`src/core/check-hook.f`, then the window's own, which starts with the rows
+the host recorded for everything before the hook (`TRANSFER-CHECKED`,
+`src/core/checker.f`). An engine that boots its prefix from source has no
+checker before the hook and only axiom rows after it. A prefix file loaded
+after the hook that names a pre-hook word without a `PRIM:` row therefore
+builds and then dies on every cold boot - measured with `PATH-CAP` inside
+`TMP-PATH-CHECK` before it had a row: `native-build OK`, then
+`E-UNDEFINED habu: in tmp-path-check: undefined word 'PATH-CAP'` from the cold
+host. The rows cannot be withheld to make the build refuse it: without them
+the window cannot compile `src/core/check-hook.f`'s first definition
+(`ncomp: cannot compile REPORT-UNCHECKABLE`, `E-NCOMP-ARITY`). After editing a
+prefix file, boot the candidate's prefix cold before the registry:
+
+```sh
+HB_TMP=$TMP HABU_AOT_GATE=1 bin/hb --load test/aot-wid-build.f
+```
+
+It ends `aot-wid-build: hb-pwid ready`. `bin/hb --load test/cold-naming-test.f`
+is the focused check of the naming rule itself
+([forth.md](forth.md#rules-learned-by-refusal)).
+
 The registry runs only on a `tools/native-build.f` product. Its keyed images
 (below) include the fixture writer (`test/fixture-writer.f`), an application
 image saved with the engine `lib/engine-candidate.f` resolves (an exported

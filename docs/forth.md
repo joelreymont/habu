@@ -1373,6 +1373,21 @@ the rule.
   more defer went red there. Add a selector to an existing hook instead
   (`SHADOW-DIAG-XT ( n -- )` carries two diagnostics), or place the defer after
   `: TRUST`.
+- **A word defined before the check hook has an effect only where an axiom
+  row gives it one.** `src/core/util.f` through `src/core/layout-valid.f` are
+  compiled before `src/core/check-hook.f` arms the checker, so an engine that
+  boots its prefix from source holds their words in its dictionary and not in
+  its checker. Measured on the cold fixture host (`test/cold-engine.f`):
+  `: P ( -- n ) REG-PROT-CAP ;` dies `E-UNDEFINED habu: in p: undefined word
+  'REG-PROT-CAP'`, exit 70, while top level runs the word (`PATH-CAP .`
+  prints 1024) and a `tools/native-build.f` engine certifies the same line,
+  because its checker holds the rows the build host recorded for the prefix.
+  A checked body therefore names a pre-hook word only when the word has a
+  `PRIM:` row; `src/core/cell-effects.f` gives `PATH-CAP` and `E-PATH-RANGE`
+  theirs. A constant without one is read at top level into a constant of the
+  file's own (`REG-PROT-CAP constant MY-CAP`); any other pre-hook word needs
+  the row from its owner. `test/cold-naming-test.f` pins both verdicts, and
+  [gate.md](gate.md) says why the native build cannot.
 - **`MATCH` and the other compile keywords name words, not constants**, even
   inside a package; a `case` default runs with the selector still on the
   stack. Two flags are not compared with `=` (`bool bool` is refused): a test

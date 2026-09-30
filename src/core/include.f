@@ -125,8 +125,6 @@ SOURCE-UNIT:RESET
 package SOURCE-ROOT
 private
 
-7134 constant PATH-RC  \ PATHZ range refusal; util.f precedes checker registration.
-
 INCLUDE-PATH-CAP 1+ constant PATH-BYTES
 PATH-BYTES 2 * constant WORK-BYTES
 create CWD-BUF PATH-BYTES allot
@@ -158,8 +156,8 @@ variable SCOPES
 
 
 : CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 <= u WORK-BYTES >= or if PATH-RC throw then
-   u 0 ?do a i + c@ 0= if PATH-RC throw then loop ;
+   u 0 <= u WORK-BYTES >= or if E-PATH-RANGE throw then
+   u 0 ?do a i + c@ 0= if E-PATH-RANGE throw then loop ;
 
 
 : COPY-Z ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
@@ -172,7 +170,7 @@ public
 : CANON-OS ( ptr u8 n -- ptr u8 n bool )
    ZBUF COPY-Z
    ZBUF CANON-BUF PATH-BYTES realpath {: n:n :}
-   n -2 = if PATH-RC throw then
+   n -2 = if E-PATH-RANGE throw then
    n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
    CANON-BUF n INCLUDE-TRUE ;
 
@@ -180,7 +178,7 @@ private
 
 : TRY-CANON ( ptr u8 n -- bool )
    SOURCE-INPUT:CANON {: a:ptr u:n found:bool :}
-   u PATH-BYTES >= if PATH-RC throw then
+   u PATH-BYTES >= if E-PATH-RANGE throw then
    a CANON-BUF <> if a CANON-BUF u BYTE-COPY then
    u CANON-U !
    found ;
@@ -207,7 +205,7 @@ public
 private
 
 : JOIN! ( ptr u8 n ptr u8 n -- ) {: root:ptr rootu:n a:ptr u:n :}
-   rootu u + 1+ WORK-BYTES >= if PATH-RC throw then
+   rootu u + 1+ WORK-BYTES >= if E-PATH-RANGE throw then
    root WORK-BUF rootu BYTE-COPY
    47 WORK-BUF rootu + c!
    a WORK-BUF rootu 1+ + u BYTE-COPY
@@ -231,7 +229,7 @@ private
 
 
 : NORMAL-ROOM ( n n -- ) {: limit:n :}
-   NORMAL-U @ + limit > if PATH-RC throw then ;
+   NORMAL-U @ + limit > if E-PATH-RANGE throw then ;
 
 
 : NORMAL-SEG ( ptr u8 n n -- ) {: a:ptr u:n limit:n :}
@@ -282,7 +280,7 @@ private
 : MISSING-NORMALIZE ( -- )
    EXISTING-PARENT {: cut:n :}
    CANON-U @ JOIN-U @ cut - + {: total:n :}
-   total WORK-BYTES >= if PATH-RC throw then
+   total WORK-BYTES >= if E-PATH-RANGE throw then
    CANON-BUF WORK-BUF CANON-U @ BYTE-COPY
    JOIN-BUF cut + WORK-BUF CANON-U @ + JOIN-U @ cut - BYTE-COPY
    WORK-BUF total NORMALIZE ;
@@ -335,13 +333,13 @@ public
 private
 
 : OWNER! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u INCLUDE-PATH-CAP > if PATH-RC throw then
+   u INCLUDE-PATH-CAP > if E-PATH-RANGE throw then
    a OWNER-BUF u BYTE-COPY u OWNER-U ! ;
 
 
 : ROOT-CANON ( ptr u8 n -- )
    ABSOLUTE!
-   JOIN-U @ 2 + WORK-BYTES >= if PATH-RC throw then
+   JOIN-U @ 2 + WORK-BYTES >= if E-PATH-RANGE throw then
    47 JOIN-BUF JOIN-U @ + c!
    46 JOIN-BUF JOIN-U @ 1+ + c!
    JOIN-BUF JOIN-U @ 2 + TRY-CANON 0= if INCLUDE-IO-RC throw then ;
