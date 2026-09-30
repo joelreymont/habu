@@ -1330,8 +1330,9 @@ SUITE x86-64-peer-image
    test/x86-64-peer-image.f
 ;SUITE
 
-\ Every HIR fixture the x86-64 rows emit, built the same way with a negative twin
-\ each and the manifest of statuses the peer must see (docs/bootstrap.md).
+\ Every HIR fixture the x86-64 rows emit, one image each, plus the one
+\ diff-negative image that proves the harness and the manifest of statuses the
+\ peer must see (docs/bootstrap.md).
 SUITE x86-64-peer-routines
    test/x86-64-peer-routines.f
 ;SUITE
@@ -1343,8 +1344,8 @@ SUITE x86-64-skel-image
 ;SUITE
 
 \ The x86-64 kernel's rows (src/habu/kernel-x64.f) in the booted harness,
-\ test/x86-64-boot-harness.f, for the peer to run. Each image has a negative
-\ twin that exits 21; each file's header names the statuses the peer must see.
+\ test/x86-64-boot-harness.f, for the peer to run. Each file has one negative
+\ image that exits 21; its header names the statuses the peer must see.
 \ They load the x86-64 seam globally, as skel-image does, so each is a suite.
 SUITE x86-64-kernel-syscalls
    test/x86-64-kernel-syscalls.f
