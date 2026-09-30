@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-30T09:22:47.260112+03:00"
-blocks:
-  - habu-scaffold-the-x86-9af80979
 ---
 
 Problem: the heap, printer and checker-hook rows are unassigned to any x86 leaf. Split from K9 by the K-lane design (2026-09-30).

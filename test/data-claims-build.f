@@ -30,7 +30,7 @@ public
 
    s" the image writer still checks the guarded band's declared extent" T-LABEL
    s" require src/habu/data-claims.f : DC-BAD-BAND ( -- ) DATA-CLAIMS:COUNT-ROWS 0 ?do i DATA-CLAIMS:ROW-OFF FRIEND-ARENA = if 1 DATA-CLAIMS:TAB i DATA-CLAIMS:ROW-CELLS * 1+ cells + ! unloop exit then loop ; DC-BAD-BAND require tools/native-emit.f"
-   76 S\" habu1: PROT-GUARD band length differs from its claim: FRIEND-ARENA\n" EXPECT
+   76 S\" data-bands: PROT-GUARD band length differs from its claim: FRIEND-ARENA\n" EXPECT
    T-REPORT ;
 
 ;package

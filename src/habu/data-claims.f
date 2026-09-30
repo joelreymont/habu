@@ -13,14 +13,14 @@ require src/habu/layout.f
 \
 \ A COMMENT COULD NOT CATCH THAT AND DID NOT. This table can. Every claim on the
 \ DATA region states its own extent, and CLAIMS-ASSERT refuses an overlapping
-\ pair at ENGINE BUILD TIME, naming both. src/habu/habu1.f runs a second check
-\ over the same table: every PROT-GUARD BAND-TAB row must BE a declared claim,
+\ pair at ENGINE BUILD TIME, naming both. src/habu/data-bands.f runs a second
+\ check over the same table: every protected band must BE a declared claim,
 \ start and length both, which is the check that would have caught the
 \ transaction guarding $3000 of a band whose cells end after $300.
 \
 \ WHAT IS IN IT: every claim whose extent is DECLARED - a band with a length
 \ constant, or a single cell. That is the whole map from $3A00 up, where every
-\ library band lives, and all eight BAND-TAB rows. THREE LOW CLAIMS ARE OUT,
+\ library band lives, and all eight DATA-BANDS rows. THREE LOW CLAIMS ARE OUT,
 \ because their extent exists only as an emitter convention and inventing one
 \ would be worse than omitting it: LVH-OFF ($580) and LVF-OFF ($2C0), the
 \ DO/LEAVE level arrays LVD-CELL indexes with no declared cap, and the $1A0 seal

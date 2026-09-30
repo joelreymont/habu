@@ -1288,7 +1288,8 @@ $5000 constant TXN-STATE-OFF
 \ THE DECLARED EXTENT, not a reservation. This used to be $3000, which is where
 \ PD-TABLE-OFF had to land rather than anything the transaction owned: the cells
 \ end at TXN-LIVE-W-OFF + TXN-LIVE-W-CAP cells = $5300, and $5300..$8000 was
-\ 11520 bytes of slack. habu1.f BAND-TAB guards this length, so the slack was
+\ 11520 bytes of slack. The DATA-BANDS table (src/habu/data-bands.f) guards
+\ this length, so the slack was
 \ guarded too, and PROT-GUARD refused a store anywhere in it - which is why the
 \ task-user arena could not be moved there while it read $3000. It is the
 \ declared extent now and the build-only assertion in data-claims.f

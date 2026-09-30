@@ -785,7 +785,7 @@ also GUARD definitions
 
 previous definitions
 
-\ The protected bands, as one table, mirroring src/habu/habu1.f ENGINE-EMIT.
+\ The protected bands, as one table, mirroring src/habu/data-bands.f DATA-BANDS.
 \ GUARD-SPAN reads it twice - once for the hull [BAND-LO, BAND-HI) its bounding
 \ test compares against, once for the per-band interval tests - and PROT-GUARD
 \ reads the same rows for its address tests, so stage0 has one list where it

@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-30T09:22:47.220353+03:00"
 blocks:
   - habu-emit-x86-syscall-a0d501db
-  - habu-scaffold-the-x86-9af80979
 ---
 
 Problem: the process rows need one `LINUX-SPAWN` twin and the existing x86 emitters registered; K6a covers only the table rows. Split from K6 by the K-lane design (2026-09-30).

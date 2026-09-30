@@ -75,11 +75,11 @@ PTR-VARIABLE KEEP-A  variable KEEP-U
 create REACHBUF $10000 allot
 variable REACHN  variable TKP   variable CHG
 variable INDEF   variable XNAME variable KEEPCUR
-variable RSP     variable RTS   PTR-VARIABLE TA    variable TU
+variable REACH-P variable REACH-T PTR-VARIABLE TA    variable TU
 variable SCAN-MODE
-\ REACHN/TKP/CHG/INDEF/XNAME/KEEPCUR/RSP/RTS/TU/SCAN-MODE are raw `variable`
-\ cells; raw `a` certifies their plain-scalar/bool `@`/`!` use with no per-cell
-\ TRUST row (dot habu-typed-defining-words, as above).
+\ REACHN/TKP/CHG/INDEF/XNAME/KEEPCUR/REACH-P/REACH-T/TU/SCAN-MODE are raw
+\ `variable` cells; raw `a` certifies their plain-scalar/bool `@`/`!` use with
+\ no per-cell TRUST row (dot habu-typed-defining-words, as above).
 : TA@ ( -- ptr u8 )
    TA @ ;
 
@@ -93,12 +93,12 @@ variable SCAN-MODE
 
 : IN-REACH? ( ptr u8 n -- bool )
    KEEP-U ! KEEP-A !
-   0 RSP !
-   BEGIN RSP @ REACHN @ < WHILE
-      REACHBUF RSP @ + c@ $21 < IF RSP @ 1+ RSP ! ELSE
-         RSP @ RTS !
-         BEGIN RSP @ REACHN @ < IF REACHBUF RSP @ + c@ $20 > ELSE 0 0= 0= THEN WHILE RSP @ 1+ RSP ! REPEAT
-         RSP @ RTS @ - KEEP-U @ = IF REACHBUF RTS @ + KEEP-A@ KEEP-U @ NMF= IF 0 0= EXIT THEN THEN
+   0 REACH-P !
+   BEGIN REACH-P @ REACHN @ < WHILE
+      REACHBUF REACH-P @ + c@ $21 < IF REACH-P @ 1+ REACH-P ! ELSE
+         REACH-P @ REACH-T !
+         BEGIN REACH-P @ REACHN @ < IF REACHBUF REACH-P @ + c@ $20 > ELSE 0 0= 0= THEN WHILE REACH-P @ 1+ REACH-P ! REPEAT
+         REACH-P @ REACH-T @ - KEEP-U @ = IF REACHBUF REACH-T @ + KEEP-A@ KEEP-U @ NMF= IF 0 0= EXIT THEN THEN
       THEN
    REPEAT 0 0= 0= ;
 

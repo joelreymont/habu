@@ -1044,16 +1044,17 @@ package BUILD-FIXPOINT
 
 \ The verifier reads the emitted buffer and does not follow require. Include
 \ the required build modules at their dependency boundaries, in habu1.f's own
-\ require order: data-claims.f before BAND-CLAIM-AT reads its rows (a module
-\ habu1.f requires but this list omits certifies as `undefined word`, which is
-\ how the DATA-CLAIMS split first failed here); code-origin.f registers its
-\ helpers through ENGINE-PRIMS, so its source follows primitive-registry.f, at
-\ habu1.f's own require line.
+\ require order: data-claims.f before data-bands.f's claim check reads its rows
+\ (a module habu1.f requires but this list omits certifies as `undefined word`,
+\ which is how the DATA-CLAIMS split first failed here); code-origin.f
+\ registers its helpers through ENGINE-PRIMS, so its source follows
+\ primitive-registry.f, at habu1.f's own require line.
 : BF-CODE-ORIGIN-REQUIRE$ ( -- ptr u8 n ) s" require src/habu/code-origin.f" ;
 
 : BF-APPEND-HABU1 ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/habu/primitive-registry.f" BF-APPEND-MODULE
    out outu s" src/habu/data-claims.f" BF-APPEND-MODULE
+   out outu s" src/habu/data-bands.f" BF-APPEND-MODULE
    out outu s" src/habu/arith-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/task-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/habu1.f" BF-CODE-ORIGIN-REQUIRE$ BF-APPEND-SOURCE-BEFORE

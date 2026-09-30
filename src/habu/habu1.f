@@ -59,8 +59,8 @@ $F2E00009 constant W-MOVK3
 \ Pass-2 transaction cells are defined as one protected band in layout.f.
 \ --- primitive registry (build-side, for the seed dictionary) ---
 require src/habu/primitive-registry.f
-require src/habu/data-claims.f
-require src/habu/arith-abi.f            \ E-DIV-ZERO, the dividing bodies' refusal
+require src/habu/data-bands.f           \ the protected bands GUARD-SPAN tests
+require src/habu/arith-abi.f           \ E-DIV-ZERO, the dividing bodies' refusal
 require src/habu/task-abi.f
 require src/habu/code-span.f
 PTR-VARIABLE FP-A  variable FP-U
@@ -256,104 +256,34 @@ public
 \ friend latch. x12/x13 are the only clobbers.
 package ENGINE-EMIT
 
-\ The protected bands, as one table. GUARD-SPAN reads it twice - once for the
-\ hull [BAND-LO, BAND-HI) its bounding test compares against, once to emit the
-\ per-band interval tests - so a band added here widens the bounding test in
-\ the same edit that adds its own test, which a hull written out beside the
-\ list could not promise. The zero-length row ends both walks: no count sits
-\ beside the table to fall out of step with its rows.
-create BAND-TAB
-   FRIEND-ARENA ,                 FRIEND-ARENA-LEN ,
-   PROT-REG-OFF ,                 PROT-REG-LEN ,
-   ENGINE-HOOK-OFF ,              ENGINE-HOOK-LEN ,
-   NCOMP-DISPATCH:TIER-CELL ,     1 cells ,
-   NCOMP-DISPATCH:DEF-TIER-CELL , 3 cells ,
-   TIER-PROV:OPEN-CELL ,          TIER-PROV:END TIER-PROV:OPEN-CELL - ,
-   BODYBUF-OFF ,                  BODYBUF-CAP 2 + ,
-   TXN-STATE-OFF ,                TXN-STATE-LEN ,
-   0 ,                            0 ,
-
-variable BAND-LO                     \ lowest band base, over the whole table
-variable BAND-HI                     \ highest band end, over the whole table
+\ The protected bands are src/habu/data-bands.f's table, which the x86-64
+\ (PROT-SPAN) helper reads as well.
 variable BAND-IX
-
-: BAND-OFF ( n -- n ) {: ix:n :} ix 2 * cells BAND-TAB + @ ;
-: BAND-LEN ( n -- n ) {: ix:n :} ix 2 * 1 + cells BAND-TAB + @ ;
-
-: BAND-WIDEN ( n -- ) {: ix:n :}
-   ix BAND-OFF BAND-LO @ < IF ix BAND-OFF BAND-LO ! THEN
-   ix BAND-OFF ix BAND-LEN + BAND-HI @ > IF ix BAND-OFF ix BAND-LEN + BAND-HI ! THEN ;
-
-\ Opened on the first row and widened by every later one, so the hull needs no
-\ sentinel start value that a band could one day sit outside of.
-: BANDS-HULL ( -- )
-   0 BAND-OFF BAND-LO !
-   0 BAND-OFF 0 BAND-LEN + BAND-HI !
-   0 BAND-IX !
-   BEGIN BAND-IX @ BAND-LEN 0 <> WHILE
-      BAND-IX @ BAND-WIDEN
-      BAND-IX @ 1+ BAND-IX !
-   REPEAT ;
 
 : BANDS-EMIT ( n label -- ) {: addr:n trap:label :}
    0 BAND-IX !
-   BEGIN BAND-IX @ BAND-LEN 0 <> WHILE
-      addr BAND-IX @ BAND-OFF BAND-IX @ BAND-LEN trap GUARD-BAND
+   BEGIN BAND-IX @ DATA-BANDS:LEN 0 <> WHILE
+      addr BAND-IX @ DATA-BANDS:OFF BAND-IX @ DATA-BANDS:LEN trap GUARD-BAND
       BAND-IX @ 1+ BAND-IX !
    REPEAT ;
 
-\ EVERY GUARDED BAND MUST BE A DECLARED CLAIM, start and length both. The
-\ transaction row guarded TXN-STATE-LEN when that constant was $3000 and the
-\ transaction's own cells ended after $300, so PROT-GUARD refused stores across
-\ 11520 bytes no claim owned - which is exactly what kept the task-user arena
-\ out of the only run in the per-task header big enough to hold it. Nothing
-\ compared the guard against the map until this did. It runs at engine build
-\ time and dies, so a band that outgrows or outlives its claim cannot ship.
-variable BDECL-IX
-variable BDECL-HIT
-
-: BAND-CLAIM-AT ( n -- n ) {: ix:n :}       \ claim with this band's offset, else -1
-   DATA-CLAIMS:COUNT-ROWS {: n:n :}
-   0 BEGIN dup n < WHILE
-      dup DATA-CLAIMS:ROW-OFF ix BAND-OFF = IF exit THEN
-      1+
-   REPEAT drop -1 ;
-
-: BANDS-DECLARED ( -- )
-   0 BDECL-IX !
-   BEGIN BDECL-IX @ BAND-LEN 0 <> WHILE
-      BDECL-IX @ BAND-CLAIM-AT BDECL-HIT !
-      BDECL-HIT @ 0 < IF
-         s" habu1: PROT-GUARD band has no DATA-CLAIMS claim at its offset" 76 die
-      THEN
-      BDECL-HIT @ DATA-CLAIMS:ROW-LEN BDECL-IX @ BAND-LEN <> IF
-         DATA-CLAIMS:MSG-RESET
-         s" habu1: PROT-GUARD band length differs from its claim: " DATA-CLAIMS:MSG+
-         BDECL-HIT @ DATA-CLAIMS:NAME-AT DATA-CLAIMS:MSG+
-         DATA-CLAIMS:MSG$ 76 die
-      THEN
-      BDECL-IX @ 1+ BDECL-IX !
-   REPEAT ;
-
-BANDS-DECLARED
-
 : GUARD-SPAN ( n n -- ) {: addr:n len:n :}
    LBL LBL LBL {: ok:label trap:label past:label :}
-   BANDS-HULL
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    len ok CBZ,
    EREG addr len ADD,                   \ checked end = start + length
    EREG addr CMP,  C-CC trap BCOND,     \ unsigned wrap
    \ Bounding test, in the two comparison forms GUARD-BAND itself uses. Every
-   \ band lies in [BAND-LO, BAND-HI), so a span starting at or above the hull's
-   \ end, or ending at or below its start, intersects none of them and the
-   \ table walk is skipped whole instead of run to a foregone conclusion. Every
-   \ address the DP heap can reach takes that exit, because the hull ends at
-   \ DATA-START; nothing below it is admitted that a band would refuse.
-   DREG BAND-HI @ LIT64,  DREG DATA DREG ADD,
+   \ band lies in the hull [DATA-BANDS:LO, DATA-BANDS:HI), so a span starting at
+   \ or above the hull's end, or ending at or below its start, intersects none
+   \ of them and the table walk is skipped whole instead of run to a foregone
+   \ conclusion. Every address the DP heap can reach takes that exit, because
+   \ the hull ends at DATA-START; nothing below it is admitted that a band
+   \ would refuse.
+   DREG DATA-BANDS:HI LIT64,  DREG DATA DREG ADD,
    addr DREG CMP,  C-CS past BCOND,     \ start >= hull end
-   DREG BAND-LO @ LIT64,  DREG DATA DREG ADD,
+   DREG DATA-BANDS:LO LIT64,  DREG DATA DREG ADD,
    EREG DREG CMP,  C-LS past BCOND,     \ checked end <= hull start
    addr trap BANDS-EMIT
    past LBL,

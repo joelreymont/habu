@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.568965+03:00"
-blocks:
-  - habu-scaffold-the-x86-9af80979
 ---
 
 Problem: the kernel has no control rows.

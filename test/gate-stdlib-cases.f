@@ -1342,6 +1342,26 @@ SUITE x86-64-skel-image
    test/x86-64-skel-image.f
 ;SUITE
 
+\ The x86-64 kernel's rows (src/habu/kernel-x64.f) in the booted harness,
+\ test/x86-64-boot-harness.f, for the peer to run. Each image has a negative
+\ twin that exits 21; each file's header names the statuses the peer must see.
+\ They load the x86-64 seam globally, as skel-image does, so each is a suite.
+SUITE x86-64-kernel-syscalls
+   test/x86-64-kernel-syscalls.f
+;SUITE
+
+SUITE x86-64-kernel-control
+   test/x86-64-kernel-control.f
+;SUITE
+
+SUITE x86-64-kernel-atomics
+   test/x86-64-kernel-atomics.f
+;SUITE
+
+SUITE x86-64-kernel-engine
+   test/x86-64-kernel-engine.f
+;SUITE
+
 SUITE xml-byte-edits
    lib/xml-test.f
    lib/byte-edit-test.f
