@@ -15,6 +15,8 @@ package HB-BUILD-CLI
    HBT-ERR erru s" HB_BUILD_TIMEOUT_MS" CONTAINS? TTRUE
    HBT-REPL-BAD-OUT EXISTS? TFALSE ;
 
+\ "-1" is the only case below zero: a check that refused 0 alone would still
+\ refuse the other two.
 : HBT-TIMEOUT-ENV-CASES ( -- )
    s" 0" HBT-INVALID-TIMEOUT
    s" -1" HBT-INVALID-TIMEOUT

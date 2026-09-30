@@ -1,7 +1,8 @@
 \ hb-build-stripped-cells-test.f - checked fixture for tools/hb-build-lib.f:
-\ the DATA cells a stripped image refuses or carries - a pointer into memory
-\ the build mapped, in an undeclared and in a declared cell, the same
-\ allocation taken at run time, and a baked table no claim names.
+\ the DATA cells a stripped image refuses - a pointer into memory the build
+\ mapped, in an undeclared and in a declared cell, and a baked table no claim
+\ names. The same allocation taken at run time links and runs in
+\ tools/hb-build-stripped-cache-test.f HBT-STRIPPED-SAME-TWICE.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-cells-test.f
 
@@ -55,11 +56,6 @@ package HB-BUILD-CLI
    S\" MEM-ALLOC-64K drop PBUF !\n: MAIN ( -- ) s\" declared\" type cr ;\n" SB-APPEND
    SB$ ;
 
-\ The pinned line of tools/hb-build-test-lib.f HBT-MAPL-SRC$, the byte the
-\ image read back out of its run-time buffer.
-: HBT-MAPL-EXPECTED$ ( -- ptr u8 n )
-   S\" A\n" ;
-
 \ A PERSISTENT CELL HOLDING A POINTER INTO MEMORY THE BUILD MAPPED is refused by
 \ the cell that holds it. The value is left out of the pin because it is an mmap
 \ address: it differs in every build, which is the fault itself.
@@ -80,19 +76,6 @@ package HB-BUILD-CLI
    HBB-ERR-BUF derr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
    HBB-ERR-BUF derr s" word=PBUF" CONTAINS? TTRUE ;
 
-\ ... while the allocation moved into MAIN links, runs and prints its own byte.
-: HBT-STRIPPED-MAPPED-LATE ( -- )
-   HBT-MAPL-SRC HBT-MAPL-SRC$ WRITE-ALL
-   HBT-MAPL-OUT HBT-REMOVE-FILE?
-   HBT-MAPL-SRC HBT-MAPL-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
-   HBT-MAPL-OUT FILE? TTRUE
-   HBT-MAPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
-   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
-   rcn 0 T=
-   errn 0 T=
-   HBT-RUN-OUT outn HBT-MAPL-EXPECTED$ T$= ;
-
 \ ... while a baked create table on no list is refused however much it looks like
 \ the carried ones.
 : HBT-STRIPPED-UNCARRIED-TABLE ( -- )
@@ -111,7 +94,6 @@ public
    HBT-PREPARE
    HBT-STRIPPED-MAPPED-CELL
    HBT-STRIPPED-MAPPED-DECLARED
-   HBT-STRIPPED-MAPPED-LATE
    HBT-STRIPPED-UNCARRIED-TABLE
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE

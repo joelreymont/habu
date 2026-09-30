@@ -104,72 +104,8 @@ variable GB-LC-OFF
 : GB-WRITE-SRC ( -- )
    GB-SRC$ GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
 
-: GB-ARGV+ ( ptr u8 n -- )
-   GE-ARG+ ;
-
 : GB-TARGET-UNKNOWN ( -- )
    E-BUILD-SOURCE throw ;
-
-: GB-TARGET-LAYOUT ( -- )
-   HB-TARGET-LINUX? if
-      s" src/os/linux/layout.f" GB-ARGV+
-      exit
-   then
-   HB-TARGET-MACOS? if
-      s" src/os/macos/layout.f" GB-ARGV+
-      exit
-   then
-   GB-TARGET-UNKNOWN ;
-
-: GB-BUILD-LOADS ( -- )
-   s" --load" GB-ARGV+
-   s" lib/errors.f" GB-ARGV+
-   s" lib/string.f" GB-ARGV+
-   s" lib/memory.f" GB-ARGV+
-   s" lib/fs.f" GB-ARGV+
-   s" lib/fs-mutate.f" GB-ARGV+
-   s" lib/process.f" GB-ARGV+
-   s" lib/process-argv.f" GB-ARGV+
-   s" lib/process-env.f" GB-ARGV+
-   s" lib/source.f" GB-ARGV+
-   s" lib/build.f" GB-ARGV+
-   s" lib/codesign.f" GB-ARGV+
-   s" lib/content-key.f" GB-ARGV+
-   s" lib/object.f" GB-ARGV+
-   s" lib/object-cache.f" GB-ARGV+
-   s" lib/object-index.f" GB-ARGV+
-   s" lib/object-resolve.f" GB-ARGV+
-   s" lib/object-link.f" GB-ARGV+
-   s" tools/build-fixpoint.f" GB-ARGV+
-   s" tools/cli-run.f" GB-ARGV+
-   s" tools/object-image.f" GB-ARGV+
-   s" tools/hb-build-lib.f" GB-ARGV+
-   s" tools/hb-build.f" GB-ARGV+
-   s" --" GB-ARGV+ ;
-
-: GB-BUILD-ARGV-TMP ( ptr u8 n -- ) {: tmp:ptr tmpu :}
-   GE-HB-RESET
-   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
-   GB-BUILD-LOADS ;
-
-: GB-BUILD-ARGV ( -- )
-   GT-ROOT GB-BUILD-ARGV-TMP ;
-
-: GB-HB-BUILD-ARGS ( -- )
-   GB-SRC$ GB-ARGV+
-   s" -o" GB-ARGV+
-   GB-OUT$ GB-ARGV+ ;
-
-: GB-HB-BUILD-CAPTURE ( -- )
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   ;
-
-: GB-HB-BUILD ( ptr u8 n -- ) {: label:ptr labelu :}
-   GB-BUILD-ARGV
-   GB-HB-BUILD-ARGS
-   GB-HB-BUILD-CAPTURE
-   label labelu GE-EXPECT-OK
-   GB-OUT$ FILE? 0= if label labelu GE-FAIL then ;
 
 : GB-RUN-OUT ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-HB-RESET

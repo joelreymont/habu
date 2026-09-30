@@ -19,20 +19,6 @@ package HB-BUILD-CLI
    HBT-AOT-OUT EXECUTABLE? TTRUE
    BF-TMP-RESET ;
 
-: HBT-MAKER-TIMEOUT-TEXT ( -- )
-   HBT-ARGV-BASE
-   s" 2500" HBT-TIMEOUT-ENV
-   HBT-ADD-TIMEOUT-ARGS
-   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
-   rc HBB-UNCAUGHT-RC T=
-   outu 0 T=
-   HBT-ERR erru s" maker-out" CONTAINS? TTRUE
-   HBT-ERR erru s" maker-err" CONTAINS? TTRUE
-   HBT-ERR erru S\" maker-err\nhb-build: code=E-PROC-TIMEOUT maker=aot" CONTAINS? TTRUE
-   HBT-ERR erru s" 2500" CONTAINS? TTRUE
-   HBT-ERR erru HBT-AOT-SRC CONTAINS? TTRUE
-   HBT-REPL-BAD-OUT EXISTS? TFALSE ;
-
 : HBT-MAKER-TIMEOUT-JSON ( -- )
    HBT-ARGV-BASE
    s" 2500" HBT-TIMEOUT-ENV
@@ -52,6 +38,8 @@ package HB-BUILD-CLI
    JR:CLOSE
    HBT-REPL-BAD-OUT EXISTS? TFALSE ;
 
+\ The text form, on the REPL path. HBB-MAKER-TIMED-OUT writes it for both
+\ builds and only its maker= differs; the AOT path's timeout is the JSON case.
 : HBT-MAKER-TIMEOUT-REPL ( -- )
    HBT-ARGV-BASE
    s" 2500" HBT-TIMEOUT-ENV
@@ -61,15 +49,14 @@ package HB-BUILD-CLI
    rc HBB-UNCAUGHT-RC T=
    outu 0 T=
    HBT-ERR erru s" maker-out" CONTAINS? TTRUE
-   HBT-ERR erru s" maker-err" CONTAINS? TTRUE
-   HBT-ERR erru s" code=E-PROC-TIMEOUT maker=repl" CONTAINS? TTRUE
+   HBT-ERR erru S\" maker-err\nhb-build: code=E-PROC-TIMEOUT maker=repl" CONTAINS? TTRUE
    HBT-ERR erru s" 2500" CONTAINS? TTRUE
+   HBT-ERR erru HBT-AOT-SRC CONTAINS? TTRUE
    HBT-REPL-BAD-OUT EXISTS? TFALSE ;
 
 : HBT-MAKER-TIMEOUTS ( -- )
    HBT-PREPARE-BLOCK-MAKER
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
-   HBT-MAKER-TIMEOUT-TEXT
    HBT-MAKER-TIMEOUT-JSON
    HBT-MAKER-TIMEOUT-REPL ;
 

@@ -2,7 +2,7 @@
 \ tree, the fixture sources, HBT-PREPARE, the helpers that run hb-build and the
 \ build report check. It defines no MAIN; each row file loads it and runs the
 \ groups it owns:
-\   tools/hb-build-test.f                     REPL build, CLI report, cache
+\   tools/hb-build-test.f                     CLI REPL build and report, cache
 \                                             keys, rejected inputs, image size
 \   tools/hb-build-cli-errors-test.f          cache path error, MAIN effects
 \   tools/hb-build-timeout-test.f             maker deadlines and diagnostics
@@ -244,15 +244,15 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 : HBT-MAPL-OUT ( -- ptr u8 n )
    HBT-MAPL-OUT-BUF HBT-MAPL-OUT-U @ ;
 
-\ THE MAPPED-CELL PROGRAM WITH ITS ALLOCATION INSIDE MAIN, shared by two rows.
+\ THE MAPPED-CELL PROGRAM WITH ITS ALLOCATION INSIDE MAIN.
 \ tools/hb-build-stripped-cells-test.f HBT-MAPC-SRC$ allocates at load time and
 \ is refused; this one links, runs and prints. The cell the image carries is
 \ the zero it was captured with and the pointer is taken in the new process,
 \ which is what the refusal's suggestion names. The printed byte is read back
 \ out of the run-time buffer, so the pinned line proves the image reached its
-\ own mapping and not merely that it exited zero. That file's
-\ HBT-STRIPPED-MAPPED-LATE runs it and tools/hb-build-stripped-cache-test.f
-\ HBT-STRIPPED-SAME-TWICE links it twice.
+\ own mapping and not merely that it exited zero.
+\ tools/hb-build-stripped-cache-test.f HBT-STRIPPED-SAME-TWICE runs its first
+\ link against that line and links it a second time for byte equality.
 : HBT-MAPL-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require lib/memory.f\nPTR-VARIABLE BUF\n: MAIN ( -- )\n" SB-APPEND
@@ -318,6 +318,11 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    BUILD-CACHE:RESET
    HBT-TMP BUILD-CACHE:ROOT! ;
 
+\ The CLI with its library preloaded at tier 0: the requires of
+\ tools/hb-build-core.f, which tools/hb-build.f loads, are then no-ops, so a
+\ spawn skips the ~9 s tier-1 compile of that library and runs the same
+\ HBB-MAIN on the same argv. test/stripped-image.f spawns tools/hb-build.f
+\ alone, the production load with the library at tier 1.
 : HBT-ARGV-BASE-TMP ( ptr u8 n -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
@@ -325,6 +330,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
+   s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
    s" tools/hb-build.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
@@ -390,8 +396,8 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ A program that builds is built in this process: HBB-BUILD runs what
 \ tools/hb-build.f runs once it has parsed argv (for an AOT build the lint
 \ child, the maker, the object store and the install; for a REPL build the
-\ app-build child and the install), without the tier-1 compile
-\ that tool pays before it reads argv. What the CLI wraps around them does not
+\ app-build child and the install), without the library load a CLI spawn
+\ pays before it reads argv. What the CLI wraps around them does not
 \ run here: HBB-PREPARE-TMP's private directory (the children's HB_TMP is
 \ HBT-TMP), HBB-BUILD-CLI's exit mapping and HBB-CLEANUP. A refusal ends the
 \ row in a die, the child's diagnostic on stderr: a lint refusal in

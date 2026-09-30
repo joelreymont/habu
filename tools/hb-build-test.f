@@ -1,7 +1,7 @@
 \ hb-build-test.f - checked fixture for tools/hb-build-lib.f: the REPL build
-\ and its report, the CLI report, the cache keys, the rejected inputs and the
-\ size of a snapshot and a stripped image. tools/hb-build-test-lib.f lists the
-\ other hb-build rows.
+\ and its report through the CLI, the report a failed build invalidates, the
+\ cache keys, the rejected inputs and the size of a snapshot and a stripped
+\ image. tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-test.f
 
 require tools/hb-build-test-lib.f
@@ -67,12 +67,6 @@ variable HBT-SEQ-IP      \ that scan's cursor
    s" -o" >LEN PROC-ARGV+
    HBT-REPL-OUT >LEN PROC-ARGV+ ;
 
-: BUILD-REPL ( -- )
-   HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
-   HBT-HBB-BUILD-OUT
-   HBT-REPL-OUT FILE? TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
-
 : HBT-CACHE-KEY-CHANGES ( -- )
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    HBT-AOT-SRC HBT-KEY-A HBT-HBB-KEY-AOT
@@ -82,17 +76,27 @@ variable HBT-SEQ-IP      \ that scan's cursor
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
 \ --report-json through the CLI: a REPL build exits 0 with nothing on stderr
-\ and the report object on stdout, its cache source none. HBB-BUILD-REPL
-\ consults no cache and sets no trace flag, so the five false fields are the
-\ reset trace as the report writes it, not a cache that was asked and missed.
+\ and the report object on stdout, HBB-SUCCESS writing HB-BUILD:REPORT$, its
+\ cache source none. HBB-BUILD-REPL consults no cache and sets no trace flag,
+\ so the five false fields are the reset trace as the report writes it, not a
+\ cache that was asked and missed. CHECK-REPORT takes the expected cache
+\ fields from this process's options, so they are set to the CLI's build.
+\ The output already holds stale bytes, and no other case builds over one: the
+\ CLI renames its copy onto -o (HBB-INSTALL-OUT-ACT), and HBT-RUN-REPL's exact
+\ stdout proves the new image replaced them.
 : CLI-REPORT ( -- )
+   HBT-REPL-OUT s" stale" WRITE-ALL
    HBT-ARGV-BASE
    HBT-ADD-REPORT
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc 0 T=
    erru 0 T=
+   HBB-RESET-OPTIONS HBB-REPL-ON
    HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
 
+\ A build that fails invalidates the report the last one left: this runs after
+\ HBT-SIZE-AOT-LOST-BLOB, whose in-process build left a valid one. It is the
+\ last case, since it leaves the cache root naming a file.
 : HBT-REPORT-INVALIDATION ( -- )
    HB-BUILD:VALID? TTRUE
    HBT-BAD-OUT s" cache path file" WRITE-ALL
@@ -101,9 +105,7 @@ variable HBT-SEQ-IP      \ that scan's cursor
    [: HBB-BUILD ;] catch E-BUILD-PATH T=
    BF-TMP-RESET
    HB-BUILD:VALID? TFALSE
-   [: HB-BUILD:CACHE-ROOT$ 2drop ;] catch E-BUILD-STATUS T=
-   HBT-BAD-OUT REMOVE-FILE
-   HBT-TMP BUILD-CACHE:ROOT! ;
+   [: HB-BUILD:CACHE-ROOT$ 2drop ;] catch E-BUILD-STATUS T= ;
 
 : HBT-REPL-ARGS-EXPECTED$ ( -- ptr u8 n )
    SB-RESET
@@ -424,9 +426,7 @@ public
    T-RESET
    HBT-MAKER-KEY-FOLDS-MANIFEST
    HBT-PREPARE
-   BUILD-REPL
    CLI-REPORT
-   HBT-REPORT-INVALIDATION
    HBT-CACHE-KEY-CHANGES
    HBT-CLOSURE-KEY-CHANGES
    HBT-RUN-REPL
@@ -437,6 +437,7 @@ public
    HBT-BUILD-MISSING-TMP
    HBT-SIZE-AOT
    HBT-SIZE-AOT-LOST-BLOB
+   HBT-REPORT-INVALIDATION
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT
