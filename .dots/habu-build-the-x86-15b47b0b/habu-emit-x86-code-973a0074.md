@@ -1,6 +1,6 @@
 ---
 title: Emit x86 code window and publication rows
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T09:22:47.240129+03:00"

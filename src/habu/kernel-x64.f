@@ -31,6 +31,7 @@ require src/habu/stack-abi.f
 require src/habu/primitive-registry.f
 require src/habu/data-bands.f
 require src/habu/snapshot-format.f
+require src/habu/code-span.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/arch/x86-64/rt.f
@@ -392,6 +393,7 @@ $41 constant FOLD-FIRST                \ A
 $5A constant FOLD-LAST                 \ Z
 $20 constant FOLD-BIT
 3 constant PROT-RW                     \ PROT_READ|PROT_WRITE
+5 constant PROT-RX                     \ PROT_READ|PROT_EXEC
 74 constant INDEX-RC                   \ habu1.f's exit for an index it cannot keep
 
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
@@ -1607,6 +1609,476 @@ public
    s" atomic-cas" [: ATOMIC-CAS, ;] PRIM
    s" fence" [: ASM-SINK ENC-MFENCE ;] PRIM ;
 
+\ The publication rows: the twins of habu1.f BPATCH32, BCODEPUBLISH,
+\ BCALLMAPSET, BADDRMAPSET, SNAP-RELOC:BCLEAR-MAPS, BXREFRETARGET, BINTMARK
+\ and BMININMARK and of habu2.f DOES-REC:NATIVE-PRIM, over the twins of
+\ habu1.f EMIT-PROT-WINDOW's PROT:LSPAN, LOPEN and LCLOSE. x86-64 keeps its
+\ instruction cache coherent, so nothing flushes. An x86-64 span is
+\ byte-granular: a routine may end in a one-byte ret, so no guard traps a
+\ length or an address that is not a whole four-byte word.
+
+private
+
+4 constant PATCH-BYTES                 \ the word patch32 writes
+52 constant MIN-IN-SHIFT               \ layout.f DNAME-MIN-IN-MASK: flag bits 52-59
+4 constant NAME-ALIGN                  \ publish.f DOES-NAME-PAD's rounding
+
+\ The helpers' labels, made by PUBLICATION, in the stream it emits them into.
+variable LSPAN-CELL
+variable LOPEN-CELL
+variable LCLOSE-CELL
+variable ADD-SITE-CELL
+variable DROP-SITES-CELL
+variable SEAL-TRAP-CELL
+variable SITE-TRAP-CELL
+: LSPAN-LBL ( -- label ) LSPAN-CELL @ >LABEL ;
+: LOPEN-LBL ( -- label ) LOPEN-CELL @ >LABEL ;
+: LCLOSE-LBL ( -- label ) LCLOSE-CELL @ >LABEL ;
+: ADD-SITE-LBL ( -- label ) ADD-SITE-CELL @ >LABEL ;
+: DROP-SITES-LBL ( -- label ) DROP-SITES-CELL @ >LABEL ;
+: SEAL-TRAP-LBL ( -- label ) SEAL-TRAP-CELL @ >LABEL ;
+: SITE-TRAP-LBL ( -- label ) SITE-TRAP-CELL @ >LABEL ;
+
+\ ---- the protection window ---------------------------------------------------
+\ The region's write bands, recorded in the PROT cells as habu1.f keeps them:
+\ the dictionary-record band [DBASE, DBASE+CFSTK-OFF) in RLO/RHI, the
+\ control-flow band [DBASE+CFSTK-OFF, DBASE+DICT-SIZE) as the latch CF, and
+\ the code band [DBASE+DICT-SIZE, DBASE+REGION) in WLO/WINDOW. A bracket
+\ declares what it writes, a band only grows while it is open, and the close
+\ flips back exactly the ranges the cells recorded, so no page stays
+\ read-write. Every flip covers whole PAGE-BYTES pages, the one x86-64 page
+\ size, where ARM64 rounds to PROT-PAGE-MAX for kernels of 4, 16 and 64 KiB
+\ pages: CFSTK-OFF and DICT-SIZE are whole pages, so the control-flow band is
+\ one page and no two bands share one.
+
+\ Round the span in rdi (start) and rsi (end) outward to whole pages.
+: PAGE-OUT, ( -- )
+   RDI PAGE-BYTES negate >IMM32 ASM-SINK ENC-AND-RI32
+   RSI PAGE-BYTES 1- >IMM32 ASM-SINK ENC-ADD-RI32
+   RSI PAGE-BYTES negate >IMM32 ASM-SINK ENC-AND-RI32 ;
+
+\ Clamp the span [r8, r9) to the band [DBASE+lo, DBASE+hi), unsigned, into rdi
+\ and rsi, and branch to the label when nothing is left. Clobbers rax.
+: CLAMP, ( n n label -- ) {: lo:n hi:n none:label :}
+   RDI R8 ASM-SINK ENC-MOV-RR
+   RAX DBASE-REG lo MEM-OFF ASM-SINK ENC-LEA
+   RDI RAX ASM-SINK ENC-CMP-RR  C-B RDI RAX ASM-SINK ENC-CMOVCC
+   RSI R9 ASM-SINK ENC-MOV-RR
+   RAX DBASE-REG hi MEM-OFF ASM-SINK ENC-LEA
+   RSI RAX ASM-SINK ENC-CMP-RR  C-A RSI RAX ASM-SINK ENC-CMOVCC
+   RSI RDI ASM-SINK ENC-CMP-RR  C-BE none JCC, ;
+
+\ Union the page-aligned span in rdi and rsi into the band the two cells record
+\ and flip the union read-write; a band that already covers the span costs no
+\ syscall. The twin of habu1.f BAND-WIDEN,. Clobbers rax rcx rdx rsi rdi r11.
+: BAND-WIDEN, ( n n -- ) {: locell:n hicell:n :}
+   LBL LBL {: fresh:label done:label :}
+   RAX DATA-REG locell MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E fresh JCC,        \ nothing open: the span opens it
+   RDI RAX ASM-SINK ENC-CMP-RR  C-A RDI RAX ASM-SINK ENC-CMOVCC   \ the lower start
+   RCX DATA-REG hicell MOV-LOAD,
+   RSI RCX ASM-SINK ENC-CMP-RR  C-B RSI RCX ASM-SINK ENC-CMOVCC   \ the higher end
+   RDI RAX ASM-SINK ENC-CMP-RR  C-NE fresh JCC,
+   RSI RCX ASM-SINK ENC-CMP-RR  C-E done JCC,          \ unchanged: already covered
+   fresh LBL,
+   RDI DATA-REG locell MOV-STORE,  RSI DATA-REG hicell MOV-STORE,
+   RSI RDI ASM-SINK ENC-SUB-RR
+   RDX PROT-RW IMM32,
+   NR-MPROTECT SYS,
+   done LBL, ;
+
+\ Flip the band the two cells record back to read-execute and clear the cells
+\ first, so no band is claimed open past the flip: the twin of habu1.f
+\ BAND-CLOSE,.
+: BAND-CLOSE, ( n n -- ) {: locell:n hicell:n :}
+   LBL {: skip:label :}
+   RDI DATA-REG locell MOV-LOAD,
+   RSI DATA-REG hicell MOV-LOAD,
+   RSI RSI ASM-SINK ENC-TEST-RR  C-E skip JCC,
+   RAX ZERO-REG,
+   RAX DATA-REG locell MOV-STORE,  RAX DATA-REG hicell MOV-STORE,
+   RSI RDI ASM-SINK ENC-SUB-RR
+   RDX PROT-RX IMM32,
+   NR-MPROTECT SYS,
+   skip LBL, ;
+
+\ Flip the pages that hold the control-flow band to prot n.
+: CF-FLIP, ( n -- ) {: prot:n :}
+   RDI DBASE-REG CFSTK-OFF MEM-OFF ASM-SINK ENC-LEA
+   RSI DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
+   PAGE-OUT,
+   RSI RDI ASM-SINK ENC-SUB-RR
+   RDX prot IMM32,
+   NR-MPROTECT SYS, ;
+
+\ LSPAN ( rdi = address, rsi = byte length ): declare a span this bracket will
+\ write, intersected with each band, so a span that reaches no band declares
+\ nothing. r8 and r9 hold the span across the flips, which a syscall keeps.
+\ Clobbers rax rcx rdx rsi rdi r8 r9 r11.
+: LSPAN-HELPER, ( -- )
+   LBL LBL LBL {: rskip:label fskip:label cskip:label :}
+   LSPAN-LBL LBL,
+   R8 RDI ASM-SINK ENC-MOV-RR
+   R9 RDI RSI 1 0 MEM-IDX ASM-SINK ENC-LEA
+   0 CFSTK-OFF rskip CLAMP,                            \ the record band
+   PAGE-OUT,
+   PROT:RLO PROT:RHI BAND-WIDEN,
+   rskip LBL,
+   CFSTK-OFF DICT-SIZE fskip CLAMP,                    \ the control-flow band
+   RAX DATA-REG PROT:CF MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE fskip JCC,       \ already declared
+   RAX 1 IMM32,  RAX DATA-REG PROT:CF MOV-STORE,
+   PROT-RW CF-FLIP,
+   fskip LBL,
+   DICT-SIZE REGION cskip CLAMP,                       \ the code band
+   PAGE-OUT,
+   PROT:WLO PROT:WINDOW BAND-WIDEN,
+   cskip LBL,
+   ASM-SINK ENC-RET ;
+
+\ LOPEN ( rdi = one past the last byte to write ): LSPAN over [CP, rdi). An end
+\ at or below CP declares the byte at CP.
+: LOPEN-HELPER, ( -- )
+   ENGINE-GPR:X64-CP >R64 {: cp:r64 :}
+   LBL {: ok:label :}
+   LOPEN-LBL LBL,
+   RDI cp ASM-SINK ENC-CMP-RR  C-A ok JCC,
+   RDI cp 1 MEM-OFF ASM-SINK ENC-LEA
+   ok LBL,
+   RSI RDI ASM-SINK ENC-MOV-RR  RSI cp ASM-SINK ENC-SUB-RR
+   RDI cp ASM-SINK ENC-MOV-RR
+   LSPAN-LBL JMP, ;                                    \ its ret is this one's
+
+\ LCLOSE: flip every open band back to read-execute and clear its record. With
+\ nothing open it flips nothing.
+: LCLOSE-HELPER, ( -- )
+   LBL {: xcf:label :}
+   LCLOSE-LBL LBL,
+   RAX DATA-REG PROT:CF MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E xcf JCC,
+   RAX ZERO-REG,  RAX DATA-REG PROT:CF MOV-STORE,     \ cleared before the flip
+   PROT-RX CF-FLIP,
+   xcf LBL,
+   PROT:RLO PROT:RHI BAND-CLOSE,
+   PROT:WLO PROT:WINDOW BAND-CLOSE,
+   ASM-SINK ENC-RET ;
+
+\ ---- the site rows -----------------------------------------------------------
+\ SNAP-RELOC's x86-64 band (src/habu/layout.f): a u64 count at SITE-N-CELL, then
+\ rows of a u32 region offset and a u8 kind, strictly ascending by offset.
+
+\ r8 = the first row, rcx = the count and r9 = past the last row. A count above
+\ SITE-CAP is a corrupt band, SITE-RC's, as src/habu/sites.f refuses it.
+: ROWS, ( -- )
+   R8 DATA-REG SNAP-RELOC:SITE-ROWS-OFF MEM-OFF ASM-SINK ENC-LEA
+   RCX DATA-REG SNAP-RELOC:SITE-N-CELL MOV-LOAD,
+   RCX SNAP-RELOC:SITE-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-A SITE-TRAP-LBL JCC,
+   R9 RCX SNAP-RELOC:SITE-ROW-BYTES >IMM8 ASM-SINK ENC-IMUL-RRI8
+   R9 R8 ASM-SINK ENC-ADD-RR ;
+
+\ Record the site at region offset rdi of kind rdx in its place. The scan runs
+\ down from the last row, so a site above every row is an append; the rows
+\ above a lower site move up one row, the top byte first. The same row again
+\ changes nothing; another kind at a recorded offset, or a row past SITE-CAP,
+\ exits SITE-RC. Clobbers rax rcx rsi r8 r9.
+: ADD-SITE-HELPER, ( -- )
+   LBL LBL LBL LBL {: scan:label same:label place:label move:label :}
+   LBL {: moved:label :}
+   SNAP-RELOC:SITE-ROW-BYTES {: row:n :}
+   ADD-SITE-LBL LBL,
+   ROWS,
+   RSI R9 ASM-SINK ENC-MOV-RR                          \ rsi = the new row's place
+   scan LBL,
+   RSI R8 ASM-SINK ENC-CMP-RR  C-BE place JCC,         \ below every row
+   0 >R32 RSI row negate MEM-OFF ASM-SINK ENC-MOV32-RM \ the offset of the row below
+   RAX RDI ASM-SINK ENC-CMP-RR  C-B place JCC,
+   C-E same JCC,
+   RSI row >IMM8 ASM-SINK ENC-SUB-RI8
+   scan JMP,
+   same LBL,
+   RAX RSI row negate SNAP-RELOC:SITE-KIND-OFF + MEM-OFF ASM-SINK ENC-MOVZX-8-RM
+   RAX RDX ASM-SINK ENC-CMP-RR  C-NE SITE-TRAP-LBL JCC,
+   ASM-SINK ENC-RET
+   place LBL,
+   RCX SNAP-RELOC:SITE-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-AE SITE-TRAP-LBL JCC,
+   move LBL,
+   R9 RSI ASM-SINK ENC-CMP-RR  C-BE moved JCC,
+   R9 ASM-SINK ENC-DEC
+   RAX R9 MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   0 >R8 R9 row MEM-OFF ASM-SINK ENC-MOV8-MR
+   move JMP,
+   moved LBL,
+   RDI R64>N >R32 RSI MEM-AT ASM-SINK ENC-MOV32-MR
+   RDX R64>N >R8 RSI SNAP-RELOC:SITE-KIND-OFF MEM-OFF ASM-SINK ENC-MOV8-MR
+   RCX ASM-SINK ENC-INC
+   RCX DATA-REG SNAP-RELOC:SITE-N-CELL MOV-STORE,
+   ASM-SINK ENC-RET ;
+
+\ Remove every row whose site lies in [rdi, rdi+rsi), both kinds: the twin of
+\ habu1.f SNAP-RELOC:CLEAR-SPAN over both maps. The span's offsets compare
+\ signed, so a span below the region removes nothing. Two scans down from the
+\ last row find the first row at or above the span's end, in r10, and the first
+\ at or above its start, in r11, counting the rows between in rdx; the rows
+\ from r10 up move down over them. Clobbers rax rcx rdx rsi rdi r8-r11.
+: DROP-SITES-HELPER, ( -- )
+   LBL LBL LBL LBL {: high:label highs:label low:label lows:label :}
+   LBL LBL {: move:label done:label :}
+   SNAP-RELOC:SITE-ROW-BYTES {: row:n :}
+   DROP-SITES-LBL LBL,
+   RDI DBASE-REG ASM-SINK ENC-SUB-RR                   \ rdi = the span's first offset
+   RSI RDI ASM-SINK ENC-ADD-RR                         \ rsi = past its last
+   ROWS,
+   R10 R9 ASM-SINK ENC-MOV-RR
+   high LBL,
+   R10 R8 ASM-SINK ENC-CMP-RR  C-BE highs JCC,
+   0 >R32 R10 row negate MEM-OFF ASM-SINK ENC-MOV32-RM
+   RAX RSI ASM-SINK ENC-CMP-RR  C-L highs JCC,
+   R10 row >IMM8 ASM-SINK ENC-SUB-RI8
+   high JMP,
+   highs LBL,
+   R11 R10 ASM-SINK ENC-MOV-RR
+   RDX ZERO-REG,
+   low LBL,
+   R11 R8 ASM-SINK ENC-CMP-RR  C-BE lows JCC,
+   0 >R32 R11 row negate MEM-OFF ASM-SINK ENC-MOV32-RM
+   RAX RDI ASM-SINK ENC-CMP-RR  C-L lows JCC,
+   R11 row >IMM8 ASM-SINK ENC-SUB-RI8
+   RDX ASM-SINK ENC-INC
+   low JMP,
+   lows LBL,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E done JCC,         \ no row in the span
+   RCX RDX ASM-SINK ENC-SUB-RR
+   RCX DATA-REG SNAP-RELOC:SITE-N-CELL MOV-STORE,
+   move LBL,
+   R10 R9 ASM-SINK ENC-CMP-RR  C-AE done JCC,
+   RAX R10 MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   0 >R8 R11 MEM-AT ASM-SINK ENC-MOV8-MR
+   R10 ASM-SINK ENC-INC  R11 ASM-SINK ENC-INC
+   move JMP,
+   done LBL,
+   ASM-SINK ENC-RET ;
+
+\ The refusals the rows share: a span or index a guard refuses, and a site the
+\ band cannot take.
+: TRAPS, ( -- )
+   SEAL-TRAP-LBL LBL,  ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
+   SITE-TRAP-LBL LBL,  SNAP-RELOC:SITE-RC EXIT-GROUP, ;
+
+\ ---- the rows ----------------------------------------------------------------
+\ patch32 ( n n -- ): guard the four bytes at the address, then store the word
+\ between two LPROTREC flips of its pages, as BPATCH32 does: the flip is keyed
+\ on the target, never on a band another bracket may hold open.
+: PATCH32, ( -- )
+   0 PATCH-BYTES SIZED-GUARD,
+   R8 POP,  R9 POP,                                    \ the address, the word
+   R8 PROT-RW PROT-REC,
+   R9 R64>N >R32 R8 MEM-AT ASM-SINK ENC-MOV32-MR
+   R8 PROT-RX PROT-REC, ;
+
+\ code-publish's frame: the source, the destination and the length.
+0 constant PUB-SRC
+8 constant PUB-DST
+16 constant PUB-LEN
+24 constant PUB-FRAME
+
+\ code-publish ( ptr u8 n n -- ): the twin of BCODEPUBLISH. The span is nonzero,
+\ does not wrap and lies in [DBASE+DICT-SIZE, DBASE+REGION), and dst is CP: a
+\ publication is an append. The code band opens once over [CP, CP+len), the
+\ bytes copy, the band closes, the span's site rows of both kinds go, since
+\ its sites are recorded after, and CP moves past it.
+: PUBLISH, ( -- )
+   ENGINE-GPR:X64-CP >R64 {: cp:r64 :}
+   LBL LBL {: copy:label copied:label :}
+   RSI POP,  RDI POP,  RDX POP,                        \ len, dst, src
+   RSI RSI ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,    \ a window of nothing
+   RAX RDI RSI 1 0 MEM-IDX ASM-SINK ENC-LEA            \ rax = the span's end
+   RAX RDI ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,     \ an unsigned wrap
+   RCX DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
+   RDI RCX ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,     \ below the code interval
+   RCX DBASE-REG REGION MEM-OFF ASM-SINK ENC-LEA
+   RAX RCX ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,     \ past the region
+   RDI cp ASM-SINK ENC-CMP-RR  C-NE SEAL-TRAP-LBL JCC,     \ not an append at CP
+   RSP PUB-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
+   RDX RSP PUB-SRC MOV-STORE,  RDI RSP PUB-DST MOV-STORE,  RSI RSP PUB-LEN MOV-STORE,
+   RDI RAX ASM-SINK ENC-MOV-RR  LOPEN-LBL CALL,
+   RDX RSP PUB-SRC MOV-LOAD,  RDI RSP PUB-DST MOV-LOAD,  RCX RSP PUB-LEN MOV-LOAD,
+   RAX ZERO-REG,
+   copy LBL,
+   RAX RCX ASM-SINK ENC-CMP-RR  C-AE copied JCC,
+   R8 RDX RAX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   8 >R8 RDI RAX 1 0 MEM-IDX ASM-SINK ENC-MOV8-MR
+   RAX ASM-SINK ENC-INC
+   copy JMP,
+   copied LBL,
+   LCLOSE-LBL CALL,
+   RDI RSP PUB-DST MOV-LOAD,  RSI RSP PUB-LEN MOV-LOAD,
+   DROP-SITES-LBL CALL,
+   RDI RSP PUB-DST MOV-LOAD,  RSI RSP PUB-LEN MOV-LOAD,
+   cp RDI RSI 1 0 MEM-IDX ASM-SINK ENC-LEA            \ the slot is claimed
+   RSP PUB-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+\ callmap-set and addrmap-set ( n -- ): the site's region offset into rdi, where
+\ an address outside the region exits SEAL-VIOLATION, and the kind into rdx.
+: SITE-SET, ( n -- ) {: kind:n :}
+   RDI POP,
+   RDI DBASE-REG ASM-SINK ENC-SUB-RR                   \ below DBASE is huge, unsigned
+   RDI REGION >IMM32 ASM-SINK ENC-CMP-RI32  C-AE SEAL-TRAP-LBL JCC,
+   RDX kind IMM32,
+   ADD-SITE-LBL CALL, ;
+
+\ r8 = the address of the record whose index the register holds.
+: RECORD-AT, ( r64 -- ) {: idx:r64 :}
+   R8 idx DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   R8 DBASE-REG ASM-SINK ENC-ADD-RR ;
+
+\ xref-retarget ( n n n -- ): the twin of BXREFRETARGET. The index names a live
+\ record or the pending one, NDICT, and none past it; the length is at most
+\ CODE-SPAN:RAW-MAX and not CODE-SPAN:FULL, an empty exact span. Between two
+\ LPROTREC flips the length, the cell after the code cell, is stored first and
+\ the address last: under total store order a plain store publishes after the
+\ one before it, where ARM64 needs STLR.
+: RETARGET, ( -- )
+   RCX POP,  R9 POP,  R10 POP,                         \ the index, the length, the start
+   RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
+   RAX CODE-SPAN:RAW-MAX IMM32,
+   R9 RAX ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
+   RAX CODE-SPAN:FULL IMM32,
+   R9 RAX ASM-SINK ENC-CMP-RR  C-E SEAL-TRAP-LBL JCC,
+   RCX RECORD-AT,
+   R8 PROT-RW PROT-REC,
+   R9 R8 REC-CODE CELL + MOV-STORE,
+   R10 R8 REC-CODE MOV-STORE,
+   R8 PROT-RX PROT-REC, ;
+
+\ int-mark ( n -- ): or DNAME-INT into record n's flags between two LPROTREC
+\ flips, the twin of BINTMARK, which checks no index either.
+: INT-MARK, ( -- )
+   RCX POP,  RCX RECORD-AT,
+   R8 PROT-RW PROT-REC,
+   RAX DNAME-INT IMM64,
+   RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
+   R8 PROT-RX PROT-REC, ;
+
+\ min-in-mark ( n n -- ): or the minimum input depth into DNAME-MIN-IN of record
+\ n's flags, the twin of BMININMARK: only the field's eight bits land.
+: MIN-IN-MARK, ( -- )
+   R9 POP,  RCX POP,  RCX RECORD-AT,
+   R8 PROT-RW PROT-REC,
+   R9 MIN-IN-SHIFT >IMM8 ASM-SINK ENC-SHL-RI8
+   RAX DNAME-MIN-IN-MASK IMM64,
+   R9 RAX ASM-SINK ENC-AND-RR
+   R9 R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
+   R8 PROT-RX PROT-REC, ;
+
+\ does-record's frame.
+0 constant DR-ENTRY                    \ the clause's entry
+8 constant DR-LEN                      \ its recorded length
+16 constant DR-NAME-LEN                \ its name's length
+24 constant DR-NAME                    \ the parent's name bytes
+32 constant DR-PAD                     \ the name's bytes at CP, NAME-ALIGN whole
+40 constant DR-REC                     \ the clause's record
+48 constant DR-FRAME
+
+: SUFFIX$ ( -- ptr u8 n ) s" ;does" ;
+
+\ Store the suffix's bytes at rdi and step past them.
+: SUFFIX, ( -- )
+   SUFFIX$ {: a:ptr u:n :}
+   u 0 ?do
+      RAX a i + c@ IMM32,
+      0 >R8 RDI i MEM-OFF ASM-SINK ENC-MOV8-MR
+   loop
+   RDI u >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+\ does-record ( n n -- ): the twin of DOES-REC:NATIVE-PRIM. The parent is the
+\ record PEND-CELL points at, and its clause takes the slot past the pending
+\ one, NDICT+1: the entry and length given, the parent's name and ";does"
+\ out of line at CP, zero-padded to NAME-ALIGN as src/compiler/native/publish.f
+\ DOES-NAME-PAD measures, and the parent's wid. The code band opens over the
+\ name and the record band over the record, and CP moves past the name before
+\ the close.
+: DOES-RECORD, ( -- )
+   ENGINE-GPR:X64-CP >R64 {: cp:r64 :}
+   LBL LBL LBL LBL {: copy:label copied:label pad:label padded:label :}
+   RSP DR-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX POP,  RAX RSP DR-LEN MOV-STORE,
+   RAX POP,  RAX RSP DR-ENTRY MOV-STORE,
+   R11 DATA-REG PEND-CELL MOV-LOAD,                    \ the parent's record
+   R11 RCX RAX NAME-LEN,
+   R11 RDX RAX NAME-AT,
+   RCX SUFFIX$ nip >IMM8 ASM-SINK ENC-ADD-RI8
+   RCX RSP DR-NAME-LEN MOV-STORE,
+   RDX RSP DR-NAME MOV-STORE,
+   RAX RCX NAME-ALIGN 1- MEM-OFF ASM-SINK ENC-LEA
+   RAX NAME-ALIGN negate >IMM8 ASM-SINK ENC-AND-RI8
+   RAX RSP DR-PAD MOV-STORE,
+   RDI cp RAX 1 0 MEM-IDX ASM-SINK ENC-LEA  LOPEN-LBL CALL,
+   RSI RSP DR-NAME MOV-LOAD,
+   RDI cp ASM-SINK ENC-MOV-RR
+   RCX RSP DR-NAME-LEN MOV-LOAD,  RCX SUFFIX$ nip >IMM8 ASM-SINK ENC-SUB-RI8
+   copy LBL,                                           \ the parent's name
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E copied JCC,
+   RAX RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   0 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
+   RSI ASM-SINK ENC-INC  RDI ASM-SINK ENC-INC  RCX ASM-SINK ENC-DEC
+   copy JMP,
+   copied LBL,
+   SUFFIX,
+   RCX RSP DR-PAD MOV-LOAD,
+   RCX RSP DR-NAME-LEN MEM-OFF ASM-SINK ENC-SUB-RM
+   RAX ZERO-REG,
+   pad LBL,                                            \ the zeros to the pad
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E padded JCC,
+   0 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
+   RDI ASM-SINK ENC-INC  RCX ASM-SINK ENC-DEC
+   pad JMP,
+   padded LBL,
+   RDI NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
+   RDI RECORD-AT,
+   R8 RSP DR-REC MOV-STORE,
+   RDI R8 ASM-SINK ENC-MOV-RR  RSI DREC IMM32,  LSPAN-LBL CALL,
+   RDI RSP DR-REC MOV-LOAD,
+   RAX RSP DR-ENTRY MOV-LOAD,  RAX RDI REC-CODE MOV-STORE,
+   RAX RSP DR-LEN MOV-LOAD,  RAX RDI REC-CODE CELL + MOV-STORE,
+   RAX DNAME-EXT IMM64,
+   RAX RSP DR-NAME-LEN MEM-OFF ASM-SINK ENC-OR-RM
+   RAX RDI REC-FLAGS MOV-STORE,
+   cp RDI REC-NAME MOV-STORE,
+   RAX ZERO-REG,  RAX RDI REC-NAME CELL + MOV-STORE,
+   RAX DATA-REG PEND-CELL MOV-LOAD,
+   RAX RAX REC-WID MOV-LOAD,  RAX RDI REC-WID MOV-STORE,
+   cp RSP DR-PAD MEM-OFF ASM-SINK ENC-ADD-RM
+   LCLOSE-LBL CALL,
+   RSP DR-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+public
+
+\ The window's call sites, the twins of a habu1.f PROT:LSPAN, PROT:LOPEN and
+\ PROT:LCLOSE call: declare the span at rdi, rsi bytes long; open the code band
+\ over [CP, rdi), or CP's byte for an end at or below CP; close every band.
+\ Each keeps every VM register and clobbers rax rcx rdx rsi rdi and r8-r11. A
+\ section that calls one follows PUBLICATION, in KERNEL,.
+: WINDOW-SPAN, ( -- ) LSPAN-LBL CALL, ;
+: WINDOW-OPEN, ( -- ) LOPEN-LBL CALL, ;
+: WINDOW-CLOSE, ( -- ) LCLOSE-LBL CALL, ;
+
+\ The window and site helpers, made in this stream, and then the rows.
+: PUBLICATION, ( -- )
+   LBL LSPAN-CELL !  LBL LOPEN-CELL !  LBL LCLOSE-CELL !
+   LBL ADD-SITE-CELL !  LBL DROP-SITES-CELL !
+   LBL SEAL-TRAP-CELL !  LBL SITE-TRAP-CELL !
+   LSPAN-HELPER,  LOPEN-HELPER,  LCLOSE-HELPER,
+   ADD-SITE-HELPER,  DROP-SITES-HELPER,  TRAPS,
+   s" patch32" [: PATCH32, ;] PRIM
+   s" code-publish" [: PUBLISH, ;] PRIM
+   s" callmap-set" [: SNAP-RELOC:SITE-CALL SITE-SET, ;] PRIM
+   s" addrmap-set" [: SNAP-RELOC:SITE-ADDR SITE-SET, ;] PRIM
+   s" reloc-maps-clear" [: RSI POP,  RDI POP,  DROP-SITES-LBL CALL, ;] PRIM
+   s" xref-retarget" [: RETARGET, ;] PRIM
+   s" int-mark" [: INT-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" min-in-mark" [: MIN-IN-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" does-record" [: DOES-RECORD, ;] PRIM ;
+
 \ ---- engine-state rows -------------------------------------------------------
 
 private
@@ -1786,7 +2258,6 @@ private
 \ BSEEDNDICTSET and BNDAPPEND. A row that moves r14 keeps the dictionary index
 \ authoritative through the HIDX calls.
 
-5 constant PROT-RX                     \ PROT_READ|PROT_EXEC
 74 constant COUNT-RC                   \ BNDSET's and BSEEDNDICTSET's refusal
 
 \ The twin of habu1.f GUARD-CODE-WORD: a new CP must be a 4-aligned address in
@@ -2241,6 +2712,7 @@ public
    SYSCALLS,
    CONTROL,
    ATOMICS,
+   PUBLICATION,
    DICT-SEARCH,
    ENGINE-STATE,
    FFI, ;

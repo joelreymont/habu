@@ -9,7 +9,6 @@ blocks:
   - habu-resolve-x86-entry-cb671d4d
   - habu-emit-x86-pure-f70fb84b
   - habu-emit-x86-float-38de4a6f
-  - habu-emit-x86-code-973a0074
   - habu-model-the-code-c40c75d1
   - habu-add-sysv-abi-75f86980
   - habu-add-the-x86-efc81b26
