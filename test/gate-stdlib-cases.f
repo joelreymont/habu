@@ -1208,10 +1208,6 @@ SUITE num-arithmetic
    lib/num-arithmetic-test.f
 ;SUITE
 
-SUITE table-stdlib
-   lib/table-test.f
-;SUITE
-
 SUITE regex-stdlib
    lib/regex-test.f
 ;SUITE

@@ -1,7 +1,7 @@
 \ Explicit representation views preserve addresses and define access width.
 require lib/test.f
 require lib/memory.f
-require lib/table.f
+require lib/array.f
 require test/checker-assert.f
 
 package POINTER-VIEW-TEST
@@ -33,8 +33,8 @@ CAST: ITEM>N ( item -- n )
    s" BAD-IMPLICIT-VIEW ( ptr a -- ptr u8 ) " REJECT
    s" BAD-IMPLICIT-FETCH ( ptr a -- n ) @" REJECT
    s" BAD-BYTE-CELL ( ptr u8 -- n ) @" REJECT
-   s" BAD-TABLE-ELEMENT ( ptr item count count idx idx -- n ) TBL:N@" REJECT
-   s" BAD-TABLE-STORE ( n ptr item count count idx idx -- ) TBL:N!" REJECT
+   s" BAD-ARRAY-READ ( ptr item len -- n ) ARRAY:A-SUM" REJECT
+   s" BAD-ARRAY-STORE ( ptr item len -- ) ARRAY:A-PREFIX-SUM!" REJECT
    T-REPORT ;
 
 RUN

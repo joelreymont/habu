@@ -11,7 +11,6 @@ Planned module files:
 
 - `lib/errors.f`
 - `lib/array.f`
-- `lib/table.f`
 - `lib/vector.f`
 - `lib/string.f`
 - `lib/json-write.f`
@@ -221,39 +220,6 @@ For ordinary collections, use arrays or maps. For fixed layout nodes, use the
 structure DSL and publish checked accessors. For dispatch tables, use checked
 `case/of/endof/endcase` or checked execution vectors; do not encode dispatch as
 raw relative dictionary links.
-
-## Table
-
-`lib/table.f` provides checked helpers for fixed-capacity cell tables. A table is
-plain `ptr a` storage with an explicit row count and field count supplied to each
-operation. Row and field capacities are `count`; row and field positions are
-`idx`; counted byte-string lengths are `len`. `TBL-FIELD ( ptr a count count idx idx -- ptr a )`
-returns the checked address for `table[row][field]`; rows outside `[0, rows)`
-throw `E-TBL-BOUNDS`, and fields outside `[0, fields)` throw `E-TBL-FIELD`.
-
-Typed accessors make common tool records explicit without inventing nominal
-handles yet: numeric fields use `TBL-N@` / `TBL-N!`, booleans use `TBL-BOOL@` /
-`TBL-BOOL!`, byte pointers use `TBL-A@` / `TBL-A!`, and counted byte-string
-pairs use `TBL-PAIR$` / `TBL-PAIR!`. Pair fields occupy two adjacent cells and
-are rejected unless both cells fit in the record width.
-
-```forth
-TBL-CHECK-ROW    ( count idx -- )
-TBL-CHECK-FIELD  ( count idx -- )
-TBL-CHECK-PAIR   ( count idx -- )
-TBL-CELLS        ( count count -- count )
-TBL-FIELD        ( ptr a count count idx idx -- ptr a )
-TBL-CELL@        ( ptr a count count idx idx -- a )
-TBL-CELL!        ( a ptr a count count idx idx -- )
-TBL-N@           ( ptr a count count idx idx -- n )
-TBL-N!           ( n ptr a count count idx idx -- )
-TBL-BOOL@        ( ptr a count count idx idx -- bool )
-TBL-BOOL!        ( bool ptr a count count idx idx -- )
-TBL-A@           ( ptr a count count idx idx -- ptr u8 )
-TBL-A!           ( ptr u8 ptr a count count idx idx -- )
-TBL-PAIR!        ( ptr u8 len ptr a count count idx idx -- )
-TBL-PAIR$        ( ptr a count count idx idx -- ptr u8 len )
-```
 
 ## Vector
 

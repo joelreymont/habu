@@ -552,7 +552,6 @@ pointer-bearing base: ~70 in `src/`, ~40 in `lib/`, ~25 in `tools/` and `test/`.
 | ZIP node + entry/buffer overlays, `zip-state.f`, `zip-raw.f` | 0, 2, 3, 4, 6, 8, 10, 18, 22 | 1, 5, 7, 9, 11–17, 19–21, 23–27 | A×11 | **mmap** per node | closed at `IMAGE-LIFECYCLE` |
 | ZIP member, `zip-raw.f:47-57` | 7 | 0–6, 8–10 | A, B | mmap | no |
 | `MAP` slot + header, `map.f` | slot 2 | slot 0/1/3/4, hdr 0–2 | A×2, B | caller `create`d | no |
-| `TBL` pair, `table.f:68-87` | field n | field n+1 len | A×2, B | caller-supplied | no |
 | `BUILD` step, `build.f:30-41` | 0, 2, 4, 6, 8 | 1, 3, 5, 7, 9, 10 | A×2 | caller `create`d | no |
 | **TCB**, `task.f:61-91` | STACK, REGION, RSTACK, LSTACK, MSG-SENDER | ~20 scalars **plus inline semaphore byte blobs** | `PTR-FIELD:`×5, B | definer-compiled dictionary | in the image; pointers nulled on release |
 | queue index, `queue.f:44-49` | a table of record addresses | Q-REC itself is scalar-only | A behind `CELL-VIEW` | `create`d | no |
@@ -869,7 +868,7 @@ between them: a narrowing refuses every unmigrated site at once.
 |---|---|---|
 | **P** | T1 record-free: SYM to five columns; CWIN and `cell-effects.f` `STATE` to a head plus two variables; transaction state, include frame and registry to columns; the DYNAMIC-BUFFER control record to three declared cells; the reserved-cell declarator plus its two effect rows for the 17 engine-layout sites; the zero pass and the growers to typed loops | the largest wave — SYM touches ~20 call sites, the declarator 17, the rest are single-file |
 | **1** | `tools/`: `LINT-SLAB` (one declaration, 7 `create … allot` sites become `TYPED-VARIABLE`, 6 accessor words are generated away) and the 13 pointer-slot families (one two-field record each, ~60 call sites rewritten from `X-A X-FIELD @` to `X SLOT:A @`); delete the dead helper at `check-core.f:137-144` | mechanical, no ABI |
-| **2** | `lib/` readers and headers: `BUF`, `VEC`, `EDIT`, `JR`, `XML`, `MAP`, `TBL`, `BUILD` — each publishes a size constant its callers `create … allot` against, so each becomes a family plus a caller-side `TYPED-VARIABLE`/`TYPED-BUFFER` change | 10–20 field words per record, generated away; caller edits are one line each |
+| **2** | `lib/` readers and headers: `BUF`, `VEC`, `EDIT`, `JR`, `XML`, `MAP`, `BUILD` — each publishes a size constant its callers `create … allot` against, so each becomes a family plus a caller-side `TYPED-VARIABLE`/`TYPED-BUFFER` change | 10–20 field words per record, generated away; caller edits are one line each |
 | **3** | `lib/` with storage questions: the xmodem session (nested `BUF` field — supported, a family field may name another family), the ZIP node and member (mmap — becomes a `DYNAMIC-BUFFER` arena or gains a typed allocation crossing), `pq` (struct-of-arrays plus the parameter arena) | design per record, not mechanical |
 | **4** | `src/` T3: NSTR pool owner, IR arena descriptor, IR symbol index, AOT dict record, address-cell header | each is persisted or captured; see the marking dot |
 | **after byte fields** | **TCB** (`lib/task.f`, inline semaphore byte blobs), `SA-ACT` (`lib/signal.f`, a foreign `struct sigaction` whose offset 0 holds a code address), the `CFIELD:` users in `src/arch/tic6x/` | blocked, see below |
@@ -975,7 +974,7 @@ because `lib/task.f`'s TCB reaches its five pointer fields through the very row
    generated, no cast remains, and the lint and check suites assert exactly what
    they asserted before.
 7. **The `lib/` migrations, one dot per record** (`BUF`, `VEC`, `EDIT`, `JR`,
-   `XML`, `MAP`, `TBL`, `BUILD`, then the xmodem session, the ZIP node and
+   `XML`, `MAP`, `BUILD`, then the xmodem session, the ZIP node and
    member — whose dot also decides arena-or-crossing — and `pq`), then **`src/`
    T3** (NSTR pool owner, IR arena descriptor, IR symbol index, AOT dict record,
    address-cell header). *Acceptance per record:* declared, accessors generated,
