@@ -1,0 +1,9 @@
+---
+title: Hold every path buffer to PATH-CAP and say how to name it
+status: active
+priority: 2
+issue-type: task
+created-at: "\"2026-09-30T16:51:16.809099+02:00\""
+---
+
+Problem: src/core/util.f:80-84 says every path buffer holds PATH-CAP bytes plus its NUL. f035827f fixed TMP-PATH only. Others restate or undercut it: src/core/include.f:6 ($400 literal), tools/repl-lint-core.f:11 ($400 literal), lib/process.f PROC-PATHZ-CAP, lib/process-pty-io.f IO-PATH-CAP, lib/process-command.f PATHZ-CAP/CWDZ-CAP, lib/ffi-abi.f LIB-PATH-CAP ($60), the NF-PATH-CAP fixture root (docs/gate.md). A checked colon body cannot name PATH-CAP (util.f loads before the check hook; the cold host's prefix refuses it E-UNDEFINED) yet tools/native-build.f built that tree rc 0, so a broken engine is only caught at cold boot. TMP-PATH's own check adds the caller's length and wraps. Acceptance: every path buffer is listed with its capacity; each is PATH-CAP, or the invariant's text names the exception and why; PATH-CAP is nameable from checked code by one stated mechanism, or the native build refuses what the cold prefix refuses; TMP-PATH refuses negative and wrapping lengths; docs/forth.md (Rules learned by refusal) and docs/forth-card.md state the pre-hook naming rule with the fact that proves it; the native suite passes with a gate HB_TMP near the longest root the invariant admits, or each row that cannot is named with its OS limit. Files: src/core/util.f, src/core/cell-effects.f, src/os/env-base.f, src/core/include.f, the lib files above, docs/forth.md, docs/forth-card.md. Verify: candidate build, cold-host boot (test/aot-wid-build.f), full suite at a long HB_TMP, check-only Gforth recovery, tools/two-generation-build.f. Depends: f035827f. Ownership: capacity constants and buffers, env-base.f, the docs rule. Claim: agent=kestrel workspace=.jj-ws/r4-pathcap.
