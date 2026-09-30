@@ -1974,7 +1974,10 @@ persisted, never rolled back.
 the body and runs the checker hook at publish time. If `CHECK` records any wide
 fact, `EM-P2-TRIGGER` replays the captured body with the fact table available;
 the second pass selects width-aware lowering by body-token index and does not
-register the definition twice. This replay supplies checker-before-emission
+register the definition twice. Nor does it run an immediate word again: pass 1
+ran it on the real input and the capture holds what it compiled, so a parsing
+word reads no captured token, its side effects happen once and DP stays where
+pass 1 left it. This replay supplies checker-before-emission
 ordering without making every scalar definition pay for a separate parse.
 
 **Storable layouts S1/S2 (dot habu-checker-capability-typed-a480c423, landed).**

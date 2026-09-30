@@ -71,6 +71,14 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
    need DIGITS$ SAY
    DEF-RC-BODY-FULL THROW-AT ;
 
+\ The source ended inside the pending definition: refused, named and located
+\ at its name token (layout.f PENDTKA-CELL), as habu2.f LSRCEND refuses.
+: DEF-ENDED ( -- )
+   PENDTKA-CELL CELL@ INP-CELL CELL!
+   s" hb: source ended inside definition: " SAY
+   DEF-CAPTURED-NAME SAY
+   RC-UNCLOSED THROW-AT ;
+
 \ The bytes and one space join the body.
 : DEF-CAPTURE ( ptr u8 n -- ) {: a:ptr u:n :}
    BODYLEN-CELL CELL@ u + 1 + {: need:n :}
@@ -183,17 +191,20 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
    s end DEF-SIG-TAKE ;
 
 \ A signature that must be there, opened and closed, or the refusal names the
-\ token: where it starts and the byte past it.
-: DEF-SIG-SPAN ( -- ptr u8 ptr u8 )
+\ token: where it starts and the byte past it. A head's signature that the
+\ input ends before or inside is the source ending inside the definition
+\ (habu2.f C-PARSE-TRUST-SIG).
+: DEF-SIG-SPAN ( bool -- ptr u8 ptr u8 ) {: head:bool :}
    DEF-SIG-START {: s:ptr open:bool :}
+   head s INE-CELL ADDR@ = and if DEF-ENDED then
    open 0= if DEF-RC-BAD-SIG PKG-FAIL then
    s DEF-SIG-END {: end:ptr closed:bool :}
-   closed 0= if DEF-RC-BAD-SIG PKG-FAIL then
+   closed 0= if head if DEF-ENDED then DEF-RC-BAD-SIG PKG-FAIL then
    s end ;
 
 \ `trusted:` needs one, and the refusal names the definition.
 : DEF-REQUIRED-SIG ( -- )
-   DEF-SIG-SPAN DEF-SIG-TAKE ;
+   true DEF-SIG-SPAN DEF-SIG-TAKE ;
 
 \ ---- the head ----------------------------------------------------------------
 \ Tier 1 compiles through the entry the AOT seed installed; with none the
@@ -304,7 +315,7 @@ TRUSTED: DEF-RUN ( n -- )
 \ and a missing or open signature names the token as spelled (C-SIG-BAD).
 
 : DEF-CREATED ( -- )
-   DEF-SIG-SPAN {: s:ptr end:ptr :}
+   false DEF-SIG-SPAN {: s:ptr end:ptr :}
    end INP-CELL ADDR!
    s 1 + end s - 2 - COPY-HERE DEF-CREATED-SIG ;
 
@@ -326,6 +337,30 @@ TRUSTED: DEF-RUN ( n -- )
    DEF-CALL? if false exit then
    DEF-DOES true ;
 
+\ ---- the buffer's own definition (habu2.f C-DEF-SOURCE-CLOSE, C-DEF-SOURCE-END)
+\ A definition closes in the buffer that opened it. ENTRY-PEND is the record
+\ pending as the buffer OUTER:INTERPRET reads began (habu1.f EVAL-ENTER,
+\ layout.f EVAL-FRAME:PEND); a pending record other than it is the buffer's
+\ own. A throw out of the buffer, these refusals included, puts the entry
+\ record back in PEND-CELL (OUTER:INTERPRET): the buffer's own definition is
+\ abandoned, so no later `;` publishes it, and an outer one stays pending, as
+\ habu2.f EM-EVAL-THROW-RECOVER leaves them. Unlike the engine's, this loop
+\ puts no CP, NDICT or DP back (habu-roll-back-failed-64bf2ba5).
+variable ENTRY-PEND
+
+\ A `;` that would close the record pending as the buffer began, one an outer
+\ buffer opened, is refused at the `;`, naming the definition.
+: DEF-SOURCE-CLOSE ( -- )
+   PEND-CELL CELL@ ENTRY-PEND @ <> if exit then
+   s" hb: source closed a definition it did not open: " SAY
+   DEF-CAPTURED-NAME SAY
+   RC-UNCLOSED THROW-AT ;
+
+\ At the buffer's end a record the buffer opened is refused.
+: DEF-SOURCE-END ( -- )
+   PEND-CELL CELL@ ENTRY-PEND @ = if exit then
+   DEF-ENDED ;
+
 \ ---- `;` (habu2.f NCOMP-EMIT:EM-COMPILE) --------------------------------------
 \ `;`, the one byte, ends the definition and joins no capture. The body goes
 \ to the compiler entry the AOT seed installed, as the engine's tier-1 `;`
@@ -339,6 +374,7 @@ TRUSTED: DEF-COMPILE ( ptr u8 n -- )
 
 : DEF-SEMI? ( -- bool )
    s" ;" TOKEN-IS? 0= if false exit then
+   DEF-SOURCE-CLOSE
    data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ DEF-COMPILE
    DEF-CLOSE
    true ;

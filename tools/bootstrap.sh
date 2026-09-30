@@ -396,6 +396,31 @@ bootstrap_eval_undef_gate() {
 
 bootstrap_eval_undef_gate
 
+# An immediate word's evaluate compiles into the definition open around it, as
+# native tier 0 does. The compile loop calls an immediate word with the code
+# region read-execute, so EVAL-ENTER has to make it writable for that buffer;
+# without it the first word the buffer compiled died of SIGBUS, rc 134, after
+# the marker.
+bootstrap_imm_eval_gate() {
+  local src="test/bootstrap-imm-eval-src.f"
+  local bin="$T/bootstrap-imm-eval"
+  local out="$T/bootstrap-imm-eval.out"
+  local err="$T/bootstrap-imm-eval.err"
+  local rc=0
+
+  "$GF" -e "require $ROOT/test/nf.fs s\" $ROOT/$src\" slurp-file s\" $bin\" FORTH-EXE bye"
+  set +e
+  "$bin" >"$out" 2>"$err"
+  rc=$?
+  set -e
+  if [[ "$rc" -ne 0 || "$(< "$out")" != $'BOOTSTRAP-IMM-EVAL-ARMED\n42\n42' ]]; then
+    printf 'bootstrap imm eval: expected rc=0 and the armed marker, 42, 42; got rc=%s stdout:\n%s\n' "$rc" "$(< "$out")" >&2
+    exit 75
+  fi
+}
+
+bootstrap_imm_eval_gate
+
 # The recovery engine publishes a created word's effect from its definer: `-- ptr a`
 # for `create` and `variable`, `-- a` for `constant`, and the declared created
 # effect for `create ... does>`. Every row goes through `trust-raw`, so its type

@@ -1290,6 +1290,21 @@ passing suite.
 Each of these was measured on the engine; the fact that proved it is beside
 the rule.
 
+- **A definition and a `(` comment close in the source that opened them.** A
+  file, an `evaluate` string and stdin each end inside nothing they opened:
+  `hb: source ended inside definition: NAME` covers an open colon body with
+  its stack comment, `{:` locals or `[:` quotation and is located on the line
+  of the definition's name, or of the word that ran `def-open`;
+  `hb: source ended inside a ( comment` is located at the `(`. Stdin names no
+  line. Both are rc 74, catchable inside `evaluate` with the definition rolled
+  back (test/runtime-regression-test.f `GE-SOURCE-END`). So
+  `s" : W ( -- n ) 8" evaluate ;` is refused although the next token would
+  close W. An immediate word's `evaluate` may compile into a definition
+  already open when the string began, but a `;` it reads there, or in a file
+  it includes, is `hb: source closed a definition it did not open: NAME`,
+  rc 74, located at the `;`. A refusal caught around that `evaluate`, however
+  many evaluates down it fired, leaves the outer definition compiling with
+  every token each evaluate completed before the refused one.
 - **Initialized scoped storage has two bounds.** A callback for
   `C2-MEM:WITH-INIT` may declare `forall<i inside [l,T],[ ... ]>`; its fresh
   scope `i` is inside the byte view's lifetime `l` and every scope dependency

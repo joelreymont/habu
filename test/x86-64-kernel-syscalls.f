@@ -52,7 +52,7 @@ using X64ASM
 using X64CODE
 using X64RT
 
-\ A heap cell above every band and below the transaction blob's reach.
+\ A heap cell above every band.
 DATA-START $10000 + constant HEAP-OFF
 
 \ Guard the one-cell span at DATA offset off.
