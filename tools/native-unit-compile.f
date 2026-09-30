@@ -30,7 +30,6 @@ variable REQUIRE-XT
 5 constant CLOSED
 6 constant IMPORTED
 
-TRUSTED: DISARM ( -- ) 0 data-base UNIT-COMPILE-CELL + ! ;
 TRUSTED: CLEAR-BORROWED ( -- ) 0 BODY-XT ! ;
 TRUSTED: INPUT@ ( -- ptr u8 ) data-base INP-CELL + @ ;
 TRUSTED: INPUT! ( ptr u8 -- ) data-base INP-CELL + ! ;
@@ -115,7 +114,7 @@ TRUSTED: ORIGINAL-PROTECT? ( n -- bool ) ['] prot-wid-add = ;
    event 2 = if a u PACKAGE-ENTRY if -1 else 0 then exit then
    a u cls INTERPRET-TOKEN ;
 
-TRUSTED: ARM ( -- ) ['] GUARD data-base UNIT-COMPILE-CELL + ! ;
+TRUSTED: RUN ( [ -- ] -- n ) ['] GUARD swap unit-compile-run ;
 
 public
 
@@ -134,9 +133,7 @@ public
    body BODY-XT !
    PROLOGUE STAGE !
    1 ACTIVE !
-   ARM
-   q catch {: rc:n :}
-   DISARM
+   q RUN {: rc:n :}
    0 ACTIVE !
    CLEAR-BORROWED
    rc 0<> if rc throw then

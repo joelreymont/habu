@@ -2723,6 +2723,30 @@ public
    CATCH-RES LABEL@ LBL,
    CATCH-PUSH LABEL@ LBL,  9 G-PUSH ;
 
+\ unit-compile-run ( guard source -- rc ): the engine owns the protected
+\ dispatch hook for one source invocation. Busy or wild hooks return rc70
+\ before source runs; a source throw returns its original catch status.
+\ The hook remains callable after its donor dictionary records are reset,
+\ so use the existing live-code interval rather than dictionary membership.
+: BUNITCOMPILE ( -- )
+   LBL LBL {: bad:label done:label :}
+   A G-POP
+   SP SP 16 SUBI,  9 SP 0 STR,             \ source quotation
+   A G-POP                                  \ guard quotation
+   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,
+   11 10 0 LDR,  11 bad CBNZ,
+   9 DBASE CMP,  C-CC bad BCOND,
+   9 CP CMP,     C-CS bad BCOND,
+   9 10 0 STR,
+   9 SP 0 LDR,  9 G-PUSH
+   BCATCH
+   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,
+   11 0 MOVZ,  11 10 0 STR,                  \ clear on return or throw
+   SP SP 16 ADDI,  done B,
+   bad LBL,
+   SP SP 16 ADDI,  9 70 MOVZ,  9 G-PUSH
+   done LBL, ;
+
 \ throw ( code -- ) : unwind to the nearest catch handler (ANS semantics). When
 \ EVALD>0 the throw may cross one or more active `evaluate` boundaries before it
 \ reaches its handler; the loop in LEVALREC (habu2.f, reached via EVALREC-CELL since
@@ -3484,6 +3508,7 @@ package ENGINE-EMIT
 : EMIT-CHECKER-PRIMS ( -- )
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
    s" finally" ['] BFINALLY FPRIM
+   s" unit-compile-run" ['] BUNITCOMPILE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

@@ -5,6 +5,7 @@
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/test/subject.f
 require src/compiler/native/compiler.f
 require tools/native-unit-compile.f
 
@@ -12,6 +13,8 @@ package UNIT-COMPILE
 public
 TRUSTED: BORROWED-CLEAR? ( -- bool )
    BODY-XT @ 0= ;
+TRUSTED: NESTED-RUN ( [ -- ] -- n )
+   ['] GUARD swap unit-compile-run ;
 ;package
 
 package NATIVE-UNIT-COMPILE-TEST
@@ -21,6 +24,10 @@ create PATH FS-PATH-CAP allot
 variable BODY-SEEN
 variable GOOD-SOURCE-N
 variable SKIP-SOURCE-N
+variable CONTINUED
+create OUT 1024 allot
+create ERR 1024 allot
+variable ERR-U
 public
 variable SIDE-EFFECT
 
@@ -60,10 +67,24 @@ variable SIDE-EFFECT
    s" missing-close.f"
       S\" package UCM\npublic\n: VALUE ( -- n ) 4 ;\n" PUT
    s" retry.f"
-      S\" package UCR\npublic\n: VALUE ( -- n ) 7 ;\n;package\n" PUT ;
+      S\" package UCR\npublic\n: VALUE ( -- n ) 7 ;\n;package\n" PUT
+   s" throw.f"
+      S\" package UCT\npublic\n: VALUE ( -- n ) 6 ;\n;package\n" PUT
+   s" after-throw.f"
+      S\" package UCAFT\npublic\n: VALUE ( -- n ) 43 ;\n;package\n" PUT
+   s" nested.f"
+      S\" package UCNT\npublic\n: VALUE ( -- n ) 44 ;\n;package\n0 NATIVE-UNIT-COMPILE-TEST:SIDE-EFFECT !\n" PUT ;
 
 : ON-BODY ( -- bool ) 1 BODY-SEEN ! false ;
 : ON-SKIP ( -- bool ) 2 BODY-SEEN ! true ;
+: CONTINUE ( -- ) 1 CONTINUED +! ;
+TRUSTED: BAD-HOOK ( [ -- ] -- n )
+   0 swap unit-compile-run ;
+: ON-THROW ( -- bool ) E-STR-BOUNDS throw ;
+: ON-NESTED ( -- bool )
+   [: CONTINUE ;] UNIT-COMPILE:NESTED-RUN 70 T=
+   CONTINUED @ 0 T=
+   false ;
 : LOAD-GOOD ( -- ) 1 GOOD-SOURCE-N +! s" good.f" included ;
 : LOAD-SKIP ( -- ) 1 SKIP-SOURCE-N +! s" skip.f" included ;
 : LOAD-WRONG ( -- ) s" wrong.f" included ;
@@ -78,6 +99,9 @@ variable SIDE-EFFECT
 : LOAD-QUALIFIED-CONSTANT ( -- ) s" qualified-constant.f" included ;
 : LOAD-MISSING-CLOSE ( -- ) s" missing-close.f" included ;
 : LOAD-RETRY ( -- ) s" retry.f" included ;
+: LOAD-THROW ( -- ) s" throw.f" included ;
+: LOAD-AFTER-THROW ( -- ) s" after-throw.f" included ;
+: LOAD-NESTED ( -- ) s" nested.f" included ;
 
 : GOOD ( -- ) s" UCX" [: ON-BODY ;] [: LOAD-GOOD ;] UNIT-COMPILE:WITH ;
 : SKIP ( -- ) s" UCX" [: ON-SKIP ;] [: LOAD-SKIP ;] UNIT-COMPILE:WITH ;
@@ -93,6 +117,9 @@ variable SIDE-EFFECT
 : QUALIFIED-CONSTANT ( -- ) s" UQK" [: ON-BODY ;] [: LOAD-QUALIFIED-CONSTANT ;] UNIT-COMPILE:WITH ;
 : MISSING-CLOSE ( -- ) s" UCM" [: ON-BODY ;] [: LOAD-MISSING-CLOSE ;] UNIT-COMPILE:WITH ;
 : RETRY ( -- ) s" UCR" [: ON-BODY ;] [: LOAD-RETRY ;] UNIT-COMPILE:WITH ;
+: THROWN ( -- ) s" UCT" [: ON-THROW ;] [: LOAD-THROW ;] UNIT-COMPILE:WITH ;
+: AFTER-THROW ( -- ) s" UCAFT" [: ON-BODY ;] [: LOAD-AFTER-THROW ;] UNIT-COMPILE:WITH ;
+: NESTED ( -- ) s" UCNT" [: ON-NESTED ;] [: LOAD-NESTED ;] UNIT-COMPILE:WITH ;
 
 : SIDE ( -- ) 1 SIDE-EFFECT ! ; immediate
 s" NATIVE-UNIT-COMPILE-TEST:SIDE" 0 parse-imm
@@ -124,7 +151,35 @@ s" NATIVE-UNIT-COMPILE-TEST:SIDE" 0 parse-imm
    SIDE-EFFECT @ 17 T=
    0 SIDE-EFFECT !
    [: IMMEDIATE-LOAD ;] catch 70 T=
-   SIDE-EFFECT @ 0 T= ;
+   SIDE-EFFECT @ 0 T=
+   s" hook refuses malformed and nested use without running a continuation" T-LABEL
+   0 CONTINUED !
+   [: CONTINUE ;] BAD-HOOK 70 T=
+   CONTINUED @ 0 T=
+   17 SIDE-EFFECT !
+   [: NESTED ;] catch 70 T=
+   CONTINUED @ 0 T=
+   SIDE-EFFECT @ 17 T=
+   s" arbitrary callback throw releases hook for the next source" T-LABEL
+   [: THROWN ;] catch E-STR-BOUNDS T=
+   UNIT-COMPILE:BORROWED-CLEAR? TTRUE
+   AFTER-THROW ;
+
+: REFUSED ( ptr u8 n -- )
+   OUT 1024 >LEN ERR 1024 >LEN 10000 >MS SUBJECT:RUN
+   MATCH outcome
+      exited OF 70 T= ENDOF
+      signaled OF drop false TTRUE ENDOF
+      timeout OF false TTRUE ENDOF
+   ;MATCH
+   LEN>N ERR-U ! LEN>N drop
+   ERR ERR-U @ s" unit-compile-run" CONTAINS? TTRUE ;
+
+: HOOK-GATE ( -- )
+   s" scoped hook is inaccessible to ordinary source and tick" T-LABEL
+   s" unit-compile-run" REFUSED
+   s" ' unit-compile-run" REFUSED
+   s" : HOOK-ESCAPE ( [ ptr u8 n n n -- n ] [ -- ] -- n ) unit-compile-run ;" REFUSED ;
 
 : RUN ( -- )
    T-RESET
@@ -133,6 +188,7 @@ s" NATIVE-UNIT-COMPILE-TEST:SIDE" 0 parse-imm
    root ROOT u BYTE-COPY u ROOT-U !
    SOURCES
    ROOT$ [: RUN-CASES ;] SOURCE-ROOT:WITH
+   HOOK-GATE
    s" native unit compile tree: " type ROOT$ type cr ;
 
 : SHADOW-REQUIRE-CHECK ( -- )
@@ -171,8 +227,23 @@ TRUSTED: ORIGINAL-REQUIRE-XT ( -- n ) ['] require ;
 
 ' require UNIT-COMPILE:BIND-REQUIRE
 1 set-tier
+
+package UNIT-HOOK-SHAPE
+variable CONTINUED
+TRUSTED: CALL ( [ ptr u8 n n n -- n ] [ -- ] -- n )
+   unit-compile-run ;
+: GUARD ( ptr u8 n n n -- n ) 2drop 2drop 0 ;
+: CONTINUE ( -- ) 1 CONTINUED +! ;
+public
+: RUN ( -- )
+   ['] GUARD [: CONTINUE ;] CALL 0 T=
+   CONTINUED @ 1 T= ;
+;package
+
 NATIVE-UNIT-COMPILE-TEST:RUN
+UNIT-HOOK-SHAPE:RUN
 UCX:VALUE 42 T=
+UCAFT:VALUE 43 T=
 package SREQ
 : require ( -- ) 1 NATIVE-UNIT-COMPILE-TEST:SIDE-EFFECT ! ;
 NATIVE-UNIT-COMPILE-TEST:SHADOW-REQUIRE-CASE
