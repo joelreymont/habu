@@ -1183,14 +1183,14 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    id 0 RESULT-AT  ACC  VBIND ;
 
 \ ---- selecting the one arithmetic that refuses -------------------------------
-\ A zero divisor is a CALLER error, so the divide's cold side hands the code to
-\ the runtime's `throw` (src/habu/habu1.f BTHROW) exactly as the engine's own
-\ `/` hands it to (DIV-ZERO). The entry is asked for here, where the dictionary
+\ A zero divisor is a CALLER error, so the divide's cold side branches to
+\ (DIV-ZERO), the sealed engine helper the engine's own `/` branches to
+\ (src/habu/habu1.f BDIV0?). The entry is asked for here, where the dictionary
 \ is readable, and carried to the emitter as the operation's own attribute. It
 \ is refused by the name E-A64SEL-TRAP names: the routine a compiled refusal
-\ branches to is not in the target dictionary.
-: THROW-ENTRY ( -- n )
-   s" throw" NDICT:CALL-TARGET {: e:n :}
+\ branches to is not in the engine's text.
+: DIV-ZERO-ENTRY ( -- n )
+   s" (DIV-ZERO)" NDICT:HELPER-TARGET {: e:n :}
    e 0= if E-A64SEL-TRAP throw then
    e ;
 
@@ -1211,8 +1211,8 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
    CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
    RESULT+
-   CTX BLD  CTX BLD A64IR:KEY-THROW-ENTRY
-   CTX BLD  THROW-ENTRY A64IR:ENTRY-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD A64IR:KEY-COLD-ENTRY
+   CTX BLD  DIV-ZERO-ENTRY A64IR:ENTRY-ATTR  IR-BUILD:ADD-ATTR
    CLOSE-VALUE
    id 0 RESULT-AT  ACC  VBIND ;
 

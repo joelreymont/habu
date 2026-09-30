@@ -328,7 +328,7 @@ $1000 constant BUMP-ADDR
 
 \ The division's refusal branches to an ADDRESS and not to a constant, so the
 \ expected word cannot be written out: the displacement is decoded back into the
-\ address it names and held against the entry the dictionary gives for `throw`.
+\ address it names and held against the entry the dictionary gives for its callee.
 \ A word that is not a `bl` is refused as that rather than read as a distance.
 : BL-TARGET ( n -- n )
    {: i:n :}
@@ -338,8 +338,8 @@ $1000 constant BUMP-ADDR
    imm $02000000 and 0<> if imm $04000000 - else imm then
    4 *  A64EMIT:PLACEMENT +  i 4 * + ;
 
-: THROW-ENTRY ( -- n )
-   s" throw" NDICT:CALL-TARGET ;
+: DIV-ZERO-ENTRY ( -- n )
+   s" (DIV-ZERO)" NDICT:HELPER-TARGET ;
 
 : SPAN-SRC-AT ( n -- n )
    A64EMIT:MAP-SPAN@ IR-SOURCE:SPAN-SRC IR-ID:SOURCE-LOCAL ;
@@ -410,32 +410,28 @@ $1000 constant BUMP-ADDR
    WBND [: DIFF-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= $D65F03C0 T= $CB010000 T= 2 T= ;
 
-\ `cbnz x1, +4`, `movn x0, #6399`, `str x0, [x19], #8`, `bl throw`,
-\ `sdiv x0, x0, x1`, `ret`. The division is ONE operation of the machine dialect
-\ and five instructions, and the four in front of the divide are the whole of
-\ what makes a compiled division agree with an interpreted one: ARM64's Sdiv
-\ answers zero for a zero divisor, and the engine's own `/` hands the caller
-\ ARITH-ABI:E-DIV-ZERO instead (src/habu/habu1.f BDIV0?). The refusal is the
-\ code as a Movn spells it (-6400 is ~6399), the push the engine's own G-PUSH
-\ writes, and the branch to `throw` itself. Deleting any of them, moving the
-\ guard's distance off four, or changing the code reddens here.
-: DIV-BODY ( IR-CTX:ctx -- n n n n bool n n )
+\ `cbnz x1, +2`, `bl (DIV-ZERO)`, `sdiv x0, x0, x1`, `ret`. The division is ONE
+\ operation of the machine dialect and three instructions, and the two in front
+\ of the divide are what make a compiled division agree with an interpreted one:
+\ ARM64's Sdiv answers zero for a zero divisor, and the engine's own `/` branches
+\ to the same sealed (DIV-ZERO) helper, which throws ARITH-ABI:E-DIV-ZERO
+\ (src/habu/habu1.f BDIV0?). Deleting either, moving the guard's distance off
+\ two, or branching anywhere else reddens here.
+: DIV-BODY ( IR-CTX:ctx -- n n bool n n )
    HIR-MOD
    BUILD-DIV
    NRUN:PLACE
    4 EMITTED
    A64EMIT:INSNS
    0 A64EMIT:WORD@
-   1 A64EMIT:WORD@
+   1 BL-TARGET  DIV-ZERO-ENTRY =
    2 A64EMIT:WORD@
-   3 BL-TARGET  THROW-ENTRY =
-   4 A64EMIT:WORD@
-   5 A64EMIT:WORD@ ;
+   3 A64EMIT:WORD@ ;
 
 : DIV-CASE ( -- )
    s" a division emits the zero-divisor refusal the engine's own divide has" T-LABEL
    WBND [: DIV-BODY ;] IR-CTX:WITH-CONTEXT
-   $D65F03C0 T= $9AC10C00 T= TTRUE $F8008660 T= $92831FE0 T= $B5000081 T= 6 T= ;
+   $D65F03C0 T= $9AC10C00 T= TTRUE $B5000041 T= 4 T= ;
 
 \ And it computes what the engine computes, truncating toward zero rather than
 \ flooring: -7 over 2 is -3 and not -4. The two negative cases are what say the

@@ -16,24 +16,46 @@
 \ a lowering that refused only where the source spelled `/` passes the first case
 \ and fails the second.
 \
-\ EVERY CASE RUNS IN A CHILD PROCESS. `set-tier` is engine-global state, and a
-\ suite that selected tier 1 in this process would decide for every file loaded
-\ after it.
-\ Tier-neutral by design: every case runs in a child whose own source names the
-\ tier, so the tier of this row selects nothing.
+\ THE GUARD IS THREE INSTRUCTIONS: `cbnz` of the divisor over one instruction,
+\ `bl` to the engine's sealed (DIV-ZERO) helper - the routine the engine's own
+\ `/` branches to - and the `sdiv`. It is read out of a word's baked span through
+\ src/habu/xref.f, and it is what keeps the emitter's three instructions per
+\ operation (src/compiler/native/emit.f INSN-PER-OP) true: a word of fourteen
+\ discarded divisions over two locals is about 22 operations, which that ceiling
+\ sizes for 3 * 22 + 9 = 75 instructions, while a five-instruction guard emits
+\ 5 * 14 + 8 = 78 of them and refused the word with E-A64EMIT-CAP.
+\
+\ THE STRIPPED IMAGE is the helper's third reader. tools/hb-build.f compiles
+\ test/compiler/native-div-image.f at tier 1 and keeps only what its closure
+\ reaches, so the image catches the zero divide only if the closure followed the
+\ guard's branch into the helper. The directory the case prints keeps the image.
+\
+\ The runtime cases run in a child process: `set-tier` is engine-global state,
+\ and a child's own source names its tier. The one word whose bytes are read is
+\ compiled here between `1 set-tier` and `0 set-tier`, so nothing after it moves.
 
 require lib/errors.f
 require lib/string.f
 require lib/test.f
 require lib/test/outcome.f
 require lib/test/subject.f
+require lib/engine-candidate.f
+require src/habu/xref.f
+require test/gate-common.f
 
 package NDIVREF-TEST
+
+public
+
+1 set-tier
+: GUARDED ( n n -- n ) / ;
+0 set-tier
 
 private
 
 $1000 constant CAP
 20000 constant TIMEOUT-MS
+600000 constant BUILD-MS             \ one stripped build on a loaded box
 
 create OUT CAP allot
 create ERR CAP allot
@@ -82,11 +104,15 @@ variable SRC-U
 
 : SRC$ ( -- ptr u8 n )  SRC-BUF SRC-U @ ;
 
+: SRC+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a SRC-BUF SRC-U @ + u BYTE-COPY
+   SRC-U @ u + SRC-U ! ;
+
 : JOIN-PROGRAM ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: head:ptr hu:n tail:ptr tu:n :}
-   head SRC-BUF hu BYTE-COPY
-   tail SRC-BUF hu + tu BYTE-COPY
-   hu tu + SRC-U !
+   0 SRC-U !
+   head hu SRC+
+   tail tu SRC+
    SRC$ ;
 
 : PROGRAM ( ptr u8 n -- ptr u8 n ) {: tail:ptr tu:n :}
@@ -94,6 +120,106 @@ variable SRC-U
 
 : LITERAL-PROGRAM ( ptr u8 n -- ptr u8 n ) {: tail:ptr tu:n :}
    LITERAL-PROLOGUE$ tail tu JOIN-PROGRAM ;
+
+\ Fourteen and not thirteen, the first count the five-instruction guard refused,
+\ so the case keeps one division of margin over the derivation in the header.
+14 constant CAP-DIVS
+
+: CAPACITY-PROGRAM ( -- ptr u8 n )
+   0 SRC-U !
+   S\" 1 set-tier\n: DIVS ( n n -- n ) {: a:n b:n :}\n" SRC+
+   CAP-DIVS 0 ?do S\"    a b / drop\n" SRC+ loop
+   S\"    a b - ;\n0 set-tier\n7 2 DIVS . cr\n" SRC+
+   SRC$ ;
+
+\ ---- the guard as tier 1 wrote it ---------------------------------------------
+\ XREF-N>U8 is src/habu/xref.f's own boundary between an engine address and a
+\ readable pointer; this file adds none of its own.
+: CODE@ ( n -- n ) {: at:n :}
+   at XREF-N>U8 c@
+   at 1+ XREF-N>U8 c@ 8 lshift or
+   at 2 + XREF-N>U8 c@ 16 lshift or
+   at 3 + XREF-N>U8 c@ 24 lshift or ;
+
+\ Masks over the fields DDI 0487 gives each form, so a register this file does
+\ not name cannot make a word match.
+$FFE0FC00 constant SDIV-MASK
+$9AC00C00 constant SDIV-X                 \ sdiv Xd,Xn,Xm
+$FF000000 constant CBNZ-MASK
+$B5000000 constant CBNZ-X                 \ cbnz Xt,label
+$FC000000 constant BL-MASK
+$94000000 constant BL-OP                  \ bl label
+
+: RM ( n -- n ) 16 rshift 31 and ;
+: RT ( n -- n ) 31 and ;
+: IMM19 ( n -- n ) 5 rshift $7FFFF and ;
+
+: BL-DEST ( n -- n ) {: at:n :}
+   at CODE@ $3FFFFFF and {: imm:n :}
+   imm $2000000 and 0<> if imm $4000000 - else imm then  4 *  at + ;
+
+variable DIV-AT                           \ where the last sdiv found stands
+
+: SDIVS ( -- n )
+   s" NDIVREF-TEST:GUARDED" XREF-FIND {: rec:ptr :}
+   rec XREF-START {: lo:n :}
+   0
+   rec XREF-CODE-BYTES 4 / 0 ?do
+      lo i 4 * +  dup CODE@ SDIV-MASK and SDIV-X = if DIV-AT ! 1+ else drop then
+   loop ;
+
+: HELPER ( -- n ) s" (DIV-ZERO)" NDICT:HELPER-TARGET ;
+
+: GUARD-CASES ( -- )
+   s" a tier-1 division compiles to one sdiv" T-LABEL
+   SDIVS 1 T=
+
+   s" the guard is a cbnz of the divisor that jumps over one instruction" T-LABEL
+   DIV-AT @ 8 - CODE@ {: guard:n :}
+   guard CBNZ-MASK and CBNZ-X T=
+   guard RT  DIV-AT @ CODE@ RM  T=
+   guard IMM19 2 T=
+
+   s" and that instruction is a bl to the engine's (DIV-ZERO) helper" T-LABEL
+   HELPER 0 T<>
+   DIV-AT @ 4 - CODE@ BL-MASK and BL-OP T=
+   DIV-AT @ 4 - BL-DEST  HELPER T= ;
+
+\ ---- the stripped image -------------------------------------------------------
+create IMAGE FS-PATH-CAP allot
+variable IMAGE-U
+
+: IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
+
+: BUILD-IMAGE ( -- )
+   s" ndiv-image" HB-TMP-MKDIR GT-COPY-ROOT!
+   s" ndiv-image" IMAGE GT-PATH IMAGE-U !
+   GE-HB-RESET
+   s" --load" GE-ARG+
+   s" tools/hb-build.f" GE-ARG+
+   s" --" GE-ARG+
+   s" test/compiler/native-div-image.f" GE-ARG+
+   s" -o" GE-ARG+
+   IMAGE$ GE-ARG+
+   s" HABU_BUILD_CACHE" >LEN GT-ROOT >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
+   ENGINE-CANDIDATE:PATH$ BUILD-MS GE-RUN-ENV ;
+
+: IMAGE-CASES ( -- )
+   BUILD-IMAGE
+   s" tools/hb-build.f builds the stripped division image" T-LABEL
+   GT-RC@ 0 T=
+   GT-ERR$ nip 0 T=
+   IMAGE$ EXECUTABLE? {: built:bool :}
+   built TTRUE
+   built 0= if GT-ERR$ type exit then
+
+   GE-HB-RESET
+   IMAGE$ TIMEOUT-MS GE-RUN-ENV
+   s" the stripped image catches its compiled zero divide by the code" T-LABEL
+   GT-RC@ 0 T=
+   GT-OUT$ S\" -6400\n" T$=
+   s" artifacts: " type GT-ROOT type cr ;
 
 public
 
@@ -138,6 +264,12 @@ public
    s" wide nonzero literal division and modulo preserve boundary values" T-LABEL
    S\" 65537 L64K . 65537 LR64K . -65537 L64K . -65537 LR64K . $8000000000000000 L64K . $8000000000000000 LR64K . cr\n"
    LITERAL-PROGRAM RUN  S\" 1\n1\n-1\n-1\n-140737488355328\n0\n" ASSERT-OK
+
+   s" fourteen discarded divisions over two locals compile and answer" T-LABEL
+   CAPACITY-PROGRAM RUN  S\" 5\n" ASSERT-OK
+
+   GUARD-CASES
+   IMAGE-CASES
 
    T-REPORT
    s" native-div-refusal: ok" type cr ;

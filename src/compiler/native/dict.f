@@ -11,6 +11,8 @@
 
 require lib/prelude.f
 require lib/errors.f
+require src/habu/layout.f
+require src/habu/terminal-call.f
 require src/compiler/native/checker-owner.f
 
 package NDICT
@@ -286,6 +288,20 @@ public
 \ A caller that needs definer semantics captures them with the same resolved
 \ entry. Most call sites only need the target address.
 : CALL-TARGET ( ptr u8 n -- n ) CALL-BINDING drop ;
+
+\ Where a compiled branch may reach a sealed engine helper, or zero. A helper
+\ (src/habu/primitive-registry.f HELPER-REGISTER) sits in OWNER-API-PRI-WID,
+\ which no spelling search above enters, so it is looked up in that wordlist
+\ alone and by its exact name. Only an entry inside the engine's text answers
+\ (TERMINAL-CALL:IN-ENGINE-TEXT?): that wordlist is the engine's registration
+\ marker, and a record there that points anywhere else is not the engine's
+\ helper.
+: HELPER-TARGET ( ptr u8 n -- n )
+   OWNER-API-PRI-WID WL-RECORD {: rec:ptr :}
+   rec XREF-FOUND? 0= if 0 exit then
+   rec XREF-START {: start:n :}
+   start TERMINAL-CALL:IN-ENGINE-TEXT? 0= if 0 exit then
+   start ;
 
 -1 constant ARITY-NONE
 

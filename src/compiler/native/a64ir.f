@@ -709,7 +709,7 @@ private
 12 constant K-FUN
 13 constant K-COND
 14 constant K-DWB
-15 constant K-THROW-ENTRY
+15 constant K-COLD-ENTRY
 16 constant K-DATA-OFFSET
 17 constant KEYS
 
@@ -730,7 +730,7 @@ private
       K-FUN        of s" a64.fun" endof
       K-COND       of s" a64.cond" endof
       K-DWB        of s" a64.dwb" endof
-      K-THROW-ENTRY of s" a64.throw-entry" endof
+      K-COLD-ENTRY of s" a64.cold-entry" endof
       K-DATA-OFFSET of s" a64.data-offset" endof
       E-A64IR-DIALECT throw
    endcase ;
@@ -983,8 +983,8 @@ public
 \ it is an ordinary value-producing one that the guard branches OVER. A form
 \ under `a64.entry` would be a tail branch to two passes and one under
 \ `a64.trap-entry` would be a terminator to two more.
-: KEY-THROW-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   K-THROW-ENTRY KEY-BIND ;
+: KEY-COLD-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-COLD-ENTRY KEY-BIND ;
 
 \ An ordinal and not an address: there is no address until the emitter has laid
 \ the emission out. How many functions there are is the emitter's fact.
@@ -1227,19 +1227,20 @@ private
    TARGET
    c b A64IR-OPCODE:MADD FINISH-OP ;
 
-\ The one form that may raise, and five instructions: branch over the refusal
-\ when the divisor is not zero, the refusal - the error code, its push and the
-\ branch to `throw` - and the divide. Which is what the engine's own `/` is: two
-\ instructions on the hot path and a cold side that hands the caller
-\ ARITH-ABI:E-DIV-ZERO. The entry it branches to is an attribute because only
-\ the selector can ask the dictionary where `throw` is.
+\ The one form that may raise, and three instructions: a `cbnz` of the divisor
+\ over the refusal, the refusal - one `bl` to the engine's sealed (DIV-ZERO)
+\ helper, which pushes ARITH-ABI:E-DIV-ZERO and throws - and the `sdiv`. Which is
+\ what the engine's own `/` is: two instructions on the hot path and a cold side
+\ that hands the caller that code. The helper's entry is an attribute under the
+\ cold-entry key (KEY-COLD-ENTRY) because only the selector can ask the
+\ dictionary where the helper is (NDICT:HELPER-TARGET).
 : DEF-SDIV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:SDIV OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-RESULT
-   c b KEY-THROW-ENTRY IR-SCHEMA:ADD-ATTR
+   c b KEY-COLD-ENTRY IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    true IR-SCHEMA:SET-TRAP
    TARGET

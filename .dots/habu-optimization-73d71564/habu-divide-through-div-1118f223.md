@@ -1,9 +1,11 @@
 ---
 title: Divide through (DIV-ZERO) in twelve bytes
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-30T10:58:28.235294+02:00\""
+created-at: "2026-09-30T10:58:28.235294+02:00"
+closed-at: "2026-09-30T14:23:56.946348+02:00"
+close-reason: "Landed as 'Divide through (DIV-ZERO) in twelve bytes', stacked with the link-save slice on master after cc8cf301. Each of the 43 guarded division sites branches to the shared cold (DIV-ZERO) routine; census guarded-division bytes 860 -> 516 (-344 B). Gen-2 aot/code-blob with the link-save slice, against master+S12: 1,391,616 -> 1,390,344 (-1,272 B). Engine image 2,477,047 B, unchanged. Gate at the combined tip: full suite 501/501 (curl-http failed once, the same failure master+S12 shows, and passed on rerun); gens 2-5 byte-identical."
 ---
 
 Campaign: ARM64 code-size fixes, design revision 3 (§3.1). Line references are at master 8c9b75af; re-verify before editing.

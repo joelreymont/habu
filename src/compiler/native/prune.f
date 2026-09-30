@@ -83,7 +83,7 @@ A64IR-OPCODE:EOR   A64IR:ORD constant O-EOR
 12 constant K-FUN                      \ which function of the emission an address form names
 13 constant K-ADDR                     \ the relocation kind of the value a move-wide chain builds
 14 constant K-DWB                      \ the pointer move a fused transfer carries in its own encoding
-15 constant K-THROW-ENTRY              \ the refusal's `throw`, under a key of its own
+15 constant K-COLD-ENTRY              \ the divide's cold entry, under a key of its own
 16 constant K-DATA-OFFSET
 
 0 constant BOUND-NO
@@ -416,8 +416,8 @@ DYNAMIC-BUFFER ABSORB-BUF n
          CTX BLD  CTX BLD A64IR:KEY-TRAP-ENTRY  CTX BLD v A64IR:ENTRY-ATTR
          IR-BUILD:ADD-ATTR
       then
-      k K-THROW-ENTRY = if
-         CTX BLD  CTX BLD A64IR:KEY-THROW-ENTRY  CTX BLD v A64IR:ENTRY-ATTR
+      k K-COLD-ENTRY = if
+         CTX BLD  CTX BLD A64IR:KEY-COLD-ENTRY  CTX BLD v A64IR:ENTRY-ATTR
          IR-BUILD:ADD-ATTR
       then
       k K-FUN = if
@@ -604,7 +604,7 @@ public
    c b A64IR:KEY-OFF    K-OFF BND-KEY !
    c b A64IR:KEY-MASK   K-MASK BND-KEY !
    c b A64IR:KEY-TRAP-ENTRY K-TRAP-ENTRY BND-KEY !
-   c b A64IR:KEY-THROW-ENTRY K-THROW-ENTRY BND-KEY !
+   c b A64IR:KEY-COLD-ENTRY K-COLD-ENTRY BND-KEY !
    c b A64IR:KEY-FUN    K-FUN BND-KEY !
    c b A64IR:KEY-DATA-OFFSET K-DATA-OFFSET BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !

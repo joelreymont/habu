@@ -39,7 +39,6 @@ require src/compiler/native/regalloc-verify.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/backend.f
 require src/arch/arm64/machine.f
-require src/habu/arith-abi.f            \ E-DIV-ZERO, the divide's refusal
 
 package A64EMIT
 using A64ASM
@@ -112,8 +111,8 @@ A64IR-OPCODE:FLOAD     A64IR:ORD constant O-FLOAD
 1 constant BOUND-YES
 
 \ ---- how much of one routine this pass holds ----------------------------------
-\ Three per operation is the ceiling: five forms emit more than one and none
-\ emits more than three.
+\ Three per operation is the ceiling: no form is longer. INSN-PER-OP-CK, once
+\ INSNS-OF has sized every form, refuses the load when that stops being true.
 3 constant INSN-PER-OP
 : INSN-CAP ( -- n ) INSN-PER-OP OMAX BMAX 3 * + * ;
 
@@ -193,7 +192,7 @@ A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DWB IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
-1 TYPED-BUFFER BND-THROW IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-COLD IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OFF IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MASK IR-ID:ir-symbol-id
@@ -392,9 +391,9 @@ variable N-FUNS                        \ how many functions the emission holds
 : TRAP-ADDR ( IR-ID:ir-op-id -- n )
    0 BND-TRAP @ ATTR-INT ;
 
-\ The runtime's `throw`, which the divide's cold side hands the refusal to.
-: THROW-ADDR ( IR-ID:ir-op-id -- n )
-   0 BND-THROW @ ATTR-INT ;
+\ The engine's (DIV-ZERO) helper, which the divide's cold side branches to.
+: COLD-ADDR ( IR-ID:ir-op-id -- n )
+   0 BND-COLD @ ATTR-INT ;
 
 \ ---- one instruction per operation -------------------------------------------
 : WORD-MOVZ ( IR-ID:ir-op-id -- n )
@@ -670,10 +669,10 @@ variable N-FUNS                        \ how many functions the emission holds
       if E-A64EMIT-SHAPE throw then
    loop ;
 
-\ The division is the guard, the three-instruction refusal on its cold side and
-\ the divide (PUT-SDIV). How long the form is and how far the guard jumps are
-\ ONE number, so a refusal that grows cannot leave the guard landing inside it.
-5 constant DIV-INSNS                 \ instructions one division is
+\ The division is the guard, the branch to the refusal on its cold side and the
+\ divide (PUT-SDIV). How long the form is and how far the guard jumps are ONE
+\ number, so a refusal that grows cannot leave the guard landing inside it.
+3 constant DIV-INSNS                 \ instructions one division is
 DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
 
 \ A property of the FORM: comparisons and conditional selects take two;
@@ -703,6 +702,23 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
    k O-BRZ = if 2 exit then
    k O-TRAP = if 2 exit then
    1 ;
+
+\ The exit status of the native code generator's own refusals: 72 is
+\ src/arch/arm64/asm.f ASM-EXIT-RC, an operand its field cannot hold, and
+\ src/arch/arm64/icode.f ICODE-EXIT-RC, a buffer or table that cannot hold what
+\ is asked of it ("icode: code buffer overflow").
+72 constant EMIT-EXIT-RC
+
+\ INSN-CAP sizes a routine's buffers at INSN-PER-OP per operation, so a form
+\ longer than that overflows them in a routine of enough such operations, where
+\ APPEND refuses a word that fits the ceiling the derivation promised.
+: INSN-PER-OP-CK ( -- )
+   0  A64IR:OPCODES 0 ?do i INSNS-OF max loop
+   INSN-PER-OP <> if
+      s" emit: INSN-PER-OP is not the longest form INSNS-OF sizes" EMIT-EXIT-RC die
+   then ;
+
+INSN-PER-OP-CK
 
 \ Which successor the trailing unconditional branch names, and -1 for a form
 \ that ends in no such branch.
@@ -1447,40 +1463,27 @@ variable CH-AT
 \ ---- the divide, and the refusal on its cold side ----------------------------
 \ ARM64's Sdiv ANSWERS ZERO for a zero divisor, so the divisor is tested. A zero
 \ divisor is a CALLER error the program can fix and recover from - it came from
-\ the program's own arithmetic - so the cold side hands the caller
-\ ARITH-ABI:E-DIV-ZERO through the runtime's `throw`, which is the refusal the
-\ engine's own `/` makes (src/habu/habu1.f BDIV0?). It used to be a `brk`: a
-\ word compiled at tier 1 and every AOT executable died with a register dump
-\ where the interpreted division threw a code the caller could catch.
+\ the program's own arithmetic - so the cold side branches to (DIV-ZERO), the
+\ sealed engine helper the engine's own `/` branches to (src/habu/habu1.f BDIV0?
+\ and EMIT-DIV-ZERO). It pushes ARITH-ABI:E-DIV-ZERO and throws; it never
+\ returns, so no register this routine holds is read again, and the guard is
+\ `cbnz` over one `bl` and the divide. It used to be a `brk`: a word compiled at
+\ tier 1 and every AOT executable died with a register dump where the
+\ interpreted division threw a code the caller could catch.
 \
 \ THE HOT PATH IS THE TWO INSTRUCTIONS IT ALWAYS WAS - the compare-and-branch
-\ and the divide - and the three between them are never executed by a program
-\ whose divisor is not zero. That is why the refusal is written in line rather
-\ than reached through a block of its own: a branch to a shared block would cost
-\ this site the very instruction its branch to `throw` costs, and buy a block
-\ the layout has to place.
-\
-\ The code is ONE instruction because a Movn spells it: -6400 is ~6399. A code
-\ needing a move-wide chain would make the form longer than DIV-INSNS says, so
-\ ?IMM16 (src/arch/arm64/asm.f) refuses it rather than emitting a short form.
-\
-\ The push is `str xd,[x19],#8`, which is the engine's own G-PUSH in
-\ src/habu/rt.f, so `throw` pops this code exactly as it pops one a checked
-\ `throw` pushed. It is written into the register the DIVIDE's result holds,
-\ which no path reads: the hot path has not divided yet, and the cold path never
-\ comes back.
+\ and the divide - and the branch between them is never executed by a program
+\ whose divisor is not zero. A CBZ straight to the helper would be one
+\ instruction fewer, but it reaches only a megabyte and the helper is in the
+\ engine's text, which the code region sits REGION-OFF (16 MiB) above
+\ (src/habu/layout.f).
 \
 \ MIN-N -1 / IS MIN-N, the modular answer Sdiv gives, like the wrap `+`, `-` and
 \ `*` already make (docs/forth.md). It is not a second refusal.
-ARITH-ABI:E-DIV-ZERO invert constant DIV-CODE-IMM  \ the code as a Movn carries it
-
 : PUT-SDIV ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id 0 RESULT-REG {: rd:n :}
    id  id 1 OPERAND-REG DIV-SKIP  ENC-CBNZ  APPEND
-   id  rd DIV-CODE-IMM 0  MOVNHW  APPEND
-   id  rd A64M:DSTACK-GPR CELL  ENC-STRPOST  APPEND
-   id  id THROW-ADDR EXT-DELTA  BL-WORD  APPEND
+   id  id COLD-ADDR EXT-DELTA  BL-WORD  APPEND
    id  id TRIPLE  ENC-SDIV  APPEND ;
 
 \ ---- the two ends of the frame ----------------------------------------------
@@ -1808,7 +1811,7 @@ public
    c b A64IR:KEY-DBACK  0 BND-DBACK !
    c b A64IR:KEY-ENTRY  0 BND-ENTRY !
    c b A64IR:KEY-TRAP-ENTRY 0 BND-TRAP !
-   c b A64IR:KEY-THROW-ENTRY 0 BND-THROW !
+   c b A64IR:KEY-COLD-ENTRY 0 BND-COLD !
    c b A64IR:KEY-OFF    0 BND-OFF !
    c b A64IR:KEY-MASK   0 BND-MASK !
    c b A64IR:KEY-FUN    0 BND-FUN !
