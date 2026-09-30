@@ -1,66 +1,30 @@
 ---
-title: Drop private signatures and symbols at capture
+title: "Retire the checker symbols of unshipped records at capture"
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-16T16:49:49.729611+03:00"
 ---
 
-## Current RCA and implementation boundary
-
-The Mac baseline identified in the Optimization parent has 16,689 real
-symbols. Of 8,553 without dictionary entries, 8,502 are private. The absent
-symbols carry 142,949 string bytes and 136,848 relocation bytes; latest private
-effects without dictionary entries cost another 112,466 encoded header bytes.
-These are retained costs, not a proven removable total.
-
-Native build selects PAYLOAD-PERSISTENT (mode 2), bypassing the mode-1
-dictionary-scoped signature export. CHECKER-CAPTURE-PREPARE persists all symbols
-and effect storage; it does not reconcile them with dictionary selection.
-See checker.f SYM-SNAPSHOT-PERSIST/SYM-SNAPSHOT-MARK-POINTERS, aot-capture.f
-PAYLOAD-CAPTURE, and native-build-core.f LOAD-TARGET.
-
-Retain the published dictionary interface plus explicit checker/type roots.
-Twenty-one dictionary-absent symbols are referenced by primitive axioms;
-constructor metadata also carries symbol IDs. Keep IDs stable initially and
-trace effect, primitive, control/defer, unsafe, parsing-immediate and constructor
-references before removing rows. Sealing alone does not prove metadata dead.
-Of the absent private symbols, 6,611 belong to sealed packages, 1,886 to
-unsealed packages and five have no package record.
-
-Acceptance includes public checked calls, retained syntax/primitive overloads
-and constructor types, rejection of unavailable private names, rollback,
-restored compilation and native self-build. Measure real section deltas;
-complete the native fixpoint, test/run.f and Etch smoke before closure.
-Coordinate history compaction with habu-compact-checker-histories-3a1ce692.
-Independent string representation work is habu-store-checker-names-70a89ffb.
-Temporary reproduction: habu-symbol-retention-audit.f and habu-effect-rca.f
-under ~/.cache/tmp. No implementation is claimed.
-
-## Source reconstruction constraint
-
-A real tier-1 capture of private `1 constant HIDDEN` and public
-`KEPT ( n -- n ) HIDDEN +` retains neither the constant's name nor its body.
-Nevertheless, `VERIFY:SOURCE-BUF` can check KEPT's source alone while HIDDEN's
-checker symbol remains. Retiring that symbol makes the same source fail with
-E-UNDEFINED; compiled KEPT still returns the expected value. Supplying the
-complete source or restoring the symbol restores verification. Dictionary and
-native-code roots therefore do not cover current source reconstruction.
-
-Preserve that behavior with source-dependency roots, including constants
-eliminated during lowering. Removing live private metadata without those roots
-would change the reconstruction contract. No native self-build failure was
-demonstrated by this probe. A narrower candidate is already-retired symbols
-without registry/checkpoint roots; its savings remain unmeasured.
-
-Preserve rooted effect histories and source-order horizons. Shared effect nodes
-can outlive the header that introduced them; clearing that header's roots would
-hide those nodes from UIX rebuild. Exact dictionary selection must also precede
-any metadata sweep: LOAD-TARGET calls CHECKER-CAPTURE-PREPARE before compilation
-finishes. Repeatable probes and observed limits are in
-`~/.cache/tmp/habu-opt-names-scratch/prune-design/results.md`.
-
-## Earlier task context
-
-Problem: the checker user-signature store (USIGS-USER, 1.96 MB of the image as sparse runs) and the symbol tables (SYMS-BOOT, SYM-STR-BOOT, 571 KB) carry an entry for every one of the engine 15,470 words, but 8,022 are package-private and, once every captured package is sealed, no REPL source can name them, so their signatures and symbols are dead weight in every engine and every application image. Acceptance: at capture, after the seal, the signature and symbol entries of private words of sealed packages are removed (or never captured) with the tables compacted, keeping every entry the public surface, the keep-set and the checker own bookkeeping need; the checker still checks user code against every public word and refuses private names as undefined; engine-size.f reports the store and symbol bytes before and after; byte fixpoint; full gate and stripped-application suites green; Radar and Tender green on the result. Files: src/core/checker.f (capture-time compaction), src/habu/aot-capture.f, tools/engine-size.f. Verify: tools/engine-size.f; tools/native-build.f fixpoint; test/run.f; downstream suites. Depends: the seal child. Ownership: checker capture. Claim: unassigned. Parent: the ship-only-the-surface epic.
-Scope note 2026-09-16 17:35 (Joel): the same rule applies to every word the seal marks internal, global or package-public, not only package-private ones; the surface list and the sealing of all other globals is the sibling dot 'Declare the surface and seal every other global as internal', and this dot strips signatures and symbols for the whole sealed-internal set.
+Problem: `CHECKER-CAPTURE-PREPARE` (`checker.f:18203`) persists every symbol and every checker row. Measured on master's engine: 8,715 private symbols, 1,960 record-less globals, 281 record-less publics and 5 orphan FFI symbols cost 359,115 B of image (SYMS, SYM-STR, USIGS, NORETS, PES together), 62% of the per-word checker stores. The words they describe already have no record in the image.
+Rule: the capture keeps a checker symbol, and everything keyed on it, only when one of these holds:
+- a shipped named record resolves to it: a record in `[FIRST-CORE, ndict)` that is neither DNAME-INT nor package-private;
+- it is a private symbol of a package that is not sealed;
+- a primitive axiom (PES row) names it (21 are dictionary-absent);
+- the image is the whitebox image, which keeps everything.
+Acceptance:
+- **Where the sweep runs:** a late file, `src/core/checker-surface.f` (after `xref.f` and `internal-mark.f` in `native-runtime.f`), installs the sweep into a new defer that `CHECKER-CAPTURE-PREPARE` runs ahead of `SYM-SNAPSHOT-PERSIST`. Its default is a no-op, like `REG-EXT-PERSIST-XT`, so the mid-load call in `LOAD-TARGET` (`native-build-core.f:229`) is untouched and the final one in `PREPARE-TARGET` (`:299`) sweeps.
+- **Symbols:** dropped symbols are retired in place (`SYM-RETIRED`), so symbol ids stay stable. `HIDX-BUILD` skips retired rows, and the string pool is rebuilt from the kept rows.
+- **Other rows:** `NORET-COMPACT` drops the rows of retired symbols, and `DFERS` and `UNSAFE-SYMS` are filtered.
+- **Stale copy:** the stale PES boot copy (2,999 B) is zeroed.
+- **Symbol-id readers:** those outside `checker.f` are enumerated (`sumtype.f:1273`, `structure-make.f`, `type-family.f`, `compiler/ir/build.f:1545` FSYM-ROWS, `compiler/native/frozen.f:65`, `lib/object-link.f:325`, `internal-mark.f`), and each is shown to name only kept symbols or to tolerate a retired one.
+Files: `src/core/checker.f`, new `src/core/checker-surface.f`, `src/habu/native-runtime.f` (manifest row with its lint reason), new `test/checker-surface.f`.
+Verify:
+- A private helper of `checker.f`, and a DNAME-INT global, are E-UNDEFINED from user source, at check and at load.
+- A public word certifies, and a wrong arity is E-MISMATCH.
+- `defer`, `EXPORT`, `TYPED-VARIABLE`, STRUCTURE and `does>` work after boot.
+- `tools/effect-store-census-run.f` shows no binding of a retired symbol.
+- `test/run.f`; generations byte-identical; the data-table census DONE and SYM-STR-BOOT rows, before and after.
+- SUITEs build-fixpoint-source, build-fixpoint-fixtures, certify-generated and aot-chain-producer pass on the swept product: they prove that product-hosted certification and refresh still work (certification re-interns the text's own private words, so no carve-out).
+Depends: none for the record-less and whitebox rules. Private symbols are dropped once c550102f seals their packages; the rule reads the bit, so both can be built in parallel.
+Parent: habu-ship-only-the-d7d38629. Design: the Fable surface design of 2026-09-30 (~/.cache/tmp/heron-arm64/design-surface.md); census: ~/.cache/tmp/heron-arm64/size-census/.

@@ -1,9 +1,24 @@
 ---
-title: Seal every captured package against reopening
+title: "Seal every captured package against reopening"
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-16T16:49:49.727440+03:00"
 ---
 
-Problem: only seven system packages are sealed (src/core/checker.f CHECKER-SEALED-PKG?: tfam, type, match, checker-cert, lower-cert, lower-cert-hook, engine-error); any other package captured into the engine can be reopened by user source with `package NAME`, which reaches its private words and is the only reason their names and signatures must stay in the image. Acceptance: at capture (SEAL-CAPTURE) every package present in the engine is marked sealed, the mark is a checker fact the image carries (not a name list in checker.f); user source that reopens or qualifies into a sealed package is refused by name at the package token with the existing E-EXPORT-SEALED family; an application own packages, and packages loaded from source after boot, reopen as before; docs/forth.md states the rule beside the multi-file reopening paragraph; a fixture reopens an engine package and is refused, reopens a user package and succeeds; downstream (Radar, Tender, Loom, Etch) audited for engine-package reopens before landing, each found site converted to a public API or reported. Files: src/core/checker.f, src/core/internal-mark.f, src/habu/habu2.f (seal token), docs/forth.md, test/. Verify: the fixture; test/run.f; downstream suites. Depends: none. Ownership: checker seal. Claim: unassigned. Parent: the ship-only-the-surface epic.
+Problem: only the seven RESTAB names (`habu2.f:2153`, mirrored by `checker.f` CHECKER-SEALED-PKG?) and 173 self-protected wordlists are sealed; user source can reopen any other engine package with `package NAME`, and that reach is the only reason a private word of an engine package needs its checker data.
+Acceptance:
+- **Seal at capture:** every package the capture window ships gets both wordlists `prot-wid-add`ed before `NATIVE-RUNTIME:CAPTURE-PREPARE` (`native-runtime.f`, run by `PREPARE-TARGET` in `tools/native-build-core.f`) reaches `CHECKER-CAPTURE-PREPARE`, except on the whitebox image (`ACAP-WHITEBOX?`). The 974304d0 sweep reads the protected bit there, so sealing inside `ACAP-PWIN-CAPTURE` is too late. Assert `prot-wid-room` first (the bitmap bounds 8,192 ids; the engine uses 347).
+- **Refuse:** the engine guard (`habu2.f C-PACKAGE-PROT-GUARD`) refuses the reopen at load and names the package. The checker adds no package refusal: engine-source certification and `tools/check.f` replay packages under mirror authority (`CHECKER-VERIFY-PKG-DEPTH` 1), and `prefix-src` re-declares all 72 core-prefix packages, so a `CHECKER-PACKAGE` refusal would reject the engine's own source. Check-time refusal by name comes from 974304d0: a private word of a sealed package is E-UNDEFINED.
+- **Application packages:** a `--repl` snapshot keeps them reopenable.
+- **Docs:** `docs/forth.md` Packages and `docs/forth-card.md` state the rule.
+Files: `src/habu/aot-capture.f`, `docs/forth.md`, `docs/forth-card.md`, new `test/package-seal.f` (forked subjects, as in `test/internal-word-gate.f`).
+Verify:
+- On the product engine: `package XREF` is refused at load (rc 84, the name printed), and `tools/check.f --json-errors` reports a private XREF word as E-UNDEFINED, located.
+- SUITE build-fixpoint-source green on the sealed product.
+- `package MYAPP` opened twice succeeds.
+- After `tools/hb-build.f -- --repl`, the application package reopens and XREF does not.
+- On the whitebox engine, `package XREF` succeeds.
+- `test/run.f`, generations byte-identical, and Etch's tests on the candidate.
+Depends: habu-give-every-baked-9ca94f18; lands after the reopen-name fix (its checker hunk at 9218-9240 is adjacent).
+Parent: habu-ship-only-the-d7d38629. Design: the Fable surface design of 2026-09-30 (~/.cache/tmp/heron-arm64/design-surface.md); census: ~/.cache/tmp/heron-arm64/size-census/.
