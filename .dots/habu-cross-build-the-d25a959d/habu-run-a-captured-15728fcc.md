@@ -13,6 +13,7 @@ blocks:
   - habu-add-sysv-abi-75f86980
   - habu-add-the-x86-efc81b26
   - habu-port-the-profiler-97103e6e
+  - habu-port-the-profiler-c77ee1af
 ---
 
 Problem: no x86 image yet carries a captured Habu program; this is the executable milestone M3, reached before the interpreter lands.

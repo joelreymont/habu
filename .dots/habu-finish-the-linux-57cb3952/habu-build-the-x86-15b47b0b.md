@@ -12,6 +12,9 @@ blocks:
   - habu-add-the-x86-efc81b26
   - habu-bind-x86-host-4485acdd
   - habu-emit-x86-float-38de4a6f
+  - habu-port-the-profiler-c77ee1af
+  - habu-share-the-parity-045ddf20
+  - habu-exit-the-booted-4df8d711
 ---
 
 Lane K: the small hand-written x86-64 kernel bound by `src/habu/prims.f` names: the code layer (`src/arch/x86-64/icode.f`), runtime moves and the per-target `DSTACK` (`rt.f`, `layout.f ENGINE-GPR`), bodies in `src/habu/kernel-x64.f`, boot in `src/habu/boot-x64.f` (`_start`, stacks, signals, FFI trampolines, task entry), the registry and completeness gate shared out of `habu1.f`/`habu2.f`, float primitive bodies, and the x86 host binding with backend selection by target. The kernel keeps `_start`, VM registers, runtime stacks with guards, the name-index rebuild (`seed-ndict!`), argc/argv/envp/heap-floor cells, signal-handler install and the call through `ENGINE-MAIN:XT-CELL`; it does no seed relocation (the writer links at write time). Built on spark, run on the ThinkPad. Serialise: `habu2.f` (K4, I6, I10c, X7); `layout.f` (K2, P2); `tools/native-emit.f` (K3, X4d); `compiler.f` (K12, X1).
