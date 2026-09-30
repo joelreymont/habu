@@ -2,17 +2,17 @@
 \
 \ Run: bin/hb --load test/whitebox-engine-key-test.f
 \
-\ test/whitebox-engine.f keys the unsealed engine on the builder's ordered
+\ test/whitebox-key.f keys the unsealed engine on the builder's ordered
 \ require/include closure, which is the engine's own boot prefix. This proves the
 \ consequence the gate depends on: an edit under src/ moves the keyed artifact
 \ path - so the cached host is a miss and gets rebuilt - while bin/hb is never
 \ written.
 \
 \ The tree cannot be edited to show that, so the closure is copied into a private
-\ root and keyed there through WHITEBOX-ENGINE:ENTRY-PATH!, the same derivation
-\ RESOLVE uses. Manifested files must keep their real pathname for discovery.
-\ Their static require closures stay there too, so those files resolve the same
-\ dependencies in the copied and real builder closures.
+\ root and keyed there through WHITEBOX-KEY:ENTRY-PATH!, the same derivation
+\ test/whitebox-engine.f resolves with. Manifested files must keep their real
+\ pathname for discovery. Their static require closures stay there too, so those
+\ files resolve the same dependencies in the copied and real builder closures.
 
 require lib/test.f
 require lib/string.f
@@ -22,7 +22,7 @@ require lib/engine-candidate.f
 require lib/process-cwd.f
 require tools/dynamic-tail-manifest.f
 require tools/event-closure-lib.f
-require test/whitebox-engine.f
+require test/whitebox-key.f
 
 using SOURCE-ROOT
 package WHITEBOX-KEY-TEST
@@ -120,7 +120,7 @@ variable SEAL-SEEN?
 
 : COPY-CLOSURE ( -- )
    0 SEAL-SEEN? !
-   WHITEBOX-ENGINE:BUILDER$ EC:BUILD
+   WHITEBOX-KEY:BUILDER$ EC:BUILD
    EC:COUNT REAL-N !
    0 IDX !
    begin IDX @ REAL-N @ < while
@@ -134,7 +134,7 @@ variable SEAL-SEEN?
 \ root-relative require below it names the copy.
 : COPY-ENTRY ( -- )
    s" native-build.f" ENTRY ENTRY-U UNDER-ROOT!
-   WHITEBOX-ENGINE:BUILDER$ ENTRY$ COPY-FILE-STREAM ;
+   WHITEBOX-KEY:BUILDER$ ENTRY$ COPY-FILE-STREAM ;
 
 : PREP ( -- )
    CLEANUP-RESET
@@ -158,27 +158,27 @@ variable SEAL-SEEN?
 
 : TEST-COPY-SHARES-KEY ( -- )
    s" identical source closures in different roots share the artifact" T-LABEL
-   ENTRY$ PATH-A PATH-A-U WHITEBOX-ENGINE:ENTRY-PATH!
-   WHITEBOX-ENGINE:BUILDER$ PATH-B PATH-B-U WHITEBOX-ENGINE:ENTRY-PATH!
+   ENTRY$ PATH-A PATH-A-U WHITEBOX-KEY:ENTRY-PATH!
+   WHITEBOX-KEY:BUILDER$ PATH-B PATH-B-U WHITEBOX-KEY:ENTRY-PATH!
    A$ B$ T$= ;
 
 : TEST-PREFIX-EDIT-MOVES-KEY ( -- )
    s" one edited prefix file moves the keyed artifact" T-LABEL
-   ENTRY$ PATH-A PATH-A-U WHITEBOX-ENGINE:ENTRY-PATH!
+   ENTRY$ PATH-A PATH-A-U WHITEBOX-KEY:ENTRY-PATH!
    SEAL$ s\" \\ whitebox-engine-key-test\n" APPEND-FILE
-   ENTRY$ PATH-B PATH-B-U WHITEBOX-ENGINE:ENTRY-PATH!
+   ENTRY$ PATH-B PATH-B-U WHITEBOX-KEY:ENTRY-PATH!
    A$ B$ T$<> ;
 
 : TEST-RESTORE-RESTORES-KEY ( -- )
    s" restoring its bytes brings the same artifact back" T-LABEL
    REAL-SEAL$ SEAL$ COPY-FILE-STREAM
-   ENTRY$ PATH-C PATH-C-U WHITEBOX-ENGINE:ENTRY-PATH!
+   ENTRY$ PATH-C PATH-C-U WHITEBOX-KEY:ENTRY-PATH!
    A$ C$ T$= ;
 
 : TEST-UNLOADED-FILE-IS-IGNORED ( -- )
    s" a file the build never loads leaves it alone" T-LABEL
    SPARE$ s\" \\ no loader reaches this file\n" WRITE-ALL
-   ENTRY$ PATH-D PATH-D-U WHITEBOX-ENGINE:ENTRY-PATH!
+   ENTRY$ PATH-D PATH-D-U WHITEBOX-KEY:ENTRY-PATH!
    A$ D$ T$= ;
 
 \ The whole point of keying the closure: the artifact moved without the binary

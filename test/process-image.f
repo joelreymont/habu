@@ -2,11 +2,11 @@
 \ Every restored generation starts cold: no signal state, descriptor or
 \ environment sizing of the process that saved it (PROCESS-IMAGE-SUBJECT CLEAN,
 \ FIRST-FD, ENV-SIZE). The first generation is saved from the keyed host with
-\ the saver already loaded (test/preloaded-engine.f).
+\ the saver already loaded (test/app-image-engine.f).
 require lib/test.f
 require lib/fs-mutate.f
 require lib/process-cwd.f
-require test/preloaded-engine.f
+require test/app-image-engine.f
 
 package PROCESS-IMAGE-TEST
 
@@ -57,7 +57,7 @@ variable SECOND-U
    s" LANG" >LEN s" C" >LEN PROC-ENV+ ;
 
 : BUILD ( -- )
-   PRELOADED-ENGINE:APP-IMAGE$ {: host:ptr hostu:n :}
+   APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    FIRST$ >LEN PROC-ARGV+

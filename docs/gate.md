@@ -19,13 +19,13 @@ from that tree:
 bin/hb --load test/run.f
 ```
 
-The registry runs only on a `tools/native-build.f` product. Before its first
-suite it saves the fixture writer (`test/fixture-writer.f`) as an application
-image with the engine `lib/engine-candidate.f` resolves (an exported
+The registry runs only on a `tools/native-build.f` product. Its keyed images
+(below) include the fixture writer (`test/fixture-writer.f`), an application
+image saved with the engine `lib/engine-candidate.f` resolves (an exported
 `HABU_UNDER_TEST`, else the running engine), and `APP-IMAGE:SAVE` needs
 `NATIVE-RUNTIME`, which only that build bakes. The engine `tools/bootstrap.sh`
 installs is the recovery engine: it answers `using NATIVE-RUNTIME` with
-`unknown package`, and a gate on it stops there with exit 70 and
+`unknown package`, and its save of the writer stops with
 `E-UNDEFINED habu: in save: undefined word 'NATIVE-RUNTIME:CAPTURE-PREPARE'`.
 After a recovery, use that engine as `$HOST` above and gate its product. The
 generation chain's fixpoint is likewise its last generation (`hb-b5` in the
@@ -92,14 +92,34 @@ gives that slot no directory.
   private copy of the unsealed engine (`test/whitebox-engine.f`) because such a
   file reaches inside the engine, and the sealed `bin/hb` refuses those tokens
   — standalone such a file exits 70 with `hb: internal engine word: <TOKEN>`
-  (measured on `test/whitebox-engine-suite.f`). The gate builds that engine in
-  the pool row `whitebox-engine-build` beside the other rows; a whitebox row
-  reached before it retires waits for it. After a failed build every whitebox
-  row is red with the build's exit status and points at that row's output,
-  and the other rows keep running. A file that only *spawns* a
-  child needing the unsealed engine is not of that kind: it names one itself
+  (measured on `test/whitebox-engine-suite.f`). That engine is a keyed image
+  (below): its build row, `whitebox-engine-build`, also puts the copy in
+  place, and every whitebox row waits for that row. A file that only *spawns*
+  a child needing the unsealed engine is not of that kind: it names one itself
   through `test/whitebox-child.f` (`PROVIDE`, `ENGINE$`, `ENV!`) and stays a
-  plain `SUITE`, green on its own.
+  plain `SUITE`, green on its own; loading that file is what makes the row
+  wait for the build row.
+- The gate settles five keyed images, each once per run in a pool row of its
+  own started beside the first rows (`test/gate-images.f`): the fixture writer
+  and the cold host it emits (`test/fixture-writer.f`, `test/cold-engine.f`;
+  rows `fixture-writer-build`, `cold-engine-build`), the saver and linker
+  images (`test/app-image-engine.f`, `test/preloaded-engine.f`;
+  `app-image-build`, `linker-build`) and the unsealed engine
+  (`test/whitebox-engine.f`; `whitebox-engine-build`). A row needs an image
+  when its load closure holds the image's module: the files it loads and what
+  those import, or launch as a `.f` source through a path literal a known load
+  helper consumes (`test/load-refs.f`, the reader the entry guard uses).
+  Nothing is declared; a cold host needs the writer and the linker needs the
+  saver image because their modules load those modules. A row whose images are
+  not settled holds the registry until they are, while the rows before it keep
+  running. A failed build row is red with the builder's exit status and
+  output, and an image built on the failed one is not built: every row that
+  needs either is red with a line naming the failed build row, and every other
+  row runs. Each row's environment names its images in `HABU_GATE_IMAGES`
+  (`test/image-grant.f`): a process under the gate that settles an image its
+  row was not granted — a child reached through a load the reader cannot see —
+  dies with exit 69 naming the image instead of building it beside the build
+  row. A row run on its own has no such variable and settles its own images.
 - A suite whose assertions depend on the compiler tier selects it itself.
   Only code compiled after `1 set-tier` belongs to the tier, so the line goes
   after the harness and tool requires (`lib/test.f`, the code-reading tools,
@@ -114,22 +134,22 @@ gives that slot no directory.
   caller that runs one unchanged file at both tiers (the `*-aot` twin rows);
   a twin row lists the subject's harness before it, by the same rule.
 - A row whose child compiles `src/habu/app-image.f` or the AOT linker only to
-  reach its subject runs a keyed image with them already loaded
-  (`test/preloaded-engine.f`: `APP-IMAGE$`, `LINKER$`, `LINKER-LOAD`); the gate
-  settles both before its first fork. That file's header holds the rules: take
-  the path before staging argv, start a program on the host with `1 set-tier`,
-  link only subjects that require nothing in the linker's lib closure, and keep
-  a row whose children run `ENGINE-CANDIDATE:PATH$` off the images. A row whose
-  claim is the saver's or the linker's own load (`test/app-image.f`) keeps
-  compiling them from source. `test/gate-aot-negative.f` and
-  `test/stripped-address.f` run on `LINKER$`: their die paths are forks of the
-  image, not `ENGINE-CANDIDATE` children, and the mapped-band fixture's first
-  question to the process-map reader reads the running process's map, because
-  every capture drops the map its builder read (`src/habu/proc-maps.f`).
-  The accepted cost of settling both in
-  `SUITE-SETUP`, as the fixture writer is: a compile error in the saver's or
-  the linker's closure stops the gate at setup with the builder's diagnostic
-  instead of failing the rows that load them.
+  reach its subject runs a keyed image with them already loaded: the saver
+  image (`test/app-image-engine.f`: `PATH$`) or the linker image built on it
+  (`test/preloaded-engine.f`: `LINKER$`, `LINKER-LOAD`). Their headers hold
+  the rules: take the path before staging argv, start a program on the saver
+  image with `1 set-tier`, link only subjects that require nothing in the
+  linker's lib closure, and keep a row whose children run
+  `ENGINE-CANDIDATE:PATH$` off the images. A row whose claim is the saver's or
+  the linker's own load (`test/app-image.f`) keeps compiling them from source.
+  `test/gate-aot-negative.f` and `test/stripped-address.f` run on `LINKER$`:
+  their die paths are forks of the image, not `ENGINE-CANDIDATE` children, and
+  the mapped-band fixture's first question to the process-map reader reads the
+  running process's map, because every capture drops the map its builder read
+  (`src/habu/proc-maps.f`). A compile error in the saver's closure fails
+  `app-image-build`, leaves the linker unbuilt and makes every row that loads
+  either image red naming `app-image-build`; one in the linker's closure fails
+  `linker-build` and the rows that load the linker. Every other row runs.
 - `bin/hb file.f` (no `--load`) drops to a REPL after a clean load and blocks
   on stdin — it looks like a hang, rc 124 under a timeout. Pipe `< /dev/null`,
   and give a spawned build child `/dev/null` stdin rather than letting it

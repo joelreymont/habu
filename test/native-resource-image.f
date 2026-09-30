@@ -1,11 +1,11 @@
 \ Warm F64 and ZIP, save, then use fresh native resources outside the checkout.
 \ The image is saved from the keyed host with the saver already loaded
-\ (test/preloaded-engine.f).
+\ (test/app-image-engine.f).
 require lib/test.f
 require lib/fs-mutate.f
 require lib/process-cwd.f
 require lib/zip-test-fixture.f
-require test/preloaded-engine.f
+require test/app-image-engine.f
 
 package ZIP-TEST
 public
@@ -56,7 +56,7 @@ variable ZIP-U
    rc 0 T= erru 0 T= outu ;
 
 : BUILD ( -- )
-   PRELOADED-ENGINE:APP-IMAGE$ {: host:ptr hostu:n :}
+   APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+

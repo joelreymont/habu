@@ -17,10 +17,13 @@ $64 constant GT-POOL-POLL-MS
 $1000 constant GT-POOL-CHUNK-CAP
 64 constant GT-POOL-NAME-CAP
 32 constant GT-POOL-NUM-CAP
-\ Red rows: one per registered suite (lib/test/suite.f ITEM-MAX) plus the
-\ whitebox engine build row test/gate-stdlib-lib.f starts beside them, so a
-\ complete run reports every red with its exit code and capture paths.
-TEST:ITEM-MAX 1 + constant GT-POOL-RED-MAX
+\ Rows an adapter starts beside the registered suites: test/gate-images.f starts
+\ one build row per keyed image family, and refuses more families than this.
+8 constant GT-POOL-SIDE-MAX
+\ Red rows: one per registered suite (lib/test/suite.f ITEM-MAX) plus the side
+\ rows, so a complete run reports every red with its exit code and capture
+\ paths, and a row the table has no record of passed.
+TEST:ITEM-MAX GT-POOL-SIDE-MAX + constant GT-POOL-RED-MAX
 GT-POOL-MAX GT-OUT-CAP * constant GT-POOL-OUT-BYTES
 GT-POOL-MAX GT-ERR-CAP * constant GT-POOL-ERR-BYTES
 

@@ -13,7 +13,7 @@ require lib/fs-mutate.f
 require lib/process-env.f
 require lib/engine-candidate.f
 require lib/codesign.f
-require test/preloaded-engine.f
+require test/app-image-engine.f
 
 package SNAP-WRITER-TEST
 
@@ -206,11 +206,11 @@ variable IMGU
    ;MATCH ;
 
 \ The fixture is loaded on the keyed host with the saver already loaded
-\ (test/preloaded-engine.f), which starts at tier 0 where app-image.f set tier 1.
+\ (test/app-image-engine.f), which starts at tier 0 where app-image.f set tier 1.
 \ `load` names the word that loads it: `require`, or `include`.
 : BUILD-LOADING-TO ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: target:ptr targetu:n load:ptr loadu:n fixture:ptr size:n :}
-   PRELOADED-ENGINE:APP-IMAGE$ {: host:ptr hostu:n :}
+   APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    target targetu >LEN PROC-ARGV+

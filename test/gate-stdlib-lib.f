@@ -2,25 +2,26 @@
 
 require lib/test.f
 require lib/test/runner.f
+require lib/process-argv.f
 require test/gate-pool.f
-require test/cold-engine.f
-require test/preloaded-engine.f
-require test/whitebox-engine.f
+require test/gate-images.f
+require test/image-grant.f
 require test/gate-entry-guard.f
 require lib/engine-id.f                  \ ENGINE-ID:PATH$ - this gate's own binary
 
 package STDLIB-GATE
 
 360000 constant SUITE-TIMEOUT-MS
-\ The whitebox build row's backstop: a minute beyond the builder's own deadline
-\ covers the key hashing and the copy, which take seconds.
-WHITEBOX-ENGINE:BUILD-TIMEOUT-MS 60000 + constant WB-ROW-TIMEOUT-MS
 64 constant SUITE-USAGE-RC
+\ A row's argv tokens, each a length cell and its bytes: at most what the
+\ process-wide argv table takes.
+PROC-ARGV-BUF-CAP PROC-ARGV-MAX cells + constant ROW-ARGS-CAP
 
-create WB-BUF FS-PATH-CAP allot
-variable WB-U
-variable WB-SEQ                          \ the build row's capture seq; 0 = none
-variable WB-FAIL-RC                      \ exit status a red whitebox row dies with
+create ROW-ARGS ROW-ARGS-CAP allot
+variable ROW-ARGS-U
+variable ROW-ARG-N
+variable ROW-SCAN
+variable ROW-SCRIPT?                     \ the row's `--` has passed
 
 : SUITE-USAGE ( -- )
    s" usage: bin/hb --load test/run.f" SUITE-USAGE-RC die ;
@@ -52,23 +53,14 @@ variable WB-FAIL-RC                      \ exit status a red whitebox row dies w
    s" HABU_UNDER_TEST" >LEN eng engu >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN eng engu >LEN PROC-ENV+ ;
 
-: SUITE-ENV ( ptr u8 n -- ) {: eng:ptr engu:n :}
+\ The grant names the keyed images the gate settled for this row
+\ (test/image-grant.f), and goes in before the inherit for the same reason: a
+\ gate run as a row of another gate grants its own rows, never its parent's.
+: SUITE-ENV ( ptr u8 n ptr u8 n -- ) {: eng:ptr engu:n grant:ptr grantu:n :}
    PROC-ENV-RESET
    eng engu SUITE-ENGINE-ENV
+   IMAGE-GRANT:NAME$ >LEN grant grantu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
-
-: SUITE-RUN-ASYNC ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu:n timeout:n label:ptr labelu:n :}
-   path pathu label labelu timeout GT-POOL-START ;
-
-\ Every argv entry goes through as written. The runner used to prepend
-\ test/compiler/aot-mode.f - `1 set-tier` - to every `test/compiler/native-*.f`
-\ row, so a suite whose assertions are tier-1 facts was green here and red on
-\ its own. The tier belongs to the code under test: such a file selects it
-\ after harness and tool requires but before its subject definitions. Every
-\ row measures what `bin/hb --load <file>` measures.
-: SUITE-HB ( -- )
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+ ;
 
 \ The product engine, spelled twice for two different readers. The SPAWN is
 \ relative, the way every other spawn of it in the tree is: the gate already has
@@ -84,82 +76,94 @@ variable WB-FAIL-RC                      \ exit status a red whitebox row dies w
 : PRODUCT-ENGINE$ ( -- ptr u8 n )
    ENGINE-ID:PATH$ ;
 
+\ A ROW'S ARGV WAITS WITH IT. The row's files name the keyed images it needs
+\ (test/gate-images.f), and a row whose images are not settled yet holds the
+\ registry while build rows start - each staging its own argv in the same
+\ process-wide table. So the tokens are kept here as they arrive and staged
+\ only once the row is ready to spawn.
+: ROW-BEGIN ( -- )
+   0 ROW-ARGS-U !
+   0 ROW-ARG-N !
+   0 0<> ROW-SCRIPT? !
+   GATE-IMAGES:ROW-RESET ;
+
+\ Every argv entry goes through as written. The runner used to prepend
+\ test/compiler/aot-mode.f - `1 set-tier` - to every `test/compiler/native-*.f`
+\ row, so a suite whose assertions are tier-1 facts was green here and red on
+\ its own. The tier belongs to the code under test: such a file selects it
+\ after harness and tool requires but before its subject definitions. Every
+\ row measures what `bin/hb --load <file>` measures.
+: ROW-ARG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   ROW-ARGS-U @ u + cell + ROW-ARGS-CAP > if E-STR-CAPACITY throw then
+   u ROW-ARGS ROW-ARGS-U @ + !
+   a ROW-ARGS ROW-ARGS-U @ + cell + u BYTE-COPY
+   ROW-ARGS-U @ cell + u + ROW-ARGS-U !
+   ROW-ARG-N @ 1+ ROW-ARG-N !
+   a u s" --" STR= if 0 0= ROW-SCRIPT? ! exit then
+   ROW-SCRIPT? @ 0= if a u GATE-IMAGES:ROW-FILE then ;
+
+: ROW-ARGV! ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   0 ROW-SCAN !
+   ROW-ARG-N @ 0 ?do
+      ROW-ARGS ROW-SCAN @ + @ {: u:n :}
+      ROW-ARGS ROW-SCAN @ + cell + u >LEN PROC-ARGV+
+      ROW-SCAN @ cell + u + ROW-SCAN !
+   loop ;
+
+\ TRUE once every keyed image the row needs is settled, with its argv staged;
+\ else the row is started as its own red row naming the failed build row.
+: SUITE-READY? ( ptr u8 n -- bool ) {: label:ptr labelu:n :}
+   GATE-IMAGES:ROW-READY? if ROW-ARGV! 0 0= exit then
+   label labelu GATE-IMAGES:ROW-RED
+   0 0<> ;
+
 : SUITE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   PRODUCT-ENGINE$ SUITE-ENV
-   PRODUCT-SPAWN$ SUITE-TIMEOUT-MS label labelu SUITE-RUN-ASYNC ;
+   label labelu SUITE-READY? 0= if exit then
+   PRODUCT-ENGINE$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
+   PRODUCT-SPAWN$ label labelu SUITE-TIMEOUT-MS GT-POOL-START ;
 
-: WB-PATH$ ( -- ptr u8 n )
-   WB-BUF WB-U @ ;
-
-\ The whitebox engine, in the gate's own temp root: a private copy per gate run,
-\ so a suite that spawns it cannot reach - or overwrite - the shared keyed
-\ artifact, and the tree's bin/hb keeps its seal. Its key hashing and native
-\ build run in a pool row beside the other rows; that row's PASS or FAIL is the
-\ one report of the build.
-: WB-BUILD ( -- )
-   WB-PATH$ WHITEBOX-ENGINE:PROVIDE ;
-
-: WB-START ( -- )
-   0 WB-U !
-   0 WB-SEQ !
-   TEST:WHITEBOX-REGISTERED? 0= if exit then
-   s" hb-whitebox" WB-BUF GT-PATH WB-U !
-   s" whitebox-engine-build" WB-ROW-TIMEOUT-MS [: WB-BUILD ;] GT-POOL-START-FORK
-   GT-POOL-SEQ @ WB-SEQ ! ;
-
-: WB-WAIT ( -- )
-   begin WB-SEQ @ GT-POOL-SEQ-LIVE? while GT-POOL-STEP repeat ;
-
-\ The build's exit status when its red record holds one, else WB-RC: a row the
-\ pool killed records code 0 and a signalled one a signal number.
-: WB-FAIL-RC! ( -- )
-   WHITEBOX-ENGINE:WB-RC WB-FAIL-RC !
-   WB-SEQ @ GT-POOL-RED-FIND-SEQ {: i:n :}
-   i 0 < if exit then
-   i GT-POOL-RED-EXITED-PTR @ 0= if exit then
-   i GT-POOL-RED-CODE-PTR @ 0 = if exit then
-   i GT-POOL-RED-CODE-PTR @ WB-FAIL-RC ! ;
-
-: WB-RED-BODY ( -- )
-   s" whitebox engine build failed; its output is under FAIL: whitebox-engine-build"
-   WB-FAIL-RC @ die ;
-
-\ A whitebox row with no engine is its own red pool row: it dies with the
-\ build's exit status, and the rows after it keep running.
-: WB-RED ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   WB-FAIL-RC!
-   label labelu SUITE-TIMEOUT-MS [: WB-RED-BODY ;] GT-POOL-START-FORK ;
-
-\ A whitebox row reached while the engine builds waits here, and the rows
-\ registered after it wait with it: only the rows before the first whitebox row
-\ run beside the build, so the registry's longest rows lead it. A missing engine
-\ once the build row retired means that row failed red.
+\ A WHITEBOX-SUITE row runs on the gate's private copy of the unsealed engine,
+\ which the whitebox-engine build row puts in place.
 : SUITE-WB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   WB-WAIT
-   WB-PATH$ EXECUTABLE? 0= if label labelu WB-RED exit then
-   WB-PATH$ SUITE-ENV
-   WB-PATH$ SUITE-TIMEOUT-MS label labelu SUITE-RUN-ASYNC ;
+   GATE-IMAGES:ROW-WHITEBOX
+   label labelu SUITE-READY? 0= if exit then
+   GATE-IMAGES:WHITEBOX$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
+   GATE-IMAGES:WHITEBOX$ label labelu SUITE-TIMEOUT-MS GT-POOL-START ;
 
 : SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu:n label:ptr labelu:n :}
-   PRODUCT-ENGINE$ SUITE-ENV
+   label labelu SUITE-READY? 0= if exit then
+   PRODUCT-ENGINE$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
    PRODUCT-SPAWN$ label labelu in inu SUITE-TIMEOUT-MS GT-POOL-START-STDIN ;
 
-\ Settle the shared fixture writer image and the cold host it emits here, before
-\ the pool starts: every row that writes a fixture then runs that one keyed
-\ image and copies that one keyed host, so no row builds the writer image (about
-\ 24 s) or races another row to build it. The preloaded host and linker
-\ (test/preloaded-engine.f) are settled for the same reason. Settling dates
-\ every image as used, as each row's own settle does again, so a prune by a
-\ gate on another tree (lib/build-cache.f) leaves them alone. The whitebox
-\ build is the first fork.
+\ A keyed image's build row: the product engine, handed its program on stdin
+\ with no arguments, granted the family it settles and that family's
+\ prerequisites.
+: SUITE-BUILD-RUN ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: prog:ptr progu:n label:ptr labelu:n grant:ptr grantu:n timeout:n :}
+   PROC-ARGV-RESET
+   PRODUCT-ENGINE$ grant grantu SUITE-ENV
+   PRODUCT-SPAWN$ label labelu prog progu timeout GT-POOL-START-STDIN ;
+
+\ The entry guard runs before anything else starts. The keyed images the
+\ registry's rows load - the fixture writer, the cold host, the saver and
+\ linker images, the unsealed engine - are settled in the pool, one build row
+\ per image beside the rows, and each row starts once its own images are
+\ (test/gate-images.f): a broken image closure fails its build row and the
+\ rows that load it, and every other row runs.
 : SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS
    ENTRY-GUARD:CHECK
    s" habu-native-suite" GT-START
-   COLD-ENGINE:ENSURE
-   PRELOADED-ENGINE:ENSURE
    GT-POOL-RESET
-   WB-START ;
+   [: SUITE-BUILD-RUN ;] GATE-IMAGES:START ;
+
+\ A sequential group runs alone: every build row has retired before the pool
+\ drains for it.
+: SUITE-DRAIN ( -- )
+   GATE-IMAGES:SETTLE-ALL
+   GT-POOL-DRAIN-SOFT ;
 
 \ The pool drains softly between groups, so every registered suite runs
 \ whatever went red before it; the complete red set is reported here, once,
@@ -181,9 +185,9 @@ variable WB-FAIL-RC                      \ exit status a red whitebox row dies w
 : SUITE-INSTALL-HOOKS ( -- )
    [: SUITE-SETUP ;] TEST:SETUP!
    [: SUITE-FINISH ;] TEST:TEARDOWN!
-   [: GT-POOL-DRAIN-SOFT ;] TEST:DRAIN!
-   [: SUITE-HB ;] TEST:ARGS-BEGIN!
-   [: >LEN PROC-ARGV+ ;] TEST:ARG+!
+   [: SUITE-DRAIN ;] TEST:DRAIN!
+   [: ROW-BEGIN ;] TEST:ARGS-BEGIN!
+   [: ROW-ARG+ ;] TEST:ARG+!
    [: SUITE-HB-RUN ;] TEST:RUNNER!
    [: SUITE-WB-RUN ;] TEST:WHITEBOX-RUNNER!
    [: SUITE-HB-RUN-STDIN ;] TEST:STDIN-RUNNER! ;

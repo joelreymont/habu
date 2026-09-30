@@ -1,7 +1,7 @@
 \ Run by whitebox-engine-key-test.f inside its private invocation root.
 require lib/test.f
 require lib/fs-mutate.f
-require test/whitebox-engine.f
+require test/whitebox-key.f
 
 package WHITEBOX-MANIFEST-CHILD
 
@@ -22,7 +22,7 @@ variable PATH-C-U
 : C$ ( -- ptr u8 n ) PATH-C PATH-C-U @ ;
 
 : KEY! ( ptr u8 ptr n -- ) {: dst:ptr up:ptr :}
-   0 SCRIPT-ARGV$ dst up WHITEBOX-ENGINE:ENTRY-PATH! ;
+   0 SCRIPT-ARGV$ dst up WHITEBOX-KEY:ENTRY-PATH! ;
 
 : BOUNDARY-DIGEST! ( ptr u8 -- ) {: dst:ptr :}
    FSHA-CTX 0 SCRIPT-ARGV$ dst SHA256-FILE-IN dup 0 <> if throw then drop ;

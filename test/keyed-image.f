@@ -3,8 +3,9 @@
 \
 \ A family module owns what makes its image what it is: the content key, the
 \ engine that runs the builder, the program the builder is handed on stdin, and
-\ the arguments after `--`. test/fixture-writer.f and test/preloaded-engine.f
-\ are two. This module owns what is the same for every family:
+\ the arguments after `--`. test/fixture-writer.f, test/app-image-engine.f and
+\ test/preloaded-engine.f are three. This module owns what is the same for
+\ every family:
 \
 \ THE PATH IS THE KEY. An image lives at <cache root>/hb-<family>-<key hex>, and
 \ a key covers everything its build reads and every name the image records, so
@@ -37,6 +38,10 @@
 \ disk is dated as in use (lib/build-cache.f), so the cache holds what some
 \ tree still runs and nothing older.
 \
+\ SETTLED BY THE GATE. Under a gate a row settles only the images the gate
+\ granted it, which the gate's own build rows settled before the row started
+\ (test/image-grant.f, test/gate-images.f); ENSURE asks before it looks.
+\
 \ An image is handed out in place: its callers only execute it, and it writes
 \ nothing but the paths they name, so no caller can clobber the shared bytes.
 
@@ -50,6 +55,7 @@ require lib/process-env.f
 require lib/build-cache.f
 require lib/content-key.f
 require tools/event-closure-lib.f
+require test/image-grant.f
 
 package KEYED-IMAGE
 
@@ -197,13 +203,15 @@ public
    key KEY-HEX-LEN NAME+
    BUILD-CACHE:ROOT$ NAME$ dst JOIN-PATH up ! ;
 
-\ Build the family's image at its keyed path unless it is already there. An
-\ image found there is marked in use, and one a pruner took meanwhile is built
-\ again. The build runs the engine with the program on stdin and `--` then
-\ what ARGS stages, given the path the builder must save to. The engine path is
-\ copied; the family name, keyed path and program are read until ENSURE returns.
+\ Build the family's image at its keyed path unless it is already there, once
+\ the family is granted (IMAGE-GRANT:CHECK). An image found there is marked in
+\ use, and one a pruner took meanwhile is built again. The build runs the
+\ engine with the program on stdin and `--` then what ARGS stages, given the
+\ path the builder must save to. The engine path is copied; the family name,
+\ keyed path and program are read until ENSURE returns.
 : ENSURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] -- )
    {: fam:ptr famu:n path:ptr pathu:n eng:ptr engu:n prog:ptr progu:n args :}
+   fam famu IMAGE-GRANT:CHECK
    path pathu EXECUTABLE? if path pathu BUILD-CACHE:USED if exit then then
    fam FAMILY-A ! famu FAMILY-U !
    path PATH-A ! pathu PATH-U !

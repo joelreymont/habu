@@ -64,10 +64,10 @@ SUITE stripped-entry-qualified
    test/stripped-entry-qualified.f
 ;SUITE
 
-\ checker-scan-index is the first WHITEBOX-SUITE row. It holds the registry
-\ until the gate's whitebox build retires (WB-WAIT), so the rows above it keep
-\ the other slots busy for that build and the native-window rows below copy the
-\ finished engine. That barrier, not the row's own length, sets its place.
+\ checker-scan-index is the first row that needs the unsealed engine. It holds
+\ the registry until the whitebox-engine-build row retires (test/gate-images.f),
+\ so the rows above it keep the other slots busy for that build. That barrier,
+\ not the row's own length, sets its place.
 WHITEBOX-SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
@@ -109,10 +109,6 @@ SUITE hb-build-timeout-json
    tools/hb-build-timeout-json-test.f
 ;SUITE
 
-\ native-window-owner fetches the whitebox engine itself (test/whitebox-child.f).
-\ Registered before the first WHITEBOX-SUITE row, which holds the registry until
-\ the gate's whitebox build retires, it built its own copy beside that build and
-\ was killed at 360 s; registered after it, the row copies the finished artifact.
 SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE

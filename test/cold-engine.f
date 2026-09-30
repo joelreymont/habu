@@ -25,6 +25,7 @@ require lib/process-env.f
 require lib/build-cache.f
 require lib/content-key.f
 require test/fixture-writer.f
+require test/image-grant.f
 
 package COLD-ENGINE
 
@@ -151,10 +152,13 @@ public
 
 \ Settle the shared writer image and the cold host it emits, each built only
 \ when its keyed artifact is not already on disk. The writer is settled even when
-\ the host is present: every fixture write runs it, and the gate calls this once
-\ before its first fork. A host found on disk is marked in use
+\ the host is present: every fixture write runs it. Under a gate the host must
+\ be granted (IMAGE-GRANT:CHECK; the family name is the work prefix), and the
+\ gate's cold-engine build row settles both before a row that needs them starts
+\ (test/gate-images.f). A host found on disk is marked in use
 \ (BUILD-CACHE:USED), and one a pruner took meanwhile is emitted again.
 : ENSURE ( -- )
+   WORK-PREFIX$ IMAGE-GRANT:CHECK
    FIXTURE-WRITER:ENSURE
    RESOLVE
    PATH-BYTES EXECUTABLE? if PATH-BYTES BUILD-CACHE:USED if exit then then
