@@ -50,9 +50,14 @@ public
 \ THE TEXT WINDOW. The image writer takes the text segment as this many bytes
 \ past its header page (elf.f MPAGE, which refuses a longer stream), and
 \ src/os/image-bytes.f sizes the image buffer from it, so it is defined before
-\ either loads. The x86_64 images built today are the peer fixtures, which fit
-\ one page.
-4096 constant CODE-CAP-BYTES
+\ either loads. It holds the hand-written kernel alone: `_start`, the helpers
+\ and every row. The captured engine is not in it; the boot maps the code
+\ region fixed at the image base (VMBASE) plus REGION-OFF
+\ (src/habu/boot-x64.f), so the window and the read-write tail behind it must
+\ end below that. rel32 reaches the whole image, so no reach bounds the window,
+\ and it takes the allowance ARM64 gives its engine code part
+\ (src/arch/arm64/icode.f ADR-HI): 1 MiB.
+$100000 constant CODE-CAP-BYTES
 
 private
 

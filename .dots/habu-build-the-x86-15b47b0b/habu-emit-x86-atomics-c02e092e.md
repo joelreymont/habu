@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.577804+03:00"
-blocks:
-  - habu-size-the-x86-fb635c93
 ---
 
 Problem: `X64ASM` has no `lock`-prefixed encoders (`INTEL.md:178-180`) and the kernel has no atomic or code-publication rows.
