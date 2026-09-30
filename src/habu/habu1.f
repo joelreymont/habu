@@ -891,7 +891,7 @@ variable NUM-FPOS
 \ WHY POLL AND ONLY POLL (dot habu-return-errno-from-2ba16110). poll(2) is the
 \ one blocking call the kernel never restarts, SA_RESTART or not. read, write and
 \ wait4 are restarted by it, and the only signal handler this engine installs -
-\ the sampling profiler's SIGALRM, src/habu/prof.f LINUX-SA-PROF-FLAGS - sets
+\ the sampling profiler's SIGALRM, src/habu/prof-abi.f LINUX-SA-PROF-FLAGS - sets
 \ SA_RESTART, so those three cannot return EINTR here and an EINTR branch on them
 \ would be unreachable. That is what keeps them safe, not a property of the
 \ syscalls: a handler installed WITHOUT SA_RESTART would need the same -errno

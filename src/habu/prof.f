@@ -23,7 +23,10 @@
 \ sample. The handler runs on its own alternate stack, so a tick with the
 \ machine stack deep never pushes the signal frame over the data stack. The
 \ report reads the same band, so it needs no register either.
+require src/habu/prof-abi.f
+
 using A64ASM
+using PROF-ABI
 
 package PROF
 
@@ -49,104 +52,10 @@ private
    s" hb: this target's signal frame is not modelled" 76 die ;
 PROF-TARGET-OK
 
-\ ---- the band: PROF-STATE-BYTES of state cells, then one counter per dict record
-DATA-SIZE PROF-CNT-BYTES - constant PROF-BAND           \ band base, DATA-relative
-DATA-VA VA>N PROF-BAND + constant PROF-BAND-VA          \ absolute: DATA is MAP_FIXED at DATA-VA
-PROF-BAND-VA PROF-STATE-BYTES + constant PROF-CNT-VA    \ the counters
-0  constant PROF-TOT        \ samples delivered
-8  constant PROF-LIM        \ report + exit(99) at this many, 0 = sample until prof-off
-16 constant PROF-OTHER      \ Habu-code samples outside any dict word (main loop, helpers)
-24 constant PROF-FOREIGN    \ samples in a context that is not Habu code
-32 constant PROF-DBASE      \ the dictionary base, recorded by prof-on
-40 constant PROF-STACK      \ the handler's alternate stack, mapped once per process
-48 constant PROF-ARENA      \ the profiler arena, mapped once per process
-56 constant PROF-ARMED      \ 1 while the clock runs: a report stops it and puts it back
-
-\ ---- the arena: the pc index the handler searches -----------------------------
-\ THE HANDLER NEVER WALKS THE DICTIONARY. It searches a pc-sorted live-range
-\ index prof-on builds, so a tick costs log2(entries) compares instead of a scan
-\ that grows with the dictionary (measured 240,021 instructions per tick at
-\ ndict 15,835 before this index; the walk stopped at the FIRST record holding
-\ the pc, so its cost was the hot word's record number, not a constant).
-\
-\ The band cell PROF-ARENA holds the arena base and every table below it sits at
-\ a build-time offset from that base, so the handler reaches any of them with one
-\ load and no bound of its own. The arena is mapped once per process, like the
-\ alternate stack, and rebuilt in place by each prof-on.
-\
-\ WHAT THE INDEX ANSWERS, exactly, so a linear reference can state the same rule:
-\ the entry with the greatest start <= pc, reported only when pc < that entry's
-\ end. Entries are sorted by start with a STABLE merge, so records that share a
-\ start (an alias and its original) keep dictionary order and the search lands on
-\ the last of them. Records with no code of their own (a namespace row, a retired
-\ row, a zero-length body) are not in the index at all.
-128 constant ARN-HDR        \ arena header bytes, then the index
-0  constant ARN-COUNT       \ index entries
-8  constant ARN-LO          \ lowest code address in the index
-16 constant ARN-HI          \ one past the highest
-24 constant ARN-NDICT       \ the record count the index was built from
-32 constant ARN-NEW         \ samples at or above ARN-HI: code compiled after the build
-40 constant ARN-DROP        \ caller edges dropped: the probe window was full
-48 constant ARN-FRAMES      \ caller frames attributed out of the machine stack
-56 constant ARN-WALK        \ machine-stack cells one sample may scan
-64 constant ARN-USEC        \ sampling interval in microseconds, 0 = the 1000 default
-72 constant ARN-SPILL       \ new-code samples the deferred buffer had no room for
-80 constant ARN-DEFER       \ deferred samples waiting for the next report to name them
-88 constant ARN-OLDHI       \ the high mark before a rebuild: what the handler could name
-32 constant PROF-ENT        \ index entry bytes
-0  constant ENT-START
-8  constant ENT-END
-16 constant ENT-IDX         \ the dictionary record index, which owns the counter
-24 constant ENT-INCL        \ inclusive samples since the last rebuild, folded by it
-
-\ ---- caller edges -------------------------------------------------------------
-\ One open-addressed table for every (sampled word, caller) pair, keyed on the
-\ two record indices packed into 32 bits, probed at most PROF-CALL-PROBE times so
-\ a tick's cost stays bounded; a pair that finds no slot is counted in ARN-DROP
-\ and reported, never silently merged into another row.
-$10000 constant PROF-CALL-SLOTS
-$FFFF  constant PROF-CALL-MASK          \ the slot index, PROF-CALL-SLOTS wide
-17 constant PROF-REC-BITS               \ a record index plus the one value above it
-$1FFFF constant PROF-REC-MASK
-DICT-CAP constant PROF-CALLER-NONE      \ no record index reaches it: the unknown caller
-16 constant PROF-CALL-ENT               \ key+1, then the count
-8  constant PROF-CALL-PROBE
-$9E3779B97F4A7C15 constant PROF-HASH    \ golden-ratio multiplier; the top 16 bits index
-64 constant PROF-WALK-CELLS             \ default machine-stack scan, in cells
-$FFF constant PROF-PAGE-MASK            \ a sample never reads past its own 4 KiB block
-\ ---- deferred samples -----------------------------------------------------------
-\ A tick in code compiled after prof-on has no index entry to name it. The handler
-\ keeps the pc and the interrupted x30 - two cells at a fixed stride, no walk, no
-\ allocation - and the next report rebuilds the index from the dictionary as it
-\ then stands and replays them, which is the only point at which every word the
-\ phase compiled exists. The slot count is sized from the measurement that opened
-\ the dot: a 92-second self-build at 1 kHz put 13,991 of 92,000 samples in this
-\ bucket, so $40000 slots hold about eighteen such builds; past that a sample is
-\ counted in ARN-SPILL and reported, never dropped in silence.
-16 constant PROF-DEFER-ENT              \ the sample's pc, then its x30
-$40000 constant PROF-DEFER-SLOTS
-64 constant PROF-ROWS                   \ rows one report prints: enough that a compiler phase's roots,
-                                        \ which carry a large inclusive share on a small exclusive one, reach the report
-5  constant PROF-CALLERS                \ caller lines under each row: the top few, not every one
-DICT-CAP PROF-ENT * constant ARN-IDX-BYTES
-PROF-CALL-SLOTS PROF-CALL-ENT * constant ARN-CALL-BYTES
-ARN-HDR constant ARN-IDX                       \ the index itself
-ARN-IDX ARN-IDX-BYTES + constant ARN-SCR       \ the merge sort's second half
-ARN-SCR ARN-IDX-BYTES + constant ARN-CALL      \ the caller table
-DICT-CAP cells constant ARN-INCL-BYTES
-PROF-DEFER-SLOTS PROF-DEFER-ENT * constant ARN-DEF-BYTES
-ARN-CALL ARN-CALL-BYTES + constant ARN-INCL    \ inclusive samples, one per RECORD
-ARN-INCL ARN-INCL-BYTES + constant ARN-STAMP   \ the sample serial each record was last counted in
-ARN-STAMP ARN-INCL-BYTES + constant ARN-DEF    \ the deferred samples
-ARN-DEF ARN-DEF-BYTES + constant ARN-BYTES
-$10000 constant PROF-STACK-BYTES
-14  constant SIGALRM
-$18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
+\ ---- the band: its cells and the arena layout are PROF-ABI's (src/habu/prof-abi.f)
+DATA-VA VA>N DATA-SIZE PROF-BAND-AT constant PROF-BAND-VA   \ absolute: DATA is MAP_FIXED at DATA-VA
+PROF-BAND-VA PROF-STATE-BYTES + constant PROF-CNT-VA        \ the counters
 $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
-42 constant PROFMMAPMSG-LEN               \ "hb: prof-on: cannot map the handler stack\n"
-46 constant PROFSTKMSG-LEN                \ "hb: prof-on: cannot install the handler stack\n"
-43 constant PROFARNMSG-LEN                \ "hb: prof-on: cannot map the profiler arena\n"
-40 constant DICT-WL-OFF                   \ the record's wordlist cell (habu1.f BSWL reads the same 40)
 
 \ Profiler helpers emit ARM64 signal-context, sigaction/timer-frame, syscall,
 \ sampling, and primitive-publication code.
@@ -841,7 +750,7 @@ public
    11 7 PROF-LIM LDR,  11 pexit CBZ,                 \ limit 0: sample until prof-off
    10 11 CMP,  C-LT pexit BCOND,
    17 pexit CBZ,                                     \ the limit reached on a foreign sample: the next Habu sample reports
-   LPROFDUMP LABEL@ BL,  0 99 MOVZ,  NR-EXIT-GROUP SYS,
+   LPROFDUMP LABEL@ BL,  0 PROF-LIMIT-RC MOVZ,  NR-EXIT-GROUP SYS,
    pexit LBL,  0 4 0 ADDI,  NR-SIGRETURN SYS, ;
 
 private
@@ -855,9 +764,9 @@ private
       0 0 MOVZ,  1 PROF-STACK-BYTES LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
       NR-MMAP SYS,
       C-CC mok BCOND,
-         1 pmsg ADR,  2 PROFMMAPMSG-LEN MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
-         0 78 MOVZ,  NR-EXIT-GROUP SYS,
-      pmsg LBL,  S\" hb: prof-on: cannot map the handler stack\n" BYTES,   \ BYTES, pads the stream back to a word
+         1 pmsg ADR,  2 PROFMMAPMSG$ nip MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
+         0 PROF-MAP-RC MOVZ,  NR-EXIT-GROUP SYS,
+      pmsg LBL,  PROFMMAPMSG$ BYTES,   \ BYTES, pads the stream back to a word
       mok LBL,
       7 PROF-BAND-VA LIT64,  0 7 PROF-STACK STR,
    have LBL,
@@ -873,9 +782,9 @@ private
    THEN
    0 SP 0 ADDI,  1 0 MOVZ,  NR-SIGALTSTACK SYS,
    C-CC sok BCOND,                                   \ a refused alternate stack would leave the handler on the interrupted one: fail closed, named
-      1 smsg ADR,  2 PROFSTKMSG-LEN MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
-      0 78 MOVZ,  NR-EXIT-GROUP SYS,
-      smsg LBL,  S\" hb: prof-on: cannot install the handler stack\n" BYTES,
+      1 smsg ADR,  2 PROFSTKMSG$ nip MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
+      0 PROF-MAP-RC MOVZ,  NR-EXIT-GROUP SYS,
+      smsg LBL,  PROFSTKMSG$ BYTES,
    sok LBL,
    SP SP 32 ADDI, ;
 
@@ -924,9 +833,9 @@ private
       0 0 MOVZ,  1 ARN-BYTES LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
       NR-MMAP SYS,
       C-CC mok BCOND,
-         1 amsg ADR,  2 PROFARNMSG-LEN MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
-         0 78 MOVZ,  NR-EXIT-GROUP SYS,
-      amsg LBL,  S\" hb: prof-on: cannot map the profiler arena\n" BYTES,
+         1 amsg ADR,  2 PROFARNMSG$ nip MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
+         0 PROF-MAP-RC MOVZ,  NR-EXIT-GROUP SYS,
+      amsg LBL,  PROFARNMSG$ BYTES,
       mok LBL,
       7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA STR,
    have LBL, ;
@@ -1297,6 +1206,7 @@ public
    EMIT-PROFNUM  EMIT-PROFPCT  EMIT-PROFNAME  EMIT-PROFQUAL  EMIT-PROFSYNC
    false EMIT-PROFREP  true EMIT-PROFREP  EMIT-PROFROW ;
 
+;using
 ;using
 
 ;package

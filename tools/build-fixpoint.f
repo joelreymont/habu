@@ -1096,6 +1096,7 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-TARGET-PROC-CONTROL
    out outu BF-APPEND-HABU1
    out outu BUILD-EXT:APPEND
+   out outu s" src/habu/prof-abi.f" BF-APPEND-MODULE   \ prof.f requires it
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
