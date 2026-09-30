@@ -519,7 +519,9 @@ ETRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary 
 \ `cp!` refuses any other address with ENGINE-ERROR:SEAL-VIOLATION, the boot
 \ starts it at the page-aligned DBASE+DICT-SIZE, `code-publish` moves it to
 \ the first slot at or past dst+len, x86-64 filling the gap with int3,
-\ `does-record` pads the name it writes at CP to a slot with zeros, and ARM64
+\ `does-record` pads the name it writes at CP to a slot with zeros,
+\ `namespace-record`, `alias-record` and `def-open` move it past a long name
+\ to the next slot, x86-64 padding with zeros, and ARM64
 \ `native-unit-publish` moves it past a unit whose length GUARD-CODE-SPAN
 \ admits only in whole instruction words.
 \ An `addr` outside the region, or on ARM64 not a whole instruction, exits
@@ -615,8 +617,8 @@ ETRUSTED-ONLY!                       \ native pending-record publication
 \ first and prints the engine's own text.
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
-\ bytes inline, a longer one at CP, 4-aligned and marked native provenance, as
-\ `:` stores one. Each refuses an empty name, a live (folded name, wid) pair,
+\ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
+\ and 16 on x86-64, and marked native provenance, as `:` stores one. Each refuses an empty name, a live (folded name, wid) pair,
 \ NDICT at DICT-CAP, a name copy that would reach the code ceiling (REGION -
 \ $4000 above DBASE, compared unsigned) and a pending definition, whose record
 \ occupies slot NDICT.

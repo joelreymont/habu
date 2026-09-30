@@ -69,6 +69,11 @@ X64LAYOUT:DATA-SIZE PROF-CNT-BYTES - constant DP-CEILING
 \ (NPUB:NEXT-SLOT). The kernel loads no dialect, so it states the value.
 16 constant CODE-SLOT
 
+\ The code ceiling, as an offset into the region: the definition writers
+\ refuse a CP, or a long name's slots at CP, that reach it, as habu2.f bounds
+\ `:` at REGION - $4000 above DBASE.
+REGION $4000 - constant CODE-CEILING
+
 private
 
 $1000 constant PAGE-BYTES              \ the x86-64 Linux base page
@@ -2009,6 +2014,28 @@ variable SITE-TRAP-CELL
    R9 R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
    R8 PROT-RX PROT-REC, ;
 
+\ Copy rcx bytes from rsi to rdi, stepping both past them. Clobbers rax.
+: COPY-BYTES, ( -- )
+   LBL LBL {: next:label done:label :}
+   next LBL,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RAX RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   0 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
+   RSI ASM-SINK ENC-INC  RDI ASM-SINK ENC-INC  RCX ASM-SINK ENC-DEC
+   next JMP,
+   done LBL, ;
+
+\ Store rcx zero bytes from rdi, stepping it past them. Clobbers rax.
+: ZERO-BYTES, ( -- )
+   LBL LBL {: next:label done:label :}
+   RAX ZERO-REG,
+   next LBL,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   0 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
+   RDI ASM-SINK ENC-INC  RCX ASM-SINK ENC-DEC
+   next JMP,
+   done LBL, ;
+
 \ does-record's frame.
 0 constant DR-ENTRY                    \ the clause's entry
 8 constant DR-LEN                      \ its recorded length
@@ -2039,7 +2066,6 @@ variable SITE-TRAP-CELL
 \ four-byte word; CODE-RESERVE absorbs the rest.
 : DOES-RECORD, ( -- )
    ENGINE-GPR:X64-CP >R64 {: cp:r64 :}
-   LBL LBL LBL LBL {: copy:label copied:label pad:label padded:label :}
    RSP DR-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
    RAX POP,  RAX RSP DR-LEN MOV-STORE,
    RAX POP,  RAX RSP DR-ENTRY MOV-STORE,
@@ -2055,23 +2081,11 @@ variable SITE-TRAP-CELL
    RSI RSP DR-NAME MOV-LOAD,
    RDI cp ASM-SINK ENC-MOV-RR
    RCX RSP DR-NAME-LEN MOV-LOAD,  RCX SUFFIX$ nip >IMM8 ASM-SINK ENC-SUB-RI8
-   copy LBL,                                           \ the parent's name
-   RCX RCX ASM-SINK ENC-TEST-RR  C-E copied JCC,
-   RAX RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
-   0 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
-   RSI ASM-SINK ENC-INC  RDI ASM-SINK ENC-INC  RCX ASM-SINK ENC-DEC
-   copy JMP,
-   copied LBL,
+   COPY-BYTES,                                         \ the parent's name
    SUFFIX,
    RCX RSP DR-PAD MOV-LOAD,
    RCX RSP DR-NAME-LEN MEM-OFF ASM-SINK ENC-SUB-RM
-   RAX ZERO-REG,
-   pad LBL,                                            \ the zeros to the pad
-   RCX RCX ASM-SINK ENC-TEST-RR  C-E padded JCC,
-   0 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
-   RDI ASM-SINK ENC-INC  RCX ASM-SINK ENC-DEC
-   pad JMP,
-   padded LBL,
+   ZERO-BYTES,                                         \ the zeros to the pad
    RDI NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
    RDI RECORD-AT,
    R8 RSP DR-REC MOV-STORE,
@@ -2866,16 +2880,337 @@ public
 \ ---- definition writers ------------------------------------------------------
 \ The seven rows an interpreter written in Habu publishes definitions, namespace
 \ rows, aliases and package scope through (src/habu/prims.f, "the definition
-\ writers"). Each refuses here until this kernel carries its body, and each
-\ record carries ENGINE-PRIMS:GLOBAL-INT-WID, as on ARM64.
+\ writers"): the twins of habu2.f DEFWRITE's bodies, in each twin's check
+\ order. Every refusal comes before the first store and writes nothing on fd
+\ 2: a live task exits TASK-LIVE-RC in the five dictionary and scope rows, a
+\ protected wid after the seal ENGINE-ERROR:SEAL-PACKAGE, and every other
+\ refusal ENGINE-ERROR:SEAL-VIOLATION. Past the checks two helper exits can
+\ still end a row: 74 when the index cannot be kept, and
+\ ENGINE-ERROR:CODE-ORIGIN-FULL. Each record carries
+\ ENGINE-PRIMS:GLOBAL-INT-WID, as on ARM64.
+
+private
+
+\ The record writers' frame, where the arguments survive the helper calls.
+0 constant DW-NAME                     \ the name's address
+8 constant DW-LEN                      \ its length
+16 constant DW-WID                     \ the wid
+24 constant DW-ARG                     \ the flag, the source's index or the kind
+32 constant DW-REC                     \ record NDICT, the one the row writes
+40 constant DW-SLOT                    \ the code slot past a long name
+48 constant DW-FRAME
+$3A constant NAME-COLON                \ a qualified name's separator
+
+: FRAME-OPEN, ( -- ) RSP DW-FRAME >IMM8 ASM-SINK ENC-SUB-RI8 ;
+: FRAME-CLOSE, ( -- ) RSP DW-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+\ Pop the data stack's top into the frame cell.
+: POP-TO, ( n -- ) {: off:n :} RAX POP,  RAX RSP off MOV-STORE, ;
+
+\ A pending definition's record is slot NDICT, the slot a record writer fills.
+: NOT-PENDING, ( -- )
+   RAX PEND-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC, ;
+
+\ Slot DICT-CAP is the control-flow band, not a record.
+: DICT-ROOM, ( -- )
+   NDICT-REG DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-AE SEAL-TRAP-LBL JCC, ;
+
+\ The frame's name: refuse an empty one, and a long one whose slots at CP
+\ would reach the code ceiling. The compares are unsigned and never wrap: a CP
+\ already at the ceiling, and a length no region holds, a negative one among
+\ them, are refused rather than added. Clobbers rax rcx rsi.
+: NAME-SIZE, ( -- )
+   LBL {: fits:label :}
+   RSI RSP DW-LEN MOV-LOAD,
+   RSI RSI ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   RSI DNAME-INL >IMM8 ASM-SINK ENC-CMP-RI8  C-BE fits JCC,
+   RAX DBASE-REG CODE-CEILING MEM-OFF ASM-SINK ENC-LEA
+   CP-REG RAX ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
+   RAX CP-REG ASM-SINK ENC-SUB-RR                     \ rax = the room below it
+   RSI RAX ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,   \ the bytes alone reach it
+   RCX RSI SLOT-UP,
+   RCX RAX ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,   \ so do their slots
+   fits LBL, ;
+
+\ Refuse a live record of the frame's folded name in the frame's wid: the
+\ one-wordlist search's probe, FIND-LBL, answers it in rax.
+: FRESH, ( -- )
+   RDI RSP DW-NAME MOV-LOAD,  RSI RSP DW-LEN MOV-LOAD,  RDX RSP DW-WID MOV-LOAD,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC, ;
+
+\ Wid rdx is a namespace row's or a retired record's, not a wordlist.
+: REAL-WID, ( -- )
+   RDX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
+   RDX DICT-WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC, ;
+
+\ After the seal, branch to the label for a protected wid rdx, judged as
+\ habu1.f LPROTWIDQ judges one: the two engine-reserved wids always, one at or
+\ above PROT-WID-MAX, unsigned, never, and any other by its PROT-BITS, bit.
+\ Clobbers rax rcx rdx rsi rdi.
+: OPEN-WID, ( label -- ) {: prot:label :}
+   LBL {: open:label :}
+   RAX SEAL-NDICT-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E open JCC,
+   RDX OWNER-API-PUB-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E prot JCC,
+   RDX OWNER-API-PRI-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E prot JCC,
+   RDX PROT-WID-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-AE open JCC,
+   RDI RDX ASM-SINK ENC-MOV-RR
+   PROT-BITS,
+   RAX RSI MEM-AT ASM-SINK ENC-MOV-RM
+   RAX RDX ASM-SINK ENC-TEST-RR  C-NE prot JCC,
+   open LBL, ;
+
+\ Store the frame's name in record NDICT, whose address DW-REC takes: [16]
+\ its length, with DNAME-EXT for a long one; [24] and [32] the bytes inline,
+\ zero past them, or [24] the address of a copy at CP, zero-padded to the
+\ next code slot and marked native, with CP moved to that slot. The code band
+\ opens over a long name's slots and the record band over the record; the
+\ caller closes both. The checks have admitted the name.
+: NAME-STORE, ( -- )
+   LBL LBL LBL {: banded:label long:label done:label :}
+   NDICT-REG RECORD-AT,
+   R8 RSP DW-REC MOV-STORE,
+   RDI RSP DW-LEN MOV-LOAD,
+   RDI DNAME-INL >IMM8 ASM-SINK ENC-CMP-RI8  C-BE banded JCC,
+   RDI CP-REG RDI 1 0 MEM-IDX ASM-SINK ENC-LEA
+   RDI RDI SLOT-UP,
+   RDI RSP DW-SLOT MOV-STORE,
+   WINDOW-OPEN,                                       \ over [CP, slot)
+   banded LBL,
+   RDI RSP DW-REC MOV-LOAD,  RSI DREC IMM32,  WINDOW-SPAN,
+   R8 RSP DW-REC MOV-LOAD,
+   RSI RSP DW-NAME MOV-LOAD,  RCX RSP DW-LEN MOV-LOAD,
+   RAX ZERO-REG,
+   RAX R8 REC-NAME MOV-STORE,  RAX R8 REC-NAME CELL + MOV-STORE,
+   RCX DNAME-INL >IMM8 ASM-SINK ENC-CMP-RI8  C-A long JCC,
+   RCX R8 REC-FLAGS MOV-STORE,
+   RDI R8 REC-NAME MEM-OFF ASM-SINK ENC-LEA
+   COPY-BYTES,
+   done JMP,
+   long LBL,
+   RAX DNAME-EXT IMM64,  RAX RCX ASM-SINK ENC-OR-RR
+   RAX R8 REC-FLAGS MOV-STORE,
+   CP-REG R8 REC-NAME MOV-STORE,
+   RDI CP-REG ASM-SINK ENC-MOV-RR
+   COPY-BYTES,
+   RCX RSP DW-SLOT MOV-LOAD,  RCX RDI ASM-SINK ENC-SUB-RR
+   ZERO-BYTES,
+   RDI CP-REG ASM-SINK ENC-MOV-RR  RSI RSP DW-SLOT MOV-LOAD,
+   X64PROV:NATIVE-RANGE,
+   CP-REG RSP DW-SLOT MOV-LOAD,
+   done LBL, ;
+
+\ Count record NDICT, index it and close the window.
+: PUBLISH-RECORD, ( -- )
+   NDICT-REG ASM-SINK ENC-INC
+   HIDX-ADD,
+   WINDOW-CLOSE, ;
+
+\ namespace-record ( ptr u8 n bool -- n ): record NDICT, [0] a fresh wid, [8]
+\ a second when the flag is set and else 0, [40] DICT-WL:NAMESPACE; a colon
+\ in the name is refused. It answers the row's index.
+: NAMESPACE-RECORD-BODY ( -- )
+   LBL LBL LBL {: scan:label clean:label one:label :}
+   TASK-LIVE-GUARD,
+   FRAME-OPEN,
+   DW-ARG POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
+   NOT-PENDING,
+   DICT-ROOM,
+   NAME-SIZE,
+   RDI RSP DW-NAME MOV-LOAD,  RSI RSP DW-LEN MOV-LOAD,  RCX ZERO-REG,
+   scan LBL,
+   RCX RSI ASM-SINK ENC-CMP-RR  C-AE clean JCC,
+   RAX RDI RCX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   RAX NAME-COLON >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
+   RCX ASM-SINK ENC-INC
+   scan JMP,
+   clean LBL,
+   RAX DICT-WL:NAMESPACE >IMM32 ASM-SINK ENC-MOV-RI32
+   RAX RSP DW-WID MOV-STORE,
+   FRESH,
+   NAME-STORE,
+   R8 RSP DW-REC MOV-LOAD,
+   RAX WIDN-CELL CELL@,
+   RAX R8 REC-CODE MOV-STORE,
+   RAX ASM-SINK ENC-INC
+   RCX ZERO-REG,
+   RDX RSP DW-ARG MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E one JCC,
+   RCX RAX ASM-SINK ENC-MOV-RR  RAX ASM-SINK ENC-INC
+   one LBL,
+   RCX R8 REC-CODE CELL + MOV-STORE,
+   RAX WIDN-CELL CELL!,
+   RAX RSP DW-WID MOV-LOAD,  RAX R8 REC-WID MOV-STORE,
+   PUBLISH-RECORD,
+   FRAME-CLOSE,
+   RAX NDICT-REG -1 MEM-OFF ASM-SINK ENC-LEA  RAX PUSH, ;
+
+\ namespace-private ( n -- ): namespace row n, below NDICT, unsigned, whose [8]
+\ is 0, takes a fresh private wid.
+: NAMESPACE-PRIVATE-BODY ( -- )
+   TASK-LIVE-GUARD,
+   RCX POP,
+   RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
+   RCX RECORD-AT,
+   RAX R8 REC-WID MOV-LOAD,
+   RAX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
+   RAX R8 REC-CODE CELL + MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
+   R8 ASM-SINK ENC-PUSH                               \ the record, past the span call
+   RDI R8 ASM-SINK ENC-MOV-RR  RSI DREC IMM32,  WINDOW-SPAN,
+   R8 ASM-SINK ENC-POP
+   RAX WIDN-CELL CELL@,
+   RAX R8 REC-CODE CELL + MOV-STORE,
+   RAX ASM-SINK ENC-INC
+   RAX WIDN-CELL CELL!,
+   WINDOW-CLOSE, ;
+
+\ alias-record ( ptr u8 n n n -- ) name, source index, wid: record NDICT with
+\ the source's [0] and [8] and exactly its DNAME-IMM, DNAME-WIDE and
+\ DNAME-MIN-IN bits. A namespace, retired or DNAME-INT source is refused: an
+\ alias without the bit would run an internal body from the interpret loop.
+: ALIAS-RECORD-BODY ( -- )
+   LBL LBL {: prot:label done:label :}
+   TASK-LIVE-GUARD,
+   FRAME-OPEN,
+   DW-WID POP-TO,  DW-ARG POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
+   RDX RSP DW-WID MOV-LOAD,
+   REAL-WID,
+   prot OPEN-WID,
+   NOT-PENDING,
+   RCX RSP DW-ARG MOV-LOAD,
+   RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
+   RCX RECORD-AT,
+   RAX R8 REC-WID MOV-LOAD,
+   RAX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
+   RAX DICT-WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
+   RAX DNAME-INT IMM64,
+   RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-TEST-MR  C-NE SEAL-TRAP-LBL JCC,
+   DICT-ROOM,
+   NAME-SIZE,
+   FRESH,
+   NAME-STORE,
+   RDI RSP DW-REC MOV-LOAD,
+   RCX RSP DW-ARG MOV-LOAD,  RCX RECORD-AT,           \ r8 = the source
+   RAX R8 REC-CODE MOV-LOAD,  RAX RDI REC-CODE MOV-STORE,
+   RAX R8 REC-CODE CELL + MOV-LOAD,  RAX RDI REC-CODE CELL + MOV-STORE,
+   RAX DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or IMM64,
+   RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-AND-RM
+   RAX RDI REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
+   RAX RSP DW-WID MOV-LOAD,  RAX RDI REC-WID MOV-STORE,
+   PUBLISH-RECORD,
+   FRAME-CLOSE,
+   done JMP,
+   prot LBL,  ENGINE-ERROR:SEAL-PACKAGE EXIT-GROUP,
+   done LBL, ;
+
+\ package-scope! ( n n -- ) namespace index, parent wid: PKG-PUB and PKG-PRI
+\ from the row's [0] and [8], PKG-PARENT the wid and PKG-REC the row; `-1 0`
+\ clears all four.
+: PACKAGE-SCOPE-BODY ( -- )
+   LBL LBL {: set:label done:label :}
+   TASK-LIVE-GUARD,
+   RDX POP,  RCX POP,                                 \ the parent wid, the row
+   RCX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE set JCC,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,  \ only `-1 0` clears
+   RAX ZERO-REG,
+   RAX PKG-PUB-CELL CELL!,  RAX PKG-PRI-CELL CELL!,
+   RAX PKG-PARENT-CELL CELL!,  RAX PKG-REC-CELL CELL!,
+   done JMP,
+   set LBL,
+   RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
+   RCX RECORD-AT,
+   RAX R8 REC-WID MOV-LOAD,
+   RAX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
+   RCX R8 REC-CODE CELL + MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   RAX R8 REC-CODE MOV-LOAD,
+   RAX PKG-PUB-CELL CELL!,  RCX PKG-PRI-CELL CELL!,
+   RDX PKG-PARENT-CELL CELL!,  R8 PKG-REC-CELL CELL!,
+   done LBL, ;
+
+\ def-open ( ptr u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
+\ CP past the name, [8] 0, the kind beside the length and the wid in [40];
+\ PEND-CELL the record; TSIG, TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL
+\ takes TIER-CELL and the provenance window opens at that CP. At tier 0 it
+\ opens the record only.
+: DEF-OPEN-BODY ( -- )
+   LBL LBL {: prot:label done:label :}
+   TASK-LIVE-GUARD,
+   FRAME-OPEN,
+   DW-ARG POP-TO,  DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
+   RAX DKIND:MASK invert IMM64,
+   RAX RSP DW-ARG MEM-OFF ASM-SINK ENC-TEST-MR  C-NE SEAL-TRAP-LBL JCC,
+   RDX RSP DW-WID MOV-LOAD,
+   REAL-WID,
+   prot OPEN-WID,
+   NOT-PENDING,
+   RAX DBASE-REG CODE-CEILING MEM-OFF ASM-SINK ENC-LEA
+   CP-REG RAX ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
+   DICT-ROOM,
+   NAME-SIZE,
+   FRESH,
+   NAME-STORE,
+   R8 RSP DW-REC MOV-LOAD,
+   CP-REG R8 REC-CODE MOV-STORE,
+   RAX ZERO-REG,  RAX R8 REC-CODE CELL + MOV-STORE,
+   RAX RSP DW-ARG MOV-LOAD,  RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
+   RAX RSP DW-WID MOV-LOAD,  RAX R8 REC-WID MOV-STORE,
+   R8 PEND-CELL CELL!,
+   RAX ZERO-REG,
+   RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
+   RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
+   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX NCOMP-DISPATCH:TIER-CELL CELL@,  RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   X64PROV:OPEN,
+   WINDOW-CLOSE,
+   FRAME-CLOSE,
+   done JMP,
+   prot LBL,  ENGINE-ERROR:SEAL-PACKAGE EXIT-GROUP,
+   done LBL, ;
+
+\ body-append ( ptr u8 n -- ): append the bytes and a space to BODYBUF, as the
+\ capture `:` appends through does. BODYLEN past BODYBUF-CAP, and u at or past
+\ the room left, both unsigned, are refused; pass 2 re-runs a captured body
+\ and stores nothing.
+: BODY-APPEND-BODY ( -- )
+   LBL {: done:label :}
+   RCX POP,  RSI POP,                                 \ the count, the bytes
+   RAX BODYLEN-CELL CELL@,
+   RAX BODYBUF-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-A SEAL-TRAP-LBL JCC,
+   RDX BODYBUF-CAP IMM32,
+   RDX RAX ASM-SINK ENC-SUB-RR                        \ rdx = the room left
+   RCX RDX ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
+   RDX P2-CELL CELL@,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-NE done JCC,
+   RDX RAX RCX 1 1 MEM-IDX ASM-SINK ENC-LEA           \ the length past the space
+   RDI DATA-REG RAX 1 BODYBUF-OFF MEM-IDX ASM-SINK ENC-LEA
+   COPY-BYTES,
+   RAX STR-SPACE IMM32,
+   0 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
+   RDX BODYLEN-CELL CELL!,
+   done LBL, ;
+
+\ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
+\ TSIG-A and TSIG-U.
+: TRUST-SIG-BODY ( -- )
+   RCX POP,  RAX POP,
+   RDX PEND-CELL CELL@,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   RAX TSIG-A-CELL CELL!,  RCX TSIG-U-CELL CELL!, ;
+
+public
+
 : DEFINITION, ( -- )
-   s" namespace-record" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" namespace-private" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" alias-record" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" package-scope!" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" def-open" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" body-append" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" trust-sig!" [: REFUSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+   s" namespace-record" [: NAMESPACE-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" namespace-private" [: NAMESPACE-PRIVATE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" alias-record" [: ALIAS-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" package-scope!" [: PACKAGE-SCOPE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" def-open" [: DEF-OPEN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" body-append" [: BODY-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" trust-sig!" [: TRUST-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
 \ ---- pure rows ---------------------------------------------------------------
 \ The arithmetic, comparison, shuffle, memory and float rows. Every row but

@@ -350,3 +350,73 @@ public
 ;using
 ;using
 ;package
+
+\ The window cases' words: the code region put at rest, a probe that proves a
+\ page closed, a poisoned cell, and the cells a case reads back. At rest the
+\ region is read-execute throughout, as the ARM64 boot leaves it, so a row
+\ that writes it outside its window faults into the crash handler's dump
+\ (134).
+package X64HARNESS
+using X64ASM
+using X64CODE
+using X64RT
+
+private
+
+5 constant PROT-RX                     \ PROT_READ|PROT_EXEC
+: CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
+
+public
+
+\ What PROBE, pushes for a page the kernel cannot write: -EFAULT.
+-14 constant FAULTED
+
+EXPORT NAME-CELL
+
+\ The region at rest, as habu2.f EM-SNAPSHOT-RX-FLUSH leaves it: read-execute
+\ throughout with every band closed. The boot maps it read-write and opens no
+\ band.
+: REST, ( -- )
+   RDI DBASE-REG ASM-SINK ENC-MOV-RR
+   RSI REGION >IMM32 ASM-SINK ENC-MOV-RI32
+   RDX PROT-RX >IMM32 ASM-SINK ENC-MOV-RI32
+   NR-MPROTECT SYS, ;
+
+\ Push clock_gettime's answer for a timespec n bytes into the region: 0 when
+\ the kernel can write the page, FAULTED when it cannot.
+: PROBE, ( n -- ) {: off:n :}
+   RDI CLOCK-MONOTONIC >IMM32 ASM-SINK ENC-MOV-RI32
+   RSI DBASE-REG off MEM-OFF ASM-SINK ENC-LEA
+   NR-CLOCK-GETTIME SYS,
+   0 G-PUSH ;
+
+\ Store -1 n bytes into the region: a store its page must admit.
+: POKE, ( n -- ) {: off:n :}
+   RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
+   RAX DBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+\ Push the cell n bytes into the region.
+: PUSH-REGION-CELL, ( n -- ) {: off:n :}
+   RAX DBASE-REG off MEM-OFF ASM-SINK ENC-MOV-RM
+   0 G-PUSH ;
+
+\ Push the DATA cell at an offset.
+: PUSH-DATA-CELL, ( n -- ) {: off:n :}
+   RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-RM
+   0 G-PUSH ;
+
+\ Push the five band cells or'd together: 0 when every band is closed.
+: PUSH-BANDS, ( -- )
+   RAX DATA-REG PROT:WINDOW MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX DATA-REG PROT:WLO MEM-OFF ASM-SINK ENC-OR-RM
+   RAX DATA-REG PROT:RLO MEM-OFF ASM-SINK ENC-OR-RM
+   RAX DATA-REG PROT:RHI MEM-OFF ASM-SINK ENC-OR-RM
+   RAX DATA-REG PROT:CF MEM-OFF ASM-SINK ENC-OR-RM
+   0 G-PUSH ;
+
+: PUSH-CP, ( -- ) RAX CP-REG ASM-SINK ENC-MOV-RR  0 G-PUSH ;
+
+;using
+;using
+;using
+;package

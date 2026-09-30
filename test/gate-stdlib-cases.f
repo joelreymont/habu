@@ -1437,6 +1437,12 @@ SUITE x86-64-kernel-crash
    test/x86-64-kernel-crash.f
 ;SUITE
 
+\ The definition writers of the x86-64 kernel in the booted harness; the
+\ header names the status each image exits with.
+SUITE x86-64-kernel-definition
+   test/x86-64-kernel-definition.f
+;SUITE
+
 SUITE xml-byte-edits
    lib/xml-test.f
    lib/byte-edit-test.f
