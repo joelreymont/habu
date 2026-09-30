@@ -2,7 +2,8 @@
 \
 \ One process holds both peers: a server task binds a TCP4 listener on a free
 \ loopback port, publishes the port in a shared cell and accepts one connection
-\ at a time, while the main task drives package CURL against it.
+\ at a time, while the main task drives package CURL against it. A second
+\ listener is never accepted on: it is the peer that never answers.
 \ Run: bin/hb --load lib/net/curl-test.f
 \ HABU_NET_TESTS=1 adds one real HTTPS request to https://example.com.
 
@@ -83,7 +84,9 @@ variable SERVER-DONE
 variable SERVER-BAD
 variable SERVER-ERRNO
 variable SERVER-HITS
-variable SERVER-SERVED
+variable SILENT-LISTENER
+variable SILENT-PORT
+variable CEILING-HITS                   \ the cut dribble's request, if it got out
 variable LAST-STATUS
 variable LAST-LEN
 variable LAST-CODE
@@ -314,7 +317,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 
 \ The client is answered nothing at all and the connection is held until the
-\ client itself gives up, which is the only thing TIMEOUT! can end.
+\ client itself gives up: a cancel, a halt or a stall test is what ends it.
 : SERVE-STALL ( TCP4:connection -- ) {: conn:TCP4:connection :}
    conn DRAIN
    conn TCP4:CLOSE PEER-STATUS ;
@@ -407,12 +410,12 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 
 \ The count moves atomically because a case reads it WHILE the server task is
-\ serving: the cancel case waits for its own request to arrive before ending it.
+\ serving: the cancel and halt cases wait for their own requests to arrive
+\ before ending them.
 : SERVE-ONE ( TCP4:connection -- ) {: conn:TCP4:connection :}
    conn REQ-READ 0= if conn TCP4:CLOSE PEER-STATUS exit then
    1 SERVER-HITS atomic-add drop
-   conn ROUTE
-   1 SERVER-SERVED atomic-add drop ;
+   conn ROUTE ;
 
 
 \ The wakeup connection that ends the accept loop carries no request, so the
@@ -434,27 +437,33 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    again ;
 
 
-: BIND-SERVER ( -- bool )
+: BIND-LOOPBACK ( ptr n -- bool ) {: cell:ptr :}
    LOOPBACK TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND
    MATCH TCP4:bind-result
-      bound OF TCP4:LISTENER>N SERVER-LISTENER ! true ENDOF
+      bound OF TCP4:LISTENER>N cell ! true ENDOF
       failed OF SERVER-FAILED false ENDOF
    ;MATCH ;
 
 
-: PUBLISH-PORT ( -- bool )
-   LISTENER@ TCP4:LOCAL
+: PUBLISH-PORT ( ptr n ptr n -- bool ) {: lcell:ptr pcell:ptr :}
+   lcell @ TCP4:>LISTENER TCP4:LOCAL
    MATCH TCP4:endpoint-result
-      endpoint OF TCP4:PORT>N SERVER-PORT ! TCP4:ADDRESS>N drop true ENDOF
+      endpoint OF TCP4:PORT>N pcell ! TCP4:ADDRESS>N drop true ENDOF
       failed OF SERVER-FAILED false ENDOF
    ;MATCH ;
+
+
+\ A listener on a free loopback port, its handle and then its port stored in the
+\ two cells; a refusal is recorded as the server side's fault.
+: LISTEN-LOOPBACK ( ptr n ptr n -- bool ) {: lcell:ptr pcell:ptr :}
+   lcell BIND-LOOPBACK 0= if false exit then
+   lcell @ TCP4:>LISTENER BACKLOG TCP4:LISTEN SERVER-STATUS
+   SERVER-BAD @ 0 <> if false exit then
+   lcell pcell PUBLISH-PORT ;
 
 
 : SERVER-START ( -- bool )
-   BIND-SERVER 0= if false exit then
-   LISTENER@ BACKLOG TCP4:LISTEN SERVER-STATUS
-   SERVER-BAD @ 0 <> if false exit then
-   PUBLISH-PORT ;
+   SERVER-LISTENER SERVER-PORT LISTEN-LOOPBACK ;
 
 
 \ The port is published before readiness is, so a reader that sees ready sees a
@@ -505,6 +514,20 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    LISTENER@ TCP4:CLOSE-LISTENER SERVER-STATUS ;
 
 
+\ Nobody accepts on this listener: the kernel completes a client's connection
+\ and queues whatever it sends, and nothing ever answers. A transfer that only
+\ its own ceiling can end is sent here, because that ceiling can fire before
+\ the request is even sent - the scheduler may hold the client that long - and
+\ the counting server must see only requests whose arrival the test guarantees.
+: OPEN-SILENT ( -- )
+   s" a listener that never answers opens on loopback" T-LABEL
+   SILENT-LISTENER SILENT-PORT LISTEN-LOOPBACK TTRUE ;
+
+
+: CLOSE-SILENT ( -- )
+   SILENT-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER SERVER-STATUS ;
+
+
 \ ---- fixtures ----------------------------------------------------------------
 
 : UNDER-ROOT ( ptr u8 n ptr u8 -- n ) {: name:ptr nameu:n dst:ptr :}
@@ -531,12 +554,16 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    SB$ ;
 
 
-: URL-FOR ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
+: URL-AT ( n ptr u8 n -- ptr u8 n ) {: port:n path:ptr pathu:n :}
    SB-RESET
    s" http://127.0.0.1:" SB-APPEND
-   SERVER-PORT @ FMT:SB-U
+   port FMT:SB-U
    path pathu SB-APPEND
    SB$ ;
+
+
+: URL-FOR ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
+   SERVER-PORT @ path pathu URL-AT ;
 
 
 \ ---- driving package CURL ----------------------------------------------------
@@ -619,6 +646,14 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    OPEN-HANDLE {: subject:CURL:handle :}
    subject path pathu URL-FOR CURL:URL! EXPECT-OK
    subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
+   subject ;
+
+
+\ A transfer to the peer that never answers, which only its ceiling ends.
+: STALL-READY ( -- CURL:handle )
+   OPEN-HANDLE {: subject:CURL:handle :}
+   subject SILENT-PORT @ PATH-STALL$ URL-AT CURL:URL! EXPECT-OK
+   subject STALL-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject ;
 
 
@@ -722,32 +757,36 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    BODY-BUF 3 s" hel" T$= ;
 
 
-\ A timed-out client can return while the serial server still drains/closes
-\ that request. Complete its cleanup before the next case starts its timer.
-: WAIT-SERVED ( n -- ) {: want:n :}
-   mono-ns REQUEST-MS NS-PER-MS * + {: deadline:n :}
-   begin SERVER-SERVED atomic@ want < while
-      mono-ns deadline >= if E-PROC-TIMEOUT throw then
-      TASK:PAUSE
-   repeat ;
-
-
 : TEST-TIMEOUT ( -- )
-   SERVER-HITS atomic@ 1+ {: request:n :}
-   PATH-STALL$ GET-READY {: subject:CURL:handle :}
-   subject STALL-MS >MS CURL:TIMEOUT! EXPECT-OK
+   STALL-READY {: subject:CURL:handle :}
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
    s" a server that never answers ends as CURLE_OPERATION_TIMEDOUT" T-LABEL
    LAST-KIND @ KIND-FAILED T=
-   LAST-CODE @ 28 T=
-   request WAIT-SERVED ;
+   LAST-CODE @ 28 T= ;
+
+
+\ A client its ceiling ended can return while the serial server still drains
+\ and closes that connection, so the next timed case waits for this answer: the
+\ server takes connections one at a time in the order they were made, and it
+\ answers a request made now only once it is done with every earlier one -
+\ whether that one carried a request or its ceiling ended it before one left.
+: SERVER-BARRIER ( -- )
+   PATH-HELLO$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN FETCH
+   subject CURL:CLEANUP
+   s" the serial server answers after a transfer its ceiling ended" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T= ;
 
 
 \ The ceiling TIMEOUT! sets ends a transfer that is slow but perfectly alive:
-\ exactly the loss a low-speed limit exists to avoid.
+\ exactly the loss a low-speed limit exists to avoid. That ceiling can also fire
+\ before the request is sent, when the scheduler holds the client that long, so
+\ whether the request arrived is found out after the barrier, not assumed; a run
+\ whose request never arrived shows no more than TEST-TIMEOUT does.
 : DRIBBLE-CEILING ( -- )
-   SERVER-HITS atomic@ 1+ {: request:n :}
+   SERVER-HITS atomic@ {: before:n :}
    PATH-DRIBBLE$ GET-READY {: subject:CURL:handle :}
    subject CEILING-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject BODY-CAP >LEN FETCH
@@ -755,7 +794,11 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" a whole-transfer ceiling ends the dribble though it never stalled" T-LABEL
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 28 T=
-   request WAIT-SERVED ;
+   SERVER-BARRIER
+   SERVER-HITS atomic@ before - 1- {: arrived:n :}
+   s" the dribble a ceiling ended reached the server at most once" T-LABEL
+   arrived 1 <= TTRUE
+   arrived CEILING-HITS ! ;
 
 
 \ The same dribble under a low-speed limit far below its rate finishes whole:
@@ -874,7 +917,6 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 \ and not a hung suite.
 
 2000 constant WAIT-MS                   \ the bound on every wait in these cases
-5 constant SETTLE-MS                    \ grace for a request to reach the server
 $20 constant MANY-N                     \ the concurrent transfers of case one
 $40 constant MANY-CAP                   \ one span each, far past the six-byte body
 4 constant STALL-GROUP                  \ one stalled transfer and three healthy ones
@@ -1030,11 +1072,10 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    DURING-THREADS @ 2 T= ;
 
 
-\ One transfer the server never answers, ended by its own ceiling, while the
+\ One transfer nothing ever answers, ended by its own ceiling, while the
 \ others on the same loop answer 200: a transfer's failure is its own.
 : CASE-STALLED ( -- )
-   PATH-STALL$ GET-READY {: bad:CURL:handle :}
-   bad STALL-MS >MS CURL:TIMEOUT! EXPECT-OK
+   STALL-READY {: bad:CURL:handle :}
    RESULT-RESET
    bad BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
    STALL-GROUP 1- 0 ?do i MANY-START loop
@@ -1099,14 +1140,16 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 
 
 \ A task halted while it waits ends at its PAUSE and abandons its record; the
-\ loop gives that record back, which is what lets the loop stop afterwards.
+\ loop gives that record back, which is what lets the loop stop afterwards. The
+\ halt waits for the request to arrive, so the transfer is really in flight.
 : CASE-HALTED ( -- )
+   SERVER-HITS atomic@ {: before:n :}
    0 HALT-PARKED !
    0 HALT-RC !
    PATH-STALL$ GET-READY HALT-HANDLE !
    ['] HALT-WORK HALT-TASK TASK:ACTIVATE
    HALT-PARKED 1 REACHED? TTRUE
-   SETTLE-MS TASK:SLEEP
+   before WAIT-HIT
    HALT-TASK TASK:HALT
    HALT-TASK ENDED? TTRUE
    HALT-TASK TASK:KILL
@@ -1151,11 +1194,13 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    CASE-RESTART ;
 
 
+\ Every request whose arrival the test guarantees arrived exactly once, and the
+\ dribble its ceiling ended arrived as DRIBBLE-CEILING found it.
 : TEST-SERVER ( -- )
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 56 T= ;
+   SERVER-HITS atomic@ 54 CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
@@ -1185,11 +1230,13 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    MAKE-ROOT
    WRITE-FIXTURES
    DRIBBLE-FILL
-   START-SERVER ;
+   START-SERVER
+   OPEN-SILENT ;
 
 
 : TEARDOWN ( -- )
    STOP-SERVER
+   CLOSE-SILENT
    ROOT$ REMOVE-TREE ;
 
 \ No request or live task is needed: each fresh initialization must arm the

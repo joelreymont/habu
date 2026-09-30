@@ -237,22 +237,24 @@ floor; the string form is the replacement once the libcurl floor is 7.85.
 `lib/net/curl-test.f` holds both peers in one process: a server task binds a
 [TCP4](tcp4.md) listener on a free loopback port, publishes the port in a shared
 cell and accepts one connection at a time, speaking enough HTTP/1.0 to answer
-the cases, while the main task drives package CURL against it. It needs nothing
-on PATH and opens no outward connection.
+the cases, while the main task drives package CURL against it. A second
+listener that nothing accepts on is the peer that never answers. It needs
+nothing on PATH and opens no outward connection.
 
 The cases are a GET with the fixture's exact bytes and its `Content-Length`, a
 404 for an unknown path, a 304 the server gives only when it parsed
 `If-Modified-Since` out of the request, a POST with headers and a body and a
 custom `DELETE` (both 501), a `Set-Cookie` that round trips through the jar file
-and comes back on a second request, a truncated response, a path the server
-accepts and never answers so only `TIMEOUT!` can end it, a path it serves in
-timed chunks — slow, about 640 bytes a second, but never stalled — where a
+and comes back on a second request, a truncated response, a request to the
+silent peer that only `TIMEOUT!` can end, a path the server serves in timed
+chunks — slow, about 640 bytes a second, but never stalled — where a
 whole-transfer ceiling loses the body while `LOW-SPEED!` under that rate
-finishes it whole and the same limit alone still ends the stalled path, a handle
-with no URL, a `file://` URL to a readable file that is refused with its bytes
-never reaching the buffer, and the refusals: a dead handle, a NUL inside a URL,
-a low-speed rate below zero and a window past the C long ceiling, against a
-handle that takes both the disabling pair and a real one.
+finishes it whole and the same limit alone still ends a path the server accepts
+and never answers, a handle with no URL, a `file://` URL to a readable file
+that is refused with its bytes never reaching the buffer, and the refusals: a
+dead handle, a NUL inside a URL, a low-speed rate below zero and a window past
+the C long ceiling, against a handle that takes both the disabling pair and a
+real one.
 
 The loop's own cases follow, with `AIO:START` run first because a live task
 forbids compilation: a `START` before `LOOP-START` and a second `LOOP-START`
@@ -261,14 +263,15 @@ by `START`/`AWAIT`, whole and against a span too short for it; thirty-two
 transfers in flight at once, each with its own span, where the thread count read
 from `/proc/self/task` during the run is the count before plus two — the CURL
 loop and the AIO loop — and a thirty-third `START` is `E-CAPACITY`; one transfer
-the server never answers ending as 28 under its own `TIMEOUT!` while three
+to the silent peer ending as 28 under its own `TIMEOUT!` while three
 others on the same loop answer 200; a transfer cancelled while the server holds
 it open, which answers `failed` with 42; a transfer another task may not await,
 a loop that refuses to stop while it is in flight, and a second `AWAIT` of it
 refused; a submitter task halted while parked in `AWAIT`, after which the loop
 stops once it has taken the abandoned record back; and the loop started again,
 carrying one more transfer. A last case checks the server task itself served
-every request and reported no fault.
+every request whose arrival the row guarantees, plus the cut dribble's request
+when it got out, and reported no fault.
 
 Setting `HABU_NET_TESTS=1` adds one request to `https://example.com`, which is
 the only case that leaves the machine and the only one that exercises TLS and
