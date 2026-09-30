@@ -33,9 +33,9 @@ STRUCTURE w3 0
   FIELD c n
 ;STRUCTURE
 
-\ lib/report.f's own record, field for field: a header span, its length, and an
-\ alignment code. It is the production shape this leaf exists for, and its first
-\ field being a POINTER is what makes an exchanged slot a wrong string.
+\ A table-column record, field for field: a header span, its length, and an
+\ alignment code. Its first field being a POINTER is what makes an exchanged
+\ slot a wrong string.
 STRUCTURE col 0
   FIELD ha ptr u8
   FIELD hn n
@@ -70,7 +70,7 @@ private
 \ ---- where the values live ---------------------------------------------------
 \ One slot per family is enough for every case; the index is still a parameter
 \ everywhere, because an accessor that took none would compile the address as a
-\ constant and stop being the shape lib/report.f writes.
+\ constant and stop being the indexed shape a column store writes.
 4 TYPED-BUFFER W1-AT w1
 4 TYPED-BUFFER W2-AT w2
 4 TYPED-BUFFER W3-AT w3
@@ -130,7 +130,7 @@ TRUSTED: W2-SCALAR-AT ( n -- ptr n )
    a d + b c NWM-W3:MAKE k W3-AT !
    k E-L3 ;
 
-\ ---- lib/report.f's three rows, reduced --------------------------------------
+\ ---- a column store's three rows -------------------------------------------
 \ COL+ stores a whole record through a bounds-checked buffer; COL-HDR@ reads it
 \ back and keeps the header; COL-AL@ reads it back and keeps the alignment. All
 \ three refused before this leaf, and they are the acceptance.
@@ -248,7 +248,7 @@ TRUSTED: W2-SCALAR-AT ( n -- ptr n )
    5 0 E-LMS 172 T= ;
 
 : COL-CASE ( -- )
-   s" lib/report's pointer-bearing three-cell record round trips" T-LABEL
+   s" a pointer-bearing three-cell column record round trips" T-LABEL
    s" hdr" 1 0 E-COL+
    0 E-COL-HDR s" hdr" T$=
    0 E-COL-AL 1 T= ;

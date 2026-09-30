@@ -1876,14 +1876,6 @@ SUITE process-env
    lib/process-env-test.f
 ;SUITE
 
-SUITE render
-   lib/render-test.f
-;SUITE
-
-SUITE report
-   lib/report-test.f
-;SUITE
-
 SUITE test-subject
    lib/test/subject-test.f
 ;SUITE

@@ -284,12 +284,7 @@ public
 -4499 constant E-TEST-LAST
 -4400 constant E-TEST-CAPACITY
 
-\ Report tables: -4900..-4999 (-4500..-4899 are owned by non-stdlib test/tool blocks)
--4900 constant E-REPORT-FIRST
--4999 constant E-REPORT-LAST
--4900 constant E-REPORT-CAPACITY   \ column set is full (more than 64 columns declared)
-
-\ Owned growable byte buffer: -5700..-5799 (the stdlib range -2000..-4999 is full;
+\ Owned growable byte buffer: -5700..-5799 (past the stdlib range -2000..-4999;
 \ -5000..-5699 are owned by research/maki modules that keep codes in their own files)
 -5700 constant E-BUF-FIRST
 -5799 constant E-BUF-LAST

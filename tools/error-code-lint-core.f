@@ -66,8 +66,7 @@ public
 \ fixture that pins the refusal) can name which defect stopped a scan instead of
 \ matching a bare number. Negative, so this lint keeps them globally unique.
 \ -4808..-4810 continue the unclaimed lint-tool gap that holds E-SHADOW-UNTERM
-\ (-4800) through E-PKGDIFF-NONAME (-4807); the gap ends before lib/errors.f's
-\ reserved E-REPORT block at -4900.
+\ (-4800) through E-PKGDIFF-NONAME (-4807).
 -4808 constant E-QUOTE   \ a string literal ran past end of input
 -4809 constant E-ROW     \ a `PRIM:`/`PPRIM:` axiom row lacked a header or its closer
 \ The residual arm: a diagnostic or token kind added to LINT-LEX after this
