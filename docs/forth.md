@@ -354,6 +354,12 @@ public
   certification, private isolation, public export, reopen, case-insensitive
   lookup and fail-closed misuse (`public`/`private`/`;package` outside a
   package, nesting, missing names, qualified package names).
+- **A process can be sealed to the packages a harness admits.** After
+  `POLICY:SEAL` (`lib/policy.f`) the source the engine reads may name only its
+  own definitions, the public words of the packages given to `POLICY:ALLOW`,
+  and twelve keywords; any other token is `hb: not in vocabulary: <token> at
+  <path>:<line>`, exit code 107. [policy.md](policy.md) has the vocabulary and
+  the refusals.
 
 #### Importing a package's public words with `using`
 

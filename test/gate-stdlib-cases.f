@@ -2063,6 +2063,12 @@ SUITE using-import
    test/using-test.f
 ;SUITE
 
+\ The design seal: each test/policy case loaded sealed at both tiers, one child
+\ per row; writes build/policy-run.txt.
+SUITE policy
+   lib/policy-test.f
+;SUITE
+
 SUITE trust-row-refusal
    test/trust-row-test.f
 ;SUITE

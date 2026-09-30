@@ -55,6 +55,7 @@ Planned module files:
 - `lib/process-command.f`
 - `lib/process-cwd.f`
 - `lib/process-tree.f`
+- `lib/policy.f`
 - `lib/argv.f`
 - `lib/test.f`
 - `lib/test/assert.f`
@@ -102,6 +103,7 @@ theirs.
 | `lib/process-command.f` | caller-owned (`CMD` contexts) / process-wide (the `PROC-CMD` surface over one static context) |
 | `lib/process-cwd.f` | process-wide |
 | `lib/process-tree.f` | process-wide |
+| `lib/policy.f` | task-local (two cells of the sealing task's DATA header, the seal watermark and the admission bitmap, written once by the harness: the seal they hold governs the source that task reads) |
 | `lib/net/tcp4.f` | task-local |
 | `lib/net/udp4.f` | task-local |
 | `lib/net/curl.f` | task-local |
@@ -2603,6 +2605,38 @@ empties the mock list, `ARGV:MOCK+` appends one counted token, and
 list throws `ARGV:E-INTERNAL` before changing the list. `ARGV:QUIET!` suppresses usage
 writes while still throwing exact error codes, so tests can assert
 `ARGV:E-USAGE` deterministically.
+
+## Sealed vocabulary
+
+`lib/policy.f` is package `POLICY`, for a harness that loads source it did not
+write. `POLICY:ALLOW ( ptr u8 n -- )` admits the public wordlist of the package
+it names, and `POLICY:SEAL ( -- )` seals the process: from then on the source
+the engine reads may name only its own definitions, the admitted public words,
+numbers, locals and twelve keywords. Admit, seal and `included` the design inside
+one compiled word, because the seal governs the harness's own file from the seal
+on:
+
+```forth
+require lib/policy.f
+require my/vocabulary.f
+
+: RUN ( -- ) s" MY-VOCAB" POLICY:ALLOW POLICY:SEAL 0 SCRIPT-ARGV$ included ;
+RUN
+```
+
+The harness's refusals are one stderr line each and exit code 107:
+`hb: policy: sealed` (either word once sealed), `hb: policy: no package <name>`,
+`hb: policy: package wid above the bound` and
+`hb: policy: package <name> publishes keyword <word>` (a public word spelled
+like a keyword row). A token outside the vocabulary is the engine's
+`hb: not in vocabulary: <token> at <path>:<line>`, exit code 107, at both
+tiers. AArch64 only: the x86-64 kernel refuses both words with rc 76.
+
+An admitted package guarantees that every public word terminates on every input
+(a throw counts), that a parsing word consumes a bounded number of tokens, that
+no word stores to an address its caller supplies, and that no word widens what
+the design can name. [policy.md](policy.md) has the vocabulary, every refusal
+and why a sealed load terminates.
 
 ## Test Property And Build Helpers
 
