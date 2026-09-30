@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.492952+03:00"
-blocks:
-  - habu-declare-and-select-bfbb301b
 ---
 
 Problem: after C7a the float forms select and allocate but `src/compiler/native/emit-x64.f` renders none of them. Second half of the float work.
@@ -16,3 +14,4 @@ Depends: habu-declare-and-select-bfbb301b (C7a), habu-run-emitted-x86-b704f918 (
 Route: direct.
 Ownership: krait (Intel lane).
 Claim: unassigned.
+C7a landing note: (a) `realint` must meet the `f>s` contract (saturate, NaN to 0): settle it in `select-x64.f`'s `realint` arm (`asm.f:576-577` leaves range and NaN to lowering) and prove it with NaN, +2^63 and -2^63 rows; (b) the `fcmpset` render maps `gt` to `seta` (C-A; after `ucomisd` SF=OF=0, so `setg` is wrong), `equal` to `sete` plus `setnp` into the scratch, and refuses any other condition or a result count other than 1 (gt) or 1 plus 1 scratch (equal): nothing enforces the one-scratch rule today (hand-built modules with the wrong count pass freeze, allocation and A64RAV).

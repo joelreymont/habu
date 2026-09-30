@@ -1209,11 +1209,12 @@ public
 \ Native x86-64 instruction selection (package X64SEL): -8760..-8779.
 \
 \ The first eleven answer the ARM64 selector's own refusals on this machine, so
-\ a reader who knows one pass knows the other. The last two are this machine's
-\ and have no ARM64 counterpart: no floating form is declared in the dialect at
-\ all, and a contract carries the machine it is about. -8773 is retired and not
-\ reused: it refused the two forms that name a register, and both are lowered
-\ now - what they demand is placed from the schema instead of refused here.
+\ a reader who knows one pass knows the other. The last is this machine's and
+\ has no ARM64 counterpart: a contract carries the machine it is about. -8772
+\ and -8773 are retired and not reused: -8772 refused every floating source
+\ operation while the dialect declared no SSE form, and -8773 refused the two
+\ forms that name a register. All of them are lowered now - the doubles to the
+\ SSE2 scalar forms, and what the two forms demand is placed from the schema.
 -8760 constant E-X64SEL-BIND    \ selection attempted before the source dialect's opcode identities were bound, or a second binding over a live one
 -8761 constant E-X64SEL-SOURCE  \ a frozen module that is not the bound one, or a builder holding a dialect that is not HIR
 -8762 constant E-X64SEL-OPCODE  \ an operation whose opcode is none of the source dialect's
@@ -1226,7 +1227,6 @@ public
 -8769 constant E-X64SEL-CALL    \ a call this selector has no lowering for: a routine declared under the register convention, which never took the data-stack pointer a call site hands its arguments over through, a contract declaring a call in a module that contains none, a module containing a call under a contract that declares none, or a call whose operand and result lists disagree about how many values are live across it
 -8770 constant E-X64SEL-TAIL    \ a call the selector was told to leave through that it cannot: a value live across it, a callee whose arity is not this routine's own, a data-stack adjustment the branch would have had to carry, or a contract and a module that disagree about whether there is such a site
 -8771 constant E-X64SEL-ORDER   \ a block whose edges disagree about the memory order it is entered with, or that no edge reaches at all
--8772 constant E-X64SEL-FLOAT   \ a floating source operation: the machine dialect declares no SSE form, so there is no lowering to select and one is refused rather than lowered wrongly
 -8774 constant E-X64SEL-MACHINE \ a routine contract whose machine is not the one this backend lowers for
 
 \ Native x86-64 instruction emission (package X64EMIT): -8780..-8799.
@@ -1240,13 +1240,13 @@ public
 \ this module's accepted one, a module that is not the bound one, an attribute
 \ the dialect declares and the operation does not carry, and an opcode that is
 \ none of this dialect's.
--8780 constant E-X64EMIT-FORM   \ an operation this emitter does not render: a divide, a negate, a select, a trap, a code address, or a float form the dialect does not declare - each needs a fixed register or a lowering this emitter has not got
+-8780 constant E-X64EMIT-FORM   \ an operation this emitter does not render: a negate, a select or a scalar double form - no selection reaches the first two yet, and the doubles need an XMM render this emitter has not got
 -8781 constant E-X64EMIT-SHAPE  \ a module this emitter cannot write: no function at all, a function ordinal outside the module, an empty block, a block that does not end in a terminator, or a terminator that is not its block's last operation
 -8782 constant E-X64EMIT-ACCEPT \ no accepted register assignment at all, or one accepted for a different module
 -8783 constant E-X64EMIT-MODULE \ emission before the machine dialect's identities were bound, a frozen module that is not the bound one, or a builder of another dialect or schema version
 -8784 constant E-X64EMIT-ATTR   \ an operation carrying no attribute under the key the dialect declares for its form
 -8785 constant E-X64EMIT-OPCODE \ an operation whose opcode is none of the machine dialect's family
--8786 constant E-X64EMIT-STATE  \ a reader asked about an emission that has not been sealed, or one a later run replaced, or an emission asked for before the placement it measures its calls from
+-8786 constant E-X64EMIT-STATE  \ a reader asked about an emission that is not sealed: none has been written since the last retire, or the last run stopped before it sealed
 -8787 constant E-X64EMIT-PLACE  \ a placement that is not a slot this machine's routines start at: a second placement over a live one, a negative slot, or one off the machine's stack alignment
 -8788 constant E-X64EMIT-LAYOUT \ the bytes written and the bytes the layout measured disagree: the writer reached a block or a function at an offset the measuring pass did not put it at, or ended the emission at a different length
 -8789 constant E-X64EMIT-BOUND  \ a block, function or address-site index at or past the count the sealed emission holds

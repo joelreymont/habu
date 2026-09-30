@@ -33,12 +33,14 @@
 \ has no write-back addressing mode, so a data-stack store and the pointer move
 \ after it are two operations and a64.dpush/a64.dpop have no counterpart here.
 \
-\ WHAT IS NOT HERE YET. The floating forms. The machine's own floating registers
-\ are described (this dialect's REGFILE declares sixteen), because the
-\ description is the machine's and not the opcode set's, but no SSE operation is
-\ declared, so a compilation that reaches an HIR float operation is refused by
-\ the selector rather than lowered wrongly. They are the next addition to this
-\ vocabulary and they raise MINOR when they land.
+\ AND THE DOUBLES ARE SSE2 SCALAR FORMS IN THE XMM FILE. A double is a value of
+\ FPR-TYPE, which the sixteen XMM registers of REGFILE hold, and every form over
+\ it is the two-address shape of ONE with its own copy, `x64.movsd`. No SSE form
+\ carries an immediate, so a double literal is its bits moved from a general
+\ register with `x64.movq-xr`, and a double compare is fused with its flag the
+\ way `x64.cmpset` is (`x64.fcmpset`, TWO again). Every contract of this machine
+\ destroys the XMM file at a call, so a double live across one is put away with
+\ `x64.fstore` and brought back with `x64.fload`.
 
 require lib/prelude.f
 require lib/errors.f
@@ -109,12 +111,29 @@ ENUM opcode DERIVE eq
    tailcall
    trap
    codeaddr
+   movsd
+   addsd
+   subsd
+   mulsd
+   divsd
+   andpd
+   xorpd
+   sqrtsd
+   cvtsi2sd
+   cvttsd2si
+   movq-xr
+   movq-rx
+   fstore
+   fload
+   fcmpset
 ;ENUM
 
 \ One condition per SOURCE relation, so a lowering is never an operand order in
 \ one place and a condition in another. `equal` is spelled so because the ENUM's
-\ derived comparison word takes `eq`. There are six and not seven: the seventh
-\ ARM64 condition exists for the float compares, which this dialect has not got.
+\ derived comparison word takes `eq`. There are six and not seven: ARM64's
+\ seventh, `mi`, is its float less-than, and here a float less-than is `gt` with
+\ its operands exchanged. `x64.fcmpset` names its relation with `gt` or `equal`
+\ and reads it off the unsigned flags ucomisd writes (DEF-FCMPSET).
 ENUM cond DERIVE eq
    lt
    le
@@ -217,9 +236,9 @@ public
    s" x64" ;
 
 \ Every consumer compares the version exactly, so a table with a form and one
-\ without are two different tables. The floating forms raise MINOR.
+\ without are two different tables. MINOR 2 added the scalar double forms.
 0 constant MAJOR
-1 constant MINOR
+2 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )        XBITS ;
@@ -410,6 +429,21 @@ private
       tailcall OF s" x64.tailcall" ENDOF
       trap     OF s" x64.trap"     ENDOF
       codeaddr OF s" x64.codeaddr" ENDOF
+      movsd     OF s" x64.movsd" ENDOF
+      addsd     OF s" x64.addsd" ENDOF
+      subsd     OF s" x64.subsd" ENDOF
+      mulsd     OF s" x64.mulsd" ENDOF
+      divsd     OF s" x64.divsd" ENDOF
+      andpd     OF s" x64.andpd" ENDOF
+      xorpd     OF s" x64.xorpd" ENDOF
+      sqrtsd    OF s" x64.sqrtsd" ENDOF
+      cvtsi2sd  OF s" x64.cvtsi2sd" ENDOF
+      cvttsd2si OF s" x64.cvttsd2si" ENDOF
+      movq-xr   OF s" x64.movq-xr" ENDOF
+      movq-rx   OF s" x64.movq-rx" ENDOF
+      fstore    OF s" x64.fstore" ENDOF
+      fload     OF s" x64.fload" ENDOF
+      fcmpset   OF s" x64.fcmpset" ENDOF
    ;MATCH ;
 
 public
@@ -417,7 +451,7 @@ public
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ The ordinal is what the passes store in their own tables, so it is stated
 \ once here and never derived from the enum's declaration order.
-46 constant OPCODES
+61 constant OPCODES
 
 : ORD ( X64IR:opcode -- n )
    MATCH opcode
@@ -467,6 +501,21 @@ public
       tailcall OF 43 ENDOF
       trap     OF 44 ENDOF
       codeaddr OF 45 ENDOF
+      movsd     OF 46 ENDOF
+      addsd     OF 47 ENDOF
+      subsd     OF 48 ENDOF
+      mulsd     OF 49 ENDOF
+      divsd     OF 50 ENDOF
+      andpd     OF 51 ENDOF
+      xorpd     OF 52 ENDOF
+      sqrtsd    OF 53 ENDOF
+      cvtsi2sd  OF 54 ENDOF
+      cvttsd2si OF 55 ENDOF
+      movq-xr   OF 56 ENDOF
+      movq-rx   OF 57 ENDOF
+      fstore    OF 58 ENDOF
+      fload     OF 59 ENDOF
+      fcmpset   OF 60 ENDOF
    ;MATCH ;
 
 : NTH ( n -- X64IR:opcode )
@@ -517,6 +566,21 @@ public
       43 of X64IR-OPCODE:TAILCALL endof
       44 of X64IR-OPCODE:TRAP     endof
       45 of X64IR-OPCODE:CODEADDR endof
+      46 of X64IR-OPCODE:MOVSD endof
+      47 of X64IR-OPCODE:ADDSD endof
+      48 of X64IR-OPCODE:SUBSD endof
+      49 of X64IR-OPCODE:MULSD endof
+      50 of X64IR-OPCODE:DIVSD endof
+      51 of X64IR-OPCODE:ANDPD endof
+      52 of X64IR-OPCODE:XORPD endof
+      53 of X64IR-OPCODE:SQRTSD endof
+      54 of X64IR-OPCODE:CVTSI2SD endof
+      55 of X64IR-OPCODE:CVTTSD2SI endof
+      56 of X64IR-OPCODE:MOVQ-XR endof
+      57 of X64IR-OPCODE:MOVQ-RX endof
+      58 of X64IR-OPCODE:FSTORE endof
+      59 of X64IR-OPCODE:FLOAD endof
+      60 of X64IR-OPCODE:FCMPSET endof
       E-X64IR-OPCODE throw
    endcase ;
 
@@ -799,12 +863,10 @@ public
 \ The counterpart of src/compiler/native/a64ir.f's, with this machine's answers
 \ and its absences.
 \
-\ FOUR FRAME FORMS ARE ABSENT, and each is absent for a reason of this machine:
-\ there is no `fstore` or `fload` because a value this dialect allocates is
-\ never put away out of the floating file - select-x64.f lowers no floating
-\ form at all - so a module that asked for a float slot is refused by name
-\ rather than stored in a general form it cannot come back into; and there is
-\ no `linksave` or `linkload` because `call` pushes the return address onto the
+\ THE FLOATING PAIR IS PRESENT: every contract of this machine destroys the XMM
+\ file at a call (src/arch/x86-64/abi.f), so a double live across one goes to
+\ the frame with `x64.fstore` and comes back with `x64.fload`, in the file it
+\ left. THE LINK PAIR IS ABSENT: `call` pushes the return address onto the
 \ machine stack and `ret` takes it back, so saving it is no operation of the
 \ module and a frame shape that counted one would be counting something this
 \ machine never writes.
@@ -820,8 +882,8 @@ public
    c b X64IR-OPCODE:RELEASE OPCODE
    c b X64IR-OPCODE:STORE OPCODE
    c b X64IR-OPCODE:LOAD OPCODE
-   NDIALECT-OPTSYM:ABSENT
-   NDIALECT-OPTSYM:ABSENT
+   c b X64IR-OPCODE:FSTORE OPCODE NDIALECT-OPTSYM:PRESENT
+   c b X64IR-OPCODE:FLOAD OPCODE NDIALECT-OPTSYM:PRESENT
    c b X64IR-OPCODE:TRAP OPCODE
    NDIALECT-OPTSYM:ABSENT
    NDIALECT-OPTSYM:ABSENT
@@ -878,6 +940,21 @@ private
       tailcall OF s" x64.rule.tailcall" ENDOF
       trap     OF s" x64.rule.trap"     ENDOF
       codeaddr OF s" x64.rule.codeaddr" ENDOF
+      movsd     OF s" x64.rule.movsd" ENDOF
+      addsd     OF s" x64.rule.addsd" ENDOF
+      subsd     OF s" x64.rule.subsd" ENDOF
+      mulsd     OF s" x64.rule.mulsd" ENDOF
+      divsd     OF s" x64.rule.divsd" ENDOF
+      andpd     OF s" x64.rule.andpd" ENDOF
+      xorpd     OF s" x64.rule.xorpd" ENDOF
+      sqrtsd    OF s" x64.rule.sqrtsd" ENDOF
+      cvtsi2sd  OF s" x64.rule.cvtsi2sd" ENDOF
+      cvttsd2si OF s" x64.rule.cvttsd2si" ENDOF
+      movq-xr   OF s" x64.rule.movq-xr" ENDOF
+      movq-rx   OF s" x64.rule.movq-rx" ENDOF
+      fstore    OF s" x64.rule.fstore" ENDOF
+      fload     OF s" x64.rule.fload" ENDOF
+      fcmpset   OF s" x64.rule.fcmpset" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -929,6 +1006,21 @@ private
       tailcall OF s" x64.render.tailcall" ENDOF
       trap     OF s" x64.render.trap"     ENDOF
       codeaddr OF s" x64.render.codeaddr" ENDOF
+      movsd     OF s" x64.render.movsd" ENDOF
+      addsd     OF s" x64.render.addsd" ENDOF
+      subsd     OF s" x64.render.subsd" ENDOF
+      mulsd     OF s" x64.render.mulsd" ENDOF
+      divsd     OF s" x64.render.divsd" ENDOF
+      andpd     OF s" x64.render.andpd" ENDOF
+      xorpd     OF s" x64.render.xorpd" ENDOF
+      sqrtsd    OF s" x64.render.sqrtsd" ENDOF
+      cvtsi2sd  OF s" x64.render.cvtsi2sd" ENDOF
+      cvttsd2si OF s" x64.render.cvttsd2si" ENDOF
+      movq-xr   OF s" x64.render.movq-xr" ENDOF
+      movq-rx   OF s" x64.render.movq-rx" ENDOF
+      fstore    OF s" x64.render.fstore" ENDOF
+      fload     OF s" x64.render.fload" ENDOF
+      fcmpset   OF s" x64.render.fcmpset" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -956,22 +1048,29 @@ private
 
 \ The form exists so that the two registers CAN be different. A copy whose ends
 \ coalesce is a no-op, and whether to elide it is the allocator's decision.
-: DEF-MOV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
-   c b X64IR-OPCODE:MOV OPCODE IR-SCHEMA:BEGIN-OP
+\ There is one copy per register file: `mov r64, r64` and `movsd xmm, xmm`. The
+\ vocabulary names one copy opcode, `x64.mov`, so the allocator coalesces the
+\ general copy and allocates every `x64.movsd` as the copy it is.
+: DEF-COPY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id X64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:X64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-RESULT
    PURE-VALUE
    TOTAL
    TARGET
-   c b X64IR-OPCODE:MOV NAMED
+   c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the two-address arithmetic ----------------------------------------------
 \ Operand 0 is the value the instruction OVERWRITES and the result is tied to
 \ it; operand 1 is the one it reads. `sub` and `imul` are not commutative in the
 \ operand order, so a rewriter may only exchange the two operands of add, and,
-\ or and xor, and only where it exchanges the tie with them.
+\ or and xor, and only where it exchanges the tie with them. The scalar double
+\ forms are the same shape over the XMM file: addsd, subsd, mulsd and divsd, and
+\ andpd and xorpd, which work on both lanes and so on the low one the double is
+\ in. None of them may trap: SSE exceptions are masked, so a division by zero
+\ answers an infinity and an invalid operation the default NaN.
 : DEF-BINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id X64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:X64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1083,6 +1182,28 @@ private
    c b X64IR-OPCODE:IDIV NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ ---- the forms that leave one register file for the other ---------------------
+\ One operand and one result with no tie. `sqrtsd` writes a register the source
+\ need not share; `cvtsi2sd` rounds a cell to the nearest double; `cvttsd2si`
+\ truncates a double toward zero, and a NaN or a double outside a cell answers
+\ $8000000000000000. `realint` is defined there - `f>s` truncates toward zero,
+\ saturates at the ends and answers 0 for a NaN (src/compiler/native/hir-word.f,
+\ lib/fmt.f) - and this bare form diverges from it: the divergence is open, and
+\ dot habu-emit-and-exec-a8536cf2 owns it; `movq` moves
+\ eight bytes unchanged, `x64.movq-xr` from a general register into an XMM one
+\ and `x64.movq-rx` back.
+: DEF-CROSS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id X64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder ti:IR-ID:ir-type-id to:IR-ID:ir-type-id
+      o:X64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   ti IR-SCHEMA:ADD-OPERAND
+   to IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the fused comparisons ---------------------------------------------------
 \ ONE operation and four instructions - compare, set one byte on the condition,
 \ widen it, negate it to the all-ones flag - because the flags between them are a
@@ -1150,6 +1271,30 @@ private
    TOTAL
    TARGET
    c b X64IR-OPCODE:SELZ NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ The double comparison: `ucomisd` over operand 0 and operand 1, then the flag.
+\ ucomisd sets ZF, PF and CF all three on an unordered pair, and a Habu float
+\ comparison answers false on a NaN (hir.f DEF-FCOMPARE), so the condition is one
+\ of two. `gt` reads CF and ZF clear, the `seta` of the unsigned flags ucomisd
+\ writes, which is false on unordered; a less-than is a `gt` with its operands
+\ exchanged. `equal` is ZF set and PF clear - `sete` and `setnp` - two flags and
+\ so two bytes, and the second byte needs a register: result 1, a general value
+\ nothing reads, the arrangement idiv has for its remainder. A schema cannot tie
+\ a result count to an attribute, so result 1 is a variadic tail, and the rule
+\ is the form's: `equal` carries exactly one scratch result and `gt` none.
+: DEF-FCMPSET ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id t:IR-ID:ir-type-id :}
+   c b X64IR-OPCODE:FCMPSET OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   t IR-SCHEMA:ADD-RESULT-TAIL
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b X64IR-OPCODE:FCMPSET NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the branch forms --------------------------------------------------------
@@ -1250,9 +1395,13 @@ private
    c b X64IR-OPCODE:RELEASE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-: DEF-STORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
-   c b X64IR-OPCODE:STORE OPCODE IR-SCHEMA:BEGIN-OP
+\ The value's type is the register file the eight bytes travel in: `x64.store`
+\ and `x64.load` move a general register, `x64.fstore` and `x64.fload` an XMM
+\ one with movsd. A double put away comes back into the file it left.
+: DEF-STORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id X64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id
+      o:X64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-OPERAND
    k IR-SCHEMA:ADD-OPERAND
    k IR-SCHEMA:ADD-RESULT
@@ -1260,12 +1409,13 @@ private
    IR--SCHEMA-EFFECT:WRITE FRAME-MEM
    TOTAL
    TARGET
-   c b X64IR-OPCODE:STORE NAMED
+   c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-: DEF-LOAD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
-   c b X64IR-OPCODE:LOAD OPCODE IR-SCHEMA:BEGIN-OP
+: DEF-LOAD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id X64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id
+      o:X64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
    k IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-RESULT
    k IR-SCHEMA:ADD-RESULT
@@ -1273,7 +1423,7 @@ private
    IR--SCHEMA-EFFECT:READ FRAME-MEM
    TOTAL
    TARGET
-   c b X64IR-OPCODE:LOAD NAMED
+   c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the data-stack forms ----------------------------------------------------
@@ -1541,7 +1691,7 @@ public
    c b GPR-TYPE {: t:IR-ID:ir-type-id :}
    c b MEM-TYPE {: k:IR-ID:ir-type-id :}
    c b t DEF-MOVI
-   c b t DEF-MOV
+   c b t X64IR-OPCODE:MOV DEF-COPY
    c b t X64IR-OPCODE:ADD DEF-BINARY
    c b t X64IR-OPCODE:SUB DEF-BINARY
    c b t X64IR-OPCODE:AND DEF-BINARY
@@ -1571,8 +1721,8 @@ public
    c b t DEF-RET
    c b k DEF-RESERVE
    c b k DEF-RELEASE
-   c b t k DEF-STORE
-   c b t k DEF-LOAD
+   c b t k X64IR-OPCODE:STORE DEF-STORE
+   c b t k X64IR-OPCODE:LOAD DEF-LOAD
    c b k DEF-DTAKE
    c b t k DEF-DLOAD
    c b t k DEF-DSTORE
@@ -1585,7 +1735,23 @@ public
    c b k DEF-WORDCALL
    c b k DEF-TAILCALL
    c b k DEF-TRAP
-   c b t DEF-CODEADDR ;
+   c b t DEF-CODEADDR
+   c b FPR-TYPE {: f:IR-ID:ir-type-id :}
+   c b f X64IR-OPCODE:MOVSD DEF-COPY
+   c b f X64IR-OPCODE:ADDSD DEF-BINARY
+   c b f X64IR-OPCODE:SUBSD DEF-BINARY
+   c b f X64IR-OPCODE:MULSD DEF-BINARY
+   c b f X64IR-OPCODE:DIVSD DEF-BINARY
+   c b f X64IR-OPCODE:ANDPD DEF-BINARY
+   c b f X64IR-OPCODE:XORPD DEF-BINARY
+   c b f f X64IR-OPCODE:SQRTSD DEF-CROSS
+   c b t f X64IR-OPCODE:CVTSI2SD DEF-CROSS
+   c b f t X64IR-OPCODE:CVTTSD2SI DEF-CROSS
+   c b t f X64IR-OPCODE:MOVQ-XR DEF-CROSS
+   c b f t X64IR-OPCODE:MOVQ-RX DEF-CROSS
+   c b f k X64IR-OPCODE:FSTORE DEF-STORE
+   c b f k X64IR-OPCODE:FLOAD DEF-LOAD
+   c b f t DEF-FCMPSET ;
 
 private
 
@@ -1593,7 +1759,7 @@ private
    {: c:IR-CTX:ctx b:IR-BUILD:builder o:X64IR:opcode :}
    o MATCH opcode
       movi     OF c b c b GPR-TYPE DEF-MOVI ENDOF
-      mov      OF c b c b GPR-TYPE DEF-MOV ENDOF
+      mov      OF c b c b GPR-TYPE X64IR-OPCODE:MOV DEF-COPY ENDOF
       add      OF c b c b GPR-TYPE X64IR-OPCODE:ADD DEF-BINARY ENDOF
       sub      OF c b c b GPR-TYPE X64IR-OPCODE:SUB DEF-BINARY ENDOF
       and      OF c b c b GPR-TYPE X64IR-OPCODE:AND DEF-BINARY ENDOF
@@ -1623,8 +1789,8 @@ private
       ret      OF c b c b GPR-TYPE DEF-RET ENDOF
       reserve  OF c b c b MEM-TYPE DEF-RESERVE ENDOF
       release  OF c b c b MEM-TYPE DEF-RELEASE ENDOF
-      store    OF c b c b GPR-TYPE c b MEM-TYPE DEF-STORE ENDOF
-      load     OF c b c b GPR-TYPE c b MEM-TYPE DEF-LOAD ENDOF
+      store    OF c b c b GPR-TYPE c b MEM-TYPE X64IR-OPCODE:STORE DEF-STORE ENDOF
+      load     OF c b c b GPR-TYPE c b MEM-TYPE X64IR-OPCODE:LOAD DEF-LOAD ENDOF
       dtake    OF c b c b MEM-TYPE DEF-DTAKE ENDOF
       dload    OF c b c b GPR-TYPE c b MEM-TYPE DEF-DLOAD ENDOF
       dstore   OF c b c b GPR-TYPE c b MEM-TYPE DEF-DSTORE ENDOF
@@ -1638,6 +1804,21 @@ private
       tailcall OF c b c b MEM-TYPE DEF-TAILCALL ENDOF
       trap     OF c b c b MEM-TYPE DEF-TRAP ENDOF
       codeaddr OF c b c b GPR-TYPE DEF-CODEADDR ENDOF
+      movsd     OF c b c b FPR-TYPE X64IR-OPCODE:MOVSD DEF-COPY ENDOF
+      addsd     OF c b c b FPR-TYPE X64IR-OPCODE:ADDSD DEF-BINARY ENDOF
+      subsd     OF c b c b FPR-TYPE X64IR-OPCODE:SUBSD DEF-BINARY ENDOF
+      mulsd     OF c b c b FPR-TYPE X64IR-OPCODE:MULSD DEF-BINARY ENDOF
+      divsd     OF c b c b FPR-TYPE X64IR-OPCODE:DIVSD DEF-BINARY ENDOF
+      andpd     OF c b c b FPR-TYPE X64IR-OPCODE:ANDPD DEF-BINARY ENDOF
+      xorpd     OF c b c b FPR-TYPE X64IR-OPCODE:XORPD DEF-BINARY ENDOF
+      sqrtsd    OF c b c b FPR-TYPE c b FPR-TYPE X64IR-OPCODE:SQRTSD DEF-CROSS ENDOF
+      cvtsi2sd  OF c b c b GPR-TYPE c b FPR-TYPE X64IR-OPCODE:CVTSI2SD DEF-CROSS ENDOF
+      cvttsd2si OF c b c b FPR-TYPE c b GPR-TYPE X64IR-OPCODE:CVTTSD2SI DEF-CROSS ENDOF
+      movq-xr   OF c b c b GPR-TYPE c b FPR-TYPE X64IR-OPCODE:MOVQ-XR DEF-CROSS ENDOF
+      movq-rx   OF c b c b FPR-TYPE c b GPR-TYPE X64IR-OPCODE:MOVQ-RX DEF-CROSS ENDOF
+      fstore    OF c b c b FPR-TYPE c b MEM-TYPE X64IR-OPCODE:FSTORE DEF-STORE ENDOF
+      fload     OF c b c b FPR-TYPE c b MEM-TYPE X64IR-OPCODE:FLOAD DEF-LOAD ENDOF
+      fcmpset   OF c b c b FPR-TYPE c b GPR-TYPE DEF-FCMPSET ENDOF
    ;MATCH ;
 
 \ The form this dialect spells with a name. The table is the authority on the

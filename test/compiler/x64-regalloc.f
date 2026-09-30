@@ -49,6 +49,7 @@ require lib/test.f
 require src/compiler/native/select-x64.f
 require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
+require src/compiler/native/spill.f
 require src/compiler/native/a64ir.f
 require src/arch/x86-64/abi.f
 require src/arch/x86-64/machine.f
@@ -332,6 +333,62 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    MEM0 {: tok:IR-ID:ir-value-id :}
    tok a a WCALL1 {: id:IR-ID:ir-op-id :}
    CC BB id 2 IR-BUILD:OP-RESULT@ RET1
+   CLOSE-FUN ;
+
+\ ---- the doubles -------------------------------------------------------------
+: REALT ( -- IR-ID:ir-type-id )
+   CC BB HIR:REAL-TYPE ;
+
+: ROP1 ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-type-id -- IR-ID:ir-value-id )
+   {: o:HIR:opcode x:IR-ID:ir-value-id t:IR-ID:ir-type-id :}
+   o BODY-ST BODY-LN OPEN-OP
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB t IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+: FADD2 ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   HIR-OPCODE:FADD BODY-ST BODY-LN OPEN-OP
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   CC BB REALT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+\ `( a b -- n ) over intreal swap intreal f+ realint +` - both cells become
+\ doubles, their sum truncates back to a cell, and the first cell is read again
+\ at the end, so it is alive while the doubles are.
+: BUILD-MIXED ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   HIR-OPCODE:INTREAL a REALT ROP1 {: x:IR-ID:ir-value-id :}
+   HIR-OPCODE:INTREAL b REALT ROP1 {: y:IR-ID:ir-value-id :}
+   x y FADD2 {: s:IR-ID:ir-value-id :}
+   HIR-OPCODE:REALINT s CELLT ROP1 {: r:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD r a BINOP RET1
+   CLOSE-FUN ;
+
+\ One call to a one-in one-out callee with nothing carried past it.
+: WCALL0 ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: tok:IR-ID:ir-value-id arg:IR-ID:ir-value-id :}
+   HIR-OPCODE:WORDCALL BODY-ST BODY-LN OPEN-OP
+   CC BB tok IR-BUILD:ADD-OPERAND
+   CC BB arg IR-BUILD:ADD-OPERAND
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CALLEE-ENTRY 1 1 WCALL-ATTRS
+   CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC BB id 1 IR-BUILD:OP-RESULT@ ;
+
+\ `( a -- n ) dup intreal swap CALLEE swap realbits +` - the double is made
+\ before the call and read after it.
+: BUILD-FCALL ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   HIR-OPCODE:INTREAL a REALT ROP1 {: x:IR-ID:ir-value-id :}
+   MEM0 a WCALL0 {: b:IR-ID:ir-value-id :}
+   HIR-OPCODE:REALBITS x CELLT ROP1 {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD b y BINOP RET1
    CLOSE-FUN ;
 
 \ ---- running selection, allocation and validation ----------------------------
@@ -791,6 +848,63 @@ $1000 constant THROW-STAND
    ALLOCATED drop
    A64RAV:ACCEPTED? ;
 
+\ ---- both register files ----------------------------------------------------
+\ A register is a file and a number. Under the data-stack convention the first
+\ cell is loaded into rax and read again at the end, and the first double is made
+\ while it lives: the two hold register zero of their two files at once, which a
+\ validator comparing numbers without files would refuse. The two doubles alive
+\ together hold two XMM numbers. Values 1 and 3 are the loaded cells, 5 and 6
+\ the two doubles.
+: MIXED-BODY ( IR-CTX:ctx -- bool n n bool bool n bool )
+   HIR-MOD
+   BUILD-MIXED
+   2 DSTACK-ALLOCATED drop
+   A64RAV:ACCEPTED?
+   1 A64RAV:REG@
+   5 A64RAV:REG@
+   1 A64RAV:FLOATING?
+   5 A64RAV:FLOATING?
+   6 A64RAV:REG@
+   6 A64RAV:FLOATING? ;
+
+\ A DOUBLE LIVE ACROSS A CALL GOES TO THE FRAME. Every contract of this machine
+\ declares the whole XMM file destroyed by a call (src/arch/x86-64/abi.f), so the
+\ allocator forbids the double every XMM register there and plans it into a slot.
+\ The spill pass lowers the plan with this dialect's own `x64.fstore` and
+\ `x64.fload`, which declare a floating operand and result: the general pair
+\ would not build, and a lowering record without the floating pair refuses the
+\ slot by name (E-A64SPILL-OPCODE). The lowered module allocates with an empty
+\ plan under the framed contract and the validator accepts it.
+: FCALL-SELECTED ( -- IR-BUILD:module )
+   CC BB X64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   X64-BUILDER {: xb:IR-BUILD:builder :}
+   CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
+   CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
+   CC xb  CC xb X64IR:LOWERING  [: X64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT
+   CC m xb  X64ABI:SCRATCH 1 1 X64ABI:CALL  X64SEL:SELECT ;
+
+: FCALL-BODY ( IR-CTX:ctx -- n n bool n bool bool )
+   HIR-MOD
+   BUILD-FCALL
+   FCALL-SELECTED {: m0:IR-BUILD:module :}
+   CC m0  X64ABI:SCRATCH 1 1 X64ABI:CALL  A64RA:ALLOCATE
+   A64RA:SPILLS {: spills:n :}
+   A64RA:PLAN-N {: planned:n :}
+   0 A64RA:PLAN-STORE? {: stored:bool :}
+   A64RA:FRAME X64IR:SLOT-WIDTH / {: slots:n :}
+   X64-BUILDER {: nb:IR-BUILD:builder :}
+   CC nb X64M:MACHINE  CC nb X64IR:VOCABULARY  A64RA:BIND-DIALECT
+   CC nb  CC nb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
+   CC m0 nb  CC nb X64IR:LOWERING  A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m1  X64ABI:SCRATCH 1 1 slots X64ABI:CALL-FRAMED  A64RA:ALLOCATE
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
+   m1  X64ABI:SCRATCH 1 1 slots X64ABI:CALL-FRAMED  A64RAV:ACCEPT
+   spills planned stored
+   A64RA:PLAN-N
+   A64RAV:ACCEPTED?
+   A64RAV:FPR-WRITTEN NEFF:FPRS-N 0<> ;
+
 \ ---- the vocabulary is one module's, and only that module's ------------------
 \ Every name in a vocabulary is an ordinal of the module it was interned in, so
 \ a vocabulary handed to another module's binding names nothing there. The
@@ -891,6 +1005,14 @@ public
    s" a value read once inside a loop and live around its backedge allocates: selection copied the operand the add destroys, and a tie whose ends overlap is what this allocator refuses rather than repairs" T-LABEL
    WBND [: LOOP-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE
+
+   s" a cell and a double alive together hold register zero of each file, and two doubles alive together hold two XMM registers" T-LABEL
+   WBND [: MIXED-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 1 T= TTRUE TFALSE 0 T= 0 T= TTRUE
+
+   s" a double live across a call is planned into the frame, lowered with x64.fstore and x64.fload, and the lowered module is accepted" T-LABEL
+   WBND [: FCALL-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 0 T= TTRUE 2 T= 1 T=
 
    WBND [: GROUP-VOCAB ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-FIXED ;] IR-CTX:WITH-CONTEXT

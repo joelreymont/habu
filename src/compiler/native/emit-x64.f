@@ -52,12 +52,13 @@
 \ routine whatever it ends in, and a `does>` body is SIZE less its
 \ FUNCTION-OFFSET@.
 \
-\ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the negate, and the
-\ two selects `cmpsel` and `selz`. The float forms are not declared by the
-\ dialect at all. Publication into a code region is not here either, and on
-\ this host it cannot be: src/compiler/native/publish.f reads NEMIT rows only
-\ the ARM64 emission row fills, and the engine's own callmap and addrmap record
-\ ARM64 shapes. An x86-64 emission is consumed by the cross-build image writer.
+\ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the negate, the two
+\ selects `cmpsel` and `selz`, and every scalar double form, which selection
+\ lowers and the allocator places but no render here writes yet. Publication
+\ into a code region is not here either, and on this host it cannot be:
+\ src/compiler/native/publish.f reads NEMIT rows only the ARM64 emission row
+\ fills, and the engine's own callmap and addrmap record ARM64 shapes. An
+\ x86-64 emission is consumed by the cross-build image writer.
 
 require lib/prelude.f
 require lib/errors.f
@@ -827,7 +828,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 \ Every opcode of the dialect is named, so a form added to the vocabulary is a
 \ decision taken HERE rather than a silent fall-through. The refusing arms are
 \ the forms this emitter does not render: each needs a register the machine
-\ names or a lowering, and neither is here.
+\ names, a lowering or a render of the XMM file, and none is here.
 : PUT-OP ( IR-ID:ir-op-id n ptr a -- )
    {: id:IR-ID:ir-op-id home:n s:ptr :}
    id SLOT-AT X64IR:NTH
@@ -878,6 +879,21 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
       tailcall OF id s PUT-TAILCALL ENDOF
       trap     OF id s PUT-TRAP ENDOF
       codeaddr OF id s PUT-CODEADDR ENDOF
+      movsd     OF E-X64EMIT-FORM throw ENDOF
+      addsd     OF E-X64EMIT-FORM throw ENDOF
+      subsd     OF E-X64EMIT-FORM throw ENDOF
+      mulsd     OF E-X64EMIT-FORM throw ENDOF
+      divsd     OF E-X64EMIT-FORM throw ENDOF
+      andpd     OF E-X64EMIT-FORM throw ENDOF
+      xorpd     OF E-X64EMIT-FORM throw ENDOF
+      sqrtsd    OF E-X64EMIT-FORM throw ENDOF
+      cvtsi2sd  OF E-X64EMIT-FORM throw ENDOF
+      cvttsd2si OF E-X64EMIT-FORM throw ENDOF
+      movq-xr   OF E-X64EMIT-FORM throw ENDOF
+      movq-rx   OF E-X64EMIT-FORM throw ENDOF
+      fstore    OF E-X64EMIT-FORM throw ENDOF
+      fload     OF E-X64EMIT-FORM throw ENDOF
+      fcmpset   OF E-X64EMIT-FORM throw ENDOF
    ;MATCH ;
 
 \ ---- how long one operation is -----------------------------------------------

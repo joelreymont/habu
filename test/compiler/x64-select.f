@@ -4,9 +4,9 @@
 \ becomes a frozen X64IR module in which every source operation has become the
 \ machine operations that compute it, every source value has become the value
 \ the last of those operations defines, and every operand names that value
-\ rather than a position; and a float, a trapping unit, an opcode with no rule,
-\ a module the pass was not told about and a contract of another machine are each
-\ refused by name.
+\ rather than a position, a double's value is one of the XMM file; and a
+\ trapping unit, an opcode with no rule, a module the pass was not told about and
+\ a contract of another machine are each refused by name.
 \
 \ WHAT THESE FIXTURES MEASURE THAT THE ARM64 ONES CANNOT. Three answers are this
 \ machine's alone and a wrong table would pass every ARM64 case:
@@ -494,19 +494,115 @@ $400 constant CALLEE-ENTRY           \ an address; nothing here branches to it
    CC BB id 2 IR-BUILD:OP-RESULT@ RET1
    CLOSE-FUN ;
 
-\ `: F ( n -- n ) intreal realbits ;` - a floating operation, which this dialect
-\ has no form for at all.
+\ ---- the floating fixtures ---------------------------------------------------
+\ A double never crosses a routine's boundary: its arguments and its answer are
+\ cells, read as doubles with `bitsreal` and handed back with `realbits` the way
+\ the front end reads them. A fixture shared by several source operations stages
+\ the one F-OP names.
+variable F-OP                        \ the source opcode, as HIR:ORD
+$3FF8000000000000 constant HALF3-BITS      \ 1.5e0 as a binary64
+1 63 lshift constant SIGN-BITS             \ the binary64 sign bit alone
+
+: FOPCODE ( -- HIR:opcode )
+   F-OP @ HIR:NTH ;
+
+: ROP1 ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-type-id -- IR-ID:ir-value-id )
+   {: o:HIR:opcode x:IR-ID:ir-value-id t:IR-ID:ir-type-id :}
+   o BODY-ST BODY-LN OPEN-OP
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB t IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+: ROP2 ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-type-id -- IR-ID:ir-value-id )
+   {: o:HIR:opcode x:IR-ID:ir-value-id y:IR-ID:ir-value-id t:IR-ID:ir-type-id :}
+   o BODY-ST BODY-LN OPEN-OP
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   CC BB t IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+: DOUBLE ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: x:IR-ID:ir-value-id :}
+   HIR-OPCODE:BITSREAL x REALT ROP1 ;
+
+: CELL-OF ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: d:IR-ID:ir-value-id :}
+   HIR-OPCODE:REALBITS d CELLT ROP1 ;
+
+\ `: F ( n -- n ) intreal realbits ;` - the conversion that rounds a cell to a
+\ double, and the reinterpretation that hands the double back as a cell.
 : BUILD-FLOAT ( -- )
    1 1 OPEN-FUN
    ARG+ {: x:IR-ID:ir-value-id :}
-   HIR-OPCODE:INTREAL BODY-ST BODY-LN OPEN-OP
-   CC BB x IR-BUILD:ADD-OPERAND
+   HIR-OPCODE:INTREAL x REALT ROP1 CELL-OF RET1
+   CLOSE-FUN ;
+
+\ `: F ( n -- n ) bitsreal realint ;` - the other two: the cell's eight bytes read
+\ as a double, and the double truncated to a cell.
+: BUILD-TRUNC ( -- )
+   1 1 OPEN-FUN
+   ARG+ DOUBLE {: d:IR-ID:ir-value-id :}
+   HIR-OPCODE:REALINT d CELLT ROP1 RET1
+   CLOSE-FUN ;
+
+\ `: F ( -- n ) 1.5e0 realbits ;`
+: BUILD-FCONST ( -- )
+   0 1 OPEN-FUN
+   HIR-OPCODE:FCONST BODY-ST BODY-LN OPEN-OP
    CC BB REALT IR-BUILD:ADD-RESULT
-   CLOSE-VALUE {: r:IR-ID:ir-value-id :}
-   HIR-OPCODE:REALBITS BODY-ST BODY-LN OPEN-OP
-   CC BB r IR-BUILD:ADD-OPERAND
-   CC BB CELLT IR-BUILD:ADD-RESULT
-   CLOSE-VALUE RET1
+   CC BB  CC BB HIR:KEY-VALUE  CC BB HALF3-BITS IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CLOSE-VALUE CELL-OF RET1
+   CLOSE-FUN ;
+
+\ `( a b -- n )` with the two-double operation F-OP names between the readings.
+: BUILD-FBIN ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   a DOUBLE {: x:IR-ID:ir-value-id :}
+   b DOUBLE {: y:IR-ID:ir-value-id :}
+   FOPCODE x y REALT ROP2 CELL-OF RET1
+   CLOSE-FUN ;
+
+\ `: F ( n -- n ) bitsreal fdup f* realbits ;` - one double in both operands.
+: BUILD-FSQUARE ( -- )
+   1 1 OPEN-FUN
+   ARG+ DOUBLE {: x:IR-ID:ir-value-id :}
+   HIR-OPCODE:FMUL x x REALT ROP2 CELL-OF RET1
+   CLOSE-FUN ;
+
+\ `( a -- n )` with the one-double operation F-OP names.
+: BUILD-FUN1 ( -- )
+   1 1 OPEN-FUN
+   ARG+ DOUBLE {: x:IR-ID:ir-value-id :}
+   FOPCODE x REALT ROP1 CELL-OF RET1
+   CLOSE-FUN ;
+
+\ `( a b -- flag )` with the comparison F-OP names.
+: BUILD-FCMP ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   a DOUBLE {: x:IR-ID:ir-value-id :}
+   b DOUBLE {: y:IR-ID:ir-value-id :}
+   FOPCODE x y CELLT ROP2 RET1
+   CLOSE-FUN ;
+
+\ `( a -- flag )` with the comparison against zero F-OP names.
+: BUILD-FCMP0 ( -- )
+   1 1 OPEN-FUN
+   ARG+ DOUBLE {: x:IR-ID:ir-value-id :}
+   FOPCODE x CELLT ROP1 RET1
+   CLOSE-FUN ;
+
+\ `B0(a): br B1(bitsreal a); B1(d): ret realbits d` - a double handed to the next
+\ block as its argument.
+: BUILD-FCARRY ( -- )
+   1 1 OPEN-FUN
+   ARG+ DOUBLE 1 BR1
+   BLOCK+
+   CC BB REALT IR-BUILD:ADD-BLOCK-ARG CELL-OF RET1
    CLOSE-FUN ;
 
 \ An operation of an opcode the source dialect does not have, defined into the
@@ -715,6 +811,10 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : OPERANDS ( n -- n )
    {: i:n :}
    R-OPR RV i OP@ IR-OP:FOPERANDS ;
+
+: RESULTS ( n -- n )
+   {: i:n :}
+   R-OPR RV i OP@ IR-OP:FRESULTS ;
 
 : SUCC@ ( n n -- n )
    {: i:n k:n :}
@@ -1097,6 +1197,240 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    WBND [: MEMOPS-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 8 T= TTRUE 0 T= TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 0 T= TTRUE 10 T= ;
 
+\ ---- the doubles -------------------------------------------------------------
+\ Every floating source operation selects to SSE2 scalar forms in the XMM file.
+\ The expected form of a shared fixture is held here while its context runs.
+PTR-VARIABLE WANT-A
+variable WANT-U
+
+: WANT! ( ptr u8 n -- )
+   WANT-U ! WANT-A ! ;
+
+: WANT$ ( -- ptr u8 n )
+   WANT-A @ WANT-U @ ;
+
+: WANT-IS? ( n -- bool )
+   {: i:n :}
+   i WANT$ OPCODE-IS? ;
+
+: FLOAT-BODY ( IR-CTX:ctx -- n bool bool bool bool )
+   HIR-MOD
+   BUILD-FLOAT
+   SELECTED READ!
+   OPS
+   0 s" x64.cvtsi2sd" OPCODE-IS?
+   0 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   1 s" x64.movq-rx" OPCODE-IS?
+   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE? ;
+
+: TRUNC-BODY ( IR-CTX:ctx -- n bool bool bool bool )
+   HIR-MOD
+   BUILD-TRUNC
+   SELECTED READ!
+   OPS
+   0 s" x64.movq-xr" OPCODE-IS?
+   0 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   1 s" x64.cvttsd2si" OPCODE-IS?
+   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE? ;
+
+: CONVERT-CASE ( -- )
+   s" a cell rounds to a double with cvtsi2sd and a double's bits leave with movq" T-LABEL
+   WBND [: FLOAT-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE 3 T=
+   s" a cell's bits enter as a double with movq and a double truncates with cvttsd2si" T-LABEL
+   WBND [: TRUNC-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE 3 T= ;
+
+\ There is no SSE form that carries an immediate, so a double literal is its bits
+\ moved into a general register and from there into the XMM file.
+: FCONST-BODY ( IR-CTX:ctx -- n bool n n bool bool )
+   HIR-MOD
+   BUILD-FCONST
+   SELECTED READ!
+   OPS
+   0 s" x64.movi" OPCODE-IS?
+   0 0 ATTR-INT
+   0 1 ATTR-INT
+   1 s" x64.movq-xr" OPCODE-IS?
+   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE? ;
+
+: FCONST-CASE ( -- )
+   s" a double literal is its bits as a plain literal, moved into the XMM file" T-LABEL
+   WBND [: FCONST-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE HIR:ADDR-NONE T= HALF3-BITS T= TTRUE 4 T= ;
+
+\ The two-address form destroys the first double, which dies at it: no copy.
+: FBIN-BODY ( IR-CTX:ctx -- n bool bool bool bool )
+   HIR-MOD
+   BUILD-FBIN
+   SELECTED READ!
+   OPS
+   2 WANT-IS?
+   2 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   2 1 OPERAND@ 1 0 RESULT@ SAME-VALUE?
+   3 0 OPERAND@ 2 0 RESULT@ SAME-VALUE? ;
+
+: FBIN ( HIR:opcode ptr u8 n -- )
+   {: o:HIR:opcode a:ptr u:n :}
+   o HIR:ORD F-OP !
+   a u WANT!
+   WBND [: FBIN-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE 5 T= ;
+
+: FBIN-CASE ( -- )
+   s" each double arithmetic is its two-address scalar form over the two doubles" T-LABEL
+   HIR-OPCODE:FADD s" x64.addsd" FBIN
+   HIR-OPCODE:FSUB s" x64.subsd" FBIN
+   HIR-OPCODE:FMUL s" x64.mulsd" FBIN
+   HIR-OPCODE:FDIV s" x64.divsd" FBIN ;
+
+\ The tie copy in the floating file: the multiply destroys operand 0 and reads
+\ the same double as operand 1, so operand 0 is a `movsd` copy of it.
+: FSQUARE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
+   HIR-MOD
+   BUILD-FSQUARE
+   SELECTED READ!
+   OPS
+   1 s" x64.movsd" OPCODE-IS?
+   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   2 s" x64.mulsd" OPCODE-IS?
+   2 0 OPERAND@ 1 0 RESULT@ SAME-VALUE?
+   2 1 OPERAND@ 0 0 RESULT@ SAME-VALUE? ;
+
+: FSQUARE-CASE ( -- )
+   s" a multiply over one double twice copies it with movsd: the tie destroys operand 0" T-LABEL
+   WBND [: FSQUARE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE 5 T= ;
+
+\ The sign is a bit, so negating clears nothing and flips it, and the magnitude
+\ is every bit but that one: a mask literal moved into the XMM file, then xorpd
+\ or andpd over the double. The square root is one form.
+: MASK-FORM-BODY ( IR-CTX:ctx -- n bool n bool bool bool bool )
+   HIR-MOD
+   BUILD-FUN1
+   SELECTED READ!
+   OPS
+   1 s" x64.movi" OPCODE-IS?
+   1 0 ATTR-INT
+   2 s" x64.movq-xr" OPCODE-IS?
+   3 WANT-IS?
+   3 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   3 1 OPERAND@ 2 0 RESULT@ SAME-VALUE? ;
+
+: MASK-FORM ( HIR:opcode ptr u8 n n -- )
+   {: o:HIR:opcode a:ptr u:n mask:n :}
+   o HIR:ORD F-OP !
+   a u WANT!
+   WBND [: MASK-FORM-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE mask T= TTRUE 6 T= ;
+
+: SQRT-BODY ( IR-CTX:ctx -- n bool bool )
+   HIR-MOD
+   BUILD-FUN1
+   SELECTED READ!
+   OPS
+   1 s" x64.sqrtsd" OPCODE-IS?
+   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE? ;
+
+: FUN1-CASE ( -- )
+   s" negation flips the sign bit with xorpd and the magnitude keeps the rest with andpd" T-LABEL
+   HIR-OPCODE:FNEG s" x64.xorpd" SIGN-BITS MASK-FORM
+   HIR-OPCODE:FABS s" x64.andpd" SIGN-BITS invert MASK-FORM
+   s" the square root is one sqrtsd" T-LABEL
+   HIR-OPCODE:FSQRT HIR:ORD F-OP !
+   WBND [: SQRT-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 4 T= ;
+
+\ ucomisd sets ZF, PF and CF on an unordered pair and every comparison answers
+\ false on a NaN, so greater-than is the one ordered condition `seta` reads and
+\ less-than is greater-than with the operands exchanged. Equality is ZF and not
+\ PF, two flags and so two bytes: the form carries a second result, unread.
+: FCMP-BODY ( IR-CTX:ctx -- n bool n n bool bool bool )
+   HIR-MOD
+   BUILD-FCMP
+   SELECTED READ!
+   OPS
+   2 s" x64.fcmpset" OPCODE-IS?
+   2 RESULTS
+   2 0 ATTR-INT
+   2 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   2 1 OPERAND@ 1 0 RESULT@ SAME-VALUE?
+   3 0 OPERAND@ 2 0 RESULT@ SAME-VALUE? ;
+
+: FCMP ( HIR:opcode -- n bool n n bool bool bool )
+   HIR:ORD F-OP !
+   WBND [: FCMP-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: FCMP-CASE ( -- )
+   s" greater-than compares the doubles in order under gt with one result" T-LABEL
+   HIR-OPCODE:FGT FCMP
+   TTRUE TTRUE TTRUE X64IR-COND:GT X64IR:COND-CODE T= 1 T= TTRUE 4 T=
+   s" less-than is greater-than with the operands exchanged" T-LABEL
+   HIR-OPCODE:FLT FCMP
+   TTRUE TFALSE TFALSE X64IR-COND:GT X64IR:COND-CODE T= 1 T= TTRUE 4 T=
+   s" equality compares in order under equal and carries the setnp scratch" T-LABEL
+   HIR-OPCODE:FEQ FCMP
+   TTRUE TTRUE TTRUE X64IR-COND:EQUAL X64IR:COND-CODE T= 2 T= TTRUE 4 T= ;
+
+\ The swapped operands of the less-than, read back apart from the in-order ones.
+: FLT-BODY ( IR-CTX:ctx -- bool bool )
+   HIR-MOD
+   BUILD-FCMP
+   SELECTED READ!
+   2 0 OPERAND@ 1 0 RESULT@ SAME-VALUE?
+   2 1 OPERAND@ 0 0 RESULT@ SAME-VALUE? ;
+
+: SWAP-CASE ( -- )
+   s" less-than reads the right double as the left-hand side" T-LABEL
+   HIR-OPCODE:FLT HIR:ORD F-OP !
+   WBND [: FLT-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE ;
+
+\ No SSE compare takes an immediate zero, so the zero is a double of its own.
+: FCMP0-BODY ( IR-CTX:ctx -- n bool n bool n n bool bool )
+   HIR-MOD
+   BUILD-FCMP0
+   SELECTED READ!
+   OPS
+   1 s" x64.movi" OPCODE-IS?
+   1 0 ATTR-INT
+   3 s" x64.fcmpset" OPCODE-IS?
+   3 RESULTS
+   3 0 ATTR-INT
+   3 0 OPERAND@ 2 0 RESULT@ SAME-VALUE?
+   3 1 OPERAND@ 0 0 RESULT@ SAME-VALUE? ;
+
+: FCMP0 ( HIR:opcode -- n bool n bool n n bool bool )
+   HIR:ORD F-OP !
+   WBND [: FCMP0-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: FCMP0-CASE ( -- )
+   s" below zero is the zero double greater than the operand" T-LABEL
+   HIR-OPCODE:FLTZ FCMP0
+   TTRUE TTRUE X64IR-COND:GT X64IR:COND-CODE T= 1 T= TTRUE 0 T= TTRUE 5 T=
+   s" equal to zero is the operand equal to the zero double, with the scratch" T-LABEL
+   HIR-OPCODE:FEQZ FCMP0
+   TFALSE TFALSE X64IR-COND:EQUAL X64IR:COND-CODE T= 2 T= TTRUE 0 T= TTRUE 5 T= ;
+
+\ A double an edge carries arrives in a block argument of the XMM file, through
+\ the two copies every edge value takes, and each copy is a `movsd`.
+: FCARRY-BODY ( IR-CTX:ctx -- n bool bool bool bool n bool )
+   HIR-MOD
+   BUILD-FCARRY
+   SELECTED READ!
+   0 BOPS
+   0 1 s" x64.movsd" BOPCODE-IS?
+   0 2 s" x64.movsd" BOPCODE-IS?
+   0 3 s" x64.br" BOPCODE-IS?
+   0 3 0 BOPERAND@  0 2 0 BRESULT@ SAME-VALUE?
+   1 BARGS
+   1 0 s" x64.movq-rx" BOPCODE-IS? ;
+
+: FCARRY-CASE ( -- )
+   s" a double an edge carries is copied with movsd into an XMM block argument" T-LABEL
+   WBND [: FCARRY-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 1 T= TTRUE TTRUE TTRUE TTRUE 4 T= ;
+
 \ ---- the call ---------------------------------------------------------------
 \ WHAT THE RESIDENCY MAP TAKES OUT OF A CALL SITE. The entry loaded the argument
 \ out of cell 0 and this site passes that same value in cell 0, so the store is
@@ -1236,11 +1570,6 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    BUILD-ADD
    SELECTED drop ;
 
-: FLOAT-BODY ( IR-CTX:ctx -- )
-   HIR-MOD
-   BUILD-FLOAT
-   SELECTED drop ;
-
 : WRONG-MACHINE-BODY ( IR-CTX:ctx -- )
    HIR-MOD
    BUILD-SQUARE
@@ -1268,9 +1597,6 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 
 : TRAPPING ( -- )
    TBND [: TRAP-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: FLOATING ( -- )
-   WBND [: FLOAT-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : WRONG-MACHINE ( -- )
    WBND [: WRONG-MACHINE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1304,10 +1630,6 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    s" arithmetic that may trap has no x86-64 lowering and is refused" T-LABEL
    [: TRAPPING ;] E-X64SEL-TRAP TTHROWSQ ;
 
-: FLOAT-REFUSE-CASES ( -- )
-   s" a floating operation has no form in this dialect and is refused" T-LABEL
-   [: FLOATING ;] E-X64SEL-FLOAT TTHROWSQ ;
-
 : MACHINE-REFUSE-CASES ( -- )
    s" a contract of another machine is not one this backend lowers for" T-LABEL
    [: WRONG-MACHINE ;] E-X64SEL-MACHINE TTHROWSQ
@@ -1332,7 +1654,6 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : GROUP-SOURCE ( IR-CTX:ctx -- )      drop SOURCE-REFUSE-CASES ;
 : GROUP-OPCODE ( IR-CTX:ctx -- )      drop OPCODE-REFUSE-CASES ;
 : GROUP-TRAP ( IR-CTX:ctx -- )        drop TRAP-REFUSE-CASES ;
-: GROUP-FLOAT ( IR-CTX:ctx -- )       drop FLOAT-REFUSE-CASES ;
 : GROUP-MACHINE ( IR-CTX:ctx -- )     drop MACHINE-REFUSE-CASES ;
 : GROUP-MEM ( IR-CTX:ctx -- )         drop MEM-REFUSE-CASES ;
 
@@ -1364,12 +1685,20 @@ public
    MEMOPS-CASE
    CALL-CASE
    TAIL-CASE
+   CONVERT-CASE
+   FCONST-CASE
+   FBIN-CASE
+   FSQUARE-CASE
+   FUN1-CASE
+   FCMP-CASE
+   SWAP-CASE
+   FCMP0-CASE
+   FCARRY-CASE
    ABI-CASE
    WBND [: GROUP-BIND ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SOURCE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-OPCODE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TRAP ;] IR-CTX:WITH-CONTEXT
-   WBND [: GROUP-FLOAT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MACHINE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MEM ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;

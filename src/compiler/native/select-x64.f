@@ -63,15 +63,21 @@
 \ `throw` entry as its own attribute the way a64.sdiv does, and why a target
 \ dictionary without `throw` is refused (E-X64SEL-TRAP).
 \
-\ WHAT THE EMITTER ANSWERS. emit-x64.f renders `x64.idiv` with the two answers
-\ this pass cannot give: the branch that hands a zero divisor to the entry
-\ above, and `MIN-N / -1`, which raises #DE on this machine where Habu's `/`
-\ wraps to MIN-N, so the render screens the divisor before it divides
-\ (docs/x86-64.md "Division semantics").
+\ WHAT THE EMITTER ANSWERS AND WHAT IT STILL OWES. emit-x64.f renders `x64.idiv`
+\ with the two answers this pass cannot give: the branch that hands a zero
+\ divisor to the entry above, and `MIN-N / -1`, which raises #DE on this machine
+\ where Habu's `/` wraps to MIN-N, so the render screens the divisor before it
+\ divides (docs/x86-64.md "Division semantics"). It refuses every double form
+\ by name (E-X64EMIT-FORM), so the doubles are lowered, placed and validated
+\ here but are not yet bytes.
 \
-\ AND ONE THE DIALECT MAKES: THERE IS NO FLOATING FORM AT ALL. x64ir declares no
-\ SSE operation, so every floating source operation - including the four
-\ conversions - is refused with E-X64SEL-FLOAT instead of being lowered wrongly.
+\ AND THE DOUBLES ARE SSE2 SCALAR FORMS. A source value whose TYPE is the double
+\ is a value of the XMM file (REAL?), and every floating source operation selects
+\ to the x64ir form that computes it ("selecting the doubles" below). The
+\ arithmetic takes the tie copy the general forms take, as `x64.movsd`; a double
+\ literal is its bits moved from a general register, since no SSE form carries an
+\ immediate; and a comparison is `x64.fcmpset` under the one of two conditions
+\ ucomisd answers false on unordered, so a less-than exchanges its operands.
 \
 \ WHERE THE POINTER STANDS. The data-stack pointer is a register and stands at
 \ ONE place for the whole body. This pass does not survey the body for the
@@ -224,6 +230,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OUT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
+1 TYPED-BUFFER BND-REAL IR-ID:ir-type-id
 
 \ ---- what one selection run is working on ------------------------------------
 1 TYPED-BUFFER S-CTX IR-CTX:ctx
@@ -363,6 +370,10 @@ create NAMEBUF NAME-CAP allot
 : TOKEN? ( IR-ID:ir-value-id -- bool )
    VALUE-TYPE-AT  0 BND-MEM @  SAME-TYPE? ;
 
+\ Asked exactly as TOKEN? is: a double, whose machine value is of the XMM file.
+: REAL? ( IR-ID:ir-value-id -- bool )
+   VALUE-TYPE-AT  0 BND-REAL @  SAME-TYPE? ;
+
 \ ---- the residency answers, read back ----------------------------------------
 : DSLOT-CK ( n -- n )
    dup 0 < if E-X64SEL-CAP throw then ;
@@ -411,6 +422,20 @@ create NAMEBUF NAME-CAP allot
 : RESULT+ ( -- )
    CTX BLD  CTX BLD X64IR:GPR-TYPE  IR-BUILD:ADD-RESULT ;
 
+: FRESULT+ ( -- )
+   CTX BLD  CTX BLD X64IR:FPR-TYPE  IR-BUILD:ADD-RESULT ;
+
+\ A machine value's register file is its TYPE in the module being built, which
+\ is the authority on it while it is open (IR-BUILD:VALUE-TYPE@).
+: FPR? ( IR-ID:ir-value-id -- bool )
+   {: v:IR-ID:ir-value-id :}
+   CTX BLD v IR-BUILD:VALUE-TYPE@  CTX BLD X64IR:FPR-TYPE  SAME-TYPE? ;
+
+\ A result in the file a machine value is in: a copy's, and a tied result's.
+: RESULT-LIKE+ ( IR-ID:ir-value-id -- )
+   FPR? if FRESULT+ exit then
+   RESULT+ ;
+
 : TOKEN+ ( -- )
    CTX BLD  CTX BLD X64IR:MEM-TYPE  IR-BUILD:ADD-RESULT ;
 
@@ -424,13 +449,15 @@ create NAMEBUF NAME-CAP allot
 \ One value moved into a fresh one, carrying the span of the operation the move
 \ was made for. Both places that need a value somewhere else are this: the
 \ destination an edge carries its argument into, and the operand a two-address
-\ form is about to destroy. The opcode is `x64.mov`, which ties nothing and is
-\ what an allocator coalesces away when the two ends can share a register.
+\ form is about to destroy. The opcode is the copy of the value's own file:
+\ `x64.mov`, which ties nothing and is what an allocator coalesces away when the
+\ two ends can share a register, or `x64.movsd` for a double.
 : EMIT-COPY ( IR-ID:ir-op-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
-   at X64IR-OPCODE:MOV OPEN
+   v FPR? if X64IR-OPCODE:MOVSD else X64IR-OPCODE:MOV then {: o:X64IR:opcode :}
+   at o OPEN
    CTX BLD v IR-BUILD:ADD-OPERAND
-   RESULT+
+   v RESULT-LIKE+
    CLOSE-VALUE
    ACC ;
 
@@ -822,16 +849,37 @@ create NAMEBUF NAME-CAP allot
 \ ---- selecting a constant ----------------------------------------------------
 \ One instruction whatever the cell holds: `mov r64, imm64`, with `x64.addr`
 \ saying whether a relocation pass has to find it again.
-: EMIT-CONST ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id X64IR-OPCODE:MOVI OPEN
+: EMIT-MOVI ( IR-ID:ir-op-id n n -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id imm:n kind:n :}
+   at X64IR-OPCODE:MOVI OPEN
    RESULT+
    CTX BLD  CTX BLD X64IR:KEY-IMM
-   CTX BLD  id CONST-VALUE  X64IR:IMM-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  imm X64IR:IMM-ATTR  IR-BUILD:ADD-ATTR
    CTX BLD  CTX BLD X64IR:KEY-ADDR
-   CTX BLD  id CONST-ADDR  X64IR:ADDR-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  kind X64IR:ADDR-ATTR  IR-BUILD:ADD-ATTR
    CLOSE-VALUE
-   id 0 RESULT-AT  ACC  VBIND ;
+   ACC ;
+
+: EMIT-CONST ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id CONST-VALUE  id CONST-ADDR  EMIT-MOVI {: v:IR-ID:ir-value-id :}
+   id 0 RESULT-AT  v  VBIND ;
+
+\ No SSE form carries an immediate, so a double is its eight bytes as a plain
+\ literal, moved into the XMM file.
+: EMIT-DOUBLE ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id bits:n :}
+   at bits X64IR:ADDR-NONE EMIT-MOVI {: g:IR-ID:ir-value-id :}
+   at X64IR-OPCODE:MOVQ-XR OPEN
+   g OPERAND+
+   FRESULT+
+   CLOSE-VALUE
+   ACC ;
+
+: EMIT-FCONST ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id CONST-VALUE  EMIT-DOUBLE {: v:IR-ID:ir-value-id :}
+   id 0 RESULT-AT  v  VBIND ;
 
 \ ---- the literal an instruction carries instead of a register -----------------
 \ Only a plain number: an address literal opens a relocation site the emitter
@@ -1104,7 +1152,7 @@ create NAMEBUF NAME-CAP allot
    id o OPEN
    CTX BLD  dst  IR-BUILD:ADD-OPERAND
    CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
-   RESULT+
+   dst RESULT-LIKE+
    CLOSE-VALUE
    id 0 RESULT-AT  ACC  VBIND ;
 
@@ -1256,6 +1304,75 @@ create NAMEBUF NAME-CAP allot
       id  id 1 OPERAND-AT LIT-VALUE  EMIT-CMPSETI exit
    then
    id EMIT-CMPSET ;
+
+\ ---- selecting the doubles ---------------------------------------------------
+\ Every source operation over a double is the SSE2 scalar form that computes it
+\ (x64ir.f DEF-BINARY, DEF-CROSS, DEF-FCMPSET). The arithmetic is EMIT-BINARY
+\ itself, whose tie copy is `x64.movsd` because the value is a double.
+63 constant F-SIGN-BIT                     \ binary64 keeps its sign in bit 63
+1 F-SIGN-BIT lshift constant F-SIGN-MASK
+F-SIGN-MASK invert constant F-MAGNITUDE-MASK
+
+\ One operand, one result and no tie. The result is in the file the source
+\ result's type names: a conversion leaves one file for the other.
+: EMIT-CROSS ( IR-ID:ir-op-id X64IR:opcode -- )
+   {: id:IR-ID:ir-op-id o:X64IR:opcode :}
+   id o OPEN
+   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   id 0 RESULT-AT REAL? if FRESULT+ else RESULT+ then
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
+\ Negation flips the sign bit and the magnitude clears it: a mask double, then
+\ the two-address xorpd or andpd over the operand.
+: EMIT-MASKED ( IR-ID:ir-op-id n X64IR:opcode -- )
+   {: id:IR-ID:ir-op-id mask:n o:X64IR:opcode :}
+   id mask EMIT-DOUBLE {: m:IR-ID:ir-value-id :}
+   id TIED-OPERAND {: dst:IR-ID:ir-value-id :}
+   id o OPEN
+   dst OPERAND+
+   m OPERAND+
+   FRESULT+
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
+\ Operand 0 is the left-hand side. `equal` carries the byte `setnp` writes as a
+\ second result nothing reads, and `gt` carries none (x64ir.f DEF-FCMPSET).
+: EMIT-FCMPSET ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id X64IR:cond -- )
+   {: id:IR-ID:ir-op-id l:IR-ID:ir-value-id r:IR-ID:ir-value-id c:X64IR:cond :}
+   id X64IR-OPCODE:FCMPSET OPEN
+   l OPERAND+
+   r OPERAND+
+   RESULT+
+   c X64IR-COND:EQUAL X64IR-COND:EQ if RESULT+ then
+   CTX BLD  CTX BLD X64IR:KEY-COND  CTX BLD c X64IR:COND-ATTR  IR-BUILD:ADD-ATTR
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
+\ `gt` and `equal` are the two relations ucomisd answers false on unordered, so
+\ a less-than exchanges its operands, and a comparison against zero compares
+\ against a zero double: no SSE compare takes an immediate.
+: EMIT-FGT ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND  id 1 OPERAND  X64IR-COND:GT  EMIT-FCMPSET ;
+
+: EMIT-FLT ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 1 OPERAND  id 0 OPERAND  X64IR-COND:GT  EMIT-FCMPSET ;
+
+: EMIT-FEQ ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND  id 1 OPERAND  X64IR-COND:EQUAL  EMIT-FCMPSET ;
+
+: EMIT-FLTZ ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 EMIT-DOUBLE {: z:IR-ID:ir-value-id :}
+   id  z  id 0 OPERAND  X64IR-COND:GT  EMIT-FCMPSET ;
+
+: EMIT-FEQZ ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 EMIT-DOUBLE {: z:IR-ID:ir-value-id :}
+   id  id 0 OPERAND  z  X64IR-COND:EQUAL  EMIT-FCMPSET ;
 
 \ ---- selecting the memory operations -----------------------------------------
 \ The source order and the machine order are ONE order.
@@ -1826,23 +1943,23 @@ create NAMEBUF NAME-CAP allot
       terminal OF id mask EMIT-TERMINAL ENDOF
       return OF id mask EMIT-RETURN-OR-TAILED ENDOF
       trap   OF id EMIT-TRAP ENDOF
-      fconst   OF E-X64SEL-FLOAT throw ENDOF
-      fadd     OF E-X64SEL-FLOAT throw ENDOF
-      fsub     OF E-X64SEL-FLOAT throw ENDOF
-      fmul     OF E-X64SEL-FLOAT throw ENDOF
-      fdiv     OF E-X64SEL-FLOAT throw ENDOF
-      fneg     OF E-X64SEL-FLOAT throw ENDOF
-      fabs     OF E-X64SEL-FLOAT throw ENDOF
-      fsqrt    OF E-X64SEL-FLOAT throw ENDOF
-      flt      OF E-X64SEL-FLOAT throw ENDOF
-      fgt      OF E-X64SEL-FLOAT throw ENDOF
-      feq      OF E-X64SEL-FLOAT throw ENDOF
-      fltz     OF E-X64SEL-FLOAT throw ENDOF
-      feqz     OF E-X64SEL-FLOAT throw ENDOF
-      intreal  OF E-X64SEL-FLOAT throw ENDOF
-      realint  OF E-X64SEL-FLOAT throw ENDOF
-      bitsreal OF E-X64SEL-FLOAT throw ENDOF
-      realbits OF E-X64SEL-FLOAT throw ENDOF
+      fconst   OF id EMIT-FCONST ENDOF
+      fadd     OF id X64IR-OPCODE:ADDSD EMIT-BINARY ENDOF
+      fsub     OF id X64IR-OPCODE:SUBSD EMIT-BINARY ENDOF
+      fmul     OF id X64IR-OPCODE:MULSD EMIT-BINARY ENDOF
+      fdiv     OF id X64IR-OPCODE:DIVSD EMIT-BINARY ENDOF
+      fneg     OF id F-SIGN-MASK X64IR-OPCODE:XORPD EMIT-MASKED ENDOF
+      fabs     OF id F-MAGNITUDE-MASK X64IR-OPCODE:ANDPD EMIT-MASKED ENDOF
+      fsqrt    OF id X64IR-OPCODE:SQRTSD EMIT-CROSS ENDOF
+      flt      OF id EMIT-FLT ENDOF
+      fgt      OF id EMIT-FGT ENDOF
+      feq      OF id EMIT-FEQ ENDOF
+      fltz     OF id EMIT-FLTZ ENDOF
+      feqz     OF id EMIT-FEQZ ENDOF
+      intreal  OF id X64IR-OPCODE:CVTSI2SD EMIT-CROSS ENDOF
+      realint  OF id X64IR-OPCODE:CVTTSD2SI EMIT-CROSS ENDOF
+      bitsreal OF id X64IR-OPCODE:MOVQ-XR EMIT-CROSS ENDOF
+      realbits OF id X64IR-OPCODE:MOVQ-RX EMIT-CROSS ENDOF
       quot     OF id EMIT-QUOT ENDOF
    ;MATCH ;
 
@@ -1921,6 +2038,10 @@ create NAMEBUF NAME-CAP allot
    a TOKEN? if
       a  CTX BLD  CTX BLD X64IR:MEM-TYPE  IR-BUILD:ADD-BLOCK-ARG
       dup TOK!  VBIND
+      exit
+   then
+   a REAL? if
+      a  CTX BLD  CTX BLD X64IR:FPR-TYPE  IR-BUILD:ADD-BLOCK-ARG  VBIND
       exit
    then
    a  CTX BLD  CTX BLD X64IR:GPR-TYPE  IR-BUILD:ADD-BLOCK-ARG  VBIND ;
@@ -2113,6 +2234,7 @@ public
    c b HIR:KEY-IN    0 BND-IN !
    c b HIR:KEY-OUT   0 BND-OUT !
    c b HIR:MEM-TYPE 0 BND-MEM !
+   c b HIR:REAL-TYPE 0 BND-REAL !
    BOUND-YES BND-MODE ! ;
 
 \ Each pass answers for itself, because a caller cleaning up after a refusal

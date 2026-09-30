@@ -197,13 +197,11 @@ private
 
 \ ---- the frame forms the spill rewriter is handed ----------------------------
 \ The rewriter asks the lowering record and never the dialect, so what this
-\ dialect answers is pinned by name: the general pair and the trap are its
-\ own forms, and the four forms src/compiler/native/x64ir.f leaves absent are
-\ absent - the floating pair because nothing this dialect allocates leaves the
-\ floating file, the link pair because the return address lives on the machine
-\ stack. A float slot under this record is refused by
-\ src/compiler/native/spill.f STORE-FORM, which test/compiler/native-regalloc.f
-\ measures on a record with the pair taken out.
+\ dialect answers is pinned by name: the general pair, the floating pair and the
+\ trap are its own forms, and the link pair is absent because the return address
+\ lives on the machine stack. The floating pair is what a double live across a
+\ call is put away with, since every contract of this machine destroys the XMM
+\ file at a call (test/compiler/x64-regalloc.f measures that route).
 : LOWERING-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -223,16 +221,19 @@ private
       c b X64IR-OPCODE:LOAD X64IR:OPCODE IR-ID:SYMBOL-LOCAL =
    trapop IR-ID:SYMBOL-LOCAL
       c b X64IR-OPCODE:TRAP X64IR:OPCODE IR-ID:SYMBOL-LOCAL =
-   fstore NDIALECT:HAS?  fload NDIALECT:HAS?
+   fstore NDIALECT:SYM IR-ID:SYMBOL-LOCAL
+      c b X64IR-OPCODE:FSTORE X64IR:OPCODE IR-ID:SYMBOL-LOCAL =
+   fload NDIALECT:SYM IR-ID:SYMBOL-LOCAL
+      c b X64IR-OPCODE:FLOAD X64IR:OPCODE IR-ID:SYMBOL-LOCAL =
    linksave NDIALECT:HAS?  linkload NDIALECT:HAS? ;
 
 : LOWERING-CASE ( -- )
-   s" the general frame pair and the trap are named for the spill rewriter" T-LABEL
+   s" the general frame pair, the floating pair and the trap are named for the spill rewriter" T-LABEL
    BND [: LOWERING-BODY ;] IR-CTX:WITH-CONTEXT
    {: st:bool ld:bool tr:bool fs:bool fl:bool ls:bool ll:bool :}
-   st TTRUE ld TTRUE tr TTRUE
-   s" and the floating pair and the link pair are absent" T-LABEL
-   fs TFALSE fl TFALSE ls TFALSE ll TFALSE ;
+   st TTRUE ld TTRUE tr TTRUE fs TTRUE fl TTRUE
+   s" and the link pair is absent" T-LABEL
+   ls TFALSE ll TFALSE ;
 
 \ ---- the conditions ----------------------------------------------------------
 \ Each code is the shipped assembler's own word, so this case states WHICH word

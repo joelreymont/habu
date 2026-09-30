@@ -1,6 +1,6 @@
 ---
 title: Declare and select x86 scalar float forms
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.484363+03:00"

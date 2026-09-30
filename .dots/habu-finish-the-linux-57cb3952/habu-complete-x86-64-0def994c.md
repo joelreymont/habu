@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-29T12:51:36.362761+03:00"
 blocks:
   - habu-render-x86-cmpsel-279135be
-  - habu-declare-and-select-bfbb301b
   - habu-emit-and-exec-a8536cf2
 ---
 
