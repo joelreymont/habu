@@ -418,7 +418,8 @@ map/unmap/DATA-allot fault injection remain untested. The exact source
 manifest, executables, logs, sizes and limits are retained in
 `~/.cache/tmp/habu-opt-round3/require-pool/RESULTS.md`.
 
-Compression and snapshot repacking remain held. General DATA reachability and
+Compression remains held. Snapshot repacking and dropping zero-filled data
+are not compression and are not held (Joel, 2026-09-30). General DATA reachability and
 former persisted semantic copies remain separate open work.
 
 Measurements before the next reduction: 20,827 effect headers occupy 267,461

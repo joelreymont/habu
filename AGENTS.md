@@ -19,6 +19,10 @@ belong in the language core.
   the existing language or library already expresses the requirement.
 - Optimize code, data structures and architecture for the long term. Do not
   compress code or data without the user's explicit approval of that change.
+  Compression means shrinking code or data through a codec instead of finding
+  what can be dropped. Dropping zero-filled, unused or unreachable storage,
+  packing allocations tightly and choosing a compact table encoding are not
+  compression.
 - Use `jj`, preserve unrelated changes, and commit coherent completed work.
   Use separate workspaces when concurrent edits would conflict. Create Habu
   workspaces under this repository's `.jj-ws/`, never directly under `~/Work/`,

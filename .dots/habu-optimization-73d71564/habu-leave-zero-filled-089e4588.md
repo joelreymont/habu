@@ -13,11 +13,11 @@ the measured server capture/write costs about 45 ms, not the reported minutes.
 Ownership: snapshot writer. Claim: Alder. Hazel reviews before landing and
 the integration chain runs the full gate.
 
-Held at Joel's direction. Candidate 7289a859 must not be duplicated or chained
-while the deployment shape and allocation causes are addressed. The hold is
-specifically on compression as the proposed solution: first prove why the
-retained data cannot be eliminated or initialized at runtime. Maki requiring
-a REPL does not lift the hold. Attribute actual allocations and lifetimes,
+Joel lifted the former hold on 2026-09-30: dropping zero-filled snapshot data
+is fine, and packing allocations tightly is not compression. The hold had
+treated this change as compression; that reading was wrong. Eliminating
+allocations that need not be saved stays in scope beside it. Candidate
+7289a859 still carries the donor-format bug below. Attribute actual allocations and lifetimes,
 separating live semantic state, reconstructible scratch, unused capacity and
 unreachable objects. Neither a zero-byte count nor an estimated codec saving
 is evidence that an allocation belongs in the saved image. Runtime address
@@ -93,7 +93,8 @@ both subjects, so snapshot scratch must be sized from its encoded content.
 Evidence: ~/.cache/habu/snapshot-design/source-45608866/ and
 ~/.cache/habu/link-time/source-45608866/.
 
-Historical codec design, held and not authorization to implement:
+Earlier zero-omission design, written while the change was held; check it
+against the current format before use:
 
 The outer snapshot version is already 10 for three-word DATA address carriers;
 the version assignment below is obsolete. If elimination evidence eventually
