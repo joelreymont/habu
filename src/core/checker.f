@@ -10531,7 +10531,6 @@ $7FFFFFFFFFFFFFFF constant LBUF-COUNT-MAX
 create LBUF-SIG-BUF LBUF-SIG-CAP allot
 variable LBUF-SIG-U
 variable LBUF-SIG-I
-variable LBUF-COUNT-N
 variable LBUF-INFO-W
 
 : LBUF-SIG-C, ( n -- ) {: c:n :}
@@ -10546,23 +10545,23 @@ variable LBUF-INFO-W
       LBUF-SIG-I @ 1 + LBUF-SIG-I !
    REPEAT ;
 
-: CHECKER-LBUF-COUNT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0= IF RES-FALSE EXIT THEN
-   0 LBUF-COUNT-N !  0 LBUF-SIG-I !
-   BEGIN LBUF-SIG-I @ u < WHILE
-      a LBUF-SIG-I @ + c@ {: c:n :}
-      c 48 < c 58 >= or IF RES-FALSE EXIT THEN
-      c 48 - {: d:n :}
-      LBUF-COUNT-N @ LBUF-COUNT-MAX d - 10 / > IF RES-FALSE EXIT THEN
-      LBUF-COUNT-N @ 10 * d + LBUF-COUNT-N !
-      LBUF-SIG-I @ 1 + LBUF-SIG-I !
-   REPEAT
-   LBUF-COUNT-N @ 0 > ;
-
 : CHECKER-LBUF-EXTENT? ( n n -- bool ) {: count:n width:n :}
    count 0 <= width 0 <= or IF RES-FALSE EXIT THEN
    count LBUF-COUNT-MAX width / > IF RES-FALSE EXIT THEN
    count width * LBUF-COUNT-MAX CELL / <= ;
+
+\ A buffer count is an interpret-stack value, and no static pass models that
+\ stack (src/habu/verify-source.f RECORD-DEFINER?, at `constant`). The gate path
+\ hands over the token before the definer instead. An integer literal there IS
+\ the count, so it is held to the definer's own extent bound. Any other token -
+\ a constant's name, the end of an expression - leaves the count to the definer,
+\ which refuses a bad one when the run reaches the line
+\ (src/core/layout-buffer.f LBUF-EXTENT?). No token is no count.
+: CHECKER-LBUF-COUNT? ( ptr u8 n n -- bool ) {: a:ptr u:n width:n :}
+   u 0= IF RES-FALSE EXIT THEN
+   a u num-parse {: v:n flt:bool ok:bool :}
+   flt 0= ok and 0= IF RES-TRUE EXIT THEN
+   v width CHECKER-LBUF-EXTENT? ;
 
 : CHECKER-LBUF-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
    0 LBUF-SIG-U !
@@ -10576,8 +10575,7 @@ variable LBUF-INFO-W
    name nameu CHECKER-LBUF-NAME-GUARD
    type typeu CHECKER-LAYOUT-INFO 0= IF 2drop E-CHECKER-LAYOUT-BUFFER throw THEN
    nip LBUF-INFO-W !
-   count countu CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   LBUF-COUNT-N @ LBUF-INFO-W @ CHECKER-LBUF-EXTENT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   count countu LBUF-INFO-W @ CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
 \ Checker-side registration for the TYPED-BUFFER / TYPED-VARIABLE gate path
@@ -10597,8 +10595,7 @@ variable LBUF-INFO-W
    name nameu CHECKER-LBUF-NAME-GUARD
    type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
    LBUF-INFO-W !
-   count countu CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   LBUF-COUNT-N @ LBUF-INFO-W @ CHECKER-LBUF-EXTENT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   count countu LBUF-INFO-W @ CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
 : CHECKER-DEFTYPED-VARIABLE

@@ -1036,6 +1036,54 @@ variable LONG-J
    [: LBUF-GOOD$ VERIFY:SOURCE-BUF ;] catch 0 T=
    [: LBUF-OLD$ VERIFY:SOURCE-BUF ;] catch LBUF-RC T= ;
 
+\ A buffer count is whatever the line leaves on the interpret stack, so a
+\ constant's name or an expression sizes a buffer as a literal does, and the
+\ accessor it declares is held to the same effect. `4 constant N  N
+\ TYPED-BUFFER B n` is the line lib/content-key.f sizes its fold table with.
+\ A count that cannot size a buffer is refused either way: a literal by the
+\ source pre-pass, which can read its value, and a computed one by the definer
+\ when the run reaches it.
+: COUNT-NAMED$ ( -- ptr u8 n )
+   s" 4 constant CKT-CAP CKT-CAP TYPED-BUFFER CKT-ROWS n : CKT-ROW ( n -- ptr n ) CKT-ROWS ;" ;
+
+: COUNT-EXPR$ ( -- ptr u8 n )
+   s" 2 constant CKT-CAP CKT-CAP 2 * TYPED-BUFFER CKT-ROWS n : CKT-ROW ( n -- ptr n ) CKT-ROWS ;" ;
+
+: COUNT-LAYOUT$ ( -- ptr u8 n )
+   s" SUMTYPE cklb 1 VARIANT value a ;VARIANT ;SUMTYPE 2 constant CKT-CAP CKT-CAP LAYOUT-BUFFER CKLB-BUF cklb<n> : CKT-ROW ( n -- ptr cklb<n> ) CKLB-BUF ;" ;
+
+: COUNT-NAMED-MISUSE$ ( -- ptr u8 n )
+   s" 4 constant CKT-CAP CKT-CAP TYPED-BUFFER CKT-ROWS n : CKT-BAD ( -- ptr n ) CKT-ROWS ;" ;
+
+: COUNT-ZERO$ ( -- ptr u8 n )
+   s" 0 TYPED-BUFFER CKT-ROWS n" ;
+
+: COUNT-NAMED-ZERO$ ( -- ptr u8 n )
+   s" 0 constant CKT-CAP CKT-CAP TYPED-BUFFER CKT-ROWS n" ;
+
+: EXPECT-ACCEPTED ( n n n -- )
+   0 T= {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: TEST-BUFFER-COUNT ( -- )
+   COUNT-NAMED$ DIRECT-STDIN EXPECT-ACCEPTED
+   COUNT-EXPR$ DIRECT-STDIN EXPECT-ACCEPTED
+   COUNT-LAYOUT$ DIRECT-STDIN EXPECT-ACCEPTED
+   COUNT-NAMED-MISUSE$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-INPUT-UNDERFLOW" CONTAINS? TTRUE
+   COUNT-ZERO$ DIRECT-STDIN LBUF-RC T=
+   {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 s" preverify failed" CONTAINS? TTRUE
+   COUNT-NAMED-ZERO$ DIRECT-STDIN 67 T=
+   {: outu3:n erru3:n :}
+   outu3 0 T=
+   CAP-ERR erru3 s" preverify failed" CONTAINS? TFALSE
+   CAP-ERR erru3 s" 7121" CONTAINS? TTRUE ;
+
 : TEST-FILE-LABEL ( -- )
    BAD$SRC CORE-JSON 70 T=
    {: outu:n erru:n :}
@@ -2061,6 +2109,7 @@ POISON-RECORD
    s" check/print-parity" [: TEST-PRINT-PARITY ;] CASE-RUN
    s" check/prelude-hook-public" [: TEST-PRELUDE-HOOK ;] CASE-RUN
    s" check/layout-buffer" [: TEST-LAYOUT-BUFFER ;] CASE-RUN
+   s" check/buffer-count" [: TEST-BUFFER-COUNT ;] CASE-RUN
    s" check/file-label" [: TEST-FILE-LABEL ;] CASE-RUN
    s" check/usage-direct" [: TEST-USAGE ;] CASE-RUN
    s" check/source-bytes-copy" [: TEST-SOURCE-BYTES-COPY ;] CASE-RUN

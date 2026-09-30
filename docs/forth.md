@@ -1225,16 +1225,16 @@ passing suite.
   TYPED-BUFFER TB u8` throws `E-LAYOUT-BUFFER` (7121) from `STORAGE-VALIDATE`. A
   byte row is `n BUFFER: B` (lib/string.f), `( -- ptr u8 )`, or a
   `DYNAMIC-BUFFER` of `u8` (Habu Native Tooling Gotchas).
-- **A `TYPED-BUFFER` count is a decimal literal, not a constant's name.** The
-  source pre-verifier reads the count as TEXT (`verify-source.f`
-  `RECORD-TYPED-BUFFER` hands the previous token to the checker's
-  `CHECKER-LBUF-COUNT?`, which accepts decimal digits only), so a line the
-  engine loads is refused when the file is checked: `64 constant LB-CAP  LB-CAP
-  TYPED-BUFFER LB-ROWS n` makes `tools/check.f` throw 7121 (rc 67) while `64
-  TYPED-BUFFER LB-ROWS n` passes. `$hex` and expressions are refused too: `Q-MAX
-  Q-SEM-N * TYPED-BUFFER Q-SEMS TASK:sem` (lib/queue.f:42) is what
-  `tools/check.f lib/queue.f` throws 7121 on today. A table sized from a
-  constant uses `create NAME CAP cells allot` and reads through a `ptr` local.
+- **A `TYPED-BUFFER` or `LAYOUT-BUFFER` count is any interpret-stack value: a
+  literal, a constant's name or an expression.** The source pre-verifier does
+  not model the interpret stack, so it reads the token before the definer
+  (`verify-source.f` `RECORD-TYPED-BUFFER`, the checker's
+  `CHECKER-LBUF-COUNT?`). An integer literal there is the count and is held to
+  the definer's extent bound before the run: `0 TYPED-BUFFER B n` makes
+  `tools/check.f` throw 7121 from preverify. Any other token leaves the count
+  to the definer: `4 constant N  N TYPED-BUFFER B n` and `N 2 * TYPED-BUFFER B
+  n` check, and `0 constant Z  Z TYPED-BUFFER B n` is refused by the run, exit
+  67 with the definer's 7121 (tools/check-test-lib.f `check/buffer-count`).
 - **A `create … does>` definer teaches the checker what its words are, whether
   or not its text was read.** A definer the source pre-verifier READ is learned
   from the clause text (`verify-source.f` `DEFINER-EFFECT`). A RESIDENT one —
