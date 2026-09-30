@@ -27,3 +27,11 @@ K-lane corrections (design 2026-09-30; these override the lines above where they
 - Rows: `open read write close close-rc ioctl map-anon mmap munmap open-rd access unlink rename chmod symlink readlink mkdir rmdir stat64 lstat64 getdirentries64 epoch-seconds mono-ns getpid realpath`. `read ioctl mmap munmap stat64 lstat64 readlink getdirentries64 realpath` call `X64KERNEL:PROT-SPAN-CALL,` (twins `habu1.f:412-427`). Flag translation through `OS-OPEN-FLAGS`/`OS-MMAP-FLAGS`, which clobber rax, rcx and r11: stage them first.
 - Files: `src/habu/kernel-x64.f`, `src/arch/x86-64/rt.f`, `src/os/linux-x86-64/sys.f`, `test/x86-64-kernel-syscalls.f`, `docs/x86-64.md`.
 - ARM64 twins: `habu1.f:1885-1937, 2187-2404, 2709-2716, 1286-1394`.
+
+Preflight corrections (Fable, 2026-09-30; these override the lines above where they differ):
+- `stat64`/`lstat64`: the x86-64 fix reads `st_mode` at 24 (aarch64: 16; x86-64 `struct stat` has three u64 `st_dev st_ino st_nlink` before it, `/usr/include/asm/stat.h`) and the other five fields at the offsets `LINUX-STAT-FIX` (`habu1.f:2257-2263`) reads; it writes the layout `lib/fs.f:47-52` reads (mode 4, mtime 48/56, ctime 64/72, size 96). A case checks that mode at 4 of a stat of `/` has `S_IFDIR`.
+- `C-CALL,` is `mov rcx, rsp; push rcx; push rcx; and rsp, -16; call rax; mov rsp, [rsp+8]` (`X64ASM` has no memory `push`, `asm.f:719-727`; both copies are the saved rsp, so `[rsp+8]` holds it whether the alignment removed 0 or 8 bytes).
+- Tests follow master's convention (`505b7f52`): single positive images, no per-image negative twin.
+- Verify: install `strace` first (`pkexec pacman -S --needed --noconfirm strace`); the ThinkPad has none. Host engine: master's product `5f4d3321…`.
+- `docs/x86-64.md:445-447` still calls `SYS-PUSH` "a `setc`"; this leaf corrects it.
+- ARM64 twin lines on master: `SYS-PUSH` 1775, `BOPEN..BGETPID` 1784-1837, `BEPOCHSECONDS` 1386, `BMONONS` 1397, `BOPENRD..BREADLINK` 2086-2148, `DLSYM` 2150, `REALPATH` 2172, `BMKDIR..BGETDIRENTRIES64` 2237-2306, `BCLOSE`/`-RC` 2608-2615.
