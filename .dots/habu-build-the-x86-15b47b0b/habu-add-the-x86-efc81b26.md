@@ -1,9 +1,11 @@
 ---
 title: Add the x86-64 task entry
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.897036+03:00"
+closed-at: "2026-09-30T14:45:21.432510+03:00"
+close-reason: "X64KERNEL TASK, holds task-entry; on the ThinkPad hb-x64-kernel-task, -call and -body exit 0 and -negative 21 (rc 76 at ENTRY-LABEL before), 17 x86 suites pass, 107 shared images keep their statuses, manifest bad=0; the suite passes on spark on 613a259c."
 ---
 
 Problem: `BTASK-ENTRY` (`src/habu/habu1.f:2099`) is ARM64 code. Split from habu-port-the-ffi-676f745d (task entry).

@@ -34,6 +34,7 @@ require src/habu/data-bands.f
 require src/habu/snapshot-format.f
 require src/habu/code-span.f
 require src/habu/code-origin-x64.f
+require src/habu/task-abi.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/arch/x86-64/rt.f
@@ -2712,6 +2713,65 @@ public
    s" ffi-call-n" [: FFI-CALL-N-BODY ;] PRIM
    s" ffi-call-bounded" [: FFI-CALL-BOUNDED-BODY ;] PRIM ;
 
+\ ---- task entry --------------------------------------------------------------
+\ The twin of habu1.f BTASK-ENTRY. `task-entry` answers an immutable pthread
+\ entry, not a Habu execution token: a SysV function whose one argument, in
+\ rdi, is the TASK-ABI descriptor, and which enters that task's VM state. It
+\ saves rbx rbp r12-r15, the SysV callee-saved set, which is exactly the VM's
+\ registers (docs/x86-64.md "Machine model"), so no vector register needs
+\ BTASK-ENTRY's d8..d15 save. It writes two cells of the task's own: the TCB
+\ address into the task's region, and DONE into the status once the body
+\ returns. It never writes RUNNING: lib/task.f ACTIVATE stores that before
+\ pthread_create, and a store here could put RUNNING back over the HALT-REQ a
+\ TASK:HALT in the create window leaves. DONE is the last write the task makes
+\ to anything another thread reads, so it is published with atomic!'s xchg,
+\ the release BTASK-ENTRY gets from STLR (ATOMICS, above).
+
+private
+
+: INTERP-REG ( -- r64 ) ENGINE-GPR:X64-INTERP >R64 ;
+
+\ The VM's registers, pushed and popped in reverse.
+: SAVE-VM, ( -- )
+   INTERP-REG ASM-SINK ENC-PUSH  DATA-REG ASM-SINK ENC-PUSH  DSP ASM-SINK ENC-PUSH
+   DBASE-REG ASM-SINK ENC-PUSH  NDICT-REG ASM-SINK ENC-PUSH  CP-REG ASM-SINK ENC-PUSH ;
+: RESTORE-VM, ( -- )
+   CP-REG ASM-SINK ENC-POP  NDICT-REG ASM-SINK ENC-POP  DBASE-REG ASM-SINK ENC-POP
+   DSP ASM-SINK ENC-POP  DATA-REG ASM-SINK ENC-POP  INTERP-REG ASM-SINK ENC-POP ;
+
+\ The entry. The xt is called as execute calls one, and the body keeps rbp, so
+\ the TCB is read back through the region. The six pushes leave rsp 8 off the
+\ 16-byte alignment at that call, which Habu code does not need: SYSV-CALL,
+\ aligns rsp itself before any C call.
+: TASK-ENTRY, ( -- )
+   SAVE-VM,
+   DATA-REG RDI TASK-ABI:REGION-OFF MOV-LOAD,
+   DSP RDI TASK-ABI:STACK-OFF MOV-LOAD,
+   DBASE-REG RDI TASK-ABI:DBASE-OFF MOV-LOAD,
+   NDICT-REG RDI TASK-ABI:NDICT-OFF MOV-LOAD,
+   CP-REG RDI TASK-ABI:CP-OFF MOV-LOAD,
+   INTERP-REG ZERO-REG,
+   RDI DATA-REG TASK-TCB-CELL MOV-STORE,
+   RAX RDI TASK-ABI:XT-OFF MOV-LOAD,  RAX ASM-SINK ENC-CALL-REG
+   RCX DATA-REG TASK-TCB-CELL MOV-LOAD,
+   RAX TASK-ABI:DONE IMM32,
+   RAX RCX TASK-ABI:STATUS-OFF MEM-OFF ASM-SINK ENC-XCHG-MR
+   RAX ZERO-REG,
+   RESTORE-VM,
+   ASM-SINK ENC-RET ;
+
+\ task-entry ( -- n ): push the entry's address and jump over it, so the entry
+\ lies inside the row's record, as BTASK-ENTRY's does.
+: TASK-ENTRY-BODY ( -- )
+   LBL LBL {: entry:label done:label :}
+   RAX entry MOVABS,  RAX PUSH,  done JMP,
+   entry LBL,  TASK-ENTRY,
+   done LBL, ;
+
+public
+
+: TASK, ( -- ) s" task-entry" [: TASK-ENTRY-BODY ;] PRIM ;
+
 \ The whole kernel: the helpers, then every section.
 : KERNEL, ( -- )
    HELPERS,
@@ -2721,7 +2781,8 @@ public
    PUBLICATION,
    DICT-SEARCH,
    ENGINE-STATE,
-   FFI, ;
+   FFI,
+   TASK, ;
 
 ;using
 ;using

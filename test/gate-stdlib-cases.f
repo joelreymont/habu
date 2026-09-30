@@ -1378,6 +1378,10 @@ SUITE x86-64-boot-signal
    test/x86-64-boot-signal.f
 ;SUITE
 
+SUITE x86-64-kernel-task
+   test/x86-64-kernel-task.f
+;SUITE
+
 SUITE xml-byte-edits
    lib/xml-test.f
    lib/byte-edit-test.f
