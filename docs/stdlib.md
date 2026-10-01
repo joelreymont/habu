@@ -2093,11 +2093,13 @@ own environment holds it — so only the caller's rows occupy the context's byte
 A row past `CMD:ENV-ROWS` names the ceiling and the row on stderr and throws
 `E-PROC-ENV`. `RUN-OUTCOME` validates the path and timeout, prepares the two
 vectors, captures bounded stdout/stderr into the context's buffers, stores the
-decomposed outcome and returns it. `RUN-RC` wraps the capture's completion rc
-in a `result<n,n>` (ok on a clean exit, err carrying the nonzero code, 137 for
-a run its deadline killed) for callers that branch on success/failure;
-`OUTCOME@` tells that deadline from a kill. `OUT$`, `ERR$`, `OUTCOME@` and
-`RC@` expose the stored result after the run. `WIPE` explicitly zero-fills the
+decomposed outcome and returns it. `RUN-RC` wraps the outcome's completion rc
+in a `result<n,n>` (ok on a clean exit, err carrying the nonzero exit code or
+`128 + signal`) for callers that branch on success/failure. A run its deadline
+killed has no completion code: `RUN-RC` and `RC@` throw `E-PROC-TIMEOUT` for it,
+as `PROC-OUTCOME>RC` does, while `RUN-OUTCOME` and `OUTCOME@` keep the deadline
+as data for a caller that acts on it. `OUT$`, `ERR$`, `OUTCOME@` and `RC@`
+expose the stored result after the run. `WIPE` explicitly zero-fills the
 full stdin, stdout and stderr buffers and clears their lengths, including after
 a refused run. `RESET` only resets lengths and state; no run wipes implicitly.
 Wiping leaves the command's arguments, environment, working directory and

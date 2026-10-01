@@ -214,7 +214,8 @@
 -4003 constant E-ZED-TOOLCHAIN   \ required remote tool missing (ptxas/nvcc/...)
 -4004 constant E-ZED-ARG         \ bad harness argument or buffer capacity
 -4005 constant E-ZED-DISABLED    \ device required but HABU_ZED unset/0
--4006 constant E-ZED-TIMEOUT     \ remote command exceeded the timeout
+\ -4006 was E-ZED-TIMEOUT: a ZED run's expired deadline throws E-PROC-TIMEOUT
+\ from PROC-CMD:RUN-RC, as every process deadline does. The number stays unused.
 -4007 constant E-ZED-EMIT        \ local artifact emit (bin/hb spawn) failed
 
 \ Floating mathematics: -9020..-9029, minted by lib/fmath.f, which owns package

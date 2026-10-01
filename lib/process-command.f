@@ -95,12 +95,11 @@ private
 : EXITED-CELL ( ptr ptr u8 -- ptr n ) 8 COUNT-CELL ;    \ 1: completed by exit (vs signal) when not timed out
 : TIMED-OUT-CELL ( ptr ptr u8 -- ptr n ) 9 COUNT-CELL ; \ 1: capture deadline hit
 : CODE-CELL ( ptr ptr u8 -- ptr n ) 10 COUNT-CELL ;     \ exit code or signal number; 0 for timeout
-: RC-CELL ( ptr ptr u8 -- ptr n ) 11 COUNT-CELL ;
-: INHERIT-CELL ( ptr ptr u8 -- ptr n ) 12 COUNT-CELL ;
+: INHERIT-CELL ( ptr ptr u8 -- ptr n ) 11 COUNT-CELL ;
 \ Rows in the envp vector as PREPARE leaves it: the caller's own ENV-N rows plus
 \ whatever inheritance appended for this run. ENV-N stays the caller's count, so
 \ a second run inherits into the same place rather than after the last run's copy.
-: ENV-FILL-CELL ( ptr ptr u8 -- ptr n ) 13 COUNT-CELL ;
+: ENV-FILL-CELL ( ptr ptr u8 -- ptr n ) 12 COUNT-CELL ;
 
 : PATHZ ( ptr ptr u8 -- ptr u8 ) BASE PATHZ-OFF + ;
 : CWDZ ( ptr ptr u8 -- ptr u8 ) BASE CWDZ-OFF + ;
@@ -126,8 +125,7 @@ private
    0 h ERR-LEN-CELL !
    1 h EXITED-CELL !
    0 h TIMED-OUT-CELL !
-   0 h CODE-CELL !
-   0 h RC-CELL ! ;
+   0 h CODE-CELL ! ;
 
 public
 
@@ -342,14 +340,13 @@ public
    h OUT-BUF OUT-CAP >LEN
    h ERR-BUF ERR-CAP >LEN PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME h STORE-RUN
-   \ The capture's own completion rc, not PROC-OUTCOME>RC, which throws on a
-   \ deadline: here a deadline keeps the 137 of the SIGKILL that reaped the
-   \ child, and OUTCOME@ tells it apart from a kill.
-   PROC-RC @ h RC-CELL !
    h OUTCOME@ ;
 
-\ Wrap the stored completion rc into a result<n,n>: ok = clean exit (0), err =
-\ the nonzero completion code (a nonzero exit code, or 128+signal). The captured
+\ Wrap the stored outcome's completion rc into a result<n,n>: ok = clean exit
+\ (0), err = the nonzero completion code (a nonzero exit code, or 128+signal).
+\ A run its deadline killed has no completion code: RC@ and RUN-RC throw
+\ E-PROC-TIMEOUT for it (PROC-OUTCOME>RC), and only a caller that acts on the
+\ deadline reads it as data through OUTCOME@ or RUN-OUTCOME. The captured
 \ output stays in the context's own buffers (read via OUT$/ERR$), so the return
 \ carries only the code - no capture product here, unlike the RUN-*-CAPTURE
 \ words that return the lengths.
@@ -361,7 +358,7 @@ private
 public
 
 : RC@ ( ptr ptr u8 -- result<n,n> ) {: h:ptr :}
-   h RC-CELL @ RC>RESULT ;
+   h OUTCOME@ PROC-OUTCOME>RC RC>N RC>RESULT ;
 
 : RUN-RC ( ptr ptr u8 ptr u8 len ms -- result<n,n> )
    {: h:ptr path:ptr pathu:len timeout:ms :}
