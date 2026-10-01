@@ -30,6 +30,11 @@
 \ the others. Each routine is allocated, accepted and emitted at the image's own
 \ address directly (M-ROWS,).
 \
+\ The select routines are staged and emitted the same way, since nothing selects
+\ `x64.cmpsel` or `x64.selz` yet: one per aliasing case, each an IR identity -
+\ the result tied to a compared operand, a compared operand moved in, both
+\ sources one value - beside a general case of each.
+\
 \ Four fixtures have no image. The rows refuse BUILD-ADDRESSED with
 \ E-IR-VERIFY-OPTYPE: it takes its memory order as an argument, which a
 \ data-stack contract has no cell for. The last check, after every image is
@@ -210,6 +215,16 @@ private
 : DIVZERO-BODY ( IR-CTX:ctx -- )
    0 W-CTX !  CALLEE @ BUILD-DIVZERO 0 1 M-ROWS, ;
 
+\ A select shape of the fixture's, taking `in` cells.
+TYPED-VARIABLE SEL-SHAPE [ -- IR-BUILD:module ]
+variable SEL-IN
+
+: SEL-BODY ( IR-CTX:ctx -- )
+   0 W-CTX !  SEL-SHAPE @ execute  SEL-IN @ 1 M-ROWS, ;
+
+: SEL-ROUTINE ( [ -- IR-BUILD:module ] n -- )
+   SEL-IN !  SEL-SHAPE !  WBND [: SEL-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 \ A refused definition ends the way src/compiler/native/compiler.f ends one:
 \ what the refusal left bound is released, then the emission retired.
 : ADDRESSED-REFUSED ( IR-CTX:ctx -- )
@@ -253,6 +268,17 @@ public
    CALLEE !  WBND [: REMAINDER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : DIVZERO-ROUTINE ( n -- )
    CALLEE !  WBND [: DIVZERO-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: CMPSEL-ROUTINE ( -- )      [: BUILD-CMPSEL ;] 3 SEL-ROUTINE ;
+: CMPSEL-FA-ROUTINE ( -- )   [: BUILD-CMPSEL-FA ;] 3 SEL-ROUTINE ;
+: CMPSEL-HB-ROUTINE ( -- )   [: BUILD-CMPSEL-HB ;] 3 SEL-ROUTINE ;
+: CMPSEL-HA-ROUTINE ( -- )   [: BUILD-CMPSEL-HA ;] 3 SEL-ROUTINE ;
+: CMPSEL-SAME-ROUTINE ( -- ) [: BUILD-CMPSEL-SAME ;] 3 SEL-ROUTINE ;
+: SELZ-ROUTINE ( -- )        [: BUILD-SELZ ;] 3 SEL-ROUTINE ;
+: SELZ-NV-ROUTINE ( -- )     [: BUILD-SELZ-NV ;] 2 SEL-ROUTINE ;
+: SELZ-ZV-ROUTINE ( -- )     [: BUILD-SELZ-ZV ;] 2 SEL-ROUTINE ;
+: SELZ-SAME-ROUTINE ( -- )   [: BUILD-SELZ-SAME ;] 2 SEL-ROUTINE ;
+
 : ADDRESSED-REFUSAL ( -- ) WBND [: ADDRESSED-REFUSED ;] IR-CTX:WITH-CONTEXT ;
 
 \ The doubles: the source operation, where a fixture stages several, first.
@@ -830,6 +856,87 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    callee X64EMIT-TEST:DIVZERO-ROUTINE
    s" divzero" false WRITE-IMAGE ;
 
+\ ---- the selects ---------------------------------------------------------------
+\ Each aliasing case of the two selects is its own routine, the IR identity
+\ test/compiler/x64-emit-fixture.f stages. Each case expects what this engine
+\ answers over the same cells picked into the same operands, which is ARM64's
+\ `csel`: cmpsel's holding answer when `a b <` and its failing one when not,
+\ selz's nonzero answer when `v 0<>` and its zero one when not.
+TYPED-VARIABLE SEL3-KEY [ n n n -- n ]
+TYPED-VARIABLE SEL2-KEY [ n n -- n ]
+TYPED-VARIABLE SEL-RUN [ -- ]
+
+: CMPSEL-ANSWER ( n n n n -- n ) {: a:n b:n f:n h:n :}
+   a b < if h else f then ;
+
+: SELZ-ANSWER ( n n n -- n ) {: v:n nz:n z:n :}
+   v 0<> if nz else z then ;
+
+: SEL3-CASE, ( n n n -- ) {: a:n b:n c:n :}
+   a b c  a b c SEL3-KEY @ execute  CASE3, ;
+
+: SEL2-CASE, ( n n -- ) {: a:n b:n :}
+   a b  a b SEL2-KEY @ execute  CASE2, ;
+
+\ Signed less-than holding, level, and holding for 0 against 2^32, which a
+\ 32-bit compare calls level; then the ends of the signed order both ways
+\ round, whose difference overflows.
+: CMPSEL-IMAGE ( ptr u8 n [ n n n -- n ] [ -- ] -- )
+   SEL-RUN !  SEL3-KEY !  {: name:ptr u:n :}
+   false OPEN,
+   2 5 9 SEL3-CASE,
+   5 5 9 SEL3-CASE,
+   0 4294967296 9 SEL3-CASE,
+   MIN-CELL MAX-CELL 9 SEL3-CASE,
+   MAX-CELL MIN-CELL 9 SEL3-CASE,
+   CLOSE, ENTRY, SEL-RUN @ execute
+   name u false WRITE-IMAGE ;
+
+\ Zero, then values a test of fewer than sixty-four bits calls zero or misses:
+\ 2^32, and MIN-CELL, whose only set bit is the sign.
+: SELZ3-IMAGE ( ptr u8 n [ n n n -- n ] [ -- ] -- )
+   SEL-RUN !  SEL3-KEY !  {: name:ptr u:n :}
+   false OPEN,
+   0 7 9 SEL3-CASE,
+   1 7 9 SEL3-CASE,
+   -1 7 9 SEL3-CASE,
+   4294967296 7 9 SEL3-CASE,
+   MIN-CELL 7 9 SEL3-CASE,
+   CLOSE, ENTRY, SEL-RUN @ execute
+   name u false WRITE-IMAGE ;
+
+: SELZ2-IMAGE ( ptr u8 n [ n n -- n ] [ -- ] -- )
+   SEL-RUN !  SEL2-KEY !  {: name:ptr u:n :}
+   false OPEN,
+   0 9 SEL2-CASE,
+   5 9 SEL2-CASE,
+   -1 9 SEL2-CASE,
+   4294967296 9 SEL2-CASE,
+   MIN-CELL 9 SEL2-CASE,
+   CLOSE, ENTRY, SEL-RUN @ execute
+   name u false WRITE-IMAGE ;
+
+\ Each key picks the cells into the operands as its routine's shape does.
+: SELECT-IMAGES ( -- )
+   s" cmpsel"      [: X64EMIT-TEST:SEL-LIT CMPSEL-ANSWER ;]
+                   [: X64EMIT-TEST:CMPSEL-ROUTINE ;] CMPSEL-IMAGE
+   s" cmpsel-fa"   [: >r over r> CMPSEL-ANSWER ;]
+                   [: X64EMIT-TEST:CMPSEL-FA-ROUTINE ;] CMPSEL-IMAGE
+   s" cmpsel-hb"   [: over CMPSEL-ANSWER ;]
+                   [: X64EMIT-TEST:CMPSEL-HB-ROUTINE ;] CMPSEL-IMAGE
+   s" cmpsel-ha"   [: >r over r> swap CMPSEL-ANSWER ;]
+                   [: X64EMIT-TEST:CMPSEL-HA-ROUTINE ;] CMPSEL-IMAGE
+   s" cmpsel-same" [: dup CMPSEL-ANSWER ;]
+                   [: X64EMIT-TEST:CMPSEL-SAME-ROUTINE ;] CMPSEL-IMAGE
+   s" selz"        [: SELZ-ANSWER ;]
+                   [: X64EMIT-TEST:SELZ-ROUTINE ;] SELZ3-IMAGE
+   s" selz-nv"     [: >r dup r> SELZ-ANSWER ;]
+                   [: X64EMIT-TEST:SELZ-NV-ROUTINE ;] SELZ2-IMAGE
+   s" selz-zv"     [: over SELZ-ANSWER ;]
+                   [: X64EMIT-TEST:SELZ-ZV-ROUTINE ;] SELZ2-IMAGE
+   s" selz-same"   [: dup SELZ-ANSWER ;]
+                   [: X64EMIT-TEST:SELZ-SAME-ROUTINE ;] SELZ2-IMAGE ;
+
 \ ---- the doubles ---------------------------------------------------------------
 \ A case hands the routine bit patterns and checks the bits it answers. Where
 \ IEEE 754 fixes the answer, the bits a case expects are the ones this engine's
@@ -1103,6 +1210,7 @@ public
    DIVNEG-IMAGE
    REMAINDER-IMAGE
    DIVZERO-IMAGE
+   SELECT-IMAGES
    FLOAT-IMAGES
    SB-RESET DIR$ SB-APPEND s" /manifest" SB-APPEND SB$ TMP-PATH
    MANIFEST BUF:SPAN$ BUF:BLEN>N WRITE-ALL
