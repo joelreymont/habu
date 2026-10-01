@@ -774,6 +774,7 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 \ DEFER-UNSET) — these are the CONSTRUCT-STEP / MATCH-* / TFAM-CON-LIN query
 \ hooks, whose call sites never run before type-family.f installs them.
 defer TFAM-RESOLVE-XT ( ptr u8 n ptr u8 n -- n bool )   \ pkg + name -> family id, true | false
+defer TFAM-CLAIMED?-XT ( ptr u8 n -- bool )             \ some scope reads the token as a family (any package, either visibility)
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
 defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
 defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar cell kind (TK-CELL)
@@ -1437,6 +1438,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
 \ `is` to the real query word once the registry exists.
 : TFAM-QUERY-DEFAULTS ( -- )
    [: 2drop 2drop 0 RES-FALSE ;] is TFAM-RESOLVE-XT
+   [: 2drop RES-FALSE ;] is TFAM-CLAIMED?-XT   \ no registry: no family claims a token
    [: drop 0 ;] is TFAM-ARITY-XT
    [: drop RES-FALSE ;] is TFAM-LAYOUT?-XT
    [: drop RES-FALSE ;] is TFAM-CELL?-XT
@@ -4572,11 +4574,22 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
 \ type exactly as declared, so `CELL` and `PTR` are types of their own beside
 \ `cell` and `ptr`. A name is refused when an effect would read it as something
 \ else: stack syntax, a row variable (one upper-case letter heading a stack), a
-\ type the scope already resolves, a type variable, or a token the signature
-\ lexer splits or the effect's closing `)` (41) cuts short.
+\ type already in the table, a family tail some scope reads (TFAM-CLAIMED?), a
+\ type variable, or a token the signature lexer splits or the effect's closing
+\ `)` (41) cuts short. The family test spans the registry because the name is
+\ global: a private tail, or a public one two packages share, is not resolved
+\ from the declaring scope, yet its owning package reads it as the family.
+\ A `(` (40) or `"` (34) is refused because in source it opens a comment or a
+\ string (`(`, `.(`, `s"`), which tools/check.f's lexer reads where the loader
+\ reads the name.
+: TYPE-BAD-BYTE? ( n -- bool ) {: c:n :}
+   c SIG-DELIM-CHAR? IF RES-TRUE EXIT THEN
+   c 41 = IF RES-TRUE EXIT THEN
+   c 40 = IF RES-TRUE EXIT THEN
+   c 34 = ;
 : TYPE-BAD-CHAR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 begin dup u < while
-      a over + c@ dup SIG-DELIM-CHAR? swap 41 = or IF drop RES-TRUE EXIT THEN
+      a over + c@ TYPE-BAD-BYTE? IF drop RES-TRUE EXIT THEN
       1+
    repeat drop RES-FALSE ;
 : TYPE-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -4586,7 +4599,7 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
    a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
    a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
    a u CT-FIND 0 <> IF RES-TRUE EXIT THEN
-   a u SIG-FAM? IF drop RES-TRUE EXIT THEN drop
+   a u TFAM-CLAIMED?-XT IF RES-TRUE EXIT THEN
    a u ATOM-TOK? IF RES-TRUE EXIT THEN
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
    a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN

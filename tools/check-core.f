@@ -772,7 +772,8 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 \ A DEFLINEAR or VALUE-RECORD name is spelled in effects as written, unfolded,
 \ and its loader refuses it by TYPE-RESERVED? on those bytes; asking the same
 \ word first is what lets a refusal become a diagnostic instead of the
-\ registration's die.
+\ registration's die. A name this lexer reads as a comment, not a word, opens
+\ with `(` or `.(`, which TYPE-RESERVED? refuses too, so the loader agrees.
 : CHK-NOM-NAME-BAD? ( n -- bool ) {: name:n :}
    name CHK-WORD-TOK? 0= IF LINT-TRUE exit THEN
    name LINT-LEX:TOKEN TYPE-RESERVED? ;
@@ -879,8 +880,8 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 
 \ A DEFTYPE name is refused exactly when CHECKER-DEFFAMILY refuses its tail,
 \ which is the loader's rule. TYPE-RESERVED? is not that rule: it refuses any
-\ tail the scope resolves, including a global family or another package's
-\ public one that a package family may share (TDECL-REQUIRE-FAMILY-NAME), and
+\ tail a family in any package claims, including a global family's or another
+\ package's that a package family may share (TDECL-REQUIRE-FAMILY-NAME), and
 \ it passes control words and sum variants. With the arity fixed at 0 a refusal
 \ can only be about the name, so the bad-nominal diagnostic replaces the
 \ declaration packet.

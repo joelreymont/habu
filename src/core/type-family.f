@@ -4292,11 +4292,31 @@ public
    rc E-TFAM-AMBIG = IF 0 RES-FALSE EXIT THEN
    rc throw ;
 
+private
+
+\ TFAM-CLAIMED? ( ptr u8 n -- bool ) : some scope reads this signature token as
+\ a family (the checker's TFAM-CLAIMED?-XT target). The package that declares a
+\ tail reads its own row first, private or public; a global row is read
+\ everywhere, and another package's public row through `using` or the unique
+\ fallback. So every row of an unqualified tail claims it, ambiguous or not. A
+\ qualified `PKG:tail` claims PKG's row, which PKG reads even while private.
+\ The checker refuses a DEFLINEAR or VALUE-RECORD name that is claimed: the
+\ mirror of a family declaration refusing a declared type's name.
+: TFAM-CLAIMED? ( ptr u8 n -- bool ) {: na:ptr nu:n :}
+   na nu TF-HIDDEN? IF RES-FALSE EXIT THEN
+   na nu TFQ-SPLIT? IF TFQ-BUF TFQ-U @ TFQ-TA @ TFQ-TU @ TFAM-FIND-IN nip EXIT THEN
+   TFX-ENSURE
+   na nu TFX-HASH TFX-BKT @ TFX-CUR !
+   BEGIN TFX-CUR @ 0 <> WHILE
+      TFX-CUR @ 1 - {: id:n :}
+      na nu id TFAM-NAME-MATCH? IF RES-TRUE EXIT THEN
+      id TF-REC@ TF.TAILNEXT @ TFX-CUR !
+   REPEAT
+   RES-FALSE ;
+
 \ Install the checker registry's persist hook only after this module's final
 \ signature-resolution scratch has been declared, so the same owner clears the
 \ raw token spans before DATA is baked.
-private
-
 : REG-EXT-PERSIST ( -- )
    TFAM-SNAPSHOT-PERSIST
    SCHEMA-SNAPSHOT-PERSIST
@@ -4748,6 +4768,7 @@ private
 : TFAM-HOOK-INSTALL ( -- )
    [: TFAM-N@ ;] is CHECKER-REG:UNIT-TFAM-N@
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
+   [: TFAM-CLAIMED? ;] is TFAM-CLAIMED?-XT
    [: TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ item 8: constructor-package reopen reject
    [: TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ item 8: generated-word undefine reject
    [: TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ item 8: closed-package extra-tail reject

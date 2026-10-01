@@ -240,10 +240,19 @@ the declaration appends a `CT-LINEAR` row, exactly beside `idx` and `i64`.
   (`nom-builder`, `process-pty-handle`).
 - **It is global, not package-scoped.** A second declaration of the same name
   anywhere, of a name already in the type table, or of one a signature reads as
-  something else (a one-letter type or row variable, `--`, `|`, `[`, `]`, or a
-  token holding `<`, `>`, `,` or `)`), is
-  `checker: bad or duplicate signature type` (exit 70). `VALUE-RECORD` and
-  `tools/check.f` refuse the same names; `CELL` is a legal name beside `cell`.
+  something else is `checker: bad or duplicate signature type` (exit 70). Those
+  names are a one-letter type or row variable; `--`, `|`, `[`, `]` or
+  `field`; a `VALUE-RECORD` name; a name with an atom prefix (`space-`,
+  `extent-`, `mask-`, `block-`, `geom-`, `parity-`, `align-`, `fresh-region-`,
+  `fresh-extent-`, `fresh-gen-`, `fresh-mask-`); a family tail any package
+  declares, private or public, and `PKG:tail` for PKG's own family; and a
+  token holding `<`, `>`, `,` or `)`. A token holding `(` or `"` is refused
+  too: in source it opens a comment or a string (`(`, `.(`, `s"`), which
+  `tools/check.f` would read in place of the name. The family test spans every
+  package because the owning package reads its family first, so a private
+  tail or one two packages publish would shadow the declared type there.
+  `VALUE-RECORD` and `tools/check.f` refuse the same names; `CELL` is a legal
+  name beside `cell`.
 - **A mismatch renders the bare name.** `: F ( n -- own ) ;` rejects with
   `expected: own actual: n` — no `<>`, because this is a table entry, not a
   family application.

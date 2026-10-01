@@ -910,9 +910,10 @@ variable LONG-J
 \ An effect spells a DEFLINEAR or VALUE-RECORD type exactly as it was declared,
 \ so `CELL` and `PTR` are types of their own beside `cell` and `ptr`. A single
 \ upper-case letter at the head of a stack is a row variable, and `--`, `[` and
-\ `)` are effect syntax, so no effect could name such a type. The loader and the
-\ check tool must refuse exactly those names; each source below declares one and
-\ uses it.
+\ `)` are effect syntax, so no effect could name such a type. A `(` or `"` opens
+\ a comment or string in the source the check tool lexes, so that tool would
+\ read the declaration as one. The loader and the check tool must refuse exactly
+\ those names; each source below declares one and uses it.
 : NOM-LIN$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
    s" DEFLINEAR " SB-APPEND a u SB-APPEND $0a SB-APPEND-C
@@ -926,6 +927,57 @@ variable LONG-J
    s"  x n END-VALUE-RECORD" SB-APPEND $0a SB-APPEND-C
    s" : CKN-USE ( " SB-APPEND a u SB-APPEND
    s"  -- " SB-APPEND a u SB-APPEND s"  ) ;" SB-APPEND
+   SB$ ;
+
+\ The name `s"`, with a comment line that closes the string the check tool's
+\ lexer opens at it, so that tool reaches the name instead of an unterminated
+\ string.
+: NOM-LIN-QUOTE$ ( -- ptr u8 n )
+   SB-RESET
+   s" DEFLINEAR s" SB-APPEND $22 SB-APPEND-C $0a SB-APPEND-C
+   s" \ " SB-APPEND $22 SB-APPEND-C $0a SB-APPEND-C
+   s" : CKN-USE ( n s" SB-APPEND $22 SB-APPEND-C
+   s"  -- s" SB-APPEND $22 SB-APPEND-C s"  n ) swap ;" SB-APPEND
+   SB$ ;
+
+\ A family claims its tail in every scope that reads it: the owning package
+\ reads its private row ahead of any other type, and each of two packages that
+\ share a public tail reads its own row, though the unqualified fallback finds
+\ the pair ambiguous. A linear or value record of that name, declared anywhere,
+\ would lose to the family there, so its declaration is refused. Each source
+\ declares the family, then the nominal at top level, then drops a value of
+\ that name inside package CKFP: the family reading admits the drop, which
+\ loses a linear value that must move exactly once.
+: FAM-PRIV-HEAD ( -- )
+   SB-RESET
+   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" package CKFP" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE CKF-TAIL" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C ;
+
+: FAM-SHARED-HEAD ( -- )
+   SB-RESET
+   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" package CKFP" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE CKF-TAIL" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" package CKFQ" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE CKF-TAIL" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C ;
+
+: FAM-LIN ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" DEFLINEAR " SB-APPEND a u SB-APPEND $0a SB-APPEND-C ;
+
+: FAM-REC ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" VALUE-RECORD " SB-APPEND a u SB-APPEND
+   s"  x n END-VALUE-RECORD" SB-APPEND $0a SB-APPEND-C ;
+
+: FAM-DROP$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   s" package CKFP" SB-APPEND $0a SB-APPEND-C
+   s" : CKF-DROP ( " SB-APPEND a u SB-APPEND s"  -- ) drop ;" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND
    SB$ ;
 
 \ Nominal-declarer sources for the check CLI's package-scoping contract. These
@@ -2182,7 +2234,11 @@ create BIG $2000 allot   variable BIG-U
    s" --" LIN-REFUSED
    s" [" LIN-REFUSED
    s" a)b" LIN-REFUSED
-   s" R" REC-REFUSED ;
+   s" (" LIN-REFUSED
+   s" R" REC-REFUSED
+   s" (" REC-REFUSED
+   NOM-LIN-QUOTE$ HB-LOAD-SRC NOM-LOAD-REFUSED
+   NOM-LIN-QUOTE$ NOM-CHECK-REFUSED ;
 
 : TEST-NOMINAL-NAME-ADMITTED ( -- )
    s" CELL" LIN-ADMITTED
@@ -2191,6 +2247,17 @@ create BIG $2000 allot   variable BIG-U
    s" PTR" REC-ADMITTED
    s" ckn-rec" REC-ADMITTED
    s" CKN:rec" REC-ADMITTED ;
+
+: FAM-CLAIM-REFUSED ( [ -- ptr u8 n ] -- )
+   dup execute HB-LOAD-SRC NOM-LOAD-REFUSED
+   execute NOM-CHECK-REFUSED ;
+
+: TEST-NOMINAL-FAMILY-CLAIM ( -- )
+   [: FAM-PRIV-HEAD s" ckf-tail" FAM-LIN s" ckf-tail" FAM-DROP$ ;] FAM-CLAIM-REFUSED
+   [: FAM-PRIV-HEAD s" ckf-tail" FAM-REC s" ckf-tail" FAM-DROP$ ;] FAM-CLAIM-REFUSED
+   [: FAM-PRIV-HEAD s" CKFP:ckf-tail" FAM-LIN s" CKFP:ckf-tail" FAM-DROP$ ;] FAM-CLAIM-REFUSED
+   [: FAM-SHARED-HEAD s" ckf-tail" FAM-LIN s" ckf-tail" FAM-DROP$ ;] FAM-CLAIM-REFUSED
+   [: FAM-SHARED-HEAD s" ckf-tail" FAM-REC s" ckf-tail" FAM-DROP$ ;] FAM-CLAIM-REFUSED ;
 
 : LINEAR-GOOD-TEST ( -- )
    LINEAR-GOOD$ DIRECT-STDIN 0 T=
@@ -2548,6 +2615,7 @@ POISON-RECORD
    s" check/nominal-shadow-side" [: TEST-NOMINAL-SHADOW-SIDE ;] CASE-RUN
    s" check/nominal-name-refused" [: TEST-NOMINAL-NAME-REFUSED ;] CASE-RUN
    s" check/nominal-name-admitted" [: TEST-NOMINAL-NAME-ADMITTED ;] CASE-RUN
+   s" check/nominal-family-claim" [: TEST-NOMINAL-FAMILY-CLAIM ;] CASE-RUN
    s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN
    s" check/package-linear-cross" [: LINEAR-CROSS-TEST ;] CASE-RUN
    s" check/package-linear-global" [: LINEAR-GLOBAL-TEST ;] CASE-RUN
