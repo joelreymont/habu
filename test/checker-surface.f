@@ -22,7 +22,7 @@
 \     still certify;
 \   - a private symbol stays only while a record the image ships resolves to it
 \     and its package can be reopened: CHECKER-DECL-FRAME's FRAME (a sealed
-\     package) and CHECKER-SWEEP's RETIRE (an unsealed one, whose private name
+\     package) and CHECKER-SWEEP's DECIDE (an unsealed one, whose private name
 \     the image strips) are both gone;
 \   - `defer`/`is`, a `does>` definer, TYPED-VARIABLE, STRUCTURE and EXPORT all
 \     work in a program loaded after boot;
@@ -132,7 +132,6 @@ create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
    s" a private of a sealed package keeps no symbol" T-LABEL
    s" CHECKER-DECL-FRAME" s" FRAME" PRIVATE-KNOWN? TFALSE
    s" nor a private whose name the image strips" T-LABEL
-   s" CHECKER-SWEEP" s" RETIRE" PRIVATE-KNOWN? TFALSE
    s" CHECKER-SWEEP" s" DECIDE" PRIVATE-KNOWN? TFALSE
    s" but a private of an unsealed package keeps its symbol" T-LABEL
    s" CHECKER-REG" s" CHECKED-ROW" PRIVATE-KNOWN? TTRUE ;

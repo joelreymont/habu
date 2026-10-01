@@ -5409,7 +5409,6 @@ variable SYM-STR-CAP-V   SYM-STR-INIT SYM-STR-CAP-V !
 0 constant SYM-GLOBAL
 1 constant SYM-PRIVATE
 2 constant SYM-PUBLIC
--1 constant SYM-RETIRED
 
 0 constant SYM-PKG-A-CELL
 1 constant SYM-PKG-U-CELL
@@ -5500,9 +5499,18 @@ variable SYM-ID
    SYM-REC * SYMS + ;
 
 \ A retired row keeps its id and answers no lookup: it is in no index chain, so
-\ no spelling can reach it and no string of its is shared.
+\ no spelling can reach it and no string of its is shared. It is all zero, so it
+\ costs a captured image no DATA value. SYM-INTERN refuses an empty name, so a
+\ live row always has one and an empty name marks a retired row; id 0 names
+\ nothing and reads as retired.
 : SYM-RETIRED? ( n -- bool )
-   SYM-ROW SYM.VIS @ SYM-RETIRED = ;
+   SYM-ROW SYM.NAME-U @ 0= ;
+
+: SYM-RETIRE ( n -- )
+   SYM-ROW {: r:ptr :}
+   0 r SYM.PKG-A !  0 r SYM.PKG-U !
+   0 r SYM.NAME-A !  0 r SYM.NAME-U !
+   0 r SYM.VIS ! ;
 
 : SYM-PKG-A-FIELD ( n -- ptr n )
    SYM-ROW SYM.PKG-A ;
@@ -5907,6 +5915,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    SYM-N @ 1 + SYM-GROW ;
 
 : SYM-INTERN ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n name nameu:n :}
+   nameu 0= IF s" checker: empty symbol name" 76 die THEN
    pkg pkgu vis name nameu SYM-FIND IF EXIT THEN drop
    SYM-ENSURE
    SYM-N @ SYM-ID !
@@ -16977,9 +16986,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 \ graph. Its constructor/defer/control metadata names symbol IDs, so retired
 \ source names must not donate those IDs to the replacement definitions.
 : SYMS-RETIRE-SOURCE ( -- )
-   SYM-N @ SYM-PRIM-END @ ?do
-      SYM-RETIRED i SYM-ROW SYM.VIS !
-   loop
+   SYM-N @ SYM-PRIM-END @ ?do i SYM-RETIRE loop
    0 HIDX-VALID ! ;
 
 \ Primitive symbols survive, but user overrides of their effects, control
@@ -18342,12 +18349,6 @@ variable CUR                             \ the binding walk's record cursor
       i NORET-ENTRY * NORET-CELL NORET.SYM @ keep KEEP!
    loop ;
 
-: RETIRE ( n -- ) {: id:n :}
-   id SYM-ROW {: r:ptr :}
-   0 r SYM.PKG-A !  0 r SYM.PKG-U !
-   0 r SYM.NAME-A !  0 r SYM.NAME-U !
-   SYM-RETIRED r SYM.VIS ! ;
-
 \ The scope key the policy reads: an empty package is the global scope, and the
 \ flag says public rather than private (ASIG-AUDIT-VIS is the inverse).
 : ASK ( n [ ptr u8 n bool ptr u8 n -- bool ] -- bool ) {: id:n policy :}
@@ -18357,9 +18358,9 @@ variable CUR                             \ the binding walk's record cursor
    SYM-N @ cells ARENA-ALLOC {: keep:ptr :}
    keep MARK-AXIOMS
    SYM-N @ 1 ?do
-      i SYM-RETIRED? IF i RETIRE ELSE
+      i SYM-RETIRED? 0= IF
          keep i cells + @ 0= IF
-            i policy ASK 0= IF i RETIRE THEN
+            i policy ASK 0= IF i SYM-RETIRE THEN
          THEN
       THEN
    loop
