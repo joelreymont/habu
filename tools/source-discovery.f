@@ -376,6 +376,18 @@ variable SD-SCOPES
 
 private
 
+\ A file that cannot be read is named on fd 2 before the read's refusal is
+\ rethrown: the code alone (E-FS-STAT for a missing file) does not say which
+\ member of a closure walk it was. The write result is dropped because the next
+\ step raises the refusal itself, as src/core/checker.f's compile rejects do.
+: READ-SELECTED ( -- )
+   [: SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY ;] catch {: rc:n :}
+   rc 0= if exit then
+   2 s" discover: cannot read " write drop
+   2 SD-ENTRY SD-ENTRY-U @ write drop
+   2 S\" \n" write drop
+   rc throw ;
+
 : RUN-SELECTED ( -- )
    SD-ENTRY SD-ENTRY-U @ DTM:KNOWN? SD-LENIENT !
    REQUIRE-SNAPSHOT
@@ -390,7 +402,7 @@ public
 
 : RUN-IN ( ptr u8 n ptr u8 n -- )
    SELECT-ENTRY
-   SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY
+   READ-SELECTED
    RUN-SELECTED ;
 
 : RUN-BYTES ( ptr u8 n ptr u8 n ptr u8 n -- )

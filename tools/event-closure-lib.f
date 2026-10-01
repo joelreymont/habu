@@ -12,7 +12,11 @@
 \ bare `provided` registers a path without loading it, so neither adds content.
 \ Distinct entries are deduplicated by canonical absolute pathname. Discovery itself
 \ rejects fail-closed (shadowed/undefined loader word, dynamic path, unsupported
-\ opener); this file propagates that so a broken closure cannot be keyed.
+\ opener); this file propagates that so a broken closure cannot be keyed. A
+\ loading event whose path is not a file joins the list like any other, and the
+\ walk refuses it where it reads the file (DISCOVER:RUN-IN names it on fd 2 and
+\ rethrows E-FS-STAT), as BUILD-WITH's reader refuses it: a closure that left it
+\ out would key fewer files than the build reads.
 \
 \ This file only produces the ordered list (BUILD / COUNT / PATH$). Content
 \ hashing and package-scope replay live in the consumers.
@@ -108,14 +112,10 @@ variable EC-ORD-N
    k EV-REQUIRED = i EVENT-STATE@ EV-STATE-FRESH = and if EC-TRUE exit then
    EC-FALSE ;
 
-: EC-ENQUEUE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
-   a u FILE? 0= if exit then
-   a u root rootu EC-ADD ;
-
 : EC-SCAN-EVENTS ( -- )
    0 EC-I !
    begin EC-I @ EVENT-COUNT < while
-      EC-I @ EC-LOADS? if EC-I @ EVENT-PATH@ EC-I @ SOURCE-EVENT:ROOT@ EC-ENQUEUE then
+      EC-I @ EC-LOADS? if EC-I @ EVENT-PATH@ EC-I @ SOURCE-EVENT:ROOT@ EC-ADD then
       EC-I @ 1+ EC-I !
    repeat ;
 
@@ -167,13 +167,9 @@ variable EC-ORD-N
    id EC-ORDER EC-ORD-N @ cells + !
    EC-ORD-N @ 1+ EC-ORD-N ! ;
 
-: EC-DIR-QUEUE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
-   a u FILE? 0= if exit then
-   a u root rootu EC-INTERN EC-DIR-PUSH ;
-
 : EC-EVENT-DIR+ ( n -- ) {: ix:n :}
    ix EC-LOADS? 0= if exit then
-   ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ EC-DIR-QUEUE ;
+   ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ EC-INTERN EC-DIR-PUSH ;
 
 : EC-COLLECT-DEPS ( -- )
    0 begin dup EVENT-COUNT < while
