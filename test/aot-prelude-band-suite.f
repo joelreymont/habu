@@ -53,6 +53,12 @@
 \   retired/empty  CALLER calls a word `undefine` retired and a second body
 \               replaced: refused by the scope audit, naming the callee. No live
 \               name carries the first body, and its spelling now calls another.
+\   redef/empty SEVEN is made inside the window by a does> definer that was
+\               undefined and defined again, so two clause records have carried
+\               the name SEVEN's branch bakes: captured, one call site, because
+\               the undefine retired the first clause with its definer. The case
+\               prints the loader's values for SEVEN and for OLD, made by the
+\               first definer, and both are asserted beside the capture.
 \
 \ THE WORDLIST SPAN HAS NO CASE HERE, and that is a deletion rather than a gap:
 \ it used to be declared by a call of its own, so "the tool declared the band and
@@ -60,7 +66,7 @@
 \ WINDOW-CLOSE now latch the span with the other three coordinates, so no
 \ producer can leave it undeclared and the refusal that named it is gone with it.
 \
-\ Cost: ten child bin/hb runs, no metabuild. Registered as
+\ Cost: eleven child bin/hb runs, no metabuild. Registered as
 \ `SUITE aot-prelude-band` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-prelude-band-suite.f
 
@@ -120,6 +126,7 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 : SITE-CASE ( ptr u8 n -- ) s" test/aot-band-site.f" 2swap RUN-CASE ;
 : EXPORT-CASE ( ptr u8 n -- ) s" test/aot-band-export.f" 2swap RUN-CASE ;
 : RETIRED-CASE ( ptr u8 n -- ) s" test/aot-band-retired.f" 2swap RUN-CASE ;
+: REDEF-CASE ( ptr u8 n -- ) s" test/aot-band-redef.f" 2swap RUN-CASE ;
 
 \ The diagnostic goes to stdout ahead of the die, so both streams are searched:
 \ which one carries it is the engine's business, not this suite's.
@@ -210,6 +217,18 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    s" ... naming the caller and the callee" T-LABEL
    s" window word CALLER calls GONE" SAID? TTRUE ;
 
+: PROBE-REDEF-NAMED ( -- )
+   s" empty" REDEF-CASE
+   s" a replaced definer's created word captures" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... through one call site, its branch to the new clause" T-LABEL
+   s" sites=1" SAID? TTRUE
+   s" ... which the loader runs for it" T-LABEL
+   s" aot-band-redef: new 8" SAID? TTRUE
+   s" ... while a word the first definer made keeps the first clause" T-LABEL
+   s" aot-band-redef: old 7" SAID? TTRUE ;
+
 : BODY ( -- )
    SETUP
    PROBE-CALL-REFUSED
@@ -221,7 +240,8 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    PROBE-DATA-BELOW
    PROBE-SITE-UNNAMED
    PROBE-EXPORT-CAPTURED
-   PROBE-RETIRED-REFUSED ;
+   PROBE-RETIRED-REFUSED
+   PROBE-REDEF-NAMED ;
 
 public
 

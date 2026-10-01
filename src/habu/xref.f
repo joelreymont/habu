@@ -440,11 +440,39 @@ TRUSTED: XREF-PATCH32 ( n ptr n -- )
       1-
    repeat drop ;
 
+\ A does> definer's clause is a record of its own (habu2.f DOES-REC): published
+\ one slot above the definer, in its wordlist, under its name with `;does`
+\ added, and starting inside its body. Record k+1 is k's clause when it is all
+\ four; the body test is what tells the clause from a word someone named X;does.
+\ aot-capture.f ACAP-DOES-COMPANION? asks the same of a captured record.
+: XREF-DOES-COMPANION? ( n -- bool ) {: k:n :}
+   k 1+ ndict@ >= if XREF-FALSE exit then
+   k XREF-REC {: parent:ptr :}
+   k 1+ XREF-REC {: clause:ptr :}
+   parent XREF-WORDLIST clause XREF-WORDLIST <> if XREF-FALSE exit then
+   parent XREF-NAME$ {: name:ptr len:n :}
+   clause XREF-NAME$ {: derived:ptr dlen:n :}
+   s" ;does" {: suffix:ptr sufu:n :}
+   dlen len sufu + <> if XREF-FALSE exit then
+   derived len name len XREF-STR=CI 0= if XREF-FALSE exit then
+   derived len + sufu suffix sufu XREF-STR=CI 0= if XREF-FALSE exit then
+   parent XREF-START {: first:n :}
+   clause XREF-START {: entry:n :}
+   entry first <= if XREF-FALSE exit then
+   entry clause XREF-CODE-BYTES +  first parent XREF-CODE-BYTES +  <= ;
+
 \ A qualified token names PACKAGE:TAIL, but its dictionary record stores TAIL
 \ in the package wordlist. Retire from that resolved record identity; the
 \ original spelling remains the checker-side symbol identity below.
-: XREF-RETIRE-INDEX ( n -- )
-   XREF-REC dup XREF-NAME$ rot XREF-WORDLIST XREF-RETIRE-WL ;
+\ A definer's clause goes with it, as a record rather than by name. The AOT seed
+\ finds the clause under the definer's derived name, a redefinition publishes a
+\ new clause under that same name, and a wordlist holding two live rows for one
+\ name answers the older (habu1.f WLFIND), so a clause left live would go on
+\ answering for the new definer's words. Retiring moves no code: a word the old
+\ definer made still branches to the old clause.
+: XREF-RETIRE-INDEX ( n -- ) {: k:n :}
+   k XREF-DOES-COMPANION? if k 1+ XREF-REC XREF-RETIRE then
+   k XREF-REC dup XREF-NAME$ rot XREF-WORDLIST XREF-RETIRE-WL ;
 
 : UNDEFINE-NAME ( ptr u8 n -- )
    XREF-SU ! XREF-SN!

@@ -1697,8 +1697,9 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ duplicate wall. A public definer whose tail ends in a colon has a clause whose
 \ qualified spelling holds two colons, which the qualifier path refuses
 \ (test/aot-band-site.f). And a clause's name can already be live in its
-\ wordlist - a word defined as X;does, or the clause of a definer `undefine`
-\ replaced, which stays live - and the probe answers that older row.
+\ wordlist, held by a word defined as X;does before X was, and the probe answers
+\ that older row. The clause of a definer `undefine` replaced is not one: it
+\ retires with its definer (xref.f XREF-RETIRE-INDEX, test/aot-band-redef.f).
 : ACAP-REFUSE-SITE ( n n ptr u8 n n -- ) {: s:n k:n a:ptr u:n w:n :}
    s" aot-capture: call site " type s .
    s" bakes the name " type a u type
