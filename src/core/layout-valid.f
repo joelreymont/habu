@@ -30,6 +30,7 @@ variable DATA-N
 create ENV-BOOT ENV-INIT cells allot
 PERSISTED-PTR-VARIABLE ENV-P   ENV-BOOT ENV-P !
 variable ENV-CAP ENV-INIT ENV-CAP !
+variable ENV-OWNER
 
 create GUARD-OFF-BOOT GUARD-INIT cells allot
 create GUARD-TAG-BOOT GUARD-INIT cells allot
@@ -135,6 +136,7 @@ variable FIELD-I
 
 : ENV-TERM! ( n -- ) {: term0:n :}
    term0 T-RES {: term:n :}
+   term ENV-OWNER !
    term PARAM>ARGC ENV-ENSURE
    0 begin dup term PARAM>ARGC < while
       term over PARAM>ARG over ENV!
@@ -142,6 +144,7 @@ variable FIELD-I
    repeat drop ;
 
 : SCHEMA-TERM ( n -- n ) {: node:n :}
+   node SCHEMA-QUOT? if ENV-OWNER @ node SCHEMA-TERM-FOR exit then
    node SCHEMA-PARAM? if node SCHEMA-A@ ENV@ exit then
    node SCHEMA-CON? if node SCHEMA-A@ MK-CON exit then
    node SCHEMA-PTR? if node SCHEMA-A@ recurse MK-PTR exit then
