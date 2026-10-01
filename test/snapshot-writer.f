@@ -1,6 +1,8 @@
 \ Application-image writer behavior through APP-IMAGE:SAVE: transient return
 \ frames are cleared, protected namespaces survive restore, corrupt images
-\ fail closed, and a failed final close is reported.
+\ fail closed, an output that cannot be opened is refused by name and creates
+\ nothing, and a failed final close is reported and leaves the output path as
+\ it was.
 require lib/test.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
@@ -19,7 +21,7 @@ package SNAP-WRITER-TEST
 
 $8000 constant CAP
 240000 constant TIMEOUT-MS
-74 constant CLOSE-FAIL-RC
+74 constant OUTPUT-FAIL-RC       \ the writer cannot open, close or replace its output
 79 constant SNAP-BAD-RC          \ EM-SNAPSHOT-RESTORE's corrupt-image exit
 ENGINE-ERROR:SEAL-PACKAGE constant FORGE-RC
 create OUT CAP allot
@@ -751,11 +753,76 @@ variable PADDED
    s" nonzero padding after a raw heap is refused" T-LABEL
    DOCTOR-PAD ASSERT-BAND-REFUSED ;
 
+\ ---- a failed write leaves the output path as it was ------------------------
+: CLOSE-FAIL$ ( -- ptr u8 n ) s" close-fail" PATH$ ;
+
+variable STRAYS
+
+\ A file a failed write could leave under the root: the close-fail target, which
+\ did not exist before, or anything beside the application image or the
+\ directory output named after it.
+: STRAY ( ptr u8 n -- )
+   BASENAME {: a:ptr u:n :}
+   a u s" close-fail" STARTS-WITH?  a u s" application." STARTS-WITH?  or
+   a u s" dir-out." STARTS-WITH?  or
+   if 1 STRAYS +! then ;
+
+: STRAYS@ ( -- n )
+   0 STRAYS !
+   ROOT [: STRAY ;] WALK-FILES
+   STRAYS @ ;
+
+\ The file holds exactly the bytes LOAD-IMAGE read last.
+: HOLDS-IMG? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u FILE? 0= if false exit then
+   a u FILE-SIZE IMGU @ <> if false exit then
+   IMGU @ MEM-ALLOC-BYTES {: buf:ptr size:n :}
+   a u buf size READ-ALL size =
+   buf size IMG IMGU @ STR= and
+   buf size munmap drop ;
+
 : CLOSE-FAIL-CASE ( -- )
-   s" test/snapshot-writer-close-fail.f" BUILD-WITH
+   CLOSE-FAIL$ s" test/snapshot-writer-close-fail.f" BUILD-WITH-TO
    s" snapshot writer fails closed when the final close fails" T-LABEL
-   RC @ CLOSE-FAIL-RC T=
-   ERR$ s" snap: output close failed" CONTAINS? TTRUE ;
+   RC @ OUTPUT-FAIL-RC T=
+   ERR$ s" snap: output close failed" CONTAINS? TTRUE
+   s" a failed write leaves no image where there was none" T-LABEL
+   CLOSE-FAIL$ EXISTS? TFALSE
+   STRAYS@ 0 T=
+   RELOAD
+   s" test/snapshot-writer-close-fail.f" BUILD-WITH
+   s" a failed write leaves the previous image in place" T-LABEL
+   RC @ OUTPUT-FAIL-RC T=
+   SNAP0$ HOLDS-IMG? TTRUE
+   STRAYS@ 0 T= ;
+
+\ ---- an output that cannot be opened dies by name ---------------------------
+: MISSING$ ( -- ptr u8 n ) s" missing" PATH$ ;
+: IN-MISSING$ ( -- ptr u8 n ) s" missing/application" PATH$ ;
+
+\ The application loads nothing new: the writer refuses before it writes a byte.
+: OPEN-FAIL-CASE ( -- )
+   IN-MISSING$ s" lib/string.f" BUILD-WITH-TO
+   s" an output in a missing directory is refused by name" T-LABEL
+   RC @ OUTPUT-FAIL-RC T=
+   ERR$ s" snap: cannot open output" CONTAINS? TTRUE
+   s" an output that cannot be opened creates nothing" T-LABEL
+   MISSING$ EXISTS? TFALSE ;
+
+\ ---- an output the rename cannot replace dies by name -----------------------
+: DIR-OUT$ ( -- ptr u8 n ) s" dir-out" PATH$ ;
+
+\ A directory at the output path lets the sibling be written and signed, then
+\ refuses the rename.
+: REPLACE-FAIL-CASE ( -- )
+   DIR-OUT$ MAKE-DIR
+   DIR-OUT$ s" lib/string.f" BUILD-WITH-TO
+   s" an output the rename cannot replace is refused by name" T-LABEL
+   RC @ OUTPUT-FAIL-RC T=
+   ERR$ s" snap: cannot replace output" CONTAINS? TTRUE
+   s" the refused output stays as it was and the staged image goes" T-LABEL
+   DIR-OUT$ DIR? TTRUE
+   STRAYS@ 0 T= ;
 
 : SHADOW$ ( -- ptr u8 n )
    SB-RESET
@@ -782,6 +849,8 @@ variable PADDED
    TAIL-CASE
    DATA-SIZE DENSE-DATA > if DENSE-CASE then
    CLOSE-FAIL-CASE
+   OPEN-FAIL-CASE
+   REPLACE-FAIL-CASE
    SHADOW-CASE
    IMG IMGU @ munmap drop ;
 

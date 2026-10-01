@@ -2,8 +2,8 @@
 \
 \ STORAGE CLASS. TASK-LOCAL for the paths one call stages: the second NUL-padded
 \ path FS-MUT-PATHZ2-BUF (RENAME-FILE's, MAKE-SYMLINK's and the stream copy's
-\ destination), ATOMIC-WRITE-FILE's unique `.tmp-*` sibling
-\ FS-MUT-ATOMIC-PATH, and
+\ destination), the unique `.tmp-*` sibling ATOMIC-WRITE-FILE and
+\ RESERVE-SIBLING name, FS-MUT-ATOMIC-PATH, and
 \ MAKE-TEMP-DIR's FS-MUT-TMP-PATH - the one this module RETURNS a span into -
 \ are the FS-MUT-ABI band of the per-task DATA region, so two tasks renaming,
 \ symlinking, writing atomically or making a temporary directory at once share
@@ -444,8 +444,20 @@ public
       rename-code throw
    then ;
 
+\ Two live processes never share a pid, and the clock tells a reused pid from a
+\ sibling its last owner left behind.
+: FS-MUT-ATOMIC-SEED ( -- n )
+   mono-ns getpid xor ;
+
 : ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
-   path pathu src srcu mono-ns getpid xor FS-MUT-ATOMIC-WRITE-SEED ;
+   path pathu src srcu FS-MUT-ATOMIC-SEED FS-MUT-ATOMIC-WRITE-SEED ;
+
+\ Create and open the unique `.tmp-*` sibling ATOMIC-WRITE-FILE stages through,
+\ for a writer that streams its file or must finish it before RENAME-FILE
+\ publishes it. Answers the sibling's path, which stays this task's until its
+\ next reservation, and the descriptor. The caller owns both and the removal.
+: RESERVE-SIBLING ( ptr u8 n -- ptr u8 n n )
+   FS-MUT-ATOMIC-SEED FS-MUT-ATOMIC-RESERVE ;
 
 : FS-MUT-BUILD-TEMP-TRY ( ptr u8 n ptr u8 n n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed attempt :}
    SB-RESET

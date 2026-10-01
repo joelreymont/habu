@@ -10,11 +10,13 @@
 \ state and scratch-copy machinery stay package-private.
 \
 \ The entry is `SNAP:PERSIST` - it builds the header, canonicalises the two
-\ regions and writes the image, then exits. The tail is deliberately not `GO`:
+\ regions, writes and signs the image beside its output path and renames it
+\ over that path, then exits. The tail is deliberately not `GO`:
 \ several other files already define a `GO`, and the name says nothing about
 \ what the word does. src/habu/app-image-core.f APP-IMAGE:SAVE calls the entry.
 
 require lib/fs.f
+require lib/fs-mutate.f
 require lib/codesign.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
@@ -450,8 +452,8 @@ TRUSTED: SGR-PTR ( -- ptr u8 ) SGR-N @ ;
 \ The final-close fault hook: WRITE-BYTES runs it on the output fd just before
 \ the close it checks, and it does nothing. It is private, so no qualified name
 \ reaches it; test/snapshot-writer-close-fail.f reopens this package to make it
-\ close the fd early, which proves WRITE-BYTES fails closed (rc 74) instead of
-\ accepting a half-written image.
+\ close the fd early, which proves WRITE-BYTES fails closed (rc 74) and leaves
+\ the output path as it was.
 defer BEFORE-CLOSE ( n -- )
 
 : CLOSE-NOOP ( n -- )
@@ -461,6 +463,51 @@ defer BEFORE-CLOSE ( n -- )
    [: CLOSE-NOOP ;] is BEFORE-CLOSE ;
 
 CLOSE-DEFAULT
+
+\ The image is written to a sibling of the output path and renamed over it only
+\ after the write, the close and the signature succeed, so a failure never
+\ leaves a partial or unsigned executable where a later run finds it. The
+\ sibling is created exclusively under a per-process name (lib/fs-mutate.f
+\ RESERVE-SIBLING), so a concurrent writer of the same output stages its own.
+\ It is chosen after CANON-DATA copies DATA, so the image never holds its name.
+create STAGED FS-PATH-CAP allot
+variable STAGED-U
+
+: STAGED-PATH ( -- ptr u8 n ) STAGED STAGED-U @ ;
+
+\ Registered for removal at exit before a byte is written, so every `die` and
+\ uncaught throw from here to the rename takes the sibling with it
+\ (lib/fs-mutate.f CLEANUP-AT-EXIT); after the rename the path names nothing and
+\ the removal skips it. A full registry refuses the claim, and the empty sibling
+\ goes then.
+: CLAIM ( ptr u8 n -- ptr u8 n )
+   2dup CLEANUP+ ;
+
+\ Keeps the sibling's path in STAGED and its descriptor in SFD and leaves the
+\ output path, so a refusal leaves the stack as it found it.
+: RESERVE-STAGED ( ptr u8 n -- ptr u8 n )
+   2dup RESERVE-SIBLING SFD ! {: path:ptr size:n :}
+   path STAGED size BYTE-COPY
+   size STAGED-U ! ;
+
+\ A sibling that cannot be created (a missing or denied directory, an output
+\ path too long for the sibling's suffix) is an output that cannot be opened,
+\ refused by name like PERSIST's other refusals; nothing exists yet to remove.
+: STAGE ( -- )
+   OUT-PATH [: RESERVE-STAGED ;] catch {: open-code:n :} 2drop
+   open-code 0<> if s" snap: cannot open output" 74 die then
+   STAGED-PATH [: CLAIM ;] catch {: claim-code:n :} 2drop
+   claim-code 0<> if STAGED-PATH REMOVE-FILE claim-code throw then ;
+
+\ rename replaces the output path in one step: it names the previous file or
+\ the whole signed image, never a part of either. An output the rename cannot
+\ replace (a directory in its place) is refused by name, and the exit hook
+\ removes the sibling.
+: PUBLISH ( -- )
+   STAGED-PATH CHMOD-X
+   STAGED-PATH SIGN-ID:PROG$ CODESIGN:SIGN-AS
+   [: STAGED-PATH OUT-PATH RENAME-FILE ;] catch
+   0<> if s" snap: cannot replace output" 74 die then ;
 
 : WRITE-PAD ( -- )
    16 0 ?do 0 PAD-ZEROS i + c! loop
@@ -483,8 +530,7 @@ CLOSE-DEFAULT
    SNAPSHOT-FORMAT:VERSION TRL SNAP-TRL-VERSION + !
    \ stream: header, engine text, live dict rows, code, structured DATA, trailer
    \ (the heap section last in DATA, raw or grid as SHF says)
-   OUT-PATH PATH0 1537 493 open SFD !
-   SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
+   STAGE
    MBUF {: hdr:ptr :}
    SNAP-EXTRA-PTR {: extra:ptr :}
    RESET-BUF
@@ -546,7 +592,7 @@ public
    ENCODE-HEAP
    FRAME
    WRITE-IMAGE
-   OUT-PATH SIGN-ID:PROG$ CODESIGN:SIGN-AS
+   PUBLISH
    s" " 0 die ;
 
 ;package
