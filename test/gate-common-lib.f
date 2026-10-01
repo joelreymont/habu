@@ -11,6 +11,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/content-key.f
 require lib/test/runner.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 $40000 constant GE-SRC-CAP
 \ Generous deadlock deadline for one engine-gate child.
@@ -157,8 +158,8 @@ variable GE-EVAL-SRC-U
 
 : GE-OUTCOME-CODE. ( outcome -- )
    MATCH outcome
-     exited OF . ENDOF
-     signaled OF . ENDOF
+     exited OF FMT:.INT ENDOF
+     signaled OF FMT:.INT ENDOF
      timeout OF s" -" type ENDOF
    ;MATCH ;
 
@@ -195,11 +196,11 @@ variable GE-EVAL-SRC-U
    s" outcome: " type GT-OUTCOME@ GE-OUTCOME.
    s"  code: " type GT-OUTCOME@ GE-OUTCOME-CODE.
    GT-TIMED-OUT @ if cr exit then          \ a deadline has no rc: GT-RC@ throws
-   s" rc: " type GT-RC@ . s" (" type GT-RC@ GE-RC-NAME. s" )" type cr ;
+   s"  rc: " type GT-RC@ FMT:.INT s"  (" type GT-RC@ GE-RC-NAME. s" )" type cr ;
 
 : GE-PRINT-CAPTURE-STATS ( -- )
-   s" stdout bytes: " type GT-OUT$ nip . s" / " type GT-OUT-CAP . cr
-   s" stderr bytes: " type GT-ERR$ nip . s" / " type GT-ERR-CAP . cr ;
+   s" stdout bytes: " type GT-OUT$ nip FMT:.INT s"  / " type GT-OUT-CAP FMT:.INT cr
+   s" stderr bytes: " type GT-ERR$ nip FMT:.INT s"  / " type GT-ERR-CAP FMT:.INT cr ;
 
 : GE-FAIL ( ptr u8 n -- ) {: label:ptr labelu:n :}
    s" FAIL: " type label labelu type cr
