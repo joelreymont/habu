@@ -61,6 +61,10 @@ create CP-FILE CP-FILE-CAP allot
 
 public
 
+\ The planner's failure status: every throw the CLI entry
+\ (tools/chain-plan-build.f) catches other than an expired deadline.
+74 constant FAIL-RC
+
 : ENGINE? ( ptr u8 n -- bool )
    2dup CP-PREFIX? if 2drop CP-TRUE exit then
    2dup s" tools/chain-plan.f" STR= if 2drop CP-FALSE exit then

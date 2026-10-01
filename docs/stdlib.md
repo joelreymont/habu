@@ -1861,7 +1861,10 @@ with it for `E-PROC-TIMEOUT`, and the process that runs the tool throws
 `E-PROC-TIMEOUT` again when it sees that status. `PROC-EXIT-RC ( code fail --
 status )` is the exit side: 0 for no throw, `PROC-TIMEOUT-RC` for
 `E-PROC-TIMEOUT`, and the tool's own failure status `fail` for any other code.
-`tools/native-build-core.f` and `tools/build-fixpoint.f` exit through it.
+`tools/native-build-core.f`, `tools/build-fixpoint.f` and the chain entries
+`tools/chain-run-build.f` and `tools/chain-plan-build.f` exit through it;
+`tools/chain-run.f` throws `E-PROC-TIMEOUT` again when a native build exits
+with `PROC-TIMEOUT-RC`.
 `PROC-OUTCOME>DEADLINE-RC` is the capture side: it flattens an outcome as
 `PROC-OUTCOME>RC` does, except that a capture whose own deadline expired reads
 `PROC-TIMEOUT-RC`, the status `timeout` reports for the command it killed,
