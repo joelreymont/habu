@@ -554,9 +554,9 @@ $2810 constant INB-CELL
 \ live package-scope cells at line-start; EM-REPL-RECOVER (LRREC) restores them so a
 \ compile error typed at the tty REPL rolls the open-package scope back to the
 \ line-start scope, alongside the existing RSAVCP/RSAVND/RSAVDP/RSAVSP rollback.
-\ PKGRESYNC-CELL is armed by both recovery legs and drained once at LMAIN
-\ (EM-PKG-RESYNC): when the restored engine scope is global it resets the checker's
-\ own package scope (checker-end-package) so engine and checker stay in step. These
+\ PKGRESYNC-CELL is armed by both recovery legs and drained by EM-PKG-RESYNC, which
+\ has the checker re-read whatever scope was restored: LEVALREC drains before it
+\ delivers the throw, the LMAIN top drains the REPL leg's (habu2.f). These
 \ six cells sit in the reclaimed $2780..$27C0 band (rg-verified unused repo-wide,
 \ documented free above); small DATA-relative offsets, direct LDR/STR.
 $2780 constant RPKG-CUR

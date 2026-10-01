@@ -5,16 +5,11 @@ require src/core/prefix-boundary.f
 
 package ENGINE-INTERNAL
 
-\ THE PASS LEAVES NO RECORD NUMBER IN DATA. A record number belongs to the
-\ process that loads this prefix, and in a build that is the HOST: its window's
-\ records follow the host's own primitives, while the image it writes puts them
-\ after the image's. The capture carries DATA as bytes, so a cell holding a
-\ record number carries the host's primitive count into the image. Measured: a
-\ tree with one primitive more built a different image under its own engine
-\ than under the engine before it, in 76 bytes - the 73 registrations
-\ REG-PROTECT queued (src/core/util.f) and three cursors of this pass. So the
-\ cursors are loop indices, the prefix's first record is a local, and IMK-PASS
-\ retires the registrations once it has decided what to do with them.
+\ THE PASS LEAVES NO RECORD NUMBER IN DATA: a record number is the host's
+\ (docs/bootstrap.md, "A record number is the host's"). So the cursors are loop
+\ indices, the prefix's first record is a local, and IMK-PASS retires the
+\ REG-PROTECT registrations (src/core/util.f) once it has decided what to do
+\ with them.
 
 : IMK-REC ( n -- ptr n )
    XREF-REC ;

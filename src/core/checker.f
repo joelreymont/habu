@@ -10633,9 +10633,11 @@ variable CHECKER-QBAD-TOK
 \ THE WALK ANSWERS ITS REFUSALS RATHER THAN RAISING THEM: CHECKER-BIND-TRY leaves
 \ ( sym leg why ), where why is 0 or the code of the refusal the walk reached -
 \ PKGCTX-REJECT-RC when no authority names a package context,
-\ E-USING-SHADOW-GLOBAL or E-USING-AMBIGUOUS at the used-publics legs - and sym
-\ is 0 under a refusal. It renders nothing. CHECKER-BIND raises the refusal
-\ exactly as each one always surfaced; a caller that only asks reads why.
+\ E-USING-SHADOW-GLOBAL or E-USING-AMBIGUOUS at the used-publics legs. Under a
+\ refusal sym is not an answer (the global leg leaves the shadowed global's), so
+\ no caller reads it when why is nonzero. It renders nothing. CHECKER-BIND
+\ raises the refusal exactly as each one always surfaced; a caller that only
+\ asks reads why.
 : CHECKER-BIND-TRY ( ptr u8 n -- n n n ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? BIND-SCOPED 0 EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 BIND-NONE 0 EXIT THEN
