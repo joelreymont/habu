@@ -1,9 +1,11 @@
 ---
 title: Check the x86 kernel for every primitive row
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-01T08:06:23.532686+03:00"
+closed-at: "2026-10-01T08:35:00+03:00"
+close-reason: "KERNEL, ends with ENGINE-PRIMS:COMPLETE; unit-compile-run, native-unit-publish, does-patch refuse; a copy without 2r@ fails the build rc 76 naming it (base: rc 0)."
 ---
 
 Problem: `ENGINE-PRIMS:COMPLETE` (the completeness gate the ARM64 engine runs over `src/habu/prims.f`) appears in `src/habu/kernel-x64.f` only in comments; `KERNEL,` never calls it. So a row with no x86 body and no refusal goes unnoticed until a captured program calls it. Inventory on master `02e6d5b3`: `does-patch`, `native-unit-publish` and `unit-compile-run` (and the `(` row) have no x86 registration at all.

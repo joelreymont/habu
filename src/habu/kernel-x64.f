@@ -172,6 +172,10 @@ public
 \ in the x86-64 kernel` on fd 2 and exits REFUSE-RC.
 : REFUSE ( ptr u8 n -- ) [: REFUSE-BODY ;] PRIM ;
 
+\ REFUSE whose record carries wid n, for a row ARM64 registers through
+\ FPRIM-WID: the refusal's record is as visible as the body that replaces it.
+: REFUSE-WID ( ptr u8 n n -- ) {: wid:n :} [: REFUSE-BODY ;] wid PRIM-WID ;
+
 \ The first label of the body registered under the name: the address a `call`
 \ enters it at.
 : ENTRY-LABEL ( ptr u8 n -- label ) {: a:ptr u:n :}
@@ -1559,6 +1563,7 @@ public
 \ the x86-64 engine never has. Lane I provides each in Habu; until then each
 \ row refuses, and the registration is what ENGINE-PRIMS:COMPLETE needs
 \ meanwhile.
+\ unit-compile-run arms the unit hook that interpreter calls, so it refuses too.
 : CONTROL, ( -- )
    s" execute" [: RAX POP,  RAX ASM-SINK ENC-CALL-REG ;] PRIM
    s" execute-floor" [: EXECUTE-FLOOR, ;] PRIM
@@ -1570,6 +1575,7 @@ public
    s" finally" [: FINALLY, ;] PRIM
    s" run-in-stack" [: RUN-IN-STACK, ;] PRIM
    s" die" [: DIE, ;] PRIM
+   s" unit-compile-run" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" evaluate" REFUSE
    s" create" REFUSE
    s" parse-name" REFUSE
@@ -2116,6 +2122,7 @@ public
 : WINDOW-CLOSE, ( -- ) LCLOSE-LBL CALL, ;
 
 \ The window and site helpers, made in this stream, and then the rows.
+\ native-unit-publish and does-patch refuse until their bodies land.
 : PUBLICATION, ( -- )
    LBL LSPAN-CELL !  LBL LOPEN-CELL !  LBL LCLOSE-CELL !
    LBL ADD-SITE-CELL !  LBL DROP-SITES-CELL !
@@ -2124,12 +2131,14 @@ public
    ADD-SITE-HELPER,  DROP-SITES-HELPER,  TRAPS,
    s" patch32" [: PATCH32, ;] PRIM
    s" code-publish" [: PUBLISH, ;] PRIM
+   s" native-unit-publish" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" callmap-set" [: SNAP-RELOC:SITE-CALL SITE-SET, ;] PRIM
    s" addrmap-set" [: SNAP-RELOC:SITE-ADDR SITE-SET, ;] PRIM
    s" reloc-maps-clear" [: RSI POP,  RDI POP,  DROP-SITES-LBL CALL, ;] PRIM
    s" xref-retarget" [: RETARGET, ;] PRIM
    s" int-mark" [: INT-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" min-in-mark" [: MIN-IN-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" does-patch" REFUSE
    s" does-record" [: DOES-RECORD, ;] PRIM ;
 
 \ ---- engine-state rows -------------------------------------------------------
@@ -3532,7 +3541,11 @@ public
    s" prof-json" [: X64PROF:JSON-BODY ;] PRIM
    s" prof-row" [: X64PROF:ROW-BODY ;] PRIM ;
 
-\ The whole kernel: the helpers, then every section.
+\ The whole kernel: the helpers, then every section, then the specification's
+\ other half. ENGINE-PRIMS:COMPLETE dies 76 naming the first row of
+\ src/habu/prims.f that KEEP? keeps and no section registered, as habu2.f
+\ ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS does for ARM64, so a row this kernel
+\ does not carry is a REFUSE, never an absence a captured program meets.
 : KERNEL, ( -- )
    HELPERS,
    SYSCALLS,
@@ -3545,7 +3558,8 @@ public
    TASK,
    DEFINITION,
    PURE,
-   PROFILER, ;
+   PROFILER,
+   ENGINE-PRIMS:COMPLETE ;
 
 ;using
 ;using
