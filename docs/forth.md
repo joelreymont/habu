@@ -1282,6 +1282,11 @@ passing suite.
   `test/pre-trust-defer.f` appends one to prove it. Add a selector to an
   existing hook instead (`SHADOW-DIAG-XT ( n -- )` carries two diagnostics), or
   place the defer after `: TRUST`.
+- **A pre-hook word needs an axiom row in a checked body on a from-source
+  engine.** `src/core/cell-effects.f` supplies rows for `PATH-CAP` and
+  `E-PATH-RANGE`. A constant without a row can be read at top level into a
+  file-owned constant (`REG-PROT-CAP constant MY-CAP`); `test/cold-naming-test.f`
+  checks the refusal and the accepted forms.
 - **A quotation-typed LOCAL cannot be caught; the same quotation on the stack
   can.** This is refused — `hook: non-certified definition: f at 'catch'`, rc 70
   — because the thing being caught has to be a literal quotation:

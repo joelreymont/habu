@@ -80,7 +80,7 @@ package PROC-MAPS
 
 74 constant FAIL-RC              \ the internal-driver exit status, as fdio.f uses
 4096 constant CHUNK              \ one read's bytes
-4096 constant PATH-CAP           \ PATH_MAX, the longest pathname a line can carry
+4096 constant MAPS-PATH-MAX      \ PATH_MAX, the longest pathname a line can carry
 4 constant PATH-FIELD            \ fields after the address pair: perms dev offset inode PATH
 
 0 constant ST-LO                 \ reading the start address
@@ -88,8 +88,8 @@ package PROC-MAPS
 2 constant ST-REST               \ ... walking the fields after it
 
 create CHUNK-BUF CHUNK allot
-create PATH-BUF PATH-CAP allot
-create EXE-BUF PATH-CAP allot
+create PATH-BUF MAPS-PATH-MAX allot
+create EXE-BUF MAPS-PATH-MAX allot
 DYNAMIC-BUFFER EXT-LO n
 DYNAMIC-BUFFER EXT-HI n
 DYNAMIC-BUFFER EXT-SELF n        \ 1 when our own executable backs the area, else 0
@@ -103,7 +103,7 @@ variable PEND-HI
 variable FLD                     \ which field after the address pair
 variable INFLD
 variable PATH-U
-variable PATH-OVER               \ a pathname longer than PATH-CAP: not ours, on purpose
+variable PATH-OVER               \ a pathname longer than MAPS-PATH-MAX: not ours, on purpose
 variable EXE-U
 variable FD
 variable GOT
@@ -155,7 +155,7 @@ variable BS-LO  variable BS-HI  variable BS-MID  variable BS-AT
    -1 ;
 
 : PATH-C+ ( n -- ) {: c:n :}
-   PATH-U @ PATH-CAP >= IF true PATH-OVER !  EXIT THEN
+   PATH-U @ MAPS-PATH-MAX >= IF true PATH-OVER !  EXIT THEN
    c PATH-BUF PATH-U @ + c!
    PATH-U @ 1+ PATH-U ! ;
 
@@ -200,9 +200,9 @@ variable BS-LO  variable BS-HI  variable BS-MID  variable BS-AT
 \ does not resolve, or one longer than a pathname can be, leaves every area
 \ untagged, so the reader stops instead.
 : EXE-PATH! ( -- )
-   s\" /proc/self/exe\z" drop EXE-BUF PATH-CAP readlink EXE-U !
+   s\" /proc/self/exe\z" drop EXE-BUF MAPS-PATH-MAX readlink EXE-U !
    EXE-U @ 0 <= IF s" proc-maps: cannot read /proc/self/exe" FAIL-RC die THEN
-   EXE-U @ PATH-CAP >= IF s" proc-maps: /proc/self/exe is longer than PATH_MAX" FAIL-RC die THEN ;
+   EXE-U @ MAPS-PATH-MAX >= IF s" proc-maps: /proc/self/exe is longer than PATH_MAX" FAIL-RC die THEN ;
 
 \ Darwin's v0 vm_region_submap_info_64 is 64 bytes, packed to four bytes;
 \ is_submap is the four-byte boolean at offset 48. Asking for v0 avoids a

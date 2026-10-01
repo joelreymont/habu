@@ -1928,7 +1928,7 @@ so callers append counted extra args and never hand-build C argv storage.
 PROC-SPAWN-ARGV-RAW   ( ptr u8 ptr a fd fd fd -- pid )
 PROC-ARGV-RESET       ( -- )
 PROC-ARGV-SLOT        ( idx -- ptr a )
-PROC-ARGV-CHECK-EXTRA ( -- )
+PROC-ARGV-FITS?       ( len -- bool )
 PROC-ARGV-ZCOPY       ( ptr u8 len -- ptr u8 )
 PROC-ARGV+            ( ptr u8 len -- )
 PROC-ARGV-PREPARE     ( ptr u8 len -- ptr u8 ptr a )

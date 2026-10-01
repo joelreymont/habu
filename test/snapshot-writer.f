@@ -362,6 +362,9 @@ variable BAND-WID
 : CELL! ( n n -- ) {: off:n value:n :}
    8 0 ?do off i + value i 8 * rshift $FF and U8! loop ;
 
+\ The pad is the slack between the stream's end and the trailer that rounds
+\ the image's text up to its alignment (16 KiB on Darwin, 64 KiB on ELF), so
+\ an image whose stream ends on that boundary has none to doctor.
 : DOCTOR-PAD ( -- )
    STREAM-END {: end:n :}
    end TRAILER-OFF < TTRUE
@@ -467,8 +470,6 @@ variable BAND-WID
    DOCTOR-TAG ASSERT-BAND-REFUSED
    s" band claiming wid 0 is refused at snapshot-read" T-LABEL
    DOCTOR-WID0 ASSERT-BAND-REFUSED
-   s" nonzero alignment padding is refused before restore" T-LABEL
-   DOCTOR-PAD ASSERT-BAND-REFUSED
    s" a stored DATA length shorter than its sections is refused" T-LABEL
    DOCTOR-DATA-LENGTH ASSERT-BAND-REFUSED
    s" a negative dictionary count is refused before restore" T-LABEL
@@ -635,6 +636,33 @@ variable FIRST-EXTENT  variable FIRST-G  variable FIRST-S
    GRID-S FIRST-S @ T=
    RELOAD ;
 
+\ Where a grid stream ends against the boundary moves with every byte before
+\ it, the engine's and the image's own output path, which the save keeps in
+\ DATA (src/habu/snap-lib.f SNAP:OUTPUT): the hole image's ended on it at a
+\ 685-byte gate HB_TMP. No one image can promise a pad, so the case owns two.
+\ test/snapshot-writer-pad.f is the hole fixture and a little more, saved to
+\ the same path, so its stream ends after the hole image's by far less than
+\ any alignment, and the two cannot both end on a boundary. Each one that has
+\ a pad refuses a nonzero byte in it.
+variable PADDED
+
+: PAD-REFUSED ( -- )
+   STREAM-END TRAILER-OFF < if
+      DOCTOR-PAD ASSERT-BAND-REFUSED
+      1 PADDED +!
+   then ;
+
+: GRID-PAD-CASE ( -- )
+   s" nonzero padding after the grid is refused" T-LABEL
+   0 PADDED !
+   PAD-REFUSED
+   STREAM-END {: hole-end:n :}
+   s" test/snapshot-writer-pad.f" BUILT
+   HEAP-FORM SNAPSHOT-FORMAT:HEAP-GRID T=
+   STREAM-END hole-end > TTRUE
+   PAD-REFUSED
+   PADDED @ 0 > TTRUE ;
+
 : HOLE-CASE ( -- )
    s" a heap with a million-byte hole builds" T-LABEL
    s" test/snapshot-writer-hole.f" BUILT
@@ -645,10 +673,9 @@ variable FIRST-EXTENT  variable FIRST-G  variable FIRST-S
    HOLE-PROBE$ WARM-STDIN ASSERT-HOLE-RESTORED
    GRID-FRAMING-CASE
    GRID-VALUE-CASE
-   s" nonzero padding after the grid is refused" T-LABEL
-   DOCTOR-PAD ASSERT-BAND-REFUSED
    GRID-TRUNCATED-CASE
-   RECAPTURE-CASE ;
+   RECAPTURE-CASE
+   GRID-PAD-CASE ;
 
 \ ---- a heap that ends inside a cell -----------------------------------------
 \ The tail fixture's heap ends TAIL-BYTES into the second cell of its last

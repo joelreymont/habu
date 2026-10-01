@@ -26,7 +26,7 @@ private
 
 64 constant ARGV-MAX
 1024 constant ARGV-MSG-CAP
-1024 constant ARGV-PATH-CAP
+PATH-CAP 1 + constant ARGV-PATH-CAP
 $0A constant ARGV-CHAR-LF
 $2D constant ARGV-CHAR-DASH
 

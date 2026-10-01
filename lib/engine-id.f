@@ -13,7 +13,7 @@ require lib/ffi-abi.f
 
 package ENGINE-ID
 
-1024 constant EID-PATH-CAP
+PATH-CAP 1 + constant EID-PATH-CAP
 64 constant EID-KEY-LEN
 
 create EID-PATH EID-PATH-CAP allot   variable EID-PATH-U   variable EID-PATH-DONE

@@ -35,7 +35,9 @@ PRODUCT pstprod 0 DERIVE eq FIELD aa n ;PRODUCT
 \ derive S3: a hash-only sum publishes HASH (+TAG) but no EQ row.
 SUMTYPE psthash 0 DERIVE hash VARIANT hh n ;VARIANT ;SUMTYPE
 
-8192 constant PST-BUF-CAP
+\ The largest report names the fixture path seventeen times, each beside
+\ under $100 bytes of JSON, and the path may take FS-PATH-CAP bytes.
+17 FS-PATH-CAP $100 + * constant PST-BUF-CAP
 
 variable PST-ROOT-U
 variable PST-FIX-U

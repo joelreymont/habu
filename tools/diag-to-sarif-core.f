@@ -8,7 +8,7 @@ require tools/json.f
 74 constant SARIF-E-IO
 
 $40000 constant SARIF-IN-CAP
-$400 constant SARIF-PATH-CAP
+PATH-CAP 1 + constant SARIF-PATH-CAP
 $100 constant SARIF-MAX-RULES
 $2000 constant SARIF-RULE-BUF-CAP
 $1000 constant SARIF-TEXT-CAP

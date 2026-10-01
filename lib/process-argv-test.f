@@ -3,6 +3,7 @@
 
 require lib/errors.f
 require lib/test.f
+require lib/memory.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
@@ -118,6 +119,25 @@ variable PAT-I
    PROC-ARGV-RESET
    s" x"  >LEN PROC-ARGV+
    PAT-LONG! PAT-LONG PAT-LONG-CAP  >LEN PROC-ARGV+ ;
+
+\ The fit rule can fail four ways: a negative length taken as room, a length
+\ whose NUL wraps the sum back into range, the NUL miscounted at an exact fill,
+\ and a full buffer taking an empty argument.
+: PAT-FITS-BOUNDS ( -- )
+   s" an argument fits when its bytes and NUL fit the room left" T-LABEL
+   PROC-ARGV-RESET
+   PROC-ARGV-BUF-CAP 1- >LEN PROC-ARGV-FITS? TTRUE
+   PROC-ARGV-BUF-CAP >LEN PROC-ARGV-FITS? TFALSE
+   -1 >LEN PROC-ARGV-FITS? TFALSE
+   MEM-MAX-N >LEN PROC-ARGV-FITS? TFALSE
+   PAT-LONG! PAT-LONG PROC-ARGV-BUF-CAP 1- >LEN PROC-ARGV+
+   0 >LEN PROC-ARGV-FITS? TFALSE ;
+
+: PAT-NEG-ARG ( -- )
+   PROC-ARGV-RESET PAT-LONG -1 >LEN PROC-ARGV+ ;
+
+: PAT-HUGE-ARG ( -- )
+   PROC-ARGV-RESET PAT-LONG MEM-MAX-N >LEN PROC-ARGV+ ;
 
 : PAT-RUN-ARGV-CAPTURE ( -- )
    PROC-ARGV-RESET
@@ -275,6 +295,9 @@ variable PAT-SAVED-STDIN
    [: PAT-SPAWN-MISSING ;] E-PROC-SPAWN TTHROWSQ
    [: PAT-TOO-MANY-ARGS ;] E-PROC-OUTPUT TTHROWSQ
    [: PAT-LONG-ARG ;] E-PROC-OUTPUT TTHROWSQ
+   PAT-FITS-BOUNDS
+   [: PAT-NEG-ARG ;] E-PROC-OUTPUT TTHROWSQ
+   [: PAT-HUGE-ARG ;] E-PROC-OUTPUT TTHROWSQ
    PAT-RUN-ARGV-CAPTURE
    PAT-RUN-ARGV-CAPTURE-RESULT
    PAT-RUN-ARGV-CAPTURE-EXACT

@@ -28,7 +28,6 @@ require src/habu/code-bytes.f
 package TIER-DUMP
 private
 
-1024 constant PATH-CAP
 64 constant USAGE-RC                \ sysexits EX_USAGE
 74 constant IO-RC                   \ sysexits EX_IOERR
 48 constant ZERO-C

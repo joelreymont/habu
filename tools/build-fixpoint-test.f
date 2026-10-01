@@ -683,19 +683,25 @@ create DG-C 40 allot
 : DEP$ ( -- ptr u8 n )     DEP-BUF DEP-U @ ;
 : OTHER$ ( -- ptr u8 n )   OTHER-BUF OTHER-U @ ;
 
+\ One entry line per append: SB holds one path and its line, not three.
+: ENTRY-LINE+ ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: pre:ptr preu:n a:ptr u:n post:ptr postu:n :}
+   SB-RESET
+   pre preu SB-APPEND a u SB-APPEND post postu SB-APPEND BFT-NL 1 SB-APPEND
+   FIXTURE-ENTRY$ SB$ APPEND-FILE ;
+
 \ Entry source: one real `require`, plus the same loader text hidden in a
 \ comment and in a string literal.
-: ENTRY-SRC$ ( -- ptr u8 n )
-   SB-RESET
-   s" \ require " SB-APPEND OTHER$ SB-APPEND BFT-NL 1 SB-APPEND
-   s\" s\" require " SB-APPEND OTHER$ SB-APPEND 34 SB-APPEND-C BFT-NL 1 SB-APPEND
-   s" require " SB-APPEND DEP$ SB-APPEND BFT-NL 1 SB-APPEND
-   SB$ ;
+: WRITE-ENTRY ( -- )
+   FIXTURE-ENTRY$ s" " WRITE-ALL
+   s" \ require " OTHER$ s" " ENTRY-LINE+
+   s\" s\" require " OTHER$ s\" \"" ENTRY-LINE+
+   s" require " DEP$ s" " ENTRY-LINE+ ;
 
 : WRITE-FIXTURES ( -- )
    DEP$ s\" \\ dep v1\n" WRITE-ALL
    OTHER$ s\" \\ other v1\n" WRITE-ALL
-   FIXTURE-ENTRY$ ENTRY-SRC$ WRITE-ALL ;
+   WRITE-ENTRY ;
 
 : MEMBER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 begin dup EC:COUNT < while

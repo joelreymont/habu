@@ -66,7 +66,6 @@ private
 
 $4000 constant BUF-CAP
 $3F00 constant BUF-HIGH            \ flush above this, leaving room for a line
-1024 constant PATH-CAP
 32 constant DIG-CAP
 64 constant USAGE-RC               \ sysexits EX_USAGE
 74 constant ERR-RC                 \ sysexits EX_IOERR

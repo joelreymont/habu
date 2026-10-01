@@ -30,6 +30,10 @@ create SDT-ROOT SDT-PC allot
 create SDT-ENTRY SDT-PC allot
 create SDT-OUT $2000 allot
 create SDT-SRC SDT-SRC-CAP allot
+\ The emitted text names two canonical fixture paths: more than SB holds.
+SDT-PC 2 * $40 + constant SDT-WANT-CAP
+create SDT-WANT SDT-WANT-CAP allot
+variable SDT-WANT-U
 variable SDT-ROOT-U
 variable SDT-ENTRY-U
 variable SDT-SRC-U
@@ -55,6 +59,8 @@ variable SDT-SRC-U
    SDT-ROOT$ 2swap JOIN CANONICAL drop ;
 
 : SDT-DISCOVER ( -- )  SDT-ENTRY$ DISCOVER:RUN ;
+
+: SDT-WANT+ ( ptr u8 n -- )  SDT-WANT SDT-WANT-CAP SDT-WANT-U BUF-APPEND ;
 
 : SDT-MIXED$ ( -- ptr u8 n )
    S\" require sd-a.f\ninclude sd-b.f\ninclude sd-b.f\ns\" sd-c.f\" required\ns\" sd-c.f\" required\ns\" sd-d.f\" provided\n: HELPER ( n -- n ) dup + ;\nrequire sd-e.f\n" ;
@@ -106,13 +112,13 @@ variable SDT-SRC-U
    s" emit.f" S\" require sd-x.f\ns\" sd-y.f\" provided\n" SDT-WRITE-ENTRY
    SDT-DISCOVER
    SDT-OUT $2000 DISCOVER:EMIT {: elen:n :}
-   SB-RESET
-   S\" required 0 s\" " SB-APPEND
-   s" sd-x.f" SDT-PATH SB-APPEND
-   S\" \"\nprovided 0 s\" " SB-APPEND
-   s" sd-y.f" SDT-PATH SB-APPEND
-   S\" \"\n" SB-APPEND
-   SDT-OUT elen SB$ T$= ;
+   SDT-WANT-U BUF-RESET
+   S\" required 0 s\" " SDT-WANT+
+   s" sd-x.f" SDT-PATH SDT-WANT+
+   S\" \"\nprovided 0 s\" " SDT-WANT+
+   s" sd-y.f" SDT-PATH SDT-WANT+
+   S\" \"\n" SDT-WANT+
+   SDT-OUT elen SDT-WANT SDT-WANT-U @ T$= ;
 
 : SDT-RUN-ENTRY ( -- )   SDT-DISCOVER ;
 

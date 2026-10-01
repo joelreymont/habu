@@ -1894,6 +1894,14 @@ SUITE cold-runtime
    test/cold-runtime-test.f
 ;SUITE
 
+SUITE cold-naming
+   test/cold-naming-test.f
+;SUITE
+
+SUITE tmp-path
+   test/tmp-path-test.f
+;SUITE
+
 SUITE gate-pool
    test/gate-pool-test.f
 ;SUITE

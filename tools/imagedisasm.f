@@ -3,7 +3,7 @@
 
 require lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
 
-1024 constant IMGD-PATH-CAP
+PATH-CAP constant IMGD-PATH-CAP
 144 constant IMGD-STAT-U
 $7FFFFFFFFFFFFFF constant IMGD-HEX-MAX-PRE
 

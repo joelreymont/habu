@@ -221,8 +221,8 @@ $41C8 constant FFI-SCRATCH-END
 
 $100 constant FN-MAX                      \ $100 rows * $50 bytes = $5000 bytes
 $30 constant FN-NAME-CAP                  \ NUL-terminated C symbol
-$08 constant LIB-MAX                    \ FFI:LIBRARY-MAX; 8*($60+cell)=832 DATA bytes
-$60 constant LIB-PATH-CAP                 \ NUL-terminated library path
+$08 constant LIB-MAX                    \ FFI:LIBRARY-MAX; 8 path rows and 8 handle cells
+PATH-CAP 1 + constant LIB-PATH-CAP      \ a library path of PATH-CAP bytes and its NUL
 $20 constant LIB-BASE-CAP                 \ the base name LIBRARY-NAME$ renders around
 9999 constant LIB-VERSION-MAX             \ ... and its soname version
 

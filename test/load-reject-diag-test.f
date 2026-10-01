@@ -196,18 +196,22 @@ LOWER-CERT-HOOK:INSTALL
 : LRD-IMM-S ( mystery:foo -- n ) RAW-IMM 73 ;
 " WRITE-ALL ;
 
-: RUNTIME-SOURCE$ ( -- ptr u8 n )
+\ One definition per append: SB holds one path and its text, not three.
+: RUNTIME-DEF+ ( ptr u8 n ptr u8 n -- ) {: pre:ptr preu:n post:ptr postu:n :}
    SB-RESET
-   S\" : RUN-I ( -- ) 73 s\" " SB-APPEND FRAG$ SB-APPEND
-   S\" \" included . ; : RUN-R ( -- ) 73 s\" " SB-APPEND FRAG$ SB-APPEND
-   S\" \" required . ; : RUN-P ( -- ) s\" " SB-APPEND FRAG$ SB-APPEND
-   S\" \" provided ; RUN-I RUN-R RUN-P" SB-APPEND
-   SB$ ;
+   pre preu SB-APPEND FRAG$ SB-APPEND post postu SB-APPEND
+   RUNTIME$ SB$ APPEND-FILE ;
+
+: RUNTIME-FIXTURE! ( -- )
+   RUNTIME$ s" " WRITE-ALL
+   S\" : RUN-I ( -- ) 73 s\" " S\" \" included . ; " RUNTIME-DEF+
+   S\" : RUN-R ( -- ) 73 s\" " S\" \" required . ; " RUNTIME-DEF+
+   S\" : RUN-P ( -- ) s\" " S\" \" provided ; RUN-I RUN-R RUN-P" RUNTIME-DEF+ ;
 
 : POSITIVE-FIXTURES! ( -- )
    s" 73 include " FRAG$ s"  ." TOP-INC$ FRAG-FIXTURE!
    s" 73 require " FRAG$ s"  ." TOP-REQ$ FRAG-FIXTURE!
-   RUNTIME$ RUNTIME-SOURCE$ WRITE-ALL
+   RUNTIME-FIXTURE!
    MODELED$ S\" : PI ( -- ) ; immediate s\" PI\" 0 parse-imm : PIM ( -- n ) PI 73 ; PIM ." WRITE-ALL
    TRUSTED$ S\" -1 JSON-DIAGS ! : LRD-TRUST-IMM ( -- ) ; immediate TRUSTED: LRD-TRUST-BODY ( -- n ) LRD-TRUST-IMM 73 ;" WRITE-ALL ;
 

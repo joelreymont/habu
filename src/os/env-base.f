@@ -87,8 +87,10 @@ variable ENV-QU
    repeat
    drop NULL$ ;
 
-$100 constant TMP-PATH-CAP
-create TPB TMP-PATH-CAP allot
+\ TMP-PATH's answer is a path of at most PATH-CAP bytes (src/core/util.f) with
+\ no NUL: a caller that opens it hands it to PATH0 or PATHZ, which add one in
+\ a buffer of their own.
+create TPB PATH-CAP allot
 PTR-VARIABLE TPP
 variable TPQ
 PTR-VARIABLE TPS
@@ -103,8 +105,12 @@ variable TPU
 : TPS! ( ptr u8 -- )
    TPS ! ;
 
+\ The name has to fit the room the root and its slash leave. Its length is
+\ compared with that room, never added to the root's, so neither a negative
+\ length nor one that wraps the sum passes.
 : TMP-PATH-CHECK ( n -- )
-   TMP-PATH-CAP > if s" env: TMP-PATH exceeds buffer" 76 die then ;
+   dup 0 < swap PATH-CAP TPQ @ - 1 - > or
+   if s" env: TMP-PATH exceeds buffer" 76 die then ;
 
 : TMP-PATH-COPY-SRC ( ptr u8 n -- )
    0 ?do dup i ZBYTE@ TPB TPQ @ 1 + i + ZBYTE! loop drop ;
@@ -112,7 +118,7 @@ variable TPU
 : TMP-PATH ( ptr u8 n -- ptr u8 n )
    TPU ! TPS!
    s" HB_TMP" GETENV dup 0 = if drop drop s" /tmp" then TPQ ! TPP !
-   TPQ @ 1 + TPU @ + TMP-PATH-CHECK
+   TPU @ TMP-PATH-CHECK
    TPQ @ 0 ?do TPP@ i ZBYTE@ TPB i ZBYTE! loop
    $2F TPB TPQ @ ZBYTE!
    TPS@ TPU @ TMP-PATH-COPY-SRC

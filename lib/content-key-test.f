@@ -97,21 +97,21 @@ create CKT-INT-B 80 allot
 
 \ A handle is done when its key is taken: reusing it names a slot it no longer
 \ owns, and that throws rather than folding into whatever holds the slot now.
-\ The stale copy is parked in a typed cell because `catch` takes a ( -- )
-\ quotation, so the retry cannot be handed its handle on the stack.
-1 LAYOUT-BUFFER CKT-STALE-BUF fold
+\ A handle a refused call is handed is parked in a typed cell because `catch`
+\ takes a ( -- ) quotation, so the call cannot be handed it on the stack.
+1 LAYOUT-BUFFER CKT-PARKED-BUF fold
 
-: CKT-STALE! ( fold -- )
-   0 CKT-STALE-BUF ! ;
+: CKT-PARK! ( fold -- )
+   0 CKT-PARKED-BUF ! ;
 
-: CKT-STALE@ ( -- fold )
-   0 CKT-STALE-BUF @ ;
+: CKT-PARKED@ ( -- fold )
+   0 CKT-PARKED-BUF @ ;
 
 : CKT-STALE-USE ( -- )
-   CKT-STALE@ s" delta" TEXT+ drop ;
+   CKT-PARKED@ s" delta" TEXT+ drop ;
 
 : CKT-FOLD-STALE-THROWS ( -- )
-   OPEN dup CKT-STALE!
+   OPEN dup CKT-PARK!
    s" gamma" TEXT+ CKT-SEQ-A FINAL-HEX
    [: CKT-STALE-USE ;] catch E-CK-STALE T= ;
 
@@ -144,6 +144,60 @@ create CKT-INT-B 80 allot
    s" FILE+ retains its path-as-name contract" T-LABEL
    CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$= ;
 
+\ ---- fragments longer than one byte can count ------------------------------
+\ A fragment carries its length in two bytes (CK-FRAG+), so a logical name of
+\ any length the tree's paths take folds whole: 256 bytes, one past what one
+\ byte counts, and FS-PATH-CAP. Two names that differ only in their last byte
+\ fold to different keys, so no byte past the 255th is dropped.
+create CKT-NAME CK-FRAG-MAX 1+ allot
+
+: CKT-NAME-FILL ( -- )
+   CK-FRAG-MAX 1+ 0 ?do [char] a CKT-NAME i + c! loop ;
+
+: CKT-NAMED ( n ptr u8 -- ) {: u:n key:ptr :}
+   OPEN CKT-SRC$ CKT-NAME u FILE-NAMED+ key FINAL-HEX ;
+
+: CKT-LONG-NAME ( n -- ) {: u:n :}
+   CKT-NAME u + 1- {: last:ptr :}
+   u CKT-KEY1 CKT-NAMED
+   [char] b last c!
+   u CKT-KEY2 CKT-NAMED
+   [char] a last c!
+   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$<> ;
+
+\ The second length byte is what keeps preimages apart. Counted in one byte, a
+\ 256-byte text would read as an empty one, and its bytes as the fragments that
+\ follow it: here a text tag, a length of 254 and 254 bytes, which is exactly
+\ what an empty text then a 254-byte text fold.
+: CKT-LENGTH-UNAMBIGUOUS ( -- )
+   CK-TEXT-TAG CKT-NAME c!
+   254 CKT-NAME 1+ c!
+   OPEN CKT-NAME 256 TEXT+ CKT-KEY1 FINAL-HEX
+   OPEN CKT-NAME 0 TEXT+ CKT-NAME 2 + 254 TEXT+ CKT-KEY2 FINAL-HEX
+   CKT-NAME-FILL
+   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$<> ;
+
+\ One byte past what two bytes count is refused before a byte is folded, and
+\ the fold it was offered stays open for its owner to discard.
+: CKT-OVER-USE ( -- )
+   CKT-PARKED@ CKT-NAME CK-FRAG-MAX 1+ TEXT+ drop ;
+
+: CKT-FRAG-OVER-REFUSED ( -- )
+   OPEN dup CKT-PARK!
+   [: CKT-OVER-USE ;] catch E-STR-BOUNDS T=
+   DISCARD ;
+
+: CKT-LONG-FRAGMENTS ( -- )
+   CKT-NAME-FILL
+   s" a 256-byte logical name folds, and its last byte counts" T-LABEL
+   256 CKT-LONG-NAME
+   s" a logical name of FS-PATH-CAP bytes folds, and its last byte counts" T-LABEL
+   FS-PATH-CAP CKT-LONG-NAME
+   s" a 256-byte text and an empty text then its tail fold apart" T-LABEL
+   CKT-LENGTH-UNAMBIGUOUS
+   s" a fragment one byte past CK-FRAG-MAX is refused" T-LABEL
+   CKT-FRAG-OVER-REFUSED ;
+
 : CKT-MAIN ( -- )
    T-RESET
    CKT-FOLD-OVERLAP-MATCHES
@@ -151,6 +205,7 @@ create CKT-INT-B 80 allot
    CKT-FOLD-SLOTS-RECYCLE
    CKT-SETUP
    CKT-LOGICAL-NAME
+   CKT-LONG-FRAGMENTS
    CKT-CLEANUP
    T-REPORT ;
 

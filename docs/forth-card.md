@@ -105,6 +105,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
 | a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 67 |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
+| a word defined before the check hook, with no `PRIM:` row, in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a from-source prefix boot only**, never on `bin/hb`; `PATH-CAP` and `E-PATH-RANGE` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP` |
 
 A caught result becomes readable on the success arm of core `code 0=` (or the
 false arm of core `code 0<>`) only when `code` is that catch's own status.

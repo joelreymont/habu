@@ -4,7 +4,9 @@
 
 package RESERVED-NAME-LINT-TEST
 
-$1000 constant BUF-CAP
+\ The longest report is the TFAM fixture's eight diagnostics, each naming a
+\ fixture path of up to FS-PATH-CAP bytes beside a message under $80 bytes.
+8 FS-PATH-CAP $80 + * constant BUF-CAP
 
 create ROOT FS-PATH-CAP allot
 create GOOD FS-PATH-CAP allot

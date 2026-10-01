@@ -208,10 +208,10 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 \ the window's wordlist base and span, and the window's DATA span. Everything else
 \ is a length.
 40 constant SCAL-BYTES
-\ AOT-IDENT holds at most 256 paths of at most 256 bytes, so the list cannot
-\ exceed 8 + 256 * (8 + 256) = 67592 bytes. The cap is the next round number above
-\ it and the overflow is refused rather than truncated.
-$20000 constant CLOSURE-CAP
+\ AOT-IDENT holds at most AOT-IDENT:MAX paths of at most PATH-CAP bytes, and the
+\ list is a count and then each path's length and bytes, so this is its largest.
+\ The overflow is still refused rather than truncated.
+8 AOT-IDENT:MAX PATH-CAP 8 + * + constant CLOSURE-CAP
 \ The verify pass's read granularity, and the whole of what CHUNK-BUF is for:
 \ pass one streams the payload through it and pass two reads the header back
 \ through it to move the cursor. No section is read PAST any more: the only one a

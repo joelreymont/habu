@@ -19,6 +19,29 @@ from that tree:
 bin/hb --load test/run.f
 ```
 
+A green native build does not show that the prefix boots from source. The
+build compiles the whole prefix with a checker: the host's up to
+`src/core/check-hook.f`, then the window's own, which starts with the rows
+the host recorded for everything before the hook (`TRANSFER-CHECKED`,
+`src/core/checker.f`). An engine that boots its prefix from source has no
+checker before the hook and only axiom rows after it. A prefix file loaded
+after the hook that names a pre-hook word without a `PRIM:` row therefore
+builds and then dies on every cold boot - measured with `PATH-CAP` inside
+`TMP-PATH-CHECK` before it had a row: `native-build OK`, then
+`E-UNDEFINED habu: in tmp-path-check: undefined word 'PATH-CAP'` from the cold
+host. The rows cannot be withheld to make the build refuse it: without them
+the window cannot compile `src/core/check-hook.f`'s first definition
+(`ncomp: cannot compile REPORT-UNCHECKABLE`, `E-NCOMP-ARITY`). After editing a
+prefix file, boot the candidate's prefix cold before the registry:
+
+```sh
+HB_TMP=$TMP HABU_AOT_GATE=1 bin/hb --load test/aot-wid-build.f
+```
+
+It ends `aot-wid-build: hb-pwid ready`. `bin/hb --load test/cold-naming-test.f`
+is the focused check of the naming rule itself
+([forth.md](forth.md#rules-learned-by-refusal)).
+
 The registry runs only on a `tools/native-build.f` product. Its keyed images
 (below) include the fixture writer (`test/fixture-writer.f`), an application
 image saved with the engine `lib/engine-candidate.f` resolves (an exported
@@ -61,6 +84,20 @@ the run is still going. To keep a run's trees, give it its own `HB_TMP`: every
 maker (the pool root, each spawned child's scratch, `hb-build`'s private build
 directory) goes under it when it is set, and under `TMPDIR` or `/tmp` when it
 is not.
+
+A gate `HB_TMP` of at most 675 bytes keeps every row's paths within
+`PATH-CAP` and Darwin's 1023-byte `PATH_MAX` on any host. The deepest row
+path is `streaming-sha256`'s deep file (`tools/sha256-file-test.f`):
+`<HB_TMP>/habu-native-suite-<ns>-<try>/pool-<pid>-<seq>-tmp/habu-sha256-file-test-<ns>-<try>/<230 bytes>/deep.bin`.
+That is 295 fixed bytes, then `<ns>` twice, the mono-ns clock in decimal (14
+digits before 27.8 hours of uptime, 15 before 11.6 days, 19 at most);
+`<try>` twice, the temp-name attempt (under 64, so at most 2 digits);
+`<pid>` (5 digits on Darwin, up to 7 on Linux); and `<seq>`, the pool's
+spawn count (3 digits for this suite; the bound allows 4). At
+those maxima it adds 348 bytes, and 1023 less 348 is 675. Measured on a host
+with a 14-digit `<ns>` and a 5-digit `<pid>`, where it adds at most 333: a
+685-byte root fit every row, and at 700 bytes that row was refused past
+`PATH_MAX`.
 
 The pool makes one scratch directory per spawned child and hands it to the
 child as `HB_TMP`, then removes it when that slot retires — exited, signaled or

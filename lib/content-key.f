@@ -26,6 +26,7 @@ $40000 constant CK-CAP
 $54 constant CK-TEXT-TAG
 $46 constant CK-FILE-TAG
 $44 constant CK-DIGEST-TAG
+$FFFF constant CK-FRAG-MAX       \ the two length bytes a text or file fragment carries
 
 4 constant CK-FOLD-N
 
@@ -157,11 +158,14 @@ private
    a s CK-SLOT-BUF s CK-SLOT-U@ + u BYTE-COPY
    s CK-SLOT-U@ u + s CK-SLOT-U! ;
 
+\ A fragment is its tag, its length in two little-endian bytes and its bytes:
+\ FILE+ folds the file's name, and a path of PATH-CAP bytes has to fold whole.
 : CK-FRAG+ ( n n ptr u8 n -- ) {: s:n tag:n a:ptr u:n :}
    u 0 < if E-STR-BOUNDS throw then
-   u STR-BYTE-MAX > if E-STR-BOUNDS throw then
+   u CK-FRAG-MAX > if E-STR-BOUNDS throw then
    s tag CK-U8+
-   s u CK-U8+
+   s u STR-BYTE-MAX and CK-U8+
+   s u 8 rshift CK-U8+
    s a u CK-BYTES+ ;
 
 public

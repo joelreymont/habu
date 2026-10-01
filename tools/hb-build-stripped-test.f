@@ -39,12 +39,18 @@ package HB-BUILD-CLI
 \ lib/fs.f and lib/fs-mutate.f, before opening the capture window - which put them
 \ below the span and refused the image. The walked directory is spliced in as a
 \ literal because a stripped image reads no argv here.
-: HBT-LIB-SRC$ ( -- ptr u8 n )
-   SB-RESET
-   S\" require lib/string.f\nrequire lib/fs.f\nrequire lib/fs-mutate.f\n\npackage HBT-SLIB\nprivate\nvariable HITS\ncreate P1 FS-PATH-CAP allot  variable P1U\ncreate P2 FS-PATH-CAP allot  variable P2U\n: DIR$ ( -- ptr u8 n ) s\" " SB-APPEND
-   HBT-LIB-DIR SB-APPEND
-   S\" \" ;\n: JOIN! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu dst:ptr lenp:ptr :}\n   SB-RESET DIR$ SB-APPEND s\" /\" SB-APPEND name nameu SB-APPEND\n   SB$ {: a:ptr u:n :} a dst u BYTE-COPY u lenp ! ;\n: P1$ ( -- ptr u8 n ) P1 P1U @ ;\n: P2$ ( -- ptr u8 n ) P2 P2U @ ;\npublic\n: RUN ( -- )\n   SB-RESET s\" sb=\" SB-APPEND s\" ok\" SB-APPEND SB$ type cr\n   s\" a.txt\" P1 P1U JOIN!\n   s\" b.txt\" P2 P2U JOIN!\n   P1$ P2$ COPY-FILE-STREAM\n   P2$ FILE? if s\" copy=ok\" type cr then\n   0 HITS !\n   DIR$ [: 2drop HITS @ 1 + HITS ! ;] WALK-FILES\n   HITS @ 3 = if s\" files=3\" type cr then ;\n;package\n: MAIN ( -- ) HBT-SLIB:RUN ;\n" SB-APPEND
-   SB$ ;
+: HBT-LIB-SRC-HEAD$ ( -- ptr u8 n )
+   S\" require lib/string.f\nrequire lib/fs.f\nrequire lib/fs-mutate.f\n\npackage HBT-SLIB\nprivate\nvariable HITS\ncreate P1 FS-PATH-CAP allot  variable P1U\ncreate P2 FS-PATH-CAP allot  variable P2U\n: DIR$ ( -- ptr u8 n ) s\" " ;
+
+: HBT-LIB-SRC-TAIL$ ( -- ptr u8 n )
+   S\" \" ;\n: JOIN! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu dst:ptr lenp:ptr :}\n   SB-RESET DIR$ SB-APPEND s\" /\" SB-APPEND name nameu SB-APPEND\n   SB$ {: a:ptr u:n :} a dst u BYTE-COPY u lenp ! ;\n: P1$ ( -- ptr u8 n ) P1 P1U @ ;\n: P2$ ( -- ptr u8 n ) P2 P2U @ ;\npublic\n: RUN ( -- )\n   SB-RESET s\" sb=\" SB-APPEND s\" ok\" SB-APPEND SB$ type cr\n   s\" a.txt\" P1 P1U JOIN!\n   s\" b.txt\" P2 P2U JOIN!\n   P1$ P2$ COPY-FILE-STREAM\n   P2$ FILE? if s\" copy=ok\" type cr then\n   0 HITS !\n   DIR$ [: 2drop HITS @ 1 + HITS ! ;] WALK-FILES\n   HITS @ 3 = if s\" files=3\" type cr then ;\n;package\n: MAIN ( -- ) HBT-SLIB:RUN ;\n" ;
+
+\ Written in three pieces: the directory is as long as the scratch root makes
+\ it, so the source goes to the file without passing through a fixed buffer.
+: HBT-LIB-SRC! ( -- )
+   HBT-LIB-SRC HBT-LIB-SRC-HEAD$ WRITE-ALL
+   HBT-LIB-SRC HBT-LIB-DIR APPEND-FILE
+   HBT-LIB-SRC HBT-LIB-SRC-TAIL$ APPEND-FILE ;
 
 : HBT-LIB-EXPECTED$ ( -- ptr u8 n )
    S\" sb=ok\ncopy=ok\nfiles=3\n" ;
@@ -104,7 +110,7 @@ package HB-BUILD-CLI
    HBT-LIB-DIR MAKE-DIR
    s" a.txt" s" one" HBT-LIB-FILE!
    s" c.txt" s" two" HBT-LIB-FILE!
-   HBT-LIB-SRC HBT-LIB-SRC$ WRITE-ALL
+   HBT-LIB-SRC!
    HBT-LIB-OUT HBT-REMOVE-FILE?
    HBT-LIB-SRC HBT-LIB-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
    HBT-LIB-OUT FILE? TTRUE

@@ -7,7 +7,7 @@ require tools/json.f
 
 $8000 constant GJA-IN-CAP
 $1000 constant GJA-SRC-CAP
-$400 constant GJA-PATH-CAP
+PATH-CAP 1 + constant GJA-PATH-CAP
 $100 constant GJA-LINE-MAX
 
 create GJA-IN GJA-IN-CAP allot

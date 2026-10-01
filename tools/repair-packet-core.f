@@ -8,7 +8,7 @@ require tools/json.f
 
 74 constant RP-E-IO
 64 constant RP-E-USAGE
-1024 constant RP-PATH-CAP
+PATH-CAP 1 + constant RP-PATH-CAP
 $40000 constant RP-IN-CAP
 32 constant RP-NUM-CAP
 

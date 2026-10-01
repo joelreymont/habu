@@ -14183,10 +14183,10 @@ variable CPAY-ON
 
 : CAP-FAIL ( ptr u8 n -- )
    FAILSET @ 0= IF FAIL-PIN! ELSE 2drop THEN ;
-create DIAGFB 256 allot   variable DIAGFU
+create DIAGFB PATH-CAP 1 + allot   variable DIAGFU
 variable DIAGL0  variable DIAGC0  variable DIAGB0
 : DIAG-FILE! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 255 > IF s" diag: file path too long" 76 die THEN
+   u PATH-CAP > IF s" diag: file path too long" 76 die THEN
    0 BEGIN dup u < WHILE
       dup a + c@  over DIAGFB + c!
       1 +
