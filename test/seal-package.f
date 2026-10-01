@@ -292,7 +292,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 
 : SPK-TYPE-PRIVATE-WID$ ( -- ptr u8 n )
    SB-RESET
-   S\" s\" TYPE-NAME\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-LEN set-current" SPK-LINE
+   S\" s\" TYPE-NAME\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-PKG-PRIVATE set-current" SPK-LINE
    s" : HACK-PRIVATE ( -- n ) 0 ;" SPK-LINE
    SB$ ;
 

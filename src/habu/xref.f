@@ -91,8 +91,10 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
    wid 6 rshift 8 * data-base PROT-BITS-OFF + + @
    wid 63 and rshift 1 and 0= 0= ;
 
-\ Keep the namespace private-WID API and the historical body length distinct
-\ from the exact code span. A raw length is only for record serialization.
+\ Keep the historical body length distinct from the exact code span. A namespace
+\ row's length cell holds a wordlist id, so it is answered raw rather than sent
+\ through CODE-SPAN; a package reader names that cell XREF-PKG-PRIVATE. A raw
+\ length is only for record serialization.
 : XREF-LEN ( ptr n -- n ) {: rec:ptr :}
    rec XREF-WORDLIST XREF-NAMESPACE-WL = if rec XREF-RAW-LEN exit then
    rec XREF-RAW-LEN dup CODE-SPAN:CHECK CODE-SPAN:BODY ;
@@ -234,10 +236,10 @@ private
    dup XREF-WORDLIST XREF-NAMESPACE-WL <> if
       drop s" " MODE-NONE XREF-FALSE exit
    then
-   dup XREF-START pub <> if
+   dup XREF-PKG-PUBLIC pub <> if
       drop s" " MODE-NONE XREF-FALSE exit
    then
-   dup XREF-LEN pri <> if
+   dup XREF-PKG-PRIVATE pri <> if
       drop s" " MODE-NONE XREF-FALSE exit
    then
    cur pub = if MODE-PUB NAME-OUT exit then

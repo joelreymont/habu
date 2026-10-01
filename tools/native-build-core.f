@@ -285,7 +285,7 @@ TYPED-VARIABLE SOURCE-CLOSE [ -- ]
    dup XREF-FOUND? 0= if
       drop s" native-build: literal owner missing" 76 die
    then
-   XREF-LEN  s" IMPORT-ROWS" rot XREF-FIND-WL
+   XREF-PKG-PRIVATE  s" IMPORT-ROWS" rot XREF-FIND-WL
    dup XREF-FOUND? 0= if
       drop s" native-build: literal importer missing" 76 die
    then

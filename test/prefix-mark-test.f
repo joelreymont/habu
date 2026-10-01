@@ -38,7 +38,7 @@ private
 \ so the boundary is not a free number: it is the count of records that existed
 \ when that file finished.
 : BOUNDARY-INDEX ( -- n )
-   s" PREFIX-MARK" XREF-NAMESPACE-WL XREF-FIND-WL XREF-LEN
+   s" PREFIX-MARK" XREF-NAMESPACE-WL XREF-FIND-WL XREF-PKG-PRIVATE
    s" BOUNDARY" rot XREF-FIND-WL-INDEX ;
 
 : LOWER-BOUND ( -- )

@@ -221,7 +221,7 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 : NS-INDEX ( n -- n ) {: wid :}
    ndict@ 1 - begin dup 0 >= while
       dup XREF-REC XREF-WORDLIST XREF-NAMESPACE-WL = if
-         dup XREF-REC XREF-START wid = if exit then
+         dup XREF-REC XREF-PKG-PUBLIC wid = if exit then
       then
       1 -
    repeat ;

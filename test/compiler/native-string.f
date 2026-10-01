@@ -269,7 +269,7 @@ TRUSTED: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
 : IMPORT-OP ( -- [ ptr u8 n ptr n ptr n -- ] )
    s" NSTR" XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? TTRUE
-   XREF-LEN {: wid:n :}
+   XREF-PKG-PRIVATE {: wid:n :}
    s" IMPORT-ROWS" wid XREF-FIND-WL
    dup XREF-FOUND? TTRUE
    XREF-START IMPORT-XT ;

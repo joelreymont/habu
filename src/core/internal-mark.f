@@ -121,7 +121,7 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
    i p i IMK-QUAL KNOWN-MIN-IN IMK-MARK ;
 
 : IMK-PKG-PUBLICS ( n -- ) {: p:n :}   \ every public colon record of package row p
-   p IMK-REC XREF-START {: pub:n :}
+   p IMK-REC XREF-PKG-PUBLIC {: pub:n :}
    p 1 + FIRST-CORE max IMK-I !
    BEGIN IMK-I @ ndict@ < WHILE
       IMK-I @ IMK-WID pub = IF p IMK-I @ IMK-CLASSIFY-PUB THEN

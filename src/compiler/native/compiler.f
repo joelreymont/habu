@@ -357,7 +357,7 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    rec  a split 1+ ZPTR+  u split - 1-  XREF-MATCH? 0= if false exit then
    a split XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop false exit then
-   XREF-START  rec XREF-WORDLIST  = ;
+   XREF-PKG-PUBLIC  rec XREF-WORDLIST  = ;
 
 : RECORD-NAME? ( ptr n ptr u8 n -- bool )
    {: rec:ptr a:ptr u:n :}

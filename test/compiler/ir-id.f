@@ -323,7 +323,7 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" sealed qualified tail cannot define" T-LABEL
    s" : IR-ID:FORGE ( -- ) ;" s" IR-ID:FORGE" SEAL-CASE
    s" sealed private wordlist cannot mutate" T-LABEL
-   S\" s\" IR-ID\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-LEN set-current\n: FORGE ( -- ) ;"
+   S\" s\" IR-ID\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-PKG-PRIVATE set-current\n: FORGE ( -- ) ;"
       s" FORGE" SEAL-CASE
    s" sealed source cannot include twice" T-LABEL
    S\" s\" src/compiler/ir/id.f\" included" s" IR-ID" SEAL-CASE
@@ -440,8 +440,8 @@ private
 
 : RAW-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
    AUTH-NS {: ns:ptr :}
-   a u ns XREF-START XREF-FIND-WL XREF-FOUND? TFALSE
-   a u ns XREF-LEN XREF-FIND-WL XREF-FOUND? TTRUE ;
+   a u ns XREF-PKG-PUBLIC XREF-FIND-WL XREF-FOUND? TFALSE
+   a u ns XREF-PKG-PRIVATE XREF-FIND-WL XREF-FOUND? TTRUE ;
 
 
 \ Read the public metadata surface; checker lookup helpers are private, so the
@@ -466,7 +466,7 @@ TRUSTED: FAMILY-PKG$ ( n -- ptr u8 n ) TFAM:TFAM-PKG$ ;
 
 : DICTIONARY-OWNERSHIP ( -- )
    RAW# 0 ?do i RAW$ RAW-ROW loop
-   s" SERIAL-NEXT" AUTH-NS XREF-START XREF-FIND-WL XREF-FOUND? TFALSE
+   s" SERIAL-NEXT" AUTH-NS XREF-PKG-PUBLIC XREF-FIND-WL XREF-FOUND? TFALSE
    s" IR-RAW" XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? TFALSE ;
 
 public

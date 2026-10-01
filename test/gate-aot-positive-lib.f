@@ -208,9 +208,9 @@ variable BLR-CNT
    s" package AOT-SURFACE-TEST" GE-SRC-LINE
    s\" : AS-FAIL ( bool -- ) 0= if s\" AOT-LINK surface mismatch\" 74 die then ;" GE-SRC-LINE
    s\" : AS-NS ( -- ptr n ) s\" AOT-LINK\" XREF-NAMESPACE-WL XREF-FIND-WL ;" GE-SRC-LINE
-   s" : AS-PUB ( -- n ) AS-NS XREF-START ;" GE-SRC-LINE
-   s" : AS-PRI ( -- n ) AS-NS XREF-LEN ;" GE-SRC-LINE
-   s\" : AS-HOST-PUB ( -- n ) s\" AOT-SURFACE-HOSTILE\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-START ;" GE-SRC-LINE ;
+   s" : AS-PUB ( -- n ) AS-NS XREF-PKG-PUBLIC ;" GE-SRC-LINE
+   s" : AS-PRI ( -- n ) AS-NS XREF-PKG-PRIVATE ;" GE-SRC-LINE
+   s\" : AS-HOST-PUB ( -- n ) s\" AOT-SURFACE-HOSTILE\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-PKG-PUBLIC ;" GE-SRC-LINE ;
 
 : SURFACE-PUB-DEFS ( -- )
    s\" : AS-PUB-NAME? ( ptr u8 n -- bool ) 2dup s\" LINK\" XREF-STR=CI >r s\" BUILD-NATIVE\" XREF-STR=CI r> or ;" GE-SRC-LINE

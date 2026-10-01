@@ -98,7 +98,7 @@ TRUSTED: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
    {: a u:n split:n :}
    a split XREF-NAMESPACE-WL WL-RECORD
    dup XREF-FOUND? 0= if exit then
-   XREF-START {: wid:n :}
+   XREF-PKG-PUBLIC {: wid:n :}
    a split 1+ ZPTR+ u split - 1- wid WL-CANDIDATE ;
 
 
