@@ -46,6 +46,13 @@
 \               whose qualified name AOT-BAND-SITE:MK:;does holds two colons and
 \               resolves nowhere: refused by the name audit, which runs after this
 \               band's and needs a capture in a booted engine just as much.
+\   export/empty  CALLER calls a private word through the public name EXPORT gave
+\               it: captured, two call sites. The body's first record is the
+\               private one, so a capture that named a callee by its first record
+\               would refuse a call the loader accepted.
+\   retired/empty  CALLER calls a word `undefine` retired and a second body
+\               replaced: refused by the scope audit, naming the callee. No live
+\               name carries the first body, and its spelling now calls another.
 \
 \ THE WORDLIST SPAN HAS NO CASE HERE, and that is a deletion rather than a gap:
 \ it used to be declared by a call of its own, so "the tool declared the band and
@@ -53,7 +60,7 @@
 \ WINDOW-CLOSE now latch the span with the other three coordinates, so no
 \ producer can leave it undeclared and the refusal that named it is gone with it.
 \
-\ Cost: eight child bin/hb runs, no metabuild. Registered as
+\ Cost: ten child bin/hb runs, no metabuild. Registered as
 \ `SUITE aot-prelude-band` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-prelude-band-suite.f
 
@@ -111,6 +118,8 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 : CALL-CASE ( ptr u8 n -- ) s" test/aot-band-call.f" 2swap RUN-CASE ;
 : DATA-CASE ( ptr u8 n -- ) s" test/aot-band-data.f" 2swap RUN-CASE ;
 : SITE-CASE ( ptr u8 n -- ) s" test/aot-band-site.f" 2swap RUN-CASE ;
+: EXPORT-CASE ( ptr u8 n -- ) s" test/aot-band-export.f" 2swap RUN-CASE ;
+: RETIRED-CASE ( ptr u8 n -- ) s" test/aot-band-retired.f" 2swap RUN-CASE ;
 
 \ The diagnostic goes to stdout ahead of the die, so both streams are searched:
 \ which one carries it is the engine's business, not this suite's.
@@ -186,6 +195,21 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    s" ... naming the qualified spelling it would have baked" T-LABEL
    s" bakes the name AOT-BAND-SITE:MK:;does" SAID? TTRUE ;
 
+: PROBE-EXPORT-CAPTURED ( -- )
+   s" empty" EXPORT-CASE
+   s" a call to a private word through its exported name captures" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... and both calls are call sites" T-LABEL
+   s" sites=2" SAID? TTRUE ;
+
+: PROBE-RETIRED-REFUSED ( -- )
+   s" empty" RETIRED-CASE
+   s" a call to a retired word no live name reaches is refused" T-LABEL
+   s" aot-capture: call site into a wordlist the seed cannot name" REFUSED
+   s" ... naming the caller and the callee" T-LABEL
+   s" window word CALLER calls GONE" SAID? TTRUE ;
+
 : BODY ( -- )
    SETUP
    PROBE-CALL-REFUSED
@@ -195,7 +219,9 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    PROBE-DATA-MARK-ABOVE
    PROBE-DATA-REFUSED
    PROBE-DATA-BELOW
-   PROBE-SITE-UNNAMED ;
+   PROBE-SITE-UNNAMED
+   PROBE-EXPORT-CAPTURED
+   PROBE-RETIRED-REFUSED ;
 
 public
 

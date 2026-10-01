@@ -691,11 +691,16 @@ create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
 
 variable ACAP-P
 
-\ A private word of a pre-window package is the one callee no scope can carry:
-\ the qualifier reaches a package's PUBLIC wordlist only. It is also unreachable -
-\ a caller in that package's private scope is itself a record of that package, and
-\ ACAP-?WID refuses a window record whose wid the window did not create - so this
-\ names the next producer of one rather than a case that arrives.
+\ A callee is refused when no record carrying its entry sits in a scope the seed
+\ can search: the qualifier reaches a package's PUBLIC wordlist only, and a record
+\ `undefine` retired is in no wordlist at all. The producer is a window word
+\ compiled against a word that was then retired and replaced
+\ (test/aot-band-retired.f): its spelling now reaches another body. A call to a
+\ private word with no public alias does not arrive here - a caller outside its
+\ package cannot name it, and one inside is a window record of that package,
+\ which ACAP-?WID refuses first. A branch site does: a window word made through
+\ the public alias of an EXPORTed private definer branches into the definer's
+\ does> clause, and EXPORT publishes the definer, not its clause record.
 : ACAP-REFUSE-SCOPE ( n n -- ) {: k:n w:n :}
    s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
    s"  calls " type k ACAP-NAME.
@@ -723,7 +728,35 @@ variable ACAP-P
    s" , which its own window created; a call site carries no window coordinate" type cr
    s" aot-capture: call site scope inside the capture window" 74 die ;
 
-: ACAP-SITE-SCOPE ( n -- ptr u8 n n ) {: k:n :}   \ callee record -> name, scope
+\ Whether ACAP-SITE-SCOPE below spells record k's wordlist without refusing it:
+\ a layout constant (wid 0 among them) or a pre-window package's public wordlist.
+: ACAP-SCOPE-NAMED? ( n -- bool ) {: k:n :}
+   k AOT-REC AOT-RWID {: w:n :}
+   w 0 >= w FIRST-DYNAMIC-WID < and if true exit then
+   w ACAP-WID-IN? if false exit then
+   w ACAP-PKG-PUB 0 >= ;
+
+\ WHICH RECORD NAMES A CALLEE. `EXPORT` gives a body a second record under a
+\ public name (habu2.f C-EXPORT), so the first record carrying a callee's entry -
+\ the one ACAP-TGT>REC answers - can be a private word whose only public name is a
+\ later record. When the first record's scope is one the seed cannot search, the
+\ site travels under the first later record of the same entry whose scope it can,
+\ taken from below the prelude mark because a record above it is in no target. No
+\ such record leaves the first one, and ACAP-SITE-SCOPE refuses it by name. The
+\ walk runs only where that refusal used to end the capture.
+: ACAP-SITE-REC ( n -- n ) {: k:n :}
+   k ACAP-SCOPE-NAMED? if k exit then
+   k ACAP-PRE-R @ >= if k exit then
+   k AOT-REC AOT-RXT {: xt:n :}
+   ACAP-PRE-R @ k 1+ ?do
+      i AOT-REC AOT-RXT xt = if
+         i ACAP-SCOPE-NAMED? if i unloop exit then
+      then
+   loop
+   k ;
+
+: ACAP-SITE-SCOPE ( n -- ptr u8 n n ) {: callee:n :}   \ callee record -> name, scope
+   callee ACAP-SITE-REC {: k:n :}
    k AOT-REC AOT-RNPTR  k AOT-REC AOT-RNLEN {: a:ptr u:n :}
    k AOT-REC AOT-RWID {: w:n :}
    w 0 >= w FIRST-DYNAMIC-WID < and if a u w exit then
