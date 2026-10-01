@@ -58,6 +58,14 @@ Declaration packets never fabricate definition-only fields such as `word`,
 `declared_effect`, `definition_source`, or `return_stack`; source-span fields
 land with the declaration origin plumbing (PLAN item 13).
 
+A top-level statement that throws while `--all-errors` checks it, such as a
+storage declaration sizing a type an earlier refusal left undefined, emits a
+statement-shaped object: code `E-REJECTED`, repair class `unknown_rejection`,
+`verdict` `rejected`, the `token` the checker read last with its `file`,
+`line`, `column`, `byte_start` and `byte_end`, the `throw_code` it raised, and
+`suggestion`. It carries no definition fields, and the checker does not
+continue past that statement in its source.
+
 ## Repair Packet JSON
 
 Repair packets are the LLM-facing object passed back after a checker rejection.

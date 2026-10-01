@@ -33,6 +33,7 @@ private
 
 10 constant CA-LF
 123 constant CA-LBRACE
+70 constant CA-REFUSED                  \ the status of a refusal the checker reported
 
 public
 
@@ -65,7 +66,8 @@ TYPED-VARIABLE CA-OUT-A ptr u8
 variable CA-OUT-CAP
 variable CA-LS
 variable CA-LE
-variable CA-TOKU                        \ length of the source word at a lexer diagnostic
+variable CA-THROW-RC                    \ what a statement threw while it was checked
+variable CA-THROW-AT                    \ and the byte of the token the checker read last
 
 TYPED-VARIABLE CA-FILE-A ptr u8
 variable CA-FILE-U
@@ -339,6 +341,11 @@ private
    LJW$ CA-ERR
    CA-LF$ CA-ERR ;
 
+: CA-WORD-END ( n -- n )                \ the byte past the source word at byte n
+   begin dup CA-SRC-U @ < if CA-SRC-A@ over + c@ 32 > else CA-FALSE then while
+      1+
+   repeat ;
+
 \ ---- malformed primitive-axiom row --------------------------------------------
 \ The lexer's second diagnostic. An incomplete `PRIM:`/`PPRIM:` row stops the scan
 \ exactly like an open string does, but it needs its own code and its own repair
@@ -346,14 +353,7 @@ private
 \ there. The diagnostic site is the row OPENER, so the reported token is the opener
 \ word read out of the source.
 : CA-ROW-TOKEN-U ( -- n )
-   0 CA-TOKU !
-   begin
-      LINT-LEX:ERROR-BYTE@ CA-TOKU @ + CA-SRC-U @ <
-      CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-TOKU @ + c@ 32 > and
-   while
-      CA-TOKU @ 1+ CA-TOKU !
-   repeat
-   CA-TOKU @ ;
+   LINT-LEX:ERROR-BYTE@ dup CA-WORD-END swap - ;
 
 : CA-ROW-TOKEN$ ( -- ptr u8 n )
    CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-ROW-TOKEN-U ;
@@ -403,7 +403,7 @@ private
    LINT-LEX:ERROR-BYTE@ CA-AT @ < IF exit THEN
    LINT-LEX:ERROR-BYTE@ CA-END @ >= IF exit THEN
    CA-LEX-ROW? IF CA-EMIT-LEX-ROW ELSE CA-EMIT-LEX-UNTERM THEN
-   70 throw ;
+   CA-REFUSED throw ;
 
 
 
@@ -490,6 +490,72 @@ private
       CA-ERR-A@ CA-ERR-LEN @ CA-ERR
    THEN ;
 
+\ ---- a statement that throws while it is checked ----------------------------
+\ The checker reports a definition it refuses and returns, but a statement can
+\ also throw out of it with nothing reported: a storage declaration sizing a
+\ type an earlier refusal left undefined throws E-CHECKER-LAYOUT-BUFFER. That
+\ throw is reported at the token the checker read last, after whatever it
+\ reported before it, and fails the source like a refusal, so the run ends with
+\ the checker's status. The rest of the source is not checked.
+: CA-LJW-N ( n -- ) {: v:n :}            \ a signed integer, MIN-N included
+   v 0 < 0= IF v LJW-U exit THEN
+   $2d LJW-C
+   v 10 / negate {: high:n :}
+   high 0 > IF high LJW-U THEN
+   $30 v 10 mod - LJW-C ;
+
+: CA-N$ ( n -- ptr u8 n )
+   LJW-RESET CA-LJW-N LJW$ ;
+
+: CA-THROW-END ( -- n )
+   CA-THROW-AT @ CA-WORD-END ;
+
+: CA-THROW-TOKEN$ ( -- ptr u8 n )
+   CA-SRC-A@ CA-THROW-AT @ + CA-THROW-END CA-THROW-AT @ - ;
+
+: CA-THROW-ORIGIN ( -- n n )
+   CA-SRC-A@ CA-THROW-AT @ BYTE-ORIGIN ;
+
+: CA-JSON-THROW ( -- )
+   CA-THROW-ORIGIN {: line:n col:n :}
+   LJW-RESET
+   LJW-OBJECT-START
+   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
+   s" code" LJW-KEY s" E-REJECTED" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" unknown_rejection" LJW-STRING LJW-COMMA
+   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
+   s" token" LJW-KEY CA-THROW-TOKEN$ LJW-STRING LJW-COMMA
+   s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
+   s" line" LJW-KEY line LJW-U LJW-COMMA
+   s" column" LJW-KEY col LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY CA-THROW-AT @ LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY CA-THROW-END LJW-U LJW-COMMA
+   s" throw_code" LJW-KEY CA-THROW-RC @ CA-LJW-N LJW-COMMA
+   s" suggestion" LJW-KEY s" Inspect the token, signature, and raw stack evidence." LJW-STRING
+   LJW-OBJECT-END
+   LJW$ CA-ERR
+   CA-LF$ CA-ERR ;
+
+: CA-PROSE-THROW ( -- )
+   CA-THROW-ORIGIN {: line:n col:n :}
+   s" E-REJECTED " CA-ERR
+   CA-FILE-A@ CA-FILE-U @ CA-ERR
+   s" :" CA-ERR line CA-N$ CA-ERR
+   s" :" CA-ERR col CA-N$ CA-ERR
+   s" : throw " CA-ERR CA-THROW-RC @ CA-N$ CA-ERR
+   s"  at '" CA-ERR CA-THROW-TOKEN$ CA-ERR
+   s" '" CA-ERR
+   CA-LF$ CA-ERR ;
+
+: CA-THREW? ( n -- bool ) {: rc:n :}    \ a throw the checker did not report
+   rc 0 <> rc CA-REFUSED <> and rc DUP-RC <> and ;
+
+: CA-HANDLE-THROW ( n -- ) {: rc:n :}
+   rc CA-THROW-RC !
+   VERIFY:TOKEN-BYTE@ CA-THROW-AT !
+   0 CA-EMIT-CAPTURED
+   CA-JSON? IF CA-JSON-THROW ELSE CA-PROSE-THROW THEN ;
+
 \ Whole-buffer multi-error drive (Option-A no-cascade ruling on
 \ habu-multi-err-checking-42db26f4): ONE verify pass in MULTI-ERR mode emits a
 \ file-relative diagnostic for every rejected definition, records each
@@ -507,6 +573,7 @@ private
    MULTI-ERR-END {: rejects:n :}
    CA-XSUP-RC @ 0 <> IF CA-XSUP-RC @ throw THEN
    rc DUP-RC = IF CA-HANDLE-DUP exit THEN
+   rc CA-THREW? IF rc CA-HANDLE-THROW exit THEN
    rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
 
 : CA-ALLOC-SOURCE ( n -- )
@@ -535,7 +602,7 @@ private
    CA-HANDLE-LEX-DEFECT
    CA-RUN-DEFS
    CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
-   CA-FAILED @ 0 <> IF 70 throw THEN ;
+   CA-FAILED @ 0 <> IF CA-REFUSED throw THEN ;
 
 public
 

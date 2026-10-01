@@ -2721,6 +2721,10 @@ create BIG $2000 allot   variable BIG-U
 \   - plain `--all-errors` checking the subject alone, so a word it takes from a
 \     file it loads is undefined (REQ-USE): it checks the same segments the
 \     source list does, with the same verdict at the same place;
+\   - a throw out of a statement in a later segment, such as the size query on
+\     a type a refused segment declared, escaping all-errors uncaught or, in
+\     prose, unreported (REQ-THROW): it is a diagnostic at the statement and
+\     the run ends with the checker's status;
 \   - the subject reached again through a require: it is still being expanded,
 \     so the pre-pass expands it once; the run loading its text a second time is
 \     CHK-BUILD-RUN's (dot c79b86b7);
@@ -2935,6 +2939,42 @@ variable REQ-U
    REQ-USE-FILES
    s" req-use.f" REQ-ALL-RUN EXPECT-ACCEPTED
    s" req-use-bad.f" REQ-ALL-RUN EXPECT-USE-UNDEFINED ;
+
+\ The refused dep is not support, so its type is undefined where the subject
+\ sizes a buffer of it, and that query throws.
+: REQ-THROW-FILES ( -- )
+   SB-RESET s" STRUCTURE ckt-rq-cell 0 FIELD v n ;STRUCTURE" REQ-LINE+
+   s" : CKT-RQ-BROKEN ( n -- n n ) ;" REQ-LINE+
+   s" req-throw-dep.f" REQ-WRITE
+   SB-RESET s" req-throw-dep.f" REQ-LOAD+
+   s" 4 TYPED-BUFFER CKT-RQ-CELLS ckt-rq-cell" REQ-LINE+
+   s" req-throw.f" REQ-WRITE ;
+
+: REQ-THROW-AT$ ( -- ptr u8 n )
+   s\" req-throw.f\",\"line\":2,\"column\":29," ;
+
+\ The first refusal is reported, then the throw at the type it could not size.
+: EXPECT-THROW-AT ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n at:ptr atu:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s" ckt-rq-broken" CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE ;
+
+: TEST-REQUIRE-THROW-ALL ( -- )
+   REQ-THROW-FILES
+   s" req-throw.f" REQ-PLAIN-RUN REQ-THROW-AT$ EXPECT-THROW-AT ;
+
+: TEST-REQUIRE-THROW-ALL-LIST ( -- )
+   REQ-THROW-FILES
+   s" req-throw.f" REQ-ALL-RUN REQ-THROW-AT$ EXPECT-THROW-AT ;
+
+: TEST-REQUIRE-THROW-PROSE ( -- )
+   REQ-THROW-FILES
+   s" req-throw.f" REQ$ {: p:ptr pu:n :}
+   RESET
+   s" all-errors" OPT
+   p pu FILE
+   [: RUN-ACT ;] IN-PROC s" req-throw.f:2:29:" EXPECT-THROW-AT ;
 
 \ `--all-errors --source-list a b` runs all-errors on the ORIGINAL files'
 \ segments with the clean ones before each replayed as support: both bad defs
@@ -3232,6 +3272,9 @@ POISON-RECORD
    s" check/require-use" [: TEST-REQUIRE-USE ;] CASE-RUN
    s" check/require-use-all" [: TEST-REQUIRE-USE-ALL ;] CASE-RUN
    s" check/require-use-all-list" [: TEST-REQUIRE-USE-ALL-LIST ;] CASE-RUN
+   s" check/require-throw-all" [: TEST-REQUIRE-THROW-ALL ;] CASE-RUN
+   s" check/require-throw-all-list" [: TEST-REQUIRE-THROW-ALL-LIST ;] CASE-RUN
+   s" check/require-throw-prose" [: TEST-REQUIRE-THROW-PROSE ;] CASE-RUN
    s" check/image-tool-sources" [: TEST-IMAGE-TOOL-SOURCES ;] CASE-RUN
    s" check/source-list-all-errors" [: LIST-ALL-TEST ;] CASE-RUN
    CLEANUP-RUN

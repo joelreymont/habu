@@ -48,13 +48,15 @@ create BODY-BUF BODYBUF-CAP allot
 : SOURCE! ( ptr u8 n -- )
    BASE-RESET
    SOURCE-U !
-   SOURCE-A ! ;
+   SOURCE-A !
+   0 TOKEN-BYTE ! ;
 
 : SOURCE-AT! ( ptr u8 n n n n -- ) {: a:ptr u:n line:n col:n byte:n :}
    a u SOURCE!
    line BASE-LINE !
    col BASE-COL !
-   byte BASE-BYTE ! ;
+   byte BASE-BYTE !
+   byte TOKEN-BYTE ! ;
 
 : SCAN-RESET ( -- )
    0 SCAN-I !
@@ -1217,6 +1219,12 @@ TRUSTED: RUN ( -- )
    THROW-RESULT ;
 
 public
+
+\ The byte where the token the scan read last starts, at the base the source
+\ was given, or that base before the scan reads one: after a throw out of a
+\ statement, where the statement stood.
+: TOKEN-BYTE@ ( -- n )
+   TOKEN-BYTE @ ;
 
 : SOURCE-BUF-IN-SCOPE ( ptr u8 n -- )
    SOURCE!
