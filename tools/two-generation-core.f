@@ -313,7 +313,10 @@ variable TG-COL-NAME
    s" .names" drop TG-MAP-PATH pathu + 6 BYTE-COPY
    TG-MAP-PATH pathu 6 + FILE? 0= if s" " exit then
    TG-MAP-PATH pathu 6 + FILE-SIZE dup TG-MAP-U ! CELL + CELL / TG-MAP-RESERVE
-   TG-MAP-PATH pathu 6 + 0 TG-MAP BYTE-VIEW TG-MAP-U @ READ-ALL drop
+   \ A file that shrank after FILE-SIZE leaves the previous generation's bytes
+   \ past the read in TG-MAP, and they would parse as this map's rows.
+   TG-MAP-PATH pathu 6 + 0 TG-MAP BYTE-VIEW TG-MAP-U @ READ-ALL
+   TG-MAP-U @ <> if E-FS-IO throw then
    0 TG-MAP-POS !
    TG-MAP-LINE$ s" habu-names 1" STR= 0= if s" " exit then
    TG-MAP-LINE$ {: header:ptr headeru:n :}
