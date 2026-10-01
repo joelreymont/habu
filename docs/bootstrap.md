@@ -304,6 +304,13 @@ generation 2's, or when generation 5 is not byte-identical to generation 4.
 `tools/two-generation-probe.f` is the child fixture that reads one engine's
 shape.
 
+A change to the checker's transfer (`TRANSFER-CHECKED` in `src/core/checker.f`)
+or to the capture of the window's prefix also runs
+`bin/hb --load test/host-checker-row-e2e.f`. It builds this tree through a
+host whose `PRIM:` table names another word and requires the engine and
+`.names` sidecar the engine under test builds (three builds, kept out of the
+registry as a build chain).
+
 The same tool checks build identity independently of convergence:
 
 ```sh
@@ -369,6 +376,25 @@ Three facts decide how a change reaches the fixpoint:
     each engine: a `package` costs 2, a `STRUCTURE` 1, a `TYPED-VARIABLE` 0 and
     a `require` of already baked source 0 — it just no longer reaches a
     product.
+  - *The checker's records do not follow the host's symbol numbering.* The
+    host certifies the window's prefix (`src/core/util.f` through
+    `src/core/layout-valid.f`), and the window's `TRANSFER-CHECKED`
+    (`src/core/checker.f`) copies each certified effect into its own checker:
+    a record and a no-return row per copy, a defer row for a deferred word, and
+    the name interned when the window lacks it, so the order of the copies is
+    their order in the image. A host numbers every name it holds a `PRIM:` row
+    for ahead of all others, so `TRANSFER-ROWS` copies in the order of the
+    host's records — `EW.NEXT`, the store offset just past each, follows the
+    prefix's source order on every host — not of its symbol ids. Measured on
+    the change that made it so: an engine built from a tree with one `PRIM:`
+    row fewer (`CHECKER-STORAGE-INFO`) built the unmodified tree into an engine
+    12,297 bytes off the tree's own, that word's record 2542nd in the store
+    instead of 888th, and one with one row more (`CHECKER-CAPTURE-PREPARE`)
+    into one 427,238 bytes off, every symbol interned after that name
+    renumbered; one more `variable` or `STRUCTURE` moved nothing. After it each
+    of the four builds a byte-identical engine with a byte-identical `.names`
+    sidecar, and `test/host-checker-row-e2e.f` builds through a host whose row
+    names the second word instead of the first.
   - *A name a pre-window build file calls comes from the HOST.*
     `tools/native-build.f` loads its own prefix from the tree
     (`src/habu/aot-decl.f`, `aot-capture.f`, `aot-file.f` and the rest), but

@@ -17821,11 +17821,81 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    sym flags TRANSFER-DEFER invert and  packed XFER-DMASK  packed XFER-RMASK  NORET-ADD-SYM
    sym flags TRANSFER-DEFER and 0= 0= DFER-ADD-SYM ;
 
+\ THE COPIES LAND IN THE SOURCE'S RECORD ORDER, NOT IN ITS SYMBOL ORDER. Each
+\ copy appends a record and a no-return row here, a defer row for a deferred
+\ word, and interns its name when this owner does not hold it yet, so the order
+\ of the copies is the order those take in the image. A host numbers every name
+\ it holds a PRIM: row for ahead of all others. Walked by source id, a host with
+\ one row fewer than this tree moved that word's record and rows, and a host
+\ with one row more renumbered every symbol interned after its name, in the
+\ engine built from the same source (docs/bootstrap.md). The host certified the
+\ prefix in source order after CHECKER-RESET-SOURCE rewound its user records, so
+\ the store offset just past each record, EW.NEXT, orders the copies the same
+\ way on every host.
+\ ORDER-P holds (offset, id) rows in a private mapping that TRANSFER-CHECKED
+\ releases on every way out: none of it reaches the image.
+2 cells constant ORDER-ROW
+PTR-VARIABLE ORDER-P   variable ORDER-N
+NULL-PTR ORDER-P !   0 ORDER-N !
+
+: ORDER-BASE ( -- ptr n ) ORDER-P @ ;
+: ORDER-KEY ( n -- ptr n ) ORDER-ROW * ORDER-BASE + ;
+: ORDER-ID ( n -- ptr n ) ORDER-KEY CELL + ;
+
+\ The store offset just past the source's record for a symbol, 0 for a symbol
+\ it holds none for; false past its last symbol. Only a record still being
+\ built has offset 0 (E-NEXT@), and the source has finished every record it
+\ hands over, so 0 never stands for a record.
+: SOURCE-AT ( n -- n bool )
+   SOURCE-ROW {: pool:ptr rec:ptr name:ptr packed:n more:bool :}
+   rec 0= if 0 more exit then
+   rec EW.NEXT @ more ;
+
+: ORDER-COUNT ( -- n )
+   0 1 begin dup SOURCE-AT while
+      0 <> if swap 1 + swap then
+      1 +
+   repeat 2drop ;
+
+: ORDER-FILL ( -- )
+   0 1 begin dup SOURCE-AT while
+      {: id:n at:n :}
+      at 0 <> if at over ORDER-KEY !  id over ORDER-ID !  1 + then
+      id 1 +
+   repeat 2drop drop ;
+
+: ORDER-SWAP ( n -- ) {: i:n :}   \ exchange rows i-1 and i
+   i 1 - ORDER-KEY @  i 1 - ORDER-ID @  {: at:n id:n :}
+   i ORDER-KEY @ i 1 - ORDER-KEY !  i ORDER-ID @ i 1 - ORDER-ID !
+   at i ORDER-KEY !  id i ORDER-ID ! ;
+
+\ Insertion sort: the walk meets the host's primitives first and every other
+\ record nearly in order, so a row moves past little more than those.
+: ORDER-SORT ( n -- ) {: n:n :}
+   1 begin dup n < while
+      dup begin
+         dup 0 > if dup 1 - ORDER-KEY @ over ORDER-KEY @ > else RES-FALSE then
+      while dup ORDER-SWAP 1 - repeat drop
+      1 +
+   repeat drop ;
+
+: ORDER-RELEASE ( -- )
+   ORDER-N @ 0= if exit then
+   ORDER-BASE ORDER-N @ ORDER-ROW * munmap 0 <> if
+      s" checker: transfer order munmap failed" 76 die
+   then
+   NULL-PTR ORDER-P !  0 ORDER-N ! ;
+
 : TRANSFER-ROWS ( -- )
-   1 begin
-      dup SOURCE-ROW
-      if TRANSFER-ROW 1+ else 2drop 2drop drop exit then
-   again ;
+   ORDER-COUNT {: n:n :}
+   n 0= if exit then
+   n ORDER-ROW * ARENA-ALLOC ORDER-P !  n ORDER-N !
+   ORDER-FILL
+   n ORDER-SORT
+   0 begin dup n < while
+      dup ORDER-ID @ SOURCE-ROW drop TRANSFER-ROW
+      1 +
+   repeat drop ;
 
 \ CLAIMING IS NOT CONDITIONAL ON HAVING SOMETHING TO IMPORT. A host that never
 \ published an owner record - a bootstrap seed, whose dispatch predates it -
@@ -17841,6 +17911,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    owner BIND-SOURCE
    CHECKER-REC-SYM @ {: saved:n :}
    [: TRANSFER-ROWS ;] catch {: rc:n :}
+   ORDER-RELEASE
    saved CHECKER-REC-SYM !
    DECLARATIONS BIND-SOURCE
    rc 0 <> if rc throw then
