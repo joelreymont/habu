@@ -2281,6 +2281,8 @@ TRUSTED: FIELD-PROJ-SCHEMA ( -- n n ) FIELD-PROJ-FID @ FIELD-PROJ-OFF @ ;
 REG-PROTECT
 PTR-VARIABLE LBUF-PEND-A
 variable LBUF-PEND-U   0 LBUF-PEND-U !
+variable LBUF-EVAL-OFF  0 LBUF-EVAL-OFF !  \ accessor effect offset + 1 in this eval window
+PTR-VARIABLE NMA  variable NMU           \ current definition name (set by DO-TOK1)
 
 \ Linear guard (dot: "possibly-linear layout copies reject until TFAM 11"): a
 \ layout whose family args contain a linear con — or an arg still unresolved,
@@ -7391,6 +7393,11 @@ variable RECMI   0 RECMI !
    hasr IF rin ROW-WIDE? or  rout ROW-WIDE? or THEN
    RECW !
    din dout rin rout hasr E-BUILD-EFFECT {: off:n :}
+   LBUF-PEND-U @ 0 > NMU @ 0 > and IF
+      LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI IF
+         off 1 + LBUF-EVAL-OFF !
+      THEN
+   THEN
    external IF off E-PTR E-MINI@ ELSE 0 THEN RECMI !
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!
@@ -7423,7 +7430,6 @@ variable RECMI   0 RECMI !
 \ own name is suppressed here; a foreign name — a raw TRUST row — counts as a
 \ reject and reports through BADSIG-XT (render.f). Either way no row exists,
 \ so later callers reject as undefined instead of trusting a malformed effect.
-PTR-VARIABLE NMA  variable NMU              \ current definition name (set by DO-TOK1)
 variable MULTI-ERR      \ multi-error load mode active?
 variable MULTI-ERR-N    \ rejected definitions recorded this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
@@ -10673,11 +10679,11 @@ variable LBUF-INFO-W
 \ The allocator binds the actual generated accessor only after its DATA cells
 \ exist. A verifier's projected signature, an alias, or an imported effect has
 \ no allocation to own and keeps the zero count E-REC-INIT gave it.
-TRUSTED: CHECKER-STORAGE-BIND ( ptr u8 n ptr a n -- )
-   {: name:ptr nameu:n base:ptr count:n :}
-   count 0 <= IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   name nameu FIND-SIG 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   FEP @ {: rec:ptr :}
+TRUSTED: CHECKER-STORAGE-BIND ( n ptr a n -- )
+   {: handle:n base:ptr count:n :}
+   count 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   handle 0= count 0= or IF EXIT THEN
+   handle 1- E-PTR {: rec:ptr :}
    base BYTE-VIEW data-base BYTE-VIEW - {: off:n :}
    off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
    off rec ER.STORAGE-OFF !
@@ -16725,6 +16731,7 @@ variable CTOR-PEND-I
 \ baked direct references. User source therefore cannot arm or mutate the
 \ one-shot boundary.
 : LBUF-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 LBUF-EVAL-OFF !
    a LBUF-PEND-A !  u LBUF-PEND-U ! ;
 : LBUF-PEND-CLEAR ( -- )
    NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;

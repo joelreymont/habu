@@ -1515,6 +1515,10 @@ SUITE typed-storage-structural
    test/typed-storage-structural-test.f
 ;SUITE
 
+SUITE storage-binding
+   test/storage-binding-e2e.f
+;SUITE
+
 SUITE record-launder-probe
    test/record-launder-probe.f
 ;SUITE
