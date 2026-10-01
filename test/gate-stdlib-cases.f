@@ -17,6 +17,12 @@ using TEST
 \ file - the shared fixture stays in the family's *-lib.f - rather than letting
 \ one row grow past that.
 
+\ native-build-entry loads and captures the x86 window (about 55 s alone) and
+\ needs no image, so it leads.
+SUITE native-build-entry
+   test/native-build-entry.f
+;SUITE
+
 \ The positive hb-build AOT checks are two rows of about 28 s each that share no
 \ state and need no keyed image, so they start at once, beside the image build
 \ rows, and add their work to the slots the whitebox hold below leaves idle.
@@ -643,10 +649,6 @@ SUITE loop-obligations
 
 SUITE native-build-layout
    test/native-layout.f
-;SUITE
-
-SUITE native-build-entry
-   test/native-build-entry.f
 ;SUITE
 
 SUITE stripped-image
