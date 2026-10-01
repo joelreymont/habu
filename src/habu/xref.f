@@ -373,6 +373,23 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
    split 0 < IF s" xref: generated declaration is not qualified" 76 die THEN
    XREF-SN@ split XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
 
+\ One wordlist's record for a name, from the dictionary's hash index (habu1.f
+\ WLFIND), the index the definer's own duplicate wall asks. The primitive is
+\ trusted-only by its own row (prims.f), as for outer.f FIND-PROBE.
+TRUSTED: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
+
+\ The record a generated name would meet in the scope it will LAND in: a
+\ qualified name in the public wordlist its namespace row carries, a bare one in
+\ the current wordlist. XREF-FIND-TARGET-INDEX answers the same question by
+\ walking every record, which a declaration asked once per generated word.
+: TARGET-RECORD ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
+   a u XREF-QUAL-INDEX {: q:n :}
+   q -2 = IF XREF-NULL EXIT THEN
+   q 0 < IF a u get-current WL-RECORD EXIT THEN
+   a q XREF-NAMESPACE-WL WL-RECORD {: ns:ptr :}
+   ns XREF-FOUND? 0= IF XREF-NULL EXIT THEN
+   a q 1+ ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC WL-RECORD ;
+
 public
 
 \ A generated declaration is qualified exactly when it reserves a constructor
@@ -391,7 +408,7 @@ public
    a u TFAM-CTOR-WORD? 0= IF
       s" xref: generated declaration visibility mismatch" 76 die
    THEN
-   a u XREF-FIND-TARGET-INDEX 0 >= IF
+   a u TARGET-RECORD XREF-FOUND? IF
       s" xref: generated declaration already exists" 76 die
    THEN ;
 

@@ -513,6 +513,16 @@ PFTX @ TF-FIELD:ROLLBACK
 UNAMED @ TWX-SUMV-PAY-N 2 T=
 UNAMED @ 1 TWX-SUMV-PAY-FIELD FOUNDF ! PFOUT !
 FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" second" T$=
+\ The rollback leaves no row behind under its owner either: the same owner takes
+\ the same name and layout again, and a second one is still a duplicate.
+TF-FIELD:OPEN PFTX !
+PFTX @ UFAM @ UNAMED @ s" provisional" USCH0 @ 2 1 2 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD PFTX !
+PFTX @ UFAM @ UNAMED @ s" provisional" USCH0 @ 3 1 3 cells CELL CELL PF-FLAGS-NONE
+   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+TC @ E-TFAM-DUP T=
+PFTX @ TF-FIELD:ROLLBACK
+UNAMED @ TWX-SUMV-PAY-N 2 T=
 
 \ If any variant carries a legacy positional schema while the family publishes
 \ named rows, both variants fail at the family-level representation boundary.
