@@ -19,12 +19,39 @@ variable RDIAG-CAP
 variable RDIAG-U
 variable RDIAG-I
 
-: EMIT1 {: c :}
+: EMIT-RAW {: c :}
    c 63 = IF 1 RQM ! THEN
    RDST @ IF
      RSN @ RSBUF-CAP 2 - > IF s" render: sig buffer full" 76 die THEN
      c RSBUF RSN @ + c!  RSN @ 1 + RSN !
    ELSE c ECH c! ECH 1 type THEN ;
+
+: JHEX ( n -- ) {: d:n :}
+   d 10 < IF d 48 + ELSE d 87 + THEN EMIT-RAW ;
+
+\ JCHAR writes one byte as the inside of a JSON string: `"`, `\` and every byte
+\ below 32 escaped, as a JSON reader requires.
+: JCHAR {: c :}
+   c case
+      10 of 92 EMIT-RAW 110 EMIT-RAW endof
+      13 of 92 EMIT-RAW 114 EMIT-RAW endof
+      9 of 92 EMIT-RAW 116 EMIT-RAW endof
+      34 of 92 EMIT-RAW c EMIT-RAW endof
+      92 of 92 EMIT-RAW c EMIT-RAW endof
+      c 32 < IF
+         92 EMIT-RAW 117 EMIT-RAW 48 EMIT-RAW 48 EMIT-RAW
+         c 4 rshift JHEX  c 15 and JHEX
+      ELSE c EMIT-RAW THEN
+   endcase ;
+
+\ Between JOPEN and JCLOSE every byte EMIT1 writes is escaped, so a rendered
+\ type, row or family name is a well-formed JSON string whatever its names
+\ spell: a package may be named `\`, and its families render as `\:tail`.
+variable RJSON   0 RJSON !
+: EMIT1 {: c :}
+   RJSON @ IF c JCHAR ELSE c EMIT-RAW THEN ;
+: JOPEN ( -- )   34 EMIT-RAW  -1 RJSON ! ;
+: JCLOSE ( -- )  0 RJSON !  34 EMIT-RAW ;
 
 : DIAG-BUFFER! ( ptr u8 n -- )
    {: a:ptr cap:n :}
@@ -440,20 +467,11 @@ variable DSUGE  variable DSUGA
    JNN @ BEGIN dup 0 > WHILE
       1 - dup JNBUF + c@ EMIT1
    REPEAT drop ;
-: JCHAR {: c :}
-   c case
-      10 of 92 EMIT1 110 EMIT1 endof
-      13 of 92 EMIT1 114 EMIT1 endof
-      9 of 92 EMIT1 116 EMIT1 endof
-      34 of 92 EMIT1 c EMIT1 endof
-      92 of 92 EMIT1 c EMIT1 endof
-      c EMIT1
-   endcase ;
-: JSTR ( ptr u8 n -- ) {: a:ptr u:n :}
-   34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;
+: JSTR ( ptr u8 n -- )
+   JOPEN DTXT JCLOSE ;
 : JKEY ( ptr u8 n -- ) {: a:ptr u:n :}
    a u JSTR  58 EMIT1 ;
-: JROW {: s :}  34 EMIT1  s DROW  34 EMIT1 ;
+: JROW {: s :}  JOPEN  s DROW  JCLOSE ;
 : SIG-WS? {: c :}  c 32 =  c 9 = or  c 10 = or  c 13 = or ;
 : SIG-LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE
@@ -466,10 +484,10 @@ variable DSUGE  variable DSUGA
    REPEAT drop a 0 ;
 : SIG-TRIM ( ptr u8 n -- ptr u8 n )  SIG-LTRIM SIG-RTRIM ;
 : JEFFECT {: din dout rin rout hasr :}
-   34 EMIT1
+   JOPEN
    din DROW  s" -- " DTXT  dout DROW
    hasr IF s" | " DTXT  rin DROW  s" -- " DTXT  rout DROW THEN
-   34 EMIT1 ;
+   JCLOSE ;
 \ --- item 9 slice 4: match/construct reason surface (docs §24). The checker
 \ latches an MDIAG reason code with the token pin; these words map it to a
 \ stable JSON code, repair class, suggestion, and §24 prose. MD-NONEXH also
@@ -630,8 +648,8 @@ variable MDV-I   variable MDV-F
       MDV-I @ 1 + MDV-I !
    REPEAT ;
 
-: MDIAG-MISSING-JSTR ( -- )   \ canonical lowercase tails: JCHAR-safe verbatim
-   34 EMIT1  0 0= MDIAG-MISSING-WALK  34 EMIT1 ;
+: MDIAG-MISSING-JSTR ( -- )
+   JOPEN  0 0= MDIAG-MISSING-WALK  JCLOSE ;
 
 : MDIAG-MISSING-PROSE ( -- )
    0 0= 0= MDIAG-MISSING-WALK ;
@@ -931,7 +949,7 @@ variable JPOS  variable JLINE  variable JCOL
 : DIAG-FAMILY ( -- )
    DF-EXP @ TERM-FAM  DF-ACT @ TERM-FAM  DIAG-FAM-ID {: fam:n :}
    fam 0 >= IF
-      44 EMIT1 s" family" JKEY  34 EMIT1 fam FAM-QNAME-REND 34 EMIT1
+      44 EMIT1 s" family" JKEY  JOPEN fam FAM-QNAME-REND JCLOSE
    THEN
    DIAG-VARIANT ;
 : DIAG-JSON
@@ -947,11 +965,9 @@ variable JPOS  variable JLINE  variable JCOL
    MDIAG @ 0 <> IF
      s" reason" JKEY
      \ The shortfall belongs IN the reason, so the underflow builds its own
-     \ string: a literal this file owns plus digits, none of which JCHAR would
-     \ have anything to escape (MDIAG-MISSING-JSTR writes variant names the
-     \ same way). Every other reason goes through JSTR unchanged.
+     \ string from the reason and its counts.
      MDIAG @ MD-UNDERFLOW = IF
-       34 EMIT1  MDIAG-REASON$ DTXT  MDIAG-UF-COUNTS  34 EMIT1
+       JOPEN  MDIAG-REASON$ DTXT  MDIAG-UF-COUNTS  JCLOSE
      ELSE MDIAG-REASON$ JSTR THEN
      44 EMIT1
      MDIAG @ MD-NONEXH = IF s" missing_variants" JKEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
@@ -985,12 +1001,12 @@ variable JPOS  variable JLINE  variable JCOL
      44 EMIT1 s" actual"   JKEY DACT @ JROW
      DIAG-FAMILY THEN
    NPBAD @ IF                                             \ non-parametric declared effect
-     44 EMIT1 s" quantifier" JKEY 34 EMIT1 NPBAD-Q1 @ JCHAR 34 EMIT1
+     44 EMIT1 s" quantifier" JKEY JOPEN NPBAD-Q1 @ EMIT1 JCLOSE
      NPBAD-KIND @ 1 = IF
-       44 EMIT1 s" quantifier2" JKEY 34 EMIT1 NPBAD-Q2 @ JCHAR 34 EMIT1
+       44 EMIT1 s" quantifier2" JKEY JOPEN NPBAD-Q2 @ EMIT1 JCLOSE
      ELSE
        NPBAD-TERM @ NP-FAM dup 0 >= IF
-         44 EMIT1 s" family" JKEY 34 EMIT1 FAM-QNAME-REND 34 EMIT1
+         44 EMIT1 s" family" JKEY JOPEN FAM-QNAME-REND JCLOSE
        ELSE drop THEN
      THEN
    THEN

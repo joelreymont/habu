@@ -1102,6 +1102,15 @@ variable LONG-J
    s" : CKF-JBAD ( n -- ckfj:ckfjfam ) ;" SB-APPEND
    SB$ ;
 
+: FAM-ESC$ ( -- ptr u8 n )         \ a family of package `\`: its spelling needs JSON escapes
+   SB-RESET
+   s" package \" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckfefam 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" : CKF-EBAD ( n -- \:ckfefam ) ;" SB-APPEND
+   SB$ ;
+
 : FAM-PRIV$ ( -- ptr u8 n )        \ private family: qualified lookup is public-only
    SB-RESET
    s" package CKFP" SB-APPEND $0a SB-APPEND-C
@@ -2654,6 +2663,44 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
    CAP-ERR erru s\" \"family\":\"ckfj:ckfjfam\"" CONTAINS? TTRUE ;
 
+\ Every string a JSON packet carries is escaped, whatever spelled it. A package
+\ may be named `\`, and its family then renders as `\:tail` in the effects, the
+\ expected row and the family pin; a source label may hold a control byte. The
+\ packet must parse and give back exactly those bytes.
+: ESC-ROOT ( n -- n )
+   CAP-ERR swap JSON-PARSE-TRY MATCH result
+     ok  OF ENDOF
+     err OF s" the JSON packet parses" T-LABEL 0 T= -1 ENDOF
+   ;MATCH ;
+
+: ESC-STR= ( n ptr u8 n ptr u8 n -- ) {: root:n k:ptr ku:n w:ptr wu:n :}
+   root -1 = IF EXIT THEN
+   root k ku JSON-GET {: node:n :}
+   node -1 <> TTRUE
+   node -1 = IF EXIT THEN
+   node JSON-STRING$ w wu STR= TTRUE ;
+
+: FAM-ESC-TEST ( -- )
+   FAM-ESC$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru ESC-ROOT {: root:n :}
+   root s" declared_effect" s" n -- \:ckfefam<> " ESC-STR=
+   root s" expected" s" \:ckfefam<> " ESC-STR=
+   root s" family" s" \:ckfefam" ESC-STR= ;
+
+: ESC-LABEL$ ( -- ptr u8 n )
+   SB-RESET s" ck" SB-APPEND 1 SB-APPEND-C s" label.f" SB-APPEND SB$ ;
+
+: LABEL-ESC-TEST ( -- )
+   RESET
+   s" json-errors" OPT
+   s" : CKF-LBAD ( n -- ) dup ;" ESC-LABEL$ SOURCE
+   [: RUN-ACT ;] IN-PROC 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru ESC-ROOT s" file" ESC-LABEL$ ESC-STR= ;
+
 : FAM-PRIV-TEST ( -- )
    FAM-PRIV$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -3676,6 +3723,8 @@ POISON-RECORD
    s" check/package-family-two" [: FAM-TWO-TEST ;] CASE-RUN
    s" check/package-family-bogus" [: FAM-BOGUS-TEST ;] CASE-RUN
    s" check/package-family-json-pin" [: FAM-JSON-PIN ;] CASE-RUN
+   s" check/package-family-json-escape" [: FAM-ESC-TEST ;] CASE-RUN
+   s" check/label-json-escape" [: LABEL-ESC-TEST ;] CASE-RUN
    s" check/package-family-private" [: FAM-PRIV-TEST ;] CASE-RUN
    s" check/declared-constructors" [: TEST-DECLARED-CONSTRUCTORS ;] CASE-RUN
    REQUIRE-CASES
