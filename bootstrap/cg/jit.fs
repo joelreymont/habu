@@ -645,10 +645,36 @@ $358 constant SNAPSP-CELL       \ BEGIN snapshot stack depth
 \ chains for cons emitted HERE, before the loop top) and push (k, packed regs —
 \ a byte per slot, bottom-up) on the snapshot stack. Deep VS or a failed
 \ force: spill-all and push (0,0) — that loop runs memory-resident as before.
+\ A BEGIN past the frame band is refused in native's words and with native's
+\ status (src/habu/habu2.f EM-SNAP-NEST-DIE), exit 75:
+\   hb: BEGIN nesting full at 28 frames: <name> needs <depth>
+\ The name is C-DEF-NAME, the first token of the body capture, where native's
+\ EMIT-DIAGDEF reads it: DEF-TKA/DEF-TKL lie under VVAL-OFF, which the virtual
+\ stack has overwritten by the first BEGIN. Native appends the source location
+\ when it has one; this engine records none.
+: SNAPNEST-MSG$ ( -- a u )  s" hb: BEGIN nesting full at " ;
+: SNAP-UNIT$ ( -- a u )     s"  frames: " ;
+: DIAG-NEEDS$ ( -- a u )    s"  needs " ;
+
+: EMIT-SNAP-NEST-DIE ( -- )                       \ x6 = frames held
+   LBL LBL LBL {: msg unit needs :}
+   15 6 1 ADDI,                                   \ x15 = the frame this BEGIN needs
+   0 2 MOVZ,  1 msg ADR,  2 SNAPNEST-MSG$ nip MOVZ,  NR-WRITE SYS,
+   9 SNAP-FRAMES MOVZ,  2 false G-WRITEU9
+   0 2 MOVZ,  1 unit ADR,  2 SNAP-UNIT$ nip MOVZ,  NR-WRITE SYS,
+   C-DEF-NAME
+   0 2 MOVZ,  1 9 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS,
+   0 2 MOVZ,  1 needs ADR,  2 DIAG-NEEDS$ nip MOVZ,  NR-WRITE SYS,
+   9 15 0 ADDI,  2 true G-WRITEU9
+   0 75 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  SNAPNEST-MSG$ BYTES,
+   unit LBL,  SNAP-UNIT$ BYTES,
+   needs LBL,  DIAG-NEEDS$ BYTES, ;
+
 : EMIT-SNAP-NEST-CHECK ( n -- ) {: snok :}
    SP SP 16 SUBI,  30 SP 0 STR,
    6 DATA SNAPSP-CELL LDR,  6 SNAP-FRAMES CMPI,  C-LT snok BCOND,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,              \ BEGIN nesting past the frame area
+      EMIT-SNAP-NEST-DIE
    snok LBL, ;
 
 : EMIT-SNAP-FORCE-LOOP ( n n n -- ) {: fl fd fail :}

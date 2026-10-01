@@ -729,6 +729,25 @@ previous definitions
 : G-PUSH ( reg -- ) XDS 8 STR-POST, ;
 : G-POP ( reg -- ) XDS -8 LDR-PRE, ;
 
+\ The name of the definition being compiled: x9 = its start, x10 = its length.
+\ It is the first token of the body buffer, where LBCAP seeds "NAME " before
+\ C-QUALIFY-DEF rewrites the token, so it is the qualified `PKG:tail`. A space or
+\ a NUL ends it, and BODYLEN bounds it, so an empty capture gives length 0.
+\ Clobbers x12 and x13 only: C-PUSH-DREC-NAME's callers keep the registrar XT
+\ in x11.
+: C-DEF-NAME ( -- )
+   LBL LBL {: scan done :}
+   9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)
+   10 0 MOVZ,                           \ x10 = name length
+   12 DATA BODYLEN-CELL LDR,            \ x12 = body length bound (fail-closed)
+   scan LBL,
+      10 12 CMP,  C-GE done BCOND,      \ hit body end without a space -> stop
+      13 9 10 ADD,  13 13 0 LDRB,       \ x13 = name[x10]
+      13 $20 CMPI,  C-EQ done BCOND,    \ the seeded trailing space ends the name
+      13 done CBZ,                      \ NUL also ends it (safety)
+      10 10 1 ADDI,  scan B,
+   done LBL, ;
+
 : C-EMITW ( n -- ) 9 swap LIT64, LCEMIT @ BL, ;
 
 : C-CALL-EMIT-MOVZ-X16 ( -- )
@@ -3880,26 +3899,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    ok LBL, ;
 
 \ MIRROR of src/habu/habu2.f C-PUSH-DREC-NAME. Push the definition's ORIGINAL
-\ qualified spelling for the engine->checker record calls. It is the first token
-\ of the body buffer: LBCAP seeds "NAME " there before C-QUALIFY-DEF rewrites the
-\ token, so it is the QUALIFIED `PKG:tail`, where the published dictionary record
-\ carries only the bare tail (C-QUALIFY-DEF advances TKA past the `PKG:` prefix).
-\ Reading the record instead registered `tail` for a `PKG:tail` definition, and a
-\ bare-global row for a package-private name certifies callers the engine refuses.
-\ Scratch stays off x11: the FIND words leave the registrar XT there for the
-\ caller's later C-CALL-X11-SAVED, so this word must preserve it.
+\ qualified spelling (C-DEF-NAME) for the engine->checker record calls. The
+\ published dictionary record carries only the bare tail (C-QUALIFY-DEF advances
+\ TKA past the `PKG:` prefix). Reading the record instead registered `tail` for
+\ a `PKG:tail` definition, and a bare-global row for a package-private name
+\ certifies callers the engine refuses. Scratch stays off x11: the FIND words
+\ leave the registrar XT there for the caller's later C-CALL-X11-SAVED.
 : C-PUSH-DREC-NAME ( -- )
-   LBL LBL {: scan done :}
-   9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)
-   10 0 MOVZ,                           \ x10 = name length
-   12 DATA BODYLEN-CELL LDR,            \ x12 = body length bound (fail-closed)
-   scan LBL,
-      10 12 CMP,  C-GE done BCOND,      \ hit body end without a space -> stop
-      13 9 10 ADD,  13 13 0 LDRB,       \ x13 = name[x10]
-      13 $20 CMPI,  C-EQ done BCOND,    \ the seeded trailing space ends the name
-      13 done CBZ,                      \ NUL also ends it (safety)
-      10 10 1 ADDI,  scan B,
-   done LBL,
+   C-DEF-NAME
    9 G-PUSH
    10 G-PUSH ;
 

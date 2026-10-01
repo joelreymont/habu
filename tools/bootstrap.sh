@@ -369,7 +369,7 @@ bootstrap_ptr_cell_mark_gate
 # (bootstrap/cg/jit.fs LVSNAP). A frame band that overlaps the seed's compile
 # cells loses the EXIT or LEAVE chain a deep nest spans: in the low header, a
 # nest of 23 crashed the word or refused its `loop`. This gate compiles and runs
-# a 28-deep nest across both chains.
+# a 28-deep nest across both chains, and sees a 29th refused by name, exit 75.
 bootstrap_begin_nest_gate() {
   "$GF" test/bootstrap-begin-nest.fs
 }
