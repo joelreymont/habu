@@ -629,15 +629,15 @@ ETRUSTED-ONLY!                       \ explicit trusted reset boundary
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
 \ ---- the definition writers --------------------------------------------------
-\ What `package`, `export` and `:` change is sealed state after the seal: the
-\ friend arena (CUR, WIDN, DEF-WL, TSIG, PKG-*), BODYBUF, DEF-TIER-CELL, the
-\ TIER-PROV band and the records behind the PROT window. These seven rows are
-\ how an interpreter written in Habu writes it. Each is registered with
-\ ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so only a TRUSTED: body reaches
-\ one. A refusal exits and never throws: 79 while a task is live (the five
-\ dictionary and scope rows), 84 for a protected wid after the seal
-\ (`alias-record`, `def-open`) and 83 for every other refusal. A caller checks
-\ first and prints the engine's own text.
+\ What `package`, `export`, `:` and `does>` change is sealed state after the
+\ seal: the friend arena (CUR, WIDN, DEF-WL, TSIG, TCSIG, PKG-*), BODYBUF,
+\ DEF-TIER-CELL, the TIER-PROV band and the records behind the PROT window.
+\ These eight rows are how an interpreter written in Habu writes it. Each is
+\ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so only a
+\ TRUSTED: body reaches one. A refusal exits and never throws: 79 while a task
+\ is live (the five dictionary and scope rows), 84 for a protected wid after
+\ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
+\ caller checks first and prints the engine's own text.
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
@@ -689,6 +689,11 @@ ETRUSTED-ONLY!
 \ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
 \ TSIG-A and TSIG-U. It refuses when no definition is pending.
 EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+\ created-sig! ( ptr u8 n -- ): the pending definition's `does>` signature
+\ span, the effect of the words it creates, into TCSIG-A and TCSIG-U. It
+\ refuses when no definition is pending.
+EPRIM: created-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;

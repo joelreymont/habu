@@ -88,7 +88,10 @@ variable SPIN-U
 \ hook that prints the pending definition: its record's name, flags, whether
 \ its wordlist is OI-WANT's and its entry the provenance window's, its body
 \ capture, its signature's length, the trusted and tier cells and the code
-\ origin of its name's bytes.
+\ origin of its name's bytes. OI-DOES. is one that prints the body capture,
+\ DOESB, the created signature and how far here moved past OI-MARK. OI-ROOM is
+\ the data space left below its ceiling, and OI-ALIAS gives the last record a
+\ second name.
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
@@ -124,6 +127,13 @@ variable SPIN-U
    s" : OI-BODY. ( -- ) data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL OI-CELL@ type cr ;" GE-SRC-LINE
    s" : OI-STATE. ( -- ) TSIG-U-CELL OI-CELL@ . TRUSTED-CELL OI-CELL@ . NCOMP-DISPATCH:DEF-TIER-CELL OI-CELL@ . ;" GE-SRC-LINE
    s" : OI-DUMP ( -- ) OI-PEND OI-REC. OI-BODY. OI-STATE. ;" GE-SRC-LINE
+   s" : OI-HERE ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - ;" GE-SRC-LINE
+   s" variable OI-AT" GE-SRC-LINE
+   s" : OI-MARK ( -- ) OI-HERE OI-AT ! ;" GE-SRC-LINE
+   s" : OI-CSIG$ ( -- ptr u8 n ) data-base TCSIG-A-CELL CELL / ptr-field @ TCSIG-U-CELL OI-CELL@ ;" GE-SRC-LINE
+   s" : OI-DOES. ( -- ) OI-BODY. DOESB-CELL OI-CELL@ . OI-CSIG$ type cr OI-HERE OI-AT @ - . ;" GE-SRC-LINE
+   s" : OI-ROOM ( -- n ) DATA-SIZE PROF-CNT-BYTES - OI-HERE - ;" GE-SRC-LINE
+   s" TRUSTED: OI-ALIAS ( ptr u8 n -- ) ndict@ 1- get-current alias-record ;" GE-SRC-LINE
    s" oi-prelude.f" PRELUDE-BUF GT-PATH PRELUDE-U !
    PRELUDE$ SRC>FILE ;
 
@@ -1293,6 +1303,86 @@ variable WANT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
    76 s" hb: tier 0 is not in the Habu loop: OI-N at " S\" oi-body-immediate-tier-0.f:3\n" DIED-AT ;
 
+\ ---- `does>` in a body --------------------------------------------------------------
+\ OI-END is a neutral immediate that ends the definition it runs in through
+\ evaluate, whose `;` compiles what the loop under test captured.
+: END-LINE ( -- )
+   s" s\~ TRUSTED: OI-END ( -- ) s\~ ;\~ evaluate ; immediate~ evaluate  s~ OI-END~ 0 parse-imm" QLINE ;
+
+\ `does>` is matched with its A-Z folded and joins the capture, and DOESB takes
+\ the capture's length with it. The signature after it, past blanks and a
+\ newline, joins no capture: its inside, blanks and all, is copied to here for
+\ TCSIG. A comment after the signature is a comment.
+: DOES-SPLIT ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier ' OI-DOES. data-base EXIT-HOOK-CELL + ! OI-MARK" GE-SRC-LINE
+   s" : OI-K ( n -- ) create , DOES>   " GE-SRC-LINE
+   s" ( -- n ) ( a comment ) @" GE-SRC-LINE
+   s" oi-does-split.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" OI-K ( n -- ) create , DOES> @ \n29\n -- n \n6\n" CASE$ GE-EXPECT-OUT ;
+
+\ A definer the loop under test reads compiles at `;`: the word it creates runs
+\ its clause, and a checked caller is held to the created signature.
+: DOES-DEFINER ( -- )
+   GE-SRC-RESET
+   END-LINE
+   s" 1 set-tier : OI-K ( n -- ) create , does> ( -- n ) @ 1 + OI-END" GE-SRC-LINE
+   s" 5 OI-K OI-FV OI-FV . s~ : OI-USE ( -- n ) OI-FV ;~ evaluate OI-USE ." QLINE
+   s" oi-does-definer.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 6\n6\n" CASE$ GE-EXPECT-OUT
+   GE-SRC-RESET
+   END-LINE
+   s" 1 set-tier : OI-K ( n -- ) create , does> ( -- ptr u8 ) @ OI-END" GE-SRC-LINE
+   s" 5 OI-K OI-FV s~ : OI-USE ( -- n ) OI-FV ;~ evaluate" QLINE
+   s" oi-does-effect.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   s" habu: in oi-use: at 'OI-FV' expected: n actual: ptr u8" CASE$ GE-EXPECT-ERR-HAS ;
+
+\ A second `does>` refuses naming `does>`, and a signature that is missing or
+\ open names the token as spelled, each at the line the cursor is on.
+: DOES-REFUSALS ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-K ( n -- ) create , does> ( -- n ) @" GE-SRC-LINE
+   s" DOES> ( -- )" GE-SRC-LINE
+   s" oi-does-twice.f" BOTH
+   70 s" does> at " S\" oi-does-twice.f:2\n" DIED-AT
+   s" : OI-K ( n -- ) create , Does> @" s" oi-does-no-signature.f" HEAD
+   76 s" Does> at " S\" oi-does-no-signature.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier : OI-K ( n -- ) create , does>" GE-SRC-LINE
+   s" ( -- n" GE-SRC+
+   s" oi-does-open-signature.f" BOTH
+   76 s" does> at " S\" oi-does-open-signature.f:1\n" DIED-AT ;
+
+\ The signature's copy may take the data space to its ceiling; one byte more
+\ refuses as allot does.
+: DOES-DATA-FULL ( -- )
+   s" OI-ROOM 6 - allot : OI-K ( n -- ) create , does> ( -- n ) @" s" oi-does-data-fits.f" HEAD
+   CASE$ GE-EXPECT-OK  CASE$ GE-EXPECT-SILENT
+   s" OI-ROOM 5 - allot : OI-K ( n -- ) create , does> ( -- n ) @" s" oi-does-data-full.f" HEAD
+   76 s" hb: data space out of range: DP " S\" oi-does-data-full.f:1\n" DIED-AT ;
+
+\ LFIND finds a word before the engine reads its keywords: one spelled `does>`
+\ that is not immediate is called, the body not split and the comment after it
+\ a comment, while an immediate one the checker does not call neutral leaves
+\ `does>` the keyword.
+: CALLED ( ptr u8 n ptr u8 n -- ) {: def:ptr defu:n name:ptr nameu:n :}
+   GE-SRC-RESET
+   s" 1 set-tier ' OI-DOES. data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   def defu QLINE
+   s" s~ does>~ OI-ALIAS OI-MARK" QLINE
+   s" : OI-X ( -- ) does> ( a comment ) 1" GE-SRC-LINE
+   name nameu BOTH
+   CASE$ GE-EXPECT-OK ;
+
+: DOES-CALLED ( -- )
+   s" s~ : OI-DZ ( -- ) 7 . ;~ evaluate" s" oi-does-called.f" CALLED
+   S\" OI-X ( -- ) does> 1 \n0\n\n0\n" CASE$ GE-EXPECT-OUT
+   s" s~ : OI-DZ ( -- ) 7 . ; immediate~ evaluate" s" oi-does-immediate.f" CALLED
+   S\" OI-X ( -- ) does> 1 \n18\n a comment \n11\n" CASE$ GE-EXPECT-OUT ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -1409,6 +1499,11 @@ private
    BODY-IMMEDIATE-PREFLIGHT
    BODY-IMMEDIATE-REFUSALS
    BODY-IMMEDIATE-TIER-0
+   DOES-SPLIT
+   DOES-DEFINER
+   DOES-REFUSALS
+   DOES-DATA-FULL
+   DOES-CALLED
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

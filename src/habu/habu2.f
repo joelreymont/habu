@@ -3740,15 +3740,24 @@ public
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ trust-sig! ( ptr u8 n -- )
-: TRUST-SIG ( -- )
+\ ( ptr u8 n -- ): the span into the friend-arena cells aoff and uoff while a
+\ definition is pending.
+: PENDING-SPAN ( n n -- ) {: aoff:n uoff:n :}
    LBL LBL {: bad done :}
    12 G-POP  11 G-POP
    9 DATA PEND-CELL LDR,  9 bad CBZ,
-   11 DATA TSIG-A-CELL STR,  12 DATA TSIG-U-CELL STR,
+   11 DATA aoff STR,  12 DATA uoff STR,
    done B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
+
+\ trust-sig! ( ptr u8 n -- )
+: TRUST-SIG ( -- )
+   TSIG-A-CELL TSIG-U-CELL PENDING-SPAN ;
+
+\ created-sig! ( ptr u8 n -- )
+: CREATED-SIG ( -- )
+   TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN ;
 
 ;package
 
@@ -11948,6 +11957,7 @@ package ENGINE-EMIT
    s" def-open" ['] DEFWRITE:DEF-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" body-append" ['] DEFWRITE:BODY-APPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" trust-sig!" ['] DEFWRITE:TRUST-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" created-sig!" ['] DEFWRITE:CREATED-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM

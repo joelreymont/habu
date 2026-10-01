@@ -31,6 +31,8 @@
 \ - hb-x64-kernel-body-append fills BODYBUF exactly to BODYBUF-CAP.
 \ - hb-x64-kernel-body-append-pass2 appends in pass 2, which stores nothing.
 \ - hb-x64-kernel-trust-sig stores the pending definition's signature span.
+\ - hb-x64-kernel-created-sig stores the pending definition's `does>`
+\   signature span.
 \ hb-x64-kernel-definition-negative runs the def-open case expecting the wrong
 \ pending record and exits 21.
 \
@@ -44,8 +46,8 @@
 \   (-alias-record-int-armed), package-scope! `-1 5`
 \   (-package-scope-clear-armed), a 17-byte def-open with CP 32 bytes below the
 \   code ceiling (-def-open-ceiling-armed), body-append one byte past
-\   BODYBUF-CAP (-body-append-full-armed) and trust-sig! with nothing pending
-\   (-trust-sig-armed).
+\   BODYBUF-CAP (-body-append-full-armed), and trust-sig! and created-sig! with
+\   nothing pending (-trust-sig-armed, -created-sig-armed).
 \ - 84, ENGINE-ERROR:SEAL-PACKAGE, after the seal: alias-record into a wid
 \   whose bit is set (-alias-record-prot-armed) and def-open into
 \   OWNER-API-PUB-WID, always protected (-def-open-prot-armed).
@@ -113,10 +115,11 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 
 : APPEND, ( ptr u8 n -- ) X64HARNESS:PUSH-TEXT,  s" body-append" X64HARNESS:CALL-ROW, ;
 
-\ trust-sig! over SIG-LEN bytes of BODYBUF, a span whose address DATA fixes.
-: SIG, ( -- )
+\ The signature row named over SIG-LEN bytes of BODYBUF, a span whose address
+\ DATA fixes.
+: SIG, ( ptr u8 n -- ) {: row:ptr rowu:n :}
    BODYBUF-OFF X64HARNESS:PUSH-DATA,  SIG-LEN X64HARNESS:PUSH,
-   s" trust-sig!" X64HARNESS:CALL-ROW, ;
+   row rowu X64HARNESS:CALL-ROW, ;
 
 : XREF, ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
    a u X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,
@@ -293,9 +296,17 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 : TRUST-SIG-CASE, ( -- )
    X64HARNESS:REST,
    HELLO$ 0 0 DEF-OPEN,
-   SIG,
+   s" trust-sig!" SIG,
    TSIG-A-CELL X64HARNESS:PUSH-DATA-CELL,  BODYBUF-OFF X64HARNESS:EXPECT-POP-DATA,
    SIG-LEN TSIG-U-CELL X64HARNESS:EXPECT-CELL,
+   0 CLOSED, ;
+
+: CREATED-SIG-CASE, ( -- )
+   X64HARNESS:REST,
+   HELLO$ 0 0 DEF-OPEN,
+   s" created-sig!" SIG,
+   TCSIG-A-CELL X64HARNESS:PUSH-DATA-CELL,  BODYBUF-OFF X64HARNESS:EXPECT-POP-DATA,
+   SIG-LEN TCSIG-U-CELL X64HARNESS:EXPECT-CELL,
    0 CLOSED, ;
 
 \ ---- the refusals -------------------------------------------------------------
@@ -374,6 +385,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    [: BODY-APPEND-CASE, ;] false s" hb-x64-kernel-body-append" TMP-PATH IMAGE
    [: BODY-APPEND-PASS2-CASE, ;] false s" hb-x64-kernel-body-append-pass2" TMP-PATH IMAGE
    [: TRUST-SIG-CASE, ;] false s" hb-x64-kernel-trust-sig" TMP-PATH IMAGE
+   [: CREATED-SIG-CASE, ;] false s" hb-x64-kernel-created-sig" TMP-PATH IMAGE
    [: DEF-OPEN-CASE, ;] true s" hb-x64-kernel-definition-negative" TMP-PATH IMAGE ;
 
 : REFUSALS ( -- )
@@ -389,7 +401,9 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    s" hb-x64-kernel-package-scope-clear-armed" TMP-PATH IMAGE
    [: CEILING, ;] false s" hb-x64-kernel-def-open-ceiling-armed" TMP-PATH IMAGE
    [: FULL, ;] false s" hb-x64-kernel-body-append-full-armed" TMP-PATH IMAGE
-   [: X64HARNESS:REST,  SIG, ;] false s" hb-x64-kernel-trust-sig-armed" TMP-PATH IMAGE
+   [: X64HARNESS:REST,  s" trust-sig!" SIG, ;] false s" hb-x64-kernel-trust-sig-armed" TMP-PATH IMAGE
+   [: X64HARNESS:REST,  s" created-sig!" SIG, ;] false
+   s" hb-x64-kernel-created-sig-armed" TMP-PATH IMAGE
    [: ALIAS-PROT, ;] false s" hb-x64-kernel-alias-record-prot-armed" TMP-PATH IMAGE
    [: DEF-OPEN-PROT, ;] false s" hb-x64-kernel-def-open-prot-armed" TMP-PATH IMAGE ;
 

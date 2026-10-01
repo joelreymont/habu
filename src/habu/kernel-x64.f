@@ -3334,13 +3334,23 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RDX BODYLEN-CELL CELL!,
    done LBL, ;
 
-\ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
-\ TSIG-A and TSIG-U.
-: TRUST-SIG-BODY ( -- )
+\ ( ptr u8 n -- ): the span into the friend-arena cells aoff and uoff while a
+\ definition is pending.
+: PENDING-SPAN-BODY ( n n -- ) {: aoff:n uoff:n :}
    RCX POP,  RAX POP,
    RDX PEND-CELL CELL@,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
-   RAX TSIG-A-CELL CELL!,  RCX TSIG-U-CELL CELL!, ;
+   RAX aoff CELL!,  RCX uoff CELL!, ;
+
+\ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
+\ TSIG-A and TSIG-U.
+: TRUST-SIG-BODY ( -- )
+   TSIG-A-CELL TSIG-U-CELL PENDING-SPAN-BODY ;
+
+\ created-sig! ( ptr u8 n -- ): the pending definition's `does>` signature
+\ span into TCSIG-A and TCSIG-U.
+: CREATED-SIG-BODY ( -- )
+   TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN-BODY ;
 
 public
 
@@ -3351,7 +3361,8 @@ public
    s" package-scope!" [: PACKAGE-SCOPE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-open" [: DEF-OPEN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" body-append" [: BODY-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" trust-sig!" [: TRUST-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+   s" trust-sig!" [: TRUST-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" created-sig!" [: CREATED-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
 \ ---- pure rows ---------------------------------------------------------------
 \ The arithmetic, comparison, shuffle, memory and float rows. Every row but

@@ -6,8 +6,9 @@
 \
 \ A head opens record NDICT through def-open, unpublished, and the definition
 \ stays pending: each body token is captured into BODYBUF, as the engine's
-\ tier 1 captures it, for `;` to compile whole, and a stack-neutral parsing
-\ immediate among them runs as it is read. Only tier 1 is read here. The
+\ tier 1 captures it, for `;` to compile whole, a stack-neutral parsing
+\ immediate among them runs as it is read, and `does>` splits the body and
+\ takes the signature of the words it creates. Only tier 1 is read here. The
 \ engine's tier 0 compiles each token as it reads it (its JIT), so at tier 0 a
 \ head or a body token is refused.
 \
@@ -29,13 +30,14 @@ package OUTER
 private
 
 76 constant DEF-RC-TIER-0        \ the code of the engine head's first refusal, a pass-2 nesting
-76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` with no signature
+76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` or `does>` with no signature
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 
 \ ---- the definition writers, each a TRUSTED: boundary ------------------------
 TRUSTED: DEF-OPEN ( ptr u8 n n n -- ) def-open ;
 TRUSTED: DEF-APPEND ( ptr u8 n -- ) body-append ;
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
+TRUSTED: DEF-CREATED-SIG ( ptr u8 n -- ) created-sig! ;
 
 \ ---- tier 0 ------------------------------------------------------------------
 \ The engine's tier 0 compiles each body token as it reads it, with its JIT,
@@ -179,13 +181,18 @@ TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
    s DEF-SIG-END drop {: end:ptr :}
    s end DEF-SIG-TAKE ;
 
-\ `trusted:` needs one, opened and closed, or refuses naming the definition.
-: DEF-REQUIRED-SIG ( -- )
+\ A signature that must be there, opened and closed, or the refusal names the
+\ token: where it starts and the byte past it.
+: DEF-SIG-SPAN ( -- ptr u8 ptr u8 )
    DEF-SIG-START {: s:ptr open:bool :}
    open 0= if DEF-RC-BAD-SIG PKG-FAIL then
    s DEF-SIG-END {: end:ptr closed:bool :}
    closed 0= if DEF-RC-BAD-SIG PKG-FAIL then
-   s end DEF-SIG-TAKE ;
+   s end ;
+
+\ `trusted:` needs one, and the refusal names the definition.
+: DEF-REQUIRED-SIG ( -- )
+   DEF-SIG-SPAN DEF-SIG-TAKE ;
 
 \ ---- the head ----------------------------------------------------------------
 \ Tier 1 compiles through the entry the AOT seed installed; with none the
@@ -286,15 +293,55 @@ TRUSTED: DEF-RUN ( n -- )
    DEF-IMMEDIATE if DEF-RUN true exit then
    drop false ;
 
+\ ---- `does>` in the body (habu2.f NCOMP-EMIT:CAPTURE-DOES) -------------------
+\ `does>` ends a defining word's own part: DOESB takes the capture's length
+\ with `does>` in it, where `;` splits the body, and the signature after it,
+\ which must be there, opened and closed, is the effect of each word the
+\ definer creates. The signature joins no capture: INP passes it and
+\ created-sig! takes a copy of its inside at here, where it outlives the input
+\ (C-PARSE-CREATED-SIG). A second `does>` refuses naming `does>` (C-DIE-DOES),
+\ and a missing or open signature names the token as spelled (C-SIG-BAD).
+
+\ The bytes copied to the data space at here, which moves past them.
+: DEF-KEEP ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   here BYTE-VIEW {: d:ptr :}
+   u allot
+   a d u BYTE-COPY
+   d u ;
+
+: DEF-CREATED ( -- )
+   DEF-SIG-SPAN {: s:ptr end:ptr :}
+   end INP-CELL ADDR!
+   s 1 + end s - 2 - DEF-KEEP DEF-CREATED-SIG ;
+
+: DEF-DOES ( -- )
+   DOESB-CELL CELL@ 0<> if s" does>" SAY RC-REJECT THROW-AT then
+   BODYLEN-CELL CELL@ DOESB-CELL CELL!
+   DEF-CREATED ;
+
+\ The engine reads `does>` as its keyword, with the token's A-Z folded, unless
+\ LFIND finds a word of that spelling that is not immediate, which the body
+\ calls instead.
+: DEF-CALL? ( -- bool )
+   TOKEN$ FIND-SCOPE {: rec:ptr :}
+   rec XREF-FOUND? 0= if false exit then
+   rec XREF-FLAGS DNAME-IMM and 0= ;
+
+: DEF-DOES? ( -- bool )
+   s" does>" TOKEN-IS? 0= if false exit then
+   DEF-CALL? if false exit then
+   DEF-DOES true ;
+
 \ ---- the body ----------------------------------------------------------------
 \ While a definition is pending every token is its body's (habu2.f EM-COMMENT):
-\ tier 1 captures it for `;`, runs it if it is a neutral immediate, or takes a
-\ string keyword's text (NCOMP-EMIT:EM-COMPILE).
+\ tier 1 captures it for `;`, runs it if it is a neutral immediate, splits the
+\ body at `does>`, or takes a string keyword's text (NCOMP-EMIT:EM-COMPILE).
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= if DEF-TIER-0 then
    TOKEN$ DEF-CAPTURE
    DEF-IMMEDIATE? if true exit then
+   DEF-DOES? if true exit then
    DEF-STRING-TEXT
    true ;
 
