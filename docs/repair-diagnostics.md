@@ -58,6 +58,74 @@ Declaration packets never fabricate definition-only fields such as `word`,
 `declared_effect`, `definition_source`, or `return_stack`; source-span fields
 land with the declaration origin plumbing (PLAN item 13).
 
+## Checking Without Running
+
+`tools/check.f --verify-only FILE` reports what `bin/hb --load FILE` would
+refuse of FILE's definitions and runs none of FILE or its closure: no lint, no
+run stage. `--verify-only --stdin-path PATH` checks stdin's bytes as the file
+at PATH, which need not exist. Both call `CHECK:VERIFY-BYTES`
+(`tools/check-verify-core.f`), the operation a language server calls in its own
+process.
+
+- The require closure is discovered over the bytes, with PATH's directory as
+  root and PATH as the subject's identity, so a dependency that requires PATH
+  back meets the bytes, never the copy on disk. A closure that cannot be
+  followed, through a missing file or one discovery refuses, is `refused`
+  with that file named in the prose, and nothing is verified.
+- The closure in dependency order, then the subject, is verified with all
+  errors in one checker scope, in a child whose image is the engine's boot
+  prefix plus the verifier, so no word of the caller or of an earlier check is
+  visible. The subject's packets name PATH, canonical and absolute, with
+  positions in the bytes; a dependency's name the dependency, with positions
+  in its file.
+- The child runs on `bin/hb` in the caller's working directory, which must
+  be the tree root, as `check.f`'s run stage does.
+
+| `CHECK:verdict` | Meaning | check.f exit |
+| --- | --- | --- |
+| `verified` | Nothing in the closure or the subject is refused. | 0 |
+| `refused` | The subject, a file of its closure, or the closure itself is refused. | 70 |
+| `engine-provided` | The engine provides PATH (`ENGINE-PROVIDES?`): nothing is verified, whatever the bytes hold. | 64 |
+| `held` | The child's image holds PATH though the engine does not (`src/habu/verify-source.f`, `tools/check-verify-child.f`), so it cannot be verified there. | 69 |
+| `incomplete` | The child ended without a result line; its `status` is the exit, signal or deadline. | 69 |
+
+Under `--verify-only` check.f writes the packets on stderr, as schema-1 JSON
+with or without `--json-errors`, and its prose on stdout, with a closing line
+for `engine-provided`, `held` and `incomplete`. Child output beyond the
+operation's capture exits 69 with the complete packets received before it, the
+prose and a closing line. A usage error (64), a missing
+FILE and an oversized source (66) are reported on stderr as without the flag.
+With `--verify-only`, a source list, a FILE beside `--stdin-path` and stdin
+without it are usage errors; so is `--stdin-path` given twice or without
+`--verify-only`.
+
+`CHECK:VERIFY-BYTES ( ptr u8 n ptr u8 n ms -- CHECK:verdict )` takes the bytes,
+PATH, a relative one read from the working directory, and the child's
+deadline. `CHECK:VERIFY-OUT$` holds the packets, one JSON object per line, and
+`CHECK:VERIFY-LOG$` the prose, until the next call. An empty PATH throws
+`E-FS-PATH`; a closure of more than 128 files and a failed spawn throw as well.
+Child output beyond the capture, 4 MiB on stdout or 256 KiB on stderr, kills
+the child and throws `E-PROC-TRUNCATED`, with every complete packet received
+before it in `CHECK:VERIFY-OUT$` and the stderr received in
+`CHECK:VERIFY-LOG$`.
+`tools/check-verify-test.f` prints what one check costs: about 50 ms for a
+one-definition file and 230 ms for `tools/check-core.f`, whose closure is over
+thirty files.
+
+The child, `tools/check-verify-child.f`, is run only by the operation:
+
+```text
+ENGINE --load tools/check-verify-child.f -- SUBJECT [DEP ...] < BYTES
+```
+
+SUBJECT is canonical and absolute, and each DEP is a file of the closure,
+canonical and absolute, in dependency order; a DEP the image holds is skipped,
+as `require` skips it. stdout carries the packets in verification order, then
+one result line, `check-verify: verified`, `refused` or `held`. stderr carries
+prose, including `PATH: verification stopped by throw RC after N rejected
+definitions` for each file a throw stopped. The verdict is read from the
+result line after a clean exit, never from the exit status.
+
 ## Repair Packet JSON
 
 Repair packets are the LLM-facing object passed back after a checker rejection.
