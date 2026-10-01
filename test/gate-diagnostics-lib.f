@@ -314,6 +314,23 @@ variable LABEL-U
    s" byte_start" s" 8" s" bad nominal byte_start" ERR-JRAW
    s" byte_end" s" 11" s" bad nominal byte_end" ERR-JRAW ;
 
+\ A definer with nothing after it: the refusal is located at the definer and
+\ keeps the diagnostic contract.
+: MISSING-NAME-DECL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" DEFLINEAR" GE-SRC-LINE
+   s" tools/check.f --json-errors accepted a definer with no name" CHECK-JSON
+   s" code" s" E-MISSING-NAME" s" missing name code" ERR-JSTR
+   s" token" s" DEFLINEAR" s" missing name token" ERR-JSTR
+   s" repair_class" s" fix_missing_name" s" missing name repair class" ERR-JSTR
+   s" line" s" 1" s" missing name line" ERR-JRAW
+   s" column" s" 1" s" missing name column" ERR-JRAW
+   s" byte_start" s" 0" s" missing name byte_start" ERR-JRAW
+   s" byte_end" s" 9" s" missing name byte_end" ERR-JRAW
+   s" habu-missing-name.err" WRITE-ERR
+   s" habu-missing-name.err" s" missing name diagnostic contract" DIAG-CONTRACT ;
+
 \ The check CLI accepts a source that declares a nominal locally and uses it in
 \ a signature. The declarer is DEFLINEAR, whose interpret word survives and runs
 \ in the child engine; a DEFLINEAR value moves exactly once, so JWIDGET passes it

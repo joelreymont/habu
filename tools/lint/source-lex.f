@@ -4,10 +4,12 @@
 \ the way text.f and intern.f do: lib/vector.f is no longer in the engine, so a
 \ consumer that loaded this file without it now fails at VEC-HEADER-CELLS.
 \
-\ Public surface (all reads; the package owns every cell):
+\ Public surface (the package owns every cell):
 \   WORD COMMENT REGISTRY              token kinds returned by KIND@
 \   UNTERMINATED-QUOTE MALFORMED-REGISTRY   diagnostic kinds from ERROR-KIND@
 \   SOURCE ( ptr u8 n -- )             scan a buffer; clears all prior state first
+\   OPERAND ( n -- )                   token n parses the next token: rescan
+\                                      from it by parse-name's rule
 \   COUNT ( -- n )                     tokens produced by the last SOURCE
 \   TOKEN CONTENT ( n -- ptr u8 n )    token span / paren-comment body or
 \                                      string-literal payload span
@@ -22,9 +24,10 @@
 \
 \ The diagnostic is one generic record, not a quote-specific flag. A scan writes
 \ it at most once: the writer runs at the malformed site and stops the scan, so
-\ no token after that site is exposed. Consumers only read it back, so no caller
-\ can mutate lexer state. A consumer that requires valid source must reject when
-\ ERROR? is true, and should read ERROR-KIND@ to name which defect it hit.
+\ no token after that site is exposed. Consumers only read it back; a rescan by
+\ OPERAND writes it afresh, as SOURCE does. A consumer that requires valid source
+\ must reject when ERROR? is true, and should read ERROR-KIND@ to name which
+\ defect it hit.
 
 require lib/memory.f
 require lib/vector.f
@@ -526,12 +529,8 @@ private
    WORD a u byte line col pa pu ADD
    closed 0= if COUNT 1- MARK-UNTERM then ;
 
-public
-
-: SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a SRC! u SRC-U ! 0 POS ! 1 LINE-N ! 1 COL-N !
-   CLEAR-ERROR
-   RESET-TABLES
+\ The engine's token loop over the rest of the source, from POS.
+: SCAN ( -- )
    begin END? 0= HALTED @ 0= and while
       CUR ENGINE-DELIM? if ADV drop
       else
@@ -541,5 +540,85 @@ public
          else SCAN-WORD then then
       then
    repeat ;
+
+\ ---- an operand taken by parse-name -------------------------------------------
+\ A definer reads its name with `parse-name`: the next whitespace-delimited token,
+\ whatever it spells, so `DEFLINEAR (` declares the type `(` and `: \` defines the
+\ word `\`. Which token is such a definer is a grammar question this lexer cannot
+\ answer: `DEFLINEAR` parses its name at top level but is an ordinary call inside
+\ a body, where a `(` after it opens a comment. So the consumer that knows the
+\ grammar names the token, and OPERAND reads what follows it again.
+
+\ The first byte at or after a byte index that is not an engine delimiter, or
+\ the end of the source.
+: INK-FROM ( n -- n )
+   begin dup SRC-U @ < if SRC@ over + c@ ENGINE-DELIM? else LINT-FALSE then while
+      1+
+   repeat ;
+
+\ The first engine delimiter at or after a byte index, or the end of the source.
+: GAP-FROM ( n -- n )
+   begin dup SRC-U @ < if SRC@ over + c@ ENGINE-DELIM? 0= else LINT-FALSE then while
+      1+
+   repeat ;
+
+\ Token k is the raw token at [a, a+u) when the scan read it there as a plain
+\ word. A string opener of that spelling is not one: the scan swallowed its
+\ literal as well.
+: PLAIN-AT? ( n n n -- bool ) {: k:n a:n u:n :}
+   k COUNT >= if LINT-FALSE exit then
+   k KIND@ WORD <> if LINT-FALSE exit then
+   k BYTE@ a <> if LINT-FALSE exit then
+   k TOKEN {: ta:ptr tu:n :}
+   tu u <> if LINT-FALSE exit then
+   ta tu STRING-OPENER? LINT-NOT ;
+
+\ Keep the first n tokens and drop the rest.
+: KEEP ( n -- )
+   VEC-LEN {: l :}
+   l KIND-V VEC-LEN!
+   l 0 ADDR-V VEC-LEN!
+   l LEN-V VEC-LEN!
+   l BYTE-V VEC-LEN!
+   l LINE-V VEC-LEN!
+   l COL-V VEC-LEN!
+   l 0 CADDR-V VEC-LEN!
+   l CLEN-V VEC-LEN!
+   SYNC-COUNT ;
+
+\ POS sits on the first byte of the operand.
+: RAW-WORD ( -- )
+   POS @ START !  LINE-N @ START-LINE !  COL-N @ START-COL !
+   begin END? 0= CUR ENGINE-DELIM? 0= and while ADV drop repeat
+   WORD CUR$ START @ START-LINE @ START-COL @ SRC@ 0 ADD ;
+
+public
+
+: SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a SRC! u SRC-U ! 0 POS ! 1 LINE-N ! 1 COL-N !
+   CLEAR-ERROR
+   RESET-TABLES
+   SCAN ;
+
+\ Token k is a word that takes the next whitespace-delimited token as its
+\ operand; the caller matched its spelling, so it is a plain word. When the scan
+\ read that operand as anything else (a comment, a string literal, a row, a
+\ print body, or a token past a dropped `\` line), token k+1 becomes the raw
+\ operand and the rest of the source is scanned again from its end. Otherwise
+\ nothing changes, so asking costs one span compare.
+: OPERAND ( n -- ) {: k:n :}
+   k BYTE@ k TOKEN nip + {: end:n :}
+   end INK-FROM {: a:n :}
+   a GAP-FROM a - {: u:n :}
+   u 0= if exit then
+   k 1+ a u PLAIN-AT? if exit then
+   k 1+ KEEP
+   end POS !
+   k LINE@ LINE-N !
+   k COL@ end k BYTE@ - + COL-N !
+   CLEAR-ERROR
+   SKIP-RAW-WS
+   RAW-WORD
+   SCAN ;
 
 ;package

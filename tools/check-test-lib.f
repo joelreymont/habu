@@ -1087,9 +1087,6 @@ variable LONG-J
    s" : CKF-PRIV ( ckfp:ckfpfam -- ckfp:ckfpfam ) ;" SB-APPEND
    SB$ ;
 
-: FAM-NONAME$ ( -- ptr u8 n )      \ scanner boundary: package without a name token
-   s" package" ;
-
 : RESERVED-LIST-RUN ( -- n n n )
    LIST$ RESERVED$ WRITE-ALL
    RESERVED-NAME-LINT:RESET
@@ -2259,6 +2256,113 @@ create BIG $2000 allot   variable BIG-U
    [: FAM-SHARED-HEAD s" ckf-tail" FAM-LIN s" ckf-tail" FAM-DROP$ ;] FAM-CLAIM-REFUSED
    [: FAM-SHARED-HEAD s" ckf-tail" FAM-REC s" ckf-tail" FAM-DROP$ ;] FAM-CLAIM-REFUSED ;
 
+\ A definer takes its name with parse-name: the next whitespace-delimited token,
+\ whatever it spells, so `DEFLINEAR (` declares the type `(` and `: \` the word
+\ `\`. Each source declares such a name on its first line. The second line opens
+\ with a comment or with a reserved word, so a stage that lexed the name as a
+\ comment opener would take that token for the name, or none. Every stage of the
+\ check must reach the loader's verdict, and a refusal names the same token.
+: OPERAND-SRC$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n b:ptr v:n :}
+   SB-RESET
+   a u SB-APPEND $0a SB-APPEND-C
+   b v SB-APPEND
+   SB$ ;
+
+: AFTER-COMMENT$ ( -- ptr u8 n )
+   s" ( note ) : CKN-F ( -- n ) 1 ;" ;
+
+: AFTER-RESERVED$ ( -- ptr u8 n )
+   s" create CKN-B : CKN-F ( -- n ) 1 ;" ;
+
+: OPERAND-ADMITTED ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
+   a u b v OPERAND-SRC$ HB-LOAD-SRC NOM-LOAD-ADMITTED
+   a u b v OPERAND-SRC$ NOM-CHECK-ADMITTED ;
+
+: OPERAND-REFUSED ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n w:ptr wu:n :}
+   a u AFTER-COMMENT$ OPERAND-SRC$ HB-LOAD-SRC
+   {: outu:n erru:n rc:n :}
+   rc 0 T<>
+   CAP-ERR erru w wu CONTAINS? TTRUE
+   a u AFTER-COMMENT$ OPERAND-SRC$ DIRECT-STDIN 70 T=
+   {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 w wu CONTAINS? TTRUE ;
+
+: TEST-OPERAND-NAME-ADMITTED ( -- )
+   s" (" LIN-ADMITTED
+   s" \" LIN-ADMITTED
+   s" (" REC-ADMITTED
+   s" \" REC-ADMITTED
+   s" DEFLINEAR (" AFTER-COMMENT$ OPERAND-ADMITTED
+   s" DEFLINEAR \" AFTER-COMMENT$ OPERAND-ADMITTED
+   s" VALUE-RECORD ( x n END-VALUE-RECORD" AFTER-COMMENT$ OPERAND-ADMITTED
+   s" VALUE-RECORD \ x n END-VALUE-RECORD" AFTER-COMMENT$ OPERAND-ADMITTED
+   s" package ( ;package" AFTER-COMMENT$ OPERAND-ADMITTED
+   s" package \ ;package" AFTER-COMMENT$ OPERAND-ADMITTED
+   s" : \ ( -- n ) 1 ;" AFTER-RESERVED$ OPERAND-ADMITTED
+   s" create \" AFTER-RESERVED$ OPERAND-ADMITTED
+   s" variable \" AFTER-RESERVED$ OPERAND-ADMITTED
+   s" 1 constant \" AFTER-RESERVED$ OPERAND-ADMITTED ;
+
+: TEST-OPERAND-NAME-REFUSED ( -- )
+   s" require lib/type/deftype.f DEFTYPE (" s" '('" OPERAND-REFUSED
+   s" require lib/type/deftype.f DEFTYPE \" s" '\'" OPERAND-REFUSED
+   s" NEWTYPE ( 0" s" '('" OPERAND-REFUSED
+   s" NEWTYPE \ 0" s" '\'" OPERAND-REFUSED
+   s" SUMTYPE ( 0 VARIANT ckn-a ;VARIANT ;SUMTYPE" s" '('" OPERAND-REFUSED
+   s" SUMTYPE \ 0 VARIANT ckn-a ;VARIANT ;SUMTYPE" s" '\'" OPERAND-REFUSED
+   s" ENUM ( ckn-a ;ENUM" s" '('" OPERAND-REFUSED
+   s" ENUM \ ckn-a ;ENUM" s" '\'" OPERAND-REFUSED
+   s" STRUCTURE ( 0 FIELD x n ;STRUCTURE" s" '('" OPERAND-REFUSED
+   s" STRUCTURE \ 0 FIELD x n ;STRUCTURE" s" '\'" OPERAND-REFUSED
+   s" PRODUCT ( 0 FIELD x n ;PRODUCT" s" '('" OPERAND-REFUSED
+   s" PRODUCT \ 0 FIELD x n ;PRODUCT" s" '\'" OPERAND-REFUSED ;
+
+\ A definer with nothing after it has no name to read. Each source puts one
+\ alone on its second line, two columns in: the loader refuses the source, and
+\ the check refuses it in prose and in JSON at that place, naming the definer,
+\ without reading past the last token.
+: NONAME-SRC$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n d:ptr du:n :}
+   SB-RESET
+   a u SB-APPEND $0a SB-APPEND-C
+   s"   " SB-APPEND
+   d du SB-APPEND $0a SB-APPEND-C
+   SB$ ;
+
+: NONAME-REFUSED ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n d:ptr du:n :}
+   a u d du NONAME-SRC$ HB-LOAD-SRC
+   {: outu:n erru:n rc:n :}
+   rc 0 T<>
+   a u d du NONAME-SRC$ DIRECT-STDIN 70 T=
+   {: outu2:n erru2:n :}
+   outu2 0 T=
+   SB-RESET
+   s" check.f: <stdin>:2:3: missing name after '" SB-APPEND
+   d du SB-APPEND 39 SB-APPEND-C
+   CAP-ERR erru2 SB$ CONTAINS? TTRUE
+   a u d du NONAME-SRC$ DIRECT-JSON-STDIN 70 T=
+   {: outu3:n erru3:n :}
+   outu3 0 T=
+   CAP-ERR erru3 s\" \"code\":\"E-MISSING-NAME\"" CONTAINS? TTRUE
+   CAP-ERR erru3 s\" \"line\":2,\"column\":3," CONTAINS? TTRUE
+   SB-RESET
+   s\" \"word\":\"" SB-APPEND
+   d du SB-APPEND $22 SB-APPEND-C
+   CAP-ERR erru3 SB$ CONTAINS? TTRUE ;
+
+: TEST-OPERAND-MISSING ( -- )
+   s" require lib/type/deftype.f" s" DEFTYPE" NONAME-REFUSED
+   s" \ lead" s" DEFLINEAR" NONAME-REFUSED
+   s" \ lead" s" VALUE-RECORD" NONAME-REFUSED
+   s" \ lead" s" NEWTYPE" NONAME-REFUSED
+   s" \ lead" s" SUMTYPE" NONAME-REFUSED
+   s" \ lead" s" ENUM" NONAME-REFUSED
+   s" \ lead" s" STRUCTURE" NONAME-REFUSED
+   s" \ lead" s" PRODUCT" NONAME-REFUSED
+   s" \ lead" s" package" NONAME-REFUSED
+   s" \ lead" s" :" NONAME-REFUSED
+   s" \ lead" s" TRUSTED:" NONAME-REFUSED ;
+
 : LINEAR-GOOD-TEST ( -- )
    LINEAR-GOOD$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
@@ -2319,12 +2423,6 @@ create BIG $2000 allot   variable BIG-U
    outu 0 T=
    CAP-ERR erru s" E-UNKNOWN-SIGNATURE-TYPE" CONTAINS? TTRUE
    CAP-ERR erru s" ckfp:ckfpfam" CONTAINS? TTRUE ;
-
-: FAM-NONAME-TEST ( -- )
-   FAM-NONAME$ DIRECT-STDIN 70 T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   CAP-ERR erru s" check.f: missing package name" CONTAINS? TTRUE ;
 
 : TEST-REQUIRE-FACADE ( -- )
    s" require lib/test/suite.f" DIRECT-STDIN 0 T=
@@ -2616,6 +2714,9 @@ POISON-RECORD
    s" check/nominal-name-refused" [: TEST-NOMINAL-NAME-REFUSED ;] CASE-RUN
    s" check/nominal-name-admitted" [: TEST-NOMINAL-NAME-ADMITTED ;] CASE-RUN
    s" check/nominal-family-claim" [: TEST-NOMINAL-FAMILY-CLAIM ;] CASE-RUN
+   s" check/operand-name-admitted" [: TEST-OPERAND-NAME-ADMITTED ;] CASE-RUN
+   s" check/operand-name-refused" [: TEST-OPERAND-NAME-REFUSED ;] CASE-RUN
+   s" check/operand-missing" [: TEST-OPERAND-MISSING ;] CASE-RUN
    s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN
    s" check/package-linear-cross" [: LINEAR-CROSS-TEST ;] CASE-RUN
    s" check/package-linear-global" [: LINEAR-GLOBAL-TEST ;] CASE-RUN
@@ -2625,7 +2726,6 @@ POISON-RECORD
    s" check/package-family-bogus" [: FAM-BOGUS-TEST ;] CASE-RUN
    s" check/package-family-json-pin" [: FAM-JSON-PIN ;] CASE-RUN
    s" check/package-family-private" [: FAM-PRIV-TEST ;] CASE-RUN
-   s" check/package-missing-name" [: FAM-NONAME-TEST ;] CASE-RUN
    s" check/require-facade" [: TEST-REQUIRE-FACADE ;] CASE-RUN
    s" check/included-dep" [: TEST-INCLUDED-DEP ;] CASE-RUN
    s" check/image-tool-sources" [: TEST-IMAGE-TOOL-SOURCES ;] CASE-RUN

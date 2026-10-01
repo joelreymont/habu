@@ -295,6 +295,13 @@ create BODY-BUF BODYBUF-CAP allot
 : OPERAND ( -- ptr u8 n )
    NEXT-RAW dup 0= IF s" verify-source: missing parsed token" 74 die THEN ;
 
+\ A definer takes its name by the same rule: the engine reads it with LTOK or
+\ parse-name, so `: \`, `DEFLINEAR (` and `create s"` name a word `\`, a type
+\ `(` and a word `s"`. A comment or string rule there would hand the definer a
+\ later token instead. Each caller reports a missing name its own way.
+: NAME-TOKEN ( -- ptr u8 n )
+   NEXT-RAW ;
+
 : APPEND-BODY-TOKEN ( -- )
    TOKEN-A @ TOKEN-U @ BODY-PARSER? IF
       TOKEN-A @ TOKEN-U @ BODY-APPEND
@@ -641,7 +648,7 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    CAST-TRUST ;
 
 : TRUST-NEXT ( ptr u8 n -- ) {: sig:ptr sigu:n :}
-   NEXT-SCAN
+   NAME-TOKEN
    dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
    sig sigu DECL-SIGNATURE ;
 
@@ -654,7 +661,7 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 \ fetch from their raw cell yields a RAW value that cannot launder into a nominal
 \ atom or family (habu-nominal-storage-raw, VALUE side).
 : RAW-TRUST-NEXT ( ptr u8 n -- ) {: sig:ptr sigu:n :}
-   NEXT-SCAN
+   NAME-TOKEN
    dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
    -1 SIG-RAW-MODE!
    sig sigu DECL-SIGNATURE
@@ -664,12 +671,12 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 \ this pre-pass never read. The row is the checker's own certified one, so there
 \ is no signature text to re-parse and no seal to re-apply here; what is left is
 \ the same shape - the created word is the NEXT token - and the same answer.
-\ THE TOKEN IS TESTED BEFORE THE NAME IS TAKEN: NEXT-SCAN consumes a token, and
+\ THE TOKEN IS TESTED BEFORE THE NAME IS TAKEN: NAME-TOKEN consumes a token, and
 \ a token that is not a definer must leave the scan exactly where it was.
 : CREATED-TRUST-NEXT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u FIND-SYM {: dsym:n :}
    dsym CREATES-SYM? 0= IF 0 0= 0= EXIT THEN
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing defining-word name" 74 die THEN
    name nameu dsym RECORD-CREATED ;
 
@@ -678,7 +685,7 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    name nameu CHECKER-DEFER ;
 
 : TRUST-DEFER ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing defer name" 74 die THEN
    name nameu TRUST-DEFER-SIGNATURE ;
 
@@ -709,7 +716,7 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    AGAIN ;
 
 : TRUSTED-DEFINITION ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing trusted name" 74 die THEN
    name nameu REQUIRE-SIGNATURE DECL-SIGNATURE
    name nameu SCAN-TRUSTED-BODY ;
@@ -719,17 +726,17 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 \ through the certifying registrar, not DECL-SIGNATURE, so an illegal retype is
 \ refused here too and not merely recorded.
 : CAST-DECLARATION ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing cast name" 74 die THEN
    name nameu REQUIRE-SIGNATURE DEFCAST-SIGNATURE ;
 
 : UNDEFINE-WORD ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing undefine name" 74 die THEN
    name nameu CHECKER-UNDEFINE ;
 
 : RECORD-PACKAGE ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing package name" 74 die THEN
    name nameu CHECKER-PACKAGE ;
 
@@ -751,7 +758,7 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 \ checker owns the replay's using depth, so these two rows are the only thing
 \ that moves it.
 : RECORD-USING ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing using name" 74 die THEN
    name nameu CHECKER-USING-PUSH ;
 
@@ -781,7 +788,7 @@ variable NOM-TAIL-U
    NOM-TAIL-BUF NOM-TAIL-U @ ;
 
 : RECORD-DEFTYPE ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing nominal name" 74 die THEN
    name nameu MANGLE {: tail:ptr tailu:n :}
    tail tailu s" 0" CHECKER-DEFFAMILY
@@ -789,7 +796,7 @@ variable NOM-TAIL-U
    name nameu tail tailu RECORD-CAST-OUT ;
 
 : RECORD-DEFLINEAR ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing deflinear name" 74 die THEN
    name nameu CHECKER-DEFLINEAR ;
 
@@ -802,12 +809,12 @@ variable NOM-TAIL-U
 \ Missing name/arity are reported by CHECKER-DEFFAMILY through the declaration
 \ packet (E-BAD-DECLARATION), matching the native path -- no raw pre-check die (§24).
 : RECORD-NEWTYPE ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    NEXT-SCAN {: ar:ptr aru:n :}
    name nameu ar aru CHECKER-DEFFAMILY ;
 
 : RECORD-SUMTYPE ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    0 BODY-U !
    BEGIN
       NEXT-SCAN
@@ -843,8 +850,9 @@ variable NOM-TAIL-U
 \ NEXT-RAW is exactly `parse-name`'s rule — the next whitespace-delimited token,
 \ no comment or string interpretation — so the replayed body is the same token
 \ sequence the live keyword would have read. The substitution is scoped to the
-\ two replay windows below; every other scan in this file keeps NEXT-SCAN, since
-\ outside a declaration comments really are inert.
+\ two replay windows below and to the definer names NAME-TOKEN reads; every
+\ other scan in this file keeps NEXT-SCAN, since outside a declaration comments
+\ really are inert.
 : DECL-TOKEN ( -- ptr u8 n ) NEXT-RAW ;
 
 \ Registration-only replay of `ENUM name .. ;ENUM` (mirrors RECORD-SUMTYPE):
@@ -907,7 +915,7 @@ variable NOM-TAIL-U
 \ signatures in this source resolve the family. No dictionary words are
 \ generated on this path (engine-definer-only, sum parity).
 : RECORD-PRODUCT ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing product name" 74 die THEN
    0 BODY-U !
    BEGIN
@@ -923,7 +931,7 @@ variable NOM-TAIL-U
 
 : RECORD-LAYOUT-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    NEXT-SCAN {: type:ptr typeu:n :}
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
 
@@ -963,12 +971,12 @@ PTR-VARIABLE STG-START
 
 : RECORD-TYPED-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER ;
 
 : RECORD-TYPED-VARIABLE ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE ;
 
@@ -979,12 +987,12 @@ PTR-VARIABLE STG-START
 \ src/habu/aot-decl.f's AOT-NAMES-RESERVE was, which took the stage2 certify pass
 \ with it. No count token: a dynamic buffer's extent is set at run time.
 : RECORD-DYNAMIC-BUFFER ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER ;
 
 : RECORD-VALUE-RECORD ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing value-record name" 74 die THEN
    0 BODY-U !
    BEGIN
@@ -1012,7 +1020,7 @@ PTR-VARIABLE STG-START
 \ build strips via COMMENT-EXPORTS before engine load — replay consumes the
 \ name and records nothing, exactly like the engine never seeing the line.
 : RECORD-EXPORT ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
 
@@ -1064,14 +1072,14 @@ PTR-VARIABLE STG-START
    DECL-SIGNATURE ;
 
 : RECORD-STRUCTURE-FIELD ( ptr u8 n -- ) {: sig:ptr sigu:n :}
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing structure field name" 74 die THEN
    name nameu sig sigu TRUST-STRUCTURE-FIELD ;
 
 \ Record the size word (`-- n`) then each field accessor with its runtime effect
 \ so BEGIN-STRUCTURE layouts self-certify their field uses.
 : RECORD-STRUCTURE ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing structure name" 74 die THEN
    name nameu s" -- n" DECL-SIGNATURE
    BEGIN
@@ -1159,7 +1167,7 @@ PTR-VARIABLE STG-START
 
 : VERIFY-DEFINITION ( -- )
    0 BODY-U !
-   BODY!
+   NAME-TOKEN TOKEN-U !  TOKEN-A !
    TOKEN-U @ 0= if s" verify-source: missing word name" 74 die then
    TOKEN-ORIGIN!
    DEF-NAME!

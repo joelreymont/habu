@@ -344,6 +344,8 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" fix_nominal_type" s" Choose a unique non-reserved nominal type name."
    GJA-SUGGEST-ROW IF exit THEN
+   s" fix_missing_name" s" Give the definer a name: the next whitespace-delimited token."
+   GJA-SUGGEST-ROW IF exit THEN
    s" fix_family_declaration" s" Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks."
    GJA-SUGGEST-ROW IF exit THEN
    s" rewrite_uncheckable" s" Rewrite with modeled words or isolate an audited primitive."

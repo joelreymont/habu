@@ -710,22 +710,41 @@ private
 : CHK-NOM-JU ( n ptr u8 n -- )
    LJW-KEY LJW-U LJW-COMMA ;
 
-: CHK-TYPE-JSON ( n n ptr u8 n -- ) {: def:n name:n word:ptr wordu:n :}
+: CHK-U$ ( n -- ptr u8 n ) {: u:n :}
+   CHK-NUM-CAP CHK-NUM-I !
+   u 0= if
+      CHK-NUM-I @ 1- CHK-NUM-I !
+      48 CHK-NUM-BUF CHK-NUM-I @ + c!
+      CHK-NUM-BUF CHK-NUM-I @ + 1
+      exit
+   then
+   u begin dup 0 > while
+      dup 10 mod 48 +
+      CHK-NUM-I @ 1- CHK-NUM-I !
+      CHK-NUM-BUF CHK-NUM-I @ + c!
+      10 /
+   repeat drop
+   CHK-NUM-BUF CHK-NUM-I @ + CHK-NUM-CAP CHK-NUM-I @ - ;
+
+\ A declaration packet up to its suggestion: the declaration from def to token
+\ tok, which the packet names and locates.
+: CHK-PACKET-START ( n n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: def:n tok:n code:ptr codeu:n class:ptr classu:n word:ptr wordu:n :}
    LJW-RESET
    LJW-OBJECT-START
    1 s" schema_version" CHK-NOM-JU
-   s" code" s" E-BAD-NOMINAL-TYPE" CHK-NOM-JSTR
-   s" repair_class" s" fix_nominal_type" CHK-NOM-JSTR
+   s" code" code codeu CHK-NOM-JSTR
+   s" repair_class" class classu CHK-NOM-JSTR
    s" verdict" s" rejected" CHK-NOM-JSTR
    s" word" word wordu CHK-NOM-JSTR
-   s" token" LJW-KEY name LINT-LEX:TOKEN LJW-STRING LJW-COMMA
-   name s" token_index" CHK-NOM-JU
+   s" token" LJW-KEY tok LINT-LEX:TOKEN LJW-STRING LJW-COMMA
+   tok s" token_index" CHK-NOM-JU
    s" file" LJW-KEY CHK-LABEL LJW-STRING LJW-COMMA
-   name LINT-LEX:LINE@ s" line" CHK-NOM-JU
-   name LINT-LEX:COL@ s" column" CHK-NOM-JU
-   name LINT-LEX:BYTE@ s" byte_start" CHK-NOM-JU
-   name CHK-TOK-END s" byte_end" CHK-NOM-JU
-   s" definition_source" LJW-KEY def name CHK-NOM-SRC$ LJW-STRING LJW-COMMA
+   tok LINT-LEX:LINE@ s" line" CHK-NOM-JU
+   tok LINT-LEX:COL@ s" column" CHK-NOM-JU
+   tok LINT-LEX:BYTE@ s" byte_start" CHK-NOM-JU
+   tok CHK-TOK-END s" byte_end" CHK-NOM-JU
+   s" definition_source" LJW-KEY def tok CHK-NOM-SRC$ LJW-STRING LJW-COMMA
    s" declared_effect" s" unknown " CHK-NOM-JSTR
    s" declared_effect_source" s" unknown" CHK-NOM-JSTR
    s" inferred_effect" s" unknown " CHK-NOM-JSTR
@@ -734,11 +753,17 @@ private
    s" expected" LJW-KEY s" " LJW-STRING LJW-COMMA
    s" actual" LJW-KEY s" " LJW-STRING
    LJW-OBJECT-END
-   LJW-COMMA
-   s" suggestion" LJW-KEY CHK-NOM-BAD-SUG$ LJW-STRING
+   LJW-COMMA ;
+
+: CHK-PACKET-END ( ptr u8 n -- ) {: sug:ptr sugu:n :}
+   s" suggestion" LJW-KEY sug sugu LJW-STRING
    LJW-OBJECT-END
    LJW$ CHK-ERR
    CHK-LF CHK-ERR-C ;
+
+: CHK-TYPE-JSON ( n n ptr u8 n -- ) {: def:n name:n word:ptr wordu:n :}
+   def name s" E-BAD-NOMINAL-TYPE" s" fix_nominal_type" word wordu CHK-PACKET-START
+   CHK-NOM-BAD-SUG$ CHK-PACKET-END ;
 
 : CHK-NOM-PROSE ( n -- ) {: name:n :}
    s" check.f: bad nominal type '" CHK-ERR
@@ -756,6 +781,46 @@ private
 : CHK-LIN-FAIL ( n n -- )
    s" deflinear" CHK-TYPE-FAIL ;
 
+\ Prose located at token k: label, line and column.
+: CHK-AT-PROSE ( n -- ) {: k:n :}
+   s" check.f: " CHK-ERR
+   CHK-LABEL CHK-ERR
+   58 CHK-ERR-C
+   k LINT-LEX:LINE@ CHK-U$ CHK-ERR
+   58 CHK-ERR-C
+   k LINT-LEX:COL@ CHK-U$ CHK-ERR
+   s" : " CHK-ERR ;
+
+: CHK-NONAME-SUG$ ( -- ptr u8 n )
+   s" Give the definer a name: the next whitespace-delimited token." ;
+
+\ Definer k has nothing after it, so it has no name to read: the loader refuses
+\ it, and the check does at the definer.
+: CHK-NONAME-FAIL ( n -- ) {: k:n :}
+   CHK-JSON @ IF
+      k k s" E-MISSING-NAME" s" fix_missing_name" k LINT-LEX:TOKEN CHK-PACKET-START
+      CHK-NONAME-SUG$ CHK-PACKET-END
+   ELSE
+      k CHK-AT-PROSE
+      s" missing name after '" CHK-ERR
+      k LINT-LEX:TOKEN CHK-ERR
+      39 CHK-ERR-C
+      CHK-LF CHK-ERR-C
+   THEN
+   CHK-E-CHECK CHK-THROW ;
+
+\ A definer reads its name with parse-name, the next whitespace-delimited token
+\ whatever it spells: `DEFLINEAR (` declares the type `(` and `: \` defines the
+\ word `\`, as the loader reads them. On a match the lexer reads the token after
+\ the definer again by that rule, so the scan below never takes a comment, or the
+\ token after one, for the name. A definer with no token after it is refused
+\ here, so a caller answered true finds the name at the next token.
+: CHK-DEFINER? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+   k a u CHK-TOK=CI 0= IF LINT-FALSE exit THEN
+   k LINT-LEX:OPERAND
+   k 1+ LINT-LEX:COUNT >= IF k CHK-NONAME-FAIL THEN
+   LINT-TRUE ;
+
 \ DEFTYPE NAME folds the UPPER-CASE surface name to the lowercase family tail
 \ (SERIAL -> serial) and mints the tail with CHECKER-DEFFAMILY, as
 \ lib/type/deftype.f does. The bad-name diagnostic still reports the surface
@@ -772,11 +837,9 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 \ A DEFLINEAR or VALUE-RECORD name is spelled in effects as written, unfolded,
 \ and its loader refuses it by TYPE-RESERVED? on those bytes; asking the same
 \ word first is what lets a refusal become a diagnostic instead of the
-\ registration's die. A name this lexer reads as a comment, not a word, opens
-\ with `(` or `.(`, which TYPE-RESERVED? refuses too, so the loader agrees.
-: CHK-NOM-NAME-BAD? ( n -- bool ) {: name:n :}
-   name CHK-WORD-TOK? 0= IF LINT-TRUE exit THEN
-   name LINT-LEX:TOKEN TYPE-RESERVED? ;
+\ registration's die.
+: CHK-NOM-NAME-BAD? ( n -- bool )
+   LINT-LEX:TOKEN TYPE-RESERVED? ;
 
 : CHK-LIN-REGISTER ( n n -- ) {: def:n name:n :}
    name CHK-NOM-NAME-BAD? IF def name CHK-LIN-FAIL THEN
@@ -886,7 +949,6 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 \ can only be about the name, so the bad-nominal diagnostic replaces the
 \ declaration packet.
 : CHK-NOM-REGISTER ( n n -- ) {: def:n name:n :}
-   name CHK-WORD-TOK? 0= IF def name CHK-NOM-FAIL THEN
    name CHK-TFAM-NAME-I !
    CHK-DECL-CAPTURE
    [: CHK-NOM-DO-DEF ;] catch {: rc:n :}
@@ -1034,19 +1096,16 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 \ package under the live visibility mode (TDECL reads CHECKER-PACKAGE-*), and
 \ qualified pkg:tail signature uses resolve public-only exactly as native.
 \ The CHECKER-SCOPE frame wrapping the nominal pass saves/restores package
-\ state (RBF.PKGMODE/PKGU). Boundary: the name must be the plain next word
-\ token — a missing or comment-shaped name rejects fail-closed here, while
+\ state (RBF.PKGMODE/PKGU). Boundary: the name is the token parse-name takes
+\ after `package`, and CHK-DEFINER? refuses a missing one, while
 \ native-loader misuse (nesting, public outside a package, ':' in a name)
 \ stays fail-closed through preverify and the child run.
 : CHK-PKG-REGISTER ( n -- n ) {: k:n :}   \ k at 'package'; next scan index
-   k 1+ CHK-WORD-TOK? 0= if
-      s" check.f: missing package name" CHK-E-CHECK CHK-FAIL
-   then
    k 1+ LINT-LEX:TOKEN CHECKER-PACKAGE
    k 2 + ;
 
 : CHK-PKG-STEP ( n -- n bool ) {: k:n :}   \ package-word dispatch: next index, handled
-   k s" package" CHK-TOK=CI if k CHK-PKG-REGISTER LINT-TRUE exit then
+   k s" package" CHK-DEFINER? if k CHK-PKG-REGISTER LINT-TRUE exit then
    k s" public" CHK-TOK=CI if CHECKER-PUBLIC k 1+ LINT-TRUE exit then
    k s" private" CHK-TOK=CI if CHECKER-PRIVATE k 1+ LINT-TRUE exit then
    k s" ;package" CHK-TOK=CI if CHECKER-END-PACKAGE k 1+ LINT-TRUE exit then
@@ -1056,8 +1115,8 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    s" ;" CHK-TOK=CI ;
 
 : CHK-DEF-OPENER? ( n -- bool ) {: k:n :}
-   k s" :" CHK-TOK=CI IF LINT-TRUE exit THEN
-   k s" TRUSTED:" CHK-TOK=CI ;
+   k s" :" CHK-DEFINER? IF LINT-TRUE exit THEN
+   k s" TRUSTED:" CHK-DEFINER? ;
 
 : CHK-SKIP-DEF ( n -- n )
    begin dup LINT-LEX:COUNT < while
@@ -1068,30 +1127,30 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 : CHK-NOM-STEP ( n -- n ) {: k:n :}
    k CHK-DEF-OPENER? if k 1+ CHK-SKIP-DEF exit then
    k CHK-PKG-STEP if exit then drop
-   k s" deftype" CHK-TOK=CI if
+   k s" deftype" CHK-DEFINER? if
       k k 1+ CHK-NOM-REGISTER
       k 2 + exit
    then
-   k s" deflinear" CHK-TOK=CI if
+   k s" deflinear" CHK-DEFINER? if
       k k 1+ CHK-LIN-REGISTER
       k 2 + exit
    then
-   k s" VALUE-RECORD" CHK-TOK=CI if
+   k s" VALUE-RECORD" CHK-DEFINER? if
       k k 1+ CHK-VREC-REGISTER exit
    then
-   k s" NEWTYPE" CHK-TOK=CI if
+   k s" NEWTYPE" CHK-DEFINER? if
       k CHK-TFAM-REGISTER exit
    then
-   k s" SUMTYPE" CHK-TOK=CI if
+   k s" SUMTYPE" CHK-DEFINER? if
       k CHK-SUM-REGISTER exit
    then
-   k s" ENUM" CHK-TOK=CI if
+   k s" ENUM" CHK-DEFINER? if
       k CHK-ENUM-REGISTER exit
    then
-   k s" STRUCTURE" CHK-TOK=CI if
+   k s" STRUCTURE" CHK-DEFINER? if
       k CHK-STRUCT-REGISTER exit
    then
-   k s" PRODUCT" CHK-TOK=CI if
+   k s" PRODUCT" CHK-DEFINER? if
       k CHK-PROD-REGISTER exit
    then
    k 1 + ;
@@ -1180,22 +1239,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 : CHK-RUN-LN ( ptr u8 n -- )
    CHK-RUN+
    CHK-LF CHK-RUN-C ;
-
-: CHK-U$ ( n -- ptr u8 n ) {: u:n :}
-   CHK-NUM-CAP CHK-NUM-I !
-   u 0= if
-      CHK-NUM-I @ 1- CHK-NUM-I !
-      48 CHK-NUM-BUF CHK-NUM-I @ + c!
-      CHK-NUM-BUF CHK-NUM-I @ + 1
-      exit
-   then
-   u begin dup 0 > while
-      dup 10 mod 48 +
-      CHK-NUM-I @ 1- CHK-NUM-I !
-      CHK-NUM-BUF CHK-NUM-I @ + c!
-      10 /
-   repeat drop
-   CHK-NUM-BUF CHK-NUM-I @ + CHK-NUM-CAP CHK-NUM-I @ - ;
 
 : CHK-RUN-N ( n -- )
    CHK-U$ CHK-RUN+ ;

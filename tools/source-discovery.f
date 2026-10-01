@@ -205,9 +205,12 @@ variable SD-SCOPES
    SD-PATH-OVF @ 0= 0= if E-DISC-CAPACITY SD-REJECT exit then
    off len kind SD-CALL-LOADER ;
 
+\ A name reader with nothing after it ends the source, so no loader form is left
+\ to find. The missing name is the loader's to refuse; tools/check.f refuses it
+\ at the definer.
 : SD-CHECK-NAME ( -- )
    SD-RAW {: off:n len:n :}
-   len 0= if E-DISC-UNTERM throw then
+   len 0= if exit then
    off len SD-RESERVED? if E-DISC-SHADOW SD-REJECT then ;
 
 \ UNDEFINE-IF-DEFINED retiring a loader word (or fed a non-literal name that

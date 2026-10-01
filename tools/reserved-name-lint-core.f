@@ -332,13 +332,20 @@ private
 : RNL-HANDLE-IN-DEF ( -- )
    RNL-I @ LINT-LEX:TOKEN s" ;" LINT-STR= if 0 RNL-IN-DEF ! then ;
 
+\ A definer reads its name with parse-name, so the lexer reads the token after
+\ one again by that rule: `: \` defines `\`, and a reserved word on the next
+\ line is not its name.
+: RNL-NAME ( -- )
+   RNL-I @ LINT-LEX:OPERAND
+   RNL-I @ 1+ RNL-CHECK-NAME ;
+
 : RNL-HANDLE-TOP ( -- )
    RNL-I @ RNL-COLON-DEFINER? if
-      RNL-I @ 1+ RNL-CHECK-NAME
+      RNL-NAME
       -1 RNL-IN-DEF !
       exit
    then
-   RNL-I @ RNL-DATA-DEFINER? if RNL-I @ 1+ RNL-CHECK-NAME then ;
+   RNL-I @ RNL-DATA-DEFINER? if RNL-NAME then ;
 
 \ A parsing keyword's operand is data in either state: `char : constant COLON`
 \ defines COLON, not a word named `constant`.

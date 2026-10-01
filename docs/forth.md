@@ -1252,6 +1252,28 @@ passing suite.
   parses, such as `require` or `SEE`, is not one of these: the word a spelling
   names depends on scope, and the tree defines words that take no operand
   under both spellings, so the token after one is an ordinary token.
+- **A definer's name is read as the loader reads it, by every stage of
+  `tools/check.f`.** The loader takes it with `parse-name`, so `DEFLINEAR (`
+  declares the type `(`, `VALUE-RECORD \ x n END-VALUE-RECORD` the record `\`,
+  `package ( ;package` the package `(` and `: \ ( -- n ) 1 ;` the word `\`. The
+  source pre-verifier reads every definer's name with `NAME-TOKEN`
+  (`verify-source.f`). The nominal pass and the reserved-name lint work on
+  `tools/lint/source-lex.f` tokens and ask `LINT-LEX:OPERAND` to read the token
+  after a definer again, because only they know the definer is at top level:
+  inside a body `DEFLINEAR` is a call and a `(` after it opens a comment.
+  Measured: those four loaded and were refused, and so were `create \`,
+  `variable \` and `1 constant \` followed by a line opening with a reserved
+  word (a comment, or the next line's first token, taken for the name). All
+  check now, and `NEWTYPE`, `SUMTYPE`, `ENUM`, `STRUCTURE`, `PRODUCT` and
+  `DEFTYPE` refuse the names `(` and `\` naming them as the loader does
+  (tools/check-test-lib.f `check/operand-name-admitted`, `-refused`). A definer
+  with nothing after it has no name: the loader refuses it, and `tools/check.f`
+  refuses it at the definer, in prose and as `E-MISSING-NAME`, for each of the
+  eleven definers it reads (`check/operand-missing`). Measured before: the
+  three that name a type died reading past the last token (rc 67, no JSON),
+  `NEWTYPE`, `SUMTYPE`, `ENUM` and `STRUCTURE` exited 70 with no message,
+  `PRODUCT` reported a missing `;PRODUCT`, `package` an unlocated missing name,
+  and source discovery called `:` and `TRUSTED:` an unterminated string.
 - **A `create … does>` definer teaches the checker what its words are, whether
   or not its text was read.** A definer the source pre-verifier READ is learned
   from the clause text (`verify-source.f` `DEFINER-EFFECT`). A RESIDENT one —

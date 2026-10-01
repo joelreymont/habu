@@ -162,6 +162,9 @@ Current checker classes:
   element type, e.g. `ptr u8` or `ptr a`.
 - `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
   syntactically invalid nominal type name.
+- `fix_missing_name`: a definer (`:`, `DEFTYPE`, `package`, `NEWTYPE` and the
+  rest) ended the source with no name after it (`E-MISSING-NAME`); the packet
+  is located at the definer.
 - `fix_family_declaration`: a `NEWTYPE` or `SUMTYPE` declaration used a
   reserved, non-lowercase, or duplicate family/variant name, a bad arity token,
   an unknown payload type, or a malformed/unterminated `VARIANT` block.
@@ -193,6 +196,7 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_signature_arity` | `Give the type family its exact declared number of arguments.` |
 | `fix_bare_ptr_element` | `Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'.` |
 | `fix_nominal_type` | `Choose a unique non-reserved nominal type name.` |
+| `fix_missing_name` | `Give the definer a name: the next whitespace-delimited token.` |
 | `fix_family_declaration` | `Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
