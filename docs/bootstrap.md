@@ -37,9 +37,10 @@ publishes no effect for (the checker publishes `CHECK-QUIET-CANDIDATE!` and
 
 The source arena is sized from what it holds, so baked source cannot overflow
 it: an engine maps `IBUFSZ` for what boot reads (the cold prefix and an argv
-or stdin program) plus exactly the `SRCN` bytes it bakes, `src/habu/habu2.f`
-`SOURCE-ARENA-LEN` and its mirror in `bootstrap/cg/forth.fs`, which every
-mapping and bound check reads. Never let baked source share a fixed arena with
+or stdin program) plus exactly the `SRCN` bytes it bakes. `SOURCE-ARENA-LEN`
+in `src/habu/habu2.f` and its mirror in `bootstrap/cg/forth.fs` size the mapping
+and bound baked-source copies; ordinary reads stay within `IBUFSZ`.
+Never let baked source share a fixed arena with
 the prefix: stripping the prefix only moved that ceiling, and the tree crossed
 it again when `hb-stdin-mk`'s 3,108,486-byte baked source plus its cold prefix
 passed `IBUFSZ` (`hb: source prefix buffer full`, exit 74, before its driver

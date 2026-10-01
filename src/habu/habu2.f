@@ -758,8 +758,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 \ behind: with one fixed arena, the recovery chain's hb-stdin-mk (about 1.1 MB
 \ of prefix ahead of 3.1 MB of baked compiler source) died `hb: source prefix
 \ buffer full`, exit 74, the moment the tree grew past their sum. The mapping
-\ and every bound check read this one length; the seed mirror in
-\ bootstrap/cg/forth.fs states the same sum.
+\ and baked-source copies use this length; ordinary reads retain IBUFSZ.
+\ The seed mirror in bootstrap/cg/forth.fs states the same sum.
 : SOURCE-ARENA-LEN ( -- n )
    IBUFSZ SRCN @ + ;
 
@@ -773,7 +773,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    17 9 0 ADDI,
    srl LBL,
       0 12 0 ADDI,  1 9 0 ADDI,
-      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
       2 sbufull CBZ,                                \ no room left: arena overflow, not a read fault
       NR-READ SYS,
       13 C-CS CSET,  13 sreaderr CBNZ,
@@ -806,7 +806,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 \ would skip anyway. The prefix rows are 41 percent comment bytes, and every cold
 \ boot copies all of them into the source arena ahead of the program, inside the
 \ fixed IBUFSZ allowance an argv or stdin program shares with them
-\ (SOURCE-ARENA-LEN). The engine reads its prefix through this entry; LSRCRD
+\ (IBUFSZ). The engine reads its prefix through this entry; LSRCRD
 \ keeps serving argv files and the certified --build payload byte for byte,
 \ because those are the user's source and the engine must not rewrite them.
 \
@@ -982,7 +982,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 
 : C-SOURCE-APPEND-X4-TO ( label -- ) {: fail:label :}
    2 11 0 ADDI,
-   5 SOURCE-ARENA-LEN LIT64,
+   5 IBUFSZ LIT64,
    2 2 5 ADD,
    9 2 CMP,
    C-GE fail BCOND,
@@ -1780,7 +1780,7 @@ public
    17 9 0 ADDI,
    SRC-RL LABEL@ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
-      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
       2 SRC-SFAIL LABEL@ CBZ,
       NR-READ SYS,
       13 C-CS CSET,  13 SRC-SFAIL LABEL@ CBNZ,
@@ -1862,7 +1862,7 @@ public
    14 14 1 ADDI, ;
 
 : C-SOURCE-APPEND-LF ( -- )
-   2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,
+   2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,
    9 2 CMP,  C-GE SRC-SFAIL LABEL@ BCOND,
    5 10 MOVZ,  5 9 0 STRB,  9 9 1 ADDI, ;
 

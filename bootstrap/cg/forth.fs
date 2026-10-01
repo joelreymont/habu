@@ -2674,7 +2674,7 @@ create ZBYTE 0 c,
    17 9 0 ADDI,
    srl LBL,
       0 12 0 ADDI,  1 9 0 ADDI,
-      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
       2 sbufull CBZ,                              \ no room left: arena overflow, not a read fault
       NR-READ SYS,
       13 C-CS CSET,  13 sreaderr CBNZ,
@@ -3064,7 +3064,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-SOURCE-APPEND-X4-TO ( n -- )
    {: fail :}
    2 11 0 ADDI,
-   5 SOURCE-ARENA-LEN LIT64,
+   5 IBUFSZ LIT64,
    2 2 5 ADD,
    9 2 CMP,
    C-GE fail BCOND,
@@ -3266,7 +3266,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    17 9 0 ADDI,
    SRC-RL @ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
-      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
       2 SRC-SFAIL @ CBZ,
       NR-READ SYS,
       13 C-CS CSET,  13 SRC-SFAIL @ CBNZ,
@@ -3311,7 +3311,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    14 14 1 ADDI, ;
 
 : C-SOURCE-APPEND-LF ( -- )
-   2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,
+   2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,
    9 2 CMP,  C-GE SRC-SFAIL @ BCOND,
    5 10 MOVZ,  5 9 0 STRB,  9 9 1 ADDI, ;
 
