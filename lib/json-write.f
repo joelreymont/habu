@@ -158,6 +158,13 @@ private
    src u LEN>N BUF:N>BLEN buf BUF:APPEND-SPAN
    w ;
 
+\ A closed writer has no output to alias, so let KEY report an invalid key
+\ before it reports the closed state.
+: JW-FIELD-ALIAS ( ptr writer ptr u8 n -- n ) {: w a:ptr u:n :}
+   w @ JSON--WRITE-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr :}
+   cap JW-CLOSED-CAP = if -1 exit then
+   w a u JW-ALIAS ;
+
 public
 
 : OPEN ( ptr writer ptr u8 n -- ptr writer ) {: w vp:ptr cap:n :}
@@ -288,13 +295,13 @@ public
 
 : FIELD-RAW ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
    {: kp:ptr keyu:n vp:ptr valu:n :}
-   dup vp valu JW-ALIAS {: off:n :}
+   dup vp valu JW-FIELD-ALIAS {: off:n :}
    kp keyu KEY
    dup vp off JW-REBASE valu RAW ;
 
 : FIELD-S ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
    {: kp:ptr keyu:n vp:ptr valu:n :}
-   dup vp valu JW-ALIAS {: off:n :}
+   dup vp valu JW-FIELD-ALIAS {: off:n :}
    kp keyu KEY
    dup vp off JW-REBASE valu STRING ;
 

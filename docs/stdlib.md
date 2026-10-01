@@ -815,11 +815,11 @@ that does not fit with `E-JW-CAPACITY`; a growable writer can propagate `BUF` or
 allocation errors. A document that hit a refusal is incomplete until the caller
 `RESET`s or `CLOSE`s the writer. A byte outside 0..255 is
 `E-JW-BYTE`, an output buffer that is null or negative is `E-JW-OUTPUT`, and an
-appended span that is negative or null-with-bytes is `E-JW-SOURCE`. The same
-error covers a span inside the buffer's capacity but outside its written bytes,
-including bytes left after `RESET`. The record accessors, the capacity/length
-refinement helpers, and the single-byte and escape emitters are package-private,
-so callers use only the qualified public words below.
+appended span that is negative or null-with-bytes is `E-JW-SOURCE`. For growable
+writers, the same error covers a span inside the buffer's capacity but outside
+its written bytes, including bytes left after `RESET`. The record accessors,
+the capacity/length refinement helpers, and the single-byte and escape emitters
+are package-private, so callers use only the qualified public words below.
 
 ```forth
 JSON-WRITE:writer                                     \ the record type
