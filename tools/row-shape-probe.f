@@ -55,10 +55,10 @@ variable N-ADJACENT    \ rows holding two multi-cell values next to each other
 variable N-PAST        \ rows whose slots claim a run reaching past the row's end
 variable N-BUNDLED     \ rows holding at least one multi-cell value
 
-\ One boundary, the shape tools/callable-arity-probe.f and the census both use:
+\ One reader, the shape tools/callable-arity-probe.f and the census both use:
 \ the checker's query entry is name-stripped past the seal, so a checked caller
 \ reaches it behind a declared signature.
-TRUSTED: HAS-EFFECT? ( ptr u8 n -- bool )
+: HAS-EFFECT? ( ptr u8 n -- bool )
    EFFECT-QUERY ;
 
 32 constant LIST-MAX

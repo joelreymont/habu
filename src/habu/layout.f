@@ -524,6 +524,10 @@ public
 $2800 constant PATH-CELL
 $2808 constant PATHLEN-CELL
 $2810 constant INB-CELL
+\ CURSOR: INP-CELL as a declared cell, the byte address the scanner reads next,
+\ for a reader outside the scanner that takes the input position and puts it
+\ back (tools/native-unit-compile.f peeks a require path that way).
+INP-CELL RESERVED-PTR-U8-CELL CURSOR
 ;package
 
 \ $2780..$27A8 (TSIG/TCSIG/CRSIG) relocated into the friend arena above.

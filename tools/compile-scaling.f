@@ -157,10 +157,6 @@ variable NC-COUNT                  \ NCOMP:COMPILE dispatches since MAIN took th
 variable NC-MARK                   \ NC-COUNT when the current set opened
 variable SCI                       \ reduction index for the least-squares sums
 
-\ The dispatch this tool borrowed, to be put back. A DECLARED code cell: an
-\ undeclared one may not hold an execution token (dot
-\ habu-refuse-an-executable-e8834546).
-TYPED-VARIABLE PRIOR-XT [ ptr u8 n -- ]
 variable PRIOR-TIER                \ the tier the caller had selected
 
 8 constant PREFIX-CAP
@@ -176,14 +172,6 @@ variable BOUND-R                   \ and this is it
 : COUNTING-COMPILE ( ptr u8 n -- )
    NC-COUNT @ 1+ NC-COUNT !
    NCOMP:COMPILE ;
-
-\ NCOMP-DISPATCH:XT-CELL is an image-ABI offset and the cell holds the compile
-\ entry the native compiler installs with `xt!`. Since the executable-value
-\ fence (dot habu-refuse-an-executable-e8834546) no CHECKED word may give a DATA
-\ address a quotation pointee, so the address computation is a named boundary;
-\ it retires with the checker's quotation type kind (habu-campaign-c2-mem-c3d7662b).
-TRUSTED: DISPATCH-CELL ( -- ptr [ ptr u8 n -- ] )
-   data-base NCOMP-DISPATCH:XT-CELL + ;
 
 \ ---- refusal ----------------------------------------------------------------
 
@@ -472,21 +460,22 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 \ ---- the borrow -------------------------------------------------------------
 
+\ Every boot installs NCOMP:COMPILE in the tier-1 `:` dispatch, the entry
+\ COUNTING-COMPILE forwards to, so PUT-BACK ends the borrow with NCOMP:INSTALL.
 : TAKE-OVER ( -- )
-   DISPATCH-CELL @ PRIOR-XT !
    tier@ PRIOR-TIER !
    0 NC-COUNT !
    0 SET-LIVE? !
-   ['] COUNTING-COMPILE DISPATCH-CELL xt!
+   ['] COUNTING-COMPILE NCOMP:DISPATCH!
    1 SELECT-TIER
    A64RA:ALLOC-NS-OPEN ;
 
 \ TEARDOWN first: on the refusing paths a measured set is still standing, and
-\ the caller gets its dictionary back along with its dispatch, its tier and a
-\ disarmed stopwatch.
+\ the caller gets its dictionary back along with the compiler's dispatch, its
+\ tier and a disarmed stopwatch.
 : PUT-BACK ( -- )
    TEARDOWN
-   PRIOR-XT @ DISPATCH-CELL xt!
+   NCOMP:INSTALL
    PRIOR-TIER @ SELECT-TIER
    A64RA:ALLOC-NS-CLOSE ;
 

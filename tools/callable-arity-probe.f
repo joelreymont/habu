@@ -49,7 +49,7 @@ variable N-UNSIZEABLE
 
 \ The checker's effect readers are name-stripped past the seal, so a checked
 \ caller reaches them only as compiled calls behind a declared signature.
-TRUSTED: HAS-EFFECT? ( ptr u8 n -- bool )
+: HAS-EFFECT? ( ptr u8 n -- bool )
    EFFECT-QUERY ;
 
 \ The listing is capped so a probe on a big image stays readable; the COUNTS are
