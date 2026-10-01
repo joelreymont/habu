@@ -1437,3 +1437,6 @@
 -9390 constant E-JSON-RPC-FIRST
 -9399 constant E-JSON-RPC-LAST
 -9390 constant E-JSON-RPC-ID             \ a response written with an empty id
+
+\ Language server: -9400..-9401, minted by tools/lsp-core.f, which owns package
+\ LSP.

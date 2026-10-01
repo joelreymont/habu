@@ -305,6 +305,10 @@ SUITE check-verify
    tools/check-verify-test.f
 ;SUITE
 
+SUITE lsp-boundary
+   tools/lsp-test.f
+;SUITE
+
 SUITE streaming-sha256
    tools/sha256-file-test.f
 ;SUITE
