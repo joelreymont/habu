@@ -475,6 +475,10 @@ variable DSUGE  variable DSUGA
    JNN @ BEGIN dup 0 > WHILE
       1 - dup JNBUF + c@ EMIT1
    REPEAT drop ;
+\ JCHAR writes one byte of a JSON string. RFC 8259 section 7 admits no raw byte
+\ below 32 there: LF, CR and TAB take their short escapes and every other one
+\ \u00XX in upper-case hex, the form tools/lint/json-writer.f writes.
+: JHEX ( n -- )  dup 10 < IF 48 ELSE 55 THEN + EMIT1 ;
 : JCHAR {: c :}
    c case
       10 of 92 EMIT1 110 EMIT1 endof
@@ -482,7 +486,8 @@ variable DSUGE  variable DSUGA
       9 of 92 EMIT1 116 EMIT1 endof
       34 of 92 EMIT1 c EMIT1 endof
       92 of 92 EMIT1 c EMIT1 endof
-      c EMIT1
+      c 32 < IF  92 EMIT1 117 EMIT1 48 EMIT1 48 EMIT1  c 4 rshift JHEX  c 15 and JHEX
+      ELSE c EMIT1 THEN
    endcase ;
 : JSTR ( ptr u8 n -- ) {: a:ptr u:n :}
    34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;

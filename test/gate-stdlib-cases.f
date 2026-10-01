@@ -2191,6 +2191,10 @@ SUITE program-diagnostics
    test/program-diagnostics-test.f
 ;SUITE
 
+SUITE diag-json-escape
+   test/diag-json-escape.f
+;SUITE
+
 SUITE native-suite-cli
    test/run-cli-test.f
 ;SUITE
