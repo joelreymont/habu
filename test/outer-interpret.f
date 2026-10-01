@@ -151,9 +151,10 @@ variable WANT-RC
 : WANT-ERR$ ( -- ptr u8 n )
    WANT-ERR WANT-ERR-U @ ;
 
-\ The engine's run, kept while the Habu loop's runs.
-: KEEP ( -- )
-   GT-RC@ WANT-RC !
+\ The engine's run, kept while the Habu loop's runs. A run that ran out of time
+\ fails under label with its capture (GE-RC@).
+: KEEP ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   label labelu GE-RC@ WANT-RC !
    GT-OUT$ {: oa:ptr ou:n :}  oa WANT-OUT ou BYTE-COPY  ou WANT-OUT-U !
    GT-ERR$ {: ea:ptr eu:n :}  ea WANT-ERR eu BYTE-COPY  eu WANT-ERR-U ! ;
 
@@ -166,7 +167,7 @@ variable WANT-RC
 
 \ The Habu loop's run against the kept engine run.
 : SAME ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GT-RC@ WANT-RC @ <> if s" rc differs from the engine's" label labelu MISMATCH then
+   label labelu GE-RC@ WANT-RC @ <> if s" rc differs from the engine's" label labelu MISMATCH then
    GT-OUT$ WANT-OUT$ STR= 0= if s" stdout differs from the engine's" label labelu MISMATCH then
    GT-ERR$ WANT-ERR$ STR= 0= if s" stderr differs from the engine's" label labelu MISMATCH then ;
 
@@ -184,7 +185,7 @@ variable WANT-RC
 : BOTH ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu CASE-BUF GT-PATH CASE-U !
    CASE$ SRC>FILE
-   false RUN KEEP
+   false RUN name nameu KEEP
    true RUN
    name nameu SAME
    1 CASES +! ;

@@ -35,7 +35,7 @@ variable REFUSALS
    s" : " GE-SRC+ a u GE-SRC+ s"  ( -- n ) 42 ;" GE-SRC-LINE
    a u GE-SRC+ s"  drop" GE-SRC-LINE
    GE-EVAL-FORK-CAPTURE
-   GT-RC@ ;
+   a u GE-RC@ ;
 
 
 : SAME-RANGE ( ptr u8 n -- ) {: a:ptr u:n :}

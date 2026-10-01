@@ -26,7 +26,7 @@ package GATE-COMMON-TEST
 : EXPECT-REPORT ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n head:ptr headu:n :}
    mode modeu T-LABEL
    mode modeu RUN-CHECK
-   GT-RC@ UNCAUGHT-RC T=
+   mode modeu GE-RC@ UNCAUGHT-RC T=
    GT-ERR$ GT-POOL-UNCAUGHT-TIMEOUT? TTRUE
    GT-OUT$ head headu STARTS-WITH? TTRUE
    GT-OUT$ S\" \nstderr:\n" CONTAINS? TTRUE ;

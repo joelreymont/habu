@@ -212,7 +212,7 @@ variable IMAGE-U
 : IMAGE-CASES ( -- )
    BUILD-IMAGE
    s" tools/hb-build.f builds the stripped division image" T-LABEL
-   GT-RC@ 0 T=
+   T-LABEL$ GE-RC@ 0 T=
    GT-ERR$ nip 0 T=
    IMAGE$ EXECUTABLE? {: built:bool :}
    built TTRUE
@@ -221,7 +221,7 @@ variable IMAGE-U
    GE-HB-RESET
    IMAGE$ TIMEOUT-MS GE-RUN-ENV
    s" the stripped image catches its compiled zero divide by the code" T-LABEL
-   GT-RC@ 0 T=
+   T-LABEL$ GE-RC@ 0 T=
    GT-OUT$ S\" -6400\n" T$=
    s" artifacts: " type GT-ROOT type cr ;
 
