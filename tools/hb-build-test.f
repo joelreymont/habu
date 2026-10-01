@@ -5,6 +5,7 @@
 \ Run: bin/hb --load tools/hb-build-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -86,7 +87,7 @@ variable HBT-SEQ-IP      \ that scan's cursor
 \ stdout proves the new image replaced them.
 : CLI-REPORT ( -- )
    HBT-REPL-OUT s" stale" WRITE-ALL
-   HBT-ARGV-BASE
+   HBT-ARGV-BASE-REPL
    HBT-ADD-REPORT
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc 0 T=
@@ -424,6 +425,7 @@ variable HBT-SEQ-IP      \ that scan's cursor
 public
 : HBT-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-MAKER-KEY-FOLDS-MANIFEST
    HBT-PREPARE
    CLI-REPORT

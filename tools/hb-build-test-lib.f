@@ -331,14 +331,15 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ neither load hands HBT-KEYED! the keyed images that hold them
 \ (test/preloaded-engine.f LINKER$, test/app-image-engine.f PATH$) before it
 \ stages any argv. Its AOT builds, maker refusals and CLI spawns' makers then
-\ run the production maker script on the linker image, and its REPL builds and
-\ app refusals run on the saver image (docs/gate.md). The -SOURCE words keep one
-\ build on the engine, which compiles the linker above the application: for a
-\ subject that requires a module in the linker's lib closure
-\ (test/preloaded-engine.f rule 3), for a case about that order, and for a
-\ subject a maker on the linker image dies on with SIGSEGV
-\ (tools/hb-build-stripped-test.f names two). A row that records no image
-\ builds every program on the engine.
+\ run the production maker script on the linker image, and its REPL builds, app
+\ refusals and REPL CLI spawns (HBT-ARGV-BASE-REPL) run on the saver image
+\ (docs/gate.md). A row with no maker to run hands an empty linker and loads
+\ only the saver's module. The -SOURCE words keep one build on the engine,
+\ which compiles the linker above the application: for a subject that requires
+\ a module in the linker's lib closure (test/preloaded-engine.f rule 3), for a
+\ case about that order, and for a subject a maker on the linker image dies on
+\ with SIGSEGV (tools/hb-build-stripped-test.f names two). A row that records
+\ no image builds every program on the engine.
 : HBT-KEYED! ( ptr u8 n ptr u8 n -- ) {: linker:ptr linkeru:n saver:ptr saveru:n :}
    linker linkeru HBT-LINKER-BUF HBT-LINKER-U HBT-COPY!
    saver saveru HBT-SAVER-BUF HBT-SAVER-U HBT-COPY! ;
@@ -354,22 +355,30 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    a u BF-ENGINE! ;
 
 \ The CLI as docs/native-applications.md documents it: tools/hb-build.f alone
-\ requires its library, so every row spawns the command a user runs.
-: HBT-ARGV-BASE-TMP ( ptr u8 n -- )
+\ requires its library, so every row spawns the command a user runs. Its maker
+\ or app-build child runs the image named second, unless that is empty.
+: HBT-ARGV-CLI ( ptr u8 n ptr u8 n -- ) {: tmp:ptr tmpu:n eng:ptr engu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   s" HB_TMP" >LEN 2swap >LEN PROC-ENV+
+   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
    s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
-   HBT-LINKER-U @ 0 > if
-      s" HABU_FIXPOINT_ENGINE" >LEN HBT-LINKER >LEN PROC-ENV+
+   engu 0 > if
+      s" HABU_FIXPOINT_ENGINE" >LEN eng engu >LEN PROC-ENV+
    then
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
    s" tools/hb-build.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
+: HBT-ARGV-BASE-TMP ( ptr u8 n -- )
+   HBT-LINKER HBT-ARGV-CLI ;
+
 : HBT-ARGV-BASE ( -- )
    HBT-TMP HBT-ARGV-BASE-TMP ;
+
+\ A --repl build's CLI, whose app-build child runs the saver image.
+: HBT-ARGV-BASE-REPL ( -- )
+   HBT-TMP HBT-SAVER HBT-ARGV-CLI ;
 
 : HBT-TIMEOUT-ENV ( ptr u8 n -- )
    PROC-ENV-RESET

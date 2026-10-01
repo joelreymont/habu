@@ -6,6 +6,7 @@
 \ Run: bin/hb --load tools/hb-build-cli-errors-test.f
 
 require tools/hb-build-test-lib.f
+require test/app-image-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -99,7 +100,7 @@ TYPED-VARIABLE HBT-QUOTE-WRITER JSON-WRITE:writer
 \ exit or diagnostic. tools/hb-build-stripped-test.f HBT-STRIPPED-NO-ENTRY is
 \ the AOT path's.
 : HBT-REFUSE-MAIN-CLI ( n -- ) {: want:n :}
-   HBT-ARGV-BASE
+   HBT-ARGV-BASE-REPL
    s" --repl" >LEN PROC-ARGV+
    HBT-REPL-BAD-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
@@ -118,6 +119,7 @@ TYPED-VARIABLE HBT-QUOTE-WRITER JSON-WRITE:writer
 public
 : HBT-CLI-ERRORS-MAIN ( -- )
    T-RESET
+   NULL$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    CLI-PATH-ERROR
    HBT-BAD-MAIN-EFFECTS

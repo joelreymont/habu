@@ -6,6 +6,7 @@
 \ Run: bin/hb --load tools/hb-build-aot-cache-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 using BUILD-FIXPOINT                     \ the build tmp root and engine override
 
@@ -181,14 +182,16 @@ create HBT-EXP-HEX2 64 allot
    HBT-ABI-MAKER-SUFFIX ;
 
 \ The object this loads is the one HBT-BUILD-AOT-OBJECT-HIT stored, so this
-\ case runs after that one in the same scratch tree.
+\ case runs after that one in the same scratch tree. It was stored under the
+\ row's engine, the keyed linker image HBT-AOT-CACHE-MAIN selects for every
+\ case, so the flip back restores that engine rather than the default one.
 : HBT-ENGINE-KEY-FLIP ( -- )
    HBT-ABI-MAKER-QUALIFIED
    HBT-WRITE-ENG
    HBT-OBJ-LOAD? TTRUE
    HBT-ENG BF-ENGINE!
    HBT-OBJ-LOAD? TFALSE
-   BF-ENGINE-RESET
+   HBT-LINKER HBT-ENGINE!
    HBT-OBJ-LOAD? TTRUE ;
 
 : HBT-ALT-CHECKER$ ( -- ptr u8 n )
@@ -219,6 +222,8 @@ create HBT-EXP-HEX2 64 allot
 public
 : HBT-AOT-CACHE-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   HBT-LINKER HBT-ENGINE!
    HBT-PREPARE
    BUILD-AOT-PRESEED
    HBT-AOT-JIT-REJECT

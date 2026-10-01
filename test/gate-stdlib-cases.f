@@ -41,6 +41,20 @@ SUITE build-fixpoint-snapshot
    tools/build-fixpoint-snapshot-test.f
 ;SUITE
 
+\ The next two need no keyed image either, so they run beside the image build
+\ rows through the registry's first two holds: hb-build-stripped below waits
+\ for the saver and linker images, 6.5 s into a measured gate start, and
+\ aot-named-cells-image for the fixture writer and cold host, 19.7 s in.
+\ Registered after those rows they left two slots idle through the first hold
+\ and one or two through the second.
+SUITE build-fixpoint-fixtures
+   tools/build-fixpoint-test.f
+;SUITE
+
+SUITE stripped-entry
+   test/stripped-entry.f
+;SUITE
+
 SUITE hb-build-stripped
    tools/hb-build-stripped-test.f
 ;SUITE
@@ -55,14 +69,6 @@ SUITE hb-build-stripped-cache
 
 SUITE aot-named-cells-image
    test/aot-named-cells-suite.f
-;SUITE
-
-SUITE stripped-entry
-   test/stripped-entry.f
-;SUITE
-
-SUITE build-fixpoint-fixtures
-   tools/build-fixpoint-test.f
 ;SUITE
 
 SUITE hb-build-large-source
