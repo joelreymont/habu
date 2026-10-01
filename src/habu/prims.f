@@ -635,7 +635,7 @@ ETRUSTED-ONLY!                       \ native pending-record publication
 \ These nine rows are how an interpreter written in Habu writes it. Each is
 \ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so only a
 \ TRUSTED: body reaches one. A refusal exits and never throws: 79 while a task
-\ is live (the five dictionary and scope rows), 84 for a protected wid after
+\ is live (the four dictionary rows), 84 for a protected wid after
 \ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
 \ caller checks first and prints the engine's own text.
 \
@@ -670,6 +670,8 @@ ETRUSTED-ONLY!
 \ from the row's [0] and [8], PKG-REC the row's address and PKG-PARENT the
 \ wid; `-1 0` clears all four. It refuses any other index at or above NDICT,
 \ unsigned, a row that is not a namespace row and one without a private wid.
+\ It stores while a task is live: the package keywords refuse one, and a throw
+\ puts the scope back through this row (src/habu/packages.f PKG-RECOVER).
 EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: write record NDICT unpublished,

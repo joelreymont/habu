@@ -18,8 +18,8 @@
 \   its bitmap cell protected, aliases a long-named source: the alias carries
 \   the source's code and length cells and exactly its IMM, WIDE and MIN-IN
 \   bits, neither its VAL nor its EXT bit, and xref-search-wl finds it.
-\ - hb-x64-kernel-package-scope sets the four package cells from a namespace
-\   row, then clears them with `-1 0`.
+\ - hb-x64-kernel-package-scope, with a task live past the namespace row, sets
+\   the four package cells from that row, then clears them with `-1 0`.
 \ - hb-x64-kernel-def-open, after the seal, opens a definition whose name
 \   another wid holds: the pending record, its cells, and NDICT unchanged.
 \ - hb-x64-kernel-def-open-state checks the state def-open resets: its record's
@@ -42,7 +42,7 @@
 \ The armed images exit a refusal before any store, with nothing on fd 2:
 \ - 79, a task live, one image for each row that guards:
 \   -namespace-record-live-armed, -namespace-private-live-armed,
-\   -alias-record-live-armed, -package-scope-live-armed, -def-open-live-armed.
+\   -alias-record-live-armed, -def-open-live-armed.
 \ - 83, ENGINE-ERROR:SEAL-VIOLATION: def-open of a live name that differs only
 \   in case (-def-open-case-armed), namespace-private on a row whose [8] is set
 \   (-namespace-private-set-armed), an alias of a DNAME-INT source
@@ -240,6 +240,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    FIRST-WID WIDN-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
    s" pk" BOTH-WIDS NAMESPACE,                        \ its index, 0, stays for the row
+   LIVE,                                              \ the row stores with a task live
    PARENT-WID X64HARNESS:PUSH,  s" package-scope!" X64HARNESS:CALL-ROW,
    FIRST-WID PKG-PUB-CELL X64HARNESS:EXPECT-CELL,
    FIRST-WID 1+ PKG-PRI-CELL X64HARNESS:EXPECT-CELL,
@@ -348,8 +349,6 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    LIVE,  X64HARNESS:REST,
    s" al" 0 WID ALIAS, ;
 
-: SCOPE-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  -1 0 SCOPE, ;
-
 : DEF-OPEN-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  s" w" 0 0 DEF-OPEN, ;
 
 : CASE-PAIR, ( -- )
@@ -425,7 +424,6 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    [: NAMESPACE-LIVE, ;] false s" hb-x64-kernel-namespace-record-live-armed" TMP-PATH IMAGE
    [: PRIVATE-LIVE, ;] false s" hb-x64-kernel-namespace-private-live-armed" TMP-PATH IMAGE
    [: ALIAS-LIVE, ;] false s" hb-x64-kernel-alias-record-live-armed" TMP-PATH IMAGE
-   [: SCOPE-LIVE, ;] false s" hb-x64-kernel-package-scope-live-armed" TMP-PATH IMAGE
    [: DEF-OPEN-LIVE, ;] false s" hb-x64-kernel-def-open-live-armed" TMP-PATH IMAGE
    [: CASE-PAIR, ;] false s" hb-x64-kernel-def-open-case-armed" TMP-PATH IMAGE
    [: PRIVATE-SET, ;] false s" hb-x64-kernel-namespace-private-set-armed" TMP-PATH IMAGE

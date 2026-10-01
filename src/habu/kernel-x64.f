@@ -3024,7 +3024,7 @@ public
 \ rows, aliases and package scope through (src/habu/prims.f, "the definition
 \ writers"): the twins of habu2.f DEFWRITE's bodies, in each twin's check
 \ order. Every refusal comes before the first store and writes nothing on fd
-\ 2: a live task exits TASK-LIVE-RC in the five dictionary and scope rows, a
+\ 2: a live task exits TASK-LIVE-RC in the four dictionary rows, a
 \ protected wid after the seal ENGINE-ERROR:SEAL-PACKAGE, and every other
 \ refusal ENGINE-ERROR:SEAL-VIOLATION. Past the checks two helper exits can
 \ still end a row: 74 when the index cannot be kept, and
@@ -3250,10 +3250,11 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 \ package-scope! ( n n -- ) namespace index, parent wid: PKG-PUB and PKG-PRI
 \ from the row's [0] and [8], PKG-PARENT the wid and PKG-REC the row; `-1 0`
-\ clears all four.
+\ clears all four. It stores while a task is live, as habu2.f
+\ DEFWRITE:PACKAGE-SCOPE does: the keywords guard, and recovery restores the
+\ scope through it.
 : PACKAGE-SCOPE-BODY ( -- )
    LBL LBL {: set:label done:label :}
-   TASK-LIVE-GUARD,
    RDX POP,  RCX POP,                                 \ the parent wid, the row
    RCX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE set JCC,
    RDX RDX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,  \ only `-1 0` clears

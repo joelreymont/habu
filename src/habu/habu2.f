@@ -3685,10 +3685,12 @@ public
    prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
    done LBL, ;
 
-\ package-scope! ( n n -- ) namespace index, parent wid
+\ package-scope! ( n n -- ) namespace index, parent wid. It stores while a
+\ task is live: the package keywords guard (C-TASK-LIVE-GUARD), and the Habu
+\ loop's recovery puts the scope back through this row as LEVALREC stores the
+\ cells (src/habu/packages.f PKG-RECOVER).
 : PACKAGE-SCOPE ( -- )
    LBL LBL LBL {: bad set done :}
-   B-TASK-LIVE-GUARD
    1 G-POP  0 G-POP                                   \ x1 = the parent wid, x0 = the row
    15 0 MOVN,  0 15 CMP,  C-NE set BCOND,
       1 bad CBNZ,                                     \ only `-1 0` clears

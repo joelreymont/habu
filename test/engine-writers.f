@@ -172,7 +172,6 @@ private
    s" EW-LIVE parse-name NSL true EW-AT EW-NS" TASK-LIVE REFUSES
    s" parse-name NSL false EW-NS EW-LIVE EW-AT EW-PRIVATE" TASK-LIVE REFUSES
    s" : S ( -- ) ; EW-LIVE parse-name AL ndict@ 1- get-current EW-AT EW-ALIAS" TASK-LIVE REFUSES
-   s" EW-LIVE -1 0 EW-AT EW-SCOPE" TASK-LIVE REFUSES
    s" EW-LIVE parse-name DW get-current 0 EW-AT EW-OPEN" TASK-LIVE REFUSES ;
 
 \ Refusals every record writer shares: an empty name, a length no region holds,
@@ -242,7 +241,7 @@ public
    s" an alias runs its source and stays immediate" T-LABEL ALIASES T-NEXT
    s" def-open body-append trust-sig! then 42 ; publish natively" T-LABEL DEFINITIONS T-NEXT
    s" body-append fills BODYBUF to its last byte" T-LABEL BODIES T-NEXT
-   s" the five dictionary and scope rows refuse a live task" T-LABEL LIVE-REFUSALS T-NEXT
+   s" the four dictionary rows refuse a live task" T-LABEL LIVE-REFUSALS T-NEXT
    s" record writers refuse what would corrupt the dictionary" T-LABEL RECORD-REFUSALS T-NEXT
    s" each row refuses its own corrupting inputs" T-LABEL ROW-REFUSALS T-NEXT
    T-REPORT ;

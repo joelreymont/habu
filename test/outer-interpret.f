@@ -839,6 +839,20 @@ variable WANT-RC
    S\" E-UNDEFINED: OI-NOPE\nE-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR
    0 SPIN-U ! ;
 
+\ A throw puts the package scope back with a task live, as the engine's
+\ recovery does: the file closes OI-T, starts a task and throws 42, and the
+\ includer catches 42 with OI-T's private word in scope again.
+: PACKAGE-RECOVERY-LIVE ( -- )
+   s" ;package OI-SPIN 42 throw" s" oi-nested-live-throw.f" PKG-NESTED
+   SPIN-PRELUDE
+   GE-SRC-RESET
+   s" package OI-T s~ : OI-TP ( -- n ) 6 ;~ evaluate" QLINE
+   s" s~ oi-nested-live-throw.f~ ' included catch . OI-TP ." QLINE
+   s" oi-pkg-live-throw.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 42\n6\n" CASE$ GE-EXPECT-OUT
+   0 SPIN-U ! ;
+
 \ ---- a file closes only the usings it opens -------------------------------------------
 \ A load file is a using scope on both loops. A file's `;using` that would close
 \ a using its includer opened is refused by name, and the includer that catches
@@ -1597,6 +1611,7 @@ private
    TOP-SHADOW
    USING-ACROSS-PACKAGE
    PACKAGE-RECOVERY
+   PACKAGE-RECOVERY-LIVE
    USING-INCLUDER
    USING-SLOT-THROW
    EXPORT-TOP-LEVEL
