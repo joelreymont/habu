@@ -147,7 +147,6 @@ variable BND-LANES                   \ address-carrier instructions, 1 or more
 1 TYPED-BUFFER BND-TYP IR-ID:ir-type-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
-1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-COPY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-REMAT IR-ID:ir-symbol-id
@@ -568,11 +567,6 @@ variable SHORT-FUN                           \ the function whose scan ran short
 
 : FRAME-ATTR ( IR-ID:ir-op-id -- n )
    0 BND-FRAME @ ATTR-INT-OF ;
-
-: FRAME-TOUCH? ( IR-ID:ir-op-id -- bool )
-   {: id:IR-ID:ir-op-id :}
-   id 0 BND-FRAME @ ATTR-INT-OF NOATTR <>
-   id 0 BND-SLOT @ ATTR-INT-OF NOATTR <> or ;
 
 : FRAME-SEEN+ ( n -- )
    {: frame:n :}
@@ -2342,7 +2336,6 @@ public
    gpr 0 BND-TYP !
    fpr 0 BND-FPR !
    mem 0 BND-MEM !
-   slot 0 BND-SLOT !
    frame 0 BND-FRAME !
    dslot  DK-SLOT BND-DKEY !
    dbytes DK-BYTES BND-DKEY !
