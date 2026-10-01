@@ -98,6 +98,9 @@ early `JSONLF-CLOSE` is allowed.
 
 ## Writer
 
+The separate checked `JSON-WRITE:` vocabulary supports caller-owned fixed or
+growable `BUF` output; see [stdlib.md](stdlib.md#json-write).
+
 `JSON-WRITE ( node -- ptr u8 u )` emits compact JSON for a parsed node. It escapes
 control bytes, quotes, and backslashes; non-ASCII UTF-8 bytes are emitted as
 UTF-8.

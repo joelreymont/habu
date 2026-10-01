@@ -96,6 +96,15 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-BUF BUFT-TCAP 100 T=
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" xy" T$= ;
 
+\ ---- ensure leaves room for incremental writes, preserving existing bytes -----
+: BUFT-ENSURE ( -- )
+   8 BUFT-FRESH
+   s" abc" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF 9 BUFT-N>BLEN BUF:ENSURE
+   BUFT-BUF BUFT-TCAP 16 T=
+   BUFT-BUF BUFT-TLEN 3 T=
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$= ;
+
 \ ---- replace swaps the contents, growing capacity if needed --------------------
 : BUFT-REPLACE ( -- )
    8 BUFT-FRESH
@@ -197,6 +206,9 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-USE-RESERVE ( -- )
    BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
    BUFT-REL-BUF 64 BUFT-N>BLEN BUF:RESERVE ;
+: BUFT-USE-ENSURE-ZERO ( -- )
+   BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
+   BUFT-REL-BUF 0 BUFT-N>BLEN BUF:ENSURE ;
 : BUFT-USE-LEN ( -- )
    BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
    BUFT-REL-BUF BUF:LEN@ drop ;
@@ -252,6 +264,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-GROW
    BUFT-APPEND-SPAN
    BUFT-RESERVE
+   BUFT-ENSURE
    BUFT-REPLACE
    BUFT-CLEAR
    \ ---- release / dispose lifecycle -------------------------------------------
@@ -263,6 +276,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    [: BUFT-USE-SPAN ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-APPEND ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-RESERVE ;] E-BUF-STATE TTHROWSQ
+   [: BUFT-USE-ENSURE-ZERO ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-LEN ;] E-BUF-STATE TTHROWSQ
    [: BUFT-USE-CLEAR ;] E-BUF-STATE TTHROWSQ
    [: BUFT-INIT-LIVE-REJECTS ;] E-BUF-STATE TTHROWSQ
@@ -280,6 +294,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    s" BSWAP-RAW-CAP ( ptr a n -- ) BUF:INIT" BUFT-CHECK-REJECTS
    s" BSWAP-RAW-SPAN ( ptr u8 n ptr a -- ) BUF:APPEND-SPAN" BUFT-CHECK-REJECTS
    s" BSWAP-RAW-RESERVE ( ptr a n -- ) BUF:RESERVE" BUFT-CHECK-REJECTS
+   s" BSWAP-RAW-ENSURE ( ptr a n -- ) BUF:ENSURE" BUFT-CHECK-REJECTS
    T-REPORT ;
 
 BUFT-RUN

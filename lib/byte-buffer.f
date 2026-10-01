@@ -131,8 +131,6 @@ private
 
 \ ---- doubling growth with a checked cell-overflow clamp ------------------------
 : GROW-CAP ( ptr a n -- n ) {: buf:ptr need:n :}
-   buf CHECK-LIVE
-   need CHECK-NEED
    buf CAP-RAW@
    begin dup need < while
       dup MAX-BYTES GROWTH / > if
@@ -143,6 +141,7 @@ private
    repeat ;
 
 : ENSURE-RAW ( ptr a n -- ) {: buf:ptr need:n :}
+   buf CHECK-LIVE
    need CHECK-NEED
    need buf CAP-RAW@ <= if exit then
    buf  buf need GROW-CAP  RESIZE-RAW ;
@@ -214,6 +213,8 @@ public
 \ ---- capacity management ------------------------------------------------------
 : RESERVE ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
    buf n BLEN>N RESERVE-RAW ;
+: ENSURE ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
+   buf n BLEN>N ENSURE-RAW ;
 
 \ ---- append / replace (growth doubles through the checked adapter) ------------
 : APPEND-BYTE ( n ptr a -- )  APPEND-BYTE-RAW ;
