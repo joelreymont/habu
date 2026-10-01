@@ -10,7 +10,7 @@
 \ pulls in app-image-core.f, and that requires eight lib modules including
 \ lib/process-env.f, so GETENV's table was already below the window before the
 \ application was even read. The latch words therefore cannot live in aot-lib.f
-\ with the rest of the linker. tools/aot-build-core.f loads THIS file, opens the
+\ with the rest of the linker. tools/aot-build-open.f loads THIS file, opens the
 \ window, loads the application, latches the span, and only then loads the linker
 \ above it. src/habu/aot-decl.f is the other lib-free candidate and is deliberately
 \ not used: it is baked into the engine (tools/bootstrap.sh SRC_COMMON,
@@ -49,6 +49,17 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
 \ arithmetic: NOT a trust row, and deliberately not one. src/habu/aot-arm.f carries
 \ the same one-liner for package AOT-ARM, which this file's package does not load.
 : HERE-N ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + ;
+
+\ The dictionary record count tools/aot-build-open.f takes right after
+\ requiring this file, before it loads anything an application can name. A
+\ record above the engine's own seal watermark and below it was loaded by this
+\ process ahead of the maker - on the engine this file's own private records,
+\ on the keyed linker image the image's whole load (test/preloaded-engine.f
+\ rule 3) - and aot-closure.f ADD-CLO refuses to carry one. The window opens
+\ later, at AOT-DATA-START: the opener's own requires land between the two, so
+\ the module they load (lib/executable-build.f) is the copy a production build
+\ carries.
+variable OPENER-NDICT
 
 : AOT-DATA-START ( -- )
    NSTR:WINDOW-OPEN

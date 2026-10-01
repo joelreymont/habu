@@ -188,10 +188,17 @@ live one.
   image (`test/app-image-engine.f`: `PATH$`) or the linker image built on it
   (`test/preloaded-engine.f`: `LINKER$`, `LINKER-LOAD`). Their headers hold
   the rules: take the path before staging argv, start a program on the saver
-  image with `1 set-tier`, link only subjects that require nothing in the
-  linker's lib closure, and keep a row whose children run
-  `ENGINE-CANDIDATE:PATH$` off the images. A row whose claim is the saver's or
-  the linker's own load (`test/app-image.f`) keeps compiling them from source.
+  image with `1 set-tier`, link only subjects that reach nothing the linker's
+  load holds, and keep a row whose children run `ENGINE-CANDIDATE:PATH$` off
+  the images. That load ran before the capture window opens, so its modules,
+  names and cells are not the ones a production build carries: a maker on the
+  linker image refuses a closure reaching one of its words or cells by name,
+  and a subject defining one of its words dies at that line, as it dies on
+  the engine at the library's line (rule 3).
+  A row builds a subject that needs a module of the linker's lib closure on
+  the engine (`tools/hb-build-test-lib.f` `HBT-KEYED!`). A row whose claim is
+  the saver's or the linker's own load (`test/app-image.f`) keeps compiling
+  them from source.
   `test/gate-aot-negative.f` and `test/stripped-address.f` run on `LINKER$`:
   their die paths are forks of the image, not `ENGINE-CANDIDATE` children, and
   the mapped-band fixture's first question to the process-map reader reads the

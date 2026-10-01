@@ -414,8 +414,48 @@ variable CLO-PROBE  variable CLO-RI
 : CLO-OVERFLOW-DIE {: r:ptr :} ( ptr a -- )
    JSON-DIAGS @ IF r CLO-OVERFLOW-JSON ELSE r CLO-OVERFLOW-PROSE THEN
    s" aot: closure exceeds the closure limit" 74 die ;
+\ A MEMBER LOADED AHEAD OF THE MAKER IS REFUSED, BY NAME. The engine's own
+\ records end at its seal watermark, and tools/aot-build-open.f latches
+\ OPENER-NDICT before it loads anything an application can name, so a record
+\ between the two was defined by this process ahead of the maker: on the
+\ engine only the latch file's private records, on the keyed linker image
+\ (test/preloaded-engine.f rule 3) the image's whole load. No production build
+\ carries such a record: the engine's maker compiles a module the application
+\ requires inside the window, carries the opener's own copy of
+\ lib/executable-build.f above the band (its names too when the application
+\ never required that file), and refuses any other name the application never
+\ required.
+\ Without this the keyed image linked some of those programs and refused others
+\ only where a cell below the window was reached (`address refers to data
+\ outside the restored span`).
+: PRE-WINDOW? ( ptr n -- bool ) {: r:ptr :}
+   r BYTE-VIEW AOT-DBASE@ BYTE-VIEW - DREC / {: k:n :}
+   k data-base SEAL-NDICT-CELL + @ >= k OPENER-NDICT @ < and ;
+\ What a program can do about it: have its own require load the module inside
+\ the window, which only an engine that has not loaded it already does.
+: PRE-WINDOW-HINT$ ( -- ptr u8 n )
+   s" require the module that defines the word and link on an engine that has not loaded it, so it compiles inside the capture window, or build with --repl" ;
+: PRE-WINDOW-JSON {: r:ptr :} ( ptr a -- )
+   123 AE1
+   s" schema_version" AEJKEY 1 AEJNUM 44 AE1
+   s" code" AEJKEY s" E-AOT-PRE-WINDOW" AEJSTR 44 AE1
+   s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
+   s" word" AEJKEY r AEJREC 44 AE1
+   s" suggestion" AEJKEY PRE-WINDOW-HINT$ AEJSTR
+   125 AE1 10 AE1 ;
+\ The suggestion travels in the prose too, as CLO-OVERFLOW-PROSE's does.
+: PRE-WINDOW-PROSE {: r:ptr :} ( ptr a -- )
+   s" aot: closure reaches a word defined before the capture window opened word=" AETXT
+   r AEREC-TXT
+   s"  suggestion='" AETXT PRE-WINDOW-HINT$ AETXT 39 AE1
+   10 AE1 ;
+\ The rendering is the whole diagnostic, so the die adds no line of its own.
+: PRE-WINDOW-DIE {: r:ptr :} ( ptr a -- )
+   JSON-DIAGS @ IF r PRE-WINDOW-JSON ELSE r PRE-WINDOW-PROSE THEN
+   s" " 74 die ;
 : ADD-CLO ( ptr n ptr u8 n -- ) {: r:ptr start:ptr len:n :}
    start IN-CLO? IF exit THEN
+   r XREF-FOUND? IF r PRE-WINDOW? IF r PRE-WINDOW-DIE THEN THEN
    NCLO @ CLO-LIMIT @ >= IF r CLO-OVERFLOW-DIE THEN
    start NCLO @ CLO !
    len NCLO @ CLO-LEN !

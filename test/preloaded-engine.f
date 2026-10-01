@@ -13,18 +13,36 @@
 \ Under a gate the gate's app-image and linker build rows settle both before a
 \ row that loads this module starts (test/gate-images.f), so the row only finds
 \ them. Production hb-build keeps compiling the linker per build
-\ (tools/hb-build-lib.f): a prebuilt linker is only valid for the subjects rule 3
-\ admits.
+\ (tools/hb-build-lib.f): a prebuilt linker links only the subjects rule 3
+\ admits, and its maker refuses the rest by name.
 \
 \ RULES FOR A ROW THAT RUNS IT, beside test/app-image-engine.f's.
 \ 1. Take the path before staging the child's argv or env: a build stages its
 \    own in the same process-wide tables.
 \ 2. A link on LINKER$ keeps the production maker script verbatim; its require
 \    of tools/aot-build.f is then a no-op.
-\ 3. A subject linked on LINKER$ requires nothing in the linker's own lib
-\    closure. A library already loaded is the copy the subject's require
-\    resolves to, and its cells sit below the capture window
-\    (tools/aot-build-open.f).
+\ 3. A subject linked on LINKER$ reaches nothing the linker's load left above
+\    the engine. That load ran before the capture window opens
+\    (tools/aot-build-open.f), and it holds the linker's lib closure in the
+\    require registry, its packages and words in the dictionary and its cells
+\    below the window. A subject's require of one of those modules resolves to
+\    that copy, a name of one it never required resolves too, and a `package`
+\    line naming one of its packages reopens it; the engine's maker compiles
+\    the module inside the window (lib/executable-build.f excepted: it carries
+\    the copy its opener loaded, and that file's names even when the subject
+\    never required it), refuses the name and creates the package.
+\    So the maker refuses a closure that reaches such a word (`aot: closure
+\    reaches a word defined before the capture window opened word=NAME`,
+\    `E-AOT-PRE-WINDOW` under `--json-errors`, src/habu/aot-closure.f
+\    ADD-CLO) or such a cell (`aot: address refers to data outside the
+\    restored span`). A subject that defines a word the image holds, globally
+\    or in a package it reopens, dies at that line (`duplicate definition`,
+\    rc 78), where the engine's maker dies at the library's line once the
+\    linker loads. A subject that requires such a module, or adds new words to
+\    such a package, and reaches none of the image's words links as on the
+\    engine. The image-lifecycle registry holds the linker's persistent hooks
+\    ahead of the subject's, so PREPARE runs them after the subject's, where
+\    the engine's maker runs them first.
 \ 4. A row whose children run ENGINE-CANDIDATE:PATH$ does not itself run on it:
 \    inside an image ENGINE-ID:PATH$ names the image, so outside a gate its
 \    children would run the image too.

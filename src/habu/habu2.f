@@ -7847,11 +7847,15 @@ ardone LBL,
    \ copies of their base cells are another run's addresses. The data stack
    \ survives the copy in XDS, a pinned register; these two have no register, so
    \ they ride the machine stack across it and are republished beside XDS below.
-   \ So do the three AOT-SPAN cells, which the seed filled with this boot's text
-   \ and region addresses before the restore began and nothing fills after it.
+   \ So do the three AOT-SPAN cells EM-SEED-AOT published for THIS boot: the
+   \ table is in this text and the blob in this region, and the image's copies
+   \ name the writing run's. A keyed linker image read the writer's table on
+   \ every link that reached a stripped engine word - SIGSEGV in AOT-W32@ under
+   \ SPAN-START where the address was unmapped, a refusal naming no real target
+   \ where it was not (tools/hb-build-stripped-test.f HBT-STRIPPED-ENGINE-CELLS).
    \ x13 is the copy loops' own scratch; x11 holds the snapshot text size the
    \ text pass below still needs, and x9/x10/x0 carry argc/argv/envp.
-   SP SP 64 SUBI,
+   SP SP 48 SUBI,
    13 DATA STACK-ABI:RETURN-BASE-CELL LDR,  13 SP 0 STR,
    13 DATA STACK-ABI:LOOP-BASE-CELL LDR,    13 SP 8 STR,
    0 SP 16 STR,
@@ -7918,7 +7922,7 @@ ardone LBL,
    13 SP 32 LDR,  13 DATA AOT-CELLS:SPAN-N-CELL STR,
    13 SP 40 LDR,  13 DATA AOT-CELLS:SPAN-BASE-CELL STR,
    0 SP 16 LDR,
-   SP SP 64 ADDI,
+   SP SP 48 ADDI,
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,

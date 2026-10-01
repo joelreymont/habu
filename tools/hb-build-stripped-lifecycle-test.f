@@ -5,6 +5,7 @@
 \ Run: bin/hb --load tools/hb-build-stripped-lifecycle-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -139,10 +140,12 @@ package HB-BUILD-CLI
 \ ... and REGISTERS a hook, runs it at exit and prints from it. The refusals this
 \ replaced, the reason the declaration half of `xt!` is dropped and the reason
 \ the printed order is the one pinned are all with HBT-HOOK-SRC$ above.
+\ lib/process-argv.f and lib/fmt.f are in the linker's lib closure, so this
+\ build compiles the linker above the program (test/preloaded-engine.f rule 3).
 : HBT-STRIPPED-LIFECYCLE-HOOK ( -- )
    HBT-HOOK-SRC HBT-HOOK-SRC$ WRITE-ALL
    HBT-HOOK-OUT HBT-REMOVE-FILE?
-   HBT-HOOK-SRC HBT-HOOK-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
+   HBT-HOOK-SRC HBT-HOOK-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
    HBT-HOOK-OUT FILE? TTRUE
    HBT-HOOK-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
@@ -154,10 +157,12 @@ package HB-BUILD-CLI
 
 \ ... and PARSES A NUMBER, carrying the engine's number reader. The refusal
 \ this replaced and the three pinned answers are with HBT-NUMP-SRC$ above.
+\ lib/fmt.f is in the linker's lib closure, so this build too compiles the
+\ linker above the program.
 : HBT-STRIPPED-NUM-PARSE ( -- )
    HBT-NUMP-SRC HBT-NUMP-SRC$ WRITE-ALL
    HBT-NUMP-OUT HBT-REMOVE-FILE?
-   HBT-NUMP-SRC HBT-NUMP-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
+   HBT-NUMP-SRC HBT-NUMP-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
    HBT-NUMP-OUT FILE? TTRUE
    HBT-NUMP-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
@@ -172,6 +177,7 @@ package HB-BUILD-CLI
 public
 : HBT-STRIPPED-LIFECYCLE-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-LIFECYCLE-REGISTRY
    HBT-STRIPPED-LIFECYCLE-HOOK

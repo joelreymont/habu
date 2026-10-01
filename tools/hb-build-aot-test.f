@@ -1,7 +1,8 @@
 \ hb-build-aot-test.f - checked fixture for tools/hb-build-lib.f: the AOT
 \ groups that build and run one program each - the object producer, the native
 \ call sites, the division refusal, the span definer as a snapshot and
-\ stripped, the empty does> clause and one foreign call.
+\ stripped, a build driver, the empty does> clause and one foreign call - and
+\ the programs the keyed linker image refuses.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-aot-test.f
 
@@ -176,6 +177,75 @@ package HB-BUILD-CLI
    HBT-REMOVE-ARTIFACT
    HBT-SPAN-OUT HBT-REMOVE-FILE? ;
 
+\ A program naming a word of the linker's closure that it never required.
+: HBT-UNREQUIRED-SRC$ ( -- ptr u8 n )
+   S\" : MAIN ( -- ) 42 FMT:.INT cr ;\n" ;
+
+\ A build driver's shape: tools/app-build.f and tools/build-profile.f run their
+\ work through lib/executable-build.f's WITH. The production maker requires that
+\ module before it opens the capture window (tools/aot-build-open.f), so this
+\ program's require is a no-op there and its closure reaches the maker's WITH.
+: HBT-EXBUILD-SRC$ ( -- ptr u8 n )
+   S\" require lib/executable-build.f\n: MAIN ( -- ) 1 [: 1+ . cr ;] EXECUTABLE-BUILD:WITH ;\n" ;
+
+\ ... and THE KEYED LINKER IMAGE REFUSES ALL THREE PROGRAMS BY NAME
+\ (test/preloaded-engine.f rule 3). The image loaded lib/span.f, lib/fmt.f and
+\ lib/executable-build.f with the linker, before its maker latched the band, so
+\ the first and third programs' requires resolve to those copies and the second
+\ program's FMT:.INT names one without a require. Each closure reaches a word
+\ compiled outside the window, and the maker refuses the first such word rather
+\ than carry the image's copy. The engine compiles the first program's module
+\ inside the window, refuses the second program's name and links the third
+\ (BUILD-AOT-EXBUILD).
+: KEYED-PRE-WINDOW-REFUSED ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   HBT-SPAN-SRC src srcu WRITE-ALL
+   HBT-SPAN-SRC HBT-RUN-MAKER {: out:n err:n rc:n :}
+   rc 74 T=
+   HBB-ERR-BUF err s" aot: closure reaches a word defined before the capture window opened" CONTAINS? TTRUE ;
+
+\ The same refusal through the CLI under --json-errors, which promises its
+\ caller JSON: the maker reads the flag from its argv (tools/aot-build-open.f)
+\ and the CLI keeps only the JSON lines of the maker's stderr
+\ (HBB-WERR-JSON-ONLY), so a refusal with no JSON arm reaches the caller as
+\ text.
+: KEYED-PRE-WINDOW-JSON ( -- )
+   HBT-SPAN-SRC HBT-EXBUILD-SRC$ WRITE-ALL
+   HBT-SPAN-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   s" --json-errors" >LEN PROC-ARGV+
+   HBT-SPAN-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-SPAN-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc 74 T=
+   outu 0 T=
+   HBT-ERR erru S\" \qschema_version\q:1," CONTAINS? TTRUE
+   HBT-ERR erru S\" \qcode\q:\qE-AOT-PRE-WINDOW\q" CONTAINS? TTRUE
+   HBT-ERR erru S\" \qword\q:\qWITH\q" CONTAINS? TTRUE
+   HBT-SPAN-OUT EXISTS? TFALSE ;
+
+: BUILD-AOT-PRE-WINDOW ( -- )
+   HBT-SPAN-SRC$ KEYED-PRE-WINDOW-REFUSED
+   HBT-UNREQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
+   HBT-EXBUILD-SRC$ KEYED-PRE-WINDOW-REFUSED
+   KEYED-PRE-WINDOW-JSON ;
+
+\ THE ENGINE LINKS THE BUILD DRIVER, and runs it. Its maker latches the band
+\ before it requires lib/executable-build.f (tools/aot-build-open.f), so the
+\ band holds only the latch file's own private records and WITH is carried
+\ like any word above it. A band latched when the window opens holds WITH and
+\ refuses this program.
+: BUILD-AOT-EXBUILD ( -- )
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-AOT-SRC HBT-EXBUILD-SRC$ WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE
+   HBT-HBB-BUILD-OUT
+   HBT-AOT-OUT S\" 2\n\n" HBT-RUN-IMAGE-OUT
+   HBT-REMOVE-ARTIFACT
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
+
 \ THE OTHER HALF OF THE DOES> RULE. An EMPTY clause compiles no instruction, so
 \ elaborate.f STAGE-DOES-ENTRY publishes the companion record and patches
 \ nothing: the created word keeps its RET and emits no branch at all. Such a
@@ -217,6 +287,8 @@ public
    BUILD-AOT-DIV-REFUSAL
    BUILD-REPL-SPAN
    BUILD-AOT-SPAN
+   BUILD-AOT-PRE-WINDOW
+   BUILD-AOT-EXBUILD
    BUILD-AOT-DOES-EMPTY
    BUILD-AOT-FFI
    CLEANUP-RUN
