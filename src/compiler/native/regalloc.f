@@ -940,10 +940,6 @@ variable N-FIXP
    {: val:n pl:n b:n w:n :}
    val  pl b w LS-IX cells L-SETS + ! ;
 
-: LS-HAS? ( n n n -- bool )
-   {: pl:n b:n v:n :}
-   pl b v BIT-CELL LS@  v BIT-MASK and 0<> ;
-
 : LS-SET ( n n n -- )
    {: pl:n b:n v:n :}
    pl b v BIT-CELL LS@  v BIT-MASK or  pl b v BIT-CELL LS! ;
@@ -1105,27 +1101,46 @@ variable N-FIXP
       bk i OP-AT  b i OP-POS  MB-OP-RANGE
    loop ;
 
+\ Asked only about the values THIS function defined, which the window says.
+\ Widening keeps a definition inside the window, so a value gets the same
+\ answer from every block it is live in.
+: MB-OWN? ( n -- bool )
+   {: k:n :}
+   k DEF-AT NOPOS <>  k DEF-AT F-LO @ >=  and ;
+
 \ Live at a block's ENTRY means the range reaches back to that entry; live-IN
 \ alone does not reach its last operation.
-: MB-EXTEND1 ( n n -- )
-   {: b:n k:n :}
-   P-IN b k LS-HAS? if
+: MB-EXTEND1 ( n n n -- )
+   {: pl:n b:n k:n :}
+   k MB-OWN? 0= if exit then
+   pl P-IN = if
       b cells B-ST + @  k DEF-AT min  k DEF!
-   then
-   P-OUT b k LS-HAS? if
+   else
       b cells B-EN + @  k LAST-AT max  k LAST!
    then ;
 
-: MB-EXTEND-V ( n -- )
-   {: k:n :}
-   N-BLKS @ 0 ?do i k MB-EXTEND1 loop ;
+\ A word of a set holds SET-BITS values, and one that holds none is passed over
+\ whole.
+: MB-EXTEND-W ( n n n -- )
+   {: pl:n b:n w:n :}
+   pl b w LS@ {: bits:n :}
+   bits 0= if exit then
+   SET-BITS 0 ?do
+      w SET-BITS * i + {: k:n :}
+      bits k BIT-MASK and 0<> if pl b k MB-EXTEND1 then
+   loop ;
 
-\ Asked only about the values THIS function defined, which the window says.
+\ A range reaches back to the entry of every block its value is live into and on
+\ to the end of every block it is live out of. Those are the blocks' own sets, so
+\ each set is read once rather than every block asked about every value.
 : MB-RANGES ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    N-BLKS @ 0 ?do f i MB-BLOCK-RANGE loop
-   N-VALS @ 0 ?do
-      i DEF-AT NOPOS <>  i DEF-AT F-LO @ >=  and if i MB-EXTEND-V then
+   N-BLKS @ 0 ?do
+      SETC 0 ?do
+         P-IN j i MB-EXTEND-W
+         P-OUT j i MB-EXTEND-W
+      loop
    loop ;
 
 \ ---- step four: the block-argument classes -----------------------------------
