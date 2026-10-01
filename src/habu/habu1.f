@@ -3250,8 +3250,9 @@ private
 \ word:
 \   - a real wordlist (0, a package's private or public wid, and the
 \     DICT-WL:NAMESPACE that package rows carry) is guarded by the definer's
-\     duplicate wall (habu2.f C-REJECT-DUP-DEF), which refuses a second
-\     definition of a tail already live in the wordlist being defined into. At
+\     duplicate walls (habu2.f C-REJECT-DUP-DEF, and DOES-REC:REJECT-DUP for
+\     the record a `does>` clause adds), which refuse a second definition of
+\     a tail already live in the wordlist being defined into. At
 \     most one row, so first and last are the same row and the probe reproduces
 \     the scan exactly;
 \   - DICT-WL:RETIRED is not a wordlist. xref.f XREF-RETIRE stamps it onto rows

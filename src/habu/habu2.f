@@ -3275,6 +3275,11 @@ public
    LCODEFULL C-CAP-LABEL
    $4C C-DIE-TOKEN ;
 
+\ The duplicate-definition label on fd 2. Each wall writes the refused name
+\ after it, then exits $4E through LCOMPILEDIE.
+: C-DUP-DEF-SAY ( -- )
+   0 2 MOVZ,  1 LKWDUPDEF LABEL@ ADR,  2 22 MOVZ,  NR-WRITE SYS, ;
+
 \ ---- a record's name, stored once for every definer --------------------------
 \ `:`, `create`, `export`, `package` and a qualified definition store the token
 \ in TKA/TKL; the definition writers further down (DEFWRITE bodies) store a
@@ -3425,11 +3430,10 @@ public
    10 $1000000A LIT64,  9 9 10 ORR,
    LCEMIT LABEL@ BL, ;
 
-\ Copy the derived name at CP. NAME$ has already supplied x11..x15 and the
-\ caller owns a write window covering the padded span.
+\ Copy the derived name to x10, padded to x15 bytes. NAME$ has already supplied
+\ x11..x15 and the caller owns the padded span.
 : COPY-NAME ( -- )
    LBL LBL LBL LBL {: cpy:label cpd:label pad:label pend:label :}
-   10 CP 0 ADDI,                                       \ the write cursor
    12 13 SUF-LEN SUBI,
    cpy LBL,  12 cpd CBZ,
       9 14 0 LDRB,  9 10 0 STRB,
@@ -3464,9 +3468,33 @@ public
 : MAKE ( -- )
    NAME$
    1 15 0 ADDI,  PROT-EMIT:RESERVE
-   COPY-NAME
+   10 CP 0 ADDI,  COPY-NAME
    5 CP 15 ADD,  6 0 MOVZ,  5 6 RECORD
    CP CP 15 ADD, ;
+
+\ A live word already holding the clause's name in the parent's wordlist
+\ refuses the definer, as C-REJECT-DUP-DEF refuses that word when it comes
+\ second: a wordlist keeps at most one live row per folded name, the rule
+\ habu1.f WLFIND's hash probe rests on. Both front ends call this at `does>`,
+\ before anything is emitted: J-DOES and NCOMP-EMIT:CAPTURE-DOES. The name is
+\ derived on the machine stack, in room rounded to keep sp 16-byte aligned,
+\ because it is written nowhere else yet: the legacy compiler copies it to CP
+\ after the opener, the native one at publication.
+: REJECT-DUP ( -- )
+   LBL {: fresh:label :}
+   NAME$
+   9 13 15 ADDI,  9 9 4 LSRI,  9 9 4 LSLI,             \ x9 = the room
+   10 SP 0 ADDI,  10 10 9 SUB,  SP 10 0 ADDI,
+   COPY-NAME
+   0 SP 0 ADDI,  1 13 0 ADDI,  2 11 40 LDR,            \ the name in the parent's wordlist
+   WLFIND:LENTRY LABEL@ BL,                            \ keeps x0-x2 and x13
+   12 fresh CBZ,
+      C-DUP-DEF-SAY
+      0 2 MOVZ,  1 SP 0 ADDI,  2 13 0 ADDI,  NR-WRITE SYS,
+      0 $4E MOVZ,  LCOMPILEDIE LABEL@ B,               \ its recovery restores sp
+   fresh LBL,
+   9 13 15 ADDI,  9 9 4 LSRI,  9 9 4 LSLI,
+   10 SP 0 ADDI,  10 10 9 ADD,  SP 10 0 ADDI, ;
 
 \ Native publication has already emitted the clause. Append only the permanent
 \ derived name and record, using the measured entry and length it supplies.
@@ -3475,7 +3503,7 @@ public
    5 A 0 ADDI,  6 B 0 ADDI,
    NAME$
    1 CP 15 ADD,  PROT-EMIT:LOPEN LABEL@ BL,
-   COPY-NAME
+   10 CP 0 ADDI,  COPY-NAME
    5 6 RECORD
    CP CP 15 ADD,
    PROT-EMIT:LCLOSE LABEL@ BL, ;
@@ -3776,6 +3804,7 @@ public
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
    dok LBL,
+   DOES-REC:REJECT-DUP
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    C-PARSE-CREATED-SIG
    C-EMIT-CRSIG-SET
@@ -3803,7 +3832,7 @@ public
    room LBL, ;
 
 : C-DUP-DEF-FAIL ( -- )                               \ duplicate definition: recoverable inside evaluate (rc $4E), fail-closed exit $4E at top level
-   0 2 MOVZ,  1 LKWDUPDEF LABEL@ ADR,  2 22 MOVZ,  NR-WRITE SYS,
+   C-DUP-DEF-SAY
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
    0 $4E MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
@@ -8206,6 +8235,7 @@ public
    9 DATA DOESB-CELL LDR,  9 first CBZ,
       C-DIE-DOES
    first LBL,
+   DOES-REC:REJECT-DUP
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    C-PARSE-CREATED-SIG
    LMAIN LABEL@ B, ;

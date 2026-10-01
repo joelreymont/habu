@@ -14,10 +14,14 @@
 \ Every case here therefore reads STRUCTURE and not text: the record at the
 \ parent's index PLUS ONE, the bytes of its name, its wordlist, the two spans'
 \ shared end, and the instruction actually planted at the created word's RET -
-\ decoded, so the opcode and the target are both checked. Two cases define a
-\ decoy word literally NAMED `<PARENT>;does` before the definer runs, so
-\ "a record with that name exists" cannot pass for "the clause has that record":
-\ what is asserted is that the branch lands on the record the definer made.
+\ decoded, so the opcode and the target are both checked.
+\
+\ THE NAME IS STILL A NAME. A wordlist holds at most one live row per folded
+\ name (src/habu/habu1.f WLFIND), and the clause is a row of its parent's
+\ wordlist, so a word already holding `<PARENT>;does` there refuses the definer
+\ at `does>` with the duplicate-definition code, under both compilers, exactly
+\ as that word is refused when it comes second. The same word in another
+\ wordlist refuses nothing.
 \
 \ Run: bin/hb --load test/does-clause-record.f
 
@@ -81,7 +85,7 @@ variable WANT-U
 
 : WANT$ ( -- ptr u8 n ) WANT WANT-U @ ;
 
-variable N0  variable N1  variable N2  variable N3
+variable N0  variable N1  variable N2
 variable MK-CP
 
 \ ---- the subjects, compiled through the real interpreter ---------------------
@@ -96,13 +100,56 @@ variable MK-CP
    s" 7 DR-MK DR-SEVEN drop" EV
    s" : DR-LONG-DEFINER-NAME ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
    s" 9 DR-LONG-DEFINER-NAME DR-NINE drop" EV
-   \ the decoy: a real word already carrying the name the clause will take
-   s" : DR-DECOY;does ( -- n ) 111 ;" EV
-   s" : DR-DECOY ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
-   s" 5 DR-DECOY DR-FIVE drop" EV
-   \ a package keeps its clause in its own wordlist
-   s" package DRP public : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; ;package" EV
-   ndict@ N3 ! ;
+   \ a package keeps its clause in its own wordlist, whatever the global one holds
+   s" : MK;does ( -- n ) 222 ;" EV
+   s" package DRP public : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; ;package" EV ;
+
+\ ---- a clause name a live word already holds ---------------------------------
+\ Each holder is spelled in another case than the clause would be: the
+\ comparison is folded. DUP-DEF-RC is the engine's duplicate-definition code
+\ (habu2.f C-DUP-DEF-FAIL).
+$4E constant DUP-DEF-RC
+variable HELD-ND  variable HELD-CP
+
+: HELD-MARK ( -- )
+   ndict@ HELD-ND !  cp@ HELD-CP ! ;
+
+\ After the refusal: nothing published, and the holder still answers.
+: ?HELD ( ptr u8 n ptr u8 n -- ) {: d:ptr du:n h:ptr hu:n :}
+   s" the refused definer publishes neither record and moves no code" T-LABEL
+   ndict@ HELD-ND @ T=
+   cp@ HELD-CP @ T=
+   d du GLOBAL-WID search-wl 0= TTRUE
+   s" the word that holds the name still answers" T-LABEL
+   h hu EV-N 111 T= ;
+
+\ Tier 0, the legacy JIT every `--load` and the REPL run: J-DOES.
+: HELD-JIT ( -- )
+   s" : dr-jit;DOES ( -- n ) 111 ;" EV
+   HELD-MARK
+   s" the legacy compiler refuses a definer whose clause name is held" T-LABEL
+   [: s" : DR-JIT ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV ;]
+   DUP-DEF-RC TTHROWSQ
+   s" DR-JIT" s" dr-jit;DOES" ?HELD
+   s" undefining the holder frees the name for the definer" T-LABEL
+   s" undefine dr-jit;DOES" EV
+   s" : DR-JIT ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
+   s" 6 DR-JIT DR-JIT-SIX" EV-N 7 T=
+   s" DR-JIT-SIX" EV-N 6 T= ;
+
+\ Tier 1, the native chain an executable build runs: NCOMP-EMIT:CAPTURE-DOES.
+: HELD-NATIVE ( -- )
+   s" : Dr-Held;Does ( -- n ) 111 ;" EV
+   HELD-MARK
+   s" the native compiler refuses a definer whose clause name is held" T-LABEL
+   [: s" : DR-HELD ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV ;]
+   DUP-DEF-RC TTHROWSQ
+   s" DR-HELD" s" Dr-Held;Does" ?HELD
+   s" undefining the holder frees the name for the definer" T-LABEL
+   s" undefine Dr-Held;Does" EV
+   s" : DR-HELD ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
+   s" 6 DR-HELD DR-HELD-SIX" EV-N 7 T=
+   s" DR-HELD-SIX" EV-N 6 T= ;
 
 \ A definition the check hook refuses must leave BOTH slots uncounted.
 variable REJ0  variable REJ1
@@ -225,8 +272,12 @@ variable FORGET-NAME-A
 
 public
 
-: RUN ( -- )
+\ Before the native chain is selected.
+: RUN-JIT ( -- )
    T-RESET
+   HELD-JIT ;
+
+: RUN ( -- )
    SUBJECTS
    RUN-REJECTED
 
@@ -248,25 +299,14 @@ public
    s" DR-LONG-DEFINER-NAME" ?FINDABLE
    s" DR-LONG-DEFINER-NAME" s" DR-NINE" ?BRANCH
 
-   \ the decoy carries the same name and is NOT the record the branch names
-   s" DR-DECOY" ?NAME
-   s" DR-DECOY" ?SPAN
-   s" DR-DECOY" s" DR-FIVE" ?BRANCH
-   \ the decoy sits one slot BELOW its namesake's parent, because it was defined
-   \ immediately before it; a lookup by name answers the later record, which is
-   \ exactly why nothing here is asked by name.
-   s" the decoy one slot below the definer carries the same name" T-LABEL
-   s" DR-DECOY" IDX 1- NAME$  s" DR-DECOY" CLAUSE NAME$  STR= TTRUE
-   s" ... in the same wordlist, and is a different record" T-LABEL
-   s" DR-DECOY" IDX 1- WID  s" DR-DECOY" CLAUSE WID  T=
-   s" DR-DECOY" IDX 1- START  s" DR-DECOY" CLAUSE START  <> TTRUE
-   s" the branch lands on the clause and not on the decoy that shares its name" T-LABEL
-   s" DR-FIVE" IDX END TGT  s" DR-DECOY" IDX 1- START  <> TTRUE
-
    s" a packaged definer keeps its clause in the package's wordlist" T-LABEL
    s" DRP:MK" IDX 1+ WID  s" DRP:MK" IDX WID  T=
    s" ... and that is not the global wordlist" T-LABEL
    s" DRP:MK" IDX WID  GLOBAL-WID <>  TTRUE
+   s" ... so the global word holding its clause name stands beside it" T-LABEL
+   s" MK;does" EV-N 222 T=
+
+   HELD-NATIVE
 
    s" a refused definition counts neither slot" T-LABEL
    REJ1 @ REJ0 @ T=
@@ -287,6 +327,8 @@ public
 \ span. The layout measured below is the native publication's - habu2.f
 \ DOES-REC:NATIVE-PRIM appends the permanent name past both spans - so this file
 \ selects tier 1 the way an executable build does, ahead of the definitions.
+\ The one tier-0 case runs first.
+DOESREC-TEST:RUN-JIT
 require src/compiler/native/compiler.f
 1 set-tier
 

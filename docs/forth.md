@@ -230,7 +230,10 @@ public
   clears checker signature, defer-target and control metadata, then the name may
   be reused. Shadowing an outer, global or built-in word from inside a package
   is legal (a different wordlist), and one tail may live in several packages
-  (`APP:RESET`, `MK:RESET`).
+  (`APP:RESET`, `MK:RESET`). A `does>` definer `MK` also publishes its clause
+  as `MK;does` in its own wordlist, so a live `MK;does` there refuses `MK` at
+  `does>` and a later `MK;does` is refused, rc 78 either way
+  (test/does-clause-record.f).
 - A **public** definition whose tail a **private** word of the same package owns
   is the forwarder pattern (`lib/task.f` publishes `: PREPARE ( ptr n -- )
   PREPARE ;` over its private `PREPARE`): legal, but both effects must move the
