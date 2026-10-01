@@ -263,4 +263,3 @@ forth.md: **Testing**, **Verification before committing**.
 | Comments & hygiene | comment style, debug prints |
 | Habu Native Tooling Gotchas | debugger, spawn and env, snapshots |
 | Native Forth Gotchas … | compile-only words, `case`, `parse-name` |
-| ptr locals and cell access | never; see § 2 |
