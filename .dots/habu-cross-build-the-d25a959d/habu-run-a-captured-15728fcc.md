@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.740651+03:00"
 blocks:
-  - habu-select-the-build-610b4492
   - habu-resolve-x86-entry-cb671d4d
   - habu-emit-x86-pure-f70fb84b
   - habu-emit-x86-float-38de4a6f
@@ -26,3 +25,5 @@ Ownership: krait (Intel lane).
 Claim: unassigned.
 
 K-lane corrections (design 2026-09-30): Depends add K6b (habu-emit-x86-process-8e1f6f84), K8b (habu-emit-x86-code-973a0074), K9b (habu-model-the-code-c40c75d1), K9c (habu-emit-x86-heap-0b1d01f0), K9d (habu-emit-the-x86-f74e1d26). `ENGINE-PRIMS:COMPLETE` refuses every kept row without a body, so the first x86 kernel build also needs the `ffi-*` (K11a, K11b), `task-entry` (K11c) and `prof-*` (K10c) bodies: Depends add those four. Refusal rows would be stubs the later leaves delete; the real bodies are the long-term shape.
+
+Lead note (2026-10-01, from `habu-select-the-build-610b4492`): the build target is the `BUILD-TARGET` cell (`tools/build-target.f`) on the building engine and the window's own `HB-TARGET-*` inside it; `native-build.f -- <out> [whitebox] [--target <t>]` refuses a target whose backend is not loaded, so a cross-build loads `src/arch/x86-64/backend.f` first. Still on host predicates: `tools/hb-build-lib.f` HBB-TARGET-ABI$ and `tools/object-image.f`; `test/compiler/native-effect.f` compares A64M with the target-selected `ENGINE-GPR:MASK`/`DSTACK`. The x86 window exits 83 silently in the writer: `habu-name-the-exit-ab1864c1`.

@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.715680+03:00"
-blocks:
-  - habu-emit-a-second-8a260f5a
 ---
 
 Problem: the capture carries only the primary emission; the x86 writer needs the shadow per record.
@@ -16,3 +14,5 @@ Depends: habu-emit-a-second-8a260f5a (X1), habu-read-recorded-sites-d4949953 (X2
 Route: Alder (shared: src/habu/aot-decl.f, src/habu/aot-capture.f, src/habu/aot-file.f, test/aot-*).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+Lead note (2026-10-01, X1 landed): NSHADOW (`src/compiler/native/shadow.f`) holds one map row per published record (`RECORDS`, `RECORD@`, `EMISSION@`, `ENTRY@`) and per emission its bytes, function offsets, call and address sites (`EMISSIONS`, `SIZE`, `BYTES`, `RET-BYTES`, `FUNCTIONS`, `FUNCTION-OFFSET@`, `CALL-SITE@`/`CALL-KIND@`/`CALL-TARGET@`, `ADDR-SITE@`/`ADDR-SITE-KIND@`); a `does>` companion enters at the clause function's offset. `NCOMP:CAPTURE-PREPARE` closes the shadow, so this leaf reads the map before it. Looking a record up is a linear scan today; add an index from record to row if this leaf needs one.

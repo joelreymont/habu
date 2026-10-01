@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.913784+03:00"
-blocks:
-  - habu-move-tier-1-aacb6029
 ---
 
 Problem: body capture into `BODYBUF` and the string keywords are assembly (`LBCAP`/`LBCS`, `habu2.f:7509-7527`).
