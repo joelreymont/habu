@@ -35,10 +35,15 @@ PTR-VARIABLE TOP-PREV-A
 variable TOP-PREV-U
 PTR-VARIABLE TOP-CUR-A
 variable TOP-CUR-U
+PTR-VARIABLE SCOPE-A                     \ the scope statements the source starts in
+variable SCOPE-U
 create BODY-BUF BODYBUF-CAP allot
 
 : SOURCE@ ( -- ptr u8 )
    SOURCE-A @ ;
+
+: SCOPE@ ( -- ptr u8 )
+   SCOPE-A @ ;
 
 : BASE-RESET ( -- )
    1 BASE-LINE !
@@ -49,6 +54,7 @@ create BODY-BUF BODYBUF-CAP allot
    BASE-RESET
    SOURCE-U !
    SOURCE-A !
+   0 SCOPE-U !
    0 TOKEN-BYTE ! ;
 
 : SOURCE-AT! ( ptr u8 n n n n -- ) {: a:ptr u:n line:n col:n byte:n :}
@@ -1212,9 +1218,22 @@ PTR-VARIABLE STG-START
 
 TRUSTED: VERIFIER-ACTION ( n -- [ -- ] ) ;
 
+\ A source cut out of a file where a loader runs another starts inside the
+\ package and `using` scope the loader left open. Its scope statements are read
+\ first, in the same window, so the scope rows record that scope exactly as
+\ they record the file's own statements; then the source is read at its base.
+: VERIFY-SCOPED ( -- )
+   SCOPE-U @ 0= if VERIFY-SOURCE exit then
+   SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @
+   {: a:ptr u:n line:n col:n byte:n :}
+   SCOPE@ SCOPE-U @ SOURCE!
+   VERIFY-SOURCE
+   a u line col byte SOURCE-AT!
+   VERIFY-SOURCE ;
+
 TRUSTED: RUN ( -- )
    CHECKER-OWNER-ABI:VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
-   [: VERIFY-SOURCE ;] catch
+   [: VERIFY-SCOPED ;] catch
    CHECKER-OWNER-ABI:VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
    THROW-RESULT ;
 
@@ -1230,8 +1249,14 @@ public
    SOURCE!
    RUN ;
 
-: SOURCE-BUF-AT-IN-SCOPE ( ptr u8 n n n n -- )
-   SOURCE-AT!
+\ Verify a source that starts at the given line, column and byte of its file,
+\ inside the scope the given statements open (`using A package P public`, or
+\ nothing at top level).
+: SOURCE-BUF-AT-IN-SCOPE ( ptr u8 n ptr u8 n n n n -- )
+   {: scope:ptr scopeu:n a:ptr u:n line:n col:n byte:n :}
+   a u line col byte SOURCE-AT!
+   scope SCOPE-A !
+   scopeu SCOPE-U !
    RUN ;
 
 \ The definer rows recorded inside this scope go with it: CHECKER-CANDIDATE-

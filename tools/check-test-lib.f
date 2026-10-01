@@ -1572,13 +1572,13 @@ variable LONG-J
 
 : ORIGIN-VERIFY-BASE ( -- n )
    CHECKER-CANDIDATE-SCOPE-START
-   [: ORIGIN-BASE$ 7 9 100 VERIFY:SOURCE-BUF-AT-IN-SCOPE ;] catch {: rc:n :}
+   [: s" " ORIGIN-BASE$ 7 9 100 VERIFY:SOURCE-BUF-AT-IN-SCOPE ;] catch {: rc:n :}
    CHECKER-CANDIDATE-SCOPE-DONE
    rc ;
 
 : ORIGIN-VERIFY-NEXT ( -- n )
    CHECKER-CANDIDATE-SCOPE-START
-   [: ORIGIN-NEXT$ 7 9 100 VERIFY:SOURCE-BUF-AT-IN-SCOPE ;] catch {: rc:n :}
+   [: s" " ORIGIN-NEXT$ 7 9 100 VERIFY:SOURCE-BUF-AT-IN-SCOPE ;] catch {: rc:n :}
    CHECKER-CANDIDATE-SCOPE-DONE
    rc ;
 
@@ -2766,11 +2766,15 @@ create BIG $2000 allot   variable BIG-U
 \     a second verification is E-DUPLICATE-DEFINITION;
 \   - a require cycle looping or reordering (REQ-CYCLE-SPLIT): a file still
 \     being expanded is a no-op, as `required` of a registered path is;
-\   - a split inside a definition, package or `using` block: a verify window
-\     opens at top level and closes every scope it opened, so a cut there loses
-\     the definition or the scope. A loader in a colon body runs when the word
-\     does, so its file expands after that definition and any package around it
-\     (REQ-BODY, the shape of lib/aio.f's AIO-LOAD:HOST);
+\   - a split inside a definition, which loses it. A loader in a colon body
+\     runs when the word does, so its file expands after that definition and
+\     any package around it (REQ-BODY, the shape of lib/aio.f's AIO-LOAD:HOST),
+\     and after a top-level loader in that package, which runs first;
+\   - a top-level loader inside a package or under a `using`, expanded once the
+\     scope closes (at the end of the file, for a `using` never closed): the
+\     loader runs the file in that scope, so its file and the rest of the
+\     source are checked in the scope the loader gives them, and the file's
+\     own usings end with it (REQ-PKG, REQ-USING);
 \   - a diagnostic after a split naming the wrong file, line or column
 \     (REQ-ORIGIN);
 \   - the check run loading in another order: it loads through the real loader,
@@ -2920,7 +2924,11 @@ variable REQ-U
 
 \ Expanded right after LOAD-HOST, the loaded file's `package` would nest in
 \ CKT-RQ-LOAD; expanded at the end of the file, CKT-RQ-AFTER would miss its word.
+\ The top-level loader after LOAD-HOST runs first, so its file expands first,
+\ inside CKT-RQ-LOAD, where CKT-RQ-TOP-USE needs it.
 : TEST-REQUIRE-BODY ( -- )
+   SB-RESET s" : CKT-RQ-TOP ( -- n ) 2 ;" REQ-LINE+
+   s" req-body-top.f" REQ-WRITE
    SB-RESET s" package CKT-RQ-HOST" REQ-LINE+
    s" public" REQ-LINE+
    s" : CKT-RQ-HOST-USE ( -- n ) CKT-RQ-HOOK 1 + ;" REQ-LINE+
@@ -2933,6 +2941,8 @@ variable REQ-U
    s" package CKT-RQ-LOAD" REQ-LINE+
    s" public" REQ-LINE+
    s" : LOAD-HOST ( -- ) " SB-APPEND s" req-body-dep.f" REQ-LIT+ s"  required ;" REQ-LINE+
+   s" req-body-top.f" REQ-LOAD+
+   s" : CKT-RQ-TOP-USE ( -- n ) CKT-RQ-TOP ;" REQ-LINE+
    s" ;package" REQ-LINE+
    s" CKT-RQ-LOAD:LOAD-HOST" REQ-LINE+
    s" : CKT-RQ-AFTER ( -- n ) CKT-RQ-HOST:CKT-RQ-HOST-USE ;" REQ-LINE+
@@ -3036,6 +3046,89 @@ variable REQ-U
    s" all-errors" OPT
    p pu FILE
    [: RUN-ACT ;] IN-PROC s" req-throw.f:2:29:" EXPECT-THROW-AT ;
+
+\ A top-level loader inside a package, or under a file-level `using`, runs its
+\ file in that scope: the file defines into the package and sees the package's
+\ words and the used publics, and the rest of the source sees the file's words.
+\ Each source is checked in the default mode and both all-errors modes; each
+\ bad one calls a word the load path leaves undefined, refused at its own place.
+: EXPECT-UNDEFINED-AT ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n at:ptr atu:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE ;
+
+: REQ-ACCEPTED-EVERY ( ptr u8 n -- ) {: f:ptr fu:n :}
+   f fu REQ-RUN EXPECT-ACCEPTED
+   f fu REQ-PLAIN-RUN EXPECT-ACCEPTED
+   f fu REQ-ALL-RUN EXPECT-ACCEPTED ;
+
+: REQ-UNDEFINED-EVERY ( ptr u8 n ptr u8 n -- ) {: f:ptr fu:n at:ptr atu:n :}
+   f fu REQ-RUN at atu EXPECT-UNDEFINED-AT
+   f fu REQ-PLAIN-RUN at atu EXPECT-UNDEFINED-AT
+   f fu REQ-ALL-RUN at atu EXPECT-UNDEFINED-AT ;
+
+: REQ-PKG+ ( ptr u8 n -- ) {: line:ptr lineu:n :}   \ the given line follows the loader
+   SB-RESET s" package CKT-RQ-PK" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-RQ-PK-W ( -- n ) 1 ;" REQ-LINE+
+   s" req-pkg-dep.f" REQ-LOAD+
+   line lineu REQ-LINE+
+   s" ;package" REQ-LINE+ ;
+
+\ The bad sources: a word nothing defines, and outside the package the loaded
+\ file's word, which the package holds.
+: REQ-PKG-FILES ( -- )
+   SB-RESET s" : CKT-RQ-PK-DEP ( -- n ) CKT-RQ-PK-W 1 + ;" REQ-LINE+
+   s" req-pkg-dep.f" REQ-WRITE
+   s" : CKT-RQ-PK-USE ( -- n ) CKT-RQ-PK-DEP CKT-RQ-PK-W + ;" REQ-PKG+
+   s" req-pkg.f" REQ-WRITE
+   s" : CKT-RQ-PK-MISS ( -- n ) CKT-RQ-PK-DEP CKT-RQ-PK-ABSENT + ;" REQ-PKG+
+   s" req-pkg-bad.f" REQ-WRITE
+   s" : CKT-RQ-PK-USE ( -- n ) CKT-RQ-PK-DEP CKT-RQ-PK-W + ;" REQ-PKG+
+   s" : CKT-RQ-PK-OUT ( -- n ) CKT-RQ-PK-DEP ;" REQ-LINE+
+   s" req-pkg-out.f" REQ-WRITE ;
+
+: TEST-REQUIRE-PACKAGE ( -- )
+   REQ-PKG-FILES
+   s" req-pkg.f" REQ-ACCEPTED-EVERY
+   s" req-pkg-bad.f" s\" req-pkg-bad.f\",\"line\":5,\"column\":41," REQ-UNDEFINED-EVERY
+   s" req-pkg-out.f" s\" req-pkg-out.f\",\"line\":7,\"column\":26," REQ-UNDEFINED-EVERY ;
+
+: REQ-USING+ ( ptr u8 n -- ) {: line:ptr lineu:n :}   \ the given line follows the loader
+   SB-RESET s" package CKT-RQ-US" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-RQ-US-W ( -- n ) 1 ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" using CKT-RQ-US" REQ-LINE+
+   s" req-using-dep.f" REQ-LOAD+
+   line lineu REQ-LINE+ ;
+
+\ The `using` is never closed. A file's own `using` ends with the file, so the
+\ source that loads one does not see what it imported (req-ulocal.f).
+: REQ-USING-FILES ( -- )
+   SB-RESET s" : CKT-RQ-US-DEP ( -- n ) CKT-RQ-US-W 1 + ;" REQ-LINE+
+   s" req-using-dep.f" REQ-WRITE
+   s" : CKT-RQ-US-USE ( -- n ) CKT-RQ-US-DEP CKT-RQ-US-W + ;" REQ-USING+
+   s" req-using.f" REQ-WRITE
+   s" : CKT-RQ-US-MISS ( -- n ) CKT-RQ-US-DEP CKT-RQ-US-ABSENT + ;" REQ-USING+
+   s" req-using-bad.f" REQ-WRITE
+   SB-RESET s" using CKT-RQ-UL" REQ-LINE+
+   s" : CKT-RQ-UL-DEP ( -- n ) CKT-RQ-UL-W ;" REQ-LINE+
+   s" req-ulocal-dep.f" REQ-WRITE
+   SB-RESET s" package CKT-RQ-UL" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-RQ-UL-W ( -- n ) 1 ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" req-ulocal-dep.f" REQ-LOAD+
+   s" : CKT-RQ-UL-LEAK ( -- n ) CKT-RQ-UL-W ;" REQ-LINE+
+   s" req-ulocal.f" REQ-WRITE ;
+
+: TEST-REQUIRE-USING ( -- )
+   REQ-USING-FILES
+   s" req-using.f" REQ-ACCEPTED-EVERY
+   s" req-using-bad.f" s\" req-using-bad.f\",\"line\":7,\"column\":41," REQ-UNDEFINED-EVERY
+   s" req-ulocal.f" s\" req-ulocal.f\",\"line\":6,\"column\":27," REQ-UNDEFINED-EVERY ;
 
 \ `--all-errors --source-list a b` runs all-errors on the ORIGINAL files'
 \ segments with the clean ones before each replayed as support: both bad defs
@@ -3211,6 +3304,31 @@ POISON-RECORD
    NEU-CLEAN-PKG-RC @ 0 T=
    NEU-THROW-PKG-RC @ 0 T= ;
 
+\ A source checked with the files it loads; a case list of its own keeps
+\ TEST-MAIN under the 8000-byte body limit.
+: REQUIRE-CASES ( -- )
+   s" check/require-facade" [: TEST-REQUIRE-FACADE ;] CASE-RUN
+   s" check/included-dep" [: TEST-INCLUDED-DEP ;] CASE-RUN
+   s" check/require-cycle" [: TEST-REQUIRE-CYCLE ;] CASE-RUN
+   s" check/require-order" [: TEST-REQUIRE-ORDER ;] CASE-RUN
+   s" check/require-early" [: TEST-REQUIRE-EARLY ;] CASE-RUN
+   s" check/require-late" [: TEST-REQUIRE-LATE ;] CASE-RUN
+   s" check/require-once" [: TEST-REQUIRE-ONCE ;] CASE-RUN
+   s" check/require-cycle-split" [: TEST-REQUIRE-CYCLE-SPLIT ;] CASE-RUN
+   s" check/require-body" [: TEST-REQUIRE-BODY ;] CASE-RUN
+   s" check/require-origin" [: TEST-REQUIRE-ORIGIN ;] CASE-RUN
+   s" check/require-order-all-list" [: TEST-REQUIRE-ORDER-ALL ;] CASE-RUN
+   s" check/require-late-all-list" [: TEST-REQUIRE-LATE-ALL ;] CASE-RUN
+   s" check/require-origin-all-list" [: TEST-REQUIRE-ORIGIN-ALL ;] CASE-RUN
+   s" check/require-use" [: TEST-REQUIRE-USE ;] CASE-RUN
+   s" check/require-use-all" [: TEST-REQUIRE-USE-ALL ;] CASE-RUN
+   s" check/require-use-all-list" [: TEST-REQUIRE-USE-ALL-LIST ;] CASE-RUN
+   s" check/require-throw-all" [: TEST-REQUIRE-THROW-ALL ;] CASE-RUN
+   s" check/require-throw-all-list" [: TEST-REQUIRE-THROW-ALL-LIST ;] CASE-RUN
+   s" check/require-throw-prose" [: TEST-REQUIRE-THROW-PROSE ;] CASE-RUN
+   s" check/require-package" [: TEST-REQUIRE-PACKAGE ;] CASE-RUN
+   s" check/require-using" [: TEST-REQUIRE-USING ;] CASE-RUN ;
+
 : TEST-MAIN ( -- )
    T-RESET
    s" check/package-caller-neutral" [: TEST-NEUTRAL-SCOPE ;] CASE-RUN
@@ -3319,26 +3437,8 @@ POISON-RECORD
    s" check/package-family-bogus" [: FAM-BOGUS-TEST ;] CASE-RUN
    s" check/package-family-json-pin" [: FAM-JSON-PIN ;] CASE-RUN
    s" check/package-family-private" [: FAM-PRIV-TEST ;] CASE-RUN
-   s" check/require-facade" [: TEST-REQUIRE-FACADE ;] CASE-RUN
-   s" check/included-dep" [: TEST-INCLUDED-DEP ;] CASE-RUN
-   s" check/require-cycle" [: TEST-REQUIRE-CYCLE ;] CASE-RUN
    s" check/declared-constructors" [: TEST-DECLARED-CONSTRUCTORS ;] CASE-RUN
-   s" check/require-order" [: TEST-REQUIRE-ORDER ;] CASE-RUN
-   s" check/require-early" [: TEST-REQUIRE-EARLY ;] CASE-RUN
-   s" check/require-late" [: TEST-REQUIRE-LATE ;] CASE-RUN
-   s" check/require-once" [: TEST-REQUIRE-ONCE ;] CASE-RUN
-   s" check/require-cycle-split" [: TEST-REQUIRE-CYCLE-SPLIT ;] CASE-RUN
-   s" check/require-body" [: TEST-REQUIRE-BODY ;] CASE-RUN
-   s" check/require-origin" [: TEST-REQUIRE-ORIGIN ;] CASE-RUN
-   s" check/require-order-all-list" [: TEST-REQUIRE-ORDER-ALL ;] CASE-RUN
-   s" check/require-late-all-list" [: TEST-REQUIRE-LATE-ALL ;] CASE-RUN
-   s" check/require-origin-all-list" [: TEST-REQUIRE-ORIGIN-ALL ;] CASE-RUN
-   s" check/require-use" [: TEST-REQUIRE-USE ;] CASE-RUN
-   s" check/require-use-all" [: TEST-REQUIRE-USE-ALL ;] CASE-RUN
-   s" check/require-use-all-list" [: TEST-REQUIRE-USE-ALL-LIST ;] CASE-RUN
-   s" check/require-throw-all" [: TEST-REQUIRE-THROW-ALL ;] CASE-RUN
-   s" check/require-throw-all-list" [: TEST-REQUIRE-THROW-ALL-LIST ;] CASE-RUN
-   s" check/require-throw-prose" [: TEST-REQUIRE-THROW-PROSE ;] CASE-RUN
+   REQUIRE-CASES
    s" check/image-tool-sources" [: TEST-IMAGE-TOOL-SOURCES ;] CASE-RUN
    s" check/source-list-all-errors" [: LIST-ALL-TEST ;] CASE-RUN
    CLEANUP-RUN

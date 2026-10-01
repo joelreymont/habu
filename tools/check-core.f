@@ -124,6 +124,8 @@ variable CHK-SEL-LABEL-U
 variable CHK-SRC-U
 variable CHK-PRE-AT
 variable CHK-PRE-U
+TYPED-VARIABLE CHK-PRE-SCOPE-A ptr u8    \ the scope statements the verified bytes start in
+variable CHK-PRE-SCOPE-U
 variable CHK-RUN-U
 variable CHK-ORIGIN-U
 variable CHK-OUT-U
@@ -524,6 +526,183 @@ private
 : CHK-DIR-AT! ( n n -- )
    cells CHK-DIR-ATS + ! ;
 
+: CHK-DIR-ID! ( n n -- )
+   cells CHK-DIR-IDS + ! ;
+
+: CHK-DIR-SWAP ( n -- ) {: ix:n :}       \ entries ix and ix+1 trade places
+   ix CHK-DIR-ID@ ix CHK-DIR-AT@ {: id:n at:n :}
+   ix 1+ CHK-DIR-ID@ ix CHK-DIR-ID!
+   ix 1+ CHK-DIR-AT@ ix CHK-DIR-AT!
+   id ix 1+ CHK-DIR-ID!
+   at ix 1+ CHK-DIR-AT! ;
+
+: CHK-DIR-LATER? ( n -- bool ) {: ix:n :}   \ entry ix expands after entry ix+1
+   ix CHK-DIR-AT@ ix 1+ CHK-DIR-AT@ > ;
+
+\ The direct deps from base on, in the order of the bytes where they expand; a
+\ stable sort, so deps that expand at one byte keep their loaders' order.
+: CHK-DIR-SORT ( n -- ) {: base:n :}
+   base 1+ begin dup CHK-DIR-N @ < while
+      dup begin dup base > if dup 1- CHK-DIR-LATER? else LINT-FALSE then while
+         1- dup CHK-DIR-SWAP
+      repeat drop
+      1+
+   repeat drop ;
+
+\ The scope the loader runs a file in: the open package, its visibility and the
+\ `using` depth it opened at, and the `using` rows. A loaded file starts in its
+\ loader's scope. When it ends, the package scope stays as the file left it and
+\ the `using` depth returns to where the file started: the engine's `evaluate`
+\ keeps usings file-local and package scope across a clean include
+\ (src/habu/habu2.f). The bounds are the engine's (USE-MAX) and the checker's
+\ (CHECKER-PACKAGE-CAP).
+create CHK-SCOPE-ROWS USE-MAX CHECKER-PACKAGE-CAP * allot
+create CHK-SCOPE-ROW-US USE-MAX cells allot
+create CHK-SCOPE-PKG CHECKER-PACKAGE-CAP allot
+variable CHK-SCOPE-PKG-U                 \ 0: no package is open
+variable CHK-SCOPE-PUBLIC
+variable CHK-SCOPE-SAVE                  \ the `using` depth the package opened at
+variable CHK-SCOPE-DEPTH
+
+: CHK-SCOPE-RESET ( -- )
+   0 CHK-SCOPE-PKG-U !
+   LINT-FALSE CHK-SCOPE-PUBLIC !
+   0 CHK-SCOPE-SAVE !
+   0 CHK-SCOPE-DEPTH ! ;
+
+: CHK-SCOPE-ROW ( n -- ptr u8 )
+   CHECKER-PACKAGE-CAP * CHK-SCOPE-ROWS + ;
+
+: CHK-SCOPE-ROW$ ( n -- ptr u8 n ) {: row:n :}
+   row CHK-SCOPE-ROW row cells CHK-SCOPE-ROW-US + @ ;
+
+: CHK-SCOPE-PACKAGE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a CHK-SCOPE-PKG u BYTE-COPY
+   u CHK-SCOPE-PKG-U !
+   LINT-FALSE CHK-SCOPE-PUBLIC !
+   CHK-SCOPE-DEPTH @ CHK-SCOPE-SAVE ! ;
+
+: CHK-SCOPE-VISIBLE ( bool -- )          \ `public` is true, `private` false
+   CHK-SCOPE-PKG-U @ 0 <> if CHK-SCOPE-PUBLIC ! else drop then ;
+
+: CHK-SCOPE-END-PACKAGE ( -- )
+   CHK-SCOPE-PKG-U @ 0= if exit then
+   CHK-SCOPE-SAVE @ CHK-SCOPE-DEPTH !
+   0 CHK-SCOPE-PKG-U ! ;
+
+\ A `using` past the engine's bound is refused at its own token.
+: CHK-SCOPE-USING ( ptr u8 n -- ) {: a:ptr u:n :}
+   CHK-SCOPE-DEPTH @ {: d:n :}
+   d USE-MAX >= if exit then
+   a d CHK-SCOPE-ROW u BYTE-COPY
+   u CHK-SCOPE-ROW-US d cells + !
+   d 1+ CHK-SCOPE-DEPTH ! ;
+
+: CHK-SCOPE-END-USING ( -- )
+   CHK-SCOPE-DEPTH @ 0 > if -1 CHK-SCOPE-DEPTH +! then ;
+
+\ A verified file's top-level scope statements while it expands: the byte each
+\ starts at, its kind and the name it takes. A file's rows go when it has
+\ expanded, so the table holds the files on the current load path.
+0 constant CHK-EV-PACKAGE
+1 constant CHK-EV-PUBLIC
+2 constant CHK-EV-PRIVATE
+3 constant CHK-EV-END-PACKAGE
+4 constant CHK-EV-USING
+5 constant CHK-EV-END-USING
+1024 constant CHK-EV-MAX
+$4000 constant CHK-EV-NAMES-CAP
+create CHK-EV-ATS CHK-EV-MAX cells allot
+create CHK-EV-KINDS CHK-EV-MAX cells allot
+create CHK-EV-OFFS CHK-EV-MAX cells allot
+create CHK-EV-US CHK-EV-MAX cells allot
+create CHK-EV-NAMES CHK-EV-NAMES-CAP allot
+variable CHK-EV-N
+variable CHK-EV-NAMES-U
+
+: CHK-EV-AT@ ( n -- n )
+   cells CHK-EV-ATS + @ ;
+
+: CHK-EV-KIND@ ( n -- n )
+   cells CHK-EV-KINDS + @ ;
+
+: CHK-EV-OFF@ ( n -- n )
+   cells CHK-EV-OFFS + @ ;
+
+: CHK-EV-NAME$ ( n -- ptr u8 n ) {: e:n :}
+   CHK-EV-NAMES e CHK-EV-OFF@ + e cells CHK-EV-US + @ ;
+
+: CHK-EV-PUSH ( ptr u8 n n n -- ) {: a:ptr u:n at:n kind:n :}
+   CHK-EV-N @ CHK-EV-MAX >= if E-TBL-BOUNDS throw then
+   u CHECKER-PACKAGE-CAP >= if E-TBL-BOUNDS throw then
+   CHK-EV-NAMES-U @ u + CHK-EV-NAMES-CAP > if E-TBL-BOUNDS throw then
+   CHK-EV-N @ {: e:n :}
+   a CHK-EV-NAMES CHK-EV-NAMES-U @ + u BYTE-COPY
+   at CHK-EV-ATS e cells + !
+   kind CHK-EV-KINDS e cells + !
+   CHK-EV-NAMES-U @ CHK-EV-OFFS e cells + !
+   u CHK-EV-US e cells + !
+   CHK-EV-NAMES-U @ u + CHK-EV-NAMES-U !
+   e 1+ CHK-EV-N ! ;
+
+: CHK-EV-DROP ( n -- ) {: mark:n :}      \ the rows from mark on go
+   mark CHK-EV-N @ < if mark CHK-EV-OFF@ CHK-EV-NAMES-U ! then
+   mark CHK-EV-N ! ;
+
+: CHK-EV-APPLY ( n -- ) {: e:n :}
+   e CHK-EV-KIND@ {: kind:n :}
+   kind CHK-EV-PACKAGE = if e CHK-EV-NAME$ CHK-SCOPE-PACKAGE exit then
+   kind CHK-EV-PUBLIC = if LINT-TRUE CHK-SCOPE-VISIBLE exit then
+   kind CHK-EV-PRIVATE = if LINT-FALSE CHK-SCOPE-VISIBLE exit then
+   kind CHK-EV-END-PACKAGE = if CHK-SCOPE-END-PACKAGE exit then
+   kind CHK-EV-USING = if e CHK-EV-NAME$ CHK-SCOPE-USING exit then
+   CHK-SCOPE-END-USING ;
+
+\ The scope statements from row e on that start before byte at take effect;
+\ the answer is the first row left.
+: CHK-EV-APPLY-TO ( n n -- n ) {: e:n at:n :}
+   e begin dup CHK-EV-N @ < if dup CHK-EV-AT@ at < else LINT-FALSE then while
+      dup CHK-EV-APPLY
+      1+
+   repeat ;
+
+\ Each segment starts in the scope its text runs in, written as the scope
+\ statements that reopen it: the usings open when the package opened, the
+\ package and its visibility, then the usings opened inside it (or the `;using`
+\ that closed some of the earlier ones). verify-source reads them before the
+\ segment, in its window.
+$10000 constant CHK-SCOPE-TEXT-CAP
+create CHK-SCOPE-TEXT CHK-SCOPE-TEXT-CAP allot
+variable CHK-SCOPE-TEXT-U
+create CHK-SEG-SCOPE-ATS CHK-SEG-MAX cells allot
+create CHK-SEG-SCOPE-US CHK-SEG-MAX cells allot
+
+: CHK-SCOPE-SAY ( ptr u8 n -- )          \ one word of the statements
+   >LEN CHK-SCOPE-TEXT CHK-SCOPE-TEXT-CAP >LEN CHK-SCOPE-TEXT-U SOURCE-APPEND-BYTES
+   CHK-SP CHK-SCOPE-TEXT CHK-SCOPE-TEXT-CAP >LEN CHK-SCOPE-TEXT-U SOURCE-APPEND-C ;
+
+: CHK-SCOPE-SAY-USINGS ( n n -- ) {: from:n to:n :}
+   from begin dup to < while
+      s" using" CHK-SCOPE-SAY
+      dup CHK-SCOPE-ROW$ CHK-SCOPE-SAY
+      1+
+   repeat drop ;
+
+: CHK-SCOPE-SAY-CLOSED ( -- )            \ usings `;using` closed inside the package
+   CHK-SCOPE-DEPTH @ begin dup CHK-SCOPE-SAVE @ < while
+      s" ;using" CHK-SCOPE-SAY
+      1+
+   repeat drop ;
+
+: CHK-SCOPE-SAY-ALL ( -- )
+   CHK-SCOPE-PKG-U @ 0= if 0 CHK-SCOPE-DEPTH @ CHK-SCOPE-SAY-USINGS exit then
+   0 CHK-SCOPE-SAVE @ CHK-SCOPE-SAY-USINGS
+   s" package" CHK-SCOPE-SAY
+   CHK-SCOPE-PKG CHK-SCOPE-PKG-U @ CHK-SCOPE-SAY
+   CHK-SCOPE-PUBLIC @ if s" public" CHK-SCOPE-SAY then
+   CHK-SCOPE-SAVE @ CHK-SCOPE-DEPTH @ CHK-SCOPE-SAY-USINGS
+   CHK-SCOPE-SAY-CLOSED ;
+
 : CHK-SEG-ID@ ( n -- n )
    cells CHK-SEG-IDS + @ ;
 
@@ -533,14 +712,24 @@ private
 : CHK-SEG-END@ ( n -- n )
    cells CHK-SEG-ENDS + @ ;
 
-\ An empty span verifies nothing, so it is never recorded.
+: CHK-SEG-SCOPE$ ( n -- ptr u8 n ) {: seg:n :}
+   CHK-SCOPE-TEXT seg cells CHK-SEG-SCOPE-ATS + @ +
+   seg cells CHK-SEG-SCOPE-US + @ ;
+
+\ An empty span verifies nothing, so it is never recorded. A segment takes the
+\ scope current when it is recorded, the scope at its first byte.
 : CHK-SEG-PUSH ( n n n -- ) {: id:n start:n end:n :}
    end start <= if exit then
    CHK-SEG-N @ CHK-SEG-MAX >= if E-TBL-BOUNDS throw then
-   id CHK-SEG-IDS CHK-SEG-N @ cells + !
-   start CHK-SEG-STARTS CHK-SEG-N @ cells + !
-   end CHK-SEG-ENDS CHK-SEG-N @ cells + !
-   CHK-SEG-N @ 1+ CHK-SEG-N ! ;
+   CHK-SEG-N @ {: seg:n :}
+   id CHK-SEG-IDS seg cells + !
+   start CHK-SEG-STARTS seg cells + !
+   end CHK-SEG-ENDS seg cells + !
+   CHK-SCOPE-TEXT-U @ LEN>N {: at:n :}
+   CHK-SCOPE-SAY-ALL
+   at CHK-SEG-SCOPE-ATS seg cells + !
+   CHK-SCOPE-TEXT-U @ LEN>N at - CHK-SEG-SCOPE-US seg cells + !
+   seg 1+ CHK-SEG-N ! ;
 
 : CHK-TARGET-LAYOUT-ACTIVE? ( ptr u8 n -- bool ) {: path:ptr pathu:n :}
    path pathu s" src/os/linux/layout.f" LINT-STR= if HB-TARGET-LINUX? exit then
@@ -589,18 +778,21 @@ private
    0 begin dup at CHK-TOK-BEFORE? while 1+ repeat ;
 
 \ Where the loader runs each file a source loads. A top-level loader statement
-\ runs where it sits; one inside a definition runs when the word does, after
-\ that definition at the earliest. A verify window opens at top level and
-\ closes every scope it opened, so a file is cut only between top-level
-\ statements where no package or file-level `using` is open: each loaded file
-\ expands at the first such boundary after its loader, and one loaded inside a
-\ package (lib/aio.f's AIO-LOAD:HOST) once that package closes. A statement
-\ follows verify-source's reading: `:` and `TRUSTED:` run to `;`, `char` and
-\ `'` take the next token at top level and `char` and `[char]` in a body, and
-\ `require` and `include` take their path.
+\ runs where it sits, so its file expands right after it, inside whatever
+\ package and `using` scope the source has open there; the file's segments and
+\ the rest of the source start in the scope the loader gives them (CHK-SEG-PUSH).
+\ One inside a definition runs when the word does, after that definition at the
+\ earliest; its file expands at the first boundary after the definition where
+\ the source has closed every package and `using` it opened, as lib/aio.f's
+\ AIO-LOAD:HOST runs once its package closes. A statement follows
+\ verify-source's reading: `:` and `TRUSTED:` run to `;`, `char` and `'` take
+\ the next token at top level and `char` and `[char]` in a body, `require` and
+\ `include` take their path, and `package` and `using` their name.
+-1 constant CHK-AT-PENDING               \ a loader in a body, waiting for a boundary
 variable CHK-WALK-PKG                    \ a package is open
 variable CHK-WALK-USE                    \ file-level `using` depth outside a package
 variable CHK-WALK-IX                     \ the first direct dep still waiting for its byte
+variable CHK-WALK-PENDING                \ body loaders still waiting
 
 : CHK-TOP-PARSER? ( n -- bool ) {: k:n :}
    k s" char" CHK-TOK=CI if LINT-TRUE exit then
@@ -625,22 +817,41 @@ variable CHK-WALK-IX                     \ the first direct dep still waiting fo
       1+
    repeat ;
 
-: CHK-WALK-SCOPE ( n -- n bool ) {: k:n :}   \ package and using: next index, handled
-   k s" package" CHK-TOK=CI if LINT-TRUE CHK-WALK-PKG ! k 2 + LINT-TRUE exit then
-   k s" ;package" CHK-TOK=CI if LINT-FALSE CHK-WALK-PKG ! k 1+ LINT-TRUE exit then
+: CHK-WALK-NAMED ( n n -- ) {: k:n kind:n :}   \ a scope statement and the name it takes
+   k 1+ CHK-WORD-TOK? if k 1+ LINT-LEX:TOKEN else s" " then
+   k LINT-LEX:BYTE@ kind CHK-EV-PUSH ;
+
+: CHK-WALK-MARK ( n n -- ) {: k:n kind:n :}    \ a scope statement that takes no name
+   s" " k LINT-LEX:BYTE@ kind CHK-EV-PUSH ;
+
+: CHK-WALK-PACKAGE ( n -- n bool ) {: k:n :}   \ package words: next index, handled
+   k s" package" CHK-TOK=CI if
+      LINT-TRUE CHK-WALK-PKG !
+      k CHK-EV-PACKAGE CHK-WALK-NAMED k 2 + LINT-TRUE exit
+   then
+   k s" ;package" CHK-TOK=CI if
+      LINT-FALSE CHK-WALK-PKG !
+      k CHK-EV-END-PACKAGE CHK-WALK-MARK k 1+ LINT-TRUE exit
+   then
+   k s" public" CHK-TOK=CI if k CHK-EV-PUBLIC CHK-WALK-MARK k 1+ LINT-TRUE exit then
+   k s" private" CHK-TOK=CI if k CHK-EV-PRIVATE CHK-WALK-MARK k 1+ LINT-TRUE exit then
+   k LINT-FALSE ;
+
+: CHK-WALK-USING ( n -- n bool ) {: k:n :}   \ using words: next index, handled
    k s" using" CHK-TOK=CI if
       CHK-WALK-PKG @ 0= if 1 CHK-WALK-USE +! then
-      k 2 + LINT-TRUE exit
+      k CHK-EV-USING CHK-WALK-NAMED k 2 + LINT-TRUE exit
    then
    k s" ;using" CHK-TOK=CI if
       CHK-WALK-PKG @ 0= CHK-WALK-USE @ 0 > and if -1 CHK-WALK-USE +! then
-      k 1+ LINT-TRUE exit
+      k CHK-EV-END-USING CHK-WALK-MARK k 1+ LINT-TRUE exit
    then
    k LINT-FALSE ;
 
 : CHK-WALK-STEP ( n -- n ) {: k:n :}    \ the token index past one statement
    k CHK-WALK-OPENER? if k 1+ CHK-WALK-DEF exit then
-   k CHK-WALK-SCOPE if exit then drop
+   k CHK-WALK-PACKAGE if exit then drop
+   k CHK-WALK-USING if exit then drop
    k CHK-TOP-PARSER? if k 2 + exit then
    k 1+ ;
 
@@ -651,30 +862,49 @@ variable CHK-WALK-IX                     \ the first direct dep still waiting fo
    CHK-WALK-IX @ CHK-DIR-N @ >= if LINT-FALSE exit then
    CHK-WALK-IX @ CHK-DIR-AT@ at < ;
 
-: CHK-WALK-POINT ( n -- ) {: at:n :}    \ every waiting loader before at expands at at
+\ Every waiting loader before byte at, which ends a statement: one in the top
+\ level expands at at, one in the definition just read waits.
+: CHK-WALK-POINT ( n bool -- ) {: at:n body:bool :}
    begin at CHK-WALK-WAITING? while
-      at CHK-WALK-IX @ CHK-DIR-AT!
+      body if CHK-AT-PENDING 1 CHK-WALK-PENDING +! else at then
+      CHK-WALK-IX @ CHK-DIR-AT!
       1 CHK-WALK-IX +!
    repeat ;
+
+: CHK-WALK-RELEASE ( n n -- ) {: base:n at:n :}   \ every body loader expands at at
+   CHK-WALK-PENDING @ 0= if exit then
+   base begin dup CHK-WALK-IX @ < while
+      dup CHK-DIR-AT@ CHK-AT-PENDING = if at over CHK-DIR-AT! then
+      1+
+   repeat drop
+   0 CHK-WALK-PENDING ! ;
 
 : CHK-WALK-BYTE ( n n -- n ) {: k:n len:n :}   \ where token k starts, or the end
    k LINT-LEX:COUNT >= if len exit then
    k LINT-LEX:BYTE@ ;
 
 \ The loader offsets of the direct deps from base on become the bytes where
-\ each dep expands; the answer is the file's length.
+\ each dep expands, in that order, and the file's top-level scope statements
+\ are recorded; the answer is the file's length.
 : CHK-EXPAND-POINTS ( n n -- n ) {: id:n base:n :}
    id CHK-DEP$ FILE-SIZE CHK-SRC-CAP > if E-FS-CAPACITY throw then
    id CHK-DEP$ CHK-SRC-BUF CHK-SRC-CAP READ-ALL {: len:n :}
    CHK-SRC-BUF len LINT-LEX:SOURCE
    base CHK-WALK-IX !
+   0 CHK-WALK-PENDING !
    LINT-FALSE CHK-WALK-PKG !
    0 CHK-WALK-USE !
    0 begin dup LINT-LEX:COUNT < while
-      CHK-WALK-STEP
-      CHK-WALK-NEUTRAL? if dup len CHK-WALK-BYTE CHK-WALK-POINT then
+      {: k:n :}
+      k CHK-WALK-STEP {: next:n :}
+      next len CHK-WALK-BYTE {: at:n :}
+      at k CHK-WALK-OPENER? CHK-WALK-POINT
+      CHK-WALK-NEUTRAL? if base at CHK-WALK-RELEASE then
+      next
    repeat drop
-   len CHK-WALK-POINT
+   len LINT-FALSE CHK-WALK-POINT
+   base len CHK-WALK-RELEASE
+   base CHK-DIR-SORT
    len ;
 
 \ Dependency closure: the shared whole-file ordered-event producer
@@ -718,6 +948,12 @@ variable CHK-WALK-IX                     \ the first direct dep still waiting fo
       1+
    repeat drop ;
 
+\ A file has ended: its `using` depth returns to the one it was loaded at, and
+\ its scope statements go.
+: CHK-EXPAND-CLOSE ( n n -- ) {: ev:n depth:n :}
+   depth CHK-SCOPE-DEPTH !
+   ev CHK-EV-DROP ;
+
 \ A source and the files it loads expand in the order the loader runs them: a
 \ file's text up to the byte where it loads another is a segment, that file's
 \ segments follow, then the rest of the text. A word the source defines before
@@ -726,32 +962,40 @@ variable CHK-WALK-IX                     \ the first direct dep still waiting fo
 \ file still expanding - a cycle back into it - loads nothing, as a registered
 \ path does. Only a file the pre-pass verifies is cut into segments; one the
 \ checking engine already holds still expands the files it loads, in order.
+\ The scope follows the same order: a file's scope statements take effect up
+\ to each byte where it loads another, so that file starts in the scope its
+\ loader runs it in.
 : CHK-EXPAND-ID ( n -- ) {: id:n :}
    id CHK-DEP-CHECK
    id CHK-DEP-STATE @ CHK-DEP-UNSEEN <> if exit then
    CHK-DEP-OPEN id CHK-DEP-STATE !
    id CHK-DEP$ FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    CHK-DIR-N @ {: base:n :}
+   CHK-EV-N @ {: ev:n :}
+   CHK-SCOPE-DEPTH @ {: depth:n :}
    id CHK-EXPAND-SCAN
    CHK-EVENTS>DEPS
    id CHK-DEP-PRELOAD? {: verified:bool :}
    verified if id base CHK-EXPAND-POINTS else 0 then {: len:n :}
-   0 base
+   ev 0 base
    begin dup CHK-DIR-N @ < while
-      {: pos:n ix:n :}
+      {: e:n pos:n ix:n :}
       ix CHK-DIR-ID@ {: dep:n :}
       dep CHK-DEP-STATE @ CHK-DEP-UNSEEN = if
          ix CHK-DIR-AT@ {: at:n :}
          verified if id pos at CHK-SEG-PUSH then
+         e at CHK-EV-APPLY-TO {: later:n :}
          dep RECURSE
-         at
+         later at
       else
-         pos
+         e pos
       then
       ix 1+
    repeat
-   drop {: tail:n :}
+   drop {: e:n tail:n :}
    verified if id tail len CHK-SEG-PUSH then
+   e len CHK-EV-APPLY-TO drop
+   ev depth CHK-EXPAND-CLOSE
    base CHK-DIR-N !
    CHK-DEP-DONE id CHK-DEP-STATE ! ;
 
@@ -767,7 +1011,11 @@ variable CHK-WALK-IX                     \ the first direct dep still waiting fo
    0 CHK-EXP-OUT-U !
    0 CHK-DEP-N !
    0 CHK-DIR-N !
-   0 CHK-SEG-N ! ;
+   0 CHK-SEG-N !
+   0 CHK-EV-N !
+   0 CHK-EV-NAMES-U !
+   0 CHK-SCOPE-TEXT-U !
+   CHK-SCOPE-RESET ;
 
 : CHK-WRITE-EXPANDED-SOURCE ( -- )
    CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N WRITE-ALL
@@ -1362,16 +1610,12 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    k s" :" CHK-DEFINER? IF LINT-TRUE exit THEN
    k s" TRUSTED:" CHK-DEFINER? ;
 
-: CHK-SKIP-DEF ( n -- n )
-   begin dup LINT-LEX:COUNT < while
-      dup CHK-TOK-SEMI? if 1+ exit then
-      1+
-   repeat ;
-
-\ A raw operand is data, never a definer: `' :` starts no definition.
+\ A raw operand is data, never a definer: `' :` starts no definition. A
+\ definition ends where the expansion walker ends it, so `[char] ;` in a body
+\ does not end it here either.
 : CHK-NOM-STEP ( n -- n ) {: k:n :}
    k LINT-LEX:OPERAND? if k 1+ exit then
-   k CHK-DEF-OPENER? if k 1+ CHK-SKIP-DEF exit then
+   k CHK-DEF-OPENER? if k 1+ CHK-WALK-DEF exit then
    k CHK-PKG-STEP if exit then drop
    k s" deftype" CHK-DEFINER? if
       k k 1+ CHK-NOM-REGISTER
@@ -1550,6 +1794,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 
 : CHK-ALL-SEG-ACT ( -- )
    CHK-ALL-SEG @ {: seg:n :}
+   seg CHK-SEG-SCOPE$
    seg CHK-SEG-ID@ CHK-DEP$ 2dup seg CHK-SEG-START@ seg CHK-SEG-END@
    CHECK-ALL-ERRORS:SPAN ;
 
@@ -1558,6 +1803,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 
 : CHK-ALL-REPLAY-SEG ( n -- ) {: seg:n :}
    seg cells CHK-SEG-RCS + @ 0 <> if exit then
+   seg CHK-SEG-SCOPE$
    seg CHK-SEG-ID@ CHK-DEP$ seg CHK-SEG-START@ seg CHK-SEG-END@
    CHECK-ALL-ERRORS:REPLAY ;
 
@@ -1614,9 +1860,14 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-SOURCE CHK-ORIGIN-BUF CHK-ORIGIN-CAP >LEN
    DIAG-ORIGIN>BUF LEN>N CHK-ORIGIN-U ! ;
 
-\ A segment is verified from its own first byte, so its diagnostics name the
-\ line, column and byte the file has there.
+\ A segment is verified from its own first byte, in the scope it starts in, so
+\ its diagnostics name the line, column and byte the file has there.
+: CHK-PRE-SCOPE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CHK-PRE-SCOPE-U !
+   a CHK-PRE-SCOPE-A ! ;
+
 : CHK-PREVERIFY-ACT ( -- )
+   CHK-PRE-SCOPE-A @ CHK-PRE-SCOPE-U @
    CHK-SRC-BUF CHK-PRE-AT @ + CHK-PRE-U @
    CHK-SRC-BUF CHK-PRE-AT @ CHECK-ALL-ERRORS:BYTE-ORIGIN CHK-PRE-AT @
    VERIFY:SOURCE-BUF-AT-IN-SCOPE ;
@@ -1638,6 +1889,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-PREVERIFY-CAPTURE dup 0 <> if throw then drop ;
 
 : CHK-PREVERIFY-SEG ( n -- ) {: seg:n :}
+   seg CHK-SEG-SCOPE$ CHK-PRE-SCOPE!
    seg CHK-SEG-ID@ CHK-DEP$ 2dup seg CHK-SEG-START@ seg CHK-SEG-END@
    CHK-PREVERIFY-SPAN ;
 
@@ -1649,6 +1901,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 
 : CHK-RUN-PREVERIFY-ACT ( -- )
    CHK-EXPANDED? if CHK-PREVERIFY-ORDER exit then
+   s" " CHK-PRE-SCOPE!
    CHK-LABEL CHK-SOURCE 0 CHK-SRC-CAP CHK-PREVERIFY-SPAN ;
 
 : CHK-SOURCE-LIST-REPORT ( -- )

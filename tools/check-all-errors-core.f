@@ -58,6 +58,8 @@ variable CA-SRC-U
 variable CA-SRC-CAP
 variable CA-AT                          \ the first byte of the source checked
 variable CA-END                         \ and the byte past its last
+TYPED-VARIABLE CA-SCOPE-A ptr u8        \ and the scope statements it starts in
+variable CA-SCOPE-U
 variable CA-ERR-LEN
 TYPED-VARIABLE CA-ERR-A ptr u8
 variable CA-ERR-CAP
@@ -160,6 +162,8 @@ TYPED-VARIABLE CA-REP-A ptr u8           \ the file REPLAY reads
 variable CA-REP-U
 variable CA-REP-AT                       \ the first byte it replays
 variable CA-REP-END                      \ and the byte past the last
+TYPED-VARIABLE CA-REP-SCOPE-A ptr u8     \ and the scope statements they start in
+variable CA-REP-SCOPE-U
 
 : CA-XSUP-BUF-A@ ( -- ptr u8 )
    CA-XSUP-BUF-A @ ;
@@ -177,6 +181,7 @@ variable CA-REP-END                      \ and the byte past the last
    CA-REP-A @ CA-REP-U @ FILE-SIZE CA-XSUP-BUF {: buf:ptr cap:n :}
    CA-REP-A @ CA-REP-U @ buf cap READ-ALL CA-REP-END @ min {: end:n :}
    CA-REP-AT @ {: at:n :}
+   CA-REP-SCOPE-A @ CA-REP-SCOPE-U @
    buf at + end at -
    buf at BYTE-ORIGIN at
    VERIFY:SOURCE-BUF-AT-IN-SCOPE ;
@@ -195,8 +200,12 @@ public
    [: CA-NO-SUPPORT ;] SUPPORT! ;
 
 \ Verify bytes start to end of the file at path into the open checker scope at
-\ the file's own line and column. Called from the support replay.
-: REPLAY ( ptr u8 n n n -- ) {: path:ptr pathu:n start:n end:n :}
+\ the file's own line and column, inside the scope the given statements open.
+\ Called from the support replay.
+: REPLAY ( ptr u8 n ptr u8 n n n -- )
+   {: scope:ptr scopeu:n path:ptr pathu:n start:n end:n :}
+   scope CA-REP-SCOPE-A !
+   scopeu CA-REP-SCOPE-U !
    path CA-REP-A !
    pathu CA-REP-U !
    start CA-REP-AT !
@@ -445,6 +454,7 @@ private
    CA-ERR-A@ CA-ERR-CAP @ DIAG-BUFFER! ;
 
 : CA-CHECK-FULL-ACT ( -- )
+   CA-SCOPE-A @ CA-SCOPE-U @
    CA-SRC-A@ CA-AT @ + CA-END @ CA-AT @ -
    CA-SRC-A@ CA-AT @ BYTE-ORIGIN CA-AT @
    VERIFY:SOURCE-BUF-AT-IN-SCOPE ;
@@ -594,6 +604,7 @@ private
 
 : CA-START ( ptr u8 n -- ) {: labela:ptr labelu:n :}
    0 CA-XSUP-RC !
+   s" " CA-SCOPE-U ! CA-SCOPE-A !
    labelu CA-FILE-U !
    labela CA-FILE-A! ;
 
@@ -634,10 +645,13 @@ public
    CA-RUN-SOURCE ;
 
 \ Check bytes start to end of the source file at the given path, reporting them
-\ under the given label at the file's own line and column.
-: SPAN ( ptr u8 n ptr u8 n n n -- )
-   {: labela:ptr labelu:n patha:ptr pathu:n start:n end:n :}
+\ under the given label at the file's own line and column, inside the scope
+\ the given statements open.
+: SPAN ( ptr u8 n ptr u8 n ptr u8 n n n -- )
+   {: scope:ptr scopeu:n labela:ptr labelu:n patha:ptr pathu:n start:n end:n :}
    labela labelu CA-START
+   scope CA-SCOPE-A !
+   scopeu CA-SCOPE-U !
    patha pathu CA-READ-SOURCE
    start CA-AT !
    end CA-SRC-U @ min CA-END !
