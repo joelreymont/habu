@@ -1,8 +1,10 @@
 ---
 title: "Keep the includer's usings across a buffer"
-status: open
+status: closed
 priority: 2
 issue-type: task
+closed-at: "2026-10-01T13:11:59.126070+03:00"
+close-reason: "acceptance (1) and (3) by a per-buffer using floor (engine, Habu loop, source verifier): using-test, outer-interpret 142 agree, clobber-lint clean; (2) split to habu-restore-the-includer-f7be16fa (the checker names mirror must follow the engine slots)"
 created-at: "2026-10-01T12:34:32.155149+03:00"
 ---
 

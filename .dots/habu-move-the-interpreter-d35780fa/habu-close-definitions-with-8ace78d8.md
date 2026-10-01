@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.939780+03:00"
-blocks:
-  - habu-capture-does-in-46068833
 ---
 
 Problem: `;` is the assembly close sequence (`habu2.f:7563-7573`).
