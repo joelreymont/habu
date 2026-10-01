@@ -103,8 +103,9 @@ require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
 \ (len + up to 16 name bytes, 24 B each). User data (DP) starts past the header.
 0   constant DP-CELL    8  constant HND-CELL
 16  constant LOCN-CELL   24 constant LOCF-CELL
-$3000 constant LOCNAMES   \ 64 records x 24 B ($3000-$3600); was 16 at DATA+32
+$3000 constant LOCNAMES   \ LOC-RECS records of LOC-REC bytes ($3000-$3600); was 16 at DATA+32
 24  constant LOC-REC      \ bytes per local name record (len + 16 name)
+64  constant LOC-RECS     \ locals per definition: C-LBRACE-STORE-ONE refuses the next (native layout.f LOC-RECS)
 \ Friend arena (TFAM 2b-i): contiguous write-protected band mirroring
 \ src/habu/layout.f. Latch cell == arena base (0 open / FRIEND-ARENA-LEN sealed).
 \ Package cells and protected-WID state mirror native, as do the two
@@ -254,7 +255,9 @@ $3698 constant TKL-CELL    \ current token len  (was x24)
 $36A0 constant INP-CELL    \ input cursor (was x21)
 $36A8 constant INE-CELL    \ input end    (was x22)
 $36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
-$36D0 constant BPTAB-OFF   \ 16 breakpoints: (addr, saved-instr) 16 B each, addr 0 = empty
+$36D0 constant BPTAB-OFF   \ BP-MAX slots (addr, saved-instr, hits, ctrl), addr 0 = empty
+8 constant BP-MAX          \ breakpoint slots EMIT-TRAPH scans
+5 constant BP-SLOT-SHIFT   \ a slot is 32 bytes: index << 5
 $43C0 constant EVAL-TOP-CELL  \ current native-stack evaluator frame, zero at rest
 STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
@@ -283,12 +286,6 @@ $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors s
 \ snapshot format relocates nothing, exactly as it does not for xt!.
 $2818 constant EXIT-HOOK-CELL
 $5000 constant TXN-STATE-OFF
-\ The DECLARED extent, mirroring src/habu/layout.f: the transaction cells end
-\ at TXN-LIVE-W-OFF + TXN-LIVE-W-CAP cells ($5300). It was $3000, which made
-\ the BAND-TAB row below guard 11520 bytes the transaction never owned; that
-\ run is USER-BAND now. A recovery engine that still guarded it would refuse
-\ every task-local store an engine built natively accepts.
-$300 constant TXN-STATE-LEN
 $10000 constant PROT-PAGE-MAX \ maximum supported arm64 page granule (DGX/Jetson Linux: 64 KiB)
 TXN-STATE-OFF       constant TXN-ACTIVE-CELL
 TXN-STATE-OFF $8  + constant TXN-SRC-A-CELL
@@ -311,7 +308,13 @@ TXN-STATE-OFF $88 + constant TXN-FETCH-I-CELL
 TXN-STATE-OFF $90 + constant TXN-BLOB-A-CELL
 TXN-STATE-OFF $98 + constant TXN-BLOB-CAP-CELL
 TXN-STATE-OFF $100 + constant TXN-LIVE-W-OFF
-64 constant TXN-LIVE-W-CAP
+LOC-RECS constant TXN-LIVE-W-CAP          \ one certified live width per local slot
+\ The DECLARED extent, mirroring src/habu/layout.f: the transaction cells end
+\ at TXN-LIVE-W-OFF + TXN-LIVE-W-CAP cells ($5300). It was $3000, which made
+\ the BAND-TAB row below guard 11520 bytes the transaction never owned; that
+\ run is USER-BAND now. A recovery engine that still guarded it would refuse
+\ every task-local store an engine built natively accepts.
+TXN-LIVE-W-OFF TXN-LIVE-W-CAP cells + TXN-STATE-OFF - constant TXN-STATE-LEN
 
 \ Private build-time mirror of the package LOWER-CERT ABI. The generated
 \ stage0 runtime reads the package-owned artifact; these constants only encode
@@ -359,10 +362,11 @@ $36B8 constant FRCLM-CELL       \ recon scratch: float claims found in a snapsho
 $37F8 constant SNAP-CELL    \ nonzero after snapshot restore; source setup skips cold prefix reload
 \ BODYBUF-OFF was spelled as the end of the DO/LOOP frame band while that band
 \ lived at $600..$800 in the DATA header. The frames are a guarded mapping now
-\ (STACK-ABI:LOOP-BASE-CELL/LOOP-BYTES), so this states its own offset; the
-\ $600..$800 hole below it is free header space.
+\ (STACK-ABI:LOOP-BASE-CELL/LOOP-BYTES), so this states its own offset. Below
+\ it, $600..$800 holds SIGNAL-ABI, LVF, LVQ and FRAME/QFRAME (data-claims.fs).
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
 8000 constant BODYBUF-CAP \ fatal above this (truncation would let the checker certify unseen code)
+BODYBUF-CAP 2 + constant BODYBUF-LEN \ the band BAND-TAB guards (native data-bands.f, data-claims.f)
 \ The user return stack is a guarded mapping (STACK-ABI:RETURN-BASE-CELL) now,
 \ not the $2800..$3000 header band it used to be: a band inside a $8000 header
 \ cannot carry an inaccessible page, and an overflow there silently overwrote
@@ -418,11 +422,21 @@ STACK-ABI:CATCH-MAGIC constant CATCH-FRAME-MAGIC
 PD-NAME-OFF PD-NAME-CAP + constant PD-SIG-OFF
 PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT
 8 constant PD-SLOTS-REL
-\ USER-REGION-END remains the fixed library arena boundary. $5300..$7690 is USER-BAND (lib/task.f
-\ TASK:+USER), $7690..$7BC0 is FS-ABI, $7BC0..$7BF8 is FMT-ABI and $7BF8..$8000
-\ is STRING-ABI, none of which this stage names: the recovery chain has to
-\ agree about the GUARD, not about the library bands behind it.
+\ USER-REGION-END ends native's library arena (src/habu/layout.f): $5300..$6A88
+\ is USER-BAND (lib/task.f TASK:+USER), $6A88..$7690 FS-MUT-ABI, $7690..$7BC0
+\ FS-ABI, $7BC0..$7BF8 FMT-ABI and $7BF8..$8000 STRING-ABI. None of their
+\ libraries is in this seed's emitted prefix (PFX-LOAD-STDLIB-FILES loads only
+\ lib/prelude.f and lib/errors.f from lib/). The stage2 build loads lib/fmt.f
+\ and, through it, lib/float.f and lib/string.f, by require: src/habu/habu2.f
+\ `require lib/fmt.f`, lib/fmt.f `require lib/float.f`, lib/float.f `require
+\ lib/string.f`. No code this seed runs calls an SB or FMT: word, so it reads
+\ none of these bands. STRING-ABI is named here only so that the
+\ USER-REGION-END this file carries bounds a registered claim, its
+\ data-claims.fs row. The recovery chain agrees about the GUARD, not about the
+\ library bands behind it, so none of them is in BAND-TAB.
 $8000 constant USER-REGION-END
+$408 constant STRING-ABI:BYTES
+USER-REGION-END STRING-ABI:BYTES - constant STRING-ABI:START
 \ Package/search snapshots are fields of each native-stack evaluator frame.
 0  constant PKGSNAP-CUR
 8  constant PKGSNAP-PUB
@@ -770,6 +784,7 @@ previous definitions
 
 require prof.fs           \ in-binary sampling profiler (emitters + prims)
 require jit.fs          \ runtime abstract value stack for the : compiler
+require data-claims.fs  \ build-time refusal of overlapping DATA cells and bands
 
 \ Span-aware stage0 mirror of src/habu/habu1.f. x13 holds the checked end and
 \ x12 is scratch; address+length wrap and intersection with every compiler-owned
@@ -828,7 +843,7 @@ create BAND-TAB
    FRIEND-ARENA ,    FRIEND-ARENA-LEN ,
    PROT-REG-OFF ,    PROT-REG-LEN ,
    ENGINE-HOOK-OFF , ENGINE-HOOK-LEN ,
-   BODYBUF-OFF ,     BODYBUF-CAP 2 + ,
+   BODYBUF-OFF ,     BODYBUF-LEN ,
    TXN-STATE-OFF ,   TXN-STATE-LEN ,
    0 ,               0 ,
 
@@ -2617,10 +2632,10 @@ create ZBYTE 0 c,
    LBL {: bscan :}  LBL {: bnext :}  LBL {: bhit :}
    LBL {: emu :}  LBL {: fin :}  LBL {: oneshot :}
    LBL LBL {: stackbad stackempty :}
-   6 8 MOVZ,  7 0 MOVZ,                              \ MAXBP=8, i  (scan BPTAB[0..8))
+   6 BP-MAX MOVZ,  7 0 MOVZ,                         \ x6 = BP-MAX, x7 = i  (scan BPTAB[0..BP-MAX))
    bscan LBL,
       7 6 CMP,  C-GE tno BCOND,
-      8 7 5 LSLI,  14 BPTAB-OFF LIT64,  8 8 14 ADD,  8 DATA 8 ADD,   \ &BPTAB[i] (32 B stride)
+      8 7 BP-SLOT-SHIFT LSLI,  14 BPTAB-OFF LIT64,  8 8 14 ADD,  8 DATA 8 ADD,   \ &BPTAB[i]
       13 8 0 LDR,  13 bnext CBZ,                     \ empty slot (addr 0)
       10 13 CMP,  C-EQ bhit BCOND,
       bnext LBL,  7 7 1 ADDI,  bscan B,
@@ -4657,7 +4672,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ row, declares one.
 : C-LBRACE-STORE-ONE ( -- )
    LBL LBL LBL LBL LBL {: nlok ncp ncd tsl tsd :}
-   11 DATA LOCN-CELL LDR,  11 64 CMPI,  C-LT nlok BCOND,
+   11 DATA LOCN-CELL LDR,  11 LOC-RECS CMPI,  C-LT nlok BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
    nlok LBL,
@@ -4948,7 +4963,7 @@ also LOWER-CERT
 
 : EM-P2-CARVE-W ( -- )
    LBL LBL LBL {: localok bindok widthok :}
-   9 SP 0 LDR,  9 64 CMPI,  C-CC localok BCOND,
+   9 SP 0 LDR,  9 TXN-LIVE-W-CAP CMPI,  C-CC localok BCOND,
       EM-P2-SLOT-DIE
    localok LBL,
    11 DATA TXN-CERT-A-CELL LDR,
@@ -4971,7 +4986,7 @@ previous
 
 : EM-P2-LIVE-W ( -- )
    LBL {: ok :}
-   9 SP 0 LDR,  9 64 CMPI,  C-CC ok BCOND,
+   9 SP 0 LDR,  9 TXN-LIVE-W-CAP CMPI,  C-CC ok BCOND,
       EM-P2-SLOT-DIE
    ok LBL,
    12 TXN-LIVE-W-OFF MOVZ,  12 DATA 12 ADD,
@@ -4979,7 +4994,7 @@ previous
 
 : EM-P2-LIVE-CUM ( -- )
    LBL LBL LBL {: ok loop done :}
-   9 SP 0 LDR,  9 64 CMPI,  C-CC ok BCOND,
+   9 SP 0 LDR,  9 TXN-LIVE-W-CAP CMPI,  C-CC ok BCOND,
       EM-P2-SLOT-DIE
    ok LBL,
    10 0 MOVZ,  11 0 MOVZ,
