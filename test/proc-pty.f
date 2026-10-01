@@ -63,16 +63,13 @@ variable PID
 
 \ Completion, in this file's own counters: the bounded reaps answer an outcome,
 \ and only a clean exit with this code passes. A reap that ran out of clock
-\ answers timeout: that is a deadline, not a wrong answer, so this run exits
-\ PROC-TIMEOUT-RC (lib/process.f) and the gate entry that runs it reports a
-\ timeout instead of counting a failure.
+\ answers timeout: that is a deadline, not a wrong answer, so it throws
+\ E-PROC-TIMEOUT for RUN to report.
 : T-EXIT= ( outcome n -- ) {: want:n :}
    MATCH outcome
      exited OF want T= ENDOF
      signaled OF drop 1 0 T= ENDOF
-     timeout OF
-        s" proc-pty: reap deadline in case " type #CASE @ 1 + . cr
-        s" proc-pty: a reap ran out of time" PROC-TIMEOUT-RC die ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 \ Every drain starts from an empty buffer: the bytes it swallows are the ones a
@@ -98,21 +95,13 @@ variable PID
    WAIT-FOR TTRUE ;
 
 \ A redraw while echoing the input already contains a prompt. Completion
-\ requires a prompt after the answer, using the same predicate in the wait
-\ and the live echo regression below.
+\ requires a prompt after the answer, the same ordered pair in the wait
+\ (lib/pty-harness.f WAIT-AFTER) and the live echo regression below.
 : PROMPT-READY? ( ptr u8 n -- bool )
    s" habu> " AFTER? ;
 
-: WAIT-PROMPT ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   WAIT-BUDGET-MS WAIT-OPEN
-   begin
-      a u PROMPT-READY? if true exit then
-      WAIT-LEFT 0= if false exit then
-      MASTER-FD READ-STEP 0 < if a u PROMPT-READY? exit then
-   again ;
-
 : PROMPT-AFTER ( ptr u8 n -- )
-   WAIT-PROMPT TTRUE ;
+   s" habu> " WAIT-AFTER TTRUE ;
 
 \ Wait for a marker and close an absence claim's window at its end. The marker
 \ has to be one the child prints PAST the point where the rejected text could
@@ -865,9 +854,21 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
    #FAIL @ 0 = if s" PASS: process/pty primitives" type cr exit then
    #FAIL @ . s" proc-pty: failures" 1 die ;
 
-CAPTURE-HB
-PTY-HB
-REPORT
+\ A deadline is no failed case: a reap that ran out of clock, or a wait whose
+\ clock ended with the child still at the terminal (lib/pty-harness.f
+\ WAIT-AFTER-WITHIN), throws E-PROC-TIMEOUT. This run then exits
+\ PROC-TIMEOUT-RC (lib/process.f), and the gate entry that runs it reports a
+\ timeout instead of counting a failure. Every other throw is the run's own.
+: RUN ( -- )
+   [: CAPTURE-HB PTY-HB ;] catch {: code:n :}
+   code E-PROC-TIMEOUT = if
+      s" proc-pty: deadline in case " type #CASE @ 1 + . cr
+      s" proc-pty: a wait or a reap ran out of time" PROC-TIMEOUT-RC die
+   then
+   code 0<> if code throw then
+   REPORT ;
+
+RUN
 
 ;using
 

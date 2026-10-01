@@ -314,7 +314,10 @@ at its deadline.
   reaches the pool as `TIMEOUT-UNDER-LOAD` instead of failing an assertion on
   137 or on a false exited flag. A deliberate kill is a `signaled` outcome and
   still reads 128 + signal; a test that expects the deadline asserts it with
-  `T-OUTCOME-TIMEOUT` or MATCHes it.
+  `T-OUTCOME-TIMEOUT` or MATCHes it. A pty wait whose clock ends with the
+  child still at the terminal throws it too (`lib/pty-harness.f`
+  `WAIT-AFTER-WITHIN`), where a hang-up answers false; `test/proc-pty.f`, a
+  child of the `engine-runtime-regressions` row, exits `PROC-TIMEOUT-RC` for it.
 - A build row's own capture deadline reaches the pool the same way. The image
   builders (`test/whitebox-engine.f`, `test/keyed-image.f`,
   `test/cold-engine.f`) and `test/aot-wid-build.f` read their captures through
