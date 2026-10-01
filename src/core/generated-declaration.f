@@ -852,6 +852,12 @@ public
 
 : OWNS? ( n -- bool ) GEN-OK? ;
 
+\ SUMTYPE and PRODUCT still generate their constructors in sumtype.f, outside
+\ this participant. A tool that registered one from tokens it had lexed
+\ (src/habu/verify-source.f) replays that family's constructors here: their
+\ checked effects, for the family sumtype.f last announced, and no word.
+TRUSTED: REPLAY-LEGACY ( -- ) TDECL-CTOR-WORDS-REPLAY ;
+
 private
 
 INSTALL

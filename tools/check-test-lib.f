@@ -83,6 +83,9 @@ create INC-DEP-PATH FS-PATH-CAP allot
 create INC-ENTRY-PATH FS-PATH-CAP allot
 create SUP-PATH FS-PATH-CAP allot
 create USE-PATH FS-PATH-CAP allot
+create CYC-ROOT-PATH FS-PATH-CAP allot
+create CYC-HOST-PATH FS-PATH-CAP allot
+create CYC-ENTRY-PATH FS-PATH-CAP allot
 create MUT-SRC $200 allot
 create MUT-LABEL FS-PATH-CAP allot
 create MUT-PATH FS-PATH-CAP allot
@@ -106,6 +109,9 @@ variable INC-DEP-U
 variable INC-ENTRY-U
 variable SUP-U
 variable USE-U
+variable CYC-ROOT-U
+variable CYC-HOST-U
+variable CYC-ENTRY-U
 variable MUT-SRC-U
 variable MUT-LABEL-U
 variable MUT-PATH-U
@@ -157,6 +163,15 @@ variable START-NS
 
 : USE$ ( -- ptr u8 n )
    USE-PATH USE-U @ ;
+
+: CYC-ROOT$ ( -- ptr u8 n )
+   CYC-ROOT-PATH CYC-ROOT-U @ ;
+
+: CYC-HOST$ ( -- ptr u8 n )
+   CYC-HOST-PATH CYC-HOST-U @ ;
+
+: CYC-ENTRY$ ( -- ptr u8 n )
+   CYC-ENTRY-PATH CYC-ENTRY-U @ ;
 
 : ABS-PATH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0 > if a c@ $2F = else 0 0= 0= then ;
@@ -1126,6 +1141,9 @@ variable LONG-J
    ROOT$ s" inc-entry.f" INC-ENTRY-PATH JOIN-PATH INC-ENTRY-U !
    ROOT$ s" list-sup.f" SUP-PATH JOIN-PATH SUP-U !
    ROOT$ s" list-use.f" USE-PATH JOIN-PATH USE-U !
+   ROOT$ s" cyc-root.f" CYC-ROOT-PATH JOIN-PATH CYC-ROOT-U !
+   ROOT$ s" cyc-host.f" CYC-HOST-PATH JOIN-PATH CYC-HOST-U !
+   ROOT$ s" cyc-entry.f" CYC-ENTRY-PATH JOIN-PATH CYC-ENTRY-U !
    ROOT$ s" capture-out.txt" CAP-OUT-PATH JOIN-PATH CAP-OUT-PATH-U !
    ROOT$ s" capture-err.txt" CAP-ERR-PATH JOIN-PATH CAP-ERR-PATH-U !
    ROOT$ s" env-probe.f" ENV-PROBE-PATH JOIN-PATH ENV-PROBE-U !
@@ -1620,9 +1638,12 @@ variable LONG-J
    outu 0 T=
    erru 0 T= ;
 
+\ test/gate-images.f requires lib/aio.f, which ends by loading its macOS host
+\ module (a require cycle) and calls SUMTYPE constructors it declares itself.
 : TEST-IMAGE-TOOL-SOURCES ( -- )
    s" tools/engine-size.f" CHECK-TOOL-SOURCE
-   s" tools/imgdump.f" CHECK-TOOL-SOURCE ;
+   s" tools/imgdump.f" CHECK-TOOL-SOURCE
+   s" test/gate-images.f" CHECK-TOOL-SOURCE ;
 
 : EXPECT-PROVIDED-LIST ( n n n -- )
    64 T= {: outu:n erru:n :}
@@ -2554,6 +2575,78 @@ create BIG $2000 allot   variable BIG-U
    outu 0 T=
    erru 0 T= ;
 
+\ A require cycle: the root declares a deferred word and loads its host module
+\ last; the host requires the root back and installs into that word, as
+\ lib/aio.f and lib/aio-macos.f do. The host loads inside the root, after the
+\ root's declarations, so preverify verifies the root before the host. The
+\ entry stands outside the cycle, as test/gate-images.f stands outside aio's.
+\ A host word of the wrong effect for the deferred word is still refused.
+: SB-REQUIRED ( ptr u8 n -- )
+   $73 SB-APPEND-C $22 SB-APPEND-C $20 SB-APPEND-C
+   SB-APPEND
+   $22 SB-APPEND-C
+   s"  required" SB-APPEND $0a SB-APPEND-C ;
+
+: CYC-ROOT-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s\" package CKT-CYC\nprivate\ndefer CKT-HOOK ( -- n )\n;package\n" SB-APPEND
+   CYC-HOST$ SB-REQUIRED
+   SB$ ;
+
+: CYC-HOST-SRC$ ( ptr u8 n -- ptr u8 n ) {: def:ptr defu:n :}
+   SB-RESET
+   CYC-ROOT$ SB-REQUIRED
+   s\" package CKT-CYC\nprivate\n" SB-APPEND
+   def defu SB-APPEND
+   s\" \n: CKT-INSTALL ( -- ) ['] CKT-SEVEN is CKT-HOOK ;\n;package\n" SB-APPEND
+   SB$ ;
+
+: CYC-RUN ( ptr u8 n -- n n n ) {: def:ptr defu:n :}
+   CYC-ROOT$ CYC-ROOT-SRC$ WRITE-ALL
+   CYC-HOST$ def defu CYC-HOST-SRC$ WRITE-ALL
+   SB-RESET CYC-ROOT$ SB-REQUIRED
+   CYC-ENTRY$ SB$ WRITE-ALL
+   CYC-ENTRY$ PATH-RUN ;
+
+: TEST-REQUIRE-CYCLE ( -- )
+   s" : CKT-SEVEN ( -- n ) 7 ;" CYC-RUN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T=
+   s" : CKT-SEVEN ( -- ) ;" CYC-RUN 70 T=
+   {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 CYC-HOST$ CONTAINS? TTRUE
+   CAP-ERR erru2 s" ckt-install" CONTAINS? TTRUE ;
+
+\ SUMTYPE and PRODUCT define their constructors when they load. The pre-pass
+\ replays the constructors' checked effects, so a definition in the same source
+\ that constructs one preverifies, as lib/aio.f's OUTCOME-OF builds
+\ AIO-OUTCOME:ready. A constructor left without its payload is still refused,
+\ and by its effect, not as an undefined word.
+: CTOR-SRC$ ( ptr u8 n -- ptr u8 n ) {: use:ptr useu:n :}
+   SB-RESET
+   s\" package CKTCT\npublic\nSUMTYPE ctout 0\n" SB-APPEND
+   s\"    VARIANT ready n ;VARIANT\n   VARIANT gone ;VARIANT\n;SUMTYPE\n" SB-APPEND
+   s\" PRODUCT ctpt 0\n   FIELD x n\n   FIELD y n\n;PRODUCT\nprivate\n" SB-APPEND
+   use useu SB-APPEND
+   s\" \n;package\n" SB-APPEND
+   SB$ ;
+
+: CTOR-GOOD$ ( -- ptr u8 n )
+   s" : CKT-OUT ( n -- ctout ) CKTCT-CTOUT:ready ; : CKT-PT ( n n -- ctpt ) CKTCT-CTPT:MAKE ;"
+   CTOR-SRC$ ;
+
+: CTOR-BAD$ ( -- ptr u8 n )
+   s" : CKT-OUT-BAD ( -- ctout ) CKTCT-CTOUT:ready ;" CTOR-SRC$ ;
+
+: TEST-DECLARED-CONSTRUCTORS ( -- )
+   CTOR-GOOD$ DIRECT-STDIN EXPECT-ACCEPTED
+   CTOR-GOOD$ DIRECT-ALL-STDIN EXPECT-ACCEPTED
+   CTOR-BAD$ DIRECT-STDIN {: outu:n erru:n rc:n :}
+   outu erru rc s" ckt-out-bad" EXPECT-PREVERIFY-IN
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE ;
+
 \ `--all-errors --source-list a b` runs all-errors per ORIGINAL file with
 \ prior entries replayed as support: both bad defs in b report against b's
 \ path (the pre-redrive materialized temp had zero defs, so all-errors was a
@@ -2834,6 +2927,8 @@ POISON-RECORD
    s" check/package-family-private" [: FAM-PRIV-TEST ;] CASE-RUN
    s" check/require-facade" [: TEST-REQUIRE-FACADE ;] CASE-RUN
    s" check/included-dep" [: TEST-INCLUDED-DEP ;] CASE-RUN
+   s" check/require-cycle" [: TEST-REQUIRE-CYCLE ;] CASE-RUN
+   s" check/declared-constructors" [: TEST-DECLARED-CONSTRUCTORS ;] CASE-RUN
    s" check/image-tool-sources" [: TEST-IMAGE-TOOL-SOURCES ;] CASE-RUN
    s" check/source-list-all-errors" [: LIST-ALL-TEST ;] CASE-RUN
    CLEANUP-RUN

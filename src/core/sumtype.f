@@ -2243,10 +2243,10 @@ public
 
 \ The legacy SUMTYPE / ENUM / PRODUCT definers below announce the family they
 \ just registered through TDECL-FAM-REG, so that ambient read lives here, in the
-\ one adapter, and nowhere beneath it. This adapter is also where the committed
-\ payload view is chosen: a definer that has already published its rows reads
-\ them back through TDECL-SUMV-PROVIDER. A refused declaration leaves -1 (the
-\ multi-error continue path in TDECL-RUN) and generates nothing.
+\ two adapters below, and nowhere beneath them. TDECL-CTOR-WORDS is also where the
+\ committed payload view is chosen: a definer that has already published its
+\ rows reads them back through TDECL-SUMV-PROVIDER. A refused declaration leaves
+\ -1 (the multi-error continue path in TDECL-RUN) and generates nothing.
 
 private
 
@@ -2255,10 +2255,19 @@ private
    fam 0 < IF EXIT THEN
    TDECL-SUMV-PROVIDER fam TDECL-CTOR-WORDS-BODY drop ;
 
+public
+
+\ The replay twin, for a tool that registered a SUMTYPE or PRODUCT from tokens it
+\ had already lexed (src/habu/verify-source.f): the checked effects of the words
+\ the definer would generate, so later source in that pass can call them, and no
+\ word.
+: TDECL-CTOR-WORDS-REPLAY ( -- )
+   TDECL-FAM-REG @ {: fam:n :}
+   fam 0 < IF EXIT THEN
+   fam TDECL-CTOR-REPLAY ;
+
 \ --- public defining words. NEWTYPE consumes name + arity; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.
-
-public
 
 : TDECL-NEWTYPE ( -- )
    parse-name {: na:ptr nu:n :}

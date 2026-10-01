@@ -131,11 +131,15 @@ variable EC-ORD-N
 \ Load-faithful (depth-first, post-order) closure. BUILD produces the same set
 \ breadth-first, which is right for content keying but not for replaying package
 \ open/public/private/;package scope that stays UNCLOSED across nested deps:
-\ that residual must be threaded file-by-file in true load order. This DFS mirrors
-\ tools/check-core.f CHK-EXPAND-ID - each file's own require/include closure is
-\ fully expanded (post-order pushed) before the file itself, so a dep's scope
-\ tokens replay exactly where its content would load. Only loading events
-\ (EC-LOADS?) contribute, so the ordered list is a permutation of BUILD's set.
+\ that residual must be threaded file-by-file in true load order. Each file's own
+\ require/include closure is fully expanded (post-order pushed) before the file
+\ itself, so a dep's scope tokens replay exactly where its content would load.
+\ Inside a require cycle this stays plain post-order, where tools/check-core.f
+\ CHK-EXPAND-ID puts the cycle's first-entered file first; only package scope
+\ replays here, and both files of the tree's one cycle (lib/aio.f and
+\ lib/aio-macos.f) close their packages, so the order inside it changes nothing.
+\ Only loading events (EC-LOADS?) contribute, so the ordered list is a
+\ permutation of BUILD's set.
 
 : EC-CLEAR ( -- )
    0 EC-N !  0 EC-POOL-N !  0 EC-HEAD ! ;

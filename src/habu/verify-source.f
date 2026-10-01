@@ -814,6 +814,9 @@ variable NOM-TAIL-U
    NEXT-SCAN {: ar:ptr aru:n :}
    name nameu ar aru CHECKER-DEFFAMILY ;
 
+\ A SUMTYPE defines its constructors when it loads, so after the registration
+\ the scan replays their checked effects: a later definition that calls one, as
+\ lib/aio.f's OUTCOME-OF calls AIO-OUTCOME:ready, resolves here as in the load.
 : RECORD-SUMTYPE ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    0 BODY-U !
@@ -827,6 +830,7 @@ variable NOM-TAIL-U
       2dup SUMTYPE-END? IF
          2drop
          name nameu BODY-BUF BODY-U @ CHECKER-DEFSUM
+         GENERATED-DECL-CTOR:REPLAY-LEGACY
          EXIT
       THEN
       BODY-APPEND
@@ -910,11 +914,11 @@ variable NOM-TAIL-U
 : PRODUCT-END? ( ptr u8 n -- bool )
    s" ;PRODUCT" STR=CI ;
 
-\ Metadata-only replay of `PRODUCT name arity FIELD f t .. ;PRODUCT` (mirrors
-\ RECORD-SUMTYPE): buffer the `arity FIELD ..` body through ;PRODUCT and
-\ register the TK-PRODUCT family + its generated-word metadata rows so later
-\ signatures in this source resolve the family. No dictionary words are
-\ generated on this path (engine-definer-only, sum parity).
+\ Registration-only replay of `PRODUCT name arity FIELD f t .. ;PRODUCT` (mirrors
+\ RECORD-SUMTYPE): buffer the `arity FIELD ..` body through ;PRODUCT, register
+\ the TK-PRODUCT family + its generated-word metadata rows so later signatures
+\ in this source resolve the family, and replay the MAKE/UNMAKE effects. No
+\ dictionary words are generated on this path (engine-definer-only, sum parity).
 : RECORD-PRODUCT ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing product name" 74 die THEN
@@ -925,6 +929,7 @@ variable NOM-TAIL-U
       2dup PRODUCT-END? IF
          2drop
          name nameu BODY-BUF BODY-U @ CHECKER-DEFPRODUCT
+         GENERATED-DECL-CTOR:REPLAY-LEGACY
          EXIT
       THEN
       BODY-APPEND

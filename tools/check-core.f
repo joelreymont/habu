@@ -67,6 +67,11 @@ $20000 constant CHK-ERR-CAP
 2 constant CHK-SEL-FILE
 3 constant CHK-SEL-LIST
 
+0 constant CHK-DEP-UNSEEN
+1 constant CHK-DEP-OPEN
+2 constant CHK-DEP-WAITING
+3 constant CHK-DEP-DONE
+
 10 constant CHK-LF
 13 constant CHK-CR
 32 constant CHK-SP
@@ -89,8 +94,11 @@ create CHK-DEP-US CHK-DEP-MAX cells allot
 create CHK-DEP-ROOTS CHK-DEP-MAX FS-PATH-CAP * allot
 create CHK-DEP-ROOT-US CHK-DEP-MAX cells allot
 create CHK-DEP-STATES CHK-DEP-MAX cells allot
+create CHK-DEP-ENTERS CHK-DEP-MAX cells allot
+create CHK-DEP-LOWS CHK-DEP-MAX cells allot
 create CHK-DIR-IDS CHK-DEP-MAX cells allot
 create CHK-DEP-ORDER CHK-DEP-MAX cells allot
+create CHK-WAIT-IDS CHK-DEP-MAX cells allot
 create CHK-ONE 1 allot
 
 \ The lazily allocated byte buffers hold addresses, so each is a declared
@@ -135,6 +143,8 @@ variable CHK-EXP-OUT-U
 variable CHK-DEP-N
 variable CHK-DIR-N
 variable CHK-DEP-ORDER-N
+variable CHK-ENTER-N
+variable CHK-WAIT-N
 variable CHK-DISC-ID
 variable CHK-ALL-ID
 variable CHK-ALL-RC
@@ -354,6 +364,8 @@ private
    0 CHK-DEP-N !
    0 CHK-DIR-N !
    0 CHK-DEP-ORDER-N !
+   0 CHK-ENTER-N !
+   0 CHK-WAIT-N !
    0 CHK-DISC-ID !
    0 CHK-ALL-ID !
    0 CHK-ALL-RC ! ;
@@ -461,6 +473,14 @@ private
    id CHK-DEP-CHECK
    CHK-DEP-STATES id cells + ;
 
+: CHK-DEP-ENTER ( n -- ptr n ) {: id:n :}
+   id CHK-DEP-CHECK
+   CHK-DEP-ENTERS id cells + ;
+
+: CHK-DEP-LOW ( n -- ptr n ) {: id:n :}
+   id CHK-DEP-CHECK
+   CHK-DEP-LOWS id cells + ;
+
 : CHK-DEP$ ( n -- ptr u8 n ) {: id:n :}
    id CHK-DEP-PATH
    id CHK-DEP-U @ ;
@@ -487,7 +507,7 @@ private
    u id CHK-DEP-U !
    root CHK-DEP-ROOTS id FS-PATH-CAP * + rootu BYTE-COPY
    rootu CHK-DEP-ROOT-US id cells + !
-   0 id CHK-DEP-STATE !
+   CHK-DEP-UNSEEN id CHK-DEP-STATE !
    id 1+ CHK-DEP-N !
    id ;
 
@@ -503,7 +523,14 @@ private
 : CHK-DEP-ORDER-PUSH ( n -- ) {: id:n :}
    CHK-DEP-ORDER-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
    id CHK-DEP-ORDER CHK-DEP-ORDER-N @ cells + !
-   CHK-DEP-ORDER-N @ 1+ CHK-DEP-ORDER-N ! ;
+   CHK-DEP-ORDER-N @ 1+ CHK-DEP-ORDER-N !
+   CHK-DEP-DONE id CHK-DEP-STATE ! ;
+
+: CHK-WAIT-PUSH ( n -- ) {: id:n :}
+   CHK-WAIT-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
+   id CHK-WAIT-IDS CHK-WAIT-N @ cells + !
+   CHK-WAIT-N @ 1+ CHK-WAIT-N !
+   CHK-DEP-WAITING id CHK-DEP-STATE ! ;
 
 : CHK-DEP-DIRECT+ ( ptr u8 n ptr u8 n -- )
    CHK-DEP-ID CHK-DIR-PUSH ;
@@ -548,23 +575,51 @@ private
       1+
    repeat drop ;
 
+\ The closure is ordered as its files finish loading, a file after everything
+\ it requires. A file requiring one that is still loading closes a require
+\ cycle: at run time it loads inside that file, after the definitions ahead of
+\ the loader, as lib/aio-macos.f loads at the end of lib/aio.f. Each cycle (a
+\ strongly connected component, found by Tarjan's lowest-entry links) is
+\ ordered with the file entered first ahead of the members that waited on it,
+\ in the order they finished. A file's low is the earliest entry its subtree
+\ reaches among files not yet ordered; a file whose low is its own entry is a
+\ cycle's first file, or a file in no cycle. That is the load order only when
+\ the first file loads the rest of its cycle last and every member requires at
+\ its top. Another shape (a loader mid-file, two files requiring each other at
+\ their tops) can be refused here though it loads; none is wrongly accepted,
+\ since the run after this pass loads the real order.
+: CHK-LOW-JOIN ( n n -- ) {: id:n dep:n :}
+   dep CHK-DEP-STATE @ CHK-DEP-DONE = if exit then
+   id CHK-DEP-LOW @ dep CHK-DEP-LOW @ min id CHK-DEP-LOW ! ;
+
+: CHK-CYCLE-ORDER ( n n -- ) {: id:n base:n :}
+   id CHK-DEP-ORDER-PUSH
+   base begin dup CHK-WAIT-N @ < while
+      dup cells CHK-WAIT-IDS + @ CHK-DEP-ORDER-PUSH
+      1+
+   repeat drop
+   base CHK-WAIT-N ! ;
+
 : CHK-EXPAND-ID ( n -- ) {: id:n :}
    id CHK-DEP-CHECK
-   id CHK-DEP-STATE @ 2 = if exit then
-   id CHK-DEP-STATE @ 1 = if exit then
-   1 id CHK-DEP-STATE !
+   id CHK-DEP-STATE @ CHK-DEP-UNSEEN <> if exit then
+   CHK-DEP-OPEN id CHK-DEP-STATE !
+   CHK-ENTER-N @ dup id CHK-DEP-ENTER ! id CHK-DEP-LOW !
+   CHK-ENTER-N @ 1+ CHK-ENTER-N !
+   CHK-WAIT-N @ {: base:n :}
    CHK-DIR-N @
    id CHK-DEP$ FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    id CHK-EXPAND-SCAN
    CHK-EVENTS>DEPS
    dup CHK-DIR-N @
    begin 2dup < while
-      over cells CHK-DIR-IDS + @ RECURSE
+      over cells CHK-DIR-IDS + @ dup RECURSE
+      id swap CHK-LOW-JOIN
       swap 1+ swap
    repeat
    2drop CHK-DIR-N !
-   id CHK-DEP-ORDER-PUSH
-   2 id CHK-DEP-STATE ! ;
+   id CHK-DEP-LOW @ id CHK-DEP-ENTER @ < if id CHK-WAIT-PUSH exit then
+   id base CHK-CYCLE-ORDER ;
 
 : CHK-EXPAND-PATH ( ptr u8 n -- )
    ENTRY-RESOLVE drop RESOLVED-ROOT$ CHK-DEP-ID CHK-EXPAND-ID ;
@@ -573,7 +628,9 @@ private
    0 CHK-EXP-OUT-U !
    0 CHK-DEP-N !
    0 CHK-DIR-N !
-   0 CHK-DEP-ORDER-N ! ;
+   0 CHK-DEP-ORDER-N !
+   0 CHK-ENTER-N !
+   0 CHK-WAIT-N ! ;
 
 : CHK-WRITE-EXPANDED-SOURCE ( -- )
    CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N WRITE-ALL
