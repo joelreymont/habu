@@ -31,6 +31,7 @@ require src/core/engine-error.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/habu/primitive-registry.f
+require src/habu/data-claims.f
 require src/habu/data-bands.f
 require src/habu/snapshot-format.f
 require src/habu/code-span.f
@@ -62,6 +63,10 @@ public
 \ the target's DATA less the profiler's counter band, as habu1.f DP-CHECK
 \ bounds it.
 X64LAYOUT:DATA-SIZE PROF-CNT-BYTES - constant DP-CEILING
+
+\ The DATA claims place that band for the host's DATA-SIZE, which differs from
+\ the target's on a macOS host: check them with the target's band.
+X64LAYOUT:DATA-SIZE DATA-CLAIMS:BAND-ASSERT
 
 \ The code slot: every CP is a multiple of it, and each row that moves CP moves
 \ it to a slot. It is X64IR:SP-ALIGN, the only placement X64EMIT:PLACE-AT

@@ -31,6 +31,16 @@ public
    s" the image writer still checks the guarded band's declared extent" T-LABEL
    s" require src/habu/data-claims.f : DC-BAD-BAND ( -- ) DATA-CLAIMS:COUNT-ROWS 0 ?do i DATA-CLAIMS:ROW-OFF FRIEND-ARENA = if 1 DATA-CLAIMS:TAB i DATA-CLAIMS:ROW-CELLS * 1+ cells + ! unloop exit then loop ; DC-BAD-BAND require tools/native-emit.f"
    76 S\" data-bands: PROT-GUARD band length differs from its claim: FRIEND-ARENA\n" EXPECT
+
+   \ A macOS host's DATA is far larger than the x86-64 target's, so only a band
+   \ placed for the target's DATA-SIZE meets a cell moved to its first byte.
+   s" an x86-64 build refuses a claim in the target's profiler band" T-LABEL
+   s" require src/habu/data-claims.f require src/os/linux-x86-64/target-layout.f 0 X64LAYOUT:DATA-SIZE PROF-ABI:PROF-BAND-AT DATA-CLAIMS:TAB ! require test/x86-64-boot-harness.f"
+   76 S\" layout: DATA-CLAIMS overlap: DP-CELL and PROF-BAND\n" EXPECT
+
+   s" an x86-64 build admits a claim that ends where that band starts" T-LABEL
+   s" require src/habu/data-claims.f require src/os/linux-x86-64/target-layout.f 0 X64LAYOUT:DATA-SIZE PROF-ABI:PROF-BAND-AT 1 cells - DATA-CLAIMS:TAB ! require test/x86-64-boot-harness.f"
+   0 s" " EXPECT
    T-REPORT ;
 
 ;package

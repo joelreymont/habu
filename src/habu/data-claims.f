@@ -28,10 +28,11 @@ require src/habu/prof-abi.f
 \ the address-cell registry's mutex and index cells (src/habu/address-cells.f
 \ LOCK-CELL and INDEX-CELL); and the profiler band, the top PROF-CNT-BYTES of
 \ DATA, placed as src/habu/prof-abi.f PROF-BAND-AT places it for the global
-\ DATA-SIZE. That is the target's in a native build, and the host's when
-\ src/habu/kernel-x64.f loads this file for an x86-64 build on another host,
-\ since it reads the target's only as X64LAYOUT:DATA-SIZE. ONE CLAIM IS OUT:
-\ the $1A0 seal fixture poke cell, which no constant names.
+\ DATA-SIZE, the target's in a native build. An x86-64 build reads its target's
+\ only as X64LAYOUT:DATA-SIZE, which differs from the global one on a macOS
+\ host, so src/habu/kernel-x64.f places the band again with it through
+\ BAND-ASSERT. ONE CLAIM IS OUT: the $1A0 seal fixture poke cell, which no
+\ constant names.
 \
 \ DELIBERATE ALIASES ARE ONE ROW, NOT TWO. The friend arena is one row, not the
 \ eighteen cells inside it. VVAL-STACK is one row of VSMAX cells: DEF-TKA-CELL
@@ -345,6 +346,7 @@ create TAB
    JIT-SNAP:STK-OFF               ,  JIT-SNAP:END JIT-SNAP:STK-OFF - ,
    TIER-PROV:OPEN-CELL            ,  TIER-PROV:END TIER-PROV:OPEN-CELL - ,
    UNIT-COMPILE-CELL              ,  1 cells ,
+   \ The profiler band stays the last row, where BAND-ASSERT places it again.
    0 DATA-SIZE PROF-ABI:PROF-BAND-AT ,  PROF-CNT-BYTES ,
    0 ,  0 ,
 
@@ -387,6 +389,23 @@ create TAB
       repeat drop
       1+
    repeat drop ;
+
+COUNT-ROWS 1- constant PROF-ROW
+
+\ The last row is the band PROF-BAND-AT placed for the global DATA-SIZE; a row
+\ added after it would be the one BAND-ASSERT moves instead.
+: PROF-ROW-ASSERT ( -- )
+   PROF-ROW ROW-OFF 0 DATA-SIZE PROF-ABI:PROF-BAND-AT <> if
+      s" layout: DATA-CLAIMS last row is not PROF-BAND" 76 die
+   then ;
+PROF-ROW-ASSERT
+
+\ Place the profiler band for a target whose DATA is n bytes and check the
+\ table again, for a build whose target's DATA-SIZE is not the global one.
+: BAND-ASSERT ( n -- )
+   {: size :}
+   0 size PROF-ABI:PROF-BAND-AT  PROF-ROW ROW-CELLS * cells TAB + !
+   CLAIMS-ASSERT ;
 
 CLAIMS-ASSERT
 ;package
