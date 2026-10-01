@@ -10,7 +10,7 @@
 \ it exits 70 (docs/gate.md "How a suite runs").
 \
 \ The guard and differential of section 2 run here first too: an index mark a
-\ rollback case reads is meaningful only once all four indexes exist, and the
+\ rollback case reads is meaningful only once all five indexes exist, and the
 \ differential is what builds them (SCX-MARKS-EXACT).
 \
 \ Section 4 proves the effect and control tables refuse a key they have no
@@ -77,19 +77,23 @@ SCX-DIFF-ALL
 
 \ 3c. a family declared inside a rejected candidate leaves no row and no chain,
 \     and the same (package, tail) can then be declared with a different kind.
+\     Its variant leaves no tail chain either (VNX-RETIRE).
+variable CAND-FAM                                    \ the candidate family's id
 s" scxctor" SCX-NAME! SCX-SYM-INTERN IX !
 IX @ SCX-SUMV-FROM-CTOR TFALSE drop
 s" scxrb" s" cand" SCX-TFAM-FIND-IN TFALSE drop
 SCX-CAND-START
-   s" scxrb" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT SCX-TFAM-DECL drop
+   s" scxrb" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT SCX-TFAM-DECL CAND-FAM !
    s" scxrb" CHECKER-PACKAGE-PRIVATE s" cand2" 2 TK-PRODUCT SCX-TFAM-DECL drop
    s" scxrb" s" cand" SCX-TFAM-FIND-IN TTRUE drop
-   s" scxrb" s" cand" 0 0 0 0 SCX-SUMV-ADD IX @ SCX-SUMV-CTOR-SYM!
+   CAND-FAM @ s" cand" 0 0 0 0 SCX-SUMV-ADD IX @ SCX-SUMV-CTOR-SYM!
+   CAND-FAM @ s" cand" SCX-SUMV-FIND TTRUE drop
    IX @ SCX-SUMV-FROM-CTOR TTRUE drop
 0 SCX-CAND-DONE drop
 SCX-MARKS-EXACT                                      \ read FIRST: a lookup would rebuild
 s" scxrb" s" cand" SCX-TFAM-FIND-IN TFALSE drop
 s" scxrb" s" cand2" SCX-TFAM-FIND-IN TFALSE drop
+CAND-FAM @ s" cand" SCX-SUMV-FIND TFALSE drop
 IX @ SCX-SUMV-FROM-CTOR TFALSE drop
 s" scxrb" CHECKER-PACKAGE-PUBLIC s" cand" 0 TK-CELL ' SCX-TFAM-DECL catch TC ! drop
 TC @ 0 T=

@@ -1122,6 +1122,7 @@ variable TDPLAN-N   REG-PROTECT
 private
 
 variable TDPLAN-I
+variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
 
 
 public
@@ -1195,6 +1196,7 @@ public
 : TDPLAN-BEGIN ( -- )
    0 TDPLAN-U !
    0 TDPLAN-N !
+   0 TDPLAN-SYM-HI !
    CTOR-PEND-CLEAR ;
 
 
@@ -1234,15 +1236,21 @@ private
 : TDPLAN-SYM@ ( n -- n )
    TDPLAN-ROW TDPLAN.SYM @ ;
 
+\ A symbol above every planned one cannot repeat one, and a freshly interned
+\ name always is, so the duplicate walk runs only for a symbol at or below the
+\ plan's largest; a plan of fresh names is checked in constant time per row.
 : TDPLAN-SYM+ ( n -- ) {: sym:n :}
-   0
-   BEGIN dup TDPLAN-N @ < WHILE
-      dup TDPLAN-SYM@ sym = IF
-         TDGEN-NA @ TDGEN-NU @ s" generated declaration name already defined" E-TDECL-NAME TDECL-THROW
-      THEN
-      1 +
-   REPEAT
-   drop
+   sym TDPLAN-SYM-HI @ <= IF
+      0
+      BEGIN dup TDPLAN-N @ < WHILE
+         dup TDPLAN-SYM@ sym = IF
+            TDGEN-NA @ TDGEN-NU @ s" generated declaration name already defined" E-TDECL-NAME TDECL-THROW
+         THEN
+         1 +
+      REPEAT
+      drop
+   THEN
+   sym TDPLAN-SYM-HI @ max TDPLAN-SYM-HI !
    TDPLAN-ROW-ENSURE
    sym TDPLAN-N @ TDPLAN-ROW TDPLAN.SYM !
    TDPLAN-N @ 1 + TDPLAN-N ! ;
@@ -1513,6 +1521,7 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
    TDPLAN-ROW-CAP-INIT TDPLAN-ROW-CAP !
    0 TDPLAN-U !
    0 TDPLAN-N !
+   0 TDPLAN-SYM-HI !
    TDPV-CNT-BOOT TDPV-CNT-P !
    TDPV-CELLS-BOOT TDPV-CELLS-P !
    TDPV-OFF-BOOT TDPV-OFF-P !

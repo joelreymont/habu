@@ -55,6 +55,10 @@ TRUSTED: SCX-NORET-NEWEST-LINEAR ( n -- n ) NORET-NEWEST-LINEAR ;
 TRUSTED: SCX-SVX@ ( n -- n ) SVX-ENSURE SVX@ ;
 TRUSTED: SCX-SUMV-CTOR-FIRST-LINEAR ( n -- n ) SUMV-CTOR-FIRST-LINEAR ;
 TRUSTED: SCX-SUMV-FROM-CTOR ( n -- n bool ) SUMV-FROM-CTOR-SYM ;
+TRUSTED: SCX-SUMV-FAM@ ( n -- n ) SUMV-FAM@ ;
+TRUSTED: SCX-SUMV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
+TRUSTED: SCX-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
+TRUSTED: SCX-SUMV-FIND-LINEAR ( n ptr u8 n -- n bool ) SUMV-FIND-LINEAR ;
 
 : SCX-TFAM-N ( -- n ) TFAM-N@ ;
 TRUSTED: SCX-TFAM-PKG$ ( n -- ptr u8 n ) TFAM-PKG$ ;
@@ -94,7 +98,7 @@ TRUSTED: SCX-NORET-FLAGS ( -- n ) NORET-CTL @ XFER-FLAGS ;   \ the control word'
 \ rebuild the whole index from the store. Both answer correctly, so the mark is
 \ the only thing that tells them apart — and it is the whole point of the seam.
 \ An index no lookup has built yet carries mark 0, which passes vacuously, so a
-\ row runs the differential below — it builds all four — before any rollback
+\ row runs the differential below — it builds all five — before any rollback
 \ case reads the marks.
 : SCX-UEND ( -- n ) UEND @ ;
 : SCX-USX-HI ( -- n ) USX-HI @ ;
@@ -103,12 +107,14 @@ TRUSTED: SCX-NORET-FLAGS ( -- n ) NORET-CTL @ XFER-FLAGS ;   \ the control word'
 : SCX-SUMV-N ( -- n ) SUMV-N@ ;
 TRUSTED: SCX-SVX-HI ( -- n ) SVX-HI @ ;
 TRUSTED: SCX-TFX-HI ( -- n ) TFX-HI @ ;
+TRUSTED: SCX-VNX-HI ( -- n ) VNX-HI @ ;
 
 : SCX-MARKS-EXACT ( -- )
    SCX-USX-HI SCX-UEND > TFALSE
    SCX-NRX-HI SCX-NORET-END > TFALSE
    SCX-SVX-HI SCX-SUMV-N > TFALSE
-   SCX-TFX-HI SCX-TFAM-N > TFALSE ;
+   SCX-TFX-HI SCX-TFAM-N > TFALSE
+   SCX-VNX-HI SCX-SUMV-N > TFALSE ;
 
 TRUSTED: SCX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
 TRUSTED: SCX-CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
@@ -230,11 +236,26 @@ TRUSTED: SCX-NORET-SYM ( n -- n ) NORET-CELL NORET.SYM @ ;
    REPEAT
    NMIS @ ;
 
+\ Each variant is looked up by its own (family, tail), so the indexed and walked
+\ answers must be the same row id and the same found flag.
+: SCX-DIFF-VNX ( -- n )
+   0 NMIS !
+   0 IX !
+   BEGIN IX @ SCX-SUMV-N < WHILE
+      IX @ SCX-SUMV-FAM@ IX @ SCX-SUMV-NAME$ SCX-SUMV-FIND {: gid:n gf:bool :}
+      IX @ SCX-SUMV-FAM@ IX @ SCX-SUMV-NAME$ SCX-SUMV-FIND-LINEAR {: wid:n wf:bool :}
+      gid wid <> IF 1 NMIS +! THEN
+      gf IF wf 0= IF 1 NMIS +! THEN ELSE wf IF 1 NMIS +! THEN THEN
+      IX @ 1 + IX !
+   REPEAT
+   NMIS @ ;
+
 : SCX-DIFF-ALL ( -- )
    SCX-DIFF-USIG 0 T=
    SCX-DIFF-NORET 0 T=
    SCX-DIFF-SUMV 0 T=
-   SCX-DIFF-TFAM 0 T= ;
+   SCX-DIFF-TFAM 0 T=
+   SCX-DIFF-VNX 0 T= ;
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success; on any failure, the failure count and the row's own
