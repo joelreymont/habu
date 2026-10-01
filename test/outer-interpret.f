@@ -358,20 +358,37 @@ variable WANT-RC
    S\" hi\nHi\nhey\ndot\neB\nx\ny\n7\n8\n27\n12\n10\n10\n13\n9\n11\n0\n34\n34\n92\n65\n74\n79\n3\n4\n0\nq1\n0\nx\ntwo\nlines\n255\n255\n0\n"
    s" literals" GE-EXPECT-OUT ;
 
-\ char pushes its operand's first byte. ' pushes an xt with no depth gate, a
-\ name no word has is a quiet miss, an edge colon leaves a name bare, and an
-\ unsealed qualifier resolves.
+\ char pushes its operand's first byte. ' pushes an xt with no depth gate, and
+\ an unsealed qualifier resolves.
 : TICK-AND-CHAR ( -- )
    GE-SRC-RESET
    s" char Abc . CHAR z ." GE-SRC-LINE
    s" 1 2 ' OI-TWO execute depth ." GE-SRC-LINE
    s" ' OI-TWO drop depth ." GE-SRC-LINE
-   s" ' OI-NOPE depth ." GE-SRC-LINE
-   s" ' engine-error: depth ." GE-SRC-LINE
    s" ' OI-PKG:OI-SEVEN execute ." GE-SRC-LINE
    s" oi-tick-char.f" BOTH
    s" tick and char" GE-EXPECT-OK
-   S\" 65\n122\n0\n0\n0\n0\n7\n" s" tick and char" GE-EXPECT-OUT ;
+   S\" 65\n122\n0\n0\n7\n" s" tick and char" GE-EXPECT-OUT ;
+
+\ ' of a name no word has is undefined, as the name run is, and nothing after it
+\ runs. An edge colon leaves the name bare, so no seal guard answers it.
+\ Under evaluate the refusal is the catchable reject.
+: TICK-UNDEFINED ( -- )
+   GE-SRC-RESET
+   s" 1 . ' OI-NOPE 2 ." GE-SRC-LINE
+   s" oi-tick-undefined.f" BOTH
+   70 s" tick undefined" GE-EXPECT-RC
+   S\" 1\n" s" tick undefined" GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" s" tick undefined" GE-EXPECT-ERR
+   s" ' engine-error:" s" oi-tick-edge-colon.f" LINE-CASE
+   70 s" tick edge colon" GE-EXPECT-RC
+   S\" E-UNDEFINED: engine-error:\n" s" tick edge colon" GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" s~ ' OI-NOPE~ ' evaluate catch . depth ." QLINE
+   s" oi-tick-undefined-caught.f" BOTH
+   s" tick undefined caught" GE-EXPECT-OK
+   S\" 70\n2\n" s" tick undefined caught" GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" s" tick undefined caught" GE-EXPECT-ERR ;
 
 \ Top-level `char` operands whose bytes together pass the definition-body
 \ capture (layout.f BODYBUF-CAP): no definition is open, so none is captured.
@@ -515,12 +532,11 @@ variable WANT-RC
 
 \ The literal events, test/top-row-hook-test.f's window: each logs its class,
 \ flags and token. A string's token is its keyword, a char's and a tick's the
-\ operand, and a tick's flags are the word's. `."`, `.\"` and a missed tick
-\ log nothing.
+\ operand, and a tick's flags are the word's. `."` and `.\"` log nothing.
 : LITERAL-HOOK ( -- )
    GE-SRC-RESET
    s" OI-HOOK-ON s~ hi~ 2drop c~ hey~ drop char A drop ' OI-TWO drop" QLINE
-   s" S\~ e~ 2drop .~ x~ .\~ y~ ' OI-NOPE 0 set-top-check" QLINE
+   s" S\~ e~ 2drop .~ x~ .\~ y~ 0 set-top-check" QLINE
    s" oi-literal-hook.f" BOTH
    s" literal hook" GE-EXPECT-OK
    S\" 2\n0\ns\q\n6\n513\n2drop\n3\n0\nc\q\n6\n257\ndrop\n4\n0\nA\n6\n257\ndrop\n5\n513\nOI-TWO\n6\n257\ndrop\n2\n0\nS\\\q\n6\n513\n2drop\nxy1\n0\n0\n6\n257\nset-top-check\n"
@@ -1329,6 +1345,7 @@ private
    NESTED
    LITERALS
    TICK-AND-CHAR
+   TICK-UNDEFINED
    CHAR-PAST-BODY-CAP
    UNTERMINATED
    BAD-ESCAPE

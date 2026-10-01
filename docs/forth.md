@@ -1170,6 +1170,11 @@ passing suite.
 - **Control words and ticks are compile-only**: `if`/`else`/`then`,
   `begin`/`while`/`repeat`, `[']`, `i`, `?do` and `;` live inside a `:`
   definition, never at top level; interpreted tests use `'` (`' WORD catch`).
+  Both ticks resolve the name as a bare word does (the open scope, the globals,
+  then the used publics), and a miss is `E-UNDEFINED: NAME`: rc 70 at top
+  level, a catchable 70 under `evaluate`. A tick is no presence probe: require
+  the file that defines the word first (`' NO-SUCH` measured both ways,
+  test/outer-interpret.f TICK-UNDEFINED).
 - **A `begin <cond> while <body> repeat` condition may only add a flag.** The
   stack under the flag at `while` equals the stack at `begin`; a condition that
   net-produces carry values (`a u NEXT-TOKEN` leaving a span under the flag) is

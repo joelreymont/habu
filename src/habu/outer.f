@@ -777,21 +777,19 @@ TRUSTED: TICK-ACTION ( n -- [ ptr u8 n -- bool ] ) ;
    TICK-QUERY dup 0= if drop false exit then
    TICK-ACTION TOKEN$ rot execute ;
 
-\ Whether ' names a word, which then passes the xt gates. A tick runs nothing,
-\ so it has no depth gate, and a name no word has is a quiet miss.
-: TICKED ( -- bool )
+\ The word ' names lands in REC past the xt gates. A tick runs nothing, so it
+\ has no depth gate; a name no word has is undefined, as a word to run is.
+: TICKED ( -- )
    s" '" OPERAND
    SEAL-GUARD
-   SEARCH
-   REC @ XREF-FOUND? dup if
-      XT-GATE
-      SCOPE-ENTRY-GUARD
-      TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then
-   then ;
+   LOOKUP
+   XT-GATE
+   SCOPE-ENTRY-GUARD
+   TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then ;
 
 \ The hook sees the operand as the token and the record's flags.
 TRUSTED: PUSH-XT ( -- )
-   TICKED if REC @ XREF-START TOP-EV-TICK WORD-FLAGS HOOK then ;
+   TICKED REC @ XREF-START TOP-EV-TICK WORD-FLAGS HOOK ;
 
 \ ---- the literal keywords -----------------------------------------------------------------
 \ The engine's EM-INTERPRET-STRING-KEYWORDS, with `'` and `char` from its

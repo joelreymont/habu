@@ -4969,7 +4969,7 @@ variable LTOPHOOK
    tk B,
    usedtry LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,
-      13 tk CBZ,                                         \ undefined `' X` stays the pre-existing no-op
+      13 LUNDEF LABEL@ CBZ,                              \ nothing resolves it -> undefined, as a bare name and C-BTICK's `['] X` are
       found B,
    tk LBL, ;
 
