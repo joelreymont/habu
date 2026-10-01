@@ -98,5 +98,15 @@ variable LJW-NUM-I
    repeat drop
    LJW-NUM-BUF LJW-NUM-I @ + LJW-NUM-CAP LJW-NUM-I @ - LJW-RAW ;
 
+\ Division truncates toward zero, so a negative value's last digit is the
+\ negated remainder and the rest is the negated quotient; MIN-N, which has no
+\ positive form, needs no negate of its own.
+: LJW-INT ( n -- ) {: v:n :}            \ a signed integer
+   v 0 < 0= IF v LJW-U exit THEN
+   $2d LJW-C
+   v 10 / negate {: high:n :}
+   high 0 > IF high LJW-U THEN
+   LJW-ZERO v 10 mod - LJW-C ;
+
 : LJW$ ( -- ptr u8 n )
    LJW-BUF LJW-LEN @ ;

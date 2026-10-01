@@ -707,6 +707,57 @@ variable LABEL-U
    s" habu-recursive.err" s" recursive diagnostic contract" DIAG-CONTRACT
    s" json-one-schema" s" habu-recursive.err" s" recursive schema" GJA1 ;
 
+\ Each record kind check.f writes outside a definition's own refusal meets the
+\ contract under its own code: a statement the checker throws out of, the two
+\ lexer defects, a second definition of a name, and an input the engine
+\ provides.
+: STATEMENT-THROW ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-ST-OK ( -- ) ;" GE-SRC-LINE
+   s" ;using" GE-SRC-LINE
+   s" tools/check.f --all-errors accepted a statement that throws" CHECK-JSON-ALL
+   s" habu-statement-throw.err" WRITE-ERR
+   s" code" s" E-STATEMENT-THROW" s" statement throw code" ERR-JSTR
+   s" throw_code" s" 7142" s" statement throw raised code" ERR-JRAW
+   s" habu-statement-throw.err" s" statement throw contract" DIAG-CONTRACT ;
+
+: LEX-RECORDS ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s\" : GDX-UNTERM ( -- ) s\" abc ;" GE-SRC-LINE
+   s" tools/check.f --all-errors accepted an open string" CHECK-JSON-ALL
+   s" habu-unterm.err" WRITE-ERR
+   s" code" s" E-UNTERMINATED-STRING" s" open string code" ERR-JSTR
+   s" habu-unterm.err" s" open string contract" DIAG-CONTRACT
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" PRIM: GDX-ROW PE-N PE-IN" GE-SRC-LINE
+   s" tools/check.f --all-errors accepted an open primitive row" CHECK-JSON-ALL
+   s" habu-row.err" WRITE-ERR
+   s" code" s" E-MALFORMED-REGISTRY-ROW" s" open row code" ERR-JSTR
+   s" habu-row.err" s" open row contract" DIAG-CONTRACT ;
+
+: DUPLICATE-RECORD ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-TWICE ( -- ) ;" GE-SRC-LINE
+   s" : GDX-TWICE ( -- ) ;" GE-SRC-LINE
+   s" tools/check.f --all-errors accepted a duplicate definition" CHECK-JSON-ALL
+   s" habu-dup.err" WRITE-ERR
+   s" code" s" E-DUPLICATE-DEFINITION" s" duplicate code" ERR-JSTR
+   s" habu-dup.err" s" duplicate contract" DIAG-CONTRACT ;
+
+: ENGINE-PROVIDED ( -- )
+   CHECK-START
+   s" json-errors" CHECK-OPT
+   s" lib/string.f" CHECK-FILE
+   CHECK-PATH
+   64 s" tools/check.f checked a source the engine provides" GE-EXPECT-RC
+   s" habu-engine.err" WRITE-ERR
+   s" code" s" E-ENGINE-PROVIDED" s" engine-provided code" ERR-JSTR
+   s" habu-engine.err" s" engine-provided contract" DIAG-CONTRACT ;
+
 : PUBLIC-SIGNATURES ( -- )
    GT-OUT-BUF GT-OUT-CAP PS-OUT-BUFFER!
    GT-ERR-BUF GT-ERR-CAP PS-ERR-BUFFER!

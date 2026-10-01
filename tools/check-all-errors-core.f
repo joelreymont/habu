@@ -223,7 +223,7 @@ variable CA-JSON
    LJW-OBJECT-START
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
    s" code" LJW-KEY s" E-DUPLICATE-DEFINITION" LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY s" fix_source" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" rename_duplicate" LJW-STRING LJW-COMMA
    s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
    s" word" LJW-KEY CA-DUP-WORD$ LJW-STRING LJW-COMMA
    s" token" LJW-KEY CA-DUP-WORD$ LJW-STRING LJW-COMMA
@@ -261,7 +261,7 @@ variable CA-JSON
    LJW-OBJECT-START
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
    s" code" LJW-KEY s" E-UNTERMINATED-STRING" LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY s" fix_source" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" close_string" LJW-STRING LJW-COMMA
    s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
    s" token" LJW-KEY CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + 2 LJW-STRING LJW-COMMA
    s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
@@ -299,7 +299,7 @@ variable CA-JSON
    LJW-OBJECT-START
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
    s" code" LJW-KEY s" E-MALFORMED-REGISTRY-ROW" LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY s" fix_source" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" close_primitive_row" LJW-STRING LJW-COMMA
    s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
    s" token" LJW-KEY CA-ROW-TOKEN$ LJW-STRING LJW-COMMA
    s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
@@ -416,19 +416,9 @@ variable CA-JSON
 \ The checker reports a definition it refuses and returns, but a statement can
 \ also throw out of it with nothing reported: a storage declaration sizing a
 \ type an earlier refusal left undefined throws E-CHECKER-LAYOUT-BUFFER. That
-\ throw is reported at the token the checker read last, after whatever it
-\ reported before it, and fails the source like a refusal, so the run ends with
-\ the checker's status. The rest of the source is not checked.
-: CA-LJW-N ( n -- ) {: v:n :}            \ a signed integer, MIN-N included
-   v 0 < 0= IF v LJW-U exit THEN
-   $2d LJW-C
-   v 10 / negate {: high:n :}
-   high 0 > IF high LJW-U THEN
-   $30 v 10 mod - LJW-C ;
-
-: CA-N$ ( n -- ptr u8 n )
-   LJW-RESET CA-LJW-N LJW$ ;
-
+\ throw is reported as E-STATEMENT-THROW at the token the checker read last,
+\ after whatever it reported before it, and fails the source like a refusal, so
+\ the run ends with the checker's status. The rest of the source is not checked.
 : CA-THROW-END ( -- n )
    CA-THROW-AT @ CA-WORD-END ;
 
@@ -443,7 +433,7 @@ variable CA-JSON
    LJW-RESET
    LJW-OBJECT-START
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
-   s" code" LJW-KEY s" E-REJECTED" LJW-STRING LJW-COMMA
+   s" code" LJW-KEY s" E-STATEMENT-THROW" LJW-STRING LJW-COMMA
    s" repair_class" LJW-KEY s" unknown_rejection" LJW-STRING LJW-COMMA
    s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
    s" token" LJW-KEY CA-THROW-TOKEN$ LJW-STRING LJW-COMMA
@@ -452,21 +442,23 @@ variable CA-JSON
    s" column" LJW-KEY col LJW-U LJW-COMMA
    s" byte_start" LJW-KEY CA-THROW-AT @ LJW-U LJW-COMMA
    s" byte_end" LJW-KEY CA-THROW-END LJW-U LJW-COMMA
-   s" throw_code" LJW-KEY CA-THROW-RC @ CA-LJW-N LJW-COMMA
+   s" throw_code" LJW-KEY CA-THROW-RC @ LJW-INT LJW-COMMA
    s" suggestion" LJW-KEY s" Inspect the token, signature, and raw stack evidence." LJW-STRING
    LJW-OBJECT-END
    LJW$ CA-ERR
    CA-LF$ CA-ERR ;
 
-: CA-PROSE-THROW ( -- )
+: CA-PROSE-THROW ( -- )                 \ the line is built in the writer's buffer
    CA-THROW-ORIGIN {: line:n col:n :}
-   s" E-REJECTED " CA-ERR
-   CA-FILE-A@ CA-FILE-U @ CA-ERR
-   s" :" CA-ERR line CA-N$ CA-ERR
-   s" :" CA-ERR col CA-N$ CA-ERR
-   s" : throw " CA-ERR CA-THROW-RC @ CA-N$ CA-ERR
-   s"  at '" CA-ERR CA-THROW-TOKEN$ CA-ERR
-   s" '" CA-ERR
+   LJW-RESET
+   s" E-STATEMENT-THROW " LJW-RAW
+   CA-FILE-A@ CA-FILE-U @ LJW-RAW
+   s" :" LJW-RAW line LJW-U
+   s" :" LJW-RAW col LJW-U
+   s" : throw " LJW-RAW CA-THROW-RC @ LJW-INT
+   s"  at '" LJW-RAW CA-THROW-TOKEN$ LJW-RAW
+   s" '" LJW-RAW
+   LJW$ CA-ERR
    CA-LF$ CA-ERR ;
 
 : CA-THREW? ( n -- bool ) {: rc:n :}    \ a throw the checker did not report

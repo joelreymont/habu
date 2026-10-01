@@ -326,6 +326,13 @@ create PACKET-BUF FS-PATH-CAP allot
    s" type" s" fix_type" s" : DIAG-TYPE ( i64 -- i64 ) 0= ;" PACKET-CASE
    s" rstack" s" fix_return_stack" s" : DIAG-RSTACK ( i64 -- ) >r ;" PACKET-CASE ;
 
+\ A record with a source span and no definition: a statement the checker
+\ throws out of, and the lexer's two defects.
+: TEST-SPAN-KINDS ( -- )
+   s" statement" s" unknown_rejection" s" ;using" PACKET-CASE
+   s" unterminated" s" close_string" s\" : DIAG-UNTERM ( -- ) s\" abc ;" PACKET-CASE
+   s" row" s" close_primitive_row" s" PRIM: DIAG-ROW PE-N PE-IN" PACKET-CASE ;
+
 : TEST-TWO-DIAGS ( -- )
    s" two" CASE-PATHS
    SRC TWO-SOURCE$ WRITE-ALL
@@ -370,6 +377,28 @@ create PACKET-BUF FS-PATH-CAP allot
    s" noargs usage" T-LABEL
    ERR erru s" usage: tools/repair-packet.f checker-jsonl.err" CONTAINS? TTRUE ;
 
+\ The check.f CLI refuses a source the engine provides before checking it, so
+\ its record comes from the CLI itself.
+: ARGV-CHECK-ENGINE ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" --json-errors" >LEN PROC-ARGV+
+   s" lib/string.f" >LEN PROC-ARGV+ ;
+
+: TEST-ENGINE ( -- )
+   s" engine" CASE-PATHS
+   s" engine" LABEL!
+   ARGV-CHECK-ENGINE
+   HB-CAPTURE 64 EXPECT-EXIT {: outu:n erru:n :}
+   s" engine stdout" T-LABEL
+   outu 0 T=
+   erru WRITE-DIAG
+   MAKE-PACKET
+   s" rebuild_engine" ASSERT-PACKET
+   s" engine" EXPECT-GOLDEN ;
+
 
 \ switchover wave A: GJA-U? returns option<n> (SOME parsed unsigned decimal,
 \ else NONE). Both branches, directly (GJA-INT's none arm dies via GJA-FAIL, so
@@ -400,8 +429,10 @@ create PACKET-BUF FS-PATH-CAP allot
    TEST-REPAIR-CLASSES
    TEST-FAMILY
    TEST-DECL
+   TEST-SPAN-KINDS
    TEST-TWO-DIAGS
    TEST-NOARGS
+   TEST-ENGINE
    TEST-GJA-U
    CLEANUP-RUN
    s" cleanup root removed" T-LABEL

@@ -2,7 +2,8 @@
 
 This is the stable machine contract for Habu checker repair feedback. The
 implemented surface today is one JSON object per failed top-level definition from
-the native `tools/check.f` runner with `--json-errors --all-errors`. A repair packet is the normalized
+the native `tools/check.f` runner with `--json-errors --all-errors`, plus the
+records below for a refusal outside a definition. A repair packet is the normalized
 LLM prompt object built from those checker diagnostics.
 
 ## Checker Diagnostic JSON
@@ -11,7 +12,9 @@ Checker diagnostics are newline-delimited JSON objects with
 `schema_version: 1`. They are emitted on stderr and remain valid JSON object
 lines even when the checker rejects the input.
 The native gate enforces the required field set with `tools/gate-json-assert.f
-diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`.
+diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`,
+each record in the shape its `code` names: a declaration, a span, an input, or
+otherwise a definition.
 
 Fields:
 
@@ -58,17 +61,35 @@ Declaration packets never fabricate definition-only fields such as `word`,
 `declared_effect`, `definition_source`, or `return_stack`; source-span fields
 land with the declaration origin plumbing (PLAN item 13).
 
-A top-level statement that throws while `--all-errors` checks it, such as a
-storage declaration sizing a type an earlier refusal left undefined, emits a
-statement-shaped object: code `E-REJECTED`, repair class `unknown_rejection`,
-`verdict` `rejected`, the `token` the checker read last with its `file`,
-`line`, `column`, `byte_start` and `byte_end`, the `throw_code` it raised, and
-`suggestion`. It carries no definition fields, and the checker does not
-continue past that statement in its source.
+A span record locates a refusal that is not a definition's. It carries `schema_version`, `code`, `repair_class`, `verdict`
+`rejected`, the `token` with its `file`, `line`, `column`, `byte_start` and
+`byte_end`, and `suggestion`, and no definition fields. There are three:
+
+- `E-STATEMENT-THROW`, repair class `unknown_rejection`: a top-level statement
+  threw while `--all-errors` checked it, such as a storage declaration sizing a
+  type an earlier refusal left undefined. The `token` is the one the checker
+  read last, and the record adds the signed integer `throw_code` it raised.
+  The checker does not continue past that statement in its source. Without
+  `--json-errors` it is the line `E-STATEMENT-THROW <file>:<line>:<column>:
+  throw <throw_code> at '<token>'`.
+- `E-UNTERMINATED-STRING`, repair class `close_string`: a string literal opened
+  at `token` does not close in the checked source.
+- `E-MALFORMED-REGISTRY-ROW`, repair class `close_primitive_row`: a `PRIM:` or
+  `PPRIM:` primitive-axiom row opened at `token` does not close.
+
+The lexer cannot read past either defect, so `--all-errors` reports it in place
+of checking that source; without `--json-errors` it is the bare code on its own
+line.
+
+A second definition of a name in one wordlist under `--all-errors` emits a
+definition-shaped object with code `E-DUPLICATE-DEFINITION` and repair class
+`rename_duplicate`. Its `word`, `token` and `definition_source` are the
+placeholder `duplicate-definition` at line 1, column 1, not the duplicate's own
+name and place.
 
 `tools/check.f` refuses, before checking anything, a single file or a
 `--source-list` whose every input is a source the engine provides, since a run
-loads nothing from such a source. Each input gets a file-shaped object: code
+loads nothing from such a source. Each input gets an input record: code
 `E-ENGINE-PROVIDED`, repair class `rebuild_engine`, `verdict` `uncheckable`,
 the input's `file` as given with `line` 1 and `column` 1, and `suggestion`;
 without `--json-errors` it is the line `E-ENGINE-PROVIDED <file>:1:1:
@@ -79,8 +100,9 @@ not provide is checked.
 
 Repair packets are the LLM-facing object passed back after a checker rejection.
 They preserve the evidence present in the source diagnostic without inventing
-fields that its shape cannot supply. Schema 1 has definition and declaration
-packet shapes.
+fields that its shape cannot supply. `tools/repair-packet.f` builds one packet
+from the first diagnostic, in the shape that diagnostic's record has: Schema 1
+has definition, declaration, span and input packet shapes.
 
 Definition packet fields:
 
@@ -130,6 +152,41 @@ Declaration packets carry only declaration evidence:
 
 Declaration packets do not fabricate `word`, source spans, effects, stack rows,
 or `source_excerpt`.
+
+Span packets carry a span record's evidence:
+
+| Field | Type | Presence | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | integer | required | Repair packet schema version, currently `1`. |
+| `kind` | string | required | Must be `habu_repair_packet`. |
+| `token` | string | required | Diagnostic token. |
+| `file` | string | required | Source label or path. |
+| `line` | integer | required | One-based source line. |
+| `column` | integer | required | One-based source column. |
+| `byte_start` | integer | required | Token start byte. |
+| `byte_end` | integer | required | Token end byte. |
+| `code` | string | required | `E-STATEMENT-THROW`, `E-UNTERMINATED-STRING` or `E-MALFORMED-REGISTRY-ROW`. |
+| `throw_code` | integer or null | required | The code a statement threw; null for a lexer defect. |
+| `repair_class` | string | required | Stable repair bucket. |
+| `suggestion` | string | required | Checker repair hint. |
+| `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | `Fix the source at this token so it checks. Output only corrected Habu code.` |
+
+Input packets carry an input record's evidence, since no edit to the source
+answers it:
+
+| Field | Type | Presence | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | integer | required | Repair packet schema version, currently `1`. |
+| `kind` | string | required | Must be `habu_repair_packet`. |
+| `file` | string | required | The input as given. |
+| `line` | integer | required | `1`. |
+| `column` | integer | required | `1`. |
+| `code` | string | required | `E-ENGINE-PROVIDED`. |
+| `repair_class` | string | required | `rebuild_engine`. |
+| `suggestion` | string | required | Checker repair hint. |
+| `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | `Rebuild bin/hb to check this source; no code change answers this diagnostic.` |
 
 When a packet aggregates multiple diagnostics, it must preserve deterministic
 ordering from `--all-errors` and either include one packet per diagnostic or a
@@ -189,6 +246,11 @@ Current checker classes:
 - `fix_family_declaration`: a `NEWTYPE` or `SUMTYPE` declaration used a
   reserved, non-lowercase, or duplicate family/variant name, a bad arity token,
   an unknown payload type, or a malformed/unterminated `VARIANT` block.
+- `rename_duplicate`: a name was defined a second time in one wordlist; rename
+  it or `undefine` the first definition.
+- `close_string`: a string literal does not close.
+- `close_primitive_row`: a `PRIM:` or `PPRIM:` primitive-axiom row does not
+  close.
 - `rebuild_engine`: the input is a source the engine provides, so loading it
   checks nothing; rebuild `bin/hb` to check a change to it.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
@@ -222,6 +284,9 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_missing_name` | `Give the definer a name: the next whitespace-delimited token.` |
 | `fix_record_field` | `Declare at least one field, each with a unique name and a known type.` |
 | `fix_family_declaration` | `Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks.` |
+| `rename_duplicate` | `Rename the word or undefine the old definition before redefining it.` |
+| `close_string` | `Close the string literal before the definition ends.` |
+| `close_primitive_row` | `Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE.` |
 | `rebuild_engine` | `The engine provides this source; rebuild bin/hb to check a change to it.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |

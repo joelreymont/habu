@@ -192,6 +192,15 @@ variable GJA-DIRECT
      some OF ENDOF
    ;MATCH ;
 
+: GJA-SIGNED-INT ( n -- )                \ a JSON integer, negative or not
+   dup JSON-KIND J-NUM <> IF drop s" expected JSON integer" GJA-FAIL THEN
+   JSON-NUMBER$ {: a:ptr u:n :}
+   u 0 > IF a c@ 45 = ELSE GJA-FALSE THEN
+   IF a 1 + u 1 - ELSE a u THEN GJA-U? MATCH option
+     none OF s" invalid JSON integer" GJA-FAIL ENDOF
+     some OF drop ENDOF
+   ;MATCH ;
+
 : GJA-STR= ( n ptr u8 n -- bool )
    {: node want:ptr wantu :}
    node JSON-KIND J-STR <> IF GJA-FALSE exit THEN
@@ -350,6 +359,12 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" fix_family_declaration" s" Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks."
    GJA-SUGGEST-ROW IF exit THEN
+   s" rename_duplicate" s" Rename the word or undefine the old definition before redefining it."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" close_string" s" Close the string literal before the definition ends."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" close_primitive_row" s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE."
+   GJA-SUGGEST-ROW IF exit THEN
    s" rebuild_engine" s" The engine provides this source; rebuild bin/hb to check a change to it."
    GJA-SUGGEST-ROW IF exit THEN
    s" rewrite_uncheckable" s" Rewrite with modeled words or isolate an audited primitive."
@@ -380,13 +395,9 @@ variable GJA-DIRECT
 : GJA-NO-FIELD ( n ptr u8 n -- )
    GJA-HAS? IF s" unexpected JSON field" GJA-FAIL THEN ;
 
-: GJA-DECL-NO-DEF ( n -- )
+: GJA-NO-DEF ( n -- )                    \ none of a definition's own fields
    dup s" word" GJA-NO-FIELD
    dup s" token_index" GJA-NO-FIELD
-   dup s" line" GJA-NO-FIELD
-   dup s" column" GJA-NO-FIELD
-   dup s" byte_start" GJA-NO-FIELD
-   dup s" byte_end" GJA-NO-FIELD
    dup s" definition_source" GJA-NO-FIELD
    dup s" declared_effect" GJA-NO-FIELD
    dup s" declared_effect_source" GJA-NO-FIELD
@@ -396,9 +407,48 @@ variable GJA-DIRECT
    dup s" return_stack" GJA-NO-FIELD
    s" source_excerpt" GJA-NO-FIELD ;
 
+: GJA-DECL-NO-DEF ( n -- )
+   dup GJA-NO-DEF
+   dup s" line" GJA-NO-FIELD
+   dup s" column" GJA-NO-FIELD
+   dup s" byte_start" GJA-NO-FIELD
+   s" byte_end" GJA-NO-FIELD ;
+
+\ The code names the shape of every record that is not a definition's: a
+\ declaration, a source span outside any definition, or a refused input.
+: GJA-CODE= ( n ptr u8 n -- bool ) {: root:n code:ptr codeu:n :}
+   root s" code" GJA-REQ code codeu GJA-STR= ;
+
 : GJA-DECL? ( n -- bool ) {: root:n :}
    root s" decl" GJA-HAS? IF GJA-TRUE exit THEN
-   root s" code" GJA-REQ s" E-BAD-DECLARATION" GJA-STR= ;
+   root s" E-BAD-DECLARATION" GJA-CODE= ;
+
+: GJA-THROW? ( n -- bool )
+   s" E-STATEMENT-THROW" GJA-CODE= ;
+
+: GJA-SPAN? ( n -- bool ) {: root:n :}
+   root GJA-THROW? IF GJA-TRUE exit THEN
+   root s" E-UNTERMINATED-STRING" GJA-CODE= IF GJA-TRUE exit THEN
+   root s" E-MALFORMED-REGISTRY-ROW" GJA-CODE= ;
+
+: GJA-INPUT? ( n -- bool )
+   s" E-ENGINE-PROVIDED" GJA-CODE= ;
+
+: GJA-SPAN-FIELDS ( n -- ) {: root:n :}
+   root GJA-NO-DEF
+   root s" token" GJA-REQ GJA-NONEMPTY-STR
+   root s" line" GJA-REQ-INTF
+   root s" column" GJA-REQ-INTF
+   root s" byte_start" GJA-REQ-INTF
+   root s" byte_end" GJA-REQ-INTF ;
+
+: GJA-INPUT-FIELDS ( n -- ) {: root:n :}
+   root GJA-NO-DEF
+   root s" token" GJA-NO-FIELD
+   root s" byte_start" GJA-NO-FIELD
+   root s" byte_end" GJA-NO-FIELD
+   root s" line" GJA-REQ-INTF
+   root s" column" GJA-REQ-INTF ;
 
 : GJA-REPAIR-HEAD ( n ptr u8 n -- ) {: root:n class:ptr classu:n :}
    root s" schema_version" 1 GJA-ASSERT-INT-FIELD
@@ -436,11 +486,33 @@ variable GJA-DIRECT
    root s" instruction" GJA-REQ
    s" Repair the type-family declaration. Output only corrected Habu code." GJA-ASSERT-STR ;
 
+: GJA-REPAIR-THROW-CODE ( n -- ) {: root:n :}  \ null unless a statement threw
+   root s" throw_code" GJA-REQ {: node:n :}
+   root GJA-THROW? IF node GJA-SIGNED-INT exit THEN
+   node JSON-KIND J-NULL <> IF s" expected JSON null" GJA-FAIL THEN ;
+
+: GJA-REPAIR-SPAN ( n -- ) {: root:n :}
+   root GJA-SPAN-FIELDS
+   root GJA-REPAIR-THROW-CODE
+   root s" instruction" GJA-REQ
+   s" Fix the source at this token so it checks. Output only corrected Habu code." GJA-ASSERT-STR ;
+
+: GJA-REPAIR-INPUT ( n -- ) {: root:n :}
+   root GJA-INPUT-FIELDS
+   root s" instruction" GJA-REQ
+   s" Rebuild bin/hb to check this source; no code change answers this diagnostic." GJA-ASSERT-STR ;
+
+: GJA-REPAIR-SHAPE ( n -- ) {: root:n :}
+   root GJA-DECL? IF root GJA-REPAIR-DECL exit THEN
+   root GJA-SPAN? IF root GJA-REPAIR-SPAN exit THEN
+   root GJA-INPUT? IF root GJA-REPAIR-INPUT exit THEN
+   root GJA-REPAIR-DEF ;
+
 : GJA-REPAIR-PACKET ( ptr u8 n ptr u8 n -- )
    {: json:ptr jsonu class:ptr classu :}
    json jsonu GJA-FIRST-JSON GJA-ROOT !
    GJA-ROOT @ class classu GJA-REPAIR-HEAD
-   GJA-ROOT @ dup GJA-DECL? IF GJA-REPAIR-DECL ELSE GJA-REPAIR-DEF THEN ;
+   GJA-ROOT @ GJA-REPAIR-SHAPE ;
 
 : GJA-DIAG-HEAD ( n -- )
    dup GJA-SCHEMA1
@@ -482,8 +554,28 @@ variable GJA-DIRECT
    dup s" rejected" GJA-STR= IF drop exit THEN
    s" uncheckable" GJA-STR= 0= IF s" unexpected checker verdict" GJA-FAIL THEN ;
 
+: GJA-DIAG-THROW-CODE ( n -- ) {: root:n :}  \ only a statement throw has one
+   root GJA-THROW? IF root s" throw_code" GJA-REQ GJA-SIGNED-INT exit THEN
+   root s" throw_code" GJA-NO-FIELD ;
+
+: GJA-DIAG-SPAN ( n -- )
+   dup GJA-DIAG-HEAD
+   dup GJA-SPAN-FIELDS
+   GJA-DIAG-THROW-CODE ;
+
+: GJA-DIAG-INPUT ( n -- )
+   dup GJA-DIAG-HEAD
+   dup GJA-INPUT-FIELDS
+   s" verdict" GJA-REQ s" uncheckable" GJA-ASSERT-STR ;
+
+: GJA-DIAG-SHAPE ( n -- ) {: root:n :}
+   root GJA-DECL? IF root GJA-DIAG-DECL exit THEN
+   root GJA-SPAN? IF root GJA-DIAG-SPAN exit THEN
+   root GJA-INPUT? IF root GJA-DIAG-INPUT exit THEN
+   root GJA-DIAG-COMMON ;
+
 : GJA-DIAG-CONTRACT-ROW ( n -- )
-   dup GJA-DECL? IF dup GJA-DIAG-DECL ELSE dup GJA-DIAG-COMMON THEN
+   dup GJA-DIAG-SHAPE
    dup GJA-DIAG-VERDICT
    dup s" repair_class" GJA-REQ JSON-STRING$ GJA-DIAG-CLASS-SUGGEST ;
 

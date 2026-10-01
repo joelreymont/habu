@@ -1791,11 +1791,11 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 \ signature of each refused definition, so a later call of a refused word
 \ checks against its declaration instead of reporting it undefined. Each
 \ segment reports under its own file. A refusal (70, including SPAN's
-\ E-REJECTED for a statement's throw) is collected so every segment reports.
-\ DUP-RC and any status SPAN lets out unreported abort. A duplicate definition
-\ ends the check, as it ends the load and a whole-file check: the load never
-\ reaches a later segment, and the checker's record of the redefined word is
-\ not one a later call can be checked against.
+\ E-STATEMENT-THROW for a statement's throw) is collected so every segment
+\ reports. DUP-RC and any status SPAN lets out unreported abort. A duplicate
+\ definition ends the check, as it ends the load and a whole-file check: the
+\ load never reaches a later segment, and the checker's record of the
+\ redefined word is not one a later call can be checked against.
 
 : CHK-ALL-SEG-ACT ( -- )
    CHK-ALL-SEG @ {: seg:n :}
