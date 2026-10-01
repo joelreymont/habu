@@ -1665,6 +1665,13 @@ SUITE aot-capture-compact
    test/aot-capture-compact.f
 ;SUITE
 
+\ A capture taken with an x86-64 shadow open carries the shadow's records,
+\ routines, sites and record-keyed code cells through the artifact's round trip;
+\ READ refuses forged shadow rows by name and MERGE refuses a shadow.
+SUITE aot-shadow-capture
+   test/aot-shadow-capture.f
+;SUITE
+
 SUITE data-address-codec
    test/data-address-codec.f
    tools/snap-heap-owner-test.f

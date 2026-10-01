@@ -42,7 +42,7 @@ public
    ROW-TEST-DIGEST
    DERIVED AOT-IDENT:CHAIN-DIGEST
    prod BUILD-HEADER
-   short 0= if 8 HDR O-VERSION + U64! then
+   short 0= if VERSION 1- HDR O-VERSION + U64! then
    path pathu PATH0 1537 493 open FD !
    FD @ 0 < if s" artifact-row-test: cannot write forged file" DIE then
    SHA-CTX SHA256-BEGIN

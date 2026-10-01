@@ -407,6 +407,81 @@ variable N
    0 STORAGE BYTE-VIEW ;
 ;package
 
+\ THE SHADOW: A SECOND TARGET'S ROUTINES FOR THE WINDOW'S RECORDS. A cross-build
+\ compiles every tier-1 definition twice, the host's routine into the live region
+\ and the target's into src/compiler/native/shadow.f's map (docs/x86-64.md "Dual
+\ emission"), and the target's image is written from the capture, so the capture
+\ carries that map. src/habu/aot-shadow.f fills these tables; a capture taken with
+\ no shadow open leaves all four empty, and the ARM64 seed reads none of them.
+\
+\ FOUR TABLES, AND NO HOST ADDRESS IN ANY OF THEM. CODE is every emission's bytes,
+\ each emission once, as its own unplaced routine: a call's field is the zero an
+\ unplaced emission writes, a DATA literal holds its window DATA offset, a code
+\ literal naming a word holds 0, and a `codeaddr` holds its function's offset in
+\ its own emission. A RECORD row is (window record index, emission start in CODE,
+\ emission bytes, entry offset in it): a `does>` definer and its companion are two
+\ rows over one emission, the companion entering where the clause function
+\ starts. A SITE row is (byte offset in CODE, kind, target); a target is a window
+\ record, SITE-REC-TAG beside its window index, or a word of the engine's own
+\ prefix, SITE-NAME-TAG beside its name's pool offset (a qualified name when its
+\ package is not global), the two forms AOT-BUF's image site rows use. An XT row
+\ is (address-cell row, window record index): an address cell whose CODE target
+\ is a window record's entry, keyed by the record and not by the ARM64 blob
+\ offset the address-cell row itself carries.
+package AOT-SHADOW
+private
+DYNAMIC-BUFFER REC-STORAGE n
+DYNAMIC-BUFFER CODE-STORAGE n
+DYNAMIC-BUFFER SITE-STORAGE n
+DYNAMIC-BUFFER XT-STORAGE n
+
+: CAP-DIE ( -- )
+   s" aot: a shadow table exceeds its format bound" 74 die ;
+
+\ Room for `n` bytes of a table whose bound is `cap` bytes, in whole cells.
+: CELLS-FOR ( n n -- n ) {: n:n cap:n :}
+   n 0 < n cap > or if CAP-DIE then
+   n CELL 1- + CELL / 1 max ;
+
+public
+16 constant REC-ROW
+12 constant SITE-ROW
+8 constant XT-ROW
+\ An emission is code the window's own region held, so the blob's bound is its
+\ bound; one record row per window record; a site is a call or a ten-byte MOVABS,
+\ so a byte can start at most one in five; one XT row per address-cell row.
+AOT-BUF:AOT-BLOB-CAP constant CODE-CAP
+AOT-BUF:AOT-REC-MAX constant REC-MAX
+CODE-CAP 5 / constant SITE-MAX
+AOT-WINDOW:XTOFF-MAX constant XT-MAX
+
+\ The site kinds. CALL and TAIL hold a rel32 to their target, CODE a MOVABS of
+\ the target's entry, DATA a MOVABS of a window DATA offset, FUN a MOVABS of a
+\ function's offset in the site's own emission.
+1 constant CALL
+2 constant TAIL
+3 constant DATA
+4 constant CODE
+5 constant FUN
+
+variable REC-N
+variable CODE-LEN
+variable SITE-N
+variable XT-N
+
+: REC-RESERVE ( n -- ) REC-ROW * REC-MAX REC-ROW * CELLS-FOR REC-STORAGE-RESERVE ;
+: CODE-RESERVE ( n -- ) CODE-CAP CELLS-FOR CODE-STORAGE-RESERVE ;
+: SITE-RESERVE ( n -- ) SITE-ROW * SITE-MAX SITE-ROW * CELLS-FOR SITE-STORAGE-RESERVE ;
+: XT-RESERVE ( n -- ) XT-ROW * XT-MAX XT-ROW * CELLS-FOR XT-STORAGE-RESERVE ;
+
+: REC-BUF@ ( -- ptr u8 ) REC-N @ REC-RESERVE 0 REC-STORAGE BYTE-VIEW ;
+: CODE-BUF@ ( -- ptr u8 ) CODE-LEN @ CODE-RESERVE 0 CODE-STORAGE BYTE-VIEW ;
+: SITE-BUF@ ( -- ptr u8 ) SITE-N @ SITE-RESERVE 0 SITE-STORAGE BYTE-VIEW ;
+: XT-BUF@ ( -- ptr u8 ) XT-N @ XT-RESERVE 0 XT-STORAGE BYTE-VIEW ;
+
+: RESET ( -- ) 0 REC-N !  0 CODE-LEN !  0 SITE-N !  0 XT-N ! ;
+;package
+
 package AOT-BUF
 public
 

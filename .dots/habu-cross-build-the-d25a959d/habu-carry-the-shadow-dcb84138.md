@@ -1,9 +1,11 @@
 ---
 title: Carry the shadow emission in the capture
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.715680+03:00"
+closed-at: "2026-10-01T10:27:28.647570+03:00"
+close-reason: "test/aot-shadow-capture.f (SUITE aot-shadow-capture) passes on spark and the ThinkPad, READ refusing forged span, site and code-cell rows and MERGE refusing a shadow by name; all 32 SUITE aot* rows rc 0 on spark; native-build of this tree is e11cab554496d74f (byte-identical to base)."
 ---
 
 Problem: the capture carries only the primary emission; the x86 writer needs the shadow per record.

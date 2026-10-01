@@ -2410,7 +2410,8 @@ private
    0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  0 AOT-SPAN:N !
    AOT-WINDOW:WINDOW-RESET
    0 AOT-XTSITE:N !  0 AOT-PWIN-N !  0 ACAP-GRAPH-READY !
-   0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
+   0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c!
+   AOT-SHADOW:RESET ;                           \ src/habu/aot-shadow.f fills it after CAPTURE
 public
 
 \ AOT-ARM owns the captured cursors and frozen checker payload. Producers latch

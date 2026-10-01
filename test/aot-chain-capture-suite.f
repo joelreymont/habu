@@ -35,8 +35,8 @@ package AOT-CHAIN-SUITE
 32 constant O-PAYLEN
 40 constant O-PRODUCER
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order
-13 constant VERSION
-18 constant SECTIONS
+14 constant VERSION
+22 constant SECTIONS
 64 constant HEX-LEN
 \ An address-row location has 31 offset bits; its high bit selects window DATA.
 $7FFFFFFF constant LOC-MASK
@@ -199,6 +199,9 @@ create ART-BUF FS-PATH-CAP allot    variable ART-U
    0 ROW-RC
    s" address-rows: fresh=ok" SAID?
    s" old-version" s" the artifact is not one this engine can read" ROW-REFUSED
+   s" the refusal names the field and both versions" T-LABEL
+   s" aot-file: version=13" SAID?
+   s" aot-file: expected 14" SAID?
    s" short-row" s" address cells is not a whole number of rows" ROW-REFUSED
    s" bad-window" s" address cell reaches past its window DATA span" ROW-REFUSED
    s" fixed-bound" RUN-ROW-CASE 0 ROW-RC
