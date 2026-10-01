@@ -3521,8 +3521,24 @@ public
 
 ;package
 
+: C-CLEAR-TRUSTED-STATE ( -- )
+   9 0 MOVZ,
+   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
+   9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
+   9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
+   9 DATA DOESB-CELL STR,
+   9 DATA TRUSTED-CELL STR, ;
+
+\ The end of a definition the native compiler compiled, the engine's tier-1 `;`
+\ (NCOMP-EMIT:EM-COMPILE) and the def-close row alike: the provenance window
+\ closes native and the per-definition state clears, PEND-CELL last.
+: C-NATIVE-CLOSE ( -- )
+   1 CODE-ORIGIN:CLOSE,
+   C-CLEAR-TRUSTED-STATE
+   9 0 MOVZ,  9 DATA PEND-CELL STR, ;
+
 \ ---- the definition writers --------------------------------------------------
-\ The bodies of the seven rows src/habu/prims.f specifies under "the definition
+\ The bodies of the nine rows src/habu/prims.f specifies under "the definition
 \ writers", registered with ENGINE-PRIMS:GLOBAL-INT-WID in
 \ EMIT-PRIMITIVE-SECTIONS. Each checks everything before it writes, and a
 \ refusal exits the process, so no reader ever sees a half-written row.
@@ -3758,6 +3774,16 @@ public
 \ created-sig! ( ptr u8 n -- )
 : CREATED-SIG ( -- )
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN ;
+
+\ def-close ( -- )
+: DEF-CLOSE ( -- )
+   LBL LBL {: bad done :}
+   9 DATA PEND-CELL LDR,  9 bad CBZ,
+   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 1 CMPI,  C-NE bad BCOND,
+   C-NATIVE-CLOSE
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
 
 ;package
 
@@ -4115,14 +4141,6 @@ package INTERP-EMIT
    LASTC-TRUST:PUBLISH-A ;
 
 ;package
-
-: C-CLEAR-TRUSTED-STATE ( -- )
-   9 0 MOVZ,
-   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
-   9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
-   9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
-   9 DATA DOESB-CELL STR,
-   9 DATA TRUSTED-CELL STR, ;
 
 : C-PARSE-REQUIRED-SIG ( -- )
    LBL LBL {: done bad :}
@@ -8314,9 +8332,7 @@ public
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       LOAD
       C-CALL-X11-SAVED
-      1 CODE-ORIGIN:CLOSE,
-      C-CLEAR-TRUSTED-STATE
-      9 0 MOVZ,  9 DATA PEND-CELL STR,
+      C-NATIVE-CLOSE
       LMAIN LABEL@ B,
    notsemi LBL,
    LBCAP LABEL@ BL,
@@ -11982,6 +11998,7 @@ package ENGINE-EMIT
    s" body-append" ['] DEFWRITE:BODY-APPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" trust-sig!" ['] DEFWRITE:TRUST-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" created-sig!" ['] DEFWRITE:CREATED-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" def-close" ['] DEFWRITE:DEF-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM

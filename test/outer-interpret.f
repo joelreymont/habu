@@ -9,14 +9,15 @@
 \ rc, stdout and stderr, and each case states the rc and output that show what
 \ it exercised, so two runs failing alike do not pass.
 \
-\ The prelude defines with keywords (`:`, `TRUSTED:`, `SUMTYPE`), and the Habu
-\ loop cannot end a definition yet: it reads a head but not `;`. So the prelude
-\ loads before the switch, and a case holds only numbers, comments, the literal
-\ keywords (`s"`, `c"`, `."`, their escaped forms, `char` and `'`), the package
-\ keywords (`package`, `public`, `private`, `;package`, `using`, `;using` and
-\ `export`), words, and a definition head (`:`, `kernel:` or `trusted:`) that
-\ refuses, stays pending, or is ended by an immediate its body runs. A case
-\ defines through evaluate, which the engine's loop reads.
+\ The prelude defines with keywords the Habu loop does not read yet
+\ (`immediate`, `SUMTYPE`, `constant`, `variable`), so it loads before the
+\ switch, and a case holds only numbers, comments, the literal keywords (`s"`,
+\ `c"`, `."`, their escaped forms, `char` and `'`), the package keywords
+\ (`package`, `public`, `private`, `;package`, `using`, `;using` and
+\ `export`), words, and definitions (`:`, `kernel:` or `trusted:`) that refuse,
+\ stay pending, or end at `;` or by an immediate their body runs. A case
+\ defines with the other keywords through evaluate, which the engine's loop
+\ reads.
 \
 \ Some cases are the Habu loop's alone: tier 0, whose definitions the engine's
 \ loop compiles and the Habu loop refuses. And one check runs in a forked copy
@@ -91,7 +92,9 @@ variable SPIN-U
 \ origin of its name's bytes. OI-DOES. is one that prints the body capture,
 \ DOESB, the created signature and how far here moved past OI-MARK. OI-ROOM is
 \ the data space left below its ceiling, and OI-ALIAS gives the last record a
-\ second name.
+\ second name. OI-ENDED. prints the cells a definition's end clears or'd
+\ together, 0 when all are: PEND, the provenance window, TSIG, TCSIG, DOESB,
+\ TRUSTED and the definition's tier.
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
@@ -134,6 +137,10 @@ variable SPIN-U
    s" : OI-DOES. ( -- ) OI-BODY. DOESB-CELL OI-CELL@ . OI-CSIG$ type cr OI-HERE OI-AT @ - . ;" GE-SRC-LINE
    s" : OI-ROOM ( -- n ) DATA-SIZE PROF-CNT-BYTES - OI-HERE - ;" GE-SRC-LINE
    s" TRUSTED: OI-ALIAS ( ptr u8 n -- ) ndict@ 1- get-current alias-record ;" GE-SRC-LINE
+   s" : OI-OR@ ( n n -- n ) OI-CELL@ or ;" GE-SRC-LINE
+   s" : OI-ENDED. ( -- ) PEND-CELL OI-CELL@ TIER-PROV:OPEN-CELL OI-OR@ TSIG-A-CELL OI-OR@ TSIG-U-CELL OI-OR@" GE-SRC-LINE
+   s"   TCSIG-A-CELL OI-OR@ TCSIG-U-CELL OI-OR@ DOESB-CELL OI-OR@ TRUSTED-CELL OI-OR@" GE-SRC-LINE
+   s"   NCOMP-DISPATCH:DEF-TIER-CELL OI-OR@ . ;" GE-SRC-LINE
    s" oi-prelude.f" PRELUDE-BUF GT-PATH PRELUDE-U !
    PRELUDE$ SRC>FILE ;
 
@@ -1407,6 +1414,55 @@ variable WANT-RC
    s" s~ : OI-DZ ( -- ) 7 . ; immediate~ evaluate" s" oi-does-immediate.f" CALLED
    S\" OI-X ( -- ) does> 1 \n18\n a comment \n11\n" CASE$ GE-EXPECT-OUT ;
 
+\ ---- `;` ---------------------------------------------------------------------------
+\ `;` compiles the body the loop captured and ends the definition, a body over
+\ two lines, a `trusted:` one, one in a package's public wordlist and a
+\ `does>` definer alike: each word runs, and after each `;` the cells the end
+\ clears are 0. The code is native: `;` closed the provenance window with 1.
+: SEMI ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-X ( n -- n )" GE-SRC-LINE
+   s"   1 + ;" GE-SRC-LINE
+   s" 41 OI-X . OI-ENDED. ' OI-X dup 1 + code-origin ." GE-SRC-LINE
+   s" trusted: OI-T ( -- n ) 5 ; OI-T . OI-ENDED." GE-SRC-LINE
+   s" package OI-P public : OI-Y ( -- n ) 3 ; ;package OI-P:OI-Y ." GE-SRC-LINE
+   s" : OI-DEF ( n -- ) create , does> ( -- n ) @ ; OI-ENDED. 7 OI-DEF OI-K OI-K ." GE-SRC-LINE
+   s" oi-semi.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 42\n0\n1\n5\n0\n3\n0\n7\n" CASE$ GE-EXPECT-OUT ;
+
+\ With no definition open `;` is no keyword, and undefined. A body the checker
+\ refuses ends the load at its `;`, before the word after it runs.
+: SEMI-REFUSALS ( -- )
+   s" 1 . ;" s" oi-semi-none.f" HEAD
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: ;\n" CASE$ GE-EXPECT-ERR
+   s" : OI-BAD ( -- n ) ; 7 ." s" oi-semi-unchecked.f" HEAD
+   70 CASE$ GE-EXPECT-RC
+   s" " CASE$ GE-EXPECT-OUT
+   s" ncomp: cannot compile OI-BAD" CASE$ GE-EXPECT-ERR-HAS ;
+
+\ A body immediate that clears the compiler entry leaves `;` none to call: the
+\ process ends as at the head, without the exit hook.
+: SEMI-DISPATCH-UNSET ( -- )
+   GE-SRC-RESET
+   s" s~ TRUSTED: OI-UNSET ( -- ) 0 data-base NCOMP-DISPATCH:XT-CELL + ! ; immediate~ evaluate" QLINE
+   s" s~ OI-UNSET~ 0 parse-imm ' cr data-base EXIT-HOOK-CELL + !" QLINE
+   s" 1 set-tier : OI-T ( -- ) OI-UNSET ;" GE-SRC-LINE
+   s" oi-semi-dispatch-unset.f" BOTH
+   ENGINE-ERROR:AOT-SEED CASE$ GE-EXPECT-RC
+   s" " CASE$ GE-EXPECT-OUT
+   S\" hb: native compiler dispatch unset\n" CASE$ GE-EXPECT-ERR ;
+
+\ At tier 0 `;` refuses as every body token does: the engine's loop ends a
+\ tier 0 body.
+: SEMI-TIER-0 ( -- )
+   GE-SRC-RESET
+   s" s~ : OI-T0 ( -- )~ evaluate ;" QLINE
+   s" oi-semi-tier-0.f" HABU
+   76 s" hb: tier 0 is not in the Habu loop: ; at " S\" oi-semi-tier-0.f:1\n" DIED-AT ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -1529,6 +1585,10 @@ private
    DOES-REFUSALS
    DOES-DATA-FULL
    DOES-CALLED
+   SEMI
+   SEMI-REFUSALS
+   SEMI-DISPATCH-UNSET
+   SEMI-TIER-0
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

@@ -1,7 +1,7 @@
 \ engine-writers.f - the definition writers an interpreter written in Habu
 \ publishes through: namespace-record, namespace-private, alias-record,
-\ package-scope!, def-open, body-append, trust-sig! and created-sig!
-\ (src/habu/prims.f, "the definition writers").
+\ package-scope!, def-open, body-append, trust-sig!, created-sig! and
+\ def-close (src/habu/prims.f, "the definition writers").
 \
 \ Each case forks a child that hands its source to `evaluate`, the engine's own
 \ interpret loop, and judges the child by its status and its fd 1. A row is
@@ -71,6 +71,7 @@ TRUSTED: EW-OPEN ( ptr u8 n n n -- ) def-open ;
 TRUSTED: EW-APPEND ( ptr u8 n -- ) body-append ;
 TRUSTED: EW-SIG ( ptr u8 n -- ) trust-sig! ;
 TRUSTED: EW-CSIG ( ptr u8 n -- ) created-sig! ;
+TRUSTED: EW-CLOSE ( -- ) def-close ;
 
 \ The marker a refusal case prints just before the refused call.
 : EW-AT ( -- ) EW-MARK$ type ;
@@ -113,6 +114,10 @@ TRUSTED: EW-OPEN-ALIAS ( -- )
    ndict@ 1-  s" EW-FIRST" get-current 0 def-open
    EW-AT  s" EW-ALP" rot get-current alias-record ;
 
+\ def-close on the definition just opened, at the tier the caller set.
+TRUSTED: EW-OPEN-CLOSE ( -- )
+   s" EW-FIRST" get-current 0 def-open  EW-AT  def-close ;
+
 private
 
 : BOUNDARY ( -- )
@@ -123,7 +128,8 @@ private
    s" def-open" s" EWX ( ptr u8 n n n -- ) def-open" INTERNAL
    s" body-append" s" EWX ( ptr u8 n -- ) body-append" INTERNAL
    s" trust-sig!" s" EWX ( ptr u8 n -- ) trust-sig!" INTERNAL
-   s" created-sig!" s" EWX ( ptr u8 n -- ) created-sig!" INTERNAL ;
+   s" created-sig!" s" EWX ( ptr u8 n -- ) created-sig!" INTERNAL
+   s" def-close" s" EWX ( -- ) def-close" INTERNAL ;
 
 \ A flagged row answers `using`, a `package` reopen and a qualified name. The
 \ reopen must find this row: a second row would hold X, and `using NSA` and
@@ -222,7 +228,9 @@ private
    s" BODYBUF-CAP 1+ EW-BODYLEN! parse-name a EW-AT EW-APPEND" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" -5 EW-BODYLEN! parse-name abcdef EW-AT EW-APPEND" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" parse-name abc EW-AT EW-SIG" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" parse-name abc EW-AT EW-CSIG" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
+   s" parse-name abc EW-AT EW-CSIG" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-AT EW-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" 0 set-tier EW-OPEN-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
 
 public
 

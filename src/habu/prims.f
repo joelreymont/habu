@@ -629,10 +629,10 @@ ETRUSTED-ONLY!                       \ explicit trusted reset boundary
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
 \ ---- the definition writers --------------------------------------------------
-\ What `package`, `export`, `:` and `does>` change is sealed state after the
-\ seal: the friend arena (CUR, WIDN, DEF-WL, TSIG, TCSIG, PKG-*), BODYBUF,
+\ What `package`, `export`, `:`, `does>` and `;` change is sealed state after
+\ the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG, TCSIG, PKG-*), BODYBUF,
 \ DEF-TIER-CELL, the TIER-PROV band and the records behind the PROT window.
-\ These eight rows are how an interpreter written in Habu writes it. Each is
+\ These nine rows are how an interpreter written in Habu writes it. Each is
 \ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so only a
 \ TRUSTED: body reaches one. A refusal exits and never throws: 79 while a task
 \ is live (the five dictionary and scope rows), 84 for a protected wid after
@@ -694,6 +694,14 @@ ETRUSTED-ONLY!
 \ span, the effect of the words it creates, into TCSIG-A and TCSIG-U. It
 \ refuses when no definition is pending.
 EPRIM: created-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+\ def-close ( -- ): end the pending definition the native compiler compiled,
+\ as the engine's tier-1 `;` ends one: the TIER-PROV window def-open opened
+\ closes native, origin 1 over [open, CP), and the state def-open set clears:
+\ DEF-TIER-CELL, TSIG, TCSIG, DOESB, TRUSTED and PEND-CELL. It refuses when
+\ no definition is pending and when the pending one is not the native tier's
+\ (DEF-TIER-CELL other than 1), as ndict-append does.
+EPRIM: def-close EPRIM;
 ETRUSTED-ONLY!
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;

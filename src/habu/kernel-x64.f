@@ -3019,7 +3019,7 @@ public
 : TASK, ( -- ) s" task-entry" [: TASK-ENTRY-BODY ;] PRIM ;
 
 \ ---- definition writers ------------------------------------------------------
-\ The seven rows an interpreter written in Habu publishes definitions, namespace
+\ The nine rows an interpreter written in Habu publishes definitions, namespace
 \ rows, aliases and package scope through (src/habu/prims.f, "the definition
 \ writers"): the twins of habu2.f DEFWRITE's bodies, in each twin's check
 \ order. Every refusal comes before the first store and writes nothing on fd
@@ -3352,6 +3352,23 @@ $3A constant NAME-COLON                \ a qualified name's separator
 : CREATED-SIG-BODY ( -- )
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN-BODY ;
 
+\ def-close ( -- ): the pending definition of the native tier ends, as the
+\ engine's tier-1 `;` ends one (habu2.f C-NATIVE-CLOSE): the provenance window
+\ closes native, then DEF-TIER-CELL, TSIG, TCSIG, DOESB, TRUSTED and PEND-CELL
+\ clear. Nothing pending, and DEF-TIER-CELL other than 1, are refused.
+: DEF-CLOSE-BODY ( -- )
+   RDX PEND-CELL CELL@,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   RCX NCOMP-DISPATCH:DEF-TIER-CELL CELL@,
+   RCX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
+   1 X64PROV:CLOSE,
+   RAX ZERO-REG,
+   RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
+   RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
+   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX PEND-CELL CELL!, ;
+
 public
 
 : DEFINITION, ( -- )
@@ -3362,7 +3379,8 @@ public
    s" def-open" [: DEF-OPEN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" body-append" [: BODY-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" trust-sig!" [: TRUST-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" created-sig!" [: CREATED-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+   s" created-sig!" [: CREATED-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" def-close" [: DEF-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
 \ ---- pure rows ---------------------------------------------------------------
 \ The arithmetic, comparison, shuffle, memory and float rows. Every row but

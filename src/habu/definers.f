@@ -6,11 +6,11 @@
 \
 \ A head opens record NDICT through def-open, unpublished, and the definition
 \ stays pending: each body token is captured into BODYBUF, as the engine's
-\ tier 1 captures it, for `;` to compile whole, a stack-neutral parsing
-\ immediate among them runs as it is read, and `does>` splits the body and
-\ takes the signature of the words it creates. Only tier 1 is read here. The
-\ engine's tier 0 compiles each token as it reads it (its JIT), so at tier 0 a
-\ head or a body token is refused.
+\ tier 1 captures it, a stack-neutral parsing immediate among them runs as it
+\ is read, `does>` splits the body and takes the signature of the words it
+\ creates, and `;` compiles the body whole and ends the definition through
+\ def-close. Only tier 1 is read here. The engine's tier 0 compiles each token
+\ as it reads it (its JIT), so at tier 0 a head or a body token is refused.
 \
 \ The head refuses in the engine's order and with its text. A definition
 \ writer's own refusal exits without a word (src/habu/prims.f), so every
@@ -38,6 +38,7 @@ TRUSTED: DEF-OPEN ( ptr u8 n n n -- ) def-open ;
 TRUSTED: DEF-APPEND ( ptr u8 n -- ) body-append ;
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 TRUSTED: DEF-CREATED-SIG ( ptr u8 n -- ) created-sig! ;
+TRUSTED: DEF-CLOSE ( -- ) def-close ;
 
 \ ---- tier 0 ------------------------------------------------------------------
 \ The engine's tier 0 compiles each body token as it reads it, with its JIT,
@@ -332,13 +333,32 @@ TRUSTED: DEF-RUN ( n -- )
    DEF-CALL? if false exit then
    DEF-DOES true ;
 
+\ ---- `;` (habu2.f NCOMP-EMIT:EM-COMPILE) --------------------------------------
+\ `;`, the one byte, ends the definition and joins no capture. The body goes
+\ to the compiler entry the AOT seed installed, as the engine's tier-1 `;`
+\ hands it (NCOMP-EMIT:LOAD), checked again here since a body immediate can
+\ have cleared it. The compiler checks, compiles and publishes the record, or
+\ throws with the definition still pending, as the engine's does. On its
+\ return def-close closes the provenance window native and clears what
+\ def-open set.
+TRUSTED: DEF-COMPILE ( ptr u8 n -- )
+   DEF-DISPATCH NCOMP-DISPATCH:XT-CELL CELL@ execute ;
+
+: DEF-SEMI? ( -- bool )
+   s" ;" TOKEN-IS? 0= if false exit then
+   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ DEF-COMPILE
+   DEF-CLOSE
+   true ;
+
 \ ---- the body ----------------------------------------------------------------
 \ While a definition is pending every token is its body's (habu2.f EM-COMMENT):
-\ tier 1 captures it for `;`, runs it if it is a neutral immediate, splits the
-\ body at `does>`, or takes a string keyword's text (NCOMP-EMIT:EM-COMPILE).
+\ tier 1 ends it at `;`, or captures the token, runs it if it is a neutral
+\ immediate, splits the body at `does>`, or takes a string keyword's text
+\ (NCOMP-EMIT:EM-COMPILE).
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= if DEF-TIER-0 then
+   DEF-SEMI? if true exit then
    TOKEN$ DEF-CAPTURE
    DEF-IMMEDIATE? if true exit then
    DEF-DOES? if true exit then
