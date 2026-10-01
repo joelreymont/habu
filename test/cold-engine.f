@@ -124,10 +124,16 @@ variable RESOLVED?
    WRITER-ARGS
    writer writeru >LEN s" " >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN WRITER-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type
    2 ERR erru LEN>N write drop
+   \ An expired deadline is named and thrown again, so the gate pool labels the
+   \ cold-engine build row TIMEOUT-UNDER-LOAD.
+   rc PROC-TIMEOUT-RC = if
+      s" cold-engine: native fixture writer ran out of time" type cr
+      E-PROC-TIMEOUT throw
+   then
    rc 0 <> if s" cold-engine: native fixture writer failed" rc die then ;
 
 : PUBLISH ( -- )

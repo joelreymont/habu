@@ -872,10 +872,13 @@ create DRV-CH 1 allot
 
 : CHILD ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n input:ptr inputu:n :}
    path pathu >LEN input inputu >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type
    2 ERR erru LEN>N write drop
+   \ An expired deadline leaves with PROC-TIMEOUT-RC, which the rows that run
+   \ this builder throw again as E-PROC-TIMEOUT.
+   rc PROC-TIMEOUT-RC = if s" aot-wid-build: child ran out of time" rc die then
    rc 0<> if s" aot-wid-build: child failed" rc die then ;
 
 \ The cold host depends on nothing this builder varies, so every mode - and

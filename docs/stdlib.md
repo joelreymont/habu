@@ -1782,6 +1782,7 @@ PROC-OUTCOME>RC     ( outcome -- rc )
 PROC-STATUS>RC      ( n -- rc )
 PROC-TIMEOUT-RC          ( -- n )
 PROC-EXIT-RC             ( n n -- n )
+PROC-OUTCOME>DEADLINE-RC ( outcome -- rc )
 PROC-WAIT-OUTCOME        ( pid -- outcome )
 PROC-WAIT-RC             ( pid -- rc )
 PROC-SPAWN-IO            ( ptr u8 len fd fd fd -- pid )
@@ -1852,6 +1853,12 @@ with it for `E-PROC-TIMEOUT`, and the process that runs the tool throws
 status )` is the exit side: 0 for no throw, `PROC-TIMEOUT-RC` for
 `E-PROC-TIMEOUT`, and the tool's own failure status `fail` for any other code.
 `tools/native-build-core.f` and `tools/build-fixpoint.f` exit through it.
+`PROC-OUTCOME>DEADLINE-RC` is the capture side: it flattens an outcome as
+`PROC-OUTCOME>RC` does, except that a capture whose own deadline expired reads
+`PROC-TIMEOUT-RC`, the status `timeout` reports for the command it killed,
+instead of 137. A caller that throws `E-PROC-TIMEOUT` again on that status
+treats its own deadline and the child's alike, and a tool that dies with the
+rc hands the deadline on to its parent.
 
 `PROC-SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
 `fd` roles. Negative fd values mean inherit/default; nonnegative fd values are passed

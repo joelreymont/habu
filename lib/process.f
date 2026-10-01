@@ -212,6 +212,19 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    code E-PROC-TIMEOUT = if PROC-TIMEOUT-RC exit then
    fail ;
 
+\ A capture child's rc, with the capture's own expired deadline read as
+\ PROC-TIMEOUT-RC, the status coreutils `timeout` reports for the command it
+\ killed; PROC-OUTCOME>RC reads it as 137, like any other SIGKILL death. A
+\ caller that throws E-PROC-TIMEOUT again on PROC-TIMEOUT-RC then reports this
+\ deadline and one that expired inside the child alike, and a tool that dies
+\ with the rc hands the deadline on to its own parent.
+: PROC-OUTCOME>DEADLINE-RC ( outcome -- rc )
+   MATCH outcome
+     exited OF >RC ENDOF
+     signaled OF 128 + >RC ENDOF
+     timeout OF PROC-TIMEOUT-RC >RC ENDOF
+   ;MATCH ;
+
 : PROC-WAIT-OUTCOME ( pid -- outcome )
    PROC-WAIT-STATUS PROC-STATUS>OUTCOME ;
 

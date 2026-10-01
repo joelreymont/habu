@@ -156,10 +156,16 @@ TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
    TMP$ ARGS-XT @ execute
    ENGINE$ >LEN PROGRAM$ >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN BUILD-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type
    2 ERR erru LEN>N write drop
+   \ An expired deadline is named and thrown again, so the gate pool labels the
+   \ family's build row TIMEOUT-UNDER-LOAD.
+   rc PROC-TIMEOUT-RC = if
+      s" image build ran out of time" FAILED$ type cr
+      E-PROC-TIMEOUT throw
+   then
    rc 0 <> if s" image build failed" FAILED$ rc die then ;
 
 : PUBLISH ( -- )

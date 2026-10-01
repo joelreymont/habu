@@ -53,8 +53,9 @@ public
 \ The builder's own deadline (test/whitebox-engine.f BUILD-RUN). It starts only
 \ after the key is hashed, so a caller that builds the engine under a deadline
 \ of its own gives that one a margin beyond this (test/gate-images.f
-\ BUILD-ROW-TIMEOUT-MS): the inner deadline then governs, BUILD-RUN dies with
-\ the builder's status, and the exit registry removes the work directory.
+\ BUILD-ROW-TIMEOUT-MS): the inner deadline then governs, BUILD-RUN names it and
+\ throws E-PROC-TIMEOUT, and EMIT removes the work directory before it passes
+\ the throw on.
 360000 constant BUILD-TIMEOUT-MS
 
 private

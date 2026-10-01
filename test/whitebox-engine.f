@@ -132,13 +132,17 @@ variable RESOLVED?
    BUILD-ARGS
    ENGINE-CANDIDATE:PATH$ >LEN s" " >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN WHITEBOX-KEY:BUILD-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type
    2 ERR erru LEN>N write drop
-   \ A deadline that expired in the build (tools/native-build-args.f) is thrown
-   \ again, so the gate pool labels this build row TIMEOUT-UNDER-LOAD.
-   rc PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+   \ A deadline that expired, this capture's or one in the build
+   \ (tools/native-build-args.f), is named and thrown again, so the gate pool
+   \ labels this build row TIMEOUT-UNDER-LOAD.
+   rc PROC-TIMEOUT-RC = if
+      s" whitebox-engine: unsealed engine build ran out of time" type cr
+      E-PROC-TIMEOUT throw
+   then
    rc 0 <> if s" whitebox-engine: unsealed engine build failed" rc die then ;
 
 : PUBLISH ( -- )

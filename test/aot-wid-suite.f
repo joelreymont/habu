@@ -232,7 +232,11 @@ create NUM-BUF 32 allot   variable NUM-U
             o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
-   ;MATCH ;
+   ;MATCH
+   \ The builder exits PROC-TIMEOUT-RC when a deadline expired in it: replay its
+   \ stderr, which names the step, and throw E-PROC-TIMEOUT again, so the gate
+   \ pool labels this row TIMEOUT-UNDER-LOAD.
+   RC @ PROC-TIMEOUT-RC = if ERR$ type cr E-PROC-TIMEOUT throw then ;
 
 : BUILD-VARIANT ( -- )
    PROC-ENV-RESET

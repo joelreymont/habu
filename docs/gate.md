@@ -227,6 +227,15 @@ live one.
   `BF-RC0`, the build-fixpoint rows (`tools/build-fixpoint-test-lib.f`
   `BFT-FIXPOINT-RC`) and `test/whitebox-engine.f` throw `E-PROC-TIMEOUT` again
   on 124, and the rows rethrow it once the step is named.
+- A build row's own capture deadline reaches the pool the same way. A capture
+  whose deadline expired reads 137, a SIGKILL death, through
+  `PROC-OUTCOME>RC`, so the image builders (`test/whitebox-engine.f`,
+  `test/keyed-image.f`, `test/cold-engine.f`) and `test/aot-wid-build.f` read
+  their captures through `PROC-OUTCOME>DEADLINE-RC`, which gives 124 instead.
+  The image builders name the step and throw `E-PROC-TIMEOUT`;
+  `test/aot-wid-build.f` dies with 124, and the rows that run it
+  (`test/aot-wid-suite.f`, `test/aot-wide-format-lib.f`) throw
+  `E-PROC-TIMEOUT` again on that status.
 - A row that needs an external server starts a private one and stops it
   whatever its cases do. The `pg` row (`test/db/pg-cluster.f`) runs `initdb`
   and `pg_ctl` from `PATH`, a gate requirement on every host
