@@ -27,6 +27,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/test/outcome.f
 require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -84,13 +85,13 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
       2drop s" bin/hb" exit
    then ;
 
-: UDG-STORE! ( len len outcome -- )
-   MATCH outcome
+: UDG-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+   erru LEN>N UDG-ERR-U !  outu LEN>N UDG-OUT-U !
+   oc MATCH outcome
      exited OF UDG-RC ! 0 0= UDG-EXITED ! ENDOF
      signaled OF UDG-RC ! 0 0= 0= UDG-EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N UDG-ERR-U !  LEN>N UDG-OUT-U ! ;
+     timeout OF src u UDG-OUT UDG-OUT-U @ UDG-ERR UDG-ERR-U @ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : UDG-IN! ( ptr u8 n -- ) {: a:ptr u:n :}
    u UDG-CAP > if E-FS-CAPACITY throw then
@@ -98,14 +99,14 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
    u UDG-IN-U ! ;
 
 \ Run the program as a --load file with empty stdin.
-: UDG-RUN-LOAD ( ptr u8 n -- )
-   UDG-CHILD 2swap WRITE-ALL
+: UDG-RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
+   UDG-CHILD src u WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    UDG-CHILD >LEN PROC-ARGV+
    UDG-HB$ >LEN  UDG-EMPTY 0 >LEN  UDG-OUT UDG-CAP >LEN
    UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   UDG-STORE! ;
+   src u UDG-STORE! ;
 
 \ Run the program as a piped stdin program (no --load), the other cold-prefix path.
 : UDG-RUN-STDIN ( ptr u8 n -- )
@@ -113,15 +114,15 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
    PROC-ARGV-RESET
    UDG-HB$ >LEN  UDG-IN$ >LEN  UDG-OUT UDG-CAP >LEN
    UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   UDG-STORE! ;
+   UDG-IN$ UDG-STORE! ;
 
 package UDG-EXEC
 
 public
 
-: SUBJECT ( ptr u8 n -- )
-   UDG-OUT UDG-CAP >LEN UDG-ERR UDG-CAP >LEN
-   UDG-TIMEOUT-MS >MS SUBJECT:RUN UDG-STORE! ;
+: SUBJECT ( ptr u8 n -- ) {: src:ptr u:n :}
+   src u UDG-OUT UDG-CAP >LEN UDG-ERR UDG-CAP >LEN
+   UDG-TIMEOUT-MS >MS SUBJECT:RUN src u UDG-STORE! ;
 
 ;package
 

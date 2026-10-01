@@ -2,6 +2,7 @@
 \ Tier-neutral by design: each subject is compiled in a child this file runs at
 \ both tiers, so the tier of this row selects nothing.
 require lib/test.f
+require lib/test/outcome.f
 require lib/test/subject.f
 require test/checker-assert.f
 
@@ -41,17 +42,17 @@ variable EXITED
    SB$ ;
 
 
-: STORE! ( len len outcome -- )
-   MATCH outcome
+: STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+   erru LEN>N ERR-U !  outu LEN>N OUT-U !
+   oc MATCH outcome
       exited OF RC ! true EXITED ! ENDOF
       signaled OF RC ! false EXITED ! ENDOF
-      timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N ERR-U ! LEN>N OUT-U ! ;
+      timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 
-: RUN-SOURCE ( ptr u8 n -- )
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN STORE! ;
+: RUN-SOURCE ( ptr u8 n -- ) {: src:ptr u:n :}
+   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN src u STORE! ;
 
 
 : ?KNOWN ( -- )

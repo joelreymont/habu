@@ -26,6 +26,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/test/outcome.f
 require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -88,13 +89,13 @@ create EMPTY 1 allot            \ zero-length stdin
       2drop s" bin/hb" exit
    then ;
 
-: STORE! ( len len outcome -- )
-   MATCH outcome
+: STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+   erru LEN>N ERR-U !  outu LEN>N OUT-U !
+   oc MATCH outcome
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout OF src u OUT OUT-U @ ERR ERR-U @ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : IN! ( ptr u8 n -- ) {: a:ptr u:n :}
    u CAP > if E-FS-CAPACITY throw then
@@ -102,14 +103,14 @@ create EMPTY 1 allot            \ zero-length stdin
    u IN-U ! ;
 
 \ Run the program as a --load file with empty stdin.
-: RUN-LOAD ( ptr u8 n -- )
-   CHILD 2swap WRITE-ALL
+: RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
+   CHILD src u WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    CHILD >LEN PROC-ARGV+
    HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   STORE! ;
+   src u STORE! ;
 
 \ Run the program as a piped stdin program (no --load), the other cold-prefix path.
 : RUN-STDIN ( ptr u8 n -- )
@@ -117,13 +118,13 @@ create EMPTY 1 allot            \ zero-length stdin
    PROC-ARGV-RESET
    HB$ >LEN  IN$ >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   STORE! ;
+   IN$ STORE! ;
 
 \ The third child-run path, beside RUN-LOAD and RUN-STDIN above: a disposable
 \ SUBJECT fork rather than a fresh engine process.
-: RUN-SUBJECT ( ptr u8 n -- )
-   OUT CAP >LEN ERR CAP >LEN
-   TIMEOUT-MS >MS SUBJECT:RUN STORE! ;
+: RUN-SUBJECT ( ptr u8 n -- ) {: src:ptr u:n :}
+   src u OUT CAP >LEN ERR CAP >LEN
+   TIMEOUT-MS >MS SUBJECT:RUN src u STORE! ;
 
 : LF ( -- )
    10 SB-APPEND-C ;

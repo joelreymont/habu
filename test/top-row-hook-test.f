@@ -26,6 +26,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/test/outcome.f
 require lib/test/subject.f
 require lib/memory.f
 require lib/fs.f
@@ -226,13 +227,13 @@ create TRH-EMPTY 1 allot
       2drop s" bin/hb" exit
    then ;
 
-: TRH-STORE! ( len len outcome -- )
-   MATCH outcome
+: TRH-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+   erru LEN>N TRH-ERR-U !  outu LEN>N TRH-OUT-U !
+   oc MATCH outcome
      exited OF TRH-RC ! 0 0= TRH-EXITED ! ENDOF
      signaled OF TRH-RC ! 0 0= 0= TRH-EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N TRH-ERR-U !  LEN>N TRH-OUT-U ! ;
+     timeout OF src u TRH-OUT TRH-OUT-U @ TRH-ERR TRH-ERR-U @ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : TRH-IN! ( ptr u8 n -- ) {: a:ptr u:n :}
    u TRH-IO-CAP > if E-FS-CAPACITY throw then
@@ -247,7 +248,7 @@ create TRH-EMPTY 1 allot
    TRH-CHILD >LEN PROC-ARGV+
    TRH-HB$ >LEN  TRH-EMPTY 0 >LEN  TRH-OUT TRH-IO-CAP >LEN
    TRH-ERR TRH-IO-CAP >LEN  TRH-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   TRH-STORE! ;
+   src srcu TRH-STORE! ;
 
 \ Run the program as a piped stdin program (no --load), the other cold-prefix path.
 : TRH-RUN-STDIN ( ptr u8 n -- ) {: src:ptr srcu:n :}
@@ -255,11 +256,11 @@ create TRH-EMPTY 1 allot
    PROC-ARGV-RESET
    TRH-HB$ >LEN  TRH-IN$ >LEN  TRH-OUT TRH-IO-CAP >LEN
    TRH-ERR TRH-IO-CAP >LEN  TRH-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   TRH-STORE! ;
+   src srcu TRH-STORE! ;
 
 : TRH-RUN-SUBJECT ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu TRH-OUT TRH-IO-CAP >LEN TRH-ERR TRH-IO-CAP >LEN
-   TRH-TIMEOUT-MS >MS SUBJECT:RUN TRH-STORE! ;
+   TRH-TIMEOUT-MS >MS SUBJECT:RUN src srcu TRH-STORE! ;
 
 : TRH-LF ( -- )
    10 SB-APPEND-C ;

@@ -26,6 +26,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/test/outcome.f
 require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -199,13 +200,13 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 
 \ --- child spawn + outcome capture ---
 
-: SPK-STORE! ( len len outcome -- )
-   MATCH outcome
+: SPK-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+   erru LEN>N SPK-ERR-U !  outu LEN>N SPK-OUT-U !
+   oc MATCH outcome
      exited OF SPK-RC ! 0 0= SPK-EXITED ! ENDOF
      signaled OF SPK-RC ! 0 0= 0= SPK-EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N SPK-ERR-U !  LEN>N SPK-OUT-U ! ;
+     timeout OF src u SPK-OUT SPK-OUT-U @ SPK-ERR SPK-ERR-U @ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : SPK-IN! ( ptr u8 n -- ) {: a:ptr u:n :}
    u SPK-CAP > if E-FS-CAPACITY throw then
@@ -213,14 +214,14 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    u SPK-IN-U ! ;
 
 \ Run the forge as a --load file with empty stdin.
-: SPK-RUN-LOAD ( ptr u8 n -- )
-   SPK-CHILD 2swap WRITE-ALL
+: SPK-RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
+   SPK-CHILD src u WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    SPK-CHILD >LEN PROC-ARGV+
    SPK-HB$ >LEN  SPK-EMPTY 0 >LEN  SPK-OUT SPK-CAP >LEN
    SPK-ERR SPK-CAP >LEN  SPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   SPK-STORE! ;
+   src u SPK-STORE! ;
 
 \ Run the forge as a piped stdin program (no --load), the other cold-prefix path.
 : SPK-RUN-STDIN ( ptr u8 n -- )
@@ -228,11 +229,11 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    PROC-ARGV-RESET
    SPK-HB$ >LEN  SPK-IN$ >LEN  SPK-OUT SPK-CAP >LEN
    SPK-ERR SPK-CAP >LEN  SPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   SPK-STORE! ;
+   SPK-IN$ SPK-STORE! ;
 
-: SPK-SUBJECT ( ptr u8 n -- )
-   SPK-OUT SPK-CAP >LEN SPK-ERR SPK-CAP >LEN
-   SPK-TIMEOUT-MS >MS SUBJECT:RUN SPK-STORE! ;
+: SPK-SUBJECT ( ptr u8 n -- ) {: src:ptr u:n :}
+   src u SPK-OUT SPK-CAP >LEN SPK-ERR SPK-CAP >LEN
+   SPK-TIMEOUT-MS >MS SUBJECT:RUN src u SPK-STORE! ;
 
 : SPK-ASSERT-SEAL ( -- )                     \ child died with the sealed-package exit
    SPK-EXITED @ TTRUE

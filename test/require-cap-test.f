@@ -13,6 +13,7 @@
 \ Registered beside the sister capacity regression test/seal.f.
 
 require lib/test.f
+require lib/test/outcome.f       \ T-TIMED-OUT - the report of a child past its deadline
 require lib/string.f
 require lib/process.f            \ outcome sumtype for the child completion
 require lib/test/subject.f       \ SUBJECT:RUN - isolated evaluation of the subject
@@ -59,22 +60,22 @@ variable EXITED?
 
 \ ---- fork a child on the forge, capture its completion + stderr ---------------
 
-: STORE ( outcome -- )
-   MATCH outcome
+: STORE ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+   erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF   RC-N ! -1 EXITED? ! ENDOF
      signaled OF RC-N !  0 EXITED? ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
+     timeout OF src u OUT-BUF outu LEN>N ERR-BUF ERR-U @ T-TIMED-OUT ENDOF
    ;MATCH ;
 
 : RUN-CHILD ( n -- )
-   FORGE-GEN
+   FORGE-GEN {: src:ptr u:n :}
+   src u
    OUT-BUF IO-CAP >LEN
    ERR-BUF IO-CAP >LEN
    TIMEOUT-MS >MS
    SUBJECT:RUN                          \ -- out-len err-len outcome
-   STORE
-   LEN>N ERR-U !
-   LEN>N drop ;
+   src u STORE ;
 
 : ERR$ ( -- ptr u8 n )  ERR-BUF ERR-U @ ;
 

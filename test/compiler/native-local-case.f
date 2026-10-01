@@ -30,19 +30,19 @@ variable EXITED
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 
-: STORE ( len len outcome -- )
-   MATCH outcome
+: STORE ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+   erru LEN>N ERR-U !  outu LEN>N OUT-U !
+   oc MATCH outcome
       exited OF RC ! true EXITED ! ENDOF
       signaled OF RC ! false EXITED ! ENDOF
-      timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N ERR-U ! LEN>N OUT-U ! ;
+      timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : RUN-SOURCE ( ptr u8 n n -- ) {: src:ptr u:n tier:n :}
    SB-RESET
    tier 0= if s" 0 set-tier " else s" 1 set-tier " then SB-APPEND
    src u SB-APPEND
-   SB$ OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN STORE ;
+   SB$ OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN SB$ STORE ;
 
 : EXPECT-RC ( n -- ) {: want:n :}
    EXITED @ 0= RC @ want <> or if ERR$ type OUT$ type then

@@ -310,7 +310,11 @@ at its deadline.
   (`lib/process.f`), `GT-RC@` (`lib/test/runner.f`), `GE-FAIL`
   (`test/gate-common-lib.f`) and the `lib/test/outcome.f` asserts that want an
   exit or a signal throw `E-PROC-TIMEOUT` for an expired deadline, and a test
-  that MATCHes the outcome itself throws it from its `timeout` arm, so the row
+  that MATCHes the outcome itself throws it from its `timeout` arm (a
+  `SUBJECT:RUN` caller through `SUBJECT:TIMED-OUT`, `lib/test/subject.f`,
+  which first prints the program and the capture drained before the deadline,
+  as `GE-FAIL` does for a gate entry; `T-TIMED-OUT`, `lib/test/outcome.f`,
+  prints the case label ahead of it), so the row
   reaches the pool as `TIMEOUT-UNDER-LOAD` instead of failing an assertion on
   137 or on a false exited flag. A deliberate kill is a `signaled` outcome and
   still reads 128 + signal; a test that expects the deadline asserts it with

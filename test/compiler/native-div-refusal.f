@@ -70,16 +70,16 @@ variable EXITED
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
 
-: STORE! ( len len outcome -- )
-   MATCH outcome
+: STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+   erru LEN>N ERR-U !  outu LEN>N OUT-U !
+   oc MATCH outcome
      exited   OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout  OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout  OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : RUN ( ptr u8 n -- ) {: src:ptr u:n :}
-   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN STORE! ;
+   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN src u STORE! ;
 
 \ A case passes when the child EXITED cleanly and printed what the program says
 \ it prints. The exit code alone would pass for a program that died before its

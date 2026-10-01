@@ -9,6 +9,7 @@
 require lib/errors.f
 require lib/test/assert.f
 require lib/process.f
+require lib/test/subject.f
 
 : T-OUTCOME-EXITED= ( outcome n -- ) {: want:n :}   \ completed by exit with this code
    MATCH outcome
@@ -30,3 +31,7 @@ require lib/process.f
      signaled OF drop 1 0 T= ENDOF
      timeout OF 0 0= TTRUE ENDOF
    ;MATCH ;
+
+\ SUBJECT:TIMED-OUT with the case label first, for a caller that keeps one.
+: T-TIMED-OUT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   T-LABEL. SUBJECT:TIMED-OUT ;
