@@ -8,22 +8,23 @@
 \ and READ. The window holds one of each thing the shadow tables carry: a leaf, a
 \ call to a window word, a `does>` definer, a quotation, a code literal naming a
 \ window word, a window DATA literal, a call to a word of the engine's own prefix,
-\ and a declared code cell holding a window word's entry. It also holds two
-\ shadowed words the capture strips: a dead private word between two shadowed
-\ records, so every record after it ships one row lower than its window index,
-\ and a private `does>` definer that a load-time child keeps live, whose shipped
-\ companion carries its routine.
+\ and a declared code cell holding a window word's entry. It also holds three
+\ shadowed words that ship no record: a dead private word and a retired one
+\ between two shadowed records - the capture strips the first and does not
+\ record the second at all, so past them a record's window index, its capture
+\ index and its shipped row all differ - and a private `does>` definer that a
+\ load-time child keeps live, whose shipped companion carries its routine.
 \
 \ WHAT IS ASKED. Every record is found by the name it carries in the capture's
 \ shipped record table, the row the shadow keys it by: the records and their
 \ spans, the call site's target, the companion's entry against the definer's own
 \ `codeaddr`, the function, code and DATA literals as the capture rewrote them,
-\ the prefix call by name, the code cell, the stripped words' absence and the
-\ carried definer, and the four tables after a READ of what WRITE wrote, then
-\ the same file from a second WRITE. Refusing an artifact of the version before
-\ this one is test/aot-chain-capture-suite.f's old-version row case; the
-\ capture's refusals of a stripped routine or callee no shipped record carries
-\ are test/x86-64-link-records.f's strip and callee children.
+\ the prefix call by name, the code cell, the stripped and retired words'
+\ absence and the carried definer, and the four tables after a READ of what
+\ WRITE wrote, then the same file from a second WRITE. Refusing an artifact of
+\ the version before this one is test/aot-chain-capture-suite.f's old-version
+\ row case; the capture's refusals of a stripped routine or callee no shipped
+\ record carries are test/x86-64-link-records.f's strip and callee children.
 \
 \ WHAT IS REFUSED. Artifacts this WRITE produced with one table field changed: a
 \ record's routine one byte past the shadow code, a site and a code cell naming
@@ -78,6 +79,8 @@ create WCELL 8 allot
 1 set-tier
 : PEEK ( -- n ) WCELL @ ;
 private : HIDDEN ( n -- ) . ; public
+: GONE ( -- n ) PEEK 1+ ;
+undefine GONE
 : LEAF ( n n -- n ) + ;
 : CALLER ( n -- n ) dup LEAF 1 + ;
 : CONST ( n -- ) create , does> ( -- n ) @ ;
@@ -212,10 +215,11 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    W-SHOW ROW-OF 8 T= ;
 
 : STRIP-CASE ( -- )
-   s" a dead private word between two shadowed records ships no record and no routine, and the records after it ship one row lower" T-LABEL
+   s" a dead private word and a retired one between two shadowed records ship no record and no routine, and the record after them ships one row past PEEK, three window records on" T-LABEL
    s" HIDDEN" SHIPPED -1 T=
+   s" GONE" SHIPPED -1 T=
    W-LEAF W-PEEK 1+ T=
-   s" AOTSH-WINDOW:LEAF" XREF-FIND-INDEX  s" AOTSH-WINDOW:PEEK" XREF-FIND-INDEX 2 +  T= ;
+   s" AOTSH-WINDOW:LEAF" XREF-FIND-INDEX  s" AOTSH-WINDOW:PEEK" XREF-FIND-INDEX 3 +  T= ;
 
 : CARRIED-CASE ( -- )
    s" a live private definer ships no record, and its shipped does> companion carries its routine from the definer's start" T-LABEL

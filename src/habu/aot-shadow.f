@@ -28,15 +28,18 @@
 \ reset, and are refused rather than read. The artifact's record table holds only
 \ the records the capture ships, and a stripped private word moves every later
 \ one down a row, so a routine, a site target and a code cell each name their
-\ record by its row in that table (SH-NUMBER), never by its window index. A
-\ stripped record files no row: a dead one's code left the payload too, a
-\ shipped record over the same emission carries a live one (a private definer's
-\ companion, kept for the children it made), and a live one nothing carries is
-\ refused by name, as is a site naming a stripped record. Every host address a
-\ routine names is resolved here, through the xt -> record index the ARM64 call
-\ sites use (ACAP-TGT>REC), into a shipped record or into the name of a word of
-\ the engine's own prefix; a host address nothing resolves is refused by name, as
-\ an ARM64 site is.
+\ record by its row in that table (SH-NUMBER), never by its window index. Nor is
+\ the window index the capture's own: the capture does not record a retired
+\ record at all, so the walk reads a capture table only through ACAP-DICT>CAP.
+\ A stripped or retired record files no row: a dead one's code left the payload
+\ too, a retired one has no name to ship, a shipped record over the same
+\ emission carries a live one (a private definer's companion, kept for the
+\ children it made), and a live one nothing carries is refused by name, as is a
+\ site naming a stripped or retired record. Every host address a routine names
+\ is resolved here, through the xt -> record index the ARM64 call sites use
+\ (ACAP-TGT>REC), into a shipped record or into the name of a word of the
+\ engine's own prefix; a host address nothing resolves is refused by name, as an
+\ ARM64 site is.
 
 require src/compiler/native/hir.f
 require src/compiler/native/emission.f
@@ -103,10 +106,11 @@ DYNAMIC-BUFFER SH-ROWS n             \ capture record -> its shipped row, or -1
 \ ---- the shipped rows -----------------------------------------------------------
 \ ACAP-COMPACT-ONE gives a record a row of the compact table exactly when it sets
 \ the record's named bit, in capture order, so a record's row is the count of
-\ shipped records below it, and the count over the window is the table's.
+\ shipped records below it; ACAP-PROVE-RECS, which CAPTURE runs after the last
+\ change to either, has proved the count over the window is the table's.
 : SH-NUMBER ( -- )
    ACAP-REC-ALL @ {: n:n :}
-   n 1 max SH-ROWS-RESERVE
+   n SH-ROWS-RESERVE
    0 SH-SHIP-N !
    n 0 ?do
       i ACAP-NAMED-BIT @ 0<> if
@@ -114,16 +118,14 @@ DYNAMIC-BUFFER SH-ROWS n             \ capture record -> its shipped row, or -1
       else
          -1 i SH-ROWS !
       then
-   loop
-   SH-SHIP-N @ AOT-REC-N @ <> if
-      s" aot-capture: the shipped records do not number the record table" 74 die
-   then ;
+   loop ;
 
 \ The shipped row of dictionary record idx, or -1 when it lies outside the window
-\ or the capture strips it.
-: SH-SHIPPED ( n -- n ) {: idx:n :}
-   idx ACAP-W-R0 @ >=  idx ACAP-W-R1 @ <  and 0= if -1 exit then
-   idx ACAP-W-R0 @ - SH-ROWS @ ;
+\ or the capture retires or strips it.
+: SH-SHIPPED ( n -- n )
+   ACAP-DICT>CAP {: k:n :}
+   k 0 < if -1 exit then
+   k SH-ROWS @ ;
 
 \ ---- rows ---------------------------------------------------------------------
 : SH-SITE+ ( n n n -- ) {: at:n kind:n target:n :}
@@ -232,13 +234,17 @@ DYNAMIC-BUFFER SH-ROWS n             \ capture record -> its shipped row, or -1
    r NSHADOW:EMISSION@ e <> if false exit then
    r NSHADOW:RECORD@ SH-SHIPPED 0 >= ;
 
-\ Map row r files a record the capture strips. A shipped row over its emission
-\ carries its routine; otherwise a dead one goes with its code, and a live one
-\ is refused.
+\ Map row r files a record the capture ships no row for. A shipped row over its
+\ emission carries its routine; otherwise a dead one goes with its code, and a
+\ live one is refused. A retired record has no capture index, so no liveness: it
+\ has no name to ship, and a site or code cell reaching its routine is refused
+\ by name (SH-TARGET, SH-XTCELL), so it goes with its code too.
 : SH-STRIP ( n -- ) {: r:n :}
    r NSHADOW:EMISSION@ {: e:n :}
    r 1- e SH-OWNER?  r 1+ e SH-OWNER? or if exit then
-   r NSHADOW:RECORD@ ACAP-W-R0 @ - ACAP-GRAPH-LIVE? if SH-STRIPPED then ;
+   r NSHADOW:RECORD@ ACAP-DICT>CAP {: k:n :}
+   k 0 < if exit then
+   k ACAP-GRAPH-LIVE? if SH-STRIPPED then ;
 
 : SH-WALK ( -- )
    -1 SH-E !

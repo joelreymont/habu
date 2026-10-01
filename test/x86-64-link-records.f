@@ -45,11 +45,11 @@
 \ forged rows: a site naming the package row, the same in a `does>` definer's
 \ routine, which the refusal names by the definer, a code cell whose xt row is
 \ gone, a code cell whose xt row names the package row, and a protected-wid row
-\ outside the window. Three the capture refuses
+\ outside the window. Four the capture refuses
 \ before any layout, because the shadow keys every routine, target and code cell
 \ by the record row the capture ships: a live private word whose routine no
-\ shipped record carries, a shadow call to a private word the capture strips,
-\ and a code cell holding a quotation's entry.
+\ shipped record carries, a shadow call to a private word the capture strips
+\ and one to a retired word, and a code cell holding a quotation's entry.
 \
 \ LOAD ORDER. The x86-64 side first, then the ARM64 code layer the capture
 \ needs: src/arch/arm64/icode.f defines CODE, LBL and ASM-LEN as globals, and a
@@ -58,7 +58,8 @@
 \ Registered as `SUITE x86-64-link-records`. Run standalone from the repository
 \ root: bin/hb --load test/x86-64-link-records.f
 \ A child: bin/hb --load test/x86-64-link-records.f -- MODE, MODE one of shift
-\ stray strip callee wid unresolved quot cellname pkgsite doessite xtless pkgcell
+\ stray strip callee retired wid unresolved quot cellname pkgsite doessite
+\ xtless pkgcell
 
 package X64LT
 public
@@ -82,6 +83,7 @@ public
    s" stray" MODE? if s" 0 set-tier : BARE ( -- n ) 7 ; 1 set-tier : WRAP ( -- n ) BARE 1+ ;" exit then
    s" strip" MODE? if s" private : HELPER ( n -- n ) 3 * ; public : USER ( n -- n ) HELPER 1+ ;" exit then
    s" callee" MODE? if s" private 0 set-tier : LOW ( -- n ) 7 ; public 1 set-tier : HIGH ( -- n ) LOW 1+ ;" exit then
+   s" retired" MODE? if s" : GONE ( -- n ) 7 ; : KEEP ( -- n ) GONE 1+ ; undefine GONE" exit then
    s" unresolved" MODE? if s" : SAME ( ptr u8 n ptr u8 n -- bool ) STR= ;" exit then
    s" quot" MODE? if s" : Q ( -- [ n -- n ] ) [: 1 + ;] ;  Q align here 0 , xt!" exit then
    s" cellname" MODE? if s" ' STR= align here 0 , xt!" exit then
@@ -549,6 +551,11 @@ variable RC
    s" callee" s" names window record LOW"
    s" aot-capture: a shadow site names a record the capture strips" REFUSED ;
 
+: RETIRED-CASE ( -- )
+   s" a shadow call to a retired window word is refused by the callee's name" T-LABEL
+   s" retired" s" names window record GONE"
+   s" aot-capture: a shadow site names a record the capture strips" REFUSED ;
+
 : WID-FORGED-CASE ( -- )
    s" a protected-wid row outside the capture window is refused by its row" T-LABEL
    s" wid" s" protected-wid row 0"
@@ -602,8 +609,8 @@ variable RC
 
 \ The children that end in a refusal, before the layout returns.
 : REFUSAL? ( -- bool )
-   s" stray" MODE?  s" strip" MODE? or  s" callee" MODE? or  s" wid" MODE? or
-   s" unresolved" MODE? or  s" quot" MODE? or  s" xtless" MODE? or
+   s" stray" MODE?  s" strip" MODE? or  s" callee" MODE? or  s" retired" MODE? or
+   s" wid" MODE? or  s" unresolved" MODE? or  s" quot" MODE? or  s" xtless" MODE? or
    s" cellname" MODE? or  s" pkgsite" MODE? or  s" doessite" MODE? or
    s" pkgcell" MODE? or ;
 
@@ -643,6 +650,7 @@ public
    STRAY-CASE
    STRIP-CASE
    CALLEE-CASE
+   RETIRED-CASE
    WID-FORGED-CASE
    UNRESOLVED-CASE
    QUOT-CASE

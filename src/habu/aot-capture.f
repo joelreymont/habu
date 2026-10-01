@@ -372,8 +372,22 @@ DYNAMIC-BUFFER ACAP-GSITE n
    boff r AOT-P32!  noff r 4 + AOT-P32!  w r 8 + AOT-P32!
    AOT-SITE-N @ 1+ AOT-SITE-N ! ;
 
+variable ACAP-W-B0                       \ the window's code base, latched at CAPTURE
+variable ACAP-W-R0  variable ACAP-W-R1   \ its record span
+variable ACAP-W-D0                       \ its first DATA address
+
 \ --- records: copy host record (48 bytes), rebase ordinary [0] xt to blob offset ---
 : ACAP-REC-DST ( n -- ptr u8 ) 48 * AOT-REC-BUF@ swap + ;
+
+\ A RECORD HAS TWO INDICES. Its dictionary index names it in the live dictionary
+\ and in a compiler's map of it; its capture index is its row of the verbatim
+\ table, which ACAP-REC-DST, ACAP-NAMED-BIT, ACAP-GRAPH-LIVE? and every walk over
+\ ACAP-REC-ALL take. ACAP-ADD-REC leaves a retired record out, so past one the
+\ two differ, and a reader holding a dictionary index translates it here.
+DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index, or -1
+: ACAP-DICT>CAP ( n -- n ) {: idx:n :}          \ -1 outside the window or retired
+   idx ACAP-W-R0 @ >=  idx ACAP-W-R1 @ <  and 0= if -1 exit then
+   idx ACAP-W-R0 @ - ACAP-REC-OF @ ;
 
 \ A record is xt, flags/name-len, inline name and wid and carries no file of its
 \ own, so the name of the definition being added is the whole locator this
@@ -536,10 +550,6 @@ DYNAMIC-BUFFER ACAP-GSITE n
 variable ACAP-PRE-R      \ first record index of the prelude band
 variable ACAP-PRE-D      \ first DATA address of the prelude band
 variable ACAP-MARKED?    \ the band was declared for this capture
-variable ACAP-W-B0                       \ the window's code base, latched at CAPTURE
-variable ACAP-W-R0  variable ACAP-W-R1   \ its record span
-variable ACAP-W-D0                       \ its first DATA address
-DYNAMIC-BUFFER ACAP-REC-OF n             \ per window record, by dictionary order: its capture index or -1
 
 public
 
@@ -2478,16 +2488,14 @@ TRUSTED: ACAP-RANGE-XT ( n n n -- ptr u8 n [ ptr u8 n -- ] ) ;
 \ named; which names this capture keeps is decided here, and is final only after
 \ ACAP-GRAPH-NAME-DOES. So the window's checker sweeps again
 \ (src/core/checker.f CHECKER-SWEEP STRIP) with this capture's own answer,
-\ before its DATA is copied: ACAP-NAMED-BIT itself, read through ACAP-REC-OF.
+\ before its DATA is copied: ACAP-NAMED-BIT itself, read through ACAP-DICT>CAP.
 \ The engine's own records below the prelude band always ship named. The band
 \ [ACAP-PRE-R, ACAP-W-R0) is the capturing tool's own and never ships
 \ (ACAP-SITE-BAND refuses a call into it), and a record the build defined after
 \ the window never ships.
 : ACAP-SHIPS-NAMED? ( n -- bool ) {: idx:n :}
    idx ACAP-PRE-R @ < if true exit then
-   idx ACAP-W-R0 @ < if false exit then
-   idx ACAP-W-R1 @ >= if false exit then
-   idx ACAP-W-R0 @ - ACAP-REC-OF @ {: k:n :}
+   idx ACAP-DICT>CAP {: k:n :}
    k 0 < if false exit then
    k ACAP-NAMED-BIT @ 0<> ;
 
