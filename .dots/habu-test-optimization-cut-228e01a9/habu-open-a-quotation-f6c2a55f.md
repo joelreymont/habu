@@ -1,0 +1,9 @@
+---
+title: Open a quotation inside a quotation on the JIT tier
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-01T13:00:53.023200+02:00"
+---
+
+Problem: the JIT load tier refuses a lexically nested quotation (src/habu/habu2.f QNEST-MSG$ ~:173, 'hb: a quotation may not open inside a quotation: <name>', rc 75; docs/forth.md ~:807-810 'until nested quotations land only one [: is open at a time'), while the checker certifies the same definition and the AOT scanner accepts it since habu-diagnose-lexically-nested-56aafc89 (ebe19a15). So tools/check.f passes a source the loader refuses: review 143 (r4-expand c7) fixtures $HOME/.cache/tmp/kestrel-r4-rev143/fx/nestq and nestq0, ': X ( -- n ) [: [: 1 ;] drop 1 ;] drop 1 ;', check.f static pass clean, child run rc 75 in every all-errors mode, bare prose under --json-errors. The JIT dot habu-support-nested-quotations-7c5267cd closed 2026-09-16 as superseded by habu-campaign-c1-finish-1f129a00 ('residue is removing the representation limit at the responsible layer, not the diagnostic'), and no open dot carries it. Acceptance: the JIT tier keeps a bounded stack of open quotations, each closer restoring its own frame and an overdepth still a named refusal; the reducer RV:CALLEE ( n -- n ) 1+ ; ': QBN ( n n n -- n ) [: >r [: >r RV:CALLEE r> + ;] execute r> + ;] execute ;' with 3 7 11 returns 22 on JIT and AOT; deeper nesting, loops, inner EXIT, sibling identity and the capture and local-reference refusals keep working; check.f and the loader agree on the nestq fixture; docs/forth.md's one-open rule and its card line are rewritten to the new limit. Cases first through the real load path. Files: src/habu/habu2.f (quotation open/close), its native-quot tests, docs/forth.md, docs/forth-card.md. Baked: rebuild, g1 == g2, two-generation build.

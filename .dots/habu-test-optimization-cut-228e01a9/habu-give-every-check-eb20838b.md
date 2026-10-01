@@ -1,0 +1,9 @@
+---
+title: Give every check.f JSON record one contract
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-01T10:49:09.864925+02:00"
+---
+
+Problem (review 88 on cfdb2bdd and 159b5d48): check.f now emits record kinds that are not definition-shaped: the statement throw record (E-REJECTED with throw_code, tools/check-all-errors-core.f:519-537, docs/repair-diagnostics.md:61-67), E-ENGINE-PROVIDED (docs/repair-diagnostics.md:69-76), and the lex records E-UNTERMINATED-STRING / E-MALFORMED-REGISTRY-ROW (undocumented). The executable contract rejects them: GJA-DIAG-CONTRACT-ROW (tools/gate-json-assert-core.f:481) routes anything without decl to GJA-DIAG-COMMON (:449), which requires word/token_index/definition_source/declared_effect/inferred_effect/return_stack ('missing JSON field', rc 1); tools/repair-packet.f dies 'missing diagnostic field' (RP-DEF-PACKET, tools/repair-packet-core.f:183). The throw record also reuses E-REJECTED, the definition code, so code-keyed readers cannot tell it apart. Also: CA-LJW-N / CA-N$ (check-all-errors-core.f:500-508) duplicate lib/fmt.f's signed printer (INT>NUM :100, SB-INT :114). Acceptance: every record kind check.f emits has its own code or discriminator, is documented in docs/repair-diagnostics.md, and passes diag-contract; repair-packet handles each kind by a stated rule (a packet, or a documented skip), never dies on a documented kind; one signed-integer writer (lib/fmt.f or tools/lint/json-writer.f). Cases first through the gate-json-assert and repair-packet tests, seen to fail. Files: tools/check-all-errors-core.f, tools/check-core.f, tools/gate-json-assert-core.f, tools/repair-packet-core.f, docs/repair-diagnostics.md, their tests. Verify: tools/check-test.f, tools/check-all-errors-test.f, tools/repair-packet-test.f, test/gate-diagnostics.f, gate-json-assert tests. Ownership: check.f record contract.
