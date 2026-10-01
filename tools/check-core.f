@@ -1507,13 +1507,13 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-LINT-SOURCE CHK-LINT-LABEL RESERVED-NAME-LINT:FILE-AS
    RESERVED-NAME-LINT:FINISH ;
 
-\ Source-list all-errors redrive: run all-errors on each segment in the order
-\ the pre-pass verifies them (a loaded file where its loader sits), with the
-\ segments before it that checked clean replayed as support, so each checks
-\ against the state the load path gives it. A refused segment is not support:
-\ a later call of a word it rejected reports that word undefined, as a later
-\ file's does. Per-segment check failures (70/duplicate) are collected so every
-\ segment reports; any other throw aborts.
+\ All-errors on a source read from a path or a source list: run it on each
+\ segment in the order the pre-pass verifies them (a loaded file where its
+\ loader sits), with the segments before it that checked clean replayed as
+\ support, so each checks against the state the load path gives it. A refused
+\ segment is not support: a later call of a word it rejected reports that word
+\ undefined, as a later file's does. Per-segment check failures (70/duplicate)
+\ are collected so every segment reports; any other throw aborts.
 
 : CHK-ALL-SEG-ACT ( -- )
    CHK-ALL-SEG @ {: seg:n :}
@@ -1550,7 +1550,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 
 \ The replay reads this run's segment table, so it is removed however the run
 \ ends.
-: CHK-RUN-ALL-LIST-CURRENT ( -- )
+: CHK-RUN-ALL-EXPANDED ( -- )
    0 CHK-ALL-RC !
    [: CHK-ALL-REPLAY ;] CHECK-ALL-ERRORS:SUPPORT!
    [: CHK-RUN-ALL-SEGS ;] catch {: rc:n :}
@@ -1561,7 +1561,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 : CHK-RUN-ALL-CURRENT ( -- )
    CHK-OUT-BUF CHK-OUT-CAP CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:BUFFERS!
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   CHK-SEL-MODE @ CHK-SEL-LIST = if CHK-RUN-ALL-LIST-CURRENT exit then
+   CHK-EXPANDED? if CHK-RUN-ALL-EXPANDED exit then
    CHECK-ALL-ERRORS:SUPPORT-RESET
    CHK-LABEL CHK-SOURCE CHECK-ALL-ERRORS:FILE ;
 

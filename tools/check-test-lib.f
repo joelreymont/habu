@@ -2718,6 +2718,9 @@ create BIG $2000 allot   variable BIG-U
 \     replaying whole files as support: it checks the same segments against the
 \     segments before them, with the default check's verdict at the same file,
 \     line and column (the -ALL cases);
+\   - plain `--all-errors` checking the subject alone, so a word it takes from a
+\     file it loads is undefined (REQ-USE): it checks the same segments the
+\     source list does, with the same verdict at the same place;
 \   - the subject reached again through a require: it is still being expanded,
 \     so the pre-pass expands it once; the run loading its text a second time is
 \     CHK-BUILD-RUN's (dot c79b86b7);
@@ -2755,14 +2758,24 @@ variable REQ-U
 : REQ-RUN ( ptr u8 n -- n n n )
    REQ$ PATH-RUN ;
 
+: REQ-ALL-OPTS ( -- )
+   RESET
+   s" all-errors" OPT
+   s" json-errors" OPT ;
+
 \ `--all-errors --source-list` checks the same segments, each against the ones
 \ before it, and must give the default check's verdict at the same place.
 : REQ-ALL-RUN ( ptr u8 n -- n n n )
    REQ$ {: p:ptr pu:n :}
-   RESET
-   s" all-errors" OPT
-   s" json-errors" OPT
+   REQ-ALL-OPTS
    LIST-OPT
+   p pu FILE
+   [: RUN-ACT ;] IN-PROC ;
+
+\ Plain `--all-errors` on the one file must give the same verdict.
+: REQ-PLAIN-RUN ( ptr u8 n -- n n n )
+   REQ$ {: p:ptr pu:n :}
+   REQ-ALL-OPTS
    p pu FILE
    [: RUN-ACT ;] IN-PROC ;
 
@@ -2886,6 +2899,42 @@ variable REQ-U
    s" req-origin.f" REQ-ALL-RUN 70 T= {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru REQ-ORIGIN-AT$ CONTAINS? TTRUE ;
+
+\ The subject calls a word only the file it loads defines; the bad one also
+\ calls a word nothing defines, refused at the same place in every mode.
+: REQ-USE-FILES ( -- )
+   SB-RESET s" : CKT-RQ-GIVEN ( -- n ) 3 ;" REQ-LINE+
+   s" req-use-dep.f" REQ-WRITE
+   SB-RESET s" req-use-dep.f" REQ-LOAD+
+   s" : CKT-RQ-TAKE ( -- n ) CKT-RQ-GIVEN 1 + ;" REQ-LINE+
+   s" req-use.f" REQ-WRITE
+   SB-RESET s" req-use-dep.f" REQ-LOAD+
+   s" : CKT-RQ-MISS ( -- n ) CKT-RQ-GIVEN CKT-RQ-ABSENT + ;" REQ-LINE+
+   s" req-use-bad.f" REQ-WRITE ;
+
+: REQ-USE-AT$ ( -- ptr u8 n )
+   s\" req-use-bad.f\",\"line\":2,\"column\":37," ;
+
+: EXPECT-USE-UNDEFINED ( n n n -- )
+   70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   CAP-ERR erru REQ-USE-AT$ CONTAINS? TTRUE ;
+
+: TEST-REQUIRE-USE ( -- )
+   REQ-USE-FILES
+   s" req-use.f" REQ-RUN EXPECT-ACCEPTED
+   s" req-use-bad.f" REQ-RUN EXPECT-USE-UNDEFINED ;
+
+: TEST-REQUIRE-USE-ALL ( -- )
+   REQ-USE-FILES
+   s" req-use.f" REQ-PLAIN-RUN EXPECT-ACCEPTED
+   s" req-use-bad.f" REQ-PLAIN-RUN EXPECT-USE-UNDEFINED ;
+
+: TEST-REQUIRE-USE-ALL-LIST ( -- )
+   REQ-USE-FILES
+   s" req-use.f" REQ-ALL-RUN EXPECT-ACCEPTED
+   s" req-use-bad.f" REQ-ALL-RUN EXPECT-USE-UNDEFINED ;
 
 \ `--all-errors --source-list a b` runs all-errors on the ORIGINAL files'
 \ segments with the clean ones before each replayed as support: both bad defs
@@ -3180,6 +3229,9 @@ POISON-RECORD
    s" check/require-order-all-list" [: TEST-REQUIRE-ORDER-ALL ;] CASE-RUN
    s" check/require-late-all-list" [: TEST-REQUIRE-LATE-ALL ;] CASE-RUN
    s" check/require-origin-all-list" [: TEST-REQUIRE-ORIGIN-ALL ;] CASE-RUN
+   s" check/require-use" [: TEST-REQUIRE-USE ;] CASE-RUN
+   s" check/require-use-all" [: TEST-REQUIRE-USE-ALL ;] CASE-RUN
+   s" check/require-use-all-list" [: TEST-REQUIRE-USE-ALL-LIST ;] CASE-RUN
    s" check/image-tool-sources" [: TEST-IMAGE-TOOL-SOURCES ;] CASE-RUN
    s" check/source-list-all-errors" [: LIST-ALL-TEST ;] CASE-RUN
    CLEANUP-RUN
