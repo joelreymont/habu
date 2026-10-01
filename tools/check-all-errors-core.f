@@ -49,7 +49,6 @@ private
 create CA-LF-BUF 1 allot
 
 
-variable CA-FULL-R
 variable CA-FAILED
 variable CA-RAW-FAILURE
 variable CA-JSON-FOUND
@@ -144,81 +143,6 @@ variable CA-JSON
    CA-LF CA-LF-BUF c!
    CA-LF-BUF 1 ;
 
-\ ---- Cross-file support (source-list redrive) ----------------------------
-\ A caller checking an ordered list of sources installs a support replay, and
-\ every checker scope opened for the current source runs it first, so the
-\ prefix state (types, packages, definitions) of what was checked before it is
-\ in scope exactly as at runtime. The replay brings each part in with REPLAY,
-\ which annotates and rethrows a failure - never swallowed.
-
-: CA-NO-SUPPORT ( -- ) ;
-
-TYPED-VARIABLE CA-SUPPORT [ -- ]
-' CA-NO-SUPPORT CA-SUPPORT !
-variable CA-XSUP-RC
-TYPED-VARIABLE CA-XSUP-BUF-A ptr u8
-variable CA-XSUP-BUF-CAP
-TYPED-VARIABLE CA-REP-A ptr u8           \ the file REPLAY reads
-variable CA-REP-U
-variable CA-REP-AT                       \ the first byte it replays
-variable CA-REP-END                      \ and the byte past the last
-TYPED-VARIABLE CA-REP-SCOPE-A ptr u8     \ and the scope statements they start in
-variable CA-REP-SCOPE-U
-
-: CA-XSUP-BUF-A@ ( -- ptr u8 )
-   CA-XSUP-BUF-A @ ;
-
-: CA-XSUP-BUF-A! ( ptr u8 -- )
-   CA-XSUP-BUF-A ! ;
-
-: CA-XSUP-BUF ( n -- ptr u8 n ) {: need:n :}
-   need CA-XSUP-BUF-CAP @ > IF
-      need MEM-ALLOC-64K-SPAN CA-XSUP-BUF-CAP ! CA-XSUP-BUF-A!
-   THEN
-   CA-XSUP-BUF-A@ CA-XSUP-BUF-CAP @ ;
-
-: CA-REPLAY-ACT ( -- )
-   CA-REP-A @ CA-REP-U @ FILE-SIZE CA-XSUP-BUF {: buf:ptr cap:n :}
-   CA-REP-A @ CA-REP-U @ buf cap READ-ALL CA-REP-END @ min {: end:n :}
-   CA-REP-AT @ {: at:n :}
-   CA-REP-SCOPE-A @ CA-REP-SCOPE-U @
-   buf at + end at -
-   buf at BYTE-ORIGIN at
-   VERIFY:SOURCE-BUF-AT-IN-SCOPE ;
-
-: CA-XSUP-REPLAY ( -- )
-   CA-SUPPORT @ execute ;
-
-public
-
-\ The replay every later checker scope runs before its own source.
-: SUPPORT! ( [ -- ] -- )
-   CA-SUPPORT ! ;
-
-\ No support: each source is checked on its own.
-: SUPPORT-RESET ( -- )
-   [: CA-NO-SUPPORT ;] SUPPORT! ;
-
-\ Verify bytes start to end of the file at path into the open checker scope at
-\ the file's own line and column, inside the scope the given statements open.
-\ Called from the support replay.
-: REPLAY ( ptr u8 n ptr u8 n n n -- )
-   {: scope:ptr scopeu:n path:ptr pathu:n start:n end:n :}
-   scope CA-REP-SCOPE-A !
-   scopeu CA-REP-SCOPE-U !
-   path CA-REP-A !
-   pathu CA-REP-U !
-   start CA-REP-AT !
-   end CA-REP-END !
-   [: CA-REPLAY-ACT ;] catch {: rc:n :}
-   rc 0= IF exit THEN
-   rc CA-XSUP-RC !
-   s" all-errors: support replay failed: " CA-ERR
-   path pathu CA-ERR
-   CA-LF$ CA-ERR
-   rc throw ;
-
-private
 
 
 
@@ -465,18 +389,6 @@ private
    [: CA-CHECK-FULL-ACT ;] catch
    CA-DIAG-FINISH ;
 
-\ The replayed file is standalone source, so it is checked at neutral top level
-\ whatever package the caller had open - otherwise a top-level EXPORT directive
-\ in that source reads as an in-package re-export and the run fails. The
-\ neutrality is the scope opener's job, not this call site's; the matching
-\ CHECKER-SCOPE-DONE pops the frame and restores the caller's exact package on
-\ both the clean and the throwing path.
-: CA-CHECK-FULL-SCOPE ( -- n )
-   0 CA-FULL-R !
-   CHECKER-SCOPE-START-NEUTRAL
-   [: CA-XSUP-REPLAY CA-CHECK-FULL CA-FULL-R ! ;] catch
-   CHECKER-SCOPE-DONE
-   dup 0= IF drop CA-FULL-R @ exit THEN ;
 
 
 
@@ -576,12 +488,13 @@ private
 \ uncheckable still aborts fail-closed at its definition: uncheckables are
 \ not counted by MULTI-ERR-N, so continuing past them would let an
 \ all-uncheckable file read as clean.
+\ The session is the caller's (SESSION), so a source's rejects are the ones
+\ counted while it was checked.
 : CA-RUN-DEFS ( -- )
    CA-RESET-RESULTS
-   MULTI-ERR-BEGIN
-   CA-CHECK-FULL-SCOPE {: rc:n :}
-   MULTI-ERR-END {: rejects:n :}
-   CA-XSUP-RC @ 0 <> IF CA-XSUP-RC @ throw THEN
+   MULTI-ERR-N @ {: before:n :}
+   CA-CHECK-FULL {: rc:n :}
+   MULTI-ERR-N @ before - {: rejects:n :}
    rc DUP-RC = IF CA-HANDLE-DUP exit THEN
    rc CA-THREW? IF rc CA-HANDLE-THROW exit THEN
    rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
@@ -603,7 +516,6 @@ private
    CA-SRC-U @ CA-END ! ;
 
 : CA-START ( ptr u8 n -- ) {: labela:ptr labelu:n :}
-   0 CA-XSUP-RC !
    s" " CA-SCOPE-U ! CA-SCOPE-A !
    labelu CA-FILE-U !
    labela CA-FILE-A! ;
@@ -637,16 +549,28 @@ public
 : JSON! ( bool -- )
    CA-JSON ! ;
 
-\ Check the source file at the given path, reporting it under the given label.
-: FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
-   labela labelu CA-START
-   patha pathu CA-READ-SOURCE
-   CA-WHOLE
-   CA-RUN-SOURCE ;
+\ Check the sources the given word checks with SPAN, in its order, in one
+\ checker scope and one multi-error session, as a load runs them: each sees
+\ the clean definitions of the ones before it and the declared signature of
+\ every definition they refused. The checked sources are files, not a
+\ continuation of whatever package the caller has open, so the scope opens at
+\ neutral top level, and closing it restores the caller's package on the clean
+\ and the throwing path alike.
+: SESSION ( [ -- ] -- ) {: q :}
+   MULTI-ERR-BEGIN
+   CHECKER-SCOPE-START-NEUTRAL
+   q catch {: rc:n :}
+   CHECKER-SCOPE-DONE
+   MULTI-ERR-END drop
+   rc 0 <> IF rc throw THEN ;
 
 \ Check bytes start to end of the source file at the given path, reporting them
 \ under the given label at the file's own line and column, inside the scope
-\ the given statements open.
+\ the given statements open. Called inside SESSION; a refusal throws the
+\ checker's status after its diagnostics. A duplicate definition throws DUP-RC
+\ and ends the session as it ends a load: the checker's record of the
+\ redefined word is not one a later source can be checked against, so the
+\ caller checks no source after it.
 : SPAN ( ptr u8 n ptr u8 n ptr u8 n n n -- )
    {: scope:ptr scopeu:n labela:ptr labelu:n patha:ptr pathu:n start:n end:n :}
    labela labelu CA-START
@@ -657,11 +581,18 @@ public
    end CA-SRC-U @ min CA-END !
    CA-RUN-SOURCE ;
 
+\ Check the source file at the given path, reporting it under the given label.
+: FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
+   labela labelu CA-START
+   patha pathu CA-READ-SOURCE
+   CA-WHOLE
+   [: CA-RUN-SOURCE ;] SESSION ;
+
 \ Check an in-memory source buffer, reporting it under the given label.
 : BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
    CA-WHOLE
-   CA-RUN-SOURCE ;
+   [: CA-RUN-SOURCE ;] SESSION ;
 
 ;package

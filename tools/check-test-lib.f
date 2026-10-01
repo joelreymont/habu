@@ -2780,16 +2780,23 @@ create BIG $2000 allot   variable BIG-U
 \   - the check run loading in another order: it loads through the real loader,
 \     and every accepted case here runs it;
 \   - `--all-errors --source-list` checking whole files in dependency order, or
-\     replaying whole files as support: it checks the same segments against the
-\     segments before them, with the default check's verdict at the same file,
-\     line and column (the -ALL cases);
+\     replaying whole files as support: it checks the same segments in one
+\     session, with the default check's verdict at the same file, line and
+\     column (the -ALL cases);
+\   - a refused definition taking the clean ones beside it down, so a later
+\     segment reports them undefined (REQ-CASC): the session keeps every clean
+\     definition and a refused one's declared signature, as checking the whole
+\     file at once does;
+\   - a duplicate definition in one segment leaving a record of the word that a
+\     later segment's clean call is checked against (REQ-DUP): the duplicate
+\     ends the check, as it ends the load and a whole-file check;
 \   - plain `--all-errors` checking the subject alone, so a word it takes from a
 \     file it loads is undefined (REQ-USE): it checks the same segments the
 \     source list does, with the same verdict at the same place;
-\   - a throw out of a statement in a later segment, such as the size query on
-\     a type a refused segment declared, escaping all-errors uncaught or, in
-\     prose, unreported (REQ-THROW): it is a diagnostic at the statement and
-\     the run ends with the checker's status;
+\   - a throw out of a statement in a later segment, such as a `;using` with
+\     no `using` open, escaping all-errors uncaught or, in prose, unreported
+\     (REQ-THROW): it is a diagnostic at the statement and the run ends with
+\     the checker's status;
 \   - the subject reached again through a require: it is still being expanded,
 \     so the pre-pass expands it once; the run loading its text a second time is
 \     CHK-BUILD-RUN's (dot c79b86b7);
@@ -3011,20 +3018,19 @@ variable REQ-U
    s" req-use.f" REQ-ALL-RUN EXPECT-ACCEPTED
    s" req-use-bad.f" REQ-ALL-RUN EXPECT-USE-UNDEFINED ;
 
-\ The refused dep is not support, so its type is undefined where the subject
-\ sizes a buffer of it, and that query throws.
+\ After the loaded file's refusal, the subject closes a `using` it never
+\ opened, and the checker throws out of that statement (E-USING-UNBALANCED).
 : REQ-THROW-FILES ( -- )
-   SB-RESET s" STRUCTURE ckt-rq-cell 0 FIELD v n ;STRUCTURE" REQ-LINE+
-   s" : CKT-RQ-BROKEN ( n -- n n ) ;" REQ-LINE+
+   SB-RESET s" : CKT-RQ-BROKEN ( n -- n n ) ;" REQ-LINE+
    s" req-throw-dep.f" REQ-WRITE
    SB-RESET s" req-throw-dep.f" REQ-LOAD+
-   s" 4 TYPED-BUFFER CKT-RQ-CELLS ckt-rq-cell" REQ-LINE+
+   s" ;using" REQ-LINE+
    s" req-throw.f" REQ-WRITE ;
 
 : REQ-THROW-AT$ ( -- ptr u8 n )
-   s\" req-throw.f\",\"line\":2,\"column\":29," ;
+   s\" req-throw.f\",\"line\":2,\"column\":1," ;
 
-\ The first refusal is reported, then the throw at the type it could not size.
+\ The refusal is reported, then the throw at the statement it left.
 : EXPECT-THROW-AT ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n at:ptr atu:n :}
    rc 70 T=
    outu 0 T=
@@ -3045,7 +3051,7 @@ variable REQ-U
    RESET
    s" all-errors" OPT
    p pu FILE
-   [: RUN-ACT ;] IN-PROC s" req-throw.f:2:29:" EXPECT-THROW-AT ;
+   [: RUN-ACT ;] IN-PROC s" req-throw.f:2:1:" EXPECT-THROW-AT ;
 
 \ A top-level loader inside a package, or under a file-level `using`, runs its
 \ file in that scope: the file defines into the package and sees the package's
@@ -3130,10 +3136,60 @@ variable REQ-U
    s" req-using-bad.f" s\" req-using-bad.f\",\"line\":7,\"column\":41," REQ-UNDEFINED-EVERY
    s" req-ulocal.f" s\" req-ulocal.f\",\"line\":6,\"column\":27," REQ-UNDEFINED-EVERY ;
 
+\ A refused definition takes nothing else down with it: the text after the
+\ loader still sees the clean definition before the refused one, so the
+\ refusal is the only diagnostic in both all-errors modes, as it is when the
+\ whole file is checked at once.
+: REQ-CASC-FILES ( -- )
+   SB-RESET s" : CKT-RQ-CA-DEP ( -- n ) 2 ;" REQ-LINE+
+   s" req-casc-dep.f" REQ-WRITE
+   SB-RESET s" : CKT-RQ-CA-ONE ( -- n ) 1 ;" REQ-LINE+
+   s" : CKT-RQ-CA-BAD ( -- n ) dup ;" REQ-LINE+
+   s" req-casc-dep.f" REQ-LOAD+
+   s" : CKT-RQ-CA-TWO ( -- n ) CKT-RQ-CA-ONE ;" REQ-LINE+
+   s" : CKT-RQ-CA-THREE ( -- n ) CKT-RQ-CA-DEP ;" REQ-LINE+
+   s" req-casc.f" REQ-WRITE ;
+
+: EXPECT-ONE-UNDERFLOW ( n n n -- )
+   70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-INPUT-UNDERFLOW" CONTAINS? TTRUE
+   CAP-ERR erru s\" req-casc.f\",\"line\":2," CONTAINS? TTRUE
+   CAP-ERR erru $0a COUNT-CHAR 1 T= ;
+
+: TEST-REQUIRE-CASCADE ( -- )
+   REQ-CASC-FILES
+   s" req-casc.f" REQ-PLAIN-RUN EXPECT-ONE-UNDERFLOW
+   s" req-casc.f" REQ-ALL-RUN EXPECT-ONE-UNDERFLOW ;
+
+\ The loaded file defines again a word the subject defined before its loader.
+\ The duplicate ends the check as the loader ends the load, so the clean
+\ definition after the loader that calls the word is not checked against what
+\ the duplicate left behind.
+: REQ-DUP-FILES ( -- )
+   SB-RESET s" : CKT-RQ-DU-X ( -- n ) 2 ;" REQ-LINE+
+   s" req-dup-dep.f" REQ-WRITE
+   SB-RESET s" : CKT-RQ-DU-X ( -- n ) 1 ;" REQ-LINE+
+   s" req-dup-dep.f" REQ-LOAD+
+   s" : CKT-RQ-DU-Y ( -- n ) CKT-RQ-DU-X ;" REQ-LINE+
+   s" req-dup.f" REQ-WRITE ;
+
+: EXPECT-ONE-DUPLICATE ( n n n -- )
+   CHECK-ALL-ERRORS:DUP-RC T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
+   CAP-ERR erru s\" req-dup-dep.f\",\"line\":1,\"column\":1," CONTAINS? TTRUE
+   CAP-ERR erru $0a COUNT-CHAR 1 T= ;
+
+: TEST-REQUIRE-DUPLICATE ( -- )
+   REQ-DUP-FILES
+   s" req-dup.f" REQ-PLAIN-RUN EXPECT-ONE-DUPLICATE
+   s" req-dup.f" REQ-ALL-RUN EXPECT-ONE-DUPLICATE ;
+
 \ `--all-errors --source-list a b` runs all-errors on the ORIGINAL files'
-\ segments with the clean ones before each replayed as support: both bad defs
-\ in b report against b's path (the pre-redrive materialized temp had zero
-\ defs, so all-errors was a no-op and only preverify's first error surfaced).
+\ segments, in order, in one session: both bad defs in b report against b's
+\ path (the pre-redrive materialized temp had zero defs, so all-errors was a
+\ no-op and only preverify's first error surfaced).
 : LIST-ALL-TEST ( -- )
    SUP$ s\" : CKT-SEVEN ( -- n ) 7 ;\n" WRITE-ALL
    USE$ s\" : CKT-GOOD-USE ( -- n ) CKT-SEVEN ;\n: CKT-BAD-ONE ( -- n n ) CKT-SEVEN ;\n: CKT-BAD-TWO ( n -- ) CKT-SEVEN ;\n" WRITE-ALL
@@ -3327,7 +3383,9 @@ POISON-RECORD
    s" check/require-throw-all-list" [: TEST-REQUIRE-THROW-ALL-LIST ;] CASE-RUN
    s" check/require-throw-prose" [: TEST-REQUIRE-THROW-PROSE ;] CASE-RUN
    s" check/require-package" [: TEST-REQUIRE-PACKAGE ;] CASE-RUN
-   s" check/require-using" [: TEST-REQUIRE-USING ;] CASE-RUN ;
+   s" check/require-using" [: TEST-REQUIRE-USING ;] CASE-RUN
+   s" check/require-cascade" [: TEST-REQUIRE-CASCADE ;] CASE-RUN
+   s" check/require-duplicate" [: TEST-REQUIRE-DUPLICATE ;] CASE-RUN ;
 
 : TEST-MAIN ( -- )
    T-RESET

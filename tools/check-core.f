@@ -100,7 +100,6 @@ create CHK-DIR-ATS CHK-DEP-MAX cells allot
 create CHK-SEG-IDS CHK-SEG-MAX cells allot
 create CHK-SEG-STARTS CHK-SEG-MAX cells allot
 create CHK-SEG-ENDS CHK-SEG-MAX cells allot
-create CHK-SEG-RCS CHK-SEG-MAX cells allot   \ each segment's all-errors code
 create CHK-ONE 1 allot
 
 \ The lazily allocated byte buffers hold addresses, so each is a declared
@@ -1784,13 +1783,19 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-LINT-SOURCE CHK-LINT-LABEL RESERVED-NAME-LINT:FILE-AS
    RESERVED-NAME-LINT:FINISH ;
 
-\ All-errors on a source read from a path or a source list: run it on each
-\ segment in the order the pre-pass verifies them (a loaded file where its
-\ loader sits), with the segments before it that checked clean replayed as
-\ support, so each checks against the state the load path gives it. A refused
-\ segment is not support: a later call of a word it rejected reports that word
-\ undefined, as a later file's does. Per-segment check failures (70/duplicate)
-\ are collected so every segment reports; any other throw aborts.
+\ All-errors on a source read from a path or a source list: every segment in
+\ the order the pre-pass verifies them (a loaded file where its loader sits),
+\ in one checker scope and one multi-error session, as the default check
+\ verifies them in one scope. A segment sees what a whole-file check sees: the
+\ clean definitions before it, refused segments' included, and the declared
+\ signature of each refused definition, so a later call of a refused word
+\ checks against its declaration instead of reporting it undefined. Each
+\ segment reports under its own file. A refusal (70, including SPAN's
+\ E-REJECTED for a statement's throw) is collected so every segment reports.
+\ DUP-RC and any status SPAN lets out unreported abort. A duplicate definition
+\ ends the check, as it ends the load and a whole-file check: the load never
+\ reaches a later segment, and the checker's record of the redefined word is
+\ not one a later call can be checked against.
 
 : CHK-ALL-SEG-ACT ( -- )
    CHK-ALL-SEG @ {: seg:n :}
@@ -1798,27 +1803,11 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    seg CHK-SEG-ID@ CHK-DEP$ 2dup seg CHK-SEG-START@ seg CHK-SEG-END@
    CHECK-ALL-ERRORS:SPAN ;
 
-: CHK-ALL-RC-NOTE ( n -- ) {: rc:n :}
-   CHK-ALL-RC @ 0= if rc CHK-ALL-RC ! then ;
-
-: CHK-ALL-REPLAY-SEG ( n -- ) {: seg:n :}
-   seg cells CHK-SEG-RCS + @ 0 <> if exit then
-   seg CHK-SEG-SCOPE$
-   seg CHK-SEG-ID@ CHK-DEP$ seg CHK-SEG-START@ seg CHK-SEG-END@
-   CHECK-ALL-ERRORS:REPLAY ;
-
-: CHK-ALL-REPLAY ( -- )                 \ the support of the current segment
-   0 begin dup CHK-ALL-SEG @ < while
-      dup CHK-ALL-REPLAY-SEG
-      1+
-   repeat drop ;
-
 : CHK-RUN-ALL-SEG ( n -- ) {: seg:n :}
    seg CHK-ALL-SEG !
    [: CHK-ALL-SEG-ACT ;] catch {: rc:n :}
-   rc seg cells CHK-SEG-RCS + !
    rc 0= if exit then
-   rc CHK-E-CHECK = rc CHECK-ALL-ERRORS:DUP-RC = or if rc CHK-ALL-RC-NOTE exit then
+   rc CHK-E-CHECK = if rc CHK-ALL-RC ! exit then
    rc throw ;
 
 : CHK-RUN-ALL-SEGS ( -- )
@@ -1827,21 +1816,15 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
       1+
    repeat drop ;
 
-\ The replay reads this run's segment table, so it is removed however the run
-\ ends.
 : CHK-RUN-ALL-EXPANDED ( -- )
    0 CHK-ALL-RC !
-   [: CHK-ALL-REPLAY ;] CHECK-ALL-ERRORS:SUPPORT!
-   [: CHK-RUN-ALL-SEGS ;] catch {: rc:n :}
-   CHECK-ALL-ERRORS:SUPPORT-RESET
-   rc 0 <> if rc throw then
+   [: CHK-RUN-ALL-SEGS ;] CHECK-ALL-ERRORS:SESSION
    CHK-ALL-RC @ 0 <> if CHK-ALL-RC @ throw then ;
 
 : CHK-RUN-ALL-CURRENT ( -- )
    CHK-OUT-BUF CHK-OUT-CAP CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:BUFFERS!
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
    CHK-EXPANDED? if CHK-RUN-ALL-EXPANDED exit then
-   CHECK-ALL-ERRORS:SUPPORT-RESET
    CHK-LABEL CHK-SOURCE CHECK-ALL-ERRORS:FILE ;
 
 : CHK-RUN-ALL-FLUSH ( -- )
