@@ -69,12 +69,6 @@ $100001 constant OVERCAP-SOURCE-LEN
 4 constant HANG-MARGIN
 WORST-CHILD-MS HANG-MARGIN * constant CHILD-HANG-MS
 
-\ Exit status for the deadlock verdict, kept distinct from every status a case
-\ compares against: 64 is this fixture's usage error, 67 is the engine's
-\ uncaught throw, 70 is the check tool's own failure, and 83 upwards belong to
-\ the engine failure ABI in src/core/engine-error.f.
-79 constant HANG-RC
-
 create TMP-ROOT FS-PATH-CAP allot
 create BAD-PATH FS-PATH-CAP allot
 create DIRECT-PATH FS-PATH-CAP allot
@@ -1901,12 +1895,14 @@ create BIG $2000 allot   variable BIG-U
 \ throw code -2502`: it named no case, no child and no budget, so a hung child
 \ and a slow one looked identical from the gate log. CASE-RUN is the one place
 \ that knows which case is running, so it is where that verdict gets its name.
-\ Only the deadlock code is claimed here; every other throw keeps propagating
-\ untouched.
+\ The code then goes on uncaught, so the engine's report stays the row's last
+\ stderr line and the gate pool labels the row TIMEOUT-UNDER-LOAD
+\ (test/gate-pool.f GT-POOL-INNER-TIMEOUT?). Every other throw keeps
+\ propagating untouched.
 : CASE-HUNG ( ptr u8 n -- ) {: label:ptr labelu:n :}
    s" FAIL: " type label labelu type
-   s"  - child never exited; deadlock guard ms: " type CHILD-HANG-MS .
-   s" check-test: child deadlock guard expired" HANG-RC die ;
+   s"  - child never exited; deadlock guard ms: " type CHILD-HANG-MS . cr
+   E-PROC-TIMEOUT throw ;
 
 : CASE-THREW ( ptr u8 n n -- ) {: label:ptr labelu:n rc:n :}
    rc 0= if exit then

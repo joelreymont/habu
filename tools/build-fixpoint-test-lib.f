@@ -306,11 +306,16 @@ variable IX
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    BFT-CAPTURE>N ;
 
+\ A child that outlives BFT-TIMEOUT-MS (E-PROC-TIMEOUT from lib/process) leaves
+\ the row uncaught once its step is named: the engine's report is then the row's
+\ last stderr line, which the gate pool labels TIMEOUT-UNDER-LOAD (test/gate-pool.f
+\ GT-POOL-INNER-TIMEOUT?). Every other throw ends the row here as a failed step.
 : BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
    a u T-LABEL
    q catch {: rc:n :}
    rc 0= if exit then
    a u type s" : throw " type rc . cr
+   rc E-PROC-TIMEOUT = if rc throw then
    s" build-fixpoint-test-lib: subtest threw" T-EX-FAIL die ;
 
 \ The common driver tail: every row removes its scratch tree, then reports.

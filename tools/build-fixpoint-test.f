@@ -439,7 +439,7 @@ variable BAD-N
    MATCH outcome
      exited OF EXIT-CODE ! 0 0= EXITED ! ENDOF
      signaled OF EXIT-CODE ! 0 0= 0= EXITED ! ENDOF
-     timeout OF 0 EXIT-CODE ! 0 0= 0= EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF        \ a deadline, for BFT-STEP
    ;MATCH {: ou:len eu:len :}
    eu LEN>N ERR-U ! ;
 

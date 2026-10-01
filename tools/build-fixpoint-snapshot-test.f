@@ -96,7 +96,7 @@ variable BFT-DOC-CODE
    MATCH outcome
      exited OF BFT-DOC-CODE ! 0 0= BFT-DOC-EXITED ! ENDOF
      signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
-     timeout OF 0 BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF        \ a deadline, for BFT-STEP
    ;MATCH {: ou:len eu:len :}
    ou LEN>N BFT-DOC-OUT-U !
    eu LEN>N BFT-DOC-ERR-U !
@@ -131,7 +131,7 @@ variable BFT-DOC-CODE
    MATCH outcome
      exited OF BFT-DOC-CODE ! 0 0= BFT-DOC-EXITED ! ENDOF
      signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
-     timeout OF 0 BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF        \ a deadline, for BFT-STEP
    ;MATCH {: ou:len eu:len :}
    ou LEN>N BFT-DOC-OUT-U !
    eu LEN>N BFT-DOC-ERR-U ! ;
