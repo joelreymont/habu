@@ -816,8 +816,6 @@ DYNAMIC-BUFFER CL-USE-NEXT-BUF n
 : CL-USE-NEXT ( -- ptr n ) 0 CL-USE-NEXT-BUF ;
 DYNAMIC-BUFFER USE-POS-BUF n
 : USE-POS ( -- ptr n ) 0 USE-POS-BUF ;
-DYNAMIC-BUFFER READ-END-BUF n
-: READ-END ( -- ptr n ) 0 READ-END-BUF ;
 \ Class roots bucketed by the position their hull opens at: one list per
 \ position, so the sweep asks a position which classes begin there instead of
 \ asking every value in the module whether it is one of them.
@@ -878,7 +876,6 @@ variable N-FIXP
    OMAX ANCH-NEXT-BUF-RESERVE
    VMAX 1+ CL-USE-START-BUF-RESERVE
    VMAX CL-USE-NEXT-BUF-RESERVE
-   OMAX BMAX + READ-END-BUF-RESERVE
    OMAX BMAX + DUE-HEAD-BUF-RESERVE
    VMAX DUE-NEXT-BUF-RESERVE
    OMAX CALL-POS-BUF-RESERVE
@@ -1477,6 +1474,14 @@ variable N-FIXP
    p POS-OP? 0= if false exit then
    r p MB-USE-FROM p = ;
 
+\ A one-successor branch forwards its block arguments without reading a
+\ register. If a class was spilled, the matching destination argument uses
+\ the same frame slot; the spill pass omits that edge operand.
+: MB-REG-READS? ( IR-ID:ir-fun-id n n -- bool )
+   {: f:IR-ID:ir-fun-id r:n p:n :}
+   r p MB-READS? 0= if false exit then
+   f p POS-OP SUCCS-OF 1 <> ;
+
 : MB-DEFS? ( IR-ID:ir-fun-id n n -- bool )
    {: f:IR-ID:ir-fun-id r:n p:n :}
    p POS-OP? 0= if false exit then
@@ -1488,7 +1493,7 @@ variable N-FIXP
 
 : MB-TOUCHES? ( IR-ID:ir-fun-id n n -- bool )
    {: f:IR-ID:ir-fun-id r:n p:n :}
-   r p MB-READS? if true exit then
+   f r p MB-REG-READS? if true exit then
    f r p MB-DEFS? ;
 
 \ A class nothing reads again answers the position past the last one.
@@ -1509,23 +1514,6 @@ variable N-FIXP
       bk i OP-AT DLOAD? 0= if drop i leave then
    loop ;
 
-\ A call group begins with the stores that publish its arguments. Reloads may
-\ stand before that run, but not inside it; adjacent data-stack groups are not
-\ one indivisible run.
-: MB-DSTORE-END ( IR-ID:ir-block-id n -- n )
-   {: bk:IR-ID:ir-block-id at:n :}
-   bk OP-COUNT {: n:n :}
-   n
-   n at 1+ ?do
-      bk i OP-AT DSTORE? 0= if drop i leave then
-   loop ;
-
-: MB-DSTORE-HEAD? ( IR-ID:ir-block-id n -- bool )
-   {: bk:IR-ID:ir-block-id at:n :}
-   bk at OP-AT DSTORE? 0= if false exit then
-   at 0= if true exit then
-   bk at 1- OP-AT DSTORE? 0= ;
-
 : MB-DEF-POS ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id r:n :}
    -1
@@ -1538,13 +1526,6 @@ variable N-FIXP
    p POS-BLOCK {: b:n :}
    f b BLOCK-AT  p  b cells B-ST + @ -  1-  MB-ANCHOR {: k:n :}
    b k OP-POS ;
-
-\ Reloads stand before one call's store run, so their temporary registers are
-\ live only until their last consuming store in that group.
-: MB-RUN-READS? ( IR-ID:ir-fun-id n n -- bool )
-   {: f:IR-ID:ir-fun-id r:n p:n :}
-   p POS-OP? 0= if false exit then
-   r p MB-USE-FROM p cells READ-END + @ < ;
 
 \ ---- the scan ----------------------------------------------------------------
 : MB-EXPIRE1 ( n n n -- )
@@ -1583,7 +1564,7 @@ variable N-FIXP
    N-EVICTED @ 0 ?do
       i EVICTED-ROOTS @ {: r:n :}
       r fl MB-FRAMED? if
-         r p MB-ACROSS?  f r p MB-RUN-READS? or if 1+ then
+         r p MB-ACROSS?  f r p MB-REG-READS? or if 1+ then
       then
    loop ;
 
@@ -2008,9 +1989,7 @@ variable N-FIXP
 
 : MB-PLAN-LOADS ( IR-ID:ir-block-id n n -- )
    {: bk:IR-ID:ir-block-id b:n at:n :}
-   bk at OP-AT DSTORE? 0= if bk b at at MB-PLAN-LOADS1 exit then
-   bk at MB-DSTORE-HEAD? 0= if exit then
-   bk at MB-DSTORE-END at ?do bk b at i MB-PLAN-LOADS1 loop ;
+   bk b at at MB-PLAN-LOADS1 ;
 
 : MB-PLAN-TAIL-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
@@ -2161,25 +2140,6 @@ variable N-FIXP
       r cells CL-USE-NEXT + dup @ 1+ swap !
    loop ;
 
-\ A normal operation reads only itself; a store reads through the end of its
-\ contiguous store group. One-successor branches do not require reloads here.
-: MB-READ-ENDS ( IR-ID:ir-block-id n -- )
-   {: bk:IR-ID:ir-block-id b:n :}
-   b bk OP-COUNT OP-POS
-   bk OP-COUNT 0 ?do
-      bk OP-COUNT i - 1- {: at:n :}
-      b at OP-POS {: p:n :}
-      bk at OP-AT {: id:IR-ID:ir-op-id :}
-      id DSTORE? if
-         id SUCCS-OF 1 = if p else dup then
-         p cells READ-END + !
-      else
-         p id SUCCS-OF 1 <> if 1+ then p cells READ-END + !
-         drop p
-      then
-   loop
-   drop ;
-
 : MB-USES ( -- )
    N-VALS @ 0 ?do 0 i cells CL-USE-NEXT + ! loop
    N-FUNS @ 0 ?do
@@ -2201,7 +2161,6 @@ variable N-FIXP
       i FUN-AT {: f:IR-ID:ir-fun-id :}
       N-BLKS @ 0 ?do
          f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
-         bk i MB-READ-ENDS
          bk OP-COUNT 0 ?do bk i OP-AT j i OP-POS MB-USE-FILL-OP loop
       loop
    loop ;

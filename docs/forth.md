@@ -1234,15 +1234,14 @@ passing suite.
   (-8503, test/compiler/native-elaborate.f `RGLUE`). A count that disagrees is
   `E-NELAB-ARITY` either way, and a forged tag is still refused where the value
   is consumed (`hb: bad layout tag`, rc 85).
-- **A signature list holds at most 32 cells.** A word whose inputs (or outputs)
-  stage more than 32 cells certifies at tier 0 and dies at native elaboration
-  with `E-IR-TYPE-ARITY` (-6688): `( n ×32 -- n )` runs under
-  `test/compiler/aot-mode.f` and `( n ×33 -- n )` throws. Pass a record by
-  reference (`ptr fam`, a handle) when a signature grows past that. A record is
-  the same list: `MAKE` stages one value per cell, so a `STRUCTURE` past 32
-  cells fails at load with `habu: bad structure declaration 'NAME'` / `ncomp:
-  cannot compile PKG-NAME:MAKE`, rc 67 — split it into the records each reader
-  takes (`vocab` and `lowering` in `src/compiler/native/dialect.f`).
+- **A signature list holds at most 64 cells.** The sixty-fifth staged input or
+  output rejects with `E-IR-TYPE-ARITY` (-6688); `test/compiler/ir-type.f`
+  checks that boundary and a 33-input, 34-output signature. A record is the
+  same list: `MAKE` stages one value per cell. A checked 34-cell nested record
+  roundtrip passes through the native compiler in
+  `test/compiler/native-generated-constructor.f`. A call also carries a memory
+  token in the IR operation's 64-operand stage, so this signature bound does
+  not establish a 64-data-cell call.
 - **`.` ends the line.** The native `.` is newline-terminated, not
   space-terminated: `11 . 22 . cr` emits `11\n22\n\n`, so an assertion for two
   dotted numbers on one line never matches; digit emitters (`GT-U-TYPE`,

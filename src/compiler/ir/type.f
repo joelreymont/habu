@@ -186,7 +186,7 @@ public
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
 $FFFFFFFF HDR-CELLS - constant LIST-MAX
 private
-32 constant ARITY-MAX                \ committed per-list stage ceiling
+64 constant ARITY-MAX                \ native signatures carry at most 64 cells
 
 \ ---- stable wire codes -------------------------------------------------------
 \ One injective code per family, mirroring CTARGET: a code may be added but
