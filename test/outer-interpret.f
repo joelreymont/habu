@@ -799,6 +799,30 @@ variable WANT-RC
    S\" E-UNDEFINED: OI-NOPE\nE-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR
    0 SPIN-U ! ;
 
+\ ---- a file closes only the usings it opens -------------------------------------------
+\ A load file is a using scope on both loops. A file's `;using` that would close
+\ a using its includer opened is refused by name, and the includer that catches
+\ it still has OI-FXA. A file that closes its includer's package ends the
+\ usings opened in it, and the includer gets back the depth `;package`
+\ restored: the file's OI-FXB ends with the file and OI-FXA, opened before the
+\ package, stays. The first file used to leave OI-FXB in OI-FXA's slot, the
+\ second both open, so OI-TWIN was ambiguous.
+: USING-INCLUDER ( -- )
+   s" ;using using OI-FXB" s" oi-nested-using-includer.f" PKG-NESTED
+   GE-SRC-RESET
+   s" using OI-FXA s~ oi-nested-using-includer.f~ ' included catch . OI-TWIN ." QLINE
+   s" oi-using-includer.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 104\n1\n" CASE$ GE-EXPECT-OUT
+   s" hb: ;using would close a using opened outside the file at " CASE$ GE-EXPECT-ERR-HAS
+   S\" oi-nested-using-includer.f:1\n" CASE$ GE-EXPECT-ERR-HAS
+   s" ;package using OI-FXB" s" oi-nested-close-includer.f" PKG-NESTED
+   s" using OI-FXA package OI-P using OI-PKG include oi-nested-close-includer.f OI-TWIN . ;using OI-TWIN"
+   s" oi-close-includer.f" LINE-CASE
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR ;
+
 \ At top level `export` consumes its name and does nothing else; with no name
 \ it refuses, naming itself.
 : EXPORT-TOP-LEVEL ( -- )
@@ -1464,6 +1488,7 @@ private
    USING-SHADOW
    USING-ACROSS-PACKAGE
    PACKAGE-RECOVERY
+   USING-INCLUDER
    EXPORT-TOP-LEVEL
    EXPORT-ALIASES
    EXPORT-REFUSALS

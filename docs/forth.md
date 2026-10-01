@@ -305,6 +305,14 @@ and always available, for a one-off call or to escape a collision.
   opened before `package` after `;package`. A `;using` inside the package that
   would close an outer one is refused by name (`ENGINE-ERROR:USING-OUTER`, rc
   104; the source verifier's `E-USING-OUTER`, 7146).
+- A load file is a using scope the same way: an included file or an
+  `evaluate`d buffer closes only the usings it opens. A `;using` in it that
+  would close one its includer opened is refused by name with the same codes
+  (`ENGINE-ERROR:USING-OUTER`, rc 104; `E-USING-OUTER`, 7146, for a using the
+  source verifier's replay inherited). Closed, it came back open when the
+  buffer ended, and a `using` the buffer opened next took its slot: after a
+  buffer `;using using UB` under `using UA`, the includer resolved `UB`'s
+  words where `UA`'s had been.
 - Lookup for a bare tail: open-package scope (private, then own public) FIRST,
   then the global wordlist, then each used public wordlist. The open-package
   scope silently wins over a used public. A tail in MORE THAN ONE used public
@@ -340,7 +348,10 @@ and always available, for a one-off call or to escape a collision.
   file, or aborted by a throw, never leaks to the caller. A package an included
   file leaves open keeps none of that file's usings: its using floor drops to
   the restored depth, so the includer's `;package` reopens none of them and its
-  own `;using` inside the package closes.
+  own `;using` inside the package closes. A file that closes its includer's
+  package ends the usings opened in that package, and the includer gets back
+  the depth that `;package` restored, not the one the file entered at: a using
+  the file opened after it ends with the file.
 - **A package word shadows the same-named global or primitive, and nothing
   reaches past it.** Inside `package TENDER` a bare `open` is `TENDER:OPEN`; in
   a checked body under `using DOC` a bare `close` is refused against

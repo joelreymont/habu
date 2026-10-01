@@ -8729,7 +8729,7 @@ public
    done LBL, ;
 
 : C-USING-PUSH ( -- )   \ x2 = public WID; push it onto the using stack (overflow -> die)
-   LBL LBL {: fmsg:label pushok:label :}
+   LBL LBL LBL {: fmsg:label pushok:label nofloor:label :}
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ x8 = live using depth (overflow test)
    14 USE-MAX MOVZ,  8 14 CMP,  C-LT pushok BCOND,
       0 2 MOVZ,  1 fmsg ADR,  2 39 MOVZ,  NR-WRITE SYS,
@@ -8737,6 +8737,13 @@ public
    fmsg LBL,  s" hb: using: too many concurrent usings: " BYTES,
    pushok LBL,
       7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,   \ reload depth on the accepted path (no cross-syscall live reg)
+      \ A buffer below its floor had a `;package` close a package opened before
+      \ it: its own usings start at this depth, so its floor comes down to meet
+      \ them (layout.f EVAL-USE-FLOOR). The REPL has no frame and no floor.
+      9 DATA EVALD-CELL LDR,  9 nofloor CBZ,
+         9 DATA EVAL-TOP-CELL LDR,  10 9 EVAL-USE-FLOOR LDR,
+         10 8 CMP,  10 10 8 C-LS CSEL,  10 9 EVAL-USE-FLOOR STR,   \ floor = the lower of floor and depth
+      nofloor LBL,
       14 USE-WIDS-OFF LIT64,  14 DATA 14 ADD,  15 8 3 LSLI,  14 14 15 ADD,  2 14 0 STR,   \ USE-WIDS[depth] = wid
       C-CALL-CHECKER-USING                                 \ mirror name into CHK-USE-NAMES[depth] (reads pre-increment depth)
       7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 ADDI,  8 7 0 STR, ;      \ depth++
@@ -8750,6 +8757,8 @@ public
 : C-END-USING ( -- )
    C-TASK-LIVE-GUARD
    LBL LBL LBL LBL {: ok:label umsg:label own:label omsg:label :}
+   LBL LBL {: mine:label fmsg:label :}
+   s" hb: ;using would close a using opened outside the file" {: fm:ptr fu:n :}
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ x8 = live using depth (underflow test)
    8 ok CBNZ,
       0 2 MOVZ,  1 umsg ADR,  2 32 MOVZ,  NR-WRITE SYS,
@@ -8767,6 +8776,17 @@ public
       0 104 MOVZ,  LCOMPILEDIE LABEL@ B,              \ 104 = ENGINE-ERROR:USING-OUTER
    omsg LBL,  s" hb: ;using would close a using opened outside the package" BYTES,
    own LBL,
+   \ Nor may a buffer close a using its includer opened: one at or below the
+   \ buffer's floor (layout.f EVAL-USE-FLOOR) would come back open when the
+   \ buffer ends, and a using the buffer opened next would take its slot.
+   9 DATA EVALD-CELL LDR,  9 mine CBZ,                      \ the REPL closes any open using
+   9 DATA EVAL-TOP-CELL LDR,  9 9 EVAL-USE-FLOOR LDR,        \ x9 = the buffer's floor
+   7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ reload depth (no cross-syscall live reg)
+   8 9 CMP,  C-HI mine BCOND,                                \ x8 (depth) above it -> opened in the buffer
+      0 2 MOVZ,  1 fmsg ADR,  2 fu MOVZ,  NR-WRITE SYS,
+      0 104 MOVZ,  LCOMPILEDIE LABEL@ B,              \ 104 = ENGINE-ERROR:USING-OUTER
+   fmsg LBL,  fm fu BYTES,
+   mine LBL,
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 SUBI,  8 7 0 STR, ;   \ reload depth (no cross-syscall live reg), depth--
 
 \ EMIT-FIND-USED (LFINDUSED leaf): searched only after the open-scope + global chain
@@ -10877,10 +10897,14 @@ public
    9 14 8 LDR,  9 DATA INE-CELL STR,
    9 14 EVAL-INB LDR,  9 DATA SRCLOC:INB-CELL STR,
    9 0 MOVZ,  9 DATA EVALERR-CELL STR,
-   \ Usings are file-local; package scope persists across a clean include.
-   15 14 EVAL-PKG ADDI,
-   9 15 PKGSNAP-USE LDR,
-   15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  9 15 0 STR,
+   \ Usings are file-local: the depth goes back to the buffer's floor, which is
+   \ the depth it entered at unless a `;package` closed a package opened before
+   \ it and restored a lower one (layout.f EVAL-USE-FLOOR). Package scope
+   \ persists across a clean include.
+   9 14 EVAL-USE-FLOOR LDR,
+   15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  10 15 0 LDR,
+   9 10 CMP,  9 9 10 C-LS CSEL,                    \ x9 = the lower of floor and depth
+   9 15 0 STR,
    \ A package the buffer left open keeps none of the buffer's usings: its using
    \ floor drops to the restored depth, so `;package` cannot reopen one and a
    \ `;using` may close one the includer opens in the package (C-END-USING).

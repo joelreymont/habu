@@ -1021,6 +1021,13 @@ variable CHECKER-USE-OWNED-N
 \ verifier and rollback savepoint, including nested neutral source scopes.
 variable CHECKER-PACKAGE-USE-N
 0 CHECKER-PACKAGE-USE-N !
+\ The owned depth the replayed source may close down to, as the engine's
+\ evaluate frame keeps it for a buffer (src/habu/layout.f EVAL-USE-FLOOR): the
+\ verifier window seeds it with the depth the source starts at, and the
+\ source's first `using` below it, after a `;package` closed the inherited
+\ package, lowers it to meet that using (CHECKER-USING-PUSH).
+variable CHECKER-USE-SOURCE-FLOOR
+0 CHECKER-USE-SOURCE-FLOOR !
 
 \ Import row storage is shared by the live compiler and verifier mirror.
 \ Savepoints must preserve the names and lengths as well as their depth.
@@ -1301,7 +1308,8 @@ variable VERIFY-FLOOR0
    ELSE
       CK-USE-ENGINE-DEPTH CHECKER-USE-OWNED-N !
       CK-USE-ENGINE-FLOOR CHECKER-PACKAGE-USE-N !
-   THEN ;
+   THEN
+   CHECKER-USE-OWNED-N @ CHECKER-USE-SOURCE-FLOOR ! ;
 REG-PROTECT
 
 : CHECKER-VERIFY-PKG-DONE ( -- )
@@ -10101,10 +10109,15 @@ package CHECKER-REG
 \ Inside a package a `;using` closes only an import the package opened: one
 \ opened before `package` is at or below the depth CHECKER-END-PACKAGE restores,
 \ so closing it would come undone there (the engine's ENGINE-ERROR:USING-OUTER).
-7146 constant E-USING-OUTER                \ `;using` in a package closing an import opened before it
+\ Nor does the replayed source close an import it inherited, at or below
+\ CHECKER-USE-SOURCE-FLOOR: the engine refuses that in an evaluated buffer.
+7146 constant E-USING-OUTER                \ `;using` closing an import its package or source did not open
 
 : CHECKER-USING-PUSH ( ptr u8 n -- )
    CHECKER-PKG-MIRROR-AUTHORITY? 0= IF E-PKG-CONTEXT throw THEN
+   CHECKER-USE-OWNED-N @ CHECKER-USE-SOURCE-FLOOR @ < IF
+      CHECKER-USE-OWNED-N @ CHECKER-USE-SOURCE-FLOOR !
+   THEN
    CHECKER-USING
    CHECKER-USE-OWNED-N @ 1 + CHECKER-USE-OWNED-N ! ;
 
@@ -10113,6 +10126,7 @@ package CHECKER-REG
    CHECKER-USE-OWNED-N @ {: d:n :}
    d 0 <= IF E-USING-UNBALANCED throw THEN
    CHECKER-PACKAGE-ACTIVE? d CHECKER-PACKAGE-USE-N @ <= and IF E-USING-OUTER throw THEN
+   d CHECKER-USE-SOURCE-FLOOR @ <= IF E-USING-OUTER throw THEN
    d 1 - CHECKER-USE-OWNED-N ! ;
 
 \ Resolve a bare tail against the live used publics (searched only after the open-scope +

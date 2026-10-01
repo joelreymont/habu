@@ -37,7 +37,10 @@ public
 \ throws: usings are file-local (habu1.f B-EVAL, habu2.f EM-EVAL-CLEAN-EXIT).
 \ A throw also puts back the package scope the buffer entered with, its using
 \ floor included (habu2.f LEVALREC), so a package a throwing file opened is
-\ closed and one it closed is open again. A package the buffer left open
+\ closed and one it closed is open again. A clean end puts the depth back to
+\ the buffer's using floor (packages.f USE-FLOOR), which is the entry depth
+\ unless a `;package` closed a package opened before the buffer and restored
+\ a lower one (habu2.f EM-EVAL-CLEAN-EXIT). A package the buffer left open
 \ keeps none of its usings: the package's using floor drops to the restored
 \ depth. A clean end also clears the evaluate error cell, as the engine's does:
 \ an `evaluate` the buffer caught recorded its code there, and include.f reads
@@ -46,11 +49,16 @@ public
    INP-CELL CELL@ INE-CELL CELL@ SRCLOC:INB-CELL CELL@ USE-DEPTH-CELL CELL@
    {: p:n e:n b:n d:n :}
    PKG-STATE {: rec:n parent:n cur:n floor:n :}
+   USE-FLOOR @ {: outer:n :}
+   d USE-FLOOR !
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    [: RUN ;] catch {: code:n :}
-   p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!  d USE-DEPTH-CELL CELL!
-   code 0<> if rec parent cur floor PKG-RECOVER  code throw then
+   USE-FLOOR @ USE-DEPTH-CELL CELL@ min {: back:n :}
+   outer USE-FLOOR !
+   p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!
+   code 0<> if d USE-DEPTH-CELL CELL!  rec parent cur floor PKG-RECOVER  code throw then
+   back USE-DEPTH-CELL CELL!
    0 EVALERR-CELL CELL!
-   USE-PKG-SAVE-CELL CELL@ d > if d USE-PKG-SAVE-CELL CELL! then ;
+   USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then ;
 
 ;package

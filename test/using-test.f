@@ -266,6 +266,45 @@ s" : OPK-K ( -- n ) 7 ;" UCE-CATCH 0 T=
 s" package OPKD : OPK-K ( n -- n ) drop 41 ; ;package" UCE-CATCH 0 T=
 s" package OPKD public : OPKD-R ( -- n ) OPK-K ; ;package" UCE-CATCH E-REJECT T=
 
+\ === a buffer closes only the usings it opens (dot habu-keep-the-includer-bd7dc952) ===
+\ A load file is a using scope: a buffer's `;using` that would close a using its
+\ includer opened is refused by name, as inside a package. It used to close UA
+\ for the buffer, whose `using UB` then took UA's slot, and the depth restored
+\ at the buffer's end left the includer resolving BW where AW had been, on the
+\ clean and the throwing path alike. A using the buffer opened closes, and the
+\ verifier's replay refuses the inherited one the same way.
+using UA
+s" ;using using UB" UCE-CATCH E-OUTER T=
+s" ;using using UB NO-SUCH-WORDX" UCE-CATCH E-OUTER T=
+s" using UB ;using ;using" UCE-CATCH E-OUTER T=
+s" AW drop" UCE-CATCH 0 T=
+s" BW drop" UCE-CATCH E-REJECT T=
+s" using UB BW drop ;using AW drop" UCE-CATCH 0 T=
+s" ;using" VS-CATCH E-USING-OUTER T=
+s" using UB ;using" VS-CATCH 0 T=
+;using
+
+\ A buffer that closes its includer's package closes the usings opened in it,
+\ and the includer gets back the depth that `;package` restored: a using the
+\ buffer opened after it ends with the buffer, and a using the includer opened
+\ before the package stays. The includer used to get its entry depth back,
+\ which reopened UA, or showed the buffer's UB in the slot UA had held. The
+\ buffer may close its own using there but not UP; the verifier's replay agrees.
+using UP
+package UQK using UA
+s" ;package ;using" VS-CATCH E-USING-OUTER T=
+s" ;package using UB BW drop ;using" VS-CATCH 0 T=
+s" ;package ;using" UCE-CATCH E-OUTER T=
+s" ;package" UCE-CATCH 0 T=
+s" AW drop" UCE-CATCH E-REJECT T=
+package UQK using UA
+s" ;package using UB" UCE-CATCH 0 T=
+s" BW drop" UCE-CATCH E-REJECT T=
+s" AW drop" UCE-CATCH E-REJECT T=
+s" PUBW drop" UCE-CATCH 0 T=
+;using
+s" ;using" UCE-CATCH E-UNBALANCED T=
+
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

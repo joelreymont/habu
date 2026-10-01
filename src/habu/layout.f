@@ -496,9 +496,17 @@ $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer START, saved beside INP ([frame+0])
 \ and INE ([frame+8]) so a nested evaluate restores it. PKGSNAP fills
 \ EVAL-PKG..$80 (its last cell, PKGSNAP-FLOOR, is $78) and STACK-ABI:EVAL-BASE
-\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90 and STACK-ABI:EVAL-BYTES
-\ rounds the frame to $A0, keeping the native stack 16-byte aligned.
+\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, and EVAL-USE-FLOOR below
+\ fills the frame to STACK-ABI:EVAL-BYTES ($A0), keeping the native stack
+\ 16-byte aligned.
 $90 constant EVAL-INB
+\ EVAL-USE-FLOOR: the using depth the buffer may close down to. B-EVAL starts it at the depth the buffer enters at, so a `;using`
+\ at or below it, which would close a using the includer opened, is refused
+\ (habu2.f C-END-USING). A `;package` that closes a package opened before the
+\ buffer restores a lower depth; the buffer's next `using` lowers the floor to
+\ meet it (C-USING-PUSH), and the clean exit restores the depth to the lower
+\ of the two (EM-EVAL-CLEAN-EXIT), so no using the buffer opened stays open.
+$98 constant EVAL-USE-FLOOR
 
 \ --- refusal location band (dot habu-name-the-file-70acbf10) --------------------
 \ Every engine load refusal that reaches the LCOMPILEDIE tail names the source it
@@ -1527,7 +1535,8 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 
 \ --- Package-scope eval-frame snapshot band (dot habu-recovery-pkg-scope-e0bd98e2) ---
 \ Evaluator entry snapshots package/search state in its native stack frame.
-\ Clean exit restores using depth; throw recovery also restores package scope.
+\ Clean exit restores the using depth to the buffer's floor (EVAL-USE-FLOOR);
+\ throw recovery restores the entry depth (PKGSNAP-USE) and the package scope.
 \ Package/search snapshots are fields of each native-stack evaluator frame.
 \ PKGSNAP-FLOOR is the open package's using floor (USE-PKG-SAVE-CELL): a
 \ buffer that closes the package, opens another and throws set that cell to

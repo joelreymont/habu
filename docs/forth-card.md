@@ -32,6 +32,8 @@ public
   global also owns is `E-USING-SHADOW-GLOBAL` (rc 67) — rename the public.
   Close a using opened before `package` after `;package`: a `;using` inside
   the package that would close it is `ENGINE-ERROR:USING-OUTER` (rc 104).
+  A load file is a using scope too: a `;using` in an included file or
+  `evaluate` buffer that would close its includer's using is rc 104 as well.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
