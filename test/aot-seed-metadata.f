@@ -57,7 +57,18 @@ private
    loop
    s" seed-metadata: candidate has no interior name mutation" 74 die ;
 
+\ The measured candidate's bytes. MEASURE reads and walks the whole engine, and
+\ every mutation starts from the same unmodified file, so it runs once and each
+\ mutation starts from this copy instead.
+DYNAMIC-BUFFER PRISTINE u8
+
 public
+
+: SEED-KEEP ( -- )
+   ILEN @ PRISTINE-RESERVE
+   IMG@ 0 PRISTINE ILEN @ BYTE-COPY ;
+
+: SEED-RESTORE ( -- ) 0 PRISTINE IMG@ ILEN @ BYTE-COPY ;
 
 : SEED-MUTATE ( n n -- ) {: table:n mode:n :}
    mode 9 = if
@@ -113,7 +124,7 @@ variable OUT-U variable ERR-U variable RC
    ;MATCH ;
 
 : MUTATION ( n n -- ) {: table:n mode:n :}
-   ENGINE-CANDIDATE:PATH$ IMAGE-SIZE:MEASURE
+   IMAGE-SIZE:SEED-RESTORE
    table mode IMAGE-SIZE:SEED-MUTATE
    IMAGE$ IMAGE-SIZE:SEED-WRITE
    IMAGE$ CHMOD-X IMAGE$ CODESIGN:FORCE
@@ -133,6 +144,7 @@ variable OUT-U variable ERR-U variable RC
    s" habu-seed-metadata" HB-TMP-MKDIR {: root:ptr rootu:n :}
    root ROOT rootu BYTE-COPY rootu ROOT-U ! ROOT$ CLEANUP-TREE+
    ROOT$ s" hb-corrupt" IMAGE JOIN-PATH IMAGE-U !
+   ENGINE-CANDIDATE:PATH$ IMAGE-SIZE:MEASURE IMAGE-SIZE:SEED-KEEP
    3 0 ?do
       s" unknown tag, empty/truncated/trailing stream and invalid ULEBs refuse at boot" T-LABEL
       i TABLE-MUTATIONS
