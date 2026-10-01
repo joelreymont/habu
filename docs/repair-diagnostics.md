@@ -58,6 +58,14 @@ Declaration packets never fabricate definition-only fields such as `word`,
 `declared_effect`, `definition_source`, or `return_stack`; source-span fields
 land with the declaration origin plumbing (PLAN item 13).
 
+Two load-time refusals of a checker record emit a row-shaped object: no
+definition encloses them, so they carry `schema_version`, `code`,
+`repair_class`, `verdict` `rejected`, `token` (the name the record would have
+described), `file` and `suggestion`, and no span or definition-only field.
+`E-TRUST-UNRESOLVED` / `fix_stale_trust_row` is a `trust` row naming no word
+where its record lands; `E-PKG-CONTEXT` / `use_storage_definer` is a checker
+storage registrar called from source outside the engine's verifier window.
+
 ## Checking Without Running
 
 `tools/check.f --verify-only FILE` reports what `bin/hb --load FILE` would
