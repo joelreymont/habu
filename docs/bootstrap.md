@@ -315,7 +315,9 @@ that same copy and distinct output paths. Both builds are uncached. A difference
 anywhere in the complete files fails the command, reporting a zero-based first
 differing offset. For an offset in captured code, the matching `.names` sidecar
 identifies its owner, including words whose names were stripped from the image;
-offsets without a matching name are reported as unavailable. The image reader
+offsets without a matching name are reported as unavailable. The verdict prints
+before the owners, so an owner lookup that throws is reported with its throw
+code and the command still fails. The image reader
 supplies the code blob's file coordinates, and the sidecar's column names select
 the fields. No installed engine is replaced.
 
