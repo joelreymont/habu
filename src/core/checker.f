@@ -1210,13 +1210,24 @@ CHECKER-PKG-LIVE-DEFAULT
    2 S\" hb: no authenticated package context for this definition\n" write drop
    PKGCTX-REJECT-RC throw ;
 
-: CHECKER-PKG-CONTEXT ( -- ptr u8 n n )
+: CHECKER-PKG-AUTHORITY ( -- ptr u8 n n bool )
    CHECKER-PKG-MIRROR-AUTHORITY? IF
       CHECKER-PKG-MIRROR
    ELSE
       PKG-LIVE-XT
-   THEN
-   0= IF CHECKER-PKG-CONTEXT-REJECT THEN ;
+   THEN ;
+
+: CHECKER-PKG-CONTEXT ( -- ptr u8 n n )
+   CHECKER-PKG-AUTHORITY 0= IF CHECKER-PKG-CONTEXT-REJECT THEN ;
+
+\ The same question for a caller that only observes: does an authority name a
+\ package context here? It never refuses. EFFECT-QUERY resolves its name through
+\ CHECKER-PKG-CONTEXT and so refuses where this answers false, which is right for
+\ a definition and for the native compiler; the tier-1 top-row tracker
+\ (src/core/top-row.f TR-CERT-DOUT-EMPTY?) defines nothing, so it asks this
+\ first and grays the word instead.
+: CHECKER-PKG-CONTEXT? ( -- bool )
+   CHECKER-PKG-AUTHORITY >r 2drop drop r> ;
 
 : CHECKER-AUTH-PACKAGE$ ( -- ptr u8 n )
    CHECKER-PKG-CONTEXT drop ;
@@ -9954,6 +9965,8 @@ PPRIM: CHECKER-BOUND REWIND PPRIM;
 \ a following arithmetic body both certify), exactly as for REWIND.
 PPRIM: CHECKER-BOUND EMPTY-STORE PPRIM;
 PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+\ The scope probe a non-defining caller asks before EFFECT-QUERY (top-row.f).
+PRIM: CHECKER-PKG-CONTEXT? PE-F PE-OUT PRIM;
 PRIM: E-USING-AMBIGUOUS  PE-N PE-OUT PRIM;
 PRIM: EFFECT-DIN-N       PE-N PE-OUT PRIM;
 PRIM: EFFECT-DOUT-N      PE-N PE-OUT PRIM;

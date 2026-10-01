@@ -1,9 +1,11 @@
 ---
 title: Keep the top-row tracker from refusing a line
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-01T13:11:50.459339+03:00"
+closed-at: "2026-10-01T13:39:15.405696+03:00"
+close-reason: test/top-row-warn-test.f no-context cases pass on product 4cccf15f (fail on base e1602d3d); measured lines rc 0 at tier 1, tier 2 rejects p3 by its own diagnostic
 ---
 
 Problem: the tier-1 top-row tracker ends the process on an interpreted word, though docs/typed-top-level.md (Tier 1, warnings only) says tier 1 observes and never blocks. Chain: src/core/top-row.f TR-WORD -> TR-CERT-DOUT-EMPTY? -> EFFECT-QUERY -> FIND-SIG -> CHECKER-FIND-ACTIVE-SYM -> CHECKER-PKG-CONTEXT -> CHECKER-PKG-CONTEXT-REJECT (rc 70, 'no authenticated package context for this definition'). The query runs only when the tracked top has a known family, so whether a line refuses depends on tracker state. Measured on base 75b4 by lane PX (habu-throw-the-pkg-be01af7e): inside a package after '0 set-current', '1 2 drop drop' exits 70 while '5 .' passes; with '0 set-top-check' first, '1 2 2drop' gives rc 0. Related: habu-model-bare-wordlists-9e7c3521.

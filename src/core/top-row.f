@@ -206,7 +206,12 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
 \ reads raw effect-store state the checker cannot type, so it sits behind a TRUSTED:
 \ boundary - the same idiom TR-INSTALL uses. Precise OUTPUT family propagation and row
 \ unification are tier-2, dot habu-typed-top-tier-589c550f.
+\ EFFECT-QUERY resolves the name in the current package context and refuses (rc 70)
+\ where no authority names one, as inside a package after `0 set-current`. The
+\ tracker only observes, so it asks CHECKER-PKG-CONTEXT? first: a word it cannot
+\ query in this scope is unmodeled, and TR-WORD grays its outputs.
 TRUSTED: TR-CERT-DOUT-EMPTY? ( ptr u8 n -- bool )   \ certified word producing no fixed outputs?
+   CHECKER-PKG-CONTEXT? 0= if 2drop 0 0= 0= exit then
    EFFECT-QUERY if EFFECT-DOUT-N 0= else 0 0= 0= then ;
 
 : TR-CERT-STEP ( n -- ) {: din:n :}     \ pop din cells; row stays precise (no dirty resync)

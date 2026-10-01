@@ -177,13 +177,16 @@ s" AW drop" UCE-CATCH E-REJECT T=
 \ A package scope the engine cannot authenticate, because the current wordlist
 \ is neither of the package's own, names nothing to copy into the mirror: the
 \ mirror keeps UQV through the throw, and once current is back the replay
-\ agrees instead of refusing E-PKG-CONTEXT. The buffer goes through the engine's
-\ `evaluate`, which refuses that scope with a catchable reject and leaves its two
-\ input cells behind; INCLUDE-EVALUATE ends the process there instead.
+\ agrees instead of refusing E-PKG-CONTEXT. The buffer throws E-UNDEFINED through
+\ the engine's `evaluate`, whose catch leaves its two input cells behind;
+\ INCLUDE-EVALUATE ends the process there instead. A buffer that only interprets
+\ (`1 drop`) runs in that scope: the tier-1 top-row tracker never refuses a line.
+\ The tick comes first: the trusted-only tick query resolves the name through
+\ the checker, which refuses any name in a scope it cannot authenticate.
 package UQV
 variable UQV-CUR  get-current UQV-CUR !
-0 set-current
-s" 1 drop" ' evaluate catch E-REJECT T= 2drop
+' evaluate  0 set-current
+s" UQV-NO-SUCH-WORD" rot catch E-REJECT T= 2drop
 UQV-CUR @ set-current
 s" 1 drop" VS-CATCH 0 T=
 ;package

@@ -300,6 +300,8 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" CHECKER-PKG-LIVE-DEFAULT" XREF-FIND XREF-FOUND? TFALSE
    s" package context selector is not addressable" T-LABEL
    s" CHECKER-PKG-CONTEXT" XREF-FIND XREF-FOUND? TFALSE
+   s" package authority reader is not addressable" T-LABEL
+   s" CHECKER-PKG-AUTHORITY" XREF-FIND XREF-FOUND? TFALSE
    s" verifier package scope cell is not addressable" T-LABEL
    s" CHECKER-VERIFY-PKG-DEPTH" XREF-FIND XREF-FOUND? TFALSE
    s" verifier package snapshot name is not addressable" T-LABEL

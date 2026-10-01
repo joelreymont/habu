@@ -22,7 +22,9 @@
 \ proof): a literal -> certified-(ptr u8 n)-consumer line, the CHECK! probe idiom,
 \ a mid-stream TRUSTED: shim call, and a `0 set-check` window each emit ZERO and
 \ rc 0. The row persists across `require` (tier-2 still rejects p1 after two
-\ requires).
+\ requires). With no package context (a package open after `0 set-current`) a word
+\ the tracker cannot query grays its outputs: the lines run to rc 0 with no
+\ package-context refusal, and tier 2 still rejects p3 by its own diagnostic.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
@@ -233,6 +235,41 @@ variable TW-CNT
    s" tier-2 row persists across require (p1 still rejected after two requires)" T-LABEL
    TW-REQUIRE$ TW-ASSERT-REJECTS ;
 
+\ No package context: inside a package after `0 set-current` the current wordlist
+\ is neither of the package's own, so no authority names a package context and
+\ the checker refuses any definition there (rc 70, "no authenticated package
+\ context"). The tracker defines nothing: a word whose effect it cannot query in
+\ that scope grays its outputs at both tiers, and tier 2 still refuses a residual
+\ by its own top-row diagnostic.
+: TW-NOCTX ( -- )                        \ open a package, then leave its wordlists
+   SB-RESET
+   s" package TW-NOCTX" TW-LINE
+   s" 0 set-current" TW-LINE ;
+
+: TW-NOCTX-LINES$ ( -- ptr u8 n )        \ certified words on a definite top
+   TW-NOCTX
+   s" 1 2 drop drop" TW-LINE
+   s" 1 2 2drop" TW-LINE
+   S\" s\" lines ran\" type cr" TW-LINE
+   SB$ ;
+
+: TW-NOCTX-P3$ ( -- ptr u8 n )           \ p3 after a queried word, in the same scope
+   TW-NOCTX
+   s" 1 2 drop drop" TW-LINE
+   S\" s\" abc\" + . cr" TW-LINE
+   SB$ ;
+
+: TW-NO-PKGCTX ( -- )                    \ stderr carries no package-context refusal
+   TW-ERR$ s" no authenticated package context" CONTAINS? TFALSE ;
+
+: TW-NO-CONTEXT ( -- )
+   s" tier-1 no package context: 1 2 drop drop and 1 2 2drop run, rc 0" T-LABEL
+   TW-NOCTX-LINES$ 0 TW-ASSERT-WARNS
+   TW-EXITED @ TTRUE  TW-RC @ 0 T=  TW-NO-PKGCTX
+   TW-OUT TW-OUT-U @ s" lines ran" CONTAINS? TTRUE
+   s" tier-2 no package context: p3 rejects by its own diagnostic" T-LABEL
+   TW-NOCTX-P3$ TW-ASSERT-REJECTS  TW-NO-PKGCTX ;
+
 : TW-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-tw" HB-TMP-MKDIR {: a:ptr u:n :}
@@ -252,6 +289,7 @@ variable TW-CNT
    TW-NEGATIVES
    TW-NEGATIVES2
    TW-PERSIST
+   TW-NO-CONTEXT
    TW-CLEANUP
    T-REPORT
    s" top-row-warn: ok" type cr ;

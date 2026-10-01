@@ -90,11 +90,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 \ wordlist current and evaluates a definition; with TRY's catch around the
 \ evaluate the reject is a throw the catch receives as 70, and without it the
 \ throw leaves the evaluate unhandled and the process exits 70. BARE restores
-\ the package's wordlist itself, so no top-level word is interpreted while the
-\ bare wordlist is current: there the top-row tracker's effect query (src/core/
-\ top-row.f TR-CERT-DOUT-EMPTY?) asks CHECKER-PKG-CONTEXT at the word event,
-\ before the word runs, so a catch the word would set up never exists and the
-\ refusal is unhandled.
+\ the package's wordlist itself.
 : BARE-PREFIX ( ptr u8 n -- ) {: pkg:ptr pkgu:n :}
    SB-RESET
    s" package " SB-APPEND
