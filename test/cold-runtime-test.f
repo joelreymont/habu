@@ -21,6 +21,14 @@
 \ instead (`E-UNDEFINED: USIGS`, src/habu/hide.f naming a checker word no prefix
 \ had loaded) - the failure case 3 names from the other side.
 \
+\ THE BAKED SOURCE HAS ITS OWN ROOM. A cold engine copies its prefix and then
+\ its baked source into one boot arena, so the engine built here bakes the
+\ largest source its driver admits (src/habu/stage2.f READ-SRC refuses at
+\ SOURCE-ARENA-CAP): padded, the stage source plus the cold prefix exceed
+\ SOURCE-ARENA-CAP. While the arena was that fixed size, case 2 died
+\ `hb: source prefix buffer full`, exit 74, before its driver ran - the death
+\ the no-binary recovery chain met in hb-stdin-mk.
+\
 \ THE SEEDED ARM IS SOMEBODY ELSE'S. That the installed product opens no prefix
 \ source at all - the property that breaks if the two arms are confused the other
 \ way - is tools/hb-open-failure-test.f (suite hb-open-failure), which boots a
@@ -95,18 +103,32 @@ create CR-ERR CR-CAP allot
    CR-TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CR-CAPTURE>N ;
 
+\ --build compiles an unpadded copy of the payload; the driver inside it then
+\ reads stage2-src, padded to one byte under its refusal, and bakes all of it.
+TYPED-VARIABLE CR-PAD-A ptr u8
+
+: CR-PAD-STAGE-SOURCE ( -- )
+   s" stage2-src" BF-A$ s" cr-payload-src" BF-B$ COPY-FILE-STREAM
+   SOURCE-ARENA-CAP 1 - s" stage2-src" BF-A$ FILE-SIZE - {: pad:n :}
+   pad MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop CR-PAD-A !
+   pad 0 ?do 32 CR-PAD-A @ i + c! loop
+   s" stage2-src" BF-A$ CR-PAD-A @ pad APPEND-FILE ;
+
 \ ---- cases -----------------------------------------------------------------
 
 \ The production entry, spelled as tools/hb-build-lib.f spells it for its maker:
 \ the real assembled stage payload, built by the installed engine through --build.
 : CR-STAGE-BUILDS ( -- )
    BF-STAGE2-SOURCE
+   CR-PAD-STAGE-SOURCE
    s" stage2-got" BF-REMOVE-TMP
-   BF-ENGINE$ s" stage2-src" BF-A$ COMPILER-BUILD:RUN {: rc:n :}
+   BF-ENGINE$ s" cr-payload-src" BF-A$ COMPILER-BUILD:RUN {: rc:n :}
    s" a stage2 payload builds an engine through --build" T-LABEL
    rc 0 T=
    s" ... and the engine is where its driver put it" T-LABEL
-   s" stage2-got" BF-A$ FILE? TTRUE ;
+   s" stage2-got" BF-A$ FILE? TTRUE
+   s" ... carrying the whole padded source" T-LABEL
+   s" stage2-got" BF-A$ FILE-SIZE SOURCE-ARENA-CAP > TTRUE ;
 
 : CR-STAGE-BOOTS ( -- )
    s" stage2-src" BF-REMOVE-TMP                  \ nothing left for the booted driver to read

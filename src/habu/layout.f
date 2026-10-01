@@ -350,6 +350,10 @@ CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 170 = min
 64 constant PROF-STATE-BYTES
 DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
+\ The source-arena allowance for what boot reads - the cold prefix and an argv
+\ or stdin program - and the size at which the stage and maker drivers refuse
+\ the source they bake (src/habu/stage2.f, src/habu/maker.f). An image maps this
+\ plus the source it bakes: src/habu/habu2.f SOURCE-ARENA-LEN.
 $400000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ
 20 constant DATA

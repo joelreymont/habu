@@ -323,7 +323,7 @@ $D63F0200 constant C-CALL-BLR-X16     \ blr x16: deferred-word indirect call
    LCEMITBL LABEL@ BL, ;
 
 variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled rc-74 exits (prefix overflow / read error / string literal)
-30 constant SRCFULL-MSG-LEN   \ byte length of "hb: source prefix buffer full\n" (LSRCFULL; SRC-SFAIL/SRC-BFAIL IBUFSZ overflow)
+30 constant SRCFULL-MSG-LEN   \ byte length of "hb: source prefix buffer full\n" (LSRCFULL; SRC-SFAIL/SRC-BFAIL arena overflow)
 23 constant SRCREAD-MSG-LEN   \ byte length of "hb: cannot read source\n" (LSRCREAD; source read syscall error)
 22 constant BADSTR-MSG-LEN    \ byte length of "hb: bad string literal" (LBADSTR; unterminated or bad-escape string literal). NO newline: the LCOMPILEDIE tail appends ` at <path>:<line>` and the newline
 variable LATMSG               \ " at " — the refusal-location separator the LCOMPILEDIE tail writes before <path>:<line>
@@ -748,6 +748,19 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    done LBL,
    RET, ;
 
+\ THE SOURCE ARENA HOLDS WHAT THIS IMAGE PUTS IN IT. Every boot route copies
+\ the cold prefix and then its program into one anonymous mapping. What boot
+\ reads from disk or stdin has the fixed allowance IBUFSZ; the source baked at
+\ LSRC is SRCN bytes, fixed when this image is emitted, and gets exactly that
+\ room on top. A baked source therefore never competes with the prefix it boots
+\ behind: with one fixed arena, the recovery chain's hb-stdin-mk (about 1.1 MB
+\ of prefix ahead of 3.1 MB of baked compiler source) died `hb: source prefix
+\ buffer full`, exit 74, the moment the tree grew past their sum. The mapping
+\ and every bound check read this one length; the seed mirror in
+\ bootstrap/cg/forth.fs states the same sum.
+: SOURCE-ARENA-LEN ( -- n )
+   IBUFSZ SRCN @ + ;
+
 : EMIT-SOURCE-READ ( -- )
    LSRCRD LABEL@ LBL,
    LBL LBL LBL LBL {: srl sdone sreaderr sopenerr :}
@@ -758,8 +771,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    17 9 0 ADDI,
    srl LBL,
       0 12 0 ADDI,  1 9 0 ADDI,
-      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
-      2 sbufull CBZ,                                \ no room left: IBUFSZ overflow, not a read fault
+      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 sbufull CBZ,                                \ no room left: arena overflow, not a read fault
       NR-READ SYS,
       13 C-CS CSET,  13 sreaderr CBNZ,
       0 sdone CBZ,
@@ -773,7 +786,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    sreaderr LBL,  0 12 0 ADDI,  NR-CLOSE SYS,     \ read() fault: x12 is the fd, no path to name; label the cause on fd 2
    1 LSRCREAD LABEL@ ADR,  0 2 MOVZ,  2 SRCREAD-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 74 MOVZ,  NR-EXIT-GROUP SYS,
-   sbufull LBL,  0 12 0 ADDI,  NR-CLOSE SYS,      \ source outgrew IBUFSZ mid-read: name the buffer, not a read fault
+   sbufull LBL,  0 12 0 ADDI,  NR-CLOSE SYS,      \ source outgrew the arena mid-read: name the buffer, not a read fault
    1 LSRCFULL LABEL@ ADR,  0 2 MOVZ,  2 SRCFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 74 MOVZ,  NR-EXIT-GROUP SYS,
    sopenerr LBL,                                  \ x12 = NUL-terminated source path (untouched since open)
@@ -789,13 +802,11 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 
 \ LSRCRDP: read one ENGINE PREFIX source file and drop the lines the interpreter
 \ would skip anyway. The prefix rows are 41 percent comment bytes, and every cold
-\ boot copies all of them into the source arena ahead of the program (IBUFSZ, a
-\ fixed 4 MiB). The recovery chain's hb-stdin-mk carries the whole compiler as
-\ baked source, so prefix + program crossed the arena and the chain died `hb:
-\ source prefix buffer full`, exit 74, with nothing wrong in either half. The
-\ engine reads its prefix through this entry; LSRCRD keeps serving argv files and
-\ the certified --build payload byte for byte, because those are the user's
-\ source and the engine must not rewrite them.
+\ boot copies all of them into the source arena ahead of the program, inside the
+\ fixed IBUFSZ allowance an argv or stdin program shares with them
+\ (SOURCE-ARENA-LEN). The engine reads its prefix through this entry; LSRCRD
+\ keeps serving argv files and the certified --build payload byte for byte,
+\ because those are the user's source and the engine must not rewrite them.
 \
 \ THE RULE IS THE INTERPRETER'S OWN, AT LINE GRANULARITY. EM-COMMENT skips a
 \ one-byte `\` token to the newline, and habu1.f EMIT-TOK delimits tokens at any
@@ -969,7 +980,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 
 : C-SOURCE-APPEND-X4-TO ( label -- ) {: fail:label :}
    2 11 0 ADDI,
-   5 IBUFSZ LIT64,
+   5 SOURCE-ARENA-LEN LIT64,
    2 2 5 ADD,
    9 2 CMP,
    C-GE fail BCOND,
@@ -1399,7 +1410,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    LBL LCOLDPFX !  LBL LCOLDPFXB !  LBL LAPPPROV !  LBL LAPPREQ ! ;
 
 : C-SOURCE-MMAP ( label -- ) {: fail:label :}
-   0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,
+   0 0 MOVZ,  1 SOURCE-ARENA-LEN LIT64,  2 3 MOVZ,
    3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
    13 C-CS CSET,  13 fail CBNZ, ;
@@ -1765,7 +1776,7 @@ public
    17 9 0 ADDI,
    SRC-RL LABEL@ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
-      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  2 2 9 SUB,
       2 SRC-SFAIL LABEL@ CBZ,
       NR-READ SYS,
       13 C-CS CSET,  13 SRC-SFAIL LABEL@ CBNZ,
@@ -1847,7 +1858,7 @@ public
    14 14 1 ADDI, ;
 
 : C-SOURCE-APPEND-LF ( -- )
-   2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,
+   2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,
    9 2 CMP,  C-GE SRC-SFAIL LABEL@ BCOND,
    5 10 MOVZ,  5 9 0 STRB,  9 9 1 ADDI, ;
 
@@ -1864,14 +1875,14 @@ public
    12 LSRC LABEL@ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
    loop LBL,
       12 13 CMP,  C-GE done BCOND,
-      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  9 2 CMP,  C-GE SRC-SFAIL LABEL@ BCOND,
+      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  9 2 CMP,  C-GE SRC-SFAIL LABEL@ BCOND,
       4 12 0 LDRB,  4 9 0 STRB,
       12 12 1 ADDI,  9 9 1 ADDI,
       loop B,
    done LBL, ;
 
 : C-SOURCE-FAIL-REPL-DONE ( -- )
-   SRC-SFAIL LABEL@ LBL,                                          \ IBUFSZ source-prefix overflow: label fd 2 before exit 74
+   SRC-SFAIL LABEL@ LBL,                                          \ source-arena overflow: label fd 2 before exit 74
    1 LSRCFULL LABEL@ ADR,  0 2 MOVZ,  2 SRCFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 74 MOVZ,  NR-EXIT-GROUP SYS,
    SRC-REPL LABEL@ LBL,
@@ -1924,14 +1935,14 @@ public
    12 LSRC LABEL@ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
    SRC-BLOOP LABEL@ LBL,
       12 13 CMP,  C-GE SRC-BDONE LABEL@ BCOND,
-      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  9 2 CMP,  C-GE SRC-BFAIL LABEL@ BCOND,
+      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  9 2 CMP,  C-GE SRC-BFAIL LABEL@ BCOND,
       4 12 0 LDRB,  4 9 0 STRB,
       12 12 1 ADDI,  9 9 1 ADDI,
       SRC-BLOOP LABEL@ B,
    SRC-BDONE LABEL@ LBL,
    LSHBANG LABEL@ BL,
    11 DATA INP-CELL STR,  9 DATA BOOT-SRC:USER-END STR,  SRC-DONE LABEL@ B,   \ baked source: the second stream
-   SRC-BFAIL LABEL@ LBL,                                          \ IBUFSZ baked-prefix overflow: label fd 2 before exit 74
+   SRC-BFAIL LABEL@ LBL,                                          \ source-arena overflow: label fd 2 before exit 74
    1 LSRCFULL LABEL@ ADR,  0 2 MOVZ,  2 SRCFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 74 MOVZ,  NR-EXIT-GROUP SYS,
    SRC-DONE LABEL@ LBL, ;

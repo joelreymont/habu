@@ -22,12 +22,15 @@ using A64ASM
 \ out of reach` before any word is written. ADR-HI below is that field's
 \ exclusive bound, so it is exactly this part's allowance.
 \
-\ THE BAKED-SOURCE PART IS BOUNDED BY THE BOOT SOURCE ARENA. The same boot path
-\ copies LSRC into the source arena a byte at a time and refuses at IBUFSZ
-\ (src/habu/layout.f SOURCE-ARENA-CAP) with `hb: source prefix buffer full`,
-\ rc 74. A window able to assemble more baked source than the arena can hold
-\ would only produce engines that die on their first boot, so IBUFSZ is exactly
-\ that part's allowance.
+\ THE BAKED-SOURCE PART IS BOUNDED BY THE SOURCE READERS. The stage and maker
+\ drivers bake the source they read, and both readers refuse at IBUFSZ
+\ (src/habu/layout.f SOURCE-ARENA-CAP; src/habu/stage2.f READ-SRC,
+\ src/habu/maker.f MK-READ-SRC), so IBUFSZ is that part's allowance on those
+\ routes. src/habu/build.f bakes the maker source src/habu/maker-source.f READ
+\ maps whole, with no reader ceiling; an over-size part there is refused at
+\ emission by the code-window guard (CODE-CAP-WORDS).
+\ The boot arena does not bound the part: src/habu/habu2.f SOURCE-ARENA-LEN
+\ maps the baked source's own length on top of IBUFSZ.
 \
 \ THE AOT PAYLOAD HAS ONE AGGREGATE BUDGET. It is emitted last
 \ (EMIT-AOT-SEED) and carries the compiled blob, the dictionary records, the
@@ -299,9 +302,9 @@ variable FX-NEW
 \ Gforth seed generator's within-based rejection in bootstrap/cg/asm.fs exactly
 \ (?REL26/?REL19 on word deltas, ENC-ADR on the byte delta), so the native
 \ single-pass assembler fails closed at the identical boundary the trusted seed
-\ already rejects. The code window (CODE-CAP-BYTES) overshoots REL19/ADR reach —
-\ it always did, and now that the window is ADR-HI + IBUFSZ it overshoots ADR by
-\ exactly the boot source arena — so a forward or backward BCOND/CBZ/CBNZ/ADR,
+\ already rejects. The code window (CODE-CAP-BYTES, ADR-HI + IBUFSZ +
+\ AOT-SECTION-CAP) overshoots REL19/ADR reach — it always did, and it overshoots
+\ ADR by IBUFSZ + AOT-SECTION-CAP — so a forward or backward BCOND/CBZ/CBNZ/ADR,
 \ and a large enough B/BL, must be range-checked before its delta is masked, or
 \ the mask silently wraps to the wrong target. Every emit and patch site
 \ validates before code mutation.

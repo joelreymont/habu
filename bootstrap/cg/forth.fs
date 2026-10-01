@@ -2660,6 +2660,11 @@ create ZBYTE 0 c,
    done LBL,
    RET, ;
 
+\ The native mirror of src/habu/habu2.f SOURCE-ARENA-LEN: the arena holds the
+\ IBUFSZ allowance for what boot reads plus exactly the SRCN bytes baked at
+\ LSRC, so a baked source never competes with the cold prefix ahead of it.
+: SOURCE-ARENA-LEN ( -- n )  IBUFSZ SRCN @ + ;
+
 : EMIT-SOURCE-READ ( -- )
    LSRCRD @ LBL,
    LBL LBL LBL LBL LBL {: srl sdone sreaderr sopenerr sbufull :}
@@ -2669,8 +2674,8 @@ create ZBYTE 0 c,
    17 9 0 ADDI,
    srl LBL,
       0 12 0 ADDI,  1 9 0 ADDI,
-      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
-      2 sbufull CBZ,                              \ no room left: IBUFSZ overflow, not a read fault
+      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 sbufull CBZ,                              \ no room left: arena overflow, not a read fault
       NR-READ SYS,
       13 C-CS CSET,  13 sreaderr CBNZ,
       0 sdone CBZ,
@@ -2683,7 +2688,7 @@ create ZBYTE 0 c,
    RET,
    sreaderr LBL,  0 12 0 ADDI,  NR-CLOSE SYS,     \ read() fault: label fd 2 before exit 74
    s" hb: cannot read source" 74 C-EXIT-DIAG
-   sbufull LBL,  0 12 0 ADDI,  NR-CLOSE SYS,      \ source outgrew IBUFSZ mid-read: name the buffer
+   sbufull LBL,  0 12 0 ADDI,  NR-CLOSE SYS,      \ source outgrew the arena mid-read: name the buffer
    s" hb: source prefix buffer full" 74 C-EXIT-DIAG
    sopenerr LBL,                                  \ open error: label fd 2 before exit 74 (no per-path name in the tripwire)
    s" hb: cannot open source" 74 C-EXIT-DIAG ;
@@ -3003,7 +3008,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : C-SOURCE-MMAP ( fail -- )
    >r
-   0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,
+   0 0 MOVZ,  1 SOURCE-ARENA-LEN LIT64,  2 3 MOVZ,
    3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
    13 C-CS CSET,  13 r> CBNZ, ;
@@ -3059,7 +3064,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-SOURCE-APPEND-X4-TO ( n -- )
    {: fail :}
    2 11 0 ADDI,
-   5 IBUFSZ LIT64,
+   5 SOURCE-ARENA-LEN LIT64,
    2 2 5 ADD,
    9 2 CMP,
    C-GE fail BCOND,
@@ -3261,7 +3266,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    17 9 0 ADDI,
    SRC-RL @ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
-      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  2 2 9 SUB,
       2 SRC-SFAIL @ CBZ,
       NR-READ SYS,
       13 C-CS CSET,  13 SRC-SFAIL @ CBNZ,
@@ -3306,7 +3311,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    14 14 1 ADDI, ;
 
 : C-SOURCE-APPEND-LF ( -- )
-   2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,
+   2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,
    9 2 CMP,  C-GE SRC-SFAIL @ BCOND,
    5 10 MOVZ,  5 9 0 STRB,  9 9 1 ADDI, ;
 
@@ -3323,14 +3328,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    12 LSRC @ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
    lsloop LBL,
       12 13 CMP,  C-GE lsdone BCOND,
-      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  9 2 CMP,  C-GE SRC-SFAIL @ BCOND,
+      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  9 2 CMP,  C-GE SRC-SFAIL @ BCOND,
       4 12 0 LDRB,  4 9 0 STRB,
       12 12 1 ADDI,  9 9 1 ADDI,
       lsloop B,
    lsdone LBL, ;
 
 : C-SOURCE-FAIL-REPL-DONE ( -- )
-   SRC-SFAIL @ LBL,  s" hb: source prefix buffer full" 74 C-EXIT-DIAG   \ IBUFSZ source-prefix overflow
+   SRC-SFAIL @ LBL,  s" hb: source prefix buffer full" 74 C-EXIT-DIAG   \ source-arena overflow
    SRC-REPL @ LBL,
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 11 0 ADDI,
@@ -3373,7 +3378,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    12 LSRC @ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
    SRC-BLOOP @ LBL,
       12 13 CMP,  C-GE SRC-BDONE @ BCOND,
-      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  9 2 CMP,  C-GE SRC-BFAIL @ BCOND,
+      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  9 2 CMP,  C-GE SRC-BFAIL @ BCOND,
       4 12 0 LDRB,  4 9 0 STRB,
       12 12 1 ADDI,  9 9 1 ADDI,
       SRC-BLOOP @ B,
@@ -3381,7 +3386,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LSHBANG @ BL,
    11 DATA INP-CELL STR,  9 DATA INE-CELL STR,  SRC-DONE @ B,
    SRC-BFAIL @ LBL,  SRC-SFAIL @ LBL,       \ the provide rows' appender names SRC-SFAIL; one exit serves both
-   s" hb: source prefix buffer full" 74 C-EXIT-DIAG   \ IBUFSZ baked-prefix overflow
+   s" hb: source prefix buffer full" 74 C-EXIT-DIAG   \ source-arena overflow
    SRC-DONE @ LBL, ;
 
 : EMIT-SOURCE ( -- )

@@ -467,7 +467,9 @@ contents and failure boundaries:
   smaller than the files on disk; `LSRCRD` still reads argv files and the
   `--build` payload byte for byte, so only the prefix term moved. A seeded
   engine emits no cold prefix at all, so the installed `bin/hb` starts the
-  program at the base of the arena.
+  program at the base of the arena. Source baked into the image does not
+  count against `IBUFSZ`: the arena is `SOURCE-ARENA-LEN`, `IBUFSZ` plus the
+  baked length.
 - `S2-SOURCE-CAP` is the anonymous mapping used by `src/habu/stage2.f` to read
   the generated fixpoint compiler source. It is not the engine input arena. A
   candidate-backed regression proves cap-minus-one succeeds and exact-cap exits
