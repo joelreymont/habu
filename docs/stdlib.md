@@ -604,6 +604,8 @@ BUF:N>BLEN ( n -- NUM:byte-len )
 
 `N>BLEN` accepts nonnegative counts, including zero, and throws `E-BUF-BOUNDS`
 on a negative count. `BLEN>N` projects a validated length for byte arithmetic.
+`BUF:RESERVE` grows to the exact requested capacity; `BUF:ENSURE` uses checked
+doubling to leave room for incremental writes. Both preserve the active bytes.
 
 ## Bounded pointers (spans)
 
@@ -763,10 +765,11 @@ It emits compact JSON, escapes string control bytes/quotes/backslashes, and
 throws instead of truncating or emitting invalid bytes. Commas remain explicit so
 object and array shape is visible in code.
 
-**The writer's state is caller-owned.** The module allocates nothing and keeps no
-process-wide buffer, cursor or scratch cell, so two tasks that each declare their
-own writer write JSON at the same time without a lock. A caller declares one
-writer record and the output bytes it owns, and `JSON-WRITE:OPEN` binds the two:
+**The writer's state is caller-owned.** The module keeps no process-wide buffer,
+cursor or scratch cell, so two tasks that each declare their own writer write JSON
+at the same time without a lock. A caller declares one writer record and either
+a fixed output array or an initialized `BUF` header. `JSON-WRITE:OPEN` binds a
+fixed array:
 
 ```forth
 $1000 constant RESP-CAP
@@ -781,24 +784,47 @@ TYPED-VARIABLE RESP-W JSON-WRITE:writer      \ or: n TYPED-BUFFER WRITERS JSON-W
    JSON-WRITE:$ ;
 ```
 
+For output that grows, initialize a caller-owned `BUF` and pass its header to
+`OPEN-BUF`:
+
+```forth
+create RESP-OUT BUF:HDR-BYTES allot
+TYPED-VARIABLE RESP-W JSON-WRITE:writer
+
+: RESPONSE$ ( -- ptr u8 n )
+   RESP-OUT 64 BUF:N>BLEN BUF:INIT
+   RESP-W RESP-OUT JSON-WRITE:OPEN-BUF
+   JSON-WRITE:OBJECT-START
+   s" ok" 0 0= JSON-WRITE:FIELD-BOOL
+   JSON-WRITE:OBJECT-END
+   JSON-WRITE:$ ;
+```
+
+`OPEN-BUF` clears an initialized buffer before writing. It grows through `BUF`
+as needed, including when an emitter reads bytes already in that buffer. `RESET`
+clears it; `CLOSE` invalidates the writer and leaves the bytes owned by the
+caller. After the last use of the bytes, call `RESP-OUT BUF:DISPOSE`.
+
 The handle is the nominal `ptr JSON-WRITE:writer`, which only the typed storage
 definers mint, so a raw cell cannot stand in for one. Every emitter answers its
 writer, so a document reads as one chain and `JSON-WRITE:$` ends the chain with
 the bytes written so far; the span stays valid until the caller writes again.
 A writer that was never opened - the zero image a definer leaves - or one already
-closed refuses every operation with `E-JW-STATE`. An emitter appends all of its
-bytes or none: a value that does not fit the caller's buffer is `E-JW-CAPACITY`,
-never a truncated value, and a document that hit a refusal is incomplete until
-the caller `RESET`s or `CLOSE`s the writer. A byte outside 0..255 is
+closed refuses every operation with `E-JW-STATE`. A fixed writer refuses a value
+that does not fit with `E-JW-CAPACITY`; a growable writer can propagate `BUF` or
+allocation errors. A document that hit a refusal is incomplete until the caller
+`RESET`s or `CLOSE`s the writer. A byte outside 0..255 is
 `E-JW-BYTE`, an output buffer that is null or negative is `E-JW-OUTPUT`, and an
-appended span that is negative or null-with-bytes is `E-JW-SOURCE`. The record
-accessors, the capacity/length refinement helpers, and the single-byte and escape
-emitters are package-private, so callers use only the qualified public words
-below.
+appended span that is negative or null-with-bytes is `E-JW-SOURCE`. For growable
+writers, the same error covers a span inside the buffer's capacity but outside
+its written bytes, including bytes left after `RESET`. The record accessors,
+the capacity/length refinement helpers, and the single-byte and escape emitters
+are package-private, so callers use only the qualified public words below.
 
 ```forth
 JSON-WRITE:writer                                     \ the record type
 JSON-WRITE:OPEN         ( ptr writer ptr u8 n -- ptr writer )
+JSON-WRITE:OPEN-BUF     ( ptr writer ptr n -- ptr writer )
 JSON-WRITE:RESET        ( ptr writer -- ptr writer )
 JSON-WRITE:CLOSE        ( ptr writer -- )
 JSON-WRITE:RAW          ( ptr writer ptr u8 n -- ptr writer )
@@ -823,7 +849,7 @@ JSON-WRITE:$            ( ptr writer -- ptr u8 n )
 Prefer these words over constructing quoted JSON literals by hand. Use
 `JSON-WRITE:FIELD-S` when the value is arbitrary text and `JSON-WRITE:FIELD-RAW`
 only for a known-valid JSON fragment such as a prevalidated number lexeme.
-Size the buffer for the worst case: one byte can escape to six (`\u00XX`).
+Size fixed output for the worst case: one byte can escape to six (`\u00XX`).
 
 ## JSON Read
 

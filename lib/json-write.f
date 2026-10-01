@@ -2,9 +2,10 @@
 \
 \ The module keeps no process state. A caller declares one writer record
 \ (`TYPED-VARIABLE W JSON-WRITE:writer`, or a `TYPED-BUFFER` of them) plus the
-\ output bytes it owns, and JSON-WRITE:OPEN binds the two. Writers over
-\ different buffers share nothing, so two tasks can each write JSON without a
-\ lock; the caller keeps its own buffer live and exclusive until CLOSE.
+\ output bytes it owns. JSON-WRITE:OPEN binds fixed output and OPEN-BUF binds
+\ an initialized caller-owned BUF header. Writers over different buffers share
+\ nothing, so two tasks can each write JSON without a lock; the caller keeps its
+\ own buffer live and exclusive until CLOSE.
 \
 \ The handle is the nominal `ptr JSON-WRITE:writer`, which only the typed
 \ storage definers mint: a raw cell cannot stand in for one. A writer that was
@@ -13,13 +14,14 @@
 \
 \ Every emitter answers its writer, so a document reads as one chain and
 \ JSON-WRITE:$ ends the chain with the bytes written so far. An emitter appends
-\ all of its bytes or none: a value that does not fit the caller's buffer is
-\ E-JW-CAPACITY, never a truncated value. A document that hit a refusal is
-\ incomplete, and the caller RESETs or CLOSEs the writer.
+\ all of its bytes or none. Fixed output refuses a value that will not fit with
+\ E-JW-CAPACITY; growable output propagates BUF/allocation failures. A document
+\ that hit a refusal is incomplete, and the caller RESETs or CLOSEs the writer.
 \
 \ Callers build compact JSON through the qualified public API: JSON-WRITE:OPEN /
-\ RESET / CLOSE own the writer, the value emitters JSON-WRITE:STRING / RAW / U /
-\ BOOL / NULL append one JSON value, JSON-WRITE:KEY writes one escaped object key
+\ OPEN-BUF / RESET / CLOSE bind and control the writer, the value emitters
+\ JSON-WRITE:STRING / RAW / U / BOOL / NULL append one JSON value,
+\ JSON-WRITE:KEY writes one escaped object key
 \ plus its colon, JSON-WRITE:COMMA / OBJECT-START / OBJECT-END / ARRAY-START /
 \ ARRAY-END write structural delimiters, the JSON-WRITE:FIELD-S / FIELD-U /
 \ FIELD-BOOL / FIELD-NULL / FIELD-RAW helpers write one key-and-value pair, and
@@ -29,17 +31,19 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/byte-buffer.f
 
 package JSON-WRITE
 
 public
 
-\ out = the caller's output buffer, cap = its byte capacity, len = bytes written.
-\ A closed writer keeps CLOSED-CAP so a stale handle is refused, not written to.
+\ Fixed output uses out/cap/len. Growable output uses the caller's BUF header
+\ through buf. A closed writer keeps CLOSED-CAP.
 STRUCTURE writer 0
   FIELD out ptr u8
   FIELD cap n
   FIELD len n
+  FIELD buf ptr n
 ;STRUCTURE
 
 private
@@ -69,14 +73,22 @@ private
 6 constant JW-U00-N              \ escaped width of \u00XX
 2 constant JW-QUOTE-N            \ the two string delimiters
 
+: JW-BUF@ ( ptr writer -- ptr n )
+   @ JSON--WRITE-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr :}
+   buf ;
+
 : JW-LIVE ( ptr writer -- ptr u8 n n )   \ output buffer, capacity, length
-   @ JSON--WRITE-WRITER:UNMAKE {: vp:ptr cap:n used:n :}
-   vp 0= if E-JW-STATE throw then
+   @ JSON--WRITE-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr :}
    cap 0 < if E-JW-STATE throw then
-   vp cap used ;
+   buf 0= if
+      vp 0= if E-JW-STATE throw then
+      vp cap used exit
+   then
+   buf BUF:SPAN$ BUF:BLEN>N {: data:ptr length:n :}
+   data buf BUF:CAP@ BUF:BLEN>N length ;
 
 : JW-USED! ( ptr writer ptr u8 n n -- ) {: w vp:ptr cap:n used:n :}
-   vp cap used JSON--WRITE-WRITER:MAKE w ! ;
+   vp cap used NULL-PTR JSON--WRITE-WRITER:MAKE w ! ;
 
 \ Refuse a source span nobody can read.
 : JW-SPAN ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -87,27 +99,62 @@ private
    dup 0 < if E-JW-SOURCE throw then
    >LEN ;
 
+: JW-ALIAS ( ptr writer ptr u8 n -- n ) {: w a:ptr u:n :}
+   w JW-BUF@ 0= if -1 exit then
+   w JW-LIVE {: base:ptr cap:n used:n :}
+   a base < if -1 exit then
+   a base - {: off:n :}
+   off cap >= if -1 exit then
+   off used > if E-JW-SOURCE throw then
+   u used off - > if E-JW-SOURCE throw then
+   off ;
+
+: JW-REBASE ( ptr writer ptr u8 n -- ptr u8 ) {: w a:ptr off:n :}
+   off 0 < if a exit then
+   w JW-LIVE {: base:ptr cap:n used:n :}
+   base off + ;
+
+: JW-SIZE+ ( n n -- n ) {: left:n right:n :}
+   right MEM-MAX-N left - > if E-JW-CAPACITY throw then
+   left right + ;
+
 : JW-ROOM ( ptr writer n -- ptr writer ) {: w need:n :}
    w JW-LIVE {: vp:ptr cap:n used:n :}
-   need cap used - > if E-JW-CAPACITY throw then
+   need 0 < need MEM-MAX-N used - > or if E-JW-CAPACITY throw then
+   w JW-BUF@ {: buf:ptr :}
+   buf 0= if
+      need cap used - > if E-JW-CAPACITY throw then
+      w exit
+   then
+   buf used need + BUF:N>BLEN BUF:ENSURE
    w ;
 
 : JW-C ( ptr writer n -- ptr writer ) {: w c:n :}
    c 0 < c JW-BYTE-MAX > or if E-JW-BYTE throw then
-   w JW-LIVE {: vp:ptr cap:n used:n :}
-   used cap >= if E-JW-CAPACITY throw then
-   c vp used + c!
-   w vp cap used 1+ JW-USED!
-   w ;
+   w JW-BUF@ {: buf:ptr :}
+   buf 0= if
+      w JW-LIVE {: vp:ptr cap:n used:n :}
+      used cap >= if E-JW-CAPACITY throw then
+      c vp used + c!
+      w vp cap used 1+ JW-USED!
+      w exit
+   then
+   c buf BUF:APPEND-BYTE w ;
 
-\ The source may be a span of this writer's own output: a copy always runs from
-\ [out, out+len) into [out+len, ...), so the two never overlap and the buffer
-\ never moves under the caller.
+\ The source may be a span of this writer's own output. Remember its offset
+\ before reserving, then reacquire the base after a BUF relocation.
 : JW-APPEND-LEN ( ptr writer ptr u8 len -- ptr writer ) {: w a:ptr u:len :}
-   w u LEN>N JW-ROOM
-   JW-LIVE {: vp:ptr cap:n used:n :}
-   a vp used + u BYTE-COPY-LEN
-   w vp cap used u LEN>N + JW-USED!
+   w a u LEN>N JW-ALIAS {: off:n :}
+   w u LEN>N JW-ROOM drop
+   w a off JW-REBASE {: src:ptr :}
+   w JW-BUF@ {: buf:ptr :}
+   buf 0= if
+      w JW-LIVE {: vp:ptr cap:n used:n :}
+      src vp used + u BYTE-COPY-LEN
+      w vp cap used u LEN>N + JW-USED!
+      w exit
+   then
+   src u LEN>N BUF:N>BLEN buf BUF:APPEND-SPAN
    w ;
 
 public
@@ -118,14 +165,25 @@ public
    w vp cap 0 JW-USED!
    w ;
 
+: OPEN-BUF ( ptr writer ptr n -- ptr writer ) {: w buf:ptr :}
+   buf 0= if E-JW-OUTPUT throw then
+   buf BUF:CLEAR
+   NULL-PTR 0 0 buf JSON--WRITE-WRITER:MAKE w !
+   w ;
+
 : RESET ( ptr writer -- ptr writer ) {: w :}
-   w JW-LIVE {: vp:ptr cap:n used:n :}
-   w vp cap 0 JW-USED!
+   w JW-BUF@ {: buf:ptr :}
+   buf 0= if
+      w JW-LIVE {: vp:ptr cap:n used:n :}
+      w vp cap 0 JW-USED!
+      w exit
+   then
+   buf BUF:CLEAR
    w ;
 
 : CLOSE ( ptr writer -- ) {: w :}
-   w JW-LIVE {: vp:ptr cap:n used:n :}
-   w vp JW-CLOSED-CAP 0 JW-USED! ;
+   w JW-BUF@ 0= if w JW-LIVE 2drop drop then
+   w NULL-PTR JW-CLOSED-CAP 0 JW-USED! ;
 
 : $ ( ptr writer -- ptr u8 n )
    JW-LIVE {: vp:ptr cap:n used:n :}
@@ -158,7 +216,7 @@ private
 
 : JW-STR-N ( ptr u8 n -- n ) {: a:ptr u:n :}   \ bytes a quoted string will take
    JW-QUOTE-N 0 begin dup u < while            \ ( total idx )
-      dup a + c@ JW-ESC-N rot + swap 1+
+      dup a + c@ JW-ESC-N rot swap JW-SIZE+ swap 1+
    repeat drop ;
 
 : JW-ESC-C ( ptr writer n -- ptr writer ) {: c:n :}
@@ -184,18 +242,21 @@ public
 
 : STRING ( ptr writer ptr u8 n -- ptr writer ) {: a:ptr u:n :}
    a u JW-SPAN
+   dup a u JW-ALIAS {: off:n :}
    a u JW-STR-N JW-ROOM
+   dup a off JW-REBASE {: src:ptr :}
    JW-DQ JW-C
    0 begin dup u < while                      \ ( w idx )
-      dup a + c@ rot swap JW-ESC-C            \ ( idx w ): escape the byte at idx
+      dup src + c@ rot swap JW-ESC-C          \ ( idx w ): escape the byte at idx
       swap 1+
    repeat drop
    JW-DQ JW-C ;
 
 : KEY ( ptr writer ptr u8 n -- ptr writer ) {: a:ptr u:n :}
    a u JW-SPAN
-   a u JW-STR-N 1+ JW-ROOM
-   a u STRING
+   dup a u JW-ALIAS {: off:n :}
+   a u JW-STR-N 1 JW-SIZE+ JW-ROOM
+   dup a off JW-REBASE u STRING
    JW-COLON-C JW-C ;
 
 : OBJECT-START ( ptr writer -- ptr writer )
@@ -226,13 +287,15 @@ public
 
 : FIELD-RAW ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
    {: kp:ptr keyu:n vp:ptr valu:n :}
+   dup vp valu JW-ALIAS {: off:n :}
    kp keyu KEY
-   vp valu RAW ;
+   dup vp off JW-REBASE valu RAW ;
 
 : FIELD-S ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
    {: kp:ptr keyu:n vp:ptr valu:n :}
+   dup vp valu JW-ALIAS {: off:n :}
    kp keyu KEY
-   vp valu STRING ;
+   dup vp off JW-REBASE valu STRING ;
 
 : FIELD-U ( ptr writer ptr u8 n n -- ptr writer ) {: kp:ptr keyu:n val:n :}
    kp keyu KEY
