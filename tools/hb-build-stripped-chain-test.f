@@ -6,6 +6,7 @@
 \ Run: bin/hb --load tools/hb-build-stripped-chain-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -114,11 +115,12 @@ package HB-BUILD-CLI
 
 \ ... a program that PRINTS an integer, PARSES one and HASHES a string builds
 \ stripped, because every baked constant those three reach is carried by name,
-\ and the image's stdout is the proof that the bytes travelled.
+\ and the image's stdout is the proof that the bytes travelled. lib/fmt.f is in
+\ the linker's lib closure, so the linker is compiled above this program.
 : HBT-STRIPPED-PRINT-PARSE-HASH ( -- )
    HBT-PPH-SRC HBT-PPH-SRC$ WRITE-ALL
    HBT-PPH-OUT HBT-REMOVE-FILE?
-   HBT-PPH-SRC HBT-PPH-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
+   HBT-PPH-SRC HBT-PPH-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
    HBT-PPH-OUT FILE? TTRUE
    HBT-PPH-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
@@ -164,6 +166,7 @@ package HB-BUILD-CLI
 public
 : HBT-STRIPPED-CHAIN-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-PRINT-PARSE-HASH
    HBT-STRIPPED-CHAIN

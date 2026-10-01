@@ -130,11 +130,11 @@ SUITE hb-build-aot-cache
 
 \ app-image is the first row that needs the unsealed engine: it holds the
 \ registry until whitebox-engine-build retires (test/gate-images.f), about 89 s.
-\ Every row above needs no image or only the fixture writer and cold host, so
-\ they keep the other slots busy through that build. The long rows that need
-\ the engine follow the hold, longest in the pool first, so none of them starts
-\ behind the short rows and sets the drain tail; the checker-scan-index rows
-\ take under a second.
+\ Every row above needs no image, the fixture writer and cold host, or the saver
+\ and linker images (4.5 s and 2.9 s to build in a full pool), so they keep the
+\ other slots busy through that build. The long rows that need the engine follow
+\ the hold, longest in the pool first, so none of them starts behind the short
+\ rows and sets the drain tail; the checker-scan-index rows take under a second.
 SUITE app-image
    test/app-image.f
 ;SUITE

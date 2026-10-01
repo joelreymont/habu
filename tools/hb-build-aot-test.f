@@ -6,6 +6,7 @@
 \ Run: bin/hb --load tools/hb-build-aot-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -52,7 +53,8 @@ package HB-BUILD-CLI
 \ text-base cell, which src/os/linux/layout.f locates those slots from and
 \ src/habu/aot-owned-cells.f claims TEXT-BASE. Left at the fresh mapping's zero
 \ that cell made this program build without a word of complaint and take SIGSEGV
-\ inside DLSYM-SLOT's `@`.
+\ inside DLSYM-SLOT's `@`. lib/ffi-abi.f is in the linker's lib closure, so
+\ BUILD-AOT-FFI compiles the linker above this program.
 : HBT-AOT-FFI-SRC$ ( -- ptr u8 n )
    S\" require lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: GETPID-CALL getpid ( -- i32 ) ;FUNCTION\n: MAIN ( -- ) GETPID-CALL 0 > if 1 else 0 then . cr ;\n" ;
 
@@ -161,12 +163,13 @@ package HB-BUILD-CLI
 \ following a direct branch OUT of the member puts that record in the closure;
 \ without it the relocation refused this very program with `aot: PC-relative
 \ target removed or outside closure`. Running the image is what proves the clause
-\ was copied and retargeted rather than merely counted.
+\ was copied and retargeted rather than merely counted. lib/span.f is in the
+\ linker's lib closure, so the linker is compiled above this program.
 : BUILD-AOT-SPAN ( -- )
    HBT-TMP BUILD-CACHE:ROOT!
    HBT-SPAN-SRC HBT-SPAN-SRC$ WRITE-ALL
    HBT-SPAN-OUT HBT-REMOVE-FILE?
-   HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-AOT
+   HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-AOT-SOURCE
    HBT-HBB-BUILD-OUT
    HBT-SPAN-OUT FILE? TTRUE
    HBT-SPAN-OUT HBT-SPAN-EXPECTED$ HBT-RUN-IMAGE-OUT
@@ -194,7 +197,7 @@ package HB-BUILD-CLI
    HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-AOT-FFI-SRC$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE
    HBB-BUILD
    S\" 1\n\n" HBT-RUN-AOT-PRINTS
    HBT-REMOVE-ARTIFACT
@@ -207,6 +210,7 @@ package HB-BUILD-CLI
 public
 : HBT-AOT-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    BUILD-AOT-OBJECT-PRODUCER
    BUILD-AOT-NATIVE

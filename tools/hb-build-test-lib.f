@@ -98,6 +98,12 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 create HBT-REPORT-BUF FS-PATH-CAP allot
 create HBT-AOT-HEX 80 allot
 
+\ The keyed images a row's builds run on (HBT-KEYED!); empty, the engine.
+create HBT-LINKER-BUF FS-PATH-CAP allot
+create HBT-SAVER-BUF FS-PATH-CAP allot
+variable HBT-LINKER-U
+variable HBT-SAVER-U
+
 \ The three stripped-window fixtures: an application whose own require closure
 \ owns the library cells it touches, one that reads the engine runtime cells the
 \ stripped entry owns, and one that reaches an engine cell nothing claims.
@@ -319,6 +325,34 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    BUILD-CACHE:RESET
    HBT-TMP BUILD-CACHE:ROOT! ;
 
+\ THE ENGINE A BUILD'S CHILD RUNS. Before it reaches its subject a maker child
+\ compiles the AOT linker, 5.1 to 6.8 s of each one measured alone, and an
+\ app-build child compiles the image saver, 3.3 s. A row whose subjects need
+\ neither load hands HBT-KEYED! the keyed images that hold them
+\ (test/preloaded-engine.f LINKER$, test/app-image-engine.f PATH$) before it
+\ stages any argv. Its AOT builds, maker refusals and CLI spawns' makers then
+\ run the production maker script on the linker image, and its REPL builds and
+\ app refusals run on the saver image (docs/gate.md). The -SOURCE words keep one
+\ build on the engine, which compiles the linker above the application: for a
+\ subject that requires a module in the linker's lib closure
+\ (test/preloaded-engine.f rule 3), for a case about that order, and for a
+\ subject a maker on the linker image dies on with SIGSEGV
+\ (tools/hb-build-stripped-test.f names two). A row that records no image
+\ builds every program on the engine.
+: HBT-KEYED! ( ptr u8 n ptr u8 n -- ) {: linker:ptr linkeru:n saver:ptr saveru:n :}
+   linker linkeru HBT-LINKER-BUF HBT-LINKER-U HBT-COPY!
+   saver saveru HBT-SAVER-BUF HBT-SAVER-U HBT-COPY! ;
+
+: HBT-LINKER ( -- ptr u8 n )
+   HBT-LINKER-BUF HBT-LINKER-U @ ;
+
+: HBT-SAVER ( -- ptr u8 n )
+   HBT-SAVER-BUF HBT-SAVER-U @ ;
+
+: HBT-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if BF-ENGINE-RESET exit then
+   a u BF-ENGINE! ;
+
 \ The CLI as docs/native-applications.md documents it: tools/hb-build.f alone
 \ requires its library, so every row spawns the command a user runs.
 : HBT-ARGV-BASE-TMP ( ptr u8 n -- )
@@ -326,6 +360,9 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    PROC-ENV-RESET
    s" HB_TMP" >LEN 2swap >LEN PROC-ENV+
    s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
+   HBT-LINKER-U @ 0 > if
+      s" HABU_FIXPOINT_ENGINE" >LEN HBT-LINKER >LEN PROC-ENV+
+   then
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
    s" tools/hb-build.f"  >LEN PROC-ARGV+
@@ -392,12 +429,18 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBB-RESET-OPTIONS
    HBB-REPL-ON
    HBB-PATHS!
-   HBT-TMP BF-TMP! ;
+   HBT-TMP BF-TMP!
+   HBT-SAVER HBT-ENGINE! ;
 
 : HBT-HBB-PREPARE-AOT ( ptr u8 n ptr u8 n -- )
    HBB-RESET-OPTIONS
    HBB-PATHS!
-   HBT-TMP BF-TMP! ;
+   HBT-TMP BF-TMP!
+   HBT-LINKER HBT-ENGINE! ;
+
+: HBT-HBB-PREPARE-AOT-SOURCE ( ptr u8 n ptr u8 n -- )
+   HBT-HBB-PREPARE-AOT
+   BF-ENGINE-RESET ;
 
 \ A program that builds is built in this process: HBB-BUILD runs what
 \ tools/hb-build.f runs once it has parsed argv (for an AOT build the lint
@@ -437,7 +480,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
       timeout OF LEN>N swap LEN>N swap HBB-MAKER-TIMED-OUT ENDOF
    ;MATCH ;
 
-: HBT-RUN-MAKER ( ptr u8 n -- n n n )
+: HBT-MAKER-RUN ( ptr u8 n -- n n n )
    HBB-RESET-OPTIONS
    HBB-SRC!
    HBT-TMP BF-TMP!
@@ -445,7 +488,16 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBB-RUN-MAKER-CMD HBT-MAKER-CAPTURE>N
    BF-TMP-RESET ;
 
+: HBT-RUN-MAKER ( ptr u8 n -- n n n )
+   HBT-LINKER HBT-ENGINE!
+   HBT-MAKER-RUN ;
+
+: HBT-RUN-MAKER-SOURCE ( ptr u8 n -- n n n )
+   BF-ENGINE-RESET
+   HBT-MAKER-RUN ;
+
 : HBT-RUN-APP ( ptr u8 n -- n n n )
+   HBT-SAVER HBT-ENGINE!
    HBB-RESET-OPTIONS
    HBB-REPL-ON
    HBB-SRC!

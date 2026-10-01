@@ -7,6 +7,7 @@
 \ Run: bin/hb --load tools/hb-build-stripped-cache-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -157,6 +158,7 @@ package HB-BUILD-CLI
 public
 : HBT-STRIPPED-CACHE-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-SAME-TWICE
    HBT-STRIPPED-OBJECT-RELINK

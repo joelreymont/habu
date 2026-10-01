@@ -6,6 +6,7 @@
 \ Run: bin/hb --load tools/hb-build-stripped-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -106,13 +107,14 @@ package HB-BUILD-CLI
 \ `caller=WALK-FILES target=FS-DEPTH` and `caller=COPY-FILE-STREAM
 \ target=FS-MUT-COPY-IN` refused this very program - the copy descriptors are
 \ locals of the call now, and the copy BUFFER is the cell that stands there.
+\ That order is the claim, so this build compiles the linker above the program.
 : HBT-STRIPPED-LIB-STATE ( -- )
    HBT-LIB-DIR MAKE-DIR
    s" a.txt" s" one" HBT-LIB-FILE!
    s" c.txt" s" two" HBT-LIB-FILE!
    HBT-LIB-SRC!
    HBT-LIB-OUT HBT-REMOVE-FILE?
-   HBT-LIB-SRC HBT-LIB-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
+   HBT-LIB-SRC HBT-LIB-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
    HBT-LIB-OUT FILE? TTRUE
    HBT-LIB-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
@@ -174,11 +176,13 @@ package HB-BUILD-CLI
 \ image: the environment (explicit and inherited), argv, and an allocation
 \ through the baked dynamic-storage registry. Before src/habu/aot-owned-cells.f
 \ this very program was refused with
-\ `outside the restored span caller=GETENV target=ENV-QU`.
+\ `outside the restored span caller=GETENV target=ENV-QU`. Those registries are
+\ already in use in the keyed linker image, and a maker there dies with SIGSEGV
+\ linking this program, so this build compiles the linker above it.
 : HBT-STRIPPED-ENGINE-CELLS ( -- )
    HBT-CELLS-SRC HBT-CELLS-SRC$ WRITE-ALL
    HBT-CELLS-OUT HBT-REMOVE-FILE?
-   HBT-CELLS-SRC HBT-CELLS-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
+   HBT-CELLS-SRC HBT-CELLS-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
    HBT-CELLS-OUT FILE? TTRUE
    HBT-CELLS-CHILD-ARGV-ENV
    HBT-CELLS-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
@@ -230,9 +234,11 @@ package HB-BUILD-CLI
 \ (src/habu/aot-lib.f) dies naming the primitive as the site and, through
 \ ADDRESS-OWNER's recorded span, (MARK) as the body the target lands in. Only a
 \ branch to the (MARK) ENTRY - what `xt!` compiles - is dropped as a declaration.
+\ A maker on the keyed linker image dies with SIGSEGV on this program instead of
+\ refusing it, so this one compiles the linker above the program.
 : HBT-STRIPPED-PTR-MARK ( -- )
    HBT-PMK-SRC HBT-PMK-SRC$ WRITE-ALL
-   HBT-PMK-SRC HBT-RUN-MAKER {: mout:n merr:n mrc:n :}
+   HBT-PMK-SRC HBT-RUN-MAKER-SOURCE {: mout:n merr:n mrc:n :}
    mrc 0 <> TTRUE
    HBB-ERR-BUF merr s" PC-relative target removed or outside closure" CONTAINS? TTRUE
    HBB-ERR-BUF merr s" site=ptr-cell-mark" CONTAINS? TTRUE
@@ -243,6 +249,7 @@ package HB-BUILD-CLI
 public
 : HBT-STRIPPED-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-LIB-STATE
    HBT-STRIPPED-ENGINE-CELLS
