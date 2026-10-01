@@ -448,15 +448,17 @@ variable SHORT-FUN                           \ the function whose scan ran short
    k j cells PL-VAL + !
    j 1+ N-PLAN ! ;
 
-\ One row serves every read of one value by one operation.
+\ One row serves every read of one value by one operation. The plan is written
+\ in walk order and is asked only about the position being planned, so the rows
+\ that can answer are the run at its end with this block and position.
 : RELOADED? ( n n n -- bool )
    {: blk:n k:n pos:n :}
    false
    N-PLAN @ 0 ?do
-      i cells PL-KIND + @ P-RELOAD =  i cells PL-KIND + @ P-REMAT = or
-      i cells PL-BLK + @ blk = and
-      i cells PL-POS + @ pos = and
-      i cells PL-VAL + @ k = and
+      N-PLAN @ i - 1- {: row:n :}
+      row cells PL-BLK + @ blk <>  row cells PL-POS + @ pos <>  or if leave then
+      row cells PL-KIND + @ P-RELOAD =  row cells PL-KIND + @ P-REMAT = or
+      row cells PL-VAL + @ k = and
       if drop true leave then
    loop ;
 
@@ -787,15 +789,17 @@ DYNAMIC-BUFFER CL-HI-BUF n
 DYNAMIC-BUFFER CL-SLOT-BUF n
 : CL-SLOT ( -- ptr n ) 0 CL-SLOT-BUF ;
 DYNAMIC-BUFFER CL-REMAT-BUF n
-\ Only evicted roots need temporary registers for their stores and reloads.
-\ The classes stay fixed throughout fitting; this list grows once per eviction.
-DYNAMIC-BUFFER EVICTED-ROOTS n
-variable N-EVICTED
 : CL-REMAT ( -- ptr n ) 0 CL-REMAT-BUF ;
+\ Only evicted roots need temporary registers for their stores and reloads.
+\ The classes stay fixed throughout fitting and an eviction is never undone, so
+\ what each evicted root needs is added here, per position and file, once when
+\ it is evicted, and every step of every later turn reads one cell.
+DYNAMIC-BUFFER FR-LOAD-BUF n
+DYNAMIC-BUFFER FR-STORE-BUF n
+\ Where an operation first writes each class, which is where an evicted class
+\ is stored from.
 DYNAMIC-BUFFER CL-DEF-BUF n
 : CL-DEF ( -- ptr n ) 0 CL-DEF-BUF ;
-DYNAMIC-BUFFER CL-ANCH-BUF n
-: CL-ANCH ( -- ptr n ) 0 CL-ANCH-BUF ;
 DYNAMIC-BUFFER CL-SIZE-BUF n
 : CL-SIZE ( -- ptr n ) 0 CL-SIZE-BUF ;
 DYNAMIC-BUFFER CL-KEEP-BUF n
@@ -866,9 +870,9 @@ variable N-FIXP
    VMAX CL-HI-BUF-RESERVE
    VMAX CL-SLOT-BUF-RESERVE
    VMAX CL-REMAT-BUF-RESERVE
-   VMAX EVICTED-ROOTS-RESERVE
+   OMAX BMAX + FILES-N * FR-LOAD-BUF-RESERVE
+   OMAX BMAX + FILES-N * FR-STORE-BUF-RESERVE
    VMAX CL-DEF-BUF-RESERVE
-   VMAX CL-ANCH-BUF-RESERVE
    VMAX CL-SIZE-BUF-RESERVE
    VMAX CL-KEEP-BUF-RESERVE
    VMAX CL-FRAME-BUF-RESERVE
@@ -1381,12 +1385,14 @@ variable N-FIXP
    r cells CL-REMAT + @ 0<> ;
 
 : MB-KIND-CLEAR ( -- )
-   0 N-EVICTED !
+   OMAX BMAX + FILES-N * 0 ?do
+      0 i FR-LOAD-BUF !
+      0 i FR-STORE-BUF !
+   loop
    VMAX 0 ?do
       NOSLOT i cells CL-SLOT + !
       0 i cells CL-REMAT + !
       NOPOS i cells CL-DEF + !
-      NOPOS i cells CL-ANCH + !
       0 i cells CL-SIZE + !
       0 i cells CL-KEEP + !
       0 i cells CL-FRAME + !
@@ -1526,25 +1532,11 @@ variable N-FIXP
    at 0= if true exit then
    bk at 1- OP-AT DSTORE? 0= ;
 
-: MB-DEF-POS ( IR-ID:ir-fun-id n -- n )
-   {: f:IR-ID:ir-fun-id r:n :}
-   -1
-   MB-AT @ F-LO @ ?do
-      f r i MB-DEFS? if drop i leave then
-   loop ;
-
 : MB-ANCH-POS ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id p:n :}
    p POS-BLOCK {: b:n :}
    f b BLOCK-AT  p  b cells B-ST + @ -  1-  MB-ANCHOR {: k:n :}
    b k OP-POS ;
-
-\ Reloads stand before one call's store run, so their temporary registers are
-\ live only until their last consuming store in that group.
-: MB-RUN-READS? ( IR-ID:ir-fun-id n n -- bool )
-   {: f:IR-ID:ir-fun-id r:n p:n :}
-   p POS-OP? 0= if false exit then
-   r p MB-USE-FROM p cells READ-END + @ < ;
 
 \ ---- the scan ----------------------------------------------------------------
 : MB-EXPIRE1 ( n n n -- )
@@ -1563,39 +1555,54 @@ variable N-FIXP
 
 \ ---- what a class already in the frame still costs in registers ---------------
 \ A class in a frame slot has left the holder table and still needs a register
-\ where it is read and where it is written.
-: MB-ACROSS? ( n n -- bool )
-   {: r:n p:n :}
-   p  r cells CL-DEF + @  >   p  r cells CL-ANCH + @  <  and ;
+\ where it is read and where it is written. The counts are per position and
+\ file, position-major.
+: FR-IX ( n n -- n )                 {: p:n fl:n :} p FILES-N * fl + ;
+: FR-LOAD@ ( n n -- n )              FR-IX FR-LOAD-BUF @ ;
+: FR-STORE@ ( n n -- n )             FR-IX FR-STORE-BUF @ ;
+: FR-LOAD+ ( n n -- )                FR-IX FR-LOAD-BUF 1 swap +! ;
+: FR-STORE+ ( n n -- )               FR-IX FR-STORE-BUF 1 swap +! ;
 
-: MB-WRITTEN? ( n n -- bool )
-   {: r:n p:n :}
-   p  r cells CL-DEF + @  = ;
-
-: MB-FRAMED? ( n n -- bool )
-   {: r:n fl:n :}
-   r CL-EVICTED? 0= if false exit then
-   r UF-FIND r =  r FILE-AT fl =  and ;
-
-: MB-LOAD-N ( IR-ID:ir-fun-id n n -- n )
-   {: f:IR-ID:ir-fun-id p:n fl:n :}
-   0
-   N-EVICTED @ 0 ?do
-      i EVICTED-ROOTS @ {: r:n :}
-      r fl MB-FRAMED? if
-         r p MB-ACROSS?  f r p MB-RUN-READS? or if 1+ then
+\ Reloads stand before one call's store run, so their temporary registers are
+\ live only until their last consuming store in that group: an operation needs
+\ one for the class when a use of it lies before the end of its run of reads.
+\ For the use at u those operations are u, when its reads reach past it, and
+\ the stores of its run before it - whether or not u's own reads do - so the
+\ walk goes down from u until a position below it whose run ends at or before u
+\ - a block's start reads nothing, so at that start at the latest - or until
+\ the floor the previous use counted down to. A position inside the store
+\ window is already counted. Answers the floor for the next use.
+: MB-RUN-COST+ ( n n n n n -- n )
+   {: floor:n u:n fl:n d:n across:n :}
+   u
+   begin
+      dup floor >= if dup u =  over cells READ-END + @ u >  or else false then
+   while
+      {: p:n :}
+      p cells READ-END + @ u >  p d >  p across <  and 0=  and if
+         p fl FR-LOAD+
       then
-   loop ;
+      p 1-
+   repeat
+   drop
+   u 1+ floor max ;
 
-: MB-STORE-N ( n n -- n )
-   {: p:n fl:n :}
+\ Added once, when the class goes to the frame. Its store needs a register where
+\ an operation first writes it and on to the anchor the store waits for; a
+\ reload needs one inside that window, past the write, and wherever a run of
+\ reads reaches one of its uses. Each position counts the class once.
+: MB-FRAME-COST+ ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id r:n :}
+   r FILE-AT {: fl:n :}
+   r cells CL-DEF + @ {: d:n :}
+   f d MB-ANCH-POS  d 1+ max {: across:n :}
+   across d ?do i fl FR-STORE+ loop
+   across d 1+ ?do i fl FR-LOAD+ loop
    0
-   N-EVICTED @ 0 ?do
-      i EVICTED-ROOTS @ {: r:n :}
-      r fl MB-FRAMED? if
-         r p MB-ACROSS?  r p MB-WRITTEN? or if 1+ then
-      then
-   loop ;
+   r 1+ cells CL-USE-START + @  r cells CL-USE-START + @ ?do
+      i cells USE-POS + @  fl d across MB-RUN-COST+
+   loop
+   drop ;
 
 : MB-SHORT! ( n n -- )
    {: p:n fl:n :}
@@ -1764,19 +1771,19 @@ variable N-FIXP
    g 0 < if pos r FILE-AT r MB-SHORT-ROOT! exit then
    r g TAKE ;
 
-: MB-READ-PRESSURE ( IR-ID:ir-fun-id n n -- )
-   {: f:IR-ID:ir-fun-id pos:n fl:n :}
-   f pos fl MB-LOAD-N  fl FREE-N-AT > if pos fl MB-SHORT! then ;
+: MB-READ-PRESSURE ( n n -- )
+   {: pos:n fl:n :}
+   pos fl FR-LOAD@  fl FREE-N-AT > if pos fl MB-SHORT! then ;
 
 : MB-WRITE-PRESSURE ( n n -- )
    {: pos:n fl:n :}
-   pos fl MB-STORE-N  fl FREE-N-AT > if pos fl MB-SHORT! then ;
+   pos fl FR-STORE@  fl FREE-N-AT > if pos fl MB-SHORT! then ;
 
-: MB-READ-PRESSURE-ALL ( IR-ID:ir-fun-id n -- )
-   {: f:IR-ID:ir-fun-id pos:n :}
+: MB-READ-PRESSURE-ALL ( n -- )
+   {: pos:n :}
    FILES-N 0 ?do
       SHORT-AT @ 0 >= if leave then
-      f pos i MB-READ-PRESSURE
+      pos i MB-READ-PRESSURE
    loop ;
 
 : MB-WRITE-PRESSURE-ALL ( n -- )
@@ -1827,7 +1834,7 @@ variable N-FIXP
 : MB-STEP ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id pos:n :}
    pos MB-EXPIRE
-   f pos MB-READ-PRESSURE-ALL
+   pos MB-READ-PRESSURE-ALL
    SHORT-AT @ 0 >= if exit then
    pos 1+ MB-EXPIRE
    f pos MB-PLACE-PINNED
@@ -1925,11 +1932,7 @@ variable N-FIXP
 : MB-EVICT1 ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id r:n :}
    f r MB-REMATABLE? if 1 r cells CL-REMAT + ! else NEW-SLOT r cells CL-SLOT + ! then
-   f r MB-DEF-POS {: d:n :}
-   d r cells CL-DEF + !
-   f d MB-ANCH-POS  r cells CL-ANCH + !
-   r N-EVICTED @ EVICTED-ROOTS !
-   N-EVICTED @ 1+ N-EVICTED ! ;
+   f r MB-FRAME-COST+ ;
 
 : MB-EVICT ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id p:n fl:n :}
@@ -2162,7 +2165,8 @@ variable N-FIXP
    loop ;
 
 \ A normal operation reads only itself; a store reads through the end of its
-\ contiguous store group. One-successor branches do not require reloads here.
+\ contiguous store group. One-successor branches do not require reloads here,
+\ and neither does the block's start, which is no operation.
 : MB-READ-ENDS ( IR-ID:ir-block-id n -- )
    {: bk:IR-ID:ir-block-id b:n :}
    b bk OP-COUNT OP-POS
@@ -2178,7 +2182,9 @@ variable N-FIXP
          drop p
       then
    loop
-   drop ;
+   drop
+   b cells B-ST + @ {: s:n :}
+   s s cells READ-END + ! ;
 
 : MB-USES ( -- )
    N-VALS @ 0 ?do 0 i cells CL-USE-NEXT + ! loop
@@ -2253,6 +2259,27 @@ variable N-FIXP
                N-FIXP @ 1+ N-FIXP !
             then
          loop
+      loop
+   loop ;
+
+: MB-DEF-OP ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id p:n :}
+   id RESULTS-OF 0 ?do
+      id i RESULT-AT SLOT UF-FIND {: r:n :}
+      r cells CL-DEF + @ NOPOS = if p r cells CL-DEF + ! then
+   loop ;
+
+\ Built once the classes are final and read by the eviction of a class, which
+\ happens once at most: the operations do not move under the fit, so the first
+\ one to write a class is found in one walk along the line rather than by every
+\ eviction searching it. A class no operation writes keeps NOPOS.
+: MB-DEF-INDEX ( -- )
+   N-FUNS @ 0 ?do
+      i MB-RELAY
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      N-BLKS @ 0 ?do
+         f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+         bk OP-COUNT 0 ?do bk i OP-AT j i OP-POS MB-DEF-OP loop
       loop
    loop ;
 
@@ -2467,6 +2494,7 @@ public
    MB-DECLS!
    KEEP-ALL
    MB-DUE-INDEX
+   MB-DEF-INDEX
    MB-FIT
    MB-FINISH
    PLAN-ALL ;
@@ -2619,7 +2647,6 @@ public
 
 public
 : RESET-SCRATCH ( -- )
-   0 N-EVICTED !
    0 N-CALLS !
    0 N-FIXP !
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;

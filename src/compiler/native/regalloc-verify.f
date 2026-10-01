@@ -161,6 +161,15 @@ DYNAMIC-BUFFER L-AT-BUF n
 DYNAMIC-BUFFER S-AT-BUF n
 : S-AT ( -- ptr n ) 0 S-AT-BUF ;
 
+\ The overlap check's walk: the values bucketed by the position their range
+\ opens at, and per register of each file what the values walked so far that
+\ hold it reach.
+DYNAMIC-BUFFER OV-HEAD-BUF n
+DYNAMIC-BUFFER OV-NEXT-BUF n
+DYNAMIC-BUFFER OV-DEF-BUF n
+DYNAMIC-BUFFER OV-LAST-BUF n
+NREGFILE:REG-MAX constant REGS-MAX
+
 \ A value belongs to the function whose window its definition position falls in,
 \ which is the only sense in which a value has a function at all.
 DYNAMIC-BUFFER F-VB-BUF n
@@ -686,24 +695,48 @@ variable FPO-RUN                     \ where the next predecessor run starts
       then
    loop ;
 
-: CLASH? ( n n -- bool )
-   {: a:n b:n :}
-   a DEF-AT b DEF-AT = if true exit then
-   a DEF-AT b DEF-AT < if
-      a LAST-AT b DEF-AT > exit
-   then
-   b LAST-AT a DEF-AT > ;
+\ Two values clash when they open at one position, or when the one that opens
+\ first is still live past where the other opens; two that clash may not share a
+\ register, measured over the live ranges this pass computed rather than the
+\ ones the allocator claimed. The values are walked in the order their ranges
+\ open and each register keeps the latest opening and the furthest end among
+\ the values already walked that hold it, so a value clashes with an earlier
+\ holder of its register exactly when that holder opened where it does or
+\ reaches past its opening - the pairwise rule, asked once per value.
+: OV-IX ( n n -- n )                 {: fl:n r:n :} fl REGS-MAX * r + ;
 
-\ Two values that clash may not share a register, measured over the live ranges
-\ this pass computed rather than the ones the allocator claimed.
+\ Each bucket is prepended from the highest value down, so it reads in ascending
+\ value order.
+: OV-BUCKETS ( -- )
+   OMAX BMAX + 0 ?do NOPOS i OV-HEAD-BUF ! loop
+   N-VALS @ 0 ?do
+      N-VALS @ i - 1- {: k:n :}
+      k REGGED? if
+         k DEF-AT OV-HEAD-BUF @  k OV-NEXT-BUF !
+         k  k DEF-AT OV-HEAD-BUF !
+      then
+   loop ;
+
+: OV-CK1 ( n -- )
+   {: k:n :}
+   k FILE-AT  k A64RA:CLAIM@  OV-IX {: x:n :}
+   k DEF-AT {: d:n :}
+   x OV-DEF-BUF @ d =  x OV-LAST-BUF @ d >  or if E-A64RAV-OVERLAP throw then
+   d x OV-DEF-BUF !
+   x OV-LAST-BUF @  k LAST-AT  max  x OV-LAST-BUF ! ;
+
 : OVERLAP-CK ( -- )
-   N-VALS @ {: n:n :}
-   n 0 ?do
-      n i 1+ ?do
-         j REGGED?  j FILE-AT i FILE-AT = and  j i CLASH? and if
-            j A64RA:CLAIM@ i A64RA:CLAIM@ = if E-A64RAV-OVERLAP throw then
-         then
-      loop
+   FILES-N REGS-MAX * 0 ?do
+      NOPOS i OV-DEF-BUF !
+      NOPOS i OV-LAST-BUF !
+   loop
+   OV-BUCKETS
+   OMAX BMAX + 0 ?do
+      i OV-HEAD-BUF @
+      begin dup 0 >= while
+         dup OV-CK1
+         OV-NEXT-BUF @
+      repeat drop
    loop ;
 
 \ A form that names one register field twice - the move-wide overwrite - has its
@@ -1513,6 +1546,10 @@ DYNAMIC-BUFFER VD-DOUT-BUF n
    VMAX D-AT-BUF-RESERVE
    VMAX L-AT-BUF-RESERVE
    VMAX S-AT-BUF-RESERVE
+   OMAX BMAX + OV-HEAD-BUF-RESERVE
+   VMAX OV-NEXT-BUF-RESERVE
+   FILES-N REGS-MAX * OV-DEF-BUF-RESERVE
+   FILES-N REGS-MAX * OV-LAST-BUF-RESERVE
    FMAX 1 + F-VB-BUF-RESERVE
    VMAX C-AT-BUF-RESERVE
    VMAX U-AT-BUF-RESERVE
