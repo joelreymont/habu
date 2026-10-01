@@ -87,7 +87,7 @@ process.
 | `refused` | The subject, a file of its closure, or the closure itself is refused. | 70 |
 | `engine-provided` | The engine provides PATH (`ENGINE-PROVIDES?`): nothing is verified, whatever the bytes hold. | 64 |
 | `held` | The child's image holds PATH though the engine does not (`src/habu/verify-source.f`, `tools/check-verify-child.f`), so it cannot be verified there. | 69 |
-| `incomplete` | The child ended without a result line; its `status` is the exit, signal or deadline. | 69 |
+| `incomplete` | The child ended without a result line; its `status` is the exit, signal or deadline, and the packets are those it made before. | 69 |
 
 Under `--verify-only` check.f writes the packets on stderr, as schema-1 JSON
 with or without `--json-errors`, and its prose on stdout, with a closing line
@@ -120,11 +120,13 @@ ENGINE --load tools/check-verify-child.f -- SUBJECT [DEP ...] < BYTES
 
 SUBJECT is canonical and absolute, and each DEP is a file of the closure,
 canonical and absolute, in dependency order; a DEP the image holds is skipped,
-as `require` skips it. stdout carries the packets in verification order, then
-one result line, `check-verify: verified`, `refused` or `held`. stderr carries
-prose, including `PATH: verification stopped by throw RC after N rejected
-definitions` for each file a throw stopped. The verdict is read from the
-result line after a clean exit, never from the exit status.
+as `require` skips it. stdout carries the packets in verification order, each
+written as the checker makes it, so a child that dies has passed on every
+packet made before; then one result line, `check-verify: verified`, `refused`
+or `held`. stderr carries prose, including `PATH: verification stopped by
+throw RC after N rejected definitions` for each file a throw stopped. The
+verdict is read from the result line after a clean exit, never from the exit
+status.
 
 ## Repair Packet JSON
 

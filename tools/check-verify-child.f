@@ -17,17 +17,18 @@
 \ positions in its own bytes, so a file sees what every earlier one declared. A
 \ DEP the image holds is skipped, as `require` skips it.
 \
-\ stdout is the schema-1 JSON packets, one per line in verification order, then
-\ one result line:
+\ stdout is the schema-1 JSON packets, one per line in verification order, each
+\ written as the checker makes it, so a child that dies has passed on every
+\ packet made before; then one result line:
 \
 \    check-verify: verified | refused | held
 \
 \ held is answered before anything is verified: this image holds SUBJECT though
 \ the engine does not provide it (the verifier's source and this file), so it
 \ cannot be verified here. The parent answers engine-provided itself. stderr is
-\ prose: whatever else the checker renders, and a line for each file whose
-\ verification a throw stopped. A child that ends any other way, the verifier's
-\ own `die` included, writes no result line.
+\ prose: a line for each file whose verification a throw stopped, and whatever
+\ else the engine writes there, a `die`'s message among it. A child that ends
+\ any other way, the verifier's own `die` included, writes no result line.
 
 require src/habu/verify-source.f
 
@@ -38,21 +39,17 @@ s" CHECKER-SCOPE-DONE" s" --" TRUST
 package CHECK-VERIFY-CHILD
 
 $10000 constant CHUNK                   \ bytes asked of one read
-$100000 constant DIAG-CAP               \ what the checker renders for one file
 32 constant NUM-CAP
 10 constant LF
-$7B constant LBRACE
 1 constant OUT-FD
 2 constant ERR-FD
 
 DYNAMIC-BUFFER SUBJECT u8               \ the subject's bytes, from stdin
 DYNAMIC-BUFFER DEP u8                   \ the dependency being verified, from its file
-DYNAMIC-BUFFER DIAG u8                  \ the checker renders into this
 variable SUBJECT-U
 variable DEP-U
 variable FD
 variable RD
-variable LINE-AT
 variable FAILED
 variable NUM-I
 TYPED-VARIABLE CUR-A ptr u8             \ the bytes VERIFY-CUR verifies
@@ -115,25 +112,6 @@ create NL 1 allot
    FD @ close ;
 
 
-\ A JSON object line is a packet for stdout; any other rendered line is prose.
-: EMIT-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= if exit then
-   a c@ LBRACE = if OUT-FD a u WRITE OUT-FD NEWLINE exit then
-   ERR-FD a u WRITE ERR-FD NEWLINE ;
-
-
-: EMIT-DIAG ( -- )
-   DIAG-BUFFER$ {: a:ptr u:n :}
-   0 LINE-AT !
-   u 0 ?do
-      a i + c@ LF = if
-         a LINE-AT @ + i LINE-AT @ - EMIT-LINE
-         i 1+ LINE-AT !
-      then
-   loop
-   a LINE-AT @ + u LINE-AT @ - EMIT-LINE ;
-
-
 \ The definitions after the throw went unverified, and a throw the checker
 \ rendered no packet for has nothing else to show it.
 : STOPPED ( ptr u8 n n n -- ) {: label:ptr labelu:n rc:n rejects:n :}
@@ -151,19 +129,16 @@ create NL 1 allot
 
 
 \ Verify the bytes as LABEL with all errors, positions counted from their first
-\ byte, and pass on what the checker rendered.
-: VERIFY-AS ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n label:ptr labelu:n :}
+\ byte.
+: VERIFY-AS ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n label:ptr labelu:n :}
    a CUR-A !
    u CUR-U !
    label labelu DIAG-FILE!
-   0 0= DIAG-JSON!
    1 1 0 DIAG-ORIGIN!
-   0 DIAG DIAG-CAP DIAG-BUFFER!
    MULTI-ERR-BEGIN
    [: VERIFY-CUR ;] catch {: rc:n :}
    MULTI-ERR-END {: rejects:n :}
-   EMIT-DIAG
-   DIAG-BUFFER-OFF
    rc 0<> rejects 0<> or if -1 FAILED ! then
    rc 0= if exit then
    label labelu rc rejects STOPPED ;
@@ -192,8 +167,11 @@ create NL 1 allot
    OUT-FD NEWLINE ;
 
 
+\ Every diagnostic the checker renders from here is a packet on stdout.
 : VERIFY-CLOSURE ( -- )
    0 FAILED !
+   0 0= DIAG-JSON!
+   OUT-FD DIAG-FD!
    CHECKER-SCOPE-START-NEUTRAL
    [: VERIFY-ALL ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
@@ -208,7 +186,6 @@ public
 
 : MAIN ( -- )
    SCRIPT-ARGC 1 < if s" usage: check-verify-child.f -- SUBJECT [DEP ...]" 64 die then
-   DIAG-CAP DIAG-RESERVE
    READ-SUBJECT
    0 SCRIPT-ARGV$ HELD? if s" held" RESULT exit then
    VERIFY-CLOSURE ;

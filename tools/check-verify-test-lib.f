@@ -16,6 +16,8 @@
 \   an engine-provided path is verified because of its bytes              engine-provided
 \   the verifier's own source is verified in the image that holds it      held
 \   a child that ends without a result reads as a verdict                 no-result, deadline
+\   a child that dies drops the packets it made before, a dependency's
+\   or the subject's                                                      died-after-packet
 \   a closure that cannot be followed reads as verified                   missing-dependency
 \   output past the capture loses the packets received before it, or
 \   puts prose on --verify-only's stderr                                  truncated, cli-truncated
@@ -55,11 +57,9 @@ $800000 constant CAP
 \ CHECK's capture of the verifier child's stdout, and room for one packet.
 $400000 constant OUT-CAPTURE
 $1000 constant PACKET-ROOM
-\ The big closure: BIG-FILES dependencies of BIG-DEFS definitions that each
-\ make a packet of some 600 bytes, more in all than OUT-CAPTURE and under the
-\ child's 1 MiB for one file.
-10 constant BIG-FILES
-1000 constant BIG-DEFS
+\ big.f's definitions, each a packet of some 500 bytes: more in all than
+\ OUT-CAPTURE.
+10000 constant BIG-DEFS
 
 create ROOT FS-PATH-CAP allot
 create AT FS-PATH-CAP allot
@@ -202,6 +202,10 @@ variable START-NS
 : BAD-DEP$SRC ( -- ptr u8 n )
    s\" : CVT-EIGHT ( -- n ) 8 ;\n: CVT-BROKEN ( -- n n ) 8 ;\n" ;
 
+\ A refused definition, then one left open, where the verifier dies.
+: OPEN-DEP$SRC ( -- ptr u8 n )
+   s\" : CVT-BAD-DEP ( -- n n ) 8 ;\n: CVT-OPEN-DEP ( -- n ) 1\n" ;
+
 \ What the files on disk hold where a case checks other bytes as them: a clean
 \ definition on line 1, and a string discovery refuses to follow.
 : POS$DISK ( -- ptr u8 n )
@@ -251,35 +255,24 @@ variable START-NS
    dup 10 >= if dup 10 / RECURSE then
    10 mod $30 + GEN-C+ ;
 
-: BIG-NAME ( n -- ptr u8 n )
-   SB-RESET s" big" SB-APPEND $30 + SB-APPEND-C s" .f" SB-APPEND SB$ ;
-
-\ The big file I: CVT-B<I>-<J> for each J, every one a value short.
-: BIG-DEFS$SRC ( n -- ptr u8 n )
-   {: f:n :}
-   0 GEN-U !
-   BIG-DEFS 0 ?do
-      s" : CVT-B" GEN+ f GEN-N+ s" -" GEN+ i GEN-N+ s\"  ( -- n n ) 8 ;\n" GEN+
-   loop
-   0 GEN GEN-U @ ;
-
-\ big.f requires every big file.
+\ big.f: CVT-B<I> for each I, every one a value short.
 : BIG$SRC ( -- ptr u8 n )
    0 GEN-U !
-   BIG-FILES 0 ?do s" require " GEN+ i BIG-NAME GEN+ s\" \n" GEN+ loop
-   s\" : CVT-BIG ( -- n ) 1 ;\n" GEN+
+   BIG-DEFS 0 ?do
+      s" : CVT-B" GEN+ i GEN-N+ s\"  ( -- n n ) 8 ;\n" GEN+
+   loop
    0 GEN GEN-U @ ;
 
 : FIXTURES ( -- )
    s" cvt" HB-TMP-MKDIR SOURCE-ROOT:CANONICAL drop ROOT ROOT-U COPY!
    s" dep.f" DEP$SRC FIXTURE
    s" bad-dep.f" BAD-DEP$SRC FIXTURE
+   s" open-dep.f" OPEN-DEP$SRC FIXTURE
    s" pos.f" POS$DISK FIXTURE
    s" loop.f" LOOP$DISK FIXTURE
    s" back.f" BACK$SRC FIXTURE
    s" back-readme.f" BACK-README$SRC FIXTURE
    s" mark-dep.f" MARK-DEP$SRC FIXTURE
-   BIG-FILES 0 ?do i BIG-NAME i BIG-DEFS$SRC FIXTURE loop
    s" big.f" BIG$SRC FIXTURE ;
 
 
@@ -385,6 +378,21 @@ variable START-NS
    DEP$SRC s" dep.f" SHORT-MS CHECK-AS {: v :}
    v 4 s" deadline: incomplete" EXPECT-KIND
    s" deadline: timed out" T-LABEL v STATUS -2 T= ;
+
+
+\ The verifier dies at an open definition after it refused one: the packet it
+\ made first is kept, a dependency's and then the subject's.
+: DIED-AFTER-PACKET ( -- )
+   s\" require open-dep.f\n: CVT-OPEN-USE ( -- n ) 1 ;\n" s" open-use.f" GUARD-MS CHECK-AS {: v :}
+   v 4 s" died-after-packet: incomplete" EXPECT-KIND
+   s" died-after-packet: the verifier's exit" T-LABEL v STATUS 74 T=
+   CHECK:VERIFY-OUT$ s" word" s" cvt-bad-dep" PACKET {: p:n :}
+   s" died-after-packet: the dependency's packet" T-LABEL
+   p s" file" STRING$ s" open-dep.f" AT$ T$=
+   s\" : CVT-BAD ( -- n n ) 8 ;\n: CVT-OPEN ( -- n ) 1\n" s" open-own.f" GUARD-MS CHECK-AS {: w :}
+   w 4 s" died-after-packet: the subject's, incomplete" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET {: q:n :}
+   s" died-after-packet: the subject's packet" T-LABEL q s" file" STRING$ SUBJ$ T$= ;
 
 
 : MISSING-DEPENDENCY ( -- )
@@ -527,6 +535,7 @@ public
    s" held" [: HELD ;] RUN-CASE
    s" no-result" [: NO-RESULT ;] RUN-CASE
    s" deadline" [: DEADLINE ;] RUN-CASE
+   s" died-after-packet" [: DIED-AFTER-PACKET ;] RUN-CASE
    s" missing-dependency" [: MISSING-DEPENDENCY ;] RUN-CASE
    s" truncated" [: TRUNCATED ;] RUN-CASE
    s" cli-file" [: CLI-FILE ;] RUN-CASE

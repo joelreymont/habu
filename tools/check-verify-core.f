@@ -16,8 +16,8 @@
 \   would make check.f's own image hold it and lib/engine-id.f, so a default
 \   check of either would be unavailable.
 \ - The verdict is the child's own result line. A child that ends without one -
-\   an exit, a signal, the deadline - is `incomplete` and carries that status;
-\   its exit status alone is never a verdict.
+\   an exit, a signal, the deadline - is `incomplete` and carries that status,
+\   with the packets it wrote before; its exit status alone is never a verdict.
 \
 \ VERIFY-OUT$ is the checker's schema-1 packets, one JSON object per line: the
 \ subject's name PATH's canonical absolute path and count positions in the

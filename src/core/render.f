@@ -14,6 +14,7 @@ variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
 create RSBUF RSBUF-CAP allot   variable RSN
 variable RQM                             \ a '?' rendered = unknown tag, don't record
 variable RDIAG-ON
+variable RDIAG-FD   2 RDIAG-FD !
 PTR-VARIABLE RDIAG-A
 variable RDIAG-CAP
 variable RDIAG-U
@@ -37,6 +38,10 @@ variable RDIAG-I
    0 RDIAG-ON !
    0 RDIAG-U ! ;
 
+\ Write each unbuffered diagnostic to FD as it is rendered, 2 until set.
+: DIAG-FD! ( n -- )
+   RDIAG-FD ! ;
+
 \ The diagnostic buffer pointer lives in a declared pointer cell (dot
 \ habu-refuse-a-ptr-5ad2734e), so a plain fetch keeps the checked ptr u8 view
 \ the byte store below needs.
@@ -54,7 +59,7 @@ variable RDIAG-I
 
 : RDIAG-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
-   RDIAG-ON @ 0= IF 2 a u write drop EXIT THEN
+   RDIAG-ON @ 0= IF RDIAG-FD @ a u write drop EXIT THEN
    RDIAG-U @ u + RDIAG-CAP @ > IF s" render: diagnostic buffer full" 76 die THEN
    a u RDIAG-COPY
    RDIAG-U @ u + RDIAG-U ! ;
