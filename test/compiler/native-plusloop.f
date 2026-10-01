@@ -93,21 +93,22 @@ variable INCREMENT
    0 3 ?do 2 0 ?do j 10 * i + VISIT loop -1 +loop
    ITERATIONS @ ;
 
-\ Twenty-two step loops nested, two turns each, so the body runs 2^22 times.
+\ Twenty-four step loops nested, two turns each, so the body runs 2^24 times.
 \ Every level's frame is live across the update in the body and the pool cannot
 \ hold them all, so the allocator evicts on the order of depth^2 classes; the
 \ fit reads what the evicted classes need as one count per position and file,
 \ so each eviction costs one pass over the line, not a recount of every class
-\ evicted before it at every position.
+\ evicted before it at every position. The frame passes 4095 bytes, past one
+\ add/sub immediate, so its reservation takes the two-word form.
 : DEEP ( -- n )
    0 ITERATIONS !
    2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do
    2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do
-   2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do
+   2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do
    1 ITERATIONS +!
    1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop
    1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop
-   1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop
+   1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop
    ITERATIONS @ ;
 
 \ Frame discharge: leave, unloop before exit, and a body that never returns.
@@ -230,8 +231,8 @@ private
    0 30 VISITED-IS  1 31 VISITED-IS  6 0 VISITED-IS  7 1 VISITED-IS ;
 
 : DEEP-CASE ( -- )
-   s" twenty-two nested step loops compile and take every turn" T-LABEL
-   NPL-FIXTURE:DEEP 1 22 lshift T= ;
+   s" twenty-four nested step loops compile and take every turn" T-LABEL
+   NPL-FIXTURE:DEEP 1 24 lshift T= ;
 
 : FRAME-CASE ( -- )
    s" leave and unloop exit discharge a step loop's frame" T-LABEL

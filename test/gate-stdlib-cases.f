@@ -541,6 +541,10 @@ SUITE compiler-native-arm-frame-order
    test/compiler/native-arm-frame-order.f
 ;SUITE
 
+SUITE compiler-native-wide-frame
+   test/compiler/native-wide-frame.f
+;SUITE
+
 SUITE compiler-native-emit
    test/compiler/native-emit.f
 ;SUITE
