@@ -2088,6 +2088,10 @@ SUITE source-root
    test/source-root-test.f
 ;SUITE
 
+SUITE room-left
+   test/room-left-test.f
+;SUITE
+
 SUITE boot-row
    test/boot-row-test.f
 ;SUITE

@@ -204,8 +204,12 @@ public
 
 private
 
+\ Both callers bound u with CHECK. The root length is the caller's, so it is
+\ compared with the room the name and its separator leave: in a sum, a length
+\ near the maximum cell wraps back into range.
 : JOIN! ( ptr u8 n ptr u8 n -- ) {: root:ptr rootu:n a:ptr u:n :}
-   rootu u + 1+ WORK-BYTES >= if E-PATH-RANGE throw then
+   rootu 0 < if E-PATH-RANGE throw then
+   rootu WORK-BYTES 1- u - >= if E-PATH-RANGE throw then
    root WORK-BUF rootu BYTE-COPY
    47 WORK-BUF rootu + c!
    a WORK-BUF rootu 1+ + u BYTE-COPY
@@ -686,8 +690,12 @@ $0A INCLUDE-LF 0 ZBYTE!
 : INCLUDE-DIAG-RESET ( -- )
    0 INCLUDE-DIAG-U ! ;
 
+\ A piece that does not fit is dropped. It is compared with the room left, so a
+\ length near the maximum cell cannot wrap the sum back under the capacity, and
+\ a negative one is dropped too.
 : INCLUDE-DIAG+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   INCLUDE-DIAG-U @ u + INCLUDE-DIAG-CAP > if exit then
+   u 0 < if exit then
+   u INCLUDE-DIAG-CAP INCLUDE-DIAG-U @ - > if exit then
    a INCLUDE-DIAG INCLUDE-DIAG-U @ + u BYTE-COPY
    INCLUDE-DIAG-U @ u + INCLUDE-DIAG-U ! ;
 
@@ -805,8 +813,12 @@ variable DISC-TOK-U
 : EVENT-RECS-ROOM ( -- )
    EVENT-N @ EVENT-MAX >= if s" events: too many events" INCLUDE-EVENT-RC die then ;
 
-: EVENT-POOL-ROOM ( n -- )
-   EVENT-POOL-N @ + EVENT-POOL-CAP > if s" events: pool overflow" INCLUDE-EVENT-RC die then ;
+\ The bytes wanted are compared with the room left in the pool: added to its
+\ fill, a length near the maximum cell wraps back under the capacity.
+: EVENT-POOL-ROOM ( n -- ) {: u:n :}
+   u 0 < u EVENT-POOL-CAP EVENT-POOL-N @ - > or if
+      s" events: pool overflow" INCLUDE-EVENT-RC die
+   then ;
 
 : EVENT-COPY-PATH ( ptr u8 n -- n n ) {: a:ptr u:n :}
    u EVENT-POOL-ROOM

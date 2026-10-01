@@ -92,6 +92,12 @@ private
    rbase $7FFFFFFFFFFFFFFF CODE-BYTES:IN-CODE? TFALSE
    cp@ INSN-BYTES - $7FFFFFFFFFFFFFFF CODE-BYTES:IN-CODE? TFALSE
 
+   s" an address so high that its span wraps is refused" T-LABEL
+   \ The length is one the region admits; the start is what wraps the sum
+   \ negative, below the band top.
+   $7FFFFFFFFFFFFFFE INSN-BYTES CODE-BYTES:IN-CODE? TFALSE
+   $7FFFFFFFFFFFFFFF 1 CODE-BYTES:IN-CODE? TFALSE
+
    s" an admitted span answers its own bytes and its own length" T-LABEL
    s" XREF-START" REC-START s" XREF-START" REC-BYTES CODE-BYTES:AT
       {: p:ptr got:n :}

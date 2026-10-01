@@ -2380,7 +2380,11 @@ public
 
 : BOOTRUN+ ( ptr u8 n -- ) {: a:ptr u:n :}
    u 255 > if s" aot-capture: boot-run name too long" 74 die then
-   AOT-BOOTRUN-LEN @ u + 2 + AOT-BOOTRUN-CAP > if s" aot-capture: boot-run overflow" 74 die then
+   \ The length is the caller's: a negative one is refused, and the rest is
+   \ compared with the room left rather than added to what is used.
+   u 0 < u AOT-BOOTRUN-CAP 2 - AOT-BOOTRUN-LEN @ - > or if
+      s" aot-capture: boot-run overflow" 74 die
+   then
    AOT-BOOTRUN-LEN @ {: off:n :}
    u  AOT-BOOTRUN-BUF@ off + c!                     \ [len]
    u 0 ?do a i + c@  AOT-BOOTRUN-BUF@ off + 1+ i + c!  loop

@@ -391,6 +391,20 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    s" EMIT-CORRUPT-LOW" S\" icode: fixup free list corrupt\n" TEST-DIAG
    s" EMIT-CORRUPT-FUTURE" S\" icode: fixup free list corrupt\n" TEST-DIAG ;
 
+\ IMSG+ is a global any source can call, so it measures a piece against the room
+\ left: a length near the maximum cell would wrap the sum back under IMSG-CAP
+\ and copy past the buffer, and a negative one would slip under it.
+: IMSG-FILL ( -- ) 0 IMSG-N ! OUT IMSG-CAP IMSG+ ;
+: IMSG-OVER ( -- ) 0 IMSG-N ! OUT IMSG-CAP 1- IMSG+ OUT 2 IMSG+ ;
+: IMSG-NEG ( -- ) 0 IMSG-N ! OUT 1 IMSG+ OUT -1 IMSG+ ;
+: IMSG-MAX ( -- ) 0 IMSG-N ! OUT 1 IMSG+ OUT -1 1 rshift IMSG+ ;
+
+: TEST-IMSG-ROOM ( -- )
+   IMSG-FILL IMSG-N @ IMSG-CAP T=
+   s" IMSG-OVER" S\" icode: a reach refusal outgrew its own message buffer\n" TEST-DIAG
+   s" IMSG-NEG" S\" icode: a reach refusal outgrew its own message buffer\n" TEST-DIAG
+   s" IMSG-MAX" S\" icode: a reach refusal outgrew its own message buffer\n" TEST-DIAG ;
+
 : TEST-REDEFINE ( -- )
    s" 0 0<> EMIT-REDEFINE" S\" icode: label redefined\n" TEST-DIAG
    s" 0 0= EMIT-REDEFINE" S\" icode: label redefined\n" TEST-DIAG ;
@@ -449,6 +463,7 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    TEST-FULL
    TEST-OVERFLOW
    TEST-CORRUPT
+   TEST-IMSG-ROOM
    TEST-BADKIND
    TEST-REACH-DIAG
    TEST-REACH-NUMBER$

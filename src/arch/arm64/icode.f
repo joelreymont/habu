@@ -393,7 +393,9 @@ variable IMSG-V
 
 : IMSG+ ( ptr u8 n -- )
    IMSG-U ! IMSG-A !
-   IMSG-N @ IMSG-U @ + IMSG-CAP > if
+   \ Any source can call IMSG+, so the length is compared with the room left: in
+   \ a sum, a length near the maximum cell wraps back under the capacity.
+   IMSG-U @ 0 <  IMSG-U @ IMSG-CAP IMSG-N @ - >  or if
       s" icode: a reach refusal outgrew its own message buffer" ICODE-EXIT-RC die
    then
    0 BEGIN dup IMSG-U @ < WHILE

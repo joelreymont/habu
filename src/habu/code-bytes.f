@@ -47,13 +47,15 @@ private
 
 : WITHIN? ( n n n n -- bool ) {: at:n bytes:n lo:n hi:n :}
    at lo < if false exit then
-   at bytes + hi > if false exit then
+   bytes hi at - > if false exit then
    true ;
 
 public
 
-\ REGION bounds the byte count before it is added to the address, so the sum
-\ below cannot wrap: no code span is larger than the region that holds it.
+\ REGION bounds the byte count: no code span is larger than the region that
+\ holds it. WITHIN? compares the count with the room between the address and
+\ the band top, so an address near the maximum cell cannot wrap a sum back
+\ under the top.
 : IN-CODE? ( n n -- bool ) {: at:n bytes:n :}
    at 0 <= if false exit then
    bytes 0 < bytes REGION > or if false exit then
