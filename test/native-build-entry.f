@@ -1,11 +1,13 @@
 \ The production entry refuses a bad command line before it loads the build
-\ closure (tools/native-build-args.f), so no refusal here starts a build. No
-\ output argument is refused by name; so is a bad second argument: the class
-\ the build is being asked for is settled before the target load, so a typo
-\ cannot quietly produce a product. So are a `--target` naming no target and
-\ one whose machine this engine has no backend for. The entry's accepted path,
-\ the closure compiling under the native build guard, is every gate's whitebox
-\ engine build (test/whitebox-engine.f runs this entry with `whitebox`).
+\ closure (tools/native-build-args.f), so no refusal here but the last starts a
+\ build. No output argument is refused by name; so is a bad second argument:
+\ the class the build is being asked for is settled before the target load, so
+\ a typo cannot quietly produce a product. So are a `--target` naming no target
+\ and one whose machine this engine has no backend for. With that backend
+\ loaded, the window for the other machine loads and is captured, and the build
+\ stops before it loads a writer. The entry's accepted path, the closure
+\ compiling under the native build guard, is every gate's whitebox engine build
+\ (test/whitebox-engine.f runs this entry with `whitebox`).
 require lib/test.f
 require lib/process.f
 require lib/process-argv.f
@@ -103,6 +105,29 @@ variable RC
    DRIVE
    S\" native-build: the --target machine has no backend loaded; load its backend module before tools/native-build.f\n" REFUSED ;
 
+: FOREIGN-BACKEND$ ( -- ptr u8 n )
+   HB-TARGET-LINUX-X86-64? if s" src/arch/arm64/backend.f" exit then
+   s" src/arch/x86-64/backend.f" ;
+
+\ The whole window loads and is captured for the other machine; then the
+\ window's own compiler is the one a source-loaded writer would get
+\ (tools/native-build-core.f WRITER-MACHINE-CK), so the build stops there.
+\ Nothing is written: the refusal names the stop and the output path is under
+\ /dev/null, which no write can reach.
+: FOREIGN-WINDOW-CASE ( -- )
+   s" and stops the other machine's window after its capture, before a writer loads" T-LABEL
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" ARG
+   FOREIGN-BACKEND$ ARG
+   s" tools/native-build.f" ARG
+   s" --" ARG
+   s" /dev/null/native-build-entry-test" ARG
+   s" --target" ARG
+   FOREIGN$ ARG
+   DRIVE
+   S\" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine\n" REFUSED ;
+
 : RUN ( -- )
    T-RESET
    NO-OUTPUT-CASE
@@ -110,6 +135,7 @@ variable RC
    TARGET-MISSING-CASE
    TARGET-UNKNOWN-CASE
    TARGET-UNLOADED-CASE
+   FOREIGN-WINDOW-CASE
    T-REPORT ;
 
 RUN

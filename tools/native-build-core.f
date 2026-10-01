@@ -26,6 +26,7 @@ require src/habu/aot-owned.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
 require src/compiler/native/string.f
+require src/compiler/native/abi.f
 require tools/native-layout.f
 
 package NATIVE-BUILD
@@ -371,9 +372,25 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
    then
    xt WRITER-XT ;
 
+\ SOURCE LOADED AFTER THE CAPTURE COMPILES FOR THE WINDOW'S MACHINE. The
+\ window's last act, src/habu/native-runtime.f CHECKER-REG:SEAL, runs
+\ NCOMP:INSTALL, which puts the window's compiler in the dispatch cell this
+\ process shares, and that compiler lowers for the binding the window's
+\ target.f names. A window for this engine's machine compiles the writer into
+\ code this engine runs. A window for another machine cannot: the linux-x86-64
+\ window's compiler lowered the writer's first new file, src/arch/arm64/icode.f,
+\ for x86-64 inside this AArch64 engine and refused ICODE-MAP>PTR with
+\ E-X64EMIT-PLACE. Such a window's writer has to be compiled before the window
+\ opens, and none is, so its build stops here, captured and with nothing written.
+\ NABI:BINDING, compiled with this file, answers for the building engine.
+: WRITER-MACHINE-CK ( -- )
+   TARGET-ARCH NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ if exit then
+   s" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine" BUILD-RC die ;
+
 \ The reader's capture has its own bytes. Loading a writer may allocate and
 \ compile freely; none of those definitions or mutations enters that value.
 : SOURCE-WRITER-DISPATCH ( AOT-OWNED:capture ptr n n ptr u8 n -- )
+   WRITER-MACHINE-CK
    s" tools/native-emit.f" required
    SOURCE-WRITER execute ;
 
