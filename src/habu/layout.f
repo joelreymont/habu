@@ -496,9 +496,9 @@ $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer START, saved beside INP ([frame+0])
 \ and INE ([frame+8]) so a nested evaluate restores it. PKGSNAP fills
 \ EVAL-PKG..$80 (its last cell, PKGSNAP-FLOOR, is $78) and STACK-ABI:EVAL-BASE
-\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, and EVAL-USE-FLOOR below
-\ fills the frame to STACK-ABI:EVAL-BYTES ($A0), keeping the native stack
-\ 16-byte aligned.
+\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-USE-FLOOR $98, and
+\ EVAL-USE-WIDS below fills the frame to STACK-ABI:EVAL-BYTES ($120), keeping
+\ the native stack 16-byte aligned.
 $90 constant EVAL-INB
 \ EVAL-USE-FLOOR: the using depth the buffer may close down to. B-EVAL starts it at the depth the buffer enters at, so a `;using`
 \ at or below it, which would close a using the includer opened, is refused
@@ -507,6 +507,12 @@ $90 constant EVAL-INB
 \ meet it (C-USING-PUSH), and the clean exit restores the depth to the lower
 \ of the two (EM-EVAL-CLEAN-EXIT), so no using the buffer opened stays open.
 $98 constant EVAL-USE-FLOOR
+\ EVAL-USE-WIDS: the includer's USE-MAX used-public wids (USE-WIDS-OFF), which
+\ a throw puts back with the depth and the floor (habu2.f LEVALREC). A buffer
+\ that closes its includer's package and then opens a using writes that using
+\ into a slot the includer keeps; the checker reads each slot's name back from
+\ the restored wid (checker.f CHECKER-PACKAGE-RESYNC).
+$A0 constant EVAL-USE-WIDS
 
 \ --- refusal location band (dot habu-name-the-file-70acbf10) --------------------
 \ Every engine load refusal that reaches the LCOMPILEDIE tail names the source it
@@ -561,6 +567,10 @@ $27C0 constant PKGRESYNC-CELL
 \ TXN-STATE-OFF ($5000), swept for a claimant across src lib tools test maki
 \ bootstrap and claimed in src/habu/data-claims.f.
 $4810 constant RPKG-FLOOR
+\ RPKG-WIDS: the line-start used-public wids, USE-MAX cells, restored with the
+\ depth and the floor; EVAL-USE-WIDS above says why. It takes the run after
+\ RPKG-FLOOR, swept for a claimant the same way and claimed in data-claims.f.
+$4818 constant RPKG-WIDS
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
@@ -1536,7 +1546,8 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 \ --- Package-scope eval-frame snapshot band (dot habu-recovery-pkg-scope-e0bd98e2) ---
 \ Evaluator entry snapshots package/search state in its native stack frame.
 \ Clean exit restores the using depth to the buffer's floor (EVAL-USE-FLOOR);
-\ throw recovery restores the entry depth (PKGSNAP-USE) and the package scope.
+\ throw recovery restores the entry depth (PKGSNAP-USE), the used-public wids
+\ (EVAL-USE-WIDS) and the package scope.
 \ Package/search snapshots are fields of each native-stack evaluator frame.
 \ PKGSNAP-FLOOR is the open package's using floor (USE-PKG-SAVE-CELL): a
 \ buffer that closes the package, opens another and throws set that cell to

@@ -830,6 +830,22 @@ variable WANT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
    S\" E-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR ;
 
+\ A throw puts back the includer's used publics on both loops. The file closes
+\ OI-P, opens OI-FXN in the slot OI-FXA held and throws: the slot used to keep
+\ OI-FXN, whose OI-TWIN takes an input, so the top-level OI-TWIN added 100 to
+\ a cell below the stack and the checker refused OI-SLOT. Now both read
+\ OI-FXA's OI-TWIN.
+: USING-SLOT-THROW ( -- )
+   s" ;package using OI-FXN OI-NOPE" s" oi-nested-slot-throw.f" PKG-NESTED
+   GE-SRC-RESET
+   s" s~ package OI-FXN public : OI-TWIN ( n -- n ) 100 + ; ;package~ evaluate" QLINE
+   s" package OI-P using OI-FXA s~ oi-nested-slot-throw.f~ ' included catch . OI-TWIN ." QLINE
+   s" s~ : OI-SLOT ( -- n ) OI-TWIN ;~ evaluate OI-SLOT . ;package" QLINE
+   s" oi-using-slot-throw.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 70\n1\n1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR ;
+
 \ At top level `export` consumes its name and does nothing else; with no name
 \ it refuses, naming itself.
 : EXPORT-TOP-LEVEL ( -- )
@@ -1545,6 +1561,7 @@ private
    USING-ACROSS-PACKAGE
    PACKAGE-RECOVERY
    USING-INCLUDER
+   USING-SLOT-THROW
    EXPORT-TOP-LEVEL
    EXPORT-ALIASES
    EXPORT-REFUSALS

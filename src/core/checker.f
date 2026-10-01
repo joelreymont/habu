@@ -10092,16 +10092,20 @@ variable CK-USED-SLOT                      \ used-scan slot of that first match 
    THEN
    ix CK-USE-SLOT ix CK-USE-LEN@ ;
 
-: CHECKER-USING ( ptr u8 n -- ) {: a:ptr u:n :}
-   u CHECKER-PACKAGE-CAP >= IF s" checker: using name too long" 76 die THEN
-   CK-USE-DEPTH {: d:n :}
-   d CK-USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
+\ Slot d names package a u, folded; the name fits the slot.
+: CK-USE-NAME! ( ptr u8 n n -- ) {: a:ptr u:n d:n :}
    d CK-USE-SLOT {: dst:ptr :}
    0 BEGIN dup u < WHILE
       dup a + c@ CHECKER-FOLD-C  over dst + c!      \ dst[i] = fold(name[i])
       1 +
    REPEAT drop
    u d cells CK-USE-LENS + ! ;
+
+: CHECKER-USING ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CHECKER-PACKAGE-CAP >= IF s" checker: using name too long" 76 die THEN
+   CK-USE-DEPTH {: d:n :}
+   d CK-USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
+   a u d CK-USE-NAME! ;
 package CHECKER-REG
 ' CHECKER-USING DECLARATIONS USING-OFF + xt!
 ;package
@@ -10365,6 +10369,28 @@ package CHECKER-REG
 ' CHECKER-END-PACKAGE DECLARATIONS END-PACKAGE-OFF + xt!
 ;package
 
+\ The package whose public wordlist the engine keeps in using slot n: its name
+\ and whether a live namespace row publishes that wid. xref.f installs the
+\ provider once dictionary rows are readable; before that it names no slot.
+defer USE-SLOT-XT ( n -- ptr u8 n bool )
+: USE-SLOT-BOOT ( -- ) [: drop s" " 0 0= 0= ;] is USE-SLOT-XT ;
+USE-SLOT-BOOT
+
+\ The engine's wids are the slots' authority. A throw's recovery puts back the
+\ includer's wids (habu2.f LEVALREC and EM-REPL-RECOVER, src/habu/interpret.f
+\ RUN-CAUGHT), which a buffer that closed the includer's package and opened a
+\ using had overwritten, while the name that `using` recorded stays here; so
+\ each live slot's name is read back from its wid. A wid no live row publishes, or a
+\ name the slot cannot hold, names nothing: a bare tail through that slot is
+\ refused rather than certified against a stale name.
+: CK-USE-RENAME ( n -- ) {: d:n :}
+   d USE-SLOT-XT {: a:ptr u:n ok:bool :}
+   ok u CHECKER-PACKAGE-CAP < and IF a u d CK-USE-NAME! EXIT THEN
+   0 d cells CK-USE-LENS + ! ;
+
+: CK-USE-RESYNC ( -- )
+   CK-USE-SCAN-N 0 ?DO i CK-USE-RENAME LOOP ;
+
 \ A throw's recovery puts the engine's package scope back to its boundary's
 \ (src/habu/habu2.f LEVALREC and EM-REPL-RECOVER, src/habu/interpret.f
 \ INTERPRET), but the notifications above told the mirror what the failed
@@ -10380,6 +10406,7 @@ package CHECKER-REG
 \ leaves it alone.
 : CHECKER-PACKAGE-RESYNC ( -- )
    CHECKER-PKG-MIRROR-AUTHORITY? IF EXIT THEN
+   CK-USE-RESYNC
    PKG-LIVE-XT {: a:ptr u:n mode:n ok:bool :}
    ok 0=  data-base CK-PKG-PUB-OFF + @ 0 <>  and IF EXIT THEN
    ok 0=  mode CHECKER-PACKAGE-NONE =  or IF

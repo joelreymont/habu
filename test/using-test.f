@@ -308,6 +308,26 @@ s" PUBW drop" UCE-CATCH 0 T=
 ;using
 s" ;using" UCE-CATCH E-UNBALANCED T=
 
+\ === a throw puts back the includer's used publics (dot habu-restore-the-includer-f7be16fa) ===
+\ A buffer that closes its includer's package and opens a using writes that
+\ using into a slot the includer keeps. The throw that ends the buffer used to
+\ put back the depth and the package but not the slot, so the includer resolved
+\ BW where AW had been, and with UD in the slot the checker certified a caller
+\ against UD:AW ( n -- n ). The slot comes back now and the checker names it
+\ from its wid: UA:AW is ( -- n ), so a caller declaring ( n -- n ) is refused
+\ and one declaring ( -- n ) runs UA's.
+package UD public : AW ( n -- n ) 100 + ; ;package
+variable UQX-V
+package UQX using UA
+s" ;package using UB NO-SUCH-WORDX" UCE-CATCH E-REJECT T=
+s" AW drop" UCE-CATCH 0 T=
+s" BW drop" UCE-CATCH E-REJECT T=
+s" ;package using UD NO-SUCH-WORDX" UCE-CATCH E-REJECT T=
+s" : UQX-R1 ( n -- n ) AW ;" UCE-CATCH E-REJECT T=
+s" : UQX-R2 ( -- n ) AW ; UQX-R2 UQX-V !" UCE-CATCH 0 T=
+UQX-V @ 11 T=
+;using ;package
+
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

@@ -195,6 +195,7 @@ variable NAMES-U
    s" TIER-PROV" NAME,
    s" UNIT-COMPILE" NAME,
    s" RPKG-FLOOR" NAME,
+   s" RPKG-WIDS" NAME,
 
 create TAB
    DP-CELL                        ,  1 cells ,
@@ -316,6 +317,7 @@ create TAB
    TIER-PROV:OPEN-CELL            ,  TIER-PROV:END TIER-PROV:OPEN-CELL - ,
    UNIT-COMPILE-CELL              ,  1 cells ,
    RPKG-FLOOR                     ,  1 cells ,
+   RPKG-WIDS                      ,  USE-MAX cells ,
    0 ,  0 ,
 
 : ROW-OFF ( n -- n )

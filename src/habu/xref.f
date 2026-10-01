@@ -251,8 +251,26 @@ private
    get-current
    LIVE-PKG ;
 
+\ The package whose public wordlist wid is: the live namespace row that
+\ publishes it (habu2.f C-PACKAGE-NEW-RECORD writes the wid there).
+: NS-PUB? ( ptr n n -- bool ) {: rec:ptr wid:n :}
+   rec XREF-WORDLIST XREF-NAMESPACE-WL =  rec XREF-PKG-PUBLIC wid =  and ;
+
+: WID-PKG ( n -- ptr u8 n bool ) {: wid:n :}
+   ndict@ 1-
+   begin dup 0 >= while
+      dup XREF-REC wid NS-PUB? if XREF-REC XREF-NAME$ XREF-TRUE exit then
+      1-
+   repeat drop
+   s" " XREF-FALSE ;
+
+\ The package the engine's using slot n imports (layout.f USE-WIDS-OFF).
+: USE-SLOT ( n -- ptr u8 n bool )
+   cells USE-WIDS-OFF + data-base + @ WID-PKG ;
+
 : INSTALL ( -- )
-   [: LIVE ;] is PKG-LIVE-XT ;
+   [: LIVE ;] is PKG-LIVE-XT
+   [: USE-SLOT ;] is USE-SLOT-XT ;
 INSTALL
 
 ;package
@@ -640,6 +658,8 @@ variable XREF-FORGET-CP
 \ The installed provider holds direct code references. Retire every source-level
 \ rebinding seam and mutable provider cell before the engine-prefix seal.
 undefine PKG-LIVE-XT
+undefine USE-SLOT-XT
+undefine USE-SLOT-BOOT
 undefine CWIN-STATE
 undefine CALL-FREEZE-XT
 undefine CALL-FREEZE-INSTALL

@@ -704,6 +704,32 @@ variable PTY-LONG-U
    PTY-PKGFLOOR-FAIL
    PTY-PKGFLOOR-CLOSE ;
 
+\ The line's used publics come back with the scope (dot
+\ habu-restore-the-includer-f7be16fa). The failing line closes PRS2, opens
+\ PRS3 in the slot PRS1 held, and aborts: recovery puts PRS1 back and the
+\ checker names it again, so PRSY certifies against PRS1:PRSW and runs it.
+\ Before the fix the slot kept PRS3, whose PRSW takes an input, and PRSY was
+\ refused.
+: PTY-PKGSLOT-OPEN ( -- )
+   s" package PRS1 public : PRSW ( -- n ) $FACE ; ;package package PRS3 public : PRSW ( n -- n ) ; ;package package PRS2 using PRS1" STEP-LN
+   s"  ok" PROMPT-AFTER ;
+
+: PTY-PKGSLOT-FAIL ( -- )
+   s" ;package using PRS3 NOPEWORD" STEP-LN
+   s" E-UNDEFINED: NOPEWORD" PROMPT-AFTER
+   PROBE-BARRIER
+   s"  ok" REJECT ;
+
+: PTY-PKGSLOT-CHECK ( -- )                        \ the hex literal's decimal is in nothing the line editor echoed
+   s" : PRSY ( -- n ) PRSW ; PRSY . ;package" STEP-LN
+   s" 64206" EXPECT
+   s"  ok" PROMPT-AFTER ;
+
+: PTY-PKGSLOT-RECOVERY ( -- )
+   PTY-PKGSLOT-OPEN
+   PTY-PKGSLOT-FAIL
+   PTY-PKGSLOT-CHECK ;
+
 \ The barrier itself, against the live child. An absence claim over a buffer the
 \ child has not answered into is granted by the harness's own silence: a drain
 \ that returned on its first quiet poll leaves exactly that buffer. One leg has
@@ -858,6 +884,7 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
    PTY-COMPILE-RECOVERY
    PTY-PKGSCOPE-RECOVERY
    PTY-PKGFLOOR-RECOVERY
+   PTY-PKGSLOT-RECOVERY
    PTY-REJECT-BARRIER ;
 
 : PTY-HB ( -- )

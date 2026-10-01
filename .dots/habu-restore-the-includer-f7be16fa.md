@@ -1,9 +1,11 @@
 ---
 title: "Restore the includer's using slots after a throw"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-01T13:11:50.441672+03:00"
+closed-at: "2026-10-01T14:07:22+03:00"
+close-reason: The eval frame, the Habu loop and the REPL put the includer's slot wids back and the checker names them; using-test, outer-interpret and proc-pty pass on gen1=gen2 95fe3be5.
 ---
 
 Problem: after a caught throw, a buffer that closed its includer's package and then opened a using leaves that using in the includer's slot. Lane UI (habu-keep-the-includer-bd7dc952) landed a per-buffer using floor (EVAL-USE-FLOOR, frame cell $98; OUTER USE-FLOOR; CHECKER-USE-SOURCE-FLOOR) that fixes the clean path and refuses a buffer's ;using below its floor, but the throw restore still puts back only depth and floor. Restoring the engine's slots alone is unsafe: the checker resolves a bare tail through its names mirror (CK-USE-NAMES, read by CHECKER-USED-SYM), not the engine's wids. Measured on base 75b4 (UI's scratch names-diverge.f): with engine slot 0 = UA and the checker's name for it still UB, where UB:AW is ( n -- n ), ': Y ( n -- n ) AW ;' certifies, yet the call runs UA:AW ( -- n ) and '5 Y' leaves 11 5. The REPL has the same gap: a line ';package using X NOPE' inside a package with usings leaves the slot overwritten after recovery.

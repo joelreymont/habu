@@ -66,6 +66,6 @@ $50 constant CATCH-BYTES
 $CA7CF4A3E00E constant CATCH-MAGIC
 $80 constant EVAL-BASE
 $88 constant EVAL-CAP
-$A0 constant EVAL-BYTES   \ layout.f EVAL-USE-FLOOR at $98 is the frame's last field
+$120 constant EVAL-BYTES   \ layout.f EVAL-USE-WIDS, USE-MAX cells from $A0, is the frame's last field
 
 ;package

@@ -30,6 +30,17 @@ TRUSTED: DISPATCH ( -- )
 : RUN ( -- )
    begin TOKEN while STEP repeat ;
 
+\ Run the buffer under catch and give its code. A throw also puts back the d
+\ used publics below depth d, the includer's: a buffer that closes the
+\ includer's package and opens a using writes into one of them (habu1.f B-EVAL
+\ keeps the engine's in its frame). Each call keeps one slot.
+: RUN-CAUGHT ( n -- n ) {: d:n :}
+   d 0= if [: RUN ;] catch exit then
+   d 1- FIND-USE-WID {: wid:n :}
+   d 1- RECURSE {: code:n :}
+   code 0<> if wid d 1- cells USE-WIDS-OFF + CELL! then
+   code ;
+
 public
 
 \ Interpret the buffer as the engine's evaluate reads it, and put the input
@@ -37,7 +48,8 @@ public
 \ throws: usings are file-local (habu1.f B-EVAL, habu2.f EM-EVAL-CLEAN-EXIT).
 \ A throw also puts back the package scope the buffer entered with, its using
 \ floor included (habu2.f LEVALREC), so a package a throwing file opened is
-\ closed and one it closed is open again. A clean end puts the depth back to
+\ closed and one it closed is open again, and the used publics RUN-CAUGHT
+\ kept, which the checker's resync names. A clean end puts the depth back to
 \ the buffer's using floor (packages.f USE-FLOOR), which is the entry depth
 \ unless a `;package` closed a package opened before the buffer and restored
 \ a lower one (habu2.f EM-EVAL-CLEAN-EXIT). A package the buffer left open
@@ -52,7 +64,7 @@ public
    USE-FLOOR @ {: outer:n :}
    d USE-FLOOR !
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
-   [: RUN ;] catch {: code:n :}
+   d RUN-CAUGHT {: code:n :}
    USE-FLOOR @ USE-DEPTH-CELL CELL@ min {: back:n :}
    outer USE-FLOOR !
    p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!

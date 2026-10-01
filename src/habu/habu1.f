@@ -1408,6 +1408,18 @@ variable SZA-I
    9 9 13 MUL,  9 9 10 UDIV,
    9 11 9 ADD,  9 G-PUSH ;
 
+\ The USE-MAX used-public wids between the using band (layout.f USE-WIDS-OFF)
+\ and a snapshot at off from base. They are the includer's slots: a buffer
+\ that closes the includer's package and then opens a using writes into one
+\ (habu2.f LEVALREC, EM-REPL-RECOVER). band and tmp are scratch registers.
+: USE-WIDS-SAVE, ( n n n n -- ) {: base:n off:n band:n tmp:n :}
+   band USE-WIDS-OFF LIT64,  band DATA band ADD,
+   USE-MAX 0 do  tmp band i cells LDR,  tmp base off i cells + STR,  loop ;
+
+: USE-WIDS-RESTORE, ( n n n n -- ) {: base:n off:n band:n tmp:n :}
+   band USE-WIDS-OFF LIT64,  band DATA band ADD,
+   USE-MAX 0 do  tmp base off i cells + LDR,  tmp band i cells STR,  loop ;
+
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
@@ -1450,6 +1462,8 @@ variable SZA-I
    11 14 EVAL-USE-FLOOR STR,
    \ and the open package's using floor, which a throw restores with the package
    11 USE-PKG-SAVE-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP-FLOOR STR,
+   \ and the includer's used publics, which a throw puts back with the depth
+   14 EVAL-USE-WIDS 11 12 USE-WIDS-SAVE,
    11 DATA EVALD-CELL LDR,  11 11 1 ADDI,  11 DATA EVALD-CELL STR,
    9 DATA INP-CELL STR,                              \ INP = a
    9 DATA SRCLOC:INB-CELL STR,                       \ INB = a (this buffer's first byte)

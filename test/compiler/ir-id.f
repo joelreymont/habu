@@ -298,6 +298,10 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" PKG-LIVE-XT" XREF-FIND XREF-FOUND? TFALSE
    s" boot package provider is not addressable" T-LABEL
    s" CHECKER-PKG-LIVE-DEFAULT" XREF-FIND XREF-FOUND? TFALSE
+   s" using slot provider hook is not addressable" T-LABEL
+   s" USE-SLOT-XT" XREF-FIND XREF-FOUND? TFALSE
+   s" boot using slot provider is not addressable" T-LABEL
+   s" USE-SLOT-BOOT" XREF-FIND XREF-FOUND? TFALSE
    s" package context selector is not addressable" T-LABEL
    s" CHECKER-PKG-CONTEXT" XREF-FIND XREF-FOUND? TFALSE
    s" package authority reader is not addressable" T-LABEL

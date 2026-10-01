@@ -10482,6 +10482,7 @@ public
       9 10 PKGSNAP-REC LDR,     9 DATA PKG-REC-CELL STR,
       9 10 PKGSNAP-USE LDR,     12 USE-DEPTH-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ roll the using-scope depth back too (x12 reloaded below)
       9 10 PKGSNAP-FLOOR LDR,   12 USE-PKG-SAVE-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ and the open package's using floor
+      13 EVAL-USE-WIDS 12 9 USE-WIDS-RESTORE,                \ and the includer's used publics, which the resync names
       9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained below, before delivery)
       12 13 EVAL-PREV LDR,  12 DATA EVAL-TOP-CELL STR,
       15 DATA EVALERR-CELL STR,                       \ EVALERR = code
@@ -10595,6 +10596,7 @@ public
    10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    9 DATA RPKG-FLOOR LDR,                                         \ and the line-start using floor
    10 USE-PKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
+   DATA RPKG-WIDS 10 9 USE-WIDS-RESTORE,                          \ and the line-start used publics, which the resync names
    9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD LABEL@ B,
@@ -10951,6 +10953,7 @@ public
    10 USE-RPKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    10 USE-PKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,     \ and the open package's using floor
    9 DATA RPKG-FLOOR STR,
+   DATA RPKG-WIDS 10 9 USE-WIDS-SAVE,                             \ and the used publics, which a `;package` and a `using` can overwrite
    PROT-EMIT:LCLOSE LABEL@ BL,                        \ region -> RX: a definition may span lines, and the reader is compiled code
    9 DATA REPLH-CELL LDR,  9 BLR,
    XDS XDS 8 SUBI,  10 XDS 0 LDR,
