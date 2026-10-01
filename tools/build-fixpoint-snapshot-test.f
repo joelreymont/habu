@@ -65,15 +65,11 @@ variable BFT-BYTES-N
    s" hb-doctored" BF-CHMOD-X-TMP ;
 
 variable BFT-DOC-ERR-U
-variable BFT-DOC-OUT-U
 variable BFT-DOC-EXITED
 variable BFT-DOC-CODE
 
 : BFT-DOC-ERR$ ( -- ptr u8 n )
    BFT-ERR BFT-DOC-ERR-U @ ;
-
-: BFT-DOC-OUT$ ( -- ptr u8 n )
-   BFT-OUT BFT-DOC-OUT-U @ ;
 
 \ Doctor one trailer byte, run the patched snapshot engine with empty stdin and
 \ its stderr CAPTURED (the labeled diagnostic goes to fd 2), record the exit
@@ -90,9 +86,7 @@ variable BFT-DOC-CODE
      exited OF BFT-DOC-CODE ! 0 0= BFT-DOC-EXITED ! ENDOF
      signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
      timeout OF E-PROC-TIMEOUT throw ENDOF        \ a deadline, for BFT-STEP
-   ;MATCH {: ou:len eu:len :}
-   ou LEN>N BFT-DOC-OUT-U !
-   eu LEN>N BFT-DOC-ERR-U !
+   ;MATCH nip LEN>N BFT-DOC-ERR-U !
    orig off BFT-BYTE! ;
 
 \ A labeled fatal exit: process EXITed with the contract code and its stderr
