@@ -1412,6 +1412,20 @@ passing suite.
   rc 102, as outside one ([debugging.md](debugging.md)); with a task live it
   exits `$4F` before reading the text and prints nothing, as `evaluate` does.
   The open cases are under **Checked code and primitive boundaries**.
+- **A test takes a value out of a text with `TEST-EVAL`, never an `evaluate`
+  wrapper.** `lib/test.f` loads it: `TEST-EVAL:N ( ptr u8 n -- n )` evaluates a
+  text that must leave exactly one cell, `TEST-EVAL:FLAG ( ptr u8 n -- bool )`
+  reads that cell with `0<>`, and `TEST-EVAL:RC ( ptr u8 n -- n )` is the
+  text's `evaluate-closed` throw code, 0 when it loaded. N runs the text with
+  plain `evaluate` at the top level of a constant closed text, so the closed
+  floor sits under the text and N's store takes its one cell. Measured
+  (`lib/test/eval-test.f`): an empty text throws 70
+  (`hb: interpret stack underdepth: TEST-EVAL:N!`), `1 2` throws
+  `E-EVAL-RESIDUE`, `drop 1` throws 70 with the caller's cells intact, N runs
+  inside the text of N, and `: W ( -- bool ) s" 1" TEST-EVAL:N ;` is refused
+  (`expected: bool actual: n`). N keeps `evaluate-closed`'s open cases; a text
+  that ends inside a definition compiles N's store into it, so N answers the
+  value the previous N stored.
 
 ## Spans: a pointer that carries its reach
 

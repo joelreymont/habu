@@ -1990,6 +1990,10 @@ SUITE test-subject
    lib/test/subject-test.f
 ;SUITE
 
+SUITE test-eval
+   lib/test/eval-test.f
+;SUITE
+
 SUITE check-repair-hints
    tools/check-repair-hints-test.f
 ;SUITE

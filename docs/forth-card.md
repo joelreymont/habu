@@ -240,8 +240,10 @@ See `test/aot-chain-capture-suite.f` for a producer, saved image, and consumer
 flow. Use `require lib/test.f` for assertions and keep fixtures package-scoped.
 
 `T=` / `T<>` scalars, `T$=` strings, `TTRUE` / `TFALSE` flags, `TTHROWSQ` /
-`TTHROWS` throw codes. Register it as a `SUITE name … ;SUITE` entry in
-`test/gate-stdlib-cases.f`; `bin/hb --load test/run.f` runs every suite.
+`TTHROWS` throw codes. `TEST-EVAL:N` / `FLAG` / `RC` take one cell, a flag or
+the throw code out of a source text. Register it as a `SUITE name … ;SUITE`
+entry in `test/gate-stdlib-cases.f`; `bin/hb --load test/run.f` runs every
+suite.
 
 forth.md: **Testing**, **Verification before committing**.
 
