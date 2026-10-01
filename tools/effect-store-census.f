@@ -14,8 +14,10 @@
 \ nodes an older record wrote, so "the bytes of record R" is a question about
 \ REACHABILITY: a node belongs to the first record that reaches it, and every
 \ later reader of it is a SHARE. The walk therefore carries a visited set, and
-\ the accounting identity it publishes - window = bindings + contents + node bytes, orphan
-\ zero - is what proves the walk saw everything exactly once.
+\ the accounting identity it publishes - window = bindings + contents + node
+\ bytes + dead, orphan zero - is what proves the walk saw everything exactly
+\ once. DEAD is what a capture's sweep zeroed in place: the bytes of a retired
+\ binding that nothing kept still reaches (src/core/checker.f CHECKER-SWEEP).
 \
 \ IT READS THE LAYOUT FROM ITS OWNER. Every record and node offset, every tag,
 \ and both record and node sizes are asked of src/core/checker.f through the
@@ -83,15 +85,19 @@ variable WINDOW-V   variable RECS-V     variable SHADOW-V
 variable CONTENTS-V
 variable NODES-V    variable NODEB-V    variable SHARES-V   variable SHAREB-V
 variable FINAL-V    variable DUP-V      variable BELOW-V    variable SHAPES-V
-variable UNKEYED-V  variable RETIRED-V
+variable UNKEYED-V  variable RETIRED-V  variable DEAD-V
 
-\ ---- the visited set: one byte per eight-byte granule of the window -----------
+\ ---- the visited set: one byte per eight-byte granule of the store ------------
 \ Bit 0 marks a node the walk has already charged to a record; bit 1 marks a
-\ record another record's symbol chain shadows. Two bits rather than two arrays
-\ because a record offset and a node offset share one address space.
+\ record another record's symbol chain shadows; bit 2 marks a granule some
+\ charged extent covers, which is what tells a zeroed granule nothing reaches
+\ from one the walk accounted for. Three bits rather than three arrays because a
+\ record offset and a node offset share one address space.
 1 constant SEEN-BIT
 2 constant SHADOW-BIT
+4 constant COVER-BIT
 PTR-VARIABLE VIS-P
+variable VIS-N-V                         \ the map's length in granules
 variable BASE-V     variable CUR-V
 
 : GRANULE ( n -- n ) 3 rshift ;
@@ -105,6 +111,18 @@ variable BASE-V     variable CUR-V
 : SEE ( n -- ) SEEN-BIT VIS+ ;
 : SHADOWED? ( n -- bool ) VIS@ SHADOW-BIT and 0 <> ;
 : SHADOW ( n -- ) SHADOW-BIT VIS+ ;
+: COVERED? ( n -- bool ) VIS@ COVER-BIT and 0 <> ;
+
+\ COVER ( n n -- ) : the granules of the extent [off, off+bytes) are accounted
+\ for. Clamped to the map, so a field that names bytes past the store end cannot
+\ write past it: those bytes are charged but lie outside the window, and the
+\ orphan count goes negative, which is the report such a store deserves.
+: COVER ( n n -- ) {: off:n bytes:n :}
+   off GRANULE 0 max
+   BEGIN dup off bytes + 7 + GRANULE VIS-N-V @ min < WHILE
+      VIS-P @ over + dup c@ COVER-BIT or swap c!
+      1 +
+   REPEAT drop ;
 
 \ ---- the shape table: this file's own canonical-shape counter ------------------
 \ Keys are 64-bit content hashes folded bottom-up, so two entries collide only by
@@ -136,6 +154,7 @@ variable SHT-CAP-V  variable SHT-I  variable H-V
 
 : ALLOC-VIS ( n -- ) {: bytes:n :}
    bytes MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop VIS-P !
+   bytes VIS-N-V !
    0 BEGIN dup bytes < WHILE
       0 VIS-P @ over + c!
       1 +
@@ -153,13 +172,14 @@ variable SHT-CAP-V  variable SHT-I  variable H-V
 : ALIGN8 ( n -- n ) 7 + $FFFFFFFFFFFFFFF8 and ;
 
 variable DUPCUR
-: CHARGE ( n -- ) {: b:n :}
+: CHARGE ( n n -- ) {: off:n b:n :}
+   off b COVER
    DUPCUR @ 0 <> IF b DUP-V @ + DUP-V ! EXIT THEN
    b FINAL-V @ + FINAL-V ! ;
 
-: TAKE ( n -- ) {: b:n :}
+: TAKE ( n n -- ) {: off:n b:n :}
    b NODEB-V @ + NODEB-V !
-   b CHARGE ;
+   off b CHARGE ;
 
 : TAG-AT ( n -- n ) N-TAG + CELL-AT ;
 : FIELD ( n n -- n ) + CELL-AT ;
@@ -180,18 +200,18 @@ variable DUPCUR
    THEN
    off SEE
    NODES-V @ 1 + NODES-V !
-   NODE-BYTES TAKE
+   off NODE-BYTES TAKE
    off TAG-AT {: tg:n :}
    tg T-PTR = IF off N-A FIELD RECURSE EXIT THEN
    tg T-PUSH = IF off N-A FIELD RECURSE  off N-B FIELD RECURSE EXIT THEN
    tg T-QUOT = IF
       off N-A FIELD RECURSE  off N-B FIELD RECURSE
       off N-C FIELD RECURSE  off N-D FIELD RECURSE EXIT THEN
-   tg T-ATOM = IF off N-B FIELD ALIGN8 TAKE EXIT THEN
+   tg T-ATOM = IF off N-A FIELD  off N-B FIELD ALIGN8 TAKE EXIT THEN
    tg T-PARAM = IF
-      off N-B FIELD ALIGN8 TAKE
+      off N-A FIELD  off N-B FIELD ALIGN8 TAKE
       off N-C FIELD {: argc:n :}
-      argc cells TAKE
+      off N-D FIELD  argc cells TAKE
       0 BEGIN dup argc < WHILE
          off over ARG-AT RECURSE
          1 +
@@ -270,17 +290,21 @@ variable DUPCUR
 : VISIT-CONTENT ( n -- ) R-CONTENT
    dup BASE-V @ < IF drop EXIT THEN
    dup SEEN? IF drop EXIT THEN
-   SEE CONTENT-BYTES CHARGE
+   dup SEE  CONTENT-BYTES CHARGE
    1 CONTENTS-V +! ;
 
-\ A binding keyed on no symbol is one a capture detached from a retired symbol
-\ (src/core/checker.f CHECKER-SWEEP); one still keyed on a retired symbol is a
-\ binding the sweep missed, and no reader can reach either through a name.
+\ A binding keyed on no symbol is a retired one the capture's sweep reduced to
+\ its chain link (src/core/checker.f CHECKER-SWEEP), or an anonymous record a
+\ root still names, such as a definer's created effect. One still keyed on a
+\ retired symbol is a binding the sweep missed. No reader reaches any of them
+\ through a name.
 : KEY ( n -- ) {: rec:n :}
    rec R-SYM {: sym:n :}
    sym 0= IF 1 UNKEYED-V +! EXIT THEN
    sym SYM-GONE? IF 1 RETIRED-V +! THEN ;
 
+\ A record whose ER.CONTENT is 0 has no content and no rows: the sweep left it
+\ only the link to the next record, so there is nothing below it to visit.
 : VISIT-RECORDS ( -- )
    BASE-V @ CUR-V !
    BEGIN CUR-V @ REC-NEXT 0 <> WHILE
@@ -289,18 +313,30 @@ variable DUPCUR
       CUR-V @ SHADOWED? IF
          -1 DUPCUR !  SHADOW-V @ 1 + SHADOW-V !
       ELSE 0 DUPCUR ! THEN
-      REC-BYTES CHARGE
-      CUR-V @ VISIT-CONTENT
-      CUR-V @ VISIT-ROWS
+      CUR-V @ REC-BYTES CHARGE
+      CUR-V @ R-CONTENT 0 <> IF
+         CUR-V @ VISIT-CONTENT
+         CUR-V @ VISIT-ROWS
+      THEN
       CUR-V @ REC-NEXT CUR-V !
    REPEAT ;
+
+\ A granule no charged extent covers and that holds zero is one the sweep
+\ zeroed. One that holds anything else is an orphan, and stays one.
+: COUNT-DEAD ( -- )
+   BASE-V @ BEGIN dup 8 + STORE-END <= WHILE
+      dup COVERED? 0= IF
+         dup CELL-AT 0= IF DEAD-V @ 8 + DEAD-V ! THEN
+      THEN
+      8 +
+   REPEAT drop ;
 
 : RESET ( -- )
    0 CONTENTS-V !
    0 RECS-V !   0 SHADOW-V !  0 NODES-V !  0 NODEB-V !
    0 SHARES-V ! 0 SHAREB-V !  0 FINAL-V !  0 DUP-V !
    0 BELOW-V !  0 SHAPES-V !  0 WINDOW-V !
-   0 UNKEYED-V !  0 RETIRED-V ! ;
+   0 UNKEYED-V !  0 RETIRED-V !  0 DEAD-V ! ;
 
 public
 
@@ -315,7 +351,8 @@ public
    STORE-END GRANULE 1 + ALLOC-VIS
    WINDOW-V @ NODE-BYTES / 4 * 64 max POW2-AT-LEAST ALLOC-SHT
    MARK-SHADOWED
-   VISIT-RECORDS ;
+   VISIT-RECORDS
+   COUNT-DEAD ;
 
 : WINDOW-BYTES ( -- n ) WINDOW-V @ ;
 : RECORDS ( -- n ) RECS-V @ ;
@@ -333,13 +370,14 @@ public
 : SHAPES ( -- n ) SHAPES-V @ ;
 : UNKEYED ( -- n ) UNKEYED-V @ ;
 : RETIRED-KEYED ( -- n ) RETIRED-V @ ;
+: DEAD-BYTES ( -- n ) DEAD-V @ ;
 
 \ ORPHAN-BYTES ( -- n ) : the window minus everything the walk accounted for.
 \ Zero is the instrument's own proof that it saw the store exactly once; a
 \ non-zero answer means the walk and the arena disagree and no other number in
 \ the table can be believed.
 : ORPHAN-BYTES ( -- n )
-   WINDOW-V @ FINAL-V @ - DUP-V @ - ;
+   WINDOW-V @ FINAL-V @ - DUP-V @ - DEAD-V @ - ;
 
 : REPORT ( -- )
    s" effect-store-census" type cr
@@ -357,6 +395,7 @@ public
    s" below-window-refs " type BELOW-WINDOW . cr
    s" final-bytes " type FINAL-BYTES . cr
    s" dup-bytes " type DUP-BYTES . cr
+   s" dead-bytes " type DEAD-BYTES . cr
    s" orphan-bytes " type ORPHAN-BYTES . cr
    s" unkeyed-bindings " type UNKEYED . cr
    s" retired-symbol-bindings " type RETIRED-KEYED . cr ;

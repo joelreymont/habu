@@ -6605,6 +6605,14 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
 \ no row effect names 0 in E-RIN@/E-ROUT@ and the walk skips it; reading them
 \ without the E-HASR@ gate can only make the index offer MORE nodes, never a
 \ wrong one, because every answer is decided by comparing the nodes themselves.
+\ A CONTENT CELL OF 0 IS A RECORD WITHOUT CONTENT, and has no rows to read:
+\ E-REC-INIT starts a record that way, and the capture's sweep (CHECKER-SWEEP
+\ RETIRE-BINDINGS) leaves a retired binding that way, zero but for its link.
+\ That sweep leaves a known gap here rather than a wrong entry: a node a kept
+\ record shares with a retired one stays in the retired record's span, which
+\ offers nothing now, and the kept record offers only its own span, so after a
+\ rebuild the index lacks that node and a later definition of its shape
+\ interns a twin.
 : UIX-REC-ADD ( n n -- ) {: rec:n next:n :}
    rec EFF-REC + {: lo:n :}
    next UEND @ min {: hi:n :}             \ the span is the record's own bytes AND live: a
@@ -6612,6 +6620,7 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
                                           \ readable, and its nodes are dead
    hi lo <= IF EXIT THEN                  \ the record appended nothing of its own, so it
                                           \ interned nothing: every row it names is older
+   rec E-PTR ER.CONTENT @ 0= IF EXIT THEN \ no content, so no rows
    lo UIX-SPAN-LO !
    hi UIX-SPAN-HI !
    rec E-PTR E-DIN@ UIX-NODE-ADD
@@ -18201,8 +18210,8 @@ private
 \ Each interval needs its own newest row per symbol; a zero row is a retraction
 \ and must survive just like a nonzero one. A retired symbol keeps no row at
 \ all: no spelling reaches it, so no row of its can ever be read again. Effect
-\ offsets in CREATES are never changed because the effect store is not
-\ compacted here.
+\ offsets in CREATES never change: the sweep zeroes retired bindings in place
+\ and moves nothing.
 RBF-REC CELL / constant NORET-BOUND-CELLS
 : NORET-COMPACT-REFUSE ( -- )
    s" checker: invalid control checkpoint" 76 die ;
@@ -18320,13 +18329,13 @@ RBF-REC CELL / constant NORET-BOUND-CELLS
 \ their strings below the boundary's pool mark, which moves with them.
 \
 \ ITS ROWS GO WITH IT, OR NAME NOTHING. Control rows go at NORET-COMPACT; defer,
-\ unsafe and parse-immediate rows are filtered here. An effect binding stays
-\ where it is - the store is not compacted here, and a record's own bytes must
-\ still lie between it and the next (UIX-REC-ADD) - but its symbol and back-link
-\ are cleared, so no index, scan or owner transfer can reach it through the
-\ retired id. CHECKER-REG CHECKED-ROW walks every id of a product host that
-\ builds an engine, and a binding still keyed on a retired row would hand the
-\ target a symbol with an empty name.
+\ unsafe and parse-immediate rows are filtered here. An effect binding is zeroed
+\ where it stands down to its link to the next record, with every content and
+\ node only retired bindings reached (RETIRE-BINDINGS below), and nothing moves.
+\ Its symbol and back-link are gone, so no index, scan or owner transfer can
+\ reach it through the retired id. CHECKER-REG CHECKED-ROW walks every id of a
+\ product host that builds an engine, and a binding still keyed on a retired row
+\ would hand the target a symbol with an empty name.
 package CHECKER-SWEEP
 private
 
@@ -18405,20 +18414,169 @@ variable CUR                             \ the binding walk's record cursor
    old oldu ASIG-RELEASE
    map BYTE-VIEW oldu cells ASIG-RELEASE ;
 
-\ The user region, bounded by UEND the way USX-BUILD walks it. The primitive
-\ region holds the PES rows' own effects, whose symbols the axiom rule keeps.
-: DETACH ( -- )
+\ ---- retired bindings, zeroed in place ------------------------------------------
+\ A retired symbol's bindings answer no lookup, so the bytes only they reach can
+\ go. The chain cannot: every walker of the store steps from record to record
+\ through ER.NEXT, and every saved store position is a record boundary. So a
+\ retired binding keeps its link and nothing moves - no offset, position,
+\ USIGS-USER-OFF or UEND changes, and nothing has to be remapped.
+\
+\ WHAT STAYS IS MARKED FROM WHAT STAYS. Every record of a kept symbol, and every
+\ record a root names - a definer's created effect in its control row, the
+\ DOESEFF and WRAPC latches, the recursion latch RECEFF, a primitive's effect in
+\ PES - keeps its header, its content and every node, name string and argument
+\ run its rows reach, by the shape walk UIX-NODE-ADD and the census
+\ (tools/effect-store-census.f) make. Every other granule of the user region is
+\ zeroed, which leaves a retired binding its ER.NEXT alone: ACTIVE 0, which is
+\ EFF-DELETED, SYM 0, SYMPREV 0 and CONTENT 0, the record without content that
+\ UIX-REC-ADD skips. A content or node a kept record shares with a retired one
+\ stays where it lies. A store offset any other cell holds must be a root here,
+\ or its reader finds zeros.
+\
+\ The map is one byte per eight-byte granule of [0, UEND), mmap scratch released
+\ before the sweep returns, so the sweep allots nothing in the image it cleans.
+PTR-VARIABLE MARK-P
+variable MARK-U                          \ the map's length in bytes
+1 constant KEEP-BIT                      \ the granule survives
+2 constant SEEN-BIT                      \ the node or content starting here was walked
+4 constant HEAD-BIT                      \ the record starting here is kept
+
+: MARK-AT ( n -- ptr u8 ) 3 rshift MARK-P @ + ;
+: MARKED? ( n n -- bool ) {: off:n bit:n :} off MARK-AT c@ bit and 0 <> ;
+: MARK! ( n n -- ) {: off:n bit:n :} off MARK-AT dup c@ bit or swap c! ;
+
+\ A kept record or root that names bytes outside the store, or not on a granule,
+\ is a corrupt store, and no zeroing decision is safe against one.
+: OFF-CHECK ( n n -- ) {: off:n bytes:n :}
+   off 0 <  off 7 and 0 <> or  off bytes + UEND @ > or IF
+      s" checker: effect store offset outside the store" 76 die
+   THEN ;
+
+: MARK-EXTENT ( n n -- ) {: off:n bytes:n :}
+   off bytes OFF-CHECK
+   off bytes + 7 + 3 rshift  off 3 rshift ?do
+      MARK-P @ i + dup c@ KEEP-BIT or swap c!
+   loop ;
+
+\ A node or content below the user region is the primitive region's, which the
+\ sweep never zeroes; 0 is no node at all, and the user region may start there.
+: MARK-NODE ( n -- ) {: off:n :}
+   off 0= IF EXIT THEN
+   off USIGS-USER-OFF @ < IF EXIT THEN
+   off EFF-NODE OFF-CHECK
+   off SEEN-BIT MARKED? IF EXIT THEN
+   off SEEN-BIT MARK!
+   off EFF-NODE MARK-EXTENT
+   off E-NODE-TAG {: tg:n :}
+   tg EN-CON =  tg EN-VAR = or  tg EN-ROW = or IF EXIT THEN
+   tg EN-PTR = IF off E-PTR EN.A @ RECURSE EXIT THEN
+   tg EN-PUSH = IF
+      off E-PTR EN.A @ RECURSE
+      off E-PTR EN.B @ RECURSE EXIT
+   THEN
+   tg EN-QUOT = IF
+      off E-PTR EN.A @ RECURSE
+      off E-PTR EN.B @ RECURSE
+      off E-PTR EN.C @ RECURSE
+      off E-PTR EN.D @ RECURSE EXIT
+   THEN
+   tg EN-ATOM = IF off E-PTR EN.A @  off E-PTR EN.B @ UALIGN MARK-EXTENT EXIT THEN
+   tg EN-PARAM = IF
+      off E-PTR EN.A @  off E-PTR EN.B @ UALIGN MARK-EXTENT
+      off E-PTR EN.C @ {: argc:n :}
+      argc 0 > IF off E-PTR EN.D @  argc cells MARK-EXTENT THEN
+      0 BEGIN dup argc < WHILE            \ data-stack index (RECURSE-safe)
+         off E-PTR EN.D @ over cells + E-PTR CELL-VIEW @ RECURSE
+         1 +
+      REPEAT drop EXIT
+   THEN
+   s" checker: effect store node of unknown kind" 76 die ;
+
+\ Every row, with no E-HASR@ gate: a content with no return rows names 0 there.
+: MARK-CONTENT ( n -- ) {: off:n :}
+   off 0= IF EXIT THEN
+   off USIGS-USER-OFF @ < IF EXIT THEN
+   off EFF-CONTENT OFF-CHECK
+   off SEEN-BIT MARKED? IF EXIT THEN
+   off SEEN-BIT MARK!
+   off EFF-CONTENT MARK-EXTENT
+   off E-PTR {: c:ptr :}
+   c EC.DIN @ MARK-NODE  c EC.DOUT @ MARK-NODE
+   c EC.RIN @ MARK-NODE  c EC.ROUT @ MARK-NODE ;
+
+: MARK-REC ( n -- ) {: rec:n :}
+   rec USIGS-USER-OFF @ < IF EXIT THEN
+   rec EFF-REC OFF-CHECK
+   rec HEAD-BIT MARKED? IF EXIT THEN
+   rec HEAD-BIT MARK!
+   rec EFF-REC MARK-EXTENT
+   rec E-PTR ER.CONTENT @ MARK-CONTENT ;
+
+: MARK-OFF1 ( n -- ) {: off1:n :}       \ a record named as offset+1, 0 = none
+   off1 0 <> IF off1 1 - MARK-REC THEN ;
+
+\ A control row of a retired symbol is dropped by NORET-COMPACT, so the created
+\ effect it names stays only if something else still reaches it.
+: MARK-ROW ( n -- ) {: at:n :}
+   at NORET-CELL NORET.SYM @ {: sym:n :}
+   sym 0 >  sym SYM-N @ < and IF sym SYM-RETIRED? IF EXIT THEN THEN
+   at NORET-CELL NORET.CREATES @ MARK-OFF1 ;
+
+: MARK-ROOTS ( -- )
+   NORET-END @ NORET-ENTRY / 0 ?do i NORET-ENTRY * MARK-ROW loop
+   DOESEFF @ MARK-OFF1
+   WRAPC @ MARK-OFF1
+   RECEFF-ON @ 0 <> IF RECEFF @ MARK-REC THEN
+   #PE @ 0 ?do i PE-EFF@ MARK-REC loop ;
+
+\ EACH-REC ( xt -- ) : every record of the user region, in chain order, bounded
+\ by UEND the way USX-BUILD walks it: a link of 0, one that does not advance, or
+\ one past UEND ends the walk.
+: EACH-REC ( [ n -- ] -- ) {: visit :}
    USIGS-USER-OFF @ CUR !
    begin CUR @ EFF-REC + UEND @ <= while
-      CUR @ E-PTR {: rec:ptr :}
-      rec ER.SYM @ {: sym:n :}
-      sym 0 > IF sym SYM-N @ < IF sym SYM-RETIRED? IF
-         0 rec ER.SYM !  0 rec ER.SYMPREV !
-      THEN THEN THEN
-      rec E-NEXT@ {: nx:n :}
-      nx CUR @ <= nx UEND @ > or IF EXIT THEN
+      CUR @ visit execute
+      CUR @ E-PTR E-NEXT@ {: nx:n :}
+      nx CUR @ <=  nx UEND @ > or IF EXIT THEN
       nx CUR !
    repeat ;
+
+\ A binding keyed on no symbol stays only as a root names it. One keyed on an id
+\ this table never issued is not this sweep's to judge, so it stays as it is.
+: LIVE-REC ( n -- ) {: rec:n :}
+   rec E-PTR ER.SYM @ {: sym:n :}
+   sym 0= IF EXIT THEN
+   sym 0 >  sym SYM-N @ < and IF sym SYM-RETIRED? IF EXIT THEN THEN
+   rec MARK-REC ;
+
+: LINK-REC ( n -- ) {: rec:n :}
+   rec HEAD-BIT MARKED? IF EXIT THEN
+   rec ER-NEXT-OFF + CELL MARK-EXTENT ;
+
+: ZERO-UNMARKED ( -- )
+   UEND @ 3 rshift  USIGS-USER-OFF @ 7 + 3 rshift ?do
+      MARK-P @ i + c@ KEEP-BIT and 0= IF 0 i cells USIGS-CELL-AT ! THEN
+   loop ;
+
+\ The zeroed bytes were the last query's rows, a cached head's record and an
+\ index entry's node, so every reader that holds a store offset forgets it: the
+\ query latch closes, the per-symbol heads rebuild at their next use (HIDX-BUILD
+\ keeps the generation), and the two interning indexes rebuild now if they are
+\ live - at a capture seam they are reset right after, and under STRIP not live.
+: RETIRE-BINDINGS ( -- )
+   UEND @ 3 rshift 1 + MARK-U !
+   MARK-U @ ARENA-ALLOC MARK-P !
+   MARK-ROOTS
+   [: LIVE-REC ;] EACH-REC
+   [: LINK-REC ;] EACH-REC
+   ZERO-UNMARKED
+   MARK-P @ BYTE-VIEW MARK-U @ ASIG-RELEASE
+   NULL-PTR MARK-P !  0 MARK-U !
+   0 EFFQ-OK !  0 EFFQ-DIN !  0 EFFQ-DOUT !  0 EFFQ-RIN !  0 EFFQ-ROUT !
+   0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
+   0 USX-GEN !
+   UIX-READY? IF UIX-DROP UIX-BUILD THEN
+   CHX-READY? IF CHX-DROP CHX-BUILD THEN ;
 
 \ Newest-wins holds for the rows that stay because their order does. A rollback
 \ frame cannot be open here, so the boundary's end is the one saved end to move.
@@ -18475,7 +18633,7 @@ public
    RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN   \ NORET-COMPACT-CHECK's refusal, met first
    policy DECIDE
    STRINGS
-   DETACH
+   RETIRE-BINDINGS
    DEFER-FILTER
    UNSAFE-FILTER
    PIMM-FILTER
@@ -18500,9 +18658,10 @@ public
 
 \ A capture that strips names after the seam sweeps again with its own answer,
 \ over stores the seam already persisted into DATA: everything here works in
-\ place and allots nothing, and NORET-COMPACT drops the control rows of what this
-\ pass retired. The answer is the capture's own code, so the cell goes back to
-\ the window's before the capture copies DATA.
+\ place and allots nothing (the binding sweep's map is mmap scratch), and
+\ NORET-COMPACT drops the control rows of what this pass retired. The answer is
+\ the capture's own code, so the cell goes back to the window's before the
+\ capture copies DATA.
 : STRIP ( [ n -- bool ] -- )
    KEEP-SET @ 0= IF drop EXIT THEN
    is NAMED-XT
