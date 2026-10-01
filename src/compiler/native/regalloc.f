@@ -189,6 +189,15 @@ create R-HOLD FILES-N REGS-MAX * cells allot
 \ every instruction and the answer moves only when a register changes hands.
 create R-POOL-N FILES-N cells allot
 create R-FREE-N FILES-N cells allot
+\ Every holder change the scan makes, oldest first: the register changed and who
+\ held it before, so a later turn of the fit can take steps back off the end
+\ instead of scanning from the start again (MB-FIT). TRAIL-AT-BUF holds the
+\ trail's length when the step at each position began.
+DYNAMIC-BUFFER TRAIL-IX-BUF n
+DYNAMIC-BUFFER TRAIL-OLD-BUF n
+DYNAMIC-BUFFER TRAIL-AT-BUF n
+variable TRAIL-N
+0 TRAIL-N !
 
 \ ---- the machine, as the backend described it --------------------------------
 \ Linear scan is not an ARM64 pass. What it needs to know about the machine is
@@ -402,6 +411,27 @@ variable SHORT-FUN                           \ the function whose scan ran short
       then
    then
    v ix cells R-HOLD + ! ;
+
+\ One scan places a class once and expires it once, so its trail holds at most
+\ two changes per value.
+: TRAIL-HOLD! ( n n n -- )
+   {: v:n fl:n r:n :}
+   TRAIL-N @ {: j:n :}
+   j VMAX 2 * >= if E-A64RA-CAP throw then
+   fl r RIX  j TRAIL-IX-BUF !
+   fl r HOLD-AT  j TRAIL-OLD-BUF !
+   j 1+ TRAIL-N !
+   v fl r HOLD! ;
+
+\ Back to the holders the step at a position began with, newest change first.
+: TRAIL-UNWIND ( n -- )
+   TRAIL-AT-BUF @ {: mark:n :}
+   begin TRAIL-N @ mark > while
+      TRAIL-N @ 1- {: j:n :}
+      j TRAIL-IX-BUF @ {: ix:n :}
+      j TRAIL-OLD-BUF @  ix REGS-MAX /  ix REGS-MAX mod  HOLD!
+      j TRAIL-N !
+   repeat ;
 
 : POOL-SIZE ( n -- n )
    {: fl:n :}
@@ -663,7 +693,7 @@ variable SHORT-FUN                           \ the function whose scan ran short
    k FILE-AT {: fl:n :}
    fl r POOL-HAS? 0= if E-A64RA-POOL throw then
    r k REG!
-   k fl r HOLD! ;
+   k fl r TRAIL-HOLD! ;
 
 \ ---- the routine's own fixed registers ---------------------------------------
 
@@ -764,8 +794,12 @@ variable SHORT-FILE                  \ and which register file it ran short of
 0 SHORT-FILE !
 variable SHORT-ROOT                  \ the unplaced class, or NOBODY for pressure
 NOBODY SHORT-ROOT !
+variable REFIT-AT                    \ the first position an eviction changed
+0 REFIT-AT !
 variable RET-B                       \ the block control leaves the routine through
 0 RET-B !
+variable LAID                        \ the function the block tables hold, or -1
+-1 LAID !
 
 DYNAMIC-BUFFER B-ST-BUF n
 : B-ST ( -- ptr n ) 0 B-ST-BUF ;
@@ -872,6 +906,9 @@ variable N-FIXP
    VMAX CL-REMAT-BUF-RESERVE
    OMAX BMAX + FILES-N * FR-LOAD-BUF-RESERVE
    OMAX BMAX + FILES-N * FR-STORE-BUF-RESERVE
+   VMAX 2 * TRAIL-IX-BUF-RESERVE
+   VMAX 2 * TRAIL-OLD-BUF-RESERVE
+   OMAX BMAX + TRAIL-AT-BUF-RESERVE
    VMAX CL-DEF-BUF-RESERVE
    VMAX CL-SIZE-BUF-RESERVE
    VMAX CL-KEEP-BUF-RESERVE
@@ -1543,7 +1580,7 @@ variable N-FIXP
    {: fl:n r:n limit:n :}
    fl r HOLD-AT {: v:n :}
    v NOBODY = if exit then
-   v cells CL-HI + @ limit < if NOBODY fl r HOLD! then ;
+   v cells CL-HI + @ limit < if NOBODY fl r TRAIL-HOLD! then ;
 
 : MB-EXPIRE ( n -- )
    {: limit:n :}
@@ -1557,11 +1594,12 @@ variable N-FIXP
 \ A class in a frame slot has left the holder table and still needs a register
 \ where it is read and where it is written. The counts are per position and
 \ file, position-major.
+: REFIT-LOWER ( n -- )               REFIT-AT @ min REFIT-AT ! ;
 : FR-IX ( n n -- n )                 {: p:n fl:n :} p FILES-N * fl + ;
 : FR-LOAD@ ( n n -- n )              FR-IX FR-LOAD-BUF @ ;
 : FR-STORE@ ( n n -- n )             FR-IX FR-STORE-BUF @ ;
-: FR-LOAD+ ( n n -- )                FR-IX FR-LOAD-BUF 1 swap +! ;
-: FR-STORE+ ( n n -- )               FR-IX FR-STORE-BUF 1 swap +! ;
+: FR-LOAD+ ( n n -- )                over REFIT-LOWER  FR-IX FR-LOAD-BUF 1 swap +! ;
+: FR-STORE+ ( n n -- )               over REFIT-LOWER  FR-IX FR-STORE-BUF 1 swap +! ;
 
 \ Reloads stand before one call's store run, so their temporary registers are
 \ live only until their last consuming store in that group: an operation needs
@@ -1833,6 +1871,7 @@ variable N-FIXP
 \ reads, so the reading instant is measured before the writing one.
 : MB-STEP ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id pos:n :}
+   TRAIL-N @ pos TRAIL-AT-BUF !
    pos MB-EXPIRE
    pos MB-READ-PRESSURE-ALL
    SHORT-AT @ 0 >= if exit then
@@ -1844,10 +1883,11 @@ variable N-FIXP
 
 \ The shortage cells and the holder table are NOT reset here: they belong to the
 \ whole module's fit.
-: MB-SCAN ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
-   MB-AT @ F-LO @ ?do
-      SHORT-AT @ 0 < if f i MB-STEP then
+: MB-SCAN ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id from:n :}
+   MB-AT @  F-LO @ from max  ?do
+      f i MB-STEP
+      SHORT-AT @ 0 >= if leave then
    loop ;
 
 \ ---- taking a class out of the registers -------------------------------------
@@ -1932,6 +1972,7 @@ variable N-FIXP
 : MB-EVICT1 ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id r:n :}
    f r MB-REMATABLE? if 1 r cells CL-REMAT + ! else NEW-SLOT r cells CL-SLOT + ! then
+   r cells CL-LO + @ REFIT-LOWER
    f r MB-FRAME-COST+ ;
 
 : MB-EVICT ( IR-ID:ir-fun-id n n -- )
@@ -2114,6 +2155,7 @@ variable N-FIXP
 
 : MB-MEASURE ( IR-ID:ir-fun-id n NEFF:conv -- )
    {: f:IR-ID:ir-fun-id k:n cv:NEFF:conv :}
+   -1 LAID !
    f k cv MB-CONV-CK
    f  k cells F-BASE + @  MB-LAYOUT
    f MB-LIVENESS
@@ -2140,11 +2182,18 @@ variable N-FIXP
    n ;
 
 \ The block tables are rewritten for every function measured, so they are put
-\ back before any per-function question is asked again.
+\ back before any per-function question is asked again. Once measured, the
+\ module and every function's base stay fixed for the run, so the tables a
+\ function is put back to are the same each time: a function already in them
+\ is not laid out again, which is what keeps each turn of the fit from costing
+\ the blocks of the function it ran short in.
 : MB-RELAY ( n -- )
    {: k:n :}
+   k LAID @ = if exit then
+   -1 LAID !
    k FUN-AT  k cells F-BASE + @  MB-LAYOUT
-   k cells F-RET + @ RET-B ! ;
+   k cells F-RET + @ RET-B !
+   k LAID ! ;
 
 \ Coalescing is complete before these slices are built. Count every operand,
 \ including duplicates, then fill in module position order. Allocation retries
@@ -2310,28 +2359,46 @@ variable N-FIXP
       i FUN-AT MB-PLAN
    loop ;
 
+\ One turn of the fit: every function from the one REFIT-AT lies in, that one
+\ from REFIT-AT, until a position runs short.
+: MB-REFIT ( -- )
+   -1 SHORT-AT !
+   F-GPR SHORT-FILE !
+   NOBODY SHORT-ROOT !
+   N-FUNS @ 0 ?do
+      SHORT-AT @ 0 >= if leave then
+      i 1+ cells F-BASE + @  REFIT-AT @  > if
+         i MB-RELAY
+         i SHORT-FUN !
+         i FUN-AT  REFIT-AT @  MB-SCAN
+      then
+   loop ;
+
+\ A turn scans until a position runs short and puts one class away. A step reads
+\ the holders it is handed, the classes due at its position and the frame counts
+\ there, and an eviction changes two of those: the class it puts away is not
+\ placed where its hull opens, and its stores and reloads add to the counts at
+\ the positions MB-FRAME-COST+ walks. Every step before the first of those
+\ positions, and before the step that ran short, decides what it decided the
+\ turn before, and so what a scan from the start would. The next turn takes the
+\ steps from that position on back off the trail and scans from there: the fit
+\ makes the same evictions and ends with the same holders and registers as one
+\ that scans from the start every turn, and a turn costs the positions the
+\ eviction reached instead of the module.
 \ Putting a class away only ever frees registers, so a later turn runs with at
 \ least as many free as the one before it.
 : MB-FIT ( -- )
+   HOLDERS-CLEAR
+   0 TRAIL-N !
+   0 REFIT-AT !
    begin
-      -1 SHORT-AT !
-      F-GPR SHORT-FILE !
-      NOBODY SHORT-ROOT !
-      HOLDERS-CLEAR
-      N-FUNS @ 0 ?do
-         SHORT-AT @ 0 < if
-            i MB-RELAY
-            i SHORT-FUN !
-            i FUN-AT MB-SCAN
-         then
-      loop
-      SHORT-AT @ 0 <
-      dup 0= if
-         drop
-         SHORT-FUN @ FUN-AT  SHORT-AT @  SHORT-FILE @  MB-EVICT
-         false
-      then
-   until ;
+      MB-REFIT
+      SHORT-AT @ 0 >=
+   while
+      SHORT-AT @ REFIT-AT !
+      SHORT-FUN @ FUN-AT  SHORT-AT @  SHORT-FILE @  MB-EVICT
+      REFIT-AT @ TRAIL-UNWIND
+   repeat ;
 
 \ ---- the contract, read once -------------------------------------------------
 \ A contract is a twelve-field value and a value of more than one cell cannot be
