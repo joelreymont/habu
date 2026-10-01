@@ -1481,6 +1481,14 @@ SUITE x86-64-kernel-task
    test/x86-64-kernel-task.f
 ;SUITE
 
+\ src/habu/link-x64.f lays a captured window out over the x86-64 kernel's rows:
+\ the records, the routines, the rebased wids, the protected-wid bitmap and the
+\ name index. Its children measure the layout host-independent and refuse, by
+\ name, what it cannot place.
+SUITE x86-64-link-records
+   test/x86-64-link-records.f
+;SUITE
+
 \ The crash handler the x86-64 boot installs, src/habu/boot-x64.f, in the
 \ booted harness: each image's child faults with fd 2 on a pipe, and its parent
 \ checks the dump or the guard page's line and the exit status.

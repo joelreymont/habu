@@ -213,6 +213,16 @@ public
    ?KNOWN {: at:n k:n :}
    at k SITE-REL32 SITE+ ;
 
+\ The offset a label of this stream is bound at, before ASM-LINK forgets it: the
+\ number the link adds the load address to. A writer that places bytes beside
+\ the stream reads it there, as src/habu/link-x64.f reads each kernel body's
+\ entry into the dictionary record that names it. An unbound label is refused
+\ as the link refuses it.
+: LABEL-AT ( label -- n )
+   ?KNOWN LBL-AT @ {: at:n :}
+   at UNBOUND = if s" x64code: unresolved label" REFUSE then
+   at ;
+
 \ Patch every site of the stream for code whose byte 0 loads at base, after
 \ checking all of them, then forget the stream's labels and sites.
 : ASM-LINK ( n -- ) {: base:n :}
