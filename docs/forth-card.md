@@ -76,8 +76,8 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
 - Bind multi-cell values whole: `{: p :}` or `{: r:res<n,n> :}` (arity checked).
   Destructure only to compute; pass the whole local between words.
 - Quotations `[: … ;]` are xts, not closures. The token `[ in -- out ]` works as
-  a parameter, a `TYPED-VARIABLE` or a `TYPED-BUFFER` element, never a
-  `FIELD` (`E-TDECL-SYNTAX`):
+  a parameter, a `TYPED-VARIABLE` or `TYPED-BUFFER` element, and a
+  `STRUCTURE FIELD` value. A derived field accessor returns `ptr [ in -- out ]`.
   `: A ( n [ n -- n ] -- n ) execute ;` certifies and `2 [: 1 + ;] A` runs. A
   quotation may not touch an enclosing local (`E-BAD-LOCAL-SHAPE`, rc 75) —
   pass the value on the stack or through a cell.

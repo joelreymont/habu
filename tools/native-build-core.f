@@ -301,6 +301,7 @@ TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
 
 : PREPARE-TARGET ( -- )
    s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute
+   s" CHECKER-STORAGE-UNBIND-ALL" TARGET-XT PREPARE-XT execute
    AOT-ARM:HERE-N AOT-ARM:D1 ! ;
 
 \ A retained driver cell is not a fixed engine slot. Registering a target XT

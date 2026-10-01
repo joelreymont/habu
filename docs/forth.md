@@ -517,14 +517,13 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
 - **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` comment
   inside the body is refused with `E-BAD-DECLARATION`; put comments above the
   opener, including comments explaining the header or fields.
-- **A `FIELD` holds a value, not a body.** A payload is a type token (letter
-  param, concrete cell type, `ptr T`, closed arity-0 family). A quotation type
-  is refused whatever its effect: `FIELD fn [ n n -- n ]` is `habu: bad
-  structure declaration: unknown field type at '['` (`E-TDECL-SYNTAX`, 7109). A
-  `TYPED-VARIABLE V [ n n -- n ]` holds one, and `V @ execute` checks and runs
-  it. A record that describes a behaviour keeps its data fields and stores the
-  quotation beside it in a `TYPED-BUFFER NAME [ a -- b ]` indexed the same way,
-  written and read together by the owning words; such accessors take an index.
+- **A `FIELD` holds a value, not a body.** A payload is a type expression
+  (letter param, concrete cell type, `ptr T`, closed arity-0 family, or a
+  quotation `[ in -- out ]`). A quotation field is one execution-token cell;
+  `MAKE`/`UNMAKE`, whole-record storage and a `DERIVE addr` accessor preserve
+  its exact effect, so `FIELD handler [ request response -- ]` yields
+  `ptr [ request response -- ]` and `@ execute` checks the call. A whole record
+  stored in a `TYPED-VARIABLE` keeps its quotation callable after image restore.
 - SwiftForth-style relocatable list words (`@REL`, `!REL`, `,REL`, `>LINK`,
   `<LINK`, `CALLS`) are outside the checked surface. Use structures for node
   layout, arrays and maps for collections, `case/of/endof/endcase` for dispatch
@@ -1243,6 +1242,7 @@ passing suite.
   cells fails at load with `habu: bad structure declaration 'NAME'` / `ncomp:
   cannot compile PKG-NAME:MAKE`, rc 67 — split it into the records each reader
   takes (`vocab` and `lowering` in `src/compiler/native/dialect.f`).
+
 - **`.` ends the line.** The native `.` is newline-terminated, not
   space-terminated: `11 . 22 . cr` emits `11\n22\n\n`, so an assertion for two
   dotted numbers on one line never matches; digit emitters (`GT-U-TYPE`,

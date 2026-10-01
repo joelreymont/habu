@@ -103,6 +103,7 @@ s" lib/num-types.f" required
 s" lib/num-arithmetic.f" required
 s" lib/string.f" required
 s" lib/memory.f" required
+s" src/core/layout-buffer-address.f" required
 s" src/os/script-argv.f" required
 \ Seal the pre-checker definitions before compiling the checked toolchain.
 \ Later checked publications record their own visibility and minimum arity.

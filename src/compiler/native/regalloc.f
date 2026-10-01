@@ -2619,6 +2619,11 @@ public
 
 public
 : RESET-SCRATCH ( -- )
+   \ Image preparation releases the assignment's mapped tables. Its seal and
+   \ generation cannot survive into the product image as an answer.
+   ST-EMPTY ST !
+   0 GEN-N !
+   0 N-VALS !
    0 N-EVICTED !
    0 N-CALLS !
    0 N-FIXP !

@@ -176,6 +176,7 @@ variable ML-NI
    s" src/core/generated-declaration-dictionary.f" ML-ENTRY+   \ generated declarations the checker publishes
    s" src/core/generated-declaration-protection.f" ML-ENTRY+   \ their protection pass
    s" src/core/layout-buffer-seal.f" ML-ENTRY+                 \ seals the layout-buffer boundary
+   s" src/core/layout-buffer-address.f" ML-ENTRY+              \ binds quotation storage address declarations
    s" src/core/dynamic-storage.f" ML-ENTRY+                    \ the dynamic buffers the compiler allocates
    s" src/core/checker-owner-guard.f" ML-ENTRY+                \ the cast-ownership guard
    s" src/core/lower-cert-seal.f" ML-ENTRY+                    \ seals the lowering certificate
