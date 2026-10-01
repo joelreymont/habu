@@ -1229,7 +1229,7 @@ public
 : TR-EFF-REC-LAYOUT ( -- )
    TR-EFF-REC-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" effect-record-layout" T-LABEL
-   stride 5 cells T=  align $8 T=  mask 0 T=
+   stride 7 cells T=  align $8 T=  mask 0 T=
    ok TR-BOOL= ;
 
 : TR-EFF-NODE-LAYOUT ( -- )

@@ -344,6 +344,8 @@ variable LPPRIMS
 variable LPLOWERCERTBASE
 variable LPOWNERGUARD
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
+variable LPADDRCELLS
+variable LPLAYOUTADDRESS
 variable LPHOOK         variable LPCELLEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSTACKABI
@@ -1079,6 +1081,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    parts PFX-BASELIB and 0 <> if
       PFX-COMMON LPPRELUDE s" lib/prelude.f" row execute
       PFX-COMMON LPERRORS s" lib/errors.f" row execute
+      PFX-COMMON LPADDRCELLS s" src/habu/address-cells.f" row execute
+      PFX-COMMON LPLAYOUTADDRESS s" src/core/layout-buffer-address.f" row execute
    then
    parts PFX-RESTLIB and 0 <> if
       PFX-COMMON LPOPTION s" lib/adt/option.f" row execute
@@ -11249,6 +11253,8 @@ package LABELS
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
+   LBL LPADDRCELLS !
+   LBL LPLAYOUTADDRESS !
    LBL LPHABULAYOUT !
    LBL LPSTACKABI !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !

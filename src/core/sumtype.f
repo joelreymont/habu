@@ -107,6 +107,13 @@ private
 variable TDM-TFAM   variable TDM-STR   variable TDM-PK
 variable TDM-SUMV   variable TDM-LAY
 variable TDM-SCH    variable TDM-ROOT
+variable TDV-QUOT-N
+
+public
+
+: QUOT-ROLLBACK ( -- ) 0 TDV-QUOT-N ! ;
+
+private
 
 public
 
@@ -127,7 +134,8 @@ private
    SCH-N @ TDM-SCH !     SCH-ROOT-N @ TDM-ROOT ! ;
 : TDECL-RESTORE ( -- )
    TDM-TFAM @  TDM-STR @  TDM-PK @  TDM-SUMV @  TDM-LAY @  TFAM-REWIND
-   TDM-SCH @ SCH-N !     TDM-ROOT @ SCH-ROOT-N ! ;
+   TDM-SCH @ SCH-N !     TDM-ROOT @ SCH-ROOT-N !
+   QUOT-ROLLBACK ;
 
 : TDECL-REPORT ( -- )
    TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDT-A @ TDT-U @  TDW-A @ TDW-U @
@@ -379,11 +387,11 @@ variable TDECL-FAM-ARITY
 \ (type-family.f TFC-*, checker.f LOGHID/xpad), which resolves each argument
 \ against the declaring family's parameters and gates instantiated width and
 \ linearity at the construct/`of` site. A quotation payload is one xt cell whose
-\ SC-QUOT schema records din/dout/rin/rout; the landed SC-QUOT representation
-\ carries one type per effect side, so a multi-type or empty side rejects and the
-\ full-effect-row extension is tracked separately. This grammar is scoped to sum
-\ variants: PRODUCT fields keep the scalar/arity-0 grammar (TDECL-PAY-ELEM),
-\ because arg-aware PF byte layout is a distinct capability.
+\ SC-QUOT schema records full ordered din/dout/rin/rout rows, including empty
+\ sides. The quotation parser below is
+\ shared with STRUCTURE fields; parametric applications remain variant-only.
+\ PRODUCT fields keep the scalar/arity-0 grammar (TDECL-PAY-ELEM), because
+\ arg-aware PF byte layout is a distinct capability.
 
 \ Reentrant scratch for ONE nesting level's argument nodes. Each TDECL-VPAY-ARGS
 \ invocation saves a base, pushes its fully-parsed argument node ids above it,
@@ -461,10 +469,9 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
 \ empty rin/rout rows (row-polymorphic neutral return); an explicit clause pins both.
 $100 constant TDV-QUOT-CAP
 create TDV-QUOT-SCR TDV-QUOT-CAP cells allot
-variable TDV-QUOT-N
-: TDV-QUOT+ ( n -- ) {: node:n :}
+: TDV-QUOT+ ( n [ ptr u8 n n -- ] -- ) {: node:n fail :}
    TDV-QUOT-N @ TDV-QUOT-CAP >= IF
-      TDN-A @ TDN-U @ s" quotation effect side too long" E-TDECL-PAYLOAD TDECL-THROW THEN
+      s" quotation effect side too long" E-TDECL-PAYLOAD fail execute THEN
    node TDV-QUOT-N @ cells TDV-QUOT-SCR + !
    TDV-QUOT-N @ 1 + TDV-QUOT-N ! ;
 : TDV-QUOT-BUILD-ROW ( n -- n ) {: base:n :}   \ [base,top) scratch node ids -> contiguous SCH-ROW
@@ -477,33 +484,46 @@ variable TDV-QUOT-N
    base TDV-QUOT-N !
    estart cnt SCHEMA-ROW ;
 : TDV-QUOT-EMPTY-ROW ( -- n ) SCHEMA-ROOT-N@ 0 SCHEMA-ROW ;
-: TDV-QUOT-SIDE ( -- n )                        \ parse one side's elements -> SCH-ROW node
+: TDV-QUOT-SIDE ( [ -- ptr u8 n ] [ ptr u8 n -- n ] [ ptr u8 n n -- ] -- n ptr u8 n )
+   {: next elem fail :}
    TDV-QUOT-N @ {: base:n :}
-   BEGIN TDECL-NEXT 2dup DELIM? 0= WHILE
-      TDV-ELEM-XT TDV-QUOT+
+   BEGIN next execute 2dup DELIM? 0= WHILE
+      elem execute fail TDV-QUOT+
    REPEAT
-   PK!                                          \ leave the delimiter for the caller
-   base TDV-QUOT-BUILD-ROW ;
-: TDV-QUOT-EXPECT ( ptr u8 n -- ) {: ea:ptr eu:n :}
-   TDECL-NEXT 2dup ea eu CORE-STR= IF 2drop EXIT THEN
-   s" malformed quotation payload" E-TDECL-SYNTAX TDECL-THROW ;
-: TDECL-VPAY-QUOT ( -- n )
-   TDV-QUOT-SIDE {: din:n :}
-   s" --" TDV-QUOT-EXPECT
-   TDV-QUOT-SIDE {: dout:n :}
-   TDECL-NEXT 2dup s" |" CORE-STR= IF
-      2drop
-      TDV-QUOT-SIDE {: rin:n :}
-      s" --" TDV-QUOT-EXPECT
-      TDV-QUOT-SIDE {: rout:n :}
-      s" ]" TDV-QUOT-EXPECT
+   {: sep:ptr sepu:n :}
+   base TDV-QUOT-BUILD-ROW sep sepu ;
+: TDV-QUOT-EXPECT ( ptr u8 n ptr u8 n [ ptr u8 n n -- ] -- )
+   {: a:ptr u:n ea:ptr eu:n fail :}
+   a u ea eu CORE-STR= IF EXIT THEN
+   s" malformed quotation payload" E-TDECL-SYNTAX fail execute ;
+
+public
+
+\ The quotation grammar is shared by variant payloads and STRUCTURE fields.
+\ The caller supplies its token stream, element resolver and declaration error
+\ reporter; the resulting schema and ordered effect rows are identical.
+: PARSE-QUOT ( [ -- ptr u8 n ] [ ptr u8 n -- n ] [ ptr u8 n n -- ] -- n )
+   {: next elem fail :}
+   next elem fail TDV-QUOT-SIDE {: din:n sep:ptr sepu:n :}
+   sep sepu s" --" fail TDV-QUOT-EXPECT
+   next elem fail TDV-QUOT-SIDE {: dout:n end:ptr endu:n :}
+   end endu s" |" CORE-STR= IF
+      next elem fail TDV-QUOT-SIDE {: rin:n rsep:ptr rsepu:n :}
+      rsep rsepu s" --" fail TDV-QUOT-EXPECT
+      next elem fail TDV-QUOT-SIDE {: rout:n rend:ptr rendu:n :}
+      rend rendu s" ]" fail TDV-QUOT-EXPECT
       din dout rin rout -1 SCHEMA-QUOT
    ELSE
-      2dup s" ]" CORE-STR= 0= IF
-         s" malformed quotation payload" E-TDECL-SYNTAX TDECL-THROW
-      THEN 2drop
+      end endu s" ]" fail TDV-QUOT-EXPECT
       din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW 0 SCHEMA-QUOT
    THEN ;
+
+private
+
+: TDECL-QUOT-FAIL ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
+   TDN-A @ TDN-U @ a u code TDECL-THROW ;
+: TDECL-VPAY-QUOT ( -- n )
+   [: TDECL-NEXT ;] [: TDV-ELEM-XT ;] [: TDECL-QUOT-FAIL ;] PARSE-QUOT ;
 
 \ a resolved family head followed by `<` is a parametric application; any other
 \ next token is pushed back and reported as not-an-application so the head falls

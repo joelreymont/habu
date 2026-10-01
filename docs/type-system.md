@@ -639,6 +639,10 @@ rows do the access and a pointer field reads back as a pointer:
 `BUF-HEADER:DATA @` is `( ptr BUF:header -- ptr u8 )`. One word per field, not
 two, and the same shape `PTR-FIELD:` and `+FIELD` already generate — with the
 offset and the type carried into the checker instead of thrown away.
+A quotation field's accessor returns `ptr [ in -- out ]`; fetching it preserves
+the complete effect for checked `execute`, including after whole-record storage.
+Fixed typed storage registers the quotation cells of nested product fields for
+image relocation before the record is written.
 
 Generation goes into the owning package's wordlist, and for a **private** family
 into its private wordlist: most of the records in the survey are package-private

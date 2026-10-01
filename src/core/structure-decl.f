@@ -101,6 +101,9 @@ TRUSTED: FAM-SLOTS! ( n n -- ) TFAM-SLOTS! ;
 TRUSTED: FAM-LAYOUT? ( n -- bool ) TFAM-LAYOUT? ;
 TRUSTED: FAM-CELL? ( n -- bool ) TFAM-CELL? ;
 TRUSTED: SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-SIG-RESOLVE ;
+TRUSTED: QUOT-SCH ( [ -- ptr u8 n ] [ ptr u8 n -- n ] [ ptr u8 n n -- ] -- n )
+   TYPE-DECL:PARSE-QUOT ;
+TRUSTED: QUOT-ROLLBACK ( -- ) TYPE-DECL:QUOT-ROLLBACK ;
 TRUSTED: ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
 TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
 TRUSTED: GRAMMAR-KW? ( ptr u8 n -- bool ) TF-GRAMMAR-KEYWORD? ;
@@ -225,8 +228,8 @@ SD-RESET
 
 \ ---------------------------------------------------------------------------
 \ field type resolution -> a schema node (docs §8): concrete cell types (n/f/r +
-\ multi-char con names), positional letter params within arity, ptr T, and closed
-\ arity-0 layout/cell families. Everything else is unresolved.
+\ multi-char con names), positional letter params within arity, ptr T, closed
+\ arity-0 layout/cell families, and quotation effects. Everything else is unresolved.
 \
 \ A family that owns a linear value — directly or through its own fields — IS an
 \ accepted field type (dot habu-checker-enum-payload-9e1ae6cc). The structure then
@@ -272,13 +275,20 @@ SD-RESET
       s" field type is a pointer to a linear value and cannot own it"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN ;
 
+defer SD-QUOT-ELEM ( ptr u8 n -- n )
+: SD-QUOT-FAIL ( ptr u8 n n -- ) DECL-REJECT:REJECT throw ;
+
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
    dup 0= IF 2drop s" missing field type" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup s" [" CORE-STR= IF
+      2drop [: SD-NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] QUOT-SCH EXIT THEN
    2dup s" ptr" CORE-STR=CI IF 2drop SD-NEXT RECURSE REQUIRE-POINTEE SD-SCH-PTR EXIT THEN
    dup 1 = IF LETTER-TYPE EXIT THEN
    2dup CON-CODE dup 0 <> IF nip nip SD-SCH-CON EXIT THEN drop
    2dup FIELD-FAM? IF nip nip 0 0 SD-SCH-APP EXIT THEN drop
    2drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
+: SD-QUOT-INSTALL ( -- ) [: RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
+SD-QUOT-INSTALL
 
 : SCH-WIDTH ( n -- n )                  \ physical cell width of a field schema node
    dup SCH-APP? IF SCH-A@ TFAM-WIDTH@ EXIT THEN drop 1 ;
@@ -469,6 +479,7 @@ SD-RESET
 : SD-DRIVE ( -- )                      \ body, then resynchronize before reporting
    [: SD-BODY ;] catch {: rc:n :}
    rc 0= IF SD-RESET EXIT THEN
+   QUOT-ROLLBACK
    SD-RESYNC
    SD-RESET
    rc throw ;

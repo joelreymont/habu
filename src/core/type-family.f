@@ -4399,6 +4399,31 @@ defer TFC-QUOT-ROW ( n n -- n )   \ ( rownode base -- row )
 : TFC-QUOT-ROW-INSTALL ( -- ) [: TFC-QUOT-ROW-IMPL ;] is TFC-QUOT-ROW ;
 TFC-QUOT-ROW-INSTALL
 
+public
+
+\ Instantiate one field schema against its owning family value. The lowering
+\ certificate can run while construct still uses TFC-VARS and TFC-I, so keep
+\ its substitution local to this call.
+: SCHEMA-TERM-FOR ( n n -- n ) {: owner:n node:n :}
+   TFC-I @ {: old-i:n :}
+   PARAM-SCR-N @ {: base:n :}
+   0 BEGIN dup TFC-VAR-CAP < WHILE
+      dup cells TFC-VARS + @ PARAM-SCR+
+      1 +
+   REPEAT drop
+   owner T-RES TFC-ARGS!
+   node TFC-SCH-TERM {: term:n :}
+   0 BEGIN dup TFC-VAR-CAP < WHILE
+      dup base + cells PARAM-SCR + @
+      over cells TFC-VARS + !
+      1 +
+   REPEAT drop
+   base PARAM-SCR-N !
+   old-i TFC-I !
+   term ;
+
+private
+
 \ Payload transport uses the canonical logical-value seam. PUSH-LOGICAL expands
 \ every closed layout to its hidden physical fields, including a width-one enum,
 \ while scalar, pointer, and open terms retain their ordinary one-cell form.
@@ -4669,6 +4694,36 @@ variable FPRJ-FFAM
 \ concrete wide pointee; test/structure-decl-suite.f case 15 pins it there, and
 \ the two must keep the same condition or the halves of one address surface would
 \ describe different instantiations.
+
+\ Fixed storage walks the same instantiated schema that field projection uses,
+\ but computes its own offsets: a wide argument moves every following field.
+\ The stored type has already passed CHECKER-STORAGE-INFO's closed-layout gate.
+public
+
+: TFAM-STORAGE-QUOT? ( n -- bool ) T-RES TAG T-QUOT = ;
+: TFAM-STORAGE-PRODUCT? ( n -- n bool )
+   T-RES dup TAG T-PARAM <> IF drop 0 RES-FALSE EXIT THEN
+   PARAM>FAM dup TFAM-PRODUCT? IF RES-TRUE ELSE drop 0 RES-FALSE THEN ;
+: TFAM-STORAGE-SUM? ( n -- n bool )
+   T-RES dup TAG T-PARAM <> IF drop 0 RES-FALSE EXIT THEN
+   PARAM>FAM dup TFAM-SUM? over TFAM-ENUM? or
+   IF RES-TRUE ELSE drop 0 RES-FALSE THEN ;
+: TFAM-STORAGE-FIELD ( n n -- n n ) {: term:n field:n :}
+   term TFC-ARGS!
+   field TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-SCH-TERM
+   dup T-WIDTH ;
+: TFAM-STORAGE-VARIANT ( n n -- n bool ) {: fam:n tag:n :}
+   fam TFAM-VAR-COUNT@ 0 ?do
+      fam TFAM-VAR-START@ i + {: vid:n :}
+      vid SUMV-TAG@ tag = IF vid RES-TRUE unloop EXIT THEN
+   loop
+   0 RES-FALSE ;
+: TFAM-STORAGE-PAY ( n n n -- n n ) {: term:n vid:n index:n :}
+   term TFC-ARGS!
+   vid index SUMV-PAY-ROOT SCHEMA-ROOT@ TFC-SCH-TERM
+   dup T-WIDTH ;
+
+private
 
 \ ---------------------------------------------------------------------------
 \ item 10 slice 1: compiler-facing lowering surface (docs §16; dot

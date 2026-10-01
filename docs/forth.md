@@ -557,12 +557,13 @@ argument and a bare tail of a family of arity > 0 are all refused. See
 - **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` comment
   inside the body is refused with `E-BAD-DECLARATION`; put comments above the
   opener, including comments explaining the header or fields.
-- **A `FIELD` holds a value, not a body.** A payload is a type token (letter
-  param, concrete cell type, `ptr T`, closed arity-0 family); a quotation type
-  (`[ a -- b ]`) is `E-TDECL-SYNTAX` (7109). A record that describes a
-  behaviour keeps its data fields and stores the quotation beside it in a
-  `TYPED-BUFFER NAME [ a -- b ]` indexed the same way, written and read together
-  by the owning words; such accessors take an index.
+- **A `FIELD` holds a value, not a body.** A payload is a type expression
+  (letter param, concrete cell type, `ptr T`, closed arity-0 family, or a
+  quotation `[ in -- out ]`). A quotation field is one execution-token cell;
+  `MAKE`/`UNMAKE`, whole-record storage and a `DERIVE addr` accessor preserve
+  its exact effect, so `FIELD handler [ request response -- ]` yields
+  `ptr [ request response -- ]` and `@ execute` checks the call. A whole record
+  stored in a `TYPED-VARIABLE` keeps its quotation callable after image restore.
 - SwiftForth-style relocatable list words (`@REL`, `!REL`, `,REL`, `>LINK`,
   `<LINK`, `CALLS`) are outside the checked surface: dictionary-relative pointer
   arithmetic and executable traversal are wrong for snapshots and the checker.
@@ -1335,12 +1336,6 @@ the rule.
   `habu: bad structure declaration 'NAME'` / `ncomp: cannot compile
   PKG-NAME:MAKE`, rc 67 — split it into the records each reader takes
   (`vocab` and `lowering` in `src/compiler/native/dialect.f`).
-- **A `FIELD` holds no quotation.** `FIELD fn [ n n -- n ]` is
-  `habu: bad structure declaration: unknown field type at '['`
-  (`E-TDECL-SYNTAX`, 7109), whatever the effect. A `TYPED-VARIABLE V [ n n -- n ]`
-  holds one, and `V @ execute` checks and runs it: the record keeps the data
-  and the hook stands beside it, written and read by the same owner (see **A
-  `FIELD` holds a value, not a body** under Structures And Enums).
 - **`s"` reads no escapes; `S\"` does.** `S\"` needs its delimiter space
   (`s\"\n"` is one undefined token) and reads `\u` as its own escape, so a
   fixture holding JSON writes `\\uXXXX`.
