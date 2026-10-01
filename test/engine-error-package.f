@@ -86,6 +86,37 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    NO-CONTEXT-SOURCE$ {: src:ptr u:n :}
    HB$ src u RUN-SOURCE ;
 
+\ The same refusal raised inside a nested INCLUDE-EVALUATE. BARE sets the bare
+\ wordlist current and evaluates a definition; with TRY's catch around the
+\ evaluate the reject is a throw the catch receives as 70, and without it the
+\ throw leaves the evaluate unhandled and the process exits 70. BARE restores
+\ the package's wordlist itself, so no top-level word is interpreted while the
+\ bare wordlist is current: there the top-row tracker's effect query (src/core/
+\ top-row.f TR-CERT-DOUT-EMPTY?) asks CHECKER-PKG-CONTEXT at the word event,
+\ before the word runs, so a catch the word would set up never exists and the
+\ refusal is unhandled.
+: BARE-PREFIX ( ptr u8 n -- ) {: pkg:ptr pkgu:n :}
+   SB-RESET
+   s" package " SB-APPEND
+   pkg pkgu SB-APPEND
+   S\"  public variable CUR get-current CUR !\n" SB-APPEND
+   S\" : SRC ( -- ptr u8 n ) s\q : W ( -- n ) 1 ;\q ;\n" SB-APPEND ;
+
+: CAUGHT-SOURCE$ ( -- ptr u8 n )
+   s" BRIDGE-CATCH" BARE-PREFIX
+   S\" : TRY ( -- n ) [: SRC INCLUDE-EVALUATE ;] catch ;\n" SB-APPEND
+   S\" : BARE ( -- n ) 0 set-current TRY CUR @ set-current ;\n" SB-APPEND
+   S\" s\q caught=\q type BARE .\n" SB-APPEND
+   S\" s\q AFTER\q type\n;package\n" SB-APPEND
+   SB$ ;
+
+: UNCAUGHT-SOURCE$ ( -- ptr u8 n )
+   s" BRIDGE-RAW" BARE-PREFIX
+   S\" : BARE ( -- ) 0 set-current SRC INCLUDE-EVALUATE CUR @ set-current ;\n" SB-APPEND
+   S\" BARE\n" SB-APPEND
+   S\" s\q AFTER\q type\n;package\n" SB-APPEND
+   SB$ ;
+
 : MISSING-DEFINITION-NAME ( -- )
    s" a lone colon rejects at the engine reader" T-LABEL
    HB$ s" :" RUN-SOURCE $4A T=
@@ -167,7 +198,19 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    \ bare `hb: uncaught throw code 7136` (rc 67) this test used to get into a
    \ diagnostic a reader can act on.
    s" a definition with no package authority names the refused state" T-LABEL
-   ERR$ s" no authenticated package context" CONTAINS? TTRUE ;
+   ERR$ s" no authenticated package context" CONTAINS? TTRUE
+   CAUGHT-SOURCE$ {: csrc:ptr csrcu:n :}
+   s" a nested no-context definition under catch is caught as 70" T-LABEL
+   HB$ csrc csrcu RUN-SOURCE 0 T=
+   OUT$ s" caught=70" CONTAINS? TTRUE
+   ERR$ s" no authenticated package context" CONTAINS? TTRUE
+   s" source after the caught refusal runs" T-LABEL
+   OUT$ s" AFTER" CONTAINS? TTRUE
+   UNCAUGHT-SOURCE$ {: usrc:ptr usrcu:n :}
+   s" a nested no-context definition with no catch exits 70" T-LABEL
+   HB$ usrc usrcu RUN-SOURCE 70 T=
+   ERR$ s" no authenticated package context" CONTAINS? TTRUE
+   OUT$ s" AFTER" CONTAINS? 0= TTRUE ;
 
 public
 
