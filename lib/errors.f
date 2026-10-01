@@ -216,6 +216,8 @@
 -4005 constant E-ZED-DISABLED    \ device required but HABU_ZED unset/0
 \ -4006 was E-ZED-TIMEOUT: a ZED run's expired deadline throws E-PROC-TIMEOUT
 \ from PROC-CMD:RUN-RC, as every process deadline does. The number stays unused.
+\ E-ZED-EMIT is thrown downstream: Loom's tools/ptx/zed-gradcheck-suite.f
+\ raises it when its bin/hb spawn that emits a PTX kernel exits nonzero.
 -4007 constant E-ZED-EMIT        \ local artifact emit (bin/hb spawn) failed
 
 \ Floating mathematics: -9020..-9029, minted by lib/fmath.f, which owns package
