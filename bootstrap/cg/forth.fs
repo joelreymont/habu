@@ -1843,12 +1843,12 @@ HB-TARGET-LINUX? [IF]
    s" cell-view" ['] BADDRESSVIEW FPRIM-L
    s" xt!"  ['] BSTORE FPRIM-L
    s" ptr-cell-mark" ['] BDROP FPRIM-L
+   s" addr-cells-abi" ['] BADDRESSCELLSVERSION FPRIM-L
    s" atomic@" ['] BATFETCH FPRIM-L
    s" atomic!" ['] BATSTORE FPRIM-L
    s" atomic-add" ['] BATADD FPRIM-L
    s" atomic-cas" ['] BATCAS FPRIM-L
    s" fence" ['] BFENCE FPRIM-L
-   s" addr-cells-abi" ['] BADDRESSCELLSVERSION FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM-L
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L

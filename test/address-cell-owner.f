@@ -9,4 +9,12 @@ TRUSTED: VERSION-XT ( n -- [ -- n ] ) ;
    xt VERSION-XT execute 1 <> if s" wrong engine address ABI" 76 die then
    s" address-cell-owner: ok" type cr ;
 CHECK
+public
+: CHECK-RETIRED ( -- )
+   ADDRESS-CELLS:CURRENT? 0= if
+      s" address-cell-owner: retiring marker lost engine ABI" 76 die
+   then ;
 ;package
+
+undefine ptr-cell-mark
+ADDRESS-CELL-OWNER:CHECK-RETIRED

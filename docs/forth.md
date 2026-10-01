@@ -1242,7 +1242,6 @@ passing suite.
   cells fails at load with `habu: bad structure declaration 'NAME'` / `ncomp:
   cannot compile PKG-NAME:MAKE`, rc 67 — split it into the records each reader
   takes (`vocab` and `lowering` in `src/compiler/native/dialect.f`).
-
 - **`.` ends the line.** The native `.` is newline-terminated, not
   space-terminated: `11 . 22 . cr` emits `11\n22\n\n`, so an assertion for two
   dotted numbers on one line never matches; digit emitters (`GT-U-TYPE`,

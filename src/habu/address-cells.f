@@ -34,9 +34,9 @@ $7FFFFFFFFFFFFFFF CELL / constant MAX-ROWS
 private
 TRUSTED: VERSION-XT ( n -- [ -- n ] ) ;
 
-\ Both native emitters publish these primitives consecutively in global
-\ wordlist zero. Find the original pair in the running dictionary: a later
-\ undefine/redefinition can change search-wl's answer, but not its records.
+\ All engine emitters publish these primitives consecutively in global
+\ wordlist zero. Retirement changes a marker's wordlist, but preserves its
+\ name and position; a later redefinition must not replace the original pair.
 \ Resolve it on each call because a captured image has different code addresses
 \ from its build host. A foreign target layout's image-header offsets also do
 \ not describe the running engine.
@@ -44,7 +44,8 @@ TRUSTED: VERSION-XT ( n -- [ -- n ] ) ;
    ndict@ 1- 0 ?do
       i XREF-REC {: rec:ptr :}
       rec XREF-NAME$ s" ptr-cell-mark" CORE-STR=CI if
-         rec XREF-WORDLIST 0<> if 0 unloop exit then
+         rec XREF-WORDLIST {: wid:n :}
+         wid 0<> wid XREF-RETIRED-WL <> and if 0 unloop exit then
          i 1+ XREF-REC {: next:ptr :}
          next XREF-WORDLIST 0= if
             next XREF-NAME$ s" addr-cells-abi" CORE-STR=CI if
