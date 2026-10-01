@@ -11,11 +11,8 @@
 \
 \ The entry is `SNAP:PERSIST` - it builds the header, canonicalises the two
 \ regions and writes the image, then exits. The tail is deliberately not `GO`:
-\ several other files already define a `GO`, the name says nothing about what
-\ the word does, and snap.f calls this entry from an UNCHECKED `TRUSTED:` body,
-\ where the engine's global-first order would bind a same-named global ahead of
-\ the used public with no diagnostic. snap.f imports this package with
-\ `using SNAP` and calls the entry by its plain tail.
+\ several other files already define a `GO`, and the name says nothing about
+\ what the word does. src/habu/app-image-core.f APP-IMAGE:SAVE calls the entry.
 
 require lib/fs.f
 require lib/codesign.f
@@ -454,13 +451,12 @@ TRUSTED: SGR-PTR ( -- ptr u8 ) SGR-N @ ;
 ;package
 
 \ ---- test-only final-close fault seam ----
-\ snap-lib.f is builder-only: RETIRE-AND-PERSIST forgets this whole tail before
-\ snapshot header is written, so nothing here reaches a shipped image. The seam
-\ lets the snapshot-writer suite force the final close to fail and prove
-\ the writer's WRITE-BYTES fails closed (rc 74) instead of accepting a
-\ half-written image. BEFORE defaults to a no-op; only a test source injected ahead of the
-\ snap driver can arm it through INSTALL-TEST, and snap.f undefines that entry on
-\ every build so no normal or shipping path can reach it.
+\ The seam lets the snapshot-writer suite force the final close to fail and
+\ prove the writer's WRITE-BYTES fails closed (rc 74) instead of accepting a
+\ half-written image. BEFORE defaults to a no-op; test/snapshot-writer-close-fail.f
+\ arms it through INSTALL-TEST in the one child that loads that file before
+\ APP-IMAGE:SAVE. APP-IMAGE:SAVE retires nothing, so this package, its public
+\ INSTALL-TEST included, persists in every image it writes.
 package SNAP-CLOSE-SEAM
 
 defer BEFORE ( n -- )

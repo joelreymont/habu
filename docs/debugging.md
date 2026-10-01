@@ -217,18 +217,18 @@ answers the question from the dictionary instead. It prints two maps:
   every word that has code, headed by the region base and heap top this run got,
   so a program counter caught by a debugger watchpoint turns into a name.
 
-It has to run inside a process that has the source under investigation loaded and
-has not retired its dictionary, because that is the only place the names exist.
-The way to get one is to add two lines to `src/habu/snap.f` just above the final
-`RETIRE-AND-PERSIST`, run a snapshot build, and take the lines off again:
-
-```
-require tools/snap-heap-owner.f
-SNAP-HEAP-OWNER:DUMP
-```
+It has to run inside a process that has the source under investigation loaded,
+because that is the only place the names exist. A snapshot build leaves that
+process's two inputs in `HB_TMP`: the native engine `hb-native` and the snapshot
+source `hb-snap-src` (`tools/build-fixpoint.f` `BF-SNAP-SOURCE`), whose last line
+calls `APP-IMAGE:SAVE`. Run that engine on the same source with the dump in place
+of the save:
 
 ```sh
-HB_TMP=<private-root> bin/hb --load tools/build-fixpoint-refresh.f -- snap > owners.txt
+HB_TMP=<private-root> bin/hb --load tools/build-fixpoint-refresh.f -- snap
+{ grep -v 'APP-IMAGE:SAVE' <private-root>/hb-snap-src
+  printf '%s\n' 'require tools/snap-heap-owner.f' 'SNAP-HEAP-OWNER:DUMP'
+} | HB_TMP=<private-root> <private-root>/hb-native > owners.txt
 ```
 
 The heap map that produced the owner table in dot

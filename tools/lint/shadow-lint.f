@@ -226,7 +226,6 @@ variable IN-DEFINITION
    s" src/habu/regalloc.f"  LINT-FILE   s" src/habu/jit.f"       LINT-FILE
    s" src/habu/sign-id.f"   LINT-FILE
    s" src/habu/habu2.f"     LINT-FILE   s" src/habu/snap-lib.f"  LINT-FILE
-   s" src/habu/snap.f"      LINT-FILE
    \ `1 die` alone left die's message operands to the CALLER's stack — a
    \ latent below-base read the certified-underdepth gate now rejects (dot
    \ habu-habu-certified-words-84e84eaf); die carries its own message.

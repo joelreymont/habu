@@ -550,10 +550,9 @@ public
    2 SB$ write drop ;
 
 \ This file's ONE raw boundary is FS-MUT-ARM-EXIT below: the exit vector is a
-\ fixed engine DATA cell holding a code pointer, reached through `data-base` the
-\ way src/habu/snap.f reads ENGINE-SNAP-XT-CELL. Arming is the only place an
-\ opaque xt is handled; calling one back is ordinary checked code, because the
-\ saved vector lands in a typed xt cell.
+\ fixed engine DATA cell holding a code pointer, reached through `data-base`.
+\ Arming is the only place an opaque xt is handled; calling one back is ordinary
+\ checked code, because the saved vector lands in a typed xt cell.
 \
 \ THE VECTOR IS A CHAIN, not a claim. Arming finds one of three states: zero,
 \ and ours goes in; already ours, and nothing happens; FOREIGN - some other
